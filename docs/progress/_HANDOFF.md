@@ -12,7 +12,7 @@
 ## สถานะ LIVE
 - **prod: https://shark.in.th** (Vercel, APP_ENV=production, เมลจริง noreply@shark.in.th) · **staging: https://shark.suksomsri.cloud** (VPS pm2 `shark` :3801, APP_ENV=preview โชว์ OTP บนจอ) · DB เดียวกัน (Neon Singapore)
 - ระบบ 12/14 เปิด (available): BOOKING·MEMBER·POINT·POS·REWARD (เดิม) + **HOTEL·QUEUE·TICKET·COUPON·MEETING·KANBAN·ACCOUNT (ใหม่ 2026-07-11 P1)** — ยังปิด: RESTAURANT, CHAT
-- ⚠️ **สถานะ 7 ระบบใหม่ = P1 code-complete + build ผ่าน + db push แล้ว + staging deploy แล้ว** แต่ **ยังไม่ทำ functional QC แบบ login→สร้างระบบ→CRUD จริง** (ต้องมี session จริง + เขียน test data ลง Neon prod). **Vercel prod ยังไม่ deploy** commit นี้ (`7a94e51`) — สั่ง deploy prod เมื่อพร้อม
+- ✅ **7 ระบบใหม่ = P1 code-complete + build 0 error + db push + QC ผ่าน service-layer ทั้ง 7 กับ Neon (`scripts/qc-systems.mts`, running number/atomic/cleanup ครบ) + deploy prod แล้ว** — LIVE บน **shark.in.th** (Vercel) + VPS staging. ยังเหลือ **UI/manual QC หน้าจอจริง** (service logic ผ่านแล้ว แต่ยังไม่คลิกทุกหน้าใน browser)
 - **P1 scope ที่ทำ / เลื่อน (🔜)** — ดู REPORT ของแต่ละ subagent + สเปคเต็ม: Hotel(เลื่อน housekeeping/night-audit/folio/OTA), Account(เลื่อนฝั่งรายจ่าย/journal/งบ/DBD), Ticket/Queue(เลื่อน SSE realtime/ชำระเงินออนไลน์/storefront), Coupon(เลื่อน wire contract เข้า POS), Meeting/Kanban(เลื่อน SSE/attachment)
 - redeploy: VPS = `pnpm build && pm2 restart shark --update-env` · Vercel = `pnpm dlx vercel@latest deploy --prod --yes --scope siamdives-projects --token=<ดู memory reference_vercel_credentials>`
 
