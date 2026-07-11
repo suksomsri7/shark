@@ -108,6 +108,17 @@ export async function AccountContent({
         <Link href={`${base}/docs/QUOTATION`} className="btn btn-primary text-sm">+ สร้างใบเสนอราคา</Link>
       </div>
 
+      {/* รายจ่าย (P2) */}
+      <div className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium">รายจ่าย</h2>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`${base}/purchase`} className="btn btn-ghost text-sm">บันทึกซื้อสินค้า</Link>
+          <Link href={`${base}/expense`} className="btn btn-ghost text-sm">บันทึกค่าใช้จ่าย</Link>
+          <Link href={`${base}/po`} className="btn btn-ghost text-sm">ใบสั่งซื้อ (PO)</Link>
+          <Link href={`${base}/asset-buy`} className="btn btn-ghost text-sm">ซื้อสินทรัพย์/ใบกำกับซื้อ</Link>
+        </div>
+      </div>
+
       {/* บัญชี & รายงาน (P2/P3) */}
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium">บัญชี · การเงิน · รายงาน</h2>
