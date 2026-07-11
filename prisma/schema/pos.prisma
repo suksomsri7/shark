@@ -1,0 +1,84 @@
+// POS (14) — จุดตัดเงินกลาง (scope=unit). ทุกโมดูลชำระเงินผ่าน createSale
+// MVP: PAID_NOW + เงินสด/โอน/PromptPay + เลขใบเสร็จรันต่อ unit/เดือน
+// 🔜: PENDING_PAYMENT intent, VAT, coupon, account posting, ROOM_CHARGE provider, กะ/สต็อก/สินค้า
+
+enum PosSaleStatus {
+  PAID
+  VOIDED
+  REFUNDED
+}
+
+enum PosPayType {
+  CASH
+  TRANSFER
+  PROMPTPAY
+  DEPOSIT
+  ROOM_CHARGE
+}
+
+model PosSale {
+  id              String        @id @default(cuid())
+  tenantId        String
+  unitId          String
+  memberId        String? // Customer.id
+  sourceModule    String        @default("POS") // POS | BOOKING | HOTEL | RESTAURANT | TICKET
+  sourceId        String?
+  idempotencyKey  String
+  receiptNo       String?
+  status          PosSaleStatus @default(PAID)
+  subtotalSatang  Int
+  discountSatang  Int           @default(0)
+  vatSatang       Int           @default(0)
+  grandTotalSatang Int
+  pointEarned     Int           @default(0)
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  lines    PosSaleLine[]
+  payments PosPayment[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@unique([unitId, receiptNo])
+  @@index([tenantId, unitId, createdAt])
+}
+
+model PosSaleLine {
+  id             String  @id @default(cuid())
+  tenantId       String
+  unitId         String
+  saleId         String
+  sale           PosSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  name           String
+  qty            Int
+  unitPriceSatang Int
+  discountSatang Int     @default(0)
+  lineTotalSatang Int
+
+  @@index([saleId])
+}
+
+model PosPayment {
+  id         String     @id @default(cuid())
+  tenantId   String
+  unitId     String
+  saleId     String
+  sale       PosSale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  type       PosPayType
+  amountSatang Int
+  refSaleId  String? // DEPOSIT/ROOM_CHARGE อ้างบิลเดิม
+  note       String?
+
+  @@index([saleId])
+}
+
+// เลขใบเสร็จรันต่อ unit ต่อเดือน
+model PosReceiptCounter {
+  id       String @id @default(cuid())
+  tenantId String
+  unitId   String
+  period   String // YYYYMM
+  seq      Int    @default(0)
+
+  @@unique([unitId, period])
+}

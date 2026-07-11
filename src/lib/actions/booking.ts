@@ -6,7 +6,7 @@ import { AppointmentStatus } from "@prisma/client";
 import { requireUnit } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
 import * as member from "@/lib/modules/member/service";
-import * as point from "@/lib/modules/point/service";
+import * as pos from "@/lib/modules/pos/service";
 
 // ตารางเวลาเริ่มต้นเมื่อเพิ่มช่าง: ทุกวัน 10:00–20:00 (ปรับภายหลังได้)
 const DEFAULT_HOURS = Array.from({ length: 7 }, (_, weekday) => ({
@@ -84,11 +84,11 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
     data: { status: parsed.data },
     include: { service: true },
   });
-  // มาใช้บริการจริง → นับ visit + สะสมแต้ม + timeline (แกนกลาง Member+Point)
-  // NOTE: ตอนมี POS แล้ว การได้แต้มจะย้ายไปตอนชำระเงินจริง (createSale) แทน
+  // มาใช้บริการจริง → นับ visit + timeline + เก็บเงินผ่าน POS (จุดตัดเงินกลาง)
+  // POS.createSale จัดการ: ยอดเงิน + ใบเสร็จ + สะสมแต้ม + บันทึกยอดใช้จ่าย (ตามพิมพ์เขียว)
   if (parsed.data === "DONE") {
     const spent = appt.service.priceSatang;
-    await member.recordVisit(ctx.tenantId, appt.customerId, { spentSatang: spent });
+    await member.recordVisit(ctx.tenantId, appt.customerId);
     await member.logActivity({
       tenantId: ctx.tenantId,
       customerId: appt.customerId,
@@ -100,26 +100,16 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
       summary: "มาใช้บริการ",
     });
     if (spent > 0) {
-      const res = await point.earn({
+      await pos.createSale({
         tenantId: ctx.tenantId,
-        customerId: appt.customerId,
         unitId: ctx.unitId,
-        amountSatang: spent,
+        memberId: appt.customerId,
         sourceModule: "BOOKING",
-        refType: "Appointment",
-        refId: appt.id,
-        idempotencyKey: `booking-done-${appt.id}`,
+        sourceId: appt.id,
+        idempotencyKey: `booking-sale-${appt.id}`,
+        lines: [{ name: appt.service.name, qty: 1, unitPriceSatang: spent }],
+        payMethods: [{ type: "CASH", amountSatang: spent }],
       });
-      if (res.pointsEarned > 0) {
-        await member.logActivity({
-          tenantId: ctx.tenantId,
-          customerId: appt.customerId,
-          unitId: ctx.unitId,
-          module: "point",
-          type: "EARN",
-          summary: `ได้รับ ${res.pointsEarned} แต้ม`,
-        });
-      }
     }
   }
   revalidatePath(`/app/u/${unitSlug}/booking`);

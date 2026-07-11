@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { listAppointments } from "@/lib/modules/booking/service";
+import { daySummary } from "@/lib/modules/pos/service";
 import { setStatusAction } from "@/lib/actions/booking";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -39,7 +40,10 @@ export default async function BookingPage({
 }) {
   const { unitSlug } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
-  const appts = await listAppointments(auth.active.tenantId, unit.id, todayBkk());
+  const [appts, revenue] = await Promise.all([
+    listAppointments(auth.active.tenantId, unit.id, todayBkk()),
+    daySummary(auth.active.tenantId, unit.id),
+  ]);
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
@@ -47,6 +51,9 @@ export default async function BookingPage({
         <div>
           <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
           <h1 className="text-2xl font-semibold">รายการนัด</h1>
+          <div className="mt-1 text-sm text-[color:var(--color-muted)]">
+            ยอดขายวันนี้ · ฿{(revenue.totalSatang / 100).toLocaleString("th-TH")} ({revenue.count} บิล)
+          </div>
         </div>
         <div className="flex gap-2">
           <Link href={`/app/u/${unitSlug}/booking/setup`} className="btn btn-ghost text-sm">

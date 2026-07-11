@@ -28,6 +28,11 @@ const MODULE_SCOPES: Record<string, Scope> = {
   PointSettings: "tenant",
   PointLedger: "tenant",
   PointBalance: "tenant",
+  // POS (unit-scoped)
+  PosSale: "unit",
+  PosSaleLine: "unit",
+  PosPayment: "unit",
+  PosReceiptCounter: "unit",
   // Booking (unit-scoped)
   BookingService: "unit",
   BookingStaff: "unit",

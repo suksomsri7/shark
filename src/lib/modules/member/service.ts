@@ -90,19 +90,29 @@ export async function logActivity(
   await client.memberActivity.create({ data: input });
 }
 
-// ── นับการมาใช้บริการ + ยอดสะสม → อัปเดต tier ──
-export async function recordVisit(
+// ── นับการมาใช้บริการ (จำนวนครั้ง) ──
+export async function recordVisit(tenantId: string, customerId: string, client: Client = prisma) {
+  const c = await client.customer.findFirst({ where: { id: customerId, tenantId } });
+  if (!c) return;
+  await client.customer.update({
+    where: { id: customerId },
+    data: { visitCount: { increment: 1 } },
+  });
+}
+
+// ── บันทึกยอดใช้จ่าย (เรียกโดย POS createSale) → อัปเดต tier ──
+export async function recordSpend(
   tenantId: string,
   customerId: string,
-  opts: { spentSatang?: number } = {},
+  amountSatang: number,
   client: Client = prisma,
 ) {
   const c = await client.customer.findFirst({ where: { id: customerId, tenantId } });
   if (!c) return;
-  const total = c.totalSpentSatang + (opts.spentSatang ?? 0);
+  const total = c.totalSpentSatang + amountSatang;
   await client.customer.update({
     where: { id: customerId },
-    data: { visitCount: { increment: 1 }, totalSpentSatang: total, tier: computeTier(total) },
+    data: { totalSpentSatang: total, tier: computeTier(total) },
   });
 }
 
