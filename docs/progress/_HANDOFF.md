@@ -28,6 +28,18 @@
 posting engine `src/lib/modules/account/gl.ts` + ผังบัญชี seed `coa.ts` (40 บัญชี+2205, 23 mapping) · wire postDocument/postPayment/postTaxInvoice/reverseFor เข้า issue/payment/void ใน tx เดียว · A1 tax point (สินค้า ON_ISSUE / บริการ ON_PAYMENT, ใบกำกับอ้าง payment ผ่าน sourcePaymentId) · A2 เดือนภาษี source เดียว (VAT พัก 2205 goods/2210 service → 2200 ตอนออกใบกำกับ) · A3 vatRegistered gate · A4 posting rules (ส่วนลด net, มัดจำ F2) · A5 can()+AuditLog 13 action + ซ่อน มัดจำ/วางบิล/CN/DN. **Verify: `scripts/qc-account-gatea.mts` ผ่าน 9/9** (double-entry Σdr==Σcr ทุก entry + VAT routing + gate + can/audit wiring + backfill 0 orphan). helper: `access.ts` (assertAccountCan/writeAudit). schema เต็ม P2/P3 วางแล้ว (`account_gl.prisma` — 14 model)
 - **ต่อไป: Gate B (ก่อน P2 รายจ่าย/WHT) + Gate C (ก่อน P3 งบ)** ใน `docs/qc/QC5-RESOLUTIONS-account.md` · แล้วขยายเมนู P2/P3 (schema+posting engine พร้อมแล้ว ต่อยอดได้เลย) · findings เต็ม: QC5-account-{tax,ledger,pipeline}.md
 
+## 🟡 Account P2/P3 — ค้างจาก session limit (2026-07-11, reset 8pm UTC) — LIVE prod (build ผ่าน + engine verified)
+7 subagent P2/P3 ตายกลางคัน (session limit); salvage แล้ว build ผ่าน + Gate A regression 9/9 + P2/P3 engine 6/6 (`scripts/qc-account-p2p3.mts`). สถานะต่อโมดูล:
+- ✅ **posting engine เต็ม (gl.ts)**: postDocument รองรับทุก docType ฝั่งจ่าย (PURCHASE/EXPENSE/ASSET_PURCHASE/PTX/DP/CNR/DNR) + postPayment WHT-payable (Cr 2130) + postManualJV/postDepreciation/postOpening(คู่ 3999)/closePeriod/reopenPeriod — verify balance หมด
+- ✅ **Products** (product.ts + products/goods-issue routes) · ✅ **Assets** (asset.ts + assets route: register/ค่าเสื่อม/ตัดจำหน่าย)
+- 🟡 **Finance-WHT**: finance.ts/wht.ts + routes finance/wht/tax เสร็จเกือบหมด (ตายตอนทำ CSV export ภงด) — ตรวจ tax/ route
+- 🟡 **Reports**: reports.ts + routes reports/trial-balance/profit-loss เสร็จ · **ขาด balance-sheet + cash-flow + ภพ30 page**
+- 🟡 **GL UI**: journal(+[entryId]/new)/ledger เสร็จ · **ขาด accounts/ (ผังบัญชี+mapping UI) + periods/ (ปิดงวด) page** (engine closePeriod พร้อม)
+- 🟡 **Expense**: expense.ts/expense-actions.ts/expense-ui.tsx/ExpenseEditor.tsx เสร็จ · **ขาด route pages ทั้งหมด** (purchase/expense/po/asset-buy) — service พร้อม แค่ทำ UI route
+- 🟡 **Sales Gate B**: computeTotals (per-line vat + allocate ส่วนลด) + VISIBLE_DOC_TYPES เปิด CN/DN/มัดจำ/วางบิล แล้ว · **ค้าง: recordPayment branch DEPOSIT_RECEIPT (F2), CN cap, ใบกำกับ ม.86/4 print fields** — ตรวจ service.ts/actions ว่า flow มัดจำ/วางบิลครบไหมก่อนให้ใช้จริง
+- nav เมนู P2/P3 wire แล้วใน ui.tsx (section ที่หน้าเสร็จ) — expense/accounts/periods ยังไม่ link (soft-gate)
+- **ทำต่อ:** re-spawn agent ที่ค้าง (Expense routes, GL accounts/periods, Reports BS/CF/ภพ30, Sales-GateB มัดจำ/วางบิล/ม.86/4) หลัง reset — engine+schema พร้อมหมด เหลือ UI + ตรวจ Gate B correctness
+
 ## งานถัดไป (เจ้าของจะเลือก)
 - ✅ QC5 Gate A ปิดแล้ว (ด้านบน) — Account ออกเอกสารถูกกฎหมายภาษี + double-entry ครบ
 - **ขยาย Account ให้ครบเมนู (P2/P3)** ตามที่ user ขอ — schema+posting engine พร้อม: P2 รายจ่าย/WHT/การเงิน (ทำ Gate B ก่อน), P3 GL/งบการเงิน/สินทรัพย์ (Gate C). แบ่ง subagent ขนานได้ (engine gl.ts เป็น interface กลาง)
