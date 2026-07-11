@@ -19,7 +19,18 @@ const CORE_SCOPES: Record<string, Scope> = {
   AuditLog: "tenant",
 };
 
-const REGISTRY: Record<string, Scope> = { ...CORE_SCOPES };
+// module scopes (Stage B/C) — ลงทะเบียนที่นี่จนกว่าจะมี bootstrap loader
+const MODULE_SCOPES: Record<string, Scope> = {
+  // Member (light)
+  Customer: "tenant",
+  // Booking (unit-scoped)
+  BookingService: "unit",
+  BookingStaff: "unit",
+  BookingStaffHours: "unit",
+  Appointment: "unit",
+};
+
+const REGISTRY: Record<string, Scope> = { ...CORE_SCOPES, ...MODULE_SCOPES };
 
 /** โมดูลเรียกตอน bootstrap เพื่อลงทะเบียน scope ของ model ตัวเอง */
 export function registerScopes(scopes: Record<string, Scope>): void {

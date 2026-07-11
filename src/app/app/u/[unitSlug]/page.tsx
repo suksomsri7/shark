@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -38,9 +39,20 @@ export default async function UnitHomePage({
           <div className="mt-1 text-2xl font-semibold">—</div>
         </div>
       </div>
-      <p className="text-sm text-[color:var(--color-muted)]">
-        โมดูลของกิจการนี้จะปรากฏที่นี่ (Stage C) — {TYPE_LABEL[unit.type]}
-      </p>
+      {unit.type === "BOOKING" ? (
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/app/u/${unitSlug}/booking`} className="btn btn-primary text-sm">
+            เปิดระบบจองคิว →
+          </Link>
+          <Link href={`/app/u/${unitSlug}/booking/setup`} className="btn btn-ghost text-sm">
+            ตั้งค่าบริการ/ช่าง
+          </Link>
+        </div>
+      ) : (
+        <p className="text-sm text-[color:var(--color-muted)]">
+          โมดูลของกิจการนี้กำลังพัฒนา (เร็วๆ นี้) — {TYPE_LABEL[unit.type]}
+        </p>
+      )}
     </div>
   );
 }

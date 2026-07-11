@@ -1,0 +1,85 @@
+// Booking (จองคิว/นัดหมาย) — scope=unit (tenantId+unitId ทุกตาราง)
+// MVP: บริการ + ช่าง + ตารางเวลา(รายสัปดาห์) + นัด + slot engine
+// เลื่อนไป 🔜: skill mapping ราย service, วันหยุด/ลา, มัดจำ, recurring
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  ARRIVED
+  DONE
+  NO_SHOW
+  CANCELLED
+}
+
+model BookingService {
+  id          String   @id @default(cuid())
+  tenantId    String
+  unitId      String
+  name        String
+  durationMin Int // ใช้เวลา (นาที)
+  priceSatang Int      @default(0)
+  bufferMin   Int      @default(0) // เวลาพักหลังบริการ
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  appointments Appointment[]
+
+  @@index([tenantId, unitId])
+}
+
+model BookingStaff {
+  id        String   @id @default(cuid())
+  tenantId  String
+  unitId    String
+  name      String
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hours        BookingStaffHours[]
+  appointments Appointment[]
+
+  @@index([tenantId, unitId])
+}
+
+// ตารางเวลาทำงานรายสัปดาห์ (weekday 0=อาทิตย์..6=เสาร์, นาทีจากเที่ยงคืน)
+model BookingStaffHours {
+  id       String       @id @default(cuid())
+  tenantId String
+  unitId   String
+  staffId  String
+  staff    BookingStaff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  weekday  Int
+  startMin Int
+  endMin   Int
+
+  @@index([staffId])
+  @@index([tenantId, unitId])
+}
+
+model Appointment {
+  id            String            @id @default(cuid())
+  tenantId      String
+  unitId        String
+  customerId    String
+  customer      Customer          @relation(fields: [customerId], references: [id])
+  staffId       String
+  staff         BookingStaff      @relation(fields: [staffId], references: [id])
+  serviceId     String
+  service       BookingService    @relation(fields: [serviceId], references: [id])
+  startAt       DateTime
+  endAt         DateTime // รวม buffer แล้ว (กันจองซ้อน)
+  status        AppointmentStatus @default(CONFIRMED)
+  customerName  String // snapshot
+  customerPhone String // snapshot
+  note          String?
+  source        String            @default("STAFF") // STAFF | ONLINE
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([tenantId, unitId, startAt])
+  @@index([staffId, startAt])
+}

@@ -1,0 +1,17 @@
+// Member (light) — Customer identity ต่อ tenant (scope=tenant)
+// เวอร์ชันเต็ม (tier/consent/segment) มาทีหลัง — MVP เก็บแค่ตัวตนพื้นฐานที่ Booking ใช้
+
+model Customer {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String?
+  phone     String?
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments Appointment[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+}
