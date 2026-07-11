@@ -85,11 +85,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
         {/* โซน ค */}
         <div className="mt-auto flex flex-col gap-2 border-t pt-3">
-          <Link href="/app/settings/systems" className="rounded-lg px-2 py-2 text-sm hover:bg-[color:var(--color-surface-2)]">
-            ⚙️ ระบบ
-          </Link>
-          <Link href="/app/settings/units/new" className="btn btn-ghost w-full text-sm">
-            + {t("addBusiness")}
+          <Link href="/app/settings/systems" className="btn btn-ghost w-full text-sm">
+            + เพิ่มระบบ
           </Link>
           <div className="flex items-center justify-between px-2">
             <span className="truncate text-xs text-[color:var(--color-muted)]">{auth.user.email}</span>

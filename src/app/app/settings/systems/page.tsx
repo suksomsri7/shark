@@ -4,6 +4,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { listSystems } from "@/lib/modules/system/service";
 import { listRewards } from "@/lib/modules/reward/service";
+import { AddUnitForm } from "@/components/add-unit-form";
 import {
   createSystemAction,
   linkUnitAction,
@@ -43,11 +44,24 @@ export default async function SystemsPage() {
         <Link href="/app" className="text-sm text-[color:var(--color-muted)]">
           ← ทุกกิจการ
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold">ระบบ</h1>
+        <h1 className="mt-1 text-2xl font-semibold">เพิ่มระบบ</h1>
         <p className="text-sm text-[color:var(--color-muted)]">
-          สร้างระบบและผูกกับกิจการ — หลายกิจการที่ผูกระบบเดียวกันจะแชร์ข้อมูลกัน (เช่น สมาชิกร่วม)
+          สร้างกิจการหรือระบบ แล้วผูกเข้าด้วยกัน — หลายกิจการที่ผูกระบบเดียวกันจะแชร์ข้อมูลกัน (เช่น สมาชิกร่วม)
         </p>
       </div>
+
+      {/* กิจการ (ธุรกิจ) */}
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="font-medium">กิจการ</h2>
+          <span className="text-xs text-[color:var(--color-muted)]">
+            สร้างกิจการใหม่ — จะได้ระบบสมาชิก/แต้ม/POS/รางวัลของตัวเองอัตโนมัติ
+          </span>
+        </div>
+        <AddUnitForm />
+      </section>
+
+      <div className="border-t" />
 
       {TYPES.map(({ type, label, hint }) => {
         const list = systems.filter((s) => s.type === type);
