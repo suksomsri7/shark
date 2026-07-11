@@ -1,0 +1,139 @@
+import { prisma } from "@/lib/core/db";
+import type { MemberTier, Prisma, PrismaClient } from "@prisma/client";
+
+// Member (แกนกลาง CRM) — service ที่โมดูลอื่นเรียก (contract 2.6/2.7)
+// รับ client optional เพื่อ join transaction ของผู้เรียก (Booking/POS)
+
+type Client = PrismaClient | Prisma.TransactionClient;
+
+// tier จากยอดสะสม (สตางค์)
+export function computeTier(totalSpentSatang: number): MemberTier {
+  if (totalSpentSatang >= 3_000_000) return "PLATINUM";
+  if (totalSpentSatang >= 1_000_000) return "GOLD";
+  if (totalSpentSatang >= 300_000) return "SILVER";
+  return "MEMBER";
+}
+
+// รหัสสมาชิก 6 ตัว (ตัดตัวสับสน 0/O/1/I)
+const CODE_ALPHABET = "ACDEFGHJKLMNPQRSTUVWXY3456789";
+function randCode(): string {
+  let s = "";
+  for (let i = 0; i < 6; i++) s += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  return s;
+}
+async function uniqueMemberCode(client: Client, tenantId: string): Promise<string> {
+  for (let i = 0; i < 6; i++) {
+    const code = randCode();
+    const exists = await client.customer.findFirst({ where: { tenantId, memberCode: code } });
+    if (!exists) return code;
+  }
+  return randCode() + randCode().slice(0, 2);
+}
+
+function normEmail(e?: string | null) {
+  return e?.trim().toLowerCase() || null;
+}
+function normPhone(p?: string | null) {
+  return p?.trim() || null;
+}
+
+// ── contract 2.6 findOrCreate (dedup by phone→email ต่อ tenant) ──
+export async function findOrCreate(
+  input: {
+    tenantId: string;
+    phone?: string;
+    email?: string;
+    name?: string;
+    source: "AUTO" | "STAFF" | "SELF" | "IMPORT";
+    consents?: string[];
+  },
+  client: Client = prisma,
+) {
+  const phone = normPhone(input.phone);
+  const email = normEmail(input.email);
+  let c =
+    (phone && (await client.customer.findFirst({ where: { tenantId: input.tenantId, phone } }))) ||
+    null;
+  if (!c && email) {
+    c = await client.customer.findFirst({ where: { tenantId: input.tenantId, email } });
+  }
+  if (c) return c;
+  const memberCode = await uniqueMemberCode(client, input.tenantId);
+  const marketing = !!input.consents?.includes("marketing");
+  return client.customer.create({
+    data: {
+      tenantId: input.tenantId,
+      memberCode,
+      name: input.name?.trim() || null,
+      phone,
+      email,
+      marketingConsent: marketing,
+      consentAt: input.consents?.length ? new Date() : null,
+    },
+  });
+}
+
+// ── contract 2.7 activity.log ──
+export async function logActivity(
+  input: {
+    tenantId: string;
+    customerId: string;
+    unitId?: string;
+    module: string;
+    type: string;
+    refType?: string;
+    refId?: string;
+    summary: string;
+  },
+  client: Client = prisma,
+) {
+  await client.memberActivity.create({ data: input });
+}
+
+// ── นับการมาใช้บริการ + ยอดสะสม → อัปเดต tier ──
+export async function recordVisit(
+  tenantId: string,
+  customerId: string,
+  opts: { spentSatang?: number } = {},
+  client: Client = prisma,
+) {
+  const c = await client.customer.findFirst({ where: { id: customerId, tenantId } });
+  if (!c) return;
+  const total = c.totalSpentSatang + (opts.spentSatang ?? 0);
+  await client.customer.update({
+    where: { id: customerId },
+    data: { visitCount: { increment: 1 }, totalSpentSatang: total, tier: computeTier(total) },
+  });
+}
+
+// ── dashboard: list + search ──
+export async function listCustomers(tenantId: string, search?: string) {
+  const q = search?.trim();
+  return prisma.customer.findMany({
+    where: {
+      tenantId,
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: "insensitive" } },
+              { phone: { contains: q } },
+              { memberCode: { contains: q.toUpperCase() } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+}
+
+export async function getProfile(tenantId: string, id: string) {
+  const customer = await prisma.customer.findFirst({ where: { id, tenantId } });
+  if (!customer) return null;
+  const activities = await prisma.memberActivity.findMany({
+    where: { tenantId, customerId: id },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+  return { customer, activities };
+}

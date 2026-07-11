@@ -8,7 +8,7 @@ import { TENANT_MODULES } from "@/lib/systems";
 const TYPE_ICON: Record<string, string> = {
   HOTEL: "🏨",
   RESTAURANT: "🍜",
-  BOOKING: "✂️",
+  BOOKING: "📅",
   QUEUE: "🎫",
   TICKET: "🎟️",
   SHOP: "🛍️",

@@ -21,8 +21,9 @@ const CORE_SCOPES: Record<string, Scope> = {
 
 // module scopes (Stage B/C) — ลงทะเบียนที่นี่จนกว่าจะมี bootstrap loader
 const MODULE_SCOPES: Record<string, Scope> = {
-  // Member (light)
+  // Member
   Customer: "tenant",
+  MemberActivity: "tenant",
   // Booking (unit-scoped)
   BookingService: "unit",
   BookingStaff: "unit",

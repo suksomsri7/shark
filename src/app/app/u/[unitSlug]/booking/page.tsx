@@ -64,7 +64,7 @@ export default async function BookingPage({
 
       {appts.length === 0 ? (
         <div className="card text-center text-sm text-[color:var(--color-muted)]">
-          ยังไม่มีนัด — แชร์ลิงก์หน้าจองให้ลูกค้า หรือกด "ตั้งค่า" เพิ่มบริการ/ช่างก่อน
+          ยังไม่มีนัด — แชร์ลิงก์หน้าจองให้ลูกค้า หรือกด "ตั้งค่า" เพิ่มบริการ/พนักงานก่อน
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -79,7 +79,7 @@ export default async function BookingPage({
                       {time} · {a.service.name}
                     </div>
                     <div className="text-xs text-[color:var(--color-muted)]">
-                      {day} · ช่าง {a.staff.name} · {a.customerName} {a.customerPhone}
+                      {day} · โดย {a.staff.name} · {a.customerName} {a.customerPhone}
                     </div>
                   </div>
                   <span className="whitespace-nowrap rounded-full border px-2 py-0.5 text-xs text-[color:var(--color-muted)]">

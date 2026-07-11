@@ -149,7 +149,7 @@ export function PublicBooking({
         <>
           {/* 2. ช่าง */}
           <section className="flex flex-col gap-2">
-            <div className="text-sm font-medium">2. เลือกช่าง</div>
+            <div className="text-sm font-medium">2. เลือกพนักงาน</div>
             <div className="flex flex-wrap gap-2">
               <Chip active={staffId === "any"} onClick={() => setStaffId("any")}>
                 ใครก็ได้

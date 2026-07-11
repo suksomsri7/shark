@@ -1,5 +1,6 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import type { AppointmentStatus } from "@prisma/client";
+import * as member from "@/lib/modules/member/service";
 import {
   computeStaffSlots,
   localToUtc,
@@ -133,17 +134,18 @@ export async function createAppointment(input: {
       });
       if (clash) throw new Error("SLOT_TAKEN");
 
-      // findOrCreate customer (by phone ต่อ tenant)
-      let customer = phone
-        ? await tx.customer.findFirst({ where: { tenantId: input.tenantId, phone } })
-        : null;
-      if (!customer) {
-        customer = await tx.customer.create({
-          data: { tenantId: input.tenantId, name: input.customerName, phone: phone || null },
-        });
-      }
+      // แกนกลาง Member: findOrCreate (contract 2.6)
+      const customer = await member.findOrCreate(
+        {
+          tenantId: input.tenantId,
+          phone,
+          name: input.customerName,
+          source: input.source === "STAFF" ? "STAFF" : "SELF",
+        },
+        tx,
+      );
 
-      return tx.appointment.create({
+      const created = await tx.appointment.create({
         data: {
           tenantId: input.tenantId,
           unitId: input.unitId,
@@ -159,6 +161,22 @@ export async function createAppointment(input: {
           source: input.source ?? "ONLINE",
         },
       });
+
+      // timeline (contract 2.7)
+      await member.logActivity(
+        {
+          tenantId: input.tenantId,
+          customerId: customer.id,
+          unitId: input.unitId,
+          module: "booking",
+          type: "APPOINTMENT_BOOKED",
+          refType: "Appointment",
+          refId: created.id,
+          summary: `จองนัด ${service.name} · ${input.dateStr} ${minutesToHHMM(input.startMin)}`,
+        },
+        tx,
+      );
+      return created;
     });
     return { ok: true, id: appt.id };
   } catch (e) {

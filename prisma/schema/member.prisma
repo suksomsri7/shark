@@ -1,17 +1,51 @@
-// Member (light) — Customer identity ต่อ tenant (scope=tenant)
-// เวอร์ชันเต็ม (tier/consent/segment) มาทีหลัง — MVP เก็บแค่ตัวตนพื้นฐานที่ Booking ใช้
+// Member (แกนกลาง CRM) — scope=tenant (ลูกค้า 1 คนใช้ข้ามทุกกิจการของร้าน)
+// เก็บตัวตน + tier + ยอดสะสม + timeline. โมดูลอื่น (Booking/POS/Point) เกาะตัวนี้
+
+enum MemberTier {
+  MEMBER
+  SILVER
+  GOLD
+  PLATINUM
+}
 
 model Customer {
-  id        String   @id @default(cuid())
-  tenantId  String
-  name      String?
-  phone     String?
-  email     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String     @id @default(cuid())
+  tenantId         String
+  memberCode       String? // รหัสสมาชิก (unique ต่อ tenant) — gen ตอนสร้าง
+  name             String?
+  phone            String?
+  email            String?
+  tier             MemberTier @default(MEMBER)
+  totalSpentSatang Int        @default(0)
+  visitCount       Int        @default(0)
+  tags             Json       @default("[]")
+  note             String?
+  marketingConsent Boolean    @default(false)
+  consentAt        DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
   appointments Appointment[]
+  activities   MemberActivity[]
 
   @@unique([tenantId, phone])
+  @@unique([tenantId, memberCode])
   @@index([tenantId])
+}
+
+// timeline กิจกรรมลูกค้ารวมทุกโมดูล (contract 2.7 activity.log)
+model MemberActivity {
+  id         String   @id @default(cuid())
+  tenantId   String
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  unitId     String?
+  module     String // "booking" | "pos" | ...
+  type       String // "APPOINTMENT_BOOKED" | "VISIT" | ...
+  refType    String?
+  refId      String?
+  summary    String
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, customerId, createdAt])
 }

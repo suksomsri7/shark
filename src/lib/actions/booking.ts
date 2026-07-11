@@ -5,6 +5,7 @@ import { z } from "zod";
 import { AppointmentStatus } from "@prisma/client";
 import { requireUnit } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
+import * as member from "@/lib/modules/member/service";
 
 // ตารางเวลาเริ่มต้นเมื่อเพิ่มช่าง: ทุกวัน 10:00–20:00 (ปรับภายหลังได้)
 const DEFAULT_HOURS = Array.from({ length: 7 }, (_, weekday) => ({
@@ -75,7 +76,22 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
   const status = String(formData.get("status") ?? "");
   const parsed = z.nativeEnum(AppointmentStatus).safeParse(status);
   if (!parsed.success) return;
-  const db = tenantDb({ tenantId: auth.active.tenantId, unitId: unit.id });
-  await db.appointment.update({ where: { id }, data: { status: parsed.data } });
+  const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
+  const db = tenantDb(ctx);
+  const appt = await db.appointment.update({ where: { id }, data: { status: parsed.data } });
+  // มาใช้บริการจริง → นับ visit + timeline (แกนกลาง Member)
+  if (parsed.data === "DONE") {
+    await member.recordVisit(ctx.tenantId, appt.customerId);
+    await member.logActivity({
+      tenantId: ctx.tenantId,
+      customerId: appt.customerId,
+      unitId: ctx.unitId,
+      module: "booking",
+      type: "VISIT",
+      refType: "Appointment",
+      refId: appt.id,
+      summary: "มาใช้บริการ",
+    });
+  }
   revalidatePath(`/app/u/${unitSlug}/booking`);
 }

@@ -14,7 +14,7 @@ export type UnitTypeMeta = {
 };
 
 export const UNIT_TYPES: UnitTypeMeta[] = [
-  { type: "BOOKING", label: "จองคิว / นัดหมาย", hint: "ร้านตัดผม นวด สปา คลินิก", icon: "✂️", status: "available" },
+  { type: "BOOKING", label: "จองคิว / นัดหมาย", hint: "นัดหมายตามเวลา นวด สปา คลินิก ทำเล็บ", icon: "📅", status: "available" },
   { type: "RESTAURANT", label: "ร้านอาหาร", hint: "เมนู โต๊ะ ครัว", icon: "🍜", status: "coming_soon" },
   { type: "HOTEL", label: "โรงแรม", hint: "ห้องพัก จอง เช็คอิน", icon: "🏨", status: "coming_soon" },
   { type: "QUEUE", label: "บัตรคิว", hint: "ออกบัตร เรียกคิว", icon: "🎫", status: "coming_soon" },
@@ -30,7 +30,7 @@ export const AVAILABLE_UNIT_TYPES = new Set(
 export type ModuleMeta = { key: string; label: string; href: string; status: SystemStatus };
 
 export const TENANT_MODULES: ModuleMeta[] = [
-  { key: "members", label: "สมาชิก / แต้ม", href: "/app/members", status: "coming_soon" },
+  { key: "members", label: "สมาชิก", href: "/app/members", status: "available" },
   { key: "rewards", label: "รางวัล", href: "/app/rewards", status: "coming_soon" },
   { key: "coupons", label: "คูปอง", href: "/app/coupons", status: "coming_soon" },
   { key: "chat", label: "แชท", href: "/app/chat", status: "coming_soon" },
