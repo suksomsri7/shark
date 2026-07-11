@@ -108,6 +108,22 @@ export async function AccountContent({
         <Link href={`${base}/docs/QUOTATION`} className="btn btn-primary text-sm">+ สร้างใบเสนอราคา</Link>
       </div>
 
+      {/* บัญชี & รายงาน (P2/P3) */}
+      <div className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium">บัญชี · การเงิน · รายงาน</h2>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`${base}/journal`} className="btn btn-ghost text-sm">บัญชีรายวัน</Link>
+          <Link href={`${base}/ledger`} className="btn btn-ghost text-sm">แยกประเภท</Link>
+          <Link href={`${base}/reports`} className="btn btn-ghost text-sm">งบการเงิน</Link>
+          <Link href={`${base}/finance`} className="btn btn-ghost text-sm">บัญชีเงิน</Link>
+          <Link href={`${base}/wht`} className="btn btn-ghost text-sm">หัก ณ ที่จ่าย (50 ทวิ)</Link>
+          <Link href={`${base}/tax`} className="btn btn-ghost text-sm">ภาษี (ภ.พ.30/ภ.ง.ด.)</Link>
+          <Link href={`${base}/products`} className="btn btn-ghost text-sm">สินค้า/บริการ</Link>
+          <Link href={`${base}/goods-issue`} className="btn btn-ghost text-sm">เบิกสินค้า</Link>
+          <Link href={`${base}/assets`} className="btn btn-ghost text-sm">สินทรัพย์</Link>
+        </div>
+      </div>
+
       {/* เอกสารล่าสุด */}
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium">เอกสารล่าสุด</h2>
