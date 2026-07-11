@@ -11,7 +11,9 @@
 
 ## สถานะ LIVE
 - **prod: https://shark.in.th** (Vercel, APP_ENV=production, เมลจริง noreply@shark.in.th) · **staging: https://shark.suksomsri.cloud** (VPS pm2 `shark` :3801, APP_ENV=preview โชว์ OTP บนจอ) · DB เดียวกัน (Neon Singapore)
-- ระบบ LIVE 5/14: BOOKING (จองคิวเต็ม flow) · MEMBER · POINT · POS · REWARD — ทั้งหมดเป็น system instance เชื่อม/ถอดผ่าน UI
+- ระบบ 12/14 เปิด (available): BOOKING·MEMBER·POINT·POS·REWARD (เดิม) + **HOTEL·QUEUE·TICKET·COUPON·MEETING·KANBAN·ACCOUNT (ใหม่ 2026-07-11 P1)** — ยังปิด: RESTAURANT, CHAT
+- ⚠️ **สถานะ 7 ระบบใหม่ = P1 code-complete + build ผ่าน + db push แล้ว + staging deploy แล้ว** แต่ **ยังไม่ทำ functional QC แบบ login→สร้างระบบ→CRUD จริง** (ต้องมี session จริง + เขียน test data ลง Neon prod). **Vercel prod ยังไม่ deploy** commit นี้ (`7a94e51`) — สั่ง deploy prod เมื่อพร้อม
+- **P1 scope ที่ทำ / เลื่อน (🔜)** — ดู REPORT ของแต่ละ subagent + สเปคเต็ม: Hotel(เลื่อน housekeeping/night-audit/folio/OTA), Account(เลื่อนฝั่งรายจ่าย/journal/งบ/DBD), Ticket/Queue(เลื่อน SSE realtime/ชำระเงินออนไลน์/storefront), Coupon(เลื่อน wire contract เข้า POS), Meeting/Kanban(เลื่อน SSE/attachment)
 - redeploy: VPS = `pnpm build && pm2 restart shark --update-env` · Vercel = `pnpm dlx vercel@latest deploy --prod --yes --scope siamdives-projects --token=<ดู memory reference_vercel_credentials>`
 
 ## โครง code ที่ต้องรู้
@@ -23,11 +25,10 @@
 - แนวสร้างระบบใหม่: เพิ่ม schema (systemId-scoped) → register `src/lib/core/scope.ts` → service ใน `lib/modules/<x>/` → UI ที่ `/app/sys/[id]` (feature) หรือ `/app/u/[slug]/<x>` (business) → เปิดใน systems.ts → e2e test กับ Neon → deploy 2 ที่
 
 ## งานถัดไป (เจ้าของจะเลือก)
-- **Account P1 (รายรับ)** ตาม `12-account.md` §phasing — Document polymorphic + เสนอราคา/แจ้งหนี้/เสร็จ/กำกับ + ผู้ติดต่อ + ตั้งค่าเอกสาร
-- **Chat (LINE + webchat)** ตาม `10-chat.md` — ChannelAdapter + inbox
-- **Meeting (Slack-like)** ตาม `11-meeting.md`
-- หรือเก็บลึก BOOKING (เวลาพนักงานรายคน/วันหยุด/เตือนนัดทางเมล — Resend พร้อมแล้ว)
-- ค้าง: push GitHub (ต้องขอ PAT จาก user) · Unit Switcher/เชิญพนักงาน · Coupon/Kanban/Q/Ticket/Hotel/Restaurant สเปคเดิมรอปรับ scope เป็น system-instance ตอน implement
+- **Functional QC 7 ระบบใหม่** — login staging → สร้างแต่ละระบบ → ทดสอบ CRUD/flow จริง (ยังไม่ได้ทำ). แล้ว **deploy Vercel prod**
+- **Chat (LINE + webchat)** ตาม `10-chat.md` — ChannelAdapter + inbox (ระบบเดียวที่ยังเป็น feature ที่เหลือ) · **Restaurant** ตาม `02-restaurant.md` (business ที่เหลือ)
+- เก็บลึก P2 ต่อจาก P1 (ดู 🔜 ในสถานะ LIVE): Hotel folio/night-audit, Account ฝั่งรายจ่าย+งบ, SSE realtime (Queue/Ticket/Meeting/Kanban), Coupon→POS contract wiring, ชำระเงินออนไลน์ (Ticket/Hotel)
+- ค้าง: push GitHub (ต้องขอ PAT จาก user) · Unit Switcher/เชิญพนักงาน (A1 ที่เหลือ)
 
 ## กติกาเมื่อจบ session
 อัปเดตไฟล์นี้ + memory `project_shark_in_th` + commit ทุกครั้ง
