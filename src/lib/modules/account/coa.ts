@@ -55,6 +55,7 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   // 3000-3999 ส่วนของเจ้าของ (FINANCING)
   ["3000", "EQUITY", "ทุนเจ้าของ/ทุนจดทะเบียน", "Owner's Capital"],
   ["3800", "EQUITY", "กำไรสะสม", "Retained Earnings"],
+  ["3999", "EQUITY", "ยอดยกมา/บัญชีคู่เปิดบัญชี", "Opening Balance Equity"], // Gate C ledger-M6 (บัญชีคู่ postOpening)
   // 4000-4999 รายได้
   ["4000", "INCOME", "รายได้จากการขายสินค้า", "Sales Revenue - Goods"],
   ["4030", "INCOME", "รายได้ค่าบริการ", "Service Revenue"],
@@ -91,6 +92,8 @@ const MAPPINGS: [string, string][] = [
   ["INCOME_DEFAULT", "4030"],
   ["PURCHASE_DEFAULT", "5000"],
   ["EXPENSE_DEFAULT", "6900"],
+  ["ASSET_DEFAULT", "1610"], // P2 ASSET_PURCHASE (บัญชีสินทรัพย์ default เมื่อ line ไม่ระบุ)
+  ["OPENING_BALANCE", "3999"], // Gate C ledger-M6 (บัญชีคู่ postOpening)
   ["DISCOUNT_GIVEN", "4800"],
   ["DISCOUNT_RECEIVED", "5800"],
   ["PAYMENT_FEE", "6500"],
@@ -143,3 +146,122 @@ export async function seedChartOfAccounts(ctx: CoaCtx, tx?: Tx): Promise<void> {
 
 export const CHART_CODES = CHART.map((c) => c[0]);
 export const MAPPING_KEYS = MAPPINGS.map((m) => m[0]);
+
+// ─────────────────── ผังบัญชี — จัดการ (P3 UI) ───────────────────
+
+export function listLedgers(ctx: CoaCtx) {
+  return prisma.accountLedger.findMany({
+    where: { systemId: ctx.systemId },
+    orderBy: { code: "asc" },
+  });
+}
+
+export function listMappings(ctx: CoaCtx) {
+  return prisma.accountMapping.findMany({
+    where: { systemId: ctx.systemId },
+    include: { account: { select: { code: true, name: true } } },
+    orderBy: { key: "asc" },
+  });
+}
+
+export async function createLedger(
+  ctx: CoaCtx,
+  input: {
+    code: string;
+    name: string;
+    nameEn?: string | null;
+    type: AccountLedgerType;
+    cashflowActivity?: AccountCashflowActivity;
+    parentId?: string | null;
+  },
+): Promise<{ ok: boolean; id?: string; reason?: string }> {
+  const code = input.code.trim();
+  if (!/^\d{3,6}$/.test(code)) return { ok: false, reason: "รหัสบัญชีต้องเป็นตัวเลข 3–6 หลัก" };
+  if (!input.name.trim()) return { ok: false, reason: "ต้องระบุชื่อบัญชี" };
+  const dup = await prisma.accountLedger.findFirst({
+    where: { systemId: ctx.systemId, code },
+    select: { id: true },
+  });
+  if (dup) return { ok: false, reason: `มีรหัสบัญชี ${code} อยู่แล้ว` };
+  const l = await prisma.accountLedger.create({
+    data: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      code,
+      name: input.name.trim(),
+      nameEn: input.nameEn?.trim() || null,
+      type: input.type,
+      cashflowActivity: input.cashflowActivity ?? activityFor(code),
+      parentId: input.parentId || null,
+      isSystem: false,
+    },
+    select: { id: true },
+  });
+  return { ok: true, id: l.id };
+}
+
+export async function updateLedger(
+  ctx: CoaCtx,
+  id: string,
+  input: {
+    name?: string;
+    nameEn?: string | null;
+    type?: AccountLedgerType;
+    cashflowActivity?: AccountCashflowActivity;
+    parentId?: string | null;
+  },
+): Promise<{ ok: boolean; reason?: string }> {
+  const l = await prisma.accountLedger.findFirst({
+    where: { id, systemId: ctx.systemId },
+    select: { id: true, isSystem: true },
+  });
+  if (!l) return { ok: false, reason: "ไม่พบบัญชี" };
+  // บัญชี system: แก้ชื่อได้ แต่ห้ามเปลี่ยน type/กระแสเงินสด (งบพึ่งพา code เดิม)
+  await prisma.accountLedger.update({
+    where: { id },
+    data: {
+      name: input.name?.trim() || undefined,
+      nameEn: input.nameEn === undefined ? undefined : input.nameEn?.trim() || null,
+      type: l.isSystem ? undefined : input.type,
+      cashflowActivity: l.isSystem ? undefined : input.cashflowActivity,
+      parentId: input.parentId === undefined ? undefined : input.parentId || null,
+    },
+  });
+  return { ok: true };
+}
+
+export async function archiveLedger(
+  ctx: CoaCtx,
+  id: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const l = await prisma.accountLedger.findFirst({
+    where: { id, systemId: ctx.systemId },
+    select: { id: true, isSystem: true },
+  });
+  if (!l) return { ok: false, reason: "ไม่พบบัญชี" };
+  if (l.isSystem) return { ok: false, reason: "บัญชีระบบ ลบ/ปิดใช้งานไม่ได้" };
+  const used = await prisma.accountJournalLine.count({
+    where: { systemId: ctx.systemId, accountId: id },
+  });
+  // มี movement แล้ว → archive (ซ่อน) ไม่ลบ เพื่อคงประวัติ
+  await prisma.accountLedger.update({ where: { id }, data: { archivedAt: new Date() } });
+  return { ok: true, reason: used > 0 ? "มีการเคลื่อนไหวแล้ว — ปิดใช้งาน (ซ่อน) ไว้" : undefined };
+}
+
+export async function setMapping(
+  ctx: CoaCtx,
+  key: string,
+  accountId: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const acct = await prisma.accountLedger.findFirst({
+    where: { id: accountId, systemId: ctx.systemId },
+    select: { id: true },
+  });
+  if (!acct) return { ok: false, reason: "ไม่พบบัญชีปลายทาง" };
+  await prisma.accountMapping.upsert({
+    where: { systemId_key: { systemId: ctx.systemId, key } },
+    create: { tenantId: ctx.tenantId, systemId: ctx.systemId, key, accountId },
+    update: { accountId },
+  });
+  return { ok: true };
+}

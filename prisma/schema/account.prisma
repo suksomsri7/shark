@@ -206,7 +206,7 @@ model AccountDocumentPayment {
   feeAmount      Int               @default(0) // ค่าธรรมเนียมโอน/gateway
   chequeId       String?           @unique
   cheque         AccountCheque?    @relation(fields: [chequeId], references: [id])
-  entryId        String?           @unique // AccountJournalEntry ของการชำระครั้งนี้
+  entryId        String? // AccountJournalEntry ของการชำระ (ไม่ unique — ใบวางบิล/รวมจ่าย 1 entry หลาย payment ได้, Gate B-M4)
   note           String?
   voidedAt       DateTime?
   voidReason     String?

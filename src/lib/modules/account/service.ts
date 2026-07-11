@@ -102,14 +102,17 @@ export function convertTargets(docType: AccountDocType): AccountDocType[] {
   return CONVERT_MAP[docType] ?? [];
 }
 
-// ─────────────────── QC5 Gate A-A5: docType ที่เปิดใช้ (flow ครบ) ───────────────────
-// ซ่อนชั่วคราว: DEPOSIT_RECEIPT (มัดจำ) · BILLING_NOTE (วางบิล) · CREDIT_NOTE · DEBIT_NOTE
-// (flow ยังไม่ครบ — จะเปิดคืน Gate B) · คงไว้ QUOTATION→INVOICE→RECEIPT→TAX_INVOICE
+// ─────────────────── QC5 Gate B: docType ฝั่งรายรับที่เปิดใช้ (flow ครบ) ───────────────────
+// Gate A เคยซ่อนมัดจำ/วางบิล/CN/DN — Gate B เปิดคืนพร้อม flow+posting+ใบกำกับ ม.86/4 ครบ
 export const VISIBLE_DOC_TYPES: readonly AccountDocType[] = [
   "QUOTATION",
   "INVOICE",
   "RECEIPT",
   "TAX_INVOICE",
+  "DEPOSIT_RECEIPT",
+  "CREDIT_NOTE",
+  "DEBIT_NOTE",
+  "BILLING_NOTE",
 ];
 
 export function isVisibleDocType(docType: AccountDocType): boolean {
@@ -130,7 +133,7 @@ export const baht = (satang: number) =>
   (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function isOverdue(d: {
-  status: AccountDocStatus;
+  status: AccountDocStatus | string;
   dueDate: Date | null;
   validUntil: Date | null;
 }): boolean {
@@ -157,7 +160,35 @@ export function lineAmount(l: LineInput): number {
   return Math.max(0, gross - (l.discount || 0));
 }
 
-// คำนวณยอดทั้งเอกสาร (VAT ระดับเอกสารจาก settings)
+// กระจายยอด (เช่น ส่วนลดท้ายบิล) ตามสัดส่วนน้ำหนักแต่ละบรรทัด — largest remainder ให้ผลรวมตรงเป๊ะ
+// (ledger-M11: ส่วนลดท้ายบิลข้ามหลายอัตรา VAT → allocate ตามสัดส่วนฐานแต่ละบรรทัด/อัตรา)
+export function allocateProportional(total: number, weights: number[]): number[] {
+  const sumW = weights.reduce((a, b) => a + b, 0);
+  if (total <= 0 || sumW <= 0) return weights.map(() => 0);
+  const raw = weights.map((w) => (total * w) / sumW);
+  const out = raw.map((r) => Math.floor(r));
+  let rem = total - out.reduce((a, b) => a + b, 0);
+  const order = raw
+    .map((r, i) => ({ i, frac: r - Math.floor(r) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; rem > 0 && order.length > 0; k++, rem--) out[order[k % order.length].i] += 1;
+  return out;
+}
+
+// อัตรา VAT ต่อบรรทัด: -1 = ยกเว้น, 0 = 0% → คิดเป็น 0 · ไม่จด VAT / vatMode NONE → 0 ทุกบรรทัด
+function lineRate(
+  l: LineInput,
+  vatMode: AccountVatMode,
+  vatRegistered: boolean,
+  fallbackBp: number,
+): number {
+  if (vatMode === "NONE" || !vatRegistered) return 0;
+  const bp = l.vatRateBp ?? fallbackBp;
+  return bp > 0 ? bp / 10000 : 0;
+}
+
+// คำนวณยอดทั้งเอกสาร — ใช้ vatRateBp จริงต่อบรรทัด (pipeline-M5) + กระจายส่วนลดท้ายบิลตามสัดส่วนฐาน (ledger-M11)
+// contract กับ gl.postDocument: afterDiscount = subTotal − discountAmount = ฐานรายได้สุทธิ (สมดุลทั้ง EXCLUDE/INCLUDE)
 export function computeTotals(input: {
   lines: LineInput[];
   discountAmount?: number;
@@ -166,23 +197,38 @@ export function computeTotals(input: {
   vatRegistered: boolean;
   vatRateBp: number;
 }): { subTotal: number; vatAmount: number; grandTotal: number } {
-  const subTotal = input.lines.reduce((s, l) => s + lineAmount(l), 0);
-  const afterDiscount = Math.max(0, subTotal - (input.discountAmount || 0));
-  const rate = input.vatMode === "NONE" || !input.vatRegistered ? 0 : input.vatRateBp / 10000;
+  const bases = input.lines.map(lineAmount); // ฐานบรรทัด (ตามที่ป้อน: EXCLUDE=ก่อน VAT, INCLUDE=รวม VAT)
+  const baseSum = bases.reduce((a, b) => a + b, 0);
+  const docDiscount = Math.min(Math.max(0, input.discountAmount || 0), baseSum);
+  const discAlloc = allocateProportional(docDiscount, bases);
+
   let vatAmount = 0;
-  let grandTotal = afterDiscount;
-  if (rate > 0) {
-    if (input.vatMode === "INCLUDE") {
-      // ราคารวม VAT แล้ว → แยก VAT ออกมาแสดง
-      const net = Math.round(afterDiscount / (1 + rate));
-      vatAmount = afterDiscount - net;
-      grandTotal = afterDiscount;
+  let incomeNet = 0; // ฐานรายได้สุทธิ (หลังหักส่วนลดท้ายบิล ก่อน VAT) ทุกบรรทัดรวมกัน
+  let grandBeforeDeposit = 0;
+  input.lines.forEach((l, i) => {
+    const afterBase = Math.max(0, bases[i] - discAlloc[i]);
+    const rate = lineRate(l, input.vatMode, input.vatRegistered, input.vatRateBp);
+    if (rate > 0) {
+      if (input.vatMode === "INCLUDE") {
+        const net = Math.round(afterBase / (1 + rate));
+        vatAmount += afterBase - net;
+        incomeNet += net;
+        grandBeforeDeposit += afterBase; // ราคารวม VAT แล้ว
+      } else {
+        const vat = Math.round(afterBase * rate);
+        vatAmount += vat;
+        incomeNet += afterBase;
+        grandBeforeDeposit += afterBase + vat;
+      }
     } else {
-      vatAmount = Math.round(afterDiscount * rate);
-      grandTotal = afterDiscount + vatAmount;
+      incomeNet += afterBase;
+      grandBeforeDeposit += afterBase;
     }
-  }
-  grandTotal = Math.max(0, grandTotal - (input.depositDeducted || 0));
+  });
+
+  // subTotal นิยามให้ (subTotal − discountAmount) = incomeNet เพื่อให้ gl สมดุลทั้งสองโหมด
+  const subTotal = incomeNet + docDiscount;
+  const grandTotal = Math.max(0, grandBeforeDeposit - (input.depositDeducted || 0));
   return { subTotal, vatAmount, grandTotal };
 }
 
@@ -381,6 +427,28 @@ export async function archiveContact(tenantId: string, systemId: string, id: str
 
 // ─────────────────── เลขรันเอกสาร ───────────────────
 
+export type SeqReset = "YEAR" | "MONTH" | "NONE";
+type SeqConfig = { prefix?: string; reset?: SeqReset; pattern?: string };
+
+// วันที่ตามเวลาไทย (Asia/Bangkok) → ปี/เดือน (pipeline-M7: TZ ไทยเสมอ ไม่ใช่ TZ เครื่อง)
+export function bkkYearMonth(date: Date): { year: string; month: string } {
+  const s = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+  return { year: s.slice(0, 4), month: s.slice(5, 7) };
+}
+
+// อ่านตั้งค่าเลขรันต่อ docType จาก docConfig.sequences[docType] (prefix/reset/pattern)
+function readSeqConfig(docConfig: unknown, docType: AccountDocType): SeqConfig {
+  const seqs = (docConfig as Record<string, unknown> | null)?.sequences as
+    | Record<string, SeqConfig>
+    | undefined;
+  return seqs?.[docType] ?? {};
+}
+
 async function nextDocNo(
   tx: Prisma.TransactionClient,
   tenantId: string,
@@ -388,16 +456,34 @@ async function nextDocNo(
   docType: AccountDocType,
   date: Date,
 ): Promise<string> {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const periodKey = `${year}-${month}`;
-  const prefix = DOC_PREFIX[docType] ?? docType;
+  const settings = await tx.accountSettings.findFirst({
+    where: { systemId },
+    select: { docConfig: true },
+  });
+  const cfg = readSeqConfig(settings?.docConfig, docType);
+  const { year, month } = bkkYearMonth(date);
+  const prefix = cfg.prefix || DOC_PREFIX[docType] || docType;
+  const reset: SeqReset = cfg.reset ?? "MONTH";
+  // periodKey = ตัวคุมการรีเซ็ตเลขในตาราง sequence
+  const periodKey = reset === "NONE" ? "-" : reset === "YEAR" ? year : `${year}-${month}`;
   const seq = await tx.accountDocSequence.upsert({
     where: { systemId_docType_periodKey: { systemId, docType, periodKey } },
     create: { tenantId, systemId, docType, prefix, periodKey, lastNo: 1 },
     update: { lastNo: { increment: 1 } },
   });
-  return `${prefix}-${year}-${month}-${String(seq.lastNo).padStart(4, "0")}`;
+  const num = String(seq.lastNo).padStart(4, "0");
+  if (cfg.pattern) {
+    return cfg.pattern
+      .replace(/\{PREFIX\}/g, prefix)
+      .replace(/\{YYYY\}/g, year)
+      .replace(/\{YY\}/g, year.slice(2))
+      .replace(/\{MM\}/g, month)
+      .replace(/\{SEQ\}/g, num);
+  }
+  // default pattern ต่อ reset: YEAR = PFX-YYYY-0001 · MONTH = PFX-YYYY-MM-0001 · NONE = PFX-0001
+  if (reset === "NONE") return `${prefix}-${num}`;
+  if (reset === "YEAR") return `${prefix}-${year}-${num}`;
+  return `${prefix}-${year}-${month}-${num}`;
 }
 
 // ─────────────────── เอกสาร ───────────────────
@@ -473,6 +559,83 @@ async function recomputeAndSave(
   return totals;
 }
 
+// ยอดมัดจำคงเหลือให้หัก (gross) = grandTotal − Σ DEPOSIT_APPLY ที่ผูกกับใบแจ้งหนี้ที่ยังไม่ถูกยกเลิก
+async function depositAvailable(
+  tx: Prisma.TransactionClient,
+  systemId: string,
+  depositId: string,
+  excludeInvoiceId?: string,
+): Promise<number> {
+  const dep = await tx.accountDocument.findFirst({
+    where: { id: depositId, systemId },
+    select: { grandTotal: true },
+  });
+  if (!dep) return 0;
+  const applies = await tx.accountDocumentRelation.findMany({
+    where: { systemId, fromId: depositId, type: "DEPOSIT_APPLY" },
+    include: { to: { select: { id: true, status: true } } },
+  });
+  let used = 0;
+  for (const r of applies) {
+    if (excludeInvoiceId && r.toId === excludeInvoiceId) continue;
+    if (r.to.status === "VOIDED" || r.to.status === "CANCELLED") continue;
+    used += r.amount ?? 0;
+  }
+  return Math.max(0, dep.grandTotal - used);
+}
+
+// ยอดที่ยังลดหนี้ได้ของเอกสารเดิม (CN cap) = grandTotal ต้นทาง − Σ ใบลดหนี้ที่ออกแล้วอ้างต้นทางนี้
+async function creditAvailable(
+  tx: Prisma.TransactionClient,
+  systemId: string,
+  sourceDocId: string,
+  excludeId?: string,
+): Promise<number> {
+  const src = await tx.accountDocument.findFirst({
+    where: { id: sourceDocId, systemId },
+    select: { grandTotal: true },
+  });
+  if (!src) return 0;
+  const priorCns = await tx.accountDocument.findMany({
+    where: {
+      systemId,
+      docType: "CREDIT_NOTE",
+      sourceDocId,
+      status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] },
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: { grandTotal: true },
+  });
+  const used = priorCns.reduce((s, c) => s + c.grandTotal, 0);
+  return Math.max(0, src.grandTotal - used);
+}
+
+// ใบมัดจำที่ยังหักได้ของผู้ติดต่อ (สำหรับ picker หักมัดจำในใบแจ้งหนี้)
+export async function listDeductibleDeposits(
+  tenantId: string,
+  systemId: string,
+  contactId: string,
+): Promise<{ id: string; docNo: string | null; available: number }[]> {
+  const deposits = await prisma.accountDocument.findMany({
+    where: { tenantId, systemId, docType: "DEPOSIT_RECEIPT", status: "AWAITING_DEDUCT", contactId },
+    select: { id: true, docNo: true, grandTotal: true },
+    orderBy: { issueDate: "asc" },
+  });
+  const out: { id: string; docNo: string | null; available: number }[] = [];
+  for (const d of deposits) {
+    const applies = await prisma.accountDocumentRelation.findMany({
+      where: { systemId, fromId: d.id, type: "DEPOSIT_APPLY" },
+      include: { to: { select: { status: true } } },
+    });
+    let used = 0;
+    for (const r of applies)
+      if (r.to.status !== "VOIDED" && r.to.status !== "CANCELLED") used += r.amount ?? 0;
+    const available = Math.max(0, d.grandTotal - used);
+    if (available > 0) out.push({ id: d.id, docNo: d.docNo, available });
+  }
+  return out;
+}
+
 export async function createDocument(input: {
   tenantId: string;
   systemId: string;
@@ -484,6 +647,7 @@ export async function createDocument(input: {
   vatMode?: AccountVatMode;
   vatTiming?: AccountVatTiming; // QC5-A1: จุดรับรู้ภาษี (ต่อใบ) — default จากตั้งค่ากิจการ
   discountAmount?: number;
+  depositReceiptId?: string | null; // F2: ใบมัดจำที่จะหักในใบแจ้งหนี้นี้
   note?: string | null;
   adjustReason?: string | null;
   lines: LineInput[];
@@ -498,50 +662,84 @@ export async function createDocument(input: {
   // A1: จุดรับรู้ภาษี — ต่อใบ (form) หรือ default ตามประเภทกิจการ
   const vatTiming: AccountVatTiming = input.vatTiming ?? settings.taxPointBasis;
   const issueDate = input.issueDate ?? new Date();
-  const totals = computeTotals({
-    lines: input.lines,
-    discountAmount: input.discountAmount,
-    vatMode,
-    vatRegistered: settings.vatRegistered,
-    vatRateBp: settings.vatRateBp,
-  });
-  return prisma.accountDocument.create({
-    data: {
-      tenantId: input.tenantId,
-      systemId: input.systemId,
-      docType: input.docType,
-      status: "DRAFT",
-      direction: "OUT",
-      issueDate,
-      dueDate: input.dueDate ?? null,
-      validUntil: input.validUntil ?? null,
-      contactId: input.contactId ?? null,
+
+  return prisma.$transaction(async (tx) => {
+    // F2: หักมัดจำ — เฉพาะใบแจ้งหนี้ + ใบมัดจำต้องเป็นของลูกค้าเดียวกันและยังหักได้
+    let depositDeducted = 0;
+    let depositReceiptId: string | null = null;
+    if (input.docType === "INVOICE" && input.depositReceiptId) {
+      const dep = await tx.accountDocument.findFirst({
+        where: { id: input.depositReceiptId, systemId: input.systemId, docType: "DEPOSIT_RECEIPT" },
+        select: { id: true, status: true, contactId: true },
+      });
+      if (dep && dep.status === "AWAITING_DEDUCT" && dep.contactId === (input.contactId ?? null)) {
+        const avail = await depositAvailable(tx, input.systemId, dep.id);
+        depositDeducted = avail;
+        depositReceiptId = dep.id;
+      }
+    }
+
+    const totals = computeTotals({
+      lines: input.lines,
+      discountAmount: input.discountAmount,
+      depositDeducted,
       vatMode,
-      vatTiming,
-      taxPointBasis: vatTiming,
-      discountAmount: input.discountAmount ?? 0,
-      subTotal: totals.subTotal,
-      vatAmount: totals.vatAmount,
-      grandTotal: totals.grandTotal,
-      note: input.note ?? null,
-      adjustReason: input.adjustReason ?? null,
-      sourceDocId: input.sourceDocId ?? null,
-      createdById: input.createdById ?? null,
-      lines: {
-        create: input.lines.map((l, i) => ({
+      vatRegistered: settings.vatRegistered,
+      vatRateBp: settings.vatRateBp,
+    });
+
+    const doc = await tx.accountDocument.create({
+      data: {
+        tenantId: input.tenantId,
+        systemId: input.systemId,
+        docType: input.docType,
+        status: "DRAFT",
+        direction: "OUT",
+        issueDate,
+        dueDate: input.dueDate ?? null,
+        validUntil: input.validUntil ?? null,
+        contactId: input.contactId ?? null,
+        vatMode,
+        vatTiming,
+        taxPointBasis: vatTiming,
+        discountAmount: input.discountAmount ?? 0,
+        depositDeducted,
+        subTotal: totals.subTotal,
+        vatAmount: totals.vatAmount,
+        grandTotal: totals.grandTotal,
+        note: input.note ?? null,
+        adjustReason: input.adjustReason ?? null,
+        sourceDocId: input.sourceDocId ?? null,
+        createdById: input.createdById ?? null,
+        lines: {
+          create: input.lines.map((l, i) => ({
+            tenantId: input.tenantId,
+            systemId: input.systemId,
+            sortOrder: i,
+            description: l.description,
+            qty: l.qty,
+            unitName: l.unitName ?? null,
+            unitPrice: l.unitPrice,
+            discount: l.discount ?? 0,
+            vatRateBp: l.vatRateBp ?? settings.vatRateBp,
+            amount: lineAmount(l),
+          })),
+        },
+      },
+    });
+    if (depositReceiptId && depositDeducted > 0) {
+      await tx.accountDocumentRelation.create({
+        data: {
           tenantId: input.tenantId,
           systemId: input.systemId,
-          sortOrder: i,
-          description: l.description,
-          qty: l.qty,
-          unitName: l.unitName ?? null,
-          unitPrice: l.unitPrice,
-          discount: l.discount ?? 0,
-          vatRateBp: l.vatRateBp ?? settings.vatRateBp,
-          amount: lineAmount(l),
-        })),
-      },
-    },
+          fromId: depositReceiptId,
+          toId: doc.id,
+          type: "DEPOSIT_APPLY",
+          amount: depositDeducted,
+        },
+      });
+    }
+    return doc;
   });
 }
 
@@ -558,6 +756,7 @@ export async function updateDocument(
     vatMode?: AccountVatMode;
     vatTiming?: AccountVatTiming;
     discountAmount?: number;
+    depositReceiptId?: string | null; // F2: เปลี่ยน/ล้างการหักมัดจำ (undefined = ไม่แตะ)
     note?: string | null;
     adjustReason?: string | null;
     lines?: LineInput[];
@@ -575,10 +774,35 @@ export async function updateDocument(
         : input.vatMode ?? doc.vatMode;
       const vatTiming: AccountVatTiming = input.vatTiming ?? doc.vatTiming;
       const discountAmount = input.discountAmount ?? doc.discountAmount;
+      const contactId = input.contactId === undefined ? doc.contactId : input.contactId;
+
+      // F2: จัดการการหักมัดจำใหม่ (เฉพาะใบแจ้งหนี้) — ลบ relation เดิม แล้วผูกใบใหม่ที่ยังหักได้
+      let depositDeducted = doc.depositDeducted;
+      if (doc.docType === "INVOICE" && input.depositReceiptId !== undefined) {
+        await tx.accountDocumentRelation.deleteMany({
+          where: { systemId, toId: id, type: "DEPOSIT_APPLY" },
+        });
+        depositDeducted = 0;
+        if (input.depositReceiptId) {
+          const dep = await tx.accountDocument.findFirst({
+            where: { id: input.depositReceiptId, systemId, docType: "DEPOSIT_RECEIPT" },
+            select: { id: true, status: true, contactId: true },
+          });
+          if (dep && dep.status === "AWAITING_DEDUCT" && dep.contactId === contactId) {
+            depositDeducted = await depositAvailable(tx, systemId, dep.id, id);
+            if (depositDeducted > 0) {
+              await tx.accountDocumentRelation.create({
+                data: { tenantId, systemId, fromId: dep.id, toId: id, type: "DEPOSIT_APPLY", amount: depositDeducted },
+              });
+            }
+          }
+        }
+      }
+
       await tx.accountDocument.update({
         where: { id },
         data: {
-          contactId: input.contactId === undefined ? doc.contactId : input.contactId,
+          contactId,
           issueDate: input.issueDate ?? doc.issueDate,
           dueDate: input.dueDate === undefined ? doc.dueDate : input.dueDate,
           validUntil: input.validUntil === undefined ? doc.validUntil : input.validUntil,
@@ -586,6 +810,7 @@ export async function updateDocument(
           vatTiming,
           taxPointBasis: vatTiming,
           discountAmount,
+          depositDeducted,
           note: input.note === undefined ? doc.note : input.note,
           adjustReason: input.adjustReason === undefined ? doc.adjustReason : input.adjustReason,
         },
@@ -613,7 +838,7 @@ export async function updateDocument(
         id,
         vatMode,
         discountAmount,
-        doc.depositDeducted,
+        depositDeducted,
         settings.vatRegistered,
         settings.vatRateBp,
       );
@@ -644,6 +869,55 @@ export async function issueDocument(
       // A3: ไม่จด VAT → ห้ามออกใบกำกับภาษี
       if (doc.docType === "TAX_INVOICE" && !settings.vatRegistered)
         throw new Error("กิจการยังไม่จดทะเบียน VAT — ออกใบกำกับภาษีไม่ได้");
+
+      // ── CN/DN (F4, tax-M3): บังคับอ้างเอกสารเดิม + เหตุผลสรรพากร + CN cap ≤ คงเหลือของเอกสารเดิม ──
+      if (doc.docType === "CREDIT_NOTE" || doc.docType === "DEBIT_NOTE") {
+        if (!doc.sourceDocId) throw new Error("ต้องอ้างอิงเอกสารเดิม (ใบแจ้งหนี้/ใบเสร็จ/ใบกำกับภาษี)");
+        if (!doc.adjustReason || doc.adjustReason.trim().length === 0)
+          throw new Error("ต้องระบุเหตุผลการออก (ตามประกาศสรรพากร)");
+        if (doc.docType === "CREDIT_NOTE") {
+          const cap = await creditAvailable(tx, systemId, doc.sourceDocId, id);
+          if (doc.grandTotal > cap + 1)
+            throw new Error(`ยอดใบลดหนี้เกินยอดคงเหลือของเอกสารเดิม (คงเหลือ ฿${baht(cap)})`);
+        }
+      }
+
+      // ── pipeline-M2: กันออกใบกำกับภาษีซ้ำจากต้นทางเดิม ──
+      if (doc.docType === "TAX_INVOICE" && doc.sourceDocId) {
+        const dup = await tx.accountDocument.count({
+          where: {
+            systemId,
+            docType: "TAX_INVOICE",
+            sourceDocId: doc.sourceDocId,
+            status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] },
+            id: { not: id },
+          },
+        });
+        if (dup > 0) throw new Error("เอกสารต้นทางนี้ออกใบกำกับภาษีไปแล้ว — ออกซ้ำไม่ได้");
+      }
+
+      // ── F2: ล็อกการหักมัดจำตอนออกใบแจ้งหนี้ (ตรวจว่ายังหักได้ + อัปเดตสถานะใบมัดจำ) ──
+      if (doc.docType === "INVOICE") {
+        const applies = await tx.accountDocumentRelation.findMany({
+          where: { systemId, toId: id, type: "DEPOSIT_APPLY" },
+        });
+        for (const ap of applies) {
+          const dep = await tx.accountDocument.findFirst({
+            where: { id: ap.fromId, systemId, docType: "DEPOSIT_RECEIPT" },
+            select: { id: true, status: true, grandTotal: true },
+          });
+          if (!dep || dep.status !== "AWAITING_DEDUCT")
+            throw new Error("ใบมัดจำที่เลือกหักไม่พร้อมใช้ (ต้องอยู่สถานะรอหักมัดจำ)");
+          const avail = await depositAvailable(tx, systemId, dep.id, id);
+          if ((ap.amount ?? 0) > avail + 1)
+            throw new Error("ยอดหักมัดจำเกินยอดคงเหลือของใบมัดจำ");
+          // หักครบ (Σ apply ≥ ยอดมัดจำ) → ใบมัดจำเป็น DEDUCTED
+          const usedAll = dep.grandTotal - (await depositAvailable(tx, systemId, dep.id));
+          if (usedAll >= dep.grandTotal)
+            await tx.accountDocument.update({ where: { id: dep.id }, data: { status: "DEDUCTED" } });
+        }
+      }
+
       docNo = await nextDocNo(tx, tenantId, systemId, doc.docType, doc.issueDate);
       const snapshot = doc.contact
         ? {
@@ -668,12 +942,16 @@ export async function issueDocument(
       const ctx = { tenantId, systemId };
       await ensureAccounting(ctx, tx);
       if (doc.docType === "INVOICE" || doc.docType === "RECEIPT") {
-        // ตั้งลูกหนี้/รายได้/VAT (accrual) — ON_PAYMENT พัก VAT ที่ 2210 (logic ใน gl)
+        // ตั้งลูกหนี้/รายได้/VAT (accrual) — ON_PAYMENT พัก VAT ที่ 2210 (logic ใน gl) · หักมัดจำ Dr 2110
+        await postDocument(ctx, id, tx);
+      } else if (doc.docType === "CREDIT_NOTE" || doc.docType === "DEBIT_NOTE") {
+        // F4: CN = Dr รายได้+Dr 2200 / Cr 1100|เงิน · DN กลับด้าน (logic ใน gl)
         await postDocument(ctx, id, tx);
       } else if (doc.docType === "TAX_INVOICE") {
         // A2: ใบกำกับเป็นตัวกำหนดเดือน VAT → ย้าย 2205/2210 → 2200
         await postTaxInvoice(ctx, id, tx);
       }
+      // DEPOSIT_RECEIPT/BILLING_NOTE ไม่โพสต์ตอน issue (มัดจำโพสต์ตอนรับเงิน · วางบิลโพสต์ตอนกระจายชำระ)
     });
     return { ok: true, docNo };
   } catch (e) {
@@ -842,23 +1120,30 @@ export async function recordPayment(
         },
       });
       const newPaid = doc.paidTotal + tieOff;
-      status = newPaid >= doc.grandTotal ? "PAID" : "PARTIAL";
-      await tx.accountDocument.update({
-        where: { id },
-        data: { paidTotal: newPaid, status },
-      });
-      // ── A5: โพสต์บัญชีการชำระ (Dr เงิน/WHT/fee, Cr ลูกหนี้ + โอน VAT ถ้า ON_PAYMENT) ──
+      const fullyPaid = newPaid >= doc.grandTotal;
       const ctx = { tenantId, systemId };
       await ensureAccounting(ctx, tx);
-      await postPayment(ctx, payment.id, tx);
-      // ── A1: บริการ (ON_PAYMENT) + จด VAT → ออกใบกำกับภาษีต่อ payment งวดนี้ ──
-      if (
-        settings.vatRegistered &&
-        doc.vatTiming === "ON_PAYMENT" &&
-        doc.vatMode !== "NONE" &&
-        doc.docType === "INVOICE"
-      ) {
-        await issueServiceTaxInvoice(tx, tenantId, systemId, doc, payment.id, tieOff);
+
+      if (doc.docType === "DEPOSIT_RECEIPT") {
+        // F2: รับเงินมัดจำ → รับครบ = AWAITING_DEDUCT (รอหักในใบแจ้งหนี้) · โพสต์ Dr เงิน/Cr 2110/Cr 2200
+        status = fullyPaid ? "AWAITING_DEDUCT" : "PARTIAL";
+        await tx.accountDocument.update({ where: { id }, data: { paidTotal: newPaid, status } });
+        // มัดจำโพสต์เต็มก้อนเมื่อรับครบ (เงินสด Dr = grandTotal) — postDocument อ่าน finance account จาก payment
+        if (fullyPaid) await postDocument(ctx, id, tx);
+      } else {
+        status = fullyPaid ? "PAID" : "PARTIAL";
+        await tx.accountDocument.update({ where: { id }, data: { paidTotal: newPaid, status } });
+        // ── A5: โพสต์บัญชีการชำระ (Dr เงิน/WHT/fee, Cr ลูกหนี้ + โอน VAT ถ้า ON_PAYMENT) ──
+        await postPayment(ctx, payment.id, tx);
+        // ── A1: บริการ (ON_PAYMENT) + จด VAT → ออกใบกำกับภาษีต่อ payment งวดนี้ ──
+        if (
+          settings.vatRegistered &&
+          doc.vatTiming === "ON_PAYMENT" &&
+          doc.vatMode !== "NONE" &&
+          doc.docType === "INVOICE"
+        ) {
+          await issueServiceTaxInvoice(tx, tenantId, systemId, doc, payment.id, tieOff);
+        }
       }
     });
     return { ok: true, status };
