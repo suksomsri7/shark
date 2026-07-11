@@ -1,58 +1,105 @@
 import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
+import { prisma } from "@/lib/core/db";
+import { systemDef } from "@/lib/systems";
+import { linkUnitAction, unlinkUnitAction } from "@/lib/actions/systems";
 
-const TYPE_LABEL: Record<string, string> = {
-  HOTEL: "โรงแรม",
-  RESTAURANT: "ร้านอาหาร",
-  BOOKING: "จองคิว/นัดหมาย",
-  QUEUE: "บัตรคิว",
-  TICKET: "ตั๋ว/อีเวนต์",
-  SHOP: "ร้านค้า",
-};
+const FEATURE_TYPES = ["MEMBER", "POINT", "POS", "REWARD"] as const;
 
-// หน้าแรกของกิจการ (unit home) — โมดูลของ unit จะมาต่อที่ /app/u/[slug]/<module>/...
+// หน้าแรกของระบบธุรกิจ (เช่น จองคิว) — งานของระบบ + การเชื่อมต่อกับระบบอื่น
 export default async function UnitHomePage({
   params,
 }: {
   params: Promise<{ unitSlug: string }>;
 }) {
   const { unitSlug } = await params;
-  const { unit } = await requireUnit(unitSlug);
+  const { auth, unit } = await requireUnit(unitSlug);
+  const tenantId = auth.active.tenantId;
+  const def = systemDef(unit.type);
+
+  const [links, allFeatureSystems] = await Promise.all([
+    prisma.appSystemUnit.findMany({ where: { tenantId, unitId: unit.id } }),
+    prisma.appSystem.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: "asc" } }),
+  ]);
+  const back = `/app/u/${unitSlug}`;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex max-w-2xl flex-col gap-6">
       <div>
-        <div className="text-sm text-[color:var(--color-muted)]">{TYPE_LABEL[unit.type]}</div>
+        <div className="flex items-center gap-2 text-sm text-[color:var(--color-muted)]">
+          <span>{def?.icon}</span>
+          <span>ระบบ{def?.label}</span>
+        </div>
         <h1 className="text-2xl font-semibold">{unit.name}</h1>
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="card">
-          <div className="text-sm text-[color:var(--color-muted)]">ยอดวันนี้</div>
-          <div className="mt-1 text-2xl font-semibold">—</div>
-        </div>
-        <div className="card">
-          <div className="text-sm text-[color:var(--color-muted)]">ธุรกรรม</div>
-          <div className="mt-1 text-2xl font-semibold">—</div>
-        </div>
-        <div className="card">
-          <div className="text-sm text-[color:var(--color-muted)]">สมาชิกใหม่</div>
-          <div className="mt-1 text-2xl font-semibold">—</div>
-        </div>
-      </div>
+
       {unit.type === "BOOKING" ? (
         <div className="flex flex-wrap gap-2">
           <Link href={`/app/u/${unitSlug}/booking`} className="btn btn-primary text-sm">
             เปิดระบบจองคิว →
           </Link>
           <Link href={`/app/u/${unitSlug}/booking/setup`} className="btn btn-ghost text-sm">
-            ตั้งค่าบริการ/ช่าง
+            ตั้งค่าบริการ/พนักงาน
           </Link>
         </div>
       ) : (
-        <p className="text-sm text-[color:var(--color-muted)]">
-          โมดูลของกิจการนี้กำลังพัฒนา (เร็วๆ นี้) — {TYPE_LABEL[unit.type]}
-        </p>
+        <p className="text-sm text-[color:var(--color-muted)]">ระบบนี้กำลังพัฒนา (เร็วๆ นี้)</p>
       )}
+
+      {/* การเชื่อมต่อกับระบบอื่น */}
+      <section className="card flex flex-col gap-3">
+        <div>
+          <h2 className="text-sm font-medium">การเชื่อมต่อ</h2>
+          <p className="text-xs text-[color:var(--color-muted)]">
+            เชื่อมกับระบบสมาชิก/แต้ม/POS/รางวัล — ลูกค้าจอง/จ่ายแล้วระบบที่เชื่อมทำงานอัตโนมัติ
+          </p>
+        </div>
+        {FEATURE_TYPES.map((type) => {
+          const d = systemDef(type)!;
+          const link = links.find((l) => l.type === type);
+          const linkedSys = link ? allFeatureSystems.find((s) => s.id === link.systemId) : null;
+          const options = allFeatureSystems.filter((s) => s.type === type);
+          return (
+            <div key={type} className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="w-32 shrink-0">
+                {d.icon} {d.label.split(" ")[0]}
+              </span>
+              {linkedSys ? (
+                <form action={unlinkUnitAction} className="inline-flex">
+                  <input type="hidden" name="systemId" value={linkedSys.id} />
+                  <input type="hidden" name="unitId" value={unit.id} />
+                  <input type="hidden" name="back" value={back} />
+                  <button
+                    className="rounded-full border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
+                    title="กดเพื่อยกเลิกการเชื่อม"
+                  >
+                    {linkedSys.name} ✕
+                  </button>
+                </form>
+              ) : options.length > 0 ? (
+                <form action={linkUnitAction} className="flex flex-1 gap-2">
+                  <input type="hidden" name="unitId" value={unit.id} />
+                  <input type="hidden" name="back" value={back} />
+                  <select name="systemId" className="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-xs">
+                    {options.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">
+                    เชื่อม
+                  </button>
+                </form>
+              ) : (
+                <Link href="/app/settings/systems" className="text-xs text-[color:var(--color-muted)] underline">
+                  ยังไม่มีระบบ{d.label.split(" ")[0]} — สร้างก่อน
+                </Link>
+              )}
+            </div>
+          );
+        })}
+      </section>
     </div>
   );
 }

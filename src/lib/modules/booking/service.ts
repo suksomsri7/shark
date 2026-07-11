@@ -1,7 +1,7 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import type { AppointmentStatus } from "@prisma/client";
 import * as member from "@/lib/modules/member/service";
-import { ensureUnitSystems } from "@/lib/modules/system/service";
+import { systemForUnit } from "@/lib/modules/system/service";
 import {
   computeStaffSlots,
   localToUtc,
@@ -120,11 +120,8 @@ export async function createAppointment(input: {
 
   const phone = input.customerPhone.trim();
 
-  // resolve ระบบสมาชิกของ unit (provision ถ้ายังไม่มี)
-  const unit = await prisma.businessUnit.findFirst({
-    where: { id: input.unitId, tenantId: input.tenantId },
-  });
-  const sys = await ensureUnitSystems(input.tenantId, input.unitId, unit?.name ?? "กิจการ");
+  // ระบบสมาชิกที่เชื่อมกับระบบนี้ (optional — เชื่อมจากหน้า "เพิ่มระบบ")
+  const memberSystemId = await systemForUnit(input.tenantId, input.unitId, "MEMBER");
 
   try {
     const appt = await prisma.$transaction(async (tx) => {
@@ -141,23 +138,25 @@ export async function createAppointment(input: {
       });
       if (clash) throw new Error("SLOT_TAKEN");
 
-      // แกนกลาง Member: findOrCreate ในระบบสมาชิกของ unit (contract 2.6)
-      const customer = await member.findOrCreate(
-        {
-          tenantId: input.tenantId,
-          memberSystemId: sys.MEMBER,
-          phone,
-          name: input.customerName,
-          source: input.source === "STAFF" ? "STAFF" : "SELF",
-        },
-        tx,
-      );
+      // เชื่อมระบบสมาชิก → findOrCreate (contract 2.6); ไม่เชื่อม → จองแบบ guest
+      const customer = memberSystemId
+        ? await member.findOrCreate(
+            {
+              tenantId: input.tenantId,
+              memberSystemId,
+              phone,
+              name: input.customerName,
+              source: input.source === "STAFF" ? "STAFF" : "SELF",
+            },
+            tx,
+          )
+        : null;
 
       const created = await tx.appointment.create({
         data: {
           tenantId: input.tenantId,
           unitId: input.unitId,
-          customerId: customer.id,
+          customerId: customer?.id ?? null,
           staffId: input.staffId,
           serviceId: input.serviceId,
           startAt,
@@ -170,20 +169,22 @@ export async function createAppointment(input: {
         },
       });
 
-      // timeline (contract 2.7)
-      await member.logActivity(
-        {
-          tenantId: input.tenantId,
-          customerId: customer.id,
-          unitId: input.unitId,
-          module: "booking",
-          type: "APPOINTMENT_BOOKED",
-          refType: "Appointment",
-          refId: created.id,
-          summary: `จองนัด ${service.name} · ${input.dateStr} ${minutesToHHMM(input.startMin)}`,
-        },
-        tx,
-      );
+      // timeline (contract 2.7) — เฉพาะเมื่อเชื่อมระบบสมาชิก
+      if (customer) {
+        await member.logActivity(
+          {
+            tenantId: input.tenantId,
+            customerId: customer.id,
+            unitId: input.unitId,
+            module: "booking",
+            type: "APPOINTMENT_BOOKED",
+            refType: "Appointment",
+            refId: created.id,
+            summary: `จองนัด ${service.name} · ${input.dateStr} ${minutesToHHMM(input.startMin)}`,
+          },
+          tx,
+        );
+      }
       return created;
     });
     return { ok: true, id: appt.id };

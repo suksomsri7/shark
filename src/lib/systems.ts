@@ -1,40 +1,47 @@
-import type { UnitType } from "@prisma/client";
+import type { SystemType, UnitType } from "@prisma/client";
 
-// ทะเบียนกลางของ "ระบบ" ทั้งหมดใน SHARK — แหล่งความจริงเดียว
-// พอสร้างโมดูลไหนเสร็จ เปลี่ยน status → "available" ที่นี่จุดเดียว (onboarding + sidebar อ่านจากนี่)
+// ทะเบียน "ระบบ" ทั้ง 14 — ทุกอย่างคือระบบ เท่าเทียมกัน สร้างได้หลายชุด เชื่อมถึงกันได้
+// kind "business" = ระบบที่มีหน้างาน/ลูกค้า (เก็บเป็น BusinessUnit — มี slug/storefront)
+// kind "feature"  = ระบบข้อมูล/บริการ (เก็บเป็น AppSystem — เชื่อมเข้าระบบ business ได้)
 export type SystemStatus = "available" | "coming_soon";
+export type SystemKind = "business" | "feature";
 
-// ── ประเภทกิจการ (BusinessUnit type) ที่เลือกตอน onboarding ──
-export type UnitTypeMeta = {
-  type: UnitType;
+export type SystemDef = {
+  code: string; // รหัสในระบบ (ตรง enum)
+  no: number; // ลำดับตามพิมพ์เขียว
+  kind: SystemKind;
   label: string;
   hint: string;
   icon: string;
   status: SystemStatus;
 };
 
-export const UNIT_TYPES: UnitTypeMeta[] = [
-  { type: "BOOKING", label: "จองคิว / นัดหมาย", hint: "นัดหมายตามเวลา นวด สปา คลินิก ทำเล็บ", icon: "📅", status: "available" },
-  { type: "RESTAURANT", label: "ร้านอาหาร", hint: "เมนู โต๊ะ ครัว", icon: "🍜", status: "coming_soon" },
-  { type: "HOTEL", label: "โรงแรม", hint: "ห้องพัก จอง เช็คอิน", icon: "🏨", status: "coming_soon" },
-  { type: "QUEUE", label: "บัตรคิว", hint: "ออกบัตร เรียกคิว", icon: "🎫", status: "coming_soon" },
-  { type: "TICKET", label: "ตั๋ว / อีเวนต์", hint: "ขายตั๋ว เช็คอิน", icon: "🎟️", status: "coming_soon" },
-  { type: "SHOP", label: "ร้านค้า (POS)", hint: "ขายหน้าร้าน สต็อก", icon: "🛍️", status: "coming_soon" },
+export const SYSTEM_DEFS: SystemDef[] = [
+  { code: "HOTEL", no: 1, kind: "business", label: "โรงแรม", hint: "ห้องพัก จอง เช็คอิน", icon: "🏨", status: "coming_soon" },
+  { code: "RESTAURANT", no: 2, kind: "business", label: "ร้านอาหาร", hint: "เมนู โต๊ะ ครัว", icon: "🍜", status: "coming_soon" },
+  { code: "BOOKING", no: 3, kind: "business", label: "จองคิว / นัดหมาย", hint: "นัดหมายตามเวลา นวด สปา คลินิก ทำเล็บ", icon: "📅", status: "available" },
+  { code: "QUEUE", no: 4, kind: "business", label: "บัตรคิว (Q)", hint: "ออกบัตร เรียกคิว", icon: "🎫", status: "coming_soon" },
+  { code: "TICKET", no: 5, kind: "business", label: "ตั๋ว / อีเวนต์", hint: "ขายตั๋ว เช็คอิน", icon: "🎟️", status: "coming_soon" },
+  { code: "MEMBER", no: 6, kind: "feature", label: "สมาชิก (Member)", hint: "ฐานลูกค้า/สมาชิก", icon: "👥", status: "available" },
+  { code: "REWARD", no: 7, kind: "feature", label: "รางวัล (Reward)", hint: "แลกของด้วยแต้ม", icon: "🎁", status: "available" },
+  { code: "COUPON", no: 8, kind: "feature", label: "คูปอง & Voucher", hint: "ส่วนลด โค้ด", icon: "🎟", status: "coming_soon" },
+  { code: "POINT", no: 9, kind: "feature", label: "แต้ม (Point)", hint: "สะสมแต้ม", icon: "⭐", status: "available" },
+  { code: "CHAT", no: 10, kind: "feature", label: "รวม Chat", hint: "แชทลูกค้า", icon: "💬", status: "coming_soon" },
+  { code: "MEETING", no: 11, kind: "feature", label: "Meeting", hint: "แชทภายในองค์กร", icon: "🗓", status: "coming_soon" },
+  { code: "ACCOUNT", no: 12, kind: "feature", label: "บัญชี (Account)", hint: "รายรับรายจ่าย", icon: "📒", status: "coming_soon" },
+  { code: "KANBAN", no: 13, kind: "feature", label: "Kanban", hint: "บอร์ดงาน", icon: "📋", status: "coming_soon" },
+  { code: "POS", no: 14, kind: "feature", label: "ร้านค้า POS", hint: "ขาย บิล ยอดขาย", icon: "🧾", status: "available" },
 ];
 
-export const AVAILABLE_UNIT_TYPES = new Set(
-  UNIT_TYPES.filter((u) => u.status === "available").map((u) => u.type),
+export const systemDef = (code: string) => SYSTEM_DEFS.find((s) => s.code === code);
+
+export const AVAILABLE_BUSINESS = new Set(
+  SYSTEM_DEFS.filter((s) => s.kind === "business" && s.status === "available").map(
+    (s) => s.code as UnitType,
+  ),
 );
-
-// ── โมดูลระดับองค์กร (cross-cutting) ที่โชว์ใน sidebar ──
-export type ModuleMeta = { key: string; label: string; href: string; status: SystemStatus };
-
-export const TENANT_MODULES: ModuleMeta[] = [
-  { key: "members", label: "สมาชิก", href: "/app/members", status: "available" },
-  { key: "rewards", label: "รางวัล", href: "/app/rewards", status: "coming_soon" },
-  { key: "coupons", label: "คูปอง", href: "/app/coupons", status: "coming_soon" },
-  { key: "chat", label: "แชท", href: "/app/chat", status: "coming_soon" },
-  { key: "meeting", label: "ทีม / ประชุม", href: "/app/meeting", status: "coming_soon" },
-  { key: "account", label: "บัญชี", href: "/app/account", status: "coming_soon" },
-  { key: "kanban", label: "งาน (Kanban)", href: "/app/kanban", status: "coming_soon" },
-];
+export const AVAILABLE_FEATURE = new Set(
+  SYSTEM_DEFS.filter((s) => s.kind === "feature" && s.status === "available").map(
+    (s) => s.code as SystemType,
+  ),
+);

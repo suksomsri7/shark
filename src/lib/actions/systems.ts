@@ -1,30 +1,89 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
-import { SystemType } from "@prisma/client";
+import type { SystemType, UnitType } from "@prisma/client";
+import { prisma } from "@/lib/core/db";
 import { requireTenant } from "@/lib/core/context";
+import { slugify } from "@/lib/slug";
+import { systemDef, AVAILABLE_BUSINESS, AVAILABLE_FEATURE } from "@/lib/systems";
 import { createSystem, linkUnit } from "@/lib/modules/system/service";
 import { createReward, removeReward } from "@/lib/modules/reward/service";
 
-const PATH = "/app/settings/systems";
+export type AddSystemState = { status: "idle" } | { status: "error"; message: string };
 
-export async function createSystemAction(formData: FormData) {
+// สร้าง "ระบบ" — ประเภทไหนก็ได้จาก 14 (business → BusinessUnit, feature → AppSystem)
+export async function addSystemAction(
+  _prev: AddSystemState,
+  formData: FormData,
+): Promise<AddSystemState> {
   const auth = await requireTenant();
-  const type = z.nativeEnum(SystemType).safeParse(formData.get("type"));
+  const tenantId = auth.active.tenantId;
+  const code = String(formData.get("code") ?? "");
   const name = String(formData.get("name") ?? "").trim();
-  if (!type.success || name.length < 1) return;
-  await createSystem(auth.active.tenantId, type.data, name);
-  revalidatePath(PATH);
+  const def = systemDef(code);
+  if (!def || def.status !== "available") {
+    return { status: "error", message: "ระบบนี้ยังไม่เปิดให้บริการ" };
+  }
+  if (name.length < 2) return { status: "error", message: "ตั้งชื่อระบบอย่างน้อย 2 ตัวอักษร" };
+
+  if (def.kind === "business") {
+    if (!AVAILABLE_BUSINESS.has(code as UnitType)) {
+      return { status: "error", message: "ระบบนี้ยังไม่เปิดให้บริการ" };
+    }
+    const count = await prisma.businessUnit.count({
+      where: { tenantId, status: { not: "ARCHIVED" } },
+    });
+    const limits = auth.active.tenant.limits as { maxUnits?: number };
+    if (count >= (limits?.maxUnits ?? 10)) {
+      return { status: "error", message: "สร้างระบบได้สูงสุดตามแพ็กเกจ" };
+    }
+    const base = slugify(name, "unit");
+    let slug = base;
+    for (let i = 0; i < 6; i++) {
+      const exists = await prisma.businessUnit.findUnique({
+        where: { tenantId_slug: { tenantId, slug } },
+      });
+      if (!exists) break;
+      slug = `${base}-${Math.random().toString(36).slice(2, 5)}`;
+    }
+    const unit = await prisma.businessUnit.create({
+      data: { tenantId, type: code as UnitType, name, slug, sortOrder: count },
+    });
+    redirect(`/app/u/${unit.slug}`);
+  }
+
+  if (!AVAILABLE_FEATURE.has(code as SystemType)) {
+    return { status: "error", message: "ระบบนี้ยังไม่เปิดให้บริการ" };
+  }
+  const sys = await createSystem(tenantId, code as SystemType, name);
+  redirect(`/app/sys/${sys.id}`);
 }
 
+// เชื่อมระบบ business ↔ ระบบ feature (1 ระบบ business เชื่อม 1 ระบบต่อประเภท)
 export async function linkUnitAction(formData: FormData) {
   const auth = await requireTenant();
   const systemId = String(formData.get("systemId") ?? "");
   const unitId = String(formData.get("unitId") ?? "");
-  if (!systemId || !unitId) return;
-  await linkUnit(auth.active.tenantId, systemId, unitId);
-  revalidatePath(PATH);
+  const back = String(formData.get("back") ?? "/app");
+  if (systemId && unitId) await linkUnit(auth.active.tenantId, systemId, unitId);
+  revalidatePath(back);
+  revalidatePath("/app");
+}
+
+// ยกเลิกการเชื่อม
+export async function unlinkUnitAction(formData: FormData) {
+  const auth = await requireTenant();
+  const systemId = String(formData.get("systemId") ?? "");
+  const unitId = String(formData.get("unitId") ?? "");
+  const back = String(formData.get("back") ?? "/app");
+  if (systemId && unitId) {
+    await prisma.appSystemUnit.deleteMany({
+      where: { tenantId: auth.active.tenantId, systemId, unitId },
+    });
+  }
+  revalidatePath(back);
+  revalidatePath("/app");
 }
 
 export async function addRewardAction(formData: FormData) {
@@ -41,12 +100,13 @@ export async function addRewardAction(formData: FormData) {
     pointsCost,
     stock: stockRaw ? Number(stockRaw) : null,
   });
-  revalidatePath(PATH);
+  revalidatePath(`/app/sys/${systemId}`);
 }
 
 export async function removeRewardAction(formData: FormData) {
   const auth = await requireTenant();
   const id = String(formData.get("id") ?? "");
+  const systemId = String(formData.get("systemId") ?? "");
   if (id) await removeReward(auth.active.tenantId, id);
-  revalidatePath(PATH);
+  revalidatePath(`/app/sys/${systemId}`);
 }

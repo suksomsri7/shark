@@ -64,8 +64,8 @@ model Appointment {
   id            String            @id @default(cuid())
   tenantId      String
   unitId        String
-  customerId    String
-  customer      Customer          @relation(fields: [customerId], references: [id])
+  customerId    String? // มีเมื่อระบบนี้เชื่อมกับระบบสมาชิก
+  customer      Customer?         @relation(fields: [customerId], references: [id])
   staffId       String
   staff         BookingStaff      @relation(fields: [staffId], references: [id])
   serviceId     String

@@ -1,33 +1,22 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { createTenantAction, type OnboardingState } from "@/lib/actions/onboarding";
+import { addSystemAction, type AddSystemState } from "@/lib/actions/systems";
 import { SYSTEM_DEFS } from "@/lib/systems";
 
-const initial: OnboardingState = { status: "idle" };
+const initial: AddSystemState = { status: "idle" };
 const firstAvailable = SYSTEM_DEFS.find((s) => s.status === "available")?.code ?? "BOOKING";
 
-export function OnboardingForm() {
-  const [state, action, pending] = useActionState(createTenantAction, initial);
+// เลือก 1 จาก 14 ระบบ + ตั้งชื่อ → สร้าง (ใช้ทั้ง onboarding และหน้าเพิ่มระบบ)
+export function AddSystemForm({ submitLabel = "สร้างระบบ" }: { submitLabel?: string }) {
+  const [state, action, pending] = useActionState(addSystemAction, initial);
   const [code, setCode] = useState<string>(firstAvailable);
+  const selected = SYSTEM_DEFS.find((s) => s.code === code);
 
   return (
-    <form action={action} className="flex w-full max-w-lg flex-col gap-6">
+    <form action={action} className="flex w-full flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <label className="text-sm text-[color:var(--color-muted)]" htmlFor="orgName">
-          ชื่อร้าน / องค์กรของคุณ
-        </label>
-        <input
-          id="orgName"
-          name="orgName"
-          required
-          placeholder="เช่น บาร์เบอร์บ้านสวน"
-          className="rounded-lg border px-3 py-2 text-sm outline-none focus:border-[color:var(--color-ink)]"
-        />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <span className="text-sm text-[color:var(--color-muted)]">เลือกระบบแรกของคุณ (เพิ่มได้อีกภายหลัง)</span>
+        <span className="text-sm text-[color:var(--color-muted)]">เลือกระบบ</span>
         <div className="grid grid-cols-2 gap-2">
           {SYSTEM_DEFS.map((s) => {
             const disabled = s.status === "coming_soon";
@@ -65,14 +54,14 @@ export function OnboardingForm() {
       </div>
 
       <div className="flex flex-col gap-2">
-        <label className="text-sm text-[color:var(--color-muted)]" htmlFor="name">
-          ชื่อระบบ
+        <label className="text-sm text-[color:var(--color-muted)]" htmlFor="sysName">
+          ชื่อระบบ{selected ? ` (${selected.label})` : ""}
         </label>
         <input
-          id="name"
+          id="sysName"
           name="name"
           required
-          placeholder="เช่น สาขาหลัก"
+          placeholder={selected?.kind === "business" ? "เช่น A Barber สาขา 2" : "เช่น สมาชิกสปา"}
           className="rounded-lg border px-3 py-2 text-sm outline-none focus:border-[color:var(--color-ink)]"
         />
       </div>
@@ -81,7 +70,7 @@ export function OnboardingForm() {
         <p className="text-sm text-[color:var(--color-danger)]">{state.message}</p>
       )}
       <button type="submit" disabled={pending} className="btn btn-primary">
-        {pending ? "กำลังสร้าง..." : "สร้างและเริ่มใช้งาน"}
+        {pending ? "กำลังสร้าง..." : submitLabel}
       </button>
     </form>
   );

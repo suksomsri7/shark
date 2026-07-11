@@ -7,7 +7,7 @@ import { requireUnit } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
 import * as member from "@/lib/modules/member/service";
 import * as pos from "@/lib/modules/pos/service";
-import { ensureUnitSystems } from "@/lib/modules/system/service";
+import { systemForUnit } from "@/lib/modules/system/service";
 
 // ตารางเวลาเริ่มต้นเมื่อเพิ่มช่าง: ทุกวัน 10:00–20:00 (ปรับภายหลังได้)
 const DEFAULT_HOURS = Array.from({ length: 7 }, (_, weekday) => ({
@@ -85,29 +85,33 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
     data: { status: parsed.data },
     include: { service: true },
   });
-  // มาใช้บริการจริง → นับ visit + timeline + เก็บเงินผ่าน POS (จุดตัดเงินกลาง)
-  // POS.createSale จัดการ: ยอดเงิน + ใบเสร็จ + สะสมแต้ม + บันทึกยอดใช้จ่าย (ตามพิมพ์เขียว)
+  // มาใช้บริการจริง → ระบบที่ "เชื่อมไว้" ทำงานตามนั้น (member/pos/point เป็นการเชื่อมแบบเลือกได้)
   if (parsed.data === "DONE") {
     const spent = appt.service.priceSatang;
-    await member.recordVisit(ctx.tenantId, appt.customerId);
-    await member.logActivity({
-      tenantId: ctx.tenantId,
-      customerId: appt.customerId,
-      unitId: ctx.unitId,
-      module: "booking",
-      type: "VISIT",
-      refType: "Appointment",
-      refId: appt.id,
-      summary: "มาใช้บริการ",
-    });
-    if (spent > 0) {
-      const sys = await ensureUnitSystems(ctx.tenantId, ctx.unitId, unit.name);
+    const [posSystemId, pointSystemId] = await Promise.all([
+      systemForUnit(ctx.tenantId, ctx.unitId, "POS"),
+      systemForUnit(ctx.tenantId, ctx.unitId, "POINT"),
+    ]);
+    if (appt.customerId) {
+      await member.recordVisit(ctx.tenantId, appt.customerId);
+      await member.logActivity({
+        tenantId: ctx.tenantId,
+        customerId: appt.customerId,
+        unitId: ctx.unitId,
+        module: "booking",
+        type: "VISIT",
+        refType: "Appointment",
+        refId: appt.id,
+        summary: "มาใช้บริการ",
+      });
+    }
+    if (spent > 0 && posSystemId) {
       await pos.createSale({
         tenantId: ctx.tenantId,
         unitId: ctx.unitId,
-        systemId: sys.POS,
-        pointSystemId: sys.POINT,
-        memberId: appt.customerId,
+        systemId: posSystemId,
+        pointSystemId: pointSystemId ?? undefined,
+        memberId: appt.customerId ?? undefined,
         sourceModule: "BOOKING",
         sourceId: appt.id,
         idempotencyKey: `booking-sale-${appt.id}`,

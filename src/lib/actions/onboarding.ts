@@ -2,33 +2,21 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { UnitType } from "@prisma/client";
+import type { SystemType, UnitType } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { requireAuth, setActiveTenant } from "@/lib/core/context";
 import { slugify, uniqueTenantSlug } from "@/lib/slug";
-import { AVAILABLE_UNIT_TYPES } from "@/lib/systems";
-import { ensureUnitSystems } from "@/lib/modules/system/service";
+import { systemDef } from "@/lib/systems";
 
 const schema = z.object({
   orgName: z.string().trim().min(2, "ชื่อร้านสั้นเกินไป").max(80),
-  unitType: z
-    .nativeEnum(UnitType)
-    .refine((t) => AVAILABLE_UNIT_TYPES.has(t), "ประเภทกิจการนี้ยังไม่เปิดให้บริการ"),
-  unitName: z.string().trim().min(2, "ชื่อกิจการสั้นเกินไป").max(80),
+  code: z.string(),
+  name: z.string().trim().min(2, "ชื่อระบบสั้นเกินไป").max(80),
 });
 
 export type OnboardingState = { status: "idle" } | { status: "error"; message: string };
 
-// โมดูลที่เปิดตามประเภทกิจการ (cross-cutting Member/Point เปิดเสมอ)
-const MODULES_BY_TYPE: Record<UnitType, string[]> = {
-  HOTEL: ["HOTEL", "POS", "ACCOUNT"],
-  RESTAURANT: ["RESTAURANT", "POS", "ACCOUNT"],
-  BOOKING: ["BOOKING", "QUEUE", "POS", "ACCOUNT"],
-  QUEUE: ["QUEUE"],
-  TICKET: ["TICKET", "POS", "ACCOUNT"],
-  SHOP: ["POS", "ACCOUNT"],
-};
-
+// สร้างองค์กร + ระบบแรก (ประเภทไหนก็ได้จาก 14 ที่เปิด)
 export async function createTenantAction(
   _prev: OnboardingState,
   formData: FormData,
@@ -36,24 +24,22 @@ export async function createTenantAction(
   const auth = await requireAuth();
   const parsed = schema.safeParse({
     orgName: formData.get("orgName"),
-    unitType: formData.get("unitType"),
-    unitName: formData.get("unitName"),
+    code: formData.get("code"),
+    name: formData.get("name"),
   });
   if (!parsed.success) {
     return { status: "error", message: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
   }
-  const { orgName, unitType, unitName } = parsed.data;
+  const { orgName, code, name } = parsed.data;
+  const def = systemDef(code);
+  if (!def || def.status !== "available") {
+    return { status: "error", message: "ระบบนี้ยังไม่เปิดให้บริการ" };
+  }
 
   const tenant = await prisma.$transaction(async (tx) => {
     const slug = await uniqueTenantSlug(tx, orgName);
     const t = await tx.tenant.create({
-      data: {
-        name: orgName,
-        slug,
-        status: "ACTIVE",
-        enabledModules: ["MEMBER", "POINT", ...MODULES_BY_TYPE[unitType]],
-        limits: { maxUnits: 5 },
-      },
+      data: { name: orgName, slug, status: "ACTIVE", limits: { maxUnits: 10 } },
     });
     await tx.membership.create({
       data: {
@@ -64,10 +50,13 @@ export async function createTenantAction(
         acceptedAt: new Date(),
       },
     });
-    const unit = await tx.businessUnit.create({
-      data: { tenantId: t.id, type: unitType, name: unitName, slug: slugify(unitName, "main") },
-    });
-    await ensureUnitSystems(t.id, unit.id, unit.name, tx);
+    if (def.kind === "business") {
+      await tx.businessUnit.create({
+        data: { tenantId: t.id, type: code as UnitType, name, slug: slugify(name, "main") },
+      });
+    } else {
+      await tx.appSystem.create({ data: { tenantId: t.id, type: code as SystemType, name } });
+    }
     return t;
   });
 

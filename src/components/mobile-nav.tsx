@@ -4,28 +4,16 @@ import { useState } from "react";
 import Link from "next/link";
 import { logoutAction } from "@/lib/actions/auth";
 
-type Unit = { id: string; name: string; slug: string; type: string; status: string };
-type ModuleItem = { key: string; label: string; href: string; status: string };
-
-const TYPE_ICON: Record<string, string> = {
-  HOTEL: "🏨",
-  RESTAURANT: "🍜",
-  BOOKING: "📅",
-  QUEUE: "🎫",
-  TICKET: "🎟️",
-  SHOP: "🛍️",
-};
+export type NavItem = { key: string; href: string; icon: string; label: string };
 
 export function MobileNav({
   tenantName,
   userEmail,
-  units,
-  modules,
+  items,
 }: {
   tenantName: string;
   userEmail: string;
-  units: Unit[];
-  modules: ModuleItem[];
+  items: NavItem[];
 }) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
@@ -43,9 +31,7 @@ export function MobileNav({
           ☰
         </button>
         <span className="text-sm font-bold tracking-widest">SHARK</span>
-        <span className="ml-auto truncate text-xs text-[color:var(--color-muted)]">
-          {tenantName}
-        </span>
+        <span className="ml-auto truncate text-xs text-[color:var(--color-muted)]">{tenantName}</span>
       </div>
 
       {/* drawer */}
@@ -63,44 +49,25 @@ export function MobileNav({
               </button>
             </div>
 
-            {/* กิจการ */}
             <nav className="flex flex-col gap-0.5 text-sm">
               <Link href="/app" onClick={close} className="rounded-lg px-2 py-2 hover:bg-[color:var(--color-surface-2)]">
-                ภาพรวม
+                ระบบทั้งหมด
               </Link>
-              {units.map((u) => (
+              {items.map((it) => (
                 <Link
-                  key={u.id}
-                  href={`/app/u/${u.slug}`}
+                  key={it.key}
+                  href={it.href}
                   onClick={close}
                   className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-[color:var(--color-surface-2)]"
                 >
-                  <span>{TYPE_ICON[u.type] ?? "•"}</span>
-                  <span className="truncate">{u.name}</span>
+                  <span>{it.icon}</span>
+                  <span className="truncate">{it.label}</span>
                 </Link>
               ))}
             </nav>
 
-            <div className="my-3 border-t" />
-
-            {/* โมดูลองค์กร */}
-            <nav className="flex flex-col gap-0.5 text-sm">
-              {modules.map((m) =>
-                m.status === "available" ? (
-                  <Link key={m.key} href={m.href} onClick={close} className="rounded-lg px-2 py-2 hover:bg-[color:var(--color-surface-2)]">
-                    {m.label}
-                  </Link>
-                ) : (
-                  <div key={m.key} className="flex items-center justify-between rounded-lg px-2 py-2 opacity-45">
-                    <span>{m.label}</span>
-                    <span className="rounded-full border px-1.5 py-0.5 text-[10px]">เร็วๆ นี้</span>
-                  </div>
-                ),
-              )}
-            </nav>
-
             <div className="mt-auto flex flex-col gap-2 border-t pt-3">
-              <Link href="/app/settings/systems" onClick={close} className="btn btn-ghost w-full text-sm">
+              <Link href="/app/settings/systems" onClick={close} className="btn btn-primary w-full text-sm">
                 + เพิ่มระบบ
               </Link>
               <div className="flex items-center justify-between px-2">
