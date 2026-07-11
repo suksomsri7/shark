@@ -45,6 +45,14 @@ export function AuthForm({ heading }: { heading: string }) {
           <p className="text-sm text-[color:var(--color-muted)]">
             เราส่งรหัส 6 หลักไปที่ <span className="font-medium text-[color:var(--color-ink)]">{email}</span>
           </p>
+          {reqState.status === "sent" && reqState.preview && (
+            <div className="rounded-lg border border-dashed p-3 text-sm">
+              <div className="mb-1 text-xs font-medium text-[color:var(--color-muted)]">
+                โหมดทดลอง (ยังไม่ได้ต่ออีเมลจริง) — รหัสของคุณ:
+              </div>
+              <div className="text-lg font-semibold tracking-widest">{reqState.preview.otp}</div>
+            </div>
+          )}
           <input type="hidden" name="email" value={email} />
           <input
             name="code"

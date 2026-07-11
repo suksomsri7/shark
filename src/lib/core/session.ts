@@ -2,10 +2,10 @@ import { cookies } from "next/headers";
 import type { User } from "@prisma/client";
 import { prisma } from "./db";
 import { sha256, randomToken } from "./hash";
-import { isProd } from "@/lib/env";
+import { secureCookies } from "@/lib/env";
 
-// dev (http://localhost) ใช้ชื่อธรรมดา; prod ใช้ __Host- (ต้อง Secure+Path=/+no Domain)
-const COOKIE = isProd ? "__Host-shark_session" : "shark_session";
+// dev (http://localhost) ใช้ชื่อธรรมดา; preview/prod (HTTPS) ใช้ __Host- (Secure+Path=/+no Domain)
+const COOKIE = secureCookies ? "__Host-shark_session" : "shark_session";
 const IDLE_MS = 1000 * 60 * 60 * 8; // 8 ชม. idle
 const ABS_MS = 1000 * 60 * 60 * 24 * 30; // 30 วัน absolute
 
@@ -28,7 +28,7 @@ export async function createSession(
   const jar = await cookies();
   jar.set(COOKIE, token, {
     httpOnly: true,
-    secure: isProd,
+    secure: secureCookies,
     sameSite: "lax",
     path: "/",
     expires: new Date(now + ABS_MS),

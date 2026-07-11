@@ -2,13 +2,19 @@ import type { User } from "@prisma/client";
 import { prisma } from "./db";
 import { sha256, randomToken, otpCode, safeEqualHex } from "./hash";
 import { sendEmail } from "./email";
-import { env } from "@/lib/env";
+import { env, previewOtp } from "@/lib/env";
 
 const TTL_MS = 1000 * 60 * 10; // 10 นาที
 const MAX_ATTEMPTS = 5;
 
+export type PreviewCreds = { otp: string; link: string };
+
 // ── request: ส่ง OTP + magic link ทางอีเมล ────────────────────
-export async function requestLogin(rawEmail: string, ip?: string): Promise<void> {
+// preview (ยังไม่มี Resend): คืน otp/link เพื่อโชว์บนจอ (ห้ามใน production)
+export async function requestLogin(
+  rawEmail: string,
+  ip?: string,
+): Promise<PreviewCreds | null> {
   const email = normalizeEmail(rawEmail);
   const code = otpCode();
   const linkToken = randomToken();
@@ -27,6 +33,7 @@ export async function requestLogin(rawEmail: string, ip?: string): Promise<void>
     "เข้าสู่ระบบ SHARK",
     `รหัสเข้าสู่ระบบ (OTP): ${code}\n\nหรือคลิกลิงก์นี้เพื่อเข้าสู่ระบบ:\n${link}\n\nรหัส/ลิงก์นี้หมดอายุใน 10 นาที หากคุณไม่ได้ร้องขอ กรุณาเพิกเฉย`,
   );
+  return previewOtp ? { otp: code, link } : null;
 }
 
 type VerifyResult =

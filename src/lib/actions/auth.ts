@@ -11,7 +11,7 @@ const emailSchema = z.string().email();
 
 export type AuthFormState =
   | { status: "idle" }
-  | { status: "sent"; email: string }
+  | { status: "sent"; email: string; preview?: { otp: string; link: string } }
   | { status: "error"; message: string };
 
 async function clientMeta() {
@@ -30,8 +30,8 @@ export async function requestLoginAction(
   const parsed = emailSchema.safeParse(String(formData.get("email") ?? "").trim().toLowerCase());
   if (!parsed.success) return { status: "error", message: "กรุณากรอกอีเมลให้ถูกต้อง" };
   const { ip } = await clientMeta();
-  await requestLogin(parsed.data, ip);
-  return { status: "sent", email: parsed.data };
+  const preview = await requestLogin(parsed.data, ip);
+  return { status: "sent", email: parsed.data, preview: preview ?? undefined };
 }
 
 // ขั้น 2: ยืนยัน OTP → สร้าง session → ไป onboarding/app
