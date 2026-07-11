@@ -58,14 +58,22 @@ export default async function BookingSetupPage({
         ))}
         <form
           action={addServiceAction.bind(null, unitSlug)}
-          className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2"
+          className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end"
         >
-          <input name="name" required placeholder="ชื่อบริการ" className="rounded-lg border px-3 py-2 text-sm" />
-          <input name="durationMin" type="number" required defaultValue={30} min={5} className="w-20 rounded-lg border px-2 py-2 text-sm" title="นาที" />
-          <input name="priceBaht" type="number" defaultValue={0} min={0} className="w-24 rounded-lg border px-2 py-2 text-sm" title="ราคา (บาท)" />
-          <button className="btn btn-primary text-sm">เพิ่ม</button>
+          <label className="col-span-2 flex flex-col gap-1 sm:col-span-1">
+            <span className="text-xs text-[color:var(--color-muted)]">ชื่อบริการ</span>
+            <input name="name" required placeholder="เช่น ตัดผม" className="w-full rounded-lg border px-3 py-2 text-sm" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-[color:var(--color-muted)]">นาที</span>
+            <input name="durationMin" type="number" required defaultValue={30} min={5} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-20" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-[color:var(--color-muted)]">ราคา (บาท)</span>
+            <input name="priceBaht" type="number" defaultValue={0} min={0} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-24" />
+          </label>
+          <button className="btn btn-primary col-span-2 text-sm sm:col-span-1">เพิ่ม</button>
         </form>
-        <div className="text-xs text-[color:var(--color-muted)]">ช่อง: ชื่อ · นาที · ราคา(บาท)</div>
       </section>
 
       {/* พนักงาน */}

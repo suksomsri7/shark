@@ -4,6 +4,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { logoutAction } from "@/lib/actions/auth";
 import { TENANT_MODULES } from "@/lib/systems";
+import { MobileNav } from "@/components/mobile-nav";
 
 const TYPE_ICON: Record<string, string> = {
   HOTEL: "🏨",
@@ -23,7 +24,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   });
 
   return (
-    <div className="flex min-h-full flex-1">
+    <div className="flex min-h-full flex-1 flex-col md:flex-row">
+      <MobileNav
+        tenantName={auth.active.tenant.name}
+        userEmail={auth.user.email}
+        units={units.map((u) => ({ id: u.id, name: u.name, slug: u.slug, type: u.type, status: u.status }))}
+        modules={TENANT_MODULES}
+      />
       <aside className="hidden w-64 shrink-0 flex-col border-r px-3 py-4 md:flex">
         <div className="px-2 pb-1 text-sm font-bold tracking-widest">SHARK</div>
         <div className="truncate px-2 pb-3 text-xs text-[color:var(--color-muted)]">
