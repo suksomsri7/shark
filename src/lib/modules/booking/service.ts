@@ -1,6 +1,7 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import type { AppointmentStatus } from "@prisma/client";
 import * as member from "@/lib/modules/member/service";
+import { ensureUnitSystems } from "@/lib/modules/system/service";
 import {
   computeStaffSlots,
   localToUtc,
@@ -119,6 +120,12 @@ export async function createAppointment(input: {
 
   const phone = input.customerPhone.trim();
 
+  // resolve ระบบสมาชิกของ unit (provision ถ้ายังไม่มี)
+  const unit = await prisma.businessUnit.findFirst({
+    where: { id: input.unitId, tenantId: input.tenantId },
+  });
+  const sys = await ensureUnitSystems(input.tenantId, input.unitId, unit?.name ?? "กิจการ");
+
   try {
     const appt = await prisma.$transaction(async (tx) => {
       // กันจองซ้อน: ล็อกช่วงเวลาของช่างคนนี้
@@ -134,10 +141,11 @@ export async function createAppointment(input: {
       });
       if (clash) throw new Error("SLOT_TAKEN");
 
-      // แกนกลาง Member: findOrCreate (contract 2.6)
+      // แกนกลาง Member: findOrCreate ในระบบสมาชิกของ unit (contract 2.6)
       const customer = await member.findOrCreate(
         {
           tenantId: input.tenantId,
+          memberSystemId: sys.MEMBER,
           phone,
           name: input.customerName,
           source: input.source === "STAFF" ? "STAFF" : "SELF",

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/core/db";
 import { requireTenant } from "@/lib/core/context";
 import { slugify } from "@/lib/slug";
 import { AVAILABLE_UNIT_TYPES } from "@/lib/systems";
+import { ensureUnitSystems } from "@/lib/modules/system/service";
 
 const schema = z.object({
   unitType: z
@@ -61,5 +62,6 @@ export async function addUnitAction(
       sortOrder: count,
     },
   });
+  await ensureUnitSystems(auth.active.tenantId, unit.id, unit.name);
   redirect(`/app/u/${unit.slug}`);
 }

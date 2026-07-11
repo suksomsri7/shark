@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { getProfile } from "@/lib/modules/member/service";
-import { getBalance } from "@/lib/modules/point/service";
+import { getCustomerPoints } from "@/lib/modules/point/service";
 
 const TIER_LABEL: Record<string, string> = {
   MEMBER: "สมาชิก",
@@ -32,7 +32,7 @@ export default async function MemberDetailPage({
   const data = await getProfile(auth.active.tenantId, id);
   if (!data) notFound();
   const { customer: c, activities } = data;
-  const points = await getBalance(auth.active.tenantId, id);
+  const points = await getCustomerPoints(auth.active.tenantId, c.memberSystemId, id);
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">

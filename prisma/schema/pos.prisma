@@ -20,6 +20,7 @@ model PosSale {
   id              String        @id @default(cuid())
   tenantId        String
   unitId          String
+  systemId        String // ระบบ POS ไหน (scope)
   memberId        String? // Customer.id
   sourceModule    String        @default("POS") // POS | BOOKING | HOTEL | RESTAURANT | TICKET
   sourceId        String?

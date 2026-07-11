@@ -21,10 +21,10 @@ function randCode(): string {
   for (let i = 0; i < 6; i++) s += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
   return s;
 }
-async function uniqueMemberCode(client: Client, tenantId: string): Promise<string> {
+async function uniqueMemberCode(client: Client, memberSystemId: string): Promise<string> {
   for (let i = 0; i < 6; i++) {
     const code = randCode();
-    const exists = await client.customer.findFirst({ where: { tenantId, memberCode: code } });
+    const exists = await client.customer.findFirst({ where: { memberSystemId, memberCode: code } });
     if (!exists) return code;
   }
   return randCode() + randCode().slice(0, 2);
@@ -41,6 +41,7 @@ function normPhone(p?: string | null) {
 export async function findOrCreate(
   input: {
     tenantId: string;
+    memberSystemId: string;
     phone?: string;
     email?: string;
     name?: string;
@@ -49,20 +50,20 @@ export async function findOrCreate(
   },
   client: Client = prisma,
 ) {
+  const { memberSystemId } = input;
   const phone = normPhone(input.phone);
   const email = normEmail(input.email);
-  let c =
-    (phone && (await client.customer.findFirst({ where: { tenantId: input.tenantId, phone } }))) ||
-    null;
+  let c = (phone && (await client.customer.findFirst({ where: { memberSystemId, phone } }))) || null;
   if (!c && email) {
-    c = await client.customer.findFirst({ where: { tenantId: input.tenantId, email } });
+    c = await client.customer.findFirst({ where: { memberSystemId, email } });
   }
   if (c) return c;
-  const memberCode = await uniqueMemberCode(client, input.tenantId);
+  const memberCode = await uniqueMemberCode(client, memberSystemId);
   const marketing = !!input.consents?.includes("marketing");
   return client.customer.create({
     data: {
       tenantId: input.tenantId,
+      memberSystemId,
       memberCode,
       name: input.name?.trim() || null,
       phone,

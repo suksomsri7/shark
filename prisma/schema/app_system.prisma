@@ -1,0 +1,39 @@
+// System Instance — "ระบบ" ที่สร้างได้หลายชุด แต่ละชุดผูกกับกิจการ (unit) ที่เลือก
+// เช่น ระบบสมาชิก "บาร์เบอร์"→ร้านตัดผม, ระบบสมาชิก "สปา"→นวด+ร้านอาหาร
+// กติกา: 1 unit → 1 ระบบต่อประเภท (MEMBER/POINT/POS) — บังคับด้วย @@unique
+// ลูกค้า/แต้ม/ยอดขาย scope ตามระบบ ไม่ใช่ทั้ง tenant
+
+enum SystemType {
+  MEMBER
+  POINT
+  POS
+}
+
+model AppSystem {
+  id        String     @id @default(cuid())
+  tenantId  String
+  type      SystemType
+  name      String
+  settings  Json       @default("{}")
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  units AppSystemUnit[]
+
+  @@index([tenantId, type])
+}
+
+// ผูกระบบ ↔ กิจการ (type denormalize เพื่อบังคับ 1 unit/1 ระบบต่อประเภท)
+model AppSystemUnit {
+  id       String     @id @default(cuid())
+  tenantId String
+  systemId String
+  system   AppSystem  @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  unitId   String
+  type     SystemType
+
+  @@unique([tenantId, unitId, type])
+  @@index([systemId])
+  @@index([tenantId, unitId])
+}

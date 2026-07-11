@@ -7,6 +7,7 @@ import { requireUnit } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
 import * as member from "@/lib/modules/member/service";
 import * as pos from "@/lib/modules/pos/service";
+import { ensureUnitSystems } from "@/lib/modules/system/service";
 
 // ตารางเวลาเริ่มต้นเมื่อเพิ่มช่าง: ทุกวัน 10:00–20:00 (ปรับภายหลังได้)
 const DEFAULT_HOURS = Array.from({ length: 7 }, (_, weekday) => ({
@@ -100,9 +101,12 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
       summary: "มาใช้บริการ",
     });
     if (spent > 0) {
+      const sys = await ensureUnitSystems(ctx.tenantId, ctx.unitId, unit.name);
       await pos.createSale({
         tenantId: ctx.tenantId,
         unitId: ctx.unitId,
+        systemId: sys.POS,
+        pointSystemId: sys.POINT,
         memberId: appt.customerId,
         sourceModule: "BOOKING",
         sourceId: appt.id,

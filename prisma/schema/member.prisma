@@ -11,7 +11,8 @@ enum MemberTier {
 model Customer {
   id               String     @id @default(cuid())
   tenantId         String
-  memberCode       String? // รหัสสมาชิก (unique ต่อ tenant) — gen ตอนสร้าง
+  memberSystemId   String // อยู่ในระบบสมาชิกไหน (scope)
+  memberCode       String? // รหัสสมาชิก (unique ต่อระบบ) — gen ตอนสร้าง
   name             String?
   phone            String?
   email            String?
@@ -28,9 +29,10 @@ model Customer {
   appointments Appointment[]
   activities   MemberActivity[]
 
-  @@unique([tenantId, phone])
-  @@unique([tenantId, memberCode])
+  @@unique([memberSystemId, phone])
+  @@unique([memberSystemId, memberCode])
   @@index([tenantId])
+  @@index([memberSystemId])
 }
 
 // timeline กิจกรรมลูกค้ารวมทุกโมดูล (contract 2.7 activity.log)

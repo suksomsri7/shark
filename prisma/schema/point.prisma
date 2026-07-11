@@ -23,6 +23,7 @@ model PointSettings {
 model PointLedger {
   id             String      @id @default(cuid())
   tenantId       String
+  systemId       String // ระบบแต้มไหน (scope)
   customerId     String
   unitId         String? // ธุรกรรมเกิดที่หน่วยไหน (รายงาน)
   delta          Int // + earn / - burn
@@ -34,16 +35,17 @@ model PointLedger {
   createdAt      DateTime    @default(now())
 
   @@unique([tenantId, idempotencyKey])
-  @@index([tenantId, customerId, createdAt])
+  @@index([systemId, customerId, createdAt])
 }
 
 // ยอดคงเหลือ (cache — อัปเดตใน tx เดียวกับ ledger)
 model PointBalance {
   id         String   @id @default(cuid())
   tenantId   String
+  systemId   String
   customerId String
   balance    Int      @default(0)
   updatedAt  DateTime @updatedAt
 
-  @@unique([tenantId, customerId])
+  @@unique([systemId, customerId])
 }

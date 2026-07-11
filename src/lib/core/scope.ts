@@ -21,6 +21,9 @@ const CORE_SCOPES: Record<string, Scope> = {
 
 // module scopes (Stage B/C) — ลงทะเบียนที่นี่จนกว่าจะมี bootstrap loader
 const MODULE_SCOPES: Record<string, Scope> = {
+  // System instances
+  AppSystem: "tenant",
+  AppSystemUnit: "tenant",
   // Member
   Customer: "tenant",
   MemberActivity: "tenant",

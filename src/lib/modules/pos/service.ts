@@ -2,6 +2,7 @@ import { prisma } from "@/lib/core/db";
 import type { Prisma, PrismaClient, PosPayType } from "@prisma/client";
 import * as point from "@/lib/modules/point/service";
 import * as member from "@/lib/modules/member/service";
+import { systemForUnit } from "@/lib/modules/system/service";
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
 type Client = PrismaClient | Prisma.TransactionClient;
@@ -23,6 +24,8 @@ const NON_EARN: PosPayType[] = ["DEPOSIT", "ROOM_CHARGE"];
 export type CreateSaleInput = {
   tenantId: string;
   unitId: string;
+  systemId: string; // ระบบ POS
+  pointSystemId?: string; // ระบบแต้ม (สำหรับสะสม) — null = ไม่สะสม
   memberId?: string;
   sourceModule?: string;
   sourceId?: string;
@@ -81,6 +84,7 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
       data: {
         tenantId: input.tenantId,
         unitId: input.unitId,
+        systemId: input.systemId,
         memberId: input.memberId,
         sourceModule: input.sourceModule ?? "POS",
         sourceId: input.sourceId,
@@ -108,10 +112,11 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
         .filter((p) => !NON_EARN.includes(p.type))
         .reduce((s, p) => s + p.amountSatang, 0);
       await member.recordSpend(input.tenantId, input.memberId, grandTotal, tx);
-      if (earnable > 0) {
+      if (earnable > 0 && input.pointSystemId) {
         const res = await point.earn(
           {
             tenantId: input.tenantId,
+            systemId: input.pointSystemId,
             customerId: input.memberId,
             unitId: input.unitId,
             amountSatang: earnable,
@@ -153,10 +158,13 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string)
     if (!sale || sale.status !== "PAID") throw new Error("บิลนี้ void ไม่ได้");
     await tx.posSale.update({ where: { id: saleId }, data: { status: "VOIDED" } });
     if (sale.memberId) {
-      await point.reverse(
-        { tenantId, refType: "PosSale", refId: saleId, idempotencyKey: `pos-void-${saleId}` },
-        tx,
-      );
+      const pointSystemId = await systemForUnit(tenantId, unitId, "POINT", tx);
+      if (pointSystemId) {
+        await point.reverse(
+          { tenantId, systemId: pointSystemId, refType: "PosSale", refId: saleId, idempotencyKey: `pos-void-${saleId}` },
+          tx,
+        );
+      }
       await member.recordSpend(tenantId, sale.memberId, -sale.grandTotalSatang, tx);
     }
   });

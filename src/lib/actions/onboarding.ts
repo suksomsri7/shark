@@ -7,6 +7,7 @@ import { prisma } from "@/lib/core/db";
 import { requireAuth, setActiveTenant } from "@/lib/core/context";
 import { slugify, uniqueTenantSlug } from "@/lib/slug";
 import { AVAILABLE_UNIT_TYPES } from "@/lib/systems";
+import { ensureUnitSystems } from "@/lib/modules/system/service";
 
 const schema = z.object({
   orgName: z.string().trim().min(2, "ชื่อร้านสั้นเกินไป").max(80),
@@ -63,9 +64,10 @@ export async function createTenantAction(
         acceptedAt: new Date(),
       },
     });
-    await tx.businessUnit.create({
+    const unit = await tx.businessUnit.create({
       data: { tenantId: t.id, type: unitType, name: unitName, slug: slugify(unitName, "main") },
     });
+    await ensureUnitSystems(t.id, unit.id, unit.name, tx);
     return t;
   });
 

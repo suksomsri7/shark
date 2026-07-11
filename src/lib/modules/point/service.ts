@@ -1,12 +1,9 @@
 import { prisma } from "@/lib/core/db";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
-// Point (แต้ม) — service ตาม contract 2.2 (Point เป็นผู้คำนวณแต้มเสมอ)
-// รับ client optional → join transaction ของผู้เรียก (POS/Booking)
-
+// Point (แต้ม) — scope ตาม systemId (ระบบแต้ม). Point คิดแต้มเอง (contract 2.2)
 type Client = PrismaClient | Prisma.TransactionClient;
 
-// รัน fn ใน transaction (ถ้า client เป็น PrismaClient) หรือใช้ tx ที่ส่งมา
 async function withTx<T>(client: Client, fn: (tx: Client) => Promise<T>): Promise<T> {
   if ("$transaction" in client && typeof client.$transaction === "function") {
     return (client as PrismaClient).$transaction((tx) => fn(tx));
@@ -20,10 +17,18 @@ async function getSettings(client: Client, tenantId: string) {
   return client.pointSettings.create({ data: { tenantId } });
 }
 
+async function balanceIn(tx: Client, systemId: string, customerId: string): Promise<number> {
+  const b = await tx.pointBalance.findUnique({
+    where: { systemId_customerId: { systemId, customerId } },
+  });
+  return b?.balance ?? 0;
+}
+
 async function applyDelta(
   tx: Client,
   input: {
     tenantId: string;
+    systemId: string;
     customerId: string;
     unitId?: string;
     delta: number;
@@ -34,29 +39,28 @@ async function applyDelta(
     idempotencyKey: string;
   },
 ): Promise<number> {
-  // idempotent: มี key นี้แล้ว → คืนยอดปัจจุบัน ไม่ทำซ้ำ
   const dup = await tx.pointLedger.findUnique({
     where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } },
   });
-  if (dup) {
-    const bal = await tx.pointBalance.findUnique({
-      where: { tenantId_customerId: { tenantId: input.tenantId, customerId: input.customerId } },
-    });
-    return bal?.balance ?? 0;
-  }
+  if (dup) return balanceIn(tx, input.systemId, input.customerId);
   await tx.pointLedger.create({ data: input });
   const updated = await tx.pointBalance.upsert({
-    where: { tenantId_customerId: { tenantId: input.tenantId, customerId: input.customerId } },
-    create: { tenantId: input.tenantId, customerId: input.customerId, balance: input.delta },
+    where: { systemId_customerId: { systemId: input.systemId, customerId: input.customerId } },
+    create: {
+      tenantId: input.tenantId,
+      systemId: input.systemId,
+      customerId: input.customerId,
+      balance: input.delta,
+    },
     update: { balance: { increment: input.delta } },
   });
   return updated.balance;
 }
 
-// ── earn: Point คิดแต้มจากยอดเงิน (สตางค์) ──
 export async function earn(
   input: {
     tenantId: string;
+    systemId: string;
     customerId: string;
     unitId?: string;
     amountSatang: number;
@@ -69,11 +73,13 @@ export async function earn(
 ): Promise<{ pointsEarned: number; balance: number }> {
   return withTx(client, async (tx) => {
     const settings = await getSettings(tx, input.tenantId);
-    if (!settings.active) return { pointsEarned: 0, balance: await balanceIn(tx, input.tenantId, input.customerId) };
+    const cur = await balanceIn(tx, input.systemId, input.customerId);
+    if (!settings.active) return { pointsEarned: 0, balance: cur };
     const points = Math.floor(input.amountSatang / settings.satangPerPoint);
-    if (points <= 0) return { pointsEarned: 0, balance: await balanceIn(tx, input.tenantId, input.customerId) };
+    if (points <= 0) return { pointsEarned: 0, balance: cur };
     const balance = await applyDelta(tx, {
       tenantId: input.tenantId,
+      systemId: input.systemId,
       customerId: input.customerId,
       unitId: input.unitId,
       delta: points,
@@ -87,10 +93,10 @@ export async function earn(
   });
 }
 
-// ── burn: ใช้แต้ม (ต้องพอ) ──
 export async function burn(
   input: {
     tenantId: string;
+    systemId: string;
     customerId: string;
     points: number;
     refType: string;
@@ -101,13 +107,14 @@ export async function burn(
 ): Promise<{ balance: number }> {
   if (input.points <= 0) throw new Error("points ต้อง > 0");
   return withTx(client, async (tx) => {
-    const current = await balanceIn(tx, input.tenantId, input.customerId);
+    const current = await balanceIn(tx, input.systemId, input.customerId);
     const dup = await tx.pointLedger.findUnique({
       where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } },
     });
     if (!dup && current < input.points) throw new Error("แต้มไม่พอ");
     const balance = await applyDelta(tx, {
       tenantId: input.tenantId,
+      systemId: input.systemId,
       customerId: input.customerId,
       delta: -input.points,
       type: "BURN",
@@ -119,14 +126,19 @@ export async function burn(
   });
 }
 
-// ── reverse: กลับรายการของ ref (void/refund) ──
 export async function reverse(
-  input: { tenantId: string; refType: string; refId: string; idempotencyKey: string },
+  input: { tenantId: string; systemId: string; refType: string; refId: string; idempotencyKey: string },
   client: Client = prisma,
 ): Promise<void> {
   await withTx(client, async (tx) => {
     const entries = await tx.pointLedger.findMany({
-      where: { tenantId: input.tenantId, refType: input.refType, refId: input.refId, type: { in: ["EARN", "BURN"] } },
+      where: {
+        tenantId: input.tenantId,
+        systemId: input.systemId,
+        refType: input.refType,
+        refId: input.refId,
+        type: { in: ["EARN", "BURN"] },
+      },
     });
     if (entries.length === 0) return;
     const byCustomer = new Map<string, number>();
@@ -136,6 +148,7 @@ export async function reverse(
       if (delta === 0) continue;
       await applyDelta(tx, {
         tenantId: input.tenantId,
+        systemId: input.systemId,
         customerId,
         delta,
         type: "REVERSE",
@@ -148,21 +161,30 @@ export async function reverse(
   });
 }
 
-async function balanceIn(tx: Client, tenantId: string, customerId: string): Promise<number> {
-  const b = await tx.pointBalance.findUnique({
-    where: { tenantId_customerId: { tenantId, customerId } },
-  });
-  return b?.balance ?? 0;
+export async function getBalance(systemId: string, customerId: string): Promise<number> {
+  return balanceIn(prisma, systemId, customerId);
 }
 
-export async function getBalance(tenantId: string, customerId: string): Promise<number> {
-  return balanceIn(prisma, tenantId, customerId);
-}
-
-export async function getLedger(tenantId: string, customerId: string) {
-  return prisma.pointLedger.findMany({
-    where: { tenantId, customerId },
-    orderBy: { createdAt: "desc" },
-    take: 50,
+// รวมแต้มของลูกค้า จากระบบแต้มที่ผูกกับ unit เดียวกับระบบสมาชิกของลูกค้า
+export async function getCustomerPoints(
+  tenantId: string,
+  memberSystemId: string,
+  customerId: string,
+): Promise<number> {
+  const memberUnits = await prisma.appSystemUnit.findMany({
+    where: { tenantId, systemId: memberSystemId },
+    select: { unitId: true },
   });
+  if (memberUnits.length === 0) return 0;
+  const pointLinks = await prisma.appSystemUnit.findMany({
+    where: { tenantId, type: "POINT", unitId: { in: memberUnits.map((u) => u.unitId) } },
+    select: { systemId: true },
+  });
+  const pointSystemIds = [...new Set(pointLinks.map((p) => p.systemId))];
+  if (pointSystemIds.length === 0) return 0;
+  const balances = await prisma.pointBalance.findMany({
+    where: { systemId: { in: pointSystemIds }, customerId },
+    select: { balance: true },
+  });
+  return balances.reduce((s, b) => s + b.balance, 0);
 }
