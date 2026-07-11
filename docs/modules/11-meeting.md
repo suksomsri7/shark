@@ -1,9 +1,9 @@
-# โมดูล 11 — Meeting (แชท + ประสานงานภายในองค์กร)
+# ระบบ 11 — Meeting (แชทภายในองค์กร — ออกแบบให้เหมือน Slack)
 
-> 🔄 REVISED หลัง QC — สอดคล้อง RESOLUTIONS.md (2026-07-11)
-> scope: **tenant** (เครื่องมือองค์กร — ห้อง/บอร์ดอาจ link `unitId?` optional ตาม BLUEPRINT_BUSINESS_UNITS §2)
-> ยึด: `../BLUEPRINT.md` · `../BLUEPRINT_BUSINESS_UNITS.md` · `_CONVENTIONS.md`
-> คู่แฝดคนละตัว: โมดูล 10 Chat = แชทกับ**ลูกค้า** — คนละ inbox คนละ data model **ห้ามปนกันเด็ดขาด** (ตารางเทียบ §1.3)
+> 🔄 REWRITE ตามความต้องการเจ้าของ 2026-07-11: **"ออกแบบให้เหมือน Slack ใช้ภายในองค์กร"** — override สเปคฉบับก่อนหน้า (ฉบับ tenant-scoped + นัดประชุม/RSVP) ทั้งไฟล์
+> ยึด: `../BLUEPRINT_SYSTEMS.md` (FINAL — "ทุกอย่างคือระบบ") · `_CONVENTIONS.md` · ทะเบียน `src/lib/systems.ts` (`MEETING`, kind: feature)
+> scope: **system** — Meeting 1 ชุด = `AppSystem` 1 แถว (**MeetingWorkspace = AppSystem**) — ทุกตารางมี `systemId` (_CONVENTIONS §1 ที่เขียนว่า tenant ถูก override โดย BLUEPRINT_SYSTEMS §5)
+> คู่แฝดคนละตัว: ระบบ 10 Chat = แชทกับ**ลูกค้า** — คนละ inbox คนละ data model **ห้ามปนกันเด็ดขาด** (ตารางเทียบ §1.4)
 
 ---
 
@@ -11,40 +11,49 @@
 
 ### 1.1 ทำอะไร (v1)
 
-Meeting คือ **พื้นที่สื่อสารภายในทีมงานของ 1 องค์กร (tenant)** — คล้าย Slack ฉบับ SME ไทย ใช้ identity `User`/`Membership` เดิมของแพลตฟอร์ม ไม่ต้องสมัครอะไรเพิ่ม:
+Meeting คือ **Slack ฉบับ SME ไทย ภายในองค์กร** — workspace สื่อสารของทีมงาน ใช้ identity `User`/`Membership` เดิมของแพลตฟอร์ม ไม่ต้องสมัครอะไรเพิ่ม:
 
-- **ห้องแชท (channel)** ต่อทีม/หน่วยธุรกิจ/หัวข้อ เช่น `#โรงแรม-a-front`, `#จัดซื้อ`, `#ทั่วไป`
-- **DM 1:1** และ **group DM** ระหว่างพนักงาน
-- **ประกาศ (announcement channel)** — staff อ่านอย่างเดียว, OWNER/MANAGER โพสต์
-- mention `@user` / `@all`, แชร์ไฟล์/รูป, pin ข้อความ, ค้นหาข้อความ
-- **link preview การ์ด Kanban**: วางลิงก์การ์ด → แสดงชื่องาน/คอลัมน์/ผู้รับผิดชอบในแชท
-- **นัดประชุมแบบเบา**: โพสต์นัด (หัวข้อ+เวลา+สถานที่) ในห้อง + สมาชิกกด RSVP — **ไม่มี video call ใน v1** (🔜 ชัดเจน §1.2)
-- Realtime SSE, unread badge, เก็บประวัติ**ถาวร** (ไม่มี retention purge — ต่างจาก Chat)
+- **Workspace** = ระบบ Meeting 1 ชุด (`AppSystem` type `MEETING`) — องค์กรส่วนใหญ่สร้าง 1 ชุดใช้ร่วมกันทั้งบริษัท แต่**สร้างหลายชุดได้** (เช่นแยก workspace ทีมครัวกับทีมออฟฟิศ) ตามหลัก "ทุกอย่างคือระบบ"
+- **Channel แบบ Slack**: `#public` (ทุกคน browse + join เองได้), `🔒 private` (invite เท่านั้น มองไม่เห็นจากคนนอก), **DM 1:1**, **Group DM** (3–9 คน) — เปิด workspace ปุ๊บมี **`#general` อัตโนมัติ** ที่ทุกคน join และออกไม่ได้
+- **Threads** — ตอบเป็นเธรดใต้ข้อความ (หัวใจของ Slack): เธรดไม่รกหน้าห้อง, มีจอ "เธรดของฉัน", ติดตาม/เลิกติดตามเธรดได้
+- Mention `@user` / `@channel` / `@here`, **emoji reactions**, **pin** ต่อ channel, **saved items** (bookmark ส่วนตัว), แก้ไข (ป้าย "แก้ไขแล้ว") / ลบข้อความ (tombstone), **markdown พื้นฐาน + code block**, **link preview** (ลิงก์ภายในระบบอื่น + OG ภายนอก)
+- **ค้นหา** ข้อความ / ไฟล์ / คน (Postgres FTS + `pg_trgm` สำหรับไทย) เฉพาะ channel ที่ตนเป็นสมาชิก + quick switcher (Cmd/Ctrl+K)
+- ไฟล์แนบผ่าน upload service กลาง + **แกลเลอรีไฟล์ต่อ channel**, typing indicator, **presence** (online/away/offline), unread badge ต่อ channel + เส้นคั่น **"จุดที่อ่านล่าสุด"**
+- **Integration ขาเข้า — จุด "ทุกระบบเชื่อมถึงกัน"**: ระบบ business/feature อื่นในองค์กร post แจ้งเตือนเข้า channel ที่เลือก เช่น "🔔 มีจองใหม่ คุณสมชาย พรุ่งนี้ 14:00" จากระบบจองคิว, "🧾 ปิดบิล 1,250.-" จาก POS (§3.12, §8.2)
+- Realtime **SSE** ทั้งหมด (ข้อความ/typing/presence/badge), ประวัติเก็บ**ถาวร** (ไม่มี retention purge — ต่างจาก Chat)
 
-### 1.2 ไม่ทำอะไร (v1)
+### 1.2 ไม่ทำอะไร (v1) — ประกาศชัดกันหลง
 
 | เรื่อง | สถานะ | หมายเหตุ |
 |---|---|---|
-| **Video / voice call** | 🔜 ระบุชัด: v1 ไม่มีโดยเจตนา — นัดประชุม = โพสต์นัด+RSVP แล้วไปคุยกันเอง (ห้องจริง/โทร/Meet) ฟิลด์ `location` ใส่ลิงก์ Meet ภายนอกได้ | เผื่อโครง: `MeetingEvent.meta Json` รองรับ call provider ภายหลัง |
-| Web push notification | 🔜 | v1 มี in-app (SSE + badge) + EMAIL ผ่าน contract 2.5; schema ไม่ต้องแก้ตอนเพิ่ม push |
-| ปฏิทินรวม / sync Google Calendar | 🔜 | v1 มีแค่ list นัดในห้อง + "นัดของฉัน" |
-| Thread ย่อย (reply thread แบบ Slack) | 🔜 | v1 มี reply-quote ธรรมดา (`replyToId`) |
-| Reaction emoji | 🔜 | |
-| Guest ภายนอก / ลูกค้าเข้าห้อง | ❌ ตลอดไป | ลูกค้า = โมดูล 10 เท่านั้น |
-| ส่งข้อความหาลูกค้า | ❌ | ห้ามมี bridge ใด ๆ ไปโมดูล 10 |
+| **Huddle / voice / video call ในตัว** | 🔜 **ระบุชัด: v1 ไม่มีโดยเจตนา** — ใช้วิธีแปะลิงก์ Google Meet/Zoom ในห้อง ระบบ render เป็น "การ์ดสาย 📞 + ปุ่มเข้าร่วม" ให้ (§3.13) | โครงรองรับ: `MeetingMessage.embeds` kind `CALL_LINK` — เพิ่ม huddle ภายหลังไม่แก้ schema |
+| Workflow builder (form/อนุมัติ/automation ในแชท) | 🔜 | ต่อยอดจากโครง `MeetingIntegration` |
+| App directory / bot ภายนอก / slash command | 🔜 | v1 มีเฉพาะ integration ขาเข้าจากระบบใน SHARK ด้วยกัน |
+| Web push notification | 🔜 | v1 มี in-app (SSE + badge) + EMAIL digest ผ่าน contract 2.5 |
+| นัดประชุม + RSVP (ของสเปคเดิม) | 🔜 | ตัดออกจาก v1 — โฟกัส Slack core ก่อน; ระหว่างนี้โพสต์นัดเป็นข้อความ + แปะลิงก์ Meet |
+| Export transcript / compliance tools | 🔜 | |
+| Guest ภายนอก / ลูกค้าเข้า workspace | ❌ ตลอดไป | ลูกค้า = ระบบ 10 Chat เท่านั้น |
+| ส่งข้อความหาลูกค้า / bridge ไประบบ 10 | ❌ | ห้ามทุกชั้น |
 
-### 1.3 ความต่างจาก Chat (โมดูล 10) — ห้ามปน
+### 1.3 Scope แบบ "ระบบ" (BLUEPRINT_SYSTEMS)
+
+- Meeting เป็น **feature system** → เก็บเป็น `AppSystem` (type `MEETING`) — **workspace ก็คือแถว AppSystem นั้นเอง** ไม่มีตาราง workspace แยก (ชื่อ workspace = `AppSystem.name`, ตั้งค่า = `AppSystem.settings.meeting.*`)
+- **ทุกตารางของระบบนี้มี `tenantId + systemId`** — unique = `@@unique([systemId, ...])` · องค์กรที่มี 2 workspace = ข้อมูลแยกขาดกันโดย `systemId`
+- **สมาชิก workspace = ทีมงาน** (`User` ที่มี `Membership` ของ tenant) — **ไม่ใช่ลูกค้า/Member** เด็ดขาด
+- การเชื่อมกับระบบอื่น (integration ขาเข้า §3.12) เป็น **opt-in ผ่านตาราง link ของระบบนี้เอง** (`MeetingIntegration`) ตาม BLUEPRINT_SYSTEMS §3 — ไม่เชื่อม = Meeting ทำงาน standalone ครบทุกฟีเจอร์
+
+### 1.4 ความต่างจาก Chat (ระบบ 10) — ห้ามปน
 
 | | **11 Meeting** | **10 Chat** |
 |---|---|---|
 | คู่สนทนา | staff ↔ staff (User ใน tenant) | ลูกค้า ↔ ทีมร้าน |
-| หน่วยข้อมูล | `MeetingRoom` ถาวร ไม่มีสถานะงาน/SLA | `ChatConversation` มี OPEN/PENDING/RESOLVED + SLA |
-| สมาชิก | หลายคนต่อห้อง, invite/auto ตาม unitAccess | ลูกค้า 1 คนต่อเธรดเสมอ |
+| หน่วยข้อมูล | `MeetingChannel` ถาวร ไม่มีสถานะงาน/SLA | `ChatConversation` มี OPEN/PENDING/RESOLVED + SLA |
+| scope | system (`systemId` ของ AppSystem MEETING) | system (AppSystem CHAT) |
 | ตาราง | prefix `Meeting*` | prefix `Chat*` |
 | Retention | **ถาวร** | purge ตาม setting |
-| UI / SSE | `/app/meeting` · `/api/meeting/stream` | `/app/chat` · `/api/chat/stream` |
+| UI / SSE | `/app/sys/[systemId]` · `/api/meeting/[systemId]/stream` | `/app/sys/[systemId]` (ของ CHAT) · `/api/chat/.../stream` |
 
-จุดเชื่อมเดียวที่อนุญาต: วาง**ลิงก์** conversation ลูกค้า (`/app/chat/...`) ใน Meeting เป็น link preview (ตัวหนังสือ+ลิงก์) — ไม่ embed เนื้อหาข้อความลูกค้า, คนกดต้องมีสิทธิ์ Chat เองถึงจะเปิดอ่านได้
+จุดเชื่อมเดียวที่อนุญาต: วาง**ลิงก์** conversation ลูกค้าใน Meeting → preview แบบ title-only ("💬 แชทลูกค้า #a1b2") ไม่ leak เนื้อหา — คนกดต้องมีสิทธิ์ระบบ Chat เองถึงเปิดอ่านได้
 
 ---
 
@@ -52,101 +61,157 @@ Meeting คือ **พื้นที่สื่อสารภายในท
 
 | Persona | เกี่ยวข้องอย่างไร |
 |---|---|
-| **Owner** | สร้าง/จัดการทุกห้อง, โพสต์ประกาศ, เห็นทุกห้อง PUBLIC, ตั้งค่าโมดูล |
-| **Manager** | สร้างห้องทีมตน, โพสต์ประกาศ, ดูแลห้องที่ตนเป็น room admin |
-| **Staff** | เข้าห้องที่ถูกเชิญ/ห้อง PUBLIC/ห้องหน่วยตน, DM เพื่อนร่วมงาน, อ่านประกาศ, RSVP นัด |
+| **Owner** | สร้าง workspace, เป็น workspace OWNER, ตั้งค่า/integration, เห็นทุก channel PUBLIC |
+| **Manager** | มักได้ workspace ADMIN, สร้าง channel ทีมตน, ดูแล channel ที่ตนเป็น channel admin, ต่อ integration |
+| **Staff** | สมาชิก workspace: คุยใน channel, เปิดเธรด, DM, react, ค้นหา, save ข้อความ |
 | **Customer** | ❌ ไม่เกี่ยวข้องเด็ดขาด |
 
 User stories หลัก:
 
-1. **Owner:** "ฉันโพสต์ประกาศ 'ปรับเวลาเปิดร้านช่วงสงกรานต์' ลงห้องประกาศ — staff ทุกคนเห็น badge, อ่านได้แต่ตอบไม่ได้ และฉันเห็นว่ามีใครอ่านแล้วกี่คน"
-2. **Manager โรงแรม A:** "ฉันสร้างห้อง `#โรงแรม-a-แม่บ้าน` ผูกกับหน่วยโรงแรม A — พนักงานที่มี unitAccess โรงแรม A เข้าเองได้เลยไม่ต้องเชิญทีละคน"
-3. **Staff:** "หัวหน้า @เมย์ ในห้องจัดซื้อ ฉันได้ badge mention เด้งทันที กดเข้าไปเห็นข้อความ พร้อมไฟล์ใบเสนอราคาแนบ"
-4. **Staff:** "ฉัน DM หาช่างอีกคนถามคิวพรุ่งนี้ แล้วแปะลิงก์การ์ด Kanban 'ซ่อมแอร์ห้อง 204' — ลิงก์แสดงเป็นการ์ดชื่องาน+สถานะ ไม่ต้องเปิดหน้าใหม่"
-5. **Manager:** "ฉันโพสต์นัดประชุมทีม ศุกร์ 14:00 ที่ห้องหลังครัว ในห้องทีม — ทุกคนกดมา/ไม่มา ได้ เห็นยอดรวมใต้การ์ดนัด และคนที่ยังไม่ตอบ"
-6. **Staff:** "ฉันค้นคำว่า 'รหัสตู้เซฟ' เจอข้อความปีที่แล้วในห้องที่ฉันเป็นสมาชิก — ห้องที่ฉันไม่ได้อยู่ค้นไม่เจอ"
-7. **Staff (มือถือ):** "ระหว่างยืนหน้างานฉันเปิดจากมือถือ ห้อง list เป็น drawer พิมพ์ตอบได้ลื่นเหมือน LINE"
+1. **Owner:** "ฉันเปิดระบบ Meeting ปุ๊บ ทีมทุกคนอยู่ใน `#general` ทันที ฉันโพสต์ 'ปรับเวลาเปิดร้านช่วงสงกรานต์' แล้วปักหมุดไว้ — ใครเข้ามาใหม่ก็เห็นใน pins"
+2. **Manager:** "ฉันสร้าง `#แม่บ้าน-โรงแรม-a` เป็น public channel — น้องใหม่กด browse channels แล้ว join เองได้ ไม่ต้องเชิญทีละคน ส่วน `#เงินเดือน` ฉันตั้งเป็น 🔒 private เฉพาะฝ่ายบุคคล"
+3. **Staff:** "ใน `#จัดซื้อ` มีคนถามราคา ฉัน**ตอบในเธรด**ใต้ข้อความนั้น — คุยกัน 20 ข้อความก็ไม่รกหน้าห้อง คนที่เกี่ยวติดตามเธรดได้ badge เอง"
+4. **Staff:** "หัวหน้า `@เมย์` ฉันในเธรด ฉันได้ badge เด้ง กดจากจอ 'เธรดของฉัน' ไปตอบต่อได้เลย เสร็จแล้วฉันกด 👍 react แทนการพิมพ์ 'รับทราบ'"
+5. **Manager:** "ฉันต่อ integration: ระบบจองคิวสาขา A → post เข้า `#จอง-สาขา-a` ทุกครั้งที่มีจองใหม่/ยกเลิก — ทีมเห็นพร้อมกันไม่ต้องเปิดจอจอง"
+6. **Staff:** "ฉันค้น 'รหัสตู้เซฟ' เจอข้อความปีที่แล้วใน channel ที่ฉันอยู่ — ห้อง private ที่ฉันไม่ได้อยู่ ค้นไม่เจอ · ฉันค้นชื่อไฟล์ 'ใบเสนอราคา' เจอในแท็บไฟล์"
+7. **Staff:** "ฉันวางลิงก์การ์ด Kanban 'ซ่อมแอร์ 204' — ขึ้นเป็นการ์ดชื่องาน/คอลัมน์/ผู้รับผิดชอบในแชทเลย"
+8. **Staff (มือถือ):** "เปิดจากมือถือ: จอแรกเป็นรายการ channel ตัวหนา = ยังไม่อ่าน แตะเข้าห้อง แตะข้อความเปิดเธรดเต็มจอ พิมพ์ลื่นเหมือน LINE"
+9. **Owner:** "จะประชุมด่วน ฉันแปะลิงก์ Google Meet ใน `#general` — ขึ้นเป็นการ์ด 📞 ปุ่ม 'เข้าร่วม' ทุกคนกดเข้าได้เลย (v1 ยังไม่มี huddle ในตัว)"
 
 ---
 
 ## 3. ฟังก์ชันทั้งหมด (MVP ✅ / Phase ถัดไป 🔜)
 
-### 3.1 ห้อง (Rooms)
-- ✅ ประเภทห้อง 4 แบบ: `CHANNEL` (ห้องหัวข้อ/ทีม) · `DM` (1:1) · `GROUP_DM` (3–20 คน) · `ANNOUNCEMENT` (ประกาศ)
-- ✅ CHANNEL: ชื่อ + คำอธิบาย + visibility `PUBLIC` (staff ทุกคนในสิทธิ์เห็น+เข้าร่วมเองได้) / `PRIVATE` (invite เท่านั้น มองไม่เห็นจากภายนอก)
-- ✅ ผูกหน่วย (`unitId?` optional): ห้องที่ผูกหน่วย + เปิด `autoJoinByUnit` → staff ที่มี unitAccess หน่วยนั้นเป็นสมาชิกอัตโนมัติ (sync เมื่อ unitAccess เปลี่ยน §7.6)
-- ✅ ห้อง default ตอนเปิดโมดูล: `#ทั่วไป` (PUBLIC, auto-join ทุกคน) + `#ประกาศ` (ANNOUNCEMENT, auto-join ทุกคน)
-- ✅ DM: หา-หรือ-สร้างจากคู่ userId (`dmKey` กันซ้ำ) — DM ปิด/ลบไม่ได้ แค่ mute/ซ่อนจาก list
-- ✅ จัดการห้อง: เปลี่ยนชื่อ/คำอธิบาย, archive (read-only ทั้งห้อง, ค้นหายังเจอ), room admin เพิ่ม/ถอดสมาชิก
-- ✅ ANNOUNCEMENT: โพสต์ได้เฉพาะ OWNER/MANAGER (หรือผู้ได้ `meeting.announce`), สมาชิกอื่น read-only, แสดงจำนวนผู้อ่านต่อโพสต์ (นับจาก read state)
-- 🔜 หมวดหมู่/จัดกลุ่มห้องใน sidebar, ห้องข้าม tenant (ไม่มีแผน)
+### 3.1 Workspace (= AppSystem)
+- ✅ สร้างจาก `/app/settings/systems` เหมือนระบบอื่น (ตั้งชื่อ เช่น "ทีมสยามดำน้ำ") — สร้างได้หลายชุด
+- ✅ ตอนสร้าง: auto-สร้าง `#general` (isDefault) + เพิ่ม staff ทุกคนที่มี Membership เป็น `MeetingWorkspaceMember` (ผู้สร้าง = workspace OWNER, ที่เหลือ MEMBER)
+- ✅ setting `autoAddNewStaff` (default `true`): staff ใหม่ของ tenant → เข้า workspace + `#general` อัตโนมัติ — ปิดได้สำหรับ workspace เฉพาะทีม (แล้วเชิญมือ)
+- ✅ จัดการสมาชิก workspace: เชิญ/ถอด/เปลี่ยน role (OWNER/ADMIN/MEMBER) — ถอดจาก workspace = leftAt ทุก channel ในนั้น
+- ✅ settings: ชื่อ, `editWindowMinutes` (0 = แก้ข้อความได้ตลอด — default), `fileQuotaMb` (ตามแผน tenant), integration list
+- 🔜 custom emoji ต่อ workspace, workspace icon
 
-### 3.2 ข้อความ
-- ✅ ตัวอักษร ≤ 8,000 ตัวอักษร, ขึ้นบรรทัด, ลิงก์ auto-detect
-- ✅ Mention: `@ชื่อ` (autocomplete จากสมาชิกห้อง) + `@all` (เฉพาะ room admin/OWNER/MANAGER ในห้องใหญ่ >20 คน — กัน spam) → ผู้ถูก mention ได้ badge + notification
-- ✅ แชร์รูป (≤10MB) / ไฟล์ (≤25MB) หลายไฟล์ต่อข้อความ (สูงสุด 5), presigned upload เหมือน Chat แต่ bucket/prefix แยก (`meeting/`)
-- ✅ Reply-quote: อ้างข้อความเดิม (`replyToId`) แสดงกล่อง quote ย่อ กดแล้วเลื่อนไปต้นทาง
-- ✅ แก้ไขข้อความตัวเอง (ภายใน 24 ชม., ติดป้าย "แก้ไขแล้ว" + เก็บ `editedAt`) และลบข้อความตัวเอง (soft delete → tombstone "ข้อความถูกลบ"; room admin ลบของคนอื่นได้)
-- ✅ Pin: room admin/ผู้โพสต์ pin ข้อความสำคัญ (สูงสุด 50/ห้อง), แผง "ข้อความที่ปักหมุด" ต่อห้อง
-- ✅ System message: เข้าห้อง/ออก/เปลี่ยนชื่อห้อง/pin (แบบเส้นกลางจอ)
-- ✅ Typing indicator + read state ต่อสมาชิก (แสดง "อ่านแล้ว n คน" — รายชื่อคนอ่านดูได้ในห้อง ≤ 20 คน)
-- 🔜 reaction, thread ย่อย, forward ข้อความข้ามห้อง, voice note
+### 3.2 Channels แบบ Slack
+- ✅ 4 ประเภท: `PUBLIC` (# — staff ใน workspace browse + join เองได้) · `PRIVATE` (🔒 — invite เท่านั้น คนนอกมองไม่เห็นแม้รู้ชื่อ) · `DM` (1:1) · `GROUP_DM` (3–9 คน)
+- ✅ channel มี **name + topic + description** (topic = บรรทัดสั้นบน header แบบ Slack, แก้ได้โดยสมาชิก; description = อธิบายยาว) — ชื่อไทย/อังกฤษได้ ห้ามซ้ำใน workspace
+- ✅ `#general` default: auto-join สมาชิก workspace ทุกคน, **leave/archive ไม่ได้**, เปลี่ยนชื่อได้
+- ✅ `postingPolicy` ต่อ channel: `EVERYONE` (default) / `ADMINS_ONLY` — ทำ "ห้องประกาศ" แบบ Slack (ไม่มี type แยก)
+- ✅ ผูกหน่วยธุรกิจ (`unitId?` optional) + `autoJoinByUnit`: staff ที่มี unitAccess หน่วยนั้น join อัตโนมัติ (sync เมื่อ unitAccess เปลี่ยน §7.7)
+- ✅ Browse channels: directory ของ PUBLIC channel ทั้งหมด (ชื่อ+topic+จำนวนสมาชิก+ปุ่ม join)
+- ✅ DM: find-or-create จากคู่ userId (`dmKey` กันซ้ำ) — ปิด/ลบไม่ได้ แค่ซ่อนจาก sidebar · Group DM: สร้างใหม่ต่อชุดคน, แปลงเป็น private channel ได้ 🔜
+- ✅ จัดการ: เปลี่ยนชื่อ/topic/description, เปลี่ยน PUBLIC↔PRIVATE (PRIVATE→PUBLIC ต้อง channel admin + เตือนชัด), archive (read-only, ยังค้นเจอ, unarchive ได้), เชิญ/ถอดสมาชิก
+- ✅ **ลบ channel = archive เท่านั้นใน v1** (ประวัติถาวร) — hard delete 🔜 พร้อมเครื่องมือ compliance (§11.3)
+- 🔜 section จัดกลุ่ม channel ใน sidebar เอง, channel ข้าม workspace (ไม่มีแผน)
 
-### 3.3 Link preview (unfurl)
-- ✅ **การ์ด Kanban** (โมดูล 13): วางลิงก์ `/app/kanban/boards/[boardId]/cards/[cardId]` → embed การ์ด: ชื่องาน, บอร์ด/คอลัมน์, ผู้รับผิดชอบ, due date, ป้ายสี — snapshot ตอนโพสต์ + ปุ่ม refresh (กดดึงสถานะล่าสุด); ผู้กดลิงก์ต้องมีสิทธิ์ Kanban เองถึงเปิดหน้าเต็มได้ (§8.2)
-- ✅ ลิงก์ภายในอื่น (`/app/chat/...`, `/app/members/...`): preview แบบ title-only ("💬 แชทลูกค้า #a1b2" / "👤 สมาชิก: สมชาย") — ไม่ leak เนื้อหา
-- 🔜 unfurl ลิงก์ภายนอก (OG tags) — ระวัง SSRF, ทำหลัง proxy fetch พร้อม allowlist
+### 3.3 ข้อความ + Markdown + แก้/ลบ
+- ✅ ตัวอักษร ≤ 8,000, **markdown พื้นฐาน**: `*หนา*` `_เอียง_` `~ขีดฆ่า~` `` `inline code` `` — ` ```code block``` ` (monospace + ปุ่ม copy), `> quote`, bullet/numbered list, ลิงก์ auto-detect
+- ✅ แก้ไขข้อความตัวเอง (ตาม `editWindowMinutes`, default ไม่จำกัด) → ป้าย "แก้ไขแล้ว" + `editedAt`; re-parse mentions/embeds (§11.5)
+- ✅ ลบข้อความตัวเอง = soft delete → tombstone "ข้อความถูกลบ" (ไฟล์แนบลบจาก storage จริง); channel admin ลบของคนอื่นได้ (ลง AuditLog)
+- ✅ System message (เข้า/ออก/เปลี่ยนชื่อ channel/pin) แบบเส้นกลางจอ · Integration message (การ์ดจากระบบอื่น §3.12)
+- ✅ idempotency ด้วย `clientMessageId` (retry/สองแท็บไม่เบิ้ล)
+- 🔜 forward ข้อความข้าม channel, voice note, scheduled send
 
-### 3.4 นัดประชุม (Event + RSVP) — v1 แบบเบา
-- ✅ โพสต์นัดในห้อง: หัวข้อ, วัน-เวลาเริ่ม(-จบ), สถานที่/ลิงก์ภายนอก, รายละเอียด → เป็นข้อความชนิดพิเศษ (การ์ดนัด) ในเธรด
-- ✅ RSVP: มา / ไม่มา / ไม่แน่ใจ — เปลี่ยนใจได้จนถึงเวลานัด, การ์ดแสดงยอด + avatar, ผู้สร้างเห็นรายชื่อ "ยังไม่ตอบ"
-- ✅ แก้/ยกเลิกนัด (ผู้สร้าง หรือ room admin) → system message + notification ถึงคน RSVP "มา"
-- ✅ เตือนก่อนนัด 30 นาที ผ่าน contract 2.5 (WEB + EMAIL) ถึงคน RSVP "มา" + ผู้สร้าง
-- ✅ มุมมอง "นัดของฉัน": list นัดที่กำลังมาถึงจากทุกห้องของฉัน
-- 🔜 นัดซ้ำประจำ (recurring), เชิญข้ามห้อง, sync ปฏิทินภายนอก, video call ในตัว (**ยืนยัน: ไม่มีใน v1**)
+### 3.4 Threads (หัวใจ Slack)
+- ✅ ทุกข้อความใน channel เปิดเธรดได้: reply ผูก `threadRootId` → **ไม่แสดงใน main pane** (root แสดงแถบ "💬 n ตอบกลับ · ล่าสุด 5 นาทีก่อน" + avatar ผู้ตอบ)
+- ✅ **Thread pane ขวา** (desktop) / เต็มจอ (mobile): root + replies เรียงเวลา, composer ของเธรดเอง
+- ✅ checkbox **"ส่งเข้าห้องด้วย"** (also send to channel) — reply โผล่ทั้งเธรดและ main pane แบบ Slack
+- ✅ **ติดตามเธรดอัตโนมัติ** เมื่อ: เป็นคนโพสต์ root / ตอบในเธรด / ถูก mention ในเธรด — เลิกติดตามได้; เธรดที่ติดตามมีข้อความใหม่ → badge
+- ✅ จอ **"เธรดของฉัน"** รวมเธรดที่ติดตามทุก channel เรียง activity ล่าสุด + unread ต่อเธรด
+- ✅ กติกา: เธรดซ้อนเธรดไม่ได้ (reply ของ reply ผูก root เดิม), root ถูกลบ → tombstone แต่เธรดยังเปิดอ่าน/ตอบได้ (§11.1)
+- 🔜 สรุปเธรดด้วย AI
 
-### 3.5 ค้นหา
-- ✅ Full-text search ข้อความ (Postgres `tsvector` + `pg_trgm` สำหรับไทย/อังกฤษ — ไทยไม่ตัดคำใน v1 ใช้ trigram match, 🔜 ตัวตัดคำไทย) **เฉพาะห้องที่ user เป็นสมาชิก**
-- ✅ ตัวกรอง: ห้อง, ผู้ส่ง, มีไฟล์แนบ, ช่วงวันที่ · ผลลัพธ์กดแล้ว jump ไปข้อความในบริบทห้อง
-- ✅ ค้นชื่อห้อง/ชื่อคน ใน quick switcher (Cmd/Ctrl+K)
-- 🔜 ค้นในไฟล์แนบ (OCR/parse)
+### 3.5 Mentions
+- ✅ `@user` — autocomplete จากสมาชิก channel; ผู้ถูก mention ได้ badge + notification (+ auto-follow ถ้าอยู่ในเธรด)
+- ✅ `@channel` — แจ้งสมาชิก channel ทุกคน; channel > 20 คน จำกัดเฉพาะ channel admin/workspace ADMIN (กัน spam, ฝ่าฝืน → 403 + ข้อความอธิบาย)
+- ✅ `@here` — แจ้งเฉพาะสมาชิกที่ **online อยู่ขณะนั้น** (presence §3.10); จำกัดเหมือน `@channel`
+- ✅ แตกเป็นแถว `MeetingMention` รายคน ณ เวลาโพสต์ (badge query ถูก ไม่ scan Json) — คน join ทีหลังไม่ได้ mention ย้อนหลัง; mention คนนอก channel = render ตัวหนังสือเฉย ๆ ไม่แจ้งเตือน ไม่เชิญ
+- 🔜 user group (`@ทีมครัว`)
 
-### 3.6 Realtime + Notification + Badge
-- ✅ SSE `/api/meeting/stream` ต่อ user: event `message.new`, `message.updated`(แก้/ลบ/pin), `room.updated`, `member.updated`, `typing`, `read`, `event.updated`(นัด), `badge` · **topic ตาม scheme กลาง (D14 / _CONVENTIONS §2.8): `t:{tenantId}:meeting:{topic}`** (Meeting เป็น tenant-scoped)
-- ✅ Unread ต่อห้อง (นับจาก `lastReadMessageId`) + badge mention แยก (เลขบนชื่อห้อง = mention, จุด = unread ธรรมดา)
-- ✅ Badge รวมบน sidebar dashboard (เมนู "📢 Meeting"): จำนวนห้องที่มี mention/unread — ผ่าน SSE + poll fallback 60 วิ
-- ✅ ระดับแจ้งเตือนต่อห้องต่อคน: `ALL` / `MENTIONS` (default ห้อง >20 คน) / `MUTED`
-- ✅ Notification contract 2.5: ถูก mention หรือ DM ใหม่ + offline > 10 นาที → `EMAIL` สรุป (throttle รวม 1 ฉบับ/15 นาที/user); ประกาศใหม่ → `WEB` ทุกสมาชิก
+### 3.6 Emoji Reactions
+- ✅ react ด้วย emoji มาตรฐาน (picker + แถบ quick react 6 ตัวยอดนิยม) — หลาย emoji ต่อข้อความ, กดซ้ำ = ถอน (toggle idempotent)
+- ✅ แสดงเป็นชิปใต้ข้อความ `👍 3` — hover/แตะเห็นรายชื่อคนกด; react ได้ทั้งใน main pane และเธรด
+- ✅ คนโพสต์ root ได้แจ้งเตือนแบบเบา (in-app เท่านั้น ไม่มี email)
+- 🔜 custom emoji
+
+### 3.7 Pins + Saved items
+- ✅ **Pin** (ระดับ channel): สมาชิกใด pin ได้ ใน channel ≤ 20 คน, ห้องใหญ่ = channel admin — สูงสุด 100/channel; แผง "📌 ปักหมุด" ต่อ channel; pin/unpin เกิด system message
+- ✅ **Saved items** (bookmark **ส่วนตัว** — ไม่มีใครเห็น): กด 🔖 save ข้อความไหนก็ได้ที่อ่านได้ → จอ "รายการที่บันทึก" รวมทุก channel เรียงเวลา save + กด jump กลับบริบท
+- ✅ ข้อความถูกลบ → หลุดจาก pins, saved item แสดง tombstone
+
+### 3.8 ไฟล์แนบ + แกลเลอรีต่อ channel
+- ✅ อัปโหลดผ่าน **upload service กลาง** (presigned, prefix `meeting/{systemId}/`): รูป ≤ 10MB, ไฟล์ ≤ 25MB, สูงสุด 10 ไฟล์/ข้อความ, whitelist MIME ชุดเดียวกับ Chat
+- ✅ รูปแสดง inline (lightbox + ดาวน์โหลด), ไฟล์แสดงการ์ด ชื่อ+ขนาด+ไอคอนชนิด
+- ✅ **แท็บ "ไฟล์" ต่อ channel** (gallery): grid รูป + list ไฟล์ กรองชนิด/ผู้ส่ง/เดือน กดแล้ว jump ไปข้อความต้นทาง
+- ✅ โควตารวมต่อ tenant (แผนฟรี 2GB) — เกิน → 422 แนะนำลบไฟล์เก่า/อัปเกรด; ลบข้อความ → ลบไฟล์จาก storage จริง
+- 🔜 preview PDF/Office ในตัว, ค้นในเนื้อไฟล์ (OCR/parse)
+
+### 3.9 ค้นหา (ข้อความ / ไฟล์ / คน)
+- ✅ **ข้อความ**: Postgres `tsvector` (simple) + **`pg_trgm`** สำหรับไทย (substring match ≥ 3 ตัวอักษร — ไทยไม่ตัดคำใน v1, 🔜 thai tokenizer) — **เฉพาะ channel ที่ user เป็นสมาชิก** (`leftAt IS NULL`) บังคับที่ service layer
+- ✅ ตัวกรอง: `in:#channel` `from:@คน` `has:file` ช่วงวันที่ — ผลลัพธ์ highlight คำค้น + ปุ่ม "ดูในห้อง" (jump พร้อม context สองทิศ)
+- ✅ **ไฟล์**: ค้นชื่อไฟล์ (trgm บน `fileName`) ใน channel ที่เป็นสมาชิก
+- ✅ **คน**: ค้นชื่อ/อีเมล staff ใน workspace → เปิดโปรไฟล์ย่อ + ปุ่ม DM
+- ✅ Quick switcher (Cmd/Ctrl+K): กระโดดไป channel/DM/คน
+- 🔜 ค้นในเนื้อไฟล์แนบ
+
+### 3.10 Unread / Read divider / Typing / Presence
+- ✅ **Unread ต่อ channel**: ชื่อ channel ใน sidebar **ตัวหนา** = มีข้อความยังไม่อ่าน, **badge เลข = mention/DM** (แบบ Slack: เลขเฉพาะ mention+DM, ห้องธรรมดาแค่หนา)
+- ✅ เส้นคั่นแดง **"ยังไม่ได้อ่าน"** ณ ตำแหน่ง `lastReadMessageId` เมื่อเปิดห้อง + ปุ่ม "ข้ามไปล่าสุด"; mark read เมื่อเลื่อนถึงล่าสุด (sync ทุกแท็บผ่าน SSE)
+- ✅ unread แยกต่อเธรดที่ติดตาม (จอ "เธรดของฉัน")
+- ✅ **Typing indicator** ต่อ channel/เธรด (ephemeral TTL 5 วิ ไม่ลง DB)
+- ✅ **Presence**: `ONLINE` (SSE ต่ออยู่ + interact < 10 นาที) / `AWAY` (ต่ออยู่แต่ idle) / `OFFLINE` — จุดสถานะข้าง avatar ทุกจุด; เก็บ in-memory ที่ SSE hub + broadcast แบบ throttle (ไม่ลง DB)
+- 🔜 custom status text ("🏖 ลาพักร้อน"), ตั้ง away มือ, Do Not Disturb ตามเวลา
+
+### 3.11 Notification (contract 2.5)
+- ✅ ระดับต่อ channel ต่อคน: `ALL` / `MENTIONS` (default อัตโนมัติเมื่อ channel > 20 คน) / `MUTED` (🔕)
+- ✅ in-app realtime เสมอ (SSE + badge) · **EMAIL digest**: ถูก mention / DM ใหม่ / เธรดที่ติดตามมีตอบ + **offline > 10 นาที** → รวมส่ง 1 ฉบับ/15 นาที/user
+- ✅ ทุก template = `TRANSACTIONAL` (ภายในทีม ไม่ติด consent gate): `meeting.mentioned` · `meeting.dm_new` · `meeting.thread_reply` · `meeting.channel_invited`
 - 🔜 Web Push (service worker) — ต่อจาก notify กลาง ไม่แก้ schema
 
-### 3.7 มือถือ
-- ✅ Responsive เต็มรูป: room list = drawer ซ้าย, ห้อง = เต็มจอ, แผง pin/สมาชิก = bottom sheet, ช่องพิมพ์ sticky เหนือคีย์บอร์ด, แนบรูปจากกล้อง/แกลเลอรี
-- 🔜 web push บนมือถือ (มากับ 3.6)
+### 3.12 Integration ขาเข้า — "ทุกระบบเชื่อมถึงกัน" ⭐
+- ✅ workspace ADMIN สร้าง **subscription**: เลือกแหล่ง (ระบบ business เช่น "จองคิวสาขา A" หรือระบบ feature เช่น "POS ร้าน B") + เลือก event ที่สนใจ + เลือก channel ปลายทาง
+- ✅ Event ที่รองรับ v1 (จาก registry กลาง CORE_API.md — ผ่าน outbox, ไม่ยิงตรง): `booking.appointment.created` / `booking.appointment.canceled` · `pos.sale.paid` / `pos.sale.refunded` · `queue.ticket.called` 🔜 · `ticket.order.paid` 🔜 · `kanban.card.moved` 🔜 — เพิ่ม event ใหม่ = เพิ่มใน registry + template การ์ด ไม่แตะ core
+- ✅ โพสต์เป็นข้อความ type `INTEGRATION`: การ์ดสรุป (icon ระบบ + หัวข้อ + fields สั้น + ลิงก์ "เปิดในระบบ...") — **สรุปเท่านั้น ไม่ leak รายละเอียดเกิน template**; คนกดลิงก์ต้องมีสิทธิ์ระบบต้นทางเอง
+- ✅ react/ตอบเธรดใต้ integration message ได้ (คุยงานต่อจากเหตุการณ์จริง — นี่คือคุณค่าหลัก)
+- ✅ เปิด/ปิด/ลบ subscription ได้ทุกเมื่อ; channel ถูก archive → subscription ปิดอัตโนมัติ + แจ้งผู้สร้าง (§11.9)
+- 🔜 integration ขาออก (ส่งข้อความไปสั่งงานระบบอื่น), webhook ภายนอก, workflow builder
+
+### 3.13 Call link (แทน huddle ใน v1)
+- ✅ วางลิงก์ `meet.google.com` / `zoom.us` / `teams.microsoft.com` → render **การ์ดสาย 📞** (ชื่อ provider + ปุ่ม "เข้าร่วม" เปิดแท็บใหม่)
+- 🔜 **Huddle ในตัว** (เสียง/จอ ผ่าน WebRTC) — ยืนยัน: ไม่มีใน v1
+
+### 3.14 มือถือ
+- ✅ Responsive เต็มรูป — **drawer 2 ชั้น**: ชั้น 1 = sidebar (channels/DMs), ชั้น 2 = ห้อง เต็มจอ; แตะข้อความ → เธรดเต็มจอ (back กลับห้อง); แผงสมาชิก/pins/ไฟล์ = bottom sheet; composer sticky เหนือคีย์บอร์ด; แนบรูปจากกล้อง/แกลเลอรี
+- 🔜 web push บนมือถือ (มากับ 3.11)
 
 ---
 
 ## 4. Data Model (Prisma)
 
-> tenant-scoped ทุกตาราง (`tenantId`) — ประวัติเก็บ**ถาวร** ไม่มี retention purge — ลบข้อความ = soft delete tombstone — id cuid, `createdAt/updatedAt` ครบ
+> ทุกตาราง `tenantId + systemId` (system-scoped) — **MeetingWorkspace = AppSystem** ไม่มีตารางแยก · ประวัติ**ถาวร** ไม่มี retention purge · ลบข้อความ = soft delete tombstone · id cuid, `createdAt/updatedAt` ครบ · `userId` = String อ้าง `User` กลาง (ไม่ประกาศ FK ข้ามโดเมน — ตรวจ Membership ที่ service layer)
 
 ```prisma
 // ───────────────────────── enums ─────────────────────────
 
-enum MeetingRoomType {
-  CHANNEL
-  DM
-  GROUP_DM
-  ANNOUNCEMENT
-}
-
-enum MeetingRoomVisibility {
-  PUBLIC    // staff ทุกคนเห็นใน directory + join เองได้
-  PRIVATE   // invite เท่านั้น (DM/GROUP_DM เป็น PRIVATE เสมอ)
-}
-
-enum MeetingMemberRole {
-  ADMIN     // จัดการห้อง: เชิญ/ถอด/เปลี่ยนชื่อ/pin/ลบข้อความคนอื่น
+enum MeetingWorkspaceRole {
+  OWNER   // ผู้สร้าง workspace — โอนได้
+  ADMIN   // จัดการสมาชิก/channel ทุกห้อง/integration/settings
   MEMBER
+}
+
+enum MeetingChannelType {
+  PUBLIC     // # — browse + join เองได้
+  PRIVATE    // 🔒 — invite เท่านั้น
+  DM         // 1:1
+  GROUP_DM   // 3–9 คน
+}
+
+enum MeetingChannelRole {
+  ADMIN   // จัดการ channel: เชิญ/ถอด/เปลี่ยนชื่อ/archive/ลบข้อความคนอื่น/pin ห้องใหญ่
+  MEMBER
+}
+
+enum MeetingPostingPolicy {
+  EVERYONE
+  ADMINS_ONLY   // "ห้องประกาศ" แบบ Slack
 }
 
 enum MeetingNotifyLevel {
@@ -156,418 +221,586 @@ enum MeetingNotifyLevel {
 }
 
 enum MeetingMessageType {
-  TEXT
-  IMAGE
-  FILE
-  SYSTEM      // เข้าห้อง/เปลี่ยนชื่อ/pin ฯลฯ
-  EVENT_POST  // การ์ดนัดประชุม (meta.eventId)
+  TEXT          // รวมข้อความมีไฟล์แนบ
+  SYSTEM        // เข้า/ออก/เปลี่ยนชื่อ/pin — meta ระบุ
+  INTEGRATION   // การ์ดจากระบบอื่น — meta { integrationId, event, payload }
 }
 
-enum MeetingRsvpResponse {
-  GOING
-  DECLINED
-  MAYBE
+enum MeetingMentionKind {
+  USER
+  CHANNEL   // @channel
+  HERE      // @here
 }
 
-// ───────────────────────── Room ─────────────────────────
+enum MeetingIntegrationSource {
+  BUSINESS_UNIT   // ระบบ business (BusinessUnit)
+  APP_SYSTEM      // ระบบ feature (AppSystem)
+}
 
-model MeetingRoom {
-  id             String                @id @default(cuid())
+// ─────────────────── Workspace member ───────────────────
+// workspace = AppSystem (type MEETING) — ตารางนี้คือทะเบียนสมาชิก + role ระดับ workspace
+
+model MeetingWorkspaceMember {
+  id        String               @id @default(cuid())
+  tenantId  String
+  systemId  String               // AppSystem.id ของ workspace
+  userId    String
+  role      MeetingWorkspaceRole @default(MEMBER)
+  invitedByUserId String?
+  joinedAt  DateTime             @default(now())
+  leftAt    DateTime?            // ออก/ถูกถอดจาก workspace (ประวัติคงไว้)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  @@unique([systemId, userId])
+  @@index([tenantId, userId, leftAt])   // workspace list ของ user
+  @@index([systemId, role, leftAt])
+}
+
+// ───────────────────────── Channel ─────────────────────────
+
+model MeetingChannel {
+  id             String               @id @default(cuid())
   tenantId       String
-  type           MeetingRoomType
-  name           String?               // CHANNEL/ANNOUNCEMENT; DM/GROUP_DM = null (UI ประกอบชื่อจากสมาชิก)
+  systemId       String
+  type           MeetingChannelType
+  name           String?              // PUBLIC/PRIVATE; DM/GROUP_DM = null (UI ประกอบชื่อจากสมาชิก)
+  topic          String?              // บรรทัดสั้นบน header (Slack topic)
   description    String?
-  visibility     MeetingRoomVisibility @default(PRIVATE)
-  unitId         String?               // ผูกหน่วยธุรกิจ (optional ตาม BUSINESS_UNITS §2)
-  autoJoinByUnit Boolean               @default(false) // true = staff ที่มี unitAccess หน่วยนี้เข้าอัตโนมัติ
-  isDefault      Boolean               @default(false) // #ทั่วไป/#ประกาศ — archive/ลบไม่ได้
-  dmKey          String?               // DM/GROUP_DM: sha256 ของ userId เรียงแล้ว join ":" — กันสร้างซ้ำ
+  postingPolicy  MeetingPostingPolicy @default(EVERYONE)
+  unitId         String?              // ผูกระบบ business (optional)
+  autoJoinByUnit Boolean              @default(false)
+  isDefault      Boolean              @default(false) // #general — leave/archive ไม่ได้
+  dmKey          String?              // DM/GROUP_DM: sha256(sorted userIds join ":") — กันสร้างซ้ำ
   createdByUserId String
-  lastMessageAt  DateTime?             // เรียง room list
-  archivedAt     DateTime?             // read-only ทั้งห้อง
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  lastMessageAt  DateTime?            // เรียง sidebar
+  archivedAt     DateTime?            // read-only, ยังค้นเจอ, unarchive ได้
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
-  members  MeetingRoomMember[]
-  messages MeetingMessage[]
-  events   MeetingEvent[]
+  members      MeetingChannelMember[]
+  messages     MeetingMessage[]
+  readStates   MeetingReadState[]
+  pins         MeetingPin[]
+  files        MeetingFile[]
+  integrations MeetingIntegration[]
 
-  @@unique([tenantId, dmKey])            // DM คู่เดิม = ห้องเดิมเสมอ
-  @@unique([tenantId, type, name])       // ชื่อ channel ไม่ซ้ำในองค์กร (name null ไม่ติด constraint)
-  @@index([tenantId, type, archivedAt])
-  @@index([tenantId, unitId])
-  @@index([tenantId, lastMessageAt(sort: Desc)])
+  @@unique([systemId, dmKey])          // DM ชุดคนเดิม = ห้องเดิมเสมอ
+  @@unique([systemId, name])           // ชื่อ channel ไม่ซ้ำใน workspace (null ไม่ติด)
+  @@index([tenantId, systemId, type, archivedAt])
+  @@index([systemId, unitId])
+  @@index([systemId, lastMessageAt(sort: Desc)])
 }
 
-model MeetingRoomMember {
-  id                String             @id @default(cuid())
-  tenantId          String
-  roomId            String
-  room              MeetingRoom        @relation(fields: [roomId], references: [id])
-  userId            String
-  role              MeetingMemberRole  @default(MEMBER)
-  notifyLevel       MeetingNotifyLevel @default(ALL)
-  autoJoined        Boolean            @default(false) // มาจาก autoJoinByUnit → ถูก sync ถอนได้ (§7.6)
-  hiddenAt          DateTime?          // ซ่อน DM จาก list (ไม่ใช่ออกจากห้อง)
-  lastReadMessageId String?
-  lastReadAt        DateTime?
-  joinedAt          DateTime           @default(now())
-  leftAt            DateTime?          // ออกจากห้อง (ประวัติ member คงไว้ — ข้อความเก่าอ้างถึงได้)
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+model MeetingChannelMember {
+  id          String              @id @default(cuid())
+  tenantId    String
+  systemId    String
+  channelId   String
+  channel     MeetingChannel      @relation(fields: [channelId], references: [id])
+  userId      String
+  role        MeetingChannelRole  @default(MEMBER)
+  notifyLevel MeetingNotifyLevel  @default(ALL)
+  autoJoined  Boolean             @default(false) // จาก autoJoinByUnit/#general — sync ถอนได้ (§7.7)
+  hiddenAt    DateTime?           // ซ่อน DM จาก sidebar (ไม่ใช่ออกจากห้อง)
+  joinedAt    DateTime            @default(now())
+  leftAt      DateTime?           // ออกจาก channel (แถวคงไว้ — re-join ล้าง leftAt)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 
-  @@unique([roomId, userId])
-  @@index([tenantId, userId, leftAt])   // room list ของ user
-  @@index([roomId, leftAt])
+  @@unique([channelId, userId])
+  @@index([systemId, userId, leftAt])   // channel list ของ user
+  @@index([channelId, leftAt])
 }
 
 // ───────────────────────── Message ─────────────────────────
 
 model MeetingMessage {
-  id             String             @id @default(cuid())
-  tenantId       String
-  roomId         String
-  room           MeetingRoom        @relation(fields: [roomId], references: [id])
-  senderUserId   String             // SYSTEM ใช้ userId ผู้ trigger หรือ "system"
-  type           MeetingMessageType @default(TEXT)
-  body           String?            @db.Text
-  // ค้นหา: migration raw เพิ่ม generated column `search tsvector` (simple config) + GIN index
-  // + GIN pg_trgm บน body สำหรับภาษาไทย — Prisma ไม่ declare ตรงนี้ (ดูหมายเหตุใต้ schema)
-  replyToId      String?
-  replyTo        MeetingMessage?    @relation("MeetingReply", fields: [replyToId], references: [id])
-  replies        MeetingMessage[]   @relation("MeetingReply")
-  mentions       Json               @default("[]")   // ["usr_x"] หรือ ["@all"] — ใช้ render highlight
-  embeds         Json?              // link preview: [{kind:'KANBAN_CARD', cardId, snapshot:{title,column,assignee,dueDate}, refreshedAt}]
-  clientMessageId String?           // idempotency จาก client
-  editedAt       DateTime?
-  deletedAt      DateTime?          // soft delete → tombstone (body ล้างเป็น null, attachment ลบจาก storage)
-  deletedByUserId String?
-  pinnedAt       DateTime?
-  pinnedByUserId String?
-  meta           Json?              // SYSTEM payload / EVENT_POST: { eventId }
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id                String             @id @default(cuid())
+  tenantId          String
+  systemId          String
+  channelId         String
+  channel           MeetingChannel     @relation(fields: [channelId], references: [id])
+  senderUserId      String             // SYSTEM/INTEGRATION = "system"
+  type              MeetingMessageType @default(TEXT)
+  body              String?            @db.Text   // markdown subset (§3.3)
+  // ค้นหา: raw migration เพิ่ม generated tsvector + GIN + pg_trgm (ท้าย schema)
 
-  attachments MeetingAttachment[]
+  // ── Threads ──
+  threadRootId      String?            // null = ข้อความ main pane; มีค่า = reply ในเธรด (ผูก root เสมอ ไม่ซ้อนชั้น)
+  threadRoot        MeetingMessage?    @relation("MeetingThread", fields: [threadRootId], references: [id])
+  threadReplies     MeetingMessage[]   @relation("MeetingThread")
+  replyCount        Int                @default(0)  // denormalized บน root — update ใน tx เดียวกับ insert reply
+  lastReplyAt       DateTime?          // denormalized บน root
+  alsoSentToChannel Boolean            @default(false) // reply ที่ติ๊ก "ส่งเข้าห้องด้วย" → โชว์ใน main pane ด้วย
+
+  mentions          Json               @default("[]")  // ["usr_x"] | ["@channel"] | ["@here"] — ใช้ render highlight
+  embeds            Json?              // [{kind:'KANBAN_CARD'|'INTERNAL_LINK'|'OG_LINK'|'CALL_LINK', ...snapshot, refreshedAt}]
+  clientMessageId   String?            // idempotency จาก client
+  editedAt          DateTime?
+  deletedAt         DateTime?          // soft delete → tombstone (body=null, ไฟล์ลบจาก storage)
+  deletedByUserId   String?
+  meta              Json?              // SYSTEM: {action,...} / INTEGRATION: {integrationId, event, refType, refId, url}
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  attachments MeetingFile[]
+  reactions   MeetingReaction[]
   mentionRows MeetingMention[]
+  pin         MeetingPin?
+  savedBy     MeetingSavedItem[]
+  follows     MeetingThreadFollow[]    @relation("MeetingThreadFollowRoot")
 
-  @@unique([roomId, clientMessageId])
-  @@index([roomId, createdAt])
-  @@index([roomId, pinnedAt])           // แผง pin
-  @@index([tenantId, createdAt])
+  @@unique([channelId, clientMessageId])
+  @@index([channelId, threadRootId, createdAt, id])  // main pane (threadRootId IS NULL) + เธรด — ordering หลัก
+  @@index([threadRootId, createdAt, id])
+  @@index([tenantId, systemId, createdAt])
 }
 // Raw migration แนบท้าย (นอก Prisma):
 //   ALTER TABLE "MeetingMessage" ADD COLUMN search tsvector
 //     GENERATED ALWAYS AS (to_tsvector('simple', coalesce(body,''))) STORED;
 //   CREATE INDEX meeting_msg_search ON "MeetingMessage" USING GIN (search);
 //   CREATE INDEX meeting_msg_trgm   ON "MeetingMessage" USING GIN (body gin_trgm_ops);
+//   CREATE INDEX meeting_file_trgm  ON "MeetingFile"    USING GIN ("fileName" gin_trgm_ops);
 
-model MeetingAttachment {
-  id         String         @id @default(cuid())
-  tenantId   String
-  messageId  String
-  message    MeetingMessage @relation(fields: [messageId], references: [id])
-  kind       MeetingMessageType // IMAGE | FILE
-  storageKey String
-  url        String
-  fileName   String
-  mimeType   String
-  sizeBytes  Int
-  width      Int?
-  height     Int?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+// ───────────────── Reaction / Pin / Saved ─────────────────
 
+model MeetingReaction {
+  id        String         @id @default(cuid())
+  tenantId  String
+  systemId  String
+  messageId String
+  message   MeetingMessage @relation(fields: [messageId], references: [id])
+  userId    String
+  emoji     String         // unicode emoji เช่น "👍"
+  createdAt DateTime       @default(now())
+
+  @@unique([messageId, userId, emoji])   // toggle idempotent — กดซ้ำ = ลบแถว
   @@index([messageId])
-  @@index([tenantId, createdAt])
+  @@index([systemId, userId])
 }
 
-// mention inbox — ทำ badge/"@ ที่ค้าง" query ถูก (ไม่ scan Json)
+model MeetingPin {
+  id             String         @id @default(cuid())
+  tenantId       String
+  systemId       String
+  channelId      String
+  channel        MeetingChannel @relation(fields: [channelId], references: [id])
+  messageId      String         @unique   // 1 ข้อความ pin ได้ครั้งเดียว
+  message        MeetingMessage @relation(fields: [messageId], references: [id])
+  pinnedByUserId String
+  createdAt      DateTime       @default(now())
+
+  @@index([channelId, createdAt(sort: Desc)])
+}
+
+model MeetingSavedItem {
+  id        String         @id @default(cuid())
+  tenantId  String
+  systemId  String
+  userId    String         // ส่วนตัว — เจ้าของเห็นคนเดียว
+  messageId String
+  message   MeetingMessage @relation(fields: [messageId], references: [id])
+  createdAt DateTime       @default(now())
+
+  @@unique([userId, messageId])
+  @@index([systemId, userId, createdAt(sort: Desc)])
+}
+
+// ───────────────────────── File ─────────────────────────
+// upload ก่อน (ได้ fileId) แล้วผูก messageId ตอนส่ง — gallery query ด้วย channelId ตรง ๆ
+
+model MeetingFile {
+  id             String          @id @default(cuid())
+  tenantId       String
+  systemId       String
+  channelId      String
+  channel        MeetingChannel  @relation(fields: [channelId], references: [id])
+  messageId      String?         // null = อัปโหลดค้าง (GC ลบใน 24 ชม.ถ้าไม่ถูกผูก)
+  message        MeetingMessage? @relation(fields: [messageId], references: [id])
+  uploaderUserId String
+  storageKey     String          // prefix meeting/{systemId}/
+  url            String
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  width          Int?
+  height         Int?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([channelId, createdAt(sort: Desc)])   // gallery ต่อ channel
+  @@index([messageId])
+  @@index([tenantId, systemId, createdAt])      // storage report / GC
+}
+
+// ─────────────── Read state / Thread follow ───────────────
+// แยกจาก ChannelMember เพราะเป็นตาราง hot-write (update ทุกครั้งที่อ่าน) — ไม่ lock แถว membership
+
+model MeetingReadState {
+  id                String         @id @default(cuid())
+  tenantId          String
+  systemId          String
+  channelId         String
+  channel           MeetingChannel @relation(fields: [channelId], references: [id])
+  userId            String
+  lastReadMessageId String?
+  lastReadAt        DateTime?
+  updatedAt         DateTime       @updatedAt
+  createdAt         DateTime       @default(now())
+
+  @@unique([channelId, userId])
+  @@index([systemId, userId])
+}
+
+model MeetingThreadFollow {
+  id                String         @id @default(cuid())
+  tenantId          String
+  systemId          String
+  threadRootId      String
+  threadRoot        MeetingMessage @relation("MeetingThreadFollowRoot", fields: [threadRootId], references: [id])
+  userId            String
+  following         Boolean        @default(true)  // false = เลิกติดตาม (กันถูก auto-follow ซ้ำ)
+  lastReadMessageId String?
+  lastReadAt        DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([threadRootId, userId])
+  @@index([systemId, userId, following])   // จอ "เธรดของฉัน"
+}
+
+// ───────────────────────── Mention ─────────────────────────
+// mention inbox — badge/"@ ค้าง" query ถูก (ไม่ scan Json); @channel/@here แตกรายคน ณ เวลาโพสต์
+
 model MeetingMention {
-  id               String         @id @default(cuid())
-  tenantId         String
-  roomId           String
-  messageId        String
-  message          MeetingMessage @relation(fields: [messageId], references: [id])
-  mentionedUserId  String         // แตก @all เป็นรายคน ณ เวลาโพสต์ (สมาชิกขณะนั้น)
-  isAll            Boolean        @default(false)
-  readAt           DateTime?      // เซ็ตเมื่อ user อ่านห้องผ่านข้อความนี้
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id              String             @id @default(cuid())
+  tenantId        String
+  systemId        String
+  channelId       String
+  messageId       String
+  message         MeetingMessage     @relation(fields: [messageId], references: [id])
+  mentionedUserId String
+  kind            MeetingMentionKind @default(USER)
+  readAt          DateTime?          // เซ็ตเมื่อ user อ่านถึงข้อความนี้
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   @@unique([messageId, mentionedUserId])
-  @@index([tenantId, mentionedUserId, readAt])   // badge mention ค้าง
+  @@index([systemId, mentionedUserId, readAt])   // badge mention ค้าง
 }
 
-// ───────────────────── นัดประชุม + RSVP ─────────────────────
+// ───────────── Integration ขาเข้า (link ระบบอื่น) ─────────────
+// ตาราง link ของระบบนี้เอง (BLUEPRINT_SYSTEMS §3) — opt-in, ถอดได้ทุกเมื่อ
 
-model MeetingEvent {
-  id              String      @id @default(cuid())
+model MeetingIntegration {
+  id              String                   @id @default(cuid())
   tenantId        String
-  roomId          String
-  room            MeetingRoom @relation(fields: [roomId], references: [id])
-  messageId       String?     // EVENT_POST การ์ดในเธรด (สร้างพร้อมกัน)
-  title           String
-  startsAt        DateTime    // UTC — แสดงตาม timezone ร้าน
-  endsAt          DateTime?
-  location        String?     // ห้องประชุมจริง หรือลิงก์ Meet/Zoom ภายนอก (v1 ไม่มี call ในตัว)
-  detail          String?     @db.Text
+  systemId        String                   // workspace ปลายทาง
+  channelId       String
+  channel         MeetingChannel           @relation(fields: [channelId], references: [id])
+  name            String                   // "จองใหม่ สาขา A → #จอง-สาขา-a"
+  sourceType      MeetingIntegrationSource
+  sourceUnitId    String?                  // BUSINESS_UNIT
+  sourceSystemId  String?                  // APP_SYSTEM (เช่น POS ชุดที่เลือก)
+  events          Json                     // ["booking.appointment.created", ...] จาก registry กลาง
+  enabled         Boolean                  @default(true)
   createdByUserId String
-  canceledAt      DateTime?
-  cancelReason    String?
-  reminderSentAt  DateTime?   // cron เตือนก่อน 30 นาที — กันส่งซ้ำ
-  meta            Json?       // เผื่อ call provider 🔜
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
 
-  rsvps MeetingEventRsvp[]
-
-  @@index([tenantId, startsAt])          // "นัดของฉัน" + cron เตือน
-  @@index([roomId, startsAt])
-}
-
-model MeetingEventRsvp {
-  id        String              @id @default(cuid())
-  tenantId  String
-  eventId   String
-  event     MeetingEvent        @relation(fields: [eventId], references: [id])
-  userId    String
-  response  MeetingRsvpResponse
-  note      String?             // "เข้าช้า 15 นาที"
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
-
-  @@unique([eventId, userId])   // เปลี่ยนใจ = update แถวเดิม (ประวัติผ่าน updatedAt)
-  @@index([tenantId, userId])
+  @@index([tenantId, enabled])
+  @@index([sourceUnitId, enabled])     // dispatcher lookup ตอน event เข้า
+  @@index([sourceSystemId, enabled])
+  @@index([systemId, channelId])
 }
 ```
 
-**หมายเหตุ schema:**
-- ไม่มีตารางร่วม/ FK ใด ๆ ไปยัง `Chat*` — บังคับด้วย convention + code review (§11.9)
-- `userId` อ้าง `User` กลางของแพลตฟอร์ม; การเป็นพนักงานตรวจผ่าน `Membership` ที่ service layer (user ที่ถูกถอด Membership → ทุกห้อง read ไม่ได้ทันที §11.4)
-- read state เก็บบน `MeetingRoomMember` (แถวเดียวต่อคนต่อห้อง) — ไม่ทำ per-message receipt (ห้องใหญ่จะบวม); "อ่านแล้ว n คน" คำนวณจาก `lastReadMessageId >= messageId` (เทียบ createdAt)
+**หมายเหตุ schema / Ordering / Pagination:**
+- **Ordering ทางการ**: เรียงด้วย `(createdAt ASC, id ASC)` — `id` (cuid) เป็น tiebreaker กัน createdAt ชนกันใน ms เดียว; index หลัก `[channelId, threadRootId, createdAt, id]` รองรับทั้ง main pane (`threadRootId IS NULL OR alsoSentToChannel = true`) และเธรด
+- **Pagination = keyset cursor สองทิศ**: `cursor = base64(createdAt.toISOString() + "|" + id)`, `direction: before|after`, `limit ≤ 50` — เปิดห้อง = ดึง `before` จากล่าสุด; jump จาก search/pin/saved = ดึงรอบ anchor ทั้งสองทิศ; **ห้าม OFFSET**
+- `replyCount/lastReplyAt` denormalize บน root — update ใน **transaction เดียว** กับ insert reply (กัน drift)
+- ไม่มีตาราง presence — presence เป็น ephemeral in-memory ที่ SSE hub (§8.4)
+- ไม่มีตาราง/ FK ใด ๆ ไปยัง `Chat*` — บังคับด้วย convention + code review (§11.11)
+- read state ต่อ channel = แถวเดียวต่อคน (ไม่ทำ per-message receipt — ห้องใหญ่บวม); "อ่านแล้ว n คน" ไม่มีใน channel (Slack ก็ไม่มี) — มีเฉพาะ DM/GROUP_DM (เทียบ `lastReadMessageId`)
 
 ---
 
 ## 5. API Endpoints
 
-> ทุกเส้นตรวจ session staff + `can(user, { tenantId, module:'MEETING', action })` + ตรวจ "เป็นสมาชิกห้อง" (ยกเว้น directory ห้อง PUBLIC) — ลูกค้า/guest ไม่มีทางเข้าโมดูลนี้
+> base: `/api/meeting/[systemId]/...` — ทุกเส้นตรวจ (1) session staff + Membership สด (2) `can(user, { tenantId, module:'MEETING', action })` (3) **เป็นสมาชิก workspace** (`MeetingWorkspaceMember.leftAt IS NULL`) (4) เส้นระดับ channel: เป็นสมาชิก channel — ลูกค้า/guest/session storefront ไม่มีทางเข้า ทุก id ข้าม tenant/system → 404
 
 | # | Method + Path | ทำอะไร | Payload หลัก | สิทธิ์ |
 |---|---|---|---|---|
-| 1 | `GET /api/meeting/rooms` | room list ของฉัน (เรียง lastMessageAt, รวม unread/mention count) + directory PUBLIC ที่ยังไม่ join (`?directory=1`) | — | `meeting.use` |
-| 2 | `POST /api/meeting/rooms` | สร้าง CHANNEL/ANNOUNCEMENT | `{ type, name, description?, visibility, unitId?, autoJoinByUnit?, memberUserIds? }` | CHANNEL: `meeting.create_room` · ANNOUNCEMENT: `meeting.announce` |
-| 3 | `POST /api/meeting/dm` | หา-หรือ-สร้าง DM/GROUP_DM | `{ userIds: [..] }` (รวมตัวเอง 2 คน=DM, 3–20=GROUP_DM) | `meeting.use` |
-| 4 | `GET /api/meeting/rooms/:id` | รายละเอียดห้อง + สมาชิก + pins count | — | สมาชิก (PUBLIC: staff ใดก็ได้ดู meta เพื่อตัดสินใจ join) |
-| 5 | `PATCH /api/meeting/rooms/:id` | เปลี่ยนชื่อ/คำอธิบาย/visibility/unitId/autoJoinByUnit/archive | ฟิลด์ที่แก้ | room ADMIN (default ห้าม archive; `isDefault` ห้ามแตะ) |
-| 6 | `POST /api/meeting/rooms/:id/join` | join ห้อง PUBLIC เอง | — | `meeting.use` |
-| 7 | `POST /api/meeting/rooms/:id/members` | เชิญสมาชิก | `{ userIds }` | room ADMIN (CHANNEL PUBLIC: สมาชิกใดก็เชิญได้) |
-| 8 | `DELETE /api/meeting/rooms/:id/members/:userId` | ถอด/ออกเอง (set leftAt) | — | room ADMIN หรือเจ้าตัว |
-| 9 | `PATCH /api/meeting/rooms/:id/members/:userId` | เปลี่ยน role/notifyLevel/hidden | `{ role?, notifyLevel?, hiddenAt? }` | role: room ADMIN · notify/hidden: เจ้าตัว |
-| 10 | `GET /api/meeting/rooms/:id/messages` | ข้อความ (cursor สองทิศ: ก่อน/หลัง เพื่อ jump จาก search/pin) | `cursor, direction, limit≤50` | สมาชิก |
-| 11 | `POST /api/meeting/rooms/:id/messages` | ส่งข้อความ | `{ type, body?, attachmentIds?, replyToId?, mentions?, clientMessageId }` — server แตก `@all`, สร้าง embeds จากลิงก์ (§8.2) | สมาชิก (ANNOUNCEMENT: `meeting.announce`) |
-| 12 | `PATCH /api/meeting/messages/:id` | แก้ข้อความตัวเอง (≤24 ชม.) | `{ body }` (re-parse mentions/embeds) | ผู้ส่ง |
-| 13 | `DELETE /api/meeting/messages/:id` | soft delete → tombstone | — | ผู้ส่ง หรือ room ADMIN |
-| 14 | `POST /api/meeting/messages/:id/pin` · `DELETE .../pin` | pin/unpin (limit 50/ห้อง → 409) | — | room ADMIN หรือผู้ส่ง |
-| 15 | `GET /api/meeting/rooms/:id/pins` | list ข้อความที่ pin | — | สมาชิก |
-| 16 | `POST /api/meeting/rooms/:id/read` | อัปเดต lastRead + เคลียร์ mention (`readAt`) ถึงข้อความนั้น | `{ lastReadMessageId }` | สมาชิก |
-| 17 | `POST /api/meeting/rooms/:id/typing` | typing ephemeral (TTL 5 วิ) | — | สมาชิก |
-| 18 | `POST /api/meeting/uploads` | presigned upload (prefix `meeting/`) | `{ fileName, mimeType, sizeBytes }` | `meeting.use` |
-| 19 | `GET /api/meeting/search` | FTS เฉพาะห้องที่เป็นสมาชิก | `q, roomId?, senderUserId?, hasAttachment?, from?, to?, cursor` | `meeting.use` |
-| 20 | `GET /api/meeting/stream` | **SSE** ต่อ user (ทุกห้องที่เป็นสมาชิก, resume ด้วย Last-Event-ID) | — | `meeting.use` |
-| 21 | `GET /api/meeting/unread-count` | badge poll fallback `{ rooms: n, mentions: n }` | — | `meeting.use` |
-| 22 | `POST /api/meeting/rooms/:id/events` | สร้างนัด (+EVENT_POST ในเธรด transaction เดียว) | `{ title, startsAt, endsAt?, location?, detail? }` | สมาชิก (ANNOUNCEMENT: `meeting.announce`) |
-| 23 | `GET /api/meeting/rooms/:id/events` | นัดในห้อง (upcoming/past) | — | สมาชิก |
-| 24 | `PATCH /api/meeting/events/:id` | แก้/ยกเลิกนัด | `{ ...fields, canceledAt?, cancelReason? }` | ผู้สร้าง หรือ room ADMIN |
-| 25 | `POST /api/meeting/events/:id/rsvp` | ตอบรับ (upsert) | `{ response, note? }` | สมาชิกห้องของนัด |
-| 26 | `GET /api/meeting/my-events` | นัดของฉันทุกห้อง (upcoming) | `from?, to?` | `meeting.use` |
-| 27 | `GET /api/meeting/link-preview` | resolve ลิงก์ภายใน → embed payload (ใช้ตอน compose ให้เห็นตัวอย่าง) | `url` | `meeting.use` |
+| 1 | `GET /bootstrap` | เปิดแอป: channels ของฉัน (เรียง lastMessageAt + unread/mention count), workspace members ย่อ, settings | — | `meeting.use` |
+| 2 | `GET /channels?directory=1` | browse PUBLIC channels (ชื่อ+topic+สมาชิก n คน) | — | `meeting.use` |
+| 3 | `POST /channels` | สร้าง PUBLIC/PRIVATE channel | `{ type, name, topic?, description?, postingPolicy?, unitId?, autoJoinByUnit?, memberUserIds? }` | `meeting.create_channel` |
+| 4 | `POST /dm` | find-or-create DM/GROUP_DM | `{ userIds }` (รวมตัวเอง 2=DM, 3–9=GROUP_DM) | `meeting.use` |
+| 5 | `GET /channels/:id` | รายละเอียด channel + สมาชิก + pins/files count | — | สมาชิก (PUBLIC: workspace member ใดดู meta ได้) |
+| 6 | `PATCH /channels/:id` | แก้ name/topic/description/postingPolicy/visibility/unitId/autoJoinByUnit/archive/unarchive | ฟิลด์ที่แก้ | channel ADMIN (topic: สมาชิกใดก็ได้; `isDefault` archive ไม่ได้) |
+| 7 | `POST /channels/:id/join` | join PUBLIC เอง | — | `meeting.use` |
+| 8 | `POST /channels/:id/members` | เชิญสมาชิก | `{ userIds }` | PUBLIC: สมาชิกใดก็เชิญได้ · PRIVATE: channel ADMIN |
+| 9 | `DELETE /channels/:id/members/:userId` | ถอด/ออกเอง (set leftAt; `#general` ออกไม่ได้ → 409) | — | channel ADMIN หรือเจ้าตัว |
+| 10 | `PATCH /channels/:id/members/:userId` | เปลี่ยน role/notifyLevel/hidden | `{ role?, notifyLevel?, hiddenAt? }` | role: channel ADMIN · notify/hidden: เจ้าตัว |
+| 11 | `GET /channels/:id/messages` | ข้อความ main pane (keyset cursor สองทิศ §4) | `cursor?, direction?, limit≤50, anchorId?` | สมาชิก |
+| 12 | `POST /channels/:id/messages` | ส่งข้อความ (main หรือเธรดผ่าน `threadRootId`) | `{ body?, fileIds?, threadRootId?, alsoSentToChannel?, clientMessageId }` — server parse mentions/embeds | สมาชิก (+ `postingPolicy` check ใน main pane; เธรดตอบได้เสมอ) |
+| 13 | `GET /messages/:id/thread` | root + replies (cursor) + follow state | `cursor?, direction?, limit` | สมาชิก channel |
+| 14 | `PATCH /messages/:id` | แก้ข้อความตัวเอง (ตาม editWindow) — re-parse mentions/embeds | `{ body }` | ผู้ส่ง |
+| 15 | `DELETE /messages/:id` | soft delete → tombstone | — | ผู้ส่ง หรือ channel ADMIN |
+| 16 | `PUT /messages/:id/reactions/:emoji` · `DELETE ...` | react / ถอน (toggle idempotent) | — | สมาชิก channel |
+| 17 | `POST /messages/:id/pin` · `DELETE .../pin` | pin/unpin (เกิน 100/channel → 409) | — | สมาชิก (channel >20 คน: ADMIN) |
+| 18 | `GET /channels/:id/pins` | list ปักหมุด | — | สมาชิก |
+| 19 | `PUT /messages/:id/save` · `DELETE .../save` | save/unsave (ส่วนตัว) | — | อ่านข้อความนั้นได้ |
+| 20 | `GET /saved` | รายการที่บันทึก (ทุก channel ที่ยังเป็นสมาชิก) | `cursor?` | `meeting.use` |
+| 21 | `PUT /messages/:id/follow` · `DELETE .../follow` | ติดตาม/เลิกติดตามเธรด | — | สมาชิก channel |
+| 22 | `GET /threads` | "เธรดของฉัน" — เธรดที่ติดตาม เรียง lastReplyAt + unread | `cursor?` | `meeting.use` |
+| 23 | `POST /uploads` | presigned upload (สร้าง `MeetingFile` messageId=null) | `{ channelId, fileName, mimeType, sizeBytes }` → ตรวจ quota | สมาชิก channel |
+| 24 | `GET /channels/:id/files` | แกลเลอรีไฟล์ต่อ channel | `kind?, uploaderUserId?, month?, cursor?` | สมาชิก |
+| 25 | `GET /search` | ค้นหา `scope: messages\|files\|people` (FTS+trgm, filter in:/from:/has:) — เฉพาะ channel ที่เป็นสมาชิก | `q, scope, channelId?, senderUserId?, hasFile?, from?, to?, cursor?` | `meeting.use` |
+| 26 | `POST /channels/:id/read` | mark read: update ReadState + เคลียร์ mention ≤ ข้อความนั้น | `{ lastReadMessageId }` | สมาชิก |
+| 27 | `POST /threads/:rootId/read` | mark read เธรด (ThreadFollow) | `{ lastReadMessageId }` | ผู้ติดตาม |
+| 28 | `POST /channels/:id/typing` | typing ephemeral (TTL 5 วิ; `threadRootId?` ระบุเธรด) | `{ threadRootId? }` | สมาชิก |
+| 29 | `GET /stream` | **SSE** ต่อ user ทั้ง workspace (resume ด้วย Last-Event-ID) — events §8.4 | — | `meeting.use` |
+| 30 | `GET /unread-count` | badge poll fallback `{ channels: n, mentions: n, threads: n }` | — | `meeting.use` |
+| 31 | `GET /members` · `POST /members` · `PATCH /members/:userId` · `DELETE /members/:userId` | จัดการสมาชิก workspace (เชิญ staff / เปลี่ยน role / ถอด) | `{ userIds }` / `{ role }` | อ่าน: `meeting.use` · เขียน: workspace ADMIN |
+| 32 | `GET /integrations` · `POST /integrations` · `PATCH /integrations/:id` · `DELETE /integrations/:id` | จัดการ subscription ระบบอื่น → channel | `{ name, channelId, sourceType, sourceUnitId?/sourceSystemId?, events[] }` | workspace ADMIN (`meeting.manage_integrations`) |
+| 33 | `GET /link-preview` | resolve ลิงก์ → embed payload (ใช้ตอน compose) | `url` | `meeting.use` |
 
 ---
 
 ## 6. UI Screens
 
-> TH/EN · B&W minimal · mobile-first · empty/loading/error ครบทุกจอ
+> TH/EN · B&W minimal · mobile-first · empty/loading/error ครบทุกจอ · เข้าจาก `/app/sys/[systemId]` (การ์ดระบบ Meeting ใน `/app`)
 
-### 6.1 `/app/meeting` — จอหลัก 2 คอลัมน์ (tenant-level, ไม่มี `/u/`)
+### 6.1 `/app/sys/[systemId]` — จอหลักแบบ Slack: **sidebar + main pane + thread pane**
 
-- **คอลัมน์ซ้าย — room list:** ช่องค้นหา + quick switcher (Cmd/Ctrl+K) · แบ่ง section: 📢 ประกาศ (ตรึงบน) / ห้อง (channel) / ข้อความส่วนตัว (DM) · แต่ละแถว: ชื่อห้อง (DM = ชื่อคู่สนทนา + จุดสถานะออนไลน์), preview ล่าสุด, เวลา, **badge เลขดำ = mention / จุดดำ = unread** / ไอคอน 🔕 = MUTED · ปุ่ม "+ ห้องใหม่" (modal: ประเภท, ชื่อ, visibility, ผูกหน่วย + toggle auto-join, เชิญสมาชิก) · ลิงก์ "สำรวจห้อง" (directory PUBLIC พร้อมปุ่ม join)
-- **คอลัมน์ขวา — ห้องแชท:**
-  - header: ชื่อห้อง + ชิปหน่วย (ถ้าผูก) + จำนวนสมาชิก (กด = แผงสมาชิก) + ไอคอน 📌 (แผง pin) + 📅 (นัดในห้อง) + ⋯ (ตั้งค่าห้อง/แจ้งเตือน/ออกจากห้อง)
-  - เธรด: จัดกลุ่มตามวัน (เส้นคั่น "วันนี้/เมื่อวาน/12 ก.ค."), เส้น "ยังไม่ได้อ่าน" ณ จุด lastRead, ข้อความ: avatar+ชื่อ+เวลา, mention highlight (พื้นเทาอ่อน+ตัวหนา), quote box, embed การ์ด Kanban (กรอบ hairline: ชื่องาน/คอลัมน์/ผู้รับ/due + ปุ่ม refresh), การ์ดนัด (หัวข้อ+เวลา+สถานที่+ปุ่ม RSVP 3 ปุ่ม+แถว avatar ผู้ตอบ), tombstone "ข้อความถูกลบ", ป้าย "แก้ไขแล้ว"
-  - hover/long-press เมนูต่อข้อความ: ตอบกลับ / pin / แก้ไข / ลบ / คัดลอกลิงก์ข้อความ
-  - composer: textarea + แนบไฟล์ (สูงสุด 5, แสดง chip ก่อนส่ง) + `@` autocomplete + Enter ส่ง / Shift+Enter ขึ้นบรรทัด + ปุ่ม 📅 "นัดประชุม" (modal ฟอร์มนัด)
-  - ANNOUNCEMENT: สมาชิกธรรมดาเห็น banner "ห้องประกาศ — อ่านอย่างเดียว" แทน composer; ใต้โพสต์แสดง "อ่านแล้ว 12/17"
-  - ห้อง archived: banner "ห้องนี้ถูกเก็บถาวร — อ่านได้อย่างเดียว"
-- **แผงข้าง (slide-over):** สมาชิก (รายชื่อ+role+ปุ่มเชิญ/ถอด), ข้อความที่ปักหมุด, นัดในห้อง (upcoming/past)
-- **Empty states:** ยังไม่มีห้อง → "สร้างห้องแรกของทีมคุณ" + ปุ่ม; ห้องว่าง → "ทักทายทีมของคุณได้เลย 👋"
+**Sidebar (ซ้าย):**
+- หัว: ชื่อ workspace + ปุ่ม ⌄ (settings/สมาชิก/integrations — ตาม role) + ปุ่มเขียนใหม่ ✏️ (DM/channel ใหม่)
+- ช่องค้นหา + quick switcher (Cmd/Ctrl+K)
+- ลิงก์ยืน 3 แถว: **💬 เธรดของฉัน** (badge unread) · **🔖 รายการที่บันทึก** · **@ Mentions ค้าง**
+- section **Channels**: `#ชื่อ` (PRIVATE = 🔒) — **ตัวหนา = unread, badge เลขดำ = mention**, 🔕 = MUTED · ท้าย section: "+ เพิ่ม channel" (สร้าง/Browse)
+- section **Direct messages**: ชื่อคู่สนทนา + จุด presence (● online / ◐ away / ○ offline) + badge เลข (DM นับทุกข้อความ)
+- ลาก order ไม่ได้ใน v1 (เรียง: unread ก่อน แล้ว lastMessageAt) — custom section 🔜
 
-### 6.2 `/app/meeting/search` — ผลค้นหา: แถบกรอง (ห้อง/ผู้ส่ง/ไฟล์แนบ/วันที่) + ผลลัพธ์ highlight คำค้น + ปุ่ม "ดูในห้อง" (jump พร้อม context สองทิศ)
+**Main pane (กลาง):**
+- header: `#ชื่อ` + topic (คลิกแก้) + จำนวนสมาชิก (กด = แผงสมาชิก) + 📌 pins + 📁 ไฟล์ + ⋯ (ตั้งค่า channel/แจ้งเตือน/archive/ออก)
+- เธรดข้อความ: จัดกลุ่มตามวัน (เส้นคั่น "วันนี้ / เมื่อวาน / 12 ก.ค."), **เส้นแดง "ยังไม่ได้อ่าน"** ณ lastRead + ปุ่มลอย "ข้ามไปล่าสุด"
+- ข้อความ: avatar + ชื่อ + เวลา; ข้อความติดกันของคนเดิมภายใน 5 นาที = compact (ไม่ซ้ำ avatar แบบ Slack); render markdown/code block (ปุ่ม copy); mention = พื้นเทาอ่อน+ตัวหนา; ป้าย "แก้ไขแล้ว"; tombstone "ข้อความถูกลบ"
+- ใต้ข้อความ: ชิป reactions `👍 3` + ปุ่ม ➕ react · แถบเธรด "💬 5 ตอบกลับ — ล่าสุด 10 นาทีก่อน" + avatar ผู้ตอบ (กด = เปิด thread pane)
+- embeds: การ์ด Kanban (กรอบ hairline: ชื่องาน/คอลัมน์/ผู้รับ/due + ปุ่ม refresh) · การ์ด integration (icon ระบบ + สรุป + ลิงก์) · การ์ดสาย 📞 + ปุ่มเข้าร่วม · OG preview (title+domain+รูปย่อ)
+- hover/long-press เมนู: react ด่วน 6 ตัว · ตอบในเธรด · save 🔖 · pin · แก้ไข · ลบ · คัดลอกลิงก์ข้อความ
+- composer: textarea + toolbar ย่อ (B/I/code/code block) + แนบไฟล์ (chip ก่อนส่ง สูงสุด 10) + `@` autocomplete + emoji picker + Enter ส่ง / Shift+Enter ขึ้นบรรทัด
+- `postingPolicy: ADMINS_ONLY` และไม่ใช่ admin → banner "channel นี้โพสต์ได้เฉพาะผู้ดูแล" แทน composer (ตอบในเธรดได้)
+- archived → banner "channel นี้ถูกเก็บถาวร — อ่านอย่างเดียว" + ปุ่ม unarchive (admin)
 
-### 6.3 `/app/meeting/my-events` — นัดของฉัน: list การ์ดนัด upcoming (วันนี้/สัปดาห์นี้/ถัดไป) + สถานะ RSVP ของฉัน + กดเข้าห้องต้นทาง
+**Thread pane (ขวา — เปิดเมื่อกดเธรด):**
+- header "เธรด — #ชื่อchannel" + ปุ่มติดตาม/เลิกติดตาม + ✕
+- root ด้านบน (ย่อ) + replies เรียงเวลา + composer ของเธรด + checkbox "ส่งเข้าห้องด้วย"
+- desktop กว้าง ≥ 1200px แสดง 3 pane พร้อมกัน; แคบกว่า = thread pane ทับ main
 
-### 6.4 Mobile behavior
-- room list = จอแรก → tap เข้าห้องเต็มจอ (ปุ่ม back), แผงสมาชิก/pin/นัด = bottom sheet, quick switcher = ปุ่มค้นหาบน header, แนบรูปจากกล้องได้, typing/badge realtime เท่ากับ desktop
+### 6.2 จอรอง (route ลูกของ `/app/sys/[systemId]`)
+- `/threads` — เธรดของฉัน: list การ์ดเธรด (channel, root ย่อ, n ตอบกลับ, unread หนา) กด = เปิดเธรด
+- `/saved` — รายการที่บันทึก: list ข้อความ + ปุ่ม "ดูในห้อง"
+- `/search?q=` — ผลค้นหา 3 แท็บ: ข้อความ / ไฟล์ / คน + แถบ filter (in:/from:/has:/วันที่) + highlight + jump
+- `/browse` — directory PUBLIC channels + ปุ่ม join
+- `/settings` (workspace ADMIN) — ชื่อ, autoAddNewStaff, editWindow, สมาชิก workspace (role), **Integrations** (list + สร้าง: เลือกระบบต้นทาง → เลือก events → เลือก channel), insights (§10)
 
-### 6.5 จุดแสดงผลบน dashboard อื่น
-- sidebar เมนู "📢 Meeting": badge = mention ค้าง (เลข) หรือจุด unread
-- Overview "ทุกกิจการ": การ์ด "ประกาศล่าสุด" (โพสต์ ANNOUNCEMENT ล่าสุด 1 รายการ + ลิงก์)
+### 6.3 Mobile behavior — **drawer 2 ชั้น**
+- ชั้น 1 = sidebar เต็มจอ (จอแรก) → แตะ channel = ชั้น 2 ห้องเต็มจอ (back กลับ) → แตะเธรด = เธรดเต็มจอ (back กลับห้อง)
+- แผงสมาชิก/pins/ไฟล์/react picker = bottom sheet · composer sticky เหนือคีย์บอร์ด · แนบรูปจากกล้อง/แกลเลอรี · swipe ข้อความ = ตอบในเธรด
+- quick switcher = ปุ่ม 🔍 บน header · badge/typing/presence realtime เท่ากับ desktop
+
+### 6.4 จุดแสดงผลนอกระบบ
+- `/app` การ์ดระบบ Meeting: badge = mention+DM ค้าง (เลข) หรือจุด unread — **แยกต่อ workspace** ถ้ามีหลายชุด
+- sidebar dashboard เมนู Meeting: badge รวมทุก workspace ที่ user เป็นสมาชิก
 
 ---
 
 ## 7. Business Flows
 
-### 7.1 สร้างห้องทีมผูกหน่วย + auto-join
-1. Manager สร้างห้อง `{ type: CHANNEL, name: "โรงแรม-a-แม่บ้าน", visibility: PUBLIC, unitId: unit_a, autoJoinByUnit: true }`
-2. Service ตรวจ: `can(meeting.create_room)` + `unit_a ∈ tenant` + ชื่อไม่ซ้ำ (`@@unique`) → สร้างห้อง + ผู้สร้างเป็น ADMIN
-3. Query Membership ทุกคนที่ `unitAccess ⊇ unit_a` หรือ `["*"]` → insert `MeetingRoomMember { autoJoined: true }` (batch) + system message "สร้างห้องแล้ว"
-4. SSE `room.updated` → ห้องโผล่ใน list สมาชิกทุกคน
-   - **Failure:** ชื่อซ้ำ → 409 + inline error (ตาม feedback validation inline) · unit ARCHIVED → 422 "หน่วยนี้ถูกเก็บถาวร"
+### 7.1 เปิดระบบ Meeting (สร้าง workspace)
+1. Owner ที่ `/app/settings/systems` เลือก Meeting → ตั้งชื่อ → สร้าง `AppSystem { type: MEETING }`
+2. Service ต่อเนื่อง (transaction): insert `MeetingWorkspaceMember` ให้ staff ทุกคนที่มี Membership (ผู้สร้าง = OWNER) + สร้าง `#general { isDefault: true, type: PUBLIC }` + `MeetingChannelMember` ทุกคน (`autoJoined: true`) + system message "ยินดีต้อนรับสู่ workspace"
+3. staff ใหม่ภายหลัง (Membership ใหม่) + `autoAddNewStaff: true` → hook `membership.created` → เพิ่มเข้า workspace + `#general`
+   - **Failure:** ไม่มีสิทธิ์สร้างระบบ → 403 · สร้าง 2 workspace ชื่อซ้ำ = อนุญาต (AppSystem.name ไม่ unique — id ต่างกัน)
 
-### 7.2 ส่งข้อความ + mention + Kanban embed
-1. Staff พิมพ์ "@เมย์ ช่วยดูงานนี้ /app/kanban/boards/b1/cards/c9" กดส่ง → `POST .../messages { body, mentions:["usr_may"], clientMessageId }`
-2. Server (transaction): ตรวจสมาชิก+ไม่ archived → parse ลิงก์ภายใน → เรียก `kanban.getCardPreview(tenantId, cardId)` (§8.2) → ได้ snapshot → insert message (`embeds`, `mentions`) + `MeetingMention` แถวของ usr_may + อัปเดต `room.lastMessageAt`
-3. SSE `message.new` ถึงสมาชิกทุกคน + badge mention ของ usr_may
-4. usr_may offline > 10 นาที → `notify({ channel: EMAIL, template: 'meeting.mentioned', data: { roomName, preview, url } })` (throttle 1/15 นาที)
-   - **Failure:** การ์ด Kanban ไม่มีสิทธิ์/ถูกลบ → embed fallback `{kind:'LINK', title:'การ์ด Kanban'}` ไม่ leak ชื่องาน · ส่งซ้ำ retry → `@@unique(roomId, clientMessageId)` คืนข้อความเดิม
+### 7.2 ส่งข้อความ + mention + embed
+1. Staff พิมพ์ "@เมย์ ดูงานนี้ /app/sys/kb1/cards/c9 ```js\ncode\n```" → `POST /channels/:id/messages { body, clientMessageId }`
+2. Server (transaction): ตรวจสมาชิก + ไม่ archived + postingPolicy → parse mentions (`@เมย์` → usr_may) → parse ลิงก์: ภายใน (Kanban → `kanban.getCardPreview` §8.3, อื่น → title-only) / ภายนอก (OG unfurl ผ่าน proxy กัน SSRF §11.8) / call link → insert message + `MeetingMention` + update `channel.lastMessageAt`
+3. SSE `message.new` ถึงสมาชิก channel → sidebar หนา/badge ตาม notifyLevel; usr_may offline > 10 นาที → email digest (throttle 1/15 นาที)
+   - **Failure:** retry ส่งซ้ำ → `@@unique(channelId, clientMessageId)` คืนข้อความเดิม · การ์ด Kanban ไม่มีสิทธิ์/ลบ → embed fallback ลิงก์เปล่า ไม่ leak ชื่องาน
 
-### 7.3 @all ในห้องใหญ่
-- ห้อง ≤ 20 คน: สมาชิกใดใช้ `@all` ได้ · > 20 คน: เฉพาะ room ADMIN/OWNER/MANAGER — ฝ่าฝืน → 403 + ข้อความ "ห้องนี้จำกัด @all เฉพาะผู้ดูแล"
-- `@all` แตกเป็น `MeetingMention` รายคน (สมาชิก ณ เวลาโพสต์, `isAll: true`) — คน join ทีหลังไม่ได้ mention ย้อนหลัง
+### 7.3 เธรด: ตอบ + ติดตาม + unread
+1. Staff กด "ตอบในเธรด" บนข้อความ m1 → thread pane → ส่ง reply → `POST messages { threadRootId: m1, alsoSentToChannel: false }`
+2. Server transaction: insert reply + update root `{ replyCount: +1, lastReplyAt }` + **auto-follow**: upsert `MeetingThreadFollow` ให้ผู้ตอบ + ผู้โพสต์ root + ผู้ถูก mention (ข้ามคนที่เคยกดเลิกติดตาม `following: false`)
+3. SSE `thread.reply` → ผู้ติดตามได้ badge ที่ "เธรดของฉัน" (ไม่ทำห้องหนา — reply ไม่โผล่ main pane) · ติ๊ก "ส่งเข้าห้องด้วย" → โผล่ทั้งคู่ + ห้องหนา
+4. mark read เธรด → `POST /threads/:rootId/read`
+   - **Failure:** reply ใส่ root ที่เป็น reply → 422 "ตอบซ้อนเธรดไม่ได้" (client ส่ง root จริงเสมอ) · root ถูกลบ → ตอบต่อได้ (root = tombstone)
 
-### 7.4 โพสต์นัด + RSVP + เตือน
-1. ผู้สร้างกด 📅 กรอกฟอร์ม → `POST .../events` → transaction: insert `MeetingEvent` + `MeetingMessage { type: EVENT_POST, meta:{eventId} }`
-2. สมาชิกกด "มา/ไม่มา/ไม่แน่ใจ" → upsert RSVP → SSE `event.updated` → การ์ดอัปเดตยอดสด
-3. Cron ทุก 5 นาที: หา event `startsAt - 30m ≤ now` และ `reminderSentAt IS NULL` และไม่ cancel → notify (WEB+EMAIL) ถึง RSVP=GOING + ผู้สร้าง → set `reminderSentAt` (กันส่งซ้ำแบบ atomic `UPDATE ... WHERE reminderSentAt IS NULL RETURNING`)
-4. แก้เวลา/ยกเลิก → system message ในเธรด + notify ผู้ RSVP GOING
-   - **Failure:** RSVP หลังเวลาเริ่ม → 422 "นัดเริ่มไปแล้ว" · แก้นัดพร้อมกัน 2 คน → last-write-win + `updatedAt` (การ์ดรีเฟรชจาก SSE)
+### 7.4 @channel ในห้องใหญ่
+- ≤ 20 คน: ใครก็ใช้ `@channel/@here` ได้ · > 20 คน: เฉพาะ channel ADMIN / workspace ADMIN — ฝ่าฝืน → 403 "channel นี้จำกัด @channel เฉพาะผู้ดูแล"
+- แตก `MeetingMention` รายคน (`kind: CHANNEL|HERE`) — `@here` กรองเฉพาะ user ที่ presence ONLINE ขณะโพสต์; สมาชิก > 200 คน → fan-out ใน background job
 
-### 7.5 แก้/ลบข้อความ
-- แก้: เจ้าของ ภายใน 24 ชม. → set `editedAt`, re-parse mention (mention ที่เพิ่มใหม่ → แจ้งเตือนใหม่; ที่ถูกลบออก → ลบแถว mention ที่ยัง unread)
-- ลบ: soft → `deletedAt/deletedByUserId`, `body=null`, ลบไฟล์จาก storage, ลบแถว `MeetingMention` unread, embed ถูกล้าง — tombstone แสดง "ข้อความถูกลบ" · **ประวัติถาวร = ไม่ hard delete แถว**
+### 7.5 Reaction / Pin / Save
+- react: `PUT /messages/:id/reactions/👍` → upsert (unique constraint กัน race กดพร้อมกัน) → SSE `message.updated` → ชิปอัปเดตสด; กดซ้ำผ่าน DELETE → ถอน
+- pin: ตรวจ limit 100 ใน transaction (count + insert; unique `messageId` กัน pin ซ้ำ) → system message "📌 ปักหมุดโดย เมย์"
+- save: upsert เงียบ ไม่มี SSE ถึงคนอื่น (ส่วนตัว)
 
-### 7.6 Sync สมาชิก auto-join เมื่อ unitAccess เปลี่ยน
-- Event hook จากโมดูล settings/team: `membership.unitAccessChanged(userId)` → ทุกห้อง `autoJoinByUnit=true`:
-  - ได้สิทธิ์หน่วยเพิ่ม → insert member (`autoJoined: true`) ถ้ายังไม่มี
-  - เสียสิทธิ์ → เฉพาะแถว `autoJoined: true` → set `leftAt` (คนที่ถูกเชิญ manual ไม่โดนถอน)
-- ถูกถอด Membership ทั้ง tenant → set `leftAt` ทุกห้อง + ตัด SSE ทันที (ข้อความเก่าของเขายังอยู่ครบ ชื่อยัง render ได้)
+### 7.6 Integration: จองใหม่ → post เข้า channel
+1. Workspace ADMIN สร้าง subscription: source = ระบบจองคิว "สาขา A" (BUSINESS_UNIT), events `["booking.appointment.created"]`, channel `#จอง-สาขา-a`
+2. ระบบจองเกิดจองใหม่ → emit event เข้า **outbox กลาง** (ตามที่ระบบจองทำอยู่แล้ว — Meeting ไม่ต้องให้ระบบต้นทางรู้จัก)
+3. Consumer ของ Meeting อ่าน outbox → หา `MeetingIntegration` ที่ match (`sourceUnitId + event + enabled`) → render template การ์ด (ชื่อลูกค้า(ย่อ), เวลา, ลิงก์ "เปิดในระบบจอง") → insert `MeetingMessage { type: INTEGRATION, senderUserId: "system" }` → SSE ปกติ
+4. ทีมกด react/เปิดเธรดคุยต่อใต้การ์ดได้
+   - **Failure:** channel ถูก archive → set `enabled: false` + notify ผู้สร้าง · ระบบต้นทางถูกลบ/ถอด link → subscription ปิดอัตโนมัติ · consumer ล้ม → retry ผ่าน outbox (idempotent ด้วย `clientMessageId = "intg:" + integrationId + ":" + eventId`)
 
-### 7.7 Read state + badge
-- เปิดห้อง/เลื่อนถึงล่าสุด → `POST .../read { lastReadMessageId }` → update member row + `MeetingMention.readAt` ที่ ≤ ข้อความนั้น → SSE `read` (ให้จอนับ "อ่านแล้ว n คน") + `badge` กลับหา user เอง (ทุกแท็บ sync)
-- Badge รวม sidebar = `count(rooms: unread)` + `count(mentions: readAt IS NULL)` — คำนวณฝั่ง server ส่งผ่าน SSE, poll fallback 60 วิ
+### 7.7 Sync สมาชิกอัตโนมัติ
+- hook `membership.created` → autoAddNewStaff → เข้า workspace + `#general` (§7.1)
+- hook `membership.unitAccessChanged(userId)` → channel `autoJoinByUnit: true`: ได้สิทธิ์ → insert member (`autoJoined: true`); เสียสิทธิ์ → เฉพาะแถว `autoJoined: true` set `leftAt` (invite มือไม่โดนถอน)
+- hook `membership.removed` → set `leftAt` ทุก channel + workspace ทุก workspace ของ tenant + ตัด SSE ทันที — ข้อความ/ไฟล์เก่าอยู่ครบ ชื่อยัง render ได้ (§11.4)
+
+### 7.8 Read state + badge
+- เลื่อนถึงล่าสุด → `POST /channels/:id/read { lastReadMessageId }` → upsert ReadState + เคลียร์ `MeetingMention.readAt` ≤ ข้อความนั้น → SSE `read` กลับหา user เอง (ทุกแท็บ sync) + `badge`
+- Badge รวม = channels ที่ `lastMessageAt > lastReadAt` (unread) + mentions `readAt IS NULL` + threads ติดตามที่ `lastReplyAt > follow.lastReadAt` — คำนวณฝั่ง server, poll fallback 60 วิ
 
 ---
 
-## 8. Integration (contracts `_CONVENTIONS` §2)
+## 8. Integration (contracts `_CONVENTIONS` §2 — เพิ่ม `systemId` ใน context ตาม BLUEPRINT_SYSTEMS §5)
 
 ### 8.1 Notification — contract 2.5 (จุดเดียว ไม่ส่งเอง)
 ```
 notify({ tenantId, to: { userId }, channel: 'WEB'|'EMAIL', template:
-  'meeting.mentioned' | 'meeting.dm_new' | 'meeting.announcement' | 'meeting.event_reminder' | 'meeting.event_changed',
-  data: { roomId, roomName, preview, url, eventTitle?, startsAt? } })
+  'meeting.mentioned' | 'meeting.dm_new' | 'meeting.thread_reply' | 'meeting.channel_invited',
+  data: { systemId, workspaceName, channelId, channelName, preview, url } })
 ```
-กติกา throttle ฝั่ง Meeting: EMAIL รวมไม่เกิน 1 ฉบับ/15 นาที/user (รวม mention+DM เป็น digest), `MUTED` = ไม่ notify ทุกชนิด, `MENTIONS` = เฉพาะ mention/DM/นัด
-· **class ของ template (D15):** ทุก template ของ Meeting (`meeting.mentioned` / `meeting.dm_new` / `meeting.announcement` / `meeting.event_reminder` / `meeting.event_changed`) = **`TRANSACTIONAL`** (แจ้งเตือนภายในทีม — ส่งได้เสมอ ไม่ติด consent gate)
+- ทุก template = **`TRANSACTIONAL`** (ภายในทีม — ไม่ติด consent gate)
+- throttle ฝั่ง Meeting: EMAIL รวม ≤ 1 ฉบับ/15 นาที/user (mention+DM+thread รวมเป็น digest) · `MUTED` = ไม่ notify ทุกชนิด · `MENTIONS` = เฉพาะ mention/DM/เธรดที่ติดตาม
 
-### 8.2 Kanban (โมดูล 13) — read-only preview
+### 8.2 Event ขาเข้า (integration §3.12) — ผ่าน outbox กลาง
+- Meeting เป็น **consumer** ของ event registry กลาง (`<module>.<entity>.<pastTense>` — CORE_API.md) — ระบบต้นทาง**ไม่ต้องรู้จัก Meeting** (decoupled ผ่าน outbox ตาม _CONVENTIONS §2.8)
+- v1 template การ์ด: `booking.appointment.created/canceled`, `pos.sale.paid/refunded` — payload การ์ดใช้ข้อมูลย่อจาก event เท่านั้น (ไม่ query ระบบต้นทางเพิ่ม, ไม่ leak เกิน template)
+- idempotent: `clientMessageId = "intg:{integrationId}:{eventId}"`
+
+### 8.3 Kanban (ระบบ 13) — read-only preview
 ```
-kanban.getCardPreview(tenantId, cardId) → { cardId, title, boardName, columnName, assigneeName?, dueDate?, labels[] } | null
+kanban.getCardPreview(tenantId, systemId /*ของ Kanban*/, cardId)
+  → { cardId, title, boardName, columnName, assigneeName?, dueDate?, labels[] } | null
 ```
-- Meeting เรียกตอนโพสต์/กด refresh เท่านั้น (snapshot เก็บใน `embeds` — ไม่ subscribe การเปลี่ยนแปลง)
-- **ไม่ตรวจสิทธิ์รายคนตอนโพสต์** (คนโพสต์เห็นการ์ดอยู่แล้ว) แต่การกดเปิดหน้าเต็มตรวจสิทธิ์ Kanban ปกติ; บอร์ด PRIVATE ที่ผู้โพสต์ไม่มีสิทธิ์ → คืน null → fallback ลิงก์เปล่า
-- Kanban อาจ deep-link กลับ ("คุยเรื่องการ์ดนี้ใน Meeting") 🔜 — ระบุฝั่ง Kanban
+- เรียกตอนโพสต์/กด refresh เท่านั้น (snapshot ใน `embeds` — ไม่ subscribe) · บอร์ดที่ผู้โพสต์ไม่มีสิทธิ์ → null → fallback ลิงก์เปล่า · เปิดหน้าเต็มตรวจสิทธิ์ Kanban ปกติ
 
-### 8.3 User/Membership (แกนกลาง)
-- ชื่อ/avatar staff อ่านสดจาก `User` + `Membership` — Meeting ไม่ copy เก็บ
-- subscribe event `membership.unitAccessChanged`, `membership.removed` (§7.6)
-- สถานะออนไลน์: presence กลางจาก SSE hub (user มี stream ต่ออยู่ = ออนไลน์) — แชร์ logic กับโมดูล Chat ได้ที่ชั้น infra (SSE hub เดียว) **แต่ event/topic แยก namespace เด็ดขาด** (`t:{tenantId}:meeting:*` vs `t:{tenantId}:chat:*` — scheme กลาง D14)
+### 8.4 SSE + Presence (infra กลาง)
+- **Topic (scheme กลาง + systemId):** `t:{tenantId}:meeting:{systemId}:{topic}` — events: `message.new`, `message.updated` (แก้/ลบ/react/pin), `thread.reply`, `channel.updated`, `member.updated`, `typing`, `presence`, `read`, `badge`
+- Presence กลางจาก SSE hub (user มี stream = ONLINE, idle > 10 นาที = AWAY) — แชร์ infra กับ Chat ได้ **แต่ namespace แยกเด็ดขาด** (`...:meeting:...` vs `...:chat:...`)
+- resume ด้วย `Last-Event-ID` + reconnect banner ฝั่ง UI
 
-### 8.4 AuditLog กลาง
-บันทึก: สร้าง/archive ห้อง, เปลี่ยน visibility/unitId, ถอดสมาชิก, ลบข้อความโดยคนที่ไม่ใช่ผู้ส่ง, แก้/ยกเลิกนัด — who/what/when/before/after
+### 8.5 User/Membership (แกนกลาง)
+- ชื่อ/avatar staff อ่านสดจาก `User`+`Membership` — Meeting ไม่ copy เก็บ
+- subscribe hooks: `membership.created` / `membership.unitAccessChanged` / `membership.removed` (§7.7)
 
-### 8.5 สิ่งที่ไม่ integrate (by design)
-- ❌ โมดูล 10 Chat (ห้ามทุกชั้น — ลิงก์ preview title-only เท่านั้น)
-- ❌ Point/POS/Account — Meeting ไม่มีธุรกรรมเงิน/แต้ม
+### 8.6 AuditLog กลาง
+บันทึก: สร้าง/archive channel, เปลี่ยน visibility/postingPolicy, ถอดสมาชิก (workspace+channel), ลบข้อความโดยคนที่ไม่ใช่ผู้ส่ง, workspace ADMIN เข้าห้อง PRIVATE ด้วย `meeting.admin`, สร้าง/แก้/ลบ integration — who/what/when/before/after
+
+### 8.7 สิ่งที่ไม่ integrate (by design)
+- ❌ ระบบ 10 Chat (ห้ามทุกชั้น — ลิงก์ preview title-only เท่านั้น)
+- ❌ Point/POS/Account ขาออก — Meeting ไม่มีธุรกรรมเงิน/แต้ม (รับ event ขาเข้ามาแสดงอย่างเดียว)
 
 ---
 
 ## 9. Permissions
 
-RBAC 4 มิติ: Meeting เป็น tenant-scoped — มิติ unit ใช้เฉพาะกลไก `autoJoinByUnit` (การมองเห็นจริงคุมด้วย**การเป็นสมาชิกห้อง**) + สิทธิ์ระดับห้อง (room ADMIN) ซ้อนอีกชั้น
+3 ชั้น: **module action** (RBAC กลาง) → **workspace role** (`MeetingWorkspaceMember.role`) → **channel role** (`MeetingChannelMember.role`) — การมองเห็นจริงคุมด้วย "การเป็นสมาชิก channel" เสมอ
+
+### 9.1 Module actions (RBAC กลาง — `meeting.*`)
 
 | Action | คำอธิบาย | OWNER | MANAGER | STAFF | Custom |
 |---|---|---|---|---|---|
-| `meeting.use` | เข้าโมดูล, DM, join ห้อง PUBLIC, ส่งข้อความในห้องที่เป็นสมาชิก, RSVP, ค้นหา | ✅ | ✅ | ✅ (default ทุกคนที่มี Membership) | ✅ ปิดได้รายคน |
-| `meeting.create_room` | สร้าง CHANNEL/GROUP_DM | ✅ | ✅ | ✅ (default — ปิดได้) | ✅ |
-| `meeting.announce` | สร้าง/โพสต์ในห้อง ANNOUNCEMENT | ✅ | ✅ | ❌ | ✅ |
-| `meeting.admin` | จัดการห้องใด ๆ ทั้ง tenant (แก้/archive/ถอดสมาชิก/ลบข้อความ แม้ไม่เป็นสมาชิก — ใช้กู้สถานการณ์) | ✅ | ❌ (default) | ❌ | ✅ |
-| room `ADMIN` (ระดับห้อง) | เชิญ/ถอด, เปลี่ยนชื่อ, pin, ลบข้อความคนอื่น, แก้นัดในห้อง | ผู้สร้างห้อง + ผู้ที่ถูกตั้ง | | | |
+| `meeting.use` | เข้า workspace ที่เป็นสมาชิก, คุย, เธรด, react, save, ค้นหา, DM | ✅ | ✅ | ✅ (default) | ✅ ปิดได้รายคน |
+| `meeting.create_channel` | สร้าง PUBLIC/PRIVATE channel | ✅ | ✅ | ✅ (default — ปิดได้) | ✅ |
+| `meeting.manage_workspace` | จัดการสมาชิก workspace/settings/integrations (คู่กับ workspace role ADMIN) | ✅ | ✅ | ❌ | ✅ |
+| `meeting.admin` | ฉุกเฉินระดับ tenant: เข้า/จัดการ channel ใด ๆ ทุก workspace แม้ไม่เป็นสมาชิก | ✅ | ❌ (default) | ❌ | ✅ |
 
-กติกาเพิ่ม:
-- ห้อง PRIVATE: มองไม่เห็นใน directory/search สำหรับคนนอก แม้เป็น OWNER — OWNER ที่จำเป็นต้องเข้า ใช้ `meeting.admin` (มี AuditLog กำกับทุกครั้ง — โปร่งใสต่อทีม: system message "เจ้าของร้านเข้าร่วมห้อง")
-- DM: สองคนเท่านั้น เชิญเพิ่มไม่ได้ (สร้าง GROUP_DM ใหม่แทน), ไม่มี room ADMIN
-- Search/SSE/badge: บังคับ filter "ห้องที่ฉันเป็นสมาชิก (`leftAt IS NULL`)" ที่ service layer ทุกเส้น
+### 9.2 Workspace role
+
+| ความสามารถ | OWNER | ADMIN | MEMBER |
+|---|---|---|---|
+| เชิญ/ถอดสมาชิก workspace, เปลี่ยน role (ADMIN↓) | ✅ | ✅ | ❌ |
+| แก้ settings + integrations | ✅ | ✅ | ❌ |
+| โอน OWNER / archive workspace (= archive AppSystem) | ✅ | ❌ | ❌ |
+| จัดการ channel ใดก็ได้ใน workspace (เท่า channel ADMIN) | ✅ | ✅ | ❌ |
+
+### 9.3 Channel role + กติกา
+- channel **ADMIN** (ผู้สร้าง + ผู้ที่ถูกตั้ง): เชิญ/ถอด, แก้ชื่อ/policy, archive, pin ห้องใหญ่, ลบข้อความคนอื่น, ใช้ `@channel` ห้องใหญ่
+- ห้อง PRIVATE: คนนอกมองไม่เห็นใน directory/search/แม้รู้ id — รวมถึง OWNER; จำเป็นจริงใช้ `meeting.admin` → **AuditLog + system message "เจ้าของร้านเข้าร่วมห้อง"** (โปร่งใสต่อทีม)
+- DM: 2 คนเท่านั้น เชิญเพิ่มไม่ได้ (สร้าง GROUP_DM ใหม่), ไม่มี channel ADMIN
+- ทุกเส้น search/SSE/badge/files: บังคับ filter "สมาชิก channel (`leftAt IS NULL`)" ที่ service layer
 
 ---
 
 ## 10. Reports & Metrics
 
-> Meeting เป็นเครื่องมือภายใน — รายงานเบากว่าโมดูลลูกค้า เน้น adoption + การรับรู้ประกาศ (ไม่ทำ surveillance รายคน)
+> เครื่องมือภายใน — เน้น adoption **ไม่ทำ per-user surveillance** (ห้ามมี message count รายคน / เวลาออนไลน์รายคน — ระบุใน spec กัน dev เผลอทำ)
 
 | รายงาน/Metric | นิยาม | ใครเห็น |
 |---|---|---|
-| **Adoption รายสัปดาห์** | active user (ส่ง ≥1 ข้อความ/สัปดาห์) ÷ staff ทั้งหมด, จำนวนข้อความ/วัน (กราฟ 30 วัน) | OWNER |
-| **การรับรู้ประกาศ** | ต่อโพสต์ ANNOUNCEMENT: อ่านแล้ว n/ทั้งหมด + รายชื่อยังไม่อ่าน (ไว้ตามงานเรื่องสำคัญ) | OWNER/MANAGER + ผู้โพสต์ |
-| **RSVP summary** | ต่อนัด: มา/ไม่มา/ไม่แน่ใจ/ยังไม่ตอบ (การ์ดในห้อง — ไม่มีหน้ารายงานแยก) | สมาชิกห้อง |
-| **ห้อง active** | ห้องเรียงตามข้อความ 7 วันล่าสุด + ห้องเงียบ >30 วัน (ชวน archive) | OWNER |
-| **Storage** | พื้นที่ไฟล์แนบรวมของ Meeting (MB) — ประกอบ quota แผนฟรีระดับ tenant | OWNER |
-| Export | 🔜 export transcript ห้องเป็นไฟล์ (ทำพร้อมเครื่องมือ compliance) | |
+| **Adoption รายสัปดาห์** | active user (ส่ง ≥ 1 ข้อความ/สัปดาห์) ÷ สมาชิก workspace, ข้อความ/วัน (กราฟ 30 วัน) | workspace OWNER/ADMIN |
+| **Channel active** | channels เรียงตามข้อความ 7 วัน + channel เงียบ > 30 วัน (ชวน archive) | workspace OWNER/ADMIN |
+| **Thread adoption** | % ข้อความที่คุยต่อในเธรด (สุขภาพการใช้แบบ Slack) | workspace OWNER/ADMIN |
+| **Integration feed** | จำนวนการ์ด integration/วัน ต่อ subscription (ดู noise) | workspace ADMIN |
+| **Storage** | พื้นที่ไฟล์รวมของ workspace (MB) เทียบ quota tenant | workspace OWNER/ADMIN |
+| Export transcript | 🔜 พร้อมเครื่องมือ compliance | |
 
-หน้า `/app/meeting/insights` (OWNER): การ์ด 4 ใบ (active users, ข้อความ/วัน, ประกาศล่าสุด+%อ่าน, ห้องเงียบ) — ไม่มี per-user message count ละเอียด (by design กัน micro-surveillance, ระบุใน spec เพื่อไม่ให้ dev เผลอทำ)
+หน้า `/app/sys/[systemId]/settings#insights`: การ์ด 5 ใบ (active users, ข้อความ/วัน, thread %, channel เงียบ, storage) — ตัวเลขรวมเท่านั้น
 
 ---
 
 ## 11. Edge Cases & Rules
 
-1. **DM ซ้ำ** — 2 คนกดสร้าง DM หาคู่เดียวกันพร้อมกัน: `dmKey = sha256(sorted userIds)` + `@@unique([tenantId, dmKey])` → แพ้ constraint → fetch ห้องเดิมคืน (find-or-create idempotent)
-2. **ส่งซ้ำ/สองแท็บ** — `@@unique([roomId, clientMessageId])` + SSE ทุกแท็บของ user เดียว sync read state ผ่าน event `read`
-3. **ห้องใหญ่ + @all spam** — จำกัด @all ตาม §7.3; แตก mention เป็นแถวมี cost → cap สมาชิก GROUP_DM 20, CHANNEL ไม่ cap แต่ @all fan-out ทำใน background job ถ้า >200 สมาชิก
-4. **ถูกถอด Membership ระหว่างเปิดจอ** — SSE hub ตัด connection ทันทีที่รับ event `membership.removed`; ทุก API ตรวจ Membership สด → 403; ข้อความเก่าคงอยู่ (ประวัติถาวร) ชื่อผู้ส่ง render จาก User ได้แม้พ้นสภาพ
-5. **แก้ mention ย้อนหลัง** — แก้ข้อความแล้วเพิ่ม mention ใหม่ = แจ้งเตือนเฉพาะคนใหม่; ห้ามใช้แก้ไขเพื่อ "ดึงคนเข้าห้อง PRIVATE" (mention คนนอกห้อง = render ตัวหนังสือเฉย ๆ ไม่แจ้งเตือน ไม่เชิญ)
-6. **นัดเวลาข้าม timezone** — เก็บ UTC เสมอ แสดงตาม `unit.settings.timezone`/tenant default (Asia/Bangkok); ฟอร์มนัดโชว์ timezone กำกับเมื่อ tenant มี unit ต่าง timezone
-7. **ไฟล์แนบ** — whitelist MIME เดียวกับ Chat (§ Chat 11.9), จำกัดโควตารวม tenant (แผนฟรี 2GB — เกิน → 422 บอกให้ลบไฟล์เก่า/อัปเกรด); ลบข้อความ → ลบไฟล์จาก storage จริง (tombstone ไม่ถือไฟล์)
-8. **ประวัติถาวร ≠ เก็บทุกอย่าง** — ยกเว้นเดียวที่ลบจริง: ไฟล์ของข้อความที่ถูก soft delete และ tenant ถูก terminate (นโยบายลบข้อมูลระดับแพลตฟอร์ม อยู่นอกโมดูลนี้)
-9. **ห้ามปนกับ Chat** — ไม่มี FK/JOIN/import ข้าม `Meeting*` ↔ `Chat*`; SSE hub ใช้ infra ร่วมได้แต่ topic แยก (`t:{tenantId}:meeting:*` vs `t:{tenantId}:chat:*` — scheme กลาง D14); reviewer ต้อง reject PR ที่ฝ่าฝืน
-10. **ห้อง default** — `#ทั่วไป`/`#ประกาศ` (`isDefault: true`): archive/เปลี่ยน type/ลบ ไม่ได้ (409), เปลี่ยนชื่อได้
-11. **race: pin เกิน 50 / เชิญคนซ้ำ / join พร้อม archive** — pin นับใน transaction (SELECT count FOR UPDATE ระดับห้อง) → 409; เชิญซ้ำ → upsert เงียบ (ถ้า `leftAt` มีค่า → re-join ล้าง leftAt); join ห้องที่เพิ่ง archived → 422
-12. **การค้นหาภาษาไทย** — v1 ใช้ trigram (`pg_trgm`) เพราะ tsvector 'simple' ตัดคำไทยไม่ได้ — ผลลัพธ์ = substring match ยาว ≥3 ตัวอักษร; ระบุ limitation นี้ใน release note, 🔜 dictionary ไทย (icu/thai tokenizer)
+1. **ลบ/แก้ root ที่มีเธรด** — แก้ root: เธรดไม่กระทบ (root ในหน้าเธรดอัปเดตตาม + ป้ายแก้ไขแล้ว) · ลบ root: tombstone แต่ `replyCount/lastReplyAt` คงไว้ **เธรดยังเปิดอ่าน/ตอบได้** (แบบ Slack) — แถบเธรดใต้ tombstone ยังแสดง
+2. **ลบ reply สุดท้ายของเธรด** — recompute `replyCount/lastReplyAt` ใน tx เดียวกับ soft delete; เธรด count เหลือ 0 → แถบเธรดหาย (follow rows คงไว้เฉย ๆ)
+3. **ลบ channel** — v1 = archive เท่านั้น (read-only + ค้นเจอ + integration ปิดอัตโนมัติ); `#general` archive ไม่ได้ (409); hard delete 🔜 (ต้อง archive ≥ 7 วันก่อน + workspace OWNER + พิมพ์ชื่อยืนยัน + AuditLog)
+4. **สมาชิกออกจาก tenant (Membership removed)** — ตัด SSE ทันที, ทุก API 403 ใน request ถัดไป, `leftAt` ทุก channel/workspace; ข้อความ/ไฟล์/reaction เก่าอยู่ครบ (ประวัติถาวร) ชื่อ render จาก User ได้แม้พ้นสภาพ; DM กับคนที่ออก → อ่านย้อนได้ ส่งเพิ่มไม่ได้ (banner "สมาชิกออกจากองค์กรแล้ว")
+5. **แก้ข้อความแล้ว mentions เปลี่ยน** — เพิ่มคนใหม่ = แจ้งเตือนเฉพาะคนใหม่; ถอนคน = ลบแถว mention ที่ยัง unread; **ห้ามใช้แก้ไขดึงคนเข้าห้อง PRIVATE** (mention คนนอกห้อง = ตัวหนังสือเฉย ๆ)
+6. **DM ซ้ำ / ส่งซ้ำ** — `dmKey = sha256(sorted userIds)` + `@@unique([systemId, dmKey])` → find-or-create idempotent (ยิงพร้อม 10 request = 1 ห้อง) · `@@unique([channelId, clientMessageId])` กันข้อความเบิ้ล
+7. **@channel spam + fan-out** — จำกัดตาม §7.4; GROUP_DM cap 9 คน; CHANNEL ไม่ cap แต่ mention fan-out > 200 สมาชิกทำใน background job; `@here` นับ presence ณ เวลาโพสต์เท่านั้น
+8. **OG unfurl ภายนอก — SSRF** — fetch ผ่าน proxy กลางเท่านั้น: block private IP/redirect ไป private, timeout 5 วิ, cache ต่อ URL 1 ชม., ขนาด response ≤ 1MB; ลิงก์ภายใน (`/app/...`) ไม่ยิง HTTP — resolve ตรงจาก service
+9. **Integration ปลายทางหาย** — channel archived / ระบบต้นทางถูก archive/ลบ → `enabled: false` + notify ผู้สร้าง; event ไม่ match subscription ใด = ทิ้งเงียบ (ไม่ error); consumer idempotent ผ่าน `clientMessageId`
+10. **หลาย workspace** — ทุก query ผูก `systemId`; badge/search/quick switcher แยกต่อ workspace; user ถูกถอดจาก workspace หนึ่ง ไม่กระทบอีกชุด
+11. **ห้ามปนกับ Chat** — ไม่มี FK/JOIN/import ข้าม `Meeting*` ↔ `Chat*`; SSE hub infra ร่วมได้แต่ topic แยก namespace; reviewer ต้อง reject PR ที่ฝ่าฝืน
+12. **การค้นหาภาษาไทย** — v1 trigram (`pg_trgm`) เพราะ tsvector 'simple' ตัดคำไทยไม่ได้ → substring match ≥ 3 ตัวอักษร; ระบุ limitation ใน release note; 🔜 thai tokenizer
+13. **Ordering race** — ข้อความ createdAt ชนกัน ms เดียว → tiebreak ด้วย id; client แทรกข้อความจาก SSE ตามกติกา `(createdAt, id)` เดียวกับ server กัน jump
+14. **ไฟล์ค้าง (อัปโหลดแล้วไม่ส่ง)** — `MeetingFile.messageId IS NULL` เกิน 24 ชม. → GC ลบ storage + แถว; โควตานับเฉพาะไฟล์ที่ผูกข้อความแล้ว + ไฟล์ค้าง < 24 ชม.
+15. **editWindow หมดพอดีตอนกดแก้** — ตรวจฝั่ง server เป็นหลัก → 422 "หมดเวลาแก้ไข" (client แสดง inline ตาม feedback validation)
 
 ---
 
 ## 12. QC Checklist (เกณฑ์ตรวจรับ)
 
 **Functional**
-- [ ] สร้างห้องครบ 4 ประเภท; DM find-or-create ไม่เกิดห้องซ้ำ (ยิงพร้อมกัน 10 request → 1 ห้อง)
-- [ ] ห้อง `autoJoinByUnit`: staff ได้/เสีย unitAccess → เข้า/หลุดห้องอัตโนมัติ, สมาชิก manual invite ไม่โดนถอน
-- [ ] ANNOUNCEMENT: staff โพสต์ → 403; OWNER โพสต์ → ทุกสมาชิกได้ WEB notification + ตัวเลข "อ่านแล้ว n/ทั้งหมด" ถูกต้อง
-- [ ] Mention: @user badge+อีเมล (offline, throttle 15 นาที), @all ในห้อง >20 คนโดย staff ธรรมดา → 403, mention คนนอกห้อง → ไม่แจ้งเตือน
-- [ ] Pin ครบวงจร: pin/unpin/แผง pin/เกิน 50 → 409; แก้ข้อความ ≤24 ชม. เท่านั้น; ลบ → tombstone + ไฟล์หายจาก storage
-- [ ] Kanban embed: การ์ดจริงแสดง snapshot ถูกต้อง + refresh ดึงสถานะใหม่; การ์ดไม่มีสิทธิ์/ลบแล้ว → fallback ไม่ leak ชื่องาน
-- [ ] นัดประชุม: สร้าง/RSVP/แก้/ยกเลิก + เตือนก่อน 30 นาที ครั้งเดียว (รัน cron ซ้ำไม่ส่งซ้ำ) + "นัดของฉัน" รวมทุกห้อง
-- [ ] Search: เจอเฉพาะห้องที่เป็นสมาชิก (สร้าง user 2 คนคนละห้องทดสอบไขว้), jump ไปข้อความพร้อม context, ค้นไทย ≥3 ตัวอักษรเจอ
-- [ ] Read state: เส้น "ยังไม่ได้อ่าน" ถูกตำแหน่ง, "อ่านแล้ว n คน" ตรง, badge sidebar sync ทุกแท็บผ่าน SSE + fallback poll
-- [ ] แก้ mention ย้อนหลัง → คนใหม่ได้แจ้งเตือน คนถูกถอนไม่ค้าง badge
+- [ ] สร้าง workspace → `#general` + สมาชิกทุกคนอัตโนมัติ; staff ใหม่เข้าเองเมื่อ `autoAddNewStaff`; สร้าง workspace ชุดที่ 2 → ข้อมูลแยกขาด (`systemId`)
+- [ ] Channel ครบ 4 ประเภท; DM find-or-create ยิงพร้อม 10 request → 1 ห้อง; PRIVATE มองไม่เห็นจากคนนอกทุกช่องทาง (directory/search/id ตรง)
+- [ ] `postingPolicy: ADMINS_ONLY`: MEMBER โพสต์ main → 403 แต่ตอบเธรดได้; `#general` leave/archive → 409
+- [ ] **Threads**: reply ไม่โผล่ main pane, แถบ "n ตอบกลับ" ถูกต้อง, "ส่งเข้าห้องด้วย" โผล่ทั้งคู่, auto-follow (โพสต์/ตอบ/ถูก mention), เลิกติดตามแล้วไม่ถูก follow ซ้ำ, จอ "เธรดของฉัน" unread ถูก, ลบ root → เธรดยังตอบได้
+- [ ] Mentions: `@user` badge+email digest (offline>10 นาที, throttle 15 นาที); `@channel` ห้อง >20 โดย MEMBER → 403; `@here` เฉพาะคน online; mention คนนอกห้อง → เงียบ
+- [ ] Reactions: react/ถอน toggle idempotent (กดรัว ๆ ไม่เบิ้ล), รายชื่อคนกดถูก, realtime ทุก client
+- [ ] Pins ≤ 100 (เกิน → 409) + Saved items ส่วนตัว (คนอื่นมองไม่เห็น) + jump กลับบริบทถูกตำแหน่ง
+- [ ] แก้ไข: ป้าย "แก้ไขแล้ว" + editWindow enforce ฝั่ง server; ลบ → tombstone + ไฟล์หายจาก storage + หลุดจาก pins
+- [ ] Markdown/code block render ถูก + ปุ่ม copy; ลิงก์ Meet → การ์ดสาย; OG unfurl ไม่ยิง private IP (ทดสอบ `http://169.254.169.254`)
+- [ ] Search: ข้อความ/ไฟล์/คน — เจอเฉพาะ channel ที่เป็นสมาชิก (user 2 คนคนละห้องทดสอบไขว้), ไทย ≥ 3 ตัวอักษรเจอ, filter in:/from:/has: ทำงาน, jump พร้อม context
+- [ ] Read: เส้น "ยังไม่ได้อ่าน" ถูกตำแหน่ง, sidebar หนา/badge เลข (mention+DM เท่านั้น) ตรง, sync ทุกแท็บผ่าน SSE + poll fallback
+- [ ] Presence: online/away/offline เปลี่ยนตามจริง; typing แสดงใน channel และเธรดแยกกัน
+- [ ] Integration: จองใหม่จริงในระบบจอง → การ์ดโผล่ channel ที่เลือกภายในไม่กี่วินาที; รัน consumer ซ้ำ → ไม่เบิ้ล; archive channel → subscription ปิด + แจ้งผู้สร้าง
+- [ ] Pagination: เปิดห้อง/เลื่อนย้อน/jump anchor — ลำดับ `(createdAt, id)` ไม่มีข้อความหาย/ซ้ำ
 
 **Isolation & Security**
-- [ ] ทุก endpoint ด้วย id ของ tenant อื่น → 404/403 (รวม search, stream, upload, link-preview)
-- [ ] Non-member เข้าห้อง PRIVATE: get/messages/search/SSE → มองไม่เห็นแม้รู้ id; OWNER ใช้ `meeting.admin` เข้าได้แต่เกิด AuditLog + system message
-- [ ] ลูกค้า/guest (session storefront) เรียก API Meeting ทุกเส้น → 401/403
+- [ ] ทุก endpoint ด้วย id ของ tenant อื่น / workspace อื่น → 404/403 (รวม search, stream, uploads, files, integrations, link-preview)
+- [ ] ลูกค้า/guest (session storefront) เรียกทุกเส้น → 401/403; user ที่ไม่ใช่สมาชิก workspace → 403 แม้มี `meeting.use`
+- [ ] `meeting.admin` เข้าห้อง PRIVATE → AuditLog + system message ทุกครั้ง
+- [ ] ถอด Membership → SSE หลุดทันที + API 403 ใน request ถัดไป; ถอดจาก workspace เดียว → อีก workspace ใช้ได้ปกติ
 - [ ] ไม่มี import/FK/JOIN ระหว่าง `Meeting*` กับ `Chat*` (ตรวจ schema + grep module boundary)
-- [ ] ถอด Membership → SSE หลุดทันที + ทุก API 403 ภายใน request ถัดไป
-- [ ] AuditLog ครบทุกรายการใน §8.4
+- [ ] Integration card ไม่ leak ข้อมูลเกิน template; ลิงก์ในการ์ดเปิดโดยคนไม่มีสิทธิ์ระบบต้นทาง → 403 ที่ระบบนั้น
+- [ ] AuditLog ครบทุกรายการใน §8.6
 
 **i18n & UI**
-- [ ] ทุก string TH/EN รวมอีเมล digest + system message + tombstone
-- [ ] Mobile: drawer/bottom sheet/sticky composer ทำงานบนจอ ≤390px; desktop 2 คอลัมน์
-- [ ] Empty/loading/error ครบ: room list ว่าง, ห้องว่าง, search ไม่เจอ, SSE reconnect banner
-- [ ] B&W minimal: mention/badge/การ์ดนัด ใช้น้ำหนัก+เส้น ไม่พึ่งสี; ไม่มี jargon (ใช้คำว่า "ห้อง", "ประกาศ", "นัดประชุม")
+- [ ] ทุก string TH/EN รวม email digest, system message, tombstone, banner ทุกใบ
+- [ ] Desktop ≥ 1200px = 3 pane (sidebar/main/thread); mobile ≤ 390px = drawer 2 ชั้น + เธรดเต็มจอ + bottom sheet + composer sticky
+- [ ] Empty/loading/error ครบ: workspace ใหม่, channel ว่าง ("ทักทายทีมของคุณได้เลย 👋"), search ไม่เจอ, SSE reconnect banner
+- [ ] B&W minimal: unread หนา/badge/เส้นยังไม่ได้อ่าน/การ์ด ใช้น้ำหนัก+เส้น ไม่พึ่งสี; ไม่มี jargon (ใช้ "ห้อง/channel", "เธรด", "ปักหมุด", "บันทึกไว้")
