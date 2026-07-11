@@ -22,11 +22,13 @@
 
 ## ค้าง / ทำต่อ (Stage A ที่เหลือ — เรียงลำดับ)
 ### A1 (block ทุกอย่าง)
-- [ ] **Auth passwordless email** — AuthToken hash+consume race-safe, magic link interstitial POST, OTP lockout, Session `__Host-` cookie + rotation + revoke; interstitial กัน email scanner (SECURITY §1)
-- [ ] **Tenant/session context** — อ่าน session ใน server → membership → `getCtx()` ให้ handler + `assertCan()`
-- [ ] **Onboarding** — สมัคร→ยืนยันอีเมล→สร้าง Tenant+Membership(OWNER)→สร้าง BusinessUnit แรก (wizard 6 ประเภท) → `/app`
-- [ ] **Unit Switcher** (client) + URL `/app/u/[unitSlug]/...` + resolver `unitId` จาก slug + `withUnitCtx` (404 แทน 403)
-- [ ] เชิญพนักงาน + จำกัด unitAccess
+- [x] **Auth passwordless email** ✅ — hash.ts (sha256+timing-safe), email.ts (dev fallback console + Resend), session.ts (`shark_session`/`__Host-` prod, idle 8h/abs 30d, sliding), auth.ts (requestLogin=OTP+magic link, verifyOtp lockout 5, consumeMagicLink), interstitial `/auth/verify` POST. **ทดสอบจริงกับ Neon ผ่าน** (verify/reuse-block/attempt)
+- [x] **Tenant/session context** ✅ — context.ts `getAuth/requireAuth/requireTenant/requireUnit/setActiveTenant`
+- [x] **Onboarding** ✅ — `/signup`,`/login`,`/onboarding` + actions/onboarding.ts (tx: Tenant+Membership(OWNER)+BusinessUnit, wizard 6 ประเภท, enabledModules ตาม type). ทดสอบ tx จริงผ่าน
+- [x] **Unit route** ✅ — `/app/u/[unitSlug]` + requireUnit (404 แทน 403). dashboard shell โหลด units จริง + logout. **HTTP guard ทดสอบผ่าน** (/app,/onboarding → 307 /login)
+- [ ] **Unit Switcher (client)** — ตอนนี้ sidebar list ยังไม่มี dropdown สลับ tenant/unit แบบไม่ reload + cookie active
+- [ ] เชิญพนักงาน + จำกัด unitAccess (invite flow + accept)
+- [ ] หน้า settings/units/new (ปุ่มมีแล้ว ยังไม่มีหน้า) + settings ร้าน
 - [ ] permissions JSON schema + STAFF preset · event bus + `core.membership.unitAccessChanged/removed` · naming standards (event/SSE/notify) · `bizDate()`
 - [ ] isolation CI gate (2 tenants × 2 units) — route manifest
 ### A2a (block Stage B) : AuditLog writer · notify()+consent gate+NotificationLog · cron runner+X-Cron-Secret · **outbox/retry queue กลาง** · DailyStat+statUpsert · Tenant.limits enforce
