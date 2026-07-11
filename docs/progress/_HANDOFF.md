@@ -38,7 +38,8 @@ posting engine `src/lib/modules/account/gl.ts` + ผังบัญชี seed `
 - 🟡 **Expense**: expense.ts/expense-actions.ts/expense-ui.tsx/ExpenseEditor.tsx เสร็จ · **ขาด route pages ทั้งหมด** (purchase/expense/po/asset-buy) — service พร้อม แค่ทำ UI route
 - 🟡 **Sales Gate B**: computeTotals (per-line vat + allocate ส่วนลด) + VISIBLE_DOC_TYPES เปิด CN/DN/มัดจำ/วางบิล แล้ว · **ค้าง: recordPayment branch DEPOSIT_RECEIPT (F2), CN cap, ใบกำกับ ม.86/4 print fields** — ตรวจ service.ts/actions ว่า flow มัดจำ/วางบิลครบไหมก่อนให้ใช้จริง
 - nav เมนู P2/P3 wire แล้วใน ui.tsx (section ที่หน้าเสร็จ) — expense/accounts/periods ยังไม่ link (soft-gate)
-- **ทำต่อ:** re-spawn agent ที่ค้าง (Expense routes, GL accounts/periods, Reports BS/CF/ภพ30, Sales-GateB มัดจำ/วางบิล/ม.86/4) หลัง reset — engine+schema พร้อมหมด เหลือ UI + ตรวจ Gate B correctness
+- **UPDATE (main ทำต่อเองหลัง limit):** ปิดช่องว่างครบแล้ว — Expense 8 routes (purchase/expense/po/asset-buy) + Reports ครบ 5 (เพิ่ม balance-sheet/cash-flow/pp30) + GL accounts (ผังบัญชี CRUD+mapping) + periods (ปิดงวด). nav wire ครบ. **verify Gate B: DEPOSIT_RECEIPT(Cr2110+AWAITING_DEDUCT)+CREDIT_NOTE(Cr1100) balance ✓** → docType เปิดครบปลอดภัย. deploy prod แล้ว
+- **เหลือ (minor, ไม่ block):** ใบกำกับภาษี ม.86/4 print fields ให้ครบเป๊ะ · Finance CSV export ภงด · verify ก่อน launch จริง: **checksum เลขภาษีนิติบุคคล DBD** (QC5 verify-list) + ทดสอบ UI คลิกจริงทุกหน้า
 
 ## งานถัดไป (เจ้าของจะเลือก)
 - ✅ QC5 Gate A ปิดแล้ว (ด้านบน) — Account ออกเอกสารถูกกฎหมายภาษี + double-entry ครบ
