@@ -24,12 +24,14 @@
 - schema: `prisma/schema/*.prisma` แยกไฟล์/ระบบ · **migrate ด้วย `pnpm exec prisma db push --accept-data-loss` เท่านั้น** (migrate dev เป็น interactive ใช้ไม่ได้) · หลัง push ต้อง `prisma generate`
 - แนวสร้างระบบใหม่: เพิ่ม schema (systemId-scoped) → register `src/lib/core/scope.ts` → service ใน `lib/modules/<x>/` → UI ที่ `/app/sys/[id]` (feature) หรือ `/app/u/[slug]/<x>` (business) → เปิดใน systems.ts → e2e test กับ Neon → deploy 2 ที่
 
-## 🔴 QC5 ระบบบัญชี (2026-07-11 ดึก โดย Fable 5) — งานบังคับก่อนให้ผู้ใช้ออกเอกสารบัญชีจริง
-สเปคบัญชี+code P1 ผ่านการตรวจ 3 สาย (ภาษีไทย/double-entry/pipeline) = **10 CRITICAL / 36 MAJOR** — **อ่าน `docs/qc/QC5-RESOLUTIONS-account.md` แล้ว execute Gate A ทั้งหมด**: tax point ใบกำกับ ม.78 (สินค้า=ส่งมอบ, บริการ=ต่องวดรับเงิน — TAX_INVOICE ต้องอ้าง payment ได้) · เดือนภาษี source เดียว (2205 VAT รอออกใบกำกับ) · vatRegistered gate + ภาษีซื้อต้องห้าม · posting rules ชี้ขาด (ส่วนลด net/gross+4800, มัดจำตาม F2) · **posting engine ต้องมีตั้งแต่ P1 ตามสเปค — ที่ defer ไปขัดสเปค ยิ่งช้ายิ่ง backfill แพง** · `can()`+AuditLog ทุกจุดเงิน · **ซ่อน docType ที่ flow ไม่ครบ (มัดจำ/วางบิล/CN/DN) ออกจาก UI ชั่วคราว** · Gate B ก่อน P2, Gate C ก่อน P3 (ในไฟล์เดียวกัน) · findings เต็ม: QC5-account-{tax,ledger,pipeline}.md
+## ✅ QC5 Gate A — ปิดครบแล้ว (2026-07-11 โดย Opus 4.8) — LIVE prod
+posting engine `src/lib/modules/account/gl.ts` + ผังบัญชี seed `coa.ts` (40 บัญชี+2205, 23 mapping) · wire postDocument/postPayment/postTaxInvoice/reverseFor เข้า issue/payment/void ใน tx เดียว · A1 tax point (สินค้า ON_ISSUE / บริการ ON_PAYMENT, ใบกำกับอ้าง payment ผ่าน sourcePaymentId) · A2 เดือนภาษี source เดียว (VAT พัก 2205 goods/2210 service → 2200 ตอนออกใบกำกับ) · A3 vatRegistered gate · A4 posting rules (ส่วนลด net, มัดจำ F2) · A5 can()+AuditLog 13 action + ซ่อน มัดจำ/วางบิล/CN/DN. **Verify: `scripts/qc-account-gatea.mts` ผ่าน 9/9** (double-entry Σdr==Σcr ทุก entry + VAT routing + gate + can/audit wiring + backfill 0 orphan). helper: `access.ts` (assertAccountCan/writeAudit). schema เต็ม P2/P3 วางแล้ว (`account_gl.prisma` — 14 model)
+- **ต่อไป: Gate B (ก่อน P2 รายจ่าย/WHT) + Gate C (ก่อน P3 งบ)** ใน `docs/qc/QC5-RESOLUTIONS-account.md` · แล้วขยายเมนู P2/P3 (schema+posting engine พร้อมแล้ว ต่อยอดได้เลย) · findings เต็ม: QC5-account-{tax,ledger,pipeline}.md
 
 ## งานถัดไป (เจ้าของจะเลือก)
-- **⬆️ QC5 Gate A ก่อน** (ด้านบน) — สำคัญกว่าทุกข้อล่าง เพราะ Account เปิด prod แล้วแต่ยังออกเอกสารผิดกฎหมายภาษีได้
-- **UI/manual QC 7 ระบบใหม่** — คลิกทุกหน้าใน browser (service-layer ผ่านแล้ว)
+- ✅ QC5 Gate A ปิดแล้ว (ด้านบน) — Account ออกเอกสารถูกกฎหมายภาษี + double-entry ครบ
+- **ขยาย Account ให้ครบเมนู (P2/P3)** ตามที่ user ขอ — schema+posting engine พร้อม: P2 รายจ่าย/WHT/การเงิน (ทำ Gate B ก่อน), P3 GL/งบการเงิน/สินทรัพย์ (Gate C). แบ่ง subagent ขนานได้ (engine gl.ts เป็น interface กลาง)
+- **UI/manual QC 7 ระบบใหม่ + Account** — คลิกทุกหน้าใน browser (service-layer + double-entry ผ่านแล้ว)
 - **Chat (LINE + webchat)** ตาม `10-chat.md` — ChannelAdapter + inbox (ระบบเดียวที่ยังเป็น feature ที่เหลือ) · **Restaurant** ตาม `02-restaurant.md` (business ที่เหลือ)
 - เก็บลึก P2 ต่อจาก P1 (ดู 🔜 ในสถานะ LIVE): Hotel folio/night-audit, Account ฝั่งรายจ่าย+งบ, SSE realtime (Queue/Ticket/Meeting/Kanban), Coupon→POS contract wiring, ชำระเงินออนไลน์ (Ticket/Hotel)
 - ค้าง: push GitHub (ต้องขอ PAT จาก user) · Unit Switcher/เชิญพนักงาน (A1 ที่เหลือ)
