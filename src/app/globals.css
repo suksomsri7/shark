@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/* SHARK design system — Minimal Clean Black & White
+   ยึด grayscale ล้วน + accent เดียว (ดำ). เว้นวรรคเยอะ เส้น hairline */
+@theme {
+  --color-ink: #0a0a0a; /* ตัวอักษรหลัก / ปุ่มหลัก */
+  --color-ink-soft: #404040;
+  --color-muted: #737373; /* ข้อความรอง */
+  --color-line: #e5e5e5; /* เส้น hairline */
+  --color-surface: #ffffff;
+  --color-surface-2: #fafafa; /* พื้นรอง / hover */
+  --color-danger: #b91c1c;
+
+  --font-sans: var(--font-app-sans), ui-sans-serif, system-ui, sans-serif;
+  --radius: 0.5rem;
+}
+
+* {
+  border-color: var(--color-line);
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+  }
+  .btn-primary {
+    background: var(--color-ink);
+    color: var(--color-surface);
+  }
+  .btn-primary:hover {
+    background: var(--color-ink-soft);
+  }
+  .btn-ghost {
+    @apply border;
+    background: var(--color-surface);
+    color: var(--color-ink);
+  }
+  .btn-ghost:hover {
+    background: var(--color-surface-2);
+  }
+  .card {
+    @apply rounded-xl border p-5;
+    background: var(--color-surface);
+  }
+}

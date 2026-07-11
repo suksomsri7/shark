@@ -1,0 +1,26 @@
+{
+  "app": {
+    "name": "SHARK",
+    "tagline": "All-in-one business management"
+  },
+  "landing": {
+    "headline": "Run every part of your business, in one place",
+    "sub": "Hotel, restaurant, bookings, queue, members, points and more — free to start",
+    "ctaSignup": "Start for free",
+    "ctaLogin": "Log in"
+  },
+  "nav": {
+    "overview": "Overview",
+    "members": "Members/Points",
+    "coupons": "Coupons",
+    "chat": "Chat",
+    "settings": "Settings",
+    "addBusiness": "Add business",
+    "allBusinesses": "All businesses"
+  },
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel"
+  }
+}
