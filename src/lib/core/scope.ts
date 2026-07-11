@@ -27,6 +27,9 @@ const MODULE_SCOPES: Record<string, Scope> = {
   // Member
   Customer: "tenant",
   MemberActivity: "tenant",
+  // Reward
+  Reward: "tenant",
+  RewardRedemption: "tenant",
   // Point (tenant-scoped)
   PointSettings: "tenant",
   PointLedger: "tenant",

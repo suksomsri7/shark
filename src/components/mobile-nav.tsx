@@ -100,6 +100,9 @@ export function MobileNav({
             </nav>
 
             <div className="mt-auto flex flex-col gap-2 border-t pt-3">
+              <Link href="/app/settings/systems" onClick={close} className="rounded-lg px-2 py-2 text-sm hover:bg-[color:var(--color-surface-2)]">
+                ⚙️ ระบบ
+              </Link>
               <Link href="/app/settings/units/new" onClick={close} className="btn btn-ghost w-full text-sm">
                 + เพิ่มกิจการ
               </Link>

@@ -1,0 +1,42 @@
+// Reward (แลกของรางวัลด้วยแต้ม) — scope ตาม systemId (ระบบรางวัล)
+// ลูกค้าใช้แต้ม (จากระบบแต้มที่ผูก unit เดียวกัน) แลกรางวัล
+
+enum RewardRedemptionStatus {
+  PENDING // แลกแล้ว รอรับของ
+  FULFILLED // รับของแล้ว
+  CANCELLED // ยกเลิก/คืนแต้ม
+}
+
+model Reward {
+  id          String   @id @default(cuid())
+  tenantId    String
+  systemId    String // ระบบรางวัลไหน
+  name        String
+  description String?
+  pointsCost  Int
+  stock       Int? // null = ไม่จำกัด
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  redemptions RewardRedemption[]
+
+  @@index([tenantId, systemId])
+}
+
+model RewardRedemption {
+  id         String                 @id @default(cuid())
+  tenantId   String
+  systemId   String
+  rewardId   String
+  reward     Reward                 @relation(fields: [rewardId], references: [id])
+  customerId String
+  pointsCost Int // snapshot
+  code       String // โค้ดรับของ
+  status     RewardRedemptionStatus @default(PENDING)
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+
+  @@index([tenantId, systemId, customerId])
+}

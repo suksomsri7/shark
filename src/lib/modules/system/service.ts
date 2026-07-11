@@ -4,14 +4,15 @@ import type { Prisma, PrismaClient, SystemType } from "@prisma/client";
 // "ระบบ" (System Instance) — สร้างได้หลายชุด ผูกกับกิจการ (unit). 1 unit → 1 ระบบ/ประเภท
 type Client = PrismaClient | Prisma.TransactionClient;
 
-const TYPES: SystemType[] = ["MEMBER", "POINT", "POS"];
+const TYPES: SystemType[] = ["MEMBER", "POINT", "POS", "REWARD"];
 const TYPE_LABEL: Record<SystemType, string> = {
   MEMBER: "สมาชิก",
   POINT: "แต้ม",
   POS: "ขายหน้าร้าน",
+  REWARD: "รางวัล",
 };
 
-export type UnitSystems = { MEMBER: string; POINT: string; POS: string };
+export type UnitSystems = { MEMBER: string; POINT: string; POS: string; REWARD: string };
 
 // provision ระบบเริ่มต้น 3 ประเภทให้ unit (idempotent) — เรียกตอนสร้างกิจการ
 export async function ensureUnitSystems(
