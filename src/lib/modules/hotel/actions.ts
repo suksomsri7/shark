@@ -1,0 +1,156 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { requireUnit } from "@/lib/core/context";
+import { HotelRoomStatus } from "@prisma/client";
+import * as hotel from "./service";
+
+function ctxOf(auth: Awaited<ReturnType<typeof requireUnit>>["auth"], unitId: string) {
+  return { tenantId: auth.active.tenantId, unitId };
+}
+
+// ───────────────────────── Room types ─────────────────────────
+const roomTypeSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  code: z.string().trim().max(16).optional(),
+  capacity: z.coerce.number().int().min(1).max(20),
+  rateBaht: z.coerce.number().min(0).max(1_000_000),
+});
+
+export async function addRoomTypeAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  const p = roomTypeSchema.safeParse({
+    name: formData.get("name"),
+    code: formData.get("code") || undefined,
+    capacity: formData.get("capacity"),
+    rateBaht: formData.get("rateBaht"),
+  });
+  if (!p.success) return;
+  await hotel.createRoomType({
+    ...ctxOf(auth, unit.id),
+    name: p.data.name,
+    code: p.data.code,
+    capacity: p.data.capacity,
+    baseRateSatang: Math.round(p.data.rateBaht * 100),
+  });
+  revalidatePath(`/app/u/${unitSlug}/hotel/setup`);
+}
+
+export async function removeRoomTypeAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  const id = String(formData.get("id") ?? "");
+  await hotel.archiveRoomType(auth.active.tenantId, unit.id, id);
+  revalidatePath(`/app/u/${unitSlug}/hotel/setup`);
+}
+
+// ───────────────────────── Rooms ─────────────────────────
+const roomSchema = z.object({
+  roomTypeId: z.string().trim().min(1),
+  number: z.string().trim().min(1).max(16),
+  floor: z.string().trim().max(16).optional(),
+});
+
+export async function addRoomAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  const p = roomSchema.safeParse({
+    roomTypeId: formData.get("roomTypeId"),
+    number: formData.get("number"),
+    floor: formData.get("floor") || undefined,
+  });
+  if (!p.success) return;
+  await hotel.createRoom({ ...ctxOf(auth, unit.id), ...p.data });
+  revalidatePath(`/app/u/${unitSlug}/hotel/setup`);
+}
+
+export async function removeRoomAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  const id = String(formData.get("id") ?? "");
+  await hotel.archiveRoom(auth.active.tenantId, unit.id, id);
+  revalidatePath(`/app/u/${unitSlug}/hotel/setup`);
+}
+
+export async function setRoomStatusAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  const id = String(formData.get("id") ?? "");
+  const parsed = z.nativeEnum(HotelRoomStatus).safeParse(formData.get("status"));
+  if (!parsed.success) return;
+  await hotel.setRoomStatus(auth.active.tenantId, unit.id, id, parsed.data);
+  revalidatePath(`/app/u/${unitSlug}/hotel/setup`);
+  revalidatePath(`/app/u/${unitSlug}/hotel`);
+}
+
+// ───────────────────────── Reservations ─────────────────────────
+const reservationSchema = z.object({
+  roomTypeId: z.string().trim().min(1),
+  checkInDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  checkOutDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  guestName: z.string().trim().min(1).max(120),
+  guestPhone: z.string().trim().max(32).optional(),
+  guestEmail: z.string().trim().max(120).optional(),
+  adults: z.coerce.number().int().min(1).max(20).optional(),
+  children: z.coerce.number().int().min(0).max(20).optional(),
+  note: z.string().trim().max(500).optional(),
+});
+
+export type ReservationFormState = {
+  status: "idle" | "ok" | "error";
+  message?: string;
+  code?: string;
+};
+
+// ใช้กับ useActionState (client) — คืน state เพื่อโชว์ error/สำเร็จ inline
+export async function createReservationAction(
+  _prev: ReservationFormState,
+  formData: FormData,
+): Promise<ReservationFormState> {
+  const unitSlug = String(formData.get("unitSlug") ?? "");
+  const { auth, unit } = await requireUnit(unitSlug);
+  const p = reservationSchema.safeParse({
+    roomTypeId: formData.get("roomTypeId"),
+    checkInDate: formData.get("checkInDate"),
+    checkOutDate: formData.get("checkOutDate"),
+    guestName: formData.get("guestName"),
+    guestPhone: formData.get("guestPhone") || undefined,
+    guestEmail: formData.get("guestEmail") || undefined,
+    adults: formData.get("adults") || undefined,
+    children: formData.get("children") || undefined,
+    note: formData.get("note") || undefined,
+  });
+  if (!p.success) return { status: "error", message: "ข้อมูลไม่ครบหรือไม่ถูกต้อง" };
+  const res = await hotel.createReservation({
+    ...ctxOf(auth, unit.id),
+    ...p.data,
+    createdById: auth.user.id,
+  });
+  if (!res.ok) return { status: "error", message: res.reason };
+  revalidatePath(`/app/u/${unitSlug}/hotel`);
+  revalidatePath(`/app/u/${unitSlug}/hotel/reservations`);
+  return { status: "ok", code: res.code };
+}
+
+export async function checkInAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  const id = String(formData.get("id") ?? "");
+  const roomId = String(formData.get("roomId") ?? "");
+  await hotel.checkIn(auth.active.tenantId, unit.id, id, roomId);
+  revalidatePath(`/app/u/${unitSlug}/hotel`);
+  revalidatePath(`/app/u/${unitSlug}/hotel/reservations`);
+}
+
+export async function checkOutAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  const id = String(formData.get("id") ?? "");
+  await hotel.checkOut(auth.active.tenantId, unit.id, id);
+  revalidatePath(`/app/u/${unitSlug}/hotel`);
+  revalidatePath(`/app/u/${unitSlug}/hotel/reservations`);
+}
+
+export async function cancelReservationAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  const id = String(formData.get("id") ?? "");
+  const reason = String(formData.get("reason") ?? "") || undefined;
+  await hotel.cancelReservation(auth.active.tenantId, unit.id, id, reason);
+  revalidatePath(`/app/u/${unitSlug}/hotel`);
+  revalidatePath(`/app/u/${unitSlug}/hotel/reservations`);
+}

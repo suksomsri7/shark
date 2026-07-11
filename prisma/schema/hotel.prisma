@@ -1,0 +1,112 @@
+// Hotel (โรงแรม) — scope=unit (tenantId+unitId ทุกตาราง)
+// P1 slice: ประเภทห้อง + ห้องพัก + เรตพื้นฐาน + การจอง(สร้าง/เช็คอิน/เช็คเอาท์/ยกเลิก) + ปฏิทินว่างพื้นฐาน
+// เงินทุกจำนวน = Int หน่วยสตางค์ (satang) · วันที่ (check-in/out) เก็บ @db.Date, timezone ร้าน Asia/Bangkok
+// เลื่อนไป 🔜 (ไม่ทำใน P1): housekeeping module เต็มรูป, night audit, folio/POS charge,
+//   pricing ตามฤดู/rate plan หลายแบบ, channel manager/OTA, storefront จองออนไลน์, group booking
+// อย่าประกาศ generator/datasource ที่นี่ (อยู่ใน core) — ไฟล์นี้ session Hotel แก้ได้ไฟล์เดียว
+
+// สถานะห้องจริง (housekeeping/พร้อมขาย) — ห้อง OOO/CLEANING ไม่ถูก assign
+enum HotelRoomStatus {
+  AVAILABLE // ว่าง พร้อมขาย
+  OCCUPIED  // มีแขกพักอยู่
+  CLEANING  // รอทำความสะอาด (เช็คเอาท์แล้ว)
+  OOO       // out of order — ปิดใช้งานชั่วคราว
+}
+
+// สถานะการจอง (state machine พื้นฐาน P1)
+enum HotelReservationStatus {
+  BOOKED       // จองแล้ว รอเข้าพัก
+  CHECKED_IN   // เข้าพักอยู่
+  CHECKED_OUT  // ออกแล้ว
+  CANCELLED    // ยกเลิก
+}
+
+// ─────────────────────── INVENTORY ───────────────────────
+
+model HotelRoomType {
+  id             String   @id @default(cuid())
+  tenantId       String
+  unitId         String
+  name           String // "Deluxe Sea View"
+  code           String? // "DLX" ใช้ย่อในรายงาน/ปฏิทิน
+  description    String?
+  capacity       Int      @default(2) // จำนวนผู้เข้าพักสูงสุด/ห้อง
+  baseRateSatang Int      @default(0) // ราคาต่อคืน (สตางค์) — 🔜 season/rate plan
+  active         Boolean  @default(true) // soft-delete (ห้าม hard delete)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  rooms        HotelRoom[]
+  reservations HotelReservation[]
+
+  @@unique([unitId, name])
+  @@index([tenantId, unitId])
+  @@index([unitId, active, sortOrder])
+}
+
+model HotelRoom {
+  id         String          @id @default(cuid())
+  tenantId   String
+  unitId     String
+  roomTypeId String
+  roomType   HotelRoomType   @relation(fields: [roomTypeId], references: [id])
+  number     String // "203" (unique ต่อ unit)
+  floor      String? // "2"
+  status     HotelRoomStatus @default(AVAILABLE)
+  active     Boolean         @default(true) // soft-delete
+  note       String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  reservations HotelReservation[]
+
+  @@unique([unitId, number])
+  @@index([tenantId, unitId])
+  @@index([unitId, roomTypeId, active])
+  @@index([unitId, status])
+}
+
+// ─────────────────────── BOOKING ─────────────────────────
+
+model HotelReservation {
+  id                String                 @id @default(cuid())
+  tenantId          String
+  unitId            String
+  code              String // รหัสจอง เช่น "HR-2607-0001" (running ต่อ unit)
+  status            HotelReservationStatus @default(BOOKED)
+  // ผู้เข้าพัก (snapshot บนเอกสาร) — customerId เชื่อมระบบสมาชิกภายหลังได้ (P1 เก็บเป็น scalar)
+  guestName         String
+  guestPhone        String?
+  guestEmail        String?
+  customerId        String? // Customer.id — 🔜 ผูก member.findOrCreate ตอน check-in
+  // ห้อง
+  roomTypeId        String
+  roomType          HotelRoomType          @relation(fields: [roomTypeId], references: [id])
+  roomId            String? // ห้องจริงที่ assign (ตอนจอง/ตอน check-in)
+  room              HotelRoom?             @relation(fields: [roomId], references: [id])
+  // ช่วงพัก (checkOutDate exclusive — คืนสุดท้าย = checkOutDate-1)
+  checkInDate       DateTime               @db.Date
+  checkOutDate      DateTime               @db.Date
+  nights            Int                    @default(1)
+  adults            Int                    @default(2)
+  children          Int                    @default(0)
+  // เงิน (snapshot ตอนจอง — สตางค์)
+  ratePerNightSatang Int                   @default(0)
+  totalSatang       Int                    @default(0)
+  note              String?
+  checkedInAt       DateTime?
+  checkedOutAt      DateTime?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  createdById       String? // User.id พนักงาน (null = ระบบ/ลูกค้า)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([unitId, code])
+  @@index([tenantId, unitId])
+  @@index([unitId, status, checkInDate])
+  @@index([unitId, roomTypeId, checkInDate, checkOutDate]) // ← availability query
+  @@index([unitId, roomId, checkInDate, checkOutDate]) // กันห้องจริงถูก assign ซ้อน
+  @@index([unitId, guestPhone])
+}

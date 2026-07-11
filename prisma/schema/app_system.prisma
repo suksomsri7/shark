@@ -8,6 +8,10 @@ enum SystemType {
   POINT
   POS
   REWARD
+  COUPON
+  MEETING
+  KANBAN
+  ACCOUNT
 }
 
 model AppSystem {

@@ -1,0 +1,73 @@
+// Kanban (บอร์ดงานภายในองค์กร คล้าย Trello) — scope = feature: ทุกตารางมี tenantId + systemId
+// ระบบ Kanban 1 ชุด (AppSystem type KANBAN) มีได้หลายบอร์ด → คอลัมน์ → การ์ด
+// P1 minimal: board/column/card + assignee (User ใน tenant) + labels + dueAt + ย้ายคอลัมน์
+// Defer (P2): real-time SSE, drag-drop, checklist/comment ในการ์ด, WIP limit, members/roles
+
+enum KanbanEntityStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+// ───────────────────────── Board ─────────────────────────
+model KanbanBoard {
+  id          String             @id @default(cuid())
+  tenantId    String
+  systemId    String // ระบบ Kanban ไหน (AppSystem.id)
+  name        String
+  description String?
+  sortOrder   Int                @default(0)
+  status      KanbanEntityStatus @default(ACTIVE)
+  archivedAt  DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  columns KanbanColumn[]
+  cards   KanbanCard[]
+
+  @@index([tenantId, systemId, status])
+}
+
+// ───────────────────────── Column ─────────────────────────
+model KanbanColumn {
+  id         String             @id @default(cuid())
+  tenantId   String
+  systemId   String
+  boardId    String
+  board      KanbanBoard        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  name       String
+  sortOrder  Int                @default(0)
+  status     KanbanEntityStatus @default(ACTIVE)
+  archivedAt DateTime?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  cards KanbanCard[]
+
+  @@index([tenantId, systemId, boardId])
+  @@index([boardId, status, sortOrder])
+}
+
+// ───────────────────────── Card ─────────────────────────
+model KanbanCard {
+  id             String             @id @default(cuid())
+  tenantId       String
+  systemId       String
+  boardId        String
+  board          KanbanBoard        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  columnId       String
+  column         KanbanColumn       @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  assigneeUserId String? // User.id (ต้องเป็น Membership ของ tenant — ตรวจใน service)
+  labels         Json               @default("[]") // string[] เช่น ["ด่วน","ลูกค้า"]
+  dueAt          DateTime? // UTC
+  sortOrder      Int                @default(0)
+  status         KanbanEntityStatus @default(ACTIVE)
+  archivedAt     DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([tenantId, systemId, boardId, status])
+  @@index([columnId, status, sortOrder])
+  @@index([tenantId, systemId, assigneeUserId])
+}

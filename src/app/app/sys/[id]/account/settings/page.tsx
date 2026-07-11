@@ -1,0 +1,100 @@
+import Link from "next/link";
+import { loadAccountSystem } from "@/lib/modules/account/guard";
+import { getSettings } from "@/lib/modules/account/service";
+import { saveSettingsAction } from "@/lib/modules/account/actions";
+
+const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
+const labelCls = "flex flex-col gap-1 text-xs text-[color:var(--color-muted)]";
+
+export default async function AccountSettingsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ saved?: string }>;
+}) {
+  const { id } = await params;
+  const { saved } = await searchParams;
+  const { tenantId, systemId } = await loadAccountSystem(id);
+  const s = await getSettings(tenantId, systemId);
+  const base = `/app/sys/${id}/account`;
+
+  return (
+    <div className="flex max-w-2xl flex-col gap-5">
+      <div>
+        <Link href={base} className="text-sm text-[color:var(--color-muted)]">← ระบบบัญชี</Link>
+        <h1 className="mt-1 text-2xl font-semibold">ตั้งค่าเอกสาร</h1>
+      </div>
+
+      {saved === "1" && <p className="text-sm text-[color:var(--color-ink)]">บันทึกแล้ว ✓</p>}
+
+      <form action={saveSettingsAction} className="card grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <input type="hidden" name="systemId" value={systemId} />
+        <h2 className="text-sm font-medium sm:col-span-2">ข้อมูลกิจการ</h2>
+        <label className={`${labelCls} sm:col-span-2`}>
+          ชื่อกิจการ
+          <input name="orgName" defaultValue={s.orgName} required className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          ชื่อ (อังกฤษ)
+          <input name="orgNameEn" defaultValue={s.orgNameEn ?? ""} className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          เลขผู้เสียภาษี
+          <input name="taxId" defaultValue={s.taxId ?? ""} className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          รหัสสาขา
+          <input name="branchCode" defaultValue={s.branchCode ?? "00000"} className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          ชื่อสาขา
+          <input name="branchName" defaultValue={s.branchName ?? ""} className={inputCls} />
+        </label>
+        <label className={`${labelCls} sm:col-span-2`}>
+          ที่อยู่
+          <textarea name="address" defaultValue={s.address ?? ""} rows={2} className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          เบอร์โทร
+          <input name="phone" defaultValue={s.phone ?? ""} className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          อีเมล
+          <input name="email" type="email" defaultValue={s.email ?? ""} className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          เว็บไซต์
+          <input name="website" defaultValue={s.website ?? ""} className={inputCls} />
+        </label>
+
+        <h2 className="mt-2 text-sm font-medium sm:col-span-2">ภาษีและเอกสาร</h2>
+        <label className={labelCls}>
+          จดทะเบียน VAT
+          <select name="vatRegistered" defaultValue={s.vatRegistered ? "1" : "0"} className={inputCls}>
+            <option value="1">จดทะเบียน VAT</option>
+            <option value="0">ไม่จด VAT</option>
+          </select>
+        </label>
+        <label className={labelCls}>
+          อัตรา VAT (basis point, 700 = 7%)
+          <input name="vatRateBp" type="number" defaultValue={s.vatRateBp} className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          ครบกำหนดชำระ default (วัน)
+          <input name="defaultDueDays" type="number" defaultValue={s.defaultDueDays} className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          ยืนราคา default (วัน)
+          <input name="defaultValidDays" type="number" defaultValue={s.defaultValidDays} className={inputCls} />
+        </label>
+        <label className={`${labelCls} sm:col-span-2`}>
+          หมายเหตุท้ายเอกสาร
+          <textarea name="footerNote" defaultValue={s.footerNote ?? ""} rows={2} className={inputCls} />
+        </label>
+
+        <button className="btn btn-primary text-sm sm:col-span-2 sm:justify-self-start">บันทึกการตั้งค่า</button>
+      </form>
+    </div>
+  );
+}

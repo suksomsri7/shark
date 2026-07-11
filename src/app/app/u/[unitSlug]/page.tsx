@@ -6,6 +6,26 @@ import { linkUnitAction, unlinkUnitAction } from "@/lib/actions/systems";
 
 const FEATURE_TYPES = ["MEMBER", "POINT", "POS", "REWARD"] as const;
 
+// ปุ่มเข้าใช้งานระบบธุรกิจ (business) แต่ละประเภท — ปุ่มแรก = primary
+const UNIT_NAV: Record<string, { href: string; label: string }[]> = {
+  BOOKING: [
+    { href: "/booking", label: "เปิดระบบจองคิว →" },
+    { href: "/booking/setup", label: "ตั้งค่าบริการ/พนักงาน" },
+  ],
+  HOTEL: [
+    { href: "/hotel", label: "เปิดระบบโรงแรม →" },
+    { href: "/hotel/setup", label: "ตั้งค่าห้องพัก" },
+  ],
+  QUEUE: [
+    { href: "/queue", label: "เปิดระบบบัตรคิว →" },
+    { href: "/queue/setup", label: "ตั้งค่าคิว/เคาน์เตอร์" },
+  ],
+  TICKET: [
+    { href: "/ticket", label: "เปิดระบบตั๋ว / อีเวนต์ →" },
+    { href: "/ticket/checkin", label: "เช็คอินหน้างาน" },
+  ],
+};
+
 // หน้าแรกของระบบธุรกิจ (เช่น จองคิว) — งานของระบบ + การเชื่อมต่อกับระบบอื่น
 export default async function UnitHomePage({
   params,
@@ -33,14 +53,17 @@ export default async function UnitHomePage({
         <h1 className="text-2xl font-semibold">{unit.name}</h1>
       </div>
 
-      {unit.type === "BOOKING" ? (
+      {UNIT_NAV[unit.type] ? (
         <div className="flex flex-wrap gap-2">
-          <Link href={`/app/u/${unitSlug}/booking`} className="btn btn-primary text-sm">
-            เปิดระบบจองคิว →
-          </Link>
-          <Link href={`/app/u/${unitSlug}/booking/setup`} className="btn btn-ghost text-sm">
-            ตั้งค่าบริการ/พนักงาน
-          </Link>
+          {UNIT_NAV[unit.type]!.map((l, i) => (
+            <Link
+              key={l.href}
+              href={`/app/u/${unitSlug}${l.href}`}
+              className={i === 0 ? "btn btn-primary text-sm" : "btn btn-ghost text-sm"}
+            >
+              {l.label}
+            </Link>
+          ))}
         </div>
       ) : (
         <p className="text-sm text-[color:var(--color-muted)]">ระบบนี้กำลังพัฒนา (เร็วๆ นี้)</p>

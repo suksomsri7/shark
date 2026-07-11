@@ -17,19 +17,19 @@ export type SystemDef = {
 };
 
 export const SYSTEM_DEFS: SystemDef[] = [
-  { code: "HOTEL", no: 1, kind: "business", label: "โรงแรม", hint: "ห้องพัก จอง เช็คอิน", icon: "🏨", status: "coming_soon" },
+  { code: "HOTEL", no: 1, kind: "business", label: "โรงแรม", hint: "ห้องพัก จอง เช็คอิน", icon: "🏨", status: "available" },
   { code: "RESTAURANT", no: 2, kind: "business", label: "ร้านอาหาร", hint: "เมนู โต๊ะ ครัว", icon: "🍜", status: "coming_soon" },
   { code: "BOOKING", no: 3, kind: "business", label: "จองคิว / นัดหมาย", hint: "นัดหมายตามเวลา นวด สปา คลินิก ทำเล็บ", icon: "📅", status: "available" },
-  { code: "QUEUE", no: 4, kind: "business", label: "บัตรคิว (Q)", hint: "ออกบัตร เรียกคิว", icon: "🎫", status: "coming_soon" },
-  { code: "TICKET", no: 5, kind: "business", label: "ตั๋ว / อีเวนต์", hint: "ขายตั๋ว เช็คอิน", icon: "🎟️", status: "coming_soon" },
+  { code: "QUEUE", no: 4, kind: "business", label: "บัตรคิว (Q)", hint: "ออกบัตร เรียกคิว", icon: "🎫", status: "available" },
+  { code: "TICKET", no: 5, kind: "business", label: "ตั๋ว / อีเวนต์", hint: "ขายตั๋ว เช็คอิน", icon: "🎟️", status: "available" },
   { code: "MEMBER", no: 6, kind: "feature", label: "สมาชิก (Member)", hint: "ฐานลูกค้า/สมาชิก", icon: "👥", status: "available" },
   { code: "REWARD", no: 7, kind: "feature", label: "รางวัล (Reward)", hint: "แลกของด้วยแต้ม", icon: "🎁", status: "available" },
-  { code: "COUPON", no: 8, kind: "feature", label: "คูปอง & Voucher", hint: "ส่วนลด โค้ด", icon: "🎟", status: "coming_soon" },
+  { code: "COUPON", no: 8, kind: "feature", label: "คูปอง & Voucher", hint: "ส่วนลด โค้ด", icon: "🎟", status: "available" },
   { code: "POINT", no: 9, kind: "feature", label: "แต้ม (Point)", hint: "สะสมแต้ม", icon: "⭐", status: "available" },
   { code: "CHAT", no: 10, kind: "feature", label: "รวม Chat", hint: "แชทลูกค้า", icon: "💬", status: "coming_soon" },
-  { code: "MEETING", no: 11, kind: "feature", label: "Meeting", hint: "แชทภายในองค์กร", icon: "🗓", status: "coming_soon" },
-  { code: "ACCOUNT", no: 12, kind: "feature", label: "บัญชี (Account)", hint: "รายรับรายจ่าย", icon: "📒", status: "coming_soon" },
-  { code: "KANBAN", no: 13, kind: "feature", label: "Kanban", hint: "บอร์ดงาน", icon: "📋", status: "coming_soon" },
+  { code: "MEETING", no: 11, kind: "feature", label: "Meeting", hint: "แชทภายในองค์กร", icon: "🗓", status: "available" },
+  { code: "ACCOUNT", no: 12, kind: "feature", label: "บัญชี (Account)", hint: "รายรับรายจ่าย", icon: "📒", status: "available" },
+  { code: "KANBAN", no: 13, kind: "feature", label: "Kanban", hint: "บอร์ดงาน", icon: "📋", status: "available" },
   { code: "POS", no: 14, kind: "feature", label: "ร้านค้า POS", hint: "ขาย บิล ยอดขาย", icon: "🧾", status: "available" },
 ];
 

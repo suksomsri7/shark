@@ -1,0 +1,217 @@
+// Queue / บัตรคิว (Q) — scope=unit (tenantId+unitId ทุกตาราง)
+// walk-in มาก่อนได้ก่อน: ออกบัตร → เรียกคิวต่อเคาน์เตอร์ → จบบริการ
+// ⚠️ model หลัก = QueueTicket (กันชน Ticket โมดูลอีเวนต์) · ไม่มี field เงิน (การเงินอยู่ POS)
+// อ้างอิงสเปค docs/modules/04-queue.md — QueueType = "ประเภทคิว", QueueDailySequence = ตัวนับเลขต่อวัน
+// หมายเหตุ: memberId เป็น scalar (ไม่ผูก relation ข้ามไฟล์โมดูลอื่น)
+
+enum QueueTypeStatus {
+  ACTIVE
+  HIDDEN
+  ARCHIVED
+}
+
+enum QueueCounterStatus {
+  OPEN
+  CLOSED
+  ARCHIVED
+}
+
+enum QueueTicketStatus {
+  WAITING
+  CALLED
+  SERVING
+  DONE
+  SKIPPED
+  NO_SHOW
+  CANCELLED
+}
+
+enum QueueIssueChannel {
+  KIOSK
+  ONLINE
+  STAFF
+  BOOKING
+}
+
+// ประเภทคิว (คิวทั่วไป A / พรีเมียม B / นัดหมาย P)
+model QueueType {
+  id                    String          @id @default(cuid())
+  tenantId              String
+  unitId                String
+  code                  String // GENERAL | PREMIUM | APPOINTMENT | custom
+  name                  String
+  nameEn                String?
+  prefix                String // "A" (1-3 ตัวอักษร)
+  priority              Int             @default(0) // มาก = เรียกก่อน
+  onlineIssuable        Boolean         @default(true)
+  kioskIssuable         Boolean         @default(true)
+  requireContact        Boolean         @default(false)
+  avgServiceMinFallback Int             @default(10)
+  sortOrder             Int             @default(0)
+  status                QueueTypeStatus @default(ACTIVE)
+  isSystem              Boolean         @default(false) // APPOINTMENT (ระบบสร้าง/ลบ)
+
+  counters QueueCounterType[]
+  tickets  QueueTicket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([unitId, code])
+  @@unique([unitId, prefix])
+  @@index([tenantId])
+  @@index([unitId, status])
+}
+
+// เคาน์เตอร์ / จุดบริการ (ช่อง 1, ห้องตรวจ A)
+model QueueCounter {
+  id           String             @id @default(cuid())
+  tenantId     String
+  unitId       String
+  name         String
+  nameEn       String?
+  code         String // สั้นๆ สำหรับจอ TV: "1", "A"
+  status       QueueCounterStatus @default(CLOSED)
+  activeUserId String? // staff ที่ประจำอยู่ตอนนี้
+  sortOrder    Int                @default(0)
+
+  types   QueueCounterType[]
+  tickets QueueTicket[]      @relation("CurrentCounter")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([unitId, code])
+  @@unique([unitId, name])
+  @@index([tenantId])
+  @@index([unitId, status])
+}
+
+// mapping เคาน์เตอร์ ↔ ประเภทที่รับ (ไม่มีแถว = รับทุกประเภท)
+model QueueCounterType {
+  id        String       @id @default(cuid())
+  tenantId  String
+  unitId    String
+  counterId String
+  counter   QueueCounter @relation(fields: [counterId], references: [id], onDelete: Cascade)
+  typeId    String
+  type      QueueType    @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([counterId, typeId])
+  @@index([tenantId])
+  @@index([unitId, typeId])
+}
+
+// นโยบายคิว (1 แถว / unit)
+model QueuePolicy {
+  id                String   @id @default(cuid())
+  tenantId          String
+  unitId            String   @unique
+  notifyBeforeCount Int      @default(3)
+  skippedExpiryMin  Int      @default(60)
+  recallAnnounceMax Int      @default(2)
+  transferToFront   Boolean  @default(true)
+  onlineIssueOpen   Boolean  @default(true)
+  starvationRatio   Int? // 🔜 null = strict priority
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// ตัวนับเลขคิวต่อ (unit × ประเภท × business date) — reset รายวันโดย key ไม่ใช่ cron
+model QueueDailySequence {
+  id           String   @id @default(cuid())
+  tenantId     String
+  unitId       String
+  typeId       String
+  businessDate String // "2026-07-11" ตาม timezone ร้าน
+  value        Int      @default(0) // increment atomic ผ่าน raw upsert
+  updatedAt    DateTime @updatedAt
+
+  @@unique([unitId, typeId, businessDate])
+  @@index([tenantId])
+}
+
+// บัตรคิว
+model QueueTicket {
+  id                       String            @id @default(cuid())
+  tenantId                 String
+  unitId                   String
+  typeId                   String
+  type                     QueueType         @relation(fields: [typeId], references: [id])
+  businessDate             String // "2026-07-11"
+  seq                      Int // เลขลำดับดิบจาก sequence
+  number                   String // "A012" (prefix + pad)
+  status                   QueueTicketStatus @default(WAITING)
+  priority                 Int // snapshot จาก type ตอนออกบัตร
+  channel                  QueueIssueChannel
+  counterId                String? // เคาน์เตอร์ปัจจุบัน (หลัง CALLED/โอน)
+  counter                  QueueCounter?     @relation("CurrentCounter", fields: [counterId], references: [id])
+  memberId                 String? // Customer (contract 2.6) — scalar ไม่ผูก relation ข้ามโมดูล
+  contactName              String? // guest snapshot
+  contactPhone             String? // E.164
+  contactEmail             String?
+  refType                  String? // "APPOINTMENT" (handoff จาก Booking)
+  refId                    String? // appointmentId
+  publicToken              String            @unique @default(cuid())
+  callCount                Int               @default(0)
+  transferredFromCounterId String?
+  notifiedAt               DateTime? // ส่งเตือนใกล้ถึงคิวแล้ว (กันซ้ำ)
+  calledAt                 DateTime?
+  servedAt                 DateTime?
+  doneAt                   DateTime?
+  skippedAt                DateTime?
+  cancelledAt              DateTime?
+  cancelReason             String? // CUSTOMER | STAFF | END_OF_DAY
+  issuedBy                 String? // userId (channel STAFF/KIOSK)
+
+  events QueueTicketEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([unitId, typeId, businessDate, seq]) // เลขไม่ซ้ำในวัน
+  @@index([tenantId])
+  @@index([unitId, businessDate, status, priority, createdAt]) // call-next + จอ TV
+  @@index([unitId, counterId, status])
+  @@index([refType, refId])
+  @@index([memberId])
+  @@index([unitId, contactPhone, businessDate, status]) // กันรับคิวซ้ำ
+}
+
+// ทุก transition — audit + สถิติ
+model QueueTicketEvent {
+  id        String      @id @default(cuid())
+  tenantId  String
+  unitId    String
+  ticketId  String
+  ticket    QueueTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  action    String // ISSUED|CALLED|RECALLED|SKIPPED|RECALL_SKIPPED|TRANSFERRED|SERVING|DONE|NO_SHOW|CANCELLED|NOTIFIED
+  counterId String?
+  actorType String // STAFF | CUSTOMER | SYSTEM
+  actorId   String?
+  detail    Json?
+  createdAt DateTime    @default(now())
+
+  @@index([tenantId])
+  @@index([ticketId, createdAt])
+  @@index([unitId, createdAt])
+}
+
+// จอ TV — สร้างได้หลายจอ / unit
+model QueueDisplay {
+  id           String    @id @default(cuid())
+  tenantId     String
+  unitId       String
+  name         String
+  displayToken String    @unique @default(cuid())
+  settings     Json      @default("{}") // {voice, lang, showNextCount, chime}
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([unitId, name])
+  @@index([tenantId])
+}

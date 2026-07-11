@@ -1,0 +1,261 @@
+// Account (บัญชี) — ระบบเอกสารฝั่งรายรับ (P1)
+// scope = feature: ทุกตารางผูก tenantId + systemId (systemId = AppSystem type ACCOUNT)
+// เงิน = Int สตางค์ · id cuid() · เอกสารเงิน immutable (พ้น DRAFT แก้ไม่ได้ → void/reissue)
+// Pipeline: ใบเสนอราคา → ใบแจ้งหนี้ → ใบเสร็จ/ใบกำกับภาษี
+// Defer P2+: ฝั่งรายจ่าย, journal/posting, งบการเงิน, WHT, เช็ค, สินทรัพย์
+
+enum AccountDocType {
+  QUOTATION // ใบเสนอราคา
+  INVOICE // ใบแจ้งหนี้/ใบส่งของ
+  RECEIPT // ใบเสร็จรับเงิน
+  TAX_INVOICE // ใบกำกับภาษีขาย
+  DEPOSIT_RECEIPT // ใบรับเงินมัดจำ
+  CREDIT_NOTE // ใบลดหนี้
+  DEBIT_NOTE // ใบเพิ่มหนี้
+  BILLING_NOTE // ใบวางบิล
+}
+
+enum AccountDocStatus {
+  DRAFT
+  AWAITING_ACCEPT // ใบเสนอราคา รอตอบรับ
+  ACCEPTED
+  REJECTED
+  AWAITING_PAYMENT // รอชำระเงิน
+  PARTIAL // ชำระบางส่วน
+  PAID // ชำระครบ
+  AWAITING_DEDUCT // มัดจำ รอหัก
+  DEDUCTED // มัดจำถูกหักครบ
+  ISSUED // ใบกำกับ/ใบลด-เพิ่มหนี้/ใบวางบิล มีผลแล้ว
+  VOIDED // เคยมีผล + ถูกยกเลิก
+  CANCELLED // ยกเลิกก่อนมีผล (ยกเลิก DRAFT)
+}
+
+enum AccountVatMode {
+  INCLUDE // ราคารวม VAT แล้ว
+  EXCLUDE // ราคายังไม่รวม VAT
+  NONE // ไม่มี VAT
+}
+
+enum AccountDocDirection {
+  IN // รายจ่าย (P2)
+  OUT // รายรับ
+  INTERNAL
+}
+
+enum AccountRelationType {
+  CONVERT // แปลงเอกสาร (QT→IV→RE)
+  DEPOSIT_APPLY // หักมัดจำ
+  ADJUST // ใบลดหนี้/เพิ่มหนี้อ้างใบเดิม
+  BILL // ใบวางบิลรวมหลายใบแจ้งหนี้
+  TAX_FOR // ใบกำกับภาษีของเอกสารต้นทาง
+  REPLACE // ออกใบแทน (void + reissue)
+}
+
+enum AccountPayChannel {
+  CASH
+  TRANSFER
+  PROMPTPAY
+  CARD
+  E_WALLET
+  CHEQUE
+  DEPOSIT_APPLY
+  OTHER
+}
+
+enum AccountContactKind {
+  CUSTOMER
+  VENDOR
+  BOTH
+}
+
+enum AccountLegalType {
+  PERSON
+  COMPANY
+}
+
+// ───────────── เอกสาร (แกนระบบ — polymorphic docType) ─────────────
+
+model AccountDocument {
+  id             String              @id @default(cuid())
+  tenantId       String
+  systemId       String
+  docType        AccountDocType
+  docNo          String? // จองตอน issue (DRAFT = null → NULL distinct ใน pg)
+  status         AccountDocStatus    @default(DRAFT)
+  direction      AccountDocDirection @default(OUT)
+  issueDate      DateTime            @default(now())
+  dueDate        DateTime? // ครบกำหนดชำระ
+  validUntil     DateTime? // ใบเสนอราคา: ยืนราคาถึง
+  contactId      String?
+  contact        AccountContact?     @relation(fields: [contactId], references: [id])
+  contactSnapshot Json? // freeze ชื่อ/ที่อยู่/เลขภาษี ณ วันออก (พ้น DRAFT)
+  // ── ยอดเงิน (สตางค์) ──
+  vatMode        AccountVatMode      @default(EXCLUDE)
+  subTotal       Int                 @default(0) // Σ บรรทัดหลังส่วนลดบรรทัด (ฐานก่อน VAT)
+  discountAmount Int                 @default(0) // ส่วนลดท้ายบิล
+  vatAmount      Int                 @default(0)
+  depositDeducted Int                @default(0) // Σ มัดจำที่หักในใบนี้
+  grandTotal     Int                 @default(0) // สุทธิที่ต้องชำระ
+  paidTotal      Int                 @default(0) // Σ payment
+  // ── อ้างอิง ──
+  sourceDocId    String? // เอกสารต้นทางที่แปลงมา (quotation→invoice→receipt)
+  refType        String? // ระบบต้นทาง (เช่น "PosSale")
+  refId          String?
+  note           String? // หมายเหตุบนเอกสาร (พิมพ์)
+  internalNote   String? // โน้ตภายใน
+  adjustReason   String? // CN/DN: เหตุผลตามประกาศสรรพากร
+  publicToken    String?             @unique // ลิงก์สาธารณะ
+  acceptedAt     DateTime? // ใบเสนอราคา accepted
+  voidedAt       DateTime?
+  voidReason     String?
+  createdById    String?
+
+  lines         AccountDocumentLine[]
+  payments      AccountDocumentPayment[]
+  relationsFrom AccountDocumentRelation[] @relation("AccountRelFrom")
+  relationsTo   AccountDocumentRelation[] @relation("AccountRelTo")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([systemId, docType, docNo])
+  @@index([systemId, docType, status, issueDate])
+  @@index([systemId, docType, dueDate])
+  @@index([systemId, contactId, docType])
+  @@index([systemId, direction, issueDate])
+  @@index([tenantId, systemId])
+}
+
+model AccountDocumentLine {
+  id          String          @id @default(cuid())
+  tenantId    String
+  systemId    String
+  documentId  String
+  document    AccountDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  sortOrder   Int             @default(0)
+  description String
+  qty         Decimal         @default(1) @db.Decimal(12, 4)
+  unitName    String?
+  unitPrice   Int // สตางค์/หน่วย
+  discount    Int             @default(0) // ส่วนลดบรรทัด (สตางค์)
+  vatRateBp   Int             @default(700) // 700 = 7% | 0 = 0% | -1 = ยกเว้น
+  amount      Int // qty×unitPrice − discount (ฐานบรรทัด)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([documentId, sortOrder])
+}
+
+model AccountDocumentPayment {
+  id             String            @id @default(cuid())
+  tenantId       String
+  systemId       String
+  documentId     String
+  document       AccountDocument   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  paidAt         DateTime          @default(now())
+  channel        AccountPayChannel @default(TRANSFER)
+  amount         Int // เงินที่เข้าจริง
+  note           String?
+  voidedAt       DateTime?
+  createdById    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([systemId, paidAt])
+  @@index([documentId])
+}
+
+model AccountDocumentRelation {
+  id       String              @id @default(cuid())
+  tenantId String
+  systemId String
+  fromId   String
+  from     AccountDocument     @relation("AccountRelFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toId     String
+  to       AccountDocument     @relation("AccountRelTo", fields: [toId], references: [id], onDelete: Cascade)
+  type     AccountRelationType
+  amount   Int?
+
+  createdAt DateTime @default(now())
+
+  @@unique([fromId, toId, type])
+  @@index([systemId, type])
+  @@index([toId])
+}
+
+// ───────────── เลขรันเอกสาร (จองใน tx เดียวกับ insert) ─────────────
+
+model AccountDocSequence {
+  id        String         @id @default(cuid())
+  tenantId  String
+  systemId  String
+  docType   AccountDocType
+  prefix    String
+  periodKey String // "2026-07" | "2026" | "-"
+  lastNo    Int            @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([systemId, docType, periodKey])
+}
+
+// ───────────── ผู้ติดต่อ (ลูกค้า/ผู้ขาย) ─────────────
+
+model AccountContact {
+  id             String             @id @default(cuid())
+  tenantId       String
+  systemId       String
+  kind           AccountContactKind @default(CUSTOMER)
+  legalType      AccountLegalType   @default(COMPANY)
+  name           String // ชื่อจดทะเบียน
+  taxId          String? // 13 หลัก
+  branchCode     String?            @default("00000")
+  branchName     String?
+  address        String?
+  phone          String?
+  email          String?
+  creditTermDays Int                @default(0) // 0 = เงินสด
+  note           String?
+  archivedAt     DateTime?
+
+  documents AccountDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([systemId, kind, archivedAt])
+  @@index([systemId, taxId])
+  @@index([systemId, name])
+}
+
+// ───────────── ตั้งค่าเอกสาร/องค์กร (1 ต่อระบบ) ─────────────
+
+model AccountSettings {
+  id             String  @id @default(cuid())
+  tenantId       String
+  systemId       String  @unique
+  orgName        String  @default("")
+  orgNameEn      String?
+  taxId          String?
+  branchCode     String? @default("00000")
+  branchName     String? @default("สำนักงานใหญ่")
+  address        String?
+  phone          String?
+  email          String?
+  website        String?
+  logoUrl        String?
+  vatRegistered  Boolean @default(true)
+  vatRateBp      Int     @default(700) // 700 = 7%
+  defaultDueDays Int     @default(30)
+  defaultValidDays Int   @default(30)
+  footerNote     String?
+  docConfig      Json    @default("{}") // per-docType prefix/pattern override
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, systemId])
+}

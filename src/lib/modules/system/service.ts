@@ -4,15 +4,19 @@ import type { Prisma, PrismaClient, SystemType } from "@prisma/client";
 // "ระบบ" (System Instance) — สร้างได้หลายชุด ผูกกับกิจการ (unit). 1 unit → 1 ระบบ/ประเภท
 type Client = PrismaClient | Prisma.TransactionClient;
 
-const TYPES: SystemType[] = ["MEMBER", "POINT", "POS", "REWARD"];
-const TYPE_LABEL: Record<SystemType, string> = {
+// ประเภทระบบ feature ที่ provision อัตโนมัติต่อ unit
+// (ระบบ opt-in อื่น เช่น COUPON/MEETING/KANBAN/ACCOUNT สร้างแยกเอง ไม่ผูก unit อัตโนมัติ)
+type ProvisionType = "MEMBER" | "POINT" | "POS" | "REWARD";
+const TYPES: ProvisionType[] = ["MEMBER", "POINT", "POS", "REWARD"];
+const PROVISION_SET = new Set<SystemType>(TYPES);
+const TYPE_LABEL: Record<ProvisionType, string> = {
   MEMBER: "สมาชิก",
   POINT: "แต้ม",
   POS: "ขายหน้าร้าน",
   REWARD: "รางวัล",
 };
 
-export type UnitSystems = { MEMBER: string; POINT: string; POS: string; REWARD: string };
+export type UnitSystems = Record<ProvisionType, string>;
 
 // provision ระบบเริ่มต้น 3 ประเภทให้ unit (idempotent) — เรียกตอนสร้างกิจการ
 export async function ensureUnitSystems(
@@ -47,7 +51,7 @@ export async function getUnitSystems(
 ): Promise<Partial<UnitSystems>> {
   const links = await client.appSystemUnit.findMany({ where: { tenantId, unitId } });
   const out: Partial<UnitSystems> = {};
-  for (const l of links) out[l.type] = l.systemId;
+  for (const l of links) if (PROVISION_SET.has(l.type)) out[l.type as ProvisionType] = l.systemId;
   return out;
 }
 

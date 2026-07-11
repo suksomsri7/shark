@@ -1,0 +1,80 @@
+// Meeting (แชทภายในองค์กร แบบ Slack) — feature system
+// scope = feature: ทุกตารางมี tenantId + systemId (workspace = AppSystem type MEETING)
+// คู่สนทนา = staff ↔ staff (User ที่มี Membership ของ tenant) — ไม่ใช่ลูกค้า
+// userId = String อ้าง User กลาง (ไม่ประกาศ FK ข้ามโดเมน — ตรวจ Membership ที่ service layer)
+// ประวัติถาวร: ลบข้อความ = soft delete (deletedAt) · ลบ channel = archive (archivedAt)
+// อย่าประกาศ generator/datasource — อยู่ใน core.prisma แล้ว
+
+enum MeetingChannelKind {
+  PUBLIC // # — staff ใน workspace เห็น + join เองได้
+  PRIVATE // 🔒 — เชิญเท่านั้น คนนอกมองไม่เห็น
+}
+
+// ─────────────────────────── Channel ───────────────────────────
+model MeetingChannel {
+  id              String             @id @default(cuid())
+  tenantId        String
+  systemId        String // AppSystem.id ของ workspace
+  name            String // ชื่อห้อง (ไทย/อังกฤษได้) — ไม่ซ้ำใน workspace
+  kind            MeetingChannelKind @default(PUBLIC)
+  topic           String? // บรรทัดสั้นบน header
+  description     String?
+  isDefault       Boolean            @default(false) // #general — leave/archive ไม่ได้
+  createdByUserId String
+  lastMessageAt   DateTime? // เรียง sidebar
+  archivedAt      DateTime? // read-only, unarchive ได้
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  members  MeetingChannelMember[]
+  messages MeetingMessage[]
+
+  @@unique([systemId, name])
+  @@index([tenantId, systemId, archivedAt])
+  @@index([systemId, lastMessageAt(sort: Desc)])
+}
+
+// ─────────────────────── Channel member ───────────────────────
+model MeetingChannelMember {
+  id        String         @id @default(cuid())
+  tenantId  String
+  systemId  String
+  channelId String
+  channel   MeetingChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userId    String
+  isAdmin   Boolean        @default(false) // จัดการห้อง/ลบข้อความคนอื่น
+  joinedAt  DateTime       @default(now())
+  leftAt    DateTime? // ออกจากห้อง (แถวคงไว้ — re-join ล้าง leftAt)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([channelId, userId])
+  @@index([systemId, userId, leftAt]) // channel list ของ user
+  @@index([channelId, leftAt])
+}
+
+// ─────────────────────────── Message ───────────────────────────
+model MeetingMessage {
+  id             String  @id @default(cuid())
+  tenantId       String
+  systemId       String
+  channelId      String
+  channel        MeetingChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  authorUserId   String
+  body           String  @db.Text
+
+  // ── Thread (reply) ── null = ข้อความหลักในห้อง; มีค่า = reply ผูก parent (ไม่ซ้อนชั้น)
+  threadParentId String?
+  threadParent   MeetingMessage?  @relation("MeetingThread", fields: [threadParentId], references: [id])
+  replies        MeetingMessage[] @relation("MeetingThread")
+  replyCount     Int              @default(0) // denormalized บน parent
+
+  editedAt  DateTime? // ป้าย "แก้ไขแล้ว"
+  deletedAt DateTime? // soft delete → tombstone
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([channelId, threadParentId, createdAt, id]) // main pane + เธรด
+  @@index([threadParentId, createdAt, id])
+  @@index([tenantId, systemId, createdAt])
+}

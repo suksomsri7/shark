@@ -1,0 +1,61 @@
+// Coupon & Voucher (คูปอง/ส่วนลด) — scope ตาม systemId (ระบบคูปอง) เหมือน Reward
+// ร้านสร้างโค้ดส่วนลด → validate ตอนใส่โค้ด (read-only) → redeem atomic ตอนปิดบิล → release คืนสิทธิ์
+// P1: self-contained (ยังไม่ต่อ contract POS จริง — เจ้าของ wire ภายหลัง)
+
+enum CouponType {
+  PERCENT // ลดเป็นเปอร์เซ็นต์ (percent) + cap ด้วย maxDiscountSatang
+  FIXED   // ลดเป็นเงินตายตัว (valueSatang)
+}
+
+enum CouponRedemptionStatus {
+  RESERVED // จองสิทธิ์ไว้ (บิลยังไม่ปิด)
+  REDEEMED // ใช้จริงกับบิลแล้ว
+  RELEASED // คืนสิทธิ์ (บิลถูก void/ยกเลิก)
+}
+
+model Coupon {
+  id                String     @id @default(cuid())
+  tenantId          String
+  systemId          String // ระบบคูปองไหน
+  code              String // uppercase — unique ต่อ systemId
+  name              String
+  type              CouponType
+  percent           Int? // PERCENT: 1-100
+  valueSatang       Int? // FIXED: ลดเป็นเงิน (สตางค์)
+  minSpendSatang    Int? // ยอดขั้นต่ำก่อนใช้คูปอง
+  maxDiscountSatang Int? // cap ของ PERCENT
+  usageLimit        Int? // จำนวนครั้งใช้รวมทั้งคูปอง (null = ไม่จำกัด)
+  perMemberLimit    Int? // จำนวนครั้ง/คน (ต้องมี customerId ตอน redeem)
+  usedCount         Int        @default(0)
+  applicableUnitIds String[]   @default([]) // ว่าง = ใช้ได้ทุกหน่วย
+  startAt           DateTime?
+  endAt             DateTime?
+  active            Boolean    @default(true)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  redemptions CouponRedemption[]
+
+  @@unique([systemId, code])
+  @@index([tenantId, systemId])
+}
+
+model CouponRedemption {
+  id             String                 @id @default(cuid())
+  tenantId       String
+  systemId       String
+  couponId       String
+  coupon         Coupon                 @relation(fields: [couponId], references: [id])
+  customerId     String? // สมาชิกที่ใช้ (null = guest)
+  refType        String? // ชื่อ model ต้นทาง (เช่น 'PosSale')
+  refId          String? // id เอกสารต้นทาง
+  saleId         String? // บิล POS (ถ้ามี)
+  discountSatang Int // ส่วนลดที่ให้จริง (snapshot)
+  status         CouponRedemptionStatus @default(RESERVED)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([tenantId, systemId, couponId, status])
+  @@index([tenantId, systemId, customerId, status])
+  @@index([tenantId, saleId])
+}

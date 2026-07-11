@@ -44,6 +44,43 @@ const MODULE_SCOPES: Record<string, Scope> = {
   BookingStaff: "unit",
   BookingStaffHours: "unit",
   Appointment: "unit",
+  // Coupon (feature, tenant-scoped)
+  Coupon: "tenant",
+  CouponRedemption: "tenant",
+  // Meeting (feature, tenant-scoped)
+  MeetingChannel: "tenant",
+  MeetingChannelMember: "tenant",
+  MeetingMessage: "tenant",
+  // Kanban (feature, tenant-scoped)
+  KanbanBoard: "tenant",
+  KanbanColumn: "tenant",
+  KanbanCard: "tenant",
+  // Account (feature, tenant-scoped)
+  AccountDocument: "tenant",
+  AccountDocumentLine: "tenant",
+  AccountDocumentPayment: "tenant",
+  AccountDocumentRelation: "tenant",
+  AccountDocSequence: "tenant",
+  AccountContact: "tenant",
+  AccountSettings: "tenant",
+  // Hotel (business, unit-scoped)
+  HotelRoomType: "unit",
+  HotelRoom: "unit",
+  HotelReservation: "unit",
+  // Ticket (business, unit-scoped)
+  TicketEvent: "unit",
+  TicketType: "unit",
+  TicketOrder: "unit",
+  TicketAdmission: "unit",
+  // Queue (business, unit-scoped)
+  QueueType: "unit",
+  QueueCounter: "unit",
+  QueueCounterType: "unit",
+  QueuePolicy: "unit",
+  QueueDailySequence: "unit",
+  QueueTicket: "unit",
+  QueueTicketEvent: "unit",
+  QueueDisplay: "unit",
 };
 
 const REGISTRY: Record<string, Scope> = { ...CORE_SCOPES, ...MODULE_SCOPES };
