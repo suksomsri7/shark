@@ -2,21 +2,14 @@
 
 import { useActionState, useState } from "react";
 import { createTenantAction, type OnboardingState } from "@/lib/actions/onboarding";
+import { UNIT_TYPES } from "@/lib/systems";
 
 const initial: OnboardingState = { status: "idle" };
-
-const TYPES = [
-  { value: "BOOKING", label: "จองคิว / นัดหมาย", hint: "ร้านตัดผม นวด สปา คลินิก" },
-  { value: "RESTAURANT", label: "ร้านอาหาร", hint: "เมนู โต๊ะ ครัว" },
-  { value: "HOTEL", label: "โรงแรม", hint: "ห้องพัก จอง เช็คอิน" },
-  { value: "QUEUE", label: "บัตรคิว", hint: "ออกบัตร เรียกคิว" },
-  { value: "TICKET", label: "ตั๋ว / อีเวนต์", hint: "ขายตั๋ว เช็คอิน" },
-  { value: "SHOP", label: "ร้านค้า (POS)", hint: "ขายหน้าร้าน สต็อก" },
-] as const;
+const firstAvailable = UNIT_TYPES.find((u) => u.status === "available")?.type ?? "BOOKING";
 
 export function OnboardingForm() {
   const [state, action, pending] = useActionState(createTenantAction, initial);
-  const [type, setType] = useState<string>("BOOKING");
+  const [type, setType] = useState<string>(firstAvailable);
 
   return (
     <form action={action} className="flex w-full max-w-lg flex-col gap-6">
@@ -36,21 +29,38 @@ export function OnboardingForm() {
       <div className="flex flex-col gap-2">
         <span className="text-sm text-[color:var(--color-muted)]">เริ่มกิจการแรกของคุณ</span>
         <div className="grid grid-cols-2 gap-2">
-          {TYPES.map((t) => (
-            <button
-              type="button"
-              key={t.value}
-              onClick={() => setType(t.value)}
-              className={`rounded-xl border p-3 text-left transition-colors ${
-                type === t.value
-                  ? "border-[color:var(--color-ink)] bg-[color:var(--color-surface-2)]"
-                  : "hover:bg-[color:var(--color-surface-2)]"
-              }`}
-            >
-              <div className="text-sm font-medium">{t.label}</div>
-              <div className="text-xs text-[color:var(--color-muted)]">{t.hint}</div>
-            </button>
-          ))}
+          {UNIT_TYPES.map((t) => {
+            const disabled = t.status === "coming_soon";
+            const selected = type === t.type;
+            return (
+              <button
+                type="button"
+                key={t.type}
+                disabled={disabled}
+                aria-disabled={disabled}
+                onClick={() => !disabled && setType(t.type)}
+                className={[
+                  "relative rounded-xl border p-3 text-left transition-colors",
+                  disabled
+                    ? "cursor-not-allowed opacity-45"
+                    : selected
+                      ? "border-[color:var(--color-ink)] bg-[color:var(--color-surface-2)]"
+                      : "hover:bg-[color:var(--color-surface-2)]",
+                ].join(" ")}
+              >
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <span>{t.icon}</span>
+                  <span>{t.label}</span>
+                </div>
+                <div className="mt-0.5 text-xs text-[color:var(--color-muted)]">{t.hint}</div>
+                {disabled && (
+                  <span className="absolute right-2 top-2 rounded-full border px-1.5 py-0.5 text-[10px] text-[color:var(--color-muted)]">
+                    เร็วๆ นี้
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
         <input type="hidden" name="unitType" value={type} />
       </div>

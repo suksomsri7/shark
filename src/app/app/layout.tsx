@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { logoutAction } from "@/lib/actions/auth";
+import { TENANT_MODULES } from "@/lib/systems";
 
 const TYPE_ICON: Record<string, string> = {
   HOTEL: "🏨",
@@ -51,17 +52,28 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
         <div className="my-3 border-t" />
 
-        {/* โซน ข: tenant-level */}
+        {/* โซน ข: tenant-level — แสดงทุกระบบ, ที่ยังไม่เปิด = disable + ป้าย "เร็วๆ นี้" */}
         <nav className="flex flex-col gap-0.5 text-sm">
-          <Link href="/app/members" className="rounded-lg px-2 py-2 hover:bg-[color:var(--color-surface-2)]">
-            {t("members")}
-          </Link>
-          <Link href="/app/coupons" className="rounded-lg px-2 py-2 hover:bg-[color:var(--color-surface-2)]">
-            {t("coupons")}
-          </Link>
-          <Link href="/app/chat" className="rounded-lg px-2 py-2 hover:bg-[color:var(--color-surface-2)]">
-            {t("chat")}
-          </Link>
+          {TENANT_MODULES.map((m) =>
+            m.status === "available" ? (
+              <Link
+                key={m.key}
+                href={m.href}
+                className="rounded-lg px-2 py-2 hover:bg-[color:var(--color-surface-2)]"
+              >
+                {m.label}
+              </Link>
+            ) : (
+              <div
+                key={m.key}
+                aria-disabled
+                className="flex cursor-not-allowed items-center justify-between rounded-lg px-2 py-2 opacity-45"
+              >
+                <span>{m.label}</span>
+                <span className="rounded-full border px-1.5 py-0.5 text-[10px]">เร็วๆ นี้</span>
+              </div>
+            ),
+          )}
         </nav>
 
         {/* โซน ค */}

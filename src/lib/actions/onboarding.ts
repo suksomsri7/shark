@@ -6,10 +6,13 @@ import { UnitType } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { requireAuth, setActiveTenant } from "@/lib/core/context";
 import { slugify, uniqueTenantSlug } from "@/lib/slug";
+import { AVAILABLE_UNIT_TYPES } from "@/lib/systems";
 
 const schema = z.object({
   orgName: z.string().trim().min(2, "ชื่อร้านสั้นเกินไป").max(80),
-  unitType: z.nativeEnum(UnitType),
+  unitType: z
+    .nativeEnum(UnitType)
+    .refine((t) => AVAILABLE_UNIT_TYPES.has(t), "ประเภทกิจการนี้ยังไม่เปิดให้บริการ"),
   unitName: z.string().trim().min(2, "ชื่อกิจการสั้นเกินไป").max(80),
 });
 
