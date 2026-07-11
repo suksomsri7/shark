@@ -9,15 +9,21 @@ export async function sendEmail(to: string, subject: string, text: string): Prom
     );
     return;
   }
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from: env.EMAIL_FROM, to, subject, text }),
-  });
-  if (!res.ok) {
-    throw new Error(`Resend ส่งไม่สำเร็จ: ${res.status} ${await res.text()}`);
+  // resilient: ไม่ throw ถ้าส่งพลาด (เช่น domain ยังไม่ verify → ส่งได้เฉพาะเจ้าของบัญชี)
+  // login ยังทำงานผ่าน on-screen OTP ใน preview
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from: env.EMAIL_FROM, to, subject, text }),
+    });
+    if (!res.ok) {
+      console.warn(`[email] Resend ส่งไม่สำเร็จ (${res.status}): ${await res.text()}`);
+    }
+  } catch (e) {
+    console.warn("[email] Resend error:", e);
   }
 }

@@ -20,5 +20,6 @@ export const isDev = env.APP_ENV === "development";
 // cookie secure ทุกที่ที่ไม่ใช่ localhost dev (preview/prod เป็น HTTPS)
 export const secureCookies = env.APP_ENV !== "development";
 export const emailEnabled = env.RESEND_API_KEY.length > 0;
-// preview: ยังไม่มี Resend → โชว์ OTP บนจอ (ห้ามใน production เด็ดขาด)
-export const previewOtp = !emailEnabled && env.APP_ENV !== "production";
+// โชว์ OTP บนจอทุก env ที่ไม่ใช่ production (แม้ต่อ Resend แล้ว) — กัน login ติดตอน
+// domain ยังไม่ verify (ส่งได้เฉพาะเจ้าของบัญชี). production = ปิด โชว์เฉพาะเมลจริง
+export const previewOtp = env.APP_ENV !== "production";
