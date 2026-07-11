@@ -125,6 +125,8 @@ export async function AccountContent({
         <div className="flex flex-wrap gap-2">
           <Link href={`${base}/journal`} className="btn btn-ghost text-sm">บัญชีรายวัน</Link>
           <Link href={`${base}/ledger`} className="btn btn-ghost text-sm">แยกประเภท</Link>
+          <Link href={`${base}/accounts`} className="btn btn-ghost text-sm">ผังบัญชี</Link>
+          <Link href={`${base}/periods`} className="btn btn-ghost text-sm">ปิดงวด</Link>
           <Link href={`${base}/reports`} className="btn btn-ghost text-sm">งบการเงิน</Link>
           <Link href={`${base}/finance`} className="btn btn-ghost text-sm">บัญชีเงิน</Link>
           <Link href={`${base}/wht`} className="btn btn-ghost text-sm">หัก ณ ที่จ่าย (50 ทวิ)</Link>
