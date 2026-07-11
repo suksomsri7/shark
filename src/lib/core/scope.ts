@@ -24,6 +24,10 @@ const MODULE_SCOPES: Record<string, Scope> = {
   // Member
   Customer: "tenant",
   MemberActivity: "tenant",
+  // Point (tenant-scoped)
+  PointSettings: "tenant",
+  PointLedger: "tenant",
+  PointBalance: "tenant",
   // Booking (unit-scoped)
   BookingService: "unit",
   BookingStaff: "unit",

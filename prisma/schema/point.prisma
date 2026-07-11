@@ -1,0 +1,49 @@
+// Point (แต้ม) — scope=tenant (แต้มใช้ข้ามทุกกิจการของร้าน)
+// ledger append-only + balance cache. MVP: balance = ยอดรวม (lot-based FIFO expiry = 🔜)
+// Point เป็นผู้คำนวณแต้มเสมอ (ผู้เรียกส่ง amountSatang) — contract 2.2
+
+enum PointTxType {
+  EARN
+  BURN
+  ADJUST
+  REVERSE
+  EXPIRE
+}
+
+// กติกาสะสมต่อ tenant (default: 25 บาท = 1 แต้ม)
+model PointSettings {
+  id            String   @id @default(cuid())
+  tenantId      String   @unique
+  satangPerPoint Int     @default(2500) // ใช้จ่ายกี่สตางค์ = 1 แต้ม
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model PointLedger {
+  id             String      @id @default(cuid())
+  tenantId       String
+  customerId     String
+  unitId         String? // ธุรกรรมเกิดที่หน่วยไหน (รายงาน)
+  delta          Int // + earn / - burn
+  type           PointTxType
+  reason         String?
+  refType        String?
+  refId          String?
+  idempotencyKey String // กันยิงซ้ำ
+  createdAt      DateTime    @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, customerId, createdAt])
+}
+
+// ยอดคงเหลือ (cache — อัปเดตใน tx เดียวกับ ledger)
+model PointBalance {
+  id         String   @id @default(cuid())
+  tenantId   String
+  customerId String
+  balance    Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, customerId])
+}

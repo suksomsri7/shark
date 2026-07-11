@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { getProfile } from "@/lib/modules/member/service";
+import { getBalance } from "@/lib/modules/point/service";
 
 const TIER_LABEL: Record<string, string> = {
   MEMBER: "สมาชิก",
@@ -31,6 +32,7 @@ export default async function MemberDetailPage({
   const data = await getProfile(auth.active.tenantId, id);
   if (!data) notFound();
   const { customer: c, activities } = data;
+  const points = await getBalance(auth.active.tenantId, id);
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
@@ -48,7 +50,11 @@ export default async function MemberDetailPage({
         <span className="rounded-full border px-2 py-0.5 text-xs">{TIER_LABEL[c.tier]}</span>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="card">
+          <div className="text-xs text-[color:var(--color-muted)]">แต้มสะสม</div>
+          <div className="mt-1 text-xl font-semibold">{points.toLocaleString("th-TH")}</div>
+        </div>
         <div className="card">
           <div className="text-xs text-[color:var(--color-muted)]">มาใช้บริการ</div>
           <div className="mt-1 text-xl font-semibold">{c.visitCount}</div>
