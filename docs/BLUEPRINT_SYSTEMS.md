@@ -29,6 +29,8 @@
 | 12 | **Account** (บัญชีไทยเต็มรูป — ใบเสนอราคา→ใบกำกับ→งบ→DBD) | feature | AppSystem | 🔜 สเปคใหม่ → `modules/12-account.md` |
 | 13 | Kanban | feature | AppSystem | 🔜 |
 | 14 | POS ร้านค้า | feature | AppSystem | ✅ LIVE (ขาย/บิล; หน้าร้าน+สต็อก 🔜) |
+| 15 | **AI พนักงานส่วนตัว** — สั่งงานทางแชท ทำงานแทนทุกระบบ (Claude API + tools, ไม่เทรนเอง) | feature | AppSystem | 🔜 สเปค → `modules/16-ai-employee.md` |
+| 16 | **Knowledge Base** — คลังความรู้ร้าน ให้ AI/พนักงานตอบคำถาม (L1 in-context → L2 search → L3 vector) | feature | AppSystem | 🔜 สเปค → `modules/17-knowledge-base.md` |
 
 - kind **business** = มีหน้างาน/ลูกค้า/storefront (slug) — ตาราง `BusinessUnit`
 - kind **feature** = ระบบข้อมูล/บริการ — ตาราง `AppSystem`
