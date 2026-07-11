@@ -21,6 +21,7 @@ export default function DocEditor({
   contacts,
   vatRateBp,
   vatRegistered,
+  defaultVatTiming = "ON_ISSUE",
   editId,
   initial,
 }: {
@@ -30,6 +31,7 @@ export default function DocEditor({
   contacts: ContactOpt[];
   vatRateBp: number;
   vatRegistered: boolean;
+  defaultVatTiming?: string; // QC5-A1: จุดรับรู้ภาษีเริ่มต้นของกิจการ
   editId?: string;
   initial?: {
     contactId: string | null;
@@ -37,12 +39,16 @@ export default function DocEditor({
     dueDate: string | null;
     validUntil: string | null;
     vatMode: string;
+    vatTiming?: string;
     discountAmount: number; // สตางค์
     note: string | null;
     lines: Line[];
   };
 }) {
   const isQuote = docType === "QUOTATION";
+  // A1: ใบแจ้งหนี้เลือกจุดรับรู้ภาษี (สินค้า=ตอนออก / บริการ=ตอนรับเงิน) — เฉพาะเมื่อจด VAT
+  const showVatTiming = docType === "INVOICE" && vatRegistered;
+  const [vatTiming, setVatTiming] = useState(initial?.vatTiming ?? defaultVatTiming);
   const [rows, setRows] = useState<Row[]>(
     initial && initial.lines.length
       ? initial.lines.map((l) => ({
@@ -54,7 +60,9 @@ export default function DocEditor({
         }))
       : [emptyRow()],
   );
-  const [vatMode, setVatMode] = useState(initial?.vatMode ?? "EXCLUDE");
+  const [vatMode, setVatMode] = useState(
+    !vatRegistered ? "NONE" : initial?.vatMode ?? "EXCLUDE",
+  );
   const [discount, setDiscount] = useState(initial ? String(initial.discountAmount / 100) : "");
 
   const update = (i: number, k: keyof Row, v: string) =>
@@ -99,6 +107,7 @@ export default function DocEditor({
       <input type="hidden" name="docType" value={docType} />
       {editId && <input type="hidden" name="id" value={editId} />}
       <input type="hidden" name="lines" value={linesJson} />
+      {showVatTiming && <input type="hidden" name="vatTiming" value={vatTiming} />}
 
       <h2 className="text-sm font-medium">{editId ? "แก้ไข" : "สร้าง"}{docLabel}</h2>
 
@@ -127,14 +136,27 @@ export default function DocEditor({
             <input type="date" name="dueDate" defaultValue={initial?.dueDate ?? ""} className={inputCls} />
           </label>
         )}
-        <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
-          ภาษีมูลค่าเพิ่ม
-          <select name="vatMode" value={vatMode} onChange={(e) => setVatMode(e.target.value)} className={inputCls}>
-            <option value="EXCLUDE">แยก VAT ({vatRateBp / 100}%)</option>
-            <option value="INCLUDE">รวม VAT แล้ว ({vatRateBp / 100}%)</option>
-            <option value="NONE">ไม่มี VAT</option>
-          </select>
-        </label>
+        {vatRegistered ? (
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+            ภาษีมูลค่าเพิ่ม
+            <select name="vatMode" value={vatMode} onChange={(e) => setVatMode(e.target.value)} className={inputCls}>
+              <option value="EXCLUDE">แยก VAT ({vatRateBp / 100}%)</option>
+              <option value="INCLUDE">รวม VAT แล้ว ({vatRateBp / 100}%)</option>
+              <option value="NONE">ไม่มี VAT</option>
+            </select>
+          </label>
+        ) : (
+          <input type="hidden" name="vatMode" value="NONE" />
+        )}
+        {showVatTiming && (
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+            จุดรับรู้ภาษี
+            <select value={vatTiming} onChange={(e) => setVatTiming(e.target.value)} className={inputCls}>
+              <option value="ON_ISSUE">ขายสินค้า (ออกใบกำกับตอนแจ้งหนี้)</option>
+              <option value="ON_PAYMENT">บริการ (ออกใบกำกับตอนรับเงิน)</option>
+            </select>
+          </label>
+        )}
       </div>
 
       {/* บรรทัดสินค้า/บริการ */}
@@ -164,10 +186,12 @@ export default function DocEditor({
           <span className="text-[color:var(--color-muted)]">ส่วนลดท้ายบิล</span>
           <input name="discountAmount" value={discount} onChange={(e) => setDiscount(e.target.value)} type="number" step="0.01" placeholder="0.00" className={`${inputCls} w-28 text-right`} />
         </label>
-        <div className="flex w-full max-w-xs justify-between">
-          <span className="text-[color:var(--color-muted)]">ภาษีมูลค่าเพิ่ม</span>
-          <span>฿{money(vat)}</span>
-        </div>
+        {vatRegistered && (
+          <div className="flex w-full max-w-xs justify-between">
+            <span className="text-[color:var(--color-muted)]">ภาษีมูลค่าเพิ่ม</span>
+            <span>฿{money(vat)}</span>
+          </div>
+        )}
         <div className="flex w-full max-w-xs justify-between font-semibold">
           <span>ยอดสุทธิ</span>
           <span>฿{money(grand)}</span>

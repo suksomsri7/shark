@@ -8,18 +8,16 @@ import {
   DOC_LABEL,
   STATUS_LABEL,
   isOverdue,
+  VISIBLE_DOC_TYPES,
 } from "./service";
 
-const RECEIVABLE_TABS: { code: AccountDocType; label: string }[] = [
-  { code: "QUOTATION", label: "ใบเสนอราคา" },
-  { code: "INVOICE", label: "ใบแจ้งหนี้" },
-  { code: "RECEIPT", label: "ใบเสร็จรับเงิน" },
-  { code: "TAX_INVOICE", label: "ใบกำกับภาษีขาย" },
-  { code: "DEPOSIT_RECEIPT", label: "ใบรับเงินมัดจำ" },
-  { code: "CREDIT_NOTE", label: "ใบลดหนี้" },
-  { code: "DEBIT_NOTE", label: "ใบเพิ่มหนี้" },
-  { code: "BILLING_NOTE", label: "ใบวางบิล" },
-];
+// QC5-A5: โชว์เฉพาะ docType ที่ flow ครบ (ซ่อนมัดจำ/วางบิล/CN/DN) — ใบกำกับภาษี gate ด้วย vatRegistered
+function receivableTabs(vatRegistered: boolean): { code: AccountDocType; label: string }[] {
+  return VISIBLE_DOC_TYPES.filter((c) => c !== "TAX_INVOICE" || vatRegistered).map((code) => ({
+    code,
+    label: DOC_LABEL[code] ?? code,
+  }));
+}
 
 // ป้ายสถานะ B&W
 export function StatusBadge({
@@ -91,7 +89,7 @@ export async function AccountContent({
       <div className="card flex flex-col gap-3">
         <h2 className="text-sm font-medium">รายรับ</h2>
         <div className="flex flex-wrap gap-1.5">
-          {RECEIVABLE_TABS.map((t) => (
+          {receivableTabs(settings.vatRegistered).map((t) => (
             <Link
               key={t.code}
               href={`${base}/docs/${t.code}`}

@@ -9,6 +9,7 @@ import {
   DOC_LABEL,
   baht,
   isOverdue,
+  isVisibleDocType,
   type DocTab,
 } from "@/lib/modules/account/service";
 import { StatusBadge } from "@/lib/modules/account/ui";
@@ -33,6 +34,8 @@ export default async function DocTypeListPage({
   const { tab: tabParam, err } = await searchParams;
   if (!(docType in DOC_LABEL)) notFound();
   const dt = docType as AccountDocType;
+  // A5: docType ที่ยังซ่อน (มัดจำ/วางบิล/CN/DN) → ไม่เปิดหน้า
+  if (!isVisibleDocType(dt)) notFound();
   const { tenantId, systemId } = await loadAccountSystem(id);
 
   const tab = (TABS.find((t) => t.key === tabParam)?.key ?? "recent") as DocTab;
@@ -41,6 +44,9 @@ export default async function DocTypeListPage({
     listContacts(tenantId, systemId),
     getSettings(tenantId, systemId),
   ]);
+
+  // A3: ไม่จด VAT → ไม่มีหน้าใบกำกับภาษี
+  if (dt === "TAX_INVOICE" && !settings.vatRegistered) notFound();
 
   const base = `/app/sys/${id}/account`;
   const canCreate = dt !== "RECEIPT" && dt !== "TAX_INVOICE"; // เกิดจากการแปลงเท่านั้น
@@ -103,10 +109,11 @@ export default async function DocTypeListPage({
         <DocEditor
           systemId={systemId}
           docType={dt}
-          docLabel={DOC_LABEL[dt]}
+          docLabel={DOC_LABEL[dt] ?? dt}
           contacts={contacts.map((c) => ({ id: c.id, name: c.name }))}
           vatRateBp={settings.vatRateBp}
           vatRegistered={settings.vatRegistered}
+          defaultVatTiming={settings.taxPointBasis}
         />
       )}
       {!canCreate && (

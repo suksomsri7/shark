@@ -6,7 +6,8 @@ import {
   getDocument,
   listContacts,
   getSettings,
-  convertTargets,
+  visibleConvertTargets,
+  isVisibleDocType,
   DOC_LABEL,
   baht,
   isOverdue,
@@ -17,6 +18,7 @@ import {
   issueDocumentAction,
   convertDocumentAction,
   recordPaymentAction,
+  voidPaymentAction,
   quotationResponseAction,
   voidDocumentAction,
 } from "@/lib/modules/account/actions";
@@ -36,6 +38,7 @@ export default async function DocDetailPage({
   const { err, edit } = await searchParams;
   if (!(docType in DOC_LABEL)) notFound();
   const dt = docType as AccountDocType;
+  if (!isVisibleDocType(dt)) notFound();
   const { tenantId, systemId } = await loadAccountSystem(id);
 
   const [doc, contacts, settings] = await Promise.all([
@@ -53,9 +56,11 @@ export default async function DocDetailPage({
   const canPay =
     (doc.status === "AWAITING_PAYMENT" || doc.status === "PARTIAL") &&
     (dt === "INVOICE" || dt === "DEPOSIT_RECEIPT");
-  const targets = convertTargets(dt).filter(
-    (t) => doc.status !== "DRAFT" && doc.status !== "VOIDED" && doc.status !== "CANCELLED",
-  );
+  // A5/A3: เป้าหมายแปลง = ตัด docType ที่ซ่อน + gate ใบกำกับภาษีตาม vatRegistered
+  const targets =
+    doc.status !== "DRAFT" && doc.status !== "VOIDED" && doc.status !== "CANCELLED"
+      ? visibleConvertTargets(dt, settings.vatRegistered)
+      : [];
 
   if (isEditing) {
     return (
@@ -64,10 +69,11 @@ export default async function DocDetailPage({
         <DocEditor
           systemId={systemId}
           docType={dt}
-          docLabel={DOC_LABEL[dt]}
+          docLabel={DOC_LABEL[dt] ?? dt}
           contacts={contacts.map((c) => ({ id: c.id, name: c.name }))}
           vatRateBp={settings.vatRateBp}
           vatRegistered={settings.vatRegistered}
+          defaultVatTiming={settings.taxPointBasis}
           editId={doc.id}
           initial={{
             contactId: doc.contactId,
@@ -75,6 +81,7 @@ export default async function DocDetailPage({
             dueDate: toInput(doc.dueDate),
             validUntil: toInput(doc.validUntil),
             vatMode: doc.vatMode,
+            vatTiming: doc.vatTiming,
             discountAmount: doc.discountAmount,
             note: doc.note,
             lines: doc.lines.map((l) => ({
@@ -139,7 +146,7 @@ export default async function DocDetailPage({
         <div className="mt-1 flex flex-col items-end gap-0.5">
           <Row label="รวมเป็นเงิน" value={doc.subTotal} />
           {doc.discountAmount > 0 && <Row label="ส่วนลดท้ายบิล" value={-doc.discountAmount} />}
-          <Row label="ภาษีมูลค่าเพิ่ม" value={doc.vatAmount} />
+          {settings.vatRegistered && <Row label="ภาษีมูลค่าเพิ่ม" value={doc.vatAmount} />}
           <div className="flex w-full max-w-xs justify-between font-semibold">
             <span>ยอดสุทธิ</span>
             <span>฿{baht(doc.grandTotal)}</span>
@@ -165,9 +172,22 @@ export default async function DocDetailPage({
         <div className="flex flex-col gap-1 text-sm">
           <h2 className="text-sm font-medium">ประวัติการรับชำระ</h2>
           {doc.payments.map((p) => (
-            <div key={p.id} className="flex justify-between rounded-lg border px-3 py-1.5 text-xs">
-              <span>{fmtDate(p.paidAt)} · {p.channel}</span>
-              <span>฿{baht(p.amount)}</span>
+            <div key={p.id} className="flex items-center justify-between rounded-lg border px-3 py-1.5 text-xs">
+              <span>
+                {fmtDate(p.paidAt)} · {p.channel}
+                {p.whtAmountSatang > 0 && ` · หัก ณ ที่จ่าย ฿${baht(p.whtAmountSatang)}`}
+              </span>
+              <span className="flex items-center gap-2">
+                ฿{baht(p.amount)}
+                {doc.status !== "VOIDED" && doc.status !== "CANCELLED" && (
+                  <form action={voidPaymentAction}>
+                    <Hidden systemId={systemId} docType={dt} id={doc.id} />
+                    <input type="hidden" name="paymentId" value={p.id} />
+                    <input type="hidden" name="reason" value="ยกเลิกการรับชำระ" />
+                    <button className="text-[color:var(--color-danger)] underline" title="ยกเลิกการชำระ">ยกเลิก</button>
+                  </form>
+                )}
+              </span>
             </div>
           ))}
         </div>
@@ -256,11 +276,30 @@ export default async function DocDetailPage({
                 type="number"
                 step="0.01"
                 defaultValue={(remain / 100).toFixed(2)}
-                placeholder="ยอด (บาท)"
+                placeholder="เงินเข้า (บาท)"
                 className="rounded-lg border px-2 py-1.5 text-sm"
               />
               <button className="btn btn-primary text-sm">บันทึก</button>
             </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <input
+                name="whtAmount"
+                type="number"
+                step="0.01"
+                placeholder="หัก ณ ที่จ่าย (บาท)"
+                className="rounded-lg border px-2 py-1.5 text-sm"
+              />
+              <input
+                name="feeAmount"
+                type="number"
+                step="0.01"
+                placeholder="ค่าธรรมเนียม (บาท)"
+                className="rounded-lg border px-2 py-1.5 text-sm"
+              />
+            </div>
+            <p className="text-xs text-[color:var(--color-muted)]">
+              ยอดที่ตัดหนี้ = เงินเข้า + หัก ณ ที่จ่าย
+            </p>
           </form>
         )}
 

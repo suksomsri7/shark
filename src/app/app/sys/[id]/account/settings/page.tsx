@@ -80,6 +80,13 @@ export default async function AccountSettingsPage({
           อัตรา VAT (basis point, 700 = 7%)
           <input name="vatRateBp" type="number" defaultValue={s.vatRateBp} className={inputCls} />
         </label>
+        <label className={`${labelCls} sm:col-span-2`}>
+          จุดรับรู้ภาษีเริ่มต้น (ประเภทกิจการ)
+          <select name="taxPointBasis" defaultValue={s.taxPointBasis} className={inputCls}>
+            <option value="ON_ISSUE">ขายสินค้า — ออกใบกำกับตอนแจ้งหนี้/ส่งมอบ</option>
+            <option value="ON_PAYMENT">บริการ — ออกใบกำกับตอนรับเงิน</option>
+          </select>
+        </label>
         <label className={labelCls}>
           ครบกำหนดชำระ default (วัน)
           <input name="defaultDueDays" type="number" defaultValue={s.defaultDueDays} className={inputCls} />

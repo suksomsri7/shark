@@ -69,7 +69,7 @@ export default async function PrintPage({ params }: { params: Promise<{ id: stri
       <div className="mt-3 flex flex-col items-end gap-0.5 text-xs">
         <Row label="รวมเป็นเงิน" value={baht(doc.subTotal)} />
         {doc.discountAmount > 0 && <Row label="ส่วนลด" value={`-${baht(doc.discountAmount)}`} />}
-        <Row label="ภาษีมูลค่าเพิ่ม" value={baht(doc.vatAmount)} />
+        {s.vatRegistered && <Row label="ภาษีมูลค่าเพิ่ม" value={baht(doc.vatAmount)} />}
         <div className="flex w-56 justify-between border-t pt-1 text-sm font-bold">
           <span>ยอดสุทธิ</span>
           <span>฿{baht(doc.grandTotal)}</span>
