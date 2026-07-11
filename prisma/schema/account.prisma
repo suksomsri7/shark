@@ -9,10 +9,25 @@ enum AccountDocType {
   INVOICE // ใบแจ้งหนี้/ใบส่งของ
   RECEIPT // ใบเสร็จรับเงิน
   TAX_INVOICE // ใบกำกับภาษีขาย
+  TAX_INVOICE_ABB // ใบกำกับอย่างย่อ (POS link) — P2
   DEPOSIT_RECEIPT // ใบรับเงินมัดจำ
   CREDIT_NOTE // ใบลดหนี้
   DEBIT_NOTE // ใบเพิ่มหนี้
   BILLING_NOTE // ใบวางบิล
+  // ── รายจ่าย (P2) ──
+  PURCHASE // บันทึกซื้อสินค้า
+  EXPENSE // บันทึกค่าใช้จ่าย
+  PURCHASE_ORDER // ใบสั่งซื้อ (PO)
+  ASSET_PURCHASE_ORDER // ใบสั่งซื้อสินทรัพย์
+  ASSET_PURCHASE // ซื้อสินทรัพย์
+  PURCHASE_TAX_INVOICE // ใบกำกับภาษีซื้อ (ทะเบียนรับ)
+  DEPOSIT_PAYMENT // ใบจ่ายเงินมัดจำ
+  CREDIT_NOTE_RECEIVED // รับใบลดหนี้
+  DEBIT_NOTE_RECEIVED // รับใบเพิ่มหนี้
+  COMBINED_PAYMENT // ใบรวมจ่าย
+  GOODS_ISSUE // ใบเบิกสินค้า
+  GOODS_ISSUE_RETURN // ใบส่งคืนเบิกสินค้า
+  WHT_CERT // หนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ)
 }
 
 enum AccountDocStatus {
@@ -20,11 +35,15 @@ enum AccountDocStatus {
   AWAITING_ACCEPT // ใบเสนอราคา รอตอบรับ
   ACCEPTED
   REJECTED
+  AWAITING_APPROVAL // PO/ใบสั่งซื้อสินทรัพย์ รออนุมัติ
+  APPROVED
   AWAITING_PAYMENT // รอชำระเงิน
   PARTIAL // ชำระบางส่วน
   PAID // ชำระครบ
   AWAITING_DEDUCT // มัดจำ รอหัก
   DEDUCTED // มัดจำถูกหักครบ
+  AWAITING_RECEIVE // ใบกำกับภาษีซื้อ/ซื้อสินทรัพย์ รอรับตัวจริง
+  RECEIVED // รับใบกำกับ/ใบเสร็จแล้ว
   ISSUED // ใบกำกับ/ใบลด-เพิ่มหนี้/ใบวางบิล มีผลแล้ว
   VOIDED // เคยมีผล + ถูกยกเลิก
   CANCELLED // ยกเลิกก่อนมีผล (ยกเลิก DRAFT)
@@ -47,6 +66,7 @@ enum AccountRelationType {
   DEPOSIT_APPLY // หักมัดจำ
   ADJUST // ใบลดหนี้/เพิ่มหนี้อ้างใบเดิม
   BILL // ใบวางบิลรวมหลายใบแจ้งหนี้
+  PAY_GROUP // ใบรวมจ่ายรวมหลายบันทึกซื้อ (ฝั่งจ่าย)
   TAX_FOR // ใบกำกับภาษีของเอกสารต้นทาง
   REPLACE // ออกใบแทน (void + reissue)
 }
@@ -59,6 +79,7 @@ enum AccountPayChannel {
   E_WALLET
   CHEQUE
   DEPOSIT_APPLY
+  CREDIT_APPLY
   OTHER
 }
 
@@ -91,27 +112,42 @@ model AccountDocument {
   contactSnapshot Json? // freeze ชื่อ/ที่อยู่/เลขภาษี ณ วันออก (พ้น DRAFT)
   // ── ยอดเงิน (สตางค์) ──
   vatMode        AccountVatMode      @default(EXCLUDE)
+  vatTiming      AccountVatTiming    @default(ON_ISSUE) // จุดรับรู้ภาษีขาย (สินค้า/บริการ)
   subTotal       Int                 @default(0) // Σ บรรทัดหลังส่วนลดบรรทัด (ฐานก่อน VAT)
   discountAmount Int                 @default(0) // ส่วนลดท้ายบิล
   vatAmount      Int                 @default(0)
+  whtAmount      Int                 @default(0) // WHT preview (ตัวจริงอยู่ payment)
   depositDeducted Int                @default(0) // Σ มัดจำที่หักในใบนี้
   grandTotal     Int                 @default(0) // สุทธิที่ต้องชำระ
   paidTotal      Int                 @default(0) // Σ payment
   // ── อ้างอิง ──
   sourceDocId    String? // เอกสารต้นทางที่แปลงมา (quotation→invoice→receipt)
-  refType        String? // ระบบต้นทาง (เช่น "PosSale")
+  sourcePaymentId String? // QC5-A1: ใบกำกับภาษี(บริการ) ออกต่อ payment งวดที่รับ (1 payment = 1 ใบกำกับ)
+  taxPointBasis  AccountVatTiming? // QC5-A1: จุดรับรู้ภาษี (GOODS=ON_ISSUE / SERVICE=ON_PAYMENT)
+  refSystemId    String? // ระบบต้นทาง (POS system / business unit) เมื่อไหลจาก link
+  refType        String? // ชื่อ Prisma model ตรงตัว (เช่น "PosSale")
   refId          String?
+  categoryId     String? // กลุ่มจัดประเภท
+  category       AccountCategory?    @relation(fields: [categoryId], references: [id])
   note           String? // หมายเหตุบนเอกสาร (พิมพ์)
   internalNote   String? // โน้ตภายใน
   adjustReason   String? // CN/DN: เหตุผลตามประกาศสรรพากร
+  whtIncomeType  AccountWhtIncomeType? // WHT_CERT: ประเภทเงินได้ ม.40
+  whtRateBp      Int? // WHT_CERT: basis point (300 = 3%)
+  etaxStatus     AccountEtaxStatus   @default(NOT_SENT) // P4
+  etaxMeta       Json? // P4: {providerId, xmlUrl, sentAt, error}
+  pdfUrl         String?
   publicToken    String?             @unique // ลิงก์สาธารณะ
   acceptedAt     DateTime? // ใบเสนอราคา accepted
+  approvedById   String? // PO/APO: ผู้อนุมัติ
+  replacedById   String?             @unique // ใบใหม่ที่ออกแทน (คู่ relation REPLACE)
   voidedAt       DateTime?
   voidReason     String?
   createdById    String?
 
   lines         AccountDocumentLine[]
   payments      AccountDocumentPayment[]
+  attachments   AccountAttachment[]
   relationsFrom AccountDocumentRelation[] @relation("AccountRelFrom")
   relationsTo   AccountDocumentRelation[] @relation("AccountRelTo")
 
@@ -140,11 +176,17 @@ model AccountDocumentLine {
   discount    Int             @default(0) // ส่วนลดบรรทัด (สตางค์)
   vatRateBp   Int             @default(700) // 700 = 7% | 0 = 0% | -1 = ยกเว้น
   amount      Int // qty×unitPrice − discount (ฐานบรรทัด)
+  productId   String? // เลือกจากทะเบียนสินค้า/บริการ
+  product     AccountProduct? @relation(fields: [productId], references: [id])
+  accountId   String? // override บัญชี GL (EXPENSE บังคับเลือกหมวด)
+  account     AccountLedger?  @relation(fields: [accountId], references: [id])
+  assetId     String? // ASSET_PURCHASE: ผูกทะเบียนสินทรัพย์หลังขึ้นทะเบียน
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([documentId, sortOrder])
+  @@index([systemId, productId])
 }
 
 model AccountDocumentPayment {
@@ -155,9 +197,19 @@ model AccountDocumentPayment {
   document       AccountDocument   @relation(fields: [documentId], references: [id], onDelete: Cascade)
   paidAt         DateTime          @default(now())
   channel        AccountPayChannel @default(TRANSFER)
-  amount         Int // เงินที่เข้าจริง
+  financeAccountId String? // บัญชีเงินที่เข้า/ออก (null เฉพาะ DEPOSIT_APPLY/CREDIT_APPLY)
+  financeAccount AccountFinance?   @relation(fields: [financeAccountId], references: [id])
+  amount         Int // เงินที่เข้า/ออกจริง (ไม่รวม WHT)
+  whtAmountSatang Int              @default(0) // WHT ถูกหัก (รับ) / หักเขา (จ่าย)
+  whtRateBp      Int?
+  whtCertDocId   String?           @unique // Document(WHT_CERT) ที่ออกให้ vendor
+  feeAmount      Int               @default(0) // ค่าธรรมเนียมโอน/gateway
+  chequeId       String?           @unique
+  cheque         AccountCheque?    @relation(fields: [chequeId], references: [id])
+  entryId        String?           @unique // AccountJournalEntry ของการชำระครั้งนี้
   note           String?
   voidedAt       DateTime?
+  voidReason     String?
   createdById    String?
 
   createdAt DateTime @default(now())

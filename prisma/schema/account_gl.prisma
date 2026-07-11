@@ -1,0 +1,399 @@
+// Account — ชั้นบัญชีเต็มรูป (P2/P3): ผังบัญชี + สมุดรายวัน + การเงิน + สินทรัพย์ + คลังเอกสาร
+// เจ้าของ schema = main session (contract กลาง) — subagent ไม่แตะไฟล์ prisma
+// scope = feature: ทุกตาราง tenantId + systemId · เงิน Int สตางค์ · id cuid()
+// อ้างสเปค docs/modules/12-account.md §4.5–4.8 + §4.14 (ผังบัญชี seed) + §7.10 (posting rules)
+
+// ───────── enums (ชั้นบัญชี) ─────────
+enum AccountVatTiming {
+  ON_ISSUE // สินค้า = ออกใบกำกับตอนส่งมอบ
+  ON_PAYMENT // บริการ = ต่องวดรับเงิน
+}
+
+enum AccountProductType {
+  GOODS
+  SERVICE
+}
+
+enum AccountFinanceType {
+  CASH
+  BANK
+  E_WALLET
+  PETTY_CASH
+}
+
+enum AccountChequeDirection {
+  IN
+  OUT
+}
+
+enum AccountChequeStatus {
+  ON_HAND
+  DEPOSITED
+  CLEARED
+  BOUNCED
+  ISSUED
+  VOIDED
+}
+
+enum AccountLedgerType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  COGS
+  EXPENSE
+}
+
+enum AccountCashflowActivity {
+  OPERATING
+  INVESTING
+  FINANCING
+  NONE
+}
+
+enum AccountJournalBook {
+  SALES
+  PURCHASES
+  RECEIPTS
+  PAYMENTS
+  GENERAL
+}
+
+enum AccountJournalType {
+  DOC
+  PAYMENT
+  ADJUST
+  REVERSAL
+  DEPRECIATION
+  OPENING
+}
+
+enum AccountEntrySource {
+  AUTO
+  MANUAL
+}
+
+enum AccountEntryStatus {
+  POSTED
+  REVERSED
+}
+
+enum AccountPeriodStatus {
+  OPEN
+  CLOSED
+}
+
+enum AccountAssetStatus {
+  ACTIVE
+  FULLY_DEPRECIATED
+  DISPOSED
+  WRITTEN_OFF
+}
+
+enum AccountWhtIncomeType {
+  M40_1
+  M40_2
+  M40_3
+  M40_4
+  M40_5
+  M40_6
+  M40_7
+  M40_8
+}
+
+enum AccountEtaxStatus {
+  NOT_SENT
+  PENDING
+  SENT
+  FAILED
+}
+
+enum AccountLinkedKind {
+  POS
+  BUSINESS
+}
+
+// ───────── 4.3 สินค้า / หน่วย / กลุ่มจัดประเภท ─────────
+model AccountUnit {
+  id         String    @id @default(cuid())
+  tenantId   String
+  systemId   String
+  name       String // "ชิ้น" "กล่อง" "ชั่วโมง"
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([systemId, name])
+}
+
+model AccountProduct {
+  id               String             @id @default(cuid())
+  tenantId         String
+  systemId         String
+  sku              String?
+  name             String
+  nameEn           String?
+  type             AccountProductType @default(GOODS)
+  unitId           String?
+  salePrice        Int? // สตางค์
+  buyPrice         Int?
+  vatRateBp        Int                @default(700)
+  incomeAccountId  String? // override ผังบัญชีต่อสินค้า
+  expenseAccountId String?
+  imageUrl         String?
+  qtyOnHand        Decimal            @default(0) @db.Decimal(12, 4)
+  archivedAt       DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  lines AccountDocumentLine[]
+
+  @@unique([systemId, sku])
+  @@index([systemId, type, archivedAt])
+}
+
+model AccountCategory {
+  id         String    @id @default(cuid())
+  tenantId   String
+  systemId   String
+  name       String
+  appliesTo  Json      @default("[]") // [AccountDocType] ที่ใช้ได้ ([] = ทุกชนิด)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  documents AccountDocument[]
+
+  @@unique([systemId, name])
+}
+
+// ───────── 4.4 การเงิน + เช็ค ─────────
+model AccountFinance {
+  id              String             @id @default(cuid())
+  tenantId        String
+  systemId        String
+  type            AccountFinanceType
+  name            String
+  bankName        String?
+  accountNo       String?
+  promptpayId     String?
+  openingBalance  Int                @default(0)
+  openingDate     DateTime?
+  ledgerAccountId String? // บัญชี GL ที่ผูก (1000/1010 ...)
+  showOnDocuments Boolean            @default(false)
+  archivedAt      DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  payments AccountDocumentPayment[]
+
+  @@index([systemId, type, archivedAt])
+}
+
+model AccountCheque {
+  id               String                 @id @default(cuid())
+  tenantId         String
+  systemId         String
+  direction        AccountChequeDirection
+  chequeNo         String
+  bankName         String
+  bankBranch       String?
+  chequeDate       DateTime
+  amount           Int
+  status           AccountChequeStatus
+  financeAccountId String?
+  clearedAt        DateTime?
+  note             String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  payment AccountDocumentPayment?
+
+  @@index([systemId, direction, status])
+}
+
+// ───────── 4.5 ผังบัญชี + mapping ─────────
+model AccountLedger {
+  id               String                  @id @default(cuid())
+  tenantId         String
+  systemId         String
+  code             String // "1150"
+  name             String
+  nameEn           String?
+  type             AccountLedgerType
+  cashflowActivity AccountCashflowActivity @default(OPERATING)
+  parentId         String?
+  parent           AccountLedger?          @relation("AccountLedgerTree", fields: [parentId], references: [id])
+  children         AccountLedger[]         @relation("AccountLedgerTree")
+  isSystem         Boolean                 @default(false)
+  archivedAt       DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  journalLines AccountJournalLine[]
+  mappings     AccountMapping[]
+  docLines     AccountDocumentLine[]
+
+  @@unique([systemId, code])
+  @@index([systemId, type, archivedAt])
+}
+
+model AccountMapping {
+  id        String        @id @default(cuid())
+  tenantId  String
+  systemId  String
+  key       String // §7.10: "AR" "AP" "VAT_OUTPUT" "VAT_INPUT" ... "SUSPENSE" + "DOC:{docType}"
+  accountId String
+  account   AccountLedger @relation(fields: [accountId], references: [id])
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@unique([systemId, key])
+  @@index([systemId])
+}
+
+// ───────── 4.6 สมุดรายวัน (immutable — Σdebit == Σcredit) ─────────
+model AccountJournalEntry {
+  id             String               @id @default(cuid())
+  tenantId       String
+  systemId       String
+  docNo          String // "JV-2026-07-0001"
+  book           AccountJournalBook
+  journal        AccountJournalType
+  date           DateTime
+  periodKey      String // "2026-07"
+  refType        String? // "AccountDocument" | "AccountDocumentPayment" | "AccountDepreciation" | "PosSale"
+  refId          String?
+  memo           String?
+  source         AccountEntrySource
+  status         AccountEntryStatus   @default(POSTED)
+  needsReview    Boolean              @default(false)
+  idempotencyKey String?
+  reversalOfId   String?              @unique
+  reversalOf     AccountJournalEntry? @relation("AccountReversal", fields: [reversalOfId], references: [id])
+  reversedBy     AccountJournalEntry? @relation("AccountReversal")
+  postedById     String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  lines AccountJournalLine[]
+
+  @@unique([systemId, docNo])
+  @@unique([tenantId, idempotencyKey])
+  @@index([systemId, periodKey, book])
+  @@index([systemId, date])
+  @@index([refType, refId])
+  @@index([systemId, needsReview])
+}
+
+model AccountJournalLine {
+  id        String              @id @default(cuid())
+  tenantId  String
+  systemId  String // denormalized — งบ query ตรงไม่ join
+  entryId   String
+  entry     AccountJournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId String
+  account   AccountLedger       @relation(fields: [accountId], references: [id])
+  debit     Int                 @default(0)
+  credit    Int                 @default(0)
+  contactId String?
+  note      String?
+
+  @@index([entryId])
+  @@index([systemId, accountId])
+  @@index([systemId, contactId, accountId])
+}
+
+model AccountPeriod {
+  id         String              @id @default(cuid())
+  tenantId   String
+  systemId   String
+  periodKey  String // "2026-07"
+  status     AccountPeriodStatus @default(OPEN)
+  closedAt   DateTime?
+  closedById String?
+  reopenLog  Json                @default("[]")
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  @@unique([systemId, periodKey])
+}
+
+// ───────── 4.7 สินทรัพย์ + ค่าเสื่อม ─────────
+model AccountFixedAsset {
+  id               String                @id @default(cuid())
+  tenantId         String
+  systemId         String
+  code             String // "FA-0001"
+  name             String
+  category         String?
+  acquiredDate     DateTime
+  startDepDate     DateTime
+  cost             Int
+  salvageValue     Int                   @default(100)
+  usefulLifeMonths Int
+  assetAccountId   String // 16xx
+  accumAccountId   String // 16x9
+  expenseAccountId String // 6800
+  sourceDocumentId String?
+  status           AccountAssetStatus    @default(ACTIVE)
+  disposedAt       DateTime?
+  disposalAmount   Int?
+  note             String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  depreciations AccountDepreciation[]
+
+  @@unique([systemId, code])
+  @@index([systemId, status])
+}
+
+model AccountDepreciation {
+  id        String            @id @default(cuid())
+  tenantId  String
+  systemId  String
+  assetId   String
+  asset     AccountFixedAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  periodKey String
+  amount    Int
+  entryId   String?
+  createdAt DateTime          @default(now())
+
+  @@unique([assetId, periodKey])
+  @@index([systemId, periodKey])
+}
+
+// ───────── 4.8 คลังเอกสาร + เชื่อมระบบ ─────────
+model AccountAttachment {
+  id           String           @id @default(cuid())
+  tenantId     String
+  systemId     String
+  documentId   String?
+  document     AccountDocument? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  folder       String?
+  fileName     String
+  fileUrl      String
+  mimeType     String
+  sizeBytes    Int
+  uploadedById String?
+  createdAt    DateTime         @default(now())
+
+  @@index([systemId, documentId])
+  @@index([systemId, folder])
+}
+
+model AccountSystemLink {
+  id         String            @id @default(cuid())
+  tenantId   String
+  systemId   String // ระบบบัญชีชุดนี้
+  linkedKind AccountLinkedKind
+  linkedId   String // AppSystem.id (POS) | BusinessUnit.id (business)
+  config     Json              @default("{}")
+  archivedAt DateTime?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@unique([systemId, linkedKind, linkedId])
+  @@index([linkedKind, linkedId])
+}

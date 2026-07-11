@@ -55,7 +55,7 @@ const MODULE_SCOPES: Record<string, Scope> = {
   KanbanBoard: "tenant",
   KanbanColumn: "tenant",
   KanbanCard: "tenant",
-  // Account (feature, tenant-scoped)
+  // Account (feature, tenant-scoped) — P1 core
   AccountDocument: "tenant",
   AccountDocumentLine: "tenant",
   AccountDocumentPayment: "tenant",
@@ -63,6 +63,21 @@ const MODULE_SCOPES: Record<string, Scope> = {
   AccountDocSequence: "tenant",
   AccountContact: "tenant",
   AccountSettings: "tenant",
+  // Account — GL/finance/asset (P2/P3)
+  AccountUnit: "tenant",
+  AccountProduct: "tenant",
+  AccountCategory: "tenant",
+  AccountFinance: "tenant",
+  AccountCheque: "tenant",
+  AccountLedger: "tenant",
+  AccountMapping: "tenant",
+  AccountJournalEntry: "tenant",
+  AccountJournalLine: "tenant",
+  AccountPeriod: "tenant",
+  AccountFixedAsset: "tenant",
+  AccountDepreciation: "tenant",
+  AccountAttachment: "tenant",
+  AccountSystemLink: "tenant",
   // Hotel (business, unit-scoped)
   HotelRoomType: "unit",
   HotelRoom: "unit",
