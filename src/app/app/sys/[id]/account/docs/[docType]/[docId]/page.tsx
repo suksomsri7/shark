@@ -28,6 +28,7 @@ import {
   voidPaymentAction,
   quotationResponseAction,
   voidDocumentAction,
+  ensurePublicLinkAction,
 } from "@/lib/modules/account/actions";
 
 const fmtDate = (d: Date) =>
@@ -227,6 +228,34 @@ export default async function DocDetailPage({
           ))}
         </Section>
       )}
+
+      {/* §5.6 ลิงก์สาธารณะขอใบกำกับภาษี — RECEIPT/มัดจำ/ใบแจ้งหนี้ ที่ออกแล้ว + จด VAT */}
+      {settings.vatRegistered &&
+        ["RECEIPT", "DEPOSIT_RECEIPT", "INVOICE"].includes(dt) &&
+        doc.status !== "DRAFT" &&
+        doc.status !== "CANCELLED" &&
+        doc.status !== "VOIDED" && (
+          <Section title="ลิงก์ขอใบกำกับภาษี (ลูกค้า)">
+            {doc.publicToken ? (
+              <div className="flex flex-col gap-1 text-sm">
+                <span className="text-xs text-[color:var(--color-muted)]">
+                  ให้ลูกค้าเปิดลิงก์นี้ (หรือทำเป็น QR) เพื่อกรอกข้อมูลและขอใบกำกับภาษีเอง
+                </span>
+                <code className="break-all rounded-lg border bg-[color:var(--color-surface)] px-2 py-1 text-xs">
+                  /r/{doc.publicToken}
+                </code>
+                <Link href={`/r/${doc.publicToken}`} target="_blank" className="text-xs underline">
+                  เปิดหน้าลูกค้า ↗
+                </Link>
+              </div>
+            ) : (
+              <form action={ensurePublicLinkAction}>
+                <Hidden systemId={systemId} docType={dt} id={doc.id} />
+                <SubmitButton pendingText="กำลังสร้างลิงก์…">สร้างลิงก์ขอใบกำกับ</SubmitButton>
+              </form>
+            )}
+          </Section>
+        )}
 
       {/* การกระทำ */}
       <div className="flex flex-col gap-3 border-t pt-4">

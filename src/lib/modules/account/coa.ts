@@ -100,6 +100,7 @@ const MAPPINGS: [string, string][] = [
   ["DISCOUNT_RECEIVED", "5800"],
   ["PAYMENT_FEE", "6500"],
   ["CHEQUE_IN_TRANSIT", "1040"],
+  ["CHEQUE_PAYABLE", "2300"], // เช็คจ่ายรอเรียกเก็บ (§3.5 เช็คจ่าย)
   ["DEPRECIATION_EXPENSE", "6800"],
   ["ASSET_DISPOSAL_GAIN", "4900"],
   ["CASH", "1000"],

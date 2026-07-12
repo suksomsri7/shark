@@ -44,6 +44,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): SubNavGroup[]
       title: "การเงิน",
       items: [
         { href: `${base}/finance`, label: "บัญชีเงิน (เงินสด/ธนาคาร)" },
+        { href: `${base}/cheque`, label: "ทะเบียนเช็ค (รับ/จ่าย)" },
         { href: `${base}/wht`, label: "หัก ณ ที่จ่าย (50 ทวิ)" },
         { href: `${base}/tax`, label: "ภาษี (ภ.พ.30 / ภ.ง.ด.)" },
       ],
@@ -59,7 +60,10 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): SubNavGroup[]
     },
     {
       title: "เอกสาร",
-      items: [{ href: `${base}/reports`, label: "งบการเงิน" }],
+      items: [
+        { href: `${base}/reports`, label: "งบการเงิน" },
+        { href: `${base}/documents`, label: "คลังเอกสาร" },
+      ],
     },
     {
       title: "ตั้งค่า",

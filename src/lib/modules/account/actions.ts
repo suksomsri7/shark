@@ -25,7 +25,10 @@ import {
   archiveContact,
   saveSettings,
   isVisibleDocType,
+  ensurePublicTaxInvoiceLink,
+  CONFIGURABLE_DOC_TYPES,
   type LineInput,
+  type DocTypeConfig,
 } from "./service";
 import type { AccountVatTiming } from "@prisma/client";
 
@@ -358,10 +361,39 @@ export async function archiveContactAction(formData: FormData) {
 
 // ─────────────────── ตั้งค่า ───────────────────
 
+// §5.6 สร้างลิงก์สาธารณะให้ลูกค้าขอใบกำกับภาษี (QR/ลิงก์บนใบเสร็จ)
+export async function ensurePublicLinkAction(formData: FormData) {
+  const systemId = str(formData, "systemId");
+  const docType = str(formData, "docType");
+  const id = str(formData, "id");
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.doc.issue");
+  const res = await ensurePublicTaxInvoiceLink(tenantId, systemId, id);
+  const path = `/app/sys/${systemId}/account/docs/${docType}/${id}`;
+  if (!res.ok) redirect(`${path}?err=${encodeURIComponent(res.reason)}`);
+  await writeAudit({ tenantId, actorId: userId, action: "account.doc.public_link", targetType: "AccountDocument", targetId: id });
+  revalidatePath(path);
+  redirect(path);
+}
+
 export async function saveSettingsAction(formData: FormData) {
   const systemId = str(formData, "systemId");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.settings.manage");
+  // §3.8 per-docType config จากฟอร์ม (dt_{DOCTYPE}_prefix / _auto / _public)
+  const docTypes: Record<string, DocTypeConfig> = {};
+  for (const dt of CONFIGURABLE_DOC_TYPES) {
+    const prefix = str(formData, `dt_${dt}_prefix`);
+    const autoTaxInvoice = formData.get(`dt_${dt}_auto`) === "on";
+    const publicLink = formData.get(`dt_${dt}_public`) === "on";
+    if (prefix || autoTaxInvoice || publicLink) {
+      docTypes[dt] = {
+        ...(prefix ? { prefix } : {}),
+        ...(autoTaxInvoice ? { autoTaxInvoice: true } : {}),
+        ...(publicLink ? { publicLink: true } : {}),
+      };
+    }
+  }
   await saveSettings(tenantId, systemId, {
     orgName: str(formData, "orgName"),
     orgNameEn: str(formData, "orgNameEn") || null,
@@ -372,12 +404,16 @@ export async function saveSettingsAction(formData: FormData) {
     phone: str(formData, "phone") || null,
     email: str(formData, "email") || null,
     website: str(formData, "website") || null,
+    logoUrl: str(formData, "logoUrl") || null,
+    stampUrl: str(formData, "stampUrl") || null,
+    signatureUrl: str(formData, "signatureUrl") || null,
     vatRegistered: str(formData, "vatRegistered") === "1",
     vatRateBp: num(formData, "vatRateBp") ?? 700,
     taxPointBasis: (str(formData, "taxPointBasis") as AccountVatTiming) || "ON_ISSUE",
     defaultDueDays: num(formData, "defaultDueDays") ?? 30,
     defaultValidDays: num(formData, "defaultValidDays") ?? 30,
     footerNote: str(formData, "footerNote") || null,
+    docTypes,
   });
   await writeAudit({
     tenantId,

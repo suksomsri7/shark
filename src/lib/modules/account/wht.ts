@@ -423,3 +423,40 @@ export async function pndCsv(
     .join(",");
   return "﻿" + [header.map(csvCell).join(","), ...lines, totalLine].join("\n");
 }
+
+// CSV ภาษีถูกหัก (เครดิต 1160) — สะสมทั้งปี/งวด สำหรับกระทบยอดเครดิตภาษี
+export async function whtCreditsCsv(
+  tenantId: string,
+  systemId: string,
+  opts?: { period?: string; year?: string },
+): Promise<string> {
+  const { rows, totalBase, totalWht } = await listWhtCredits(tenantId, systemId, opts);
+  const header = [
+    "วันที่จ่าย",
+    "เอกสาร",
+    "ผู้หักภาษี (ลูกค้า)",
+    "เลขประจำตัวผู้เสียภาษี",
+    "ฐานเงินได้",
+    "อัตรา (%)",
+    "ภาษีถูกหัก",
+    "มีสำเนา 50 ทวิ",
+  ];
+  const lines = rows.map((r) =>
+    [
+      r.paidAt.toISOString().slice(0, 10),
+      r.docNo ?? "",
+      r.contactName,
+      r.contactTaxId ?? "",
+      r.base != null ? bahtStr(r.base) : "",
+      r.whtRateBp != null ? (r.whtRateBp / 100).toFixed(2) : "",
+      bahtStr(r.whtAmount),
+      r.hasCertCopy ? "มี" : "ไม่มี",
+    ]
+      .map(csvCell)
+      .join(","),
+  );
+  const totalLine = ["", "", "", "รวม", bahtStr(totalBase), "", bahtStr(totalWht), ""]
+    .map(csvCell)
+    .join(",");
+  return "﻿" + [header.map(csvCell).join(","), ...lines, totalLine].join("\n");
+}

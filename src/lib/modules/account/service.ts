@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/core/db";
 import type {
   AccountDocType,
@@ -245,6 +246,9 @@ export type AccountSettingsView = {
   email: string | null;
   website: string | null;
   logoUrl: string | null;
+  // §3.8 ตราประทับ/ลายเซ็น (URL-paste — ยังไม่มี upload service)
+  stampUrl: string | null;
+  signatureUrl: string | null;
   vatRegistered: boolean;
   vatRateBp: number;
   // QC5-A1: จุดรับรู้ภาษีขายเริ่มต้นของกิจการ (สินค้า=ON_ISSUE / บริการ=ON_PAYMENT)
@@ -252,7 +256,49 @@ export type AccountSettingsView = {
   defaultDueDays: number;
   defaultValidDays: number;
   footerNote: string | null;
+  // §3.8 per-docType: prefix, ออกใบกำกับอัตโนมัติ, เปิดลิงก์สาธารณะขอใบกำกับ
+  docTypes: Record<string, DocTypeConfig>;
 };
+
+export type DocTypeConfig = {
+  prefix?: string;
+  autoTaxInvoice?: boolean; // ออกใบกำกับภาษีอัตโนมัติเมื่อออกใบเสร็จ
+  publicLink?: boolean; // เปิดลิงก์/QR ให้ลูกค้าขอใบกำกับ
+};
+
+// docType ฝั่งรายรับที่ตั้งค่า per-doc ได้ (§3.8)
+export const CONFIGURABLE_DOC_TYPES: readonly AccountDocType[] = [
+  "QUOTATION",
+  "INVOICE",
+  "RECEIPT",
+  "TAX_INVOICE",
+  "DEPOSIT_RECEIPT",
+  "CREDIT_NOTE",
+  "DEBIT_NOTE",
+  "BILLING_NOTE",
+];
+
+function readDocTypes(docConfig: unknown): Record<string, DocTypeConfig> {
+  const raw = (docConfig as Record<string, unknown> | null)?.docTypes;
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, DocTypeConfig> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (v && typeof v === "object") {
+      const c = v as Record<string, unknown>;
+      out[k] = {
+        prefix: typeof c.prefix === "string" ? c.prefix : undefined,
+        autoTaxInvoice: c.autoTaxInvoice === true,
+        publicLink: c.publicLink === true,
+      };
+    }
+  }
+  return out;
+}
+
+function readStr(docConfig: unknown, key: string): string | null {
+  const v = (docConfig as Record<string, unknown> | null)?.[key];
+  return typeof v === "string" && v.trim() ? v : null;
+}
 
 const SETTINGS_DEFAULT: AccountSettingsView = {
   orgName: "",
@@ -265,12 +311,15 @@ const SETTINGS_DEFAULT: AccountSettingsView = {
   email: null,
   website: null,
   logoUrl: null,
+  stampUrl: null,
+  signatureUrl: null,
   vatRegistered: true,
   vatRateBp: 700,
   taxPointBasis: "ON_ISSUE",
   defaultDueDays: 30,
   defaultValidDays: 30,
   footerNote: null,
+  docTypes: {},
 };
 
 // อ่าน taxPointBasis จาก docConfig JSON (ไม่มีคอลัมน์เฉพาะใน schema)
@@ -296,12 +345,15 @@ export async function getSettings(
     email: s.email,
     website: s.website,
     logoUrl: s.logoUrl,
+    stampUrl: readStr(s.docConfig, "stampUrl"),
+    signatureUrl: readStr(s.docConfig, "signatureUrl"),
     vatRegistered: s.vatRegistered,
     vatRateBp: s.vatRateBp,
     taxPointBasis: readTaxPointBasis(s.docConfig),
     defaultDueDays: s.defaultDueDays,
     defaultValidDays: s.defaultValidDays,
     footerNote: s.footerNote,
+    docTypes: readDocTypes(s.docConfig),
   };
 }
 
@@ -316,7 +368,19 @@ export async function saveSettings(
     (existing?.docConfig as Record<string, unknown> | null | undefined) ?? {};
   const taxPointBasis: AccountVatTiming =
     input.taxPointBasis === "ON_PAYMENT" ? "ON_PAYMENT" : "ON_ISSUE";
-  const docConfig = { ...prevConfig, taxPointBasis };
+  const docConfig: Record<string, unknown> = { ...prevConfig, taxPointBasis };
+  // §3.8 ตราประทับ/ลายเซ็น + per-docType (เก็บใน docConfig — คงคีย์เดิมถ้าไม่ได้ส่งมา)
+  if (input.stampUrl !== undefined) docConfig.stampUrl = input.stampUrl || null;
+  if (input.signatureUrl !== undefined) docConfig.signatureUrl = input.signatureUrl || null;
+  if (input.docTypes !== undefined) {
+    docConfig.docTypes = input.docTypes;
+    // sync prefix → docConfig.sequences[docType].prefix (ตัวที่ nextDocNo ใช้จริง)
+    const seqs = { ...((prevConfig.sequences as Record<string, SeqConfig>) ?? {}) };
+    for (const [dt, c] of Object.entries(input.docTypes)) {
+      if (c.prefix) seqs[dt] = { ...(seqs[dt] ?? {}), prefix: c.prefix };
+    }
+    docConfig.sequences = seqs;
+  }
   const data = {
     orgName: input.orgName ?? "",
     orgNameEn: input.orgNameEn ?? null,
@@ -1366,4 +1430,166 @@ export async function overviewStats(tenantId: string, systemId: string) {
     prisma.accountContact.count({ where: { tenantId, systemId, archivedAt: null } }),
   ]);
   return { receivable, overdueCount, overdueAmount, docCount, contactCount };
+}
+
+// ─────────────────── §5.6 ลิงก์สาธารณะขอใบกำกับภาษี ───────────────────
+
+// เอกสารต้นทางที่ลูกค้าขอใบกำกับภาษีได้ (มี VAT รับรู้แล้ว → ออกใบกำกับ GL-neutral)
+const PUBLIC_TAX_SOURCE: readonly AccountDocType[] = ["RECEIPT", "INVOICE", "DEPOSIT_RECEIPT"];
+
+/** สร้าง/คืน publicToken ของเอกสาร (สำหรับทำ QR/ลิงก์บนใบเสร็จ) — idempotent */
+export async function ensurePublicTaxInvoiceLink(
+  tenantId: string,
+  systemId: string,
+  docId: string,
+): Promise<{ ok: true; token: string } | { ok: false; reason: string }> {
+  const doc = await prisma.accountDocument.findFirst({
+    where: { id: docId, tenantId, systemId },
+    select: { id: true, docType: true, status: true, publicToken: true },
+  });
+  if (!doc) return { ok: false, reason: "ไม่พบเอกสาร" };
+  if (!PUBLIC_TAX_SOURCE.includes(doc.docType))
+    return { ok: false, reason: "เอกสารชนิดนี้ขอใบกำกับผ่านลิงก์ไม่ได้" };
+  if (doc.status === "DRAFT" || doc.status === "CANCELLED" || doc.status === "VOIDED")
+    return { ok: false, reason: "ต้องออกเอกสารก่อนจึงสร้างลิงก์ได้" };
+  if (doc.publicToken) return { ok: true, token: doc.publicToken };
+  const token = randomBytes(18).toString("base64url");
+  await prisma.accountDocument.update({ where: { id: docId }, data: { publicToken: token } });
+  return { ok: true, token };
+}
+
+/** อ่านเอกสารสาธารณะจาก publicToken (ไม่ต้องล็อกอิน — token คือ capability) */
+export async function getPublicTaxContext(token: string): Promise<{
+  systemId: string;
+  tenantId: string;
+  orgName: string;
+  docType: AccountDocType;
+  docNo: string | null;
+  issueDate: Date;
+  grandTotal: number;
+  vatRegistered: boolean;
+  existingTaxInvoiceNo: string | null;
+} | null> {
+  const doc = await prisma.accountDocument.findFirst({
+    where: { publicToken: token },
+    select: {
+      id: true, tenantId: true, systemId: true, docType: true, docNo: true,
+      issueDate: true, grandTotal: true, status: true,
+    },
+  });
+  if (!doc) return null;
+  if (!PUBLIC_TAX_SOURCE.includes(doc.docType)) return null;
+  const settings = await getSettings(doc.tenantId, doc.systemId);
+  // ใบกำกับที่ออกไปแล้วจากต้นทางนี้ (idempotent display)
+  const existing = await prisma.accountDocument.findFirst({
+    where: {
+      systemId: doc.systemId, docType: "TAX_INVOICE", sourceDocId: doc.id,
+      status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] },
+    },
+    select: { docNo: true },
+    orderBy: { createdAt: "desc" },
+  });
+  return {
+    systemId: doc.systemId,
+    tenantId: doc.tenantId,
+    orgName: settings.orgName,
+    docType: doc.docType,
+    docNo: doc.docNo,
+    issueDate: doc.issueDate,
+    grandTotal: doc.grandTotal,
+    vatRegistered: settings.vatRegistered,
+    existingTaxInvoiceNo: existing?.docNo ?? null,
+  };
+}
+
+/** ลูกค้าขอใบกำกับภาษีผ่านลิงก์สาธารณะ → ออกใบกำกับพร้อม snapshot ผู้ซื้อ (idempotent) */
+export async function issuePublicTaxInvoice(
+  token: string,
+  buyer: { name: string; taxId: string; branchCode?: string | null; address?: string | null; phone?: string | null; email?: string | null },
+): Promise<{ ok: true; docNo: string; alreadyIssued: boolean } | { ok: false; reason: string }> {
+  const name = buyer.name.trim();
+  const taxId = (buyer.taxId ?? "").replace(/\D/g, "");
+  if (!name) return { ok: false, reason: "กรุณากรอกชื่อผู้ซื้อ" };
+  if (!/^\d{13}$/.test(taxId)) return { ok: false, reason: "เลขประจำตัวผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก" };
+
+  try {
+    const source = await prisma.accountDocument.findFirst({
+      where: { publicToken: token },
+      include: { lines: { orderBy: { sortOrder: "asc" } } },
+    });
+    if (!source) return { ok: false, reason: "ลิงก์ไม่ถูกต้องหรือหมดอายุ" };
+    if (!PUBLIC_TAX_SOURCE.includes(source.docType))
+      return { ok: false, reason: "เอกสารนี้ขอใบกำกับไม่ได้" };
+    const { tenantId, systemId } = source;
+    const settings = await getSettings(tenantId, systemId);
+    if (!settings.vatRegistered)
+      return { ok: false, reason: "กิจการนี้ไม่ได้จดทะเบียนภาษีมูลค่าเพิ่ม" };
+
+    // idempotent: ออกใบกำกับจากต้นทางนี้ไปแล้ว → คืนเลขเดิม
+    const existing = await prisma.accountDocument.findFirst({
+      where: {
+        systemId, docType: "TAX_INVOICE", sourceDocId: source.id,
+        status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] },
+      },
+      select: { docNo: true },
+    });
+    if (existing?.docNo) return { ok: true, docNo: existing.docNo, alreadyIssued: true };
+
+    // ยอดใบกำกับ = ยอดต้นทาง หักส่วนมัดจำ (เหมือน convertDocument F-02)
+    let tiSubTotal = source.subTotal;
+    let tiVatAmount = source.vatAmount;
+    const tiGrandTotal = source.grandTotal;
+    if (source.depositDeducted > 0) {
+      const rate = source.vatMode !== "NONE" ? settings.vatRateBp / 10000 : 0;
+      const depBase = rate > 0 ? Math.round(source.depositDeducted / (1 + rate)) : source.depositDeducted;
+      const depVat = source.depositDeducted - depBase;
+      tiSubTotal = source.subTotal - depBase;
+      tiVatAmount = source.vatAmount - depVat;
+    }
+
+    const snapshot = {
+      name,
+      taxId,
+      branchCode: buyer.branchCode?.trim() || "00000",
+      branchName: null,
+      address: buyer.address?.trim() || null,
+      phone: buyer.phone?.trim() || null,
+      email: buyer.email?.trim() || null,
+    };
+
+    const docNo = await prisma.$transaction(async (tx) => {
+      const ti = await tx.accountDocument.create({
+        data: {
+          tenantId, systemId, docType: "TAX_INVOICE", status: "DRAFT", direction: "OUT",
+          issueDate: new Date(), contactId: source.contactId,
+          vatMode: source.vatMode, vatTiming: source.vatTiming, taxPointBasis: source.taxPointBasis,
+          subTotal: tiSubTotal, vatAmount: tiVatAmount, grandTotal: tiGrandTotal,
+          discountAmount: source.discountAmount, note: source.note, sourceDocId: source.id,
+          lines: {
+            create: source.lines.map((l, i) => ({
+              tenantId, systemId, sortOrder: i, description: l.description, qty: l.qty,
+              unitName: l.unitName, unitPrice: l.unitPrice, discount: l.discount,
+              vatRateBp: l.vatRateBp, amount: l.amount,
+            })),
+          },
+        },
+      });
+      await tx.accountDocumentRelation.create({
+        data: { tenantId, systemId, fromId: source.id, toId: ti.id, type: "TAX_FOR", amount: source.grandTotal },
+      });
+      const no = await nextDocNo(tx, tenantId, systemId, "TAX_INVOICE", ti.issueDate);
+      await tx.accountDocument.update({
+        where: { id: ti.id },
+        data: { docNo: no, status: "ISSUED", contactSnapshot: snapshot as Prisma.InputJsonValue },
+      });
+      // A2: ย้าย VAT รอ → 2200. ต้นทางใบเสร็จ/มัดจำ (VAT ลง 2200 แล้ว) → postTaxInvoice skip เอง (GL-neutral)
+      const ctx = { tenantId, systemId };
+      await ensureAccounting(ctx, tx);
+      await postTaxInvoice(ctx, ti.id, tx);
+      return no;
+    });
+    return { ok: true, docNo, alreadyIssued: false };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "ออกใบกำกับไม่สำเร็จ" };
+  }
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
-import { getSettings } from "@/lib/modules/account/service";
+import { getSettings, DOC_LABEL, CONFIGURABLE_DOC_TYPES } from "@/lib/modules/account/service";
 import { saveSettingsAction } from "@/lib/modules/account/actions";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 
@@ -100,6 +100,67 @@ export default async function AccountSettingsPage({
           หมายเหตุท้ายเอกสาร
           <textarea name="footerNote" defaultValue={s.footerNote ?? ""} rows={2} className={inputCls} />
         </label>
+
+        <h2 className="mt-2 text-sm font-medium sm:col-span-2">โลโก้ / ตราประทับ / ลายเซ็น</h2>
+        <p className="text-[11px] text-[color:var(--color-muted)] sm:col-span-2">
+          ยังไม่มีระบบอัปโหลดไฟล์ในตัว — วาง URL รูป (โฮสต์ไว้ที่อื่น) รูปจะแสดงบนใบกำกับภาษี/เอกสารพิมพ์
+        </p>
+        <label className={labelCls}>
+          โลโก้ (URL)
+          <input name="logoUrl" defaultValue={s.logoUrl ?? ""} placeholder="https://…" className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          ตราประทับบริษัท (URL)
+          <input name="stampUrl" defaultValue={s.stampUrl ?? ""} placeholder="https://…" className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          ลายเซ็นผู้มีอำนาจ (URL)
+          <input name="signatureUrl" defaultValue={s.signatureUrl ?? ""} placeholder="https://…" className={inputCls} />
+        </label>
+
+        <h2 className="mt-2 text-sm font-medium sm:col-span-2">ตั้งค่ารายเอกสาร</h2>
+        <p className="text-[11px] text-[color:var(--color-muted)] sm:col-span-2">
+          คำนำหน้าเลขที่ (prefix) · ออกใบกำกับภาษีอัตโนมัติเมื่อออกใบเสร็จ · เปิดลิงก์/QR ให้ลูกค้าขอใบกำกับเอง
+        </p>
+        <div className="sm:col-span-2 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b text-left text-[color:var(--color-muted)]">
+                <th className="py-1 pr-2">เอกสาร</th>
+                <th className="py-1 pr-2">prefix</th>
+                <th className="py-1 pr-2 text-center">ออกใบกำกับอัตโนมัติ</th>
+                <th className="py-1 text-center">ลิงก์สาธารณะ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {CONFIGURABLE_DOC_TYPES.map((dt) => {
+                const c = s.docTypes[dt] ?? {};
+                return (
+                  <tr key={dt} className="border-b">
+                    <td className="py-1 pr-2">{DOC_LABEL[dt] ?? dt}</td>
+                    <td className="py-1 pr-2">
+                      <input name={`dt_${dt}_prefix`} defaultValue={c.prefix ?? ""} className={`${inputCls} w-20`} />
+                    </td>
+                    <td className="py-1 pr-2 text-center">
+                      {(dt === "RECEIPT" || dt === "INVOICE") ? (
+                        <input type="checkbox" name={`dt_${dt}_auto`} defaultChecked={c.autoTaxInvoice} />
+                      ) : (
+                        <span className="text-[color:var(--color-muted)]">—</span>
+                      )}
+                    </td>
+                    <td className="py-1 text-center">
+                      {(dt === "RECEIPT" || dt === "TAX_INVOICE") ? (
+                        <input type="checkbox" name={`dt_${dt}_public`} defaultChecked={c.publicLink} />
+                      ) : (
+                        <span className="text-[color:var(--color-muted)]">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
         <SubmitButton className="sm:col-span-2 sm:justify-self-start">บันทึกการตั้งค่า</SubmitButton>
       </form>

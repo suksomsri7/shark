@@ -72,7 +72,7 @@ export default async function TaxPage({
           <input name="period" type="month" defaultValue={period} className="input" />
         </FormField>
         <button className="btn btn-primary text-sm">ดู</button>
-        <a href={`${base}/tax/export?type=${type}&period=${period}`} className="btn btn-ghost text-sm">ดาวน์โหลด CSV</a>
+        <a href={`${base}/tax/export?kind=pnd&type=${type}&period=${period}`} className="btn btn-ghost text-sm">ดาวน์โหลด CSV (ภ.ง.ด.)</a>
       </form>
 
       {/* สรุปตามประเภทเงินได้ */}
@@ -116,7 +116,12 @@ export default async function TaxPage({
       {/* เครดิตภาษีถูกหัก สะสมทั้งปี */}
       <Section
         title={`เครดิตภาษีถูกหัก (สะสม 1160) — ปี ${year}`}
-        actions={<span className="text-sm text-[color:var(--color-muted)]">รวม <MoneyText satang={creditYear.totalWht} decimals /></span>}
+        actions={
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-[color:var(--color-muted)]">รวม <MoneyText satang={creditYear.totalWht} decimals /></span>
+            <a href={`${base}/tax/export?kind=credits&year=${year}`} className="btn btn-ghost text-sm">ดาวน์โหลด CSV</a>
+          </div>
+        }
       >
         <DataTable<CreditRow>
           cols={[
