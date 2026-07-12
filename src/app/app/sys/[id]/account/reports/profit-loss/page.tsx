@@ -1,6 +1,6 @@
 import { Fragment } from "react";
-import { baht } from "@/lib/modules/account/service";
 import { profitLoss, type ProfitLoss, type PLRow } from "@/lib/modules/account/reports";
+import { MoneyText } from "@/components/ui/MoneyText";
 import { loadReport, currentPeriodKey, ReportHeader, TableWrap } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
 
@@ -61,10 +61,6 @@ export default async function ProfitLossPage({
   csvRows.push(["กำไรสุทธิ", (pl.netProfit / 100).toFixed(2), compare ? (p!.netProfit / 100).toFixed(2) : ""]);
   const csv = { headers: ["รายการ", "งวดนี้", "งวดก่อน"], rows: csvRows };
 
-  const Amt = ({ v }: { v: number }) => (
-    <span className="tabular-nums">{v < 0 ? `(${baht(-v)})` : baht(v)}</span>
-  );
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -96,34 +92,34 @@ export default async function ProfitLossPage({
         <tbody>
           {sections.map((s, si) => (
             <Fragment key={s.label}>
-              <tr className="bg-[color:var(--color-surface-2,#fafafa)] font-medium">
+              <tr className="bg-[color:var(--color-surface-2)] font-medium">
                 <td className="px-3 py-1.5" colSpan={compare ? 3 : 2}>{s.label}</td>
               </tr>
               {s.merged.map((r) => (
                 <tr key={`${s.label}-${r.code}`} className="border-b last:border-0">
                   <td className="px-3 py-1.5 pl-6"><span className="font-mono text-xs">{r.code}</span> {r.name}</td>
-                  <td className="px-3 py-1.5 text-right"><Amt v={r.cur} /></td>
-                  {compare && <td className="px-3 py-1.5 text-right"><Amt v={r.prev} /></td>}
+                  <td className="px-3 py-1.5 text-right"><MoneyText satang={r.cur} decimals /></td>
+                  {compare && <td className="px-3 py-1.5 text-right"><MoneyText satang={r.prev} decimals /></td>}
                 </tr>
               ))}
               <tr key={`t-${s.label}`} className="border-b font-medium">
                 <td className="px-3 py-1.5 pl-6">รวม{s.label}</td>
-                <td className="px-3 py-1.5 text-right"><Amt v={s.curTotal} /></td>
-                {compare && <td className="px-3 py-1.5 text-right"><Amt v={s.prevTotal} /></td>}
+                <td className="px-3 py-1.5 text-right"><MoneyText satang={s.curTotal} decimals /></td>
+                {compare && <td className="px-3 py-1.5 text-right"><MoneyText satang={s.prevTotal} decimals /></td>}
               </tr>
               {si === 1 && (
                 <tr key="gross" className="border-b-2 font-semibold">
                   <td className="px-3 py-2">กำไรขั้นต้น</td>
-                  <td className="px-3 py-2 text-right"><Amt v={pl.grossProfit} /></td>
-                  {compare && <td className="px-3 py-2 text-right"><Amt v={p!.grossProfit} /></td>}
+                  <td className="px-3 py-2 text-right"><MoneyText satang={pl.grossProfit} decimals /></td>
+                  {compare && <td className="px-3 py-2 text-right"><MoneyText satang={p!.grossProfit} decimals /></td>}
                 </tr>
               )}
             </Fragment>
           ))}
           <tr className="border-t-2 text-base font-bold">
             <td className="px-3 py-2.5">กำไรสุทธิ</td>
-            <td className="px-3 py-2.5 text-right"><Amt v={pl.netProfit} /></td>
-            {compare && <td className="px-3 py-2.5 text-right"><Amt v={p!.netProfit} /></td>}
+            <td className="px-3 py-2.5 text-right"><MoneyText satang={pl.netProfit} decimals /></td>
+            {compare && <td className="px-3 py-2.5 text-right"><MoneyText satang={p!.netProfit} decimals /></td>}
           </tr>
         </tbody>
       </TableWrap>

@@ -15,6 +15,7 @@ import {
 } from "./expense";
 import { ExpenseList, ExpenseDetail } from "./expense-ui";
 import ExpenseEditor from "./ExpenseEditor";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 type Variant = "purchase" | "expense" | "po" | "asset";
 
@@ -61,10 +62,7 @@ export async function ExpenseListPage(props: {
   const slug = SLUG_OF[docType] ?? "purchase";
   return (
     <div className="flex max-w-3xl flex-col gap-6">
-      <div>
-        <a href={base} className="text-sm text-[color:var(--color-muted)]">← บัญชี</a>
-        <h1 className="mt-1 text-2xl font-semibold">{label}</h1>
-      </div>
+      <PageHeader title={label} back={{ href: base, label: "ระบบบัญชี" }} />
       <ExpenseEditor
         systemId={systemId}
         docType={docType}

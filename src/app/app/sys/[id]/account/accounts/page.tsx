@@ -1,5 +1,4 @@
 import { revalidatePath } from "next/cache";
-import Link from "next/link";
 import type { AccountLedgerType } from "@prisma/client";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { assertAccountCan, writeAudit } from "@/lib/modules/account/access";
@@ -11,6 +10,10 @@ import {
   setMapping,
 } from "@/lib/modules/account/coa";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Section } from "@/components/ui/Section";
+import { FormField } from "@/components/ui/FormField";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const TYPE_LABEL: Record<AccountLedgerType, string> = {
   ASSET: "สินทรัพย์",
@@ -63,33 +66,55 @@ export default async function ChartOfAccountsPage({ params }: { params: Promise<
     revalidatePath(`${base}/accounts`);
   }
 
-  const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
   return (
     <div className="flex max-w-3xl flex-col gap-6">
-      <div>
-        <Link href={base} className="text-sm text-[color:var(--color-muted)]">← ระบบบัญชี</Link>
-        <h1 className="mt-1 text-2xl font-semibold">ผังบัญชี</h1>
-        <p className="text-sm text-[color:var(--color-muted)]">บัญชีระบบ (🔒) แก้ชื่อได้ ลบไม่ได้ · เพิ่มบัญชีเองได้</p>
-      </div>
+      <PageHeader
+        title="ผังบัญชี"
+        back={{ href: base, label: "ระบบบัญชี" }}
+        desc="บัญชีระบบแก้ชื่อได้ ลบไม่ได้ · เพิ่มบัญชีเองได้"
+      />
 
-      <form action={addAction} className="card flex flex-wrap items-end gap-2">
-        <div className="flex flex-col gap-1"><label className="text-xs">รหัส</label><input name="code" required placeholder="6310" className={`${inputCls} w-24`} /></div>
-        <div className="flex flex-1 flex-col gap-1"><label className="text-xs">ชื่อบัญชี</label><input name="name" required placeholder="ค่าการตลาดออนไลน์" className={inputCls} /></div>
-        <div className="flex flex-col gap-1"><label className="text-xs">ประเภท</label>
-          <select name="type" className={inputCls}>{TYPE_ORDER.map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}</select>
+      <form action={addAction} className="card flex flex-wrap items-end gap-3">
+        <div className="w-24">
+          <FormField label="รหัส" required>
+            <input name="code" required placeholder="6310" className="input" />
+          </FormField>
         </div>
-        <button className="btn btn-primary text-sm">+ เพิ่ม</button>
+        <div className="flex-1">
+          <FormField label="ชื่อบัญชี" required>
+            <input name="name" required placeholder="ค่าการตลาดออนไลน์" className="input" />
+          </FormField>
+        </div>
+        <div>
+          <FormField label="ประเภท">
+            <select name="type" className="input">
+              {TYPE_ORDER.map((t) => (
+                <option key={t} value={t}>
+                  {TYPE_LABEL[t]}
+                </option>
+              ))}
+            </select>
+          </FormField>
+        </div>
+        <SubmitButton>+ เพิ่ม</SubmitButton>
       </form>
 
       {TYPE_ORDER.map((type) => {
         const rows = active.filter((l) => l.type === type);
         if (rows.length === 0) return null;
         return (
-          <section key={type} className="flex flex-col gap-1">
-            <h2 className="text-sm font-medium">{TYPE_LABEL[type]}</h2>
+          <Section key={type} title={TYPE_LABEL[type]}>
             {rows.map((l) => (
-              <div key={l.id} className="flex items-center justify-between rounded-lg border px-3 py-1.5 text-sm">
-                <span><span className="font-mono text-xs">{l.code}</span> {l.name} {l.isSystem && <span title="บัญชีระบบ">🔒</span>}</span>
+              <div
+                key={l.id}
+                className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
+              >
+                <span>
+                  <span className="font-mono text-xs text-[color:var(--color-muted)]">{l.code}</span> {l.name}{" "}
+                  {l.isSystem && (
+                    <span className="ml-1 text-xs text-[color:var(--color-muted)]">(บัญชีระบบ)</span>
+                  )}
+                </span>
                 {!l.isSystem && (
                   <ConfirmDialog
                     action={archiveAction}
@@ -104,24 +129,29 @@ export default async function ChartOfAccountsPage({ params }: { params: Promise<
                 )}
               </div>
             ))}
-          </section>
+          </Section>
         );
       })}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">การผูกบัญชีอัตโนมัติ (mapping)</h2>
-        <p className="text-xs text-[color:var(--color-muted)]">ระบบใช้บัญชีเหล่านี้ตอนลงบัญชีอัตโนมัติ — เปลี่ยนได้ถ้าต้องการผังเฉพาะ</p>
+      <Section title="การผูกบัญชีอัตโนมัติ">
+        <p className="text-xs text-[color:var(--color-muted)]">
+          ระบบใช้บัญชีเหล่านี้ตอนลงบัญชีอัตโนมัติ — เปลี่ยนได้ถ้าต้องการผังเฉพาะ
+        </p>
         {mappings.map((m) => (
           <form key={m.key} action={mapAction} className="flex items-center gap-2 text-sm">
             <input type="hidden" name="key" value={m.key} />
-            <span className="w-48 shrink-0 font-mono text-xs">{m.key}</span>
-            <select name="accountId" defaultValue={m.accountId} className={`${inputCls} flex-1`}>
-              {active.map((l) => <option key={l.id} value={l.id}>{l.code} {l.name}</option>)}
+            <span className="w-48 shrink-0 font-mono text-xs text-[color:var(--color-muted)]">{m.key}</span>
+            <select name="accountId" defaultValue={m.accountId} className="input flex-1">
+              {active.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.code} {l.name}
+                </option>
+              ))}
             </select>
-            <button className="btn btn-ghost text-xs">บันทึก</button>
+            <SubmitButton variant="ghost">บันทึก</SubmitButton>
           </form>
         ))}
-      </section>
+      </Section>
     </div>
   );
 }

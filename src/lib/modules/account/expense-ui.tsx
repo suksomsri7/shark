@@ -1,10 +1,15 @@
 import Link from "next/link";
 import type { AccountDocType } from "@prisma/client";
-import { baht, isOverdue } from "./service";
+import { isOverdue } from "./service";
 import { StatusBadge } from "./ui";
 import { EXP_DOC_LABEL, WHT_INCOME_LABEL } from "./expense";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { TabPills } from "@/components/ui/TabPills";
+import { DataList } from "@/components/ui/DataList";
+import { MoneyText } from "@/components/ui/MoneyText";
+import { PAY_CHANNEL_LABEL } from "@/lib/ui/status-labels";
 import {
   issueExpenseDocAction,
   recordVendorPaymentAction,
@@ -61,40 +66,28 @@ export function ExpenseList({
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-1.5">
-        {tabs.map((t) => (
-          <Link
-            key={t.key}
-            href={tabHref(t.key)}
-            className="rounded-full border px-3 py-1 text-xs"
-            style={t.key === activeTab ? { background: "var(--color-ink)", color: "var(--color-surface)" } : undefined}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </div>
-      <div className="flex flex-col gap-2">
-        {rows.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">{emptyText}</p>
-        ) : (
-          rows.map((d) => (
-            <Link
-              key={d.id}
-              href={itemHref(d.id)}
-              className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm hover:bg-[color:var(--color-surface-2)]"
-            >
-              <span>
-                {d.docNo ?? "(ร่าง)"} ·{" "}
-                {d.issueDate.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" })}
-              </span>
-              <span className="flex items-center gap-2">
-                ฿{baht(d.grandTotal)}
-                <StatusBadge status={d.status as never} overdue={isOverdue(d)} />
-              </span>
-            </Link>
-          ))
-        )}
-      </div>
+      <TabPills
+        active={activeTab}
+        tabs={tabs.map((t) => ({ key: t.key, label: t.label, href: tabHref(t.key) }))}
+      />
+      <DataList
+        items={rows.map((d) => ({
+          key: d.id,
+          href: itemHref(d.id),
+          primary: `${d.docNo ?? "(ร่าง)"} · ${d.issueDate.toLocaleDateString("th-TH", {
+            day: "numeric",
+            month: "short",
+            year: "2-digit",
+          })}`,
+          trailing: (
+            <>
+              <MoneyText satang={d.grandTotal} decimals />
+              <StatusBadge status={d.status as never} overdue={isOverdue(d)} />
+            </>
+          ),
+        }))}
+        empty={emptyText}
+      />
     </div>
   );
 }
@@ -113,7 +106,7 @@ function Row({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex w-full max-w-xs justify-between text-[color:var(--color-muted)]">
       <span>{label}</span>
-      <span>฿{baht(value)}</span>
+      <MoneyText satang={value} decimals />
     </div>
   );
 }
@@ -155,14 +148,12 @@ export function ExpenseDetail({
 
   return (
     <div className="flex max-w-3xl flex-col gap-5">
-      <div>
-        <Link href={listHref} className="text-sm text-[color:var(--color-muted)]">← {label}</Link>
-        <h1 className="mt-1 text-2xl font-semibold">{doc.docNo ?? "(ร่าง)"}</h1>
-        <div className="mt-1 flex items-center gap-2 text-sm text-[color:var(--color-muted)]">
-          {label} · {fmtDate(doc.issueDate)}
-          <StatusBadge status={doc.status as never} overdue={overdue} />
-        </div>
-      </div>
+      <PageHeader
+        title={doc.docNo ?? "(ร่าง)"}
+        back={{ href: listHref, label: label }}
+        desc={`${label} · ${fmtDate(doc.issueDate)}`}
+        actions={<StatusBadge status={doc.status as never} overdue={overdue} />}
+      />
 
       {err && <p className="text-sm text-[color:var(--color-danger)]">{decodeURIComponent(err)}</p>}
 
@@ -189,7 +180,7 @@ export function ExpenseDetail({
               )}
               <span className="text-xs text-[color:var(--color-muted)]"> × {Number(l.qty)} {l.unitName ?? ""}</span>
             </span>
-            <span>฿{baht(l.amount)}</span>
+            <MoneyText satang={l.amount} decimals />
           </div>
         ))}
         <div className="mt-1 flex flex-col items-end gap-0.5">
@@ -198,14 +189,14 @@ export function ExpenseDetail({
           {doc.vatMode !== "NONE" && <Row label="ภาษีซื้อ" value={doc.vatAmount} />}
           <div className="flex w-full max-w-xs justify-between font-semibold">
             <span>ยอดสุทธิ</span>
-            <span>฿{baht(doc.grandTotal)}</span>
+            <MoneyText satang={doc.grandTotal} decimals />
           </div>
           {doc.paidTotal > 0 && (
             <>
               <Row label="จ่ายแล้ว" value={doc.paidTotal} />
               <div className="flex w-full max-w-xs justify-between text-[color:var(--color-muted)]">
                 <span>คงเหลือ</span>
-                <span>฿{baht(remain)}</span>
+                <MoneyText satang={remain} decimals />
               </div>
             </>
           )}
@@ -221,11 +212,13 @@ export function ExpenseDetail({
           {doc.payments.map((p) => (
             <div key={p.id} className="flex items-center justify-between rounded-lg border px-3 py-1.5 text-xs">
               <span>
-                {fmtDate(p.paidAt)} · {p.channel}
-                {p.whtAmountSatang > 0 && ` · หัก ณ ที่จ่าย ฿${baht(p.whtAmountSatang)}`}
+                {fmtDate(p.paidAt)} · {PAY_CHANNEL_LABEL[p.channel] ?? p.channel}
+                {p.whtAmountSatang > 0 && (
+                  <> · หัก ณ ที่จ่าย <MoneyText satang={p.whtAmountSatang} decimals /></>
+                )}
               </span>
               <span className="flex items-center gap-2">
-                ฿{baht(p.amount)}
+                <MoneyText satang={p.amount} decimals />
                 {active && (
                   <ConfirmDialog
                     action={voidVendorPaymentAction}
@@ -349,7 +342,7 @@ export function ExpenseDetail({
                 <option value="TRANSFER">โอน</option>
                 <option value="PROMPTPAY">พร้อมเพย์</option>
                 <option value="CARD">บัตร</option>
-                <option value="E_WALLET">e-Wallet</option>
+                <option value="E_WALLET">อีวอลเล็ต</option>
                 <option value="OTHER">อื่นๆ</option>
               </select>
               <input name="amount" type="number" step="0.01" defaultValue={(remain / 100).toFixed(2)} placeholder="เงินจ่าย (บาท)" className="rounded-lg border px-2 py-1.5 text-sm" />
@@ -363,7 +356,7 @@ export function ExpenseDetail({
                   <option key={k} value={k}>{v}</option>
                 ))}
               </select>
-              <input name="whtRateBp" type="number" step="1" placeholder="อัตรา WHT (bp เช่น 300=3%)" className="rounded-lg border px-2 py-1.5 text-sm" />
+              <input name="whtRateBp" type="number" step="1" placeholder="อัตราหัก ณ ที่จ่าย (300 = 3%)" className="rounded-lg border px-2 py-1.5 text-sm" />
               <input name="feeAmount" type="number" step="0.01" placeholder="ค่าธรรมเนียม (บาท)" className="rounded-lg border px-2 py-1.5 text-sm" />
             </div>
             <p className="text-xs text-[color:var(--color-muted)]">

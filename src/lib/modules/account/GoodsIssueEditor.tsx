@@ -7,7 +7,6 @@ type ProductOpt = { id: string; name: string; sku: string | null; qtyOnHand: num
 type ContactOpt = { id: string; name: string };
 type Row = { productId: string; qty: string; description: string };
 
-const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
 const emptyRow = (): Row => ({ productId: "", qty: "1", description: "" });
 
 // ตัวสร้างเอกสารเบิก/คืนสินค้า — เลือกสินค้า (GOODS) + จำนวน · ราคาไม่เกี่ยว (ตัดจำนวนเท่านั้น)
@@ -53,19 +52,19 @@ export default function GoodsIssueEditor({
           <button
             type="button"
             onClick={() => setDocType("GOODS_ISSUE")}
-            className={`rounded-full border px-3 py-1 ${docType === "GOODS_ISSUE" ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface-2)]" : ""}`}
+            className={`rounded-full border px-3 py-1.5 ${docType === "GOODS_ISSUE" ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface-2)]" : ""}`}
           >
             เบิกออก
           </button>
           <button
             type="button"
             onClick={() => setDocType("GOODS_ISSUE_RETURN")}
-            className={`rounded-full border px-3 py-1 ${docType === "GOODS_ISSUE_RETURN" ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface-2)]" : ""}`}
+            className={`rounded-full border px-3 py-1.5 ${docType === "GOODS_ISSUE_RETURN" ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface-2)]" : ""}`}
           >
             ส่งคืน
           </button>
         </div>
-        <select name="contactId" defaultValue="" className={`${inputCls} flex-1`}>
+        <select name="contactId" defaultValue="" className="input flex-1">
           <option value="">ผู้ติดต่อ (ไม่ระบุ)</option>
           {contacts.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
@@ -81,7 +80,7 @@ export default function GoodsIssueEditor({
               <select
                 value={r.productId}
                 onChange={(e) => setRow(i, { productId: e.target.value })}
-                className={`${inputCls} min-w-[12rem] flex-1`}
+                className="input min-w-[12rem] flex-1"
               >
                 <option value="">— เลือกสินค้า —</option>
                 {products.map((opt) => (
@@ -98,13 +97,13 @@ export default function GoodsIssueEditor({
                 value={r.qty}
                 onChange={(e) => setRow(i, { qty: e.target.value })}
                 placeholder="จำนวน"
-                className={`${inputCls} w-24`}
+                className="input w-24"
               />
               <input
                 value={r.description}
                 onChange={(e) => setRow(i, { description: e.target.value })}
                 placeholder="หมายเหตุบรรทัด"
-                className={`${inputCls} flex-1`}
+                className="input flex-1"
               />
               {p && (
                 <span className="text-xs text-[color:var(--color-muted)]">คงเหลือ {p.qtyOnHand}</span>
@@ -130,7 +129,7 @@ export default function GoodsIssueEditor({
         </button>
       </div>
 
-      <textarea name="note" placeholder="หมายเหตุเอกสาร" className={`${inputCls} min-h-[3rem]`} />
+      <textarea name="note" placeholder="หมายเหตุเอกสาร" className="input min-h-[3rem]" />
 
       {docType === "GOODS_ISSUE" && (
         <label className="flex items-center gap-2 text-xs text-[color:var(--color-muted)]">

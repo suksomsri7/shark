@@ -1,5 +1,5 @@
-import { baht } from "@/lib/modules/account/service";
 import { cashFlow, type CashFlowSection } from "@/lib/modules/account/reports";
+import { MoneyText } from "@/components/ui/MoneyText";
 import { loadReport, currentPeriodKey, ReportHeader, TableWrap, WarnBanner } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
 
@@ -28,18 +28,18 @@ export default async function CashFlowPage({
   const sections: CashFlowSection[] = [cf.operating, cf.investing, cf.financing];
   const sectionBlock = (s: CashFlowSection) => (
     <tbody key={s.activity}>
-      <tr className="bg-[color:var(--color-surface-2,#fafafa)] font-medium">
+      <tr className="bg-[color:var(--color-surface-2)] font-medium">
         <td className="px-3 py-1.5" colSpan={2}>{ACT_LABEL[s.activity]}</td>
       </tr>
       {s.lines.map((l) => (
         <tr key={l.code} className="border-b last:border-0">
           <td className="px-3 py-1.5 pl-6"><span className="font-mono text-xs">{l.code}</span> {l.name}</td>
-          <td className="px-3 py-1.5 text-right">{baht(l.amount)}</td>
+          <td className="px-3 py-1.5 text-right"><MoneyText satang={l.amount} decimals /></td>
         </tr>
       ))}
       <tr className="border-b font-medium">
         <td className="px-3 py-1.5 pl-3">เงินสดสุทธิจาก{ACT_LABEL[s.activity]}</td>
-        <td className="px-3 py-1.5 text-right">{baht(s.net)}</td>
+        <td className="px-3 py-1.5 text-right"><MoneyText satang={s.net} decimals /></td>
       </tr>
     </tbody>
   );
@@ -60,26 +60,26 @@ export default async function CashFlowPage({
       <form className="flex flex-wrap gap-2 print:hidden">
         <input name="from" defaultValue={from} placeholder="จาก YYYY-MM" className="rounded-lg border px-2 py-1.5 text-sm" />
         <input name="to" defaultValue={to} placeholder="ถึง YYYY-MM" className="rounded-lg border px-2 py-1.5 text-sm" />
-        <button className="btn text-sm">ดู</button>
+        <button className="btn btn-primary text-sm">ดู</button>
       </form>
       {!cf.reconciled && (
         <WarnBanner base={base}>
-          เงินต้นงวด+เปลี่ยนแปลง {baht(cf.openingCash + cf.netChange)} ≠ เงินปลายงวด {baht(cf.closingCash)}
+          เงินต้นงวด+เปลี่ยนแปลง <MoneyText satang={cf.openingCash + cf.netChange} decimals /> ≠ เงินปลายงวด <MoneyText satang={cf.closingCash} decimals />
         </WarnBanner>
       )}
       {cf.hasUnclassified && (
         <div className="rounded-lg border px-3 py-2 text-xs text-[color:var(--color-muted)]">
-          ⚠ มีบัญชีคู่ที่ยังไม่ระบุกิจกรรม (activity=NONE) — รวมเข้ากิจกรรมดำเนินงานชั่วคราว ควรตั้งค่าในผังบัญชี
+          ⚠ มีบัญชีที่ยังไม่ระบุประเภทกิจกรรม — รวมเข้ากิจกรรมดำเนินงานชั่วคราว ควรตั้งค่าในผังบัญชี
         </div>
       )}
       <TableWrap>
         <tbody>
-          <tr className="border-b font-medium"><td className="px-3 py-2">เงินสดต้นงวด</td><td className="px-3 py-2 text-right">{baht(cf.openingCash)}</td></tr>
+          <tr className="border-b font-medium"><td className="px-3 py-2">เงินสดต้นงวด</td><td className="px-3 py-2 text-right"><MoneyText satang={cf.openingCash} decimals /></td></tr>
         </tbody>
         {sections.map(sectionBlock)}
         <tbody>
-          <tr className="border-t font-medium"><td className="px-3 py-2">เงินสดเพิ่ม(ลด)สุทธิ</td><td className="px-3 py-2 text-right">{baht(cf.netChange)}</td></tr>
-          <tr className="border-t-2 text-base font-bold"><td className="px-3 py-2.5">เงินสดปลายงวด</td><td className="px-3 py-2.5 text-right">{baht(cf.closingCash)}</td></tr>
+          <tr className="border-t font-medium"><td className="px-3 py-2">เงินสดเพิ่ม(ลด)สุทธิ</td><td className="px-3 py-2 text-right"><MoneyText satang={cf.netChange} decimals /></td></tr>
+          <tr className="border-t-2 text-base font-bold"><td className="px-3 py-2.5">เงินสดปลายงวด</td><td className="px-3 py-2.5 text-right"><MoneyText satang={cf.closingCash} decimals /></td></tr>
         </tbody>
       </TableWrap>
     </div>

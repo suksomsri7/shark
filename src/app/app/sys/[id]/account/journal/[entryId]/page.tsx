@@ -1,9 +1,10 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/core/db";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { assertAccountCan } from "@/lib/modules/account/access";
-import { baht } from "@/lib/modules/account/service";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { DataTable } from "@/components/ui/DataList";
+import { MoneyText } from "@/components/ui/MoneyText";
 
 export default async function JournalEntryPage({
   params,
@@ -28,48 +29,77 @@ export default async function JournalEntryPage({
   const fmtDate = (d: Date) =>
     new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "long" }).format(d);
 
-  return (
-    <div className="flex max-w-3xl flex-col gap-5">
-      <div>
-        <Link href={`${base}/journal`} className="text-sm text-[color:var(--color-muted)]">← บัญชีรายวัน</Link>
-        <h1 className="mt-1 text-2xl font-semibold">{entry.docNo}</h1>
-        <p className="text-sm text-[color:var(--color-muted)]">
-          {fmtDate(entry.date)} · {entry.journal} · {entry.source === "MANUAL" ? "บันทึกด้วยมือ" : "อัตโนมัติ"}
-          {entry.status === "REVERSED" && " · กลับรายการแล้ว"}
-        </p>
-        {entry.memo && <p className="mt-1 text-sm">{entry.memo}</p>}
-      </div>
+  type LineRow = (typeof entry.lines)[number];
+  type Row = ({ kind: "line" } & LineRow) | { kind: "total" };
+  const tableRows: Row[] = [
+    ...entry.lines.map((l) => ({ kind: "line" as const, ...l })),
+    { kind: "total" },
+  ];
 
-      <div className="overflow-hidden rounded-xl border">
-        <table className="w-full text-sm">
-          <thead className="bg-[color:var(--color-surface-2)] text-xs text-[color:var(--color-muted)]">
-            <tr>
-              <th className="px-3 py-2 text-left">บัญชี</th>
-              <th className="px-3 py-2 text-right">เดบิต</th>
-              <th className="px-3 py-2 text-right">เครดิต</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {entry.lines.map((l) => (
-              <tr key={l.id}>
-                <td className="px-3 py-2">
-                  <span className="text-[color:var(--color-muted)]">{l.account.code}</span> {l.account.name}
-                  {l.note && <span className="ml-1 text-xs text-[color:var(--color-muted)]">— {l.note}</span>}
-                </td>
-                <td className="px-3 py-2 text-right">{l.debit > 0 ? baht(l.debit) : ""}</td>
-                <td className="px-3 py-2 text-right">{l.credit > 0 ? baht(l.credit) : ""}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot className="border-t font-medium">
-            <tr>
-              <td className="px-3 py-2 text-right">รวม</td>
-              <td className="px-3 py-2 text-right">฿{baht(totalDr)}</td>
-              <td className="px-3 py-2 text-right">฿{baht(totalCr)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+  return (
+    <div className="flex max-w-3xl flex-col gap-6">
+      <PageHeader
+        title={entry.docNo}
+        back={{ href: `${base}/journal`, label: "สมุดรายวัน" }}
+        desc={`${fmtDate(entry.date)} · ${
+          entry.source === "MANUAL" ? "บันทึกด้วยมือ" : "อัตโนมัติ"
+        }${entry.status === "REVERSED" ? " · กลับรายการแล้ว" : ""}`}
+      />
+      {entry.memo && <p className="text-sm">{entry.memo}</p>}
+
+      <DataTable<Row>
+        minWidth={480}
+        empty="ไม่มีรายการบัญชี"
+        rows={tableRows}
+        rowKey={(r, i) => (r.kind === "line" ? r.id : `total-${i}`)}
+        cols={[
+          {
+            key: "account",
+            header: "บัญชี",
+            render: (r) =>
+              r.kind === "total" ? (
+                <span className="font-medium">รวม</span>
+              ) : (
+                <span>
+                  <span className="text-[color:var(--color-muted)]">{r.account.code}</span> {r.account.name}
+                  {r.note && (
+                    <span className="ml-1 text-xs text-[color:var(--color-muted)]">— {r.note}</span>
+                  )}
+                </span>
+              ),
+          },
+          {
+            key: "debit",
+            header: "เดบิต",
+            align: "right",
+            render: (r) =>
+              r.kind === "total" ? (
+                <span className="font-medium">
+                  <MoneyText satang={totalDr} decimals />
+                </span>
+              ) : r.debit > 0 ? (
+                <MoneyText satang={r.debit} decimals />
+              ) : (
+                ""
+              ),
+          },
+          {
+            key: "credit",
+            header: "เครดิต",
+            align: "right",
+            render: (r) =>
+              r.kind === "total" ? (
+                <span className="font-medium">
+                  <MoneyText satang={totalCr} decimals />
+                </span>
+              ) : r.credit > 0 ? (
+                <MoneyText satang={r.credit} decimals />
+              ) : (
+                ""
+              ),
+          },
+        ]}
+      />
     </div>
   );
 }

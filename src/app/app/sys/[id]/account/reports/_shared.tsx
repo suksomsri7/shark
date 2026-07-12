@@ -39,7 +39,7 @@ export function ReportHeader({
   return (
     <div className="print:mb-4">
       <Link href={`${base}/reports`} className="text-sm text-[color:var(--color-muted)] print:hidden">
-        ← งบและรายงาน
+        ← งบการเงิน
       </Link>
       <h1 className="mt-1 text-2xl font-semibold">{title}</h1>
       {subtitle && <p className="text-sm text-[color:var(--color-muted)]">{subtitle}</p>}
@@ -50,7 +50,7 @@ export function ReportHeader({
 /** banner เตือนเมื่อไม่สมดุล/ไม่ reconcile → ลิงก์ไปงบทดลองตรวจ */
 export function WarnBanner({ base, children }: { base: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border-2 border-red-600 bg-red-50 px-4 py-3 text-sm text-red-800 print:border-black print:bg-white print:text-black">
+    <div className="rounded-lg border-2 border-[color:var(--color-danger)] px-4 py-3 text-sm text-[color:var(--color-danger)] print:border-black print:bg-white print:text-black">
       <span className="font-semibold">⚠ ไม่สมดุล — อาจมีบั๊กการลงบัญชี </span>
       {children}{" "}
       <Link href={`${base}/reports/trial-balance`} className="underline">

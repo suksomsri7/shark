@@ -9,7 +9,6 @@ import {
   listExpenseAccounts,
   categoryAppliesTo,
   qtyText,
-  baht,
   PRODUCT_TYPE_LABEL,
 } from "@/lib/modules/account/product";
 import {
@@ -23,10 +22,14 @@ import {
   updateCategoryAction,
   archiveCategoryAction,
 } from "@/lib/modules/account/product-actions";
+import PageHeader from "@/components/ui/PageHeader";
+import Section from "@/components/ui/Section";
+import TabPills from "@/components/ui/TabPills";
+import FormField from "@/components/ui/FormField";
+import EmptyState from "@/components/ui/EmptyState";
+import MoneyText from "@/components/ui/MoneyText";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-
-const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
 
 // docType ที่ให้เลือกในกลุ่มจัดประเภท (appliesTo)
 const CAT_DOC_OPTIONS: { code: AccountDocType; label: string }[] = [
@@ -63,32 +66,33 @@ export default async function ProductsPage({
   ]);
   const unitName = new Map(units.map((u) => [u.id, u.name]));
 
-  const tabCls = (t: Tab) =>
-    `rounded-full border px-3 py-1 text-xs ${t === tab ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface-2)]" : "hover:bg-[color:var(--color-surface-2)]"}`;
-
   return (
-    <div className="flex max-w-3xl flex-col gap-5">
-      <div>
-        <Link href={base} className="text-sm text-[color:var(--color-muted)]">← ระบบบัญชี</Link>
-        <h1 className="mt-1 text-2xl font-semibold">สินค้า/บริการ</h1>
-      </div>
+    <div className="flex max-w-3xl flex-col gap-6">
+      <PageHeader title="สินค้า/บริการ" back={{ href: base, label: "ระบบบัญชี" }} />
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Link href={`?tab=catalog`} className={tabCls("catalog")}>รายการสินค้า</Link>
-        <Link href={`?tab=units`} className={tabCls("units")}>หน่วย</Link>
-        <Link href={`?tab=categories`} className={tabCls("categories")}>กลุ่มจัดประเภท</Link>
-        <Link href={`${base}/goods-issue`} className="ml-auto text-xs text-[color:var(--color-muted)] underline">เบิก/คืนสินค้า →</Link>
+      <div className="flex flex-wrap items-center gap-2">
+        <TabPills
+          active={tab}
+          tabs={[
+            { key: "catalog", label: "รายการสินค้า", href: "?tab=catalog" },
+            { key: "units", label: "หน่วย", href: "?tab=units" },
+            { key: "categories", label: "กลุ่มจัดประเภท", href: "?tab=categories" },
+          ]}
+        />
+        <Link href={`${base}/goods-issue`} className="ml-auto text-xs text-[color:var(--color-muted)] underline">
+          เบิก/คืนสินค้า →
+        </Link>
       </div>
 
       {err && <p className="text-sm text-[color:var(--color-danger)]">{err}</p>}
 
       {tab === "catalog" && (
         <>
-          <div className="flex flex-col gap-2">
-            {products.length === 0 ? (
-              <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีสินค้า/บริการ</p>
-            ) : (
-              products.map((p) => (
+          {products.length === 0 ? (
+            <EmptyState text="ยังไม่มีสินค้า/บริการ — เพิ่มรายการแรกด้านล่างเพื่อเริ่ม" />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {products.map((p) => (
                 <details key={p.id} className="rounded-lg border px-3 py-2 text-sm">
                   <summary className="flex cursor-pointer items-center justify-between gap-2">
                     <span className="flex flex-col">
@@ -100,7 +104,12 @@ export default async function ProductsPage({
                         {PRODUCT_TYPE_LABEL[p.type]}
                         {p.unitId && unitName.get(p.unitId) ? ` · ${unitName.get(p.unitId)}` : ""}
                         {p.type === "GOODS" && ` · คงเหลือ ${qtyText(p.qtyOnHand)}`}
-                        {p.salePrice != null && ` · ขาย ฿${baht(p.salePrice)}`}
+                        {p.salePrice != null && (
+                          <>
+                            {" · ขาย "}
+                            <MoneyText satang={p.salePrice} />
+                          </>
+                        )}
                       </span>
                     </span>
                   </summary>
@@ -125,9 +134,9 @@ export default async function ProductsPage({
                     />
                   </div>
                 </details>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
 
           <details className="card" open={products.length === 0}>
             <summary className="cursor-pointer text-sm font-medium">+ เพิ่มสินค้า/บริการ</summary>
@@ -144,17 +153,17 @@ export default async function ProductsPage({
 
       {tab === "units" && (
         <>
-          <div className="flex flex-col gap-2">
-            {units.length === 0 ? (
-              <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีหน่วย (เช่น ชิ้น/กล่อง/ชั่วโมง)</p>
-            ) : (
-              units.map((u) => (
+          {units.length === 0 ? (
+            <EmptyState text="ยังไม่มีหน่วย (เช่น ชิ้น/กล่อง/ชั่วโมง) — เพิ่มหน่วยแรกด้านล่าง" />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {units.map((u) => (
                 <div key={u.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
                   <form action={renameUnitAction} className="flex flex-1 items-center gap-2">
                     <input type="hidden" name="systemId" value={systemId} />
                     <input type="hidden" name="id" value={u.id} />
-                    <input name="name" defaultValue={u.name} className={`${inputCls} flex-1`} />
-                    <button className="text-xs text-[color:var(--color-muted)] underline">บันทึก</button>
+                    <input name="name" defaultValue={u.name} className="input flex-1" />
+                    <SubmitButton variant="ghost">บันทึก</SubmitButton>
                   </form>
                   <ConfirmDialog
                     action={archiveUnitAction}
@@ -167,24 +176,26 @@ export default async function ProductsPage({
                     danger
                   />
                 </div>
-              ))
-            )}
-          </div>
-          <form action={createUnitAction} className="card flex items-center gap-2">
-            <input type="hidden" name="systemId" value={systemId} />
-            <input name="name" required placeholder="ชื่อหน่วย เช่น ชิ้น" className={`${inputCls} flex-1`} />
-            <SubmitButton>+ เพิ่มหน่วย</SubmitButton>
-          </form>
+              ))}
+            </div>
+          )}
+          <Section title="เพิ่มหน่วย" card>
+            <form action={createUnitAction} className="flex items-center gap-2">
+              <input type="hidden" name="systemId" value={systemId} />
+              <input name="name" required placeholder="ชื่อหน่วย เช่น ชิ้น" className="input flex-1" />
+              <SubmitButton>+ เพิ่มหน่วย</SubmitButton>
+            </form>
+          </Section>
         </>
       )}
 
       {tab === "categories" && (
         <>
-          <div className="flex flex-col gap-2">
-            {categories.length === 0 ? (
-              <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีกลุ่มจัดประเภท</p>
-            ) : (
-              categories.map((c) => {
+          {categories.length === 0 ? (
+            <EmptyState text="ยังไม่มีกลุ่มจัดประเภท — เพิ่มกลุ่มแรกด้านล่างเพื่อจัดหมวดเอกสาร" />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {categories.map((c) => {
                 const applies = categoryAppliesTo(c.appliesTo);
                 return (
                   <details key={c.id} className="rounded-lg border px-3 py-2 text-sm">
@@ -197,9 +208,11 @@ export default async function ProductsPage({
                     <form action={updateCategoryAction} className="mt-2 flex flex-col gap-2">
                       <input type="hidden" name="systemId" value={systemId} />
                       <input type="hidden" name="id" value={c.id} />
-                      <input name="name" defaultValue={c.name} className={inputCls} />
+                      <input name="name" defaultValue={c.name} className="input" />
                       <AppliesToPicker selected={applies} />
-                      <button className="btn btn-ghost self-start text-sm">บันทึก</button>
+                      <SubmitButton variant="ghost" className="self-start">
+                        บันทึก
+                      </SubmitButton>
                     </form>
                     <div className="mt-1">
                       <ConfirmDialog
@@ -215,17 +228,20 @@ export default async function ProductsPage({
                     </div>
                   </details>
                 );
-              })
-            )}
-          </div>
-          <form action={createCategoryAction} className="card flex flex-col gap-2">
-            <input type="hidden" name="systemId" value={systemId} />
-            <h2 className="text-sm font-medium">+ เพิ่มกลุ่มจัดประเภท</h2>
-            <input name="name" required placeholder="ชื่อกลุ่ม เช่น โครงการ A" className={inputCls} />
-            <p className="text-xs text-[color:var(--color-muted)]">ใช้กับเอกสารชนิด (ไม่เลือก = ทุกชนิด):</p>
-            <AppliesToPicker selected={[]} />
-            <SubmitButton className="self-start">เพิ่มกลุ่ม</SubmitButton>
-          </form>
+              })}
+            </div>
+          )}
+          <Section title="เพิ่มกลุ่มจัดประเภท" card>
+            <form action={createCategoryAction} className="flex flex-col gap-2">
+              <input type="hidden" name="systemId" value={systemId} />
+              <FormField label="ชื่อกลุ่ม" hint="เช่น โครงการ A">
+                <input name="name" required className="input" />
+              </FormField>
+              <p className="text-xs text-[color:var(--color-muted)]">ใช้กับเอกสารชนิด (ไม่เลือก = ทุกชนิด):</p>
+              <AppliesToPicker selected={[]} />
+              <SubmitButton className="self-start">เพิ่มกลุ่ม</SubmitButton>
+            </form>
+          </Section>
         </>
       )}
     </div>
@@ -279,44 +295,72 @@ function ProductForm({
     <form action={action} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
       <input type="hidden" name="systemId" value={systemId} />
       {product && <input type="hidden" name="id" value={product.id} />}
-      <input name="name" required defaultValue={product?.name} placeholder="ชื่อสินค้า/บริการ" className={`${inputCls} sm:col-span-2`} />
-      <input name="nameEn" defaultValue={product?.nameEn ?? ""} placeholder="ชื่อภาษาอังกฤษ (ถ้ามี)" className={inputCls} />
-      <input name="sku" defaultValue={product?.sku ?? ""} placeholder="รหัสสินค้า (SKU)" className={inputCls} />
-      <select name="type" defaultValue={product?.type ?? "GOODS"} className={inputCls}>
-        <option value="GOODS">สินค้า (ตัดสต็อกได้)</option>
-        <option value="SERVICE">บริการ</option>
-      </select>
-      <select name="unitId" defaultValue={product?.unitId ?? ""} className={inputCls}>
-        <option value="">หน่วย (ไม่ระบุ)</option>
-        {units.map((u) => (
-          <option key={u.id} value={u.id}>{u.name}</option>
-        ))}
-      </select>
-      <input name="salePrice" type="number" step="0.01" min="0" defaultValue={bahtVal(product?.salePrice ?? null)} placeholder="ราคาขาย (บาท)" className={inputCls} />
-      <input name="buyPrice" type="number" step="0.01" min="0" defaultValue={bahtVal(product?.buyPrice ?? null)} placeholder="ราคาซื้อ (บาท)" className={inputCls} />
-      <select name="vatRateBp" defaultValue={String(product?.vatRateBp ?? 700)} className={inputCls}>
-        <option value="700">VAT 7%</option>
-        <option value="0">VAT 0%</option>
-        <option value="-1">ยกเว้น VAT</option>
-      </select>
-      <input name="imageUrl" defaultValue={product?.imageUrl ?? ""} placeholder="URL รูปภาพ (ถ้ามี)" className={`${inputCls} sm:col-span-2`} />
-      {incomeAccts.length > 0 && (
-        <select name="incomeAccountId" defaultValue={product?.incomeAccountId ?? ""} className={inputCls}>
-          <option value="">บัญชีรายได้ (ค่าเริ่มต้น)</option>
-          {incomeAccts.map((a) => (
-            <option key={a.id} value={a.id}>{a.code} {a.name}</option>
+      <div className="sm:col-span-2">
+        <FormField label="ชื่อสินค้า/บริการ" required>
+          <input name="name" required defaultValue={product?.name} className="input" />
+        </FormField>
+      </div>
+      <FormField label="ชื่อภาษาอังกฤษ (ถ้ามี)">
+        <input name="nameEn" defaultValue={product?.nameEn ?? ""} className="input" />
+      </FormField>
+      <FormField label="รหัสสินค้า (SKU)">
+        <input name="sku" defaultValue={product?.sku ?? ""} className="input" />
+      </FormField>
+      <FormField label="ชนิด">
+        <select name="type" defaultValue={product?.type ?? "GOODS"} className="input">
+          <option value="GOODS">สินค้า (ตัดสต็อกได้)</option>
+          <option value="SERVICE">บริการ</option>
+        </select>
+      </FormField>
+      <FormField label="หน่วย">
+        <select name="unitId" defaultValue={product?.unitId ?? ""} className="input">
+          <option value="">ไม่ระบุ</option>
+          {units.map((u) => (
+            <option key={u.id} value={u.id}>{u.name}</option>
           ))}
         </select>
+      </FormField>
+      <FormField label="ราคาขาย (บาท)">
+        <input name="salePrice" type="number" step="0.01" min="0" defaultValue={bahtVal(product?.salePrice ?? null)} className="input" />
+      </FormField>
+      <FormField label="ราคาซื้อ (บาท)">
+        <input name="buyPrice" type="number" step="0.01" min="0" defaultValue={bahtVal(product?.buyPrice ?? null)} className="input" />
+      </FormField>
+      <FormField label="ภาษีมูลค่าเพิ่ม (VAT)">
+        <select name="vatRateBp" defaultValue={String(product?.vatRateBp ?? 700)} className="input">
+          <option value="700">VAT 7%</option>
+          <option value="0">VAT 0%</option>
+          <option value="-1">ยกเว้น VAT</option>
+        </select>
+      </FormField>
+      <div className="sm:col-span-2">
+        <FormField label="ลิงก์รูปภาพ (ถ้ามี)">
+          <input name="imageUrl" defaultValue={product?.imageUrl ?? ""} className="input" />
+        </FormField>
+      </div>
+      {incomeAccts.length > 0 && (
+        <FormField label="บัญชีรายได้">
+          <select name="incomeAccountId" defaultValue={product?.incomeAccountId ?? ""} className="input">
+            <option value="">ค่าเริ่มต้น</option>
+            {incomeAccts.map((a) => (
+              <option key={a.id} value={a.id}>{a.code} {a.name}</option>
+            ))}
+          </select>
+        </FormField>
       )}
       {expenseAccts.length > 0 && (
-        <select name="expenseAccountId" defaultValue={product?.expenseAccountId ?? ""} className={inputCls}>
-          <option value="">บัญชีค่าใช้จ่าย (ค่าเริ่มต้น)</option>
-          {expenseAccts.map((a) => (
-            <option key={a.id} value={a.id}>{a.code} {a.name}</option>
-          ))}
-        </select>
+        <FormField label="บัญชีค่าใช้จ่าย">
+          <select name="expenseAccountId" defaultValue={product?.expenseAccountId ?? ""} className="input">
+            <option value="">ค่าเริ่มต้น</option>
+            {expenseAccts.map((a) => (
+              <option key={a.id} value={a.id}>{a.code} {a.name}</option>
+            ))}
+          </select>
+        </FormField>
       )}
-      <SubmitButton className="self-start sm:col-span-2">{product ? "บันทึกการแก้ไข" : "+ เพิ่มสินค้า"}</SubmitButton>
+      <div className="sm:col-span-2">
+        <SubmitButton className="self-start">{product ? "บันทึกการแก้ไข" : "+ เพิ่มสินค้า"}</SubmitButton>
+      </div>
     </form>
   );
 }

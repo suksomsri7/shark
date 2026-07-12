@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import {
   listAssets,
@@ -12,11 +11,14 @@ import {
   type AssetRow,
 } from "@/lib/modules/account/asset";
 import { registerAssetAction, runDepreciationAction, disposeAssetAction } from "./actions";
+import { formatBaht } from "@/lib/ui/money";
+import PageHeader from "@/components/ui/PageHeader";
+import Section from "@/components/ui/Section";
+import FormField from "@/components/ui/FormField";
+import EmptyState from "@/components/ui/EmptyState";
+import MoneyText from "@/components/ui/MoneyText";
+import StatusChip from "@/components/ui/StatusChip";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-
-const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
-const baht = (satang: number) =>
-  (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const STATUS_LABEL: Record<string, string> = {
   ACTIVE: "ใช้งาน",
@@ -24,12 +26,8 @@ const STATUS_LABEL: Record<string, string> = {
   DISPOSED: "จำหน่ายแล้ว",
   WRITTEN_OFF: "ตัดบัญชี",
 };
-const STATUS_CLS: Record<string, string> = {
-  ACTIVE: "text-[color:var(--color-ink,green)]",
-  FULLY_DEPRECIATED: "text-[color:var(--color-muted)]",
-  DISPOSED: "text-[color:var(--color-muted)]",
-  WRITTEN_OFF: "text-[color:var(--color-danger)]",
-};
+const assetTone = (v: string): "muted" | "strong" | "danger" =>
+  v === "ACTIVE" ? "strong" : v === "WRITTEN_OFF" ? "danger" : "muted";
 
 function fmtDate(d: Date) {
   return new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "medium" }).format(d);
@@ -85,118 +83,135 @@ export default async function AssetsPage({
   );
 
   return (
-    <div className="flex max-w-4xl flex-col gap-5">
-      <div>
-        <Link href={base} className="text-sm text-[color:var(--color-muted)]">← ระบบบัญชี</Link>
-        <h1 className="mt-1 text-2xl font-semibold">ทะเบียนสินทรัพย์ &amp; ค่าเสื่อมราคา</h1>
-      </div>
+    <div className="flex max-w-4xl flex-col gap-6">
+      <PageHeader title="ทะเบียนสินทรัพย์ & ค่าเสื่อมราคา" back={{ href: base, label: "ระบบบัญชี" }} />
 
       {err && <p className="text-sm text-[color:var(--color-danger)]">{err}</p>}
-      {ok && <p className="text-sm text-[color:var(--color-ink,green)]">{ok}</p>}
+      {ok && <p className="text-sm font-medium text-[color:var(--color-ink)]">{ok}</p>}
 
       {/* สรุป */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="สินทรัพย์ใช้งาน" value={String(activeCount)} />
-        <Stat label="ต้นทุนรวม" value={`${baht(totalCost)} ฿`} />
-        <Stat label="มูลค่าสุทธิ (NBV)" value={`${baht(totalNBV)} ฿`} />
-        <Stat label={`ค่าเสื่อมงวด ${period}`} value={`${baht(previewTotal)} ฿`} />
+        <Stat label="สินทรัพย์ใช้งาน" value={activeCount} />
+        <Stat label="ต้นทุนรวม" value={<MoneyText satang={totalCost} decimals />} />
+        <Stat label="มูลค่าสุทธิ (NBV)" value={<MoneyText satang={totalNBV} decimals />} />
+        <Stat label={`ค่าเสื่อมงวด ${period}`} value={<MoneyText satang={previewTotal} decimals />} />
       </div>
 
       {/* รันค่าเสื่อมงวด */}
-      <form action={runDepreciationAction} className="card flex flex-wrap items-end gap-3">
-        <input type="hidden" name="systemId" value={systemId} />
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-[color:var(--color-muted)]">งวดที่คิดค่าเสื่อม (YYYY-MM)</label>
-          <input name="periodKey" defaultValue={period} placeholder={period} className={inputCls} />
-        </div>
-        <SubmitButton>คิดค่าเสื่อมงวดนี้</SubmitButton>
-        <p className="w-full text-xs text-[color:var(--color-muted)]">
-          รันซ้ำได้ (idempotent ต่อสินทรัพย์+งวด) · เดือนสุดท้ายเก็บเศษให้มูลค่าสุทธิ = มูลค่าซาก · โพสต์ Dr ค่าเสื่อม (6800) / Cr ค่าเสื่อมสะสม (16x9) — เหมาะทำ cron สิ้นเดือน
-        </p>
-      </form>
+      <Section title="คิดค่าเสื่อมราคา" card>
+        <form action={runDepreciationAction} className="flex flex-wrap items-end gap-3">
+          <input type="hidden" name="systemId" value={systemId} />
+          <FormField label="งวดที่คิดค่าเสื่อม (ปี-เดือน)">
+            <input name="periodKey" defaultValue={period} placeholder={period} className="input" />
+          </FormField>
+          <SubmitButton>คิดค่าเสื่อมงวดนี้</SubmitButton>
+          <p className="w-full text-xs text-[color:var(--color-muted)]">
+            รันซ้ำได้โดยไม่คิดซ้ำต่อสินทรัพย์ในงวดเดียวกัน · เดือนสุดท้ายปรับเศษให้มูลค่าสุทธิเท่ากับมูลค่าซากพอดี · ระบบบันทึกบัญชีค่าเสื่อมให้อัตโนมัติ เหมาะตั้งทำทุกสิ้นเดือน
+          </p>
+        </form>
+      </Section>
 
       {/* ทะเบียน */}
-      <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">ทะเบียนสินทรัพย์ ({assets.length})</h2>
+      <Section title={`ทะเบียนสินทรัพย์ (${assets.length})`}>
         {assets.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีสินทรัพย์ในทะเบียน</p>
+          <EmptyState text="ยังไม่มีสินทรัพย์ในทะเบียน — ขึ้นทะเบียนสินทรัพย์ใหม่ด้านล่างเพื่อเริ่ม" />
         ) : (
-          assets.map((a) => (
-            <AssetCard key={a.id} a={a} systemId={systemId} financeAccts={financeAccts} today={today} />
-          ))
+          <div className="flex flex-col gap-2">
+            {assets.map((a) => (
+              <AssetCard key={a.id} a={a} systemId={systemId} financeAccts={financeAccts} today={today} />
+            ))}
+          </div>
         )}
-      </div>
+      </Section>
 
       {/* ขึ้นทะเบียนสินทรัพย์ */}
-      <form action={registerAssetAction} className="card grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <input type="hidden" name="systemId" value={systemId} />
-        <h2 className="text-sm font-medium sm:col-span-2">ขึ้นทะเบียนสินทรัพย์ใหม่</h2>
+      <Section title="ขึ้นทะเบียนสินทรัพย์ใหม่" card>
+        <form action={registerAssetAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <input type="hidden" name="systemId" value={systemId} />
 
-        {sourceDocs.length > 0 && (
-          <label className="flex flex-col gap-1 sm:col-span-2">
-            <span className="text-xs text-[color:var(--color-muted)]">จากเอกสารซื้อสินทรัพย์ (ไม่บังคับ)</span>
-            <select name="sourceDocumentId" defaultValue="" className={inputCls}>
-              <option value="">— คีย์ยกมา (ไม่อ้างเอกสาร) —</option>
-              {sourceDocs.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.docNo ?? "(ร่าง)"} · {fmtDate(d.issueDate)} · {baht(d.base)} ฿{d.contactName ? ` · ${d.contactName}` : ""}
-                </option>
+          {sourceDocs.length > 0 && (
+            <div className="sm:col-span-2">
+              <FormField label="จากเอกสารซื้อสินทรัพย์ (ไม่บังคับ)">
+                <select name="sourceDocumentId" defaultValue="" className="input">
+                  <option value="">— คีย์ยกมา (ไม่อ้างเอกสาร) —</option>
+                  {sourceDocs.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.docNo ?? "(ร่าง)"} · {fmtDate(d.issueDate)} · {formatBaht(d.base, { decimals: true })}
+                      {d.contactName ? ` · ${d.contactName}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            </div>
+          )}
+
+          <div className="sm:col-span-2">
+            <FormField label="ชื่อสินทรัพย์" required>
+              <input name="name" required className="input" />
+            </FormField>
+          </div>
+          <FormField label="หมวด" hint="เช่น อุปกรณ์สำนักงาน">
+            <input name="category" className="input" />
+          </FormField>
+          <FormField label="ต้นทุน (บาท)" required>
+            <input name="cost" type="number" step="0.01" min="0.01" required className="input" />
+          </FormField>
+          <FormField label="มูลค่าซาก (บาท ≥ 1)" required>
+            <input name="salvageValue" type="number" step="0.01" min="1" defaultValue="1" required className="input" />
+          </FormField>
+          <FormField label="อายุการใช้งาน (เดือน)" required>
+            <input name="usefulLifeMonths" type="number" min="1" required className="input" />
+          </FormField>
+
+          <FormField label="วันที่ได้มา" required>
+            <input name="acquiredDate" type="date" defaultValue={today} required className="input" />
+          </FormField>
+          <FormField label="วันเริ่มคิดค่าเสื่อม" required>
+            <input name="startDepDate" type="date" defaultValue={today} required className="input" />
+          </FormField>
+
+          <FormField label="บัญชีสินทรัพย์ (16xx)" required>
+            <select name="assetAccountId" required defaultValue="" className="input">
+              <option value="" disabled>เลือกบัญชี</option>
+              {assetAccts.map((l) => (
+                <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
               ))}
             </select>
-          </label>
-        )}
+          </FormField>
+          <FormField label="ค่าเสื่อมสะสม (16x9)" required>
+            <select name="accumAccountId" required defaultValue="" className="input">
+              <option value="" disabled>เลือกบัญชี</option>
+              {accumAccts.map((l) => (
+                <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
+              ))}
+            </select>
+          </FormField>
+          <div className="sm:col-span-2">
+            <FormField label="บัญชีค่าใช้จ่ายค่าเสื่อม (6800)" required>
+              <select name="expenseAccountId" required defaultValue="" className="input">
+                <option value="" disabled>เลือกบัญชี</option>
+                {expenseAccts.map((l) => (
+                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
+                ))}
+              </select>
+            </FormField>
+          </div>
 
-        <input name="name" required placeholder="ชื่อสินทรัพย์" className={`${inputCls} sm:col-span-2`} />
-        <input name="category" placeholder="หมวด (เช่น อุปกรณ์สำนักงาน)" className={inputCls} />
-        <input name="cost" type="number" step="0.01" min="0.01" required placeholder="ต้นทุน (บาท)" className={inputCls} />
-        <input name="salvageValue" type="number" step="0.01" min="1" defaultValue="1" required placeholder="มูลค่าซาก (บาท ≥ 1)" className={inputCls} />
-        <input name="usefulLifeMonths" type="number" min="1" required placeholder="อายุการใช้งาน (เดือน)" className={inputCls} />
-
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-[color:var(--color-muted)]">วันที่ได้มา</span>
-          <input name="acquiredDate" type="date" defaultValue={today} required className={inputCls} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-[color:var(--color-muted)]">วันเริ่มคิดค่าเสื่อม</span>
-          <input name="startDepDate" type="date" defaultValue={today} required className={inputCls} />
-        </label>
-
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-[color:var(--color-muted)]">บัญชีสินทรัพย์ (16xx)</span>
-          <select name="assetAccountId" required defaultValue="" className={inputCls}>
-            <option value="" disabled>เลือกบัญชี</option>
-            {assetAccts.map((l) => (
-              <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-[color:var(--color-muted)]">ค่าเสื่อมสะสม (16x9)</span>
-          <select name="accumAccountId" required defaultValue="" className={inputCls}>
-            <option value="" disabled>เลือกบัญชี</option>
-            {accumAccts.map((l) => (
-              <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 sm:col-span-2">
-          <span className="text-xs text-[color:var(--color-muted)]">บัญชีค่าใช้จ่ายค่าเสื่อม (6800)</span>
-          <select name="expenseAccountId" required defaultValue="" className={inputCls}>
-            <option value="" disabled>เลือกบัญชี</option>
-            {expenseAccts.map((l) => (
-              <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-            ))}
-          </select>
-        </label>
-
-        <input name="note" placeholder="หมายเหตุ (ไม่บังคับ)" className={`${inputCls} sm:col-span-2`} />
-        <SubmitButton className="sm:col-span-2 sm:justify-self-start">+ ขึ้นทะเบียน</SubmitButton>
-      </form>
+          <div className="sm:col-span-2">
+            <FormField label="หมายเหตุ (ไม่บังคับ)">
+              <input name="note" className="input" />
+            </FormField>
+          </div>
+          <div className="sm:col-span-2">
+            <SubmitButton className="sm:justify-self-start">+ ขึ้นทะเบียน</SubmitButton>
+          </div>
+        </form>
+      </Section>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-lg border px-3 py-2">
       <div className="text-xs text-[color:var(--color-muted)]">{label}</div>
@@ -229,47 +244,63 @@ function AssetCard({
             ได้มา {fmtDate(a.acquiredDate)} · เริ่มคิดค่าเสื่อม {fmtDate(a.startDepDate)} · อายุ {a.usefulLifeMonths} เดือน (คิดแล้ว {a.monthsDepreciated})
           </div>
         </div>
-        <div className={`text-xs font-medium ${STATUS_CLS[a.status] ?? ""}`}>{STATUS_LABEL[a.status] ?? a.status}</div>
+        <StatusChip value={a.status} map={STATUS_LABEL} toneOf={assetTone} />
       </div>
 
       <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs sm:grid-cols-4">
-        <span>ต้นทุน <b>{baht(a.cost)}</b></span>
-        <span>ซาก <b>{baht(a.salvageValue)}</b></span>
-        <span>ค่าเสื่อมสะสม <b>{baht(a.accumDepreciation)}</b></span>
-        <span>มูลค่าสุทธิ <b>{baht(a.netBookValue)}</b></span>
+        <span>ต้นทุน <b><MoneyText satang={a.cost} decimals /></b></span>
+        <span>ซาก <b><MoneyText satang={a.salvageValue} decimals /></b></span>
+        <span>ค่าเสื่อมสะสม <b><MoneyText satang={a.accumDepreciation} decimals /></b></span>
+        <span>มูลค่าสุทธิ <b><MoneyText satang={a.netBookValue} decimals /></b></span>
       </div>
 
       {a.status === "DISPOSED" || a.status === "WRITTEN_OFF" ? (
         a.disposedAt && (
           <div className="mt-1 text-xs text-[color:var(--color-muted)]">
             {a.status === "DISPOSED" ? "จำหน่าย" : "ตัดบัญชี"} {fmtDate(a.disposedAt)}
-            {a.disposalAmount != null && a.disposalAmount > 0 && ` · ได้รับ ${baht(a.disposalAmount)} ฿`}
+            {a.disposalAmount != null && a.disposalAmount > 0 && (
+              <>
+                {" · ได้รับ "}
+                <MoneyText satang={a.disposalAmount} decimals />
+              </>
+            )}
           </div>
         )
       ) : (
         canDispose && (
           <details className="mt-2">
-            <summary className="cursor-pointer text-xs text-[color:var(--color-ink,#0a58ca)] underline">ขาย / ตัดจำหน่าย</summary>
+            <summary className="cursor-pointer text-xs text-[color:var(--color-ink)] underline">ขาย / ตัดจำหน่าย</summary>
             <form action={disposeAssetAction} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <input type="hidden" name="systemId" value={systemId} />
               <input type="hidden" name="assetId" value={a.id} />
-              <select name="mode" defaultValue="SELL" className={inputCls}>
-                <option value="SELL">ขาย (มีเงินรับ)</option>
-                <option value="WRITE_OFF">ตัดจำหน่าย (ไม่มีเงินรับ)</option>
-              </select>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-[color:var(--color-muted)]">วันที่</span>
-                <input name="date" type="date" defaultValue={today} required className={inputCls} />
-              </label>
-              <input name="proceeds" type="number" step="0.01" min="0" placeholder="เงินที่ได้รับ (บาท) — สำหรับการขาย" className={inputCls} />
-              <select name="financeAccountId" defaultValue="" className={inputCls}>
-                <option value="">บัญชีเงินรับ (สำหรับการขาย)</option>
-                {financeAccts.map((f) => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
-              <input name="note" placeholder="หมายเหตุ" className={`${inputCls} sm:col-span-2`} />
-              <SubmitButton variant="ghost" className="sm:col-span-2 sm:justify-self-start">ยืนยันจำหน่าย</SubmitButton>
+              <FormField label="วิธีจำหน่าย">
+                <select name="mode" defaultValue="SELL" className="input">
+                  <option value="SELL">ขาย (มีเงินรับ)</option>
+                  <option value="WRITE_OFF">ตัดจำหน่าย (ไม่มีเงินรับ)</option>
+                </select>
+              </FormField>
+              <FormField label="วันที่" required>
+                <input name="date" type="date" defaultValue={today} required className="input" />
+              </FormField>
+              <FormField label="เงินที่ได้รับ (บาท)" hint="สำหรับการขาย">
+                <input name="proceeds" type="number" step="0.01" min="0" className="input" />
+              </FormField>
+              <FormField label="บัญชีเงินรับ" hint="สำหรับการขาย">
+                <select name="financeAccountId" defaultValue="" className="input">
+                  <option value="">ไม่ระบุ</option>
+                  {financeAccts.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </FormField>
+              <div className="sm:col-span-2">
+                <FormField label="หมายเหตุ">
+                  <input name="note" className="input" />
+                </FormField>
+              </div>
+              <div className="sm:col-span-2">
+                <SubmitButton variant="ghost" className="sm:justify-self-start">ยืนยันจำหน่าย</SubmitButton>
+              </div>
             </form>
           </details>
         )

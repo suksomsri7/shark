@@ -3,9 +3,11 @@ import { prisma } from "@/lib/core/db";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { assertAccountCan } from "@/lib/modules/account/access";
 import { listLedgers } from "@/lib/modules/account/coa";
-import { baht } from "@/lib/modules/account/service";
-
-const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { FormField } from "@/components/ui/FormField";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { DataTable } from "@/components/ui/DataList";
+import { MoneyText } from "@/components/ui/MoneyText";
 
 // แยกประเภท: ยอดยกมา + movement รายบรรทัด + ยอดยกไป
 export default async function LedgerPage({
@@ -82,86 +84,137 @@ export default async function LedgerPage({
   const fmtDate = (d: Date) =>
     new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "medium" }).format(d);
 
-  // running balance
+  // running balance ต่อบรรทัด
   let run = opening;
+  const lineRows = rows.map((r) => {
+    run += r.debit - r.credit;
+    return { ...r, run };
+  });
+
+  type LedgerRow =
+    | { kind: "open" }
+    | ((typeof lineRows)[number] & { kind: "line" })
+    | { kind: "total" };
+
+  const tableRows: LedgerRow[] = [
+    { kind: "open" },
+    ...lineRows.map((r) => ({ kind: "line" as const, ...r })),
+    { kind: "total" },
+  ];
 
   return (
-    <div className="flex max-w-4xl flex-col gap-5">
-      <div>
-        <Link href={base} className="text-sm text-[color:var(--color-muted)]">← ระบบบัญชี</Link>
-        <h1 className="mt-1 text-2xl font-semibold">บัญชีแยกประเภท</h1>
-      </div>
+    <div className="flex max-w-4xl flex-col gap-6">
+      <PageHeader title="บัญชีแยกประเภท" back={{ href: base, label: "ระบบบัญชี" }} />
 
-      <form className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
-          บัญชี
-          <select name="account" defaultValue={accountId} className={`${inputCls} min-w-[16rem]`}>
-            <option value="">— เลือกบัญชี —</option>
-            {ledgers.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.code} {l.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
-          ตั้งแต่
-          <input type="date" name="from" defaultValue={from} className={inputCls} />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
-          ถึง
-          <input type="date" name="to" defaultValue={to} className={inputCls} />
-        </label>
+      <form className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="sm:w-64">
+          <FormField label="บัญชี">
+            <select name="account" defaultValue={accountId} className="input">
+              <option value="">— เลือกบัญชี —</option>
+              {ledgers.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.code} {l.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+        </div>
+        <div className="sm:w-40">
+          <FormField label="ตั้งแต่">
+            <input type="date" name="from" defaultValue={from} className="input" />
+          </FormField>
+        </div>
+        <div className="sm:w-40">
+          <FormField label="ถึง">
+            <input type="date" name="to" defaultValue={to} className="input" />
+          </FormField>
+        </div>
         <button className="btn btn-primary text-sm">แสดง</button>
       </form>
 
       {!accountId ? (
-        <p className="text-sm text-[color:var(--color-muted)]">เลือกบัญชีเพื่อดูการเคลื่อนไหว</p>
+        <EmptyState text="เลือกบัญชีเพื่อดูการเคลื่อนไหว" />
       ) : (
-        <div className="overflow-hidden rounded-xl border">
-          <table className="w-full text-sm">
-            <thead className="bg-[color:var(--color-surface-2)] text-xs text-[color:var(--color-muted)]">
-              <tr>
-                <th className="px-3 py-2 text-left">วันที่</th>
-                <th className="px-3 py-2 text-left">ใบสำคัญ</th>
-                <th className="px-3 py-2 text-right">เดบิต</th>
-                <th className="px-3 py-2 text-right">เครดิต</th>
-                <th className="px-3 py-2 text-right">คงเหลือ</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              <tr className="text-[color:var(--color-muted)]">
-                <td className="px-3 py-2" colSpan={4}>ยอดยกมา</td>
-                <td className="px-3 py-2 text-right">{baht(opening)}</td>
-              </tr>
-              {rows.map((r) => {
-                run += r.debit - r.credit;
+        <DataTable<LedgerRow>
+          minWidth={600}
+          empty="ยังไม่มีการเคลื่อนไหวในงวดนี้"
+          rows={tableRows}
+          rowKey={(r, i) => (r.kind === "line" ? r.id : `${r.kind}-${i}`)}
+          cols={[
+            {
+              key: "date",
+              header: "วันที่",
+              render: (r) =>
+                r.kind === "line" ? <span className="whitespace-nowrap">{fmtDate(r.date)}</span> : "",
+            },
+            {
+              key: "doc",
+              header: "ใบสำคัญ",
+              render: (r) => {
+                if (r.kind === "open")
+                  return <span className="text-[color:var(--color-muted)]">ยอดยกมา</span>;
+                if (r.kind === "total") return <span className="font-medium">เคลื่อนไหวในงวด</span>;
                 return (
-                  <tr key={r.id}>
-                    <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.date)}</td>
-                    <td className="px-3 py-2">
-                      <Link href={`${base}/journal/${r.entryId}`} className="hover:underline">
-                        {r.docNo}
-                      </Link>
-                      {r.memo && <span className="ml-1 text-xs text-[color:var(--color-muted)]">— {r.memo}</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right">{r.debit > 0 ? baht(r.debit) : ""}</td>
-                    <td className="px-3 py-2 text-right">{r.credit > 0 ? baht(r.credit) : ""}</td>
-                    <td className="px-3 py-2 text-right">{baht(run)}</td>
-                  </tr>
+                  <span>
+                    <Link href={`${base}/journal/${r.entryId}`} className="hover:underline">
+                      {r.docNo}
+                    </Link>
+                    {r.memo && (
+                      <span className="ml-1 text-xs text-[color:var(--color-muted)]">— {r.memo}</span>
+                    )}
+                  </span>
                 );
-              })}
-            </tbody>
-            <tfoot className="border-t font-medium">
-              <tr>
-                <td className="px-3 py-2" colSpan={2}>เคลื่อนไหวในงวด</td>
-                <td className="px-3 py-2 text-right">฿{baht(movementDr)}</td>
-                <td className="px-3 py-2 text-right">฿{baht(movementCr)}</td>
-                <td className="px-3 py-2 text-right">ยกไป {baht(closing)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+              },
+            },
+            {
+              key: "debit",
+              header: "เดบิต",
+              align: "right",
+              render: (r) =>
+                r.kind === "line" ? (
+                  r.debit > 0 ? <MoneyText satang={r.debit} decimals /> : ""
+                ) : r.kind === "total" ? (
+                  <span className="font-medium">
+                    <MoneyText satang={movementDr} decimals />
+                  </span>
+                ) : (
+                  ""
+                ),
+            },
+            {
+              key: "credit",
+              header: "เครดิต",
+              align: "right",
+              render: (r) =>
+                r.kind === "line" ? (
+                  r.credit > 0 ? <MoneyText satang={r.credit} decimals /> : ""
+                ) : r.kind === "total" ? (
+                  <span className="font-medium">
+                    <MoneyText satang={movementCr} decimals />
+                  </span>
+                ) : (
+                  ""
+                ),
+            },
+            {
+              key: "balance",
+              header: "คงเหลือ",
+              align: "right",
+              render: (r) =>
+                r.kind === "open" ? (
+                  <span className="text-[color:var(--color-muted)]">
+                    <MoneyText satang={opening} decimals />
+                  </span>
+                ) : r.kind === "line" ? (
+                  <MoneyText satang={r.run} decimals />
+                ) : (
+                  <span className="font-medium">
+                    ยกไป <MoneyText satang={closing} decimals />
+                  </span>
+                ),
+            },
+          ]}
+        />
       )}
     </div>
   );

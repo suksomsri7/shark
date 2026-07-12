@@ -1,8 +1,10 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
-import { baht } from "@/lib/modules/account/service";
 import { financeStatement, FINANCE_TYPE_LABEL } from "@/lib/modules/account/finance";
+import PageHeader from "@/components/ui/PageHeader";
+import FormField from "@/components/ui/FormField";
+import { DataTable } from "@/components/ui/DataList";
+import MoneyText from "@/components/ui/MoneyText";
 
 const fmtDate = (d: Date) => d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
 
@@ -22,67 +24,50 @@ export default async function StatementPage({
   });
   if (!stmt || !stmt.account) notFound();
   const base = `/app/sys/${id}/account`;
+  type Row = (typeof stmt.rows)[number];
 
   return (
     <div className="flex max-w-3xl flex-col gap-5">
-      <div>
-        <Link href={`${base}/finance`} className="text-sm text-[color:var(--color-muted)]">← การเงิน</Link>
-        <h1 className="mt-1 text-2xl font-semibold">{stmt.account.name}</h1>
-        <p className="text-xs text-[color:var(--color-muted)]">{FINANCE_TYPE_LABEL[stmt.account.type]}</p>
-      </div>
+      <PageHeader
+        title={stmt.account.name}
+        back={{ href: `${base}/finance`, label: "บัญชีเงิน" }}
+        desc={FINANCE_TYPE_LABEL[stmt.account.type]}
+      />
 
       {/* ตัวกรองช่วงเวลา */}
-      <form className="flex flex-wrap items-end gap-2 text-sm">
-        <label className="flex flex-col">
-          <span className="text-xs text-[color:var(--color-muted)]">ตั้งแต่</span>
-          <input name="from" type="date" defaultValue={from} className="rounded-lg border px-2 py-1.5" />
-        </label>
-        <label className="flex flex-col">
-          <span className="text-xs text-[color:var(--color-muted)]">ถึง</span>
-          <input name="to" type="date" defaultValue={to} className="rounded-lg border px-2 py-1.5" />
-        </label>
+      <form className="flex flex-wrap items-end gap-2">
+        <FormField label="ตั้งแต่">
+          <input name="from" type="date" defaultValue={from} className="input" />
+        </FormField>
+        <FormField label="ถึง">
+          <input name="to" type="date" defaultValue={to} className="input" />
+        </FormField>
         <button className="btn btn-primary text-sm">กรอง</button>
       </form>
 
       <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
         <span className="text-[color:var(--color-muted)]">ยอดยกมา</span>
-        <span className="font-semibold">{baht(stmt.opening)} ฿</span>
+        <span className="font-semibold"><MoneyText satang={stmt.opening} decimals /></span>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-y text-xs text-[color:var(--color-muted)]">
-              <th className="py-1.5 text-left">วันที่</th>
-              <th className="py-1.5 text-left">เลขที่</th>
-              <th className="py-1.5 text-left">รายการ</th>
-              <th className="py-1.5 text-right">รับ</th>
-              <th className="py-1.5 text-right">จ่าย</th>
-              <th className="py-1.5 text-right">คงเหลือ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stmt.rows.length === 0 ? (
-              <tr><td colSpan={6} className="py-4 text-center text-[color:var(--color-muted)]">ไม่มีความเคลื่อนไหว</td></tr>
-            ) : (
-              stmt.rows.map((r, i) => (
-                <tr key={`${r.entryId}-${i}`} className="border-b">
-                  <td className="py-1.5">{fmtDate(r.date)}</td>
-                  <td className="py-1.5 text-xs">{r.docNo}</td>
-                  <td className="py-1.5">{r.memo ?? "—"}</td>
-                  <td className="py-1.5 text-right">{r.debit > 0 ? baht(r.debit) : ""}</td>
-                  <td className="py-1.5 text-right">{r.credit > 0 ? baht(r.credit) : ""}</td>
-                  <td className="py-1.5 text-right font-medium">{baht(r.balance)}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<Row>
+        cols={[
+          { key: "date", header: "วันที่", render: (r) => fmtDate(r.date) },
+          { key: "docNo", header: "เลขที่", render: (r) => <span className="text-xs">{r.docNo}</span> },
+          { key: "memo", header: "รายการ", render: (r) => r.memo ?? "—" },
+          { key: "debit", header: "รับ", align: "right", render: (r) => (r.debit > 0 ? <MoneyText satang={r.debit} decimals /> : "") },
+          { key: "credit", header: "จ่าย", align: "right", render: (r) => (r.credit > 0 ? <MoneyText satang={r.credit} decimals /> : "") },
+          { key: "balance", header: "คงเหลือ", align: "right", render: (r) => <span className="font-medium"><MoneyText satang={r.balance} decimals /></span> },
+        ]}
+        rows={stmt.rows}
+        minWidth={620}
+        empty="ไม่มีความเคลื่อนไหวในช่วงที่เลือก"
+        rowKey={(r, i) => `${r.entryId}-${i}`}
+      />
 
       <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
         <span className="text-[color:var(--color-muted)]">ยอดคงเหลือปลายงวด</span>
-        <span className="font-semibold">{baht(stmt.closing)} ฿</span>
+        <span className="font-semibold"><MoneyText satang={stmt.closing} decimals /></span>
       </div>
     </div>
   );

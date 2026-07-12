@@ -1,10 +1,13 @@
 import { revalidatePath } from "next/cache";
-import Link from "next/link";
 import { prisma } from "@/lib/core/db";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { assertAccountCan, writeAudit } from "@/lib/modules/account/access";
 import { closePeriod, reopenPeriod } from "@/lib/modules/account/gl";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PageHeader from "@/components/ui/PageHeader";
+import Section from "@/components/ui/Section";
+import { DataList } from "@/components/ui/DataList";
+import StatusChip from "@/components/ui/StatusChip";
 
 function curKey(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit" })
@@ -49,12 +52,12 @@ export default async function PeriodsPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
-      <div>
-        <Link href={base} className="text-sm text-[color:var(--color-muted)]">← ระบบบัญชี</Link>
-        <h1 className="mt-1 text-2xl font-semibold">ปิดงวดบัญชี</h1>
-        <p className="text-sm text-[color:var(--color-muted)]">ปิดงวด = ล็อกไม่ให้ลงบัญชีย้อน · ต้องเคลียร์บัญชีพัก (9999) ก่อน</p>
-      </div>
-      {sp.err && <div className="rounded-lg border-2 border-red-600 bg-red-50 px-3 py-2 text-sm text-red-800">{sp.err}</div>}
+      <PageHeader
+        title="ปิดงวดบัญชี"
+        back={{ href: base, label: "ระบบบัญชี" }}
+        desc="ปิดงวด = ล็อกไม่ให้ลงบัญชีย้อน · ต้องเคลียร์บัญชีพัก (9999) ก่อน"
+      />
+      {sp.err && <p className="text-sm text-[color:var(--color-danger)]">{sp.err}</p>}
 
       <div className="card flex items-end gap-2">
         <ConfirmDialog
@@ -69,27 +72,36 @@ export default async function PeriodsPage({
         />
       </div>
 
-      <section className="flex flex-col gap-1">
-        <h2 className="text-sm font-medium">งวดที่บันทึกไว้</h2>
-        {periods.length === 0 && <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีงวดที่เปิด/ปิด</p>}
-        {periods.map((p) => (
-          <div key={p.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-            <span>{p.periodKey} · <span className={p.status === "CLOSED" ? "text-[color:var(--color-danger)]" : ""}>{p.status === "CLOSED" ? "ปิดแล้ว 🔒" : "เปิดอยู่"}</span></span>
-            {p.status === "CLOSED" && (
-              <ConfirmDialog
-                action={reopenAction}
-                fields={{ periodKey: p.periodKey }}
-                triggerLabel="เปิดงวดใหม่"
-                triggerClassName="text-xs text-[color:var(--color-muted)] hover:underline"
-                title="เปิดงวดนี้ใหม่?"
-                detail="งวดจะถูกปลดล็อกให้ลงบัญชีได้อีกครั้ง"
-                confirmLabel="ยืนยันเปิดงวด"
-                danger
-              />
-            )}
-          </div>
-        ))}
-      </section>
+      <Section title="งวดที่บันทึกไว้">
+        <DataList
+          items={periods.map((p) => ({
+            key: p.id,
+            primary: p.periodKey,
+            trailing: (
+              <>
+                <StatusChip
+                  value={p.status}
+                  map={{ CLOSED: "ปิดแล้ว", OPEN: "เปิดอยู่" }}
+                  toneOf={(v) => (v === "CLOSED" ? "strong" : "muted")}
+                />
+                {p.status === "CLOSED" && (
+                  <ConfirmDialog
+                    action={reopenAction}
+                    fields={{ periodKey: p.periodKey }}
+                    triggerLabel="เปิดงวดใหม่"
+                    triggerClassName="text-xs text-[color:var(--color-muted)] hover:underline"
+                    title="เปิดงวดนี้ใหม่?"
+                    detail="งวดจะถูกปลดล็อกให้ลงบัญชีได้อีกครั้ง"
+                    confirmLabel="ยืนยันเปิดงวด"
+                    danger
+                  />
+                )}
+              </>
+            ),
+          }))}
+          empty="ยังไม่มีงวดที่เปิด/ปิด — เลือกงวดด้านบนเพื่อปิดงวดแรก"
+        />
+      </Section>
     </div>
   );
 }

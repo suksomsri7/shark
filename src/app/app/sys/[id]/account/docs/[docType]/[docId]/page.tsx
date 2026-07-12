@@ -9,13 +9,18 @@ import {
   visibleConvertTargets,
   isVisibleDocType,
   DOC_LABEL,
-  baht,
   isOverdue,
 } from "@/lib/modules/account/service";
 import { StatusBadge } from "@/lib/modules/account/ui";
 import DocEditor from "@/lib/modules/account/DocEditor";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Section } from "@/components/ui/Section";
+import { FormField } from "@/components/ui/FormField";
+import { MoneyText } from "@/components/ui/MoneyText";
+import { DataList } from "@/components/ui/DataList";
+import { PAY_CHANNEL_LABEL } from "@/lib/ui/status-labels";
 import {
   issueDocumentAction,
   convertDocumentAction,
@@ -101,18 +106,20 @@ export default async function DocDetailPage({
 
   return (
     <div className="flex max-w-3xl flex-col gap-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <Link href={listPath} className="text-sm text-[color:var(--color-muted)]">← {DOC_LABEL[dt]}</Link>
-          <h1 className="mt-1 text-2xl font-semibold">{doc.docNo ?? "(ร่าง)"}</h1>
-          <div className="mt-1 flex items-center gap-2 text-sm text-[color:var(--color-muted)]">
-            {DOC_LABEL[dt]} · {fmtDate(doc.issueDate)}
-            <StatusBadge status={doc.status} overdue={overdue} />
-          </div>
+      <div className="flex flex-col gap-1">
+        <PageHeader
+          title={doc.docNo ?? "(ร่าง)"}
+          back={{ href: listPath, label: DOC_LABEL[dt] ?? dt }}
+          actions={
+            <Link href={`${base}/print/${doc.id}`} className="btn btn-ghost text-sm" target="_blank">
+              พิมพ์ / PDF
+            </Link>
+          }
+        />
+        <div className="flex items-center gap-2 text-sm text-[color:var(--color-muted)]">
+          {DOC_LABEL[dt]} · {fmtDate(doc.issueDate)}
+          <StatusBadge status={doc.status} overdue={overdue} />
         </div>
-        <Link href={`${base}/print/${doc.id}`} className="btn btn-ghost text-sm" target="_blank">
-          พิมพ์ / PDF
-        </Link>
       </div>
 
       {err && <p className="text-sm text-[color:var(--color-danger)]">{decodeURIComponent(err)}</p>}
@@ -142,7 +149,7 @@ export default async function DocDetailPage({
                 {" "}× {Number(l.qty)} {l.unitName ?? ""}
               </span>
             </span>
-            <span>฿{baht(l.amount)}</span>
+            <span><MoneyText satang={l.amount} decimals /></span>
           </div>
         ))}
         <div className="mt-1 flex flex-col items-end gap-0.5">
@@ -151,14 +158,14 @@ export default async function DocDetailPage({
           {settings.vatRegistered && <Row label="ภาษีมูลค่าเพิ่ม" value={doc.vatAmount} />}
           <div className="flex w-full max-w-xs justify-between font-semibold">
             <span>ยอดสุทธิ</span>
-            <span>฿{baht(doc.grandTotal)}</span>
+            <span><MoneyText satang={doc.grandTotal} decimals /></span>
           </div>
           {doc.paidTotal > 0 && (
             <>
               <Row label="ชำระแล้ว" value={doc.paidTotal} />
               <div className="flex w-full max-w-xs justify-between text-[color:var(--color-muted)]">
                 <span>คงเหลือ</span>
-                <span>฿{baht(remain)}</span>
+                <span><MoneyText satang={remain} decimals /></span>
               </div>
             </>
           )}
@@ -171,38 +178,43 @@ export default async function DocDetailPage({
 
       {/* การชำระเงิน */}
       {doc.payments.length > 0 && (
-        <div className="flex flex-col gap-1 text-sm">
-          <h2 className="text-sm font-medium">ประวัติการรับชำระ</h2>
-          {doc.payments.map((p) => (
-            <div key={p.id} className="flex items-center justify-between rounded-lg border px-3 py-1.5 text-xs">
-              <span>
-                {fmtDate(p.paidAt)} · {p.channel}
-                {p.whtAmountSatang > 0 && ` · หัก ณ ที่จ่าย ฿${baht(p.whtAmountSatang)}`}
-              </span>
-              <span className="flex items-center gap-2">
-                ฿{baht(p.amount)}
-                {doc.status !== "VOIDED" && doc.status !== "CANCELLED" && (
-                  <ConfirmDialog
-                    action={voidPaymentAction}
-                    fields={{ systemId, docType: dt, id: doc.id, paymentId: p.id, reason: "ยกเลิกการรับชำระ" }}
-                    triggerLabel="ยกเลิก"
-                    triggerClassName="text-[color:var(--color-danger)] underline"
-                    title="ยกเลิกการรับชำระนี้?"
-                    detail="ยอดที่รับจะถูกยกเลิก และสถานะการชำระของเอกสารจะถูกคำนวณใหม่"
-                    confirmLabel="ยืนยันยกเลิก"
-                    danger
-                  />
-                )}
-              </span>
-            </div>
-          ))}
-        </div>
+        <Section title="ประวัติการรับชำระ">
+          <DataList
+            empty="ยังไม่มีการรับชำระ"
+            items={doc.payments.map((p) => ({
+              key: p.id,
+              primary: `${fmtDate(p.paidAt)} · ${PAY_CHANNEL_LABEL[p.channel] ?? p.channel}`,
+              secondary:
+                p.whtAmountSatang > 0 ? (
+                  <>
+                    หัก ณ ที่จ่าย <MoneyText satang={p.whtAmountSatang} decimals />
+                  </>
+                ) : undefined,
+              trailing: (
+                <>
+                  <MoneyText satang={p.amount} decimals />
+                  {doc.status !== "VOIDED" && doc.status !== "CANCELLED" && (
+                    <ConfirmDialog
+                      action={voidPaymentAction}
+                      fields={{ systemId, docType: dt, id: doc.id, paymentId: p.id, reason: "ยกเลิกการรับชำระ" }}
+                      triggerLabel="ยกเลิก"
+                      triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+                      title="ยกเลิกการรับชำระนี้?"
+                      detail="ยอดที่รับจะถูกยกเลิก และสถานะการชำระของเอกสารจะถูกคำนวณใหม่"
+                      confirmLabel="ยืนยันยกเลิก"
+                      danger
+                    />
+                  )}
+                </>
+              ),
+            }))}
+          />
+        </Section>
       )}
 
       {/* เอกสารที่เกี่ยวข้อง */}
       {(doc.relationsFrom.length > 0 || doc.relationsTo.length > 0) && (
-        <div className="flex flex-col gap-1 text-sm">
-          <h2 className="text-sm font-medium">เอกสารที่เกี่ยวข้อง</h2>
+        <Section title="เอกสารที่เกี่ยวข้อง">
           {doc.relationsTo.map((r) => (
             <Link key={r.id} href={`${base}/docs/${r.from.docType}/${r.from.id}`} className="text-xs underline">
               ← จาก {DOC_LABEL[r.from.docType]} {r.from.docNo ?? "(ร่าง)"}
@@ -213,7 +225,7 @@ export default async function DocDetailPage({
               → {DOC_LABEL[r.to.docType]} {r.to.docNo ?? "(ร่าง)"}
             </Link>
           ))}
-        </div>
+        </Section>
       )}
 
       {/* การกระทำ */}
@@ -269,44 +281,41 @@ export default async function DocDetailPage({
 
         {/* รับชำระ */}
         {canPay && (
-          <form action={recordPaymentAction} className="card flex flex-col gap-2">
+          <form action={recordPaymentAction} className="card flex flex-col gap-3">
             <Hidden systemId={systemId} docType={dt} id={doc.id} />
             <h2 className="text-sm font-medium">บันทึกรับชำระ</h2>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <input type="date" name="paidAt" className="rounded-lg border px-2 py-1.5 text-sm" />
-              <select name="channel" className="rounded-lg border px-2 py-1.5 text-sm" defaultValue="TRANSFER">
-                <option value="CASH">เงินสด</option>
-                <option value="TRANSFER">โอน</option>
-                <option value="PROMPTPAY">พร้อมเพย์</option>
-                <option value="CARD">บัตร</option>
-                <option value="E_WALLET">e-Wallet</option>
-                <option value="OTHER">อื่นๆ</option>
-              </select>
-              <input
-                name="amount"
-                type="number"
-                step="0.01"
-                defaultValue={(remain / 100).toFixed(2)}
-                placeholder="เงินเข้า (บาท)"
-                className="rounded-lg border px-2 py-1.5 text-sm"
-              />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:items-end">
+              <FormField label="วันที่รับชำระ">
+                <input type="date" name="paidAt" className="input" />
+              </FormField>
+              <FormField label="ช่องทาง">
+                <select name="channel" className="input" defaultValue="TRANSFER">
+                  <option value="CASH">เงินสด</option>
+                  <option value="TRANSFER">โอน</option>
+                  <option value="PROMPTPAY">พร้อมเพย์</option>
+                  <option value="CARD">บัตร</option>
+                  <option value="E_WALLET">อีวอลเล็ต</option>
+                  <option value="OTHER">อื่นๆ</option>
+                </select>
+              </FormField>
+              <FormField label="เงินเข้า (บาท)">
+                <input
+                  name="amount"
+                  type="number"
+                  step="0.01"
+                  defaultValue={(remain / 100).toFixed(2)}
+                  className="input"
+                />
+              </FormField>
               <SubmitButton>บันทึก</SubmitButton>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <input
-                name="whtAmount"
-                type="number"
-                step="0.01"
-                placeholder="หัก ณ ที่จ่าย (บาท)"
-                className="rounded-lg border px-2 py-1.5 text-sm"
-              />
-              <input
-                name="feeAmount"
-                type="number"
-                step="0.01"
-                placeholder="ค่าธรรมเนียม (บาท)"
-                className="rounded-lg border px-2 py-1.5 text-sm"
-              />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <FormField label="หัก ณ ที่จ่าย (บาท)">
+                <input name="whtAmount" type="number" step="0.01" className="input" />
+              </FormField>
+              <FormField label="ค่าธรรมเนียม (บาท)">
+                <input name="feeAmount" type="number" step="0.01" className="input" />
+              </FormField>
             </div>
             <p className="text-xs text-[color:var(--color-muted)]">
               ยอดที่ตัดหนี้ = เงินเข้า + หัก ณ ที่จ่าย
@@ -347,7 +356,7 @@ function Row({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex w-full max-w-xs justify-between text-[color:var(--color-muted)]">
       <span>{label}</span>
-      <span>฿{baht(value)}</span>
+      <span><MoneyText satang={value} decimals /></span>
     </div>
   );
 }

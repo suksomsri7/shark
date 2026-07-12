@@ -1,11 +1,13 @@
-import Link from "next/link";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { listContacts } from "@/lib/modules/account/service";
 import { createContactAction, archiveContactAction } from "@/lib/modules/account/actions";
+import PageHeader from "@/components/ui/PageHeader";
+import Section from "@/components/ui/Section";
+import DataList from "@/components/ui/DataList";
+import FormField from "@/components/ui/FormField";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 
-const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
 const KIND_LABEL: Record<string, string> = { CUSTOMER: "ลูกค้า", VENDOR: "ผู้ขาย", BOTH: "ทั้งคู่" };
 
 export default async function ContactsPage({
@@ -22,66 +24,84 @@ export default async function ContactsPage({
   const base = `/app/sys/${id}/account`;
 
   return (
-    <div className="flex max-w-2xl flex-col gap-5">
-      <div>
-        <Link href={base} className="text-sm text-[color:var(--color-muted)]">← ระบบบัญชี</Link>
-        <h1 className="mt-1 text-2xl font-semibold">ผู้ติดต่อ</h1>
-      </div>
+    <div className="flex max-w-2xl flex-col gap-6">
+      <PageHeader title="ผู้ติดต่อ" back={{ href: base, label: "ระบบบัญชี" }} />
 
-      {err === "name" && <p className="text-sm text-[color:var(--color-danger)]">กรุณากรอกชื่อผู้ติดต่อ</p>}
-
-      <div className="flex flex-col gap-2">
-        {contacts.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีผู้ติดต่อ</p>
-        ) : (
-          contacts.map((c) => (
-            <div key={c.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-              <div>
-                <div className="font-medium">{c.name}</div>
-                <div className="text-xs text-[color:var(--color-muted)]">
-                  {KIND_LABEL[c.kind]}
-                  {c.taxId && ` · ${c.taxId}`}
-                  {c.phone && ` · ${c.phone}`}
-                  {c.creditTermDays > 0 && ` · เครดิต ${c.creditTermDays} วัน`}
-                </div>
-              </div>
-              <ConfirmDialog
-                action={archiveContactAction}
-                fields={{ systemId, id: c.id }}
-                triggerLabel="ลบ"
-                triggerClassName="text-xs text-[color:var(--color-danger)] underline"
-                title="ลบผู้ติดต่อนี้?"
-                detail="ผู้ติดต่อจะถูกซ่อน (เอกสารเดิมที่อ้างถึงยังอยู่)"
-                confirmLabel="ยืนยันลบ"
-                danger
-              />
-            </div>
-          ))
-        )}
-      </div>
+      <DataList
+        items={contacts.map((c) => ({
+          key: c.id,
+          primary: c.name,
+          secondary: (
+            <>
+              {KIND_LABEL[c.kind]}
+              {c.taxId && ` · ${c.taxId}`}
+              {c.phone && ` · ${c.phone}`}
+              {c.creditTermDays > 0 && ` · เครดิต ${c.creditTermDays} วัน`}
+            </>
+          ),
+          trailing: (
+            <ConfirmDialog
+              action={archiveContactAction}
+              fields={{ systemId, id: c.id }}
+              triggerLabel="ลบ"
+              triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+              title="ลบผู้ติดต่อนี้?"
+              detail="ผู้ติดต่อจะถูกซ่อน (เอกสารเดิมที่อ้างถึงยังอยู่)"
+              confirmLabel="ยืนยันลบ"
+              danger
+            />
+          ),
+        }))}
+        empty="ยังไม่มีผู้ติดต่อ — เพิ่มลูกค้าหรือผู้ขายด้านล่างเพื่อเริ่ม"
+      />
 
       {/* เพิ่มผู้ติดต่อ */}
-      <form action={createContactAction} className="card grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <input type="hidden" name="systemId" value={systemId} />
-        <h2 className="text-sm font-medium sm:col-span-2">เพิ่มผู้ติดต่อ</h2>
-        <input name="name" required placeholder="ชื่อ / ชื่อจดทะเบียน" className={`${inputCls} sm:col-span-2`} />
-        <select name="kind" defaultValue="CUSTOMER" className={inputCls}>
-          <option value="CUSTOMER">ลูกค้า</option>
-          <option value="VENDOR">ผู้ขาย</option>
-          <option value="BOTH">ทั้งคู่</option>
-        </select>
-        <select name="legalType" defaultValue="COMPANY" className={inputCls}>
-          <option value="COMPANY">นิติบุคคล</option>
-          <option value="PERSON">บุคคลธรรมดา</option>
-        </select>
-        <input name="taxId" placeholder="เลขผู้เสียภาษี 13 หลัก" className={inputCls} />
-        <input name="branchName" placeholder="สาขา (เช่น สำนักงานใหญ่)" className={inputCls} />
-        <input name="phone" placeholder="เบอร์โทร" className={inputCls} />
-        <input name="email" type="email" placeholder="อีเมล" className={inputCls} />
-        <input name="address" placeholder="ที่อยู่" className={`${inputCls} sm:col-span-2`} />
-        <input name="creditTermDays" type="number" min={0} placeholder="เครดิตเทอม (วัน)" className={inputCls} />
-        <SubmitButton className="sm:col-span-2 sm:justify-self-start">+ เพิ่มผู้ติดต่อ</SubmitButton>
-      </form>
+      <Section title="เพิ่มผู้ติดต่อ" card>
+        <form action={createContactAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <input type="hidden" name="systemId" value={systemId} />
+          <div className="sm:col-span-2">
+            <FormField label="ชื่อ / ชื่อจดทะเบียน" required error={err === "name" ? "กรุณากรอกชื่อผู้ติดต่อ" : undefined}>
+              <input name="name" required className="input" />
+            </FormField>
+          </div>
+          <FormField label="ประเภท">
+            <select name="kind" defaultValue="CUSTOMER" className="input">
+              <option value="CUSTOMER">ลูกค้า</option>
+              <option value="VENDOR">ผู้ขาย</option>
+              <option value="BOTH">ทั้งคู่</option>
+            </select>
+          </FormField>
+          <FormField label="รูปแบบ">
+            <select name="legalType" defaultValue="COMPANY" className="input">
+              <option value="COMPANY">นิติบุคคล</option>
+              <option value="PERSON">บุคคลธรรมดา</option>
+            </select>
+          </FormField>
+          <FormField label="เลขผู้เสียภาษี 13 หลัก">
+            <input name="taxId" className="input" />
+          </FormField>
+          <FormField label="สาขา" hint="เช่น สำนักงานใหญ่">
+            <input name="branchName" className="input" />
+          </FormField>
+          <FormField label="เบอร์โทร">
+            <input name="phone" inputMode="tel" className="input" />
+          </FormField>
+          <FormField label="อีเมล">
+            <input name="email" type="email" className="input" />
+          </FormField>
+          <div className="sm:col-span-2">
+            <FormField label="ที่อยู่">
+              <input name="address" className="input" />
+            </FormField>
+          </div>
+          <FormField label="เครดิตเทอม (วัน)">
+            <input name="creditTermDays" type="number" min={0} className="input" />
+          </FormField>
+          <div className="sm:col-span-2">
+            <SubmitButton className="sm:justify-self-start">+ เพิ่มผู้ติดต่อ</SubmitButton>
+          </div>
+        </form>
+      </Section>
     </div>
   );
 }

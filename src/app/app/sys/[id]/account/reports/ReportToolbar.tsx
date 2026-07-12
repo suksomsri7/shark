@@ -34,10 +34,10 @@ export default function ReportToolbar({
 
   return (
     <div className="flex gap-2 print:hidden">
-      <button type="button" onClick={() => window.print()} className="btn text-sm">
+      <button type="button" onClick={() => window.print()} className="btn btn-ghost text-sm">
         พิมพ์
       </button>
-      <button type="button" onClick={download} className="btn text-sm">
+      <button type="button" onClick={download} className="btn btn-ghost text-sm">
         ดาวน์โหลด CSV
       </button>
     </div>

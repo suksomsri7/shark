@@ -1,9 +1,10 @@
-import { baht } from "@/lib/modules/account/service";
 import { trialBalance } from "@/lib/modules/account/reports";
+import { MoneyText } from "@/components/ui/MoneyText";
 import { loadReport, currentPeriodKey, ReportHeader, WarnBanner, TableWrap } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
 
-const m = (v: number) => (v === 0 ? "" : baht(v));
+// เลขศูนย์เว้นว่างไว้ให้ตารางอ่านง่าย
+const m = (v: number) => (v === 0 ? null : <MoneyText satang={v} decimals />);
 
 export default async function TrialBalancePage({
   params,
@@ -57,21 +58,21 @@ export default async function TrialBalancePage({
 
       {!tb.balanced && (
         <WarnBanner base={base}>
-          Σ เดบิต ({baht(tb.totals.closingDebit)}) ≠ Σ เครดิต ({baht(tb.totals.closingCredit)}).
+          รวมเดบิต (<MoneyText satang={tb.totals.closingDebit} decimals />) ≠ รวมเครดิต (<MoneyText satang={tb.totals.closingCredit} decimals />)
         </WarnBanner>
       )}
 
       <TableWrap>
-        <thead className="sticky top-0 bg-[color:var(--color-surface-2,#fff)]">
+        <thead className="sticky top-0 bg-[color:var(--color-surface-2)]">
           <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
             <th className="px-2 py-2">รหัส</th>
             <th className="px-2 py-2">ชื่อบัญชี</th>
-            <th className="px-2 py-2 text-right">ยกมา Dr</th>
-            <th className="px-2 py-2 text-right">ยกมา Cr</th>
+            <th className="px-2 py-2 text-right">ยกมาเดบิต</th>
+            <th className="px-2 py-2 text-right">ยกมาเครดิต</th>
             <th className="px-2 py-2 text-right">เดบิต</th>
             <th className="px-2 py-2 text-right">เครดิต</th>
-            <th className="px-2 py-2 text-right">คงเหลือ Dr</th>
-            <th className="px-2 py-2 text-right">คงเหลือ Cr</th>
+            <th className="px-2 py-2 text-right">คงเหลือเดบิต</th>
+            <th className="px-2 py-2 text-right">คงเหลือเครดิต</th>
           </tr>
         </thead>
         <tbody>

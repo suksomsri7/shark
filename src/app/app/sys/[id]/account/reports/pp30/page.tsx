@@ -1,5 +1,5 @@
-import { baht } from "@/lib/modules/account/service";
 import { pp30, type Pp30Side } from "@/lib/modules/account/reports";
+import { MoneyText } from "@/components/ui/MoneyText";
 import { loadReport, currentPeriodKey, ReportHeader, TableWrap } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
 
@@ -7,7 +7,7 @@ function sideBlock(title: string, s: Pp30Side) {
   return (
     <TableWrap>
       <thead>
-        <tr className="border-b bg-[color:var(--color-surface-2,#fafafa)] text-left">
+        <tr className="border-b bg-[color:var(--color-surface-2)] text-left">
           <th className="px-3 py-2" colSpan={4}>{title}</th>
         </tr>
         <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
@@ -19,24 +19,24 @@ function sideBlock(title: string, s: Pp30Side) {
       </thead>
       <tbody>
         {s.byRate.map((g) => (
-          <tr key={g.rateBp} className="border-b bg-[color:var(--color-surface-2,#fafafa)] text-xs font-medium">
+          <tr key={g.rateBp} className="border-b bg-[color:var(--color-surface-2)] text-xs font-medium">
             <td className="px-3 py-1" colSpan={2}>อัตรา {g.rateBp / 100}%</td>
-            <td className="px-3 py-1 text-right">{baht(g.base)}</td>
-            <td className="px-3 py-1 text-right">{baht(g.vat)}</td>
+            <td className="px-3 py-1 text-right"><MoneyText satang={g.base} decimals /></td>
+            <td className="px-3 py-1 text-right"><MoneyText satang={g.vat} decimals /></td>
           </tr>
         ))}
         {s.rows.map((r, i) => (
           <tr key={`${r.docNo}-${i}`} className="border-b last:border-0">
             <td className="px-3 py-1.5 font-mono text-xs">{r.docNo}</td>
             <td className="px-3 py-1.5">{r.contactName || "—"}<span className="text-xs text-[color:var(--color-muted)]"> {r.taxId}</span></td>
-            <td className="px-3 py-1.5 text-right">{baht(r.base)}</td>
-            <td className="px-3 py-1.5 text-right">{baht(r.vat)}</td>
+            <td className="px-3 py-1.5 text-right"><MoneyText satang={r.base} decimals /></td>
+            <td className="px-3 py-1.5 text-right"><MoneyText satang={r.vat} decimals /></td>
           </tr>
         ))}
         <tr className="border-t-2 font-semibold">
           <td className="px-3 py-2" colSpan={2}>รวม</td>
-          <td className="px-3 py-2 text-right">{baht(s.base)}</td>
-          <td className="px-3 py-2 text-right">{baht(s.total)}</td>
+          <td className="px-3 py-2 text-right"><MoneyText satang={s.base} decimals /></td>
+          <td className="px-3 py-2 text-right"><MoneyText satang={s.total} decimals /></td>
         </tr>
       </tbody>
     </TableWrap>
@@ -75,19 +75,19 @@ export default async function Pp30Page({
       <form className="flex flex-wrap gap-2 print:hidden">
         <input name="period" defaultValue={period} placeholder="YYYY-MM" className="rounded-lg border px-2 py-1.5 text-sm" />
         <input name="carry" defaultValue={sp.carry ?? ""} placeholder="เครดิตยกมา (บาท)" className="rounded-lg border px-2 py-1.5 text-sm" />
-        <button className="btn text-sm">คำนวณ</button>
+        <button className="btn btn-primary text-sm">คำนวณ</button>
       </form>
 
       <div className="grid grid-cols-1 gap-3 rounded-lg border p-3 sm:grid-cols-3">
-        <div><div className="text-xs text-[color:var(--color-muted)]">ภาษีขาย</div><div className="text-lg font-semibold">{baht(pp.output.total)}</div></div>
-        <div><div className="text-xs text-[color:var(--color-muted)]">ภาษีซื้อ</div><div className="text-lg font-semibold">{baht(pp.input.total)}</div></div>
+        <div><div className="text-xs text-[color:var(--color-muted)]">ภาษีขาย</div><div className="text-lg font-semibold"><MoneyText satang={pp.output.total} decimals /></div></div>
+        <div><div className="text-xs text-[color:var(--color-muted)]">ภาษีซื้อ</div><div className="text-lg font-semibold"><MoneyText satang={pp.input.total} decimals /></div></div>
         <div>
           <div className="text-xs text-[color:var(--color-muted)]">{pp.netPayable >= 0 ? "ต้องชำระ" : "เครดิตยกไป"}</div>
-          <div className="text-lg font-bold">{baht(Math.abs(pp.netPayable))}</div>
+          <div className="text-lg font-bold"><MoneyText satang={Math.abs(pp.netPayable)} decimals /></div>
         </div>
       </div>
       {pp.carryForward > 0 && (
-        <div className="text-xs text-[color:var(--color-muted)]">หักเครดิตภาษียกมา {baht(pp.carryForward)} · เครดิตยกไปเดือนถัดไป {baht(pp.creditCarry)}</div>
+        <div className="text-xs text-[color:var(--color-muted)]">หักเครดิตภาษียกมา <MoneyText satang={pp.carryForward} decimals /> · เครดิตยกไปเดือนถัดไป <MoneyText satang={pp.creditCarry} decimals /></div>
       )}
 
       <div className="flex flex-col gap-4">
