@@ -45,7 +45,10 @@ posting engine `src/lib/modules/account/gl.ts` + ผังบัญชี seed `
 ## 🟡 QC6 (2026-07-12) — Gate 1+2 ✅ + UI Pass 0 (token) ✅ · UI Pass 1-4 ค้าง
 - ✅ **Gate 1 + Gate 2 บัญชี ปิดครบ — `qc-account-cpa.mts` 107/107 findings 0** (จาก 90/108). แก้ F-01..F-09 ใน account 5 ไฟล์ (gl/service/expense/reports/coa): VAT ซ้ำ/มัดจำ/ภงด53/ภพ30/ขายสด Dr1000/รายได้สินค้า4000/CN cap/overpay/ลูกหนี้=GL. ไม่ต้อง db push. **harness = regression suite ถาวร รันทุกครั้งที่แตะ account.** deploy prod แล้ว
 - ✅ **UI Pass 0 (token ผี) ปิด** — แก้ fg/bg/success/primary/hover→token จริง + btn-secondary→btn-ghost ทั้งแอป (grep=0) + เพิ่ม `.btn-sm`/`.input` ใน globals.css. ปุ่มล่องหนบน prod กลับมาเห็น
-- 🔴 **ค้าง (UI):** Pass 0 ที่เหลือ = **ConfirmDialog ~30 destructive + SubmitButton กัน double-submit** · Pass 1 shared components 11 ตัว (`src/components/ui/`) · Pass 2 account 26 หน้า refactor + ACCOUNT_NAV 8 หมวด + StatusChip · Pass 3 unit modules (≥44px, responsive) · Pass 4 lib modules + คลิกทดสอบมือถือ. ดู `docs/UI_STANDARD.md` + `QC6-ui-audit.md` (140 findings)
+- ✅ **UI Pass 0 ครบ** — ghost tokens + ConfirmDialog ~40 destructive + SubmitButton ~30 ฟอร์มเงิน (2 agent account/unit-lib) · cpa 107/107 · deploy prod
+- ✅ **UI Pass 1 ครบ** — shared components 11 ตัว `src/components/ui/` (PageHeader/Section/DataList/DataTable/StatusChip/FormField/EmptyState/MoneyText/SubNav/TabPills + ConfirmDialog/SubmitButton) + `src/lib/ui/{money,status-labels}.ts`
+- 🔵 **Pass 2 กำลังทำ (agent)** — account/layout.tsx SubNav 8 หมวด (ACCOUNT_NAV) + **status tabs ครบทุกเมนูตาม §3.0.3** + refactor 26 หน้าใช้ component กลาง + StatusChip ไทย. ต้องคง cpa 107/107
+- 🔴 **ค้างตามแผน user:** #3 account complete-menu (เช็ครับ/จ่าย, คลังเอกสาร UI, ตั้งค่าองค์กร โลโก้/ตราประทับ, ลิงก์สาธารณะขอใบกำกับ, print ม.86/4, CSV ภงด) · #4 Pass 3 (unit modules ≥44px) + Pass 4 (lib modules) → แล้วเริ่ม **Chat (LINE)**. ทุกครั้งที่แตะ account: รัน `qc-account-cpa.mts` 107/107 ก่อน deploy
 
 ## งานถัดไป (เจ้าของจะเลือก)
 - ⬆️ **QC6 ก่อน** (Gate 1 + UI Pass 0 ขนานกันได้)
