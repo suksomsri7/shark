@@ -2,6 +2,8 @@
 
 > อัปเดต: 2026-07-11 คืน (Fable 5) · repo: `/root/projects/shark-in-th` branch `main` (18 commits, ยังไม่ push GitHub — ไม่มี credentials บนเครื่อง; Vercel deploy ตรงจาก local)
 
+> 🆕 **รับช่วงงานต่อ / Claude account ใหม่ → อ่าน `docs/progress/_RESUME.md` ก่อน** (วิธี resume + ที่อยู่คีย์ + คำสั่ง deploy + สถานะค้าง) · ทุกอย่าง commit แล้ว working tree ว่าง (ล่าสุด `b44f17e` = WIP checkpoint บัญชี Session A ห้าม deploy)
+
 ## ลำดับอ่านก่อนเริ่มงาน (สำคัญ — อ่านตามลำดับ)
 1. **`docs/BLUEPRINT_SYSTEMS.md`** — mental model สุดท้าย "ทุกอย่างคือระบบ **18 ประเภท** เชื่อมถึงกันได้" (override ทุกเอกสารที่ขัด)
 2. `docs/modules/_CONVENTIONS.md` — contracts v2 + กติกา (เงินสตางค์, immutable docs, naming) + **`docs/BLUEPRINT_CONNECTIONS.md`** — matrix เชื่อม 18 ระบบ + contracts C-1..C-5 (Inventory/HR/AI/Meeting/KB) — **ระบบใหม่ทุกตัวต้อง implement ตาม contract นี้**
