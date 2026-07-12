@@ -41,8 +41,16 @@ posting engine `src/lib/modules/account/gl.ts` + ผังบัญชี seed `
 - **UPDATE (main ทำต่อเองหลัง limit):** ปิดช่องว่างครบแล้ว — Expense 8 routes (purchase/expense/po/asset-buy) + Reports ครบ 5 (เพิ่ม balance-sheet/cash-flow/pp30) + GL accounts (ผังบัญชี CRUD+mapping) + periods (ปิดงวด). nav wire ครบ. **verify Gate B: DEPOSIT_RECEIPT(Cr2110+AWAITING_DEDUCT)+CREDIT_NOTE(Cr1100) balance ✓** → docType เปิดครบปลอดภัย. deploy prod แล้ว
 - **เหลือ (minor, ไม่ block):** ใบกำกับภาษี ม.86/4 print fields ให้ครบเป๊ะ · Finance CSV export ภงด · verify ก่อน launch จริง: **checksum เลขภาษีนิติบุคคล DBD** (QC5 verify-list) + ทดสอบ UI คลิกจริงทุกหน้า
 
+## 🔴 QC6 (2026-07-12 โดย Fable 5) — ตรวจระบบจริงแบบ CPA + UI audit ทั้งแอป → งานบังคับใหม่
+**อ่านแล้วทำตาม `docs/qc/QC6-RESOLUTIONS.md`:**
+- **Gate 1 บัญชี (แบบภาษียื่นผิด — ก่อนทุกอย่าง):** F-01 ใบกำกับจากใบเสร็จ VAT ซ้ำ (gl.ts postTaxInvoice) · F-02 ใบกำกับใบแจ้งหนี้หักมัดจำย้าย VAT เต็มใบ (service.ts convertDocument) · F-03 ภงด.53 ออก ฿0 (expense.ts issueWhtCert ใช้มาตรฐาน wht.ts) · F-08 ฐาน ภ.พ.30 นับ void/CN/มัดจำผิด (reports.ts) — **เกณฑ์ผ่าน: `scripts/qc-account-cpa.mts` ต้อง 108/108** (ตอนนี้ 90/108) แล้วค่อย deploy
+- Gate 2 บัญชี MAJOR: CN cap หักยอดชำระ, กัน overpay หลัง CN, ลูกหนี้หน้าจอ=GL, เลือกบัญชีเงินตอนขายสด, รายได้สินค้า 4020
+- **UI 5 pass ตาม `docs/UI_STANDARD.md`** (140 findings ใน QC6-ui-audit.md): Pass 0 เร่ง = token ผี (ปุ่มล่องหนบน prod!) + ConfirmDialog ~30 จุด destructive + กัน double-submit ฟอร์มเงิน → Pass 1 shared components 11 ตัว → Pass 2 account 26 หน้า+เมนู 8 หมวด → Pass 3 unit modules (ปุ่ม ≥44px) → Pass 4 lib modules
+- harness `qc-account-cpa.mts` = **regression suite ถาวรของโมดูลบัญชี** — รันทุกครั้งที่แตะ account
+
 ## งานถัดไป (เจ้าของจะเลือก)
-- ✅ QC5 Gate A ปิดแล้ว (ด้านบน) — Account ออกเอกสารถูกกฎหมายภาษี + double-entry ครบ
+- ⬆️ **QC6 ก่อน** (Gate 1 + UI Pass 0 ขนานกันได้)
+- ✅ QC5 Gate A ปิดแล้ว (ด้านบน) — Account ออกเอกสารถูกกฎหมายภาษี + double-entry ครบ (แต่ QC6 เจอ 4 จุดใหม่ระดับแบบยื่น — ดูด้านบน)
 - **ขยาย Account ให้ครบเมนู (P2/P3)** ตามที่ user ขอ — schema+posting engine พร้อม: P2 รายจ่าย/WHT/การเงิน (ทำ Gate B ก่อน), P3 GL/งบการเงิน/สินทรัพย์ (Gate C). แบ่ง subagent ขนานได้ (engine gl.ts เป็น interface กลาง)
 - **UI/manual QC 7 ระบบใหม่ + Account** — คลิกทุกหน้าใน browser (service-layer + double-entry ผ่านแล้ว)
 - **Chat (LINE + webchat)** ตาม `10-chat.md` — ChannelAdapter + inbox (ระบบเดียวที่ยังเป็น feature ที่เหลือ) · **Restaurant** ตาม `02-restaurant.md` (business ที่เหลือ)
