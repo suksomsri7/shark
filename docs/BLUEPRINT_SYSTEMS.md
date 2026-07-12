@@ -31,6 +31,8 @@
 | 14 | POS ร้านค้า | feature | AppSystem | ✅ LIVE (ขาย/บิล; หน้าร้าน+สต็อก 🔜) |
 | 15 | **AI พนักงานส่วนตัว** — สั่งงานทางแชท ทำงานแทนทุกระบบ (Claude API + tools, ไม่เทรนเอง) | feature | AppSystem | 🔜 สเปค → `modules/16-ai-employee.md` |
 | 16 | **Knowledge Base** — คลังความรู้ร้าน ให้ AI/พนักงานตอบคำถาม (L1 in-context → L2 search → L3 vector) | feature | AppSystem | 🔜 สเปค → `modules/17-knowledge-base.md` |
+| 17 | **พนักงาน (HR)** — เวลาเข้างาน ขาด/ลา/มาสาย กะ ใบลา-อนุมัติ (payroll P2 เชื่อมบัญชี) | feature | AppSystem | 🔜 สเปค → `modules/18-hr.md` |
+| 18 | **คลังสินค้า/สต็อก (Inventory)** — สต็อกกลางชุดเดียว ทุกระบบตัดจากที่เดียว + แจ้งใกล้หมด | feature | AppSystem | 🔜 สเปค → `modules/19-inventory.md` |
 
 - kind **business** = มีหน้างาน/ลูกค้า/storefront (slug) — ตาราง `BusinessUnit`
 - kind **feature** = ระบบข้อมูล/บริการ — ตาราง `AppSystem`
