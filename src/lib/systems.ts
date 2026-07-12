@@ -26,7 +26,7 @@ export const SYSTEM_DEFS: SystemDef[] = [
   { code: "REWARD", no: 7, kind: "feature", label: "รางวัล (Reward)", hint: "แลกของด้วยแต้ม", icon: "🎁", status: "available" },
   { code: "COUPON", no: 8, kind: "feature", label: "คูปอง & Voucher", hint: "ส่วนลด โค้ด", icon: "🎟", status: "available" },
   { code: "POINT", no: 9, kind: "feature", label: "แต้ม (Point)", hint: "สะสมแต้ม", icon: "⭐", status: "available" },
-  { code: "CHAT", no: 10, kind: "feature", label: "รวม Chat", hint: "แชทลูกค้า", icon: "💬", status: "coming_soon" },
+  { code: "CHAT", no: 10, kind: "feature", label: "รวม Chat", hint: "แชทลูกค้า", icon: "💬", status: "available" },
   { code: "MEETING", no: 11, kind: "feature", label: "Meeting", hint: "แชทภายในองค์กร", icon: "🗓", status: "available" },
   { code: "ACCOUNT", no: 12, kind: "feature", label: "บัญชี (Account)", hint: "รายรับรายจ่าย", icon: "📒", status: "available" },
   { code: "KANBAN", no: 13, kind: "feature", label: "Kanban", hint: "บอร์ดงาน", icon: "📋", status: "available" },

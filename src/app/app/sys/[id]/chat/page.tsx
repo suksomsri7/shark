@@ -1,0 +1,29 @@
+import { notFound } from "next/navigation";
+import { requireTenant } from "@/lib/core/context";
+import { prisma } from "@/lib/core/db";
+import { ChatContent } from "@/lib/modules/chat/ui";
+import { PageHeader } from "@/components/ui/PageHeader";
+
+// หน้าเต็มจอของ Chat — เลือกบทสนทนาด้วย ?c=
+export default async function ChatPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ c?: string }>;
+}) {
+  const { id } = await params;
+  const { c } = await searchParams;
+  const auth = await requireTenant();
+  const tenantId = auth.active.tenantId;
+
+  const sys = await prisma.appSystem.findFirst({ where: { id, tenantId } });
+  if (!sys || sys.type !== "CHAT") notFound();
+
+  return (
+    <div className="flex max-w-4xl flex-col gap-4">
+      <PageHeader title={sys.name} back={{ href: `/app/sys/${id}`, label: sys.name }} />
+      <ChatContent systemId={id} tenantId={tenantId} conversationId={c} />
+    </div>
+  );
+}

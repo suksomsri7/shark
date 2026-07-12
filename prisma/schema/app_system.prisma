@@ -12,6 +12,7 @@ enum SystemType {
   MEETING
   KANBAN
   ACCOUNT
+  CHAT
 }
 
 model AppSystem {

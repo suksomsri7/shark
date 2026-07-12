@@ -7,6 +7,7 @@ import { CouponContent } from "@/lib/modules/coupon/ui";
 import { MeetingContent } from "@/lib/modules/meeting/ui";
 import { KanbanContent } from "@/lib/modules/kanban/ui";
 import { AccountContent } from "@/lib/modules/account/ui";
+import { ChatContent } from "@/lib/modules/chat/ui";
 import {
   linkUnitAction,
   unlinkUnitAction,
@@ -103,6 +104,7 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
       {sys.type === "MEETING" && <MeetingContent systemId={id} tenantId={tenantId} />}
       {sys.type === "KANBAN" && <KanbanContent systemId={id} tenantId={tenantId} />}
       {sys.type === "ACCOUNT" && <AccountContent systemId={id} tenantId={tenantId} />}
+      {sys.type === "CHAT" && <ChatContent systemId={id} tenantId={tenantId} />}
     </div>
   );
 }

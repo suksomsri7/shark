@@ -87,6 +87,16 @@ const MODULE_SCOPES: Record<string, Scope> = {
   TicketType: "unit",
   TicketOrder: "unit",
   TicketAdmission: "unit",
+  // Chat (feature, tenant-scoped) — ChatWebhookLog = global (ไม่มี tenantId) ห้าม register
+  ChatChannelConnection: "tenant",
+  ChatContact: "tenant",
+  ChatConversation: "tenant",
+  ChatMessage: "tenant",
+  ChatAttachment: "tenant",
+  ChatReadState: "tenant",
+  ChatConversationEvent: "tenant",
+  ChatQuickReply: "tenant",
+  ChatSetting: "tenant",
   // Restaurant (business, unit-scoped)
   RestaurantSetting: "unit",
   MenuCategory: "unit",
