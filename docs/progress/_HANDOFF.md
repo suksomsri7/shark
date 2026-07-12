@@ -3,8 +3,8 @@
 > อัปเดต: 2026-07-11 คืน (Fable 5) · repo: `/root/projects/shark-in-th` branch `main` (18 commits, ยังไม่ push GitHub — ไม่มี credentials บนเครื่อง; Vercel deploy ตรงจาก local)
 
 ## ลำดับอ่านก่อนเริ่มงาน (สำคัญ — อ่านตามลำดับ)
-1. **`docs/BLUEPRINT_SYSTEMS.md`** — mental model สุดท้าย "ทุกอย่างคือระบบ 14 ประเภท เชื่อมถึงกันได้" (override ทุกเอกสารที่ขัด)
-2. `docs/modules/_CONVENTIONS.md` — contracts v2 + กติกา (เงินสตางค์, immutable docs, naming)
+1. **`docs/BLUEPRINT_SYSTEMS.md`** — mental model สุดท้าย "ทุกอย่างคือระบบ **18 ประเภท** เชื่อมถึงกันได้" (override ทุกเอกสารที่ขัด)
+2. `docs/modules/_CONVENTIONS.md` — contracts v2 + กติกา (เงินสตางค์, immutable docs, naming) + **`docs/BLUEPRINT_CONNECTIONS.md`** — matrix เชื่อม 18 ระบบ + contracts C-1..C-5 (Inventory/HR/AI/Meeting/KB) — **ระบบใหม่ทุกตัวต้อง implement ตาม contract นี้**
 3. สเปคระบบที่จะสร้าง: `docs/modules/NN-<ระบบ>.md` (10-chat/11-meeting/12-account = เขียนใหม่ล่าสุด ละเอียดสุด)
 4. `docs/progress/_STAGE_A.md` — gotchas Next16/Prisma7 (proxy.ts, driver adapter, db push)
 5. memory: `project_shark_in_th` (สถานะ+การตัดสินใจทั้งหมด)
@@ -49,6 +49,12 @@ posting engine `src/lib/modules/account/gl.ts` + ผังบัญชี seed `
 - ✅ **UI Pass 1 ครบ** — shared components 11 ตัว `src/components/ui/` (PageHeader/Section/DataList/DataTable/StatusChip/FormField/EmptyState/MoneyText/SubNav/TabPills + ConfirmDialog/SubmitButton) + `src/lib/ui/{money,status-labels}.ts`
 - 🔵 **Pass 2 กำลังทำ (agent)** — account/layout.tsx SubNav 8 หมวด (ACCOUNT_NAV) + **status tabs ครบทุกเมนูตาม §3.0.3** + refactor 26 หน้าใช้ component กลาง + StatusChip ไทย. ต้องคง cpa 107/107
 - 🔴 **ค้างตามแผน user:** #3 account complete-menu (เช็ครับ/จ่าย, คลังเอกสาร UI, ตั้งค่าองค์กร โลโก้/ตราประทับ, ลิงก์สาธารณะขอใบกำกับ, print ม.86/4, CSV ภงด) · #4 Pass 3 (unit modules ≥44px) + Pass 4 (lib modules) → แล้วเริ่ม **Chat (LINE)**. ทุกครั้งที่แตะ account: รัน `qc-account-cpa.mts` 107/107 ก่อน deploy
+
+## 🆕 พิมพ์เขียวขยายเป็น 18 ระบบ (2026-07-12 โดย Fable — user ยืนยัน)
+- `src/lib/systems.ts` มี 18 entry แล้ว: +AI(15)/KB(16)/**HR(17)**/**INVENTORY(18)** เป็น coming_soon (deploy 2 ที่แล้ว) — เปิดระบบ = เปลี่ยน status + เพิ่ม SystemType enum
+- สเปคใหม่: `modules/18-hr.md` (ขาด/ลา/มาสาย/กะ/kiosk PIN + **ลาแล้ว Booking slot ปิดเอง** + payroll P2) · `modules/19-inventory.md` (สต็อกกลาง movement ledger)
+- **contract บังคับ**: Inventory = จุดตัดสต็อกเดียว (C-1: consume/receive/reverse/adjust/onHand — แบบเดียวกับ Point, ยอมติดลบ default ไม่ block ขาย) · HR availability (C-2) · ดู `BLUEPRINT_CONNECTIONS.md`
+- ลำดับที่ user เห็นชอบ: **UI Pass 2-4 → account complete-menu → Chat → แล้วค่อย HR/Inventory**
 
 ## งานถัดไป (เจ้าของจะเลือก)
 - ⬆️ **QC6 ก่อน** (Gate 1 + UI Pass 0 ขนานกันได้)
