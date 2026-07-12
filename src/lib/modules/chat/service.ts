@@ -171,7 +171,17 @@ export async function setMemberSystem(
 
 // ───────────────────────── Contact + conversation (core) ─────────────────────────
 
+// M9: ปิด flow เมื่อ webchat สร้าง contact ใหม่เกินโควตา/ชม. ต่อ connection (กัน DoS ท่วม inbox)
+export class ContactCapError extends Error {
+  constructor() {
+    super("รับผู้ติดต่อใหม่เกินขีดจำกัดชั่วคราว กรุณาลองใหม่ภายหลัง");
+    this.name = "ContactCapError";
+  }
+}
+const NEW_CONTACT_CAP_PER_HOUR = 60;
+
 // หา/สร้าง contact ต่อช่องทาง (find-or-create — channelConnectionId ผูกเสมอ)
+// capNewPerHour: จำกัดจำนวน contact ใหม่/ชม.ต่อ connection (webchat public) — provider (LINE) ไม่ต้อง
 async function findOrCreateContact(args: {
   tenantId: string;
   systemId: string;
@@ -179,6 +189,7 @@ async function findOrCreateContact(args: {
   connectionId: string;
   externalUserId: string;
   profile?: { displayName?: string; avatarUrl?: string };
+  capNewPerHour?: number;
 }) {
   const existing = await prisma.chatContact.findFirst({
     where: {
@@ -204,20 +215,47 @@ async function findOrCreateContact(args: {
       data: { lastSeenAt: new Date() },
     });
   }
-  return prisma.chatContact.create({
-    data: {
-      tenantId: args.tenantId,
-      systemId: args.systemId,
-      channel: args.channel,
-      channelConnectionId: args.connectionId,
-      externalUserId: args.externalUserId,
-      displayName: args.profile?.displayName ?? null,
-      avatarUrl: args.profile?.avatarUrl ?? null,
-    },
-  });
+
+  if (args.capNewPerHour != null) {
+    const since = new Date(Date.now() - 60 * 60 * 1000);
+    const recent = await prisma.chatContact.count({
+      where: { systemId: args.systemId, channelConnectionId: args.connectionId, createdAt: { gte: since } },
+    });
+    if (recent >= args.capNewPerHour) throw new ContactCapError();
+  }
+
+  try {
+    return await prisma.chatContact.create({
+      data: {
+        tenantId: args.tenantId,
+        systemId: args.systemId,
+        channel: args.channel,
+        channelConnectionId: args.connectionId,
+        externalUserId: args.externalUserId,
+        displayName: args.profile?.displayName ?? null,
+        avatarUrl: args.profile?.avatarUrl ?? null,
+      },
+    });
+  } catch (e) {
+    // race: อีก request สร้าง contact เดียวกันชนะก่อน (unique [systemId,channel,connectionId,externalUserId])
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      const won = await prisma.chatContact.findFirst({
+        where: {
+          systemId: args.systemId,
+          channel: args.channel,
+          channelConnectionId: args.connectionId,
+          externalUserId: args.externalUserId,
+        },
+      });
+      if (won) return won;
+    }
+    throw e;
+  }
 }
 
 // หา conversation active ของ contact — ไม่มี → สร้าง / RESOLVED ≤24 ชม. → reopen
+// M12: หุ้ม $transaction + pg_advisory_xact_lock(contactId) — serialize ต่อ contact กัน race
+// (2 ข้อความพร้อมกันของ contact เดียว สร้าง conversation ซ้ำ / ข้อความหาย). lock ปลดเมื่อ tx จบ
 async function getOrOpenConversation(args: {
   tenantId: string;
   systemId: string;
@@ -226,43 +264,48 @@ async function getOrOpenConversation(args: {
   contactId: string;
   unitId?: string | null;
 }): Promise<ChatConversation> {
-  const active = await prisma.chatConversation.findFirst({
-    where: { systemId: args.systemId, contactId: args.contactId, status: { not: "RESOLVED" } },
-    orderBy: { lastMessageAt: "desc" },
-  });
-  if (active) return active;
+  return prisma.$transaction(async (tx) => {
+    // lock ต่อ contact — คำขอที่ contact เดียวกันรอคิว, คนละ contact ไม่บล็อกกัน
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${args.contactId}, 0))`;
 
-  const lastResolved = await prisma.chatConversation.findFirst({
-    where: { systemId: args.systemId, contactId: args.contactId, status: "RESOLVED" },
-    orderBy: { resolvedAt: "desc" },
-  });
-  if (lastResolved?.resolvedAt && Date.now() - lastResolved.resolvedAt.getTime() <= REOPEN_WINDOW_MS) {
-    const reopened = await prisma.chatConversation.update({
-      where: { id: lastResolved.id },
-      data: { status: "OPEN", resolvedAt: null, reopenedCount: { increment: 1 } },
+    const active = await tx.chatConversation.findFirst({
+      where: { systemId: args.systemId, contactId: args.contactId, status: { not: "RESOLVED" } },
+      orderBy: { lastMessageAt: "desc" },
     });
-    await logEvent(reopened.id, {
-      tenantId: args.tenantId,
-      systemId: args.systemId,
-      type: "REOPENED",
-    });
-    return reopened;
-  }
+    if (active) return active;
 
-  const created = await prisma.chatConversation.create({
-    data: {
-      tenantId: args.tenantId,
-      systemId: args.systemId,
-      channel: args.channel,
-      channelConnectionId: args.connectionId,
-      contactId: args.contactId,
-      unitId: args.unitId ?? null,
-      status: "OPEN",
-      firstCustomerMessageAt: new Date(),
-    },
+    const lastResolved = await tx.chatConversation.findFirst({
+      where: { systemId: args.systemId, contactId: args.contactId, status: "RESOLVED" },
+      orderBy: { resolvedAt: "desc" },
+    });
+    if (lastResolved?.resolvedAt && Date.now() - lastResolved.resolvedAt.getTime() <= REOPEN_WINDOW_MS) {
+      const reopened = await tx.chatConversation.update({
+        where: { id: lastResolved.id },
+        data: { status: "OPEN", resolvedAt: null, reopenedCount: { increment: 1 } },
+      });
+      await tx.chatConversationEvent.create({
+        data: { tenantId: args.tenantId, systemId: args.systemId, conversationId: reopened.id, type: "REOPENED" },
+      });
+      return reopened;
+    }
+
+    const created = await tx.chatConversation.create({
+      data: {
+        tenantId: args.tenantId,
+        systemId: args.systemId,
+        channel: args.channel,
+        channelConnectionId: args.connectionId,
+        contactId: args.contactId,
+        unitId: args.unitId ?? null,
+        status: "OPEN",
+        firstCustomerMessageAt: new Date(),
+      },
+    });
+    await tx.chatConversationEvent.create({
+      data: { tenantId: args.tenantId, systemId: args.systemId, conversationId: created.id, type: "CREATED" },
+    });
+    return created;
   });
-  await logEvent(created.id, { tenantId: args.tenantId, systemId: args.systemId, type: "CREATED" });
-  return created;
 }
 
 async function logEvent(
@@ -387,14 +430,21 @@ export async function receiveWebchatInbound(args: {
   if (!body) return { ok: false, reason: "ข้อความว่าง" };
   if (body.length > 4000) return { ok: false, reason: "ข้อความยาวเกินไป" };
 
-  const contact = await findOrCreateContact({
-    tenantId,
-    systemId,
-    channel: "WEBCHAT",
-    connectionId: connection.id,
-    externalUserId: args.guestToken,
-    profile: args.displayName ? { displayName: args.displayName } : undefined,
-  });
+  let contact;
+  try {
+    contact = await findOrCreateContact({
+      tenantId,
+      systemId,
+      channel: "WEBCHAT",
+      connectionId: connection.id,
+      externalUserId: args.guestToken,
+      profile: args.displayName ? { displayName: args.displayName } : undefined,
+      capNewPerHour: NEW_CONTACT_CAP_PER_HOUR, // M9: กัน DoS สร้าง contact ท่วม
+    });
+  } catch (e) {
+    if (e instanceof ContactCapError) return { ok: false, reason: e.message };
+    throw e;
+  }
   if (contact.blockedAt) return { ok: true };
 
   const conv = await getOrOpenConversation({
@@ -471,6 +521,7 @@ export async function sendReply(args: {
   senderUserId: string;
   body: string;
   isInternal?: boolean;
+  unitAccess?: string[]; // M11
 }): Promise<{ ok: boolean; reason?: string; messageId?: string }> {
   const body = args.body.trim();
   if (!body) return { ok: false, reason: "ข้อความว่าง" };
@@ -481,6 +532,7 @@ export async function sendReply(args: {
     include: { contact: true },
   });
   if (!conv) return { ok: false, reason: "ไม่พบบทสนทนา" };
+  if (!canAccessConvUnit(args.unitAccess, conv.unitId)) return { ok: false, reason: "ไม่มีสิทธิ์เข้าถึงบทสนทนานี้" }; // M11
 
   const isInternal = !!args.isInternal;
   // insert OUT ก่อน (ทีมเห็นทันที) — PENDING สำหรับช่องทางภายนอก, SENT สำหรับ internal/webchat
@@ -561,6 +613,18 @@ export async function sendReply(args: {
 
 // ───────────────────────── Inbox reads ─────────────────────────
 
+// M11: RBAC ต่อ unit — unitAccess = ["*"] เห็นทุก unit; ไม่งั้นเห็นเฉพาะ unit ที่เข้าถึง + เธรดไม่ผูก unit (null = ระดับระบบ)
+export function canAccessConvUnit(unitAccess: string[] | undefined, unitId: string | null): boolean {
+  if (!unitAccess || unitAccess.includes("*")) return true;
+  if (unitId === null) return true; // เธรดไม่ผูก unit — ทีมของระบบเห็นได้
+  return unitAccess.includes(unitId);
+}
+
+function unitAccessWhere(unitAccess?: string[]): Prisma.ChatConversationWhereInput {
+  if (!unitAccess || unitAccess.includes("*")) return {};
+  return { OR: [{ unitId: null }, { unitId: { in: unitAccess } }] };
+}
+
 export async function listConversations(args: {
   tenantId: string;
   systemId: string;
@@ -570,10 +634,12 @@ export async function listConversations(args: {
   callerUserId?: string;
   q?: string;
   limit?: number;
+  unitAccess?: string[]; // M11 — จาก auth.active.unitAccess
 }) {
   const where: Prisma.ChatConversationWhereInput = {
     tenantId: args.tenantId,
     systemId: args.systemId,
+    ...unitAccessWhere(args.unitAccess),
   };
   if (args.status) where.status = args.status;
   if (args.channel) where.channel = args.channel;
@@ -603,12 +669,14 @@ export async function getThread(args: {
   systemId: string;
   conversationId: string;
   limit?: number;
+  unitAccess?: string[]; // M11
 }) {
   const conversation = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
     include: { contact: true },
   });
   if (!conversation) return null;
+  if (!canAccessConvUnit(args.unitAccess, conversation.unitId)) return null; // M11: IDOR ต่าง unit
   const messages = await prisma.chatMessage.findMany({
     where: { systemId: args.systemId, conversationId: conversation.id },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -633,11 +701,13 @@ export async function setStatus(args: {
   conversationId: string;
   status: "OPEN" | "PENDING" | "RESOLVED";
   actorUserId: string;
+  unitAccess?: string[]; // M11
 }): Promise<{ ok: boolean; reason?: string }> {
   const conv = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
   });
   if (!conv) return { ok: false, reason: "ไม่พบบทสนทนา" };
+  if (!canAccessConvUnit(args.unitAccess, conv.unitId)) return { ok: false, reason: "ไม่มีสิทธิ์เข้าถึงบทสนทนานี้" }; // M11
   if (conv.status === args.status) return { ok: true };
   await prisma.chatConversation.update({
     where: { id: conv.id },
@@ -662,11 +732,13 @@ export async function assign(args: {
   conversationId: string;
   assigneeUserId: string | null;
   actorUserId: string;
+  unitAccess?: string[]; // M11
 }): Promise<{ ok: boolean; reason?: string }> {
   const conv = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
   });
   if (!conv) return { ok: false, reason: "ไม่พบบทสนทนา" };
+  if (!canAccessConvUnit(args.unitAccess, conv.unitId)) return { ok: false, reason: "ไม่มีสิทธิ์เข้าถึงบทสนทนานี้" }; // M11
   await prisma.chatConversation.update({
     where: { id: conv.id },
     data: { assigneeUserId: args.assigneeUserId },
@@ -687,11 +759,13 @@ export async function markRead(args: {
   conversationId: string;
   userId: string;
   lastReadMessageId?: string;
+  unitAccess?: string[]; // M11
 }): Promise<void> {
   const conv = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
   });
   if (!conv) return;
+  if (!canAccessConvUnit(args.unitAccess, conv.unitId)) return; // M11
   await prisma.chatReadState.upsert({
     where: { conversationId_userId: { conversationId: conv.id, userId: args.userId } },
     create: {

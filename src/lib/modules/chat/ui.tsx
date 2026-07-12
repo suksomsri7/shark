@@ -70,12 +70,13 @@ export async function ChatContent({
 }) {
   const auth = await requireTenant();
   const userId = auth.user.id;
+  const unitAccess = auth.active.unitAccess as string[];
 
   // built-in WEBCHAT connection (lazy) + ช่องทางอื่น
   await ensureWebchatConnection(tenantId, systemId);
   const [connections, conversations, setting, staff] = await Promise.all([
     listConnections(tenantId, systemId),
-    listConversations({ tenantId, systemId }),
+    listConversations({ tenantId, systemId, unitAccess }),
     getSetting(tenantId, systemId),
     listStaff(tenantId),
   ]);
@@ -176,6 +177,7 @@ export async function ChatContent({
                   nameOf={nameOf}
                   staff={staff}
                   memberLinked={!!setting.memberSystemId}
+                  unitAccess={unitAccess}
                 />
               )}
             </div>
@@ -313,6 +315,7 @@ async function ThreadPane({
   nameOf,
   staff,
   memberLinked,
+  unitAccess,
 }: {
   systemId: string;
   tenantId: string;
@@ -321,8 +324,9 @@ async function ThreadPane({
   nameOf: (uid?: string | null) => string;
   staff: { userId: string; name: string }[];
   memberLinked: boolean;
+  unitAccess: string[];
 }) {
-  const thread = await getThread({ tenantId, systemId, conversationId });
+  const thread = await getThread({ tenantId, systemId, conversationId, unitAccess });
   if (!thread) {
     return <p className="text-sm text-[color:var(--color-muted)]">ไม่พบบทสนทนา</p>;
   }

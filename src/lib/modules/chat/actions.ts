@@ -34,6 +34,7 @@ export async function sendReplyAction(formData: FormData) {
   const body = String(formData.get("body") ?? "");
   const isInternal = String(formData.get("isInternal") ?? "") === "on";
   if (systemId && conversationId && body.trim()) {
+    const unitAccess = auth.active.unitAccess as string[];
     await sendReply({
       tenantId: auth.active.tenantId,
       systemId,
@@ -41,12 +42,14 @@ export async function sendReplyAction(formData: FormData) {
       senderUserId: auth.user.id,
       body,
       isInternal,
+      unitAccess,
     });
     await markRead({
       tenantId: auth.active.tenantId,
       systemId,
       conversationId,
       userId: auth.user.id,
+      unitAccess,
     });
   }
   revalidateChat(systemId);
@@ -66,6 +69,7 @@ export async function setStatusAction(formData: FormData) {
       conversationId,
       status,
       actorUserId: auth.user.id,
+      unitAccess: auth.active.unitAccess as string[],
     });
   }
   revalidateChat(systemId);
@@ -86,6 +90,7 @@ export async function assignAction(formData: FormData) {
       conversationId,
       assigneeUserId,
       actorUserId: auth.user.id,
+      unitAccess: auth.active.unitAccess as string[],
     });
   }
   revalidateChat(systemId);
@@ -103,6 +108,7 @@ export async function markReadAction(formData: FormData) {
       systemId,
       conversationId,
       userId: auth.user.id,
+      unitAccess: auth.active.unitAccess as string[],
     });
   }
   revalidateChat(systemId);

@@ -4,18 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type Msg = { id: string; direction: string; body: string | null; createdAt: string };
 
-// guest token คงที่ต่อเบราว์เซอร์ (cookie 90 วันเทียบเท่า — ใช้ localStorage)
-function guestTokenFor(connectionId: string): string {
-  const key = `shark_chat_guest_${connectionId}`;
-  if (typeof window === "undefined") return "";
-  let t = window.localStorage.getItem(key);
-  if (!t) {
-    t = `web-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-    window.localStorage.setItem(key, t);
-  }
-  return t;
-}
-
+// M10: ไม่มี guest token ฝั่ง client อีกต่อไป — server สร้าง CSPRNG token + httpOnly cookie ผูก connection
+// เบราว์เซอร์แนบ cookie ให้อัตโนมัติ (same-origin) — client อ่าน/เดา/ปลอมไม่ได้
 export function ChatWidget({
   connectionId,
   title,
@@ -25,21 +15,18 @@ export function ChatWidget({
   title: string;
   greeting?: string;
 }) {
-  const [token, setToken] = useState("");
+  const [ready, setReady] = useState(false); // set หลัง bootstrap (มั่นใจว่ามี cookie แล้ว)
   const [messages, setMessages] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => setToken(guestTokenFor(connectionId)), [connectionId]);
-
   const poll = useCallback(async () => {
-    if (!token) return;
     try {
-      const res = await fetch(
-        `/api/chat/webchat/${connectionId}?guestToken=${encodeURIComponent(token)}`,
-        { cache: "no-store" },
-      );
+      const res = await fetch(`/api/chat/webchat/${connectionId}`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
       if (res.ok) {
         const data = (await res.json()) as { messages?: Msg[] };
         setMessages(data.messages ?? []);
@@ -47,14 +34,25 @@ export function ChatWidget({
     } catch {
       /* offline — ลองใหม่รอบหน้า */
     }
-  }, [connectionId, token]);
+  }, [connectionId]);
+
+  // bootstrap ครั้งเดียว: GET แรก mint+set httpOnly cookie → พร้อมส่งได้
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      await poll();
+      if (alive) setReady(true);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [poll]);
 
   useEffect(() => {
-    if (!token) return;
-    poll();
+    if (!ready) return;
     const iv = setInterval(poll, 4000);
     return () => clearInterval(iv);
-  }, [token, poll]);
+  }, [ready, poll]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -63,14 +61,15 @@ export function ChatWidget({
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const body = text.trim();
-    if (!body || sending || !token) return;
+    if (!body || sending || !ready) return;
     setSending(true);
     const clientMessageId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     try {
       const res = await fetch(`/api/chat/webchat/${connectionId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ guestToken: token, body, clientMessageId }),
+        credentials: "same-origin",
+        body: JSON.stringify({ body, clientMessageId }),
       });
       if (res.ok) {
         setText("");
@@ -128,7 +127,7 @@ export function ChatWidget({
             }
           }}
         />
-        <button disabled={sending} className="btn btn-primary text-sm disabled:opacity-50">
+        <button disabled={sending || !ready} className="btn btn-primary text-sm disabled:opacity-50">
           {sending ? "…" : "ส่ง"}
         </button>
       </form>
