@@ -11,7 +11,8 @@
 
 ## สถานะ LIVE
 - **prod: https://shark.in.th** (Vercel, APP_ENV=production, เมลจริง noreply@shark.in.th) · **staging: https://shark.suksomsri.cloud** (VPS pm2 `shark` :3801, APP_ENV=preview โชว์ OTP บนจอ) · DB เดียวกัน (Neon Singapore)
-- ระบบ **13/14 เปิด** (available): BOOKING·MEMBER·POINT·POS·REWARD (เดิม) + HOTEL·QUEUE·TICKET·COUPON·MEETING·KANBAN·ACCOUNT (2026-07-11 P1) + **RESTAURANT (2026-07-12 P1)** — เหลือปิดตัวเดียว: **CHAT**
+- ระบบ **14/14 เปิดครบ** (available): BOOKING·MEMBER·POINT·POS·REWARD·HOTEL·QUEUE·TICKET·COUPON·MEETING·KANBAN·ACCOUNT·RESTAURANT + **CHAT (2026-07-12 P1 LINE+webchat)** 🎉 · (18-ระบบ blueprint: HR/Inventory ยัง coming_soon)
+- ✅ **Chat P1 LIVE** (2026-07-12): ChannelAdapter (LINE HMAC webhook + webchat widget) + inbox 2-pane + reply/assign/close + reopen ≤24ชม + auto-link member. verify webchat loop ผ่าน. **BYOK: user วาง LINE token เอง · env `CHAT_CREDENTIALS_KEY` ตั้งบน VPS+Vercel แล้ว.** defer: FB/IG/Shopee/Lazada/WA (เพิ่ม adapter), SSE, media
 - ✅ **Restaurant P1 LIVE** (2026-07-12): 27 files/15 model — เมนู/86 · โซน/โต๊ะ/QR · session · ออเดอร์+KDS · เช็คบิล→POS · storefront QR. verify dine-in loop ผ่าน (`/tmp/qc-restaurant.mts`: menu→table→session dedup→order→KDS→checkout→close). partial unique index 1 OPEN session/table. defer: สต็อก/Recipe(P2), SSE, pickup UI, reports
 - ✅ **7 ระบบใหม่ = P1 code-complete + build 0 error + db push + QC ผ่าน service-layer ทั้ง 7 กับ Neon (`scripts/qc-systems.mts`, running number/atomic/cleanup ครบ) + deploy prod แล้ว** — LIVE บน **shark.in.th** (Vercel) + VPS staging. ยังเหลือ **UI/manual QC หน้าจอจริง** (service logic ผ่านแล้ว แต่ยังไม่คลิกทุกหน้าใน browser)
 - **P1 scope ที่ทำ / เลื่อน (🔜)** — ดู REPORT ของแต่ละ subagent + สเปคเต็ม: Hotel(เลื่อน housekeeping/night-audit/folio/OTA), Account(เลื่อนฝั่งรายจ่าย/journal/งบ/DBD), Ticket/Queue(เลื่อน SSE realtime/ชำระเงินออนไลน์/storefront), Coupon(เลื่อน wire contract เข้า POS), Meeting/Kanban(เลื่อน SSE/attachment)
