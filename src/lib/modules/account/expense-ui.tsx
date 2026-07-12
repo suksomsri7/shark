@@ -3,6 +3,8 @@ import type { AccountDocType } from "@prisma/client";
 import { baht, isOverdue } from "./service";
 import { StatusBadge } from "./ui";
 import { EXP_DOC_LABEL, WHT_INCOME_LABEL } from "./expense";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import {
   issueExpenseDocAction,
   recordVendorPaymentAction,
@@ -225,12 +227,16 @@ export function ExpenseDetail({
               <span className="flex items-center gap-2">
                 ฿{baht(p.amount)}
                 {active && (
-                  <form action={voidVendorPaymentAction}>
-                    <Hidden systemId={systemId} docType={dt} id={doc.id} />
-                    <input type="hidden" name="paymentId" value={p.id} />
-                    <input type="hidden" name="reason" value="ยกเลิกการจ่าย" />
-                    <button className="text-[color:var(--color-danger)] underline">ยกเลิก</button>
-                  </form>
+                  <ConfirmDialog
+                    action={voidVendorPaymentAction}
+                    fields={{ systemId, docType: dt, id: doc.id, paymentId: p.id, reason: "ยกเลิกการจ่าย" }}
+                    triggerLabel="ยกเลิก"
+                    triggerClassName="text-[color:var(--color-danger)] underline"
+                    title="ยกเลิกการจ่ายนี้?"
+                    detail="ยอดที่จ่ายจะถูกยกเลิก และสถานะเจ้าหนี้ของเอกสารจะถูกคำนวณใหม่"
+                    confirmLabel="ยืนยันยกเลิก"
+                    danger
+                  />
                 )}
               </span>
             </div>
@@ -263,19 +269,24 @@ export function ExpenseDetail({
             {isPO ? (
               <form action={submitApprovalAction}>
                 <Hidden systemId={systemId} docType={dt} id={doc.id} />
-                <button className="btn btn-primary text-sm">ส่งอนุมัติ</button>
+                <SubmitButton>ส่งอนุมัติ</SubmitButton>
               </form>
             ) : (
               <form action={issueExpenseDocAction}>
                 <Hidden systemId={systemId} docType={dt} id={doc.id} />
-                <button className="btn btn-primary text-sm">{isAdjust ? "บันทึก" : "บันทึก/ตั้งเจ้าหนี้"}</button>
+                <SubmitButton>{isAdjust ? "บันทึก" : "บันทึก/ตั้งเจ้าหนี้"}</SubmitButton>
               </form>
             )}
-            <form action={voidExpenseDocAction}>
-              <Hidden systemId={systemId} docType={dt} id={doc.id} />
-              <input type="hidden" name="reason" value="ยกเลิกร่าง" />
-              <button className="btn btn-ghost text-sm text-[color:var(--color-danger)]">ยกเลิก</button>
-            </form>
+            <ConfirmDialog
+              action={voidExpenseDocAction}
+              fields={{ systemId, docType: dt, id: doc.id, reason: "ยกเลิกร่าง" }}
+              triggerLabel="ยกเลิก"
+              triggerClassName="btn btn-ghost text-sm text-[color:var(--color-danger)]"
+              title="ยกเลิกร่างนี้?"
+              detail="ร่างเอกสารจะถูกยกเลิกและแก้ไขไม่ได้อีก"
+              confirmLabel="ยืนยันยกเลิก"
+              danger
+            />
           </div>
         )}
 
@@ -284,13 +295,19 @@ export function ExpenseDetail({
           <div className="flex flex-wrap items-center gap-2">
             <form action={approvePOAction}>
               <Hidden systemId={systemId} docType={dt} id={doc.id} />
-              <button className="btn btn-primary text-sm">อนุมัติ</button>
+              <SubmitButton>อนุมัติ</SubmitButton>
             </form>
-            <form action={rejectPOAction} className="flex items-center gap-2">
-              <Hidden systemId={systemId} docType={dt} id={doc.id} />
-              <input name="reason" placeholder="เหตุผลไม่อนุมัติ" className="rounded-lg border px-2 py-1.5 text-sm" />
-              <button className="btn btn-ghost text-sm">ไม่อนุมัติ</button>
-            </form>
+            <ConfirmDialog
+              action={rejectPOAction}
+              fields={{ systemId, docType: dt, id: doc.id }}
+              reasonField={{ name: "reason", label: "เหตุผลไม่อนุมัติ" }}
+              triggerLabel="ไม่อนุมัติ"
+              triggerClassName="btn btn-ghost text-sm text-[color:var(--color-danger)]"
+              title="ไม่อนุมัติใบสั่งซื้อนี้?"
+              detail="ใบสั่งซื้อจะถูกปฏิเสธและนำไปทำรายการต่อไม่ได้"
+              confirmLabel="ยืนยันไม่อนุมัติ"
+              danger
+            />
           </div>
         )}
 
@@ -298,9 +315,9 @@ export function ExpenseDetail({
         {isPO && doc.status === "APPROVED" && (
           <form action={convertPOAction}>
             <Hidden systemId={systemId} docType={dt} id={doc.id} />
-            <button className="btn btn-primary text-sm">
+            <SubmitButton>
               แปลงเป็น{dt === "ASSET_PURCHASE_ORDER" ? "ซื้อสินทรัพย์" : "บันทึกซื้อ"}
-            </button>
+            </SubmitButton>
           </form>
         )}
 
@@ -308,7 +325,7 @@ export function ExpenseDetail({
         {dt === "PURCHASE_TAX_INVOICE" && doc.status === "AWAITING_RECEIVE" && (
           <form action={receivePtxAction}>
             <Hidden systemId={systemId} docType={dt} id={doc.id} />
-            <button className="btn btn-primary text-sm">รับใบกำกับแล้ว (โอนเข้าเคลม VAT)</button>
+            <SubmitButton>รับใบกำกับแล้ว (โอนเข้าเคลม VAT)</SubmitButton>
           </form>
         )}
 
@@ -316,7 +333,7 @@ export function ExpenseDetail({
         {dt === "ASSET_PURCHASE" && (doc.status === "AWAITING_PAYMENT" || doc.status === "PARTIAL" || doc.status === "PAID") && (
           <form action={markAssetReceivedAction}>
             <Hidden systemId={systemId} docType={dt} id={doc.id} />
-            <button className="btn btn-ghost text-sm">รับใบเสร็จแล้ว</button>
+            <SubmitButton variant="ghost">รับใบเสร็จแล้ว</SubmitButton>
           </form>
         )}
 
@@ -336,7 +353,7 @@ export function ExpenseDetail({
                 <option value="OTHER">อื่นๆ</option>
               </select>
               <input name="amount" type="number" step="0.01" defaultValue={(remain / 100).toFixed(2)} placeholder="เงินจ่าย (บาท)" className="rounded-lg border px-2 py-1.5 text-sm" />
-              <button className="btn btn-primary text-sm">บันทึก</button>
+              <SubmitButton>บันทึก</SubmitButton>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <input name="whtAmount" type="number" step="0.01" placeholder="หัก ณ ที่จ่าย (บาท)" className="rounded-lg border px-2 py-1.5 text-sm" />
@@ -357,11 +374,17 @@ export function ExpenseDetail({
 
         {/* void เอกสารมีผล */}
         {active && doc.status !== "DRAFT" && (
-          <form action={voidExpenseDocAction} className="flex items-center gap-2">
-            <Hidden systemId={systemId} docType={dt} id={doc.id} />
-            <input name="reason" placeholder="เหตุผลการยกเลิก" className="flex-1 rounded-lg border px-2 py-1.5 text-sm" />
-            <button className="btn btn-ghost text-sm text-[color:var(--color-danger)]">ยกเลิกเอกสาร</button>
-          </form>
+          <ConfirmDialog
+            action={voidExpenseDocAction}
+            fields={{ systemId, docType: dt, id: doc.id }}
+            reasonField={{ name: "reason", label: "เหตุผลการยกเลิก" }}
+            triggerLabel="ยกเลิกเอกสาร"
+            triggerClassName="btn btn-ghost text-sm text-[color:var(--color-danger)]"
+            title="ยกเลิกเอกสารนี้?"
+            detail="เอกสารจะถูกยกเลิก แก้ไขไม่ได้ และต้องออกใหม่เท่านั้น"
+            confirmLabel="ยืนยันยกเลิก"
+            danger
+          />
         )}
       </div>
     </div>

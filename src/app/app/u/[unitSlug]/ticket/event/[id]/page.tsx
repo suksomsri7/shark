@@ -10,6 +10,8 @@ import {
   cancelOrderAction,
 } from "@/lib/modules/ticket/actions";
 import SellForm from "./SellForm";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const baht = (s: number) => (s / 100).toLocaleString("th-TH");
 
@@ -188,18 +190,25 @@ export default async function EventDetailPage({
                       <form action={markPaidAction.bind(null, unitSlug)}>
                         <input type="hidden" name="id" value={o.id} />
                         <input type="hidden" name="eventId" value={event.id} />
-                        <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">
+                        <SubmitButton
+                          variant="ghost"
+                          pendingText="กำลังบันทึก…"
+                          className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
+                        >
                           รับเงินแล้ว
-                        </button>
+                        </SubmitButton>
                       </form>
                     )}
-                    <form action={cancelOrderAction.bind(null, unitSlug)}>
-                      <input type="hidden" name="id" value={o.id} />
-                      <input type="hidden" name="eventId" value={event.id} />
-                      <button className="rounded-lg border px-2.5 py-1 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]">
-                        ยกเลิก + คืนโควตา
-                      </button>
-                    </form>
+                    <ConfirmDialog
+                      triggerLabel="ยกเลิก + คืนโควตา"
+                      triggerClassName="rounded-lg border px-2.5 py-1 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
+                      title="ยกเลิกออเดอร์นี้?"
+                      detail="ตั๋วทุกใบในออเดอร์จะถูกยกเลิก และคืนโควตากลับเข้าระบบ แก้ไขไม่ได้"
+                      confirmLabel="ยืนยันยกเลิกออเดอร์"
+                      danger
+                      action={cancelOrderAction.bind(null, unitSlug)}
+                      fields={{ id: o.id, eventId: event.id }}
+                    />
                   </div>
                 )}
               </div>

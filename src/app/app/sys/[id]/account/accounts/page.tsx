@@ -10,6 +10,7 @@ import {
   archiveLedger,
   setMapping,
 } from "@/lib/modules/account/coa";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const TYPE_LABEL: Record<AccountLedgerType, string> = {
   ASSET: "สินทรัพย์",
@@ -90,10 +91,16 @@ export default async function ChartOfAccountsPage({ params }: { params: Promise<
               <div key={l.id} className="flex items-center justify-between rounded-lg border px-3 py-1.5 text-sm">
                 <span><span className="font-mono text-xs">{l.code}</span> {l.name} {l.isSystem && <span title="บัญชีระบบ">🔒</span>}</span>
                 {!l.isSystem && (
-                  <form action={archiveAction}>
-                    <input type="hidden" name="ledgerId" value={l.id} />
-                    <button className="text-xs text-[color:var(--color-muted)] hover:underline">ปิดใช้งาน</button>
-                  </form>
+                  <ConfirmDialog
+                    action={archiveAction}
+                    fields={{ ledgerId: l.id }}
+                    triggerLabel="ปิดใช้งาน"
+                    triggerClassName="text-xs text-[color:var(--color-muted)] hover:underline"
+                    title="ปิดใช้งานบัญชีนี้?"
+                    detail="บัญชีจะถูกซ่อนจากผังบัญชี (ข้อมูลเดิมยังอยู่)"
+                    confirmLabel="ยืนยันปิดใช้งาน"
+                    danger
+                  />
                 )}
               </div>
             ))}

@@ -14,6 +14,8 @@ import {
 } from "@/lib/modules/account/service";
 import { StatusBadge } from "@/lib/modules/account/ui";
 import DocEditor from "@/lib/modules/account/DocEditor";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import {
   issueDocumentAction,
   convertDocumentAction,
@@ -180,12 +182,16 @@ export default async function DocDetailPage({
               <span className="flex items-center gap-2">
                 ฿{baht(p.amount)}
                 {doc.status !== "VOIDED" && doc.status !== "CANCELLED" && (
-                  <form action={voidPaymentAction}>
-                    <Hidden systemId={systemId} docType={dt} id={doc.id} />
-                    <input type="hidden" name="paymentId" value={p.id} />
-                    <input type="hidden" name="reason" value="ยกเลิกการรับชำระ" />
-                    <button className="text-[color:var(--color-danger)] underline" title="ยกเลิกการชำระ">ยกเลิก</button>
-                  </form>
+                  <ConfirmDialog
+                    action={voidPaymentAction}
+                    fields={{ systemId, docType: dt, id: doc.id, paymentId: p.id, reason: "ยกเลิกการรับชำระ" }}
+                    triggerLabel="ยกเลิก"
+                    triggerClassName="text-[color:var(--color-danger)] underline"
+                    title="ยกเลิกการรับชำระนี้?"
+                    detail="ยอดที่รับจะถูกยกเลิก และสถานะการชำระของเอกสารจะถูกคำนวณใหม่"
+                    confirmLabel="ยืนยันยกเลิก"
+                    danger
+                  />
                 )}
               </span>
             </div>
@@ -217,13 +223,18 @@ export default async function DocDetailPage({
             <Link href={`${listPath}/${doc.id}?edit=1`} className="btn btn-ghost text-sm">แก้ไข</Link>
             <form action={issueDocumentAction}>
               <Hidden systemId={systemId} docType={dt} id={doc.id} />
-              <button className="btn btn-primary text-sm">ออกเอกสาร</button>
+              <SubmitButton pendingText="กำลังออกเอกสาร…">ออกเอกสาร</SubmitButton>
             </form>
-            <form action={voidDocumentAction}>
-              <Hidden systemId={systemId} docType={dt} id={doc.id} />
-              <input type="hidden" name="reason" value="ยกเลิกร่าง" />
-              <button className="btn btn-ghost text-sm text-[color:var(--color-danger)]">ยกเลิก</button>
-            </form>
+            <ConfirmDialog
+              action={voidDocumentAction}
+              fields={{ systemId, docType: dt, id: doc.id, reason: "ยกเลิกร่าง" }}
+              triggerLabel="ยกเลิก"
+              triggerClassName="btn btn-ghost text-sm text-[color:var(--color-danger)]"
+              title="ยกเลิกร่างนี้?"
+              detail="ร่างเอกสารจะถูกยกเลิกและแก้ไขไม่ได้อีก"
+              confirmLabel="ยืนยันยกเลิก"
+              danger
+            />
           </div>
         )}
 
@@ -232,12 +243,12 @@ export default async function DocDetailPage({
             <form action={quotationResponseAction}>
               <Hidden systemId={systemId} docType={dt} id={doc.id} />
               <input type="hidden" name="accepted" value="1" />
-              <button className="btn btn-primary text-sm">ลูกค้ายอมรับ</button>
+              <SubmitButton>ลูกค้ายอมรับ</SubmitButton>
             </form>
             <form action={quotationResponseAction}>
               <Hidden systemId={systemId} docType={dt} id={doc.id} />
               <input type="hidden" name="accepted" value="0" />
-              <button className="btn btn-ghost text-sm">ปฏิเสธ</button>
+              <SubmitButton variant="ghost">ปฏิเสธ</SubmitButton>
             </form>
           </div>
         )}
@@ -250,7 +261,7 @@ export default async function DocDetailPage({
               <form key={t} action={convertDocumentAction}>
                 <Hidden systemId={systemId} docType={dt} id={doc.id} />
                 <input type="hidden" name="toDocType" value={t} />
-                <button className="btn btn-ghost text-sm">{DOC_LABEL[t]}</button>
+                <SubmitButton variant="ghost">{DOC_LABEL[t]}</SubmitButton>
               </form>
             ))}
           </div>
@@ -279,7 +290,7 @@ export default async function DocDetailPage({
                 placeholder="เงินเข้า (บาท)"
                 className="rounded-lg border px-2 py-1.5 text-sm"
               />
-              <button className="btn btn-primary text-sm">บันทึก</button>
+              <SubmitButton>บันทึก</SubmitButton>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <input
@@ -305,15 +316,17 @@ export default async function DocDetailPage({
 
         {/* void เอกสารมีผล */}
         {doc.status !== "DRAFT" && doc.status !== "VOIDED" && doc.status !== "CANCELLED" && (
-          <form action={voidDocumentAction} className="flex items-center gap-2">
-            <Hidden systemId={systemId} docType={dt} id={doc.id} />
-            <input
-              name="reason"
-              placeholder="เหตุผลการยกเลิก"
-              className="flex-1 rounded-lg border px-2 py-1.5 text-sm"
-            />
-            <button className="btn btn-ghost text-sm text-[color:var(--color-danger)]">ยกเลิกเอกสาร</button>
-          </form>
+          <ConfirmDialog
+            action={voidDocumentAction}
+            fields={{ systemId, docType: dt, id: doc.id }}
+            reasonField={{ name: "reason", label: "เหตุผลการยกเลิก" }}
+            triggerLabel="ยกเลิกเอกสาร"
+            triggerClassName="btn btn-ghost text-sm text-[color:var(--color-danger)]"
+            title="ยกเลิกเอกสารนี้?"
+            detail="เอกสารจะถูกยกเลิก แก้ไขไม่ได้ และต้องออกใหม่เท่านั้น"
+            confirmLabel="ยืนยันยกเลิก"
+            danger
+          />
         )}
       </div>
     </div>

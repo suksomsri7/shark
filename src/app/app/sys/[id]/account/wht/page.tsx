@@ -3,6 +3,7 @@ import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { baht } from "@/lib/modules/account/service";
 import { listWhtCredits, listWhtDeductions, WHT_INCOME_LABEL } from "@/lib/modules/account/wht";
 import { issueWhtCertAction } from "./actions";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const inputCls = "rounded-lg border px-2 py-1 text-xs";
 const fmtDate = (d: Date) => d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
@@ -117,7 +118,7 @@ export default async function WhtPage({
                             {r.whtRateBp == null && (
                               <input name="whtRateBp" type="number" placeholder="อัตรา bp" className={`${inputCls} w-20`} />
                             )}
-                            <button className="btn btn-primary text-xs">ออก 50 ทวิ</button>
+                            <SubmitButton pendingText="กำลังออก…">ออก 50 ทวิ</SubmitButton>
                           </form>
                         )}
                       </td>

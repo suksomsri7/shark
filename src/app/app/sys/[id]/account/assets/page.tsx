@@ -12,6 +12,7 @@ import {
   type AssetRow,
 } from "@/lib/modules/account/asset";
 import { registerAssetAction, runDepreciationAction, disposeAssetAction } from "./actions";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
 const baht = (satang: number) =>
@@ -108,7 +109,7 @@ export default async function AssetsPage({
           <label className="text-xs text-[color:var(--color-muted)]">งวดที่คิดค่าเสื่อม (YYYY-MM)</label>
           <input name="periodKey" defaultValue={period} placeholder={period} className={inputCls} />
         </div>
-        <button className="btn btn-primary text-sm">คิดค่าเสื่อมงวดนี้</button>
+        <SubmitButton>คิดค่าเสื่อมงวดนี้</SubmitButton>
         <p className="w-full text-xs text-[color:var(--color-muted)]">
           รันซ้ำได้ (idempotent ต่อสินทรัพย์+งวด) · เดือนสุดท้ายเก็บเศษให้มูลค่าสุทธิ = มูลค่าซาก · โพสต์ Dr ค่าเสื่อม (6800) / Cr ค่าเสื่อมสะสม (16x9) — เหมาะทำ cron สิ้นเดือน
         </p>
@@ -189,7 +190,7 @@ export default async function AssetsPage({
         </label>
 
         <input name="note" placeholder="หมายเหตุ (ไม่บังคับ)" className={`${inputCls} sm:col-span-2`} />
-        <button className="btn btn-primary text-sm sm:col-span-2 sm:justify-self-start">+ ขึ้นทะเบียน</button>
+        <SubmitButton className="sm:col-span-2 sm:justify-self-start">+ ขึ้นทะเบียน</SubmitButton>
       </form>
     </div>
   );
@@ -268,7 +269,7 @@ function AssetCard({
                 ))}
               </select>
               <input name="note" placeholder="หมายเหตุ" className={`${inputCls} sm:col-span-2`} />
-              <button className="btn btn-ghost text-sm sm:col-span-2 sm:justify-self-start">ยืนยันจำหน่าย</button>
+              <SubmitButton variant="ghost" className="sm:col-span-2 sm:justify-self-start">ยืนยันจำหน่าย</SubmitButton>
             </form>
           </details>
         )

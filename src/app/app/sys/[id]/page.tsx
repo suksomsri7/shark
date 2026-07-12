@@ -14,6 +14,7 @@ import {
   addRewardAction,
   removeRewardAction,
 } from "@/lib/actions/systems";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const baht = (s: number) => (s / 100).toLocaleString("th-TH");
 const fmt = (d: Date) =>
@@ -64,17 +65,17 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {linkedUnits.map((u) => (
-              <form key={u.id} action={unlinkUnitAction} className="inline-flex">
-                <input type="hidden" name="systemId" value={id} />
-                <input type="hidden" name="unitId" value={u.id} />
-                <input type="hidden" name="back" value={back} />
-                <button
-                  className="rounded-full border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
-                  title="กดเพื่อยกเลิกการเชื่อม"
-                >
-                  {u.name} ✕
-                </button>
-              </form>
+              <ConfirmDialog
+                key={u.id}
+                triggerLabel={`${u.name} ✕`}
+                triggerClassName="rounded-full border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
+                title="ยกเลิกการเชื่อมระบบนี้?"
+                detail={`หน่วยงาน "${u.name}" จะถูกตัดการเชื่อมกับระบบนี้`}
+                confirmLabel="ยืนยันยกเลิกการเชื่อม"
+                danger
+                action={unlinkUnitAction}
+                fields={{ systemId: id, unitId: u.id, back }}
+              />
             ))}
           </div>
         )}
@@ -211,11 +212,16 @@ async function RewardContent({ systemId, tenantId }: { systemId: string; tenantI
             {r.name} · {r.pointsCost} แต้ม
             {r.stock !== null && ` · เหลือ ${r.stock}`}
           </span>
-          <form action={removeRewardAction}>
-            <input type="hidden" name="id" value={r.id} />
-            <input type="hidden" name="systemId" value={systemId} />
-            <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
-          </form>
+          <ConfirmDialog
+            triggerLabel="ลบ"
+            triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+            title="ลบรางวัลนี้?"
+            detail={`รางวัล "${r.name}" จะถูกลบออกจากระบบแลกแต้ม`}
+            confirmLabel="ยืนยันลบ"
+            danger
+            action={removeRewardAction}
+            fields={{ id: r.id, systemId }}
+          />
         </div>
       ))}
       <form action={addRewardAction} className="grid grid-cols-2 gap-2 sm:grid-cols-4">

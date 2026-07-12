@@ -9,6 +9,7 @@ import {
   createColumnAction,
   moveCardAction,
 } from "./actions";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const muted = "text-[color:var(--color-muted)]";
 
@@ -99,11 +100,15 @@ export async function KanbanBoardView({
           <h1 className="mt-1 text-2xl font-semibold">{board.name}</h1>
           {board.description && <div className={`text-sm ${muted}`}>{board.description}</div>}
         </div>
-        <form action={archiveBoardAction}>
-          <input type="hidden" name="systemId" value={systemId} />
-          <input type="hidden" name="boardId" value={boardId} />
-          <button className={`text-xs underline ${muted}`}>เก็บบอร์ด</button>
-        </form>
+        <ConfirmDialog
+          triggerLabel="เก็บบอร์ด"
+          triggerClassName={`text-xs underline ${muted}`}
+          title="เก็บบอร์ดนี้?"
+          detail="บอร์ดจะถูกเก็บเข้าคลังและไม่แสดงในรายการ"
+          confirmLabel="ยืนยันเก็บบอร์ด"
+          action={archiveBoardAction}
+          fields={{ systemId, boardId }}
+        />
       </div>
 
       {/* คอลัมน์แนวนอน */}
@@ -175,14 +180,15 @@ export async function KanbanBoardView({
                           ▶
                         </button>
                       </form>
-                      <form action={archiveCardAction} className="ml-auto">
-                        <input type="hidden" name="systemId" value={systemId} />
-                        <input type="hidden" name="boardId" value={boardId} />
-                        <input type="hidden" name="cardId" value={card.id} />
-                        <button className={`text-xs underline ${muted}`} title="เก็บการ์ด">
-                          ✕
-                        </button>
-                      </form>
+                      <ConfirmDialog
+                        triggerLabel="✕"
+                        triggerClassName={`ml-auto text-xs underline ${muted}`}
+                        title="เก็บการ์ดนี้?"
+                        detail="การ์ดจะถูกเก็บออกจากบอร์ด"
+                        confirmLabel="ยืนยันเก็บการ์ด"
+                        action={archiveCardAction}
+                        fields={{ systemId, boardId, cardId: card.id }}
+                      />
                     </div>
                   </div>
                 );

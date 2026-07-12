@@ -3,6 +3,7 @@ import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { assertAccountCan } from "@/lib/modules/account/access";
 import { listLedgers } from "@/lib/modules/account/coa";
 import { postJvAction } from "../actions";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
 const ROWS = 8;
@@ -84,7 +85,7 @@ export default async function NewJvPage({
           </table>
         </div>
 
-        <button className="btn btn-primary text-sm sm:self-start">บันทึก JV</button>
+        <SubmitButton className="sm:self-start">บันทึก JV</SubmitButton>
       </form>
     </div>
   );

@@ -13,6 +13,8 @@ import {
   cancelReservationAction,
 } from "@/lib/modules/hotel/actions";
 import { ReservationForm } from "../reservation-form";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const STATUS_LABEL: Record<string, string> = {
   BOOKED: "จองแล้ว",
@@ -116,9 +118,7 @@ export default async function HotelReservationsPage({
                             </option>
                           ))}
                         </select>
-                        <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">
-                          เช็คอิน
-                        </button>
+                        <SubmitButton variant="ghost">เช็คอิน</SubmitButton>
                       </form>
                     ) : (
                       <span className="text-xs text-[color:var(--color-danger)]">
@@ -131,12 +131,16 @@ export default async function HotelReservationsPage({
 
                 {r.status === "CHECKED_IN" && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <form action={checkOutAction.bind(null, unitSlug)}>
-                      <input type="hidden" name="id" value={r.id} />
-                      <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">
-                        เช็คเอาท์
-                      </button>
-                    </form>
+                    <ConfirmDialog
+                      triggerLabel="เช็คเอาท์"
+                      triggerClassName="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
+                      title="เช็คเอาท์ห้องนี้?"
+                      detail="ระบบจะปิดการเข้าพักและปล่อยห้องให้ว่าง"
+                      confirmLabel="ยืนยันเช็คเอาท์"
+                      danger
+                      action={checkOutAction.bind(null, unitSlug)}
+                      fields={{ id: r.id }}
+                    />
                     <CancelBtn slug={unitSlug} id={r.id} />
                   </div>
                 )}
@@ -151,11 +155,15 @@ export default async function HotelReservationsPage({
 
 function CancelBtn({ slug, id }: { slug: string; id: string }) {
   return (
-    <form action={cancelReservationAction.bind(null, slug)}>
-      <input type="hidden" name="id" value={id} />
-      <button className="rounded-lg border px-2.5 py-1 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]">
-        ยกเลิก
-      </button>
-    </form>
+    <ConfirmDialog
+      triggerLabel="ยกเลิก"
+      triggerClassName="rounded-lg border px-2.5 py-1 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
+      title="ยกเลิกการจองนี้?"
+      detail="การจองจะถูกยกเลิกและปล่อยห้องคืน แก้ไขไม่ได้"
+      confirmLabel="ยืนยันยกเลิก"
+      danger
+      action={cancelReservationAction.bind(null, slug)}
+      fields={{ id }}
+    />
   );
 }

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { createExpenseDocAction, updateExpenseDocAction } from "./expense-actions";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 type ContactOpt = { id: string; name: string };
 type AccountOpt = { id: string; code: string; name: string };
@@ -228,7 +229,7 @@ export default function ExpenseEditor({
         <textarea name="note" defaultValue={initial?.note ?? ""} rows={2} className={inputCls} />
       </label>
 
-      <button className="btn btn-primary self-start text-sm">{editId ? "บันทึกการแก้ไข" : "บันทึกร่าง"}</button>
+      <SubmitButton className="self-start">{editId ? "บันทึกการแก้ไข" : "บันทึกร่าง"}</SubmitButton>
     </form>
   );
 }

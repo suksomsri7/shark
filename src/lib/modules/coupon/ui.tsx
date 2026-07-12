@@ -2,6 +2,7 @@ import { prisma } from "@/lib/core/db";
 import { listCoupons } from "./service";
 import { toggleCouponAction } from "./actions";
 import { CreateCouponForm, CouponTester } from "./forms";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const baht = (s: number) => (s / 100).toLocaleString("th-TH");
 const fmt = (d: Date) =>
@@ -68,11 +69,23 @@ export async function CouponContent({
                   </div>
                   <div className="text-xs text-[color:var(--color-muted)]">ใช้ได้: {unitLabel}</div>
                 </div>
-                <form action={toggleCouponAction}>
-                  <input type="hidden" name="couponId" value={c.id} />
-                  <input type="hidden" name="systemId" value={systemId} />
-                  <button className="text-xs underline">{c.active ? "ปิด" : "เปิด"}</button>
-                </form>
+                {c.active ? (
+                  <ConfirmDialog
+                    triggerLabel="ปิด"
+                    triggerClassName="text-xs underline"
+                    title="ปิดใช้งานคูปองนี้?"
+                    detail="ลูกค้าจะใช้คูปองนี้ไม่ได้ จนกว่าจะเปิดใช้งานอีกครั้ง"
+                    confirmLabel="ยืนยันปิด"
+                    action={toggleCouponAction}
+                    fields={{ couponId: c.id, systemId }}
+                  />
+                ) : (
+                  <form action={toggleCouponAction}>
+                    <input type="hidden" name="couponId" value={c.id} />
+                    <input type="hidden" name="systemId" value={systemId} />
+                    <button className="text-xs underline">เปิด</button>
+                  </form>
+                )}
               </div>
             );
           })}

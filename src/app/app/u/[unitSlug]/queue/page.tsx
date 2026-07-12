@@ -16,6 +16,8 @@ import {
   closeCounterAction,
 } from "@/lib/modules/queue/actions";
 import { AutoRefresh } from "@/components/queue-auto-refresh";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -86,9 +88,9 @@ export default async function QueueBoardPage({
             {activeTypes.map((t) => (
               <form key={t.id} action={issueTicketAction.bind(null, unitSlug)}>
                 <input type="hidden" name="typeId" value={t.id} />
-                <button className="btn btn-primary text-sm">
+                <SubmitButton pendingText="กำลังออกบัตร…">
                   {t.name} ({t.prefix})
-                </button>
+                </SubmitButton>
               </form>
             ))}
           </div>
@@ -140,7 +142,17 @@ export default async function QueueBoardPage({
                       {current.status === "CALLED" && (
                         <>
                           <OpBtn slug={unitSlug} action={serveAction} id={current.id} label="เริ่ม" />
-                          <OpBtn slug={unitSlug} action={skipAction} id={current.id} label="ข้าม" />
+                          <OpBtn
+                            slug={unitSlug}
+                            action={skipAction}
+                            id={current.id}
+                            label="ข้าม"
+                            confirm={{
+                              title: "ข้ามคิวนี้?",
+                              detail: "คิวนี้จะถูกข้ามไป และเรียกคิวถัดไปแทน",
+                              confirmLabel: "ยืนยันข้าม",
+                            }}
+                          />
                         </>
                       )}
                       <OpBtn slug={unitSlug} action={doneAction} id={current.id} label="จบ" primary />
@@ -236,7 +248,17 @@ export default async function QueueBoardPage({
                       <button className="rounded-lg border px-2 py-1 text-xs">เรียกคืน</button>
                     </form>
                   )}
-                  <OpBtn slug={unitSlug} action={cancelAction} id={t.id} label="ยกเลิก" />
+                  <OpBtn
+                    slug={unitSlug}
+                    action={cancelAction}
+                    id={t.id}
+                    label="ยกเลิก"
+                    confirm={{
+                      title: "ยกเลิกคิวนี้?",
+                      detail: "คิวนี้จะถูกยกเลิกและนำออกจากรายการ",
+                      confirmLabel: "ยืนยันยกเลิก",
+                    }}
+                  />
                 </div>
               </div>
             ))}
@@ -253,25 +275,36 @@ function OpBtn({
   id,
   label,
   primary,
+  confirm,
 }: {
   slug: string;
   action: (unitSlug: string, formData: FormData) => Promise<void>;
   id: string;
   label: string;
   primary?: boolean;
+  confirm?: { title: string; detail: string; confirmLabel: string };
 }) {
+  const cls = primary
+    ? "rounded-lg bg-[color:var(--color-ink)] px-2.5 py-1 text-xs text-[color:var(--color-surface)]"
+    : "rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]";
+  if (confirm) {
+    return (
+      <ConfirmDialog
+        triggerLabel={label}
+        triggerClassName={cls}
+        title={confirm.title}
+        detail={confirm.detail}
+        confirmLabel={confirm.confirmLabel}
+        danger
+        action={action.bind(null, slug)}
+        fields={{ id }}
+      />
+    );
+  }
   return (
     <form action={action.bind(null, slug)}>
       <input type="hidden" name="id" value={id} />
-      <button
-        className={
-          primary
-            ? "rounded-lg bg-[color:var(--color-ink)] px-2.5 py-1 text-xs text-[color:var(--color-surface)]"
-            : "rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
-        }
-      >
-        {label}
-      </button>
+      <button className={cls}>{label}</button>
     </form>
   );
 }

@@ -11,6 +11,7 @@ import {
   createDisplayAction,
   revokeDisplayAction,
 } from "@/lib/modules/queue/actions";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 export const dynamic = "force-dynamic";
 
@@ -150,10 +151,16 @@ export default async function QueueSetupPage({
           <div key={d.id} className="flex flex-col gap-1 rounded-lg border px-3 py-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">{d.name}</span>
-              <form action={revokeDisplayAction.bind(null, unitSlug)}>
-                <input type="hidden" name="id" value={d.id} />
-                <button className="text-xs text-[color:var(--color-danger)] underline">ยกเลิกลิงก์</button>
-              </form>
+              <ConfirmDialog
+                triggerLabel="ยกเลิกลิงก์"
+                triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+                title="ยกเลิกลิงก์จอนี้?"
+                detail="ลิงก์จอเดิมจะใช้ไม่ได้ทันที ต้องสร้างจอใหม่หากต้องการใช้อีก"
+                confirmLabel="ยืนยันยกเลิกลิงก์"
+                danger
+                action={revokeDisplayAction.bind(null, unitSlug)}
+                fields={{ id: d.id }}
+              />
             </div>
             <code className="break-all rounded bg-[color:var(--color-surface-2)] px-2 py-1 text-xs">
               /s/{tenantSlug}/{unit.slug}/queue/display/{d.displayToken}

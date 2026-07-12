@@ -23,6 +23,8 @@ import {
   updateCategoryAction,
   archiveCategoryAction,
 } from "@/lib/modules/account/product-actions";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
 
@@ -110,14 +112,18 @@ export default async function ProductsPage({
                     expenseAccts={expenseAccts}
                     product={p}
                   />
-                  <form action={archiveProductAction} className="mt-2">
-                    <input type="hidden" name="systemId" value={systemId} />
-                    <input type="hidden" name="id" value={p.id} />
-                    <input type="hidden" name="archived" value={p.archivedAt ? "0" : "1"} />
-                    <button className="text-xs text-[color:var(--color-danger)] underline">
-                      {p.archivedAt ? "กู้คืน" : "เก็บเข้าคลัง (archive)"}
-                    </button>
-                  </form>
+                  <div className="mt-2">
+                    <ConfirmDialog
+                      action={archiveProductAction}
+                      fields={{ systemId, id: p.id, archived: p.archivedAt ? "0" : "1" }}
+                      triggerLabel={p.archivedAt ? "กู้คืน" : "เก็บเข้าคลัง"}
+                      triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+                      title={p.archivedAt ? "กู้คืนสินค้านี้?" : "เก็บสินค้านี้เข้าคลัง?"}
+                      detail={p.archivedAt ? "สินค้าจะกลับมาใช้งานได้อีกครั้ง" : "สินค้าจะถูกซ่อนจากรายการที่ใช้งาน (ข้อมูลเดิมยังอยู่)"}
+                      confirmLabel={p.archivedAt ? "ยืนยันกู้คืน" : "ยืนยันเก็บเข้าคลัง"}
+                      danger={!p.archivedAt}
+                    />
+                  </div>
                 </details>
               ))
             )}
@@ -150,11 +156,16 @@ export default async function ProductsPage({
                     <input name="name" defaultValue={u.name} className={`${inputCls} flex-1`} />
                     <button className="text-xs text-[color:var(--color-muted)] underline">บันทึก</button>
                   </form>
-                  <form action={archiveUnitAction}>
-                    <input type="hidden" name="systemId" value={systemId} />
-                    <input type="hidden" name="id" value={u.id} />
-                    <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
-                  </form>
+                  <ConfirmDialog
+                    action={archiveUnitAction}
+                    fields={{ systemId, id: u.id }}
+                    triggerLabel="ลบ"
+                    triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+                    title="ลบหน่วยนี้?"
+                    detail="หน่วยจะถูกลบออกจากรายการ"
+                    confirmLabel="ยืนยันลบ"
+                    danger
+                  />
                 </div>
               ))
             )}
@@ -162,7 +173,7 @@ export default async function ProductsPage({
           <form action={createUnitAction} className="card flex items-center gap-2">
             <input type="hidden" name="systemId" value={systemId} />
             <input name="name" required placeholder="ชื่อหน่วย เช่น ชิ้น" className={`${inputCls} flex-1`} />
-            <button className="btn btn-primary text-sm">+ เพิ่มหน่วย</button>
+            <SubmitButton>+ เพิ่มหน่วย</SubmitButton>
           </form>
         </>
       )}
@@ -190,11 +201,18 @@ export default async function ProductsPage({
                       <AppliesToPicker selected={applies} />
                       <button className="btn btn-ghost self-start text-sm">บันทึก</button>
                     </form>
-                    <form action={archiveCategoryAction} className="mt-1">
-                      <input type="hidden" name="systemId" value={systemId} />
-                      <input type="hidden" name="id" value={c.id} />
-                      <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
-                    </form>
+                    <div className="mt-1">
+                      <ConfirmDialog
+                        action={archiveCategoryAction}
+                        fields={{ systemId, id: c.id }}
+                        triggerLabel="ลบ"
+                        triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+                        title="ลบกลุ่มนี้?"
+                        detail="กลุ่มจัดประเภทจะถูกลบ (เอกสารเดิมไม่กระทบ)"
+                        confirmLabel="ยืนยันลบ"
+                        danger
+                      />
+                    </div>
                   </details>
                 );
               })
@@ -206,7 +224,7 @@ export default async function ProductsPage({
             <input name="name" required placeholder="ชื่อกลุ่ม เช่น โครงการ A" className={inputCls} />
             <p className="text-xs text-[color:var(--color-muted)]">ใช้กับเอกสารชนิด (ไม่เลือก = ทุกชนิด):</p>
             <AppliesToPicker selected={[]} />
-            <button className="btn btn-primary self-start text-sm">เพิ่มกลุ่ม</button>
+            <SubmitButton className="self-start">เพิ่มกลุ่ม</SubmitButton>
           </form>
         </>
       )}
@@ -298,7 +316,7 @@ function ProductForm({
           ))}
         </select>
       )}
-      <button className="btn btn-primary self-start text-sm sm:col-span-2">{product ? "บันทึกการแก้ไข" : "+ เพิ่มสินค้า"}</button>
+      <SubmitButton className="self-start sm:col-span-2">{product ? "บันทึกการแก้ไข" : "+ เพิ่มสินค้า"}</SubmitButton>
     </form>
   );
 }

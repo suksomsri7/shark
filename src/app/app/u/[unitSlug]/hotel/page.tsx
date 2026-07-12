@@ -2,6 +2,8 @@ import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { dashboardData, assignableRooms } from "@/lib/modules/hotel/service";
 import { checkInAction, checkOutAction } from "@/lib/modules/hotel/actions";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const ROOM_STATUS_LABEL: Record<string, string> = {
   AVAILABLE: "ว่าง",
@@ -101,9 +103,7 @@ export default async function HotelPage({
                         </option>
                       ))}
                     </select>
-                    <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">
-                      เช็คอิน
-                    </button>
+                    <SubmitButton variant="ghost">เช็คอิน</SubmitButton>
                   </form>
                 )}
               </div>
@@ -132,12 +132,16 @@ export default async function HotelPage({
                       {leavingToday ? " · ออกวันนี้" : ""}
                     </div>
                   </div>
-                  <form action={checkOutAction.bind(null, unitSlug)}>
-                    <input type="hidden" name="id" value={a.id} />
-                    <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">
-                      เช็คเอาท์
-                    </button>
-                  </form>
+                  <ConfirmDialog
+                    triggerLabel="เช็คเอาท์"
+                    triggerClassName="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
+                    title="เช็คเอาท์ห้องนี้?"
+                    detail="ระบบจะปิดการเข้าพักและปล่อยห้องให้ว่าง"
+                    confirmLabel="ยืนยันเช็คเอาท์"
+                    danger
+                    action={checkOutAction.bind(null, unitSlug)}
+                    fields={{ id: a.id }}
+                  />
                 </div>
               </div>
             );

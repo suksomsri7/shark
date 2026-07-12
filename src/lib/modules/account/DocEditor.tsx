@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { createDocumentAction, updateDocumentAction } from "./actions";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 type ContactOpt = { id: string; name: string };
 type Row = { description: string; qty: string; unitName: string; unitPrice: string; discount: string };
@@ -203,7 +204,7 @@ export default function DocEditor({
         <textarea name="note" defaultValue={initial?.note ?? ""} rows={2} className={inputCls} />
       </label>
 
-      <button className="btn btn-primary self-start text-sm">{editId ? "บันทึกการแก้ไข" : "บันทึกร่าง"}</button>
+      <SubmitButton className="self-start">{editId ? "บันทึกการแก้ไข" : "บันทึกร่าง"}</SubmitButton>
     </form>
   );
 }

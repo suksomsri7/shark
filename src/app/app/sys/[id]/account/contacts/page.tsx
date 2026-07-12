@@ -2,6 +2,8 @@ import Link from "next/link";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { listContacts } from "@/lib/modules/account/service";
 import { createContactAction, archiveContactAction } from "@/lib/modules/account/actions";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
 const KIND_LABEL: Record<string, string> = { CUSTOMER: "ลูกค้า", VENDOR: "ผู้ขาย", BOTH: "ทั้งคู่" };
@@ -43,11 +45,16 @@ export default async function ContactsPage({
                   {c.creditTermDays > 0 && ` · เครดิต ${c.creditTermDays} วัน`}
                 </div>
               </div>
-              <form action={archiveContactAction}>
-                <input type="hidden" name="systemId" value={systemId} />
-                <input type="hidden" name="id" value={c.id} />
-                <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
-              </form>
+              <ConfirmDialog
+                action={archiveContactAction}
+                fields={{ systemId, id: c.id }}
+                triggerLabel="ลบ"
+                triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+                title="ลบผู้ติดต่อนี้?"
+                detail="ผู้ติดต่อจะถูกซ่อน (เอกสารเดิมที่อ้างถึงยังอยู่)"
+                confirmLabel="ยืนยันลบ"
+                danger
+              />
             </div>
           ))
         )}
@@ -73,7 +80,7 @@ export default async function ContactsPage({
         <input name="email" type="email" placeholder="อีเมล" className={inputCls} />
         <input name="address" placeholder="ที่อยู่" className={`${inputCls} sm:col-span-2`} />
         <input name="creditTermDays" type="number" min={0} placeholder="เครดิตเทอม (วัน)" className={inputCls} />
-        <button className="btn btn-primary text-sm sm:col-span-2 sm:justify-self-start">+ เพิ่มผู้ติดต่อ</button>
+        <SubmitButton className="sm:col-span-2 sm:justify-self-start">+ เพิ่มผู้ติดต่อ</SubmitButton>
       </form>
     </div>
   );

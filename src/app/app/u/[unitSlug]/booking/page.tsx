@@ -3,6 +3,7 @@ import { requireUnit } from "@/lib/core/context";
 import { listAppointments } from "@/lib/modules/booking/service";
 import { daySummary } from "@/lib/modules/pos/service";
 import { setStatusAction } from "@/lib/actions/booking";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const STATUS_LABEL: Record<string, string> = {
   CONFIRMED: "ยืนยันแล้ว",
@@ -121,6 +122,20 @@ function StatusBtn({
   status: string;
   label: string;
 }) {
+  if (status === "CANCELLED") {
+    return (
+      <ConfirmDialog
+        triggerLabel={label}
+        triggerClassName="rounded-lg border px-2.5 py-1 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
+        title="ยกเลิกนัดนี้?"
+        detail="นัดหมายจะถูกยกเลิก และปล่อยช่วงเวลาให้จองใหม่ได้"
+        confirmLabel="ยืนยันยกเลิก"
+        danger
+        action={setStatusAction.bind(null, slug)}
+        fields={{ id, status }}
+      />
+    );
+  }
   return (
     <form action={setStatusAction.bind(null, slug)}>
       <input type="hidden" name="id" value={id} />

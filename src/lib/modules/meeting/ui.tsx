@@ -15,6 +15,7 @@ import {
   editMessageAction,
   deleteMessageAction,
 } from "./actions";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const fmt = (d: Date) =>
   d.toLocaleString("th-TH", {
@@ -309,15 +310,21 @@ function MessageRow({
               <button className="btn btn-ghost self-start text-xs">บันทึก</button>
             </form>
           </details>
-          <form action={deleteMessageAction} className="inline">
-            <input type="hidden" name="systemId" value={systemId} />
-            <input type="hidden" name="channelId" value={channelId} />
-            <input type="hidden" name="messageId" value={msg.id} />
-            {threadParentId && (
-              <input type="hidden" name="threadParentId" value={threadParentId} />
-            )}
-            <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
-          </form>
+          <ConfirmDialog
+            triggerLabel="ลบ"
+            triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+            title="ลบข้อความนี้?"
+            detail="ข้อความจะถูกลบถาวร"
+            confirmLabel="ยืนยันลบ"
+            danger
+            action={deleteMessageAction}
+            fields={{
+              systemId,
+              channelId,
+              messageId: msg.id,
+              ...(threadParentId ? { threadParentId } : {}),
+            }}
+          />
         </div>
       )}
     </div>
@@ -366,11 +373,15 @@ function ChannelHeader({
         )}
       </div>
       {channel.isMember && !channel.isDefault && (
-        <form action={leaveChannelAction}>
-          <input type="hidden" name="systemId" value={systemId} />
-          <input type="hidden" name="channelId" value={channel.id} />
-          <button className="text-xs text-[color:var(--color-muted)] underline">ออกจากห้อง</button>
-        </form>
+        <ConfirmDialog
+          triggerLabel="ออกจากห้อง"
+          triggerClassName="text-xs text-[color:var(--color-muted)] underline"
+          title="ออกจากห้องนี้?"
+          detail="คุณจะไม่เห็นข้อความในห้องนี้ จนกว่าจะเข้าร่วมใหม่"
+          confirmLabel="ยืนยันออกจากห้อง"
+          action={leaveChannelAction}
+          fields={{ systemId, channelId: channel.id }}
+        />
       )}
     </div>
   );

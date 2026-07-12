@@ -23,6 +23,7 @@ export function RestaurantCheckout({
   const [selected, setSelected] = useState<Set<string>>(new Set(lines.map((l) => l.itemId)));
   const [pay, setPay] = useState<"CASH" | "TRANSFER" | "PROMPTPAY">("CASH");
   const [submitting, setSubmitting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ receiptNo: string | null; total: number; point: number; closed: boolean } | null>(null);
 
@@ -128,9 +129,42 @@ export function RestaurantCheckout({
       </div>
 
       {msg && <div className="text-xs text-[color:var(--color-danger)]">{msg}</div>}
-      <button disabled={submitting} onClick={pay_} className="btn btn-primary text-sm">
-        {submitting ? "กำลังชำระ…" : `ชำระ ฿${baht(total)}`}
-      </button>
+      {confirming ? (
+        <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
+          <div className="font-medium">
+            ยืนยันรับชำระ ฿{baht(total)}
+            {splitting ? " (แยกบิล)" : ""} ด้วย
+            {pay === "CASH" ? "เงินสด" : pay === "TRANSFER" ? "โอน" : "พร้อมเพย์"}?
+          </div>
+          <div className="flex gap-2">
+            <button
+              disabled={submitting}
+              onClick={pay_}
+              className="btn btn-primary flex-1 text-sm disabled:opacity-50"
+            >
+              {submitting ? "กำลังชำระ…" : "ยืนยันชำระ"}
+            </button>
+            <button
+              disabled={submitting}
+              onClick={() => setConfirming(false)}
+              className="btn btn-ghost text-sm disabled:opacity-50"
+            >
+              ยกเลิก
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          disabled={chosen.length === 0}
+          onClick={() => {
+            setMsg(null);
+            setConfirming(true);
+          }}
+          className="btn btn-primary text-sm disabled:opacity-50"
+        >
+          {`ชำระ ฿${baht(total)}`}
+        </button>
+      )}
     </div>
   );
 }

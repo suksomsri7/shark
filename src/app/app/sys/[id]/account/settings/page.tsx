@@ -2,6 +2,7 @@ import Link from "next/link";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { getSettings } from "@/lib/modules/account/service";
 import { saveSettingsAction } from "@/lib/modules/account/actions";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
 const labelCls = "flex flex-col gap-1 text-xs text-[color:var(--color-muted)]";
@@ -100,7 +101,7 @@ export default async function AccountSettingsPage({
           <textarea name="footerNote" defaultValue={s.footerNote ?? ""} rows={2} className={inputCls} />
         </label>
 
-        <button className="btn btn-primary text-sm sm:col-span-2 sm:justify-self-start">บันทึกการตั้งค่า</button>
+        <SubmitButton className="sm:col-span-2 sm:justify-self-start">บันทึกการตั้งค่า</SubmitButton>
       </form>
     </div>
   );

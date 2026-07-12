@@ -4,6 +4,7 @@ import { prisma } from "@/lib/core/db";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { assertAccountCan, writeAudit } from "@/lib/modules/account/access";
 import { closePeriod, reopenPeriod } from "@/lib/modules/account/gl";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 function curKey(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit" })
@@ -55,13 +56,18 @@ export default async function PeriodsPage({
       </div>
       {sp.err && <div className="rounded-lg border-2 border-red-600 bg-red-50 px-3 py-2 text-sm text-red-800">{sp.err}</div>}
 
-      <form action={closeAction} className="card flex items-end gap-2">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs">งวด (YYYY-MM)</label>
-          <input name="periodKey" defaultValue={current} className="rounded-lg border px-2 py-1.5 text-sm" />
-        </div>
-        <button className="btn btn-primary text-sm">ปิดงวด</button>
-      </form>
+      <div className="card flex items-end gap-2">
+        <ConfirmDialog
+          action={closeAction}
+          reasonField={{ name: "periodKey", label: "งวดที่จะปิด (YYYY-MM)", required: true }}
+          triggerLabel="ปิดงวด"
+          triggerClassName="btn btn-primary text-sm"
+          title="ปิดงวดบัญชีนี้?"
+          detail="เมื่อปิดงวดแล้วจะลงบัญชีย้อนหลังในงวดนั้นไม่ได้ (เปิดใหม่ได้ภายหลัง)"
+          confirmLabel="ยืนยันปิดงวด"
+          danger
+        />
+      </div>
 
       <section className="flex flex-col gap-1">
         <h2 className="text-sm font-medium">งวดที่บันทึกไว้</h2>
@@ -70,10 +76,16 @@ export default async function PeriodsPage({
           <div key={p.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
             <span>{p.periodKey} · <span className={p.status === "CLOSED" ? "text-[color:var(--color-danger)]" : ""}>{p.status === "CLOSED" ? "ปิดแล้ว 🔒" : "เปิดอยู่"}</span></span>
             {p.status === "CLOSED" && (
-              <form action={reopenAction}>
-                <input type="hidden" name="periodKey" value={p.periodKey} />
-                <button className="text-xs text-[color:var(--color-muted)] hover:underline">เปิดงวดใหม่</button>
-              </form>
+              <ConfirmDialog
+                action={reopenAction}
+                fields={{ periodKey: p.periodKey }}
+                triggerLabel="เปิดงวดใหม่"
+                triggerClassName="text-xs text-[color:var(--color-muted)] hover:underline"
+                title="เปิดงวดนี้ใหม่?"
+                detail="งวดจะถูกปลดล็อกให้ลงบัญชีได้อีกครั้ง"
+                confirmLabel="ยืนยันเปิดงวด"
+                danger
+              />
             )}
           </div>
         ))}

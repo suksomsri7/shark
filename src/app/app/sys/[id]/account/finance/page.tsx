@@ -8,6 +8,8 @@ import {
   transferAction,
   pettyReplenishAction,
 } from "./actions";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
 
@@ -59,11 +61,16 @@ export default async function FinancePage({
                     ความเคลื่อนไหว
                   </Link>
                 </div>
-                <form action={archiveFinanceAccountAction}>
-                  <input type="hidden" name="systemId" value={systemId} />
-                  <input type="hidden" name="id" value={a.id} />
-                  <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
-                </form>
+                <ConfirmDialog
+                  action={archiveFinanceAccountAction}
+                  fields={{ systemId, id: a.id }}
+                  triggerLabel="ลบ"
+                  triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+                  title="ลบบัญชีเงินนี้?"
+                  detail="บัญชีเงินจะถูกซ่อน (ความเคลื่อนไหวเดิมยังอยู่)"
+                  confirmLabel="ยืนยันลบ"
+                  danger
+                />
               </div>
             </div>
           ))
@@ -89,7 +96,7 @@ export default async function FinancePage({
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="showOnDocuments" /> แสดงบนเอกสาร
         </label>
-        <button className="btn btn-primary text-sm sm:col-span-2 sm:justify-self-start">+ เพิ่มบัญชีเงิน</button>
+        <SubmitButton className="sm:col-span-2 sm:justify-self-start">+ เพิ่มบัญชีเงิน</SubmitButton>
       </form>
 
       {/* โอนระหว่างบัญชีเงิน */}
@@ -108,7 +115,7 @@ export default async function FinancePage({
           <input name="amount" type="number" step="0.01" required placeholder="จำนวนเงิน (บาท)" className={inputCls} />
           <input name="date" type="date" className={inputCls} />
           <input name="note" placeholder="หมายเหตุ" className={`${inputCls} sm:col-span-2`} />
-          <button className="btn btn-primary text-sm sm:col-span-2 sm:justify-self-start">โอนเงิน</button>
+          <SubmitButton className="sm:col-span-2 sm:justify-self-start">โอนเงิน</SubmitButton>
         </form>
       )}
 
@@ -131,7 +138,7 @@ export default async function FinancePage({
           </select>
           <input name="amount" type="number" step="0.01" required placeholder="จำนวนเงิน (บาท)" className={inputCls} />
           <input name="date" type="date" className={inputCls} />
-          <button className="btn btn-primary text-sm sm:col-span-2 sm:justify-self-start">บันทึก</button>
+          <SubmitButton className="sm:col-span-2 sm:justify-self-start">บันทึก</SubmitButton>
         </form>
       )}
     </div>

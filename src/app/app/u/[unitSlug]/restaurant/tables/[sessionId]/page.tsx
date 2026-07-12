@@ -10,6 +10,7 @@ import {
   cancelOrderItemAction,
   rushOrderAction,
 } from "@/lib/actions/restaurant";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const KDS_LABEL: Record<string, string> = {
   NEW: "รอครัว",
@@ -109,11 +110,17 @@ export default async function SessionPage({
                       </div>
                     </div>
                     {!it.saleId && it.kdsStatus !== "CANCELLED" && it.kdsStatus !== "SERVED" && (
-                      <form action={cancelOrderItemAction.bind(null, unitSlug)}>
-                        <input type="hidden" name="itemId" value={it.id} />
-                        <input type="hidden" name="reason" value="ยกเลิกโดยพนักงาน" />
-                        <button className="text-xs text-[color:var(--color-danger)] underline">ยกเลิก</button>
-                      </form>
+                      <ConfirmDialog
+                        triggerLabel="ยกเลิก"
+                        triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+                        title="ยกเลิกรายการนี้?"
+                        detail="รายการอาหารนี้จะถูกยกเลิกออกจากบิล"
+                        confirmLabel="ยืนยันยกเลิก"
+                        danger
+                        action={cancelOrderItemAction.bind(null, unitSlug)}
+                        fields={{ itemId: it.id }}
+                        reasonField={{ name: "reason", label: "เหตุผล (ไม่บังคับ)" }}
+                      />
                     )}
                   </div>
                 ))}
@@ -156,10 +163,15 @@ export default async function SessionPage({
             </form>
           )}
           {session.unpaidSatang === 0 && (
-            <form action={closeSessionAction.bind(null, unitSlug)}>
-              <input type="hidden" name="sessionId" value={sessionId} />
-              <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">ปิดโต๊ะ</button>
-            </form>
+            <ConfirmDialog
+              triggerLabel="ปิดโต๊ะ"
+              triggerClassName="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
+              title="ปิดโต๊ะนี้?"
+              detail="โต๊ะจะถูกปิดและว่างพร้อมรับลูกค้าใหม่"
+              confirmLabel="ยืนยันปิดโต๊ะ"
+              action={closeSessionAction.bind(null, unitSlug)}
+              fields={{ sessionId }}
+            />
           )}
         </section>
       )}
