@@ -42,13 +42,15 @@ posting engine `src/lib/modules/account/gl.ts` + ผังบัญชี seed `
 - **UPDATE (main ทำต่อเองหลัง limit):** ปิดช่องว่างครบแล้ว — Expense 8 routes (purchase/expense/po/asset-buy) + Reports ครบ 5 (เพิ่ม balance-sheet/cash-flow/pp30) + GL accounts (ผังบัญชี CRUD+mapping) + periods (ปิดงวด). nav wire ครบ. **verify Gate B: DEPOSIT_RECEIPT(Cr2110+AWAITING_DEDUCT)+CREDIT_NOTE(Cr1100) balance ✓** → docType เปิดครบปลอดภัย. deploy prod แล้ว
 - **เหลือ (minor, ไม่ block):** ใบกำกับภาษี ม.86/4 print fields ให้ครบเป๊ะ · Finance CSV export ภงด · verify ก่อน launch จริง: **checksum เลขภาษีนิติบุคคล DBD** (QC5 verify-list) + ทดสอบ UI คลิกจริงทุกหน้า
 
-## 🟡 QC6 (2026-07-12) — Gate 1+2 ✅ + UI Pass 0 (token) ✅ · UI Pass 1-4 ค้าง
-- ✅ **Gate 1 + Gate 2 บัญชี ปิดครบ — `qc-account-cpa.mts` 107/107 findings 0** (จาก 90/108). แก้ F-01..F-09 ใน account 5 ไฟล์ (gl/service/expense/reports/coa): VAT ซ้ำ/มัดจำ/ภงด53/ภพ30/ขายสด Dr1000/รายได้สินค้า4000/CN cap/overpay/ลูกหนี้=GL. ไม่ต้อง db push. **harness = regression suite ถาวร รันทุกครั้งที่แตะ account.** deploy prod แล้ว
-- ✅ **UI Pass 0 (token ผี) ปิด** — แก้ fg/bg/success/primary/hover→token จริง + btn-secondary→btn-ghost ทั้งแอป (grep=0) + เพิ่ม `.btn-sm`/`.input` ใน globals.css. ปุ่มล่องหนบน prod กลับมาเห็น
-- ✅ **UI Pass 0 ครบ** — ghost tokens + ConfirmDialog ~40 destructive + SubmitButton ~30 ฟอร์มเงิน (2 agent account/unit-lib) · cpa 107/107 · deploy prod
-- ✅ **UI Pass 1 ครบ** — shared components 11 ตัว `src/components/ui/` (PageHeader/Section/DataList/DataTable/StatusChip/FormField/EmptyState/MoneyText/SubNav/TabPills + ConfirmDialog/SubmitButton) + `src/lib/ui/{money,status-labels}.ts`
-- 🔵 **Pass 2 กำลังทำ (agent)** — account/layout.tsx SubNav 8 หมวด (ACCOUNT_NAV) + **status tabs ครบทุกเมนูตาม §3.0.3** + refactor 26 หน้าใช้ component กลาง + StatusChip ไทย. ต้องคง cpa 107/107
-- 🔴 **ค้างตามแผน user:** #3 account complete-menu (เช็ครับ/จ่าย, คลังเอกสาร UI, ตั้งค่าองค์กร โลโก้/ตราประทับ, ลิงก์สาธารณะขอใบกำกับ, print ม.86/4, CSV ภงด) · #4 Pass 3 (unit modules ≥44px) + Pass 4 (lib modules) → แล้วเริ่ม **Chat (LINE)**. ทุกครั้งที่แตะ account: รัน `qc-account-cpa.mts` 107/107 ก่อน deploy
+## ✅ QC6 (2026-07-12) — เสร็จครบทั้งหมด LIVE prod (แผน user 4 ขั้น)
+- ✅ **Gate 1 + Gate 2 บัญชี — `qc-account-cpa.mts` 107/107 findings 0** (จาก 90/108). แก้ F-01..F-09 (VAT ซ้ำ/มัดจำ/ภงด53/ภพ30/ขายสด Dr1000/รายได้สินค้า4000/CN cap/overpay/ลูกหนี้=GL). **harness = regression suite ถาวร — รันทุกครั้งที่แตะ account ต้อง 107/107 ก่อน deploy**
+- ✅ **UI Pass 0** — ghost tokens (ปุ่มล่องหน) + `.btn-sm`/`.input` + ConfirmDialog ~40 destructive + SubmitButton ~30 ฟอร์มเงิน
+- ✅ **UI Pass 1** — 11 shared components `src/components/ui/` + `src/lib/ui/{money,status-labels}.ts` (19 label maps)
+- ✅ **UI Pass 2** — account/layout SubNav 8 หมวด (nav.ts ACCOUNT_NAV) + แท็บสถานะครบทุกเมนู §3.0.3 + refactor 24 หน้า + StatusChip ไทย
+- ✅ **#3 account complete-menu** — เช็ครับ/จ่าย (cheque.ts + posting 1040/2300) · คลังเอกสาร (attachment.ts, URL-paste) · ตั้งค่าองค์กร+เอกสาร (โลโก้/ตราประทับ URL) · ลิงก์ขอใบกำกับ public (/r/[token]) · print ม.86/4 ครบ · CSV ภงด (tax/export)
+- ✅ **UI Pass 3+4** — unit business (hotel/queue/ticket/booking/restaurant ปุ่ม ≥44px + StatusChip + responsive) + lib feature (meeting/kanban/coupon/reward/member/settings) ไทยล้วนไร้ emoji/jargon
+- **defer:** object storage (โลโก้/ตราประทับ/แนบไฟล์ = URL-paste ชั่วคราว) · cheque auto-post จาก payment ช่อง CHEQUE (Gate ถัดไป)
+- **ต่อไปตามแผน user:** เริ่ม **Chat (LINE)** = ระบบ 14/14 → แล้ว HR(17)/Inventory(18)
 
 ## 🆕 พิมพ์เขียวขยายเป็น 18 ระบบ (2026-07-12 โดย Fable — user ยืนยัน)
 - `src/lib/systems.ts` มี 18 entry แล้ว: +AI(15)/KB(16)/**HR(17)**/**INVENTORY(18)** เป็น coming_soon (deploy 2 ที่แล้ว) — เปิดระบบ = เปลี่ยน status + เพิ่ม SystemType enum
