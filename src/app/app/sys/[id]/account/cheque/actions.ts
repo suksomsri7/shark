@@ -37,6 +37,7 @@ export async function createChequeAction(fd: FormData) {
     amount: baht(fd, "amount"),
     financeAccountId: str(fd, "financeAccountId") || null,
     note: str(fd, "note") || null,
+    documentId: str(fd, "documentId") || null, // R-B: ผูกเอกสาร → ตัดหนี้จริง (ถ้าเลือก)
   });
   if (!res.ok) redirect(`${base(systemId)}?dir=${direction}&err=${encodeURIComponent(res.reason)}`);
   await writeAudit({

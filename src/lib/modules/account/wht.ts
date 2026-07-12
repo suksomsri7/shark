@@ -301,11 +301,13 @@ export type PndRow = {
   paidAt: Date;
   recipientName: string;
   recipientTaxId: string | null;
+  recipientAddress: string | null; // M5: ที่อยู่ผู้รับเงิน (จาก snapshot)
   incomeType: AccountWhtIncomeType | null;
   incomeLabel: string;
   base: number;
   whtRateBp: number | null;
   whtAmount: number;
+  condition: string; // M5: เงื่อนไขการหัก (1=หัก ณ ที่จ่าย · 2=ออกให้ตลอดไป · 3=ออกให้ครั้งเดียว)
 };
 
 /**
@@ -324,17 +326,22 @@ export async function pnd(
 }> {
   const legalType: AccountLegalType = input.type === 3 ? "PERSON" : "COMPANY";
   const { gte, lt } = periodRange(input.period);
-  const certs = await prisma.accountDocument.findMany({
+  // M4: กรอง legalType จาก contactSnapshot (freeze ณ วันออกใบ) ไม่ใช่ contact สด → ภงด 3/53 ไม่ขยับย้อนหลัง
+  const allCerts = await prisma.accountDocument.findMany({
     where: {
       tenantId,
       systemId,
       docType: "WHT_CERT",
       status: "ISSUED",
       issueDate: { gte, lt },
-      contact: { legalType },
     },
-    include: { contact: { select: { name: true, taxId: true } } },
+    include: { contact: { select: { name: true, taxId: true, address: true, legalType: true } } },
     orderBy: { issueDate: "asc" },
+  });
+  const certs = allCerts.filter((c) => {
+    const snap = (c.contactSnapshot as Record<string, unknown> | null) ?? null;
+    const lt = (snap?.legalType as AccountLegalType) ?? c.contact?.legalType ?? "COMPANY";
+    return lt === legalType;
   });
 
   let grandBase = 0;
@@ -360,11 +367,13 @@ export async function pnd(
       paidAt: c.issueDate,
       recipientName: (snap?.name as string) ?? c.contact?.name ?? "—",
       recipientTaxId: (snap?.taxId as string) ?? c.contact?.taxId ?? null,
+      recipientAddress: (snap?.address as string) ?? c.contact?.address ?? null,
       incomeType: c.whtIncomeType,
       incomeLabel: c.whtIncomeType ? WHT_INCOME_LABEL[c.whtIncomeType] : "—",
       base,
       whtRateBp: c.whtRateBp,
       whtAmount: wht,
+      condition: "1", // หัก ณ ที่จ่าย (default) — 2 ออกให้ตลอดไป · 3 ออกให้ครั้งเดียว
     };
   });
 
@@ -392,16 +401,19 @@ export async function pndCsv(
   input: { type: 3 | 53; period: string },
 ): Promise<string> {
   const { rows, grandBase, grandWht } = await pnd(tenantId, systemId, input);
+  // M5: + ที่อยู่ผู้รับเงิน + เงื่อนไขการหัก (1 หัก ณ ที่จ่าย · 2 ออกให้ตลอดไป · 3 ออกให้ครั้งเดียว)
   const header = [
     "ลำดับ",
     "เลขที่ 50 ทวิ",
     "วันที่จ่าย",
     "ชื่อผู้รับเงิน",
     "เลขประจำตัวผู้เสียภาษี",
+    "ที่อยู่",
     "ประเภทเงินได้",
     "จำนวนเงินได้",
     "อัตรา (%)",
     "ภาษีที่หัก",
+    "เงื่อนไขการหัก",
   ];
   const lines = rows.map((r) =>
     [
@@ -410,15 +422,17 @@ export async function pndCsv(
       r.paidAt.toISOString().slice(0, 10),
       r.recipientName,
       r.recipientTaxId ?? "",
+      r.recipientAddress ?? "",
       r.incomeLabel,
       bahtStr(r.base),
       r.whtRateBp != null ? (r.whtRateBp / 100).toFixed(2) : "",
       bahtStr(r.whtAmount),
+      r.condition,
     ]
       .map(csvCell)
       .join(","),
   );
-  const totalLine = ["", "", "", "", "", "รวม", bahtStr(grandBase), "", bahtStr(grandWht)]
+  const totalLine = ["", "", "", "", "", "", "รวม", bahtStr(grandBase), "", bahtStr(grandWht), ""]
     .map(csvCell)
     .join(",");
   return "﻿" + [header.map(csvCell).join(","), ...lines, totalLine].join("\n");

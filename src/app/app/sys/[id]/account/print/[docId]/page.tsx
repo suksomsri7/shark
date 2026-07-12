@@ -26,6 +26,10 @@ export default async function PrintPage({
   if (!doc) notFound();
 
   const isTaxInvoice = doc.docType === "TAX_INVOICE";
+  // C4 (ม.86/10): ใบลดหนี้/ใบเพิ่มหนี้ ต้องอ้างเลข+วันที่ใบกำกับเดิม + เหตุผลการปรับ
+  const isAdjustNote = doc.docType === "CREDIT_NOTE" || doc.docType === "DEBIT_NOTE";
+  const origDoc =
+    isAdjustNote && doc.sourceDocId ? await getDocument(tenantId, systemId, doc.sourceDocId) : null;
   const snap = (doc.contactSnapshot as Record<string, unknown> | null) ?? null;
   const buyerName = (snap?.name as string) ?? doc.contact?.name ?? "";
   const buyerTax = (snap?.taxId as string) ?? doc.contact?.taxId ?? "";
@@ -79,6 +83,19 @@ export default async function PrintPage({
           {buyerBranch && <span>{buyerBranch}</span>}
         </div>
       </div>
+
+      {isAdjustNote && (
+        <div className="mt-3 rounded border border-neutral-300 p-3 text-xs">
+          <div className="font-medium">อ้างอิงเอกสารเดิม (ตามมาตรา 86/10)</div>
+          <div className="mt-1 flex flex-wrap gap-x-6 text-neutral-700">
+            <span>เลขที่ใบกำกับภาษีเดิม: {origDoc?.docNo ?? doc.sourceDocId ?? "—"}</span>
+            {origDoc?.issueDate && <span>ลงวันที่: {fmtDate(origDoc.issueDate)}</span>}
+          </div>
+          <div className="mt-1 text-neutral-700">
+            เหตุผลการออก: {doc.adjustReason?.trim() || "—"}
+          </div>
+        </div>
+      )}
 
       <table className="mt-4 w-full border-collapse text-xs">
         <thead>

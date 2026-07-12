@@ -16,5 +16,7 @@ export async function requestTaxInvoiceAction(fd: FormData) {
     email: str(fd, "email") || null,
   });
   if (!res.ok) redirect(`/r/${encodeURIComponent(token)}?err=${encodeURIComponent(res.reason)}`);
-  redirect(`/r/${encodeURIComponent(token)}?issued=${encodeURIComponent(res.docNo)}`);
+  // R-D: บันทึกเป็นคำขอ (staff อนุมัติก่อนออกเลข) — ถ้าออกใบไปแล้วโชว์เลขเดิม
+  if (res.docNo) redirect(`/r/${encodeURIComponent(token)}?issued=${encodeURIComponent(res.docNo)}`);
+  redirect(`/r/${encodeURIComponent(token)}?requested=1`);
 }

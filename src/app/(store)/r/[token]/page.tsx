@@ -17,10 +17,10 @@ export default async function PublicTaxInvoicePage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ err?: string; issued?: string }>;
+  searchParams: Promise<{ err?: string; issued?: string; requested?: string }>;
 }) {
   const { token } = await params;
-  const { err, issued } = await searchParams;
+  const { err, issued, requested } = await searchParams;
   const ctx = await getPublicTaxContext(token);
 
   if (!ctx) {
@@ -33,6 +33,7 @@ export default async function PublicTaxInvoicePage({
   }
 
   const alreadyNo = issued || ctx.existingTaxInvoiceNo;
+  const isPending = !alreadyNo && (requested === "1" || ctx.pendingRequest);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col gap-5 bg-neutral-50 p-6">
@@ -67,6 +68,11 @@ export default async function PublicTaxInvoicePage({
           <div className="text-base font-semibold text-green-800">ออกใบกำกับภาษีเรียบร้อย ✓</div>
           <div className="mt-1 text-green-700">เลขที่ใบกำกับภาษี {alreadyNo}</div>
           <div className="mt-2 text-neutral-500">ร้านค้าจะจัดส่งใบกำกับภาษีให้ตามข้อมูลที่ให้ไว้</div>
+        </div>
+      ) : isPending ? (
+        <div className="rounded-xl border border-blue-300 bg-blue-50 p-4 text-center text-sm">
+          <div className="text-base font-semibold text-blue-800">รับคำขอแล้ว ✓</div>
+          <div className="mt-2 text-neutral-600">ร้านค้ากำลังตรวจสอบและจะออกใบกำกับภาษีให้ตามข้อมูลที่ให้ไว้</div>
         </div>
       ) : (
         ctx.vatRegistered && (

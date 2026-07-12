@@ -101,7 +101,13 @@ async function financeLedgerId(
   financeAccountId: string | null | undefined,
   channel: string | null | undefined,
   db: Db,
+  isPayable = false,
 ): Promise<string> {
+  // M6: ชำระด้วยเช็ค → พักที่เช็ครอเรียกเก็บ (ยังไม่ขึ้นเงินธนาคาร) จน clearCheque ย้ายเข้า/ออก 1010
+  //     รับ (IN) → 1040 เช็ครับรอนำฝาก · จ่าย (OUT) → 2300 เช็คจ่ายรอเรียกเก็บ
+  if (channel === "CHEQUE") {
+    return (await resolveLine(ctx, isPayable ? "CHEQUE_PAYABLE" : "CHEQUE_IN_TRANSIT", undefined, db)).accountId;
+  }
   if (financeAccountId) {
     const fa = await db.accountFinance.findFirst({
       where: { id: financeAccountId, systemId: ctx.systemId },
@@ -530,7 +536,7 @@ export async function postDocument(
           orderBy: { paidAt: "asc" },
           select: { financeAccountId: true, channel: true },
         });
-        const cashId = await financeLedgerId(ctx, pay?.financeAccountId, pay?.channel, db);
+        const cashId = await financeLedgerId(ctx, pay?.financeAccountId, pay?.channel, db, true);
         b.dr(await b.id("DEPOSIT_PAID"), doc.grandTotal - doc.vatAmount, "มัดจำจ่าย");
         if (rate > 0) b.dr(await b.id("VAT_INPUT"), doc.vatAmount);
         b.cr(cashId, doc.grandTotal);
@@ -620,7 +626,7 @@ export async function postPayment(
       }
     } else if (isPayable) {
       // จ่ายชำระเจ้าหนี้: Dr 2100 (amount+WHT) + Dr 6500 fee · Cr เงิน (amount+fee) · Cr 2130 WHT ค้างนำส่ง
-      const cashId = await financeLedgerId(ctx, p.financeAccountId, p.channel, db);
+      const cashId = await financeLedgerId(ctx, p.financeAccountId, p.channel, db, true);
       b.dr(await b.id("AP"), p.amount + p.whtAmountSatang, "จ่ายชำระ", contactId);
       if (p.feeAmount > 0) b.dr(await b.id("PAYMENT_FEE"), p.feeAmount, "ค่าธรรมเนียม");
       b.cr(cashId, p.amount + p.feeAmount);
@@ -828,6 +834,42 @@ export async function postManualJV(
         source: "MANUAL",
         postedById: input.postedById,
       },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+
+// ─────────────────── postChequeEntry (ทะเบียนเช็ค — R-B/M7) ───────────────────
+
+/**
+ * โพสต์ entry ของทะเบียนเช็ค — refType="AccountCheque" refId=chequeId event=REGISTER/CLEAR/BOUNCE/VOID
+ * idempotent ต่อ (chequeId, event) + reverseFor("AccountCheque", chequeId) ได้ (แทน postManualJV+randomUUID)
+ * บรรทัด AR/AP ใส่ contactId → subledger รายคู่ค้าตรง (M8)
+ */
+export async function postChequeEntry(
+  ctx: GlCtx,
+  o: {
+    chequeId: string;
+    event: "REGISTER" | "CLEAR" | "BOUNCE" | "VOID";
+    book: AccountJournalBook;
+    date: Date;
+    memo?: string;
+    lines: { accountId: string; debit: number; credit: number; contactId?: string | null; note?: string }[];
+  },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    if (await alreadyPosted(ctx, `AccountCheque#${o.chequeId}#${o.event}`, db)) return { skipped: true };
+    const b = new Book(ctx, db);
+    for (const l of o.lines) {
+      if (l.debit > 0) b.dr(l.accountId, l.debit, l.note, l.contactId ?? undefined);
+      if (l.credit > 0) b.cr(l.accountId, l.credit, l.note, l.contactId ?? undefined);
+    }
+    const entry = await commitEntry(
+      ctx,
+      { book: o.book, journal: "DOC", date: o.date, refType: "AccountCheque", refId: o.chequeId, event: o.event, memo: o.memo },
       b,
       db,
     );

@@ -6,6 +6,7 @@ import type {
   AccountVatTiming,
   AccountPayChannel,
   AccountWhtIncomeType,
+  AccountLegalType,
   Prisma,
 } from "@prisma/client";
 // posting engine (owner = GL-P2P3, ไฟล์ gl.ts) — subagent P2 แค่ import + เรียกตามลายเซ็น
@@ -439,10 +440,11 @@ export async function updateExpenseDoc(
   }
 }
 
-// snapshot ผู้ติดต่อ (freeze พ้น DRAFT)
+// snapshot ผู้ติดต่อ (freeze พ้น DRAFT) — รวม legalType (M4: ภงด 3/53 ไม่ขยับย้อนหลัง)
 function contactSnapshot(c: {
   name: string;
   taxId: string | null;
+  legalType?: AccountLegalType;
   branchCode: string | null;
   branchName: string | null;
   address: string | null;
@@ -453,6 +455,7 @@ function contactSnapshot(c: {
   return {
     name: c.name,
     taxId: c.taxId,
+    legalType: c.legalType,
     branchCode: c.branchCode,
     branchName: c.branchName,
     address: c.address,
@@ -669,7 +672,10 @@ export async function recordVendorPayment(
       await postPayment(ctx, payment.id, tx);
       // ออกหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ) อัตโนมัติ
       if (wht > 0 && input.whtIncomeType) {
-        await issueWhtCert(tx, tenantId, systemId, doc, payment.id, wht, input.whtRateBp ?? null, input.whtIncomeType);
+        // M5: ฐานเงินได้จริง = ยอดจ่ายจริงงวดนี้ก่อน VAT (subTotal × สัดส่วนที่ตัดหนี้) ไม่ย้อนจาก wht/rate
+        const realBase = doc.grandTotal > 0 ? Math.round((doc.subTotal * tieOff) / doc.grandTotal) : tieOff;
+        // C3: 50 ทวิ ใช้ paidAt (WHT ตกงวด ภงด. ถูกเดือน)
+        await issueWhtCert(tx, tenantId, systemId, doc, payment.id, wht, input.whtRateBp ?? null, input.whtIncomeType, realBase, payment.paidAt);
       }
     });
     return { ok: true, status };
@@ -688,13 +694,10 @@ async function issueWhtCert(
   whtAmount: number,
   whtRateBp: number | null,
   incomeType: AccountWhtIncomeType,
+  base: number, // M5: ฐานเงินได้จริง (คำนวณจากยอดจ่ายจริง ไม่ย้อนจาก wht/rate)
+  issueDate: Date, // C3: = paidAt (WHT ตกงวด ภงด. ถูกเดือน)
 ): Promise<void> {
-  const issueDate = new Date();
   const docNo = await nextDocNo(tx, tenantId, systemId, "WHT_CERT", issueDate);
-  // F-03: ฐานเงินได้ = WHT ÷ อัตรา (ก่อน VAT) — subTotal=ฐาน, whtAmount=ยอดหัก (มาตรฐานเดียวกับ wht.ts)
-  //       เดิมใส่ subTotal=ยอด WHT และไม่ set whtAmount → ภ.ง.ด.53 ออกเป็น ฿0 + ฐานผิด
-  const base =
-    whtRateBp && whtRateBp > 0 ? Math.round((whtAmount * 10000) / whtRateBp) : whtAmount;
   const cert = await tx.accountDocument.create({
     data: {
       tenantId,
@@ -755,6 +758,16 @@ export async function voidVendorPayment(
         data: { paidTotal: newPaid, status: newPaid > 0 ? "PARTIAL" : "AWAITING_PAYMENT" },
       });
       await reverseFor({ tenantId, systemId }, "AccountDocumentPayment", paymentId, reason, tx);
+
+      // ── R-A/C2: cascade → 50 ทวิ (WHT_CERT) ที่ผูก payment นี้ → VOIDED + ล้าง link ──
+      //    ไม่งั้น ภงด.53 นำส่งบนเงินที่ไม่ได้จ่าย (จ่าย void แต่ cert ยัง ISSUED)
+      if (pay.whtCertDocId) {
+        await tx.accountDocument.updateMany({
+          where: { id: pay.whtCertDocId, systemId, docType: "WHT_CERT", status: { notIn: ["VOIDED", "CANCELLED"] } },
+          data: { status: "VOIDED", voidedAt: new Date(), voidReason: `ยกเลิกตามการยกเลิกจ่าย: ${reason}` },
+        });
+        await tx.accountDocumentPayment.update({ where: { id: paymentId }, data: { whtCertDocId: null } });
+      }
     });
     return { ok: true };
   } catch (e) {
