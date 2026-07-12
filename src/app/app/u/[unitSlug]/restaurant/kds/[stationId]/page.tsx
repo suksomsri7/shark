@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { getSetting, listStations } from "@/lib/modules/restaurant/menu";
 import { stationQueue, expoQueue } from "@/lib/modules/restaurant/kds";
 import { RestaurantKdsBoard, type KdsItemLite } from "@/components/restaurant-kds-board";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 type QueueItem = Awaited<ReturnType<typeof stationQueue>>[number];
 
@@ -48,12 +48,7 @@ export default async function KdsStationPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        <Link href={`/app/u/${unitSlug}/restaurant/kds`} className="btn btn-ghost text-sm">
-          ← สถานี
-        </Link>
-      </div>
+      <PageHeader title={title} back={{ href: `/app/u/${unitSlug}/restaurant/kds`, label: "จอครัว (KDS)" }} />
       <RestaurantKdsBoard
         unitSlug={unitSlug}
         items={toLite(items)}

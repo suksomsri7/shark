@@ -12,20 +12,15 @@ import {
 import SellForm from "./SellForm";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { MoneyText } from "@/components/ui/MoneyText";
+import { TICKET_STATUS_LABEL } from "@/lib/ui/status-labels";
+import { formatBaht } from "@/lib/ui/money";
 
-const baht = (s: number) => (s / 100).toLocaleString("th-TH");
-
-const STATUS_LABEL: Record<string, string> = {
-  DRAFT: "ร่าง",
-  PUBLISHED: "เปิดขาย",
-  ENDED: "จบงาน",
-  CANCELLED: "ยกเลิก",
-};
-const ORDER_STATUS_LABEL: Record<string, string> = {
-  PENDING: "รอชำระ",
-  PAID: "จ่ายแล้ว",
-  CANCELLED: "ยกเลิก",
-};
+const orderTone = (v: string) =>
+  v === "CANCELLED" ? "danger" : v === "PAID" ? "strong" : "muted";
 
 function fmt(d: Date) {
   return d.toLocaleString("th-TH", {
@@ -64,30 +59,22 @@ export default async function EventDetailPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
-          <h1 className="text-2xl font-semibold">{event.name}</h1>
-          <div className="mt-1 text-sm text-[color:var(--color-muted)]">
-            {fmt(event.startAt)}
-            {event.venue ? ` · ${event.venue}` : ""} · {STATUS_LABEL[event.status]}
-          </div>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader
+        title={event.name}
+        desc={`${fmt(event.startAt)}${event.venue ? ` · ${event.venue}` : ""}`}
+        back={{ href: `/app/u/${unitSlug}/ticket`, label: "ตั๋ว / อีเวนต์" }}
+        actions={
           <Link href={`/app/u/${unitSlug}/ticket/checkin?event=${event.id}`} className="btn btn-ghost text-sm">
             เช็คอิน
           </Link>
-          <Link href={`/app/u/${unitSlug}/ticket`} className="btn btn-ghost text-sm">
-            ← กลับ
-          </Link>
-        </div>
-      </div>
+        }
+      />
 
       {/* สรุป */}
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label="ขายแล้ว" value={`${summary.sold}/${summary.quota}`} />
         <Stat label="คงเหลือ" value={`${summary.remaining}`} />
-        <Stat label="รายได้ (จ่ายแล้ว)" value={`฿${baht(summary.paidRevenueSatang)}`} />
+        <Stat label="รายได้ (จ่ายแล้ว)" value={formatBaht(summary.paidRevenueSatang)} />
         <Stat label="เช็คอิน" value={`${summary.checkedIn}/${summary.admissionsTotal}`} />
       </section>
 
@@ -99,11 +86,14 @@ export default async function EventDetailPage({
             <input type="hidden" name="id" value={event.id} />
             <input type="hidden" name="status" value={s} />
             <button
-              className={`rounded-full border px-2.5 py-1 text-xs ${
-                event.status === s ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface)]" : "hover:bg-[color:var(--color-surface-2)]"
-              }`}
+              className="btn-sm"
+              style={
+                event.status === s
+                  ? { background: "var(--color-ink)", color: "var(--color-surface)" }
+                  : undefined
+              }
             >
-              {STATUS_LABEL[s]}
+              {TICKET_STATUS_LABEL[s]}
             </button>
           </form>
         ))}
@@ -111,7 +101,7 @@ export default async function EventDetailPage({
 
       {/* ประเภทตั๋ว */}
       <section className="flex flex-col gap-3">
-        <h2 className="font-medium">ประเภทตั๋ว</h2>
+        <h2 className="text-sm font-medium">ประเภทตั๋ว</h2>
         {event.ticketTypes.filter((t) => t.active).length === 0 && (
           <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีประเภทตั๋ว เพิ่มด้านล่าง</p>
         )}
@@ -123,7 +113,7 @@ export default async function EventDetailPage({
                 <span className="font-medium">{t.name}</span>
                 <span className="text-[color:var(--color-muted)]">
                   {" "}
-                  · ฿{baht(t.priceSatang)} · ขาย {t.sold}/{t.quota}
+                  · {formatBaht(t.priceSatang)} · ขาย {t.sold}/{t.quota}
                 </span>
               </div>
               <form action={removeTypeAction.bind(null, unitSlug)}>
@@ -156,15 +146,15 @@ export default async function EventDetailPage({
 
       {/* ขาย/จอง หน้างาน */}
       <section className="card flex flex-col gap-3">
-        <h2 className="font-medium">ขาย / จอง หน้างาน</h2>
+        <h2 className="text-sm font-medium">ขาย / จอง หน้างาน</h2>
         <SellForm unitSlug={unitSlug} eventId={event.id} types={sellableTypes} />
       </section>
 
       {/* ออเดอร์ */}
       <section className="flex flex-col gap-3">
-        <h2 className="font-medium">ออเดอร์</h2>
+        <h2 className="text-sm font-medium">ออเดอร์</h2>
         {orders.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีออเดอร์</p>
+          <EmptyState text="ยังไม่มีออเดอร์ — ขายหรือจองหน้างานด้านบนเพื่อเริ่ม" />
         ) : (
           <div className="flex flex-col gap-2">
             {orders.map((o) => (
@@ -174,15 +164,13 @@ export default async function EventDetailPage({
                     <span className="font-medium">{o.buyerName}</span>
                     <span className="text-[color:var(--color-muted)]">
                       {" "}
-                      · {o.orderNo} · {o._count.admissions} ใบ · ฿{baht(o.totalSatang)}
+                      · {o.orderNo} · {o._count.admissions} ใบ · <MoneyText satang={o.totalSatang} />
                     </span>
                     {o.buyerPhone && (
                       <div className="text-xs text-[color:var(--color-muted)]">{o.buyerPhone}</div>
                     )}
                   </div>
-                  <span className="whitespace-nowrap rounded-full border px-2 py-0.5 text-xs text-[color:var(--color-muted)]">
-                    {ORDER_STATUS_LABEL[o.status]}
-                  </span>
+                  <StatusChip value={o.status} map={TICKET_STATUS_LABEL} toneOf={orderTone} />
                 </div>
                 {o.status !== "CANCELLED" && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -190,18 +178,14 @@ export default async function EventDetailPage({
                       <form action={markPaidAction.bind(null, unitSlug)}>
                         <input type="hidden" name="id" value={o.id} />
                         <input type="hidden" name="eventId" value={event.id} />
-                        <SubmitButton
-                          variant="ghost"
-                          pendingText="กำลังบันทึก…"
-                          className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
-                        >
+                        <SubmitButton variant="ghost" pendingText="กำลังบันทึก…">
                           รับเงินแล้ว
                         </SubmitButton>
                       </form>
                     )}
                     <ConfirmDialog
                       triggerLabel="ยกเลิก + คืนโควตา"
-                      triggerClassName="rounded-lg border px-2.5 py-1 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
+                      triggerClassName="btn-sm text-[color:var(--color-danger)]"
                       title="ยกเลิกออเดอร์นี้?"
                       detail="ตั๋วทุกใบในออเดอร์จะถูกยกเลิก และคืนโควตากลับเข้าระบบ แก้ไขไม่ได้"
                       confirmLabel="ยืนยันยกเลิกออเดอร์"

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { getSession, floorPlan } from "@/lib/modules/restaurant/table";
-import { baht } from "@/lib/modules/restaurant/scope";
 import {
   closeSessionAction,
   moveSessionAction,
@@ -11,6 +10,9 @@ import {
   rushOrderAction,
 } from "@/lib/actions/restaurant";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { formatBaht } from "@/lib/ui/money";
 
 const KDS_LABEL: Record<string, string> = {
   NEW: "รอครัว",
@@ -36,28 +38,19 @@ export default async function SessionPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
-          <h1 className="text-2xl font-semibold">
-            โต๊ะ {session.table.name}
-            <span className="ml-2 text-sm font-normal text-[color:var(--color-muted)]">
-              {session.status === "OPEN" ? "กำลังใช้งาน" : session.status}
-            </span>
-          </h1>
-        </div>
-        <Link href={`/app/u/${unitSlug}/restaurant`} className="btn btn-ghost text-sm">
-          ← หน้างาน
-        </Link>
-      </div>
+      <PageHeader
+        title={`โต๊ะ ${session.table.name}`}
+        desc={session.status === "OPEN" ? "กำลังใช้งาน" : "ปิดแล้ว"}
+        back={{ href: `/app/u/${unitSlug}/restaurant`, label: "ร้านอาหาร · หน้างาน" }}
+      />
 
       {/* สรุปยอด */}
       <section className="card flex items-center justify-between">
         <div>
           <div className="text-xs text-[color:var(--color-muted)]">ยอดรวม / ค้างชำระ</div>
           <div className="text-xl font-semibold">
-            ฿{baht(session.totalSatang)}{" "}
-            <span className="text-sm font-normal text-[color:var(--color-muted)]">ค้าง ฿{baht(session.unpaidSatang)}</span>
+            {formatBaht(session.totalSatang)}{" "}
+            <span className="text-sm font-normal text-[color:var(--color-muted)]">ค้าง {formatBaht(session.unpaidSatang)}</span>
           </div>
           {session.memberId && <div className="text-xs text-[color:var(--color-muted)]">สะสมแต้ม: ผูกสมาชิกแล้ว</div>}
         </div>
@@ -75,9 +68,9 @@ export default async function SessionPage({
 
       {/* รายการ */}
       <section className="flex flex-col gap-3">
-        <h2 className="font-medium">รายการอาหาร</h2>
+        <h2 className="text-sm font-medium">รายการอาหาร</h2>
         {session.orders.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีออเดอร์ — กด &quot;สั่งเพิ่ม&quot;</p>
+          <EmptyState text="ยังไม่มีออเดอร์ — กด “สั่งเพิ่ม” เพื่อคีย์รายการอาหาร" />
         ) : (
           session.orders.map((o) => (
             <div key={o.id} className="rounded-xl border p-3">
@@ -89,7 +82,7 @@ export default async function SessionPage({
                 {!o.isRush && (
                   <form action={rushOrderAction.bind(null, unitSlug)}>
                     <input type="hidden" name="orderId" value={o.id} />
-                    <button className="underline">เร่ง</button>
+                    <button className="btn-sm">เร่ง</button>
                   </form>
                 )}
               </div>
@@ -104,7 +97,7 @@ export default async function SessionPage({
                         )}
                       </div>
                       <div className="text-xs text-[color:var(--color-muted)]">
-                        {KDS_LABEL[it.kdsStatus]} · ฿{baht(it.lineTotal)}
+                        {KDS_LABEL[it.kdsStatus]} · {formatBaht(it.lineTotal)}
                         {it.saleId ? " · ชำระแล้ว" : ""}
                         {it.note ? ` · ${it.note}` : ""}
                       </div>
@@ -112,7 +105,7 @@ export default async function SessionPage({
                     {!it.saleId && it.kdsStatus !== "CANCELLED" && it.kdsStatus !== "SERVED" && (
                       <ConfirmDialog
                         triggerLabel="ยกเลิก"
-                        triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+                        triggerClassName="btn-sm text-[color:var(--color-danger)]"
                         title="ยกเลิกรายการนี้?"
                         detail="รายการอาหารนี้จะถูกยกเลิกออกจากบิล"
                         confirmLabel="ยืนยันยกเลิก"
@@ -138,34 +131,34 @@ export default async function SessionPage({
             <form action={moveSessionAction.bind(null, unitSlug)} className="flex flex-wrap items-center gap-2 text-sm">
               <input type="hidden" name="sessionId" value={sessionId} />
               <span>ย้ายไปโต๊ะ</span>
-              <select name="toTableId" className="rounded-lg border px-2 py-1.5 text-sm">
+              <select name="toTableId" className="rounded-lg border px-2 py-2 text-sm">
                 {freeTables.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
                   </option>
                 ))}
               </select>
-              <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">ย้าย</button>
+              <button className="btn-sm">ย้าย</button>
             </form>
           )}
           {otherOpen.length > 0 && (
             <form action={mergeSessionAction.bind(null, unitSlug)} className="flex flex-wrap items-center gap-2 text-sm">
               <input type="hidden" name="intoSessionId" value={sessionId} />
               <span>รวมโต๊ะ (ดึงเข้าโต๊ะนี้)</span>
-              <select name="fromSessionId" className="rounded-lg border px-2 py-1.5 text-sm">
+              <select name="fromSessionId" className="rounded-lg border px-2 py-2 text-sm">
                 {otherOpen.map((t) => (
                   <option key={t.sessionId} value={t.sessionId!}>
                     {t.name}
                   </option>
                 ))}
               </select>
-              <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">รวม</button>
+              <button className="btn-sm">รวม</button>
             </form>
           )}
           {session.unpaidSatang === 0 && (
             <ConfirmDialog
               triggerLabel="ปิดโต๊ะ"
-              triggerClassName="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
+              triggerClassName="btn-sm"
               title="ปิดโต๊ะนี้?"
               detail="โต๊ะจะถูกปิดและว่างพร้อมรับลูกค้าใหม่"
               confirmLabel="ยืนยันปิดโต๊ะ"

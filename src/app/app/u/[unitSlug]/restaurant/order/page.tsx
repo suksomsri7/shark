@@ -1,8 +1,9 @@
-import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { orderingMenu, ensureDefaultStations } from "@/lib/modules/restaurant/menu";
 import { openSessionsList } from "@/lib/modules/restaurant/table";
 import { RestaurantOrderEntry } from "@/components/restaurant-order-entry";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export default async function OrderEntryPage({
   params,
@@ -23,19 +24,12 @@ export default async function OrderEntryPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">คีย์ออเดอร์</h1>
-        <Link href={`/app/u/${unitSlug}/restaurant`} className="btn btn-ghost text-sm">
-          ← หน้างาน
-        </Link>
-      </div>
+      <PageHeader title="คีย์ออเดอร์" back={{ href: `/app/u/${unitSlug}/restaurant`, label: "ร้านอาหาร · หน้างาน" }} />
       {menu.length === 0 ? (
-        <p className="text-sm text-[color:var(--color-muted)]">
-          ยังไม่มีเมนู — เพิ่มเมนูที่{" "}
-          <Link href={`/app/u/${unitSlug}/restaurant/menu`} className="underline">
-            จัดการเมนู
-          </Link>
-        </p>
+        <EmptyState
+          text="ยังไม่มีเมนู — เพิ่มเมนูก่อนจึงคีย์ออเดอร์ได้"
+          action={{ href: `/app/u/${unitSlug}/restaurant/menu`, label: "จัดการเมนู" }}
+        />
       ) : (
         <RestaurantOrderEntry unitSlug={unitSlug} menu={menu} sessions={sessions} initialSessionId={sessionId} />
       )}

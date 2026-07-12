@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { createStaffOrderAction } from "@/lib/actions/restaurant";
 import type { CartLine } from "@/lib/modules/restaurant/order";
+import { formatBaht } from "@/lib/ui/money";
 
 export type MenuChoice = { id: string; name: string; priceDelta: number; isOutOfStock: boolean };
 export type MenuGroup = { groupId: string; name: string; minSelect: number; maxSelect: number; choices: MenuChoice[] };
@@ -11,8 +12,6 @@ export type MenuCat = { id: string; name: string; items: MenuItemLite[] };
 export type SessionLite = { sessionId: string; tableName: string };
 
 type CartEntry = { line: CartLine; label: string; unitSatang: number };
-
-const baht = (s: number) => (s / 100).toLocaleString("th-TH");
 
 export function RestaurantOrderEntry({
   unitSlug,
@@ -85,14 +84,14 @@ export function RestaurantOrderEntry({
             <button
               key={t}
               onClick={() => setType(t)}
-              className={`px-3 py-1.5 ${type === t ? "bg-black text-white" : ""}`}
+              className={`px-3 py-2 ${type === t ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface)]" : ""}`}
             >
               {t === "DINE_IN" ? "ทานที่ร้าน" : "กลับบ้าน"}
             </button>
           ))}
         </div>
         {type === "DINE_IN" && (
-          <select value={sessionId} onChange={(e) => setSessionId(e.target.value)} className="rounded-lg border px-2 py-1.5 text-sm">
+          <select value={sessionId} onChange={(e) => setSessionId(e.target.value)} className="rounded-lg border px-2 py-2 text-sm">
             {sessions.length === 0 && <option value="">ยังไม่มีโต๊ะที่เปิด</option>}
             {sessions.map((s) => (
               <option key={s.sessionId} value={s.sessionId}>
@@ -118,7 +117,7 @@ export function RestaurantOrderEntry({
                 >
                   <div className="font-medium">{it.name}</div>
                   <div className="text-xs text-[color:var(--color-muted)]">
-                    ฿{baht(it.basePrice)}
+                    {formatBaht(it.basePrice)}
                     {it.isOutOfStock ? " · หมด" : ""}
                   </div>
                 </button>
@@ -149,8 +148,8 @@ export function RestaurantOrderEntry({
                 {c.line.qty}× {c.label}
               </span>
               <div className="flex items-center gap-2">
-                <span>฿{baht(c.unitSatang * c.line.qty)}</span>
-                <button className="text-xs text-[color:var(--color-danger)]" onClick={() => setCart((x) => x.filter((_, j) => j !== i))}>
+                <span>{formatBaht(c.unitSatang * c.line.qty)}</span>
+                <button className="text-xs text-[color:var(--color-danger)] underline" onClick={() => setCart((x) => x.filter((_, j) => j !== i))}>
                   ลบ
                 </button>
               </div>
@@ -158,7 +157,7 @@ export function RestaurantOrderEntry({
           ))}
           {msg && <div className="text-xs text-[color:var(--color-danger)]">{msg}</div>}
           <button disabled={submitting} onClick={submit} className="btn btn-primary text-sm">
-            {submitting ? "กำลังส่ง…" : `ส่งครัว · ฿${baht(total)}`}
+            {submitting ? "กำลังส่ง…" : `ส่งครัว · ${formatBaht(total)}`}
           </button>
         </div>
       )}
@@ -213,10 +212,10 @@ function OptionPicker({
                       key={c.id}
                       disabled={c.isOutOfStock}
                       onClick={() => toggle(g, c.id)}
-                      className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm ${on ? "border-2 border-black" : ""} ${c.isOutOfStock ? "opacity-40" : ""}`}
+                      className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm ${on ? "border-2 border-[color:var(--color-ink)]" : ""} ${c.isOutOfStock ? "opacity-40" : ""}`}
                     >
                       <span>{c.name}</span>
-                      <span className="text-xs text-[color:var(--color-muted)]">{c.priceDelta ? `+฿${baht(c.priceDelta)}` : ""}</span>
+                      <span className="text-xs text-[color:var(--color-muted)]">{c.priceDelta ? `+${formatBaht(c.priceDelta)}` : ""}</span>
                     </button>
                   );
                 })}
@@ -239,7 +238,7 @@ function OptionPicker({
               })
             }
           >
-            เพิ่ม ฿{baht(item.basePrice + delta)}
+            เพิ่ม {formatBaht(item.basePrice + delta)}
           </button>
         </div>
       </div>

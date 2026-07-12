@@ -1,8 +1,9 @@
-import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { listOptionGroups } from "@/lib/modules/restaurant/menu";
-import { baht } from "@/lib/modules/restaurant/scope";
 import { createOptionGroupAction, archiveOptionGroupAction, setChoiceStockAction } from "@/lib/actions/restaurant";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { formatBaht } from "@/lib/ui/money";
 
 export default async function OptionsPage({
   params,
@@ -15,17 +16,10 @@ export default async function OptionsPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">กลุ่มตัวเลือก</h1>
-        <Link href={`/app/u/${unitSlug}/restaurant/menu`} className="btn btn-ghost text-sm">
-          ← เมนู
-        </Link>
-      </div>
+      <PageHeader title="กลุ่มตัวเลือก" back={{ href: `/app/u/${unitSlug}/restaurant/menu`, label: "เมนู" }} />
 
       {groups.length === 0 ? (
-        <p className="text-sm text-[color:var(--color-muted)]">
-          ยังไม่มีกลุ่มตัวเลือก เช่น &quot;ขนาด&quot; &quot;ความหวาน&quot; &quot;Topping&quot;
-        </p>
+        <EmptyState text="ยังไม่มีกลุ่มตัวเลือก — เช่น “ขนาด” “ความหวาน” “ท็อปปิ้ง” เพิ่มด้านล่าง" />
       ) : (
         groups.map((g) => (
           <div key={g.id} className="card flex flex-col gap-2">
@@ -45,14 +39,14 @@ export default async function OptionsPage({
               {g.choices.map((c) => (
                 <div key={c.id} className="flex items-center justify-between text-sm">
                   <span className={c.isOutOfStock ? "opacity-50" : ""}>
-                    {c.name} {c.priceDelta !== 0 ? `(${c.priceDelta > 0 ? "+" : ""}฿${baht(c.priceDelta)})` : ""}
+                    {c.name} {c.priceDelta !== 0 ? `(${c.priceDelta > 0 ? "+" : ""}${formatBaht(c.priceDelta)})` : ""}
                     {c.isDefault ? " · ค่าเริ่มต้น" : ""}
                   </span>
                   <form action={setChoiceStockAction.bind(null, unitSlug)}>
                     <input type="hidden" name="id" value={c.id} />
                     <input type="hidden" name="out" value={c.isOutOfStock ? "false" : "true"} />
-                    <button className="text-xs underline text-[color:var(--color-muted)]">
-                      {c.isOutOfStock ? "ปลด 86" : "86"}
+                    <button className="btn-sm">
+                      {c.isOutOfStock ? "ปลดหมด" : "แจ้งหมด"}
                     </button>
                   </form>
                 </div>

@@ -16,6 +16,8 @@ import {
   deleteMessageAction,
 } from "./actions";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { CHANNEL_KIND_LABEL } from "@/lib/ui/status-labels";
 
 const fmt = (d: Date) =>
   d.toLocaleString("th-TH", {
@@ -26,7 +28,9 @@ const fmt = (d: Date) =>
     timeZone: "Asia/Bangkok",
   });
 
-const chLabel = (kind: string, name: string) => `${kind === "PRIVATE" ? "🔒 " : "# "}${name}`;
+// ป้ายห้องส่วนตัว (สาธารณะไม่ต้องแสดง chip)
+const PrivateTag = ({ kind }: { kind: string }) =>
+  kind === "PRIVATE" ? <StatusChip value={kind} map={CHANNEL_KIND_LABEL} tone="muted" /> : null;
 
 type Msg = {
   id: string;
@@ -93,7 +97,10 @@ export async function MeetingContent({
                     : "hover:bg-[color:var(--color-surface-2)]"
                 } ${c.isMember ? "" : "text-[color:var(--color-muted)]"}`}
               >
-                <span className="truncate">{chLabel(c.kind, c.name)}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate">{c.name}</span>
+                  <PrivateTag kind={c.kind} />
+                </span>
                 <span className="ml-1 shrink-0 text-xs text-[color:var(--color-muted)]">
                   {c.memberCount}
                 </span>
@@ -112,16 +119,16 @@ export async function MeetingContent({
                 name="name"
                 required
                 placeholder="ชื่อห้อง"
-                className="rounded-lg border px-2 py-1 text-sm"
+                className="input"
               />
               <input
                 name="topic"
                 placeholder="หัวข้อ (ไม่บังคับ)"
-                className="rounded-lg border px-2 py-1 text-sm"
+                className="input"
               />
-              <select name="kind" className="rounded-lg border px-2 py-1 text-sm">
-                <option value="PUBLIC">สาธารณะ (#)</option>
-                <option value="PRIVATE">ส่วนตัว (🔒)</option>
+              <select name="kind" className="input">
+                <option value="PUBLIC">สาธารณะ</option>
+                <option value="PRIVATE">ส่วนตัว</option>
               </select>
               <button className="btn btn-ghost text-sm">สร้าง</button>
             </form>
@@ -247,7 +254,7 @@ async function MessageList({
             href={`${base}?c=${channelId}&t=${m.id}`}
             className="ml-1 mt-0.5 inline-block text-xs text-[color:var(--color-muted)] underline"
           >
-            {m.replyCount > 0 ? `💬 ${m.replyCount} ตอบกลับ` : "ตอบกลับในเธรด"}
+            {m.replyCount > 0 ? `${m.replyCount} ตอบกลับ` : "ตอบกลับในเธรด"}
           </Link>
         </div>
       ))}
@@ -305,7 +312,7 @@ function MessageRow({
                 name="body"
                 defaultValue={msg.body}
                 rows={2}
-                className="rounded-lg border px-2 py-1 text-sm"
+                className="input"
               />
               <button className="btn btn-ghost self-start text-xs">บันทึก</button>
             </form>
@@ -350,7 +357,7 @@ function Composer({
         required
         rows={1}
         placeholder={threadParentId ? "ตอบในเธรด…" : "พิมพ์ข้อความ…"}
-        className="flex-1 rounded-lg border px-3 py-2 text-sm"
+        className="input flex-1"
       />
       <button className="btn btn-ghost text-sm">ส่ง</button>
     </form>
@@ -367,7 +374,10 @@ function ChannelHeader({
   return (
     <div className="flex items-center justify-between border-b pb-2">
       <div>
-        <div className="text-sm font-semibold">{chLabel(channel.kind, channel.name)}</div>
+        <div className="flex items-center gap-1.5 text-sm font-semibold">
+          {channel.name}
+          <PrivateTag kind={channel.kind} />
+        </div>
         {channel.topic && (
           <div className="text-xs text-[color:var(--color-muted)]">{channel.topic}</div>
         )}
@@ -406,7 +416,10 @@ async function ThreadPane({
   return (
     <>
       <div className="flex items-center justify-between border-b pb-2">
-        <div className="text-sm font-semibold">เธรด · {chLabel(channel.kind, channel.name)}</div>
+        <div className="flex items-center gap-1.5 text-sm font-semibold">
+          เธรด · {channel.name}
+          <PrivateTag kind={channel.kind} />
+        </div>
         <Link
           href={`${base}?c=${channel.id}`}
           className="text-xs text-[color:var(--color-muted)] underline"

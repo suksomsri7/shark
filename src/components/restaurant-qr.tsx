@@ -2,15 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OrderingMenuCat, OrderingMenuItem, OrderingMenuGroup } from "@/lib/modules/restaurant/menu";
-
-const baht = (s: number) => (s / 100).toLocaleString("th-TH");
+import { formatBaht } from "@/lib/ui/money";
 
 type CartEntry = { menuItemId: string; qty: number; choiceIds: string[]; label: string; unitSatang: number };
 
 const KDS_LABEL: Record<string, string> = {
   NEW: "รอครัว",
   COOKING: "กำลังทำ",
-  READY: "เสร็จแล้ว 🔔",
+  READY: "เสร็จแล้ว",
   SERVED: "เสิร์ฟแล้ว",
 };
 
@@ -135,7 +134,7 @@ export function RestaurantQr({
         </div>
         <div className="flex overflow-hidden rounded-lg border text-sm">
           {(["menu", "orders"] as const).map((t) => (
-            <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 ${tab === t ? "bg-black text-white" : ""}`}>
+            <button key={t} onClick={() => setTab(t)} className={`px-3 py-2 ${tab === t ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface)]" : ""}`}>
               {t === "menu" ? "เมนู" : "ออเดอร์โต๊ะนี้"}
             </button>
           ))}
@@ -166,7 +165,7 @@ export function RestaurantQr({
                       {it.name}
                       {it.isOutOfStock && <span className="ml-2 text-xs text-[color:var(--color-danger)]">หมด</span>}
                     </span>
-                    <span className="text-sm">฿{baht(it.basePrice)}</span>
+                    <span className="text-sm">{formatBaht(it.basePrice)}</span>
                   </button>
                 ))}
               </div>
@@ -195,8 +194,8 @@ export function RestaurantQr({
           )}
           {status && status.totalSatang > 0 && (
             <div className="card flex justify-between text-sm font-semibold">
-              <span>ยอดโดยประมาณ{status.serviceChargeSatang > 0 ? " (รวม service charge)" : ""}</span>
-              <span>฿{baht(status.totalSatang)}</span>
+              <span>ยอดโดยประมาณ{status.serviceChargeSatang > 0 ? " (รวมค่าบริการ)" : ""}</span>
+              <span>{formatBaht(status.totalSatang)}</span>
             </div>
           )}
         </div>
@@ -224,23 +223,23 @@ export function RestaurantQr({
                     <span>
                       {c.qty}× {c.label}
                     </span>
-                    <button className="text-xs text-[color:var(--color-danger)]" onClick={() => setCart((x) => x.filter((_, j) => j !== i))}>
+                    <button className="text-xs text-[color:var(--color-danger)] underline" onClick={() => setCart((x) => x.filter((_, j) => j !== i))}>
                       ลบ
                     </button>
                   </div>
                 ))}
               </div>
               <button disabled={submitting} onClick={submit} className="btn btn-primary text-sm">
-                {submitting ? "กำลังสั่ง…" : `สั่งอาหาร · ฿${baht(total)}`}
+                {submitting ? "กำลังสั่ง…" : `สั่งอาหาร · ${formatBaht(total)}`}
               </button>
             </>
           ) : (
             <div className="flex gap-2">
               <button onClick={() => serviceRequest("CALL_STAFF")} className="btn btn-ghost flex-1 text-sm">
-                🔔 เรียกพนักงาน
+                เรียกพนักงาน
               </button>
               <button onClick={() => serviceRequest("REQUEST_BILL")} className="btn btn-ghost flex-1 text-sm">
-                🧾 ขอเช็คบิล
+                ขอเช็คบิล
               </button>
             </div>
           )}
@@ -295,10 +294,10 @@ function QrOptionPicker({
                       key={c.id}
                       disabled={c.isOutOfStock}
                       onClick={() => toggle(g, c.id)}
-                      className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm ${on ? "border-2 border-black" : ""} ${c.isOutOfStock ? "opacity-40" : ""}`}
+                      className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm ${on ? "border-2 border-[color:var(--color-ink)]" : ""} ${c.isOutOfStock ? "opacity-40" : ""}`}
                     >
                       <span>{c.name}</span>
-                      <span className="text-xs text-[color:var(--color-muted)]">{c.priceDelta ? `+฿${baht(c.priceDelta)}` : ""}</span>
+                      <span className="text-xs text-[color:var(--color-muted)]">{c.priceDelta ? `+${formatBaht(c.priceDelta)}` : ""}</span>
                     </button>
                   );
                 })}
@@ -323,7 +322,7 @@ function QrOptionPicker({
               })
             }
           >
-            เพิ่ม ฿{baht(item.basePrice + delta)}
+            เพิ่ม {formatBaht(item.basePrice + delta)}
           </button>
         </div>
       </div>

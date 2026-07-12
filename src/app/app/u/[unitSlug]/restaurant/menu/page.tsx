@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { listCategories, listItems, listStations, listOptionGroups, ensureDefaultStations } from "@/lib/modules/restaurant/menu";
-import { baht } from "@/lib/modules/restaurant/scope";
 import {
   createCategoryAction,
   createItemAction,
@@ -9,6 +8,16 @@ import {
   duplicateItemAction,
   archiveItemAction,
 } from "@/lib/actions/restaurant";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { formatBaht } from "@/lib/ui/money";
+
+const TAG_LABEL: Record<string, string> = {
+  SPICY: "เผ็ด",
+  VEGAN: "มังสวิรัติ",
+  RECOMMENDED: "แนะนำ",
+  NEW: "ใหม่",
+};
 
 export default async function MenuPage({
   params,
@@ -34,23 +43,20 @@ export default async function MenuPage({
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
-          <h1 className="text-2xl font-semibold">เมนู</h1>
-        </div>
-        <div className="flex gap-2">
-          <Link href={`/app/u/${unitSlug}/restaurant/menu/options`} className="btn btn-ghost text-sm">
-            กลุ่มตัวเลือก
-          </Link>
-          <Link href={`/app/u/${unitSlug}/restaurant/menu/stock`} className="btn btn-ghost text-sm">
-            ของหมด (86)
-          </Link>
-          <Link href={`/app/u/${unitSlug}/restaurant`} className="btn btn-ghost text-sm">
-            ← หน้างาน
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="เมนู"
+        back={{ href: `/app/u/${unitSlug}/restaurant`, label: "ร้านอาหาร · หน้างาน" }}
+        actions={
+          <>
+            <Link href={`/app/u/${unitSlug}/restaurant/menu/options`} className="btn btn-ghost text-sm">
+              กลุ่มตัวเลือก
+            </Link>
+            <Link href={`/app/u/${unitSlug}/restaurant/menu/stock`} className="btn btn-ghost text-sm">
+              ของหมด
+            </Link>
+          </>
+        }
+      />
 
       {/* เพิ่มหมวด */}
       <section className="card flex flex-col gap-2">
@@ -63,11 +69,11 @@ export default async function MenuPage({
       </section>
 
       {categories.length === 0 ? (
-        <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีหมวด — เพิ่มหมวดก่อนสร้างเมนู</p>
+        <EmptyState text="ยังไม่มีหมวด — เพิ่มหมวดด้านบนก่อนจึงสร้างเมนูได้" />
       ) : (
         categories.map((cat) => (
           <section key={cat.id} className="flex flex-col gap-2">
-            <h2 className="font-medium">
+            <h2 className="text-sm font-medium">
               {cat.name} <span className="text-xs text-[color:var(--color-muted)]">({cat._count.items})</span>
             </h2>
             {(byCat.get(cat.id) ?? []).map((it) => (
@@ -75,11 +81,11 @@ export default async function MenuPage({
                 <div>
                   <div className="text-sm font-medium">
                     {it.name}
-                    {it.isOutOfStock && <span className="ml-2 text-xs text-[color:var(--color-danger)]">หมด (86)</span>}
+                    {it.isOutOfStock && <span className="ml-2 text-xs text-[color:var(--color-danger)]">หมด</span>}
                     {it.status === "HIDDEN" && <span className="ml-2 text-xs text-[color:var(--color-muted)]">ซ่อน</span>}
                   </div>
                   <div className="text-xs text-[color:var(--color-muted)]">
-                    ฿{baht(it.basePrice)} · {it.station.name}
+                    {formatBaht(it.basePrice)} · {it.station.name}
                     {it.stockQty != null ? ` · เหลือ ${it.stockQty}` : ""}
                     {it.optionGroups.length > 0 ? ` · ${it.optionGroups.length} กลุ่มตัวเลือก` : ""}
                   </div>
@@ -88,8 +94,8 @@ export default async function MenuPage({
                   <form action={setItemStockAction.bind(null, unitSlug)}>
                     <input type="hidden" name="id" value={it.id} />
                     <input type="hidden" name="isOutOfStock" value={it.isOutOfStock ? "false" : "true"} />
-                    <button className="rounded-lg border px-2 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">
-                      {it.isOutOfStock ? "ปลด 86" : "86"}
+                    <button className="btn-sm">
+                      {it.isOutOfStock ? "ปลดหมด" : "แจ้งหมด"}
                     </button>
                   </form>
                   <form action={duplicateItemAction.bind(null, unitSlug)}>
@@ -150,7 +156,7 @@ export default async function MenuPage({
               {["SPICY", "VEGAN", "RECOMMENDED", "NEW"].map((t) => (
                 <label key={t} className="flex items-center gap-1 text-xs">
                   <input type="checkbox" name="tags" value={t} />
-                  {t}
+                  {TAG_LABEL[t]}
                 </label>
               ))}
             </div>

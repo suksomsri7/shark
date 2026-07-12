@@ -3,10 +3,9 @@
 import { useActionState } from "react";
 import { createOrderAction } from "@/lib/modules/ticket/actions";
 import type { CreateOrderResult } from "@/lib/modules/ticket/service";
+import { formatBaht } from "@/lib/ui/money";
 
 type TypeOption = { id: string; name: string; priceSatang: number; remaining: number };
-
-const baht = (s: number) => (s / 100).toLocaleString("th-TH");
 
 export default function SellForm({
   unitSlug,
@@ -40,7 +39,7 @@ export default function SellForm({
                 <span className="font-medium">{t.name}</span>
                 <span className="text-[color:var(--color-muted)]">
                   {" "}
-                  · ฿{baht(t.priceSatang)} · เหลือ {t.remaining}
+                  · {formatBaht(t.priceSatang)} · เหลือ {t.remaining}
                 </span>
               </div>
               <input
@@ -49,7 +48,7 @@ export default function SellForm({
                 min={0}
                 max={t.remaining}
                 defaultValue={0}
-                className="w-16 rounded-lg border px-2 py-1.5 text-sm"
+                className="w-16 rounded-lg border px-2 py-2 text-sm"
                 aria-label={`จำนวน ${t.name}`}
               />
             </div>
@@ -67,7 +66,7 @@ export default function SellForm({
       )}
       {state && state.ok && (
         <p className="text-sm font-medium text-[color:var(--color-ink)]">
-          ออก {state.admissionCount} ใบ · {state.orderNo} · รวม ฿{baht(state.totalSatang)}
+          ออก {state.admissionCount} ใบ · {state.orderNo} · รวม {formatBaht(state.totalSatang)}
         </p>
       )}
 

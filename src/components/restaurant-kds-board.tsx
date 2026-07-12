@@ -69,7 +69,7 @@ export function RestaurantKdsBoard({
                 it.waitMins >= criticalMins
                   ? "border-2 border-[color:var(--color-danger)]"
                   : it.waitMins >= warnMins
-                    ? "border-2 border-yellow-500"
+                    ? "border-2 border-[color:var(--color-ink)]"
                     : "border";
               return (
                 <div key={it.id} className={`rounded-xl ${border} p-3 ${it.isRush ? "bg-[color:var(--color-surface-2)]" : ""}`}>
@@ -83,14 +83,14 @@ export function RestaurantKdsBoard({
                     {it.qty}× {it.name}
                   </div>
                   {it.options.length > 0 && <div className="text-xs text-[color:var(--color-muted)]">{it.options.join(", ")}</div>}
-                  {it.note && <div className="text-xs text-[color:var(--color-danger)]">📝 {it.note}</div>}
+                  {it.note && <div className="text-xs text-[color:var(--color-danger)]">หมายเหตุ: {it.note}</div>}
                   {col.next && (
                     <button
                       disabled={busy === it.id}
                       onClick={() => advance(it.id, col.next!)}
-                      className="mt-2 w-full rounded-lg border px-2 py-1.5 text-xs hover:bg-[color:var(--color-surface)]"
+                      className="btn-sm mt-2 w-full disabled:opacity-50"
                     >
-                      {busy === it.id ? "…" : col.nextLabel}
+                      {busy === it.id ? "กำลังบันทึก…" : col.nextLabel}
                     </button>
                   )}
                 </div>

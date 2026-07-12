@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { listStations, ensureDefaultStations } from "@/lib/modules/restaurant/menu";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export default async function KdsIndexPage({
   params,
@@ -14,12 +15,7 @@ export default async function KdsIndexPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">จอครัว (KDS)</h1>
-        <Link href={`/app/u/${unitSlug}/restaurant`} className="btn btn-ghost text-sm">
-          ← หน้างาน
-        </Link>
-      </div>
+      <PageHeader title="จอครัว (KDS)" back={{ href: `/app/u/${unitSlug}/restaurant`, label: "ร้านอาหาร · หน้างาน" }} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {stations.map((s) => (
           <Link key={s.id} href={`/app/u/${unitSlug}/restaurant/kds/${s.id}`} className="card text-center hover:bg-[color:var(--color-surface-2)]">

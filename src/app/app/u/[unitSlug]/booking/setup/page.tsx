@@ -7,8 +7,8 @@ import {
   addStaffAction,
   removeStaffAction,
 } from "@/lib/actions/booking";
-
-const baht = (s: number) => (s / 100).toLocaleString("th-TH");
+import { PageHeader } from "@/components/ui/PageHeader";
+import { formatBaht } from "@/lib/ui/money";
 
 export default async function BookingSetupPage({
   params,
@@ -25,19 +25,11 @@ export default async function BookingSetupPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
-          <h1 className="text-2xl font-semibold">ตั้งค่าจองคิว</h1>
-        </div>
-        <Link href={`/app/u/${unitSlug}/booking`} className="btn btn-ghost text-sm">
-          ← รายการนัด
-        </Link>
-      </div>
+      <PageHeader title="ตั้งค่าจองคิว" back={{ href: `/app/u/${unitSlug}/booking`, label: "รายการนัด" }} />
 
       {/* บริการ */}
       <section className="flex flex-col gap-3">
-        <h2 className="font-medium">บริการ</h2>
+        <h2 className="text-sm font-medium">บริการ</h2>
         {services.length === 0 && (
           <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีบริการ เพิ่มด้านล่าง</p>
         )}
@@ -47,7 +39,7 @@ export default async function BookingSetupPage({
               <span className="font-medium">{s.name}</span>
               <span className="text-[color:var(--color-muted)]">
                 {" "}
-                · {s.durationMin} นาที · {s.priceSatang > 0 ? `฿${baht(s.priceSatang)}` : "—"}
+                · {s.durationMin} นาที · {s.priceSatang > 0 ? formatBaht(s.priceSatang) : "—"}
               </span>
             </div>
             <form action={removeServiceAction.bind(null, unitSlug)}>
@@ -78,7 +70,7 @@ export default async function BookingSetupPage({
 
       {/* พนักงาน */}
       <section className="flex flex-col gap-3">
-        <h2 className="font-medium">พนักงาน / ผู้ให้บริการ</h2>
+        <h2 className="text-sm font-medium">พนักงาน / ผู้ให้บริการ</h2>
         <p className="text-xs text-[color:var(--color-muted)]">
           ค่าเริ่มต้นทำงานทุกวัน 10:00–20:00 (แก้เวลารายคนได้ในเวอร์ชันถัดไป)
         </p>

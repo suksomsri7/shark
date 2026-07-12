@@ -9,7 +9,6 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { COUPON_STATUS_LABEL } from "@/lib/ui/status-labels";
 import { formatBaht } from "@/lib/ui/money";
 
-const baht = (s: number) => formatBaht(s);
 const fmt = (d: Date) =>
   d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "Asia/Bangkok" });
 
@@ -37,10 +36,10 @@ export async function CouponContent({
         items={coupons.map((c) => {
           const value =
             c.type === "PERCENT"
-              ? `ลด ${c.percent ?? 0}%${c.maxDiscountSatang != null ? ` (สูงสุด ${baht(c.maxDiscountSatang)})` : ""}`
-              : `ลด ${baht(c.valueSatang ?? 0)}`;
+              ? `ลด ${c.percent ?? 0}%${c.maxDiscountSatang != null ? ` (สูงสุด ${formatBaht(c.maxDiscountSatang)})` : ""}`
+              : `ลด ${formatBaht(c.valueSatang ?? 0)}`;
           const conds: string[] = [];
-          if (c.minSpendSatang != null) conds.push(`ขั้นต่ำ ${baht(c.minSpendSatang)}`);
+          if (c.minSpendSatang != null) conds.push(`ขั้นต่ำ ${formatBaht(c.minSpendSatang)}`);
           if (c.usageLimit != null) conds.push(`ใช้ ${c.usedCount}/${c.usageLimit}`);
           else conds.push(`ใช้แล้ว ${c.usedCount}`);
           if (c.perMemberLimit != null) conds.push(`${c.perMemberLimit}/คน`);

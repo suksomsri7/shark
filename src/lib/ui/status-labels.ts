@@ -2,6 +2,7 @@
 // (บัญชีมี STATUS_LABEL/DOC_LABEL ใน account/service.ts อยู่แล้ว — ใช้ต่อ)
 
 export const BOOKING_STATUS_LABEL: Record<string, string> = {
+  PENDING: "รอยืนยัน",
   BOOKED: "จองแล้ว",
   CONFIRMED: "ยืนยันแล้ว",
   ARRIVED: "มาถึงแล้ว",
@@ -44,6 +45,12 @@ export const TICKET_STATUS_LABEL: Record<string, string> = {
   VOID: "ยกเลิก",
 };
 
+// ห้องแชทภายในองค์กร (Meeting channel kind)
+export const CHANNEL_KIND_LABEL: Record<string, string> = {
+  PUBLIC: "สาธารณะ",
+  PRIVATE: "ส่วนตัว",
+};
+
 export const POS_SALE_STATUS_LABEL: Record<string, string> = {
   PAID: "ชำระแล้ว",
   VOIDED: "ยกเลิกแล้ว",
@@ -71,6 +78,54 @@ export const REWARD_REDEMPTION_LABEL: Record<string, string> = {
   PENDING: "รอรับ",
   FULFILLED: "รับแล้ว",
   CANCELLED: "ยกเลิก",
+};
+
+// ─── ร้านอาหาร (Restaurant) ───
+export const REST_ORDER_STATUS_LABEL: Record<string, string> = {
+  PENDING: "รอรับออเดอร์",
+  CONFIRMED: "เข้าครัวแล้ว",
+  COMPLETED: "เสร็จสิ้น",
+  CANCELLED: "ยกเลิก",
+};
+
+export const KDS_ITEM_STATUS_LABEL: Record<string, string> = {
+  NEW: "เข้าคิว",
+  COOKING: "กำลังทำ",
+  READY: "พร้อมเสิร์ฟ",
+  SERVED: "เสิร์ฟแล้ว",
+  CANCELLED: "ยกเลิก",
+};
+
+export const TABLE_SESSION_STATUS_LABEL: Record<string, string> = {
+  OPEN: "เปิดอยู่",
+  CLOSED: "ปิดแล้ว",
+  MERGED: "ถูกรวมโต๊ะ",
+  CANCELLED: "ยกเลิก",
+};
+
+export const TABLE_STATUS_LABEL: Record<string, string> = {
+  ACTIVE: "ใช้งาน",
+  INACTIVE: "ปิดชั่วคราว",
+};
+
+export const SERVICE_REQUEST_STATUS_LABEL: Record<string, string> = {
+  PENDING: "รอรับเรื่อง",
+  ACKED: "รับเรื่องแล้ว",
+  DONE: "เสร็จแล้ว",
+};
+
+export const MENU_ITEM_STATUS_LABEL: Record<string, string> = {
+  ACTIVE: "ขายอยู่",
+  HIDDEN: "ซ่อน",
+  ARCHIVED: "เก็บถาวร",
+};
+
+export const PICKUP_STATUS_LABEL: Record<string, string> = {
+  AWAITING_CONFIRM: "รอยืนยัน",
+  ACCEPTED: "รับออเดอร์",
+  READY: "พร้อมรับ",
+  PICKED_UP: "รับแล้ว",
+  NO_SHOW: "ไม่มารับ",
 };
 
 export const PAY_CHANNEL_LABEL: Record<string, string> = {

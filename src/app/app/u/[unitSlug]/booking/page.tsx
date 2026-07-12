@@ -4,15 +4,14 @@ import { listAppointments } from "@/lib/modules/booking/service";
 import { daySummary } from "@/lib/modules/pos/service";
 import { setStatusAction } from "@/lib/actions/booking";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { BOOKING_STATUS_LABEL } from "@/lib/ui/status-labels";
+import { formatBaht } from "@/lib/ui/money";
 
-const STATUS_LABEL: Record<string, string> = {
-  CONFIRMED: "ยืนยันแล้ว",
-  ARRIVED: "มาถึงแล้ว",
-  DONE: "เสร็จ",
-  NO_SHOW: "ไม่มา",
-  PENDING: "รอยืนยัน",
-  CANCELLED: "ยกเลิก",
-};
+const apptTone = (v: string) =>
+  v === "CANCELLED" || v === "NO_SHOW" ? "danger" : v === "PENDING" ? "muted" : "strong";
 
 function fmt(d: Date) {
   const day = d.toLocaleDateString("th-TH", {
@@ -48,32 +47,31 @@ export default async function BookingPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
-          <h1 className="text-2xl font-semibold">รายการนัด</h1>
-          <div className="mt-1 text-sm text-[color:var(--color-muted)]">
-            ยอดขายวันนี้ · ฿{(revenue.totalSatang / 100).toLocaleString("th-TH")} ({revenue.count} บิล)
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Link href={`/app/u/${unitSlug}/booking/setup`} className="btn btn-ghost text-sm">
-            ตั้งค่า
-          </Link>
-          <Link
-            href={`/s/${auth.active.tenant.slug}/${unit.slug}`}
-            target="_blank"
-            className="btn btn-ghost text-sm"
-          >
-            หน้าจอง ↗
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="รายการนัด"
+        desc={`ยอดขายวันนี้ · ${formatBaht(revenue.totalSatang)} (${revenue.count} บิล)`}
+        back={{ href: `/app/u/${unitSlug}`, label: unit.name }}
+        actions={
+          <>
+            <Link href={`/app/u/${unitSlug}/booking/setup`} className="btn btn-ghost text-sm">
+              ตั้งค่า
+            </Link>
+            <Link
+              href={`/s/${auth.active.tenant.slug}/${unit.slug}`}
+              target="_blank"
+              className="btn btn-ghost text-sm"
+            >
+              หน้าจอง ↗
+            </Link>
+          </>
+        }
+      />
 
       {appts.length === 0 ? (
-        <div className="card text-center text-sm text-[color:var(--color-muted)]">
-          ยังไม่มีนัด — แชร์ลิงก์หน้าจองให้ลูกค้า หรือกด "ตั้งค่า" เพิ่มบริการ/พนักงานก่อน
-        </div>
+        <EmptyState
+          text="ยังไม่มีนัดวันนี้ — แชร์ลิงก์หน้าจองให้ลูกค้า หรือเพิ่มบริการ/พนักงานในหน้าตั้งค่าก่อน"
+          action={{ href: `/app/u/${unitSlug}/booking/setup`, label: "ไปหน้าตั้งค่า" }}
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {appts.map((a) => {
@@ -90,9 +88,7 @@ export default async function BookingPage({
                       {day} · โดย {a.staff.name} · {a.customerName} {a.customerPhone}
                     </div>
                   </div>
-                  <span className="whitespace-nowrap rounded-full border px-2 py-0.5 text-xs text-[color:var(--color-muted)]">
-                    {STATUS_LABEL[a.status]}
-                  </span>
+                  <StatusChip value={a.status} map={BOOKING_STATUS_LABEL} toneOf={apptTone} />
                 </div>
                 {active && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -126,7 +122,7 @@ function StatusBtn({
     return (
       <ConfirmDialog
         triggerLabel={label}
-        triggerClassName="rounded-lg border px-2.5 py-1 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
+        triggerClassName="btn-sm text-[color:var(--color-danger)]"
         title="ยกเลิกนัดนี้?"
         detail="นัดหมายจะถูกยกเลิก และปล่อยช่วงเวลาให้จองใหม่ได้"
         confirmLabel="ยืนยันยกเลิก"
@@ -140,9 +136,7 @@ function StatusBtn({
     <form action={setStatusAction.bind(null, slug)}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="status" value={status} />
-      <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">
-        {label}
-      </button>
+      <button className="btn-sm">{label}</button>
     </form>
   );
 }

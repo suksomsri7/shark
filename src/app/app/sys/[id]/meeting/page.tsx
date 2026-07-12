@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { MeetingContent } from "@/lib/modules/meeting/ui";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 // หน้าเต็มจอของ Meeting — สลับห้อง (?c=) + เปิดเธรด (?t=)
 export default async function MeetingPage({
@@ -22,12 +22,7 @@ export default async function MeetingPage({
 
   return (
     <div className="flex max-w-4xl flex-col gap-4">
-      <div>
-        <Link href={`/app/sys/${id}`} className="text-sm text-[color:var(--color-muted)]">
-          ← {sys.name}
-        </Link>
-        <h1 className="mt-1 text-2xl font-semibold">🗓 {sys.name}</h1>
-      </div>
+      <PageHeader title={sys.name} back={{ href: `/app/sys/${id}`, label: sys.name }} />
       <MeetingContent systemId={id} tenantId={tenantId} channelId={c} threadParentId={t} />
     </div>
   );

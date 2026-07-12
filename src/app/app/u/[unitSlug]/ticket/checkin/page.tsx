@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { getEvent, eventSummary } from "@/lib/modules/ticket/service";
 import CheckinForm from "./CheckinForm";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export default async function CheckinPage({
   params,
@@ -20,24 +20,15 @@ export default async function CheckinPage({
 
   return (
     <div className="flex max-w-md flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
-          <h1 className="text-2xl font-semibold">เช็คอิน</h1>
-          {event ? (
-            <div className="mt-1 text-sm text-[color:var(--color-muted)]">
-              {event.name} · เข้าแล้ว {summary?.checkedIn}/{summary?.admissionsTotal}
-            </div>
-          ) : (
-            <div className="mt-1 text-sm text-[color:var(--color-muted)]">
-              เช็คอินได้ทุกงานของหน่วยนี้
-            </div>
-          )}
-        </div>
-        <Link href={`/app/u/${unitSlug}/ticket`} className="btn btn-ghost text-sm">
-          ← กลับ
-        </Link>
-      </div>
+      <PageHeader
+        title="เช็คอิน"
+        desc={
+          event
+            ? `${event.name} · เข้าแล้ว ${summary?.checkedIn}/${summary?.admissionsTotal}`
+            : "เช็คอินได้ทุกงานของหน่วยนี้"
+        }
+        back={{ href: `/app/u/${unitSlug}/ticket`, label: "ตั๋ว / อีเวนต์" }}
+      />
 
       <CheckinForm unitSlug={unitSlug} eventId={event?.id} />
     </div>

@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { checkoutAction } from "@/lib/actions/restaurant";
 
-export type BillLineLite = { itemId: string; name: string; qty: number; lineTotalSatang: number };
+import { formatBaht } from "@/lib/ui/money";
 
-const baht = (s: number) => (s / 100).toLocaleString("th-TH");
+export type BillLineLite = { itemId: string; name: string; qty: number; lineTotalSatang: number };
 
 export function RestaurantCheckout({
   unitSlug,
@@ -69,7 +69,7 @@ export function RestaurantCheckout({
   if (receipt) {
     return (
       <div className="card flex flex-col items-center gap-2 text-center">
-        <div className="text-lg font-semibold">ชำระสำเร็จ ฿{baht(receipt.total)}</div>
+        <div className="text-lg font-semibold">ชำระสำเร็จ {formatBaht(receipt.total)}</div>
         {receipt.receiptNo && <div className="text-sm text-[color:var(--color-muted)]">ใบเสร็จ {receipt.receiptNo}</div>}
         {receipt.point > 0 && <div className="text-sm">ได้แต้ม +{receipt.point}</div>}
         <div className="text-sm text-[color:var(--color-muted)]">
@@ -98,7 +98,7 @@ export function RestaurantCheckout({
               <input type="checkbox" checked={selected.has(l.itemId)} onChange={() => toggle(l.itemId)} />
               {l.qty}× {l.name}
             </span>
-            <span>฿{baht(l.lineTotalSatang)}</span>
+            <span>{formatBaht(l.lineTotalSatang)}</span>
           </label>
         ))}
       </div>
@@ -106,23 +106,23 @@ export function RestaurantCheckout({
       <div className="card flex flex-col gap-1 text-sm">
         <div className="flex justify-between">
           <span>ยอดรวม</span>
-          <span>฿{baht(subtotal)}</span>
+          <span>{formatBaht(subtotal)}</span>
         </div>
         {svc > 0 && (
           <div className="flex justify-between text-[color:var(--color-muted)]">
-            <span>Service charge {serviceChargeBps / 100}%</span>
-            <span>฿{baht(svc)}</span>
+            <span>ค่าบริการ {serviceChargeBps / 100}%</span>
+            <span>{formatBaht(svc)}</span>
           </div>
         )}
         <div className="flex justify-between font-semibold">
           <span>ต้องชำระ{splitting ? " (แยกบิล)" : ""}</span>
-          <span>฿{baht(total)}</span>
+          <span>{formatBaht(total)}</span>
         </div>
       </div>
 
       <div className="flex overflow-hidden rounded-lg border text-sm">
         {(["CASH", "TRANSFER", "PROMPTPAY"] as const).map((m) => (
-          <button key={m} onClick={() => setPay(m)} className={`flex-1 px-3 py-2 ${pay === m ? "bg-black text-white" : ""}`}>
+          <button key={m} onClick={() => setPay(m)} className={`flex-1 px-3 py-2 ${pay === m ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface)]" : ""}`}>
             {m === "CASH" ? "เงินสด" : m === "TRANSFER" ? "โอน" : "พร้อมเพย์"}
           </button>
         ))}
@@ -132,7 +132,7 @@ export function RestaurantCheckout({
       {confirming ? (
         <div className="flex flex-col gap-2 rounded-lg border p-3 text-sm">
           <div className="font-medium">
-            ยืนยันรับชำระ ฿{baht(total)}
+            ยืนยันรับชำระ {formatBaht(total)}
             {splitting ? " (แยกบิล)" : ""} ด้วย
             {pay === "CASH" ? "เงินสด" : pay === "TRANSFER" ? "โอน" : "พร้อมเพย์"}?
           </div>
@@ -162,7 +162,7 @@ export function RestaurantCheckout({
           }}
           className="btn btn-primary text-sm disabled:opacity-50"
         >
-          {`ชำระ ฿${baht(total)}`}
+          {`ชำระ ${formatBaht(total)}`}
         </button>
       )}
     </div>

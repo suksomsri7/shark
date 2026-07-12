@@ -1,0 +1,314 @@
+// ระบบ 10 — รวม Chat (Omni-channel Inbox) — system-scoped (AppSystem type CHAT)
+// ทุกตารางมี tenantId + systemId · unique = @@unique([systemId, ...])
+// P1 (MVP): WEBCHAT (built-in) + LINE · เฟสถัดไป: FACEBOOK/INSTAGRAM/SHOPEE/LAZADA/WHATSAPP
+// คนละ inbox กับระบบ 11 Meeting (แชทภายใน) — ห้ามใช้ตารางร่วม
+// ดูสเปคเต็ม: docs/modules/10-chat.md · connections: docs/BLUEPRINT_CONNECTIONS.md (C-3 AI, C-5 KB)
+
+// ───────────────────────── enums ─────────────────────────
+
+enum ChatChannelType {
+  WEBCHAT // ✅ MVP — built-in ไม่ต้องมี connection
+  LINE // ✅ MVP
+  FACEBOOK // 🔜 เฟส 2 (Meta)
+  INSTAGRAM // 🔜 เฟส 2 (Meta)
+  SHOPEE // 🔜 เฟส 3
+  LAZADA // 🔜 เฟส 3
+  WHATSAPP // 🔜 เฟส 4
+}
+
+enum ChatConnectionStatus {
+  CONNECTED
+  EXPIRED // token หมดอายุ/ถูก revoke — ต้อง re-auth
+  ERROR // ส่ง/รับพังต่อเนื่อง
+  DISABLED // ปิดชั่วคราวโดยร้าน
+}
+
+enum ChatConversationStatus {
+  OPEN
+  PENDING // รอลูกค้า — หยุดนับ SLA ฝั่งร้าน
+  RESOLVED
+}
+
+enum ChatMessageDirection {
+  IN // ลูกค้า → ร้าน
+  OUT // ร้าน → ลูกค้า (รวม system/auto)
+}
+
+enum ChatMessageType {
+  TEXT
+  IMAGE
+  STICKER
+  FILE
+  ORDER_CONTEXT // การ์ดออเดอร์/สินค้า (Shopee/Lazada)
+  SYSTEM // ข้อความระบบในเธรด — ไม่ส่งออกช่องทาง
+}
+
+enum ChatDeliveryStatus {
+  PENDING // OUT: เข้าคิว adapter
+  SENT
+  FAILED // deliveryError บอกเหตุผล
+}
+
+enum ChatEventType {
+  CREATED
+  ASSIGNED
+  STATUS_CHANGED
+  UNIT_CHANGED
+  CUSTOMER_LINKED
+  REOPENED
+  DELIVERY_FAILED
+}
+
+// ─────────────── การเชื่อมช่องทาง (ต่อ system) ───────────────
+
+model ChatChannelConnection {
+  id                String               @id @default(cuid())
+  tenantId          String
+  systemId          String // AppSystem (type CHAT)
+  type              ChatChannelType // ไม่มีแถวสำหรับ WEBCHAT (built-in)
+  displayName       String
+  externalAccountId String // LINE bot userId / FB pageId / IG accountId / shop_id / WA phoneNumberId
+  credentials       Json // 🔐 AES-256-GCM ที่ service layer เท่านั้น — ห้าม return เต็มออก API
+  webhookKey        String               @unique @default(cuid())
+  defaultUnitId     String? // conversation จาก connection นี้ tag unit ไหน
+  status            ChatConnectionStatus @default(CONNECTED)
+  tokenExpiresAt    DateTime? // Shopee/Lazada/FB — cron refresh ล่วงหน้า
+  lastInboundAt     DateTime?
+  lastErrorAt       DateTime?
+  lastError         String?
+  meta              Json? // per-channel เช่น LINE quota used
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  contacts      ChatContact[]
+  conversations ChatConversation[]
+
+  @@unique([systemId, type, externalAccountId])
+  @@index([tenantId, systemId, status])
+  @@index([tokenExpiresAt])
+}
+
+// ─────────────── ตัวตนลูกค้าต่อช่องทาง ───────────────
+
+model ChatContact {
+  id                  String                 @id @default(cuid())
+  tenantId            String
+  systemId            String
+  channel             ChatChannelType
+  channelConnectionId String? // null = WEBCHAT
+  channelConnection   ChatChannelConnection? @relation(fields: [channelConnectionId], references: [id])
+  externalUserId      String // id ฝั่ง provider; WEBCHAT = guest token
+  displayName         String?
+  avatarUrl           String?
+  phone               String?
+  email               String?
+  customerId          String? // Member id ในระบบ Member ที่เชื่อม — nullable
+  linkedByUserId      String?
+  linkedAt            DateTime?
+  blockedAt           DateTime?
+  lastSeenAt          DateTime               @default(now())
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  conversations ChatConversation[]
+
+  @@unique([systemId, channel, channelConnectionId, externalUserId])
+  @@index([systemId, customerId])
+  @@index([systemId, channel, lastSeenAt])
+  @@index([tenantId, phone])
+}
+
+// ─────────────── Conversation ───────────────
+
+model ChatConversation {
+  id                  String                 @id @default(cuid())
+  tenantId            String
+  systemId            String
+  channel             ChatChannelType // denormalize จาก contact เพื่อ filter เร็ว
+  channelConnectionId String?
+  channelConnection   ChatChannelConnection? @relation(fields: [channelConnectionId], references: [id])
+  contactId           String
+  contact             ChatContact            @relation(fields: [contactId], references: [id])
+  unitId              String? // tag ที่มา (unit ที่เชื่อมระบบนี้)
+  status              ChatConversationStatus @default(OPEN)
+  assigneeUserId      String?
+  tags                Json                   @default("[]")
+
+  // denormalized เพื่อ inbox list
+  lastMessageAt        DateTime?
+  lastMessagePreview   String?
+  lastMessageDirection ChatMessageDirection?
+  staffUnreadCount     Int                   @default(0)
+
+  replyWindowExpiresAt DateTime? // FB/IG/WA
+
+  // SLA
+  firstCustomerMessageAt DateTime?
+  firstResponseAt        DateTime?
+  resolvedAt             DateTime?
+  reopenedCount          Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages   ChatMessage[]
+  events     ChatConversationEvent[]
+  readStates ChatReadState[]
+
+  @@index([systemId, status, lastMessageAt(sort: Desc)])
+  @@index([systemId, channel, status])
+  @@index([systemId, assigneeUserId, status])
+  @@index([systemId, unitId, status])
+  @@index([contactId])
+}
+
+// ⚠️ "1 contact = 1 conversation active" บังคับ 2 ชั้น:
+//   (1) service: advisory lock ต่อ contactId ใน transaction ก่อนหา/สร้าง
+//   (2) partial unique index (raw SQL หลัง db push):
+//       CREATE UNIQUE INDEX chat_conv_active ON "ChatConversation" ("contactId") WHERE status <> 'RESOLVED';
+
+// ─────────────── Message ───────────────
+
+model ChatMessage {
+  id                String               @id @default(cuid())
+  tenantId          String
+  systemId          String
+  conversationId    String
+  conversation      ChatConversation     @relation(fields: [conversationId], references: [id])
+  direction         ChatMessageDirection
+  type              ChatMessageType      @default(TEXT)
+  senderUserId      String? // OUT: staff ผู้ส่ง (null = system/auto)
+  body              String?              @db.Text
+  stickerMeta       Json?
+  orderContext      Json?
+  isInternal        Boolean              @default(false)
+  clientMessageId   String?
+  externalMessageId String?
+  deliveryStatus    ChatDeliveryStatus   @default(SENT)
+  deliveryError     String?
+  meta              Json?
+  purgedAt          DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  attachments ChatAttachment[]
+
+  @@unique([conversationId, clientMessageId])
+  @@unique([conversationId, externalMessageId])
+  @@index([conversationId, createdAt])
+  @@index([systemId, createdAt])
+  @@index([systemId, deliveryStatus])
+}
+
+model ChatAttachment {
+  id         String          @id @default(cuid())
+  tenantId   String
+  systemId   String
+  messageId  String
+  message    ChatMessage     @relation(fields: [messageId], references: [id])
+  kind       ChatMessageType // IMAGE | FILE | STICKER
+  storageKey String
+  url        String
+  fileName   String
+  mimeType   String
+  sizeBytes  Int
+  width      Int?
+  height     Int?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([messageId])
+  @@index([systemId, createdAt])
+}
+
+// ─────────────── Unread / read state (ฝั่ง staff ต่อคน) ───────────────
+
+model ChatReadState {
+  id                String           @id @default(cuid())
+  tenantId          String
+  systemId          String
+  conversationId    String
+  conversation      ChatConversation @relation(fields: [conversationId], references: [id])
+  userId            String
+  lastReadMessageId String?
+  lastReadAt        DateTime         @default(now())
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@unique([conversationId, userId])
+  @@index([systemId, userId])
+}
+
+// ─────────────── Event log (SLA + audit เธรด) ───────────────
+
+model ChatConversationEvent {
+  id             String           @id @default(cuid())
+  tenantId       String
+  systemId       String
+  conversationId String
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id])
+  type           ChatEventType
+  actorUserId    String?
+  meta           Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([conversationId, createdAt])
+  @@index([systemId, type, createdAt])
+}
+
+// ─────────────── Quick reply ───────────────
+
+model ChatQuickReply {
+  id              String    @id @default(cuid())
+  tenantId        String
+  systemId        String
+  shortcut        String // พิมพ์ /ส่ง
+  title           String
+  body            String    @db.Text // {{contact.name}} {{unit.name}} {{staff.name}}
+  channelTypes    Json      @default("[]") // [] = ทุกช่องทาง
+  usageCount      Int       @default(0)
+  createdByUserId String
+  archivedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([systemId, shortcut])
+  @@index([systemId])
+}
+
+// ─────────────── Settings (1 แถว/ระบบ) ───────────────
+
+model ChatSetting {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  systemId              String   @unique
+  memberSystemId        String? // 🔗 เชื่อมระบบ Member (opt-in)
+  widgetEnabled         Boolean  @default(true)
+  widgetDisabledUnitIds Json     @default("[]")
+  greetingMessage       Json     @default("{}") // { th, en }
+  offlineMessage        Json     @default("{}")
+  preChatFormEnabled    Boolean  @default(false)
+  slaFirstResponseMin   Int      @default(15)
+  unassignedAlertMin    Int      @default(5)
+  retentionDays         Int      @default(365) // 90–730
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// ─────────────── Webhook log (dedupe + debug) ───────────────
+
+model ChatWebhookLog {
+  id           String          @id @default(cuid())
+  connectionId String? // null = resolve ไม่ได้ (webhookKey ผิด)
+  channelType  ChatChannelType
+  eventKey     String // event/message id ฝั่ง provider — dedupe ชั้นแรก
+  status       String // RECEIVED | PROCESSED | DUPLICATE | FAILED
+  error        String?
+  payloadHash  String? // ไม่เก็บ payload เต็ม (PII)
+  meta         Json?
+  createdAt    DateTime        @default(now())
+
+  @@unique([connectionId, eventKey])
+  @@index([createdAt])
+}

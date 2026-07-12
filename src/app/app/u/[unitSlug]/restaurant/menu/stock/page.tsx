@@ -1,8 +1,9 @@
-import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { listItems } from "@/lib/modules/restaurant/menu";
-import { baht } from "@/lib/modules/restaurant/scope";
 import { setItemStockAction, resetDailyStockAction } from "@/lib/actions/restaurant";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { formatBaht } from "@/lib/ui/money";
 
 export default async function StockPage({
   params,
@@ -15,19 +16,14 @@ export default async function StockPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">ของหมด (86) & สต็อก</h1>
-        <Link href={`/app/u/${unitSlug}/restaurant/menu`} className="btn btn-ghost text-sm">
-          ← เมนู
-        </Link>
-      </div>
+      <PageHeader title="ของหมด และสต็อก" back={{ href: `/app/u/${unitSlug}/restaurant/menu`, label: "เมนู" }} />
 
       <form action={resetDailyStockAction.bind(null, unitSlug)}>
         <button className="btn btn-ghost text-sm">รีเซ็ตสต็อกรายวัน (เปิดร้านใหม่)</button>
       </form>
 
       {items.length === 0 ? (
-        <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีเมนู</p>
+        <EmptyState text="ยังไม่มีเมนู — เพิ่มเมนูก่อนจึงตั้งสต็อกได้" />
       ) : (
         <div className="flex flex-col gap-1">
           {items.map((it) => (
@@ -35,7 +31,7 @@ export default async function StockPage({
               <div>
                 <span className="font-medium">{it.name}</span>{" "}
                 <span className="text-xs text-[color:var(--color-muted)]">
-                  ฿{baht(it.basePrice)} · {it.category.name}
+                  {formatBaht(it.basePrice)} · {it.category.name}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -47,15 +43,15 @@ export default async function StockPage({
                     min="0"
                     defaultValue={it.stockQty ?? ""}
                     placeholder="—"
-                    className="w-20 rounded-lg border px-2 py-1 text-right text-xs"
+                    className="w-20 rounded-lg border px-2 py-2 text-right text-sm"
                   />
-                  <button className="rounded-lg border px-2 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">ตั้งสต็อก</button>
+                  <button className="btn-sm">ตั้งสต็อก</button>
                 </form>
                 <form action={setItemStockAction.bind(null, unitSlug)}>
                   <input type="hidden" name="id" value={it.id} />
                   <input type="hidden" name="isOutOfStock" value={it.isOutOfStock ? "false" : "true"} />
-                  <button className="rounded-lg border px-2 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">
-                    {it.isOutOfStock ? "ปลด 86" : "86"}
+                  <button className="btn-sm">
+                    {it.isOutOfStock ? "ปลดหมด" : "แจ้งหมด"}
                   </button>
                 </form>
               </div>

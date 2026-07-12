@@ -198,12 +198,12 @@ export async function KanbanBoardView({
                 name="title"
                 required
                 placeholder="+ เพิ่มการ์ด"
-                className="rounded-lg border px-2 py-1.5 text-sm"
+                className="input"
               />
               <div className="flex gap-1.5">
                 <select
                   name="assigneeUserId"
-                  className="min-w-0 flex-1 rounded-lg border px-2 py-1 text-xs"
+                  className="input min-w-0 flex-1"
                   defaultValue=""
                 >
                   <option value="">ไม่มีผู้รับผิดชอบ</option>
@@ -216,7 +216,7 @@ export async function KanbanBoardView({
                 <input
                   name="dueAt"
                   type="date"
-                  className="rounded-lg border px-2 py-1 text-xs"
+                  className="input"
                   title="กำหนดส่ง"
                 />
               </div>
@@ -234,7 +234,7 @@ export async function KanbanBoardView({
               name="name"
               required
               placeholder="+ คอลัมน์ใหม่"
-              className="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-sm"
+              className="input min-w-0 flex-1"
             />
             <button className="btn btn-ghost text-sm">เพิ่ม</button>
           </form>
