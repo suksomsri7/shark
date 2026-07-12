@@ -42,12 +42,10 @@ posting engine `src/lib/modules/account/gl.ts` + ผังบัญชี seed `
 - **UPDATE (main ทำต่อเองหลัง limit):** ปิดช่องว่างครบแล้ว — Expense 8 routes (purchase/expense/po/asset-buy) + Reports ครบ 5 (เพิ่ม balance-sheet/cash-flow/pp30) + GL accounts (ผังบัญชี CRUD+mapping) + periods (ปิดงวด). nav wire ครบ. **verify Gate B: DEPOSIT_RECEIPT(Cr2110+AWAITING_DEDUCT)+CREDIT_NOTE(Cr1100) balance ✓** → docType เปิดครบปลอดภัย. deploy prod แล้ว
 - **เหลือ (minor, ไม่ block):** ใบกำกับภาษี ม.86/4 print fields ให้ครบเป๊ะ · Finance CSV export ภงด · verify ก่อน launch จริง: **checksum เลขภาษีนิติบุคคล DBD** (QC5 verify-list) + ทดสอบ UI คลิกจริงทุกหน้า
 
-## 🔴 QC6 (2026-07-12 โดย Fable 5) — ตรวจระบบจริงแบบ CPA + UI audit ทั้งแอป → งานบังคับใหม่
-**อ่านแล้วทำตาม `docs/qc/QC6-RESOLUTIONS.md`:**
-- **Gate 1 บัญชี (แบบภาษียื่นผิด — ก่อนทุกอย่าง):** F-01 ใบกำกับจากใบเสร็จ VAT ซ้ำ (gl.ts postTaxInvoice) · F-02 ใบกำกับใบแจ้งหนี้หักมัดจำย้าย VAT เต็มใบ (service.ts convertDocument) · F-03 ภงด.53 ออก ฿0 (expense.ts issueWhtCert ใช้มาตรฐาน wht.ts) · F-08 ฐาน ภ.พ.30 นับ void/CN/มัดจำผิด (reports.ts) — **เกณฑ์ผ่าน: `scripts/qc-account-cpa.mts` ต้อง 108/108** (ตอนนี้ 90/108) แล้วค่อย deploy
-- Gate 2 บัญชี MAJOR: CN cap หักยอดชำระ, กัน overpay หลัง CN, ลูกหนี้หน้าจอ=GL, เลือกบัญชีเงินตอนขายสด, รายได้สินค้า 4020
-- **UI 5 pass ตาม `docs/UI_STANDARD.md`** (140 findings ใน QC6-ui-audit.md): Pass 0 เร่ง = token ผี (ปุ่มล่องหนบน prod!) + ConfirmDialog ~30 จุด destructive + กัน double-submit ฟอร์มเงิน → Pass 1 shared components 11 ตัว → Pass 2 account 26 หน้า+เมนู 8 หมวด → Pass 3 unit modules (ปุ่ม ≥44px) → Pass 4 lib modules
-- harness `qc-account-cpa.mts` = **regression suite ถาวรของโมดูลบัญชี** — รันทุกครั้งที่แตะ account
+## 🟡 QC6 (2026-07-12) — Gate 1+2 ✅ + UI Pass 0 (token) ✅ · UI Pass 1-4 ค้าง
+- ✅ **Gate 1 + Gate 2 บัญชี ปิดครบ — `qc-account-cpa.mts` 107/107 findings 0** (จาก 90/108). แก้ F-01..F-09 ใน account 5 ไฟล์ (gl/service/expense/reports/coa): VAT ซ้ำ/มัดจำ/ภงด53/ภพ30/ขายสด Dr1000/รายได้สินค้า4000/CN cap/overpay/ลูกหนี้=GL. ไม่ต้อง db push. **harness = regression suite ถาวร รันทุกครั้งที่แตะ account.** deploy prod แล้ว
+- ✅ **UI Pass 0 (token ผี) ปิด** — แก้ fg/bg/success/primary/hover→token จริง + btn-secondary→btn-ghost ทั้งแอป (grep=0) + เพิ่ม `.btn-sm`/`.input` ใน globals.css. ปุ่มล่องหนบน prod กลับมาเห็น
+- 🔴 **ค้าง (UI):** Pass 0 ที่เหลือ = **ConfirmDialog ~30 destructive + SubmitButton กัน double-submit** · Pass 1 shared components 11 ตัว (`src/components/ui/`) · Pass 2 account 26 หน้า refactor + ACCOUNT_NAV 8 หมวด + StatusChip · Pass 3 unit modules (≥44px, responsive) · Pass 4 lib modules + คลิกทดสอบมือถือ. ดู `docs/UI_STANDARD.md` + `QC6-ui-audit.md` (140 findings)
 
 ## งานถัดไป (เจ้าของจะเลือก)
 - ⬆️ **QC6 ก่อน** (Gate 1 + UI Pass 0 ขนานกันได้)
