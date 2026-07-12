@@ -8,9 +8,10 @@
 - **Session A (บัญชี QC7 R-A..R-E) ยังทำไม่จบ** — โค้ด WIP ถูกเซฟไว้ใน commit `b44f17e` `[WIP CHECKPOINT]` (7 CRITICAL ยังปิดไม่ครบ **ห้าม deploy commit นี้ขึ้น prod**)
 - Session B (Chat QC7 M9-M12) เสร็จ+deploy Vercel prod แล้ว
 
-## 1. งานทั้งหมดอยู่บน VPS เครื่องนี้ (สำคัญที่สุด)
+## 1. งานทั้งหมดอยู่บน VPS เครื่องนี้ + GitHub
 - repo: `/root/projects/shark-in-th` (branch `main`)
-- **⚠️ ยังไม่เคย push ขึ้น GitHub เลย** (`origin = github.com/suksomsri7/shark.git` ตั้งไว้แต่ push ไม่ได้ = ไม่มี PAT) → **สำเนางานมีที่เดียวคือ VPS นี้** ถ้าเครื่องพังงานหาย
+- ✅ **push GitHub แล้ว (2026-07-12)** — `github.com/suksomsri7/shark.git` มี main ครบ (backup นอกเครื่องแล้ว) · **token ไม่ได้เก็บบนเครื่อง** (push แบบ inline แล้วลบ) → push ครั้งหน้าต้องใส่ PAT อีก หรือตั้ง credential helper เอง
+- memory ของ Claude อยู่ `/root/.claude/projects/-root/memory/` (ไม่ track ใน git — เครื่องใหม่ต้องขนไปเอง)
 - memory ของ Claude อยู่ `/root/.claude/projects/-root/memory/` (ผูกกับเครื่อง+user root **ไม่ผูกกับ Claude account**)
 
 ## 2. วิธี resume — 2 ทาง
@@ -53,14 +54,14 @@
   3. worktree ต้องมี `.vercel/` (ก๊อปจาก repo หลัก) ไม่งั้นไปสร้าง project ใหม่ที่ไม่มี env → build fail
 - **แตะ account ทุกครั้ง** ต้องรัน `pnpm exec tsx scripts/qc-account-cpa.mts` = **107/107** ก่อน deploy
 
-## 5. 🔴 สิ่งที่ควรทำทันทีเพื่อกันงานหาย: push GitHub
-repo ไม่มี backup นอก VPS — ถ้าเจ้าของให้ **GitHub PAT** (Personal Access Token, scope `repo`):
+## 5. ✅ push GitHub แล้ว — วิธี push ครั้งต่อไป
+มี backup บน `github.com/suksomsri7/shark.git` แล้ว (2026-07-12). token ไม่ได้เก็บบนเครื่อง — ครั้งหน้าใช้ PAT (scope `repo`) แบบ inline แล้วลบทิ้ง:
 ```
 cd /root/projects/shark-in-th
-git remote set-url origin https://<PAT>@github.com/suksomsri7/shark.git
-git push -u origin main
+git -c credential.helper= push "https://suksomsri7:<PAT>@github.com/suksomsri7/shark.git" main:main
+git remote set-url origin https://github.com/suksomsri7/shark.git   # ล้าง token
 ```
-⚠️ ต้อง commit author เป็น `suksomsri7` (ตั้งใน commit แล้ว) — ระวัง .env ต้อง gitignored (เช็คแล้ว ไม่ track)
+⚠️ commit author = `suksomsri7` (ตั้งใน `-c user.name/email` ทุก commit) · `.env*` gitignored ไม่หลุด (เช็คแล้ว) · ถ้าอยากให้ push ไม่ต้องพิมพ์ PAT ซ้ำ → ตั้ง credential helper (เก็บ token plaintext ใน ~/.git-credentials — เป็น tradeoff ความปลอดภัย ตัดสินใจเอง)
 
 ## 6. งานที่ค้าง (สั่ง session ใหม่ต่อได้เลย)
 - **Session A ค้าง**: บัญชี QC7 R-A..R-E (7 CRITICAL + MAJOR M1-M8) ตาม `docs/qc/QC7-RESOLUTIONS.md` — resume จาก `b44f17e` · เสร็จแล้ว co-deploy VPS พร้อม Chat
