@@ -18,7 +18,7 @@ export type SystemDef = {
 
 export const SYSTEM_DEFS: SystemDef[] = [
   { code: "HOTEL", no: 1, kind: "business", label: "โรงแรม", hint: "ห้องพัก จอง เช็คอิน", icon: "🏨", status: "available" },
-  { code: "RESTAURANT", no: 2, kind: "business", label: "ร้านอาหาร", hint: "เมนู โต๊ะ ครัว", icon: "🍜", status: "coming_soon" },
+  { code: "RESTAURANT", no: 2, kind: "business", label: "ร้านอาหาร", hint: "เมนู โต๊ะ ครัว", icon: "🍜", status: "available" },
   { code: "BOOKING", no: 3, kind: "business", label: "จองคิว / นัดหมาย", hint: "นัดหมายตามเวลา นวด สปา คลินิก ทำเล็บ", icon: "📅", status: "available" },
   { code: "QUEUE", no: 4, kind: "business", label: "บัตรคิว (Q)", hint: "ออกบัตร เรียกคิว", icon: "🎫", status: "available" },
   { code: "TICKET", no: 5, kind: "business", label: "ตั๋ว / อีเวนต์", hint: "ขายตั๋ว เช็คอิน", icon: "🎟️", status: "available" },

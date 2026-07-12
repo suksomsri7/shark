@@ -1,0 +1,168 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { requireUnit } from "@/lib/core/context";
+import { getSession, floorPlan } from "@/lib/modules/restaurant/table";
+import { baht } from "@/lib/modules/restaurant/scope";
+import {
+  closeSessionAction,
+  moveSessionAction,
+  mergeSessionAction,
+  cancelOrderItemAction,
+  rushOrderAction,
+} from "@/lib/actions/restaurant";
+
+const KDS_LABEL: Record<string, string> = {
+  NEW: "รอครัว",
+  COOKING: "กำลังทำ",
+  READY: "เสร็จแล้ว",
+  SERVED: "เสิร์ฟแล้ว",
+  CANCELLED: "ยกเลิก",
+};
+
+export default async function SessionPage({
+  params,
+}: {
+  params: Promise<{ unitSlug: string; sessionId: string }>;
+}) {
+  const { unitSlug, sessionId } = await params;
+  const { auth, unit } = await requireUnit(unitSlug);
+  const { tenantId } = auth.active;
+  const session = await getSession(tenantId, unit.id, sessionId);
+  if (!session) notFound();
+  const tables = await floorPlan(tenantId, unit.id);
+  const freeTables = tables.filter((t) => !t.sessionId && t.status === "ACTIVE" && t.id !== session.tableId);
+  const otherOpen = tables.filter((t) => t.sessionId && t.sessionId !== sessionId);
+
+  return (
+    <div className="flex max-w-2xl flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
+          <h1 className="text-2xl font-semibold">
+            โต๊ะ {session.table.name}
+            <span className="ml-2 text-sm font-normal text-[color:var(--color-muted)]">
+              {session.status === "OPEN" ? "กำลังใช้งาน" : session.status}
+            </span>
+          </h1>
+        </div>
+        <Link href={`/app/u/${unitSlug}/restaurant`} className="btn btn-ghost text-sm">
+          ← หน้างาน
+        </Link>
+      </div>
+
+      {/* สรุปยอด */}
+      <section className="card flex items-center justify-between">
+        <div>
+          <div className="text-xs text-[color:var(--color-muted)]">ยอดรวม / ค้างชำระ</div>
+          <div className="text-xl font-semibold">
+            ฿{baht(session.totalSatang)}{" "}
+            <span className="text-sm font-normal text-[color:var(--color-muted)]">ค้าง ฿{baht(session.unpaidSatang)}</span>
+          </div>
+          {session.memberId && <div className="text-xs text-[color:var(--color-muted)]">สะสมแต้ม: ผูกสมาชิกแล้ว</div>}
+        </div>
+        <div className="flex flex-col gap-2">
+          <Link href={`/app/u/${unitSlug}/restaurant/order?sessionId=${sessionId}`} className="btn btn-ghost text-sm">
+            + สั่งเพิ่ม
+          </Link>
+          {session.unpaidSatang > 0 && (
+            <Link href={`/app/u/${unitSlug}/restaurant/checkout/${sessionId}`} className="btn btn-primary text-sm">
+              เช็คบิล
+            </Link>
+          )}
+        </div>
+      </section>
+
+      {/* รายการ */}
+      <section className="flex flex-col gap-3">
+        <h2 className="font-medium">รายการอาหาร</h2>
+        {session.orders.length === 0 ? (
+          <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีออเดอร์ — กด &quot;สั่งเพิ่ม&quot;</p>
+        ) : (
+          session.orders.map((o) => (
+            <div key={o.id} className="rounded-xl border p-3">
+              <div className="mb-2 flex items-center justify-between text-xs text-[color:var(--color-muted)]">
+                <span>
+                  ออเดอร์ #{String(o.dailyNo).padStart(4, "0")}
+                  {o.isRush ? " · เร่ง" : ""}
+                </span>
+                {!o.isRush && (
+                  <form action={rushOrderAction.bind(null, unitSlug)}>
+                    <input type="hidden" name="orderId" value={o.id} />
+                    <button className="underline">เร่ง</button>
+                  </form>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                {o.items.map((it) => (
+                  <div key={it.id} className="flex items-start justify-between gap-2 text-sm">
+                    <div>
+                      <div className={it.kdsStatus === "CANCELLED" ? "line-through opacity-50" : ""}>
+                        {it.qty}× {it.nameSnapshot}
+                        {it.options.length > 0 && (
+                          <span className="text-xs text-[color:var(--color-muted)]"> ({it.options.map((op) => op.choiceSnapshot).join(", ")})</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-[color:var(--color-muted)]">
+                        {KDS_LABEL[it.kdsStatus]} · ฿{baht(it.lineTotal)}
+                        {it.saleId ? " · ชำระแล้ว" : ""}
+                        {it.note ? ` · ${it.note}` : ""}
+                      </div>
+                    </div>
+                    {!it.saleId && it.kdsStatus !== "CANCELLED" && it.kdsStatus !== "SERVED" && (
+                      <form action={cancelOrderItemAction.bind(null, unitSlug)}>
+                        <input type="hidden" name="itemId" value={it.id} />
+                        <input type="hidden" name="reason" value="ยกเลิกโดยพนักงาน" />
+                        <button className="text-xs text-[color:var(--color-danger)] underline">ยกเลิก</button>
+                      </form>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      {/* จัดการโต๊ะ */}
+      {session.status === "OPEN" && (
+        <section className="card flex flex-col gap-3">
+          <h2 className="text-sm font-medium">จัดการโต๊ะ</h2>
+          {freeTables.length > 0 && (
+            <form action={moveSessionAction.bind(null, unitSlug)} className="flex flex-wrap items-center gap-2 text-sm">
+              <input type="hidden" name="sessionId" value={sessionId} />
+              <span>ย้ายไปโต๊ะ</span>
+              <select name="toTableId" className="rounded-lg border px-2 py-1.5 text-sm">
+                {freeTables.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">ย้าย</button>
+            </form>
+          )}
+          {otherOpen.length > 0 && (
+            <form action={mergeSessionAction.bind(null, unitSlug)} className="flex flex-wrap items-center gap-2 text-sm">
+              <input type="hidden" name="intoSessionId" value={sessionId} />
+              <span>รวมโต๊ะ (ดึงเข้าโต๊ะนี้)</span>
+              <select name="fromSessionId" className="rounded-lg border px-2 py-1.5 text-sm">
+                {otherOpen.map((t) => (
+                  <option key={t.sessionId} value={t.sessionId!}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">รวม</button>
+            </form>
+          )}
+          {session.unpaidSatang === 0 && (
+            <form action={closeSessionAction.bind(null, unitSlug)}>
+              <input type="hidden" name="sessionId" value={sessionId} />
+              <button className="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">ปิดโต๊ะ</button>
+            </form>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}

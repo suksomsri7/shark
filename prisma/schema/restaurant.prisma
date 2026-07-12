@@ -1,0 +1,456 @@
+// Restaurant (ร้านอาหาร) — scope=unit (tenantId+unitId ทุกตาราง) · โมดูล 02
+// P1 slice (dine-in loop ครบ): เมนู/หมวด/ตัวเลือก · 86(ของหมด)/stockQty · โซน/โต๊ะ/floor plan ·
+//   session เปิด-ปิดโต๊ะ · ออเดอร์+รายการ+ตัวเลือก · KDS · เรียกพนักงาน/ขอเช็คบิล ·
+//   บิล→ชำระผ่าน POS (contract 2.1) · เวลาเปิด-ปิดครัว · storefront QR สั่งอาหาร (public)
+// เงินทุกจำนวน = Int หน่วยสตางค์ (satang) · เวลา UTC, แสดงผลตาม timezone ร้าน (Asia/Bangkok)
+// เลื่อน 🔜 (ไม่ทำ P1): สต็อกวัตถุดิบ Recipe/BOM (§4.9), แยกบิลซับซ้อน, custom domain, delivery, pickup prepaid
+// อย่าประกาศ generator/datasource ที่นี่ (อยู่ใน core) · ไม่ประกาศ relation ไป BusinessUnit (ใช้ unitId scalar ตาม hotel pattern)
+
+// ─────────────────────────── ENUMS ───────────────────────────
+
+enum RestOrderType {
+  DINE_IN
+  TAKEAWAY // หน้าเคาน์เตอร์ staff คีย์
+  PICKUP // ลูกค้าสั่งออนไลน์ มารับที่ร้าน
+  DELIVERY // 🔜 เผื่อไว้ — P1 ยังไม่เปิดใช้
+}
+
+enum RestOrderStatus {
+  PENDING // รอร้านรับ (QR requireApproval / pickup)
+  CONFIRMED // เข้าครัวแล้ว (รายการไหลเข้า KDS)
+  COMPLETED // ทุกรายการ SERVED หรือ CANCELLED
+  CANCELLED // ยกเลิกทั้งออเดอร์ (ก่อนชำระเท่านั้น)
+}
+
+enum KdsItemStatus {
+  NEW // เข้าคิวสถานี
+  COOKING // ครัวกดรับ กำลังทำ
+  READY // เสร็จ รอเสิร์ฟ/รอส่งมอบ
+  SERVED // เสิร์ฟถึงโต๊ะ / ลูกค้ารับแล้ว
+  CANCELLED
+}
+
+enum TableSessionStatus {
+  OPEN
+  CLOSED // ชำระครบ/ปิดปกติ
+  MERGED // ถูกรวมเข้า session อื่น
+  CANCELLED // ปิดโดยไม่มีธุรกรรม
+}
+
+enum TableShape {
+  RECT
+  ROUND
+}
+
+enum TableStatus {
+  ACTIVE
+  INACTIVE // ปิดใช้ชั่วคราว (ชำรุด) — ไม่รับ session ใหม่
+}
+
+enum ServiceRequestType {
+  CALL_STAFF
+  REQUEST_BILL
+}
+
+enum ServiceRequestStatus {
+  PENDING
+  ACKED
+  DONE
+}
+
+enum MenuItemStatus {
+  ACTIVE
+  HIDDEN // ซ่อนจากลูกค้า (staff ยังสั่งได้)
+  ARCHIVED // เก็บถาวร (soft delete)
+}
+
+enum PickupStatus {
+  AWAITING_CONFIRM
+  ACCEPTED
+  READY
+  PICKED_UP
+  NO_SHOW
+}
+
+// ─────────────────────── ตั้งค่าร้าน (1:1 unit) ───────────────────────
+
+model RestaurantSetting {
+  id       String @id @default(cuid())
+  tenantId String
+  unitId   String @unique // 1 unit = 1 setting
+
+  // บิล
+  serviceChargeBps Int     @default(0) // 1000 = 10% (basis points)
+  requireApproval  Boolean @default(false) // QR order รอ staff รับก่อนเข้าครัว
+
+  // ครัว
+  serviceHours      Json    @default("[]") // [{dow:1, ranges:[{open:"10:00", close:"21:00"}]}]
+  specialClosures   Json    @default("[]") // [{date:"2026-04-13", closed:true, note:"สงกรานต์"}]
+  lastOrderMins     Int     @default(30) // นาทีก่อนปิดช่วง = last order
+  kitchenPaused     Boolean @default(false) // kill switch
+  kitchenPausedNote String?
+
+  // KDS
+  kdsWarnMins     Int @default(8) // เหลือง
+  kdsCriticalMins Int @default(15) // แดง
+
+  // Pickup
+  pickupEnabled  Boolean @default(false)
+  pickupSlotMins Int     @default(15)
+  pickupLeadMins Int     @default(20)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// ─────────────────────── เมนู / หมวด / ตัวเลือก ───────────────────────
+
+model MenuCategory {
+  id            String    @id @default(cuid())
+  tenantId      String
+  unitId        String
+  name          String // TH (หลัก)
+  nameEn        String?
+  imageUrl      String?
+  sortOrder     Int       @default(0)
+  isVisible     Boolean   @default(true)
+  availableFrom String? // "06:00" local — null = ทั้งวัน
+  availableTo   String? // "11:00"
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  items MenuItem[]
+
+  @@unique([unitId, name])
+  @@index([tenantId])
+  @@index([unitId, sortOrder])
+}
+
+model MenuItem {
+  id         String       @id @default(cuid())
+  tenantId   String
+  unitId     String
+  categoryId String
+  category   MenuCategory @relation(fields: [categoryId], references: [id])
+  stationId  String
+  station    KdsStation   @relation(fields: [stationId], references: [id])
+
+  name          String // TH
+  nameEn        String?
+  description   String?
+  descriptionEn String?
+  images        Json           @default("[]") // ["url1","url2"] — index 0 = cover
+  basePrice     Int // สตางค์
+  sku           String?
+  tags          Json           @default("[]") // ["SPICY","VEGAN","RECOMMENDED","NEW"]
+  prepMinutes   Int?
+  sortOrder     Int            @default(0)
+  status        MenuItemStatus @default(ACTIVE)
+
+  // 86 / สต็อกระดับเมนู (MVP)
+  isOutOfStock  Boolean @default(false) // 86 manual
+  stockQty      Int? // null = ไม่นับสต็อก · หักตอน confirm order · 0 = auto-86
+  dailyStockQty Int? // null = ไม่ reset
+
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  optionGroups MenuItemOptionGroup[]
+  orderItems   RestaurantOrderItem[]
+
+  @@unique([unitId, sku])
+  @@index([tenantId])
+  @@index([unitId, categoryId, sortOrder])
+  @@index([unitId, status, isOutOfStock])
+}
+
+model MenuOptionGroup {
+  id         String    @id @default(cuid())
+  tenantId   String
+  unitId     String
+  name       String // "ขนาด" / "ความหวาน" / "Topping"
+  nameEn     String?
+  minSelect  Int       @default(0) // 0 = ไม่บังคับ
+  maxSelect  Int       @default(1) // >1 = เลือกหลายตัว
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  choices MenuOptionChoice[]
+  items   MenuItemOptionGroup[]
+
+  @@unique([unitId, name])
+  @@index([tenantId])
+}
+
+model MenuOptionChoice {
+  id           String          @id @default(cuid())
+  tenantId     String
+  unitId       String
+  groupId      String
+  group        MenuOptionGroup @relation(fields: [groupId], references: [id])
+  name         String // "พิเศษ" / "หวาน 50%" / "ไข่มุก"
+  nameEn       String?
+  priceDelta   Int             @default(0) // สตางค์ — ติดลบได้
+  isDefault    Boolean         @default(false)
+  isOutOfStock Boolean         @default(false) // 86 รายตัวเลือก
+  sortOrder    Int             @default(0)
+  archivedAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@unique([groupId, name])
+  @@index([tenantId])
+  @@index([unitId])
+}
+
+model MenuItemOptionGroup {
+  id        String          @id @default(cuid())
+  tenantId  String
+  unitId    String
+  itemId    String
+  item      MenuItem        @relation(fields: [itemId], references: [id])
+  groupId   String
+  group     MenuOptionGroup @relation(fields: [groupId], references: [id])
+  sortOrder Int             @default(0)
+
+  @@unique([itemId, groupId])
+  @@index([tenantId])
+  @@index([unitId])
+}
+
+// ─────────────────────── สถานี KDS ───────────────────────
+
+model KdsStation {
+  id         String    @id @default(cuid())
+  tenantId   String
+  unitId     String
+  name       String // "ครัว" / "เครื่องดื่ม"
+  nameEn     String?
+  sortOrder  Int       @default(0)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  menuItems  MenuItem[]
+  orderItems RestaurantOrderItem[]
+
+  @@unique([unitId, name])
+  @@index([tenantId])
+}
+
+// ─────────────────────── โซน / โต๊ะ / Floor plan ───────────────────────
+
+model RestaurantZone {
+  id         String    @id @default(cuid())
+  tenantId   String
+  unitId     String
+  name       String // "ในร้าน" / "ระเบียง"
+  sortOrder  Int       @default(0)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  tables RestaurantTable[]
+
+  @@unique([unitId, name])
+  @@index([tenantId])
+}
+
+model RestaurantTable {
+  id         String         @id @default(cuid())
+  tenantId   String
+  unitId     String
+  zoneId     String
+  zone       RestaurantZone @relation(fields: [zoneId], references: [id])
+  name       String // "A1", "โต๊ะ 5"
+  seats      Int            @default(4)
+  shape      TableShape     @default(RECT)
+  posX       Int            @default(0)
+  posY       Int            @default(0)
+  width      Int            @default(2)
+  height     Int            @default(2)
+  qrToken    String         @unique @default(cuid()) // QR ถาวร — rotate ได้
+  status     TableStatus    @default(ACTIVE)
+  archivedAt DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  sessions TableSession[]
+
+  @@unique([unitId, name])
+  @@index([tenantId])
+  @@index([unitId, zoneId])
+}
+
+// ─────────────────────── Session โต๊ะ ───────────────────────
+
+model TableSession {
+  id           String             @id @default(cuid())
+  tenantId     String
+  unitId       String
+  tableId      String
+  table        RestaurantTable    @relation(fields: [tableId], references: [id])
+  status       TableSessionStatus @default(OPEN)
+  guestCount   Int?
+  memberId     String? // Customer.id (tenant-scoped) — ผูกเพื่อสะสมแต้ม
+  openedByUserId String? // staff ที่เปิด (null = ลูกค้าเปิดผ่าน QR)
+  mergedIntoId String? // → TableSession ปลายทาง เมื่อ MERGED
+  mergedInto   TableSession?      @relation("SessionMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom   TableSession[]     @relation("SessionMerge")
+  openedAt     DateTime           @default(now())
+  closedAt     DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  orders          RestaurantOrder[]
+  serviceRequests RestaurantServiceRequest[]
+
+  @@index([tenantId])
+  @@index([unitId, status])
+  @@index([unitId, tableId, status])
+  // ⚠️ ต้องมี partial unique index (migration SQL — Prisma ประกาศ partial ไม่ได้):
+  // CREATE UNIQUE INDEX one_open_session_per_table ON "TableSession" ("tableId") WHERE status = 'OPEN';
+}
+
+// ─────────────────────── ออเดอร์ + รายการ + ตัวเลือก ───────────────────────
+
+// เลขรันออเดอร์รายวันต่อ unit (atomic upsert increment — POS pattern)
+model RestaurantDailyCounter {
+  id       String @id @default(cuid())
+  tenantId String
+  unitId   String
+  bizDate  String // "2026-07-11" ตาม timezone unit
+  seq      Int    @default(0)
+
+  @@unique([unitId, bizDate])
+  @@index([tenantId])
+}
+
+model RestaurantOrder {
+  id        String          @id @default(cuid())
+  tenantId  String
+  unitId    String
+  type      RestOrderType
+  status    RestOrderStatus @default(CONFIRMED)
+  sessionId String? // DINE_IN เท่านั้น
+  session   TableSession?   @relation(fields: [sessionId], references: [id])
+
+  bizDate String // "2026-07-11" ตาม timezone unit
+  dailyNo Int // running ต่อวันต่อ unit → แสดง "#0042"
+
+  memberId   String? // ผูกสมาชิก (takeaway/pickup)
+  guestName  String? // pickup/takeaway ไม่ login
+  guestPhone String?
+  guestToken String? // cookie token ของดีไวซ์ที่สั่ง (QR)
+  note       String?
+  isRush     Boolean @default(false) // expedite ทั้งออเดอร์
+
+  // Pickup
+  pickupStatus PickupStatus?
+  pickupAt     DateTime?
+  readyAt      DateTime?
+  pickedUpAt   DateTime?
+
+  placedByUserId String? // staff ที่คีย์ (null = ลูกค้าสั่งเอง)
+  cancelReason   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  items RestaurantOrderItem[]
+
+  @@unique([unitId, bizDate, dailyNo])
+  @@index([tenantId])
+  @@index([unitId, bizDate, type])
+  @@index([unitId, status])
+  @@index([sessionId])
+}
+
+model RestaurantOrderItem {
+  id         String          @id @default(cuid())
+  tenantId   String
+  unitId     String
+  orderId    String
+  order      RestaurantOrder @relation(fields: [orderId], references: [id])
+  menuItemId String? // null ได้กรณีเมนูถูก archive ภายหลัง
+  menuItem   MenuItem?       @relation(fields: [menuItemId], references: [id])
+  stationId  String
+  station    KdsStation      @relation(fields: [stationId], references: [id])
+
+  nameSnapshot String // freeze ชื่อ ณ เวลาสั่ง
+  unitPrice    Int // สตางค์ ราคาฐาน ณ เวลาสั่ง
+  optionsTotal Int    @default(0) // สตางค์ รวม priceDelta ต่อ 1 หน่วย
+  qty          Int    @default(1)
+  lineTotal    Int // (unitPrice + optionsTotal) * qty — denormalize
+  note         String?
+
+  kdsStatus         KdsItemStatus @default(NEW)
+  isRush            Boolean       @default(false)
+  cookingAt         DateTime?
+  readyAt           DateTime?
+  servedAt          DateTime?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  cancelledByUserId String?
+
+  // ชำระเงิน (แยกบิลรายรายการ)
+  saleId    String? // PosSale.id เมื่อรายการนี้ถูกชำระ → lock
+  settledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  options RestaurantOrderItemOption[]
+
+  @@index([tenantId])
+  @@index([unitId, stationId, kdsStatus])
+  @@index([unitId, kdsStatus, isRush, createdAt])
+  @@index([orderId])
+  @@index([unitId, menuItemId])
+  @@index([saleId])
+}
+
+model RestaurantOrderItemOption {
+  id          String              @id @default(cuid())
+  tenantId    String
+  unitId      String
+  orderItemId String
+  orderItem   RestaurantOrderItem @relation(fields: [orderItemId], references: [id])
+  choiceId    String? // อ้างอิงเดิม (null ได้ถ้า choice ถูกลบ)
+
+  groupSnapshot  String // "ขนาด"
+  choiceSnapshot String // "พิเศษ"
+  priceDelta     Int    @default(0) // สตางค์ ณ เวลาสั่ง
+
+  @@index([tenantId])
+  @@index([unitId])
+  @@index([orderItemId])
+}
+
+// ─────────────────────── เรียกพนักงาน / ขอเช็คบิล ───────────────────────
+
+model RestaurantServiceRequest {
+  id            String               @id @default(cuid())
+  tenantId      String
+  unitId        String
+  sessionId     String
+  session       TableSession         @relation(fields: [sessionId], references: [id])
+  type          ServiceRequestType
+  status        ServiceRequestStatus @default(PENDING)
+  note          String? // ข้อความจากลูกค้า / วิธีจ่ายที่เลือกล่วงหน้า
+  ackedByUserId String?
+  ackedAt       DateTime?
+  doneAt        DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([tenantId])
+  @@index([unitId, status, createdAt])
+  @@index([sessionId])
+}
+
+// 🔜 Phase 2 — สต็อกวัตถุดิบ Recipe/BOM (§4.9): Ingredient, RecipeLine, IngredientMovement — จองไว้ ยังไม่ implement

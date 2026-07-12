@@ -24,6 +24,10 @@ const UNIT_NAV: Record<string, { href: string; label: string }[]> = {
     { href: "/ticket", label: "เปิดระบบตั๋ว / อีเวนต์ →" },
     { href: "/ticket/checkin", label: "เช็คอินหน้างาน" },
   ],
+  RESTAURANT: [
+    { href: "/restaurant", label: "เปิดระบบร้านอาหาร →" },
+    { href: "/restaurant/setup", label: "ตั้งค่า/เมนู/โต๊ะ" },
+  ],
 };
 
 // หน้าแรกของระบบธุรกิจ (เช่น จองคิว) — งานของระบบ + การเชื่อมต่อกับระบบอื่น
