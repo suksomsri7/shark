@@ -90,6 +90,8 @@ const MAPPINGS: [string, string][] = [
   ["DEPOSIT_RECEIVED", "2110"],
   ["DEPOSIT_PAID", "1130"],
   ["INCOME_DEFAULT", "4030"],
+  ["INCOME_GOODS", "4000"], // F-09: รายได้ขายสินค้า (tax point ON_ISSUE)
+  ["INCOME_SERVICE", "4030"], // F-09: รายได้ค่าบริการ (tax point ON_PAYMENT)
   ["PURCHASE_DEFAULT", "5000"],
   ["EXPENSE_DEFAULT", "6900"],
   ["ASSET_DEFAULT", "1610"], // P2 ASSET_PURCHASE (บัญชีสินทรัพย์ default เมื่อ line ไม่ระบุ)

@@ -62,7 +62,7 @@ export default async function ProductsPage({
   const unitName = new Map(units.map((u) => [u.id, u.name]));
 
   const tabCls = (t: Tab) =>
-    `rounded-full border px-3 py-1 text-xs ${t === tab ? "bg-[color:var(--color-ink)] text-[color:var(--color-bg)]" : "hover:bg-[color:var(--color-surface-2)]"}`;
+    `rounded-full border px-3 py-1 text-xs ${t === tab ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface-2)]" : "hover:bg-[color:var(--color-surface-2)]"}`;
 
   return (
     <div className="flex max-w-3xl flex-col gap-5">

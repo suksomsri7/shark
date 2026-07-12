@@ -547,6 +547,8 @@ async function pp30Side(
   let baseTotal = 0;
 
   for (const agg of perDoc.values()) {
+    // F-08: ข้ามเอกสารที่ VAT สุทธิ = 0 (void แล้ว reversal หักกันเอง) — ไม่นับฐาน
+    if (agg.vat === 0) continue;
     const doc = agg.docRefId ? docMap.get(agg.docRefId) : undefined;
     const snap = (doc?.contactSnapshot ?? null) as
       | { name?: string; taxId?: string; branchCode?: string }
@@ -555,9 +557,11 @@ async function pp30Side(
     const taxId = snap?.taxId ?? doc?.contact?.taxId ?? "";
     const branchCode = snap?.branchCode ?? doc?.contact?.branchCode ?? "";
     // ฐาน: ประมาณจากยอดเอกสาร (subTotal − ส่วนลด) — reconcile ภาษีจาก GL จริง
-    const base = doc ? doc.subTotal - doc.discountAmount : 0;
-    // อัตรา: derive จาก vat/base (700 = 7%) — SME ส่วนใหญ่อัตราเดียว
-    const rateBp = base > 0 ? Math.round((agg.vat / base) * 10000) : 0;
+    // F-08: ฐานตามทิศ VAT (ใบลดหนี้ VAT ติดลบ → ฐานติดลบด้วย)
+    const rawBase = doc ? doc.subTotal - doc.discountAmount : 0;
+    const base = agg.vat < 0 ? -rawBase : rawBase;
+    // อัตรา: derive จาก vat/base (700 = 7%) — SME ส่วนใหญ่อัตราเดียว (ทั้งบวก/ลบให้ได้ 700)
+    const rateBp = base !== 0 ? Math.round((agg.vat / base) * 10000) : 0;
 
     rows.push({
       docNo: doc?.docNo ?? agg.journalNo,

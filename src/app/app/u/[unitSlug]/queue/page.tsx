@@ -266,7 +266,7 @@ function OpBtn({
       <button
         className={
           primary
-            ? "rounded-lg bg-[color:var(--color-fg)] px-2.5 py-1 text-xs text-[color:var(--color-bg)]"
+            ? "rounded-lg bg-[color:var(--color-ink)] px-2.5 py-1 text-xs text-[color:var(--color-surface)]"
             : "rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
         }
       >

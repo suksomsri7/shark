@@ -53,14 +53,14 @@ export default function GoodsIssueEditor({
           <button
             type="button"
             onClick={() => setDocType("GOODS_ISSUE")}
-            className={`rounded-full border px-3 py-1 ${docType === "GOODS_ISSUE" ? "bg-[color:var(--color-ink)] text-[color:var(--color-bg)]" : ""}`}
+            className={`rounded-full border px-3 py-1 ${docType === "GOODS_ISSUE" ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface-2)]" : ""}`}
           >
             เบิกออก
           </button>
           <button
             type="button"
             onClick={() => setDocType("GOODS_ISSUE_RETURN")}
-            className={`rounded-full border px-3 py-1 ${docType === "GOODS_ISSUE_RETURN" ? "bg-[color:var(--color-ink)] text-[color:var(--color-bg)]" : ""}`}
+            className={`rounded-full border px-3 py-1 ${docType === "GOODS_ISSUE_RETURN" ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface-2)]" : ""}`}
           >
             ส่งคืน
           </button>

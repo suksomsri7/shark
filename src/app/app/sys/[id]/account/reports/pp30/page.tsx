@@ -7,7 +7,7 @@ function sideBlock(title: string, s: Pp30Side) {
   return (
     <TableWrap>
       <thead>
-        <tr className="border-b bg-[color:var(--color-bg,#fafafa)] text-left">
+        <tr className="border-b bg-[color:var(--color-surface-2,#fafafa)] text-left">
           <th className="px-3 py-2" colSpan={4}>{title}</th>
         </tr>
         <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
@@ -19,7 +19,7 @@ function sideBlock(title: string, s: Pp30Side) {
       </thead>
       <tbody>
         {s.byRate.map((g) => (
-          <tr key={g.rateBp} className="border-b bg-[color:var(--color-bg,#fafafa)] text-xs font-medium">
+          <tr key={g.rateBp} className="border-b bg-[color:var(--color-surface-2,#fafafa)] text-xs font-medium">
             <td className="px-3 py-1" colSpan={2}>อัตรา {g.rateBp / 100}%</td>
             <td className="px-3 py-1 text-right">{baht(g.base)}</td>
             <td className="px-3 py-1 text-right">{baht(g.vat)}</td>

@@ -98,7 +98,7 @@ export default async function EventDetailPage({
             <input type="hidden" name="status" value={s} />
             <button
               className={`rounded-full border px-2.5 py-1 text-xs ${
-                event.status === s ? "bg-[color:var(--color-fg)] text-[color:var(--color-bg)]" : "hover:bg-[color:var(--color-surface-2)]"
+                event.status === s ? "bg-[color:var(--color-ink)] text-[color:var(--color-surface)]" : "hover:bg-[color:var(--color-surface-2)]"
               }`}
             >
               {STATUS_LABEL[s]}

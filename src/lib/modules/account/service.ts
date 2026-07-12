@@ -593,7 +593,7 @@ async function creditAvailable(
 ): Promise<number> {
   const src = await tx.accountDocument.findFirst({
     where: { id: sourceDocId, systemId },
-    select: { grandTotal: true },
+    select: { grandTotal: true, paidTotal: true },
   });
   if (!src) return 0;
   const priorCns = await tx.accountDocument.findMany({
@@ -607,7 +607,8 @@ async function creditAvailable(
     select: { grandTotal: true },
   });
   const used = priorCns.reduce((s, c) => s + c.grandTotal, 0);
-  return Math.max(0, src.grandTotal - used);
+  // F-04: CN cap = ยอดคงเหลือค้างชำระจริง (grandTotal − ที่ชำระแล้ว − CN เดิม)
+  return Math.max(0, src.grandTotal - src.paidTotal - used);
 }
 
 // ใบมัดจำที่ยังหักได้ของผู้ติดต่อ (สำหรับ picker หักมัดจำในใบแจ้งหนี้)
@@ -1005,6 +1006,21 @@ export async function convertDocument(
         ? await computeDueDate(tenantId, systemId, source.contactId, settings.defaultDueDays)
         : null;
 
+    // F-02: ใบกำกับภาษีของใบแจ้งหนี้ที่หักมัดจำ → รับรู้ VAT เฉพาะส่วนคงเหลือ
+    //       (VAT ส่วนมัดจำรับรู้ตอนออกใบกำกับมัดจำแล้ว) — subTotal/vatAmount = เต็มงาน − ส่วนมัดจำ
+    let tiSubTotal = source.subTotal;
+    let tiVatAmount = source.vatAmount;
+    const tiGrandTotal = source.grandTotal; // net หักมัดจำอยู่แล้ว
+    if (toDocType === "TAX_INVOICE" && source.depositDeducted > 0) {
+      const rate =
+        settings.vatRegistered && source.vatMode !== "NONE" ? settings.vatRateBp / 10000 : 0;
+      const depBase =
+        rate > 0 ? Math.round(source.depositDeducted / (1 + rate)) : source.depositDeducted;
+      const depVat = source.depositDeducted - depBase;
+      tiSubTotal = source.subTotal - depBase;
+      tiVatAmount = source.vatAmount - depVat;
+    }
+
     const created = await prisma.$transaction(async (tx) => {
       const newDoc = await tx.accountDocument.create({
         data: {
@@ -1018,9 +1034,9 @@ export async function convertDocument(
           contactId: source.contactId,
           vatMode: source.vatMode,
           discountAmount: source.discountAmount,
-          subTotal: source.subTotal,
-          vatAmount: source.vatAmount,
-          grandTotal: source.grandTotal,
+          subTotal: tiSubTotal,
+          vatAmount: tiVatAmount,
+          grandTotal: tiGrandTotal,
           note: source.note,
           sourceDocId: source.id,
           createdById: createdById ?? null,
@@ -1100,7 +1116,18 @@ export async function recordPayment(
         throw new Error("เอกสารนี้รับชำระไม่ได้ในสถานะปัจจุบัน");
       // A5: paidTotal = ยอดที่ตัดหนี้ (เงินเข้า + WHT ถูกหัก) — กันเกินยอด
       const tieOff = input.amount + wht;
-      const remain = Math.max(0, doc.grandTotal - doc.paidTotal);
+      // F-05: หนี้จริง = grandTotal − ที่ชำระแล้ว − ใบลดหนี้ที่ออกแล้ว (กันรับเงินเกินจน GL ลูกหนี้ติดลบ)
+      const cnAgg = await tx.accountDocument.aggregate({
+        where: {
+          systemId,
+          docType: "CREDIT_NOTE",
+          sourceDocId: id,
+          status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] },
+        },
+        _sum: { grandTotal: true },
+      });
+      const cnTotal = cnAgg._sum.grandTotal ?? 0;
+      const remain = Math.max(0, doc.grandTotal - doc.paidTotal - cnTotal);
       if (tieOff > remain + 1) // เผื่อ rounding 1 สตางค์
         throw new Error("ยอดชำระเกินยอดคงเหลือ");
       const payment = await tx.accountDocumentPayment.create({
@@ -1305,13 +1332,29 @@ export async function overviewStats(tenantId: string, systemId: string) {
       docType: "INVOICE",
       status: { in: ["AWAITING_PAYMENT", "PARTIAL"] },
     },
-    select: { grandTotal: true, paidTotal: true, dueDate: true, status: true, validUntil: true },
+    select: { id: true, grandTotal: true, paidTotal: true, dueDate: true, status: true, validUntil: true },
   });
+  // F-06: หักใบลดหนี้ที่ออกแล้วของแต่ละใบ → ยอดค้างรับหน้าจอตรงกับ GL 1100
+  const cnBySource = new Map<string, number>();
+  if (openInvoices.length > 0) {
+    const cns = await prisma.accountDocument.groupBy({
+      by: ["sourceDocId"],
+      where: {
+        tenantId,
+        systemId,
+        docType: "CREDIT_NOTE",
+        sourceDocId: { in: openInvoices.map((d) => d.id) },
+        status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] },
+      },
+      _sum: { grandTotal: true },
+    });
+    for (const c of cns) if (c.sourceDocId) cnBySource.set(c.sourceDocId, c._sum.grandTotal ?? 0);
+  }
   let receivable = 0;
   let overdueCount = 0;
   let overdueAmount = 0;
   for (const d of openInvoices) {
-    const remain = Math.max(0, d.grandTotal - d.paidTotal);
+    const remain = Math.max(0, d.grandTotal - d.paidTotal - (cnBySource.get(d.id) ?? 0));
     receivable += remain;
     if (isOverdue({ status: d.status, dueDate: d.dueDate, validUntil: d.validUntil })) {
       overdueCount += 1;

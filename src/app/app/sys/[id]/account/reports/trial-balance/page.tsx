@@ -62,7 +62,7 @@ export default async function TrialBalancePage({
       )}
 
       <TableWrap>
-        <thead className="sticky top-0 bg-[color:var(--color-bg,#fff)]">
+        <thead className="sticky top-0 bg-[color:var(--color-surface-2,#fff)]">
           <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
             <th className="px-2 py-2">รหัส</th>
             <th className="px-2 py-2">ชื่อบัญชี</th>

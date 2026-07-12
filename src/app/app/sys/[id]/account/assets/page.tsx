@@ -24,7 +24,7 @@ const STATUS_LABEL: Record<string, string> = {
   WRITTEN_OFF: "ตัดบัญชี",
 };
 const STATUS_CLS: Record<string, string> = {
-  ACTIVE: "text-[color:var(--color-success,green)]",
+  ACTIVE: "text-[color:var(--color-ink,green)]",
   FULLY_DEPRECIATED: "text-[color:var(--color-muted)]",
   DISPOSED: "text-[color:var(--color-muted)]",
   WRITTEN_OFF: "text-[color:var(--color-danger)]",
@@ -91,7 +91,7 @@ export default async function AssetsPage({
       </div>
 
       {err && <p className="text-sm text-[color:var(--color-danger)]">{err}</p>}
-      {ok && <p className="text-sm text-[color:var(--color-success,green)]">{ok}</p>}
+      {ok && <p className="text-sm text-[color:var(--color-ink,green)]">{ok}</p>}
 
       {/* สรุป */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -248,7 +248,7 @@ function AssetCard({
       ) : (
         canDispose && (
           <details className="mt-2">
-            <summary className="cursor-pointer text-xs text-[color:var(--color-primary,#0a58ca)] underline">ขาย / ตัดจำหน่าย</summary>
+            <summary className="cursor-pointer text-xs text-[color:var(--color-ink,#0a58ca)] underline">ขาย / ตัดจำหน่าย</summary>
             <form action={disposeAssetAction} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <input type="hidden" name="systemId" value={systemId} />
               <input type="hidden" name="assetId" value={a.id} />
@@ -268,7 +268,7 @@ function AssetCard({
                 ))}
               </select>
               <input name="note" placeholder="หมายเหตุ" className={`${inputCls} sm:col-span-2`} />
-              <button className="btn btn-secondary text-sm sm:col-span-2 sm:justify-self-start">ยืนยันจำหน่าย</button>
+              <button className="btn btn-ghost text-sm sm:col-span-2 sm:justify-self-start">ยืนยันจำหน่าย</button>
             </form>
           </details>
         )

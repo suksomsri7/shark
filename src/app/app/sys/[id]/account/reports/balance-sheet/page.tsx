@@ -52,13 +52,13 @@ export default async function BalanceSheetPage({
       )}
       <TableWrap>
         <tbody>
-          <tr className="bg-[color:var(--color-bg,#fafafa)] font-medium"><td className="px-3 py-1.5" colSpan={2}>สินทรัพย์</td></tr>
+          <tr className="bg-[color:var(--color-surface-2,#fafafa)] font-medium"><td className="px-3 py-1.5" colSpan={2}>สินทรัพย์</td></tr>
           {rows(bs.assets.rows)}
           <tr className="border-b-2 font-semibold"><td className="px-3 py-2">รวมสินทรัพย์</td><td className="px-3 py-2 text-right">{baht(bs.assets.total)}</td></tr>
-          <tr className="bg-[color:var(--color-bg,#fafafa)] font-medium"><td className="px-3 py-1.5" colSpan={2}>หนี้สิน</td></tr>
+          <tr className="bg-[color:var(--color-surface-2,#fafafa)] font-medium"><td className="px-3 py-1.5" colSpan={2}>หนี้สิน</td></tr>
           {rows(bs.liabilities.rows)}
           <tr className="border-b font-medium"><td className="px-3 py-1.5 pl-3">รวมหนี้สิน</td><td className="px-3 py-1.5 text-right">{baht(bs.liabilities.total)}</td></tr>
-          <tr className="bg-[color:var(--color-bg,#fafafa)] font-medium"><td className="px-3 py-1.5" colSpan={2}>ส่วนของเจ้าของ</td></tr>
+          <tr className="bg-[color:var(--color-surface-2,#fafafa)] font-medium"><td className="px-3 py-1.5" colSpan={2}>ส่วนของเจ้าของ</td></tr>
           {rows(bs.equity.rows)}
           <tr className="border-b last:border-0"><td className="px-3 py-1.5 pl-6">กำไรสะสม</td><td className="px-3 py-1.5 text-right">{baht(bs.retainedEarnings)}</td></tr>
           <tr className="border-b last:border-0"><td className="px-3 py-1.5 pl-6">กำไร(ขาดทุน)งวดปัจจุบัน</td><td className="px-3 py-1.5 text-right">{baht(bs.currentPeriodProfit)}</td></tr>

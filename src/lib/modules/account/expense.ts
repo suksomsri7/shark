@@ -691,6 +691,10 @@ async function issueWhtCert(
 ): Promise<void> {
   const issueDate = new Date();
   const docNo = await nextDocNo(tx, tenantId, systemId, "WHT_CERT", issueDate);
+  // F-03: ฐานเงินได้ = WHT ÷ อัตรา (ก่อน VAT) — subTotal=ฐาน, whtAmount=ยอดหัก (มาตรฐานเดียวกับ wht.ts)
+  //       เดิมใส่ subTotal=ยอด WHT และไม่ set whtAmount → ภ.ง.ด.53 ออกเป็น ฿0 + ฐานผิด
+  const base =
+    whtRateBp && whtRateBp > 0 ? Math.round((whtAmount * 10000) / whtRateBp) : whtAmount;
   const cert = await tx.accountDocument.create({
     data: {
       tenantId,
@@ -703,9 +707,10 @@ async function issueWhtCert(
       contactId: source.contactId,
       contactSnapshot: (source.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
       vatMode: "NONE",
-      subTotal: whtAmount,
+      subTotal: base,
       vatAmount: 0,
-      grandTotal: whtAmount,
+      whtAmount,
+      grandTotal: base,
       whtIncomeType: incomeType,
       whtRateBp: whtRateBp,
       sourceDocId: source.id,

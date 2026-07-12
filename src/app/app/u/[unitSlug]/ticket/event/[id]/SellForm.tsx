@@ -66,7 +66,7 @@ export default function SellForm({
         <p className="text-sm text-[color:var(--color-danger)]">{state.reason}</p>
       )}
       {state && state.ok && (
-        <p className="text-sm text-[color:var(--color-success,green)]">
+        <p className="text-sm font-medium text-[color:var(--color-ink)]">
           ออก {state.admissionCount} ใบ · {state.orderNo} · รวม ฿{baht(state.totalSatang)}
         </p>
       )}

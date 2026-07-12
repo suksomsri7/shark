@@ -59,6 +59,22 @@ body {
   .btn-ghost:hover {
     background: var(--color-surface-2);
   }
+  /* ปุ่ม action ในแถว/หน้า operation — touch target ≥40px (UI_STANDARD Pass 1) */
+  .btn-sm {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors;
+    background: var(--color-surface);
+    color: var(--color-ink);
+  }
+  .btn-sm:hover {
+    background: var(--color-surface-2);
+  }
+  /* input มาตรฐาน — เลิกก๊อป inputCls ต่อไฟล์ */
+  .input {
+    @apply w-full rounded-lg border px-3 py-2 text-sm outline-none;
+  }
+  .input:focus {
+    border-color: var(--color-ink);
+  }
   .card {
     @apply rounded-xl border p-5;
     background: var(--color-surface);

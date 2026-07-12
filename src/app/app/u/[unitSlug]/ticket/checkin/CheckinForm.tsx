@@ -47,7 +47,7 @@ export default function CheckinForm({
         <div
           className={`rounded-xl border p-4 text-center ${
             state.ok
-              ? "border-[color:var(--color-success,green)]"
+              ? "border-[color:var(--color-ink)]"
               : "border-[color:var(--color-danger)]"
           }`}
         >

@@ -402,6 +402,11 @@ export async function postDocument(
     const dep = depositSplit(doc.depositDeducted, rate);
     const b = new Book(ctx, db);
 
+    // F-09: แยกบัญชีรายได้ตามจุดรับรู้ภาษี — สินค้า (ON_ISSUE) → 4000 · บริการ (ON_PAYMENT) → 4030
+    // (ไม่มีข้อมูลสินค้าราย line ในเอกสารทั่วไป → ใช้ tax point เป็นตัวชี้หมวดรายได้)
+    const timing = doc.taxPointBasis ?? doc.vatTiming;
+    const incomeKey = timing === "ON_PAYMENT" ? "INCOME_SERVICE" : "INCOME_GOODS";
+
     // ส่วนลด: default net (Cr รายได้ = สุทธิ) · use4800 → Cr รายได้ = gross + Dr 4800 (QC5-A4)
     const use4800 = false; // P1: ยังไม่มี field เปิดโหมด 4800 → net เสมอ (Gate B ต่อยอด)
     const creditIncome = async (incomeId: string) => {
@@ -423,7 +428,7 @@ export async function postDocument(
         const vatKey = timing === "ON_PAYMENT" ? "VAT_OUTPUT_UNDUE" : "VAT_OUTPUT_PENDING_INVOICE";
         b.dr(await b.id("AR"), doc.grandTotal);
         if (dep.base > 0) b.dr(await b.id("DEPOSIT_RECEIVED"), dep.base, "หักมัดจำ");
-        await creditIncome(await b.id("INCOME_DEFAULT", doc.docType));
+        await creditIncome(await b.id(incomeKey, doc.docType));
         if (rate > 0) b.cr(await b.id(vatKey), doc.vatAmount - dep.vat);
         book = "SALES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "ออกใบแจ้งหนี้" };
@@ -436,10 +441,11 @@ export async function postDocument(
           orderBy: { paidAt: "asc" },
           select: { financeAccountId: true, channel: true },
         });
-        const cashId = await financeLedgerId(ctx, pay?.financeAccountId, pay?.channel, db);
+        // F-07: ขายสด default เข้าเงินสด (1000) — เลือกช่องทาง/บัญชีเงินอื่นได้ผ่าน payment ที่ผูกใบเสร็จ
+        const cashId = await financeLedgerId(ctx, pay?.financeAccountId, pay?.channel ?? "CASH", db);
         b.dr(cashId, doc.grandTotal);
         if (dep.base > 0) b.dr(await b.id("DEPOSIT_RECEIVED"), dep.base, "หักมัดจำ");
-        await creditIncome(await b.id("INCOME_DEFAULT", doc.docType));
+        await creditIncome(await b.id(incomeKey, doc.docType));
         if (rate > 0) b.cr(await b.id("VAT_OUTPUT"), doc.vatAmount - dep.vat);
         book = "RECEIPTS";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "ใบเสร็จขายสด" };
@@ -462,7 +468,7 @@ export async function postDocument(
       }
       case "CREDIT_NOTE": {
         // Dr รายได้ + Dr 2200 · Cr 1100 AR
-        b.dr(await b.id("INCOME_DEFAULT", doc.docType), afterDiscount);
+        b.dr(await b.id(incomeKey, doc.docType), afterDiscount);
         if (rate > 0) b.dr(await b.id("VAT_OUTPUT"), doc.vatAmount);
         b.cr(await b.id("AR"), doc.grandTotal);
         book = "SALES";
@@ -472,7 +478,7 @@ export async function postDocument(
       case "DEBIT_NOTE": {
         // Dr 1100 AR · Cr รายได้ + Cr 2200
         b.dr(await b.id("AR"), doc.grandTotal);
-        await creditIncome(await b.id("INCOME_DEFAULT", doc.docType));
+        await creditIncome(await b.id(incomeKey, doc.docType));
         if (rate > 0) b.cr(await b.id("VAT_OUTPUT"), doc.vatAmount);
         book = "SALES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "ใบเพิ่มหนี้" };
@@ -656,10 +662,21 @@ export async function postTaxInvoice(
   return withTx(tx, async (db) => {
     const doc = await db.accountDocument.findFirst({
       where: { id: taxInvoiceDocId, systemId: ctx.systemId },
-      select: { id: true, vatAmount: true, vatTiming: true, taxPointBasis: true, issueDate: true },
+      select: { id: true, vatAmount: true, vatTiming: true, taxPointBasis: true, issueDate: true, sourceDocId: true },
     });
     if (!doc) throw new Error("ไม่พบใบกำกับภาษี");
     if (doc.vatAmount <= 0) return { skipped: true }; // ไม่มี VAT ให้ย้าย
+
+    // F-01: ใบกำกับที่ออกจากใบเสร็จขายสด/ใบรับมัดจำ → VAT ลง 2200 ไปแล้วตอนรับเงิน
+    //        ไม่มีอะไรพักใน 2205/2210 → ห้ามย้ายซ้ำ (นับ VAT ขายเกิน)
+    if (doc.sourceDocId) {
+      const src = await db.accountDocument.findFirst({
+        where: { id: doc.sourceDocId, systemId: ctx.systemId },
+        select: { docType: true },
+      });
+      if (src && (src.docType === "RECEIPT" || src.docType === "DEPOSIT_RECEIPT"))
+        return { skipped: true };
+    }
 
     const event = "TAX_INVOICE";
     if (await alreadyPosted(ctx, `AccountDocument#${taxInvoiceDocId}#${event}`, db))

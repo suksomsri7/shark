@@ -28,7 +28,7 @@ export default async function CashFlowPage({
   const sections: CashFlowSection[] = [cf.operating, cf.investing, cf.financing];
   const sectionBlock = (s: CashFlowSection) => (
     <tbody key={s.activity}>
-      <tr className="bg-[color:var(--color-bg,#fafafa)] font-medium">
+      <tr className="bg-[color:var(--color-surface-2,#fafafa)] font-medium">
         <td className="px-3 py-1.5" colSpan={2}>{ACT_LABEL[s.activity]}</td>
       </tr>
       {s.lines.map((l) => (

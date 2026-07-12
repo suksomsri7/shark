@@ -96,7 +96,7 @@ export default async function ProfitLossPage({
         <tbody>
           {sections.map((s, si) => (
             <Fragment key={s.label}>
-              <tr className="bg-[color:var(--color-bg,#fafafa)] font-medium">
+              <tr className="bg-[color:var(--color-surface-2,#fafafa)] font-medium">
                 <td className="px-3 py-1.5" colSpan={compare ? 3 : 2}>{s.label}</td>
               </tr>
               {s.merged.map((r) => (
