@@ -40,6 +40,8 @@
 
 ## 3. การเชื่อม (Link)
 
+> **ตารางเชื่อมรวมทั้ง 18 ระบบ + contracts C-1..C-5 (Inventory/HR/AI/Meeting/KB) → `BLUEPRINT_CONNECTIONS.md`** (2026-07-12)
+
 - ตาราง `AppSystemUnit` (business ↔ feature): **1 ระบบ business เชื่อมได้ 1 ระบบต่อประเภท feature** (เช่น จองคิว A เชื่อมสมาชิกได้ 1 ชุด) — เปลี่ยน/ถอดได้ทุกเมื่อ
 - feature ↔ feature เชื่อมผ่านการใช้งานร่วม (เช่น Reward หักแต้มจาก Point ชุดที่ระบุตอนแลก) — ถ้าระบบใดต้องการ link ตายตัวระหว่าง feature (เช่น Account รับข้อมูลจาก POS หลายชุด) ให้ใช้ตาราง link ของตัวเอง ระบุในสเปคโมดูล
 - พฤติกรรมเมื่อเชื่อม (ตัวอย่างที่ implement แล้ว): Booking+Member→จองสร้างสมาชิก · Booking+POS→ปิดงานออกบิล · POS+Point→จ่ายได้แต้ม · Reward+Point→แลกหักแต้ม
