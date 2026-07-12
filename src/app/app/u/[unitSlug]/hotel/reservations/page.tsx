@@ -15,13 +15,14 @@ import {
 import { ReservationForm } from "../reservation-form";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { MoneyText } from "@/components/ui/MoneyText";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { HOTEL_RESV_STATUS_LABEL } from "@/lib/ui/status-labels";
 
-const STATUS_LABEL: Record<string, string> = {
-  BOOKED: "จองแล้ว",
-  CHECKED_IN: "เข้าพัก",
-  CHECKED_OUT: "ออกแล้ว",
-  CANCELLED: "ยกเลิก",
-};
+const resvTone = (v: string) =>
+  v === "CANCELLED" ? "danger" : v === "BOOKED" ? "muted" : "strong";
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "UTC" });
@@ -55,15 +56,7 @@ export default async function HotelReservationsPage({
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
-          <h1 className="text-2xl font-semibold">การจอง</h1>
-        </div>
-        <Link href={`/app/u/${unitSlug}/hotel`} className="btn btn-ghost text-sm">
-          ← วันนี้
-        </Link>
-      </div>
+      <PageHeader title="การจอง" back={{ href: `/app/u/${unitSlug}/hotel`, label: "โรงแรม · วันนี้" }} />
 
       <ReservationForm
         unitSlug={unitSlug}
@@ -77,9 +70,9 @@ export default async function HotelReservationsPage({
       />
 
       <section className="flex flex-col gap-2">
-        <h2 className="font-medium">รายการจอง</h2>
+        <h2 className="text-sm font-medium">รายการจอง</h2>
         {reservations.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีการจอง</p>
+          <EmptyState text="ยังไม่มีการจอง — เพิ่มการจองใหม่ด้านบน" />
         ) : (
           reservations.map((r) => {
             const rooms = roomsByRes.get(r.id) ?? [];
@@ -92,14 +85,12 @@ export default async function HotelReservationsPage({
                       {r.room ? ` · ห้อง ${r.room.number}` : ""}
                     </div>
                     <div className="text-xs text-[color:var(--color-muted)]">
-                      {r.code} · {fmtDate(r.checkInDate)}–{fmtDate(r.checkOutDate)} · {r.nights} คืน ·
-                      ฿{(r.totalSatang / 100).toLocaleString("th-TH")}
+                      {r.code} · {fmtDate(r.checkInDate)}–{fmtDate(r.checkOutDate)} · {r.nights} คืน ·{" "}
+                      <MoneyText satang={r.totalSatang} />
                       {r.guestPhone ? ` · ${r.guestPhone}` : ""}
                     </div>
                   </div>
-                  <span className="whitespace-nowrap rounded-full border px-2 py-0.5 text-xs text-[color:var(--color-muted)]">
-                    {STATUS_LABEL[r.status]}
-                  </span>
+                  <StatusChip value={r.status} map={HOTEL_RESV_STATUS_LABEL} toneOf={resvTone} />
                 </div>
 
                 {r.status === "BOOKED" && (
@@ -110,7 +101,7 @@ export default async function HotelReservationsPage({
                         className="flex items-center gap-2"
                       >
                         <input type="hidden" name="id" value={r.id} />
-                        <select name="roomId" className="rounded-lg border px-2 py-1.5 text-xs">
+                        <select name="roomId" className="rounded-lg border px-2 py-2 text-sm">
                           {rooms.map((rm) => (
                             <option key={rm.id} value={rm.id}>
                               ห้อง {rm.number}
@@ -133,7 +124,7 @@ export default async function HotelReservationsPage({
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <ConfirmDialog
                       triggerLabel="เช็คเอาท์"
-                      triggerClassName="rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
+                      triggerClassName="btn-sm"
                       title="เช็คเอาท์ห้องนี้?"
                       detail="ระบบจะปิดการเข้าพักและปล่อยห้องให้ว่าง"
                       confirmLabel="ยืนยันเช็คเอาท์"
@@ -157,7 +148,7 @@ function CancelBtn({ slug, id }: { slug: string; id: string }) {
   return (
     <ConfirmDialog
       triggerLabel="ยกเลิก"
-      triggerClassName="rounded-lg border px-2.5 py-1 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
+      triggerClassName="btn-sm text-[color:var(--color-danger)]"
       title="ยกเลิกการจองนี้?"
       detail="การจองจะถูกยกเลิกและปล่อยห้องคืน แก้ไขไม่ได้"
       confirmLabel="ยืนยันยกเลิก"

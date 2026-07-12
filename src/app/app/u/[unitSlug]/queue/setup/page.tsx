@@ -12,6 +12,7 @@ import {
   revokeDisplayAction,
 } from "@/lib/modules/queue/actions";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -35,21 +36,13 @@ export default async function QueueSetupPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
-          <h1 className="text-2xl font-semibold">ตั้งค่าบัตรคิว</h1>
-        </div>
-        <Link href={`/app/u/${unitSlug}/queue`} className="btn btn-ghost text-sm">
-          ← แดชบอร์ดคิว
-        </Link>
-      </div>
+      <PageHeader title="ตั้งค่าบัตรคิว" back={{ href: `/app/u/${unitSlug}/queue`, label: "แดชบอร์ดคิว" }} />
 
       {/* ประเภทคิว */}
       <section className="flex flex-col gap-3">
-        <h2 className="font-medium">ประเภทคิว</h2>
+        <h2 className="text-sm font-medium">ประเภทคิว</h2>
         <p className="text-xs text-[color:var(--color-muted)]">
-          ตัวอักษรนำหน้า (prefix) ใช้เป็นเลขคิว เช่น A001 · priority มาก = ถูกเรียกก่อน
+          ตัวอักษรนำหน้าใช้เป็นเลขคิว เช่น A001 · ลำดับความสำคัญมาก = ถูกเรียกก่อน
         </p>
         {activeTypes.length === 0 && (
           <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีประเภทคิว เพิ่มด้านล่าง</p>
@@ -60,7 +53,7 @@ export default async function QueueSetupPage({
               <span className="font-medium">{t.name}</span>
               <span className="text-[color:var(--color-muted)]">
                 {" "}
-                · {t.prefix} · priority {t.priority}
+                · {t.prefix} · ลำดับ {t.priority}
                 {t.onlineIssuable ? " · ออนไลน์" : ""}
               </span>
             </div>
@@ -85,7 +78,7 @@ export default async function QueueSetupPage({
             <input name="prefix" required maxLength={3} placeholder="A" className="w-full rounded-lg border px-2 py-2 text-sm sm:w-16" />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-[color:var(--color-muted)]">priority</span>
+            <span className="text-xs text-[color:var(--color-muted)]">ลำดับ</span>
             <input name="priority" type="number" defaultValue={0} min={0} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-20" />
           </label>
           <label className="col-span-2 flex items-center gap-1.5 text-xs text-[color:var(--color-muted)] sm:col-span-1">
@@ -97,7 +90,7 @@ export default async function QueueSetupPage({
 
       {/* เคาน์เตอร์ */}
       <section className="flex flex-col gap-3">
-        <h2 className="font-medium">เคาน์เตอร์ / จุดบริการ</h2>
+        <h2 className="text-sm font-medium">เคาน์เตอร์ / จุดบริการ</h2>
         <p className="text-xs text-[color:var(--color-muted)]">
           เลือกประเภทที่เคาน์เตอร์รับ (ไม่เลือกเลย = รับทุกประเภท)
         </p>
@@ -128,7 +121,7 @@ export default async function QueueSetupPage({
                         {t.prefix}
                       </label>
                     ))}
-                    <button className="rounded-lg border px-2 py-1 text-xs">บันทึก</button>
+                    <button className="btn-sm">บันทึก</button>
                   </form>
                 )}
               </div>
@@ -143,7 +136,7 @@ export default async function QueueSetupPage({
 
       {/* จอแสดงคิว (TV) */}
       <section className="flex flex-col gap-3">
-        <h2 className="font-medium">จอแสดงคิว (TV)</h2>
+        <h2 className="text-sm font-medium">จอแสดงคิว (TV)</h2>
         <p className="text-xs text-[color:var(--color-muted)]">
           เปิดลิงก์บน Smart TV/แท็บเล็ตหน้าร้าน ไม่ต้องล็อกอิน
         </p>

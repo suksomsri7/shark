@@ -44,6 +44,35 @@ export const TICKET_STATUS_LABEL: Record<string, string> = {
   VOID: "ยกเลิก",
 };
 
+export const POS_SALE_STATUS_LABEL: Record<string, string> = {
+  PAID: "ชำระแล้ว",
+  VOIDED: "ยกเลิกแล้ว",
+};
+
+export const COUPON_STATUS_LABEL: Record<string, string> = {
+  ACTIVE: "ใช้งาน",
+  INACTIVE: "ปิด",
+};
+
+export const COUPON_TYPE_LABEL: Record<string, string> = {
+  PERCENT: "ลดเป็น %",
+  FIXED: "ลดเป็นบาท",
+};
+
+export const MEMBER_TIER_LABEL: Record<string, string> = {
+  MEMBER: "สมาชิก",
+  SILVER: "เงิน",
+  GOLD: "ทอง",
+  PLATINUM: "แพลทินัม",
+};
+
+// การแลกรางวัล (RewardRedemption.status)
+export const REWARD_REDEMPTION_LABEL: Record<string, string> = {
+  PENDING: "รอรับ",
+  FULFILLED: "รับแล้ว",
+  CANCELLED: "ยกเลิก",
+};
+
 export const PAY_CHANNEL_LABEL: Record<string, string> = {
   CASH: "เงินสด",
   TRANSFER: "โอน",

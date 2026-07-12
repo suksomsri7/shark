@@ -5,6 +5,7 @@ import {
   createReservationAction,
   type ReservationFormState,
 } from "@/lib/modules/hotel/actions";
+import { formatBaht } from "@/lib/ui/money";
 
 const initial: ReservationFormState = { status: "idle" };
 
@@ -42,7 +43,7 @@ export function ReservationForm({
           <select name="roomTypeId" required className="rounded-lg border px-3 py-2 text-sm">
             {roomTypes.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.name} · ฿{(t.baseRateSatang / 100).toLocaleString("th-TH")}/คืน
+                {t.name} · {formatBaht(t.baseRateSatang)}/คืน
               </option>
             ))}
           </select>

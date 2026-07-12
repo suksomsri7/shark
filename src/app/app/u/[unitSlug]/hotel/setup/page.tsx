@@ -8,14 +8,11 @@ import {
   removeRoomAction,
   setRoomStatusAction,
 } from "@/lib/modules/hotel/actions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { formatBaht } from "@/lib/ui/money";
+import { HOTEL_ROOM_STATUS_LABEL } from "@/lib/ui/status-labels";
 
-const baht = (s: number) => (s / 100).toLocaleString("th-TH");
-
-const ROOM_STATUS: { value: string; label: string }[] = [
-  { value: "AVAILABLE", label: "ว่าง" },
-  { value: "CLEANING", label: "รอทำความสะอาด" },
-  { value: "OOO", label: "ปิดใช้งาน" },
-];
+const ROOM_STATUS = ["AVAILABLE", "CLEANING", "OOO"] as const;
 
 export default async function HotelSetupPage({
   params,
@@ -32,19 +29,11 @@ export default async function HotelSetupPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
-          <h1 className="text-2xl font-semibold">ตั้งค่าโรงแรม</h1>
-        </div>
-        <Link href={`/app/u/${unitSlug}/hotel`} className="btn btn-ghost text-sm">
-          ← วันนี้
-        </Link>
-      </div>
+      <PageHeader title="ตั้งค่าโรงแรม" back={{ href: `/app/u/${unitSlug}/hotel`, label: "โรงแรม · วันนี้" }} />
 
       {/* ประเภทห้อง */}
       <section className="flex flex-col gap-3">
-        <h2 className="font-medium">ประเภทห้อง</h2>
+        <h2 className="text-sm font-medium">ประเภทห้อง</h2>
         {roomTypes.length === 0 && (
           <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีประเภทห้อง เพิ่มด้านล่าง</p>
         )}
@@ -55,7 +44,7 @@ export default async function HotelSetupPage({
               {t.code ? <span className="text-[color:var(--color-muted)]"> ({t.code})</span> : null}
               <span className="text-[color:var(--color-muted)]">
                 {" "}
-                · {t.capacity} คน · ฿{baht(t.baseRateSatang)}/คืน · {t._count.rooms} ห้อง
+                · {t.capacity} คน · {formatBaht(t.baseRateSatang)}/คืน · {t._count.rooms} ห้อง
               </span>
             </div>
             <form action={removeRoomTypeAction.bind(null, unitSlug)}>
@@ -90,7 +79,7 @@ export default async function HotelSetupPage({
 
       {/* ห้องพัก */}
       <section className="flex flex-col gap-3">
-        <h2 className="font-medium">ห้องพัก</h2>
+        <h2 className="text-sm font-medium">ห้องพัก</h2>
         {roomTypes.length === 0 ? (
           <p className="text-xs text-[color:var(--color-muted)]">เพิ่มประเภทห้องก่อนจึงเพิ่มห้องได้</p>
         ) : (
@@ -111,18 +100,18 @@ export default async function HotelSetupPage({
                     <select
                       name="status"
                       defaultValue={r.status}
-                      className="rounded-lg border px-2 py-1 text-xs"
+                      className="rounded-lg border px-2 py-2 text-sm"
                     >
                       {ROOM_STATUS.map((s) => (
-                        <option key={s.value} value={s.value}>
-                          {s.label}
+                        <option key={s} value={s}>
+                          {HOTEL_ROOM_STATUS_LABEL[s]}
                         </option>
                       ))}
-                      {r.status === "OCCUPIED" && <option value="OCCUPIED">มีแขก</option>}
+                      {r.status === "OCCUPIED" && (
+                        <option value="OCCUPIED">{HOTEL_ROOM_STATUS_LABEL.OCCUPIED}</option>
+                      )}
                     </select>
-                    <button className="rounded-lg border px-2 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">
-                      บันทึก
-                    </button>
+                    <button className="btn-sm">บันทึก</button>
                   </form>
                   <form action={removeRoomAction.bind(null, unitSlug)}>
                     <input type="hidden" name="id" value={r.id} />

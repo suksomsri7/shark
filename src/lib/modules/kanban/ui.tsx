@@ -10,6 +10,10 @@ import {
   moveCardAction,
 } from "./actions";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Section } from "@/components/ui/Section";
+import { DataList } from "@/components/ui/DataList";
+import { StatusChip } from "@/components/ui/StatusChip";
 
 const muted = "text-[color:var(--color-muted)]";
 
@@ -22,40 +26,32 @@ export async function KanbanContent({ systemId, tenantId }: { systemId: string; 
   const boards = await listBoards(tenantId, systemId);
 
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="font-medium">บอร์ดงาน ({boards.length})</h2>
-      {boards.length === 0 ? (
-        <p className={`text-sm ${muted}`}>
-          ยังไม่มีบอร์ด — สร้างบอร์ดแรกเพื่อจัดการงานของทีม (จะมีคอลัมน์ รอทำ / กำลังทำ / เสร็จ ให้อัตโนมัติ)
-        </p>
-      ) : (
-        boards.map((b) => (
-          <Link
-            key={b.id}
-            href={`/app/sys/${systemId}/kanban/${b.id}`}
-            className="flex items-center justify-between rounded-xl border p-3 hover:bg-[color:var(--color-surface-2)]"
-          >
-            <div>
-              <div className="text-sm font-medium">{b.name}</div>
-              {b.description && <div className={`text-xs ${muted}`}>{b.description}</div>}
-            </div>
-            <div className={`text-xs ${muted}`}>
-              {(b as unknown as { _count?: { cards: number } })._count?.cards ?? 0} การ์ด →
-            </div>
-          </Link>
-        ))
-      )}
+    <Section title={`บอร์ดงาน (${boards.length})`}>
+      <DataList
+        items={boards.map((b) => ({
+          key: b.id,
+          href: `/app/sys/${systemId}/kanban/${b.id}`,
+          primary: b.name,
+          secondary: b.description || undefined,
+          trailing: (
+            <span className={`text-xs ${muted}`}>
+              {(b as unknown as { _count?: { cards: number } })._count?.cards ?? 0} การ์ด
+            </span>
+          ),
+        }))}
+        empty="ยังไม่มีบอร์ด — สร้างบอร์ดแรกเพื่อจัดการงานของทีม (จะมีคอลัมน์ รอทำ / กำลังทำ / เสร็จ ให้อัตโนมัติ)"
+      />
       <form action={createBoardAction} className="mt-1 flex gap-2">
         <input type="hidden" name="systemId" value={systemId} />
         <input
           name="name"
           required
           placeholder="ชื่อบอร์ด เช่น งานเปิดสาขา"
-          className="flex-1 rounded-lg border px-2 py-1.5 text-sm"
+          className="input flex-1"
         />
         <button className="btn btn-ghost text-sm">+ สร้างบอร์ด</button>
       </form>
-    </section>
+    </Section>
   );
 }
 
@@ -92,24 +88,22 @@ export async function KanbanBoardView({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <Link href={`/app/sys/${systemId}`} className={`text-sm ${muted}`}>
-            ← ระบบ Kanban
-          </Link>
-          <h1 className="mt-1 text-2xl font-semibold">{board.name}</h1>
-          {board.description && <div className={`text-sm ${muted}`}>{board.description}</div>}
-        </div>
-        <ConfirmDialog
-          triggerLabel="เก็บบอร์ด"
-          triggerClassName={`text-xs underline ${muted}`}
-          title="เก็บบอร์ดนี้?"
-          detail="บอร์ดจะถูกเก็บเข้าคลังและไม่แสดงในรายการ"
-          confirmLabel="ยืนยันเก็บบอร์ด"
-          action={archiveBoardAction}
-          fields={{ systemId, boardId }}
-        />
-      </div>
+      <PageHeader
+        title={board.name}
+        back={{ href: `/app/sys/${systemId}`, label: "ระบบบอร์ดงาน" }}
+        desc={board.description || undefined}
+        actions={
+          <ConfirmDialog
+            triggerLabel="เก็บบอร์ด"
+            triggerClassName={`text-xs underline ${muted}`}
+            title="เก็บบอร์ดนี้?"
+            detail="บอร์ดจะถูกเก็บเข้าคลังและไม่แสดงในรายการ"
+            confirmLabel="ยืนยันเก็บบอร์ด"
+            action={archiveBoardAction}
+            fields={{ systemId, boardId }}
+          />
+        }
+      />
 
       {/* คอลัมน์แนวนอน */}
       <div className="flex gap-3 overflow-x-auto pb-2">
@@ -143,15 +137,13 @@ export async function KanbanBoardView({
                     {labels.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {labels.map((l) => (
-                          <span key={l} className="rounded-full border px-2 py-0.5 text-[11px]">
-                            {l}
-                          </span>
+                          <StatusChip key={l} value={l} tone="muted" />
                         ))}
                       </div>
                     )}
                     <div className={`flex items-center justify-between text-[11px] ${muted}`}>
-                      <span>{assignee ? `👤 ${assignee}` : "ไม่มีผู้รับผิดชอบ"}</span>
-                      {card.dueAt && <span>📅 {fmtDue(card.dueAt)}</span>}
+                      <span>{assignee ? `ผู้รับผิดชอบ: ${assignee}` : "ไม่มีผู้รับผิดชอบ"}</span>
+                      {card.dueAt && <span>กำหนดส่ง {fmtDue(card.dueAt)}</span>}
                     </div>
                     <div className="flex items-center gap-1">
                       <form action={moveCardAction}>
@@ -161,8 +153,9 @@ export async function KanbanBoardView({
                         <input type="hidden" name="direction" value="left" />
                         <button
                           disabled={colIdx === 0}
-                          className="btn btn-ghost px-2 py-0.5 text-xs disabled:opacity-30"
+                          className="btn-sm px-3 text-xs disabled:opacity-30"
                           title="ย้ายซ้าย"
+                          aria-label="ย้ายซ้าย"
                         >
                           ◀
                         </button>
@@ -174,8 +167,9 @@ export async function KanbanBoardView({
                         <input type="hidden" name="direction" value="right" />
                         <button
                           disabled={colIdx === lastIdx}
-                          className="btn btn-ghost px-2 py-0.5 text-xs disabled:opacity-30"
+                          className="btn-sm px-3 text-xs disabled:opacity-30"
                           title="ย้ายขวา"
+                          aria-label="ย้ายขวา"
                         >
                           ▶
                         </button>

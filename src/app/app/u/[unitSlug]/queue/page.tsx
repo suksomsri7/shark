@@ -18,14 +18,12 @@ import {
 import { AutoRefresh } from "@/components/queue-auto-refresh";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { QUEUE_STATUS_LABEL } from "@/lib/ui/status-labels";
 
 export const dynamic = "force-dynamic";
-
-const STATUS_LABEL: Record<string, string> = {
-  WAITING: "กำลังรอ",
-  CALLED: "เรียกแล้ว",
-  SERVING: "กำลังให้บริการ",
-};
 
 export default async function QueueBoardPage({
   params,
@@ -49,17 +47,15 @@ export default async function QueueBoardPage({
     <div className="flex max-w-4xl flex-col gap-6">
       <AutoRefresh />
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
-          <h1 className="text-2xl font-semibold">บัตรคิว</h1>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader
+        title="บัตรคิว"
+        back={{ href: `/app/u/${unitSlug}`, label: unit.name }}
+        actions={
           <Link href={`/app/u/${unitSlug}/queue/setup`} className="btn btn-ghost text-sm">
             ตั้งค่า
           </Link>
-        </div>
-      </div>
+        }
+      />
 
       {/* ตัวเลขวันนี้ */}
       <div className="grid grid-cols-4 gap-2 text-center">
@@ -78,9 +74,10 @@ export default async function QueueBoardPage({
 
       {/* ออกบัตร */}
       {activeTypes.length === 0 ? (
-        <div className="card text-center text-sm text-[color:var(--color-muted)]">
-          ยังไม่มีประเภทคิว — กด &ldquo;ตั้งค่า&rdquo; เพื่อเพิ่มประเภทคิวและเคาน์เตอร์ก่อน
-        </div>
+        <EmptyState
+          text="ยังไม่มีประเภทคิว — เพิ่มประเภทคิวและเคาน์เตอร์ก่อนเริ่มเรียกคิว"
+          action={{ href: `/app/u/${unitSlug}/queue/setup`, label: "ไปหน้าตั้งค่า" }}
+        />
       ) : (
         <section className="card flex flex-col gap-3">
           <h2 className="text-sm font-medium">ออกบัตรคิว</h2>
@@ -101,9 +98,10 @@ export default async function QueueBoardPage({
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-medium">เคาน์เตอร์</h2>
         {counters.length === 0 ? (
-          <div className="card text-center text-sm text-[color:var(--color-muted)]">
-            ยังไม่มีเคาน์เตอร์ — เพิ่มในหน้าตั้งค่า
-          </div>
+          <EmptyState
+            text="ยังไม่มีเคาน์เตอร์ — เพิ่มเคาน์เตอร์ในหน้าตั้งค่า"
+            action={{ href: `/app/u/${unitSlug}/queue/setup`, label: "ไปหน้าตั้งค่า" }}
+          />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {board.counterCards.map(({ counter, current }) => (
@@ -116,12 +114,12 @@ export default async function QueueBoardPage({
                   {counter.status === "OPEN" ? (
                     <form action={closeCounterAction.bind(null, unitSlug)}>
                       <input type="hidden" name="id" value={counter.id} />
-                      <button className="rounded-full border px-2.5 py-0.5 text-xs">ปิดช่อง</button>
+                      <button className="btn-sm">ปิดช่อง</button>
                     </form>
                   ) : (
                     <form action={openCounterAction.bind(null, unitSlug)}>
                       <input type="hidden" name="id" value={counter.id} />
-                      <button className="rounded-full border px-2.5 py-0.5 text-xs">เปิดช่อง</button>
+                      <button className="btn-sm">เปิดช่อง</button>
                     </form>
                   )}
                 </div>
@@ -130,11 +128,19 @@ export default async function QueueBoardPage({
                   <div className="text-center text-sm text-[color:var(--color-muted)]">ช่องปิดอยู่</div>
                 ) : current ? (
                   <div className="flex flex-col gap-3">
-                    <div className="text-center">
+                    <div className="flex flex-col items-center gap-1 text-center">
                       <div className="text-3xl font-bold tracking-wider">{current.number}</div>
-                      <div className="text-xs text-[color:var(--color-muted)]">
-                        {STATUS_LABEL[current.status]}
-                        {current.contactName ? ` · ${current.contactName}` : ""}
+                      <div className="flex items-center gap-1.5">
+                        <StatusChip
+                          value={current.status}
+                          map={QUEUE_STATUS_LABEL}
+                          tone={current.status === "SERVING" ? "strong" : "muted"}
+                        />
+                        {current.contactName && (
+                          <span className="text-xs text-[color:var(--color-muted)]">
+                            {current.contactName}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-wrap justify-center gap-1.5">
@@ -164,7 +170,7 @@ export default async function QueueBoardPage({
                           <input type="hidden" name="id" value={current.id} />
                           <select
                             name="toCounterId"
-                            className="rounded-lg border px-1.5 py-1 text-xs"
+                            className="rounded-lg border px-2 py-2 text-sm"
                             defaultValue=""
                           >
                             <option value="" disabled>
@@ -178,7 +184,7 @@ export default async function QueueBoardPage({
                                 </option>
                               ))}
                           </select>
-                          <button className="rounded-lg border px-2 py-1 text-xs">โอน</button>
+                          <button className="btn-sm">โอน</button>
                         </form>
                       )}
                     </div>
@@ -204,7 +210,7 @@ export default async function QueueBoardPage({
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium">คิวที่รอ ({board.waiting.length})</h2>
         {board.waiting.length === 0 ? (
-          <div className="card text-center text-sm text-[color:var(--color-muted)]">ไม่มีคิวรออยู่</div>
+          <EmptyState text="ไม่มีคิวรออยู่ — ออกบัตรคิวเพื่อเริ่มรับลูกค้า" />
         ) : (
           <div className="flex flex-wrap gap-2">
             {board.waiting.map((t) => (
@@ -238,14 +244,14 @@ export default async function QueueBoardPage({
                       className="inline-flex items-center gap-1"
                     >
                       <input type="hidden" name="id" value={t.id} />
-                      <select name="counterId" className="rounded-lg border px-1.5 py-1 text-xs" defaultValue={openCounters[0].counter.id}>
+                      <select name="counterId" className="rounded-lg border px-2 py-2 text-sm" defaultValue={openCounters[0].counter.id}>
                         {openCounters.map((c) => (
                           <option key={c.counter.id} value={c.counter.id}>
                             {c.counter.name}
                           </option>
                         ))}
                       </select>
-                      <button className="rounded-lg border px-2 py-1 text-xs">เรียกคืน</button>
+                      <button className="btn-sm">เรียกคืน</button>
                     </form>
                   )}
                   <OpBtn
@@ -284,14 +290,14 @@ function OpBtn({
   primary?: boolean;
   confirm?: { title: string; detail: string; confirmLabel: string };
 }) {
-  const cls = primary
-    ? "rounded-lg bg-[color:var(--color-ink)] px-2.5 py-1 text-xs text-[color:var(--color-surface)]"
-    : "rounded-lg border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]";
+  const style = primary
+    ? { background: "var(--color-ink)", color: "var(--color-surface)" }
+    : undefined;
   if (confirm) {
     return (
       <ConfirmDialog
         triggerLabel={label}
-        triggerClassName={cls}
+        triggerClassName="btn-sm"
         title={confirm.title}
         detail={confirm.detail}
         confirmLabel={confirm.confirmLabel}
@@ -304,7 +310,9 @@ function OpBtn({
   return (
     <form action={action.bind(null, slug)}>
       <input type="hidden" name="id" value={id} />
-      <button className={cls}>{label}</button>
+      <button className="btn-sm" style={style}>
+        {label}
+      </button>
     </form>
   );
 }

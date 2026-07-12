@@ -2,13 +2,14 @@ import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { listEvents } from "@/lib/modules/ticket/service";
 import { createEventAction } from "@/lib/modules/ticket/actions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { TICKET_STATUS_LABEL } from "@/lib/ui/status-labels";
+import { formatBaht } from "@/lib/ui/money";
 
-const STATUS_LABEL: Record<string, string> = {
-  DRAFT: "ร่าง",
-  PUBLISHED: "เปิดขาย",
-  ENDED: "จบงาน",
-  CANCELLED: "ยกเลิก",
-};
+const eventTone = (v: string) =>
+  v === "CANCELLED" ? "danger" : v === "PUBLISHED" ? "strong" : "muted";
 
 function fmt(d: Date) {
   return d.toLocaleDateString("th-TH", {
@@ -19,8 +20,6 @@ function fmt(d: Date) {
     timeZone: "Asia/Bangkok",
   });
 }
-
-const baht = (s: number) => (s / 100).toLocaleString("th-TH");
 
 export default async function TicketPage({
   params,
@@ -33,15 +32,15 @@ export default async function TicketPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm text-[color:var(--color-muted)]">{unit.name}</div>
-          <h1 className="text-2xl font-semibold">ตั๋ว / อีเวนต์</h1>
-        </div>
-        <Link href={`/app/u/${unitSlug}/ticket/checkin`} className="btn btn-ghost text-sm">
-          เช็คอิน
-        </Link>
-      </div>
+      <PageHeader
+        title="ตั๋ว / อีเวนต์"
+        back={{ href: `/app/u/${unitSlug}`, label: unit.name }}
+        actions={
+          <Link href={`/app/u/${unitSlug}/ticket/checkin`} className="btn btn-ghost text-sm">
+            เช็คอิน
+          </Link>
+        }
+      />
 
       {/* สร้างอีเวนต์ใหม่ */}
       <details className="card">
@@ -74,9 +73,7 @@ export default async function TicketPage({
       </details>
 
       {events.length === 0 ? (
-        <div className="card text-center text-sm text-[color:var(--color-muted)]">
-          ยังไม่มีอีเวนต์ — กด "สร้างอีเวนต์ใหม่" เพื่อเริ่มขายตั๋ว
-        </div>
+        <EmptyState text="ยังไม่มีอีเวนต์ — กด “สร้างอีเวนต์ใหม่” เพื่อเริ่มขายตั๋ว" />
       ) : (
         <div className="flex flex-col gap-2">
           {events.map((e) => {
@@ -98,13 +95,11 @@ export default async function TicketPage({
                     <div className="mt-1 text-xs text-[color:var(--color-muted)]">
                       ขายแล้ว {sold}/{quota} ใบ · {e.ticketTypes.length} ประเภท
                       {e.ticketTypes.length > 0
-                        ? ` · เริ่ม ฿${baht(Math.min(...e.ticketTypes.map((t) => t.priceSatang)))}`
+                        ? ` · เริ่ม ${formatBaht(Math.min(...e.ticketTypes.map((t) => t.priceSatang)))}`
                         : ""}
                     </div>
                   </div>
-                  <span className="whitespace-nowrap rounded-full border px-2 py-0.5 text-xs text-[color:var(--color-muted)]">
-                    {STATUS_LABEL[e.status]}
-                  </span>
+                  <StatusChip value={e.status} map={TICKET_STATUS_LABEL} toneOf={eventTone} />
                 </div>
               </Link>
             );

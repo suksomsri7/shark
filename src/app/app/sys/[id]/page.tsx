@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
@@ -15,8 +14,14 @@ import {
   removeRewardAction,
 } from "@/lib/actions/systems";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Section } from "@/components/ui/Section";
+import { DataList } from "@/components/ui/DataList";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { MoneyText } from "@/components/ui/MoneyText";
+import { POS_SALE_STATUS_LABEL } from "@/lib/ui/status-labels";
 
-const baht = (s: number) => (s / 100).toLocaleString("th-TH");
 const fmt = (d: Date) =>
   d.toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
 
@@ -44,31 +49,25 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <div>
-        <Link href="/app" className="text-sm text-[color:var(--color-muted)]">
-          ← ระบบทั้งหมด
-        </Link>
-        <div className="mt-1 flex items-center gap-2">
-          <span className="text-xl">{def?.icon}</span>
-          <h1 className="text-2xl font-semibold">{sys.name}</h1>
-        </div>
-        <div className="text-sm text-[color:var(--color-muted)]">ระบบ{def?.label}</div>
-      </div>
+      <PageHeader
+        title={`${def?.icon ?? ""} ${sys.name}`.trim()}
+        back={{ href: "/app", label: "ระบบทั้งหมด" }}
+        desc={`ระบบ${def?.label ?? ""}`}
+      />
 
       {/* การเชื่อมต่อ */}
-      <section className="card flex flex-col gap-3">
-        <h2 className="text-sm font-medium">เชื่อมต่อกับระบบ</h2>
+      <Section title="เชื่อมต่อกับระบบ" card>
         {linkedUnits.length === 0 ? (
           <p className="text-sm text-[color:var(--color-muted)]">
             ยังไม่ได้เชื่อม — เชื่อมกับระบบธุรกิจ (จองคิว ฯลฯ) เพื่อให้ทำงานร่วมกัน
           </p>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {linkedUnits.map((u) => (
               <ConfirmDialog
                 key={u.id}
                 triggerLabel={`${u.name} ✕`}
-                triggerClassName="rounded-full border px-2.5 py-1 text-xs hover:bg-[color:var(--color-surface-2)]"
+                triggerClassName="rounded-full border px-3 py-1.5 text-xs hover:bg-[color:var(--color-surface-2)]"
                 title="ยกเลิกการเชื่อมระบบนี้?"
                 detail={`หน่วยงาน "${u.name}" จะถูกตัดการเชื่อมกับระบบนี้`}
                 confirmLabel="ยืนยันยกเลิกการเชื่อม"
@@ -83,7 +82,7 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
           <form action={linkUnitAction} className="flex gap-2">
             <input type="hidden" name="systemId" value={id} />
             <input type="hidden" name="back" value={back} />
-            <select name="unitId" className="flex-1 rounded-lg border px-2 py-1.5 text-sm">
+            <select name="unitId" className="input flex-1">
               {otherUnits.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name}
@@ -93,7 +92,7 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
             <button className="btn btn-ghost text-sm">+ เชื่อม</button>
           </form>
         )}
-      </section>
+      </Section>
 
       {/* เนื้อหาตามประเภท */}
       {sys.type === "MEMBER" && <MemberContent systemId={id} />}
@@ -115,32 +114,22 @@ async function MemberContent({ systemId }: { systemId: string }) {
     take: 100,
   });
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="font-medium">สมาชิก ({customers.length})</h2>
-      {customers.length === 0 ? (
-        <p className="text-sm text-[color:var(--color-muted)]">
-          ยังไม่มีสมาชิก — จะถูกสร้างอัตโนมัติเมื่อลูกค้าจอง/ซื้อในระบบที่เชื่อมไว้
-        </p>
-      ) : (
-        customers.map((c) => (
-          <Link
-            key={c.id}
-            href={`/app/members/${c.id}`}
-            className="flex items-center justify-between rounded-xl border p-3 hover:bg-[color:var(--color-surface-2)]"
-          >
-            <div>
-              <div className="text-sm font-medium">{c.name ?? "ไม่ระบุชื่อ"}</div>
-              <div className="text-xs text-[color:var(--color-muted)]">
-                {c.phone ?? "—"} · {c.memberCode}
-              </div>
-            </div>
-            <div className="text-xs text-[color:var(--color-muted)]">
-              {c.visitCount} ครั้ง · ฿{baht(c.totalSpentSatang)}
-            </div>
-          </Link>
-        ))
-      )}
-    </section>
+    <Section title={`สมาชิก (${customers.length})`}>
+      <DataList
+        items={customers.map((c) => ({
+          key: c.id,
+          href: `/app/members/${c.id}`,
+          primary: c.name ?? "ไม่ระบุชื่อ",
+          secondary: `${c.phone ?? "—"} · ${c.memberCode}`,
+          trailing: (
+            <span className="text-xs text-[color:var(--color-muted)]">
+              {c.visitCount} ครั้ง · <MoneyText satang={c.totalSpentSatang} />
+            </span>
+          ),
+        }))}
+        empty="ยังไม่มีสมาชิก — จะถูกสร้างอัตโนมัติเมื่อลูกค้าจอง/ซื้อในระบบที่เชื่อมไว้"
+      />
+    </Section>
   );
 }
 
@@ -151,23 +140,17 @@ async function PointContent({ systemId }: { systemId: string }) {
     take: 30,
   });
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="font-medium">รายการแต้มล่าสุด</h2>
+    <Section title="รายการแต้มล่าสุด">
       <p className="text-xs text-[color:var(--color-muted)]">อัตราสะสม: ทุก 25 บาท = 1 แต้ม</p>
-      {ledger.length === 0 ? (
-        <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีรายการ</p>
-      ) : (
-        ledger.map((l) => (
-          <div key={l.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-            <span>
-              {l.delta > 0 ? "+" : ""}
-              {l.delta} แต้ม · {l.reason ?? l.type}
-            </span>
-            <span className="text-xs text-[color:var(--color-muted)]">{fmt(l.createdAt)}</span>
-          </div>
-        ))
-      )}
-    </section>
+      <DataList
+        items={ledger.map((l) => ({
+          key: l.id,
+          primary: `${l.delta > 0 ? "+" : ""}${l.delta} แต้ม · ${l.reason ?? l.type}`,
+          trailing: <span className="text-xs text-[color:var(--color-muted)]">{fmt(l.createdAt)}</span>,
+        }))}
+        empty="ยังไม่มีรายการแต้ม — จะบันทึกอัตโนมัติเมื่อลูกค้าสะสมแต้ม"
+      />
+    </Section>
   );
 }
 
@@ -180,56 +163,62 @@ async function PosContent({ systemId, tenantId }: { systemId: string; tenantId: 
   const paid = sales.filter((s) => s.status === "PAID");
   const total = paid.reduce((s, x) => s + x.grandTotalSatang, 0);
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="font-medium">การขาย</h2>
+    <Section title="การขาย">
       <div className="text-sm text-[color:var(--color-muted)]">
-        รวม ฿{baht(total)} · {paid.length} บิล (ล่าสุด 50 รายการ)
+        รวม <MoneyText satang={total} /> · {paid.length} บิล (ล่าสุด 50 รายการ)
       </div>
-      {sales.map((s) => (
-        <div key={s.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-          <span>
-            {s.receiptNo} · ฿{baht(s.grandTotalSatang)}
-            {s.status !== "PAID" && (
-              <span className="ml-1 text-xs text-[color:var(--color-danger)]">({s.status})</span>
-            )}
-          </span>
-          <span className="text-xs text-[color:var(--color-muted)]">{fmt(s.createdAt)}</span>
-        </div>
-      ))}
-      {sales.length === 0 && <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีการขาย</p>}
-    </section>
+      <DataList
+        items={sales.map((s) => ({
+          key: s.id,
+          primary: (
+            <span>
+              {s.receiptNo} · <MoneyText satang={s.grandTotalSatang} />
+            </span>
+          ),
+          trailing: (
+            <span className="flex items-center gap-2">
+              {s.status !== "PAID" && (
+                <StatusChip value={s.status} map={POS_SALE_STATUS_LABEL} tone="danger" />
+              )}
+              <span className="text-xs text-[color:var(--color-muted)]">{fmt(s.createdAt)}</span>
+            </span>
+          ),
+        }))}
+        empty="ยังไม่มีการขาย — บิลจะแสดงที่นี่เมื่อขายผ่านระบบที่เชื่อมไว้"
+      />
+    </Section>
   );
 }
 
 async function RewardContent({ systemId, tenantId }: { systemId: string; tenantId: string }) {
   const rewards = (await listRewards(tenantId, systemId)).filter((r) => r.active);
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="font-medium">รายการรางวัล</h2>
-      {rewards.map((r) => (
-        <div key={r.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-          <span>
-            {r.name} · {r.pointsCost} แต้ม
-            {r.stock !== null && ` · เหลือ ${r.stock}`}
-          </span>
-          <ConfirmDialog
-            triggerLabel="ลบ"
-            triggerClassName="text-xs text-[color:var(--color-danger)] underline"
-            title="ลบรางวัลนี้?"
-            detail={`รางวัล "${r.name}" จะถูกลบออกจากระบบแลกแต้ม`}
-            confirmLabel="ยืนยันลบ"
-            danger
-            action={removeRewardAction}
-            fields={{ id: r.id, systemId }}
-          />
-        </div>
-      ))}
+    <Section title="รายการรางวัล">
+      <DataList
+        items={rewards.map((r) => ({
+          key: r.id,
+          primary: `${r.name} · ${r.pointsCost} แต้ม${r.stock !== null ? ` · เหลือ ${r.stock}` : ""}`,
+          trailing: (
+            <ConfirmDialog
+              triggerLabel="ลบ"
+              triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+              title="ลบรางวัลนี้?"
+              detail={`รางวัล "${r.name}" จะถูกลบออกจากระบบแลกแต้ม`}
+              confirmLabel="ยืนยันลบ"
+              danger
+              action={removeRewardAction}
+              fields={{ id: r.id, systemId }}
+            />
+          ),
+        }))}
+        empty="ยังไม่มีรางวัล — เพิ่มรางวัลด้านล่างให้ลูกค้าแลกแต้ม"
+      />
       <form action={addRewardAction} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <input type="hidden" name="systemId" value={systemId} />
-        <input name="name" required placeholder="ชื่อรางวัล" className="col-span-2 rounded-lg border px-2 py-1.5 text-sm" />
-        <input name="pointsCost" type="number" min={1} required placeholder="แต้ม" className="rounded-lg border px-2 py-1.5 text-sm" />
+        <input name="name" required placeholder="ชื่อรางวัล" className="input col-span-2" />
+        <input name="pointsCost" type="number" min={1} required placeholder="แต้ม" className="input" />
         <button className="btn btn-ghost text-sm">+ เพิ่ม</button>
       </form>
-    </section>
+    </Section>
   );
 }

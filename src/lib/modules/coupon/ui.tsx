@@ -3,8 +3,13 @@ import { listCoupons } from "./service";
 import { toggleCouponAction } from "./actions";
 import { CreateCouponForm, CouponTester } from "./forms";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { Section } from "@/components/ui/Section";
+import { DataList } from "@/components/ui/DataList";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { COUPON_STATUS_LABEL } from "@/lib/ui/status-labels";
+import { formatBaht } from "@/lib/ui/money";
 
-const baht = (s: number) => (s / 100).toLocaleString("th-TH");
+const baht = (s: number) => formatBaht(s);
 const fmt = (d: Date) =>
   d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "Asia/Bangkok" });
 
@@ -27,73 +32,71 @@ export async function CouponContent({
   const unitName = new Map(units.map((u) => [u.id, u.name]));
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="font-medium">คูปอง ({coupons.length})</h2>
+    <Section title={`คูปอง (${coupons.length})`}>
+      <DataList
+        items={coupons.map((c) => {
+          const value =
+            c.type === "PERCENT"
+              ? `ลด ${c.percent ?? 0}%${c.maxDiscountSatang != null ? ` (สูงสุด ${baht(c.maxDiscountSatang)})` : ""}`
+              : `ลด ${baht(c.valueSatang ?? 0)}`;
+          const conds: string[] = [];
+          if (c.minSpendSatang != null) conds.push(`ขั้นต่ำ ${baht(c.minSpendSatang)}`);
+          if (c.usageLimit != null) conds.push(`ใช้ ${c.usedCount}/${c.usageLimit}`);
+          else conds.push(`ใช้แล้ว ${c.usedCount}`);
+          if (c.perMemberLimit != null) conds.push(`${c.perMemberLimit}/คน`);
+          if (c.endAt) conds.push(`ถึง ${fmt(c.endAt)}`);
+          const unitLabel =
+            c.applicableUnitIds.length === 0
+              ? "ทุกหน่วย"
+              : c.applicableUnitIds.map((id) => unitName.get(id) ?? id).join(", ");
 
-      {coupons.length === 0 ? (
-        <p className="text-sm text-[color:var(--color-muted)]">
-          ยังไม่มีคูปอง — สร้างโค้ดส่วนลดด้านล่างเพื่อแจกให้ลูกค้า
-        </p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {coupons.map((c) => {
-            const value =
-              c.type === "PERCENT"
-                ? `ลด ${c.percent ?? 0}%${c.maxDiscountSatang != null ? ` (สูงสุด ฿${baht(c.maxDiscountSatang)})` : ""}`
-                : `ลด ฿${baht(c.valueSatang ?? 0)}`;
-            const conds: string[] = [];
-            if (c.minSpendSatang != null) conds.push(`ขั้นต่ำ ฿${baht(c.minSpendSatang)}`);
-            if (c.usageLimit != null) conds.push(`ใช้ ${c.usedCount}/${c.usageLimit}`);
-            else conds.push(`ใช้แล้ว ${c.usedCount}`);
-            if (c.perMemberLimit != null) conds.push(`${c.perMemberLimit}/คน`);
-            if (c.endAt) conds.push(`ถึง ${fmt(c.endAt)}`);
-            const unitLabel =
-              c.applicableUnitIds.length === 0
-                ? "ทุกหน่วย"
-                : c.applicableUnitIds.map((id) => unitName.get(id) ?? id).join(", ");
-
-            return (
-              <div key={c.id} className="flex items-start justify-between gap-2 rounded-lg border px-3 py-2">
-                <div className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="rounded bg-[color:var(--color-surface-2)] px-1.5 py-0.5 font-mono text-xs">
-                      {c.code}
-                    </span>
-                    <span className="font-medium">{c.name}</span>
-                    {!c.active && (
-                      <span className="text-xs text-[color:var(--color-muted)]">(ปิดอยู่)</span>
-                    )}
-                  </div>
-                  <div className="text-xs text-[color:var(--color-muted)]">
-                    {value} · {conds.join(" · ")}
-                  </div>
-                  <div className="text-xs text-[color:var(--color-muted)]">ใช้ได้: {unitLabel}</div>
-                </div>
-                {c.active ? (
-                  <ConfirmDialog
-                    triggerLabel="ปิด"
-                    triggerClassName="text-xs underline"
-                    title="ปิดใช้งานคูปองนี้?"
-                    detail="ลูกค้าจะใช้คูปองนี้ไม่ได้ จนกว่าจะเปิดใช้งานอีกครั้ง"
-                    confirmLabel="ยืนยันปิด"
-                    action={toggleCouponAction}
-                    fields={{ couponId: c.id, systemId }}
-                  />
-                ) : (
-                  <form action={toggleCouponAction}>
-                    <input type="hidden" name="couponId" value={c.id} />
-                    <input type="hidden" name="systemId" value={systemId} />
-                    <button className="text-xs underline">เปิด</button>
-                  </form>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+          return {
+            key: c.id,
+            primary: (
+              <span className="flex items-center gap-2">
+                <span className="rounded bg-[color:var(--color-surface-2)] px-1.5 py-0.5 font-mono text-xs">
+                  {c.code}
+                </span>
+                <span className="font-medium">{c.name}</span>
+                <StatusChip
+                  value={c.active ? "ACTIVE" : "INACTIVE"}
+                  map={COUPON_STATUS_LABEL}
+                  tone={c.active ? "strong" : "muted"}
+                />
+              </span>
+            ),
+            secondary: (
+              <span className="flex flex-col gap-0.5">
+                <span>
+                  {value} · {conds.join(" · ")}
+                </span>
+                <span>ใช้ได้: {unitLabel}</span>
+              </span>
+            ),
+            trailing: c.active ? (
+              <ConfirmDialog
+                triggerLabel="ปิด"
+                triggerClassName="text-xs underline"
+                title="ปิดใช้งานคูปองนี้?"
+                detail="ลูกค้าจะใช้คูปองนี้ไม่ได้ จนกว่าจะเปิดใช้งานอีกครั้ง"
+                confirmLabel="ยืนยันปิด"
+                action={toggleCouponAction}
+                fields={{ couponId: c.id, systemId }}
+              />
+            ) : (
+              <form action={toggleCouponAction}>
+                <input type="hidden" name="couponId" value={c.id} />
+                <input type="hidden" name="systemId" value={systemId} />
+                <button className="text-xs underline">เปิด</button>
+              </form>
+            ),
+          };
+        })}
+        empty="ยังไม่มีคูปอง — สร้างโค้ดส่วนลดด้านล่างเพื่อแจกให้ลูกค้า"
+      />
 
       <CreateCouponForm systemId={systemId} units={units} />
       <CouponTester systemId={systemId} units={units} />
-    </section>
+    </Section>
   );
 }

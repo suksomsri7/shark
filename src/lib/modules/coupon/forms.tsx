@@ -7,8 +7,7 @@ import {
   type CreateState,
   type ValidateState,
 } from "./actions";
-
-const baht = (s: number) => (s / 100).toLocaleString("th-TH");
+import { formatBaht } from "@/lib/ui/money";
 
 const REASON_TH: Record<string, string> = {
   NOT_FOUND: "ไม่พบโค้ดนี้",
@@ -24,7 +23,7 @@ const REASON_TH: Record<string, string> = {
   INPUT: "กรอกโค้ดและยอดเงินให้ครบ",
 };
 
-const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
+const inputCls = "input";
 
 export function CreateCouponForm({
   systemId,
@@ -105,7 +104,7 @@ export function CreateCouponForm({
       {state.status === "error" && (
         <p className="text-xs text-[color:var(--color-danger)]">{state.message}</p>
       )}
-      {state.status === "ok" && <p className="text-xs text-green-700">สร้างคูปองแล้ว</p>}
+      {state.status === "ok" && <p className="text-xs font-medium">✅ สร้างคูปองแล้ว</p>}
 
       <button className="btn btn-ghost text-sm" disabled={pending}>
         {pending ? "กำลังสร้าง…" : "+ สร้างคูปอง"}
@@ -150,8 +149,8 @@ export function CouponTester({
       </div>
 
       {state.status === "ok" && (
-        <p className="text-sm text-green-700">
-          ใช้ได้ · {state.name} — ส่วนลด ฿{baht(state.discountSatang)}
+        <p className="text-sm font-medium">
+          ✅ ใช้ได้ · {state.name} — ส่วนลด {formatBaht(state.discountSatang)}
         </p>
       )}
       {state.status === "error" && (

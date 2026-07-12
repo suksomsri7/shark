@@ -1,16 +1,13 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { getProfile } from "@/lib/modules/member/service";
 import { getCustomerPoints } from "@/lib/modules/point/service";
-
-const TIER_LABEL: Record<string, string> = {
-  MEMBER: "สมาชิก",
-  SILVER: "Silver",
-  GOLD: "Gold",
-  PLATINUM: "Platinum",
-};
-const baht = (s: number) => (s / 100).toLocaleString("th-TH");
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Section } from "@/components/ui/Section";
+import { DataList } from "@/components/ui/DataList";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { MoneyText } from "@/components/ui/MoneyText";
+import { MEMBER_TIER_LABEL } from "@/lib/ui/status-labels";
 
 function fmt(d: Date) {
   return d.toLocaleString("th-TH", {
@@ -36,19 +33,12 @@ export default async function MemberDetailPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <Link href="/app/members" className="text-sm text-[color:var(--color-muted)]">
-        ← สมาชิกทั้งหมด
-      </Link>
-
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{c.name ?? "ไม่ระบุชื่อ"}</h1>
-          <div className="text-sm text-[color:var(--color-muted)]">
-            {c.phone ?? "—"} · {c.email ?? ""} · {c.memberCode ?? ""}
-          </div>
-        </div>
-        <span className="rounded-full border px-2 py-0.5 text-xs">{TIER_LABEL[c.tier]}</span>
-      </div>
+      <PageHeader
+        title={c.name ?? "ไม่ระบุชื่อ"}
+        back={{ href: "/app/members", label: "สมาชิกทั้งหมด" }}
+        desc={[c.phone ?? "—", c.email, c.memberCode].filter(Boolean).join(" · ")}
+        actions={<StatusChip value={c.tier} map={MEMBER_TIER_LABEL} tone="strong" />}
+      />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="card">
@@ -61,7 +51,9 @@ export default async function MemberDetailPage({
         </div>
         <div className="card">
           <div className="text-xs text-[color:var(--color-muted)]">ยอดสะสม</div>
-          <div className="mt-1 text-xl font-semibold">฿{baht(c.totalSpentSatang)}</div>
+          <div className="mt-1 text-xl font-semibold">
+            <MoneyText satang={c.totalSpentSatang} />
+          </div>
         </div>
         <div className="card">
           <div className="text-xs text-[color:var(--color-muted)]">สมาชิกตั้งแต่</div>
@@ -69,23 +61,20 @@ export default async function MemberDetailPage({
         </div>
       </div>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">ประวัติกิจกรรม</h2>
-        {activities.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีกิจกรรม</p>
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            {activities.map((a) => (
-              <div key={a.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-                <span>{a.summary}</span>
-                <span className="whitespace-nowrap text-xs text-[color:var(--color-muted)]">
-                  {fmt(a.createdAt)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <Section title="ประวัติกิจกรรม">
+        <DataList
+          items={activities.map((a) => ({
+            key: a.id,
+            primary: a.summary,
+            trailing: (
+              <span className="whitespace-nowrap text-xs text-[color:var(--color-muted)]">
+                {fmt(a.createdAt)}
+              </span>
+            ),
+          }))}
+          empty="ยังไม่มีกิจกรรม — จะบันทึกเมื่อสมาชิกจอง/ซื้อ/สะสมแต้ม"
+        />
+      </Section>
     </div>
   );
 }
