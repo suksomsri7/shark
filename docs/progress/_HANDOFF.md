@@ -59,9 +59,11 @@ posting engine `src/lib/modules/account/gl.ts` + ผังบัญชี seed `
 - **contract บังคับ**: Inventory = จุดตัดสต็อกเดียว (C-1: consume/receive/reverse/adjust/onHand — แบบเดียวกับ Point, ยอมติดลบ default ไม่ block ขาย) · HR availability (C-2) · ดู `BLUEPRINT_CONNECTIONS.md`
 - ลำดับที่ user เห็นชอบ: **UI Pass 2-4 → account complete-menu → Chat → แล้วค่อย HR/Inventory**
 
-## 🚧 QC7 กำลังตรวจ (2026-07-12 โดย Fable — CPA audit รอบใหม่ของงาน complete-menu + Chat)
-กำลังตรวจ 4 หัวข้อ: เช็ครับ/จ่าย (tax point ม.78/1 เช็คเด้ง) · ใบกำกับ ม.86/4 + CSV ภงด · ลิงก์สาธารณะ /r/[token] + attachment security · Chat webhook/crypto
-**กติกากันชนระหว่างรอผล: session พัฒนาห้ามแตะไฟล์ `src/lib/modules/{account,chat}/` + หน้า account/chat/print/r** — ทำระบบใหม่ (HR/Inventory = ไฟล์ใหม่ล้วน) ได้เลย ไม่ชน · findings จะลงที่ `docs/qc/QC7-RESOLUTIONS.md`
+## 🔴 QC7 เสร็จแล้ว — พบ 7 CRITICAL + 12 MAJOR (2026-07-12 Fable) → `docs/qc/QC7-RESOLUTIONS.md`
+งาน complete-menu + Chat มีบั๊กภาษี/ความปลอดภัยที่ต้องแก้ก่อนใช้จริง — **regression 107/107 เดิมยังผ่าน** (ของใหม่อยู่นอก 107 ข้อ)
+- **ต้นตอร่วม 5 จุด (R-A..R-E)**: void ไม่ cascade (ภพ.30/ภงด เกิน) · ทะเบียนเช็ค=เกาะ (subledger แตกจาก GL) · เลขภาษีไม่ validate/freeze · public link auto-ISSUE ใบกำกับไม่อนุมัติ · Chat ไม่มี rate limit/CSPRNG/RBAC/lock
+- **กติกากันชน: session พัฒนาห้ามแตะ `src/lib/modules/{account,chat}/` + หน้า account/chat/print/r จนกว่า QC7 จะปิด** — HR/Inventory (ไฟล์ใหม่) ทำขนานได้เลย ไม่ชน
+- ปิด QC7: เพิ่ม test ให้ fail ก่อน→pass หลัง, qc-account-cpa.mts ต้องยัง 107/107, deploy 2 ที่
 
 ## งานถัดไป (เจ้าของจะเลือก)
 - ⬆️ **QC6 ก่อน** (Gate 1 + UI Pass 0 ขนานกันได้)
