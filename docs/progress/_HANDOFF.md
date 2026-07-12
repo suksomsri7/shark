@@ -59,6 +59,10 @@ posting engine `src/lib/modules/account/gl.ts` + ผังบัญชี seed `
 - **contract บังคับ**: Inventory = จุดตัดสต็อกเดียว (C-1: consume/receive/reverse/adjust/onHand — แบบเดียวกับ Point, ยอมติดลบ default ไม่ block ขาย) · HR availability (C-2) · ดู `BLUEPRINT_CONNECTIONS.md`
 - ลำดับที่ user เห็นชอบ: **UI Pass 2-4 → account complete-menu → Chat → แล้วค่อย HR/Inventory**
 
+## 🚧 QC7 กำลังตรวจ (2026-07-12 โดย Fable — CPA audit รอบใหม่ของงาน complete-menu + Chat)
+กำลังตรวจ 4 หัวข้อ: เช็ครับ/จ่าย (tax point ม.78/1 เช็คเด้ง) · ใบกำกับ ม.86/4 + CSV ภงด · ลิงก์สาธารณะ /r/[token] + attachment security · Chat webhook/crypto
+**กติกากันชนระหว่างรอผล: session พัฒนาห้ามแตะไฟล์ `src/lib/modules/{account,chat}/` + หน้า account/chat/print/r** — ทำระบบใหม่ (HR/Inventory = ไฟล์ใหม่ล้วน) ได้เลย ไม่ชน · findings จะลงที่ `docs/qc/QC7-RESOLUTIONS.md`
+
 ## งานถัดไป (เจ้าของจะเลือก)
 - ⬆️ **QC6 ก่อน** (Gate 1 + UI Pass 0 ขนานกันได้)
 - ✅ QC5 Gate A ปิดแล้ว (ด้านบน) — Account ออกเอกสารถูกกฎหมายภาษี + double-entry ครบ (แต่ QC6 เจอ 4 จุดใหม่ระดับแบบยื่น — ดูด้านบน)
