@@ -18,7 +18,11 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "db:validate": "prisma validate"
+    "db:validate": "prisma validate",
+    "neon:create": "tsx scripts/neon-branch.mts create",
+    "neon:delete": "tsx scripts/neon-branch.mts delete",
+    "neon:list": "tsx scripts/neon-branch.mts list",
+    "neon:gc": "tsx scripts/neon-branch.mts gc"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
