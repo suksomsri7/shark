@@ -1,5 +1,45 @@
 # HANDOFF — สำหรับ session ถัดไป (Opus 4.8 พัฒนาตาม blueprint)
 
+> # 🔴 อ่านก่อน — UPDATE 2026-07-15 (Opus 4.8) — override ทุกอย่างในไฟล์นี้ที่ขัดกัน
+>
+> **แผนใหม่ที่เจ้าของอนุมัติแล้ว = ทิศทางหลักของโปรเจกต์ตั้งแต่นี้ไป:**
+> **`/root/.claude/plans/docs-progress-handoff-md-resume-md-robust-bunny.md`** (SHARK → AI Business OS)
+> ไฟล์ `_HANDOFF.md` นี้หลายส่วน**ล้าสมัย/ผิดแล้ว** — เชื่อแผน + ผลรันเทสต์ ไม่ใช่ข้อความในนี้
+>
+> ### สิ่งที่ตรวจแล้วว่า "ข้อความในเอกสารนี้ผิด":
+> 1. **`b44f17e` "ห้าม deploy / ยังไม่เสร็จ" = ป้ายค้าง (stale) — QC7 เสร็จแล้วจริง**
+>    รันเองบน `main`: `qc-account-cpa` **107/107** · `qc-account-qc7` **46/46** · `qc-chat-security` **23/23** ·
+>    typecheck 0 · build ✓ · **fail-before proof @`4828b14` = 17/45** (oracle จับบั๊กจริง)
+>    → ป้ายจริงตอนเขียน (ติด limit กลางคัน) แต่โค้ดเสร็จ **ไม่มีใครรันเทสต์ซ้ำ ป้ายเลยค้าง**
+>    → **`main` deploy ได้** · เจ้าของสั่ง **ยังไม่ deploy** (ยังไม่ใช้จริง จะเทสต์ที่ระบบใหม่)
+> 2. **⚠️ ไม่มีผู้ใช้จริง/ข้อมูลจริง** — DB prod มี **1 tenant (demo "barbershop") · accountDocs 0 · journalEntries 0**
+>    → ไม่ต้อง backfill/dual-write · `migrate reset` ได้ · แก้ schema ดุ ๆ ได้ · **ไม่ต้องรีบ deploy**
+> 3. **🔴 7/14 ระบบเป็นเกาะ — "ทุกระบบเชื่อมกัน" ยังไม่ถูกสร้าง ~85%**
+>    **POS ไม่เคยเรียก Account** (`grep postSale|postRefund|postVoid` = 0 hit → contract 2.4 ไม่มีจริง) ·
+>    POS ไม่เคยเรียก Coupon · `AccountSystemLink` มีใน schema ไม่มีโค้ดแตะ
+>    → **บัญชี 46% ของโค้ด ผ่าน 107/107 แต่ไม่เคยมียอดขายจริงไหลเข้า** (107 ข้อตรวจเอกสารที่พิมพ์มือ)
+> 4. **🔴 `src/lib/contracts.ts` = ศพ** (0 importer · `registerContracts()` ไม่มีใครเรียก) — โมดูล import หากันตรง ๆ
+>    **ไม่มี outbox · ไม่มี event bus · ไม่มี notify() · ไม่มี cron · ไม่มี LLM ในโค้ดเลย** (เอกสารบอกว่ามีหมด)
+> 5. **🔴 authz มีแค่ account** — `assertCan` ถูกเรียกที่เดียวทั้ง repo · อีก 12 โมดูล authz=0 ·
+>    `tenantDb` ถูกข้าม 11/15 · `scopeOf() ?? "global"` = fail-open
+> 6. **`db push` เป็นความเชื่อผิด** — `migrate dev --create-only` ไม่ interactive (ตรวจแล้ว)
+>
+> ### ทำไปแล้ว (2026-07-15):
+> - ✅ **Phase 0a** `0b237be` — migration baseline: squash เป็น `20260711000000_baseline` ตัวเดียว
+>   (94 tables/70 enums) แบบไม่ทำลายข้อมูล (`migrate resolve --applied`) ·
+>   **`migrate deploy` บน DB เปล่าได้ 95 ตาราง (เดิม 13)** · drift = none ทั้ง 2 ทาง
+> - ✅ **Phase 0e** `bf936df` — `scripts/fitness.mts` (7 checks, mutation-tested จับได้ 3/3) +
+>   `.github/workflows/ci.yml` (T0 ทุก PR · T1 Neon branch — **ต้องตั้ง secret `NEON_API_KEY`+`NEON_PROJECT_ID`**) +
+>   `.githooks/pre-commit` (เปิด: `git config core.hooksPath .githooks`)
+> - ✅ แก้บั๊กจริง: `src/lib/ui/date.ts` (UI_STANDARD บังคับ แต่ไม่เคยมีไฟล์) →
+>   **วันบนใบกำกับ ม.86/4 + 50 ทวิ เคยพิมพ์วันก่อนหน้า** เมื่อออกหลัง 00:00 ไทย (ไม่ใส่ timeZone บน Vercel=UTC).
+>   เหลือ 0 จุดที่ขาด timeZone (จาก 13) · **`timeZone:"UTC"` 3 จุด (hotel/public-booking) ถูกอยู่แล้ว = @db.Date ห้ามแตะ**
+>
+> ### คำสั่งที่ใช้บ่อย
+> `pnpm fitness` · `pnpm qc:account` (107/107 = gate) · `pnpm qc:account:qc7` · `pnpm qc:chat` · `pnpm drift`
+>
+> ### ต่อไปตามแผน: Phase 0f (worktree/Neon-branch ต่อ WO + ledger + `pnpm resume`) → Phase 1 kernel
+
 > อัปเดต: 2026-07-11 คืน (Fable 5) · repo: `/root/projects/shark-in-th` branch `main` (18 commits, ยังไม่ push GitHub — ไม่มี credentials บนเครื่อง; Vercel deploy ตรงจาก local)
 
 > 🆕 **รับช่วงงานต่อ / Claude account ใหม่ → อ่าน `docs/progress/_RESUME.md` ก่อน** (วิธี resume + ที่อยู่คีย์ + คำสั่ง deploy + สถานะค้าง) · ทุกอย่าง commit แล้ว working tree ว่าง (ล่าสุด `b44f17e` = WIP checkpoint บัญชี Session A ห้าม deploy)
