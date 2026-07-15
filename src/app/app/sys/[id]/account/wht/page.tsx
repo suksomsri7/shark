@@ -9,8 +9,9 @@ import TabPills from "@/components/ui/TabPills";
 import { DataTable } from "@/components/ui/DataList";
 import MoneyText from "@/components/ui/MoneyText";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { formatThaiDate as fmtDate } from "@/lib/ui/date";
 
-const fmtDate = (d: Date) => d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
+
 const pct = (bp: number | null) => (bp != null ? `${(bp / 100).toFixed(bp % 100 ? 2 : 0)}%` : "—");
 
 const INCOME_TYPES = Object.entries(WHT_INCOME_LABEL) as [keyof typeof WHT_INCOME_LABEL, string][];

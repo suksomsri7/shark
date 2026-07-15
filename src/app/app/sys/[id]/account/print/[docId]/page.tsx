@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { getDocument, getSettings, DOC_LABEL, baht } from "@/lib/modules/account/service";
+import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
 
-const fmtDate = (d: Date) =>
-  d.toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" });
 
 // หน้าเอกสารสำหรับพิมพ์/บันทึก PDF (Ctrl+P) — B&W A4
 // ใบกำกับภาษี (TAX_INVOICE): ครบตามมาตรา 86/4 ประมวลรัษฎากร

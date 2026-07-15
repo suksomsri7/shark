@@ -13,9 +13,8 @@ import { DataList } from "@/components/ui/DataList";
 import FormField from "@/components/ui/FormField";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { formatThaiDate as fmtDate } from "@/lib/ui/date";
 
-const fmtDate = (d: Date) =>
-  d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
 
 export default async function DocumentsPage({
   params,

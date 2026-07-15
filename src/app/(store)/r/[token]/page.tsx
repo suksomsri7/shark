@@ -1,10 +1,10 @@
 import { getPublicTaxContext } from "@/lib/modules/account/service";
 import { requestTaxInvoiceAction } from "./actions";
+import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
 
 export const dynamic = "force-dynamic";
 
-const fmtDate = (d: Date) =>
-  d.toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" });
+
 const baht = (satang: number) =>
   (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 

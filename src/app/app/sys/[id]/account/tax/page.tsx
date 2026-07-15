@@ -6,8 +6,9 @@ import Section from "@/components/ui/Section";
 import FormField from "@/components/ui/FormField";
 import { DataTable } from "@/components/ui/DataList";
 import MoneyText from "@/components/ui/MoneyText";
+import { formatThaiDate as fmtDate } from "@/lib/ui/date";
 
-const fmtDate = (d: Date) => d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
+
 const pct = (bp: number | null) => (bp != null ? `${(bp / 100).toFixed(bp % 100 ? 2 : 0)}%` : "—");
 
 function defaultPeriod(): string {

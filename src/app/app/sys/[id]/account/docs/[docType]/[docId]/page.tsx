@@ -21,6 +21,7 @@ import { FormField } from "@/components/ui/FormField";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { DataList } from "@/components/ui/DataList";
 import { PAY_CHANNEL_LABEL } from "@/lib/ui/status-labels";
+import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
 import {
   issueDocumentAction,
   convertDocumentAction,
@@ -31,8 +32,7 @@ import {
   ensurePublicLinkAction,
 } from "@/lib/modules/account/actions";
 
-const fmtDate = (d: Date) =>
-  d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
+
 const toInput = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
 
 export default async function DocDetailPage({

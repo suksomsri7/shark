@@ -5,8 +5,8 @@ import PageHeader from "@/components/ui/PageHeader";
 import FormField from "@/components/ui/FormField";
 import { DataTable } from "@/components/ui/DataList";
 import MoneyText from "@/components/ui/MoneyText";
+import { formatThaiDate as fmtDate } from "@/lib/ui/date";
 
-const fmtDate = (d: Date) => d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
 
 export default async function StatementPage({
   params,

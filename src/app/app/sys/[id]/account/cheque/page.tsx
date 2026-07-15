@@ -24,9 +24,8 @@ import StatusChip from "@/components/ui/StatusChip";
 import { TabPills } from "@/components/ui/TabPills";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { formatThaiDate as fmtDate } from "@/lib/ui/date";
 
-const fmtDate = (d: Date) =>
-  d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
 
 export default async function ChequePage({
   params,

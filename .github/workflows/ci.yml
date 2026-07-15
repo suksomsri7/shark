@@ -1,0 +1,117 @@
+name: CI
+
+# ด่านคุณภาพ (ตามแผน AI Business OS §6):
+#   T0 = เร็ว ไม่ต่อ DB ไม่ต่อเน็ต → ทุก push/PR (ต้องผ่านเสมอ)
+#   T1 = ต้องใช้ Neon จริง → ทุก PR (ข้ามอัตโนมัติถ้ายังไม่ได้ตั้ง secret)
+#
+# ทำไมต้องมี: ก่อนหน้านี้ไม่มี CI เลย — กฎ "107/107 ก่อน deploy" เป็นแค่ประโยคใน _RESUME.md
+# ที่อาศัยความจำของคน. ไฟล์นี้เปลี่ยนมันเป็นฟิสิกส์
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  t0:
+    name: T0 — typecheck + fitness (ไม่ต่อ DB)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: prisma generate
+        run: pnpm exec prisma generate
+      - name: typecheck
+        run: pnpm typecheck
+      - name: fitness (F2/F5/F7/F8/F9 — กันสถาปัตยกรรม/เอกสารเน่า)
+        run: pnpm fitness
+
+  t1:
+    name: T1 — QC suites บน Neon branch
+    runs-on: ubuntu-latest
+    needs: t0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # ยังไม่ได้ตั้ง NEON_API_KEY → ข้ามแทนที่จะแดง (แต่บอกให้ชัดว่าข้าม)
+      - name: ตรวจ secret
+        id: guard
+        run: |
+          if [ -z "${{ secrets.NEON_API_KEY }}" ] || [ -z "${{ secrets.NEON_PROJECT_ID }}" ]; then
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "::warning::ข้าม T1 — ยังไม่ได้ตั้ง secret NEON_API_KEY/NEON_PROJECT_ID (ดู docs/10_OPERATIONS.md)"
+          else
+            echo "ready=true" >> $GITHUB_OUTPUT
+          fi
+
+      # 1 PR = 1 Neon branch → ไม่มี global mutation, รันขนานได้
+      - name: สร้าง Neon branch
+        if: steps.guard.outputs.ready == 'true'
+        id: neon
+        uses: neondatabase/create-branch-action@v5
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          branch_name: ci-${{ github.run_id }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      - name: migrate deploy (พิสูจน์ว่า migration สร้าง schema ได้จริงจากศูนย์)
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+        run: pnpm exec prisma migrate deploy
+
+      - name: drift check (DB ที่สร้างจาก migration ต้องตรงกับ schema)
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
+        run: pnpm drift
+
+      # oracle: แตะ account ต้อง 107/107 เสมอ (กฎเดิมของโปรเจกต์ ทำให้เป็นเครื่องบังคับ)
+      - name: QC account CPA (107/107)
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          SESSION_SECRET: ci-only-not-a-real-secret
+        run: pnpm qc:account
+
+      - name: QC account QC7 (46/46)
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          SESSION_SECRET: ci-only-not-a-real-secret
+        run: pnpm qc:account:qc7
+
+      - name: QC chat security (23/23)
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          SESSION_SECRET: ci-only-not-a-real-secret
+          CHAT_CREDENTIALS_KEY: ${{ secrets.CHAT_CREDENTIALS_KEY }}
+        run: pnpm qc:chat
+
+      - name: ลบ Neon branch (กันค่าใช้จ่ายบาน)
+        if: always() && steps.guard.outputs.ready == 'true'
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          branch: ci-${{ github.run_id }}
+          api_key: ${{ secrets.NEON_API_KEY }}

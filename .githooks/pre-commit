@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# T0 gate — เร็ว ไม่ต่อ DB ไม่ต่อเน็ต
+# เปิดใช้: git config core.hooksPath .githooks
+# ข้ามชั่วคราว (เช่นตอน WIP checkpoint): git commit --no-verify
+set -e
+echo "[pre-commit] fitness…"
+pnpm exec tsx scripts/fitness.mts > /tmp/fitness.log 2>&1 || {
+  echo "❌ fitness ไม่ผ่าน — สถาปัตยกรรม/เอกสารเน่า:"
+  grep -E '^  ❌' /tmp/fitness.log || tail -20 /tmp/fitness.log
+  echo "   (ดูเต็ม: pnpm fitness)"
+  exit 1
+}
+echo "✅ fitness ผ่าน"

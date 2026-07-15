@@ -2,8 +2,8 @@ import { notFound } from "next/navigation";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { getSettings, baht } from "@/lib/modules/account/service";
 import { getWhtCert, WHT_INCOME_LABEL } from "@/lib/modules/account/wht";
+import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
 
-const fmtDate = (d: Date) => d.toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" });
 
 // หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) — ฟอร์มราชการ B&W A4 · พิมพ์ด้วย Ctrl+P
 export default async function WhtCertPrintPage({ params }: { params: Promise<{ id: string; certId: string }> }) {

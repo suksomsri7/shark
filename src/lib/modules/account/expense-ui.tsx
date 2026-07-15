@@ -10,6 +10,7 @@ import { TabPills } from "@/components/ui/TabPills";
 import { DataList } from "@/components/ui/DataList";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { PAY_CHANNEL_LABEL } from "@/lib/ui/status-labels";
+import { formatThaiDate as fmtDate } from "@/lib/ui/date";
 import {
   issueExpenseDocAction,
   recordVendorPaymentAction,
@@ -23,8 +24,6 @@ import {
   convertPOAction,
 } from "./expense-actions";
 
-const fmtDate = (d: Date) =>
-  d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
 
 type LoadedDoc = {
   id: string;
