@@ -11,6 +11,14 @@ export const BOOKING_STATUS_LABEL: Record<string, string> = {
   CANCELLED: "ยกเลิก",
 };
 
+// วันลา (HrLeave.status) — ปฏิทินแสดงเฉพาะ PENDING/APPROVED
+export const HR_LEAVE_STATUS_LABEL: Record<string, string> = {
+  PENDING: "รออนุมัติ",
+  APPROVED: "อนุมัติแล้ว",
+  REJECTED: "ไม่อนุมัติ",
+  CANCELLED: "ยกเลิก",
+};
+
 export const QUEUE_STATUS_LABEL: Record<string, string> = {
   WAITING: "รอเรียก",
   CALLED: "กำลังเรียก",
