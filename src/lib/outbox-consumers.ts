@@ -6,6 +6,7 @@ import { prisma } from "@/lib/core/db";
 import { drainOutbox, type OutboxHandler } from "@/lib/core/outbox";
 import { bridgePosSalePaid, bridgePosSaleVoided } from "@/lib/modules/pos/account-bridge";
 import { runForEvent } from "@/lib/automation/engine";
+import { dispatchWebhooks } from "@/lib/webhooks/service";
 import { entityLabel } from "@/lib/modules/approval/labels";
 import { logOps } from "@/lib/core/ops";
 
@@ -97,7 +98,24 @@ const approvalRejected = approvalNotify(
   "คำขออนุมัติถูกปฏิเสธ ไม่ไปขั้นถัดไป",
 );
 
-export const consumers: Record<string, OutboxHandler> = {
+// ── Webhooks ขาออก (WO-0062): ห่อเพิ่มอีกชั้นหลัง handler หลัก(+automation) สำเร็จ ──
+// ยิงฮุคไปทุก endpoint ที่ร้าน subscribe event นี้ — best-effort เหมือน automation
+// (dispatch จับ error ต่อ endpoint อยู่แล้ว · ห่อ try/catch กัน error ระดับ query ไม่ให้ล้ม consumer)
+const withWebhooks =
+  (handler: OutboxHandler): OutboxHandler =>
+  async (evt) => {
+    await handler(evt); // handler หลัก(+automation) — พังต้องโยนต่อ (drain retry) ตามเดิม
+    try {
+      await dispatchWebhooks({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload });
+    } catch (e) {
+      await logOps("WARN", "outbox", `webhook ของ "${evt.type}" ล้มเหลว`, {
+        tenantId: evt.tenantId,
+        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+      });
+    }
+  };
+
+const baseConsumers: Record<string, OutboxHandler> = {
   "pos.sale.paid": withAutomation(posSalePaid),
   "pos.sale.voided": withAutomation(posSaleVoided),
   "approval.request.submitted": withAutomation(approvalSubmitted),
@@ -107,6 +125,11 @@ export const consumers: Record<string, OutboxHandler> = {
   // (ไม่งั้นค้าง PENDING โดน drain วนตลอด) + เป็นจุดให้ Automation rules ยิงตามกติกาที่ร้านตั้ง
   "inventory.lot.expiring": withAutomation(async () => {}),
 };
+
+// ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ
+export const consumers: Record<string, OutboxHandler> = Object.fromEntries(
+  Object.entries(baseConsumers).map(([type, handler]) => [type, withWebhooks(handler)]),
+);
 
 export async function drainAll() {
   return drainOutbox(consumers);
