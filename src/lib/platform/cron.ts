@@ -10,6 +10,7 @@ import { sweepWeeklyAnalysis } from "@/lib/ai/analyst";
 import { sweepExpiringLots } from "@/lib/modules/inventory/service";
 import { retryFailedWebhooks } from "@/lib/webhooks/service";
 import { sweepAutoClosePeriods } from "@/lib/modules/account/period-sweep";
+import { sweepOnboardingDrip } from "@/lib/platform/onboarding-drip";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -45,6 +46,7 @@ export async function runDailyCron(
   lotsExpiring: number;
   webhooksRetried: number;
   periodsClosed: number;
+  onboardingDripped: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -54,6 +56,7 @@ export async function runDailyCron(
   let lotsExpiring = -1;
   let webhooksRetried = -1;
   let periodsClosed = -1;
+  let onboardingDripped = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -101,6 +104,12 @@ export async function runDailyCron(
   } catch {
     // ปิดงวดอัตโนมัติพัง → -1 ไปต่อ
   }
+  try {
+    // Onboarding drip (WO-0072): แนะขั้นถัดไปให้ร้านใหม่รายวัน
+    onboardingDripped = await sweepOnboardingDrip(now);
+  } catch {
+    // drip พัง → -1 ไปต่อ
+  }
 
   return {
     subsExpired,
@@ -111,5 +120,6 @@ export async function runDailyCron(
     lotsExpiring,
     webhooksRetried,
     periodsClosed,
+    onboardingDripped,
   };
 }
