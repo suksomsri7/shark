@@ -3,6 +3,8 @@ import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { getSettings, DOC_LABEL, CONFIGURABLE_DOC_TYPES } from "@/lib/modules/account/service";
 import { saveSettingsAction } from "@/lib/modules/account/actions";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { LogoUploader } from "@/components/logo-uploader";
+import { storageEnabled } from "@/lib/storage/service";
 
 const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
 const labelCls = "flex flex-col gap-1 text-xs text-[color:var(--color-muted)]";
@@ -103,12 +105,11 @@ export default async function AccountSettingsPage({
 
         <h2 className="mt-2 text-sm font-medium sm:col-span-2">โลโก้ / ตราประทับ / ลายเซ็น</h2>
         <p className="text-[11px] text-[color:var(--color-muted)] sm:col-span-2">
-          ยังไม่มีระบบอัปโหลดไฟล์ในตัว — วาง URL รูป (โฮสต์ไว้ที่อื่น) รูปจะแสดงบนใบกำกับภาษี/เอกสารพิมพ์
+          {storageEnabled()
+            ? "อัปโหลดโลโก้ได้ในตัว หรือวาง URL รูปเอง · ตราประทับ/ลายเซ็นยังใช้วาง URL · รูปจะแสดงบนใบกำกับภาษี/เอกสารพิมพ์"
+            : "ยังไม่มีระบบอัปโหลดไฟล์ในตัว — วาง URL รูป (โฮสต์ไว้ที่อื่น) รูปจะแสดงบนใบกำกับภาษี/เอกสารพิมพ์"}
         </p>
-        <label className={labelCls}>
-          โลโก้ (URL)
-          <input name="logoUrl" defaultValue={s.logoUrl ?? ""} placeholder="https://…" className={inputCls} />
-        </label>
+        <LogoUploader defaultUrl={s.logoUrl ?? ""} enabled={storageEnabled()} />
         <label className={labelCls}>
           ตราประทับบริษัท (URL)
           <input name="stampUrl" defaultValue={s.stampUrl ?? ""} placeholder="https://…" className={inputCls} />
