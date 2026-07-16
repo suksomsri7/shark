@@ -33,10 +33,10 @@ const F = (over: Partial<DnaFacts>): DnaFacts =>
 // ─────────────────── ส่วนที่ 1: compile (golden archetypes — pure logic ไม่แตะ DB) ───────────────────
 console.log("── COMPILE: archetype ร้านตัดผม (ตามวิชันเจ้าของ) ──");
 const salon = F({ industryHint: "SALON", appointment: true, sellsGoods: true, membership: true, rewardRedeem: true, staffCount: 5, vatRegistered: true, wantsAccounting: true, usesLineOA: true });
-const p1 = compile(salon, "ร้านผมสวย");
+const p1 = compile(salon, "QC DNA ร้านผมสวย");
 ZBlueprintPlan.parse(p1);
 const types = (t: string) => p1.steps.filter((s) => s.type === t);
-chk("CMP-1.1", "compile pure (facts เดิม → hash เดิม)", planHash(p1) === planHash(compile(salon, "ร้านผมสวย")), "hash ตรง", "ไม่ตรง");
+chk("CMP-1.1", "compile pure (facts เดิม → hash เดิม)", planHash(p1) === planHash(compile(salon, "QC DNA ร้านผมสวย")), "hash ตรง", "ไม่ตรง");
 chk("CMP-1.2", "ร้านตัดผม: มีหน่วยจองคิว 1", types("CREATE_UNIT").length === 1 && (types("CREATE_UNIT")[0] as { unitType: string }).unitType === "BOOKING", "BOOKING ×1", JSON.stringify(types("CREATE_UNIT").map((s) => (s as { unitType: string }).unitType)));
 chk("CMP-1.3", "ร้านตัดผม: feature ครบ POS/MEMBER/POINT/REWARD/CHAT/ACCOUNT", ["POS", "MEMBER", "POINT", "REWARD", "CHAT", "ACCOUNT"].every((t) => types("CREATE_SYSTEM").some((s) => (s as { systemType: string }).systemType === t)), "ครบ 6", JSON.stringify(types("CREATE_SYSTEM").map((s) => (s as { systemType: string }).systemType)));
 chk("CMP-1.4", "ต่อสาย POS→Account อัตโนมัติ (ท่อ M1)", types("LINK_ACCOUNT_POS").length === 1, "1", String(types("LINK_ACCOUNT_POS").length));
