@@ -266,6 +266,9 @@ const ALLOWED_EDGES = new Set([
   // chokepoint (WO-0054): ฟอร์มส่ง lead เข้า CRM ผ่าน crm facade + resolve ระบบ CRM
   "forms→crm",
   "forms→system",
+  // chokepoint (WO-0050): Rental ปิดเงินตอนคืนผ่าน pos.createSale (C-2) + resolve ระบบ POS
+  "rental→pos",
+  "rental→system",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {
