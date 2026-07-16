@@ -4,7 +4,16 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
-import { consume, createItem, createLocation, receive, transfer, type Ctx } from "./service";
+import {
+  consume,
+  createItem,
+  createLocation,
+  findItemByBarcode,
+  itemLots,
+  receive,
+  transfer,
+  type Ctx,
+} from "./service";
 
 // ตรวจสิทธิ์โมดูล Inventory (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
 // convention action = "inventory.<entity>.<verb>" (F6 ratchet บังคับให้ไฟล์นี้เรียก assertCan)
@@ -45,6 +54,7 @@ export async function createItemAction(formData: FormData) {
   await createItem(ctx, {
     sku,
     name,
+    barcode: String(formData.get("barcode") ?? "").trim() || null,
     unitLabel: String(formData.get("unitLabel") ?? "").trim() || null,
     category: String(formData.get("category") ?? "").trim() || null,
     reorderPoint: toQty(formData.get("reorderPoint")),
@@ -62,6 +72,10 @@ export async function receiveAction(formData: FormData) {
   const qty = toQty(formData.get("qty"));
   if (!systemId || !itemId || qty <= 0) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  // lot + วันหมดอายุ (ไม่บังคับ) — ปล่อยว่าง = พฤติกรรมเดิม ไม่แตะ InvLot
+  const lotCode = String(formData.get("lotCode") ?? "").trim() || null;
+  const expiryStr = String(formData.get("expiryDate") ?? "").trim();
+  const expiryDate = expiryStr ? new Date(`${expiryStr}T00:00:00+07:00`) : null;
   await receive(ctx, {
     itemId,
     qty,
@@ -73,6 +87,8 @@ export async function receiveAction(formData: FormData) {
     refId: itemId,
     note: String(formData.get("note") ?? "").trim() || null,
     locationId: String(formData.get("locationId") ?? "").trim() || null,
+    lotCode,
+    expiryDate: lotCode ? expiryDate : null, // วันหมดอายุมีความหมายเมื่อระบุ lot
   });
   revalidate(systemId);
 }
@@ -95,6 +111,7 @@ export async function consumeAction(formData: FormData) {
     idempotencyKey: `manual-out-${randomUUID()}`,
     note: String(formData.get("note") ?? "").trim() || null,
     locationId: String(formData.get("locationId") ?? "").trim() || null,
+    lotCode: String(formData.get("lotCode") ?? "").trim() || null,
   });
   revalidate(systemId);
 }
@@ -131,4 +148,36 @@ export async function transferAction(formData: FormData) {
     note: String(formData.get("note") ?? "").trim() || null,
   });
   revalidate(systemId);
+}
+
+// ── ดู lot คงเหลือของสินค้า (WO-0038) — read action ──
+export async function itemLotsAction(systemId: string, itemId: string) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.read");
+  if (!systemId || !itemId) return [];
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  return itemLots(ctx, itemId);
+}
+
+// ── ค้นหาสินค้าด้วยบาร์โค้ด (WO-0038) — สำหรับช่องสแกน/ค้นในหน้าคลัง ──
+export type BarcodeSearchResult =
+  | { ok: true; item: { id: string; name: string; sku: string; onHand: number; unitLabel: string } }
+  | { ok: false; barcode: string };
+
+export async function findItemByBarcodeAction(
+  systemId: string,
+  _prev: BarcodeSearchResult | null,
+  formData: FormData,
+): Promise<BarcodeSearchResult | null> {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.read");
+  const barcode = String(formData.get("barcode") ?? "").trim();
+  if (!systemId || !barcode) return null;
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const item = await findItemByBarcode(ctx, barcode);
+  if (!item) return { ok: false, barcode };
+  return {
+    ok: true,
+    item: { id: item.id, name: item.name, sku: item.sku, onHand: item.onHand, unitLabel: item.unitLabel },
+  };
 }

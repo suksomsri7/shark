@@ -7,11 +7,13 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { formatThaiDateTime } from "@/lib/ui/date";
+import { formatThaiDate, formatThaiDateTime } from "@/lib/ui/date";
+import BarcodeSearch from "./BarcodeSearch";
 import {
   ensureDefaultLocation,
   listItems,
   listLocations,
+  lotsByItemMap,
   lowStock,
   recentMovements,
   stockByLocationMap,
@@ -63,7 +65,7 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
 
   // มีคลังหลักเสมอ (get-or-create) ก่อนโหลดรายการคลัง
   await ensureDefaultLocation(ctx);
-  const [items, low, movements, suppliers, pos, locations, stockMap] = await Promise.all([
+  const [items, low, movements, suppliers, pos, locations, stockMap, lotMap] = await Promise.all([
     listItems(ctx),
     lowStock(ctx),
     recentMovements(ctx),
@@ -71,6 +73,7 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
     listPos(ctx),
     listLocations(ctx),
     stockByLocationMap(ctx),
+    lotsByItemMap(ctx),
   ]);
 
   const lowIds = new Set(low.map((i) => i.id));
@@ -79,6 +82,13 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* ค้นหาด้วยบาร์โค้ด */}
+      {items.length > 0 && (
+        <Section title="ค้นหาด้วยบาร์โค้ด">
+          <BarcodeSearch systemId={systemId} />
+        </Section>
+      )}
+
       {/* สินค้าใกล้หมด / หมด */}
       <Section title={`ใกล้หมด / ต้องสั่งเพิ่ม (${low.length})`}>
         <DataList
@@ -140,6 +150,14 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
                   <input name="cost" type="number" min={0} step="0.01" placeholder="0" className="input" />
                 </FormField>
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <FormField label="ล็อต (ถ้ามี)" hint="เว้นว่าง = ไม่แยกล็อต">
+                  <input name="lotCode" placeholder="เช่น L-2607" className="input" />
+                </FormField>
+                <FormField label="วันหมดอายุ" hint="ใช้เมื่อระบุล็อต">
+                  <input name="expiryDate" type="date" className="input" />
+                </FormField>
+              </div>
               <FormField label="หมายเหตุ">
                 <input name="note" placeholder="เช่น ล็อตวันที่รับ" className="input" />
               </FormField>
@@ -175,6 +193,9 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
               )}
               <FormField label="จำนวน" required hint="ตัดเกินสต็อกได้ ระบบจะตั้งธงให้ตรวจสอบภายหลัง">
                 <input name="qty" type="number" min={1} step={1} required placeholder="0" className="input" />
+              </FormField>
+              <FormField label="ล็อต (ถ้ามี)" hint="เว้นว่าง = ไม่แยกล็อต">
+                <input name="lotCode" placeholder="เช่น L-2607" className="input" />
               </FormField>
               <FormField label="หมายเหตุ">
                 <input name="note" placeholder="เช่น ของเสีย / ใช้ภายใน" className="input" />
@@ -434,14 +455,24 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
           <div className="flex flex-col gap-2">
             {items.map((i) => {
               const breakdown = stockMap.get(i.id) ?? [];
-              const expandable = multiWarehouse && breakdown.length > 0;
+              const lots = lotMap.get(i.id) ?? [];
+              const showLocations = multiWarehouse && breakdown.length > 0;
+              const showLots = lots.length > 0;
+              const expandable = showLocations || showLots;
+              const hint = showLots
+                ? showLocations
+                  ? " · แตะดูล็อต/ยอดแยกคลัง"
+                  : " · แตะดูล็อตคงเหลือ"
+                : showLocations
+                  ? " · แตะดูยอดแยกคลัง"
+                  : "";
               const header = (
                 <>
                   <div className="min-w-0">
                     <div className="truncate">{i.name}</div>
                     <div className={`truncate text-xs ${muted}`}>
                       {[`รหัส ${i.sku}`, i.category].filter(Boolean).join(" · ")}
-                      {expandable ? " · แตะดูยอดแยกคลัง" : ""}
+                      {hint}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2 text-right">
@@ -470,14 +501,29 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
                     {header}
                   </summary>
                   <div className="flex flex-col gap-1 border-t px-3 py-2">
-                    {breakdown.map((b) => (
-                      <div key={b.locationId} className="flex items-center justify-between">
-                        <span className={muted}>{b.name}</span>
-                        <span className={`tabular-nums ${b.onHand < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
-                          {qty(b.onHand, i.unitLabel)}
-                        </span>
-                      </div>
-                    ))}
+                    {showLocations &&
+                      breakdown.map((b) => (
+                        <div key={b.locationId} className="flex items-center justify-between">
+                          <span className={muted}>{b.name}</span>
+                          <span className={`tabular-nums ${b.onHand < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
+                            {qty(b.onHand, i.unitLabel)}
+                          </span>
+                        </div>
+                      ))}
+                    {showLots && (
+                      <>
+                        {showLocations && <div className={`mt-1 text-xs ${muted}`}>ล็อต / วันหมดอายุ</div>}
+                        {lots.map((l) => (
+                          <div key={l.id} className="flex items-center justify-between">
+                            <span className={muted}>
+                              ล็อต {l.lotCode}
+                              {l.expiryDate ? ` · หมดอายุ ${formatThaiDate(l.expiryDate)}` : ""}
+                            </span>
+                            <span className="tabular-nums">{qty(l.onHand, i.unitLabel)}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
                 </details>
               );
@@ -495,6 +541,9 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
             </FormField>
             <FormField label="ชื่อสินค้า" required>
               <input name="name" required placeholder="เช่น แชมพู" className="input" />
+            </FormField>
+            <FormField label="บาร์โค้ด" hint="ใช้ค้นหา/สแกน">
+              <input name="barcode" inputMode="numeric" placeholder="เช่น 8850001112223" className="input" />
             </FormField>
             <FormField label="หน่วยนับ" hint="ค่าเริ่มต้น: ชิ้น">
               <input name="unitLabel" placeholder="ชิ้น / ขวด / กล่อง" className="input" />

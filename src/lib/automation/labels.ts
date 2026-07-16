@@ -7,6 +7,7 @@ export type AutomationEventDef = { value: string; label: string };
 export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "pos.sale.paid", label: "เมื่อขายสำเร็จ (POS)" },
   { value: "pos.sale.voided", label: "เมื่อยกเลิกบิล" },
+  { value: "inventory.lot.expiring", label: "เมื่อสินค้าใกล้หมดอายุ" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม
