@@ -1,0 +1,40 @@
+{
+  "id": "WO-0024",
+  "title": "Object storage — โลโก้/ไฟล์แนบขึ้น Bunny (env-driven, ปิดสุภาพ)",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/",
+  "neonBranch": "wo-0024",
+  "files": [
+    "src/lib/storage/service.ts",
+    "src/lib/storage/actions.ts",
+    "หน้า logo upload (org settings)"
+  ],
+  "closesFindings": [],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "DATABASE_URL=<neon> pnpm exec tsx scripts/qc-storage.mts",
+      "expect": "FINDINGS: CRITICAL 0"
+    },
+    {
+      "cmd": "pnpm typecheck + fitness (Fable หลัง merge)"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: schema + scope + migration (ลง prod แล้ว) + oracle"
+    },
+    {
+      "done": false,
+      "text": "Builder ตามสัญญาหัว oracle"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T16:30:00Z",
+      "note": "เปิดงาน Round 1 ของชุด 4-8"
+    }
+  ]
+}

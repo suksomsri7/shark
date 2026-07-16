@@ -1,0 +1,45 @@
+{
+  "id": "WO-0023",
+  "title": "Billing แพลตฟอร์ม + PromptPay QR รับเงินของร้าน",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/",
+  "neonBranch": "wo-0023",
+  "files": [
+    "src/lib/payment/promptpay.ts",
+    "src/lib/payment/service.ts",
+    "src/lib/payment/actions.ts",
+    "src/lib/platform/billing.ts",
+    "src/app/app/settings/payment/page.tsx",
+    "src/app/app/settings/billing/page.tsx",
+    "src/app/backoffice/billing/**",
+    "src/components/PromptPayQr.tsx"
+  ],
+  "closesFindings": [],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "DATABASE_URL=<neon> pnpm exec tsx scripts/qc-payment.mts",
+      "expect": "FINDINGS: CRITICAL 0"
+    },
+    {
+      "cmd": "pnpm typecheck + fitness (Fable หลัง merge)"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: schema + scope + migration (ลง prod แล้ว) + oracle"
+    },
+    {
+      "done": false,
+      "text": "Builder ตามสัญญาหัว oracle"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T16:30:00Z",
+      "note": "เปิดงาน Round 1 ของชุด 4-8"
+    }
+  ]
+}

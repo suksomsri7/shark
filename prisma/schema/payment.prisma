@@ -1,0 +1,33 @@
+// การเงินแพลตฟอร์ม+ร้าน (WO-0023)
+// PaymentProfile = ช่องรับเงินของร้าน (PromptPay v1 — gateway Beam ต่อเมื่อมี creds ชื่อ shark)
+// PlatformInvoice = บิลที่แพลตฟอร์มเรียกเก็บจากร้าน (เช่น custom domain 1,500฿/ปี) — backoffice จัดการ ร้านเห็นของตัวเอง
+
+model PaymentProfile {
+  id          String   @id @default(cuid())
+  tenantId    String   @unique
+  promptpayId String? // เบอร์มือถือ 10 หลัก (0x…) หรือเลขบัตรประชาชน 13 หลัก
+  displayName String? // ชื่อที่โชว์ใต้ QR (เช่น ชื่อร้าน/เจ้าของบัญชี)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum PlatformInvoiceStatus {
+  PENDING
+  PAID
+  VOID
+}
+
+model PlatformInvoice {
+  id           String                @id @default(cuid())
+  tenantId     String
+  title        String // "ค่าบริการ custom domain ปี 2026"
+  amountSatang Int
+  status       PlatformInvoiceStatus @default(PENDING)
+  dueAt        DateTime?
+  paidAt       DateTime?
+  note         String?
+  createdAt    DateTime              @default(now())
+
+  @@index([tenantId, status, createdAt])
+  @@index([status, createdAt])
+}

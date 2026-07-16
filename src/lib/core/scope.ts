@@ -80,6 +80,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   SupportCase: tenant,
   SupportMessage: tenant,
   PlatformAuditLog: { axis: "platform", why: "audit การกระทำฝั่งแพลตฟอร์ม — tenantDb ห้ามแตะ" },
+  // การเงิน (WO-0023) + storage (WO-0024)
+  PaymentProfile: tenant,
+  PlatformInvoice: tenant, // ร้านอ่านของตัวเอง · backoffice เขียนผ่าน src/lib/platform (prisma ตรง)
+  FileAsset: tenant,
   // System instances (ทะเบียนระบบ — เป็น tenant-scoped เพราะ list ทั้งร้าน)
   AppSystem: tenant,
   AppSystemUnit: tenant, // ตารางเชื่อม system↔unit — query ด้วย unitId/tenantId ไม่ใช่ scope ใต้ system

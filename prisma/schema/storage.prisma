@@ -1,0 +1,19 @@
+// Object storage (WO-0024) — ไฟล์อัปโหลดของร้าน (โลโก้/ไฟล์แนบ) เก็บบน Bunny (env SHARK_BUNNY_*)
+// ไม่มี env = ปิดอย่างสุภาพ (วาง URL เองยังใช้ได้เหมือนเดิม)
+enum FileKind {
+  LOGO
+  ATTACHMENT
+}
+
+model FileAsset {
+  id          String   @id @default(cuid())
+  tenantId    String
+  kind        FileKind
+  path        String // t/<tenantId>/<kind>/<id>.<ext> ใน storage zone
+  cdnUrl      String // URL สาธารณะบน CDN
+  contentType String
+  bytes       Int
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, kind, createdAt])
+}
