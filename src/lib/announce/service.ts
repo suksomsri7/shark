@@ -22,7 +22,7 @@ export async function activeAnnouncements(ctx: Ctx): Promise<PlatformAnnouncemen
 // ร้านกด "รับทราบ" — idempotent: กดซ้ำคืน true ไม่พัง (createMany skipDuplicates)
 export async function dismissAnnouncement(ctx: Ctx, announcementId: string): Promise<boolean> {
   await tenantDb(ctx).announcementDismiss.createMany({
-    data: [{ announcementId }],
+    data: [{ tenantId: ctx.tenantId, announcementId }],
     skipDuplicates: true,
   });
   return true;
