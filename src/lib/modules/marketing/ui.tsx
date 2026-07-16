@@ -3,6 +3,8 @@ import { tenantDb } from "@/lib/core/db";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { formatBaht } from "@/lib/ui/money";
 import { listCampaigns, previewAudience, type Ctx } from "./service";
 import { createCampaignAction, sendCampaignAction } from "./actions";
 
@@ -32,7 +34,7 @@ function segmentSummary(raw: unknown): string {
   const s = (raw ?? {}) as { tier?: string; minSpentSatang?: number; inactiveDays?: number };
   const parts: string[] = [];
   if (s.tier) parts.push(`ระดับ ${TIER_LABEL[s.tier] ?? s.tier}`);
-  if (s.minSpentSatang != null) parts.push(`ยอดซื้อ ≥ ${(s.minSpentSatang / 100).toLocaleString("th-TH")} บาท`);
+  if (s.minSpentSatang != null) parts.push(`ยอดซื้อ ≥ ${formatBaht(s.minSpentSatang)}`);
   if (s.inactiveDays != null) parts.push(`ไม่มาเกิน ${s.inactiveDays} วัน`);
   return parts.length ? parts.join(" · ") : "ลูกค้าทุกคน";
 }
@@ -88,19 +90,22 @@ export async function MarketingContent({ systemId }: { systemId: string }) {
               trailing: (
                 <>
                   <StatusChip value={c.status} map={STATUS_LABEL} tone={statusTone(c.status)} />
-                  {c.status === "DRAFT" && (
-                    <form action={sendCampaignAction}>
-                      <input type="hidden" name="systemId" value={systemId} />
-                      <input type="hidden" name="campaignId" value={c.id} />
-                      <button
-                        className="btn-sm px-3 text-xs"
-                        disabled={audience === 0}
-                        title={audience === 0 ? "ยังไม่มีลูกค้าเข้ากลุ่มเป้าหมาย" : "ส่งแคมเปญ"}
-                      >
+                  {c.status === "DRAFT" &&
+                    (audience === 0 ? (
+                      <button className="btn-sm" disabled title="ยังไม่มีลูกค้าเข้ากลุ่มเป้าหมาย">
                         ส่ง
                       </button>
-                    </form>
-                  )}
+                    ) : (
+                      <ConfirmDialog
+                        triggerLabel="ส่ง"
+                        triggerClassName="btn-sm"
+                        title="ส่งแคมเปญนี้?"
+                        detail={`จะส่งถึงลูกค้า ${audience} ราย — ส่งแล้วยกเลิกไม่ได้`}
+                        confirmLabel="ยืนยันส่งแคมเปญ"
+                        action={sendCampaignAction}
+                        fields={{ systemId, campaignId: c.id }}
+                      />
+                    ))}
                 </>
               ),
             };
