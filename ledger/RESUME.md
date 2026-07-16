@@ -3,7 +3,9 @@
 > อัปเดต 2026-07-16 โดย Fable 5 · **session ตาย → account ใหม่บน VPS นี้ อ่านไฟล์นี้ + รัน `pnpm resume`**
 
 ## กำลังวิ่ง
-- (ว่าง — WO-0007/0008 merged แล้ว)
+- **WO-0009 CRM** (agent aa059e6c) — neon `wo-0009` · โมดูลใหม่จริงตัวแรก · oracle `scripts/qc-crm.mts` (RULES 6 เขียว · SVC fail-before)
+  · Fable วาง schema+enum CRM+scope+systems.ts+rules.ts(สมอง) บน main แล้ว · Builder ทำ crm/{service,actions,ui}.tsx + dispatch page.tsx
+  · ห้ามแตะ rules.ts (สมอง FREEZE) · service ต้องเรียก rules ห้าม hardcode กติกา
 
 ## กู้ Builder ตายกลางคัน
 `git worktree list` → `git -C <wt> log --oneline` + อ่าน `<wt>/ledger/wo/WO-*.json` step → ทำต่อ/merge → `git worktree remove --force` + `pnpm neon:delete wo-X` + `pnpm neon:gc`
