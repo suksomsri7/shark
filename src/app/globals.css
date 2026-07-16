@@ -10,6 +10,7 @@
   --color-surface: #ffffff;
   --color-surface-2: #fafafa; /* พื้นรอง / hover */
   --color-danger: #b91c1c;
+  --color-accent: #1d4ed8; /* จุดเน้น: ลิงก์ active, ไอคอน/แถบเน้น (contrast ~6.3:1 บนพื้นขาว) — ไม่ใช่แทน ink */
 
   --font-sans: var(--font-app-sans), ui-sans-serif, system-ui, sans-serif;
   --radius: 0.5rem;

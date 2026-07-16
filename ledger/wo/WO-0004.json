@@ -1,0 +1,40 @@
+{
+  "id": "WO-0004",
+  "title": "App Shell ใหม่: topbar fixed + drawer + AI dock + help + dashboard /app",
+  "status": "done",
+  "branch": "wo/0004",
+  "worktree": "/root/wt/0004",
+  "neonBranch": "wo-0004",
+  "files": [],
+  "closesFindings": [],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "pnpm fitness",
+      "expect": "FINDINGS: CRITICAL 0 · MAJOR 0"
+    },
+    {
+      "cmd": "pnpm typecheck"
+    }
+  ],
+  "steps": [],
+  "log": [
+    {
+      "at": "2026-07-16T00:57:55Z",
+      "note": "เปิดงาน"
+    },
+    {
+      "at": "2026-07-16T00:57:56Z",
+      "note": "รับงาน"
+    },
+    {
+      "at": "2026-07-16T01:03:19Z",
+      "note": "WO-0004 สร้าง app shell: topbar fixed + drawer + AI dock + help sheet + dashboard /app + accent token"
+    },
+    {
+      "at": "2026-07-16T01:04:21Z",
+      "note": "ปิดงาน — doneWhen ผ่านครบ (รันสดยืนยัน)"
+    }
+  ],
+  "owner": "session-2026-07-16T00:57:56Z"
+}
