@@ -2,6 +2,14 @@
 
 > อัปเดต 2026-07-17 โดย Fable 5 · **session ใหม่: อ่านไฟล์นี้จากบนลงล่างถึงเส้นแรก แล้วทำงานต่อได้เลย**
 
+## 🌙 RUN 2 (04:12 BKK 17 ก.ค. — เจ้าของสั่ง "ปล่อยยาวอีก 2 ชม.") — กำลังวิ่ง
+| WO | งาน | ข้อสอบ |
+|---|---|---|
+| 0053 | **E-commerce**: หน้าร้านออนไลน์ /s/<ร้าน>/<สาขา>/shop (catalog+ตะกร้า+checkout) + จ่าย PromptPay QR + ร้านกดยืนยันรับเงิน → เส้นเงิน C-2 ผ่าน pos.createSale + ตัดสต็อก inventory + จัดการสินค้า/ออเดอร์ฝั่งร้าน (ระบบที่ 21: SHOP ใน SYSTEM_DEFS) | 15/15 + pos-account 16/16 + inventory 12/12 |
+| 0054 | **Form builder**: ฟอร์ม config ได้ (text/phone/email/select/textarea + required) + ลิงก์สาธารณะ /f/<token> + submissions → lead เข้า CRM อัตโนมัติ + /app/forms builder | 10/10 + crm 25/25 |
+หมายเหตุ RUN 2: Builder ขนาน 2 ตัวครั้งแรก — เจอ race `prisma generate` ทับกัน (client แชร์ node_modules ข้าม worktree) → กติกาใหม่: **verify สุดท้ายจาก main หลัง merge + generate จาก schema main เสมอ** · 0058 Customer Portal ข้ามไว้ (login OTP ลูกค้าต้องมีช่องทาง SMS/LINE = 🔑 รอเจ้าของ)
+follow-up: forms actions อยู่ src/app/app/forms/actions.ts นอก walk ของ F6 (มี assertCan ครบ แต่ ratchet ไม่คุม — ย้ายเข้า modules ทีหลัง)
+
 ## 🌙 รายงานกะกลางคืน (2026-07-16 21:39 → 17 กลางดึก) — NIGHT RUN จบ 12 WO ✅ ปิดกะ 00:48 BKK (17 ก.ค.)
 | WO | งาน | ข้อสอบ |
 |---|---|---|
