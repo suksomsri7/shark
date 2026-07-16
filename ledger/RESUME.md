@@ -33,6 +33,13 @@
 กติกากันตาย: Builder ≤2 ตัวพร้อมกัน · Builder ห้ามรัน typecheck/build เอง (Fable รันรวมหลัง merge) · commit บ่อย
 ✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว**
 
+## ✅ 2026-07-16 ดึกสุด — WO-0021/0022 SHIPPED (รอบ Builder ที่ 3)
+- **WO-0021 Support Desk + ระงับร้าน**: ปุ่ม help ในแอป → เปิดเคส/คุยต่อ · /backoffice/cases ตอบ+ปิด · ระงับ/เปิดร้าน SUPER_ADMIN 3 ชั้น + PlatformAuditLog append-only · gate /suspended ใน requireTenant (Fable ทำ core เอง)
+- **WO-0022 AI tools v2**: รวม 11 เครื่องมือ — +ค้นลูกค้า/ยอดขายรายวัน (อ่าน) +สมัครสมาชิกให้ (ทำแทน kind "member_create")
+- oracle ใหม่ 2 ชุด (qc-support 12 ข้อ · qc-ai-tools2 8 ข้อ) · กติกาใหม่กัน oracle stale: ข้อสอบเก่าเช็ค superset จำนวนรวมคุมโดยรุ่นล่าสุด
+- แผลซ้ำที่เจอ 3 รอบวันนี้: create ผ่าน tenantDb ต้องใส่ tenantId ตรง ๆ ให้ตรง type — **คิดทำ lint/fitness rule ในอนาคต**
+- **NEXT**: Billing/Payment (PromptPay/Beam) → object storage → i18n EN → M4 ต่อยอด (แนะนำเปิดระบบเพิ่มเมื่อโตขึ้น ตามวิสัยทัศน์)
+
 ## ✅ 2026-07-16 ดึก — AI Layer ครบ 3.5 เฟส + Backoffice เปิด (โหมดหัวหน้า-Builder เต็มรูป)
 - **WO-0018 SHIPPED**: AI อ่านข้อมูลจริง 5 tools (ยอดขาย/สต็อก/ใบลา/สมาชิก/ระบบ) — smoke จริงเรียก tool ตอบถูก
 - **WO-0019 SHIPPED**: Backoffice Phase 0 (/backoffice login OTP แยกขาด + tenants + metrics) — **seed SUPER_ADMIN suksomsri@gmail.com บน prod แล้ว** · Phase 1 ถัดไป: ระงับร้าน+AuditLog / ประกาศ / support desk
