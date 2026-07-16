@@ -1,21 +1,26 @@
-// เครื่องมือ read-only ของผู้ช่วย AI (Phase 3 v1 — WO-0018)
-// ผู้ช่วย "ดู" ข้อมูลจริงของร้านได้ (ยอดขาย/สต็อก/สมาชิก/ใบลา/ระบบที่เปิด) แต่ยัง "แก้ไข" ไม่ได้
+// เครื่องมือของผู้ช่วย AI
+// - read-only 5 ตัว (Phase 3 v1 — WO-0018): ผู้ช่วย "ดู" ข้อมูลจริงของร้าน (ยอดขาย/สต็อก/สมาชิก/ใบลา/ระบบ)
+// - action 3 ตัว (Phase 3.5 — WO-0020): "เสนอ" การกระทำให้ user ยืนยัน (สร้าง proposal ไม่ execute ทันที)
 //
 // กติกา:
 // - ทุก tool คืน JSON string ภาษาไทยอ่านรู้เรื่อง — LLM เอาไปเรียบเรียงตอบต่อ
 // - runTool กันพังทุกทาง: tool ไม่รู้จัก / args เพี้ยน / DB error → คืน JSON {"error":"..."} ห้าม throw
 // - model แบบ system-scoped (Customer/InvItem/HrLeave/PosSale) ต้องหา AppSystem ประเภทนั้นก่อน
 //   แล้วเปิด tenantDb({ tenantId, systemId }) ให้ guard inject ตัวกรองให้ (ดู pattern marketing/service.ts)
+// - action tool ต้องมี conversationId (proposal ผูกบทสนทนา) — ไม่มี → คืน error JSON
 
 import { tenantDb } from "@/lib/core/db";
 import type { SystemType } from "@prisma/client";
 import { lowStock as invLowStock } from "@/lib/modules/inventory/service";
 import { pendingLeaves as hrPendingLeaves } from "@/lib/modules/hr/service";
+import { createProposal, type ProposalKind } from "./proposals";
 
-export type ToolCtx = { tenantId: string };
+export type ToolCtx = { tenantId: string; conversationId?: string };
 
 export type AiTool = {
   def: { name: string; description: string; parameters: object };
+  /** action = mutation ผ่าน proposal (ต้องมี conversationId) · undefined = read-only */
+  action?: boolean;
   execute(ctx: ToolCtx, args: unknown): Promise<string>;
 };
 
@@ -157,8 +162,145 @@ const memberCount: AiTool = {
   },
 };
 
+// ── action tools (Phase 3.5) — "เสนอ" การกระทำ ไม่ execute · คืน proposal ให้ user ยืนยัน ──
+// helper: สร้าง proposal แล้วคืน JSON มาตรฐานให้ LLM (UI แสดง summary + ปุ่มยืนยันจาก proposal นี้)
+async function propose(
+  ctx: ToolCtx,
+  kind: ProposalKind,
+  summary: string,
+  payload: Record<string, unknown>,
+): Promise<string> {
+  if (!ctx.conversationId) {
+    return JSON.stringify({ error: "ต้องอยู่ในบทสนทนาก่อนจึงจะเสนอการกระทำได้" });
+  }
+  const p = await createProposal(
+    { tenantId: ctx.tenantId },
+    { conversationId: ctx.conversationId, kind, summary, payload },
+  );
+  // waiting: user_confirm = ยังไม่ทำ ต้องรอ user กดยืนยันในการ์ดใต้แชท
+  return JSON.stringify({ proposalId: p.id, summary, waiting: "user_confirm" });
+}
+
+// ── 6) inventory_receive — เสนอรับสินค้าเข้าคลัง ──
+const inventoryReceive: AiTool = {
+  action: true,
+  def: {
+    name: "inventory_receive",
+    description:
+      "เสนอการรับสินค้าเข้าคลัง (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) ระบุ sku, จำนวน และต้นทุนต่อหน่วยเป็นบาทถ้ามี",
+    parameters: {
+      type: "object",
+      properties: {
+        sku: { type: "string", description: "รหัสสินค้า (SKU)" },
+        qty: { type: "integer", minimum: 1, description: "จำนวนที่รับเข้า" },
+        costBaht: { type: "number", minimum: 0, description: "ต้นทุนต่อหน่วยเป็นบาท (ถ้ามี)" },
+      },
+      required: ["sku", "qty"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const sku = String(a.sku ?? "").trim();
+    const qty = Math.floor(Number(a.qty));
+    if (!sku || !Number.isFinite(qty) || qty <= 0) {
+      return JSON.stringify({ error: "ต้องระบุรหัสสินค้าและจำนวนที่ถูกต้อง (มากกว่า 0)" });
+    }
+    const costBaht = Number(a.costBaht);
+    const hasCost = Number.isFinite(costBaht) && costBaht >= 0;
+    const payload: Record<string, unknown> = { sku, qty };
+    if (hasCost) payload.costSatang = Math.round(costBaht * 100);
+    const summary =
+      `รับสินค้ารหัส ${sku} เข้าคลัง ${qty} หน่วย` + (hasCost ? ` (ต้นทุน ${costBaht} บาท/หน่วย)` : "");
+    return propose(ctx, "inventory_receive", summary, payload);
+  },
+};
+
+// ── 7) hr_decide_leave — เสนออนุมัติ/ไม่อนุมัติใบลา ──
+const hrDecideLeave: AiTool = {
+  action: true,
+  def: {
+    name: "hr_decide_leave",
+    description:
+      "เสนอการอนุมัติหรือไม่อนุมัติใบลาของพนักงาน (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้ยืนยันก่อน) ระบุ leaveId และ decision (APPROVED หรือ REJECTED). ดู leaveId ได้จากเครื่องมือ pending_leaves",
+    parameters: {
+      type: "object",
+      properties: {
+        leaveId: { type: "string", description: "รหัสใบลา" },
+        decision: { type: "string", enum: ["APPROVED", "REJECTED"], description: "ผลการพิจารณา" },
+      },
+      required: ["leaveId", "decision"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const leaveId = String(a.leaveId ?? "").trim();
+    const decision = a.decision === "REJECTED" ? "REJECTED" : "APPROVED";
+    if (!leaveId) return JSON.stringify({ error: "ต้องระบุรหัสใบลา" });
+    // เติมชื่อพนักงานในสรุปถ้าหาเจอ (best-effort — ไม่เจอก็ใช้รหัสแทน)
+    const who = await employeeNameForLeave(ctx.tenantId, leaveId);
+    const verb = decision === "APPROVED" ? "อนุมัติ" : "ไม่อนุมัติ";
+    const summary = who ? `${verb}ใบลาของ ${who}` : `${verb}ใบลา (รหัส ${leaveId})`;
+    return propose(ctx, "hr_decide_leave", summary, { leaveId, decision });
+  },
+};
+
+// ── 8) marketing_create_campaign — เสนอสร้างแคมเปญ (ฉบับร่างเสมอ) ──
+const marketingCreateCampaign: AiTool = {
+  action: true,
+  def: {
+    name: "marketing_create_campaign",
+    description:
+      "เสนอการสร้างแคมเปญการตลาดเป็นฉบับร่าง (ยังไม่ส่งจริง — สร้างข้อเสนอให้ผู้ใช้ยืนยันก่อน แล้วผู้ใช้กดส่งเองในระบบ) ระบุ name และ channel (เช่น LINE/SMS/EMAIL)",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "ชื่อแคมเปญ" },
+        channel: { type: "string", description: "ช่องทางส่ง เช่น LINE, SMS, EMAIL" },
+      },
+      required: ["name", "channel"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const name = String(a.name ?? "").trim();
+    const channel = String(a.channel ?? "").trim() || "LINE";
+    if (!name) return JSON.stringify({ error: "ต้องระบุชื่อแคมเปญ" });
+    const summary = `สร้างแคมเปญ "${name}" ผ่านช่องทาง ${channel} (ฉบับร่าง — ยังไม่ส่ง)`;
+    return propose(ctx, "marketing_create_campaign", summary, { name, channel });
+  },
+};
+
+// หาชื่อพนักงานของใบลา (best-effort สำหรับ summary) — พังก็คืน null ไม่โยน
+async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<string | null> {
+  try {
+    const hr = await findSystem(tenantId, "HR");
+    if (!hr) return null;
+    const leave = await tenantDb({ tenantId, systemId: hr.id }).hrLeave.findFirst({
+      where: { id: leaveId },
+      include: { employee: { select: { name: true } } },
+    });
+    return leave?.employee?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function toolRegistry(): AiTool[] {
-  return [listSystems, salesSummary, lowStock, pendingLeaves, memberCount];
+  return [
+    // read-only (5)
+    listSystems,
+    salesSummary,
+    lowStock,
+    pendingLeaves,
+    memberCount,
+    // action / ทำแทน (3)
+    inventoryReceive,
+    hrDecideLeave,
+    marketingCreateCampaign,
+  ];
 }
 
 // เรียกเครื่องมือตามชื่อ — กันพังทุกทาง: ไม่รู้จัก/execute พัง → JSON {"error":"..."} ห้าม throw

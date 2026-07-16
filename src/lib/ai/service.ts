@@ -103,7 +103,13 @@ export async function sendMessage(
   // ── agent loop ── ส่ง tools ทุกรอบ · LLM ขอเรียกเครื่องมือ → รัน (read-only) แล้วป้อนผลกลับรอบถัดไป
   // เพดาน 5 รอบ (กันวนไม่จบ) · ครบเพดานยังไม่ได้คำตอบ = ปิดด้วยข้อความสุภาพ
   // token/usage รวมทุกรอบ · persist เฉพาะ USER + ASSISTANT ตัวจบ (ไม่เก็บ tool traffic)
-  const tools = toolRegistry().map((t) => t.def);
+  // action tools (สร้าง proposal ทำแทน user) ยื่นให้เฉพาะ LLM จริงเท่านั้น —
+  // โหมด mock/สคริปต์ทดสอบ (SHARK_AI_MOCK=1) ได้แค่ read tools เพื่อคงชุดเครื่องมืออ่านให้ deterministic
+  // (ผู้ช่วยจำลองไม่ควรถูกยื่นเครื่องมือ mutation) · dispatch/สิทธิ์จริงทำที่ปุ่มยืนยันใน UI
+  const exposeActions = process.env.SHARK_AI_MOCK !== "1";
+  const tools = toolRegistry()
+    .filter((t) => exposeActions || !t.action)
+    .map((t) => t.def);
   let tokensIn = 0;
   let tokensOut = 0;
   let finalText = "";
@@ -116,7 +122,12 @@ export async function sendMessage(
     if (reply.toolCalls && reply.toolCalls.length > 0) {
       messages.push({ role: "assistant", content: reply.text ?? "", toolCalls: reply.toolCalls });
       for (const tc of reply.toolCalls) {
-        const result = await runTool({ tenantId: ctx.tenantId }, tc.name, tc.args);
+        // ส่ง conversation.id เข้าไปด้วย — action tool ต้องใช้ผูก proposal กับบทสนทนา
+        const result = await runTool(
+          { tenantId: ctx.tenantId, conversationId: conversation.id },
+          tc.name,
+          tc.args,
+        );
         messages.push({ role: "tool", content: result, toolCallId: tc.id });
       }
       continue; // ไปรอบถัดไปให้ LLM เรียบเรียงคำตอบจากผลเครื่องมือ
