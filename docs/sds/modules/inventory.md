@@ -33,5 +33,5 @@
 
 ## ข้อจำกัด/หนี้ที่รู้ + WO อนาคต
 - ~~Single warehouse~~ → **WO-0037 SHIPPED (2026-07-17)**: InvLocation/InvLocationStock (invariant `sum(stock)==InvItem.onHand` · lazy migration ต่อ item — แถว default seed จาก onHand เดิมครั้งแรกที่แตะ) · `receive/consume/adjust` รับ `locationId?` (ไม่ส่ง=คลังหลัก) · `transfer` movement คู่ TRANSFER (`<key>-out`/`-in` · ติดลบ→needsReview ขาออก) · `receivePo(ctx,poId,{locationId?})` · oracle `scripts/qc-warehouse.mts` 15 ข้อ.
-- **WO-0038** Lot/Expiry/Barcode + event `inventory.lot.expiring`.
+- ~~WO-0038~~ → **SHIPPED (2026-07-17)**: InvLot (unique [itemId,lotCode] · lot orthogonal กับ location v1) · receive/consume รับ `lotCode?/expiryDate?` · `sweepExpiringLots` แจ้งใกล้หมดอายุ 7 วัน (cron `lotsExpiring` · outbox+Automation event `inventory.lot.expiring`) · `findItemByBarcode` · oracle `scripts/qc-lot.mts` 13 ข้อ.
 - WO-0045: AI ปรับสต็อก (ADJUST) + รับเข้า (inventory_receive เป็น ProposalKind แล้ว).

@@ -2,7 +2,7 @@
 
 > อัปเดต 2026-07-17 โดย Fable 5 · **session ใหม่: อ่านไฟล์นี้จากบนลงล่างถึงเส้นแรก แล้วทำงานต่อได้เลย**
 
-## 🌙 รายงานกะกลางคืน (2026-07-16 21:39 → 17 กลางดึก) — NIGHT RUN จบ 11 WO
+## 🌙 รายงานกะกลางคืน (2026-07-16 21:39 → 17 กลางดึก) — NIGHT RUN จบ 12 WO ✅ ปิดกะ 00:48 BKK (17 ก.ค.)
 | WO | งาน | ข้อสอบ |
 |---|---|---|
 | 0041 | Observability: logger กลาง+alert throttle+/api/health (live บน prod แล้ว)+backoffice system-health | 7/7 + cron 4/4 |
@@ -16,9 +16,10 @@
 | 0037 | **Multi-warehouse**: InvLocation ต่อ system + สต็อกต่อคลัง (invariant sum==onHand · lazy migration ไม่ต้อง backfill) + โอนระหว่างคลัง (movement คู่ TRANSFER idempotent) + PO รับเข้าเลือกคลัง + UI (ร้านคลังเดียวเห็นหน้าเดิมเป๊ะ) | 15/15 + inventory 12/12 + procurement 12/12 |
 | 0043 | **Hardening**: กันถล่ม OTP (อีเมล 5/10นาที · ip 20/10นาที · backoffice 5/10นาที — นับจาก AuthToken ไม่มีตารางใหม่) + `core/cron-auth.ts` รวม secret 2 มาตรฐาน (Bearer/X-Cron-Secret · constant-time · ของเก่าไม่พัง) + HSTS 2 ปี + Permissions-Policy + `core/rate-limit.ts` sliding window + docs/SECURITY_AUDIT.md (prod smoke: headers live · tick 401 · outbox secret ใหม่ 200) | 15/15 + cron 4/4 + chat-security 23 |
 | 0057 | **ปฏิทินกลาง** read-only /app/calendar รวม 3 แหล่ง (นัดหมาย+เข้าพักโรงแรม+วันลา) — grid เดือน จุดสีต่อประเภท กดวันดูรายการ + ลิงก์ NavDrawer (Fable เสริม assertCan calendar.event.read ตาม F6) | 9/9 |
-เหตุการณ์เด่น: fitness จับสถาปัตยกรรม payroll 3 ข้อ (hr ล้วง gl/raw prisma) → Fable ผ่าตัด: postPayrollJV เข้า account facade + hr→account ลง allowlist + tenantDb ทั้งไฟล์ · cwd shell หลุด 2 ครั้ง (กู้จากกิ่ง worktree สำเร็จ — ย้ำกติกา cd สัมบูรณ์) · oracle stale กันล่วงหน้า 2 จุด (GR-0.1/V2-0.1) · Builder 0043 สร้าง webchat endpoint คู่ขนานเพื่อเอาใจ path ที่ oracle เขียนผิด → Fable ลบ dead endpoint + แก้ oracle ชี้ route จริง [connectionId] (ของจริงมี limiter M9 อยู่แล้ว) · F5 baseline 34→35 (approval/service.ts ใช้ $transaction atomic กับ outbox — จงใจ pattern เดียว POS)
+| 0038 | **Lot/Expiry/Barcode**: InvLot ต่อ item (รับเข้า/ตัดออกระบุ lot ได้ · ไม่ระบุ = พฤติกรรมเดิม) + แจ้ง "สินค้าใกล้หมดอายุ" อัตโนมัติทุกวัน (7 วันล่วงหน้า · idempotent/วัน · cron field lotsExpiring) + Automation event `inventory.lot.expiring` (Fable เสริม consumer ปิด event กัน PENDING วน) + ค้นสินค้าด้วยบาร์โค้ด | 13/13 + inventory 12/12 + warehouse 15/15 + cron 4/4 + automation 13/13 |
+เหตุการณ์เด่น: fitness จับสถาปัตยกรรม payroll 3 ข้อ (hr ล้วง gl/raw prisma) → Fable ผ่าตัด: postPayrollJV เข้า account facade + hr→account ลง allowlist + tenantDb ทั้งไฟล์ · cwd shell หลุด 2 ครั้ง (กู้จากกิ่ง worktree สำเร็จ — ย้ำกติกา cd สัมบูรณ์) · oracle stale กันล่วงหน้า 2 จุด (GR-0.1/V2-0.1) · Builder 0043 สร้าง webchat endpoint คู่ขนานเพื่อเอาใจ path ที่ oracle เขียนผิด → Fable ลบ dead endpoint + แก้ oracle ชี้ route จริง [connectionId] (ของจริงมี limiter M9 อยู่แล้ว) · F5 baseline 34→36 (approval $transaction+outbox · inventory sweep ข้ามร้าน — จงใจทั้งคู่ มี comment ใน fitness.mts)
 รอเจ้าของ: สแกน QR ทดสอบ · Bunny key · follow-up: 2140 ปสส.ค้างนำส่งใน CHART · summarizeCase wire หน้า list · i18n v1.1 · 0045b (ตอบเคสในนาม user) · **0049b wiring approval เข้า PO/ใบลาจริง** + นโยบายยื่นซ้ำหลัง REJECTED (idempotencyKey ตายตัว 1 entity=1 request — ต้อง version key ถ้าธุรกิจต้องแก้แล้วยื่นใหม่) + จำกัด policy.create เฉพาะ OWNER (ตอนนี้ MANAGER สร้างได้ตาม RBAC กลาง)
-คิวถัดไปตาม 10_MASTER_QUEUE: 0037 Multi-warehouse → 0043 Hardening → 0053 E-commerce
+คิวถัดไปตาม 10_MASTER_QUEUE: 0053 E-commerce → 0054 → 0058 → 0061 Public API (0043 เปิดทางแล้ว) · แทรกได้: 0044 query budget · 0049b wiring approval · 0040 หนี้เส้นเงิน (รอบสมาธิเต็ม)
 
 ## 🎯 CHECKPOINT 2026-07-17 — จุดต่องาน (อ่านตรงนี้ก่อน)
 **สถานะ**: shark.in.th LIVE บน Vercel · main = ทุกอย่าง merge แล้ว · deploy READY · ไม่มี worktree/neon branch ค้าง · WO-0001→0034 done หมด (ยกเว้น WO-0032 = เลขข้าม ไม่มีจริง)
@@ -43,7 +44,7 @@
 
 **📘 SDS ชุดเต็มพร้อมแล้ว (2026-07-17)**: `docs/sds/` — เล่มแกน 10 + เล่มโมดูล 36 (as-built 24 + future 12) + **Master Queue 39 WO (0035-0073)** ใน 10_MASTER_QUEUE.md · โหมดรันยาวอยู่เล่ม 09 · **รอเจ้าของอนุมัติ "ปล่อยยาว" — ยังไม่เริ่ม**
 
-**🌙 NIGHT RUN ACTIVE (สั่ง 2026-07-17 กลางคืน)** — เจ้าของนอน กลับมา 04:00 BKK: รันยาวตามคิว → **หยุดก่อน 21:00 UTC (04:00 BKK)** ที่จุดปลอดภัย (จบ WO/merge ที่ค้าง ห้ามทิ้ง Builder กลางทาง ถ้าใกล้เส้นตายให้จบงานค้างแล้วไม่เปิดใหม่) → บันทึกทุกอย่าง → เขียน "รายงานกะกลางคืน" ต่อท้ายไฟล์นี้ · ถ้า session ตายกลางคืน: session ใหม่อ่านไฟล์นี้แล้วทำต่อภายใต้เส้นตายเดิม
+**🌙 NIGHT RUN จบแล้ว (ปิดกะ 00:48 BKK 17 ก.ค.)** — 12 WO SHIPPED ดูตารางบนสุด · ไม่มี Builder/worktree/neon branch ค้าง · deploy READY · รอเจ้าของตื่นมาสั่งคิวถัดไป
 
 **🚀 วิธีสั่งปล่อยยาว (เจ้าของถาม 2026-07-17)** — พิมพ์ประโยคนี้ใน session ไหนก็ได้:
 > **"อ่าน ledger/RESUME.md แล้วปล่อยยาวตาม docs/sds/10_MASTER_QUEUE.md"**
