@@ -112,6 +112,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   Supplier: sys(),
   PurchaseOrder: sys(),
   PoLine: tenant, // ลูกของ PO — query ผ่าน poId + tenantId
+  // คลังความรู้ (WO-0073)
+  KbArticle: tenant,
   // Public API (WO-0061) + Webhooks ขาออก (WO-0062)
   ApiKey: tenant,
   WebhookEndpoint: tenant,

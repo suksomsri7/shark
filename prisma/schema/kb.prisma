@@ -1,0 +1,13 @@
+// คลังความรู้ (WO-0073 — feature no.16) — FAQ/ความรู้เฉพาะร้าน ให้ทีมค้น + AI ใช้ตอบ (tool kb_search)
+model KbArticle {
+  id        String   @id @default(cuid())
+  tenantId  String
+  title     String
+  body      String
+  category  String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, active])
+}
