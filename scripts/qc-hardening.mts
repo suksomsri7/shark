@@ -83,8 +83,9 @@ try {
   chk("HD-5.3", "ของเดิม 3 header ยังอยู่", /X-Frame-Options/.test(px) && /X-Content-Type-Options/.test(px) && /Referrer-Policy/.test(px), "ครบ", "?");
 
   // 6) webchat rate limit
-  const wc = readFileSync("src/app/api/chat/webchat/route.ts", "utf8");
-  chk("HD-6.1", "webchat ใช้ checkRateLimit + ตอบ 429", wc.includes("checkRateLimit") && wc.includes("429"), "ใช้", "?", "MAJOR");
+  // webchat จริงอยู่ที่ [connectionId]/route.ts และมี limiter ของโมดูล chat (M9) อยู่แล้ว — hardening ยอมรับตัวใดตัวหนึ่ง
+  const wc = readFileSync("src/app/api/chat/webchat/[connectionId]/route.ts", "utf8");
+  chk("HD-6.1", "webchat มี rate limit + ตอบ 429", (wc.includes("checkRateLimit") || wc.includes("rateLimit")) && wc.includes("429"), "ใช้", "?", "MAJOR");
 
   // 7) self-audit checklist
   const auditOk = existsSync("docs/SECURITY_AUDIT.md") && (() => { const d = readFileSync("docs/SECURITY_AUDIT.md", "utf8"); return d.length > 1500 && /rate limit/i.test(d) && /CSRF/i.test(d) && /header/i.test(d) && /tenant/i.test(d); })();
