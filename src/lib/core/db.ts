@@ -21,6 +21,12 @@ export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
     adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+    // เพดาน interactive tx: default 5 วิ เป็นค่ากลาง ไม่ใช่การออกแบบของเรา
+    // flow เงิน (recordPayment→ออกใบกำกับ→post GL) มีหลาย query ใน tx เดียว —
+    // เครื่องไกล DB (CI อเมริกา→Neon สิงคโปร์ ~250ms/query) ทะลุ 5 วิ → P2028
+    // = จ่ายเงินแล้ว side effect หายเงียบ (CPA แดง 12 ข้อบน CI run #17 ทั้งที่เครื่องใกล้ผ่าน)
+    // 30 วิ = เพดานกันเหตุ ไม่ใช่เป้า — หนี้ลดจำนวน round-trip บันทึกใน WO แยก
+    transactionOptions: { timeout: 30_000, maxWait: 10_000 },
   });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
