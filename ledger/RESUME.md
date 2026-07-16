@@ -33,6 +33,14 @@
 กติกากันตาย: Builder ≤2 ตัวพร้อมกัน · Builder ห้ามรัน typecheck/build เอง (Fable รันรวมหลัง merge) · commit บ่อย
 ✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว**
 
+## 🔧 2026-07-17 — ไขปริศนา "เมล deploy ล้ม" ที่ user ได้รับตลอด
+**สาเหตุ**: Vercel `next build` typecheck โฟลเดอร์ `scripts/` ด้วย → oracle contract-first ที่อ้าง type อนาคต (เช่น kind "open_system" ก่อน Builder เพิ่มใน ProposalKind) ทำ **deploy ล้มช่วงรอยต่อระหว่าง push ของกลาง → merge งาน Builder** แล้วหายเองหลัง merge (prod เสิร์ฟรอบสำเร็จล่าสุดเสมอ จึงไม่เคยล่มจริง)
+**กติกากันซ้ำ (บังคับ)**:
+1. oracle ที่อ้างสัญญาอนาคต ห้ามใช้ typed literal ตรง ๆ — ใช้ dynamic import `as string` + wide cast (`as unknown as`) เสมอ
+2. `set -o pipefail && pnpm typecheck` **ก่อน push ทุกครั้ง** รวม push ของกลาง (ไม่ใช่แค่หลัง merge)
+3. ยืนยัน deploy จาก Vercel API state=READY ไม่ใช่แค่ curl 200 (curl อาจเจอของเก่า)
+deploy ล้มที่พบ: 3fc06f0 · ce33d01 · 3385a6f · 42264bb — ทั้งหมด recovered แล้ว, 0f76517 READY
+
 ## ✅ 2026-07-17 — WO-0029/0030 SHIPPED (ข้อ 2 ที่ user เลือก)
 - **Cron จริง**: /api/cron/tick (Bearer SHARK_CRON_SECRET) กวาด subscription/proposal หมดอายุ + outbox เก็บตก · vercel.json ตั้ง 03:00 BKK ทุกวัน · **ยิงจริงบน prod แล้ว: 200 JSON ถูก + ไม่มี secret = 401** · หมายเหตุ: CRON_SECRET เดิม (/api/cron/outbox, x-cron-secret) ยังอยู่คู่กัน
 - **Dashboard หน้าแรก**: /app มี "ภาพรวมวันนี้" (ยอดขาย/สมาชิกใหม่ 7 วัน/สต็อกใกล้หมด/ใบลารอ/แจ้งเตือน) โชว์ตามระบบที่เปิด — ตาม Blank_6
