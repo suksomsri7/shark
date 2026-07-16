@@ -19,6 +19,8 @@ async function sendOtpEmail(to: string, subject: string, text: string): Promise<
 
 const OTP_TTL_MS = 1000 * 60 * 10; // 10 นาที (SECURITY §3)
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 วัน (SECURITY §5)
+const OTP_RL_WINDOW_MS = 1000 * 60 * 10; // กันถล่ม OTP (WO-0043)
+const OTP_RL_MAX_PER_EMAIL = 5; // อีเมลเดิม ≥5 ใน 10 นาที → บล็อก
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -37,6 +39,14 @@ export async function requestPlatformOtp(rawEmail: string): Promise<{ preview?: 
   const email = normalizeEmail(rawEmail);
   const user = await prisma.platformUser.findUnique({ where: { email } });
   if (!user) return {};
+
+  // นับ "ก่อน" สร้าง — กันถล่มขอ OTP หลังบ้านต่ออีเมล (นับหลัง user check เพื่อคงพฤติกรรม anti-enumeration)
+  const recent = await prisma.platformAuthToken.count({
+    where: { email, createdAt: { gte: new Date(Date.now() - OTP_RL_WINDOW_MS) } },
+  });
+  if (recent >= OTP_RL_MAX_PER_EMAIL) {
+    throw new Error("ขอรหัสถี่เกินไป กรุณารอสักครู่แล้วลองใหม่");
+  }
 
   const code = otpCode();
   await prisma.platformAuthToken.create({
