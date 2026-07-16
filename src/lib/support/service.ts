@@ -15,10 +15,10 @@ export async function createCase(
 ): Promise<{ id: string }> {
   const db = tenantDb(ctx);
   const c = await db.supportCase.create({
-    data: { openedByUserId: input.userId, subject: input.subject },
+    data: { tenantId: ctx.tenantId, openedByUserId: input.userId, subject: input.subject },
   });
   await db.supportMessage.create({
-    data: { caseId: c.id, authorSide: "SHOP", authorId: input.userId, body: input.body },
+    data: { tenantId: ctx.tenantId, caseId: c.id, authorSide: "SHOP", authorId: input.userId, body: input.body },
   });
   return { id: c.id };
 }
@@ -51,7 +51,7 @@ export async function addShopMessage(
   if (!existing) return false;
   await db.supportCase.update({ where: { id: caseId }, data: { status: "OPEN" } });
   await db.supportMessage.create({
-    data: { caseId, authorSide: "SHOP", authorId: userId, body },
+    data: { tenantId: ctx.tenantId, caseId, authorSide: "SHOP", authorId: userId, body },
   });
   return true;
 }
