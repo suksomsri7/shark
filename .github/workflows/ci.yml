@@ -122,6 +122,10 @@ jobs:
         if: steps.guard.outputs.ready == 'true'
         run: pnpm qc:ticket
 
+      - name: QC Hotel→บัญชี
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm qc:hotel
+
       - name: ลบ Neon branch (กันค่าใช้จ่ายบาน)
         if: always() && steps.guard.outputs.ready == 'true'
         env:

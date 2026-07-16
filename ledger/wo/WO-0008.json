@@ -1,7 +1,7 @@
 {
   "id": "WO-0008",
   "title": "Hotel→POS — เช็คเอาท์ → ค่าห้องเข้าบัญชี",
-  "status": "queued",
+  "status": "done",
   "branch": "wo/0008",
   "worktree": "/root/wt/0008",
   "neonBranch": "wo-0008",
@@ -68,6 +68,10 @@
     {
       "at": "2026-07-16T04:14:21Z",
       "note": "oracle qc-hotel-money เขียว 5/5 + qc:account 107/107 + qc:systems ผ่านทั้งหมด"
+    },
+    {
+      "at": "2026-07-16T04:19:11Z",
+      "note": "ปิดงาน — doneWhen ผ่านครบ (รันสดยืนยัน)"
     }
   ]
 }

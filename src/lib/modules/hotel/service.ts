@@ -1,6 +1,7 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import { registerScopes } from "@/lib/core/scope";
 import * as pos from "@/lib/modules/pos/service";
+import { systemForUnit } from "@/lib/modules/system/service";
 import type { HotelReservationStatus, HotelRoomStatus, SystemType } from "@prisma/client";
 
 // ลงทะเบียน scope ของ Hotel models (unit-scoped) — ให้ tenantDb() inject tenantId+unitId อัตโนมัติ
@@ -36,17 +37,6 @@ const ACTIVE_STATUSES: HotelReservationStatus[] = ["BOOKED", "CHECKED_IN"];
 // หาว่าหน่วยนี้ผูกระบบชนิดใดไว้ (POS/POINT) → คืน systemId หรือ null ถ้าไม่ผูก
 // query ตรงจากทะเบียนระบบ (appSystemUnit เป็น model ระดับ tenant ไม่ผูก unit-scope)
 // — เลี่ยง cross-module import hotel→system (ขอบเขตโมดูล F2) โดยยังคง contract เดิม
-async function systemIdFor(
-  tenantId: string,
-  unitId: string,
-  type: SystemType,
-): Promise<string | null> {
-  const link = await prisma.appSystemUnit.findUnique({
-    where: { tenantId_unitId_type: { tenantId, unitId, type } },
-  });
-  return link?.systemId ?? null;
-}
-
 // ───────────────────────── Room types ─────────────────────────
 export async function listRoomTypes(tenantId: string, unitId: string) {
   const db = tenantDb({ tenantId, unitId });
@@ -433,8 +423,8 @@ export async function checkOut(
     // ไม่ผูก POS = ร้านแบบ standalone → เช็คเอาท์ได้ตามปกติ ข้ามการตัดเงิน
     if (billing.totalSatang > 0) {
       const [posSystemId, pointSystemId] = await Promise.all([
-        systemIdFor(tenantId, unitId, "POS"),
-        systemIdFor(tenantId, unitId, "POINT"),
+        systemForUnit(tenantId, unitId, "POS"),
+        systemForUnit(tenantId, unitId, "POINT"),
       ]);
       if (posSystemId) {
         await pos.createSale({
