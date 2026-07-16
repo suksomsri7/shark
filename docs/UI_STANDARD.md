@@ -9,8 +9,9 @@
 ## 0. กฎเหล็ก (อ่านก่อนเขียน UI ทุกครั้ง)
 
 1. **สีมาจาก token เท่านั้น** — ห้าม `bg-blue-*`, `text-green-*`, `emerald`, `amber`, hex ดิบ ฯลฯ ใช้ได้แค่:
-   `--color-ink`, `--color-ink-soft`, `--color-muted`, `--color-line`, `--color-surface`, `--color-surface-2`, `--color-danger`
+   `--color-ink`, `--color-ink-soft`, `--color-muted`, `--color-line`, `--color-surface`, `--color-surface-2`, `--color-danger`, `--color-accent`
    (`--color-danger` ใช้เฉพาะ ข้อความ error / สถานะเสีย / ปุ่มทำลายข้อมูล — ห้ามใช้ตกแต่ง)
+   (`--color-accent` = น้ำเงิน `#1d4ed8` สำหรับ **จุดเน้น** เท่านั้น: ลิงก์/เมนู active, ไอคอนช่วยเหลือ, แถบเน้นจุดสำคัญ — **ปุ่ม primary ยังเป็น ink** (ดำ) ห้ามเอา accent ไปแทน ink หรือใช้ถมพื้นปุ่มหลัก · ยังใช้ผ่าน arbitrary value `text-[color:var(--color-accent)]` เท่านั้น ห้าม `bg-blue-*` ดิบ)
    **ห้าม token ผี:** `--color-fg`, `--color-bg`, `--color-success`, `--color-primary`, `--color-hover` **ไม่มีจริง** ใน globals.css — ที่ผ่านมาทำปุ่ม/แท็บล่องหนและเขียว/น้ำเงินหลุดมาแล้ว (QC6 §2.1) · "สำเร็จ" = ink ตัวหนา ไม่ใช่สีเขียว · ก่อน merge: `grep -rn 'color-(fg|bg|success|primary|hover)' src` ต้องว่าง
 2. **ปุ่ม = `.btn .btn-primary` / `.btn .btn-ghost` / `.btn-sm` เท่านั้น** — ห้ามประกอบปุ่มเอง และห้าม `.btn` เดี่ยวๆ (ไม่มีพื้น/ขอบ ดูไม่ออกว่าเป็นปุ่ม — เกิดแล้วใน ReportToolbar)
    เพิ่มใน globals.css: `.btn-sm` = `inline-flex items-center rounded-lg border px-3 py-2 text-sm hover:bg-surface-2` (สูง ≥40px) สำหรับปุ่ม action ในแถวรายการ/หน้า operation — ใช้แทน `px-2.5 py-1 text-xs` ที่เล็กกว่า touch target ทั้งแอป
