@@ -245,6 +245,10 @@ const ALLOWED_EDGES = new Set([
   // chokepoint ที่อนุมัติ (contract 2.3): POS ใช้คูปองตอนขายจริง (validate/redeem/release)
   // — WO-0003 · POS เป็นจุดตัดเงินเดียวที่เรียก coupon.redeem ใน tx ของบิล
   "pos→coupon",
+  // chokepoint (2.1): business systems ปิดเงินผ่าน POS → บัญชีอัตโนมัติ (M1 downstream)
+  // — Fable อนุมัติล่วงหน้า WO-0007/0008 (restaurant→pos มีอยู่แล้วด้านบน)
+  "ticket→pos",
+  "hotel→pos",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {
