@@ -1,0 +1,43 @@
+{
+  "id": "WO-0033",
+  "title": "AI Growth — แนะนำเปิดระบบเมื่อโต + เปิดระบบให้ผ่านการยืนยัน (Continuous Optimization)",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/",
+  "neonBranch": "wo-0033",
+  "files": [
+    "src/lib/ai/tools.ts (+2)",
+    "src/lib/ai/proposals.ts (kind open_system)",
+    "src/lib/ai/persona.ts"
+  ],
+  "closesFindings": [],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "DATABASE_URL=<neon> pnpm exec tsx scripts/qc-ai-growth.mts",
+      "expect": "FINDINGS: CRITICAL 0"
+    },
+    {
+      "cmd": "regression ai 4 ชุดเดิม (เฉพาะ WO-0033)"
+    },
+    {
+      "cmd": "typecheck+fitness (Fable, pipefail)"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: schema/scope/migration + oracle"
+    },
+    {
+      "done": false,
+      "text": "Builder ตามสัญญาหัว oracle"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-17T07:10:00Z",
+      "note": "เปิดงาน (งานกลางรอบ A — ธีม Blank_6 ตรวจแล้วครบอยู่ก่อนแล้ว)"
+    }
+  ]
+}
