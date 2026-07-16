@@ -94,6 +94,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // ประกาศระบบ (WO-0031) — ประกาศเป็น global (ทุกร้านอ่านฉบับ published) · dismiss ต่อร้าน
   PlatformAnnouncement: g("ประกาศถึงทุกร้าน — เขียนได้เฉพาะ backoffice (src/lib/platform)"),
   AnnouncementDismiss: tenant,
+  // Payroll (WO-0036)
+  HrSalaryProfile: sys(),
+  HrPayrollRun: sys(),
+  HrPayrollItem: sys(),
   // Subscription (WO-0027) + Procurement (WO-0028)
   MemberPlan: sys(),
   MemberSubscription: sys(),

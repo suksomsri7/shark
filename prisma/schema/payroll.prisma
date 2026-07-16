@@ -1,0 +1,64 @@
+// Payroll ไทย (WO-0036 — สเปคเต็ม docs/sds/modules/future-payroll-tax.md)
+// axis system (ผูก AppSystem type HR) · เงิน = สตางค์ · v1 = MONTHLY เท่านั้น
+enum PayrollRunStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+model HrSalaryProfile {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  systemId              String
+  employeeId            String
+  baseSalarySatang      Int // เงินเดือน (MONTHLY v1)
+  ssoEligible           Boolean  @default(true)
+  taxId                 String? // เลขผู้เสียภาษี 13 หลัก
+  personalDeductionJson Json     @default("{}") // {spouse:bool, children:int, ssoPaidYearSatang?...}
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([systemId, employeeId])
+  @@index([tenantId])
+}
+
+model HrPayrollRun {
+  id                     String           @id @default(cuid())
+  tenantId               String
+  systemId               String
+  periodKey              String // "2026-07"
+  payDate                DateTime
+  status                 PayrollRunStatus @default(DRAFT)
+  totalGrossSatang       Int              @default(0)
+  totalSsoEmployeeSatang Int              @default(0)
+  totalSsoEmployerSatang Int              @default(0)
+  totalWhtSatang         Int              @default(0)
+  totalNetSatang         Int              @default(0)
+  journalEntryId         String? // AccountJournalEntry ที่ลงบัญชี (approve แล้ว)
+  note                   String?
+  createdAt              DateTime         @default(now())
+
+  items HrPayrollItem[]
+
+  @@unique([systemId, periodKey])
+  @@index([tenantId, status])
+}
+
+model HrPayrollItem {
+  id                String       @id @default(cuid())
+  tenantId          String
+  systemId          String
+  runId             String
+  run               HrPayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  employeeId        String
+  grossSatang       Int
+  ssoBaseSatang     Int // ฐาน ปสส. หลัง clamp
+  ssoEmployeeSatang Int
+  ssoEmployerSatang Int
+  whtSatang         Int // ภงด.1 หักต่อเดือน
+  netSatang         Int
+  snapshotJson      Json         @default("{}") // freeze สูตร/ลดหย่อน ณ วันคำนวณ
+
+  @@unique([runId, employeeId])
+  @@index([tenantId, systemId])
+}
