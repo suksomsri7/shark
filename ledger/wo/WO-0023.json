@@ -1,7 +1,7 @@
 {
   "id": "WO-0023",
   "title": "Billing แพลตฟอร์ม + PromptPay QR รับเงินของร้าน",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder",
   "worktree": ".claude/worktrees/",
   "neonBranch": "wo-0023",
@@ -32,7 +32,7 @@
       "text": "Fable: schema + scope + migration (ลง prod แล้ว) + oracle"
     },
     {
-      "done": false,
+      "done": true,
       "text": "Builder ตามสัญญาหัว oracle"
     }
   ],
@@ -40,6 +40,10 @@
     {
       "at": "2026-07-16T16:30:00Z",
       "note": "เปิดงาน Round 1 ของชุด 4-8"
+    },
+    {
+      "at": "2026-07-16T18:00:00Z",
+      "note": "Builder 16/16 · Fable รันซ้ำ + แก้ type 3 จุด · บทเรียนใหม่จาก Builder: tenantDb().upsert() พังเพราะ guard ห่อ where — ใช้ find→update/create แทน"
     }
   ]
 }
