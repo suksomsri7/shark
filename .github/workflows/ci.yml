@@ -69,8 +69,28 @@ jobs:
           NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
         run: |
           pnpm exec tsx scripts/neon-branch.mts create ci-${{ github.run_id }} | tee branch.out
-          grep -E '^(DATABASE_URL|DIRECT_URL)=' branch.out >> "$GITHUB_ENV"
+          # CI ใช้ direct ทั้งคู่ — pooler มีไว้เพื่อ serverless concurrency ซึ่ง CI ไม่ต้องใช้
+          # และ pgbouncer บน endpoint เย็น ๆ เคยทำ FK violation ปริศนาใน interactive tx (run #8:
+          # ensureAccounting ที่ทุกอย่างอยู่ใน tx เดียว ยัง FK พัง — ทำซ้ำบนเครื่องไม่ได้)
+          DIRECT=$(grep -E '^DIRECT_URL=' branch.out | cut -d= -f2-)
+          echo "DIRECT_URL=$DIRECT" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=$DIRECT" >> "$GITHUB_ENV"
           echo "SESSION_SECRET=ci-only-not-a-real-secret" >> "$GITHUB_ENV"
+
+      - name: อุ่นเครื่อง DB (Neon compute เพิ่งเกิด — รอพร้อมจริงก่อนยิงชุดเทสต์)
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          for i in $(seq 1 10); do
+            if pnpm exec tsx -e "
+              try { process.loadEnvFile('.env'); } catch {}
+              const { Client } = await import('pg');
+              const c = new Client({ connectionString: process.env.DIRECT_URL });
+              await c.connect(); await c.query('SELECT 1'); await c.end();
+              console.log('DB พร้อม');
+            "; then exit 0; fi
+            echo "รอ DB ตื่น... ($i/10)"; sleep 3
+          done
+          echo "DB ไม่ตื่นใน 30 วิ"; exit 1
 
       - name: migrate deploy
         if: steps.guard.outputs.ready == 'true'
