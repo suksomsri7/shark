@@ -12,7 +12,7 @@ const STATUS_LABEL: Record<string, string> = {
   PAID: "ชำระแล้ว",
   VOID: "ยกเลิกแล้ว",
 };
-const toneOf = (v: string) => (v === "VOID" ? "muted" : "strong") as const;
+const toneOf = (v: string): "muted" | "strong" => (v === "VOID" ? "muted" : "strong");
 
 // บิลที่แพลตฟอร์มเรียกเก็บจากร้านนี้ (ร้านเห็นเฉพาะของตัวเอง — tenantDb inject tenantId)
 export default async function ShopBillingPage() {

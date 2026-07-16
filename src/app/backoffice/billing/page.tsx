@@ -16,7 +16,7 @@ const STATUS_LABEL: Record<string, string> = {
   PAID: "ชำระแล้ว",
   VOID: "ยกเลิกแล้ว",
 };
-const toneOf = (v: string) => (v === "VOID" ? "muted" : "strong") as const;
+const toneOf = (v: string): "muted" | "strong" => (v === "VOID" ? "muted" : "strong");
 
 const FILTERS: { value: PlatformInvoiceStatus | "ALL"; label: string }[] = [
   { value: "ALL", label: "ทั้งหมด" },

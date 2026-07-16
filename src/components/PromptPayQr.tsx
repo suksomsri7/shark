@@ -25,7 +25,7 @@ export function PromptPayQr({
       return;
     }
     QRCode.toDataURL(payload, { margin: 1, width: size, errorCorrectionLevel: "M" })
-      .then((url) => {
+      .then((url: string) => {
         if (alive) {
           setDataUrl(url);
           setError(false);
