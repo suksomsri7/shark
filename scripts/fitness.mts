@@ -223,7 +223,7 @@ chk(
 // ═══════════════════════════════════════════════════════════════
 console.log("\n── F2/F5: ขอบเขตโมดูล (baseline ratchet — ห้ามเพิ่ม) ──");
 
-const BASELINE = { f5RawPrisma: 39 }; // 34 (2026-07-15) +approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
+const BASELINE = { f5RawPrisma: 40 }; // 34 (2026-07-15) +approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
 
 const moduleDir = join(ROOT, "src", "lib", "modules");
 const moduleNames = existsSync(moduleDir)
