@@ -1,0 +1,10 @@
+// White label v1 (WO-0064) — โลโก้/สี/ชื่อแบรนด์ ต่อ tenant ใช้บน storefront สาธารณะ
+model TenantBranding {
+  id          String   @id @default(cuid())
+  tenantId    String   @unique
+  displayName String? // ชื่อที่โชว์แทนชื่อ tenant (null = ใช้ชื่อ tenant)
+  logoUrl     String?
+  brandColor  String? // hex "#RRGGBB"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
