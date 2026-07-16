@@ -13,7 +13,9 @@ import { tenantDb } from "@/lib/core/db";
 import type { SystemType } from "@prisma/client";
 import { lowStock as invLowStock } from "@/lib/modules/inventory/service";
 import { pendingLeaves as hrPendingLeaves } from "@/lib/modules/hr/service";
+import { listCustomers as memberListCustomers } from "@/lib/modules/member/service";
 import { createProposal, type ProposalKind } from "./proposals";
+import { dayKeyBangkok } from "./rules";
 
 export type ToolCtx = { tenantId: string; conversationId?: string };
 
@@ -162,6 +164,80 @@ const memberCount: AiTool = {
   },
 };
 
+// ── 5b) customer_search — ค้นหาลูกค้า/สมาชิกจากชื่อ/เบอร์/รหัส (Phase 3 v2 — WO-0022) ──
+const customerSearch: AiTool = {
+  def: {
+    name: "customer_search",
+    description:
+      "ค้นหาลูกค้า/สมาชิกของร้านจากชื่อ เบอร์โทร หรือรหัสสมาชิก — คืนรายชื่อสูงสุด 10 ราย (ชื่อ เบอร์ ระดับสมาชิก)",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "คำค้น เช่น ชื่อลูกค้า เบอร์โทร หรือรหัสสมาชิก" },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const query = String(asRecord(args).query ?? "").trim();
+    // listCustomers เป็น tenant-scoped อยู่แล้ว (กรอง tenantId ให้) — ค้นชื่อ/เบอร์/รหัสสมาชิก
+    const rows = await memberListCustomers(ctx.tenantId, query);
+    return JSON.stringify({
+      ลูกค้า: rows.slice(0, 10).map((c) => ({
+        ชื่อ: c.name ?? "ไม่ระบุชื่อ",
+        เบอร์: c.phone ?? null,
+        ระดับ: c.tier,
+        รหัสสมาชิก: c.memberCode,
+      })),
+    });
+  },
+};
+
+// ── 5c) sales_by_day — ยอดขาย PAID แยกรายวัน (วัน BKK) ย้อนหลัง N วัน ──
+const salesByDay: AiTool = {
+  def: {
+    name: "sales_by_day",
+    description:
+      "ยอดขายหน้าร้าน (POS) ที่ชำระแล้ว แยกเป็นรายวันตามเวลาไทย ย้อนหลังกี่วันล่าสุด — คืนแต่ละวันพร้อมยอดบาทและจำนวนบิล",
+    parameters: {
+      type: "object",
+      properties: {
+        days: { type: "integer", minimum: 1, maximum: 90, description: "จำนวนวันย้อนหลัง (ค่าเริ่มต้น 7)" },
+      },
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const raw = asRecord(args).days;
+    const n = Number(raw);
+    const days = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 90) : 7;
+
+    const pos = await findSystem(ctx.tenantId, "POS");
+    if (!pos) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบขายหน้าร้าน (POS)" });
+
+    const since = new Date(Date.now() - days * 86_400_000);
+    const sales = await tenantDb({ tenantId: ctx.tenantId, systemId: pos.id }).posSale.findMany({
+      where: { status: "PAID", createdAt: { gte: since } },
+      select: { grandTotalSatang: true, createdAt: true },
+    });
+
+    // จัดกลุ่มตามวันแบบเวลาไทย (dayKeyBangkok) — สะสมยอดสตางค์ + นับบิล
+    const byDay = new Map<string, { satang: number; count: number }>();
+    for (const s of sales) {
+      const day = dayKeyBangkok(s.createdAt);
+      const g = byDay.get(day) ?? { satang: 0, count: 0 };
+      g.satang += s.grandTotalSatang ?? 0;
+      g.count += 1;
+      byDay.set(day, g);
+    }
+    const รายวัน = [...byDay.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // ใหม่→เก่า
+      .map(([day, g]) => ({ วัน: day, ยอดบาท: Math.round(g.satang) / 100, จำนวนบิล: g.count }));
+    return JSON.stringify({ ช่วงเวลา: `${days} วันล่าสุด`, รายวัน });
+  },
+};
+
 // ── action tools (Phase 3.5) — "เสนอ" การกระทำ ไม่ execute · คืน proposal ให้ user ยืนยัน ──
 // helper: สร้าง proposal แล้วคืน JSON มาตรฐานให้ LLM (UI แสดง summary + ปุ่มยืนยันจาก proposal นี้)
 async function propose(
@@ -273,6 +349,39 @@ const marketingCreateCampaign: AiTool = {
   },
 };
 
+// ── 9) member_create — เสนอสมัครสมาชิกให้ลูกค้า (Phase 3 v2 — WO-0022) ──
+const memberCreate: AiTool = {
+  action: true,
+  def: {
+    name: "member_create",
+    description:
+      "เสนอการสมัครสมาชิกให้ลูกค้าใหม่ (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) ระบุชื่อ และเบอร์โทร/อีเมลถ้ามี",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "ชื่อลูกค้า" },
+        phone: { type: "string", description: "เบอร์โทร (ถ้ามี)" },
+        email: { type: "string", description: "อีเมล (ถ้ามี)" },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const name = String(a.name ?? "").trim();
+    const phone = String(a.phone ?? "").trim();
+    const email = String(a.email ?? "").trim();
+    if (!name) return JSON.stringify({ error: "ต้องระบุชื่อลูกค้า" });
+    const payload: Record<string, unknown> = { name };
+    if (phone) payload.phone = phone;
+    if (email) payload.email = email;
+    const contact = phone ? ` (เบอร์ ${phone})` : email ? ` (อีเมล ${email})` : "";
+    const summary = `สมัครสมาชิกให้ '${name}'${contact}`;
+    return propose(ctx, "member_create", summary, payload);
+  },
+};
+
 // หาชื่อพนักงานของใบลา (best-effort สำหรับ summary) — พังก็คืน null ไม่โยน
 async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<string | null> {
   try {
@@ -290,16 +399,19 @@ async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<
 
 export function toolRegistry(): AiTool[] {
   return [
-    // read-only (5)
+    // read-only (7)
     listSystems,
     salesSummary,
     lowStock,
     pendingLeaves,
     memberCount,
-    // action / ทำแทน (3)
+    customerSearch,
+    salesByDay,
+    // action / ทำแทน (4)
     inventoryReceive,
     hrDecideLeave,
     marketingCreateCampaign,
+    memberCreate,
   ];
 }
 
