@@ -1,6 +1,6 @@
 {
   "id": "WO-0009",
-  "title": "CRM \u0e40\u0e15\u0e47\u0e21\u0e23\u0e30\u0e1a\u0e1a \u2014 Lead\u2192Customer, Pipeline, Deal, Follow-up",
+  "title": "CRM เต็มระบบ — Lead→Customer, Pipeline, Deal, Follow-up",
   "status": "queued",
   "branch": "wo/0009",
   "worktree": "/root/wt/0009",
@@ -9,10 +9,10 @@
     "src/lib/modules/crm/service.ts",
     "src/lib/modules/crm/actions.ts",
     "src/lib/modules/crm/ui.tsx",
-    "src/app/app/sys/[id]/page.tsx (1 \u0e1a\u0e23\u0e23\u0e17\u0e31\u0e14 dispatch)"
+    "src/app/app/sys/[id]/page.tsx (1 บรรทัด dispatch)"
   ],
   "closesFindings": [
-    "\u0e44\u0e21\u0e48\u0e21\u0e35 CRM \u0e08\u0e23\u0e34\u0e07 (Lead/Prospect/Pipeline/Deal/Follow-up) \u2014 \u0e02\u0e49\u0e2d 1 \u0e43\u0e19\u0e25\u0e34\u0e2a\u0e15\u0e4c user"
+    "ไม่มี CRM จริง (Lead/Prospect/Pipeline/Deal/Follow-up) — ข้อ 1 ในลิสต์ user"
   ],
   "dependsOn": [],
   "doneWhen": [
@@ -22,11 +22,11 @@
     },
     {
       "cmd": "pnpm qc:account",
-      "expect": "\u0e1c\u0e48\u0e32\u0e19 107/107"
+      "expect": "ผ่าน 107/107"
     },
     {
       "cmd": "pnpm fitness",
-      "expect": "FINDINGS: CRITICAL 0 \u00b7 MAJOR 0"
+      "expect": "FINDINGS: CRITICAL 0 · MAJOR 0"
     },
     {
       "cmd": "pnpm typecheck"
@@ -39,33 +39,49 @@
   "steps": [
     {
       "done": true,
-      "text": "Fable: schema crm.prisma + enum CRM + scope + systems.ts + rules.ts (\u0e2a\u0e21\u0e2d\u0e07) + oracle qc-crm.mts (RULES \u0e40\u0e02\u0e35\u0e22\u0e27 6 \u00b7 SVC fail-before \u0e41\u0e14\u0e07)"
+      "text": "Fable: schema crm.prisma + enum CRM + scope + systems.ts + rules.ts (สมอง) + oracle qc-crm.mts (RULES เขียว 6 · SVC fail-before แดง)"
+    },
+    {
+      "done": true,
+      "text": "crm/service.ts: ensureCrm(seed default pipeline)/createContact/createDeal/moveDeal(sync kind+closedAt+contact→CUSTOMER)/addActivity/completeActivity/forecast — ใช้ rules.ts ห้าม hardcode กติกา"
+    },
+    {
+      "done": true,
+      "text": "crm/actions.ts: server actions + assertCan (crm.<entity>.<verb>) ทุก mutation"
+    },
+    {
+      "done": true,
+      "text": "crm/ui.tsx: CrmContent (systemId) — pipeline board (คอลัมน์ตาม stage, ดีลในการ์ด) + รายชื่อ contact + งานค้าง (follow-up)"
+    },
+    {
+      "done": true,
+      "text": "wire dispatch: sys/[id]/page.tsx เพิ่ม {sys.type === 'CRM' && <CrmContent .../>}"
     },
     {
       "done": false,
-      "text": "crm/service.ts: ensureCrm(seed default pipeline)/createContact/createDeal/moveDeal(sync kind+closedAt+contact\u2192CUSTOMER)/addActivity/completeActivity/forecast \u2014 \u0e43\u0e0a\u0e49 rules.ts \u0e2b\u0e49\u0e32\u0e21 hardcode \u0e01\u0e15\u0e34\u0e01\u0e32"
-    },
-    {
-      "done": false,
-      "text": "crm/actions.ts: server actions + assertCan (crm.<entity>.<verb>) \u0e17\u0e38\u0e01 mutation"
-    },
-    {
-      "done": false,
-      "text": "crm/ui.tsx: CrmContent (systemId) \u2014 pipeline board (\u0e04\u0e2d\u0e25\u0e31\u0e21\u0e19\u0e4c\u0e15\u0e32\u0e21 stage, \u0e14\u0e35\u0e25\u0e43\u0e19\u0e01\u0e32\u0e23\u0e4c\u0e14) + \u0e23\u0e32\u0e22\u0e0a\u0e37\u0e48\u0e2d contact + \u0e07\u0e32\u0e19\u0e04\u0e49\u0e32\u0e07 (follow-up)"
-    },
-    {
-      "done": false,
-      "text": "wire dispatch: sys/[id]/page.tsx \u0e40\u0e1e\u0e34\u0e48\u0e21 {sys.type === 'CRM' && <CrmContent .../>}"
-    },
-    {
-      "done": false,
-      "text": "oracle qc-crm \u0e40\u0e02\u0e35\u0e22\u0e27\u0e04\u0e23\u0e1a + fitness (authz F6 \u0e15\u0e49\u0e2d\u0e07\u0e44\u0e21\u0e48\u0e02\u0e36\u0e49\u0e19 \u2014 crm/actions.ts \u0e21\u0e35 assertCan) + gates"
+      "text": "oracle qc-crm เขียวครบ + fitness (authz F6 ต้องไม่ขึ้น — crm/actions.ts มี assertCan) + gates"
     }
   ],
   "log": [
     {
       "at": "2026-07-16T04:39:51Z",
-      "note": "\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19"
+      "note": "เปิดงาน"
+    },
+    {
+      "at": "2026-07-16T04:45:03Z",
+      "note": "setup: worktree+neon branch wo-0009, อ่าน oracle/rules/schema/templates ครบ"
+    },
+    {
+      "at": "2026-07-16T04:53:58Z",
+      "note": "actions.ts: server actions + assertCan(crm.<entity>.<verb>) ทุก mutation"
+    },
+    {
+      "at": "2026-07-16T04:53:59Z",
+      "note": "ui.tsx: CrmContent(systemId) — board/deal move/contact/follow-up/forecast ตาม UI_STANDARD"
+    },
+    {
+      "at": "2026-07-16T04:53:59Z",
+      "note": "wire dispatch CRM ใน sys/[id]/page.tsx"
     }
   ]
 }
