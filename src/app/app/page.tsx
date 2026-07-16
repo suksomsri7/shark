@@ -6,6 +6,8 @@ import { systemDef } from "@/lib/systems";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { dashboardSummary } from "@/lib/dashboard/service";
+import { activeAnnouncements } from "@/lib/announce/service";
+import { dismissAnnouncementAction } from "@/lib/announce/actions";
 
 // หน้าแรก /app = แดชบอร์ดของกิจการ (ไม่ใช่ "ระบบทั้งหมด" อีกต่อไป — ย้ายไปอยู่ใน drawer)
 // แสดง: ชื่อกิจการ + ตัวเลขวันนี้ + การ์ดระบบที่เปิดใช้ + ลิงก์เพิ่มระบบ
@@ -20,7 +22,7 @@ export default async function DashboardPage() {
   const todayStart = new Date(bkkMidnight.getTime() - 7 * 3600 * 1000);
   const todayEnd = new Date(todayStart.getTime() + 24 * 3600 * 1000);
 
-  const [units, appSystems, links, appointmentsToday, summary] = await Promise.all([
+  const [units, appSystems, links, appointmentsToday, summary, announcements] = await Promise.all([
     prisma.businessUnit.findMany({
       where: { tenantId, status: { not: "ARCHIVED" } },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -31,7 +33,11 @@ export default async function DashboardPage() {
       where: { tenantId, startAt: { gte: todayStart, lt: todayEnd }, status: { not: "CANCELLED" } },
     }),
     dashboardSummary({ tenantId }),
+    activeAnnouncements({ tenantId }),
   ]);
+
+  // ประกาศจากแพลตฟอร์ม — แสดงฉบับล่าสุด 1 ฉบับเหนือ "ภาพรวมวันนี้" (ไม่มี = ไม่แสดง)
+  const announcement = announcements[0] ?? null;
   const unitName = (id: string) => units.find((u) => u.id === id)?.name ?? "";
 
   // ภาพรวมวันนี้ — โชว์เฉพาะการ์ดของระบบที่เปิดใช้ (ยอดขาย+แจ้งเตือนโชว์เสมอ)
@@ -108,6 +114,23 @@ export default async function DashboardPage() {
           </Link>
         }
       />
+
+      {/* ประกาศจากแพลตฟอร์ม — โทนเรียบ พื้น surface-2 ขอบ hairline ไม่มีสีสด */}
+      {announcement && (
+        <div className="flex flex-col gap-3 rounded-lg border bg-[color:var(--color-surface-2)] p-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="font-semibold">{announcement.title}</div>
+            <div className="mt-1 text-sm whitespace-pre-line text-[color:var(--color-muted)]">
+              {announcement.body}
+            </div>
+          </div>
+          <form action={dismissAnnouncementAction.bind(null, announcement.id)} className="shrink-0">
+            <button type="submit" className="btn-sm">
+              รับทราบ
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* ภาพรวมวันนี้ — KPI ของระบบที่เปิดใช้ */}
       <div className="flex flex-col gap-3">
