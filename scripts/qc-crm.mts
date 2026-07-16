@@ -5,6 +5,8 @@ try { process.loadEnvFile(".env"); } catch { /* CI */ }
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const rules = await import("@/lib/modules/crm/rules");
+const acc = await import("@/lib/modules/account/service");
+const gl = await import("@/lib/modules/account/gl");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const checks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];
 const chk = (id: string, name: string, ok: boolean, exp: string, act: string, sev: Sev = "CRITICAL") => {
@@ -74,6 +76,29 @@ try {
     const fc = await svc.forecast(ctx);
     chk("SVC-6.1", "forecast ถ่วงน้ำหนัก = ดีล OPEN เท่านั้น (ดีล WON ไม่นับ)", typeof fc === "number" && fc === Math.round(10000000 * (stages[2].probability / 100)), String(Math.round(10000000 * (stages[2].probability / 100))), String(fc));
 
+    // ── สะพาน CRM → บัญชี: Deal ออกใบเสนอราคา (WO-0010) ──
+    console.log("\n── BRIDGE: Deal → ใบเสนอราคา (ผ่าน account facade) ──");
+    const accSys = await sys.createSystem(tenantId, "ACCOUNT", "บัญชี");
+    await acc.saveSettings(tenantId, accSys.id, { orgName: "QC CRM จำกัด", taxId: "0105561177639", vatRegistered: true } as never);
+    await gl.ensureAccounting({ tenantId, systemId: accSys.id });
+    await prisma.accountSystemLink.create({ data: { tenantId, systemId: accSys.id, linkedKind: "CRM", linkedId: crmSys.id } });
+    if (typeof svc.issueQuotation !== "function") {
+      chk("SVC-8.0", "มี svc.issueQuotation", false, "มี", "ยังไม่สร้าง (fail-before)", "CRITICAL");
+    } else {
+      const q1 = await svc.issueQuotation(ctx, dealId);
+      chk("SVC-8.1", "issueQuotation สำเร็จ ได้ docId", (q1 as { ok?: boolean }).ok === true && !!(q1 as { docId?: string }).docId, "ok+docId", JSON.stringify(q1).slice(0, 70));
+      const qdoc = await prisma.accountDocument.findFirst({ where: { tenantId, docType: "QUOTATION" } });
+      chk("SVC-8.2", "เกิด AccountDocument QUOTATION มูลค่าตรงดีล (5,000,000 สตางค์ ก่อน VAT)", !!qdoc && qdoc.subTotal === 5000000, "5000000", String(qdoc?.subTotal));
+      chk("SVC-8.3", "เอกสารอ้างกลับดีล (refType=CrmDeal refId=dealId)", qdoc?.refType === "CrmDeal" && qdoc?.refId === dealId, "CrmDeal/dealId", `${qdoc?.refType}/${qdoc?.refId === dealId}`);
+      const d2 = await prisma.crmDeal.findUnique({ where: { id: dealId } });
+      chk("SVC-8.4", "deal.quotationDocId ถูกเก็บ", d2?.quotationDocId === qdoc?.id, "ตรง", String(d2?.quotationDocId === qdoc?.id));
+      const q2 = await svc.issueQuotation(ctx, dealId);
+      const qcount = await prisma.accountDocument.count({ where: { tenantId, docType: "QUOTATION" } });
+      chk("SVC-8.5", "เรียกซ้ำ idempotent (ใบเดิม ไม่งอก)", (q2 as { docId?: string }).docId === (q1 as { docId?: string }).docId && qcount === 1, "ใบเดิม/1", `${(q2 as { docId?: string }).docId === (q1 as { docId?: string }).docId}/${qcount}`);
+      const accContact = await prisma.accountContact.findFirst({ where: { tenantId } });
+      chk("SVC-8.6", "findOrCreate AccountContact จากชื่อ/เบอร์ CRM contact", accContact?.name === "คุณสมชาย" && accContact?.phone === "0810000000", "คุณสมชาย/081...", `${accContact?.name}/${accContact?.phone}`);
+    }
+
     // isolation: อีก tenant มองไม่เห็น
     const cross = await prisma.crmContact.count({ where: { systemId: crmSys.id, tenantId: { not: tenantId } } });
     chk("SVC-7.1", "ไม่มี contact ข้าม tenant", cross === 0, "0", String(cross));
@@ -81,7 +106,7 @@ try {
 } catch (e) { chk("CRASH", "harness จบ", false, "จบ", e instanceof Error ? e.message.slice(0, 130) : String(e)); }
 finally {
   if (tenantId) { const del = async (f: () => Promise<unknown>) => { try { await f(); } catch {} };
-    for (const m of ["crmActivity","crmDeal","crmStage","crmPipeline","crmContact","appSystemUnit","appSystem"])
+    for (const m of ["crmActivity","crmDeal","crmStage","crmPipeline","crmContact","accountDocumentRelation","accountDocumentPayment","accountDocumentLine","accountDocument","accountContact","accountSystemLink","accountMapping","accountLedger","accountPeriod","accountDocSequence","accountSettings","outboxEvent","appSystemUnit","appSystem"])
       await del(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId } }));
     await del(() => prisma.businessUnit.deleteMany({ where: { tenantId } })); await del(() => prisma.tenant.delete({ where: { id: tenantId } }));
     console.log("[cleanup] ok"); }

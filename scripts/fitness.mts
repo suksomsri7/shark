@@ -251,6 +251,8 @@ const ALLOWED_EDGES = new Set([
   "ticket→system",  // resolve POS/POINT ที่ผูก unit (เหมือน restaurant→system, booking→system)
   "hotel→pos",
   "hotel→system",
+  // chokepoint (2.4 ฝั่งเอกสาร): CRM ออกใบเสนอราคาผ่าน account facade (WO-0010)
+  "crm→account",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

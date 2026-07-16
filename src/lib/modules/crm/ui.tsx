@@ -15,6 +15,7 @@ import {
   createDealAction,
   moveDealAction,
   completeActivityAction,
+  issueQuotationAction,
 } from "./actions";
 
 const muted = "text-[color:var(--color-muted)]";
@@ -111,6 +112,19 @@ export async function CrmContent({ systemId }: { systemId: string }) {
                             ▶
                           </button>
                         </form>
+                        {deal.quotationDocId ? (
+                          <span className="ml-auto rounded-full border px-2 py-0.5 text-[10px] text-[color:var(--color-muted)]">
+                            มีใบเสนอราคาแล้ว
+                          </span>
+                        ) : (
+                          <form action={issueQuotationAction} className="ml-auto">
+                            <input type="hidden" name="systemId" value={systemId} />
+                            <input type="hidden" name="dealId" value={deal.id} />
+                            <button className="btn-sm px-3 text-xs" title="ออกใบเสนอราคาเข้าระบบบัญชี">
+                              📄 ใบเสนอราคา
+                            </button>
+                          </form>
+                        )}
                       </div>
                     </div>
                   ))}

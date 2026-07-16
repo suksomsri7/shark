@@ -1675,3 +1675,32 @@ export async function issuePublicTaxInvoice(
     return { ok: false, reason: e instanceof Error ? e.message : "ขอใบกำกับไม่สำเร็จ" };
   }
 }
+
+// ── helpers สำหรับ facade (index.ts ห้าม import prisma ตรง — F5) · WO-0010 ──
+export async function findAccountLinkFor(tenantId: string, linkedKind: "POS" | "CRM", linkedId: string) {
+  return prisma.accountSystemLink.findFirst({
+    where: { tenantId, linkedKind, linkedId, archivedAt: null },
+    select: { systemId: true },
+  });
+}
+export async function findDocByRef(systemId: string, docType: AccountDocType, refType: string, refId: string) {
+  return prisma.accountDocument.findFirst({ where: { systemId, docType, refType, refId }, select: { id: true } });
+}
+export async function findOrCreateCustomerContact(
+  ctx: { tenantId: string; systemId: string },
+  c: { name: string; phone?: string | null; email?: string | null },
+) {
+  const existing = await prisma.accountContact.findFirst({
+    where: { systemId: ctx.systemId, OR: [...(c.phone ? [{ phone: c.phone }] : []), { name: c.name }] },
+    select: { id: true },
+  });
+  if (existing) return existing;
+  return createContact({
+    tenantId: ctx.tenantId, systemId: ctx.systemId, kind: "CUSTOMER",
+    name: c.name, phone: c.phone ?? null, email: c.email ?? null,
+  } as Parameters<typeof createContact>[0]);
+}
+export async function setDocExternalRef(docId: string, ref: { refSystemId: string; refType: string; refId: string }) {
+  await prisma.accountDocument.update({ where: { id: docId }, data: ref });
+}
+

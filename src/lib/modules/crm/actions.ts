@@ -11,6 +11,7 @@ import {
   createDeal,
   moveDeal,
   type Ctx,
+  issueQuotation,
 } from "./service";
 
 // ตรวจสิทธิ์โมดูล CRM (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
@@ -134,3 +135,14 @@ export async function completeActivityAction(formData: FormData) {
   await completeActivity(ctx, activityId);
   revalidate(systemId);
 }
+
+/** ออกใบเสนอราคาจากดีล (สะพาน → บัญชี WO-0010) */
+export async function issueQuotationAction(formData: FormData) {
+  const systemId = String(formData.get("systemId") ?? "");
+  const dealId = String(formData.get("dealId") ?? "");
+  const auth = await requireTenant();
+  assertCrmCan(auth, "crm.deal.quote");
+  await issueQuotation({ tenantId: auth.active.tenantId, systemId }, dealId);
+  revalidate(systemId);
+}
+

@@ -225,3 +225,35 @@ export async function listPendingActivities(ctx: Ctx, take = 50) {
     take,
   });
 }
+
+// ── สะพาน CRM → บัญชี (WO-0010): Deal ออกใบเสนอราคาผ่าน account facade ──
+// CRM ไม่รู้เรื่องเลขบัญชี/VAT — ส่งลูกค้า+มูลค่าให้บัญชีจัดการ · idempotent ฝั่ง facade
+import { createExternalQuotation } from "@/lib/modules/account";
+
+export async function issueQuotation(
+  ctx: Ctx,
+  dealId: string,
+): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
+  const db = tenantDb(ctx);
+  const deal = await db.crmDeal.findFirst({ where: { id: dealId }, include: { contact: true } });
+  if (!deal) return { ok: false, reason: "ไม่พบดีล" };
+  if (deal.valueSatang <= 0) return { ok: false, reason: "ดีลยังไม่มีมูลค่า — ใส่มูลค่าก่อนออกใบเสนอราคา" };
+
+  const res = await createExternalQuotation({
+    tenantId: ctx.tenantId,
+    sourceSystemId: ctx.systemId,
+    sourceKind: "CRM",
+    refType: "CrmDeal",
+    refId: deal.id,
+    title: deal.title,
+    valueSatang: deal.valueSatang,
+    customer: { name: deal.contact.name, phone: deal.contact.phone, email: deal.contact.email },
+  });
+  if (!res.ok) return res;
+
+  if (deal.quotationDocId !== res.docId) {
+    await db.crmDeal.update({ where: { id: deal.id }, data: { quotationDocId: res.docId } });
+  }
+  return res;
+}
+

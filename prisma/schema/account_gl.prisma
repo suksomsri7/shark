@@ -111,6 +111,7 @@ enum AccountEtaxStatus {
 enum AccountLinkedKind {
   POS
   BUSINESS
+  CRM // ระบบ CRM ออกใบเสนอราคาเข้าบัญชีชุดนี้ (WO-0010)
 }
 
 // ───────── 4.3 สินค้า / หน่วย / กลุ่มจัดประเภท ─────────
