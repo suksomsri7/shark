@@ -6,6 +6,7 @@ import type {
   TicketOrderStatus,
 } from "@prisma/client";
 import * as pos from "@/lib/modules/pos/service";
+import { systemForUnit } from "@/lib/modules/system/service";
 
 type Client = PrismaClient | Prisma.TransactionClient;
 type Ctx = { tenantId: string; unitId: string };
@@ -328,17 +329,9 @@ export async function markPaid(ctx: Ctx, orderId: string) {
 
   // ต่อสายเข้าบัญชี: ถ้า unit ผูกระบบ POS ไว้ → บันทึกการขาย (POS จะ post บัญชีตาม contract)
   // ถ้าไม่ผูก POS = ข้าม (ตั๋วขายได้แม้ standalone) · createSale idempotent + มี drainAll ในตัว (M1)
-  // resolve system ผูก unit ด้วย prisma ตรง (ticket ห้าม import system module — fitness อนุมัติแค่ ticket→pos)
-  const [posLink, pointLink] = await Promise.all([
-    prisma.appSystemUnit.findUnique({
-      where: { tenantId_unitId_type: { tenantId: ctx.tenantId, unitId: ctx.unitId, type: "POS" } },
-    }),
-    prisma.appSystemUnit.findUnique({
-      where: { tenantId_unitId_type: { tenantId: ctx.tenantId, unitId: ctx.unitId, type: "POINT" } },
-    }),
-  ]);
-  const posSystemId = posLink?.systemId ?? null;
-  const pointSystemId = pointLink?.systemId ?? null;
+  // resolve ระบบที่ผูก unit ผ่าน helper กลาง (เหมือน restaurant/booking) — fitness อนุมัติ ticket→system
+  const posSystemId = await systemForUnit(ctx.tenantId, ctx.unitId, "POS");
+  const pointSystemId = await systemForUnit(ctx.tenantId, ctx.unitId, "POINT");
   if (posSystemId && order.totalSatang > 0) {
     await pos.createSale({
       tenantId: ctx.tenantId,

@@ -118,6 +118,10 @@ jobs:
         if: steps.guard.outputs.ready == 'true'
         run: pnpm qc:coupon
 
+      - name: QC Ticket→บัญชี
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm qc:ticket
+
       - name: ลบ Neon branch (กันค่าใช้จ่ายบาน)
         if: always() && steps.guard.outputs.ready == 'true'
         env:

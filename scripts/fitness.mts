@@ -248,7 +248,9 @@ const ALLOWED_EDGES = new Set([
   // chokepoint (2.1): business systems ปิดเงินผ่าน POS → บัญชีอัตโนมัติ (M1 downstream)
   // — Fable อนุมัติล่วงหน้า WO-0007/0008 (restaurant→pos มีอยู่แล้วด้านบน)
   "ticket→pos",
+  "ticket→system",  // resolve POS/POINT ที่ผูก unit (เหมือน restaurant→system, booking→system)
   "hotel→pos",
+  "hotel→system",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {
