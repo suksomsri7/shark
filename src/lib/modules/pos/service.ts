@@ -3,6 +3,8 @@ import type { Prisma, PrismaClient, PosPayType } from "@prisma/client";
 import * as point from "@/lib/modules/point/service";
 import * as member from "@/lib/modules/member/service";
 import { systemForUnit } from "@/lib/modules/system/service";
+import { emitOutbox } from "@/lib/core/outbox";
+import { drainAll } from "@/lib/outbox-consumers";
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
 type Client = PrismaClient | Prisma.TransactionClient;
@@ -43,7 +45,9 @@ export type SaleResult = {
 };
 
 export async function createSale(input: CreateSaleInput, client: Client = prisma): Promise<SaleResult> {
-  return withTx(client, async (tx) => {
+  // เราเปิด tx เอง (client = prisma) → drain outbox ได้หลัง commit · ถ้าถูกเรียกใน tx ผู้อื่น ปล่อยให้ cron เก็บ
+  const ownsTx = "$transaction" in client && typeof (client as PrismaClient).$transaction === "function";
+  const result = await withTx(client, async (tx) => {
     // idempotent
     const dup = await tx.posSale.findUnique({
       where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } },
@@ -105,6 +109,16 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
       data: input.payMethods.map((p) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, type: p.type, amountSatang: p.amountSatang, refSaleId: p.refSaleId })),
     });
 
+    // outbox: ยอดขาย → บัญชี (contract 2.4) — เขียน event ใน tx เดียวกับบิล (atomic)
+    await emitOutbox(tx as Prisma.TransactionClient, {
+      tenantId: input.tenantId,
+      type: "pos.sale.paid",
+      idempotencyKey: `PosSale#${sale.id}#PAID`,
+      payload: { saleId: sale.id },
+      systemId: input.systemId,
+      unitId: input.unitId,
+    });
+
     // side effects (แกนกลาง Point + Member) — ใน tx เดียวกัน
     let pointEarned = 0;
     if (input.memberId) {
@@ -149,6 +163,10 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
     }
     return { saleId: sale.id, receiptNo, grandTotalSatang: grandTotal, pointEarned };
   });
+
+  // best-effort หลัง tx commit — post บัญชีทันที · cron /api/cron/outbox เก็บตกถ้าล้ม
+  if (ownsTx) void drainAll().catch(() => {});
+  return result;
 }
 
 // void: กลับรายการ (คืนแต้ม + สถานะ)
@@ -157,6 +175,15 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string)
     const sale = await tx.posSale.findFirst({ where: { id: saleId, tenantId, unitId } });
     if (!sale || sale.status !== "PAID") throw new Error("บิลนี้ void ไม่ได้");
     await tx.posSale.update({ where: { id: saleId }, data: { status: "VOIDED" } });
+    // outbox: void → กลับรายการบัญชี (contract 2.4)
+    await emitOutbox(tx, {
+      tenantId,
+      type: "pos.sale.voided",
+      idempotencyKey: `PosSale#${saleId}#VOIDED`,
+      payload: { saleId },
+      systemId: sale.systemId,
+      unitId,
+    });
     if (sale.memberId) {
       const pointSystemId = await systemForUnit(tenantId, unitId, "POINT", tx);
       if (pointSystemId) {
@@ -168,6 +195,9 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string)
       await member.recordSpend(tenantId, sale.memberId, -sale.grandTotalSatang, tx);
     }
   });
+
+  // best-effort หลัง commit — cron เก็บตกถ้าล้ม
+  void drainAll().catch(() => {});
 }
 
 // รายการขาย (dashboard)
