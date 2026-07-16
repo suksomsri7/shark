@@ -8,6 +8,7 @@ import { drainAll } from "@/lib/outbox-consumers";
 import { sweepPendingDeletes } from "@/lib/platform/pdpa";
 import { sweepWeeklyAnalysis } from "@/lib/ai/analyst";
 import { sweepExpiringLots } from "@/lib/modules/inventory/service";
+import { retryFailedWebhooks } from "@/lib/webhooks/service";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -41,6 +42,7 @@ export async function runDailyCron(
   tenantsPurged: number;
   weeklyReports: number;
   lotsExpiring: number;
+  webhooksRetried: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -48,6 +50,7 @@ export async function runDailyCron(
   let tenantsPurged = -1;
   let weeklyReports = -1;
   let lotsExpiring = -1;
+  let webhooksRetried = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -83,6 +86,20 @@ export async function runDailyCron(
   } catch {
     // กวาด lot ใกล้หมดอายุพัง → -1 ไปต่อ
   }
+  try {
+    // Webhooks ขาออก (WO-0062): ยิงซ้ำการส่งที่ล้ม (attempts < 5) ทุกร้าน
+    webhooksRetried = await retryFailedWebhooks();
+  } catch {
+    // retry webhook พัง → -1 ไปต่อ
+  }
 
-  return { subsExpired, proposalsExpired, outboxDrained, tenantsPurged, weeklyReports, lotsExpiring };
+  return {
+    subsExpired,
+    proposalsExpired,
+    outboxDrained,
+    tenantsPurged,
+    weeklyReports,
+    lotsExpiring,
+    webhooksRetried,
+  };
 }
