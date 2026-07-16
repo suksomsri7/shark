@@ -1,7 +1,7 @@
 {
   "id": "WO-0042",
   "title": "PDPA + Purge — export ข้อมูลร้าน · ขอลบร้าน 30 วัน · purge cron · DR runbook",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder",
   "worktree": ".claude/worktrees/",
   "neonBranch": "wo-0042",
@@ -30,7 +30,7 @@
       "text": "Fable: Tenant.deleteRequestedAt + migration (prod) + oracle 9 ข้อ (รวมกันลบข้ามร้าน)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "Builder ตามสัญญาหัว qc-pdpa.mts"
     }
   ],
@@ -38,6 +38,10 @@
     {
       "at": "2026-07-16T18:35:00Z",
       "note": "NIGHT RUN #5"
+    },
+    {
+      "at": "2026-07-16T18:45:00Z",
+      "note": "Builder 8/8+cron 4/4 · Fable รันซ้ำ · session policy conservative ถูกเจตนา · FK cap 5 รอบ self-healing (เหลือ=รอบ cron หน้า) ยอมรับได้"
     }
   ]
 }
