@@ -1,87 +1,37 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 import { createTenantAction, type OnboardingState } from "@/lib/actions/onboarding";
-import { SYSTEM_DEFS } from "@/lib/systems";
 
 const initial: OnboardingState = { status: "idle" };
-const firstAvailable = SYSTEM_DEFS.find((s) => s.status === "available")?.code ?? "BOOKING";
 
 export function OnboardingForm() {
   const [state, action, pending] = useActionState(createTenantAction, initial);
-  const [code, setCode] = useState<string>(firstAvailable);
 
   return (
     <form action={action} className="flex w-full max-w-lg flex-col gap-6">
       <div className="flex flex-col gap-2">
         <label className="text-sm text-[color:var(--color-muted)]" htmlFor="orgName">
-          ชื่อร้าน / องค์กรของคุณ
+          ชื่อร้าน / กิจการของคุณ
         </label>
         <input
           id="orgName"
           name="orgName"
           required
-          placeholder="เช่น บาร์เบอร์บ้านสวน"
-          className="rounded-lg border px-3 py-2 text-sm outline-none focus:border-[color:var(--color-ink)]"
+          autoFocus
+          placeholder="เช่น ร้านตัดผมบ้านสวน"
+          className="rounded-lg border px-3 py-3 text-base outline-none focus:border-[color:var(--color-accent)]"
         />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <span className="text-sm text-[color:var(--color-muted)]">เลือกระบบแรกของคุณ (เพิ่มได้อีกภายหลัง)</span>
-        <div className="grid grid-cols-2 gap-2">
-          {SYSTEM_DEFS.map((s) => {
-            const disabled = s.status === "coming_soon";
-            const active = code === s.code;
-            return (
-              <button
-                type="button"
-                key={s.code}
-                disabled={disabled}
-                onClick={() => !disabled && setCode(s.code)}
-                className={[
-                  "relative rounded-xl border p-3 text-left transition-colors",
-                  disabled
-                    ? "cursor-not-allowed opacity-45"
-                    : active
-                      ? "border-[color:var(--color-ink)] bg-[color:var(--color-surface-2)]"
-                      : "hover:bg-[color:var(--color-surface-2)]",
-                ].join(" ")}
-              >
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <span>{s.icon}</span>
-                  <span>{s.label}</span>
-                </div>
-                <div className="mt-0.5 text-xs text-[color:var(--color-muted)]">{s.hint}</div>
-                {disabled && (
-                  <span className="absolute right-2 top-2 rounded-full border px-1.5 py-0.5 text-[10px] text-[color:var(--color-muted)]">
-                    เร็วๆ นี้
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <input type="hidden" name="code" value={code} />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <label className="text-sm text-[color:var(--color-muted)]" htmlFor="name">
-          ชื่อระบบ
-        </label>
-        <input
-          id="name"
-          name="name"
-          required
-          placeholder="เช่น สาขาหลัก"
-          className="rounded-lg border px-3 py-2 text-sm outline-none focus:border-[color:var(--color-ink)]"
-        />
+        <p className="text-xs text-[color:var(--color-muted)]">
+          เดี๋ยว AI จะถามคุณไม่กี่ข้อ แล้วประกอบระบบให้เหมาะกับกิจการของคุณเอง — ไม่ต้องเลือกเมนูเยอะ ๆ
+        </p>
       </div>
 
       {state.status === "error" && (
         <p className="text-sm text-[color:var(--color-danger)]">{state.message}</p>
       )}
-      <button type="submit" disabled={pending} className="btn btn-primary">
-        {pending ? "กำลังสร้าง..." : "สร้างและเริ่มใช้งาน"}
+      <button type="submit" disabled={pending} className="btn btn-primary py-3">
+        {pending ? "กำลังสร้าง..." : "เริ่มต้น — คุยกับ AI ผู้ช่วย"}
       </button>
     </form>
   );

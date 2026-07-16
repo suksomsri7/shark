@@ -13,9 +13,9 @@ export default async function OnboardingPage() {
         <div className="text-sm font-semibold tracking-widest text-[color:var(--color-muted)]">
           SHARK
         </div>
-        <h1 className="text-2xl font-semibold">ตั้งค่าร้านของคุณ</h1>
+        <h1 className="text-2xl font-semibold">ยินดีต้อนรับ 👋</h1>
         <p className="text-sm text-[color:var(--color-muted)]">
-          ใช้เวลาไม่ถึงนาที — เพิ่มกิจการอื่นได้ภายหลัง
+          บอกชื่อกิจการของคุณ แล้วให้ AI ช่วยประกอบระบบให้
         </p>
       </div>
       <OnboardingForm />
