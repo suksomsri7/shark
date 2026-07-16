@@ -24,7 +24,7 @@ try {
   const pr = await import("@/lib/ai/proposals");
   const reg = tools.toolRegistry();
   const names = reg.map((t) => t.def.name);
-  chk("V2-0.1", "registry 11 ตัว + มีของใหม่ครบ 3", reg.length === 11 && ["customer_search", "sales_by_day", "member_create"].every((n) => names.includes(n)), "11+ครบ", `${reg.length}:${names.sort().join(",")}`);
+  chk("V2-0.1", "registry มีชุด v2 ครบ 3 (จำนวนรวมคุมโดย oracle รุ่นล่าสุด)", reg.length >= 11 && ["customer_search", "sales_by_day", "member_create"].every((n) => names.includes(n)), "≥11+ครบ", `${reg.length}:${names.sort().join(",")}`);
 
   const t = await prisma.tenant.create({ data: { name: "QC V2", slug: `qc-v2-${Date.now()}` } }); tid = t.id;
   const member = await sys.createSystem(tid, "MEMBER", "สมาชิก");
