@@ -27,7 +27,8 @@
     "ckpt": "tsx scripts/wo.mts ckpt",
     "wo:new": "tsx scripts/wo.mts new",
     "wo:list": "tsx scripts/wo.mts list",
-    "wo:claim": "tsx scripts/wo.mts claim"
+    "wo:claim": "tsx scripts/wo.mts claim",
+    "wo:done": "tsx scripts/wo.mts done"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

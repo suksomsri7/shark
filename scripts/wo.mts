@@ -152,6 +152,30 @@ function ckpt(note: string) {
   if (after) console.log(`👉 ต่อไป: ${after.text}`);
 }
 
+/** ปิดงาน — ยอมปิดเฉพาะเมื่อ doneWhen ผ่านครบจริง (รันสดตอนนี้ ไม่เชื่อคำบอก) */
+function done(id: string) {
+  const w = load(id);
+  const fails: string[] = [];
+  for (const d of w.doneWhen) {
+    process.stdout.write(`  … ${d.cmd}\r`);
+    const r = runCheck(d);
+    console.log(`  ${r.ok ? "✅" : "❌"} ${d.cmd} — ${r.detail}`);
+    if (!r.ok) fails.push(d.cmd);
+  }
+  const unstepped = w.steps.filter((s) => !s.done);
+  if (fails.length || unstepped.length) {
+    throw new Error(
+      `ปิด ${id} ไม่ได้ — ` +
+        (fails.length ? `doneWhen แดง ${fails.length} ข้อ` : "") +
+        (unstepped.length ? ` step ค้าง ${unstepped.length}` : ""),
+    );
+  }
+  w.status = "done";
+  w.log.push({ at: nowIso(), note: "ปิดงาน — doneWhen ผ่านครบ (รันสดยืนยัน)" });
+  save(w);
+  console.log(`\n🎉 ${w.id} ปิดแล้ว`);
+}
+
 function list() {
   const ws = all();
   if (!ws.length) return console.log("(ยังไม่มี WO)");
@@ -167,6 +191,7 @@ try {
   else if (cmd === "new") create(rest[0], rest.slice(1).join(" "));
   else if (cmd === "claim") claim(rest[0]);
   else if (cmd === "ckpt") ckpt(rest.join(" "));
+  else if (cmd === "done") done(rest[0]);
   else if (cmd === "list") list();
   else { console.error("ใช้: wo.mts resume [--check] | new <id> <title> | claim <id> | ckpt <note> | list"); process.exit(1); }
 } catch (e) {

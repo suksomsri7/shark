@@ -42,6 +42,14 @@ function walk(dir: string, filter: (p: string) => boolean, out: string[] = []): 
 }
 const rel = (p: string) => relative(ROOT, p);
 
+// อ่านรายชื่อ model จาก schema — ใช้ทั้ง F1 และ F8
+const schemaFiles = walk(join(ROOT, "prisma", "schema"), (p) => p.endsWith(".prisma"));
+const models = new Set<string>();
+for (const f of schemaFiles) {
+  for (const m of readFileSync(f, "utf8").matchAll(/^model\s+(\w+)\s*\{/gm)) models.add(m[1]);
+}
+
+
 // ═══════════════════════════════════════════════════════════════
 // F7 — ทุก path ที่อ้างใน docs ต้อง resolve ได้จริง
 //   จับ: `CORE_API.md` (ไฟล์ไม่มีอยู่จริง แต่ _CONVENTIONS อ้างเป็น event registry)
@@ -134,17 +142,62 @@ chk(
 );
 
 // ═══════════════════════════════════════════════════════════════
+// F1 — ทุก model ใน schema ต้องลงทะเบียน scope (fail-closed)
+//   จับ: ลืม register model ใหม่ → เดิม `?? "global"` = ปิด tenant isolation เงียบ ๆ
+//   ตอนนี้ scopeOf() โยนตอน runtime — F1 ทำให้แดงตั้งแต่ PR แทนที่จะไปแดงบน prod
+// ═══════════════════════════════════════════════════════════════
+console.log("\n── F1: ทุก model ลงทะเบียน scope (fail-closed) ──");
+{
+  const schemaModelNames = [...models];
+  const scopeSrc = readFileSync(join(ROOT, "src", "lib", "core", "scope.ts"), "utf8");
+  // อ่านชื่อ model ที่ลงทะเบียน จากบล็อก CORE_SCOPES/MODULE_SCOPES (key: descriptor)
+  const registered = new Set(
+    [...scopeSrc.matchAll(/^\s{2}(\w+):\s*(?:g\(|tenant|unit|sys\(|\{)/gm)].map((m) => m[1]),
+  );
+  const missing = schemaModelNames.filter((m) => !registered.has(m));
+  const extra = [...registered].filter((m) => !schemaModelNames.includes(m));
+  chk(
+    "F1.1",
+    `ทุก model (${schemaModelNames.length}) ลงทะเบียนใน scope.ts`,
+    missing.length === 0,
+    missing.length ? `${missing.length} ตัวยังไม่ลงทะเบียน → query จะโยนตอน runtime: ${missing.join(", ")}` : "ครบ",
+    "CRITICAL",
+  );
+  chk(
+    "F1.2",
+    "ไม่มี model ในทะเบียนที่ไม่มีใน schema แล้ว",
+    extra.length === 0,
+    extra.length ? `ตกค้าง: ${extra.join(", ")} — ลบออกจาก scope.ts` : "ตรง",
+    "MINOR",
+  );
+  // ⚠️ ต้องตัดคอมเมนต์ก่อนเช็ค — ไม่งั้นไป match คอมเมนต์ที่อธิบายบั๊กเก่าเอง (เจอจริง 2026-07-16)
+  const code = scopeSrc
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*") && !l.trim().startsWith("/*"))
+    .join("\n");
+  chk(
+    "F1.3",
+    'scopeOf fail-closed (ไม่มี `?? "global"` ในโค้ดจริง)',
+    !/\?\?\s*"global"/.test(code),
+    'เจอ `?? "global"` ในโค้ด = ลืม register แล้วเงียบ → ต้องโยนแทน',
+    "CRITICAL",
+  );
+  chk(
+    "F1.4",
+    "scopeOf โยนเมื่อไม่รู้จัก model",
+    /throw new Error\(/.test(code.split("export function scopeOf")[1]?.split("export ")[0] ?? ""),
+    "scopeOf ต้อง throw ไม่ใช่ return ค่า default",
+    "CRITICAL",
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // F8 — ห้าม db push drift: ทุก model ใน schema ต้องอยู่ใน migration
 //   จับ: 81/94 models ไม่มี migration (ต้นเหตุ: เชื่อผิดว่า migrate dev interactive)
 //   (ตัวเต็ม = `prisma migrate diff --from-config-datasource --to-schema --exit-code` ใน CI)
 // ═══════════════════════════════════════════════════════════════
 console.log("\n── F8: migration ครอบทุก model (กัน `db push` drift) ──");
 
-const schemaFiles = walk(join(ROOT, "prisma", "schema"), (p) => p.endsWith(".prisma"));
-const models = new Set<string>();
-for (const f of schemaFiles) {
-  for (const m of readFileSync(f, "utf8").matchAll(/^model\s+(\w+)\s*\{/gm)) models.add(m[1]);
-}
 const migSql = walk(join(ROOT, "prisma", "migrations"), (p) => p.endsWith(".sql"))
   .map((p) => readFileSync(p, "utf8"))
   .join("\n");
