@@ -27,7 +27,7 @@ try {
   const pr = await import("@/lib/ai/proposals");
   const reg = tools.toolRegistry();
   const names = reg.map((t) => t.def.name);
-  chk("GR-0.1", "registry 13 + มี growth_recommendations/open_system", reg.length === 13 && ["growth_recommendations", "open_system"].every((n) => names.includes(n)), "13+ครบ", `${reg.length}`);
+  chk("GR-0.1", "registry มีชุด growth ครบ (จำนวนรวมคุมโดย oracle รุ่นล่าสุด)", reg.length >= 13 && ["growth_recommendations", "open_system"].every((n) => names.includes(n)), "≥13+ครบ", `${reg.length}`);
 
   const t = await prisma.tenant.create({ data: { name: "QC GROW", slug: `qc-gr-${Date.now()}` } }); tid = t.id;
   const member = await sys.createSystem(tid, "MEMBER", "สมาชิก");
