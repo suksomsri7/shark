@@ -10,7 +10,7 @@
 `git worktree list` → `git -C <wt> log --oneline` + อ่าน `<wt>/ledger/wo/WO-*.json` step → ทำต่อ/merge → `git worktree remove --force` + `pnpm neon:delete wo-X` + `pnpm neon:gc`
 
 ## คำสั่งล่าสุด user (2026-07-16 ค่ำ)
-บันทึก ✓ → **deploy รอบแรก** (Vercel prod + VPS staging) → ปล่อย Builder ขนาน (Procurement/Inventory/Marketing)
+✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว** · ต่อไป: Builder ขนาน (Inventory/Procurement/Marketing)
 
 ## เสร็จแล้ว (main)
 M0 kernel guard · M1 POS→Account · M2 UI shell · M3 DNA Wizard · WO-0003 คูปอง · WO-0006 authz 8 โมดูล · **WO-0009 CRM เต็มระบบ (25/25)** · **WO-0010 สะพาน Deal→ใบเสนอราคา**

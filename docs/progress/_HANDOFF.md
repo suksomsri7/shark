@@ -1,5 +1,11 @@
 # HANDOFF — สำหรับ session ถัดไป (Opus 4.8 พัฒนาตาม blueprint)
 
+> # 🟢 DEPLOY (2026-07-16 Fable): **Vercel = auto-deploy ทุก push · VPS เลิกใช้แล้ว**
+> - **prod เดียว = https://shark.in.th (Vercel)** — ผูก GitHub, ทุก `git push origin main` = Vercel build+deploy อัตโนมัติ (READY ~5 นาที) · env ครบ (RESEND เมลจริง, APP_ENV=production) · login = OTP ทางเมล
+> - **VPS (shark.suksomsri.cloud) ถูกปิดแล้ว** (`pm2 delete shark`) — user สั่งเลิก 2026-07-16 · เอกสารเก่าที่เขียน "deploy จาก local CLI" / "VPS staging" = **ผิด/ล้าสมัย**
+> - ⚠️ **ของใหม่ทั้งหมดอยู่หลัง login** (Dashboard/DNA Wizard/CRM) — landing+login ไม่เคยแก้ → ต้อง login ถึงเห็น (เคยเข้าใจผิดว่า "ระบบเก่า")
+> - deploy gate = CI เขียว (auto ก่อน push อยู่แล้วผ่าน pre-commit + GitHub Actions 10 suite)
+>
 > # 🔴 อ่านก่อน — UPDATE 2026-07-15 (Opus 4.8) — override ทุกอย่างในไฟล์นี้ที่ขัดกัน
 >
 > **แผนใหม่ที่เจ้าของอนุมัติแล้ว = ทิศทางหลักของโปรเจกต์ตั้งแต่นี้ไป:**
