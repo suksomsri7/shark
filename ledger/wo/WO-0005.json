@@ -1,7 +1,7 @@
 {
   "id": "WO-0005",
   "title": "M3: DNA Wizard — สัมภาษณ์ → blueprint → ประกอบระบบ",
-  "status": "queued",
+  "status": "done",
   "branch": "wo/0005",
   "worktree": "/root/wt/0005",
   "neonBranch": "wo-0005",
@@ -66,7 +66,7 @@
       "text": "wire onboarding: สร้าง tenant เสร็จ → พาเข้า /app/dna (additive — flow เดิมยังใช้ได้)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "oracle qc-dna.mts เขียวครบ (รวม APPLY-*) + gates"
     }
   ],
@@ -94,6 +94,14 @@
     {
       "at": "2026-07-16T02:43:01Z",
       "note": "wire onboarding redirect /app → /app/dna (additive)"
+    },
+    {
+      "at": "2026-07-16T02:51:09Z",
+      "note": "oracle 22/22 หลัง Fable แก้ชื่อใน harness — รันสดยืนยันแล้ว"
+    },
+    {
+      "at": "2026-07-16T02:51:28Z",
+      "note": "ปิดงาน — doneWhen ผ่านครบ (รันสดยืนยัน)"
     }
   ]
 }
