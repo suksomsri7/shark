@@ -1,0 +1,88 @@
+{
+  "id": "WO-0002",
+  "title": "M1: POS\u2192Account \u2014 \u0e22\u0e2d\u0e14\u0e02\u0e32\u0e22\u0e08\u0e23\u0e34\u0e07\u0e40\u0e02\u0e49\u0e32\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e04\u0e23\u0e31\u0e49\u0e07\u0e41\u0e23\u0e01 (outbox + facade + wire)",
+  "status": "queued",
+  "branch": "wo/0002",
+  "worktree": "/root/wt/0002",
+  "neonBranch": "wo-0002",
+  "files": [
+    "prisma/schema/outbox.prisma",
+    "src/lib/core/outbox.ts",
+    "src/lib/modules/account/index.ts",
+    "src/lib/modules/pos/service.ts",
+    "scripts/qc-pos-account.mts",
+    "src/app/api/cron/outbox/route.ts"
+  ],
+  "closesFindings": [
+    "POS \u0e44\u0e21\u0e48\u0e40\u0e04\u0e22\u0e40\u0e23\u0e35\u0e22\u0e01 Account (contract 2.4 \u0e44\u0e21\u0e48\u0e21\u0e35\u0e08\u0e23\u0e34\u0e07)",
+    "outbox \u0e17\u0e35\u0e48\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23\u0e2d\u0e49\u0e32\u0e07\u0e44\u0e21\u0e48\u0e40\u0e04\u0e22\u0e16\u0e39\u0e01\u0e2a\u0e23\u0e49\u0e32\u0e07",
+    "CRON_SECRET \u0e1b\u0e23\u0e30\u0e01\u0e32\u0e28\u0e41\u0e15\u0e48\u0e44\u0e21\u0e48\u0e21\u0e35\u0e43\u0e04\u0e23\u0e43\u0e0a\u0e49",
+    "AccountSystemLink \u0e21\u0e35 schema \u0e44\u0e21\u0e48\u0e21\u0e35\u0e42\u0e04\u0e49\u0e14"
+  ],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "test -f scripts/qc-pos-account.mts && echo HAS_ORACLE",
+      "expect": "HAS_ORACLE"
+    },
+    {
+      "cmd": "grep -rq 'postSale' src/lib/modules/pos/ && echo POS_CALLS_ACCOUNT",
+      "expect": "POS_CALLS_ACCOUNT"
+    },
+    {
+      "cmd": "pnpm exec tsx scripts/qc-pos-account.mts",
+      "expect": "FINDINGS: CRITICAL 0"
+    },
+    {
+      "cmd": "pnpm qc:account",
+      "expect": "\u0e1c\u0e48\u0e32\u0e19 107/107"
+    },
+    {
+      "cmd": "pnpm fitness",
+      "expect": "FINDINGS: CRITICAL 0 \u00b7 MAJOR 0"
+    },
+    {
+      "cmd": "pnpm typecheck"
+    }
+  ],
+  "steps": [
+    {
+      "done": false,
+      "text": "Auditor \u0e40\u0e02\u0e35\u0e22\u0e19 qc-pos-account.mts \u0e43\u0e2b\u0e49\u0e41\u0e14\u0e07\u0e01\u0e48\u0e2d\u0e19 (fail-before): \u0e02\u0e32\u0e22 POS \u0e41\u0e25\u0e49\u0e27\u0e44\u0e21\u0e48\u0e21\u0e35 journal entry"
+    },
+    {
+      "done": false,
+      "text": "schema OutboxEvent + migration (--create-only + deploy)"
+    },
+    {
+      "done": false,
+      "text": "kernel outbox.ts: emit (\u0e43\u0e19 tx \u0e40\u0e14\u0e35\u0e22\u0e27\u0e01\u0e31\u0e1a\u0e07\u0e32\u0e19\u0e2b\u0e25\u0e31\u0e01) + drain + consumer registry \u0e41\u0e1a\u0e1a\u0e1b\u0e34\u0e14"
+    },
+    {
+      "done": false,
+      "text": "account/index.ts facade: postSale/postVoid \u0e1c\u0e48\u0e32\u0e19 gl.ts semantic keys (Dr \u0e40\u0e07\u0e34\u0e19 / Cr 4000 / Cr 2200) \u2014 \u0e2b\u0e49\u0e32\u0e21\u0e42\u0e21\u0e14\u0e39\u0e25\u0e2d\u0e37\u0e48\u0e19\u0e23\u0e39\u0e49\u0e40\u0e25\u0e02\u0e1a\u0e31\u0e0d\u0e0a\u0e35"
+    },
+    {
+      "done": false,
+      "text": "service \u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21 AccountSystemLink (POS\u2194Account opt-in \u2014 \u0e44\u0e21\u0e48\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21 = \u0e44\u0e21\u0e48 post \u0e15\u0e32\u0e21\u0e2b\u0e25\u0e31\u0e01 standalone)"
+    },
+    {
+      "done": false,
+      "text": "wire pos createSale\u2192emit pos.sale.paid \u00b7 voidSale\u2192emit pos.sale.voided \u2192 reverseFor"
+    },
+    {
+      "done": false,
+      "text": "cron /api/cron/outbox (X-Cron-Secret) \u2014 \u0e1c\u0e39\u0e49\u0e43\u0e0a\u0e49 CRON_SECRET \u0e23\u0e32\u0e22\u0e41\u0e23\u0e01"
+    },
+    {
+      "done": false,
+      "text": "qc-pos-account.mts \u0e40\u0e02\u0e35\u0e22\u0e27\u0e04\u0e23\u0e1a: balanced/idempotent replay/void reversal/unlinked \u0e44\u0e21\u0e48 post"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T00:52:24Z",
+      "note": "\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19"
+    }
+  ]
+}

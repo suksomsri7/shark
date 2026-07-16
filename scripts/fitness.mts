@@ -115,6 +115,10 @@ for (const doc of docFiles) {
     const isPathy = ref.includes("/");
     const isDoc = ref.endsWith(".md");
     if (!isPathy && !isDoc) continue; // เช่น `service.ts` เดี่ยวๆ = กำกวมเกินตัดสิน
+    // path สัมบูรณ์ (/root/..., /tmp/...) = อยู่นอก repo ตรวจบน CI ไม่ได้ (เครื่องอื่นไม่มี)
+    // — เจอจริง run #3: docs อ้าง /tmp/qc-*.mts ซึ่งกู้เข้า scripts/ แล้ว · ที่เหลือ (plan file
+    // ใน /root/.claude) เป็น machine-local โดยเจตนา → ข้าม ไม่ใช่ผ่าน (ระวังอย่าอ้าง /tmp เพิ่ม)
+    if (ref.startsWith("/")) continue;
     refCount++;
     if (!resolves(doc, ref)) misses.push({ doc: rel(doc), ref });
   }

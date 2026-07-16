@@ -1,0 +1,66 @@
+{
+  "id": "WO-0004",
+  "title": "M2: UI Shell v2 \u2014 topbar fixed + Dashboard + AI dock + accent \u0e19\u0e49\u0e33\u0e40\u0e07\u0e34\u0e19",
+  "status": "queued",
+  "branch": "wo/0004",
+  "worktree": "/root/wt/0004",
+  "neonBranch": null,
+  "files": [
+    "src/app/app/layout.tsx",
+    "src/app/app/page.tsx",
+    "src/app/globals.css",
+    "src/components/app-shell/**",
+    "docs/UI_STANDARD.md"
+  ],
+  "closesFindings": [],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "grep -q 'color-accent' src/app/globals.css && echo HAS_ACCENT",
+      "expect": "HAS_ACCENT"
+    },
+    {
+      "cmd": "grep -rEn 'bg-(blue|emerald|amber|green)-[0-9]' src/ | grep -v node_modules | wc -l | grep -qx 0 && echo NO_RAW_COLOR",
+      "expect": "NO_RAW_COLOR"
+    },
+    {
+      "cmd": "pnpm typecheck"
+    },
+    {
+      "cmd": "pnpm fitness",
+      "expect": "FINDINGS: CRITICAL 0 \u00b7 MAJOR 0"
+    }
+  ],
+  "steps": [
+    {
+      "done": false,
+      "text": "\u0e40\u0e1e\u0e34\u0e48\u0e21 --color-accent (blue) \u0e40\u0e1b\u0e47\u0e19 token \u0e08\u0e23\u0e34\u0e07\u0e43\u0e19 @theme + \u0e2d\u0e31\u0e1b\u0e40\u0e14\u0e15 UI_STANDARD \u00a70 + grep gate"
+    },
+    {
+      "done": false,
+      "text": "Topbar fixed: hamburger + \u0e0a\u0e37\u0e48\u0e2d\u0e01\u0e34\u0e08\u0e01\u0e32\u0e23\u0e0b\u0e49\u0e32\u0e22\u0e1a\u0e19 \u00b7 \u0e44\u0e21\u0e48\u0e21\u0e35\u0e40\u0e2a\u0e49\u0e19\u0e43\u0e15\u0e49 \u00b7 help icon \u0e02\u0e27\u0e32\u0e1a\u0e19"
+    },
+    {
+      "done": false,
+      "text": "AI dock \u0e27\u0e07\u0e01\u0e25\u0e21\u0e0b\u0e49\u0e32\u0e22\u0e25\u0e48\u0e32\u0e07 (placeholder \u0e40\u0e1b\u0e34\u0e14 sheet '\u0e40\u0e23\u0e47\u0e27 \u0e46 \u0e19\u0e35\u0e49')"
+    },
+    {
+      "done": false,
+      "text": "\u0e2b\u0e19\u0e49\u0e32\u0e41\u0e23\u0e01 /app = Dashboard \u0e02\u0e2d\u0e07\u0e01\u0e34\u0e08\u0e01\u0e32\u0e23 (\u0e01\u0e32\u0e23\u0e4c\u0e14\u0e23\u0e30\u0e1a\u0e1a\u0e17\u0e35\u0e48\u0e40\u0e1b\u0e34\u0e14 + \u0e15\u0e31\u0e27\u0e40\u0e25\u0e02\u0e27\u0e31\u0e19\u0e19\u0e35\u0e49) \u0e41\u0e17\u0e19 list \u0e23\u0e30\u0e1a\u0e1a"
+    },
+    {
+      "done": false,
+      "text": "responsive \u0e21\u0e37\u0e2d\u0e16\u0e37\u0e2d/\u0e41\u0e17\u0e47\u0e1a\u0e40\u0e25\u0e47\u0e15 + webview-ready (\u0e44\u0e21\u0e48\u0e21\u0e35 fixed overflow, touch \u226544px)"
+    },
+    {
+      "done": false,
+      "text": "typecheck + build + grep gate \u0e1c\u0e48\u0e32\u0e19"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T00:52:24Z",
+      "note": "\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19"
+    }
+  ]
+}

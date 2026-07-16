@@ -2,7 +2,7 @@
 
 > ตรวจ 4 ทีม (อ่าน code จริง + รัน harness กับ Neon): เช็ครับ/จ่าย · ใบกำกับ ม.86/4+CSV ภงด · ลิงก์สาธารณะ+attachment+settings · Chat
 > **regression เดิม `qc-account-cpa.mts` = 107/107 ผ่าน** (Fable รันเอง) — ของใหม่ต่อไปนี้อยู่**นอก** 107 ข้อ ต้องเพิ่ม test แล้วปิดให้หมด
-> harness ที่ agent ทิ้งไว้ (รันซ้ำได้ ลบ tenant เอง): `/tmp/qc-cheque-audit.mts` · `/tmp/qc-tax-print-audit.mts`
+> harness ที่ agent ทิ้งไว้ (รันซ้ำได้ ลบ tenant เอง): `scripts/qc-cheque-audit.mts` · `scripts/qc-tax-print-audit.mts`
 
 ## ต้นตอร่วม (แก้ราก 5 จุด ปิด CRITICAL เกือบหมด)
 

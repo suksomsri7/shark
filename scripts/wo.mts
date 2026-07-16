@@ -139,10 +139,10 @@ function claim(id: string) {
 }
 
 /** ติ๊ก step ถัดไป + บันทึก log — เรียกทุก ~20 นาที หรือทุก step ที่จบ (agent ตายเสีย ≤1 step) */
-function ckpt(note: string) {
+function ckpt(note: string, id?: string) {
   const active = all().filter((w) => ACTIVE.includes(w.status));
-  if (active.length !== 1) throw new Error(`มีงาน active ${active.length} ตัว — ระบุไม่ได้ว่าจะ ckpt อันไหน (ต้องมี 1)`);
-  const w = active[0];
+  const w = id ? load(id) : active.length === 1 ? active[0] : null;
+  if (!w) throw new Error(`มีงาน active ${active.length} ตัว — ระบุ id: pnpm ckpt WO-xxxx "note"`);
   const next = w.steps.find((s) => !s.done);
   if (next) next.done = true;
   w.log.push({ at: nowIso(), note });
@@ -190,7 +190,11 @@ try {
   if (cmd === "resume") resume({ check: rest.includes("--check") });
   else if (cmd === "new") create(rest[0], rest.slice(1).join(" "));
   else if (cmd === "claim") claim(rest[0]);
-  else if (cmd === "ckpt") ckpt(rest.join(" "));
+  else if (cmd === "ckpt") {
+    const [maybeId, ...noteParts] = rest;
+    if (/^WO-/.test(maybeId)) ckpt(noteParts.join(" "), maybeId);
+    else ckpt(rest.join(" "));
+  }
   else if (cmd === "done") done(rest[0]);
   else if (cmd === "list") list();
   else { console.error("ใช้: wo.mts resume [--check] | new <id> <title> | claim <id> | ckpt <note> | list"); process.exit(1); }
