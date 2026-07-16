@@ -61,5 +61,6 @@ export async function createTenantAction(
   });
 
   await setActiveTenant(tenant.id);
-  redirect("/app");
+  // หลังสร้างกิจการ → พาเข้าบทสัมภาษณ์ DNA ก่อน (ข้ามไปหน้าหลักได้จากในหน้า wizard)
+  redirect("/app/dna");
 }
