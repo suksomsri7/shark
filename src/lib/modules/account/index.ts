@@ -113,3 +113,14 @@ export async function createExternalQuotation(input: {
 
 // Payroll posting (WO-0036) — จุดเดียวที่ hr เรียกลงบัญชีเงินเดือน
 export { postPayrollJV, type PayrollPostingInput } from "./gl";
+
+// รายงานอายุหนี้ (WO-0039) — ลูกหนี้/เจ้าหนี้ค้างชำระ (UI/รายงานเรียกผ่าน facade)
+export {
+  agingReport,
+  type AgingReport,
+  type AgingRow,
+  type AgingGrand,
+} from "./reports";
+
+// ปิดงวดบัญชีอัตโนมัติ (WO-0039) — cron ระดับแพลตฟอร์มเรียก
+export { sweepAutoClosePeriods } from "./period-sweep";

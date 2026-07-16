@@ -9,6 +9,7 @@ import { sweepPendingDeletes } from "@/lib/platform/pdpa";
 import { sweepWeeklyAnalysis } from "@/lib/ai/analyst";
 import { sweepExpiringLots } from "@/lib/modules/inventory/service";
 import { retryFailedWebhooks } from "@/lib/webhooks/service";
+import { sweepAutoClosePeriods } from "@/lib/modules/account/period-sweep";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -43,6 +44,7 @@ export async function runDailyCron(
   weeklyReports: number;
   lotsExpiring: number;
   webhooksRetried: number;
+  periodsClosed: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -51,6 +53,7 @@ export async function runDailyCron(
   let weeklyReports = -1;
   let lotsExpiring = -1;
   let webhooksRetried = -1;
+  let periodsClosed = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -92,6 +95,12 @@ export async function runDailyCron(
   } catch {
     // retry webhook พัง → -1 ไปต่อ
   }
+  try {
+    // ปิดงวดบัญชีอัตโนมัติ (WO-0039): ปิดงวดเดือนก่อนหน้าทุกร้าน ACCOUNT ที่ Gate C ผ่าน
+    periodsClosed = await sweepAutoClosePeriods(now);
+  } catch {
+    // ปิดงวดอัตโนมัติพัง → -1 ไปต่อ
+  }
 
   return {
     subsExpired,
@@ -101,5 +110,6 @@ export async function runDailyCron(
     weeklyReports,
     lotsExpiring,
     webhooksRetried,
+    periodsClosed,
   };
 }
