@@ -1,6 +1,6 @@
 import type { SystemType, UnitType } from "@prisma/client";
 
-// ทะเบียน "ระบบ" ทั้ง 19 — ทุกอย่างคือระบบ เท่าเทียมกัน สร้างได้หลายชุด เชื่อมถึงกันได้
+// ทะเบียน "ระบบ" ทั้ง 20 — ทุกอย่างคือระบบ เท่าเทียมกัน สร้างได้หลายชุด เชื่อมถึงกันได้
 // ⚠️ จำนวนใน comment นี้ถูกตรวจโดย scripts/fitness.mts (F9.2) — แก้ SYSTEM_DEFS แล้วต้องแก้ที่นี่ด้วย
 // kind "business" = ระบบที่มีหน้างาน/ลูกค้า (เก็บเป็น BusinessUnit — มี slug/storefront)
 // kind "feature"  = ระบบข้อมูล/บริการ (เก็บเป็น AppSystem — เชื่อมเข้าระบบ business ได้)
@@ -20,6 +20,7 @@ export type SystemDef = {
 export const SYSTEM_DEFS: SystemDef[] = [
   { code: "HOTEL", no: 1, kind: "business", label: "โรงแรม", hint: "ห้องพัก จอง เช็คอิน", icon: "🏨", status: "available" },
   { code: "RESTAURANT", no: 2, kind: "business", label: "ร้านอาหาร", hint: "เมนู โต๊ะ ครัว", icon: "🍜", status: "available" },
+  { code: "SHOP", no: 21, kind: "business", label: "ร้านค้าออนไลน์", hint: "catalog ตะกร้า จ่าย PromptPay", icon: "🛍️", status: "available" },
   { code: "BOOKING", no: 3, kind: "business", label: "จองคิว / นัดหมาย", hint: "นัดหมายตามเวลา นวด สปา คลินิก ทำเล็บ", icon: "📅", status: "available" },
   { code: "QUEUE", no: 4, kind: "business", label: "บัตรคิว (Q)", hint: "ออกบัตร เรียกคิว", icon: "🎫", status: "available" },
   { code: "TICKET", no: 5, kind: "business", label: "ตั๋ว / อีเวนต์", hint: "ขายตั๋ว เช็คอิน", icon: "🎟️", status: "available" },
