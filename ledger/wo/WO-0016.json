@@ -1,7 +1,7 @@
 {
   "id": "WO-0016",
   "title": "M4 — DNA สัมภาษณ์แบบพิมพ์อิสระ (LLM สกัด DnaFacts · compile เดิม deterministic)",
-  "status": "queued",
+  "status": "done",
   "blockedBy": null,
   "branch": "main",
   "worktree": null,
@@ -27,15 +27,15 @@
   ],
   "steps": [
     {
-      "done": false,
+      "done": true,
       "text": "interview.ts: LLM ถามต่อจนข้อมูลพอ → สกัด DnaFacts (ZDnaFacts.parse ที่ boundary)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "dna-wizard: โหมดพิมพ์อิสระสลับกับคำถามตายตัวได้ (fallback เสมอ)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "oracle: Mock script บทสนทนาร้านตัดผม 3 สาขา → facts ครบ → compile ได้ blueprint เดิมเป๊ะ"
     }
   ],
@@ -47,6 +47,10 @@
     {
       "at": "2026-07-16T08:55:00Z",
       "note": "ปลดบล็อก — user ให้ OpenRouter key แล้ว (SHARK_AI_KEY ใน .env + Vercel)"
+    },
+    {
+      "at": "2026-07-16T10:05:00Z",
+      "note": "Builder A เสร็จ oracle 9/9 · Fable ตรวจรับ+แก้ probe (ไม่ยิง LLM ตอน mount) · smoke LLM จริง 3 เทิร์น→FACTS_JSON ครบ 13 field ถูกหมด · merge"
     }
   ]
 }

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { DnaFacts } from "@/lib/dna/schema";
 import { QUESTIONS, nextQuestion } from "@/lib/dna/questions";
-import { answerQuestion, interviewTurnAction } from "@/lib/dna/actions";
+import { answerQuestion, interviewEnabledAction, interviewTurnAction } from "@/lib/dna/actions";
 import type { InterviewTurn } from "@/lib/ai/interview";
 
 // บทสัมภาษณ์ DNA — 2 โหมด สลับได้ตลอด:
