@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import {
   sendReply,
   setStatus,
@@ -15,6 +16,20 @@ import {
 } from "./service";
 
 // ทุก action: requireTenant + revalidate หน้า chat ของระบบนั้น
+
+// ตรวจสิทธิ์โมดูล (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
+// หมายเหตุ: scope conversation ระดับ unit ยังบังคับผ่าน unitAccess ใน service (คงเดิม)
+function assertChatCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "chat", action },
+  );
+}
+
 function chatPath(systemId: string, conversationId?: string) {
   return conversationId
     ? `/app/sys/${systemId}/chat?c=${conversationId}`
@@ -29,6 +44,7 @@ function revalidateChat(systemId: string) {
 // ── ส่งข้อความ / โน้ตภายใน ──
 export async function sendReplyAction(formData: FormData) {
   const auth = await requireTenant();
+  assertChatCan(auth, "chat.message.send");
   const systemId = String(formData.get("systemId") ?? "");
   const conversationId = String(formData.get("conversationId") ?? "");
   const body = String(formData.get("body") ?? "");
@@ -59,6 +75,7 @@ export async function sendReplyAction(formData: FormData) {
 // ── เปลี่ยนสถานะ (ปิด=RESOLVED / พัก=PENDING / เปิด=OPEN) ──
 export async function setStatusAction(formData: FormData) {
   const auth = await requireTenant();
+  assertChatCan(auth, "chat.conversation.setStatus");
   const systemId = String(formData.get("systemId") ?? "");
   const conversationId = String(formData.get("conversationId") ?? "");
   const status = String(formData.get("status") ?? "") as "OPEN" | "PENDING" | "RESOLVED";
@@ -79,6 +96,7 @@ export async function setStatusAction(formData: FormData) {
 // ── มอบหมาย (รับเอง / ปล่อยว่าง / เลือกคน) ──
 export async function assignAction(formData: FormData) {
   const auth = await requireTenant();
+  assertChatCan(auth, "chat.conversation.assign");
   const systemId = String(formData.get("systemId") ?? "");
   const conversationId = String(formData.get("conversationId") ?? "");
   const raw = String(formData.get("assigneeUserId") ?? "");
@@ -100,6 +118,7 @@ export async function assignAction(formData: FormData) {
 // ── ทำเป็นอ่านแล้ว ──
 export async function markReadAction(formData: FormData) {
   const auth = await requireTenant();
+  assertChatCan(auth, "chat.conversation.markRead");
   const systemId = String(formData.get("systemId") ?? "");
   const conversationId = String(formData.get("conversationId") ?? "");
   if (systemId && conversationId) {
@@ -118,6 +137,7 @@ export async function markReadAction(formData: FormData) {
 // ── ผูกลูกค้าเข้าสมาชิก (จากเบอร์) / ถอด ──
 export async function linkCustomerAction(formData: FormData) {
   const auth = await requireTenant();
+  assertChatCan(auth, "chat.customer.link");
   const systemId = String(formData.get("systemId") ?? "");
   const conversationId = String(formData.get("conversationId") ?? "");
   const contactId = String(formData.get("contactId") ?? "");
@@ -140,6 +160,7 @@ export async function linkCustomerAction(formData: FormData) {
 // ── เชื่อม LINE OA (BYOK) ──
 export async function connectLineAction(formData: FormData) {
   const auth = await requireTenant();
+  assertChatCan(auth, "chat.connection.create");
   const systemId = String(formData.get("systemId") ?? "");
   const displayName = String(formData.get("displayName") ?? "");
   const channelAccessToken = String(formData.get("channelAccessToken") ?? "");
@@ -160,6 +181,7 @@ export async function connectLineAction(formData: FormData) {
 // ── ถอด/ปิดช่องทาง ──
 export async function disableConnectionAction(formData: FormData) {
   const auth = await requireTenant();
+  assertChatCan(auth, "chat.connection.disable");
   const systemId = String(formData.get("systemId") ?? "");
   const connectionId = String(formData.get("connectionId") ?? "");
   if (systemId && connectionId) {
@@ -172,6 +194,7 @@ export async function disableConnectionAction(formData: FormData) {
 // ── เชื่อมระบบสมาชิก (opt-in) ──
 export async function setMemberSystemAction(formData: FormData) {
   const auth = await requireTenant();
+  assertChatCan(auth, "chat.setting.setMemberSystem");
   const systemId = String(formData.get("systemId") ?? "");
   const memberSystemId = String(formData.get("memberSystemId") ?? "").trim() || null;
   if (systemId) {

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { AppointmentStatus } from "@prisma/client";
 import { requireUnit } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import { tenantDb } from "@/lib/core/db";
 import * as member from "@/lib/modules/member/service";
 import * as pos from "@/lib/modules/pos/service";
@@ -16,6 +17,20 @@ const DEFAULT_HOURS = Array.from({ length: 7 }, (_, weekday) => ({
   endMin: 1200,
 }));
 
+type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
+
+// ตรวจสิทธิ์ระดับหน่วย (OWNER/MANAGER ผ่าน · STAFF ตาม permission)
+function assertBookingCan(auth: UnitAuth, unitId: string, action: string) {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "booking", action, unitId },
+  );
+}
+
 const serviceSchema = z.object({
   name: z.string().trim().min(1).max(80),
   durationMin: z.coerce.number().int().min(5).max(600),
@@ -24,6 +39,7 @@ const serviceSchema = z.object({
 
 export async function addServiceAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingCan(auth, unit.id, "booking.service.create");
   const p = serviceSchema.safeParse({
     name: formData.get("name"),
     durationMin: formData.get("durationMin"),
@@ -45,6 +61,7 @@ export async function addServiceAction(unitSlug: string, formData: FormData) {
 
 export async function removeServiceAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingCan(auth, unit.id, "booking.service.delete");
   const id = String(formData.get("id") ?? "");
   const db = tenantDb({ tenantId: auth.active.tenantId, unitId: unit.id });
   await db.bookingService.update({ where: { id }, data: { active: false } });
@@ -53,6 +70,7 @@ export async function removeServiceAction(unitSlug: string, formData: FormData) 
 
 export async function addStaffAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingCan(auth, unit.id, "booking.staff.create");
   const name = String(formData.get("name") ?? "").trim();
   if (name.length < 1) return;
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
@@ -66,6 +84,7 @@ export async function addStaffAction(unitSlug: string, formData: FormData) {
 
 export async function removeStaffAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingCan(auth, unit.id, "booking.staff.delete");
   const id = String(formData.get("id") ?? "");
   const db = tenantDb({ tenantId: auth.active.tenantId, unitId: unit.id });
   await db.bookingStaff.update({ where: { id }, data: { active: false } });
@@ -74,6 +93,7 @@ export async function removeStaffAction(unitSlug: string, formData: FormData) {
 
 export async function setStatusAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingCan(auth, unit.id, "booking.appointment.setStatus");
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
   const parsed = z.nativeEnum(AppointmentStatus).safeParse(status);

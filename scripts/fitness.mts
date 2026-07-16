@@ -291,14 +291,19 @@ chk(
 // ═══════════════════════════════════════════════════════════════
 console.log("\n── F6: authz coverage (ratchet — ห้ามเพิ่มไฟล์ไร้การตรวจสิทธิ์) ──");
 {
-  const AUTHZ_BASELINE = new Set([
-    // วัดจริง 2026-07-16 — WO-0006 ไล่ปิดให้เหลือ 0
-    "src/lib/modules/hotel/actions.ts", "src/lib/modules/queue/actions.ts",
-    "src/lib/modules/ticket/actions.ts", "src/lib/modules/kanban/actions.ts",
-    "src/lib/modules/meeting/actions.ts", "src/lib/modules/chat/actions.ts",
-    "src/lib/modules/coupon/actions.ts",
-    "src/lib/actions/booking.ts", "src/lib/actions/restaurant.ts", "src/lib/actions/systems.ts",
-  ]);
+  const AUTHZ_BASELINE = new Set<string>([]);
+  // WO-0006 — หนี้ authz ปิดครบ 10/10 ไฟล์ → baseline ว่างถาวร (ratchet)
+  // ทุก mutating server action เรียก assertCan ก่อนลงมือแล้ว ด้วย convention <module>.<entity>.<verb>
+  // โมดูลระดับหน่วย (ส่ง unitId เข้า query):
+  //   • hotel — reservation.create/checkIn/checkOut/cancel · room/roomType create/delete/setStatus
+  //   • queue — type/counter/display · ticket issue/callNext/serve/done/cancel/transfer
+  //   • ticket — event/type/order · checkin.scan
+  //   • จอง — service/staff · appointment.setStatus
+  //   • ร้านอาหาร — setting/station/category/item/zone/table/session/order/kds/checkout
+  // โมดูลระดับระบบ (module+action · systemId scope รอ kernel Phase ถัดไป):
+  //   • kanban · meeting · chat · coupon
+  // ระดับร้าน (tenant admin): ทะเบียนระบบ — system/link/reward
+  // ↓ รายการไฟล์ action ที่ตรวจจริง (fail-closed) — ห้ามแตะตรรกะ chk ด้านล่าง
   const actionFiles = [
     ...walk(join(ROOT, "src", "lib", "modules"), (p) => p.endsWith("actions.ts")),
     ...walk(join(ROOT, "src", "lib", "actions"), (p) => p.endsWith(".ts")),

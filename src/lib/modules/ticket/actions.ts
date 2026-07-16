@@ -3,7 +3,22 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import * as ticket from "./service";
+
+type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
+
+// ตรวจสิทธิ์ระดับหน่วย (OWNER/MANAGER ผ่าน · STAFF ตาม permission)
+function assertTicketCan(auth: UnitAuth, unitId: string, action: string) {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "ticket", action, unitId },
+  );
+}
 
 // แปลง "YYYY-MM-DDTHH:mm" (เวลาไทย จาก <input type=datetime-local>) → UTC Date
 function bkkLocalToUtc(v: string): Date | null {
@@ -13,8 +28,9 @@ function bkkLocalToUtc(v: string): Date | null {
   return new Date(Date.UTC(+y, +mo - 1, +d, +h - 7, +mi));
 }
 
-async function ctxOf(unitSlug: string) {
+async function ctxOf(unitSlug: string, action: string) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertTicketCan(auth, unit.id, action);
   return { tenantId: auth.active.tenantId, unitId: unit.id };
 }
 
@@ -29,7 +45,7 @@ const eventSchema = z.object({
 });
 
 export async function createEventAction(unitSlug: string, formData: FormData) {
-  const ctx = await ctxOf(unitSlug);
+  const ctx = await ctxOf(unitSlug, "ticket.event.create");
   const p = eventSchema.safeParse({
     name: formData.get("name"),
     venue: formData.get("venue") ?? undefined,
@@ -53,7 +69,7 @@ export async function createEventAction(unitSlug: string, formData: FormData) {
 }
 
 export async function setEventStatusAction(unitSlug: string, formData: FormData) {
-  const ctx = await ctxOf(unitSlug);
+  const ctx = await ctxOf(unitSlug, "ticket.event.setStatus");
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
   const parsed = z.enum(["DRAFT", "PUBLISHED", "ENDED", "CANCELLED"]).safeParse(status);
@@ -64,7 +80,7 @@ export async function setEventStatusAction(unitSlug: string, formData: FormData)
 }
 
 export async function archiveEventAction(unitSlug: string, formData: FormData) {
-  const ctx = await ctxOf(unitSlug);
+  const ctx = await ctxOf(unitSlug, "ticket.event.archive");
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await ticket.archiveEvent(ctx, id);
@@ -81,7 +97,7 @@ const typeSchema = z.object({
 });
 
 export async function addTypeAction(unitSlug: string, formData: FormData) {
-  const ctx = await ctxOf(unitSlug);
+  const ctx = await ctxOf(unitSlug, "ticket.type.create");
   const p = typeSchema.safeParse({
     eventId: formData.get("eventId"),
     name: formData.get("name"),
@@ -98,7 +114,7 @@ export async function addTypeAction(unitSlug: string, formData: FormData) {
 }
 
 export async function removeTypeAction(unitSlug: string, formData: FormData) {
-  const ctx = await ctxOf(unitSlug);
+  const ctx = await ctxOf(unitSlug, "ticket.type.delete");
   const id = String(formData.get("id") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
   if (!id) return;
@@ -110,7 +126,7 @@ export async function removeTypeAction(unitSlug: string, formData: FormData) {
 
 // รับ line จำนวนตั๋วจาก field ชื่อ "qty:<ticketTypeId>"
 export async function createOrderAction(unitSlug: string, formData: FormData) {
-  const ctx = await ctxOf(unitSlug);
+  const ctx = await ctxOf(unitSlug, "ticket.order.create");
   const eventId = String(formData.get("eventId") ?? "");
   const buyerName = String(formData.get("buyerName") ?? "").trim();
   const buyerPhone = String(formData.get("buyerPhone") ?? "").trim();
@@ -138,7 +154,7 @@ export async function createOrderAction(unitSlug: string, formData: FormData) {
 }
 
 export async function markPaidAction(unitSlug: string, formData: FormData) {
-  const ctx = await ctxOf(unitSlug);
+  const ctx = await ctxOf(unitSlug, "ticket.order.markPaid");
   const id = String(formData.get("id") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
   if (!id) return;
@@ -147,7 +163,7 @@ export async function markPaidAction(unitSlug: string, formData: FormData) {
 }
 
 export async function cancelOrderAction(unitSlug: string, formData: FormData) {
-  const ctx = await ctxOf(unitSlug);
+  const ctx = await ctxOf(unitSlug, "ticket.order.cancel");
   const id = String(formData.get("id") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
   if (!id) return;
@@ -163,6 +179,7 @@ export async function checkInAction(
   formData: FormData,
 ): Promise<ticket.CheckInResult> {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertTicketCan(auth, unit.id, "ticket.checkin.scan");
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
   const code = String(formData.get("code") ?? "");
   const eventId = String(formData.get("eventId") ?? "") || undefined;

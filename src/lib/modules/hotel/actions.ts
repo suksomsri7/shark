@@ -3,11 +3,26 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import { HotelRoomStatus } from "@prisma/client";
 import * as hotel from "./service";
 
-function ctxOf(auth: Awaited<ReturnType<typeof requireUnit>>["auth"], unitId: string) {
+type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
+
+function ctxOf(auth: UnitAuth, unitId: string) {
   return { tenantId: auth.active.tenantId, unitId };
+}
+
+// ตรวจสิทธิ์ระดับหน่วย (OWNER ผ่าน · MANAGER ผ่านในหน่วยที่คุม · STAFF ต้องมี permission)
+function assertHotelCan(auth: UnitAuth, unitId: string, action: string) {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "hotel", action, unitId },
+  );
 }
 
 // ───────────────────────── Room types ─────────────────────────
@@ -20,6 +35,7 @@ const roomTypeSchema = z.object({
 
 export async function addRoomTypeAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertHotelCan(auth, unit.id, "hotel.roomType.create");
   const p = roomTypeSchema.safeParse({
     name: formData.get("name"),
     code: formData.get("code") || undefined,
@@ -39,6 +55,7 @@ export async function addRoomTypeAction(unitSlug: string, formData: FormData) {
 
 export async function removeRoomTypeAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertHotelCan(auth, unit.id, "hotel.roomType.delete");
   const id = String(formData.get("id") ?? "");
   await hotel.archiveRoomType(auth.active.tenantId, unit.id, id);
   revalidatePath(`/app/u/${unitSlug}/hotel/setup`);
@@ -53,6 +70,7 @@ const roomSchema = z.object({
 
 export async function addRoomAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertHotelCan(auth, unit.id, "hotel.room.create");
   const p = roomSchema.safeParse({
     roomTypeId: formData.get("roomTypeId"),
     number: formData.get("number"),
@@ -65,6 +83,7 @@ export async function addRoomAction(unitSlug: string, formData: FormData) {
 
 export async function removeRoomAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertHotelCan(auth, unit.id, "hotel.room.delete");
   const id = String(formData.get("id") ?? "");
   await hotel.archiveRoom(auth.active.tenantId, unit.id, id);
   revalidatePath(`/app/u/${unitSlug}/hotel/setup`);
@@ -72,6 +91,7 @@ export async function removeRoomAction(unitSlug: string, formData: FormData) {
 
 export async function setRoomStatusAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertHotelCan(auth, unit.id, "hotel.room.setStatus");
   const id = String(formData.get("id") ?? "");
   const parsed = z.nativeEnum(HotelRoomStatus).safeParse(formData.get("status"));
   if (!parsed.success) return;
@@ -106,6 +126,7 @@ export async function createReservationAction(
 ): Promise<ReservationFormState> {
   const unitSlug = String(formData.get("unitSlug") ?? "");
   const { auth, unit } = await requireUnit(unitSlug);
+  assertHotelCan(auth, unit.id, "hotel.reservation.create");
   const p = reservationSchema.safeParse({
     roomTypeId: formData.get("roomTypeId"),
     checkInDate: formData.get("checkInDate"),
@@ -131,6 +152,7 @@ export async function createReservationAction(
 
 export async function checkInAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertHotelCan(auth, unit.id, "hotel.reservation.checkIn");
   const id = String(formData.get("id") ?? "");
   const roomId = String(formData.get("roomId") ?? "");
   await hotel.checkIn(auth.active.tenantId, unit.id, id, roomId);
@@ -140,6 +162,7 @@ export async function checkInAction(unitSlug: string, formData: FormData) {
 
 export async function checkOutAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertHotelCan(auth, unit.id, "hotel.reservation.checkOut");
   const id = String(formData.get("id") ?? "");
   await hotel.checkOut(auth.active.tenantId, unit.id, id);
   revalidatePath(`/app/u/${unitSlug}/hotel`);
@@ -148,6 +171,7 @@ export async function checkOutAction(unitSlug: string, formData: FormData) {
 
 export async function cancelReservationAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertHotelCan(auth, unit.id, "hotel.reservation.cancel");
   const id = String(formData.get("id") ?? "");
   const reason = String(formData.get("reason") ?? "") || undefined;
   await hotel.cancelReservation(auth.active.tenantId, unit.id, id, reason);

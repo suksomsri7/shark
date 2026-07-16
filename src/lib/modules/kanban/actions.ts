@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import {
   archiveBoard,
   archiveCard,
@@ -16,6 +17,19 @@ import {
 } from "./service";
 
 // ทุก action: requireTenant → เอา tenantId จาก session (ไม่เชื่อ client) + scope ด้วย systemId
+
+// ตรวจสิทธิ์โมดูล (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
+// หมายเหตุ: scope ระดับ systemId รอ kernel Phase ถัดไป (ตอนนี้ตรวจ module+action)
+function assertKanbanCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "kanban", action },
+  );
+}
 
 function boardPath(systemId: string, boardId?: string) {
   return boardId ? `/app/sys/${systemId}/kanban/${boardId}` : `/app/sys/${systemId}`;
@@ -32,6 +46,7 @@ function parseDue(raw: string): Date | null {
 
 export async function createBoardAction(formData: FormData) {
   const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.create");
   const systemId = String(formData.get("systemId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || name.length < 1) return;
@@ -42,6 +57,7 @@ export async function createBoardAction(formData: FormData) {
 
 export async function renameBoardAction(formData: FormData) {
   const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.rename");
   const systemId = String(formData.get("systemId") ?? "");
   const boardId = String(formData.get("boardId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -52,6 +68,7 @@ export async function renameBoardAction(formData: FormData) {
 
 export async function archiveBoardAction(formData: FormData) {
   const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.delete");
   const systemId = String(formData.get("systemId") ?? "");
   const boardId = String(formData.get("boardId") ?? "");
   if (!systemId || !boardId) return;
@@ -64,6 +81,7 @@ export async function archiveBoardAction(formData: FormData) {
 
 export async function createColumnAction(formData: FormData) {
   const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.column.create");
   const systemId = String(formData.get("systemId") ?? "");
   const boardId = String(formData.get("boardId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -74,6 +92,7 @@ export async function createColumnAction(formData: FormData) {
 
 export async function archiveColumnAction(formData: FormData) {
   const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.column.delete");
   const systemId = String(formData.get("systemId") ?? "");
   const boardId = String(formData.get("boardId") ?? "");
   const columnId = String(formData.get("columnId") ?? "");
@@ -86,6 +105,7 @@ export async function archiveColumnAction(formData: FormData) {
 
 export async function createCardAction(formData: FormData) {
   const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.create");
   const systemId = String(formData.get("systemId") ?? "");
   const boardId = String(formData.get("boardId") ?? "");
   const columnId = String(formData.get("columnId") ?? "");
@@ -106,6 +126,7 @@ export async function createCardAction(formData: FormData) {
 
 export async function updateCardAction(formData: FormData) {
   const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
   const systemId = String(formData.get("systemId") ?? "");
   const boardId = String(formData.get("boardId") ?? "");
   const cardId = String(formData.get("cardId") ?? "");
@@ -126,6 +147,7 @@ export async function updateCardAction(formData: FormData) {
 
 export async function moveCardAction(formData: FormData) {
   const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.move");
   const systemId = String(formData.get("systemId") ?? "");
   const boardId = String(formData.get("boardId") ?? "");
   const cardId = String(formData.get("cardId") ?? "");
@@ -137,6 +159,7 @@ export async function moveCardAction(formData: FormData) {
 
 export async function archiveCardAction(formData: FormData) {
   const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.delete");
   const systemId = String(formData.get("systemId") ?? "");
   const boardId = String(formData.get("boardId") ?? "");
   const cardId = String(formData.get("cardId") ?? "");

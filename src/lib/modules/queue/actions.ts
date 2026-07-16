@@ -3,12 +3,21 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import { prisma } from "@/lib/core/db";
 import * as queue from "./service";
 
-// helper: บริบท + path หลักของระบบคิว
-async function ctxOf(unitSlug: string) {
+// helper: บริบท + path หลักของระบบคิว + ตรวจสิทธิ์ (OWNER/MANAGER ผ่าน · STAFF ตาม permission)
+async function ctxOf(unitSlug: string, action: string) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "queue", action, unitId: unit.id },
+  );
   return {
     ctx: { tenantId: auth.active.tenantId, unitId: unit.id },
     userId: auth.user.id,
@@ -29,7 +38,7 @@ const typeSchema = z.object({
 });
 
 export async function addTypeAction(unitSlug: string, formData: FormData) {
-  const { ctx, base } = await ctxOf(unitSlug);
+  const { ctx, base } = await ctxOf(unitSlug, "queue.type.create");
   const p = typeSchema.safeParse({
     name: formData.get("name"),
     prefix: formData.get("prefix"),
@@ -56,7 +65,7 @@ export async function addTypeAction(unitSlug: string, formData: FormData) {
 }
 
 export async function removeTypeAction(unitSlug: string, formData: FormData) {
-  const { ctx, base } = await ctxOf(unitSlug);
+  const { ctx, base } = await ctxOf(unitSlug, "queue.type.delete");
   const id = String(formData.get("id") ?? "");
   const t = await prisma.queueType.findFirst({ where: { ...ctx, id } });
   if (!t || t.isSystem) return;
@@ -73,7 +82,7 @@ const counterSchema = z.object({
 });
 
 export async function addCounterAction(unitSlug: string, formData: FormData) {
-  const { ctx, base } = await ctxOf(unitSlug);
+  const { ctx, base } = await ctxOf(unitSlug, "queue.counter.create");
   const p = counterSchema.safeParse({
     name: formData.get("name"),
     code: formData.get("code"),
@@ -88,7 +97,7 @@ export async function addCounterAction(unitSlug: string, formData: FormData) {
 }
 
 export async function removeCounterAction(unitSlug: string, formData: FormData) {
-  const { ctx, base } = await ctxOf(unitSlug);
+  const { ctx, base } = await ctxOf(unitSlug, "queue.counter.delete");
   const id = String(formData.get("id") ?? "");
   await prisma.queueCounter.updateMany({ where: { ...ctx, id }, data: { status: "ARCHIVED" } });
   revalidatePath(`${base}/setup`);
@@ -96,7 +105,7 @@ export async function removeCounterAction(unitSlug: string, formData: FormData) 
 
 // ตั้งประเภทที่เคาน์เตอร์รับ (checkbox list) — ไม่เลือกเลย = รับทุกประเภท
 export async function setCounterTypesAction(unitSlug: string, formData: FormData) {
-  const { ctx, base } = await ctxOf(unitSlug);
+  const { ctx, base } = await ctxOf(unitSlug, "queue.counter.setTypes");
   const counterId = String(formData.get("counterId") ?? "");
   const counter = await prisma.queueCounter.findFirst({ where: { ...ctx, id: counterId } });
   if (!counter) return;
@@ -115,7 +124,7 @@ export async function setCounterTypesAction(unitSlug: string, formData: FormData
 
 // เปิด/ปิดเคาน์เตอร์รายวัน + ประจำเคาน์เตอร์
 export async function openCounterAction(unitSlug: string, formData: FormData) {
-  const { ctx, userId, base } = await ctxOf(unitSlug);
+  const { ctx, userId, base } = await ctxOf(unitSlug, "queue.counter.open");
   const id = String(formData.get("id") ?? "");
   await prisma.queueCounter.updateMany({
     where: { ...ctx, id },
@@ -125,7 +134,7 @@ export async function openCounterAction(unitSlug: string, formData: FormData) {
 }
 
 export async function closeCounterAction(unitSlug: string, formData: FormData) {
-  const { ctx, base } = await ctxOf(unitSlug);
+  const { ctx, base } = await ctxOf(unitSlug, "queue.counter.close");
   const id = String(formData.get("id") ?? "");
   // กันบัตรลอย: ปิดไม่ได้ถ้ามี CALLED/SERVING ค้าง
   const busy = await prisma.queueTicket.count({
@@ -141,7 +150,7 @@ export async function closeCounterAction(unitSlug: string, formData: FormData) {
 
 // จอ TV
 export async function createDisplayAction(unitSlug: string, formData: FormData) {
-  const { ctx, base } = await ctxOf(unitSlug);
+  const { ctx, base } = await ctxOf(unitSlug, "queue.display.create");
   const name = String(formData.get("name") ?? "").trim();
   if (name.length < 1) return;
   const dup = await prisma.queueDisplay.findFirst({ where: { ...ctx, name, revokedAt: null } });
@@ -151,7 +160,7 @@ export async function createDisplayAction(unitSlug: string, formData: FormData) 
 }
 
 export async function revokeDisplayAction(unitSlug: string, formData: FormData) {
-  const { ctx, base } = await ctxOf(unitSlug);
+  const { ctx, base } = await ctxOf(unitSlug, "queue.display.revoke");
   const id = String(formData.get("id") ?? "");
   await prisma.queueDisplay.updateMany({ where: { ...ctx, id }, data: { revokedAt: new Date() } });
   revalidatePath(`${base}/setup`);
@@ -161,7 +170,7 @@ export async function revokeDisplayAction(unitSlug: string, formData: FormData) 
 // Ticket operations
 // ─────────────────────────────────────────────────────────────
 export async function issueTicketAction(unitSlug: string, formData: FormData) {
-  const { ctx, userId, base } = await ctxOf(unitSlug);
+  const { ctx, userId, base } = await ctxOf(unitSlug, "queue.ticket.issue");
   const typeId = String(formData.get("typeId") ?? "");
   if (!typeId) return;
   const name = String(formData.get("contactName") ?? "").trim();
@@ -178,7 +187,7 @@ export async function issueTicketAction(unitSlug: string, formData: FormData) {
 }
 
 export async function callNextAction(unitSlug: string, formData: FormData) {
-  const { ctx, userId, base } = await ctxOf(unitSlug);
+  const { ctx, userId, base } = await ctxOf(unitSlug, "queue.ticket.callNext");
   const counterId = String(formData.get("counterId") ?? "");
   await queue.callNext(ctx, counterId, userId);
   revalidatePath(base);
@@ -186,33 +195,34 @@ export async function callNextAction(unitSlug: string, formData: FormData) {
 
 async function opById(
   unitSlug: string,
+  action: string,
   formData: FormData,
   fn: (ctx: queue.Ctx, ticketId: string, userId: string) => Promise<unknown>,
 ) {
-  const { ctx, userId, base } = await ctxOf(unitSlug);
+  const { ctx, userId, base } = await ctxOf(unitSlug, action);
   const id = String(formData.get("id") ?? "");
   if (id) await fn(ctx, id, userId);
   revalidatePath(base);
 }
 
 export async function recallAction(unitSlug: string, fd: FormData) {
-  await opById(unitSlug, fd, (ctx, id, uid) => queue.recall(ctx, id, uid));
+  await opById(unitSlug, "queue.ticket.recall", fd, (ctx, id, uid) => queue.recall(ctx, id, uid));
 }
 export async function skipAction(unitSlug: string, fd: FormData) {
-  await opById(unitSlug, fd, (ctx, id, uid) => queue.skip(ctx, id, uid));
+  await opById(unitSlug, "queue.ticket.skip", fd, (ctx, id, uid) => queue.skip(ctx, id, uid));
 }
 export async function serveAction(unitSlug: string, fd: FormData) {
-  await opById(unitSlug, fd, (ctx, id, uid) => queue.serve(ctx, id, uid));
+  await opById(unitSlug, "queue.ticket.serve", fd, (ctx, id, uid) => queue.serve(ctx, id, uid));
 }
 export async function doneAction(unitSlug: string, fd: FormData) {
-  await opById(unitSlug, fd, (ctx, id, uid) => queue.markDone(ctx, id, uid));
+  await opById(unitSlug, "queue.ticket.done", fd, (ctx, id, uid) => queue.markDone(ctx, id, uid));
 }
 export async function cancelAction(unitSlug: string, fd: FormData) {
-  await opById(unitSlug, fd, (ctx, id, uid) => queue.cancel(ctx, id, "STAFF", uid));
+  await opById(unitSlug, "queue.ticket.cancel", fd, (ctx, id, uid) => queue.cancel(ctx, id, "STAFF", uid));
 }
 
 export async function recallSkippedAction(unitSlug: string, formData: FormData) {
-  const { ctx, userId, base } = await ctxOf(unitSlug);
+  const { ctx, userId, base } = await ctxOf(unitSlug, "queue.ticket.recallSkipped");
   const id = String(formData.get("id") ?? "");
   const counterId = String(formData.get("counterId") ?? "");
   if (id && counterId) await queue.recallSkipped(ctx, id, counterId, userId);
@@ -220,7 +230,7 @@ export async function recallSkippedAction(unitSlug: string, formData: FormData) 
 }
 
 export async function transferAction(unitSlug: string, formData: FormData) {
-  const { ctx, userId, base } = await ctxOf(unitSlug);
+  const { ctx, userId, base } = await ctxOf(unitSlug, "queue.ticket.transfer");
   const id = String(formData.get("id") ?? "");
   const toCounterId = String(formData.get("toCounterId") ?? "");
   if (id && toCounterId) await queue.transfer(ctx, id, { toCounterId }, userId);

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import type { MeetingChannelKind } from "@prisma/client";
 import { requireTenant } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import {
   createChannel,
   joinChannel,
@@ -16,6 +17,20 @@ import {
 } from "./service";
 
 // ทุก action: requireTenant (ดึง userId ปัจจุบัน) + revalidatePath ห้อง Meeting
+
+// ตรวจสิทธิ์โมดูล (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
+// หมายเหตุ: scope ระดับ systemId รอ kernel Phase ถัดไป (ตอนนี้ตรวจ module+action)
+function assertMeetingCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "meeting", action },
+  );
+}
+
 // path หลักของ workspace ในหน้า system
 function meetingPath(systemId: string, channelId?: string, threadParentId?: string) {
   const q = new URLSearchParams();
@@ -32,6 +47,7 @@ function revalidateMeeting(systemId: string) {
 
 export async function createChannelAction(formData: FormData) {
   const auth = await requireTenant();
+  assertMeetingCan(auth, "meeting.channel.create");
   const tenantId = auth.active.tenantId;
   const systemId = String(formData.get("systemId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -54,6 +70,7 @@ export async function createChannelAction(formData: FormData) {
 
 export async function joinChannelAction(formData: FormData) {
   const auth = await requireTenant();
+  assertMeetingCan(auth, "meeting.channel.join");
   const systemId = String(formData.get("systemId") ?? "");
   const channelId = String(formData.get("channelId") ?? "");
   if (systemId && channelId) {
@@ -65,6 +82,7 @@ export async function joinChannelAction(formData: FormData) {
 
 export async function leaveChannelAction(formData: FormData) {
   const auth = await requireTenant();
+  assertMeetingCan(auth, "meeting.channel.leave");
   const systemId = String(formData.get("systemId") ?? "");
   const channelId = String(formData.get("channelId") ?? "");
   if (systemId && channelId) await leaveChannel(systemId, channelId, auth.user.id);
@@ -74,6 +92,7 @@ export async function leaveChannelAction(formData: FormData) {
 
 export async function archiveChannelAction(formData: FormData) {
   const auth = await requireTenant();
+  assertMeetingCan(auth, "meeting.channel.delete");
   const systemId = String(formData.get("systemId") ?? "");
   const channelId = String(formData.get("channelId") ?? "");
   if (systemId && channelId) {
@@ -87,6 +106,7 @@ export async function archiveChannelAction(formData: FormData) {
 
 export async function postMessageAction(formData: FormData) {
   const auth = await requireTenant();
+  assertMeetingCan(auth, "meeting.message.post");
   const tenantId = auth.active.tenantId;
   const systemId = String(formData.get("systemId") ?? "");
   const channelId = String(formData.get("channelId") ?? "");
@@ -111,6 +131,7 @@ export async function postMessageAction(formData: FormData) {
 
 export async function editMessageAction(formData: FormData) {
   const auth = await requireTenant();
+  assertMeetingCan(auth, "meeting.message.edit");
   const systemId = String(formData.get("systemId") ?? "");
   const channelId = String(formData.get("channelId") ?? "");
   const messageId = String(formData.get("messageId") ?? "");
@@ -125,6 +146,7 @@ export async function editMessageAction(formData: FormData) {
 
 export async function deleteMessageAction(formData: FormData) {
   const auth = await requireTenant();
+  assertMeetingCan(auth, "meeting.message.delete");
   const systemId = String(formData.get("systemId") ?? "");
   const channelId = String(formData.get("channelId") ?? "");
   const messageId = String(formData.get("messageId") ?? "");

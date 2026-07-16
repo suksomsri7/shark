@@ -2,12 +2,26 @@
 
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import {
   createCoupon,
   toggleCoupon,
   validate,
   type ValidateReason,
 } from "./service";
+
+// ตรวจสิทธิ์โมดูล (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
+// หมายเหตุ: scope ระดับ systemId รอ kernel Phase ถัดไป (ตอนนี้ตรวจ module+action)
+function assertCouponCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "coupon", action },
+  );
+}
 
 const bahtToSatang = (v: FormDataEntryValue | null): number | null => {
   const s = String(v ?? "").trim();
@@ -38,6 +52,7 @@ export async function createCouponAction(
   formData: FormData,
 ): Promise<CreateState> {
   const auth = await requireTenant();
+  assertCouponCan(auth, "coupon.coupon.create");
   const tenantId = auth.active.tenantId;
   const systemId = String(formData.get("systemId") ?? "");
   if (!systemId) return { status: "error", message: "ไม่พบระบบคูปอง" };
@@ -67,6 +82,7 @@ export async function createCouponAction(
 // เปิด/ปิด คูปอง
 export async function toggleCouponAction(formData: FormData) {
   const auth = await requireTenant();
+  assertCouponCan(auth, "coupon.coupon.toggle");
   const systemId = String(formData.get("systemId") ?? "");
   const couponId = String(formData.get("couponId") ?? "");
   if (systemId && couponId) await toggleCoupon(auth.active.tenantId, systemId, couponId);
