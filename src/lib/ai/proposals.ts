@@ -14,9 +14,14 @@ import type { Prisma, SystemType } from "@prisma/client";
 import * as invSvc from "@/lib/modules/inventory/service";
 import * as hrSvc from "@/lib/modules/hr/service";
 import * as mktSvc from "@/lib/modules/marketing/service";
+import * as memberSvc from "@/lib/modules/member/service";
 import { createSystem } from "@/lib/modules/system/service";
 
-export type ProposalKind = "inventory_receive" | "hr_decide_leave" | "marketing_create_campaign";
+export type ProposalKind =
+  | "inventory_receive"
+  | "hr_decide_leave"
+  | "marketing_create_campaign"
+  | "member_create";
 
 type Ctx = { tenantId: string };
 
@@ -27,12 +32,14 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   inventory_receive: { module: "inventory", action: "inventory.movement.receive" },
   hr_decide_leave: { module: "hr", action: "hr.leave.decide" },
   marketing_create_campaign: { module: "marketing", action: "marketing.campaign.create" },
+  member_create: { module: "member", action: "member.customer.create" },
 };
 
 // ── payload ต่อ kind (server-side เท่านั้น) ──
 type ReceivePayload = { sku: string; qty: number; costSatang?: number };
 type DecideLeavePayload = { leaveId: string; decision: "APPROVED" | "REJECTED" };
 type CreateCampaignPayload = { name: string; channel: string; segment?: Record<string, unknown> };
+type MemberCreatePayload = { name: string; phone?: string; email?: string };
 
 // ── สร้างข้อเสนอ (PENDING + TTL 24 ชม.) ──
 export async function createProposal(
@@ -188,6 +195,23 @@ async function dispatch(
       },
     );
     return `สร้างแคมเปญ "${p.name}" เป็นฉบับร่างแล้ว — ตรวจแล้วกดส่งเองในระบบการตลาด`;
+  }
+
+  if (kind === "member_create") {
+    const p = payload as MemberCreatePayload;
+    const system = await resolveSystem(tenantId, "MEMBER");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบสมาชิก");
+    // สมัครสมาชิกผ่าน service เดิม (dedup by phone→email) · source STAFF = พนักงานสมัครให้
+    const c = await memberSvc.findOrCreate({
+      tenantId,
+      memberSystemId: system.id,
+      name: String(p.name ?? "").trim() || undefined,
+      phone: p.phone ? String(p.phone).trim() : undefined,
+      email: p.email ? String(p.email).trim() : undefined,
+      source: "STAFF",
+    });
+    const who = c.name ?? (String(p.name ?? "").trim() || "ลูกค้า");
+    return `สมัครสมาชิกให้ "${who}" เรียบร้อยแล้ว${c.memberCode ? ` (รหัสสมาชิก ${c.memberCode})` : ""}`;
   }
 
   throw new Error("ไม่รู้จักประเภทข้อเสนอนี้");
