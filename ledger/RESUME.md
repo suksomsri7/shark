@@ -25,6 +25,10 @@
 
 **📘 SDS ชุดเต็มพร้อมแล้ว (2026-07-17)**: `docs/sds/` — เล่มแกน 10 + เล่มโมดูล 36 (as-built 24 + future 12) + **Master Queue 39 WO (0035-0073)** ใน 10_MASTER_QUEUE.md · โหมดรันยาวอยู่เล่ม 09 · **รอเจ้าของอนุมัติ "ปล่อยยาว" — ยังไม่เริ่ม**
 
+**🚀 วิธีสั่งปล่อยยาว (เจ้าของถาม 2026-07-17)** — พิมพ์ประโยคนี้ใน session ไหนก็ได้:
+> **"อ่าน ledger/RESUME.md แล้วปล่อยยาวตาม docs/sds/10_MASTER_QUEUE.md"**
+ความหมายที่ AI ต้องทำ: เข้าโหมดรันยาวตาม docs/sds/09_OPERATIONS.md (วงจร 10 ขั้น: เช็ค Support Desk → หยิบ WO → oracle → Builder ≤2 → ตรวจซ้ำ → merge → gates pipefail → push → deploy READY → บันทึก → วน) เริ่มที่ WO-0041 ตามลำดับแนะนำท้าย 10_MASTER_QUEUE · สรุปให้เจ้าของทุก ~5 WO · หยุดเมื่อเจ้าของสั่ง "หยุด" เท่านั้น
+
 **คิวถัดไป (เรียงแนะนำ)**:
 1. หนี้บัญชีลึก (รอบสมาธิเต็ม): ลด query flow เงิน (tx timeout 30s ชั่วคราว) · DEPOSIT/ROOM_CHARGE map TRANSFER · audit booking→POS harness
 2. i18n v1.1: หน้าเมนูร้านอาหาร + จอคิว TV + error จาก action

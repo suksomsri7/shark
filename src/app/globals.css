@@ -82,44 +82,26 @@ body {
   }
 }
 
-/* ปุ่มผู้ช่วย AI — วงแหวนเรืองแสงหมุนวนตลอด (วิชันเจ้าของ: แบบ AI ring) */
-@keyframes ai-orb-spin {
-  to { transform: rotate(360deg); }
+/* ปุ่มผู้ช่วย AI — ลูกแก้วน้ำเงินเรืองแสง "หายใจ" นุ่ม ๆ (ไม่หมุน · ไม่มีพื้นดำ — วิชันเจ้าของ) */
+@keyframes ai-orb-breathe {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 10px 2px rgba(59, 130, 246, 0.45),
+      0 0 26px 6px rgba(125, 211, 252, 0.22);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow:
+      0 0 16px 5px rgba(59, 130, 246, 0.65),
+      0 0 40px 12px rgba(125, 211, 252, 0.38);
+  }
 }
-/* พื้นปุ่ม: วงกลมน้ำเงินเข้มเกือบดำ (ตาม ref เจ้าของ) */
-.ai-orb-btn {
-  background: radial-gradient(circle at 50% 42%, #131a44 0%, #0a0d24 68%, #070919 100%);
-}
-/* วงแหวนน้ำเงินเรืองแสง หมุนวนตลอด (หัว-หางจางแบบ ref) */
-.ai-orb-ring {
-  position: absolute;
-  inset: 3px;
+.ai-orb {
   border-radius: 9999px;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg,
-    rgba(37, 99, 235, 0.35) 60deg,
-    #3b82f6 140deg,
-    #7dd3fc 230deg,
-    #e0f2fe 290deg,
-    transparent 340deg
-  );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 calc(100% - 4px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 calc(100% - 4px));
-  animation: ai-orb-spin 2.4s linear infinite;
-  filter: drop-shadow(0 0 7px rgba(96, 165, 250, 0.75));
-}
-/* แสงฟุ้งรอง หมุนสวนทางช้า ๆ ให้ดูมีชีวิต */
-.ai-orb-ring2 {
-  position: absolute;
-  inset: 6px;
-  border-radius: 9999px;
-  background: conic-gradient(from 180deg, transparent 0deg, rgba(125, 211, 252, 0.5) 120deg, transparent 250deg);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
-  animation: ai-orb-spin 4.8s linear infinite reverse;
-  opacity: 0.8;
+  background: radial-gradient(circle at 32% 28%, #dbeafe 0%, #93c5fd 22%, #3b82f6 55%, #1d4ed8 85%, #1e3a8a 100%);
+  animation: ai-orb-breathe 3.2s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .ai-orb-ring, .ai-orb-ring2 { animation: none; }
+  .ai-orb { animation: none; box-shadow: 0 0 12px 3px rgba(59, 130, 246, 0.5); }
 }

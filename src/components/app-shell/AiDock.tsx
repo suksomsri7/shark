@@ -20,12 +20,8 @@ export function AiDock() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="ผู้ช่วย AI"
-        className="ai-orb-btn fixed bottom-4 right-4 z-40 h-14 w-14 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.35)] transition-transform hover:scale-105"
-      >
-        {/* วงกลมเข้ม + วงแหวนน้ำเงินเรืองแสงหมุนวนตลอด (ตาม ref เจ้าของ) */}
-        <span aria-hidden className="ai-orb-ring" />
-        <span aria-hidden className="ai-orb-ring2" />
-      </button>
+        className="ai-orb fixed bottom-4 right-4 z-40 h-14 w-14 transition-transform hover:scale-105"
+      />{/* ลูกแก้วน้ำเงินเรืองแสงหายใจ — ไม่มีพื้นดำ ไม่หมุน (feedback เจ้าของรอบ 3) */}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">

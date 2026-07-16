@@ -6,8 +6,9 @@ import { secureCookies } from "@/lib/env";
 
 // dev (http://localhost) ใช้ชื่อธรรมดา; preview/prod (HTTPS) ใช้ __Host- (Secure+Path=/+no Domain)
 const COOKIE = secureCookies ? "__Host-shark_session" : "shark_session";
-const IDLE_MS = 1000 * 60 * 60 * 8; // 8 ชม. idle
-const ABS_MS = 1000 * 60 * 60 * 24 * 30; // 30 วัน absolute
+// จำ login แบบแอปมือถือ (คำสั่งเจ้าของ 2026-07-17) — ไม่ใช้ 30 วันถึงหลุด · เพดานตาย 90 วัน
+const IDLE_MS = 1000 * 60 * 60 * 24 * 30; // 30 วัน idle (sliding — ใช้งานแล้วต่ออายุเอง)
+const ABS_MS = 1000 * 60 * 60 * 24 * 90; // 90 วัน absolute
 
 export async function createSession(
   userId: string,
