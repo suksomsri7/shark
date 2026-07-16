@@ -1,7 +1,7 @@
 {
   "id": "WO-0009",
   "title": "CRM เต็มระบบ — Lead→Customer, Pipeline, Deal, Follow-up",
-  "status": "queued",
+  "status": "done",
   "branch": "wo/0009",
   "worktree": "/root/wt/0009",
   "neonBranch": "wo-0009",
@@ -58,7 +58,7 @@
       "text": "wire dispatch: sys/[id]/page.tsx เพิ่ม {sys.type === 'CRM' && <CrmContent .../>}"
     },
     {
-      "done": false,
+      "done": true,
       "text": "oracle qc-crm เขียวครบ + fitness (authz F6 ต้องไม่ขึ้น — crm/actions.ts มี assertCan) + gates"
     }
   ],
@@ -82,6 +82,14 @@
     {
       "at": "2026-07-16T04:53:59Z",
       "note": "wire dispatch CRM ใน sys/[id]/page.tsx"
+    },
+    {
+      "at": "2026-07-16T04:55:15Z",
+      "note": "gates เขียวครบ: qc-crm 19/19, qc:account 107/107, fitness 14/14, typecheck 0, build ผ่าน"
+    },
+    {
+      "at": "2026-07-16T04:55:38Z",
+      "note": "ปิดงาน — doneWhen ผ่านครบ (รันสดยืนยัน)"
     }
   ]
 }
