@@ -21,7 +21,7 @@ export async function createApiKey(ctx: ApiKeyCtx, name: string): Promise<Create
   const rawKey = `shark_${randomBytes(32).toString("hex")}`;
   const prefix = rawKey.slice(0, 12);
   const row = await tenantDb(ctx).apiKey.create({
-    data: { name: clean, keyHash: sha256hex(rawKey), prefix },
+    data: { tenantId: ctx.tenantId, name: clean, keyHash: sha256hex(rawKey), prefix },
   });
   return { id: row.id, rawKey, prefix };
 }
