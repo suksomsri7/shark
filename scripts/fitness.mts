@@ -223,7 +223,7 @@ chk(
 // ═══════════════════════════════════════════════════════════════
 console.log("\n── F2/F5: ขอบเขตโมดูล (baseline ratchet — ห้ามเพิ่ม) ──");
 
-const BASELINE = { f2CrossImports: 10, f5RawPrisma: 34 };  // วัดจริง 2026-07-15 — ratchet ลงได้อย่างเดียว
+const BASELINE = { f5RawPrisma: 34 }; // วัดจริง 2026-07-15 — ratchet ลงได้อย่างเดียว (F2 ใช้ allowlist รายเส้นแล้ว)
 
 const moduleDir = join(ROOT, "src", "lib", "modules");
 const moduleNames = existsSync(moduleDir)
@@ -231,7 +231,18 @@ const moduleNames = existsSync(moduleDir)
   : [];
 const moduleFiles = walk(moduleDir, (p) => p.endsWith(".ts") || p.endsWith(".tsx"));
 
-// F2: import ข้ามโมดูล
+// F2: import ข้ามโมดูล — allowlist รายเส้น (แข็งกว่านับจำนวน: เส้นใหม่สลับแทนเส้นเก่าไม่ได้)
+// เส้นที่อนุญาต = 10 เส้นเดิม (หนี้จะหมดตอน port Phase 3) + chokepoint ที่สถาปนิกอนุมัติ
+const ALLOWED_EDGES = new Set([
+  // หนี้เดิม (วัด 2026-07-15) — ratchet: ลบได้ ห้ามเพิ่มกลับ
+  "booking→member", "booking→system", "chat→member",
+  "pos→member", "pos→point", "pos→system",
+  "restaurant→member", "restaurant→pos", "restaurant→system",
+  "reward→point",
+  // chokepoint ที่อนุมัติ (BLUEPRINT_CONNECTIONS §3.2): เงินทุกบาทผ่าน POS → Account
+  // — อนุมัติโดย Fable 2026-07-16 สำหรับ WO-0002 (contract 2.4) · import ได้เฉพาะ account/index
+  "pos→account",
+]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {
   const self = relative(moduleDir, f).split("/")[0];
@@ -239,13 +250,23 @@ for (const f of moduleFiles) {
     if (m[1] !== self) crossEdges.add(`${self}→${m[1]}`);
   }
 }
+const illegalEdges = [...crossEdges].filter((e) => !ALLOWED_EDGES.has(e));
 chk(
   "F2.1",
-  `import ข้ามโมดูลไม่เพิ่ม (baseline ${BASELINE.f2CrossImports})`,
-  crossEdges.size <= BASELINE.f2CrossImports,
-  crossEdges.size > BASELINE.f2CrossImports
-    ? `เพิ่มเป็น ${crossEdges.size}: ${[...crossEdges].sort().join(" · ")}`
-    : `${crossEdges.size} เส้น: ${[...crossEdges].sort().join(" · ")}`,
+  `import ข้ามโมดูลอยู่ใน allowlist (${crossEdges.size} เส้น / อนุญาต ${ALLOWED_EDGES.size})`,
+  illegalEdges.length === 0,
+  illegalEdges.length ? `เส้นเถื่อน: ${illegalEdges.sort().join(" · ")}` : "ครบ",
+  "MAJOR",
+);
+// chokepoint discipline: pos→account ต้อง import ผ่าน facade index เท่านั้น (ห้ามล้วง service/gl ตรง)
+const deepAccountImports = moduleFiles
+  .filter((f) => relative(moduleDir, f).split("/")[0] !== "account")
+  .filter((f) => /from\s+["']@\/lib\/modules\/account\/(?!index)/.test(readFileSync(f, "utf8")));
+chk(
+  "F2.2",
+  "โมดูลอื่นแตะ account ได้เฉพาะผ่าน account/index (facade)",
+  deepAccountImports.length === 0,
+  deepAccountImports.length ? `ล้วงลึก: ${deepAccountImports.map(rel).join(", ")}` : "ครบ",
   "MAJOR",
 );
 
