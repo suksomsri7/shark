@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
-import { consume, createItem, receive, type Ctx } from "./service";
+import { consume, createItem, createLocation, receive, transfer, type Ctx } from "./service";
 
 // ตรวจสิทธิ์โมดูล Inventory (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
 // convention action = "inventory.<entity>.<verb>" (F6 ratchet บังคับให้ไฟล์นี้เรียก assertCan)
@@ -72,6 +72,7 @@ export async function receiveAction(formData: FormData) {
     refType: "ManualReceive",
     refId: itemId,
     note: String(formData.get("note") ?? "").trim() || null,
+    locationId: String(formData.get("locationId") ?? "").trim() || null,
   });
   revalidate(systemId);
 }
@@ -92,6 +93,41 @@ export async function consumeAction(formData: FormData) {
     refType: "ManualIssue",
     refId: itemId,
     idempotencyKey: `manual-out-${randomUUID()}`,
+    note: String(formData.get("note") ?? "").trim() || null,
+    locationId: String(formData.get("locationId") ?? "").trim() || null,
+  });
+  revalidate(systemId);
+}
+
+// ── สร้างคลังใหม่ (WO-0037) ──
+export async function createLocationAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.location.create");
+  const systemId = String(formData.get("systemId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!systemId || !name) return;
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await createLocation(ctx, { name });
+  revalidate(systemId);
+}
+
+// ── โอนสต็อกระหว่างคลัง (WO-0037) ──
+export async function transferAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.movement.transfer");
+  const systemId = String(formData.get("systemId") ?? "");
+  const itemId = String(formData.get("itemId") ?? "").trim();
+  const fromLocationId = String(formData.get("fromLocationId") ?? "").trim();
+  const toLocationId = String(formData.get("toLocationId") ?? "").trim();
+  const qty = toQty(formData.get("qty"));
+  if (!systemId || !itemId || !fromLocationId || !toLocationId || fromLocationId === toLocationId || qty <= 0) return;
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await transfer(ctx, {
+    itemId,
+    fromLocationId,
+    toLocationId,
+    qty,
+    idempotencyKey: `manual-tf-${randomUUID()}`,
     note: String(formData.get("note") ?? "").trim() || null,
   });
   revalidate(systemId);

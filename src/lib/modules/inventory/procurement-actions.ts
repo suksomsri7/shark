@@ -96,7 +96,8 @@ export async function receivePoAction(formData: FormData) {
   const poId = String(formData.get("poId") ?? "").trim();
   if (!systemId || !poId) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  await receivePo(ctx, poId);
+  const locationId = String(formData.get("locationId") ?? "").trim();
+  await receivePo(ctx, poId, locationId ? { locationId } : undefined);
   revalidate(systemId);
 }
 

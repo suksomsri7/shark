@@ -1,14 +1,29 @@
 import { requireTenant } from "@/lib/core/context";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { FormField } from "@/components/ui/FormField";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { formatThaiDateTime } from "@/lib/ui/date";
-import { listItems, lowStock, recentMovements, type Ctx } from "./service";
-import { consumeAction, createItemAction, receiveAction } from "./actions";
+import {
+  ensureDefaultLocation,
+  listItems,
+  listLocations,
+  lowStock,
+  recentMovements,
+  stockByLocationMap,
+  type Ctx,
+} from "./service";
+import {
+  consumeAction,
+  createItemAction,
+  createLocationAction,
+  receiveAction,
+  transferAction,
+} from "./actions";
 import { listPos, listSuppliers } from "./procurement";
 import {
   cancelPoAction,
@@ -46,15 +61,20 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  const [items, low, movements, suppliers, pos] = await Promise.all([
+  // มีคลังหลักเสมอ (get-or-create) ก่อนโหลดรายการคลัง
+  await ensureDefaultLocation(ctx);
+  const [items, low, movements, suppliers, pos, locations, stockMap] = await Promise.all([
     listItems(ctx),
     lowStock(ctx),
     recentMovements(ctx),
     listSuppliers(ctx),
     listPos(ctx),
+    listLocations(ctx),
+    stockByLocationMap(ctx),
   ]);
 
   const lowIds = new Set(low.map((i) => i.id));
+  const multiWarehouse = locations.length > 1; // มีมากกว่าคลังหลัก → แสดงตัวเลือกคลัง/โอนย้าย
   const qty = (v: number, unit: string) => `${v.toLocaleString("th-TH")} ${unit}`;
 
   return (
@@ -101,6 +121,17 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
                   ))}
                 </select>
               </FormField>
+              {multiWarehouse && (
+                <FormField label="รับเข้าคลัง" required>
+                  <select name="locationId" required className="input" defaultValue={locations[0].id}>
+                    {locations.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <FormField label="จำนวน" required>
                   <input name="qty" type="number" min={1} step={1} required placeholder="0" className="input" />
@@ -131,6 +162,17 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
                   ))}
                 </select>
               </FormField>
+              {multiWarehouse && (
+                <FormField label="ตัดจากคลัง" required>
+                  <select name="locationId" required className="input" defaultValue={locations[0].id}>
+                    {locations.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              )}
               <FormField label="จำนวน" required hint="ตัดเกินสต็อกได้ ระบบจะตั้งธงให้ตรวจสอบภายหลัง">
                 <input name="qty" type="number" min={1} step={1} required placeholder="0" className="input" />
               </FormField>
@@ -142,6 +184,77 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
           </div>
         </Section>
       )}
+
+      {/* คลังสินค้า (จัดการ + โอนย้าย) */}
+      <Section title={`คลังสินค้า (${locations.length})`}>
+        <DataList
+          items={locations.map((l) => ({
+            key: l.id,
+            primary: l.name,
+            secondary: l.isDefault ? "คลังหลัก (ค่าเริ่มต้น)" : "คลังสาขา",
+          }))}
+          empty="ยังไม่มีคลัง"
+        />
+
+        {/* เพิ่มคลังใหม่ */}
+        <form
+          action={createLocationAction}
+          className="mt-2 flex flex-col gap-3 rounded-lg border border-dashed p-4 sm:flex-row sm:items-end"
+        >
+          <input type="hidden" name="systemId" value={systemId} />
+          <FormField label="ชื่อคลังใหม่" required>
+            <input name="name" required placeholder="เช่น คลังสาขา 2 / หน้าร้าน" className="input" />
+          </FormField>
+          <SubmitButton variant="ghost">+ เพิ่มคลัง</SubmitButton>
+        </form>
+
+        {/* โอนสต็อกระหว่างคลัง (ต้องมีสินค้า + อย่างน้อย 2 คลัง) */}
+        {items.length > 0 && multiWarehouse && (
+          <form action={transferAction} className="mt-3 flex flex-col gap-3 rounded-lg border p-4">
+            <input type="hidden" name="systemId" value={systemId} />
+            <h3 className="text-sm font-medium">โอนสต็อกระหว่างคลัง</h3>
+            <FormField label="สินค้า" required>
+              <select name="itemId" required className="input" defaultValue="">
+                <option value="" disabled>
+                  เลือกสินค้า
+                </option>
+                {items.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name} ({i.sku})
+                  </option>
+                ))}
+              </select>
+            </FormField>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <FormField label="จากคลัง" required>
+                <select name="fromLocationId" required className="input" defaultValue={locations[0].id}>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField label="ไปคลัง" required>
+                <select name="toLocationId" required className="input" defaultValue={locations[1].id}>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            </div>
+            <FormField label="จำนวน" required hint="โอนเกินยอดคลังต้นทางได้ ระบบจะตั้งธงให้ตรวจสอบ">
+              <input name="qty" type="number" min={1} step={1} required placeholder="0" className="input" />
+            </FormField>
+            <FormField label="หมายเหตุ">
+              <input name="note" placeholder="เช่น เติมของหน้าร้าน" className="input" />
+            </FormField>
+            <SubmitButton>โอนสต็อก</SubmitButton>
+          </form>
+        )}
+      </Section>
 
       {/* ซัพพลายเออร์ */}
       <Section title={`ซัพพลายเออร์ (${suppliers.length})`}>
@@ -210,17 +323,31 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
                       <SubmitButton>ยืนยันสั่งซื้อ</SubmitButton>
                     </form>
                   )}
-                  {po.status === "ORDERED" && (
-                    <ConfirmDialog
-                      triggerLabel="รับของ"
-                      triggerClassName="btn btn-primary text-sm"
-                      title={`รับของเข้าคลัง — ${po.code}?`}
-                      detail={`จะเพิ่มสต็อก ${po.totalQty.toLocaleString("th-TH")} ชิ้น จาก ${po.lineCount.toLocaleString("th-TH")} รายการ`}
-                      confirmLabel="ยืนยันรับของ"
-                      action={receivePoAction}
-                      fields={{ systemId, poId: po.id }}
-                    />
-                  )}
+                  {po.status === "ORDERED" &&
+                    (multiWarehouse ? (
+                      <form action={receivePoAction} className="flex items-center gap-2">
+                        <input type="hidden" name="systemId" value={systemId} />
+                        <input type="hidden" name="poId" value={po.id} />
+                        <select name="locationId" className="input py-1 text-sm" defaultValue={locations[0].id} aria-label="รับเข้าคลัง">
+                          {locations.map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.name}
+                            </option>
+                          ))}
+                        </select>
+                        <SubmitButton>รับของ</SubmitButton>
+                      </form>
+                    ) : (
+                      <ConfirmDialog
+                        triggerLabel="รับของ"
+                        triggerClassName="btn btn-primary text-sm"
+                        title={`รับของเข้าคลัง — ${po.code}?`}
+                        detail={`จะเพิ่มสต็อก ${po.totalQty.toLocaleString("th-TH")} ชิ้น จาก ${po.lineCount.toLocaleString("th-TH")} รายการ`}
+                        confirmLabel="ยืนยันรับของ"
+                        action={receivePoAction}
+                        fields={{ systemId, poId: po.id }}
+                      />
+                    ))}
                   {(po.status === "DRAFT" || po.status === "ORDERED") && (
                     <ConfirmDialog
                       triggerLabel="ยกเลิก"
@@ -299,31 +426,64 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
         )}
       </Section>
 
-      {/* รายการสินค้า + ยอดคงเหลือ */}
+      {/* รายการสินค้า + ยอดคงเหลือ (กดดูยอดแยกคลังได้เมื่อมีหลายคลัง) */}
       <Section title={`สินค้าในคลัง (${items.length})`}>
-        <DataList
-          items={items.map((i) => ({
-            key: i.id,
-            primary: i.name,
-            secondary: [`รหัส ${i.sku}`, i.category].filter(Boolean).join(" · "),
-            trailing: (
-              <>
-                <div className="text-right">
-                  <div className={`text-sm tabular-nums ${i.onHand < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
-                    {qty(i.onHand, i.unitLabel)}
+        {items.length === 0 ? (
+          <EmptyState text="ยังไม่มีสินค้า — เพิ่มสินค้ารายการแรกด้านล่างเพื่อเริ่มนับสต็อก" />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {items.map((i) => {
+              const breakdown = stockMap.get(i.id) ?? [];
+              const expandable = multiWarehouse && breakdown.length > 0;
+              const header = (
+                <>
+                  <div className="min-w-0">
+                    <div className="truncate">{i.name}</div>
+                    <div className={`truncate text-xs ${muted}`}>
+                      {[`รหัส ${i.sku}`, i.category].filter(Boolean).join(" · ")}
+                      {expandable ? " · แตะดูยอดแยกคลัง" : ""}
+                    </div>
                   </div>
-                  <div className={`text-xs ${muted}`}>
-                    ต้นทุน <MoneyText satang={i.costSatang} />
+                  <div className="flex shrink-0 items-center gap-2 text-right">
+                    <div className="text-right">
+                      <div className={`text-sm tabular-nums ${i.onHand < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
+                        {qty(i.onHand, i.unitLabel)}
+                      </div>
+                      <div className={`text-xs ${muted}`}>
+                        ต้นทุน <MoneyText satang={i.costSatang} />
+                      </div>
+                    </div>
+                    {lowIds.has(i.id) && <StatusChip value="LOW" map={{ LOW: "ใกล้หมด" }} tone="muted" />}
                   </div>
-                </div>
-                {lowIds.has(i.id) && (
-                  <StatusChip value="LOW" map={{ LOW: "ใกล้หมด" }} tone="muted" />
-                )}
-              </>
-            ),
-          }))}
-          empty="ยังไม่มีสินค้า — เพิ่มสินค้ารายการแรกด้านล่างเพื่อเริ่มนับสต็อก"
-        />
+                </>
+              );
+              if (!expandable) {
+                return (
+                  <div key={i.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
+                    {header}
+                  </div>
+                );
+              }
+              return (
+                <details key={i.id} className="rounded-lg border text-sm">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2">
+                    {header}
+                  </summary>
+                  <div className="flex flex-col gap-1 border-t px-3 py-2">
+                    {breakdown.map((b) => (
+                      <div key={b.locationId} className="flex items-center justify-between">
+                        <span className={muted}>{b.name}</span>
+                        <span className={`tabular-nums ${b.onHand < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
+                          {qty(b.onHand, i.unitLabel)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        )}
 
         {/* เพิ่มสินค้าใหม่ */}
         <form action={createItemAction} className="mt-2 flex flex-col gap-3 rounded-lg border border-dashed p-4">
