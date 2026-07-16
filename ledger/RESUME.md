@@ -2,7 +2,7 @@
 
 > อัปเดต 2026-07-17 โดย Fable 5 · **session ใหม่: อ่านไฟล์นี้จากบนลงล่างถึงเส้นแรก แล้วทำงานต่อได้เลย**
 
-## 🌙 RUN 2 (04:12 BKK 17 ก.ค. — สั่ง 2 ชม. แล้วขยายถึง 10:00) — กำลังวิ่ง · เสร็จแล้ว 11 WO
+## 🌙 RUN 2 (04:12 BKK 17 ก.ค. — สั่ง 2 ชม. แล้วขยายถึง 10:00) — ✅ จบกะ 06:35 BKK · 13 WO SHIPPED (รวมทั้งคืน 25 WO)
 | WO | งาน | ข้อสอบ |
 |---|---|---|
 | 0053 | **E-commerce**: หน้าร้านออนไลน์ /s/<ร้าน>/<สาขา>/shop (catalog+ตะกร้า+checkout) + จ่าย PromptPay QR + ร้านกดยืนยันรับเงิน → เส้นเงิน C-2 ผ่าน pos.createSale + ตัดสต็อก inventory + จัดการสินค้า/ออเดอร์ฝั่งร้าน (ระบบที่ 21: SHOP ใน SYSTEM_DEFS) | 15/15 + pos-account 16/16 + inventory 12/12 |
@@ -16,6 +16,8 @@
 | 0048 | **DNA ต่อเนื่อง (M4.5)**: ตรวจ drift 5 กติกา (พนักงาน/สมาชิก/ขายสินค้า/VAT/สาขา เทียบ facts กับข้อมูลจริง) → แจ้ง "ธุรกิจคุณเปลี่ยนไปจากตอนตั้งค่า" ชวนคุย AI (กันสแปม 7 วัน · cron dnaReviews) — oracle ผมเขียน active ผิดเอง Builder ชี้ถูก | 5/5 + cron 4/4 |
 | 0050 | **Rental (ระบบที่ 22)**: สินทรัพย์ให้เช่า + จองกันซ้อน (endDate exclusive) + รับของ/คืน + ค่าปรับ → เส้นเงิน C-2 (PosSale `rental-<id>`) · มัดจำถือใน booking (รอ DEPOSIT mapping 0040 → 0050b) + UNIT_NAV + UnitType RENTAL | 11/11 + pos-account 16/16 |
 | 0059 | **Vendor Portal**: ลิงก์พกพา read-only /vendor/<token> ให้ผู้ขายเห็น PO ตัวเอง (rotate/ปิดได้ · token-first + tenantDb ชั้นสอง) + ปุ่มเปิดลิงก์ในหน้า supplier | 6/6 + procurement 12/12 |
+| 0064 | **White label v1**: ชื่อแบรนด์/โลโก้/สี ต่อร้าน (/app/settings/branding + preview) ใช้จริงบน storefront shop + ฟอร์มสาธารณะ (setBranding เป็น partial patch · กัน javascript: URL) | 5/5 + shop 15/15 + form 10/10 |
+| 0068 | **PWA polish**: manifest.ts (standalone · ไทย · ไอคอน 192/512 Fable วาดเองด้วย pixel) + viewport themeColor (Next 16 แยกจาก metadata) + appleWebApp — ติดตั้งลงมือถือได้ | 5/5 |
 หมายเหตุ RUN 2: ⚠️ **Vercel deployment สร้างใหม่ไม่ได้ตั้งแต่ ~05:45 BKK (incident ฝั่ง Vercel — webhook+API+deploy hook เงียบหมด)** — push ตั้งแต่ b195eb3 ยังไม่ถูก build · prod เสิร์ฟ 886a2f1 (ครบถึง 0073) ไม่มี downtime · โค้ดใหม่จะ deploy เองเมื่อฟื้น (เช็ค deployments API) · Builder ขนาน 2 ตัวครั้งแรก — เจอ race `prisma generate` ทับกัน (client แชร์ node_modules ข้าม worktree) → กติกาใหม่: **verify สุดท้ายจาก main หลัง merge + generate จาก schema main เสมอ** · 0058 Customer Portal ข้ามไว้ (login OTP ลูกค้าต้องมีช่องทาง SMS/LINE = 🔑 รอเจ้าของ)
 follow-up: forms actions อยู่ src/app/app/forms/actions.ts นอก walk ของ F6 (มี assertCan ครบ แต่ ratchet ไม่คุม — ย้ายเข้า modules ทีหลัง)
 
@@ -36,7 +38,7 @@ follow-up: forms actions อยู่ src/app/app/forms/actions.ts นอก wal
 | 0038 | **Lot/Expiry/Barcode**: InvLot ต่อ item (รับเข้า/ตัดออกระบุ lot ได้ · ไม่ระบุ = พฤติกรรมเดิม) + แจ้ง "สินค้าใกล้หมดอายุ" อัตโนมัติทุกวัน (7 วันล่วงหน้า · idempotent/วัน · cron field lotsExpiring) + Automation event `inventory.lot.expiring` (Fable เสริม consumer ปิด event กัน PENDING วน) + ค้นสินค้าด้วยบาร์โค้ด | 13/13 + inventory 12/12 + warehouse 15/15 + cron 4/4 + automation 13/13 |
 เหตุการณ์เด่น: fitness จับสถาปัตยกรรม payroll 3 ข้อ (hr ล้วง gl/raw prisma) → Fable ผ่าตัด: postPayrollJV เข้า account facade + hr→account ลง allowlist + tenantDb ทั้งไฟล์ · cwd shell หลุด 2 ครั้ง (กู้จากกิ่ง worktree สำเร็จ — ย้ำกติกา cd สัมบูรณ์) · oracle stale กันล่วงหน้า 2 จุด (GR-0.1/V2-0.1) · Builder 0043 สร้าง webchat endpoint คู่ขนานเพื่อเอาใจ path ที่ oracle เขียนผิด → Fable ลบ dead endpoint + แก้ oracle ชี้ route จริง [connectionId] (ของจริงมี limiter M9 อยู่แล้ว) · F5 baseline 34→36 (approval $transaction+outbox · inventory sweep ข้ามร้าน — จงใจทั้งคู่ มี comment ใน fitness.mts)
 รอเจ้าของ: สแกน QR ทดสอบ · Bunny key · follow-up: 2140 ปสส.ค้างนำส่งใน CHART · summarizeCase wire หน้า list · i18n v1.1 · 0045b (ตอบเคสในนาม user) · **0049b wiring approval เข้า PO/ใบลาจริง** + นโยบายยื่นซ้ำหลัง REJECTED (idempotencyKey ตายตัว 1 entity=1 request — ต้อง version key ถ้าธุรกิจต้องแก้แล้วยื่นใหม่) + จำกัด policy.create เฉพาะ OWNER (ตอนนี้ MANAGER สร้างได้ตาม RBAC กลาง)
-คิวถัดไปตาม 10_MASTER_QUEUE: 0053 E-commerce → 0054 → 0058 → 0061 Public API (0043 เปิดทางแล้ว) · แทรกได้: 0044 query budget · 0049b wiring approval · 0040 หนี้เส้นเงิน (รอบสมาธิเต็ม)
+คิวถัดไปตาม 10_MASTER_QUEUE: 0063 Marketplace โครง (dep 0061✅) → 0066 i18n v2 → 0056 Dashboard builder (dep 0055✅) → 0060 Delivery โครง (dep 0053✅) → 0051 School → 0052 Clinic → 0065 host-routing · รอบสมาธิเต็ม: 0040 หนี้เส้นเงิน + 0044 · ติด 🔑: 0058 (OTP ลูกค้า) 0067 (LINE OA) 0069 (ราคา) 0070 (Beam) 0071 (ถ้อยคำ)
 
 ## 🎯 CHECKPOINT 2026-07-17 — จุดต่องาน (อ่านตรงนี้ก่อน)
 **สถานะ**: shark.in.th LIVE บน Vercel · main = ทุกอย่าง merge แล้ว · deploy READY · ไม่มี worktree/neon branch ค้าง · WO-0001→0034 done หมด (ยกเว้น WO-0032 = เลขข้าม ไม่มีจริง)
