@@ -1,7 +1,7 @@
 {
   "id": "WO-0045",
   "title": "AI actions ชุดขยาย 5 (create_item/adjust/employee/coupon/kanban) — registry 18",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder",
   "worktree": ".claude/worktrees/",
   "neonBranch": "wo-0045",
@@ -29,7 +29,7 @@
       "text": "Fable: oracle qc-ai-actions.mts (สัญญาหัวไฟล์)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "Builder: 5 tools + 5 kinds + inventory.adjust + persona"
     }
   ],
@@ -37,6 +37,10 @@
     {
       "at": "2026-07-16T16:00:00Z",
       "note": "NIGHT RUN #3 · support_reply เลื่อน 0045b (actor identity)"
+    },
+    {
+      "at": "2026-07-16T16:40:00Z",
+      "note": "Builder 12/12 + regression เขียว (GR-0.1 Fable ผ่อนล่วงหน้า) · inventory.adjust ใหม่เลียนโครง receive ถูกต้อง · Fable รันซ้ำยืนยัน · merge"
     }
   ]
 }
