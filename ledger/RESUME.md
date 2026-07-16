@@ -2,7 +2,7 @@
 
 > อัปเดต 2026-07-17 โดย Fable 5 · **session ใหม่: อ่านไฟล์นี้จากบนลงล่างถึงเส้นแรก แล้วทำงานต่อได้เลย**
 
-## 🌙 RUN 2 (04:12 BKK 17 ก.ค. — สั่ง 2 ชม. แล้วขยายถึง 10:00) — กำลังวิ่ง · เสร็จแล้ว 5 WO
+## 🌙 RUN 2 (04:12 BKK 17 ก.ค. — สั่ง 2 ชม. แล้วขยายถึง 10:00) — กำลังวิ่ง · เสร็จแล้ว 9 WO
 | WO | งาน | ข้อสอบ |
 |---|---|---|
 | 0053 | **E-commerce**: หน้าร้านออนไลน์ /s/<ร้าน>/<สาขา>/shop (catalog+ตะกร้า+checkout) + จ่าย PromptPay QR + ร้านกดยืนยันรับเงิน → เส้นเงิน C-2 ผ่าน pos.createSale + ตัดสต็อก inventory + จัดการสินค้า/ออเดอร์ฝั่งร้าน (ระบบที่ 21: SHOP ใน SYSTEM_DEFS) | 15/15 + pos-account 16/16 + inventory 12/12 |
@@ -10,7 +10,11 @@
 | 0062 | **Webhooks ขาออก**: endpoint ต่อ event (เลือก/ทุกเหตุการณ์) + ลายเซ็น X-Shark-Signature (HMAC-SHA256) + delivery log + retry (cron field webhooksRetried) + ผูก outbox ทุก event + /app/settings/webhooks | 11/11 + automation 13/13 + cron 4/4 |
 | 0061 | **Public API v1**: /api/v1 (me/customers/inventory/items/shop/orders) read-only + API key hash (โชว์ครั้งเดียว) + rate limit 60/นาที/key + /developers docs ไทย + /app/settings/api (Fable ผ่าตัด: create ลืม tenantId ครั้งที่ 6) | 12/12 |
 | 0073 | **คลังความรู้ (KB)**: บทความ+หมวด+ค้นหา /app/kb + AI tool kb_search (AI ตอบจากความรู้ร้านจริง) + **ป้าย "เร็วๆ นี้" ตัวสุดท้ายหลุดจากเมนู** (KB = fixed-page ไม่ instantiate — F9.1 ยกเว้นอย่างเปิดเผย) | 12/12 + ai-tools 14/14 + ai-tools2 8/8 |
-หมายเหตุ RUN 2: Builder ขนาน 2 ตัวครั้งแรก — เจอ race `prisma generate` ทับกัน (client แชร์ node_modules ข้าม worktree) → กติกาใหม่: **verify สุดท้ายจาก main หลัง merge + generate จาก schema main เสมอ** · 0058 Customer Portal ข้ามไว้ (login OTP ลูกค้าต้องมีช่องทาง SMS/LINE = 🔑 รอเจ้าของ)
+| 0039 | **บัญชีลึก**: aging ลูกหนี้/เจ้าหนี้ 5 bucket ต่อคู่ค้า (+หน้า UI ในเมนูบัญชี) + ปิดงวดอัตโนมัติรายวัน (Gate C เดิม · แจ้งผล/แจ้งติดครั้งเดียวต่องวด · cron periodsClosed) — cashFlow มีอยู่แล้ว | 10/10 + **cpa 107/107** + cron 4/4 |
+| 0055 | **Report builder v1**: dataset ขาย/ลูกค้า/สต็อก + filter/group/sum + CSV (BOM) + บันทึกรายงาน /app/reports (กัน field injection ด้วย whitelist) | 9/9 |
+| 0072 | **Onboarding drip**: checklist เริ่มต้นร้าน 6 ข้อ (การ์ดบน dashboard ติ๊กอัตโนมัติ) + แจ้งเตือนแนะขั้นถัดไปรายวัน 14 วันแรก (cron onboardingDripped) | 6/6 + cron 4/4 |
+| 0048 | **DNA ต่อเนื่อง (M4.5)**: ตรวจ drift 5 กติกา (พนักงาน/สมาชิก/ขายสินค้า/VAT/สาขา เทียบ facts กับข้อมูลจริง) → แจ้ง "ธุรกิจคุณเปลี่ยนไปจากตอนตั้งค่า" ชวนคุย AI (กันสแปม 7 วัน · cron dnaReviews) — oracle ผมเขียน active ผิดเอง Builder ชี้ถูก | 5/5 + cron 4/4 |
+หมายเหตุ RUN 2: ⚠️ **Vercel deployment สร้างใหม่ไม่ได้ตั้งแต่ ~05:45 BKK (incident ฝั่ง Vercel — webhook+API+deploy hook เงียบหมด)** — push ตั้งแต่ b195eb3 ยังไม่ถูก build · prod เสิร์ฟ 886a2f1 (ครบถึง 0073) ไม่มี downtime · โค้ดใหม่จะ deploy เองเมื่อฟื้น (เช็ค deployments API) · Builder ขนาน 2 ตัวครั้งแรก — เจอ race `prisma generate` ทับกัน (client แชร์ node_modules ข้าม worktree) → กติกาใหม่: **verify สุดท้ายจาก main หลัง merge + generate จาก schema main เสมอ** · 0058 Customer Portal ข้ามไว้ (login OTP ลูกค้าต้องมีช่องทาง SMS/LINE = 🔑 รอเจ้าของ)
 follow-up: forms actions อยู่ src/app/app/forms/actions.ts นอก walk ของ F6 (มี assertCan ครบ แต่ ratchet ไม่คุม — ย้ายเข้า modules ทีหลัง)
 
 ## 🌙 รายงานกะกลางคืน (2026-07-16 21:39 → 17 กลางดึก) — NIGHT RUN จบ 12 WO ✅ ปิดกะ 00:48 BKK (17 ก.ค.)
