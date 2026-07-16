@@ -1,6 +1,34 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
-> อัปเดต 2026-07-16 โดย Fable 5 · **session ตาย → account ใหม่บน VPS นี้ อ่านไฟล์นี้ + รัน `pnpm resume`**
+> อัปเดต 2026-07-17 โดย Fable 5 · **session ใหม่: อ่านไฟล์นี้จากบนลงล่างถึงเส้นแรก แล้วทำงานต่อได้เลย**
+
+## 🎯 CHECKPOINT 2026-07-17 — จุดต่องาน (อ่านตรงนี้ก่อน)
+**สถานะ**: shark.in.th LIVE บน Vercel · main = ทุกอย่าง merge แล้ว · deploy READY · ไม่มี worktree/neon branch ค้าง · WO-0001→0034 done หมด (ยกเว้น WO-0032 = เลขข้าม ไม่มีจริง)
+
+**สิ่งที่มีในระบบตอนนี้**: 18 โมดูล + AI ครบวงจร (แชท orb · 13 tools อ่าน+ทำแทนผ่าน proposal-confirm · M4 เล่าธุรกิจอิสระ · Growth แนะนำ/เปิดระบบให้) · Backoffice Phase 0+1 ครบ (login OTP แยก · tenants+metrics · support desk · ระงับร้าน+audit · ประกาศ · billing) · การเงิน (PromptPay QR + PlatformInvoice) · storage (รอ key) · custom domain (Vercel API) · Automation · Subscription · Procurement · Cron 03:00 BKK · Dashboard หน้าแรก · i18n public th/en
+
+**โหมดทำงานถาวร (คำสั่ง user)**: Fable = หัวหน้า (ออกแบบ+เขียน oracle ก่อน+ตรวจรับ+merge+รายงาน) · Builder = sub-agent Opus 4.8 ≤2 ตัวขนาน ใน worktree+neon branch · Builder ห้ามรัน typecheck/build · บันทึก+push ทุกขั้น
+
+**กติกาเหล็กจากบทเรียนจริง (ห้ามลืม)**:
+1. gates ทุกครั้ง: `set -o pipefail` ก่อน `pnpm typecheck | tail` (pipe กลืน exit code)
+2. typecheck ก่อน push **ทุกครั้ง** รวม push ของกลาง — Vercel build typecheck `scripts/` ด้วย → oracle ล่วงหน้าต้อง standalone-typesafe (dynamic import `as string` + wide cast ห้าม typed literal อนาคต)
+3. ยืนยัน deploy จาก Vercel API state=READY (poll) ไม่ใช่ curl 200
+4. create ผ่าน tenantDb ต้องใส่ tenantId (+systemId) ตรง ๆ ใน data — type ไม่รู้จัก guard inject (พลาดมา 5 รอบ)
+5. `tenantDb().upsert()` ใช้ไม่ได้ (guard ห่อ where) → find→update/create หรือ updateMany เงื่อนไขสถานะ
+6. ห้าม `as const` ต่อท้าย ternary (TS1355)
+7. Builder ≤2 + ห้าม build ขนาน (บทเรียน OOM 2 core/3G)
+8. oracle เก่าเช็คแบบ superset — จำนวนรวมคุมโดย oracle รุ่นล่าสุดเท่านั้น
+9. cwd ชอบหลุด → `cd /root/projects/shark-in-th` ก่อนทุกชุดคำสั่ง
+
+**env/keys ที่มีแล้ว** (local .env + Vercel prod): SHARK_AI_KEY (OpenRouter) · SHARK_AI_MODEL · SHARK_CRON_SECRET · SHARK_VERCEL_TOKEN/PROJECT/TEAM — **รอจาก user**: SHARK_BUNNY_* (เปิดอัปโหลดจริง) · Beam creds ชื่อ shark · user สแกน QR PromptPay ทดสอบ
+**Vercel**: project prj_jdvr3lJ7tS239wuywjWRBDE84FiK team team_73xWxzvBBScACJuG4TXet6Uw (token ใน .env) · **Backoffice admin**: suksomsri@gmail.com (SUPER_ADMIN seeded)
+
+**คิวถัดไป (เรียงแนะนำ)**:
+1. หนี้บัญชีลึก (รอบสมาธิเต็ม): ลด query flow เงิน (tx timeout 30s ชั่วคราว) · DEPOSIT/ROOM_CHARGE map TRANSFER · audit booking→POS harness
+2. i18n v1.1: หน้าเมนูร้านอาหาร + จอคิว TV + error จาก action
+3. host-routing โดเมนลูกค้า (รอ adapter-neon หรือ resolve ที่ชั้น app — resolveTenantByHost พร้อมแล้ว)
+4. หลังมีลูกค้าจริง: Multi-warehouse · Portal · BI เต็ม · Marketplace · White Label
+---
 
 ## 🔴 2026-07-16 13:10 BKK — session ถูก OOM ฆ่า (3 Builder ตายกลางคัน)
 **เกิดอะไร**: รัน 3 Builder ขนาน + `Run build` + `Run next build` + `Typecheck` พร้อมกันบน VPS 2 core
