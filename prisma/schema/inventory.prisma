@@ -58,6 +58,23 @@ model InvLocationStock {
   @@index([systemId, locationId])
 }
 
+// Lot/Expiry (WO-0038) — lot ต่อ item (orthogonal กับ location v1: lot ไม่แยกต่อคลัง)
+// invariant เบา: lot.onHand เดินตาม movement ที่ระบุ lotCode เท่านั้น (ไม่ระบุ = ไม่แตะ lot)
+model InvLot {
+  id         String    @id @default(cuid())
+  tenantId   String
+  systemId   String
+  itemId     String
+  lotCode    String
+  expiryDate DateTime? @db.Date
+  onHand     Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  @@unique([itemId, lotCode])
+  @@index([tenantId])
+  @@index([systemId, expiryDate])
+}
+
 model InvMovement {
   id             String          @id @default(cuid())
   tenantId       String
@@ -66,6 +83,7 @@ model InvMovement {
   item           InvItem         @relation(fields: [itemId], references: [id], onDelete: Cascade)
   type           InvMovementType
   locationId     String?         // null = แถว legacy ก่อนยุค multi-warehouse (นับเป็นคลัง default)
+  lotCode        String?         // WO-0038: movement ที่ระบุ lot
   qtyDelta       Int             // + รับเข้า / - ตัดออก
   balanceAfter   Int             // onHand หลังรายการนี้ (audit trail)
   costSatang     Int             @default(0)
