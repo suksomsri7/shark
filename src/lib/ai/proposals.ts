@@ -16,12 +16,14 @@ import * as hrSvc from "@/lib/modules/hr/service";
 import * as mktSvc from "@/lib/modules/marketing/service";
 import * as memberSvc from "@/lib/modules/member/service";
 import { createSystem } from "@/lib/modules/system/service";
+import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 
 export type ProposalKind =
   | "inventory_receive"
   | "hr_decide_leave"
   | "marketing_create_campaign"
-  | "member_create";
+  | "member_create"
+  | "open_system";
 
 type Ctx = { tenantId: string };
 
@@ -33,6 +35,7 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   hr_decide_leave: { module: "hr", action: "hr.leave.decide" },
   marketing_create_campaign: { module: "marketing", action: "marketing.campaign.create" },
   member_create: { module: "member", action: "member.customer.create" },
+  open_system: { module: "system", action: "system.system.create" },
 };
 
 // ── payload ต่อ kind (server-side เท่านั้น) ──
@@ -40,6 +43,7 @@ type ReceivePayload = { sku: string; qty: number; costSatang?: number };
 type DecideLeavePayload = { leaveId: string; decision: "APPROVED" | "REJECTED" };
 type CreateCampaignPayload = { name: string; channel: string; segment?: Record<string, unknown> };
 type MemberCreatePayload = { name: string; phone?: string; email?: string };
+type OpenSystemPayload = { type: string; name?: string };
 
 // ── สร้างข้อเสนอ (PENDING + TTL 24 ชม.) ──
 export async function createProposal(
@@ -212,6 +216,20 @@ async function dispatch(
     });
     const who = c.name ?? (String(p.name ?? "").trim() || "ลูกค้า");
     return `สมัครสมาชิกให้ "${who}" เรียบร้อยแล้ว${c.memberCode ? ` (รหัสสมาชิก ${c.memberCode})` : ""}`;
+  }
+
+  if (kind === "open_system") {
+    const p = payload as OpenSystemPayload;
+    const type = String(p.type ?? "").trim().toUpperCase();
+    const def = systemDef(type);
+    // validate กับทะเบียน systems.ts — ต้องเป็น feature ที่เปิดให้ใช้งาน
+    if (!def || !AVAILABLE_FEATURE.has(type as SystemType)) throw new Error("ไม่รู้จักระบบที่จะเปิด");
+    // มีระบบประเภทนี้อยู่แล้ว → ไม่เปิดซ้ำ (→ FAILED)
+    const existing = await resolveSystem(tenantId, type as SystemType);
+    if (existing) throw new Error(`ระบบ${def.label}เปิดอยู่แล้ว`);
+    const name = String(p.name ?? "").trim() || def.label;
+    await createSystem(tenantId, type as SystemType, name);
+    return `เปิดระบบ${def.label}ให้ร้านเรียบร้อยแล้ว`;
   }
 
   throw new Error("ไม่รู้จักประเภทข้อเสนอนี้");

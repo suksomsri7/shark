@@ -9,11 +9,12 @@
 //   แล้วเปิด tenantDb({ tenantId, systemId }) ให้ guard inject ตัวกรองให้ (ดู pattern marketing/service.ts)
 // - action tool ต้องมี conversationId (proposal ผูกบทสนทนา) — ไม่มี → คืน error JSON
 
-import { tenantDb } from "@/lib/core/db";
+import { prisma, tenantDb } from "@/lib/core/db";
 import type { SystemType } from "@prisma/client";
 import { lowStock as invLowStock } from "@/lib/modules/inventory/service";
 import { pendingLeaves as hrPendingLeaves } from "@/lib/modules/hr/service";
 import { listCustomers as memberListCustomers } from "@/lib/modules/member/service";
+import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { createProposal, type ProposalKind } from "./proposals";
 import { dayKeyBangkok } from "./rules";
 
@@ -238,6 +239,60 @@ const salesByDay: AiTool = {
   },
 };
 
+// ── 5d) growth_recommendations — แนะนำระบบที่ควรเปิดเมื่อธุรกิจโต (WO-0033) ──
+// กติกา deterministic (ไม่ใช้ LLM ใน tool) — ระบบที่เปิดแล้วห้ามแนะนำซ้ำ:
+//   R1: ลูกค้า > 20 คน และยังไม่เปิด MARKETING → แนะนำ MARKETING
+//   R2: บิล POS ที่ชำระแล้ว > 50 ใบ และยังไม่เปิด INVENTORY → แนะนำ INVENTORY
+//   R3: ลูกค้า > 20 คน และยังไม่เปิด CRM → แนะนำ CRM
+const growthRecommendations: AiTool = {
+  def: {
+    name: "growth_recommendations",
+    description:
+      "วิเคราะห์ข้อมูลจริงของร้าน (จำนวนลูกค้า / จำนวนบิลขาย) แล้วแนะนำระบบที่ควรเปิดเพิ่มเมื่อธุรกิจเติบโต — คืนรายการคำแนะนำพร้อมเหตุผลภาษาไทย (ระบบที่เปิดไว้แล้วจะไม่ถูกแนะนำซ้ำ)",
+    parameters: NO_ARGS,
+  },
+  async execute(ctx) {
+    const { tenantId } = ctx;
+    // metric ระดับร้าน (รวมทุกระบบย่อย) — ใช้ตัดสินใจเชิงเติบโต · อ่านตรงแบบเดียวกับ resolveSystem ใน proposals
+    const [customers, posPaid, systems] = await Promise.all([
+      prisma.customer.count({ where: { tenantId } }),
+      prisma.posSale.count({ where: { tenantId, status: "PAID" } }),
+      prisma.appSystem.findMany({ where: { tenantId }, select: { type: true } }),
+    ]);
+    const open = new Set<SystemType>(systems.map((s) => s.type));
+
+    const rules: { type: SystemType; when: boolean; reason: string }[] = [
+      {
+        type: "MARKETING",
+        when: customers > 20,
+        reason: `ร้านมีลูกค้าแล้ว ${customers} คน ถึงเวลาเปิดระบบการตลาดเพื่อทำแคมเปญและส่งข้อความชวนลูกค้ากลับมาซื้อซ้ำ`,
+      },
+      {
+        type: "INVENTORY",
+        when: posPaid > 50,
+        reason: `มีบิลขายแล้ว ${posPaid} ใบ ควรเปิดระบบคลังเพื่อคุมสต็อกและรู้ตัวเมื่อของใกล้หมด`,
+      },
+      {
+        type: "CRM",
+        when: customers > 20,
+        reason: `ร้านมีลูกค้าแล้ว ${customers} คน ควรเปิดระบบดูแลลูกค้าเพื่อติดตามดีลและความสัมพันธ์อย่างเป็นระบบ`,
+      },
+    ];
+
+    const recs = rules
+      .filter((r) => r.when && !open.has(r.type))
+      .map((r) => ({ ระบบ: r.type, ชื่อ: systemDef(r.type)?.label ?? r.type, เหตุผล: r.reason }));
+
+    if (recs.length === 0) {
+      return JSON.stringify({
+        คำแนะนำ: [],
+        สรุป: "ยังไม่มีคำแนะนำให้เปิดระบบเพิ่มตอนนี้ — ธุรกิจยังไม่ถึงเกณฑ์ หรือเปิดระบบที่จำเป็นครบแล้ว",
+      });
+    }
+    return JSON.stringify({ คำแนะนำ: recs });
+  },
+};
+
 // ── action tools (Phase 3.5) — "เสนอ" การกระทำ ไม่ execute · คืน proposal ให้ user ยืนยัน ──
 // helper: สร้าง proposal แล้วคืน JSON มาตรฐานให้ LLM (UI แสดง summary + ปุ่มยืนยันจาก proposal นี้)
 async function propose(
@@ -382,6 +437,41 @@ const memberCreate: AiTool = {
   },
 };
 
+// ── 10) open_system — เสนอเปิดระบบใหม่ให้ร้าน (WO-0033) ──
+// validate type กับทะเบียน systems.ts ก่อนเสนอ (ต้องเป็น feature ที่เปิดให้ใช้งาน) · เปิดจริงเมื่อ user ยืนยัน
+const openSystem: AiTool = {
+  action: true,
+  def: {
+    name: "open_system",
+    description:
+      "เสนอการเปิดระบบใหม่ให้ร้าน (ยังไม่เปิดทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) ระบุ type เป็นรหัสระบบ เช่น MARKETING, INVENTORY, CRM, HR และตั้ง name เองได้ถ้าต้องการ",
+    parameters: {
+      type: "object",
+      properties: {
+        type: { type: "string", description: "รหัสระบบที่จะเปิด เช่น MARKETING, INVENTORY, CRM, HR" },
+        name: { type: "string", description: "ชื่อระบบที่ต้องการ (ถ้าไม่ระบุจะใช้ชื่อเริ่มต้นภาษาไทย)" },
+      },
+      required: ["type"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const type = String(a.type ?? "").trim().toUpperCase();
+    const def = systemDef(type);
+    if (!def || !AVAILABLE_FEATURE.has(type as SystemType)) {
+      return JSON.stringify({
+        error: `เปิดระบบ "${type}" ไม่ได้ — ไม่พบระบบนี้ในทะเบียน หรือยังไม่เปิดให้ใช้งาน`,
+      });
+    }
+    const name = String(a.name ?? "").trim();
+    const payload: Record<string, unknown> = { type };
+    if (name) payload.name = name;
+    const summary = `เปิดระบบ${def.label}ให้ร้านคุณ`;
+    return propose(ctx, "open_system", summary, payload);
+  },
+};
+
 // หาชื่อพนักงานของใบลา (best-effort สำหรับ summary) — พังก็คืน null ไม่โยน
 async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<string | null> {
   try {
@@ -399,7 +489,7 @@ async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<
 
 export function toolRegistry(): AiTool[] {
   return [
-    // read-only (7)
+    // read-only (8)
     listSystems,
     salesSummary,
     lowStock,
@@ -407,11 +497,13 @@ export function toolRegistry(): AiTool[] {
     memberCount,
     customerSearch,
     salesByDay,
-    // action / ทำแทน (4)
+    growthRecommendations,
+    // action / ทำแทน (5)
     inventoryReceive,
     hrDecideLeave,
     marketingCreateCampaign,
     memberCreate,
+    openSystem,
   ];
 }
 
