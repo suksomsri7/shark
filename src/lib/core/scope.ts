@@ -47,6 +47,8 @@ const CORE_SCOPES: Record<string, ScopeDescriptor> = {
 
 // module scopes — Stage B/C
 const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
+  // Outbox (WO-0002) — event bus กลาง scope=tenant
+  OutboxEvent: tenant,
   // System instances (ทะเบียนระบบ — เป็น tenant-scoped เพราะ list ทั้งร้าน)
   AppSystem: tenant,
   AppSystemUnit: tenant, // ตารางเชื่อม system↔unit — query ด้วย unitId/tenantId ไม่ใช่ scope ใต้ system
