@@ -33,10 +33,12 @@
 กติกากันตาย: Builder ≤2 ตัวพร้อมกัน · Builder ห้ามรัน typecheck/build เอง (Fable รันรวมหลัง merge) · commit บ่อย
 ✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว**
 
-## กำลังวิ่ง (อัปเดตก่อน spawn 2026-07-16 ~16:15 UTC+7)
-- **WO-0016 M4 สัมภาษณ์พิมพ์อิสระ** → Builder A (Opus, worktree+neon wo-0016) · oracle qc-ai-interview.mts (Fable เขียนก่อน spawn)
-- **WO-0017 หนี้ UI: raw color ใน (store)/r/[token]** → Builder B (Opus, worktree, ไม่ใช้ DB)
-กู้ถ้าตาย: git worktree list → ตรวจไฟล์ → รัน oracle → merge ถ้าเขียว → neon:delete wo-0016
+## ✅ 2026-07-16 ค่ำ — รอบ Builder แรกของโหมดหัวหน้า-ลูกน้อง จบสวย
+- **WO-0016 M4 สัมภาษณ์พิมพ์อิสระ SHIPPED** (Builder A Opus · oracle 9/9 · smoke LLM จริง 3 เทิร์น → 13 facts ถูกหมด) — "Stop Learning Software. Start Talking to AI." ใช้ได้จริงแล้วบน /app/dna
+- **WO-0017 raw color /r/[token] SHIPPED** (Builder B Opus · 13 จุด → token)
+- Fable แก้ตอนตรวจรับ: probe wizard ไม่ยิง LLM ตอน mount (interviewEnabledAction) + import ตกหล่น
+- ไม่มี worktree/neon ค้าง — เก็บกวาดหมดแล้ว
+- **NEXT:** Phase 3 AI tool use (สั่งงานแทนผ่าน assertCan) → Backoffice Admin → Billing/Payment → object storage
 
 ## เสร็จแล้ว (main)
 M0 kernel guard · M1 POS→Account · M2 UI shell · M3 DNA Wizard · WO-0003 คูปอง · WO-0006 authz 8 โมดูล · **WO-0009 CRM เต็มระบบ (25/25)** · **WO-0010 สะพาน Deal→ใบเสนอราคา**
