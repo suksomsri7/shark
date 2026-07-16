@@ -33,6 +33,12 @@
 กติกากันตาย: Builder ≤2 ตัวพร้อมกัน · Builder ห้ามรัน typecheck/build เอง (Fable รันรวมหลัง merge) · commit บ่อย
 ✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว**
 
+## ✅ 2026-07-17 — งานกลางจบครบ (WO-0031/0033/0034 + ธีมตรวจแล้วครบอยู่ก่อน)
+- **ประกาศระบบ** (8/8): /backoffice/announcements → banner ทุกร้านจน "รับทราบ" — BACKOFFICE Phase 1 ครบ 100%
+- **AI Growth** (8/8): growth_recommendations (กติกา R1-R3 deterministic) + open_system ผ่าน proposal — Continuous Optimization ตามวิสัยทัศน์ · registry 13 tools
+- **i18n v1** (7/7): dict th/en 41 คีย์ + LanguageSwitcher (cookie lang) — หน้า public ลูกค้า 3 จุด (จองคิว/หน้าร้าน/ใบเสร็จ) · หลังบ้านไทยล้วนตามเดิม · follow-up v1.1: restaurant/queue-display + error จาก action
+- **NEXT ใหญ่ที่เหลือ**: หนี้บัญชีลึก 2 ข้อ + audit booking→POS (ต้องรอบสมาธิเต็ม) · host-routing โดเมน · งานหลังมีลูกค้าจริง (Multi-warehouse/Portal/BI/Marketplace/WhiteLabel)
+
 ## 🔧 2026-07-17 — ไขปริศนา "เมล deploy ล้ม" ที่ user ได้รับตลอด
 **สาเหตุ**: Vercel `next build` typecheck โฟลเดอร์ `scripts/` ด้วย → oracle contract-first ที่อ้าง type อนาคต (เช่น kind "open_system" ก่อน Builder เพิ่มใน ProposalKind) ทำ **deploy ล้มช่วงรอยต่อระหว่าง push ของกลาง → merge งาน Builder** แล้วหายเองหลัง merge (prod เสิร์ฟรอบสำเร็จล่าสุดเสมอ จึงไม่เคยล่มจริง)
 **กติกากันซ้ำ (บังคับ)**:

@@ -1,7 +1,7 @@
 {
   "id": "WO-0034",
   "title": "i18n v1 — dictionary th/en + หน้า public ฝั่งลูกค้า (จอง/หน้าร้าน/ใบเสร็จ) + switcher",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder",
   "worktree": ".claude/worktrees/",
   "neonBranch": null,
@@ -30,7 +30,7 @@
       "text": "Fable: oracle (standalone-typesafe ตามกติกาใหม่)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "Builder: dict+helper+switcher+แปลงหน้า public"
     }
   ],
@@ -38,6 +38,10 @@
     {
       "at": "2026-07-17T09:00:00Z",
       "note": "เปิดงาน — งานกลางตัวสุดท้าย · cookie-based ไม่แตะ routing/proxy"
+    },
+    {
+      "at": "2026-07-17T09:40:00Z",
+      "note": "Builder 7/7 (dict 41 คีย์ parity 100%) · Fable รันซ้ำ+gates เขียวรวดเดียว · follow-up: หน้า restaurant/queue-display ยังไทยล้วน (v1.1) + error จาก action ยังไทย"
     }
   ]
 }
