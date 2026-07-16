@@ -147,6 +147,54 @@ export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: stri
   });
 }
 
+// ── ปรับสต็อก (ADJUST) — ตั้ง onHand เป็นค่านับจริง (stock take) โดยตรง ──
+// qtyDelta = newQty - onHand เดิม · balanceAfter = newQty · idempotent เหมือน receive
+// ต้นทุนถัวเฉลี่ยไม่กระทบ (แค่ปรับจำนวน) · ปรับจนติดลบ = ตั้งธง needsReview
+export type AdjustInput = {
+  itemId: string;
+  newQty: number;
+  idempotencyKey: string;
+  note?: string | null;
+};
+
+export async function adjust(ctx: Ctx, input: AdjustInput): Promise<{ id: string }> {
+  const newQty = Math.round(input.newQty);
+  const db = tenantDb(ctx);
+
+  return db.$transaction(async (tx) => {
+    // idempotent guard — key เดิมเคยบันทึกแล้ว → คืนรายการเดิม ไม่แตะสต็อก
+    const dup = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
+    if (dup) return { id: dup.id };
+
+    const item = await tx.invItem.findFirst({ where: { id: input.itemId } });
+    if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+
+    const qtyDelta = newQty - item.onHand;
+
+    await tx.invItem.update({
+      where: { id: item.id },
+      data: { onHand: newQty }, // ตั้งเป็นค่านับจริงโดยตรง (ไม่กระทบต้นทุนถัวเฉลี่ย)
+    });
+
+    const mv = await tx.invMovement.create({
+      data: {
+        tenantId: ctx.tenantId,
+        systemId: ctx.systemId,
+        itemId: item.id,
+        type: "ADJUST",
+        qtyDelta,
+        balanceAfter: newQty,
+        costSatang: item.costSatang,
+        idempotencyKey: input.idempotencyKey,
+        note: input.note?.trim() || null,
+        // ปรับจนติดลบ = ตั้งธงให้ร้านมาเคลียร์
+        needsReview: isNegative(newQty),
+      },
+    });
+    return { id: mv.id };
+  });
+}
+
 // ── อ่านยอดคงเหลือ (cache) ตามรายการสินค้า ──
 export async function onHand(ctx: Ctx, itemIds: string[]): Promise<{ itemId: string; onHand: number }[]> {
   if (itemIds.length === 0) return [];
