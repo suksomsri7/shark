@@ -105,7 +105,8 @@ export async function markOrdered(ctx: Ctx, poId: string): Promise<boolean> {
 // ORDERED → RECEIVED (+ receivedAt) แล้วรับทุก line เข้าสต็อกผ่าน invSvc.receive
 //   - เปลี่ยนสถานะแบบ conditional (where status=ORDERED) ก่อน → คนเดียวชนะ = กันรับซ้ำ/race
 //   - invSvc.receive idempotencyKey `po-<lineId>` → ต่อให้เรียกซ้ำก็ไม่เบิ้ลสต็อก
-export async function receivePo(ctx: Ctx, poId: string): Promise<{ ok: boolean; note: string }> {
+// opts.locationId = คลังปลายทางที่รับของเข้า (ไม่ส่ง = คลังหลัก) — WO-0037
+export async function receivePo(ctx: Ctx, poId: string, opts?: { locationId?: string }): Promise<{ ok: boolean; note: string }> {
   const flipped = await tenantDb(ctx).purchaseOrder.updateMany({
     where: { id: poId, status: "ORDERED" },
     data: { status: "RECEIVED", receivedAt: new Date() },
@@ -124,6 +125,7 @@ export async function receivePo(ctx: Ctx, poId: string): Promise<{ ok: boolean; 
       sourceModule: "procurement",
       refType: "PurchaseOrder",
       refId: poId,
+      locationId: opts?.locationId ?? null,
     });
   }
   const total = lines.reduce((s, l) => s + l.qty, 0);
