@@ -82,26 +82,35 @@ body {
   }
 }
 
-/* ปุ่มผู้ช่วย AI — ลูกแก้วน้ำเงินเรืองแสง "หายใจ" นุ่ม ๆ (ไม่หมุน · ไม่มีพื้นดำ — วิชันเจ้าของ) */
+/* ปุ่มผู้ช่วย AI — วงแหวนน้ำเงินเรืองแสง ตรงกลางโปร่งใส + หายใจนุ่ม ๆ (ตาม ref เจ้าของ รอบ 4) */
 @keyframes ai-orb-breathe {
   0%, 100% {
     transform: scale(1);
-    box-shadow:
-      0 0 10px 2px rgba(59, 130, 246, 0.45),
-      0 0 26px 6px rgba(125, 211, 252, 0.22);
+    filter: drop-shadow(0 0 5px rgba(96, 165, 250, 0.55)) drop-shadow(0 0 14px rgba(59, 130, 246, 0.3));
   }
   50% {
     transform: scale(1.06);
-    box-shadow:
-      0 0 16px 5px rgba(59, 130, 246, 0.65),
-      0 0 40px 12px rgba(125, 211, 252, 0.38);
+    filter: drop-shadow(0 0 9px rgba(125, 211, 252, 0.85)) drop-shadow(0 0 22px rgba(59, 130, 246, 0.45));
   }
 }
 .ai-orb {
   border-radius: 9999px;
-  background: radial-gradient(circle at 32% 28%, #dbeafe 0%, #93c5fd 22%, #3b82f6 55%, #1d4ed8 85%, #1e3a8a 100%);
+  /* โทนวงแหวนแบบ ref: น้ำเงินเข้ม → ฟ้า → ฟ้าอ่อนสว่าง ไล่รอบวง ให้มีมิติ */
+  background: conic-gradient(
+    from 210deg,
+    #1e3a8a 0deg,
+    #2563eb 70deg,
+    #60a5fa 150deg,
+    #bae6fd 215deg,
+    #7dd3fc 260deg,
+    #3b82f6 320deg,
+    #1e3a8a 360deg
+  );
+  /* เจาะตรงกลางให้โปร่งใส เหลือแต่ขอบวงหนา ~5px */
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5.5px), #000 calc(100% - 5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 5.5px), #000 calc(100% - 5px));
   animation: ai-orb-breathe 3.2s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .ai-orb { animation: none; box-shadow: 0 0 12px 3px rgba(59, 130, 246, 0.5); }
+  .ai-orb { animation: none; filter: drop-shadow(0 0 7px rgba(96, 165, 250, 0.6)); }
 }
