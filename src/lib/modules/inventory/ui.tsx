@@ -1,4 +1,6 @@
 import { requireTenant } from "@/lib/core/context";
+import { env } from "@/lib/env";
+import { CopyLink } from "@/app/app/forms/CopyLink";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -31,6 +33,8 @@ import {
   cancelPoAction,
   createPoAction,
   createSupplierAction,
+  disableVendorPortalAction,
+  enableVendorPortalAction,
   markOrderedAction,
   receivePoAction,
 } from "./procurement-actions";
@@ -279,14 +283,66 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
 
       {/* ซัพพลายเออร์ */}
       <Section title={`ซัพพลายเออร์ (${suppliers.length})`}>
-        <DataList
-          items={suppliers.map((s) => ({
-            key: s.id,
-            primary: s.name,
-            secondary: [s.phone, s.email, s.note].filter(Boolean).join(" · ") || "—",
-          }))}
-          empty="ยังไม่มีซัพพลายเออร์ — เพิ่มรายแรกด้านล่างเพื่อเริ่มสั่งซื้อ"
-        />
+        {suppliers.length === 0 ? (
+          <p className={`text-sm ${muted}`}>
+            ยังไม่มีซัพพลายเออร์ — เพิ่มรายแรกด้านล่างเพื่อเริ่มสั่งซื้อ
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {suppliers.map((s) => {
+              const vendorUrl = s.portalToken
+                ? `${env.APP_URL.replace(/\/$/, "")}/vendor/${s.portalToken}`
+                : null;
+              return (
+                <div key={s.id} className="flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium">{s.name}</div>
+                      <div className={`truncate text-xs ${muted}`}>
+                        {[s.phone, s.email, s.note].filter(Boolean).join(" · ") || "—"}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {vendorUrl ? (
+                        <>
+                          <StatusChip value="ON" map={{ ON: "ลิงก์เปิดอยู่" }} tone="strong" />
+                          <form action={enableVendorPortalAction}>
+                            <input type="hidden" name="systemId" value={systemId} />
+                            <input type="hidden" name="supplierId" value={s.id} />
+                            <SubmitButton variant="ghost">สร้างลิงก์ใหม่</SubmitButton>
+                          </form>
+                          <ConfirmDialog
+                            triggerLabel="ปิดลิงก์"
+                            title={`ปิดลิงก์ผู้ขาย — ${s.name}?`}
+                            detail="ปิดแล้วลิงก์เดิมจะใช้ไม่ได้ทันที ผู้ขายจะเปิดดูใบสั่งซื้อไม่ได้"
+                            confirmLabel="ยืนยันปิดลิงก์"
+                            danger
+                            action={disableVendorPortalAction}
+                            fields={{ systemId, supplierId: s.id }}
+                          />
+                        </>
+                      ) : (
+                        <form action={enableVendorPortalAction}>
+                          <input type="hidden" name="systemId" value={systemId} />
+                          <input type="hidden" name="supplierId" value={s.id} />
+                          <SubmitButton variant="ghost">เปิดลิงก์ผู้ขาย</SubmitButton>
+                        </form>
+                      )}
+                    </div>
+                  </div>
+                  {vendorUrl && (
+                    <div className="flex flex-col gap-1">
+                      <div className={`text-xs ${muted}`}>
+                        ส่งลิงก์นี้ให้ผู้ขายเปิดดูใบสั่งซื้อของตัวเอง (ไม่ต้องล็อกอิน)
+                      </div>
+                      <CopyLink url={vendorUrl} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* เพิ่มซัพพลายเออร์ */}
         <form
