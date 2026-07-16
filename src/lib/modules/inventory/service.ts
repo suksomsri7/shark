@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
-import { tenantDb } from "@/lib/core/db";
+import { prisma, tenantDb } from "@/lib/core/db";
+import { emitOutbox } from "@/lib/core/outbox";
+import { formatThaiDate } from "@/lib/ui/date";
 import { isNegative, movingAvgCost, needsReorder } from "./rules";
 
 // Inventory (ระบบ 18) — สต็อกกลาง + movement ledger (contract C-1)
@@ -63,6 +65,40 @@ async function applyLocationDelta(db: Db, ctx: Ctx, itemId: string, locationId: 
   return delta;
 }
 
+// ═══════════ Lot/Expiry (WO-0038) — lot ต่อ item (orthogonal กับ location) ═══════════
+// invariant เบา: lot.onHand เดินตาม movement ที่ระบุ lotCode เท่านั้น (ไม่ระบุ = ไม่แตะ lot)
+// get-or-create InvLot(itemId,lotCode) แล้วบวก delta (find→update/create — ห้าม upsert)
+// expiryDate ส่งมา → ตั้งให้ lot (lot เดิมที่ยังว่างก็เติมได้) · คืน onHand ของ lot หลังปรับ
+async function applyLotDelta(
+  db: Db,
+  ctx: Ctx,
+  itemId: string,
+  lotCode: string,
+  delta: number,
+  expiryDate?: Date | null,
+): Promise<number> {
+  const existing = await db.invLot.findFirst({ where: { itemId, lotCode } });
+  if (existing) {
+    const after = existing.onHand + delta;
+    await db.invLot.update({
+      where: { id: existing.id },
+      data: { onHand: after, ...(expiryDate ? { expiryDate } : {}) },
+    });
+    return after;
+  }
+  await db.invLot.create({
+    data: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      itemId,
+      lotCode,
+      onHand: delta,
+      ...(expiryDate ? { expiryDate } : {}),
+    },
+  });
+  return delta;
+}
+
 // resolve locationId ที่จะใช้จริง: ส่งมา = ใช้ตามนั้น · ไม่ส่ง = คลัง default
 async function resolveLocationId(db: Db, ctx: Ctx, locationId?: string | null): Promise<string> {
   const id = locationId?.trim();
@@ -120,6 +156,7 @@ export async function onHandByLocation(ctx: Ctx, itemId: string): Promise<{ loca
 export type CreateItemInput = {
   sku: string;
   name: string;
+  barcode?: string | null;
   unitLabel?: string | null;
   category?: string | null;
   reorderPoint?: number | null;
@@ -133,6 +170,7 @@ export async function createItem(ctx: Ctx, input: CreateItemInput): Promise<{ id
       systemId: ctx.systemId,
       sku: input.sku.trim(),
       name: input.name.trim(),
+      barcode: input.barcode?.trim() || null,
       // unitLabel มี default "ชิ้น" ใน schema — ส่งเฉพาะเมื่อระบุ
       ...(input.unitLabel?.trim() ? { unitLabel: input.unitLabel.trim() } : {}),
       category: input.category?.trim() || null,
@@ -156,11 +194,14 @@ export type ReceiveInput = {
   sourceModule?: string | null;
   note?: string | null;
   locationId?: string | null; // ไม่ส่ง = คลัง default (WO-0037)
+  lotCode?: string | null; // WO-0038: ระบุ lot → เดิน InvLot · ไม่ส่ง = พฤติกรรมเดิม
+  expiryDate?: Date | null; // WO-0038: ตั้งวันหมดอายุให้ lot (ต้องมี lotCode)
 };
 
 export async function receive(ctx: Ctx, input: ReceiveInput): Promise<{ id: string }> {
   const qty = Math.round(input.qty);
   const inCost = Math.max(0, Math.round(input.costSatang));
+  const lotCode = input.lotCode?.trim() || null;
   const db = tenantDb(ctx);
 
   return db.$transaction(async (tx) => {
@@ -184,6 +225,8 @@ export async function receive(ctx: Ctx, input: ReceiveInput): Promise<{ id: stri
       data: { onHand: newOnHand, costSatang: newCost },
     });
     await applyLocationDelta(txc, ctx, item.id, locId, qty);
+    // ระบุ lot → เดิน InvLot (get-or-create + ตั้งวันหมดอายุ) · ไม่ระบุ = ไม่แตะ lot เลย
+    if (lotCode) await applyLotDelta(txc, ctx, item.id, lotCode, qty, input.expiryDate ?? null);
 
     const mv = await tx.invMovement.create({
       data: {
@@ -192,6 +235,7 @@ export async function receive(ctx: Ctx, input: ReceiveInput): Promise<{ id: stri
         itemId: item.id,
         type: "IN",
         locationId: locId,
+        lotCode,
         qtyDelta: qty,
         balanceAfter: newOnHand,
         costSatang: inCost,
@@ -218,10 +262,12 @@ export type ConsumeInput = {
   idempotencyKey: string;
   note?: string | null;
   locationId?: string | null; // ไม่ส่ง = คลัง default (WO-0037)
+  lotCode?: string | null; // WO-0038: ระบุ lot → ตัดจาก InvLot (ติดลบยอม)
 };
 
 export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: string }> {
   const qty = Math.round(input.qty);
+  const lotCode = input.lotCode?.trim() || null;
   const db = tenantDb(ctx);
 
   return db.$transaction(async (tx) => {
@@ -242,6 +288,9 @@ export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: stri
       data: { onHand: newOnHand }, // ตัดออกไม่กระทบต้นทุนถัวเฉลี่ย
     });
     await applyLocationDelta(txc, ctx, item.id, locId, -qty);
+    // ระบุ lot → ตัดจาก lot (ติดลบยอม) · lot ติดลบก็ตั้งธงให้ตรวจตามนโยบายเดิม
+    let lotNegative = false;
+    if (lotCode) lotNegative = isNegative(await applyLotDelta(txc, ctx, item.id, lotCode, -qty));
 
     const mv = await tx.invMovement.create({
       data: {
@@ -250,6 +299,7 @@ export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: stri
         itemId: item.id,
         type: "OUT",
         locationId: locId,
+        lotCode,
         qtyDelta: -qty,
         balanceAfter: newOnHand,
         costSatang: item.costSatang,
@@ -258,8 +308,8 @@ export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: stri
         refId: input.refId?.trim() || null,
         idempotencyKey: input.idempotencyKey,
         note: input.note?.trim() || null,
-        // ตัดจนติดลบ = ตั้งธงให้ร้านมาเคลียร์ (ขายไปก่อน ไม่ block)
-        needsReview: isNegative(newOnHand),
+        // ตัดจนติดลบ (ยอดรวม หรือ lot ที่ระบุ) = ตั้งธงให้ร้านมาเคลียร์ (ขายไปก่อน ไม่ block)
+        needsReview: isNegative(newOnHand) || lotNegative,
       },
     });
     return { id: mv.id };
@@ -457,4 +507,130 @@ export async function recentMovements(ctx: Ctx, take = 30) {
     include: { item: true },
     take,
   });
+}
+
+// ═══════════ Lot/Expiry/Barcode reads (WO-0038) ═══════════
+const DAY_MS = 86_400_000;
+const LOT_EXPIRING_TITLE = "สินค้าใกล้หมดอายุ";
+const LOT_EXPIRING_EVENT = "inventory.lot.expiring";
+const SWEEP_WITHIN_DAYS = 7; // กวาดเตือน lot ที่จะหมดใน 7 วัน
+
+// lot ทั้งหมดของ item เรียงวันหมดอายุใกล้ก่อน (null = ไม่มีวันหมดอายุ → ท้ายสุด)
+export async function itemLots(ctx: Ctx, itemId: string) {
+  return tenantDb(ctx).invLot.findMany({
+    where: { itemId },
+    orderBy: { expiryDate: { sort: "asc", nulls: "last" } },
+  });
+}
+
+// lot คงเหลือ (>0) ของทุก item สำหรับ UI แสดงแบบกดดู → Map itemId → lot[]
+export async function lotsByItemMap(ctx: Ctx) {
+  const rows = await tenantDb(ctx).invLot.findMany({
+    where: { onHand: { gt: 0 } },
+    orderBy: { expiryDate: { sort: "asc", nulls: "last" } },
+  });
+  const map = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const arr = map.get(r.itemId) ?? [];
+    arr.push(r);
+    map.set(r.itemId, arr);
+  }
+  return map;
+}
+
+// ค้นสินค้าด้วยบาร์โค้ด (เทียบตรง InvItem.barcode) — ไม่เจอ/บาร์โค้ดว่าง → null
+export async function findItemByBarcode(ctx: Ctx, barcode: string) {
+  const bc = barcode.trim();
+  if (!bc) return null;
+  return tenantDb(ctx).invItem.findFirst({ where: { barcode: bc, archivedAt: null } });
+}
+
+// lot ที่ยังมีของ (onHand>0) และมีวันหมดอายุ ≤ now+withinDays (รวมที่หมดแล้ว) เรียงใกล้ก่อน
+export async function expiringLots(ctx: Ctx, input: { withinDays: number }) {
+  const cutoff = new Date(Date.now() + Math.max(0, input.withinDays) * DAY_MS);
+  return tenantDb(ctx).invLot.findMany({
+    where: { onHand: { gt: 0 }, expiryDate: { lte: cutoff } }, // lte กับ null คอลัมน์ = ตัด null ออกอยู่แล้ว
+    orderBy: { expiryDate: "asc" },
+  });
+}
+
+// ── กวาดแจ้งเตือน lot ใกล้หมดอายุข้ามทุกร้าน (platform-level, เรียกจาก cron) ──
+// วนทุก tenant ACTIVE ที่มีระบบ INVENTORY (cap 50) · เจอ lot ใกล้หมด (7 วัน) →
+//   AppNotification "สินค้าใกล้หมดอายุ" (body ไทยระบุชื่อสินค้า+lot+วันหมด) + emitOutbox inventory.lot.expiring
+// idempotent ต่อวัน BKK: มี notification title นี้ของร้านในวันเดียวกัน (เวลาไทย) แล้ว → ข้าม
+// คืนจำนวนร้านที่เพิ่งสร้างแจ้งเตือนรอบนี้ · ร้านไหนพัง catch แล้วไปต่อ (cron ต้องไม่ล้มทั้งรอบ)
+export async function sweepExpiringLots(now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() + SWEEP_WITHIN_DAYS * DAY_MS);
+  // ขอบเขตวันตามเวลาไทย (กันปัญหาขอบวัน UTC) สำหรับ idempotent
+  const dayKey = now.toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" }); // YYYY-MM-DD
+  const dayStart = new Date(`${dayKey}T00:00:00+07:00`);
+  const dayEnd = new Date(dayStart.getTime() + DAY_MS);
+
+  // tenant ที่มีระบบ INVENTORY (distinct) → กรอง ACTIVE (cap 50/รอบ)
+  const sysRows = await prisma.appSystem.findMany({
+    where: { type: "INVENTORY" },
+    distinct: ["tenantId"],
+    select: { tenantId: true },
+  });
+  const ids = sysRows.map((r) => r.tenantId);
+  if (ids.length === 0) return 0;
+  const tenants = await prisma.tenant.findMany({
+    where: { id: { in: ids }, status: "ACTIVE" },
+    select: { id: true },
+    take: 50,
+  });
+
+  let notified = 0;
+  for (const t of tenants) {
+    try {
+      // idempotent ต่อวัน BKK — เคยแจ้งวันนี้แล้ว → ข้าม (คืน 0 สำหรับร้านนี้)
+      const already = await prisma.appNotification.count({
+        where: { tenantId: t.id, title: LOT_EXPIRING_TITLE, createdAt: { gte: dayStart, lt: dayEnd } },
+      });
+      if (already > 0) continue;
+
+      const lots = await prisma.invLot.findMany({
+        where: { tenantId: t.id, onHand: { gt: 0 }, expiryDate: { lte: cutoff } },
+        orderBy: { expiryDate: "asc" },
+      });
+      if (lots.length === 0) continue;
+
+      const items = await prisma.invItem.findMany({
+        where: { id: { in: lots.map((l) => l.itemId) } },
+        select: { id: true, name: true, unitLabel: true },
+      });
+      const byId = new Map(items.map((i) => [i.id, i]));
+      const lines = lots.map((l) => {
+        const it = byId.get(l.itemId);
+        const name = it?.name ?? "สินค้า";
+        const unit = it?.unitLabel ?? "ชิ้น";
+        const exp = l.expiryDate ? formatThaiDate(l.expiryDate) : "-";
+        return `• ${name} (ล็อต ${l.lotCode}) หมดอายุ ${exp} · คงเหลือ ${l.onHand.toLocaleString("th-TH")} ${unit}`;
+      });
+      const body = [`พบสินค้าใกล้หมดอายุภายใน ${SWEEP_WITHIN_DAYS} วัน จำนวน ${lots.length} รายการ`, ...lines].join("\n");
+
+      await prisma.$transaction(async (tx) => {
+        await tx.appNotification.create({ data: { tenantId: t.id, title: LOT_EXPIRING_TITLE, body } });
+        await emitOutbox(tx, {
+          tenantId: t.id,
+          type: LOT_EXPIRING_EVENT,
+          idempotencyKey: `lot-expiring-${dayKey}`,
+          systemId: lots[0].systemId,
+          payload: {
+            lots: lots.map((l) => ({
+              itemId: l.itemId,
+              name: byId.get(l.itemId)?.name ?? null,
+              lotCode: l.lotCode,
+              expiryDate: l.expiryDate,
+              onHand: l.onHand,
+            })),
+          },
+        });
+      });
+      notified += 1;
+    } catch {
+      // ร้านนี้พัง → ข้ามไปทำร้านถัดไป
+    }
+  }
+  return notified;
 }

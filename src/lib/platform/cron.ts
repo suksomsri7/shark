@@ -7,6 +7,7 @@ import { prisma } from "@/lib/core/db";
 import { drainAll } from "@/lib/outbox-consumers";
 import { sweepPendingDeletes } from "@/lib/platform/pdpa";
 import { sweepWeeklyAnalysis } from "@/lib/ai/analyst";
+import { sweepExpiringLots } from "@/lib/modules/inventory/service";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -39,12 +40,14 @@ export async function runDailyCron(
   outboxDrained: number;
   tenantsPurged: number;
   weeklyReports: number;
+  lotsExpiring: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
   let outboxDrained = -1;
   let tenantsPurged = -1;
   let weeklyReports = -1;
+  let lotsExpiring = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -74,6 +77,12 @@ export async function runDailyCron(
   } catch {
     // สร้างรายงานสัปดาห์พัง → -1 ไปต่อ
   }
+  try {
+    // แจ้งเตือน lot ใกล้หมดอายุ (WO-0038): กวาดทุกร้าน INVENTORY, idempotent ต่อวัน BKK
+    lotsExpiring = await sweepExpiringLots(now);
+  } catch {
+    // กวาด lot ใกล้หมดอายุพัง → -1 ไปต่อ
+  }
 
-  return { subsExpired, proposalsExpired, outboxDrained, tenantsPurged, weeklyReports };
+  return { subsExpired, proposalsExpired, outboxDrained, tenantsPurged, weeklyReports, lotsExpiring };
 }
