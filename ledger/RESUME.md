@@ -9,8 +9,11 @@
 ## กู้ Builder ตายกลางคัน
 `git worktree list` → `git -C <wt> log --oneline` + อ่าน `<wt>/ledger/wo/WO-*.json` step → ทำต่อ/merge → `git worktree remove --force` + `pnpm neon:delete wo-X` + `pnpm neon:gc`
 
+## คำสั่งล่าสุด user (2026-07-16 ค่ำ)
+บันทึก ✓ → **deploy รอบแรก** (Vercel prod + VPS staging) → ปล่อย Builder ขนาน (Procurement/Inventory/Marketing)
+
 ## เสร็จแล้ว (main)
-M0 kernel guard · M1 POS→Account · M2 UI shell · M3 DNA Wizard · WO-0003 คูปอง · WO-0006 authz 8 โมดูล
+M0 kernel guard · M1 POS→Account · M2 UI shell · M3 DNA Wizard · WO-0003 คูปอง · WO-0006 authz 8 โมดูล · **WO-0009 CRM เต็มระบบ (25/25)** · **WO-0010 สะพาน Deal→ใบเสนอราคา**
 WO-0007 Ticket→POS · WO-0008 Hotel→POS (ทั้งคู่รีแฟกเตอร์ใช้ systemForUnit หลัง merge)
 audit ฟรี: restaurant→POS→บัญชี
 **ทุกระบบธุรกิจมีเงินเข้าบัญชีครบ**: POS·restaurant·ticket·hotel·booking(wiring)·coupon
