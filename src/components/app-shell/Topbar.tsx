@@ -36,9 +36,19 @@ export function Topbar({
           onClick={onHelp}
           aria-label="ศูนย์ช่วยเหลือ"
           title="ศูนย์ช่วยเหลือ"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-base font-semibold text-[color:var(--color-accent)] hover:bg-[color:var(--color-surface-2)]"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-[color:var(--color-accent)] hover:bg-[color:var(--color-surface-2)]"
         >
-          ?
+          {/* ไอคอนหูฟัง support (วิชันเจ้าของ) — บับเบิลแชท + หูฟัง + ไมค์ */}
+          <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 12a8 8 0 0 1 16 0" />
+            <rect x="2.5" y="11" width="3.5" height="6" rx="1.6" fill="currentColor" stroke="none" />
+            <rect x="18" y="11" width="3.5" height="6" rx="1.6" fill="currentColor" stroke="none" />
+            <path d="M20 17v.6a2.4 2.4 0 0 1-2.4 2.4H14" />
+            <circle cx="12.9" cy="20" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="9.2" cy="12.4" r="0.9" fill="currentColor" stroke="none" />
+            <circle cx="12" cy="12.4" r="0.9" fill="currentColor" stroke="none" />
+            <circle cx="14.8" cy="12.4" r="0.9" fill="currentColor" stroke="none" />
+          </svg>
         </button>
       </div>
     </header>

@@ -33,7 +33,7 @@ export const SYSTEM_DEFS: SystemDef[] = [
   { code: "KANBAN", no: 13, kind: "feature", label: "Kanban", hint: "บอร์ดงาน", icon: "📋", status: "available" },
   { code: "POS", no: 14, kind: "feature", label: "ร้านค้า POS", hint: "ขาย บิล ยอดขาย", icon: "🧾", status: "available" },
   { code: "CRM", no: 19, kind: "feature", label: "CRM (ลูกค้า/ดีล)", hint: "Lead→ลูกค้า, ไปป์ไลน์, ดีล, ติดตามงาน", icon: "🎯", status: "available" },
-  { code: "AI", no: 15, kind: "feature", label: "AI พนักงาน", hint: "จ้างพนักงาน AI ทำงานแทน 24 ชม.", icon: "🤖", status: "coming_soon" },
+  // "AI พนักงาน" (no.15 เดิม) ถอดออก 2026-07-17 — ส่งมอบแล้วเป็นปุ่ม orb ผู้ช่วย AI (ไม่ใช่ระบบที่ต้องเปิด)
   { code: "KB", no: 16, kind: "feature", label: "คลังความรู้ (KB)", hint: "FAQ/ความรู้ร้าน ให้ AI และทีมใช้ตอบ", icon: "📚", status: "coming_soon" },
   { code: "HR", no: 17, kind: "feature", label: "พนักงาน (HR)", hint: "ลงเวลา ขาด ลา มาสาย", icon: "🧑‍💼", status: "available" },
   { code: "INVENTORY", no: 18, kind: "feature", label: "คลังสินค้า / สต็อก", hint: "สต็อกกลาง รับเข้า-ตัดออก แจ้งใกล้หมด", icon: "📦", status: "available" },

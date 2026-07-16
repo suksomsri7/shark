@@ -23,7 +23,9 @@ export function AiDock() {
         aria-label="ผู้ช่วย AI"
         className="fixed bottom-4 right-4 z-40 h-14 w-14 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.2)] transition-transform hover:scale-105"
       >
-        <Image src="/ai-orb.png" alt="" width={56} height={56} className="h-14 w-14" />
+        {/* วงแหวนเรืองแสงหมุนวนตลอด (วิชันเจ้าของ) รอบลูกแก้ว orb */}
+        <span aria-hidden className="ai-orb-ring" />
+        <Image src="/ai-orb.png" alt="" width={56} height={56} className="h-14 w-14 rounded-full" />
       </button>
 
       {open && (
