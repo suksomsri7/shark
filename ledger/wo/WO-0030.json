@@ -1,7 +1,7 @@
 {
   "id": "WO-0030",
   "title": "Dashboard หน้าแรกกิจการ — KPI ตามวิสัยทัศน์ Blank_6",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder",
   "worktree": ".claude/worktrees/",
   "neonBranch": "wo-0030",
@@ -26,7 +26,7 @@
       "text": "Fable: oracle + SHARK_CRON_SECRET (local+Vercel)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "Builder ตามสัญญาหัว oracle"
     }
   ],
@@ -34,6 +34,10 @@
     {
       "at": "2026-07-17T05:00:00Z",
       "note": "เปิดงาน (ข้อ 2 ตามที่ user เลือก — user เทสข้อ 1 ขนานไป)"
+    },
+    {
+      "at": "2026-07-17T06:20:00Z",
+      "note": "Builder 7/7 · Fable รันซ้ำ · ช่วงวัน BKK แปลงเป็น UTC instant ถูกวิธี · KPI โชว์ตามระบบที่เปิด"
     }
   ]
 }

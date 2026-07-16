@@ -1,7 +1,7 @@
 {
   "id": "WO-0029",
   "title": "Cron kernel — sweep subscription/proposal หมดอายุ + outbox เก็บตก (Vercel cron)",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder",
   "worktree": ".claude/worktrees/",
   "neonBranch": "wo-0029",
@@ -28,7 +28,7 @@
       "text": "Fable: oracle + SHARK_CRON_SECRET (local+Vercel)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "Builder ตามสัญญาหัว oracle"
     }
   ],
@@ -36,6 +36,10 @@
     {
       "at": "2026-07-17T05:00:00Z",
       "note": "เปิดงาน (ข้อ 2 ตามที่ user เลือก — user เทสข้อ 1 ขนานไป)"
+    },
+    {
+      "at": "2026-07-17T06:20:00Z",
+      "note": "Builder 4/4 · Fable รันซ้ำ · vercel.json cron 03:00 BKK · หมายเหตุ: มี CRON_SECRET เดิมของ /api/cron/outbox อยู่คู่กัน (คนละ header) — รวมทีหลังได้"
     }
   ]
 }
