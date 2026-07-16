@@ -110,6 +110,10 @@ jobs:
         if: steps.guard.outputs.ready == 'true'
         run: pnpm qc:dna
 
+      - name: QC สายเงินร้านอาหาร (โต๊ะ→POS→บัญชี E2E)
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm qc:restaurant-money
+
       - name: ลบ Neon branch (กันค่าใช้จ่ายบาน)
         if: always() && steps.guard.outputs.ready == 'true'
         env:

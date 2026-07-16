@@ -30,7 +30,8 @@
     "wo:claim": "tsx scripts/wo.mts claim",
     "wo:done": "tsx scripts/wo.mts done",
     "qc:pos": "tsx scripts/qc-pos-account.mts",
-    "qc:dna": "tsx scripts/qc-dna.mts"
+    "qc:dna": "tsx scripts/qc-dna.mts",
+    "qc:restaurant-money": "tsx scripts/qc-restaurant-money.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
