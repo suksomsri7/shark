@@ -17,6 +17,7 @@ import {
   decideLeaveAction,
   requestLeaveAction,
 } from "./actions";
+import { PayrollSection } from "./payroll-ui";
 
 const muted = "text-[color:var(--color-muted)]";
 
@@ -221,6 +222,9 @@ export async function HrContent({ systemId }: { systemId: string }) {
           <SubmitButton variant="ghost">+ เพิ่มพนักงาน</SubmitButton>
         </form>
       </Section>
+
+      {/* เงินเดือน (Payroll) — โปรไฟล์ + รอบจ่าย + สลิป */}
+      <PayrollSection systemId={systemId} />
     </div>
   );
 }
