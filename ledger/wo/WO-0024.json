@@ -1,7 +1,7 @@
 {
   "id": "WO-0024",
   "title": "Object storage — โลโก้/ไฟล์แนบขึ้น Bunny (env-driven, ปิดสุภาพ)",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder",
   "worktree": ".claude/worktrees/",
   "neonBranch": "wo-0024",
@@ -27,7 +27,7 @@
       "text": "Fable: schema + scope + migration (ลง prod แล้ว) + oracle"
     },
     {
-      "done": false,
+      "done": true,
       "text": "Builder ตามสัญญาหัว oracle"
     }
   ],
@@ -35,6 +35,10 @@
     {
       "at": "2026-07-16T16:30:00Z",
       "note": "เปิดงาน Round 1 ของชุด 4-8"
+    },
+    {
+      "at": "2026-07-16T17:10:00Z",
+      "note": "Builder 11/11 · Fable รันซ้ำยืนยัน · merge+typecheck · รอ SHARK_BUNNY_* key จาก user จึงเปิดจริง (ปิดสุภาพระหว่างนี้)"
     }
   ]
 }
