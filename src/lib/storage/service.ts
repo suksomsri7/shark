@@ -102,7 +102,8 @@ export async function uploadFile(
           AccessKey: process.env.SHARK_BUNNY_KEY ?? "",
           "Content-Type": input.contentType,
         },
-        body: input.data,
+        // Uint8Array ใช้เป็น body ได้จริง แต่ TS DOM lib ไม่รับ view type ตรง ๆ — ส่ง ArrayBuffer ก้อนที่ copy แล้ว
+        body: input.data.slice().buffer as ArrayBuffer,
       });
       if (!res.ok) {
         return { ok: false, error: "อัปโหลดไปที่เก็บไฟล์ไม่สำเร็จ — กรุณาลองใหม่" };
