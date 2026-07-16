@@ -1,28 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { makeT, type Locale } from "@/lib/i18n";
 
 type Service = { id: string; name: string; durationMin: number; priceSatang: number };
 type Staff = { id: string; name: string };
 type Slot = { hhmm: string; startMin: number; staffId: string };
 
-const baht = (satang: number) => (satang / 100).toLocaleString("th-TH");
+// ฿ คงเดิมทั้งสองภาษา · ตัวเลขจัดกลุ่มตาม locale (en ใช้ en-GB)
+const baht = (satang: number, locale: Locale) =>
+  (satang / 100).toLocaleString(locale === "en" ? "en-GB" : "th-TH");
 
-// วันที่ local ถัดไป 14 วัน (Asia/Bangkok)
-function nextDays(n: number): { value: string; label: string }[] {
+// วันที่ local ถัดไป 14 วัน (Asia/Bangkok) — ป้ายชื่อวันตาม locale (en ใช้ en-GB)
+function nextDays(n: number, locale: Locale, todayLabel: string): { value: string; label: string }[] {
   const out: { value: string; label: string }[] = [];
   const now = new Date();
   const bkk = new Date(now.getTime() + 7 * 3600000);
   for (let i = 0; i < n; i++) {
     const d = new Date(Date.UTC(bkk.getUTCFullYear(), bkk.getUTCMonth(), bkk.getUTCDate() + i));
     const value = d.toISOString().slice(0, 10);
-    const label = d.toLocaleDateString("th-TH", {
+    const label = d.toLocaleDateString(locale === "en" ? "en-GB" : "th-TH", {
       weekday: "short",
       day: "numeric",
       month: "short",
       timeZone: "UTC",
     });
-    out.push({ value, label: i === 0 ? `วันนี้ · ${label}` : label });
+    out.push({ value, label: i === 0 ? `${todayLabel} · ${label}` : label });
   }
   return out;
 }
@@ -32,13 +35,16 @@ export function PublicBooking({
   unitSlug,
   services,
   staff,
+  locale,
 }: {
   tenantSlug: string;
   unitSlug: string;
   services: Service[];
   staff: Staff[];
+  locale: Locale;
 }) {
-  const days = nextDays(14);
+  const t = useMemo(() => makeT(locale), [locale]);
+  const days = useMemo(() => nextDays(14, locale, t("booking.today")), [locale, t]);
   const [service, setService] = useState<Service | null>(null);
   const [staffId, setStaffId] = useState<string>("any");
   const [date, setDate] = useState<string>(days[0].value);
@@ -86,7 +92,7 @@ export function PublicBooking({
       setDone(true);
     } else {
       const d = await res.json().catch(() => ({}));
-      setError(d.reason ?? "จองไม่สำเร็จ กรุณาลองใหม่");
+      setError(d.reason ?? t("booking.error"));
       // slot อาจถูกจองไปแล้ว → รีเฟรช
       setSlot(null);
       setSlots(null);
@@ -101,12 +107,16 @@ export function PublicBooking({
     return (
       <div className="card flex flex-col items-center gap-3 py-10 text-center">
         <div className="text-3xl">✅</div>
-        <div className="text-lg font-semibold">จองสำเร็จ!</div>
+        <div className="text-lg font-semibold">{t("booking.done.title")}</div>
         <div className="text-sm text-[color:var(--color-muted)]">
-          {service?.name} · {days.find((d) => d.value === date)?.label} {slot?.hhmm} น.
+          {t("booking.done.detail", {
+            service: service?.name ?? "",
+            date: days.find((d) => d.value === date)?.label ?? "",
+            time: slot?.hhmm ?? "",
+          })}
         </div>
         <div className="text-sm text-[color:var(--color-muted)]">
-          คุณ {name} — แล้วพบกันที่ร้านครับ
+          {t("booking.done.greet", { name })}
         </div>
       </div>
     );
@@ -115,7 +125,7 @@ export function PublicBooking({
   if (services.length === 0) {
     return (
       <div className="card text-center text-sm text-[color:var(--color-muted)]">
-        ร้านยังไม่เปิดรับจองออนไลน์
+        {t("booking.closed")}
       </div>
     );
   }
@@ -124,7 +134,7 @@ export function PublicBooking({
     <div className="flex flex-col gap-6">
       {/* 1. บริการ */}
       <section className="flex flex-col gap-2">
-        <div className="text-sm font-medium">1. เลือกบริการ</div>
+        <div className="text-sm font-medium">{t("booking.step.service")}</div>
         {services.map((s) => (
           <button
             key={s.id}
@@ -138,9 +148,11 @@ export function PublicBooking({
           >
             <div>
               <div className="text-sm font-medium">{s.name}</div>
-              <div className="text-xs text-[color:var(--color-muted)]">{s.durationMin} นาที</div>
+              <div className="text-xs text-[color:var(--color-muted)]">
+                {t("booking.duration", { min: s.durationMin })}
+              </div>
             </div>
-            <div className="text-sm">{s.priceSatang > 0 ? `฿${baht(s.priceSatang)}` : "—"}</div>
+            <div className="text-sm">{s.priceSatang > 0 ? `฿${baht(s.priceSatang, locale)}` : "—"}</div>
           </button>
         ))}
       </section>
@@ -149,10 +161,10 @@ export function PublicBooking({
         <>
           {/* 2. ช่าง */}
           <section className="flex flex-col gap-2">
-            <div className="text-sm font-medium">2. เลือกพนักงาน</div>
+            <div className="text-sm font-medium">{t("booking.step.staff")}</div>
             <div className="flex flex-wrap gap-2">
               <Chip active={staffId === "any"} onClick={() => setStaffId("any")}>
-                ใครก็ได้
+                {t("booking.staff.any")}
               </Chip>
               {staff.map((s) => (
                 <Chip key={s.id} active={staffId === s.id} onClick={() => setStaffId(s.id)}>
@@ -164,7 +176,7 @@ export function PublicBooking({
 
           {/* 3. วัน */}
           <section className="flex flex-col gap-2">
-            <div className="text-sm font-medium">3. เลือกวัน</div>
+            <div className="text-sm font-medium">{t("booking.step.date")}</div>
             <div className="flex gap-2 overflow-x-auto pb-1">
               {days.map((d) => (
                 <button
@@ -185,9 +197,9 @@ export function PublicBooking({
 
           {/* 4. เวลา */}
           <section className="flex flex-col gap-2">
-            <div className="text-sm font-medium">4. เลือกเวลา</div>
+            <div className="text-sm font-medium">{t("booking.step.time")}</div>
             {loading ? (
-              <div className="text-sm text-[color:var(--color-muted)]">กำลังโหลด...</div>
+              <div className="text-sm text-[color:var(--color-muted)]">{t("booking.loading")}</div>
             ) : slots && slots.length > 0 ? (
               <div className="grid grid-cols-4 gap-2">
                 {slots.map((s) => (
@@ -206,25 +218,25 @@ export function PublicBooking({
                 ))}
               </div>
             ) : (
-              <div className="text-sm text-[color:var(--color-muted)]">วันนี้ไม่มีเวลาว่าง ลองวันอื่น</div>
+              <div className="text-sm text-[color:var(--color-muted)]">{t("booking.noSlots")}</div>
             )}
           </section>
 
           {/* 5. ข้อมูล + ยืนยัน */}
           {slot && (
             <section className="flex flex-col gap-3">
-              <div className="text-sm font-medium">5. ข้อมูลผู้จอง</div>
+              <div className="text-sm font-medium">{t("booking.step.info")}</div>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="ชื่อ"
+                placeholder={t("booking.name")}
                 className="rounded-lg border px-3 py-2 text-sm outline-none focus:border-[color:var(--color-ink)]"
               />
               <input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 inputMode="tel"
-                placeholder="เบอร์โทร"
+                placeholder={t("booking.phone")}
                 className="rounded-lg border px-3 py-2 text-sm outline-none focus:border-[color:var(--color-ink)]"
               />
               {error && <p className="text-sm text-[color:var(--color-danger)]">{error}</p>}
@@ -235,8 +247,8 @@ export function PublicBooking({
                 className="btn btn-primary disabled:opacity-50"
               >
                 {submitting
-                  ? "กำลังจอง..."
-                  : `ยืนยันจอง ${slot.hhmm} น.`}
+                  ? t("booking.submitting")
+                  : t("booking.confirm", { time: slot.hhmm })}
               </button>
             </section>
           )}
