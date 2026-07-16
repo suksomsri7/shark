@@ -1,0 +1,62 @@
+// E-commerce storefront (WO-0053) — catalog ต่อ unit · ออเดอร์ → เส้นเงินผ่าน pos.createSale (chokepoint C-2)
+// นโยบายจ่ายเงิน v1: PromptPay QR (PaymentProfile ของร้าน) — ร้านกดยืนยันรับเงินเอง (ไม่มี bank API)
+enum ShopOrderStatus {
+  PENDING_PAYMENT
+  PAID
+  CANCELLED
+}
+
+model ShopProduct {
+  id          String    @id @default(cuid())
+  tenantId    String
+  unitId      String
+  name        String
+  description String?
+  priceSatang Int       @default(0)
+  imageUrl    String?
+  invItemId   String? // ผูกสต็อก inventory (optional) — ตัดตอนยืนยันรับเงิน
+  active      Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  lines ShopOrderLine[]
+
+  @@index([tenantId, unitId, active])
+}
+
+model ShopOrder {
+  id            String          @id @default(cuid())
+  tenantId      String
+  unitId        String
+  code          String // SO-0001 running ต่อ unit
+  status        ShopOrderStatus @default(PENDING_PAYMENT)
+  customerName  String
+  customerPhone String
+  note          String?
+  totalSatang   Int             @default(0)
+  posSaleId     String? // PosSale ที่เกิดตอนยืนยันรับเงิน (เส้นเงิน C-2)
+  paidAt        DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime        @default(now())
+
+  lines ShopOrderLine[]
+
+  @@unique([unitId, code])
+  @@index([tenantId, unitId, status])
+}
+
+model ShopOrderLine {
+  id              String      @id @default(cuid())
+  tenantId        String
+  orderId         String
+  order           ShopOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         ShopProduct @relation(fields: [productId], references: [id])
+  name            String // snapshot
+  qty             Int
+  unitPriceSatang Int // snapshot
+  lineTotalSatang Int
+
+  @@index([orderId])
+}

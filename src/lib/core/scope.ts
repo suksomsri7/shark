@@ -112,6 +112,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   Supplier: sys(),
   PurchaseOrder: sys(),
   PoLine: tenant, // ลูกของ PO — query ผ่าน poId + tenantId
+  // E-commerce (WO-0053)
+  ShopProduct: unit,
+  ShopOrder: unit,
+  ShopOrderLine: tenant, // ลูกของ order — query ผ่าน orderId + tenantId (แบบ PoLine)
   // System instances (ทะเบียนระบบ — เป็น tenant-scoped เพราะ list ทั้งร้าน)
   AppSystem: tenant,
   AppSystemUnit: tenant, // ตารางเชื่อม system↔unit — query ด้วย unitId/tenantId ไม่ใช่ scope ใต้ system

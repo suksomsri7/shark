@@ -258,6 +258,11 @@ const ALLOWED_EDGES = new Set([
   "crm→account",
   // marketing อ่าน segment ลูกค้าจาก member (WO-0013)
   "marketing→member",
+  // chokepoint (WO-0053): E-commerce ปิดเงินผ่าน pos.createSale (C-2) + ตัดสต็อกผ่าน inventory facade
+  // — Fable อนุมัติ 2026-07-17 (RUN 2)
+  "shop→pos",
+  "shop→inventory",
+  "shop→system",  // resolve ระบบ POS/INVENTORY ที่ผูก unit (เหมือน restaurant→system)
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {
