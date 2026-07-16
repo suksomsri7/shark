@@ -72,6 +72,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AiConversation: tenant,
   AiMessage: tenant,
   AiUsage: tenant,
+  AiProposal: tenant, // Phase 3.5 — ข้อเสนอการกระทำ (WO-0020)
   // Backoffice (WO-0019) — แยกจากร้านโดยสิ้นเชิง เข้าผ่าน src/lib/platform เท่านั้น
   PlatformAuthToken: { axis: "platform", why: "backoffice auth — tenantDb ห้ามแตะ" },
   PlatformSession: { axis: "platform", why: "backoffice session — tenantDb ห้ามแตะ" },

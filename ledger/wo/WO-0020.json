@@ -1,17 +1,18 @@
 {
   "id": "WO-0020",
   "title": "Phase 3.5 — AI ทำงานแทน user (proposal → confirm → execute) 🔴 คำสั่งตรง user",
-  "status": "queued",
+  "status": "in_progress",
   "blockedBy": null,
   "branch": null,
   "worktree": null,
-  "neonBranch": "wo-0020 (สร้างตอนเริ่ม)",
+  "neonBranch": "wo-0020",
   "files": [
-    "prisma/schema/ai.prisma (AiProposal — Fable วางเอง)",
-    "src/lib/ai/tools.ts (action-tools: เสนอ proposal)",
-    "src/lib/ai/proposals.ts (สร้าง/อ่าน/execute — assertCan ตอน execute)",
-    "src/lib/ai/actions.ts (confirmProposalAction/rejectProposalAction)",
-    "src/components/app-shell/AiChat.tsx (confirm card)"
+    "src/lib/ai/tools.ts",
+    "src/lib/ai/proposals.ts",
+    "src/lib/ai/actions.ts",
+    "src/lib/ai/service.ts (runTool ctx + conversationId)",
+    "src/lib/ai/persona.ts",
+    "src/components/app-shell/AiChat.tsx"
   ],
   "closesFindings": [],
   "dependsOn": [
@@ -31,8 +32,8 @@
   ],
   "steps": [
     {
-      "done": false,
-      "text": "Fable: schema AiProposal (tenantId/conversationId/kind/payload/status PENDING→CONFIRMED/EXECUTED/REJECTED/expiresAt) + migration + oracle"
+      "done": true,
+      "text": "Fable: schema AiProposal + scope + migration (ลง prod แล้ว) + oracle qc-ai-proposals.mts"
     },
     {
       "done": false,
@@ -55,6 +56,10 @@
     {
       "at": "2026-07-16T11:40:00Z",
       "note": "ปลดบล็อก — WO-0018 merge แล้ว"
+    },
+    {
+      "at": "2026-07-16T12:00:00Z",
+      "note": "Fable วางของกลางเสร็จ → spawn Builder"
     }
   ]
 }

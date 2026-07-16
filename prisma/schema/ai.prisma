@@ -31,6 +31,32 @@ model AiMessage {
   @@index([tenantId, conversationId, createdAt])
 }
 
+// Phase 3.5 — ข้อเสนอการกระทำของ AI (proposal → user ยืนยัน → execute)
+// กฎเหล็ก: execute อ่าน payload จากแถวนี้เท่านั้น (ห้ามเชื่อ client) + assertCan สิทธิ์คนกด ณ ตอน execute
+enum AiProposalStatus {
+  PENDING
+  EXECUTED
+  REJECTED
+  FAILED
+  EXPIRED
+}
+
+model AiProposal {
+  id             String           @id @default(cuid())
+  tenantId       String
+  conversationId String
+  kind           String // "inventory_receive" | "hr_decide_leave" | "marketing_create_campaign"
+  summary        String // ไทย — UI ใช้แสดงการ์ดยืนยัน "จะทำอะไร"
+  payload        Json // พารามิเตอร์ (server-side เท่านั้น)
+  status         AiProposalStatus @default(PENDING)
+  resultNote     String? // ผลหลังทำ / เหตุผลที่ไม่สำเร็จ (ไทย)
+  expiresAt      DateTime // TTL 24 ชม.
+  executedAt     DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([tenantId, conversationId, status, createdAt])
+}
+
 // เพดานการใช้ต่อ tenant ต่อวัน (วัน = Asia/Bangkok) — upsert เพิ่มยอด
 model AiUsage {
   id        String @id @default(cuid())
