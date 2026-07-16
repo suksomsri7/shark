@@ -3,13 +3,18 @@
 
 import { prisma, tenantDb } from "@/lib/core/db";
 import { buildSystemPrompt } from "./persona";
-import { dailyLimits, resolveProvider, type AiChatMessage } from "./provider";
+import { dailyLimits, resolveProvider, type AiChatMessage, type AiProvider } from "./provider";
 import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
+import { runTool, toolRegistry } from "./tools";
 
 export type Ctx = { tenantId: string };
 
 const HISTORY_MAX_CHARS = 24_000; // งบบริบทต่อ request (ประมาณ ~6k token)
 const HISTORY_TAKE = 40; // ดึงล่าสุดกี่แถวก่อน trim
+const MAX_TOOL_ROUNDS = 5; // เพดานรอบ agent loop (กันวนไม่จบ)
+// ข้อความปิดสุภาพเมื่อวนครบเพดานแต่ยังไม่ได้คำตอบ
+const FALLBACK_REPLY =
+  "ขอโทษครับ ผมยังหาคำตอบให้ไม่เสร็จในตอนนี้ ลองถามใหม่หรือถามให้เจาะจงขึ้นอีกนิดได้ครับ";
 
 export type SendResult =
   | { ok: true; conversationId: string; reply: string }
@@ -41,11 +46,13 @@ export function aiEnabled(): boolean {
 export async function sendMessage(
   ctx: Ctx,
   input: { conversationId?: string; text: string },
+  deps?: { provider?: AiProvider },
 ): Promise<SendResult> {
   const text = input.text.trim();
   if (!text) return { ok: false, error: "empty" };
 
-  const provider = resolveProvider();
+  // provider ฉีดได้ (ข้อสอบ) — ไม่งั้นเลือกจาก env
+  const provider = deps?.provider ?? resolveProvider();
   if (!provider) return { ok: false, error: "ai_disabled" };
 
   const db = tenantDb(ctx);
@@ -93,7 +100,32 @@ export async function sendMessage(
     { role: "user", content: text },
   ];
 
-  const reply = await provider.chat(messages);
+  // ── agent loop ── ส่ง tools ทุกรอบ · LLM ขอเรียกเครื่องมือ → รัน (read-only) แล้วป้อนผลกลับรอบถัดไป
+  // เพดาน 5 รอบ (กันวนไม่จบ) · ครบเพดานยังไม่ได้คำตอบ = ปิดด้วยข้อความสุภาพ
+  // token/usage รวมทุกรอบ · persist เฉพาะ USER + ASSISTANT ตัวจบ (ไม่เก็บ tool traffic)
+  const tools = toolRegistry().map((t) => t.def);
+  let tokensIn = 0;
+  let tokensOut = 0;
+  let finalText = "";
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const reply = await provider.chat(messages, { tools });
+    tokensIn += reply.tokensIn;
+    tokensOut += reply.tokensOut;
+
+    if (reply.toolCalls && reply.toolCalls.length > 0) {
+      messages.push({ role: "assistant", content: reply.text ?? "", toolCalls: reply.toolCalls });
+      for (const tc of reply.toolCalls) {
+        const result = await runTool({ tenantId: ctx.tenantId }, tc.name, tc.args);
+        messages.push({ role: "tool", content: result, toolCallId: tc.id });
+      }
+      continue; // ไปรอบถัดไปให้ LLM เรียบเรียงคำตอบจากผลเครื่องมือ
+    }
+
+    finalText = reply.text;
+    break;
+  }
+  if (!finalText.trim()) finalText = FALLBACK_REPLY;
 
   // persist คู่ข้อความ + ยอดใช้ อะตอมมิก (ผ่าน prisma ตรง — ใส่ tenantId เองให้ตรง type)
   await prisma.$transaction([
@@ -105,22 +137,22 @@ export async function sendMessage(
         tenantId: ctx.tenantId,
         conversationId: conversation.id,
         role: "ASSISTANT",
-        content: reply.text,
-        tokensIn: reply.tokensIn,
-        tokensOut: reply.tokensOut,
+        content: finalText,
+        tokensIn,
+        tokensOut,
       },
     }),
     prisma.aiConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }),
     prisma.aiUsage.upsert({
       where: { tenantId_day: { tenantId: ctx.tenantId, day } },
-      create: { tenantId: ctx.tenantId, day, requests: 1, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut },
+      create: { tenantId: ctx.tenantId, day, requests: 1, tokensIn, tokensOut },
       update: {
         requests: { increment: 1 },
-        tokensIn: { increment: reply.tokensIn },
-        tokensOut: { increment: reply.tokensOut },
+        tokensIn: { increment: tokensIn },
+        tokensOut: { increment: tokensOut },
       },
     }),
   ]);
 
-  return { ok: true, conversationId: conversation.id, reply: reply.text };
+  return { ok: true, conversationId: conversation.id, reply: finalText };
 }
