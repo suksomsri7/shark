@@ -1,0 +1,36 @@
+// Subscription (WO-0027) — สมาชิกรายเดือน/รายปี (fitness/สปา/คอร์ส) ในระบบ MEMBER
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model MemberPlan {
+  id          String   @id @default(cuid())
+  tenantId    String
+  systemId    String // ระบบ MEMBER
+  name        String // "รายเดือน" / "รายปี"
+  priceSatang Int
+  periodDays  Int // 30 / 365
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, systemId, active])
+}
+
+model MemberSubscription {
+  id          String             @id @default(cuid())
+  tenantId    String
+  systemId    String
+  customerId  String
+  planId      String
+  status      SubscriptionStatus @default(ACTIVE)
+  startAt     DateTime
+  endAt       DateTime
+  autoRenew   Boolean            @default(false) // ธงไว้ก่อน — ตัดเงินจริงรอ gateway
+  cancelledAt DateTime?
+  createdAt   DateTime           @default(now())
+
+  @@index([tenantId, systemId, status, endAt])
+  @@index([tenantId, customerId])
+}

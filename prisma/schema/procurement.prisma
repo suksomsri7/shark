@@ -1,0 +1,50 @@
+// Procurement (WO-0028) — จัดซื้อเข้าคลัง (ระบบ INVENTORY): Supplier → PO → รับของ → movement
+enum PoStatus {
+  DRAFT
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  tenantId  String
+  systemId  String // ระบบ INVENTORY
+  name      String
+  phone     String?
+  email     String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, systemId])
+}
+
+model PurchaseOrder {
+  id         String    @id @default(cuid())
+  tenantId   String
+  systemId   String
+  supplierId String
+  code       String // PO-0001 (running ต่อ system)
+  status     PoStatus  @default(DRAFT)
+  orderedAt  DateTime?
+  receivedAt DateTime?
+  note       String?
+  createdAt  DateTime  @default(now())
+
+  lines PoLine[]
+
+  @@unique([systemId, code])
+  @@index([tenantId, systemId, status])
+}
+
+model PoLine {
+  id         String        @id @default(cuid())
+  tenantId   String
+  poId       String
+  po         PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  itemId     String // InvItem.id
+  qty        Int
+  costSatang Int
+
+  @@index([tenantId, poId])
+}
