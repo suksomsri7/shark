@@ -1066,3 +1066,50 @@ export async function reopenPeriod(
     });
   });
 }
+
+// ─────────────────── postExternalSale (ขายสดจากระบบภายนอก เช่น POS — WO-0002) ───────────────────
+
+/**
+ * โพสต์ยอดขายสดจากระบบต้นทางภายนอก (POS) → journal เดียว
+ * Dr เงิน (ราย drLine: CASH→1000 / BANK→1010) · Cr 4000 (ฐานหลังถอด VAT) · Cr 2200 (VAT ถ้ามี)
+ * ขายสด tax point ทันที (ไม่พัก 2205) — เหมือน RECEIPT
+ * idempotent ต่อ (PosSale, refId, PAID) — drain/emit ซ้ำไม่เบิ้ล
+ * ⚠️ facade (account/index) เป็นผู้คิดฐาน/VAT + สร้าง drLine แล้วส่งมา — โมดูลอื่นไม่รู้เลขบัญชี
+ */
+export async function postExternalSale(
+  ctx: GlCtx,
+  o: {
+    refId: string;
+    date: Date;
+    baseSatang: number;
+    vatSatang: number;
+    drLines: { key: "CASH" | "BANK"; amountSatang: number }[];
+  },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const event = "PAID";
+    if (await alreadyPosted(ctx, `PosSale#${o.refId}#${event}`, db)) return { skipped: true };
+
+    const b = new Book(ctx, db);
+    for (const l of o.drLines) b.dr(await b.id(l.key), l.amountSatang);
+    b.cr(await b.id("INCOME_GOODS"), o.baseSatang);
+    if (o.vatSatang > 0) b.cr(await b.id("VAT_OUTPUT"), o.vatSatang);
+
+    const entry = await commitEntry(
+      ctx,
+      {
+        book: "SALES",
+        journal: "DOC",
+        date: o.date,
+        refType: "PosSale",
+        refId: o.refId,
+        event,
+        memo: "ขายสด POS",
+      },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}

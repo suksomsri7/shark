@@ -421,6 +421,33 @@ export async function saveSettings(
   return prisma.accountSettings.create({ data: { tenantId, systemId, ...data } });
 }
 
+// ─────────────────── WO-0002: POS→Account link + VAT config (ใช้โดย facade index.ts) ───────────────────
+
+/**
+ * หาระบบบัญชีที่ผูกกับ POS ระบบนี้ (opt-in ตาม blueprint — ตาราง AccountSystemLink)
+ * ไม่เจอ = null → หลัก standalone (POS ที่ไม่เชื่อม ห้าม post บัญชี)
+ */
+export async function findAccountLinkForPos(
+  tenantId: string,
+  posSystemId: string,
+): Promise<{ systemId: string } | null> {
+  return prisma.accountSystemLink.findFirst({
+    where: { tenantId, linkedKind: "POS", linkedId: posSystemId, archivedAt: null },
+    select: { systemId: true },
+  });
+}
+
+/** อ่าน config VAT ของระบบบัญชี (default: จด VAT 7% = 700 bp) */
+export async function vatConfigOf(
+  systemId: string,
+): Promise<{ vatRegistered: boolean; vatRateBp: number }> {
+  const s = await prisma.accountSettings.findFirst({
+    where: { systemId },
+    select: { vatRegistered: true, vatRateBp: true },
+  });
+  return { vatRegistered: s?.vatRegistered ?? true, vatRateBp: s?.vatRateBp ?? 700 };
+}
+
 // ─────────────────── ผู้ติดต่อ ───────────────────
 
 export function listContacts(
