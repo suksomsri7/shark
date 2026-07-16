@@ -1,0 +1,50 @@
+// Rental (WO-0050) — สินทรัพย์ให้เช่า + จอง/รับ/คืน + ค่าปรับ → เส้นเงินผ่าน pos.createSale (C-2)
+// นโยบายมัดจำ v1: บันทึกยอดถือมัดจำใน booking (ไม่เข้า GL — รอ DEPOSIT mapping WO-0040 · follow-up 0050b)
+enum RentalStatus {
+  BOOKED
+  PICKED_UP
+  RETURNED
+  CANCELLED
+}
+
+model RentalAsset {
+  id              String    @id @default(cuid())
+  tenantId        String
+  unitId          String
+  name            String
+  code            String?
+  dailyRateSatang Int       @default(0)
+  depositSatang   Int       @default(0)
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  bookings RentalBooking[]
+
+  @@index([tenantId, unitId, active])
+}
+
+model RentalBooking {
+  id              String       @id @default(cuid())
+  tenantId        String
+  unitId          String
+  assetId         String
+  asset           RentalAsset  @relation(fields: [assetId], references: [id])
+  customerName    String
+  customerPhone   String
+  startDate       DateTime     @db.Date
+  endDate         DateTime     @db.Date // exclusive (คืนวันนี้ = ไม่นับวันนี้)
+  status          RentalStatus @default(BOOKED)
+  depositHeldSatang Int        @default(0) // ยอดมัดจำที่ถือไว้ (ไม่เข้า GL v1)
+  lateFeeSatang   Int          @default(0)
+  totalSatang     Int          @default(0) // ค่าเช่าจริงตอนปิด (ค่าเช่า+ค่าปรับ)
+  posSaleId       String? // PosSale ตอนคืน (เส้นเงิน C-2)
+  pickedUpAt      DateTime?
+  returnedAt      DateTime?
+  cancelledAt     DateTime?
+  note            String?
+  createdAt       DateTime     @default(now())
+
+  @@index([tenantId, unitId, status])
+  @@index([assetId, startDate])
+}

@@ -7,6 +7,7 @@ enum PoStatus {
 }
 
 model Supplier {
+  // WO-0059: Vendor Portal — ลิงก์พกพา read-only ต่อ supplier (null = ยังไม่เปิด)
   id        String   @id @default(cuid())
   tenantId  String
   systemId  String // ระบบ INVENTORY
@@ -17,6 +18,7 @@ model Supplier {
   createdAt DateTime @default(now())
 
   @@index([tenantId, systemId])
+  portalToken String? @unique // WO-0059
 }
 
 model PurchaseOrder {
