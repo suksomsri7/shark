@@ -1,6 +1,7 @@
 "use server";
 
 import { requireTenant } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import * as calendar from "./service";
 import type { CalEvent } from "./service";
 
@@ -11,6 +12,14 @@ export async function getCalendarEventsAction(input: {
   to: string;
 }): Promise<CalEvent[]> {
   const auth = await requireTenant();
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "calendar", action: "calendar.event.read" },
+  );
   const from = new Date(input.from);
   const to = new Date(input.to);
   return calendar.getCalendarEvents({ tenantId: auth.active.tenantId }, { from, to });
