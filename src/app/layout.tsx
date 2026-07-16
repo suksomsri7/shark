@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans_Thai } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale } from "next-intl/server";
@@ -14,6 +14,19 @@ const appSans = IBM_Plex_Sans_Thai({
 export const metadata: Metadata = {
   title: "SHARK — ระบบบริหารจัดการร้านค้า",
   description: "จัดการโรงแรม ร้านอาหาร จองคิว สมาชิก แต้ม ครบในที่เดียว",
+  appleWebApp: {
+    title: "SHARK",
+    capable: true,
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+// PWA — theme color (Next 16: themeColor อยู่ใน viewport export ไม่ใช่ metadata)
+export const viewport: Viewport = {
+  themeColor: "#0B132B",
 };
 
 export default async function RootLayout({
