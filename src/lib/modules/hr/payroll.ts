@@ -1,6 +1,6 @@
-import { prisma } from "@/lib/core/db";
+import { tenantDb } from "@/lib/core/db";
 import type { Prisma } from "@prisma/client";
-import { ensureAccounting, postManualJV, type GlCtx } from "@/lib/modules/account/gl";
+import { postPayrollJV } from "@/lib/modules/account";
 import { ssoContribution, monthlyWhtSatang, type WhtDeductions } from "./payroll-rules";
 
 // Payroll ไทย — service ชั้นประกอบ (system-scoped HR) · WO-0036
@@ -11,21 +11,7 @@ import { ssoContribution, monthlyWhtSatang, type WhtDeductions } from "./payroll
 
 export type Ctx = { tenantId: string; systemId: string };
 
-// ── mapping ผังบัญชี (เลือก code ที่มีจริงใน coa.ts CHART) ──
-// เหตุผลการเลือก (เขียนไว้ให้ auditor):
-//   6000 "เงินเดือนและค่าแรง" (EXPENSE) → Dr เงินเดือน (gross) + Dr เงินสมทบ ปสส.ฝั่งนายจ้าง
-//       (ทั้งสองเป็นต้นทุนบุคลากร → ลงบัญชีค่าใช้จ่ายเดียวกัน แยกบรรทัด/หมายเหตุเพื่อ audit)
-//   1010 "เงินฝากธนาคาร" (ASSET)     → Cr เงินเดือนสุทธิที่จ่าย (จ่ายผ่านธนาคารตามธรรมเนียม payroll)
-//   2100 "เจ้าหนี้การค้า" (LIABILITY) → Cr ประกันสังคมค้างนำส่ง (ลูกจ้าง+นายจ้าง)
-//       ⚠️ ผัง SME ไทยมาตรฐานยังไม่มีบัญชี "ประกันสังคมค้างนำส่ง" เฉพาะ → ใช้เจ้าหนี้ทั่วไป (2100)
-//         เป็นบัญชีคุมยอดหนี้สินที่ต้องนำส่ง สปส. · แนะนำ Fable เพิ่ม code 2140 ในภายหลัง
-//   2130 "ภาษีหัก ณ ที่จ่ายค้างนำส่ง" (LIABILITY) → Cr ภงด.1 ที่หักไว้ (ตรงความหมาย 100%)
-// สมดุล: Dr(gross + ssoEmployer) = Cr(net + ssoEmployee + ssoEmployer + wht)
-//   เพราะ net = gross − ssoEmployee − wht  →  ทั้งสองฝั่ง = gross + ssoEmployer
-const SALARY_EXPENSE_CODE = "6000";
-const BANK_CODE = "1010";
-const SSO_PAYABLE_CODE = "2100";
-const WHT_PAYABLE_CODE = "2130";
+// mapping ผังบัญชี (6000/1010/2100/2130) ย้ายไปอยู่ account/gl.ts postPayrollJV — hr ไม่ล้วง ledger เอง
 
 // ── โปรไฟล์เงินเดือน (1/พนักงาน) — find→update/create (ห้าม upsert) ──
 export type SetSalaryProfileInput = {
@@ -42,13 +28,13 @@ export async function setSalaryProfile(ctx: Ctx, input: SetSalaryProfileInput): 
     children: Math.max(0, input.deductions?.children ?? 0),
   } as Prisma.InputJsonValue;
 
-  const existing = await prisma.hrSalaryProfile.findFirst({
+  const existing = await tenantDb(ctx).hrSalaryProfile.findFirst({
     where: { systemId: ctx.systemId, employeeId: input.employeeId },
     select: { id: true },
   });
 
   if (existing) {
-    await prisma.hrSalaryProfile.update({
+    await tenantDb(ctx).hrSalaryProfile.update({
       where: { id: existing.id },
       data: {
         baseSalarySatang: input.baseSalarySatang,
@@ -60,7 +46,7 @@ export async function setSalaryProfile(ctx: Ctx, input: SetSalaryProfileInput): 
     return { id: existing.id };
   }
 
-  const created = await prisma.hrSalaryProfile.create({
+  const created = await tenantDb(ctx).hrSalaryProfile.create({
     data: {
       tenantId: ctx.tenantId,
       systemId: ctx.systemId,
@@ -76,7 +62,7 @@ export async function setSalaryProfile(ctx: Ctx, input: SetSalaryProfileInput): 
 }
 
 export function listSalaryProfiles(ctx: Ctx) {
-  return prisma.hrSalaryProfile.findMany({
+  return tenantDb(ctx).hrSalaryProfile.findMany({
     where: { systemId: ctx.systemId },
     orderBy: { createdAt: "asc" },
   });
@@ -135,13 +121,13 @@ export async function createPayrollRun(
 ): Promise<{ id: string }> {
   const periodKey = input.periodKey.trim();
 
-  const dup = await prisma.hrPayrollRun.findFirst({
+  const dup = await tenantDb(ctx).hrPayrollRun.findFirst({
     where: { systemId: ctx.systemId, periodKey },
     select: { id: true },
   });
   if (dup) throw new Error(`มีรอบจ่ายงวด ${periodKey} อยู่แล้ว — ลบหรือเลือกงวดอื่น`);
 
-  const profiles = await prisma.hrSalaryProfile.findMany({
+  const profiles = await tenantDb(ctx).hrSalaryProfile.findMany({
     where: { systemId: ctx.systemId },
     select: { employeeId: true, baseSalarySatang: true, ssoEligible: true, personalDeductionJson: true },
   });
@@ -160,7 +146,7 @@ export async function createPayrollRun(
     { gross: 0, ssoEmployee: 0, ssoEmployer: 0, wht: 0, net: 0 },
   );
 
-  const run = await prisma.hrPayrollRun.create({
+  const run = await tenantDb(ctx).hrPayrollRun.create({
     data: {
       tenantId: ctx.tenantId,
       systemId: ctx.systemId,
@@ -194,88 +180,59 @@ export async function createPayrollRun(
 
 // ── อนุมัติรอบ (DRAFT→APPROVED) + ลงบัญชี ถ้ามีระบบ ACCOUNT ──
 export async function approveRun(ctx: Ctx, runId: string): Promise<{ ok: boolean; note: string }> {
-  return prisma.$transaction(async (tx) => {
-    // updateMany เงื่อนไขสถานะ = กันอนุมัติซ้ำ/ลงบัญชีเบิ้ล (atomic)
-    const upd = await tx.hrPayrollRun.updateMany({
-      where: { id: runId, systemId: ctx.systemId, status: "DRAFT" },
-      data: { status: "APPROVED" },
+  const db = tenantDb(ctx);
+  // claim อะตอมมิก DRAFT→APPROVED — กันอนุมัติซ้ำ/ลงบัญชีเบิ้ล
+  const claim = await db.hrPayrollRun.updateMany({
+    where: { id: runId, status: "DRAFT" },
+    data: { status: "APPROVED" },
+  });
+  if (claim.count === 0) return { ok: false, note: "รอบนี้อนุมัติหรือจ่ายไปแล้ว" };
+
+  const run = await db.hrPayrollRun.findFirst({ where: { id: runId } });
+  if (!run) return { ok: false, note: "ไม่พบรอบจ่าย" };
+
+  // ระบบบัญชีของกิจการ (type ACCOUNT) — ไม่มี = อนุมัติเฉย ๆ ไม่ลงบัญชี
+  const acct = await db.appSystem.findFirst({ where: { type: "ACCOUNT" }, select: { id: true } });
+  if (!acct) {
+    await db.hrPayrollRun.update({
+      where: { id: runId },
+      data: { note: "อนุมัติแล้ว (ยังไม่ได้เปิดระบบบัญชี — ไม่ได้ลงบัญชี)" },
     });
-    if (upd.count === 0) return { ok: false, note: "รอบนี้อนุมัติหรือจ่ายไปแล้ว" };
+    return { ok: true, note: "อนุมัติแล้ว — ยังไม่ได้เปิดระบบบัญชี จึงไม่ได้ลงบัญชี" };
+  }
 
-    const run = await tx.hrPayrollRun.findFirst({
-      where: { id: runId, systemId: ctx.systemId },
-      select: {
-        payDate: true,
-        periodKey: true,
-        totalGrossSatang: true,
-        totalSsoEmployeeSatang: true,
-        totalSsoEmployerSatang: true,
-        totalWhtSatang: true,
-        totalNetSatang: true,
-      },
-    });
-    if (!run) return { ok: false, note: "ไม่พบรอบจ่าย" };
-
-    // ระบบบัญชีของกิจการเดียวกัน (type ACCOUNT) — ไม่มี = อนุมัติเฉย ๆ ไม่ลงบัญชี
-    const acct = await tx.appSystem.findFirst({
-      where: { tenantId: ctx.tenantId, type: "ACCOUNT" },
-      select: { id: true },
-    });
-    if (!acct) {
-      await tx.hrPayrollRun.update({
-        where: { id: runId },
-        data: { note: "อนุมัติแล้ว (ยังไม่ได้เปิดระบบบัญชี — ไม่ได้ลงบัญชี)" },
-      });
-      return { ok: true, note: "อนุมัติแล้ว — ยังไม่ได้เปิดระบบบัญชี จึงไม่ได้ลงบัญชี" };
-    }
-
-    const glCtx: GlCtx = { tenantId: ctx.tenantId, systemId: acct.id };
-    await ensureAccounting(glCtx, tx);
-
-    // resolve ledger id จาก code (หลัง seed ผังบัญชีแล้ว)
-    const ledgers = await tx.accountLedger.findMany({
-      where: {
-        systemId: acct.id,
-        code: { in: [SALARY_EXPENSE_CODE, BANK_CODE, SSO_PAYABLE_CODE, WHT_PAYABLE_CODE] },
-      },
-      select: { id: true, code: true },
-    });
-    const idByCode = new Map(ledgers.map((l) => [l.code, l.id]));
-    const acctId = (code: string): string => {
-      const id = idByCode.get(code);
-      if (!id) throw new Error(`ไม่พบบัญชี ${code} ในผังบัญชี`);
-      return id;
-    };
-
-    const ssoPayable = run.totalSsoEmployeeSatang + run.totalSsoEmployerSatang;
-    const { entryId } = await postManualJV(
-      glCtx,
+  try {
+    // ลงบัญชีผ่าน account facade เท่านั้น (postPayrollJV มี tx ภายในตัว)
+    const { entryId } = await postPayrollJV(
+      { tenantId: ctx.tenantId, systemId: acct.id },
       {
-        date: run.payDate,
-        book: "PAYMENTS",
-        memo: `เงินเดือนงวด ${run.periodKey}`,
-        lines: [
-          { accountId: acctId(SALARY_EXPENSE_CODE), debit: run.totalGrossSatang, credit: 0, note: "เงินเดือน" },
-          { accountId: acctId(SALARY_EXPENSE_CODE), debit: run.totalSsoEmployerSatang, credit: 0, note: "เงินสมทบประกันสังคม (นายจ้าง)" },
-          { accountId: acctId(BANK_CODE), debit: 0, credit: run.totalNetSatang, note: "เงินเดือนสุทธิ (จ่ายผ่านธนาคาร)" },
-          { accountId: acctId(SSO_PAYABLE_CODE), debit: 0, credit: ssoPayable, note: "ประกันสังคมค้างนำส่ง (ลูกจ้าง+นายจ้าง)" },
-          { accountId: acctId(WHT_PAYABLE_CODE), debit: 0, credit: run.totalWhtSatang, note: "ภาษีหัก ณ ที่จ่ายค้างนำส่ง (ภงด.1)" },
-        ],
+        payDate: run.payDate,
+        periodKey: run.periodKey,
+        grossSatang: run.totalGrossSatang,
+        ssoEmployeeSatang: run.totalSsoEmployeeSatang,
+        ssoEmployerSatang: run.totalSsoEmployerSatang,
+        whtSatang: run.totalWhtSatang,
+        netSatang: run.totalNetSatang,
       },
-      tx,
     );
-
-    await tx.hrPayrollRun.update({
+    await db.hrPayrollRun.update({
       where: { id: runId },
       data: { journalEntryId: entryId, note: "อนุมัติและลงบัญชีแล้ว" },
     });
     return { ok: true, note: "อนุมัติและลงบัญชีเรียบร้อย" };
-  });
+  } catch (e) {
+    // ลงบัญชีล้ม → คืนสถานะ DRAFT (เฉพาะที่ยังไม่มี JV) ให้แก้แล้วกดใหม่ได้ — ห้ามค้าง APPROVED ลอย
+    await db.hrPayrollRun.updateMany({
+      where: { id: runId, status: "APPROVED", journalEntryId: null },
+      data: { status: "DRAFT" },
+    });
+    return { ok: false, note: e instanceof Error ? e.message : "ลงบัญชีไม่สำเร็จ" };
+  }
 }
 
 // ── จ่ายแล้ว (APPROVED→PAID) ──
 export async function markPaid(ctx: Ctx, runId: string): Promise<{ ok: boolean; note: string }> {
-  const upd = await prisma.hrPayrollRun.updateMany({
+  const upd = await tenantDb(ctx).hrPayrollRun.updateMany({
     where: { id: runId, systemId: ctx.systemId, status: "APPROVED" },
     data: { status: "PAID" },
   });
@@ -285,7 +242,7 @@ export async function markPaid(ctx: Ctx, runId: string): Promise<{ ok: boolean; 
 
 // ── reads (UI + สลิป) ──
 export function listRuns(ctx: Ctx, take = 50) {
-  return prisma.hrPayrollRun.findMany({
+  return tenantDb(ctx).hrPayrollRun.findMany({
     where: { systemId: ctx.systemId },
     orderBy: { periodKey: "desc" },
     take,
@@ -300,9 +257,9 @@ export function listRuns(ctx: Ctx, take = 50) {
 
 export async function payslipData(ctx: Ctx, runId: string, employeeId: string) {
   const [run, item, employee] = await Promise.all([
-    prisma.hrPayrollRun.findFirst({ where: { id: runId, systemId: ctx.systemId } }),
-    prisma.hrPayrollItem.findFirst({ where: { runId, employeeId, systemId: ctx.systemId } }),
-    prisma.hrEmployee.findFirst({
+    tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: runId, systemId: ctx.systemId } }),
+    tenantDb(ctx).hrPayrollItem.findFirst({ where: { runId, employeeId, systemId: ctx.systemId } }),
+    tenantDb(ctx).hrEmployee.findFirst({
       where: { id: employeeId, systemId: ctx.systemId },
       select: { id: true, name: true, position: true },
     }),

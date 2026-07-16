@@ -1113,3 +1113,58 @@ export async function postExternalSale(
     return { entryId: entry.id };
   });
 }
+
+
+// ── Payroll posting (WO-0036) — facade ให้โมดูล hr เรียกผ่าน account/index เท่านั้น ──
+// mapping ผังบัญชี (เหตุผลเพื่อ auditor):
+//   6000 เงินเดือนและค่าแรง (EXPENSE) → Dr gross + Dr ปสส.นายจ้าง (ต้นทุนบุคลากร แยกบรรทัด)
+//   1010 เงินฝากธนาคาร → Cr เงินเดือนสุทธิ · 2100 เจ้าหนี้ → Cr ปสส.ค้างนำส่ง (⚠️ ควรเพิ่ม 2140 เฉพาะในอนาคต)
+//   2130 ภาษีหัก ณ ที่จ่ายค้างนำส่ง → Cr ภงด.1
+// สมดุล: net = gross − ssoEmployee − wht → สองฝั่ง = gross + ssoEmployer
+export type PayrollPostingInput = {
+  payDate: Date;
+  periodKey: string;
+  grossSatang: number;
+  ssoEmployeeSatang: number;
+  ssoEmployerSatang: number;
+  whtSatang: number;
+  netSatang: number;
+};
+
+export async function postPayrollJV(
+  ctx: GlCtx,
+  input: PayrollPostingInput,
+  tx?: Tx,
+): Promise<{ entryId: string }> {
+  return withTx(tx, async (db) => {
+    await ensureAccounting(ctx, db as Tx);
+    const codes = ["6000", "1010", "2100", "2130"];
+    const ledgers = await db.accountLedger.findMany({
+      where: { systemId: ctx.systemId, code: { in: codes } },
+      select: { id: true, code: true },
+    });
+    const idByCode = new Map(ledgers.map((l) => [l.code, l.id]));
+    const acctId = (code: string): string => {
+      const id = idByCode.get(code);
+      if (!id) throw new Error(`ไม่พบบัญชี ${code} ในผังบัญชี`);
+      return id;
+    };
+    const ssoPayable = input.ssoEmployeeSatang + input.ssoEmployerSatang;
+    return postManualJV(
+      ctx,
+      {
+        date: input.payDate,
+        book: "PAYMENTS",
+        memo: `เงินเดือนงวด ${input.periodKey}`,
+        lines: [
+          { accountId: acctId("6000"), debit: input.grossSatang, credit: 0, note: "เงินเดือน" },
+          { accountId: acctId("6000"), debit: input.ssoEmployerSatang, credit: 0, note: "เงินสมทบประกันสังคม (นายจ้าง)" },
+          { accountId: acctId("1010"), debit: 0, credit: input.netSatang, note: "เงินเดือนสุทธิ (จ่ายผ่านธนาคาร)" },
+          { accountId: acctId("2100"), debit: 0, credit: ssoPayable, note: "ประกันสังคมค้างนำส่ง (ลูกจ้าง+นายจ้าง)" },
+          { accountId: acctId("2130"), debit: 0, credit: input.whtSatang, note: "ภาษีหัก ณ ที่จ่ายค้างนำส่ง (ภงด.1)" },
+        ],
+      },
+      db as Tx,
+    );
+  });
+}
