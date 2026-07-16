@@ -1,0 +1,43 @@
+{
+  "id": "WO-0034",
+  "title": "i18n v1 — dictionary th/en + หน้า public ฝั่งลูกค้า (จอง/หน้าร้าน/ใบเสร็จ) + switcher",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/",
+  "neonBranch": null,
+  "files": [
+    "src/lib/i18n/{dict,index}.ts",
+    "src/components/LanguageSwitcher.tsx",
+    "src/components/public-booking.tsx",
+    "(store)/s + (store)/r pages"
+  ],
+  "closesFindings": [
+    "Blank_6/Blueprint: i18n TH/EN"
+  ],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "pnpm exec tsx scripts/qc-i18n.mts",
+      "expect": "FINDINGS: CRITICAL 0"
+    },
+    {
+      "cmd": "typecheck+fitness (Fable, pipefail) + Vercel deploy READY"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: oracle (standalone-typesafe ตามกติกาใหม่)"
+    },
+    {
+      "done": false,
+      "text": "Builder: dict+helper+switcher+แปลงหน้า public"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-17T09:00:00Z",
+      "note": "เปิดงาน — งานกลางตัวสุดท้าย · cookie-based ไม่แตะ routing/proxy"
+    }
+  ]
+}
