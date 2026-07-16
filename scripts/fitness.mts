@@ -223,7 +223,7 @@ chk(
 // ═══════════════════════════════════════════════════════════════
 console.log("\n── F2/F5: ขอบเขตโมดูล (baseline ratchet — ห้ามเพิ่ม) ──");
 
-const BASELINE = { f5RawPrisma: 34 }; // วัดจริง 2026-07-15 — ratchet ลงได้อย่างเดียว (F2 ใช้ allowlist รายเส้นแล้ว)
+const BASELINE = { f5RawPrisma: 35 }; // วัดจริง 2026-07-15 (34) + approval/service.ts (WO-0049: $transaction atomic กับ outbox — pattern เดียวกับ POS) — ratchet ลงได้อย่างเดียว (F2 ใช้ allowlist รายเส้นแล้ว)
 
 const moduleDir = join(ROOT, "src", "lib", "modules");
 const moduleNames = existsSync(moduleDir)
