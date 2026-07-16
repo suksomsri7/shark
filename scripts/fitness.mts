@@ -223,7 +223,7 @@ chk(
 // ═══════════════════════════════════════════════════════════════
 console.log("\n── F2/F5: ขอบเขตโมดูล (baseline ratchet — ห้ามเพิ่ม) ──");
 
-const BASELINE = { f5RawPrisma: 36 }; // วัดจริง 2026-07-15 (34) + approval/service.ts (WO-0049: $transaction atomic กับ outbox — pattern เดียวกับ POS) + inventory/service.ts (WO-0038: sweepExpiringLots ข้ามร้าน — pattern เดียว sweepWeeklyAnalysis) — ratchet ลงได้อย่างเดียว (F2 ใช้ allowlist รายเส้นแล้ว)
+const BASELINE = { f5RawPrisma: 37 }; // วัดจริง 2026-07-15 (34) + approval/service.ts (WO-0049: $transaction atomic กับ outbox — pattern เดียวกับ POS) + inventory/service.ts (WO-0038: sweepExpiringLots ข้ามร้าน — pattern เดียว sweepWeeklyAnalysis) + shop/service.ts (WO-0053: resolveUnit lookup tenant/unit จาก slug ก่อนมี tenantId — pattern เดียวกับ booking/restaurant storefront) — ratchet ลงได้อย่างเดียว (F2 ใช้ allowlist รายเส้นแล้ว)
 
 const moduleDir = join(ROOT, "src", "lib", "modules");
 const moduleNames = existsSync(moduleDir)
