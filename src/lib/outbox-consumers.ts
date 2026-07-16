@@ -6,6 +6,7 @@ import { prisma } from "@/lib/core/db";
 import { drainOutbox, type OutboxHandler } from "@/lib/core/outbox";
 import { bridgePosSalePaid, bridgePosSaleVoided } from "@/lib/modules/pos/account-bridge";
 import { runForEvent } from "@/lib/automation/engine";
+import { entityLabel } from "@/lib/modules/approval/labels";
 import { logOps } from "@/lib/core/ops";
 
 const saleIdOf = (payload: unknown): string | null => {
@@ -65,9 +66,43 @@ const withAutomation =
     }
   };
 
+// ── Approval Engine (WO-0049): แจ้งเตือนร้านเมื่อคำขออนุมัติเปลี่ยนสถานะ ──
+const approvalMeta = (payload: unknown): { entityType: string; entityId: string } => {
+  const p = (payload ?? {}) as { entityType?: unknown; entityId?: unknown };
+  return {
+    entityType: typeof p.entityType === "string" ? p.entityType : "",
+    entityId: typeof p.entityId === "string" ? p.entityId : "",
+  };
+};
+
+const approvalNotify =
+  (title: (label: string) => string, body: string): OutboxHandler =>
+  async (evt) => {
+    const { entityType } = approvalMeta(evt.payload);
+    await prisma.appNotification.create({
+      data: { tenantId: evt.tenantId, title: title(entityLabel(entityType)), body },
+    });
+  };
+
+const approvalSubmitted = approvalNotify(
+  (label) => `มีคำขออนุมัติใหม่: ${label}`,
+  "มีคำขอรอการอนุมัติ เปิดหน้า “รออนุมัติของฉัน” เพื่อตรวจสอบ",
+);
+const approvalApproved = approvalNotify(
+  (label) => `คำขออนุมัติผ่านแล้ว: ${label}`,
+  "คำขอผ่านการอนุมัติครบทุกขั้นแล้ว",
+);
+const approvalRejected = approvalNotify(
+  (label) => `คำขอถูกปฏิเสธ: ${label}`,
+  "คำขออนุมัติถูกปฏิเสธ ไม่ไปขั้นถัดไป",
+);
+
 export const consumers: Record<string, OutboxHandler> = {
   "pos.sale.paid": withAutomation(posSalePaid),
   "pos.sale.voided": withAutomation(posSaleVoided),
+  "approval.request.submitted": withAutomation(approvalSubmitted),
+  "approval.request.approved": withAutomation(approvalApproved),
+  "approval.request.rejected": withAutomation(approvalRejected),
 };
 
 export async function drainAll() {
