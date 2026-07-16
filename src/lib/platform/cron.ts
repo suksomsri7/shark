@@ -6,6 +6,7 @@
 import { prisma } from "@/lib/core/db";
 import { drainAll } from "@/lib/outbox-consumers";
 import { sweepPendingDeletes } from "@/lib/platform/pdpa";
+import { sweepWeeklyAnalysis } from "@/lib/ai/analyst";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -32,11 +33,18 @@ export async function sweepExpiredProposals(now: Date = new Date()): Promise<num
 // (cron ต้องไม่ล้มทั้งรอบเพราะงานย่อยอันเดียวพัง)
 export async function runDailyCron(
   now: Date = new Date(),
-): Promise<{ subsExpired: number; proposalsExpired: number; outboxDrained: number; tenantsPurged: number }> {
+): Promise<{
+  subsExpired: number;
+  proposalsExpired: number;
+  outboxDrained: number;
+  tenantsPurged: number;
+  weeklyReports: number;
+}> {
   let subsExpired = -1;
   let proposalsExpired = -1;
   let outboxDrained = -1;
   let tenantsPurged = -1;
+  let weeklyReports = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -60,6 +68,12 @@ export async function runDailyCron(
   } catch {
     // purge พัง → -1 ไปต่อ
   }
+  try {
+    // รายงานธุรกิจประจำสัปดาห์ (WO-0046): รันเฉพาะวันจันทร์เวลาไทย (ไม่ใช่จันทร์ → 0)
+    weeklyReports = await sweepWeeklyAnalysis(now);
+  } catch {
+    // สร้างรายงานสัปดาห์พัง → -1 ไปต่อ
+  }
 
-  return { subsExpired, proposalsExpired, outboxDrained, tenantsPurged };
+  return { subsExpired, proposalsExpired, outboxDrained, tenantsPurged, weeklyReports };
 }
