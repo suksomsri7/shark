@@ -95,7 +95,7 @@ try {
     ]);
     const r = await svc.sendMessage(ctx, { text: "มีสมาชิกกี่คน" }, { provider: sp });
     chk("TU-3.1", "loop: tool call → คำตอบจบ", r.ok === true && (r as { reply: string }).reply.includes("2 คน"), "คำตอบจบ", JSON.stringify(r).slice(0, 80));
-    chk("TU-3.2", "รอบแรกส่ง tools ครบ 8 ให้ LLM (test=prod)", (sp.captured[0]?.tools?.length ?? 0) === 8, "8", String(sp.captured[0]?.tools?.length));
+    chk("TU-3.2", "รอบแรกส่ง tools ครบทั้ง registry ให้ LLM (test=prod)", (sp.captured[0]?.tools?.length ?? 0) === tools.toolRegistry().length, String(tools.toolRegistry().length), String(sp.captured[0]?.tools?.length));
     const toolMsg = sp.captured[1]?.messages.find((m) => m.role === "tool");
     chk("TU-3.3", "รอบสองมี tool result (เลข 2 + toolCallId)", !!toolMsg && toolMsg.content.includes("2") && toolMsg.toolCallId === "1", "มี", JSON.stringify(toolMsg).slice(0, 80));
     if (r.ok) {
