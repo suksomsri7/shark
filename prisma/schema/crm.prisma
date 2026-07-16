@@ -1,0 +1,137 @@
+// CRM (ระบบที่ 19) — Lead → Prospect → Customer + Pipeline/Deal + Follow-up
+// feature system (AppSystem type CRM) · systemId-scoped
+//
+// การตัดสินใจสถาปัตยกรรม (Fable):
+// - CrmContact = ตัวตนฝั่งขาย (คนละตัวกับ Customer ในระบบสมาชิก) · lifecycleStage เลื่อนขั้นได้
+//   Deal ชนะ → เลื่อนเป็น CUSTOMER + (ภายหลัง) โปรโมตเป็นสมาชิกจริงผ่าน member.findOrCreate
+//   เก็บ memberCustomerId เมื่อผูกแล้ว (ไม่ auto ใน MVP — กัน cross-module edge เกินจำเป็น)
+// - Deal = Opportunity (คำเดียวกัน) · status derive จาก stage.kind (OPEN/WON/LOST) ห้ามตั้งตรง
+// - Quotation ไม่ทำซ้ำ — Deal ออกใบเสนอราคาผ่านบัญชี (account) · เก็บ quotationDocId? เป็น hook (v2)
+// - Pipeline/Stage ตั้งค่าได้ · seed default pipeline ตอน ensureCrm
+
+enum CrmLifecycleStage {
+  LEAD // ผู้สนใจ ยังไม่คุย
+  PROSPECT // คุยแล้ว มีโอกาส
+  CUSTOMER // ปิดการขายได้
+  LOST // ไม่ไปต่อ
+}
+
+enum CrmStageKind {
+  OPEN // ยังอยู่ในกระบวนการ
+  WON // ปิดสำเร็จ
+  LOST // ปิดไม่สำเร็จ
+}
+
+enum CrmActivityType {
+  CALL
+  MEETING
+  EMAIL
+  LINE
+  TASK
+  NOTE
+}
+
+model CrmContact {
+  id               String            @id @default(cuid())
+  tenantId         String
+  systemId         String // ระบบ CRM ไหน (scope)
+  name             String
+  phone            String?
+  email            String?
+  company          String? // ชื่อบริษัท/องค์กร (freeform — ยังไม่แยกตาราง Company ใน MVP)
+  lifecycleStage   CrmLifecycleStage @default(LEAD)
+  source           String? // ที่มา: LINE/Facebook/walk-in/แนะนำ ฯลฯ (freeform)
+  ownerUserId      String? // พนักงานที่ดูแล
+  memberCustomerId String? // ผูกกับ Customer (สมาชิก) เมื่อโปรโมตแล้ว
+  note             String?
+  archivedAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  deals      CrmDeal[]
+  activities CrmActivity[]
+
+  @@index([systemId, lifecycleStage])
+  @@index([systemId, phone])
+  @@index([tenantId])
+}
+
+model CrmPipeline {
+  id        String   @id @default(cuid())
+  tenantId  String
+  systemId  String
+  name      String
+  isDefault Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  stages CrmStage[]
+  deals  CrmDeal[]
+
+  @@index([systemId])
+}
+
+model CrmStage {
+  id          String       @id @default(cuid())
+  tenantId    String
+  systemId    String
+  pipelineId  String
+  pipeline    CrmPipeline  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name        String
+  kind        CrmStageKind @default(OPEN)
+  probability Int          @default(0) // 0-100 (%) — ใช้คำนวณ weighted forecast
+  sortOrder   Int          @default(0)
+
+  deals CrmDeal[]
+
+  @@index([pipelineId, sortOrder])
+  @@index([systemId])
+}
+
+model CrmDeal {
+  id            String       @id @default(cuid())
+  tenantId      String
+  systemId      String
+  contactId     String
+  contact       CrmContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  pipelineId    String
+  pipeline      CrmPipeline  @relation(fields: [pipelineId], references: [id])
+  stageId       String
+  stage         CrmStage     @relation(fields: [stageId], references: [id])
+  title         String
+  valueSatang   Int          @default(0)
+  kind          CrmStageKind @default(OPEN) // สำเนา stage.kind ณ ปัจจุบัน (query ง่าย — sync ตอนย้าย stage)
+  expectedCloseAt DateTime?
+  closedAt      DateTime? // ตั้งเมื่อย้ายเข้า stage WON/LOST
+  ownerUserId   String?
+  lostReason    String?
+  quotationDocId String? // hook → AccountDocument (v2)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  activities CrmActivity[]
+
+  @@index([systemId, kind])
+  @@index([systemId, stageId])
+  @@index([contactId])
+}
+
+model CrmActivity {
+  id          String          @id @default(cuid())
+  tenantId    String
+  systemId    String
+  contactId   String?
+  contact     CrmContact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  dealId      String?
+  deal        CrmDeal?        @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  type        CrmActivityType @default(TASK)
+  title       String
+  dueAt       DateTime? // นัด follow-up
+  doneAt      DateTime? // null = ค้าง
+  ownerUserId String?
+  createdAt   DateTime        @default(now())
+
+  @@index([systemId, doneAt, dueAt]) // งานค้างเรียงตามกำหนด
+  @@index([contactId])
+  @@index([dealId])
+}

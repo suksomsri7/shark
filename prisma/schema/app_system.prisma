@@ -13,6 +13,7 @@ enum SystemType {
   KANBAN
   ACCOUNT
   CHAT
+  CRM
 }
 
 model AppSystem {

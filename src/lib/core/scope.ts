@@ -52,6 +52,12 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // Business DNA (M3 — WO-0005)
   DnaProfile: tenant,
   DnaBlueprint: tenant,
+  // CRM (ระบบ 19 — WO-0009)
+  CrmContact: sys(),
+  CrmPipeline: sys(),
+  CrmStage: sys(),
+  CrmDeal: sys(),
+  CrmActivity: sys(),
   // System instances (ทะเบียนระบบ — เป็น tenant-scoped เพราะ list ทั้งร้าน)
   AppSystem: tenant,
   AppSystemUnit: tenant, // ตารางเชื่อม system↔unit — query ด้วย unitId/tenantId ไม่ใช่ scope ใต้ system

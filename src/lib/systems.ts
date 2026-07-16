@@ -1,6 +1,6 @@
 import type { SystemType, UnitType } from "@prisma/client";
 
-// ทะเบียน "ระบบ" ทั้ง 18 — ทุกอย่างคือระบบ เท่าเทียมกัน สร้างได้หลายชุด เชื่อมถึงกันได้
+// ทะเบียน "ระบบ" ทั้ง 19 — ทุกอย่างคือระบบ เท่าเทียมกัน สร้างได้หลายชุด เชื่อมถึงกันได้
 // ⚠️ จำนวนใน comment นี้ถูกตรวจโดย scripts/fitness.mts (F9.2) — แก้ SYSTEM_DEFS แล้วต้องแก้ที่นี่ด้วย
 // kind "business" = ระบบที่มีหน้างาน/ลูกค้า (เก็บเป็น BusinessUnit — มี slug/storefront)
 // kind "feature"  = ระบบข้อมูล/บริการ (เก็บเป็น AppSystem — เชื่อมเข้าระบบ business ได้)
@@ -32,6 +32,7 @@ export const SYSTEM_DEFS: SystemDef[] = [
   { code: "ACCOUNT", no: 12, kind: "feature", label: "บัญชี (Account)", hint: "รายรับรายจ่าย", icon: "📒", status: "available" },
   { code: "KANBAN", no: 13, kind: "feature", label: "Kanban", hint: "บอร์ดงาน", icon: "📋", status: "available" },
   { code: "POS", no: 14, kind: "feature", label: "ร้านค้า POS", hint: "ขาย บิล ยอดขาย", icon: "🧾", status: "available" },
+  { code: "CRM", no: 19, kind: "feature", label: "CRM (ลูกค้า/ดีล)", hint: "Lead→ลูกค้า, ไปป์ไลน์, ดีล, ติดตามงาน", icon: "🎯", status: "available" },
   { code: "AI", no: 15, kind: "feature", label: "AI พนักงาน", hint: "จ้างพนักงาน AI ทำงานแทน 24 ชม.", icon: "🤖", status: "coming_soon" },
   { code: "KB", no: 16, kind: "feature", label: "คลังความรู้ (KB)", hint: "FAQ/ความรู้ร้าน ให้ AI และทีมใช้ตอบ", icon: "📚", status: "coming_soon" },
   { code: "HR", no: 17, kind: "feature", label: "พนักงาน (HR)", hint: "เวลาเข้างาน ขาด ลา มาสาย กะ", icon: "🧑‍💼", status: "coming_soon" },
