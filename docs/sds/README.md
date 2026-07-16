@@ -22,6 +22,7 @@
 | [08_UI.md](08_UI.md) | ชี้ docs/UI_STANDARD.md (มาตรฐานบังคับเดิม) | ✅ |
 | [09_OPERATIONS.md](09_OPERATIONS.md) | **โหมดรันยาว: Fable หัวหน้า/Builder Opus/QC/ชนลิมิต/การบันทึก/กู้คืน** | ✅ |
 | [10_MASTER_QUEUE.md](10_MASTER_QUEUE.md) | **Master WO Queue เต็มวิสัยทัศน์ (WO-0035→0072) + dependency + จุดรอเจ้าของ** | ✅ |
+| [11_DR.md](11_DR.md) | **Disaster Recovery runbook — Neon PITR/branch restore + กู้ราย tenant + สิ่งที่ต้องซ้อม** | ✅ |
 
 ## ลำดับการอ่านสำหรับ AI session ใหม่
 `ledger/RESUME.md` (CHECKPOINT) → เล่ม 09 (วิธีทำงาน) → เล่ม 10 (หยิบงานถัดไป) → เล่ม 02+04 (ก่อนแตะโค้ด) → เล่มโมดูลที่เกี่ยว
