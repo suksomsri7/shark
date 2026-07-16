@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import type { SystemType, UnitType } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { requireTenant } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import { slugify } from "@/lib/slug";
 import { systemDef, AVAILABLE_BUSINESS, AVAILABLE_FEATURE } from "@/lib/systems";
 import { createSystem, linkUnit } from "@/lib/modules/system/service";
@@ -12,12 +13,25 @@ import { createReward, removeReward } from "@/lib/modules/reward/service";
 
 export type AddSystemState = { status: "idle" } | { status: "error"; message: string };
 
+// ตรวจสิทธิ์ระดับร้าน (tenant admin) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
+function assertSystemsCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "systems", action },
+  );
+}
+
 // สร้าง "ระบบ" — ประเภทไหนก็ได้จาก 14 (business → BusinessUnit, feature → AppSystem)
 export async function addSystemAction(
   _prev: AddSystemState,
   formData: FormData,
 ): Promise<AddSystemState> {
   const auth = await requireTenant();
+  assertSystemsCan(auth, "systems.system.create");
   const tenantId = auth.active.tenantId;
   const code = String(formData.get("code") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -63,6 +77,7 @@ export async function addSystemAction(
 // เชื่อมระบบ business ↔ ระบบ feature (1 ระบบ business เชื่อม 1 ระบบต่อประเภท)
 export async function linkUnitAction(formData: FormData) {
   const auth = await requireTenant();
+  assertSystemsCan(auth, "systems.link.create");
   const systemId = String(formData.get("systemId") ?? "");
   const unitId = String(formData.get("unitId") ?? "");
   const back = String(formData.get("back") ?? "/app");
@@ -74,6 +89,7 @@ export async function linkUnitAction(formData: FormData) {
 // ยกเลิกการเชื่อม
 export async function unlinkUnitAction(formData: FormData) {
   const auth = await requireTenant();
+  assertSystemsCan(auth, "systems.link.delete");
   const systemId = String(formData.get("systemId") ?? "");
   const unitId = String(formData.get("unitId") ?? "");
   const back = String(formData.get("back") ?? "/app");
@@ -88,6 +104,7 @@ export async function unlinkUnitAction(formData: FormData) {
 
 export async function addRewardAction(formData: FormData) {
   const auth = await requireTenant();
+  assertSystemsCan(auth, "systems.reward.create");
   const systemId = String(formData.get("systemId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   const pointsCost = Number(formData.get("pointsCost") ?? 0);
@@ -105,6 +122,7 @@ export async function addRewardAction(formData: FormData) {
 
 export async function removeRewardAction(formData: FormData) {
   const auth = await requireTenant();
+  assertSystemsCan(auth, "systems.reward.delete");
   const id = String(formData.get("id") ?? "");
   const systemId = String(formData.get("systemId") ?? "");
   if (id) await removeReward(auth.active.tenantId, id);

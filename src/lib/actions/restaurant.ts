@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import { KdsItemStatus, TableStatus } from "@prisma/client";
 import { systemForUnit } from "@/lib/modules/system/service";
 import * as member from "@/lib/modules/member/service";
@@ -16,14 +17,23 @@ function base(unitSlug: string) {
   return `/app/u/${unitSlug}/restaurant`;
 }
 
-async function ctx(unitSlug: string) {
+// บริบทหน่วย + ตรวจสิทธิ์ (OWNER/MANAGER ผ่าน · STAFF ตาม permission)
+async function ctx(unitSlug: string, action: string) {
   const { auth, unit } = await requireUnit(unitSlug);
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "restaurant", action, unitId: unit.id },
+  );
   return { tenantId: auth.active.tenantId, unitId: unit.id, userId: auth.user.id };
 }
 
 // ───────────────────────── Settings ─────────────────────────
 export async function updateSettingAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.setting.update");
   const num = (k: string) => {
     const v = formData.get(k);
     return v === null || v === "" ? undefined : Number(v);
@@ -48,7 +58,7 @@ export async function updateSettingAction(unitSlug: string, formData: FormData) 
 }
 
 export async function kitchenPauseAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.kitchen.pause");
   const paused = formData.get("paused") === "true";
   const note = String(formData.get("note") ?? "") || undefined;
   await menu.setKitchenPause(tenantId, unitId, paused, note);
@@ -58,7 +68,7 @@ export async function kitchenPauseAction(unitSlug: string, formData: FormData) {
 
 // ───────────────────────── Stations ─────────────────────────
 export async function createStationAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.station.create");
   const name = String(formData.get("name") ?? "").trim();
   if (name) await menu.createStation(tenantId, unitId, name);
   revalidatePath(`${base(unitSlug)}/setup`);
@@ -66,7 +76,7 @@ export async function createStationAction(unitSlug: string, formData: FormData) 
 
 // ───────────────────────── Categories ─────────────────────────
 export async function createCategoryAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.category.create");
   const name = String(formData.get("name") ?? "").trim();
   const nameEn = String(formData.get("nameEn") ?? "").trim() || undefined;
   if (name) await menu.createCategory(tenantId, unitId, { name, nameEn });
@@ -75,14 +85,14 @@ export async function createCategoryAction(unitSlug: string, formData: FormData)
 }
 
 export async function archiveCategoryAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.category.archive");
   await menu.archiveCategory(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(`${base(unitSlug)}/menu`);
 }
 
 // ───────────────────────── Option groups ─────────────────────────
 export async function createOptionGroupAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.optionGroup.create");
   const name = String(formData.get("name") ?? "").trim();
   const minSelect = Number(formData.get("minSelect") ?? 0) || 0;
   const maxSelect = Number(formData.get("maxSelect") ?? 1) || 1;
@@ -104,13 +114,13 @@ export async function createOptionGroupAction(unitSlug: string, formData: FormDa
 }
 
 export async function archiveOptionGroupAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.optionGroup.archive");
   await menu.archiveOptionGroup(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(`${base(unitSlug)}/menu/options`);
 }
 
 export async function setChoiceStockAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.choice.setStock");
   await menu.setChoiceStock(tenantId, unitId, String(formData.get("id") ?? ""), formData.get("out") === "true");
   revalidatePath(`${base(unitSlug)}/menu/options`);
 }
@@ -128,7 +138,7 @@ const itemSchema = z.object({
 });
 
 export async function createItemAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.item.create");
   const tags = formData.getAll("tags").map(String);
   const p = itemSchema.safeParse({
     categoryId: formData.get("categoryId"),
@@ -157,7 +167,7 @@ export async function createItemAction(unitSlug: string, formData: FormData) {
 }
 
 export async function setItemStockAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.item.setStock");
   const id = String(formData.get("id") ?? "");
   const data: { isOutOfStock?: boolean; stockQty?: number | null } = {};
   if (formData.has("isOutOfStock")) data.isOutOfStock = formData.get("isOutOfStock") === "true";
@@ -171,39 +181,39 @@ export async function setItemStockAction(unitSlug: string, formData: FormData) {
 }
 
 export async function duplicateItemAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.item.duplicate");
   await menu.duplicateItem(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(`${base(unitSlug)}/menu`);
 }
 
 export async function archiveItemAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.item.archive");
   await menu.archiveItem(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(`${base(unitSlug)}/menu`);
 }
 
 export async function resetDailyStockAction(unitSlug: string) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.item.resetStock");
   await menu.resetDailyStock(tenantId, unitId);
   revalidatePath(`${base(unitSlug)}/menu/stock`);
 }
 
 // ───────────────────────── Zones / Tables ─────────────────────────
 export async function createZoneAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.zone.create");
   const name = String(formData.get("name") ?? "").trim();
   if (name) await table.createZone(tenantId, unitId, name);
   revalidatePath(`${base(unitSlug)}/setup`);
 }
 
 export async function archiveZoneAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.zone.archive");
   await table.archiveZone(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(`${base(unitSlug)}/setup`);
 }
 
 export async function createTableAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.table.create");
   const zoneId = String(formData.get("zoneId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   const seats = Number(formData.get("seats") ?? 4) || 4;
@@ -212,13 +222,13 @@ export async function createTableAction(unitSlug: string, formData: FormData) {
 }
 
 export async function archiveTableAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.table.archive");
   await table.archiveTable(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(`${base(unitSlug)}/setup`);
 }
 
 export async function setTableStatusAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.table.setStatus");
   const parsed = z.nativeEnum(TableStatus).safeParse(formData.get("status"));
   if (parsed.success) {
     await table.updateTable(tenantId, unitId, String(formData.get("id") ?? ""), { status: parsed.data });
@@ -228,14 +238,14 @@ export async function setTableStatusAction(unitSlug: string, formData: FormData)
 }
 
 export async function rotateQrAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.table.rotateQr");
   await table.rotateQr(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(`${base(unitSlug)}/setup`);
 }
 
 // ───────────────────────── Sessions ─────────────────────────
 export async function openSessionAction(unitSlug: string, formData: FormData): Promise<void> {
-  const { tenantId, unitId, userId } = await ctx(unitSlug);
+  const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.session.open");
   const tableId = String(formData.get("tableId") ?? "");
   const guestCount = Number(formData.get("guestCount") ?? 0) || undefined;
   await table.openSession(tenantId, unitId, tableId, { guestCount, openedByUserId: userId });
@@ -243,13 +253,13 @@ export async function openSessionAction(unitSlug: string, formData: FormData): P
 }
 
 export async function closeSessionAction(unitSlug: string, formData: FormData): Promise<void> {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.session.close");
   await table.closeSession(tenantId, unitId, String(formData.get("sessionId") ?? ""));
   revalidatePath(base(unitSlug));
 }
 
 export async function moveSessionAction(unitSlug: string, formData: FormData): Promise<void> {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.session.move");
   await table.moveSession(
     tenantId,
     unitId,
@@ -260,7 +270,7 @@ export async function moveSessionAction(unitSlug: string, formData: FormData): P
 }
 
 export async function mergeSessionAction(unitSlug: string, formData: FormData): Promise<void> {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.session.merge");
   await table.mergeSession(
     tenantId,
     unitId,
@@ -271,7 +281,7 @@ export async function mergeSessionAction(unitSlug: string, formData: FormData): 
 }
 
 export async function linkMemberByPhoneAction(unitSlug: string, sessionId: string, phone: string) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.session.linkMember");
   const memberSystemId = await systemForUnit(tenantId, unitId, "MEMBER");
   if (!memberSystemId) return { ok: false as const, reason: "ยังไม่ได้เชื่อมระบบสมาชิก" };
   const customer = await member.findOrCreate({ tenantId, memberSystemId, phone, source: "SELF" });
@@ -285,7 +295,7 @@ export async function createStaffOrderAction(
   unitSlug: string,
   args: { sessionId?: string; type: "DINE_IN" | "TAKEAWAY"; cart: CartLine[]; note?: string; guestName?: string; guestPhone?: string },
 ) {
-  const { tenantId, unitId, userId } = await ctx(unitSlug);
+  const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.order.create");
   const res = await order.createOrder({
     tenantId,
     unitId,
@@ -303,47 +313,47 @@ export async function createStaffOrderAction(
 }
 
 export async function confirmOrderAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.order.confirm");
   await order.confirmOrder(tenantId, unitId, String(formData.get("orderId") ?? ""));
   revalidatePath(`${base(unitSlug)}/orders`);
 }
 
 export async function cancelOrderItemAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId, userId } = await ctx(unitSlug);
+  const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.order.cancelItem");
   const reason = String(formData.get("reason") ?? "") || "ยกเลิกโดยพนักงาน";
   await order.cancelOrderItem(tenantId, unitId, String(formData.get("itemId") ?? ""), reason, userId);
   revalidatePath(base(unitSlug));
 }
 
 export async function rushOrderAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.order.rush");
   await order.setOrderRush(tenantId, unitId, String(formData.get("orderId") ?? ""), formData.get("rush") !== "false");
   revalidatePath(base(unitSlug));
 }
 
 // ───────────────────────── Service requests ─────────────────────────
 export async function ackRequestAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId, userId } = await ctx(unitSlug);
+  const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.request.ack");
   await order.ackServiceRequest(tenantId, unitId, String(formData.get("id") ?? ""), userId);
   revalidatePath(base(unitSlug));
 }
 
 export async function doneRequestAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.request.done");
   await order.doneServiceRequest(tenantId, unitId, String(formData.get("id") ?? ""));
   revalidatePath(base(unitSlug));
 }
 
 // ───────────────────────── KDS ─────────────────────────
 export async function advanceItemAction(unitSlug: string, itemId: string, to: KdsItemStatus) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.kds.advance");
   const res = await kds.advanceItem(tenantId, unitId, itemId, to);
   revalidatePath(`${base(unitSlug)}/kds`);
   return res;
 }
 
 export async function recallItemAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.kds.recall");
   await kds.recallItem(tenantId, unitId, String(formData.get("itemId") ?? ""));
   revalidatePath(`${base(unitSlug)}/kds`);
 }
@@ -353,7 +363,7 @@ export async function checkoutAction(
   unitSlug: string,
   args: { sessionId: string; itemIds?: string[]; payMethod?: "CASH" | "TRANSFER" | "PROMPTPAY" },
 ) {
-  const { tenantId, unitId } = await ctx(unitSlug);
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.checkout.create");
   const res = await order.checkout({
     tenantId,
     unitId,
