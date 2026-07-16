@@ -85,6 +85,25 @@ export function NavDrawer({
             </Link>
           ))}
 
+          <div className="my-2 border-t" />
+          <div className="px-2 pb-1 text-xs text-[color:var(--color-muted)]">ตั้งค่า</div>
+          {[
+            { href: "/app/settings/payment", icon: "💳", label: "ช่องรับเงิน" },
+            { href: "/app/settings/billing", icon: "🧾", label: "บิลจากแพลตฟอร์ม" },
+          ].map((s) => (
+            <Link
+              key={s.href}
+              href={s.href}
+              onClick={onClose}
+              className={`flex items-center gap-2 rounded-lg px-2 py-2.5 hover:bg-[color:var(--color-surface-2)] ${
+                isActive(s.href) ? "font-medium text-[color:var(--color-accent)]" : ""
+              }`}
+            >
+              <span aria-hidden>{s.icon}</span>
+              <span className="truncate">{s.label}</span>
+            </Link>
+          ))}
+
           {soon.length > 0 && (
             <>
               <div className="my-2 border-t" />
