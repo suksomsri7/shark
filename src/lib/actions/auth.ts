@@ -30,8 +30,13 @@ export async function requestLoginAction(
   const parsed = emailSchema.safeParse(String(formData.get("email") ?? "").trim().toLowerCase());
   if (!parsed.success) return { status: "error", message: "กรุณากรอกอีเมลให้ถูกต้อง" };
   const { ip } = await clientMeta();
-  const preview = await requestLogin(parsed.data, ip);
-  return { status: "sent", email: parsed.data, preview: preview ?? undefined };
+  try {
+    const preview = await requestLogin(parsed.data, ip);
+    return { status: "sent", email: parsed.data, preview: preview ?? undefined };
+  } catch (e) {
+    // rate limit (ขอรหัสถี่เกินไป) หรือ error อื่น → แสดง inline ไม่ให้หน้าแตก
+    return { status: "error", message: e instanceof Error ? e.message : "ส่งรหัสไม่สำเร็จ กรุณาลองใหม่" };
+  }
 }
 
 // ขั้น 2: ยืนยัน OTP → สร้าง session → ไป onboarding/app

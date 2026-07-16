@@ -7,6 +7,12 @@ import { env, previewOtp } from "@/lib/env";
 const TTL_MS = 1000 * 60 * 10; // 10 นาที
 const MAX_ATTEMPTS = 5;
 
+// กันถล่ม OTP (WO-0043) — นับ AuthToken purpose OTP ในหน้าต่าง 10 นาที (ทนข้าม instance)
+const RL_WINDOW_MS = 1000 * 60 * 10;
+const RL_MAX_PER_EMAIL = 5; // อีเมลเดิม ≥5 ใน 10 นาที → บล็อก
+const RL_MAX_PER_IP = 20; // ip เดิม ≥20 ใน 10 นาที → บล็อก
+const RL_MESSAGE = "ขอรหัสถี่เกินไป กรุณารอสักครู่แล้วลองใหม่";
+
 export type PreviewCreds = { otp: string; link: string };
 
 // ── request: ส่ง OTP + magic link ทางอีเมล ────────────────────
@@ -16,6 +22,20 @@ export async function requestLogin(
   ip?: string,
 ): Promise<PreviewCreds | null> {
   const email = normalizeEmail(rawEmail);
+
+  // นับ "ก่อน" สร้างแถวใหม่ — กันถล่มขอรหัสถี่ ๆ ต่ออีเมล/ต่อ ip
+  const since = new Date(Date.now() - RL_WINDOW_MS);
+  const emailCount = await prisma.authToken.count({
+    where: { email, purpose: "OTP", createdAt: { gte: since } },
+  });
+  if (emailCount >= RL_MAX_PER_EMAIL) throw new Error(RL_MESSAGE);
+  if (ip) {
+    const ipCount = await prisma.authToken.count({
+      where: { ip, purpose: "OTP", createdAt: { gte: since } },
+    });
+    if (ipCount >= RL_MAX_PER_IP) throw new Error(RL_MESSAGE);
+  }
+
   const code = otpCode();
   const linkToken = randomToken();
   const expiresAt = new Date(Date.now() + TTL_MS);

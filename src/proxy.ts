@@ -45,6 +45,9 @@ function applySecurity(res: NextResponse) {
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  // WO-0043: บังคับ HTTPS 2 ปี + รวม subdomain · ปิดสิทธิ์อุปกรณ์ที่แอปไม่ใช้
+  res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
+  res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   return res;
 }
 

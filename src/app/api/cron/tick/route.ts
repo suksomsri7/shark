@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import { runDailyCron } from "@/lib/platform/cron";
 import { logOps } from "@/lib/core/ops";
+import { isCronAuthorized } from "@/lib/core/cron-auth";
 
 // GET /api/cron/tick — งาน cron ประจำวัน (Vercel Cron เรียก 03:00 BKK)
-// auth: header authorization ต้องเท่ากับ `Bearer ${SHARK_CRON_SECRET}` เป๊ะ
+// auth: isCronAuthorized (Bearer SHARK_CRON_SECRET หรือ X-Cron-Secret — รวมมาตรฐาน)
 // ไม่มี secret ใน env หรือไม่ตรง → 401 ตอบสั้น ๆ (ไม่บอกรายละเอียด)
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const secret = process.env.SHARK_CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!isCronAuthorized(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   // runDailyCron ห่อ try/catch งานย่อยเองแล้ว — ห่ออีกชั้นเผื่อพังทั้งรอบ → logOps ERROR
