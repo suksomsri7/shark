@@ -1,0 +1,44 @@
+{
+  "id": "WO-0041",
+  "title": "Observability — logger กลาง + alert throttle + health + backoffice system-health",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/",
+  "neonBranch": "wo-0041",
+  "files": [
+    "src/lib/core/ops.ts",
+    "src/app/api/health/route.ts",
+    "src/lib/platform/ops.ts",
+    "src/app/backoffice/system-health/page.tsx",
+    "จุดเกาะ: cron tick + outbox-consumers + ai/service (logOps)"
+  ],
+  "closesFindings": [
+    "SDS 04: ช่องว่าง observability"
+  ],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "DATABASE_URL=<neon wo-0041> pnpm exec tsx scripts/qc-ops.mts",
+      "expect": "FINDINGS: CRITICAL 0"
+    },
+    {
+      "cmd": "typecheck+fitness (Fable, pipefail) + deploy READY + curl /api/health จริง"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: schema OpsEvent/OpsAlertState + scope platform + migration (prod แล้ว) + oracle"
+    },
+    {
+      "done": false,
+      "text": "Builder ตามสัญญาหัว qc-ops.mts"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T14:45:00Z",
+      "note": "NIGHT RUN เริ่ม — WO แรกของคิวรันยาว"
+    }
+  ]
+}

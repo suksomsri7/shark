@@ -1,0 +1,27 @@
+// Observability (WO-0041) — บันทึกเหตุการณ์ระบบ (error/warn/info) ให้แพลตฟอร์มเห็น + alert เจ้าของ
+// axis platform: อ่านทาง backoffice เท่านั้น · เขียนผ่าน logger กลาง (src/lib/core/ops.ts) ทุกที่
+enum OpsLevel {
+  ERROR
+  WARN
+  INFO
+}
+
+model OpsEvent {
+  id        String   @id @default(cuid())
+  level     OpsLevel
+  source    String // "action" | "cron" | "outbox" | "api" | "ai" | ...
+  message   String
+  detail    String?
+  tenantId  String? // มีได้ถ้ารู้บริบทร้าน (ไม่ scope — เพื่อให้เห็นข้ามร้านใน backoffice)
+  createdAt DateTime @default(now())
+
+  @@index([level, createdAt])
+  @@index([source, createdAt])
+}
+
+// กันเมลถล่ม: จำการส่ง alert ล่าสุดต่อ source (ส่งซ้ำได้เมื่อพ้นหน้าต่างเวลา)
+model OpsAlertState {
+  id          String   @id @default(cuid())
+  source      String   @unique
+  lastAlertAt DateTime
+}

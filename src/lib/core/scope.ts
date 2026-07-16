@@ -73,6 +73,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AiMessage: tenant,
   AiUsage: tenant,
   AiProposal: tenant, // Phase 3.5 — ข้อเสนอการกระทำ (WO-0020)
+  // Observability (WO-0041) — logger กลางเขียน · backoffice อ่าน (ข้ามร้านโดยเจตนา)
+  OpsEvent: { axis: "platform", why: "ops log ข้ามร้าน — เขียนผ่าน core/ops.ts อ่านทาง backoffice" },
+  OpsAlertState: { axis: "platform", why: "สถานะ throttle alert — ไม่ใช่ข้อมูลร้าน" },
   // Backoffice (WO-0019) — แยกจากร้านโดยสิ้นเชิง เข้าผ่าน src/lib/platform เท่านั้น
   PlatformAuthToken: { axis: "platform", why: "backoffice auth — tenantDb ห้ามแตะ" },
   PlatformSession: { axis: "platform", why: "backoffice session — tenantDb ห้ามแตะ" },
