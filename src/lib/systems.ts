@@ -1,6 +1,6 @@
 import type { SystemType, UnitType } from "@prisma/client";
 
-// ทะเบียน "ระบบ" ทั้ง 20 — ทุกอย่างคือระบบ เท่าเทียมกัน สร้างได้หลายชุด เชื่อมถึงกันได้
+// ทะเบียน "ระบบ" ทั้ง 19 — ทุกอย่างคือระบบ เท่าเทียมกัน สร้างได้หลายชุด เชื่อมถึงกันได้
 // ⚠️ จำนวนใน comment นี้ถูกตรวจโดย scripts/fitness.mts (F9.2) — แก้ SYSTEM_DEFS แล้วต้องแก้ที่นี่ด้วย
 // kind "business" = ระบบที่มีหน้างาน/ลูกค้า (เก็บเป็น BusinessUnit — มี slug/storefront)
 // kind "feature"  = ระบบข้อมูล/บริการ (เก็บเป็น AppSystem — เชื่อมเข้าระบบ business ได้)
