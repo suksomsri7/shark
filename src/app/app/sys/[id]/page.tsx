@@ -9,6 +9,9 @@ import { KanbanContent } from "@/lib/modules/kanban/ui";
 import { AccountContent } from "@/lib/modules/account/ui";
 import { ChatContent } from "@/lib/modules/chat/ui";
 import { CrmContent } from "@/lib/modules/crm/ui";
+import { InventoryContent } from "@/lib/modules/inventory/ui";
+import { HrContent } from "@/lib/modules/hr/ui";
+import { MarketingContent } from "@/lib/modules/marketing/ui";
 import {
   linkUnitAction,
   unlinkUnitAction,
@@ -107,6 +110,9 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
       {sys.type === "ACCOUNT" && <AccountContent systemId={id} tenantId={tenantId} />}
       {sys.type === "CHAT" && <ChatContent systemId={id} tenantId={tenantId} />}
       {sys.type === "CRM" && <CrmContent systemId={id} />}
+      {sys.type === "INVENTORY" && <InventoryContent systemId={id} />}
+      {sys.type === "HR" && <HrContent systemId={id} />}
+      {sys.type === "MARKETING" && <MarketingContent systemId={id} />}
     </div>
   );
 }

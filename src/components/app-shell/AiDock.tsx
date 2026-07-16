@@ -1,12 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
+import { usePathname } from "next/navigation";
 
-// ปุ่มผู้ช่วย AI วงกลม ติดมุมซ้ายล่าง (fixed) — กดแล้วเปิด bottom-sheet placeholder
-// จัดตำแหน่งไม่ให้บังเนื้อหา: อยู่มุมซ้ายล่าง, main มี padding-bottom เผื่อไว้แล้ว
+// ปุ่มผู้ช่วย AI วงกลม ติดมุมขวาล่าง (fixed) — กดแล้วเปิด bottom-sheet placeholder
+// ไม่แสดงระหว่าง onboarding (/app/dna) — ยังไม่ถึงเวลาแนะนำผู้ช่วย
+// จัดตำแหน่งไม่ให้บังเนื้อหา: main มี padding-bottom เผื่อไว้แล้ว
 
 export function AiDock() {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+
+  if (pathname?.startsWith("/app/dna")) return null;
 
   return (
     <>
@@ -14,9 +20,9 @@ export function AiDock() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="ผู้ช่วย AI"
-        className="fixed bottom-4 left-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[color:var(--color-ink)] text-xl text-[color:var(--color-surface)] shadow-[0_4px_14px_rgba(0,0,0,0.2)] hover:bg-[color:var(--color-ink-soft)]"
+        className="fixed bottom-4 right-4 z-40 h-14 w-14 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.2)] transition-transform hover:scale-105"
       >
-        <span aria-hidden>🤖</span>
+        <Image src="/ai-orb.png" alt="" width={56} height={56} className="h-14 w-14" />
       </button>
 
       {open && (

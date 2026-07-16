@@ -1,7 +1,7 @@
 {
   "id": "WO-0012",
-  "title": "HR \u2014 \u0e1e\u0e19\u0e31\u0e01\u0e07\u0e32\u0e19/\u0e25\u0e07\u0e40\u0e27\u0e25\u0e32/\u0e25\u0e32 + availability (C-2)",
-  "status": "queued",
+  "title": "HR — พนักงาน/ลงเวลา/ลา + availability (C-2)",
+  "status": "done",
   "branch": "wo/0012",
   "worktree": "/root/wt/0012",
   "neonBranch": "wo-0012",
@@ -19,11 +19,11 @@
     },
     {
       "cmd": "pnpm qc:account",
-      "expect": "\u0e1c\u0e48\u0e32\u0e19 107/107"
+      "expect": "ผ่าน 107/107"
     },
     {
       "cmd": "pnpm fitness",
-      "expect": "FINDINGS: CRITICAL 0 \u00b7 MAJOR 0"
+      "expect": "FINDINGS: CRITICAL 0 · MAJOR 0"
     },
     {
       "cmd": "pnpm typecheck"
@@ -36,29 +36,33 @@
   "steps": [
     {
       "done": true,
-      "text": "Fable: schema+enum+scope+systems+rules.ts+oracle qc-hr.mts (RULES \u0e40\u0e02\u0e35\u0e22\u0e27\u00b7SVC fail-before)"
+      "text": "Fable: schema+enum+scope+systems+rules.ts+oracle qc-hr.mts (RULES เขียว·SVC fail-before)"
     },
     {
-      "done": false,
-      "text": "hr/service.ts: createEmployee/clock(IN/OUT)/requestLeave(PENDING)/decideLeave(APPROVED)/isAvailable(C-2 \u0e19\u0e31\u0e1a\u0e40\u0e09\u0e1e\u0e32\u0e30 APPROVED)/workedMinutes \u2014 \u0e40\u0e23\u0e35\u0e22\u0e01 rules.ts"
+      "done": true,
+      "text": "hr/service.ts: createEmployee/clock(IN/OUT)/requestLeave(PENDING)/decideLeave(APPROVED)/isAvailable(C-2 นับเฉพาะ APPROVED)/workedMinutes — เรียก rules.ts"
     },
     {
-      "done": false,
-      "text": "hr/actions.ts: server actions + assertCan (hr.<entity>.<verb>) \u0e17\u0e38\u0e01 mutation"
+      "done": true,
+      "text": "hr/actions.ts: server actions + assertCan (hr.<entity>.<verb>) ทุก mutation"
     },
     {
-      "done": false,
-      "text": "hr/ui.tsx: HrContent(systemId) \u2014 UI_STANDARD (accent \u0e19\u0e49\u0e33\u0e40\u0e07\u0e34\u0e19, .btn, \u0e44\u0e17\u0e22, \u226544px)"
+      "done": true,
+      "text": "hr/ui.tsx: HrContent(systemId) — UI_STANDARD (accent น้ำเงิน, .btn, ไทย, ≥44px)"
     },
     {
-      "done": false,
-      "text": "oracle \u0e40\u0e02\u0e35\u0e22\u0e27\u0e04\u0e23\u0e1a + gates (Fable wire dispatch page.tsx \u0e40\u0e2d\u0e07 \u0e2b\u0e25\u0e31\u0e07 merge)"
+      "done": true,
+      "text": "oracle เขียวครบ + gates (Fable wire dispatch page.tsx เอง หลัง merge)"
     }
   ],
   "log": [
     {
       "at": "2026-07-16T06:03:33Z",
-      "note": "\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19"
+      "note": "เปิดงาน"
+    },
+    {
+      "at": "2026-07-16T07:55:00Z",
+      "note": "Fable ตรวจรับหลัง OOM: oracle+107/107+fitness+typecheck เขียว → merge + wire dispatch"
     }
   ]
 }

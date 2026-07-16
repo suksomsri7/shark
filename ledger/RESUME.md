@@ -10,15 +10,13 @@
 ตอนนี้ load 0.56 · service ใช้ 445M/3G · **ไม่มีอะไรวิ่งค้างอยู่จริง**
 **กันซ้ำ**: อย่ารัน Builder ขนาน >2 ตัวพร้อม build/typecheck บนเครื่องนี้ — 2 core/3G ไม่พอ
 
-## ค้างรอตัดสินใจ — งาน 3 Builder รอดครบ (ยังไม่ merge)
-ไฟล์เขียนเสร็จหมดตอน 06:06-06:10 UTC **แต่ตายก่อนรัน oracle + ก่อน commit** → ยัง untracked ใน worktree
-- **WO-0011 Inventory** (agent ae795afd) neon wo-0011 · `modules/inventory/{service,actions,ui}` ✍️ 3 ไฟล์ + WO json (M)
-- **WO-0012 HR** (agent ac53316b) neon wo-0012 · `modules/hr/{service,actions,ui}` ✍️ 3 ไฟล์
-- **WO-0013 Marketing** (agent a76dcc0d) neon wo-0013 · `modules/marketing/{service,actions,ui}` ✍️ 3 ไฟล์
-worktree: `.claude/worktrees/agent-<id>/` ทั้ง 3 อยู่ที่ de6d940 · neon branch ยังไม่ถูกลบ (leak, อายุ 1.3 ชม.)
-**⚠️ โค้ดยังไม่ผ่านข้อสอบสักตัว** — ห้าม merge จนกว่าจะรัน oracle เอง (qc-inventory/qc-hr/qc-marketing.mts) ทีละตัว
-กู้: `git -C <wt> status` → รัน oracle → merge ถ้าเขียว → wire dispatch page.tsx + `pnpm neon:delete` + `neon:gc`
-ของกลางบน main พร้อมแล้ว (schema+enum+scope+systems+rules+oracle+เส้น marketing→member)
+## ✅ 2026-07-16 บ่าย — Fable ตรวจรับ 3 Builder ครบ merge แล้ว
+- **WO-0011 Inventory** oracle 12/12 · **WO-0012 HR** 9/9 · **WO-0013 Marketing** 8/8 (Fable แก้ 1 จุด: tenantId/systemId ใน createMany ให้ตรง type)
+- ทุกตัวผ่าน qc:account 107/107 + fitness 14/14 + typecheck → merge เข้า main + **wire dispatch sys/[id]/page.tsx แล้ว** (INVENTORY/HR/MARKETING)
+- แก้เพิ่มตามคำสั่ง user บ่ายนี้:
+  - **DNA Wizard ค้าง "กำลังประกอบระบบ…"** = ฝั่ง client เท่านั้น (server APPLIED 10/10 ใน 26 วิ) → กัน 2 ชั้น: apply-button catch+refresh · blueprint page redirect /app ถ้า planHash APPLIED แล้ว
+  - **AiDock**: ย้ายมุมขวาล่าง + ซ่อนใน /app/dna + เปลี่ยนเป็นรูป orb gradient (`public/ai-orb.png`, gen ด้วย fal.ai seedream ครั้งเดียว — key Content, ยังไม่มี FAL key ชื่อ shark)
+- เก็บกวาด: neon wo-0011/12/13 ลบแล้ว + worktree 3 อันลบแล้ว
 
 ## คำสั่งล่าสุด user (2026-07-16 ค่ำ)
 ✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว** · ต่อไป: Builder ขนาน (Inventory/Procurement/Marketing)

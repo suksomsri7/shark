@@ -4,6 +4,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { proposeBlueprint } from "@/lib/dna/apply";
+import { planHash } from "@/lib/dna/schema";
 import type { BlueprintStep } from "@/lib/dna/schema";
 import { DnaApplyButton } from "@/components/dna-apply-button";
 
@@ -32,6 +33,13 @@ export default async function BlueprintPage() {
   if (!profile) redirect("/app/dna");
 
   const { blueprintId, plan } = await proposeBlueprint(tenantId);
+
+  // ประกอบแผนนี้เสร็จไปแล้ว (เช่น เน็ตหลุดตอนรอ แล้วกลับมารีเฟรช) → ไม่ต้องกดซ้ำ พาเข้าแอปเลย
+  const applied = await prisma.dnaBlueprint.findFirst({
+    where: { tenantId, status: "APPLIED", planHash: planHash(plan) },
+  });
+  if (applied) redirect("/app");
+
   const steps = plan.steps;
 
   return (

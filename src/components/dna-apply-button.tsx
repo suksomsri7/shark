@@ -13,17 +13,24 @@ export function DnaApplyButton({ blueprintId }: { blueprintId: string }) {
   function run() {
     setError(null);
     startTransition(async () => {
-      const res = await applyAction(blueprintId);
-      if (res.ok) {
-        router.push("/app");
+      try {
+        const res = await applyAction(blueprintId);
+        if (res.ok) {
+          router.push("/app");
+          router.refresh();
+        } else {
+          const failed = res.results.find((r) => !r.ok);
+          setError(
+            failed?.error
+              ? `ประกอบไม่สำเร็จที่ขั้นตอนที่ ${failed.step + 1}: ${failed.error}`
+              : "ประกอบระบบไม่สำเร็จ กรุณาลองอีกครั้ง",
+          );
+        }
+      } catch {
+        // เน็ตหลุด/สลับแอประหว่างรอ — ฝั่งเซิร์ฟเวอร์อาจประกอบเสร็จแล้ว
+        // refresh: ถ้า APPLIED แล้ว หน้า blueprint จะพาไป /app เอง · apply ซ้ำก็ idempotent
+        setError("การเชื่อมต่อหลุดระหว่างประกอบ — กำลังตรวจสถานะ…");
         router.refresh();
-      } else {
-        const failed = res.results.find((r) => !r.ok);
-        setError(
-          failed?.error
-            ? `ประกอบไม่สำเร็จที่ขั้นตอนที่ ${failed.step + 1}: ${failed.error}`
-            : "ประกอบระบบไม่สำเร็จ กรุณาลองอีกครั้ง",
-        );
       }
     });
   }

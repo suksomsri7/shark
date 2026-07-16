@@ -1,7 +1,7 @@
 {
   "id": "WO-0011",
   "title": "Inventory — สต็อกกลาง + movement (C-1)",
-  "status": "queued",
+  "status": "done",
   "branch": "wo/0011",
   "worktree": "/root/wt/0011",
   "neonBranch": "wo-0011",
@@ -43,15 +43,15 @@
       "text": "inventory/service.ts: createItem/receive(moving avg+idempotencyKey)/consume(ยอมติดลบ+needsReview ห้าม block)/onHand/lowStock — ledger append-only balanceAfter · เรียก rules ห้าม hardcode"
     },
     {
-      "done": false,
+      "done": true,
       "text": "inventory/actions.ts: server actions + assertCan (inventory.<entity>.<verb>) ทุก mutation"
     },
     {
-      "done": false,
+      "done": true,
       "text": "inventory/ui.tsx: InventoryContent(systemId) — UI_STANDARD (accent น้ำเงิน, .btn, ไทย, ≥44px)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "oracle เขียวครบ + gates (Fable wire dispatch page.tsx เอง หลัง merge)"
     }
   ],
@@ -63,6 +63,10 @@
     {
       "at": "2026-07-16T06:07:01Z",
       "note": "inventory/service.ts: createItem/receive(moving avg+idempotent)/consume(ยอมติดลบ+needsReview)/onHand/lowStock — oracle 12/12 เขียว"
+    },
+    {
+      "at": "2026-07-16T07:55:00Z",
+      "note": "Fable ตรวจรับหลัง OOM: oracle+107/107+fitness+typecheck เขียว → merge + wire dispatch"
     }
   ]
 }
