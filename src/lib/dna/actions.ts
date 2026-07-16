@@ -8,6 +8,9 @@ import { ZDnaFacts } from "./schema";
 import type { BlueprintPlan, DnaFacts } from "./schema";
 import { finalizeFacts } from "./questions";
 import { saveDnaFacts, proposeBlueprint, applyBlueprint } from "./apply";
+import { resolveProvider } from "@/lib/ai/provider";
+import { nextInterviewTurn } from "@/lib/ai/interview";
+import type { InterviewTurn } from "@/lib/ai/interview";
 
 export type FactsState =
   | { status: "idle" }
@@ -26,6 +29,29 @@ export async function answerQuestion(
   }
   await saveDnaFacts(auth.active.tenantId, parsed.data);
   return { status: "saved" };
+}
+
+// โหมดพิมพ์อิสระ — LLM สัมภาษณ์จนได้ DnaFacts ครบ (M4 · WO-0016)
+// ไม่มี provider (ยังไม่ใส่ key) → { enabled: false } ให้ UI ซ่อนโหมดนี้
+// done → บันทึกข้อเท็จจริงแล้วบอก UI พาไปหน้าพิมพ์เขียว · ไม่ done → ส่งคำถามถัดไปกลับ
+export type InterviewState =
+  | { enabled: false }
+  | { enabled: true; done: true }
+  | { enabled: true; done: false; question: string };
+
+export async function interviewTurnAction(
+  transcript: InterviewTurn[],
+): Promise<InterviewState> {
+  const auth = await requireTenant();
+  const provider = resolveProvider();
+  if (!provider) return { enabled: false };
+
+  const result = await nextInterviewTurn(provider, auth.active.tenant.name, transcript);
+  if (result.done) {
+    await saveDnaFacts(auth.active.tenantId, result.facts);
+    return { enabled: true, done: true };
+  }
+  return { enabled: true, done: false, question: result.question };
 }
 
 // เสนอพิมพ์เขียวจากข้อเท็จจริงที่บันทึกไว้ (idempotent)
