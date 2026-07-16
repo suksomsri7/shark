@@ -1,0 +1,65 @@
+// HR (ระบบ 17) — พนักงาน + ลงเวลา + ลา (contract C-2 availability)
+// availability คือของ HR — ระบบอื่นถาม ห้าม copy · ลาอนุมัติ → Booking ปิด slot (wiring ภายหลัง)
+enum HrLeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+enum HrLeaveType {
+  SICK
+  PERSONAL
+  VACATION
+  OTHER
+}
+enum HrAttendanceKind {
+  IN
+  OUT
+}
+
+model HrEmployee {
+  id          String   @id @default(cuid())
+  tenantId    String
+  systemId    String
+  name        String
+  phone       String?
+  position    String?
+  pinCode     String?  // สำหรับ kiosk clock-in
+  linkedUserId String? // ผูก User ถ้ามีบัญชี
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  attendances HrAttendance[]
+  leaves      HrLeave[]
+  @@index([systemId, active])
+  @@index([tenantId])
+}
+
+model HrAttendance {
+  id         String           @id @default(cuid())
+  tenantId   String
+  systemId   String
+  employeeId String
+  employee   HrEmployee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  kind       HrAttendanceKind
+  at         DateTime         @default(now())
+  note       String?
+  @@index([systemId, employeeId, at])
+}
+
+model HrLeave {
+  id         String        @id @default(cuid())
+  tenantId   String
+  systemId   String
+  employeeId String
+  employee   HrEmployee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type       HrLeaveType   @default(PERSONAL)
+  fromDate   DateTime      @db.Date
+  toDate     DateTime      @db.Date
+  status     HrLeaveStatus @default(PENDING)
+  reason     String?
+  decidedById String?
+  createdAt  DateTime      @default(now())
+  @@index([systemId, status])
+  @@index([systemId, employeeId, fromDate])
+}

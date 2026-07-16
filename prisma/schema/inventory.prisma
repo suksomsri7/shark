@@ -1,0 +1,52 @@
+// Inventory (ระบบ 18) — สต็อกกลาง + movement ledger (contract C-1)
+// InvItem = "ของจริงมีเท่าไหร่" · movement append-only ทุกแถวอ้าง refType/refId
+// นโยบาย: ตัดสต็อกยอมติดลบ (default) + ธง needsReview — ร้านจริงขายไปก่อนค่อยเคลียร์
+enum InvMovementType {
+  IN
+  OUT
+  ADJUST
+  TRANSFER
+}
+
+model InvItem {
+  id             String   @id @default(cuid())
+  tenantId       String
+  systemId       String
+  sku            String
+  barcode        String?
+  name           String
+  unitLabel      String   @default("ชิ้น")
+  category       String?
+  costSatang     Int      @default(0) // ต้นทุนถัวเฉลี่ย
+  onHand         Int      @default(0) // cache — sync จาก movement (source of truth = ledger)
+  reorderPoint   Int      @default(0)
+  accountProductId String? // sync กับ AccountProduct (มูลค่า/เอกสาร) — ไม่ซ้ำ
+  archivedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  movements InvMovement[]
+  @@unique([systemId, sku])
+  @@index([systemId, onHand])
+  @@index([tenantId])
+}
+
+model InvMovement {
+  id             String          @id @default(cuid())
+  tenantId       String
+  systemId       String
+  itemId         String
+  item           InvItem         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type           InvMovementType
+  qtyDelta       Int             // + รับเข้า / - ตัดออก
+  balanceAfter   Int             // onHand หลังรายการนี้ (audit trail)
+  costSatang     Int             @default(0)
+  sourceModule   String?         // POS/RESTAURANT/ACCOUNT/manual
+  refType        String?
+  refId          String?
+  idempotencyKey String
+  note           String?
+  needsReview    Boolean         @default(false) // ตัดจนติดลบ = ตั้งธง
+  createdAt      DateTime        @default(now())
+  @@unique([tenantId, idempotencyKey])
+  @@index([systemId, itemId, createdAt])
+}

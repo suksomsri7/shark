@@ -1,0 +1,46 @@
+// Marketing (ระบบ 20) — แคมเปญ + เซกเมนต์ + บันทึกการส่ง
+// เชื่อม: Member(อ่าน segment) · Coupon(แจกโค้ด) · Chat/Notify(ส่ง) — ผ่าน facade/wiring ภายหลัง
+enum MktCampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+  CANCELLED
+}
+enum MktChannel {
+  LINE
+  EMAIL
+  SMS
+}
+
+model MktCampaign {
+  id          String            @id @default(cuid())
+  tenantId    String
+  systemId    String
+  name        String
+  channel     MktChannel        @default(LINE)
+  status      MktCampaignStatus @default(DRAFT)
+  message     String            @default("")
+  segmentJson Json              @default("{}") // เงื่อนไขเซกเมนต์ (tier/ยอดซื้อ/ไม่มาเกิน N วัน)
+  couponCode  String?           // แนบคูปอง (ถ้ามี)
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  audienceCount Int             @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  recipients  MktRecipient[]
+  @@index([systemId, status])
+  @@index([tenantId])
+}
+
+model MktRecipient {
+  id         String   @id @default(cuid())
+  tenantId   String
+  systemId   String
+  campaignId String
+  campaign   MktCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customerId String?  // Customer (สมาชิก)
+  contact    String   // เบอร์/อีเมล ที่ส่งไป (freeze ณ ตอนส่ง)
+  sentAt     DateTime?
+  createdAt  DateTime @default(now())
+  @@index([campaignId])
+}

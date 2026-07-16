@@ -58,6 +58,16 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   CrmStage: sys(),
   CrmDeal: sys(),
   CrmActivity: sys(),
+  // Inventory (ระบบ 18 — WO-0011)
+  InvItem: sys(),
+  InvMovement: sys(),
+  // HR (ระบบ 17 — WO-0012)
+  HrEmployee: sys(),
+  HrAttendance: sys(),
+  HrLeave: sys(),
+  // Marketing (ระบบ 20 — WO-0013)
+  MktCampaign: sys(),
+  MktRecipient: sys(),
   // System instances (ทะเบียนระบบ — เป็น tenant-scoped เพราะ list ทั้งร้าน)
   AppSystem: tenant,
   AppSystemUnit: tenant, // ตารางเชื่อม system↔unit — query ด้วย unitId/tenantId ไม่ใช่ scope ใต้ system

@@ -14,6 +14,9 @@ enum SystemType {
   ACCOUNT
   CHAT
   CRM
+  INVENTORY
+  HR
+  MARKETING
 }
 
 model AppSystem {
