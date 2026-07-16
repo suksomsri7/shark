@@ -33,6 +33,16 @@
 กติกากันตาย: Builder ≤2 ตัวพร้อมกัน · Builder ห้ามรัน typecheck/build เอง (Fable รันรวมหลัง merge) · commit บ่อย
 ✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว**
 
+## ✅ 2026-07-16/17 — ชุดงาน 4-8 จบครบ 3 Round (WO-0023→0028 SHIPPED ทั้ง 6)
+- **0023 PromptPay QR + Billing**: ร้านตั้ง PromptPay ID → QR รับเงิน (EMVCo+CRC ตรง vector) · backoffice ออกบิล/รับชำระ/ยกเลิก + audit — ⚠️ แนะนำ user สแกน QR กับแอปธนาคารก่อนใช้จริง
+- **0024 Object storage**: อัปโหลดโลโก้ → Bunny (env SHARK_BUNNY_* — **รอ key ชื่อ shark จาก user จึงเปิดจริง** ตอนนี้ปิดสุภาพ URL-paste ใช้ได้เหมือนเดิม)
+- **0025 Custom domain**: settings/domain → Vercel API (smoke จริงผ่าน: add/get/delete) + DNS แนะนำ + ตรวจสถานะ · env ตั้งแล้ว local+Vercel · **host-routing ใน proxy = defer** (Vercel runtime + pg adapter — resolveTenantByHost พร้อมเสียบ)
+- **0026 Automation v1**: กติกา Trigger→เงื่อนไขยอด→แจ้งเตือนในแอป/เว็บฮุค เกาะ outbox แบบห่อ handler (ไม่กระทบ retry/idempotency) + ศูนย์แจ้งเตือน /app/notifications
+- **0027 Subscription**: แผนสมาชิกรายเดือน/ปี + สมัคร/ยกเลิก/หมดอายุ (expireDue cron-ready) ในระบบ MEMBER
+- **0028 Procurement**: Supplier + PO (DRAFT→ORDERED→RECEIVED) รับของเข้าสต็อกผ่าน invSvc.receive idempotent ในระบบ INVENTORY
+- oracle ใหม่ 6 ชุด 73 ข้อ เขียวหมด (Fable รันซ้ำทุกชุด) · **บทเรียนใหม่**: `| tail` กลืน exit code → gates ต้อง `set -o pipefail` · `tenantDb().upsert()` พัง (guard ห่อ where) ใช้ find→update/create · ห้าม `as const` กับ ternary
+- **defer อธิบายใน summary**: Beam gateway (รอ creds shark) · Multi-warehouse/Portal/BI/Marketplace/White Label (งานใหญ่ — หลังมีลูกค้าจริง)
+
 ## ✅ 2026-07-16 ดึกสุด — WO-0021/0022 SHIPPED (รอบ Builder ที่ 3)
 - **WO-0021 Support Desk + ระงับร้าน**: ปุ่ม help ในแอป → เปิดเคส/คุยต่อ · /backoffice/cases ตอบ+ปิด · ระงับ/เปิดร้าน SUPER_ADMIN 3 ชั้น + PlatformAuditLog append-only · gate /suspended ใน requireTenant (Fable ทำ core เอง)
 - **WO-0022 AI tools v2**: รวม 11 เครื่องมือ — +ค้นลูกค้า/ยอดขายรายวัน (อ่าน) +สมัครสมาชิกให้ (ทำแทน kind "member_create")
