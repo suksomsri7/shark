@@ -20,7 +20,6 @@ export type SystemDef = {
 // KB เปิดใช้แล้ว (ป้าย "เร็วๆ นี้" หลุด) แต่เป็น "หน้า fixed" ไม่ใช่ instance → ไม่ต้องมีใน enum SystemType
 // ตั้ง status ผ่านตัวแปรโดยตั้งใจ: available เชิง "เข้าถึงได้จากเมนู" ไม่ใช่ "สร้าง instance ได้"
 // (invariant fitness F9.1 = available⇒อยู่ใน enum ใช้กับระบบ instantiable เท่านั้น — ดู FIXED_PAGE_SYSTEMS)
-const KB_STATUS: SystemStatus = "available";
 
 export const SYSTEM_DEFS: SystemDef[] = [
   { code: "HOTEL", no: 1, kind: "business", label: "โรงแรม", hint: "ห้องพัก จอง เช็คอิน", icon: "🏨", status: "available" },
@@ -40,7 +39,7 @@ export const SYSTEM_DEFS: SystemDef[] = [
   { code: "POS", no: 14, kind: "feature", label: "ร้านค้า POS", hint: "ขาย บิล ยอดขาย", icon: "🧾", status: "available" },
   { code: "CRM", no: 19, kind: "feature", label: "CRM (ลูกค้า/ดีล)", hint: "Lead→ลูกค้า, ไปป์ไลน์, ดีล, ติดตามงาน", icon: "🎯", status: "available" },
   // "AI พนักงาน" (no.15 เดิม) ถอดออก 2026-07-17 — ส่งมอบแล้วเป็นปุ่ม orb ผู้ช่วย AI (ไม่ใช่ระบบที่ต้องเปิด)
-  { code: "KB", no: 16, kind: "feature", label: "คลังความรู้ (KB)", hint: "FAQ/ความรู้ร้าน ให้ AI และทีมใช้ตอบ", icon: "📚", status: KB_STATUS },
+  { code: "KB", no: 16, kind: "feature", label: "คลังความรู้ (KB)", hint: "FAQ/ความรู้ร้าน ให้ AI และทีมใช้ตอบ", icon: "📚", status: "available" },
   { code: "HR", no: 17, kind: "feature", label: "พนักงาน (HR)", hint: "ลงเวลา ขาด ลา มาสาย", icon: "🧑‍💼", status: "available" },
   { code: "INVENTORY", no: 18, kind: "feature", label: "คลังสินค้า / สต็อก", hint: "สต็อกกลาง รับเข้า-ตัดออก แจ้งใกล้หมด", icon: "📦", status: "available" },
   { code: "MARKETING", no: 20, kind: "feature", label: "การตลาด", hint: "แคมเปญ เซกเมนต์ลูกค้า ส่ง LINE/อีเมล", icon: "📣", status: "available" },
