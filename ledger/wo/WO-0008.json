@@ -1,6 +1,6 @@
 {
   "id": "WO-0008",
-  "title": "Hotel\u2192POS \u2014 \u0e40\u0e0a\u0e47\u0e04\u0e40\u0e2d\u0e32\u0e17\u0e4c \u2192 \u0e04\u0e48\u0e32\u0e2b\u0e49\u0e2d\u0e07\u0e40\u0e02\u0e49\u0e32\u0e1a\u0e31\u0e0d\u0e0a\u0e35",
+  "title": "Hotel→POS — เช็คเอาท์ → ค่าห้องเข้าบัญชี",
   "status": "queued",
   "branch": "wo/0008",
   "worktree": "/root/wt/0008",
@@ -10,7 +10,7 @@
     "src/lib/modules/hotel/actions.ts"
   ],
   "closesFindings": [
-    "hotel \u0e44\u0e21\u0e48\u0e40\u0e04\u0e22\u0e40\u0e23\u0e35\u0e22\u0e01 POS \u2192 \u0e23\u0e32\u0e22\u0e44\u0e14\u0e49\u0e44\u0e21\u0e48\u0e40\u0e02\u0e49\u0e32\u0e1a\u0e31\u0e0d\u0e0a\u0e35 (\u0e40\u0e01\u0e32\u0e30)"
+    "hotel ไม่เคยเรียก POS → รายได้ไม่เข้าบัญชี (เกาะ)"
   ],
   "dependsOn": [],
   "doneWhen": [
@@ -20,15 +20,15 @@
     },
     {
       "cmd": "pnpm qc:account",
-      "expect": "\u0e1c\u0e48\u0e32\u0e19 107/107"
+      "expect": "ผ่าน 107/107"
     },
     {
       "cmd": "pnpm qc:systems",
-      "expect": "\u0e1c\u0e48\u0e32\u0e19\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14"
+      "expect": "ผ่านทั้งหมด"
     },
     {
       "cmd": "pnpm fitness",
-      "expect": "FINDINGS: CRITICAL 0 \u00b7 MAJOR 0"
+      "expect": "FINDINGS: CRITICAL 0 · MAJOR 0"
     },
     {
       "cmd": "pnpm typecheck"
@@ -37,25 +37,37 @@
   "steps": [
     {
       "done": true,
-      "text": "Fable: oracle qc-hotel-money.mts (fail-before: HT-2.* \u0e41\u0e14\u0e07)"
+      "text": "Fable: oracle qc-hotel-money.mts (fail-before: HT-2.* แดง)"
     },
     {
-      "done": false,
-      "text": "wire checkOut \u2192 createSale (service.checkOut \u2192 createSale(sourceModule HOTEL, sourceId=reservationId, total=rv.totalSatang) \u0e2b\u0e25\u0e31\u0e07 flip CHECKED_OUT \u00b7 systemForUnit \u0e2b\u0e32 POS \u00b7 \u0e44\u0e21\u0e48\u0e1c\u0e39\u0e01 POS = \u0e02\u0e49\u0e32\u0e21 (standalone))"
+      "done": true,
+      "text": "wire checkOut → createSale (service.checkOut → createSale(sourceModule HOTEL, sourceId=reservationId, total=rv.totalSatang) หลัง flip CHECKED_OUT · systemForUnit หา POS · ไม่ผูก POS = ข้าม (standalone))"
     },
     {
-      "done": false,
-      "text": "\u0e2b\u0e25\u0e31\u0e07 tx: drainAll() best-effort (\u0e40\u0e2b\u0e21\u0e37\u0e2d\u0e19 pos M1)"
+      "done": true,
+      "text": "หลัง tx: drainAll() best-effort (เหมือน pos M1)"
     },
     {
-      "done": false,
-      "text": "oracle qc-hotel-money \u0e40\u0e02\u0e35\u0e22\u0e27\u0e04\u0e23\u0e1a + qc:account 107/107 + qc:systems \u0e1c\u0e48\u0e32\u0e19"
+      "done": true,
+      "text": "oracle qc-hotel-money เขียวครบ + qc:account 107/107 + qc:systems ผ่าน"
     }
   ],
   "log": [
     {
       "at": "2026-07-16T04:05:07Z",
-      "note": "\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19"
+      "note": "เปิดงาน"
+    },
+    {
+      "at": "2026-07-16T04:14:15Z",
+      "note": "wire hotel.checkOut → pos.createSale (ค่าห้องเข้าบัญชีอัตโนมัติหลังเช็คเอาท์) · oracle qc-hotel-money 5/5 CRITICAL 0 · typecheck/fitness/qc:account 107/107/qc:systems/build เขียวครบ · เลี่ยง hotel→system ด้วย local systemIdFor (raw prisma ในไฟล์เดิม)"
+    },
+    {
+      "at": "2026-07-16T04:14:21Z",
+      "note": "drainAll ไม่ต้องเรียกเอง — createSale มี drainAll ในตัว (M1) หลัง commit เมื่อ ownsTx"
+    },
+    {
+      "at": "2026-07-16T04:14:21Z",
+      "note": "oracle qc-hotel-money เขียว 5/5 + qc:account 107/107 + qc:systems ผ่านทั้งหมด"
     }
   ]
 }
