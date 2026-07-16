@@ -126,6 +126,10 @@ jobs:
         if: steps.guard.outputs.ready == 'true'
         run: pnpm qc:hotel
 
+      - name: QC CRM (Lead→ดีล→ลูกค้า)
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm qc:crm
+
       - name: ลบ Neon branch (กันค่าใช้จ่ายบาน)
         if: always() && steps.guard.outputs.ready == 'true'
         env:
