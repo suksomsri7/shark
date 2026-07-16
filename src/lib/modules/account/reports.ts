@@ -619,3 +619,36 @@ export async function pp30(
     creditCarry: netPayable < 0 ? -netPayable : 0,
   };
 }
+
+// ── ภ.พ.30 → CSV ยื่น/ตรวจ (WO-0035) ─────────────────────────────
+// BOM UTF-8 ให้ Excel เปิดไทยได้ · ยอดเป็นบาททศนิยม 2 (แปลงจากสตางค์) — pattern เดียวกับ pndCsv
+const pp30Cell = (v: string | number): string => {
+  const s = typeof v === "number" ? (v / 100).toFixed(2) : v;
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+export async function pp30Csv(
+  ctx: GlCtx,
+  periodKey: string,
+  opts?: { carryForward?: number },
+): Promise<string> {
+  const r = await pp30(ctx, periodKey, opts);
+  const lines: string[] = [];
+  const header = ["ฝั่ง", "วันที่", "เลขที่เอกสาร", "คู่ค้า", "เลขผู้เสียภาษี", "สาขา", "อัตรา(%)", "ฐานภาษี(บาท)", "ภาษี(บาท)"];
+  lines.push(header.map(pp30Cell).join(","));
+  const side = (label: string, s: Pp30Side) => {
+    for (const row of s.rows) {
+      lines.push(
+        [label, row.date.toISOString().slice(0, 10), row.docNo, row.contactName, row.taxId, row.branchCode, (row.rateBp / 100).toFixed(2), pp30Cell(row.base), pp30Cell(row.vat)]
+          .map((v) => pp30Cell(v as string))
+          .join(","),
+      );
+    }
+    lines.push([`รวม${label}`, "", "", "", "", "", "", pp30Cell(s.base), pp30Cell(s.total)].map((v) => pp30Cell(v as string)).join(","));
+  };
+  side("ภาษีขาย", r.output);
+  side("ภาษีซื้อ", r.input);
+  lines.push(["เครดิตยกมา", "", "", "", "", "", "", "", pp30Cell(r.carryForward)].map((v) => pp30Cell(v as string)).join(","));
+  lines.push([r.netPayable >= 0 ? "ภาษีต้องชำระ" : "เครดิตยกไป", "", "", "", "", "", "", "", pp30Cell(Math.abs(r.netPayable))].map((v) => pp30Cell(v as string)).join(","));
+  return "﻿" + lines.join("\n");
+}

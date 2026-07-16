@@ -1,0 +1,39 @@
+{
+  "id": "WO-0035",
+  "title": "ภาษีขาย/ซื้อยื่นจริง (ภ.พ.30 CSV + ภงด.3/53 + WHT)",
+  "status": "done",
+  "branch": "main (Fable ทำเอง)",
+  "worktree": null,
+  "neonBranch": null,
+  "files": [
+    "src/lib/modules/account/reports.ts (pp30Csv)",
+    "tax/export route (+kind=pp30)",
+    "pp30 page (ปุ่มดาวน์โหลด)"
+  ],
+  "closesFindings": [],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "typecheck+fitness (ผ่าน)"
+    },
+    {
+      "cmd": "pp30() ถูกคุมโดย qc:account อยู่แล้ว — pp30Csv เป็น formatter ล้วน"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "AUDIT: ของเดิมครบเกินคาด — pnd3/53 CSV + WHT cert print + credits CSV + pp30 CSV toolbar มีอยู่แล้ว"
+    },
+    {
+      "done": true,
+      "text": "เพิ่ม pp30Csv ระดับยื่นจริง (BOM/วันที่/สาขา/แถวสรุป/เครดิตยกมา) + route kind=pp30 + ปุ่มดาวน์โหลด"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T15:40:00Z",
+      "note": "NIGHT RUN #2 — งานจริงเล็กกว่าแผนมากเพราะของเดิมครบ (ดี!) · Fable ทำเอง"
+    }
+  ]
+}

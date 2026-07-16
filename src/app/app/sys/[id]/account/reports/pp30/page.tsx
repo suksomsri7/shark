@@ -76,6 +76,13 @@ export default async function Pp30Page({
         <input name="period" defaultValue={period} placeholder="YYYY-MM" className="rounded-lg border px-2 py-1.5 text-sm" />
         <input name="carry" defaultValue={sp.carry ?? ""} placeholder="เครดิตยกมา (บาท)" className="rounded-lg border px-2 py-1.5 text-sm" />
         <button className="btn btn-primary text-sm">คำนวณ</button>
+        <a
+          href={`${base}/tax/export?kind=pp30&period=${period}&carry=${carryForward}`}
+          className="btn-sm"
+          download
+        >
+          ดาวน์โหลด CSV ยื่น
+        </a>
       </form>
 
       <div className="grid grid-cols-1 gap-3 rounded-lg border p-3 sm:grid-cols-3">
