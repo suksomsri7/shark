@@ -12,7 +12,7 @@
 //
 // ⚠️ กันพลาด: ห้ามลบ branch ที่เป็น default (production) — เช็คไว้ 2 ชั้น
 
-process.loadEnvFile(".env");
+try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
 
 const KEY = process.env.NEON_API_KEY;
 const PID = process.env.NEON_PROJECT_ID;

@@ -1,7 +1,7 @@
 {
   "id": "WO-0002",
-  "title": "M1: POS\u2192Account \u2014 \u0e22\u0e2d\u0e14\u0e02\u0e32\u0e22\u0e08\u0e23\u0e34\u0e07\u0e40\u0e02\u0e49\u0e32\u0e1a\u0e31\u0e0d\u0e0a\u0e35\u0e04\u0e23\u0e31\u0e49\u0e07\u0e41\u0e23\u0e01 (outbox + facade + wire)",
-  "status": "queued",
+  "title": "M1: POS→Account — ยอดขายจริงเข้าบัญชีครั้งแรก (outbox + facade + wire)",
+  "status": "in_progress",
   "branch": "wo/0002",
   "worktree": "/root/wt/0002",
   "neonBranch": "wo-0002",
@@ -14,10 +14,10 @@
     "src/app/api/cron/outbox/route.ts"
   ],
   "closesFindings": [
-    "POS \u0e44\u0e21\u0e48\u0e40\u0e04\u0e22\u0e40\u0e23\u0e35\u0e22\u0e01 Account (contract 2.4 \u0e44\u0e21\u0e48\u0e21\u0e35\u0e08\u0e23\u0e34\u0e07)",
-    "outbox \u0e17\u0e35\u0e48\u0e40\u0e2d\u0e01\u0e2a\u0e32\u0e23\u0e2d\u0e49\u0e32\u0e07\u0e44\u0e21\u0e48\u0e40\u0e04\u0e22\u0e16\u0e39\u0e01\u0e2a\u0e23\u0e49\u0e32\u0e07",
-    "CRON_SECRET \u0e1b\u0e23\u0e30\u0e01\u0e32\u0e28\u0e41\u0e15\u0e48\u0e44\u0e21\u0e48\u0e21\u0e35\u0e43\u0e04\u0e23\u0e43\u0e0a\u0e49",
-    "AccountSystemLink \u0e21\u0e35 schema \u0e44\u0e21\u0e48\u0e21\u0e35\u0e42\u0e04\u0e49\u0e14"
+    "POS ไม่เคยเรียก Account (contract 2.4 ไม่มีจริง)",
+    "outbox ที่เอกสารอ้างไม่เคยถูกสร้าง",
+    "CRON_SECRET ประกาศแต่ไม่มีใครใช้",
+    "AccountSystemLink มี schema ไม่มีโค้ด"
   ],
   "dependsOn": [],
   "doneWhen": [
@@ -35,11 +35,11 @@
     },
     {
       "cmd": "pnpm qc:account",
-      "expect": "\u0e1c\u0e48\u0e32\u0e19 107/107"
+      "expect": "ผ่าน 107/107"
     },
     {
       "cmd": "pnpm fitness",
-      "expect": "FINDINGS: CRITICAL 0 \u00b7 MAJOR 0"
+      "expect": "FINDINGS: CRITICAL 0 · MAJOR 0"
     },
     {
       "cmd": "pnpm typecheck"
@@ -47,8 +47,8 @@
   ],
   "steps": [
     {
-      "done": false,
-      "text": "Auditor \u0e40\u0e02\u0e35\u0e22\u0e19 qc-pos-account.mts \u0e43\u0e2b\u0e49\u0e41\u0e14\u0e07\u0e01\u0e48\u0e2d\u0e19 (fail-before): \u0e02\u0e32\u0e22 POS \u0e41\u0e25\u0e49\u0e27\u0e44\u0e21\u0e48\u0e21\u0e35 journal entry"
+      "done": true,
+      "text": "Auditor เขียน qc-pos-account.mts ให้แดงก่อน (fail-before): ขาย POS แล้วไม่มี journal entry"
     },
     {
       "done": false,
@@ -56,33 +56,42 @@
     },
     {
       "done": false,
-      "text": "kernel outbox.ts: emit (\u0e43\u0e19 tx \u0e40\u0e14\u0e35\u0e22\u0e27\u0e01\u0e31\u0e1a\u0e07\u0e32\u0e19\u0e2b\u0e25\u0e31\u0e01) + drain + consumer registry \u0e41\u0e1a\u0e1a\u0e1b\u0e34\u0e14"
+      "text": "kernel outbox.ts: emit (ใน tx เดียวกับงานหลัก) + drain + consumer registry แบบปิด"
     },
     {
       "done": false,
-      "text": "account/index.ts facade: postSale/postVoid \u0e1c\u0e48\u0e32\u0e19 gl.ts semantic keys (Dr \u0e40\u0e07\u0e34\u0e19 / Cr 4000 / Cr 2200) \u2014 \u0e2b\u0e49\u0e32\u0e21\u0e42\u0e21\u0e14\u0e39\u0e25\u0e2d\u0e37\u0e48\u0e19\u0e23\u0e39\u0e49\u0e40\u0e25\u0e02\u0e1a\u0e31\u0e0d\u0e0a\u0e35"
+      "text": "account/index.ts facade: postSale/postVoid ผ่าน gl.ts semantic keys (Dr เงิน / Cr 4000 / Cr 2200) — ห้ามโมดูลอื่นรู้เลขบัญชี"
     },
     {
       "done": false,
-      "text": "service \u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21 AccountSystemLink (POS\u2194Account opt-in \u2014 \u0e44\u0e21\u0e48\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21 = \u0e44\u0e21\u0e48 post \u0e15\u0e32\u0e21\u0e2b\u0e25\u0e31\u0e01 standalone)"
+      "text": "service เชื่อม AccountSystemLink (POS↔Account opt-in — ไม่เชื่อม = ไม่ post ตามหลัก standalone)"
     },
     {
       "done": false,
-      "text": "wire pos createSale\u2192emit pos.sale.paid \u00b7 voidSale\u2192emit pos.sale.voided \u2192 reverseFor"
+      "text": "wire pos createSale→emit pos.sale.paid · voidSale→emit pos.sale.voided → reverseFor"
     },
     {
       "done": false,
-      "text": "cron /api/cron/outbox (X-Cron-Secret) \u2014 \u0e1c\u0e39\u0e49\u0e43\u0e0a\u0e49 CRON_SECRET \u0e23\u0e32\u0e22\u0e41\u0e23\u0e01"
+      "text": "cron /api/cron/outbox (X-Cron-Secret) — ผู้ใช้ CRON_SECRET รายแรก"
     },
     {
       "done": false,
-      "text": "qc-pos-account.mts \u0e40\u0e02\u0e35\u0e22\u0e27\u0e04\u0e23\u0e1a: balanced/idempotent replay/void reversal/unlinked \u0e44\u0e21\u0e48 post"
+      "text": "qc-pos-account.mts เขียวครบ: balanced/idempotent replay/void reversal/unlinked ไม่ post"
     }
   ],
   "log": [
     {
       "at": "2026-07-16T00:52:24Z",
-      "note": "\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19"
+      "note": "เปิดงาน"
+    },
+    {
+      "at": "2026-07-16T01:02:18Z",
+      "note": "รับงาน"
+    },
+    {
+      "at": "2026-07-16T01:08:49Z",
+      "note": "oracle qc-pos-account.mts เขียนเสร็จ + fail-before พิสูจน์แล้ว: 0/9 แดง (CRITICAL 9)"
     }
-  ]
+  ],
+  "owner": "session-2026-07-16T01:02:18Z"
 }

@@ -2,7 +2,7 @@
 // แล้วปิดงบแบบนักบัญชี: ไล่ยอดทุกบัญชีเทียบเลขคำนวณมือ (สตางค์) + P&L + งบดุล + ภ.พ.30 + ภ.ง.ด.53 + ปิดงวด
 // รัน: cd /root/projects/shark-in-th && pnpm exec tsx scripts/qc-account-cpa.mts
 // กติกา: assert ไม่ผ่าน = บันทึก finding แล้วทำข้อต่อไป (ไม่หยุดที่ตัวแรก) · ห้ามแก้ code ระบบ
-process.loadEnvFile(".env");
+try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
 try { process.loadEnvFile(".env.local"); } catch {}
 
 const { prisma } = await import("@/lib/core/db");

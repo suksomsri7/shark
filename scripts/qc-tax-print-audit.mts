@@ -1,6 +1,6 @@
 // QC — พิสูจน์ findings ภาษี: print ใบกำกับ + CSV ภ.ง.ด. (อ่านอย่างเดียวต่อ code — สร้าง tenant ทดสอบแล้วลบทิ้ง)
 // รัน: cd /root/projects/shark-in-th && pnpm exec tsx /tmp/qc-tax-print-audit.mts
-process.loadEnvFile(".env");
+try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
 try { process.loadEnvFile(".env.local"); } catch {}
 
 const { prisma } = await import("@/lib/core/db");

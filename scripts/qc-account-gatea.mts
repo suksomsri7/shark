@@ -1,6 +1,6 @@
 // QC5 Gate A verify — ขับผ่าน service layer จริง (posting engine) แล้ว assert double-entry + VAT routing
 // รัน: pnpm exec tsx scripts/qc-account-gatea.mts
-process.loadEnvFile(".env");
+try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
 try { process.loadEnvFile(".env.local"); } catch {}
 
 const { prisma } = await import("@/lib/core/db");

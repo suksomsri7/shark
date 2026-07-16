@@ -2,7 +2,7 @@
 // สร้าง tenant ทดสอบ → ขับ service/logic จริงกับ Neon → verify → ลบ test data
 // รัน: pnpm exec tsx scripts/qc-chat-security.mts
 // fail-before/pass-after: `git stash` แก้ M9-M12 แล้วรัน → เห็น FAIL (race 2 conv / IDOR leak / no limit) แล้ว unstash → PASS
-process.loadEnvFile(".env");
+try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
 try {
   process.loadEnvFile(".env.local");
 } catch {}

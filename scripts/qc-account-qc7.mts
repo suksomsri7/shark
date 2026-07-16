@@ -2,7 +2,7 @@
 // ทำบัญชีจริงบน Neon ผ่าน service layer → assert → cleanup tenant ทิ้ง (รันซ้ำได้)
 // รัน: cd /root/projects/shark-in-th && pnpm exec tsx scripts/qc-account-qc7.mts
 // กติกา: fail ก่อนแก้ → pass หลังแก้ · ห้ามแก้ oracle qc-account-cpa.mts
-process.loadEnvFile(".env");
+try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
 try { process.loadEnvFile(".env.local"); } catch {}
 
 const { prisma } = await import("@/lib/core/db");

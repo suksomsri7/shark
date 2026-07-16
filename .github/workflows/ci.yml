@@ -59,63 +59,43 @@ jobs:
             echo "ready=true" >> $GITHUB_OUTPUT
           fi
 
-      # 1 PR = 1 Neon branch → ไม่มี global mutation, รันขนานได้
+      # 1 run = 1 Neon branch → ไม่มี global mutation, รันขนานได้
+      # ใช้สคริปต์ของเราเอง (scripts/neon-branch.mts — ทดสอบกับของจริงแล้ว มีด่านกัน production)
+      # แทน neondatabase/create-branch-action ที่ตาย "Multiple roles found" แม้ระบุ role (run #5,#6)
       - name: สร้าง Neon branch
         if: steps.guard.outputs.ready == 'true'
-        id: neon
-        uses: neondatabase/create-branch-action@v5
-        with:
-          project_id: ${{ secrets.NEON_PROJECT_ID }}
-          branch_name: ci-${{ github.run_id }}
-          api_key: ${{ secrets.NEON_API_KEY }}
-          # โปรเจกต์นี้มีหลาย role (authenticator/anonymous/authenticated/neondb_owner)
-          # ไม่ระบุ = action ตาย "Multiple roles found" (run #5)
-          role: neondb_owner
-          database: neondb
-
-      - name: migrate deploy (พิสูจน์ว่า migration สร้าง schema ได้จริงจากศูนย์)
-        if: steps.guard.outputs.ready == 'true'
         env:
-          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
-          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: |
+          pnpm exec tsx scripts/neon-branch.mts create ci-${{ github.run_id }} | tee branch.out
+          grep -E '^(DATABASE_URL|DIRECT_URL)=' branch.out >> "$GITHUB_ENV"
+          echo "SESSION_SECRET=ci-only-not-a-real-secret" >> "$GITHUB_ENV"
+
+      - name: migrate deploy
+        if: steps.guard.outputs.ready == 'true'
         run: pnpm exec prisma migrate deploy
 
-      - name: drift check (DB ที่สร้างจาก migration ต้องตรงกับ schema)
+      - name: drift check (DB ต้องตรงกับ schema)
         if: steps.guard.outputs.ready == 'true'
-        env:
-          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
         run: pnpm drift
 
       # oracle: แตะ account ต้อง 107/107 เสมอ (กฎเดิมของโปรเจกต์ ทำให้เป็นเครื่องบังคับ)
       - name: QC account CPA (107/107)
         if: steps.guard.outputs.ready == 'true'
-        env:
-          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
-          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
-          SESSION_SECRET: ci-only-not-a-real-secret
         run: pnpm qc:account
 
       - name: QC account QC7 (46/46)
         if: steps.guard.outputs.ready == 'true'
-        env:
-          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
-          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
-          SESSION_SECRET: ci-only-not-a-real-secret
         run: pnpm qc:account:qc7
 
       - name: QC chat security (23/23)
         if: steps.guard.outputs.ready == 'true'
-        env:
-          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
-          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
-          SESSION_SECRET: ci-only-not-a-real-secret
-          CHAT_CREDENTIALS_KEY: ${{ secrets.CHAT_CREDENTIALS_KEY }}
         run: pnpm qc:chat
 
       - name: ลบ Neon branch (กันค่าใช้จ่ายบาน)
         if: always() && steps.guard.outputs.ready == 'true'
-        uses: neondatabase/delete-branch-action@v3
-        with:
-          project_id: ${{ secrets.NEON_PROJECT_ID }}
-          branch: ci-${{ github.run_id }}
-          api_key: ${{ secrets.NEON_API_KEY }}
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: pnpm exec tsx scripts/neon-branch.mts delete ci-${{ github.run_id }} || true

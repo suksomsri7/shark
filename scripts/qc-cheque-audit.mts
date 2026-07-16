@@ -1,7 +1,7 @@
 // QC — CPA audit: ระบบเช็ครับ/เช็คจ่าย (cheque.ts) + tax point + WHT + net-zero + reports
 // รัน: cd /root/projects/shark-in-th && pnpm exec tsx /tmp/qc-cheque-audit.mts
 // สร้าง tenant ทดสอบใหม่ + ลบทิ้งตอนจบเสมอ · ห้ามแก้ไฟล์ repo
-process.loadEnvFile(".env");
+try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
 try { process.loadEnvFile(".env.local"); } catch {}
 
 const { prisma } = await import("@/lib/core/db");

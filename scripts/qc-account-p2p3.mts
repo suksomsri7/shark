@@ -1,4 +1,4 @@
-process.loadEnvFile(".env");
+try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
 try { process.loadEnvFile(".env.local"); } catch {}
 const { prisma } = await import("@/lib/core/db");
 const sysm = await import("@/lib/modules/account/../system/service");
