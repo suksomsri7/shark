@@ -1,10 +1,13 @@
 import { notFound } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireBackoffice, logoutAction } from "@/lib/platform/actions";
 import { tenantDetail } from "@/lib/platform/service";
+import { suspendTenant, reactivateTenant, listTenantAudit } from "@/lib/platform/support";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
-import { formatThaiDateLong } from "@/lib/ui/date";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { formatThaiDateLong, formatThaiDateTime } from "@/lib/ui/date";
 import { systemDef } from "@/lib/systems";
 
 // ป้ายสถานะร้านเป็นไทย (ไม่โชว์ enum ดิบ)
@@ -17,12 +20,38 @@ const STATUS_LABEL: Record<string, string> = {
 };
 const PLAN_LABEL: Record<string, string> = { FREE: "ฟรี" };
 
-// รายละเอียดร้าน (read-only Phase 0) — ข้อมูลร้าน + รายชื่อระบบที่เปิด
+// ป้ายการกระทำใน audit log
+const AUDIT_LABEL: Record<string, string> = {
+  "tenant.suspend": "ระงับร้าน",
+  "tenant.reactivate": "เปิดใช้ร้านอีกครั้ง",
+};
+
+// รายละเอียดร้าน + การกระทำของแพลตฟอร์ม (ระงับ/เปิดใช้ — SUPER_ADMIN) + audit
 export default async function TenantDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireBackoffice();
+  const me = await requireBackoffice();
   const { id } = await params;
   const t = await tenantDetail(id);
   if (!t) notFound();
+  const audit = await listTenantAudit(id);
+  const isSuperAdmin = me.role === "SUPER_ADMIN";
+  const canReactivate = t.status === "SUSPENDED";
+
+  // ระงับร้าน (SUPER_ADMIN) — reason บันทึกใน audit
+  async function suspendAction(formData: FormData) {
+    "use server";
+    const admin = await requireBackoffice(["SUPER_ADMIN"]);
+    const reason = String(formData.get("reason") ?? "").trim();
+    await suspendTenant(admin, id, reason || "—");
+    revalidatePath(`/backoffice/tenants/${id}`);
+  }
+
+  // เปิดใช้ร้านอีกครั้ง (SUPER_ADMIN)
+  async function reactivateAction() {
+    "use server";
+    const admin = await requireBackoffice(["SUPER_ADMIN"]);
+    await reactivateTenant(admin, id);
+    revalidatePath(`/backoffice/tenants/${id}`);
+  }
 
   const info: { label: string; value: string }[] = [
     { label: "สถานะ", value: STATUS_LABEL[t.status] ?? t.status },
@@ -37,11 +66,37 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
         title={t.name}
         back={{ href: "/backoffice/tenants", label: "ร้านค้าทั้งหมด" }}
         actions={
-          <form action={logoutAction}>
-            <button type="submit" className="btn btn-ghost text-sm">
-              ออกจากระบบ
-            </button>
-          </form>
+          <div className="flex flex-wrap items-center gap-2">
+            {isSuperAdmin &&
+              (canReactivate ? (
+                <ConfirmDialog
+                  triggerLabel="เปิดใช้อีกครั้ง"
+                  triggerClassName="btn btn-primary text-sm"
+                  title="เปิดใช้ร้านนี้อีกครั้ง?"
+                  detail="ร้านจะกลับมาเข้าใช้งานระบบได้ตามปกติ"
+                  confirmLabel="ยืนยันเปิดใช้"
+                  action={reactivateAction}
+                />
+              ) : (
+                t.status !== "CLOSED" &&
+                t.status !== "PENDING_DELETE" && (
+                  <ConfirmDialog
+                    triggerLabel="ระงับร้าน"
+                    title="ระงับการใช้งานร้านนี้?"
+                    detail="ผู้ใช้ของร้านจะเข้าใช้งานระบบไม่ได้จนกว่าจะเปิดใช้อีกครั้ง"
+                    confirmLabel="ยืนยันระงับร้าน"
+                    danger
+                    action={suspendAction}
+                    reasonField={{ name: "reason", label: "เหตุผล (บันทึกไว้)", required: true }}
+                  />
+                )
+              ))}
+            <form action={logoutAction}>
+              <button type="submit" className="btn btn-ghost text-sm">
+                ออกจากระบบ
+              </button>
+            </form>
+          </div>
         }
       />
 
@@ -69,6 +124,22 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
             ),
           }))}
           empty="ร้านนี้ยังไม่ได้เปิดระบบใด"
+        />
+      </Section>
+
+      <Section title="ประวัติการดำเนินการ">
+        <DataList
+          items={audit.map((a) => ({
+            key: a.id,
+            primary: AUDIT_LABEL[a.action] ?? a.action,
+            secondary: a.detail ?? undefined,
+            trailing: (
+              <span className="text-xs text-[color:var(--color-muted)]">
+                {formatThaiDateTime(a.createdAt)}
+              </span>
+            ),
+          }))}
+          empty="ยังไม่มีการดำเนินการกับร้านนี้"
         />
       </Section>
     </div>
