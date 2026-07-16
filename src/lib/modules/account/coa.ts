@@ -136,15 +136,18 @@ export async function seedChartOfAccounts(ctx: CoaCtx, tx?: Tx): Promise<void> {
   });
   const idByCode = new Map(ledgers.map((l) => [l.code, l.id]));
 
-  for (const [key, code] of MAPPINGS) {
-    const accountId = idByCode.get(code);
-    if (!accountId) continue; // เชิงทฤษฎีเกิดไม่ได้ (seed ครบ)
-    await db.accountMapping.upsert({
-      where: { systemId_key: { systemId: ctx.systemId, key } },
-      create: { tenantId: ctx.tenantId, systemId: ctx.systemId, key, accountId },
-      update: {}, // ไม่ทับ mapping ที่ผู้ใช้อาจปรับเอง (QC5: แก้ mapping ไม่ย้อนหลัง)
-    });
-  }
+  // ⚠️ ต้องเป็น batch เดียว ห้ามวน upsert ทีละตัว — เดิม 28 upsert = 28 round-trip ใน tx เดียว
+  // เครื่องไกล DB (เช่น CI อเมริกา → Neon สิงคโปร์ ~250ms/query) ทะลุเพดาน interactive tx 5 วิ
+  // → P2028 หมดเวลากลางคัน (CI run #10) หรือ FK พังปริศนา (query หลังหมดเวลาหลุดนอก tx — run #8)
+  // createMany skipDuplicates = พฤติกรรมเดียวกับ upsert ที่ update:{} เป๊ะ:
+  // "สร้างถ้ายังไม่มี ไม่ทับของเดิม" (คงกติกา QC5: ไม่ทับ mapping ที่ผู้ใช้ปรับเอง)
+  await db.accountMapping.createMany({
+    data: MAPPINGS.flatMap(([key, code]) => {
+      const accountId = idByCode.get(code);
+      return accountId ? [{ tenantId: ctx.tenantId, systemId: ctx.systemId, key, accountId }] : [];
+    }),
+    skipDuplicates: true, // unique(systemId, key)
+  });
 }
 
 export const CHART_CODES = CHART.map((c) => c[0]);
