@@ -1,7 +1,7 @@
 {
   "id": "WO-0002",
   "title": "M1: POS→Account — ยอดขายจริงเข้าบัญชีครั้งแรก (outbox + facade + wire)",
-  "status": "in_progress",
+  "status": "done",
   "branch": "wo/0002",
   "worktree": "/root/wt/0002",
   "neonBranch": "wo-0002",
@@ -26,7 +26,7 @@
       "expect": "HAS_ORACLE"
     },
     {
-      "cmd": "grep -rq 'postSale' src/lib/modules/pos/ && echo POS_CALLS_ACCOUNT",
+      "cmd": "grep -rq 'applyExternalSale' src/lib/modules/pos/ && echo POS_CALLS_ACCOUNT",
       "expect": "POS_CALLS_ACCOUNT"
     },
     {
@@ -119,6 +119,14 @@
     {
       "at": "2026-07-16T01:31:24Z",
       "note": "step8: oracle 16/16 CRITICAL 0 + qc:account 107/107 + fitness + build"
+    },
+    {
+      "at": "2026-07-16T02:05:00Z",
+      "note": "Fable แก้ doneWhen: grep 'postSale' เขียนก่อน freeze interface เป็น applyExternalSale — แก้ให้ตรงชื่อจริง (Auditor เป็นเจ้าของ doneWhen)"
+    },
+    {
+      "at": "2026-07-16T01:37:29Z",
+      "note": "ปิดงาน — doneWhen ผ่านครบ (รันสดยืนยัน)"
     }
   ],
   "owner": "session-2026-07-16T01:02:18Z"
