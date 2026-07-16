@@ -1,5 +1,6 @@
+import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { tenantDb } from "@/lib/core/db";
+import { prisma, tenantDb } from "@/lib/core/db";
 import * as invSvc from "./service";
 import type { Ctx } from "./service";
 
@@ -36,6 +37,59 @@ export async function createSupplier(ctx: Ctx, input: CreateSupplierInput): Prom
 
 export async function listSuppliers(ctx: Ctx) {
   return tenantDb(ctx).supplier.findMany({ orderBy: { createdAt: "desc" } });
+}
+
+// ───────────── Vendor Portal (WO-0059) — ลิงก์พกพา read-only ต่อ supplier ─────────────
+// ผู้ขายเปิดลิงก์ /vendor/<token> เห็น PO ของตัวเองอย่างเดียว (ไม่ต้องล็อกอิน)
+
+// เปิด/หมุนลิงก์ผู้ขาย — สุ่ม token ใหม่ทุกครั้ง (crypto 24 ไบต์ → base64url 32 ตัว ≥20 · ห้าม Math.random)
+//   เรียกซ้ำ = rotate: token เดิมใช้ไม่ได้ทันที (portalToken @unique ทับค่าเดิม)
+export async function enableVendorPortal(ctx: Ctx, supplierId: string): Promise<{ token: string }> {
+  const token = randomBytes(24).toString("base64url");
+  const res = await tenantDb(ctx).supplier.updateMany({
+    where: { id: supplierId },
+    data: { portalToken: token },
+  });
+  if (res.count === 0) throw new Error("ไม่พบซัพพลายเออร์");
+  return { token };
+}
+
+// ปิดลิงก์ผู้ขาย — portalToken = null (ลิงก์เดิมตายทันที) · false ถ้าไม่พบในขอบเขต
+export async function disableVendorPortal(ctx: Ctx, supplierId: string): Promise<boolean> {
+  const res = await tenantDb(ctx).supplier.updateMany({
+    where: { id: supplierId },
+    data: { portalToken: null },
+  });
+  return res.count > 0;
+}
+
+// view สาธารณะจาก token — { supplier: { name }, pos: [...] } | null
+//   token ปลอม/ปิดแล้ว → null · เห็นเฉพาะ PO ของ supplier ตัวเอง เรียงใหม่ก่อน · ไม่มี token/ข้อมูล supplier อื่นหลุด
+export async function getVendorPortalView(
+  token: string,
+): Promise<{ supplier: { name: string }; pos: { code: string; status: string; totalSatang: number; createdAt: Date }[] } | null> {
+  const t = token?.trim();
+  if (!t) return null;
+  // public: ยังไม่รู้ tenant จนกว่าจะ resolve token → prisma ตรงครั้งเดียว
+  //   (portalToken เป็น @unique ระดับ global — ปลอดภัยไม่ต้องมี tenant filter ตรงจุดนี้)
+  const supplier = await prisma.supplier.findUnique({ where: { portalToken: t } });
+  if (!supplier) return null;
+  // จากนั้น query PO ต่อด้วย tenant/system ของ supplier เอง (defense-in-depth ชั้น 2 — เห็นเฉพาะ scope ตัวเอง)
+  const ctx: Ctx = { tenantId: supplier.tenantId, systemId: supplier.systemId };
+  const pos = await tenantDb(ctx).purchaseOrder.findMany({
+    where: { supplierId: supplier.id },
+    include: { lines: true },
+    orderBy: { createdAt: "desc" },
+  });
+  return {
+    supplier: { name: supplier.name },
+    pos: pos.map((po) => ({
+      code: po.code,
+      status: po.status,
+      totalSatang: po.lines.reduce((s, l) => s + l.qty * l.costSatang, 0),
+      createdAt: po.createdAt,
+    })),
+  };
 }
 
 // ───────────── Purchase Order ─────────────

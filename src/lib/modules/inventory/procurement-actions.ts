@@ -4,7 +4,15 @@ import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import type { Ctx } from "./service";
-import { cancelPo, createPo, createSupplier, markOrdered, receivePo } from "./procurement";
+import {
+  cancelPo,
+  createPo,
+  createSupplier,
+  disableVendorPortal,
+  enableVendorPortal,
+  markOrdered,
+  receivePo,
+} from "./procurement";
 
 // ตรวจสิทธิ์โมดูล Inventory (system-scoped) — convention action = "inventory.<entity>.<verb>"
 // (F6 ratchet บังคับให้ไฟล์ actions เรียก assertCan)
@@ -47,6 +55,30 @@ export async function createSupplierAction(formData: FormData) {
     email: String(formData.get("email") ?? "").trim() || null,
     note: String(formData.get("note") ?? "").trim() || null,
   });
+  revalidate(systemId);
+}
+
+// ── เปิด/หมุนลิงก์ผู้ขาย (Vendor Portal) ──
+export async function enableVendorPortalAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.supplier.update");
+  const systemId = String(formData.get("systemId") ?? "");
+  const supplierId = String(formData.get("supplierId") ?? "").trim();
+  if (!systemId || !supplierId) return;
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await enableVendorPortal(ctx, supplierId);
+  revalidate(systemId);
+}
+
+// ── ปิดลิงก์ผู้ขาย ──
+export async function disableVendorPortalAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.supplier.update");
+  const systemId = String(formData.get("systemId") ?? "");
+  const supplierId = String(formData.get("supplierId") ?? "").trim();
+  if (!systemId || !supplierId) return;
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await disableVendorPortal(ctx, supplierId);
   revalidate(systemId);
 }
 
