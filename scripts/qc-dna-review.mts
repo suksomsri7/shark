@@ -28,7 +28,7 @@ try {
   if (!dr) { chk("DR-0", "มี ai/dna-review.ts", false, "มี", "ยังไม่สร้าง"); }
   else {
     const t = await prisma.tenant.create({ data: { name: "QC DRIFT", slug: `qc-drift-${Date.now()}` } }); tid = t.id;
-    await prisma.dnaProfile.create({ data: { tenantId: tid, facts: FACTS, active: true } as never });
+    await prisma.dnaProfile.create({ data: { tenantId: tid, facts: FACTS } as never }); // ไม่มีคอลัมน์ active — tenantId unique (oracle เคยเขียนผิด Builder ชี้ถูก)
     const hr = await sys.createSystem(tid, "HR", "คน");
     for (let i = 0; i < 6; i++) await prisma.hrEmployee.create({ data: { tenantId: tid, systemId: hr.id, name: `พนง ${i}` } });
     const member = await sys.createSystem(tid, "MEMBER", "สมาชิก");

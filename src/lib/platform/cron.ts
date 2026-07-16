@@ -11,6 +11,7 @@ import { sweepExpiringLots } from "@/lib/modules/inventory/service";
 import { retryFailedWebhooks } from "@/lib/webhooks/service";
 import { sweepAutoClosePeriods } from "@/lib/modules/account/period-sweep";
 import { sweepOnboardingDrip } from "@/lib/platform/onboarding-drip";
+import { sweepDnaReview } from "@/lib/ai/dna-review";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -47,6 +48,7 @@ export async function runDailyCron(
   webhooksRetried: number;
   periodsClosed: number;
   onboardingDripped: number;
+  dnaReviews: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -57,6 +59,7 @@ export async function runDailyCron(
   let webhooksRetried = -1;
   let periodsClosed = -1;
   let onboardingDripped = -1;
+  let dnaReviews = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -110,6 +113,12 @@ export async function runDailyCron(
   } catch {
     // drip พัง → -1 ไปต่อ
   }
+  try {
+    // WO-0048: DNA ต่อเนื่อง — ชวนอัปเดตเมื่อธุรกิจจริงต่างจาก facts
+    dnaReviews = await sweepDnaReview(now);
+  } catch {
+    // drip พัง → -1 ไปต่อ
+  }
 
   return {
     subsExpired,
@@ -121,5 +130,6 @@ export async function runDailyCron(
     webhooksRetried,
     periodsClosed,
     onboardingDripped,
+    dnaReviews,
   };
 }
