@@ -7,7 +7,13 @@ import { prisma } from "@/lib/core/db";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { slugify } from "@/lib/slug";
-import { systemDef, AVAILABLE_BUSINESS, AVAILABLE_FEATURE } from "@/lib/systems";
+import {
+  systemDef,
+  AVAILABLE_BUSINESS,
+  AVAILABLE_FEATURE,
+  isFixedPageSystem,
+  FIXED_PAGE_SYSTEMS,
+} from "@/lib/systems";
 import { createSystem, linkUnit } from "@/lib/modules/system/service";
 import { createReward, removeReward } from "@/lib/modules/reward/service";
 
@@ -38,6 +44,10 @@ export async function addSystemAction(
   const def = systemDef(code);
   if (!def || def.status !== "available") {
     return { status: "error", message: "ระบบนี้ยังไม่เปิดให้บริการ" };
+  }
+  // ระบบ "หน้า fixed" (เช่น คลังความรู้) ไม่ได้สร้างเป็น instance — พาไปหน้าโดยตรงแทน
+  if (isFixedPageSystem(code)) {
+    redirect(FIXED_PAGE_SYSTEMS[code]);
   }
   if (name.length < 2) return { status: "error", message: "ตั้งชื่อระบบอย่างน้อย 2 ตัวอักษร" };
 

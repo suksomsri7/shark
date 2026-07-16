@@ -1,6 +1,6 @@
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { systemDef, SYSTEM_DEFS } from "@/lib/systems";
+import { systemDef, SYSTEM_DEFS, FIXED_PAGE_SYSTEMS, isFixedPageSystem } from "@/lib/systems";
 import { AppShell } from "@/components/app-shell/AppShell";
 import type { NavItem, SoonItem } from "@/components/app-shell/NavDrawer";
 
@@ -30,6 +30,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       href: `/app/sys/${s.id}`,
       icon: systemDef(s.type)?.icon ?? "•",
       label: s.name,
+    })),
+    // ระบบ "หน้า fixed ระดับ tenant" ที่เปิดใช้แล้ว (เช่น คลังความรู้ /app/kb) — เข้าถึงตรงจากเมนู
+    ...SYSTEM_DEFS.filter(
+      (s) => s.status === "available" && isFixedPageSystem(s.code),
+    ).map((s) => ({
+      key: `fp-${s.code}`,
+      href: FIXED_PAGE_SYSTEMS[s.code],
+      icon: s.icon,
+      label: s.label,
     })),
   ];
   const soon: SoonItem[] = SYSTEM_DEFS.filter((s) => s.status === "coming_soon").map((s) => ({

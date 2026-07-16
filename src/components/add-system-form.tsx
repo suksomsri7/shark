@@ -2,10 +2,12 @@
 
 import { useActionState, useState } from "react";
 import { addSystemAction, type AddSystemState } from "@/lib/actions/systems";
-import { SYSTEM_DEFS } from "@/lib/systems";
+import { SYSTEM_DEFS, isFixedPageSystem } from "@/lib/systems";
 
 const initial: AddSystemState = { status: "idle" };
-const firstAvailable = SYSTEM_DEFS.find((s) => s.status === "available")?.code ?? "BOOKING";
+// ระบบ "หน้า fixed" (เช่น คลังความรู้) เข้าถึงตรงจากเมนู ไม่ได้สร้างเป็น instance → ไม่แสดงในตัวเลือก
+const CREATABLE_DEFS = SYSTEM_DEFS.filter((s) => !isFixedPageSystem(s.code));
+const firstAvailable = CREATABLE_DEFS.find((s) => s.status === "available")?.code ?? "BOOKING";
 
 // เลือก 1 จาก 14 ระบบ + ตั้งชื่อ → สร้าง (ใช้ทั้ง onboarding และหน้าเพิ่มระบบ)
 export function AddSystemForm({ submitLabel = "สร้างระบบ" }: { submitLabel?: string }) {
@@ -18,7 +20,7 @@ export function AddSystemForm({ submitLabel = "สร้างระบบ" }: {
       <div className="flex flex-col gap-2">
         <span className="text-sm text-[color:var(--color-muted)]">เลือกระบบ</span>
         <div className="grid grid-cols-2 gap-2">
-          {SYSTEM_DEFS.map((s) => {
+          {CREATABLE_DEFS.map((s) => {
             const disabled = s.status === "coming_soon";
             const active = code === s.code;
             return (
