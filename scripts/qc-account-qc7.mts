@@ -332,5 +332,5 @@ try {
   for (const f of bad) console.log(`  [${f.sev}] ${f.id} ${f.name} — expected ${f.expected} | actual ${f.actual}`);
   console.log("JSON_SUMMARY " + JSON.stringify({ total: findings.length, passed: findings.length - bad.length }));
   await prisma.$disconnect();
-  process.exit(0);
+  process.exit(bad.length > 0 ? 1 : 0); // exit บอกความจริง — CI แดงเมื่อมี fail
 }

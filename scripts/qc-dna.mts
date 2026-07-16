@@ -128,4 +128,4 @@ console.log("\n===== QC M3: DNA Wizard =====");
 console.log(`ผ่าน ${checks.length - failed.length}/${checks.length}`);
 console.log(`FINDINGS: CRITICAL ${bySev("CRITICAL")} · MAJOR ${bySev("MAJOR")} · MINOR ${bySev("MINOR")}`);
 console.log("\nJSON_SUMMARY " + JSON.stringify({ total: checks.length, passed: checks.length - failed.length, findings: failed.map((c) => ({ id: c.id, sev: c.sev })) }));
-process.exit(0);
+process.exit(bySev("CRITICAL") > 0 ? 1 : 0); // จบครบทุกข้อแล้วค่อยบอกความจริง — CI ต้องแดงเมื่อเจอ CRITICAL

@@ -102,6 +102,14 @@ jobs:
         if: steps.guard.outputs.ready == 'true'
         run: pnpm qc:chat
 
+      - name: QC POS→Account (M1 — ยอดขายเข้าบัญชี)
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm qc:pos
+
+      - name: QC DNA Wizard (M3 — ประกอบระบบ)
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm qc:dna
+
       - name: ลบ Neon branch (กันค่าใช้จ่ายบาน)
         if: always() && steps.guard.outputs.ready == 'true'
         env:

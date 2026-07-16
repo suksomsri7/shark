@@ -613,4 +613,4 @@ for (const f of failed) {
 }
 console.log("\nJSON_SUMMARY " + JSON.stringify({ total: checks.length, passed: checks.length - failed.length, findings: failed }));
 await prisma.$disconnect();
-process.exit(0); // รายงาน findings ผ่าน output — ไม่ fail process (audit run)
+process.exit(failed.length > 0 ? 1 : 0); // จบครบทุกข้อเสมอ (findings-not-assertions) แต่ exit บอกความจริง — CI ต้องแดงเมื่อมี finding
