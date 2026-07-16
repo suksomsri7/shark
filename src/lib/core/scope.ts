@@ -84,6 +84,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PaymentProfile: tenant,
   PlatformInvoice: tenant, // ร้านอ่านของตัวเอง · backoffice เขียนผ่าน src/lib/platform (prisma ตรง)
   FileAsset: tenant,
+  // Automation (WO-0026)
+  AutomationRule: tenant,
+  AutomationRun: tenant,
+  AppNotification: tenant,
   // System instances (ทะเบียนระบบ — เป็น tenant-scoped เพราะ list ทั้งร้าน)
   AppSystem: tenant,
   AppSystemUnit: tenant, // ตารางเชื่อม system↔unit — query ด้วย unitId/tenantId ไม่ใช่ scope ใต้ system

@@ -1,0 +1,49 @@
+// Automation v1 (WO-0026) — Trigger(outbox event) → Condition → Action ตามวิสัยทัศน์ Blank_6
+// v1: เงื่อนไขยอดขั้นต่ำ · action = แจ้งเตือนในแอป (AppNotification) หรือยิง webhook
+enum AutomationActionType {
+  NOTIFY
+  WEBHOOK
+}
+
+enum AutomationRunStatus {
+  OK
+  FAILED
+}
+
+model AutomationRule {
+  id              String               @id @default(cuid())
+  tenantId        String
+  name            String
+  event           String // "pos.sale.paid" | "pos.sale.voided" | ...
+  enabled         Boolean              @default(true)
+  minAmountSatang Int? // เงื่อนไข v1: ยอด ≥ (เฉพาะ event ที่มี amountSatang ใน payload)
+  actionType      AutomationActionType
+  actionConfig    Json                 @default("{}") // NOTIFY: {title?} · WEBHOOK: {url}
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([tenantId, event, enabled])
+}
+
+model AutomationRun {
+  id        String              @id @default(cuid())
+  tenantId  String
+  ruleId    String
+  status    AutomationRunStatus
+  detail    String?
+  createdAt DateTime            @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+// ศูนย์แจ้งเตือนในแอป (v1 — ปลายทางของ action NOTIFY)
+model AppNotification {
+  id        String    @id @default(cuid())
+  tenantId  String
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId, readAt, createdAt])
+}
