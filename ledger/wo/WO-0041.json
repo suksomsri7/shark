@@ -1,7 +1,7 @@
 {
   "id": "WO-0041",
   "title": "Observability — logger กลาง + alert throttle + health + backoffice system-health",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder",
   "worktree": ".claude/worktrees/",
   "neonBranch": "wo-0041",
@@ -31,7 +31,7 @@
       "text": "Fable: schema OpsEvent/OpsAlertState + scope platform + migration (prod แล้ว) + oracle"
     },
     {
-      "done": false,
+      "done": true,
       "text": "Builder ตามสัญญาหัว qc-ops.mts"
     }
   ],
@@ -39,6 +39,10 @@
     {
       "at": "2026-07-16T14:45:00Z",
       "note": "NIGHT RUN เริ่ม — WO แรกของคิวรันยาว"
+    },
+    {
+      "at": "2026-07-16T15:20:00Z",
+      "note": "Builder 7/7 + cron 4/4 · Fable รันซ้ำ · lazy-import email กัน env-crash = ตัดสินใจถูก · merge"
     }
   ]
 }
