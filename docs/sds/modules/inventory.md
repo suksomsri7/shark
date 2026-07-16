@@ -32,6 +32,6 @@
 - `scripts/qc-procurement.mts` — PO flow (ดู procurement.md).
 
 ## ข้อจำกัด/หนี้ที่รู้ + WO อนาคต
-- Single warehouse — **WO-0037** Multi-warehouse (Location/onHand ต่อ location/transfer/PO เลือกคลัง) ⚠️ แตะ schema (ระวัง regression 12 ข้อ).
+- ~~Single warehouse~~ → **WO-0037 SHIPPED (2026-07-17)**: InvLocation/InvLocationStock (invariant `sum(stock)==InvItem.onHand` · lazy migration ต่อ item — แถว default seed จาก onHand เดิมครั้งแรกที่แตะ) · `receive/consume/adjust` รับ `locationId?` (ไม่ส่ง=คลังหลัก) · `transfer` movement คู่ TRANSFER (`<key>-out`/`-in` · ติดลบ→needsReview ขาออก) · `receivePo(ctx,poId,{locationId?})` · oracle `scripts/qc-warehouse.mts` 15 ข้อ.
 - **WO-0038** Lot/Expiry/Barcode + event `inventory.lot.expiring`.
 - WO-0045: AI ปรับสต็อก (ADJUST) + รับเข้า (inventory_receive เป็น ProposalKind แล้ว).
