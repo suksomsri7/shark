@@ -51,31 +51,31 @@
       "text": "Auditor เขียน qc-pos-account.mts ให้แดงก่อน (fail-before): ขาย POS แล้วไม่มี journal entry"
     },
     {
-      "done": false,
+      "done": true,
       "text": "schema OutboxEvent + migration (--create-only + deploy)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "kernel outbox.ts: emit (ใน tx เดียวกับงานหลัก) + drain + consumer registry แบบปิด"
     },
     {
-      "done": false,
+      "done": true,
       "text": "account/index.ts facade: postSale/postVoid ผ่าน gl.ts semantic keys (Dr เงิน / Cr 4000 / Cr 2200) — ห้ามโมดูลอื่นรู้เลขบัญชี"
     },
     {
-      "done": false,
+      "done": true,
       "text": "service เชื่อม AccountSystemLink (POS↔Account opt-in — ไม่เชื่อม = ไม่ post ตามหลัก standalone)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "wire pos createSale→emit pos.sale.paid · voidSale→emit pos.sale.voided → reverseFor"
     },
     {
-      "done": false,
+      "done": true,
       "text": "cron /api/cron/outbox (X-Cron-Secret) — ผู้ใช้ CRON_SECRET รายแรก"
     },
     {
-      "done": false,
+      "done": true,
       "text": "qc-pos-account.mts เขียวครบ: balanced/idempotent replay/void reversal/unlinked ไม่ post"
     }
   ],
@@ -91,6 +91,34 @@
     {
       "at": "2026-07-16T01:08:49Z",
       "note": "oracle qc-pos-account.mts เขียนเสร็จ + fail-before พิสูจน์แล้ว: 0/9 แดง (CRITICAL 9)"
+    },
+    {
+      "at": "2026-07-16T01:17:40Z",
+      "note": "step2: schema OutboxEvent + migration deploy + scope register"
+    },
+    {
+      "at": "2026-07-16T01:31:20Z",
+      "note": "step3: kernel outbox.ts emit+drain (serialize+lease+backoff)"
+    },
+    {
+      "at": "2026-07-16T01:31:21Z",
+      "note": "step4: account/index facade postExternalSale ผ่าน gl semantic keys"
+    },
+    {
+      "at": "2026-07-16T01:31:21Z",
+      "note": "step5: AccountSystemLink opt-in — ไม่เชื่อม=ไม่ post"
+    },
+    {
+      "at": "2026-07-16T01:31:22Z",
+      "note": "step6: wire createSale/voidSale emit + drainAll"
+    },
+    {
+      "at": "2026-07-16T01:31:23Z",
+      "note": "step7: cron /api/cron/outbox X-Cron-Secret"
+    },
+    {
+      "at": "2026-07-16T01:31:24Z",
+      "note": "step8: oracle 16/16 CRITICAL 0 + qc:account 107/107 + fitness + build"
     }
   ],
   "owner": "session-2026-07-16T01:02:18Z"
