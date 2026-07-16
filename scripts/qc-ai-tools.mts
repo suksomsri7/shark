@@ -65,7 +65,7 @@ try {
     await invSvc.receive({ tenantId: tid, systemId: inv.id }, { itemId: item.id, qty: 3, costSatang: 1000, idempotencyKey: "qc-r1" });
     const hrSvc = await import("@/lib/modules/hr/service");
     const emp = await hrSvc.createEmployee({ tenantId: tid, systemId: hr.id }, { name: "พนักงานทดสอบ" });
-    await hrSvc.requestLeave({ tenantId: tid, systemId: hr.id }, { employeeId: emp.id, type: "SICK", dateFrom: new Date(), dateTo: new Date(), reason: "qc" });
+    await hrSvc.requestLeave({ tenantId: tid, systemId: hr.id }, { employeeId: emp.id, type: "SICK", fromDate: "2026-07-16", toDate: "2026-07-16", reason: "qc" });
     await prisma.posSale.create({ data: { tenantId: tid, unitId: unit.id, systemId: pos.id, idempotencyKey: "qc-s1", status: "PAID", subtotalSatang: 15000, grandTotalSatang: 15000 } });
 
     // ── execute ตรง ๆ ──
