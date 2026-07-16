@@ -1,0 +1,85 @@
+// Approval Engine (WO-0049 — สเปค docs/sds/modules/future-approval.md)
+// core service กลาง tenant-scoped — โมดูลอื่นเกาะผ่าน composition root · Decision append-only
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ApprovalDecisionValue {
+  APPROVED
+  REJECTED
+}
+
+enum ApproverRole {
+  MANAGER
+  OWNER
+}
+
+model ApprovalPolicy {
+  id              String   @id @default(cuid())
+  tenantId        String
+  name            String
+  entityType      String // "PurchaseOrder" | "HrLeave" | ...
+  active          Boolean  @default(true)
+  unitId          String? // จำกัดหน่วย (null = ทั้งร้าน)
+  systemId        String? // จำกัดระบบต้นทาง
+  thresholdSatang Int? // เงื่อนไขวงเงินขั้นต่ำที่ต้องอนุมัติ (null = ทุกจำนวน)
+  conditionJson   Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  steps ApprovalStep[]
+
+  @@index([tenantId, entityType, active])
+}
+
+model ApprovalStep {
+  id             String         @id @default(cuid())
+  tenantId       String
+  policyId       String
+  policy         ApprovalPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  order          Int
+  approverRole   ApproverRole
+  approverUserId String? // ระบุคนเจาะจง (優先กว่า role)
+
+  @@unique([policyId, order])
+  @@index([tenantId])
+}
+
+model ApprovalRequest {
+  id               String         @id @default(cuid())
+  tenantId         String
+  policyId         String
+  entityType       String
+  entityId         String
+  unitId           String?
+  systemId         String?
+  amountSatang     Int?
+  status           ApprovalStatus @default(PENDING)
+  currentStepOrder Int            @default(1)
+  requestedById    String
+  decidedAt        DateTime?
+  idempotencyKey   String // approval-<entityType>-<entityId>
+  createdAt        DateTime       @default(now())
+
+  decisions ApprovalDecision[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status])
+}
+
+model ApprovalDecision {
+  id          String                @id @default(cuid())
+  tenantId    String
+  requestId   String
+  request     ApprovalRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  stepOrder   Int
+  decidedById String
+  decision    ApprovalDecisionValue
+  note        String?
+  createdAt   DateTime              @default(now())
+
+  @@index([requestId])
+}

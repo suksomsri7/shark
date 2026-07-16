@@ -1,0 +1,42 @@
+{
+  "id": "WO-0049",
+  "title": "Approval Engine v1 — สายอนุมัติ config ได้ + engine ตัดสิน + UI (wiring PO/ใบลา = 0049b)",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/",
+  "neonBranch": "wo-0049",
+  "files": [
+    "src/lib/modules/approval/{service,actions}.ts",
+    "src/app/app/settings/approval/page.tsx",
+    "src/app/app/approvals/page.tsx",
+    "outbox-consumers (3 events→notification)"
+  ],
+  "closesFindings": [
+    "SDS future-approval"
+  ],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "qc-approval CRITICAL 0 + qc-cron/qc-automation regression (แตะ outbox-consumers)"
+    },
+    {
+      "cmd": "typecheck+fitness (Fable) + deploy READY"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: schema 4 ตาราง + scope + migration (prod) + oracle 15 ข้อ"
+    },
+    {
+      "done": false,
+      "text": "Builder ตามสัญญา"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T20:15:00Z",
+      "note": "NIGHT RUN #8"
+    }
+  ]
+}

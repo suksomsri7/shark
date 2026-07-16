@@ -94,6 +94,11 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // ประกาศระบบ (WO-0031) — ประกาศเป็น global (ทุกร้านอ่านฉบับ published) · dismiss ต่อร้าน
   PlatformAnnouncement: g("ประกาศถึงทุกร้าน — เขียนได้เฉพาะ backoffice (src/lib/platform)"),
   AnnouncementDismiss: tenant,
+  // Approval Engine (WO-0049) — กติกากลางใช้ข้ามระบบย่อยในร้าน
+  ApprovalPolicy: tenant,
+  ApprovalStep: tenant,
+  ApprovalRequest: tenant,
+  ApprovalDecision: tenant,
   // Payroll (WO-0036)
   HrSalaryProfile: sys(),
   HrPayrollRun: sys(),
