@@ -1,0 +1,13 @@
+// Public API v1 (WO-0061) — API key ต่อ tenant (เก็บ hash เท่านั้น) + read-only endpoints /api/v1/*
+model ApiKey {
+  id         String    @id @default(cuid())
+  tenantId   String
+  name       String
+  keyHash    String    @unique // sha256(raw) — raw โชว์ครั้งเดียวตอนสร้าง
+  prefix     String // 12 ตัวแรกของ raw ไว้แสดงในตาราง
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId])
+}
