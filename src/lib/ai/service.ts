@@ -2,6 +2,7 @@
 // scope: AiConversation/AiMessage/AiUsage เป็น tenant-scoped → tenantDb({ tenantId })
 
 import { prisma, tenantDb } from "@/lib/core/db";
+import { logOps } from "@/lib/core/ops";
 import { buildSystemPrompt } from "./persona";
 import { dailyLimits, resolveProvider, type AiChatMessage, type AiProvider } from "./provider";
 import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
@@ -111,7 +112,17 @@ export async function sendMessage(
   let finalText = "";
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const reply = await provider.chat(messages, { tools });
+    let reply;
+    try {
+      reply = await provider.chat(messages, { tools });
+    } catch (e) {
+      // provider ล่ม → บันทึก ERROR แล้วโยนต่อ (พฤติกรรมเดิมห้ามเปลี่ยน)
+      await logOps("ERROR", "ai", "provider.chat ล้มเหลว", {
+        tenantId: ctx.tenantId,
+        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+      });
+      throw e;
+    }
     tokensIn += reply.tokensIn;
     tokensOut += reply.tokensOut;
 

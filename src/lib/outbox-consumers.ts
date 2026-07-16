@@ -6,6 +6,7 @@ import { prisma } from "@/lib/core/db";
 import { drainOutbox, type OutboxHandler } from "@/lib/core/outbox";
 import { bridgePosSalePaid, bridgePosSaleVoided } from "@/lib/modules/pos/account-bridge";
 import { runForEvent } from "@/lib/automation/engine";
+import { logOps } from "@/lib/core/ops";
 
 const saleIdOf = (payload: unknown): string | null => {
   const p = payload as { saleId?: unknown } | null;
@@ -43,11 +44,24 @@ const posSaleVoided: OutboxHandler = async (evt) => {
 const withAutomation =
   (handler: OutboxHandler): OutboxHandler =>
   async (evt) => {
-    await handler(evt); // งานหลักก่อน (พัง = พังตามเดิม → retry/backoff)
+    // งานหลักก่อน — พังต้องโยนต่อเหมือนเดิม (drain จะ retry/backoff) เพียงแต่ log ERROR ก่อน
+    try {
+      await handler(evt);
+    } catch (e) {
+      await logOps("ERROR", "outbox", `handler "${evt.type}" ล้มเหลว`, {
+        tenantId: evt.tenantId,
+        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+      });
+      throw e; // โยนต่อ — พฤติกรรมเดิมห้ามเปลี่ยน
+    }
     try {
       await runForEvent({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload });
-    } catch {
-      // automation ล้มเหลว = เรื่องรอง — event หลัก DONE ตามปกติ
+    } catch (e) {
+      // automation ล้มเหลว = เรื่องรอง — event หลัก DONE ตามปกติ · แค่บันทึก WARN
+      await logOps("WARN", "outbox", `automation ของ "${evt.type}" ล้มเหลว`, {
+        tenantId: evt.tenantId,
+        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+      });
     }
   };
 

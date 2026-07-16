@@ -69,6 +69,9 @@ export default async function BackofficeDashboard() {
           <Link href="/backoffice/announcements" className="btn btn-ghost text-sm">
             ประกาศระบบ →
           </Link>
+          <Link href="/backoffice/system-health" className="btn btn-ghost text-sm">
+            สุขภาพระบบ →
+          </Link>
         </div>
       </Section>
     </div>
