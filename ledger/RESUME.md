@@ -33,6 +33,11 @@
 กติกากันตาย: Builder ≤2 ตัวพร้อมกัน · Builder ห้ามรัน typecheck/build เอง (Fable รันรวมหลัง merge) · commit บ่อย
 ✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว**
 
+## ✅ 2026-07-17 — WO-0029/0030 SHIPPED (ข้อ 2 ที่ user เลือก)
+- **Cron จริง**: /api/cron/tick (Bearer SHARK_CRON_SECRET) กวาด subscription/proposal หมดอายุ + outbox เก็บตก · vercel.json ตั้ง 03:00 BKK ทุกวัน · **ยิงจริงบน prod แล้ว: 200 JSON ถูก + ไม่มี secret = 401** · หมายเหตุ: CRON_SECRET เดิม (/api/cron/outbox, x-cron-secret) ยังอยู่คู่กัน
+- **Dashboard หน้าแรก**: /app มี "ภาพรวมวันนี้" (ยอดขาย/สมาชิกใหม่ 7 วัน/สต็อกใกล้หมด/ใบลารอ/แจ้งเตือน) โชว์ตามระบบที่เปิด — ตาม Blank_6
+- หนี้บัญชีลึก 2 ข้อ (ลด query flow เงิน · DEPOSIT map) + audit booking→POS ยัง defer — ต้องทำแบบมีสมาธิเต็มรอบถัดไป
+
 ## ✅ 2026-07-16/17 — ชุดงาน 4-8 จบครบ 3 Round (WO-0023→0028 SHIPPED ทั้ง 6)
 - **0023 PromptPay QR + Billing**: ร้านตั้ง PromptPay ID → QR รับเงิน (EMVCo+CRC ตรง vector) · backoffice ออกบิล/รับชำระ/ยกเลิก + audit — ⚠️ แนะนำ user สแกน QR กับแอปธนาคารก่อนใช้จริง
 - **0024 Object storage**: อัปโหลดโลโก้ → Bunny (env SHARK_BUNNY_* — **รอ key ชื่อ shark จาก user จึงเปิดจริง** ตอนนี้ปิดสุภาพ URL-paste ใช้ได้เหมือนเดิม)
