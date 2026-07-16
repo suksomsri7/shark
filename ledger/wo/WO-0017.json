@@ -1,17 +1,40 @@
 {
   "id": "WO-0017",
   "title": "หนี้ UI: raw color เก่าใน (store)/r/[token] → token ตาม UI_STANDARD",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder B",
   "worktree": ".claude/worktrees/ (Agent tool)",
   "neonBranch": null,
-  "files": ["src/app/(store)/r/[token]/**"],
-  "closesFindings": ["RESUME backlog: raw color เก่าใน (store)/r/[token]"],
+  "files": [
+    "src/app/(store)/r/[token]/**"
+  ],
+  "closesFindings": [
+    "RESUME backlog: raw color เก่าใน (store)/r/[token]"
+  ],
   "dependsOn": [],
   "doneWhen": [
-    { "cmd": "grep -rnE 'bg-(blue|green|red|amber|emerald|yellow|purple)|text-(blue|green|red|amber|emerald)|#[0-9a-fA-F]{3,6}' 'src/app/(store)/r'", "expect": "ว่าง" },
-    { "cmd": "pnpm typecheck (Fable รันหลัง merge)" }
+    {
+      "cmd": "grep -rnE 'bg-(blue|green|red|amber|emerald|yellow|purple)|text-(blue|green|red|amber|emerald)|#[0-9a-fA-F]{3,6}' 'src/app/(store)/r'",
+      "expect": "ว่าง"
+    },
+    {
+      "cmd": "pnpm typecheck (Fable รันหลัง merge)"
+    }
   ],
-  "steps": [{ "done": false, "text": "แทน raw color ทั้งหมดด้วย token (--color-*) โดยคงความหมายเดิม (danger=แดง, เน้น=accent)" }],
-  "log": [{ "at": "2026-07-16T09:15:00Z", "note": "เปิดงาน — Builder B (Opus 4.8)" }]
+  "steps": [
+    {
+      "done": true,
+      "text": "แทน raw color ทั้งหมดด้วย token (--color-*) โดยคงความหมายเดิม (danger=แดง, เน้น=accent)"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T09:15:00Z",
+      "note": "เปิดงาน — Builder B (Opus 4.8)"
+    },
+    {
+      "at": "2026-07-16T09:40:00Z",
+      "note": "Builder B เสร็จ (13 จุด 1 ไฟล์) · Fable grep ยืนยันว่าง + อ่าน diff แล้ว merge"
+    }
+  ]
 }
