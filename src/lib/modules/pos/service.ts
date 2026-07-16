@@ -2,6 +2,7 @@ import { prisma } from "@/lib/core/db";
 import type { Prisma, PrismaClient, PosPayType } from "@prisma/client";
 import * as point from "@/lib/modules/point/service";
 import * as member from "@/lib/modules/member/service";
+import * as coupon from "@/lib/modules/coupon/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { emitOutbox } from "@/lib/core/outbox";
 import { drainAll } from "@/lib/outbox-consumers";
@@ -34,6 +35,9 @@ export type CreateSaleInput = {
   idempotencyKey: string;
   lines: { name: string; qty: number; unitPriceSatang: number; discountSatang?: number }[];
   billDiscountSatang?: number;
+  // คูปอง (contract 2.3) — ต้องมาคู่กันเสมอ · ระบุแล้วใช้ไม่ได้ = โยน error (ห้ามขายต่อเงียบ ๆ)
+  couponSystemId?: string;
+  couponCode?: string;
   payMethods: { type: PosPayType; amountSatang: number; refSaleId?: string }[];
 };
 
@@ -68,8 +72,30 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
     }));
     const subtotal = lines.reduce((s, l) => s + l.lineTotalSatang, 0);
     const billDiscount = input.billDiscountSatang ?? 0;
+
+    // ── คูปอง (contract 2.1/2.3): หักก่อน VAT · ฐาน = subtotal หลังส่วนลดบรรทัด+ท้ายบิล ──
+    // validate (read-only) ที่นี่เพื่อได้ยอดส่วนลด + ล้มเสียงดังก่อนสร้างบิล · redeem ตัวจริงอยู่ใน tx หลังสร้างบิล
+    const couponBase = subtotal - billDiscount;
+    const hasCoupon = !!(input.couponSystemId || input.couponCode);
+    let couponDiscount = 0;
+    if (hasCoupon) {
+      if (!input.couponSystemId || !input.couponCode) {
+        throw new Error("คูปองใช้ไม่ได้: ต้องระบุทั้งระบบคูปองและโค้ดคูปอง");
+      }
+      const v = await coupon.validate({
+        code: input.couponCode,
+        tenantId: input.tenantId,
+        systemId: input.couponSystemId,
+        memberId: input.memberId ?? null,
+        amountSatang: couponBase,
+        unitId: input.unitId,
+      });
+      if (!v.ok) throw new Error(`คูปองใช้ไม่ได้: ${coupon.couponReasonText(v.reason)}`);
+      couponDiscount = v.discountSatang;
+    }
+
     const vat = 0; // MVP
-    const grandTotal = subtotal - billDiscount + vat;
+    const grandTotal = subtotal - billDiscount - couponDiscount + vat;
     const paidSum = input.payMethods.reduce((s, p) => s + p.amountSatang, 0);
     if (paidSum !== grandTotal) {
       throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${grandTotal}`);
@@ -96,7 +122,7 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
         receiptNo,
         status: "PAID",
         subtotalSatang: subtotal,
-        discountSatang: billDiscount,
+        discountSatang: billDiscount + couponDiscount,
         vatSatang: vat,
         grandTotalSatang: grandTotal,
         paidAt: new Date(),
@@ -108,6 +134,26 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
     await tx.posPayment.createMany({
       data: input.payMethods.map((p) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, type: p.type, amountSatang: p.amountSatang, refSaleId: p.refSaleId })),
     });
+
+    // คูปอง: redeem ตัวจริง (atomic re-validate) ผูกกับบิล — ใน tx เดียวกัน · ล้ม = rollback ทั้งบิล
+    if (hasCoupon) {
+      const r = await coupon.redeem(
+        {
+          code: input.couponCode!,
+          tenantId: input.tenantId,
+          systemId: input.couponSystemId!,
+          memberId: input.memberId ?? null,
+          amountSatang: couponBase,
+          unitId: input.unitId,
+          saleId: sale.id,
+          refType: "PosSale",
+          refId: sale.id,
+          status: "REDEEMED",
+        },
+        tx as Prisma.TransactionClient,
+      );
+      if (!r.ok) throw new Error(`คูปองใช้ไม่ได้: ${coupon.couponReasonText(r.reason)}`);
+    }
 
     // outbox: ยอดขาย → บัญชี (contract 2.4) — เขียน event ใน tx เดียวกับบิล (atomic)
     await emitOutbox(tx as Prisma.TransactionClient, {
@@ -184,6 +230,16 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string)
       systemId: sale.systemId,
       unitId,
     });
+    // คูปอง: คืนสิทธิ์ทุกใบที่ผูกกับบิลนี้ (status → RELEASED, usedCount ลด) — contract 2.3
+    const redeemedSystems = await tx.couponRedemption.findMany({
+      where: { tenantId, refType: "PosSale", refId: saleId, status: { in: ["RESERVED", "REDEEMED"] } },
+      select: { systemId: true },
+      distinct: ["systemId"],
+    });
+    for (const { systemId } of redeemedSystems) {
+      await coupon.release({ tenantId, systemId, refType: "PosSale", refId: saleId, reason: "void บิล POS" }, tx);
+    }
+
     if (sale.memberId) {
       const pointSystemId = await systemForUnit(tenantId, unitId, "POINT", tx);
       if (pointSystemId) {

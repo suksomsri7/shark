@@ -1,6 +1,6 @@
 {
   "id": "WO-0003",
-  "title": "POS\u00d7Coupon \u2014 \u0e04\u0e39\u0e1b\u0e2d\u0e07\u0e43\u0e0a\u0e49\u0e01\u0e31\u0e1a\u0e01\u0e32\u0e23\u0e02\u0e32\u0e22\u0e08\u0e23\u0e34\u0e07 (contract 2.3)",
+  "title": "POS×Coupon — คูปองใช้กับการขายจริง (contract 2.3)",
   "status": "queued",
   "branch": "wo/0003",
   "worktree": "/root/wt/0003",
@@ -18,15 +18,15 @@
     },
     {
       "cmd": "pnpm qc:pos",
-      "expect": "\u0e1c\u0e48\u0e32\u0e19 16/16"
+      "expect": "ผ่าน 16/16"
     },
     {
       "cmd": "pnpm qc:account",
-      "expect": "\u0e1c\u0e48\u0e32\u0e19 107/107"
+      "expect": "ผ่าน 107/107"
     },
     {
       "cmd": "pnpm fitness",
-      "expect": "FINDINGS: CRITICAL 0 \u00b7 MAJOR 0"
+      "expect": "FINDINGS: CRITICAL 0 · MAJOR 0"
     },
     {
       "cmd": "pnpm typecheck"
@@ -35,29 +35,45 @@
   "steps": [
     {
       "done": true,
-      "text": "Fable: oracle qc-pos-coupon.mts (fail-before: PAYMENT_MISMATCH \u2014 POS \u0e44\u0e21\u0e48\u0e23\u0e39\u0e49\u0e08\u0e31\u0e01\u0e04\u0e39\u0e1b\u0e2d\u0e07)"
+      "text": "Fable: oracle qc-pos-coupon.mts (fail-before: PAYMENT_MISMATCH — POS ไม่รู้จักคูปอง)"
     },
     {
-      "done": false,
-      "text": "CreateSaleInput + couponSystemId?/couponCode? \u2192 validate+redeem \u0e43\u0e19 tx \u0e40\u0e14\u0e35\u0e22\u0e27\u0e01\u0e31\u0e1a\u0e1a\u0e34\u0e25 (\u0e42\u0e04\u0e49\u0e14\u0e43\u0e0a\u0e49\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49 = \u0e42\u0e22\u0e19)"
+      "done": true,
+      "text": "CreateSaleInput + couponSystemId?/couponCode? → validate+redeem ใน tx เดียวกับบิล (โค้ดใช้ไม่ได้ = โยน)"
     },
     {
-      "done": false,
-      "text": "\u0e2a\u0e48\u0e27\u0e19\u0e25\u0e14\u0e04\u0e39\u0e1b\u0e2d\u0e07\u0e2b\u0e31\u0e01\u0e01\u0e48\u0e2d\u0e19 VAT (\u0e25\u0e33\u0e14\u0e31\u0e1a 2.1) + discountSatang \u0e25\u0e07 PosSale"
+      "done": true,
+      "text": "ส่วนลดคูปองหักก่อน VAT (ลำดับ 2.1) + discountSatang ลง PosSale"
     },
     {
-      "done": false,
-      "text": "voidSale \u2192 coupon.release + replay idempotent"
+      "done": true,
+      "text": "voidSale → coupon.release + replay idempotent"
     },
     {
-      "done": false,
-      "text": "oracle \u0e40\u0e02\u0e35\u0e22\u0e27\u0e04\u0e23\u0e1a + qc:pos 16/16 + cpa 107/107"
+      "done": true,
+      "text": "oracle เขียวครบ + qc:pos 16/16 + cpa 107/107"
     }
   ],
   "log": [
     {
       "at": "2026-07-16T03:28:24Z",
-      "note": "\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19"
+      "note": "เปิดงาน"
+    },
+    {
+      "at": "2026-07-16T03:36:31Z",
+      "note": "CreateSaleInput +couponSystemId/couponCode → validate+redeem ใน tx (โค้ดใช้ไม่ได้=โยน error ไทย), ส่วนลดคูปองหักก่อน VAT + discountSatang, voidSale→release, fitness allowlist +pos→coupon"
+    },
+    {
+      "at": "2026-07-16T03:36:39Z",
+      "note": "หักคูปองก่อน VAT (couponBase=subtotal-billDiscount) + discountSatang=billDiscount+couponDiscount ลง PosSale"
+    },
+    {
+      "at": "2026-07-16T03:36:40Z",
+      "note": "voidSale → coupon.release ทุก systemId ที่ผูกบิล + replay idempotent (redeem อยู่หลัง dup-return)"
+    },
+    {
+      "at": "2026-07-16T03:36:40Z",
+      "note": "oracle 8/8 CRITICAL 0 + qc:pos 16/16 + qc:account 107/107 + fitness 14/14 + typecheck 0 + build ผ่าน"
     }
   ]
 }
