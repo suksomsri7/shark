@@ -1,0 +1,40 @@
+{
+  "id": "WO-0047",
+  "title": "AI triage support — ร่างคำตอบ/สรุปเคสให้ทีมแพลตฟอร์ม (คนกดส่ง)",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/",
+  "neonBranch": "wo-0047",
+  "files": [
+    "src/lib/platform/support-ai.ts",
+    "backoffice/cases/[id] (+ปุ่มร่าง)"
+  ],
+  "closesFindings": [],
+  "dependsOn": [
+    "WO-0021"
+  ],
+  "doneWhen": [
+    {
+      "cmd": "qc-support-ai CRITICAL 0 + qc-support regression"
+    },
+    {
+      "cmd": "typecheck+fitness (Fable) + deploy READY"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: oracle 8 ข้อ (เน้นห้ามเขียน DB + ห้ามแต่ง)"
+    },
+    {
+      "done": false,
+      "text": "Builder ตามสัญญา"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T19:00:00Z",
+      "note": "NIGHT RUN #7 (ตัวสุดท้าย — เบา ปลอดภัย)"
+    }
+  ]
+}
