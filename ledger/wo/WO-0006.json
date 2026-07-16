@@ -1,6 +1,6 @@
 {
   "id": "WO-0006",
-  "title": "authz sweep — ปิดหนี้ตรวจสิทธิ์ 10 ไฟล์ action (F6 ratchet → 0)",
+  "title": "authz sweep \u2014 \u0e1b\u0e34\u0e14\u0e2b\u0e19\u0e35\u0e49\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e34\u0e17\u0e18\u0e34\u0e4c 10 \u0e44\u0e1f\u0e25\u0e4c action (F6 ratchet \u2192 0)",
   "status": "done",
   "branch": "wo/0006",
   "worktree": "/root/wt/0006",
@@ -8,22 +8,22 @@
   "files": [
     "src/lib/modules/{hotel,queue,ticket,kanban,meeting,chat,coupon}/actions.ts",
     "src/lib/actions/{booking,restaurant,systems}.ts",
-    "scripts/fitness.mts (เฉพาะ AUTHZ_BASELINE)"
+    "scripts/fitness.mts (\u0e40\u0e09\u0e1e\u0e32\u0e30 AUTHZ_BASELINE)"
   ],
   "closesFindings": [],
   "dependsOn": [],
   "doneWhen": [
     {
-      "cmd": "grep -c 'src/lib' scripts/fitness.mts | head -1 && grep -A12 'AUTHZ_BASELINE = new Set' scripts/fitness.mts | grep -c 'actions\\|booking\\|systems' | grep -qx 0 && echo BASELINE_EMPTY",
+      "cmd": "grep -A1 'AUTHZ_BASELINE = new Set' scripts/fitness.mts | grep -q '\\[\\]' && echo BASELINE_EMPTY",
       "expect": "BASELINE_EMPTY"
     },
     {
       "cmd": "pnpm fitness",
-      "expect": "FINDINGS: CRITICAL 0 · MAJOR 0"
+      "expect": "FINDINGS: CRITICAL 0 \u00b7 MAJOR 0"
     },
     {
       "cmd": "pnpm qc:systems",
-      "expect": "ผ่านทั้งหมด"
+      "expect": "\u0e1c\u0e48\u0e32\u0e19\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14"
     },
     {
       "cmd": "pnpm qc:chat",
@@ -36,15 +36,15 @@
   "steps": [
     {
       "done": true,
-      "text": "Fable: F6 ratchet ใน fitness (baseline 10 ไฟล์)"
+      "text": "Fable: F6 ratchet \u0e43\u0e19 fitness (baseline 10 \u0e44\u0e1f\u0e25\u0e4c)"
     },
     {
       "done": true,
-      "text": "ใส่ assertCan ทุก mutating action: hotel/queue/ticket (unitId จาก input)"
+      "text": "\u0e43\u0e2a\u0e48 assertCan \u0e17\u0e38\u0e01 mutating action: hotel/queue/ticket (unitId \u0e08\u0e32\u0e01 input)"
     },
     {
       "done": true,
-      "text": "kanban/meeting/chat/coupon (systemId scope — action string <module>.<entity>.<verb>)"
+      "text": "kanban/meeting/chat/coupon (systemId scope \u2014 action string <module>.<entity>.<verb>)"
     },
     {
       "done": true,
@@ -52,33 +52,37 @@
     },
     {
       "done": true,
-      "text": "ถอดไฟล์ที่ปิดแล้วออกจาก AUTHZ_BASELINE จนเหลือ 0 + ทุก suite เขียว"
+      "text": "\u0e16\u0e2d\u0e14\u0e44\u0e1f\u0e25\u0e4c\u0e17\u0e35\u0e48\u0e1b\u0e34\u0e14\u0e41\u0e25\u0e49\u0e27\u0e2d\u0e2d\u0e01\u0e08\u0e32\u0e01 AUTHZ_BASELINE \u0e08\u0e19\u0e40\u0e2b\u0e25\u0e37\u0e2d 0 + \u0e17\u0e38\u0e01 suite \u0e40\u0e02\u0e35\u0e22\u0e27"
     }
   ],
   "log": [
     {
       "at": "2026-07-16T03:28:25Z",
-      "note": "เปิดงาน"
+      "note": "\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19"
     },
     {
       "at": "2026-07-16T03:39:43Z",
-      "note": "hotel(9)/queue(18)/ticket(9) — assertCan ทุก mutating action, unitId จาก requireUnit"
+      "note": "hotel(9)/queue(18)/ticket(9) \u2014 assertCan \u0e17\u0e38\u0e01 mutating action, unitId \u0e08\u0e32\u0e01 requireUnit"
     },
     {
       "at": "2026-07-16T03:39:44Z",
-      "note": "kanban(9)/meeting(7)/chat(8)/coupon(2) — assertCan module+action (systemId scope รอ kernel)"
+      "note": "kanban(9)/meeting(7)/chat(8)/coupon(2) \u2014 assertCan module+action (systemId scope \u0e23\u0e2d kernel)"
     },
     {
       "at": "2026-07-16T03:39:45Z",
-      "note": "actions/booking(5)/restaurant(33)/systems(5) — assertCan ครบ"
+      "note": "actions/booking(5)/restaurant(33)/systems(5) \u2014 assertCan \u0e04\u0e23\u0e1a"
     },
     {
       "at": "2026-07-16T03:39:46Z",
-      "note": "AUTHZ_BASELINE ว่าง (0/0) · fitness 14/14 · qc:systems ผ่าน · qc:chat FINDINGS 0 · typecheck 0 · build ผ่าน"
+      "note": "AUTHZ_BASELINE \u0e27\u0e48\u0e32\u0e07 (0/0) \u00b7 fitness 14/14 \u00b7 qc:systems \u0e1c\u0e48\u0e32\u0e19 \u00b7 qc:chat FINDINGS 0 \u00b7 typecheck 0 \u00b7 build \u0e1c\u0e48\u0e32\u0e19"
     },
     {
       "at": "2026-07-16T03:44:57Z",
-      "note": "ปิดงาน — doneWhen ผ่านครบ (รันสดยืนยัน)"
+      "note": "\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19 \u2014 doneWhen \u0e1c\u0e48\u0e32\u0e19\u0e04\u0e23\u0e1a (\u0e23\u0e31\u0e19\u0e2a\u0e14\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19)"
+    },
+    {
+      "at": "2026-07-16T05:00:00Z",
+      "note": "Fable \u0e41\u0e01\u0e49 doneWhen[0]: \u0e40\u0e0a\u0e47\u0e04\u0e40\u0e14\u0e34\u0e21 grep \u0e19\u0e31\u0e1a\u0e04\u0e33\u0e21\u0e31\u0e48\u0e27 (Builder \u0e15\u0e49\u0e2d\u0e07\u0e2b\u0e25\u0e1a\u0e14\u0e49\u0e27\u0e22 comment padding \u2014 \u0e23\u0e32\u0e22\u0e07\u0e32\u0e19\u0e15\u0e23\u0e07 \u0e46) \u2192 \u0e40\u0e0a\u0e47\u0e04 Set \u0e27\u0e48\u0e32\u0e07\u0e15\u0e23\u0e07 \u0e46"
     }
   ]
 }
