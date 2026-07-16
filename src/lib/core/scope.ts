@@ -76,6 +76,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // Backoffice (WO-0019) — แยกจากร้านโดยสิ้นเชิง เข้าผ่าน src/lib/platform เท่านั้น
   PlatformAuthToken: { axis: "platform", why: "backoffice auth — tenantDb ห้ามแตะ" },
   PlatformSession: { axis: "platform", why: "backoffice session — tenantDb ห้ามแตะ" },
+  // Support Desk (WO-0021) — ฝั่งร้าน tenant-scoped · ฝั่ง platform อ่านข้ามร้านผ่าน src/lib/platform
+  SupportCase: tenant,
+  SupportMessage: tenant,
+  PlatformAuditLog: { axis: "platform", why: "audit การกระทำฝั่งแพลตฟอร์ม — tenantDb ห้ามแตะ" },
   // System instances (ทะเบียนระบบ — เป็น tenant-scoped เพราะ list ทั้งร้าน)
   AppSystem: tenant,
   AppSystemUnit: tenant, // ตารางเชื่อม system↔unit — query ด้วย unitId/tenantId ไม่ใช่ scope ใต้ system

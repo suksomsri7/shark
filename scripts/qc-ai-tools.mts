@@ -46,7 +46,7 @@ try {
     const reg = tools.toolRegistry() as { def: AiToolDef }[];
     const names = reg.map((t) => t.def.name);
     const readFive = ["list_systems", "low_stock", "member_count", "pending_leaves", "sales_summary"];
-    chk("TU-0.1", "registry 8 ตัว (5 อ่าน + 3 ทำแทน) ครบชื่ออ่าน", reg.length === 8 && readFive.every((n) => names.includes(n)), "8+ครบ 5 อ่าน", `${reg.length}:${names.sort().join(",")}`);
+    chk("TU-0.1", "registry ครบ 5 เครื่องมืออ่าน (จำนวนรวมคุมโดย oracle รุ่นล่าสุด)", reg.length >= 8 && readFive.every((n) => names.includes(n)), "≥8+ครบ 5 อ่าน", `${reg.length}:${names.sort().join(",")}`);
     chk("TU-0.2", "ทุก tool มี description + parameters", reg.every((t) => t.def.description.length > 0 && typeof t.def.parameters === "object"), "ครบ", "?");
 
     // ── seed ──

@@ -39,6 +39,9 @@ export async function requireAuth(): Promise<Auth> {
 export async function requireTenant(): Promise<Auth & { active: Membership & { tenant: Tenant } }> {
   const auth = await requireAuth();
   if (!auth.active) redirect("/onboarding");
+  const active = auth.active as Membership & { tenant: Tenant };
+  // ร้านถูกระงับ/ปิดโดยแพลตฟอร์ม (WO-0021) → กันเข้าแอปทั้งหมด (PENDING เดิมยังเข้าได้ — ไม่เปลี่ยนพฤติกรรมเก่า)
+  if (active.tenant.status === "SUSPENDED" || active.tenant.status === "CLOSED") redirect("/suspended");
   return auth as Auth & { active: Membership & { tenant: Tenant } };
 }
 

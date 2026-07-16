@@ -1,0 +1,31 @@
+{
+  "id": "WO-0021",
+  "title": "Backoffice Phase 1 — Support Desk (ปุ่ม help→เคส) + ระงับร้าน + Audit",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/ (Agent tool)",
+  "neonBranch": "wo-0021",
+  "files": [
+    "src/lib/support/service.ts",
+    "src/lib/support/actions.ts",
+    "src/lib/platform/support.ts",
+    "src/components/app-shell/HelpSheet.tsx",
+    "src/app/suspended/page.tsx",
+    "src/app/backoffice/cases/**",
+    "src/app/backoffice/tenants/[id]/page.tsx (ปุ่มระงับ/เปิด)"
+  ],
+  "closesFindings": ["Blank_6: icon help center มุมบนขวา เปิดเคสแจ้งปัญหา", "BACKOFFICE.md Phase 1"],
+  "dependsOn": ["WO-0019"],
+  "doneWhen": [
+    { "cmd": "DATABASE_URL=<neon wo-0021> pnpm exec tsx scripts/qc-support.mts", "expect": "FINDINGS: CRITICAL 0" },
+    { "cmd": "DATABASE_URL=<neon wo-0021> pnpm exec tsx scripts/qc-backoffice.mts", "expect": "regression 14/14" },
+    { "cmd": "pnpm typecheck + fitness (Fable หลัง merge)" }
+  ],
+  "steps": [
+    { "done": true, "text": "Fable: schema SupportCase/Message/PlatformAuditLog + scope + migration (ลง prod แล้ว) + gate ระงับใน requireTenant + oracle" },
+    { "done": false, "text": "support/service.ts + actions.ts (ฝั่งร้าน) · platform/support.ts (ฝั่งแพลตฟอร์ม + suspend/reactivate SUPER_ADMIN)" },
+    { "done": false, "text": "HelpSheet: ฟอร์มเปิดเคส + รายการเคสของฉัน + คุยต่อ" },
+    { "done": false, "text": "/backoffice/cases list+detail+ตอบ+ปิด · ปุ่มระงับร้านใน tenant detail · หน้า /suspended" }
+  ],
+  "log": [{ "at": "2026-07-16T14:20:00Z", "note": "เปิดงาน — สัญญาในหัว scripts/qc-support.mts" }]
+}

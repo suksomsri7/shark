@@ -1,0 +1,22 @@
+{
+  "id": "WO-0022",
+  "title": "AI tools v2 — +ค้นลูกค้า/ยอดขายรายวัน (อ่าน) + สมัครสมาชิกให้ลูกค้า (ทำแทน)",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/ (Agent tool)",
+  "neonBranch": "wo-0022",
+  "files": ["src/lib/ai/tools.ts", "src/lib/ai/proposals.ts", "src/lib/ai/persona.ts"],
+  "closesFindings": [],
+  "dependsOn": ["WO-0020"],
+  "doneWhen": [
+    { "cmd": "DATABASE_URL=<neon wo-0022> pnpm exec tsx scripts/qc-ai-tools2.mts", "expect": "FINDINGS: CRITICAL 0" },
+    { "cmd": "regression: qc-ai (17) + qc-ai-tools (14) + qc-ai-proposals (16) ยังเขียว" },
+    { "cmd": "pnpm typecheck + fitness (Fable หลัง merge)" }
+  ],
+  "steps": [
+    { "done": true, "text": "Fable: oracle qc-ai-tools2.mts + ผ่อน exact-count ใน oracle เก่า (กัน stale ซ้ำ)" },
+    { "done": false, "text": "read: customer_search + sales_by_day" },
+    { "done": false, "text": "act: member_create (proposal→findOrCreate STAFF) + persona อัปเดต" }
+  ],
+  "log": [{ "at": "2026-07-16T14:20:00Z", "note": "เปิดงาน — สัญญาในหัว scripts/qc-ai-tools2.mts" }]
+}

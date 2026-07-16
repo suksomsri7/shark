@@ -1,0 +1,54 @@
+// Support Desk (WO-0021 — docs/BACKOFFICE.md Phase 1)
+// ฝั่งร้าน: ปุ่ม help เปิดเคส/คุยต่อ (tenant-scoped) · ฝั่ง backoffice: ดูทุกร้าน + ตอบ + ปิดเคส
+enum SupportCaseStatus {
+  OPEN // ร้านเปิดเคส / มีข้อความใหม่จากร้าน
+  PENDING // แพลตฟอร์มตอบแล้ว รอร้าน
+  RESOLVED // ปิดแล้ว (ร้านพิมพ์ต่อ = เปิดใหม่เป็น OPEN)
+}
+
+enum SupportAuthorSide {
+  SHOP
+  PLATFORM
+}
+
+model SupportCase {
+  id                     String            @id @default(cuid())
+  tenantId               String
+  openedByUserId         String // User.id ฝั่งร้าน
+  subject                String
+  status                 SupportCaseStatus @default(OPEN)
+  assigneePlatformUserId String?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  messages SupportMessage[]
+
+  @@index([tenantId, status, updatedAt])
+  @@index([status, updatedAt]) // ฝั่ง backoffice กวาดทุกร้าน
+}
+
+model SupportMessage {
+  id         String            @id @default(cuid())
+  tenantId   String
+  caseId     String
+  case       SupportCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  authorSide SupportAuthorSide
+  authorId   String // User.id (SHOP) หรือ PlatformUser.id (PLATFORM)
+  body       String
+  createdAt  DateTime          @default(now())
+
+  @@index([tenantId, caseId, createdAt])
+}
+
+// บันทึกการกระทำฝั่งแพลตฟอร์ม (ระงับร้าน/ปิดเคส/ฯลฯ) — append-only
+model PlatformAuditLog {
+  id             String   @id @default(cuid())
+  platformUserId String
+  action         String // "tenant.suspend" | "tenant.reactivate" | "support.status" | ...
+  targetType     String // "Tenant" | "SupportCase"
+  targetId       String
+  detail         String?
+  createdAt      DateTime @default(now())
+
+  @@index([targetType, targetId, createdAt])
+}
