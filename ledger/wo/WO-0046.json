@@ -1,0 +1,40 @@
+{
+  "id": "WO-0046",
+  "title": "AI นักวิเคราะห์ — snapshot ธุรกิจ + รายงานสัปดาห์อัตโนมัติ (จันทร์ 03:00)",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/",
+  "neonBranch": "wo-0046",
+  "files": [
+    "src/lib/ai/analyst.ts",
+    "cron tick (+weeklyReports)"
+  ],
+  "closesFindings": [],
+  "dependsOn": [
+    "WO-0041"
+  ],
+  "doneWhen": [
+    {
+      "cmd": "qc-ai-analyst CRITICAL 0 + qc-cron + qc-ai regression"
+    },
+    {
+      "cmd": "typecheck+fitness (Fable) + deploy READY"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: oracle 9 ข้อ"
+    },
+    {
+      "done": false,
+      "text": "Builder ตามสัญญา"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T18:55:00Z",
+      "note": "NIGHT RUN #6 (ตัวสุดท้ายของคืนตามเวลา)"
+    }
+  ]
+}
