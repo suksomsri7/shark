@@ -1,7 +1,7 @@
 {
   "id": "WO-0047",
   "title": "AI triage support — ร่างคำตอบ/สรุปเคสให้ทีมแพลตฟอร์ม (คนกดส่ง)",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder",
   "worktree": ".claude/worktrees/",
   "neonBranch": "wo-0047",
@@ -27,7 +27,7 @@
       "text": "Fable: oracle 8 ข้อ (เน้นห้ามเขียน DB + ห้ามแต่ง)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "Builder ตามสัญญา"
     }
   ],
@@ -35,6 +35,10 @@
     {
       "at": "2026-07-16T19:00:00Z",
       "note": "NIGHT RUN #7 (ตัวสุดท้าย — เบา ปลอดภัย)"
+    },
+    {
+      "at": "2026-07-16T19:35:00Z",
+      "note": "Builder 7/7 + support 12/12 · Fable รันซ้ำ · summarizeCase มี service แล้วยังไม่ wire หน้า list (follow-up เล็ก)"
     }
   ]
 }

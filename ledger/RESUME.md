@@ -2,6 +2,20 @@
 
 > อัปเดต 2026-07-17 โดย Fable 5 · **session ใหม่: อ่านไฟล์นี้จากบนลงล่างถึงเส้นแรก แล้วทำงานต่อได้เลย**
 
+## 🌙 รายงานกะกลางคืน (2026-07-16 21:39 → 17 กลางดึก) — NIGHT RUN จบ 7 WO
+| WO | งาน | ข้อสอบ |
+|---|---|---|
+| 0041 | Observability: logger กลาง+alert throttle+/api/health (live บน prod แล้ว)+backoffice system-health | 7/7 + cron 4/4 |
+| 0035 | ภ.พ.30 CSV ระดับยื่นจริง (ของเดิม pnd3/53+WHT cert ครบเกินคาด — audit ฟรี) | typecheck+107 คุม |
+| 0045 | AI actions ×5 ใหม่ → **AI ทำแทนได้ 10 อย่าง / 18 tools** (สร้างสินค้า/ปรับสต็อก/พนักงาน/คูปอง/การ์ดงาน) | 12/12 + regression 6 ชุด |
+| 0036 | **Payroll ไทย**: ปสส. (เพดาน/config) + ภงด.1 annualize + สลิปพิมพ์ + ลงบัญชี JV สมดุล | 19/19 + hr 9/9 + **บัญชี 107/107** |
+| 0042 | **PDPA**: export ข้อมูลร้าน + ขอลบร้าน 30 วัน (ยกเลิกได้) + purge cron กันลบข้ามร้าน + DR runbook (11_DR.md) | 8/8 + cron 4/4 |
+| 0046 | **AI นักวิเคราะห์**: snapshot ธุรกิจ + รายงานสัปดาห์อัตโนมัติทุกจันทร์ 03:00 → แจ้งเตือน | 8/8 + regression |
+| 0047 | **AI ร่างคำตอบเคส support** ให้ทีมแพลตฟอร์ม (คนกดส่งเสมอ · ไม่แตะ DB) | 7/7 + support 12/12 |
+เหตุการณ์เด่น: fitness จับสถาปัตยกรรม payroll 3 ข้อ (hr ล้วง gl/raw prisma) → Fable ผ่าตัด: postPayrollJV เข้า account facade + hr→account ลง allowlist + tenantDb ทั้งไฟล์ · cwd shell หลุด 2 ครั้ง (กู้จากกิ่ง worktree สำเร็จ — ย้ำกติกา cd สัมบูรณ์) · oracle stale กันล่วงหน้า 2 จุด (GR-0.1/V2-0.1)
+รอเจ้าของ: สแกน QR ทดสอบ · Bunny key · follow-up: 2140 ปสส.ค้างนำส่งใน CHART · summarizeCase wire หน้า list · i18n v1.1 · 0045b (ตอบเคสในนาม user)
+คิวถัดไปตาม 10_MASTER_QUEUE: 0037 Multi-warehouse → 0043 Hardening → 0049 Approval → 0053 E-commerce
+
 ## 🎯 CHECKPOINT 2026-07-17 — จุดต่องาน (อ่านตรงนี้ก่อน)
 **สถานะ**: shark.in.th LIVE บน Vercel · main = ทุกอย่าง merge แล้ว · deploy READY · ไม่มี worktree/neon branch ค้าง · WO-0001→0034 done หมด (ยกเว้น WO-0032 = เลขข้าม ไม่มีจริง)
 
