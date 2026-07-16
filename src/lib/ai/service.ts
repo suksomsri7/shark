@@ -103,6 +103,8 @@ export async function sendMessage(
   // ── agent loop ── ส่ง tools ทุกรอบ · LLM ขอเรียกเครื่องมือ → รัน (read-only) แล้วป้อนผลกลับรอบถัดไป
   // เพดาน 5 รอบ (กันวนไม่จบ) · ครบเพดานยังไม่ได้คำตอบ = ปิดด้วยข้อความสุภาพ
   // token/usage รวมทุกรอบ · persist เฉพาะ USER + ASSISTANT ตัวจบ (ไม่เก็บ tool traffic)
+  // ยื่นเครื่องมือครบชุดเสมอ (test = prod ห้ามต่างกัน) — action tools แค่ "เสนอ" proposal
+  // การทำจริงเกิดที่ปุ่มยืนยันใน UI + assertCan สิทธิ์คนกด จึงปลอดภัยแม้ LLM เรียกมั่ว
   const tools = toolRegistry().map((t) => t.def);
   let tokensIn = 0;
   let tokensOut = 0;
@@ -116,7 +118,12 @@ export async function sendMessage(
     if (reply.toolCalls && reply.toolCalls.length > 0) {
       messages.push({ role: "assistant", content: reply.text ?? "", toolCalls: reply.toolCalls });
       for (const tc of reply.toolCalls) {
-        const result = await runTool({ tenantId: ctx.tenantId }, tc.name, tc.args);
+        // ส่ง conversation.id เข้าไปด้วย — action tool ต้องใช้ผูก proposal กับบทสนทนา
+        const result = await runTool(
+          { tenantId: ctx.tenantId, conversationId: conversation.id },
+          tc.name,
+          tc.args,
+        );
         messages.push({ role: "tool", content: result, toolCallId: tc.id });
       }
       continue; // ไปรอบถัดไปให้ LLM เรียบเรียงคำตอบจากผลเครื่องมือ

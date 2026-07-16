@@ -1,8 +1,9 @@
 "use server";
 
 import { requireTenant } from "@/lib/core/context";
-import { assertCan } from "@/lib/core/rbac";
+import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
 import { aiEnabled, latestConversation, listMessages, sendMessage } from "./service";
+import { executeProposal, listPendingProposals, rejectProposal } from "./proposals";
 
 // convention action = "ai.<entity>.<verb>" — OWNER/MANAGER ผ่าน · STAFF ต้องมี ai.chat.send หรือ ai.*
 function assertAiCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
@@ -16,24 +17,68 @@ function assertAiCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: st
   );
 }
 
+/** ข้อเสนอที่รอ user ยืนยัน (การ์ดใต้แชท) */
+export type PendingProposal = { id: string; summary: string };
+
 export type AiChatState = {
   enabled: boolean;
   conversationId: string | null;
   messages: { id: string; role: "USER" | "ASSISTANT"; content: string }[];
+  pendingProposals: PendingProposal[];
 };
 
-/** โหลดสถานะแชท (บทสนทนาล่าสุด) สำหรับเปิด sheet */
+/** MembershipCtx ของคนกด — ใช้ตรวจสิทธิ์จริง ณ ตอน execute proposal */
+function membershipOf(auth: Awaited<ReturnType<typeof requireTenant>>): MembershipCtx {
+  return {
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  };
+}
+
+/** โหลดสถานะแชท (บทสนทนาล่าสุด + ข้อเสนอที่รอยืนยัน) สำหรับเปิด sheet */
 export async function loadAiChatAction(): Promise<AiChatState> {
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
   const ctx = { tenantId: auth.active.tenantId };
   const conv = await latestConversation(ctx);
   const messages = conv ? await listMessages(ctx, conv.id) : [];
+  const pending = conv ? await listPendingProposals(ctx, conv.id) : [];
   return {
     enabled: aiEnabled(),
     conversationId: conv?.id ?? null,
     messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content })),
+    pendingProposals: pending.map((p) => ({ id: p.id, summary: p.summary })),
   };
+}
+
+/** ดึงข้อเสนอที่รอยืนยันของบทสนทนา (refresh หลังส่งข้อความทุกครั้ง — LLM อาจสร้างใหม่) */
+export async function listPendingProposalsAction(conversationId: string): Promise<PendingProposal[]> {
+  const auth = await requireTenant();
+  assertAiCan(auth, "ai.chat.send");
+  const pending = await listPendingProposals({ tenantId: auth.active.tenantId }, conversationId);
+  return pending.map((p) => ({ id: p.id, summary: p.summary }));
+}
+
+export type ProposalResult = { ok: boolean; note: string };
+
+/** ยืนยันข้อเสนอ → ลงมือทำจริง (ตรวจสิทธิ์คนกด ภายใน executeProposal) */
+export async function confirmProposalAction(proposalId: string): Promise<ProposalResult> {
+  const auth = await requireTenant();
+  const ctx = { tenantId: auth.active.tenantId };
+  try {
+    return await executeProposal(membershipOf(auth), ctx, proposalId);
+  } catch {
+    return { ok: false, note: "ทำรายการไม่สำเร็จชั่วคราว ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** ยกเลิกข้อเสนอ (PENDING → REJECTED) */
+export async function rejectProposalAction(proposalId: string): Promise<ProposalResult> {
+  const auth = await requireTenant();
+  const ctx = { tenantId: auth.active.tenantId };
+  const ok = await rejectProposal(ctx, proposalId);
+  return { ok, note: ok ? "ยกเลิกข้อเสนอแล้ว" : "ข้อเสนอนี้ถูกดำเนินการไปแล้ว" };
 }
 
 export type SendAiResult =
