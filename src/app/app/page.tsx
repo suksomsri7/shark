@@ -8,6 +8,17 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { dashboardSummary } from "@/lib/dashboard/service";
 import { activeAnnouncements } from "@/lib/announce/service";
 import { dismissAnnouncementAction } from "@/lib/announce/actions";
+import { onboardingChecklist } from "@/lib/platform/onboarding-drip";
+
+// ลิงก์ช่วยทำต่อของแต่ละข้อในเช็กลิสต์เริ่มต้นร้าน
+const ONBOARDING_HREF: Record<string, string> = {
+  hasSystem: "/app/settings/systems",
+  hasUnit: "/app/settings/units/new",
+  hasProduct: "/app/settings/systems",
+  hasPromptpay: "/app/settings/payment",
+  hasTeam: "/app/settings/systems",
+  triedAi: "/app/dna",
+};
 
 // หน้าแรก /app = แดชบอร์ดของกิจการ (ไม่ใช่ "ระบบทั้งหมด" อีกต่อไป — ย้ายไปอยู่ใน drawer)
 // แสดง: ชื่อกิจการ + ตัวเลขวันนี้ + การ์ดระบบที่เปิดใช้ + ลิงก์เพิ่มระบบ
@@ -22,7 +33,7 @@ export default async function DashboardPage() {
   const todayStart = new Date(bkkMidnight.getTime() - 7 * 3600 * 1000);
   const todayEnd = new Date(todayStart.getTime() + 24 * 3600 * 1000);
 
-  const [units, appSystems, links, appointmentsToday, summary, announcements] = await Promise.all([
+  const [units, appSystems, links, appointmentsToday, summary, announcements, checklist] = await Promise.all([
     prisma.businessUnit.findMany({
       where: { tenantId, status: { not: "ARCHIVED" } },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -34,7 +45,12 @@ export default async function DashboardPage() {
     }),
     dashboardSummary({ tenantId }),
     activeAnnouncements({ tenantId }),
+    onboardingChecklist({ tenantId }),
   ]);
+
+  // เช็กลิสต์เริ่มต้นร้าน — ซ่อนการ์ดทั้งใบเมื่อทำครบทุกข้อ
+  const onboardingDone = checklist.filter((c) => c.done).length;
+  const showOnboarding = onboardingDone < checklist.length;
 
   // ประกาศจากแพลตฟอร์ม — แสดงฉบับล่าสุด 1 ฉบับเหนือ "ภาพรวมวันนี้" (ไม่มี = ไม่แสดง)
   const announcement = announcements[0] ?? null;
@@ -114,6 +130,39 @@ export default async function DashboardPage() {
           </Link>
         }
       />
+
+      {/* เริ่มต้นร้านให้ครบ — เช็กลิสต์ติ๊กอัตโนมัติ ซ่อนเมื่อครบทุกข้อ */}
+      {showOnboarding && (
+        <div className="flex flex-col gap-3 rounded-lg border bg-[color:var(--color-surface-2)] p-4">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold">เริ่มต้นร้านให้ครบ</div>
+            <div className="text-xs text-[color:var(--color-muted)]">
+              {onboardingDone}/{checklist.length} เสร็จแล้ว
+            </div>
+          </div>
+          <ul className="flex flex-col gap-1.5">
+            {checklist.map((c) => (
+              <li key={c.key}>
+                {c.done ? (
+                  <div className="flex items-center gap-2 text-sm text-[color:var(--color-muted)]">
+                    <span aria-hidden>✅</span>
+                    <span className="line-through">{c.label}</span>
+                  </div>
+                ) : (
+                  <Link
+                    href={ONBOARDING_HREF[c.key] ?? "/app/settings/systems"}
+                    className="flex items-center gap-2 rounded-md px-1 py-1 text-sm hover:bg-[color:var(--color-surface)]"
+                  >
+                    <span aria-hidden>⬜</span>
+                    <span>{c.label}</span>
+                    <span className="ml-auto text-xs text-[color:var(--color-accent)]">ทำต่อ →</span>
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* ประกาศจากแพลตฟอร์ม — โทนเรียบ พื้น surface-2 ขอบ hairline ไม่มีสีสด */}
       {announcement && (
