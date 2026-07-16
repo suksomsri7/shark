@@ -2,12 +2,13 @@ import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireBackoffice, logoutAction } from "@/lib/platform/actions";
 import { caseDetail, addPlatformMessage, setCaseStatus } from "@/lib/platform/support";
+import { draftCaseReply } from "@/lib/platform/support-ai";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { SubmitButton } from "@/components/ui/SubmitButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { formatThaiDateTime } from "@/lib/ui/date";
+import ReplyBox from "./ReplyBox";
 
 const STATUS_LABEL: Record<string, string> = {
   OPEN: "รอตอบ",
@@ -40,6 +41,13 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
     const me = await requireBackoffice();
     await setCaseStatus(me, id, "RESOLVED");
     revalidatePath(`/backoffice/cases/${id}`);
+  }
+
+  // ให้ AI ร่างคำตอบ — ร่างเฉย ๆ ไม่เขียน DB, ทีมงานตรวจ+กดส่งเอง · null = AI ยังไม่พร้อม
+  async function draftAction(): Promise<string | null> {
+    "use server";
+    await requireBackoffice();
+    return draftCaseReply(id);
   }
 
   return (
@@ -91,18 +99,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
       </Section>
 
       <Section title="ตอบกลับร้าน" card>
-        <form action={replyAction} className="flex flex-col gap-3">
-          <textarea
-            name="body"
-            required
-            rows={3}
-            className="input"
-            placeholder="พิมพ์คำตอบถึงร้าน…"
-          />
-          <SubmitButton pendingText="กำลังส่ง…" className="self-end">
-            ส่งคำตอบ
-          </SubmitButton>
-        </form>
+        <ReplyBox replyAction={replyAction} draftAction={draftAction} />
       </Section>
     </div>
   );
