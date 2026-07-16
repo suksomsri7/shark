@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { AiChat } from "./AiChat";
 
 // ปุ่มผู้ช่วย AI วงกลม ติดมุมขวาล่าง (fixed) — กดแล้วเปิด bottom-sheet placeholder
 // ไม่แสดงระหว่าง onboarding (/app/dna) — ยังไม่ถึงเวลาแนะนำผู้ช่วย
@@ -43,12 +44,7 @@ export function AiDock() {
                 ✕
               </button>
             </div>
-            <div className="card text-center">
-              <div className="text-sm font-medium">เร็ว ๆ นี้</div>
-              <p className="mt-1 text-xs text-[color:var(--color-muted)]">
-                ผู้ช่วย AI จะช่วยตอบลูกค้าและจัดการงานแทนคุณ กำลังจะเปิดให้ใช้เร็ว ๆ นี้
-              </p>
-            </div>
+            <AiChat />
           </div>
         </div>
       )}

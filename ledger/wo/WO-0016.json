@@ -1,0 +1,52 @@
+{
+  "id": "WO-0016",
+  "title": "M4 — DNA สัมภาษณ์แบบพิมพ์อิสระ (LLM สกัด DnaFacts · compile เดิม deterministic)",
+  "status": "queued",
+  "blockedBy": null,
+  "branch": "main",
+  "worktree": null,
+  "neonBranch": null,
+  "files": [
+    "src/lib/ai/interview.ts",
+    "src/lib/dna/actions.ts",
+    "src/components/dna-wizard.tsx"
+  ],
+  "closesFindings": [],
+  "dependsOn": [
+    "WO-0014",
+    "WO-0015"
+  ],
+  "doneWhen": [
+    {
+      "cmd": "pnpm exec tsx scripts/qc-ai-interview.mts",
+      "expect": "FINDINGS: CRITICAL 0 (Mock: บทสนทนา → DnaFacts ตรง ZDnaFacts)"
+    },
+    {
+      "cmd": "pnpm typecheck"
+    }
+  ],
+  "steps": [
+    {
+      "done": false,
+      "text": "interview.ts: LLM ถามต่อจนข้อมูลพอ → สกัด DnaFacts (ZDnaFacts.parse ที่ boundary)"
+    },
+    {
+      "done": false,
+      "text": "dna-wizard: โหมดพิมพ์อิสระสลับกับคำถามตายตัวได้ (fallback เสมอ)"
+    },
+    {
+      "done": false,
+      "text": "oracle: Mock script บทสนทนาร้านตัดผม 3 สาขา → facts ครบ → compile ได้ blueprint เดิมเป๊ะ"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T08:20:00Z",
+      "note": "วางแผนแล้ว — บล็อกที่ key"
+    },
+    {
+      "at": "2026-07-16T08:55:00Z",
+      "note": "ปลดบล็อก — user ให้ OpenRouter key แล้ว (SHARK_AI_KEY ใน .env + Vercel)"
+    }
+  ]
+}

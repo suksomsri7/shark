@@ -1,0 +1,44 @@
+// AI Layer (Phase 1 — docs/AI_LAYER.md) — บทสนทนาผู้ช่วย AI + cost guard ต่อ tenant
+// tenant-scoped (ผู้ช่วยผูกกิจการ ไม่ผูก system) · ข้อความ append-only
+enum AiRole {
+  USER
+  ASSISTANT
+}
+
+model AiConversation {
+  id        String   @id @default(cuid())
+  tenantId  String
+  title     String   @default("") // บรรทัดแรกของข้อความแรก (ตัด 60 ตัว)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages AiMessage[]
+
+  @@index([tenantId, updatedAt])
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  tenantId       String
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           AiRole
+  content        String
+  tokensIn       Int            @default(0) // นับเฉพาะแถว ASSISTANT (ของ request นั้น)
+  tokensOut      Int            @default(0)
+  createdAt      DateTime       @default(now())
+
+  @@index([tenantId, conversationId, createdAt])
+}
+
+// เพดานการใช้ต่อ tenant ต่อวัน (วัน = Asia/Bangkok) — upsert เพิ่มยอด
+model AiUsage {
+  id        String @id @default(cuid())
+  tenantId  String
+  day       String // "YYYY-MM-DD" BKK
+  requests  Int    @default(0)
+  tokensIn  Int    @default(0)
+  tokensOut Int    @default(0)
+
+  @@unique([tenantId, day])
+}

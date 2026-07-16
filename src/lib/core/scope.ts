@@ -68,6 +68,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // Marketing (ระบบ 20 — WO-0013)
   MktCampaign: sys(),
   MktRecipient: sys(),
+  // AI Layer (WO-0014) — ผู้ช่วยผูกกิจการ ไม่ผูก system
+  AiConversation: tenant,
+  AiMessage: tenant,
+  AiUsage: tenant,
   // System instances (ทะเบียนระบบ — เป็น tenant-scoped เพราะ list ทั้งร้าน)
   AppSystem: tenant,
   AppSystemUnit: tenant, // ตารางเชื่อม system↔unit — query ด้วย unitId/tenantId ไม่ใช่ scope ใต้ system

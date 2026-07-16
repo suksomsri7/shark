@@ -1,0 +1,72 @@
+{
+  "id": "WO-0014",
+  "title": "AI kernel — provider abstraction + cost guard + chat service (Phase 1 backend)",
+  "status": "done",
+  "branch": "main",
+  "worktree": null,
+  "neonBranch": "wo-0014",
+  "files": [
+    "prisma/schema/ai.prisma",
+    "src/lib/ai/rules.ts",
+    "src/lib/ai/provider.ts",
+    "src/lib/ai/persona.ts",
+    "src/lib/ai/service.ts",
+    "src/lib/ai/actions.ts",
+    "scripts/qc-ai.mts"
+  ],
+  "closesFindings": [],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "pnpm exec tsx scripts/qc-ai.mts",
+      "expect": "FINDINGS: CRITICAL 0"
+    },
+    {
+      "cmd": "pnpm qc:account",
+      "expect": "ผ่าน 107/107"
+    },
+    {
+      "cmd": "pnpm fitness",
+      "expect": "FINDINGS: CRITICAL 0 · MAJOR 0"
+    },
+    {
+      "cmd": "pnpm typecheck"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "schema ai.prisma (AiConversation/AiMessage/AiUsage) + scope.ts tenant + migration"
+    },
+    {
+      "done": true,
+      "text": "rules.ts pure (dayKeyBangkok/overBudget/trimHistory)"
+    },
+    {
+      "done": true,
+      "text": "provider.ts (OpenRouter+Mock+resolve) — ไม่มี key = null ไม่ throw"
+    },
+    {
+      "done": true,
+      "text": "persona.ts + service.ts (guard→chat→persist tx→usage upsert)"
+    },
+    {
+      "done": true,
+      "text": "actions.ts assertCan ai.chat.send"
+    },
+    {
+      "done": true,
+      "text": "oracle qc-ai.mts เขียว (Mock + neon branch)"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T08:20:00Z",
+      "note": "เปิดงาน — Fable ทำเองตามแผน AI Layer Phase 1 (docs/AI_LAYER.md)"
+    },
+    {
+      "at": "2026-07-16T08:55:00Z",
+      "note": "เสร็จ: oracle 17/17 + qc:account 107/107 + fitness + typecheck · migration ai_chat ลง prod แล้ว"
+    }
+  ]
+}

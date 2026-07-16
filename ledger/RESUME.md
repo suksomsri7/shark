@@ -18,6 +18,15 @@
   - **AiDock**: ย้ายมุมขวาล่าง + ซ่อนใน /app/dna + เปลี่ยนเป็นรูป orb gradient (`public/ai-orb.png`, gen ด้วย fal.ai seedream ครั้งเดียว — key Content, ยังไม่มี FAL key ชื่อ shark)
 - เก็บกวาด: neon wo-0011/12/13 ลบแล้ว + worktree 3 อันลบแล้ว
 
+## ✅ 2026-07-16 เย็น — AI Layer Phase 1 SHIPPED (WO-0014/0015)
+- `docs/AI_LAYER.md` = แผน 3 เฟสจากวิสัยทัศน์ "AI Business OS" ของ user (ไฟล์ Blank_6)
+- kernel `src/lib/ai/` (rules/provider/persona/service/actions) + schema AiConversation/Message/Usage + migration ลง prod
+- oracle qc-ai.mts **17/17** (Mock) · qc:account 107/107 · fitness · typecheck เขียวหมด
+- ปุ่ม orb → แชทจริง (AiChat.tsx) — persona ผู้ช่วยประจำกิจการ รู้ชื่อร้าน+ระบบที่เปิด
+- **SHARK_AI_KEY (OpenRouter ชื่อ shark) user ให้แล้ว** — อยู่ใน .env local + Vercel env (ผ่าน API) · ทดสอบยิงจริงผ่าน (haiku-4.5)
+- UI Pass 3 โมดูลใหม่จบ (ConfirmDialog ส่งแคมเปญ + formatBaht)
+- **NEXT: WO-0016 M4 สัมภาษณ์พิมพ์อิสระ (ปลดบล็อกแล้ว) → Phase 3 tool use → Backoffice Admin**
+
 ## คำสั่งล่าสุด user (2026-07-16 ค่ำ)
 ✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว** · ต่อไป: Builder ขนาน (Inventory/Procurement/Marketing)
 

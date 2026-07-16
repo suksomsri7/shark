@@ -1,0 +1,52 @@
+{
+  "id": "WO-0015",
+  "title": "ผู้ช่วย AI ในปุ่ม orb — แชทจริง (Phase 1 UI)",
+  "status": "done",
+  "branch": "main",
+  "worktree": null,
+  "neonBranch": null,
+  "files": [
+    "src/components/app-shell/AiChat.tsx",
+    "src/components/app-shell/AiDock.tsx"
+  ],
+  "closesFindings": [],
+  "dependsOn": [
+    "WO-0014"
+  ],
+  "doneWhen": [
+    {
+      "cmd": "pnpm typecheck"
+    },
+    {
+      "cmd": "pnpm fitness",
+      "expect": "FINDINGS: CRITICAL 0 · MAJOR 0"
+    },
+    {
+      "cmd": "curl prod /app หลัง deploy — sheet เปิดได้ สถานะไม่มี key แสดงสุภาพ"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "AiChat.tsx client: โหลดประวัติ + ส่งข้อความ (optimistic) + สถานะ disabled สุภาพ"
+    },
+    {
+      "done": true,
+      "text": "AiDock sheet เรียก AiChat แทน placeholder 'เร็ว ๆ นี้'"
+    },
+    {
+      "done": true,
+      "text": "UI_STANDARD: token สี, .btn, ไทย, touch ≥44px"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T08:20:00Z",
+      "note": "เปิดงาน"
+    },
+    {
+      "at": "2026-07-16T08:55:00Z",
+      "note": "เสร็จ: AiChat client + AiDock sheet · key จริงทดสอบผ่าน (haiku-4.5 ตอบ)"
+    }
+  ]
+}
