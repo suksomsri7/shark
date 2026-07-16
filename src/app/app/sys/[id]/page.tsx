@@ -12,6 +12,7 @@ import { CrmContent } from "@/lib/modules/crm/ui";
 import { InventoryContent } from "@/lib/modules/inventory/ui";
 import { HrContent } from "@/lib/modules/hr/ui";
 import { MarketingContent } from "@/lib/modules/marketing/ui";
+import { SubscriptionSection } from "@/lib/modules/member/subscription-ui";
 import {
   linkUnitAction,
   unlinkUnitAction,
@@ -124,22 +125,25 @@ async function MemberContent({ systemId }: { systemId: string }) {
     take: 100,
   });
   return (
-    <Section title={`สมาชิก (${customers.length})`}>
-      <DataList
-        items={customers.map((c) => ({
-          key: c.id,
-          href: `/app/members/${c.id}`,
-          primary: c.name ?? "ไม่ระบุชื่อ",
-          secondary: `${c.phone ?? "—"} · ${c.memberCode}`,
-          trailing: (
-            <span className="text-xs text-[color:var(--color-muted)]">
-              {c.visitCount} ครั้ง · <MoneyText satang={c.totalSpentSatang} />
-            </span>
-          ),
-        }))}
-        empty="ยังไม่มีสมาชิก — จะถูกสร้างอัตโนมัติเมื่อลูกค้าจอง/ซื้อในระบบที่เชื่อมไว้"
-      />
-    </Section>
+    <>
+      <Section title={`สมาชิก (${customers.length})`}>
+        <DataList
+          items={customers.map((c) => ({
+            key: c.id,
+            href: `/app/members/${c.id}`,
+            primary: c.name ?? "ไม่ระบุชื่อ",
+            secondary: `${c.phone ?? "—"} · ${c.memberCode}`,
+            trailing: (
+              <span className="text-xs text-[color:var(--color-muted)]">
+                {c.visitCount} ครั้ง · <MoneyText satang={c.totalSpentSatang} />
+              </span>
+            ),
+          }))}
+          empty="ยังไม่มีสมาชิก — จะถูกสร้างอัตโนมัติเมื่อลูกค้าจอง/ซื้อในระบบที่เชื่อมไว้"
+        />
+      </Section>
+      <SubscriptionSection systemId={systemId} />
+    </>
   );
 }
 
