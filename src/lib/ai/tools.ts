@@ -14,6 +14,7 @@ import type { SystemType } from "@prisma/client";
 import { lowStock as invLowStock } from "@/lib/modules/inventory/service";
 import { pendingLeaves as hrPendingLeaves } from "@/lib/modules/hr/service";
 import { listCustomers as memberListCustomers } from "@/lib/modules/member/service";
+import { searchKb as kbSearchArticles } from "@/lib/modules/kb/service";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { createProposal, type ProposalKind } from "./proposals";
 import { dayKeyBangkok } from "./rules";
@@ -290,6 +291,37 @@ const growthRecommendations: AiTool = {
       });
     }
     return JSON.stringify({ คำแนะนำ: recs });
+  },
+};
+
+// ── 5e) kb_search — ค้นคลังความรู้/นโยบาย/FAQ ของร้าน (WO-0073) ──
+// ให้ AI ค้น "ความรู้ร้าน" ก่อนตอบคำถามเฉพาะร้าน (นโยบายคืนสินค้า/เวลาเปิด/เงื่อนไขบริการ ฯลฯ)
+// คืนข้อความไทยรวม title+เนื้อหา (ไม่ใช่ JSON) ให้ LLM เอาไปเรียบเรียงตอบจากข้อมูลจริง · ไม่เจอ → "ไม่พบ..." ห้าม throw
+const kbSearch: AiTool = {
+  def: {
+    name: "kb_search",
+    description:
+      "ค้นคลังความรู้ของร้าน (FAQ / นโยบาย / ขั้นตอน / ความรู้เฉพาะร้าน) ด้วยคำค้น — ใช้ก่อนตอบคำถามที่ขึ้นกับร้านนี้โดยเฉพาะ เช่น นโยบายคืนสินค้า เวลาเปิด-ปิด เงื่อนไขบริการ วิธีทำสิ่งต่าง ๆ เพื่อตอบจากข้อมูลจริงของร้าน (ไม่เดา). คืนหัวข้อและเนื้อหาบทความที่เกี่ยวข้อง",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "คำค้น เช่น 'คืนสินค้า' 'เวลาเปิด' 'จัดส่ง'" },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const query = String(asRecord(args).query ?? "").trim();
+    if (!query) return `ไม่พบข้อมูลในคลังความรู้ — ยังไม่ได้ระบุคำค้น`;
+    const hits = await kbSearchArticles({ tenantId: ctx.tenantId }, query, 5);
+    if (hits.length === 0) {
+      return `ไม่พบข้อมูลในคลังความรู้ของร้านที่ตรงกับ "${query}"`;
+    }
+    const parts = hits.map(
+      (h, i) => `${i + 1}. ${h.title}${h.category ? ` [${h.category}]` : ""}\n${h.snippet}`,
+    );
+    return `พบ ${hits.length} บทความในคลังความรู้ของร้าน:\n\n${parts.join("\n\n")}`;
   },
 };
 
@@ -687,6 +719,7 @@ export function toolRegistry(): AiTool[] {
     customerSearch,
     salesByDay,
     growthRecommendations,
+    kbSearch,
     // action / ทำแทน (10)
     inventoryReceive,
     hrDecideLeave,

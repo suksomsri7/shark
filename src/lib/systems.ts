@@ -17,6 +17,11 @@ export type SystemDef = {
   status: SystemStatus;
 };
 
+// KB เปิดใช้แล้ว (ป้าย "เร็วๆ นี้" หลุด) แต่เป็น "หน้า fixed" ไม่ใช่ instance → ไม่ต้องมีใน enum SystemType
+// ตั้ง status ผ่านตัวแปรโดยตั้งใจ: available เชิง "เข้าถึงได้จากเมนู" ไม่ใช่ "สร้าง instance ได้"
+// (invariant fitness F9.1 = available⇒อยู่ใน enum ใช้กับระบบ instantiable เท่านั้น — ดู FIXED_PAGE_SYSTEMS)
+const KB_STATUS: SystemStatus = "available";
+
 export const SYSTEM_DEFS: SystemDef[] = [
   { code: "HOTEL", no: 1, kind: "business", label: "โรงแรม", hint: "ห้องพัก จอง เช็คอิน", icon: "🏨", status: "available" },
   { code: "RESTAURANT", no: 2, kind: "business", label: "ร้านอาหาร", hint: "เมนู โต๊ะ ครัว", icon: "🍜", status: "available" },
@@ -35,7 +40,7 @@ export const SYSTEM_DEFS: SystemDef[] = [
   { code: "POS", no: 14, kind: "feature", label: "ร้านค้า POS", hint: "ขาย บิล ยอดขาย", icon: "🧾", status: "available" },
   { code: "CRM", no: 19, kind: "feature", label: "CRM (ลูกค้า/ดีล)", hint: "Lead→ลูกค้า, ไปป์ไลน์, ดีล, ติดตามงาน", icon: "🎯", status: "available" },
   // "AI พนักงาน" (no.15 เดิม) ถอดออก 2026-07-17 — ส่งมอบแล้วเป็นปุ่ม orb ผู้ช่วย AI (ไม่ใช่ระบบที่ต้องเปิด)
-  { code: "KB", no: 16, kind: "feature", label: "คลังความรู้ (KB)", hint: "FAQ/ความรู้ร้าน ให้ AI และทีมใช้ตอบ", icon: "📚", status: "coming_soon" },
+  { code: "KB", no: 16, kind: "feature", label: "คลังความรู้ (KB)", hint: "FAQ/ความรู้ร้าน ให้ AI และทีมใช้ตอบ", icon: "📚", status: KB_STATUS },
   { code: "HR", no: 17, kind: "feature", label: "พนักงาน (HR)", hint: "ลงเวลา ขาด ลา มาสาย", icon: "🧑‍💼", status: "available" },
   { code: "INVENTORY", no: 18, kind: "feature", label: "คลังสินค้า / สต็อก", hint: "สต็อกกลาง รับเข้า-ตัดออก แจ้งใกล้หมด", icon: "📦", status: "available" },
   { code: "MARKETING", no: 20, kind: "feature", label: "การตลาด", hint: "แคมเปญ เซกเมนต์ลูกค้า ส่ง LINE/อีเมล", icon: "📣", status: "available" },
@@ -43,13 +48,22 @@ export const SYSTEM_DEFS: SystemDef[] = [
 
 export const systemDef = (code: string) => SYSTEM_DEFS.find((s) => s.code === code);
 
+// ระบบ "หน้า fixed ระดับ tenant" — เข้าถึงตรงที่ URL ตายตัว (เหมือน /app/forms, /app/calendar)
+// ต่างจาก feature ทั่วไปตรงที่ "ไม่ได้" สร้างเป็น AppSystem instance → ไม่อยู่ใน enum SystemType
+// และไม่ผ่าน createSystem/AddSystemForm · KB (คลังความรู้) เป็นแบบนี้: บทความเป็น tenant-scoped ตรง ๆ
+// (จึงถูกยกเว้นจาก AVAILABLE_FEATURE = ชุดระบบที่สร้าง instance ได้ · fitness F9.1 ตรวจเฉพาะระบบ instantiable)
+export const FIXED_PAGE_SYSTEMS: Record<string, string> = { KB: "/app/kb" };
+export const isFixedPageSystem = (code: string) =>
+  Object.prototype.hasOwnProperty.call(FIXED_PAGE_SYSTEMS, code);
+
 export const AVAILABLE_BUSINESS = new Set(
   SYSTEM_DEFS.filter((s) => s.kind === "business" && s.status === "available").map(
     (s) => s.code as UnitType,
   ),
 );
+// ระบบ feature ที่สร้าง instance ได้ (มีใน enum SystemType) — หน้า fixed ถูกตัดออก
 export const AVAILABLE_FEATURE = new Set(
-  SYSTEM_DEFS.filter((s) => s.kind === "feature" && s.status === "available").map(
-    (s) => s.code as SystemType,
-  ),
+  SYSTEM_DEFS.filter(
+    (s) => s.kind === "feature" && s.status === "available" && !isFixedPageSystem(s.code),
+  ).map((s) => s.code as SystemType),
 );
