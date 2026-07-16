@@ -1,5 +1,4 @@
 import { requireTenant } from "@/lib/core/context";
-import { prisma } from "@/lib/core/db";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { FormField } from "@/components/ui/FormField";
@@ -9,6 +8,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { formatBaht } from "@/lib/ui/money";
 import { formatThaiDate } from "@/lib/ui/date";
 import { listPlans, listSubscriptions, type Ctx } from "./subscription";
+import { listCustomers } from "./service";
 import {
   cancelSubscriptionAction,
   createPlanAction,
@@ -37,12 +37,10 @@ export async function SubscriptionSection({ systemId }: { systemId: string }) {
   const [plans, subs, customers] = await Promise.all([
     listPlans(ctx, false),
     listSubscriptions(ctx),
-    // ลูกค้าในระบบ MEMBER นี้ (สำหรับ dropdown สมัคร)
-    prisma.customer.findMany({
-      where: { tenantId: auth.active.tenantId, memberSystemId: systemId },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-    }),
+    // ลูกค้าในระบบ MEMBER นี้ (สำหรับ dropdown สมัคร) — ผ่าน service กลาง (F5 ratchet: โมดูลห้ามใช้ prisma ตรง)
+    listCustomers(auth.active.tenantId).then((cs) =>
+      cs.filter((c) => c.memberSystemId === systemId).slice(0, 200),
+    ),
   ]);
 
   const activePlans = plans.filter((p) => p.active);
