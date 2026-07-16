@@ -2,11 +2,14 @@
 
 > อัปเดต 2026-07-17 โดย Fable 5 · **session ใหม่: อ่านไฟล์นี้จากบนลงล่างถึงเส้นแรก แล้วทำงานต่อได้เลย**
 
-## 🌙 RUN 2 (04:12 BKK 17 ก.ค. — เจ้าของสั่ง "ปล่อยยาวอีก 2 ชม.") — กำลังวิ่ง
+## 🌙 RUN 2 (04:12 BKK 17 ก.ค. — สั่ง 2 ชม. แล้วขยายถึง 10:00) — กำลังวิ่ง · เสร็จแล้ว 5 WO
 | WO | งาน | ข้อสอบ |
 |---|---|---|
 | 0053 | **E-commerce**: หน้าร้านออนไลน์ /s/<ร้าน>/<สาขา>/shop (catalog+ตะกร้า+checkout) + จ่าย PromptPay QR + ร้านกดยืนยันรับเงิน → เส้นเงิน C-2 ผ่าน pos.createSale + ตัดสต็อก inventory + จัดการสินค้า/ออเดอร์ฝั่งร้าน (ระบบที่ 21: SHOP ใน SYSTEM_DEFS) | 15/15 + pos-account 16/16 + inventory 12/12 |
 | 0054 | **Form builder**: ฟอร์ม config ได้ (text/phone/email/select/textarea + required) + ลิงก์สาธารณะ /f/<token> + submissions → lead เข้า CRM อัตโนมัติ + /app/forms builder | 10/10 + crm 25/25 |
+| 0062 | **Webhooks ขาออก**: endpoint ต่อ event (เลือก/ทุกเหตุการณ์) + ลายเซ็น X-Shark-Signature (HMAC-SHA256) + delivery log + retry (cron field webhooksRetried) + ผูก outbox ทุก event + /app/settings/webhooks | 11/11 + automation 13/13 + cron 4/4 |
+| 0061 | **Public API v1**: /api/v1 (me/customers/inventory/items/shop/orders) read-only + API key hash (โชว์ครั้งเดียว) + rate limit 60/นาที/key + /developers docs ไทย + /app/settings/api (Fable ผ่าตัด: create ลืม tenantId ครั้งที่ 6) | 12/12 |
+| 0073 | **คลังความรู้ (KB)**: บทความ+หมวด+ค้นหา /app/kb + AI tool kb_search (AI ตอบจากความรู้ร้านจริง) + **ป้าย "เร็วๆ นี้" ตัวสุดท้ายหลุดจากเมนู** (KB = fixed-page ไม่ instantiate — F9.1 ยกเว้นอย่างเปิดเผย) | 12/12 + ai-tools 14/14 + ai-tools2 8/8 |
 หมายเหตุ RUN 2: Builder ขนาน 2 ตัวครั้งแรก — เจอ race `prisma generate` ทับกัน (client แชร์ node_modules ข้าม worktree) → กติกาใหม่: **verify สุดท้ายจาก main หลัง merge + generate จาก schema main เสมอ** · 0058 Customer Portal ข้ามไว้ (login OTP ลูกค้าต้องมีช่องทาง SMS/LINE = 🔑 รอเจ้าของ)
 follow-up: forms actions อยู่ src/app/app/forms/actions.ts นอก walk ของ F6 (มี assertCan ครบ แต่ ratchet ไม่คุม — ย้ายเข้า modules ทีหลัง)
 
