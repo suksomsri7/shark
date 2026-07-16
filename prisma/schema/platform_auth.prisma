@@ -1,0 +1,23 @@
+// Backoffice auth (Phase 0 — docs/BACKOFFICE.md) — แยกจากฝั่งร้านโดยสิ้นเชิง
+// PlatformUser อยู่ใน core.prisma แล้ว · ตารางนี้ = OTP token + session ของ backoffice
+
+model PlatformAuthToken {
+  id        String    @id @default(cuid())
+  email     String
+  tokenHash String // sha256(`${email}:${otp}`)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email, expiresAt])
+}
+
+model PlatformSession {
+  id             String   @id @default(cuid())
+  platformUserId String
+  tokenHash      String   @unique // sha256(token) — token ดิบอยู่ใน cookie bo_session
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([platformUserId])
+}

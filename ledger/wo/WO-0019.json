@@ -1,0 +1,29 @@
+{
+  "id": "WO-0019",
+  "title": "Backoffice Phase 0 — auth แยกขาด + tenant list/metrics (read-only)",
+  "status": "in_progress",
+  "branch": "worktree Builder B2",
+  "worktree": ".claude/worktrees/ (Agent tool)",
+  "neonBranch": "wo-0019",
+  "files": [
+    "src/lib/platform/auth.ts",
+    "src/lib/platform/service.ts",
+    "src/lib/platform/actions.ts",
+    "src/app/backoffice/**",
+    "scripts/bo-seed-admin.mts"
+  ],
+  "closesFindings": ["BLUEPRINT §6 Backoffice ยังไม่มีทั้งชั้น"],
+  "dependsOn": [],
+  "doneWhen": [
+    { "cmd": "DATABASE_URL=<neon wo-0019> pnpm exec tsx scripts/qc-backoffice.mts", "expect": "FINDINGS: CRITICAL 0" },
+    { "cmd": "pnpm typecheck + fitness (Fable รันหลัง merge)" },
+    { "cmd": "curl prod /backoffice/login หลัง deploy = 200" }
+  ],
+  "steps": [
+    { "done": true, "text": "Fable: docs/BACKOFFICE.md + schema PlatformAuthToken/PlatformSession + scope platform + migration (ลง prod แล้ว) + oracle" },
+    { "done": false, "text": "platform/auth.ts + service.ts + actions.ts (cookie bo_session)" },
+    { "done": false, "text": "หน้า /backoffice: login OTP + dashboard metrics + tenants list + tenant detail (UI_STANDARD)" },
+    { "done": false, "text": "scripts/bo-seed-admin.mts สร้าง SUPER_ADMIN คนแรก" }
+  ],
+  "log": [{ "at": "2026-07-16T10:50:00Z", "note": "เปิดงาน — สัญญา+ข้อสอบอยู่หัว scripts/qc-backoffice.mts" }]
+}
