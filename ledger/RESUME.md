@@ -33,6 +33,13 @@
 กติกากันตาย: Builder ≤2 ตัวพร้อมกัน · Builder ห้ามรัน typecheck/build เอง (Fable รันรวมหลัง merge) · commit บ่อย
 ✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว**
 
+## ✅ 2026-07-16 ดึก — AI Layer ครบ 3.5 เฟส + Backoffice เปิด (โหมดหัวหน้า-Builder เต็มรูป)
+- **WO-0018 SHIPPED**: AI อ่านข้อมูลจริง 5 tools (ยอดขาย/สต็อก/ใบลา/สมาชิก/ระบบ) — smoke จริงเรียก tool ตอบถูก
+- **WO-0019 SHIPPED**: Backoffice Phase 0 (/backoffice login OTP แยกขาด + tenants + metrics) — **seed SUPER_ADMIN suksomsri@gmail.com บน prod แล้ว** · Phase 1 ถัดไป: ระงับร้าน+AuditLog / ประกาศ / support desk
+- **WO-0020 SHIPPED 🔴 คำสั่งตรง user**: AI ทำงานแทน — เสนอ→user ยืนยันบนการ์ดในแชท→execute ผ่าน assertCan สิทธิ์คนกด · 3 actions แรก (รับสต็อก/ตัดสินใบลา/แคมเปญร่าง) · smoke จริง: สต็อก 0→12 หลังยืนยัน
+- บทเรียนรอบนี้: Builder จับ oracle stale/ขัดแย้งได้ 2 ครั้ง (Fable ยอมรับ+แก้) · mock-gate ถูกถอน (test=prod เสมอ)
+- **NEXT**: Backoffice Phase 1 (suspend+audit+ประกาศ+support desk) → action-tools เพิ่ม (จองคิว/ดูรายงานลึก) → Billing/Payment → object storage → i18n EN
+
 ## ✅ 2026-07-16 ค่ำ — รอบ Builder แรกของโหมดหัวหน้า-ลูกน้อง จบสวย
 - **WO-0016 M4 สัมภาษณ์พิมพ์อิสระ SHIPPED** (Builder A Opus · oracle 9/9 · smoke LLM จริง 3 เทิร์น → 13 facts ถูกหมด) — "Stop Learning Software. Start Talking to AI." ใช้ได้จริงแล้วบน /app/dna
 - **WO-0017 raw color /r/[token] SHIPPED** (Builder B Opus · 13 จุด → token)
