@@ -59,9 +59,14 @@ export default async function BackofficeDashboard() {
       </Section>
 
       <Section>
-        <Link href="/backoffice/tenants" className="btn btn-ghost text-sm">
-          ดูรายชื่อร้านทั้งหมด →
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/backoffice/tenants" className="btn btn-ghost text-sm">
+            ดูรายชื่อร้านทั้งหมด →
+          </Link>
+          <Link href="/backoffice/billing" className="btn btn-ghost text-sm">
+            บิลเรียกเก็บร้านค้า →
+          </Link>
+        </div>
       </Section>
     </div>
   );
