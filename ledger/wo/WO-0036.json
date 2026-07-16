@@ -1,7 +1,7 @@
 {
   "id": "WO-0036",
   "title": "Payroll ไทย — ปสส.+ภงด.1+สลิป+ลงบัญชี JV (v1 MONTHLY)",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder",
   "worktree": ".claude/worktrees/",
   "neonBranch": "wo-0036",
@@ -31,7 +31,7 @@
       "text": "Fable: schema payroll 3 ตาราง + scope + migration (prod) + oracle 16 ข้อ (vector ปสส./ภาษีคำนวณมือ)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "Builder ตามสัญญาหัว qc-payroll.mts"
     }
   ],
@@ -39,6 +39,10 @@
     {
       "at": "2026-07-16T16:20:00Z",
       "note": "NIGHT RUN #4 — งานใหญ่สุดของคืน · posting ผ่าน gl.postManualJV (เส้นรายจ่าย ตาม SDS)"
+    },
+    {
+      "at": "2026-07-16T17:50:00Z",
+      "note": "Builder 19/19+regression เขียว แต่ fitness จับ 3 ข้อสถาปัตยกรรม (hr ล้วง gl + raw prisma) → Fable ผ่าตัด: posting ย้ายเข้า gl.postPayrollJV + facade export + hr→account ลง allowlist + payroll ใช้ tenantDb ทั้งไฟล์ + approve แบบ claim/ชดเชย → ทุกด่านเขียวรวด (19/19·107/107·9/9·fitness 14/14)"
     }
   ]
 }

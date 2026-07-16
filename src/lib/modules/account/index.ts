@@ -110,3 +110,6 @@ export async function createExternalQuotation(input: {
   await setDocExternalRef(doc.id, { refSystemId: input.sourceSystemId, refType: input.refType, refId: input.refId });
   return { ok: true, docId: doc.id, created: true };
 }
+
+// Payroll posting (WO-0036) — จุดเดียวที่ hr เรียกลงบัญชีเงินเดือน
+export { postPayrollJV, type PayrollPostingInput } from "./gl";

@@ -248,6 +248,9 @@ const ALLOWED_EDGES = new Set([
   // chokepoint (2.1): business systems ปิดเงินผ่าน POS → บัญชีอัตโนมัติ (M1 downstream)
   // — Fable อนุมัติล่วงหน้า WO-0007/0008 (restaurant→pos มีอยู่แล้วด้านบน)
   "ticket→pos",
+  // chokepoint (WO-0036): payroll ลงบัญชีเงินเดือนผ่าน account facade (postPayrollJV)
+  // — Fable อนุมัติ 2026-07-17 (NIGHT RUN) · import ได้เฉพาะ account/index
+  "hr→account",
   "ticket→system",  // resolve POS/POINT ที่ผูก unit (เหมือน restaurant→system, booking→system)
   "hotel→pos",
   "hotel→system",
