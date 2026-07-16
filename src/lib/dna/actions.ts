@@ -9,6 +9,7 @@ import type { BlueprintPlan, DnaFacts } from "./schema";
 import { finalizeFacts } from "./questions";
 import { saveDnaFacts, proposeBlueprint, applyBlueprint } from "./apply";
 import { resolveProvider } from "@/lib/ai/provider";
+import { aiEnabled } from "@/lib/ai/service";
 import { nextInterviewTurn } from "@/lib/ai/interview";
 import type { InterviewTurn } from "@/lib/ai/interview";
 
@@ -38,6 +39,12 @@ export type InterviewState =
   | { enabled: false }
   | { enabled: true; done: true }
   | { enabled: true; done: false; question: string };
+
+// เช็คว่าชั้น AI เปิดใช้ไหม — เบา ๆ ไม่ยิง LLM (wizard ใช้ตัดสินใจโชว์ toggle)
+export async function interviewEnabledAction(): Promise<boolean> {
+  await requireTenant();
+  return aiEnabled();
+}
 
 export async function interviewTurnAction(
   transcript: InterviewTurn[],

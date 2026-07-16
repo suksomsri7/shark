@@ -42,24 +42,33 @@ export function DnaWizard() {
   const [chatPending, startChat] = useTransition();
   const probed = useRef(false);
 
-  // probe ครั้งเดียวตอนโหลด: รู้ว่าชั้น AI เปิดไหม + ได้คำถามเปิดบทสนทนา
+  // เช็คตอนโหลดว่าชั้น AI เปิดไหม (เบา ๆ ไม่ยิง LLM) — คำถามเปิดบทสนทนาค่อยดึงตอน user เข้าโหมดจริง
   useEffect(() => {
     if (probed.current) return;
     probed.current = true;
+    interviewEnabledAction()
+      .then(setAiEnabled)
+      .catch(() => setAiEnabled(false)); // ขัดข้อง = ซ่อนโหมดพิมพ์อิสระ ใช้โหมดคำถามตายตัวได้ปกติ
+  }, []);
+
+  // เข้าโหมดเล่าธุรกิจเองครั้งแรก → ค่อยขอคำถามเปิดบทสนทนา (จ่ายค่า LLM เฉพาะคนที่ใช้จริง)
+  function enterFreeMode() {
+    setMode("free");
+    if (turns.length > 0 || chatPending) return;
     startChat(async () => {
       try {
         const res = await interviewTurnAction([]);
         if (!res.enabled) {
           setAiEnabled(false);
+          setMode("fixed");
           return;
         }
-        setAiEnabled(true);
         if (!res.done) setTurns([{ role: "assistant", content: res.question }]);
       } catch {
-        setAiEnabled(false); // ขัดข้อง = ซ่อนโหมดพิมพ์อิสระ ใช้โหมดคำถามตายตัวได้ปกติ
+        setChatError("ขออภัย ระบบผู้ช่วยขัดข้องชั่วคราว ลองใหม่อีกครั้งนะครับ");
       }
     });
-  }, []);
+  }
 
   function sendChat() {
     const text = chatDraft.trim();
@@ -143,7 +152,7 @@ export function DnaWizard() {
           </button>
           <button
             type="button"
-            onClick={() => setMode("free")}
+            onClick={enterFreeMode}
             className={`btn min-h-[44px] flex-1 text-sm ${mode === "free" ? "btn-primary" : "btn-ghost"}`}
           >
             เล่าธุรกิจเอง
