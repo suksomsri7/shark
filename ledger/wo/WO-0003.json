@@ -1,7 +1,7 @@
 {
   "id": "WO-0003",
   "title": "POS×Coupon — คูปองใช้กับการขายจริง (contract 2.3)",
-  "status": "queued",
+  "status": "done",
   "branch": "wo/0003",
   "worktree": "/root/wt/0003",
   "neonBranch": "wo-0003",
@@ -74,6 +74,10 @@
     {
       "at": "2026-07-16T03:36:40Z",
       "note": "oracle 8/8 CRITICAL 0 + qc:pos 16/16 + qc:account 107/107 + fitness 14/14 + typecheck 0 + build ผ่าน"
+    },
+    {
+      "at": "2026-07-16T03:37:59Z",
+      "note": "ปิดงาน — doneWhen ผ่านครบ (รันสดยืนยัน)"
     }
   ]
 }
