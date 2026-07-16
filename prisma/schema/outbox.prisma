@@ -1,0 +1,31 @@
+// Outbox (WO-0002) — transactional outbox กลาง (kernel)
+// เขียน event ใน tx เดียวกับงานหลัก (POS ขาย/void) → drain แบบ best-effort + cron เก็บตก
+// ทำให้ "เงินทุกบาทผ่าน POS → Account" เชื่อถือได้ แม้ post บัญชีล้มก็ไม่หายบิล
+// idempotent ต่อ (tenantId, idempotencyKey) — emit ซ้ำ = เงียบ · drain ซ้ำ = ไม่เบิ้ล
+// scope=tenant (ลงทะเบียนใน src/lib/core/scope.ts)
+
+model OutboxEvent {
+  id             String       @id @default(cuid())
+  tenantId       String
+  systemId       String? // ระบบต้นทาง (POS system)
+  unitId         String?
+  type           String // "pos.sale.paid" | "pos.sale.voided"
+  payload        Json         @default("{}")
+  idempotencyKey String
+  status         OutboxStatus @default(PENDING)
+  attempts       Int          @default(0)
+  availableAt    DateTime     @default(now())
+  lastError      String?
+  processedAt    DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([status, availableAt])
+  @@index([tenantId, type])
+}
+
+enum OutboxStatus {
+  PENDING
+  DONE
+  FAILED
+}

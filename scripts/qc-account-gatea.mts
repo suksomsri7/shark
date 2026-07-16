@@ -41,7 +41,7 @@ try {
   // ── ระบบบัญชี A (จด VAT) ──
   const sA = await sys.createSystem(tenantId, "ACCOUNT", "บัญชี QC");
   const ctx = { tenantId, systemId: sA.id };
-  await acc.saveSettings(tenantId, sA.id, { orgName: "ร้าน QC", vatRegistered: true, vatRateBp: 700 });
+  await acc.saveSettings(tenantId, sA.id, { orgName: "ร้าน QC", taxId: "0105561177639", vatRegistered: true, vatRateBp: 700 }); // taxId จำเป็นตั้งแต่ QC7 M2 (ม.86/4 gate)
   await gl.ensureAccounting(ctx);
   const acctCount = await prisma.accountLedger.count({ where: { systemId: sA.id } });
   if (acctCount < 30) throw new Error("seed ผังบัญชีไม่ครบ: " + acctCount);
