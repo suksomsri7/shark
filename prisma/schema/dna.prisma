@@ -1,0 +1,35 @@
+// Business DNA (M3) — ข้อเท็จจริงของธุรกิจ + พิมพ์เขียวที่ compile ได้
+// DnaProfile.facts = DnaFacts (Zod validate ที่ boundary) — 1 active/tenant (MVP)
+// DnaBlueprint.plan = BlueprintPlan (union ปิด) — apply แล้วห้ามแก้ (สร้างใบใหม่แทน)
+
+model DnaProfile {
+  id        String   @id @default(cuid())
+  tenantId  String   @unique // MVP: 1 profile/tenant — หลาย version ค่อยมาพร้อม Company
+  facts     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  blueprints DnaBlueprint[]
+}
+
+enum DnaBlueprintStatus {
+  PROPOSED // compile แล้ว รอเจ้าของกดยืนยัน
+  APPLIED // ประกอบเสร็จ
+  FAILED // step ล้มกลางทาง (หยุด ไม่ rollback — ดู stepResults)
+}
+
+model DnaBlueprint {
+  id          String             @id @default(cuid())
+  tenantId    String
+  profileId   String
+  profile     DnaProfile         @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  plan        Json
+  planHash    String // compile ต้อง pure: facts เดิม → hash เดิม (oracle ตรวจ)
+  status      DnaBlueprintStatus @default(PROPOSED)
+  appliedAt   DateTime?
+  /** ผลราย step: [{ step: 0, ok: true, createdId: "..." }] — idempotency + audit */
+  stepResults Json               @default("[]")
+  createdAt   DateTime           @default(now())
+
+  @@index([tenantId, status])
+}

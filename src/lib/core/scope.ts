@@ -49,6 +49,9 @@ const CORE_SCOPES: Record<string, ScopeDescriptor> = {
 const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // Outbox (kernel — side effects post-commit · WO-0002)
   OutboxEvent: tenant,
+  // Business DNA (M3 — WO-0005)
+  DnaProfile: tenant,
+  DnaBlueprint: tenant,
   // System instances (ทะเบียนระบบ — เป็น tenant-scoped เพราะ list ทั้งร้าน)
   AppSystem: tenant,
   AppSystemUnit: tenant, // ตารางเชื่อม system↔unit — query ด้วย unitId/tenantId ไม่ใช่ scope ใต้ system
