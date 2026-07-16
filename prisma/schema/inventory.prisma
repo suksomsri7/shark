@@ -30,6 +30,34 @@ model InvItem {
   @@index([tenantId])
 }
 
+// Multi-warehouse (WO-0037) — Location ต่อ system · onHand ต่อ location (cache)
+// invariant: sum(InvLocationStock.onHand ของ item) == InvItem.onHand (lazy migration: แถว default ถูก seed จาก onHand เดิมครั้งแรกที่ item ถูกแตะ)
+model InvLocation {
+  id         String    @id @default(cuid())
+  tenantId   String
+  systemId   String
+  name       String
+  isDefault  Boolean   @default(false)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([systemId, name])
+  @@index([tenantId])
+}
+
+model InvLocationStock {
+  id         String @id @default(cuid())
+  tenantId   String
+  systemId   String
+  itemId     String
+  locationId String
+  onHand     Int    @default(0)
+
+  @@unique([itemId, locationId])
+  @@index([tenantId])
+  @@index([systemId, locationId])
+}
+
 model InvMovement {
   id             String          @id @default(cuid())
   tenantId       String
@@ -37,6 +65,7 @@ model InvMovement {
   itemId         String
   item           InvItem         @relation(fields: [itemId], references: [id], onDelete: Cascade)
   type           InvMovementType
+  locationId     String?         // null = แถว legacy ก่อนยุค multi-warehouse (นับเป็นคลัง default)
   qtyDelta       Int             // + รับเข้า / - ตัดออก
   balanceAfter   Int             // onHand หลังรายการนี้ (audit trail)
   costSatang     Int             @default(0)

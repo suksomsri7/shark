@@ -61,6 +61,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // Inventory (ระบบ 18 — WO-0011)
   InvItem: sys(),
   InvMovement: sys(),
+  InvLocation: sys(),
+  InvLocationStock: sys(),
   // HR (ระบบ 17 — WO-0012)
   HrEmployee: sys(),
   HrAttendance: sys(),
