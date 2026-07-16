@@ -2,12 +2,13 @@
 
 > อัปเดต 2026-07-16 โดย Fable 5 · **session ตาย → account ใหม่บน VPS นี้ อ่านไฟล์นี้ + รัน `pnpm resume`**
 
-## กำลังวิ่ง
-- (ว่าง — WO-0009 CRM merged)
-(WO-0009 CRM เสร็จ)
-
-## กู้ Builder ตายกลางคัน
-`git worktree list` → `git -C <wt> log --oneline` + อ่าน `<wt>/ledger/wo/WO-*.json` step → ทำต่อ/merge → `git worktree remove --force` + `pnpm neon:delete wo-X` + `pnpm neon:gc`
+## กำลังวิ่ง — 3 Builder ขนาน (worktree+neon แยก · ไฟล์ disjoint)
+- **WO-0011 Inventory** (agent ae795afd) neon wo-0011 · oracle qc-inventory.mts
+- **WO-0012 HR** (agent ac53316b) neon wo-0012 · oracle qc-hr.mts
+- **WO-0013 Marketing** (agent a76dcc0d) neon wo-0013 · oracle qc-marketing.mts
+ทั้ง 3: Fable วางของกลางบน main แล้ว (schema+enum+scope+systems+rules+oracle+เส้น marketing→member)
+Builder แตะเฉพาะ modules/<mod>/{service,actions,ui} · **Fable wire dispatch page.tsx เอง หลัง merge**
+กู้ถ้าตาย: git worktree list → git -C <wt> log → merge ถ้า oracle เขียว → wire dispatch + neon:delete + neon:gc
 
 ## คำสั่งล่าสุด user (2026-07-16 ค่ำ)
 ✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว** · ต่อไป: Builder ขนาน (Inventory/Procurement/Marketing)
