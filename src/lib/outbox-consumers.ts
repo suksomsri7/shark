@@ -5,6 +5,7 @@
 import { prisma } from "@/lib/core/db";
 import { drainOutbox, type OutboxHandler } from "@/lib/core/outbox";
 import { bridgePosSalePaid, bridgePosSaleVoided } from "@/lib/modules/pos/account-bridge";
+import { runForEvent } from "@/lib/automation/engine";
 
 const saleIdOf = (payload: unknown): string | null => {
   const p = payload as { saleId?: unknown } | null;
@@ -36,9 +37,23 @@ const posSaleVoided: OutboxHandler = async (evt) => {
   await bridgePosSaleVoided(sale);
 };
 
+// ห่อ handler หลักด้วย Automation (WO-0026): หลัง handler หลักสำเร็จ (event กำลังจะ DONE)
+// เรียก engine แบบ best-effort — engine พัง (rule/webhook ล่ม) ห้ามล้ม consumer หลัก
+// (ไม่งั้น event จะถูก retry แล้ว post บัญชีซ้ำ) → ครอบ try/catch เงียบ
+const withAutomation =
+  (handler: OutboxHandler): OutboxHandler =>
+  async (evt) => {
+    await handler(evt); // งานหลักก่อน (พัง = พังตามเดิม → retry/backoff)
+    try {
+      await runForEvent({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload });
+    } catch {
+      // automation ล้มเหลว = เรื่องรอง — event หลัก DONE ตามปกติ
+    }
+  };
+
 export const consumers: Record<string, OutboxHandler> = {
-  "pos.sale.paid": posSalePaid,
-  "pos.sale.voided": posSaleVoided,
+  "pos.sale.paid": withAutomation(posSalePaid),
+  "pos.sale.voided": withAutomation(posSaleVoided),
 };
 
 export async function drainAll() {
