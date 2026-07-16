@@ -1,0 +1,31 @@
+// Form builder v1 (WO-0054) — ฟอร์ม config ได้ + public link + submissions → CRM lead
+model FormDef {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  publicToken String   @unique // ลิงก์สาธารณะ /f/<token>
+  active      Boolean  @default(true)
+  crmEnabled  Boolean  @default(false) // ส่ง submission เข้า CRM (ระบบ CRM ต้องเปิด)
+  fieldsJson  Json     @default("[]") // [{key,label,type:text|phone|email|select|textarea,required,options?[]}]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  submissions FormSubmission[]
+
+  @@index([tenantId, active])
+}
+
+model FormSubmission {
+  id           String   @id @default(cuid())
+  tenantId     String
+  formId       String
+  form         FormDef  @relation(fields: [formId], references: [id], onDelete: Cascade)
+  answersJson  Json     @default("{}") // {key: value}
+  crmContactId String? // CrmContact ที่เกิด (ถ้า crmEnabled)
+  ip           String?
+  createdAt    DateTime @default(now())
+
+  @@index([formId, createdAt])
+  @@index([tenantId])
+}

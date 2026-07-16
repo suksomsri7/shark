@@ -112,6 +112,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   Supplier: sys(),
   PurchaseOrder: sys(),
   PoLine: tenant, // ลูกของ PO — query ผ่าน poId + tenantId
+  // Form builder (WO-0054)
+  FormDef: tenant,
+  FormSubmission: tenant,
   // E-commerce (WO-0053)
   ShopProduct: unit,
   ShopOrder: unit,
