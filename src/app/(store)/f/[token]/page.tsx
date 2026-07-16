@@ -1,4 +1,6 @@
+import type { CSSProperties } from "react";
 import { getPublicForm } from "@/lib/modules/forms/service";
+import { getPublicBranding } from "@/lib/branding/service";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { submitFormAction } from "./actions";
 
@@ -49,10 +51,30 @@ export default async function PublicFormPage({
   }
 
   const { form } = pub;
+  const branding = await getPublicBranding(pub.tenantId);
+  const accentStyle = branding.brandColor
+    ? ({ ["--color-accent"]: branding.brandColor } as CSSProperties)
+    : undefined;
   return shell(
     <>
-      <header className="text-center">
-        <h1 className="text-xl font-bold">{form.name}</h1>
+      <header className="flex flex-col items-center text-center" style={accentStyle}>
+        {branding.logoUrl && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={branding.logoUrl}
+            alt={branding.displayName}
+            className="mb-2 h-12 w-12 rounded object-contain"
+          />
+        )}
+        <div className="text-xs font-semibold tracking-widest text-[color:var(--color-muted)]">
+          {branding.displayName}
+        </div>
+        <h1
+          className="mt-1 text-xl font-bold"
+          style={branding.brandColor ? { color: branding.brandColor } : undefined}
+        >
+          {form.name}
+        </h1>
         {form.description && (
           <p className="mt-1 text-sm text-[color:var(--color-muted)]">{form.description}</p>
         )}

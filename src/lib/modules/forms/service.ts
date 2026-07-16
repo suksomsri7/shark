@@ -158,6 +158,7 @@ export async function getPublicForm(token: string) {
   const f = await prisma.formDef.findUnique({ where: { publicToken: token } });
   if (!f || !f.active) return null;
   return {
+    tenantId: f.tenantId, // white-label (WO-0064): หน้า /f/[token] ใช้ดึงแบรนด์ร้าน
     form: {
       id: f.id,
       name: f.name,
