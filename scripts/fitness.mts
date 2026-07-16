@@ -242,6 +242,9 @@ const ALLOWED_EDGES = new Set([
   // chokepoint ที่อนุมัติ (BLUEPRINT_CONNECTIONS §3.2): เงินทุกบาทผ่าน POS → Account
   // — อนุมัติโดย Fable 2026-07-16 สำหรับ WO-0002 (contract 2.4) · import ได้เฉพาะ account/index
   "pos→account",
+  // chokepoint ที่อนุมัติ (contract 2.3): POS ใช้คูปองตอนขายจริง (validate/redeem/release)
+  // — WO-0003 · POS เป็นจุดตัดเงินเดียวที่เรียก coupon.redeem ใน tx ของบิล
+  "pos→coupon",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

@@ -31,6 +31,23 @@ export type ValidateResult = ValidateOk | ValidateFail;
 
 const upper = (s: string) => s.trim().toUpperCase();
 
+// ข้อความไทยของเหตุผลที่คูปองใช้ไม่ได้ — ให้ผู้เรียก (POS) โยน Error ที่คนอ่านออก
+const REASON_TH: Record<ValidateReason | "RACE_LOST", string> = {
+  NOT_FOUND: "ไม่พบคูปองนี้",
+  INACTIVE: "คูปองถูกปิดใช้งาน",
+  NOT_STARTED: "คูปองยังไม่ถึงวันเริ่มใช้",
+  EXPIRED: "คูปองหมดอายุแล้ว",
+  WRONG_UNIT: "คูปองนี้ใช้กับสาขานี้ไม่ได้",
+  MIN_SPEND: "ยอดซื้อไม่ถึงขั้นต่ำของคูปอง",
+  LIMIT_REACHED: "คูปองถูกใช้ครบสิทธิ์แล้ว",
+  MEMBER_REQUIRED: "คูปองนี้ต้องเป็นสมาชิกจึงใช้ได้",
+  PER_MEMBER_LIMIT: "คุณใช้คูปองนี้ครบสิทธิ์ต่อคนแล้ว",
+  RACE_LOST: "คูปองถูกใช้ครบสิทธิ์แล้ว",
+};
+export function couponReasonText(reason: ValidateReason | "RACE_LOST"): string {
+  return REASON_TH[reason] ?? "คูปองใช้ไม่ได้";
+}
+
 // คำนวณส่วนลดจากคูปอง + ยอดเงิน (satang) — คืน Int เสมอ ปัดลง ไม่เกินยอดบิล
 export function computeDiscount(coupon: Coupon, amountSatang: number): number {
   if (amountSatang <= 0) return 0;
