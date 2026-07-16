@@ -14,7 +14,7 @@
 | ขอ OTP login ร้าน (ต่ออีเมล) | นับ `AuthToken` purpose OTP ใน 10 นาที (นับก่อนสร้าง) | 5 ครั้ง/10 นาที → throw ไทย | `src/lib/core/auth.ts` |
 | ขอ OTP login ร้าน (ต่อ IP) | นับ `AuthToken` OTP ต่อ ip ใน 10 นาที | 20 ครั้ง/10 นาที → throw ไทย | `src/lib/core/auth.ts` |
 | ขอ OTP backoffice (ต่ออีเมล) | นับ `PlatformAuthToken` ใน 10 นาที (หลัง user-check เพื่อคง anti-enumeration) | 5 ครั้ง/10 นาที → throw ไทย | `src/lib/platform/auth.ts` |
-| Webchat inbound (public) | `checkRateLimit` in-memory sliding window ต่อ session-cookie + fallback IP | 20 ข้อความ/นาที (session), 100/นาที (ip) → 429 | `src/app/api/chat/webchat/route.ts`, `src/lib/core/rate-limit.ts` |
+| Webchat inbound (public) | limiter ของโมดูล chat (M9) ต่อ IP+connection | 20 ข้อความ/นาที → 429 | `src/app/api/chat/webchat/[connectionId]/route.ts`, `src/lib/modules/chat/rate-limit.ts` |
 | Webchat inbound (path param, เดิม) | `rateLimit` chat module ต่อ ip+connection + cap contact ใหม่/ชม. ระดับ DB | 20/นาที → 429 | `src/app/api/chat/webchat/[connectionId]/route.ts`, `src/lib/modules/chat/rate-limit.ts` |
 
 หมายเหตุ:
