@@ -62,6 +62,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): SubNavGroup[]
       title: "เอกสาร",
       items: [
         { href: `${base}/reports`, label: "งบการเงิน" },
+        { href: `${base}/aging`, label: "ลูกหนี้-เจ้าหนี้ค้างชำระ (Aging)" },
         { href: `${base}/documents`, label: "คลังเอกสาร" },
       ],
     },

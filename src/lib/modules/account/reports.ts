@@ -652,3 +652,112 @@ export async function pp30Csv(
   lines.push([r.netPayable >= 0 ? "ภาษีต้องชำระ" : "เครดิตยกไป", "", "", "", "", "", "", "", pp30Cell(Math.abs(r.netPayable))].map((v) => pp30Cell(v as string)).join(","));
   return "﻿" + lines.join("\n");
 }
+
+// ─────────────────────────────────────────────────────────────
+// รายงานอายุหนี้ (Aging) — ลูกหนี้ (OUT/AR) / เจ้าหนี้ (IN/AP) · WO-0039
+// นับ AccountDocument ที่ยังค้างชำระ (AWAITING_PAYMENT|PARTIAL) voidedAt null
+// outstanding = grandTotal − paidTotal (>0 เท่านั้น) · จัดกลุ่มต่อคู่ค้า
+// bucket จากวันครบกำหนด (dueDate ?? issueDate) เทียบ asOf (default = ตอนนี้)
+// สตางค์ล้วน — แปลงบาทตอนแสดง
+// ─────────────────────────────────────────────────────────────
+
+export type AgingRow = {
+  contactId: string | null;
+  contactName: string;
+  notDueSatang: number;
+  d1_30Satang: number;
+  d31_60Satang: number;
+  d61_90Satang: number;
+  d90plusSatang: number;
+  totalSatang: number;
+};
+
+export type AgingGrand = Omit<AgingRow, "contactId" | "contactName">;
+
+export type AgingReport = { rows: AgingRow[]; grand: AgingGrand };
+
+const AGING_NO_CONTACT = "ไม่ระบุคู่ค้า";
+
+/** สร้างแถวอายุหนี้เปล่า (ทุก bucket = 0) */
+function emptyAging(): AgingGrand {
+  return {
+    notDueSatang: 0,
+    d1_30Satang: 0,
+    d31_60Satang: 0,
+    d61_90Satang: 0,
+    d90plusSatang: 0,
+    totalSatang: 0,
+  };
+}
+
+/** เลือก bucket key จากจำนวนวันเกินกำหนด (≤0 = ยังไม่ครบกำหนด) */
+function agingBucket(daysOverdue: number): keyof AgingGrand {
+  if (daysOverdue <= 0) return "notDueSatang";
+  if (daysOverdue <= 30) return "d1_30Satang";
+  if (daysOverdue <= 60) return "d31_60Satang";
+  if (daysOverdue <= 90) return "d61_90Satang";
+  return "d90plusSatang";
+}
+
+export async function agingReport(
+  ctx: GlCtx,
+  opts: { direction: "OUT" | "IN"; asOf?: Date },
+): Promise<AgingReport> {
+  const asOf = opts.asOf ?? new Date();
+  const DAY = 86400000;
+
+  const docs = await prisma.accountDocument.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      direction: opts.direction,
+      status: { in: ["AWAITING_PAYMENT", "PARTIAL"] },
+      voidedAt: null,
+    },
+    select: {
+      contactId: true,
+      grandTotal: true,
+      paidTotal: true,
+      dueDate: true,
+      issueDate: true,
+      contact: { select: { name: true } },
+    },
+  });
+
+  // key ต่อคู่ค้า — null → แถวรวม "ไม่ระบุคู่ค้า"
+  const byContact = new Map<
+    string,
+    { contactId: string | null; contactName: string; buckets: AgingGrand }
+  >();
+  const grand = emptyAging();
+
+  for (const d of docs) {
+    const outstanding = d.grandTotal - d.paidTotal;
+    if (outstanding <= 0) continue; // จ่ายครบ/เกิน — ไม่นับ
+
+    const due = d.dueDate ?? d.issueDate;
+    const daysOverdue = Math.floor((asOf.getTime() - due.getTime()) / DAY);
+    const bucket = agingBucket(daysOverdue);
+
+    const key = d.contactId ?? "__none__";
+    let entry = byContact.get(key);
+    if (!entry) {
+      entry = {
+        contactId: d.contactId ?? null,
+        contactName: d.contactId ? d.contact?.name ?? AGING_NO_CONTACT : AGING_NO_CONTACT,
+        buckets: emptyAging(),
+      };
+      byContact.set(key, entry);
+    }
+    entry.buckets[bucket] += outstanding;
+    entry.buckets.totalSatang += outstanding;
+    grand[bucket] += outstanding;
+    grand.totalSatang += outstanding;
+  }
+
+  const rows: AgingRow[] = [...byContact.values()]
+    .map((e) => ({ contactId: e.contactId, contactName: e.contactName, ...e.buckets }))
+    .sort((a, b) => b.totalSatang - a.totalSatang);
+
+  return { rows, grand };
+}
