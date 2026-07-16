@@ -93,6 +93,7 @@ export function NavDrawer({
             { href: "/app/settings/payment", icon: "💳", label: "ช่องรับเงิน" },
             { href: "/app/settings/domain", icon: "🌐", label: "โดเมนของร้าน" },
             { href: "/app/settings/billing", icon: "🧾", label: "บิลจากแพลตฟอร์ม" },
+            { href: "/app/settings/privacy", icon: "🔒", label: "ความเป็นส่วนตัว (PDPA)" },
           ].map((s) => (
             <Link
               key={s.href}

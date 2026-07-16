@@ -5,6 +5,7 @@
 
 import { prisma } from "@/lib/core/db";
 import { drainAll } from "@/lib/outbox-consumers";
+import { sweepPendingDeletes } from "@/lib/platform/pdpa";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -31,10 +32,11 @@ export async function sweepExpiredProposals(now: Date = new Date()): Promise<num
 // (cron ต้องไม่ล้มทั้งรอบเพราะงานย่อยอันเดียวพัง)
 export async function runDailyCron(
   now: Date = new Date(),
-): Promise<{ subsExpired: number; proposalsExpired: number; outboxDrained: number }> {
+): Promise<{ subsExpired: number; proposalsExpired: number; outboxDrained: number; tenantsPurged: number }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
   let outboxDrained = -1;
+  let tenantsPurged = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -52,6 +54,12 @@ export async function runDailyCron(
   } catch {
     // drain outbox พัง → -1 ไปต่อ
   }
+  try {
+    // PDPA (WO-0042): ลบร้านที่ขอลบครบ 30 วันแล้ว
+    tenantsPurged = await sweepPendingDeletes(now);
+  } catch {
+    // purge พัง → -1 ไปต่อ
+  }
 
-  return { subsExpired, proposalsExpired, outboxDrained };
+  return { subsExpired, proposalsExpired, outboxDrained, tenantsPurged };
 }
