@@ -68,6 +68,17 @@ export function NavDrawer({
             <span className="truncate">หน้าหลัก</span>
           </Link>
 
+          <Link
+            href="/app/calendar"
+            onClick={onClose}
+            className={`flex items-center gap-2 rounded-lg px-2 py-2.5 hover:bg-[color:var(--color-surface-2)] ${
+              isActive("/app/calendar") ? "font-medium text-[color:var(--color-accent)]" : ""
+            }`}
+          >
+            <span aria-hidden>📅</span>
+            <span className="truncate">ปฏิทิน</span>
+          </Link>
+
           {items.length > 0 && (
             <div className="px-2 pb-1 pt-3 text-xs text-[color:var(--color-muted)]">ระบบทั้งหมด</div>
           )}
