@@ -44,8 +44,9 @@ try {
   if (!tools) { chk("TU-0", "มี src/lib/ai/tools.ts", false, "มี", "ยังไม่สร้าง"); }
   else {
     const reg = tools.toolRegistry() as { def: AiToolDef }[];
-    const names = reg.map((t) => t.def.name).sort().join(",");
-    chk("TU-0.1", "registry 5 ตัวครบชื่อ", names === "list_systems,low_stock,member_count,pending_leaves,sales_summary", "5 ชื่อ", names);
+    const names = reg.map((t) => t.def.name);
+    const readFive = ["list_systems", "low_stock", "member_count", "pending_leaves", "sales_summary"];
+    chk("TU-0.1", "registry 8 ตัว (5 อ่าน + 3 ทำแทน) ครบชื่ออ่าน", reg.length === 8 && readFive.every((n) => names.includes(n)), "8+ครบ 5 อ่าน", `${reg.length}:${names.sort().join(",")}`);
     chk("TU-0.2", "ทุก tool มี description + parameters", reg.every((t) => t.def.description.length > 0 && typeof t.def.parameters === "object"), "ครบ", "?");
 
     // ── seed ──
@@ -94,7 +95,7 @@ try {
     ]);
     const r = await svc.sendMessage(ctx, { text: "มีสมาชิกกี่คน" }, { provider: sp });
     chk("TU-3.1", "loop: tool call → คำตอบจบ", r.ok === true && (r as { reply: string }).reply.includes("2 คน"), "คำตอบจบ", JSON.stringify(r).slice(0, 80));
-    chk("TU-3.2", "รอบแรกส่ง tools ให้ LLM", (sp.captured[0]?.tools?.length ?? 0) === 5, "5", String(sp.captured[0]?.tools?.length));
+    chk("TU-3.2", "รอบแรกส่ง tools ครบ 8 ให้ LLM (test=prod)", (sp.captured[0]?.tools?.length ?? 0) === 8, "8", String(sp.captured[0]?.tools?.length));
     const toolMsg = sp.captured[1]?.messages.find((m) => m.role === "tool");
     chk("TU-3.3", "รอบสองมี tool result (เลข 2 + toolCallId)", !!toolMsg && toolMsg.content.includes("2") && toolMsg.toolCallId === "1", "มี", JSON.stringify(toolMsg).slice(0, 80));
     if (r.ok) {

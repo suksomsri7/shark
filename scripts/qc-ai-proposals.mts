@@ -91,7 +91,9 @@ try {
 
     // 8) action-tool ผ่าน runTool สร้าง proposal (ไม่ execute)
     const before = await prisma.invItem.findUnique({ where: { id: item.id } });
-    const toolOut = await tools.runTool({ tenantId: tid, conversationId: conv.id }, "inventory_receive", { sku: "PP-1", qty: 99 });
+    // ctx ขยาย (conversationId) เป็นสัญญาของ WO-0020 — cast กัน typecheck แดงบน main ก่อน Builder merge
+    const runToolWide = tools.runTool as unknown as (c: unknown, n: string, a: unknown) => Promise<string>;
+    const toolOut = await runToolWide({ tenantId: tid, conversationId: conv.id }, "inventory_receive", { sku: "PP-1", qty: 99 });
     const madeProposal = await prisma.aiProposal.findFirst({ where: { tenantId: tid, status: "PENDING", kind: "inventory_receive" }, orderBy: { createdAt: "desc" } });
     chk("PZ-8.1", "action-tool สร้าง proposal + ไม่แตะสต็อก", !!madeProposal && toolOut.includes(madeProposal.id) && (await prisma.invItem.findUnique({ where: { id: item.id } }))?.onHand === before?.onHand, "proposal+สต็อกนิ่ง", toolOut.slice(0, 60));
     chk("PZ-8.2", "registry มี 8 tools (5 อ่าน + 3 ทำแทน)", tools.toolRegistry().length === 8, "8", String(tools.toolRegistry().length));
