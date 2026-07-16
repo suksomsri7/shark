@@ -1,7 +1,7 @@
 {
   "id": "WO-0046",
   "title": "AI นักวิเคราะห์ — snapshot ธุรกิจ + รายงานสัปดาห์อัตโนมัติ (จันทร์ 03:00)",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder",
   "worktree": ".claude/worktrees/",
   "neonBranch": "wo-0046",
@@ -27,7 +27,7 @@
       "text": "Fable: oracle 9 ข้อ"
     },
     {
-      "done": false,
+      "done": true,
       "text": "Builder ตามสัญญา"
     }
   ],
@@ -35,6 +35,10 @@
     {
       "at": "2026-07-16T18:55:00Z",
       "note": "NIGHT RUN #6 (ตัวสุดท้ายของคืนตามเวลา)"
+    },
+    {
+      "at": "2026-07-16T18:55:00Z",
+      "note": "Builder 8/8 + regression เขียว · Intl weekday BKK = วิธีถูก · Fable รันซ้ำ · หมายเหตุ: weekly sweep บน prod จะยิง LLM ต่อ tenant ACTIVE ทุกจันทร์ (ตอนนี้มี tenant น้อย — คุม cost ด้วย cap 50 + quota เดิม)"
     }
   ]
 }
