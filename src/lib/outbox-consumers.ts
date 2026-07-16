@@ -103,6 +103,9 @@ export const consumers: Record<string, OutboxHandler> = {
   "approval.request.submitted": withAutomation(approvalSubmitted),
   "approval.request.approved": withAutomation(approvalApproved),
   "approval.request.rejected": withAutomation(approvalRejected),
+  // WO-0038: AppNotification ถูกสร้างแล้วใน sweepExpiringLots — consumer นี้มีไว้ปิด event เป็น DONE
+  // (ไม่งั้นค้าง PENDING โดน drain วนตลอด) + เป็นจุดให้ Automation rules ยิงตามกติกาที่ร้านตั้ง
+  "inventory.lot.expiring": withAutomation(async () => {}),
 };
 
 export async function drainAll() {
