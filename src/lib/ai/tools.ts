@@ -472,6 +472,195 @@ const openSystem: AiTool = {
   },
 };
 
+// ── 11) inventory_create_item — เสนอเพิ่มสินค้าใหม่เข้าคลัง (WO-0045) ──
+const inventoryCreateItem: AiTool = {
+  action: true,
+  def: {
+    name: "inventory_create_item",
+    description:
+      "เสนอการเพิ่มสินค้าใหม่เข้าคลัง (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) ระบุ sku, ชื่อสินค้า และจุดสั่งซื้อ/ต้นทุนต่อหน่วยเป็นบาทถ้ามี — ยอดคงเหลือเริ่มต้นเป็น 0 (รับของเข้าจริงผ่านการรับสินค้า)",
+    parameters: {
+      type: "object",
+      properties: {
+        sku: { type: "string", description: "รหัสสินค้า (SKU)" },
+        name: { type: "string", description: "ชื่อสินค้า" },
+        reorderPoint: { type: "integer", minimum: 0, description: "จุดสั่งซื้อ (แจ้งเตือนเมื่อต่ำกว่านี้) ถ้ามี" },
+        costBaht: { type: "number", minimum: 0, description: "ต้นทุนต่อหน่วยเป็นบาท (ถ้ามี)" },
+      },
+      required: ["sku", "name"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const sku = String(a.sku ?? "").trim();
+    const name = String(a.name ?? "").trim();
+    if (!sku || !name) return JSON.stringify({ error: "ต้องระบุรหัสสินค้าและชื่อสินค้า" });
+    const payload: Record<string, unknown> = { sku, name };
+    const reorderPoint = Number(a.reorderPoint);
+    if (Number.isFinite(reorderPoint) && reorderPoint >= 0) payload.reorderPoint = Math.floor(reorderPoint);
+    const costBaht = Number(a.costBaht);
+    if (Number.isFinite(costBaht) && costBaht >= 0) payload.costSatang = Math.round(costBaht * 100);
+    const summary = `เพิ่มสินค้าใหม่ "${name}" (รหัส ${sku}) เข้าคลัง`;
+    return propose(ctx, "inventory_create_item", summary, payload);
+  },
+};
+
+// ── 12) inventory_adjust — เสนอปรับยอดสต็อกเป็นค่านับจริง (WO-0045) ──
+const inventoryAdjust: AiTool = {
+  action: true,
+  def: {
+    name: "inventory_adjust",
+    description:
+      "เสนอการปรับยอดคงเหลือของสินค้าในคลังให้ตรงกับที่นับจริง (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) ระบุ sku และ newQty (ยอดที่นับได้จริง)",
+    parameters: {
+      type: "object",
+      properties: {
+        sku: { type: "string", description: "รหัสสินค้า (SKU)" },
+        newQty: { type: "integer", description: "ยอดคงเหลือใหม่ที่นับได้จริง" },
+        note: { type: "string", description: "หมายเหตุ เช่น สาเหตุการปรับ (ถ้ามี)" },
+      },
+      required: ["sku", "newQty"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const sku = String(a.sku ?? "").trim();
+    const newQty = Math.round(Number(a.newQty));
+    if (!sku || !Number.isFinite(newQty)) {
+      return JSON.stringify({ error: "ต้องระบุรหัสสินค้าและยอดคงเหลือใหม่ที่ถูกต้อง" });
+    }
+    const note = String(a.note ?? "").trim();
+    const payload: Record<string, unknown> = { sku, newQty };
+    if (note) payload.note = note;
+    // ดึงยอดคงเหลือปัจจุบัน + ชื่อสินค้า เพื่อทำสรุปที่อ่านเข้าใจง่าย (best-effort — ไม่เจอก็ใช้ sku)
+    let label = sku;
+    let fromText = "";
+    const inv = await findSystem(ctx.tenantId, "INVENTORY");
+    if (inv) {
+      const item = await tenantDb({ tenantId: ctx.tenantId, systemId: inv.id }).invItem.findFirst({
+        where: { sku },
+        select: { name: true, onHand: true },
+      });
+      if (item) {
+        label = item.name;
+        fromText = `จาก ${item.onHand} `;
+      }
+    }
+    const summary = `ปรับสต็อก "${label}" ${fromText}→ ${newQty}${note ? ` (${note})` : ""}`;
+    return propose(ctx, "inventory_adjust", summary, payload);
+  },
+};
+
+// ── 13) hr_create_employee — เสนอเพิ่มพนักงานใหม่ (WO-0045) ──
+const hrCreateEmployee: AiTool = {
+  action: true,
+  def: {
+    name: "hr_create_employee",
+    description:
+      "เสนอการเพิ่มพนักงานใหม่เข้าระบบพนักงาน (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) ระบุชื่อ และตำแหน่ง/เบอร์โทรถ้ามี",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "ชื่อพนักงาน" },
+        position: { type: "string", description: "ตำแหน่งงาน (ถ้ามี)" },
+        phone: { type: "string", description: "เบอร์โทร (ถ้ามี)" },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const name = String(a.name ?? "").trim();
+    if (!name) return JSON.stringify({ error: "ต้องระบุชื่อพนักงาน" });
+    const position = String(a.position ?? "").trim();
+    const phone = String(a.phone ?? "").trim();
+    const payload: Record<string, unknown> = { name };
+    if (position) payload.position = position;
+    if (phone) payload.phone = phone;
+    const summary = `เพิ่มพนักงานใหม่ "${name}"${position ? ` (${position})` : ""}`;
+    return propose(ctx, "hr_create_employee", summary, payload);
+  },
+};
+
+// ── 14) coupon_create — เสนอสร้างคูปองส่วนลด (WO-0045) ──
+const couponCreate: AiTool = {
+  action: true,
+  def: {
+    name: "coupon_create",
+    description:
+      "เสนอการสร้างคูปองส่วนลด (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) ระบุ code, type (PERCENT=ลดเป็นเปอร์เซ็นต์ หรือ FIXED=ลดเป็นบาท), percent (ถ้า PERCENT), valueBaht (ถ้า FIXED) และ maxUses (จำกัดจำนวนครั้งใช้) ถ้ามี",
+    parameters: {
+      type: "object",
+      properties: {
+        code: { type: "string", description: "โค้ดคูปอง (A-Z 0-9 - _ อย่างน้อย 3 ตัว)" },
+        type: { type: "string", enum: ["PERCENT", "FIXED"], description: "ชนิดส่วนลด" },
+        percent: { type: "integer", minimum: 1, maximum: 100, description: "เปอร์เซ็นต์ที่ลด (ถ้า type=PERCENT)" },
+        valueBaht: { type: "number", minimum: 0, description: "มูลค่าที่ลดเป็นบาท (ถ้า type=FIXED)" },
+        maxUses: { type: "integer", minimum: 1, description: "จำกัดจำนวนครั้งที่ใช้ได้ทั้งหมด (ถ้ามี)" },
+      },
+      required: ["code", "type"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const code = String(a.code ?? "").trim();
+    const type = a.type === "FIXED" ? "FIXED" : "PERCENT";
+    if (!code) return JSON.stringify({ error: "ต้องระบุโค้ดคูปอง" });
+    const payload: Record<string, unknown> = { code, type };
+    const percent = Math.round(Number(a.percent));
+    const valueBaht = Number(a.valueBaht);
+    if (type === "PERCENT") {
+      if (Number.isFinite(percent)) payload.percent = percent;
+    } else if (Number.isFinite(valueBaht) && valueBaht >= 0) {
+      payload.valueSatang = Math.round(valueBaht * 100);
+    }
+    const maxUses = Math.round(Number(a.maxUses));
+    if (Number.isFinite(maxUses) && maxUses > 0) payload.usageLimit = maxUses;
+    const discountText =
+      type === "PERCENT"
+        ? `ลด ${Number.isFinite(percent) ? percent : "?"}%`
+        : `ลด ${Number.isFinite(valueBaht) ? valueBaht : "?"} บาท`;
+    const summary = `สร้างคูปอง "${code}" (${discountText})`;
+    return propose(ctx, "coupon_create", summary, payload);
+  },
+};
+
+// ── 15) kanban_create_card — เสนอเพิ่มการ์ดงานลงบอร์ด (WO-0045) ──
+const kanbanCreateCard: AiTool = {
+  action: true,
+  def: {
+    name: "kanban_create_card",
+    description:
+      "เสนอการเพิ่มการ์ดงานลงบอร์ดงาน (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) ระบุ title, รายละเอียด (detail) ถ้ามี และ boardName ถ้าต้องการเจาะจงบอร์ด (ไม่ระบุ = บอร์ดแรก) — การ์ดจะถูกวางในคอลัมน์แรกของบอร์ด",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "หัวข้อการ์ด/งาน" },
+        detail: { type: "string", description: "รายละเอียดงาน (ถ้ามี)" },
+        boardName: { type: "string", description: "ชื่อบอร์ดที่ต้องการ (ถ้าไม่ระบุจะใช้บอร์ดแรก)" },
+      },
+      required: ["title"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const title = String(a.title ?? "").trim();
+    if (!title) return JSON.stringify({ error: "ต้องระบุหัวข้อการ์ด" });
+    const detail = String(a.detail ?? "").trim();
+    const boardName = String(a.boardName ?? "").trim();
+    const payload: Record<string, unknown> = { title };
+    if (detail) payload.detail = detail;
+    if (boardName) payload.boardName = boardName;
+    const summary = `เพิ่มการ์ด "${title}" ลงบอร์ด${boardName ? ` "${boardName}"` : "แรก"}`;
+    return propose(ctx, "kanban_create_card", summary, payload);
+  },
+};
+
 // หาชื่อพนักงานของใบลา (best-effort สำหรับ summary) — พังก็คืน null ไม่โยน
 async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<string | null> {
   try {
@@ -498,12 +687,17 @@ export function toolRegistry(): AiTool[] {
     customerSearch,
     salesByDay,
     growthRecommendations,
-    // action / ทำแทน (5)
+    // action / ทำแทน (10)
     inventoryReceive,
     hrDecideLeave,
     marketingCreateCampaign,
     memberCreate,
     openSystem,
+    inventoryCreateItem,
+    inventoryAdjust,
+    hrCreateEmployee,
+    couponCreate,
+    kanbanCreateCard,
   ];
 }
 

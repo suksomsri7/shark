@@ -15,6 +15,8 @@ import * as invSvc from "@/lib/modules/inventory/service";
 import * as hrSvc from "@/lib/modules/hr/service";
 import * as mktSvc from "@/lib/modules/marketing/service";
 import * as memberSvc from "@/lib/modules/member/service";
+import * as couponSvc from "@/lib/modules/coupon/service";
+import * as kanbanSvc from "@/lib/modules/kanban/service";
 import { createSystem } from "@/lib/modules/system/service";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 
@@ -23,7 +25,12 @@ export type ProposalKind =
   | "hr_decide_leave"
   | "marketing_create_campaign"
   | "member_create"
-  | "open_system";
+  | "open_system"
+  | "inventory_create_item"
+  | "inventory_adjust"
+  | "hr_create_employee"
+  | "coupon_create"
+  | "kanban_create_card";
 
 type Ctx = { tenantId: string };
 
@@ -36,6 +43,11 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   marketing_create_campaign: { module: "marketing", action: "marketing.campaign.create" },
   member_create: { module: "member", action: "member.customer.create" },
   open_system: { module: "system", action: "system.system.create" },
+  inventory_create_item: { module: "inventory", action: "inventory.item.create" },
+  inventory_adjust: { module: "inventory", action: "inventory.movement.adjust" },
+  hr_create_employee: { module: "hr", action: "hr.employee.create" },
+  coupon_create: { module: "coupon", action: "coupon.coupon.create" },
+  kanban_create_card: { module: "kanban", action: "kanban.card.create" },
 };
 
 // ── payload ต่อ kind (server-side เท่านั้น) ──
@@ -44,6 +56,17 @@ type DecideLeavePayload = { leaveId: string; decision: "APPROVED" | "REJECTED" }
 type CreateCampaignPayload = { name: string; channel: string; segment?: Record<string, unknown> };
 type MemberCreatePayload = { name: string; phone?: string; email?: string };
 type OpenSystemPayload = { type: string; name?: string };
+type CreateItemPayload = { sku: string; name: string; reorderPoint?: number; costSatang?: number };
+type AdjustPayload = { sku: string; newQty: number; note?: string };
+type CreateEmployeePayload = { name: string; position?: string; phone?: string };
+type CouponCreatePayload = {
+  code: string;
+  type: "PERCENT" | "FIXED";
+  percent?: number;
+  valueSatang?: number;
+  usageLimit?: number;
+};
+type KanbanCreateCardPayload = { title: string; detail?: string; boardName?: string };
 
 // ── สร้างข้อเสนอ (PENDING + TTL 24 ชม.) ──
 export async function createProposal(
@@ -230,6 +253,113 @@ async function dispatch(
     const name = String(p.name ?? "").trim() || def.label;
     await createSystem(tenantId, type as SystemType, name);
     return `เปิดระบบ${def.label}ให้ร้านเรียบร้อยแล้ว`;
+  }
+
+  if (kind === "inventory_create_item") {
+    const p = payload as CreateItemPayload;
+    const system = await resolveSystem(tenantId, "INVENTORY");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบคลังสินค้า");
+    const sku = String(p.sku ?? "").trim();
+    const name = String(p.name ?? "").trim();
+    if (!sku || !name) throw new Error("ต้องระบุรหัสสินค้าและชื่อสินค้า");
+    // กัน sku ซ้ำ (อ่านในขอบเขตระบบเดิม) — ซ้ำ = FAILED ไทย
+    const dup = await tenantDb({ tenantId, systemId: system.id }).invItem.findFirst({ where: { sku } });
+    if (dup) throw new Error(`มีสินค้ารหัส ${sku} อยู่แล้วในคลัง`);
+    await invSvc.createItem(
+      { tenantId, systemId: system.id },
+      {
+        sku,
+        name,
+        reorderPoint: Number.isFinite(Number(p.reorderPoint)) ? Number(p.reorderPoint) : null,
+        costSatang: Number.isFinite(Number(p.costSatang)) ? Number(p.costSatang) : null,
+      },
+    );
+    return `เพิ่มสินค้า "${name}" (รหัส ${sku}) เข้าคลังเรียบร้อยแล้ว`;
+  }
+
+  if (kind === "inventory_adjust") {
+    const p = payload as AdjustPayload;
+    const system = await resolveSystem(tenantId, "INVENTORY");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบคลังสินค้า");
+    const sku = String(p.sku ?? "").trim();
+    const item = await tenantDb({ tenantId, systemId: system.id }).invItem.findFirst({ where: { sku } });
+    if (!item) throw new Error(`ไม่พบสินค้ารหัส ${sku} ในคลัง`);
+    const newQty = Math.round(Number(p.newQty));
+    if (!Number.isFinite(newQty)) throw new Error("ยอดคงเหลือใหม่ไม่ถูกต้อง");
+    await invSvc.adjust(
+      { tenantId, systemId: system.id },
+      {
+        itemId: item.id,
+        newQty,
+        idempotencyKey: `ai-${proposalId}`, // execute ซ้ำ = กันโดยธรรมชาติ
+        note: p.note ? String(p.note).trim() : "ปรับสต็อกโดยผู้ช่วย AI",
+      },
+    );
+    return `ปรับสต็อก "${item.name}" เป็น ${newQty} ${item.unitLabel} เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "hr_create_employee") {
+    const p = payload as CreateEmployeePayload;
+    const system = await resolveSystem(tenantId, "HR");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบพนักงาน");
+    const name = String(p.name ?? "").trim();
+    if (!name) throw new Error("ต้องระบุชื่อพนักงาน");
+    await hrSvc.createEmployee(
+      { tenantId, systemId: system.id },
+      {
+        name,
+        position: p.position ? String(p.position).trim() : null,
+        phone: p.phone ? String(p.phone).trim() : null,
+      },
+    );
+    return `เพิ่มพนักงาน "${name}" เข้าระบบเรียบร้อยแล้ว`;
+  }
+
+  if (kind === "coupon_create") {
+    const p = payload as CouponCreatePayload;
+    const system = await resolveSystem(tenantId, "COUPON");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบคูปอง");
+    const code = String(p.code ?? "").trim();
+    const type = p.type === "FIXED" ? "FIXED" : "PERCENT";
+    // service คืน { ok:false, reason } เมื่อโค้ดซ้ำ/ค่าผิด → โยน Error(reason) ให้กลไก FAILED เดิมจัดการ
+    const res = await couponSvc.createCoupon({
+      tenantId,
+      systemId: system.id,
+      code,
+      name: code, // ผู้ช่วยไม่ถามชื่อคูปอง — ใช้โค้ดเป็นชื่อ
+      type,
+      percent: type === "PERCENT" && Number.isFinite(Number(p.percent)) ? Number(p.percent) : null,
+      valueSatang: type === "FIXED" && Number.isFinite(Number(p.valueSatang)) ? Number(p.valueSatang) : null,
+      usageLimit: Number.isFinite(Number(p.usageLimit)) ? Number(p.usageLimit) : null,
+    });
+    if (!res.ok) throw new Error(res.reason);
+    return `สร้างคูปอง "${code}" เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "kanban_create_card") {
+    const p = payload as KanbanCreateCardPayload;
+    const system = await resolveSystem(tenantId, "KANBAN");
+    if (!system) throw new Error("ยังไม่มีบอร์ด");
+    const title = String(p.title ?? "").trim();
+    if (!title) throw new Error("ต้องระบุหัวข้อการ์ด");
+    // หาบอร์ด: ชื่อตรง (boardName) หรือบอร์ดแรกถ้าไม่ระบุ
+    const boards = await kanbanSvc.listBoards(tenantId, system.id);
+    const wanted = String(p.boardName ?? "").trim();
+    const board = wanted ? boards.find((b) => b.name.trim() === wanted) : boards[0];
+    if (!board) throw new Error(wanted ? `ไม่พบบอร์ดชื่อ "${wanted}"` : "ยังไม่มีบอร์ด");
+    // คอลัมน์แรกของบอร์ด (โหลดเต็มเพื่อได้คอลัมน์ active เรียงซ้าย→ขวา)
+    const full = await kanbanSvc.getBoard(tenantId, system.id, board.id);
+    const column = full?.columns[0];
+    if (!column) throw new Error(`บอร์ด "${board.name}" ยังไม่มีคอลัมน์`);
+    const card = await kanbanSvc.createCard({
+      tenantId,
+      systemId: system.id,
+      columnId: column.id,
+      title,
+      description: p.detail ? String(p.detail).trim() : null,
+    });
+    if (!card) throw new Error("สร้างการ์ดไม่สำเร็จ");
+    return `เพิ่มการ์ด "${title}" ลงบอร์ด "${board.name}" เรียบร้อยแล้ว`;
   }
 
   throw new Error("ไม่รู้จักประเภทข้อเสนอนี้");
