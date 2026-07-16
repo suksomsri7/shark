@@ -89,6 +89,8 @@ export function NavDrawer({
           <div className="px-2 pb-1 text-xs text-[color:var(--color-muted)]">ตั้งค่า</div>
           {[
             { href: "/app/notifications", icon: "🔔", label: "ศูนย์แจ้งเตือน" },
+            { href: "/app/approvals", icon: "✅", label: "รออนุมัติของฉัน" },
+            { href: "/app/settings/approval", icon: "🧾", label: "สายอนุมัติ" },
             { href: "/app/settings/automation", icon: "⚙️", label: "ระบบอัตโนมัติ" },
             { href: "/app/settings/payment", icon: "💳", label: "ช่องรับเงิน" },
             { href: "/app/settings/domain", icon: "🌐", label: "โดเมนของร้าน" },
