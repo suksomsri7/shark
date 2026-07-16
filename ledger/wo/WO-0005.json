@@ -1,6 +1,6 @@
 {
   "id": "WO-0005",
-  "title": "M3: DNA Wizard \u2014 \u0e2a\u0e31\u0e21\u0e20\u0e32\u0e29\u0e13\u0e4c \u2192 blueprint \u2192 \u0e1b\u0e23\u0e30\u0e01\u0e2d\u0e1a\u0e23\u0e30\u0e1a\u0e1a",
+  "title": "M3: DNA Wizard — สัมภาษณ์ → blueprint → ประกอบระบบ",
   "status": "queued",
   "branch": "wo/0005",
   "worktree": "/root/wt/0005",
@@ -12,7 +12,7 @@
     "src/lib/actions/onboarding.ts"
   ],
   "closesFindings": [
-    "\u0e27\u0e34\u0e0a\u0e31\u0e19\u0e2b\u0e25\u0e31\u0e01 'AI \u0e1b\u0e23\u0e30\u0e01\u0e2d\u0e1a\u0e23\u0e30\u0e1a\u0e1a\u0e43\u0e2b\u0e49' \u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e21\u0e35\u0e15\u0e31\u0e27\u0e15\u0e19 (M3 \u0e15\u0e32\u0e21 FABLE REVISION)"
+    "วิชันหลัก 'AI ประกอบระบบให้' ยังไม่มีตัวตน (M3 ตาม FABLE REVISION)"
   ],
   "dependsOn": [],
   "doneWhen": [
@@ -30,11 +30,11 @@
     },
     {
       "cmd": "pnpm qc:account",
-      "expect": "\u0e1c\u0e48\u0e32\u0e19 107/107"
+      "expect": "ผ่าน 107/107"
     },
     {
       "cmd": "pnpm fitness",
-      "expect": "FINDINGS: CRITICAL 0 \u00b7 MAJOR 0"
+      "expect": "FINDINGS: CRITICAL 0 · MAJOR 0"
     },
     {
       "cmd": "pnpm typecheck"
@@ -43,37 +43,57 @@
   "steps": [
     {
       "done": true,
-      "text": "Fable: DnaFacts/compile/questions + oracle qc-dna.mts (compile \u0e40\u0e02\u0e35\u0e22\u0e27 12 \u00b7 APPLY fail-before \u0e41\u0e14\u0e07)"
+      "text": "Fable: DnaFacts/compile/questions + oracle qc-dna.mts (compile เขียว 12 · APPLY fail-before แดง)"
+    },
+    {
+      "done": true,
+      "text": "src/lib/dna/apply.ts: saveDnaFacts + proposeBlueprint (idempotent ต่อ hash) + applyBlueprint (เดิน step + resolve ref + stepResults + ไม่ rollback)"
+    },
+    {
+      "done": true,
+      "text": "src/lib/dna/actions.ts: server actions (ตอบคำถาม/propose/apply) ผูก requireTenant"
+    },
+    {
+      "done": true,
+      "text": "หน้า /app/dna — chat wizard ถามตาม questions.ts (สไตล์แชท ปุ่มตัวเลือก ≥44px)"
+    },
+    {
+      "done": true,
+      "text": "หน้า /app/dna/blueprint — โชว์แผน+because ทุกข้อ + ปุ่ม 'ประกอบระบบ' → apply → dashboard"
+    },
+    {
+      "done": true,
+      "text": "wire onboarding: สร้าง tenant เสร็จ → พาเข้า /app/dna (additive — flow เดิมยังใช้ได้)"
     },
     {
       "done": false,
-      "text": "src/lib/dna/apply.ts: saveDnaFacts + proposeBlueprint (idempotent \u0e15\u0e48\u0e2d hash) + applyBlueprint (\u0e40\u0e14\u0e34\u0e19 step + resolve ref + stepResults + \u0e44\u0e21\u0e48 rollback)"
-    },
-    {
-      "done": false,
-      "text": "src/lib/dna/actions.ts: server actions (\u0e15\u0e2d\u0e1a\u0e04\u0e33\u0e16\u0e32\u0e21/propose/apply) \u0e1c\u0e39\u0e01 requireTenant"
-    },
-    {
-      "done": false,
-      "text": "\u0e2b\u0e19\u0e49\u0e32 /app/dna \u2014 chat wizard \u0e16\u0e32\u0e21\u0e15\u0e32\u0e21 questions.ts (\u0e2a\u0e44\u0e15\u0e25\u0e4c\u0e41\u0e0a\u0e17 \u0e1b\u0e38\u0e48\u0e21\u0e15\u0e31\u0e27\u0e40\u0e25\u0e37\u0e2d\u0e01 \u226544px)"
-    },
-    {
-      "done": false,
-      "text": "\u0e2b\u0e19\u0e49\u0e32 /app/dna/blueprint \u2014 \u0e42\u0e0a\u0e27\u0e4c\u0e41\u0e1c\u0e19+because \u0e17\u0e38\u0e01\u0e02\u0e49\u0e2d + \u0e1b\u0e38\u0e48\u0e21 '\u0e1b\u0e23\u0e30\u0e01\u0e2d\u0e1a\u0e23\u0e30\u0e1a\u0e1a' \u2192 apply \u2192 dashboard"
-    },
-    {
-      "done": false,
-      "text": "wire onboarding: \u0e2a\u0e23\u0e49\u0e32\u0e07 tenant \u0e40\u0e2a\u0e23\u0e47\u0e08 \u2192 \u0e1e\u0e32\u0e40\u0e02\u0e49\u0e32 /app/dna (additive \u2014 flow \u0e40\u0e14\u0e34\u0e21\u0e22\u0e31\u0e07\u0e43\u0e0a\u0e49\u0e44\u0e14\u0e49)"
-    },
-    {
-      "done": false,
-      "text": "oracle qc-dna.mts \u0e40\u0e02\u0e35\u0e22\u0e27\u0e04\u0e23\u0e1a (\u0e23\u0e27\u0e21 APPLY-*) + gates"
+      "text": "oracle qc-dna.mts เขียวครบ (รวม APPLY-*) + gates"
     }
   ],
   "log": [
     {
       "at": "2026-07-16T02:24:42Z",
-      "note": "\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19"
+      "note": "เปิดงาน"
+    },
+    {
+      "at": "2026-07-16T02:42:49Z",
+      "note": "apply.ts + actions.ts + wizard UI (/app/dna + blueprint) + wire onboarding — oracle 21/22 (APPLY-1.1 พบ oracle inconsistency), qc:account 107/107, fitness 12/12, typecheck 0, build ผ่าน"
+    },
+    {
+      "at": "2026-07-16T02:42:59Z",
+      "note": "actions.ts: answerQuestion/proposeAction/applyAction ผูก requireTenant"
+    },
+    {
+      "at": "2026-07-16T02:43:00Z",
+      "note": "/app/dna chat wizard: bubble AI + ปุ่มตอบ ≥48px + progress + ข้ามไปหน้าหลัก"
+    },
+    {
+      "at": "2026-07-16T02:43:01Z",
+      "note": "/app/dna/blueprint: การ์ด step+because + ปุ่มประกอบระบบ → apply → /app"
+    },
+    {
+      "at": "2026-07-16T02:43:01Z",
+      "note": "wire onboarding redirect /app → /app/dna (additive)"
     }
   ]
 }
