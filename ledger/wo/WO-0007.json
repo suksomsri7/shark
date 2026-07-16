@@ -1,6 +1,6 @@
 {
   "id": "WO-0007",
-  "title": "Ticket\u2192POS \u2014 \u0e02\u0e32\u0e22\u0e15\u0e31\u0e4b\u0e27 markPaid \u2192 \u0e23\u0e32\u0e22\u0e44\u0e14\u0e49\u0e40\u0e02\u0e49\u0e32\u0e1a\u0e31\u0e0d\u0e0a\u0e35",
+  "title": "Ticket→POS — ขายตั๋ว markPaid → รายได้เข้าบัญชี",
   "status": "queued",
   "branch": "wo/0007",
   "worktree": "/root/wt/0007",
@@ -10,7 +10,7 @@
     "src/lib/modules/ticket/actions.ts"
   ],
   "closesFindings": [
-    "ticket \u0e44\u0e21\u0e48\u0e40\u0e04\u0e22\u0e40\u0e23\u0e35\u0e22\u0e01 POS \u2192 \u0e23\u0e32\u0e22\u0e44\u0e14\u0e49\u0e44\u0e21\u0e48\u0e40\u0e02\u0e49\u0e32\u0e1a\u0e31\u0e0d\u0e0a\u0e35 (\u0e40\u0e01\u0e32\u0e30)"
+    "ticket ไม่เคยเรียก POS → รายได้ไม่เข้าบัญชี (เกาะ)"
   ],
   "dependsOn": [],
   "doneWhen": [
@@ -20,15 +20,15 @@
     },
     {
       "cmd": "pnpm qc:account",
-      "expect": "\u0e1c\u0e48\u0e32\u0e19 107/107"
+      "expect": "ผ่าน 107/107"
     },
     {
       "cmd": "pnpm qc:systems",
-      "expect": "\u0e1c\u0e48\u0e32\u0e19\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14"
+      "expect": "ผ่านทั้งหมด"
     },
     {
       "cmd": "pnpm fitness",
-      "expect": "FINDINGS: CRITICAL 0 \u00b7 MAJOR 0"
+      "expect": "FINDINGS: CRITICAL 0 · MAJOR 0"
     },
     {
       "cmd": "pnpm typecheck"
@@ -37,25 +37,37 @@
   "steps": [
     {
       "done": true,
-      "text": "Fable: oracle qc-ticket-money.mts (fail-before: TK-2.* \u0e41\u0e14\u0e07)"
+      "text": "Fable: oracle qc-ticket-money.mts (fail-before: TK-2.* แดง)"
     },
     {
-      "done": false,
-      "text": "wire markPaid \u2192 createSale (service.markPaid \u2192 createSale(sourceModule TICKET, sourceId=orderId, total=order.totalSatang) \u0e2b\u0e25\u0e31\u0e07 flip PAID \u00b7 idempotent (PAID \u0e41\u0e25\u0e49\u0e27 return \u0e44\u0e21\u0e48 post \u0e0b\u0e49\u0e33))"
+      "done": true,
+      "text": "wire markPaid → createSale (service.markPaid → createSale(sourceModule TICKET, sourceId=orderId, total=order.totalSatang) หลัง flip PAID · idempotent (PAID แล้ว return ไม่ post ซ้ำ))"
     },
     {
-      "done": false,
-      "text": "\u0e2b\u0e25\u0e31\u0e07 tx: drainAll() best-effort (\u0e40\u0e2b\u0e21\u0e37\u0e2d\u0e19 pos M1)"
+      "done": true,
+      "text": "หลัง tx: drainAll() best-effort (เหมือน pos M1)"
     },
     {
-      "done": false,
-      "text": "oracle qc-ticket-money \u0e40\u0e02\u0e35\u0e22\u0e27\u0e04\u0e23\u0e1a + qc:account 107/107 + qc:systems \u0e1c\u0e48\u0e32\u0e19"
+      "done": true,
+      "text": "oracle qc-ticket-money เขียวครบ + qc:account 107/107 + qc:systems ผ่าน"
     }
   ],
   "log": [
     {
       "at": "2026-07-16T04:05:07Z",
-      "note": "\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19"
+      "note": "เปิดงาน"
+    },
+    {
+      "at": "2026-07-16T04:11:28Z",
+      "note": "wire markPaid → createSale (sourceModule TICKET, sourceId=orderId, total=totalSatang) หลัง flip PAID · idempotent PENDING-only"
+    },
+    {
+      "at": "2026-07-16T04:11:34Z",
+      "note": "createSale มี drainAll ในตัว (M1) → ไม่เรียก drain เอง · resolve posSystemId/pointSystemId ด้วย prisma.appSystemUnit ตรง (เลี่ยง ticket→system, fitness อนุมัติแค่ ticket→pos)"
+    },
+    {
+      "at": "2026-07-16T04:11:38Z",
+      "note": "gates เขียวครบ: oracle 6/6 CRITICAL 0 · qc:account 107/107 · qc:systems ผ่าน · typecheck 0 · fitness 14/14 · build ผ่าน"
     }
   ]
 }

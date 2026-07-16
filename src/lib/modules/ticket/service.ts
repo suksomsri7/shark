@@ -5,6 +5,7 @@ import type {
   TicketEventStatus,
   TicketOrderStatus,
 } from "@prisma/client";
+import * as pos from "@/lib/modules/pos/service";
 
 type Client = PrismaClient | Prisma.TransactionClient;
 type Ctx = { tenantId: string; unitId: string };
@@ -314,13 +315,44 @@ async function createAdmissionWithUniqueCode(
 // ยืนยันชำระเงิน (P1 = mark paid ด้วยมือ)
 export async function markPaid(ctx: Ctx, orderId: string) {
   const db = tenantDb(ctx);
-  const order = await db.ticketOrder.findFirst({ where: { id: orderId, ...ctx } });
+  const order = await db.ticketOrder.findFirst({
+    where: { id: orderId, ...ctx },
+    include: { event: true },
+  });
   if (!order) throw new Error("ORDER_NOT_FOUND");
-  if (order.status !== "PENDING") return; // idempotent
+  if (order.status !== "PENDING") return; // idempotent — PAID/CANCELLED แล้วไม่ post ซ้ำ
   await db.ticketOrder.update({
     where: { id: orderId },
     data: { status: "PAID", paidAt: new Date() },
   });
+
+  // ต่อสายเข้าบัญชี: ถ้า unit ผูกระบบ POS ไว้ → บันทึกการขาย (POS จะ post บัญชีตาม contract)
+  // ถ้าไม่ผูก POS = ข้าม (ตั๋วขายได้แม้ standalone) · createSale idempotent + มี drainAll ในตัว (M1)
+  // resolve system ผูก unit ด้วย prisma ตรง (ticket ห้าม import system module — fitness อนุมัติแค่ ticket→pos)
+  const [posLink, pointLink] = await Promise.all([
+    prisma.appSystemUnit.findUnique({
+      where: { tenantId_unitId_type: { tenantId: ctx.tenantId, unitId: ctx.unitId, type: "POS" } },
+    }),
+    prisma.appSystemUnit.findUnique({
+      where: { tenantId_unitId_type: { tenantId: ctx.tenantId, unitId: ctx.unitId, type: "POINT" } },
+    }),
+  ]);
+  const posSystemId = posLink?.systemId ?? null;
+  const pointSystemId = pointLink?.systemId ?? null;
+  if (posSystemId && order.totalSatang > 0) {
+    await pos.createSale({
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      systemId: posSystemId,
+      pointSystemId: pointSystemId ?? undefined,
+      memberId: order.customerId ?? undefined,
+      sourceModule: "TICKET",
+      sourceId: orderId,
+      idempotencyKey: `ticket-sale-${orderId}`,
+      lines: [{ name: `ตั๋ว ${order.event.name}`, qty: 1, unitPriceSatang: order.totalSatang }],
+      payMethods: [{ type: "CASH", amountSatang: order.totalSatang }],
+    });
+  }
 }
 
 // ยกเลิกออเดอร์ → คืนโควตา + void ตั๋วทุกใบ (atomic)
