@@ -285,6 +285,34 @@ chk(
 );
 
 // ═══════════════════════════════════════════════════════════════
+// F6 — authz coverage: ทุกไฟล์ server actions ต้องมีการตรวจสิทธิ์
+//   วันนี้: authz มีแค่ account (1/15) — พนักงาน STAFF ทำอะไรก็ได้ทุกโมดูล
+//   ratchet: baseline = ไฟล์ที่ยังไม่มี (WO-0006 ไล่ปิด) — ห้ามเพิ่ม ลดได้อย่างเดียว
+// ═══════════════════════════════════════════════════════════════
+console.log("\n── F6: authz coverage (ratchet — ห้ามเพิ่มไฟล์ไร้การตรวจสิทธิ์) ──");
+{
+  const AUTHZ_BASELINE = new Set([
+    // วัดจริง 2026-07-16 — WO-0006 ไล่ปิดให้เหลือ 0
+    "src/lib/modules/hotel/actions.ts", "src/lib/modules/queue/actions.ts",
+    "src/lib/modules/ticket/actions.ts", "src/lib/modules/kanban/actions.ts",
+    "src/lib/modules/meeting/actions.ts", "src/lib/modules/chat/actions.ts",
+    "src/lib/modules/coupon/actions.ts",
+    "src/lib/actions/booking.ts", "src/lib/actions/restaurant.ts", "src/lib/actions/systems.ts",
+  ]);
+  const actionFiles = [
+    ...walk(join(ROOT, "src", "lib", "modules"), (p) => p.endsWith("actions.ts")),
+    ...walk(join(ROOT, "src", "lib", "actions"), (p) => p.endsWith(".ts")),
+  ].filter((f) => !f.endsWith("auth.ts") && !f.endsWith("onboarding.ts")); // ก่อน login ไม่มีสิทธิ์ให้ตรวจ
+  const missing = actionFiles.filter((f) => !/assertCan|assertAccountCan/.test(readFileSync(f, "utf8"))).map(rel);
+  const newMissing = missing.filter((m) => !AUTHZ_BASELINE.has(m));
+  const healed = [...AUTHZ_BASELINE].filter((b) => !missing.includes(b));
+  chk("F6.1", `ไม่มีไฟล์ action ใหม่ที่ไร้การตรวจสิทธิ์ (หนี้เดิม ${AUTHZ_BASELINE.size})`, newMissing.length === 0,
+    newMissing.length ? `ใหม่: ${newMissing.join(", ")}` : `หนี้เหลือ ${missing.length}/${AUTHZ_BASELINE.size}`, "CRITICAL");
+  chk("F6.2", "AUTHZ_BASELINE ไม่มีรายการที่ปิดแล้ว (ratchet)", healed.length === 0,
+    healed.length ? `ปิดแล้ว ถอดออก: ${healed.join(", ")}` : "ตรง", "MINOR");
+}
+
+// ═══════════════════════════════════════════════════════════════
 // F9(บางส่วน) — ทะเบียนระบบต้องไม่ขัดกับตัวเอง
 //   จับ: systems.ts comment เขียน "14" แต่ SYSTEM_DEFS มี 18 entry
 // ═══════════════════════════════════════════════════════════════

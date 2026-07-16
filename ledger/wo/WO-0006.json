@@ -1,0 +1,64 @@
+{
+  "id": "WO-0006",
+  "title": "authz sweep \u2014 \u0e1b\u0e34\u0e14\u0e2b\u0e19\u0e35\u0e49\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e34\u0e17\u0e18\u0e34\u0e4c 10 \u0e44\u0e1f\u0e25\u0e4c action (F6 ratchet \u2192 0)",
+  "status": "queued",
+  "branch": "wo/0006",
+  "worktree": "/root/wt/0006",
+  "neonBranch": "wo-0006",
+  "files": [
+    "src/lib/modules/{hotel,queue,ticket,kanban,meeting,chat,coupon}/actions.ts",
+    "src/lib/actions/{booking,restaurant,systems}.ts",
+    "scripts/fitness.mts (\u0e40\u0e09\u0e1e\u0e32\u0e30 AUTHZ_BASELINE)"
+  ],
+  "closesFindings": [],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "grep -c 'src/lib' scripts/fitness.mts | head -1 && grep -A12 'AUTHZ_BASELINE = new Set' scripts/fitness.mts | grep -c 'actions\\|booking\\|systems' | grep -qx 0 && echo BASELINE_EMPTY",
+      "expect": "BASELINE_EMPTY"
+    },
+    {
+      "cmd": "pnpm fitness",
+      "expect": "FINDINGS: CRITICAL 0 \u00b7 MAJOR 0"
+    },
+    {
+      "cmd": "pnpm qc:systems",
+      "expect": "\u0e1c\u0e48\u0e32\u0e19\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14"
+    },
+    {
+      "cmd": "pnpm qc:chat",
+      "expect": "FINDINGS 0"
+    },
+    {
+      "cmd": "pnpm typecheck"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: F6 ratchet \u0e43\u0e19 fitness (baseline 10 \u0e44\u0e1f\u0e25\u0e4c)"
+    },
+    {
+      "done": false,
+      "text": "\u0e43\u0e2a\u0e48 assertCan \u0e17\u0e38\u0e01 mutating action: hotel/queue/ticket (unitId \u0e08\u0e32\u0e01 input)"
+    },
+    {
+      "done": false,
+      "text": "kanban/meeting/chat/coupon (systemId scope \u2014 action string <module>.<entity>.<verb>)"
+    },
+    {
+      "done": false,
+      "text": "actions/{booking,restaurant,systems}.ts"
+    },
+    {
+      "done": false,
+      "text": "\u0e16\u0e2d\u0e14\u0e44\u0e1f\u0e25\u0e4c\u0e17\u0e35\u0e48\u0e1b\u0e34\u0e14\u0e41\u0e25\u0e49\u0e27\u0e2d\u0e2d\u0e01\u0e08\u0e32\u0e01 AUTHZ_BASELINE \u0e08\u0e19\u0e40\u0e2b\u0e25\u0e37\u0e2d 0 + \u0e17\u0e38\u0e01 suite \u0e40\u0e02\u0e35\u0e22\u0e27"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T03:28:25Z",
+      "note": "\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19"
+    }
+  ]
+}
