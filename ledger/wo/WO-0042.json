@@ -1,0 +1,43 @@
+{
+  "id": "WO-0042",
+  "title": "PDPA + Purge — export ข้อมูลร้าน · ขอลบร้าน 30 วัน · purge cron · DR runbook",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/",
+  "neonBranch": "wo-0042",
+  "files": [
+    "src/lib/platform/pdpa.ts",
+    "src/lib/pdpa/actions.ts",
+    "src/app/app/settings/privacy/page.tsx",
+    "cron tick (+sweep)",
+    "docs/sds/11_DR.md"
+  ],
+  "closesFindings": [
+    "SDS 04 ช่องว่าง PDPA/DR"
+  ],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "qc-pdpa CRITICAL 0 + qc-cron regression"
+    },
+    {
+      "cmd": "typecheck+fitness (Fable) + deploy READY"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: Tenant.deleteRequestedAt + migration (prod) + oracle 9 ข้อ (รวมกันลบข้ามร้าน)"
+    },
+    {
+      "done": false,
+      "text": "Builder ตามสัญญาหัว qc-pdpa.mts"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T18:35:00Z",
+      "note": "NIGHT RUN #5"
+    }
+  ]
+}

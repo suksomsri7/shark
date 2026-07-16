@@ -46,6 +46,7 @@ model Tenant {
   limits         Json         @default("{}") // { maxUnits: 5, ... }
   customDomain   String?      @unique
   domainStatus   DomainStatus @default(NONE)
+  deleteRequestedAt DateTime? // PDPA (WO-0042): ขอลบร้าน — purge จริงหลัง 30 วัน (cron)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
