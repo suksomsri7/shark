@@ -32,6 +32,9 @@ const UNIT_NAV: Record<string, { href: string; label: string }[]> = {
     { href: "/shop", label: "จัดการสินค้า →" },
     { href: "/shop/orders", label: "ออเดอร์" },
   ],
+  RENTAL: [
+    { href: "/rental", label: "จัดการเช่า →" },
+  ],
 };
 
 // หน้าแรกของระบบธุรกิจ (เช่น จองคิว) — งานของระบบ + การเชื่อมต่อกับระบบอื่น
