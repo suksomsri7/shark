@@ -36,18 +36,23 @@ export function Topbar({
           onClick={onHelp}
           aria-label="ศูนย์ช่วยเหลือ"
           title="ศูนย์ช่วยเหลือ"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-[color:var(--color-accent)] hover:bg-[color:var(--color-surface-2)]"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[color:var(--color-ink)] hover:bg-[color:var(--color-surface-2)]"
         >
-          {/* ไอคอนหูฟัง support (วิชันเจ้าของ) — บับเบิลแชท + หูฟัง + ไมค์ */}
-          <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 12a8 8 0 0 1 16 0" />
-            <rect x="2.5" y="11" width="3.5" height="6" rx="1.6" fill="currentColor" stroke="none" />
-            <rect x="18" y="11" width="3.5" height="6" rx="1.6" fill="currentColor" stroke="none" />
-            <path d="M20 17v.6a2.4 2.4 0 0 1-2.4 2.4H14" />
-            <circle cx="12.9" cy="20" r="1.4" fill="currentColor" stroke="none" />
-            <circle cx="9.2" cy="12.4" r="0.9" fill="currentColor" stroke="none" />
-            <circle cx="12" cy="12.4" r="0.9" fill="currentColor" stroke="none" />
-            <circle cx="14.8" cy="12.4" r="0.9" fill="currentColor" stroke="none" />
+          {/* ไอคอนหูฟัง support ตาม ref เจ้าของ: บับเบิลแชททึบ 3 จุดขาว + คาดหูฟัง + ก้านไมค์ — สีดำ ไม่มีวงกรอบ */}
+          <svg aria-hidden viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4.2 12.5a7.8 7.8 0 0 1 15.6 0" />
+            <rect x="1.8" y="11.2" width="3.6" height="6.4" rx="1.8" fill="currentColor" stroke="none" />
+            <rect x="18.6" y="11.2" width="3.6" height="6.4" rx="1.8" fill="currentColor" stroke="none" />
+            <path
+              d="M12 6.6c-3.1 0-5.6 2.2-5.6 4.9 0 1.5.75 2.85 1.95 3.75l-.55 2.35 2.6-1.15c.5.1 1.05.15 1.6.15 3.1 0 5.6-2.2 5.6-5S15.1 6.6 12 6.6z"
+              fill="currentColor"
+              stroke="none"
+            />
+            <circle cx="9.4" cy="11.5" r="0.95" fill="var(--color-surface)" stroke="none" />
+            <circle cx="12" cy="11.5" r="0.95" fill="var(--color-surface)" stroke="none" />
+            <circle cx="14.6" cy="11.5" r="0.95" fill="var(--color-surface)" stroke="none" />
+            <path d="M20.4 17.6v.3a2.5 2.5 0 0 1-2.5 2.5h-2.4" />
+            <circle cx="14.4" cy="20.4" r="1.5" fill="currentColor" stroke="none" />
           </svg>
         </button>
       </div>
