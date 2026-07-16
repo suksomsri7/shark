@@ -27,8 +27,16 @@
 - UI Pass 3 โมดูลใหม่จบ (ConfirmDialog ส่งแคมเปญ + formatBaht)
 - **NEXT: WO-0016 M4 สัมภาษณ์พิมพ์อิสระ (ปลดบล็อกแล้ว) → Phase 3 tool use → Backoffice Admin**
 
-## คำสั่งล่าสุด user (2026-07-16 ค่ำ)
-✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว** · ต่อไป: Builder ขนาน (Inventory/Procurement/Marketing)
+## คำสั่งล่าสุด user (2026-07-16 เย็น) — โหมดทำงานถาวร
+1. **Fable 5 = หัวหน้างาน** (วางกติกา/oracle/ตรวจรับ/merge) · **sub-agent Opus 4.8 = Builder** ทำงานสร้างทั้งหมด
+2. **บันทึกทุกงานลง ledger + push ทันที** กัน session ล้ม (บทเรียน OOM เช้านี้)
+กติกากันตาย: Builder ≤2 ตัวพร้อมกัน · Builder ห้ามรัน typecheck/build เอง (Fable รันรวมหลัง merge) · commit บ่อย
+✅ deploy: **Vercel auto-deploy ทุก push** (shark.in.th prod เดียว) · **VPS ปิดแล้ว**
+
+## กำลังวิ่ง (อัปเดตก่อน spawn 2026-07-16 ~16:15 UTC+7)
+- **WO-0016 M4 สัมภาษณ์พิมพ์อิสระ** → Builder A (Opus, worktree+neon wo-0016) · oracle qc-ai-interview.mts (Fable เขียนก่อน spawn)
+- **WO-0017 หนี้ UI: raw color ใน (store)/r/[token]** → Builder B (Opus, worktree, ไม่ใช้ DB)
+กู้ถ้าตาย: git worktree list → ตรวจไฟล์ → รัน oracle → merge ถ้าเขียว → neon:delete wo-0016
 
 ## เสร็จแล้ว (main)
 M0 kernel guard · M1 POS→Account · M2 UI shell · M3 DNA Wizard · WO-0003 คูปอง · WO-0006 authz 8 โมดูล · **WO-0009 CRM เต็มระบบ (25/25)** · **WO-0010 สะพาน Deal→ใบเสนอราคา**
