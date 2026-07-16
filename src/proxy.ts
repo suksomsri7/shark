@@ -4,7 +4,21 @@ import type { NextRequest } from "next/server";
 // Next 16: `proxy` แทน `middleware` (ดู AGENTS.md)
 // หน้าที่ Stage A: resolve tenant จาก custom domain / subdomain → header ให้ app อ่าน
 // + วาง security headers พื้นฐาน (SECURITY §8 ขยายต่อภายหลัง)
-// ⚠️ ห้ามใส่ logic หนัก/แตะ DB ที่นี่ (proxy อาจ deploy ที่ CDN edge)
+//
+// ⚠️ ห้ามแตะ DB ที่นี่ — ตัดสินใจ WO-0025 (Custom Domain):
+//   อ่าน node_modules/next/dist/docs/.../proxy.md แล้ว: Next 16 proxy default = Node.js runtime
+//   *แต่* docs กำชับชัด "you should not attempt relying on shared modules or globals" และ
+//   "Proxy is not intended for slow data fetching" → การ import prisma singleton + query DB ใน proxy
+//   ผิดคำแนะนำ Next โดยตรง. ยิ่งกว่านั้น adapter จริงคือ PrismaPg (pg/TCP ดู core/db.ts) ซึ่ง
+//   รันบน edge ไม่ได้ และ shark.in.th deploy บน Vercel (proxy runtime = platform-specific).
+//   นอกจากนี้หน้าร้าน /s/<slug> ยังไม่ถูกสร้าง → ยังไม่มีปลายทางให้ rewrite.
+//   → DEFER: คง proxy ให้ edge-safe (แค่ set header) — ตรรกะ host→tenant อยู่ที่ service แล้ว
+//     (`resolveTenantByHost` ใน src/lib/domain/service.ts) ทดสอบผ่าน oracle เรียกได้จากชั้น app (Node RSC)
+//
+// TODO(WO-0025 ต่อ): เมื่อหน้าร้าน /s/<slug> พร้อม ให้ map host→ร้าน ด้วยหนึ่งใน 2 ทาง —
+//   (ก) ชั้น app (RSC, Node เต็ม DB) อ่าน header `x-shark-host` แล้วเรียก resolveTenantByHost() เอง
+//   (ข) หรือสลับ core/db.ts เป็น @prisma/adapter-neon (serverless HTTP) + ยืนยัน Node runtime บน Vercel
+//       ก่อน ค่อยย้าย rewrite ไป /s/<slug> มาที่ proxy นี้
 
 const ROOT_HOSTS = new Set(["shark.in.th", "www.shark.in.th", "localhost"]);
 
@@ -18,8 +32,9 @@ export function proxy(request: NextRequest) {
     return applySecurity(res);
   }
 
-  // custom domain / subdomain ของร้าน → resolve เป็น tenant ในชั้น app (อ่าน header นี้)
-  if (!ROOT_HOSTS.has(host)) {
+  // custom domain / subdomain ของร้าน → ส่ง host ให้ชั้น app resolve เป็น tenant (อ่าน header นี้)
+  // (ดูหมายเหตุ DEFER ด้านบน — ชั้น app เรียก resolveTenantByHost() เอง ไม่ทำ DB ใน proxy)
+  if (!ROOT_HOSTS.has(host) && host !== "backoffice.shark.in.th" && !host.endsWith(".vercel.app")) {
     res.headers.set("x-shark-host", host);
   }
   res.headers.set("x-shark-surface", "app");

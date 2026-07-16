@@ -89,6 +89,7 @@ export function NavDrawer({
           <div className="px-2 pb-1 text-xs text-[color:var(--color-muted)]">ตั้งค่า</div>
           {[
             { href: "/app/settings/payment", icon: "💳", label: "ช่องรับเงิน" },
+            { href: "/app/settings/domain", icon: "🌐", label: "โดเมนของร้าน" },
             { href: "/app/settings/billing", icon: "🧾", label: "บิลจากแพลตฟอร์ม" },
           ].map((s) => (
             <Link
