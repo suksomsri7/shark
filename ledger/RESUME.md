@@ -23,6 +23,8 @@
 **env/keys ที่มีแล้ว** (local .env + Vercel prod): SHARK_AI_KEY (OpenRouter) · SHARK_AI_MODEL · SHARK_CRON_SECRET · SHARK_VERCEL_TOKEN/PROJECT/TEAM — **รอจาก user**: SHARK_BUNNY_* (เปิดอัปโหลดจริง) · Beam creds ชื่อ shark · user สแกน QR PromptPay ทดสอบ
 **Vercel**: project prj_jdvr3lJ7tS239wuywjWRBDE84FiK team team_73xWxzvBBScACJuG4TXet6Uw (token ใน .env) · **Backoffice admin**: suksomsri@gmail.com (SUPER_ADMIN seeded)
 
+**📘 SDS ชุดเต็มพร้อมแล้ว (2026-07-17)**: `docs/sds/` — เล่มแกน 10 + เล่มโมดูล 36 (as-built 24 + future 12) + **Master Queue 39 WO (0035-0073)** ใน 10_MASTER_QUEUE.md · โหมดรันยาวอยู่เล่ม 09 · **รอเจ้าของอนุมัติ "ปล่อยยาว" — ยังไม่เริ่ม**
+
 **คิวถัดไป (เรียงแนะนำ)**:
 1. หนี้บัญชีลึก (รอบสมาธิเต็ม): ลด query flow เงิน (tx timeout 30s ชั่วคราว) · DEPOSIT/ROOM_CHARGE map TRANSFER · audit booking→POS harness
 2. i18n v1.1: หน้าเมนูร้านอาหาร + จอคิว TV + error จาก action
