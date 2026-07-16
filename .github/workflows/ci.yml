@@ -68,6 +68,10 @@ jobs:
           project_id: ${{ secrets.NEON_PROJECT_ID }}
           branch_name: ci-${{ github.run_id }}
           api_key: ${{ secrets.NEON_API_KEY }}
+          # โปรเจกต์นี้มีหลาย role (authenticator/anonymous/authenticated/neondb_owner)
+          # ไม่ระบุ = action ตาย "Multiple roles found" (run #5)
+          role: neondb_owner
+          database: neondb
 
       - name: migrate deploy (พิสูจน์ว่า migration สร้าง schema ได้จริงจากศูนย์)
         if: steps.guard.outputs.ready == 'true'
