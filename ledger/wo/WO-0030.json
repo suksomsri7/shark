@@ -1,0 +1,39 @@
+{
+  "id": "WO-0030",
+  "title": "Dashboard หน้าแรกกิจการ — KPI ตามวิสัยทัศน์ Blank_6",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/",
+  "neonBranch": "wo-0030",
+  "files": [
+    "src/lib/dashboard/service.ts",
+    "src/app/app/page.tsx (เพิ่ม KPI grid บนสุด)"
+  ],
+  "closesFindings": [],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "DATABASE_URL=<neon> pnpm exec tsx scripts/qc-dashboard.mts",
+      "expect": "FINDINGS: CRITICAL 0"
+    },
+    {
+      "cmd": "typecheck+fitness (Fable, pipefail)"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: oracle + SHARK_CRON_SECRET (local+Vercel)"
+    },
+    {
+      "done": false,
+      "text": "Builder ตามสัญญาหัว oracle"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-17T05:00:00Z",
+      "note": "เปิดงาน (ข้อ 2 ตามที่ user เลือก — user เทสข้อ 1 ขนานไป)"
+    }
+  ]
+}

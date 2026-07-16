@@ -1,0 +1,41 @@
+{
+  "id": "WO-0029",
+  "title": "Cron kernel — sweep subscription/proposal หมดอายุ + outbox เก็บตก (Vercel cron)",
+  "status": "in_progress",
+  "branch": "worktree Builder",
+  "worktree": ".claude/worktrees/",
+  "neonBranch": "wo-0029",
+  "files": [
+    "src/lib/platform/cron.ts",
+    "src/app/api/cron/tick/route.ts",
+    "vercel.json",
+    ".env.example"
+  ],
+  "closesFindings": [],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "DATABASE_URL=<neon> pnpm exec tsx scripts/qc-cron.mts",
+      "expect": "FINDINGS: CRITICAL 0"
+    },
+    {
+      "cmd": "typecheck+fitness (Fable, pipefail)"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: oracle + SHARK_CRON_SECRET (local+Vercel)"
+    },
+    {
+      "done": false,
+      "text": "Builder ตามสัญญาหัว oracle"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-17T05:00:00Z",
+      "note": "เปิดงาน (ข้อ 2 ตามที่ user เลือก — user เทสข้อ 1 ขนานไป)"
+    }
+  ]
+}
