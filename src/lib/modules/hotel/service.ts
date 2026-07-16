@@ -1,6 +1,7 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import { registerScopes } from "@/lib/core/scope";
-import type { HotelReservationStatus, HotelRoomStatus } from "@prisma/client";
+import * as pos from "@/lib/modules/pos/service";
+import type { HotelReservationStatus, HotelRoomStatus, SystemType } from "@prisma/client";
 
 // ลงทะเบียน scope ของ Hotel models (unit-scoped) — ให้ tenantDb() inject tenantId+unitId อัตโนมัติ
 // (ตามกลไก modules ใน src/lib/core/scope.ts — idempotent-safe ถ้า core ประกาศซ้ำด้วย scope เดียวกัน)
@@ -31,6 +32,20 @@ export function addDaysStr(dateStr: string, days: number): string {
 }
 
 const ACTIVE_STATUSES: HotelReservationStatus[] = ["BOOKED", "CHECKED_IN"];
+
+// หาว่าหน่วยนี้ผูกระบบชนิดใดไว้ (POS/POINT) → คืน systemId หรือ null ถ้าไม่ผูก
+// query ตรงจากทะเบียนระบบ (appSystemUnit เป็น model ระดับ tenant ไม่ผูก unit-scope)
+// — เลี่ยง cross-module import hotel→system (ขอบเขตโมดูล F2) โดยยังคง contract เดิม
+async function systemIdFor(
+  tenantId: string,
+  unitId: string,
+  type: SystemType,
+): Promise<string | null> {
+  const link = await prisma.appSystemUnit.findUnique({
+    where: { tenantId_unitId_type: { tenantId, unitId, type } },
+  });
+  return link?.systemId ?? null;
+}
 
 // ───────────────────────── Room types ─────────────────────────
 export async function listRoomTypes(tenantId: string, unitId: string) {
@@ -395,7 +410,9 @@ export async function checkOut(
   reservationId: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
-    await prisma.$transaction(async (tx) => {
+    // ดึงค่าห้อง (totalSatang/nights/customerId) ออกจาก tx ไว้เก็บเงินหลัง commit —
+    // createSale เปิด tx + drain outbox ของตัวเอง จึงต้องอยู่นอก tx นี้ (กัน nested tx)
+    const billing = await prisma.$transaction(async (tx) => {
       const rv = await tx.hotelReservation.findFirst({
         where: { id: reservationId, tenantId, unitId },
       });
@@ -409,7 +426,33 @@ export async function checkOut(
         // ห้องต้องทำความสะอาดก่อนขายใหม่
         await tx.hotelRoom.update({ where: { id: rv.roomId }, data: { status: "CLEANING" } });
       }
+      return { totalSatang: rv.totalSatang, nights: rv.nights, customerId: rv.customerId };
     });
+
+    // เช็คเอาท์แล้ว → เก็บค่าห้องเข้าบัญชีผ่าน POS (idempotent ด้วย reservationId)
+    // ไม่ผูก POS = ร้านแบบ standalone → เช็คเอาท์ได้ตามปกติ ข้ามการตัดเงิน
+    if (billing.totalSatang > 0) {
+      const [posSystemId, pointSystemId] = await Promise.all([
+        systemIdFor(tenantId, unitId, "POS"),
+        systemIdFor(tenantId, unitId, "POINT"),
+      ]);
+      if (posSystemId) {
+        await pos.createSale({
+          tenantId,
+          unitId,
+          systemId: posSystemId,
+          pointSystemId: pointSystemId ?? undefined,
+          memberId: billing.customerId ?? undefined,
+          sourceModule: "HOTEL",
+          sourceId: reservationId,
+          idempotencyKey: `hotel-sale-${reservationId}`,
+          lines: [
+            { name: `ค่าห้อง ${billing.nights} คืน`, qty: 1, unitPriceSatang: billing.totalSatang },
+          ],
+          payMethods: [{ type: "CASH", amountSatang: billing.totalSatang }],
+        });
+      }
+    }
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
