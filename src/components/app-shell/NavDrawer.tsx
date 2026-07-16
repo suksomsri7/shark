@@ -91,6 +91,7 @@ export function NavDrawer({
             { href: "/app/notifications", icon: "🔔", label: "ศูนย์แจ้งเตือน" },
             { href: "/app/settings/automation", icon: "⚙️", label: "ระบบอัตโนมัติ" },
             { href: "/app/settings/payment", icon: "💳", label: "ช่องรับเงิน" },
+            { href: "/app/settings/domain", icon: "🌐", label: "โดเมนของร้าน" },
             { href: "/app/settings/billing", icon: "🧾", label: "บิลจากแพลตฟอร์ม" },
           ].map((s) => (
             <Link
