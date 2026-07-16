@@ -82,20 +82,30 @@ body {
   }
 }
 
-/* ปุ่มผู้ช่วย AI — วงแหวนน้ำเงินเรืองแสง ตรงกลางโปร่งใส + หายใจนุ่ม ๆ (ตาม ref เจ้าของ รอบ 4) */
+/* ปุ่มผู้ช่วย AI — วงแหวนโปร่งกลาง เรืองแสงหายใจ + หมุนช้ามาก (feedback เจ้าของรอบ 5) */
+@keyframes ai-orb-spin {
+  to { transform: rotate(360deg); }
+}
 @keyframes ai-orb-breathe {
   0%, 100% {
     transform: scale(1);
-    filter: drop-shadow(0 0 5px rgba(96, 165, 250, 0.55)) drop-shadow(0 0 14px rgba(59, 130, 246, 0.3));
+    filter: drop-shadow(0 0 5px rgba(96, 165, 250, 0.55)) drop-shadow(0 0 13px rgba(59, 130, 246, 0.3));
   }
   50% {
-    transform: scale(1.06);
-    filter: drop-shadow(0 0 9px rgba(125, 211, 252, 0.85)) drop-shadow(0 0 22px rgba(59, 130, 246, 0.45));
+    transform: scale(1.07);
+    filter: drop-shadow(0 0 9px rgba(125, 211, 252, 0.85)) drop-shadow(0 0 20px rgba(59, 130, 246, 0.45));
   }
 }
-.ai-orb {
+/* ชั้นนอก (ตัวปุ่ม): หายใจ ขยาย-หด + แสงฟุ้ง */
+.ai-orb-breathe {
   border-radius: 9999px;
-  /* โทนวงแหวนแบบ ref: น้ำเงินเข้ม → ฟ้า → ฟ้าอ่อนสว่าง ไล่รอบวง ให้มีมิติ */
+  animation: ai-orb-breathe 3.2s ease-in-out infinite;
+}
+/* ชั้นใน (วงแหวน): ไล่โทนน้ำเงินรอบวง + เจาะกลางโปร่ง + หมุนช้า ๆ 16 วิ/รอบ */
+.ai-orb {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
   background: conic-gradient(
     from 210deg,
     #1e3a8a 0deg,
@@ -106,11 +116,11 @@ body {
     #3b82f6 320deg,
     #1e3a8a 360deg
   );
-  /* เจาะตรงกลางให้โปร่งใส เหลือแต่ขอบวงหนา ~5px */
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5.5px), #000 calc(100% - 5px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 5.5px), #000 calc(100% - 5px));
-  animation: ai-orb-breathe 3.2s ease-in-out infinite;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px));
+  animation: ai-orb-spin 16s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .ai-orb { animation: none; filter: drop-shadow(0 0 7px rgba(96, 165, 250, 0.6)); }
+  .ai-orb, .ai-orb-breathe { animation: none; }
+  .ai-orb-breathe { filter: drop-shadow(0 0 7px rgba(96, 165, 250, 0.6)); }
 }

@@ -16,12 +16,15 @@ export function AiDock() {
 
   return (
     <>
+      {/* วงแหวนโปร่งกลาง 48px: หายใจ (ชั้นปุ่ม) + หมุนช้า ๆ (ชั้นวงแหวน) — feedback เจ้าของรอบ 5 */}
       <button
         type="button"
         onClick={() => setOpen(true)}
         aria-label="ผู้ช่วย AI"
-        className="ai-orb fixed bottom-4 right-4 z-40 h-14 w-14 transition-transform hover:scale-105"
-      />{/* ลูกแก้วน้ำเงินเรืองแสงหายใจ — ไม่มีพื้นดำ ไม่หมุน (feedback เจ้าของรอบ 3) */}
+        className="ai-orb-breathe fixed bottom-4 right-4 z-40 h-12 w-12"
+      >
+        <span aria-hidden className="ai-orb" />
+      </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
