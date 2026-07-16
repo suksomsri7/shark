@@ -2,7 +2,7 @@
 
 > อัปเดต 2026-07-17 โดย Fable 5 · **session ใหม่: อ่านไฟล์นี้จากบนลงล่างถึงเส้นแรก แล้วทำงานต่อได้เลย**
 
-## 🌙 รายงานกะกลางคืน (2026-07-16 21:39 → 17 กลางดึก) — NIGHT RUN จบ 10 WO
+## 🌙 รายงานกะกลางคืน (2026-07-16 21:39 → 17 กลางดึก) — NIGHT RUN จบ 11 WO
 | WO | งาน | ข้อสอบ |
 |---|---|---|
 | 0041 | Observability: logger กลาง+alert throttle+/api/health (live บน prod แล้ว)+backoffice system-health | 7/7 + cron 4/4 |
@@ -15,7 +15,8 @@
 | 0049 | **Approval Engine**: สายอนุมัติ config ได้ (maker-checker) — policy/step (MANAGER→OWNER) + threshold วงเงิน + เจาะจงสุดชนะ + decide claim อะตอมมิก + UI ตั้งกฎ (/app/settings/approval) + รายการรออนุมัติ (/app/approvals) + 3 outbox event→แจ้งเตือน | 16/16 + cron 4/4 + automation 13/13 |
 | 0037 | **Multi-warehouse**: InvLocation ต่อ system + สต็อกต่อคลัง (invariant sum==onHand · lazy migration ไม่ต้อง backfill) + โอนระหว่างคลัง (movement คู่ TRANSFER idempotent) + PO รับเข้าเลือกคลัง + UI (ร้านคลังเดียวเห็นหน้าเดิมเป๊ะ) | 15/15 + inventory 12/12 + procurement 12/12 |
 | 0043 | **Hardening**: กันถล่ม OTP (อีเมล 5/10นาที · ip 20/10นาที · backoffice 5/10นาที — นับจาก AuthToken ไม่มีตารางใหม่) + `core/cron-auth.ts` รวม secret 2 มาตรฐาน (Bearer/X-Cron-Secret · constant-time · ของเก่าไม่พัง) + HSTS 2 ปี + Permissions-Policy + `core/rate-limit.ts` sliding window + docs/SECURITY_AUDIT.md (prod smoke: headers live · tick 401 · outbox secret ใหม่ 200) | 15/15 + cron 4/4 + chat-security 23 |
-เหตุการณ์เด่น: fitness จับสถาปัตยกรรม payroll 3 ข้อ (hr ล้วง gl/raw prisma) → Fable ผ่าตัด: postPayrollJV เข้า account facade + hr→account ลง allowlist + tenantDb ทั้งไฟล์ · cwd shell หลุด 2 ครั้ง (กู้จากกิ่ง worktree สำเร็จ — ย้ำกติกา cd สัมบูรณ์) · oracle stale กันล่วงหน้า 2 จุด (GR-0.1/V2-0.1) · F5 baseline 34→35 (approval/service.ts ใช้ $transaction atomic กับ outbox — จงใจ pattern เดียว POS)
+| 0057 | **ปฏิทินกลาง** read-only /app/calendar รวม 3 แหล่ง (นัดหมาย+เข้าพักโรงแรม+วันลา) — grid เดือน จุดสีต่อประเภท กดวันดูรายการ + ลิงก์ NavDrawer (Fable เสริม assertCan calendar.event.read ตาม F6) | 9/9 |
+เหตุการณ์เด่น: fitness จับสถาปัตยกรรม payroll 3 ข้อ (hr ล้วง gl/raw prisma) → Fable ผ่าตัด: postPayrollJV เข้า account facade + hr→account ลง allowlist + tenantDb ทั้งไฟล์ · cwd shell หลุด 2 ครั้ง (กู้จากกิ่ง worktree สำเร็จ — ย้ำกติกา cd สัมบูรณ์) · oracle stale กันล่วงหน้า 2 จุด (GR-0.1/V2-0.1) · Builder 0043 สร้าง webchat endpoint คู่ขนานเพื่อเอาใจ path ที่ oracle เขียนผิด → Fable ลบ dead endpoint + แก้ oracle ชี้ route จริง [connectionId] (ของจริงมี limiter M9 อยู่แล้ว) · F5 baseline 34→35 (approval/service.ts ใช้ $transaction atomic กับ outbox — จงใจ pattern เดียว POS)
 รอเจ้าของ: สแกน QR ทดสอบ · Bunny key · follow-up: 2140 ปสส.ค้างนำส่งใน CHART · summarizeCase wire หน้า list · i18n v1.1 · 0045b (ตอบเคสในนาม user) · **0049b wiring approval เข้า PO/ใบลาจริง** + นโยบายยื่นซ้ำหลัง REJECTED (idempotencyKey ตายตัว 1 entity=1 request — ต้อง version key ถ้าธุรกิจต้องแก้แล้วยื่นใหม่) + จำกัด policy.create เฉพาะ OWNER (ตอนนี้ MANAGER สร้างได้ตาม RBAC กลาง)
 คิวถัดไปตาม 10_MASTER_QUEUE: 0037 Multi-warehouse → 0043 Hardening → 0053 E-commerce
 
