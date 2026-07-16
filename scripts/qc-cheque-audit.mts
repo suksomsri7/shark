@@ -299,7 +299,7 @@ try {
   });
   const chequeRows = await prisma.accountCheque.findMany({ where: { systemId: s1.id }, select: { id: true } });
   const ids = new Set(chequeRows.map((r) => r.id));
-  const traceable = chequeEntries.filter((e) => ids.has(e.refId)).length;
+  const traceable = chequeEntries.filter((e) => e.refId !== null && ids.has(e.refId)).length;
   chk("G1", "entry ของเช็คควร ref ถึง AccountCheque (ไม่ใช่ ManualJV+randomUUID)", traceable > 0 || chequeEntries.length === 0,
     "refType=AccountCheque refId=chequeId", `${chequeEntries.length} entries เป็น AccountManualJV/random refId (source=MANUAL)`, "MAJOR");
   // payment.chequeId เคยถูก set ไหม

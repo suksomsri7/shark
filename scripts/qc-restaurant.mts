@@ -41,7 +41,7 @@ try {
     // KDS: station queue → advance ทุก item จนเสร็จ
     const q = await kds.stationQueue(tenantId, unitId, stations[0].id);
     const items = await prisma.restaurantOrderItem.findMany({ where: { tenantId, unitId } });
-    for (const oi of items) { await kds.advanceItem(tenantId, unitId, oi.id); await kds.advanceItem(tenantId, unitId, oi.id); }
+    for (const oi of items) { await kds.advanceItem(tenantId, unitId, oi.id, "COOKING"); await kds.advanceItem(tenantId, unitId, oi.id, "READY"); }
     ok(`KDS: คิว ${q.length ?? 0} + advance รายการจนเสร็จ`);
 
     // checkout (ไม่ผูก POS → fallback ปิดโต๊ะ)
