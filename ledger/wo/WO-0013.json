@@ -1,0 +1,64 @@
+{
+  "id": "WO-0013",
+  "title": "Marketing \u2014 \u0e41\u0e04\u0e21\u0e40\u0e1b\u0e0d/\u0e40\u0e0b\u0e01\u0e40\u0e21\u0e19\u0e15\u0e4c/\u0e2a\u0e48\u0e07",
+  "status": "queued",
+  "branch": "wo/0013",
+  "worktree": "/root/wt/0013",
+  "neonBranch": "wo-0013",
+  "files": [
+    "src/lib/modules/marketing/service.ts",
+    "src/lib/modules/marketing/actions.ts",
+    "src/lib/modules/marketing/ui.tsx"
+  ],
+  "closesFindings": [],
+  "dependsOn": [],
+  "doneWhen": [
+    {
+      "cmd": "pnpm exec tsx scripts/qc-marketing.mts",
+      "expect": "FINDINGS: CRITICAL 0"
+    },
+    {
+      "cmd": "pnpm qc:account",
+      "expect": "\u0e1c\u0e48\u0e32\u0e19 107/107"
+    },
+    {
+      "cmd": "pnpm fitness",
+      "expect": "FINDINGS: CRITICAL 0 \u00b7 MAJOR 0"
+    },
+    {
+      "cmd": "pnpm typecheck"
+    },
+    {
+      "cmd": "test -f src/lib/modules/marketing/ui.tsx && echo HAS_UI",
+      "expect": "HAS_UI"
+    }
+  ],
+  "steps": [
+    {
+      "done": true,
+      "text": "Fable: schema+enum+scope+systems+rules.ts+oracle qc-marketing.mts (RULES \u0e40\u0e02\u0e35\u0e22\u0e27\u00b7SVC fail-before)"
+    },
+    {
+      "done": false,
+      "text": "marketing/service.ts: createCampaign/previewAudience(rules.matchesSegment \u0e01\u0e31\u0e1a Customer \u0e02\u0e2d\u0e07 memberSystemId)/sendCampaign(DRAFT\u2192SENT + \u0e2a\u0e23\u0e49\u0e32\u0e07 MktRecipient freeze contact + idempotent \u0e2a\u0e48\u0e07\u0e0b\u0e49\u0e33\u0e44\u0e21\u0e48\u0e40\u0e1e\u0e34\u0e48\u0e21) \u2014 v1 \u0e2a\u0e48\u0e07\u0e40\u0e1b\u0e47\u0e19 log \u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e15\u0e48\u0e2d LINE \u0e08\u0e23\u0e34\u0e07"
+    },
+    {
+      "done": false,
+      "text": "marketing/actions.ts: server actions + assertCan (marketing.<entity>.<verb>) \u0e17\u0e38\u0e01 mutation"
+    },
+    {
+      "done": false,
+      "text": "marketing/ui.tsx: MarketingContent(systemId) \u2014 UI_STANDARD (accent \u0e19\u0e49\u0e33\u0e40\u0e07\u0e34\u0e19, .btn, \u0e44\u0e17\u0e22, \u226544px)"
+    },
+    {
+      "done": false,
+      "text": "oracle \u0e40\u0e02\u0e35\u0e22\u0e27\u0e04\u0e23\u0e1a + gates (Fable wire dispatch page.tsx \u0e40\u0e2d\u0e07 \u0e2b\u0e25\u0e31\u0e07 merge)"
+    }
+  ],
+  "log": [
+    {
+      "at": "2026-07-16T06:03:33Z",
+      "note": "\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19"
+    }
+  ]
+}

@@ -253,6 +253,8 @@ const ALLOWED_EDGES = new Set([
   "hotel→system",
   // chokepoint (2.4 ฝั่งเอกสาร): CRM ออกใบเสนอราคาผ่าน account facade (WO-0010)
   "crm→account",
+  // marketing อ่าน segment ลูกค้าจาก member (WO-0013)
+  "marketing→member",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {
