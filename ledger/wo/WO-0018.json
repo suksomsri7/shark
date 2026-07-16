@@ -1,23 +1,59 @@
 {
   "id": "WO-0018",
   "title": "Phase 3 v1 — AI tool use: ผู้ช่วยตอบด้วยข้อมูลจริงของร้าน (read-only 5 tools)",
-  "status": "in_progress",
+  "status": "done",
   "branch": "worktree Builder A2",
   "worktree": ".claude/worktrees/ (Agent tool)",
   "neonBranch": "wo-0018",
-  "files": ["src/lib/ai/provider.ts", "src/lib/ai/tools.ts", "src/lib/ai/service.ts", "src/lib/ai/persona.ts"],
+  "files": [
+    "src/lib/ai/provider.ts",
+    "src/lib/ai/tools.ts",
+    "src/lib/ai/service.ts",
+    "src/lib/ai/persona.ts"
+  ],
   "closesFindings": [],
-  "dependsOn": ["WO-0014"],
+  "dependsOn": [
+    "WO-0014"
+  ],
   "doneWhen": [
-    { "cmd": "DATABASE_URL=<neon wo-0018> pnpm exec tsx scripts/qc-ai-tools.mts", "expect": "FINDINGS: CRITICAL 0" },
-    { "cmd": "DATABASE_URL=<neon wo-0018> pnpm exec tsx scripts/qc-ai.mts", "expect": "ยังเขียว 17/17 (regression)" },
-    { "cmd": "pnpm typecheck + fitness (Fable รันหลัง merge)" }
+    {
+      "cmd": "DATABASE_URL=<neon wo-0018> pnpm exec tsx scripts/qc-ai-tools.mts",
+      "expect": "FINDINGS: CRITICAL 0"
+    },
+    {
+      "cmd": "DATABASE_URL=<neon wo-0018> pnpm exec tsx scripts/qc-ai.mts",
+      "expect": "ยังเขียว 17/17 (regression)"
+    },
+    {
+      "cmd": "pnpm typecheck + fitness (Fable รันหลัง merge)"
+    }
   ],
   "steps": [
-    { "done": false, "text": "provider.ts: tools/tool_calls (OpenAI-compatible) · Mock เดิมไม่แตะ" },
-    { "done": false, "text": "tools.ts: registry 5 ตัว (list_systems/sales_summary/low_stock/pending_leaves/member_count) + runTool กันพัง" },
-    { "done": false, "text": "service.ts: agent loop เพดาน 5 รอบ + deps.provider ฉีดได้ + persist เฉพาะหัวท้าย" },
-    { "done": false, "text": "persona.ts: บอกว่าดูข้อมูลจริงผ่านเครื่องมือได้" }
+    {
+      "done": true,
+      "text": "provider.ts: tools/tool_calls (OpenAI-compatible) · Mock เดิมไม่แตะ"
+    },
+    {
+      "done": true,
+      "text": "tools.ts: registry 5 ตัว (list_systems/sales_summary/low_stock/pending_leaves/member_count) + runTool กันพัง"
+    },
+    {
+      "done": true,
+      "text": "service.ts: agent loop เพดาน 5 รอบ + deps.provider ฉีดได้ + persist เฉพาะหัวท้าย"
+    },
+    {
+      "done": true,
+      "text": "persona.ts: บอกว่าดูข้อมูลจริงผ่านเครื่องมือได้"
+    }
   ],
-  "log": [{ "at": "2026-07-16T10:30:00Z", "note": "เปิดงาน — สัญญา+ข้อสอบอยู่หัว scripts/qc-ai-tools.mts · Phase 3.5 (mutation+ยืนยัน) แยก WO ถัดไป" }]
+  "log": [
+    {
+      "at": "2026-07-16T10:30:00Z",
+      "note": "เปิดงาน — สัญญา+ข้อสอบอยู่หัว scripts/qc-ai-tools.mts · Phase 3.5 (mutation+ยืนยัน) แยก WO ถัดไป"
+    },
+    {
+      "at": "2026-07-16T11:40:00Z",
+      "note": "Builder เสร็จ · Builder จับบั๊ก oracle (fromDate/toDate) — Fable ยืนยันแก้แล้ว · oracle 14/14 + regression 17/17 · smoke LLM จริงเรียก tool ตอบสมาชิก 3 คนถูก · merge"
+    }
+  ]
 }

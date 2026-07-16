@@ -2,7 +2,7 @@
   "id": "WO-0020",
   "title": "Phase 3.5 — AI ทำงานแทน user (proposal → confirm → execute) 🔴 คำสั่งตรง user",
   "status": "queued",
-  "blockedBy": "รอ WO-0018 merge ก่อน (แตะ provider/service/tools ไฟล์เดียวกัน)",
+  "blockedBy": null,
   "branch": null,
   "worktree": null,
   "neonBranch": "wo-0020 (สร้างตอนเริ่ม)",
@@ -14,17 +14,47 @@
     "src/components/app-shell/AiChat.tsx (confirm card)"
   ],
   "closesFindings": [],
-  "dependsOn": ["WO-0018"],
+  "dependsOn": [
+    "WO-0018"
+  ],
   "doneWhen": [
-    { "cmd": "pnpm exec tsx scripts/qc-ai-proposals.mts (Fable เขียนหลัง 0018 merge)", "expect": "FINDINGS: CRITICAL 0" },
-    { "cmd": "qc-ai + qc-ai-tools regression ยังเขียว" },
-    { "cmd": "pnpm typecheck + fitness" }
+    {
+      "cmd": "pnpm exec tsx scripts/qc-ai-proposals.mts (Fable เขียนหลัง 0018 merge)",
+      "expect": "FINDINGS: CRITICAL 0"
+    },
+    {
+      "cmd": "qc-ai + qc-ai-tools regression ยังเขียว"
+    },
+    {
+      "cmd": "pnpm typecheck + fitness"
+    }
   ],
   "steps": [
-    { "done": false, "text": "Fable: schema AiProposal (tenantId/conversationId/kind/payload/status PENDING→CONFIRMED/EXECUTED/REJECTED/expiresAt) + migration + oracle" },
-    { "done": false, "text": "action-tools 3 ตัว: inventory_receive · hr_decide_leave · marketing_create_campaign (DRAFT) — เสนอ proposal ไม่ execute" },
-    { "done": false, "text": "execute: อ่าน proposal จาก DB + assertCan สิทธิ์คนกด + เรียก service เดิม + กันกดซ้ำ (status transition)" },
-    { "done": false, "text": "AiChat: confirm card (สรุปไทย + ปุ่มยืนยัน/ยกเลิก ≥44px) + persona เสนอทางเลือกให้ user ตัดสิน" }
+    {
+      "done": false,
+      "text": "Fable: schema AiProposal (tenantId/conversationId/kind/payload/status PENDING→CONFIRMED/EXECUTED/REJECTED/expiresAt) + migration + oracle"
+    },
+    {
+      "done": false,
+      "text": "action-tools 3 ตัว: inventory_receive · hr_decide_leave · marketing_create_campaign (DRAFT) — เสนอ proposal ไม่ execute"
+    },
+    {
+      "done": false,
+      "text": "execute: อ่าน proposal จาก DB + assertCan สิทธิ์คนกด + เรียก service เดิม + กันกดซ้ำ (status transition)"
+    },
+    {
+      "done": false,
+      "text": "AiChat: confirm card (สรุปไทย + ปุ่มยืนยัน/ยกเลิก ≥44px) + persona เสนอทางเลือกให้ user ตัดสิน"
+    }
   ],
-  "log": [{ "at": "2026-07-16T11:10:00Z", "note": "เปิดคิวตามคำสั่ง user: AI ต้องแนะนำ+ทำแทนได้ โดย user ตัดสินใจ — design ใน AI_LAYER.md Phase 3.5" }]
+  "log": [
+    {
+      "at": "2026-07-16T11:10:00Z",
+      "note": "เปิดคิวตามคำสั่ง user: AI ต้องแนะนำ+ทำแทนได้ โดย user ตัดสินใจ — design ใน AI_LAYER.md Phase 3.5"
+    },
+    {
+      "at": "2026-07-16T11:40:00Z",
+      "note": "ปลดบล็อก — WO-0018 merge แล้ว"
+    }
+  ]
 }
