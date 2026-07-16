@@ -1,7 +1,7 @@
 {
   "id": "WO-0020",
   "title": "Phase 3.5 — AI ทำงานแทน user (proposal → confirm → execute) 🔴 คำสั่งตรง user",
-  "status": "in_progress",
+  "status": "done",
   "blockedBy": null,
   "branch": null,
   "worktree": null,
@@ -36,15 +36,15 @@
       "text": "Fable: schema AiProposal + scope + migration (ลง prod แล้ว) + oracle qc-ai-proposals.mts"
     },
     {
-      "done": false,
+      "done": true,
       "text": "action-tools 3 ตัว: inventory_receive · hr_decide_leave · marketing_create_campaign (DRAFT) — เสนอ proposal ไม่ execute"
     },
     {
-      "done": false,
+      "done": true,
       "text": "execute: อ่าน proposal จาก DB + assertCan สิทธิ์คนกด + เรียก service เดิม + กันกดซ้ำ (status transition)"
     },
     {
-      "done": false,
+      "done": true,
       "text": "AiChat: confirm card (สรุปไทย + ปุ่มยืนยัน/ยกเลิก ≥44px) + persona เสนอทางเลือกให้ user ตัดสิน"
     }
   ],
@@ -60,6 +60,10 @@
     {
       "at": "2026-07-16T12:00:00Z",
       "note": "Fable วางของกลางเสร็จ → spawn Builder"
+    },
+    {
+      "at": "2026-07-16T13:30:00Z",
+      "note": "Builder A3 เสร็จ 16/16 · ชี้ oracle เก่า stale ถูกต้อง (Fable แก้เป็น 8 tools) · Fable ถอน mock-gate (test=prod) + แก้ tenantId type · smoke จริง: สั่งรับของ→proposal→ยืนยัน→สต็อก 0→12 · merge"
     }
   ]
 }

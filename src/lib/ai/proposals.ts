@@ -39,14 +39,15 @@ export async function createProposal(
   ctx: Ctx,
   input: { conversationId: string; kind: ProposalKind; summary: string; payload: Record<string, unknown> },
 ): Promise<{ id: string }> {
+  // tenantId ใส่ตรง ๆ ให้ตรง type (guard inject ค่าเดียวกันซ้ำ — convention repo นี้) · status = PENDING (default schema)
   const row = await tenantDb(ctx).aiProposal.create({
     data: {
+      tenantId: ctx.tenantId,
       conversationId: input.conversationId,
       kind: input.kind,
       summary: input.summary,
       payload: input.payload as Prisma.InputJsonValue,
       expiresAt: new Date(Date.now() + TTL_MS),
-      // tenantId inject โดย guard · status = PENDING (default schema)
     },
   });
   return { id: row.id };
