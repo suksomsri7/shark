@@ -1134,6 +1134,354 @@ const shopPendingOrders: AiTool = {
   },
 };
 
+// ══════════════════════════════════════════════════════════════════
+// Phase B2 (ชุดปิด) — ทำแทน CRM·KB·โรงเรียน·คลินิก·เช่า·สายอนุมัติ·คลังตัดออก (action 8) + ดูข้อมูล (read 2)
+// resolve unit/course/asset/enrollment อยู่ใน dispatch (proposals.ts) — tool แค่รวบ payload แล้ว propose
+// ══════════════════════════════════════════════════════════════════
+
+// ── B2-A1) crm_create_lead — เสนอบันทึกลูกค้ามุ่งหวัง (lead) เข้า CRM ──
+const crmCreateLead: AiTool = {
+  action: true,
+  def: {
+    name: "crm_create_lead",
+    description:
+      "เสนอบันทึกลูกค้ามุ่งหวัง (lead) เข้าระบบ CRM (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ name (ชื่อผู้ติดต่อ) และ phone/email/note ถ้ามี",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "ชื่อผู้ติดต่อ/ลูกค้ามุ่งหวัง" },
+        phone: { type: "string", description: "เบอร์โทร (ถ้ามี)" },
+        email: { type: "string", description: "อีเมล (ถ้ามี)" },
+        note: { type: "string", description: "บันทึกย่อ (ถ้ามี)" },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const name = String(a.name ?? "").trim();
+    if (!name) return JSON.stringify({ error: "ต้องระบุชื่อผู้ติดต่อ" });
+    const payload: Record<string, unknown> = { name };
+    const phone = String(a.phone ?? "").trim();
+    const email = String(a.email ?? "").trim();
+    const note = String(a.note ?? "").trim();
+    if (phone) payload.phone = phone;
+    if (email) payload.email = email;
+    if (note) payload.note = note;
+    const contact = phone ? ` (เบอร์ ${phone})` : email ? ` (อีเมล ${email})` : "";
+    return propose(ctx, "crm_create_lead", `บันทึกลูกค้ามุ่งหวัง "${name}"${contact}`, payload);
+  },
+};
+
+// ── B2-A2) kb_create_article — เสนอเพิ่มบทความคลังความรู้ ──
+const kbCreateArticle: AiTool = {
+  action: true,
+  def: {
+    name: "kb_create_article",
+    description:
+      "เสนอเพิ่มบทความเข้าคลังความรู้ของร้าน (FAQ/นโยบาย/ขั้นตอน) — ยังไม่ทำทันที สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน · ระบุ title, body และ category ถ้ามี",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "หัวข้อบทความ" },
+        body: { type: "string", description: "เนื้อหาบทความ" },
+        category: { type: "string", description: "หมวดหมู่ (ถ้ามี)" },
+      },
+      required: ["title", "body"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const title = String(a.title ?? "").trim();
+    const body = String(a.body ?? "").trim();
+    if (!title) return JSON.stringify({ error: "ต้องระบุหัวข้อบทความ" });
+    if (!body) return JSON.stringify({ error: "ต้องระบุเนื้อหาบทความ" });
+    const payload: Record<string, unknown> = { title, body };
+    const category = String(a.category ?? "").trim();
+    if (category) payload.category = category;
+    return propose(ctx, "kb_create_article", `เพิ่มบทความ "${title}" เข้าคลังความรู้`, payload);
+  },
+};
+
+// ── B2-A3) school_enroll — เสนอสมัครนักเรียนเข้าคอร์ส/รอบเรียน ──
+const schoolEnroll: AiTool = {
+  action: true,
+  def: {
+    name: "school_enroll",
+    description:
+      "เสนอสมัครนักเรียนเข้าคอร์ส (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ courseName (ชื่อคอร์ส จับคู่บางส่วนได้), studentName, studentPhone · className ถ้าเจาะจงรอบเรียน (ไม่ระบุ=รอบแรก) · unitName ถ้ามีหลายสาขา",
+    parameters: {
+      type: "object",
+      properties: {
+        unitName: { type: "string", description: "ชื่อโรงเรียน/สาขา (ถ้ามีหลายสาขา)" },
+        courseName: { type: "string", description: "ชื่อคอร์ส (จับคู่บางส่วนได้)" },
+        className: { type: "string", description: "ชื่อรอบเรียน (ถ้าเจาะจง)" },
+        studentName: { type: "string", description: "ชื่อนักเรียน" },
+        studentPhone: { type: "string", description: "เบอร์โทรนักเรียน/ผู้ปกครอง" },
+      },
+      required: ["courseName", "studentName", "studentPhone"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const courseName = String(a.courseName ?? "").trim();
+    const studentName = String(a.studentName ?? "").trim();
+    const studentPhone = String(a.studentPhone ?? "").trim();
+    if (!courseName) return JSON.stringify({ error: "ต้องระบุชื่อคอร์ส" });
+    if (!studentName) return JSON.stringify({ error: "ต้องระบุชื่อนักเรียน" });
+    if (!studentPhone) return JSON.stringify({ error: "ต้องระบุเบอร์โทรนักเรียน" });
+    const payload: Record<string, unknown> = { courseName, studentName, studentPhone };
+    const className = String(a.className ?? "").trim();
+    if (className) payload.className = className;
+    const unitName = String(a.unitName ?? "").trim();
+    if (unitName) payload.unitName = unitName;
+    const summary = `สมัคร ${studentName} เข้าคอร์ส "${courseName}"${className ? ` (${className})` : ""}`;
+    return propose(ctx, "school_enroll", summary, payload);
+  },
+};
+
+// ── B2-A4) school_mark_paid — เสนอรับชำระค่าเรียน (เข้าเส้นเงิน) ──
+const schoolMarkPaid: AiTool = {
+  action: true,
+  def: {
+    name: "school_mark_paid",
+    description:
+      "เสนอรับชำระค่าเรียนของนักเรียนที่สมัครแล้วรอชำระ (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน · เมื่อยืนยันจะบันทึกเป็นยอดขายให้อัตโนมัติ) · ระบุ studentPhone (เบอร์ — แม่นสุด) หรือ studentName",
+    parameters: {
+      type: "object",
+      properties: {
+        studentName: { type: "string", description: "ชื่อนักเรียน" },
+        studentPhone: { type: "string", description: "เบอร์โทรนักเรียน (แม่นกว่าชื่อ)" },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const studentName = String(a.studentName ?? "").trim();
+    const studentPhone = String(a.studentPhone ?? "").trim();
+    if (!studentName && !studentPhone) {
+      return JSON.stringify({ error: "ต้องระบุชื่อหรือเบอร์นักเรียน", suggestion: "ระบุเบอร์โทรจะแม่นที่สุด" });
+    }
+    const payload: Record<string, unknown> = {};
+    if (studentName) payload.studentName = studentName;
+    if (studentPhone) payload.studentPhone = studentPhone;
+    const who = studentPhone ? `เบอร์ ${studentPhone}` : studentName;
+    return propose(ctx, "school_mark_paid", `รับชำระค่าเรียนของ ${who}`, payload);
+  },
+};
+
+// ── B2-A5) clinic_create_patient — เสนอเพิ่มผู้ป่วยใหม่ ──
+const clinicCreatePatient: AiTool = {
+  action: true,
+  def: {
+    name: "clinic_create_patient",
+    description:
+      "เสนอเพิ่มผู้ป่วยใหม่เข้าคลินิก (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ name, phone · allergies (ประวัติแพ้ยา) ถ้ามี · unitName ถ้ามีหลายสาขา",
+    parameters: {
+      type: "object",
+      properties: {
+        unitName: { type: "string", description: "ชื่อคลินิก/สาขา (ถ้ามีหลายสาขา)" },
+        name: { type: "string", description: "ชื่อผู้ป่วย" },
+        phone: { type: "string", description: "เบอร์โทรผู้ป่วย" },
+        allergies: { type: "string", description: "ประวัติแพ้ยา (ถ้ามี)" },
+      },
+      required: ["name", "phone"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const name = String(a.name ?? "").trim();
+    const phone = String(a.phone ?? "").trim();
+    if (!name) return JSON.stringify({ error: "ต้องระบุชื่อผู้ป่วย" });
+    if (!phone) return JSON.stringify({ error: "ต้องระบุเบอร์โทรผู้ป่วย" });
+    const payload: Record<string, unknown> = { name, phone };
+    const allergies = String(a.allergies ?? "").trim();
+    if (allergies) payload.allergies = allergies;
+    const unitName = String(a.unitName ?? "").trim();
+    if (unitName) payload.unitName = unitName;
+    return propose(ctx, "clinic_create_patient", `เพิ่มผู้ป่วย "${name}" (${phone})`, payload);
+  },
+};
+
+// ── B2-A6) rental_create_booking — เสนอจองเช่าของ ──
+const rentalCreateBooking: AiTool = {
+  action: true,
+  def: {
+    name: "rental_create_booking",
+    description:
+      "เสนอจองเช่าของให้ลูกค้า (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ assetName (ชื่อของที่เช่า จับคู่บางส่วนได้), customerName, customerPhone, startDate (YYYY-MM-DD), endDate (YYYY-MM-DD — วันคืน ไม่นับวันนั้น) · unitName ถ้ามีหลายจุด",
+    parameters: {
+      type: "object",
+      properties: {
+        unitName: { type: "string", description: "ชื่อจุดให้เช่า (ถ้ามีหลายจุด)" },
+        assetName: { type: "string", description: "ชื่อของที่เช่า (จับคู่บางส่วนได้)" },
+        customerName: { type: "string", description: "ชื่อลูกค้า" },
+        customerPhone: { type: "string", description: "เบอร์โทรลูกค้า" },
+        startDate: { type: "string", description: "วันเริ่มเช่า รูปแบบ YYYY-MM-DD" },
+        endDate: { type: "string", description: "วันคืน รูปแบบ YYYY-MM-DD (ไม่นับวันคืน)" },
+      },
+      required: ["assetName", "customerName", "customerPhone", "startDate", "endDate"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const assetName = String(a.assetName ?? "").trim();
+    const customerName = String(a.customerName ?? "").trim();
+    const customerPhone = String(a.customerPhone ?? "").trim();
+    const startDate = String(a.startDate ?? "").trim();
+    const endDate = String(a.endDate ?? "").trim();
+    if (!assetName) return JSON.stringify({ error: "ต้องระบุชื่อของที่เช่า" });
+    if (!customerName) return JSON.stringify({ error: "ต้องระบุชื่อลูกค้า" });
+    if (!customerPhone) return JSON.stringify({ error: "ต้องระบุเบอร์โทรลูกค้า" });
+    if (!startDate || !endDate) return JSON.stringify({ error: "ต้องระบุวันเริ่มเช่าและวันคืน (YYYY-MM-DD)" });
+    const payload: Record<string, unknown> = { assetName, customerName, customerPhone, startDate, endDate };
+    const unitName = String(a.unitName ?? "").trim();
+    if (unitName) payload.unitName = unitName;
+    const summary = `จองเช่า "${assetName}" ให้ ${customerName} (${startDate} → ${endDate})`;
+    return propose(ctx, "rental_create_booking", summary, payload);
+  },
+};
+
+// ── B2-A7) approval_decide — เสนออนุมัติ/ปฏิเสธคำขอในสายอนุมัติ (สิทธิ์ของคนกดยืนยัน) ──
+const approvalDecide: AiTool = {
+  action: true,
+  def: {
+    name: "approval_decide",
+    description:
+      "เสนออนุมัติหรือปฏิเสธคำขอที่รออยู่ในสายอนุมัติ (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน · ระบบตัดสินด้วยสิทธิ์ของคนที่กดยืนยัน) · ระบุ decision (APPROVED/REJECTED) และ requestId (ถ้าทราบ) หรือ requestSummary (คำค้นชนิดเอกสาร) · note ถ้ามี · ดูคำขอที่รอได้จากเครื่องมือ approvals_pending",
+    parameters: {
+      type: "object",
+      properties: {
+        requestId: { type: "string", description: "รหัสคำขอ (ถ้าทราบ)" },
+        requestSummary: { type: "string", description: "คำค้นระบุคำขอ เช่น ชนิดเอกสาร (ถ้าไม่ทราบรหัส)" },
+        decision: { type: "string", enum: ["APPROVED", "REJECTED"], description: "ผลการพิจารณา" },
+        note: { type: "string", description: "หมายเหตุ (ถ้ามี)" },
+      },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const decision = a.decision === "REJECTED" ? "REJECTED" : "APPROVED";
+    const requestId = String(a.requestId ?? "").trim();
+    const requestSummary = String(a.requestSummary ?? "").trim();
+    if (!requestId && !requestSummary) {
+      return JSON.stringify({ error: "ต้องระบุคำขอ (requestId หรือ requestSummary)", suggestion: "ดูคำขอที่รอได้จากเครื่องมือ approvals_pending" });
+    }
+    const payload: Record<string, unknown> = { decision };
+    if (requestId) payload.requestId = requestId;
+    if (requestSummary) payload.requestSummary = requestSummary;
+    const note = String(a.note ?? "").trim();
+    if (note) payload.note = note;
+    const verb = decision === "APPROVED" ? "อนุมัติ" : "ปฏิเสธ";
+    const which = requestId ? `รหัส ${requestId}` : `"${requestSummary}"`;
+    return propose(ctx, "approval_decide", `${verb}คำขอ ${which}`, payload);
+  },
+};
+
+// ── B2-A8) inventory_consume — เสนอตัดสินค้าออกจากคลัง (เบิกใช้/ของเสีย) ──
+const inventoryConsume: AiTool = {
+  action: true,
+  def: {
+    name: "inventory_consume",
+    description:
+      "เสนอตัดสินค้าออกจากคลัง (เบิกใช้/ของเสีย) — ยังไม่ทำทันที สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน · ระบุ sku และ qty (จำนวนที่ตัดออก) · note เหตุผลถ้ามี",
+    parameters: {
+      type: "object",
+      properties: {
+        sku: { type: "string", description: "รหัสสินค้า (SKU)" },
+        qty: { type: "integer", minimum: 1, description: "จำนวนที่ตัดออก" },
+        note: { type: "string", description: "เหตุผล เช่น เบิกใช้/ของเสีย (ถ้ามี)" },
+      },
+      required: ["sku", "qty"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const sku = String(a.sku ?? "").trim();
+    const qty = Math.round(Number(a.qty));
+    if (!sku) return JSON.stringify({ error: "ต้องระบุรหัสสินค้า" });
+    // validate-explain: ตัด qty ≤ 0 ไม่ได้ → อธิบาย ไม่สร้าง proposal
+    if (!Number.isFinite(qty) || qty <= 0) {
+      return JSON.stringify({ error: "จำนวนที่ตัดออกต้องมากกว่า 0", suggestion: "ระบุจำนวนเป็นจำนวนเต็มบวก" });
+    }
+    const note = String(a.note ?? "").trim();
+    const payload: Record<string, unknown> = { sku, qty };
+    if (note) payload.note = note;
+    const summary = `ตัดสินค้ารหัส ${sku} ออกจากคลัง ${qty} หน่วย${note ? ` (${note})` : ""}`;
+    return propose(ctx, "inventory_consume", summary, payload);
+  },
+};
+
+// ── B2-R1) approvals_pending — คำขอที่รออนุมัติทั้งหมด แยกตามชนิดเอกสาร ──
+const approvalsPending: AiTool = {
+  def: {
+    name: "approvals_pending",
+    description: "ดูคำขอที่รออนุมัติทั้งหมดของร้าน แยกตามชนิดเอกสาร — คืนจำนวนและรายการล่าสุดในแต่ละชนิด",
+    parameters: NO_ARGS,
+  },
+  async execute(ctx) {
+    const rows = await prisma.approvalRequest.findMany({
+      where: { tenantId: ctx.tenantId, status: "PENDING" },
+      orderBy: { createdAt: "desc" },
+      select: { entityType: true, entityId: true, amountSatang: true, createdAt: true },
+    });
+    const byType = new Map<string, { เอกสาร: string; ยอดบาท: number | null; วันที่: string | null }[]>();
+    for (const r of rows) {
+      const arr = byType.get(r.entityType) ?? [];
+      arr.push({
+        เอกสาร: r.entityId,
+        ยอดบาท: r.amountSatang != null ? Math.round(r.amountSatang) / 100 : null,
+        วันที่: safeDate(r.createdAt),
+      });
+      byType.set(r.entityType, arr);
+    }
+    return JSON.stringify({
+      คำขอรออนุมัติทั้งหมด: rows.length,
+      แยกตามชนิดเอกสาร: [...byType.entries()].map(([ชนิดเอกสาร, items]) => ({
+        ชนิดเอกสาร,
+        จำนวน: items.length,
+        ล่าสุด: items.slice(0, 5),
+      })),
+    });
+  },
+};
+
+// ── B2-R2) rental_active — สัญญาเช่าที่ยังค้างคืน (จองแล้ว/รับของไปแล้ว) ทุกจุดให้เช่า ──
+const rentalActive: AiTool = {
+  def: {
+    name: "rental_active",
+    description: "ดูสัญญาเช่าที่ยังค้างคืน (จองแล้ว/รับของไปแล้ว) ทุกจุดให้เช่า — คืนของที่เช่า ลูกค้า และช่วงวันเช่า",
+    parameters: NO_ARGS,
+  },
+  async execute(ctx) {
+    const rows = await prisma.rentalBooking.findMany({
+      where: { tenantId: ctx.tenantId, status: { in: ["BOOKED", "PICKED_UP"] } },
+      orderBy: { startDate: "asc" },
+      include: { asset: { select: { name: true } } },
+    });
+    return JSON.stringify({
+      สัญญาเช่าที่ค้างคืน: rows.map((r) => ({
+        ของ: r.asset?.name ?? null,
+        ลูกค้า: r.customerName,
+        เบอร์: r.customerPhone,
+        ตั้งแต่: safeDate(r.startDate),
+        ถึง: safeDate(r.endDate),
+        สถานะ: r.status,
+      })),
+    });
+  },
+};
+
 // หาชื่อพนักงานของใบลา (best-effort สำหรับ summary) — พังก็คืน null ไม่โยน
 async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<string | null> {
   try {
@@ -1166,6 +1514,9 @@ export function toolRegistry(): AiTool[] {
     todayAppointments,
     queueWaiting,
     shopPendingOrders,
+    // Phase B2 read — คำขอรออนุมัติ / สัญญาเช่าค้างคืน
+    approvalsPending,
+    rentalActive,
     // action / ทำแทน
     inventoryReceive,
     hrDecideLeave,
@@ -1186,6 +1537,15 @@ export function toolRegistry(): AiTool[] {
     hotelCreateReservation,
     queueIssueTicket,
     shopConfirmOrder,
+    // Phase B2 action — CRM / KB / โรงเรียน / คลินิก / เช่า / สายอนุมัติ / คลังตัดออก
+    crmCreateLead,
+    kbCreateArticle,
+    schoolEnroll,
+    schoolMarkPaid,
+    clinicCreatePatient,
+    rentalCreateBooking,
+    approvalDecide,
+    inventoryConsume,
   ];
 }
 
