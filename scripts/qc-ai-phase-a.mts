@@ -60,6 +60,19 @@ try {
   // void_sale tool มีอยู่ (destructive action)
   chk("PA-2.5", "tool void_sale ลงทะเบียน (ยกเลิกบิล — destructive)", tools.toolRegistry().some((x) => x.def.name === "void_sale"), "MAJOR");
 
+  // [2b] void_sale end-to-end: บิลจริง PAID → เสนอ void → 2 ชั้น → VOIDED จริง
+  const unit = await prisma.businessUnit.create({ data: { tenantId: tid, type: "SHOP", name: "ร้าน", slug: `pa-${Date.now()}` } });
+  const posSys = await sys.createSystem(tid, "POS", "ขาย");
+  const posSvc = (await import("@/lib/modules/pos/service")) as unknown as { createSale: (i: any) => Promise<{ saleId: string }> };
+  const sale = await posSvc.createSale({ tenantId: tid, unitId: unit.id, systemId: posSys.id, idempotencyKey: `pa-void-${Date.now()}`, lines: [{ name: "ของ", qty: 1, unitPriceSatang: 10000 }], payMethods: [{ type: "CASH", amountSatang: 10000 }] });
+  const vp = await props.createProposal(ctx, { conversationId: conv.id, kind: "void_sale", summary: "ยกเลิกบิล", payload: { saleId: sale.saleId } });
+  const v1 = await props.executeProposal(OWNER, ctx, vp.id);
+  const saleMid = await prisma.posSale.findUnique({ where: { id: sale.saleId } });
+  chk("PA-2.6", "void_sale ชั้นเดียว → บิลยัง PAID + needsSecondConfirm", v1?.ok === false && v1?.needsSecondConfirm === true && saleMid?.status === "PAID");
+  const v2 = await props.executeProposal(OWNER, ctx, vp.id, { confirm2x: true });
+  const saleEnd = await prisma.posSale.findUnique({ where: { id: sale.saleId } });
+  chk("PA-2.7", "void_sale ชั้นสอง → บิล VOIDED จริง", v2?.ok === true && saleEnd?.status === "VOIDED");
+
   // [3] validate-explain: inventory_adjust ติดลบ → error+suggestion ไม่สร้าง proposal
   const item = await (await import("@/lib/modules/inventory/service")).createItem({ tenantId: tid, systemId: inv.id } as never, { sku: "PA-ADJ", name: "ปรับ" } as never);
   const before = await prisma.aiProposal.count({ where: { tenantId: tid } });
@@ -70,7 +83,7 @@ try {
 } catch (e) { chk("CRASH", "จบ: " + (e instanceof Error ? e.message.slice(0, 130) : String(e)), false); }
 finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch {} };
-  if (tid) { for (const m of ["aiProposal", "aiMessage", "aiConversation", "kanbanCard", "kanbanColumn", "kanbanBoard", "invMovement", "invItem", "appSystemUnit", "appSystem"]) await d(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId: tid } })); await d(() => prisma.tenant.delete({ where: { id: tid } })); }
+  if (tid) { for (const m of ["aiProposal", "aiMessage", "aiConversation", "kanbanCard", "kanbanColumn", "kanbanBoard", "invMovement", "invItem", "posPayment", "posSaleLine", "posSale", "posReceiptCounter", "outboxEvent", "appNotification", "appSystemUnit", "appSystem"]) await d(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId: tid } })); await d(() => prisma.businessUnit.deleteMany({ where: { tenantId: tid } })); await d(() => prisma.tenant.delete({ where: { id: tid } })); }
   await prisma.$disconnect();
 }
 const f = cks.filter((c) => !c.ok);
