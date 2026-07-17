@@ -120,7 +120,11 @@ body {
   mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7.5px));
   animation: ai-orb-spin 16s linear infinite;
 }
+/* overlay ระหว่างเปลี่ยนหน้า — orb หมุนเร็ว (1.1 วิ/รอบ) */
+.ai-orb-fast {
+  animation: ai-orb-spin 1.1s linear infinite;
+}
 @media (prefers-reduced-motion: reduce) {
-  .ai-orb, .ai-orb-breathe { animation: none; }
+  .ai-orb, .ai-orb-breathe, .ai-orb-fast { animation: none; }
   .ai-orb-breathe { filter: drop-shadow(0 0 7px rgba(96, 165, 250, 0.6)); }
 }
