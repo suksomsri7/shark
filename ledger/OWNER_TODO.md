@@ -15,7 +15,7 @@
 
 ## API keys ที่ระบบรอ (ฟีเจอร์สร้างเสร็จแล้ว รอ key เสียบแล้วเปิดเลย)
 
-### 3. Bunny Storage (เปิดอัปโหลดโลโก้/ไฟล์จริง)
+### 3. ~~Bunny Storage~~ ✅ เสร็จ 2026-07-17 (key+zone+CDN shark-in-th.b-cdn.net ครบ · storage เปิดใช้จริงบน prod)
 - **ทำไม**: ตอนนี้โลโก้/ไฟล์แนบทุกจุดเป็น URL-paste — White label (WO-0064) จะดีขึ้นมากถ้าอัปโหลดได้
 - **ทำยังไง**: สร้าง Storage Zone ใหม่ชื่อ `shark` ที่ bunny.net (แยกจากของ siamdive — กติกาห้ามใช้ key ข้ามโปรเจกต์)
 - **ส่งอะไรมา**: `SHARK_BUNNY_STORAGE_KEY` + `SHARK_BUNNY_STORAGE_ZONE` + `SHARK_BUNNY_CDN_HOST`

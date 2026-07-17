@@ -62,6 +62,10 @@ follow-up: forms actions อยู่ src/app/app/forms/actions.ts นอก wal
 รอเจ้าของ: สแกน QR ทดสอบ · Bunny key · follow-up: 2140 ปสส.ค้างนำส่งใน CHART · summarizeCase wire หน้า list · i18n v1.1 · 0045b (ตอบเคสในนาม user) · **0049b wiring approval เข้า PO/ใบลาจริง** + นโยบายยื่นซ้ำหลัง REJECTED (idempotencyKey ตายตัว 1 entity=1 request — ต้อง version key ถ้าธุรกิจต้องแก้แล้วยื่นใหม่) + จำกัด policy.create เฉพาะ OWNER (ตอนนี้ MANAGER สร้างได้ตาม RBAC กลาง)
 คิวถัดไปตาม 10_MASTER_QUEUE: 0063 Marketplace โครง (dep 0061✅) → 0066 i18n v2 → 0056 Dashboard builder (dep 0055✅) → 0060 Delivery โครง (dep 0053✅) → 0051 School → 0052 Clinic → 0065 host-routing · รอบสมาธิเต็ม: 0040 หนี้เส้นเงิน + 0044 · ติด 🔑: 0058 (OTP ลูกค้า) 0067 (LINE OA) 0069 (ราคา) 0070 (Beam) 0071 (ถ้อยคำ)
 
+## 🎨 UI feedback เจ้าของ 12 ข้อ (2026-07-17 สาย) — ✅ ครบทุกข้อ LIVE
+1 orb เล็ก+หนา · 5 help icon น้ำเงิน · 6 เอา dashboard header ออก · 9 NavDrawer เอา SHARK ออก/ชื่อกิจการใหญ่ · 10 ไอคอนเมนู SVG ดำ (NavIcon.tsx emoji→svg map) · 11 ปุ่มเพิ่มระบบน้ำเงิน · 12 ปุ่ม + วงกลมน้ำเงิน dashboard · **2/3/8 Help Center ระบบเคสเต็ม** (caseNo running + shopLastReadAt + attachmentsJson · qc-help-v2 8/8) · **4 AI vision** (imageUrls inline + record_expense proposal → createExpenseDoc · qc-ai-vision 6/6) · **7 badge unread** (help=unreadCaseTotal · AI=AppNotification readAt null · layout→AppShell→Topbar/AiDock)
+🟢 **Bunny storage เปิดใช้จริง**: zone shark + key + CDN https://shark-in-th.b-cdn.net (ทดสอบ PUT→CDN 200) ครบใน .env+Vercel · storageEnabled()=true. follow-up: Help attachment ตอนนี้ base64 dataURL — ย้ายไป Bunny upload ทีหลังได้ (optional)
+
 ## 🎯 CHECKPOINT 2026-07-17 — จุดต่องาน (อ่านตรงนี้ก่อน)
 **สถานะ**: shark.in.th LIVE บน Vercel · main = ทุกอย่าง merge แล้ว · deploy READY · ไม่มี worktree/neon branch ค้าง · WO-0001→0034 done หมด (ยกเว้น WO-0032 = เลขข้าม ไม่มีจริง)
 
