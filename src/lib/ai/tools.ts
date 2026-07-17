@@ -833,6 +833,307 @@ const voidSale: AiTool = {
   },
 };
 
+// ══════════════════════════════════════════════════════════════════
+// Phase B1 — ทำแทนโมดูลเงินเดิน (action 5) + ดูข้อมูล (read 3)
+// resolve unit อยู่ใน dispatch (proposals.ts) — tool แค่รวบ payload แล้ว propose
+// ══════════════════════════════════════════════════════════════════
+
+// ── B1-A1) pos_create_sale — เสนอเปิดบิลขายหน้าร้าน (POS) ──
+const posCreateSale: AiTool = {
+  action: true,
+  def: {
+    name: "pos_create_sale",
+    description:
+      "เสนอเปิดบิลขายหน้าร้าน (POS) — ยังไม่ทำทันที สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน · ระบุ lines (แต่ละรายการมี name=ชื่อสินค้า, qty=จำนวน, unitPriceSatang=ราคาต่อหน่วยเป็นสตางค์ คือบาท×100) และ payType (CASH=เงินสด / TRANSFER=โอน / PROMPTPAY=พร้อมเพย์) · ระบุ unitName ถ้าร้านมีหลายสาขา",
+    parameters: {
+      type: "object",
+      properties: {
+        unitName: { type: "string", description: "ชื่อสาขา/จุดขาย (ถ้ามีหลายสาขา)" },
+        lines: {
+          type: "array",
+          description: "รายการสินค้าในบิล (อย่างน้อย 1 รายการ)",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "ชื่อสินค้า/รายการ" },
+              qty: { type: "integer", minimum: 1, description: "จำนวน" },
+              unitPriceSatang: { type: "integer", minimum: 0, description: "ราคาต่อหน่วยเป็นสตางค์ (บาท×100)" },
+            },
+            required: ["name", "qty", "unitPriceSatang"],
+            additionalProperties: false,
+          },
+        },
+        payType: { type: "string", enum: ["CASH", "TRANSFER", "PROMPTPAY"], description: "วิธีชำระเงิน" },
+      },
+      required: ["lines", "payType"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const rawLines = Array.isArray(a.lines) ? a.lines : [];
+    // validate-explain: ก่อน propose — lines ว่าง/qty≤0/ราคาติดลบ → คืน {error,suggestion} ไม่สร้าง proposal
+    if (rawLines.length === 0) {
+      return JSON.stringify({ error: "ยังไม่มีรายการสินค้าในบิล", suggestion: "ระบุอย่างน้อย 1 รายการ (ชื่อ จำนวน ราคาต่อหน่วย)" });
+    }
+    const lines: { name: string; qty: number; unitPriceSatang: number }[] = [];
+    for (const raw of rawLines) {
+      const l = asRecord(raw);
+      const name = String(l.name ?? "").trim();
+      const qty = Math.round(Number(l.qty));
+      const unitPriceSatang = Math.round(Number(l.unitPriceSatang));
+      if (!name) return JSON.stringify({ error: "แต่ละรายการต้องมีชื่อสินค้า", suggestion: "ระบุชื่อสินค้าให้ครบทุกบรรทัด" });
+      if (!Number.isFinite(qty) || qty <= 0) {
+        return JSON.stringify({ error: `จำนวนของ "${name}" ต้องมากกว่า 0`, suggestion: "ตรวจจำนวนอีกครั้ง (ต้องเป็นจำนวนเต็มบวก)" });
+      }
+      if (!Number.isFinite(unitPriceSatang) || unitPriceSatang < 0) {
+        return JSON.stringify({ error: `ราคาของ "${name}" ติดลบไม่ได้`, suggestion: "ตรวจราคาต่อหน่วยอีกครั้ง" });
+      }
+      lines.push({ name, qty, unitPriceSatang });
+    }
+    let payType = "CASH";
+    if (a.payType === "TRANSFER") payType = "TRANSFER";
+    else if (a.payType === "PROMPTPAY") payType = "PROMPTPAY";
+    const payload: Record<string, unknown> = { lines, payType };
+    const unitName = String(a.unitName ?? "").trim();
+    if (unitName) payload.unitName = unitName;
+    const grand = lines.reduce((s, l) => s + l.unitPriceSatang * l.qty, 0);
+    const baht = (grand / 100).toLocaleString("th-TH");
+    const payLabel = payType === "TRANSFER" ? "โอน" : payType === "PROMPTPAY" ? "พร้อมเพย์" : "เงินสด";
+    const summary = `เปิดบิลขาย ${baht} บาท (${lines.length} รายการ · ${payLabel})`;
+    return propose(ctx, "pos_create_sale", summary, payload);
+  },
+};
+
+// ── B1-A2) booking_create_appointment — เสนอจองนัดบริการ ──
+const bookingCreateAppointment: AiTool = {
+  action: true,
+  def: {
+    name: "booking_create_appointment",
+    description:
+      "เสนอจองนัดหมายบริการให้ลูกค้า (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ serviceName (ชื่อบริการ), dateStr (YYYY-MM-DD), startMin (เวลาเริ่มเป็นนาทีจากเที่ยงคืน เช่น 10:00=600), customerName, customerPhone · staffName ถ้าเจาะจงช่าง (ไม่ระบุ=ช่างว่างคนแรก) · unitName ถ้ามีหลายสาขา",
+    parameters: {
+      type: "object",
+      properties: {
+        unitName: { type: "string", description: "ชื่อร้าน/สาขา (ถ้ามีหลายสาขา)" },
+        serviceName: { type: "string", description: "ชื่อบริการ (จับคู่แบบบางส่วนได้)" },
+        staffName: { type: "string", description: "ชื่อช่าง/พนักงาน (ถ้าเจาะจง)" },
+        dateStr: { type: "string", description: "วันที่นัด รูปแบบ YYYY-MM-DD" },
+        startMin: { type: "integer", minimum: 0, maximum: 1439, description: "เวลาเริ่มเป็นนาทีจากเที่ยงคืน (เช่น 10:00 = 600)" },
+        customerName: { type: "string", description: "ชื่อลูกค้า" },
+        customerPhone: { type: "string", description: "เบอร์โทรลูกค้า" },
+      },
+      required: ["serviceName", "dateStr", "startMin", "customerName", "customerPhone"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const serviceName = String(a.serviceName ?? "").trim();
+    const dateStr = String(a.dateStr ?? "").trim();
+    const startMin = Math.round(Number(a.startMin));
+    const customerName = String(a.customerName ?? "").trim();
+    const customerPhone = String(a.customerPhone ?? "").trim();
+    if (!serviceName) return JSON.stringify({ error: "ต้องระบุชื่อบริการ" });
+    if (!dateStr) return JSON.stringify({ error: "ต้องระบุวันที่นัด (YYYY-MM-DD)" });
+    if (!Number.isFinite(startMin) || startMin < 0 || startMin > 1439) {
+      return JSON.stringify({ error: "เวลาเริ่มไม่ถูกต้อง", suggestion: "ระบุเป็นนาทีจากเที่ยงคืน เช่น 10:00 = 600" });
+    }
+    if (!customerName) return JSON.stringify({ error: "ต้องระบุชื่อลูกค้า" });
+    if (!customerPhone) return JSON.stringify({ error: "ต้องระบุเบอร์โทรลูกค้า" });
+    const payload: Record<string, unknown> = { serviceName, dateStr, startMin, customerName, customerPhone };
+    const staffName = String(a.staffName ?? "").trim();
+    if (staffName) payload.staffName = staffName;
+    const unitName = String(a.unitName ?? "").trim();
+    if (unitName) payload.unitName = unitName;
+    const hhmm = `${String(Math.floor(startMin / 60)).padStart(2, "0")}:${String(startMin % 60).padStart(2, "0")}`;
+    const summary = `จองนัด "${serviceName}" ${dateStr} ${hhmm} น. ให้ ${customerName}`;
+    return propose(ctx, "booking_create_appointment", summary, payload);
+  },
+};
+
+// ── B1-A3) hotel_create_reservation — เสนอจองห้องพัก ──
+const hotelCreateReservation: AiTool = {
+  action: true,
+  def: {
+    name: "hotel_create_reservation",
+    description:
+      "เสนอจองห้องพักให้ลูกค้า (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ roomTypeName (ชื่อประเภทห้อง จับคู่บางส่วนได้), guestName, checkInDate (YYYY-MM-DD), checkOutDate (YYYY-MM-DD) · guestPhone ถ้ามี · unitName ถ้ามีหลายที่พัก",
+    parameters: {
+      type: "object",
+      properties: {
+        unitName: { type: "string", description: "ชื่อโรงแรม/ที่พัก (ถ้ามีหลายที่)" },
+        roomTypeName: { type: "string", description: "ชื่อประเภทห้อง เช่น Deluxe (จับคู่บางส่วนได้)" },
+        guestName: { type: "string", description: "ชื่อผู้เข้าพัก" },
+        guestPhone: { type: "string", description: "เบอร์โทรผู้เข้าพัก (ถ้ามี)" },
+        checkInDate: { type: "string", description: "วันเช็คอิน รูปแบบ YYYY-MM-DD" },
+        checkOutDate: { type: "string", description: "วันเช็คเอาต์ รูปแบบ YYYY-MM-DD" },
+      },
+      required: ["roomTypeName", "guestName", "checkInDate", "checkOutDate"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const roomTypeName = String(a.roomTypeName ?? "").trim();
+    const guestName = String(a.guestName ?? "").trim();
+    const checkInDate = String(a.checkInDate ?? "").trim();
+    const checkOutDate = String(a.checkOutDate ?? "").trim();
+    if (!roomTypeName) return JSON.stringify({ error: "ต้องระบุประเภทห้อง" });
+    if (!guestName) return JSON.stringify({ error: "ต้องระบุชื่อผู้เข้าพัก" });
+    if (!checkInDate || !checkOutDate) return JSON.stringify({ error: "ต้องระบุวันเช็คอินและเช็คเอาต์ (YYYY-MM-DD)" });
+    const payload: Record<string, unknown> = { roomTypeName, guestName, checkInDate, checkOutDate };
+    const guestPhone = String(a.guestPhone ?? "").trim();
+    if (guestPhone) payload.guestPhone = guestPhone;
+    const unitName = String(a.unitName ?? "").trim();
+    if (unitName) payload.unitName = unitName;
+    const summary = `จองห้อง "${roomTypeName}" ให้ ${guestName} (${checkInDate} → ${checkOutDate})`;
+    return propose(ctx, "hotel_create_reservation", summary, payload);
+  },
+};
+
+// ── B1-A4) queue_issue_ticket — เสนอออกบัตรคิว ──
+const queueIssueTicket: AiTool = {
+  action: true,
+  def: {
+    name: "queue_issue_ticket",
+    description:
+      "เสนอออกบัตรคิวให้ลูกค้า (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · typeName ถ้าเจาะจงประเภทคิว (ไม่ระบุ=ประเภทแรก) · customerName ถ้ามี · unitName ถ้ามีหลายจุด",
+    parameters: {
+      type: "object",
+      properties: {
+        unitName: { type: "string", description: "ชื่อจุดออกบัตรคิว (ถ้ามีหลายจุด)" },
+        typeName: { type: "string", description: "ชื่อประเภทคิว เช่น ทั่วไป/พรีเมียม (ถ้าเจาะจง)" },
+        customerName: { type: "string", description: "ชื่อลูกค้า (ถ้ามี)" },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const payload: Record<string, unknown> = {};
+    const typeName = String(a.typeName ?? "").trim();
+    if (typeName) payload.typeName = typeName;
+    const customerName = String(a.customerName ?? "").trim();
+    if (customerName) payload.customerName = customerName;
+    const unitName = String(a.unitName ?? "").trim();
+    if (unitName) payload.unitName = unitName;
+    const summary = `ออกบัตรคิว${typeName ? ` "${typeName}"` : ""}${customerName ? ` ให้ ${customerName}` : ""}`;
+    return propose(ctx, "queue_issue_ticket", summary, payload);
+  },
+};
+
+// ── B1-A5) shop_confirm_order — เสนอยืนยันรับเงินออเดอร์ร้านออนไลน์ ──
+const shopConfirmOrder: AiTool = {
+  action: true,
+  def: {
+    name: "shop_confirm_order",
+    description:
+      "เสนอยืนยันรับเงินออเดอร์ร้านค้าออนไลน์ (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ orderCode (รหัสออเดอร์ เช่น SO-0001) · เมื่อยืนยันจะบันทึกเป็นยอดขายให้อัตโนมัติ",
+    parameters: {
+      type: "object",
+      properties: {
+        orderCode: { type: "string", description: "รหัสออเดอร์ เช่น SO-0001" },
+      },
+      required: ["orderCode"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const orderCode = String(asRecord(args).orderCode ?? "").trim();
+    if (!orderCode) return JSON.stringify({ error: "ต้องระบุรหัสออเดอร์" });
+    return propose(ctx, "shop_confirm_order", `ยืนยันรับเงินออเดอร์ ${orderCode}`, { orderCode });
+  },
+};
+
+// ── B1-R1) today_appointments — นัดหมายวันนี้ (เวลาไทย) ทุกสาขา ──
+const todayAppointments: AiTool = {
+  def: {
+    name: "today_appointments",
+    description: "ดูรายการนัดหมายบริการของวันนี้ (ตามเวลาไทย) ทุกสาขา — คืนเวลา ชื่อลูกค้า บริการ และช่าง",
+    parameters: NO_ARGS,
+  },
+  async execute(ctx) {
+    const today = dayKeyBangkok(new Date()); // YYYY-MM-DD (BKK)
+    const start = new Date(`${today}T00:00:00+07:00`);
+    const end = new Date(`${today}T00:00:00+07:00`);
+    end.setDate(end.getDate() + 1);
+    const appts = await prisma.appointment.findMany({
+      where: {
+        tenantId: ctx.tenantId,
+        status: { notIn: ["CANCELLED", "NO_SHOW"] },
+        startAt: { gte: start, lt: end },
+      },
+      orderBy: { startAt: "asc" },
+      include: { service: { select: { name: true } }, staff: { select: { name: true } } },
+    });
+    return JSON.stringify({
+      วันที่: today,
+      นัดวันนี้: appts.map((ap) => ({
+        เวลา: ap.startAt.toLocaleTimeString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit" }),
+        ลูกค้า: ap.customerName,
+        บริการ: ap.service?.name ?? null,
+        ช่าง: ap.staff?.name ?? null,
+      })),
+    });
+  },
+};
+
+// ── B1-R2) queue_waiting — บัตรคิวที่กำลังรอ แยกตามประเภท ──
+const queueWaiting: AiTool = {
+  def: {
+    name: "queue_waiting",
+    description: "ดูบัตรคิวที่กำลังรอเรียกตอนนี้ แยกตามประเภทคิว — คืนจำนวนที่รอและหมายเลขบัตร",
+    parameters: NO_ARGS,
+  },
+  async execute(ctx) {
+    const tickets = await prisma.queueTicket.findMany({
+      where: { tenantId: ctx.tenantId, status: "WAITING" },
+      orderBy: { seq: "asc" },
+      include: { type: { select: { name: true } } },
+    });
+    const byType = new Map<string, string[]>();
+    for (const t of tickets) {
+      const name = t.type?.name ?? "ไม่ระบุประเภท";
+      const arr = byType.get(name) ?? [];
+      arr.push(t.number);
+      byType.set(name, arr);
+    }
+    return JSON.stringify({
+      คิวที่รอทั้งหมด: tickets.length,
+      แยกตามประเภท: [...byType.entries()].map(([ประเภท, numbers]) => ({
+        ประเภท,
+        จำนวนที่รอ: numbers.length,
+        หมายเลข: numbers,
+      })),
+    });
+  },
+};
+
+// ── B1-R3) shop_pending_orders — ออเดอร์ร้านออนไลน์ที่รอชำระ/รอยืนยัน ──
+const shopPendingOrders: AiTool = {
+  def: {
+    name: "shop_pending_orders",
+    description: "ดูออเดอร์ร้านค้าออนไลน์ที่รอชำระ/รอยืนยันรับเงิน — คืนรหัสออเดอร์ ยอดเงิน และชื่อลูกค้า",
+    parameters: NO_ARGS,
+  },
+  async execute(ctx) {
+    const orders = await prisma.shopOrder.findMany({
+      where: { tenantId: ctx.tenantId, status: "PENDING_PAYMENT" },
+      orderBy: { createdAt: "desc" },
+      select: { code: true, totalSatang: true, customerName: true },
+    });
+    return JSON.stringify({
+      ออเดอร์รอชำระ: orders.map((o) => ({
+        รหัส: o.code,
+        ยอดบาท: Math.round(o.totalSatang) / 100,
+        ลูกค้า: o.customerName,
+      })),
+    });
+  },
+};
+
 // หาชื่อพนักงานของใบลา (best-effort สำหรับ summary) — พังก็คืน null ไม่โยน
 async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<string | null> {
   try {
@@ -861,6 +1162,10 @@ export function toolRegistry(): AiTool[] {
     growthRecommendations,
     kbSearch,
     askClarify,
+    // Phase B1 read — เงินเดิน (นัดวันนี้ / คิวที่รอ / ออเดอร์รอชำระ)
+    todayAppointments,
+    queueWaiting,
+    shopPendingOrders,
     // action / ทำแทน
     inventoryReceive,
     hrDecideLeave,
@@ -875,6 +1180,12 @@ export function toolRegistry(): AiTool[] {
     kanbanCreateCard,
     recordExpense,
     voidSale,
+    // Phase B1 action — เงินเดิน (เปิดบิล / จองบริการ / จองห้อง / บัตรคิว / ยืนยันออเดอร์)
+    posCreateSale,
+    bookingCreateAppointment,
+    hotelCreateReservation,
+    queueIssueTicket,
+    shopConfirmOrder,
   ];
 }
 
