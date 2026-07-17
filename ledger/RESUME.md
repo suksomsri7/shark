@@ -4,6 +4,12 @@
 
 > อัปเดต 2026-07-17 โดย Fable 5 · **session ใหม่: อ่านไฟล์นี้จากบนลงล่างถึงเส้นแรก แล้วทำงานต่อได้เลย**
 
+## 🧩 UI แตกหน้า + ระบบจองต่อยอด (17 ก.ค.) — ✅ SHIPPED (main 5f61230)
+- **ต้นแบบแตกหน้า POS + ระบบจอง**: เมนูแฮมเบอร์เกอร์ accordion (NavItem.children + NavGroup) กางฟังก์ชันย่อยใต้ระบบ + `ModuleTabs` แท็บในหน้า · POS→ภาพรวม/ประวัติบิล · จอง→นัดวันนี้/บริการ/พนักงาน/เวลาทำการ · เอา back "หน้าหลัก"(16 หน้า)+"ระบบทั้งหมด"(2) ออก
+- **ระบบจอง A+B**: (A) `BookingStaff.employeeId` soft-link เลือกจากพนักงาน HR ได้ (listLinkableEmployees + createStaff · ไม่เปิด HR=พิมพ์เอง) · (B) `BookingHours` เวลาทำการร้านรายสัปดาห์ (เปิด-ปิด+วันหยุด) → `getAvailableSlots` ใช้เป็นกรอบแทน bookingStaffHours (เลิก seed 10-20 รายช่าง) · qc-booking-hours-hr 13/13
+- ⚠️ **กับดัก deploy**: `next build` **ไม่รัน migrate deploy** → หลัง push schema ใหม่ ต้อง `pnpm exec prisma migrate deploy` บน prod เอง (booking migration apply แล้ว) · prisma CLI ต้องใช้ `pnpm exec prisma ...` (config schema-dir · `npx prisma` หา schema ไม่เจอ)
+- 🔜 POS เต็มรูปแบบ (หน้าขายจริง/สินค้า/ยกเลิก-คืน/ปิดรอบ) = เสนอ user รอไฟเขียว
+
 ## 🧠 AI SELF-IMPROVING (17 ก.ค. — "ทำให้ครบทั้ง 4 เลย") — ✅ SHIPPED ครบ 4 เครื่องมือ (main 131e7dd)
 วางระบบให้ AI พัฒนาตัวเองล่วงหน้า (ไม่ต้องรอ level-5) — human-in-loop อนุมัติกันความปลอดภัย
 | # | เครื่องมือ | ไฟล์ | ข้อสอบ |
