@@ -39,6 +39,35 @@ export async function resolveQueueUnit(tenantSlug: string, unitSlug: string) {
   return { tenant, unit };
 }
 
+// ── ประเภทคิวที่รับออนไลน์ได้ (public — หน้ารับบัตรของลูกค้า) ──
+export async function listOnlineTypes(ctx: Ctx) {
+  return prisma.queueType.findMany({
+    where: { ...ctx, status: "ACTIVE", onlineIssuable: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+}
+
+// ── ภาพรวมคิวสาธารณะ (public — เลขคิวเท่านั้น ไม่มีชื่อ/เบอร์) ──
+// ใช้บนหน้ารับบัตร + หน้าสถานะบัตร: กำลังเรียกเลขไหน + รออีกกี่คน + เปิดรับออนไลน์ไหม
+export async function getPublicOverview(ctx: Ctx) {
+  const businessDate = businessDateOf();
+  const [calling, waitingCount, policy] = await Promise.all([
+    prisma.queueTicket.findMany({
+      where: { ...ctx, businessDate, status: { in: ["CALLED", "SERVING"] } },
+      orderBy: { updatedAt: "desc" },
+      take: 6,
+      select: { number: true },
+    }),
+    prisma.queueTicket.count({ where: { ...ctx, businessDate, status: "WAITING" } }),
+    prisma.queuePolicy.findUnique({ where: { unitId: ctx.unitId }, select: { onlineIssueOpen: true } }),
+  ]);
+  return {
+    calling: calling.map((c) => c.number),
+    waitingCount,
+    onlineOpen: policy ? policy.onlineIssueOpen : true, // ไม่มี policy = เปิดตาม default schema
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Config reads
 // ─────────────────────────────────────────────────────────────

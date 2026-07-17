@@ -38,7 +38,8 @@
     "qc:ticket": "tsx scripts/qc-ticket-money.mts",
     "qc:hotel": "tsx scripts/qc-hotel-money.mts",
     "qc:crm": "tsx scripts/qc-crm.mts",
-    "qc:security-hotfix": "tsx scripts/qc-security-hotfix.mts"
+    "qc:security-hotfix": "tsx scripts/qc-security-hotfix.mts",
+    "qc:queue-public": "tsx scripts/qc-queue-public.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

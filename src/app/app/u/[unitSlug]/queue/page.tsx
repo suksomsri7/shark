@@ -16,6 +16,8 @@ import {
   closeCounterAction,
 } from "@/lib/modules/queue/actions";
 import { AutoRefresh } from "@/components/queue-auto-refresh";
+import { QrCode } from "@/components/qr-code";
+import { env } from "@/lib/env";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -42,6 +44,9 @@ export default async function QueueBoardPage({
   ]);
   const activeTypes = types.filter((t) => t.status === "ACTIVE");
   const openCounters = board.counterCards.filter((c) => c.counter.status === "OPEN");
+  const tenantSlug = auth.active.tenant.slug;
+  const publicUrl = `${env.APP_URL.replace(/\/$/, "")}/s/${tenantSlug}/${unit.slug}/queue`;
+  const onlineTypes = activeTypes.filter((t) => t.onlineIssuable);
 
   return (
     <div className="flex max-w-4xl flex-col gap-6">
@@ -71,6 +76,37 @@ export default async function QueueBoardPage({
           </div>
         ))}
       </div>
+
+      {/* QR รับบัตรคิว — ลูกค้าสแกนแล้วกดรับบัตร/ดูคิวจากมือถือตัวเอง */}
+      <section className="card flex flex-col gap-3">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-sm font-medium">QR รับบัตรคิว</h2>
+          <p className="text-xs text-[color:var(--color-muted)]">
+            ตั้งป้าย QR ไว้หน้าร้าน — ลูกค้าสแกนแล้วกดรับบัตรคิวและดูสถานะเองได้ ไม่ต้องต่อแถว
+          </p>
+        </div>
+        {onlineTypes.length === 0 ? (
+          <p className="rounded-lg border px-3 py-2 text-xs text-[color:var(--color-muted)]">
+            ยังไม่มีประเภทคิวที่เปิดรับออนไลน์ — ไปที่{" "}
+            <Link href={`/app/u/${unitSlug}/queue/setup`} className="underline">
+              ตั้งค่า
+            </Link>{" "}
+            แล้วติ๊ก &ldquo;รับออนไลน์&rdquo; ในประเภทคิว
+          </p>
+        ) : (
+          <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-center sm:gap-5">
+            <QrCode value={publicUrl} size={168} />
+            <div className="flex w-full flex-col gap-2">
+              <code className="break-all rounded bg-[color:var(--color-surface-2)] px-2 py-1 text-xs">
+                {publicUrl}
+              </code>
+              <Link href={publicUrl} target="_blank" className="btn-sm w-fit">
+                เปิดหน้ารับบัตร →
+              </Link>
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* ออกบัตร */}
       {activeTypes.length === 0 ? (
