@@ -647,6 +647,7 @@ async function dispatch(
       customerName: String(p.customerName ?? "").trim() || "ลูกค้า",
       customerPhone: String(p.customerPhone ?? "").trim(),
       source: "STAFF",
+      idempotencyKey: `ai-appt-${proposalId}`, // execute ซ้ำ = กันสร้างนัดซ้ำโดยธรรมชาติ
     });
     if (!res.ok) throw new Error(res.reason);
     return `จองนัด "${service.name}" ให้ ${String(p.customerName ?? "").trim() || "ลูกค้า"} กับ ${staff.name} เรียบร้อยแล้ว`;

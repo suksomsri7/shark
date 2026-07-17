@@ -94,9 +94,11 @@ model Appointment {
   customerPhone String // snapshot
   note          String?
   source        String            @default("STAFF") // STAFF | ONLINE
+  idempotencyKey String? // กันสร้างนัดซ้ำจากยิงซ้ำ/ดับเบิลคลิก (null = ไม่ผูก key)
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
+  @@unique([tenantId, idempotencyKey])
   @@index([tenantId, unitId, startAt])
   @@index([staffId, startAt])
 }

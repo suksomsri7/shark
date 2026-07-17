@@ -10,6 +10,7 @@ const schema = z.object({
   name: z.string().trim().min(1).max(80),
   phone: z.string().trim().min(6).max(20),
   note: z.string().trim().max(300).optional(),
+  idempotencyKey: z.string().trim().min(1).max(100).optional(), // กันยิงซ้ำ/ดับเบิลคลิก
 });
 
 // POST จองนัด (public)
@@ -49,6 +50,7 @@ export async function POST(
     customerPhone: b.phone,
     note: b.note,
     source: "ONLINE",
+    idempotencyKey: b.idempotencyKey,
   });
   if (!res.ok) return NextResponse.json({ error: "unavailable", reason: res.reason }, { status: 409 });
   return NextResponse.json({ ok: true, id: res.id });

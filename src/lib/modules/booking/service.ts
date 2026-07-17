@@ -210,8 +210,17 @@ export async function createAppointment(input: {
   customerPhone: string;
   note?: string;
   source?: "STAFF" | "ONLINE";
+  idempotencyKey?: string; // ผูกกับ 1 การกดจอง → ยิงซ้ำ/ดับเบิลคลิก = คืนนัดเดิม (ไม่สร้างใหม่)
 }): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
   const db = tenantDb({ tenantId: input.tenantId, unitId: input.unitId });
+  const idem = input.idempotencyKey?.trim() || null;
+
+  // fast path: key นี้เคยสร้างนัดแล้ว (กดซ้ำ) → คืนนัดเดิมทันที ไม่แตะ member/tx
+  if (idem) {
+    const prior = await db.appointment.findFirst({ where: { idempotencyKey: idem } });
+    if (prior) return { ok: true, id: prior.id };
+  }
+
   const service = await db.bookingService.findFirst({
     where: { id: input.serviceId, active: true },
   });
@@ -230,7 +239,21 @@ export async function createAppointment(input: {
 
   try {
     const appt = await prisma.$transaction(async (tx) => {
-      // กันจองซ้อน: ล็อกช่วงเวลาของช่างคนนี้
+      // กันจองซ้อนระดับ DB: ล็อกแถวช่าง (pessimistic row-lock) → 2 request ที่จองช่าง
+      // คนเดียวกันพร้อมกัน serialize กัน → คนที่ 2 เห็น insert ของคนแรกที่ commit แล้ว
+      // ตาราง = "BookingStaff" (schema ไม่มี @@map)
+      await tx.$queryRaw`SELECT id FROM "BookingStaff" WHERE id = ${input.staffId} FOR UPDATE`;
+
+      // idempotency ข้าม request: key เดิม (ที่เพิ่ง commit ระหว่างที่เรารอ lock) → คืนนัดเดิม
+      // ต้องเช็คก่อนกันจองซ้อน ไม่งั้นกดซ้ำ slot เดิมจะกลายเป็น SLOT_TAKEN แทนที่จะ idempotent
+      if (idem) {
+        const dup = await tx.appointment.findFirst({
+          where: { tenantId: input.tenantId, idempotencyKey: idem },
+        });
+        if (dup) return dup;
+      }
+
+      // กันจองซ้อน: ช่วงเวลาช่างคนนี้ทับกับนัดที่ยัง active
       const clash = await tx.appointment.findFirst({
         where: {
           tenantId: input.tenantId,
@@ -271,6 +294,7 @@ export async function createAppointment(input: {
           customerPhone: phone,
           note: input.note,
           source: input.source ?? "ONLINE",
+          idempotencyKey: idem,
         },
       });
 
@@ -296,6 +320,11 @@ export async function createAppointment(input: {
   } catch (e) {
     if (e instanceof Error && e.message === "SLOT_TAKEN") {
       return { ok: false, reason: "ช่วงเวลานี้เพิ่งถูกจองไปแล้ว กรุณาเลือกเวลาอื่น" };
+    }
+    // ชน unique(tenantId, idempotencyKey) จากยิงพร้อมกัน key เดียวกัน → คืนนัดเดิม (idempotent)
+    if (idem && (e as { code?: string }).code === "P2002") {
+      const dup = await db.appointment.findFirst({ where: { idempotencyKey: idem } });
+      if (dup) return { ok: true, id: dup.id };
     }
     throw e;
   }

@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { makeT, type Locale } from "@/lib/i18n";
+
+const newIdemKey = () =>
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `bk-${Date.now()}-${Math.random()}`;
 
 type Service = { id: string; name: string; durationMin: number; priceSatang: number };
 type Staff = { id: string; name: string };
@@ -56,6 +61,11 @@ export function PublicBooking({
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 1 คีย์ต่อการเลือก slot หนึ่งครั้ง → ดับเบิลคลิก/กดซ้ำใช้คีย์เดิม = ไม่จองซ้ำ
+  const idemRef = useRef<string>(newIdemKey());
+  useEffect(() => {
+    idemRef.current = newIdemKey();
+  }, [service, staffId, date, slot]);
 
   // โหลด slot เมื่อเลือกบริการ/ช่าง/วัน
   useEffect(() => {
@@ -85,6 +95,7 @@ export function PublicBooking({
         startMin: slot.startMin,
         name,
         phone,
+        idempotencyKey: idemRef.current,
       }),
     });
     setSubmitting(false);
