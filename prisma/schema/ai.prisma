@@ -45,7 +45,8 @@ model AiProposal {
   id             String           @id @default(cuid())
   tenantId       String
   conversationId String
-  kind           String // "inventory_receive" | "hr_decide_leave" | "marketing_create_campaign"
+  kind           String // "inventory_receive" | "hr_decide_leave" | ...
+  risk           String           @default("NORMAL") // NORMAL | DESTRUCTIVE (ลบ/void/ยกเลิก — ต้องยืนยัน 2 ชั้น)
   summary        String // ไทย — UI ใช้แสดงการ์ดยืนยัน "จะทำอะไร"
   payload        Json // พารามิเตอร์ (server-side เท่านั้น)
   status         AiProposalStatus @default(PENDING)
