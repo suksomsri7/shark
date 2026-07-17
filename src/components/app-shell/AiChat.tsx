@@ -9,6 +9,7 @@ import {
   loadPlansAction,
   rejectPlanAction,
   rejectProposalAction,
+  sendAiFeedbackAction,
   sendAiMessageAction,
   type AiChatState,
   type PendingPlan,
@@ -42,6 +43,11 @@ export function AiChat() {
   const [busyId, setBusyId] = useState<string | null>(null);
   // การ์ด destructive ที่ถูก "arm" ไว้ (กดยืนยันชั้นแรกแล้ว รอกดชั้นสอง)
   const [armedId, setArmedId] = useState<string | null>(null);
+  // feedback 👍👎 ใต้คำตอบ AI — เก็บ id ที่ให้ feedback แล้ว (กันกดซ้ำ) + ช่องหมายเหตุ 👎 ที่เปิดอยู่
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<string, boolean>>({});
+  const [feedbackNoteId, setFeedbackNoteId] = useState<string | null>(null);
+  const [feedbackNote, setFeedbackNote] = useState("");
+  const [feedbackBusyId, setFeedbackBusyId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -128,6 +134,34 @@ export function AiChat() {
       } else {
         setError(res.message);
       }
+    });
+  }
+
+  // คำถาม user ก่อนหน้าคำตอบนี้ (ไล่ย้อนหา role USER ตัวใกล้สุด) — ใช้เป็น userText ของ feedback
+  function prevUserText(idx: number): string {
+    for (let j = idx - 1; j >= 0; j--) {
+      if (messages[j].role === "USER") return messages[j].content;
+    }
+    return "";
+  }
+
+  // ส่ง feedback 👍/👎 ของคำตอบ AI — กันกดซ้ำด้วย feedbackGiven[id]
+  function sendFeedback(m: Msg, idx: number, rating: "UP" | "DOWN", note?: string) {
+    if (feedbackBusyId || feedbackGiven[m.id]) return;
+    setFeedbackBusyId(m.id);
+    startTransition(async () => {
+      await sendAiFeedbackAction({
+        conversationId: state?.conversationId ?? undefined,
+        userText: prevUserText(idx),
+        replyText: m.content,
+        rating,
+        ...(note && note.trim() ? { note: note.trim() } : {}),
+      });
+      // best-effort — บันทึกพลาดก็ถือว่าให้ feedback แล้ว (ไม่รบกวน user ให้กดซ้ำ)
+      setFeedbackGiven((g) => ({ ...g, [m.id]: true }));
+      setFeedbackNoteId(null);
+      setFeedbackNote("");
+      setFeedbackBusyId(null);
     });
   }
 
@@ -286,6 +320,61 @@ export function AiChat() {
                   </button>
                 ))}
               </div>
+            )}
+            {/* feedback 👍👎 ใต้คำตอบ AI — กด 👍 ส่งทันที · กด 👎 เปิดช่องหมายเหตุ (optional) แล้วส่ง */}
+            {m.role === "ASSISTANT" && (
+              feedbackGiven[m.id] ? (
+                <div className="mr-8 text-xs text-[color:var(--color-muted)]">ขอบคุณครับ 🙏</div>
+              ) : feedbackNoteId === m.id ? (
+                <div className="mr-8 flex flex-col gap-1.5">
+                  <textarea
+                    value={feedbackNote}
+                    onChange={(e) => setFeedbackNote(e.target.value)}
+                    rows={2}
+                    placeholder="บอกหน่อยได้ไหมว่าตรงไหนควรดีขึ้น (ไม่บังคับ)"
+                    className="resize-none rounded-lg border px-2.5 py-1.5 text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => sendFeedback(m, idx, "DOWN", feedbackNote)}
+                      disabled={feedbackBusyId === m.id}
+                      className="btn btn-primary min-h-[36px] px-3 text-sm disabled:opacity-50"
+                    >
+                      {feedbackBusyId === m.id ? "กำลังส่ง…" : "ส่งความเห็น"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setFeedbackNoteId(null); setFeedbackNote(""); }}
+                      disabled={feedbackBusyId === m.id}
+                      className="btn btn-ghost min-h-[36px] px-3 text-sm disabled:opacity-50"
+                    >
+                      ยกเลิก
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mr-8 flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => sendFeedback(m, idx, "UP")}
+                    disabled={feedbackBusyId === m.id}
+                    aria-label="คำตอบนี้ดี"
+                    className="btn btn-ghost min-h-[32px] px-2 text-sm disabled:opacity-50"
+                  >
+                    👍
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setFeedbackNoteId(m.id); setFeedbackNote(""); }}
+                    disabled={feedbackBusyId === m.id}
+                    aria-label="คำตอบนี้ยังไม่ดี"
+                    className="btn btn-ghost min-h-[32px] px-2 text-sm disabled:opacity-50"
+                  >
+                    👎
+                  </button>
+                </div>
+              )
             )}
           </div>
         ))}

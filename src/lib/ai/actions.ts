@@ -5,6 +5,7 @@ import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
 import { aiEnabled, latestConversation, listMessages, sendMessage, type Clarify } from "./service";
 import { executeProposal, listPendingProposals, rejectProposal } from "./proposals";
 import { executePlan, listPendingPlans, rejectPlan } from "./plans";
+import { recordFeedback, type FeedbackRating } from "./feedback";
 
 // convention action = "ai.<entity>.<verb>" — OWNER/MANAGER ผ่าน · STAFF ต้องมี ai.chat.send หรือ ai.*
 function assertAiCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
@@ -183,5 +184,29 @@ export async function sendAiMessageAction(input: {
     return { ok: false, message: msg[res.error] };
   } catch {
     return { ok: false, message: "ผู้ช่วย AI ตอบไม่ได้ชั่วคราว ลองใหม่อีกครั้ง" };
+  }
+}
+
+export type SendAiFeedbackResult = { ok: boolean; message: string };
+
+/**
+ * ส่ง feedback 👍/👎 ของคำตอบ AI (self-improving item 3)
+ * - UP = ส่งทันที · DOWN = แนบ note เหตุผล (optional)
+ * - error ทุกแบบคืนข้อความไทยสุภาพ (UI แสดงตรง ๆ ได้)
+ */
+export async function sendAiFeedbackAction(input: {
+  conversationId?: string;
+  userText: string;
+  replyText: string;
+  rating: FeedbackRating;
+  note?: string;
+}): Promise<SendAiFeedbackResult> {
+  const auth = await requireTenant();
+  assertAiCan(auth, "ai.chat.send");
+  try {
+    await recordFeedback({ tenantId: auth.active.tenantId }, input);
+    return { ok: true, message: "ขอบคุณครับ" };
+  } catch {
+    return { ok: false, message: "บันทึกความเห็นไม่สำเร็จชั่วคราว ลองใหม่อีกครั้ง" };
   }
 }
