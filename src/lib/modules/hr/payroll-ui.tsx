@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
+import { canViewPayroll } from "@/lib/core/rbac";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
@@ -29,6 +30,23 @@ const runTone = (v: string): "muted" | "strong" =>
 // ───────────── PayrollSection (ฝังใน HrContent) ─────────────
 export async function PayrollSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
+
+  // 🔒 PDPA: เงินเดือน + เลขผู้เสียภาษี = ข้อมูลอ่อนไหว — เห็นเฉพาะ OWNER หรือผู้มีสิทธิ์ hr.payroll.read
+  const membership = {
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  };
+  if (!canViewPayroll(membership)) {
+    return (
+      <Section title="เงินเดือนพนักงาน">
+        <p className={`text-xs ${muted}`}>
+          ข้อมูลเงินเดือนจำกัดเฉพาะเจ้าของกิจการหรือผู้ได้รับสิทธิ์ — ติดต่อเจ้าของกิจการเพื่อขอสิทธิ์เข้าถึง
+        </p>
+      </Section>
+    );
+  }
+
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
   const [employees, profiles, runs] = await Promise.all([

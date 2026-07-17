@@ -19,9 +19,10 @@ const chk = (id: string, n: string, ok: boolean, e: string, a: string, s: Sev = 
 
 let tid = ""; let tid2 = "";
 try {
-  const cal = (await import("@/lib/modules/calendar/service" as string).catch(() => null)) as { getCalendarEvents: (c: { tenantId: string }, w: { from: Date; to: Date }) => Promise<any[]> } | null; // any จงใจ: oracle ล้ำหน้าโค้ด
+  const cal = (await import("@/lib/modules/calendar/service" as string).catch(() => null)) as { getCalendarEvents: (c: { tenantId: string; membership: any }, w: { from: Date; to: Date }) => Promise<any[]> } | null; // any จงใจ: oracle ล้ำหน้าโค้ด
   if (!cal) { chk("CAL-0", "มี calendar/service.ts", false, "มี", "ยังไม่สร้าง"); }
   else {
+    const OWNER = { role: "OWNER", unitAccess: ["*"], permissions: {} }; // ปฏิทินเห็นทุกสาขา (สัญญาใหม่: ต้องส่ง membership)
     const t = await prisma.tenant.create({ data: { name: "QC CAL", slug: `qc-cal-${Date.now()}` } }); tid = t.id;
     const t2 = await prisma.tenant.create({ data: { name: "QC CAL2", slug: `qc-cal2-${Date.now()}` } }); tid2 = t2.id;
     const unit = await prisma.businessUnit.create({ data: { tenantId: tid, type: "BOOKING", name: "สาขา QC", slug: `cal-${Date.now()}` } });
@@ -49,7 +50,7 @@ try {
     await prisma.hrLeave.create({ data: { ...leaveBase, fromDate: D("2026-08-25"), toDate: D("2026-08-26"), status: "REJECTED", type: "PERSONAL" } });
 
     const win = { from: D("2026-08-01T00:00:00+07:00"), to: D("2026-09-01T00:00:00+07:00") };
-    const evs = (await cal.getCalendarEvents({ tenantId: tid }, win)) as { id: string; kind: string; title: string; startAt: Date; endAt: Date; status: string }[];
+    const evs = (await cal.getCalendarEvents({ tenantId: tid, membership: OWNER }, win)) as { id: string; kind: string; title: string; startAt: Date; endAt: Date; status: string }[];
 
     chk("CAL-1.1", "จำนวนรวม 4 (นัด 1 + เข้าพัก 1 + ลา 2)", evs.length === 4, "4", `${evs.length}: ${evs.map((e) => e.kind).join(",")}`);
     const appt = evs.filter((e) => e.kind === "APPOINTMENT");
@@ -62,10 +63,10 @@ try {
     chk("CAL-4.2", "kind/startAt/endAt ครบทุก event", evs.every((e) => e.id && e.kind && e.startAt && e.endAt && typeof e.status === "string"), "ครบ", "?");
 
     // window แคบ: เฉพาะวันที่ 5 ส.ค. → เห็นแค่นัด
-    const evs2 = (await cal.getCalendarEvents({ tenantId: tid }, { from: D("2026-08-05T00:00:00+07:00"), to: D("2026-08-06T00:00:00+07:00") })) as { kind: string }[];
+    const evs2 = (await cal.getCalendarEvents({ tenantId: tid, membership: OWNER }, { from: D("2026-08-05T00:00:00+07:00"), to: D("2026-08-06T00:00:00+07:00") })) as { kind: string }[];
     chk("CAL-5.1", "window แคบ 1 วัน → เห็นเฉพาะนัด (1)", evs2.length === 1 && evs2[0].kind === "APPOINTMENT", "1 APPOINTMENT", JSON.stringify(evs2.map((e) => e.kind)));
 
-    chk("CAL-6.1", "tenant อื่น → [] (guard)", ((await cal.getCalendarEvents({ tenantId: tid2 }, win)) as unknown[]).length === 0, "0", "?");
+    chk("CAL-6.1", "tenant อื่น → [] (guard)", ((await cal.getCalendarEvents({ tenantId: tid2, membership: OWNER }, win)) as unknown[]).length === 0, "0", "?");
     chk("CAL-6.2", "read-only: ไม่มีแถวใหม่เกิดใน 3 ตารางแหล่ง", (await prisma.appointment.count({ where: { tenantId: tid } })) === 3 && (await prisma.hotelReservation.count({ where: { tenantId: tid } })) === 2 && (await prisma.hrLeave.count({ where: { tenantId: tid } })) === 3, "3/2/3", "?");
   }
 } catch (e) { chk("CRASH", "จบ", false, "จบ", e instanceof Error ? e.message.slice(0, 160) : String(e)); }

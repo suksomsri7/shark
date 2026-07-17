@@ -39,6 +39,27 @@ export function evaluate(m: MembershipCtx | null, q: AccessQuery): boolean {
   return p[q.action] === true || p[`${q.module}.*`] === true;
 }
 
+/**
+ * สิทธิ์ดู "ข้อมูลอ่อนไหว" (เงินเดือน/เลขบัตร ปชช. ในระบบ HR) — แคบกว่า evaluate ปกติโดยตั้งใจ
+ * PDPA: MANAGER ที่เต็มสิทธิ์ทั่วไปก็ไม่เห็นเงินเดือนคนอื่น เว้นได้รับ permission ชัดเจน
+ * นโยบาย fail-closed: เห็นได้เฉพาะ OWNER หรือผู้มี permission `hr.payroll.read` เท่านั้น
+ */
+export function canViewPayroll(m: MembershipCtx | null): boolean {
+  if (!m) return false;
+  if (m.role === "OWNER") return true;
+  return m.permissions["hr.payroll.read"] === true;
+}
+
+/**
+ * กรอง unitId ให้เหลือเฉพาะที่ membership เข้าถึงได้ (ใช้ในหน้ารวมข้ามสาขา เช่น ปฏิทิน)
+ * OWNER / unitAccess=["*"] → เห็นทุกสาขา · อื่น ๆ → เฉพาะสาขาที่อยู่ใน unitAccess
+ */
+export function filterAccessibleUnitIds(m: MembershipCtx | null, unitIds: string[]): string[] {
+  if (!m) return [];
+  if (m.role === "OWNER" || m.unitAccess.includes("*")) return unitIds;
+  return unitIds.filter((id) => m.unitAccess.includes(id));
+}
+
 /** ค่าพารามิเตอร์เชิงตัวเลขของสิทธิ์ เช่น เพดานส่วนลด (basis points) */
 export function permissionValue(m: MembershipCtx | null, key: string): number | undefined {
   const v = m?.permissions[key];

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { assertCan } from "@/lib/core/rbac";
+import { assertCan, canViewPayroll, ForbiddenError } from "@/lib/core/rbac";
 import {
   approveRun,
   createPayrollRun,
@@ -14,14 +14,14 @@ import {
 // Actions โมดูล Payroll (system-scoped HR) — assertCan "hr.payroll.<verb>" ทุกจุดที่แตะเงิน
 // convention action = "hr.<entity>.<verb>" · OWNER/MANAGER ผ่าน · STAFF ตาม permission
 function assertHrCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
-  assertCan(
-    {
-      role: auth.active.role,
-      unitAccess: auth.active.unitAccess as string[],
-      permissions: auth.active.permissions as Record<string, unknown>,
-    },
-    { module: "hr", action },
-  );
+  const membership = {
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  };
+  assertCan(membership, { module: "hr", action });
+  // 🔒 PDPA: ทุก action ที่แตะเงินเดือนต้องผ่านด่านข้อมูลอ่อนไหว (OWNER/hr.payroll.read) — MANAGER ทั่วไปไม่ผ่าน
+  if (!canViewPayroll(membership)) throw new ForbiddenError({ module: "hr", action });
 }
 
 const revalidate = (systemId: string) => revalidatePath(`/app/sys/${systemId}`);

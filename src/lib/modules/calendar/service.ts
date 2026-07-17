@@ -1,4 +1,5 @@
 import { tenantDb } from "@/lib/core/db";
+import { evaluate, filterAccessibleUnitIds, type MembershipCtx } from "@/lib/core/rbac";
 import type { HrLeaveType } from "@prisma/client";
 
 // ปฏิทินกลางรวม (WO-0057) — READ-ONLY: รวม 3 แหล่งเวลาเป็นเหตุการณ์เดียว
@@ -56,15 +57,17 @@ async function listHrSystemIds(tenantId: string): Promise<string[]> {
 }
 
 export async function getCalendarEvents(
-  ctx: { tenantId: string },
+  ctx: { tenantId: string; membership: MembershipCtx },
   window: { from: Date; to: Date },
 ): Promise<CalEvent[]> {
-  const { tenantId } = ctx;
+  const { tenantId, membership } = ctx;
   const { from, to } = window;
   const events: CalEvent[] = [];
 
-  // ── แหล่ง unit-scoped: Appointment + HotelReservation (ทุกสาขา) ──
-  const unitIds = await listUnitIds(tenantId);
+  // ── แหล่ง unit-scoped: Appointment + HotelReservation (เฉพาะสาขาที่มีสิทธิ์) ──
+  // 🔒 PDPA: กรอง unit ตาม unitAccess — พนักงานสาขาเดียวห้ามเห็นนัด/เข้าพักสาขาอื่น
+  const allUnitIds = await listUnitIds(tenantId);
+  const unitIds = filterAccessibleUnitIds(membership, allUnitIds);
   for (const unitId of unitIds) {
     const db = tenantDb({ tenantId, unitId });
 
@@ -121,9 +124,11 @@ export async function getCalendarEvents(
     }
   }
 
-  // ── แหล่ง system-scoped: HrLeave (ทุกระบบ HR) ──
-  // แสดงเฉพาะ PENDING + APPROVED (พร้อม status จริง) · ตัด REJECTED/CANCELLED
-  const hrSystemIds = await listHrSystemIds(tenantId);
+  // ── แหล่ง system-scoped: HrLeave (เฉพาะผู้มีสิทธิ์อ่าน HR) ──
+  // 🔒 PDPA: วันลา (โดยเฉพาะลาป่วย = ข้อมูลสุขภาพ) แสดงเฉพาะผู้มีสิทธิ์อ่านระบบ HR เท่านั้น
+  // พนักงานทั่วไปที่เปิดปฏิทินจะไม่เห็นวันลาของเพื่อนร่วมงาน
+  const canReadHrLeave = evaluate(membership, { module: "hr", action: "hr.leave.read" });
+  const hrSystemIds = canReadHrLeave ? await listHrSystemIds(tenantId) : [];
   for (const systemId of hrSystemIds) {
     const db = tenantDb({ tenantId, systemId });
     try {

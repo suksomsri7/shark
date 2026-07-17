@@ -1,0 +1,2498 @@
+{
+  "rubric": {
+    "dimensions": [
+      "UX/UI — ลูกค้า/พนักงานเดินจบ flow จริงบนมือถือ 390px โดยไม่เจอทางตัน: ไม่มีหน้าขาว/ปุ่มตาย/ข้อมูลว่างแล้วไปต่อไม่ได้ ทุก empty state ชี้ทางถัดไป, validation inline (ห้าม Alert), ภาษาไทยชาวบ้านไม่มี jargon, งานหลักจบใน ≤3 แตะ",
+      "API/Server Actions — ทุก mutation เป็น server action หรือ API ที่มี assertCan + tenantDb scope + zod validation + idempotency key + ยิง outbox event; entity หลักโผล่ใน Public API v1 (read) และ webhook ขาออก; ไม่มี field ใน schema ที่แก้ได้เฉพาะทาง DB ตรง",
+      "AI ทำแทนได้ — core loop ของระบบ (สร้างธุรกรรมหลัก/เช็คสถานะ/สรุปยอด) มี AI tool ลงทะเบียนใน ai/tools ครบทั้งอ่านและเขียน, tool เขียนผ่าน assertCan เดียวกับ UI, มีเคสใน ai/eval อย่างน้อย 2 เคสต่อ tool และ heuristic baseline ผ่าน",
+      "QC/Oracle — มี qc-<system> ครอบอย่างน้อย: happy path จนเงินเข้าบัญชี, ยกเลิก/คืนเงินกลับขาบัญชี, กันชนกัน (จองซ้อน/สต็อกติดลบ) ระดับ DB, สิทธิ์ข้ามร้าน/ข้าม role ต้องโดนปฏิเสธ, idempotency กดซ้ำไม่เบิ้ล — และอยู่ใน regression gate (typecheck + fitness + cpa 107 ต้องเขียว)",
+      "Security/สิทธิ์ — หน้า public มี rate limit + token/tenant scope ไม่ leak ข้ามร้าน, ข้อมูลอ่อนไหว (เงินเดือน/ผู้ป่วย/เบอร์ลูกค้า) จำกัด role ชัด, การเงินทุกขาแก้ไขด้วย reversal ไม่ใช่ลบ record (audit trail ครบ), PDPA export/ขอลบครอบข้อมูลของระบบนั้น"
+    ],
+    "businessRubric": [
+      "B1 Setup ≤10 นาที: เปิดระบบครั้งแรกมี wizard/เทมเพลต marketplace ตั้งต้น (สินค้า/โต๊ะ/ห้อง/บริการตัวอย่าง) — auditor จับเวลาจากร้านเปล่าจนหน้าลูกค้าใช้ได้จริง",
+      "B2 ตั้งค่าครบผ่าน UI: ราคา, VAT ใน/นอก, เวลาทำการ+วันหยุด (BookingHours), สาขา, รูปภาพ, นโยบายยกเลิก/มัดจำ — ทุกค่าที่ลูกค้าเห็นแก้เองได้ ไม่ต้องพึ่งแอดมิน/DB",
+      "B3 ลิงก์หน้าลูกค้า /s/<ร้าน>/<สาขา> เปิดได้ทันทีหลัง setup + มี QR พิมพ์/แชร์ + รองรับ custom domain (host-routing 0065)",
+      "B4 ลูกค้าจบ flow บนมือถือตัวเองโดยไม่บังคับ login: ดูเมนู/ห้อง/รอบว่าง → เลือก → ยืนยัน → เห็นสถานะจากลิงก์ของตัวเอง — ไล่ครบทุกจอบน viewport 390px",
+      "B5 พนักงานหน้าร้านทำงานหลักได้ใน ≤3 แตะ (เปิดบิล/รับออเดอร์/เช็คอิน/เรียกคิว) และสถานะ (โต๊ะ/คิว/ห้อง) refresh อัตโนมัติ ไม่ต้อง F5",
+      "B6 ไม่มีทางตัน: ทุก empty state (ยังไม่มีสินค้า/ไม่มีรอบว่าง/ค้นไม่เจอ) มีข้อความ+ปุ่มชี้ทางถัดไป — auditor เปิดร้านเปล่าแล้วไล่ทุกหน้า ห้ามเจอหน้าขาวหรือ error ดิบ",
+      "B7 ธุรกรรมสร้างได้ 3 ช่องทางลง record เดียวกัน: พนักงานหน้าร้าน, หน้าลูกค้า public, AI สั่งแทน — ทุกช่องทาง idempotent กดซ้ำไม่เบิ้ลบิล",
+      "B8 ราคาคำนวณครบและตรงกัน 3 ชั้น: ส่วนลด/คูปอง/มัดจำ/service charge/VAT → ยอดบน UI = ยอดใน DB = ยอดในสมุดบัญชี (auditor สุ่ม 1 บิลไล่ 3 ชั้น)",
+      "B9 กันชนกันระดับ DB: จองซ้อน/ที่นั่งเกิน capacity/สต็อกติดลบ ต้องโดน constraint หรือ transaction จริง (ยิงพร้อมกัน 2 request ต้องล้มเหลว 1) ไม่ใช่กันแค่ฝั่ง UI",
+      "B10 รับเงินขั้นต่ำ เงินสด + PromptPay QR: ลูกค้าเห็น QR → ร้านกดยืนยันรับเงิน → สถานะ 'จ่ายแล้ว' เห็นตรงกันทั้งฝั่งร้านและลิงก์ลูกค้า (Beam/บัตรเป็น optional จนกว่า creds มา)",
+      "B11 เงินทุกบาทเข้าเส้นบัญชี C-2 อัตโนมัติ: ขาย→รายได้+VAT, มัดจำ→Dr 2110, ค้างจ่าย→Dr 1100 ลูกหนี้ — Dr=Cr สมดุลทุกใบ และ cpa 107/107 ต้องเขียวหลังเพิ่มระบบ",
+      "B12 จ่ายแล้วผลข้างเคียงวิ่งเอง: ตัดสต็อก inventory/ตัดคิว/ตัดห้อง/สะสมแต้มสมาชิก โดยไม่มีขั้นตอน manual ซ้ำ — auditor ขาย 1 รายการแล้วเช็คสต็อก+แต้มขยับ",
+      "B13 ปิดรอบ/ปิดวันได้จริง: สรุปยอดวันแยกช่องทางจ่าย + เงินสดในลิ้นชัก + void ที่เกิด + export CSV (BOM ไทยไม่เพี้ยน) — ทำจบจากมือถือได้",
+      "B14 Dashboard เจ้าของเห็นวันนี้ใน 1 จอมือถือ: ยอดขาย/จำนวนบิล/จองวันนี้/ของใกล้หมด และตัวเลขตรงกับรายงานละเอียด",
+      "B15 ยกเลิก/แก้/คืนเงินครบจาก UI: void ทั้งบิล, คืนบางรายการ, คืนมัดจำ, no-show — ทุกกรณีสร้างรายการบัญชีกลับขา (reversal) + คืนสต็อก/คืน slot ไม่ใช่ลบ record ทิ้ง",
+      "B16 นโยบายหลังการขาย config ได้ (คืนเต็ม/หัก %/ไม่คืน + เส้นตายยกเลิก) และหน้าลูกค้าแสดงนโยบายก่อนกดจ่าย ไม่ใช่รู้ทีหลัง",
+      "B17 แจ้งเตือนอัตโนมัติครบวงจร: ยืนยันจอง/เตือนนัดล่วงหน้า/สถานะออเดอร์เปลี่ยน → notification + outbox event (พร้อมต่อ LINE OA เมื่อ creds มา) — ลูกค้าเช็คสถานะเองจากลิงก์ ไม่ต้องโทรถามร้าน",
+      "B18 มือถือผ่านเกณฑ์: ทุกหน้า (ร้าน+ลูกค้า) ไม่มี scroll แนวนอนที่ 390px, ปุ่มหลัก ≥44px, ติดตั้ง PWA ได้, หน้า public โหลด <3s บน 4G",
+      "B19 หน้า public 2 ภาษา th/en สลับได้ (i18n v2) และข้อความ error สาธารณะแปลครบ ไม่มีคีย์หลุด/อังกฤษดิบโผล่ฝั่งไทย",
+      "B20 AI ทำแทน core loop ได้จริง: สร้างจอง/สั่งอาหาร/เปิดบิล + เช็คสถานะ + สรุปยอดวัน ผ่าน AI tools ที่ลง assertCan และมีเคสใน ai/eval — auditor พิมพ์สั่ง AI แล้วธุรกรรมโผล่ในระบบจริง",
+      "B21 ทุก mutation มี assertCan + tenantDb + zod + audit/outbox — auditor grep ไฟล์ actions ของระบบ ต้องไม่มี action เปลือย และ fitness ratchet ครอบ path นั้น",
+      "B22 qc-<system> oracle ครอบ 5 แกนขั้นต่ำ: happy path ถึงเงินเข้า, ยกเลิก/คืนเงิน, กันซ้อน/กันติดลบ, สิทธิ์ข้ามร้าน 404/403, idempotency — และรันอยู่ใน regression gate",
+      "B23 หน้า public ปลอดภัย: rate limit ต่อ IP, token/tenant scope ไม่ leak ข้อมูลร้านอื่น (auditor ลองสลับ tenantSlug/token), ไม่แสดง PII เกินจำเป็นบนลิงก์สาธารณะ",
+      "B24 เปิดออกนอกได้: entity หลักอ่านได้ผ่าน Public API v1 + ธุรกรรมสำคัญยิง webhook ขาออก (X-Shark-Signature) — ร้านที่โตต่อไม่ติดคุก SHARK"
+    ],
+    "featureRubric": [
+      "F1 เริ่มจากศูนย์ได้ใน ≤1 ชม.: มีเทมเพลต/ค่าตั้งต้น + import CSV สำหรับข้อมูลตั้งต้น (ลูกค้า/สินค้า/พนักงาน) — SME ย้ายจาก Excel ได้โดยไม่คีย์มือทีละแถว",
+      "F2 CRUD ครบทุก entity หลักผ่าน UI: สร้าง/แก้/ปิดใช้งาน (soft delete)/ค้นหา/กรอง/แบ่งหน้า — ไม่มี field ใน Prisma schema ของโมดูลที่แก้ได้เฉพาะผ่าน DB ตรง (auditor เทียบ schema กับฟอร์ม)",
+      "F3 เชื่อมระบบ business จริง ≥1 จุดที่พิสูจน์ได้: member↔POS สะสม/ใช้แต้มตอนคิดเงิน, inventory↔ขายตัดสต็อก, hr↔BookingStaff.employeeId, marketing↔คูปองใช้ได้จริงที่ checkout — ห้ามเป็นโมดูลเกาะเดี่ยว",
+      "F4 มี lifecycle ไม่ใช่แค่สมุดจด: ทุก state สำคัญเปลี่ยนผ่าน action ที่มีผลจริง (ใบลา ยื่น→สายอนุมัติ→มีผลในปฏิทิน, PO DRAFT→อนุมัติ→ORDERED→รับของ→เจ้าหนี้) + ยกเลิก/ถอยสถานะได้พร้อมผลข้างเคียงย้อนกลับ",
+      "F5 ตัวเลขที่กระทบเงินลงบัญชีอัตโนมัติสมดุล Dr=Cr (payroll→JV, รับของ→เจ้าหนี้, ปรับสต็อก→ต้นทุน) — เพิ่มฟีเจอร์แล้ว cpa 107/107 ยังเขียว",
+      "F6 รายงานในตัว: หน้าสรุป 1 จอ + export CSV (BOM) + เป็น dataset ใน report builder ให้ผสมกับข้อมูลอื่นได้",
+      "F7 Event ครบสาย: เหตุการณ์สำคัญของโมดูลยิง outbox → notification ถึงคนที่เกี่ยว + ตั้ง automation rule ได้ + โผล่ใน webhook ขาออก — auditor ทำ 1 เหตุการณ์แล้วไล่ดู 3 ปลายทาง",
+      "F8 AI อ่าน+เขียน: ถามข้อมูล (ยอด/ค้น/สรุป) และสร้าง entity หลักแทนได้ผ่าน AI tools ลงทะเบียน (แบบ 0045) + มีเคสใน ai/eval — สิทธิ์ AI = สิทธิ์ user ที่สั่ง ไม่มี backdoor",
+      "F9 UX มือถือ: งานที่ทำหน้างาน (เช็คชื่อ, ปรับสต็อก, อนุมัติใบลา) จบบนจอ 390px ใน ≤3 แตะ, empty state ชี้ทาง, validation inline, ภาษาไทยไม่มีศัพท์บัญชี/IT ดิบ",
+      "F10 Bulk operation ที่งานจริงต้องมี: ปรับสต็อกหลายรายการ, อนุมัติหลายใบ, ส่งแคมเปญหลายคน — ไม่บังคับคลิกทีละรายการ และ bulk ก็ผ่าน assertCan+audit ครบ",
+      "F11 สิทธิ์ตาม role matrix: ทุก action มี assertCan, ข้อมูลอ่อนไหว (เงินเดือน/ประวัติผู้ป่วย/เบอร์ลูกค้า) จำกัด role แคบกว่าปกติ, STAFF มองไม่เห็นเมนู/ข้อมูลที่ไม่มีสิทธิ์ (ไม่ใช่แค่กดแล้ว error)",
+      "F12 PDPA: ข้อมูลบุคคลในโมดูลติดร่ม export/ขอลบ 30 วันของร้าน + ถูก purge cron ครอบ — auditor สั่ง export แล้วต้องเห็นข้อมูลโมดูลนี้ในไฟล์",
+      "F13 qc-<feature> oracle ครอบ: CRUD + lifecycle ทุก transition + จุดเชื่อม cross-module (F3/F5) + สิทธิ์ข้ามร้าน/ข้าม role + idempotency — เขียวใน regression gate",
+      "F14 ประวัติ/audit ดูได้จาก UI: ใครแก้อะไรเมื่อไหร่กับ record สำคัญ (เงินเดือน, สต็อก, สถานะอนุมัติ) — ไม่ใช่มีแค่ใน DB"
+    ],
+    "notes": "วิธีใช้ (สำหรับ auditor): 1 ระบบ = 1 ใบตรวจ กาเป็น ผ่าน/ไม่ผ่าน/N-A เท่านั้น — ข้อไหน N/A ต้องเขียนเหตุผลลง ledger เปิดเผย (แบบ F9.1 ของ KB) ห้ามข้ามเงียบ. นิยาม Full-Function = ธุรกิจกาผ่าน B1-B24 ครบ / ฟีเจอร์กาผ่าน F1-F14 ครบ, ถ้าไม่ครบให้รายงานเป็น % พร้อมรายการข้อที่ตก เรียงตามความเป็น 'ทางตัน'. หลักคิดทางตันที่ทำให้ SME เลิกใช้ (ใช้จัดลำดับซ่อม): (1) เงินไม่เข้า/ยอดไม่ตรง = เลิกทันที → B8 B10 B11 ก่อนเสมอ (2) ยกเลิก-คืนเงินไม่ได้ = เจองานจริงวันแรกก็ตาย → B15 (3) หน้างานช้ากว่ากระดาษ = พนักงานไม่ยอมใช้ → B5 F9 (4) ข้อมูลตั้งต้นย้ายเข้าไม่ได้ → F1 (5) โมดูลเกาะเดี่ยวไม่คุยกัน → F3 F5. วิธีตรวจให้ 'กาได้จริง': ทุกข้อกำหนด action ตรวจไว้แล้ว (จับเวลา, ยิง 2 request พร้อมกัน, สลับ tenantSlug, สุ่มไล่บิล 3 ชั้น UI=DB=บัญชี, grep actions, รัน qc) — ไม่มีข้อไหนตัดสินด้วยความรู้สึก. เกณฑ์นี้อิงโครงจริงใน /root/projects/shark-in-th: storefront /s/<tenant>/<unit> + /f /r token routes, เส้นเงิน C-2 (PosSale/JV + cpa 107/107), assertCan+tenantDb, AI tools (src/lib/ai/tools.ts + eval.ts), outbox/webhook 0062, Public API v1 0061, PWA 0068, i18n v2 0066. ข้อยกเว้นที่รอเจ้าของ (Beam creds, LINE OA, OTP ลูกค้า 0058) ให้กาเป็น N/A-blocked ไม่นับตก แต่ต้องมีโครงรองรับพร้อมเสียบ. แนะนำรอบถัดไป: เอา B-rubric ไล่ POS เต็มรูปแบบ (ที่ RESUME ระบุ 'รอไฟเขียว') เป็นตัวนำร่อง เพราะเป็นระบบที่ SME เจอทางตัน B13/B15 เร็วที่สุด."
+  },
+  "auditSummary": [
+    {
+      "module": "pos (POS ขายหน้าร้าน)",
+      "verdict": "partial",
+      "blocker": "เจ้าของร้านเปิดแอปแล้วขายลูกค้า walk-in เก็บเงินสดสักบิลไม่ได้เลย เพราะไม่มีหน้าขาย (cashier) จริง — POS เป็นแค่เครื่องยนต์ตัดเงินหลังบ้านที่รอโมดูลอื่นหรือ AI ป้อนบิลเข้ามา",
+      "gaps": 11,
+      "days": 24
+    },
+    {
+      "module": "restaurant",
+      "verdict": "partial",
+      "blocker": "AI สั่งงานแทนไม่ได้สักคำสั่ง (ไม่มี tool ในระบบเลย) และเมื่อบิลจ่ายแล้วกดผิดหรือต้องคืนเงิน พนักงานไม่มีปุ่ม void/คืนเงินในหน้าร้านอาหาร (รายการล็อกด้วย saleId) ต้องไปแก้ที่ฐานข้อมูลตรง",
+      "gaps": 10,
+      "days": 18
+    },
+    {
+      "module": "hotel",
+      "verdict": "partial",
+      "blocker": "ลูกค้าจองห้องเองไม่ได้เลย — ไม่มีหน้า public/QR/ลิงก์สถานะ ทุกจองต้องพนักงานคีย์มือ, จ่ายมัดจำ/PromptPay ไม่ได้, และถ้ายกเลิกหลังลงบิลแล้วระบบไม่มี reversal คืนเงิน/คืนบัญชี",
+      "gaps": 12,
+      "days": 22
+    },
+    {
+      "module": "booking",
+      "verdict": "partial",
+      "blocker": "ร้านสปา/คลินิกเปิดหน้าจองให้ลูกค้าได้จริง แต่เก็บมัดจำ/พร้อมเพย์ไม่ได้เลย และลูกค้าจองแล้วไม่มีลิงก์เช็ค/ยกเลิกนัดของตัวเอง — no-show จึงกันไม่ได้และต้องโทรถามร้านทุกครั้ง",
+      "gaps": 10,
+      "days": 18
+    },
+    {
+      "module": "queue (บัตรคิว)",
+      "verdict": "partial",
+      "blocker": "ลูกค้าเอามือถือตัวเองกดรับบัตรคิว/ดูว่าอีกกี่คิวถึงตัวไม่ได้เลย — มีแค่จอ TV หน้าร้านกับบอร์ดพนักงาน (โค้ดหน้า public + สถานะบัตร publicToken เขียนค้างไว้ใน service แต่ไม่มีหน้าเว็บจริงเรียกใช้) ต้องมายืนออหน้าร้านอย่างเดียว",
+      "gaps": 11,
+      "days": 15
+    },
+    {
+      "module": "ticket (ตั๋ว / อีเวนต์)",
+      "verdict": "partial",
+      "blocker": "ลูกค้าซื้อตั๋วเองไม่ได้เลย (ไม่มีหน้าร้านสาธารณะ/QR จ่ายเงิน ต้องให้พนักงานกดขาย+กดรับเงินเองทุกใบ) และถ้ายกเลิกบิลที่จ่ายแล้ว โควตาคืนแต่เงินไม่ถูกกลับรายการในบัญชี",
+      "gaps": 13,
+      "days": 29
+    },
+    {
+      "module": "shop (e-commerce catalog/cart/checkout)",
+      "verdict": "partial",
+      "blocker": "พอลูกค้าโอนแล้วร้านกด 'ยืนยันรับเงิน' ออเดอร์ล็อกทันที — ถ้าของหมด/ลูกค้าขอคืนเงิน ร้านคืนเงิน/ยกเลิกจาก UI ไม่ได้เลย (ยกเลิกได้เฉพาะก่อนจ่าย) เงินค้างในระบบไม่มีทาง reversal และลูกค้าก็ไม่ได้แจ้งเตือนอัตโนมัติต้องคอยรีเฟรชลิงก์เอง",
+      "gaps": 11,
+      "days": 13
+    },
+    {
+      "module": "rental",
+      "verdict": "partial",
+      "blocker": "ลูกค้าจองเองผ่านลิงก์/QR ไม่ได้เลย (ไม่มีหน้า public ทุกจองพนักงานต้องคีย์มือ) และถ้าปิดบิลคืนของผิดหรือลูกค้ายกเลิกหลังรับของ ก็คืนเงิน/แก้บิลผ่านระบบไม่ได้ — ต้องไปแก้ที่ DB",
+      "gaps": 11,
+      "days": 22
+    },
+    {
+      "module": "school (คอร์สเรียน / โรงเรียน)",
+      "verdict": "partial",
+      "blocker": "โรงเรียน/สถาบันเปิดใช้แล้วแต่ผู้ปกครองสมัคร+จ่ายค่าเรียนเองผ่านลิงก์ไม่ได้เลย (ไม่มีหน้า public) และพอพนักงานกดรับชำระแล้วจะยกเลิก/คืนเงินก็ทำไม่ได้จาก UI — ทุกอย่างพึ่งพนักงานกดในหลังบ้าน และตันทันทีเมื่อมีการคืนเงิน",
+      "gaps": 13,
+      "days": 14
+    },
+    {
+      "module": "clinic",
+      "verdict": "thin",
+      "blocker": "เก็บเงินผิดหรือคนไข้ไม่มา = ตัน — ไม่มีปุ่มยกเลิก/คืนเงิน/void ในโค้ดเลย (สถานะ CANCELLED มีในตารางแต่ไม่มี logic ใช้) และไม่มีหน้าให้ลูกค้าจองนัด/เช็คสถานะเองสักจอ ทำได้แค่พนักงานเปิดบิลหน้าร้านแล้วเงินเข้าอย่างเดียว",
+      "gaps": 11,
+      "days": 22
+    },
+    {
+      "module": "member (ฐานสมาชิก / CRM core + loyalty + subscription)",
+      "verdict": "partial",
+      "blocker": "ร้านตั้งแพ็กเกจสมาชิกรายเดือน/รายปีแบบมีราคาได้ แต่ตอนสมัครระบบไม่เก็บเงินจริง (ไม่มี QR/เงินสด) และไม่ลงบัญชีเลย เงินค่าสมาชิกหายจากสมุดบัญชี ทั้งยังแก้ข้อมูลสมาชิก (ชื่อ/เบอร์/แท็ก) จากหน้าจอไม่ได้ ต้องพึ่ง DB.",
+      "gaps": 8,
+      "days": 11
+    },
+    {
+      "module": "reward (แลกของด้วยแต้ม)",
+      "verdict": "thin",
+      "blocker": "ลูกค้า/พนักงานเอาแต้มแลกของไม่ได้เลย — ฟังก์ชัน redeem() มีในโค้ดแต่ไม่มีหน้า/ปุ่ม/action ใดเรียกใช้ (dead code) ร้านตั้งรายการรางวัลได้อย่างเดียวแต่ไม่มีทางแลกจริง",
+      "gaps": 9,
+      "days": 15
+    },
+    {
+      "module": "point (แต้ม / loyalty points)",
+      "verdict": "partial",
+      "blocker": "ร้านตั้งอัตราสะสมแต้มเองไม่ได้ (ค้างที่ 25 บาท=1 แต้ม แก้ได้แค่ผ่าน DB) และพนักงานปรับ/แจกแต้มด้วยมือไม่ได้ — แต้มโผล่เฉพาะตอนขาย POS เท่านั้น",
+      "gaps": 8,
+      "days": 8.5
+    },
+    {
+      "module": "coupon (คูปองส่วนลด — feature โมดูล marketing, ผูกกับ POS)",
+      "verdict": "partial",
+      "blocker": "ตั้งคูปองผิด (วันหมดอายุ/จำนวนสิทธิ์/เปอร์เซ็นต์) แล้วแก้ไม่ได้เลย ต้องปิดโค้ดเดิมแล้วสร้างใหม่ทั้งใบ และดูไม่ได้ว่าใครใช้ไปกี่ครั้งเพราะไม่มีหน้ารายงานการใช้.",
+      "gaps": 9,
+      "days": 3
+    },
+    {
+      "module": "marketing (feature — แคมเปญ LINE/Email/SMS)",
+      "verdict": "partial",
+      "blocker": "กด 'ส่งแคมเปญ' แล้วระบบแค่บันทึกรายชื่อผู้รับลง DB — ไม่มีข้อความวิ่งออก LINE/SMS/อีเมลถึงลูกค้าจริงเลย (sendCampaign เป็น log-only) ลูกค้าไม่เคยได้รับโปร แคมเปญจึงเป็นแค่รายการในระบบที่ส่งไม่ออก",
+      "gaps": 12,
+      "days": 18
+    },
+    {
+      "module": "crm",
+      "verdict": "partial",
+      "blocker": "พนักงานสร้าง 'งานติดตาม' (follow-up) จากหน้าจอไม่ได้เลย — addActivityAction มีในโค้ดแต่ไม่ถูก wire เข้า ui.tsx ทำให้ช่อง 'งานติดตามค้างอยู่' ว่างตลอด กดสร้างไม่ได้ ปิดได้อย่างเดียว จึงใช้ CRM ตามงานขายจริงไม่ได้",
+      "gaps": 13,
+      "days": 10
+    },
+    {
+      "module": "inventory (สต็อก multi-warehouse + procurement)",
+      "verdict": "partial",
+      "blocker": "เจ้าของร้านสร้างสินค้าผิด (ราคา/จุดสั่งซื้อ/บาร์โค้ด) แล้วแก้ไม่ได้จาก UI ต้องเข้าฐานข้อมูล และของที่รับเข้า/ตัดออกไม่ไหลลงบัญชีต้นทุน/เจ้าหนี้เลย ทำให้สต็อกเดินได้แต่กำไร-บัญชีไม่ตรงกับความจริง",
+      "gaps": 9,
+      "days": 14
+    },
+    {
+      "module": "account (CPA บัญชีคู่)",
+      "verdict": "partial",
+      "blocker": "แกนบัญชีคู่ + VAT/WHT/ปิดงบทำงานจบจริงระดับ CPA (cpa 107 เขียว) แต่ SME ที่ย้ายจาก Excel ตันตั้งแต่ onboarding เพราะไม่มี CSV import ยอดยกมา/ลูกหนี้-เจ้าหนี้/ผังบัญชี ต้องคีย์มือทีละแถว และถาม AI เรื่องตัวเลขงบไม่ได้ (AI บันทึกค่าใช้จ่ายได้อย่างเดียว)",
+      "gaps": 7,
+      "days": 21
+    },
+    {
+      "module": "hr",
+      "verdict": "partial",
+      "blocker": "ใครก็ตามที่เปิดระบบ HR เห็นเงินเดือน+เลขบัตรประชาชนพนักงานทุกคน (ไม่มี role จำกัด/ไม่มี PDPA/ไม่มี audit) และถ้าพิมพ์ชื่อหรือจ่ายเงินเดือนผิดก็แก้/กลับรายการไม่ได้จาก UI",
+      "gaps": 12,
+      "days": 12
+    },
+    {
+      "module": "chat (แชทรวมศูนย์ omni-channel: LINE OA + แชทหน้าเว็บ)",
+      "verdict": "partial",
+      "blocker": "ลูกค้าทักเข้ามาแล้วพนักงานไม่มีทางรู้ (ไม่มี notification/outbox) — ต้องนั่งเปิดหน้าแชทค้างและกดรีเฟรชเอง อีกทั้งไม่มีข้อความสำเร็จรูป/AI ช่วยตอบ ทำให้ตอบช้าและตกหล่นจริงในหน้างาน",
+      "gaps": 9,
+      "days": 10
+    },
+    {
+      "module": "kanban",
+      "verdict": "partial",
+      "blocker": "มอบหมายการ์ดให้ลูกน้องแล้วระบบเงียบสนิท — ไม่มีแจ้งเตือน ไม่มีหน้า 'งานของฉัน' และ AI ก็ถามสถานะไม่ได้ ทีมจึงใช้จริงเพื่อประสานงานไม่ได้ กลายเป็นแค่กระดานจดที่ต้องเปิดดูเองทุกครั้ง",
+      "gaps": 12,
+      "days": 9
+    },
+    {
+      "module": "kb (คลังความรู้ / Knowledge Base — feature no.16)",
+      "verdict": "partial",
+      "blocker": "AI ค้นคลังความรู้ด้วย keyword ตรงตัวเป๊ะเท่านั้น — ลูกค้าถามด้วยคำที่ไม่ตรงกับที่ร้านเขียนไว้ kb_search จะคืน 'ไม่พบ' แล้ว AI ตอบมั่วแทนที่จะดึงนโยบายจริง ทำให้ฟีเจอร์เด่น 'AI ใช้คลังความรู้ตอบลูกค้า' ใช้จริงไม่ได้ผล",
+      "gaps": 9,
+      "days": 8
+    },
+    {
+      "module": "meeting (แชทภายในองค์กร / Slack-like feature)",
+      "verdict": "partial",
+      "blocker": "แชทที่ไม่ real-time (ต้องรีเฟรชเองถึงเห็นข้อความเพื่อน) + ห้องส่วนตัวเชิญใครเข้าไม่ได้เลย (สร้างแล้วอยู่คนเดียว) + ไม่มีแจ้งเตือน ทำให้ทีม SME ใช้คุยงานจริงไม่ได้ ต้องกลับไปใช้ LINE",
+      "gaps": 10,
+      "days": 11
+    },
+    {
+      "module": "forms (Form builder v1 — WO-0054, lead-capture)",
+      "verdict": "partial",
+      "blocker": "ลูกค้ากรอกฟอร์มเข้ามาแต่ระบบไม่แจ้งเตือนเจ้าของร้านเลย (ไม่มี outbox/notification/AI) ต้องคอยเปิดหน้าเช็คเอง lead จึงตกหล่น และกดส่งซ้ำได้ทำให้ lead/CRM contact เบิ้ล",
+      "gaps": 9,
+      "days": 7
+    },
+    {
+      "module": "reports (Report Builder v1, WO-0055)",
+      "verdict": "partial",
+      "blocker": "export CSV โหมดไม่จัดกลุ่มถูก cap เงียบ ๆ ที่ 500 แถวใหม่สุด (RAW_CAP, take ไม่ถูกส่งจาก UI) — ร้านที่มีบิลเกิน 500 ใบต่อเดือนดาวน์โหลดไปทำบัญชีจะได้ข้อมูลไม่ครบโดยไม่มีคำเตือน = ตัวเลขผิดแบบไม่รู้ตัว",
+      "gaps": 8,
+      "days": 11
+    },
+    {
+      "module": "calendar (ปฏิทินรวม read-only — WO-0057)",
+      "verdict": "partial",
+      "blocker": "SME เปิดปฏิทินเห็นนัด/เข้าพัก/วันลารวมกันได้จริง แต่สร้าง-เลื่อน-ยกเลิกอะไรจากตรงนี้ไม่ได้เลย (read-only ต้องเด้งไปโมดูลต้นทางทีละอัน) และพนักงานสาขาเดียวกลับเห็นตารางทุกสาขา + ใครลาป่วยลากิจทั้งบริษัท เพราะ service ไม่กรองตาม unitAccess",
+      "gaps": 7,
+      "days": 2
+    },
+    {
+      "module": "approval (สายอนุมัติ maker-checker)",
+      "verdict": "partial",
+      "blocker": "เจ้าของร้านตั้งสายอนุมัติผิด (วงเงิน/ผู้อนุมัติ) แล้วแก้ไม่ได้ (มีแค่เปิด-ปิด ต้องสร้างทับ) และไม่มีหน้าไหนดูประวัติว่าใครอนุมัติ/ปฏิเสธคำขออะไรไปแล้ว — จบ flow ได้แต่บริหารจัดการต่อไม่ได้แบบตาบอด",
+      "gaps": 10,
+      "days": 5.5
+    }
+  ],
+  "fullAudits": [
+    {
+      "module": "pos (POS ขายหน้าร้าน)",
+      "verdict": "partial",
+      "exists": [
+        "createSale = จุดตัดเงินกลางของทั้งแอป: idempotent (unique tenantId+idempotencyKey), atomic tx, line items + bill discount + payment methods (CASH/PROMPTPAY/TRANSFER/DEPOSIT/ROOM_CHARGE), เลขใบเสร็จรันต่อ unit/เดือน",
+        "คูปอง validate+redeem, สะสมแต้ม point.earn, member.recordSpend, logActivity — ทำครบใน tx เดียว rollback พร้อมกัน",
+        "voidSale กลับรายการเต็มใบ: status VOIDED + คืนคูปอง (release) + reverse แต้ม + ถอน spend + outbox pos.sale.voided",
+        "account-bridge → GL ผ่าน facade (Dr cash/bank, Cr income + แยก VAT ฝั่งบัญชี), void = reverseExternalSale",
+        "outbox pos.sale.paid/voided → บัญชี, replay idempotent (PosSale#id#event)",
+        "AI proposals pos_create_sale + void_sale ผ่าน assertCan (KIND_ACCESS pos.sale.create/void) ด้วยสิทธิ์ของคนกดยืนยัน; read tools sales_summary + sales_by_day; มีเคสใน ai/eval",
+        "QC oracle 2 ตัว (qc-pos-account: happy→journal, void reversal, replay, standalone no-entry; qc-pos-coupon) อยู่ใน regression gate",
+        "UI ประวัติบิล read-only + daySummary() นับบิล/ยอดวันนี้"
+      ],
+      "gaps": [
+        {
+          "feature": "ไม่มีหน้าขายจริง (cashier UI): เปิดบิล/ตะกร้า/แป้นกดเลข/รับเงิน บนมือถือ 390px ≤3 แตะ — POS สร้างบิลได้เฉพาะเมื่อโมดูลอื่น (shop/restaurant/booking) หรือ AI เรียก createSale เท่านั้น",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 5
+        },
+        {
+          "feature": "ไม่มีแคตตาล็อกสินค้า/เมนูใน POS (lines เป็น free-text name+price) + ตั้งสินค้า/นำเข้า CSV — SME กดขายเมนูไม่ได้",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 3
+        },
+        {
+          "feature": "ไม่มี PromptPay QR + flow เก็บเงินจริง: createSale บังคับ paidSum===grandTotal แล้ว PAID ทันที ไม่มีสถานะ pending→จ่ายแล้ว, ลูกค้าไม่เห็น QR (B10)",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 3
+        },
+        {
+          "feature": "ไม่มีหน้าลูกค้า public /s/<ร้าน>/pos + ลิงก์/QR/สถานะบิลของลูกค้าเอง (B3/B4)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "คืนเงินบางส่วน/คืนบางรายการไม่ได้: มีแค่ void ทั้งใบ; enum REFUNDED มีแต่ไม่มี flow ใช้ (B15)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "ปิดรอบ/ปิดวันไม่ได้: daySummary คืนแค่ count+total ไม่มีแยกช่องทางจ่าย/เงินในลิ้นชัก/รายการ void/export CSV (B13)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2.5
+        },
+        {
+          "feature": "ไม่มีหน้าตั้งค่า POS ผ่าน UI: VAT ใน/นอก (hardcode vat=0), ช่องทางจ่าย, รูปแบบใบเสร็จ (B2)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "PosSale ไม่โผล่ใน Public API v1 (มีแค่ shop/inventory/customers) และ pos.sale.* ห่อแค่ withAutomation ไม่เข้า withWebhooks → ไม่มี webhook ขาออก (B24/F7)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี dashboard เจ้าของ 1 จอมือถือ (ยอด/บิล/ของใกล้หมด) — มีแค่ list ดิบ (B14)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "setup wizard/เทมเพลตตั้งต้น + empty-state ชี้ทางของ POS ยังไม่มี (B1/B6)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "assertCan อยู่ที่ผู้เรียก (AI proposal/โมดูลอื่น) เท่านั้น; service createSale/voidSale เชื่อ caller — server action ของ cashier UI ในอนาคตต้องเพิ่ม assertCan+zod เอง (B21)",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 1
+        }
+      ],
+      "customerBlocker": "เจ้าของร้านเปิดแอปแล้วขายลูกค้า walk-in เก็บเงินสดสักบิลไม่ได้เลย เพราะไม่มีหน้าขาย (cashier) จริง — POS เป็นแค่เครื่องยนต์ตัดเงินหลังบ้านที่รอโมดูลอื่นหรือ AI ป้อนบิลเข้ามา",
+      "rebuildEffortDays": 24
+    },
+    {
+      "module": "restaurant",
+      "verdict": "partial",
+      "exists": [
+        "Dine-in loop จริง: floor plan โซน/โต๊ะ + เปิด/ปิด/ย้าย/รวม session (partial unique กันเปิดซ้ำ)",
+        "เมนู CRUD + หมวด + option groups (min/max) + 86 (isOutOfStock) + stockQty ตัดแบบ atomic conditional updateMany กัน oversell",
+        "KDS: station queue + advance สถานะ (NEW→COOKING→READY→SERVED) forward-only + recall + Expo queue + auto COMPLETE order",
+        "สั่งอาหาร 2 ช่องทาง: staff (order/page) + ลูกค้า public ผ่าน QR (resolveTableSession get-or-create + merge chain 1 ชั้น)",
+        "เช็คบิลผ่าน POS createSale (idempotencyKey sha256) → เงินเข้าบัญชี Dr เงินสด/Cr รายได้+VAT, Dr=Cr (qc-restaurant-money ผ่าน)",
+        "service charge bps คำนวณตรงกัน 3 จุด (billPreview/checkout/tableStatusForGuest), service request เรียกพนักงาน/ขอบิล กันสแปม 2 นาที",
+        "server actions ทุกตัวผ่าน ctx() = requireUnit + assertCan(module restaurant) + tenantDb scope; scope.ts ลงทะเบียน unit-scope ครบทุกตาราง",
+        "หน้า public i18n th/en (LanguageSwitcher + makeT), kitchenOpenNow server-side authority + BookingHours/specialClosures/last-order",
+        "member link (สะสมแต้มผ่าน POINT system + member activity), pickup order flow (AWAITING_CONFIRM→ACCEPTED)",
+        "QR โต๊ะ rotate ได้, dashboard ordersToday (ยอด/บิล/รายได้วันนี้)"
+      ],
+      "customerBlocker": "AI สั่งงานแทนไม่ได้สักคำสั่ง (ไม่มี tool ในระบบเลย) และเมื่อบิลจ่ายแล้วกดผิดหรือต้องคืนเงิน พนักงานไม่มีปุ่ม void/คืนเงินในหน้าร้านอาหาร (รายการล็อกด้วย saleId) ต้องไปแก้ที่ฐานข้อมูลตรง",
+      "rebuildEffortDays": 18,
+      "gaps": [
+        {
+          "feature": "AI tools ครบ core loop (เปิดโต๊ะ/สั่งอาหาร/เช็คบิล/เช็คสถานะโต๊ะ/สรุปยอดวัน) ลงทะเบียนใน ai/tools ผ่าน assertCan เดียวกับ UI + เคสใน ai/eval ≥2/tool — ปัจจุบัน grep ai/tools.ts ไม่มี tool restaurant สักตัว (B20/F8 ขาดทั้งดุ้น)",
+          "dimension": "ai",
+          "severity": "blocker",
+          "effortDays": 4
+        },
+        {
+          "feature": "Refund/void หลังชำระ จากหน้า UI: void ทั้งบิล/คืนบางรายการ/คืนมัดจำ/no-show → สร้าง reversal ขาบัญชี (ไม่ลบ record) + คืน stock/คืน slot — actions มีแค่ cancelOrderItem ก่อนจ่าย (saleId=null) ไม่มีทางถอยหลังจ่ายแล้ว (B15)",
+          "dimension": "qc",
+          "severity": "blocker",
+          "effortDays": 3
+        },
+        {
+          "feature": "Outbox event + notification + webhook ขาออก: order placed/paid/cancelled + service request ไม่ยิง emitEvent เลย (module ไม่ import core/outbox) → ไม่มี automation/แจ้งเตือน/ webhook X-Shark-Signature (B17/B24/F7)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "ลูกค้าจ่ายเองได้: PromptPay QR ให้ลูกค้าสแกนจากลิงก์โต๊ะ → ร้านกดยืนยันรับเงิน — ปัจจุบัน PROMPTPAY เป็นแค่ป้าย payMethod ฝั่งพนักงาน ลูกค้าไม่เห็น QR (B10)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "Idempotency บน createOrder / public POST order: ไม่มี idempotency key — ลูกค้ากดสั่งซ้ำ/เน็ตค้าง = ออเดอร์เบิ้ล (B7 idempotent ทุกช่องทางไม่ครบ; เฉพาะ checkout มี key)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "Rate limit + hardening endpoint public (order/session/service-request) ต่อ IP/token — route.ts ไม่มี rate limit เลย เปิดให้ยิงถล่ม/สร้างออเดอร์รัวได้ (B23)",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "QC oracle เพิ่มแกนที่ขาด: ยกเลิก/คืนเงิน reversal, ยิงพร้อมกัน 2 request oversell/เปิดโต๊ะซ้อนจริง, สิทธิ์ข้ามร้าน 403/404, idempotency กดซ้ำ — และ wire qc-restaurant.mts เข้า package.json/gate (ตอนนี้ไม่อยู่ใน script เลย) (B22/F13)",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "Public API v1 (read) entity หลัก (menu/order/table) + PDPA export/ลบ ครอบ guestName/guestPhone ที่เก็บใน RestaurantOrder — ไม่มี route v1 restaurant และ guest PII ไม่ติดร่ม export (B24/F12)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "zod validation ใน server actions: ส่วนใหญ่อ่าน raw formData.get + String() coercion ไม่ validate (มีแต่ public route ที่ใช้ zod) (มิติ API rubric)",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "เชื่อม Inventory module จริง: ตอนนี้ตัดสต็อกเป็น MenuItem.stockQty ภายในโมดูลเอง ไม่ผูก Inventory ledger/ต้นทุน — cross-module F3/F5 ยังเกาะเดี่ยวฝั่งของสด",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 2
+        }
+      ]
+    },
+    {
+      "module": "hotel",
+      "verdict": "partial",
+      "exists": [
+        "Room types + Rooms CRUD (soft-delete, guard ถ้ามีจองค้าง) ผ่าน setup UI",
+        "จอง→เช็คอิน(assign ห้อง)→เช็คเอาท์→ยกเลิก ครบ lifecycle ฝั่งพนักงาน",
+        "กันจองซ้อน/เกิน capacity ระดับ DB จริง: freeCountForRange + clash check ใน prisma.$transaction (ทั้งตอนจองและตอน assign ห้อง)",
+        "เช็คเอาท์ยิงเข้า POS createSale อัตโนมัติ (idempotencyKey=hotel-sale-<id>) → ลงบัญชี Dr=Cr, ถอด VAT",
+        "Dashboard พนักงาน: arrivals/departures/in-house/upcoming/room status",
+        "ทุก server action มี assertCan(module:hotel) + tenantDb scope + zod + requireUnit",
+        "AI tool hotel_create_reservation (propose flow ผ่าน assertCan เดียวกับ UI) + eval 1 เคส",
+        "QC qc-hotel-money.mts อยู่ใน gate (happy path → เงินเข้าบัญชี, Σdr=Σcr, Cr 4000 ถอด VAT)",
+        "Availability grid ต่อประเภทห้องต่อคืน",
+        "reservation-form ใช้ useActionState → validation inline (ไม่ใช่ Alert), empty state ทุกหน้ามีข้อความชี้ทาง"
+      ],
+      "gaps": [
+        {
+          "feature": "ไม่มีหน้า public ลูกค้า /s/<ร้าน>/<สาขา>/hotel เลย — ลูกค้าดูห้องว่าง/จอง/เช็คสถานะเองไม่ได้ ทุกจองต้องพนักงานคีย์มือ (ไม่มี QR, ไม่มีลิงก์สถานะ, ไม่มี login-free flow)",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 5
+        },
+        {
+          "feature": "ไม่มีการรับเงิน/มัดจำ: ไม่มี PromptPay QR, ไม่มี deposit (Dr 2110), เก็บเงินได้ทางเดียวคือ hardcode CASH ตอนเช็คเอาท์ผ่าน POS — B10/B11 ขาดครึ่ง",
+          "dimension": "api",
+          "severity": "blocker",
+          "effortDays": 3
+        },
+        {
+          "feature": "ไม่มี refund/reversal: cancel แค่เซ็ต status=CANCELLED, ถ้าเช็คเอาท์+ลงบิลแล้วยกเลิกไม่ได้, ไม่มีคืนมัดจำ/คืนบางรายการ/no-show, ไม่มีรายการบัญชีกลับขา — B15 ขาดทั้งแกน",
+          "dimension": "qc",
+          "severity": "blocker",
+          "effortDays": 3
+        },
+        {
+          "feature": "createReservation ไม่มี idempotency key — กด submit ซ้ำ (พนักงาน/AI/public) สร้างจอง+บิลเบิ้ลถ้ายังมีห้องว่าง; QC ไม่ทดสอบ B7/idempotency",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "AI มีแค่ write ตัวเดียว (hotel_create_reservation) — ไม่มี read tool เช็คห้องว่าง/สถานะจอง/สรุปยอดวัน; eval มีจริงแค่ 1 เคส (B20/F8 ต้องอ่าน+เขียน + ≥2 เคส/tool)",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "reservation ไม่ยิง outbox event โดยตรง (มีแต่ผ่าน POS ตอนเช็คเอาท์) — ไม่มี notification ยืนยันจอง/เตือนนัด, ไม่โผล่ Public API v1 read, ไม่มี webhook ขาออก (B17/B24/F7)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "QC ครอบแค่ happy path + Dr=Cr (3 เช็ค) — ไม่มี: cancel/refund reversal, ยิงพร้อมกัน 2 request กันซ้อน, สิทธิ์ข้ามร้าน 403/404, idempotency กดซ้ำ (B22/F13 ขาด 4/5 แกน)",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มีปิดรอบ/ปิดวัน + export CSV (BOM) + dashboard ยอดขาย/รายได้วันนี้ (dashboard มีแต่จำนวนห้อง/แขก ไม่มีตัวเลขเงิน) — B13/B14/F6 ขาด",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ตั้งค่าไม่ครบผ่าน UI: rate เป็น flat baseRateSatang อย่างเดียว, ไม่มี VAT in/out, ไม่มี BookingHours/วันหยุด, ไม่มีรูปห้อง, ไม่มีนโยบายยกเลิก/มัดจำ config (B2/B16); ไม่มี edit reservation (แก้วัน/ย้ายห้อง) — F2 ขาด",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "customerId เป็น scalar ยังไม่ผูก member (คอมเมนต์ '🔜 ผูก member.findOrCreate ตอน check-in') → ไม่สะสมแต้ม/ผูกประวัติลูกค้า (F3 อ่อน)",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี i18n th/en ฝั่ง public (เพราะไม่มีหน้า public เลย), ไม่มี rate limit/token scope public, PDPA export ครอบ guest PII ในโมดูลนี้ยังไม่ยืนยัน (B19/B23/F12)",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี setup wizard/เทมเพลตตั้งต้น + import CSV ห้อง/ลูกค้า — เริ่มจากร้านเปล่าต้องคีย์ประเภทห้อง+ห้องทีละอันเอง (B1/F1)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1.5
+        }
+      ],
+      "customerBlocker": "ลูกค้าจองห้องเองไม่ได้เลย — ไม่มีหน้า public/QR/ลิงก์สถานะ ทุกจองต้องพนักงานคีย์มือ, จ่ายมัดจำ/PromptPay ไม่ได้, และถ้ายกเลิกหลังลงบิลแล้วระบบไม่มี reversal คืนเงิน/คืนบัญชี",
+      "rebuildEffortDays": 22
+    },
+    {
+      "module": "booking",
+      "verdict": "partial",
+      "exists": [
+        "Slot engine (slots.ts) — pure/testable: กรอบเวลาทำการรายวัน + duration+buffer + กันชนช่วงที่จองแล้ว, timezone BKK คงที่",
+        "หน้าลูกค้า public /s/<tenant>/<unit> จองได้ไม่ต้อง login: เลือกบริการ→ช่าง/ใครก็ได้→วัน→slot→กรอกชื่อ/เบอร์→ยืนยัน + i18n th/en",
+        "หน้าร้าน: รายการนัดวันนี้ + เปลี่ยนสถานะ (มาถึง/เสร็จ/ไม่มา/ยกเลิก) + ตั้งค่าบริการ/พนักงาน/เวลาทำการ",
+        "createAppointment ใน $transaction เช็คชนช่วงเวลาช่างก่อน insert (app-level clash check)",
+        "เชื่อม HR: BookingStaff.employeeId เลือกช่างจากพนักงาน HR ที่เปิดอยู่",
+        "เชื่อม member/POS/point แบบ soft-link: กด 'เสร็จ' → recordVisit + createSale(CASH) ลง GL ผ่าน POS + สะสมแต้ม",
+        "AI tools: booking_create_appointment (write ผ่าน propose→runKind→assertCan booking.appointment.create) + today_appointments (read); มีเคสใน ai/eval",
+        "ทุก business action มี assertCan + tenantDb + zod; public route scope ด้วย resolveUnit (tenant+unit slug)"
+      ],
+      "gaps": [
+        {
+          "feature": "ไม่มีการรับเงินในตัวจอง: ไม่มี PromptPay QR, ไม่มีมัดจำ/prepay — เงินเข้าบัญชีแค่ตอนกด 'เสร็จ' เป็นเงินสด (spa/คลินิกต้องเก็บมัดจำกันเบี้ยว)",
+          "dimension": "api",
+          "severity": "blocker",
+          "effortDays": 5
+        },
+        {
+          "feature": "ลูกค้าจองเสร็จไม่มีรหัส/ลิงก์ให้เช็คหรือยกเลิกสถานะเอง + ไม่มี notification/แจ้งยืนยัน (จอ done เป็นข้อความนิ่ง)",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 3
+        },
+        {
+          "feature": "กันจองซ้อนไม่ถึงระดับ DB: มีแค่ findFirst clash ใน transaction (read-committed) ไม่มี exclusion/unique constraint → 2 request พร้อมกันจองทับได้",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี qc-booking oracle ใน regression gate (happy→เงินเข้า, ยกเลิก/คืน, กันซ้อน race, สิทธิ์ข้ามร้าน 403/404, idempotency)",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "public /book และ /slots ไม่มี rate limit ต่อ IP (route shop มีแล้ว)",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่ยิง outbox event / webhook ขาออก / automation เลย และ appointment ไม่โผล่ Public API v1 (read)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "createAppointment ไม่มี idempotency key (staff/public/AI) — กันเบิ้ลด้วย clash check เท่านั้น ไม่ใช่ idempotent จริง",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี config นโยบายยกเลิก/มัดจำ และไม่แสดงก่อนลูกค้ากดจอง + ไม่มีคืนมัดจำ/reversal (B15/B16)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "AI read บาง: ไม่มี tool สรุปยอด/นัดของ booking ต่อสาขา นอกจาก today list, eval ไม่มีเคสฝั่ง read",
+          "dimension": "ai",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี setup wizard/เทมเพลต marketplace ตั้งต้น (setup redirect เฉยๆ) + ไม่มี import CSV บริการ/ลูกค้า",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 2
+        }
+      ],
+      "customerBlocker": "ร้านสปา/คลินิกเปิดหน้าจองให้ลูกค้าได้จริง แต่เก็บมัดจำ/พร้อมเพย์ไม่ได้เลย และลูกค้าจองแล้วไม่มีลิงก์เช็ค/ยกเลิกนัดของตัวเอง — no-show จึงกันไม่ได้และต้องโทรถามร้านทุกครั้ง",
+      "rebuildEffortDays": 18
+    },
+    {
+      "module": "queue (บัตรคิว)",
+      "verdict": "partial",
+      "exists": [
+        "Config ครบผ่าน UI: ประเภทคิว (prefix/priority/onlineIssuable), เคาน์เตอร์ + เลือกประเภทที่รับ, จอ TV (display token) — setup/page.tsx",
+        "Engine หน้าร้านแข็งจริง: ออกบัตร running-number atomic ต่อวัน (QueueDailySequence ON CONFLICT), call-next พร้อม optimistic contention retry 5 รอบ, transitions ครบ recall/skip/serve/done/cancel/transfer/recallSkipped + QueueTicketEvent ทุกก้าว",
+        "Board พนักงาน: counts วันนี้ + current ต่อเคาน์เตอร์ + waiting + skipped, ปุ่มงานหลักจบในแตะเดียว, AutoRefresh (ไม่ต้อง F5), กันปิดเคาน์เตอร์ถ้ามีบัตรค้าง",
+        "RBAC: ทุก action ผ่าน ctxOf→assertCan(module=queue) + tenantId/unitId scope ตรงทุก query, config มี zod validation",
+        "AI: queue_issue_ticket (เขียนผ่าน propose→dispatch ใช้ assertCan เดียวกับ UI) + queue_waiting (อ่าน), มีเคสใน ai/eval + heuristic",
+        "จอ TV สาธารณะ (display token, ไม่โชว์ชื่อ/เบอร์ — privacy) + estimate หยาบ",
+        "Cron: resetDaily (สิ้นวัน→CANCELLED END_OF_DAY) + expireSkipped (SKIPPED→NO_SHOW ตาม QueuePolicy.skippedExpiryMin)",
+        "qc-systems: happy path issue→callNext→markDone"
+      ],
+      "gaps": [
+        {
+          "feature": "หน้า public ลูกค้ากดรับบัตรคิวเอง + หน้าสถานะบัตร (ตำแหน่งในคิว/อีกกี่คิว/estimate) — service มี resolveQueueUnit/getTicketStatus/findActiveTicketByPhone/publicToken/onlineIssuable ครบแต่ไม่มี route เว็บใดเรียกใช้ (dead code) มีแค่จอ TV",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 3
+        },
+        {
+          "feature": "QR สำหรับลิงก์ลูกค้า + บัตรพิมพ์/kiosk — ออกบัตรได้เฉพาะพนักงานกดบนบอร์ด ไม่มี QR/พิมพ์ให้ลูกค้าถือ",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "แจ้งเตือน + outbox event: ISSUED/CALLED/DONE ไม่ยิง event/notification ใด ๆ (grep outbox ในโมดูล = 0) ลูกค้าไม่รู้เมื่อถึงคิว, ต่อ LINE OA ไม่ได้",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "qc-queue oracle เฉพาะระบบใน regression gate: ขาดเทส cancel, ยิง callNext พร้อมกันต้องได้บัตรเดียว (contention), สิทธิ์ข้ามร้าน 403/404, idempotency กดซ้ำไม่เบิ้ล — ปัจจุบันมีแค่ happy path 3 ก้าวใน qc-systems",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "Idempotency key ตอนออกบัตร (staff กดรัว + AI confirm) — issueTicket ไม่มี key กันเบิ้ล, findActiveTicketByPhone มีไว้ dedup online แต่ online ไม่ถูก wire",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "UI ตั้งค่า QueuePolicy/เวลาทำการ/นโยบายข้าม-หมดอายุ — skippedExpiryMin ใช้ใน cron แต่แก้ผ่าน DB เท่านั้น ไม่มีฟอร์ม, ไม่มี BookingHours/วันหยุด",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "Public API v1 (read) + webhook ขาออกของบัตรคิว — shop/inventory/customers มี /api/v1 แต่ queue ไม่มี (โตต่อ/เชื่อมระบบนอกไม่ได้)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "Rate limit หน้า public (display + หน้าออก/สถานะที่จะเพิ่ม) — display page ไม่มี rate limit",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ปิดวัน/สรุปยอด: report วันแยกช่องทาง + จำนวนบัตร/เฉลี่ยเวลารอ/no-show + export CSV (BOM) — มีแค่ counts บนบอร์ด",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "i18n th/en หน้า public (จอ TV + หน้าลูกค้า) — ปัจจุบันไทยล้วน",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "Setup wizard/เทมเพลตตั้งต้น (คิวทั่วไป+เคาน์เตอร์ตัวอย่าง) ให้ร้านเปล่าใช้ได้ ≤10 นาที — ตอนนี้ต้องคีย์เองทุกอย่าง",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 0.5
+        }
+      ],
+      "customerBlocker": "ลูกค้าเอามือถือตัวเองกดรับบัตรคิว/ดูว่าอีกกี่คิวถึงตัวไม่ได้เลย — มีแค่จอ TV หน้าร้านกับบอร์ดพนักงาน (โค้ดหน้า public + สถานะบัตร publicToken เขียนค้างไว้ใน service แต่ไม่มีหน้าเว็บจริงเรียกใช้) ต้องมายืนออหน้าร้านอย่างเดียว",
+      "rebuildEffortDays": 15
+    },
+    {
+      "module": "ticket (ตั๋ว / อีเวนต์)",
+      "verdict": "partial",
+      "exists": [
+        "Schema ครบ 4 model: TicketEvent, TicketType (quota/sold), TicketOrder, TicketAdmission (ตั๋วรายใบ + code unique ต่อ unit)",
+        "ตัดโควตา atomic ระดับ DB จริง — updateMany มี where sold<=quota-qty กัน oversell (B9 ผ่าน)",
+        "createOrder ออกตั๋วรายใบ + gen code กันชน (retry unique)",
+        "markPaid → pos.createSale ต่อบัญชี C-2 อัตโนมัติ (idempotencyKey ticket-sale-<orderId>) + VAT แยกฐาน",
+        "cancelOrder คืนโควตา + VOID ตั๋วทุกใบ (idempotent, atomic)",
+        "checkIn atomic กันเช็คอินซ้ำ (updateMany where status=VALID) + กันข้ามงาน + กัน UNPAID",
+        "ทุก action มี assertCan(module ticket) + zod + tenantDb scope",
+        "UI พนักงานครบ: event list, event detail, เพิ่มประเภทตั๋ว, ขาย/จอง, รับเงิน, ยกเลิก, เช็คอิน (manual code)",
+        "qc-ticket-money.mts: happy path ถึงบัญชี + Dr=Cr + VAT split + markPaid idempotent (อยู่ใน gate)"
+      ],
+      "gaps": [
+        {
+          "feature": "ยกเลิกออเดอร์ที่จ่ายแล้วไม่ reverse บัญชี — cancelOrder คืนโควตา+VOID ตั๋ว แต่ไม่เรียก pos.voidSale (ที่ POS มีอยู่แล้ว) → รายได้ค้างในสมุดบัญชี ไม่มี reversal, cpa เสี่ยงไม่สมดุลหลังคืนเงิน",
+          "dimension": "qc",
+          "severity": "blocker",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มีหน้าร้านสาธารณะ /s/<ร้าน>/<สาขา>/ticket — store landing ไม่ route ชนิด TICKET เลย ลูกค้าซื้อ/ดูสถานะเองไม่ได้ (B3/B4/B7 ช่องทางลูกค้าหายทั้งดุ้น)",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 6
+        },
+        {
+          "feature": "ไม่มีการรับเงินจริง — ไม่มี PromptPay QR/Beam, markPaid เป็น manual อย่างเดียว, ลูกค้าไม่เห็น QR/สถานะจ่ายแล้ว (B10)",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 4
+        },
+        {
+          "feature": "ไม่มี AI tool ของโมดูลนี้เลย (ai/tools ticket = queue_issue_ticket คนละโมดูล) — สร้างจอง/เช็คสถานะ/สรุปยอดผ่าน AI ไม่ได้ ไม่มีเคสใน ai/eval (B20/F8)",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "createOrder ไม่มี idempotency key — กด 'ขาย+รับเงินแล้ว' ซ้ำ = ออก 2 ออเดอร์/2 บิล (markPaid/checkIn idempotent แต่ order creation ไม่)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี outbox event/notification/webhook ขาออก — createOrder/markPaid/cancel ไม่ยิง event เลย → ไม่มีแจ้งเตือนยืนยันจอง, automation, X-Shark-Signature (B17/B24/F7)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "entity ไม่โผล่ใน Public API v1 (มี shop/inventory/customers แต่ไม่มี ticket) — ร้านดึงตั๋ว/ออเดอร์ออกไม่ได้ (B24/F8)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "QC ครอบไม่ครบ 5 แกน — ขาด cancel/refund reversal, สิทธิ์ข้ามร้าน 403/404, กัน oversell แบบยิงพร้อมกัน 2 request (qc-ticket-money มีแค่ happy+idempotent)",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มีนโยบายยกเลิก/คืนเงิน/มัดจำ config ได้ + no-show + คืนบางรายการ (B15/B16 — cancel ทำได้แค่ยกเลิกทั้งบิล คืนโควตา ไม่มี refund partial/deposit)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ผูกสมาชิก/สะสมแต้มไปไม่ถึง — service ส่ง memberId/pointSystemId ให้ POS ได้ แต่ UI ไม่มีตัวเลือกลูกค้า customerId เลย = null ตลอด (F3 ขาด)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี setup wizard/เทมเพลตอีเวนต์ตั้งต้น + import CSV (B1/F1)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มีปิดวัน/ปิดรอบ, export CSV (BOM), dashboard เจ้าของ, i18n th/en หน้า public (B13/B14/B19)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 3
+        },
+        {
+          "feature": "PDPA export/ขอลบ ไม่ครอบ buyerName/buyerPhone ในตั๋ว (F12) + ไม่มี audit trail UI (F14) + ยังไม่มีสแกน QR กล้อง/พิมพ์ตั๋ว QR",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 2.5
+        }
+      ],
+      "customerBlocker": "ลูกค้าซื้อตั๋วเองไม่ได้เลย (ไม่มีหน้าร้านสาธารณะ/QR จ่ายเงิน ต้องให้พนักงานกดขาย+กดรับเงินเองทุกใบ) และถ้ายกเลิกบิลที่จ่ายแล้ว โควตาคืนแต่เงินไม่ถูกกลับรายการในบัญชี",
+      "rebuildEffortDays": 29
+    },
+    {
+      "module": "shop (e-commerce catalog/cart/checkout)",
+      "verdict": "partial",
+      "exists": [
+        "Catalog CRUD ผ่าน UI: createProduct/updateProduct/toggle active (soft-delete ด้วย flag active) + ผูก invItemId คลัง + sortOrder",
+        "หน้าร้าน public /s/<tenant>/<unit>/shop — catalog + ตะกร้า + checkout (client component), validation inline, empty state ('ยังไม่มีสินค้า', 'เลือกอย่างน้อย 1 ชิ้น'), viewport max-w-md เหมาะมือถือ, ปุ่ม ±44px",
+        "สร้างออเดอร์ public API มี rate limit 10/นาที/IP + zod + snapshot ชื่อ/ราคา ณ ตอนสั่ง, code SO-0001 running ต่อ unit กัน race ด้วย P2002 recount",
+        "confirmOrderPaid = หัวใจ: claim อะตอมมิก PENDING→PAID + เส้นเงิน C-2 ผ่าน pos.createSale (idempotent ecom-<orderId>) + revert ถ้าไม่มี POS + ตัดสต็อก inventory.consume (idempotent ต่อ line) best-effort",
+        "หน้าสถานะออเดอร์ public + PromptPay QR (จาก PaymentProfile) + ยกเลิก (PENDING→CANCELLED เท่านั้น)",
+        "เชื่อม Delivery: สร้างใบจัดส่ง + เปลี่ยนสถานะ PREPARING→SHIPPED→DELIVERED (fitness chokepoint delivery→shop)",
+        "assertCan (shop.product.*/order.confirm/order.cancel) + tenantDb scope + zod ครบทุก mutation, fitness ratchet ครอบ shop→pos/inventory/system",
+        "AI tools: shop_confirm_order (action ผ่าน propose→assertCan ตอน execute ด้วย action string เดียวกับ UI) + shop_pending_orders (read)",
+        "Public API v1 read: GET /api/v1/shop/orders (auth API key, tenant-scoped วนทุก unit)",
+        "QC oracle qc-shop.mts ครบ: happy path→เงินเข้า, outbox pos.sale.paid, ตัดสต็อก, idempotency กดซ้ำไม่เบิ้ล, cancel, ไม่มี POS→throw+revert, isolation ข้าม tenant"
+      ],
+      "gaps": [
+        {
+          "feature": "ไม่มีการคืนเงิน/void หลังชำระ (B15): cancelOrder ทำได้เฉพาะ PENDING_PAYMENT — พอ PAID แล้วคืนเงิน/คืนสต็อก/คืน slot ไม่ได้จาก UI shop เลย ไม่มี reversal ขาบัญชี (void_sale AI tool มีแต่ไม่ wire เข้า shop)",
+          "dimension": "qc",
+          "severity": "blocker",
+          "effortDays": 2.5
+        },
+        {
+          "feature": "ไม่มีชั้นราคา ส่วนลด/คูปอง/VAT ใน-นอก/มัดจำ/service charge (B8/B16/F3): shop คิดแค่ price×qty ส่ง total ดิบเข้า POS — คูปอง marketing ใช้ที่ checkout ไม่ได้, ไม่มีนโยบายมัดจำ/ยกเลิกให้ลูกค้าเห็นก่อนจ่าย",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2.5
+        },
+        {
+          "feature": "outbox/notification/webhook ระดับ shop ไม่มี (B17/B24/F7): order.created/paid/cancelled ไม่ยิง event ของตัวเอง ลูกค้าไม่ได้ noti 'จ่ายแล้ว/ส่งแล้ว' ต้องรีเฟรชลิงก์เอง (หน้าเขียน 'โอนแล้วแจ้งร้านได้เลย'), ไม่มี webhook ขาออก X-Shark-Signature",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "AI สร้างออเดอร์แทนไม่ได้ (B7/B20/F8): มีแค่ยืนยัน+ดู pending — ขาดช่องทางที่ 3 'AI เปิดบิล/สั่งของ' ที่ rubric บังคับ (staff+public+AI create ลง record เดียว)",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มีเคสใน ai/eval สำหรับ shop_confirm_order และ shop_pending_orders (grep eval.ts = 0) — rubric บังคับ ≥2 เคส/tool + heuristic baseline",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "qc-shop.mts ไม่อยู่ใน regression gate: ไม่มี script qc:shop ใน package.json (grep=0) — oracle มีแต่ไม่ถูกรันใน gate typecheck+fitness+cpa (B22/F13)",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "กันขายเกินสต็อกระดับ DB ไม่ครบ (B9): เช็คสต็อกเฉพาะตอน confirm ไม่ใช่ตอนสั่ง; ถ้า consume ล้ม (สต็อกไม่พอ) POS sale เกิดไปแล้ว → เงินเข้าแต่ของขาด, ไม่บล็อก oversell ตอน checkout",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "หน้า public ภาษาเดียว (ไทย) ไม่มี i18n th/en (B19)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี setup wizard/เทมเพลตสินค้าตั้งต้น + ไม่มี import CSV (B1/F1) — เริ่มจากฟอร์มเปล่า, รูปสินค้า paste URL อย่างเดียว (ไม่มี upload)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มีปิดรอบ/ปิดวัน+export CSV+dashboard เฉพาะ shop (B13/B14/F6) — พึ่ง POS/reports ทั้งหมด",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "PDPA export/ลบ ยังไม่ยืนยันครอบ customerName/customerPhone บน ShopOrder (F12) + ไม่มี audit trail UI ใครแก้ราคา/ยืนยันเงินเมื่อไหร่ (F14)",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 1
+        }
+      ],
+      "customerBlocker": "พอลูกค้าโอนแล้วร้านกด 'ยืนยันรับเงิน' ออเดอร์ล็อกทันที — ถ้าของหมด/ลูกค้าขอคืนเงิน ร้านคืนเงิน/ยกเลิกจาก UI ไม่ได้เลย (ยกเลิกได้เฉพาะก่อนจ่าย) เงินค้างในระบบไม่มีทาง reversal และลูกค้าก็ไม่ได้แจ้งเตือนอัตโนมัติต้องคอยรีเฟรชลิงก์เอง",
+      "rebuildEffortDays": 13
+    },
+    {
+      "module": "rental",
+      "verdict": "partial",
+      "exists": [
+        "สินทรัพย์ CRUD (สร้าง/แก้/เปิด-ปิดใช้งาน) ผ่าน UI + assertCan + tenantDb + zod",
+        "Lifecycle จอง BOOKED→PICKED_UP→RETURNED / CANCELLED พร้อม atomic status claim",
+        "เส้นเงิน C-2: รับคืน → pos.createSale idempotent (rental-<id>) เข้า GL, revert ถ้าไม่มี POS",
+        "isAvailable overlap check + ค่าเช่า days×rate + ค่าปรับล่าช้า + ถือมัดจำ (บันทึกใน booking)",
+        "AI: rental_create_booking (write, proposal + assertCan) + rental_active (read)",
+        "qc-rental.mts ใน regression gate: happy path ถึงเงินเข้า, cancel, idempotency คืนซ้ำ/pickUp ซ้ำ, overlap",
+        "หน้าจัดการ /app/u/[unitSlug]/rental ไทยล้วน mobile-friendly + empty state ชี้ทาง"
+      ],
+      "gaps": [
+        {
+          "feature": "ไม่มีหน้าลูกค้า public /s/<ร้าน> + QR + ลิงก์เช็คสถานะเอง — ทุกการจองพนักงานต้องคีย์เอง ลูกค้าจอง/ดูสถานะเองไม่ได้",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 5
+        },
+        {
+          "feature": "ไม่มี refund/void/reversal: บิลค่าเช่าที่ปิดแล้ว (RETURNED+PosSale) แก้/คืนเงินไม่ได้เลย, cancel ทำได้แค่ BOOKED, ไม่มีคืนมัดจำผ่านระบบ",
+          "dimension": "qc",
+          "severity": "blocker",
+          "effortDays": 3
+        },
+        {
+          "feature": "กันจองซ้อนเป็น app-level เท่านั้น (findFirst แล้ว create ไม่มี transaction/constraint) — ยิงพร้อมกัน 2 request จองซ้อนได้จริง",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี PromptPay QR + เก็บมัดจำ/จ่ายล่วงหน้าผ่านระบบ — รับเงินได้แค่ตอนคืน (CASH hardcode) ตอนจองไม่เก็บเงิน",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "โมดูลไม่ยิง outbox rental.* event เลย → ไม่มีแจ้งเตือนลูกค้า/ยืนยันจอง/เตือนคืน, ไม่มี automation, ไม่มี webhook ขาออก",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "มัดจำไม่เข้า GL (Dr 2110) — บันทึกนอก GL v1 → B11 ขาบัญชีมัดจำเป็น stub, งบไม่ครบขาเงินที่ถือจริง",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "RentalBooking (ชื่อ/เบอร์ลูกค้า = PII) ไม่ถูกครอบด้วย PDPA export/purge cron",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "entity หลักไม่โผล่ใน Public API v1 (read) — ร้านโตต่อดึงข้อมูลออกไม่ได้",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "AI ครอบ core loop ไม่ครบ: ไม่มี tool รับคืน/รับของ/สรุปยอดวัน, eval มีแค่ 1 regex intent (ไม่ถึง ≥2 เคส/tool), rental_active ไม่มี eval",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "QC ขาดแกนสำคัญ: ไม่มีเทสสิทธิ์ข้ามร้าน 403/404, ไม่มีเทสยิงพร้อมกันจริง (concurrency), ไม่มีเทส refund/reversal",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มีปฏิทิน/มุมมองว่าง-ไม่ว่าง, i18n th/en (UI ไทยล้วน), CSV import, bulk, และ audit trail จาก UI",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 3
+        }
+      ],
+      "customerBlocker": "ลูกค้าจองเองผ่านลิงก์/QR ไม่ได้เลย (ไม่มีหน้า public ทุกจองพนักงานต้องคีย์มือ) และถ้าปิดบิลคืนของผิดหรือลูกค้ายกเลิกหลังรับของ ก็คืนเงิน/แก้บิลผ่านระบบไม่ได้ — ต้องไปแก้ที่ DB",
+      "rebuildEffortDays": 22
+    },
+    {
+      "module": "school (คอร์สเรียน / โรงเรียน)",
+      "verdict": "partial",
+      "exists": [
+        "Prisma 4 models: SchoolCourse / SchoolClass / SchoolEnrollment / SchoolAttendance (tenant+unit scoped, index, unique[enrollmentId,date])",
+        "service.ts: createCourse/updateCourse/listCourses, createClass/listClasses, enroll (snapshot ราคา + capacity check + auto-link Customer ถ้ามีระบบ MEMBER), markPaid (claim atomic ENROLLED→PAID + pos.createSale เส้นเงิน C-2, idempotencyKey school-<id>), cancelEnrollment (ENROLLED only), checkIn upsert-เอง, attendanceSheet",
+        "actions.ts: ทุก mutation มี requireUnit + assertCan (school.*) + zod + tenantDb ผ่าน ctx",
+        "UI staff เดียว /app/u/[unitSlug]/school: เพิ่มคอร์ส/รอบ/สมัคร/รับชำระ/ยกเลิก/เช็คชื่อรายวัน ไทยล้วน",
+        "AI write tools 2 ตัว: school_enroll, school_mark_paid (propose → dispatch ผ่าน assertCan เดียวกับ UI, resolveUnit + fuzzy match + guard นักเรียนซ้ำ)",
+        "qc-school.mts: happy path จนเงินเข้า PosSale PAID, idempotency กดซ้ำ ok:false, capacity เต็ม throw, cancel→pay ok:false, เช็คชื่อไม่งอกแถว, outbox pos.sale.paid",
+        "cross-module จริง 1 จุด: member.findOrCreate ผูก customerId + POS money line (F3/B11 ผ่านขั้นต่ำ)"
+      ],
+      "gaps": [
+        {
+          "feature": "ไม่มีหน้า public /s/<ร้าน>/<สาขา>/school เลย — ลูกค้า/ผู้ปกครองดูคอร์ส/รอบว่าง/สมัคร/จ่าย/เช็คสถานะเองผ่านลิงก์ไม่ได้ (มีแค่ shop/queue/restaurant ใน store)",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 3
+        },
+        {
+          "feature": "รับชำระแล้วยกเลิก/คืนเงิน/no-show ไม่ได้จาก UI — cancelEnrollment ทำได้เฉพาะ ENROLLED, PAID = ทางตัน ไม่มี reversal เข้าบัญชี/คืน slot",
+          "dimension": "qc",
+          "severity": "blocker",
+          "effortDays": 2
+        },
+        {
+          "feature": "capacity race: enroll เช็คด้วย count() แล้วค่อย create (ไม่ atomic/ไม่มี DB constraint) — ยิงพร้อมกัน 2 request overbook เกิน capacity ได้ (markPaid atomic แต่ enroll ไม่)",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "action กลืน error เงียบ (catch {} → revalidate) — สมัครเต็ม/ไม่มี POS กด 'รับชำระ' แล้วไม่มีอะไรเกิด ไม่มี validation inline ผู้ใช้งง (ผิด B6/F9)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "AI ไม่มี read/status/summary tool — มีแค่ write 2 ตัว, ถาม 'มีคนสมัครกี่คน/ยอดค่าเรียนวันนี้' ไม่ได้ (ผิด B20/F8)",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ai/eval ไม่มีเคส school เลย (grep=0) — rubric ต้อง ≥2 เคส/tool + heuristic baseline",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี PromptPay QR / เลือกวิธีจ่าย — markPaid hardcode CASH เต็มยอด; ไม่มีมัดจำ/จ่ายบางส่วน (ผิด B10/B8)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี VAT/ส่วนลด/คูปอง/มัดจำ/service charge — ราคาคำนวณชั้นเดียว flat snapshot (ผิด B8/B16)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี dashboard/รายงานสรุปวัน/ปิดรอบ/export CSV/report dataset (report ไม่มี school)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "school service ไม่ยิง outbox/notification ตอนสมัคร — ไม่มียืนยันจอง/เตือนนัด/แจ้งเปลี่ยนสถานะ (พึ่ง pos.sale.paid เท่านั้น) (ผิด B17/F7)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "PDPA ไม่ครอบ — studentName/studentPhone เป็น PII แต่ privacy/export/purge ไม่แตะ school (grep=0)",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่โผล่ Public API v1 (read) และไม่มี webhook ขาออกของ enrollment/payment (grep api=0) (ผิด B24/F7)",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี import CSV นักเรียน/คอร์ส, ไม่มี bulk (เช็คชื่อทีละคน), ไม่มี audit history จาก UI (ผิด F1/F10/F14)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1.5
+        }
+      ],
+      "customerBlocker": "โรงเรียน/สถาบันเปิดใช้แล้วแต่ผู้ปกครองสมัคร+จ่ายค่าเรียนเองผ่านลิงก์ไม่ได้เลย (ไม่มีหน้า public) และพอพนักงานกดรับชำระแล้วจะยกเลิก/คืนเงินก็ทำไม่ได้จาก UI — ทุกอย่างพึ่งพนักงานกดในหลังบ้าน และตันทันทีเมื่อมีการคืนเงิน",
+      "rebuildEffortDays": 14
+    },
+    {
+      "module": "clinic",
+      "verdict": "thin",
+      "exists": [
+        "PatientRecord CRUD บางส่วน: createPatient / searchPatients (ชื่อ+เบอร์ contains) — updatePatient มีใน service แต่ไม่ถูกเรียกที่ไหน (dead code, ไม่มีฟอร์มแก้)",
+        "createVisit / listVisits (เปิด visit พร้อมอาการ+ค่าบริการ, validation ไทย, patient ต้องอยู่ใน unit)",
+        "dispense() ตัดสต็อกจริงผ่าน inventory.consume + idempotencyKey clinic-<visit>-<item> (กดซ้ำไม่ตัดซ้ำ) + append dispenseJson",
+        "billVisit() claim atomic OPEN→BILLED แล้วยิง pos.createSale (เงินเข้า C-2 ผ่าน POS) idempotent clinic-<visit>, fee 0 = BILLED ไม่สร้างบิล, ไม่มี POS = revert+throw",
+        "cross-module จริง: ผูก Customer ผ่าน MEMBER (findOrCreate จากเบอร์), ตัดสต็อก INVENTORY, เก็บเงินผ่าน POS",
+        "actions.ts ทุกตัวมี assertCan(clinic.*) + zod + requireUnit; ทุก query ผ่าน tenantDb scope unit-level (scope.ts)",
+        "UI 1 หน้า /app/u/[unitSlug]/clinic ไทยล้วน มี empty state ทุก section + แสดงแพ้ยาเด่นสีแดง (PDPA แสดงเท่าที่จำเป็น)",
+        "AI tool 1 ตัว: clinic_create_patient (propose→dispatch ผ่าน assertCan เดียวกับ UI)",
+        "qc-clinic.mts: happy path ถึงเงินเข้า + idempotency จ่ายยา + idempotency เก็บเงิน + fee 0"
+      ],
+      "gaps": [
+        {
+          "feature": "ไม่มีทาง cancel/void visit หรือคืนเงิน/กลับขา แม้ enum VisitStatus.CANCELLED มีในschema แต่ไม่มีโค้ดใช้เลย — บิลที่เก็บเงินผิดค้างถาวร ไม่มี reversal (ผิด B15/F4)",
+          "dimension": "qc",
+          "severity": "blocker",
+          "effortDays": 3
+        },
+        {
+          "feature": "ไม่มีหน้าลูกค้า public เลย: ไม่มี /s/<ร้าน>, ไม่มีจองนัด/ดูสถานะจากลิงก์ตัวเอง, ไม่มี QR, ไม่มี BookingHours/นัดล่วงหน้า (walk-in อย่างเดียว) — ผิด B3/B4/B5/B16/B23",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 6
+        },
+        {
+          "feature": "AI ทำแทน core loop ไม่ครบ: มีแค่ clinic_create_patient (เขียนอย่างเดียว) — ขาด create visit / จ่ายยา / เก็บเงิน / เช็คสถานะ / สรุปยอด และไม่มี read tool ใด ๆ",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "ai/eval มี 0 เคสสำหรับ clinic (นิยามต้อง ≥2 เคส/tool) — heuristic baseline ไม่ครอบ",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "mutation ของ clinic ไม่ยิง outbox event / notification เลย (billVisit อาศัย event ของ POS แต่ visit/dispense/patient ไม่มี) — ผิด B17/B21/F7",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี Public API v1 (read) และไม่มี webhook ขาออกสำหรับ patient/visit — ผิด B24/F7",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "qc-clinic ขาดแกนสำคัญ: ไม่มีเทสสิทธิ์ข้ามร้าน 403/404, ไม่มีเทส cancel/refund/reversal, ไม่มีเทสกันซ้อน — ครอบแค่ 3/5 แกน",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ข้อมูลอ่อนไหวทางการแพทย์ (diagnosis/allergies/เบอร์ผู้ป่วย) ใช้ perm clinic.* ทั่วไป ไม่จำกัด role แคบกว่าปกติ; STAFF เห็นได้เท่า role อื่น — ผิด F11",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "PDPA per-record export/ขอลบ ครอบข้อมูลผู้ป่วยไม่ยืนยัน (มีแค่ cascade ตอนลบ tenant WO-0042); ไม่มี soft-delete/ปิดใช้งานผู้ป่วย",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี dashboard/ปิดวัน/สรุปยอด/export CSV ของคลินิก และไม่เป็น dataset ใน report builder — ผิด B13/B14/F6",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "updatePatient เป็น dead code (ไม่มี action/UI/AI เรียก) → แก้ประวัติผู้ป่วยผ่าน UI ไม่ได้; ไม่มี import CSV ตั้งต้น (F1) และไม่มี wizard/เทมเพลตยาตั้งต้น (B1)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2.5
+        }
+      ],
+      "customerBlocker": "เก็บเงินผิดหรือคนไข้ไม่มา = ตัน — ไม่มีปุ่มยกเลิก/คืนเงิน/void ในโค้ดเลย (สถานะ CANCELLED มีในตารางแต่ไม่มี logic ใช้) และไม่มีหน้าให้ลูกค้าจองนัด/เช็คสถานะเองสักจอ ทำได้แค่พนักงานเปิดบิลหน้าร้านแล้วเงินเข้าอย่างเดียว",
+      "rebuildEffortDays": 22
+    },
+    {
+      "module": "member (ฐานสมาชิก / CRM core + loyalty + subscription)",
+      "verdict": "partial",
+      "exists": [
+        "Customer model tenant-scoped: memberCode สุ่ม 6 หลัก (ตัดตัวสับสน), tier อัตโนมัติจากยอดสะสม (MEMBER/SILVER/GOLD/PLATINUM), visitCount, totalSpentSatang, tags/note/marketingConsent+consentAt",
+        "findOrCreate dedup phone→email ต่อ tenant + DB @@unique([memberSystemId,phone]) และ [memberSystemId,memberCode] กันซ้ำระดับ DB",
+        "MemberActivity timeline (contract 2.7) + recordVisit/recordSpend เรียกจาก POS/Booking (join transaction ของผู้เรียกได้)",
+        "Point ledger แยกโมดูล: earn/burn/reverse ผ่าน pointLedger + idempotencyKey (tenantId_idempotencyKey unique) + pointBalance upsert ใน $transaction — กดซ้ำไม่เบิ้ล, แต้มไม่พอ throw",
+        "Subscription lifecycle: createPlan/subscribe/cancel/expireDue(cron-ready idempotent)/isSubscriptionActive — กันสมัครซ้อน ACTIVE, endAt=start+periodDays",
+        "UI: list สมาชิกในหน้า sys, หน้า detail (แต้ม/มากี่ครั้ง/ยอดสะสม/timeline), SubscriptionSection (สร้างแผน+เปิด/ปิดขาย+สมัคร+ยกเลิกด้วย ConfirmDialog), empty state ชี้ทางถัดไปครบ",
+        "subscription-actions ทุกตัว assertCan(member.*) + tenantDb(system-scoped) + revalidate",
+        "AI tools: member_count(อ่าน), customer_search(อ่าน), member_create(เขียนผ่าน proposal→assertCan member.customer.create ตอน execute) + มี eval regex case ครบ 3 ตัว",
+        "Public API v1 GET /api/v1/customers (read, token auth, tenant+MEMBER system scoped)",
+        "QC qc-subscription.mts: happy path, สมัครซ้อน reject, expire idempotent, cancel idempotent; PDPA export ครอบ Customer อัตโนมัติผ่าน tenantScopedModels()"
+      ],
+      "gaps": [
+        {
+          "feature": "แพ็กเกจสมาชิกมีราคา (priceSatang) แต่ subscribe ไม่เก็บเงินจริงและไม่ลงบัญชี C-2 เลย — ไม่มี payment (เงินสด/PromptPay QR), ไม่มี revenue/VAT posting, ไม่มี Dr=Cr; ขายสมาชิกรายเดือน/รายปีแล้วเงินหายไปจากสมุดบัญชี",
+          "dimension": "api",
+          "severity": "blocker",
+          "effortDays": 3
+        },
+        {
+          "feature": "ไม่มีฟอร์มสร้าง/แก้ไขลูกค้าใน UI — name/phone/email/tags/note/marketingConsent แก้ได้เฉพาะผ่าน DB ตรง หรือ AI สร้างใหม่เท่านั้น (schema-form mismatch, ละเมิด F2 CRUD); สมาชิกถูกสร้างอัตโนมัติอย่างเดียว แก้เบอร์ผิด/เพิ่มแท็ก/ถอน consent จากหน้าจอไม่ได้",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "โมดูล member ไม่ยิง outbox/webhook event ใด ๆ (member.created / tier.upgraded / subscription.expired) — ไม่มี notification, ตั้ง automation ไม่ได้, ไม่โผล่ webhook ขาออก (ละเมิด B17/B24/F7)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี qc-member ครอบแกน CRM core: dedup phone/email แข่งกัน (email ไม่มี unique constraint → concurrent อาจสร้างซ้ำ), recordSpend→tier, สิทธิ์ข้ามร้าน 403/404, จุดเชื่อม point idempotency; regression มีแค่ qc-subscription",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี UI ให้พนักงานปรับ/แลก/เพิ่มแต้มด้วยมือ — earn/burn เกิดจาก POS integration เท่านั้น; หน้า detail โชว์ยอดแต้มแต่กดแลกหรือปรับแก้ไม่ได้",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มีสมัครสมาชิกเองฝั่งลูกค้า (public /s/<ร้าน> member card + rate limit) — ลูกค้าเข้าเป็นสมาชิกเองไม่ได้ ต้องรอพนักงาน/ระบบสร้างให้ (B4)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี import CSV ลูกค้า (F1 ย้ายจาก Excel), ไม่มี bulk op (ส่งแคมเปญ/ปรับ tier หลายราย), ไม่มี audit-from-UI ว่าใครแก้ record เมื่อไหร่ (F14)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "AI read tools (member_count/customer_search) ไม่เรียก assertCan — เผย PII (ชื่อ/เบอร์/รหัสสมาชิก) แก่ทุกคนที่แชตกับ AI ได้โดยไม่กรอง role",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 0.5
+        }
+      ],
+      "customerBlocker": "ร้านตั้งแพ็กเกจสมาชิกรายเดือน/รายปีแบบมีราคาได้ แต่ตอนสมัครระบบไม่เก็บเงินจริง (ไม่มี QR/เงินสด) และไม่ลงบัญชีเลย เงินค่าสมาชิกหายจากสมุดบัญชี ทั้งยังแก้ข้อมูลสมาชิก (ชื่อ/เบอร์/แท็ก) จากหน้าจอไม่ได้ ต้องพึ่ง DB.",
+      "rebuildEffortDays": 11
+    },
+    {
+      "module": "reward (แลกของด้วยแต้ม)",
+      "verdict": "thin",
+      "exists": [
+        "service.ts 90 LOC: listRewards/createReward/removeReward(soft delete active=false)",
+        "redeem() core loop เขียนครบใน $transaction: burn แต้มผ่าน point.burn + ตัดสต็อก + สร้าง RewardRedemption(code 6 หลัก, status PENDING) พร้อม idempotencyKey — แต่เป็น dead code ไม่มี caller",
+        "Admin UI ที่ sys/[id] RewardContent: เพิ่มรางวัล(ชื่อ+แต้ม)/ลบ/list พร้อม empty state ชี้ทาง",
+        "server action addRewardAction/removeRewardAction มี assertSystemsCan (systems.reward.create/delete) + tenantId scope",
+        "scope.ts มี Reward/RewardRedemption แบบ sys(), marketplace/dna มี flag rewardRedeem + status label REWARD_REDEMPTION_LABEL"
+      ],
+      "gaps": [
+        {
+          "feature": "หน้าแลกรางวัลฝั่งลูกค้า public /s/<ร้าน> (เลือกรางวัล→ยืนยัน→เห็นโค้ด/สถานะ) — redeem() มีแต่ไม่มี UI/route เรียกเลย",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 4
+        },
+        {
+          "feature": "wire redeem() เป็น server action + assertCan + zod ทั้งฝั่งพนักงานแลกแทนลูกค้า (redeem ไม่เคยถูกเรียกจากที่ไหน)",
+          "dimension": "api",
+          "severity": "blocker",
+          "effortDays": 2
+        },
+        {
+          "feature": "qc-reward oracle: burn สำเร็จ/แต้มไม่พอ, ยกเลิกคืนแต้ม+คืนสต็อก, กันสต็อกติดลบ race ระดับ DB, ข้ามร้าน 403/404, idempotency กดซ้ำไม่เบิ้ล — เข้า regression gate",
+          "dimension": "qc",
+          "severity": "blocker",
+          "effortDays": 2
+        },
+        {
+          "feature": "lifecycle การแลก: จอเปลี่ยนสถานะ RewardRedemption PENDING→REDEEMED/CANCELLED (พนักงานกดว่าใช้แล้ว) + reversal คืนแต้ม+คืนสต็อก ไม่ใช่ลบ",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "AI tools อ่าน+เขียน (list รางวัล/แลกแทน/เช็คสถานะ) ลงทะเบียนใน ai/tools ผ่าน assertCan เดียวกับ UI + ai/eval ≥2 เคส/tool",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "UI แก้รางวัล + ช่อง stock ในฟอร์ม (ตอนนี้ createReward รับ stock แต่ฟอร์มไม่มี input → stock ตั้งได้เฉพาะทาง DB) + ไม่มี edit ทำได้แค่ create/soft-delete",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "Public API v1 (read รางวัล/การแลก) + webhook ขาออก outbox event ตอนแลกสำเร็จ (X-Shark-Signature)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "รายงานการแลก/แจ้งเตือน: หน้าสรุปการแลก + outbox→notification ถึงเจ้าของ/ลูกค้า, ลูกค้าเช็คโค้ดจากลิงก์ตัวเอง",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "PDPA export/ลบ ครอบ RewardRedemption (customerId เป็น PII) + rate limit หน้า public redeem",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 1
+        }
+      ],
+      "customerBlocker": "ลูกค้า/พนักงานเอาแต้มแลกของไม่ได้เลย — ฟังก์ชัน redeem() มีในโค้ดแต่ไม่มีหน้า/ปุ่ม/action ใดเรียกใช้ (dead code) ร้านตั้งรายการรางวัลได้อย่างเดียวแต่ไม่มีทางแลกจริง",
+      "rebuildEffortDays": 15
+    },
+    {
+      "module": "point (แต้ม / loyalty points)",
+      "verdict": "partial",
+      "exists": [
+        "Ledger engine ครบ: earn/burn/reverse/getBalance ใน service.ts (190 LOC) — เขียนลง PointLedger + upsert PointBalance ใน tx เดียว",
+        "Idempotency จริง: @@unique([tenantId, idempotencyKey]) + เช็ค dup ก่อน applyDelta → กดซ้ำไม่เบิ้ลแต้ม",
+        "Reversal ถูกต้อง: void POS → point.reverse() รวม EARN/BURN แล้ว applyDelta ขากลับ (ไม่ลบ record) — audit trail อยู่ใน ledger",
+        "Cross-module integration จริง (F3): POS ชำระเงิน → earn (กัน NON_EARN methods), Reward redeem → burn แบบ atomic + ตัดสต็อก, member page โชว์ balance",
+        "getCustomerPoints รวมแต้มข้าม point-system ที่ผูก unit เดียวกับ member-system",
+        "tenant scope ผ่าน unique constraint + PointSettings.satangPerPoint (default 2500) + active flag"
+      ],
+      "gaps": [
+        {
+          "feature": "burn ไม่มี DB guard กันแต้มติดลบ: เช็ค current < points แบบ read-then-write ใน tx (read-committed) → 2 request แลกพร้อมกันผ่านทั้งคู่ = overspend, ไม่มี CHECK balance>=0 หรือ SELECT FOR UPDATE",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี qc-point oracle เลย: ไม่มีการพิสูจน์ earn→balance, แต้มไม่พอ, reverse, idempotency กดซ้ำ, กันแต้มติดลบพร้อมกัน, สิทธิ์ข้ามร้าน — ไม่อยู่ใน regression gate",
+          "dimension": "qc",
+          "severity": "blocker",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี AI tool สำหรับ point เลย (grep tools.ts = 0): สะสม/หัก/เช็คยอดแต้ม/adjust สั่งผ่าน AI ไม่ได้ และไม่มีเคสใน ai/eval",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี Public API v1 (อ่านยอดแต้ม/ledger) และ point ไม่ยิง webhook/outbox event ของตัวเอง (earn/burn/reverse) — ต่อ LINE OA/ระบบภายนอกไม่ได้",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ตั้งค่าอัตราสะสม (satangPerPoint) / active แก้ผ่าน UI ไม่ได้ — ค้างที่ default DB; แถม UI hard-code ข้อความ 'ทุก 25 บาท = 1 แต้ม' ไม่อ่านค่าจริงจาก settings (โกหกถ้าร้านเปลี่ยน)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ADJUST/EXPIRE มีใน enum แต่ไม่เคยถูกใช้: พนักงานปรับ/แจกแต้มด้วยมือแก้ error ไม่ได้ (ไม่มี action+assertCan) และแต้มไม่มีวันหมดอายุ/ไม่มี expiry cron",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "UI เป็น read-only ledger 30 แถวเท่านั้น; ลูกค้าไม่มีลิงก์สาธารณะดูแต้มตัวเอง (โชว์เฉพาะ staff ใน member page)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "service ไม่มี assertCan ในตัว (พึ่ง caller POS/reward) — ถ้าต่อ API/AI/UI manual ต้องเติมชั้นสิทธิ์ + PointLedger ไม่ติดร่ม PDPA export ของลูกค้าอย่างชัดเจน",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 0.5
+        }
+      ],
+      "customerBlocker": "ร้านตั้งอัตราสะสมแต้มเองไม่ได้ (ค้างที่ 25 บาท=1 แต้ม แก้ได้แค่ผ่าน DB) และพนักงานปรับ/แจกแต้มด้วยมือไม่ได้ — แต้มโผล่เฉพาะตอนขาย POS เท่านั้น",
+      "rebuildEffortDays": 8.5
+    },
+    {
+      "module": "coupon (คูปองส่วนลด — feature โมดูล marketing, ผูกกับ POS)",
+      "verdict": "partial",
+      "exists": [
+        "service.ts เต็ม: validate (read-only, 9 เหตุผลไทย), redeem (atomic, conditional-increment guard กัน race ระดับ DB), release (คืนสิทธิ์ตอน void), computeDiscount (PERCENT/FIXED + cap + ปัดลงเข้าทางลูกค้า ไม่เกินยอดบิล)",
+        "CRUD บางส่วน: createCoupon (validate โค้ด/percent/dup ต่อ systemId), listCoupons, getCoupon, toggleCoupon (เปิด/ปิด = soft disable)",
+        "Server actions มี assertCan (module coupon + action) + tenantId scope: createCouponAction, toggleCouponAction, testValidateAction",
+        "ผูก POS จริง (F3): pos/service.ts เรียก coupon.validate ก่อนคิด VAT + coupon.redeem ร่วม $transaction เดียวกับบิล + release ตอน voidSale — ยอดหักคูปองเข้าฐานก่อน VAT",
+        "AI write tool: coupon_create (WO-0045) ผ่าน propose→dispatch, dispatch เรียก createCoupon ด้วย tenantId เดียวกัน + resolveSystem(COUPON)",
+        "QC แข็งแรง scripts/qc-pos-coupon.mts: happy (ลด 50→จ่าย 150), โค้ดปลอมล้มเสียงดัง, idempotent replay ไม่ redeem ซ้ำ, ใช้ครบสิทธิ์ถูกปัด, void→release→ใช้ได้อีก",
+        "RBAC layer จริง (rbac.ts): OWNER/MANAGER ผ่าน, STAFF ต้องมี permission ตรงหรือ coupon.* — STAFF เปลือยไม่ผ่าน",
+        "UI admin: list + สร้าง + เปิด/ปิด + CouponTester (ทดลองเช็คส่วนลด) มี empty state ชี้ทาง, error inline (ไม่ใช่ Alert)",
+        "Schema ครบ: minSpend/maxDiscount/usageLimit/perMemberLimit/applicableUnitIds/startAt/endAt + CouponRedemption snapshot discount + index กันซ้อน (@@unique systemId+code)"
+      ],
+      "gaps": [
+        {
+          "feature": "แก้ไขคูปองไม่ได้เลย — มีแค่ create + toggle ไม่มี updateCoupon action/form ตั้งวันหมดอายุ/จำนวนสิทธิ์/ส่วนลดผิดต้องปิดแล้วสร้างโค้ดใหม่ (schema มี 13 field แก้ได้แต่ UI ให้แก้แค่ active)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "ไม่มี outbox event ทุก mutation ของคูปอง (create/redeem/release ไม่ยิงอะไรเลย) — คูปองถูกใช้หมด/สร้างใหม่ ไม่มี notification/automation/webhook, ละเมิด B21/F7",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "AI อ่านไม่ได้ — มีแค่ coupon_create (write) ไม่มี tool list/เช็คสิทธิ์เหลือ/สรุปการใช้ ผู้ช่วยตอบ 'คูปองไหนใช้ไปกี่ครั้ง' ไม่ได้ (F8 ต้อง read+write)",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "ไม่มีหน้ารายงาน/ประวัติการใช้คูปอง — listRedemptions เขียนไว้ใน service แต่ไม่มี UI/ปุ่มไหนเรียก, เจ้าของดูไม่ได้ว่าใครใช้โค้ดไหน, ไม่มี export CSV, ไม่เป็น dataset ใน report builder (F6/F14)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "AI eval มีแค่ 1 heuristic regex (/คูปอง|โค้ดส่วนลด/→coupon_create) ไม่มี ≥2 เคสต่อ tool ตามเกณฑ์ B20/F8",
+          "dimension": "ai",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "qc-pos-coupon ไม่ครอบสิทธิ์ข้ามร้าน/ข้าม role (403/404) — RBAC มีที่ชั้น action แต่ oracle ไม่ทดสอบ (B22/F13 ขาดแกนสิทธิ์)",
+          "dimension": "qc",
+          "severity": "minor",
+          "effortDays": 0.3
+        },
+        {
+          "feature": "ลูกค้าใส่คูปองเองไม่ได้ — คูปองกรอกได้เฉพาะพนักงานที่ POS ไม่มีช่องคูปองบนหน้า public order ของลูกค้า (B4/B7 self-service ขาด)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 0.7
+        },
+        {
+          "feature": "PDPA: CouponRedemption เก็บ customerId แต่ไม่ถูกครอบใน export/purge ของร้าน (F12)",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 0.3
+        },
+        {
+          "feature": "ไม่โผล่ Public API v1 (read) และไม่มี webhook ขาออก coupon.redeemed (B24)",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 0.4
+        }
+      ],
+      "customerBlocker": "ตั้งคูปองผิด (วันหมดอายุ/จำนวนสิทธิ์/เปอร์เซ็นต์) แล้วแก้ไม่ได้เลย ต้องปิดโค้ดเดิมแล้วสร้างใหม่ทั้งใบ และดูไม่ได้ว่าใครใช้ไปกี่ครั้งเพราะไม่มีหน้ารายงานการใช้.",
+      "rebuildEffortDays": 3
+    },
+    {
+      "module": "marketing (feature — แคมเปญ LINE/Email/SMS)",
+      "verdict": "partial",
+      "exists": [
+        "Segment engine (rules.ts, FREEZE): กรอง tier / ยอดซื้อขั้นต่ำ / ไม่มาเกิน N วัน — pure + มี QC 3 เคส",
+        "createCampaign (DRAFT) + previewAudience (นับ audience สด) + sendCampaign (DRAFT→SENT, สร้าง MktRecipient freeze contact) + listCampaigns",
+        "ข้ามระบบ marketing→member ผ่าน tenantDb({systemId=memberSystemId}) ปลอดภัย, memberSystemId ฝังใน segmentJson (เลี่ยงแตะ schema)",
+        "actions.ts มี assertCan (marketing.campaign.create/send) + tenantDb scope + revalidatePath",
+        "UI MarketingContent ฝังใน /app/sys/[id] — ฟอร์มสร้าง, ปุ่มส่งมี ConfirmDialog, empty state ชี้ทาง (เปิดระบบสมาชิกก่อน), ปุ่มส่ง disabled เมื่อ audience=0",
+        "AI tool marketing_create_campaign (propose→dispatch ผ่าน mktSvc.createCampaign, RBAC map = marketing.campaign.create) + eval regex 1 เคส",
+        "QC qc-marketing.mts: rules + create DRAFT + preview=2 + send→SENT + recipient count + idempotent ส่งซ้ำไม่เบิ้ล",
+        "sendCampaign idempotent ระดับ app: ถ้า SENT แล้ว return เดิม, ถ้า CANCELLED โยน error"
+      ],
+      "gaps": [
+        {
+          "feature": "sendCampaign เป็น no-op จริง — คอมเมนต์ระบุ 'v1: ส่งจริง = แค่บันทึก (log) ยังไม่ต่อ LINE จริง'. ไม่มี LINE OA push / email / SMS dispatch เลย ข้อความไม่เคยถึงลูกค้า",
+          "dimension": "api",
+          "severity": "blocker",
+          "effortDays": 5
+        },
+        {
+          "feature": "ไม่มี outbox event / notification เมื่อส่งแคมเปญ (B17/F7): ไม่มี event ยิงออก, ไม่มี delivery status ต่อ recipient, ต่อ automation/webhook ไม่ได้",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "CRUD ไม่ครบ: แก้แคมเปญไม่ได้, ยกเลิกไม่ได้ (ไม่มี cancel action ทั้งที่ status CANCELLED ถูกเช็คใน service), ตั้งเวลาไม่ได้ — enum SCHEDULED + คอลัมน์ scheduledAt เป็น dead field แก้ได้เฉพาะ DB ตรง (ผิด F2)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "couponCode เป็น free-text string ไม่ validate กับโมดูล coupon จริง — แนบรหัสมั่วได้ ลูกค้าเอาไป checkout ไม่ได้ (จุดเชื่อม F3 marketing↔coupon ไม่ได้ผูกจริง)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี zod validation — actions parse มือแล้ว silently return เมื่อ field ว่าง (ไม่มี inline error กลับหน้า UI ผู้ใช้ไม่รู้ว่าพลาด)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "concurrency: MktRecipient ไม่มี @@unique(campaignId, customerId) + sendCampaign กันแค่เช็ค status ระดับ app → ยิง 2 request พร้อมกันอ่าน DRAFT พร้อมกัน createMany ซ้ำ ผู้รับเบิ้ล (idempotency ไม่ถึงระดับ DB)",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "AI มีแค่ tool เขียน (create) — ไม่มี tool อ่าน (list/สถานะ/สรุปผลส่ง), ไม่มีส่งผ่าน AI, มี eval แค่ 1 เคส (นิยามต้อง ≥2 เคส/tool)",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "PDPA: MktRecipient.contact เก็บ PII (เบอร์/อีเมล) แต่ไม่มี export/purge ครอบ (grep pdpa ไม่เจอ mkt เลย) — ขอลบ/ขอ export ไม่รวมข้อมูลโมดูลนี้",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี audit trail / history UI (F14) — ใครสร้าง/ส่งแคมเปญเมื่อไหร่ ดูจาก UI ไม่ได้, actions ไม่เขียน auditLog",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มีรายงานในตัว/CSV export ผลแคมเปญ (F6) + ไม่เป็น dataset ใน report builder",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "entity ไม่โผล่ Public API v1 (read) + ไม่มี webhook ขาออก (B24)",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี import CSV audience / bulk campaign ops (F1/F10) — audience ผูกจาก member เท่านั้น เพิ่มรายชื่อภายนอกไม่ได้",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1
+        }
+      ],
+      "customerBlocker": "กด 'ส่งแคมเปญ' แล้วระบบแค่บันทึกรายชื่อผู้รับลง DB — ไม่มีข้อความวิ่งออก LINE/SMS/อีเมลถึงลูกค้าจริงเลย (sendCampaign เป็น log-only) ลูกค้าไม่เคยได้รับโปร แคมเปญจึงเป็นแค่รายการในระบบที่ส่งไม่ออก",
+      "rebuildEffortDays": 18
+    },
+    {
+      "module": "crm",
+      "verdict": "partial",
+      "exists": [
+        "rules.ts (pure/FREEZE): default pipeline 5 ขั้น (OPEN/WON/LOST), dealStateForStage, canAdvanceLifecycle, weightedForecast",
+        "service.ts: ensureCrm (idempotent seed), createContact, createDeal, moveDeal (WON→contact CUSTOMER), addActivity, completeActivity, forecast, getBoard/listContacts/listDeals/listPendingActivities",
+        "actions.ts: 6 server actions ทุกตัวมี assertCan (crm.<entity>.<verb>) + tenantDb scope ผ่าน Ctx",
+        "ui.tsx: kanban board เลื่อนดีล ◀▶, สร้าง contact/deal, ปิดงานติดตาม, ยอดคาดการณ์ถ่วงน้ำหนัก, empty state ชี้ทางทุกจุด",
+        "สะพาน CRM→บัญชี: issueQuotation ผ่าน account facade (idempotent, สร้าง AccountDocument QUOTATION + AccountContact)",
+        "AI write tool เดียว: crm_create_lead (propose→dispatch map crm.contact.create, สิทธิ์ผ่าน assertCan เดียวกับ UI)",
+        "qc-crm.mts ครอบ rules + service happy path (contact→deal→WON→CUSTOMER) + forecast + bridge quotation idempotent + cross-tenant count",
+        "PDPA export/purge ครอบ CrmContact อัตโนมัติ (generic tenant-scoped model sweep)"
+      ],
+      "customerBlocker": "พนักงานสร้าง 'งานติดตาม' (follow-up) จากหน้าจอไม่ได้เลย — addActivityAction มีในโค้ดแต่ไม่ถูก wire เข้า ui.tsx ทำให้ช่อง 'งานติดตามค้างอยู่' ว่างตลอด กดสร้างไม่ได้ ปิดได้อย่างเดียว จึงใช้ CRM ตามงานขายจริงไม่ได้",
+      "gaps": [
+        {
+          "feature": "UI สร้างงานติดตาม (follow-up) หายไป — addActivityAction ไม่ถูกเรียกใน ui.tsx เลย ทำให้หัวใจ CRM (ไม่ลืมตามลูกค้า) พังทั้งวง",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "ไม่มี AI read tool (เช็คสถานะดีล/สรุป pipeline/forecast) และไม่มี tool สร้างดีล/ย้าย stage ผ่าน AI — มีแค่ crm_create_lead ตัวเดียว ไม่ครบ core loop B20/F8",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มีเคสใน ai/eval สำหรับ crm tool ใด ๆ (heuristic baseline ไม่มี) — F8/B20 บังคับ ≥2 เคสต่อ tool",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "field ใน schema แก้ได้เฉพาะ DB: CrmContact.email/company/note/ownerUserId และ CrmDeal.expectedCloseAt/ownerUserId ไม่มีในฟอร์ม (ฟอร์มมีแค่ name/phone/source) — ผิด F2",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี edit/soft-delete(archive)/ค้นหา/กรอง/แบ่งหน้า — archivedAt มีใน schema แต่ไม่มีปุ่ม, listContacts take=100 ตายตัว ไม่มี search (F2/F9)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี outbox event ยิงจาก CRM (deal.won/contact.created/activity.due) → ไม่มี notification, automation rule, webhook ขาออก (B17/F7/B24)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี Public API v1 สำหรับ CRM (v1 มี shop/inventory/customers/me แต่ไม่มี crm/deals/contacts) — B24 ร้านโตต่อไม่ได้",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "createContact/createDeal ไม่มี idempotency key — AI dispatch หรือกดซ้ำสร้างซ้ำได้ (เฉพาะ issueQuotation/ensureCrm idempotent) ผิด B7/B21",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "lifecycleAfterDealWon() คืน CUSTOMER เสมอไม่สนใจ input (dead logic) และ moveDeal ไม่ implement เส้น LOST→contact LOST ตามที่ comment กติกาเขียนไว้ — lifecycle ไม่ครบ (F4)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "qc-crm ขาดแกน: สิทธิ์ข้ามร้าน/ข้าม role โดน 403 (เช็คแค่ count row ไม่ได้ยิง assertCan), idempotency กดซ้ำไม่เบิ้ล, เส้น LOST/ยกเลิกดีล — B22/F13 ไม่ครบ",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี audit trail/ประวัติดูจาก UI ว่าใครแก้ดีล/เลื่อน stage เมื่อไหร่ (F14) และ move deal ไม่มี reversal log",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี import CSV ลูกค้าตั้งต้น (ย้ายจาก Excel) — F1 SME migrate ไม่ได้",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี bulk operation (assign owner หลายราย/ย้าย stage หลายดีล) — F10",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1
+        }
+      ],
+      "rebuildEffortDays": 10
+    },
+    {
+      "module": "inventory (สต็อก multi-warehouse + procurement)",
+      "verdict": "partial",
+      "exists": [
+        "Stock ledger จริง: InvMovement = source of truth, InvItem.onHand เป็น cache sync ใน tx เดียว, balanceAfter ทุกแถว",
+        "ต้นทุนถัวเฉลี่ยเคลื่อนที่ (movingAvgCost) จาก rules.ts FREEZE, รับเข้าถัวเฉลี่ย ตัดออกไม่กระทบต้นทุน",
+        "Idempotency ครบทุก mutation (receive/consume/adjust/transfer) ผ่าน invMovement.idempotencyKey — กดซ้ำไม่เบิ้ล",
+        "Multi-warehouse (WO-0037): InvLocation + InvLocationStock, โอนข้ามคลัง (movement คู่ out/in), invariant sum(locationStock)==onHand, lazy seed คลังหลัก",
+        "Lot/expiry (WO-0038): InvLot ต่อ item, วันหมดอายุ, sweepExpiringLots cron → AppNotification + emitOutbox inventory.lot.expiring (idempotent ต่อวัน BKK)",
+        "Barcode search (findItemByBarcode + BarcodeSearch.tsx useActionState)",
+        "Procurement (WO-0028/0049b): Supplier, PO lifecycle DRAFT→ORDERED→RECEIVED/CANCELLED, running code PO-0001 race-safe (P2002 retry), รับของเข้าสต็อกผ่าน invSvc.receive (key po-<lineId>)",
+        "สายอนุมัติ PO ตามวงเงิน (resolvePolicy + submitForApproval, effect เปลี่ยนเป็น ORDERED หลังอนุมัติ)",
+        "Vendor Portal (WO-0059): ลิงก์ /vendor/<token> read-only, token crypto 24B rotate, tenant-scoped, ไม่ leak supplier อื่น",
+        "RBAC ครบ: ทุก action เรียก assertCan(inventory.<entity>.<verb>) + tenantDb(ctx) scope, ไม่มี action เปลือย",
+        "AI tools ครบ read+write: low_stock, inventory_create_item, inventory_receive, inventory_adjust, inventory_consume + multi-step plan — execute ผ่าน propose→confirm→service เดิม ด้วย assertCan ของคนกด (ไม่ใช่ AI)",
+        "AI eval cases + heuristic router สำหรับ inventory tools",
+        "Public API v1 GET /api/v1/inventory/items (authenticated, tenant+system scoped)",
+        "Report builder dataset 'inventory'",
+        "PDPA export ครอบ InvItem/Supplier/InvLot อัตโนมัติ (dynamic tenantScopedModels)",
+        "UI empty state ชี้ทางถัดไปทุกจุด (ยังไม่มีสินค้า/คลัง/ซัพพลายเออร์/PO/ความเคลื่อนไหว)"
+      ],
+      "gaps": [
+        {
+          "feature": "ไม่มี accounting integration เลย: รับของ PO ไม่สร้างเจ้าหนี้ (Dr สินค้าคงเหลือ/Cr 2110-AP), ตัดสต็อก/ขายไม่ลงต้นทุนขาย (COGS), ปรับสต็อกไม่ลงต้นทุน — accounting/ module ไม่มี ref ถึง inventory เลย ทำให้ B11/F5 (Dr=Cr, cpa 107) ไม่ครอบโมดูลนี้",
+          "dimension": "api",
+          "severity": "blocker",
+          "effortDays": 4
+        },
+        {
+          "feature": "แก้/ปิดสินค้าไม่ได้จาก UI: มีแค่ createItem — ไม่มี updateItemAction/archiveItemAction, invItem.update เกิดเฉพาะใน movement tx เท่านั้น → ชื่อ/ราคา/จุดสั่งซื้อ/บาร์โค้ด แก้หลังสร้างไม่ได้ ต้องพึ่ง DB (F2 CRUD ไม่ครบ)",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "qc-inventory.mts บางมาก (47 บรรทัด/~12 เช็ค): ครอบแค่ receive/consume/idempotent/ติดลบ/lowStock — ไม่มีสิทธิ์ข้ามร้าน 403/404, ข้าม role, race กันชนกัน (2 req→1 fail), PO lifecycle, transfer, lot, reversal, Dr=Cr (B22/F13 ไม่ครบ 5 แกน)",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "core movement ไม่ยิง outbox: receive/consume/adjust/transfer/low-stock ไม่มี emitOutbox (มีแค่ lot.expiring) → ไม่มี webhook ขาออก/automation rule/notification สำหรับสต็อกเปลี่ยน/ใกล้หมด (B17/F7 event ครบสาย ไม่ผ่าน)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "onHand cache race: consume/adjust อ่าน item.onHand แล้ว update โดยไม่มี SELECT FOR UPDATE/version guard — 2 request พร้อมกัน lost-update ได้ (ledger append ปลอดภัยแต่ balanceAfter/onHand เพี้ยน) ไม่มี DB constraint กันติดลบ (นโยบายยอมติดลบ) → B9 กันชนระดับ DB ไม่ผ่าน",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "Bulk operation ไม่มี: ปรับสต็อกหลายรายการ/stock-count session ทั้งคลังทำทีละ item ผ่าน adjust เท่านั้น — งานนับสต็อกจริง (F10) ไม่รองรับ",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "Public API v1 มีแค่ items read; ไม่มี movements/stock-by-location endpoint และไม่มี webhook ขาออกตอนสต็อกเปลี่ยน (B24 เปิดออกนอกไม่ครบ)",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มีปุ่ม export CSV (BOM) สต็อก/ความเคลื่อนไหวจากหน้า inventory โดยตรง (มีแค่ผ่าน report builder) — B13/F6",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "ประวัติ/audit ต่อ record สินค้า (ใครแก้ราคา/reorderPoint เมื่อไหร่) ไม่มีใน UI — มี InvMovement ledger แต่ไม่ครอบการแก้ master data (F14)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1
+        }
+      ],
+      "customerBlocker": "เจ้าของร้านสร้างสินค้าผิด (ราคา/จุดสั่งซื้อ/บาร์โค้ด) แล้วแก้ไม่ได้จาก UI ต้องเข้าฐานข้อมูล และของที่รับเข้า/ตัดออกไม่ไหลลงบัญชีต้นทุน/เจ้าหนี้เลย ทำให้สต็อกเดินได้แต่กำไร-บัญชีไม่ตรงกับความจริง",
+      "rebuildEffortDays": 14
+    },
+    {
+      "module": "account (CPA บัญชีคู่)",
+      "verdict": "partial",
+      "exists": [
+        "บัญชีคู่เต็ม (gl.ts): postDocument/postPayment/postTaxInvoice/postManualJV/postDepreciation/postOpening + reverseFor (กลับขาไม่ลบ record) — Dr=Cr ทุกใบ, idempotencyKey=refType#refId#event",
+        "ผังบัญชี (coa.ts) seed + CRUD ledger + mapping keys; ensureAccounting idempotent",
+        "วงจรเอกสารครบ: ใบเสนอราคา→ใบแจ้งหนี้→ใบเสร็จ/ใบกำกับภาษี, convert, recordPayment, voidDocument/voidPayment",
+        "ฝั่งซื้อ/เจ้าหนี้ (expense.ts): expense doc, PO lifecycle DRAFT→submit→approve→ORDERED→รับของ→จ่ายเจ้าหนี้, void",
+        "ภาษีไทย: WHT ภ.ง.ด.53/3 + cert, ภ.พ.30 (pp30) + CSV, VAT ใน/นอก timing ON_ISSUE",
+        "สินทรัพย์+ค่าเสื่อม+จำหน่าย (asset.ts), เช็ค register/deposit/clear/bounce/void ทุกขา reversible (cheque.ts), บัญชีเงิน+โอน+petty cash (finance.ts)",
+        "งบการเงิน: trial balance, P&L, งบดุล, cash flow, aging + ปิดงวด/เปิดงวด (closePeriod/reopenPeriod) + period-sweep",
+        "POS→บัญชีผ่าน facade index.ts (applyExternalSale/reverseExternalSale) + HR→postPayrollJV — เชื่อม cross-module จริง",
+        "Security: ทุก action loadAccountSystem (tenant scope+notFound) + assertAccountCan(account.*) + writeAudit(AuditLog)",
+        "QC regression: qc-account-cpa (98 chk 1 เดือนเต็มไล่ยอดมือ) + gatea (cross-tenant/RBAC) + deep/p2p3/qc7/pos-account — อยู่ใน cpa 107 gate",
+        "ลิงก์สาธารณะขอใบกำกับภาษี /r/[token] 2 ภาษา th/en (ไม่ต้อง login)",
+        "PDPA export/purge ครอบตาราง account อัตโนมัติผ่าน table-walker (scopeOf tenant/system)",
+        "AI: record_expense tool เขียนผ่าน assertCan(account.doc.create) idempotent ผ่าน facade"
+      ],
+      "gaps": [
+        {
+          "feature": "AI อ่านบัญชีไม่ได้ — มีแค่ record_expense (เขียน expense DRAFT) ตัวเดียว ไม่มี tool ถามยอดงบ/ลูกหนี้-เจ้าหนี้ค้าง/กำไรขาดทุน/ภาษีต้องจ่าย และมี eval เคสเดียว (rubric ต้อง ≥2/tool)",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 4
+        },
+        {
+          "feature": "ไม่มี outbox event/webhook ขาออก — ออกใบแจ้งหนี้/รับเงิน/อนุมัติ PO ไม่ยิง event → ไม่มี notification/automation rule/X-Shark-Signature (โมดูลอื่นยิง outbox แต่ account เงียบ)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 5
+        },
+        {
+          "feature": "ไม่มี CSV import สำหรับข้อมูลตั้งต้น (ยอดยกมา/ผังบัญชี/คู่ค้า/ลูกหนี้-เจ้าหนี้ค้าง) — มีแต่ export; SME ย้ายจาก Excel ต้องคีย์มือทีละแถว",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 3
+        },
+        {
+          "feature": "หน้า public /r/[token] (requestTaxInvoiceAction) ไม่มี rate limit — public POST เปิด enumeration/abuse",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "entity บัญชี (documents/invoices/contacts) ไม่โผล่ใน Public API v1 (v1 มีแค่ shop/inventory/customers/me) — ร้านที่โตดึงใบแจ้งหนี้ผ่าน API ไม่ได้",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 3
+        },
+        {
+          "feature": "ไม่มีหน้าดู audit trail ใน UI — writeAudit เขียน AuditLog แต่ไม่มีจอ ใครแก้อะไรเมื่อไหร่ (F14) สำหรับ record เงินสำคัญ",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี bulk operation (จับคู่จ่ายหลายใบ/ออก WHT cert หลายราย/reconcile) — งานจริงต้องทำทีละใบ",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 3
+        }
+      ],
+      "customerBlocker": "แกนบัญชีคู่ + VAT/WHT/ปิดงบทำงานจบจริงระดับ CPA (cpa 107 เขียว) แต่ SME ที่ย้ายจาก Excel ตันตั้งแต่ onboarding เพราะไม่มี CSV import ยอดยกมา/ลูกหนี้-เจ้าหนี้/ผังบัญชี ต้องคีย์มือทีละแถว และถาม AI เรื่องตัวเลขงบไม่ได้ (AI บันทึกค่าใช้จ่ายได้อย่างเดียว)",
+      "rebuildEffortDays": 21
+    },
+    {
+      "module": "hr",
+      "verdict": "partial",
+      "exists": [
+        "พนักงาน: สร้าง+ลิสต์ (HrEmployee) ผ่าน server action + assertCan + tenantDb",
+        "ลงเวลา IN/OUT (HrAttendance) + workedMinutes จับคู่ IN/OUT ต่อเดือน",
+        "ใบลา: ยื่น→อนุมัติ/ปฏิเสธ ต่อสายอนุมัติ (approval.resolvePolicy/submitForApproval) + contract C-2 availability (rules.ts นับเฉพาะ APPROVED)",
+        "Payroll ไทยครบสูตร: ประกันสังคม ม.33 + ภาษีหัก ณ ที่จ่าย (ทำเต็มปี) หน่วยสตางค์ deterministic",
+        "รอบจ่าย DRAFT→APPROVED→PAID: periodKey unique กันซ้ำ, approveRun claim อะตอมมิก (updateMany where status=DRAFT) กันลงบัญชีเบิ้ล, ลง JV ผ่าน account facade (postPayrollJV, Dr=Cr) + rollback DRAFT ถ้าลงบัญชีล้ม",
+        "AI tools: pending_leaves (read), hr_create_employee + hr_decide_leave (write ผ่าน propose/assertCan) + มีเคสใน ai/eval",
+        "UI มือถือ: empty state ทุก section ชี้ทางถัดไป, ภาษาไทยชาวบ้าน, SubmitButton pendingText, สลิปเงินเดือน",
+        "oracle: qc-hr.mts + qc-payroll.mts + qc-booking-hours-hr.mts, fitness ratchet ครอบ hr→account/hr→approval + F6 assertCan coverage"
+      ],
+      "gaps": [
+        {
+          "feature": "ข้อมูลอ่อนไหวไม่จำกัด role: PayrollSection แสดงเงินเดือน+เลขผู้เสียภาษี 13 หลักของพนักงานทุกคนให้ทุกคนที่เปิดระบบ HR เห็น (ไม่มี role gate แคบกว่า assertCan ปกติ) — STAFF/หัวหน้าเห็นเงินเดือนกันหมด",
+          "dimension": "security",
+          "severity": "blocker",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี PDPA export/purge ครอบ HrEmployee/HrSalaryProfile ทั้งที่มี phone + taxId (บัตร ปชช.) + เงินเดือน — สั่ง export ข้อมูลร้านแล้วไม่เห็นข้อมูลพนักงาน",
+          "dimension": "security",
+          "severity": "blocker",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "แก้ไข/ปิดใช้งานพนักงานไม่ได้จาก UI (create-only) — พิมพ์ชื่อ/ตำแหน่ง/เบอร์/เงินเดือนผิดแก้ผ่าน DB ตรงเท่านั้น; field active/pinCode/linkedUser ไม่มีฟอร์ม",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี reversal สำหรับ payroll ที่ PAID/ลง JV แล้ว — จ่ายเงินเดือนผิดหลังลงบัญชีกลับรายการไม่ได้ (มีแค่ rollback DRAFT ตอนลงบัญชีล้ม)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี outbox event / notification เลยในโมดูล — อนุมัติลา/จ่ายเงินเดือนไม่ยิง event, ไม่แจ้งพนักงาน, ไม่โผล่ webhook ขาออก (F7/B17)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี audit trail ดูจาก UI ว่าใครแก้เงินเดือน/อนุมัติเมื่อไหร่ (decidedById เก็บใน DB แต่ไม่โชว์, การแก้ salary ไม่บันทึกประวัติ)",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "qc-hr / qc-payroll ไม่ถูก wire เข้า package.json regression gate (ไม่มี qc:hr) และ oracle ไม่ครอบ สิทธิ์ข้ามร้าน 403/404 + idempotency กดซ้ำ",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี idempotency บน clock/requestLeave/createEmployee — กด/ยิงซ้ำ (รวม AI hr_create_employee) สร้าง record ซ้ำได้ ไม่มี key/dedup",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "ไม่มี CSV import พนักงาน/โปรไฟล์เงินเดือน — SME ย้ายจาก Excel ต้องคีย์มือทีละคน (F1)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "AI ทำแทน core loop เงินไม่ได้: ไม่มี tool สร้าง/อนุมัติรอบจ่าย, สรุปยอดเงินเดือน, หรือลงเวลาแทน — AI เขียนได้แค่เพิ่มพนักงาน+ตัดสินใบลา (F8/B20)",
+          "dimension": "ai",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "lifecycle ใบลาถอยกลับไม่ได้: มี label CANCELLED แต่ไม่มี action ยกเลิก/ถอนใบลาที่อนุมัติแล้ว → availability ค้างไม่ว่าง แก้ไม่ได้จาก UI",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "HrEmployee ไม่โผล่ Public API v1 (read) — ร้านที่โตต่อดึงข้อมูลพนักงานออกไม่ได้ (B24)",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 0.5
+        }
+      ],
+      "customerBlocker": "ใครก็ตามที่เปิดระบบ HR เห็นเงินเดือน+เลขบัตรประชาชนพนักงานทุกคน (ไม่มี role จำกัด/ไม่มี PDPA/ไม่มี audit) และถ้าพิมพ์ชื่อหรือจ่ายเงินเดือนผิดก็แก้/กลับรายการไม่ได้จาก UI",
+      "rebuildEffortDays": 12
+    },
+    {
+      "module": "chat (แชทรวมศูนย์ omni-channel: LINE OA + แชทหน้าเว็บ)",
+      "verdict": "partial",
+      "exists": [
+        "Omni-channel adapter registry (LINE + WEBCHAT) — เพิ่มช่องทางใหม่ = เพิ่ม 1 ไฟล์ adapter (FB/IG/Shopee/Lazada/WhatsApp เตรียม enum ไว้แล้ว)",
+        "LINE webhook: verify x-line-signature (HMAC-SHA256 timingSafeEqual) + dedup 2 ชั้น (ChatWebhookLog unique + ChatMessage.externalMessageId)",
+        "แชทหน้าเว็บ public: guest token = CSPRNG randomUUID ผ่าน httpOnly cookie (ปิด IDOR/M10), rate limit ต่อ IP+connection (20/นาที), cap contact ใหม่ 60/ชม. กัน DoS (M9)",
+        "Conversation lifecycle เต็ม: OPEN/PENDING/RESOLVED + reopen เธรดเดิม ≤24 ชม. + reopenedCount + ConversationEvent audit (CREATED/ASSIGNED/STATUS_CHANGED/CUSTOMER_LINKED/REOPENED/DELIVERY_FAILED)",
+        "กัน race ระดับ DB: $transaction + pg_advisory_xact_lock ต่อ contactId — 10 ข้อความพร้อมกันของ contact เดียว = 1 conversation ไม่มีข้อความหาย (M12)",
+        "Inbox พนักงาน: list/filter (status/channel/assignee/ค้นชื่อ+เบอร์) + assign + setStatus + markRead + sendReply + internal note + staffUnreadCount",
+        "Unit-level RBAC (M11): unitAccess กรอง list + block getThread/sendReply/setStatus/assign ข้าม unit; ทุก action มี assertCan module=chat",
+        "Cross-module chat→member: auto-link ด้วยเบอร์ (opt-in) + manual linkCustomer + panel โปรไฟล์สมาชิกข้างจอ",
+        "creds เข้ารหัส (encryptCreds) + masked view กัน leak token; delivery status PENDING/SENT/FAILED + จับ TOKEN_EXPIRED → set connection ERROR",
+        "QC harness qc-chat-security.mts: race/IDOR unit/rate limit/contact cap/CSPRNG (fail-before/pass-after)"
+      ],
+      "gaps": [
+        {
+          "feature": "ไม่มี outbox event + notification แจ้งพนักงานเมื่อลูกค้าทักเข้ามา — staff ต้องเปิดหน้าแชทค้างเองถึงจะเห็น (receiveInbound/receiveWebchatInbound ไม่ยิง event ใด ๆ, ไม่ต่อ automation rule)",
+          "dimension": "api",
+          "severity": "blocker",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี AI tool สำหรับ chat เลย (grep tools.ts = 0) และไม่มีเคสใน ai/eval — AI ตอบแชท/สรุปเธรด/เช็คคิวแชทค้างแทนไม่ได้ ทั้งที่เป็น core loop ของโมดูลสื่อสาร (B20/F8 ตก)",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ChatQuickReply model มีใน schema แต่ไม่มี UI/service/action ใด ๆ (unused) และ greetingMessage/business-hours/away-message แก้ผ่าน UI ไม่ได้ (settings มีแค่ผูกระบบสมาชิก) — พนักงานตอบซ้ำ ๆ ไม่มีข้อความสำเร็จรูป",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "QC ไม่อยู่ใน regression gate — qc:chat เป็นสคริปต์เดี่ยวใน package.json ไม่ถูก chain เข้ากับ typecheck/fitness/cpa และ oracle ยังขาดแกน สิทธิ์ข้าม role (STAFF ไม่มี permission) + idempotency ฝั่ง staff sendReply",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี Public API v1 (read) สำหรับ conversation/message + ไม่มี webhook ขาออก X-Shark-Signature เมื่อมีข้อความใหม่ — ร้านที่โตต่อ/ต่อ CRM ภายนอกไม่ได้",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี PDPA export/ขอลบครอบ ChatContact (เก็บชื่อ+เบอร์+avatar = PII) และ ChatMessage — auditor สั่ง export ไม่เห็นข้อมูลแชท",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "Inbox พนักงานไม่ refresh อัตโนมัติ — ใช้ server action + redirect (reload เต็มหน้า) ไม่มี polling/push ฝั่ง staff (มีแต่ widget ลูกค้า poll 4s); ข้อความใหม่ไม่เด้งจนกด F5/ส่งเอง",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "server action ใช้ String(formData.get()) แทน zod (ต่างจาก webchat route ที่มี zod) และ staff sendReply ไม่มี idempotency key (clientMessageId มีแค่ webchat inbound) — กดส่งซ้ำเบิ้ลข้อความได้",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "รูป/ไฟล์แนบไม่ครบวงจร: sendReply ส่งได้แค่ TEXT, ChatAttachment model ไม่ถูกใช้, รูปขาเข้า LINE เก็บเป็น placeholder [รูปภาพ] ไม่ดึง media จริง",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1
+        }
+      ],
+      "customerBlocker": "ลูกค้าทักเข้ามาแล้วพนักงานไม่มีทางรู้ (ไม่มี notification/outbox) — ต้องนั่งเปิดหน้าแชทค้างและกดรีเฟรชเอง อีกทั้งไม่มีข้อความสำเร็จรูป/AI ช่วยตอบ ทำให้ตอบช้าและตกหล่นจริงในหน้างาน",
+      "rebuildEffortDays": 10
+    },
+    {
+      "module": "kanban",
+      "verdict": "partial",
+      "exists": [
+        "Schema Board/Column/Card scope tenantId+systemId, soft-delete (ARCHIVED), sortOrder, assignee, labels[], dueAt, index ครบ",
+        "CRUD ครบผ่าน UI: สร้าง/แก้ชื่อ/เก็บ board, column, card + เพิ่มการ์ด(assignee+dueAt)",
+        "ย้ายการ์ดข้ามคอลัมน์แบบ atomic ใน $transaction กัน cross-tenant/cross-board (moveCard) + ปุ่ม ◀ ▶ (moveCardSideways)",
+        "archiveColumn เก็บการ์ดในคอลัมน์พร้อมกันแบบ atomic tx",
+        "ทุก server action มี requireTenant (tenantId จาก session ไม่เชื่อ client) + assertKanbanCan (assertCan module/action) + double-scope ด้วย tenantId+systemId ทุก query",
+        "UI มือถือ: empty state ชี้ทางถัดไป, ConfirmDialog แทน Alert, ภาษาไทยชาวบ้าน, ปุ่ม disabled สุดขอบ",
+        "AI write 3 tool ผ่าน proposal (kanban_create_board / kanban_create_card / kanban_archive_card) map assertCan เดียวกับ UI, execute ผ่าน tenantDb scope",
+        "QC script qc-ai-kanban-board.mts (3 เช็ก: tool ลงทะเบียน + execute เกิดบอร์ดจริง + คอลัมน์เริ่มต้น)",
+        "page.tsx gate sys.type === KANBAN ก่อน render + notFound"
+      ],
+      "gaps": [
+        {
+          "feature": "แจ้งเตือนผู้รับผิดชอบ: มอบหมายการ์ด/เปลี่ยนสถานะ/ใกล้ครบกำหนด ไม่ยิง outbox/notification เลย (module ไม่ import outbox) — assignee ไม่มีทางรู้ว่ามีงาน",
+          "dimension": "api",
+          "severity": "blocker",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มีมุมมอง 'งานของฉัน'/filter ตาม assignee หรือ dueAt — พนักงานเปิดบอร์ดต้องไล่หาการ์ดตัวเองด้วยตาทุกคอลัมน์",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "AI อ่านไม่ได้: มีแค่ tool เขียน ไม่มี tool query สถานะ/สรุปงาน/ค้นการ์ด — ถาม AI 'งานค้างมีอะไร' ไม่ได้ (ผิด F8 อ่าน+เขียน)",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มีเคสใน ai/eval สำหรับ kanban tool เลย (eval.ts ไม่มี kanban) — heuristic baseline ไม่ครอบ, tool อาจ regress เงียบ",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "QC oracle บาง: qc มีแค่ happy path AI สร้างบอร์ด — ขาด lifecycle transition (moveCard), สิทธิ์ข้ามร้าน/ข้าม role โดนปฏิเสธ, idempotency กดซ้ำไม่เบิ้ล — ยังไม่ครบ 5 แกน F13/B22",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "action ไม่มี zod validation (parse String มือ) และไม่มี idempotency key — double-submit สร้างการ์ด/บอร์ดซ้ำได้",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี audit trail จาก UI (ใครย้าย/แก้/เก็บการ์ดเมื่อไหร่) — มีแค่ updatedAt ใน DB (ผิด F14)",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "entity ไม่โผล่ใน Public API v1 (มีแค่ customers/inventory/me/shop) และไม่มี webhook ขาออก — โมดูลปิดตาย ต่อออกนอกไม่ได้ (F7/B24)",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี bulk operation (ย้าย/เก็บหลายการ์ด) และไม่มี CSV import/export (ย้ายจาก Excel/Trello ไม่ได้ — F1/F6/F10)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "โมดูลเกาะเดี่ยว: assigneeUserId เป็นแค่ string ไม่ผูก hr/BookingStaff, ไม่มีจุดเชื่อม cross-module ที่พิสูจน์ได้ (F3)",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี real-time/auto refresh (revalidatePath อย่างเดียว, SSE defer P2) — สองคนแก้บอร์ดเดียวต้อง F5 เอง",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 2
+        },
+        {
+          "feature": "PDPA: assigneeUserId ไม่มีการยืนยันว่าถูก export/purge ครอบ (ไม่พบใน flow) — ข้อมูลอ้างอิงบุคคลอาจตกสำรวจ",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 1
+        }
+      ],
+      "customerBlocker": "มอบหมายการ์ดให้ลูกน้องแล้วระบบเงียบสนิท — ไม่มีแจ้งเตือน ไม่มีหน้า 'งานของฉัน' และ AI ก็ถามสถานะไม่ได้ ทีมจึงใช้จริงเพื่อประสานงานไม่ได้ กลายเป็นแค่กระดานจดที่ต้องเปิดดูเองทุกครั้ง",
+      "rebuildEffortDays": 9
+    },
+    {
+      "module": "kb (คลังความรู้ / Knowledge Base — feature no.16)",
+      "verdict": "partial",
+      "exists": [
+        "CRUD ครบผ่าน UI: สร้าง/แก้/ค้นหา/กรองหมวด + soft-delete ด้วย active toggle (service.ts 112 LOC)",
+        "AI 2 ทาง: kb_search (อ่าน) + kb_create_article (เขียนผ่าน proposal→confirm) ทั้งคู่ผ่าน assertCan module kb เดียวกับ UI",
+        "ทุก server action (create/update/toggle) มี assertCan(kb.article.*) + tenantDb scope + revalidate",
+        "tenant isolation ยืนยันด้วย QC KB-5.1 (tenant อื่นค้นไม่เจอ)",
+        "qc-kb.mts (77 LOC) ครอบ CRUD + จัดอันดับ title-hit > body-hit + snippet ≤200 + AI tool + isolation",
+        "UX มือถือ: empty state ชี้ทาง (+สร้างบทความ), ค้นไม่เจอมีข้อความ, ป้าย 'ปิดอยู่', ภาษาไทยชาวบ้าน",
+        "eval case ค้นหา (kb_search) + heuristic regex ใน eval.ts",
+        "systems.ts KB status=available, wire เป็น FIXED_PAGE_SYSTEMS → /app/kb"
+      ],
+      "gaps": [
+        {
+          "feature": "ค้นหาเป็น exact-substring keyword (Prisma contains) ล้วน ไม่มี full-text/synonym/fuzzy — ถ้าลูกค้าถามคนละคำกับที่เขียนในบทความ AI kb_search คืน 'ไม่พบ' แล้วตอบมั่ว บั่นทอน value prop 'AI ใช้ตอบลูกค้า'",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี import CSV/bulk — SME ที่มี FAQ เดิมเป็นเอกสาร/ชีต ต้องพิมพ์ทีละบทความ (F1/F10)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "KbArticle เป็นเกาะเดี่ยว: ไม่ยิง outbox event ตอน create/update, ไม่มี webhook ขาออก, ไม่โผล่ใน Public API v1 (read) — ร้านโตต่อดึงคลังความรู้ออกไม่ได้ (F7/B24)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "kb_create_article (write tool) ไม่มีเคสใน ai/eval — F8 ต้อง ≥2 เคส/tool มีแต่ kb_search",
+          "dimension": "ai",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "ไม่มี audit/history UI (ใครแก้ title/body/active เมื่อไหร่) มีแค่ updatedAt — F14",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "server action ไม่มี zod validation (trim มือล้วน) + ไม่มี idempotency key ตอน AI สร้างบทความซ้ำ",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "listArticles ดึงทั้งหมดไม่มี pagination — คลังบทความเยอะจะอืด/หน้ายาว",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "แสดง error ด้วย redirect ?err= (พึ่ง HTML required) ไม่ใช่ validation inline ตาม feedback",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "ไม่เป็น dataset ใน report builder / ไม่มีหน้าสรุปจำนวนบทความต่อหมวด (F6)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1
+        }
+      ],
+      "customerBlocker": "AI ค้นคลังความรู้ด้วย keyword ตรงตัวเป๊ะเท่านั้น — ลูกค้าถามด้วยคำที่ไม่ตรงกับที่ร้านเขียนไว้ kb_search จะคืน 'ไม่พบ' แล้ว AI ตอบมั่วแทนที่จะดึงนโยบายจริง ทำให้ฟีเจอร์เด่น 'AI ใช้คลังความรู้ตอบลูกค้า' ใช้จริงไม่ได้ผล",
+      "rebuildEffortDays": 8
+    },
+    {
+      "module": "meeting (แชทภายในองค์กร / Slack-like feature)",
+      "verdict": "partial",
+      "exists": [
+        "Channel CRUD: สร้าง/เข้าร่วม/ออก/archive (soft, ประวัติถาวร) + PUBLIC/PRIVATE kind + #general auto-bootstrap (lazy, กัน race)",
+        "Message: post/edit(ป้ายแก้ไขแล้ว)/delete(soft tombstone) + thread reply 1 ชั้น + replyCount denormalized + lastMessageAt เรียง sidebar",
+        "RBAC ครบทุก action ผ่าน assertMeetingCan (meeting.channel.*/meeting.message.*), เจ้าของ+admin ห้องลบข้อความคนอื่นได้",
+        "Scope tenantId+systemId ทุก query + isChannelMember gate ก่อนโพสต์ + #general ออก/archive ไม่ได้",
+        "Member management: join idempotent (upsert ล้าง leftAt), leave, isAdmin flag, member count ต่อห้อง",
+        "UI เต็มจอ src/app/app/sys/[id]/meeting/page.tsx + sidebar+thread pane, empty state มีข้อความชี้ทาง, ภาษาไทยชาวบ้าน",
+        "QC smoke ใน scripts/qc-systems.mts (ensureWorkspace+createChannel+postMessage+listMessages) + cleanup ใน fitness"
+      ],
+      "gaps": [
+        {
+          "feature": "ไม่มี realtime/auto-refresh — ทุก action ใช้ server action + redirect เต็มรอบ ไม่มี polling/SSE/websocket ต้องรีเฟรชเองถึงเห็นข้อความเพื่อน (แชทที่ไม่ live = ใช้คุยงานจริงไม่ได้)",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 2.5
+        },
+        {
+          "feature": "ห้อง PRIVATE เชิญ/เพิ่มสมาชิกไม่ได้เลย — ไม่มี inviteMember/addMember ทั้งใน service และ actions ผู้สร้างอยู่คนเดียวตลอด (dead-end feature)",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี AI tool ลงทะเบียนใน ai/tools เลย (grep ว่าง) — สร้างห้อง/โพสต์/สรุปข้อความผ่าน AI ไม่ได้ + ไม่มีเคสใน ai/eval (F8/B20)",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี outbox event/notification — โพสต์/ตอบ/mention ไม่แจ้งใคร ไม่มี unread badge/read-state คนที่ไม่ได้เปิดห้องอยู่ไม่รู้ว่ามีข้อความ (F7/B17)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "validation/ error ไม่ surface — action คืน void เงียบ ๆ เมื่อ fail (ชื่อห้องซ้ำ/ไม่ใช่สมาชิก/แก้ข้อความคนอื่น) ผู้ใช้กดแล้วไม่เกิดอะไร ไม่มี inline error, ไม่มี zod (แค่ String() + length check ใน service)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี qc-meeting oracle เฉพาะ — มีแค่ happy path smoke ใน qc-systems ขาด: สิทธิ์ข้ามร้าน/ข้าม role โดนปฏิเสธ, กันโพสต์ในห้องที่ไม่ได้เป็นสมาชิก, idempotency กดส่งซ้ำไม่เบิ้ล (B22/F13)",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "mutation ไม่มี idempotency key — postMessage กดส่งซ้ำ/double-submit ได้ข้อความซ้ำ (ไม่มี dedup)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "PDPA ไม่ครอบข้อความ meeting — grep pdpa/export ไม่เจอ MeetingMessage เนื้อหาแชท+authorUserId เป็นข้อมูลบุคคลแต่ export/ขอลบไม่รวม (F12)",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "assertMeetingCan ตรวจแค่ module+action ไม่ผูก systemId (คอมเมนต์ยอมรับเอง 'scope ระดับ systemId รอ kernel') — user ใน tenant เดียวกันอาจยิง action ข้าม workspace อื่นภายใน tenant ได้ถ้ารู้ systemId",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี mentions/reactions/attachments/ค้นหาข้อความ + ไม่มี Public API v1 read/webhook ขาออก (B23/B24) — feature เกาะเดี่ยว ไม่ต่อออกนอก",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 2
+        }
+      ],
+      "customerBlocker": "แชทที่ไม่ real-time (ต้องรีเฟรชเองถึงเห็นข้อความเพื่อน) + ห้องส่วนตัวเชิญใครเข้าไม่ได้เลย (สร้างแล้วอยู่คนเดียว) + ไม่มีแจ้งเตือน ทำให้ทีม SME ใช้คุยงานจริงไม่ได้ ต้องกลับไปใช้ LINE",
+      "rebuildEffortDays": 11
+    },
+    {
+      "module": "forms (Form builder v1 — WO-0054, lead-capture)",
+      "verdict": "partial",
+      "exists": [
+        "Form builder CRUD: createForm/updateForm/listForms/getForm ผ่าน server action + tenantDb scope + assertCan forms.form.* ทุก action (ไม่มี action เปลือย)",
+        "5 field types (text/phone/email/select/textarea) + required + options, validation ชุด field (key ว่าง/ซ้ำ/type แปลก/select ไม่มี option → throw ไทย)",
+        "ลิงก์สาธารณะ /f/<token> (token crypto 24 ไบต์ @unique), มือถือ max-w-md, branding white-label logo/สี, error inline ผ่าน ?err= (ไม่ใช่ Alert), ลูกค้ากรอกไม่ต้องล็อกอิน",
+        "submitPublicForm: rate limit 10/นาที/IP, เก็บเฉพาะ key ที่ประกาศ (ตัด key แปลกปลอม), เช็ค required, gate active=true, resolve token ด้วย prisma ตรงแล้ววิ่ง tenantDb",
+        "cross-module จริง: crmEnabled → createContact เข้า CRM ตัวแรก (source FORM) + crmContactId, ไม่มี CRM → บันทึก submission เงียบ ๆ; fitness ratchet ครอบ forms→crm/forms→system",
+        "QC oracle qc-form.mts 93 บรรทัด: validation, token length, active-gate, submit required/strip, CRM link, inactive gate, ไม่มี CRM ยังบันทึกได้, tenant isolation",
+        "หน้า app: list + builder เพิ่ม/ลบ field + copy ลิงก์ + toggle active + ดู submissions, empty state ทุกจุด, NavDrawer มีเมนู",
+        "PDPA: FormDef/FormSubmission เป็น tenant-scoped model → export/purge cron ครอบอัตโนมัติระดับ tenant"
+      ],
+      "gaps": [
+        {
+          "feature": "ไม่มี notification/outbox event เมื่อ lead เข้ามา — เจ้าของร้านไม่ถูกแจ้ง ต้องเปิดหน้าฟอร์มเช็คเอง (F7/B17: ไม่มี emitEvent/AppNotification/automation)",
+          "dimension": "api",
+          "severity": "blocker",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี AI tool ของ forms เลย (grep ai/tools.ts = 0) — AI สร้างฟอร์ม/สรุปยอด lead/ค้น submission แทนไม่ได้ + ไม่มีเคส ai/eval (F8/B20)",
+          "dimension": "ai",
+          "severity": "blocker",
+          "effortDays": 2.5
+        },
+        {
+          "feature": "ไม่มี idempotency key ใน submitPublicForm — กดส่งซ้ำ/refresh = submission เบิ้ล + CrmContact เบิ้ล (B7); qc อ้าง idempotency แต่ไม่มีเคสทดสอบ",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "ไม่มี Public API v1 (read) + webhook ขาออก (X-Shark-Signature) สำหรับ FormSubmission — ร้านที่โตต่อเชื่อมระบบอื่นไม่ได้ (B24/F7)",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี export CSV ของ submissions + ไม่เป็น dataset ใน report builder (F6) — เอาข้อมูล lead ออกไปทำต่อไม่ได้",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "submissions cap take=200 ไม่มี pagination/ค้นหา/กรอง — ฟอร์มยอดสูงข้อมูลเก่าหาย/ไม่ครบ (F2)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "ลบฟอร์มไม่ได้ (มีแค่ toggle active, ไม่มี soft-delete) — ฟอร์มทดลอง/ผิดค้างในลิสต์ตลอด (F2)",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "field types แคบ (ไม่มี number/date/checkbox/file/consent) — ฟอร์มนัดหมาย/อัปโหลดสลิป/ยินยอม PDPA ทำไม่ได้",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี audit trail UI ว่าใครแก้ field เมื่อไหร่ (F14) + getPublicForm/render ฟอร์มไม่มี rate limit กัน token brute-force (มีเฉพาะขา submit)",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 0.5
+        }
+      ],
+      "customerBlocker": "ลูกค้ากรอกฟอร์มเข้ามาแต่ระบบไม่แจ้งเตือนเจ้าของร้านเลย (ไม่มี outbox/notification/AI) ต้องคอยเปิดหน้าเช็คเอง lead จึงตกหล่น และกดส่งซ้ำได้ทำให้ lead/CRM contact เบิ้ล",
+      "rebuildEffortDays": 7
+    },
+    {
+      "module": "reports (Report Builder v1, WO-0055)",
+      "verdict": "partial",
+      "exists": [
+        "Report builder read-only: 3 datasets (sales=PosSale PAID, customers=Customer, inventory=InvItem) enumerate ทุก AppSystem ต่อ type แล้ว query ผ่าน tenantDb รวมผล",
+        "Filter whitelist กัน field-injection (field ต้องอยู่ใน columns เท่านั้น, op eq/gte/lte/contains) + throw ภาษาไทยก่อนแตะ DB",
+        "groupBy + metric count/sum:<numberField> (aggregate ใน JS)",
+        "CSV export มี BOM ﻿ + escape comma/quote ถูก",
+        "Save/List/Delete ReportDef (tenant-scoped ผ่าน tenantDb extension — delete ถูกแปลงเป็น filtered delete มี tenantId)",
+        "actions ทุกตัวมี assertCan reports.report.run/save + requireTenant (ไม่รับ tenantId จากผู้เรียก)",
+        "UI /app/reports: select dataset→filter→group/metric→ตาราง+ดาวน์โหลด CSV+บันทึก/เรียก/ลบ, inline error (ไม่ใช้ Alert), empty state ภาษาไทย, ลิงก์ใน NavDrawer '📊 รายงาน'",
+        "QC oracle scripts/qc-report-builder.mts 6+ checks: datasets, group/sum, filter, injection throw, save/list/delete, cross-tenant run→0 แถว"
+      ],
+      "customerBlocker": "export CSV โหมดไม่จัดกลุ่มถูก cap เงียบ ๆ ที่ 500 แถวใหม่สุด (RAW_CAP, take ไม่ถูกส่งจาก UI) — ร้านที่มีบิลเกิน 500 ใบต่อเดือนดาวน์โหลดไปทำบัญชีจะได้ข้อมูลไม่ครบโดยไม่มีคำเตือน = ตัวเลขผิดแบบไม่รู้ตัว",
+      "gaps": [
+        {
+          "feature": "Non-grouped export/table cap 500 แถวเงียบ (ไม่มี pagination/ไม่มีป้ายเตือนว่าข้อมูลถูกตัด) → CSV บัญชีไม่ครบ; grouped โหมดดึงทุกแถวเข้า memory (take undefined) เสี่ยง OOM ร้านใหญ่",
+          "dimension": "ux",
+          "severity": "blocker",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี AI tool เลยสำหรับ reports (grep ai/tools.ts ว่าง) และไม่มีเคสใน ai/eval — B20/F8 core loop 'ถาม AI สรุปยอดวัน/รันรายงาน' ทำไม่ได้",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "customers dataset เปิดเผย name/phone (PII) ให้ทุกคนที่มีสิทธิ์ reports.report.run — ไม่มี role gate แคบสำหรับ PII, STAFF ที่รันรายงานได้ดึง/export เบอร์ลูกค้าทั้งร้านเป็น CSV ได้ (F11/B23)",
+          "dimension": "security",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "date filter ใช้ text box พิมพ์ ISO string เอง ไม่มี date-range picker; coerce แปลงเฉพาะ number (date คงเป็น string) — UX ตั้งช่วงวันเปราะและไม่มี jargon-free path สำหรับเจ้าของร้าน",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ReportDef ไม่มี edit/rename (ต้องลบแล้วสร้างใหม่) และ save/delete ไม่ยิง outbox/audit — ไม่มี audit trail ว่าใครสร้าง/ลบนิยามรายงาน (F14/F2)",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มี Public API v1 (read) / webhook ขาออกสำหรับ report dataset — ร้านที่โตดึงข้อมูลออกนอกไม่ได้ (B24)",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 2
+        },
+        {
+          "feature": "QC ครอบ read-path ดี (injection+cross-tenant) แต่ไม่ได้อยู่ใน regression gate ที่ตรวจ (ไม่พบ qc-report-builder ใน scripts รวม/fitness) และไม่มีเคส PII-role/CSV-cap",
+          "dimension": "qc",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "เฉพาะ 3 dataset hardcoded, ไม่มี join/cross-module dataset เพิ่ม (เช่น สมาชิก↔ยอดขาย), ไม่มี chart/visualization, ไม่มี schedule/ส่งอีเมลรายงาน",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 2.5
+        }
+      ],
+      "rebuildEffortDays": 11
+    },
+    {
+      "module": "calendar (ปฏิทินรวม read-only — WO-0057)",
+      "verdict": "partial",
+      "exists": [
+        "service.ts: aggregator READ-ONLY รวม 3 แหล่ง Appointment + HotelReservation + HrLeave เข้า CalEvent เดียว, overlap window [from,to), ตัด CANCELLED/REJECTED, เรียง startAt, ระบบไม่เปิด=ข้ามเงียบ",
+        "actions.ts: server action มี requireTenant + assertCan(calendar.event.read) + tenantId ผูกจาก session ไม่รับจากผู้เรียก",
+        "ทุก query ผ่าน tenantDb(ctx) ไม่มี prisma ตรง, ไม่มี write path ใด ๆ",
+        "UI /app/calendar: month grid server-rendered, นำทางเดือน ?ym=, จุดสีต่อ kind, กดวันดูรายการ, empty state 'ไม่มีรายการในวันนี้', ภาษาไทยล้วน มี StatusChip, mobile-first (aspect-square/max-w-3xl), ลิงก์ใน NavDrawer",
+        "qc-calendar.mts: oracle 9 เคส — จำนวนรวม/window/คร่อมขอบ/status filter/เรียง/tenant isolation/read-only ไม่มีแถวเกิด"
+      ],
+      "gaps": [
+        {
+          "feature": "service.getCalendarEvents enumerate ทุก unit + ทุกระบบ HR ในร้าน โดยไม่กรองด้วย unitAccess ของ user — STAFF ที่ผูกสาขาเดียวเห็นนัด/เข้าพักทุกสาขา และเห็นวันลา (ลาป่วย/ลากิจ) ของพนักงานทั้งหมด = leak ข้ามสาขา + ข้อมูลอ่อนไหว PDPA",
+          "dimension": "security",
+          "severity": "blocker",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ไม่มี write/action ใด ๆ จากปฏิทิน — สร้าง/เลื่อน/ยกเลิกนัด-เข้าพัก-ลา ทำจากปฏิทินไม่ได้ ต้องกระโดดไปโมดูลต้นทางทีละอัน (ไม่มี CRUD, ไม่มี lifecycle transition, ไม่มี drag-reschedule)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 4
+        },
+        {
+          "feature": "ไม่มี AI tool ลงทะเบียนใน ai/tools.ts และไม่มีเคสใน ai/eval — AI ถามยอดนัดวันนี้/สร้างนัดจากปฏิทินไม่ได้ (grep เจอแค่ dna-review)",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "qc-calendar.mts ไม่อยู่ใน regression gate — ไม่ถูกลง package.json qc:* และไม่ถูก cpa/fitness เรียก จึงไม่เขียวใน gate อัตโนมัติ (รันมือเท่านั้น)",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 0.3
+        },
+        {
+          "feature": "entity ไม่โผล่ Public API v1 (read) และไม่มี webhook/outbox event ขาออกจากปฏิทิน — ต่อระบบนอก/ปฏิทิน Google ไม่ได้",
+          "dimension": "api",
+          "severity": "major",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี filter (ตาม kind/สาขา/พนักงาน) และมีแค่มุมมองเดือน — ไม่มี day/week/agenda, ร้านที่นัดเยอะจุดสีชนกันอ่านไม่ออก",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 2
+        },
+        {
+          "feature": "ไม่มี export CSV และไม่เป็น dataset ใน report builder",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1
+        }
+      ],
+      "customerBlocker": "SME เปิดปฏิทินเห็นนัด/เข้าพัก/วันลารวมกันได้จริง แต่สร้าง-เลื่อน-ยกเลิกอะไรจากตรงนี้ไม่ได้เลย (read-only ต้องเด้งไปโมดูลต้นทางทีละอัน) และพนักงานสาขาเดียวกลับเห็นตารางทุกสาขา + ใครลาป่วยลากิจทั้งบริษัท เพราะ service ไม่กรองตาม unitAccess",
+      "rebuildEffortDays": 2
+    },
+    {
+      "module": "approval (สายอนุมัติ maker-checker)",
+      "verdict": "partial",
+      "exists": [
+        "Engine กลางจริง: createPolicy/resolvePolicy (เจาะจงสุดชนะ unit>system>global + threshold), submitForApproval, decide (multi-step), cancelRequest — tenant-scoped ผ่าน tenantDb",
+        "submit/decide ห่อ prisma.$transaction + emitOutbox (submitted/approved/rejected) เหมือน POS createSale",
+        "Idempotency แน่น: submit มี idempotencyKey + @@unique + จับ P2002; decide ใช้ updateMany claim guard บน currentStepOrder = กันแข่งกดระดับ DB",
+        "Decision append-only (ห้าม update ย้อน) เก็บ decidedById/stepOrder/note ครบ",
+        "Cross-module effect จริง (composition root approval-effects.ts): approved→PO DRAFT→ORDERED, HrLeave PENDING→APPROVED/REJECTED — idempotent updateMany + guard",
+        "Wired ต้นทางจริง: inventory/procurement (PO เกิน threshold คง DRAFT), hr/service requestLeave",
+        "RBAC ครบ: 3 server actions มี assertCan (policy.create/update, request.decide) + requireTenant, ไม่รับ tenantId/userId จาก client; canDecideStep แยก OWNER/MANAGER/approverUserId",
+        "AI tools 2 ตัว: approvals_pending (read) + approval_decide (write ผ่าน propose→confirm, ตัดสินด้วยสิทธิ์คนกดยืนยัน)",
+        "Webhook ขาออก: 3 event อยู่ใน webhooks/labels; notification สร้าง AppNotification ทั้ง submit/approve/reject",
+        "UI มือถือ: หน้า settings/approval + approvals (รออนุมัติของฉัน) มี EmptyState ชี้ทาง, ConfirmDialog reasonField required ตอนปฏิเสธ",
+        "QC oracle 2 ไฟล์: qc-approval.mts (14 เคส: policy/threshold/submit/decide/reject/cancel/cross-tenant) + qc-approval-wiring.mts (PO/ใบลา e2e + drain)"
+      ],
+      "gaps": [
+        {
+          "feature": "qc-approval.mts + qc-approval-wiring.mts ไม่ได้ลงทะเบียนใน package.json/regression gate ใด ๆ (grep เจอแค่ comment+ledger) — oracle มีแต่ไม่ถูกรันอัตโนมัติ = regression หลุดได้",
+          "dimension": "qc",
+          "severity": "major",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "policy แก้ไข/ลบไม่ได้ — UI มีแค่ create + toggle active; แก้ threshold/step/ผู้อนุมัติที่ตั้งผิดต้องสร้างสายใหม่ทับ (ละเมิด F2 CRUD ครบ)",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "ไม่มีหน้า decision history / audit-trail ใน UI (F14) — ApprovalDecision append-only อยู่แต่ใน DB; คนดูไม่เห็นว่าใครอนุมัติ/ปฏิเสธเมื่อไหร่ ด้วยเหตุผลอะไร",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1.5
+        },
+        {
+          "feature": "ผู้ยื่น (requester) ไม่มีหน้าติดตามคำขอของตัวเอง — หน้า approvals แสดงเฉพาะ PENDING ของผู้ตัดสิน; คำขอที่ตัดสินแล้วหายไปเลย ต้องไปเดาจากสถานะ entity ต้นทาง",
+          "dimension": "ux",
+          "severity": "major",
+          "effortDays": 1
+        },
+        {
+          "feature": "AI eval บาง: approval_decide มีแค่ 1 เคส (+1 heuristic), approvals_pending (read tool) ไม่มีเคสเลย — รูบริกต้อง ≥2 เคส/tool ทั้งอ่านและเขียน",
+          "dimension": "ai",
+          "severity": "major",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "ไม่มี bulk approve (F10) — หัวหน้าอนุมัติทีละใบเท่านั้น; งานจริงที่คำขอค้างหลายใบต้องกดวนทีละอัน",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 1
+        },
+        {
+          "feature": "Notification ตอน submit สร้าง AppNotification ระดับ tenant ไม่ระบุ userId/role ปลายทาง — ไม่ได้เจาะจงถึงผู้อนุมัติที่เกี่ยว (F7 notify ถึงคนที่เกี่ยว) และไม่มีลิงก์เปิดคำขอ",
+          "dimension": "ux",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "ไม่มี Public API v1 (read) สำหรับ ApprovalRequest/Decision (B24) — entity หลักเปิดออกนอกไม่ได้ (webhook ขาออกมีแล้ว แต่ read API ไม่มี)",
+          "dimension": "api",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "PDPA export/purge ไม่ครอบ ApprovalRequest/Decision (มี requestedById/decidedById) — ข้อมูลบุคคลของโมดูลนี้ไม่โผล่ในไฟล์ export ของร้าน",
+          "dimension": "security",
+          "severity": "minor",
+          "effortDays": 0.5
+        },
+        {
+          "feature": "ไม่มี concurrent-fire test ใน QC (มีแค่ sequential double-decide AP-3.5/3.6) — claim guard ถูกต้องเชิงตรรกะแต่ B9/B22 อยากได้ยิงพร้อมกัน 2 request ล้ม 1",
+          "dimension": "qc",
+          "severity": "minor",
+          "effortDays": 0.5
+        }
+      ],
+      "customerBlocker": "เจ้าของร้านตั้งสายอนุมัติผิด (วงเงิน/ผู้อนุมัติ) แล้วแก้ไม่ได้ (มีแค่เปิด-ปิด ต้องสร้างทับ) และไม่มีหน้าไหนดูประวัติว่าใครอนุมัติ/ปฏิเสธคำขออะไรไปแล้ว — จบ flow ได้แต่บริหารจัดการต่อไม่ได้แบบตาบอด",
+      "rebuildEffortDays": 5.5
+    }
+  ],
+  "plan": {
+    "executiveSummary": "สภาพจริง: ทั้ง 27 โมดูลไม่มีตัวไหน \"full\" — เครื่องยนต์หลังบ้านแข็งจริง (บัญชีคู่ระดับ CPA 107 เช็คเขียว, POS engine idempotent, RBAC/tenant scope ครบ) แต่หน้าบ้านขาดจนลูกค้าใช้จริงไม่ได้: POS ไม่มีหน้าขายสักจอ, เกือบทุกโมดูลลูกค้า self-service ไม่ได้ (ไม่มีหน้า public/QR/PromptPay), คืนเงินหลังชำระไม่ได้ทั้งระบบ (เงินค้างบัญชีต้องแก้ DB), แจ้งเตือน/outbox แทบไม่มี, AI ครอบไม่ถึงครึ่งของ core loop และมีโค้ดเสร็จแล้วแต่ไม่ถูก wire (reward.redeem, queue public, CRM follow-up) นอนเป็น dead code. กลยุทธ์เติมเต็ม: 6 ระลอกรวม ~170 วันงาน เรียงตาม impact เงิน/ลูกค้า — ระลอก 1 เปิดหน้าขาย POS + เก็บ dead code + อุดรูรั่ว security ด่วน (HR โชว์เงินเดือน+เลขบัตร ปชช., calendar leak ข้ามสาขา), ระลอก 2 ทำให้เงิน \"ถอยหลังได้\" (refund/reversal + กัน race + สะพานสต็อก→บัญชี), ระลอก 3-4 เปิดลูกค้าจ่ายเอง-จองเองผ่าน PromptPay rail กลาง + ทำให้ข้อความถึงลูกค้าจริง (marketing ตอนนี้ log-only ไม่ส่งออก), ระลอก 5 AI ครบทุกโมดูล + KB ฉลาดขึ้น, ระลอก 6 งานโตต่อ (API/CSV import/audit/PDPA). ทุกระลอกส่งมอบพร้อม design system เดียวกัน + AI tool + QC oracle เข้า gate — ไม่รับงานที่ไม่มี 3 อย่างนี้.",
+    "waves": [
+      {
+        "wave": 1,
+        "theme": "เปิดร้านขายได้จริงวันแรก + เก็บ dead code + อุดรูรั่ว security ด่วน",
+        "modules": [
+          "pos (หน้าขาย cashier มือถือ ≤3 แตะ + แคตตาล็อกสินค้า + PromptPay QR pending→paid)",
+          "reward (wire redeem() ที่เป็น dead code → action+UI พนักงาน + qc-reward เข้า gate)",
+          "point (UI ตั้งอัตราสะสม satangPerPoint + ปรับ/แจกแต้มมือ ADJUST + qc-point)",
+          "crm (wire addRewardAction งานติดตาม 0.5 วัน — หัวใจ CRM พังเพราะปุ่มเดียวหาย)",
+          "queue (หน้า public กดรับบัตร+เช็คสถานะ — service เขียนเสร็จแล้ว แค่สร้าง route + QR)",
+          "hr hotfix (role gate เงินเดือน+เลขผู้เสียภาษี + ฟอร์มแก้ไขพนักงาน)",
+          "calendar hotfix (กรอง unitAccess — ปิด leak ตารางทุกสาขา+วันลาป่วยทั้งบริษัท)"
+        ],
+        "why": "POS คือจุดตัดเงินของทั้งแอปแต่ไม่มีหน้าขาย = เจ้าของร้านขาย walk-in สักบิลไม่ได้ทั้งที่ engine เสร็จ 100% — ปลดล็อกตัวเดียวทุกโมดูลเงินใช้ได้ทันที; reward/queue/crm เป็นโค้ดเสร็จแล้วไม่ถูก wire = ROI สูงสุดต่อวันงาน; ส่วน HR โชว์เงินเดือน+เลขบัตรประชาชนให้ทุกคน และ calendar รั่วข้ามสาขา เป็นรูรั่ว PDPA ที่ปล่อยข้ามคืนไม่ได้",
+        "effortDays": 28
+      },
+      {
+        "wave": 2,
+        "theme": "เงินต้องถูกและถอยหลังได้ — refund/reversal ทุกโมดูลเงิน + กันยิงชนกัน + สะพานสต็อก→บัญชี",
+        "modules": [
+          "shop (refund/void หลัง PAID + คืนสต็อก)",
+          "ticket (cancel ที่จ่ายแล้วต้อง reverse บัญชีผ่าน pos.voidSale ที่มีอยู่แล้ว)",
+          "school (ยกเลิก/คืนเงินหลัง PAID + อุด capacity race)",
+          "clinic (เขียน logic ใช้ enum CANCELLED ที่มีแต่ตาราง — void visit/คืนเงิน)",
+          "hotel (refund+no-show+edit reservation + idempotency key ตอนจอง)",
+          "rental (refund/คืนมัดจำ + จองซ้อนต้องกันระดับ transaction/constraint)",
+          "restaurant (ปุ่ม void/คืนเงินหลังชำระจากหน้าร้าน + idempotency createOrder)",
+          "booking (กันจองซ้อนระดับ DB constraint + idempotency)",
+          "hr (reversal payroll ที่ PAID/ลง JV แล้ว)",
+          "inventory (สะพานเข้าบัญชี: รับของ→เจ้าหนี้ AP, ตัดสต็อก→COGS + ฟอร์มแก้/ปิดสินค้า)",
+          "point (DB guard กันแต้มติดลบตอนแลกพร้อมกัน)"
+        ],
+        "why": "ทุกโมดูลเงินตันทันทีที่มีการคืนเงิน — เงินค้างในสมุดบัญชีไม่มีขากลับ ต้องไปแก้ DB ตรง ซึ่งทำลายจุดขาย 'บัญชีถูกระดับ CPA' ทั้งระบบ; race condition (จองซ้อน/overspend แต้ม/oversell) และสต็อกที่ไม่ไหลลง COGS/เจ้าหนี้ทำให้กำไรบนงบไม่ใช่กำไรจริง — ความน่าเชื่อถือของเงินคือเงื่อนไขบังคับก่อนเปิดรับลูกค้า self-service ใน wave ถัดไป",
+        "effortDays": 30
+      },
+      {
+        "wave": 3,
+        "theme": "ลูกค้าจ่ายเอง-จองเอง ชุดแรก (โมดูลที่เงิน/no-show impact สูงสุด)",
+        "modules": [
+          "payment rail กลาง (PromptPay QR component + สถานะ pending→paid + มัดจำ Dr 2110 ใช้ร่วมทุกโมดูล)",
+          "booking (มัดจำ/prepay กัน no-show สปา-คลินิก + ลิงก์ลูกค้าเช็ค/ยกเลิกนัดเอง + นโยบายยกเลิกโชว์ก่อนจอง)",
+          "restaurant (ลูกค้าสแกนจ่ายเองจากลิงก์โต๊ะ → ร้านกดยืนยันรับเงิน)",
+          "hotel (หน้า public /s/ ดูห้องว่าง→จอง→จ่ายมัดจำ→ลิงก์สถานะ ไม่ต้อง login)",
+          "ticket (หน้าร้านสาธารณะ ซื้อตั๋ว+จ่าย QR+ตั๋ว QR เช็คอิน — ตอนนี้ store landing ไม่ route TICKET เลย)"
+        ],
+        "why": "สี่โมดูลนี้คือกลุ่มที่เงินหมุนเร็วและเจ็บสุดถ้าลูกค้าทำเองไม่ได้: สปา/คลินิกโดน no-show เพราะเก็บมัดจำไม่ได้, โรงแรม-ตั๋วต้องพนักงานคีย์มือทุกรายการ; ทำ PromptPay rail เป็นชิ้นกลางครั้งเดียวแล้วทุกโมดูลใช้ร่วม ถูกกว่าสร้างแยก 7 ที่",
+        "effortDays": 32
+      },
+      {
+        "wave": 4,
+        "theme": "self-service ชุดสอง + ข้อความถึงลูกค้าจริง (สื่อสารครบวง)",
+        "modules": [
+          "rental (หน้า public จอง+QR+ลิงก์สถานะ + รับมัดจำ)",
+          "school (หน้า public ผู้ปกครองสมัคร+จ่ายเอง + แก้ action กลืน error เงียบ)",
+          "clinic (จองนัด public + ลิงก์สถานะ — ตอนนี้ walk-in อย่างเดียว)",
+          "member (ฟอร์มแก้ไขลูกค้าใน UI + สมัครสมาชิก public + เก็บเงินค่า subscription ลงบัญชีจริง)",
+          "marketing (ต่อ LINE OA push ส่งจริง — ตอนนี้ sendCampaign เป็น log-only + validate คูปองจริง + cancel/schedule)",
+          "chat (outbox+notification พนักงานรู้ทันทีเมื่อลูกค้าทัก + quick reply + inbox auto-refresh)",
+          "forms (แจ้งเตือนเจ้าของเมื่อ lead เข้า + idempotency กันเบิ้ล)"
+        ],
+        "why": "ระบบสื่อสารทั้งสายตอนนี้ 'เงียบ': แคมเปญกดส่งแล้วไม่มีข้อความวิ่งออกจริงสักช่องทาง, ลูกค้าทักแชทมาพนักงานไม่รู้ต้องนั่งรีเฟรชเอง, lead กรอกฟอร์มแล้วตกหล่น — เท่ากับฟีเจอร์หาลูกค้า/รักษาลูกค้าเป็นหมันทั้งชุด; บวก self-service ที่เหลือให้ครบทุกโมดูลบริการ และปิดช่องเงินค่าสมาชิกที่หายจากสมุดบัญชี",
+        "effortDays": 26.5
+      },
+      {
+        "wave": 5,
+        "theme": "AI ครบทุกโมดูล (read+write+eval) + KB ฉลาดขึ้น + realtime ภายในทีม",
+        "modules": [
+          "ai/tools + ai/eval (เติม tool ที่ขาดทั้งหมด: restaurant 0 tool, ticket 0, chat 0, reports 0, forms 0, meeting 0, calendar 0, point 0 + read tools ที่ขาดของ account/hotel/rental/school/clinic/crm/kanban/coupon/member + ≥2 eval case ต่อ tool)",
+          "kb (full-text/fuzzy search แทน exact substring — แก้ AI ตอบมั่วเมื่อคำถามไม่ตรงคำในบทความ)",
+          "meeting (realtime polling/SSE + เชิญสมาชิกห้อง PRIVATE — ตอนนี้สร้างแล้วอยู่คนเดียว)",
+          "kanban (แจ้งเตือน assignee + มุมมองงานของฉัน + AI read)"
+        ],
+        "why": "จุดขายหลักของ SHARK คือ 'AI สั่งงานแทนได้ทุกฟังก์ชัน' แต่วันนี้ครอบไม่ถึงครึ่ง — โมดูลใหญ่อย่าง restaurant/ticket/chat/reports ไม่มี tool สักตัว และ KB ที่เป็น RAG ให้ AI ตอบลูกค้าค้นแบบ exact-match จึงตอบมั่วบ่อย; ทำหลังโครงสร้างเงิน+public เสร็จเพื่อให้ tool ที่สร้างครอบ flow จริงทีเดียว ไม่ต้องรื้อซ้ำ",
+        "effortDays": 24
+      },
+      {
+        "wave": 6,
+        "theme": "โตต่อ + ธรรมาภิบาล (API/Import/Audit/PDPA/ปิดวัน)",
+        "modules": [
+          "public api v1 + webhook ขาออก X-Shark-Signature ครบ entity หลัก (pos/restaurant/hotel/booking/queue/ticket/rental/school/clinic/account/hr/crm/kb)",
+          "import CSV (ยอดยกมา+ผังบัญชี+ลูกหนี้-เจ้าหนี้ของ account — ด่าน onboarding SME ย้ายจาก Excel, ลูกค้า/พนักงาน/สินค้า/นักเรียน)",
+          "audit trail UI (ใครแก้อะไรเมื่อไหร่ — account/hr/approval/coupon มี log ใน DB แล้วแต่ไม่มีจอ)",
+          "pdpa sweep (export/purge ครอบ PII ที่ตกสำรวจ: hr/chat/rental/school/ticket/marketing/meeting/coupon/approval)",
+          "ปิดวัน/ปิดรอบ + export CSV(BOM) + dashboard เจ้าของ 1 จอ ต่อโมดูล + แก้ reports cap 500 แถวเงียบ",
+          "i18n th/en หน้า public ทุกโมดูล + bulk operations (อนุมัติหลายใบ/นับสต็อก/เช็คชื่อ)",
+          "approval (แก้ policy ได้ + หน้า history ผู้ยื่นตามคำขอตัวเอง)"
+        ],
+        "why": "งานกลุ่มนี้ไม่บล็อกการขายวันแรกแต่บล็อกการอยู่ยาว: SME ย้ายเข้าไม่ได้ถ้า import Excel ไม่ได้, ร้านที่โตต่อออกไม่ได้ถ้าไม่มี API/webhook, auditor/PDPA ตรวจไม่ผ่านถ้า export ไม่ครบ PII, และ reports ที่ตัด 500 แถวเงียบ ๆ คือระเบิดเวลาความเชื่อถือของตัวเลข",
+        "effortDays": 29.5
+      }
+    ],
+    "crossCutting": [
+      "Design System กลางทั้งแอป: สกัด shared components ที่มีอยู่ (SubmitButton/ConfirmDialog/EmptyState/StatusChip/inline error) เป็นชุดบังคับ + กติกา UX เหล็ก — มือถือ 390px, จบงานหลัก ≤3 แตะ, ภาษาไทยชาวบ้านไม่มี jargon, ปุ่ม ≥44px, validation inline ห้าม Alert, empty state ต้องชี้ทางถัดไป — ทุก wave ต้องใช้ชุดเดียวกัน ห้ามสร้างสไตล์ใหม่ต่อโมดูล",
+      "AI-first gate: ทุกฟีเจอร์ใหม่ใน wave 1-6 ต้อง ship พร้อม AI tool (read+write) ที่ execute ผ่าน assertCan เดียวกับ UI + ≥2 eval case/tool + heuristic baseline — ไม่ผ่านไม่ merge (กันปัญหาเดิมซ้ำ: สร้างฟีเจอร์แล้วค่อยตาม AI ทีหลังจนขาดทั้งระบบ)",
+      "QC oracle gate 5 แกนต่อโมดูล: happy path→เงินเข้า Dr=Cr, refund/reversal, race 2-request พร้อมกัน, สิทธิ์ข้ามร้าน 403/404, idempotency กดซ้ำไม่เบิ้ล — และ wire ไฟล์ qc ที่เขียนแล้วแต่หลุด gate (qc-shop, qc-chat, qc-hr, qc-payroll, qc-approval, qc-approval-wiring, qc-calendar, qc-report-builder, qc-restaurant) เข้า package.json regression chain เดียวกับ cpa 107 ทันทีตั้งแต่ wave 1",
+      "Security baseline: rate limit ทุก public route (booking/queue display/account /r/token/forms render), zod validation ทุก server action (เลิก String(formData) เปลือย), idempotency key มาตรฐานทุก mutation เงิน/จอง, role gate ข้อมูลอ่อนไหว (เงินเดือน/เวชระเบียน/PII ใน reports dataset), PDPA export/purge ต้องครอบตารางใหม่ทุกตารางที่มี PII ตั้งแต่วัน merge",
+      "Outbox/Notification มาตรฐานกลาง: mutation สำคัญทุกโมดูลต้องยิง emitEvent → AppNotification (เจาะจง userId/role + ลิงก์เปิดงาน) → webhook X-Shark-Signature ผ่าน pattern เดียวกับ POS/approval ที่ทำถูกแล้ว — เลิกสภาพ 'โมดูลเงียบ' ที่ restaurant/hotel/rental/school/member/hr/inventory/kanban/chat เป็นอยู่"
+    ],
+    "totalEffortDays": 170
+  }
+}
