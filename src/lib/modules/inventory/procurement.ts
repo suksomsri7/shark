@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
+import * as approval from "@/lib/modules/approval/service";
 import * as invSvc from "./service";
 import type { Ctx } from "./service";
 
@@ -147,13 +148,61 @@ export async function createPo(ctx: Ctx, input: CreatePoInput): Promise<{ id: st
   throw new Error("สร้างใบสั่งซื้อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
 }
 
-// DRAFT → ORDERED (+ orderedAt) · สถานะอื่น → false (guard ใน where กัน race)
-export async function markOrdered(ctx: Ctx, poId: string): Promise<boolean> {
+// ยืนยันสั่งซื้อ (WO-0049b) — ผูกสายอนุมัติ:
+//   ยอด PO = Σ qty×costSatang → resolvePolicy(PurchaseOrder, amountSatang)
+//   · มีสายอนุมัติ → submitForApproval (requestedById = ผู้กด ?? "system") → PO **คง DRAFT** + คืน { pending: true }
+//     (effect ใน approval-effects.ts จะเปลี่ยนเป็น ORDERED เองหลังอนุมัติครบขั้น)
+//   · ไม่มีสายอนุมัติ → DRAFT→ORDERED (+orderedAt) เหมือนเดิม + คืน true (caller boolean เดิมไม่พัง)
+//   · ไม่พบ/ไม่ใช่ DRAFT → false (guard กัน race)
+export async function markOrdered(
+  ctx: Ctx,
+  poId: string,
+  actorUserId?: string,
+): Promise<boolean | { pending: true }> {
+  // ต้องเป็น DRAFT ก่อน + ต้องรู้ยอดรวมเพื่อ resolve สายอนุมัติตามวงเงิน
+  const po = await tenantDb(ctx).purchaseOrder.findFirst({
+    where: { id: poId, status: "DRAFT" },
+    include: { lines: true },
+  });
+  if (!po) return false; // ไม่พบ/ไม่ใช่ DRAFT
+
+  const amountSatang = po.lines.reduce((s, l) => s + l.qty * l.costSatang, 0);
+  const policy = await approval.resolvePolicy(
+    { tenantId: ctx.tenantId },
+    { entityType: "PurchaseOrder", systemId: ctx.systemId, amountSatang },
+  );
+  if (policy) {
+    // มีสายอนุมัติ → ยื่นเข้าสาย · PO คง DRAFT จน effect อนุมัติค่อยเปลี่ยนเป็น ORDERED
+    await approval.submitForApproval(
+      { tenantId: ctx.tenantId },
+      {
+        entityType: "PurchaseOrder",
+        entityId: poId,
+        systemId: ctx.systemId,
+        amountSatang,
+        requestedById: actorUserId ?? "system",
+      },
+    );
+    return { pending: true };
+  }
+
+  // ไม่มีสายอนุมัติ → พฤติกรรมเดิม
   const res = await tenantDb(ctx).purchaseOrder.updateMany({
     where: { id: poId, status: "DRAFT" },
     data: { status: "ORDERED", orderedAt: new Date() },
   });
   return res.count > 0;
+}
+
+// poIds ที่มีคำขออนุมัติค้าง (PENDING) — ใช้โชว์ป้าย "รออนุมัติ" ในหน้า PO (WO-0049b)
+//   อ่านตาราง ApprovalRequest ผ่าน tenantDb (tenant-scoped) เพื่อแสดงผลเท่านั้น
+//   (การ "เดินเรื่อง" อนุมัติทั้งหมดยังผ่าน approval facade — read นี้ไม่เปลี่ยนสถานะใด ๆ)
+export async function pendingApprovalPoIds(ctx: Ctx): Promise<Set<string>> {
+  const rows = await tenantDb(ctx).approvalRequest.findMany({
+    where: { entityType: "PurchaseOrder", status: "PENDING" },
+    select: { entityId: true },
+  });
+  return new Set(rows.map((r) => r.entityId));
 }
 
 // ORDERED → RECEIVED (+ receivedAt) แล้วรับทุก line เข้าสต็อกผ่าน invSvc.receive
