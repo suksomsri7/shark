@@ -1,14 +1,13 @@
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { MoneyText } from "@/components/ui/MoneyText";
-import { dashboardSummary } from "@/lib/dashboard/service";
 import { activeAnnouncements } from "@/lib/announce/service";
 import { dismissAnnouncementAction } from "@/lib/announce/actions";
 import { onboardingChecklist } from "@/lib/platform/onboarding-drip";
+import { WIDGETS, getDashboardLayout, runWidgets } from "@/lib/dashboard/widgets";
+import { DashboardCustomizer } from "./DashboardCustomizer";
 
 // ลิงก์ช่วยทำต่อของแต่ละข้อในเช็กลิสต์เริ่มต้นร้าน
 const ONBOARDING_HREF: Record<string, string> = {
@@ -33,20 +32,27 @@ export default async function DashboardPage() {
   const todayStart = new Date(bkkMidnight.getTime() - 7 * 3600 * 1000);
   const todayEnd = new Date(todayStart.getTime() + 24 * 3600 * 1000);
 
-  const [units, appSystems, links, appointmentsToday, summary, announcements, checklist] = await Promise.all([
-    prisma.businessUnit.findMany({
-      where: { tenantId, status: { not: "ARCHIVED" } },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    }),
-    prisma.appSystem.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: "asc" } }),
-    prisma.appSystemUnit.findMany({ where: { tenantId } }),
-    prisma.appointment.count({
-      where: { tenantId, startAt: { gte: todayStart, lt: todayEnd }, status: { not: "CANCELLED" } },
-    }),
-    dashboardSummary({ tenantId }),
-    activeAnnouncements({ tenantId }),
-    onboardingChecklist({ tenantId }),
-  ]);
+  const layout = await getDashboardLayout({ tenantId });
+  const [units, appSystems, links, appointmentsToday, widgetResults, announcements, checklist] =
+    await Promise.all([
+      prisma.businessUnit.findMany({
+        where: { tenantId, status: { not: "ARCHIVED" } },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      }),
+      prisma.appSystem.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: "asc" } }),
+      prisma.appSystemUnit.findMany({ where: { tenantId } }),
+      prisma.appointment.count({
+        where: { tenantId, startAt: { gte: todayStart, lt: todayEnd }, status: { not: "CANCELLED" } },
+      }),
+      runWidgets({ tenantId }, layout),
+      activeAnnouncements({ tenantId }),
+      onboardingChecklist({ tenantId }),
+    ]);
+
+  // ค่า widget สำหรับการ์ด layout ปัจจุบัน (เงินยังเป็นสตางค์ — client ค่อยแปลงบาท)
+  const widgetValues: Record<string, number> = {};
+  for (const r of widgetResults) widgetValues[r.key] = r.value;
+  const widgetMetas = Object.entries(WIDGETS).map(([key, def]) => ({ key, ...def }));
 
   // เช็กลิสต์เริ่มต้นร้าน — ซ่อนการ์ดทั้งใบเมื่อทำครบทุกข้อ
   const onboardingDone = checklist.filter((c) => c.done).length;
@@ -55,32 +61,6 @@ export default async function DashboardPage() {
   // ประกาศจากแพลตฟอร์ม — แสดงฉบับล่าสุด 1 ฉบับเหนือ "ภาพรวมวันนี้" (ไม่มี = ไม่แสดง)
   const announcement = announcements[0] ?? null;
   const unitName = (id: string) => units.find((u) => u.id === id)?.name ?? "";
-
-  // ภาพรวมวันนี้ — โชว์เฉพาะการ์ดของระบบที่เปิดใช้ (ยอดขาย+แจ้งเตือนโชว์เสมอ)
-  const sysTypes = new Set(appSystems.map((s) => s.type));
-  const kpis: { key: string; label: string; value: ReactNode; sub?: string; href?: string }[] = [
-    {
-      key: "sales",
-      label: "ยอดขายวันนี้",
-      value: <MoneyText satang={summary.salesTodaySatang} />,
-      sub: `${summary.salesTodayCount} บิล`,
-    },
-    ...(sysTypes.has("MEMBER")
-      ? [{ key: "members", label: "สมาชิกใหม่ 7 วัน", value: String(summary.newCustomers7d) }]
-      : []),
-    ...(sysTypes.has("INVENTORY")
-      ? [{ key: "stock", label: "สต็อกใกล้หมด", value: String(summary.lowStockCount) }]
-      : []),
-    ...(sysTypes.has("HR")
-      ? [{ key: "leaves", label: "ใบลารออนุมัติ", value: String(summary.pendingLeaves) }]
-      : []),
-    {
-      key: "notif",
-      label: "แจ้งเตือนยังไม่อ่าน",
-      value: String(summary.unreadNotifications),
-      href: "/app/notifications",
-    },
-  ];
 
   const cards = [
     ...units.map((u) => {
@@ -181,30 +161,8 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {/* ภาพรวมวันนี้ — KPI ของระบบที่เปิดใช้ */}
-      <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium">ภาพรวมวันนี้</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {kpis.map((k) => {
-            const body = (
-              <>
-                <div className="text-xs text-[color:var(--color-muted)]">{k.label}</div>
-                <div className="mt-1 text-2xl font-semibold">{k.value}</div>
-                {k.sub && <div className="mt-0.5 text-xs text-[color:var(--color-muted)]">{k.sub}</div>}
-              </>
-            );
-            return k.href ? (
-              <Link key={k.key} href={k.href} className="card p-3 hover:bg-[color:var(--color-surface-2)]">
-                {body}
-              </Link>
-            ) : (
-              <div key={k.key} className="card p-3">
-                {body}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {/* ภาพรวมวันนี้ — การ์ด widget ตาม layout ของร้าน + โหมดปรับแต่ง (เลือก/เรียง) */}
+      <DashboardCustomizer widgets={widgetMetas} layout={layout} values={widgetValues} />
 
       {/* ตัวเลขวันนี้ */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
