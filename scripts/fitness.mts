@@ -269,6 +269,12 @@ const ALLOWED_EDGES = new Set([
   // chokepoint (WO-0050): Rental ปิดเงินตอนคืนผ่าน pos.createSale (C-2) + resolve ระบบ POS
   "rental→pos",
   "rental→system",
+  // chokepoint (WO-0051): School เก็บค่าเรียนผ่าน pos.createSale (C-2) + resolve ระบบ POS/MEMBER
+  "school→pos",
+  "school→system",
+  "school→member",
+  // chokepoint (WO-0060): Delivery ผูก shipment กับ ShopOrder (อ่านสถานะ order ผ่าน shop facade)
+  "delivery→shop",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

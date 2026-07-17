@@ -112,6 +112,12 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   Supplier: sys(),
   PurchaseOrder: sys(),
   PoLine: tenant, // ลูกของ PO — query ผ่าน poId + tenantId
+  // School (WO-0051) + Delivery (WO-0060)
+  SchoolCourse: unit,
+  SchoolClass: unit,
+  SchoolEnrollment: unit,
+  SchoolAttendance: tenant, // ลูกของ enrollment — query ผ่าน enrollmentId + tenantId
+  Shipment: unit,
   // Dashboard builder (WO-0056) + Marketplace (WO-0063)
   TenantDashboard: tenant,
   TenantInstall: tenant,

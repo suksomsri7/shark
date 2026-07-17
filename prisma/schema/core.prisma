@@ -68,6 +68,7 @@ enum UnitType {
   TICKET
   SHOP // ร้านค้าทั่วไปที่ใช้ POS เดี่ยว
   RENTAL // เช่าสินทรัพย์ (WO-0050)
+  SCHOOL // โรงเรียน/คอร์สเรียน (WO-0051)
 }
 
 enum UnitStatus {

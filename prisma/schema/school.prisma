@@ -1,0 +1,74 @@
+// School/คอร์ส (WO-0051) — คอร์ส·รอบเรียน·นักเรียน·เช็คชื่อ·ค่าเรียน→เส้นเงิน C-2
+enum EnrollmentStatus {
+  ENROLLED // สมัครแล้ว รอชำระ
+  PAID
+  CANCELLED
+}
+
+model SchoolCourse {
+  id          String   @id @default(cuid())
+  tenantId    String
+  unitId      String
+  name        String
+  description String?
+  priceSatang Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  classes SchoolClass[]
+
+  @@index([tenantId, unitId, active])
+}
+
+model SchoolClass {
+  id        String       @id @default(cuid())
+  tenantId  String
+  unitId    String
+  courseId  String
+  course    SchoolCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  name      String // "รอบเช้า ส.ค. 69"
+  startDate DateTime?    @db.Date
+  capacity  Int? // null = ไม่จำกัด
+  createdAt DateTime     @default(now())
+
+  enrollments SchoolEnrollment[]
+
+  @@index([tenantId, unitId])
+  @@index([courseId])
+}
+
+model SchoolEnrollment {
+  id           String           @id @default(cuid())
+  tenantId     String
+  unitId       String
+  classId      String
+  class        SchoolClass      @relation(fields: [classId], references: [id])
+  customerId   String? // ผูกระบบสมาชิก (ถ้ามี)
+  studentName  String // snapshot
+  studentPhone String
+  status       EnrollmentStatus @default(ENROLLED)
+  priceSatang  Int              @default(0) // snapshot ราคาตอนสมัคร
+  posSaleId    String? // เส้นเงิน C-2 ตอนชำระ
+  paidAt       DateTime?
+  cancelledAt  DateTime?
+  createdAt    DateTime         @default(now())
+
+  attendances SchoolAttendance[]
+
+  @@index([tenantId, unitId, status])
+  @@index([classId])
+}
+
+model SchoolAttendance {
+  id           String           @id @default(cuid())
+  tenantId     String
+  enrollmentId String
+  enrollment   SchoolEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  date         DateTime         @db.Date
+  present      Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+
+  @@unique([enrollmentId, date])
+  @@index([tenantId])
+}

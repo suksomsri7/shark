@@ -1,0 +1,22 @@
+// Delivery โครง (WO-0060) — shipment ต่อ ShopOrder ผ่าน adapter pattern (v1: MANUAL — ร้านกรอกเลขพัสดุเอง)
+enum ShipmentStatus {
+  PREPARING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model Shipment {
+  id         String         @id @default(cuid())
+  tenantId   String
+  unitId     String
+  orderId    String         @unique // ShopOrder
+  provider   String // adapter key: "MANUAL" | อนาคต: flash/kerry/...
+  trackingNo String?
+  status     ShipmentStatus @default(PREPARING)
+  note       String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([tenantId, unitId, status])
+}
