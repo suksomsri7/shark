@@ -370,6 +370,10 @@ const inventoryReceive: AiTool = {
       return JSON.stringify({ error: "ต้องระบุรหัสสินค้าและจำนวนที่ถูกต้อง (มากกว่า 0)" });
     }
     const costBaht = Number(a.costBaht);
+    // validate-explain: ต้นทุนติดลบไม่สมเหตุสมผล → อธิบาย ไม่สร้าง proposal
+    if (a.costBaht !== undefined && Number.isFinite(costBaht) && costBaht < 0) {
+      return JSON.stringify({ error: "ต้นทุนต่อหน่วยติดลบไม่ได้", suggestion: "ตรวจตัวเลขต้นทุนอีกครั้ง หรือเว้นว่างถ้าไม่ทราบ" });
+    }
     const hasCost = Number.isFinite(costBaht) && costBaht >= 0;
     const payload: Record<string, unknown> = { sku, qty };
     if (hasCost) payload.costSatang = Math.round(costBaht * 100);
@@ -563,6 +567,10 @@ const inventoryAdjust: AiTool = {
     if (!sku || !Number.isFinite(newQty)) {
       return JSON.stringify({ error: "ต้องระบุรหัสสินค้าและยอดคงเหลือใหม่ที่ถูกต้อง" });
     }
+    // validate-explain: ยอดติดลบทำไม่ได้ → อธิบาย + เสนอทางออก ไม่สร้าง proposal
+    if (newQty < 0) {
+      return JSON.stringify({ error: "ปรับสต็อกเป็นจำนวนติดลบไม่ได้", suggestion: "ต้องการตั้งเป็น 0 ไหม?" });
+    }
     const note = String(a.note ?? "").trim();
     const payload: Record<string, unknown> = { sku, newQty };
     if (note) payload.note = note;
@@ -645,6 +653,13 @@ const couponCreate: AiTool = {
     const payload: Record<string, unknown> = { code, type };
     const percent = Math.round(Number(a.percent));
     const valueBaht = Number(a.valueBaht);
+    // validate-explain: ค่าส่วนลดต้องสมเหตุสมผลก่อนเสนอ
+    if (type === "PERCENT" && a.percent !== undefined && Number.isFinite(percent) && (percent < 1 || percent > 100)) {
+      return JSON.stringify({ error: "ส่วนลดเป็นเปอร์เซ็นต์ต้องอยู่ระหว่าง 1-100", suggestion: "ระบุเปอร์เซ็นต์ใหม่ เช่น 10 หรือ 20" });
+    }
+    if (type === "FIXED" && a.valueBaht !== undefined && Number.isFinite(valueBaht) && valueBaht < 0) {
+      return JSON.stringify({ error: "มูลค่าส่วนลดติดลบไม่ได้", suggestion: "ระบุจำนวนบาทที่มากกว่า 0" });
+    }
     if (type === "PERCENT") {
       if (Number.isFinite(percent)) payload.percent = percent;
     } else if (Number.isFinite(valueBaht) && valueBaht >= 0) {
@@ -760,6 +775,64 @@ const recordExpense: AiTool = {
   },
 };
 
+// ── ask_clarify — ถามกลับพร้อมตัวเลือกให้กด เมื่อคำสั่งกำกวม (feedback เจ้าของ: ถามกลับเมื่อกำกวม) ──
+// def เท่านั้น — ไม่มีผลข้างเคียง · agent loop ใน service.ts ดักชื่อนี้ก่อนถึง execute แล้วจบเทิร์นด้วยคำถาม+ตัวเลือก
+const askClarify: AiTool = {
+  def: {
+    name: "ask_clarify",
+    description:
+      "ถามกลับผู้ใช้พร้อมตัวเลือกให้กด เมื่อคำสั่งกำกวมหรือขาดข้อมูลจำเป็น (เช่น ไม่บอกจำนวน ไม่บอกว่าบอร์ด/สินค้า/บิลไหน) — อย่าเดา ให้เรียกเครื่องมือนี้เพื่อให้ผู้ใช้เลือก ระบุ question (คำถามสั้น ๆ) และ options 2-4 ตัวเลือก แต่ละตัวมี label (ข้อความบนปุ่ม) และ value (ข้อความที่จะส่งกลับเมื่อผู้ใช้กดปุ่มนั้น)",
+    parameters: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "คำถามที่จะถามผู้ใช้" },
+        options: {
+          type: "array",
+          description: "ตัวเลือกให้ผู้ใช้กด (2-4 ตัว)",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", description: "ข้อความบนปุ่ม" },
+              value: { type: "string", description: "ข้อความที่ส่งกลับเมื่อกดปุ่มนี้" },
+            },
+            required: ["label", "value"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["question", "options"],
+      additionalProperties: false,
+    },
+  },
+  // ไม่มีผลข้างเคียง (service loop จัดการก่อนถึงตรงนี้) — คืน marker เผื่อถูกเรียกตรง
+  async execute() {
+    return JSON.stringify({ clarify: true });
+  },
+};
+
+// ── void_sale — เสนอยกเลิก (void) บิลขายที่ชำระแล้ว (destructive — ยืนยัน 2 ชั้น) ──
+const voidSale: AiTool = {
+  action: true,
+  def: {
+    name: "void_sale",
+    description:
+      "เสนอยกเลิก (void) บิลขายหน้าร้านที่ชำระแล้ว (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้ยืนยัน 2 ชั้นก่อน เพราะเป็นการลบถาวรที่ย้อนกลับไม่ได้) ระบุ saleId (รหัสบิล)",
+    parameters: {
+      type: "object",
+      properties: {
+        saleId: { type: "string", description: "รหัสบิลที่จะยกเลิก" },
+      },
+      required: ["saleId"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const saleId = String(asRecord(args).saleId ?? "").trim();
+    if (!saleId) return JSON.stringify({ error: "ต้องระบุรหัสบิลที่จะยกเลิก" });
+    return propose(ctx, "void_sale", `ยกเลิก (void) บิลรหัส ${saleId}`, { saleId });
+  },
+};
+
 // หาชื่อพนักงานของใบลา (best-effort สำหรับ summary) — พังก็คืน null ไม่โยน
 async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<string | null> {
   try {
@@ -787,7 +860,8 @@ export function toolRegistry(): AiTool[] {
     salesByDay,
     growthRecommendations,
     kbSearch,
-    // action / ทำแทน (10)
+    askClarify,
+    // action / ทำแทน
     inventoryReceive,
     hrDecideLeave,
     marketingCreateCampaign,
@@ -800,6 +874,7 @@ export function toolRegistry(): AiTool[] {
     kanbanCreateBoard,
     kanbanCreateCard,
     recordExpense,
+    voidSale,
   ];
 }
 
