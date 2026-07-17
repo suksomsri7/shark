@@ -48,6 +48,7 @@
     "qc:security-hotfix": "tsx scripts/qc-security-hotfix.mts",
     "qc:forms-notify": "tsx scripts/qc-forms-notify.mts",
     "qc:kanban-notify": "tsx scripts/qc-kanban-notify.mts",
+    "qc:kb-search": "tsx scripts/qc-kb-search.mts",
     "qc:queue-public": "tsx scripts/qc-queue-public.mts",
     "qc:shop-refund": "tsx scripts/qc-shop-refund.mts",
     "qc:ticket-cancel": "tsx scripts/qc-ticket-cancel.mts",

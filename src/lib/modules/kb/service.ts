@@ -78,32 +78,51 @@ function snippetAround(body: string, query: string): string {
   return out;
 }
 
-// ── ค้นคลังความรู้ — keyword ใน title+body (case-insensitive) เฉพาะที่เปิดใช้ ──
-//    query ว่าง → [] · title-hit มาก่อน body-hit · snippet รอบคำที่เจอ ≤200
+// ── ค้นคลังความรู้ — keyword fuzzy: แตกคำถามเป็นคำ ๆ แล้ว match "คำใดคำหนึ่ง" (OR)
+//    จัดอันดับตามจำนวนคำที่ตรง (title ถ่วง ×3) → ลูกค้าถามด้วยคำไม่ตรงเป๊ะก็เจอ
+//    เดิม: contains ทั้ง query (exact substring) → ถามผิดคำนิดเดียวก็ไม่เจอ AI ตอบมั่ว
+//    query ว่าง → [] · snippet รอบคำแรกที่เจอ ≤200
 export async function searchKb(ctx: Ctx, query: string, take = 20): Promise<SearchHit[]> {
   const q = (query ?? "").trim();
   if (!q) return [];
+  // แตกเป็นคำ (เว้นวรรค) + ตัดคำสั้น <2 · คงคำเต็มไว้ด้วยเผื่อวลี
+  const tokens = [...new Set([q, ...q.split(/\s+/)].map((t) => t.trim()).filter((t) => t.length >= 2))];
+  const terms = tokens.length ? tokens : [q];
+
   const rows = await tenantDb(ctx).kbArticle.findMany({
     where: {
       active: true,
-      OR: [
-        { title: { contains: q, mode: "insensitive" } },
-        { body: { contains: q, mode: "insensitive" } },
-      ],
+      OR: terms.flatMap((t) => [
+        { title: { contains: t, mode: "insensitive" as const } },
+        { body: { contains: t, mode: "insensitive" as const } },
+      ]),
     },
     orderBy: [{ updatedAt: "desc" }],
-    take: Math.max(take, 1) * 3,
+    take: Math.max(take, 1) * 5,
   });
-  const ql = q.toLowerCase();
-  const ranked = rows
-    .map((r) => ({ r, titleHit: r.title.toLowerCase().includes(ql) }))
-    .sort((a, b) => Number(b.titleHit) - Number(a.titleHit));
-  return ranked.slice(0, take).map(({ r }) => ({
-    id: r.id,
-    title: r.title,
-    snippet: snippetAround(r.body, q),
-    category: r.category,
-  }));
+
+  // ให้คะแนน: คำที่ตรงใน title ×3 + ใน body ×1 (นับคำที่ต่างกัน) → เรียงมาก→น้อย
+  const scored = rows
+    .map((r) => {
+      const tl = r.title.toLowerCase();
+      const bl = r.body.toLowerCase();
+      let score = 0;
+      for (const t of terms) {
+        const tt = t.toLowerCase();
+        if (tl.includes(tt)) score += 3;
+        else if (bl.includes(tt)) score += 1;
+      }
+      return { r, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || b.r.updatedAt.getTime() - a.r.updatedAt.getTime());
+
+  // snippet รอบคำแรกที่ทำให้เจอ (คำที่ยาวสุดก่อน — เจาะจงกว่า)
+  const bestTerm = [...terms].sort((a, b) => b.length - a.length);
+  return scored.slice(0, take).map(({ r }) => {
+    const hit = bestTerm.find((t) => r.body.toLowerCase().includes(t.toLowerCase())) ?? q;
+    return { id: r.id, title: r.title, snippet: snippetAround(r.body, hit), category: r.category };
+  });
 }
 
 // ── หาบทความรายตัว (สำหรับหน้าแก้ไข) ──
