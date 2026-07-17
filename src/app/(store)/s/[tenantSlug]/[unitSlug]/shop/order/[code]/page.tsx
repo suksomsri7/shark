@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { resolveUnit, getOrderByCode, promptpayForOrder } from "@/lib/modules/shop/service";
+import { getShipmentForOrder } from "@/lib/delivery/service";
+import { ADAPTERS } from "@/lib/delivery/adapters";
 import { PromptPayQr } from "@/components/PromptPayQr";
 
 const baht = (satang: number) => (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 0 });
@@ -9,6 +11,13 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   PENDING_PAYMENT: { label: "รอชำระเงิน", cls: "bg-amber-100 text-amber-800" },
   PAID: { label: "ชำระเงินแล้ว", cls: "bg-green-100 text-green-800" },
   CANCELLED: { label: "ยกเลิกแล้ว", cls: "bg-gray-200 text-gray-700" },
+};
+
+const SHIP_STATUS: Record<string, { label: string; cls: string }> = {
+  PREPARING: { label: "กำลังเตรียมจัดส่ง", cls: "bg-amber-100 text-amber-800" },
+  SHIPPED: { label: "จัดส่งแล้ว", cls: "bg-blue-100 text-blue-800" },
+  DELIVERED: { label: "ถึงผู้รับแล้ว", cls: "bg-green-100 text-green-800" },
+  CANCELLED: { label: "ยกเลิกการจัดส่ง", cls: "bg-gray-200 text-gray-700" },
 };
 
 // หน้าสถานะออเดอร์ + QR PromptPay — /s/[tenantSlug]/[unitSlug]/shop/order/[code]
@@ -26,6 +35,7 @@ export default async function StoreShopOrderPage({
 
   const pp = order.status === "PENDING_PAYMENT" ? await promptpayForOrder(ctx, order.id) : null;
   const st = STATUS[order.status] ?? STATUS.PENDING_PAYMENT;
+  const shipment = order.status === "PAID" ? await getShipmentForOrder(ctx, order.id) : null;
 
   return (
     <main className="mx-auto w-full max-w-md flex-1 px-5 py-8">
@@ -77,6 +87,30 @@ export default async function StoreShopOrderPage({
 
       {order.status === "PAID" && (
         <p className="text-center text-sm text-green-700">รับชำระเงินเรียบร้อยแล้ว ขอบคุณค่ะ 🎉</p>
+      )}
+
+      {/* การจัดส่ง — เมื่อร้านสร้างใบจัดส่งแล้ว */}
+      {shipment && (
+        <div className="card mt-4 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">การจัดส่ง</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                (SHIP_STATUS[shipment.status] ?? SHIP_STATUS.PREPARING).cls
+              }`}
+            >
+              {(SHIP_STATUS[shipment.status] ?? SHIP_STATUS.PREPARING).label}
+            </span>
+          </div>
+          <div className="text-sm text-[color:var(--color-muted)]">
+            {ADAPTERS[shipment.provider]?.label ?? shipment.provider}
+          </div>
+          {shipment.trackingNo && (
+            <div className="text-sm">
+              เลขพัสดุ: <span className="font-medium">{shipment.trackingNo}</span>
+            </div>
+          )}
+        </div>
       )}
       {order.status === "CANCELLED" && (
         <p className="text-center text-sm text-[color:var(--color-muted)]">ออเดอร์นี้ถูกยกเลิกแล้ว</p>
