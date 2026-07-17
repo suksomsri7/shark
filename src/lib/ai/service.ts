@@ -4,6 +4,7 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
 import { recordSample } from "./dataset";
+import { memoryBlock } from "./memory";
 import { buildSystemPrompt } from "./persona";
 import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage, type AiProvider } from "./provider";
 import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
@@ -93,10 +94,11 @@ export async function sendMessage(
     return { ok: false, error: "over_budget" };
   }
 
-  // persona ต้องรู้ชื่อกิจการ + ระบบที่เปิด
-  const [tenant, systems] = await Promise.all([
+  // persona ต้องรู้ชื่อกิจการ + ระบบที่เปิด + ความจำถาวรของร้าน (พ่วง Promise.all เดิม ไม่เพิ่ม round-trip แยก)
+  const [tenant, systems, memories] = await Promise.all([
     prisma.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId } }),
     db.appSystem.findMany({ select: { type: true, name: true }, orderBy: { createdAt: "asc" } }),
+    memoryBlock({ tenantId: ctx.tenantId }),
   ]);
 
   // บทสนทนา: ต่อของเดิมถ้าระบุ ไม่งั้นเปิดใหม่
@@ -116,7 +118,7 @@ export async function sendMessage(
   });
 
   const messages: AiChatMessage[] = [
-    { role: "system", content: buildSystemPrompt({ tenantName: tenant.name, systems }) },
+    { role: "system", content: buildSystemPrompt({ tenantName: tenant.name, systems, memories }) },
     ...trimHistory(
       history
         .reverse()
