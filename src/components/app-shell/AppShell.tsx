@@ -14,19 +14,28 @@ export function AppShell({
   items,
   soon,
   addHref,
+  helpUnread = 0,
+  aiUnread = 0,
 }: {
   tenantName: string;
   userEmail: string;
   items: NavItem[];
   soon: SoonItem[];
   addHref: string;
+  helpUnread?: number;
+  aiUnread?: number;
 }) {
   const [drawer, setDrawer] = useState(false);
   const [help, setHelp] = useState(false);
 
   return (
     <>
-      <Topbar tenantName={tenantName} onMenu={() => setDrawer(true)} onHelp={() => setHelp(true)} />
+      <Topbar
+        tenantName={tenantName}
+        onMenu={() => setDrawer(true)}
+        onHelp={() => setHelp(true)}
+        helpUnread={helpUnread}
+      />
       <NavDrawer
         open={drawer}
         onClose={() => setDrawer(false)}
@@ -37,7 +46,7 @@ export function AppShell({
         addHref={addHref}
       />
       <HelpSheet open={help} onClose={() => setHelp(false)} />
-      <AiDock />
+      <AiDock aiUnread={aiUnread} />
     </>
   );
 }

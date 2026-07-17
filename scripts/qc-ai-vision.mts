@@ -31,7 +31,7 @@ let tid = "";
 try {
   const provMod = (await import("@/lib/ai/provider")) as unknown as { AiChatMessage?: unknown };
   const aiSvc = (await import("@/lib/ai/service")) as unknown as { sendMessage: (c: any, i: any, d?: any) => Promise<any> };
-  const props = (await import("@/lib/ai/proposals")) as unknown as { executeProposal: (c: any, id: string, m: any) => Promise<any>; createProposal: (c: any, i: any) => Promise<any> };
+  const props = (await import("@/lib/ai/proposals")) as unknown as { executeProposal: (m: any, ctx: any, id: string) => Promise<any>; createProposal: (c: any, i: any) => Promise<any> };
   const tools = (await import("@/lib/ai/tools")) as unknown as { toolRegistry: () => { def: { name: string } }[] };
   const t = await prisma.tenant.create({ data: { name: "QC AIVISION", slug: `qc-av-${Date.now()}` } }); tid = t.id;
   const acc = await sys.createSystem(tid, "ACCOUNT", "บัญชี");
@@ -58,7 +58,8 @@ try {
   const conv = await prisma.aiConversation.create({ data: { tenantId: tid, title: "ใบเสร็จ" } });
   const p = await props.createProposal(ctx, { conversationId: conv.id, kind: "record_expense", summary: "บันทึกค่าใช้จ่าย ร้านวัสดุ 500 บาท", payload: { vendor: "ร้านวัสดุ ก", note: "ซื้อของใช้สำนักงาน", amountSatang: 50000, date: "2026-07-17" } });
   const before = await prisma.accountDocument.count({ where: { tenantId: tid } });
-  const ex = await props.executeProposal({ tenantId: tid, role: "OWNER", unitAccess: [], permissions: {}, userId: "own-1" }, p.id, { role: "OWNER", unitAccess: [], permissions: {}, userId: "own-1" });
+  const OWNER = { role: "OWNER", unitAccess: [] as string[], permissions: {}, userId: "own-1" };
+  const ex = await props.executeProposal(OWNER, ctx, p.id);
   const after = await prisma.accountDocument.count({ where: { tenantId: tid } });
   chk("AV-3.2", "execute record_expense → AccountDocument EXPENSE เกิด (เซฟใบเสร็จเข้าบัญชีจริง)", (ex?.ok === true || ex?.executed === true || after > before) && after === before + 1, "+1 doc", `${before}→${after}`);
   chk("AV-3.3", "เอกสารเป็นค่าใช้จ่าย (docType EXPENSE) ยอด 500", await (async () => { const d = await prisma.accountDocument.findFirst({ where: { tenantId: tid }, orderBy: { createdAt: "desc" } }); return d?.docType === "EXPENSE" && d?.grandTotal === 50000; })(), "EXPENSE/50000", "?");

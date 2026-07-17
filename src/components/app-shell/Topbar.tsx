@@ -9,10 +9,12 @@ export function Topbar({
   tenantName,
   onMenu,
   onHelp,
+  helpUnread = 0,
 }: {
   tenantName: string;
   onMenu: () => void;
   onHelp: () => void;
+  helpUnread?: number;
 }) {
   return (
     <header className="fixed inset-x-0 top-0 z-40 h-14 bg-[color:var(--color-surface)] shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
@@ -34,10 +36,15 @@ export function Topbar({
         <button
           type="button"
           onClick={onHelp}
-          aria-label="ศูนย์ช่วยเหลือ"
+          aria-label={helpUnread > 0 ? `ศูนย์ช่วยเหลือ (${helpUnread} ข้อความใหม่)` : "ศูนย์ช่วยเหลือ"}
           title="ศูนย์ช่วยเหลือ"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[color:var(--color-accent)] hover:bg-[color:var(--color-surface-2)]"
+          className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[color:var(--color-accent)] hover:bg-[color:var(--color-surface-2)]"
         >
+          {helpUnread > 0 && (
+            <span className="absolute right-1 top-1 flex min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-[18px] text-white">
+              {helpUnread > 9 ? "9+" : helpUnread}
+            </span>
+          )}
           {/* ไอคอนหูฟัง support ตาม ref เจ้าของ: บับเบิลแชททึบ 3 จุดขาว + คาดหูฟัง + ก้านไมค์ — สีดำ ไม่มีวงกรอบ */}
           <svg aria-hidden viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4.2 12.5a7.8 7.8 0 0 1 15.6 0" />

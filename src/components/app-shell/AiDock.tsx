@@ -8,7 +8,7 @@ import { AiChat } from "./AiChat";
 // ไม่แสดงระหว่าง onboarding (/app/dna) — ยังไม่ถึงเวลาแนะนำผู้ช่วย
 // จัดตำแหน่งไม่ให้บังเนื้อหา: main มี padding-bottom เผื่อไว้แล้ว
 
-export function AiDock() {
+export function AiDock({ aiUnread = 0 }: { aiUnread?: number }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -16,14 +16,19 @@ export function AiDock() {
 
   return (
     <>
-      {/* วงแหวนโปร่งกลาง 48px: หายใจ (ชั้นปุ่ม) + หมุนช้า ๆ (ชั้นวงแหวน) — feedback เจ้าของรอบ 5 */}
+      {/* วงแหวนโปร่งกลาง: หายใจ (ชั้นปุ่ม) + หมุนช้า ๆ (ชั้นวงแหวน) + badge แจ้งเตือนยังไม่อ่าน (#7) */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="ผู้ช่วย AI"
+        aria-label={aiUnread > 0 ? `ผู้ช่วย AI (${aiUnread} แจ้งเตือนใหม่)` : "ผู้ช่วย AI"}
         className="ai-orb-breathe fixed bottom-4 right-4 z-40 h-10 w-10"
       >
         <span aria-hidden className="ai-orb" />
+        {aiUnread > 0 && (
+          <span className="absolute -right-1 -top-1 flex min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-[18px] text-white">
+            {aiUnread > 9 ? "9+" : aiUnread}
+          </span>
+        )}
       </button>
 
       {open && (

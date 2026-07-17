@@ -111,26 +111,10 @@ export async function rejectProposal(ctx: Ctx, id: string): Promise<boolean> {
 
 // ── ลงมือทำจริง — อ่าน proposal จาก DB, ตรวจสิทธิ์คนกด, เรียก service เดิม ──
 export async function executeProposal(
-  a: MembershipCtx | (Ctx & Partial<MembershipCtx>),
-  b: Ctx | string,
-  c: string | MembershipCtx,
+  m: MembershipCtx,
+  ctx: Ctx,
+  id: string,
 ): Promise<{ ok: boolean; note: string }> {
-  // รองรับ 2 ลำดับอาร์กิวเมนต์ (ตรวจจาก shape ให้ทน oracle ต่างรุ่น):
-  //   (m, ctx, id)              — actions.ts + qc-ai-proposals
-  //   (ctxWithMembership, id, m) — qc-ai-vision
-  const parts = [a, b, c] as unknown[];
-  const id = parts.find((x): x is string => typeof x === "string") ?? "";
-  const tenantHolder = parts.find(
-    (x): x is Ctx => !!x && typeof x === "object" && typeof (x as Ctx).tenantId === "string",
-  );
-  const m =
-    (parts.find(
-      (x): x is MembershipCtx =>
-        !!x && typeof x === "object" && typeof (x as MembershipCtx).role === "string",
-    ) as MembershipCtx | undefined) ?? (tenantHolder as unknown as MembershipCtx);
-  if (!id || !tenantHolder) return { ok: false, note: "พารามิเตอร์ไม่ครบ" };
-  const ctx: Ctx = { tenantId: tenantHolder.tenantId };
-
   const row = await tenantDb(ctx).aiProposal.findFirst({ where: { id } });
   if (!row) return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
 
