@@ -36,6 +36,7 @@ export default async function PosSalesPage({ params }: { params: Promise<{ id: s
       <ModuleTabs
         items={[
           { href: `/app/sys/${id}`, label: "ภาพรวม" },
+          { href: `/app/sys/${id}/pos/register`, label: "ขาย" },
           { href: `/app/sys/${id}/pos/sales`, label: "ประวัติบิล" },
         ]}
       />

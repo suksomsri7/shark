@@ -30,6 +30,7 @@
     "wo:claim": "tsx scripts/wo.mts claim",
     "wo:done": "tsx scripts/wo.mts done",
     "qc:pos": "tsx scripts/qc-pos-account.mts",
+    "qc:pos-register": "tsx scripts/qc-pos-register.mts",
     "qc:dna": "tsx scripts/qc-dna.mts",
     "qc:restaurant-money": "tsx scripts/qc-restaurant-money.mts",
     "qc:reward": "tsx scripts/qc-reward.mts",

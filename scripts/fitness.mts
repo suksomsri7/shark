@@ -223,7 +223,7 @@ chk(
 // ═══════════════════════════════════════════════════════════════
 console.log("\n── F2/F5: ขอบเขตโมดูล (baseline ratchet — ห้ามเพิ่ม) ──");
 
-const BASELINE = { f5RawPrisma: 40 }; // 34 (2026-07-15) +approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
+const BASELINE = { f5RawPrisma: 41 }; // 34 (2026-07-15) +approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B · กรอง tenantId ตรง + oracle cross-tenant 24/24) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
 
 const moduleDir = join(ROOT, "src", "lib", "modules");
 const moduleNames = existsSync(moduleDir)
@@ -262,6 +262,8 @@ const ALLOWED_EDGES = new Set([
   // — Fable อนุมัติ 2026-07-17 (RUN 2)
   "shop→pos",
   "shop→inventory",
+  // chokepoint (WO-Wave1-B): หน้าขาย POS อ่านสินค้าในคลังมาเป็น catalog (เหมือน shop→inventory)
+  "pos→inventory",
   "shop→system",  // resolve ระบบ POS/INVENTORY ที่ผูก unit (เหมือน restaurant→system)
   // chokepoint (WO-0054): ฟอร์มส่ง lead เข้า CRM ผ่าน crm facade + resolve ระบบ CRM
   "forms→crm",

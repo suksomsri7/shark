@@ -196,9 +196,16 @@ async function PosContent({ systemId, tenantId }: { systemId: string; tenantId: 
       <ModuleTabs
         items={[
           { href: `/app/sys/${systemId}`, label: "ภาพรวม" },
+          { href: `/app/sys/${systemId}/pos/register`, label: "ขาย" },
           { href: `/app/sys/${systemId}/pos/sales`, label: "ประวัติบิล" },
         ]}
       />
+      <Link
+        href={`/app/sys/${systemId}/pos/register`}
+        className="btn btn-primary min-h-[52px] text-base"
+      >
+        เปิดหน้าขาย
+      </Link>
       <Section title="ยอดขายรวม">
         <div className="text-sm text-[color:var(--color-muted)]">
           รวม <MoneyText satang={total} /> · {paidAll._count} บิลที่ชำระแล้ว
