@@ -126,3 +126,32 @@ model AiScheduledTask {
   @@index([tenantId, active])
   @@index([active, hourBkk])
 }
+
+// AI Feedback (self-improving item 3) — ปุ่ม 👍👎 ใต้คำตอบ AI → ข้อมูลติดป้ายสำหรับวัดคุณภาพ+เทรน
+model AiFeedback {
+  id             String   @id @default(cuid())
+  tenantId       String
+  conversationId String?
+  userText       String // คำถามของ user (anonymized)
+  replyText      String // คำตอบ AI (anonymized)
+  rating         String // UP | DOWN
+  note           String? // เหตุผลถ้ากด 👎
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([rating, createdAt])
+}
+
+// AI Prompt Tweak (self-improving item 4) — ข้อความปรับปรุงระบบ AI ระดับแพลตฟอร์ม (ทุกร้าน)
+// วงจร: วิเคราะห์เคสพลาด → เสนอ (PENDING) → แอดมิน backoffice อนุมัติ (APPROVED=ใช้จริง) / ปฏิเสธ
+model AiPromptTweak {
+  id             String   @id @default(cuid())
+  content        String // คำสั่งเสริมที่จะแทรกเข้า system prompt
+  rationale      String // เหตุผล (สรุปจากเคสที่พลาด)
+  status         String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  decidedById    String? // PlatformUser.id
+  decidedAt      DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([status, createdAt])
+}

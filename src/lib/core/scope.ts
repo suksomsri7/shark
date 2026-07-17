@@ -79,7 +79,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AiTrainingSample: tenant,
   AiMemory: tenant,
   AiPlan: tenant,
-  AiScheduledTask: tenant, // Phase 3.5 — ข้อเสนอการกระทำ (WO-0020)
+  AiScheduledTask: tenant,
+  AiFeedback: tenant,
+  AiPromptTweak: { axis: "platform", why: "ปรับ prompt AI ระดับแพลตฟอร์ม (ทุกร้าน) — เข้าผ่าน src/lib/platform เท่านั้น" }, // Phase 3.5 — ข้อเสนอการกระทำ (WO-0020)
   // Observability (WO-0041) — logger กลางเขียน · backoffice อ่าน (ข้ามร้านโดยเจตนา)
   OpsEvent: { axis: "platform", why: "ops log ข้ามร้าน — เขียนผ่าน core/ops.ts อ่านทาง backoffice" },
   OpsAlertState: { axis: "platform", why: "สถานะ throttle alert — ไม่ใช่ข้อมูลร้าน" },
