@@ -17,6 +17,7 @@ import { listCustomers as memberListCustomers } from "@/lib/modules/member/servi
 import { searchKb as kbSearchArticles } from "@/lib/modules/kb/service";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { createProposal, type ProposalKind } from "./proposals";
+import { createPlan } from "./plans";
 import { dayKeyBangkok } from "./rules";
 import { rememberFact, forgetMemory, listMemories } from "./memory";
 
@@ -773,6 +774,68 @@ const recordExpense: AiTool = {
     const baht = (amountSatang / 100).toLocaleString("th-TH");
     const summary = `บันทึกค่าใช้จ่าย${vendor ? ` "${vendor}"` : ""} ${baht} บาท (${note})`;
     return propose(ctx, "record_expense", summary, payload);
+  },
+};
+
+// ── propose_plan — เสนอ "แผนหลายขั้น" ในครั้งเดียว (AI Plan L2 · agentic-2) ──
+// ใช้เมื่อผู้ใช้สั่งงานหลายอย่างต่อเนื่องในคำสั่งเดียว → รวบทุกขั้นเป็นแผนเดียว ผู้ใช้ยืนยันครั้งเดียว ทำต่อเนื่อง
+// แต่ละ step.kind ต้องเป็นชนิดงานจริงเดียวกับที่เครื่องมือ 'เสนอ' อื่น ๆ ใช้ (inventory_receive, pos_create_sale, ฯลฯ)
+const proposePlan: AiTool = {
+  action: true,
+  def: {
+    name: "propose_plan",
+    description:
+      "เสนอแผนงานหลายขั้นในครั้งเดียว เมื่อผู้ใช้สั่งงานหลายอย่างต่อเนื่องในคำสั่งเดียว (เช่น 'สร้างสินค้า แล้วรับเข้า แล้วปรับสต็อก') — ยังไม่ทำทันที สร้างแผนให้ผู้ใช้เห็นทุกขั้นแล้วกดยืนยันครั้งเดียว ระบบจะทำต่อเนื่องและรายงานทีละขั้น · ระบุ title (ชื่อแผนสั้น ๆ ภาษาไทย) และ steps เป็นลำดับขั้น (สูงสุด 8 ขั้น) แต่ละขั้นมี kind (ชนิดงาน เช่น inventory_create_item, inventory_receive, inventory_adjust, pos_create_sale, member_create — ใช้ชื่อเดียวกับเครื่องมือเสนอรายการเดี่ยว), summary (คำอธิบายขั้นนั้นภาษาไทย) และ payload (ข้อมูลของขั้นนั้น รูปแบบเดียวกับที่เครื่องมือเสนอรายการเดี่ยวส่งเข้า service)",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "ชื่อแผนสั้น ๆ ภาษาไทย เช่น 'ตั้งสต็อกกาแฟ'" },
+        steps: {
+          type: "array",
+          description: "ลำดับขั้นของแผน (1-8 ขั้น) ทำจากบนลงล่างต่อเนื่อง",
+          items: {
+            type: "object",
+            properties: {
+              kind: { type: "string", description: "ชนิดงานของขั้นนี้ (เช่น inventory_create_item, inventory_receive, pos_create_sale)" },
+              summary: { type: "string", description: "คำอธิบายขั้นนี้ภาษาไทย" },
+              payload: { type: "object", description: "ข้อมูลของขั้นนี้ (โครงเดียวกับเครื่องมือเสนอรายการเดี่ยวชนิดเดียวกัน)", additionalProperties: true },
+            },
+            required: ["kind", "summary", "payload"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["title", "steps"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    if (!ctx.conversationId) {
+      return JSON.stringify({ error: "ต้องอยู่ในบทสนทนาก่อนจึงจะเสนอแผนได้" });
+    }
+    const a = asRecord(args);
+    const title = String(a.title ?? "").trim();
+    if (!title) return JSON.stringify({ error: "ต้องระบุชื่อแผน" });
+    const rawSteps = Array.isArray(a.steps) ? a.steps : [];
+    if (rawSteps.length === 0) return JSON.stringify({ error: "แผนต้องมีอย่างน้อย 1 ขั้น" });
+    const steps = rawSteps.map((raw) => {
+      const s = asRecord(raw);
+      return {
+        kind: String(s.kind ?? "").trim(),
+        summary: String(s.summary ?? "").trim(),
+        payload: asRecord(s.payload),
+      };
+    });
+    try {
+      const p = await createPlan(
+        { tenantId: ctx.tenantId },
+        { conversationId: ctx.conversationId, title, steps },
+      );
+      // waiting: user_confirm_plan = ยังไม่ทำ ต้องรอ user กด "ทำทั้งหมด" บนการ์ดแผน
+      return JSON.stringify({ planId: p.id, title, ขั้นตอน: steps.length, waiting: "user_confirm_plan" });
+    } catch (e) {
+      return JSON.stringify({ error: e instanceof Error ? e.message : "สร้างแผนไม่สำเร็จ" });
+    }
   },
 };
 
@@ -1593,6 +1656,7 @@ export function toolRegistry(): AiTool[] {
     growthRecommendations,
     kbSearch,
     askClarify,
+    proposePlan,
     // Phase B1 read — เงินเดิน (นัดวันนี้ / คิวที่รอ / ออเดอร์รอชำระ)
     todayAppointments,
     queueWaiting,

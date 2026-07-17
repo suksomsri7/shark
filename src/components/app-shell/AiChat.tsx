@@ -2,12 +2,16 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
+  confirmPlanAction,
   confirmProposalAction,
   listPendingProposalsAction,
   loadAiChatAction,
+  loadPlansAction,
+  rejectPlanAction,
   rejectProposalAction,
   sendAiMessageAction,
   type AiChatState,
+  type PendingPlan,
   type PendingProposal,
 } from "@/lib/ai/actions";
 
@@ -30,6 +34,7 @@ export function AiChat() {
   const [state, setState] = useState<AiChatState | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [proposals, setProposals] = useState<PendingProposal[]>([]);
+  const [plans, setPlans] = useState<PendingPlan[]>([]);
   const [text, setText] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -72,16 +77,17 @@ export function AiChat() {
         setState(s);
         setMessages(s.messages);
         setProposals(s.pendingProposals);
+        setPlans(s.pendingPlans);
       })
       .catch(() => {
         // โหลดพลาด/ช้า → เปิดแชทเปล่าให้ใช้งานได้เลย (ไม่ค้าง "กำลังโหลด" ตลอด)
-        setState({ enabled: true, conversationId: null, messages: [], pendingProposals: [] });
+        setState({ enabled: true, conversationId: null, messages: [], pendingProposals: [], pendingPlans: [] });
       });
   }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messages, proposals, pending]);
+  }, [messages, proposals, plans, pending]);
 
   // override = ส่งข้อความสำเร็จรูป (กดปุ่มตัวเลือกจาก ask_clarify) — ไม่มีรูปแนบ
   function send(override?: string) {
@@ -112,9 +118,13 @@ export function AiChat() {
           ...m,
           { id: `a-${m.length}`, role: "ASSISTANT", content: res.reply, clarify: res.clarify },
         ]);
-        // LLM อาจเสนอ proposal ใหม่ระหว่างตอบ → refresh การ์ดยืนยันเสมอ
-        const fresh = await listPendingProposalsAction(res.conversationId);
+        // LLM อาจเสนอ proposal/แผนใหม่ระหว่างตอบ → refresh การ์ดยืนยันเสมอ
+        const [fresh, freshPlans] = await Promise.all([
+          listPendingProposalsAction(res.conversationId),
+          loadPlansAction(res.conversationId),
+        ]);
         setProposals(fresh);
+        setPlans(freshPlans);
       } else {
         setError(res.message);
       }
@@ -162,6 +172,52 @@ export function AiChat() {
     startTransition(async () => {
       const res = await rejectProposalAction(id);
       setProposals((ps) => ps.filter((p) => p.id !== id));
+      setArmedId((a) => (a === id ? null : a));
+      setNotice(res.note);
+      setBusyId(null);
+    });
+  }
+
+  // กดปุ่ม "ทำทั้งหมด" บนการ์ดแผน — hasDestructive ต้อง 2 จังหวะ (arm ก่อน กดซ้ำจึงทำจริง)
+  function onConfirmPlan(p: PendingPlan) {
+    if (busyId) return;
+    if (p.hasDestructive && armedId !== p.id) {
+      setArmedId(p.id);
+      setError(null);
+      setNotice(null);
+      return;
+    }
+    doConfirmPlan(p.id, p.hasDestructive);
+  }
+
+  function doConfirmPlan(id: string, confirm2x: boolean) {
+    setBusyId(id);
+    setError(null);
+    setNotice(null);
+    startTransition(async () => {
+      const res = await confirmPlanAction(id, confirm2x ? { confirm2x: true } : undefined);
+      // server ยังกันชั้นสอง (เผื่อ flag ฝั่ง client ไม่ตรง) → arm ไว้ ไม่ลบการ์ด
+      if (res.needsSecondConfirm) {
+        setArmedId(id);
+        setBusyId(null);
+        return;
+      }
+      setPlans((ps) => ps.filter((p) => p.id !== id));
+      setArmedId((a) => (a === id ? null : a));
+      if (res.ok) setNotice(res.note);
+      else setError(res.note);
+      setBusyId(null);
+    });
+  }
+
+  function rejectPlanCard(id: string) {
+    if (busyId) return;
+    setBusyId(id);
+    setError(null);
+    setNotice(null);
+    startTransition(async () => {
+      const res = await rejectPlanAction(id);
+      setPlans((ps) => ps.filter((p) => p.id !== id));
       setArmedId((a) => (a === id ? null : a));
       setNotice(res.note);
       setBusyId(null);
@@ -286,6 +342,68 @@ export function AiChat() {
                 type="button"
                 onClick={() => reject(p.id)}
                 disabled={busyId === p.id}
+                className="btn btn-ghost min-h-[44px] disabled:opacity-50"
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* การ์ดแผนหลายขั้น — แสดง title + ทุกขั้น + ปุ่มยืนยันครั้งเดียว "ทำทั้งหมด" · hasDestructive = 2 จังหวะแดง */}
+      {plans.map((pl) => {
+        const destructive = pl.hasDestructive;
+        const armed = armedId === pl.id;
+        const confirmLabel =
+          busyId === pl.id
+            ? "กำลังทำ…"
+            : destructive
+              ? armed
+                ? "แน่ใจนะ? มีลบถาวร กดอีกครั้ง"
+                : "ทำทั้งหมด (มีลบ/ยกเลิก)"
+              : "ทำทั้งหมด";
+        return (
+          <div
+            key={pl.id}
+            className="rounded-xl border bg-[color:var(--color-surface-2)] p-3"
+            style={destructive ? { borderColor: "var(--color-danger)" } : { borderColor: "var(--color-ink)" }}
+          >
+            <div
+              className="text-xs font-medium"
+              style={destructive ? { color: "var(--color-danger)" } : { color: "var(--color-muted)" }}
+            >
+              {destructive ? "ผู้ช่วยขอยืนยันแผน (มีรายการลบ/ยกเลิกถาวร)" : "ผู้ช่วยเสนอแผนงาน — ยืนยันครั้งเดียว ทำต่อเนื่อง"}
+            </div>
+            <p className="mt-1 text-sm font-medium">{pl.title}</p>
+            <ol className="mt-2 flex flex-col gap-1">
+              {pl.steps.map((st, i) => (
+                <li key={i} className="flex gap-2 text-sm">
+                  <span className="text-[color:var(--color-muted)]">{i + 1}.</span>
+                  <span>{st.summary}</span>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => onConfirmPlan(pl)}
+                disabled={busyId === pl.id}
+                className={`btn min-h-[44px] flex-1 disabled:opacity-50 ${destructive ? "" : "btn-primary"}`}
+                style={
+                  destructive && armed
+                    ? { background: "var(--color-danger)", color: "var(--color-surface)" }
+                    : destructive
+                      ? { borderColor: "var(--color-danger)", color: "var(--color-danger)" }
+                      : undefined
+                }
+              >
+                {confirmLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => rejectPlanCard(pl.id)}
+                disabled={busyId === pl.id}
                 className="btn btn-ghost min-h-[44px] disabled:opacity-50"
               >
                 ยกเลิก

@@ -4,6 +4,7 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
 import { aiEnabled, latestConversation, listMessages, sendMessage, type Clarify } from "./service";
 import { executeProposal, listPendingProposals, rejectProposal } from "./proposals";
+import { executePlan, listPendingPlans, rejectPlan } from "./plans";
 
 // convention action = "ai.<entity>.<verb>" — OWNER/MANAGER ผ่าน · STAFF ต้องมี ai.chat.send หรือ ai.*
 function assertAiCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
@@ -25,11 +26,25 @@ function toRisk(v: unknown): "NORMAL" | "DESTRUCTIVE" {
   return v === "DESTRUCTIVE" ? "DESTRUCTIVE" : "NORMAL";
 }
 
+/** แผนหลายขั้นที่รอ user ยืนยัน (การ์ดแผนใต้แชท) · hasDestructive → ยืนยัน 2 จังหวะ */
+export type PendingPlanStep = { summary: string; kind: string };
+export type PendingPlan = { id: string; title: string; hasDestructive: boolean; steps: PendingPlanStep[] };
+
+// map stepsJson (Json) → รายการขั้นแบบแคบสำหรับ UI (best-effort · โครงผิด = ข้าม)
+function toPlanSteps(v: unknown): PendingPlanStep[] {
+  if (!Array.isArray(v)) return [];
+  return v.map((s) => {
+    const o = (s ?? {}) as Record<string, unknown>;
+    return { summary: String(o.summary ?? ""), kind: String(o.kind ?? "") };
+  });
+}
+
 export type AiChatState = {
   enabled: boolean;
   conversationId: string | null;
   messages: { id: string; role: "USER" | "ASSISTANT"; content: string }[];
   pendingProposals: PendingProposal[];
+  pendingPlans: PendingPlan[];
 };
 
 /** MembershipCtx ของคนกด — ใช้ตรวจสิทธิ์จริง ณ ตอน execute proposal */
@@ -47,16 +62,25 @@ export async function loadAiChatAction(): Promise<AiChatState> {
   assertAiCan(auth, "ai.chat.send");
   const ctx = { tenantId: auth.active.tenantId };
   const conv = await latestConversation(ctx);
-  // โหลด messages + proposals พร้อมกัน (เดิม sequential — ลด round-trip)
-  const [messages, pending] = conv
-    ? await Promise.all([listMessages(ctx, conv.id), listPendingProposals(ctx, conv.id)])
-    : [[], []];
+  // โหลด messages + proposals + plans พร้อมกัน (ลด round-trip)
+  const [messages, pending, plans] = conv
+    ? await Promise.all([listMessages(ctx, conv.id), listPendingProposals(ctx, conv.id), listPendingPlans(ctx, conv.id)])
+    : [[], [], []];
   return {
     enabled: aiEnabled(),
     conversationId: conv?.id ?? null,
     messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content })),
     pendingProposals: pending.map((p) => ({ id: p.id, summary: p.summary, risk: toRisk(p.risk) })),
+    pendingPlans: plans.map((p) => ({ id: p.id, title: p.title, hasDestructive: p.hasDestructive, steps: toPlanSteps(p.stepsJson) })),
   };
+}
+
+/** ดึงแผนที่รอยืนยันของบทสนทนา (refresh หลังส่งข้อความทุกครั้ง — LLM อาจเสนอแผนใหม่) */
+export async function loadPlansAction(conversationId: string): Promise<PendingPlan[]> {
+  const auth = await requireTenant();
+  assertAiCan(auth, "ai.chat.send");
+  const plans = await listPendingPlans({ tenantId: auth.active.tenantId }, conversationId);
+  return plans.map((p) => ({ id: p.id, title: p.title, hasDestructive: p.hasDestructive, steps: toPlanSteps(p.stepsJson) }));
 }
 
 /** ดึงข้อเสนอที่รอยืนยันของบทสนทนา (refresh หลังส่งข้อความทุกครั้ง — LLM อาจสร้างใหม่) */
@@ -92,6 +116,48 @@ export async function rejectProposalAction(proposalId: string): Promise<Proposal
   const ctx = { tenantId: auth.active.tenantId };
   const ok = await rejectProposal(ctx, proposalId);
   return { ok, note: ok ? "ยกเลิกข้อเสนอแล้ว" : "ข้อเสนอนี้ถูกดำเนินการไปแล้ว" };
+}
+
+export type PlanResult = { ok: boolean; note: string; needsSecondConfirm?: boolean; doneCount?: number };
+
+/**
+ * ยืนยันแผน → ลงมือทำทุกขั้นต่อเนื่อง (ตรวจสิทธิ์คนกดต่อ step ภายใน executePlan)
+ * opts.confirm2x = ยืนยันชั้นที่สองของแผนที่มีรายการลบ/ยกเลิกถาวร (hasDestructive)
+ */
+export async function confirmPlanAction(
+  planId: string,
+  opts?: { confirm2x?: boolean },
+): Promise<PlanResult> {
+  const auth = await requireTenant();
+  const ctx = { tenantId: auth.active.tenantId };
+  try {
+    const res = await executePlan(membershipOf(auth), ctx, planId, opts);
+    if (res.needsSecondConfirm) {
+      return { ok: false, needsSecondConfirm: true, note: "แผนนี้มีรายการลบ/ยกเลิกถาวร ต้องยืนยันอีกครั้งก่อนทำจริง" };
+    }
+    if (res.ok) {
+      return { ok: true, doneCount: res.doneCount, note: `ทำครบทั้ง ${res.doneCount} ขั้นเรียบร้อยแล้ว` };
+    }
+    // ล้ม/ปิดไปแล้ว — สร้างข้อความไทยจากผลลัพธ์ที่มี
+    if (res.results.length === 0) {
+      return { ok: false, doneCount: 0, note: "แผนนี้ถูกดำเนินการหรือปิดไปแล้ว" };
+    }
+    const failedStep = res.results.find((r) => !r.ok);
+    const note = failedStep
+      ? `ทำได้ ${res.doneCount} ขั้น แล้วติดที่ "${failedStep.summary}": ${failedStep.note}`
+      : "ทำแผนไม่สำเร็จ";
+    return { ok: false, doneCount: res.doneCount, note };
+  } catch {
+    return { ok: false, note: "ทำแผนไม่สำเร็จชั่วคราว ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** ยกเลิกแผน (PENDING → REJECTED) */
+export async function rejectPlanAction(planId: string): Promise<PlanResult> {
+  const auth = await requireTenant();
+  const ctx = { tenantId: auth.active.tenantId };
+  const ok = await rejectPlan(ctx, planId);
+  return { ok, note: ok ? "ยกเลิกแผนแล้ว" : "แผนนี้ถูกดำเนินการไปแล้ว" };
 }
 
 export type SendAiResult =
