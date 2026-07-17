@@ -15,6 +15,7 @@ import { lowStock as invLowStock } from "@/lib/modules/inventory/service";
 import { pendingLeaves as hrPendingLeaves } from "@/lib/modules/hr/service";
 import { listCustomers as memberListCustomers } from "@/lib/modules/member/service";
 import { listRedemptions as rewardListRedemptions } from "@/lib/modules/reward/service";
+import { getCustomerPoints } from "@/lib/modules/point/service";
 import { searchKb as kbSearchArticles } from "@/lib/modules/kb/service";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { createProposal, type ProposalKind } from "./proposals";
@@ -1715,6 +1716,309 @@ const rentalActive: AiTool = {
 };
 
 // ══════════════════════════════════════════════════════════════════
+// Wave5-A read tools — เปิดตาให้ AI มองโมดูลที่เดิมไม่มี tool
+// (ร้านอาหาร / ตั๋วอีเวนต์ / การเงิน / ลูกค้ามุ่งหวัง / แต้ม / ตารางนัดล่วงหน้า)
+// ทุกตัว scope ด้วย tenantId ตรง ๆ (แบบ today_appointments/queue_waiting) — ไม่ throw ถ้าไม่มีข้อมูล
+// ══════════════════════════════════════════════════════════════════
+
+// วันแรกของเดือนปัจจุบัน (เวลาไทย) — ใช้ตัดช่วงสรุปการเงินเดือนนี้
+function monthStartBkk(): Date {
+  const key = dayKeyBangkok(new Date()); // YYYY-MM-DD (BKK)
+  return new Date(`${key.slice(0, 7)}-01T00:00:00+07:00`);
+}
+
+// ── W5-R1) restaurant_today — สรุปออเดอร์/ยอดขาย/โต๊ะที่เปิดของร้านอาหารวันนี้ ──
+const restaurantToday: AiTool = {
+  def: {
+    name: "restaurant_today",
+    description:
+      "สรุปร้านอาหารวันนี้ (ตามเวลาไทย) — จำนวนออเดอร์ ยอดขายรวมเป็นบาท และจำนวนโต๊ะที่ยังเปิดอยู่ · ใช้ตอบคำถามเช่น 'วันนี้ร้านอาหารขายไปเท่าไหร่' 'มีกี่ออเดอร์' 'โต๊ะเปิดอยู่กี่โต๊ะ'",
+    parameters: NO_ARGS,
+  },
+  async execute(ctx) {
+    const today = dayKeyBangkok(new Date());
+    const dayStart = new Date(`${today}T00:00:00+07:00`);
+    const [orderCount, openTables, revAgg] = await Promise.all([
+      prisma.restaurantOrder.count({ where: { tenantId: ctx.tenantId, bizDate: today, status: { not: "CANCELLED" } } }),
+      prisma.tableSession.count({ where: { tenantId: ctx.tenantId, status: "OPEN" } }),
+      prisma.posSale.aggregate({
+        where: { tenantId: ctx.tenantId, sourceModule: "RESTAURANT", status: "PAID", createdAt: { gte: dayStart } },
+        _sum: { grandTotalSatang: true },
+      }),
+    ]);
+    if (orderCount === 0 && openTables === 0 && !revAgg._sum.grandTotalSatang) {
+      return JSON.stringify({ วันที่: today, ข้อความ: "ยังไม่มีออเดอร์ร้านอาหารวันนี้" });
+    }
+    return JSON.stringify({
+      วันที่: today,
+      จำนวนออเดอร์วันนี้: orderCount,
+      ยอดขายวันนี้บาท: Math.round(revAgg._sum.grandTotalSatang ?? 0) / 100,
+      โต๊ะที่เปิดอยู่: openTables,
+    });
+  },
+};
+
+// ── W5-R2) ticket_event_sales — ยอดขายตั๋ว/เช็คอิน ต่ออีเวนต์ (param eventId optional) ──
+const ticketEventSales: AiTool = {
+  def: {
+    name: "ticket_event_sales",
+    description:
+      "สรุปยอดขายตั๋วงานอีเวนต์ — จำนวนตั๋วที่ขาย/เช็คอิน และยอดเงินต่ออีเวนต์ · ไม่ระบุ eventId = สรุปทุกอีเวนต์ที่ยังไม่ถูกเก็บ · ใช้ตอบเช่น 'ขายตั๋วไปเท่าไหร่แล้ว' 'อีเวนต์นี้เช็คอินกี่คน'",
+    parameters: {
+      type: "object",
+      properties: {
+        eventId: { type: "string", description: "รหัสอีเวนต์ (ถ้าต้องการเจาะจงงานเดียว)" },
+      },
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const eventId = String(asRecord(args).eventId ?? "").trim();
+    const events = await prisma.ticketEvent.findMany({
+      where: { tenantId: ctx.tenantId, archivedAt: null, ...(eventId ? { id: eventId } : {}) },
+      orderBy: { startAt: "desc" },
+      take: 20,
+      select: { id: true, name: true, startAt: true, status: true },
+    });
+    if (events.length === 0) {
+      return JSON.stringify({ ข้อความ: eventId ? "ไม่พบอีเวนต์นี้" : "ยังไม่มีอีเวนต์" });
+    }
+    const ids = events.map((e) => e.id);
+    const [paidAgg, admValid, admChecked] = await Promise.all([
+      prisma.ticketOrder.groupBy({
+        by: ["eventId"],
+        where: { tenantId: ctx.tenantId, eventId: { in: ids }, status: "PAID" },
+        _sum: { totalSatang: true },
+        _count: true,
+      }),
+      prisma.ticketAdmission.groupBy({
+        by: ["eventId"],
+        where: { tenantId: ctx.tenantId, eventId: { in: ids }, status: { in: ["VALID", "CHECKED_IN"] } },
+        _count: true,
+      }),
+      prisma.ticketAdmission.groupBy({
+        by: ["eventId"],
+        where: { tenantId: ctx.tenantId, eventId: { in: ids }, status: "CHECKED_IN" },
+        _count: true,
+      }),
+    ]);
+    const paidMap = new Map(paidAgg.map((r) => [r.eventId, { revenue: r._sum.totalSatang ?? 0, orders: r._count }]));
+    const validMap = new Map(admValid.map((r) => [r.eventId, r._count]));
+    const checkedMap = new Map(admChecked.map((r) => [r.eventId, r._count]));
+    return JSON.stringify({
+      อีเวนต์: events.map((e) => ({
+        อีเวนต์: e.name,
+        วันที่: safeDate(e.startAt),
+        ตั๋วที่ออก: validMap.get(e.id) ?? 0,
+        เช็คอินแล้ว: checkedMap.get(e.id) ?? 0,
+        บิลที่ชำระแล้ว: paidMap.get(e.id)?.orders ?? 0,
+        ยอดขายบาท: Math.round(paidMap.get(e.id)?.revenue ?? 0) / 100,
+      })),
+    });
+  },
+};
+
+// ── W5-R3) financial_summary — สรุปการเงินเดือนนี้ (ประมาณการ ไม่ใช่งบบัญชีทางการ) ──
+// conservative: รายได้ = ยอดขาย POS ที่ชำระแล้ว · รายจ่าย = เอกสารค่าใช้จ่าย/บันทึกซื้อที่บันทึกไว้
+// (รวมร่าง ตัด VOIDED/CANCELLED) — เป็นตัวเลข "คร่าว ๆ" ให้เจ้าของเห็นภาพ ไม่ใช่ P&L จาก GL
+const financialSummary: AiTool = {
+  def: {
+    name: "financial_summary",
+    description:
+      "สรุปการเงินเดือนนี้แบบคร่าว ๆ — รายได้ (จากยอดขายที่ชำระแล้ว) รายจ่าย (จากค่าใช้จ่าย/บันทึกซื้อที่บันทึกไว้) และกำไรโดยประมาณ · ใช้ตอบเช่น 'เดือนนี้กำไรเท่าไหร่' 'สรุปรายรับรายจ่ายเดือนนี้' · เป็นตัวเลขประมาณการ ไม่ใช่งบการเงินทางบัญชี",
+    parameters: NO_ARGS,
+  },
+  async execute(ctx) {
+    const start = monthStartBkk();
+    const [revAgg, expAgg] = await Promise.all([
+      prisma.posSale.aggregate({
+        where: { tenantId: ctx.tenantId, status: "PAID", createdAt: { gte: start } },
+        _sum: { grandTotalSatang: true },
+      }),
+      prisma.accountDocument.aggregate({
+        where: {
+          tenantId: ctx.tenantId,
+          docType: { in: ["EXPENSE", "PURCHASE"] },
+          status: { notIn: ["VOIDED", "CANCELLED"] },
+          issueDate: { gte: start },
+        },
+        _sum: { grandTotal: true },
+      }),
+    ]);
+    const revenue = Math.round(revAgg._sum.grandTotalSatang ?? 0) / 100;
+    const expense = Math.round(expAgg._sum.grandTotal ?? 0) / 100;
+    if (revenue === 0 && expense === 0) {
+      return JSON.stringify({ เดือน: dayKeyBangkok(start).slice(0, 7), ข้อความ: "ยังไม่มีข้อมูลการเงินเดือนนี้" });
+    }
+    return JSON.stringify({
+      เดือน: dayKeyBangkok(start).slice(0, 7),
+      รายได้บาท: revenue,
+      รายจ่ายบาท: expense,
+      กำไรคร่าวบาท: Math.round((revenue - expense) * 100) / 100,
+      หมายเหตุ: "ตัวเลขประมาณการจากยอดขายที่ชำระแล้วและค่าใช้จ่ายที่บันทึกไว้ ไม่ใช่งบการเงินทางบัญชี",
+    });
+  },
+};
+
+// ── W5-R4) recent_leads — ลูกค้ามุ่งหวังล่าสุด (CRM + ผู้กรอกฟอร์ม) ──
+// ดึงชื่อจากคำตอบฟอร์มแบบ best-effort (หา key ที่สื่อถึงชื่อ ไม่งั้นใช้ค่าข้อความแรก)
+function nameFromAnswers(ans: unknown): string | null {
+  if (!ans || typeof ans !== "object") return null;
+  const obj = ans as Record<string, unknown>;
+  for (const [k, v] of Object.entries(obj)) {
+    if (/name|ชื่อ/i.test(k) && typeof v === "string" && v.trim()) return v.trim();
+  }
+  for (const v of Object.values(obj)) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+const recentLeads: AiTool = {
+  def: {
+    name: "recent_leads",
+    description:
+      "ดูลูกค้ามุ่งหวัง (lead) ล่าสุดของร้าน — จากระบบ CRM และจากผู้ที่กรอกฟอร์มติดต่อ · คืนชื่อ ช่องทางที่มา และเวลา · ใช้ตอบเช่น 'มีลูกค้ามุ่งหวังใหม่ไหม' 'ใครกรอกฟอร์มเข้ามาบ้าง'",
+    parameters: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", minimum: 1, maximum: 50, description: "จำนวนรายการล่าสุด (ค่าเริ่มต้น 15)" },
+      },
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const raw = Number(asRecord(args).limit);
+    const limit = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 50) : 15;
+    const [contacts, subs] = await Promise.all([
+      prisma.crmContact.findMany({
+        where: { tenantId: ctx.tenantId, archivedAt: null },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        select: { name: true, source: true, phone: true, createdAt: true },
+      }),
+      prisma.formSubmission.findMany({
+        where: { tenantId: ctx.tenantId, crmContactId: null },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        select: { answersJson: true, createdAt: true, form: { select: { name: true } } },
+      }),
+    ]);
+    const bkk = (d: Date) => d.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "short", timeStyle: "short" });
+    type Lead = { ชื่อ: string; เบอร์: string | null; ช่องทาง: string; createdAt: Date };
+    const merged: Lead[] = [
+      ...contacts.map((c) => ({ ชื่อ: c.name, เบอร์: c.phone ?? null, ช่องทาง: c.source?.trim() || "CRM", createdAt: c.createdAt })),
+      ...subs.map((s) => ({
+        ชื่อ: nameFromAnswers(s.answersJson) ?? "(ไม่ระบุชื่อ)",
+        เบอร์: null,
+        ช่องทาง: `ฟอร์ม: ${s.form?.name ?? "ไม่ทราบชื่อฟอร์ม"}`,
+        createdAt: s.createdAt,
+      })),
+    ];
+    if (merged.length === 0) {
+      return JSON.stringify({ ข้อความ: "ยังไม่มีลูกค้ามุ่งหวังหรือผู้กรอกฟอร์มล่าสุด" });
+    }
+    const items = merged
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit)
+      .map((l) => ({ ชื่อ: l.ชื่อ, เบอร์: l.เบอร์, ช่องทาง: l.ช่องทาง, เมื่อ: bkk(l.createdAt) }));
+    return JSON.stringify({ ลูกค้ามุ่งหวังล่าสุด: items });
+  },
+};
+
+// ── W5-R5) customer_points — แต้มคงเหลือของลูกค้า (ค้นจากชื่อ/เบอร์/รหัสสมาชิก) ──
+const customerPoints: AiTool = {
+  def: {
+    name: "customer_points",
+    description:
+      "ดูแต้มสะสมคงเหลือของลูกค้า — ค้นจากชื่อ เบอร์โทร หรือรหัสสมาชิก แล้วคืนแต้มคงเหลือ (สูงสุด 5 ราย) · ใช้ตอบเช่น 'ลูกค้าสมชายมีแต้มเท่าไหร่' 'เช็คแต้มเบอร์ 08...'",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "คำค้น เช่น ชื่อลูกค้า เบอร์โทร หรือรหัสสมาชิก" },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const query = String(asRecord(args).query ?? "").trim();
+    if (!query) return JSON.stringify({ ข้อความ: "ยังไม่ได้ระบุชื่อ/เบอร์/รหัสสมาชิกของลูกค้า" });
+    const rows = await memberListCustomers(ctx.tenantId, query);
+    if (rows.length === 0) {
+      return JSON.stringify({ ข้อความ: `ไม่พบลูกค้าที่ตรงกับ "${query}"` });
+    }
+    const top = rows.slice(0, 5);
+    const withPoints = await Promise.all(
+      top.map(async (c) => {
+        const points = c.memberSystemId ? await getCustomerPoints(ctx.tenantId, c.memberSystemId, c.id) : 0;
+        return {
+          ชื่อ: c.name ?? "ไม่ระบุชื่อ",
+          เบอร์: c.phone ?? null,
+          รหัสสมาชิก: c.memberCode ?? null,
+          แต้มคงเหลือ: points,
+        };
+      }),
+    );
+    return JSON.stringify({ แต้มลูกค้า: withPoints });
+  },
+};
+
+// ── W5-R6) upcoming_schedule — นัด/เข้าพัก/วันลา ที่กำลังจะถึง (N วันข้างหน้า) ──
+// ToolCtx ไม่มี membership → query prisma ตรง scope tenantId (แนวเดียวกับ pending_leaves/today_appointments
+// ที่เปิดให้ AI เห็นข้อมูลทั้งร้านอยู่แล้ว) — ไม่มี write path
+const upcomingSchedule: AiTool = {
+  def: {
+    name: "upcoming_schedule",
+    description:
+      "สรุปตารางที่กำลังจะถึงในกี่วันข้างหน้า — นัดหมายบริการ การเข้าพัก (เช็คอิน) และวันลาของพนักงาน · ใช้ตอบเช่น 'สัปดาห์นี้มีนัดอะไรบ้าง' 'ใครจะเข้าพัก/ลาบ้างเร็ว ๆ นี้'",
+    parameters: {
+      type: "object",
+      properties: {
+        days: { type: "integer", minimum: 1, maximum: 90, description: "จำนวนวันข้างหน้า (ค่าเริ่มต้น 7)" },
+      },
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const raw = Number(asRecord(args).days);
+    const days = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 90) : 7;
+    const from = new Date();
+    const to = new Date(from.getTime() + days * 86_400_000);
+    const [appts, stays, leaves] = await Promise.all([
+      prisma.appointment.findMany({
+        where: { tenantId: ctx.tenantId, status: { notIn: ["CANCELLED", "NO_SHOW"] }, startAt: { gte: from, lt: to } },
+        orderBy: { startAt: "asc" },
+        take: 50,
+        include: { service: { select: { name: true } } },
+      }),
+      prisma.hotelReservation.findMany({
+        where: { tenantId: ctx.tenantId, status: { not: "CANCELLED" }, checkInDate: { gte: from, lt: to } },
+        orderBy: { checkInDate: "asc" },
+        take: 50,
+        include: { roomType: { select: { name: true } } },
+      }),
+      prisma.hrLeave.findMany({
+        where: { tenantId: ctx.tenantId, status: { in: ["PENDING", "APPROVED"] }, fromDate: { gte: from, lt: to } },
+        orderBy: { fromDate: "asc" },
+        take: 50,
+        include: { employee: { select: { name: true } } },
+      }),
+    ]);
+    if (appts.length === 0 && stays.length === 0 && leaves.length === 0) {
+      return JSON.stringify({ ข้อความ: `ยังไม่มีนัด/เข้าพัก/วันลา ในช่วง ${days} วันข้างหน้า` });
+    }
+    const timeBkk = (d: Date) =>
+      d.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "short", timeStyle: "short" });
+    return JSON.stringify({
+      ช่วงเวลา: `${days} วันข้างหน้า`,
+      นัดหมาย: appts.map((a) => ({ เมื่อ: timeBkk(a.startAt), บริการ: a.service?.name ?? "นัดหมาย", ลูกค้า: a.customerName })),
+      การเข้าพัก: stays.map((r) => ({ เช็คอิน: safeDate(r.checkInDate), ห้อง: r.roomType?.name ?? "ห้องพัก", ผู้เข้าพัก: r.guestName })),
+      วันลา: leaves.map((l) => ({ ตั้งแต่: safeDate(l.fromDate), ถึง: safeDate(l.toDate), พนักงาน: l.employee?.name ?? "พนักงาน", ประเภท: l.type })),
+    });
+  },
+};
+
+// ══════════════════════════════════════════════════════════════════
 // AI Memory (agentic-1) — ความจำถาวรต่อร้าน
 // remember_fact/forget_fact เขียนทันทีใน execute (ไม่ผ่าน proposal) เพราะเป็นการ "จดโน้ต"
 // ของ AI เอง ไม่ใช่ mutation ธุรกิจ — จึง action=false (ไม่มีการ์ดยืนยัน)
@@ -1835,6 +2139,13 @@ export function toolRegistry(): AiTool[] {
     approvalsPending,
     rentalActive,
     rewardListRedemptionsTool,
+    // Wave5-A read — ร้านอาหาร / ตั๋วอีเวนต์ / การเงิน / ลูกค้ามุ่งหวัง / แต้ม / ตารางล่วงหน้า
+    restaurantToday,
+    ticketEventSales,
+    financialSummary,
+    recentLeads,
+    customerPoints,
+    upcomingSchedule,
     // AI Memory (agentic-1) — จด/ลบ/ดู ความจำถาวร (remember เขียนทันที ไม่ผ่าน proposal)
     rememberFactTool,
     forgetFactTool,

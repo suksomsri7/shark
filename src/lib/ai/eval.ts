@@ -39,6 +39,19 @@ export const GOLDEN_CASES: GoldenCase[] = [
   { prompt: "จำไว้นะว่าร้านเปิด 9 โมงเช้าทุกวัน", expectTool: "remember_fact" },
   { prompt: "ทุกเย็นหกโมงช่วยสรุปยอดขายส่งให้หน่อย", expectTool: "schedule_task" },
   { prompt: "ช่วยตั้งสต็อกกาแฟใหม่ทั้งหมด ตั้งแต่เพิ่มสินค้าจนรับของเข้าคลัง", expectTool: "propose_plan" },
+  // Wave5-A read tools ใหม่ (≥2 เคส/tool)
+  { prompt: "วันนี้ร้านอาหารขายไปเท่าไหร่", expectTool: "restaurant_today" },
+  { prompt: "ตอนนี้มีโต๊ะเปิดอยู่กี่โต๊ะ", expectTool: "restaurant_today" },
+  { prompt: "ขายตั๋วงานอีเวนต์ไปเท่าไหร่แล้ว", expectTool: "ticket_event_sales" },
+  { prompt: "งานอีเวนต์นี้ขายบัตรไปกี่ใบ", expectTool: "ticket_event_sales" },
+  { prompt: "เดือนนี้กำไรเท่าไหร่", expectTool: "financial_summary" },
+  { prompt: "สรุปรายรับรายจ่ายเดือนนี้หน่อย", expectTool: "financial_summary" },
+  { prompt: "มีลูกค้ามุ่งหวังใหม่ล่าสุดไหม", expectTool: "recent_leads" },
+  { prompt: "ใครกรอกฟอร์มติดต่อเข้ามาบ้าง", expectTool: "recent_leads" },
+  { prompt: "ลูกค้าสมชายมีแต้มเท่าไหร่", expectTool: "customer_points" },
+  { prompt: "เช็คแต้มสะสมของลูกค้าเบอร์นี้หน่อย", expectTool: "customer_points" },
+  { prompt: "สัปดาห์นี้มีนัดหรือเข้าพักอะไรบ้าง", expectTool: "upcoming_schedule" },
+  { prompt: "มีตารางนัดที่กำลังจะถึงไหม", expectTool: "upcoming_schedule" },
 ];
 
 // ── heuristic keyword rules (เรียงตามลำดับความจำเพาะ — คืน tool ตัวแรกที่ match) ──
@@ -52,6 +65,13 @@ const KEYWORD_RULES: { re: RegExp; tool: string }[] = [
   { re: /จำอะไรไว้บ้าง|ความจำที่จดไว้|ดูความจำ/, tool: "list_memories" },
   // ตั้งเวลา/งานประจำ
   { re: /ทุก ?(วัน|เย็น|เช้า|คืน|สัปดาห์|เดือน)|ทุก ?\d|เป็นประจำ|ประจำทุก|ตั้งเวลา|ตั้งงานประจำ/, tool: "schedule_task" },
+  // Wave5-A read tools — วางก่อน action/read เดิม เพราะคีย์เวิร์ดจำเพาะ (กันถูก rule กว้าง เช่น "ยอดขาย"/"รายจ่าย" แย่ง)
+  { re: /ร้านอาหาร|ออเดอร์ร้าน|โต๊ะ(ที่เปิด|เปิดอยู่|ว่าง|ไหน)|กี่โต๊ะ/, tool: "restaurant_today" },
+  { re: /ขายตั๋ว|ยอดตั๋ว|ตั๋ว.*(ขาย|เหลือ|งาน)|ขายบัตร(งาน|อีเวนต์|คอนเสิร์ต)|อีเวนต์|งานคอนเสิร์ต/, tool: "ticket_event_sales" },
+  { re: /กำไร|รายรับ ?รายจ่าย|สรุปการเงิน|การเงินเดือน|งบกำไร|สถานะการเงิน/, tool: "financial_summary" },
+  { re: /มุ่งหวัง|ลีดใหม่|lead|กรอกฟอร์ม|ฟอร์มติดต่อ|ลูกค้าสนใจ/, tool: "recent_leads" },
+  { re: /แต้ม|คะแนนสะสม/, tool: "customer_points" },
+  { re: /สัปดาห์นี้|กำลังจะถึง|ตารางนัด|นัดที่จะถึง|เร็ว ?ๆ ?นี้|จะเข้าพัก/, tool: "upcoming_schedule" },
   // action — บิล/ยกเลิก
   { re: /ยกเลิก.*บิล|void|โมฆะบิล/, tool: "void_sale" },
   { re: /เปิดบิล|ออกบิล|เปิดการขาย|คิดเงิน.*แก้ว/, tool: "pos_create_sale" },
