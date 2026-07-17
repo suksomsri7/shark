@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
@@ -27,6 +28,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { POS_SALE_STATUS_LABEL } from "@/lib/ui/status-labels";
+import { ModuleTabs } from "@/components/module-tabs";
 
 const fmt = (d: Date) =>
   d.toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
@@ -57,7 +59,6 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
     <div className="flex max-w-2xl flex-col gap-6">
       <PageHeader
         title={`${def?.icon ?? ""} ${sys.name}`.trim()}
-        back={{ href: "/app", label: "ระบบทั้งหมด" }}
         desc={`ระบบ${def?.label ?? ""}`}
       />
 
@@ -172,35 +173,52 @@ async function PosContent({ systemId, tenantId }: { systemId: string; tenantId: 
   const sales = await prisma.posSale.findMany({
     where: { tenantId, systemId },
     orderBy: { createdAt: "desc" },
-    take: 50,
+    take: 10,
   });
-  const paid = sales.filter((s) => s.status === "PAID");
-  const total = paid.reduce((s, x) => s + x.grandTotalSatang, 0);
+  const paidAll = await prisma.posSale.aggregate({
+    where: { tenantId, systemId, status: "PAID" },
+    _sum: { grandTotalSatang: true },
+    _count: true,
+  });
+  const total = paidAll._sum.grandTotalSatang ?? 0;
   return (
-    <Section title="การขาย">
-      <div className="text-sm text-[color:var(--color-muted)]">
-        รวม <MoneyText satang={total} /> · {paid.length} บิล (ล่าสุด 50 รายการ)
-      </div>
-      <DataList
-        items={sales.map((s) => ({
-          key: s.id,
-          primary: (
-            <span>
-              {s.receiptNo} · <MoneyText satang={s.grandTotalSatang} />
-            </span>
-          ),
-          trailing: (
-            <span className="flex items-center gap-2">
-              {s.status !== "PAID" && (
-                <StatusChip value={s.status} map={POS_SALE_STATUS_LABEL} tone="danger" />
-              )}
-              <span className="text-xs text-[color:var(--color-muted)]">{fmt(s.createdAt)}</span>
-            </span>
-          ),
-        }))}
-        empty="ยังไม่มีการขาย — บิลจะแสดงที่นี่เมื่อขายผ่านระบบที่เชื่อมไว้"
+    <>
+      <ModuleTabs
+        items={[
+          { href: `/app/sys/${systemId}`, label: "ภาพรวม" },
+          { href: `/app/sys/${systemId}/pos/sales`, label: "ประวัติบิล" },
+        ]}
       />
-    </Section>
+      <Section title="ยอดขายรวม">
+        <div className="text-sm text-[color:var(--color-muted)]">
+          รวม <MoneyText satang={total} /> · {paidAll._count} บิลที่ชำระแล้ว
+        </div>
+      </Section>
+      <Section
+        title="บิลล่าสุด"
+        actions={<Link href={`/app/sys/${systemId}/pos/sales`} className="text-sm text-[color:var(--color-accent)]">ดูทั้งหมด →</Link>}
+      >
+        <DataList
+          items={sales.map((s) => ({
+            key: s.id,
+            primary: (
+              <span>
+                {s.receiptNo} · <MoneyText satang={s.grandTotalSatang} />
+              </span>
+            ),
+            trailing: (
+              <span className="flex items-center gap-2">
+                {s.status !== "PAID" && (
+                  <StatusChip value={s.status} map={POS_SALE_STATUS_LABEL} tone="danger" />
+                )}
+                <span className="text-xs text-[color:var(--color-muted)]">{fmt(s.createdAt)}</span>
+              </span>
+            ),
+          }))}
+          empty="ยังไม่มีการขาย — บิลจะแสดงที่นี่เมื่อขายผ่านระบบที่เชื่อมไว้"
+        />
+      </Section>
+    </>
   );
 }
 

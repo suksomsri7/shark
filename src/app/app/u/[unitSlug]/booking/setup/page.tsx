@@ -1,108 +1,11 @@
-import Link from "next/link";
-import { requireUnit } from "@/lib/core/context";
-import { tenantDb } from "@/lib/core/db";
-import {
-  addServiceAction,
-  removeServiceAction,
-  addStaffAction,
-  removeStaffAction,
-} from "@/lib/actions/booking";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { formatBaht } from "@/lib/ui/money";
+import { redirect } from "next/navigation";
 
-export default async function BookingSetupPage({
+// ตั้งค่าเดิมถูกแตกเป็น "บริการ" + "พนักงาน" — คงลิงก์เก่าไว้โดย redirect ไปหน้าบริการ
+export default async function BookingSetupRedirect({
   params,
 }: {
   params: Promise<{ unitSlug: string }>;
 }) {
   const { unitSlug } = await params;
-  const { auth, unit } = await requireUnit(unitSlug);
-  const db = tenantDb({ tenantId: auth.active.tenantId, unitId: unit.id });
-  const [services, staff] = await Promise.all([
-    db.bookingService.findMany({ where: { active: true }, orderBy: { createdAt: "asc" } }),
-    db.bookingStaff.findMany({ where: { active: true }, orderBy: { createdAt: "asc" } }),
-  ]);
-
-  return (
-    <div className="flex max-w-2xl flex-col gap-8">
-      <PageHeader title="ตั้งค่าจองคิว" back={{ href: `/app/u/${unitSlug}/booking`, label: "รายการนัด" }} />
-
-      {/* บริการ */}
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium">บริการ</h2>
-        {services.length === 0 && (
-          <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีบริการ เพิ่มด้านล่าง</p>
-        )}
-        {services.map((s) => (
-          <div key={s.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
-            <div className="text-sm">
-              <span className="font-medium">{s.name}</span>
-              <span className="text-[color:var(--color-muted)]">
-                {" "}
-                · {s.durationMin} นาที · {s.priceSatang > 0 ? formatBaht(s.priceSatang) : "—"}
-              </span>
-            </div>
-            <form action={removeServiceAction.bind(null, unitSlug)}>
-              <input type="hidden" name="id" value={s.id} />
-              <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
-            </form>
-          </div>
-        ))}
-        <form
-          action={addServiceAction.bind(null, unitSlug)}
-          className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end"
-        >
-          <label className="col-span-2 flex flex-col gap-1 sm:col-span-1">
-            <span className="text-xs text-[color:var(--color-muted)]">ชื่อบริการ</span>
-            <input name="name" required placeholder="เช่น ตัดผม" className="w-full rounded-lg border px-3 py-2 text-sm" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-[color:var(--color-muted)]">นาที</span>
-            <input name="durationMin" type="number" required defaultValue={30} min={5} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-20" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-[color:var(--color-muted)]">ราคา (บาท)</span>
-            <input name="priceBaht" type="number" defaultValue={0} min={0} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-24" />
-          </label>
-          <button className="btn btn-primary col-span-2 text-sm sm:col-span-1">เพิ่ม</button>
-        </form>
-      </section>
-
-      {/* พนักงาน */}
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium">พนักงาน / ผู้ให้บริการ</h2>
-        <p className="text-xs text-[color:var(--color-muted)]">
-          ค่าเริ่มต้นทำงานทุกวัน 10:00–20:00 (แก้เวลารายคนได้ในเวอร์ชันถัดไป)
-        </p>
-        {staff.map((s) => (
-          <div key={s.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
-            <span className="text-sm font-medium">{s.name}</span>
-            <form action={removeStaffAction.bind(null, unitSlug)}>
-              <input type="hidden" name="id" value={s.id} />
-              <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
-            </form>
-          </div>
-        ))}
-        <form action={addStaffAction.bind(null, unitSlug)} className="flex gap-2">
-          <input name="name" required placeholder="ชื่อพนักงาน" className="flex-1 rounded-lg border px-3 py-2 text-sm" />
-          <button className="btn btn-primary text-sm">เพิ่ม</button>
-        </form>
-      </section>
-
-      {/* ลิงก์หน้าจองสาธารณะ */}
-      <section className="card flex flex-col gap-2">
-        <div className="text-sm font-medium">ลิงก์จองสำหรับลูกค้า</div>
-        <code className="break-all rounded bg-[color:var(--color-surface-2)] px-2 py-1 text-xs">
-          /s/{auth.active.tenant.slug}/{unit.slug}
-        </code>
-        <Link
-          href={`/s/${auth.active.tenant.slug}/${unit.slug}`}
-          target="_blank"
-          className="text-sm underline"
-        >
-          เปิดหน้าจอง →
-        </Link>
-      </section>
-    </div>
-  );
+  redirect(`/app/u/${unitSlug}/booking/services`);
 }

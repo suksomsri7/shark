@@ -52,25 +52,20 @@ export default async function BookingPage({
         desc={`ยอดขายวันนี้ · ${formatBaht(revenue.totalSatang)} (${revenue.count} บิล)`}
         back={{ href: `/app/u/${unitSlug}`, label: unit.name }}
         actions={
-          <>
-            <Link href={`/app/u/${unitSlug}/booking/setup`} className="btn btn-ghost text-sm">
-              ตั้งค่า
-            </Link>
-            <Link
-              href={`/s/${auth.active.tenant.slug}/${unit.slug}`}
-              target="_blank"
-              className="btn btn-ghost text-sm"
-            >
-              หน้าจอง ↗
-            </Link>
-          </>
+          <Link
+            href={`/s/${auth.active.tenant.slug}/${unit.slug}`}
+            target="_blank"
+            className="btn btn-ghost text-sm"
+          >
+            หน้าจอง ↗
+          </Link>
         }
       />
 
       {appts.length === 0 ? (
         <EmptyState
-          text="ยังไม่มีนัดวันนี้ — แชร์ลิงก์หน้าจองให้ลูกค้า หรือเพิ่มบริการ/พนักงานในหน้าตั้งค่าก่อน"
-          action={{ href: `/app/u/${unitSlug}/booking/setup`, label: "ไปหน้าตั้งค่า" }}
+          text="ยังไม่มีนัดวันนี้ — แชร์ลิงก์หน้าจองให้ลูกค้า หรือเพิ่มบริการ/พนักงานก่อน"
+          action={{ href: `/app/u/${unitSlug}/booking/services`, label: "เพิ่มบริการ" }}
         />
       ) : (
         <div className="flex flex-col gap-2">

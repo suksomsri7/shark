@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { logoutAction } from "@/lib/actions/auth";
 import { NavIcon } from "./NavIcon";
@@ -9,8 +10,49 @@ import { NavIcon } from "./NavIcon";
 // รวม "ระบบทั้งหมด" (grid เดิมที่ย้ายมาจากหน้า /app) + ระบบที่กำลังจะมา + เพิ่มระบบ + ออกจากระบบ
 // nav item data ยังมาจาก layout (DB-driven) เหมือนเดิม — เปลี่ยนแค่การนำเสนอ
 
-export type NavItem = { key: string; href: string; icon: string; label: string };
+export type NavChild = { href: string; label: string };
+export type NavItem = { key: string; href: string; icon: string; label: string; children?: NavChild[] };
 export type SoonItem = { code: string; icon: string; label: string };
+
+// ระบบที่แตกฟังก์ชันย่อย — หัวข้อกดพับ/กาง (accordion) + ลิงก์ฟังก์ชันย่อยใต้ระบบ
+// auto-กาง เมื่ออยู่ในฟังก์ชันย่อยของระบบนั้น · ฟังก์ชัน active = เทียบ path ตรงตัว
+function NavGroup({ item, onNavigate }: { item: NavItem; onNavigate: () => void }) {
+  const pathname = usePathname();
+  const children = item.children ?? [];
+  const anyActive = children.some((c) => pathname === c.href || pathname.startsWith(c.href + "/"));
+  const [open, setOpen] = useState(anyActive);
+  return (
+    <div className="flex flex-col">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`flex items-center gap-2 rounded-lg px-2 py-2.5 hover:bg-[color:var(--color-surface-2)] ${
+          anyActive ? "font-medium" : ""
+        }`}
+      >
+        <NavIcon emoji={item.icon} />
+        <span className="flex-1 truncate text-left">{item.label}</span>
+        <span className="shrink-0 text-xs text-[color:var(--color-muted)]">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <div className="ml-3.5 flex flex-col gap-0.5 border-l pl-2">
+          {children.map((c) => (
+            <Link
+              key={c.href}
+              href={c.href}
+              onClick={onNavigate}
+              className={`rounded-lg px-2 py-2 text-sm hover:bg-[color:var(--color-surface-2)] ${
+                pathname === c.href ? "font-medium text-[color:var(--color-accent)]" : ""
+              }`}
+            >
+              {c.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function NavDrawer({
   open,
@@ -82,19 +124,23 @@ export function NavDrawer({
           {items.length > 0 && (
             <div className="px-2 pb-1 pt-3 text-xs text-[color:var(--color-muted)]">ระบบทั้งหมด</div>
           )}
-          {items.map((it) => (
-            <Link
-              key={it.key}
-              href={it.href}
-              onClick={onClose}
-              className={`flex items-center gap-2 rounded-lg px-2 py-2.5 hover:bg-[color:var(--color-surface-2)] ${
-                isActive(it.href) ? "font-medium text-[color:var(--color-accent)]" : ""
-              }`}
-            >
-              <NavIcon emoji={it.icon} />
-              <span className="truncate">{it.label}</span>
-            </Link>
-          ))}
+          {items.map((it) =>
+            it.children && it.children.length > 0 ? (
+              <NavGroup key={it.key} item={it} onNavigate={onClose} />
+            ) : (
+              <Link
+                key={it.key}
+                href={it.href}
+                onClick={onClose}
+                className={`flex items-center gap-2 rounded-lg px-2 py-2.5 hover:bg-[color:var(--color-surface-2)] ${
+                  isActive(it.href) ? "font-medium text-[color:var(--color-accent)]" : ""
+                }`}
+              >
+                <NavIcon emoji={it.icon} />
+                <span className="truncate">{it.label}</span>
+              </Link>
+            ),
+          )}
 
           <div className="my-2 border-t" />
           <div className="px-2 pb-1 text-xs text-[color:var(--color-muted)]">ตั้งค่า</div>

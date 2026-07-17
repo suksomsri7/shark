@@ -20,6 +20,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     prisma.appSystem.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: "asc" } }),
   ]);
 
+  // ต้นแบบ "แตกฟังก์ชันย่อยในเมนู" — ระบบที่รองรับจะกาง submenu ใต้ชื่อระบบ (จองคิว + POS)
+  const bookingChildren = (slug: string) => [
+    { href: `/app/u/${slug}/booking`, label: "นัดวันนี้" },
+    { href: `/app/u/${slug}/booking/services`, label: "บริการ" },
+    { href: `/app/u/${slug}/booking/staff`, label: "พนักงาน" },
+  ];
+  const posChildren = (id: string) => [
+    { href: `/app/sys/${id}`, label: "ภาพรวม" },
+    { href: `/app/sys/${id}/pos/sales`, label: "ประวัติบิล" },
+  ];
+
   // ระบบทั้งหมด (business + feature) เป็นรายการเดียว
   const items: NavItem[] = [
     ...units.map((u) => ({
@@ -27,12 +38,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       href: `/app/u/${u.slug}`,
       icon: systemDef(u.type)?.icon ?? "•",
       label: u.name,
+      ...(u.type === "BOOKING" ? { children: bookingChildren(u.slug) } : {}),
     })),
     ...appSystems.map((s) => ({
       key: `s-${s.id}`,
       href: `/app/sys/${s.id}`,
       icon: systemDef(s.type)?.icon ?? "•",
       label: s.name,
+      ...(s.type === "POS" ? { children: posChildren(s.id) } : {}),
     })),
     // ระบบ "หน้า fixed ระดับ tenant" ที่เปิดใช้แล้ว (เช่น คลังความรู้ /app/kb) — เข้าถึงตรงจากเมนู
     ...SYSTEM_DEFS.filter(
