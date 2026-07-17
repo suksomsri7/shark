@@ -38,6 +38,9 @@ const UNIT_NAV: Record<string, { href: string; label: string }[]> = {
   SCHOOL: [
     { href: "/school", label: "จัดการคอร์สเรียน →" },
   ],
+  CLINIC: [
+    { href: "/clinic", label: "เปิดระบบคลินิก →" },
+  ],
 };
 
 // หน้าแรกของระบบธุรกิจ (เช่น จองคิว) — งานของระบบ + การเชื่อมต่อกับระบบอื่น
