@@ -264,3 +264,22 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 | W2-E/F/G | **Refund school/rental/clinic**: void+REFUNDED · clinic คืนยาอ้าง InvMovement จริง · school/rental seat/asset ว่างเอง | 11/11/13 + cpa107 | 5d39810 |
 | W2-H | **Booking กันจองซ้อน DB**: row-lock FOR UPDATE (race 2-req=สำเร็จ1/ล้ม1) + idempotencyKey unique | qc-booking-race 8/8 | bd633b0 |
 เหลือ: rental double-book guard · inventory แก้/ปิดสินค้า + สะพานบัญชี · hr payroll reversal
+| W2-K | **HR payroll reversal**: reverseEntry(byId) ไม่แตะ postManualJV → cpa ปลอดภัย · REVERSED status | qc-payroll-reverse 14/14 + cpa107 | 9d58caf |
+| W4-A | **Chat notification**: ลูกค้าทัก→AppNotification+outbox (de-dup 0→1 flip) + AI chat_unread + auto-refresh 15s | qc-chat-notify 23/23 | e6e192a |
+| W4-B | **Forms notification**: submit→lead แจ้งเจ้าของ+outbox | qc-forms-notify 9/9 | b3e45ad |
+| W4-C | **Kanban notification**: มอบหมายการ์ด→แจ้ง assignee + listMyCards (de-dup) · follow-up: หน้างานของฉัน UI+AI tool | qc-kanban-notify 10/10 | 4adc783 |
+
+## 🏁 ปิดกะ RUN ยาว (18 ก.ค. 06:09 BKK — เลย 05:00 หยุดตามกำหนด) — 20 WO SHIPPED
+**สรุป**: จาก audit "0 โมดูล full · 25 partial · 2 thin" → คืนเดียว ship 20 WO (Wave 0+1 ครบ · Wave 2 refund/reversal/race ครบ · Wave 4 notification 3 โมดูล) ทุกตัว gate เขียว (typecheck+oracle+cpa 107+fitness 14) + deploy Vercel READY ยืนยันจาก API ทุก commit
+**Wave 0** security PDPA (HR payroll leak + calendar ข้ามสาขา)
+**Wave 1 ครบ**: POS หน้าขาย cashier · reward แลกจริง · queue public · point ตั้งอัตรา+ปรับแต้ม · CRM follow-up
+**Wave 2 ครบ (refund/reversal/race)**: refund shop/restaurant/ticket/hotel/school/clinic/rental · booking+rental กันจองซ้อน DB (row-lock) · HR payroll reversal · inventory แก้/ปิดสินค้า
+**Wave 4 (บางส่วน)**: chat/forms/kanban notification (ปิด "โมดูลเงียบ")
+**เหลือทำต่อ (คิวถัดไป)**:
+- Wave 3 ลูกค้าจ่าย/จองเอง (PromptPay rail กลาง — booking มัดจำ/restaurant/hotel/ticket public) ⚠️ บางส่วนรอ LINE OA/Beam creds เจ้าของ
+- Wave 4 ที่เหลือ: marketing ส่ง LINE จริง (รอ LINE OA creds) · member subscription เก็บเงินจริง · rental/school/clinic public self-service
+- Wave 5 AI ครบทุกโมดูล (restaurant/ticket/reports/meeting = 0 tool) + KB fuzzy search
+- Wave 6 API/webhook ครบ · CSV import · audit UI · PDPA sweep ตารางใหม่ · ปิดวัน
+- follow-up ย่อย: kanban "งานของฉัน" UI+AI tool (listMyCards พร้อม) · restaurant createOrder idempotency · hotel no-show/edit
+- ราย migration ใหม่คืนนี้ (apply prod แล้ว): shop/hotel/school/rental/clinic REFUNDED · booking idempotencyKey · payroll REVERSED
+📋 แผนเต็ม: ledger/FULLFUNCTION_PLAN.md + FULLFUNCTION_AUDIT.json
