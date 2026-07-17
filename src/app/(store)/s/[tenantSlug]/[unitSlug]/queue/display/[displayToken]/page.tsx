@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import { resolveQueueUnit, getDisplaySnapshot } from "@/lib/modules/queue/service";
 import { AutoRefresh } from "@/components/queue-auto-refresh";
+import { getLocaleFromCookie, makeT } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -15,11 +17,14 @@ export default async function QueueDisplayPage({
   if (!resolved) notFound();
   const snap = await getDisplaySnapshot(resolved.unit.id, displayToken);
 
+  const locale = getLocaleFromCookie((await cookies()).get("lang")?.value);
+  const t = makeT(locale);
+
   if (!snap) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-2 bg-black text-white">
-        <div className="text-2xl font-semibold">ลิงก์จอไม่ถูกต้องหรือถูกยกเลิก</div>
-        <div className="text-sm text-white/60">กรุณาติดต่อร้าน</div>
+        <div className="text-2xl font-semibold">{t("err.linkInvalid")}</div>
+        <div className="text-sm text-white/60">{t("err.contactShop")}</div>
       </main>
     );
   }
@@ -35,7 +40,7 @@ export default async function QueueDisplayPage({
       {/* กำลังเรียก ต่อเคาน์เตอร์ */}
       <section className="flex flex-1 flex-col justify-center px-8">
         {snap.perCounter.length === 0 ? (
-          <div className="text-center text-2xl text-white/50">ยังไม่มีเคาน์เตอร์เปิด</div>
+          <div className="text-center text-2xl text-white/50">{t("queueTv.noCounter")}</div>
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {snap.perCounter.map((c) => (
@@ -54,11 +59,11 @@ export default async function QueueDisplayPage({
       {/* คิวถัดไป */}
       <footer className="border-t border-white/15 px-8 py-6">
         <div className="mb-3 flex items-center justify-between text-sm text-white/50">
-          <span>คิวถัดไป</span>
-          <span>รอทั้งหมด {snap.waitingCount} คิว</span>
+          <span>{t("queueTv.next")}</span>
+          <span>{t("queueTv.waitingCount", { count: snap.waitingCount })}</span>
         </div>
         {snap.next.length === 0 ? (
-          <div className="text-white/40">— ไม่มีคิวรอ —</div>
+          <div className="text-white/40">{t("queueTv.noWaiting")}</div>
         ) : (
           <div className="flex flex-wrap gap-4">
             {snap.next.map((n) => (
