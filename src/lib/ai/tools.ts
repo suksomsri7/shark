@@ -1145,14 +1145,13 @@ const crmCreateLead: AiTool = {
   def: {
     name: "crm_create_lead",
     description:
-      "เสนอบันทึกลูกค้ามุ่งหวัง (lead) เข้าระบบ CRM (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ name (ชื่อผู้ติดต่อ) และ phone/email/note ถ้ามี",
+      "เสนอบันทึกลูกค้ามุ่งหวัง (lead) เข้าระบบ CRM (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ name (ชื่อผู้ติดต่อ) และ phone/email ถ้ามี",
     parameters: {
       type: "object",
       properties: {
         name: { type: "string", description: "ชื่อผู้ติดต่อ/ลูกค้ามุ่งหวัง" },
         phone: { type: "string", description: "เบอร์โทร (ถ้ามี)" },
         email: { type: "string", description: "อีเมล (ถ้ามี)" },
-        note: { type: "string", description: "บันทึกย่อ (ถ้ามี)" },
       },
       required: ["name"],
       additionalProperties: false,
