@@ -22,6 +22,12 @@ import * as bookingSvc from "@/lib/modules/booking/service";
 import * as hotelSvc from "@/lib/modules/hotel/service";
 import * as queueSvc from "@/lib/modules/queue/service";
 import * as shopSvc from "@/lib/modules/shop/service";
+import * as crmSvc from "@/lib/modules/crm/service";
+import * as kbSvc from "@/lib/modules/kb/service";
+import * as schoolSvc from "@/lib/modules/school/service";
+import * as clinicSvc from "@/lib/modules/clinic/service";
+import * as rentalSvc from "@/lib/modules/rental/service";
+import * as approvalSvc from "@/lib/modules/approval/service";
 import * as accountFacade from "@/lib/modules/account";
 import { createSystem } from "@/lib/modules/system/service";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
@@ -45,6 +51,15 @@ export type ProposalKind =
   | "hotel_create_reservation"
   | "queue_issue_ticket"
   | "shop_confirm_order"
+  // ── Phase B2 (ชุดปิด): CRM·KB·โรงเรียน·คลินิก·เช่า·สายอนุมัติ·คลังตัดออก (NORMAL ทั้งหมด) ──
+  | "crm_create_lead"
+  | "kb_create_article"
+  | "school_enroll"
+  | "school_mark_paid"
+  | "clinic_create_patient"
+  | "rental_create_booking"
+  | "approval_decide"
+  | "inventory_consume"
   // ── destructive (ลบ/void/ยกเลิก — ต้องยืนยัน 2 ชั้น) ──
   | "void_sale"
   | "cancel_appointment"
@@ -84,6 +99,15 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   hotel_create_reservation: { module: "hotel", action: "hotel.reservation.create" },
   queue_issue_ticket: { module: "queue", action: "queue.ticket.issue" },
   shop_confirm_order: { module: "shop", action: "shop.order.confirm" },
+  // Phase B2 — action string ตรงกับปุ่มจริง (ดู */actions.ts · kb ที่ src/app/app/kb/actions.ts)
+  crm_create_lead: { module: "crm", action: "crm.contact.create" },
+  kb_create_article: { module: "kb", action: "kb.article.create" },
+  school_enroll: { module: "school", action: "school.enrollment.create" },
+  school_mark_paid: { module: "school", action: "school.enrollment.pay" },
+  clinic_create_patient: { module: "clinic", action: "clinic.patient.create" },
+  rental_create_booking: { module: "rental", action: "rental.booking.create" },
+  approval_decide: { module: "approval", action: "approval.request.decide" },
+  inventory_consume: { module: "inventory", action: "inventory.movement.consume" },
   // destructive — action string ตรงกับปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
   void_sale: { module: "pos", action: "pos.sale.void" },
   cancel_appointment: { module: "booking", action: "booking.appointment.setStatus" },
@@ -134,6 +158,33 @@ type HotelCreateReservationPayload = {
 };
 type QueueIssueTicketPayload = { unitName?: string; typeName?: string; customerName?: string };
 type ShopConfirmOrderPayload = { orderCode: string };
+// ── Phase B2 payload ──
+type CrmCreateLeadPayload = { name: string; phone?: string; email?: string; note?: string };
+type KbCreateArticlePayload = { title: string; body: string; category?: string };
+type SchoolEnrollPayload = {
+  unitName?: string;
+  courseName: string;
+  className?: string;
+  studentName: string;
+  studentPhone: string;
+};
+type SchoolMarkPaidPayload = { studentName?: string; studentPhone?: string };
+type ClinicCreatePatientPayload = { unitName?: string; name: string; phone: string; allergies?: string };
+type RentalCreateBookingPayload = {
+  unitName?: string;
+  assetName: string;
+  customerName: string;
+  customerPhone: string;
+  startDate: string;
+  endDate: string;
+};
+type ApprovalDecidePayload = {
+  requestId?: string;
+  requestSummary?: string;
+  decision: "APPROVED" | "REJECTED";
+  note?: string;
+};
+type InventoryConsumePayload = { sku: string; qty: number; note?: string };
 type VoidSalePayload = { saleId: string };
 type CancelAppointmentPayload = { appointmentId: string };
 type CancelReservationPayload = { reservationId: string; reason?: string };
@@ -231,7 +282,8 @@ export async function executeProposal(
   if (claim.count !== 1) return { ok: false, note: "รายการนี้ถูกดำเนินการหรือปิดไปแล้ว" };
 
   try {
-    const note = await dispatch(ctx.tenantId, row.id, row.kind as ProposalKind, row.payload);
+    // ส่ง m (คนกดยืนยัน) ให้ dispatch ด้วย — kind ที่ต้องใช้สิทธิ์ผู้กด (เช่น approval_decide) จะหยิบไปใช้
+    const note = await dispatch(ctx.tenantId, row.id, row.kind as ProposalKind, row.payload, m);
     await tenantDb(ctx).aiProposal.update({ where: { id }, data: { resultNote: note } });
     return { ok: true, note };
   } catch (e) {
@@ -251,6 +303,7 @@ async function dispatch(
   proposalId: string,
   kind: ProposalKind,
   rawPayload: unknown,
+  m?: MembershipCtx,
 ): Promise<string> {
   const payload = (rawPayload ?? {}) as Record<string, unknown>;
 
@@ -686,6 +739,212 @@ async function dispatch(
     });
     await kanbanSvc.archiveCard(tenantId, system.id, cardId);
     return `ลบการ์ด${card?.title ? ` "${card.title}"` : ""} เรียบร้อยแล้ว`;
+  }
+
+  // ══ Phase B2 (ชุดปิด) ══
+
+  if (kind === "crm_create_lead") {
+    const p = payload as CrmCreateLeadPayload;
+    const system = await resolveSystem(tenantId, "CRM");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบ CRM (ลูกค้ามุ่งหวัง)");
+    const name = String(p.name ?? "").trim();
+    if (!name) throw new Error("ต้องระบุชื่อผู้ติดต่อ");
+    // source = "AI" ระบุที่มาว่าผู้ช่วยสร้างให้ · note: service ไม่รับ (เก็บ company/source เท่านั้น) → ไม่ persist
+    await crmSvc.createContact(
+      { tenantId, systemId: system.id },
+      {
+        name,
+        phone: p.phone ? String(p.phone).trim() : null,
+        email: p.email ? String(p.email).trim() : null,
+        source: "AI",
+      },
+    );
+    return `บันทึกลูกค้ามุ่งหวัง "${name}" เข้าระบบ CRM เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "kb_create_article") {
+    const p = payload as KbCreateArticlePayload;
+    // KB เป็น tenant-scoped ล้วน (ไม่มีระบบย่อย) — service โยน error ไทยถ้า title/body ว่าง
+    await kbSvc.createArticle(
+      { tenantId },
+      {
+        title: String(p.title ?? "").trim(),
+        body: String(p.body ?? "").trim(),
+        category: p.category ? String(p.category).trim() : null,
+      },
+    );
+    return `เพิ่มบทความ "${String(p.title ?? "").trim()}" เข้าคลังความรู้เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "school_enroll") {
+    const p = payload as SchoolEnrollPayload;
+    const unit = await resolveUnit(tenantId, { type: "SCHOOL", unitName: p.unitName, label: "โรงเรียน/สถาบัน" });
+    const wantCourse = String(p.courseName ?? "").trim();
+    const courses = await prisma.schoolCourse.findMany({
+      where: { tenantId, unitId: unit.id, active: true },
+      select: { id: true, name: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const course = courses.find((c) => c.name.includes(wantCourse)) ?? (wantCourse ? undefined : courses[0]);
+    if (!course) {
+      const list = courses.map((c) => c.name).join(", ") || "ยังไม่มีคอร์ส";
+      throw new Error(`ไม่พบคอร์ส "${wantCourse}" — คอร์สที่มี: ${list}`);
+    }
+    // class: ชื่อบางส่วน (className) หรือรอบแรกถ้าไม่ระบุ
+    const classes = await prisma.schoolClass.findMany({
+      where: { tenantId, unitId: unit.id, courseId: course.id },
+      select: { id: true, name: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const wantClass = String(p.className ?? "").trim();
+    const cls = wantClass ? classes.find((c) => c.name.includes(wantClass)) : classes[0];
+    if (!cls) {
+      throw new Error(wantClass ? `ไม่พบรอบเรียน "${wantClass}" ในคอร์ส ${course.name}` : `คอร์ส ${course.name} ยังไม่มีรอบเรียน`);
+    }
+    const studentName = String(p.studentName ?? "").trim();
+    await schoolSvc.enroll(
+      { tenantId, unitId: unit.id },
+      { classId: cls.id, studentName, studentPhone: String(p.studentPhone ?? "").trim() },
+    );
+    return `สมัคร ${studentName || "นักเรียน"} เข้าคอร์ส "${course.name}" (${cls.name}) เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "school_mark_paid") {
+    const p = payload as SchoolMarkPaidPayload;
+    const phone = String(p.studentPhone ?? "").trim();
+    const name = String(p.studentName ?? "").trim();
+    if (!phone && !name) throw new Error("ต้องระบุชื่อหรือเบอร์นักเรียน");
+    // เบอร์ก่อน ชื่อรอง · ENROLLED ล่าสุดก่อน
+    const rows = await prisma.schoolEnrollment.findMany({
+      where: {
+        tenantId,
+        status: "ENROLLED",
+        ...(phone ? { studentPhone: { contains: phone } } : { studentName: { contains: name } }),
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, unitId: true, studentName: true, studentPhone: true },
+    });
+    if (rows.length === 0) throw new Error(`ไม่พบการสมัครที่รอชำระของ ${phone || name}`);
+    const distinct = new Set(rows.map((r) => `${r.studentName}|${r.studentPhone}`));
+    if (distinct.size > 1) {
+      const who = [...distinct].map((d) => d.split("|")[0]).join(", ");
+      throw new Error(`มีนักเรียนหลายคนที่ตรง กรุณาระบุเบอร์ให้ชัด — ${who}`);
+    }
+    const target = rows[0];
+    const res = await schoolSvc.markPaid({ tenantId, unitId: target.unitId }, target.id);
+    if (!res.ok) throw new Error("รับชำระไม่สำเร็จ — อาจชำระไปแล้วหรือถูกยกเลิก");
+    return `รับชำระค่าเรียนของ ${target.studentName} เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "clinic_create_patient") {
+    const p = payload as ClinicCreatePatientPayload;
+    const unit = await resolveUnit(tenantId, { type: "CLINIC", unitName: p.unitName, label: "คลินิก" });
+    const name = String(p.name ?? "").trim();
+    await clinicSvc.createPatient(
+      { tenantId, unitId: unit.id },
+      {
+        name,
+        phone: String(p.phone ?? "").trim(),
+        allergies: p.allergies ? String(p.allergies).trim() : null,
+      },
+    );
+    return `เพิ่มผู้ป่วย "${name}" เข้าคลินิกเรียบร้อยแล้ว`;
+  }
+
+  if (kind === "rental_create_booking") {
+    const p = payload as RentalCreateBookingPayload;
+    const unit = await resolveUnit(tenantId, { type: "RENTAL", unitName: p.unitName, label: "จุดให้เช่า" });
+    const wantAsset = String(p.assetName ?? "").trim();
+    const assets = await prisma.rentalAsset.findMany({
+      where: { tenantId, unitId: unit.id, active: true },
+      select: { id: true, name: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const asset = assets.find((a) => a.name.includes(wantAsset)) ?? (wantAsset ? undefined : assets[0]);
+    if (!asset) {
+      const list = assets.map((a) => a.name).join(", ") || "ยังไม่มีของให้เช่า";
+      throw new Error(`ไม่พบของให้เช่า "${wantAsset}" — ที่มี: ${list}`);
+    }
+    const start = new Date(String(p.startDate ?? ""));
+    const end = new Date(String(p.endDate ?? ""));
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new Error("วันที่เช่า/คืนไม่ถูกต้อง (รูปแบบ YYYY-MM-DD)");
+    }
+    const customerName = String(p.customerName ?? "").trim();
+    // จองซ้อนช่วงเดียวกัน service โยนเอง — ปล่อยให้ propagate เป็น FAILED ไทย
+    const res = await rentalSvc.createBooking(
+      { tenantId, unitId: unit.id },
+      {
+        assetId: asset.id,
+        customerName: customerName || "ลูกค้า",
+        customerPhone: String(p.customerPhone ?? "").trim(),
+        startDate: start,
+        endDate: end,
+      },
+    );
+    const baht = (res.quoteSatang / 100).toLocaleString("th-TH");
+    return `จองเช่า "${asset.name}" ให้ ${customerName || "ลูกค้า"} ${res.days} วัน (ประเมิน ${baht} บาท) เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "approval_decide") {
+    if (!m) throw new Error("ต้องมีสิทธิ์ผู้ใช้เพื่ออนุมัติคำขอ");
+    const p = payload as ApprovalDecidePayload;
+    const decision = p.decision === "REJECTED" ? "REJECTED" : "APPROVED";
+    let requestId = String(p.requestId ?? "").trim();
+    if (!requestId) {
+      // ค้นจาก summary → เทียบ entityType/entityId ใน PENDING (ไม่มี field summary ในตาราง)
+      const summary = String(p.requestSummary ?? "").trim();
+      const pending = await prisma.approvalRequest.findMany({
+        where: { tenantId, status: "PENDING" },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, entityType: true, entityId: true },
+      });
+      const matched = summary
+        ? pending.filter((r) => r.entityType.includes(summary) || r.entityId.includes(summary))
+        : pending;
+      if (matched.length === 0) throw new Error("ไม่พบคำขอที่รออนุมัติตามที่ระบุ");
+      if (matched.length > 1) {
+        const list = matched.map((r) => `${r.entityType}/${r.entityId}`).join(", ");
+        throw new Error(`มีหลายคำขอที่ตรง กรุณาระบุให้ชัด — ${list}`);
+      }
+      requestId = matched[0].id;
+    }
+    // decide ตรวจสิทธิ์ตาม step ด้วย (m ต้องมี userId ตอน runtime — คนกดยืนยันจริง)
+    const res = await approvalSvc.decide(
+      m as MembershipCtx & { userId: string },
+      { tenantId },
+      requestId,
+      { decision, note: p.note ? String(p.note).trim() : null },
+    );
+    if (!res.ok) throw new Error("ตัดสินคำขอไม่สำเร็จ — คำขออาจถูกปิดไปแล้วหรือคุณไม่มีสิทธิ์ในขั้นนี้");
+    if (res.status === "APPROVED") return "อนุมัติคำขอเรียบร้อยแล้ว";
+    if (res.status === "REJECTED") return "ปฏิเสธคำขอเรียบร้อยแล้ว";
+    return "บันทึกการพิจารณาแล้ว — รอผู้อนุมัติขั้นถัดไป";
+  }
+
+  if (kind === "inventory_consume") {
+    const p = payload as InventoryConsumePayload;
+    const system = await resolveSystem(tenantId, "INVENTORY");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบคลังสินค้า");
+    const sku = String(p.sku ?? "").trim();
+    // resolve item จาก sku (อ่านในขอบเขตระบบเดิม — ตัดจริงผ่าน invSvc.consume)
+    const item = await tenantDb({ tenantId, systemId: system.id }).invItem.findFirst({ where: { sku } });
+    if (!item) throw new Error(`ไม่พบสินค้ารหัส ${sku} ในคลัง`);
+    const qty = Math.round(Number(p.qty));
+    if (!Number.isFinite(qty) || qty <= 0) throw new Error("จำนวนที่ตัดออกต้องมากกว่า 0");
+    await invSvc.consume(
+      { tenantId, systemId: system.id },
+      {
+        itemId: item.id,
+        qty,
+        idempotencyKey: `ai-${proposalId}`, // execute ซ้ำ = กันโดยธรรมชาติ
+        sourceModule: "AI",
+        refType: "AiProposal",
+        refId: proposalId,
+        note: p.note ? String(p.note).trim() : "ตัดออกโดยผู้ช่วย AI",
+      },
+    );
+    return `ตัดสินค้า "${item.name}" ออก ${qty} ${item.unitLabel} เรียบร้อยแล้ว`;
   }
 
   throw new Error("ไม่รู้จักประเภทข้อเสนอนี้");
