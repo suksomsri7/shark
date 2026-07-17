@@ -2,7 +2,7 @@
 
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
-import { aiEnabled, latestConversation, listMessages, sendMessage } from "./service";
+import { aiEnabled, latestConversation, listMessages, sendMessage, type Clarify } from "./service";
 import { executeProposal, listPendingProposals, rejectProposal } from "./proposals";
 
 // convention action = "ai.<entity>.<verb>" — OWNER/MANAGER ผ่าน · STAFF ต้องมี ai.chat.send หรือ ai.*
@@ -17,8 +17,13 @@ function assertAiCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: st
   );
 }
 
-/** ข้อเสนอที่รอ user ยืนยัน (การ์ดใต้แชท) */
-export type PendingProposal = { id: string; summary: string };
+/** ข้อเสนอที่รอ user ยืนยัน (การ์ดใต้แชท) · risk=DESTRUCTIVE → การ์ดยืนยัน 2 ชั้น */
+export type PendingProposal = { id: string; summary: string; risk: "NORMAL" | "DESTRUCTIVE" };
+
+// map risk string จาก DB → union แคบ (ค่าอื่น = NORMAL)
+function toRisk(v: unknown): "NORMAL" | "DESTRUCTIVE" {
+  return v === "DESTRUCTIVE" ? "DESTRUCTIVE" : "NORMAL";
+}
 
 export type AiChatState = {
   enabled: boolean;
@@ -48,7 +53,7 @@ export async function loadAiChatAction(): Promise<AiChatState> {
     enabled: aiEnabled(),
     conversationId: conv?.id ?? null,
     messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content })),
-    pendingProposals: pending.map((p) => ({ id: p.id, summary: p.summary })),
+    pendingProposals: pending.map((p) => ({ id: p.id, summary: p.summary, risk: toRisk(p.risk) })),
   };
 }
 
@@ -57,17 +62,23 @@ export async function listPendingProposalsAction(conversationId: string): Promis
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
   const pending = await listPendingProposals({ tenantId: auth.active.tenantId }, conversationId);
-  return pending.map((p) => ({ id: p.id, summary: p.summary }));
+  return pending.map((p) => ({ id: p.id, summary: p.summary, risk: toRisk(p.risk) }));
 }
 
-export type ProposalResult = { ok: boolean; note: string };
+export type ProposalResult = { ok: boolean; note: string; needsSecondConfirm?: boolean };
 
-/** ยืนยันข้อเสนอ → ลงมือทำจริง (ตรวจสิทธิ์คนกด ภายใน executeProposal) */
-export async function confirmProposalAction(proposalId: string): Promise<ProposalResult> {
+/**
+ * ยืนยันข้อเสนอ → ลงมือทำจริง (ตรวจสิทธิ์คนกด ภายใน executeProposal)
+ * opts.confirm2x = การยืนยันชั้นที่สองของรายการลบ/ยกเลิกถาวร (DESTRUCTIVE)
+ */
+export async function confirmProposalAction(
+  proposalId: string,
+  opts?: { confirm2x?: boolean },
+): Promise<ProposalResult> {
   const auth = await requireTenant();
   const ctx = { tenantId: auth.active.tenantId };
   try {
-    return await executeProposal(membershipOf(auth), ctx, proposalId);
+    return await executeProposal(membershipOf(auth), ctx, proposalId, opts);
   } catch {
     return { ok: false, note: "ทำรายการไม่สำเร็จชั่วคราว ลองใหม่อีกครั้ง" };
   }
@@ -82,7 +93,7 @@ export async function rejectProposalAction(proposalId: string): Promise<Proposal
 }
 
 export type SendAiResult =
-  | { ok: true; conversationId: string; reply: string }
+  | { ok: true; conversationId: string; reply: string; clarify?: Clarify }
   | { ok: false; message: string };
 
 /** ส่งข้อความหา AI — error ทุกแบบคืนข้อความไทยสุภาพ (UI แสดงตรง ๆ ได้) */

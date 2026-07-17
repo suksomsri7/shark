@@ -17,6 +17,9 @@ import * as mktSvc from "@/lib/modules/marketing/service";
 import * as memberSvc from "@/lib/modules/member/service";
 import * as couponSvc from "@/lib/modules/coupon/service";
 import * as kanbanSvc from "@/lib/modules/kanban/service";
+import * as posSvc from "@/lib/modules/pos/service";
+import * as bookingSvc from "@/lib/modules/booking/service";
+import * as hotelSvc from "@/lib/modules/hotel/service";
 import * as accountFacade from "@/lib/modules/account";
 import { createSystem } from "@/lib/modules/system/service";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
@@ -33,11 +36,24 @@ export type ProposalKind =
   | "coupon_create"
   | "kanban_create_card"
   | "kanban_create_board"
-  | "record_expense";
+  | "record_expense"
+  // ── destructive (ลบ/void/ยกเลิก — ต้องยืนยัน 2 ชั้น) ──
+  | "void_sale"
+  | "cancel_appointment"
+  | "cancel_reservation"
+  | "kanban_archive_card";
 
 type Ctx = { tenantId: string };
 
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 ชม.
+
+// kind ที่ "ลบข้อมูล/ยกเลิกถาวร" → risk=DESTRUCTIVE (ยืนยัน 2 ชั้นก่อนทำจริง)
+const DESTRUCTIVE_KINDS = new Set<ProposalKind>([
+  "void_sale",
+  "cancel_appointment",
+  "cancel_reservation",
+  "kanban_archive_card",
+]);
 
 // action string ต่อ kind — ต้องตรงกับ assertCan ของปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
 const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
@@ -54,6 +70,11 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   kanban_create_board: { module: "kanban", action: "kanban.board.create" },
   // บันทึกค่าใช้จ่ายเข้าบัญชี → ใช้ action จริงของโมดูลบัญชี (สร้างเอกสาร) = account.doc.create
   record_expense: { module: "account", action: "account.doc.create" },
+  // destructive — action string ตรงกับปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
+  void_sale: { module: "pos", action: "pos.sale.void" },
+  cancel_appointment: { module: "booking", action: "booking.appointment.setStatus" },
+  cancel_reservation: { module: "hotel", action: "hotel.reservation.cancel" },
+  kanban_archive_card: { module: "kanban", action: "kanban.card.delete" },
 };
 
 // ── payload ต่อ kind (server-side เท่านั้น) ──
@@ -75,6 +96,10 @@ type CouponCreatePayload = {
 type KanbanCreateCardPayload = { title: string; detail?: string; boardName?: string };
 type KanbanCreateBoardPayload = { name: string; description?: string };
 type RecordExpensePayload = { vendor?: string; note: string; amountSatang: number; date?: string };
+type VoidSalePayload = { saleId: string };
+type CancelAppointmentPayload = { appointmentId: string };
+type CancelReservationPayload = { reservationId: string; reason?: string };
+type KanbanArchiveCardPayload = { cardId: string };
 
 // ── สร้างข้อเสนอ (PENDING + TTL 24 ชม.) ──
 export async function createProposal(
@@ -89,6 +114,8 @@ export async function createProposal(
       kind: input.kind,
       summary: input.summary,
       payload: input.payload as Prisma.InputJsonValue,
+      // ลบ/void/ยกเลิก → DESTRUCTIVE (ยืนยัน 2 ชั้น) · อื่น ๆ NORMAL (ชั้นเดียว เหมือนเดิม)
+      risk: DESTRUCTIVE_KINDS.has(input.kind) ? "DESTRUCTIVE" : "NORMAL",
       expiresAt: new Date(Date.now() + TTL_MS),
     },
   });
@@ -117,7 +144,8 @@ export async function executeProposal(
   m: MembershipCtx,
   ctx: Ctx,
   id: string,
-): Promise<{ ok: boolean; note: string }> {
+  opts?: { confirm2x?: boolean },
+): Promise<{ ok: boolean; note: string; needsSecondConfirm?: boolean }> {
   const row = await tenantDb(ctx).aiProposal.findFirst({ where: { id } });
   if (!row) return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
 
@@ -145,6 +173,16 @@ export async function executeProposal(
       return { ok: false, note: "คุณยังไม่มีสิทธิ์ทำรายการนี้ ให้ผู้มีสิทธิ์เป็นผู้กดยืนยัน" };
     }
     throw e;
+  }
+
+  // ── ยืนยัน 2 ชั้น สำหรับรายการลบ/ยกเลิกถาวร (DESTRUCTIVE) ──
+  // ชั้นแรก (ไม่มี confirm2x) → คง PENDING ไม่ทำจริง แจ้ง UI ให้ถามยืนยันอีกครั้ง
+  if (row.risk === "DESTRUCTIVE" && !opts?.confirm2x) {
+    return {
+      ok: false,
+      note: "ต้องยืนยันอีกครั้งเพื่อดำเนินการที่ลบข้อมูลถาวร",
+      needsSecondConfirm: true,
+    };
   }
 
   // กันแข่งกันกด: claim แบบอะตอมมิก PENDING→EXECUTED ก่อนลงมือ (ผู้ชนะเท่านั้นได้ทำ)
@@ -404,6 +442,64 @@ async function dispatch(
     });
     const baht = (amountSatang / 100).toLocaleString("th-TH");
     return `บันทึกค่าใช้จ่าย${vendor ? ` "${vendor}"` : ""} ${baht} บาท เข้าบัญชีเป็นฉบับร่างแล้ว — ตรวจแล้วออกเอกสารในระบบบัญชีได้เลย`;
+  }
+
+  if (kind === "void_sale") {
+    const p = payload as VoidSalePayload;
+    const saleId = String(p.saleId ?? "").trim();
+    if (!saleId) throw new Error("ต้องระบุรหัสบิลที่จะยกเลิก");
+    // อ่าน unitId ของบิล (mutate จริงผ่าน posSvc.voidSale เท่านั้น) — ไม่พบ = FAILED ไทย
+    const sale = await prisma.posSale.findFirst({ where: { tenantId, id: saleId }, select: { unitId: true } });
+    if (!sale) throw new Error("ไม่พบบิลนี้");
+    await posSvc.voidSale(tenantId, sale.unitId, saleId);
+    return "ยกเลิก (void) บิลเรียบร้อยแล้ว";
+  }
+
+  if (kind === "cancel_appointment") {
+    const p = payload as CancelAppointmentPayload;
+    const appointmentId = String(p.appointmentId ?? "").trim();
+    if (!appointmentId) throw new Error("ต้องระบุรหัสนัดหมายที่จะยกเลิก");
+    const appt = await prisma.appointment.findFirst({
+      where: { tenantId, id: appointmentId },
+      select: { unitId: true },
+    });
+    if (!appt) throw new Error("ไม่พบนัดหมายนี้");
+    await bookingSvc.setAppointmentStatus(tenantId, appt.unitId, appointmentId, "CANCELLED");
+    return "ยกเลิกนัดหมายเรียบร้อยแล้ว";
+  }
+
+  if (kind === "cancel_reservation") {
+    const p = payload as CancelReservationPayload;
+    const reservationId = String(p.reservationId ?? "").trim();
+    if (!reservationId) throw new Error("ต้องระบุรหัสการจองที่จะยกเลิก");
+    const rsv = await prisma.hotelReservation.findFirst({
+      where: { tenantId, id: reservationId },
+      select: { unitId: true },
+    });
+    if (!rsv) throw new Error("ไม่พบการจองนี้");
+    const res = await hotelSvc.cancelReservation(
+      tenantId,
+      rsv.unitId,
+      reservationId,
+      p.reason ? String(p.reason).trim() : undefined,
+    );
+    if (!res.ok) throw new Error(res.reason);
+    return "ยกเลิกการจองห้องพักเรียบร้อยแล้ว";
+  }
+
+  if (kind === "kanban_archive_card") {
+    const p = payload as KanbanArchiveCardPayload;
+    const system = await resolveSystem(tenantId, "KANBAN");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบบอร์ดงาน (Kanban)");
+    const cardId = String(p.cardId ?? "").trim();
+    if (!cardId) throw new Error("ต้องระบุการ์ดที่จะลบ");
+    // ชื่อการ์ดสำหรับข้อความผล (best-effort) — mutate จริงผ่าน kanbanSvc.archiveCard
+    const card = await tenantDb({ tenantId, systemId: system.id }).kanbanCard.findFirst({
+      where: { id: cardId },
+      select: { title: true },
+    });
+    await kanbanSvc.archiveCard(tenantId, system.id, cardId);
+    return `ลบการ์ด${card?.title ? ` "${card.title}"` : ""} เรียบร้อยแล้ว`;
   }
 
   throw new Error("ไม่รู้จักประเภทข้อเสนอนี้");

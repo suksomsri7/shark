@@ -15,7 +15,14 @@ import {
 // Phase 3.5: การ์ดยืนยันใต้แชท — AI "เสนอ" การกระทำ user กด "ยืนยันทำเลย" หรือ "ยกเลิก"
 // สถานะยังไม่เปิดใช้ (ไม่มี key) = แจ้งสุภาพ ไม่พัง
 
-type Msg = { id: string; role: "USER" | "ASSISTANT"; content: string; images?: string[] };
+type ClarifyOption = { label: string; value: string };
+type Msg = {
+  id: string;
+  role: "USER" | "ASSISTANT";
+  content: string;
+  images?: string[];
+  clarify?: { question: string; options: ClarifyOption[] };
+};
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // ~2MB ต่อรูป (base64 dataURL)
 
@@ -28,6 +35,8 @@ export function AiChat() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // การ์ด destructive ที่ถูก "arm" ไว้ (กดยืนยันชั้นแรกแล้ว รอกดชั้นสอง)
+  const [armedId, setArmedId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -69,14 +78,17 @@ export function AiChat() {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages, proposals, pending]);
 
-  function send() {
-    const t = text.trim();
-    const imgs = images;
+  // override = ส่งข้อความสำเร็จรูป (กดปุ่มตัวเลือกจาก ask_clarify) — ไม่มีรูปแนบ
+  function send(override?: string) {
+    const t = (override ?? text).trim();
+    const imgs = override ? [] : images;
     // ส่งได้เมื่อมีข้อความหรือมีรูปแนบ — แนบรูปอย่างเดียว ใช้ข้อความเริ่มต้นให้ AI ช่วยอ่าน
     if ((!t && imgs.length === 0) || pending) return;
     const sendText = t || "ช่วยอ่านรูป/ใบเสร็จนี้ให้หน่อย";
-    setText("");
-    setImages([]);
+    if (!override) {
+      setText("");
+      setImages([]);
+    }
     setError(null);
     setNotice(null);
     setMessages((m) => [
@@ -91,7 +103,10 @@ export function AiChat() {
       });
       if (res.ok) {
         setState((s) => (s ? { ...s, conversationId: res.conversationId } : s));
-        setMessages((m) => [...m, { id: `a-${m.length}`, role: "ASSISTANT", content: res.reply }]);
+        setMessages((m) => [
+          ...m,
+          { id: `a-${m.length}`, role: "ASSISTANT", content: res.reply, clarify: res.clarify },
+        ]);
         // LLM อาจเสนอ proposal ใหม่ระหว่างตอบ → refresh การ์ดยืนยันเสมอ
         const fresh = await listPendingProposalsAction(res.conversationId);
         setProposals(fresh);
@@ -101,14 +116,33 @@ export function AiChat() {
     });
   }
 
-  function confirm(id: string) {
+  // กดปุ่มยืนยันบนการ์ด — destructive ต้อง 2 จังหวะ (arm ก่อน แล้วกดซ้ำจึงทำจริง)
+  function onConfirm(p: PendingProposal) {
     if (busyId) return;
+    if (p.risk === "DESTRUCTIVE" && armedId !== p.id) {
+      // จังหวะแรก — arm ไว้ (ยังไม่ยิง server) เปลี่ยนปุ่มเป็น "แน่ใจนะ? ลบถาวร"
+      setArmedId(p.id);
+      setError(null);
+      setNotice(null);
+      return;
+    }
+    doConfirm(p.id, p.risk === "DESTRUCTIVE");
+  }
+
+  function doConfirm(id: string, confirm2x: boolean) {
     setBusyId(id);
     setError(null);
     setNotice(null);
     startTransition(async () => {
-      const res = await confirmProposalAction(id);
+      const res = await confirmProposalAction(id, confirm2x ? { confirm2x: true } : undefined);
+      // server ยังกันชั้นสอง (เผื่อ risk ฝั่ง client ไม่ตรง) → arm ไว้ ไม่ลบการ์ด
+      if (res.needsSecondConfirm) {
+        setArmedId(id);
+        setBusyId(null);
+        return;
+      }
       setProposals((ps) => ps.filter((p) => p.id !== id));
+      setArmedId((a) => (a === id ? null : a));
       if (res.ok) setNotice(res.note);
       else setError(res.note);
       setBusyId(null);
@@ -123,6 +157,7 @@ export function AiChat() {
     startTransition(async () => {
       const res = await rejectProposalAction(id);
       setProposals((ps) => ps.filter((p) => p.id !== id));
+      setArmedId((a) => (a === id ? null : a));
       setNotice(res.note);
       setBusyId(null);
     });
@@ -151,29 +186,46 @@ export function AiChat() {
             สวัสดีครับ ถามเรื่องการใช้งาน ให้ช่วยคิดเรื่องธุรกิจ หรือสั่งให้ช่วยทำรายการแทนได้เลย
           </p>
         )}
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={
-              m.role === "USER"
-                ? "ml-8 self-end rounded-2xl rounded-br-sm bg-[color:var(--color-ink)] px-3 py-2 text-sm text-[color:var(--color-surface)]"
-                : "mr-8 self-start whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-[color:var(--color-surface-2)] px-3 py-2 text-sm"
-            }
-          >
-            {m.images && m.images.length > 0 && (
-              <div className="mb-1 flex flex-wrap gap-1">
-                {m.images.map((src, i) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+        {messages.map((m, idx) => (
+          <div key={m.id} className="flex flex-col gap-1">
+            <div
+              className={
+                m.role === "USER"
+                  ? "ml-8 self-end rounded-2xl rounded-br-sm bg-[color:var(--color-ink)] px-3 py-2 text-sm text-[color:var(--color-surface)]"
+                  : "mr-8 self-start whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-[color:var(--color-surface-2)] px-3 py-2 text-sm"
+              }
+            >
+              {m.images && m.images.length > 0 && (
+                <div className="mb-1 flex flex-wrap gap-1">
+                  {m.images.map((src, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={i}
+                      src={src}
+                      alt={`รูปแนบ ${i + 1}`}
+                      className="h-16 w-16 rounded-lg object-cover"
+                    />
+                  ))}
+                </div>
+              )}
+              {m.content}
+            </div>
+            {/* ตัวเลือกจาก ask_clarify — แสดงเฉพาะข้อความล่าสุด · กด = ส่ง value เป็นข้อความถัดไป */}
+            {m.clarify && m.clarify.options.length > 0 && idx === messages.length - 1 && (
+              <div className="mr-8 flex flex-wrap gap-2">
+                {m.clarify.options.map((opt, i) => (
+                  <button
                     key={i}
-                    src={src}
-                    alt={`รูปแนบ ${i + 1}`}
-                    className="h-16 w-16 rounded-lg object-cover"
-                  />
+                    type="button"
+                    onClick={() => send(opt.value)}
+                    disabled={pending}
+                    className="btn btn-ghost min-h-[40px] border border-[color:var(--color-ink)] disabled:opacity-50"
+                  >
+                    {opt.label}
+                  </button>
                 ))}
               </div>
             )}
-            {m.content}
           </div>
         ))}
         {pending && !busyId && (
@@ -184,31 +236,59 @@ export function AiChat() {
         <div ref={bottomRef} />
       </div>
 
-      {/* การ์ดยืนยัน — AI เสนอ user ตัดสินใจ */}
-      {proposals.map((p) => (
-        <div key={p.id} className="rounded-xl border border-[color:var(--color-ink)] bg-[color:var(--color-surface-2)] p-3">
-          <div className="text-xs font-medium text-[color:var(--color-muted)]">ผู้ช่วยขอยืนยันก่อนทำ</div>
-          <p className="mt-1 text-sm">{p.summary}</p>
-          <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              onClick={() => confirm(p.id)}
-              disabled={busyId === p.id}
-              className="btn btn-primary min-h-[44px] flex-1 disabled:opacity-50"
+      {/* การ์ดยืนยัน — AI เสนอ user ตัดสินใจ · DESTRUCTIVE = ยืนยัน 2 จังหวะ */}
+      {proposals.map((p) => {
+        const destructive = p.risk === "DESTRUCTIVE";
+        const armed = armedId === p.id;
+        const confirmLabel =
+          busyId === p.id
+            ? "กำลังทำ…"
+            : destructive
+              ? armed
+                ? "แน่ใจนะ? ลบถาวร กดอีกครั้ง"
+                : "ยืนยันลบ/ยกเลิก"
+              : "ยืนยันทำเลย";
+        return (
+          <div
+            key={p.id}
+            className="rounded-xl border bg-[color:var(--color-surface-2)] p-3"
+            style={destructive ? { borderColor: "var(--color-danger)" } : { borderColor: "var(--color-ink)" }}
+          >
+            <div
+              className="text-xs font-medium"
+              style={destructive ? { color: "var(--color-danger)" } : { color: "var(--color-muted)" }}
             >
-              {busyId === p.id ? "กำลังทำ…" : "ยืนยันทำเลย"}
-            </button>
-            <button
-              type="button"
-              onClick={() => reject(p.id)}
-              disabled={busyId === p.id}
-              className="btn btn-ghost min-h-[44px] disabled:opacity-50"
-            >
-              ยกเลิก
-            </button>
+              {destructive ? "ผู้ช่วยขอยืนยันการลบ/ยกเลิกถาวร" : "ผู้ช่วยขอยืนยันก่อนทำ"}
+            </div>
+            <p className="mt-1 text-sm">{p.summary}</p>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => onConfirm(p)}
+                disabled={busyId === p.id}
+                className={`btn min-h-[44px] flex-1 disabled:opacity-50 ${destructive ? "" : "btn-primary"}`}
+                style={
+                  destructive && armed
+                    ? { background: "var(--color-danger)", color: "var(--color-surface)" }
+                    : destructive
+                      ? { borderColor: "var(--color-danger)", color: "var(--color-danger)" }
+                      : undefined
+                }
+              >
+                {confirmLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => reject(p.id)}
+                disabled={busyId === p.id}
+                className="btn btn-ghost min-h-[44px] disabled:opacity-50"
+              >
+                ยกเลิก
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {notice && (
         <p className="rounded-lg bg-[color:var(--color-surface-2)] px-3 py-2 text-sm text-[color:var(--color-ink)]">
