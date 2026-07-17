@@ -8,14 +8,8 @@ import { assertCan } from "@/lib/core/rbac";
 import { tenantDb } from "@/lib/core/db";
 import * as member from "@/lib/modules/member/service";
 import * as pos from "@/lib/modules/pos/service";
+import * as booking from "@/lib/modules/booking/service";
 import { systemForUnit } from "@/lib/modules/system/service";
-
-// ตารางเวลาเริ่มต้นเมื่อเพิ่มช่าง: ทุกวัน 10:00–20:00 (ปรับภายหลังได้)
-const DEFAULT_HOURS = Array.from({ length: 7 }, (_, weekday) => ({
-  weekday,
-  startMin: 600,
-  endMin: 1200,
-}));
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
@@ -72,14 +66,30 @@ export async function addStaffAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
   assertBookingCan(auth, unit.id, "booking.staff.create");
   const name = String(formData.get("name") ?? "").trim();
-  if (name.length < 1) return;
-  const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
-  const db = tenantDb(ctx);
-  const staff = await db.bookingStaff.create({ data: { ...ctx, name } });
-  await db.bookingStaffHours.createMany({
-    data: DEFAULT_HOURS.map((h) => ({ ...ctx, ...h, staffId: staff.id })),
+  const employeeId = String(formData.get("employeeId") ?? "").trim() || undefined;
+  // ต้องมีอย่างใดอย่างหนึ่ง: เลือกจาก HR หรือพิมพ์ชื่อเอง
+  if (!employeeId && name.length < 1) return;
+  await booking.createStaff({ tenantId: auth.active.tenantId, unitId: unit.id, name, employeeId });
+  revalidatePath(`/app/u/${unitSlug}/booking/staff`);
+}
+
+const HOURS_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+function hhmmToMin(v: string): number | null {
+  const m = HOURS_RE.exec(v);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+export async function setBookingHoursAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingCan(auth, unit.id, "booking.hours.set");
+  const rows = Array.from({ length: 7 }, (_, weekday) => {
+    const closed = formData.get(`closed-${weekday}`) != null;
+    const openMin = hhmmToMin(String(formData.get(`open-${weekday}`) ?? "")) ?? 600;
+    const closeMin = hhmmToMin(String(formData.get(`close-${weekday}`) ?? "")) ?? 1200;
+    return { weekday, openMin, closeMin, closed };
   });
-  revalidatePath(`/app/u/${unitSlug}/booking/setup`);
+  await booking.setUnitHours(auth.active.tenantId, unit.id, rows);
+  revalidatePath(`/app/u/${unitSlug}/booking/hours`);
 }
 
 export async function removeStaffAction(unitSlug: string, formData: FormData) {

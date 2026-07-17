@@ -25,6 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: `/app/u/${slug}/booking`, label: "นัดวันนี้" },
     { href: `/app/u/${slug}/booking/services`, label: "บริการ" },
     { href: `/app/u/${slug}/booking/staff`, label: "พนักงาน" },
+    { href: `/app/u/${slug}/booking/hours`, label: "เวลาทำการ" },
   ];
   const posChildren = (id: string) => [
     { href: `/app/sys/${id}`, label: "ภาพรวม" },

@@ -7,6 +7,7 @@ import {
   localToUtc,
   localWeekday,
   minutesToHHMM,
+  type HoursWindow,
 } from "./slots";
 
 // resolve unit จาก slug (public/no-auth) → tenantId+unitId
@@ -36,6 +37,53 @@ export async function getBookingData(tenantId: string, unitId: string) {
   return { services, staff };
 }
 
+// ── เวลาทำการร้าน (B) ──
+export type UnitHoursRow = { weekday: number; openMin: number; closeMin: number; closed: boolean };
+
+const DEFAULT_HOURS_ROW = { openMin: 600, closeMin: 1200, closed: false };
+
+// คืน 7 แถวเสมอ (weekday 0=อาทิตย์..6) — merge DB กับค่าเริ่มต้น · ไม่ persist ตอนอ่าน
+export async function getUnitHours(tenantId: string, unitId: string): Promise<UnitHoursRow[]> {
+  const db = tenantDb({ tenantId, unitId });
+  const rows = await db.bookingHours.findMany({ where: {} });
+  const byWeekday = new Map(rows.map((r) => [r.weekday, r]));
+  return Array.from({ length: 7 }, (_, weekday) => {
+    const r = byWeekday.get(weekday);
+    return r
+      ? { weekday, openMin: r.openMin, closeMin: r.closeMin, closed: r.closed }
+      : { weekday, ...DEFAULT_HOURS_ROW };
+  });
+}
+
+// upsert เวลาทำการรายวัน (unique unitId+weekday)
+export async function setUnitHours(
+  tenantId: string,
+  unitId: string,
+  rows: { weekday: number; openMin: number; closeMin: number; closed: boolean }[],
+) {
+  const db = tenantDb({ tenantId, unitId });
+  for (const r of rows) {
+    if (!r.closed && r.openMin >= r.closeMin) {
+      throw new Error("เวลาเปิดต้องมาก่อนเวลาปิด");
+    }
+    // upsert รายวัน (unique unitId+weekday) — ผ่าน tenantDb (guard inject tenantId/unitId)
+    // ใช้ท่า update→create แทน .upsert() เพราะ guard wrap where ของ upsert เป็น AND
+    // ทำให้ compound-unique (unitId_weekday) ใช้ไม่ได้ (guard เป็น core ห้ามแก้)
+    try {
+      await db.bookingHours.update({
+        where: { unitId_weekday: { unitId, weekday: r.weekday } },
+        data: { openMin: r.openMin, closeMin: r.closeMin, closed: r.closed },
+      });
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code !== "P2025" && !(e instanceof Error && /นอกขอบเขต/.test(e.message))) throw e;
+      await db.bookingHours.create({
+        data: { tenantId, unitId, weekday: r.weekday, openMin: r.openMin, closeMin: r.closeMin, closed: r.closed },
+      });
+    }
+  }
+}
+
 export type SlotOption = { hhmm: string; startMin: number; staffId: string };
 
 // ช่องว่างของวัน — staffId=null = ใครก็ได้ (คืน staff ที่ว่างคนแรกต่อเวลา)
@@ -54,24 +102,25 @@ export async function getAvailableSlots(
   const dayStart = localToUtc(dateStr, 0);
   const dayEnd = localToUtc(dateStr, 24 * 60);
 
+  // กรอบเวลา = เวลาทำการร้านของ weekday นั้น (เดิมใช้ตารางรายช่าง)
+  const unitHours = await getUnitHours(tenantId, unitId);
+  const day = unitHours.find((h) => h.weekday === weekday);
+  if (!day || day.closed) return [];
+  const window: HoursWindow[] = [{ startMin: day.openMin, endMin: day.closeMin }];
+
   const staffList = staffId
     ? await db.bookingStaff.findMany({ where: { id: staffId, active: true } })
     : await db.bookingStaff.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } });
   if (staffList.length === 0) return [];
 
-  const [hours, appts] = await Promise.all([
-    db.bookingStaffHours.findMany({
-      where: { weekday, staffId: { in: staffList.map((s) => s.id) } },
-    }),
-    db.appointment.findMany({
-      where: {
-        staffId: { in: staffList.map((s) => s.id) },
-        startAt: { gte: dayStart, lt: dayEnd },
-        status: { notIn: ["CANCELLED", "NO_SHOW"] },
-      },
-      select: { staffId: true, startAt: true, endAt: true },
-    }),
-  ]);
+  const appts = await db.appointment.findMany({
+    where: {
+      staffId: { in: staffList.map((s) => s.id) },
+      startAt: { gte: dayStart, lt: dayEnd },
+      status: { notIn: ["CANCELLED", "NO_SHOW"] },
+    },
+    select: { staffId: true, startAt: true, endAt: true },
+  });
 
   const now = new Date();
   // รวมช่องต่อเวลา → เก็บ staff ที่ว่างคนแรก
@@ -79,7 +128,7 @@ export async function getAvailableSlots(
   for (const s of staffList) {
     const mins = computeStaffSlots({
       dateStr,
-      hours: hours.filter((h) => h.staffId === s.id),
+      hours: window,
       busy: appts.filter((a) => a.staffId === s.id),
       durationMin: service.durationMin,
       bufferMin: service.bufferMin,
@@ -91,6 +140,62 @@ export async function getAvailableSlots(
   return [...byTime.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([startMin, sid]) => ({ startMin, hhmm: minutesToHHMM(startMin), staffId: sid }));
+}
+
+// ── เชื่อมพนักงานกับระบบ HR (A) ──
+// พนักงานจากระบบ HR ที่เปิดอยู่ของ tenant นี้ (เลือกได้ ไม่บังคับ) · ไม่เปิด HR = []
+export async function listLinkableEmployees(tenantId: string) {
+  const hrSystems = await prisma.appSystem.findMany({
+    where: { tenantId, type: "HR", active: true },
+    select: { id: true },
+  });
+  if (hrSystems.length === 0) return [];
+  const employees = await prisma.hrEmployee.findMany({
+    where: { tenantId, systemId: { in: hrSystems.map((s) => s.id) }, active: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, name: true, position: true },
+  });
+  return employees.map((e) => ({ id: e.id, name: e.name, position: e.position }));
+}
+
+// ตัวกลางสร้างช่าง — เลือกจาก HR (employeeId) หรือพิมพ์ชื่อเอง (name)
+export async function createStaff(input: {
+  tenantId: string;
+  unitId: string;
+  name?: string;
+  employeeId?: string;
+}) {
+  const db = tenantDb({ tenantId: input.tenantId, unitId: input.unitId });
+  let name = (input.name ?? "").trim();
+  let employeeId: string | null = null;
+
+  if (input.employeeId) {
+    // ต้องเป็นพนักงานของระบบ HR ใน tenant เดียวกัน
+    const hrSystems = await prisma.appSystem.findMany({
+      where: { tenantId: input.tenantId, type: "HR", active: true },
+      select: { id: true },
+    });
+    const emp =
+      hrSystems.length > 0
+        ? await prisma.hrEmployee.findFirst({
+            where: {
+              id: input.employeeId,
+              tenantId: input.tenantId,
+              systemId: { in: hrSystems.map((s) => s.id) },
+              active: true,
+            },
+          })
+        : null;
+    if (!emp) throw new Error("ไม่พบพนักงานที่เลือก");
+    name = emp.name;
+    employeeId = emp.id;
+  } else if (name.length < 1) {
+    throw new Error("กรุณากรอกชื่อพนักงาน");
+  }
+
+  return db.bookingStaff.create({
+    data: { tenantId: input.tenantId, unitId: input.unitId, name, employeeId },
+  });
 }
 
 // ── สร้างนัด (กันจองซ้อนใน transaction) ──
