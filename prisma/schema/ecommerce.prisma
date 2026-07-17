@@ -4,6 +4,7 @@ enum ShopOrderStatus {
   PENDING_PAYMENT
   PAID
   CANCELLED
+  REFUNDED
 }
 
 model ShopProduct {
@@ -38,6 +39,7 @@ model ShopOrder {
   posSaleId     String? // PosSale ที่เกิดตอนยืนยันรับเงิน (เส้นเงิน C-2)
   paidAt        DateTime?
   cancelledAt   DateTime?
+  refundedAt    DateTime? // คืนเงิน (PAID→REFUNDED) — void PosSale + คืนสต็อก (ห้ามลบ order)
   createdAt     DateTime        @default(now())
 
   lines ShopOrderLine[]

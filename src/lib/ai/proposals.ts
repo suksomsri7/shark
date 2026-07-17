@@ -69,7 +69,8 @@ export type ProposalKind =
   | "void_sale"
   | "cancel_appointment"
   | "cancel_reservation"
-  | "kanban_archive_card";
+  | "kanban_archive_card"
+  | "shop_refund_order";
 
 type Ctx = { tenantId: string };
 
@@ -82,6 +83,7 @@ export const DESTRUCTIVE_KINDS = new Set<ProposalKind>([
   "cancel_appointment",
   "cancel_reservation",
   "kanban_archive_card",
+  "shop_refund_order",
 ]);
 
 // action string ต่อ kind — ต้องตรงกับ assertCan ของปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
@@ -122,6 +124,7 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   cancel_appointment: { module: "booking", action: "booking.appointment.setStatus" },
   cancel_reservation: { module: "hotel", action: "hotel.reservation.cancel" },
   kanban_archive_card: { module: "kanban", action: "kanban.card.delete" },
+  shop_refund_order: { module: "shop", action: "shop.order.refund" },
 };
 
 // ── payload ต่อ kind (server-side เท่านั้น) ──
@@ -167,6 +170,7 @@ type HotelCreateReservationPayload = {
 };
 type QueueIssueTicketPayload = { unitName?: string; typeName?: string; customerName?: string };
 type ShopConfirmOrderPayload = { orderCode: string };
+type ShopRefundOrderPayload = { orderCode: string };
 // ── Phase B2 payload ──
 type CrmCreateLeadPayload = { name: string; phone?: string; email?: string; note?: string };
 type KbCreateArticlePayload = { title: string; body: string; category?: string };
@@ -723,6 +727,22 @@ async function dispatch(
     const res = await shopSvc.confirmOrderPaid({ tenantId, unitId: order.unitId }, order.id);
     if (!res.ok) throw new Error(`ยืนยันรับเงินออเดอร์ ${code} ไม่สำเร็จ`);
     return `ยืนยันรับเงินออเดอร์ ${code} เรียบร้อยแล้ว — บันทึกเป็นยอดขายให้อัตโนมัติ`;
+  }
+
+  if (kind === "shop_refund_order") {
+    const p = payload as ShopRefundOrderPayload;
+    const code = String(p.orderCode ?? "").trim();
+    if (!code) throw new Error("ต้องระบุรหัสออเดอร์");
+    // หาออเดอร์จาก code ทุก unit ของ tenant (code รันต่อ unit) — mutate จริงผ่าน shopSvc.refundOrder
+    const order = await prisma.shopOrder.findFirst({
+      where: { tenantId, code },
+      select: { id: true, unitId: true, status: true },
+    });
+    if (!order) throw new Error(`ไม่พบออเดอร์รหัส ${code}`);
+    if (order.status !== "PAID") throw new Error(`คืนเงินออเดอร์ ${code} ไม่ได้ (สถานะปัจจุบัน: ${order.status})`);
+    const res = await shopSvc.refundOrder({ tenantId, unitId: order.unitId }, order.id);
+    if (!res.ok) throw new Error(res.reason ?? `คืนเงินออเดอร์ ${code} ไม่สำเร็จ`);
+    return `คืนเงินออเดอร์ ${code} เรียบร้อยแล้ว — กลับรายการขาย คืนแต้ม/คูปอง และคืนสต็อกให้อัตโนมัติ`;
   }
 
   if (kind === "void_sale") {

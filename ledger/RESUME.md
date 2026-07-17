@@ -248,3 +248,7 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 |---|---|---|---|
 | W1-A | **Reward แลกจริง**: flow แลก(เลือกรางวัล+สมาชิก)+ประวัติ+รับของ+ยกเลิกคืนแต้ม · point.credit() กัน over-refund · AI reward_redeem | qc-reward 20/20 | 2f6d4a9 |
 | W1-B | **POS หน้าขาย Cashier**: catalog(inventory+ราคา AccountProduct)/ค้นหา/เพิ่มเอง+cart+เงินสด(ทอน)/พร้อมเพย์(QR ยืนยันรับเงิน)+idempotency 3 ชั้น · reuse createSale ไม่แตะ engine | qc-pos-register 24/24 + cpa 107 | 22aa9df |
+| W1-C | **Queue สาธารณะ**: ลูกค้ากดรับบัตร+เช็คคิวเอง(/s/../queue + /t/token auto-refresh)+QR · rate limit · reuse issueTicket | qc-queue-public 20/20 | e6ce94c |
+| W1-D | **Point**: ตั้งอัตราแต้ม(บาท/แต้ม)+เปิดปิด + ปรับ/แจกแต้มมือ(ADJUST กันติดลบ) | qc-point 18/18 | 442be55 |
+| W1-E | **CRM follow-up**: wire addActivityAction ที่ปุ่มหาย → ฟอร์มงานติดตาม+ครบกำหนด+เสร็จแล้ว | qc-crm-activity 12/12 | 442be55 |
+✅ **Wave 1 ครบ + deploy READY** — POS ขายได้จริง/loyalty ใช้ได้/queue self-service/CRM ติดตามงานได้ · ต่อ Wave 2 refund

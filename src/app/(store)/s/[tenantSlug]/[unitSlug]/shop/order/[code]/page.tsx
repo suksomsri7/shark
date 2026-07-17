@@ -11,6 +11,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   PENDING_PAYMENT: { label: "รอชำระเงิน", cls: "bg-amber-100 text-amber-800" },
   PAID: { label: "ชำระเงินแล้ว", cls: "bg-green-100 text-green-800" },
   CANCELLED: { label: "ยกเลิกแล้ว", cls: "bg-gray-200 text-gray-700" },
+  REFUNDED: { label: "คืนเงินแล้ว", cls: "bg-rose-100 text-rose-800" },
 };
 
 const SHIP_STATUS: Record<string, { label: string; cls: string }> = {
@@ -114,6 +115,9 @@ export default async function StoreShopOrderPage({
       )}
       {order.status === "CANCELLED" && (
         <p className="text-center text-sm text-[color:var(--color-muted)]">ออเดอร์นี้ถูกยกเลิกแล้ว</p>
+      )}
+      {order.status === "REFUNDED" && (
+        <p className="text-center text-sm text-[color:var(--color-muted)]">ออเดอร์นี้คืนเงินแล้ว หากมีข้อสงสัยติดต่อร้านได้เลย</p>
       )}
 
       <div className="mt-6 text-center">

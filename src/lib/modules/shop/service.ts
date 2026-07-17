@@ -256,6 +256,79 @@ export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUser
   return { ok: true, posSaleId: sale.saleId };
 }
 
+// ── คืนเงิน (คืนเงิน/ยกเลิกหลังชำระ) — void PosSale + คืนสต็อก (ห้ามลบ order) ──
+// mirror ของ confirmOrderPaid: claim อะตอมมิก PAID→REFUNDED ก่อน แล้วกลับเส้นเงิน+คืนสต็อก (ทั้งคู่ idempotent)
+// ไม่ห่อ $transaction เดียว: pos.voidSale / inventory.receive เปิด tx ของตัวเอง (แบบเดียวกับตอน confirm)
+export async function refundOrder(ctx: ShopCtx, orderId: string): Promise<{ ok: boolean; reason?: string }> {
+  const db = tenantDb(ctx);
+
+  // 1) claim อะตอมมิก: PAID → REFUNDED (idempotent — refund ซ้ำ/สถานะอื่น → ok:false ไม่กลับเส้นเงินซ้ำ)
+  const claim = await db.shopOrder.updateMany({
+    where: { id: orderId, status: "PAID" },
+    data: { status: "REFUNDED", refundedAt: new Date() },
+  });
+  if (claim.count === 0) {
+    const cur = await db.shopOrder.findFirst({ where: { id: orderId } });
+    if (!cur) return { ok: false, reason: "ไม่พบออเดอร์" };
+    if (cur.status === "REFUNDED") return { ok: false, reason: "ออเดอร์นี้คืนเงินแล้ว" };
+    if (cur.status === "PENDING_PAYMENT") return { ok: false, reason: "ออเดอร์นี้ยังไม่ได้รับเงิน (ใช้ปุ่มยกเลิกแทน)" };
+    return { ok: false, reason: "คืนเงินได้เฉพาะออเดอร์ที่รับเงินแล้ว" };
+  }
+
+  const order = await db.shopOrder.findFirst({ where: { id: orderId } });
+  const lines = await db.shopOrderLine.findMany({ where: { orderId } });
+  if (!order) return { ok: false, reason: "ไม่พบออเดอร์" };
+
+  // 2) กลับเส้นเงิน — void PosSale (บัญชี pos.sale.voided + คืนแต้ม + คูปอง + member spend)
+  //    เฉพาะบิลที่ยัง PAID (กัน void ซ้ำ — เผื่อ retry หลัง crash กลางคัน)
+  if (order.posSaleId) {
+    const sale = await prisma.posSale.findFirst({ where: { id: order.posSaleId, tenantId: ctx.tenantId } });
+    if (sale && sale.status === "PAID") {
+      await pos.voidSale(ctx.tenantId, ctx.unitId, order.posSaleId);
+    }
+  }
+
+  // 3) คืนสต็อก — mirror ของตอนตัด (consume) · idempotent ผ่าน receive idempotencyKey ผูก orderId+lineId
+  //    คืนที่ "ต้นทุนปัจจุบัน" ของ item → ต้นทุนถัวเฉลี่ยไม่เพี้ยน (inCost = avg → avg คงเดิม)
+  const invSystems = await listSystems(ctx.tenantId, "INVENTORY");
+  const invSys = invSystems[0];
+  if (invSys) {
+    const invCtx = { tenantId: ctx.tenantId, systemId: invSys.id };
+    const invDb = tenantDb(invCtx);
+    for (const l of lines) {
+      const product = await db.shopProduct.findFirst({ where: { id: l.productId } });
+      if (!product?.invItemId) continue;
+      const item = await invDb.invItem.findFirst({ where: { id: product.invItemId } });
+      if (!item) continue; // สินค้าในคลังถูกลบ → ไม่มีที่ให้คืน ข้ามเงียบ
+      await inventory.receive(invCtx, {
+        itemId: product.invItemId,
+        qty: l.qty,
+        costSatang: item.costSatang, // คืนที่ต้นทุนเดิม → ไม่กระทบต้นทุนถัวเฉลี่ย
+        idempotencyKey: `ecom-refund-${orderId}-${l.id}`,
+        sourceModule: "ECOM",
+        refType: "ShopOrder",
+        refId: orderId,
+        note: `คืนสต็อกจากการคืนเงินออเดอร์ ${order.code}`,
+      });
+    }
+  }
+
+  // 4) แจ้งเตือนร้าน (best-effort — บัญชีกลับผ่าน pos.sale.voided แล้ว จึงไม่ให้ล้มการคืนเงิน)
+  try {
+    await db.appNotification.create({
+      data: {
+        tenantId: ctx.tenantId,
+        title: "ออเดอร์ถูกคืนเงิน",
+        body: `คืนเงินออเดอร์ ${order.code} (฿${(order.totalSatang / 100).toLocaleString("th-TH")}) เรียบร้อยแล้ว`,
+      },
+    });
+  } catch {
+    // แจ้งเตือนล้ม → ข้าม (เงินกลับเรียบร้อยแล้ว)
+  }
+
+  return { ok: true };
+}
+
 // ── ยกเลิก ──────────────────────────────────────────────────
 export async function cancelOrder(ctx: ShopCtx, orderId: string): Promise<boolean> {
   const res = await tenantDb(ctx).shopOrder.updateMany({
@@ -265,7 +338,7 @@ export async function cancelOrder(ctx: ShopCtx, orderId: string): Promise<boolea
   return res.count > 0;
 }
 
-export async function listOrders(ctx: ShopCtx, opts: { status?: "PENDING_PAYMENT" | "PAID" | "CANCELLED" } = {}) {
+export async function listOrders(ctx: ShopCtx, opts: { status?: "PENDING_PAYMENT" | "PAID" | "CANCELLED" | "REFUNDED" } = {}) {
   return tenantDb(ctx).shopOrder.findMany({
     where: opts.status ? { status: opts.status } : {},
     orderBy: { createdAt: "desc" },

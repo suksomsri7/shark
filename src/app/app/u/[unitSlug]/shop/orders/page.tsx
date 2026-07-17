@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { listOrders } from "@/lib/modules/shop/service";
-import { confirmOrderAction, cancelOrderAction } from "@/lib/modules/shop/actions";
+import { confirmOrderAction, cancelOrderAction, refundOrderAction } from "@/lib/modules/shop/actions";
 import { getShipmentForOrder } from "@/lib/delivery/service";
 import { listAdapters } from "@/lib/delivery/adapters";
 import { createShipmentAction, updateShipmentStatusAction } from "@/lib/delivery/actions";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const baht = (satang: number) => (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 0 });
 
@@ -12,6 +13,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   PENDING_PAYMENT: { label: "รอชำระ", cls: "bg-amber-100 text-amber-800" },
   PAID: { label: "รับเงินแล้ว", cls: "bg-green-100 text-green-800" },
   CANCELLED: { label: "ยกเลิก", cls: "bg-gray-200 text-gray-700" },
+  REFUNDED: { label: "คืนเงินแล้ว", cls: "bg-rose-100 text-rose-800" },
 };
 
 const SHIP_STATUS: Record<string, { label: string; cls: string }> = {
@@ -24,10 +26,13 @@ const SHIP_STATUS: Record<string, { label: string; cls: string }> = {
 // รายการออเดอร์ + ยืนยันรับเงิน / ยกเลิก — /app/u/[unitSlug]/shop/orders
 export default async function ShopOrdersPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
+  searchParams: Promise<{ err?: string }>;
 }) {
   const { unitSlug } = await params;
+  const { err } = await searchParams;
   const { auth, unit } = await requireUnit(unitSlug);
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
   const orders = await listOrders(ctx, {});
@@ -47,6 +52,12 @@ export default async function ShopOrdersPage({
           ← จัดการสินค้า
         </Link>
       </div>
+
+      {err && (
+        <div className="rounded-lg border border-[color:var(--color-danger)] bg-rose-50 px-3 py-2 text-sm text-[color:var(--color-danger)]">
+          {err}
+        </div>
+      )}
 
       {orders.length === 0 && <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีออเดอร์</p>}
 
@@ -145,6 +156,21 @@ export default async function ShopOrdersPage({
                 </div>
               );
             })()}
+
+            {/* คืนเงิน — เฉพาะออเดอร์ที่รับเงินแล้ว (void บิล + คืนสต็อก) */}
+            {o.status === "PAID" && (
+              <div className="mt-1 border-t pt-3">
+                <ConfirmDialog
+                  triggerLabel="คืนเงิน"
+                  triggerClassName="rounded-lg border border-[color:var(--color-danger)] px-3 py-1.5 text-sm text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
+                  title={`คืนเงินออเดอร์ ${o.code}?`}
+                  detail={`ยกเลิกบิลและคืนเงิน ฿${baht(o.totalSatang)} — ระบบจะกลับรายการขาย คืนแต้ม/คูปอง และคืนสต็อกสินค้าให้อัตโนมัติ (ทำแล้วย้อนไม่ได้)`}
+                  confirmLabel="ยืนยันคืนเงิน"
+                  danger
+                  action={refundOrderAction.bind(null, unitSlug, o.id)}
+                />
+              </div>
+            )}
           </div>
         );
       })}

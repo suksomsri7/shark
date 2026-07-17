@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
@@ -100,4 +101,15 @@ export async function cancelOrderAction(unitSlug: string, orderId: string) {
   assertShopCan(auth, unit.id, "shop.order.cancel");
   await shop.cancelOrder(ctxOf(auth, unit.id), orderId);
   revalidatePath(`/app/u/${unitSlug}/shop/orders`);
+}
+
+// คืนเงิน/ยกเลิกหลังชำระ — void PosSale + คืนสต็อก · error inline ผ่าน ?err= (pattern เดียวกับบัญชี)
+export async function refundOrderAction(unitSlug: string, orderId: string) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertShopCan(auth, unit.id, "shop.order.refund");
+  const res = await shop.refundOrder(ctxOf(auth, unit.id), orderId);
+  revalidatePath(`/app/u/${unitSlug}/shop/orders`);
+  if (!res.ok) {
+    redirect(`/app/u/${unitSlug}/shop/orders?err=${encodeURIComponent(res.reason ?? "คืนเงินไม่สำเร็จ")}`);
+  }
 }

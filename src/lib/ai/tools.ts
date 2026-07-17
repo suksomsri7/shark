@@ -1221,6 +1221,29 @@ const shopConfirmOrder: AiTool = {
   },
 };
 
+// ── shop_refund_order — เสนอคืนเงินออเดอร์ที่รับเงินแล้ว (destructive — ยืนยัน 2 ชั้น) ──
+const shopRefundOrder: AiTool = {
+  action: true,
+  def: {
+    name: "shop_refund_order",
+    description:
+      "เสนอคืนเงินออเดอร์ร้านค้าออนไลน์ที่รับเงินแล้ว (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้ยืนยัน 2 ชั้นก่อน เพราะเป็นการกลับรายการเงินที่ย้อนไม่ได้) · ระบุ orderCode (รหัสออเดอร์ เช่น SO-0001) · เมื่อยืนยันจะกลับรายการขาย คืนแต้ม/คูปอง และคืนสต็อกให้อัตโนมัติ",
+    parameters: {
+      type: "object",
+      properties: {
+        orderCode: { type: "string", description: "รหัสออเดอร์ เช่น SO-0001" },
+      },
+      required: ["orderCode"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const orderCode = String(asRecord(args).orderCode ?? "").trim();
+    if (!orderCode) return JSON.stringify({ error: "ต้องระบุรหัสออเดอร์" });
+    return propose(ctx, "shop_refund_order", `คืนเงินออเดอร์ ${orderCode}`, { orderCode });
+  },
+};
+
 // ── B1-R1) today_appointments — นัดหมายวันนี้ (เวลาไทย) ทุกสาขา ──
 const todayAppointments: AiTool = {
   def: {
@@ -1800,6 +1823,7 @@ export function toolRegistry(): AiTool[] {
     hotelCreateReservation,
     queueIssueTicket,
     shopConfirmOrder,
+    shopRefundOrder,
     // Phase B2 action — CRM / KB / โรงเรียน / คลินิก / เช่า / สายอนุมัติ / คลังตัดออก
     crmCreateLead,
     kbCreateArticle,

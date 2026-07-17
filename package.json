@@ -41,7 +41,8 @@
     "qc:crm-activity": "tsx scripts/qc-crm-activity.mts",
     "qc:point": "tsx scripts/qc-point.mts",
     "qc:security-hotfix": "tsx scripts/qc-security-hotfix.mts",
-    "qc:queue-public": "tsx scripts/qc-queue-public.mts"
+    "qc:queue-public": "tsx scripts/qc-queue-public.mts",
+    "qc:shop-refund": "tsx scripts/qc-shop-refund.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
