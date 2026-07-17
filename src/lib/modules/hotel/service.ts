@@ -483,6 +483,48 @@ export async function cancelReservation(
   }
 }
 
+// ───────────────────────── Refund หลังเช็คเอาท์ ─────────────────────────
+// คืนเงินหลังเช็คเอาท์ (เก็บเงินผ่าน POS ไปแล้ว) — ปัญหาเดิม: cancelReservation บล็อก CHECKED_OUT → เงินค้าง
+// mirror ของ ticket.cancelOrder / restaurant.voidCheckout:
+//   1) claim สถานะอะตอมมิก CHECKED_OUT → REFUNDED (updateMany มีเงื่อนไข status) กันแข่ง/ทำซ้ำ
+//   2) กลับเส้นเงิน pos.voidSale (คืนบัญชี + คืนแต้ม) "นอก tx" — voidSale เปิด tx ของตัวเอง (ไม่ nested)
+// guard: เฉพาะ reservation ที่ CHECKED_OUT และมี posSale `hotel-sale-<id>` ที่ยัง PAID
+// idempotent: refund ซ้ำ → status ไม่ใช่ CHECKED_OUT แล้ว → ok:false ไม่กลับบัญชีเบิ้ล
+// ห้อง: คงสถานะเดิม (เช็คเอาท์แล้วห้องเป็น CLEANING/ว่าง — ไม่แตะ)
+export async function refundStay(
+  tenantId: string,
+  unitId: string,
+  reservationId: string,
+): Promise<{ ok: true; saleVoided: boolean } | { ok: false; reason: string }> {
+  const rv = await prisma.hotelReservation.findFirst({
+    where: { id: reservationId, tenantId, unitId },
+  });
+  if (!rv) return { ok: false, reason: "ไม่พบการจอง" };
+  if (rv.status === "REFUNDED") return { ok: false, reason: "การจองนี้คืนเงินไปแล้ว" };
+  if (rv.status !== "CHECKED_OUT")
+    return { ok: false, reason: "คืนเงินได้เฉพาะการจองที่เช็คเอาท์แล้ว" };
+
+  // ต้องมีบิลที่เก็บเงินผ่าน POS แล้ว (idempotencyKey = hotel-sale-<id>) และยัง PAID
+  const sale = await prisma.posSale.findUnique({
+    where: {
+      tenantId_idempotencyKey: { tenantId, idempotencyKey: `hotel-sale-${reservationId}` },
+    },
+  });
+  if (!sale || sale.status !== "PAID")
+    return { ok: false, reason: "การจองนี้ไม่มีบิลที่ต้องคืนเงิน" };
+
+  // 1) claim อะตอมมิก: CHECKED_OUT → REFUNDED (แพ้แข่ง/ทำซ้ำ → count=0 → ไม่กลับบัญชีเบิ้ล)
+  const claim = await prisma.hotelReservation.updateMany({
+    where: { id: reservationId, tenantId, unitId, status: "CHECKED_OUT" },
+    data: { status: "REFUNDED", refundedAt: new Date() },
+  });
+  if (claim.count === 0) return { ok: false, reason: "การจองนี้คืนเงินไปแล้ว" };
+
+  // 2) กลับเส้นเงิน — void posSale (คืนบัญชี+แต้ม) นอก tx (voidSale เปิด tx เอง, idempotent)
+  await pos.voidSale(tenantId, unitId, sale.id);
+  return { ok: true, saleVoided: true };
+}
+
 // ───────────────────────── Dashboard ─────────────────────────
 export async function dashboardData(tenantId: string, unitId: string) {
   const db = tenantDb({ tenantId, unitId });

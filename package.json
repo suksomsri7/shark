@@ -38,6 +38,7 @@
     "qc:coupon": "tsx scripts/qc-pos-coupon.mts",
     "qc:ticket": "tsx scripts/qc-ticket-money.mts",
     "qc:hotel": "tsx scripts/qc-hotel-money.mts",
+    "qc:hotel-refund": "tsx scripts/qc-hotel-refund.mts",
     "qc:crm": "tsx scripts/qc-crm.mts",
     "qc:crm-activity": "tsx scripts/qc-crm-activity.mts",
     "qc:point": "tsx scripts/qc-point.mts",

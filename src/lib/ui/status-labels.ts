@@ -39,6 +39,7 @@ export const HOTEL_RESV_STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: "เช็คอินแล้ว",
   CHECKED_OUT: "เช็คเอาท์แล้ว",
   CANCELLED: "ยกเลิก",
+  REFUNDED: "คืนเงินแล้ว",
 };
 
 export const HOTEL_ROOM_STATUS_LABEL: Record<string, string> = {

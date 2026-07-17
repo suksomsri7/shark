@@ -178,3 +178,13 @@ export async function cancelReservationAction(unitSlug: string, formData: FormDa
   revalidatePath(`/app/u/${unitSlug}/hotel`);
   revalidatePath(`/app/u/${unitSlug}/hotel/reservations`);
 }
+
+// คืนเงินหลังเช็คเอาท์ (void POS bill → คืนบัญชี/แต้ม) — เฉพาะการจอง CHECKED_OUT ที่มีบิล
+export async function refundStayAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertHotelCan(auth, unit.id, "hotel.reservation.refund");
+  const id = String(formData.get("id") ?? "");
+  await hotel.refundStay(auth.active.tenantId, unit.id, id);
+  revalidatePath(`/app/u/${unitSlug}/hotel`);
+  revalidatePath(`/app/u/${unitSlug}/hotel/reservations`);
+}

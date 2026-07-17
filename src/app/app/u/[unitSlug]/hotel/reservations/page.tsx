@@ -10,6 +10,7 @@ import {
   checkInAction,
   checkOutAction,
   cancelReservationAction,
+  refundStayAction,
 } from "@/lib/modules/hotel/actions";
 import { ReservationForm } from "../reservation-form";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -21,7 +22,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { HOTEL_RESV_STATUS_LABEL } from "@/lib/ui/status-labels";
 
 const resvTone = (v: string) =>
-  v === "CANCELLED" ? "danger" : v === "BOOKED" ? "muted" : "strong";
+  v === "CANCELLED" || v === "REFUNDED" ? "danger" : v === "BOOKED" ? "muted" : "strong";
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "UTC" });
@@ -134,12 +135,33 @@ export default async function HotelReservationsPage({
                     <CancelBtn slug={unitSlug} id={r.id} />
                   </div>
                 )}
+
+                {r.status === "CHECKED_OUT" && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <RefundBtn slug={unitSlug} id={r.id} />
+                  </div>
+                )}
               </div>
             );
           })
         )}
       </section>
     </div>
+  );
+}
+
+function RefundBtn({ slug, id }: { slug: string; id: string }) {
+  return (
+    <ConfirmDialog
+      triggerLabel="คืนเงิน"
+      triggerClassName="btn-sm text-[color:var(--color-danger)]"
+      title="คืนเงินการจองนี้?"
+      detail="ระบบจะยกเลิกบิลค่าห้อง (คืนเงินเข้าบัญชีและคืนแต้มสมาชิก) แก้ไขไม่ได้"
+      confirmLabel="ยืนยันคืนเงิน"
+      danger
+      action={refundStayAction.bind(null, slug)}
+      fields={{ id }}
+    />
   );
 }
 

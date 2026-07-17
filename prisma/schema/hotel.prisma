@@ -19,6 +19,7 @@ enum HotelReservationStatus {
   CHECKED_IN   // เข้าพักอยู่
   CHECKED_OUT  // ออกแล้ว
   CANCELLED    // ยกเลิก
+  REFUNDED     // คืนเงินหลังเช็คเอาท์ (POS bill ถูก void — ห้ามลบ การเงินแก้ด้วย reversal)
 }
 
 // ─────────────────────── INVENTORY ───────────────────────
@@ -99,6 +100,7 @@ model HotelReservation {
   checkedOutAt      DateTime?
   cancelledAt       DateTime?
   cancelReason      String?
+  refundedAt        DateTime? // เวลาที่คืนเงินหลังเช็คเอาท์ (คู่กับ status REFUNDED)
   createdById       String? // User.id พนักงาน (null = ระบบ/ลูกค้า)
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
