@@ -7,7 +7,9 @@ import {
   createVisitAction,
   dispenseAction,
   billVisitAction,
+  refundVisitAction,
 } from "@/lib/modules/clinic/actions";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const baht = (satang: number) =>
   (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 0 });
@@ -21,10 +23,10 @@ export default async function ClinicManagePage({
   searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; err?: string }>;
 }) {
   const { unitSlug } = await params;
-  const { q } = await searchParams;
+  const { q, err } = await searchParams;
   const { auth, unit } = await requireUnit(unitSlug);
   const tenantId = auth.active.tenantId;
   const ctx = { tenantId, unitId: unit.id };
@@ -35,6 +37,7 @@ export default async function ClinicManagePage({
     listSystems(tenantId, "INVENTORY"),
   ]);
   const openVisits = openVisitsAll.filter((v) => v.status === "OPEN");
+  const billedVisits = openVisitsAll.filter((v) => v.status === "BILLED");
 
   // รายการยาในคลัง (ถ้ามีระบบคลัง) สำหรับดรอปดาวน์จ่ายยา
   const invSys = invSystems[0];
@@ -46,6 +49,12 @@ export default async function ClinicManagePage({
         <div className="text-sm text-[color:var(--color-muted)]">🏥 คลินิก</div>
         <h1 className="text-2xl font-semibold">{unit.name}</h1>
       </div>
+
+      {err && (
+        <div className="rounded-lg border border-[color:var(--color-danger)] bg-rose-50 px-3 py-2 text-sm text-[color:var(--color-danger)]">
+          {err}
+        </div>
+      )}
 
       {/* ค้นหาผู้ป่วย */}
       <form className="flex items-center gap-2">
@@ -170,6 +179,55 @@ export default async function ClinicManagePage({
               <form action={billVisitAction.bind(null, unitSlug, v.id)} className="border-t pt-3">
                 <button className="btn btn-primary text-sm">เก็บเงิน (฿{baht(v.feeSatang)})</button>
               </form>
+            </div>
+          );
+        })}
+      </section>
+
+      {/* เก็บเงินแล้ว — คืนเงิน/void (void PosSale + คืนยาเข้าคลัง) */}
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium">เก็บเงินแล้ว ({billedVisits.length})</h2>
+        {billedVisits.length === 0 && (
+          <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีรายการที่เก็บเงินแล้ว</p>
+        )}
+        {billedVisits.map((v) => {
+          const dispensed = Array.isArray(v.dispenseJson)
+            ? (v.dispenseJson as unknown as DispenseRecord[])
+            : [];
+          return (
+            <div key={v.id} className="card flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{v.patient.name}</div>
+                  <div className="text-sm text-[color:var(--color-muted)]">อาการ: {v.symptom}</div>
+                </div>
+                <div className="shrink-0 text-right text-sm">
+                  <div className="font-medium">฿{baht(v.feeSatang)}</div>
+                  <div className="text-xs text-green-600">เก็บเงินแล้ว</div>
+                </div>
+              </div>
+
+              {dispensed.length > 0 && (
+                <div className="flex flex-col gap-0.5 border-t pt-2 text-sm text-[color:var(--color-muted)]">
+                  {dispensed.map((d, i) => (
+                    <div key={`${d.invItemId}-${i}`}>
+                      {d.name} × {d.qty}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="border-t pt-3">
+                <ConfirmDialog
+                  triggerLabel="คืนเงิน / ยกเลิกบิล"
+                  triggerClassName="rounded-full border border-[color:var(--color-danger)] px-3 py-1 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
+                  title={`คืนเงิน ${v.patient.name}?`}
+                  detail={`ยกเลิกบิลและคืนเงิน ฿${baht(v.feeSatang)} — ระบบจะกลับรายการขาย คืนแต้ม/คูปอง และคืนยาที่จ่ายกลับเข้าคลังให้อัตโนมัติ (ทำแล้วย้อนไม่ได้)`}
+                  confirmLabel="ยืนยันคืนเงิน"
+                  danger
+                  action={refundVisitAction.bind(null, unitSlug, v.id)}
+                />
+              </div>
             </div>
           );
         })}

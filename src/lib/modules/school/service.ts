@@ -3,7 +3,7 @@
 // ctx = { tenantId, unitId } — ทุก query ผ่าน tenantDb(ctx) (defense-in-depth ชั้น 2) · unit type SCHOOL
 // เงินต้องเข้าเสมอ: รับชำระค่าเรียน = เปิดบิลผ่าน POS (บังคับ · ไม่มี POS = โยน + revert)
 // มีระบบสมาชิก (MEMBER) → ผูกนักเรียนเข้า Customer จากเบอร์ · ไม่มี = customerId null (ไม่บังคับ)
-import { tenantDb } from "@/lib/core/db";
+import { prisma, tenantDb } from "@/lib/core/db";
 import * as pos from "@/lib/modules/pos/service";
 import * as member from "@/lib/modules/member/service";
 import { listSystems } from "@/lib/modules/system/service";
@@ -218,6 +218,46 @@ export async function markPaid(
   await db.schoolEnrollment.updateMany({ where: { id: enrollmentId }, data: { posSaleId: sale.saleId } });
 
   return { ok: true, posSaleId: sale.saleId };
+}
+
+// ── คืนเงินค่าเรียน (PAID → REFUNDED) — void PosSale + คืนที่นั่ง (ห้ามลบ record) ──
+// mirror ของ shop.refundOrder / hotel.refundStay:
+//   1) claim อะตอมมิก PAID→REFUNDED (idempotent — คืนซ้ำ/สถานะอื่น → ok:false ไม่กลับเส้นเงินซ้ำ)
+//   2) กลับเส้นเงิน pos.voidSale (คืนบัญชี+แต้ม) "นอก tx" — voidSale เปิด tx เอง (ไม่ nested) · เฉพาะบิลที่ยัง PAID
+//   3) ที่นั่ง: คืนอัตโนมัติ — capacity นับเฉพาะ ENROLLED+PAID → REFUNDED ไม่ถูกนับ (คนใหม่สมัครแทนได้)
+// cross-tenant: tenantDb(ctx) กรอง tenantId → claim ไม่ match → ok:false (record ร้านอื่นไม่ถูกแตะ)
+export async function refundEnrollment(
+  ctx: SchoolCtx,
+  enrollmentId: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const db = tenantDb(ctx);
+
+  // 1) claim อะตอมมิก: PAID → REFUNDED
+  const claim = await db.schoolEnrollment.updateMany({
+    where: { id: enrollmentId, status: "PAID" },
+    data: { status: "REFUNDED", refundedAt: new Date() },
+  });
+  if (claim.count === 0) {
+    const cur = await db.schoolEnrollment.findFirst({ where: { id: enrollmentId } });
+    if (!cur) return { ok: false, reason: "ไม่พบการสมัคร" };
+    if (cur.status === "REFUNDED") return { ok: false, reason: "การสมัครนี้คืนเงินแล้ว" };
+    if (cur.status === "ENROLLED") return { ok: false, reason: "การสมัครนี้ยังไม่ได้ชำระเงิน (ใช้ปุ่มยกเลิกแทน)" };
+    return { ok: false, reason: "คืนเงินได้เฉพาะการสมัครที่ชำระเงินแล้ว" };
+  }
+
+  const en = await db.schoolEnrollment.findFirst({ where: { id: enrollmentId } });
+  if (!en) return { ok: false, reason: "ไม่พบการสมัคร" };
+
+  // 2) กลับเส้นเงิน — void PosSale (เฉพาะบิลที่ยัง PAID — กัน void ซ้ำหลัง retry)
+  if (en.posSaleId) {
+    const sale = await prisma.posSale.findFirst({ where: { id: en.posSaleId, tenantId: ctx.tenantId } });
+    if (sale && sale.status === "PAID") {
+      await pos.voidSale(ctx.tenantId, ctx.unitId, en.posSaleId);
+    }
+  }
+
+  // 3) ที่นั่งคืนเองผ่านการเปลี่ยนสถานะเป็น REFUNDED (ไม่มี side effect เพิ่ม)
+  return { ok: true };
 }
 
 // ── ยกเลิกการสมัคร (ENROLLED เท่านั้น) ──────────────────────────

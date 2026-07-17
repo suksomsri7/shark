@@ -3,6 +3,7 @@ enum EnrollmentStatus {
   ENROLLED // สมัครแล้ว รอชำระ
   PAID
   CANCELLED
+  REFUNDED // คืนเงินหลังชำระ (void PosSale — ห้ามลบ record · การเงินแก้ด้วย reversal) · ที่นั่งคืนเอง (capacity นับเฉพาะ ENROLLED+PAID)
 }
 
 model SchoolCourse {
@@ -52,6 +53,7 @@ model SchoolEnrollment {
   posSaleId    String? // เส้นเงิน C-2 ตอนชำระ
   paidAt       DateTime?
   cancelledAt  DateTime?
+  refundedAt   DateTime? // คืนเงิน (PAID→REFUNDED) — void PosSale + คืนที่นั่ง (ห้ามลบ record)
   createdAt    DateTime         @default(now())
 
   attendances SchoolAttendance[]

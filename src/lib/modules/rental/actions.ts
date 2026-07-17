@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
@@ -116,4 +117,15 @@ export async function cancelAction(unitSlug: string, bookingId: string) {
   assertRentalCan(auth, unit.id, "rental.booking.cancel");
   await rental.cancelBooking(ctxOf(auth, unit.id), bookingId);
   revalidatePath(`/app/u/${unitSlug}/rental`);
+}
+
+// คืนเงินหลังคืนของ/คิดเงิน — void PosSale · error inline ผ่าน ?err=
+export async function refundRentalAction(unitSlug: string, bookingId: string) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertRentalCan(auth, unit.id, "rental.booking.refund");
+  const res = await rental.refundRental(ctxOf(auth, unit.id), bookingId);
+  revalidatePath(`/app/u/${unitSlug}/rental`);
+  if (!res.ok) {
+    redirect(`/app/u/${unitSlug}/rental?err=${encodeURIComponent(res.reason ?? "คืนเงินไม่สำเร็จ")}`);
+  }
 }

@@ -7,7 +7,9 @@ import {
   pickUpAction,
   returnAction,
   cancelAction,
+  refundRentalAction,
 } from "@/lib/modules/rental/actions";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const baht = (satang: number) => (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 0 });
 const fmtDate = (d: Date) => new Date(d).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
@@ -17,15 +19,19 @@ const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   PICKED_UP: { text: "รับไปแล้ว", cls: "text-amber-600" },
   RETURNED: { text: "คืนแล้ว", cls: "text-green-600" },
   CANCELLED: { text: "ยกเลิก", cls: "text-[color:var(--color-muted)]" },
+  REFUNDED: { text: "คืนเงินแล้ว", cls: "text-rose-600" },
 };
 
 // จัดการเช่าสินทรัพย์ — /app/u/[unitSlug]/rental (สินทรัพย์ + จอง + รับ/คืน/ยกเลิก)
 export default async function RentalManagePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
+  searchParams: Promise<{ err?: string }>;
 }) {
   const { unitSlug } = await params;
+  const { err } = await searchParams;
   const { auth, unit } = await requireUnit(unitSlug);
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
   const [assets, bookings] = await Promise.all([listAssets(ctx, {}), listBookings(ctx, {})]);
@@ -37,6 +43,12 @@ export default async function RentalManagePage({
         <div className="text-sm text-[color:var(--color-muted)]">🛵 เช่าสินทรัพย์</div>
         <h1 className="text-2xl font-semibold">{unit.name}</h1>
       </div>
+
+      {err && (
+        <div className="rounded-lg border border-[color:var(--color-danger)] bg-rose-50 px-3 py-2 text-sm text-[color:var(--color-danger)]">
+          {err}
+        </div>
+      )}
 
       {/* เพิ่มสินทรัพย์ */}
       <form action={createAssetAction.bind(null, unitSlug)} className="card flex flex-col gap-3">
@@ -144,6 +156,20 @@ export default async function RentalManagePage({
                   <input name="lateFeeBaht" type="number" min={0} step="0.01" placeholder="ค่าปรับ (บาท)" className="w-32 rounded-lg border px-3 py-1.5 text-sm" />
                   <button className="rounded-full border px-3 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">รับคืน + ปิดบิล</button>
                 </form>
+              )}
+
+              {b.status === "RETURNED" && b.posSaleId && (
+                <div className="pt-1">
+                  <ConfirmDialog
+                    triggerLabel="คืนเงิน"
+                    triggerClassName="rounded-full border border-[color:var(--color-danger)] px-3 py-1 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
+                    title={`คืนเงินค่าเช่า ${b.asset?.name}?`}
+                    detail={`ยกเลิกบิลและคืนเงิน ฿${baht(b.totalSatang)} — ระบบจะกลับรายการขาย คืนแต้ม/คูปองให้อัตโนมัติ (ทำแล้วย้อนไม่ได้)`}
+                    confirmLabel="ยืนยันคืนเงิน"
+                    danger
+                    action={refundRentalAction.bind(null, unitSlug, b.id)}
+                  />
+                </div>
               )}
             </div>
           );

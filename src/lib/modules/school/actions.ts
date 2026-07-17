@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
@@ -125,6 +126,17 @@ export async function cancelEnrollmentAction(unitSlug: string, enrollmentId: str
   assertSchoolCan(auth, unit.id, "school.enrollment.cancel");
   await school.cancelEnrollment(ctxOf(auth, unit.id), enrollmentId);
   revalidatePath(`/app/u/${unitSlug}/school`);
+}
+
+// คืนเงินค่าเรียนหลังชำระ — void PosSale + คืนที่นั่ง · error inline ผ่าน ?err=
+export async function refundEnrollmentAction(unitSlug: string, enrollmentId: string) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertSchoolCan(auth, unit.id, "school.enrollment.refund");
+  const res = await school.refundEnrollment(ctxOf(auth, unit.id), enrollmentId);
+  revalidatePath(`/app/u/${unitSlug}/school`);
+  if (!res.ok) {
+    redirect(`/app/u/${unitSlug}/school?err=${encodeURIComponent(res.reason ?? "คืนเงินไม่สำเร็จ")}`);
+  }
 }
 
 // ───────────────────────── เช็คชื่อ ─────────────────────────

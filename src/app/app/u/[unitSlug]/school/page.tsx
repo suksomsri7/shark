@@ -12,8 +12,10 @@ import {
   enrollAction,
   markPaidAction,
   cancelEnrollmentAction,
+  refundEnrollmentAction,
   checkInAction,
 } from "@/lib/modules/school/actions";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const baht = (satang: number) => (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 0 });
 const fmtDate = (d: Date) => new Date(d).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
@@ -22,6 +24,7 @@ const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   ENROLLED: { text: "รอชำระ", cls: "text-amber-600" },
   PAID: { text: "ชำระแล้ว", cls: "text-green-600" },
   CANCELLED: { text: "ยกเลิก", cls: "text-[color:var(--color-muted)]" },
+  REFUNDED: { text: "คืนเงินแล้ว", cls: "text-rose-600" },
 };
 
 // จัดการคอร์สเรียน — /app/u/[unitSlug]/school (คอร์ส · รอบเรียน · สมัคร · ชำระ · เช็คชื่อรายวัน)
@@ -30,10 +33,10 @@ export default async function SchoolManagePage({
   searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ date?: string; err?: string }>;
 }) {
   const { unitSlug } = await params;
-  const { date: dateParam } = await searchParams;
+  const { date: dateParam, err } = await searchParams;
   const { auth, unit } = await requireUnit(unitSlug);
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
 
@@ -60,6 +63,12 @@ export default async function SchoolManagePage({
         <div className="text-sm text-[color:var(--color-muted)]">🎓 โรงเรียน/คอร์สเรียน</div>
         <h1 className="text-2xl font-semibold">{unit.name}</h1>
       </div>
+
+      {err && (
+        <div className="rounded-lg border border-[color:var(--color-danger)] bg-rose-50 px-3 py-2 text-sm text-[color:var(--color-danger)]">
+          {err}
+        </div>
+      )}
 
       {/* เพิ่มคอร์ส */}
       <form action={createCourseAction.bind(null, unitSlug)} className="card flex flex-col gap-3">
@@ -170,6 +179,17 @@ export default async function SchoolManagePage({
                       <button className="rounded-full border px-3 py-1 text-xs text-red-600 hover:bg-[color:var(--color-surface-2)]">ยกเลิก</button>
                     </form>
                   </>
+                )}
+                {e.status === "PAID" && (
+                  <ConfirmDialog
+                    triggerLabel="คืนเงิน"
+                    triggerClassName="rounded-full border border-[color:var(--color-danger)] px-3 py-1 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
+                    title={`คืนเงินค่าเรียน ${e.studentName}?`}
+                    detail={`ยกเลิกบิลและคืนเงิน ฿${baht(e.priceSatang)} — ระบบจะกลับรายการขาย คืนแต้ม/คูปอง และคืนที่นั่งในรอบให้อัตโนมัติ (ทำแล้วย้อนไม่ได้)`}
+                    confirmLabel="ยืนยันคืนเงิน"
+                    danger
+                    action={refundEnrollmentAction.bind(null, unitSlug, e.id)}
+                  />
                 )}
               </div>
             </div>

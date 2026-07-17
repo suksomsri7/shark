@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
@@ -121,4 +122,16 @@ export async function billVisitAction(unitSlug: string, visitId: string) {
     // ไม่มี POS → กลับหน้าเดิม
   }
   revalidatePath(`/app/u/${unitSlug}/clinic`);
+}
+
+// ───────────────────────── คืนเงิน / void ─────────────────────────
+// คืนเงินหลังเก็บเงิน — void PosSale + คืนยาเข้าคลัง · error inline ผ่าน ?err=
+export async function refundVisitAction(unitSlug: string, visitId: string) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertClinicCan(auth, unit.id, "clinic.refund");
+  const res = await clinic.refundVisit(ctxOf(auth, unit.id), visitId);
+  revalidatePath(`/app/u/${unitSlug}/clinic`);
+  if (!res.ok) {
+    redirect(`/app/u/${unitSlug}/clinic?err=${encodeURIComponent(res.reason ?? "คืนเงินไม่สำเร็จ")}`);
+  }
 }

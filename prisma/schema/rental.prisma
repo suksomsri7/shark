@@ -5,6 +5,7 @@ enum RentalStatus {
   PICKED_UP
   RETURNED
   CANCELLED
+  REFUNDED // คืนเงินหลังคืนของ/คิดเงิน (void PosSale — ห้ามลบ record · การเงินแก้ด้วย reversal)
 }
 
 model RentalAsset {
@@ -42,6 +43,7 @@ model RentalBooking {
   pickedUpAt      DateTime?
   returnedAt      DateTime?
   cancelledAt     DateTime?
+  refundedAt      DateTime? // คืนเงิน (RETURNED→REFUNDED) — void PosSale (ห้ามลบ record)
   note            String?
   createdAt       DateTime     @default(now())
 

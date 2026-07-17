@@ -252,3 +252,12 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 | W1-D | **Point**: ตั้งอัตราแต้ม(บาท/แต้ม)+เปิดปิด + ปรับ/แจกแต้มมือ(ADJUST กันติดลบ) | qc-point 18/18 | 442be55 |
 | W1-E | **CRM follow-up**: wire addActivityAction ที่ปุ่มหาย → ฟอร์มงานติดตาม+ครบกำหนด+เสร็จแล้ว | qc-crm-activity 12/12 | 442be55 |
 ✅ **Wave 1 ครบ + deploy READY** — POS ขายได้จริง/loyalty ใช้ได้/queue self-service/CRM ติดตามงานได้ · ต่อ Wave 2 refund
+
+## 🌙 Wave 2 (เงินถอยหลังได้ — refund/reversal) — กำลังเดิน
+| WO | งาน | ข้อสอบ | commit |
+|---|---|---|---|
+| W2-A | **Shop refund**: PAID→REFUNDED + pos.voidSale + คืนสต็อก(inventory.receive) + AI shop_refund_order · +enum REFUNDED (migration prod) | qc-shop-refund 12/12 + cpa107 | c9e5614 |
+| W2-B | **Restaurant void บิล**: voidCheckout + reset items + เปิดโต๊ะกลับ · defer createOrder idempotency | qc-restaurant-void 11/11 | a92c09e |
+| W2-C | **Ticket cancel-reverse**: cancelOrder ที่ PAID → pos.voidSale (เดิมเงินค้าง) | qc-ticket-cancel 10/10 | 1fdfcf9 |
+| W2-D | **Hotel refund หลังเช็คเอาท์**: refundStay + voidSale · +enum REFUNDED (migration prod) · defer no-show/edit | qc-hotel-refund 15/15 | 46a8758 |
+เหลือ Wave 2: school/clinic/rental refund · booking+rental double-book DB guard · hr payroll reversal · inventory→บัญชี bridge · point negative guard

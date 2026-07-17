@@ -3,6 +3,7 @@ enum VisitStatus {
   OPEN
   BILLED
   CANCELLED
+  REFUNDED // คืนเงินหลังเก็บเงิน (void PosSale + คืนยาเข้าคลัง — ห้ามลบ record · การเงินแก้ด้วย reversal)
 }
 
 model PatientRecord {
@@ -38,6 +39,7 @@ model ClinicVisit {
   dispenseJson Json          @default("[]") // [{invItemId, name, qty}]
   posSaleId    String? // เส้นเงิน C-2 ตอนเก็บเงิน
   billedAt     DateTime?
+  refundedAt   DateTime? // คืนเงิน (BILLED→REFUNDED) — void PosSale + คืนยาเข้าคลัง (ห้ามลบ record)
   createdAt    DateTime      @default(now())
 
   @@index([tenantId, unitId, status])

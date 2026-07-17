@@ -4,7 +4,7 @@
 // PDPA: เก็บข้อมูลเท่าที่จำเป็น (ชื่อ/เบอร์/ปีเกิด/แพ้ยา/หมายเหตุ) · ลบร้าน = ลบตาม (WO-0042)
 // เงินต้องเข้าเสมอ: เก็บเงิน visit = เปิดบิลผ่าน POS (บังคับเมื่อมีค่าบริการ · ไม่มี POS = โยน + revert)
 // จ่ายยา = ตัดสต็อกจริงผ่าน INVENTORY (idempotent ต่อรายการ · ไม่มีคลัง = โยน)
-import { tenantDb } from "@/lib/core/db";
+import { prisma, tenantDb } from "@/lib/core/db";
 import * as pos from "@/lib/modules/pos/service";
 import * as inventory from "@/lib/modules/inventory/service";
 import * as member from "@/lib/modules/member/service";
@@ -251,4 +251,73 @@ export async function billVisit(
   await db.clinicVisit.updateMany({ where: { id: visitId }, data: { posSaleId: sale.saleId } });
 
   return { ok: true, posSaleId: sale.saleId };
+}
+
+// ── คืนเงิน/void visit (BILLED → REFUNDED) — void PosSale + คืนยาเข้าคลัง (ห้ามลบ record) ──
+// mirror ของ shop.refundOrder / hotel.refundStay:
+//   1) claim อะตอมมิก BILLED→REFUNDED (idempotent — คืนซ้ำ/สถานะอื่น → ok:false ไม่กลับเส้นเงินซ้ำ)
+//   2) กลับเส้นเงิน pos.voidSale (คืนบัญชี+แต้ม) "นอก tx" — voidSale เปิด tx เอง (ไม่ nested) · เฉพาะบิลที่ยัง PAID
+//      (fee 0 → BILLED โดยไม่มีบิล → ข้าม void)
+//   3) คืนยาเข้าคลัง — mirror ของตอน dispense (consume) · อ้างจาก InvMovement ที่ตัดจริง (type OUT ผูก visit)
+//      → รับเข้าที่ต้นทุนปัจจุบัน (ต้นทุนถัวเฉลี่ยไม่เพี้ยน) · idempotencyKey `clinic-refund-<visitId>-<itemId>`
+//      หมายเหตุ: อ้าง movement จริง (ไม่ใช่ dispenseJson) → คืนตรงกับที่ตัด แม้ dispenseJson นับซ้ำ (idempotent)
+// cross-tenant: tenantDb(ctx) กรอง tenantId → claim ไม่ match → ok:false (record ร้านอื่นไม่ถูกแตะ)
+export async function refundVisit(
+  ctx: ClinicCtx,
+  visitId: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const db = tenantDb(ctx);
+
+  // 1) claim อะตอมมิก: BILLED → REFUNDED
+  const claim = await db.clinicVisit.updateMany({
+    where: { id: visitId, status: "BILLED" },
+    data: { status: "REFUNDED", refundedAt: new Date() },
+  });
+  if (claim.count === 0) {
+    const cur = await db.clinicVisit.findFirst({ where: { id: visitId } });
+    if (!cur) return { ok: false, reason: "ไม่พบรายการตรวจ" };
+    if (cur.status === "REFUNDED") return { ok: false, reason: "รายการนี้คืนเงินแล้ว" };
+    if (cur.status === "OPEN") return { ok: false, reason: "รายการนี้ยังไม่ได้เก็บเงิน" };
+    return { ok: false, reason: "คืนเงินได้เฉพาะรายการที่เก็บเงินแล้ว" };
+  }
+
+  const visit = await db.clinicVisit.findFirst({ where: { id: visitId } });
+  if (!visit) return { ok: false, reason: "ไม่พบรายการตรวจ" };
+
+  // 2) กลับเส้นเงิน — void PosSale (เฉพาะบิลที่ยัง PAID — กัน void ซ้ำหลัง retry · fee 0 = ไม่มีบิล)
+  if (visit.posSaleId) {
+    const sale = await prisma.posSale.findFirst({ where: { id: visit.posSaleId, tenantId: ctx.tenantId } });
+    if (sale && sale.status === "PAID") {
+      await pos.voidSale(ctx.tenantId, ctx.unitId, visit.posSaleId);
+    }
+  }
+
+  // 3) คืนยาเข้าคลัง — วนตาม movement ที่ตัดจริงตอนจ่ายยา (idempotent ต่อ item)
+  const invSystems = await listSystems(ctx.tenantId, "INVENTORY");
+  const invSys = invSystems[0];
+  if (invSys) {
+    const invCtx = { tenantId: ctx.tenantId, systemId: invSys.id };
+    const invDb = tenantDb(invCtx);
+    const outMoves = await prisma.invMovement.findMany({
+      where: { tenantId: ctx.tenantId, type: "OUT", refType: "clinicVisit", refId: visitId, sourceModule: "CLINIC" },
+    });
+    for (const mv of outMoves) {
+      const returnQty = -mv.qtyDelta; // qtyDelta ติดลบตอนตัด → คืนเท่าที่ตัดจริง
+      if (returnQty <= 0) continue;
+      const item = await invDb.invItem.findFirst({ where: { id: mv.itemId } });
+      if (!item) continue; // ยาถูกลบออกจากคลัง → ไม่มีที่ให้คืน ข้ามเงียบ
+      await inventory.receive(invCtx, {
+        itemId: mv.itemId,
+        qty: returnQty,
+        costSatang: item.costSatang, // คืนที่ต้นทุนปัจจุบัน → ไม่กระทบต้นทุนถัวเฉลี่ย
+        idempotencyKey: `clinic-refund-${visitId}-${mv.itemId}`,
+        sourceModule: "CLINIC",
+        refType: "clinicVisit",
+        refId: visitId,
+        note: "คืนยาเข้าคลังจากการคืนเงิน",
+      });
+    }
+  }
+
+  return { ok: true };
 }

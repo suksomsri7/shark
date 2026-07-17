@@ -4,7 +4,7 @@
 //
 // ctx = { tenantId, unitId } — ทุก query ผ่าน tenantDb(ctx) (defense-in-depth ชั้น 2) · unit type RENTAL
 // เงินต้องเข้าเสมอ: คืนของ = ปิดบิลค่าเช่า(+ค่าปรับ) ผ่าน POS (บังคับ · ไม่มี POS = โยน + revert)
-import { tenantDb } from "@/lib/core/db";
+import { prisma, tenantDb } from "@/lib/core/db";
 import * as pos from "@/lib/modules/pos/service";
 import { listSystems } from "@/lib/modules/system/service";
 
@@ -215,6 +215,47 @@ export async function returnAsset(
   return { ok: true, totalSatang, posSaleId: sale.saleId };
 }
 
+// ── คืนเงิน (RETURNED → REFUNDED) — void PosSale (ห้ามลบ record) ──
+// mirror ของ shop.refundOrder / hotel.refundStay:
+//   1) claim อะตอมมิก RETURNED→REFUNDED (idempotent — คืนซ้ำ/สถานะอื่น → ok:false ไม่กลับเส้นเงินซ้ำ)
+//   2) กลับเส้นเงิน pos.voidSale (คืนบัญชี+แต้ม) "นอก tx" — voidSale เปิด tx เอง (ไม่ nested) · เฉพาะบิลที่ยัง PAID
+//   asset: ปล่อยไว้ว่างตามเดิม — availability คิดจาก booking ที่ BOOKED/PICKED_UP เท่านั้น
+//     (RETURNED/REFUNDED ไม่บล็อกช่วงเวลาอยู่แล้ว → ไม่ต้องแตะ asset)
+// cross-tenant: tenantDb(ctx) กรอง tenantId → claim ไม่ match → ok:false (record ร้านอื่นไม่ถูกแตะ)
+export async function refundRental(
+  ctx: RentalCtx,
+  bookingId: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const db = tenantDb(ctx);
+
+  // 1) claim อะตอมมิก: RETURNED → REFUNDED
+  const claim = await db.rentalBooking.updateMany({
+    where: { id: bookingId, status: "RETURNED" },
+    data: { status: "REFUNDED", refundedAt: new Date() },
+  });
+  if (claim.count === 0) {
+    const cur = await db.rentalBooking.findFirst({ where: { id: bookingId } });
+    if (!cur) return { ok: false, reason: "ไม่พบการจอง" };
+    if (cur.status === "REFUNDED") return { ok: false, reason: "การจองนี้คืนเงินแล้ว" };
+    if (cur.status === "BOOKED" || cur.status === "PICKED_UP")
+      return { ok: false, reason: "การจองนี้ยังไม่ได้คิดเงิน (ใช้ปุ่มยกเลิกแทน)" };
+    return { ok: false, reason: "คืนเงินได้เฉพาะการจองที่คืนของ/คิดเงินแล้ว" };
+  }
+
+  const bk = await db.rentalBooking.findFirst({ where: { id: bookingId } });
+  if (!bk) return { ok: false, reason: "ไม่พบการจอง" };
+
+  // 2) กลับเส้นเงิน — void PosSale (เฉพาะบิลที่ยัง PAID — กัน void ซ้ำหลัง retry)
+  if (bk.posSaleId) {
+    const sale = await prisma.posSale.findFirst({ where: { id: bk.posSaleId, tenantId: ctx.tenantId } });
+    if (sale && sale.status === "PAID") {
+      await pos.voidSale(ctx.tenantId, ctx.unitId, bk.posSaleId);
+    }
+  }
+
+  return { ok: true };
+}
+
 // ── ยกเลิก (BOOKED เท่านั้น) ────────────────────────────────────
 export async function cancelBooking(ctx: RentalCtx, bookingId: string): Promise<boolean> {
   const res = await tenantDb(ctx).rentalBooking.updateMany({
@@ -227,7 +268,7 @@ export async function cancelBooking(ctx: RentalCtx, bookingId: string): Promise<
 // รายการจอง (จัดการหลังบ้าน)
 export async function listBookings(
   ctx: RentalCtx,
-  opts: { status?: "BOOKED" | "PICKED_UP" | "RETURNED" | "CANCELLED" } = {},
+  opts: { status?: "BOOKED" | "PICKED_UP" | "RETURNED" | "CANCELLED" | "REFUNDED" } = {},
 ) {
   return tenantDb(ctx).rentalBooking.findMany({
     where: opts.status ? { status: opts.status } : {},
