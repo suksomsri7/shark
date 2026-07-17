@@ -348,15 +348,28 @@ export async function markPaid(ctx: Ctx, orderId: string) {
   }
 }
 
-// ยกเลิกออเดอร์ → คืนโควตา + void ตั๋วทุกใบ (atomic)
+// ยกเลิกออเดอร์ → คืนโควตา + void ตั๋วทุกใบ + กลับเส้นเงินถ้าเคยจ่ายแล้ว
+// mirror ของ shop.refundOrder / restaurant.voidCheckout: claim อะตอมมิก + คืนโควตา/void ตั๋ว "ใน tx",
+//   แล้วค่อยกลับเส้นเงิน (pos.voidSale เปิด tx ของตัวเอง) "นอก tx" → ไม่ nested tx
+// idempotent: cancel ซ้ำ → claim.count=0 → ไม่ทำซ้ำ ไม่กลับบัญชีเบิ้ล
 export async function cancelOrder(ctx: Ctx, orderId: string, client: Client = prisma) {
-  await withTx(client, async (tx) => {
+  const ownsTx = "$transaction" in client && typeof (client as PrismaClient).$transaction === "function";
+
+  // 1) คืนโควตา + void ตั๋ว + set CANCELLED (อะตอมมิกใน tx) → จับว่า "เคย PAID" ไว้กลับเส้นเงินต่อ
+  const outcome = await withTx(client, async (tx): Promise<{ cancelled: boolean; wasPaid: boolean }> => {
     const order = await tx.ticketOrder.findFirst({
       where: { id: orderId, tenantId: ctx.tenantId, unitId: ctx.unitId },
       include: { admissions: true },
     });
     if (!order) throw new Error("ORDER_NOT_FOUND");
-    if (order.status === "CANCELLED") return; // idempotent
+    if (order.status === "CANCELLED") return { cancelled: false, wasPaid: false }; // idempotent
+
+    // claim อะตอมมิก: → CANCELLED เฉพาะเมื่อยังไม่ CANCELLED (กันแข่ง/ทำซ้ำ = ไม่คืนโควตา/ไม่ void เบิ้ล)
+    const claim = await tx.ticketOrder.updateMany({
+      where: { id: orderId, tenantId: ctx.tenantId, unitId: ctx.unitId, status: { not: "CANCELLED" } },
+      data: { status: "CANCELLED", cancelledAt: new Date() },
+    });
+    if (claim.count === 0) return { cancelled: false, wasPaid: false }; // แพ้แข่ง
 
     // คืนโควตาต่อประเภท (นับเฉพาะตั๋วที่ยังไม่ VOID)
     const activeAdms = order.admissions.filter((a) => a.status !== "VOID");
@@ -373,11 +386,28 @@ export async function cancelOrder(ctx: Ctx, orderId: string, client: Client = pr
       where: { orderId, tenantId: ctx.tenantId, unitId: ctx.unitId, status: { not: "VOID" } },
       data: { status: "VOID" },
     });
-    await tx.ticketOrder.update({
-      where: { id: orderId },
-      data: { status: "CANCELLED", cancelledAt: new Date() },
-    });
+
+    return { cancelled: true, wasPaid: order.status === "PAID" };
   });
+
+  if (!outcome.cancelled) return; // ยกเลิกไปแล้ว/แพ้แข่ง → จบ (idempotent)
+
+  // 2) กลับเส้นเงิน — เฉพาะ order ที่เคย PAID (markPaid สร้าง posSale key `ticket-sale-<orderId>`)
+  //    void นอก tx: pos.voidSale เปิด tx ของตัวเอง (top-level prisma) → ไม่ nested · idempotent (เช็ค status PAID เอง)
+  //    PENDING → ไม่มี posSale ให้ void (คงพฤติกรรมเดิม)
+  if (outcome.wasPaid) {
+    // conservative: voidSale ใช้ prisma top-level เท่านั้น → ถ้าถูกเรียกใน tx ผู้อื่น (ownsTx=false)
+    //   ข้อมูล order ยังไม่ commit → void จะเห็นไม่ครบ/พลาด → โยนให้เห็นชัด (ปัจจุบันไม่มี caller แบบนี้)
+    if (!ownsTx) {
+      throw new Error("CANCEL_PAID_IN_FOREIGN_TX_UNSUPPORTED: cancelOrder ของ order ที่ PAID ต้องเรียกด้วย prisma top-level");
+    }
+    const sale = await prisma.posSale.findUnique({
+      where: { tenantId_idempotencyKey: { tenantId: ctx.tenantId, idempotencyKey: `ticket-sale-${orderId}` } },
+    });
+    if (sale && sale.status === "PAID") {
+      await pos.voidSale(ctx.tenantId, ctx.unitId, sale.id);
+    }
+  }
 }
 
 // ─────────────────────────── Check-in ───────────────────────────

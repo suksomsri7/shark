@@ -170,7 +170,14 @@ export default async function EventDetailPage({
                       <div className="text-xs text-[color:var(--color-muted)]">{o.buyerPhone}</div>
                     )}
                   </div>
-                  <StatusChip value={o.status} map={TICKET_STATUS_LABEL} toneOf={orderTone} />
+                  <div className="flex flex-col items-end gap-1">
+                    <StatusChip value={o.status} map={TICKET_STATUS_LABEL} toneOf={orderTone} />
+                    {o.status === "CANCELLED" && o.paidAt && (
+                      <span className="rounded-full bg-[color:var(--color-muted)]/10 px-2 py-0.5 text-[11px] text-[color:var(--color-muted)]">
+                        คืนเงินแล้ว
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {o.status !== "CANCELLED" && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -184,10 +191,14 @@ export default async function EventDetailPage({
                       </form>
                     )}
                     <ConfirmDialog
-                      triggerLabel="ยกเลิก + คืนโควตา"
+                      triggerLabel={o.status === "PAID" ? "ยกเลิก + คืนเงิน" : "ยกเลิก + คืนโควตา"}
                       triggerClassName="btn-sm text-[color:var(--color-danger)]"
                       title="ยกเลิกออเดอร์นี้?"
-                      detail="ตั๋วทุกใบในออเดอร์จะถูกยกเลิก และคืนโควตากลับเข้าระบบ แก้ไขไม่ได้"
+                      detail={
+                        o.status === "PAID"
+                          ? "ตั๋วทุกใบจะถูกยกเลิก คืนโควตากลับเข้าระบบ และคืนเงินออกจากบัญชี (กลับรายการขาย) แก้ไขไม่ได้"
+                          : "ตั๋วทุกใบในออเดอร์จะถูกยกเลิก และคืนโควตากลับเข้าระบบ แก้ไขไม่ได้"
+                      }
                       confirmLabel="ยืนยันยกเลิกออเดอร์"
                       danger
                       action={cancelOrderAction.bind(null, unitSlug)}
