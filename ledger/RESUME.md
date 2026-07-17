@@ -62,6 +62,13 @@ follow-up: forms actions อยู่ src/app/app/forms/actions.ts นอก wal
 รอเจ้าของ: สแกน QR ทดสอบ · Bunny key · follow-up: 2140 ปสส.ค้างนำส่งใน CHART · summarizeCase wire หน้า list · i18n v1.1 · 0045b (ตอบเคสในนาม user) · **0049b wiring approval เข้า PO/ใบลาจริง** + นโยบายยื่นซ้ำหลัง REJECTED (idempotencyKey ตายตัว 1 entity=1 request — ต้อง version key ถ้าธุรกิจต้องแก้แล้วยื่นใหม่) + จำกัด policy.create เฉพาะ OWNER (ตอนนี้ MANAGER สร้างได้ตาม RBAC กลาง)
 คิวถัดไปตาม 10_MASTER_QUEUE: 0063 Marketplace โครง (dep 0061✅) → 0066 i18n v2 → 0056 Dashboard builder (dep 0055✅) → 0060 Delivery โครง (dep 0053✅) → 0051 School → 0052 Clinic → 0065 host-routing · รอบสมาธิเต็ม: 0040 หนี้เส้นเงิน + 0044 · ติด 🔑: 0058 (OTP ลูกค้า) 0067 (LINE OA) 0069 (ราคา) 0070 (Beam) 0071 (ถ้อยคำ)
 
+## 🤖 Agentic 1-3 (เจ้าของสั่ง 17 ก.ค. บ่าย: "ทำ 1,2,3") — ✅ LIVE · AI ขยับ 2.5 → 3.5
+**1 Memory** (ความจำถาวรต่อร้าน): ai/memory.ts rememberFact/forget/memoryBlock → ฉีด system prompt · tool remember_fact/forget_fact/list_memories (action=false จดทันที) · qc-ai-memory 7/7
+**2 Plan L2** (แผนหลายขั้น): ai/plans.ts createPlan/executePlan (รันทีละ step ผ่าน runKind→dispatch เดิม · step ล้มหยุด · hasDestructive→confirm2x ระดับแผน) · tool propose_plan + การ์ดแผน AiChat · export DESTRUCTIVE_KINDS+runKind จาก proposals.ts · qc-ai-plan 7/7
+**3 Schedule** (งานประจำ AI ทำเอง): ai/scheduled.ts createTask/runScheduledTasks (ตรง hourBkk+lastRunDay กันซ้ำ · ใช้ sendMessage tier fast=haiku ประหยัด) · kind ai_schedule_task + tool schedule_task (NORMAL) · **/api/cron/hourly (isCronAuthorized) + vercel.json cron รายชั่วโมง** · qc-ai-schedule 8/8
+รวม AI ตอนนี้: ~44 tools · ความจำ+แผนหลายขั้น+งานประจำ · regression AI ทั้งหมด + hardening 15/15 เขียว
+**Defer**: eval loop (ระดับ 5 self-improving) รอ dataset จากร้านจริง · restaurant AI · API v2 write
+
 ## 🧠 AI Brain + Proactive (เจ้าของสั่ง 17 ก.ค. เที่ยง: level 1 + ลด token + dataset) — ✅ LIVE
 ทิศทางล็อก: **AI หน้าเดียว เก่งทุกอย่าง** (เจ้าของเลือก — ถอนไอเดียแยกหลาย AI · simple ชนะ)
 **ลด token**: routing 2 ชั้น pickModel() — คำถามอ่านสั้น→haiku · งานหนัก/มีรูป→sonnet · **ลบ SHARK_AI_MODEL (.env+Vercel) เปิด auto-routing แล้ว** (ตั้งคืนถ้าอยากบังคับตัวเดียว) + prompt caching (cache_control ephemeral system+tools) — qc-ai-brain 8/8
