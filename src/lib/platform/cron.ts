@@ -12,6 +12,7 @@ import { retryFailedWebhooks } from "@/lib/webhooks/service";
 import { sweepAutoClosePeriods } from "@/lib/modules/account/period-sweep";
 import { sweepOnboardingDrip } from "@/lib/platform/onboarding-drip";
 import { sweepDnaReview } from "@/lib/ai/dna-review";
+import { sweepProactiveNudges } from "@/lib/ai/proactive";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -49,6 +50,7 @@ export async function runDailyCron(
   periodsClosed: number;
   onboardingDripped: number;
   dnaReviews: number;
+  proactiveNudges: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -60,6 +62,7 @@ export async function runDailyCron(
   let periodsClosed = -1;
   let onboardingDripped = -1;
   let dnaReviews = -1;
+  let proactiveNudges = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -119,6 +122,12 @@ export async function runDailyCron(
   } catch {
     // drip พัง → -1 ไปต่อ
   }
+  try {
+    // AI เชิงรุก L1: ทักร้านที่มีสัญญาณ (สต็อกต่ำ/อนุมัติค้าง/ลาค้าง/ออเดอร์รอจ่าย) รายวัน
+    proactiveNudges = await sweepProactiveNudges(now);
+  } catch {
+    // ทัก proactive พัง → -1 ไปต่อ
+  }
 
   return {
     subsExpired,
@@ -131,5 +140,6 @@ export async function runDailyCron(
     periodsClosed,
     onboardingDripped,
     dnaReviews,
+    proactiveNudges,
   };
 }
