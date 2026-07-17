@@ -22,9 +22,11 @@ let tid = "";
 try {
   const prov = (await import("@/lib/ai/provider" as string)) as unknown as { pickModel: (t: string, img: boolean) => string; buildRequestBody?: (m: string, oa: any[], tools: any, o?: any) => any };
   // [1] routing
+  const _envM = process.env.SHARK_AI_MODEL; delete process.env.SHARK_AI_MODEL; // ทดสอบ heuristic ล้วน (BR-1.4 คืน env)
   const smartAction = prov.pickModel("ช่วยเปิดบิลขายกาแฟ 2 แก้ว", false);
   const smartImg = prov.pickModel("ดูรูปนี้", true);
   const fastRead = prov.pickModel("ยอดขายวันนี้เท่าไหร่", false);
+  if (_envM === undefined) delete process.env.SHARK_AI_MODEL; else process.env.SHARK_AI_MODEL = _envM;
   chk("BR-1.1", "คำสั่งทำงาน → SMART (sonnet)", /sonnet/.test(smartAction));
   chk("BR-1.2", "มีรูป → SMART เสมอ (vision)", /sonnet/.test(smartImg));
   chk("BR-1.3", "คำถามอ่านสั้น → FAST (haiku)", /haiku/.test(fastRead));
