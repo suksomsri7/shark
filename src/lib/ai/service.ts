@@ -3,6 +3,7 @@
 
 import { prisma, tenantDb } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
+import { approvedPromptTweaksText } from "@/lib/platform/ai-tuning";
 import { recordSample } from "./dataset";
 import { memoryBlock } from "./memory";
 import { buildSystemPrompt } from "./persona";
@@ -94,11 +95,13 @@ export async function sendMessage(
     return { ok: false, error: "over_budget" };
   }
 
-  // persona ต้องรู้ชื่อกิจการ + ระบบที่เปิด + ความจำถาวรของร้าน (พ่วง Promise.all เดิม ไม่เพิ่ม round-trip แยก)
-  const [tenant, systems, memories] = await Promise.all([
+  // persona ต้องรู้ชื่อกิจการ + ระบบที่เปิด + ความจำถาวรของร้าน + แนวทางที่ปรับปรุงระดับแพลตฟอร์ม
+  // (พ่วง Promise.all เดิม ไม่เพิ่ม round-trip แยก · promptTweaks best-effort: query พลาด → "" ไม่ให้แชทพัง)
+  const [tenant, systems, memories, promptTweaks] = await Promise.all([
     prisma.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId } }),
     db.appSystem.findMany({ select: { type: true, name: true }, orderBy: { createdAt: "asc" } }),
     memoryBlock({ tenantId: ctx.tenantId }),
+    approvedPromptTweaksText().catch(() => ""),
   ]);
 
   // บทสนทนา: ต่อของเดิมถ้าระบุ ไม่งั้นเปิดใหม่
@@ -118,7 +121,7 @@ export async function sendMessage(
   });
 
   const messages: AiChatMessage[] = [
-    { role: "system", content: buildSystemPrompt({ tenantName: tenant.name, systems, memories }) },
+    { role: "system", content: buildSystemPrompt({ tenantName: tenant.name, systems, memories, promptTweaks }) },
     ...trimHistory(
       history
         .reverse()
