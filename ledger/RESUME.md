@@ -62,6 +62,13 @@ follow-up: forms actions อยู่ src/app/app/forms/actions.ts นอก wal
 รอเจ้าของ: สแกน QR ทดสอบ · Bunny key · follow-up: 2140 ปสส.ค้างนำส่งใน CHART · summarizeCase wire หน้า list · i18n v1.1 · 0045b (ตอบเคสในนาม user) · **0049b wiring approval เข้า PO/ใบลาจริง** + นโยบายยื่นซ้ำหลัง REJECTED (idempotencyKey ตายตัว 1 entity=1 request — ต้อง version key ถ้าธุรกิจต้องแก้แล้วยื่นใหม่) + จำกัด policy.create เฉพาะ OWNER (ตอนนี้ MANAGER สร้างได้ตาม RBAC กลาง)
 คิวถัดไปตาม 10_MASTER_QUEUE: 0063 Marketplace โครง (dep 0061✅) → 0066 i18n v2 → 0056 Dashboard builder (dep 0055✅) → 0060 Delivery โครง (dep 0053✅) → 0051 School → 0052 Clinic → 0065 host-routing · รอบสมาธิเต็ม: 0040 หนี้เส้นเงิน + 0044 · ติด 🔑: 0058 (OTP ลูกค้า) 0067 (LINE OA) 0069 (ราคา) 0070 (Beam) 0071 (ถ้อยคำ)
 
+## 🧠 AI Brain + Proactive (เจ้าของสั่ง 17 ก.ค. เที่ยง: level 1 + ลด token + dataset) — ✅ LIVE
+ทิศทางล็อก: **AI หน้าเดียว เก่งทุกอย่าง** (เจ้าของเลือก — ถอนไอเดียแยกหลาย AI · simple ชนะ)
+**ลด token**: routing 2 ชั้น pickModel() — คำถามอ่านสั้น→haiku · งานหนัก/มีรูป→sonnet · **ลบ SHARK_AI_MODEL (.env+Vercel) เปิด auto-routing แล้ว** (ตั้งคืนถ้าอยากบังคับตัวเดียว) + prompt caching (cache_control ephemeral system+tools) — qc-ai-brain 8/8
+**Proactive L1** (พนักงานเชิงรุก): ai/proactive.ts gatherProactiveInsights 4 กติกา (สต็อกต่ำ/อนุมัติค้าง 2 วัน/ลาค้าง/ออเดอร์รอ) → sweepProactiveNudges cron field proactiveNudges → AppNotification "ผู้ช่วยมีเรื่องอยากบอก" กันสแปมรายวัน — qc-ai-proactive 6/6 (ยิงอัตโนมัติทุกวันแล้ว)
+**Dataset (ฐาน self-host)**: ai/dataset.ts anonymize (เบอร์/อีเมล→placeholder คงตัวเลขยอด) + recordSample เก็บ AiTrainingSample เฉพาะ SHARK_AI_COLLECT=1 (ปิดอยู่ — เปิดเมื่อพร้อม+ขอ consent) · self-host เต็มรูปรอมีร้าน 50-100+ ร้าน
+**Defer**: AI ระดับ 2 (agentic multi-step) — เจ้าของยังไม่สั่ง
+
 ## 🤖 AI Upgrade (เจ้าของสั่ง 17 ก.ค. สาย: "ทำแทนได้ทุกฟังก์ชัน · กำกวมให้ choice · ลบต้องยืนยัน · สั่งผิดต้องบอก") — ✅ A+B1+B2 LIVE
 **โมเดล**: haiku-4.5 → **Sonnet 5** (.env+Vercel · แพงขึ้น ~3-5 เท่า/ครั้ง — จับตา AiUsage)
 **Phase A (กลไก)**: ask_clarify ถามกลับพร้อมปุ่ม choice + SendResult.clarify · **destructive 2 ชั้น** (AiProposal.risk NORMAL|DESTRUCTIVE · executeProposal opts.confirm2x · UI ปุ่มแดง 2 จังหวะ · server บังคับเสมอ) · validate-explain ({error,suggestion} ไม่สร้าง proposal) — qc-ai-phase-a 9/9 (รวม void_sale e2e บิลจริง)
