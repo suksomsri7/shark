@@ -23,7 +23,7 @@ try {
     const u = await prisma.businessUnit.create({ data: { tenantId: tid, type: "SHOP", name: "หน้าร้าน", slug: `u-${Date.now()}` } });
     chk("HR-1.1", "โดเมน ACTIVE + มี unit → /s/<tenant>/<unit>", (await dom.hostEntryPath(`${slug}.example.com`)) === `/s/${slug}/${u.slug}`, `/s/${slug}/${u.slug}`, String(await dom.hostEntryPath(`${slug}.example.com`)));
     chk("HR-1.2", "host ไม่รู้จัก → null", (await dom.hostEntryPath("unknown.example.com")) === null, "null", "?");
-    await prisma.tenant.update({ where: { id: tid }, data: { domainStatus: "PENDING" } });
+    await prisma.tenant.update({ where: { id: tid }, data: { domainStatus: "VERIFYING" } });
     chk("HR-1.3", "โดเมนยังไม่ ACTIVE → null (ห้ามเสิร์ฟ)", (await dom.hostEntryPath(`${slug}.example.com`)) === null, "null", "?");
     await prisma.tenant.update({ where: { id: tid }, data: { domainStatus: "ACTIVE" } });
     await prisma.businessUnit.deleteMany({ where: { tenantId: tid } });
