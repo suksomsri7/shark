@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
@@ -374,4 +375,17 @@ export async function checkoutAction(
   revalidatePath(base(unitSlug));
   revalidatePath(`${base(unitSlug)}/checkout/${args.sessionId}`);
   return res;
+}
+
+// ยกเลิกบิล/คืนเงินหลังชำระ — void PosSale + คืนรายการ + เปิดโต๊ะกลับ · error inline ผ่าน ?err= (pattern เดียวกับ shop.refund)
+export async function voidCheckoutAction(unitSlug: string, formData: FormData): Promise<void> {
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.checkout.void");
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const res = await order.voidCheckout(tenantId, unitId, sessionId);
+  revalidatePath(base(unitSlug));
+  revalidatePath(`${base(unitSlug)}/tables/${sessionId}`);
+  revalidatePath(`${base(unitSlug)}/checkout/${sessionId}`);
+  if (!res.ok) {
+    redirect(`${base(unitSlug)}?err=${encodeURIComponent(res.reason)}`);
+  }
 }

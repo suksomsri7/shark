@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { floorPlan } from "@/lib/modules/restaurant/table";
-import { listServiceRequests, ordersToday } from "@/lib/modules/restaurant/order";
+import { listServiceRequests, ordersToday, billsToday } from "@/lib/modules/restaurant/order";
 import { getSetting } from "@/lib/modules/restaurant/menu";
 import { kitchenOpenNow } from "@/lib/modules/restaurant/scope";
-import { openSessionAction, ackRequestAction, doneRequestAction, kitchenPauseAction } from "@/lib/actions/restaurant";
+import { openSessionAction, ackRequestAction, doneRequestAction, kitchenPauseAction, voidCheckoutAction } from "@/lib/actions/restaurant";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatBaht } from "@/lib/ui/money";
@@ -16,17 +17,21 @@ function minsSince(d: Date | null) {
 
 export default async function RestaurantPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
+  searchParams: Promise<{ err?: string }>;
 }) {
   const { unitSlug } = await params;
+  const { err } = await searchParams;
   const { auth, unit } = await requireUnit(unitSlug);
   const { tenantId } = auth.active;
-  const [tables, requests, today, setting] = await Promise.all([
+  const [tables, requests, today, setting, bills] = await Promise.all([
     floorPlan(tenantId, unit.id),
     listServiceRequests(tenantId, unit.id),
     ordersToday(tenantId, unit.id),
     getSetting(tenantId, unit.id),
+    billsToday(tenantId, unit.id),
   ]);
   const kitchen = kitchenOpenNow(setting);
   const byZone = new Map<string, typeof tables>();
@@ -58,6 +63,12 @@ export default async function RestaurantPage({
           </>
         }
       />
+
+      {err && (
+        <div className="rounded-lg border border-[color:var(--color-danger)] bg-rose-50 px-3 py-2 text-sm text-[color:var(--color-danger)]">
+          {err}
+        </div>
+      )}
 
       {/* สรุปวันนี้ + สถานะครัว */}
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -184,6 +195,41 @@ export default async function RestaurantPage({
           ))
         )}
       </section>
+
+      {/* บิลวันนี้ — ยกเลิก/คืนเงินหลังชำระ */}
+      {bills.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium">บิลวันนี้</h2>
+          <p className="text-xs text-[color:var(--color-muted)]">กดผิด/ต้องคืนเงิน — ยกเลิกบิลได้ที่นี่ (เงินจะกลับเข้าบัญชีอัตโนมัติ)</p>
+          {bills.map((b) => (
+            <div key={b.sessionId} className="flex items-center justify-between rounded-xl border p-3">
+              <div>
+                <div className="text-sm font-medium">
+                  โต๊ะ {b.tableName} · {formatBaht(b.totalSatang)}
+                  {b.allVoided && (
+                    <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-xs text-[color:var(--color-danger)]">ยกเลิกแล้ว</span>
+                  )}
+                </div>
+                {b.receiptNos.length > 0 && (
+                  <div className="text-xs text-[color:var(--color-muted)]">ใบเสร็จ {b.receiptNos.join(", ")}</div>
+                )}
+              </div>
+              {b.voidable && (
+                <ConfirmDialog
+                  triggerLabel="ยกเลิกบิล/คืนเงิน"
+                  triggerClassName="btn-sm text-[color:var(--color-danger)]"
+                  title={`ยกเลิกบิลโต๊ะ ${b.tableName}?`}
+                  detail="เงินจะถูกคืนเข้าบัญชี รายการอาหารกลับมาแก้ไข/คิดเงินใหม่ได้ และโต๊ะจะเปิดกลับมา"
+                  confirmLabel="ยืนยันยกเลิกบิล"
+                  danger
+                  action={voidCheckoutAction.bind(null, unitSlug)}
+                  fields={{ sessionId: b.sessionId }}
+                />
+              )}
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

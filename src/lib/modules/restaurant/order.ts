@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { prisma, tenantDb } from "@/lib/core/db";
 import type { Prisma, RestOrderType, ServiceRequestType } from "@prisma/client";
-import { createSale } from "@/lib/modules/pos/service";
+import { createSale, voidSale } from "@/lib/modules/pos/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import * as member from "@/lib/modules/member/service";
 import { bizDateBkk, kitchenOpenNow } from "./scope";
@@ -478,6 +478,115 @@ export async function checkout(input: {
   });
 
   return { ok: true, saleId, receiptNo, totalSatang: total, pointEarned, sessionClosed };
+}
+
+// ───────────────────────── ยกเลิกบิล / คืนเงินหลังชำระ (จากหน้าร้าน) ─────────────────────────
+// mirror ของ shop.refundOrder: กลับเส้นเงินก่อน (voidSale เปิด tx ของตัวเอง) แล้วค่อยแก้ session — ไม่ nested tx
+//   · หา posSaleId จาก restaurantOrderItem ของ session (saleId ไม่ null) → void ทุกใบที่ยัง PAID (idempotent)
+//   · fallback ไม่ผูก POS: saleId = idempotencyKey ("rest-…") ไม่ใช่ PosSale.id → หาไม่เจอ → ไม่มีเส้นเงินให้ void
+//   · reset item.saleId=null, settledAt=null (คืนรายการให้แก้/คิดใหม่) เฉพาะ item ที่ผูก saleId เดิม
+//   · เปิดโต๊ะกลับเป็น OPEN ถ้าถูกปิด + โต๊ะยังไม่มี session OPEN อื่น (กันชน partial-unique one_open_session_per_table)
+//   · guard: ต้องมีบิลที่ชำระแล้ว (item ผูก saleId) ถึง void ได้ · idempotent: void ซ้ำ → item ไม่ผูก saleId แล้ว → ok:false ไม่กลับบัญชีเบิ้ล
+export async function voidCheckout(
+  tenantId: string,
+  unitId: string,
+  sessionId: string,
+): Promise<
+  | { ok: true; voidedSaleIds: string[]; itemsReset: number; sessionReopened: boolean; saleVoided: boolean }
+  | { ok: false; reason: string }
+> {
+  const db = tenantDb({ tenantId, unitId });
+  const session = await db.tableSession.findFirst({ where: { id: sessionId } });
+  if (!session) return { ok: false, reason: "ไม่พบโต๊ะ/บิล" };
+
+  // รายการที่ชำระแล้วของ session นี้ (saleId ไม่ null)
+  const paidItems = await db.restaurantOrderItem.findMany({
+    where: { order: { sessionId }, saleId: { not: null } },
+    select: { id: true, saleId: true },
+  });
+  if (paidItems.length === 0) return { ok: false, reason: "โต๊ะนี้ยังไม่มีบิลที่ชำระ — ไม่มีอะไรให้ยกเลิก" };
+
+  const paidItemIds = paidItems.map((it) => it.id);
+  const saleIds = [...new Set(paidItems.map((it) => it.saleId!).filter(Boolean))];
+
+  // 1) กลับเส้นเงิน — void PosSale ทุกใบของ session (เฉพาะที่ยัง PAID จริง → กัน void ซ้ำ/idempotent)
+  const voidedSaleIds: string[] = [];
+  for (const saleId of saleIds) {
+    const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId, unitId } });
+    if (sale && sale.status === "PAID") {
+      await voidSale(tenantId, unitId, saleId);
+      voidedSaleIds.push(saleId);
+    }
+  }
+
+  // 2) คืนรายการ (saleId=null) + เปิดโต๊ะกลับเป็น OPEN ถ้าปิดอยู่และโต๊ะว่าง
+  let sessionReopened = false;
+  let itemsReset = 0;
+  await prisma.$transaction(async (tx) => {
+    const upd = await tx.restaurantOrderItem.updateMany({
+      where: { id: { in: paidItemIds }, tenantId, unitId, saleId: { not: null } },
+      data: { saleId: null, settledAt: null },
+    });
+    itemsReset = upd.count;
+    if (session.status !== "OPEN") {
+      const conflicting = await tx.tableSession.findFirst({
+        where: { tenantId, unitId, tableId: session.tableId, status: "OPEN", id: { not: sessionId } },
+      });
+      if (!conflicting) {
+        await tx.tableSession.update({ where: { id: sessionId }, data: { status: "OPEN", closedAt: null } });
+        sessionReopened = true;
+      }
+    }
+  });
+
+  return { ok: true, voidedSaleIds, itemsReset, sessionReopened, saleVoided: voidedSaleIds.length > 0 };
+}
+
+// บิลวันนี้ (จาก POS) — ให้พนักงานเห็นบิลที่ปิดแล้ว + ยกเลิก/คืนเงินได้ · group ต่อ session
+// ไม่ผูก POS (fallback) → ไม่มี PosSale ให้ list (void ทำผ่านหน้าโต๊ะแทน)
+export type BillToday = {
+  sessionId: string;
+  tableName: string;
+  totalSatang: number;
+  receiptNos: string[];
+  voidable: boolean; // มีบิลที่ยัง PAID
+  allVoided: boolean; // ทุกบิลถูก void แล้ว
+  paidAt: Date | null;
+};
+export async function billsToday(tenantId: string, unitId: string): Promise<BillToday[]> {
+  const posSystemId = await systemForUnit(tenantId, unitId, "POS");
+  if (!posSystemId) return [];
+  const d = new Date(Date.now() + 7 * 3_600_000);
+  const start = new Date(new Date(d.toISOString().slice(0, 10) + "T00:00:00Z").getTime() - 7 * 3_600_000);
+  const sales = await prisma.posSale.findMany({
+    where: { tenantId, unitId, sourceModule: "RESTAURANT", createdAt: { gte: start } },
+    orderBy: { createdAt: "desc" },
+    select: { sourceId: true, receiptNo: true, grandTotalSatang: true, status: true, paidAt: true },
+  });
+  if (sales.length === 0) return [];
+  const sessionIds = [...new Set(sales.map((s) => s.sourceId).filter((x): x is string => !!x))];
+  const db = tenantDb({ tenantId, unitId });
+  const sessions = await db.tableSession.findMany({ where: { id: { in: sessionIds } }, include: { table: true } });
+  const tableName = new Map(sessions.map((s) => [s.id, s.table.name]));
+  const bySession = new Map<string, typeof sales>();
+  for (const s of sales) {
+    if (!s.sourceId) continue;
+    const arr = bySession.get(s.sourceId) ?? [];
+    arr.push(s);
+    bySession.set(s.sourceId, arr);
+  }
+  return [...bySession.entries()].map(([sessionId, ss]) => {
+    const paid = ss.filter((s) => s.status === "PAID");
+    return {
+      sessionId,
+      tableName: tableName.get(sessionId) ?? "—",
+      totalSatang: paid.reduce((a, s) => a + s.grandTotalSatang, 0),
+      receiptNos: ss.map((s) => s.receiptNo).filter((x): x is string => !!x),
+      voidable: paid.length > 0,
+      allVoided: paid.length === 0,
+      paidAt: ss[0].paidAt,
+    };
+  });
 }
 
 // ───────────────────────── Dashboard: orders วันนี้ ─────────────────────────

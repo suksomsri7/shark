@@ -8,6 +8,7 @@ import {
   mergeSessionAction,
   cancelOrderItemAction,
   rushOrderAction,
+  voidCheckoutAction,
 } from "@/lib/actions/restaurant";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -35,6 +36,7 @@ export default async function SessionPage({
   const tables = await floorPlan(tenantId, unit.id);
   const freeTables = tables.filter((t) => !t.sessionId && t.status === "ACTIVE" && t.id !== session.tableId);
   const otherOpen = tables.filter((t) => t.sessionId && t.sessionId !== sessionId);
+  const hasPaidItems = session.orders.some((o) => o.items.some((it) => it.saleId));
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
@@ -166,6 +168,26 @@ export default async function SessionPage({
               fields={{ sessionId }}
             />
           )}
+        </section>
+      )}
+
+      {/* ยกเลิกบิล/คืนเงิน — โผล่เมื่อมีรายการที่ชำระแล้ว (รวมโต๊ะที่ปิดแล้ว) */}
+      {hasPaidItems && (
+        <section className="card flex flex-col gap-2">
+          <h2 className="text-sm font-medium">บิลที่ชำระแล้ว</h2>
+          <p className="text-xs text-[color:var(--color-muted)]">
+            ถ้ากดเช็คบิลผิดหรือต้องคืนเงิน — ยกเลิกบิลเพื่อคืนเงินเข้าบัญชี รายการจะกลับมาแก้ไข/คิดใหม่ได้
+          </p>
+          <ConfirmDialog
+            triggerLabel="ยกเลิกบิล/คืนเงิน"
+            triggerClassName="btn-sm text-[color:var(--color-danger)]"
+            title={`ยกเลิกบิลโต๊ะ ${session.table.name}?`}
+            detail="เงินจะถูกคืนเข้าบัญชี รายการอาหารกลับมาแก้ไข/คิดเงินใหม่ได้ และโต๊ะจะเปิดกลับมา"
+            confirmLabel="ยืนยันยกเลิกบิล"
+            danger
+            action={voidCheckoutAction.bind(null, unitSlug)}
+            fields={{ sessionId }}
+          />
         </section>
       )}
     </div>
