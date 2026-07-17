@@ -27,7 +27,7 @@ export async function applyExternalSale(input: {
   refId: string; // PosSale.id
   occurredAt: Date;
   grossSatang: number; // ยอดรวม (ราคารวม VAT ถ้าร้านจด)
-  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY"; amountSatang: number }[];
+  payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE"; amountSatang: number }[];
 }): Promise<{ posted: boolean; reason?: string }> {
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return { posted: false, reason: "unlinked" };
@@ -39,9 +39,25 @@ export async function applyExternalSale(input: {
   const base = vatRegistered ? Math.round(gross / (1 + vatRateBp / 10000)) : gross;
   const vat = gross - base;
 
-  // ช่องทางเงิน → บัญชี: เงินสด → 1000 (CASH) · โอน/พร้อมเพย์ → 1010 (BANK)
+  // ช่องทางเงิน → บัญชีขา Dr (ขา Cr รายได้/VAT คงเดิม):
+  //   CASH → 1000 (CASH) · TRANSFER/PROMPTPAY → 1010 (BANK)
+  //   DEPOSIT → 2110 (DEPOSIT_RECEIVED ลดหนี้สินมัดจำรับ) · ROOM_CHARGE → 1100 (AR ลูกหนี้)
+  const channelToKey = (
+    ch: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE",
+  ): "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR" => {
+    switch (ch) {
+      case "CASH":
+        return "CASH";
+      case "DEPOSIT":
+        return "DEPOSIT_RECEIVED";
+      case "ROOM_CHARGE":
+        return "AR";
+      default:
+        return "BANK";
+    }
+  };
   const drLines = input.payMethods.map((p) => ({
-    key: (p.channel === "CASH" ? "CASH" : "BANK") as "CASH" | "BANK",
+    key: channelToKey(p.channel),
     amountSatang: p.amountSatang,
   }));
 

@@ -1071,7 +1071,7 @@ export async function reopenPeriod(
 
 /**
  * โพสต์ยอดขายสดจากระบบต้นทางภายนอก (POS) → journal เดียว
- * Dr เงิน (ราย drLine: CASH→1000 / BANK→1010) · Cr 4000 (ฐานหลังถอด VAT) · Cr 2200 (VAT ถ้ามี)
+ * Dr ราย drLine: CASH→1000 · BANK→1010 · DEPOSIT_RECEIVED→2110 (ใช้มัดจำรับ) · AR→1100 (ลงบิลลูกหนี้) · Cr 4000 (ฐานหลังถอด VAT) · Cr 2200 (VAT ถ้ามี)
  * ขายสด tax point ทันที (ไม่พัก 2205) — เหมือน RECEIPT
  * idempotent ต่อ (PosSale, refId, PAID) — drain/emit ซ้ำไม่เบิ้ล
  * ⚠️ facade (account/index) เป็นผู้คิดฐาน/VAT + สร้าง drLine แล้วส่งมา — โมดูลอื่นไม่รู้เลขบัญชี
@@ -1083,7 +1083,7 @@ export async function postExternalSale(
     date: Date;
     baseSatang: number;
     vatSatang: number;
-    drLines: { key: "CASH" | "BANK"; amountSatang: number }[];
+    drLines: { key: "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR"; amountSatang: number }[];
   },
   tx?: Tx,
 ): Promise<{ entryId: string } | { skipped: true }> {

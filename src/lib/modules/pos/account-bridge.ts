@@ -6,15 +6,20 @@
 import type { PosPayType } from "@prisma/client";
 import { applyExternalSale, reverseExternalSale } from "@/lib/modules/account";
 
-// PosPayType → ช่องทางเงินฝั่งบัญชี
+// PosPayType → ช่องทางเงินฝั่งบัญชี (passthrough — WO-0040a เลิกยุบ DEPOSIT/ROOM_CHARGE)
 //   CASH → เงินสด (1000) · PROMPTPAY/TRANSFER → ธนาคาร (1010)
-//   DEPOSIT/ROOM_CHARGE: ยังไม่มีบัญชีเฉพาะ (มัดจำ/folio) → เข้าธนาคารชั่วคราว รอ WO ถัดไป
-function channelOf(type: PosPayType): "CASH" | "TRANSFER" | "PROMPTPAY" {
+//   DEPOSIT → ลูกค้าใช้เงินมัดจำที่วางไว้ → Dr 2110 เงินมัดจำรับ (ลดหนี้สิน)
+//   ROOM_CHARGE → ลงบิลห้องยังไม่จ่าย → Dr 1100 ลูกหนี้
+function channelOf(type: PosPayType): "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE" {
   switch (type) {
     case "CASH":
       return "CASH";
     case "PROMPTPAY":
       return "PROMPTPAY";
+    case "DEPOSIT":
+      return "DEPOSIT";
+    case "ROOM_CHARGE":
+      return "ROOM_CHARGE";
     default:
       return "TRANSFER";
   }
