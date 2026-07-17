@@ -242,3 +242,9 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 - oracle qc-security-hotfix 14/14 · qc-calendar อัปสัญญาใหม่ 9/9 · gate typecheck+fitness14+qc-hr9+qc-payroll19 เขียว
 - 📋 แผนเต็ม 6 ระลอก ~170 วัน: ledger/FULLFUNCTION_PLAN.md + FULLFUNCTION_AUDIT.json (0 full/25 partial/2 thin)
 - 🌙 RUN ยาวถึง 05:00 BKK — Fable คุม, Opus ลงมือ · Wave 1 ต่อ: POS หน้าขาย · reward/point/crm/queue wire dead code
+
+## 🌙 RUN ยาว Wave 1 (คืน 17→18 ก.ค. ถึง 05:00) — กำลังเดิน
+| WO | งาน | ข้อสอบ | commit |
+|---|---|---|---|
+| W1-A | **Reward แลกจริง**: flow แลก(เลือกรางวัล+สมาชิก)+ประวัติ+รับของ+ยกเลิกคืนแต้ม · point.credit() กัน over-refund · AI reward_redeem | qc-reward 20/20 | 2f6d4a9 |
+| W1-B | **POS หน้าขาย Cashier**: catalog(inventory+ราคา AccountProduct)/ค้นหา/เพิ่มเอง+cart+เงินสด(ทอน)/พร้อมเพย์(QR ยืนยันรับเงิน)+idempotency 3 ชั้น · reuse createSale ไม่แตะ engine | qc-pos-register 24/24 + cpa 107 | 22aa9df |
