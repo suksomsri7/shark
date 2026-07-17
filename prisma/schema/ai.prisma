@@ -84,3 +84,45 @@ model AiTrainingSample {
 
   @@index([tenantId, createdAt])
 }
+
+// AI Memory (agentic-1) — ความจำถาวรต่อร้าน (AI จดจากบทสนทนา → ฉีดเข้า system prompt)
+model AiMemory {
+  id        String   @id @default(cuid())
+  tenantId  String
+  content   String // ข้อเท็จจริงสั้น ๆ ("ร้านหยุดวันจันทร์")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, updatedAt])
+}
+
+// AI Plan (agentic-2 — L2) — แผนหลายขั้น: เสนอทั้งชุด ยืนยันครั้งเดียว ทำต่อเนื่อง รายงานทีละขั้น
+model AiPlan {
+  id             String   @id @default(cuid())
+  tenantId       String
+  conversationId String
+  title          String // ไทย — "ปิดยอดวันนี้"
+  status         String   @default("PENDING") // PENDING|RUNNING|DONE|FAILED|REJECTED|EXPIRED
+  hasDestructive Boolean  @default(false) // มี step ลบ/ยกเลิก → ยืนยัน 2 ชั้นระดับแผน
+  stepsJson      Json     @default("[]") // [{kind, summary, payload, status:PENDING|DONE|FAILED, note?}]
+  expiresAt      DateTime
+  executedAt     DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, conversationId, status])
+}
+
+// AI Scheduled Task (agentic-3) — งานประจำที่ AI ทำเองตามเวลา (read/summary → AppNotification)
+model AiScheduledTask {
+  id          String    @id @default(cuid())
+  tenantId    String
+  instruction String // "สรุปยอดขายวันนี้ + สต็อกใกล้หมด"
+  hourBkk     Int // 0-23 ชั่วโมงตามเวลาไทยที่ให้รัน
+  active      Boolean   @default(true)
+  lastRunDay  String? // "YYYY-MM-DD" (BKK) กันรันซ้ำในวันเดียวกัน
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId, active])
+  @@index([active, hourBkk])
+}
