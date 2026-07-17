@@ -2,6 +2,9 @@ import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { listOrders } from "@/lib/modules/shop/service";
 import { confirmOrderAction, cancelOrderAction } from "@/lib/modules/shop/actions";
+import { getShipmentForOrder } from "@/lib/delivery/service";
+import { listAdapters } from "@/lib/delivery/adapters";
+import { createShipmentAction, updateShipmentStatusAction } from "@/lib/delivery/actions";
 
 const baht = (satang: number) => (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 0 });
 
@@ -9,6 +12,13 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   PENDING_PAYMENT: { label: "รอชำระ", cls: "bg-amber-100 text-amber-800" },
   PAID: { label: "รับเงินแล้ว", cls: "bg-green-100 text-green-800" },
   CANCELLED: { label: "ยกเลิก", cls: "bg-gray-200 text-gray-700" },
+};
+
+const SHIP_STATUS: Record<string, { label: string; cls: string }> = {
+  PREPARING: { label: "เตรียมจัดส่ง", cls: "bg-amber-100 text-amber-800" },
+  SHIPPED: { label: "จัดส่งแล้ว", cls: "bg-blue-100 text-blue-800" },
+  DELIVERED: { label: "ถึงผู้รับแล้ว", cls: "bg-green-100 text-green-800" },
+  CANCELLED: { label: "ยกเลิกจัดส่ง", cls: "bg-gray-200 text-gray-700" },
 };
 
 // รายการออเดอร์ + ยืนยันรับเงิน / ยกเลิก — /app/u/[unitSlug]/shop/orders
@@ -19,7 +29,15 @@ export default async function ShopOrdersPage({
 }) {
   const { unitSlug } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
-  const orders = await listOrders({ tenantId: auth.active.tenantId, unitId: unit.id }, {});
+  const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
+  const orders = await listOrders(ctx, {});
+  const adapters = listAdapters();
+
+  // ใบจัดส่งของ order ที่ชำระเงินแล้ว (order ละ 1 ใบ)
+  const shipments = new Map<string, Awaited<ReturnType<typeof getShipmentForOrder>>>();
+  for (const o of orders) {
+    if (o.status === "PAID") shipments.set(o.id, await getShipmentForOrder(ctx, o.id));
+  }
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
@@ -62,6 +80,71 @@ export default async function ShopOrdersPage({
                 </form>
               </div>
             )}
+
+            {/* การจัดส่ง — เฉพาะออเดอร์ที่ชำระเงินแล้ว */}
+            {o.status === "PAID" && (() => {
+              const sh = shipments.get(o.id);
+              if (!sh) {
+                return (
+                  <form
+                    action={createShipmentAction.bind(null, unitSlug, o.id)}
+                    className="mt-1 flex flex-col gap-2 border-t pt-3"
+                  >
+                    <div className="text-sm font-medium">จัดส่ง</div>
+                    <select name="provider" className="input text-sm" defaultValue={adapters[0]?.key}>
+                      {adapters.map((a) => (
+                        <option key={a.key} value={a.key}>
+                          {a.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      name="trackingNo"
+                      placeholder="เลขพัสดุ (ถ้ามี)"
+                      className="input text-sm"
+                      maxLength={80}
+                    />
+                    <button className="btn btn-primary self-start text-sm">สร้างใบจัดส่ง</button>
+                  </form>
+                );
+              }
+              const sst = SHIP_STATUS[sh.status] ?? SHIP_STATUS.PREPARING;
+              return (
+                <div className="mt-1 flex flex-col gap-2 border-t pt-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">การจัดส่ง</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${sst.cls}`}>{sst.label}</span>
+                  </div>
+                  <div className="text-xs text-[color:var(--color-muted)]">
+                    {(adapters.find((a) => a.key === sh.provider)?.label ?? sh.provider)}
+                    {sh.trackingNo && ` · เลขพัสดุ ${sh.trackingNo}`}
+                  </div>
+                  {sh.status !== "CANCELLED" && sh.status !== "DELIVERED" && (
+                    <div className="flex flex-wrap gap-2">
+                      {sh.status === "PREPARING" && (
+                        <form action={updateShipmentStatusAction.bind(null, unitSlug, sh.id, "SHIPPED")}>
+                          <button className="rounded-lg border px-3 py-1.5 text-sm hover:bg-[color:var(--color-surface-2)]">
+                            ส่งแล้ว
+                          </button>
+                        </form>
+                      )}
+                      {sh.status === "SHIPPED" && (
+                        <form action={updateShipmentStatusAction.bind(null, unitSlug, sh.id, "DELIVERED")}>
+                          <button className="rounded-lg border px-3 py-1.5 text-sm hover:bg-[color:var(--color-surface-2)]">
+                            ถึงแล้ว
+                          </button>
+                        </form>
+                      )}
+                      <form action={updateShipmentStatusAction.bind(null, unitSlug, sh.id, "CANCELLED")}>
+                        <button className="rounded-lg border px-3 py-1.5 text-sm text-red-600 hover:bg-[color:var(--color-surface-2)]">
+                          ยกเลิกจัดส่ง
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         );
       })}
