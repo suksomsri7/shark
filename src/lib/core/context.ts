@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import type { BusinessUnit, Membership, Tenant, User } from "@prisma/client";
@@ -14,7 +15,7 @@ export type Auth = {
 };
 
 // อ่านบริบทผู้ใช้ปัจจุบัน (null ถ้าไม่ได้ล็อกอิน)
-export async function getAuth(): Promise<Auth | null> {
+export const getAuth = cache(async function getAuth(): Promise<Auth | null> {
   const user = await getSessionUser();
   if (!user) return null;
   const memberships = await prisma.membership.findMany({
@@ -26,7 +27,7 @@ export async function getAuth(): Promise<Auth | null> {
   const active =
     memberships.find((m) => m.tenantId === activeId) ?? memberships[0] ?? null;
   return { user, memberships, active };
-}
+});
 
 // บังคับล็อกอิน — ไม่งั้น redirect /login
 export async function requireAuth(): Promise<Auth> {

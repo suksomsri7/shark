@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import type { User } from "@prisma/client";
 import { prisma } from "./db";
@@ -37,7 +38,8 @@ export async function createSession(
 }
 
 // อ่าน session ปัจจุบัน + ต่ออายุ idle (sliding)
-export async function getSessionUser(): Promise<User | null> {
+// ห่อ cache() → ต่อ 1 request (layout + หน้า) เรียกครั้งเดียว ไม่ยิง session query ซ้ำ (perf B)
+export const getSessionUser = cache(async function getSessionUser(): Promise<User | null> {
   const token = (await cookies()).get(COOKIE)?.value;
   if (!token) return null;
   const s = await prisma.session.findUnique({
@@ -54,7 +56,7 @@ export async function getSessionUser(): Promise<User | null> {
     });
   }
   return s.user;
-}
+});
 
 export async function destroySession(): Promise<void> {
   const jar = await cookies();

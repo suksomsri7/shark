@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Topbar } from "./Topbar";
 import { NavDrawer, type NavItem, type SoonItem } from "./NavDrawer";
 import { HelpSheet } from "./HelpSheet";
 import { AiDock } from "./AiDock";
+import { loadNavBadgesAction } from "@/lib/support/actions";
 
 // โครงแอปฝั่ง client: จัดการสถานะเปิด/ปิด drawer + ศูนย์ช่วยเหลือ
 // รับข้อมูลที่ดึงจาก DB มาจาก layout (server) เป็น props — ตัว shell ไม่แตะ DB เอง
@@ -14,19 +15,25 @@ export function AppShell({
   items,
   soon,
   addHref,
-  helpUnread = 0,
-  aiUnread = 0,
 }: {
   tenantName: string;
   userEmail: string;
   items: NavItem[];
   soon: SoonItem[];
   addHref: string;
-  helpUnread?: number;
-  aiUnread?: number;
 }) {
   const [drawer, setDrawer] = useState(false);
   const [help, setHelp] = useState(false);
+  // perf A: โหลด badge หลังหน้าโผล่ (ไม่บล็อกการเปลี่ยนหน้า) · refresh เมื่อปิดศูนย์ช่วยเหลือ (อ่านแล้วเคลียร์)
+  const [helpUnread, setHelpUnread] = useState(0);
+  const [aiUnread, setAiUnread] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    loadNavBadgesAction()
+      .then((b) => { if (alive) { setHelpUnread(b.helpUnread); setAiUnread(b.aiUnread); } })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [help]);
 
   return (
     <>

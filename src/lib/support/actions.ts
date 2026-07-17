@@ -6,6 +6,7 @@
 
 import type { SupportAuthorSide, SupportCaseStatus } from "@prisma/client";
 import { requireTenant } from "@/lib/core/context";
+import { prisma } from "@/lib/core/db";
 import {
   createCase,
   listMyCasesWithMeta,
@@ -121,4 +122,15 @@ export async function addMessageAction(input: {
     input.attachments,
   );
   return { ok, error: ok ? undefined : "ไม่พบเคสนี้" };
+}
+
+// รวม badge ทั้ง 2 (help + AI แจ้งเตือน) ในครั้งเดียว — โหลดฝั่ง client หลังหน้าโผล่ (perf A: ไม่บล็อกเปลี่ยนหน้า)
+export async function loadNavBadgesAction(): Promise<{ helpUnread: number; aiUnread: number }> {
+  const auth = await requireTenant();
+  const tenantId = auth.active.tenantId;
+  const [helpUnread, aiUnread] = await Promise.all([
+    unreadCaseTotal({ tenantId }).catch(() => 0),
+    prisma.appNotification.count({ where: { tenantId, readAt: null } }).catch(() => 0),
+  ]);
+  return { helpUnread, aiUnread };
 }
