@@ -69,3 +69,18 @@ model AiUsage {
 
   @@unique([tenantId, day])
 }
+
+// AI training samples (distillation dataset — เก็บไว้เทรนโมเดลเล็ก self-host อนาคต)
+// ⚠️ PDPA: anonymize ก่อนเก็บ (แทนชื่อ/เบอร์/อีเมล ด้วย placeholder) · เก็บเมื่อ SHARK_AI_COLLECT=1 เท่านั้น
+// ของมีค่า = โครง tool-calling (คำสั่ง → เครื่องมือที่เลือก) ไม่ใช่ข้อมูลลูกค้า
+model AiTrainingSample {
+  id           String   @id @default(cuid())
+  tenantId     String
+  userText     String // anonymized
+  toolCallsJson Json    @default("[]") // [{name, args(anonymized)}]
+  replyText    String // anonymized
+  model        String // haiku | sonnet — ครูที่ผลิต sample
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
