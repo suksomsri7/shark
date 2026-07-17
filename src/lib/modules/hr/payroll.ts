@@ -1,6 +1,6 @@
 import { tenantDb } from "@/lib/core/db";
 import type { Prisma } from "@prisma/client";
-import { postPayrollJV } from "@/lib/modules/account";
+import { postPayrollJV, reverseEntry } from "@/lib/modules/account";
 import { ssoContribution, monthlyWhtSatang, type WhtDeductions } from "./payroll-rules";
 
 // Payroll ไทย — service ชั้นประกอบ (system-scoped HR) · WO-0036
@@ -227,6 +227,51 @@ export async function approveRun(ctx: Ctx, runId: string): Promise<{ ok: boolean
       data: { status: "DRAFT" },
     });
     return { ok: false, note: e instanceof Error ? e.message : "ลงบัญชีไม่สำเร็จ" };
+  }
+}
+
+// ── กลับรายการเงินเดือน (APPROVED/PAID → REVERSED) + กลับ JV — WO Wave2-K ──
+// immutable ledger: กลับ JV ด้วย reversal เท่านั้น (reverseEntry สร้าง entry ตรงข้าม + mark เดิม REVERSED)
+// DRAFT/ไม่มี JV → ok:false (ไม่มีอะไรกลับ — ลบร่างได้เลย)
+export async function reverseRun(
+  ctx: Ctx,
+  runId: string,
+  reason?: string,
+): Promise<{ ok: boolean; note: string }> {
+  const db = tenantDb(ctx);
+  const run = await db.hrPayrollRun.findFirst({ where: { id: runId, systemId: ctx.systemId } });
+  if (!run) return { ok: false, note: "ไม่พบรอบจ่าย" };
+  if (run.status === "REVERSED") return { ok: false, note: "รอบนี้กลับรายการไปแล้ว" };
+  if (!run.journalEntryId)
+    return { ok: false, note: "รอบนี้ยังไม่ได้ลงบัญชี — ไม่มีรายการให้กลับ (ลบร่างได้เลย)" };
+
+  const prevStatus = run.status; // APPROVED | PAID (คืนสถานะถ้ากลับ JV ล้ม)
+  // claim อะตอมมิก → REVERSED — กันกลับซ้ำ/แข่งกัน (เฉพาะที่มี JV และยัง APPROVED/PAID)
+  const claim = await db.hrPayrollRun.updateMany({
+    where: {
+      id: runId,
+      systemId: ctx.systemId,
+      status: { in: ["APPROVED", "PAID"] },
+      journalEntryId: { not: null },
+    },
+    data: { status: "REVERSED" },
+  });
+  if (claim.count === 0) return { ok: false, note: "รอบนี้กลับรายการไปแล้ว หรือสถานะเปลี่ยน" };
+
+  const acct = await db.appSystem.findFirst({ where: { type: "ACCOUNT" }, select: { id: true } });
+  const why = reason?.trim() || `กลับรายการเงินเดือนงวด ${run.periodKey}`;
+  try {
+    // กลับ JV ผ่าน account facade (idempotent ต่อ entry — กลับซ้ำไม่เบิ้ล)
+    if (acct) await reverseEntry({ tenantId: ctx.tenantId, systemId: acct.id }, run.journalEntryId, why);
+    await db.hrPayrollRun.update({ where: { id: runId }, data: { note: `กลับรายการแล้ว: ${why}` } });
+    return { ok: true, note: "กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว" };
+  } catch (e) {
+    // กลับ JV ล้ม → คืนสถานะเดิม (ยังไม่กลับจริง) ให้กดใหม่ได้ — ห้ามค้าง REVERSED ลอย
+    await db.hrPayrollRun.updateMany({
+      where: { id: runId, status: "REVERSED" },
+      data: { status: prevStatus },
+    });
+    return { ok: false, note: e instanceof Error ? e.message : "กลับรายการไม่สำเร็จ" };
   }
 }
 

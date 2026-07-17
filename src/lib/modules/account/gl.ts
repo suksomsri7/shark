@@ -782,6 +782,82 @@ export async function reverseFor(
   });
 }
 
+// ─────────────────── reverseEntry (กลับ 1 entry ตาม id — WO Wave2-K) ───────────────────
+
+/**
+ * กลับรายการ JV entry เดียวตาม id (immutable — สร้าง entry ตรงข้าม + mark REVERSED)
+ * ใช้เมื่อ caller ถือ entryId ตรง ๆ (เช่น HrPayrollRun.journalEntryId) แทนการค้นด้วย refType/refId
+ * mirror logic ของ reverseFor: สลับ dr/cr · idempotencyKey ต่อ entry (กลับซ้ำไม่เบิ้ล) · งวดปิด→เลื่อนงวดเปิด
+ * ⚠️ ไม่แตะ entry เดิม (immutable ledger) — trial balance คงสมดุล (reversal สลับ dr/cr = สมดุลในตัว)
+ */
+export async function reverseEntry(
+  ctx: GlCtx,
+  entryId: string,
+  reason: string,
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const e = await db.accountJournalEntry.findFirst({
+      where: { id: entryId, systemId: ctx.systemId },
+      include: { lines: true },
+    });
+    if (!e) throw new Error("ไม่พบรายการบัญชีที่จะกลับ");
+
+    const idempotencyKey = `${e.refType}#${e.refId}#REVERSAL:${e.id}`;
+    const existing = await db.accountJournalEntry.findFirst({
+      where: { systemId: ctx.systemId, idempotencyKey },
+      select: { id: true },
+    });
+    if (existing) return { entryId: existing.id };
+    // entry ถูกกลับไปแล้ว (มี reversal อื่นชี้มา) หรือไม่ได้อยู่สถานะ POSTED → ไม่กลับซ้ำ
+    if (e.status !== "POSTED") {
+      const rev = await db.accountJournalEntry.findFirst({
+        where: { systemId: ctx.systemId, reversalOfId: e.id },
+        select: { id: true },
+      });
+      return rev ? { entryId: rev.id } : { skipped: true };
+    }
+
+    // Gate C ledger-M10: ถ้างวดของ entry เดิมปิดแล้ว → reversal ลงงวดเปิดถัดไป
+    const date = await resolveOpenDate(ctx, new Date(), db);
+    const { periodKey } = bkkPeriod(date);
+    await assertPeriodOpen(ctx, periodKey, db);
+    const docNo = await nextJournalNo(ctx, e.book, date, db as Tx);
+
+    const created = await db.accountJournalEntry.create({
+      data: {
+        tenantId: ctx.tenantId,
+        systemId: ctx.systemId,
+        docNo,
+        book: e.book, // เล่มเดิม
+        journal: "REVERSAL",
+        date,
+        periodKey,
+        refType: e.refType,
+        refId: e.refId,
+        memo: `กลับรายการ: ${reason}`,
+        source: "AUTO",
+        reversalOfId: e.id,
+        idempotencyKey,
+        lines: {
+          create: e.lines.map((l) => ({
+            tenantId: ctx.tenantId,
+            systemId: ctx.systemId,
+            accountId: l.accountId,
+            debit: l.credit, // สลับ dr/cr
+            credit: l.debit,
+            contactId: l.contactId,
+            note: l.note,
+          })),
+        },
+      },
+      select: { id: true },
+    });
+    await db.accountJournalEntry.update({ where: { id: e.id }, data: { status: "REVERSED" } });
+    return { entryId: created.id };
+  });
+}
+
 // ─────────────────── postManualJV (JV มือ — ADJUST) ───────────────────
 
 /**

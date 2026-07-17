@@ -11,6 +11,8 @@
     "fitness": "tsx scripts/fitness.mts",
     "qc:account": "tsx scripts/qc-account-cpa.mts",
     "qc:account:qc7": "tsx scripts/qc-account-qc7.mts",
+    "qc:payroll": "tsx scripts/qc-payroll.mts",
+    "qc:payroll-reverse": "tsx scripts/qc-payroll-reverse.mts",
     "qc:chat": "tsx scripts/qc-chat-security.mts",
     "qc:systems": "tsx scripts/qc-systems.mts",
     "drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code",

@@ -4,6 +4,7 @@ enum PayrollRunStatus {
   DRAFT
   APPROVED
   PAID
+  REVERSED // กลับรายการ JV แล้ว (immutable — reversal เท่านั้น ห้ามลบ entry เดิม) · WO Wave2-K
 }
 
 model HrSalaryProfile {

@@ -129,7 +129,8 @@ export async function createExternalQuotation(input: {
 }
 
 // Payroll posting (WO-0036) — จุดเดียวที่ hr เรียกลงบัญชีเงินเดือน
-export { postPayrollJV, type PayrollPostingInput } from "./gl";
+// reverseEntry (WO Wave2-K) — hr เรียกกลับ JV เงินเดือนตาม journalEntryId (immutable ledger)
+export { postPayrollJV, reverseEntry, type PayrollPostingInput } from "./gl";
 
 // รายงานอายุหนี้ (WO-0039) — ลูกหนี้/เจ้าหนี้ค้างชำระ (UI/รายงานเรียกผ่าน facade)
 export {

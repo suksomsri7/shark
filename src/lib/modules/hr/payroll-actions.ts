@@ -7,6 +7,7 @@ import {
   approveRun,
   createPayrollRun,
   markPaid,
+  reverseRun,
   setSalaryProfile,
   type Ctx,
 } from "./payroll";
@@ -73,6 +74,20 @@ export async function approvePayrollRunAction(formData: FormData) {
   if (!systemId || !runId) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   await approveRun(ctx, runId);
+  revalidate(systemId);
+}
+
+// ── กลับรายการเงินเดือน (APPROVED/PAID → REVERSED + กลับ JV) — WO Wave2-K ──
+// สิทธิ์ hr.payroll.approve (คนที่อนุมัติได้ = กลับรายการได้) + ด่าน canViewPayroll ใน assertHrCan
+export async function reverseRunAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.payroll.approve");
+  const systemId = String(formData.get("systemId") ?? "");
+  const runId = String(formData.get("runId") ?? "");
+  if (!systemId || !runId) return;
+  const reason = String(formData.get("reason") ?? "").trim() || undefined;
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await reverseRun(ctx, runId, reason);
   revalidate(systemId);
 }
 

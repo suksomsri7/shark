@@ -13,6 +13,7 @@ import {
   approvePayrollRunAction,
   createPayrollRunAction,
   markPaidAction,
+  reverseRunAction,
   setSalaryProfileAction,
 } from "./payroll-actions";
 
@@ -23,9 +24,10 @@ const RUN_STATUS_LABEL: Record<string, string> = {
   DRAFT: "ร่าง",
   APPROVED: "อนุมัติแล้ว",
   PAID: "จ่ายแล้ว",
+  REVERSED: "กลับรายการแล้ว",
 };
 const runTone = (v: string): "muted" | "strong" =>
-  v === "DRAFT" ? "muted" : "strong";
+  v === "DRAFT" || v === "REVERSED" ? "muted" : "strong";
 
 // ───────────── PayrollSection (ฝังใน HrContent) ─────────────
 export async function PayrollSection({ systemId }: { systemId: string }) {
@@ -180,6 +182,19 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                     confirmLabel="ยืนยันจ่ายแล้ว"
                     action={markPaidAction}
                     fields={{ systemId, runId: r.id }}
+                  />
+                )}
+                {(r.status === "APPROVED" || r.status === "PAID") && (
+                  <ConfirmDialog
+                    triggerLabel="กลับรายการ"
+                    triggerClassName="rounded-full border px-3 py-1.5 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
+                    title={`กลับรายการเงินเดือนงวด ${r.periodKey}?`}
+                    detail={`ระบบจะลงบัญชีกลับรายการ (JV ตรงข้าม) ของเงินเดือนงวดนี้ — เงินเดือนรวม ${formatBaht(r.totalGrossSatang)} · จ่ายสุทธิ ${formatBaht(r.totalNetSatang)} · ใช้เมื่อลงเงินเดือนผิดงวด/ผิดยอด (รายการเดิมยังอยู่ตามหลักบัญชี — ไม่ลบ)`}
+                    confirmLabel="ยืนยันกลับรายการ"
+                    danger
+                    action={reverseRunAction}
+                    fields={{ systemId, runId: r.id }}
+                    reasonField={{ name: "reason", label: "เหตุผล (ไม่บังคับ)" }}
                   />
                 )}
               </div>
