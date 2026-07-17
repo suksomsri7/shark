@@ -14,6 +14,7 @@ import {
   vatConfigOf,
 } from "./service";
 import { postExternalSale, reverseFor, type GlCtx } from "./gl";
+import { createExpenseDoc as createExpenseDocRaw } from "./expense";
 
 /**
  * รับยอดขายสดจากระบบภายนอก (POS) เข้าบัญชี
@@ -140,3 +141,35 @@ export {
 
 // ปิดงวดบัญชีอัตโนมัติ (WO-0039) — cron ระดับแพลตฟอร์มเรียก
 export { sweepAutoClosePeriods } from "./period-sweep";
+
+// ─────────────────────────────────────────────────────────────
+// บันทึกค่าใช้จ่าย/ใบเสร็จเข้าบัญชี (facade — ผู้ช่วย AI เรียกผ่านที่นี่, feedback เจ้าของ #4)
+// caller ส่งแค่ ยอด/ผู้ขาย/บันทึก — ไม่ต้องรู้เลขบัญชี/VAT · สร้างเป็น DRAFT (docType EXPENSE)
+// user ตรวจแล้วออกเอกสารจริงในระบบบัญชีเอง (ยังไม่โพสต์ GL ที่นี่)
+// ─────────────────────────────────────────────────────────────
+export async function createExpenseDoc(input: {
+  tenantId: string;
+  systemId: string;
+  vendor?: string | null;
+  note: string;
+  amountSatang: number;
+  date?: string;
+  createdById?: string | null;
+}): Promise<{ docId: string; grandTotal: number }> {
+  const parsed = input.date ? new Date(input.date) : new Date();
+  const issueDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  const vendor = input.vendor?.trim() ?? "";
+  const note = input.note?.trim() ?? "";
+  const description = note || vendor || "ค่าใช้จ่าย";
+  const noteText = vendor ? `ผู้ขาย: ${vendor}${note ? ` — ${note}` : ""}` : note || null;
+  const doc = await createExpenseDocRaw({
+    tenantId: input.tenantId,
+    systemId: input.systemId,
+    docType: "EXPENSE",
+    issueDate,
+    note: noteText,
+    lines: [{ description, qty: 1, unitPrice: Math.round(input.amountSatang) }],
+    createdById: input.createdById ?? null,
+  });
+  return { docId: doc.id, grandTotal: doc.grandTotal };
+}

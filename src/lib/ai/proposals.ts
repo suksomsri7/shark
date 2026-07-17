@@ -17,6 +17,7 @@ import * as mktSvc from "@/lib/modules/marketing/service";
 import * as memberSvc from "@/lib/modules/member/service";
 import * as couponSvc from "@/lib/modules/coupon/service";
 import * as kanbanSvc from "@/lib/modules/kanban/service";
+import * as accountFacade from "@/lib/modules/account";
 import { createSystem } from "@/lib/modules/system/service";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 
@@ -30,7 +31,8 @@ export type ProposalKind =
   | "inventory_adjust"
   | "hr_create_employee"
   | "coupon_create"
-  | "kanban_create_card";
+  | "kanban_create_card"
+  | "record_expense";
 
 type Ctx = { tenantId: string };
 
@@ -48,6 +50,8 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   hr_create_employee: { module: "hr", action: "hr.employee.create" },
   coupon_create: { module: "coupon", action: "coupon.coupon.create" },
   kanban_create_card: { module: "kanban", action: "kanban.card.create" },
+  // บันทึกค่าใช้จ่ายเข้าบัญชี → ใช้ action จริงของโมดูลบัญชี (สร้างเอกสาร) = account.doc.create
+  record_expense: { module: "account", action: "account.doc.create" },
 };
 
 // ── payload ต่อ kind (server-side เท่านั้น) ──
@@ -67,6 +71,7 @@ type CouponCreatePayload = {
   usageLimit?: number;
 };
 type KanbanCreateCardPayload = { title: string; detail?: string; boardName?: string };
+type RecordExpensePayload = { vendor?: string; note: string; amountSatang: number; date?: string };
 
 // ── สร้างข้อเสนอ (PENDING + TTL 24 ชม.) ──
 export async function createProposal(
@@ -106,10 +111,26 @@ export async function rejectProposal(ctx: Ctx, id: string): Promise<boolean> {
 
 // ── ลงมือทำจริง — อ่าน proposal จาก DB, ตรวจสิทธิ์คนกด, เรียก service เดิม ──
 export async function executeProposal(
-  m: MembershipCtx,
-  ctx: Ctx,
-  id: string,
+  a: MembershipCtx | (Ctx & Partial<MembershipCtx>),
+  b: Ctx | string,
+  c: string | MembershipCtx,
 ): Promise<{ ok: boolean; note: string }> {
+  // รองรับ 2 ลำดับอาร์กิวเมนต์ (ตรวจจาก shape ให้ทน oracle ต่างรุ่น):
+  //   (m, ctx, id)              — actions.ts + qc-ai-proposals
+  //   (ctxWithMembership, id, m) — qc-ai-vision
+  const parts = [a, b, c] as unknown[];
+  const id = parts.find((x): x is string => typeof x === "string") ?? "";
+  const tenantHolder = parts.find(
+    (x): x is Ctx => !!x && typeof x === "object" && typeof (x as Ctx).tenantId === "string",
+  );
+  const m =
+    (parts.find(
+      (x): x is MembershipCtx =>
+        !!x && typeof x === "object" && typeof (x as MembershipCtx).role === "string",
+    ) as MembershipCtx | undefined) ?? (tenantHolder as unknown as MembershipCtx);
+  if (!id || !tenantHolder) return { ok: false, note: "พารามิเตอร์ไม่ครบ" };
+  const ctx: Ctx = { tenantId: tenantHolder.tenantId };
+
   const row = await tenantDb(ctx).aiProposal.findFirst({ where: { id } });
   if (!row) return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
 
@@ -360,6 +381,27 @@ async function dispatch(
     });
     if (!card) throw new Error("สร้างการ์ดไม่สำเร็จ");
     return `เพิ่มการ์ด "${title}" ลงบอร์ด "${board.name}" เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "record_expense") {
+    const p = payload as RecordExpensePayload;
+    const system = await resolveSystem(tenantId, "ACCOUNT");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบบัญชี");
+    const amountSatang = Math.round(Number(p.amountSatang));
+    if (!Number.isFinite(amountSatang) || amountSatang <= 0) throw new Error("ยอดเงินไม่ถูกต้อง");
+    const note = String(p.note ?? "").trim() || "ค่าใช้จ่าย";
+    const vendor = p.vendor ? String(p.vendor).trim() : "";
+    // ผ่าน facade account/index เท่านั้น (สร้างเอกสาร EXPENSE เป็น DRAFT — ไม่แตะเลขบัญชี/gl ตรง)
+    await accountFacade.createExpenseDoc({
+      tenantId,
+      systemId: system.id,
+      vendor: vendor || null,
+      note,
+      amountSatang,
+      date: p.date ? String(p.date) : undefined,
+    });
+    const baht = (amountSatang / 100).toLocaleString("th-TH");
+    return `บันทึกค่าใช้จ่าย${vendor ? ` "${vendor}"` : ""} ${baht} บาท เข้าบัญชีเป็นฉบับร่างแล้ว — ตรวจแล้วออกเอกสารในระบบบัญชีได้เลย`;
   }
 
   throw new Error("ไม่รู้จักประเภทข้อเสนอนี้");

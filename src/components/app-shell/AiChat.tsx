@@ -15,18 +15,47 @@ import {
 // Phase 3.5: การ์ดยืนยันใต้แชท — AI "เสนอ" การกระทำ user กด "ยืนยันทำเลย" หรือ "ยกเลิก"
 // สถานะยังไม่เปิดใช้ (ไม่มี key) = แจ้งสุภาพ ไม่พัง
 
-type Msg = { id: string; role: "USER" | "ASSISTANT"; content: string };
+type Msg = { id: string; role: "USER" | "ASSISTANT"; content: string; images?: string[] };
+
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // ~2MB ต่อรูป (base64 dataURL)
 
 export function AiChat() {
   const [state, setState] = useState<AiChatState | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [proposals, setProposals] = useState<PendingProposal[]>([]);
   const [text, setText] = useState("");
+  const [images, setImages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // อ่านไฟล์รูปเป็น base64 dataURL (cap ~2MB) — ข้ามไฟล์ที่ใหญ่/ไม่ใช่รูป
+  function onPickImages(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setError(null);
+    const list = Array.from(files);
+    for (const file of list) {
+      if (!file.type.startsWith("image/")) continue;
+      if (file.size > MAX_IMAGE_BYTES) {
+        setError("รูปต้องมีขนาดไม่เกิน 2MB ต่อรูป");
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const url = typeof reader.result === "string" ? reader.result : "";
+        if (url) setImages((imgs) => [...imgs, url]);
+      };
+      reader.readAsDataURL(file);
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function removeImage(idx: number) {
+    setImages((imgs) => imgs.filter((_, i) => i !== idx));
+  }
 
   useEffect(() => {
     loadAiChatAction().then((s) => {
@@ -42,15 +71,23 @@ export function AiChat() {
 
   function send() {
     const t = text.trim();
-    if (!t || pending) return;
+    const imgs = images;
+    // ส่งได้เมื่อมีข้อความหรือมีรูปแนบ — แนบรูปอย่างเดียว ใช้ข้อความเริ่มต้นให้ AI ช่วยอ่าน
+    if ((!t && imgs.length === 0) || pending) return;
+    const sendText = t || "ช่วยอ่านรูป/ใบเสร็จนี้ให้หน่อย";
     setText("");
+    setImages([]);
     setError(null);
     setNotice(null);
-    setMessages((m) => [...m, { id: `tmp-${m.length}`, role: "USER", content: t }]);
+    setMessages((m) => [
+      ...m,
+      { id: `tmp-${m.length}`, role: "USER", content: sendText, images: imgs.length ? imgs : undefined },
+    ]);
     startTransition(async () => {
       const res = await sendAiMessageAction({
         conversationId: state?.conversationId ?? undefined,
-        text: t,
+        text: sendText,
+        ...(imgs.length ? { imageUrls: imgs } : {}),
       });
       if (res.ok) {
         setState((s) => (s ? { ...s, conversationId: res.conversationId } : s));
@@ -123,6 +160,19 @@ export function AiChat() {
                 : "mr-8 self-start whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-[color:var(--color-surface-2)] px-3 py-2 text-sm"
             }
           >
+            {m.images && m.images.length > 0 && (
+              <div className="mb-1 flex flex-wrap gap-1">
+                {m.images.map((src, i) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={i}
+                    src={src}
+                    alt={`รูปแนบ ${i + 1}`}
+                    className="h-16 w-16 rounded-lg object-cover"
+                  />
+                ))}
+              </div>
+            )}
             {m.content}
           </div>
         ))}
@@ -167,6 +217,35 @@ export function AiChat() {
       )}
       {error && <p className="text-sm text-[color:var(--color-danger)]">{error}</p>}
 
+      {/* รูปที่แนบไว้ (รอส่ง) — แตะกากบาทเพื่อลบ */}
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {images.map((src, i) => (
+            <div key={i} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={src} alt={`แนบ ${i + 1}`} className="h-16 w-16 rounded-lg object-cover" />
+              <button
+                type="button"
+                onClick={() => removeImage(i)}
+                aria-label="ลบรูป"
+                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[color:var(--color-ink)] text-xs text-[color:var(--color-surface)]"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => onPickImages(e.target.files)}
+      />
+
       <form
         className="flex items-end gap-2"
         onSubmit={(e) => {
@@ -174,6 +253,14 @@ export function AiChat() {
           send();
         }}
       >
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          aria-label="แนบรูป"
+          className="btn btn-ghost min-h-[44px] px-3"
+        >
+          รูป
+        </button>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -187,7 +274,11 @@ export function AiChat() {
           placeholder="พิมพ์ข้อความ…"
           className="min-h-[44px] flex-1 resize-none rounded-xl border px-3 py-2.5 text-base"
         />
-        <button type="submit" disabled={pending || !text.trim()} className="btn btn-primary min-h-[44px] disabled:opacity-50">
+        <button
+          type="submit"
+          disabled={pending || (!text.trim() && images.length === 0)}
+          className="btn btn-primary min-h-[44px] disabled:opacity-50"
+        >
           ส่ง
         </button>
       </form>

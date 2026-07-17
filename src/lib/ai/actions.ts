@@ -89,6 +89,7 @@ export type SendAiResult =
 export async function sendAiMessageAction(input: {
   conversationId?: string;
   text: string;
+  imageUrls?: string[];
 }): Promise<SendAiResult> {
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
