@@ -91,32 +91,45 @@ export async function listMyCases(ctx: Ctx, take = 50): Promise<SupportCase[]> {
 export async function listMyCasesWithMeta(ctx: Ctx, take = 50): Promise<CaseMeta[]> {
   const db = tenantDb(ctx);
   const cases = await db.supportCase.findMany({ orderBy: { updatedAt: "desc" }, take });
-  const metas: CaseMeta[] = [];
-  for (const c of cases) {
-    const createdAtFilter = c.shopLastReadAt ? { gt: c.shopLastReadAt } : undefined;
-    const unreadCount = await db.supportMessage.count({
-      where: {
-        caseId: c.id,
-        authorSide: "PLATFORM",
-        ...(createdAtFilter ? { createdAt: createdAtFilter } : {}),
-      },
-    });
-    metas.push({
-      id: c.id,
-      caseNo: c.caseNo,
-      subject: c.subject,
-      status: c.status,
-      updatedAt: c.updatedAt,
-      unreadCount,
-    });
+  if (cases.length === 0) return [];
+  // แก้ N+1: ดึงข้อความ PLATFORM ของทุกเคสในคิวรีเดียว แล้วนับ unread ต่อเคสใน JS
+  // (unread = ข้อความจากทีมงานที่ createdAt > shopLastReadAt ของเคสนั้น) — 2 คิวรีคงที่ไม่ว่ากี่เคส
+  const msgs = await db.supportMessage.findMany({
+    where: { caseId: { in: cases.map((c) => c.id) }, authorSide: "PLATFORM" },
+    select: { caseId: true, createdAt: true },
+  });
+  const unreadByCase = new Map<string, number>();
+  const readAtByCase = new Map(cases.map((c) => [c.id, c.shopLastReadAt] as const));
+  for (const m of msgs) {
+    const readAt = readAtByCase.get(m.caseId);
+    if (!readAt || m.createdAt > readAt) unreadByCase.set(m.caseId, (unreadByCase.get(m.caseId) ?? 0) + 1);
   }
-  return metas;
+  return cases.map((c) => ({
+    id: c.id,
+    caseNo: c.caseNo,
+    subject: c.subject,
+    status: c.status,
+    updatedAt: c.updatedAt,
+    unreadCount: unreadByCase.get(c.id) ?? 0,
+  }));
 }
 
-// จำนวนข้อความยังไม่อ่านรวมทุกเคส (สำหรับ badge ปุ่ม help บน Topbar)
+// จำนวนข้อความยังไม่อ่านรวมทุกเคส (สำหรับ badge ปุ่ม help บน Topbar) — คิวรีเดียว
 export async function unreadCaseTotal(ctx: Ctx): Promise<number> {
-  const metas = await listMyCasesWithMeta(ctx);
-  return metas.reduce((sum, m) => sum + m.unreadCount, 0);
+  const db = tenantDb(ctx);
+  const cases = await db.supportCase.findMany({ select: { id: true, shopLastReadAt: true } });
+  if (cases.length === 0) return 0;
+  const msgs = await db.supportMessage.findMany({
+    where: { caseId: { in: cases.map((c) => c.id) }, authorSide: "PLATFORM" },
+    select: { caseId: true, createdAt: true },
+  });
+  const readAtByCase = new Map(cases.map((c) => [c.id, c.shopLastReadAt] as const));
+  let total = 0;
+  for (const m of msgs) {
+    const readAt = readAtByCase.get(m.caseId);
+    if (!readAt || m.createdAt > readAt) total++;
+  }
+  return total;
 }
 
 // ร้านเปิดอ่านเธรด → set shopLastReadAt = now (เคลียร์ badge)
