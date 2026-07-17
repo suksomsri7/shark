@@ -28,7 +28,68 @@ export interface AiProvider {
   chat(messages: AiChatMessage[], opts?: { maxTokens?: number; tools?: AiToolDef[] }): Promise<AiReply>;
 }
 
-const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
+// ── ROUTING 2 ชั้น ── คุม cost: คำถามอ่านสั้น → FAST (haiku ถูก/เร็ว) · งานหนัก/มีรูป → SMART (sonnet)
+export const FAST_MODEL = "anthropic/claude-haiku-4.5";
+export const SMART_MODEL = "anthropic/claude-sonnet-5";
+
+// คำสั่ง "ทำงาน" (mutation) — ต้องใช้โมเดลฉลาดวางแผน tool-calling/ยืนยัน
+const ACTION_WORDS = [
+  "สร้าง", "เพิ่ม", "ลบ", "ยกเลิก", "จอง", "ขาย", "อนุมัติ", "บันทึก",
+  "ปรับ", "โอน", "รับ", "ชำระ", "เปิดบิล", "สมัคร",
+];
+
+/**
+ * เลือกโมเดลตามเนื้อความ (routing ชั้นที่ 1 = ก่อนเรียก provider)
+ * - env SHARK_AI_MODEL ตั้งไว้ → คืนค่านั้นเสมอ (เจ้าของบังคับตัวเดียว ไม่ auto-route)
+ *   → อยากเปิด auto-routing ต้อง "ลบ SHARK_AI_MODEL ออกจาก .env" (ห้ามลบให้เอง)
+ * - มีรูป → SMART เสมอ (vision)
+ * - มีคำสั่งทำงาน หรือยาว > 120 ตัว → SMART
+ * - ที่เหลือ (คำถามอ่านสั้น) → FAST
+ */
+export function pickModel(text: string, hasImages: boolean): string {
+  const forced = process.env.SHARK_AI_MODEL;
+  if (forced && forced.trim()) return forced;
+  if (hasImages) return SMART_MODEL;
+  const t = String(text ?? "");
+  if (t.length > 120) return SMART_MODEL;
+  // ตัดคำนามรายงาน "ยอด+…" ออกก่อน (เช่น "ยอดขาย"/"ยอดรับ" = คำถามอ่าน ไม่ใช่คำสั่งขาย/รับ)
+  // กัน false-positive: substring "ขาย" ใน "ยอดขาย" ไม่ควรทำให้คำถามอ่านกลายเป็นคำสั่ง
+  const scan = t.replace(/ยอด(ขาย|รับ|โอน|ชำระ|ปรับ)/g, "ยอด");
+  if (ACTION_WORDS.some((w) => scan.includes(w))) return SMART_MODEL;
+  return FAST_MODEL;
+}
+
+/**
+ * ประกอบ request body ของ OpenRouter (แยกเป็น pure function เพื่อทดสอบ + prompt caching)
+ * - cacheSystem=true → system message content เป็น array พร้อม cache_control ephemeral
+ *   (Anthropic prompt caching ผ่าน OpenRouter — ลด token ของ system prompt + tool schema
+ *    ที่ซ้ำทุก request ในบทสนทนาเดียว)
+ */
+export function buildRequestBody(
+  model: string,
+  oaMessages: unknown[],
+  tools: unknown[] | undefined,
+  opts?: { cacheSystem?: boolean; maxTokens?: number },
+): Record<string, unknown> {
+  const messages = opts?.cacheSystem
+    ? oaMessages.map((m) => {
+        const mm = (m ?? {}) as { role?: string; content?: unknown };
+        if (mm.role === "system" && typeof mm.content === "string") {
+          return {
+            ...mm,
+            content: [{ type: "text", text: mm.content, cache_control: { type: "ephemeral" } }],
+          };
+        }
+        return m;
+      })
+    : oaMessages;
+  return {
+    model,
+    messages,
+    max_tokens: opts?.maxTokens ?? 1024,
+    ...(tools && tools.length > 0 ? { tools } : {}),
+  };
+}
 
 /** Mock — deterministic สำหรับข้อสอบ: ตอบทวนข้อความล่าสุด + นับ token จากความยาว */
 export class MockProvider implements AiProvider {
@@ -88,15 +149,20 @@ export class OpenRouterProvider implements AiProvider {
           }))
         : undefined;
 
+    // prompt caching เสมอ: cache system + tool schema (ซ้ำทุก request) → ลด token
+    const body = buildRequestBody(this.model, oaMessages, tools, {
+      cacheSystem: true,
+      maxTokens: opts?.maxTokens,
+    });
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${this.key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: this.model,
-        messages: oaMessages,
-        max_tokens: opts?.maxTokens ?? 1024,
-        ...(tools ? { tools } : {}),
-      }),
+      headers: {
+        Authorization: `Bearer ${this.key}`,
+        "Content-Type": "application/json",
+        // OpenRouter ส่วนใหญ่ผ่าน beta caching ให้เอง — ใส่ไว้กันเหนียว
+        "anthropic-beta": "prompt-caching-2024-07-31",
+      },
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
@@ -136,12 +202,18 @@ export class OpenRouterProvider implements AiProvider {
   }
 }
 
-/** เลือก provider จาก env — null = ยังไม่เปิดใช้ (ชั้นบนต้องแจ้งสุภาพ ห้าม throw) */
-export function resolveProvider(): AiProvider | null {
+/**
+ * เลือก provider จาก env ตาม tier (routing ชั้นที่ 2) — null = ยังไม่เปิดใช้ (ห้าม throw)
+ * - SHARK_AI_MODEL ตั้งไว้ → ใช้ตัวนั้นเสมอ (เจ้าของบังคับ — สอดคล้อง pickModel)
+ * - ไม่งั้นใช้ constant ตาม tier · ไม่ส่ง tier = smart
+ */
+export function resolveProvider(tier: "fast" | "smart" = "smart"): AiProvider | null {
   if (process.env.SHARK_AI_MOCK === "1") return new MockProvider();
   const key = process.env.SHARK_AI_KEY;
   if (!key) return null;
-  return new OpenRouterProvider(key, process.env.SHARK_AI_MODEL ?? DEFAULT_MODEL);
+  const forced = process.env.SHARK_AI_MODEL;
+  const model = forced && forced.trim() ? forced : tier === "fast" ? FAST_MODEL : SMART_MODEL;
+  return new OpenRouterProvider(key, model);
 }
 
 /** เพดานใช้งานต่อ tenant ต่อวัน (override ได้ทาง env) */
