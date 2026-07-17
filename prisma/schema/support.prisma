@@ -14,15 +14,18 @@ enum SupportAuthorSide {
 model SupportCase {
   id                     String            @id @default(cuid())
   tenantId               String
+  caseNo                 Int               @default(0) // เลขที่เคส running ต่อ tenant (SHARK-000123 แสดงฝั่ง UI)
   openedByUserId         String // User.id ฝั่งร้าน
   subject                String
   status                 SupportCaseStatus @default(OPEN)
   assigneePlatformUserId String?
+  shopLastReadAt         DateTime? // ร้านเปิดอ่านเธรดล่าสุดเมื่อไหร่ (คำนวณ badge unread)
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
 
   messages SupportMessage[]
 
+  @@unique([tenantId, caseNo])
   @@index([tenantId, status, updatedAt])
   @@index([status, updatedAt]) // ฝั่ง backoffice กวาดทุกร้าน
 }
@@ -35,6 +38,7 @@ model SupportMessage {
   authorSide SupportAuthorSide
   authorId   String // User.id (SHOP) หรือ PlatformUser.id (PLATFORM)
   body       String
+  attachmentsJson Json         @default("[]") // [{name, url, kind:"image"|"file"}] — WO help-v2
   createdAt  DateTime          @default(now())
 
   @@index([tenantId, caseId, createdAt])
