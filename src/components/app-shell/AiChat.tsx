@@ -67,11 +67,16 @@ export function AiChat() {
   }
 
   useEffect(() => {
-    loadAiChatAction().then((s) => {
-      setState(s);
-      setMessages(s.messages);
-      setProposals(s.pendingProposals);
-    });
+    loadAiChatAction()
+      .then((s) => {
+        setState(s);
+        setMessages(s.messages);
+        setProposals(s.pendingProposals);
+      })
+      .catch(() => {
+        // โหลดพลาด/ช้า → เปิดแชทเปล่าให้ใช้งานได้เลย (ไม่ค้าง "กำลังโหลด" ตลอด)
+        setState({ enabled: true, conversationId: null, messages: [], pendingProposals: [] });
+      });
   }, []);
 
   useEffect(() => {

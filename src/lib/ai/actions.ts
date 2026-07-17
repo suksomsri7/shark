@@ -47,8 +47,10 @@ export async function loadAiChatAction(): Promise<AiChatState> {
   assertAiCan(auth, "ai.chat.send");
   const ctx = { tenantId: auth.active.tenantId };
   const conv = await latestConversation(ctx);
-  const messages = conv ? await listMessages(ctx, conv.id) : [];
-  const pending = conv ? await listPendingProposals(ctx, conv.id) : [];
+  // โหลด messages + proposals พร้อมกัน (เดิม sequential — ลด round-trip)
+  const [messages, pending] = conv
+    ? await Promise.all([listMessages(ctx, conv.id), listPendingProposals(ctx, conv.id)])
+    : [[], []];
   return {
     enabled: aiEnabled(),
     conversationId: conv?.id ?? null,

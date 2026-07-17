@@ -107,7 +107,7 @@ export function HelpSheet({ open, onClose }: { open: boolean; onClose: () => voi
               <button
                 type="button"
                 onClick={() => setView("new")}
-                className="btn btn-primary text-sm"
+                className="flex items-center justify-center gap-1 rounded-lg bg-[color:var(--color-accent)] px-3 py-2.5 text-sm font-medium text-white hover:opacity-90"
               >
                 + แจ้งปัญหาใหม่
               </button>
@@ -325,7 +325,7 @@ function NewCaseForm({
       </label>
       <AttachmentPicker attachments={attachments} onChange={setAttachments} disabled={busy} />
       {error && <p className="text-sm text-[color:var(--color-danger)]">{error}</p>}
-      <button type="submit" disabled={busy} className="btn btn-primary text-sm disabled:opacity-50">
+      <button type="submit" disabled={busy} className="flex items-center justify-center gap-1 rounded-lg bg-[color:var(--color-accent)] px-3 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
         {busy ? "กำลังส่ง…" : "ส่งเรื่อง"}
       </button>
     </form>
@@ -412,7 +412,7 @@ function CaseThread({
         <textarea name="body" required rows={2} className="input" placeholder="พิมพ์ข้อความ…" />
         <AttachmentPicker attachments={attachments} onChange={setAttachments} disabled={busy} />
         {error && <p className="text-sm text-[color:var(--color-danger)]">{error}</p>}
-        <button type="submit" disabled={busy} className="btn btn-primary text-sm disabled:opacity-50">
+        <button type="submit" disabled={busy} className="flex items-center justify-center gap-1 rounded-lg bg-[color:var(--color-accent)] px-3 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
           {busy ? "กำลังส่ง…" : "ส่งข้อความ"}
         </button>
       </form>
