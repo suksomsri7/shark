@@ -18,6 +18,7 @@ import { searchKb as kbSearchArticles } from "@/lib/modules/kb/service";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { createProposal, type ProposalKind } from "./proposals";
 import { dayKeyBangkok } from "./rules";
+import { rememberFact, forgetMemory, listMemories } from "./memory";
 
 export type ToolCtx = { tenantId: string; conversationId?: string };
 
@@ -1481,6 +1482,89 @@ const rentalActive: AiTool = {
   },
 };
 
+// ══════════════════════════════════════════════════════════════════
+// AI Memory (agentic-1) — ความจำถาวรต่อร้าน
+// remember_fact/forget_fact เขียนทันทีใน execute (ไม่ผ่าน proposal) เพราะเป็นการ "จดโน้ต"
+// ของ AI เอง ไม่ใช่ mutation ธุรกิจ — จึง action=false (ไม่มีการ์ดยืนยัน)
+// ══════════════════════════════════════════════════════════════════
+
+// ── MEM-1) remember_fact — จดข้อเท็จจริงถาวรของร้าน (เขียนทันที) ──
+const rememberFactTool: AiTool = {
+  def: {
+    name: "remember_fact",
+    description:
+      "จดจำข้อเท็จจริงหรือความชอบถาวรเกี่ยวกับร้านนี้/เจ้าของ เพื่อใช้ในบทสนทนาต่อ ๆ ไป (จดทันที ไม่ต้องยืนยัน) — เรียกเมื่อได้ยินข้อมูลที่ควรจำระยะยาว เช่น เวลาเปิด-ปิด วันหยุดประจำ ชื่อ/สไตล์ที่เจ้าของชอบ ชื่อลูกค้าประจำ ข้อกำหนดเฉพาะร้าน · ระบุ content เป็นประโยคสั้น ๆ กระชับ 1 เรื่อง",
+    parameters: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "ข้อเท็จจริงสั้น ๆ 1 เรื่อง เช่น 'ร้านหยุดทุกวันจันทร์'" },
+      },
+      required: ["content"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const content = String(asRecord(args).content ?? "").trim();
+    if (!content) return JSON.stringify({ error: "ต้องระบุเนื้อหาที่จะจำ" });
+    const { id } = await rememberFact({ tenantId: ctx.tenantId }, content);
+    return JSON.stringify({ จำแล้ว: content, id });
+  },
+};
+
+// ── MEM-2) forget_fact — ลบความจำ (เขียนทันที) โดย id หรือคำค้นในเนื้อหา ──
+const forgetFactTool: AiTool = {
+  def: {
+    name: "forget_fact",
+    description:
+      "ลบความจำถาวรของร้านที่ไม่ใช้แล้วหรือไม่จริงอีกต่อไป (ลบทันที) — ระบุ id ของความจำ (แม่นสุด) หรือ contentContains (คำค้นในเนื้อหาความจำ) อย่างใดอย่างหนึ่ง · ดูรายการความจำได้จากเครื่องมือ list_memories",
+    parameters: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "รหัสความจำที่จะลบ (ถ้าทราบ)" },
+        contentContains: { type: "string", description: "คำค้นในเนื้อหาความจำ (ถ้าไม่ทราบรหัส)" },
+      },
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const id = String(a.id ?? "").trim();
+    const contentContains = String(a.contentContains ?? "").trim();
+    if (id) {
+      const ok = await forgetMemory({ tenantId: ctx.tenantId }, id);
+      return JSON.stringify(ok ? { ลบแล้ว: true, id } : { error: `ไม่พบความจำรหัส ${id}` });
+    }
+    if (contentContains) {
+      // จับคู่จากคำค้น แล้วลบทีละรายการผ่าน forgetMemory (guard tenant)
+      const rows = await listMemories({ tenantId: ctx.tenantId }, MAX_MEMORY_TAKE);
+      const hits = rows.filter((r) => r.content.includes(contentContains));
+      if (hits.length === 0) return JSON.stringify({ error: `ไม่พบความจำที่ตรงกับ "${contentContains}"` });
+      let removed = 0;
+      for (const h of hits) if (await forgetMemory({ tenantId: ctx.tenantId }, h.id)) removed++;
+      return JSON.stringify({ ลบแล้ว: removed, เนื้อหา: hits.map((h) => h.content) });
+    }
+    return JSON.stringify({ error: "ต้องระบุ id หรือ contentContains อย่างใดอย่างหนึ่ง" });
+  },
+};
+
+// ── MEM-3) list_memories — ดูความจำถาวรของร้านทั้งหมด (อ่าน) ──
+const listMemoriesTool: AiTool = {
+  def: {
+    name: "list_memories",
+    description:
+      "ดูรายการความจำถาวรที่จดไว้เกี่ยวกับร้านนี้ทั้งหมด (พร้อมรหัสไว้ใช้ลบ) — ใช้เมื่อผู้ใช้ถามว่าจำอะไรไว้บ้าง หรือก่อนจะลบความจำ",
+    parameters: NO_ARGS,
+  },
+  async execute(ctx) {
+    const rows = await listMemories({ tenantId: ctx.tenantId }, MAX_MEMORY_TAKE);
+    return JSON.stringify({
+      ความจำของร้าน: rows.map((r) => ({ id: r.id, เนื้อหา: r.content })),
+    });
+  },
+};
+
+const MAX_MEMORY_TAKE = 100; // ดึงความจำสูงสุดตอน list/ค้นเพื่อลบ
+
 // หาชื่อพนักงานของใบลา (best-effort สำหรับ summary) — พังก็คืน null ไม่โยน
 async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<string | null> {
   try {
@@ -1516,6 +1600,10 @@ export function toolRegistry(): AiTool[] {
     // Phase B2 read — คำขอรออนุมัติ / สัญญาเช่าค้างคืน
     approvalsPending,
     rentalActive,
+    // AI Memory (agentic-1) — จด/ลบ/ดู ความจำถาวร (remember เขียนทันที ไม่ผ่าน proposal)
+    rememberFactTool,
+    forgetFactTool,
+    listMemoriesTool,
     // action / ทำแทน
     inventoryReceive,
     hrDecideLeave,
