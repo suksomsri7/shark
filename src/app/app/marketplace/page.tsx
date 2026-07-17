@@ -22,7 +22,6 @@ export default async function MarketplacePage() {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <PageHeader
         title="ตลาดเทมเพลต"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="เลือกเทมเพลตธุรกิจสำเร็จรูป ติดตั้งคลิกเดียว ระบบจะประกอบหน่วยธุรกิจและฟีเจอร์ที่เหมาะกับร้านให้อัตโนมัติ"
       />
       {hasDna && installedKeys.length === 0 && (

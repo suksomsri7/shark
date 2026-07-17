@@ -12,7 +12,6 @@ export default async function BrandingSettingsPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <PageHeader
         title="แบรนด์ร้าน"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="ตั้งชื่อที่แสดง โลโก้ และสีหลักของร้าน เพื่อใช้บนหน้าร้านค้าและฟอร์มสาธารณะ"
       />
       <BrandingForm

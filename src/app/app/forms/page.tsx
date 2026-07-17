@@ -13,7 +13,6 @@ export default async function FormsListPage() {
     <div className="flex max-w-2xl flex-col gap-6">
       <PageHeader
         title="📝 ฟอร์ม"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="สร้างฟอร์มเก็บข้อมูลลูกค้า แชร์เป็นลิงก์สาธารณะ"
         actions={
           <Link href="/app/forms/new" className="btn btn-primary text-sm">

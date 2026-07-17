@@ -12,7 +12,6 @@ export default async function PaymentSettingsPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <PageHeader
         title="ช่องรับเงิน (PromptPay)"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="ตั้งเบอร์พร้อมเพย์หรือเลขบัตรของร้าน เพื่อสร้าง QR ให้ลูกค้าโอน"
       />
       <PaymentProfileForm

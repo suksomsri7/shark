@@ -20,7 +20,6 @@ export default async function WebhooksSettingsPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <PageHeader
         title="Webhooks (แจ้งเตือนไปยังระบบอื่น)"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="สมัครที่อยู่ปลายทางเพื่อให้ระบบยิงข้อมูลไปทันทีเมื่อเกิดเหตุการณ์ พร้อมลายเซ็นตรวจสอบความถูกต้อง"
       />
 

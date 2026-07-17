@@ -18,7 +18,6 @@ export default async function ReportsPage() {
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
       <PageHeader
         title="รายงาน"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="เลือกชุดข้อมูล กรอง และจัดกลุ่ม เพื่อดูเป็นตาราง ดาวน์โหลด CSV หรือบันทึกไว้ใช้ซ้ำ"
       />
       <ReportBuilder datasets={datasets} initialSaved={saved} />

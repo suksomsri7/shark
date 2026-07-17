@@ -19,7 +19,6 @@ export default async function ApiSettingsPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <PageHeader
         title="API สำหรับนักพัฒนา"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="ออกคีย์ให้ระบบอื่น (เช่น ระบบบัญชี เว็บไซต์ หรือแอปภายนอก) ดึงข้อมูลร้านของคุณผ่าน REST API แบบอ่านอย่างเดียว"
       />
 

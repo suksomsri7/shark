@@ -23,7 +23,6 @@ export default async function ApprovalsPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <PageHeader
         title="รออนุมัติของฉัน"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="คำขอที่รอให้คุณอนุมัติหรือไม่อนุมัติ ตามลำดับขั้นในสายอนุมัติของร้าน"
       />
 

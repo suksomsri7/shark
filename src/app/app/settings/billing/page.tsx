@@ -25,7 +25,6 @@ export default async function ShopBillingPage() {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <PageHeader
         title="บิลจากแพลตฟอร์ม"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="ค่าบริการต่าง ๆ ที่ SHARK เรียกเก็บ (เช่น โดเมนของตัวเอง)"
       />
       <DataList

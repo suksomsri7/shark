@@ -19,7 +19,6 @@ export default async function AutomationSettingsPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <PageHeader
         title="ระบบอัตโนมัติ"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="ตั้งกติกาให้ระบบทำงานเองเมื่อเกิดเหตุการณ์ เช่น เตือนเมื่อมีบิลใหญ่ หรือส่งข้อมูลไปเชื่อมระบบอื่น"
       />
 

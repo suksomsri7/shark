@@ -24,7 +24,6 @@ export default async function PrivacyPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <PageHeader
         title="ความเป็นส่วนตัว (PDPA)"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="ดาวน์โหลดข้อมูลทั้งหมดของร้าน หรือขอลบร้านถาวรตามสิทธิ์ PDPA"
       />
 

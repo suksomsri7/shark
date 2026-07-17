@@ -16,7 +16,6 @@ export default async function NotificationsPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <PageHeader
         title="ศูนย์แจ้งเตือน"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="แจ้งเตือนที่เกิดจากกติกาอัตโนมัติของร้าน"
         actions={
           <Link href="/app/settings/automation" className="btn btn-ghost text-sm">

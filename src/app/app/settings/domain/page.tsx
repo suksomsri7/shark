@@ -11,7 +11,6 @@ export default async function DomainSettingsPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <PageHeader
         title="โดเมนของร้าน"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="ใช้โดเมนของคุณเอง (เช่น shop.example.com) เปิดหน้าร้านแทนที่อยู่ shark.in.th"
       />
       <DomainSettings

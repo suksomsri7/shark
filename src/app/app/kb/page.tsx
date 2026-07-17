@@ -47,7 +47,6 @@ export default async function KbListPage({
     <div className="flex max-w-2xl flex-col gap-6">
       <PageHeader
         title="📚 คลังความรู้"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="FAQ / นโยบาย / ความรู้ร้าน ให้ทีมค้นหาและผู้ช่วย AI ใช้ตอบลูกค้า"
         actions={
           <Link href="/app/kb/new" className="btn btn-primary text-sm">

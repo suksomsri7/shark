@@ -55,7 +55,6 @@ export default async function CalendarPage({
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <PageHeader
         title="ปฏิทิน"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="รวมนัดหมาย การเข้าพัก และวันลาของทั้งร้านในที่เดียว"
       />
       <CalendarMonth

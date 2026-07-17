@@ -18,7 +18,6 @@ export default async function ApprovalSettingsPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       <PageHeader
         title="สายอนุมัติ"
-        back={{ href: "/app", label: "หน้าหลัก" }}
         desc="ตั้งกฎว่าเอกสารชนิดไหน วงเงินเท่าไร ต้องผ่านการอนุมัติจากใครก่อนมีผล เช่น ใบสั่งซื้อเกินห้าพันต้องให้ผู้จัดการและเจ้าของอนุมัติ"
       />
 
