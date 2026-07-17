@@ -567,12 +567,12 @@ async function dispatch(
       const list = roomTypes.map((r) => r.name).join(", ") || "ยังไม่มีประเภทห้อง";
       throw new Error(`ไม่พบประเภทห้อง "${wantRt}" — ประเภทห้องที่มี: ${list}`);
     }
-    // ยังไม่มีห้องจริงในประเภทนี้ → เปิดห้องแรกให้อัตโนมัติ (ผ่าน service เดิม) แล้วค่อยจอง
+    // ห้าม auto-เปิดห้องแทนร้าน (จองทั้งที่ไม่มีห้องจริง = จองผี) — บอกให้ตั้งห้องก่อน
     const roomCount = await prisma.hotelRoom.count({
       where: { tenantId, unitId: unit.id, roomTypeId: rt.id, active: true },
     });
     if (roomCount === 0) {
-      await hotelSvc.createRoom({ tenantId, unitId: unit.id, roomTypeId: rt.id, number: "1" });
+      throw new Error(`ประเภทห้อง "${rt.name}" ยังไม่มีห้องจริงในระบบ — เพิ่มห้องในเมนูที่พักก่อน แล้วค่อยจอง`);
     }
     const res = await hotelSvc.createReservation({
       tenantId,

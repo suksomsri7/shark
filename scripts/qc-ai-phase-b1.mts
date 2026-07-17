@@ -54,11 +54,17 @@ try {
 
   // 3) จองห้องพัก
   const htUnit = await prisma.businessUnit.create({ data: { tenantId: tid, type: "HOTEL", name: "รีสอร์ต", slug: `pb1h-${Date.now()}` } });
-  await prisma.hotelRoomType.create({ data: { tenantId: tid, unitId: htUnit.id, name: "Deluxe" } });
+  const rtDeluxe = await prisma.hotelRoomType.create({ data: { tenantId: tid, unitId: htUnit.id, name: "Deluxe" } });
+  await prisma.hotelRoom.create({ data: { tenantId: tid, unitId: htUnit.id, roomTypeId: rtDeluxe.id, number: "101" } });
+  await prisma.hotelRoomType.create({ data: { tenantId: tid, unitId: htUnit.id, name: "Suite ไม่มีห้อง" } }); // ประเภทที่ยังไม่ตั้งห้องจริง
   const hp = await props.createProposal(ctx, { conversationId: conv.id, kind: "hotel_create_reservation", summary: "จองห้อง", payload: { roomTypeName: "Deluxe", guestName: "คุณพัก", checkInDate: "2026-08-10", checkOutDate: "2026-08-12" } });
   const hx = await props.executeProposal(OWNER, ctx, hp.id);
   const resv = await prisma.hotelReservation.findFirst({ where: { tenantId: tid, guestName: "คุณพัก" } });
   chk("B1-3.1", "hotel_create_reservation → ใบจองเกิด (มี code)", hx?.ok === true && !!resv?.code);
+  // ประเภทห้องไม่มีห้องจริง → ห้าม auto-เปิดห้อง ต้อง throw ไทยบอกให้ตั้งห้องก่อน (กันจองผี)
+  const hp2 = await props.createProposal(ctx, { conversationId: conv.id, kind: "hotel_create_reservation", summary: "จองห้องผี", payload: { roomTypeName: "Suite", guestName: "คุณผี", checkInDate: "2026-08-15", checkOutDate: "2026-08-16" } });
+  const hx2 = await props.executeProposal(OWNER, ctx, hp2.id);
+  chk("B1-3.2", "ประเภทห้องไม่มีห้องจริง → ok:false บอกให้เพิ่มห้องก่อน + ไม่แอบสร้างห้อง", hx2?.ok === false && (await prisma.hotelRoom.count({ where: { tenantId: tid } })) === 1 && (await prisma.hotelReservation.count({ where: { tenantId: tid, guestName: "คุณผี" } })) === 0);
 
   // 4) ออกบัตรคิว
   const qUnit = await prisma.businessUnit.create({ data: { tenantId: tid, type: "QUEUE", name: "คิวหน้าร้าน", slug: `pb1q-${Date.now()}` } });
