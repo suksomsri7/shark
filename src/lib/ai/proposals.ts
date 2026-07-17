@@ -29,6 +29,9 @@ import * as clinicSvc from "@/lib/modules/clinic/service";
 import * as rentalSvc from "@/lib/modules/rental/service";
 import * as approvalSvc from "@/lib/modules/approval/service";
 import * as rewardSvc from "@/lib/modules/reward/service";
+import * as pointSvc from "@/lib/modules/point/service";
+import * as ticketSvc from "@/lib/modules/ticket/service";
+import * as restaurantSvc from "@/lib/modules/restaurant/order";
 import * as accountFacade from "@/lib/modules/account";
 import { createSystem } from "@/lib/modules/system/service";
 import * as scheduledSvc from "./scheduled";
@@ -63,14 +66,18 @@ export type ProposalKind =
   | "approval_decide"
   | "inventory_consume"
   | "reward_redeem"
+  // ── Wave5-B: สั่งงานแทนโมดูลที่เดิม AI ทำแทนไม่ได้ (แต้ม/ตั๋ว/ร้านอาหาร) ──
+  | "point_adjust"
+  | "ticket_mark_paid"
   // ── agentic-3: ตั้งงานประจำให้ผู้ช่วย AI (NORMAL — ยืนยันชั้นเดียว) ──
   | "ai_schedule_task"
-  // ── destructive (ลบ/void/ยกเลิก — ต้องยืนยัน 2 ชั้น) ──
+  // ── destructive (ลบ/void/ยกเลิก/ปิดบิล — ต้องยืนยัน 2 ชั้น) ──
   | "void_sale"
   | "cancel_appointment"
   | "cancel_reservation"
   | "kanban_archive_card"
-  | "shop_refund_order";
+  | "shop_refund_order"
+  | "restaurant_close_bill";
 
 type Ctx = { tenantId: string };
 
@@ -84,6 +91,8 @@ export const DESTRUCTIVE_KINDS = new Set<ProposalKind>([
   "cancel_reservation",
   "kanban_archive_card",
   "shop_refund_order",
+  // ปิดบิลโต๊ะ = สร้างธุรกรรมเงิน + ปิดโต๊ะถาวร → ยืนยัน 2 ชั้น
+  "restaurant_close_bill",
 ]);
 
 // action string ต่อ kind — ต้องตรงกับ assertCan ของปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
@@ -117,6 +126,10 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   approval_decide: { module: "approval", action: "approval.request.decide" },
   inventory_consume: { module: "inventory", action: "inventory.movement.consume" },
   reward_redeem: { module: "reward", action: "reward.redemption.create" },
+  // Wave5-B — action string ตรงกับปุ่มจริง (point forms · ticket/restaurant actions.ts)
+  point_adjust: { module: "point", action: "point.adjust.create" },
+  ticket_mark_paid: { module: "ticket", action: "ticket.order.markPaid" },
+  restaurant_close_bill: { module: "restaurant", action: "restaurant.checkout.create" },
   // agentic-3 — ตั้งงานประจำผู้ช่วย AI (module ai · action เฉพาะ AI schedule)
   ai_schedule_task: { module: "ai", action: "ai.schedule.create" },
   // destructive — action string ตรงกับปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
@@ -203,6 +216,24 @@ type RewardRedeemPayload = {
   memberCode?: string;
   customerPhone?: string;
   customerName?: string;
+};
+type PointAdjustPayload = {
+  delta: number;
+  reason?: string;
+  memberCode?: string;
+  customerPhone?: string;
+  customerName?: string;
+};
+type TicketMarkPaidPayload = {
+  orderNo?: string;
+  eventName?: string;
+  buyerName?: string;
+  buyerPhone?: string;
+};
+type RestaurantCloseBillPayload = {
+  unitName?: string;
+  tableName: string;
+  payMethod?: "CASH" | "TRANSFER" | "PROMPTPAY";
 };
 type AiScheduleTaskPayload = { instruction: string; hourBkk: number };
 type VoidSalePayload = { saleId: string };
@@ -1050,6 +1081,112 @@ async function dispatch(
     });
     if (!res.ok) throw new Error(res.reason);
     return `แลกรางวัล "${reward.name}" ให้ ${customer.name ?? customer.memberCode} เรียบร้อยแล้ว — โค้ดรับของ ${res.code}`;
+  }
+
+  if (kind === "point_adjust") {
+    const p = payload as PointAdjustPayload;
+    const system = await resolveSystem(tenantId, "POINT");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบแต้ม");
+    const delta = Math.round(Number(p.delta));
+    if (!Number.isInteger(delta) || delta === 0) throw new Error("จำนวนแต้มต้องเป็นจำนวนเต็มที่ไม่เท่ากับ 0");
+    // หาสมาชิก: memberCode (แม่นสุด) → เบอร์ → ชื่อ (contains) จากสมาชิกที่ผูก unit เดียวกับระบบแต้ม
+    const customers = await pointSvc.listPointCustomers(tenantId, system.id);
+    if (customers.length === 0) throw new Error("ยังไม่มีสมาชิกในกิจการที่เชื่อมกับระบบแต้มนี้");
+    const memberCode = String(p.memberCode ?? "").trim().toUpperCase();
+    const phone = String(p.customerPhone ?? "").trim();
+    const name = String(p.customerName ?? "").trim();
+    let matched = memberCode ? customers.filter((c) => c.memberCode.toUpperCase() === memberCode) : [];
+    if (matched.length === 0 && phone) matched = customers.filter((c) => (c.phone ?? "").includes(phone));
+    if (matched.length === 0 && name) matched = customers.filter((c) => (c.name ?? "").includes(name));
+    if (matched.length === 0) throw new Error(`ไม่พบสมาชิก "${memberCode || phone || name}"`);
+    if (matched.length > 1) {
+      const who = matched.map((c) => `${c.name ?? "ไม่ระบุชื่อ"} (${c.memberCode})`).join(", ");
+      throw new Error(`มีสมาชิกหลายคนที่ตรง กรุณาระบุรหัสสมาชิกให้ชัด — ${who}`);
+    }
+    const customer = matched[0];
+    // adjustPoints กันหักเกิน/เบิ้ล (idempotencyKey) เอง — โยน error ไทยถ้าแต้มไม่พอ
+    const res = await pointSvc.adjustPoints({
+      tenantId,
+      systemId: system.id,
+      customerId: customer.id,
+      delta,
+      reason: p.reason ? String(p.reason).trim() : undefined,
+      idempotencyKey: `ai-${proposalId}`, // execute ซ้ำ = กันเบิ้ลโดยธรรมชาติ
+    });
+    const who = customer.name ?? customer.memberCode;
+    const verb = delta > 0 ? `แจก ${delta} แต้มให้` : `หัก ${Math.abs(delta)} แต้มจาก`;
+    return `${verb} ${who} เรียบร้อยแล้ว — แต้มคงเหลือ ${res.balance} แต้ม`;
+  }
+
+  if (kind === "ticket_mark_paid") {
+    const p = payload as TicketMarkPaidPayload;
+    const orderNo = String(p.orderNo ?? "").trim();
+    const eventName = String(p.eventName ?? "").trim();
+    const buyerName = String(p.buyerName ?? "").trim();
+    const buyerPhone = String(p.buyerPhone ?? "").trim();
+    if (!orderNo && !eventName && !buyerName && !buyerPhone) {
+      throw new Error("ต้องระบุเลขที่ออเดอร์ตั๋ว หรือชื่องาน/ผู้ซื้อ");
+    }
+    // หา TicketOrder ที่ยังรอชำระ (PENDING) — orderNo แม่นสุด · ไม่งั้นกรองด้วยชื่องาน/ผู้ซื้อ (contains)
+    const rows = await prisma.ticketOrder.findMany({
+      where: {
+        tenantId,
+        status: "PENDING",
+        ...(orderNo ? { orderNo: { contains: orderNo } } : {}),
+        ...(eventName ? { event: { name: { contains: eventName } } } : {}),
+        ...(buyerName ? { buyerName: { contains: buyerName } } : {}),
+        ...(buyerPhone ? { buyerPhone: { contains: buyerPhone } } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, unitId: true, orderNo: true, buyerName: true, totalSatang: true, event: { select: { name: true } } },
+    });
+    if (rows.length === 0) throw new Error("ไม่พบออเดอร์ตั๋วที่รอชำระตามที่ระบุ");
+    if (rows.length > 1) {
+      const list = rows.slice(0, 5).map((r) => `${r.orderNo} (${r.buyerName} · ${r.event.name})`).join(", ");
+      throw new Error(`มีหลายออเดอร์ที่ตรง กรุณาระบุเลขที่ออเดอร์ให้ชัด — ${list}`);
+    }
+    const order = rows[0];
+    // markPaid: PENDING→PAID + post เส้นเงินถ้าผูก POS (idempotent — PAID แล้วไม่ post ซ้ำ)
+    await ticketSvc.markPaid({ tenantId, unitId: order.unitId }, order.id);
+    const baht = (order.totalSatang / 100).toLocaleString("th-TH");
+    return `รับชำระออเดอร์ตั๋ว ${order.orderNo} (${order.event.name}) ${baht} บาท เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "restaurant_close_bill") {
+    const p = payload as RestaurantCloseBillPayload;
+    const unit = await resolveUnit(tenantId, { type: "RESTAURANT", unitName: p.unitName, label: "ร้านอาหาร" });
+    const wantTable = String(p.tableName ?? "").trim();
+    if (!wantTable) throw new Error("ต้องระบุหมายเลข/ชื่อโต๊ะ");
+    // resolve โต๊ะจากชื่อ (contains) ในร้าน (active) → หา session ที่ยังเปิดอยู่ของโต๊ะนั้น
+    const tables = await prisma.restaurantTable.findMany({
+      where: { tenantId, unitId: unit.id, status: "ACTIVE" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+    const matchedTables = tables.filter((t) => t.name.includes(wantTable));
+    if (matchedTables.length === 0) {
+      const list = tables.map((t) => t.name).join(", ") || "ยังไม่มีโต๊ะ";
+      throw new Error(`ไม่พบโต๊ะ "${wantTable}" — โต๊ะที่มี: ${list}`);
+    }
+    if (matchedTables.length > 1) {
+      throw new Error(`มีหลายโต๊ะที่ตรง กรุณาระบุให้ชัด — ${matchedTables.map((t) => t.name).join(", ")}`);
+    }
+    const table = matchedTables[0];
+    const session = await prisma.tableSession.findFirst({
+      where: { tenantId, unitId: unit.id, tableId: table.id, status: "OPEN" },
+      orderBy: { openedAt: "desc" },
+      select: { id: true },
+    });
+    if (!session) throw new Error(`โต๊ะ "${table.name}" ไม่มีบิลที่เปิดอยู่`);
+    // conservative: ปิดด้วยวิธีที่ระบุ (ค่าเริ่มต้นเงินสด) ยอดตามบิลทั้งหมดที่ค้าง · checkout กันเบิ้ลด้วย idempotencyKey ในตัว
+    let payMethod: "CASH" | "TRANSFER" | "PROMPTPAY" = "CASH";
+    if (p.payMethod === "TRANSFER") payMethod = "TRANSFER";
+    else if (p.payMethod === "PROMPTPAY") payMethod = "PROMPTPAY";
+    const res = await restaurantSvc.checkout({ tenantId, unitId: unit.id, sessionId: session.id, payMethod });
+    if (!res.ok) throw new Error(res.reason);
+    const baht = (res.totalSatang / 100).toLocaleString("th-TH");
+    const payLabel = payMethod === "TRANSFER" ? "โอน" : payMethod === "PROMPTPAY" ? "พร้อมเพย์" : "เงินสด";
+    return `ปิดบิลโต๊ะ "${table.name}" ${baht} บาท (${payLabel})${res.sessionClosed ? " และปิดโต๊ะเรียบร้อยแล้ว" : " — ยังมีรายการค้างในโต๊ะ"}`;
   }
 
   if (kind === "ai_schedule_task") {

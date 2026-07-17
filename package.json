@@ -57,7 +57,8 @@
     "qc:inventory-item": "tsx scripts/qc-inventory-item.mts",
     "qc:clinic-refund": "tsx scripts/qc-clinic-refund.mts",
     "qc:booking-race": "tsx scripts/qc-booking-race.mts",
-    "qc:booking-hours-hr": "tsx scripts/qc-booking-hours-hr.mts"
+    "qc:booking-hours-hr": "tsx scripts/qc-booking-hours-hr.mts",
+    "qc:ai-wave5b": "tsx scripts/qc-ai-wave5b.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

@@ -16,6 +16,7 @@ import { pendingLeaves as hrPendingLeaves } from "@/lib/modules/hr/service";
 import { listCustomers as memberListCustomers } from "@/lib/modules/member/service";
 import { listRedemptions as rewardListRedemptions } from "@/lib/modules/reward/service";
 import { getCustomerPoints } from "@/lib/modules/point/service";
+import { listMyCards as kanbanListMyCards } from "@/lib/modules/kanban/service";
 import { searchKb as kbSearchArticles } from "@/lib/modules/kb/service";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { createProposal, type ProposalKind } from "./proposals";
@@ -2019,6 +2020,210 @@ const upcomingSchedule: AiTool = {
 };
 
 // ══════════════════════════════════════════════════════════════════
+// Wave5-B — สั่งงานแทนโมดูลที่เดิม AI ทำแทนไม่ได้
+// action 3 (แจก/หักแต้ม · จ่ายเงินตั๋ว · ปิดบิลร้านอาหาร) ผ่าน proposal-confirm
+// + read 1 (งานของฉัน) · resolve entity อยู่ใน dispatch (proposals.ts)
+// ══════════════════════════════════════════════════════════════════
+
+// ── W5B-A1) point_adjust — เสนอแจก/หักแต้มลูกค้า (NORMAL) ──
+const pointAdjust: AiTool = {
+  action: true,
+  def: {
+    name: "point_adjust",
+    description:
+      "เสนอแจกหรือหักแต้มสะสมของสมาชิก (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ delta (จำนวนแต้ม: บวก=แจก ลบ=หัก เช่น 50 หรือ -20) และตัวระบุสมาชิก: รหัสสมาชิก (memberCode) หรือเบอร์โทร (customerPhone) หรือชื่อ (customerName) อย่างใดอย่างหนึ่ง · reason (เหตุผล) ถ้ามี",
+    parameters: {
+      type: "object",
+      properties: {
+        delta: { type: "integer", description: "จำนวนแต้ม บวก=แจก ลบ=หัก (ห้ามเป็น 0)" },
+        memberCode: { type: "string", description: "รหัสสมาชิก 6 ตัว (แม่นสุด ถ้ามี)" },
+        customerPhone: { type: "string", description: "เบอร์โทรสมาชิก (ถ้าไม่ทราบรหัส)" },
+        customerName: { type: "string", description: "ชื่อสมาชิก (ถ้าไม่ทราบรหัส/เบอร์)" },
+        reason: { type: "string", description: "เหตุผลที่ปรับแต้ม (ถ้ามี)" },
+      },
+      required: ["delta"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const delta = Math.round(Number(a.delta));
+    // validate-explain: แต้มต้องเป็นจำนวนเต็มไม่เท่ากับ 0 → อธิบาย ไม่สร้าง proposal
+    if (!Number.isInteger(delta) || delta === 0) {
+      return JSON.stringify({ error: "จำนวนแต้มต้องเป็นจำนวนเต็มที่ไม่เท่ากับ 0", suggestion: "เช่น 50 (แจก) หรือ -20 (หัก)" });
+    }
+    const memberCode = String(a.memberCode ?? "").trim();
+    const customerPhone = String(a.customerPhone ?? "").trim();
+    const customerName = String(a.customerName ?? "").trim();
+    if (!memberCode && !customerPhone && !customerName) {
+      return JSON.stringify({ error: "ต้องระบุรหัสสมาชิก เบอร์โทร หรือชื่อสมาชิกอย่างใดอย่างหนึ่ง" });
+    }
+    const reason = String(a.reason ?? "").trim();
+    const payload: Record<string, unknown> = { delta };
+    if (memberCode) payload.memberCode = memberCode;
+    if (customerPhone) payload.customerPhone = customerPhone;
+    if (customerName) payload.customerName = customerName;
+    if (reason) payload.reason = reason;
+    const who = memberCode || customerPhone || customerName;
+    const verb = delta > 0 ? `แจก ${delta} แต้มให้` : `หัก ${Math.abs(delta)} แต้มจาก`;
+    const summary = `${verb}สมาชิก ${who}${reason ? ` (${reason})` : ""}`;
+    return propose(ctx, "point_adjust", summary, payload);
+  },
+};
+
+// ── W5B-A2) ticket_mark_paid — เสนอรับชำระเงินออเดอร์ตั๋วอีเวนต์ (NORMAL) ──
+const ticketMarkPaid: AiTool = {
+  action: true,
+  def: {
+    name: "ticket_mark_paid",
+    description:
+      "เสนอรับชำระเงินออเดอร์ตั๋วงานอีเวนต์ที่รอชำระ (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน · เมื่อยืนยันจะบันทึกเป็นยอดขายให้อัตโนมัติ) · ระบุ orderNo (เลขที่ออเดอร์ เช่น TO-250711-0001 — แม่นสุด) หรือระบุ eventName (ชื่องาน) + buyerName/buyerPhone (ผู้ซื้อ) เพื่อค้นหาออเดอร์",
+    parameters: {
+      type: "object",
+      properties: {
+        orderNo: { type: "string", description: "เลขที่ออเดอร์ตั๋ว เช่น TO-250711-0001" },
+        eventName: { type: "string", description: "ชื่องานอีเวนต์ (จับคู่บางส่วนได้)" },
+        buyerName: { type: "string", description: "ชื่อผู้ซื้อ (จับคู่บางส่วนได้)" },
+        buyerPhone: { type: "string", description: "เบอร์โทรผู้ซื้อ" },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const orderNo = String(a.orderNo ?? "").trim();
+    const eventName = String(a.eventName ?? "").trim();
+    const buyerName = String(a.buyerName ?? "").trim();
+    const buyerPhone = String(a.buyerPhone ?? "").trim();
+    if (!orderNo && !eventName && !buyerName && !buyerPhone) {
+      return JSON.stringify({ error: "ต้องระบุเลขที่ออเดอร์ หรือชื่องาน/ผู้ซื้อ", suggestion: "ดูออเดอร์ที่รอชำระได้จากเครื่องมือ ticket_event_sales" });
+    }
+    const payload: Record<string, unknown> = {};
+    if (orderNo) payload.orderNo = orderNo;
+    if (eventName) payload.eventName = eventName;
+    if (buyerName) payload.buyerName = buyerName;
+    if (buyerPhone) payload.buyerPhone = buyerPhone;
+    const which = orderNo ? `ออเดอร์ ${orderNo}` : `${eventName || ""}${buyerName ? ` ของ ${buyerName}` : buyerPhone ? ` (เบอร์ ${buyerPhone})` : ""}`.trim();
+    return propose(ctx, "ticket_mark_paid", `รับชำระเงินตั๋ว ${which}`, payload);
+  },
+};
+
+// ── W5B-A3) restaurant_close_bill — เสนอปิดบิลโต๊ะร้านอาหาร (DESTRUCTIVE — ยืนยัน 2 ชั้น) ──
+const restaurantCloseBill: AiTool = {
+  action: true,
+  def: {
+    name: "restaurant_close_bill",
+    description:
+      "เสนอปิดบิล (เช็คบิล) โต๊ะร้านอาหารที่เปิดอยู่ (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้ยืนยัน 2 ชั้นก่อน เพราะสร้างธุรกรรมเงินและปิดโต๊ะ) · ระบุ tableName (หมายเลข/ชื่อโต๊ะ เช่น A1 หรือ 'โต๊ะ 5') · payMethod (CASH=เงินสด ค่าเริ่มต้น / TRANSFER=โอน / PROMPTPAY=พร้อมเพย์) · unitName ถ้ามีหลายสาขา · ยอดคิดตามบิลที่ค้างทั้งหมด",
+    parameters: {
+      type: "object",
+      properties: {
+        unitName: { type: "string", description: "ชื่อร้าน/สาขา (ถ้ามีหลายสาขา)" },
+        tableName: { type: "string", description: "หมายเลข/ชื่อโต๊ะ เช่น A1, โต๊ะ 5 (จับคู่บางส่วนได้)" },
+        payMethod: { type: "string", enum: ["CASH", "TRANSFER", "PROMPTPAY"], description: "วิธีชำระเงิน (ค่าเริ่มต้นเงินสด)" },
+      },
+      required: ["tableName"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const tableName = String(a.tableName ?? "").trim();
+    if (!tableName) return JSON.stringify({ error: "ต้องระบุหมายเลข/ชื่อโต๊ะ" });
+    const payload: Record<string, unknown> = { tableName };
+    let payMethod = "CASH";
+    if (a.payMethod === "TRANSFER") payMethod = "TRANSFER";
+    else if (a.payMethod === "PROMPTPAY") payMethod = "PROMPTPAY";
+    payload.payMethod = payMethod;
+    const unitName = String(a.unitName ?? "").trim();
+    if (unitName) payload.unitName = unitName;
+    const payLabel = payMethod === "TRANSFER" ? "โอน" : payMethod === "PROMPTPAY" ? "พร้อมเพย์" : "เงินสด";
+    return propose(ctx, "restaurant_close_bill", `ปิดบิลโต๊ะ "${tableName}" (${payLabel})`, payload);
+  },
+};
+
+// ── W5B-R1) kanban_my_tasks — งานที่มอบหมายให้ผู้ใช้ (READ) ──
+// ⚠️ ข้อจำกัด: ToolCtx มีแค่ tenantId + conversationId (ไม่มี userId · AiConversation ไม่ผูก user)
+//   → resolve "ผู้ใช้ปัจจุบัน" ไม่ได้จาก ctx · conservative 2 ทาง:
+//   (ก) ระบุ assignee (ชื่อ/อีเมล) → resolve userId ผ่าน Membership+User → คืนงานของคนนั้น
+//   (ข) ไม่ระบุ → คืน "งานที่ยังไม่มีผู้รับ + งานทั้งหมดของบอร์ด (active)" + แจ้งข้อจำกัด
+const kanbanMyTasks: AiTool = {
+  def: {
+    name: "kanban_my_tasks",
+    description:
+      "ดูงาน (การ์ด) บนบอร์ดงาน (Kanban) — ระบุ assignee (ชื่อหรืออีเมลของพนักงาน) เพื่อดูงานที่มอบหมายให้คนนั้นข้ามทุกบอร์ด · ไม่ระบุ = คืนงานที่ยังไม่มีผู้รับ + งานทั้งหมดที่กำลังทำอยู่ (ระบบผู้ช่วยยังไม่ทราบว่าใครกำลังคุยอยู่ จึงระบุชื่อจะแม่นกว่า)",
+    parameters: {
+      type: "object",
+      properties: {
+        assignee: { type: "string", description: "ชื่อหรืออีเมลของพนักงานผู้รับงาน (ถ้าไม่ระบุจะคืนงานที่ยังไม่มีผู้รับ + งานทั้งหมดของบอร์ด)" },
+      },
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const kanban = await findSystem(ctx.tenantId, "KANBAN");
+    if (!kanban) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบบอร์ดงาน (Kanban)" });
+    const assignee = String(asRecord(args).assignee ?? "").trim();
+    const cardOut = (c: {
+      title: string;
+      dueAt: Date | null;
+      board: { name: string } | null;
+      column: { name: string } | null;
+    }) => ({ งาน: c.title, บอร์ด: c.board?.name ?? null, สถานะ: c.column?.name ?? null, กำหนดส่ง: safeDate(c.dueAt) });
+
+    if (assignee) {
+      // resolve พนักงานจากชื่อ/อีเมล ผ่าน membership ของ tenant นี้ (contains, case-insensitive)
+      const members = await prisma.membership.findMany({
+        where: {
+          tenantId: ctx.tenantId,
+          OR: [
+            { user: { name: { contains: assignee, mode: "insensitive" } } },
+            { user: { email: { contains: assignee, mode: "insensitive" } } },
+          ],
+        },
+        select: { userId: true, user: { select: { name: true, email: true } } },
+      });
+      if (members.length === 0) {
+        return JSON.stringify({ error: `ไม่พบพนักงานชื่อ/อีเมล "${assignee}" ในร้านนี้` });
+      }
+      if (members.length > 1) {
+        const who = members.map((m) => m.user.name ?? m.user.email).join(", ");
+        return JSON.stringify({ error: `มีพนักงานหลายคนที่ตรง กรุณาระบุให้ชัด — ${who}` });
+      }
+      const target = members[0];
+      const cards = await kanbanListMyCards(ctx.tenantId, kanban.id, target.userId);
+      return JSON.stringify({
+        ผู้รับงาน: target.user.name ?? target.user.email,
+        จำนวนงาน: cards.length,
+        งานของฉัน: cards.map(cardOut),
+      });
+    }
+
+    // ไม่ระบุผู้รับ → conservative: งานที่ยังไม่มีผู้รับ + งาน active ทั้งหมด (ข้ามบอร์ด)
+    const [unassigned, all] = await Promise.all([
+      prisma.kanbanCard.findMany({
+        where: { tenantId: ctx.tenantId, systemId: kanban.id, status: "ACTIVE", assigneeUserId: null },
+        include: { board: { select: { name: true } }, column: { select: { name: true } } },
+        orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
+        take: 50,
+      }),
+      prisma.kanbanCard.findMany({
+        where: { tenantId: ctx.tenantId, systemId: kanban.id, status: "ACTIVE" },
+        include: { board: { select: { name: true } }, column: { select: { name: true } } },
+        orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
+        take: 50,
+      }),
+    ]);
+    return JSON.stringify({
+      หมายเหตุ: "ยังไม่ทราบว่าใครกำลังคุยอยู่ — ระบุชื่อพนักงาน (assignee) เพื่อดูงานเฉพาะคนนั้น",
+      งานที่ยังไม่มีผู้รับ: unassigned.map(cardOut),
+      งานทั้งหมดที่กำลังทำ: all.map(cardOut),
+    });
+  },
+};
+
+// ══════════════════════════════════════════════════════════════════
 // AI Memory (agentic-1) — ความจำถาวรต่อร้าน
 // remember_fact/forget_fact เขียนทันทีใน execute (ไม่ผ่าน proposal) เพราะเป็นการ "จดโน้ต"
 // ของ AI เอง ไม่ใช่ mutation ธุรกิจ — จึง action=false (ไม่มีการ์ดยืนยัน)
@@ -2146,6 +2351,8 @@ export function toolRegistry(): AiTool[] {
     recentLeads,
     customerPoints,
     upcomingSchedule,
+    // Wave5-B read — งานของฉัน (kanban)
+    kanbanMyTasks,
     // AI Memory (agentic-1) — จด/ลบ/ดู ความจำถาวร (remember เขียนทันที ไม่ผ่าน proposal)
     rememberFactTool,
     forgetFactTool,
@@ -2182,6 +2389,10 @@ export function toolRegistry(): AiTool[] {
     approvalDecide,
     inventoryConsume,
     rewardRedeem,
+    // Wave5-B action — แจก/หักแต้ม · จ่ายเงินตั๋ว · ปิดบิลร้านอาหาร (destructive)
+    pointAdjust,
+    ticketMarkPaid,
+    restaurantCloseBill,
   ];
 }
 
