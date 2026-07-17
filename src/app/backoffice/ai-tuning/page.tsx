@@ -1,6 +1,6 @@
 import { requireBackoffice } from "@/lib/platform/actions";
 import { listPromptTweaks } from "@/lib/platform/ai-tuning";
-import { decidePromptTweakAction } from "@/lib/platform/ai-tuning-actions";
+import { decidePromptTweakFormAction } from "@/lib/platform/ai-tuning-actions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 
@@ -37,12 +37,12 @@ export default async function AiTuningPage() {
                 <div className="text-sm">{t.content}</div>
                 <div className="text-xs text-[color:var(--color-muted)]">เหตุผล: {t.rationale}</div>
                 <div className="flex gap-2">
-                  <form action={decidePromptTweakAction.bind(null, t.id, "APPROVED")}>
+                  <form action={decidePromptTweakFormAction.bind(null, t.id, "APPROVED")}>
                     <button type="submit" className="btn btn-primary text-sm">
                       อนุมัติ
                     </button>
                   </form>
-                  <form action={decidePromptTweakAction.bind(null, t.id, "REJECTED")}>
+                  <form action={decidePromptTweakFormAction.bind(null, t.id, "REJECTED")}>
                     <button type="submit" className="btn btn-ghost text-sm">
                       ปฏิเสธ
                     </button>

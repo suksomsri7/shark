@@ -20,3 +20,11 @@ export async function decidePromptTweakAction(
     return { ok: false, message: e instanceof Error ? e.message : "ตัดสินไม่สำเร็จ กรุณาลองใหม่" };
   }
 }
+
+// wrapper สำหรับผูกกับ <form action> โดยตรง (ต้องคืน void) — bind(null, id, decision)
+export async function decidePromptTweakFormAction(
+  id: string,
+  decision: "APPROVED" | "REJECTED",
+): Promise<void> {
+  await decidePromptTweakAction(id, decision);
+}
