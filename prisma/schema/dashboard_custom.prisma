@@ -1,0 +1,8 @@
+// Dashboard builder v1 (WO-0056) — layout widget ต่อ tenant
+model TenantDashboard {
+  id          String   @id @default(cuid())
+  tenantId    String   @unique
+  widgetsJson Json     @default("[]") // ["salesToday", ...] เรียงตามที่จัด
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}

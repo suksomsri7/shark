@@ -1,0 +1,10 @@
+// Marketplace โครง (WO-0063) — บันทึกเทมเพลตที่ติดตั้งต่อ tenant (ตัวเทมเพลต = registry ในโค้ด)
+model TenantInstall {
+  id          String   @id @default(cuid())
+  tenantId    String
+  itemKey     String // key ใน TEMPLATES registry
+  blueprintId String? // DnaBlueprint ที่ apply
+  installedAt DateTime @default(now())
+
+  @@unique([tenantId, itemKey])
+}
