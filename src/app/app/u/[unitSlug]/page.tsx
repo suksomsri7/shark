@@ -35,6 +35,9 @@ const UNIT_NAV: Record<string, { href: string; label: string }[]> = {
   RENTAL: [
     { href: "/rental", label: "จัดการเช่า →" },
   ],
+  SCHOOL: [
+    { href: "/school", label: "จัดการคอร์สเรียน →" },
+  ],
 };
 
 // หน้าแรกของระบบธุรกิจ (เช่น จองคิว) — งานของระบบ + การเชื่อมต่อกับระบบอื่น
