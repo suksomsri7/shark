@@ -4,6 +4,17 @@
 
 > อัปเดต 2026-07-17 โดย Fable 5 · **session ใหม่: อ่านไฟล์นี้จากบนลงล่างถึงเส้นแรก แล้วทำงานต่อได้เลย**
 
+## 🧠 AI SELF-IMPROVING (17 ก.ค. — "ทำให้ครบทั้ง 4 เลย") — ✅ SHIPPED ครบ 4 เครื่องมือ (main 131e7dd)
+วางระบบให้ AI พัฒนาตัวเองล่วงหน้า (ไม่ต้องรอ level-5) — human-in-loop อนุมัติกันความปลอดภัย
+| # | เครื่องมือ | ไฟล์ | ข้อสอบ |
+|---|---|---|---|
+| 1 | **AI Eval** ชุดข้อสอบวัด AI เลือก tool ถูกไหม (20 เคสทอง + heuristic baseline 100%) | `src/lib/ai/eval.ts` | qc-ai-eval 4/4 |
+| 3 | **Feedback 👍👎** ใต้คำตอบ AI (anonymize เก็บ dataset · กด 👎 แนบเหตุผล) | `ai/feedback.ts` + `actions.ts` + `AiChat.tsx` | qc-ai-feedback 5/5 |
+| 2 | **Quality Dashboard** หลังบ้าน: คะแนนข้อสอบ + สถิติ 👍👎 รวมทุกร้าน | `platform/ai-quality.ts` + `backoffice/ai-quality` | qc-ai-quality 5/5 |
+| 4 | **Prompt Tuning** วงจร: AI เสนอปรับ prompt → แอดมิน backoffice อนุมัติ → ฉีด persona ทุกร้าน (platform axis) | `platform/ai-tuning.ts` + `ai-tuning-actions.ts` + `persona.ts` + `service.ts` + `backoffice/ai-tuning` | qc-ai-tuning 7/7 |
+🔑 **เจ้าของอนุมัติ prompt tweak ที่**: backoffice.shark.in.th → "AI ปรับปรุงตัวเอง" · ดูคุณภาพที่ "คุณภาพผู้ช่วย AI"
+schema ใหม่: `AiFeedback` (tenant) + `AiPromptTweak` (platform) · migration 20260717060000_ai_selfimprove · gate: typecheck+fitness 14/14+regression qc-ai 17/17 เขียวหมด
+
 ## 🌙 RUN 4 (09:20 BKK 17 ก.ค. — "ปล่อยงานทำต่ออีก 3 ชม") — ✅ จบกะ 09:50 BKK · 3 WO SHIPPED (รวมทุกกะ 34/39 ≈ 87%)
 | WO | งาน | ข้อสอบ |
 |---|---|---|
