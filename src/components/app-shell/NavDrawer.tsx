@@ -99,6 +99,7 @@ export function NavDrawer({
           <div className="my-2 border-t" />
           <div className="px-2 pb-1 text-xs text-[color:var(--color-muted)]">ตั้งค่า</div>
           {[
+            { href: "/app/marketplace", icon: "🧩", label: "ตลาดเทมเพลต" },
             { href: "/app/reports", icon: "📊", label: "รายงาน" },
             { href: "/app/forms", icon: "📝", label: "ฟอร์ม" },
             { href: "/app/notifications", icon: "🔔", label: "ศูนย์แจ้งเตือน" },
