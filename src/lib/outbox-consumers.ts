@@ -8,6 +8,7 @@ import { bridgePosSalePaid, bridgePosSaleVoided } from "@/lib/modules/pos/accoun
 import { runForEvent } from "@/lib/automation/engine";
 import { dispatchWebhooks } from "@/lib/webhooks/service";
 import { entityLabel } from "@/lib/modules/approval/labels";
+import { applyApprovalEffect } from "@/lib/approval-effects";
 import { logOps } from "@/lib/core/ops";
 
 const saleIdOf = (payload: unknown): string | null => {
@@ -98,6 +99,18 @@ const approvalRejected = approvalNotify(
   "คำขออนุมัติถูกปฏิเสธ ไม่ไปขั้นถัดไป",
 );
 
+// WO-0049b: ห่อ notify ของ approved/rejected ด้วย effect — หลัง notify เดิมทำงาน (ห้ามหาย)
+//   applyApprovalEffect นำผลกลับ entity ต้นทาง (PO→ORDERED / ใบลา→APPROVED|REJECTED)
+//   effect เป็น updateMany + guard สถานะ → idempotent (ถ้า drain retry ก็ไม่พัง)
+const withApprovalEffect =
+  (handler: OutboxHandler): OutboxHandler =>
+  async (evt) => {
+    await handler(evt); // notify เดิมก่อนเสมอ
+    if (evt.type === "approval.request.approved" || evt.type === "approval.request.rejected") {
+      await applyApprovalEffect({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload });
+    }
+  };
+
 // ── Webhooks ขาออก (WO-0062): ห่อเพิ่มอีกชั้นหลัง handler หลัก(+automation) สำเร็จ ──
 // ยิงฮุคไปทุก endpoint ที่ร้าน subscribe event นี้ — best-effort เหมือน automation
 // (dispatch จับ error ต่อ endpoint อยู่แล้ว · ห่อ try/catch กัน error ระดับ query ไม่ให้ล้ม consumer)
@@ -119,8 +132,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "pos.sale.paid": withAutomation(posSalePaid),
   "pos.sale.voided": withAutomation(posSaleVoided),
   "approval.request.submitted": withAutomation(approvalSubmitted),
-  "approval.request.approved": withAutomation(approvalApproved),
-  "approval.request.rejected": withAutomation(approvalRejected),
+  "approval.request.approved": withAutomation(withApprovalEffect(approvalApproved)),
+  "approval.request.rejected": withAutomation(withApprovalEffect(approvalRejected)),
   // WO-0038: AppNotification ถูกสร้างแล้วใน sweepExpiringLots — consumer นี้มีไว้ปิด event เป็น DONE
   // (ไม่งั้นค้าง PENDING โดน drain วนตลอด) + เป็นจุดให้ Automation rules ยิงตามกติกาที่ร้านตั้ง
   "inventory.lot.expiring": withAutomation(async () => {}),

@@ -108,7 +108,11 @@ export async function createPoAction(formData: FormData) {
   revalidate(systemId);
 }
 
-// ── ยืนยันสั่งซื้อ (DRAFT → ORDERED) ──
+// ── ยืนยันสั่งซื้อ (DRAFT → ORDERED | เข้าสายอนุมัติ) ──
+// WO-0049b: markOrdered อาจคืน { pending: true } (มีสายอนุมัติตามวงเงิน) → PO คง DRAFT แล้วเข้าสาย
+//   ผลบนจอ = ป้าย "รออนุมัติ" ในหน้ารายการ PO (หลัง revalidate) แทนข้อความ "ส่งเข้าสายอนุมัติแล้ว"
+//   ไม่มีสาย → ORDERED เหมือนเดิม · ส่ง actorUserId = ผู้กด (บันทึกเป็น requestedById ของคำขอ)
+//   (form action นี้คืน void ตามสัญญาเดิม — ไม่ต้อง useActionState เพราะป้ายสถานะสื่อผลให้ครบแล้ว)
 export async function markOrderedAction(formData: FormData) {
   const auth = await requireTenant();
   assertInventoryCan(auth, "inventory.po.order");
@@ -116,7 +120,7 @@ export async function markOrderedAction(formData: FormData) {
   const poId = String(formData.get("poId") ?? "").trim();
   if (!systemId || !poId) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  await markOrdered(ctx, poId);
+  await markOrdered(ctx, poId, auth.user.id);
   revalidate(systemId);
 }
 

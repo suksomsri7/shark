@@ -1,5 +1,6 @@
 import { tenantDb } from "@/lib/core/db";
 import type { HrAttendanceKind, HrLeaveType } from "@prisma/client";
+import * as approval from "@/lib/modules/approval/service";
 import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
 
 // HR (ระบบที่ 17) — service ชั้นประกอบ (systemId-scoped)
@@ -10,7 +11,8 @@ import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
 export type Ctx = { tenantId: string; systemId: string };
 
 // แปลง "YYYY-MM-DD" → Date เที่ยงคืน UTC (ตรงกับ @db.Date + rules ที่ตัด ISO 10 ตัวแรก)
-const toDbDate = (s: string): Date => new Date(`${s}T00:00:00Z`);
+//   รับ Date มาแล้วก็ได้ (เช่น จาก server action ที่ parse เอง) → ใช้ตรง ๆ
+const toDbDate = (s: string | Date): Date => (s instanceof Date ? s : new Date(`${s}T00:00:00Z`));
 
 // ── พนักงาน ──
 export type CreateEmployeeInput = {
@@ -65,8 +67,8 @@ export async function clock(
 export type RequestLeaveInput = {
   employeeId: string;
   type: HrLeaveType;
-  fromDate: string; // "YYYY-MM-DD"
-  toDate: string; // "YYYY-MM-DD"
+  fromDate: string | Date; // "YYYY-MM-DD" หรือ Date สำเร็จรูป
+  toDate: string | Date;
   reason?: string | null;
 };
 
@@ -83,6 +85,18 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
       // status = PENDING (default ใน schema)
     },
   });
+  // WO-0049b: มีสายอนุมัติใบลา → ยื่นเข้าสาย (ใบลาคง PENDING จน effect ตัดสินหลังอนุมัติ/ปฏิเสธ)
+  //   ไม่มีสายอนุมัติ → พฤติกรรมเดิม (ใบลารอ decideLeave ด้วยมือตามเดิม)
+  const policy = await approval.resolvePolicy(
+    { tenantId: ctx.tenantId },
+    { entityType: "HrLeave", systemId: ctx.systemId },
+  );
+  if (policy) {
+    await approval.submitForApproval(
+      { tenantId: ctx.tenantId },
+      { entityType: "HrLeave", entityId: l.id, systemId: ctx.systemId, requestedById: input.employeeId },
+    );
+  }
   return { id: l.id };
 }
 

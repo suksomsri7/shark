@@ -28,7 +28,7 @@ import {
   receiveAction,
   transferAction,
 } from "./actions";
-import { listPos, listSuppliers } from "./procurement";
+import { listPos, listSuppliers, pendingApprovalPoIds } from "./procurement";
 import {
   cancelPoAction,
   createPoAction,
@@ -69,7 +69,7 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
 
   // มีคลังหลักเสมอ (get-or-create) ก่อนโหลดรายการคลัง
   await ensureDefaultLocation(ctx);
-  const [items, low, movements, suppliers, pos, locations, stockMap, lotMap] = await Promise.all([
+  const [items, low, movements, suppliers, pos, locations, stockMap, lotMap, pendingPoIds] = await Promise.all([
     listItems(ctx),
     lowStock(ctx),
     recentMovements(ctx),
@@ -78,6 +78,7 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
     listLocations(ctx),
     stockByLocationMap(ctx),
     lotsByItemMap(ctx),
+    pendingApprovalPoIds(ctx),
   ]);
 
   const lowIds = new Set(low.map((i) => i.id));
@@ -386,6 +387,9 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
                   <div className="flex items-center gap-2">
                     <span className="font-medium tabular-nums">{po.code}</span>
                     <StatusChip value={po.status} map={PO_STATUS} tone={poTone(po.status)} />
+                    {po.status === "DRAFT" && pendingPoIds.has(po.id) && (
+                      <StatusChip value="PENDING" map={{ PENDING: "รออนุมัติ" }} tone="strong" />
+                    )}
                   </div>
                   <div className={`truncate text-xs ${muted}`}>
                     {po.supplierName} · {po.lineCount.toLocaleString("th-TH")} รายการ ·{" "}
@@ -393,7 +397,7 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  {po.status === "DRAFT" && (
+                  {po.status === "DRAFT" && !pendingPoIds.has(po.id) && (
                     <form action={markOrderedAction}>
                       <input type="hidden" name="systemId" value={systemId} />
                       <input type="hidden" name="poId" value={po.id} />
