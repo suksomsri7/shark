@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import { resolveUnit, publicMenu } from "@/lib/modules/restaurant/storefront";
+import { getLocaleFromCookie, makeT } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 const baht = (s: number) => (s / 100).toLocaleString("th-TH");
 
@@ -14,18 +17,24 @@ export default async function StoreRestaurantMenuPage({
   if (!resolved) notFound();
   const menu = await publicMenu(resolved.tenant.id, resolved.unit.id);
 
+  const locale = getLocaleFromCookie((await cookies()).get("lang")?.value);
+  const t = makeT(locale);
+
   return (
     <main className="mx-auto w-full max-w-md flex-1 px-5 py-8">
-      <div className="mb-4">
-        <div className="text-xs font-semibold tracking-widest text-[color:var(--color-muted)]">{resolved.tenant.name}</div>
-        <h1 className="text-2xl font-semibold">{resolved.unit.name}</h1>
-        <p className={`text-sm ${menu.kitchen.open ? "text-[color:var(--color-muted)]" : "text-[color:var(--color-danger)]"}`}>
-          {menu.kitchen.open ? "เปิดรับออเดอร์" : menu.kitchen.reason || "ครัวปิด"}
-        </p>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-semibold tracking-widest text-[color:var(--color-muted)]">{resolved.tenant.name}</div>
+          <h1 className="text-2xl font-semibold">{resolved.unit.name}</h1>
+          <p className={`text-sm ${menu.kitchen.open ? "text-[color:var(--color-muted)]" : "text-[color:var(--color-danger)]"}`}>
+            {menu.kitchen.open ? t("menu.open") : menu.kitchen.reason || t("menu.closed")}
+          </p>
+        </div>
+        <LanguageSwitcher locale={locale} />
       </div>
 
       {menu.categories.length === 0 ? (
-        <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีเมนู</p>
+        <p className="text-sm text-[color:var(--color-muted)]">{t("menu.empty")}</p>
       ) : (
         <div className="flex flex-col gap-6">
           {menu.categories.map((cat) => (
@@ -46,7 +55,7 @@ export default async function StoreRestaurantMenuPage({
           ))}
         </div>
       )}
-      <p className="mt-8 text-center text-xs text-[color:var(--color-muted)]">สแกน QR ที่โต๊ะเพื่อสั่งอาหาร</p>
+      <p className="mt-8 text-center text-xs text-[color:var(--color-muted)]">{t("menu.scanHint")}</p>
     </main>
   );
 }
