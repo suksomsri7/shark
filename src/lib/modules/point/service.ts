@@ -126,6 +126,38 @@ export async function burn(
   });
 }
 
+// คืนแต้มแบบเจาะจงจำนวน (ใช้ตอนยกเลิกการแลกรางวัล — คืนเท่า pointsCost ของรายการนั้น ๆ)
+// ต่างจาก reverse() ที่กลับ "ทุก" รายการตาม refType+refId — credit คืนเป๊ะตามที่ระบุ + idempotent ผ่าน key
+export async function credit(
+  input: {
+    tenantId: string;
+    systemId: string;
+    customerId: string;
+    points: number;
+    reason?: string;
+    refType: string;
+    refId: string;
+    idempotencyKey: string;
+  },
+  client: Client = prisma,
+): Promise<{ balance: number }> {
+  if (input.points <= 0) throw new Error("points ต้อง > 0");
+  return withTx(client, async (tx) => {
+    const balance = await applyDelta(tx, {
+      tenantId: input.tenantId,
+      systemId: input.systemId,
+      customerId: input.customerId,
+      delta: input.points,
+      type: "REVERSE",
+      reason: input.reason ?? "คืนแต้ม",
+      refType: input.refType,
+      refId: input.refId,
+      idempotencyKey: input.idempotencyKey,
+    });
+    return { balance };
+  });
+}
+
 export async function reverse(
   input: { tenantId: string; systemId: string; refType: string; refId: string; idempotencyKey: string },
   client: Client = prisma,

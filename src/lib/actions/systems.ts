@@ -15,7 +15,14 @@ import {
   FIXED_PAGE_SYSTEMS,
 } from "@/lib/systems";
 import { createSystem, linkUnit } from "@/lib/modules/system/service";
-import { createReward, removeReward } from "@/lib/modules/reward/service";
+import {
+  createReward,
+  removeReward,
+  redeem,
+  resolvePointSystemId,
+  fulfillRedemption,
+  cancelRedemption,
+} from "@/lib/modules/reward/service";
 
 export type AddSystemState = { status: "idle" } | { status: "error"; message: string };
 
@@ -136,5 +143,74 @@ export async function removeRewardAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const systemId = String(formData.get("systemId") ?? "");
   if (id) await removeReward(auth.active.tenantId, id);
+  revalidatePath(`/app/sys/${systemId}`);
+}
+
+// ── ระบบแลกรางวัลจริง (WO Wave1-A) — assertCan module "reward" ──
+function assertRewardCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "reward", action },
+  );
+}
+
+export type RedeemState =
+  | { status: "idle" }
+  | { status: "ok"; code: string; rewardName?: string }
+  | { status: "error"; message: string };
+
+// แลกรางวัลแทนลูกค้า (พนักงานหน้าร้านกดให้) → คืนโค้ดรับของ หรือ error inline
+export async function redeemRewardAction(
+  _prev: RedeemState,
+  formData: FormData,
+): Promise<RedeemState> {
+  const auth = await requireTenant();
+  assertRewardCan(auth, "reward.redemption.create");
+  const tenantId = auth.active.tenantId;
+  const systemId = String(formData.get("systemId") ?? "").trim();
+  const rewardId = String(formData.get("rewardId") ?? "").trim();
+  const customerId = String(formData.get("customerId") ?? "").trim();
+  if (!systemId) return { status: "error", message: "ไม่พบระบบรางวัล" };
+  if (!rewardId) return { status: "error", message: "เลือกรางวัลที่จะแลกก่อน" };
+  if (!customerId) return { status: "error", message: "เลือกสมาชิกที่จะแลกให้ก่อน" };
+
+  const pointSystemId = await resolvePointSystemId(tenantId, systemId);
+  if (!pointSystemId) {
+    return {
+      status: "error",
+      message: "ระบบรางวัลนี้ยังไม่ได้เชื่อมกับระบบแต้ม — เชื่อมกิจการเดียวกันกับระบบแต้มก่อน",
+    };
+  }
+  const res = await redeem({ tenantId, rewardSystemId: systemId, pointSystemId, rewardId, customerId });
+  if (!res.ok) return { status: "error", message: res.reason };
+  revalidatePath(`/app/sys/${systemId}`);
+  return { status: "ok", code: res.code };
+}
+
+// ทำเครื่องหมาย "รับของแล้ว"
+export async function fulfillRedemptionAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertRewardCan(auth, "reward.redemption.fulfill");
+  const systemId = String(formData.get("systemId") ?? "").trim();
+  const redemptionId = String(formData.get("redemptionId") ?? "").trim();
+  if (systemId && redemptionId) {
+    await fulfillRedemption(auth.active.tenantId, systemId, redemptionId);
+  }
+  revalidatePath(`/app/sys/${systemId}`);
+}
+
+// ยกเลิก + คืนแต้ม + คืนสต็อก
+export async function cancelRedemptionAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertRewardCan(auth, "reward.redemption.cancel");
+  const systemId = String(formData.get("systemId") ?? "").trim();
+  const redemptionId = String(formData.get("redemptionId") ?? "").trim();
+  if (systemId && redemptionId) {
+    await cancelRedemption(auth.active.tenantId, systemId, redemptionId);
+  }
   revalidatePath(`/app/sys/${systemId}`);
 }

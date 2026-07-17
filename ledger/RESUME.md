@@ -235,3 +235,10 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 - DEPOSIT/ROOM_CHARGE map เป็น TRANSFER ชั่วคราว
 - M4: LLM free-text บน DNA — **ต้องขอ OpenRouter key ใหม่ (ชื่อ shark) จาก user** (ห้ามใช้ key ข้ามโปรเจกต์)
 - raw color เก่าใน (store)/r/[token]
+
+## 🔒 Wave 0 Security Hotfix (คืน 17→18 ก.ค. — เจ้าของสั่งปิดรูรั่วก่อน Wave 1) — ✅ SHIPPED (main 90ac618, deploy READY)
+- **HR payroll leak ปิด**: canViewPayroll (OWNER|hr.payroll.read เท่านั้น · MANAGER fail-closed) → PayrollSection + payroll-actions ทุก mutation
+- **calendar leak ข้ามสาขาปิด**: filterAccessibleUnitIds (กรอง unit ตาม unitAccess) + วันลา(ลาป่วย=สุขภาพ) โชว์เฉพาะผู้อ่าน HR
+- oracle qc-security-hotfix 14/14 · qc-calendar อัปสัญญาใหม่ 9/9 · gate typecheck+fitness14+qc-hr9+qc-payroll19 เขียว
+- 📋 แผนเต็ม 6 ระลอก ~170 วัน: ledger/FULLFUNCTION_PLAN.md + FULLFUNCTION_AUDIT.json (0 full/25 partial/2 thin)
+- 🌙 RUN ยาวถึง 05:00 BKK — Fable คุม, Opus ลงมือ · Wave 1 ต่อ: POS หน้าขาย · reward/point/crm/queue wire dead code

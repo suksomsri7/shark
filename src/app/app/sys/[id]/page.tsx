@@ -3,7 +3,13 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
-import { listRewards } from "@/lib/modules/reward/service";
+import {
+  listRewards,
+  listRedemptions,
+  listRewardCustomers,
+  resolvePointSystemId,
+} from "@/lib/modules/reward/service";
+import { RedeemForm } from "@/lib/modules/reward/forms";
 import { CouponContent } from "@/lib/modules/coupon/ui";
 import { MeetingContent } from "@/lib/modules/meeting/ui";
 import { KanbanContent } from "@/lib/modules/kanban/ui";
@@ -19,7 +25,11 @@ import {
   unlinkUnitAction,
   addRewardAction,
   removeRewardAction,
+  fulfillRedemptionAction,
+  cancelRedemptionAction,
 } from "@/lib/actions/systems";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { REWARD_REDEMPTION_STATUS_LABEL } from "@/lib/ui/status-labels";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
@@ -223,34 +233,108 @@ async function PosContent({ systemId, tenantId }: { systemId: string; tenantId: 
 }
 
 async function RewardContent({ systemId, tenantId }: { systemId: string; tenantId: string }) {
-  const rewards = (await listRewards(tenantId, systemId)).filter((r) => r.active);
+  const [allRewards, redemptions, customers, pointSystemId] = await Promise.all([
+    listRewards(tenantId, systemId),
+    listRedemptions(tenantId, systemId, 30),
+    listRewardCustomers(tenantId, systemId),
+    resolvePointSystemId(tenantId, systemId),
+  ]);
+  const rewards = allRewards.filter((r) => r.active);
+  const statusTone = (s: string): "muted" | "strong" | "danger" =>
+    s === "CANCELLED" ? "danger" : s === "FULFILLED" ? "strong" : "muted";
+  const canRedeem = rewards.length > 0 && customers.length > 0 && !!pointSystemId;
+
   return (
-    <Section title="รายการรางวัล">
-      <DataList
-        items={rewards.map((r) => ({
-          key: r.id,
-          primary: `${r.name} · ${r.pointsCost} แต้ม${r.stock !== null ? ` · เหลือ ${r.stock}` : ""}`,
-          trailing: (
-            <ConfirmDialog
-              triggerLabel="ลบ"
-              triggerClassName="text-xs text-[color:var(--color-danger)] underline"
-              title="ลบรางวัลนี้?"
-              detail={`รางวัล "${r.name}" จะถูกลบออกจากระบบแลกแต้ม`}
-              confirmLabel="ยืนยันลบ"
-              danger
-              action={removeRewardAction}
-              fields={{ id: r.id, systemId }}
-            />
-          ),
-        }))}
-        empty="ยังไม่มีรางวัล — เพิ่มรางวัลด้านล่างให้ลูกค้าแลกแต้ม"
-      />
-      <form action={addRewardAction} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <input type="hidden" name="systemId" value={systemId} />
-        <input name="name" required placeholder="ชื่อรางวัล" className="input col-span-2" />
-        <input name="pointsCost" type="number" min={1} required placeholder="แต้ม" className="input" />
-        <button className="btn btn-ghost text-sm">+ เพิ่ม</button>
-      </form>
-    </Section>
+    <>
+      <Section title="รายการรางวัล">
+        <DataList
+          items={rewards.map((r) => ({
+            key: r.id,
+            primary: `${r.name} · ${r.pointsCost} แต้ม${r.stock !== null ? ` · เหลือ ${r.stock}` : ""}`,
+            trailing: (
+              <ConfirmDialog
+                triggerLabel="ลบ"
+                triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+                title="ลบรางวัลนี้?"
+                detail={`รางวัล "${r.name}" จะถูกลบออกจากระบบแลกแต้ม`}
+                confirmLabel="ยืนยันลบ"
+                danger
+                action={removeRewardAction}
+                fields={{ id: r.id, systemId }}
+              />
+            ),
+          }))}
+          empty="ยังไม่มีรางวัล — เพิ่มรางวัลด้านล่างให้ลูกค้าแลกแต้ม"
+        />
+        <form action={addRewardAction} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <input type="hidden" name="systemId" value={systemId} />
+          <input name="name" required placeholder="ชื่อรางวัล" className="input col-span-2" />
+          <input name="pointsCost" type="number" min={1} required placeholder="แต้ม" className="input" />
+          <button className="btn btn-ghost text-sm">+ เพิ่ม</button>
+        </form>
+      </Section>
+
+      <Section title="แลกรางวัล">
+        {canRedeem ? (
+          <RedeemForm
+            systemId={systemId}
+            rewards={rewards.map((r) => ({
+              id: r.id,
+              name: r.name,
+              pointsCost: r.pointsCost,
+              stock: r.stock,
+            }))}
+            customers={customers}
+          />
+        ) : !pointSystemId ? (
+          <EmptyState text="ยังแลกรางวัลไม่ได้ — เชื่อมระบบรางวัลนี้เข้ากับกิจการเดียวกับ 'ระบบแต้ม' ก่อน (ที่การเชื่อมต่อด้านบน)" />
+        ) : rewards.length === 0 ? (
+          <EmptyState text="ยังไม่มีรางวัลให้แลก — เพิ่มรางวัลด้านบนก่อน" />
+        ) : (
+          <EmptyState text="ยังไม่มีสมาชิก — ลูกค้าจะเป็นสมาชิกอัตโนมัติเมื่อจอง/ซื้อในกิจการที่เชื่อมไว้ แล้วจึงแลกแต้มได้" />
+        )}
+      </Section>
+
+      <Section title="ประวัติการแลก">
+        <DataList
+          items={redemptions.map((r) => ({
+            key: r.id,
+            primary: `${r.rewardName} · ${r.customerName}`,
+            secondary: `โค้ด ${r.code} · ${r.pointsCost} แต้ม · ${fmt(r.createdAt)}`,
+            trailing: (
+              <span className="flex flex-col items-end gap-1.5">
+                <StatusChip
+                  value={r.status}
+                  map={REWARD_REDEMPTION_STATUS_LABEL}
+                  tone={statusTone(r.status)}
+                />
+                {r.status === "PENDING" && (
+                  <span className="flex items-center gap-2">
+                    <form action={fulfillRedemptionAction}>
+                      <input type="hidden" name="systemId" value={systemId} />
+                      <input type="hidden" name="redemptionId" value={r.id} />
+                      <SubmitButton variant="ghost" pendingText="กำลังบันทึก…">
+                        รับแล้ว
+                      </SubmitButton>
+                    </form>
+                    <ConfirmDialog
+                      triggerLabel="ยกเลิก+คืนแต้ม"
+                      triggerClassName="text-xs text-[color:var(--color-danger)] underline"
+                      title="ยกเลิกการแลกนี้?"
+                      detail={`คืน ${r.pointsCost} แต้มให้ ${r.customerName} และคืนสต็อกรางวัล`}
+                      confirmLabel="ยืนยันยกเลิก + คืนแต้ม"
+                      danger
+                      action={cancelRedemptionAction}
+                      fields={{ systemId, redemptionId: r.id }}
+                    />
+                  </span>
+                )}
+              </span>
+            ),
+          }))}
+          empty="ยังไม่มีการแลกรางวัล — เมื่อแลกให้สมาชิกแล้ว รายการจะแสดงที่นี่"
+        />
+      </Section>
+    </>
   );
 }

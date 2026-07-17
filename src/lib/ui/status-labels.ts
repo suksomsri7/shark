@@ -19,6 +19,13 @@ export const HR_LEAVE_STATUS_LABEL: Record<string, string> = {
   CANCELLED: "ยกเลิก",
 };
 
+// การแลกรางวัล (RewardRedemption.status)
+export const REWARD_REDEMPTION_STATUS_LABEL: Record<string, string> = {
+  PENDING: "รอรับของ",
+  FULFILLED: "รับแล้ว",
+  CANCELLED: "ยกเลิก",
+};
+
 export const QUEUE_STATUS_LABEL: Record<string, string> = {
   WAITING: "รอเรียก",
   CALLED: "กำลังเรียก",

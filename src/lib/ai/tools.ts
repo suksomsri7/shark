@@ -14,6 +14,7 @@ import type { SystemType } from "@prisma/client";
 import { lowStock as invLowStock } from "@/lib/modules/inventory/service";
 import { pendingLeaves as hrPendingLeaves } from "@/lib/modules/hr/service";
 import { listCustomers as memberListCustomers } from "@/lib/modules/member/service";
+import { listRedemptions as rewardListRedemptions } from "@/lib/modules/reward/service";
 import { searchKb as kbSearchArticles } from "@/lib/modules/kb/service";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { createProposal, type ProposalKind } from "./proposals";
@@ -327,6 +328,44 @@ const kbSearch: AiTool = {
   },
 };
 
+// ── reward_list_redemptions — ประวัติการแลกรางวัลของร้าน (อ่าน) ──
+const rewardListRedemptionsTool: AiTool = {
+  def: {
+    name: "reward_list_redemptions",
+    description:
+      "ดูประวัติการแลกรางวัลด้วยแต้มของร้าน (ล่าสุดก่อน) — คืนชื่อรางวัล ชื่อลูกค้า โค้ดรับของ แต้มที่ใช้ และสถานะ (รอรับของ/รับแล้ว/ยกเลิก)",
+    parameters: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", minimum: 1, maximum: 100, description: "จำนวนรายการล่าสุด (ค่าเริ่มต้น 20)" },
+      },
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const reward = await findSystem(ctx.tenantId, "REWARD");
+    if (!reward) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบแลกรางวัล" });
+    const raw = Number(asRecord(args).limit);
+    const limit = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 100) : 20;
+    const rows = await rewardListRedemptions(ctx.tenantId, reward.id, limit);
+    const STATUS_TH: Record<string, string> = {
+      PENDING: "รอรับของ",
+      FULFILLED: "รับแล้ว",
+      CANCELLED: "ยกเลิก",
+    };
+    return JSON.stringify({
+      ประวัติการแลกรางวัล: rows.map((r) => ({
+        รางวัล: r.rewardName,
+        ลูกค้า: r.customerName,
+        โค้ด: r.code,
+        แต้มที่ใช้: r.pointsCost,
+        สถานะ: STATUS_TH[r.status] ?? r.status,
+        เมื่อ: safeDate(r.createdAt),
+      })),
+    });
+  },
+};
+
 // ── action tools (Phase 3.5) — "เสนอ" การกระทำ ไม่ execute · คืน proposal ให้ user ยืนยัน ──
 // helper: สร้าง proposal แล้วคืน JSON มาตรฐานให้ LLM (UI แสดง summary + ปุ่มยืนยันจาก proposal นี้)
 async function propose(
@@ -472,6 +511,45 @@ const memberCreate: AiTool = {
     const contact = phone ? ` (เบอร์ ${phone})` : email ? ` (อีเมล ${email})` : "";
     const summary = `สมัครสมาชิกให้ '${name}'${contact}`;
     return propose(ctx, "member_create", summary, payload);
+  },
+};
+
+// ── reward_redeem — เสนอแลกรางวัลด้วยแต้มแทนสมาชิก (WO Wave1-A) ──
+const rewardRedeem: AiTool = {
+  action: true,
+  def: {
+    name: "reward_redeem",
+    description:
+      "เสนอการแลกรางวัลด้วยแต้มให้สมาชิก (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) ระบุชื่อรางวัล (rewardName) และตัวระบุสมาชิก: รหัสสมาชิก (memberCode) หรือเบอร์โทร (customerPhone) หรือชื่อ (customerName) อย่างใดอย่างหนึ่ง",
+    parameters: {
+      type: "object",
+      properties: {
+        rewardName: { type: "string", description: "ชื่อรางวัลที่จะแลก" },
+        memberCode: { type: "string", description: "รหัสสมาชิก 6 ตัว (แม่นสุด ถ้ามี)" },
+        customerPhone: { type: "string", description: "เบอร์โทรสมาชิก (ถ้าไม่ทราบรหัส)" },
+        customerName: { type: "string", description: "ชื่อสมาชิก (ถ้าไม่ทราบรหัส/เบอร์)" },
+      },
+      required: ["rewardName"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const rewardName = String(a.rewardName ?? "").trim();
+    if (!rewardName) return JSON.stringify({ error: "ต้องระบุชื่อรางวัลที่จะแลก" });
+    const memberCode = String(a.memberCode ?? "").trim();
+    const customerPhone = String(a.customerPhone ?? "").trim();
+    const customerName = String(a.customerName ?? "").trim();
+    if (!memberCode && !customerPhone && !customerName) {
+      return JSON.stringify({ error: "ต้องระบุรหัสสมาชิก เบอร์โทร หรือชื่อสมาชิกอย่างใดอย่างหนึ่ง" });
+    }
+    const who = memberCode || customerPhone || customerName;
+    const payload: Record<string, unknown> = { rewardName };
+    if (memberCode) payload.memberCode = memberCode;
+    if (customerPhone) payload.customerPhone = customerPhone;
+    if (customerName) payload.customerName = customerName;
+    const summary = `แลกรางวัล "${rewardName}" ให้สมาชิก ${who}`;
+    return propose(ctx, "reward_redeem", summary, payload);
   },
 };
 
@@ -1696,6 +1774,7 @@ export function toolRegistry(): AiTool[] {
     // Phase B2 read — คำขอรออนุมัติ / สัญญาเช่าค้างคืน
     approvalsPending,
     rentalActive,
+    rewardListRedemptionsTool,
     // AI Memory (agentic-1) — จด/ลบ/ดู ความจำถาวร (remember เขียนทันที ไม่ผ่าน proposal)
     rememberFactTool,
     forgetFactTool,
@@ -1730,6 +1809,7 @@ export function toolRegistry(): AiTool[] {
     rentalCreateBooking,
     approvalDecide,
     inventoryConsume,
+    rewardRedeem,
   ];
 }
 
