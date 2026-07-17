@@ -4,6 +4,15 @@
 
 > อัปเดต 2026-07-17 โดย Fable 5 · **session ใหม่: อ่านไฟล์นี้จากบนลงล่างถึงเส้นแรก แล้วทำงานต่อได้เลย**
 
+## 🌙 RUN 4 (09:20 BKK 17 ก.ค. — "ปล่อยงานทำต่ออีก 3 ชม") — ✅ จบกะ 09:50 BKK · 3 WO SHIPPED (รวมทุกกะ 34/39 ≈ 87%)
+| WO | งาน | ข้อสอบ |
+|---|---|---|
+| 0066 | **i18n v2**: เมนูร้านอาหาร public + จอคิว TV + error สาธารณะ 2 ภาษา (menu/queueTv/err คีย์ใหม่ · สวิตช์ th/en หน้า restaurant) — EN หลังบ้าน = 0066b (เลื่อน) | 6/6 + i18n 7/7 |
+| 0065 | **Host-routing**: โดเมนลูกค้า (custom domain ACTIVE) → redirect เข้า /s/<ร้าน>/<สาขา> ตัวเอง (resolve ชั้น app ตาม ADR A6 · landing ย้ายขึ้น root) | 5/5 + domain 10/10 |
+| 0040a | **เส้นเงิน (บัญชี ระวังสูง)**: DEPOSIT→Dr 2110 เงินมัดจำรับ · ROOM_CHARGE→Dr 1100 ลูกหนี้ (เลิกยุบเป็นธนาคารผิด · ขา Cr รายได้/VAT คงเดิม สมดุลครบ) | 5/5 + **cpa 107/107** + hotel-money 5/5 + pos-account 16/16 |
+🔧 DEFER (tech-debt ภายใน ไม่ปั้น gate หลอก): **0044 query-budget** + **0040b query reduction** — ต้องมี prisma query-log harness ชั้น core ก่อน (นับ query จริงตอน runtime) · ทำ static ใน fitness = gate ประดับไม่วัดจริง จึงเลื่อน
+คิวที่เหลือ (5 ใบ) **ติด 🔑 เจ้าของทั้งหมด**: 0069 ราคา plan · 0070 Beam creds · 0071 landing ถ้อยคำ · 0058 OTP ลูกค้า · 0067 LINE OA — ดู ledger/OWNER_TODO.md
+
 ## 🌙 RUN 3 (07:53 BKK 17 ก.ค. — "ปล่อยทำต่ออีก 2 ชม") — ✅ จบกะ 08:45 BKK · 6 WO SHIPPED (รวมทุกกะ 31/39 ≈ 79%)
 | WO | งาน | ข้อสอบ |
 |---|---|---|
