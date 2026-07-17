@@ -6,6 +6,8 @@ import type {
   ChatMessageType,
 } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
+import { emitOutbox } from "@/lib/core/outbox";
+import { drainAll } from "@/lib/outbox-consumers";
 import * as member from "@/lib/modules/member/service";
 import { getAdapter, ChannelDeliveryError } from "./adapter";
 import type { ChannelCreds, InboundMessage } from "./adapter";
@@ -336,6 +338,85 @@ function preview(body?: string | null, type?: ChatMessageType): string {
   return (body ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
 }
 
+const CHANNEL_LABEL_TH: Record<string, string> = {
+  LINE: "LINE",
+  WEBCHAT: "แชทหน้าเว็บ",
+  FACEBOOK: "Facebook",
+  INSTAGRAM: "Instagram",
+  SHOPEE: "Shopee",
+  LAZADA: "Lazada",
+  WHATSAPP: "WhatsApp",
+};
+
+// ───────────────────────── "ปิดโมดูลเงียบ": แจ้งเตือน + outbox หลังรับ inbound ─────────────────────────
+// เรียกหลัง insert ChatMessage(direction IN) สำเร็จ (ไม่ใช่ duplicate). ทำใน 1 transaction:
+//   1) อัปเดต denorm ของ conversation (lastMessage*, staffUnreadCount, status)
+//   2) AppNotification "ลูกค้าทักเข้ามา" — de-dup: สร้างเฉพาะตอนเธรดเปลี่ยน
+//      "อ่านครบ (staffUnreadCount=0)" → "มี unread" ครั้งแรก (ใช้ updateMany แบบ atomic ตัดสิน
+//      กัน race + ลูกค้าพิมพ์รัวหลายบรรทัด = 1 แจ้งเตือน จนกว่าพนักงานจะอ่าน)
+//   3) emitOutbox "chat.message.received" ทุกข้อความ (idempotencyKey ผูก messageId กัน webhook ซ้ำ)
+// AppNotification เป็น tenant-wide (schema ไม่มี user/role targeting) — ไปโผล่ /app/notifications
+async function announceInbound(args: {
+  tenantId: string;
+  systemId: string;
+  unitId: string | null;
+  conv: ChatConversation;
+  messageId: string;
+  channel: ChatChannelType;
+  contactLabel: string;
+  previewText: string;
+  sentAt: Date;
+}): Promise<void> {
+  const { tenantId, systemId, conv } = args;
+  const nextStatus = conv.status === "PENDING" ? "OPEN" : conv.status;
+  const denorm = {
+    lastMessageAt: args.sentAt,
+    lastMessagePreview: args.previewText,
+    lastMessageDirection: "IN",
+    status: nextStatus,
+  } satisfies Prisma.ChatConversationUpdateManyMutationInput;
+
+  await prisma.$transaction(async (tx) => {
+    // atomic: เธรด "อ่านครบ" (0) → flip เป็น 1 = transition ครั้งแรก (คนเดียวชนะ) → แจ้งเตือน
+    const flipped = await tx.chatConversation.updateMany({
+      where: { id: conv.id, staffUnreadCount: 0 },
+      data: { ...denorm, staffUnreadCount: 1 },
+    });
+    const firstUnread = flipped.count === 1;
+    if (!firstUnread) {
+      // เดิมมี unread ค้างอยู่แล้ว → เพิ่มตัวนับเฉย ๆ (ไม่แจ้งซ้ำ)
+      await tx.chatConversation.update({
+        where: { id: conv.id },
+        data: { ...denorm, staffUnreadCount: { increment: 1 } },
+      });
+    }
+
+    // outbox ทุกข้อความ — automation/webhook ราย event (dedup ด้วย messageId)
+    await emitOutbox(tx, {
+      tenantId,
+      type: "chat.message.received",
+      idempotencyKey: `chat.msg.${args.messageId}`,
+      payload: { conversationId: conv.id, channel: args.channel },
+      systemId,
+      unitId: args.unitId,
+    });
+
+    if (firstUnread) {
+      const channelTh = CHANNEL_LABEL_TH[args.channel] ?? args.channel;
+      await tx.appNotification.create({
+        data: {
+          tenantId,
+          title: "ลูกค้าทักเข้ามา",
+          body: `${args.contactLabel} (${channelTh}): ${args.previewText || "ข้อความใหม่"} · เปิดห้องแชท /app/sys/${systemId}/chat?c=${conv.id}`,
+        },
+      });
+    }
+  });
+
+  // drain outbox (automation/webhooks) — fire-and-forget เหมือน POS ให้ event เดินทันที
+  void drainAll().catch(() => {});
+}
+
 // ───────────────────────── Inbound ─────────────────────────
 
 // รับข้อความจากช่องทางภายนอก (LINE) — เรียกจาก webhook route หลัง verify signature
@@ -374,8 +455,9 @@ export async function receiveInbound(args: {
   });
 
   const msgType: ChatMessageType = inbound.type;
+  let msg;
   try {
-    await prisma.chatMessage.create({
+    msg = await prisma.chatMessage.create({
       data: {
         tenantId,
         systemId,
@@ -392,20 +474,22 @@ export async function receiveInbound(args: {
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return { ok: true, conversationId: conv.id, duplicate: true }; // webhook ซ้ำ
+      return { ok: true, conversationId: conv.id, duplicate: true }; // webhook ซ้ำ → ไม่แจ้งเตือนซ้ำ
     }
     throw e;
   }
 
-  await prisma.chatConversation.update({
-    where: { id: conv.id },
-    data: {
-      lastMessageAt: inbound.sentAt,
-      lastMessagePreview: preview(inbound.body, msgType),
-      lastMessageDirection: "IN",
-      staffUnreadCount: { increment: 1 },
-      status: conv.status === "PENDING" ? "OPEN" : conv.status,
-    },
+  // อัปเดต denorm + แจ้งเตือนพนักงาน (de-dup) + outbox
+  await announceInbound({
+    tenantId,
+    systemId,
+    unitId: connection.defaultUnitId,
+    conv,
+    messageId: msg.id,
+    channel,
+    contactLabel: contact.displayName ?? contact.phone ?? "ลูกค้า",
+    previewText: preview(inbound.body, msgType),
+    sentAt: inbound.sentAt,
   });
   await prisma.chatChannelConnection.update({
     where: { id: connection.id },
@@ -456,8 +540,9 @@ export async function receiveWebchatInbound(args: {
     unitId: connection.defaultUnitId,
   });
 
+  let msg;
   try {
-    await prisma.chatMessage.create({
+    msg = await prisma.chatMessage.create({
       data: {
         tenantId,
         systemId,
@@ -471,20 +556,22 @@ export async function receiveWebchatInbound(args: {
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return { ok: true, conversationId: conv.id }; // ส่งซ้ำ (clientMessageId เดิม)
+      return { ok: true, conversationId: conv.id }; // ส่งซ้ำ (clientMessageId เดิม) → ไม่แจ้งเตือนซ้ำ
     }
     throw e;
   }
 
-  await prisma.chatConversation.update({
-    where: { id: conv.id },
-    data: {
-      lastMessageAt: new Date(),
-      lastMessagePreview: preview(body),
-      lastMessageDirection: "IN",
-      staffUnreadCount: { increment: 1 },
-      status: conv.status === "PENDING" ? "OPEN" : conv.status,
-    },
+  // อัปเดต denorm + แจ้งเตือนพนักงาน (de-dup) + outbox
+  await announceInbound({
+    tenantId,
+    systemId,
+    unitId: connection.defaultUnitId,
+    conv,
+    messageId: msg.id,
+    channel: "WEBCHAT",
+    contactLabel: contact.displayName ?? contact.phone ?? "ลูกค้า",
+    previewText: preview(body),
+    sentAt: new Date(),
   });
   return { ok: true, conversationId: conv.id };
 }

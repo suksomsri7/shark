@@ -1331,6 +1331,42 @@ const shopPendingOrders: AiTool = {
   },
 };
 
+// ── B1-R4) chat_unread_conversations — ห้องแชทที่มีข้อความลูกค้ายังไม่ได้อ่าน ──
+const CHAT_CHANNEL_TH: Record<string, string> = {
+  LINE: "LINE",
+  WEBCHAT: "แชทหน้าเว็บ",
+  FACEBOOK: "Facebook",
+  INSTAGRAM: "Instagram",
+  SHOPEE: "Shopee",
+  LAZADA: "Lazada",
+  WHATSAPP: "WhatsApp",
+};
+const chatUnreadConversations: AiTool = {
+  def: {
+    name: "chat_unread_conversations",
+    description:
+      "ดูห้องแชทที่มีลูกค้าทักเข้ามาแล้วพนักงานยังไม่ได้อ่าน (ทุกช่องทาง เช่น LINE/แชทหน้าเว็บ) — คืนจำนวนห้อง ชื่อลูกค้า ช่องทาง จำนวนข้อความค้าง และข้อความล่าสุด",
+    parameters: NO_ARGS,
+  },
+  async execute(ctx) {
+    const convs = await prisma.chatConversation.findMany({
+      where: { tenantId: ctx.tenantId, staffUnreadCount: { gt: 0 } },
+      orderBy: { lastMessageAt: "desc" },
+      take: 50,
+      include: { contact: { select: { displayName: true, phone: true } } },
+    });
+    return JSON.stringify({
+      จำนวนห้องที่ยังไม่อ่าน: convs.length,
+      ห้องแชท: convs.map((c) => ({
+        ลูกค้า: c.contact.displayName ?? c.contact.phone ?? "ลูกค้า",
+        ช่องทาง: CHAT_CHANNEL_TH[c.channel] ?? c.channel,
+        ข้อความค้าง: c.staffUnreadCount,
+        ล่าสุด: c.lastMessagePreview ?? "—",
+      })),
+    });
+  },
+};
+
 // ══════════════════════════════════════════════════════════════════
 // Phase B2 (ชุดปิด) — ทำแทน CRM·KB·โรงเรียน·คลินิก·เช่า·สายอนุมัติ·คลังตัดออก (action 8) + ดูข้อมูล (read 2)
 // resolve unit/course/asset/enrollment อยู่ใน dispatch (proposals.ts) — tool แค่รวบ payload แล้ว propose
@@ -1794,6 +1830,7 @@ export function toolRegistry(): AiTool[] {
     todayAppointments,
     queueWaiting,
     shopPendingOrders,
+    chatUnreadConversations,
     // Phase B2 read — คำขอรออนุมัติ / สัญญาเช่าค้างคืน
     approvalsPending,
     rentalActive,
