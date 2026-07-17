@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { createContact } from "@/lib/modules/crm/service";
+import { emitOutbox } from "@/lib/core/outbox";
+import { drainAll } from "@/lib/outbox-consumers";
 
 // Form builder v1 (WO-0054) — ฟอร์ม config ได้ + ลิงก์สาธารณะ /f/<token> + submissions → CRM lead
 // scope: FormDef/FormSubmission เป็น tenant-axis → ฝั่งแอปใช้ tenantDb({ tenantId }) ทุก query
@@ -223,5 +225,29 @@ export async function submitPublicForm(
       ip: meta?.ip ?? null,
     },
   });
+
+  // แจ้งเจ้าของว่ามี lead ใหม่ (ปิด "โมดูลเงียบ" — เดิม submit แล้วเงียบ ตกหล่น)
+  // pattern เดียวกับ chat.announceInbound: AppNotification + emitOutbox (1 submission = 1 lead จริง)
+  const leadName =
+    (typeof clean.name === "string" && clean.name) ||
+    (typeof clean.phone === "string" && clean.phone) ||
+    "ไม่ระบุชื่อ";
+  await prisma.$transaction(async (tx) => {
+    await emitOutbox(tx, {
+      tenantId: form.tenantId,
+      type: "forms.submission.received",
+      idempotencyKey: `forms.sub.${sub.id}`,
+      payload: { formId: form.id, submissionId: sub.id, crmContactId },
+    });
+    await tx.appNotification.create({
+      data: {
+        tenantId: form.tenantId,
+        title: "มีคนกรอกฟอร์มเข้ามา",
+        body: `${form.name}: ${leadName}${crmContactId ? " (เข้าลูกค้าใน CRM แล้ว)" : ""} · ดูข้อมูล /app/forms/${form.id}`,
+      },
+    });
+  });
+  void drainAll().catch(() => {});
+
   return { id: sub.id };
 }
