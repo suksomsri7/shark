@@ -182,6 +182,78 @@ export async function createItem(ctx: Ctx, input: CreateItemInput): Promise<{ id
   return { id: it.id };
 }
 
+// ── แก้ไขข้อมูลสินค้า (CRUD) — เฉพาะ field ข้อมูล ห้ามแตะ onHand/costSatang ──
+// onHand = ledger-derived cache (source of truth = InvMovement) · costSatang = ต้นทุนถัวเฉลี่ย (เดินตาม receive เท่านั้น)
+//   → แก้ผ่าน movement เท่านั้น ไม่ใช่ field patch (กัน cache เพี้ยนจาก ledger)
+// แก้เฉพาะ field ที่ผู้ใช้ตั้ง (undefined = ไม่แตะ) · sku ซ้ำในระบบ (unique [systemId,sku]) → throw ไทย
+export type UpdateItemPatch = Partial<{
+  name: string;
+  sku: string;
+  barcode: string | null;
+  category: string | null;
+  unitLabel: string;
+  reorderPoint: number;
+}>;
+
+export async function updateItem(ctx: Ctx, itemId: string, patch: UpdateItemPatch): Promise<{ id: string }> {
+  const db = tenantDb(ctx);
+  const item = await db.invItem.findFirst({ where: { id: itemId } });
+  if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+
+  const data: Record<string, unknown> = {};
+  if (patch.name !== undefined) {
+    const name = patch.name.trim();
+    if (!name) throw new Error("กรุณาระบุชื่อสินค้า");
+    data.name = name;
+  }
+  if (patch.sku !== undefined) {
+    const sku = patch.sku.trim();
+    if (!sku) throw new Error("กรุณาระบุรหัสสินค้า (SKU)");
+    data.sku = sku;
+  }
+  if (patch.barcode !== undefined) data.barcode = patch.barcode?.trim() || null;
+  if (patch.category !== undefined) data.category = patch.category?.trim() || null;
+  if (patch.unitLabel !== undefined) {
+    const u = patch.unitLabel.trim();
+    if (u) data.unitLabel = u; // ว่าง = คงหน่วยเดิม (unitLabel มี default ห้ามตั้งว่าง)
+  }
+  if (patch.reorderPoint !== undefined) data.reorderPoint = Math.max(0, Math.round(patch.reorderPoint));
+
+  if (Object.keys(data).length === 0) return { id: itemId };
+
+  try {
+    await db.invItem.update({ where: { id: item.id }, data });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")
+      throw new Error("มีสินค้ารหัส (SKU) นี้อยู่แล้ว");
+    throw e;
+  }
+  return { id: itemId };
+}
+
+// ── ปิดการใช้งานสินค้า (soft-delete) — active=false ผ่าน archivedAt ──
+// ไม่โผล่ใน listItems ปกติ/catalog POS แต่ประวัติ movement คงอยู่ (ledger ไม่ถูกแตะ)
+export async function archiveItem(ctx: Ctx, itemId: string): Promise<{ id: string }> {
+  const db = tenantDb(ctx);
+  const item = await db.invItem.findFirst({ where: { id: itemId } });
+  if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+  if (!item.archivedAt) {
+    await db.invItem.update({ where: { id: item.id }, data: { archivedAt: new Date() } });
+  }
+  return { id: itemId };
+}
+
+// ── เปิดใช้งานสินค้าอีกครั้ง (unarchive) ──
+export async function unarchiveItem(ctx: Ctx, itemId: string): Promise<{ id: string }> {
+  const db = tenantDb(ctx);
+  const item = await db.invItem.findFirst({ where: { id: itemId } });
+  if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+  if (item.archivedAt) {
+    await db.invItem.update({ where: { id: item.id }, data: { archivedAt: null } });
+  }
+  return { id: itemId };
+}
+
 // ── รับเข้า (IN) — เพิ่ม onHand + คำนวณต้นทุนถัวเฉลี่ยเคลื่อนที่ (จากกติกา) ──
 // idempotent ต่อ idempotencyKey: เรียกซ้ำด้วย key เดิม → ไม่เพิ่มซ้ำ
 export type ReceiveInput = {

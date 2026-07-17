@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import {
+  archiveItem,
   consume,
   createItem,
   createLocation,
@@ -12,6 +13,7 @@ import {
   itemLots,
   receive,
   transfer,
+  updateItem,
   type Ctx,
 } from "./service";
 
@@ -60,6 +62,38 @@ export async function createItemAction(formData: FormData) {
     reorderPoint: toQty(formData.get("reorderPoint")),
     costSatang: bahtToSatang(formData.get("cost")),
   });
+  revalidate(systemId);
+}
+
+// ── แก้ไขข้อมูลสินค้า (ชื่อ/SKU/บาร์โค้ด/หมวด/หน่วย/จุดสั่งซื้อ) — ไม่แตะยอด/ต้นทุน ──
+export async function updateItemAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.update");
+  const systemId = String(formData.get("systemId") ?? "");
+  const itemId = String(formData.get("itemId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!systemId || !itemId || !name) return;
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await updateItem(ctx, itemId, {
+    name,
+    sku: String(formData.get("sku") ?? "").trim(),
+    barcode: String(formData.get("barcode") ?? "").trim() || null,
+    category: String(formData.get("category") ?? "").trim() || null,
+    unitLabel: String(formData.get("unitLabel") ?? "").trim(),
+    reorderPoint: toQty(formData.get("reorderPoint")),
+  });
+  revalidate(systemId);
+}
+
+// ── ปิดการใช้งานสินค้า (soft) — ไม่โผล่ในรายการ/แคตตาล็อก POS · ประวัติคงอยู่ ──
+export async function archiveItemAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.update");
+  const systemId = String(formData.get("systemId") ?? "");
+  const itemId = String(formData.get("itemId") ?? "");
+  if (!systemId || !itemId) return;
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await archiveItem(ctx, itemId);
   revalidate(systemId);
 }
 

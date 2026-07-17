@@ -119,34 +119,51 @@ export async function createBooking(
   ctx: RentalCtx,
   input: CreateBookingInput,
 ): Promise<{ id: string; days: number; quoteSatang: number }> {
-  const db = tenantDb(ctx);
-  const asset = await db.rentalAsset.findFirst({ where: { id: input.assetId } });
-  if (!asset) throw new Error("ไม่พบสินทรัพย์");
-
   const days = daysBetween(input.startDate, input.endDate);
   if (days <= 0) throw new Error("วันคืนต้องหลังวันรับอย่างน้อย 1 วัน");
-
-  const available = await isAvailable(ctx, input.assetId, { from: input.startDate, to: input.endDate });
-  if (!available) throw new Error("ช่วงเวลานี้สินทรัพย์ถูกจองแล้ว");
-
-  const quoteSatang = days * asset.dailyRateSatang;
   const name = input.customerName?.trim();
   if (!name) throw new Error("กรุณาระบุชื่อลูกค้า");
 
-  const bk = await db.rentalBooking.create({
-    data: {
-      tenantId: ctx.tenantId,
-      unitId: ctx.unitId,
-      assetId: input.assetId,
-      customerName: name,
-      customerPhone: input.customerPhone?.trim() || "",
-      startDate: input.startDate,
-      endDate: input.endDate,
-      depositHeldSatang: asset.depositSatang,
-      note: input.note?.trim() || null,
-    },
+  // กันจองซ้อนระดับ DB (race-safe): ล็อกแถวสินทรัพย์ (pessimistic row-lock) ต้น tx → 2 request
+  //   ที่เช่า asset เดียวกันช่วงทับกันพร้อมกัน serialize → คนที่ 2 เห็น booking ของคนแรกที่ commit
+  //   แล้วในการเช็ค overlap ภายใน tx เดียวกัน → reject (ตาราง "RentalAsset" — schema ไม่มี @@map)
+  return prisma.$transaction(async (tx) => {
+    const asset = await tx.rentalAsset.findFirst({
+      where: { id: input.assetId, tenantId: ctx.tenantId, unitId: ctx.unitId },
+    });
+    if (!asset) throw new Error("ไม่พบสินทรัพย์");
+
+    await tx.$queryRaw`SELECT id FROM "RentalAsset" WHERE id = ${input.assetId} FOR UPDATE`;
+
+    // เช็ค overlap ภายใน tx (หลังถือ lock) → คนที่ 2 เห็น insert ของคนแรกเสมอ
+    const clash = await tx.rentalBooking.findFirst({
+      where: {
+        tenantId: ctx.tenantId,
+        unitId: ctx.unitId,
+        assetId: input.assetId,
+        status: { in: ["BOOKED", "PICKED_UP"] },
+        startDate: { lt: input.endDate },
+        endDate: { gt: input.startDate },
+      },
+    });
+    if (clash) throw new Error("ช่วงเวลานี้สินทรัพย์ถูกจองแล้ว");
+
+    const quoteSatang = days * asset.dailyRateSatang;
+    const bk = await tx.rentalBooking.create({
+      data: {
+        tenantId: ctx.tenantId,
+        unitId: ctx.unitId,
+        assetId: input.assetId,
+        customerName: name,
+        customerPhone: input.customerPhone?.trim() || "",
+        startDate: input.startDate,
+        endDate: input.endDate,
+        depositHeldSatang: asset.depositSatang,
+        note: input.note?.trim() || null,
+      },
+    });
+    return { id: bk.id, days, quoteSatang };
   });
-  return { id: bk.id, days, quoteSatang };
 }
 
 // ── รับรถ (BOOKED → PICKED_UP) ─────────────────────────────────

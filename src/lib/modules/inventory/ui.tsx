@@ -22,11 +22,13 @@ import {
   type Ctx,
 } from "./service";
 import {
+  archiveItemAction,
   consumeAction,
   createItemAction,
   createLocationAction,
   receiveAction,
   transferAction,
+  updateItemAction,
 } from "./actions";
 import { listPos, listSuppliers, pendingApprovalPoIds } from "./procurement";
 import {
@@ -518,21 +520,12 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
               const lots = lotMap.get(i.id) ?? [];
               const showLocations = multiWarehouse && breakdown.length > 0;
               const showLots = lots.length > 0;
-              const expandable = showLocations || showLots;
-              const hint = showLots
-                ? showLocations
-                  ? " · แตะดูล็อต/ยอดแยกคลัง"
-                  : " · แตะดูล็อตคงเหลือ"
-                : showLocations
-                  ? " · แตะดูยอดแยกคลัง"
-                  : "";
               const header = (
                 <>
                   <div className="min-w-0">
                     <div className="truncate">{i.name}</div>
                     <div className={`truncate text-xs ${muted}`}>
                       {[`รหัส ${i.sku}`, i.category].filter(Boolean).join(" · ")}
-                      {hint}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2 text-right">
@@ -548,44 +541,90 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
                   </div>
                 </>
               );
-              if (!expandable) {
-                return (
-                  <div key={i.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
-                    {header}
-                  </div>
-                );
-              }
               return (
-                <details key={i.id} className="rounded-lg border text-sm">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2">
-                    {header}
-                  </summary>
-                  <div className="flex flex-col gap-1 border-t px-3 py-2">
-                    {showLocations &&
-                      breakdown.map((b) => (
-                        <div key={b.locationId} className="flex items-center justify-between">
-                          <span className={muted}>{b.name}</span>
-                          <span className={`tabular-nums ${b.onHand < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
-                            {qty(b.onHand, i.unitLabel)}
-                          </span>
+                <div key={i.id} className="flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-3">{header}</div>
+
+                  {/* ยอดแยกคลัง / ล็อต (กดดู) */}
+                  {(showLocations || showLots) && (
+                    <details className="text-sm">
+                      <summary className={`cursor-pointer text-xs ${muted}`}>
+                        {showLots ? (showLocations ? "ดูล็อต / ยอดแยกคลัง" : "ดูล็อตคงเหลือ") : "ดูยอดแยกคลัง"}
+                      </summary>
+                      <div className="mt-1 flex flex-col gap-1 border-t pt-2">
+                        {showLocations &&
+                          breakdown.map((b) => (
+                            <div key={b.locationId} className="flex items-center justify-between">
+                              <span className={muted}>{b.name}</span>
+                              <span className={`tabular-nums ${b.onHand < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
+                                {qty(b.onHand, i.unitLabel)}
+                              </span>
+                            </div>
+                          ))}
+                        {showLots && (
+                          <>
+                            {showLocations && <div className={`mt-1 text-xs ${muted}`}>ล็อต / วันหมดอายุ</div>}
+                            {lots.map((l) => (
+                              <div key={l.id} className="flex items-center justify-between">
+                                <span className={muted}>
+                                  ล็อต {l.lotCode}
+                                  {l.expiryDate ? ` · หมดอายุ ${formatThaiDate(l.expiryDate)}` : ""}
+                                </span>
+                                <span className="tabular-nums">{qty(l.onHand, i.unitLabel)}</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    </details>
+                  )}
+
+                  {/* จัดการ: แก้ไขข้อมูล / ปิดการใช้งาน */}
+                  <div className="flex flex-wrap items-center gap-2 border-t pt-2">
+                    <details className="min-w-0 flex-1">
+                      <summary className="cursor-pointer text-xs font-medium text-[color:var(--color-ink)]">
+                        แก้ไขข้อมูล
+                      </summary>
+                      <form action={updateItemAction} className="mt-2 flex flex-col gap-2">
+                        <input type="hidden" name="systemId" value={systemId} />
+                        <input type="hidden" name="itemId" value={i.id} />
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <FormField label="ชื่อสินค้า" required>
+                            <input name="name" required defaultValue={i.name} className="input" />
+                          </FormField>
+                          <FormField label="รหัสสินค้า (SKU)" required>
+                            <input name="sku" required defaultValue={i.sku} className="input" />
+                          </FormField>
+                          <FormField label="บาร์โค้ด">
+                            <input name="barcode" inputMode="numeric" defaultValue={i.barcode ?? ""} className="input" />
+                          </FormField>
+                          <FormField label="หน่วยนับ">
+                            <input name="unitLabel" defaultValue={i.unitLabel} className="input" />
+                          </FormField>
+                          <FormField label="หมวดหมู่">
+                            <input name="category" defaultValue={i.category ?? ""} className="input" />
+                          </FormField>
+                          <FormField label="จุดสั่งซื้อ" hint="เตือนเมื่อคงเหลือถึงจำนวนนี้">
+                            <input name="reorderPoint" type="number" min={0} step={1} defaultValue={i.reorderPoint} className="input" />
+                          </FormField>
                         </div>
-                      ))}
-                    {showLots && (
-                      <>
-                        {showLocations && <div className={`mt-1 text-xs ${muted}`}>ล็อต / วันหมดอายุ</div>}
-                        {lots.map((l) => (
-                          <div key={l.id} className="flex items-center justify-between">
-                            <span className={muted}>
-                              ล็อต {l.lotCode}
-                              {l.expiryDate ? ` · หมดอายุ ${formatThaiDate(l.expiryDate)}` : ""}
-                            </span>
-                            <span className="tabular-nums">{qty(l.onHand, i.unitLabel)}</span>
-                          </div>
-                        ))}
-                      </>
-                    )}
+                        <p className={`text-xs ${muted}`}>
+                          หมายเหตุ: ยอดคงเหลือและต้นทุนแก้ที่นี่ไม่ได้ — ใช้ &quot;รับเข้า / ตัดออก / ปรับสต็อก&quot; เท่านั้น
+                        </p>
+                        <SubmitButton variant="ghost">บันทึกการแก้ไข</SubmitButton>
+                      </form>
+                    </details>
+                    <ConfirmDialog
+                      triggerLabel="ปิดการใช้งาน"
+                      title={`ปิดการใช้งานสินค้า — ${i.name}?`}
+                      detail="สินค้าจะไม่โผล่ในรายการ/หน้าขาย (POS) แต่ประวัติการเคลื่อนไหวยังอยู่ครบ เปิดใช้ใหม่ได้ภายหลัง"
+                      confirmLabel="ยืนยันปิดการใช้งาน"
+                      danger
+                      action={archiveItemAction}
+                      fields={{ systemId, itemId: i.id }}
+                    />
                   </div>
-                </details>
+                </div>
               );
             })}
           </div>

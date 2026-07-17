@@ -261,3 +261,6 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 | W2-C | **Ticket cancel-reverse**: cancelOrder ที่ PAID → pos.voidSale (เดิมเงินค้าง) | qc-ticket-cancel 10/10 | 1fdfcf9 |
 | W2-D | **Hotel refund หลังเช็คเอาท์**: refundStay + voidSale · +enum REFUNDED (migration prod) · defer no-show/edit | qc-hotel-refund 15/15 | 46a8758 |
 เหลือ Wave 2: school/clinic/rental refund · booking+rental double-book DB guard · hr payroll reversal · inventory→บัญชี bridge · point negative guard
+| W2-E/F/G | **Refund school/rental/clinic**: void+REFUNDED · clinic คืนยาอ้าง InvMovement จริง · school/rental seat/asset ว่างเอง | 11/11/13 + cpa107 | 5d39810 |
+| W2-H | **Booking กันจองซ้อน DB**: row-lock FOR UPDATE (race 2-req=สำเร็จ1/ล้ม1) + idempotencyKey unique | qc-booking-race 8/8 | bd633b0 |
+เหลือ: rental double-book guard · inventory แก้/ปิดสินค้า + สะพานบัญชี · hr payroll reversal

@@ -48,6 +48,8 @@
     "qc:ticket-cancel": "tsx scripts/qc-ticket-cancel.mts",
     "qc:school-refund": "tsx scripts/qc-school-refund.mts",
     "qc:rental-refund": "tsx scripts/qc-rental-refund.mts",
+    "qc:rental-race": "tsx scripts/qc-rental-race.mts",
+    "qc:inventory-item": "tsx scripts/qc-inventory-item.mts",
     "qc:clinic-refund": "tsx scripts/qc-clinic-refund.mts",
     "qc:booking-race": "tsx scripts/qc-booking-race.mts",
     "qc:booking-hours-hr": "tsx scripts/qc-booking-hours-hr.mts"
