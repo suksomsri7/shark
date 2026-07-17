@@ -116,8 +116,8 @@ body {
     #3b82f6 320deg,
     #1e3a8a 360deg
   );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7.5px));
   animation: ai-orb-spin 16s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {

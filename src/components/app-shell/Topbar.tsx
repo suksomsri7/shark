@@ -36,7 +36,7 @@ export function Topbar({
           onClick={onHelp}
           aria-label="ศูนย์ช่วยเหลือ"
           title="ศูนย์ช่วยเหลือ"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[color:var(--color-ink)] hover:bg-[color:var(--color-surface-2)]"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[color:var(--color-accent)] hover:bg-[color:var(--color-surface-2)]"
         >
           {/* ไอคอนหูฟัง support ตาม ref เจ้าของ: บับเบิลแชททึบ 3 จุดขาว + คาดหูฟัง + ก้านไมค์ — สีดำ ไม่มีวงกรอบ */}
           <svg aria-hidden viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

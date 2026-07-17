@@ -21,7 +21,7 @@ export function AiDock() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="ผู้ช่วย AI"
-        className="ai-orb-breathe fixed bottom-4 right-4 z-40 h-12 w-12"
+        className="ai-orb-breathe fixed bottom-4 right-4 z-40 h-10 w-10"
       >
         <span aria-hidden className="ai-orb" />
       </button>

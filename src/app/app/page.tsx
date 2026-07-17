@@ -2,7 +2,6 @@ import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { activeAnnouncements } from "@/lib/announce/service";
 import { dismissAnnouncementAction } from "@/lib/announce/actions";
 import { onboardingChecklist } from "@/lib/platform/onboarding-drip";
@@ -101,16 +100,6 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title={auth.active.tenant.name}
-        desc="ภาพรวมกิจการวันนี้"
-        actions={
-          <Link href="/app/settings/systems" className="btn btn-primary text-sm">
-            + เพิ่มระบบ
-          </Link>
-        }
-      />
-
       {/* เริ่มต้นร้านให้ครบ — เช็กลิสต์ติ๊กอัตโนมัติ ซ่อนเมื่อครบทุกข้อ */}
       {showOnboarding && (
         <div className="flex flex-col gap-3 rounded-lg border bg-[color:var(--color-surface-2)] p-4">
@@ -176,10 +165,17 @@ export default async function DashboardPage() {
 
       {/* การ์ดระบบที่เปิดใช้ */}
       <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
           <h2 className="text-sm font-medium">ระบบที่เปิดใช้</h2>
-          <Link href="/app/settings/systems" className="text-xs underline">
-            เพิ่มระบบ
+          <Link
+            href="/app/settings/systems"
+            aria-label="เพิ่มระบบ"
+            title="เพิ่มระบบ"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-[color:var(--color-accent)] text-white hover:opacity-90"
+          >
+            <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
           </Link>
         </div>
 

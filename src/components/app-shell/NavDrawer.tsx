@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logoutAction } from "@/lib/actions/auth";
+import { NavIcon } from "./NavIcon";
 
 // drawer เมนูระบบ — เลื่อนออกจากซ้าย เปิดจากปุ่มแฮมเบอร์เกอร์บน topbar
 // รวม "ระบบทั้งหมด" (grid เดิมที่ย้ายมาจากหน้า /app) + ระบบที่กำลังจะมา + เพิ่มระบบ + ออกจากระบบ
@@ -43,8 +44,7 @@ export function NavDrawer({
       <aside className="absolute left-0 top-0 flex h-full w-72 max-w-[85%] flex-col overflow-y-auto bg-[color:var(--color-surface)] shadow-[2px_0_12px_rgba(0,0,0,0.08)]">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="min-w-0">
-            <div className="text-xs font-bold tracking-widest text-[color:var(--color-muted)]">SHARK</div>
-            <div className="truncate text-sm font-semibold">{tenantName}</div>
+            <div className="truncate text-lg font-bold">{tenantName}</div>
           </div>
           <button
             type="button"
@@ -64,7 +64,7 @@ export function NavDrawer({
               pathname === "/app" ? "font-medium text-[color:var(--color-accent)]" : ""
             }`}
           >
-            <span aria-hidden>🏠</span>
+            <NavIcon emoji="🏠" />
             <span className="truncate">หน้าหลัก</span>
           </Link>
 
@@ -75,7 +75,7 @@ export function NavDrawer({
               isActive("/app/calendar") ? "font-medium text-[color:var(--color-accent)]" : ""
             }`}
           >
-            <span aria-hidden>📅</span>
+            <NavIcon emoji="📅" />
             <span className="truncate">ปฏิทิน</span>
           </Link>
 
@@ -91,7 +91,7 @@ export function NavDrawer({
                 isActive(it.href) ? "font-medium text-[color:var(--color-accent)]" : ""
               }`}
             >
-              <span aria-hidden>{it.icon}</span>
+              <NavIcon emoji={it.icon} />
               <span className="truncate">{it.label}</span>
             </Link>
           ))}
@@ -120,7 +120,7 @@ export function NavDrawer({
                 isActive(s.href) ? "font-medium text-[color:var(--color-accent)]" : ""
               }`}
             >
-              <span aria-hidden>{s.icon}</span>
+              <NavIcon emoji={s.icon} />
               <span className="truncate">{s.label}</span>
             </Link>
           ))}
@@ -134,8 +134,8 @@ export function NavDrawer({
                   key={s.code}
                   className="flex items-center justify-between rounded-lg px-2 py-1.5 text-xs opacity-45"
                 >
-                  <span className="truncate">
-                    <span aria-hidden>{s.icon}</span> {s.label}
+                  <span className="flex min-w-0 items-center gap-2 truncate">
+                    <NavIcon emoji={s.icon} className="h-4 w-4" /> {s.label}
                   </span>
                   <span className="shrink-0 rounded-full border px-1.5 py-0.5 text-[10px]">เร็วๆ นี้</span>
                 </div>
@@ -146,7 +146,11 @@ export function NavDrawer({
 
         <div className="mt-auto flex flex-col gap-2 px-4 pb-4 pt-3">
           <div className="border-t pt-3">
-            <Link href={addHref} onClick={onClose} className="btn btn-primary w-full text-sm">
+            <Link
+              href={addHref}
+              onClick={onClose}
+              className="flex w-full items-center justify-center gap-1 rounded-lg bg-[color:var(--color-accent)] px-3 py-2.5 text-sm font-medium text-white hover:opacity-90"
+            >
               + เพิ่มระบบ
             </Link>
           </div>
