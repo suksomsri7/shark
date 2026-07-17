@@ -777,6 +777,38 @@ const recordExpense: AiTool = {
   },
 };
 
+// ── schedule_task — เสนอตั้ง "งานประจำ" ให้ผู้ช่วยทำเองตามเวลา (agentic-3) ──
+// action → proposal NORMAL: ตั้งงานประจำเป็นการตัดสินใจถาวร ควรให้ผู้ใช้กดยืนยันก่อน
+const scheduleTask: AiTool = {
+  action: true,
+  def: {
+    name: "schedule_task",
+    description:
+      "เสนอการตั้ง 'งานประจำ' ให้ผู้ช่วยทำเองซ้ำทุกวันตามเวลา (ยังไม่ตั้งทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) เหมาะกับงานสรุป/รายงานที่ต้องการเป็นประจำ เช่น 'ทุกเย็น 6 โมง สรุปยอดขายวันนี้และสินค้าใกล้หมด' · ระบุ instruction (สิ่งที่จะให้ทำ ภาษาไทย) และ hourBkk (ชั่วโมงที่จะทำ 0-23 ตามเวลาไทย เช่น 18 = หกโมงเย็น) · ผลลัพธ์แต่ละวันจะถูกส่งเป็นการแจ้งเตือนให้เจ้าของอ่าน",
+    parameters: {
+      type: "object",
+      properties: {
+        instruction: { type: "string", description: "สิ่งที่จะให้ผู้ช่วยทำเป็นงานประจำ (ภาษาไทย)" },
+        hourBkk: { type: "integer", minimum: 0, maximum: 23, description: "ชั่วโมงที่จะทำ 0-23 ตามเวลาไทย (เช่น 18 = 18:00)" },
+      },
+      required: ["instruction", "hourBkk"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const instruction = String(a.instruction ?? "").trim();
+    if (!instruction) return JSON.stringify({ error: "ต้องระบุสิ่งที่จะให้ผู้ช่วยทำเป็นงานประจำ" });
+    const hourBkk = Math.round(Number(a.hourBkk));
+    if (!Number.isFinite(hourBkk) || hourBkk < 0 || hourBkk > 23) {
+      return JSON.stringify({ error: "ชั่วโมงที่ให้ทำต้องอยู่ระหว่าง 0-23 (เวลาไทย)", suggestion: "เช่น 18 = หกโมงเย็น" });
+    }
+    const hh = String(hourBkk).padStart(2, "0");
+    const summary = `ตั้งงานประจำทุกวันเวลา ${hh}:00 น. — ${instruction}`;
+    return propose(ctx, "ai_schedule_task", summary, { instruction, hourBkk });
+  },
+};
+
 // ── propose_plan — เสนอ "แผนหลายขั้น" ในครั้งเดียว (AI Plan L2 · agentic-2) ──
 // ใช้เมื่อผู้ใช้สั่งงานหลายอย่างต่อเนื่องในคำสั่งเดียว → รวบทุกขั้นเป็นแผนเดียว ผู้ใช้ยืนยันครั้งเดียว ทำต่อเนื่อง
 // แต่ละ step.kind ต้องเป็นชนิดงานจริงเดียวกับที่เครื่องมือ 'เสนอ' อื่น ๆ ใช้ (inventory_receive, pos_create_sale, ฯลฯ)
@@ -1681,6 +1713,7 @@ export function toolRegistry(): AiTool[] {
     kanbanCreateBoard,
     kanbanCreateCard,
     recordExpense,
+    scheduleTask,
     voidSale,
     // Phase B1 action — เงินเดิน (เปิดบิล / จองบริการ / จองห้อง / บัตรคิว / ยืนยันออเดอร์)
     posCreateSale,

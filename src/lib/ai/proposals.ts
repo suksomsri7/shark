@@ -30,6 +30,7 @@ import * as rentalSvc from "@/lib/modules/rental/service";
 import * as approvalSvc from "@/lib/modules/approval/service";
 import * as accountFacade from "@/lib/modules/account";
 import { createSystem } from "@/lib/modules/system/service";
+import * as scheduledSvc from "./scheduled";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 
 export type ProposalKind =
@@ -60,6 +61,8 @@ export type ProposalKind =
   | "rental_create_booking"
   | "approval_decide"
   | "inventory_consume"
+  // ── agentic-3: ตั้งงานประจำให้ผู้ช่วย AI (NORMAL — ยืนยันชั้นเดียว) ──
+  | "ai_schedule_task"
   // ── destructive (ลบ/void/ยกเลิก — ต้องยืนยัน 2 ชั้น) ──
   | "void_sale"
   | "cancel_appointment"
@@ -109,6 +112,8 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   rental_create_booking: { module: "rental", action: "rental.booking.create" },
   approval_decide: { module: "approval", action: "approval.request.decide" },
   inventory_consume: { module: "inventory", action: "inventory.movement.consume" },
+  // agentic-3 — ตั้งงานประจำผู้ช่วย AI (module ai · action เฉพาะ AI schedule)
+  ai_schedule_task: { module: "ai", action: "ai.schedule.create" },
   // destructive — action string ตรงกับปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
   void_sale: { module: "pos", action: "pos.sale.void" },
   cancel_appointment: { module: "booking", action: "booking.appointment.setStatus" },
@@ -186,6 +191,7 @@ type ApprovalDecidePayload = {
   note?: string;
 };
 type InventoryConsumePayload = { sku: string; qty: number; note?: string };
+type AiScheduleTaskPayload = { instruction: string; hourBkk: number };
 type VoidSalePayload = { saleId: string };
 type CancelAppointmentPayload = { appointmentId: string };
 type CancelReservationPayload = { reservationId: string; reason?: string };
@@ -972,6 +978,17 @@ async function dispatch(
       },
     );
     return `ตัดสินค้า "${item.name}" ออก ${qty} ${item.unitLabel} เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "ai_schedule_task") {
+    const p = payload as AiScheduleTaskPayload;
+    // createTask ตรวจ instruction ว่าง / hour นอกช่วง / เกินเพดาน 10 เอง → โยน error ไทย (→ FAILED)
+    await scheduledSvc.createTask(
+      { tenantId },
+      { instruction: String(p.instruction ?? "").trim(), hourBkk: Math.round(Number(p.hourBkk)) },
+    );
+    const hh = String(Math.round(Number(p.hourBkk))).padStart(2, "0");
+    return `ตั้งงานประจำให้ผู้ช่วยทำทุกวันเวลา ${hh}:00 น. เรียบร้อยแล้ว — ผลจะส่งเป็นการแจ้งเตือนให้อ่าน`;
   }
 
   throw new Error("ไม่รู้จักประเภทข้อเสนอนี้");
