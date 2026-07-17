@@ -46,7 +46,7 @@ export function aiEnabled(): boolean {
  */
 export async function sendMessage(
   ctx: Ctx,
-  input: { conversationId?: string; text: string },
+  input: { conversationId?: string; text: string; imageUrls?: string[] },
   deps?: { provider?: AiProvider },
 ): Promise<SendResult> {
   const text = input.text.trim();
@@ -98,7 +98,12 @@ export async function sendMessage(
         .map((m) => ({ role: m.role === "USER" ? ("user" as const) : ("assistant" as const), content: m.content })),
       HISTORY_MAX_CHARS,
     ),
-    { role: "user", content: text },
+    // แนบรูปเข้ากับข้อความ user (ส่งเข้าโมเดล vision inline) — ไม่ persist รูปใน DB
+    {
+      role: "user",
+      content: text,
+      ...(input.imageUrls && input.imageUrls.length > 0 ? { imageUrls: input.imageUrls } : {}),
+    },
   ];
 
   // ── agent loop ── ส่ง tools ทุกรอบ · LLM ขอเรียกเครื่องมือ → รัน (read-only) แล้วป้อนผลกลับรอบถัดไป

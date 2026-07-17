@@ -693,6 +693,45 @@ const kanbanCreateCard: AiTool = {
   },
 };
 
+// ── 16) record_expense — เสนอบันทึกค่าใช้จ่าย/ใบเสร็จเข้าบัญชี (feedback เจ้าของ #4) ──
+// ใช้หลัง AI อ่านใบเสร็จจากรูป → เสนอบันทึกเป็นค่าใช้จ่าย (DRAFT) ให้ user ยืนยันก่อน
+const recordExpense: AiTool = {
+  action: true,
+  def: {
+    name: "record_expense",
+    description:
+      "เสนอบันทึกค่าใช้จ่าย/ใบเสร็จเข้าบัญชี (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) เหมาะกับการอ่านใบเสร็จจากรูปแล้วบันทึกเป็นค่าใช้จ่าย ระบุ note (รายละเอียดว่าเป็นค่าอะไร), amountSatang (ยอดเงินรวมเป็นสตางค์ = บาท × 100), vendor (ชื่อร้าน/ผู้ขาย ถ้ามี) และ date (วันที่ในใบเสร็จ รูปแบบ YYYY-MM-DD ถ้ามี)",
+    parameters: {
+      type: "object",
+      properties: {
+        vendor: { type: "string", description: "ชื่อร้าน/ผู้ขายในใบเสร็จ (ถ้ามี)" },
+        note: { type: "string", description: "รายละเอียดค่าใช้จ่าย เช่น ค่าอะไร ซื้ออะไร" },
+        amountSatang: { type: "integer", minimum: 1, description: "ยอดเงินรวมเป็นสตางค์ (บาท × 100)" },
+        date: { type: "string", description: "วันที่ในใบเสร็จ รูปแบบ YYYY-MM-DD (ถ้ามี)" },
+      },
+      required: ["note", "amountSatang"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const note = String(a.note ?? "").trim();
+    const amountSatang = Math.round(Number(a.amountSatang));
+    if (!note) return JSON.stringify({ error: "ต้องระบุรายละเอียดค่าใช้จ่าย" });
+    if (!Number.isFinite(amountSatang) || amountSatang <= 0) {
+      return JSON.stringify({ error: "ต้องระบุยอดเงินที่ถูกต้อง (มากกว่า 0)" });
+    }
+    const vendor = String(a.vendor ?? "").trim();
+    const date = String(a.date ?? "").trim();
+    const payload: Record<string, unknown> = { note, amountSatang };
+    if (vendor) payload.vendor = vendor;
+    if (date) payload.date = date;
+    const baht = (amountSatang / 100).toLocaleString("th-TH");
+    const summary = `บันทึกค่าใช้จ่าย${vendor ? ` "${vendor}"` : ""} ${baht} บาท (${note})`;
+    return propose(ctx, "record_expense", summary, payload);
+  },
+};
+
 // หาชื่อพนักงานของใบลา (best-effort สำหรับ summary) — พังก็คืน null ไม่โยน
 async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<string | null> {
   try {
@@ -731,6 +770,7 @@ export function toolRegistry(): AiTool[] {
     hrCreateEmployee,
     couponCreate,
     kanbanCreateCard,
+    recordExpense,
   ];
 }
 

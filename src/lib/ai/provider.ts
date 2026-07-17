@@ -13,6 +13,8 @@ export type AiChatMessage = {
   content: string;
   toolCallId?: string;
   toolCalls?: AiToolCall[];
+  /** รูปแนบ (data URL หรือ http) — ส่งเข้าโมเดล vision inline ต่อข้อความนี้ (ไม่ persist ใน DB) */
+  imageUrls?: string[];
 };
 export type AiReply = {
   text: string;
@@ -32,7 +34,10 @@ const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 export class MockProvider implements AiProvider {
   async chat(messages: AiChatMessage[]): Promise<AiReply> {
     const last = [...messages].reverse().find((m) => m.role === "user");
-    const text = `รับทราบ: ${last?.content ?? ""}`.trim();
+    const imgCount = last?.imageUrls?.length ?? 0;
+    const base = `รับทราบ: ${last?.content ?? ""}`.trim();
+    // สะท้อนจำนวนรูปที่แนบมา (ยืนยันว่า imageUrls ไหลถึง provider จริง)
+    const text = imgCount > 0 ? `${base} (เห็นรูป ${imgCount} ใบ)` : base;
     const tokensIn = Math.ceil(messages.reduce((s, m) => s + m.content.length, 0) / 4);
     return { text, tokensIn, tokensOut: Math.ceil(text.length / 4), model: "mock" };
   }
@@ -49,6 +54,14 @@ export class OpenRouterProvider implements AiProvider {
     // แปลง message ภายในเป็นรูปแบบ OpenAI: assistant ที่มี toolCalls → tool_calls,
     // role:"tool" → { role:"tool", tool_call_id, content }
     const oaMessages = messages.map((m) => {
+      // vision: มีรูปแนบ → content เป็น array [{type:"text"},{type:"image_url",image_url:{url}}]
+      // (รูปแบบ OpenAI/OpenRouter · โมเดล anthropic รองรับ vision) — ใช้เฉพาะ user message
+      if (m.imageUrls && m.imageUrls.length > 0) {
+        const parts: unknown[] = [];
+        if (m.content) parts.push({ type: "text", text: m.content });
+        for (const url of m.imageUrls) parts.push({ type: "image_url", image_url: { url } });
+        return { role: m.role, content: parts };
+      }
       if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
         return {
           role: "assistant",
