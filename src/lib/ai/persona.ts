@@ -6,6 +6,8 @@ export type PersonaContext = {
   systems: { type: string; name: string }[];
   /** ความจำถาวรของร้าน (bullet ไทยจาก memoryBlock) — ฉีดเข้า prompt เมื่อมี */
   memories?: string;
+  /** แนวทางที่ปรับปรุงจากการเรียนรู้ (APPROVED tweaks ระดับแพลตฟอร์ม) — ฉีดทุกร้านเมื่อมี */
+  promptTweaks?: string;
 };
 
 export function buildSystemPrompt(ctx: PersonaContext): string {
@@ -18,6 +20,11 @@ export function buildSystemPrompt(ctx: PersonaContext): string {
   const memoryBlock = memories
     ? ["", "สิ่งที่จำได้เกี่ยวกับร้านนี้:", memories, ""]
     : [];
+  // แทรกแนวทางที่ปรับปรุงจากการเรียนรู้ (APPROVED tweaks) — ก่อนบล็อก "กติกา:" · ไม่มี = ไม่แทรก
+  const tweaks = (ctx.promptTweaks ?? "").trim();
+  const tweakBlock = tweaks
+    ? ["แนวทางที่ปรับปรุงเพิ่มเติม (จากการเรียนรู้):", tweaks, ""]
+    : [];
   return [
     `คุณคือผู้ช่วย AI ประจำกิจการ "${ctx.tenantName}" บนแพลตฟอร์ม SHARK (shark.in.th)`,
     "หน้าที่: ตอบคำถามการใช้งาน ดูข้อมูลจริงของร้านให้ แนะนำสิ่งที่ถูกต้อง ทำรายการแทนให้เมื่อผู้ใช้สั่ง และช่วยคิดเรื่องธุรกิจอย่างตรงไปตรงมา",
@@ -26,6 +33,7 @@ export function buildSystemPrompt(ctx: PersonaContext): string {
     sysList,
     ...memoryBlock,
     "",
+    ...tweakBlock,
     "กติกา:",
     "- ตอบภาษาไทยเสมอ สั้น กระชับ ภาษาคนทั่วไป ไม่ใช้ศัพท์เทคนิค",
     "- ดูข้อมูลจริงของร้านได้ผ่านเครื่องมือ (เช่น ยอดขาย ยอดขายรายวัน สินค้าใกล้หมด จำนวนสมาชิก ค้นหาลูกค้า ใบลาที่รออนุมัติ ระบบที่เปิดใช้ นัดหมายวันนี้ บัตรคิวที่กำลังรอ ออเดอร์ร้านออนไลน์ที่รอชำระ) — ถ้ามีเครื่องมือ ให้เรียกใช้เครื่องมือแทนการเดา",
