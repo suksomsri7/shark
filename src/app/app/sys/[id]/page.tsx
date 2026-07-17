@@ -10,6 +10,8 @@ import {
   resolvePointSystemId,
 } from "@/lib/modules/reward/service";
 import { RedeemForm } from "@/lib/modules/reward/forms";
+import { getPointSettings, listPointCustomers } from "@/lib/modules/point/service";
+import { PointSettingsForm, AdjustPointsForm } from "@/lib/modules/point/forms";
 import { CouponContent } from "@/lib/modules/coupon/ui";
 import { MeetingContent } from "@/lib/modules/meeting/ui";
 import { KanbanContent } from "@/lib/modules/kanban/ui";
@@ -159,23 +161,48 @@ async function MemberContent({ systemId }: { systemId: string }) {
 }
 
 async function PointContent({ systemId }: { systemId: string }) {
-  const ledger = await prisma.pointLedger.findMany({
-    where: { systemId },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-  });
+  const auth = await requireTenant();
+  const tenantId = auth.active.tenantId;
+  const [settings, customers, ledger] = await Promise.all([
+    getPointSettings(tenantId),
+    listPointCustomers(tenantId, systemId),
+    prisma.pointLedger.findMany({
+      where: { systemId },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    }),
+  ]);
+  const bahtPerPoint = settings.satangPerPoint / 100;
   return (
-    <Section title="รายการแต้มล่าสุด">
-      <p className="text-xs text-[color:var(--color-muted)]">อัตราสะสม: ทุก 25 บาท = 1 แต้ม</p>
-      <DataList
-        items={ledger.map((l) => ({
-          key: l.id,
-          primary: `${l.delta > 0 ? "+" : ""}${l.delta} แต้ม · ${l.reason ?? l.type}`,
-          trailing: <span className="text-xs text-[color:var(--color-muted)]">{fmt(l.createdAt)}</span>,
-        }))}
-        empty="ยังไม่มีรายการแต้ม — จะบันทึกอัตโนมัติเมื่อลูกค้าสะสมแต้ม"
-      />
-    </Section>
+    <>
+      <Section title="ตั้งค่าแต้ม" card>
+        <p className="text-xs text-[color:var(--color-muted)]">
+          {settings.active
+            ? `อัตราสะสมปัจจุบัน: ทุก ${bahtPerPoint} บาท = 1 แต้ม`
+            : "การสะสมแต้มถูกปิดอยู่ — ลูกค้าจะยังไม่ได้รับแต้มจากการซื้อ"}
+        </p>
+        <PointSettingsForm systemId={systemId} bahtPerPoint={bahtPerPoint} active={settings.active} />
+      </Section>
+
+      <Section title="ปรับ/แจกแต้ม">
+        {customers.length > 0 ? (
+          <AdjustPointsForm systemId={systemId} customers={customers} />
+        ) : (
+          <EmptyState text="ยังไม่มีสมาชิก — ลูกค้าจะเป็นสมาชิกอัตโนมัติเมื่อจอง/ซื้อในกิจการที่เชื่อมกับระบบแต้มนี้ แล้วจึงปรับ/แจกแต้มได้" />
+        )}
+      </Section>
+
+      <Section title="รายการแต้มล่าสุด">
+        <DataList
+          items={ledger.map((l) => ({
+            key: l.id,
+            primary: `${l.delta > 0 ? "+" : ""}${l.delta} แต้ม · ${l.reason ?? l.type}`,
+            trailing: <span className="text-xs text-[color:var(--color-muted)]">{fmt(l.createdAt)}</span>,
+          }))}
+          empty="ยังไม่มีรายการแต้ม — จะบันทึกอัตโนมัติเมื่อลูกค้าสะสมแต้ม"
+        />
+      </Section>
+    </>
   );
 }
 

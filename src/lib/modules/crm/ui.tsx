@@ -3,10 +3,12 @@ import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { MoneyText } from "@/components/ui/MoneyText";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import {
   getBoard,
   listContacts,
   listPendingActivities,
+  listActivities,
   forecast,
   type Ctx,
 } from "./service";
@@ -14,11 +16,25 @@ import {
   createContactAction,
   createDealAction,
   moveDealAction,
+  addActivityAction,
   completeActivityAction,
   issueQuotationAction,
 } from "./actions";
 
 const muted = "text-[color:var(--color-muted)]";
+
+// ประเภทงานติดตาม (ไทยชาวบ้าน) — ตรงกับ CrmActivityType ใน schema
+const ACTIVITY_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "TASK", label: "งานทั่วไป" },
+  { value: "CALL", label: "โทรหา" },
+  { value: "MEETING", label: "นัดพบ" },
+  { value: "LINE", label: "ทัก LINE" },
+  { value: "EMAIL", label: "ส่งอีเมล" },
+  { value: "NOTE", label: "บันทึกโน้ต" },
+];
+const ACTIVITY_TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  ACTIVITY_TYPE_OPTIONS.map((o) => [o.value, o.label]),
+);
 
 // สถานะวงจรลูกค้า (ไทย) — LEAD/PROSPECT อยู่ระหว่างทาง(เทา) · CUSTOMER สำเร็จ(ดำ) · LOST เสีย(แดง)
 const LIFECYCLE_LABEL: Record<string, string> = {
@@ -38,10 +54,11 @@ export async function CrmContent({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  const [board, contacts, pending, forecastSatang] = await Promise.all([
+  const [board, contacts, pending, activities, forecastSatang] = await Promise.all([
     getBoard(ctx),
     listContacts(ctx),
     listPendingActivities(ctx),
+    listActivities(ctx, {}),
     forecast(ctx),
   ]);
 
@@ -126,6 +143,70 @@ export async function CrmContent({ systemId }: { systemId: string }) {
                           </form>
                         )}
                       </div>
+
+                      {/* งานติดตามของดีลนี้ + ฟอร์มเพิ่มงาน */}
+                      {(() => {
+                        const pendingHere = activities.pending.filter((a) => a.dealId === deal.id);
+                        const doneHere = activities.done.filter((a) => a.dealId === deal.id);
+                        return (
+                          <div className="flex flex-col gap-1.5 border-t pt-2">
+                            {pendingHere.map((a) => (
+                              <div key={a.id} className="flex items-start justify-between gap-2 text-xs">
+                                <span className="min-w-0">
+                                  <span className="block truncate">
+                                    {ACTIVITY_TYPE_LABEL[a.type] ?? a.type} · {a.title}
+                                  </span>
+                                  {a.dueAt && (
+                                    <span className={`block ${muted}`}>ครบกำหนด {fmtDue(a.dueAt)}</span>
+                                  )}
+                                </span>
+                                <form action={completeActivityAction}>
+                                  <input type="hidden" name="systemId" value={systemId} />
+                                  <input type="hidden" name="activityId" value={a.id} />
+                                  <SubmitButton variant="ghost" className="!px-2 !py-1 !text-xs" pendingText="…">
+                                    เสร็จแล้ว
+                                  </SubmitButton>
+                                </form>
+                              </div>
+                            ))}
+                            {doneHere.map((a) => (
+                              <div key={a.id} className={`text-xs line-through ${muted}`}>
+                                {ACTIVITY_TYPE_LABEL[a.type] ?? a.type} · {a.title}
+                              </div>
+                            ))}
+                            {pendingHere.length === 0 && doneHere.length === 0 && (
+                              <p className={`text-[11px] ${muted}`}>
+                                ยังไม่มีงานติดตาม — เพิ่มด้านล่างเพื่อไม่ให้ลืมตามลูกค้า
+                              </p>
+                            )}
+
+                            <form action={addActivityAction} className="mt-1 flex flex-col gap-1">
+                              <input type="hidden" name="systemId" value={systemId} />
+                              <input type="hidden" name="dealId" value={deal.id} />
+                              <input type="hidden" name="contactId" value={deal.contactId} />
+                              <div className="flex gap-1">
+                                <select name="type" defaultValue="TASK" className="input min-w-0 flex-1 text-xs">
+                                  {ACTIVITY_TYPE_OPTIONS.map((o) => (
+                                    <option key={o.value} value={o.value}>
+                                      {o.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input name="dueAt" type="date" className="input min-w-0 flex-1 text-xs" />
+                              </div>
+                              <input
+                                name="title"
+                                required
+                                placeholder="เช่น โทรถามความคืบหน้า"
+                                className="input text-xs"
+                              />
+                              <SubmitButton variant="ghost" className="!py-1.5 !text-xs">
+                                + เพิ่มงานติดตาม
+                              </SubmitButton>
+                            </form>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                   {dealsHere.length === 0 && (

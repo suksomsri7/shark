@@ -23,6 +23,8 @@ import {
   fulfillRedemption,
   cancelRedemption,
 } from "@/lib/modules/reward/service";
+import { setPointSettings, adjustPoints } from "@/lib/modules/point/service";
+import { randomUUID } from "crypto";
 
 export type AddSystemState = { status: "idle" } | { status: "error"; message: string };
 
@@ -189,6 +191,86 @@ export async function redeemRewardAction(
   if (!res.ok) return { status: "error", message: res.reason };
   revalidatePath(`/app/sys/${systemId}`);
   return { status: "ok", code: res.code };
+}
+
+// ── ระบบแต้ม (WO Wave1-D): ตั้งอัตราสะสม + ปรับ/แจกแต้มมือ — assertCan module "point" ──
+function assertPointCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "point", action },
+  );
+}
+
+export type PointSettingsState =
+  | { status: "idle" }
+  | { status: "ok" }
+  | { status: "error"; message: string };
+
+// ตั้งอัตราสะสม — UI รับเป็น "บาทต่อ 1 แต้ม" → แปลง ×100 เป็นสตางค์ + เปิด/ปิดสะสม
+export async function setPointSettingsAction(
+  _prev: PointSettingsState,
+  formData: FormData,
+): Promise<PointSettingsState> {
+  const auth = await requireTenant();
+  assertPointCan(auth, "point.settings.update");
+  const systemId = String(formData.get("systemId") ?? "").trim();
+  const bahtRaw = String(formData.get("bahtPerPoint") ?? "").trim();
+  const baht = Number(bahtRaw);
+  if (!Number.isFinite(baht) || baht < 0.01) {
+    return { status: "error", message: "ใส่จำนวนบาทต่อ 1 แต้ม อย่างน้อย 0.01 บาท" };
+  }
+  const satangPerPoint = Math.round(baht * 100);
+  const active = formData.get("active") === "on";
+  try {
+    await setPointSettings(auth.active.tenantId, { satangPerPoint, active });
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "บันทึกไม่สำเร็จ" };
+  }
+  revalidatePath(`/app/sys/${systemId}`);
+  return { status: "ok" };
+}
+
+export type AdjustPointsState =
+  | { status: "idle" }
+  | { status: "ok"; balance: number }
+  | { status: "error"; message: string };
+
+// ปรับ/แจกแต้มมือให้สมาชิก — mode grant(+)/deduct(-) · idempotencyKey ใหม่ทุกครั้ง (แต่ละครั้ง = รายการใหม่)
+export async function adjustPointsAction(
+  _prev: AdjustPointsState,
+  formData: FormData,
+): Promise<AdjustPointsState> {
+  const auth = await requireTenant();
+  assertPointCan(auth, "point.adjust.create");
+  const systemId = String(formData.get("systemId") ?? "").trim();
+  const customerId = String(formData.get("customerId") ?? "").trim();
+  const mode = String(formData.get("mode") ?? "grant");
+  const amount = Number(String(formData.get("amount") ?? "").trim());
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!systemId) return { status: "error", message: "ไม่พบระบบแต้ม" };
+  if (!customerId) return { status: "error", message: "เลือกสมาชิกก่อน" };
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return { status: "error", message: "ใส่จำนวนแต้มเป็นจำนวนเต็มมากกว่า 0" };
+  }
+  const delta = mode === "deduct" ? -amount : amount;
+  try {
+    const res = await adjustPoints({
+      tenantId: auth.active.tenantId,
+      systemId,
+      customerId,
+      delta,
+      reason: reason || undefined,
+      idempotencyKey: `manual-${systemId}-${customerId}-${randomUUID()}`,
+    });
+    revalidatePath(`/app/sys/${systemId}`);
+    return { status: "ok", balance: res.balance };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "ปรับแต้มไม่สำเร็จ" };
+  }
 }
 
 // ทำเครื่องหมาย "รับของแล้ว"

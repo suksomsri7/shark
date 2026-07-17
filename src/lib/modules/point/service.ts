@@ -197,6 +197,103 @@ export async function getBalance(systemId: string, customerId: string): Promise<
   return balanceIn(prisma, systemId, customerId);
 }
 
+// ── ตั้งค่าอัตราสะสม (tenant-scoped) ──
+// อ่านค่าจริง (สร้าง default ให้ถ้ายังไม่มี) — UI ใช้ prefill ฟอร์ม
+export async function getPointSettings(tenantId: string) {
+  return getSettings(prisma, tenantId);
+}
+
+// บันทึกอัตราสะสม: satangPerPoint = จำนวนสตางค์ที่ใช้จ่าย = 1 แต้ม (25 บาท=1แต้ม → 2500)
+// validate ≥ 1 (จำนวนเต็มสตางค์) · find→update/create (ห้าม upsert ตามกติกา)
+export async function setPointSettings(
+  tenantId: string,
+  input: { satangPerPoint: number; active: boolean },
+) {
+  const spp = Math.round(input.satangPerPoint);
+  if (!Number.isFinite(spp) || spp < 1) {
+    throw new Error("อัตราสะสมต้องเป็นจำนวนเต็มสตางค์อย่างน้อย 1");
+  }
+  const existing = await prisma.pointSettings.findUnique({ where: { tenantId } });
+  if (existing) {
+    return prisma.pointSettings.update({
+      where: { tenantId },
+      data: { satangPerPoint: spp, active: input.active },
+    });
+  }
+  return prisma.pointSettings.create({
+    data: { tenantId, satangPerPoint: spp, active: input.active },
+  });
+}
+
+// ── ปรับ/แจกแต้มด้วยมือ (พนักงาน) — type ADJUST ──
+// delta > 0 = แจก · delta < 0 = หัก (กันแต้มติดลบ) · idempotent ผ่าน key (คีย์เดิมไม่เบิ้ล)
+export async function adjustPoints(
+  input: {
+    tenantId: string;
+    systemId: string;
+    customerId: string;
+    unitId?: string;
+    delta: number;
+    reason?: string;
+    idempotencyKey: string;
+  },
+  client: Client = prisma,
+): Promise<{ balance: number }> {
+  if (!Number.isInteger(input.delta) || input.delta === 0) {
+    throw new Error("จำนวนแต้มต้องเป็นจำนวนเต็มที่ไม่เท่ากับ 0");
+  }
+  return withTx(client, async (tx) => {
+    // ยิงซ้ำคีย์เดิม → คืนยอดปัจจุบัน ไม่ทำรายการใหม่ (กันเบิ้ล + กัน guard พลาดตอน re-run)
+    const dup = await tx.pointLedger.findUnique({
+      where: {
+        tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey },
+      },
+    });
+    if (dup) return { balance: await balanceIn(tx, input.systemId, input.customerId) };
+    if (input.delta < 0) {
+      const cur = await balanceIn(tx, input.systemId, input.customerId);
+      if (cur + input.delta < 0) throw new Error("แต้มคงเหลือไม่พอสำหรับการหัก");
+    }
+    const balance = await applyDelta(tx, {
+      tenantId: input.tenantId,
+      systemId: input.systemId,
+      customerId: input.customerId,
+      unitId: input.unitId,
+      delta: input.delta,
+      type: "ADJUST",
+      reason: input.reason || (input.delta > 0 ? "แจกแต้มโดยพนักงาน" : "หักแต้มโดยพนักงาน"),
+      idempotencyKey: input.idempotencyKey,
+    });
+    return { balance };
+  });
+}
+
+// ── สมาชิกที่ปรับแต้มในระบบแต้มนี้ได้ — จากระบบสมาชิก (MEMBER) ที่ผูก unit เดียวกับระบบแต้ม ──
+// pattern เดียวกับ reward.listRewardCustomers (แต่ resolve จากฝั่งระบบแต้ม)
+export async function listPointCustomers(
+  tenantId: string,
+  pointSystemId: string,
+): Promise<{ id: string; name: string | null; memberCode: string; phone: string | null }[]> {
+  const pointUnits = await prisma.appSystemUnit.findMany({
+    where: { tenantId, systemId: pointSystemId },
+    select: { unitId: true },
+  });
+  if (pointUnits.length === 0) return [];
+  const memberLinks = await prisma.appSystemUnit.findMany({
+    where: { tenantId, type: "MEMBER", unitId: { in: pointUnits.map((u) => u.unitId) } },
+    select: { systemId: true },
+  });
+  const memberSystemIds = [...new Set(memberLinks.map((m) => m.systemId))];
+  if (memberSystemIds.length === 0) return [];
+  const rows = await prisma.customer.findMany({
+    where: { tenantId, memberSystemId: { in: memberSystemIds } },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+    select: { id: true, name: true, memberCode: true, phone: true },
+  });
+  return rows.map((c) => ({ ...c, memberCode: c.memberCode ?? "" }));
+}
+
 // รวมแต้มของลูกค้า จากระบบแต้มที่ผูกกับ unit เดียวกับระบบสมาชิกของลูกค้า
 export async function getCustomerPoints(
   tenantId: string,

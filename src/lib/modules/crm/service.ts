@@ -1,5 +1,5 @@
 import { tenantDb } from "@/lib/core/db";
-import type { CrmActivityType } from "@prisma/client";
+import type { CrmActivityType, Prisma } from "@prisma/client";
 import {
   DEFAULT_PIPELINE,
   dealStateForStage,
@@ -224,6 +224,30 @@ export async function listPendingActivities(ctx: Ctx, take = 50) {
     include: { contact: true, deal: true },
     take,
   });
+}
+
+// งานติดตามของดีล/ผู้ติดต่อ (ทั้งหมด) — แยก ค้าง(pending)/เสร็จ(done)
+// ค้างเรียงตามกำหนดนัด(dueAt) · เสร็จเรียงล่าสุดก่อน · ไม่ระบุ filter = ทั้งระบบ
+export async function listActivities(
+  ctx: Ctx,
+  filter: { dealId?: string; contactId?: string } = {},
+  take = 200,
+) {
+  const where: Prisma.CrmActivityWhereInput = {};
+  if (filter.dealId) where.dealId = filter.dealId;
+  if (filter.contactId) where.contactId = filter.contactId;
+  const rows = await tenantDb(ctx).crmActivity.findMany({
+    where,
+    orderBy: [{ dueAt: "asc" }, { createdAt: "asc" }],
+    include: { contact: true, deal: true },
+    take,
+  });
+  return {
+    pending: rows.filter((r) => r.doneAt === null),
+    done: rows
+      .filter((r) => r.doneAt !== null)
+      .sort((a, b) => (b.doneAt?.getTime() ?? 0) - (a.doneAt?.getTime() ?? 0)),
+  };
 }
 
 // ── สะพาน CRM → บัญชี (WO-0010): Deal ออกใบเสนอราคาผ่าน account facade ──
