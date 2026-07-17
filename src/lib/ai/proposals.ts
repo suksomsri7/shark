@@ -10,7 +10,7 @@
 
 import { prisma, tenantDb } from "@/lib/core/db";
 import { assertCan, ForbiddenError, type MembershipCtx } from "@/lib/core/rbac";
-import type { Prisma, SystemType } from "@prisma/client";
+import type { Prisma, SystemType, UnitType, PosPayType } from "@prisma/client";
 import * as invSvc from "@/lib/modules/inventory/service";
 import * as hrSvc from "@/lib/modules/hr/service";
 import * as mktSvc from "@/lib/modules/marketing/service";
@@ -20,6 +20,8 @@ import * as kanbanSvc from "@/lib/modules/kanban/service";
 import * as posSvc from "@/lib/modules/pos/service";
 import * as bookingSvc from "@/lib/modules/booking/service";
 import * as hotelSvc from "@/lib/modules/hotel/service";
+import * as queueSvc from "@/lib/modules/queue/service";
+import * as shopSvc from "@/lib/modules/shop/service";
 import * as accountFacade from "@/lib/modules/account";
 import { createSystem } from "@/lib/modules/system/service";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
@@ -37,6 +39,12 @@ export type ProposalKind =
   | "kanban_create_card"
   | "kanban_create_board"
   | "record_expense"
+  // ── Phase B1: ทำแทนโมดูลเงินเดิน (proposal NORMAL ทั้งหมด) ──
+  | "pos_create_sale"
+  | "booking_create_appointment"
+  | "hotel_create_reservation"
+  | "queue_issue_ticket"
+  | "shop_confirm_order"
   // ── destructive (ลบ/void/ยกเลิก — ต้องยืนยัน 2 ชั้น) ──
   | "void_sale"
   | "cancel_appointment"
@@ -70,6 +78,12 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   kanban_create_board: { module: "kanban", action: "kanban.board.create" },
   // บันทึกค่าใช้จ่ายเข้าบัญชี → ใช้ action จริงของโมดูลบัญชี (สร้างเอกสาร) = account.doc.create
   record_expense: { module: "account", action: "account.doc.create" },
+  // Phase B1 — action string ตรงกับปุ่มจริง (ดู */actions.ts)
+  pos_create_sale: { module: "pos", action: "pos.sale.create" },
+  booking_create_appointment: { module: "booking", action: "booking.appointment.create" },
+  hotel_create_reservation: { module: "hotel", action: "hotel.reservation.create" },
+  queue_issue_ticket: { module: "queue", action: "queue.ticket.issue" },
+  shop_confirm_order: { module: "shop", action: "shop.order.confirm" },
   // destructive — action string ตรงกับปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
   void_sale: { module: "pos", action: "pos.sale.void" },
   cancel_appointment: { module: "booking", action: "booking.appointment.setStatus" },
@@ -96,6 +110,30 @@ type CouponCreatePayload = {
 type KanbanCreateCardPayload = { title: string; detail?: string; boardName?: string };
 type KanbanCreateBoardPayload = { name: string; description?: string };
 type RecordExpensePayload = { vendor?: string; note: string; amountSatang: number; date?: string };
+type PosCreateSalePayload = {
+  unitName?: string;
+  lines: { name: string; qty: number; unitPriceSatang: number }[];
+  payType: "CASH" | "TRANSFER" | "PROMPTPAY";
+};
+type BookingCreateApptPayload = {
+  unitName?: string;
+  serviceName: string;
+  staffName?: string;
+  dateStr: string;
+  startMin: number;
+  customerName: string;
+  customerPhone: string;
+};
+type HotelCreateReservationPayload = {
+  unitName?: string;
+  roomTypeName: string;
+  guestName: string;
+  guestPhone?: string;
+  checkInDate: string;
+  checkOutDate: string;
+};
+type QueueIssueTicketPayload = { unitName?: string; typeName?: string; customerName?: string };
+type ShopConfirmOrderPayload = { orderCode: string };
 type VoidSalePayload = { saleId: string };
 type CancelAppointmentPayload = { appointmentId: string };
 type CancelReservationPayload = { reservationId: string; reason?: string };
@@ -444,6 +482,154 @@ async function dispatch(
     return `บันทึกค่าใช้จ่าย${vendor ? ` "${vendor}"` : ""} ${baht} บาท เข้าบัญชีเป็นฉบับร่างแล้ว — ตรวจแล้วออกเอกสารในระบบบัญชีได้เลย`;
   }
 
+  if (kind === "pos_create_sale") {
+    const p = payload as PosCreateSalePayload;
+    const system = await resolveSystem(tenantId, "POS");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบขายหน้าร้าน (POS)");
+    // resolve unit ที่ผูก POS ได้ (ทุก type) — หน่วยเดียวใช้เลย · หลายหน่วยไม่ระบุ = throw ไทย + รายชื่อ
+    const unit = await resolveUnit(tenantId, { unitName: p.unitName, label: "จุดขาย" });
+    const lines = (Array.isArray(p.lines) ? p.lines : []).map((l) => ({
+      name: String(l?.name ?? "").trim() || "รายการ",
+      qty: Math.round(Number(l?.qty)),
+      unitPriceSatang: Math.round(Number(l?.unitPriceSatang)),
+    }));
+    if (lines.length === 0) throw new Error("ไม่มีรายการสินค้าในบิล");
+    for (const l of lines) {
+      if (!Number.isFinite(l.qty) || l.qty <= 0) throw new Error(`จำนวนของ "${l.name}" ต้องมากกว่า 0`);
+      if (!Number.isFinite(l.unitPriceSatang) || l.unitPriceSatang < 0) throw new Error(`ราคาของ "${l.name}" ติดลบไม่ได้`);
+    }
+    const grand = lines.reduce((s, l) => s + l.unitPriceSatang * l.qty, 0);
+    let payType: PosPayType = "CASH";
+    if (p.payType === "TRANSFER") payType = "TRANSFER";
+    else if (p.payType === "PROMPTPAY") payType = "PROMPTPAY";
+    await posSvc.createSale({
+      tenantId,
+      unitId: unit.id,
+      systemId: system.id,
+      sourceModule: "AI",
+      sourceId: proposalId,
+      idempotencyKey: `ai-${proposalId}`, // execute ซ้ำ = กันโดยธรรมชาติ
+      lines,
+      payMethods: [{ type: payType, amountSatang: grand }],
+    });
+    const baht = (grand / 100).toLocaleString("th-TH");
+    return `เปิดบิลขาย ${baht} บาท ที่ "${unit.name}" เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "booking_create_appointment") {
+    const p = payload as BookingCreateApptPayload;
+    const unit = await resolveUnit(tenantId, { type: "BOOKING", unitName: p.unitName, label: "ร้านรับจองนัด" });
+    const wantSvc = String(p.serviceName ?? "").trim();
+    const services = await prisma.bookingService.findMany({
+      where: { tenantId, unitId: unit.id, active: true },
+      select: { id: true, name: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const service = services.find((s) => s.name.includes(wantSvc)) ?? (wantSvc ? undefined : services[0]);
+    if (!service) {
+      const list = services.map((s) => s.name).join(", ") || "ยังไม่มีบริการ";
+      throw new Error(`ไม่พบบริการ "${wantSvc}" — บริการที่มี: ${list}`);
+    }
+    const wantStaff = String(p.staffName ?? "").trim();
+    const staffs = await prisma.bookingStaff.findMany({
+      where: { tenantId, unitId: unit.id, active: true },
+      select: { id: true, name: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const staff = wantStaff ? staffs.find((s) => s.name.includes(wantStaff)) : staffs[0];
+    if (!staff) throw new Error(wantStaff ? `ไม่พบช่างชื่อ "${wantStaff}"` : "ยังไม่มีช่างที่พร้อมรับงาน");
+    const res = await bookingSvc.createAppointment({
+      tenantId,
+      unitId: unit.id,
+      serviceId: service.id,
+      staffId: staff.id,
+      dateStr: String(p.dateStr ?? ""),
+      startMin: Math.round(Number(p.startMin)),
+      customerName: String(p.customerName ?? "").trim() || "ลูกค้า",
+      customerPhone: String(p.customerPhone ?? "").trim(),
+      source: "STAFF",
+    });
+    if (!res.ok) throw new Error(res.reason);
+    return `จองนัด "${service.name}" ให้ ${String(p.customerName ?? "").trim() || "ลูกค้า"} กับ ${staff.name} เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "hotel_create_reservation") {
+    const p = payload as HotelCreateReservationPayload;
+    const unit = await resolveUnit(tenantId, { type: "HOTEL", unitName: p.unitName, label: "โรงแรม/ที่พัก" });
+    const wantRt = String(p.roomTypeName ?? "").trim();
+    const roomTypes = await prisma.hotelRoomType.findMany({
+      where: { tenantId, unitId: unit.id, active: true },
+      select: { id: true, name: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const rt = roomTypes.find((r) => r.name.includes(wantRt)) ?? (wantRt ? undefined : roomTypes[0]);
+    if (!rt) {
+      const list = roomTypes.map((r) => r.name).join(", ") || "ยังไม่มีประเภทห้อง";
+      throw new Error(`ไม่พบประเภทห้อง "${wantRt}" — ประเภทห้องที่มี: ${list}`);
+    }
+    // ยังไม่มีห้องจริงในประเภทนี้ → เปิดห้องแรกให้อัตโนมัติ (ผ่าน service เดิม) แล้วค่อยจอง
+    const roomCount = await prisma.hotelRoom.count({
+      where: { tenantId, unitId: unit.id, roomTypeId: rt.id, active: true },
+    });
+    if (roomCount === 0) {
+      await hotelSvc.createRoom({ tenantId, unitId: unit.id, roomTypeId: rt.id, number: "1" });
+    }
+    const res = await hotelSvc.createReservation({
+      tenantId,
+      unitId: unit.id,
+      roomTypeId: rt.id,
+      guestName: String(p.guestName ?? "").trim() || "ผู้เข้าพัก",
+      guestPhone: p.guestPhone ? String(p.guestPhone).trim() : undefined,
+      checkInDate: String(p.checkInDate ?? ""),
+      checkOutDate: String(p.checkOutDate ?? ""),
+    });
+    if (!res.ok) throw new Error(res.reason);
+    return `จองห้อง "${rt.name}" ให้ ${String(p.guestName ?? "").trim() || "ผู้เข้าพัก"} เรียบร้อยแล้ว (รหัสจอง ${res.code})`;
+  }
+
+  if (kind === "queue_issue_ticket") {
+    const p = payload as QueueIssueTicketPayload;
+    const unit = await resolveUnit(tenantId, { type: "QUEUE", unitName: p.unitName, label: "จุดออกบัตรคิว" });
+    const wantType = String(p.typeName ?? "").trim();
+    const types = await prisma.queueType.findMany({
+      where: { tenantId, unitId: unit.id, status: "ACTIVE" },
+      select: { id: true, name: true },
+      orderBy: { priority: "desc" },
+    });
+    const qType = wantType ? types.find((t) => t.name.includes(wantType)) : types[0];
+    if (!qType) {
+      const list = types.map((t) => t.name).join(", ") || "ยังไม่มีประเภทคิว";
+      throw new Error(wantType ? `ไม่พบประเภทคิว "${wantType}" — ที่มี: ${list}` : "ยังไม่มีประเภทคิวในจุดนี้");
+    }
+    const customerName = String(p.customerName ?? "").trim();
+    const res = await queueSvc.issueTicket({
+      tenantId,
+      unitId: unit.id,
+      typeId: qType.id,
+      channel: "STAFF",
+      contact: customerName ? { name: customerName } : undefined,
+      actorType: "STAFF",
+    });
+    if (!res.ok) throw new Error(res.reason);
+    return `ออกบัตรคิว ${res.ticket.number} (${qType.name})${customerName ? ` ให้ ${customerName}` : ""} เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "shop_confirm_order") {
+    const p = payload as ShopConfirmOrderPayload;
+    const code = String(p.orderCode ?? "").trim();
+    if (!code) throw new Error("ต้องระบุรหัสออเดอร์");
+    // หาออเดอร์จาก code ทุก unit ของ tenant (code รันต่อ unit) — mutate จริงผ่าน shopSvc.confirmOrderPaid
+    const order = await prisma.shopOrder.findFirst({
+      where: { tenantId, code },
+      select: { id: true, unitId: true, status: true },
+    });
+    if (!order) throw new Error(`ไม่พบออเดอร์รหัส ${code}`);
+    if (order.status !== "PENDING_PAYMENT") throw new Error(`ออเดอร์ ${code} ไม่ได้อยู่ในสถานะรอชำระ (สถานะปัจจุบัน: ${order.status})`);
+    const res = await shopSvc.confirmOrderPaid({ tenantId, unitId: order.unitId }, order.id);
+    if (!res.ok) throw new Error(`ยืนยันรับเงินออเดอร์ ${code} ไม่สำเร็จ`);
+    return `ยืนยันรับเงินออเดอร์ ${code} เรียบร้อยแล้ว — บันทึกเป็นยอดขายให้อัตโนมัติ`;
+  }
+
   if (kind === "void_sale") {
     const p = payload as VoidSalePayload;
     const saleId = String(p.saleId ?? "").trim();
@@ -503,6 +689,30 @@ async function dispatch(
   }
 
   throw new Error("ไม่รู้จักประเภทข้อเสนอนี้");
+}
+
+// resolve หน่วยธุรกิจ (BusinessUnit) ที่จะทำรายการ — Phase B1
+// - type ไม่ระบุ = ทุกประเภท (เช่น POS ผูกกับหน่วยประเภทไหนก็ได้) · ระบุ = กรองเฉพาะประเภทนั้น
+// - ระบุ unitName → match ชื่อบางส่วน (contains) หรือชื่อตรง · ไม่เจอ = throw ไทย + รายชื่อที่มี
+// - ไม่ระบุ unitName และมีหน่วยเดียว → ใช้เลย · หลายหน่วย → throw ไทยชวนระบุ + รายชื่อ (LLM เอาไป ask_clarify ต่อ)
+async function resolveUnit(
+  tenantId: string,
+  opts: { type?: UnitType; unitName?: string; label: string },
+): Promise<{ id: string; name: string }> {
+  const units = await prisma.businessUnit.findMany({
+    where: { tenantId, status: "ACTIVE", ...(opts.type ? { type: opts.type } : {}) },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, name: true },
+  });
+  if (units.length === 0) throw new Error(`ยังไม่มี${opts.label}ในร้าน`);
+  const wanted = String(opts.unitName ?? "").trim();
+  if (wanted) {
+    const hit = units.find((u) => u.name.includes(wanted)) ?? units.find((u) => u.name.trim() === wanted);
+    if (!hit) throw new Error(`ไม่พบ${opts.label} "${wanted}" — ที่มี: ${units.map((u) => u.name).join(", ")}`);
+    return hit;
+  }
+  if (units.length === 1) return units[0];
+  throw new Error(`มีหลายสาขา กรุณาระบุ${opts.label} — ที่มี: ${units.map((u) => u.name).join(", ")}`);
 }
 
 // resolve ระบบของ tenant ตามประเภท (null = ยังไม่เปิด) — AppSystem เป็น tenant-scoped
