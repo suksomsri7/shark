@@ -661,6 +661,34 @@ const couponCreate: AiTool = {
   },
 };
 
+// ── 15b) kanban_create_board — เสนอสร้างบอร์ดงานใหม่ (feedback เจ้าของ 2026-07-17) ──
+const kanbanCreateBoard: AiTool = {
+  action: true,
+  def: {
+    name: "kanban_create_board",
+    description:
+      "เสนอการสร้างบอร์ดงานใหม่ในระบบบอร์ดงาน (Kanban) — ยังไม่ทำทันที สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน ระบุ name (ชื่อบอร์ด) และ description ถ้ามี · บอร์ดจะมีคอลัมน์เริ่มต้นให้พร้อมใช้ · ใช้เมื่อผู้ใช้ขอ 'สร้างบอร์ด/เปิดบอร์ดงานใหม่'",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "ชื่อบอร์ดงาน" },
+        description: { type: "string", description: "คำอธิบายบอร์ด (ถ้ามี)" },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const name = String(a.name ?? "").trim();
+    if (!name) return JSON.stringify({ error: "ต้องระบุชื่อบอร์ด" });
+    const description = String(a.description ?? "").trim();
+    const payload: Record<string, unknown> = { name };
+    if (description) payload.description = description;
+    return propose(ctx, "kanban_create_board", `สร้างบอร์ดงาน "${name}"`, payload);
+  },
+};
+
 // ── 15) kanban_create_card — เสนอเพิ่มการ์ดงานลงบอร์ด (WO-0045) ──
 const kanbanCreateCard: AiTool = {
   action: true,
@@ -769,6 +797,7 @@ export function toolRegistry(): AiTool[] {
     inventoryAdjust,
     hrCreateEmployee,
     couponCreate,
+    kanbanCreateBoard,
     kanbanCreateCard,
     recordExpense,
   ];

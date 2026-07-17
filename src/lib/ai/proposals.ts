@@ -32,6 +32,7 @@ export type ProposalKind =
   | "hr_create_employee"
   | "coupon_create"
   | "kanban_create_card"
+  | "kanban_create_board"
   | "record_expense";
 
 type Ctx = { tenantId: string };
@@ -50,6 +51,7 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   hr_create_employee: { module: "hr", action: "hr.employee.create" },
   coupon_create: { module: "coupon", action: "coupon.coupon.create" },
   kanban_create_card: { module: "kanban", action: "kanban.card.create" },
+  kanban_create_board: { module: "kanban", action: "kanban.board.create" },
   // บันทึกค่าใช้จ่ายเข้าบัญชี → ใช้ action จริงของโมดูลบัญชี (สร้างเอกสาร) = account.doc.create
   record_expense: { module: "account", action: "account.doc.create" },
 };
@@ -71,6 +73,7 @@ type CouponCreatePayload = {
   usageLimit?: number;
 };
 type KanbanCreateCardPayload = { title: string; detail?: string; boardName?: string };
+type KanbanCreateBoardPayload = { name: string; description?: string };
 type RecordExpensePayload = { vendor?: string; note: string; amountSatang: number; date?: string };
 
 // ── สร้างข้อเสนอ (PENDING + TTL 24 ชม.) ──
@@ -339,6 +342,21 @@ async function dispatch(
     });
     if (!res.ok) throw new Error(res.reason);
     return `สร้างคูปอง "${code}" เรียบร้อยแล้ว`;
+  }
+
+  if (kind === "kanban_create_board") {
+    const p = payload as KanbanCreateBoardPayload;
+    const system = await resolveSystem(tenantId, "KANBAN");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบบอร์ดงาน (Kanban)");
+    const name = String(p.name ?? "").trim();
+    if (!name) throw new Error("ต้องระบุชื่อบอร์ด");
+    const board = await kanbanSvc.createBoard({
+      tenantId,
+      systemId: system.id,
+      name,
+      description: p.description ? String(p.description).trim() : null,
+    });
+    return `สร้างบอร์ด "${board.name}" เรียบร้อยแล้ว (มีคอลัมน์เริ่มต้นให้พร้อมใช้งาน)`;
   }
 
   if (kind === "kanban_create_card") {

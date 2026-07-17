@@ -31,7 +31,7 @@ try {
   };
   const reg = tools.toolRegistry();
   const names = reg.map((t) => t.def.name);
-  chk("AA-0.1", "registry 18 + ครบ 5 action ใหม่", reg.length === 18 && ["inventory_create_item", "inventory_adjust", "hr_create_employee", "coupon_create", "kanban_create_card"].every((n) => names.includes(n)), "18+ครบ", `${reg.length}`);
+  chk("AA-0.1", "registry ≥18 + ครบ 5 action ใหม่ (superset — tool ใหม่เพิ่มได้ ดู gate ข้อ 8)", reg.length >= 18 && ["inventory_create_item", "inventory_adjust", "hr_create_employee", "coupon_create", "kanban_create_card"].every((n) => names.includes(n)), "≥18+ครบ", `${reg.length}`);
 
   const t = await prisma.tenant.create({ data: { name: "QC ACT", slug: `qc-aa-${Date.now()}` } }); tid = t.id;
   const inv = await sys.createSystem(tid, "INVENTORY", "คลัง");
