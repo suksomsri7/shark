@@ -30,18 +30,35 @@ model BookingService {
 }
 
 model BookingStaff {
-  id        String   @id @default(cuid())
-  tenantId  String
-  unitId    String
-  name      String
-  active    Boolean  @default(true)
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  tenantId   String
+  unitId     String
+  name       String
+  employeeId String? // soft link → HrEmployee.id (ถ้าเลือกจากพนักงาน HR) · null = พิมพ์ชื่อเอง
+  active     Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   hours        BookingStaffHours[]
   appointments Appointment[]
 
+  @@index([tenantId, unitId])
+}
+
+// เวลาทำการของร้าน (ระดับ unit รายสัปดาห์) — ใช้เป็นกรอบช่องจองของทุกช่าง
+// weekday 0=อาทิตย์..6=เสาร์ · closed=true = วันหยุดร้าน (ไม่รับนัด)
+model BookingHours {
+  id        String   @id @default(cuid())
+  tenantId  String
+  unitId    String
+  weekday   Int
+  openMin   Int      @default(600) // 10:00
+  closeMin  Int      @default(1200) // 20:00
+  closed    Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+
+  @@unique([unitId, weekday])
   @@index([tenantId, unitId])
 }
 

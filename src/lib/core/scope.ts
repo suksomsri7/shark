@@ -172,6 +172,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   BookingService: unit,
   BookingStaff: unit,
   BookingStaffHours: unit,
+  BookingHours: unit,
   Appointment: unit,
   // Coupon
   Coupon: sys(),
