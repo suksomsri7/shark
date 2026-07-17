@@ -275,6 +275,14 @@ const ALLOWED_EDGES = new Set([
   "school→member",
   // chokepoint (WO-0060): Delivery ผูก shipment กับ ShopOrder (อ่านสถานะ order ผ่าน shop facade)
   "delivery→shop",
+  // chokepoint (WO-0052): Clinic เก็บเงิน→pos + จ่ายยา→inventory + resolve ระบบ + ผูกสมาชิก
+  "clinic→pos",
+  "clinic→inventory",
+  "clinic→system",
+  "clinic→member",
+  // chokepoint (WO-0049b): PO/ใบลา เข้าสายอนุมัติผ่าน approval facade
+  "inventory→approval",
+  "hr→approval",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

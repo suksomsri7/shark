@@ -1,0 +1,45 @@
+// Clinic (WO-0052) — ประวัติผู้ป่วยแบบเบา (PDPA: ข้อมูลเท่าที่จำเป็น · ลบร้าน = ลบตาม WO-0042) + visit + จ่ายยา + เก็บเงิน→C-2
+enum VisitStatus {
+  OPEN
+  BILLED
+  CANCELLED
+}
+
+model PatientRecord {
+  id         String   @id @default(cuid())
+  tenantId   String
+  unitId     String
+  name       String
+  phone      String
+  birthYear  Int?
+  allergies  String? // แพ้ยา/อาหาร
+  note       String?
+  customerId String? // ผูกระบบสมาชิก (ถ้ามี)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  visits ClinicVisit[]
+
+  @@index([tenantId, unitId])
+  @@index([unitId, phone])
+}
+
+model ClinicVisit {
+  id           String        @id @default(cuid())
+  tenantId     String
+  unitId       String
+  patientId    String
+  patient      PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  visitDate    DateTime      @default(now())
+  symptom      String
+  diagnosis    String?
+  feeSatang    Int           @default(0)
+  status       VisitStatus   @default(OPEN)
+  dispenseJson Json          @default("[]") // [{invItemId, name, qty}]
+  posSaleId    String? // เส้นเงิน C-2 ตอนเก็บเงิน
+  billedAt     DateTime?
+  createdAt    DateTime      @default(now())
+
+  @@index([tenantId, unitId, status])
+  @@index([patientId, visitDate])
+}

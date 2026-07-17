@@ -112,6 +112,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   Supplier: sys(),
   PurchaseOrder: sys(),
   PoLine: tenant, // ลูกของ PO — query ผ่าน poId + tenantId
+  // Clinic (WO-0052)
+  PatientRecord: unit,
+  ClinicVisit: unit,
   // School (WO-0051) + Delivery (WO-0060)
   SchoolCourse: unit,
   SchoolClass: unit,
