@@ -1,6 +1,50 @@
 import { prisma } from "@/lib/core/db";
 import { Prisma } from "@prisma/client";
 import type { KanbanBoard, KanbanCard, KanbanColumn } from "@prisma/client";
+import { emitOutbox } from "@/lib/core/outbox";
+import { drainAll } from "@/lib/outbox-consumers";
+
+// แจ้งเตือนเมื่อมอบหมายงาน (assignee ตั้งใหม่/เปลี่ยน) — ปิด "โมดูลเงียบ"
+// AppNotification tenant-wide (schema ไม่มี user targeting) → ระบุชื่อผู้รับใน body
+async function notifyAssignment(
+  tenantId: string,
+  systemId: string,
+  card: { id: string; title: string; boardId: string },
+  assigneeUserId: string,
+): Promise<void> {
+  const [board, membership] = await Promise.all([
+    prisma.kanbanBoard.findFirst({ where: { id: card.boardId, tenantId }, select: { name: true } }),
+    prisma.membership.findFirst({ where: { tenantId, userId: assigneeUserId }, include: { user: true } }),
+  ]);
+  const who = membership?.user.name ?? membership?.user.email ?? "พนักงาน";
+  await prisma.$transaction(async (tx) => {
+    await emitOutbox(tx, {
+      tenantId,
+      type: "kanban.card.assigned",
+      idempotencyKey: `kanban.assign.${card.id}.${assigneeUserId}`,
+      payload: { cardId: card.id, boardId: card.boardId, assigneeUserId },
+      systemId,
+    });
+    await tx.appNotification.create({
+      data: {
+        tenantId,
+        title: "ได้รับมอบหมายงาน",
+        body: `${who}: "${card.title}"${board ? ` · บอร์ด ${board.name}` : ""} · ดูงาน /app/sys/${systemId}/kanban/${card.boardId}`,
+      },
+    });
+  });
+  void drainAll().catch(() => {});
+}
+
+// งานของฉัน — การ์ด ACTIVE ที่มอบหมายให้ผู้ใช้ปัจจุบัน ข้ามทุกบอร์ด (เรียงตามกำหนดส่ง)
+export async function listMyCards(tenantId: string, systemId: string, userId: string) {
+  return prisma.kanbanCard.findMany({
+    where: { tenantId, systemId, assigneeUserId: userId, status: "ACTIVE" },
+    include: { board: { select: { name: true } }, column: { select: { name: true } } },
+    orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
+    take: 100,
+  });
+}
 
 // Kanban — บอร์ดงานภายในองค์กร. scope = feature: filter ด้วย tenantId + systemId เสมอ
 // ทุก mutation ตรวจ ownership ผ่าน tenantId + systemId (defense-in-depth) — ไม่พึ่ง tenantDb inject
@@ -150,7 +194,7 @@ export async function createCard(input: {
   const count = await prisma.kanbanCard.count({
     where: { columnId: col.id, tenantId: input.tenantId, systemId: input.systemId, status: "ACTIVE" },
   });
-  return prisma.kanbanCard.create({
+  const card = await prisma.kanbanCard.create({
     data: {
       tenantId: input.tenantId,
       systemId: input.systemId,
@@ -164,6 +208,11 @@ export async function createCard(input: {
       sortOrder: count,
     },
   });
+  // มอบหมายตั้งแต่สร้าง → แจ้งผู้รับ
+  if (input.assigneeUserId) {
+    await notifyAssignment(input.tenantId, input.systemId, card, input.assigneeUserId);
+  }
+  return card;
 }
 
 export async function updateCard(input: {
@@ -183,10 +232,21 @@ export async function updateCard(input: {
   if (input.dueAt !== undefined) data.dueAt = input.dueAt;
   if (input.labels !== undefined) data.labels = input.labels;
   if (Object.keys(data).length === 0) return;
+  // อ่าน assignee เดิมก่อน เพื่อแจ้งเฉพาะเมื่อ "เปลี่ยนผู้รับเป็นคนใหม่" (ไม่แจ้งซ้ำถ้าเดิมคนเดียวกัน)
+  const before = await prisma.kanbanCard.findFirst({
+    where: { id: input.cardId, tenantId: input.tenantId, systemId: input.systemId },
+    select: { id: true, title: true, boardId: true, assigneeUserId: true },
+  });
+  if (!before) return;
   await prisma.kanbanCard.updateMany({
     where: { id: input.cardId, tenantId: input.tenantId, systemId: input.systemId },
     data,
   });
+  const newAssignee = input.assigneeUserId;
+  if (newAssignee != null && newAssignee !== before.assigneeUserId) {
+    const title = input.title ?? before.title;
+    await notifyAssignment(input.tenantId, input.systemId, { id: before.id, title, boardId: before.boardId }, newAssignee);
+  }
 }
 
 export async function archiveCard(tenantId: string, systemId: string, cardId: string) {
