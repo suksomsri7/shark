@@ -137,6 +137,21 @@ export async function resolveTenantByHost(host: string): Promise<{ slug: string 
   return tenant ? { slug: tenant.slug } : null;
 }
 
+// ── host → path หน้าร้านเข้าใช้ทันที (WO-0065 · ADR A6 ทาง ก: resolve ที่ชั้น app) ──
+// custom domain ที่ ACTIVE → หน้าร้าน BusinessUnit ตัวแรก (ACTIVE, เรียง createdAt เก่าสุดก่อน)
+// คืน "/s/<tenantSlug>/<unitSlug>" · ไม่เจอ tenant / ยังไม่ ACTIVE / ไม่มี unit ACTIVE → null (ยังไม่มีอะไรให้โชว์)
+export async function hostEntryPath(host: string): Promise<string | null> {
+  const tenant = await resolveTenantByHost(host);
+  if (!tenant) return null;
+  const unit = await prisma.businessUnit.findFirst({
+    where: { tenant: { slug: tenant.slug }, status: "ACTIVE" },
+    orderBy: { createdAt: "asc" },
+    select: { slug: true },
+  });
+  if (!unit) return null;
+  return `/s/${tenant.slug}/${unit.slug}`;
+}
+
 // ── Vercel Domains API client จริง (จาก env) ──
 // SHARK_VERCEL_TOKEN + SHARK_VERCEL_PROJECT (+ SHARK_VERCEL_TEAM optional)
 export function realVercelClient(): VercelDomainClient {
