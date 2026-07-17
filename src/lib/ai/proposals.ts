@@ -71,7 +71,8 @@ type Ctx = { tenantId: string };
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 ชม.
 
 // kind ที่ "ลบข้อมูล/ยกเลิกถาวร" → risk=DESTRUCTIVE (ยืนยัน 2 ชั้นก่อนทำจริง)
-const DESTRUCTIVE_KINDS = new Set<ProposalKind>([
+// export เพื่อให้ AI Plan (plans.ts) ใช้คำนวณ hasDestructive ระดับแผน (ใช้ค่าเดียวกัน ไม่ซ้ำ logic)
+export const DESTRUCTIVE_KINDS = new Set<ProposalKind>([
   "void_sale",
   "cancel_appointment",
   "cancel_reservation",
@@ -295,6 +296,32 @@ export async function executeProposal(
     });
     return { ok: false, note };
   }
+}
+
+// ── kind ตรวจว่ารู้จักจริงไหม (มีใน KIND_ACCESS) — ใช้ตอนสร้างแผน (plans.ts) ปฏิเสธ kind ปลอม ──
+export function isKnownKind(kind: string): kind is ProposalKind {
+  return Object.prototype.hasOwnProperty.call(KIND_ACCESS, kind);
+}
+
+// ── รันงานหนึ่งชิ้น (kind) ด้วยสิทธิ์ของ "คนกด" — ห่อ assertCan (KIND_ACCESS) + dispatch เดิม ──
+// ใช้โดย AI Plan (plans.ts) เพื่อรันหลาย step ต่อเนื่องผ่าน dispatch ตัวเดียวกับ proposal เดี่ยว
+// refId = คีย์ idempotency/อ้างอิงต่อ step (เช่น plan-<planId>-<index>) · assertCan ไม่ผ่าน → โยน error ไทย
+export async function runKind(
+  m: MembershipCtx,
+  tenantId: string,
+  kind: ProposalKind,
+  payload: unknown,
+  refId?: string,
+): Promise<string> {
+  const access = KIND_ACCESS[kind];
+  if (!access) throw new Error("ไม่รู้จักประเภทงานนี้");
+  try {
+    assertCan(m, access);
+  } catch (e) {
+    if (e instanceof ForbiddenError) throw new Error("คุณยังไม่มีสิทธิ์ทำรายการนี้ ให้ผู้มีสิทธิ์เป็นผู้กดยืนยัน");
+    throw e;
+  }
+  return dispatch(tenantId, refId ?? `run-${kind}-${Date.now()}`, kind, payload, m);
 }
 
 // ── dispatch ตาม kind → service เดิม (คืนข้อความผลลัพธ์ภาษาไทย) ──
