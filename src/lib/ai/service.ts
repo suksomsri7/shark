@@ -3,8 +3,9 @@
 
 import { prisma, tenantDb } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
+import { recordSample } from "./dataset";
 import { buildSystemPrompt } from "./persona";
-import { dailyLimits, resolveProvider, type AiChatMessage, type AiProvider } from "./provider";
+import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage, type AiProvider } from "./provider";
 import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
 import { runTool, toolRegistry } from "./tools";
 
@@ -73,8 +74,11 @@ export async function sendMessage(
   const text = input.text.trim();
   if (!text) return { ok: false, error: "empty" };
 
-  // provider ฉีดได้ (ข้อสอบ) — ไม่งั้นเลือกจาก env
-  const provider = deps?.provider ?? resolveProvider();
+  // routing ชั้น 1: เลือกโมเดลตามเนื้อความ (env SHARK_AI_MODEL ตั้งไว้ = คืนตัวนั้นเสมอ)
+  // → ชั้น 2: resolveProvider ตาม tier · provider ฉีดได้ (ข้อสอบ) ไม่งั้นเลือกจาก env
+  const routedModel = pickModel(text, (input.imageUrls?.length ?? 0) > 0);
+  const tier = routedModel === FAST_MODEL ? "fast" : "smart";
+  const provider = deps?.provider ?? resolveProvider(tier);
   if (!provider) return { ok: false, error: "ai_disabled" };
 
   const db = tenantDb(ctx);
@@ -137,6 +141,7 @@ export async function sendMessage(
   let tokensOut = 0;
   let finalText = "";
   let clarify: Clarify | null = null;
+  const usedTools: { name: string; args: unknown }[] = []; // เครื่องมือที่ถูกเรียกจริงในเทิร์นนี้ (dataset)
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     let reply;
@@ -166,6 +171,7 @@ export async function sendMessage(
       }
       messages.push({ role: "assistant", content: reply.text ?? "", toolCalls: reply.toolCalls });
       for (const tc of reply.toolCalls) {
+        usedTools.push({ name: tc.name, args: tc.args });
         // ส่ง conversation.id เข้าไปด้วย — action tool ต้องใช้ผูก proposal กับบทสนทนา
         const result = await runTool(
           { tenantId: ctx.tenantId, conversationId: conversation.id },
@@ -208,6 +214,18 @@ export async function sendMessage(
       },
     }),
   ]);
+
+  // เก็บ dataset (ฐาน self-host) — best-effort เท่านั้น: ห้ามให้พังการตอบ · gate ด้วย env ภายใน
+  try {
+    await recordSample(ctx, {
+      userText: text,
+      toolCalls: usedTools,
+      replyText: finalText,
+      model: routedModel,
+    });
+  } catch {
+    // เก็บไม่ได้ = ข้าม (dataset เป็นงานเบื้องหลัง ไม่กระทบผู้ใช้)
+  }
 
   return {
     ok: true,
