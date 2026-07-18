@@ -40,7 +40,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         case "RESTAURANT":
           return [
             { href: `${b}/restaurant`, label: "หน้าร้าน" },
+            { href: `${b}/restaurant/order`, label: "คีย์ออเดอร์" },
             { href: `${b}/restaurant/menu`, label: "เมนู" },
+            { href: `${b}/restaurant/menu/options`, label: "ตัวเลือกเมนู" },
             { href: `${b}/restaurant/menu/stock`, label: "สต็อกเมนู" },
             { href: `${b}/restaurant/kds`, label: "ครัว" },
             { href: `${b}/restaurant/setup`, label: "ตั้งค่า" },
@@ -66,6 +68,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             { href: `${b}/booking/services`, label: "บริการ" },
             { href: `${b}/booking/staff`, label: "พนักงาน" },
             { href: `${b}/booking/hours`, label: "เวลาทำการ" },
+            { href: `${b}/booking/setup`, label: "ตั้งค่า" },
           ];
         default:
           return undefined; // RENTAL/SCHOOL/CLINIC = หน้าเดียว ไม่ต้องกาง
@@ -77,6 +80,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         return [
           { href: s, label: "ภาพรวม" },
           { href: `${s}/pos/register`, label: "ขายหน้าร้าน" },
+          { href: `${s}/pos/products`, label: "สินค้า/ราคา" },
           { href: `${s}/pos/sales`, label: "ประวัติบิล" },
           { href: `${s}/pos/close`, label: "ปิดวัน" },
         ];
@@ -90,6 +94,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/account/tax`, label: "ภาษี" },
           { href: `${s}/account/contacts`, label: "คู่ค้า" },
           { href: `${s}/account/aging`, label: "อายุหนี้" },
+          { href: `${s}/account/periods`, label: "งวดบัญชี" },
+          { href: `${s}/account/assets`, label: "สินทรัพย์" },
+          { href: `${s}/account/cheque`, label: "เช็ค" },
         ];
       default:
         return undefined; // INVENTORY/HR/MEMBER/… = render inline หน้าเดียว ไม่มี sub-route

@@ -241,6 +241,7 @@ async function PosContent({ systemId, tenantId }: { systemId: string; tenantId: 
         items={[
           { href: `/app/sys/${systemId}`, label: "ภาพรวม" },
           { href: `/app/sys/${systemId}/pos/register`, label: "ขาย" },
+          { href: `/app/sys/${systemId}/pos/products`, label: "สินค้า/ราคา" },
           { href: `/app/sys/${systemId}/pos/sales`, label: "ประวัติบิล" },
           { href: `/app/sys/${systemId}/pos/close`, label: "ปิดวัน" },
         ]}

@@ -693,6 +693,19 @@ export async function listItems(ctx: Ctx, take = 200) {
   });
 }
 
+// อ่านสินค้าตัวเดียว (scope tenant+system ผ่าน tenantDb) — null ถ้าไม่พบ/ข้ามระบบ
+export async function getItem(ctx: Ctx, itemId: string) {
+  return tenantDb(ctx).invItem.findFirst({ where: { id: itemId, archivedAt: null } });
+}
+
+// ผูกสินค้าในคลังกับ AccountProduct (สำหรับตั้งราคาขาย POS) — find→update (ไม่ใช่ upsert)
+export async function linkAccountProduct(ctx: Ctx, itemId: string, accountProductId: string): Promise<void> {
+  const db = tenantDb(ctx);
+  const item = await db.invItem.findFirst({ where: { id: itemId } });
+  if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+  await db.invItem.update({ where: { id: item.id }, data: { accountProductId } });
+}
+
 export async function recentMovements(ctx: Ctx, take = 30) {
   return tenantDb(ctx).invMovement.findMany({
     orderBy: { createdAt: "desc" },

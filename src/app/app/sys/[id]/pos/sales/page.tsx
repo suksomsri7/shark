@@ -37,6 +37,7 @@ export default async function PosSalesPage({ params }: { params: Promise<{ id: s
         items={[
           { href: `/app/sys/${id}`, label: "ภาพรวม" },
           { href: `/app/sys/${id}/pos/register`, label: "ขาย" },
+          { href: `/app/sys/${id}/pos/products`, label: "สินค้า/ราคา" },
           { href: `/app/sys/${id}/pos/sales`, label: "ประวัติบิล" },
           { href: `/app/sys/${id}/pos/close`, label: "ปิดวัน" },
         ]}

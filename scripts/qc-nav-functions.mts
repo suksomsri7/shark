@@ -8,8 +8,8 @@
 //   3. POS children มี "ขายหน้าร้าน" (register) + "ปิดวัน" (close)
 //   4. นับจำนวนระบบที่กาง children (ต้องเพิ่มจากเดิม 2 → ครบตามที่ตั้งใจ)
 
-import { readFileSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { join, resolve, relative } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const LAYOUT = join(ROOT, "src/app/app/layout.tsx");
@@ -140,7 +140,89 @@ chk(
   "MAJOR",
 );
 
+// ─── S5: completeness — ทุก page.tsx ที่ไม่ใช่ [param] ต้องอยู่ใน accordion ────
+// enumerate route จริงจาก fs ต่อระบบ แล้วเทียบกับ children ที่ประกาศ (declared ⊇ required)
+// ครอบคลุม: hotel/restaurant/shop/queue/ticket/booking (business) + POS (feature)
+// (ACCOUNT ยกเว้น — มี ~20 route กางเฉพาะฟังก์ชันหลัก)
+const APP = join(ROOT, "src/app/app");
+const BIZ_BASE = join(APP, "u/[unitSlug]");
+const POS_BASE = join(APP, "sys/[id]");
+
+// รวบรวม page.tsx ใต้ dir (recursive) → คืน rest path เทียบกับ baseForRest · ตัด segment ที่เป็น [param]
+function routesUnder(dir: string, baseForRest: string): string[] {
+  if (!existsSync(dir)) return [];
+  const out: string[] = [];
+  const walk = (d: string) => {
+    for (const name of readdirSync(d)) {
+      const full = join(d, name);
+      if (statSync(full).isDirectory()) {
+        if (/^\[.*\]$/.test(name)) continue; // ข้ามโฟลเดอร์ [param]
+        walk(full);
+      } else if (name === "page.tsx") {
+        const rel = relative(baseForRest, d); // "" = root · "restaurant/menu" ฯลฯ
+        out.push(rel === "" ? "" : "/" + rel.split("/").join("/"));
+      }
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+// declared: type → Set ของ rest ที่ประกาศใน accordion
+const declaredByType = new Map<string, Set<string>>();
+for (const c of cases) {
+  const set = declaredByType.get(c.type) ?? new Set<string>();
+  for (const token of c.hrefs) {
+    const rest = hrefToRest(token);
+    if (rest !== null) set.add(rest);
+  }
+  declaredByType.set(c.type, set);
+}
+
+// required: type → route จริงจาก fs
+const BIZ_COMPLETE: { type: string; dir: string }[] = [
+  { type: "HOTEL", dir: "hotel" },
+  { type: "RESTAURANT", dir: "restaurant" },
+  { type: "SHOP", dir: "shop" },
+  { type: "QUEUE", dir: "queue" },
+  { type: "TICKET", dir: "ticket" },
+  { type: "BOOKING", dir: "booking" },
+];
+const requiredByType = new Map<string, string[]>();
+for (const b of BIZ_COMPLETE) {
+  requiredByType.set(b.type, routesUnder(join(BIZ_BASE, b.dir), BIZ_BASE));
+}
+// POS: root overview (sys/[id]/page.tsx → "") + ทุกหน้าใต้ sys/[id]/pos
+{
+  const posRoot = existsSync(join(POS_BASE, "page.tsx")) ? [""] : [];
+  const posSub = routesUnder(join(POS_BASE, "pos"), POS_BASE); // "/pos/register" ฯลฯ
+  requiredByType.set("POS", [...posRoot, ...posSub]);
+}
+
+const incomplete: string[] = [];
+for (const [type, required] of requiredByType) {
+  const declared = declaredByType.get(type) ?? new Set<string>();
+  const missing = required.filter((r) => !declared.has(r));
+  if (missing.length > 0) {
+    incomplete.push(`${type}: ขาด ${missing.map((m) => m || "(ภาพรวม)").join(", ")}`);
+  }
+}
+chk(
+  "S5",
+  "accordion กางครบทุก sub-route จริง (completeness: hotel/restaurant/shop/queue/ticket/booking/POS)",
+  incomplete.length === 0,
+  `ไม่ครบ:\n     - ${incomplete.join("\n     - ")}`,
+  "CRITICAL",
+);
+
 // ─── สรุป ─────────────────────────────────────────────────────────────────────
+console.log("\n  ── completeness (route จริง vs accordion) ──");
+for (const [type, required] of requiredByType) {
+  const declared = declaredByType.get(type) ?? new Set<string>();
+  const covered = required.filter((r) => declared.has(r)).length;
+  console.log(`     ${type} · ${covered}/${required.length} route`);
+}
+
 console.log("\n  ── ระบบที่กาง children ──");
 for (const c of cases) {
   console.log(`     ${c.kind === "business" ? "🏢" : "⚙️ "} ${c.type} · ${c.hrefs.length} ฟังก์ชันย่อย`);

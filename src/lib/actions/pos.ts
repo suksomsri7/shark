@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import type { PosPayType } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { requireTenant, type Auth } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { createSale, closeDayCsv } from "@/lib/modules/pos/service";
-import { posUnitIsLinked, resolvePosLinks } from "@/lib/modules/pos/register";
+import { posUnitIsLinked, resolvePosLinks, setItemSalePrice } from "@/lib/modules/pos/register";
 import { getPaymentProfile } from "@/lib/payment/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
 import * as coupon from "@/lib/modules/coupon/service";
@@ -231,4 +232,37 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
   } catch (e) {
     return { status: "error", message: e instanceof Error ? e.message : "ขายไม่สำเร็จ ลองอีกครั้ง" };
   }
+}
+
+// ── ตั้งราคาขายต่อสินค้า (หน้า "สินค้า/ราคา") — ราคาบาทจากฟอร์ม → สตางค์ · redirect กลับพร้อม ?err/?ok ──
+// gate: ระบบต้องเป็น POS ของ tenant นี้ + สิทธิ์ pos.product.setPrice (OWNER/MANAGER ผ่าน · STAFF ต้องมี permission)
+export async function setItemSalePriceAction(formData: FormData): Promise<void> {
+  const systemId = String(formData.get("systemId") ?? "").trim();
+  const itemId = String(formData.get("itemId") ?? "").trim();
+  const priceRaw = String(formData.get("salePrice") ?? "").trim();
+
+  const auth = await requireTenant();
+  const tenantId = auth.active.tenantId;
+  const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { id: true } });
+  if (!sys) throw new Error("ไม่พบระบบขายนี้");
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "pos", action: "pos.product.setPrice" },
+  );
+
+  const base = `/app/sys/${systemId}/pos/products`;
+  const priceBaht = Number(priceRaw);
+  if (priceRaw === "" || !Number.isFinite(priceBaht) || priceBaht < 0) {
+    redirect(`${base}?err=${encodeURIComponent("กรอกราคาขายเป็นตัวเลขไม่ติดลบ")}`);
+  }
+  const res = await setItemSalePrice(tenantId, systemId, itemId, Math.round(priceBaht * 100));
+  if (!res.ok) redirect(`${base}?err=${encodeURIComponent(res.reason)}`);
+
+  revalidatePath(base);
+  revalidatePath(`/app/sys/${systemId}/pos/register`);
+  redirect(`${base}?ok=1`);
 }

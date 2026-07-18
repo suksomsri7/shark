@@ -37,6 +37,7 @@
     "wo:done": "tsx scripts/wo.mts done",
     "qc:pos": "tsx scripts/qc-pos-account.mts",
     "qc:pos-register": "tsx scripts/qc-pos-register.mts",
+    "qc:pos-products": "tsx scripts/qc-pos-products.mts",
     "qc:pos-inventory": "tsx scripts/qc-pos-inventory.mts",
     "qc:pos-closeday": "tsx scripts/qc-pos-closeday.mts",
     "qc:dna": "tsx scripts/qc-dna.mts",

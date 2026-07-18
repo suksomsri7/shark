@@ -13,6 +13,21 @@ import {
   setDocExternalRef,
   vatConfigOf,
 } from "./service";
+
+// ราคาขายสินค้า POS (master data — ไม่กระทบ GL) เปิดผ่าน facade ให้โมดูล pos เรียก
+export {
+  updateAccountProductSalePrice,
+  createAccountProductWithSalePrice,
+} from "./service";
+
+/** ระบบบัญชีที่ผูกกับ POS ระบบนี้ (systemId) — null = ยังไม่เชื่อมบัญชี */
+export async function posAccountSystemId(
+  tenantId: string,
+  posSystemId: string,
+): Promise<string | null> {
+  const link = await findAccountLinkForPos(tenantId, posSystemId);
+  return link?.systemId ?? null;
+}
 import { postExternalSale, reverseFor, type GlCtx } from "./gl";
 import { createExpenseDoc as createExpenseDocRaw } from "./expense";
 

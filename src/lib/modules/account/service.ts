@@ -437,6 +437,44 @@ export async function findAccountLinkForPos(
   });
 }
 
+// ─────────────────── ราคาขายสินค้า (master data — POS หน้า "สินค้า/ราคา") ───────────────────
+// ราคาขายเก็บที่ AccountProduct.salePrice เท่านั้น — เป็น master data ไม่กระทบ GL/ledger
+// (POS อ่านผ่าน register.posCatalog · หน้า "สินค้า/ราคา" เขียนผ่าน facade index → ที่นี่)
+
+/** อัปเดตราคาขายของ AccountProduct ที่มีอยู่ (scope tenant กันข้ามร้าน) — คืน true ถ้าอัปเดตแถวได้ */
+export async function updateAccountProductSalePrice(
+  tenantId: string,
+  productId: string,
+  salePriceSatang: number,
+): Promise<boolean> {
+  const r = await prisma.accountProduct.updateMany({
+    where: { id: productId, tenantId },
+    data: { salePrice: Math.max(0, Math.round(salePriceSatang)) },
+  });
+  return r.count > 0;
+}
+
+/**
+ * สร้าง AccountProduct ใหม่พร้อมราคาขาย (ผูกกับระบบบัญชี) — คืน id
+ * ⚠️ ไม่คัดลอก SKU จากคลัง (กันชน unique [systemId, sku]) · ชื่อ = ชื่อสินค้าในคลัง
+ */
+export async function createAccountProductWithSalePrice(
+  tenantId: string,
+  accountSystemId: string,
+  input: { name: string; salePriceSatang: number },
+): Promise<string> {
+  const p = await prisma.accountProduct.create({
+    data: {
+      tenantId,
+      systemId: accountSystemId,
+      name: input.name.trim() || "สินค้า",
+      type: "GOODS",
+      salePrice: Math.max(0, Math.round(input.salePriceSatang)),
+    },
+  });
+  return p.id;
+}
+
 /** อ่าน config VAT ของระบบบัญชี (default: จด VAT 7% = 700 bp) */
 export async function vatConfigOf(
   systemId: string,
