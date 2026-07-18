@@ -310,3 +310,13 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 - PDPA: ✅ auto-covered by design (model-driven tenantScopedModels — ไม่ต้องทำ)
 - follow-up ย่อย: restaurant createOrder idempotency · hotel no-show/edit · booking re-record-after-refund edge
 📋 แผนเต็ม + audit: ledger/FULLFUNCTION_PLAN.md + FULLFUNCTION_AUDIT.json · ความคืบหน้าแผน ≈ 63%
+
+## 🌙 RUN ยาวรอบ 3 (18 ก.ค. — เจ้าของ: "ทำเลย" cred-free) — Public storefronts + Wave3/4
+| WO | งาน | ข้อสอบ | commit |
+|---|---|---|---|
+| Hotel-pub | **จองโรงแรม public**: ห้องว่าง→จอง→มัดจำ PromptPay→สถานะ · FOR UPDATE กัน overbook | qc-hotel-public 15/15 | 2403eca |
+| Ticket-pub | **ซื้อตั๋ว public**: อีเวนต์→ซื้อ→PromptPay→ตั๋ว QR→checkin · landing route TICKET | qc-ticket-public 24/24 | 82f1d2e |
+| Rental-pub | **จองเช่า public**: asset ว่าง→จอง→มัดจำ PromptPay | qc-rental-public 16/16 | 0cf9d88 |
+| School-pub | **สมัครเรียน public**: รอบ+ค่าเรียน→สมัคร(race-safe)→จ่าย PromptPay | qc-school-public 18/18 | 5af03e2 |
+| Clinic-pub | **จองนัดคลินิก public**: +ClinicAppointment (จ่ายหลังตรวจ) · confirm/reject ร้าน | qc-clinic-public 15/15 | 5af03e2 |
+✅ ทุกตัว cpa 107 + fitness 14 + deploy READY · reuse PromptPayQr (cred-free) · 5 storefront ครบ · 👆 user เทสสแกน QR ทีหลัง · เหลือ: restaurant table-pay · inventory→บัญชี bridge · public API ครบ
