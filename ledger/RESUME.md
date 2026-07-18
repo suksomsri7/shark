@@ -320,3 +320,16 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 | School-pub | **สมัครเรียน public**: รอบ+ค่าเรียน→สมัคร(race-safe)→จ่าย PromptPay | qc-school-public 18/18 | 5af03e2 |
 | Clinic-pub | **จองนัดคลินิก public**: +ClinicAppointment (จ่ายหลังตรวจ) · confirm/reject ร้าน | qc-clinic-public 15/15 | 5af03e2 |
 ✅ ทุกตัว cpa 107 + fitness 14 + deploy READY · reuse PromptPayQr (cred-free) · 5 storefront ครบ · 👆 user เทสสแกน QR ทีหลัง · เหลือ: restaurant table-pay · inventory→บัญชี bridge · public API ครบ
+| Restaurant-pay | **ลูกค้าสแกนจ่ายเอง PromptPay จากโต๊ะ** → ร้านยืนยัน (checkout PROMPTPAY) | qc-restaurant-pay 19/19 | 82d8c38 |
+| API-expand | **Public API +4 entity**: appointments/reservations/tickets/queue + docs | qc-public-api 18/18 | 765c9c0 |
+| Reports-fix | **เลิกตัด CSV เงียบ 500 แถว** (EXPORT_CAP 50k) + ป้ายเตือนพรีวิว | qc-report-builder 9/9 | ed3c83d |
+
+## 🏁 ปิดกะ RUN ยาวรอบ 3 (18 ก.ค. cred-free push) — รวมทั้งหมด 38 WO · แผน ≈ 88%
+✅ **Wave 1/2*/3/5 ครบ** + Wave 4/6 เกือบครบ (*Wave 2 เหลือ inventory→บัญชี bridge เท่านั้น)
+- **Public storefront ครบ 6 โมดูล + PromptPay**: hotel/ticket/rental/school/clinic/restaurant (ลูกค้าจอง/ซื้อ/จ่ายเอง cred-free)
+- **AI ครบทุกโมดูล** (read+write) · KB fuzzy · meeting realtime · public API 9 endpoint
+🔴 **เหลือ ~12% (~21 วัน)**:
+- **Inventory→บัญชี bridge** (~4d · cpa-sensitive) — 🟡 ต้องเจ้าของ **ตัดสินใจ**: เปิด perpetual inventory (รับของ→Dr 1200/Cr 2100, ขาย→Dr 5000 COGS/Cr 1200) จะทำให้ "กำไรบนงบ = กำไรจริง" แต่**เปลี่ยนหน้าตางบการเงิน** → รอไฟเขียว
+- 🔑 **Marketing ส่ง LINE จริง** (~3d) — ต้อง LINE OA creds
+- Wave 6 ที่เหลือ (~12d cred-free ทำได้): bulk operations · i18n public ทุกโมดูล · dashboard/ปิดวันต่อโมดูล · approval แก้ policy
+- minor: member สมัคร public/ฟอร์มแก้ลูกค้า · booking public ยกเลิกนัดเอง
