@@ -37,6 +37,7 @@
     "qc:pos": "tsx scripts/qc-pos-account.mts",
     "qc:pos-register": "tsx scripts/qc-pos-register.mts",
     "qc:pos-inventory": "tsx scripts/qc-pos-inventory.mts",
+    "qc:pos-closeday": "tsx scripts/qc-pos-closeday.mts",
     "qc:dna": "tsx scripts/qc-dna.mts",
     "qc:restaurant-money": "tsx scripts/qc-restaurant-money.mts",
     "qc:restaurant-void": "tsx scripts/qc-restaurant-void.mts",

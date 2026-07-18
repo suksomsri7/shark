@@ -361,3 +361,174 @@ export async function daySummary(tenantId: string, unitId: string): Promise<{ co
   });
   return { count: sales.length, totalSatang: sales.reduce((s, x) => s + x.grandTotalSatang, 0) };
 }
+
+// ═══════════════════════════ ปิดวัน / สรุปยอดสิ้นวัน (read-only) ═══════════════════════════
+// สรุปยอดของ "ระบบ POS" (scope tenantId+systemId — ครอบทุกสาขาที่ผูก POS นี้) รายวัน (BKK)
+// read-only: ไม่มี shift state machine — อ่านจาก posSale/posPayment ที่มีอยู่ · follow-up = ปิดรอบจริง
+
+export type CloseCtx = { tenantId: string; systemId: string };
+
+export type PayMethodLine = { type: PosPayType; label: string; amountSatang: number; count: number };
+
+export type PosDaySummary = {
+  businessDate: string; // YYYY-MM-DD (BKK)
+  netSalesSatang: number; // ยอดขายสุทธิ (บิล PAID)
+  billCount: number; // จำนวนบิล PAID
+  voidCount: number; // จำนวนบิล void (createdAt วันนั้น)
+  voidTotalSatang: number; // ยอดรวมบิล void
+  byMethod: PayMethodLine[]; // แยกตามวิธีจ่าย (จาก PosPayment ของบิล PAID วันนั้น) — เรียงตาม enum
+  cashInDrawerSatang: number; // เงินสดที่ควรมีในลิ้นชัก = ยอดจ่ายเงินสดของบิล PAID วันนั้น
+};
+
+const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"];
+const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
+  CASH: "เงินสด",
+  PROMPTPAY: "พร้อมเพย์",
+  TRANSFER: "โอน",
+  DEPOSIT: "มัดจำ",
+  ROOM_CHARGE: "ลงบิลห้องพัก",
+};
+
+// business date (BKK) → ช่วง UTC [start, end) ของวันนั้น
+function bkkDayRange(businessDate: string): { start: Date; end: Date } {
+  const start = new Date(new Date(businessDate + "T00:00:00Z").getTime() - 7 * 3600000);
+  return { start, end: new Date(start.getTime() + 24 * 3600000) };
+}
+
+// วันนี้ตามเวลาไทย (YYYY-MM-DD)
+export function bkkToday(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+// แถวบิลของวันนั้น (สำหรับตาราง/CSV) — วิธีจ่ายรวมเป็นข้อความ (บิลเดียวอาจมีหลายวิธี)
+export type PosDayBill = {
+  receiptNo: string | null;
+  createdAt: Date;
+  grandTotalSatang: number;
+  status: string;
+  methodLabel: string;
+};
+
+// ── สรุปวัน (default = วันนี้ BKK) ต่อระบบ POS ──
+export async function closeDaySummary(ctx: CloseCtx, businessDate?: string): Promise<PosDaySummary> {
+  const date = businessDate ?? bkkToday();
+  const { start, end } = bkkDayRange(date);
+
+  // บิลทั้งหมดของระบบ POS นี้ในวันนั้น (PAID + VOIDED)
+  const sales = await prisma.posSale.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, createdAt: { gte: start, lt: end } },
+    select: { id: true, status: true, grandTotalSatang: true },
+  });
+  const paid = sales.filter((s) => s.status === "PAID");
+  const voided = sales.filter((s) => s.status === "VOIDED");
+
+  // แยกวิธีจ่าย จาก PosPayment ของบิล PAID วันนั้น
+  const paidIds = paid.map((s) => s.id);
+  const payments = paidIds.length
+    ? await prisma.posPayment.findMany({
+        where: { tenantId: ctx.tenantId, saleId: { in: paidIds } },
+        select: { type: true, amountSatang: true },
+      })
+    : [];
+  const agg = new Map<PosPayType, { amountSatang: number; count: number }>();
+  for (const p of payments) {
+    const cur = agg.get(p.type) ?? { amountSatang: 0, count: 0 };
+    cur.amountSatang += p.amountSatang;
+    cur.count += 1;
+    agg.set(p.type, cur);
+  }
+  const byMethod: PayMethodLine[] = PAY_TYPE_ORDER.filter((t) => agg.has(t)).map((t) => ({
+    type: t,
+    label: PAY_TYPE_LABEL_TH[t],
+    amountSatang: agg.get(t)!.amountSatang,
+    count: agg.get(t)!.count,
+  }));
+
+  return {
+    businessDate: date,
+    netSalesSatang: paid.reduce((s, x) => s + x.grandTotalSatang, 0),
+    billCount: paid.length,
+    voidCount: voided.length,
+    voidTotalSatang: voided.reduce((s, x) => s + x.grandTotalSatang, 0),
+    byMethod,
+    cashInDrawerSatang: agg.get("CASH")?.amountSatang ?? 0,
+  };
+}
+
+// ── รายการบิลของวัน (PAID + VOIDED) เรียงตามเวลา — สำหรับตาราง/CSV ──
+export async function closeDayBills(ctx: CloseCtx, businessDate?: string): Promise<PosDayBill[]> {
+  const date = businessDate ?? bkkToday();
+  const { start, end } = bkkDayRange(date);
+  const sales = await prisma.posSale.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, createdAt: { gte: start, lt: end } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, receiptNo: true, createdAt: true, grandTotalSatang: true, status: true },
+  });
+  const ids = sales.map((s) => s.id);
+  const payments = ids.length
+    ? await prisma.posPayment.findMany({
+        where: { tenantId: ctx.tenantId, saleId: { in: ids } },
+        select: { saleId: true, type: true },
+      })
+    : [];
+  const bySale = new Map<string, PosPayType[]>();
+  for (const p of payments) {
+    const arr = bySale.get(p.saleId) ?? [];
+    arr.push(p.type);
+    bySale.set(p.saleId, arr);
+  }
+  return sales.map((s) => {
+    const types = bySale.get(s.id) ?? [];
+    const uniq = PAY_TYPE_ORDER.filter((t) => types.includes(t));
+    return {
+      receiptNo: s.receiptNo,
+      createdAt: s.createdAt,
+      grandTotalSatang: s.grandTotalSatang,
+      status: s.status,
+      methodLabel: uniq.map((t) => PAY_TYPE_LABEL_TH[t]).join(" + ") || "—",
+    };
+  });
+}
+
+// ── CSV ปิดวัน (BOM · รายการบิล + บล็อกสรุป) — self-contained เพื่อให้ oracle เรียกได้โดยไม่ต้องมี session ──
+const CSV_BOM = "﻿";
+function csvEsc(v: unknown): string {
+  const s = v == null ? "" : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+const baht = (satang: number) => (satang / 100).toFixed(2);
+const STATUS_TH: Record<string, string> = { PAID: "ชำระแล้ว", VOIDED: "ยกเลิก" };
+
+export async function closeDayCsv(ctx: CloseCtx, businessDate?: string): Promise<string> {
+  const date = businessDate ?? bkkToday();
+  const [summary, bills] = await Promise.all([closeDaySummary(ctx, date), closeDayBills(ctx, date)]);
+  const fmtTime = (d: Date) =>
+    new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit" }).format(d);
+
+  const rows: string[] = [];
+  rows.push(["เลขที่ใบเสร็จ", "เวลา", "ยอด (บาท)", "วิธีจ่าย", "สถานะ"].map(csvEsc).join(","));
+  for (const b of bills) {
+    rows.push(
+      [b.receiptNo ?? "", fmtTime(b.createdAt), baht(b.grandTotalSatang), b.methodLabel, STATUS_TH[b.status] ?? b.status]
+        .map(csvEsc)
+        .join(","),
+    );
+  }
+  // บล็อกสรุป
+  rows.push("");
+  rows.push([csvEsc("สรุปวันที่"), csvEsc(date)].join(","));
+  rows.push([csvEsc("ยอดขายสุทธิ (บาท)"), csvEsc(baht(summary.netSalesSatang))].join(","));
+  rows.push([csvEsc("จำนวนบิล"), csvEsc(summary.billCount)].join(","));
+  rows.push([csvEsc("บิลยกเลิก"), csvEsc(`${summary.voidCount} (${baht(summary.voidTotalSatang)} บาท)`)].join(","));
+  for (const m of summary.byMethod) {
+    rows.push([csvEsc(`ยอด${m.label} (บาท)`), csvEsc(baht(m.amountSatang))].join(","));
+  }
+  rows.push([csvEsc("เงินสดที่ควรมีในลิ้นชัก (บาท)"), csvEsc(baht(summary.cashInDrawerSatang))].join(","));
+
+  return CSV_BOM + rows.join("\n");
+}

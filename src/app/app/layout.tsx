@@ -30,6 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const posChildren = (id: string) => [
     { href: `/app/sys/${id}`, label: "ภาพรวม" },
     { href: `/app/sys/${id}/pos/sales`, label: "ประวัติบิล" },
+    { href: `/app/sys/${id}/pos/close`, label: "ปิดวัน" },
   ];
 
   // ระบบทั้งหมด (business + feature) เป็นรายการเดียว

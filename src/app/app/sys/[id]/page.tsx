@@ -11,6 +11,7 @@ import {
 } from "@/lib/modules/reward/service";
 import { RedeemForm } from "@/lib/modules/reward/forms";
 import { getPointSettings, listPointCustomers } from "@/lib/modules/point/service";
+import { closeDaySummary } from "@/lib/modules/pos/service";
 import { PointSettingsForm, AdjustPointsForm } from "@/lib/modules/point/forms";
 import { CouponContent } from "@/lib/modules/coupon/ui";
 import { MeetingContent } from "@/lib/modules/meeting/ui";
@@ -220,16 +221,19 @@ async function PointContent({ systemId }: { systemId: string }) {
 }
 
 async function PosContent({ systemId, tenantId }: { systemId: string; tenantId: string }) {
-  const sales = await prisma.posSale.findMany({
-    where: { tenantId, systemId },
-    orderBy: { createdAt: "desc" },
-    take: 10,
-  });
-  const paidAll = await prisma.posSale.aggregate({
-    where: { tenantId, systemId, status: "PAID" },
-    _sum: { grandTotalSatang: true },
-    _count: true,
-  });
+  const [sales, paidAll, today] = await Promise.all([
+    prisma.posSale.findMany({
+      where: { tenantId, systemId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    }),
+    prisma.posSale.aggregate({
+      where: { tenantId, systemId, status: "PAID" },
+      _sum: { grandTotalSatang: true },
+      _count: true,
+    }),
+    closeDaySummary({ tenantId, systemId }),
+  ]);
   const total = paidAll._sum.grandTotalSatang ?? 0;
   return (
     <>
@@ -238,6 +242,7 @@ async function PosContent({ systemId, tenantId }: { systemId: string; tenantId: 
           { href: `/app/sys/${systemId}`, label: "ภาพรวม" },
           { href: `/app/sys/${systemId}/pos/register`, label: "ขาย" },
           { href: `/app/sys/${systemId}/pos/sales`, label: "ประวัติบิล" },
+          { href: `/app/sys/${systemId}/pos/close`, label: "ปิดวัน" },
         ]}
       />
       <Link
@@ -246,6 +251,15 @@ async function PosContent({ systemId, tenantId }: { systemId: string; tenantId: 
       >
         เปิดหน้าขาย
       </Link>
+      <Section
+        title="ยอดวันนี้"
+        actions={<Link href={`/app/sys/${systemId}/pos/close`} className="text-sm text-[color:var(--color-accent)]">ปิดวัน →</Link>}
+      >
+        <div className="text-sm text-[color:var(--color-muted)]">
+          <MoneyText satang={today.netSalesSatang} /> · {today.billCount} บิล
+          {today.voidCount > 0 && ` · ยกเลิก ${today.voidCount}`}
+        </div>
+      </Section>
       <Section title="ยอดขายรวม">
         <div className="text-sm text-[color:var(--color-muted)]">
           รวม <MoneyText satang={total} /> · {paidAll._count} บิลที่ชำระแล้ว

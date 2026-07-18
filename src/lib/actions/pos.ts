@@ -5,7 +5,7 @@ import type { PosPayType } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { requireTenant, type Auth } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
-import { createSale } from "@/lib/modules/pos/service";
+import { createSale, closeDayCsv } from "@/lib/modules/pos/service";
 import { posUnitIsLinked, resolvePosLinks } from "@/lib/modules/pos/register";
 import { getPaymentProfile } from "@/lib/payment/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
@@ -145,6 +145,25 @@ export async function posQuoteAction(input: QuoteInput): Promise<QuoteState> {
     grandTotalSatang: totals.grandTotal,
     promptpayPayload: payload,
   };
+}
+
+// ── export CSV ปิดวัน (รายการบิลวันนั้น + สรุป · BOM) ──
+// gate: ระบบต้องเป็น POS ของ tenant นี้ + สิทธิ์ pos.sale.create (คนที่ขายได้ ปิดวัน/ดูสรุปได้)
+export async function exportDaySalesCsvAction(systemId: string, businessDate?: string): Promise<string> {
+  const auth = await requireTenant();
+  const tenantId = auth.active.tenantId;
+  const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { id: true } });
+  if (!sys) throw new Error("ไม่พบระบบขายนี้");
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "pos", action: "pos.sale.create" },
+  );
+  const date = businessDate?.trim() || undefined;
+  return closeDayCsv({ tenantId, systemId }, date);
 }
 
 // ── ยืนยันขาย (createSale — PAID_NOW) → คืนเลขใบเสร็จ + แต้ม + เงินทอน หรือ error inline ──

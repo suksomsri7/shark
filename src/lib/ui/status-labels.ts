@@ -144,6 +144,15 @@ export const PICKUP_STATUS_LABEL: Record<string, string> = {
   NO_SHOW: "ไม่มารับ",
 };
 
+// วิธีจ่ายของ POS (enum PosPayType) — ใช้สรุปปิดวัน/CSV
+export const POS_PAY_TYPE_LABEL: Record<string, string> = {
+  CASH: "เงินสด",
+  PROMPTPAY: "พร้อมเพย์",
+  TRANSFER: "โอน",
+  DEPOSIT: "มัดจำ",
+  ROOM_CHARGE: "ลงบิลห้องพัก",
+};
+
 export const PAY_CHANNEL_LABEL: Record<string, string> = {
   CASH: "เงินสด",
   TRANSFER: "โอน",
