@@ -1,7 +1,10 @@
 import { prisma, tenantDb } from "@/lib/core/db";
-import type { AppointmentStatus } from "@prisma/client";
+import type { AppointmentStatus, PosPayType } from "@prisma/client";
 import * as member from "@/lib/modules/member/service";
+import * as pos from "@/lib/modules/pos/service";
 import { systemForUnit } from "@/lib/modules/system/service";
+
+export type BookingCtx = { tenantId: string; unitId: string };
 import {
   computeStaffSlots,
   localToUtc,
@@ -294,6 +297,9 @@ export async function createAppointment(input: {
           customerPhone: phone,
           note: input.note,
           source: input.source ?? "ONLINE",
+          // snapshot มัดจำจากบริการ ณ ตอนสร้างนัด (ราคาบริการเปลี่ยนภายหลังไม่กระทบนัดเดิม)
+          // ไม่บังคับจ่ายตอนนี้ — ร้านเก็บทีหลังผ่าน recordDeposit
+          depositSatang: service.depositSatang,
           idempotencyKey: idem,
         },
       });
@@ -350,4 +356,107 @@ export async function setAppointmentStatus(
 ) {
   const db = tenantDb({ tenantId, unitId });
   await db.appointment.update({ where: { id: appointmentId }, data: { status } });
+}
+
+// ── มัดจำ (WO Wave3-A: กัน no-show) ─────────────────────────────
+// ตั้งมัดจำต่อบริการ (บาท→สตางค์เก็บที่ action) · 0 = ไม่ต้องมัดจำ
+export async function setServiceDeposit(
+  ctx: BookingCtx,
+  serviceId: string,
+  depositSatang: number,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!Number.isFinite(depositSatang) || depositSatang < 0) {
+    return { ok: false, reason: "มัดจำต้องเป็นจำนวนเงินไม่ติดลบ" };
+  }
+  const db = tenantDb(ctx);
+  const res = await db.bookingService.updateMany({
+    where: { id: serviceId },
+    data: { depositSatang: Math.round(depositSatang) },
+  });
+  if (res.count === 0) return { ok: false, reason: "ไม่พบบริการ" };
+  return { ok: true };
+}
+
+// ร้านกดรับมัดจำ — เปิดบิล POS ชนิด DEPOSIT (ลงบัญชี Dr 2110 เงินมัดจำรับ) แล้วปั๊ม depositPaidAt
+//   guard: นัดมีมัดจำ (depositSatang>0) + ยังไม่จ่าย (depositPaidAt=null)
+//   idempotent: createSale ผูก key `booking-deposit-<appointmentId>` (ยิงซ้ำ = บิลเดิม ไม่เบิ้ล)
+//               + claim อะตอมมิก depositPaidAt (race 2 คนกดพร้อมกัน → บันทึกเดียว)
+//   ไม่ผูก POS → บันทึก depositPaidAt เฉย ๆ (standalone · saleId=null)
+export async function recordDeposit(
+  ctx: BookingCtx,
+  appointmentId: string,
+  payMethod: PosPayType = "DEPOSIT",
+): Promise<{ ok: boolean; reason?: string; saleId?: string; noop?: boolean }> {
+  const db = tenantDb(ctx);
+  const appt = await db.appointment.findFirst({
+    where: { id: appointmentId },
+    include: { service: true },
+  });
+  if (!appt) return { ok: false, reason: "ไม่พบนัด" };
+  if (appt.depositSatang <= 0) return { ok: false, reason: "นัดนี้ไม่ต้องมัดจำ" };
+  // จ่ายแล้วกดซ้ำ = no-op (idempotent) — ไม่เปิดบิลใหม่
+  if (appt.depositPaidAt) {
+    return { ok: true, noop: true, saleId: appt.depositSaleId ?? undefined };
+  }
+
+  const amount = appt.depositSatang;
+
+  // เปิดบิลมัดจำผ่าน POS (chokepoint เงิน) — idempotent · ไม่มี POS = ข้าม (บันทึก paidAt เฉย ๆ)
+  let saleId: string | null = null;
+  const posSystemId = await systemForUnit(ctx.tenantId, ctx.unitId, "POS");
+  if (posSystemId) {
+    const sale = await pos.createSale({
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      systemId: posSystemId,
+      sourceModule: "BOOKING",
+      sourceId: appointmentId,
+      idempotencyKey: `booking-deposit-${appointmentId}`,
+      lines: [{ name: `มัดจำ ${appt.service.name}`, qty: 1, unitPriceSatang: amount }],
+      payMethods: [{ type: payMethod, amountSatang: amount }],
+    });
+    saleId = sale.saleId;
+  }
+
+  // claim อะตอมมิก: ปั๊ม depositPaidAt เฉพาะแถวที่ยังไม่จ่าย (กัน 2 request แข่งกัน)
+  const claim = await db.appointment.updateMany({
+    where: { id: appointmentId, depositPaidAt: null },
+    data: { depositPaidAt: new Date(), depositSaleId: saleId },
+  });
+  if (claim.count === 0) {
+    // แพ้แข่ง (อีก request บันทึกไปแล้ว) — บิลเดียวกัน (idempotent) ไม่เบิ้ล
+    const cur = await db.appointment.findFirst({ where: { id: appointmentId } });
+    return { ok: true, noop: true, saleId: cur?.depositSaleId ?? undefined };
+  }
+  return { ok: true, saleId: saleId ?? undefined };
+}
+
+// คืนมัดจำ (ยกเลิกนัด/ตามนโยบาย) — void บิลมัดจำ (กลับ Dr 2110) + เคลียร์ depositPaidAt
+//   guard: จ่ายแล้วเท่านั้น (depositPaidAt≠null) · claim อะตอมมิก (double refund = no-op)
+//   void เฉพาะบิลที่ยัง PAID (กัน void ซ้ำ) · ไม่ผูก POS = เคลียร์เฉย ๆ
+export async function refundDeposit(
+  ctx: BookingCtx,
+  appointmentId: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const db = tenantDb(ctx);
+  const appt = await db.appointment.findFirst({ where: { id: appointmentId } });
+  if (!appt) return { ok: false, reason: "ไม่พบนัด" };
+  if (!appt.depositPaidAt) return { ok: false, reason: "นัดนี้ยังไม่ได้รับมัดจำ" };
+  const saleId = appt.depositSaleId; // จับไว้ก่อน claim (จะถูกเคลียร์)
+
+  // claim อะตอมมิก: เคลียร์ depositPaidAt เฉพาะแถวที่ยังจ่ายอยู่ (กันคืนซ้ำ)
+  const claim = await db.appointment.updateMany({
+    where: { id: appointmentId, depositPaidAt: { not: null } },
+    data: { depositPaidAt: null, depositSaleId: null },
+  });
+  if (claim.count === 0) return { ok: false, reason: "มัดจำนี้ถูกคืนไปแล้ว" };
+
+  // กลับเส้นเงิน — void PosSale (เฉพาะบิลที่ยัง PAID) · voidSale เปิด tx เอง (ไม่ nested)
+  if (saleId) {
+    const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId: ctx.tenantId } });
+    if (sale && sale.status === "PAID") {
+      await pos.voidSale(ctx.tenantId, ctx.unitId, saleId);
+    }
+  }
+  return { ok: true };
 }

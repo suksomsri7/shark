@@ -18,6 +18,7 @@ model BookingService {
   name        String
   durationMin Int // ใช้เวลา (นาที)
   priceSatang Int      @default(0)
+  depositSatang Int    @default(0) // มัดจำต่อบริการ (0 = ไม่ต้องมัดจำ) — ร้านตั้งเอง กัน no-show
   bufferMin   Int      @default(0) // เวลาพักหลังบริการ
   active      Boolean  @default(true)
   sortOrder   Int      @default(0)
@@ -94,6 +95,9 @@ model Appointment {
   customerPhone String // snapshot
   note          String?
   source        String            @default("STAFF") // STAFF | ONLINE
+  depositSatang Int               @default(0) // snapshot มัดจำจากบริการตอนสร้างนัด (0 = ไม่ต้องมัดจำ)
+  depositPaidAt DateTime? // เวลาที่ร้านรับมัดจำ (null = ยังไม่จ่าย)
+  depositSaleId String? // PosSale.id ของบิลมัดจำ (null = ไม่ผูก POS / ยังไม่จ่าย)
   idempotencyKey String? // กันสร้างนัดซ้ำจากยิงซ้ำ/ดับเบิลคลิก (null = ไม่ผูก key)
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt

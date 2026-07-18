@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { listAppointments } from "@/lib/modules/booking/service";
 import { daySummary } from "@/lib/modules/pos/service";
-import { setStatusAction } from "@/lib/actions/booking";
+import { setStatusAction, recordDepositAction, refundDepositAction } from "@/lib/actions/booking";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusChip } from "@/components/ui/StatusChip";
@@ -83,14 +83,52 @@ export default async function BookingPage({
                       {day} · โดย {a.staff.name} · {a.customerName} {a.customerPhone}
                     </div>
                   </div>
-                  <StatusChip value={a.status} map={BOOKING_STATUS_LABEL} toneOf={apptTone} />
+                  <div className="flex flex-col items-end gap-1">
+                    <StatusChip value={a.status} map={BOOKING_STATUS_LABEL} toneOf={apptTone} />
+                    {a.depositSatang > 0 && (
+                      <span
+                        className={
+                          "rounded-full px-2 py-0.5 text-xs " +
+                          (a.depositPaidAt
+                            ? "bg-[color:var(--color-success-soft,#e6f4ea)] text-[color:var(--color-success,#137333)]"
+                            : "bg-[color:var(--color-surface-2)] text-[color:var(--color-muted)]")
+                        }
+                      >
+                        {a.depositPaidAt
+                          ? `รับมัดจำแล้ว ${formatBaht(a.depositSatang)}`
+                          : `มัดจำ ${formatBaht(a.depositSatang)}`}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                {active && (
+                {(active || a.depositSatang > 0) && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <StatusBtn slug={unitSlug} id={a.id} status="ARRIVED" label="มาถึง" />
-                    <StatusBtn slug={unitSlug} id={a.id} status="DONE" label="เสร็จ" />
-                    <StatusBtn slug={unitSlug} id={a.id} status="NO_SHOW" label="ไม่มา" />
-                    <StatusBtn slug={unitSlug} id={a.id} status="CANCELLED" label="ยกเลิก" />
+                    {active && (
+                      <>
+                        <StatusBtn slug={unitSlug} id={a.id} status="ARRIVED" label="มาถึง" />
+                        <StatusBtn slug={unitSlug} id={a.id} status="DONE" label="เสร็จ" />
+                        <StatusBtn slug={unitSlug} id={a.id} status="NO_SHOW" label="ไม่มา" />
+                        <StatusBtn slug={unitSlug} id={a.id} status="CANCELLED" label="ยกเลิก" />
+                      </>
+                    )}
+                    {a.depositSatang > 0 && !a.depositPaidAt && (
+                      <form action={recordDepositAction.bind(null, unitSlug)}>
+                        <input type="hidden" name="id" value={a.id} />
+                        <button className="btn-sm min-h-[44px]">รับมัดจำ</button>
+                      </form>
+                    )}
+                    {a.depositSatang > 0 && a.depositPaidAt && (
+                      <ConfirmDialog
+                        triggerLabel="คืนมัดจำ"
+                        triggerClassName="btn-sm text-[color:var(--color-danger)] min-h-[44px]"
+                        title="คืนมัดจำนัดนี้?"
+                        detail="บิลมัดจำจะถูกยกเลิก (กลับรายการบัญชี) และสถานะกลับเป็นยังไม่รับมัดจำ"
+                        confirmLabel="ยืนยันคืนมัดจำ"
+                        danger
+                        action={refundDepositAction.bind(null, unitSlug)}
+                        fields={{ id: a.id }}
+                      />
+                    )}
                   </div>
                 )}
               </div>

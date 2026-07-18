@@ -29,6 +29,7 @@ const serviceSchema = z.object({
   name: z.string().trim().min(1).max(80),
   durationMin: z.coerce.number().int().min(5).max(600),
   priceBaht: z.coerce.number().min(0).max(1_000_000),
+  depositBaht: z.coerce.number().min(0).max(1_000_000).optional().default(0),
 });
 
 export async function addServiceAction(unitSlug: string, formData: FormData) {
@@ -38,6 +39,7 @@ export async function addServiceAction(unitSlug: string, formData: FormData) {
     name: formData.get("name"),
     durationMin: formData.get("durationMin"),
     priceBaht: formData.get("priceBaht"),
+    depositBaht: formData.get("depositBaht"),
   });
   if (!p.success) return;
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
@@ -48,9 +50,48 @@ export async function addServiceAction(unitSlug: string, formData: FormData) {
       name: p.data.name,
       durationMin: p.data.durationMin,
       priceSatang: Math.round(p.data.priceBaht * 100),
+      depositSatang: Math.round(p.data.depositBaht * 100),
     },
   });
-  revalidatePath(`/app/u/${unitSlug}/booking/setup`);
+  revalidatePath(`/app/u/${unitSlug}/booking/services`);
+}
+
+const depositSchema = z.object({
+  id: z.string().min(1),
+  depositBaht: z.coerce.number().min(0).max(1_000_000),
+});
+
+export async function setServiceDepositAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingCan(auth, unit.id, "booking.service.setDeposit");
+  const p = depositSchema.safeParse({
+    id: formData.get("id"),
+    depositBaht: formData.get("depositBaht"),
+  });
+  if (!p.success) return;
+  const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
+  await booking.setServiceDeposit(ctx, p.data.id, Math.round(p.data.depositBaht * 100));
+  revalidatePath(`/app/u/${unitSlug}/booking/services`);
+}
+
+export async function recordDepositAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingCan(auth, unit.id, "booking.deposit.record");
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
+  await booking.recordDeposit(ctx, id);
+  revalidatePath(`/app/u/${unitSlug}/booking`);
+}
+
+export async function refundDepositAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingCan(auth, unit.id, "booking.deposit.refund");
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
+  await booking.refundDeposit(ctx, id);
+  revalidatePath(`/app/u/${unitSlug}/booking`);
 }
 
 export async function removeServiceAction(unitSlug: string, formData: FormData) {

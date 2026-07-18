@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
-import { addServiceAction, removeServiceAction } from "@/lib/actions/booking";
+import { addServiceAction, removeServiceAction, setServiceDepositAction } from "@/lib/actions/booking";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { formatBaht } from "@/lib/ui/money";
 
@@ -28,17 +28,36 @@ export default async function BookingServicesPage({
           <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีบริการ เพิ่มด้านล่าง</p>
         )}
         {services.map((s) => (
-          <div key={s.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
-            <div className="text-sm">
-              <span className="font-medium">{s.name}</span>
-              <span className="text-[color:var(--color-muted)]">
-                {" "}
-                · {s.durationMin} นาที · {s.priceSatang > 0 ? formatBaht(s.priceSatang) : "—"}
-              </span>
+          <div key={s.id} className="flex flex-col gap-2 rounded-lg border px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm">
+                <span className="font-medium">{s.name}</span>
+                <span className="text-[color:var(--color-muted)]">
+                  {" "}
+                  · {s.durationMin} นาที · {s.priceSatang > 0 ? formatBaht(s.priceSatang) : "—"}
+                  {s.depositSatang > 0 ? ` · มัดจำ ${formatBaht(s.depositSatang)}` : ""}
+                </span>
+              </div>
+              <form action={removeServiceAction.bind(null, unitSlug)}>
+                <input type="hidden" name="id" value={s.id} />
+                <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
+              </form>
             </div>
-            <form action={removeServiceAction.bind(null, unitSlug)}>
+            {/* มัดจำต่อบริการ — กัน no-show (0 = ไม่ต้องมัดจำ) */}
+            <form
+              action={setServiceDepositAction.bind(null, unitSlug)}
+              className="flex items-center gap-2"
+            >
               <input type="hidden" name="id" value={s.id} />
-              <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
+              <span className="text-xs text-[color:var(--color-muted)]">มัดจำ (บาท)</span>
+              <input
+                name="depositBaht"
+                type="number"
+                min={0}
+                defaultValue={s.depositSatang / 100}
+                className="w-24 rounded-lg border px-2 py-2 text-sm"
+              />
+              <button className="btn-sm min-h-[44px]">บันทึกมัดจำ</button>
             </form>
           </div>
         ))}
@@ -57,6 +76,10 @@ export default async function BookingServicesPage({
           <label className="flex flex-col gap-1">
             <span className="text-xs text-[color:var(--color-muted)]">ราคา (บาท)</span>
             <input name="priceBaht" type="number" defaultValue={0} min={0} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-24" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-[color:var(--color-muted)]">มัดจำ (บาท)</span>
+            <input name="depositBaht" type="number" defaultValue={0} min={0} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-24" />
           </label>
           <button className="btn btn-primary col-span-2 text-sm sm:col-span-1">เพิ่ม</button>
         </form>

@@ -236,6 +236,7 @@ const moduleFiles = walk(moduleDir, (p) => p.endsWith(".ts") || p.endsWith(".tsx
 const ALLOWED_EDGES = new Set([
   // หนี้เดิม (วัด 2026-07-15) — ratchet: ลบได้ ห้ามเพิ่มกลับ
   "booking→member", "booking→system", "chat→member",
+  "booking→pos", // chokepoint (WO-Wave3-A): มัดจำ booking ปิดเงินผ่าน pos.createSale DEPOSIT (C-2)
   "pos→member", "pos→point", "pos→system",
   "restaurant→member", "restaurant→pos", "restaurant→system",
   "reward→point",
