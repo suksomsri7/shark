@@ -297,3 +297,16 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 | W6-A | **CSV import**: ลูกค้า+สินค้า (parser เขียนเอง+เทมเพลต) reuse createCustomer/createItem | qc-csv-import 25/25 | f11a6ed |
 | W6-B | **Audit trail UI**: /app/audit ประวัติการแก้ไข (OWNER/MANAGER) + เติม audit HR payroll 3 จุด | qc-audit-trail 21/21 | 47c78d3 |
 | W6-C | **Public API +/sales**: ดึงยอดขาย POS ผ่าน REST + docs | qc-public-api 14/14 | d281a90 |
+| W5-D | **Meeting เชิญสมาชิก+realtime**: addChannelMember+auto-refresh 7s | qc-meeting-invite 22/22 | 42460a2 |
+| W4-D | **Member subscription เก็บเงินจริง** → pos.createSale C-2 | qc-subscription-money 14 + cpa107 | 7b40f96 |
+| W3-A | **Booking มัดจำกัน no-show**: รับ/คืนมัดจำ→DEPOSIT Dr 2110 (migration prod) | qc-booking-deposit 18/18 + cpa107 | 250f4dc |
+
+## 🏁 ปิดกะ RUN ยาวรอบ 2 (18 ก.ค. — เจ้าของสั่งต่ออีก 5 ชม.) — รวมทั้ง 2 รอบ 30 WO SHIPPED
+**ครอบคลุม**: Wave 0 (security) · Wave 1 ครบ · Wave 2 ครบ (refund/reversal/race ทุกโมดูลเงิน) · Wave 3 บางส่วน (booking มัดจำ) · Wave 4 (chat/forms/kanban notification + member subscription) · **Wave 5 ครบ** (AI read+write tools ทุกโมดูล + KB fuzzy + meeting realtime) · Wave 6 (CSV import + audit UI + public API /sales)
+**คุณภาพ**: ทุก WO gate เขียว (typecheck + oracle 5 แกน + cpa 107/107 + fitness 14/14) + deploy Vercel READY ยืนยันจาก API ทุก commit · migration ใหม่ apply prod ครบ (REFUNDED×5, booking idempotency, payroll REVERSED, booking deposit) · oracle รวม ~40 ชุด >600 ข้อ
+**เหลือ (ส่วนใหญ่ติด creds/ต้องเทสสด)**:
+- 🔑 **Wave 3 public prepay + Wave 4 marketing LINE**: ต้อง LINE OA + Beam creds จากเจ้าของ + เทส PromptPay สด → public storefront (hotel/ticket/restaurant/rental/school/clinic ลูกค้าจองจ่ายเอง)
+- Wave 6 ที่เหลือ: public API เพิ่ม entity · bulk operations · i18n public ทุกโมดูล
+- PDPA: ✅ auto-covered by design (model-driven tenantScopedModels — ไม่ต้องทำ)
+- follow-up ย่อย: restaurant createOrder idempotency · hotel no-show/edit · booking re-record-after-refund edge
+📋 แผนเต็ม + audit: ledger/FULLFUNCTION_PLAN.md + FULLFUNCTION_AUDIT.json · ความคืบหน้าแผน ≈ 63%
