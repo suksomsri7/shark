@@ -55,6 +55,7 @@ model PosSaleLine {
   unitPriceSatang Int
   discountSatang Int     @default(0)
   lineTotalSatang Int
+  itemId         String? // InvItem.id ที่ผูก (ตัด/คืนสต็อก perpetual) · null = รายการเพิ่มเอง/บริการ (ไม่ตัดสต็อก)
 
   @@index([saleId])
 }

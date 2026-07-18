@@ -3,6 +3,7 @@ import type { Prisma, PrismaClient, PosPayType } from "@prisma/client";
 import * as point from "@/lib/modules/point/service";
 import * as member from "@/lib/modules/member/service";
 import * as coupon from "@/lib/modules/coupon/service";
+import * as inventory from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { emitOutbox } from "@/lib/core/outbox";
 import { drainAll } from "@/lib/outbox-consumers";
@@ -33,7 +34,8 @@ export type CreateSaleInput = {
   sourceModule?: string;
   sourceId?: string;
   idempotencyKey: string;
-  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang?: number }[];
+  // itemId = InvItem.id ที่ผูก → ตัดสต็อก + COGS perpetual (null/ไม่ระบุ = รายการเพิ่มเอง/บริการ ไม่ตัดสต็อก)
+  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang?: number; itemId?: string }[];
   billDiscountSatang?: number;
   // คูปอง (contract 2.3) — ต้องมาคู่กันเสมอ · ระบุแล้วใช้ไม่ได้ = โยน error (ห้ามขายต่อเงียบ ๆ)
   couponSystemId?: string;
@@ -129,7 +131,7 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
       },
     });
     await tx.posSaleLine.createMany({
-      data: lines.map((l) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang })),
+      data: lines.map((l) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId ?? null })),
     });
     await tx.posPayment.createMany({
       data: input.payMethods.map((p) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, type: p.type, amountSatang: p.amountSatang, refSaleId: p.refSaleId })),
@@ -210,9 +212,50 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
     return { saleId: sale.id, receiptNo, grandTotalSatang: grandTotal, pointEarned };
   });
 
-  // best-effort หลัง tx commit — post บัญชีทันที · cron /api/cron/outbox เก็บตกถ้าล้ม
-  if (ownsTx) void drainAll().catch(() => {});
+  // ── หลัง tx commit: ตัดสต็อก (perpetual) + post บัญชี ──
+  // ทำเฉพาะเมื่อ createSale เป็นเจ้าของ tx (ownsTx = commit แน่แล้ว) — ถ้าถูกเรียกใน tx ผู้อื่น
+  //   ปล่อยให้ flow นั้นจัดการ (เลี่ยง orphan movement ถ้า tx นอกโดน rollback)
+  if (ownsTx) {
+    // ตัดสต็อกเฉพาะบิลที่มี line ผูก itemId — inventory.consume เปิด tx เอง + โพสต์ COGS หลัง tx
+    //   (Dr5000/Cr1200 ผ่าน bridge) จึงทำนอก tx ของบิล = เลี่ยง nested tx
+    if (input.lines.some((l) => l.itemId)) await consumeSaleInventory(input.tenantId, input.unitId, result.saleId);
+    void drainAll().catch(() => {}); // post ยอดขาย→บัญชี · cron /api/cron/outbox เก็บตกถ้าล้ม
+  }
   return result;
+}
+
+// ── ตัดสต็อกของบิล (perpetual) — เรียกหลัง createSale commit เท่านั้น ──
+// เฉพาะบิล PAID + line ที่ผูก itemId · idempotent ต่อ line (pos-consume-<saleId>-<lineId>) → retry/replay ไม่ตัดซ้ำ
+//   (ดึง line จาก DB → รองรับ retry หลัง crash: บิลถูกสร้างแล้วแต่ยังไม่ตัดสต็อก ก็ตัดครบ)
+// ไม่มีระบบ INVENTORY ผูก unit → ไม่ตัด (ขายบริการ/ร้านไม่ใช้คลัง — ปกติ ไม่ error)
+// สต็อกไม่พอ → inventory.consume ยอมติดลบ ไม่ block (เงินสำคัญกว่า · ตั้งธง needsReview ให้ร้านเคลียร์)
+// ตัดล้มรายบรรทัด (เช่น item ถูกลบ) → catch ไว้ (บิลชำระแล้ว ห้าม rollback การขาย)
+async function consumeSaleInventory(tenantId: string, unitId: string, saleId: string): Promise<void> {
+  const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true } });
+  if (!sale || sale.status !== "PAID") return; // void แล้ว = อย่าตัด
+  const lines = await prisma.posSaleLine.findMany({
+    where: { tenantId, saleId, itemId: { not: null } },
+    select: { id: true, itemId: true, qty: true },
+  });
+  if (lines.length === 0) return;
+  const inventorySystemId = await systemForUnit(tenantId, unitId, "INVENTORY");
+  if (!inventorySystemId) return;
+  const invCtx = { tenantId, systemId: inventorySystemId };
+  for (const l of lines) {
+    if (!l.itemId) continue;
+    try {
+      await inventory.consume(invCtx, {
+        itemId: l.itemId,
+        qty: l.qty,
+        sourceModule: "POS",
+        refType: "PosSale",
+        refId: saleId,
+        idempotencyKey: `pos-consume-${saleId}-${l.id}`,
+      });
+    } catch {
+      // ตัดสต็อกล้ม → บิลชำระแล้ว ปล่อยผ่าน (ไม่ล้มการขาย)
+    }
+  }
 }
 
 // void: กลับรายการ (คืนแต้ม + สถานะ)
@@ -254,6 +297,46 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string)
 
   // best-effort หลัง commit — cron เก็บตกถ้าล้ม
   void drainAll().catch(() => {});
+
+  // คืนสต็อก + กลับ COGS (perpetual) — นอก tx (inventory.receive เปิด tx เอง + โพสต์ Dr1200/Cr5000 หลัง tx)
+  await restoreVoidedInventory(tenantId, unitId, saleId);
+}
+
+// ── คืนสต็อกของบิลที่ถูก void (perpetual) — mirror consumeSaleInventory ──
+// วนตาม InvMovement OUT ที่ตัดจริงตอนขาย (refType PosSale, sourceModule POS) → คืนตรงเป๊ะกับที่ตัด
+//   (แม้ line ซ้ำ itemId ก็คืนครบ) · คืนที่ต้นทุนปัจจุบันของ item → ต้นทุนถัวเฉลี่ยไม่เพี้ยน
+// idempotent ต่อ movement (pos-refund-<saleId>-<movementId>) → void/retry ซ้ำไม่คืนเบิ้ล
+//   (voidSale โยน error ถ้าบิลไม่ใช่ PAID อยู่แล้ว แต่ receive key ยังกันเบิ้ลอีกชั้น)
+// idempotencyKey มี "refund" + sourceModule POS → bridge ลง Dr1200/Cr5000 (กลับต้นทุนขาย)
+// ไม่มีระบบ INVENTORY / item ถูกลบ / receive ล้ม → ข้ามเงียบ (บัญชีขาย void แล้ว ห้ามล้มการคืนเงิน)
+async function restoreVoidedInventory(tenantId: string, unitId: string, saleId: string): Promise<void> {
+  const inventorySystemId = await systemForUnit(tenantId, unitId, "INVENTORY");
+  if (!inventorySystemId) return;
+  const invCtx = { tenantId, systemId: inventorySystemId };
+  const outMoves = await prisma.invMovement.findMany({
+    where: { tenantId, systemId: inventorySystemId, type: "OUT", refType: "PosSale", refId: saleId, sourceModule: "POS" },
+    select: { id: true, itemId: true, qtyDelta: true },
+  });
+  for (const mv of outMoves) {
+    const returnQty = -mv.qtyDelta; // qtyDelta ติดลบตอนตัด → คืนเท่าที่ตัดจริง
+    if (returnQty <= 0) continue;
+    const item = await prisma.invItem.findFirst({ where: { id: mv.itemId, tenantId }, select: { costSatang: true } });
+    if (!item) continue; // สินค้าถูกลบจากคลัง → ไม่มีที่ให้คืน
+    try {
+      await inventory.receive(invCtx, {
+        itemId: mv.itemId,
+        qty: returnQty,
+        costSatang: item.costSatang, // คืนที่ต้นทุนปัจจุบัน → ต้นทุนถัวเฉลี่ยไม่เพี้ยน
+        idempotencyKey: `pos-refund-${saleId}-${mv.id}`,
+        sourceModule: "POS",
+        refType: "PosSale",
+        refId: saleId,
+        note: "คืนสต็อกจากการยกเลิกบิล POS",
+      });
+    } catch {
+      // คืนล้ม → ปล่อยผ่าน (บัญชีขาย void แล้ว)
+    }
+  }
 }
 
 // รายการขาย (dashboard)

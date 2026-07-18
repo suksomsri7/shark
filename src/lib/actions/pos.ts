@@ -12,7 +12,8 @@ import { promptpayPayload } from "@/lib/payment/promptpay";
 import * as coupon from "@/lib/modules/coupon/service";
 
 // ── รูปแบบข้อมูลที่ client ส่งมา ──
-export type CartLine = { name: string; qty: number; unitPriceSatang: number };
+// itemId = InvItem.id จาก catalog (ตัดสต็อก) · undefined = รายการเพิ่มเอง (ไม่ตัดสต็อก)
+export type CartLine = { name: string; qty: number; unitPriceSatang: number; itemId?: string };
 type SaleInput = {
   systemId: string;
   unitId: string;
@@ -57,7 +58,8 @@ function normalizeLines(raw: CartLine[]): { ok: true; lines: CartLine[]; subtota
     if (!name) return { ok: false, message: "ทุกรายการต้องมีชื่อสินค้า" };
     if (!Number.isFinite(qty) || qty <= 0) return { ok: false, message: `จำนวนของ "${name}" ต้องมากกว่า 0` };
     if (!Number.isFinite(unitPriceSatang) || unitPriceSatang < 0) return { ok: false, message: `ราคาของ "${name}" ติดลบไม่ได้` };
-    lines.push({ name, qty, unitPriceSatang });
+    const itemId = String(l?.itemId ?? "").trim() || undefined; // ผูกสินค้าคลัง (ตัดสต็อก) · ว่าง = รายการเพิ่มเอง
+    lines.push({ name, qty, unitPriceSatang, itemId });
   }
   const subtotal = lines.reduce((s, l) => s + l.unitPriceSatang * l.qty, 0);
   return { ok: true, lines, subtotal };
@@ -197,7 +199,7 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
       memberId: mem.memberId,
       sourceModule: "POS",
       idempotencyKey,
-      lines: norm.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang })),
+      lines: norm.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, itemId: l.itemId })),
       billDiscountSatang: totals.billDiscount,
       couponSystemId: totals.couponSystemId ?? undefined,
       couponCode: totals.couponSystemId ? input.couponCode?.trim().toUpperCase() : undefined,

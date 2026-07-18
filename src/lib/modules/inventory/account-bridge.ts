@@ -8,7 +8,7 @@
 import { postInventoryGl } from "@/lib/modules/account";
 
 // โมดูลฝั่งขาย (ตัดสต็อกเป็นต้นทุนขาย) → receive จากโมดูลเหล่านี้ = คืนสต็อก (refund) กลับ COGS
-const SALE_MODULES = new Set(["ECOM", "CLINIC"]);
+const SALE_MODULES = new Set(["ECOM", "CLINIC", "POS"]);
 
 export type MovementForGl = {
   id: string;

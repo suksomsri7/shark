@@ -6,7 +6,8 @@ import { PromptPayQr } from "@/components/PromptPayQr";
 import { posQuoteAction, registerSaleAction, type QuoteState, type RegisterSaleState } from "@/lib/actions/pos";
 import type { PosCatalogItem, PosMember } from "@/lib/modules/pos/register";
 
-type CartRow = { key: string; name: string; qty: number; unitPriceSatang: number };
+// itemId = InvItem.id (สินค้าจาก catalog → ตัดสต็อก) · undefined = รายการเพิ่มเอง
+type CartRow = { key: string; name: string; qty: number; unitPriceSatang: number; itemId?: string };
 type PayMethod = "CASH" | "PROMPTPAY";
 
 // สตางค์จากช่องกรอกบาท (รับ "" → 0) — ปัดเป็นสตางค์เต็ม
@@ -64,7 +65,7 @@ export function PosRegister({
     setCart((prev) => {
       const found = prev.find((r) => r.key === item.id);
       if (found) return prev.map((r) => (r.key === item.id ? { ...r, qty: r.qty + 1 } : r));
-      return [...prev, { key: item.id, name: item.name, qty: 1, unitPriceSatang: item.priceSatang }];
+      return [...prev, { key: item.id, name: item.name, qty: 1, unitPriceSatang: item.priceSatang, itemId: item.id }];
     });
   }
   function addCustom() {
@@ -84,7 +85,7 @@ export function PosRegister({
   const inputPayload = () => ({
     systemId,
     unitId,
-    lines: cart.map((r) => ({ name: r.name, qty: r.qty, unitPriceSatang: r.unitPriceSatang })),
+    lines: cart.map((r) => ({ name: r.name, qty: r.qty, unitPriceSatang: r.unitPriceSatang, itemId: r.itemId })),
     billDiscountSatang: bahtToSatang(billDiscount),
     memberId: memberId || undefined,
     couponCode: couponCode.trim() || undefined,
