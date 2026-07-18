@@ -293,3 +293,7 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 | W5-D | **Meeting เชิญสมาชิก+realtime**: addChannelMember(admin/creator)+auto-refresh 7s | qc-meeting-invite 22/22 | 42460a2 |
 | W4-D | **Member subscription เก็บเงินจริง**: subscribe→pos.createSale C-2 (เดิมเงินหาย)+payMethod | qc-subscription-money 14/14 + cpa107 | 7b40f96 |
 ✅ **Wave 5 เกือบครบ** (AI ครบทุกโมดูล + KB ฉลาด + meeting realtime) · เหลือ: kanban "งานของฉัน" UI (service พร้อม) · Wave 3 public จอง/จ่าย · Wave 6 CSV import/audit UI/PDPA
+| kanban-UI | **หน้า "งานของฉัน"**: wire listMyCards → section บนหน้า Kanban (ปิด dead code) | typecheck+kanban 10/10 | 74ef549 |
+| W6-A | **CSV import**: ลูกค้า+สินค้า (parser เขียนเอง+เทมเพลต) reuse createCustomer/createItem | qc-csv-import 25/25 | f11a6ed |
+| W6-B | **Audit trail UI**: /app/audit ประวัติการแก้ไข (OWNER/MANAGER) + เติม audit HR payroll 3 จุด | qc-audit-trail 21/21 | 47c78d3 |
+| W6-C | **Public API +/sales**: ดึงยอดขาย POS ผ่าน REST + docs | qc-public-api 14/14 | d281a90 |
