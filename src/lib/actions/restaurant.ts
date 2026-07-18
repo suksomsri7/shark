@@ -345,6 +345,21 @@ export async function doneRequestAction(unitSlug: string, formData: FormData) {
   revalidatePath(base(unitSlug));
 }
 
+// ลูกค้าแจ้งจ่ายพร้อมเพย์แล้ว → ร้านกด "ยืนยันรับเงิน" → เช็คบิลด้วย PROMPTPAY (ลงบัญชี/ปิดโต๊ะ) + ปิดคำขอ
+// error inline ผ่าน ?err= (pattern เดียวกับ voidCheckoutAction) · idempotent: กดซ้ำ → ไม่มีรายการค้าง → err
+export async function confirmPromptpayPaymentAction(unitSlug: string, formData: FormData): Promise<void> {
+  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.checkout.create");
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const requestId = String(formData.get("requestId") ?? "");
+  const res = await order.checkout({ tenantId, unitId, sessionId, payMethod: "PROMPTPAY" });
+  if (res.ok && requestId) await order.doneServiceRequest(tenantId, unitId, requestId);
+  revalidatePath(base(unitSlug));
+  revalidatePath(`${base(unitSlug)}/checkout/${sessionId}`);
+  if (!res.ok) {
+    redirect(`${base(unitSlug)}?err=${encodeURIComponent(res.reason)}`);
+  }
+}
+
 // ───────────────────────── KDS ─────────────────────────
 export async function advanceItemAction(unitSlug: string, itemId: string, to: KdsItemStatus) {
   const { tenantId, unitId } = await ctx(unitSlug, "restaurant.kds.advance");

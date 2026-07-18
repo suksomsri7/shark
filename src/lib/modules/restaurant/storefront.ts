@@ -1,7 +1,9 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import { getSetting } from "./menu";
 import { kitchenOpenNow } from "./scope";
-import { createOrder, type CartLine } from "./order";
+import { createOrder, billPreview, createServiceRequest, type CartLine, type BillLine } from "./order";
+import { getPaymentProfile } from "@/lib/payment/service";
+import { promptpayPayload } from "@/lib/payment/promptpay";
 import "./scope";
 
 // resolve unit จาก slug (public/no-auth) → tenant+unit (type RESTAURANT, ACTIVE)
@@ -126,6 +128,76 @@ export async function tableStatusForGuest(tenantId: string, unitId: string, sess
     hasBillRequest: session.serviceRequests.some((r) => r.type === "REQUEST_BILL"),
     hasCallRequest: session.serviceRequests.some((r) => r.type === "CALL_STAFF"),
   };
+}
+
+// ───────────────────────── ลูกค้าจ่ายเงินเอง (สแกน PromptPay จากลิงก์โต๊ะ) ─────────────────────────
+
+export type GuestBill = {
+  ok: true;
+  sessionId: string;
+  tableName: string;
+  lines: BillLine[];
+  subtotalSatang: number;
+  serviceChargeSatang: number;
+  totalSatang: number;
+  serviceChargeBps: number;
+  promptpayPayload: string | null; // null = ร้านยังไม่ตั้งพร้อมเพย์ / ยอดเป็น 0
+  promptpayName: string | null;
+};
+
+// ดูบิลฝั่งลูกค้า (public) + สร้าง payload PromptPay ยอดรวมบิล (ล็อกยอด)
+// ไม่คืน payload ถ้ายอด 0 หรือร้านยังไม่ตั้ง PromptPay → ให้ลูกค้ากดเรียกพนักงานเก็บเงินแทน
+export async function guestBill(
+  tenantId: string,
+  unitId: string,
+  qrToken: string,
+): Promise<GuestBill | { ok: false; reason: string }> {
+  const resolved = await resolveTableSession(tenantId, unitId, qrToken);
+  if (!resolved.ok) return { ok: false, reason: resolved.reason };
+  const bill = await billPreview(tenantId, unitId, resolved.sessionId);
+
+  let payload: string | null = null;
+  let promptpayName: string | null = null;
+  if (bill.totalSatang > 0) {
+    const profile = await getPaymentProfile({ tenantId });
+    if (profile?.promptpayId) {
+      try {
+        payload = promptpayPayload({ id: profile.promptpayId, amountSatang: bill.totalSatang });
+        promptpayName = profile.displayName ?? null;
+      } catch {
+        payload = null; // PromptPay ID ของร้านเพี้ยน → ไม่โชว์ QR
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    sessionId: resolved.sessionId,
+    tableName: resolved.tableName,
+    lines: bill.lines,
+    subtotalSatang: bill.subtotalSatang,
+    serviceChargeSatang: bill.serviceChargeSatang,
+    totalSatang: bill.totalSatang,
+    serviceChargeBps: bill.serviceChargeBps,
+    promptpayPayload: payload,
+    promptpayName,
+  };
+}
+
+// ลูกค้ากด "แจ้งชำระแล้ว" → ส่งสัญญาณให้ร้าน (service request PAY_PROMPTPAY พร้อมยอด)
+// createServiceRequest มี dedup 2 นาทีในตัว (กดซ้ำ → ไม่สร้างซ้ำ) → ร้านเห็นคำขอเดียว
+export async function notifyPromptpayPayment(
+  tenantId: string,
+  unitId: string,
+  qrToken: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const resolved = await resolveTableSession(tenantId, unitId, qrToken);
+  if (!resolved.ok) return { ok: false, reason: resolved.reason };
+  const bill = await billPreview(tenantId, unitId, resolved.sessionId);
+  if (bill.totalSatang <= 0) return { ok: false, reason: "ยังไม่มียอดให้ชำระ" };
+  const baht = (bill.totalSatang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const res = await createServiceRequest(tenantId, unitId, resolved.sessionId, "PAY_PROMPTPAY", `ลูกค้าแจ้งชำระพร้อมเพย์ ฿${baht}`);
+  return res.ok ? { ok: true } : { ok: false, reason: res.reason };
 }
 
 // ลูกค้าสั่งอาหารผ่าน QR

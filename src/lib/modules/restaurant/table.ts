@@ -98,6 +98,7 @@ export type TableCard = {
   openedAt: Date | null;
   hasRequest: boolean;
   hasBillRequest: boolean;
+  hasPayNotified: boolean; // ลูกค้าแจ้งว่าสแกนจ่ายพร้อมเพย์แล้ว รอร้านยืนยันรับเงิน
 };
 
 // floor plan: โต๊ะทุกตัว + สถานะ session ปัจจุบัน (ยอดสะสม/เวลานั่ง/request ค้าง)
@@ -120,11 +121,12 @@ export async function floorPlan(tenantId: string, unitId: string): Promise<Table
   ]);
   const zoneName = new Map(zones.map((z) => [z.id, z.name]));
   const sessByTable = new Map(openSessions.map((s) => [s.tableId, s]));
-  const reqBySession = new Map<string, { call: boolean; bill: boolean }>();
+  const reqBySession = new Map<string, { call: boolean; bill: boolean; pay: boolean }>();
   for (const r of pendingReqs) {
-    const cur = reqBySession.get(r.sessionId) ?? { call: false, bill: false };
+    const cur = reqBySession.get(r.sessionId) ?? { call: false, bill: false, pay: false };
     if (r.type === "CALL_STAFF") cur.call = true;
     if (r.type === "REQUEST_BILL") cur.bill = true;
+    if (r.type === "PAY_PROMPTPAY") cur.pay = true;
     reqBySession.set(r.sessionId, cur);
   }
 
@@ -154,6 +156,7 @@ export async function floorPlan(tenantId: string, unitId: string): Promise<Table
       openedAt: sess?.openedAt ?? null,
       hasRequest: !!req?.call,
       hasBillRequest: !!req?.bill,
+      hasPayNotified: !!req?.pay,
     };
   });
 }

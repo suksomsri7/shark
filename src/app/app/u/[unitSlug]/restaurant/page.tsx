@@ -4,7 +4,7 @@ import { floorPlan } from "@/lib/modules/restaurant/table";
 import { listServiceRequests, ordersToday, billsToday } from "@/lib/modules/restaurant/order";
 import { getSetting } from "@/lib/modules/restaurant/menu";
 import { kitchenOpenNow } from "@/lib/modules/restaurant/scope";
-import { openSessionAction, ackRequestAction, doneRequestAction, kitchenPauseAction, voidCheckoutAction } from "@/lib/actions/restaurant";
+import { openSessionAction, ackRequestAction, doneRequestAction, kitchenPauseAction, voidCheckoutAction, confirmPromptpayPaymentAction } from "@/lib/actions/restaurant";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -99,29 +99,45 @@ export default async function RestaurantPage({
       {requests.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium">คำขอจากลูกค้า ({requests.length})</h2>
-          {requests.map((r) => (
-            <div key={r.id} className="flex items-center justify-between rounded-xl border p-3">
-              <div>
-                <div className="text-sm font-medium">
-                  โต๊ะ {r.session.table.name} · {r.type === "CALL_STAFF" ? "เรียกพนักงาน" : "ขอเช็คบิล"}
-                  {r.status === "ACKED" ? " · รับเรื่องแล้ว" : ""}
+          {requests.map((r) => {
+            const isPay = r.type === "PAY_PROMPTPAY";
+            const label = r.type === "CALL_STAFF" ? "เรียกพนักงาน" : isPay ? "ลูกค้าแจ้งชำระ (พร้อมเพย์)" : "ขอเช็คบิล";
+            return (
+              <div key={r.id} className={`flex items-center justify-between rounded-xl border p-3 ${isPay ? "border-2 border-[color:var(--color-ink)]" : ""}`}>
+                <div>
+                  <div className="text-sm font-medium">
+                    โต๊ะ {r.session.table.name} · {label}
+                    {r.status === "ACKED" ? " · รับเรื่องแล้ว" : ""}
+                  </div>
+                  {r.note && <div className="text-xs text-[color:var(--color-muted)]">{r.note}</div>}
+                  {isPay && <div className="text-xs text-[color:var(--color-muted)]">ตรวจยอดเงินเข้าบัญชีก่อน แล้วกดยืนยันรับเงินเพื่อปิดบิล</div>}
                 </div>
-                {r.note && <div className="text-xs text-[color:var(--color-muted)]">{r.note}</div>}
-              </div>
-              <div className="flex gap-2">
-                {r.status === "PENDING" && (
-                  <form action={ackRequestAction.bind(null, unitSlug)}>
+                <div className="flex gap-2">
+                  {isPay && (
+                    <ConfirmDialog
+                      triggerLabel="ยืนยันรับเงิน"
+                      triggerClassName="btn-sm btn-primary"
+                      title={`ยืนยันรับเงินโต๊ะ ${r.session.table.name}?`}
+                      detail="ยืนยันว่าเงินพร้อมเพย์เข้าบัญชีร้านแล้ว — ระบบจะปิดบิล ลงบัญชี และปิดโต๊ะให้อัตโนมัติ"
+                      confirmLabel="ยืนยันรับเงินแล้ว"
+                      action={confirmPromptpayPaymentAction.bind(null, unitSlug)}
+                      fields={{ sessionId: r.sessionId, requestId: r.id }}
+                    />
+                  )}
+                  {r.status === "PENDING" && !isPay && (
+                    <form action={ackRequestAction.bind(null, unitSlug)}>
+                      <input type="hidden" name="id" value={r.id} />
+                      <button className="btn-sm">รับเรื่อง</button>
+                    </form>
+                  )}
+                  <form action={doneRequestAction.bind(null, unitSlug)}>
                     <input type="hidden" name="id" value={r.id} />
-                    <button className="btn-sm">รับเรื่อง</button>
+                    <button className="btn-sm">{isPay ? "ปิดคำขอ" : "เสร็จ"}</button>
                   </form>
-                )}
-                <form action={doneRequestAction.bind(null, unitSlug)}>
-                  <input type="hidden" name="id" value={r.id} />
-                  <button className="btn-sm">เสร็จ</button>
-                </form>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
       )}
 
@@ -145,7 +161,7 @@ export default async function RestaurantPage({
                     <div
                       key={t.id}
                       className={`rounded-xl border p-3 ${busy ? "bg-[color:var(--color-surface-2)]" : ""} ${
-                        t.hasBillRequest ? "border-2 border-[color:var(--color-danger)]" : t.hasRequest ? "border-2" : ""
+                        t.hasPayNotified ? "border-2 border-[color:var(--color-ink)]" : t.hasBillRequest ? "border-2 border-[color:var(--color-danger)]" : t.hasRequest ? "border-2" : ""
                       } ${inactive ? "opacity-40" : ""}`}
                     >
                       <div className="flex items-center justify-between">
@@ -161,6 +177,9 @@ export default async function RestaurantPage({
                             {t.guestCount ? `${t.guestCount} คน · ` : ""}
                             {minsSince(t.openedAt)} นาที
                           </div>
+                          {t.hasPayNotified && (
+                            <div className="text-xs font-medium text-[color:var(--color-ink)]">ลูกค้าแจ้งชำระ (พร้อมเพย์)</div>
+                          )}
                           {(t.hasRequest || t.hasBillRequest) && (
                             <div className="text-xs text-[color:var(--color-danger)]">
                               {t.hasBillRequest ? "ขอเช็คบิล" : "เรียกพนักงาน"}

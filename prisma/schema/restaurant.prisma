@@ -50,6 +50,7 @@ enum TableStatus {
 enum ServiceRequestType {
   CALL_STAFF
   REQUEST_BILL
+  PAY_PROMPTPAY // ลูกค้าสแกนจ่ายพร้อมเพย์เองแล้ว แจ้งให้ร้านยืนยันรับเงิน (WO restaurant customer-pay)
 }
 
 enum ServiceRequestStatus {

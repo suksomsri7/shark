@@ -3,6 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OrderingMenuCat, OrderingMenuItem, OrderingMenuGroup } from "@/lib/modules/restaurant/menu";
 import { formatBaht } from "@/lib/ui/money";
+import { PromptPayQr } from "@/components/PromptPayQr";
+
+type GuestBillData = {
+  tableName: string;
+  lines: { name: string; qty: number; lineTotalSatang: number }[];
+  subtotalSatang: number;
+  serviceChargeSatang: number;
+  totalSatang: number;
+  promptpayPayload: string | null;
+  promptpayName: string | null;
+};
 
 type CartEntry = { menuItemId: string; qty: number; choiceIds: string[]; label: string; unitSatang: number };
 
@@ -44,6 +55,10 @@ export function RestaurantQr({
   const [status, setStatus] = useState<SessionStatus | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [bill, setBill] = useState<GuestBillData | null>(null);
+  const [billLoading, setBillLoading] = useState(false);
+  const [notifying, setNotifying] = useState(false);
+  const [paidNotified, setPaidNotified] = useState(false);
   const guestToken = useRef<string>("");
 
   useEffect(() => {
@@ -123,6 +138,49 @@ export function RestaurantQr({
     } catch {
       setMsg("เชื่อมต่อไม่ได้");
     }
+  }
+
+  async function openBill() {
+    setMsg(null);
+    setBillLoading(true);
+    setPaidNotified(false);
+    try {
+      const r = await fetch(`${apiBase}/bill?qrToken=${encodeURIComponent(qrToken)}`, { cache: "no-store" });
+      const data = await r.json();
+      if (r.ok && data.ok) {
+        if (data.totalSatang <= 0) {
+          setMsg("ยังไม่มียอดให้ชำระ");
+        } else {
+          setBill(data as GuestBillData);
+        }
+      } else {
+        setMsg(data.reason || "เปิดบิลไม่สำเร็จ");
+      }
+    } catch {
+      setMsg("เชื่อมต่อไม่ได้ ลองใหม่");
+    }
+    setBillLoading(false);
+  }
+
+  async function notifyPaid() {
+    setNotifying(true);
+    try {
+      const r = await fetch(`${apiBase}/notify-payment`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ qrToken }),
+      });
+      if (r.ok) {
+        setPaidNotified(true);
+        refresh();
+      } else {
+        const data = await r.json().catch(() => null);
+        setMsg((data && data.reason) || "แจ้งชำระไม่สำเร็จ ลองใหม่");
+      }
+    } catch {
+      setMsg("เชื่อมต่อไม่ได้ ลองใหม่");
+    }
+    setNotifying(false);
   }
 
   return (
@@ -212,6 +270,73 @@ export function RestaurantQr({
         />
       )}
 
+      {bill && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={() => setBill(null)}>
+          <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-[color:var(--color-surface)] p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="font-semibold">บิลโต๊ะ {bill.tableName}</div>
+              <button onClick={() => setBill(null)} className="text-sm text-[color:var(--color-muted)] underline">
+                ปิด
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              {bill.lines.map((l, i) => (
+                <div key={i} className="flex items-center justify-between text-sm">
+                  <span>
+                    {l.qty}× {l.name}
+                  </span>
+                  <span>{formatBaht(l.lineTotalSatang)}</span>
+                </div>
+              ))}
+            </div>
+            {bill.serviceChargeSatang > 0 && (
+              <div className="mt-1 flex items-center justify-between text-sm text-[color:var(--color-muted)]">
+                <span>ค่าบริการ</span>
+                <span>{formatBaht(bill.serviceChargeSatang)}</span>
+              </div>
+            )}
+            <div className="mt-2 flex items-center justify-between border-t pt-2 text-base font-semibold">
+              <span>ยอดที่ต้องชำระ</span>
+              <span>{formatBaht(bill.totalSatang)}</span>
+            </div>
+
+            {paidNotified ? (
+              <div className="mt-4 rounded-xl border border-[color:var(--color-ink)] p-4 text-center text-sm">
+                <div className="font-medium">แจ้งชำระเรียบร้อย</div>
+                <div className="mt-1 text-[color:var(--color-muted)]">รอพนักงานยืนยันรับเงินสักครู่ค่ะ</div>
+              </div>
+            ) : bill.promptpayPayload ? (
+              <div className="mt-4 flex flex-col items-center gap-3">
+                <div className="text-sm text-[color:var(--color-muted)]">สแกนจ่ายด้วยแอปธนาคาร (PromptPay)</div>
+                <PromptPayQr payload={bill.promptpayPayload} size={200} caption={`${bill.promptpayName ? bill.promptpayName + " · " : ""}${formatBaht(bill.totalSatang)}`} />
+                <button
+                  onClick={notifyPaid}
+                  disabled={notifying}
+                  className="btn btn-primary w-full text-sm disabled:opacity-50"
+                >
+                  {notifying ? "กำลังแจ้ง…" : "แจ้งชำระแล้ว"}
+                </button>
+                <p className="text-center text-xs text-[color:var(--color-muted)]">โอนแล้วกด &ldquo;แจ้งชำระแล้ว&rdquo; เพื่อให้พนักงานตรวจสอบและยืนยันรับเงิน</p>
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-col gap-2">
+                <p className="text-center text-sm text-[color:var(--color-muted)]">ร้านนี้ยังไม่ได้เปิดรับพร้อมเพย์ — กดเรียกพนักงานเก็บเงินที่โต๊ะได้เลย</p>
+                <button
+                  onClick={() => {
+                    setBill(null);
+                    serviceRequest("REQUEST_BILL");
+                  }}
+                  className="btn btn-primary text-sm"
+                >
+                  ขอเช็คบิล (พนักงานเก็บเงินที่โต๊ะ)
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* footer: cart / actions */}
       <div className="fixed inset-x-0 bottom-0 border-t bg-[color:var(--color-surface)] p-3">
         <div className="mx-auto flex w-full max-w-md flex-col gap-2">
@@ -234,13 +359,22 @@ export function RestaurantQr({
               </button>
             </>
           ) : (
-            <div className="flex gap-2">
-              <button onClick={() => serviceRequest("CALL_STAFF")} className="btn btn-ghost flex-1 text-sm">
-                เรียกพนักงาน
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={openBill}
+                disabled={billLoading}
+                className="btn btn-primary text-sm disabled:opacity-50"
+              >
+                {billLoading ? "กำลังเปิดบิล…" : "ดูบิล & จ่ายเงิน"}
               </button>
-              <button onClick={() => serviceRequest("REQUEST_BILL")} className="btn btn-ghost flex-1 text-sm">
-                ขอเช็คบิล
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => serviceRequest("CALL_STAFF")} className="btn btn-ghost flex-1 text-sm">
+                  เรียกพนักงาน
+                </button>
+                <button onClick={() => serviceRequest("REQUEST_BILL")} className="btn btn-ghost flex-1 text-sm">
+                  ขอเช็คบิล
+                </button>
+              </div>
             </div>
           )}
         </div>

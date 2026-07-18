@@ -38,6 +38,7 @@
     "qc:dna": "tsx scripts/qc-dna.mts",
     "qc:restaurant-money": "tsx scripts/qc-restaurant-money.mts",
     "qc:restaurant-void": "tsx scripts/qc-restaurant-void.mts",
+    "qc:restaurant-pay": "tsx scripts/qc-restaurant-pay.mts",
     "qc:reward": "tsx scripts/qc-reward.mts",
     "qc:coupon": "tsx scripts/qc-pos-coupon.mts",
     "qc:ticket": "tsx scripts/qc-ticket-money.mts",
