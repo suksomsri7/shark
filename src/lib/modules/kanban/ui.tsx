@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getBoard, listBoards, listTenantUsers } from "./service";
+import { requireTenant } from "@/lib/core/context";
+import { getBoard, listBoards, listMyCards, listTenantUsers } from "./service";
 import {
   archiveBoardAction,
   archiveCardAction,
@@ -23,10 +24,31 @@ const fmtDue = (d: Date) =>
 // ───────────────────────── KanbanContent (ฝังในหน้า /app/sys/[id]) ─────────────────────────
 // แสดงรายการบอร์ดของระบบ Kanban นี้ + ปุ่มสร้างบอร์ด (คลิกเข้าดูรายละเอียดที่ sub-route)
 export async function KanbanContent({ systemId, tenantId }: { systemId: string; tenantId: string }) {
-  const boards = await listBoards(tenantId, systemId);
+  const auth = await requireTenant();
+  const [boards, myCards] = await Promise.all([
+    listBoards(tenantId, systemId),
+    listMyCards(tenantId, systemId, auth.user.id),
+  ]);
 
   return (
-    <Section title={`บอร์ดงาน (${boards.length})`}>
+    <div className="flex flex-col gap-6">
+      {/* งานของฉัน — การ์ดที่มอบหมายให้ฉันข้ามทุกบอร์ด */}
+      <Section title={`งานของฉัน (${myCards.length})`}>
+        <DataList
+          items={myCards.map((c) => ({
+            key: c.id,
+            href: `/app/sys/${systemId}/kanban/${c.boardId}`,
+            primary: c.title,
+            secondary: `${c.board?.name ?? ""}${c.column?.name ? ` · ${c.column.name}` : ""}`,
+            trailing: c.dueAt ? (
+              <span className={`text-xs ${muted}`}>ครบกำหนด {fmtDue(c.dueAt)}</span>
+            ) : undefined,
+          }))}
+          empty="ยังไม่มีงานที่มอบหมายให้คุณ — งานที่หัวหน้ามอบหมายจะมาแสดงที่นี่"
+        />
+      </Section>
+
+      <Section title={`บอร์ดงาน (${boards.length})`}>
       <DataList
         items={boards.map((b) => ({
           key: b.id,
@@ -52,6 +74,7 @@ export async function KanbanContent({ systemId, tenantId }: { systemId: string; 
         <button className="btn btn-ghost text-sm">+ สร้างบอร์ด</button>
       </form>
     </Section>
+    </div>
   );
 }
 
