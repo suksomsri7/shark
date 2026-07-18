@@ -143,6 +143,18 @@ export {
 // ปิดงวดบัญชีอัตโนมัติ (WO-0039) — cron ระดับแพลตฟอร์มเรียก
 export { sweepAutoClosePeriods } from "./period-sweep";
 
+// ประวัติการแก้ไข (WO Wave6-B) — writeAudit เปิดให้โมดูลอื่น (เช่น hr payroll) เขียน log
+// ผ่าน facade เดียว + service อ่าน/ป้ายไทยสำหรับหน้า "ประวัติการแก้ไข"
+export {
+  writeAudit,
+  listAuditLogs,
+  listAuditActions,
+  auditActionLabelTh,
+  type AuditLogRow,
+  type AuditLogPage,
+  type ListAuditLogsInput,
+} from "./access";
+
 // ─────────────────────────────────────────────────────────────
 // บันทึกค่าใช้จ่าย/ใบเสร็จเข้าบัญชี (facade — ผู้ช่วย AI เรียกผ่านที่นี่, feedback เจ้าของ #4)
 // caller ส่งแค่ ยอด/ผู้ขาย/บันทึก — ไม่ต้องรู้เลขบัญชี/VAT · สร้างเป็น DRAFT (docType EXPENSE)

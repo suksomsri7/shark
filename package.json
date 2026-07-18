@@ -13,6 +13,7 @@
     "qc:account:qc7": "tsx scripts/qc-account-qc7.mts",
     "qc:payroll": "tsx scripts/qc-payroll.mts",
     "qc:payroll-reverse": "tsx scripts/qc-payroll-reverse.mts",
+    "qc:audit-trail": "tsx scripts/qc-audit-trail.mts",
     "qc:chat": "tsx scripts/qc-chat-security.mts",
     "qc:chat-notify": "tsx scripts/qc-chat-notify.mts",
     "qc:systems": "tsx scripts/qc-systems.mts",

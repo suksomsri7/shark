@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canViewPayroll, ForbiddenError } from "@/lib/core/rbac";
+// ประวัติการแก้ไข (WO Wave6-B): เขียน AuditLog จุดเงินสำคัญของเงินเดือน ผ่าน account facade
+// (F2.2 — hr แตะ account ได้เฉพาะผ่าน @/lib/modules/account · edge hr→account อนุญาตแล้ว)
+import { writeAudit } from "@/lib/modules/account";
 import {
   approveRun,
   createPayrollRun,
@@ -73,7 +76,15 @@ export async function approvePayrollRunAction(formData: FormData) {
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  await approveRun(ctx, runId);
+  const res = await approveRun(ctx, runId);
+  await writeAudit({
+    tenantId: auth.active.tenantId,
+    actorId: auth.user.id,
+    action: "hr.payroll.approve",
+    targetType: "HrPayrollRun",
+    targetId: runId,
+    after: { ok: res.ok, note: res.note },
+  });
   revalidate(systemId);
 }
 
@@ -87,7 +98,15 @@ export async function reverseRunAction(formData: FormData) {
   if (!systemId || !runId) return;
   const reason = String(formData.get("reason") ?? "").trim() || undefined;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  await reverseRun(ctx, runId, reason);
+  const res = await reverseRun(ctx, runId, reason);
+  await writeAudit({
+    tenantId: auth.active.tenantId,
+    actorId: auth.user.id,
+    action: "hr.payroll.reverse",
+    targetType: "HrPayrollRun",
+    targetId: runId,
+    after: { ok: res.ok, note: res.note, reason: reason ?? null },
+  });
   revalidate(systemId);
 }
 
@@ -99,6 +118,14 @@ export async function markPaidAction(formData: FormData) {
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  await markPaid(ctx, runId);
+  const res = await markPaid(ctx, runId);
+  await writeAudit({
+    tenantId: auth.active.tenantId,
+    actorId: auth.user.id,
+    action: "hr.payroll.pay",
+    targetType: "HrPayrollRun",
+    targetId: runId,
+    after: { ok: res.ok, note: res.note },
+  });
   revalidate(systemId);
 }
