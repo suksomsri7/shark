@@ -71,6 +71,21 @@ try {
         chk("PA-2.7", "GET /sales + key ถูก → 200 data เป็น array", rs.status === 200 && Array.isArray(sb.data), "200 array", `${rs.status}`);
         chk("PA-2.8", "GET /sales ไม่มี key → 401", (await sales.GET(req("/api/v1/sales"))).status === 401, "401", "?");
       }
+      // Wave6-D: entity ใหม่ (unit-axis) — key ถูก → 200 data array · ไม่มี key → 401
+      const newEps: { id: string; name: string; path: string; mod: string }[] = [
+        { id: "PA-2.9", name: "/appointments", path: "/api/v1/appointments", mod: "@/app/api/v1/appointments/route" },
+        { id: "PA-2.10", name: "/reservations", path: "/api/v1/reservations", mod: "@/app/api/v1/reservations/route" },
+        { id: "PA-2.11", name: "/tickets/orders", path: "/api/v1/tickets/orders", mod: "@/app/api/v1/tickets/orders/route" },
+        { id: "PA-2.12", name: "/queue/tickets", path: "/api/v1/queue/tickets", mod: "@/app/api/v1/queue/tickets/route" },
+      ];
+      for (const ep of newEps) {
+        const h = (await import(ep.mod as string).catch(() => null)) as { GET: (r: Request) => Promise<Response> } | null;
+        if (!h) { chk(ep.id, `มี ${ep.path}/route.ts`, false, "มี", "ยังไม่สร้าง"); continue; }
+        const ok = await h.GET(req(ep.path, k2.rawKey));
+        const ob = (await ok.json()) as { data?: unknown[] };
+        const un = await h.GET(req(ep.path));
+        chk(ep.id, `GET ${ep.name} key ถูก → 200 data array · ไม่มี key → 401`, ok.status === 200 && Array.isArray(ob.data) && un.status === 401, "200 array + 401", `${ok.status}/${un.status}`);
+      }
       // rate limit: ยิง /me จน 429 (limit 60/นาที)
       let got429 = false;
       for (let i = 0; i < 70; i++) { const r = await me.GET(req("/api/v1/me", k2.rawKey)); if (r.status === 429) { got429 = true; break; } }

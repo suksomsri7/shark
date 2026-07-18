@@ -45,6 +45,30 @@ const ENDPOINTS: Endpoint[] = [
     desc: "รายการขาย POS ที่ชำระแล้ว (PAID) ทุกระบบ POS ของร้าน เรียงจากใหม่ไปเก่า",
     sample: `{ "data": [ { "id": "clx...", "receiptNo": "R-0001", "grandTotalSatang": 12000, "status": "PAID", "createdAt": "2026-07-18T..." } ] }`,
   },
+  {
+    method: "GET",
+    path: "/api/v1/appointments?take=50",
+    desc: "รายการนัดหมายทุกกิจการของร้าน เรียงจากเวลานัดล่าสุดไปเก่า",
+    sample: `{ "data": [ { "id": "clx...", "customerName": "สมชาย", "customerPhone": "0812223333", "startAt": "2026-07-18T...", "status": "CONFIRMED", "serviceName": "ตัดผม" } ] }`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/reservations?take=50",
+    desc: "รายการจองห้องพักทุกกิจการของร้าน เรียงจากวันเช็คอินล่าสุดไปเก่า",
+    sample: `{ "data": [ { "id": "clx...", "code": "HR-2607-0001", "guestName": "สมหญิง", "checkInDate": "2026-07-20", "checkOutDate": "2026-07-22", "status": "BOOKED", "roomTypeName": "Deluxe Sea View" } ] }`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/tickets/orders?take=50",
+    desc: "คำสั่งซื้อตั๋วเข้างานทุกกิจการของร้าน เรียงจากใหม่ไปเก่า",
+    sample: `{ "data": [ { "id": "clx...", "orderNo": "TO-250718-0001", "status": "PAID", "totalSatang": 50000, "createdAt": "2026-07-18T..." } ] }`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/queue/tickets?date=2026-07-18&take=50",
+    desc: "บัตรคิวตามวัน (ไม่ระบุ date จะใช้วันนี้ตามเวลาไทย) ทุกกิจการของร้าน",
+    sample: `{ "data": [ { "id": "clx...", "number": "A012", "status": "WAITING", "businessDate": "2026-07-18", "issuedAt": "2026-07-18T..." } ], "date": "2026-07-18" }`,
+  },
 ];
 
 const codeBox = "block overflow-x-auto rounded-lg bg-neutral-900 p-3 text-xs text-neutral-100";
