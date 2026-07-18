@@ -4,12 +4,14 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
+import { parseCsv, type ImportSummary } from "@/lib/core/csv";
 import {
   archiveItem,
   consume,
   createItem,
   createLocation,
   findItemByBarcode,
+  importItems,
   itemLots,
   receive,
   transfer,
@@ -148,6 +150,26 @@ export async function consumeAction(formData: FormData) {
     lotCode: String(formData.get("lotCode") ?? "").trim() || null,
   });
   revalidate(systemId);
+}
+
+// ── นำเข้าสินค้าจาก CSV (WO Wave6-A) — ใช้กับ useActionState · onHand เริ่ม 0 ──
+export async function importItemsAction(
+  systemId: string,
+  _prev: ImportSummary | null,
+  formData: FormData,
+): Promise<ImportSummary | null> {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.import");
+  const csv = String(formData.get("csv") ?? "");
+  if (!systemId || !csv.trim()) return null;
+  const table = parseCsv(csv);
+  if (table.rows.length === 0) {
+    return { created: 0, skipped: 0, errors: [{ row: 0, reason: "ไม่พบข้อมูล — ต้องมีบรรทัดหัวคอลัมน์ + อย่างน้อย 1 แถว" }] };
+  }
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const summary = await importItems(ctx, table);
+  revalidate(systemId);
+  return summary;
 }
 
 // ── สร้างคลังใหม่ (WO-0037) ──

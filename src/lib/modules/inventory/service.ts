@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
+import { cell, columnIndex, type CsvTable, type ImportSummary } from "@/lib/core/csv";
 import { emitOutbox } from "@/lib/core/outbox";
 import { formatThaiDate } from "@/lib/ui/date";
 import { isNegative, movingAvgCost, needsReorder } from "./rules";
@@ -180,6 +181,80 @@ export async function createItem(ctx: Ctx, input: CreateItemInput): Promise<{ id
     },
   });
   return { id: it.id };
+}
+
+// ── นำเข้าสินค้าจาก CSV (WO Wave6-A) — reuse createItem · onHand เริ่ม 0 (รับเข้าจริงทีหลังผ่าน receive) ──
+// header ที่รองรับ (ไทย/อังกฤษ) — normalize ตัดช่องว่าง/พิมพ์เล็กแล้วเทียบ
+const ITEM_COLS = {
+  name: ["name", "ชื่อ", "ชื่อสินค้า", "สินค้า", "product", "productname"],
+  sku: ["sku", "รหัส", "รหัสสินค้า", "code", "itemcode", "รหัสสกุ"],
+  barcode: ["barcode", "บาร์โค้ด", "บาร์โคด"],
+  category: ["category", "หมวด", "หมวดหมู่", "ประเภท"],
+  unit: ["unit", "หน่วย", "หน่วยนับ", "unitlabel"],
+  cost: ["cost", "ต้นทุน", "ราคาทุน", "ราคาต้นทุน", "ต้นทุนต่อหน่วย", "ทุน", "costprice"],
+  reorder: ["reorder", "reorderpoint", "จุดสั่งซื้อ", "จุดสั่ง", "min", "minimum"],
+};
+
+// SKU ว่าง → gen อัตโนมัติ (กันชนกับ @@unique[systemId,sku] เมื่อมีหลายแถวไม่มี sku)
+const SKU_ALPHABET = "ACDEFGHJKLMNPQRSTUVWXY3456789";
+function genSku(): string {
+  let s = "IMP-";
+  for (let i = 0; i < 6; i++) s += SKU_ALPHABET[Math.floor(Math.random() * SKU_ALPHABET.length)];
+  return s;
+}
+
+// จำนวนเงินบาท → สตางค์ (ตัด comma หลักพัน) · ค่าที่อ่านไม่ได้/ติดลบ → 0
+function bahtToSatang(raw: string): number {
+  const n = Number(raw.replace(/,/g, ""));
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0;
+}
+function toReorder(raw: string): number {
+  const n = Number(raw.replace(/,/g, ""));
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+}
+
+// นำเข้าทีละแถว: ชื่อว่าง → error · sku ซ้ำในระบบ (P2002) → ข้าม · ที่เหลือ createItem (onHand=0)
+export async function importItems(ctx: Ctx, table: CsvTable): Promise<ImportSummary> {
+  const idx = {
+    name: columnIndex(table.headers, ITEM_COLS.name),
+    sku: columnIndex(table.headers, ITEM_COLS.sku),
+    barcode: columnIndex(table.headers, ITEM_COLS.barcode),
+    category: columnIndex(table.headers, ITEM_COLS.category),
+    unit: columnIndex(table.headers, ITEM_COLS.unit),
+    cost: columnIndex(table.headers, ITEM_COLS.cost),
+    reorder: columnIndex(table.headers, ITEM_COLS.reorder),
+  };
+  const summary: ImportSummary = { created: 0, skipped: 0, errors: [] };
+
+  for (let r = 0; r < table.rows.length; r++) {
+    const rowNo = r + 2; // +1 header, +1 = เลขแถว 1-based ที่ผู้ใช้เห็นใน Excel
+    const row = table.rows[r];
+    const name = cell(row, idx.name);
+    if (!name) {
+      summary.errors.push({ row: rowNo, reason: "ชื่อสินค้าว่าง" });
+      continue;
+    }
+    const sku = cell(row, idx.sku) || genSku();
+    try {
+      await createItem(ctx, {
+        sku,
+        name,
+        barcode: cell(row, idx.barcode) || null,
+        unitLabel: cell(row, idx.unit) || null,
+        category: cell(row, idx.category) || null,
+        reorderPoint: toReorder(cell(row, idx.reorder)),
+        costSatang: bahtToSatang(cell(row, idx.cost)),
+      });
+      summary.created += 1;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        summary.skipped += 1; // sku ซ้ำในระบบ → ข้าม (ไม่ทับของเดิม)
+      } else {
+        summary.errors.push({ row: rowNo, reason: e instanceof Error ? e.message.slice(0, 120) : "เกิดข้อผิดพลาด" });
+      }
+    }
+  }
+  return summary;
 }
 
 // ── แก้ไขข้อมูลสินค้า (CRUD) — เฉพาะ field ข้อมูล ห้ามแตะ onHand/costSatang ──

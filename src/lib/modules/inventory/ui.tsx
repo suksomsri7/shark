@@ -10,6 +10,7 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { formatThaiDate, formatThaiDateTime } from "@/lib/ui/date";
+import CsvImport from "@/components/CsvImport";
 import BarcodeSearch from "./BarcodeSearch";
 import {
   ensureDefaultLocation,
@@ -26,6 +27,7 @@ import {
   consumeAction,
   createItemAction,
   createLocationAction,
+  importItemsAction,
   receiveAction,
   transferAction,
   updateItemAction,
@@ -659,6 +661,20 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
           </div>
           <SubmitButton variant="ghost">+ เพิ่มสินค้า</SubmitButton>
         </form>
+      </Section>
+
+      {/* นำเข้าสินค้าจาก CSV */}
+      <Section title="นำเข้าสินค้าจาก CSV">
+        <CsvImport
+          systemId={systemId}
+          entityLabel="สินค้า"
+          templateHeader="ชื่อสินค้า,รหัสสินค้า,บาร์โค้ด,หมวดหมู่,หน่วยนับ,ราคาทุน,จุดสั่งซื้อ"
+          templateSample="แชมพู,SH-01,8850001112223,ของใช้,ขวด,45,10"
+          templateFilename="สินค้า-ตัวอย่าง.csv"
+          supportedHeaders="ชื่อสินค้า (name), รหัสสินค้า/SKU, บาร์โค้ด (barcode), หมวดหมู่ (category), หน่วยนับ (unit), ราคาทุน บาท (cost), จุดสั่งซื้อ (reorder) — ต้องมีชื่อสินค้า · SKU ซ้ำจะถูกข้าม"
+          successNote="นำเข้าสำเร็จ — ยอดคงเหลือเริ่มที่ 0 ทุกรายการ ใช้ ‘รับเข้า (เพิ่มสต็อก)’ เพื่อบันทึกยอดจริง แล้วรีเฟรชหน้า"
+          action={importItemsAction}
+        />
       </Section>
 
       {/* ความเคลื่อนไหวล่าสุด */}

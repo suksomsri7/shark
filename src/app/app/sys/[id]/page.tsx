@@ -22,6 +22,8 @@ import { InventoryContent } from "@/lib/modules/inventory/ui";
 import { HrContent } from "@/lib/modules/hr/ui";
 import { MarketingContent } from "@/lib/modules/marketing/ui";
 import { SubscriptionSection } from "@/lib/modules/member/subscription-ui";
+import { importCustomersAction } from "@/lib/modules/member/import-actions";
+import CsvImport from "@/components/CsvImport";
 import {
   linkUnitAction,
   unlinkUnitAction,
@@ -153,6 +155,17 @@ async function MemberContent({ systemId }: { systemId: string }) {
             ),
           }))}
           empty="ยังไม่มีสมาชิก — จะถูกสร้างอัตโนมัติเมื่อลูกค้าจอง/ซื้อในระบบที่เชื่อมไว้"
+        />
+      </Section>
+      <Section title="นำเข้าลูกค้าจาก CSV" card>
+        <CsvImport
+          systemId={systemId}
+          entityLabel="ลูกค้า"
+          templateHeader="ชื่อ,เบอร์โทร,อีเมล"
+          templateSample="สมชาย ใจดี,0812345678,somchai@example.com"
+          templateFilename="ลูกค้า-ตัวอย่าง.csv"
+          supportedHeaders="ชื่อ (name), เบอร์โทร (phone), อีเมล (email) — ต้องมีชื่อหรือเบอร์อย่างน้อย 1 อย่าง"
+          action={importCustomersAction}
         />
       </Section>
       <SubscriptionSection systemId={systemId} />

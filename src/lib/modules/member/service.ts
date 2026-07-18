@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/db";
+import { cell, columnIndex, type CsvTable, type ImportSummary } from "@/lib/core/csv";
 import type { MemberTier, Prisma, PrismaClient } from "@prisma/client";
 
 // Member (แกนกลาง CRM) — service ที่โมดูลอื่นเรียก (contract 2.6/2.7)
@@ -136,6 +137,65 @@ export async function listCustomers(tenantId: string, search?: string) {
     orderBy: { createdAt: "desc" },
     take: 100,
   });
+}
+
+// ── นำเข้าลูกค้าจาก CSV (WO Wave6-A) — reuse findOrCreate (dedup เบอร์→อีเมล) ──
+// header ที่รองรับ (ไทย/อังกฤษ) — normalize ตัดช่องว่าง/พิมพ์เล็กแล้วเทียบ
+const MEMBER_COLS = {
+  name: ["name", "ชื่อ", "ชื่อลูกค้า", "ชื่อสมาชิก", "ชื่อ-นามสกุล", "ชื่อนามสกุล", "fullname"],
+  phone: ["phone", "เบอร์", "เบอร์โทร", "เบอร์โทรศัพท์", "โทรศัพท์", "โทร", "tel", "mobile", "phoneno", "phonenumber"],
+  email: ["email", "อีเมล", "อีเมล์", "e-mail", "mail"],
+};
+
+// นำเข้าทีละแถว: ต้องมีชื่อหรือเบอร์อย่างน้อย 1 · ตรวจซ้ำ (เบอร์→อีเมล) = ข้าม · ที่เหลือ findOrCreate
+// ctx.systemId = memberSystemId (Customer เป็น member-scoped)
+export async function importCustomers(
+  ctx: { tenantId: string; systemId: string },
+  table: CsvTable,
+): Promise<ImportSummary> {
+  const iName = columnIndex(table.headers, MEMBER_COLS.name);
+  const iPhone = columnIndex(table.headers, MEMBER_COLS.phone);
+  const iEmail = columnIndex(table.headers, MEMBER_COLS.email);
+  const summary: ImportSummary = { created: 0, skipped: 0, errors: [] };
+
+  for (let r = 0; r < table.rows.length; r++) {
+    const rowNo = r + 2; // +1 header, +1 = เลขแถวแบบ 1-based ที่ผู้ใช้เห็นใน Excel
+    const row = table.rows[r];
+    const name = cell(row, iName);
+    const phone = normPhone(cell(row, iPhone));
+    const email = normEmail(cell(row, iEmail));
+    if (!name && !phone) {
+      summary.errors.push({ row: rowNo, reason: "ต้องมีชื่อหรือเบอร์อย่างน้อย 1 อย่าง" });
+      continue;
+    }
+    try {
+      // ตรวจซ้ำแบบเดียวกับ findOrCreate (เบอร์ก่อน แล้วอีเมล) เพื่อแยกนับ created/skipped
+      let existing =
+        (phone && (await prisma.customer.findFirst({ where: { tenantId: ctx.tenantId, memberSystemId: ctx.systemId, phone } }))) ||
+        null;
+      if (!existing && email) {
+        existing = await prisma.customer.findFirst({
+          where: { tenantId: ctx.tenantId, memberSystemId: ctx.systemId, email },
+        });
+      }
+      if (existing) {
+        summary.skipped += 1;
+        continue;
+      }
+      await findOrCreate({
+        tenantId: ctx.tenantId,
+        memberSystemId: ctx.systemId,
+        name: name || undefined,
+        phone: phone || undefined,
+        email: email || undefined,
+        source: "IMPORT",
+      });
+      summary.created += 1;
+    } catch (e) {
+      summary.errors.push({ row: rowNo, reason: e instanceof Error ? e.message.slice(0, 120) : "เกิดข้อผิดพลาด" });
+    }
+  }
+  return summary;
 }
 
 export async function getProfile(tenantId: string, id: string) {

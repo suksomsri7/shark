@@ -56,6 +56,7 @@
     "qc:rental-refund": "tsx scripts/qc-rental-refund.mts",
     "qc:rental-race": "tsx scripts/qc-rental-race.mts",
     "qc:inventory-item": "tsx scripts/qc-inventory-item.mts",
+    "qc:csv-import": "tsx scripts/qc-csv-import.mts",
     "qc:clinic-refund": "tsx scripts/qc-clinic-refund.mts",
     "qc:booking-race": "tsx scripts/qc-booking-race.mts",
     "qc:booking-hours-hr": "tsx scripts/qc-booking-hours-hr.mts",
