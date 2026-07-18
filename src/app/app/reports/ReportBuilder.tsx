@@ -24,7 +24,7 @@ type ReportInput = {
   metric?: string;
 };
 export type SavedReport = { id: string; name: string; config: ReportInput; createdAt: string };
-type Result = { columns: Column[]; rows: Record<string, unknown>[] };
+type Result = { columns: Column[]; rows: Record<string, unknown>[]; truncated?: boolean };
 
 const OPS: { value: FilterOp; label: string }[] = [
   { value: "eq", label: "เท่ากับ" },
@@ -327,6 +327,11 @@ export function ReportBuilder({
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">ผลลัพธ์ ({result.rows.length} แถว)</span>
           </div>
+          {result.truncated && (
+            <p className="rounded-lg bg-[color:var(--color-warning-bg,#fef3c7)] px-3 py-2 text-xs text-[color:var(--color-warning-text,#92400e)]">
+              แสดงบนจอ {result.rows.length} แถวแรกเท่านั้น (ข้อมูลมีมากกว่านี้) — กด “ดาวน์โหลด CSV” เพื่อได้ครบทุกแถว
+            </p>
+          )}
           {result.rows.length === 0 ? (
             <p className="text-sm text-[color:var(--color-muted)]">ไม่มีข้อมูลตามเงื่อนไข</p>
           ) : (

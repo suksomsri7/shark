@@ -26,7 +26,7 @@ export type ReportInput = {
   take?: number;
 };
 
-export type ReportResult = { columns: Column[]; rows: Record<string, unknown>[] };
+export type ReportResult = { columns: Column[]; rows: Record<string, unknown>[]; truncated?: boolean };
 
 type DatasetDef = {
   label: string;
@@ -38,7 +38,8 @@ type DatasetDef = {
   query: (db: TenantDb, where: Record<string, unknown>, take?: number) => Promise<Record<string, unknown>[]>;
 };
 
-const RAW_CAP = 500; // เพดานแถวดิบเมื่อไม่จัดกลุ่ม
+const RAW_CAP = 500; // เพดานแถวดิบพรีวิวบนจอ (ไม่จัดกลุ่ม)
+export const EXPORT_CAP = 50_000; // เพดานตอน export CSV — สูงกว่าจอมาก กัน "ตัด 500 แถวเงียบ ๆ"
 
 export const DATASETS: Record<string, DatasetDef> = {
   sales: {
@@ -209,9 +210,10 @@ export async function runReport(
     return { columns, rows: outRows };
   }
 
-  // ── แถวดิบ (cap take ?? 500) ──
-  const capped = rows.slice(0, input.take ?? RAW_CAP);
-  return { columns: ds.columns, rows: capped };
+  // ── แถวดิบ (cap take ?? 500) — บอกชัดถ้าถูกตัด (เลิก "หายเงียบ") ──
+  const cap = input.take ?? RAW_CAP;
+  const truncated = rows.length > cap;
+  return { columns: ds.columns, rows: rows.slice(0, cap), truncated };
 }
 
 // ── CSV ──

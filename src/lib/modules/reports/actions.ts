@@ -26,7 +26,9 @@ export async function runReportAction(input: ReportInput): Promise<ReportResult>
 
 export async function exportReportCsvAction(input: ReportInput): Promise<string> {
   const ctx = await ctxWithCan("run");
-  return reports.toCsv(await reports.runReport(ctx, input));
+  // export ใช้เพดานสูง (EXPORT_CAP) แทน 500 ของจอ — CSV ได้ครบไม่ถูกตัดเงียบ
+  const take = input.take ?? reports.EXPORT_CAP;
+  return reports.toCsv(await reports.runReport(ctx, { ...input, take }));
 }
 
 export async function listReportsAction(): Promise<
