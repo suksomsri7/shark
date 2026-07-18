@@ -38,6 +38,7 @@ export function rewardTabs(systemId: string): { href: string; label: string }[] 
     { href: s, label: "ภาพรวม" },
     { href: `${s}/reward/rewards`, label: "รายการรางวัล" },
     { href: `${s}/reward/redeem`, label: "แลกรางวัล" },
+    { href: `${s}/reward/history`, label: "ประวัติการแลก" },
   ];
 }
 
@@ -79,13 +80,12 @@ export async function RewardListSection({ systemId }: { systemId: string }) {
   );
 }
 
-// ───────────── แลกรางวัล + ประวัติการแลก (redeem) ─────────────
+// ───────────── แลกรางวัล (redeem — ฟอร์มแลกอย่างเดียว) ─────────────
 export async function RewardRedeemSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
-  const [allRewards, redemptions, customers, pointSystemId] = await Promise.all([
+  const [allRewards, customers, pointSystemId] = await Promise.all([
     listRewards(tenantId, systemId),
-    listRedemptions(tenantId, systemId, 30),
     listRewardCustomers(tenantId, systemId),
     resolvePointSystemId(tenantId, systemId),
   ]);
@@ -93,29 +93,37 @@ export async function RewardRedeemSection({ systemId }: { systemId: string }) {
   const canRedeem = rewards.length > 0 && customers.length > 0 && !!pointSystemId;
 
   return (
-    <div className="flex flex-col gap-6">
-      <Section title="แลกรางวัล">
-        {canRedeem ? (
-          <RedeemForm
-            systemId={systemId}
-            rewards={rewards.map((r) => ({
-              id: r.id,
-              name: r.name,
-              pointsCost: r.pointsCost,
-              stock: r.stock,
-            }))}
-            customers={customers}
-          />
-        ) : !pointSystemId ? (
-          <EmptyState text="ยังแลกรางวัลไม่ได้ — เชื่อมระบบรางวัลนี้เข้ากับกิจการเดียวกับ 'ระบบแต้ม' ก่อน (ที่การเชื่อมต่อด้านบน)" />
-        ) : rewards.length === 0 ? (
-          <EmptyState text="ยังไม่มีรางวัลให้แลก — เพิ่มรางวัลที่หน้ารายการรางวัลก่อน" />
-        ) : (
-          <EmptyState text="ยังไม่มีสมาชิก — ลูกค้าจะเป็นสมาชิกอัตโนมัติเมื่อจอง/ซื้อในกิจการที่เชื่อมไว้ แล้วจึงแลกแต้มได้" />
-        )}
-      </Section>
+    <Section title="แลกรางวัล">
+      {canRedeem ? (
+        <RedeemForm
+          systemId={systemId}
+          rewards={rewards.map((r) => ({
+            id: r.id,
+            name: r.name,
+            pointsCost: r.pointsCost,
+            stock: r.stock,
+          }))}
+          customers={customers}
+        />
+      ) : !pointSystemId ? (
+        <EmptyState text="ยังแลกรางวัลไม่ได้ — เชื่อมระบบรางวัลนี้เข้ากับกิจการเดียวกับ 'ระบบแต้ม' ก่อน (ที่การเชื่อมต่อด้านบน)" />
+      ) : rewards.length === 0 ? (
+        <EmptyState text="ยังไม่มีรางวัลให้แลก — เพิ่มรางวัลที่หน้ารายการรางวัลก่อน" />
+      ) : (
+        <EmptyState text="ยังไม่มีสมาชิก — ลูกค้าจะเป็นสมาชิกอัตโนมัติเมื่อจอง/ซื้อในกิจการที่เชื่อมไว้ แล้วจึงแลกแต้มได้" />
+      )}
+    </Section>
+  );
+}
 
-      <Section title="ประวัติการแลก">
+// ───────────── ประวัติการแลก (history) ─────────────
+export async function RewardHistorySection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const tenantId = auth.active.tenantId;
+  const redemptions = await listRedemptions(tenantId, systemId, 30);
+
+  return (
+    <Section title="ประวัติการแลก">
         <DataList
           items={redemptions.map((r) => ({
             key: r.id,
@@ -154,8 +162,7 @@ export async function RewardRedeemSection({ systemId }: { systemId: string }) {
           }))}
           empty="ยังไม่มีการแลกรางวัล — เมื่อแลกให้สมาชิกแล้ว รายการจะแสดงที่นี่"
         />
-      </Section>
-    </div>
+    </Section>
   );
 }
 
@@ -179,8 +186,13 @@ export async function RewardHub({ systemId, tenantId }: { systemId: string; tena
     {
       href: `/app/sys/${systemId}/reward/redeem`,
       label: "แลกรางวัล",
+      desc: "แลกแต้มให้สมาชิก",
+    },
+    {
+      href: `/app/sys/${systemId}/reward/history`,
+      label: "ประวัติการแลก",
       value: `${redemptions.length} รายการ`,
-      desc: "แลกแต้ม + ประวัติการแลก",
+      desc: "รายการแลกล่าสุด + ยืนยันรับของ",
     },
   ];
 

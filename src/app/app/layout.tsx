@@ -5,6 +5,21 @@ import { AppShell } from "@/components/app-shell/AppShell";
 import { NavProgress } from "@/components/app-shell/NavProgress";
 import type { NavItem, SoonItem } from "@/components/app-shell/NavDrawer";
 
+// ฟังก์ชันย่อยของ "ระบบหน้า fixed" (เช่น KB /app/kb) → กาง accordion เหมือนระบบอื่น
+// ⚠️ ทุก href ต้องมี page.tsx จริง — ตรวจโดย scripts/qc-nav-functions.mts (บล็อก KB)
+function fixedPageChildrenFor(code: string): { href: string; label: string }[] | undefined {
+  switch (code) {
+    case "KB":
+      // คลังความรู้: รายการ/ค้นหา (/app/kb) + เพิ่มบทความ (/app/kb/new)
+      return [
+        { href: "/app/kb", label: "คลังความรู้" },
+        { href: "/app/kb/new", label: "เพิ่มบทความ" },
+      ];
+    default:
+      return undefined; // fixed-page อื่นที่ไม่มีฟังก์ชันย่อย = item แบน
+  }
+}
+
 // โครงแอป: topbar ติดตายด้านบน (fixed) + drawer เมนูระบบ + ปุ่มผู้ช่วย AI + ศูนย์ช่วยเหลือ
 // nav ยังมาจาก DB เหมือนเดิม (units + appSystems) — เปลี่ยนแค่การนำเสนอเป็น app shell
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -135,26 +150,29 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/coupon/list`, label: "คูปอง" },
         ];
       case "MEMBER":
-        // ระบบสมาชิกแตกจริง 3 ฟังก์ชัน: รายชื่อสมาชิก · นำเข้า CSV · แพ็กเกจสมาชิก
+        // ระบบสมาชิกแตกจริง 4 ฟังก์ชัน: รายชื่อสมาชิก · นำเข้า CSV · แพ็กเกจสมาชิก (สร้าง/เปิด-ปิด) · สมัครสมาชิก (สมัครให้ลูกค้า)
         return [
           { href: s, label: "ภาพรวม" },
           { href: `${s}/member/customers`, label: "รายชื่อสมาชิก" },
           { href: `${s}/member/import`, label: "นำเข้า CSV" },
-          { href: `${s}/member/subscriptions`, label: "แพ็กเกจสมาชิก" },
+          { href: `${s}/member/plans`, label: "แพ็กเกจสมาชิก" },
+          { href: `${s}/member/subscribe`, label: "สมัครสมาชิก" },
         ];
       case "POINT":
-        // ระบบแต้ม: จัดการแต้ม (ตั้งอัตรา + ปรับ/แจก) + รายการแต้ม (ประวัติ)
+        // ระบบแต้มแตกจริง 3 ฟังก์ชัน: ตั้งค่าแต้ม (อัตรา) · ปรับแต้ม (ปรับ/แจก) · ประวัติแต้ม (ledger)
         return [
           { href: s, label: "ภาพรวม" },
-          { href: `${s}/point/manage`, label: "จัดการแต้ม" },
-          { href: `${s}/point/ledger`, label: "รายการแต้ม" },
+          { href: `${s}/point/settings`, label: "ตั้งค่าแต้ม" },
+          { href: `${s}/point/adjust`, label: "ปรับแต้ม" },
+          { href: `${s}/point/ledger`, label: "ประวัติแต้ม" },
         ];
       case "REWARD":
-        // ระบบรางวัล: รายการรางวัล (เพิ่ม/ลบ) + แลกรางวัล (แลก + ประวัติ)
+        // ระบบรางวัลแตกจริง 3 ฟังก์ชัน: รายการรางวัล (เพิ่ม/ลบ) · แลกรางวัล (ฟอร์มแลก) · ประวัติการแลก
         return [
           { href: s, label: "ภาพรวม" },
           { href: `${s}/reward/rewards`, label: "รายการรางวัล" },
           { href: `${s}/reward/redeem`, label: "แลกรางวัล" },
+          { href: `${s}/reward/history`, label: "ประวัติการแลก" },
         ];
       case "CHAT":
         // ระบบแชทลูกค้า: สนทนา (inbox รวมทุกช่องทาง) + เชื่อมช่องทาง (LINE/เว็บ/สมาชิก)
@@ -204,14 +222,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       };
     }),
     // ระบบ "หน้า fixed ระดับ tenant" ที่เปิดใช้แล้ว (เช่น คลังความรู้ /app/kb) — เข้าถึงตรงจากเมนู
+    // แตกฟังก์ชันย่อยเป็น accordion เหมือนระบบอื่น (ไม่ใช่ item แบนอีกต่อไป)
+    // ⚠️ ทุก href ต้องมี page.tsx จริง (KB: /app/kb, /app/kb/new — ตรวจโดย qc-nav-functions.mts)
     ...SYSTEM_DEFS.filter(
       (s) => s.status === "available" && isFixedPageSystem(s.code),
-    ).map((s) => ({
-      key: `fp-${s.code}`,
-      href: FIXED_PAGE_SYSTEMS[s.code],
-      icon: s.icon,
-      label: s.label,
-    })),
+    ).map((s) => {
+      const children = fixedPageChildrenFor(s.code);
+      return {
+        key: `fp-${s.code}`,
+        href: FIXED_PAGE_SYSTEMS[s.code],
+        icon: s.icon,
+        label: s.label,
+        ...(children ? { children } : {}),
+      };
+    }),
   ];
   const soon: SoonItem[] = SYSTEM_DEFS.filter((s) => s.status === "coming_soon").map((s) => ({
     code: s.code,

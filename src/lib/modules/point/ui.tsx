@@ -14,40 +14,45 @@ export function pointTabs(systemId: string): { href: string; label: string }[] {
   const s = `/app/sys/${systemId}`;
   return [
     { href: s, label: "ภาพรวม" },
-    { href: `${s}/point/manage`, label: "จัดการแต้ม" },
-    { href: `${s}/point/ledger`, label: "รายการแต้ม" },
+    { href: `${s}/point/settings`, label: "ตั้งค่าแต้ม" },
+    { href: `${s}/point/adjust`, label: "ปรับแต้ม" },
+    { href: `${s}/point/ledger`, label: "ประวัติแต้ม" },
   ];
 }
 
-// ───────────── จัดการแต้ม (ตั้งค่าอัตรา + ปรับ/แจกแต้ม) ─────────────
-export async function PointManageSection({ systemId }: { systemId: string }) {
+// ───────────── ตั้งค่าแต้ม (อัตราสะสม + เปิด/ปิด) ─────────────
+export async function PointSettingsSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
-  const [settings, customers] = await Promise.all([
-    getPointSettings(tenantId),
-    listPointCustomers(tenantId, systemId),
-  ]);
+  const settings = await getPointSettings(tenantId);
   const bahtPerPoint = settings.satangPerPoint / 100;
 
   return (
-    <div className="flex flex-col gap-6">
-      <Section title="ตั้งค่าแต้ม" card>
-        <p className="text-xs text-[color:var(--color-muted)]">
-          {settings.active
-            ? `อัตราสะสมปัจจุบัน: ทุก ${bahtPerPoint} บาท = 1 แต้ม`
-            : "การสะสมแต้มถูกปิดอยู่ — ลูกค้าจะยังไม่ได้รับแต้มจากการซื้อ"}
-        </p>
-        <PointSettingsForm systemId={systemId} bahtPerPoint={bahtPerPoint} active={settings.active} />
-      </Section>
+    <Section title="ตั้งค่าแต้ม" card>
+      <p className="text-xs text-[color:var(--color-muted)]">
+        {settings.active
+          ? `อัตราสะสมปัจจุบัน: ทุก ${bahtPerPoint} บาท = 1 แต้ม`
+          : "การสะสมแต้มถูกปิดอยู่ — ลูกค้าจะยังไม่ได้รับแต้มจากการซื้อ"}
+      </p>
+      <PointSettingsForm systemId={systemId} bahtPerPoint={bahtPerPoint} active={settings.active} />
+    </Section>
+  );
+}
 
-      <Section title="ปรับ/แจกแต้ม">
-        {customers.length > 0 ? (
-          <AdjustPointsForm systemId={systemId} customers={customers} />
-        ) : (
-          <EmptyState text="ยังไม่มีสมาชิก — ลูกค้าจะเป็นสมาชิกอัตโนมัติเมื่อจอง/ซื้อในกิจการที่เชื่อมกับระบบแต้มนี้ แล้วจึงปรับ/แจกแต้มได้" />
-        )}
-      </Section>
-    </div>
+// ───────────── ปรับ/แจกแต้ม ─────────────
+export async function PointAdjustSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const tenantId = auth.active.tenantId;
+  const customers = await listPointCustomers(tenantId, systemId);
+
+  return (
+    <Section title="ปรับ/แจกแต้ม">
+      {customers.length > 0 ? (
+        <AdjustPointsForm systemId={systemId} customers={customers} />
+      ) : (
+        <EmptyState text="ยังไม่มีสมาชิก — ลูกค้าจะเป็นสมาชิกอัตโนมัติเมื่อจอง/ซื้อในกิจการที่เชื่อมกับระบบแต้มนี้ แล้วจึงปรับ/แจกแต้มได้" />
+      )}
+    </Section>
   );
 }
 
@@ -64,14 +69,20 @@ export async function PointHub({ systemId }: { systemId: string }) {
 
   const cards = [
     {
-      href: `/app/sys/${systemId}/point/manage`,
-      label: "จัดการแต้ม",
+      href: `/app/sys/${systemId}/point/settings`,
+      label: "ตั้งค่าแต้ม",
       value: settings.active ? `${bahtPerPoint} บ./แต้ม` : "ปิดสะสม",
-      desc: `ตั้งอัตรา + ปรับ/แจกแต้ม · ${customers.length} สมาชิก`,
+      desc: "ตั้งอัตราสะสม + เปิด/ปิดการสะสมแต้ม",
+    },
+    {
+      href: `/app/sys/${systemId}/point/adjust`,
+      label: "ปรับแต้ม",
+      value: `${customers.length} สมาชิก`,
+      desc: "ปรับ/แจกแต้มให้สมาชิกด้วยมือ",
     },
     {
       href: `/app/sys/${systemId}/point/ledger`,
-      label: "รายการแต้ม",
+      label: "ประวัติแต้ม",
       desc: "ประวัติการสะสม/ใช้แต้มล่าสุด",
     },
   ];

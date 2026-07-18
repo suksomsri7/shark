@@ -248,6 +248,35 @@ chk(
   "CRITICAL",
 );
 
+// ─── S6: KB (fixed-page accordion) — child href มีไฟล์จริง + กางครบทุก route ────
+// KB ไม่ได้อยู่ใน childrenFor (เป็น fixed-page /app/kb) → อ่านจาก fixedPageChildrenFor แทน
+// declared = href ที่ประกาศใน case "KB" · required = ทุก page.tsx ใต้ src/app/app/kb (ข้าม [param])
+const KB_BASE = join(APP, "kb");
+const fpStart = src.indexOf("function fixedPageChildrenFor");
+const fpEnd = fpStart >= 0 ? src.indexOf("export default async function AppLayout", fpStart) : -1;
+const fpBody = fpStart >= 0 && fpEnd > fpStart ? src.slice(fpStart, fpEnd) : "";
+const kbCaseMatch = /case\s+"KB":([\s\S]*?)(?=case\s+"|default:)/.exec(fpBody);
+const kbDeclared = new Set<string>();
+if (kbCaseMatch) {
+  const hrefRe = /href:\s*"([^"]+)"/g;
+  let h: RegExpExecArray | null;
+  while ((h = hrefRe.exec(kbCaseMatch[1])) !== null) kbDeclared.add(h[1]);
+}
+// required: ทุก page.tsx ใต้ kb (ข้าม [param]) → map เป็น absolute href /app/kb[/rest]
+const kbRequired = routesUnder(KB_BASE, KB_BASE).map((rest) => "/app/kb" + rest);
+const kbDead = [...kbDeclared].filter((href) => {
+  const rel = href.replace(/^\/app\/kb/, "").replace(/^\//, "");
+  return !existsSync(join(KB_BASE, rel, "page.tsx"));
+});
+const kbMissing = kbRequired.filter((r) => !kbDeclared.has(r));
+chk(
+  "S6",
+  `KB accordion: child href มีไฟล์จริง + กางครบ (${kbDeclared.size} ประกาศ / ${kbRequired.length} route)`,
+  kbDeclared.size > 0 && kbDead.length === 0 && kbMissing.length === 0,
+  `dead=[${kbDead.join(",")}] ขาด=[${kbMissing.join(",")}]`,
+  "MAJOR",
+);
+
 // ─── สรุป ─────────────────────────────────────────────────────────────────────
 console.log("\n  ── completeness (route จริง vs accordion) ──");
 for (const [type, required] of requiredByType) {

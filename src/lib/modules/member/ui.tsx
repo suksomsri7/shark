@@ -11,7 +11,7 @@ import { importCustomersAction } from "./import-actions";
 const muted = "text-[color:var(--color-muted)]";
 
 // ลูกค้าในระบบสมาชิกนี้ — ผ่าน service กลาง (โมดูลไม่ใช้ prisma ตรง) แล้วกรองด้วย memberSystemId
-// (แพตเทิร์นเดียวกับ SubscriptionSection ในโมดูลนี้)
+// (แพตเทิร์นเดียวกับ PlansSection/SubscribeSection ในโมดูลนี้)
 async function memberCustomers(tenantId: string, systemId: string) {
   const all = await listCustomers(tenantId);
   return all.filter((c) => c.memberSystemId === systemId);
@@ -25,7 +25,8 @@ export function memberTabs(systemId: string): { href: string; label: string }[] 
     { href: s, label: "ภาพรวม" },
     { href: `${s}/member/customers`, label: "รายชื่อสมาชิก" },
     { href: `${s}/member/import`, label: "นำเข้า CSV" },
-    { href: `${s}/member/subscriptions`, label: "แพ็กเกจสมาชิก" },
+    { href: `${s}/member/plans`, label: "แพ็กเกจสมาชิก" },
+    { href: `${s}/member/subscribe`, label: "สมัครสมาชิก" },
   ];
 }
 
@@ -90,9 +91,14 @@ export async function MemberHub({ systemId }: { systemId: string }) {
       desc: "เพิ่มลูกค้าครั้งละมาก ๆ",
     },
     {
-      href: `/app/sys/${systemId}/member/subscriptions`,
+      href: `/app/sys/${systemId}/member/plans`,
       label: "แพ็กเกจสมาชิก",
-      desc: "สมัคร/ต่ออายุรายเดือน-รายปี",
+      desc: "สร้าง/เปิด-ปิดขายแพ็กเกจรายเดือน-รายปี",
+    },
+    {
+      href: `/app/sys/${systemId}/member/subscribe`,
+      label: "สมัครสมาชิก",
+      desc: "สมัคร/ต่ออายุให้ลูกค้า + รายการล่าสุด",
     },
   ];
 

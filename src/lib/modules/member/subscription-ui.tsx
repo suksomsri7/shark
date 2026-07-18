@@ -29,23 +29,12 @@ const SUB_STATUS_LABEL: Record<string, string> = {
 const periodLabel = (days: number) =>
   days === 30 ? "รายเดือน" : days === 365 ? "รายปี" : `ทุก ${days.toLocaleString("th-TH")} วัน`;
 
-// ───────────── แพ็กเกจสมาชิก (ฝังใน MemberContent) ─────────────
-export async function SubscriptionSection({ systemId }: { systemId: string }) {
+// ───────────── แพ็กเกจสมาชิก (plans) — รายการแพ็กเกจ + เปิด/ปิดขาย + สร้างใหม่ ─────────────
+export async function PlansSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  const [plans, subs, customers] = await Promise.all([
-    listPlans(ctx, false),
-    listSubscriptions(ctx),
-    // ลูกค้าในระบบ MEMBER นี้ (สำหรับ dropdown สมัคร) — ผ่าน service กลาง (F5 ratchet: โมดูลห้ามใช้ prisma ตรง)
-    listCustomers(auth.active.tenantId).then((cs) =>
-      cs.filter((c) => c.memberSystemId === systemId).slice(0, 200),
-    ),
-  ]);
-
-  const activePlans = plans.filter((p) => p.active);
-  const planName = new Map(plans.map((p) => [p.id, p.name]));
-  const custName = new Map(customers.map((c) => [c.id, c.name ?? c.memberCode]));
+  const plans = await listPlans(ctx, false);
 
   return (
     <Section title={`แพ็กเกจสมาชิก (${plans.length})`}>
@@ -98,10 +87,33 @@ export async function SubscriptionSection({ systemId }: { systemId: string }) {
         </div>
         <SubmitButton variant="ghost">+ เพิ่มแพ็กเกจ</SubmitButton>
       </form>
+    </Section>
+  );
+}
 
+// ───────────── สมัครสมาชิก (subscribe) — สมัครแพ็กเกจให้ลูกค้า + รายการสมัครล่าสุด ─────────────
+export async function SubscribeSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  const [plans, subs, customers] = await Promise.all([
+    listPlans(ctx, false),
+    listSubscriptions(ctx),
+    // ลูกค้าในระบบ MEMBER นี้ (สำหรับ dropdown สมัคร) — ผ่าน service กลาง (F5 ratchet: โมดูลห้ามใช้ prisma ตรง)
+    listCustomers(auth.active.tenantId).then((cs) =>
+      cs.filter((c) => c.memberSystemId === systemId).slice(0, 200),
+    ),
+  ]);
+
+  const activePlans = plans.filter((p) => p.active);
+  const planName = new Map(plans.map((p) => [p.id, p.name]));
+  const custName = new Map(customers.map((c) => [c.id, c.name ?? c.memberCode]));
+
+  return (
+    <Section title="สมัครสมาชิก">
       {/* สมัครแพ็กเกจให้ลูกค้า */}
-      {activePlans.length > 0 && customers.length > 0 && (
-        <form action={subscribeAction} className="mt-2 flex flex-col gap-3 rounded-lg border p-4">
+      {activePlans.length > 0 && customers.length > 0 ? (
+        <form action={subscribeAction} className="flex flex-col gap-3 rounded-lg border p-4">
           <input type="hidden" name="systemId" value={systemId} />
           <h3 className="text-sm font-medium">สมัครแพ็กเกจให้ลูกค้า</h3>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -141,6 +153,12 @@ export async function SubscriptionSection({ systemId }: { systemId: string }) {
           </div>
           <SubmitButton>สมัครสมาชิก</SubmitButton>
         </form>
+      ) : (
+        <p className={`text-sm ${muted}`}>
+          {activePlans.length === 0
+            ? "ยังสมัครไม่ได้ — เปิดขายแพ็กเกจอย่างน้อย 1 รายการที่หน้า “แพ็กเกจสมาชิก” ก่อน"
+            : "ยังไม่มีสมาชิก — ลูกค้าจะถูกสร้างอัตโนมัติเมื่อจอง/ซื้อในระบบที่เชื่อมไว้ แล้วจึงสมัครแพ็กเกจได้"}
+        </p>
       )}
 
       {/* รายการสมัครล่าสุด */}
@@ -179,5 +197,3 @@ export async function SubscriptionSection({ systemId }: { systemId: string }) {
     </Section>
   );
 }
-
-export default SubscriptionSection;
