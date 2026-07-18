@@ -1,8 +1,20 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
+**สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
+**ทำอะไรไปแล้ว (Full-Function drive คำสั่งเจ้าของ 17 ก.ค. + งาน UI แตกฟังก์ชัน):**
+- **~96% ของแผน 6 wave** (170 วัน) — ดู `ledger/FULLFUNCTION_PLAN.md` + `FULLFUNCTION_AUDIT.json` · รายละเอียด WO ทั้งหมดอยู่ในไฟล์นี้ (เลื่อนลงอ่าน section RUN ยาว 3 รอบ + แตกฟังก์ชัน)
+- Wave 1/2/3/5 ครบ 100% · Wave 4/6 เกือบครบ · **perpetual inventory accounting ครบทุกช่องขาย** (POS/shop/clinic) · **public storefront 6 โมดูล + PromptPay** · **AI ครบทุกโมดูล** · refund/void/race ทุกโมดูลเงิน · bulk ops · ปิดวัน · public API 9 endpoint · audit UI · CSV import
+- **แตกฟังก์ชัน UI ครบทุกระบบ** (1 ฟังก์ชัน=1 หน้า · accordion + ModuleTabs · oracle qc-nav-functions บังคับ completeness) — HR/คลัง/CRM/สมาชิก/แต้ม/รางวัล/แชท/kanban/POS/บัญชี/business ทั้งหมด + KB
+**เหลือทำ (คิวถัดไปเมื่อเจ้าของกลับมา):**
+1. 🔑 **Marketing ส่ง LINE จริง** — รอ LINE OA creds จากเจ้าของ (sendCampaign ตอนนี้ log-only)
+2. 🎨 **i18n public** (แปล EN หน้าลูกค้า 8 storefront) — cred-free ทำได้เลย · มี infra src/lib/i18n
+3. follow-up ย่อย: booking public ลูกค้ายกเลิกนัดเอง · POS shift state machine (ปิดวันตอนนี้ read-only) · ราย feedback จากเจ้าของหลังเทส
+**ต้องรู้:** .env=prod DB (Neon SG) · Builder ห้าม typecheck/build (OOM) · หลัง migration ต้อง `pnpm exec prisma migrate deploy` prod เอง · ยืนยัน deploy READY จาก Vercel API · F5 raw-prisma baseline ตัน 44 (section UI ใหม่ใช้ service เดิม/prisma เฉพาะใน src/app) · กติกาเหล็ก 9 ข้อดู section CHECKPOINT ล่าง
+
 > 🔑 **สิ่งที่รอเจ้าของ (ละเอียด+วิธีทำ): [ledger/OWNER_TODO.md](OWNER_TODO.md)**
 
-> อัปเดต 2026-07-17 โดย Fable 5 · **session ใหม่: อ่านไฟล์นี้จากบนลงล่างถึงเส้นแรก แล้วทำงานต่อได้เลย**
+> อัปเดต 2026-07-18 โดย Fable 5 · **session ใหม่: อ่าน block 🔵 บนสุดนี้ก่อน แล้วเลื่อนลงอ่าน CHECKPOINT (กติกาเหล็ก 9 ข้อ)**
 
 ## 🧩 UI แตกหน้า + ระบบจองต่อยอด (17 ก.ค.) — ✅ SHIPPED (main 5f61230)
 - **ต้นแบบแตกหน้า POS + ระบบจอง**: เมนูแฮมเบอร์เกอร์ accordion (NavItem.children + NavGroup) กางฟังก์ชันย่อยใต้ระบบ + `ModuleTabs` แท็บในหน้า · POS→ภาพรวม/ประวัติบิล · จอง→นัดวันนี้/บริการ/พนักงาน/เวลาทำการ · เอา back "หน้าหลัก"(16 หน้า)+"ระบบทั้งหมด"(2) ออก
