@@ -4,14 +4,17 @@ import {
   ensureWorkspace,
   listVisibleChannels,
   listStaff,
+  listChannelMembers,
   listMessages,
   listThread,
+  type Staff,
 } from "./service";
 import {
   postMessageAction,
   joinChannelAction,
   leaveChannelAction,
   createChannelAction,
+  addChannelMemberAction,
   editMessageAction,
   deleteMessageAction,
 } from "./actions";
@@ -154,6 +157,7 @@ export async function MeetingContent({
               channel={active}
               userId={userId}
               nameOf={nameOf}
+              staff={staff}
               base={base}
             />
           )}
@@ -178,17 +182,22 @@ async function ChannelPane({
   channel,
   userId,
   nameOf,
+  staff,
   base,
 }: {
   systemId: string;
   channel: ChannelView;
   userId: string;
   nameOf: (uid: string) => string;
+  staff: Staff[];
   base: string;
 }) {
   return (
     <>
       <ChannelHeader systemId={systemId} channel={channel} />
+      {channel.isMember && (
+        <ChannelMembers systemId={systemId} channel={channel} staff={staff} />
+      )}
       {!channel.isMember ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8">
           <p className="text-sm text-[color:var(--color-muted)]">
@@ -213,6 +222,60 @@ async function ChannelPane({
         </>
       )}
     </>
+  );
+}
+
+// รายชื่อสมาชิกห้อง + เชิญ staff ที่ยังไม่อยู่ในห้อง (เน้นห้อง PRIVATE ที่ browse/join เองไม่ได้)
+async function ChannelMembers({
+  systemId,
+  channel,
+  staff,
+}: {
+  systemId: string;
+  channel: ChannelView;
+  staff: Staff[];
+}) {
+  const members = await listChannelMembers(systemId, channel.id);
+  const memberIds = new Set(members.map((m) => m.userId));
+  const invitable = staff.filter((s) => !memberIds.has(s.userId));
+  const nameOf = (uid: string) => staff.find((s) => s.userId === uid)?.name ?? "ผู้ใช้";
+
+  return (
+    <details className="border-b pb-2">
+      <summary className="cursor-pointer text-xs text-[color:var(--color-muted)]">
+        สมาชิก {members.length} คน
+        {channel.kind === "PRIVATE" ? " · เชิญเข้าห้อง" : ""}
+      </summary>
+      <div className="mt-2 flex flex-col gap-2">
+        <ul className="flex flex-wrap gap-1.5">
+          {members.map((m) => (
+            <li
+              key={m.userId}
+              className="rounded-full bg-[color:var(--color-surface-2)] px-2.5 py-1 text-xs"
+            >
+              {nameOf(m.userId)}
+              {m.isAdmin ? " · แอดมิน" : ""}
+            </li>
+          ))}
+        </ul>
+        {invitable.length > 0 ? (
+          <form action={addChannelMemberAction} className="flex items-end gap-2">
+            <input type="hidden" name="systemId" value={systemId} />
+            <input type="hidden" name="channelId" value={channel.id} />
+            <select name="targetUserId" required className="input flex-1">
+              {invitable.map((s) => (
+                <option key={s.userId} value={s.userId}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <button className="btn btn-ghost text-sm">เชิญสมาชิก</button>
+          </form>
+        ) : (
+          <p className="text-xs text-[color:var(--color-muted)]">พนักงานทุกคนอยู่ในห้องนี้แล้ว</p>
+        )}
+      </div>
+    </details>
   );
 }
 

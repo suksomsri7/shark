@@ -10,6 +10,7 @@ import {
   joinChannel,
   leaveChannel,
   archiveChannel,
+  addChannelMember,
   postMessage,
   editMessage,
   deleteMessage,
@@ -88,6 +89,20 @@ export async function leaveChannelAction(formData: FormData) {
   if (systemId && channelId) await leaveChannel(systemId, channelId, auth.user.id);
   revalidateMeeting(systemId);
   redirect(meetingPath(systemId));
+}
+
+export async function addChannelMemberAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertMeetingCan(auth, "meeting.channel.invite");
+  const systemId = String(formData.get("systemId") ?? "");
+  const channelId = String(formData.get("channelId") ?? "");
+  const targetUserId = String(formData.get("targetUserId") ?? "");
+  if (systemId && channelId && targetUserId) {
+    // guard สิทธิ์ห้อง (แอดมิน/ผู้สร้าง) อยู่ใน addChannelMember
+    await addChannelMember(systemId, channelId, auth.user.id, targetUserId);
+  }
+  revalidateMeeting(systemId);
+  redirect(meetingPath(systemId, channelId));
 }
 
 export async function archiveChannelAction(formData: FormData) {

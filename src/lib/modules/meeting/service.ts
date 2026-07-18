@@ -175,6 +175,61 @@ export async function joinChannel(
   });
 }
 
+// เชิญ staff เข้าห้อง (idempotent) — ผู้ช่วยจัดการห้อง
+// policy: ผู้เชิญต้องเป็นสมาชิก active + isAdmin ของห้อง
+//   fallback (conservative): ถ้าห้องไม่มี admin active เลย (legacy ก่อนมีระบบ admin) → ผู้สร้างห้องเชิญได้
+//   target ต้องเป็น staff ของ tenant (Membership acceptedAt != null)
+//   กันเชิญซ้ำ: มี member active อยู่แล้ว → no-op · เคย leftAt → re-join (ล้าง leftAt)
+export async function addChannelMember(
+  systemId: string,
+  channelId: string,
+  byUserId: string,
+  targetUserId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const channel = await prisma.meetingChannel.findFirst({ where: { id: channelId, systemId } });
+  if (!channel) return { ok: false, reason: "ไม่พบห้อง" };
+  if (channel.archivedAt) return { ok: false, reason: "ห้องนี้ถูกเก็บถาวรแล้ว" };
+
+  // ผู้เชิญต้องเป็นสมาชิก active
+  const inviter = await prisma.meetingChannelMember.findUnique({
+    where: { channelId_userId: { channelId, userId: byUserId } },
+  });
+  if (!inviter || inviter.leftAt !== null) return { ok: false, reason: "คุณไม่ได้อยู่ในห้องนี้" };
+
+  // authorize — แอดมินห้องเชิญได้เสมอ · ถ้าห้องไม่มีแอดมิน active เลย (legacy) → ผู้สร้างห้องเชิญได้
+  let authorized = inviter.isAdmin;
+  if (!authorized) {
+    const adminCount = await prisma.meetingChannelMember.count({
+      where: { channelId, leftAt: null, isAdmin: true },
+    });
+    authorized = adminCount === 0 && channel.createdByUserId === byUserId;
+  }
+  if (!authorized) return { ok: false, reason: "เฉพาะแอดมินห้องเชิญสมาชิกได้" };
+
+  // target ต้องเป็น staff ของ tenant (Membership ยอมรับแล้ว)
+  const staff = await prisma.membership.findFirst({
+    where: { tenantId: channel.tenantId, userId: targetUserId, acceptedAt: { not: null } },
+  });
+  if (!staff) return { ok: false, reason: "ผู้ถูกเชิญไม่ใช่พนักงานในร้าน" };
+
+  // idempotent — active อยู่แล้ว → no-op · เคยออก → re-join
+  const existing = await prisma.meetingChannelMember.findUnique({
+    where: { channelId_userId: { channelId, userId: targetUserId } },
+  });
+  if (existing) {
+    if (existing.leftAt === null) return { ok: true };
+    await prisma.meetingChannelMember.update({
+      where: { channelId_userId: { channelId, userId: targetUserId } },
+      data: { leftAt: null },
+    });
+    return { ok: true };
+  }
+  await prisma.meetingChannelMember.create({
+    data: { tenantId: channel.tenantId, systemId, channelId, userId: targetUserId },
+  });
+  return { ok: true };
+}
+
 // leave — #general ออกไม่ได้
 export async function leaveChannel(
   systemId: string,

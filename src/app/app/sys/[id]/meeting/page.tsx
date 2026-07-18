@@ -3,6 +3,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { MeetingContent } from "@/lib/modules/meeting/ui";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { AutoRefresh } from "@/components/queue-auto-refresh";
 
 // หน้าเต็มจอของ Meeting — สลับห้อง (?c=) + เปิดเธรด (?t=)
 export default async function MeetingPage({
@@ -22,6 +23,8 @@ export default async function MeetingPage({
 
   return (
     <div className="flex max-w-4xl flex-col gap-4">
+      {/* เห็นข้อความ/สมาชิกใหม่โดยไม่ต้องกด F5 (P1 liveness — เหมือน chat/queue) */}
+      <AutoRefresh ms={7000} />
       <PageHeader title={sys.name} back={{ href: `/app/sys/${id}`, label: sys.name }} />
       <MeetingContent systemId={id} tenantId={tenantId} channelId={c} threadParentId={t} />
     </div>
