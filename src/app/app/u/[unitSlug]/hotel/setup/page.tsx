@@ -44,6 +44,7 @@ export default async function HotelSetupPage({
               <span className="text-[color:var(--color-muted)]">
                 {" "}
                 · {t.capacity} คน · {formatBaht(t.baseRateSatang)}/คืน · {t._count.rooms} ห้อง
+                {t.depositSatang > 0 ? ` · มัดจำ ${formatBaht(t.depositSatang)}` : ""}
               </span>
             </div>
             <form action={removeRoomTypeAction.bind(null, unitSlug)}>
@@ -54,7 +55,7 @@ export default async function HotelSetupPage({
         ))}
         <form
           action={addRoomTypeAction.bind(null, unitSlug)}
-          className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto] sm:items-end"
+          className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto_auto] sm:items-end"
         >
           <label className="col-span-2 flex flex-col gap-1 sm:col-span-1">
             <span className="text-xs text-[color:var(--color-muted)]">ชื่อประเภท</span>
@@ -71,6 +72,10 @@ export default async function HotelSetupPage({
           <label className="flex flex-col gap-1">
             <span className="text-xs text-[color:var(--color-muted)]">฿/คืน</span>
             <input name="rateBaht" type="number" defaultValue={0} min={0} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-24" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-[color:var(--color-muted)]">มัดจำ ฿</span>
+            <input name="depositBaht" type="number" defaultValue={0} min={0} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-24" />
           </label>
           <button className="btn btn-primary col-span-2 text-sm sm:col-span-1">เพิ่ม</button>
         </form>

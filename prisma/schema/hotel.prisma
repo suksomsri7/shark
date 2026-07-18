@@ -33,6 +33,7 @@ model HotelRoomType {
   description    String?
   capacity       Int      @default(2) // จำนวนผู้เข้าพักสูงสุด/ห้อง
   baseRateSatang Int      @default(0) // ราคาต่อคืน (สตางค์) — 🔜 season/rate plan
+  depositSatang  Int      @default(0) // มัดจำต่อการจอง (0 = ไม่ต้องมัดจำ) — ลูกค้าจองออนไลน์จ่ายมัดจำ PromptPay
   active         Boolean  @default(true) // soft-delete (ห้าม hard delete)
   sortOrder      Int      @default(0)
   createdAt      DateTime @default(now())
@@ -75,6 +76,7 @@ model HotelReservation {
   tenantId          String
   unitId            String
   code              String // รหัสจอง เช่น "HR-2607-0001" (running ต่อ unit)
+  publicToken       String?                @unique @default(cuid()) // ลิงก์สถานะลูกค้า (public/no-auth) — จองออนไลน์
   status            HotelReservationStatus @default(BOOKED)
   // ผู้เข้าพัก (snapshot บนเอกสาร) — customerId เชื่อมระบบสมาชิกภายหลังได้ (P1 เก็บเป็น scalar)
   guestName         String
@@ -95,6 +97,10 @@ model HotelReservation {
   // เงิน (snapshot ตอนจอง — สตางค์)
   ratePerNightSatang Int                   @default(0)
   totalSatang       Int                    @default(0)
+  // มัดจำ (snapshot จาก roomType ตอนจอง — สตางค์) · จ่าย PromptPay แล้วร้านยืนยัน → depositPaidAt + บิล POS DEPOSIT (Dr 2110)
+  depositSatang     Int                    @default(0) // 0 = ไม่ต้องมัดจำ
+  depositPaidAt     DateTime? // เวลาที่ร้านยืนยันรับมัดจำ (null = ยังไม่จ่าย)
+  depositSaleId     String? // PosSale.id ของบิลมัดจำ (null = ไม่ผูก POS / ยังไม่จ่าย)
   note              String?
   checkedInAt       DateTime?
   checkedOutAt      DateTime?

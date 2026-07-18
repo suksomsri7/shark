@@ -11,6 +11,7 @@ import {
   checkOutAction,
   cancelReservationAction,
   refundStayAction,
+  recordDepositAction,
 } from "@/lib/modules/hotel/actions";
 import { ReservationForm } from "../reservation-form";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -92,6 +93,30 @@ export default async function HotelReservationsPage({
                   </div>
                   <StatusChip value={r.status} map={HOTEL_RESV_STATUS_LABEL} toneOf={resvTone} />
                 </div>
+
+                {/* มัดจำ — โชว์เฉพาะการจองที่ต้องมัดจำ (จองออนไลน์) */}
+                {r.depositSatang > 0 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-[color:var(--color-muted)]">
+                      มัดจำ <MoneyText satang={r.depositSatang} />
+                    </span>
+                    {r.depositPaidAt ? (
+                      <span className="text-[color:var(--color-success,#15803d)]">รับมัดจำแล้ว ✓</span>
+                    ) : r.status === "BOOKED" ? (
+                      <ConfirmDialog
+                        triggerLabel="ยืนยันรับมัดจำ"
+                        triggerClassName="btn-sm"
+                        title="ยืนยันว่าได้รับมัดจำแล้ว?"
+                        detail="ระบบจะบันทึกเงินมัดจำเข้าบัญชี (แก้ไขไม่ได้)"
+                        confirmLabel="ยืนยันรับมัดจำ"
+                        action={recordDepositAction.bind(null, unitSlug)}
+                        fields={{ id: r.id }}
+                      />
+                    ) : (
+                      <span className="text-[color:var(--color-muted)]">ยังไม่ได้รับมัดจำ</span>
+                    )}
+                  </div>
+                )}
 
                 {r.status === "BOOKED" && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">

@@ -2,7 +2,8 @@ import { prisma, tenantDb } from "@/lib/core/db";
 import { registerScopes } from "@/lib/core/scope";
 import * as pos from "@/lib/modules/pos/service";
 import { systemForUnit } from "@/lib/modules/system/service";
-import type { HotelReservationStatus, HotelRoomStatus, SystemType } from "@prisma/client";
+import { promptpayPayload } from "@/lib/payment/promptpay";
+import type { HotelReservationStatus, HotelRoomStatus, PosPayType, SystemType } from "@prisma/client";
 
 // ลงทะเบียน scope ของ Hotel models (unit-scoped) — ให้ tenantDb() inject tenantId+unitId อัตโนมัติ
 // (ตามกลไก modules ใน src/lib/core/scope.ts — idempotent-safe ถ้า core ประกาศซ้ำด้วย scope เดียวกัน)
@@ -54,6 +55,7 @@ export async function createRoomType(input: {
   code?: string;
   capacity: number;
   baseRateSatang: number;
+  depositSatang?: number;
   description?: string;
 }) {
   const ctx = { tenantId: input.tenantId, unitId: input.unitId };
@@ -65,6 +67,7 @@ export async function createRoomType(input: {
       code: input.code || null,
       capacity: input.capacity,
       baseRateSatang: input.baseRateSatang,
+      depositSatang: Math.max(0, Math.round(input.depositSatang ?? 0)),
       description: input.description || null,
     },
   });
@@ -74,7 +77,7 @@ export async function updateRoomType(
   tenantId: string,
   unitId: string,
   id: string,
-  data: { name?: string; code?: string | null; capacity?: number; baseRateSatang?: number },
+  data: { name?: string; code?: string | null; capacity?: number; baseRateSatang?: number; depositSatang?: number },
 ) {
   const db = tenantDb({ tenantId, unitId });
   return db.hotelRoomType.update({ where: { id }, data });
@@ -256,7 +259,7 @@ export async function createReservation(input: {
   children?: number;
   note?: string;
   createdById?: string;
-}): Promise<{ ok: true; id: string; code: string } | { ok: false; reason: string }> {
+}): Promise<{ ok: true; id: string; code: string; publicToken: string | null } | { ok: false; reason: string }> {
   const { tenantId, unitId } = input;
   const nights = nightsBetween(input.checkInDate, input.checkOutDate);
   if (nights < 1) return { ok: false, reason: "วันเข้าพักต้องก่อนวันออกอย่างน้อย 1 คืน" };
@@ -270,6 +273,9 @@ export async function createReservation(input: {
 
   try {
     const created = await prisma.$transaction(async (tx) => {
+      // ล็อกแถวประเภทห้อง (FOR UPDATE) → ซีเรียลไลซ์การจองพร้อมกันของประเภทเดียวกัน
+      // กันจองซ้อนเกิน capacity: request ที่ 2 บล็อกจนคนแรก commit แล้วค่อยนับ availability ใหม่ (เห็นการจองแรก → FULL)
+      await tx.$queryRaw`SELECT id FROM "HotelRoomType" WHERE id = ${input.roomTypeId} FOR UPDATE`;
       const { total, free } = await freeCountForRange(
         tx as typeof prisma,
         tenantId,
@@ -300,12 +306,13 @@ export async function createReservation(input: {
           children: input.children ?? 0,
           ratePerNightSatang: rt.baseRateSatang,
           totalSatang: total_,
+          depositSatang: rt.depositSatang, // snapshot มัดจำจากประเภทห้อง (0 = ไม่ต้องมัดจำ)
           note: input.note || null,
           createdById: input.createdById || null,
         },
       });
     });
-    return { ok: true, id: created.id, code: created.code };
+    return { ok: true, id: created.id, code: created.code, publicToken: created.publicToken };
   } catch (e) {
     if (e instanceof Error && e.message === "FULL")
       return { ok: false, reason: "ประเภทห้องนี้เต็มในช่วงวันที่เลือก" };
@@ -585,4 +592,136 @@ export async function getReservation(tenantId: string, unitId: string, id: strin
     where: { id },
     include: { roomType: true, room: true },
   });
+}
+
+// ───────────────────────── Public storefront (จองออนไลน์ · no-auth) ─────────────────────────
+// resolve unit จาก slug (public) → tenantId+unitId · unit ต้อง ACTIVE + type=HOTEL (กันสวมร้าน/ประเภทผิด)
+export async function resolveHotelUnit(tenantSlug: string, unitSlug: string) {
+  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+  if (!tenant || tenant.status !== "ACTIVE") return null;
+  const unit = await prisma.businessUnit.findUnique({
+    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
+  });
+  if (!unit || unit.status !== "ACTIVE" || unit.type !== "HOTEL") return null;
+  return { tenant, unit };
+}
+
+// ประเภทห้อง + จำนวนว่างน้อยสุดตลอดช่วง (สำหรับหน้าจองลูกค้า) — ถ้า from/to ไม่ถูกต้อง คืน free=0
+export type PublicRoomTypeAvail = {
+  id: string;
+  name: string;
+  code: string | null;
+  capacity: number;
+  baseRateSatang: number;
+  depositSatang: number;
+  totalRooms: number;
+  free: number; // ห้องว่างน้อยสุดตลอดช่วง (จองได้ถ้า >= 1)
+};
+
+export async function listPublicAvailability(
+  tenantId: string,
+  unitId: string,
+  fromStr: string,
+  toStr: string,
+): Promise<PublicRoomTypeAvail[]> {
+  const db = tenantDb({ tenantId, unitId });
+  const types = await db.hotelRoomType.findMany({
+    where: { active: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+  const validRange = nightsBetween(fromStr, toStr) >= 1;
+  const avail = validRange ? await availability(tenantId, unitId, fromStr, toStr) : [];
+  const byType = new Map(avail.map((a) => [a.roomTypeId, a]));
+  return types.map((t) => {
+    const a = byType.get(t.id);
+    // ห้องว่าง = ค่าน้อยสุดตลอดทุกคืน (ทุกคืนต้องว่างจึงจองได้)
+    const free = a && a.days.length ? Math.min(...a.days.map((d) => d.free)) : 0;
+    const totalRooms = a && a.days.length ? a.days[0].total : 0;
+    return {
+      id: t.id,
+      name: t.name,
+      code: t.code,
+      capacity: t.capacity,
+      baseRateSatang: t.baseRateSatang,
+      depositSatang: t.depositSatang,
+      totalRooms,
+      free,
+    };
+  });
+}
+
+// สถานะการจอง (public จาก publicToken) — กัน cross-tenant: token ต้องเป็นของ unit นี้ (กัน leak PII แขก)
+export async function getPublicReservation(unitId: string, publicToken: string) {
+  const token = (publicToken ?? "").trim();
+  if (!token) return null;
+  const rv = await prisma.hotelReservation.findUnique({
+    where: { publicToken: token },
+    include: { roomType: { select: { name: true } } },
+  });
+  if (!rv || rv.unitId !== unitId) return null;
+  return rv;
+}
+
+// PromptPay payload สำหรับจ่ายมัดจำการจองนี้ (ยอด = depositSatang) — ร้านยังไม่ตั้งเลข → null
+export async function promptpayForDeposit(
+  tenantId: string,
+  unitId: string,
+  reservationId: string,
+): Promise<{ payload: string; displayName: string } | null> {
+  const db = tenantDb({ tenantId, unitId });
+  const rv = await db.hotelReservation.findFirst({ where: { id: reservationId } });
+  if (!rv || rv.depositSatang <= 0) return null;
+  const profile = await db.paymentProfile.findFirst({ where: {} });
+  if (!profile?.promptpayId) return null;
+  const payload = promptpayPayload({ id: profile.promptpayId, amountSatang: rv.depositSatang });
+  return { payload, displayName: profile.displayName ?? "" };
+}
+
+// ร้านยืนยันรับมัดจำ — เปิดบิล POS ชนิด DEPOSIT (Dr 2110 เงินมัดจำรับ) แล้วปั๊ม depositPaidAt
+//   guard: การจองมีมัดจำ (depositSatang>0) + ยังไม่จ่าย (depositPaidAt=null) + ยังไม่ยกเลิก/คืนเงิน
+//   idempotent: createSale ผูก key `hotel-deposit-<reservationId>` (ยิงซ้ำ = บิลเดิม ไม่เบิ้ล)
+//               + claim อะตอมมิก depositPaidAt (2 คนกดพร้อมกัน → บันทึกเดียว)
+//   ไม่ผูก POS → บันทึก depositPaidAt เฉย ๆ (standalone · saleId=null)
+export async function recordDeposit(
+  tenantId: string,
+  unitId: string,
+  reservationId: string,
+  payMethod: PosPayType = "DEPOSIT",
+): Promise<{ ok: boolean; reason?: string; saleId?: string; noop?: boolean }> {
+  const db = tenantDb({ tenantId, unitId });
+  const rv = await db.hotelReservation.findFirst({ where: { id: reservationId } });
+  if (!rv) return { ok: false, reason: "ไม่พบการจอง" };
+  if (rv.status === "CANCELLED" || rv.status === "REFUNDED")
+    return { ok: false, reason: "การจองนี้ยกเลิก/คืนเงินแล้ว รับมัดจำไม่ได้" };
+  if (rv.depositSatang <= 0) return { ok: false, reason: "การจองนี้ไม่ต้องมัดจำ" };
+  if (rv.depositPaidAt) return { ok: true, noop: true, saleId: rv.depositSaleId ?? undefined };
+
+  const amount = rv.depositSatang;
+  // เปิดบิลมัดจำผ่าน POS (chokepoint เงิน) — idempotent · ไม่มี POS = ข้าม (บันทึก paidAt เฉย ๆ)
+  let saleId: string | null = null;
+  const posSystemId = await systemForUnit(tenantId, unitId, "POS");
+  if (posSystemId) {
+    const sale = await pos.createSale({
+      tenantId,
+      unitId,
+      systemId: posSystemId,
+      sourceModule: "HOTEL",
+      sourceId: reservationId,
+      idempotencyKey: `hotel-deposit-${reservationId}`,
+      lines: [{ name: `มัดจำห้อง ${rv.code}`, qty: 1, unitPriceSatang: amount }],
+      payMethods: [{ type: payMethod, amountSatang: amount }],
+    });
+    saleId = sale.saleId;
+  }
+
+  // claim อะตอมมิก: ปั๊ม depositPaidAt เฉพาะแถวที่ยังไม่จ่าย (กัน 2 request แข่งกัน)
+  const claim = await db.hotelReservation.updateMany({
+    where: { id: reservationId, depositPaidAt: null },
+    data: { depositPaidAt: new Date(), depositSaleId: saleId },
+  });
+  if (claim.count === 0) {
+    const cur = await db.hotelReservation.findFirst({ where: { id: reservationId } });
+    return { ok: true, noop: true, saleId: cur?.depositSaleId ?? undefined };
+  }
+  return { ok: true, saleId: saleId ?? undefined };
 }

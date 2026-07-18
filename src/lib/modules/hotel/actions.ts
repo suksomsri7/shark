@@ -31,6 +31,7 @@ const roomTypeSchema = z.object({
   code: z.string().trim().max(16).optional(),
   capacity: z.coerce.number().int().min(1).max(20),
   rateBaht: z.coerce.number().min(0).max(1_000_000),
+  depositBaht: z.coerce.number().min(0).max(1_000_000).optional(),
 });
 
 export async function addRoomTypeAction(unitSlug: string, formData: FormData) {
@@ -41,6 +42,7 @@ export async function addRoomTypeAction(unitSlug: string, formData: FormData) {
     code: formData.get("code") || undefined,
     capacity: formData.get("capacity"),
     rateBaht: formData.get("rateBaht"),
+    depositBaht: formData.get("depositBaht") || undefined,
   });
   if (!p.success) return;
   await hotel.createRoomType({
@@ -49,6 +51,7 @@ export async function addRoomTypeAction(unitSlug: string, formData: FormData) {
     code: p.data.code,
     capacity: p.data.capacity,
     baseRateSatang: Math.round(p.data.rateBaht * 100),
+    depositSatang: Math.round((p.data.depositBaht ?? 0) * 100),
   });
   revalidatePath(`/app/u/${unitSlug}/hotel/setup`);
 }
@@ -175,6 +178,16 @@ export async function cancelReservationAction(unitSlug: string, formData: FormDa
   const id = String(formData.get("id") ?? "");
   const reason = String(formData.get("reason") ?? "") || undefined;
   await hotel.cancelReservation(auth.active.tenantId, unit.id, id, reason);
+  revalidatePath(`/app/u/${unitSlug}/hotel`);
+  revalidatePath(`/app/u/${unitSlug}/hotel/reservations`);
+}
+
+// ร้านยืนยันรับมัดจำ (เปิดบิล POS DEPOSIT Dr 2110 + ปั๊ม depositPaidAt) — เฉพาะการจองที่มีมัดจำและยังไม่จ่าย
+export async function recordDepositAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertHotelCan(auth, unit.id, "hotel.reservation.checkIn"); // สิทธิ์ระดับหน้างาน (รับเงินหน้าเคาน์เตอร์)
+  const id = String(formData.get("id") ?? "");
+  await hotel.recordDeposit(auth.active.tenantId, unit.id, id);
   revalidatePath(`/app/u/${unitSlug}/hotel`);
   revalidatePath(`/app/u/${unitSlug}/hotel/reservations`);
 }
