@@ -354,3 +354,4 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 - 🔑 **Marketing ส่ง LINE จริง** — ต้อง LINE OA creds จากเจ้าของ
 **PDPA = auto-covered · POS shift state machine = follow-up (ปิดวันตอนนี้ read-only)**
 | แตกฟังก์ชัน | **กางฟังก์ชันย่อยเข้าเมนู accordion ครบทุกระบบ** (2→8 ระบบ 30 links) + **เพิ่ม "ขายหน้าร้าน" POS ที่หายจากเมนู** + ModuleTabs hotel/shop/queue/ticket · account 8 หมวด (งานที่เจ้าของสั่งแต่แรกแต่ลืม) | qc-nav-functions 5/5 | b04a401 |
+| แตกฟังก์ชัน-ครบ | เจ้าของทัก POS+booking ไม่ครบ → accordion completeness (oracle S5 บังคับทุก sub-route) + **สร้างหน้า POS สินค้า/ราคา** (setItemSalePrice→AccountProduct) + booking/ตั้งค่า + restaurant/order+menu-options | qc-nav-functions 6/6 + qc-pos-products 24/24 | 57bf33c |
