@@ -1,6 +1,7 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { resolveUnit, getBookingData } from "@/lib/modules/booking/service";
+import { resolveUnit as resolveTicketUnit } from "@/lib/modules/ticket/service";
 import { PublicBooking } from "@/components/public-booking";
 import { getLocaleFromCookie, makeT } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -12,6 +13,11 @@ export default async function StoreBookingPage({
   params: Promise<{ tenantSlug: string; unitSlug: string }>;
 }) {
   const { tenantSlug, unitSlug } = await params;
+
+  // ร้านขายตั๋ว (TICKET): landing เด้งเข้า storefront ตั๋วสาธารณะ (ลูกค้าซื้อตั๋วเอง)
+  const ticketUnit = await resolveTicketUnit(tenantSlug, unitSlug);
+  if (ticketUnit) redirect(`/s/${tenantSlug}/${unitSlug}/ticket`);
+
   const resolved = await resolveUnit(tenantSlug, unitSlug);
   if (!resolved) notFound();
   const { services, staff } = await getBookingData(resolved.tenant.id, resolved.unit.id);

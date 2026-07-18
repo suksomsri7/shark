@@ -7,6 +7,7 @@ import type {
 } from "@prisma/client";
 import * as pos from "@/lib/modules/pos/service";
 import { systemForUnit } from "@/lib/modules/system/service";
+import { promptpayPayload } from "@/lib/payment/promptpay";
 
 type Client = PrismaClient | Prisma.TransactionClient;
 type Ctx = { tenantId: string; unitId: string };
@@ -181,7 +182,7 @@ export type CreateOrderInput = {
 };
 
 export type CreateOrderResult =
-  | { ok: true; orderId: string; orderNo: string; admissionCount: number; totalSatang: number }
+  | { ok: true; orderId: string; orderNo: string; publicToken: string | null; admissionCount: number; totalSatang: number }
   | { ok: false; reason: string };
 
 // สร้างออเดอร์ (จอง/ขาย) → ตัดโควตา atomic + ออกตั๋วรายใบ (1 ใบ/ที่)
@@ -279,7 +280,7 @@ export async function createOrder(
         });
       }
 
-      return { orderId: order.id, orderNo, admissionCount: admissionData.length, totalSatang: total };
+      return { orderId: order.id, orderNo, publicToken: order.publicToken, admissionCount: admissionData.length, totalSatang: total };
     });
 
     return { ok: true, ...result };
@@ -492,7 +493,8 @@ export async function listOrders(tenantId: string, unitId: string, eventId: stri
   });
 }
 
-// resolve unit จาก slug (public/no-auth) — เผื่อ storefront ภายหลัง
+// resolve unit จาก slug (public/no-auth) — storefront ขายตั๋วสาธารณะ
+// unit ต้อง ACTIVE + type=TICKET (กันสวมร้าน/ประเภทผิด) · tenant ต้อง ACTIVE
 export async function resolveUnit(tenantSlug: string, unitSlug: string) {
   const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
   if (!tenant || tenant.status !== "ACTIVE") return null;
@@ -501,6 +503,94 @@ export async function resolveUnit(tenantSlug: string, unitSlug: string) {
   });
   if (!unit || unit.status !== "ACTIVE" || unit.type !== "TICKET") return null;
   return { tenant, unit };
+}
+
+// ───────────────────────── Public storefront (ซื้อตั๋วออนไลน์ · no-auth) ─────────────────────────
+
+export type PublicTicketType = {
+  id: string;
+  name: string;
+  description: string | null;
+  priceSatang: number;
+  remaining: number; // ที่ขายได้เหลือ (quota - sold, ไม่ติดลบ)
+};
+export type PublicTicketEvent = {
+  id: string;
+  name: string;
+  description: string | null;
+  venue: string | null;
+  startAt: Date;
+  endAt: Date | null;
+  types: PublicTicketType[];
+};
+
+// รายการงานที่ "เปิดขาย" (PUBLISHED) + ประเภทตั๋ว active + ราคา + คงเหลือ (สำหรับหน้าลูกค้า)
+export async function listPublicEvents(tenantId: string, unitId: string): Promise<PublicTicketEvent[]> {
+  const db = tenantDb({ tenantId, unitId });
+  const events = await db.ticketEvent.findMany({
+    where: { tenantId, unitId, status: "PUBLISHED", archivedAt: null },
+    orderBy: [{ startAt: "asc" }],
+    include: {
+      ticketTypes: { where: { active: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+    },
+    take: 100,
+  });
+  return events.map((e) => ({
+    id: e.id,
+    name: e.name,
+    description: e.description,
+    venue: e.venue,
+    startAt: e.startAt,
+    endAt: e.endAt,
+    types: e.ticketTypes.map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      priceSatang: t.priceSatang,
+      remaining: Math.max(0, t.quota - t.sold),
+    })),
+  }));
+}
+
+// งานเดียว — เฉพาะที่ยังเปิดขาย (PUBLISHED) · ใช้ตรวจก่อนรับออเดอร์ public (กันขาย DRAFT/ENDED/CANCELLED)
+export async function getPublicEvent(tenantId: string, unitId: string, eventId: string) {
+  const db = tenantDb({ tenantId, unitId });
+  return db.ticketEvent.findFirst({
+    where: { id: eventId, tenantId, unitId, status: "PUBLISHED", archivedAt: null },
+  });
+}
+
+// สถานะออเดอร์ + ตั๋วรายใบ (public จาก publicToken) — กัน cross-tenant: token ต้องเป็นของ unit นี้ (กัน leak PII/ตั๋วร้านอื่น)
+export async function getPublicOrder(unitId: string, publicToken: string) {
+  const token = (publicToken ?? "").trim();
+  if (!token) return null;
+  const order = await prisma.ticketOrder.findUnique({
+    where: { publicToken: token },
+    include: {
+      event: { select: { name: true, venue: true, startAt: true, endAt: true } },
+      admissions: {
+        orderBy: { createdAt: "asc" },
+        include: { ticketType: { select: { name: true } } },
+      },
+    },
+  });
+  if (!order || order.unitId !== unitId) return null;
+  return order;
+}
+
+// PromptPay payload สำหรับจ่ายค่าตั๋วออเดอร์นี้ (ยอด = totalSatang) — ร้านยังไม่ตั้งเลข/ยอด 0 → null
+export async function promptpayForOrder(
+  tenantId: string,
+  unitId: string,
+  orderId: string,
+): Promise<{ payload: string; displayName: string } | null> {
+  const db = tenantDb({ tenantId, unitId });
+  const order = await db.ticketOrder.findFirst({ where: { id: orderId } });
+  if (!order || order.totalSatang <= 0) return null;
+  const profile = await db.paymentProfile.findFirst({ where: {} });
+  if (!profile?.promptpayId) return null;
+  const payload = promptpayPayload({ id: profile.promptpayId, amountSatang: order.totalSatang });
+  return { payload, displayName: profile.displayName ?? "" };
 }
 
 export type OrderStatusFilter = TicketOrderStatus;

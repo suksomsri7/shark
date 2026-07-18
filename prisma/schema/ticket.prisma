@@ -83,6 +83,7 @@ model TicketOrder {
   event        TicketEvent       @relation(fields: [eventId], references: [id])
 
   orderNo      String            // "TO-250711-0001" running ต่อ unit ต่อวัน
+  publicToken  String?           @unique @default(cuid()) // ลิงก์สถานะ/ตั๋วลูกค้า (public/no-auth) — ซื้อออนไลน์ · สุ่มกันเดา
   customerId   String?           // ผูกระบบสมาชิก (optional)
   buyerName    String            // snapshot
   buyerPhone   String?           // snapshot

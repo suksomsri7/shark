@@ -54,6 +54,7 @@
     "qc:queue-public": "tsx scripts/qc-queue-public.mts",
     "qc:shop-refund": "tsx scripts/qc-shop-refund.mts",
     "qc:ticket-cancel": "tsx scripts/qc-ticket-cancel.mts",
+    "qc:ticket-public": "tsx scripts/qc-ticket-public.mts",
     "qc:school-refund": "tsx scripts/qc-school-refund.mts",
     "qc:rental-refund": "tsx scripts/qc-rental-refund.mts",
     "qc:rental-race": "tsx scripts/qc-rental-race.mts",
