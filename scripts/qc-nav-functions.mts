@@ -24,7 +24,7 @@ function chk(id: string, name: string, ok: boolean, detail: string, sev: Sev = "
 
 // ─── ระบบที่ "ควรมี" children (ตาม WO แตกฟังก์ชัน) ─────────────────────────────
 const EXPECT_BUSINESS = ["HOTEL", "RESTAURANT", "SHOP", "QUEUE", "TICKET", "BOOKING"];
-const EXPECT_FEATURE = ["POS", "ACCOUNT", "HR", "INVENTORY", "CRM", "MARKETING", "COUPON", "MEMBER", "POINT", "REWARD"];
+const EXPECT_FEATURE = ["POS", "ACCOUNT", "HR", "INVENTORY", "CRM", "MARKETING", "COUPON", "MEMBER", "POINT", "REWARD", "CHAT", "MEETING", "KANBAN"];
 
 // ─── map href (route) → path ไฟล์ page.tsx จริง ──────────────────────────────
 // business: /app/u/${slugOrId}/rest  → src/app/app/u/[unitSlug]/rest/page.tsx
@@ -221,6 +221,16 @@ for (const b of BIZ_COMPLETE) {
   requiredByType.set("POINT", [...sysRoot, ...routesUnder(join(POS_BASE, "point"), POS_BASE)]);
   requiredByType.set("REWARD", [...sysRoot, ...routesUnder(join(POS_BASE, "reward"), POS_BASE)]);
 }
+// CHAT / MEETING / KANBAN: root overview (sys/[id]/page.tsx → "") + ทุกหน้าย่อยใต้ folder ของระบบ
+// (batch 4 แตกฟังก์ชัน แชท+แชทภายใน+บอร์ดงาน — CHAT แตกจริง 2 หน้า (สนทนา /chat + เชื่อมช่องทาง)
+//  · MEETING ฟังก์ชันเดียว = hub + 1 หน้า (/meeting) · KANBAN แตกจริง 2 หน้า (งานของฉัน + บอร์ด)
+//  · หมายเหตุ: routesUnder ข้ามโฟลเดอร์ [param] อยู่แล้ว → kanban/[boardId] ไม่ถูกนับเป็น nav)
+{
+  const sysRoot = existsSync(join(POS_BASE, "page.tsx")) ? [""] : [];
+  requiredByType.set("CHAT", [...sysRoot, ...routesUnder(join(POS_BASE, "chat"), POS_BASE)]);
+  requiredByType.set("MEETING", [...sysRoot, ...routesUnder(join(POS_BASE, "meeting"), POS_BASE)]);
+  requiredByType.set("KANBAN", [...sysRoot, ...routesUnder(join(POS_BASE, "kanban"), POS_BASE)]);
+}
 
 const incomplete: string[] = [];
 for (const [type, required] of requiredByType) {
@@ -232,7 +242,7 @@ for (const [type, required] of requiredByType) {
 }
 chk(
   "S5",
-  "accordion กางครบทุก sub-route จริง (completeness: hotel/restaurant/shop/queue/ticket/booking/POS/HR/INVENTORY/CRM/MARKETING/COUPON/MEMBER/POINT/REWARD)",
+  "accordion กางครบทุก sub-route จริง (completeness: hotel/restaurant/shop/queue/ticket/booking/POS/HR/INVENTORY/CRM/MARKETING/COUPON/MEMBER/POINT/REWARD/CHAT/MEETING/KANBAN)",
   incomplete.length === 0,
   `ไม่ครบ:\n     - ${incomplete.join("\n     - ")}`,
   "CRITICAL",

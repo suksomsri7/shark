@@ -5,10 +5,10 @@ import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { closeDaySummary } from "@/lib/modules/pos/service";
 import { CouponHub } from "@/lib/modules/coupon/ui";
-import { MeetingContent } from "@/lib/modules/meeting/ui";
-import { KanbanContent } from "@/lib/modules/kanban/ui";
+import { MeetingHub } from "@/lib/modules/meeting/ui";
+import { KanbanHub } from "@/lib/modules/kanban/ui";
 import { AccountContent } from "@/lib/modules/account/ui";
-import { ChatContent } from "@/lib/modules/chat/ui";
+import { ChatHub } from "@/lib/modules/chat/ui";
 import { CrmHub } from "@/lib/modules/crm/ui";
 import { InvHub } from "@/lib/modules/inventory/ui";
 import { HrHub } from "@/lib/modules/hr/ui";
@@ -103,10 +103,10 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
       {sys.type === "POS" && <PosContent systemId={id} tenantId={tenantId} />}
       {sys.type === "REWARD" && <RewardHub systemId={id} tenantId={tenantId} />}
       {sys.type === "COUPON" && <CouponHub systemId={id} tenantId={tenantId} />}
-      {sys.type === "MEETING" && <MeetingContent systemId={id} tenantId={tenantId} />}
-      {sys.type === "KANBAN" && <KanbanContent systemId={id} tenantId={tenantId} />}
+      {sys.type === "MEETING" && <MeetingHub systemId={id} tenantId={tenantId} />}
+      {sys.type === "KANBAN" && <KanbanHub systemId={id} tenantId={tenantId} />}
       {sys.type === "ACCOUNT" && <AccountContent systemId={id} tenantId={tenantId} />}
-      {sys.type === "CHAT" && <ChatContent systemId={id} tenantId={tenantId} />}
+      {sys.type === "CHAT" && <ChatHub systemId={id} tenantId={tenantId} />}
       {sys.type === "CRM" && <CrmHub systemId={id} />}
       {sys.type === "INVENTORY" && <InvHub systemId={id} />}
       {sys.type === "HR" && <HrHub systemId={id} />}

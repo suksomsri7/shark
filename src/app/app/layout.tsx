@@ -156,6 +156,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/reward/rewards`, label: "รายการรางวัล" },
           { href: `${s}/reward/redeem`, label: "แลกรางวัล" },
         ];
+      case "CHAT":
+        // ระบบแชทลูกค้า: สนทนา (inbox รวมทุกช่องทาง) + เชื่อมช่องทาง (LINE/เว็บ/สมาชิก)
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/chat`, label: "สนทนา" },
+          { href: `${s}/chat/channels`, label: "เชื่อมช่องทาง" },
+        ];
+      case "MEETING":
+        // ระบบแชทภายในมีฟังก์ชันจริงเดียว (ห้องแชท) — ไม่ฝืนแตกเกินจริง
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/meeting`, label: "ห้องแชท" },
+        ];
+      case "KANBAN":
+        // ระบบบอร์ดงาน: งานของฉัน (การ์ดที่มอบหมาย) + บอร์ดงาน (รายการบอร์ด + สร้าง)
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/kanban/my-tasks`, label: "งานของฉัน" },
+          { href: `${s}/kanban/boards`, label: "บอร์ดงาน" },
+        ];
       default:
         return undefined; // ที่เหลือ (COMING SOON ฯลฯ) = render inline หน้าเดียว ไม่มี sub-route
     }

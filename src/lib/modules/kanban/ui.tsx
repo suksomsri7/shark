@@ -15,40 +15,53 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { ModuleTabs } from "@/components/module-tabs";
 
 const muted = "text-[color:var(--color-muted)]";
 
 const fmtDue = (d: Date) =>
   d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "Asia/Bangkok" });
 
-// ───────────────────────── KanbanContent (ฝังในหน้า /app/sys/[id]) ─────────────────────────
-// แสดงรายการบอร์ดของระบบ Kanban นี้ + ปุ่มสร้างบอร์ด (คลิกเข้าดูรายละเอียดที่ sub-route)
-export async function KanbanContent({ systemId, tenantId }: { systemId: string; tenantId: string }) {
+// แท็บฟังก์ชันย่อยของระบบ Kanban (ใช้ทั้งหน้า hub + ทุกหน้าย่อย ให้ตรงกันเสมอ)
+// ⚠️ ต้องตรงกับ childrenFor("KANBAN") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions.mts)
+export function kanbanTabs(systemId: string): { href: string; label: string }[] {
+  const s = `/app/sys/${systemId}`;
+  return [
+    { href: s, label: "ภาพรวม" },
+    { href: `${s}/kanban/my-tasks`, label: "งานของฉัน" },
+    { href: `${s}/kanban/boards`, label: "บอร์ดงาน" },
+  ];
+}
+
+// ───────────── งานของฉัน (my-tasks) — การ์ดที่มอบหมายให้ฉันข้ามทุกบอร์ด ─────────────
+export async function KanbanMyTasksSection({ systemId, tenantId }: { systemId: string; tenantId: string }) {
   const auth = await requireTenant();
-  const [boards, myCards] = await Promise.all([
-    listBoards(tenantId, systemId),
-    listMyCards(tenantId, systemId, auth.user.id),
-  ]);
+  const myCards = await listMyCards(tenantId, systemId, auth.user.id);
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* งานของฉัน — การ์ดที่มอบหมายให้ฉันข้ามทุกบอร์ด */}
-      <Section title={`งานของฉัน (${myCards.length})`}>
-        <DataList
-          items={myCards.map((c) => ({
-            key: c.id,
-            href: `/app/sys/${systemId}/kanban/${c.boardId}`,
-            primary: c.title,
-            secondary: `${c.board?.name ?? ""}${c.column?.name ? ` · ${c.column.name}` : ""}`,
-            trailing: c.dueAt ? (
-              <span className={`text-xs ${muted}`}>ครบกำหนด {fmtDue(c.dueAt)}</span>
-            ) : undefined,
-          }))}
-          empty="ยังไม่มีงานที่มอบหมายให้คุณ — งานที่หัวหน้ามอบหมายจะมาแสดงที่นี่"
-        />
-      </Section>
+    <Section title={`งานของฉัน (${myCards.length})`}>
+      <DataList
+        items={myCards.map((c) => ({
+          key: c.id,
+          href: `/app/sys/${systemId}/kanban/${c.boardId}`,
+          primary: c.title,
+          secondary: `${c.board?.name ?? ""}${c.column?.name ? ` · ${c.column.name}` : ""}`,
+          trailing: c.dueAt ? (
+            <span className={`text-xs ${muted}`}>ครบกำหนด {fmtDue(c.dueAt)}</span>
+          ) : undefined,
+        }))}
+        empty="ยังไม่มีงานที่มอบหมายให้คุณ — งานที่หัวหน้ามอบหมายจะมาแสดงที่นี่"
+      />
+    </Section>
+  );
+}
 
-      <Section title={`บอร์ดงาน (${boards.length})`}>
+// ───────────── บอร์ดงาน (boards) — รายการบอร์ด + สร้างบอร์ด ─────────────
+export async function KanbanBoardsSection({ systemId, tenantId }: { systemId: string; tenantId: string }) {
+  const boards = await listBoards(tenantId, systemId);
+
+  return (
+    <Section title={`บอร์ดงาน (${boards.length})`}>
       <DataList
         items={boards.map((b) => ({
           key: b.id,
@@ -74,6 +87,41 @@ export async function KanbanContent({ systemId, tenantId }: { systemId: string; 
         <button className="btn btn-ghost text-sm">+ สร้างบอร์ด</button>
       </form>
     </Section>
+  );
+}
+
+// ───────────── KanbanHub (หน้าภาพรวม ฝังใน /app/sys/[id]) ─────────────
+// การ์ดสรุปสั้น + ลิงก์เข้าแต่ละฟังก์ชัน (แตกเป็นหน้าย่อยจริง)
+export async function KanbanHub({ systemId, tenantId }: { systemId: string; tenantId: string }) {
+  const auth = await requireTenant();
+  const [boards, myCards] = await Promise.all([
+    listBoards(tenantId, systemId),
+    listMyCards(tenantId, systemId, auth.user.id),
+  ]);
+
+  const cards = [
+    { href: `/app/sys/${systemId}/kanban/my-tasks`, label: "งานของฉัน", value: `${myCards.length} งาน`, desc: "งานที่มอบหมายให้ฉันข้ามทุกบอร์ด" },
+    { href: `/app/sys/${systemId}/kanban/boards`, label: "บอร์ดงาน", value: `${boards.length} บอร์ด`, desc: "รายการบอร์ด + สร้างบอร์ด" },
+  ];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <ModuleTabs items={kanbanTabs(systemId)} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {cards.map((c) => (
+          <Link
+            key={c.href}
+            href={c.href}
+            className="card flex min-h-[76px] flex-col gap-1 p-4 transition-colors hover:bg-[color:var(--color-surface-2)]"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{c.label}</span>
+              <span className="text-sm tabular-nums text-[color:var(--color-accent)]">{c.value}</span>
+            </div>
+            <span className={`text-xs ${muted}`}>{c.desc}</span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

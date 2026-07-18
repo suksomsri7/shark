@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { ChatContent } from "@/lib/modules/chat/ui";
+import { ChatInboxSection, chatTabs } from "@/lib/modules/chat/ui";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ModuleTabs } from "@/components/module-tabs";
 import { AutoRefresh } from "@/components/queue-auto-refresh";
 
 // หน้าเต็มจอของ Chat — เลือกบทสนทนาด้วย ?c=
@@ -26,7 +27,8 @@ export default async function ChatPage({
       {/* เห็นข้อความ/แจ้งเตือนใหม่โดยไม่ต้องกด F5 (P1 liveness — เหมือนจอคิว) */}
       <AutoRefresh ms={15000} />
       <PageHeader title={sys.name} back={{ href: `/app/sys/${id}`, label: sys.name }} />
-      <ChatContent systemId={id} tenantId={tenantId} conversationId={c} />
+      <ModuleTabs items={chatTabs(id)} />
+      <ChatInboxSection systemId={id} tenantId={tenantId} conversationId={c} />
     </div>
   );
 }

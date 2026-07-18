@@ -20,7 +20,47 @@ import {
 } from "./actions";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { ModuleTabs } from "@/components/module-tabs";
 import { CHANNEL_KIND_LABEL } from "@/lib/ui/status-labels";
+
+const muted = "text-[color:var(--color-muted)]";
+
+// แท็บฟังก์ชันย่อยของระบบแชทภายใน (Meeting) — ฟังก์ชันจริงเดียว (ห้องแชท) = ภาพรวม + ห้องแชท
+// ⚠️ ต้องตรงกับ childrenFor("MEETING") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions.mts)
+export function meetingTabs(systemId: string): { href: string; label: string }[] {
+  const s = `/app/sys/${systemId}`;
+  return [
+    { href: s, label: "ภาพรวม" },
+    { href: `${s}/meeting`, label: "ห้องแชท" },
+  ];
+}
+
+// ───────────── MeetingHub (หน้าภาพรวม ฝังใน /app/sys/[id]) ─────────────
+// การ์ดสรุป + ลิงก์เข้าห้องแชท (ฟังก์ชันเดียว = hub + 1 หน้า ไม่ฝืนแตก)
+export async function MeetingHub({ systemId, tenantId }: { systemId: string; tenantId: string }) {
+  const auth = await requireTenant();
+  const userId = auth.user.id;
+  await ensureWorkspace(tenantId, systemId, userId);
+  const channels = await listVisibleChannels(tenantId, systemId, userId);
+
+  return (
+    <div className="flex flex-col gap-5">
+      <ModuleTabs items={meetingTabs(systemId)} />
+      <div className="grid grid-cols-1 gap-3">
+        <Link
+          href={`/app/sys/${systemId}/meeting`}
+          className="card flex min-h-[76px] flex-col gap-1 p-4 transition-colors hover:bg-[color:var(--color-surface-2)]"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium">ห้องแชท</span>
+            <span className="text-sm tabular-nums text-[color:var(--color-accent)]">{channels.length} ห้อง</span>
+          </div>
+          <span className={`text-xs ${muted}`}>คุยกันภายในทีมแบบ Slack · ห้องสาธารณะ/ส่วนตัว + เธรด</span>
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 const fmt = (d: Date) =>
   d.toLocaleString("th-TH", {

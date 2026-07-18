@@ -6,6 +6,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ModuleTabs } from "@/components/module-tabs";
 import {
   ensureWebchatConnection,
   listConnections,
@@ -54,12 +55,73 @@ const fmt = (d: Date) =>
 
 const origin = () => env.APP_URL.replace(/\/$/, "");
 
+// แท็บฟังก์ชันย่อยของระบบแชท (Chat) — สนทนา (inbox) + เชื่อมช่องทาง (channels)
+// ⚠️ ต้องตรงกับ childrenFor("CHAT") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions.mts)
+export function chatTabs(systemId: string): { href: string; label: string }[] {
+  const s = `/app/sys/${systemId}`;
+  return [
+    { href: s, label: "ภาพรวม" },
+    { href: `${s}/chat`, label: "สนทนา" },
+    { href: `${s}/chat/channels`, label: "เชื่อมช่องทาง" },
+  ];
+}
+
+// ───────────── ChatHub (หน้าภาพรวม ฝังใน /app/sys/[id]) ─────────────
+// การ์ดสรุปสั้น + ลิงก์เข้าแต่ละฟังก์ชัน (แตกเป็นหน้าย่อยจริง: สนทนา + เชื่อมช่องทาง)
+export async function ChatHub({ systemId, tenantId }: { systemId: string; tenantId: string }) {
+  const auth = await requireTenant();
+  const unitAccess = auth.active.unitAccess as string[];
+
+  await ensureWebchatConnection(tenantId, systemId);
+  const [connections, conversations] = await Promise.all([
+    listConnections(tenantId, systemId),
+    listConversations({ tenantId, systemId, unitAccess }),
+  ]);
+  const unread = conversations.reduce((n, c) => n + (c.staffUnreadCount > 0 ? 1 : 0), 0);
+  const lineCount = connections.filter((c) => c.type === "LINE").length;
+
+  const cards = [
+    {
+      href: `/app/sys/${systemId}/chat`,
+      label: "สนทนา",
+      value: unread > 0 ? `${unread} ยังไม่อ่าน` : `${conversations.length} บทสนทนา`,
+      desc: "กล่องข้อความรวมลูกค้าจากทุกช่องทาง",
+    },
+    {
+      href: `/app/sys/${systemId}/chat/channels`,
+      label: "เชื่อมช่องทาง",
+      value: lineCount > 0 ? `LINE ${lineCount}` : "เว็บ",
+      desc: "เชื่อม LINE OA · แชทหน้าเว็บ · ระบบสมาชิก",
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <ModuleTabs items={chatTabs(systemId)} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {cards.map((c) => (
+          <Link
+            key={c.href}
+            href={c.href}
+            className="card flex min-h-[76px] flex-col gap-1 p-4 transition-colors hover:bg-[color:var(--color-surface-2)]"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{c.label}</span>
+              <span className="text-sm tabular-nums text-[color:var(--color-accent)]">{c.value}</span>
+            </div>
+            <span className="text-xs text-[color:var(--color-muted)]">{c.desc}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
-// <ChatContent systemId tenantId conversationId? /> — inbox รวมแชทลูกค้า (P1: LINE + เว็บ)
-// เจ้าของเสียบใน sys/[id]/page.tsx: {sys.type === "CHAT" && <ChatContent systemId={id} tenantId={tenantId} />}
+// <ChatInboxSection systemId tenantId conversationId? /> — inbox รวมแชทลูกค้า (P1: LINE + เว็บ)
 // การเลือกบทสนทนาใช้ ?c= (หน้าเต็มที่ /app/sys/[id]/chat)
 // ─────────────────────────────────────────────────────────────
-export async function ChatContent({
+export async function ChatInboxSection({
   systemId,
   tenantId,
   conversationId,
@@ -85,15 +147,6 @@ export async function ChatContent({
 
   const base = `/app/sys/${systemId}/chat`;
   const active = conversationId ? conversations.find((c) => c.id === conversationId) : undefined;
-
-  // ระบบสมาชิกในร้าน (สำหรับ dropdown เชื่อม)
-  const memberSystems = await prisma.appSystem.findMany({
-    where: { tenantId, type: "MEMBER" },
-    orderBy: { createdAt: "asc" },
-  });
-
-  const lineConns = connections.filter((c) => c.type === "LINE");
-  const webchat = connections.find((c) => c.type === "WEBCHAT");
 
   return (
     <section className="flex flex-col gap-4">
@@ -184,12 +237,41 @@ export async function ChatContent({
           </div>
         )}
       </div>
+    </section>
+  );
+}
 
+// ─────────────────────────────────────────────────────────────
+// <ChatChannelsSection systemId tenantId /> — เชื่อมช่องทาง: LINE OA · แชทหน้าเว็บ · ระบบสมาชิก
+// ─────────────────────────────────────────────────────────────
+export async function ChatChannelsSection({
+  systemId,
+  tenantId,
+}: {
+  systemId: string;
+  tenantId: string;
+}) {
+  // built-in WEBCHAT connection (lazy) + ช่องทางอื่น
+  await ensureWebchatConnection(tenantId, systemId);
+  const [connections, setting] = await Promise.all([
+    listConnections(tenantId, systemId),
+    getSetting(tenantId, systemId),
+  ]);
+
+  // ระบบสมาชิกในร้าน (สำหรับ dropdown เชื่อม)
+  const memberSystems = await prisma.appSystem.findMany({
+    where: { tenantId, type: "MEMBER" },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const lineConns = connections.filter((c) => c.type === "LINE");
+  const webchat = connections.find((c) => c.type === "WEBCHAT");
+
+  return (
+    <section className="flex flex-col gap-4">
       {/* ── ตั้งค่าช่องทาง (setup) ── */}
-      <details className="card">
-        <summary className="cursor-pointer text-sm font-medium">
-          ตั้งค่าช่องทางและการเชื่อมต่อ
-        </summary>
+      <div className="card">
+        <h2 className="text-sm font-medium">ตั้งค่าช่องทางและการเชื่อมต่อ</h2>
         <div className="mt-3 flex flex-col gap-5">
           {/* LINE */}
           <div className="flex flex-col gap-2">
@@ -300,7 +382,7 @@ export async function ChatContent({
             </form>
           </div>
         </div>
-      </details>
+      </div>
     </section>
   );
 }
