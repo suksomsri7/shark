@@ -121,6 +121,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // Clinic (WO-0052)
   PatientRecord: unit,
   ClinicVisit: unit,
+  ClinicAppointment: unit, // คำขอนัด public (WO clinic public)
   // School (WO-0051) + Delivery (WO-0060)
   SchoolCourse: unit,
   SchoolClass: unit,

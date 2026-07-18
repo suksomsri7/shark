@@ -7,6 +7,7 @@ import { prisma, tenantDb } from "@/lib/core/db";
 import * as pos from "@/lib/modules/pos/service";
 import * as member from "@/lib/modules/member/service";
 import { listSystems } from "@/lib/modules/system/service";
+import { promptpayPayload } from "@/lib/payment/promptpay";
 
 export type SchoolCtx = { tenantId: string; unitId: string };
 
@@ -127,23 +128,16 @@ export type EnrollInput = {
   studentPhone: string;
 };
 
-export async function enroll(ctx: SchoolCtx, input: EnrollInput): Promise<{ id: string }> {
+export async function enroll(ctx: SchoolCtx, input: EnrollInput): Promise<{ id: string; publicToken: string | null }> {
   const db = tenantDb(ctx);
-  const cl = await db.schoolClass.findFirst({ where: { id: input.classId }, include: { course: true } });
-  if (!cl) throw new Error("ไม่พบรอบเรียน");
+  // ตรวจรอบเรียนก่อน (นอก tx) — ไม่พบ → โยนก่อน ไม่แตะระบบสมาชิก
+  const clPre = await db.schoolClass.findFirst({ where: { id: input.classId } });
+  if (!clPre) throw new Error("ไม่พบรอบเรียน");
 
   const name = input.studentName?.trim();
   if (!name) throw new Error("กรุณาระบุชื่อนักเรียน");
 
-  // capacity เต็ม (นับที่ยัง active = ENROLLED + PAID) → คนถัดไปสมัครไม่ได้
-  if (cl.capacity !== null) {
-    const taken = await db.schoolEnrollment.count({
-      where: { classId: input.classId, status: { in: ["ENROLLED", "PAID"] } },
-    });
-    if (taken >= cl.capacity) throw new Error("รอบเรียนนี้เต็มแล้ว");
-  }
-
-  // มีระบบสมาชิก → หา/สร้าง Customer จากเบอร์ แล้วผูก customerId · ไม่มี = null
+  // มีระบบสมาชิก → หา/สร้าง Customer จากเบอร์ แล้วผูก customerId · ไม่มี = null (นอก tx — mirror ไม่ผูก tx สมาชิก)
   let customerId: string | null = null;
   const phone = input.studentPhone?.trim() || "";
   const memberSystems = await listSystems(ctx.tenantId, "MEMBER");
@@ -159,18 +153,40 @@ export async function enroll(ctx: SchoolCtx, input: EnrollInput): Promise<{ id: 
     customerId = cust.id;
   }
 
-  const en = await db.schoolEnrollment.create({
-    data: {
-      tenantId: ctx.tenantId,
-      unitId: ctx.unitId,
-      classId: input.classId,
-      customerId,
-      studentName: name,
-      studentPhone: phone,
-      priceSatang: cl.course.priceSatang, // snapshot ราคาตอนสมัคร
-    },
+  // กันสมัครเกิน capacity แบบ race-safe (mirror rental FOR UPDATE / ticket atomic):
+  //   ล็อกแถวรอบเรียน (pessimistic row-lock) ต้น tx → 2 request สมัครรอบเดียวกันพร้อมกัน serialize
+  //   → count ภายใน tx เดียวกันเห็น enrollment ที่ commit แล้วของคนแรก → คนที่เกินโดน reject
+  //   (ตาราง "SchoolClass" — schema ไม่มี @@map)
+  return prisma.$transaction(async (tx) => {
+    const cl = await tx.schoolClass.findFirst({
+      where: { id: input.classId, tenantId: ctx.tenantId, unitId: ctx.unitId },
+      include: { course: true },
+    });
+    if (!cl) throw new Error("ไม่พบรอบเรียน");
+
+    await tx.$queryRaw`SELECT id FROM "SchoolClass" WHERE id = ${input.classId} FOR UPDATE`;
+
+    // capacity เต็ม (นับที่ยัง active = ENROLLED + PAID) → คนถัดไปสมัครไม่ได้
+    if (cl.capacity !== null) {
+      const taken = await tx.schoolEnrollment.count({
+        where: { tenantId: ctx.tenantId, unitId: ctx.unitId, classId: input.classId, status: { in: ["ENROLLED", "PAID"] } },
+      });
+      if (taken >= cl.capacity) throw new Error("รอบเรียนนี้เต็มแล้ว");
+    }
+
+    const en = await tx.schoolEnrollment.create({
+      data: {
+        tenantId: ctx.tenantId,
+        unitId: ctx.unitId,
+        classId: input.classId,
+        customerId,
+        studentName: name,
+        studentPhone: phone,
+        priceSatang: cl.course.priceSatang, // snapshot ราคาตอนสมัคร
+      },
+    });
+    return { id: en.id, publicToken: en.publicToken };
   });
-  return { id: en.id };
 }
 
 // ── รับชำระค่าเรียน (ENROLLED → PAID) — เส้นเงิน C-2 ผ่าน pos.createSale ──
@@ -308,4 +324,90 @@ export async function attendanceSheet(
     studentName: e.studentName,
     present: byEnrollment.has(e.id) ? byEnrollment.get(e.id)! : null,
   }));
+}
+
+// ───────────────────────── Public storefront (ผู้ปกครองสมัครเรียน+จ่ายค่าเรียนเอง · no-auth) ─────────────────────────
+// resolve unit จาก slug (public) → tenantId+unitId · unit ต้อง ACTIVE + type=SCHOOL (กันสวมร้าน/ประเภทผิด)
+// mirror resolveRentalUnit / resolveUnit(ticket)
+export async function resolveSchoolUnit(tenantSlug: string, unitSlug: string) {
+  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+  if (!tenant || tenant.status !== "ACTIVE") return null;
+  const unit = await prisma.businessUnit.findUnique({
+    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
+  });
+  if (!unit || unit.status !== "ACTIVE" || unit.type !== "SCHOOL") return null;
+  return { tenant, unit };
+}
+
+// รอบเรียนที่เปิดรับสมัคร (คอร์ส active) + ค่าเรียน + ที่ว่างคงเหลือ (สำหรับหน้าผู้ปกครอง)
+// remaining: capacity - (ENROLLED+PAID) · capacity null = ไม่จำกัด (remaining=null) · full = ไม่มีที่ว่าง
+export type PublicSchoolClass = {
+  id: string;
+  courseName: string;
+  className: string;
+  description: string | null;
+  priceSatang: number;
+  startDate: Date | null;
+  remaining: number | null; // null = ไม่จำกัด
+  full: boolean;
+};
+
+export async function listPublicClasses(ctx: SchoolCtx): Promise<PublicSchoolClass[]> {
+  const db = tenantDb(ctx);
+  const classes = await db.schoolClass.findMany({
+    where: { course: { active: true } },
+    orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
+    include: { course: true },
+    take: 100,
+  });
+  if (classes.length === 0) return [];
+  // นับผู้สมัคร active ต่อรอบ (query เดียว) → คำนวณที่ว่างใน memory
+  const counts = await db.schoolEnrollment.groupBy({
+    by: ["classId"],
+    where: { classId: { in: classes.map((c) => c.id) }, status: { in: ["ENROLLED", "PAID"] } },
+    _count: { _all: true },
+  });
+  const takenBy = new Map(counts.map((c) => [c.classId, c._count._all]));
+  return classes.map((cl) => {
+    const taken = takenBy.get(cl.id) ?? 0;
+    const remaining = cl.capacity === null ? null : Math.max(0, cl.capacity - taken);
+    return {
+      id: cl.id,
+      courseName: cl.course.name,
+      className: cl.name,
+      description: cl.course.description,
+      priceSatang: cl.course.priceSatang,
+      startDate: cl.startDate,
+      remaining,
+      full: remaining !== null && remaining < 1,
+    };
+  });
+}
+
+// สถานะการสมัคร + ค่าเรียน (public จาก publicToken) — กัน cross-tenant: token ต้องเป็นของ unit นี้ (กัน leak PII/ข้อมูลร้านอื่น)
+// mirror getPublicOrder / getPublicBooking
+export async function getPublicEnrollment(unitId: string, publicToken: string) {
+  const token = (publicToken ?? "").trim();
+  if (!token) return null;
+  const en = await prisma.schoolEnrollment.findUnique({
+    where: { publicToken: token },
+    include: { class: { include: { course: { select: { name: true } } } } },
+  });
+  if (!en || en.unitId !== unitId) return null;
+  return en;
+}
+
+// PromptPay payload สำหรับจ่ายค่าเรียนการสมัครนี้ (ยอด = priceSatang) — ร้านยังไม่ตั้งเลข/ยอด 0 → null
+// mirror promptpayForOrder
+export async function promptpayForEnrollment(
+  ctx: SchoolCtx,
+  enrollmentId: string,
+): Promise<{ payload: string; displayName: string } | null> {
+  const db = tenantDb(ctx);
+  const en = await db.schoolEnrollment.findFirst({ where: { id: enrollmentId } });
+  if (!en || en.priceSatang <= 0) return null;
+  const profile = await db.paymentProfile.findFirst({ where: {} });
+  if (!profile?.promptpayId) return null;
+  const payload = promptpayPayload({ id: profile.promptpayId, amountSatang: en.priceSatang });
+  return { payload, displayName: profile.displayName ?? "" };
 }

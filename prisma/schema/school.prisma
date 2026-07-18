@@ -50,6 +50,7 @@ model SchoolEnrollment {
   studentPhone String
   status       EnrollmentStatus @default(ENROLLED)
   priceSatang  Int              @default(0) // snapshot ราคาตอนสมัคร
+  publicToken  String?          @unique @default(cuid()) // ลิงก์สถานะ/ชำระค่าเรียนของผู้ปกครอง (public/no-auth) — สมัครออนไลน์ · สุ่มกันเดา · แถวเดิม NULL
   posSaleId    String? // เส้นเงิน C-2 ตอนชำระ
   paidAt       DateTime?
   cancelledAt  DateTime?

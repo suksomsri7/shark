@@ -135,3 +135,25 @@ export async function refundVisitAction(unitSlug: string, visitId: string) {
     redirect(`/app/u/${unitSlug}/clinic?err=${encodeURIComponent(res.reason ?? "คืนเงินไม่สำเร็จ")}`);
   }
 }
+
+// ───────────────────────── คำขอนัด (public) — ยืนยัน / ปฏิเสธ / ปิดนัด ─────────────────────────
+export async function confirmAppointmentAction(unitSlug: string, apptId: string) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertClinicCan(auth, unit.id, "clinic.appointment.confirm");
+  await clinic.confirmAppointment(ctxOf(auth, unit.id), apptId);
+  revalidatePath(`/app/u/${unitSlug}/clinic`);
+}
+
+export async function rejectAppointmentAction(unitSlug: string, apptId: string) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertClinicCan(auth, unit.id, "clinic.appointment.reject");
+  await clinic.rejectAppointment(ctxOf(auth, unit.id), apptId);
+  revalidatePath(`/app/u/${unitSlug}/clinic`);
+}
+
+export async function completeAppointmentAction(unitSlug: string, apptId: string) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertClinicCan(auth, unit.id, "clinic.appointment.complete");
+  await clinic.completeAppointment(ctxOf(auth, unit.id), apptId);
+  revalidatePath(`/app/u/${unitSlug}/clinic`);
+}

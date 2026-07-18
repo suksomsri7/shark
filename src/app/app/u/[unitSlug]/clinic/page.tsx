@@ -1,5 +1,5 @@
 import { requireUnit } from "@/lib/core/context";
-import { searchPatients, listVisits } from "@/lib/modules/clinic/service";
+import { searchPatients, listVisits, listAppointments } from "@/lib/modules/clinic/service";
 import { listItems } from "@/lib/modules/inventory/service";
 import { listSystems } from "@/lib/modules/system/service";
 import {
@@ -8,11 +8,32 @@ import {
   dispenseAction,
   billVisitAction,
   refundVisitAction,
+  confirmAppointmentAction,
+  rejectAppointmentAction,
+  completeAppointmentAction,
 } from "@/lib/modules/clinic/actions";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const baht = (satang: number) =>
   (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 0 });
+
+const fmtDateTime = (d: Date) =>
+  new Date(d).toLocaleString("th-TH", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  });
+
+const APPT_STATUS_LABEL: Record<string, { text: string; cls: string }> = {
+  PENDING: { text: "รอยืนยัน", cls: "text-amber-600" },
+  CONFIRMED: { text: "ยืนยันแล้ว", cls: "text-green-600" },
+  REJECTED: { text: "ปฏิเสธ", cls: "text-[color:var(--color-muted)]" },
+  DONE: { text: "ตรวจเสร็จ", cls: "text-[color:var(--color-muted)]" },
+  CANCELLED: { text: "ยกเลิก", cls: "text-[color:var(--color-muted)]" },
+};
 
 type DispenseRecord = { invItemId: string; name: string; qty: number };
 
@@ -31,13 +52,17 @@ export default async function ClinicManagePage({
   const tenantId = auth.active.tenantId;
   const ctx = { tenantId, unitId: unit.id };
 
-  const [patients, openVisitsAll, invSystems] = await Promise.all([
+  const [patients, openVisitsAll, invSystems, appointments] = await Promise.all([
     searchPatients(ctx, q),
     listVisits(ctx),
     listSystems(tenantId, "INVENTORY"),
+    listAppointments(ctx),
   ]);
   const openVisits = openVisitsAll.filter((v) => v.status === "OPEN");
   const billedVisits = openVisitsAll.filter((v) => v.status === "BILLED");
+  // คำขอนัด public: รอยืนยันก่อน (PENDING) แล้วตามด้วยที่ยืนยันแล้ว · ซ่อนที่จบแล้ว (REJECTED/DONE/CANCELLED)
+  const pendingAppts = appointments.filter((a) => a.status === "PENDING");
+  const confirmedAppts = appointments.filter((a) => a.status === "CONFIRMED");
 
   // รายการยาในคลัง (ถ้ามีระบบคลัง) สำหรับดรอปดาวน์จ่ายยา
   const invSys = invSystems[0];
@@ -55,6 +80,60 @@ export default async function ClinicManagePage({
           {err}
         </div>
       )}
+
+      {/* คำขอนัดออนไลน์ (public) — ยืนยัน / ปฏิเสธ */}
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium">
+          คำขอนัดออนไลน์ ({pendingAppts.length} รอยืนยัน)
+        </h2>
+        {pendingAppts.length === 0 && confirmedAppts.length === 0 && (
+          <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีคำขอนัดออนไลน์</p>
+        )}
+        {[...pendingAppts, ...confirmedAppts].map((a) => {
+          const st = APPT_STATUS_LABEL[a.status] ?? { text: a.status, cls: "" };
+          return (
+            <div key={a.id} className="card flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{a.patientName}</div>
+                  <div className="text-sm text-[color:var(--color-muted)]">
+                    {a.patientPhone} · {fmtDateTime(a.preferredAt)}
+                  </div>
+                  {a.symptom && (
+                    <div className="mt-1 text-sm text-[color:var(--color-muted)]">
+                      อาการ: {a.symptom}
+                    </div>
+                  )}
+                </div>
+                <span className={`shrink-0 text-xs font-medium ${st.cls}`}>{st.text}</span>
+              </div>
+              <div className="flex flex-wrap gap-2 border-t pt-2">
+                {a.status === "PENDING" && (
+                  <>
+                    <form action={confirmAppointmentAction.bind(null, unitSlug, a.id)}>
+                      <button className="rounded-full border px-3 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">
+                        ยืนยันนัด
+                      </button>
+                    </form>
+                    <form action={rejectAppointmentAction.bind(null, unitSlug, a.id)}>
+                      <button className="rounded-full border px-3 py-1 text-xs text-red-600 hover:bg-[color:var(--color-surface-2)]">
+                        ปฏิเสธ
+                      </button>
+                    </form>
+                  </>
+                )}
+                {a.status === "CONFIRMED" && (
+                  <form action={completeAppointmentAction.bind(null, unitSlug, a.id)}>
+                    <button className="rounded-full border px-3 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">
+                      ปิดนัด (ตรวจเสร็จ)
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </section>
 
       {/* ค้นหาผู้ป่วย */}
       <form className="flex items-center gap-2">

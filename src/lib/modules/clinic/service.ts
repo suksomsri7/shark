@@ -321,3 +321,98 @@ export async function refundVisit(
 
   return { ok: true };
 }
+
+// ───────────────────────── Public appointment (ผู้ป่วยจองนัดออนไลน์ · no-auth · ไม่เก็บเงินล่วงหน้า) ─────────────────────────
+// คลินิกจ่ายหลังตรวจผ่าน visit/billVisit อยู่แล้ว → นัดเป็นเพียง "คำขอ" ให้ร้านยืนยัน/ปฏิเสธ (ไม่แตะเส้นเงิน/บัญชี)
+// PDPA: symptom = ข้อมูลสุขภาพ → optional เก็บเท่าที่จำเป็น
+// resolve unit จาก slug (public) · unit ต้อง ACTIVE + type=CLINIC (กันสวมร้าน/ประเภทผิด) · mirror resolveRentalUnit
+export async function resolveClinicUnit(tenantSlug: string, unitSlug: string) {
+  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+  if (!tenant || tenant.status !== "ACTIVE") return null;
+  const unit = await prisma.businessUnit.findUnique({
+    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
+  });
+  if (!unit || unit.status !== "ACTIVE" || unit.type !== "CLINIC") return null;
+  return { tenant, unit };
+}
+
+export type RequestAppointmentInput = {
+  patientName: string;
+  patientPhone: string;
+  preferredAt: Date;
+  symptom?: string | null;
+};
+
+// ขอนัด (public) → PENDING + publicToken · ไม่เก็บเงิน · ไม่ผูกผู้ป่วย/สมาชิก (คำขอเบา ๆ)
+export async function requestAppointment(
+  ctx: ClinicCtx,
+  input: RequestAppointmentInput,
+): Promise<{ id: string; publicToken: string | null }> {
+  const name = input.patientName?.trim();
+  if (!name) throw new Error("กรุณาระบุชื่อผู้ป่วย");
+  const phone = input.patientPhone?.trim();
+  if (!phone) throw new Error("กรุณาระบุเบอร์โทร");
+  if (!(input.preferredAt instanceof Date) || Number.isNaN(input.preferredAt.getTime())) {
+    throw new Error("กรุณาเลือกวันเวลาที่สะดวก");
+  }
+
+  const appt = await tenantDb(ctx).clinicAppointment.create({
+    data: {
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      patientName: name,
+      patientPhone: phone,
+      preferredAt: input.preferredAt,
+      symptom: input.symptom?.trim() || null,
+    },
+  });
+  return { id: appt.id, publicToken: appt.publicToken };
+}
+
+// สถานะคำขอนัด (public จาก publicToken) — กัน cross-tenant: token ต้องเป็นของ unit นี้ (กัน leak PII/สุขภาพร้านอื่น)
+export async function getPublicAppointment(unitId: string, publicToken: string) {
+  const token = (publicToken ?? "").trim();
+  if (!token) return null;
+  const appt = await prisma.clinicAppointment.findUnique({ where: { publicToken: token } });
+  if (!appt || appt.unitId !== unitId) return null;
+  return appt;
+}
+
+// รายการคำขอนัด (ฝั่งร้าน) — เรียงคำขอใหม่/ที่สะดวกใกล้สุดก่อน
+export async function listAppointments(
+  ctx: ClinicCtx,
+  opts: { status?: "PENDING" | "CONFIRMED" | "REJECTED" | "DONE" | "CANCELLED" } = {},
+) {
+  return tenantDb(ctx).clinicAppointment.findMany({
+    where: opts.status ? { status: opts.status } : {},
+    orderBy: [{ status: "asc" }, { preferredAt: "asc" }],
+    take: 200,
+  });
+}
+
+// ร้านยืนยันนัด (PENDING → CONFIRMED) — claim อะตอมมิก (กันกดซ้ำ/แข่ง) · cross-tenant: tenantDb กรอง tenantId
+export async function confirmAppointment(ctx: ClinicCtx, apptId: string): Promise<boolean> {
+  const res = await tenantDb(ctx).clinicAppointment.updateMany({
+    where: { id: apptId, status: "PENDING" },
+    data: { status: "CONFIRMED", confirmedAt: new Date() },
+  });
+  return res.count > 0;
+}
+
+// ร้านปฏิเสธนัด (PENDING → REJECTED) — เต็ม/ไม่สะดวก
+export async function rejectAppointment(ctx: ClinicCtx, apptId: string): Promise<boolean> {
+  const res = await tenantDb(ctx).clinicAppointment.updateMany({
+    where: { id: apptId, status: "PENDING" },
+    data: { status: "REJECTED", rejectedAt: new Date() },
+  });
+  return res.count > 0;
+}
+
+// ปิดนัด = ตรวจเสร็จ (CONFIRMED → DONE)
+export async function completeAppointment(ctx: ClinicCtx, apptId: string): Promise<boolean> {
+  const res = await tenantDb(ctx).clinicAppointment.updateMany({
+    where: { id: apptId, status: "CONFIRMED" },
+    data: { status: "DONE" },
+  });
+  return res.count > 0;
+}

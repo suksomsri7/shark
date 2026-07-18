@@ -6,6 +6,38 @@ enum VisitStatus {
   REFUNDED // คืนเงินหลังเก็บเงิน (void PosSale + คืนยาเข้าคลัง — ห้ามลบ record · การเงินแก้ด้วย reversal)
 }
 
+// คำขอนัดหมายออนไลน์ (public/no-auth) — คลินิกจ่ายหลังตรวจ → นัดไม่เก็บเงินล่วงหน้า
+enum ClinicApptStatus {
+  PENDING // ผู้ป่วยขอนัด รอร้านยืนยัน
+  CONFIRMED // ร้านยืนยันนัดแล้ว
+  REJECTED // ร้านปฏิเสธ (เต็ม/ไม่สะดวก)
+  DONE // ตรวจเสร็จแล้ว
+  CANCELLED // ผู้ป่วย/ร้านยกเลิก
+}
+
+// คำขอนัดคลินิก (public) — เก็บเท่าที่จำเป็น (ชื่อ/เบอร์/เวลาที่สะดวก/อาการเบื้องต้น)
+// PDPA: symptom = ข้อมูลสุขภาพ → optional เก็บเท่าที่ผู้ป่วยให้ · ลบร้าน = ลบตาม (WO-0042)
+// ไม่เก็บเงิน (คลินิกจ่ายหลังตรวจผ่าน visit/billVisit อยู่แล้ว) → ไม่มี posSaleId
+model ClinicAppointment {
+  id           String           @id @default(cuid())
+  tenantId     String
+  unitId       String
+  patientName  String // snapshot
+  patientPhone String
+  preferredAt  DateTime // วันเวลาที่ผู้ป่วยสะดวก
+  symptom      String? // อาการเบื้องต้น (ข้อมูลสุขภาพ — optional)
+  status       ClinicApptStatus @default(PENDING)
+  note         String? // หมายเหตุร้าน (ตอบกลับ/เหตุปฏิเสธ)
+  publicToken  String?          @unique @default(cuid()) // ลิงก์สถานะนัดของผู้ป่วย (public/no-auth) · สุ่มกันเดา
+  confirmedAt  DateTime?
+  rejectedAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([tenantId, unitId, status])
+  @@index([unitId, preferredAt])
+}
+
 model PatientRecord {
   id         String   @id @default(cuid())
   tenantId   String

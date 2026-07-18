@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { resolveUnit, getBookingData } from "@/lib/modules/booking/service";
 import { resolveUnit as resolveTicketUnit } from "@/lib/modules/ticket/service";
 import { resolveRentalUnit } from "@/lib/modules/rental/service";
+import { resolveSchoolUnit } from "@/lib/modules/school/service";
+import { resolveClinicUnit } from "@/lib/modules/clinic/service";
 import { PublicBooking } from "@/components/public-booking";
 import { getLocaleFromCookie, makeT } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -22,6 +24,14 @@ export default async function StoreBookingPage({
   // ร้านให้เช่า (RENTAL): landing เด้งเข้า storefront เช่าสาธารณะ (ลูกค้าจองเช่าเอง)
   const rentalUnit = await resolveRentalUnit(tenantSlug, unitSlug);
   if (rentalUnit) redirect(`/s/${tenantSlug}/${unitSlug}/rental`);
+
+  // โรงเรียน/สถาบัน (SCHOOL): landing เด้งเข้า storefront สมัครเรียนสาธารณะ (ผู้ปกครองสมัคร+จ่ายเอง)
+  const schoolUnit = await resolveSchoolUnit(tenantSlug, unitSlug);
+  if (schoolUnit) redirect(`/s/${tenantSlug}/${unitSlug}/school`);
+
+  // คลินิก (CLINIC): landing เด้งเข้า storefront ขอนัดสาธารณะ (ผู้ป่วยจองนัดเอง)
+  const clinicUnit = await resolveClinicUnit(tenantSlug, unitSlug);
+  if (clinicUnit) redirect(`/s/${tenantSlug}/${unitSlug}/clinic`);
 
   const resolved = await resolveUnit(tenantSlug, unitSlug);
   if (!resolved) notFound();
