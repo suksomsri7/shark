@@ -8,6 +8,7 @@ import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { MEMBER_TIER_LABEL } from "@/lib/ui/status-labels";
+import { MemberEditForm } from "@/lib/modules/member/customer-form";
 
 function fmt(d: Date) {
   return d.toLocaleString("th-TH", {
@@ -60,6 +61,16 @@ export default async function MemberDetailPage({
           <div className="mt-1 text-sm font-medium">{fmt(c.createdAt)}</div>
         </div>
       </div>
+
+      <Section title="แก้ไขข้อมูลสมาชิก" card>
+        <MemberEditForm
+          customerId={c.id}
+          name={c.name}
+          phone={c.phone}
+          email={c.email}
+          marketingConsent={c.marketingConsent}
+        />
+      </Section>
 
       <Section title="ประวัติกิจกรรม">
         <DataList

@@ -16,6 +16,7 @@
     "qc:audit-trail": "tsx scripts/qc-audit-trail.mts",
     "qc:chat": "tsx scripts/qc-chat-security.mts",
     "qc:chat-notify": "tsx scripts/qc-chat-notify.mts",
+    "qc:member-public": "tsx scripts/qc-member-public.mts",
     "qc:systems": "tsx scripts/qc-systems.mts",
     "drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code",
     "db:generate": "prisma generate",

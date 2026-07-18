@@ -75,6 +75,78 @@ export async function findOrCreate(
   });
 }
 
+// ── แก้ไขข้อมูลสมาชิก (backoffice) — scope tenant · กันเบอร์/อีเมลชนสมาชิกอื่นในระบบเดียวกัน ──
+// patch: field ที่ไม่ส่ง = คงค่าเดิม (undefined = ไม่แตะ) · ส่ง null/"" = ล้างค่า
+// กติกา: ต้องเหลือชื่อหรือเบอร์อย่างน้อย 1 อย่าง · เบอร์/อีเมลซ้ำสมาชิกอื่น (memberSystem เดียวกัน) → throw ไทย
+export async function updateCustomer(
+  ctx: { tenantId: string },
+  customerId: string,
+  patch: {
+    name?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    marketingConsent?: boolean;
+  },
+) {
+  const existing = await prisma.customer.findFirst({
+    where: { id: customerId, tenantId: ctx.tenantId },
+  });
+  if (!existing) throw new Error("ไม่พบสมาชิกนี้");
+
+  const name = patch.name !== undefined ? patch.name?.trim() || null : existing.name;
+  const phone = patch.phone !== undefined ? normPhone(patch.phone) : existing.phone;
+  const email = patch.email !== undefined ? normEmail(patch.email) : existing.email;
+
+  if (!name && !phone) throw new Error("ต้องมีชื่อหรือเบอร์อย่างน้อย 1 อย่าง");
+
+  // กันชนกับสมาชิกอื่นในระบบสมาชิกเดียวกัน (ยกเว้นตัวเอง)
+  if (phone && phone !== existing.phone) {
+    const dupPhone = await prisma.customer.findFirst({
+      where: { memberSystemId: existing.memberSystemId, phone, id: { not: customerId } },
+    });
+    if (dupPhone) throw new Error("เบอร์นี้มีสมาชิกอื่นในระบบใช้แล้ว");
+  }
+  if (email && email !== existing.email) {
+    const dupEmail = await prisma.customer.findFirst({
+      where: { memberSystemId: existing.memberSystemId, email, id: { not: customerId } },
+    });
+    if (dupEmail) throw new Error("อีเมลนี้มีสมาชิกอื่นในระบบใช้แล้ว");
+  }
+
+  // marketingConsent: เปลี่ยนจากไม่ยินยอม→ยินยอม = ประทับเวลา · ถอนยินยอม = ล้างเวลา
+  const marketingConsent =
+    patch.marketingConsent !== undefined ? patch.marketingConsent : existing.marketingConsent;
+  let consentAt = existing.consentAt;
+  if (marketingConsent && !existing.marketingConsent) consentAt = new Date();
+  if (!marketingConsent) consentAt = null;
+
+  return prisma.customer.update({
+    where: { id: customerId },
+    data: { name, phone, email, marketingConsent, consentAt },
+  });
+}
+
+// ── Public storefront (สมัครสมาชิกเอง · no-auth) ──
+// resolve unit จาก slug → หา "ระบบสมาชิก" (AppSystem type=MEMBER) ที่ผูก unit นั้น
+// unit ประเภทใดก็ได้ (MEMBER เป็น feature ไม่ใช่ UnitType) ขอเพียง ACTIVE + มีระบบสมาชิกผูก + ระบบ active
+export async function resolveMemberUnit(tenantSlug: string, unitSlug: string) {
+  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+  if (!tenant || tenant.status !== "ACTIVE") return null;
+  const unit = await prisma.businessUnit.findUnique({
+    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
+  });
+  if (!unit || unit.status !== "ACTIVE") return null;
+  const link = await prisma.appSystemUnit.findUnique({
+    where: { tenantId_unitId_type: { tenantId: tenant.id, unitId: unit.id, type: "MEMBER" } },
+  });
+  if (!link) return null;
+  const system = await prisma.appSystem.findFirst({
+    where: { id: link.systemId, tenantId: tenant.id },
+  });
+  if (!system || !system.active) return null;
+  return { tenant, unit, memberSystemId: system.id, systemName: system.name };
+}
+
 // ── contract 2.7 activity.log ──
 export async function logActivity(
   input: {

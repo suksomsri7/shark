@@ -80,6 +80,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "shop.order.refund": "คืนเงินคำสั่งซื้อ",
   // สมาชิก / แต้ม / รางวัล / คูปอง
   "member.customer.create": "เพิ่มลูกค้า/สมาชิก",
+  "member.customer.update": "แก้ไขข้อมูลลูกค้า/สมาชิก",
   "member.customer.import": "นำเข้าลูกค้า/สมาชิก",
   "point.adjust.create": "ปรับแต้มสะสม",
   "reward.redemption.create": "แลกของรางวัล",
