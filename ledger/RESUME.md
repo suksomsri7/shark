@@ -343,3 +343,13 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 | Member-pub | สมัครสมาชิก public + ฟอร์มแก้ลูกค้า | qc-member-public 19/19 | 26a12a4 |
 | POS-inv | **POS ตัดสต็อก+COGS+void restock** → perpetual ครบทุกช่องขาย | qc-pos-inventory 25/25 + cpa107 | 87c3d97 |
 ✅ **~93%** · เหลือ cred-free: bulk ops · dashboard/ปิดวัน · i18n public · 🔑 marketing LINE
+| Bulk-ops | อนุมัติ/นับสต็อก/ใบลา หลายรายการ (reuse ฟังก์ชันรายตัว) | qc-bulk-ops 13/13 | 1eacd4a |
+| POS-closeday | ปิดวัน: สรุปวิธีจ่าย+เงินสดควรมี+ส่วนต่าง+CSV+การ์ด dashboard | qc-pos-closeday 22/22 | 97754ee |
+
+## 🏁 ปิดกะ RUN ยาว 3 รอบ (18 ก.ค.) — รวม **44 WO SHIPPED · แผน ≈ 96%**
+✅ **Wave 1/2/3/5 ครบ 100% · Wave 4/6 เกือบครบ** — ทุก WO gate เขียว (typecheck+oracle+cpa 107/107+fitness 14) + deploy READY
+**ไฮไลต์**: perpetual inventory accounting ครบทุกช่องขาย (กำไรจริง) · public storefront 6 โมดูล+PromptPay (cred-free) · AI ครบทุกโมดูล · refund/void/race ทุกโมดูลเงิน · bulk ops · ปิดวัน · public API 9 endpoint · audit UI
+**เหลือจริง 2 อย่าง**:
+- 🎨 **i18n public** (EN หน้าลูกค้า 8 storefront) — cred-free แต่ mechanical กว้าง (~3-4 วัน) · มี infra (src/lib/i18n/dict + LanguageSwitcher) พร้อมต่อยอด
+- 🔑 **Marketing ส่ง LINE จริง** — ต้อง LINE OA creds จากเจ้าของ
+**PDPA = auto-covered · POS shift state machine = follow-up (ปิดวันตอนนี้ read-only)**
