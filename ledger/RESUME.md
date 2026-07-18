@@ -333,3 +333,5 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 - 🔑 **Marketing ส่ง LINE จริง** (~3d) — ต้อง LINE OA creds
 - Wave 6 ที่เหลือ (~12d cred-free ทำได้): bulk operations · i18n public ทุกโมดูล · dashboard/ปิดวันต่อโมดูล · approval แก้ policy
 - minor: member สมัคร public/ฟอร์มแก้ลูกค้า · booking public ยกเลิกนัดเอง
+| Inv→บัญชี | **Perpetual inventory** (เจ้าของอนุมัติ): รับของ→Dr1200/Cr2100 · ขาย→Dr5000 COGS/Cr1200 · refund→กลับ COGS · manual→Cr3000 · postInventoryGl idempotent | qc-inventory-account 23/23 + cpa 107 | cf0d179 |
+✅ **~90%** · เหลือ: 🔑 marketing LINE · POS ตัดสต็อก+COGS (follow-up) · bulk ops · i18n public · dashboard/ปิดวัน · approval policy · member public
