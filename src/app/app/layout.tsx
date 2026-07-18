@@ -134,8 +134,30 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: s, label: "ภาพรวม" },
           { href: `${s}/coupon/list`, label: "คูปอง" },
         ];
+      case "MEMBER":
+        // ระบบสมาชิกแตกจริง 3 ฟังก์ชัน: รายชื่อสมาชิก · นำเข้า CSV · แพ็กเกจสมาชิก
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/member/customers`, label: "รายชื่อสมาชิก" },
+          { href: `${s}/member/import`, label: "นำเข้า CSV" },
+          { href: `${s}/member/subscriptions`, label: "แพ็กเกจสมาชิก" },
+        ];
+      case "POINT":
+        // ระบบแต้ม: จัดการแต้ม (ตั้งอัตรา + ปรับ/แจก) + รายการแต้ม (ประวัติ)
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/point/manage`, label: "จัดการแต้ม" },
+          { href: `${s}/point/ledger`, label: "รายการแต้ม" },
+        ];
+      case "REWARD":
+        // ระบบรางวัล: รายการรางวัล (เพิ่ม/ลบ) + แลกรางวัล (แลก + ประวัติ)
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/reward/rewards`, label: "รายการรางวัล" },
+          { href: `${s}/reward/redeem`, label: "แลกรางวัล" },
+        ];
       default:
-        return undefined; // MEMBER/POINT/… = render inline หน้าเดียว ไม่มี sub-route
+        return undefined; // ที่เหลือ (COMING SOON ฯลฯ) = render inline หน้าเดียว ไม่มี sub-route
     }
   };
 

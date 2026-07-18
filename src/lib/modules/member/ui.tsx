@@ -1,0 +1,121 @@
+import Link from "next/link";
+import { requireTenant } from "@/lib/core/context";
+import { ModuleTabs } from "@/components/module-tabs";
+import { Section } from "@/components/ui/Section";
+import { DataList } from "@/components/ui/DataList";
+import { MoneyText } from "@/components/ui/MoneyText";
+import CsvImport from "@/components/CsvImport";
+import { listCustomers } from "./service";
+import { importCustomersAction } from "./import-actions";
+
+const muted = "text-[color:var(--color-muted)]";
+
+// ลูกค้าในระบบสมาชิกนี้ — ผ่าน service กลาง (โมดูลไม่ใช้ prisma ตรง) แล้วกรองด้วย memberSystemId
+// (แพตเทิร์นเดียวกับ SubscriptionSection ในโมดูลนี้)
+async function memberCustomers(tenantId: string, systemId: string) {
+  const all = await listCustomers(tenantId);
+  return all.filter((c) => c.memberSystemId === systemId);
+}
+
+// แท็บฟังก์ชันย่อยของระบบสมาชิก (ใช้ทั้งหน้า hub + ทุกหน้าย่อย ให้ตรงกันเสมอ)
+// ⚠️ ต้องตรงกับ childrenFor("MEMBER") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions.mts)
+export function memberTabs(systemId: string): { href: string; label: string }[] {
+  const s = `/app/sys/${systemId}`;
+  return [
+    { href: s, label: "ภาพรวม" },
+    { href: `${s}/member/customers`, label: "รายชื่อสมาชิก" },
+    { href: `${s}/member/import`, label: "นำเข้า CSV" },
+    { href: `${s}/member/subscriptions`, label: "แพ็กเกจสมาชิก" },
+  ];
+}
+
+// ───────────── รายชื่อสมาชิก (customers) ─────────────
+export async function MemberCustomersSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const customers = await memberCustomers(auth.active.tenantId, systemId);
+
+  return (
+    <Section title={`สมาชิก (${customers.length})`}>
+      <DataList
+        items={customers.map((c) => ({
+          key: c.id,
+          href: `/app/members/${c.id}`,
+          primary: c.name ?? "ไม่ระบุชื่อ",
+          secondary: `${c.phone ?? "—"} · ${c.memberCode}`,
+          trailing: (
+            <span className="text-xs text-[color:var(--color-muted)]">
+              {c.visitCount} ครั้ง · <MoneyText satang={c.totalSpentSatang} />
+            </span>
+          ),
+        }))}
+        empty="ยังไม่มีสมาชิก — จะถูกสร้างอัตโนมัติเมื่อลูกค้าจอง/ซื้อในระบบที่เชื่อมไว้"
+      />
+    </Section>
+  );
+}
+
+// ───────────── นำเข้าลูกค้าจาก CSV (import) ─────────────
+export function MemberImportSection({ systemId }: { systemId: string }) {
+  return (
+    <Section title="นำเข้าลูกค้าจาก CSV" card>
+      <CsvImport
+        systemId={systemId}
+        entityLabel="ลูกค้า"
+        templateHeader="ชื่อ,เบอร์โทร,อีเมล"
+        templateSample="สมชาย ใจดี,0812345678,somchai@example.com"
+        templateFilename="ลูกค้า-ตัวอย่าง.csv"
+        supportedHeaders="ชื่อ (name), เบอร์โทร (phone), อีเมล (email) — ต้องมีชื่อหรือเบอร์อย่างน้อย 1 อย่าง"
+        action={importCustomersAction}
+      />
+    </Section>
+  );
+}
+
+// ───────────── MemberHub (หน้าภาพรวม ฝังใน /app/sys/[id]) ─────────────
+// การ์ดสรุปสั้น + ลิงก์เข้าแต่ละฟังก์ชัน (ไม่ dump ทุก section แล้ว — แตกเป็นหน้าย่อยจริง)
+export async function MemberHub({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const customers = await memberCustomers(auth.active.tenantId, systemId);
+
+  const cards = [
+    {
+      href: `/app/sys/${systemId}/member/customers`,
+      label: "รายชื่อสมาชิก",
+      value: `${customers.length} คน`,
+      desc: "รายชื่อ + โปรไฟล์สมาชิก",
+    },
+    {
+      href: `/app/sys/${systemId}/member/import`,
+      label: "นำเข้า CSV",
+      desc: "เพิ่มลูกค้าครั้งละมาก ๆ",
+    },
+    {
+      href: `/app/sys/${systemId}/member/subscriptions`,
+      label: "แพ็กเกจสมาชิก",
+      desc: "สมัคร/ต่ออายุรายเดือน-รายปี",
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <ModuleTabs items={memberTabs(systemId)} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {cards.map((c) => (
+          <Link
+            key={c.href}
+            href={c.href}
+            className="card flex min-h-[76px] flex-col gap-1 p-4 transition-colors hover:bg-[color:var(--color-surface-2)]"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{c.label}</span>
+              {c.value && <span className="text-sm tabular-nums text-[color:var(--color-accent)]">{c.value}</span>}
+            </div>
+            <span className={`text-xs ${muted}`}>{c.desc}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default MemberHub;

@@ -3,16 +3,7 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
-import {
-  listRewards,
-  listRedemptions,
-  listRewardCustomers,
-  resolvePointSystemId,
-} from "@/lib/modules/reward/service";
-import { RedeemForm } from "@/lib/modules/reward/forms";
-import { getPointSettings, listPointCustomers } from "@/lib/modules/point/service";
 import { closeDaySummary } from "@/lib/modules/pos/service";
-import { PointSettingsForm, AdjustPointsForm } from "@/lib/modules/point/forms";
 import { CouponHub } from "@/lib/modules/coupon/ui";
 import { MeetingContent } from "@/lib/modules/meeting/ui";
 import { KanbanContent } from "@/lib/modules/kanban/ui";
@@ -22,24 +13,14 @@ import { CrmHub } from "@/lib/modules/crm/ui";
 import { InvHub } from "@/lib/modules/inventory/ui";
 import { HrHub } from "@/lib/modules/hr/ui";
 import { MarketingHub } from "@/lib/modules/marketing/ui";
-import { SubscriptionSection } from "@/lib/modules/member/subscription-ui";
-import { importCustomersAction } from "@/lib/modules/member/import-actions";
-import CsvImport from "@/components/CsvImport";
-import {
-  linkUnitAction,
-  unlinkUnitAction,
-  addRewardAction,
-  removeRewardAction,
-  fulfillRedemptionAction,
-  cancelRedemptionAction,
-} from "@/lib/actions/systems";
-import { SubmitButton } from "@/components/ui/SubmitButton";
-import { REWARD_REDEMPTION_STATUS_LABEL } from "@/lib/ui/status-labels";
+import { MemberHub } from "@/lib/modules/member/ui";
+import { PointHub } from "@/lib/modules/point/ui";
+import { RewardHub } from "@/lib/modules/reward/ui";
+import { linkUnitAction, unlinkUnitAction } from "@/lib/actions/systems";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { POS_SALE_STATUS_LABEL } from "@/lib/ui/status-labels";
@@ -117,10 +98,10 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
       </Section>
 
       {/* เนื้อหาตามประเภท */}
-      {sys.type === "MEMBER" && <MemberContent systemId={id} />}
-      {sys.type === "POINT" && <PointContent systemId={id} />}
+      {sys.type === "MEMBER" && <MemberHub systemId={id} />}
+      {sys.type === "POINT" && <PointHub systemId={id} />}
       {sys.type === "POS" && <PosContent systemId={id} tenantId={tenantId} />}
-      {sys.type === "REWARD" && <RewardContent systemId={id} tenantId={tenantId} />}
+      {sys.type === "REWARD" && <RewardHub systemId={id} tenantId={tenantId} />}
       {sys.type === "COUPON" && <CouponHub systemId={id} tenantId={tenantId} />}
       {sys.type === "MEETING" && <MeetingContent systemId={id} tenantId={tenantId} />}
       {sys.type === "KANBAN" && <KanbanContent systemId={id} tenantId={tenantId} />}
@@ -131,92 +112,6 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
       {sys.type === "HR" && <HrHub systemId={id} />}
       {sys.type === "MARKETING" && <MarketingHub systemId={id} />}
     </div>
-  );
-}
-
-async function MemberContent({ systemId }: { systemId: string }) {
-  const customers = await prisma.customer.findMany({
-    where: { memberSystemId: systemId },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
-  return (
-    <>
-      <Section title={`สมาชิก (${customers.length})`}>
-        <DataList
-          items={customers.map((c) => ({
-            key: c.id,
-            href: `/app/members/${c.id}`,
-            primary: c.name ?? "ไม่ระบุชื่อ",
-            secondary: `${c.phone ?? "—"} · ${c.memberCode}`,
-            trailing: (
-              <span className="text-xs text-[color:var(--color-muted)]">
-                {c.visitCount} ครั้ง · <MoneyText satang={c.totalSpentSatang} />
-              </span>
-            ),
-          }))}
-          empty="ยังไม่มีสมาชิก — จะถูกสร้างอัตโนมัติเมื่อลูกค้าจอง/ซื้อในระบบที่เชื่อมไว้"
-        />
-      </Section>
-      <Section title="นำเข้าลูกค้าจาก CSV" card>
-        <CsvImport
-          systemId={systemId}
-          entityLabel="ลูกค้า"
-          templateHeader="ชื่อ,เบอร์โทร,อีเมล"
-          templateSample="สมชาย ใจดี,0812345678,somchai@example.com"
-          templateFilename="ลูกค้า-ตัวอย่าง.csv"
-          supportedHeaders="ชื่อ (name), เบอร์โทร (phone), อีเมล (email) — ต้องมีชื่อหรือเบอร์อย่างน้อย 1 อย่าง"
-          action={importCustomersAction}
-        />
-      </Section>
-      <SubscriptionSection systemId={systemId} />
-    </>
-  );
-}
-
-async function PointContent({ systemId }: { systemId: string }) {
-  const auth = await requireTenant();
-  const tenantId = auth.active.tenantId;
-  const [settings, customers, ledger] = await Promise.all([
-    getPointSettings(tenantId),
-    listPointCustomers(tenantId, systemId),
-    prisma.pointLedger.findMany({
-      where: { systemId },
-      orderBy: { createdAt: "desc" },
-      take: 30,
-    }),
-  ]);
-  const bahtPerPoint = settings.satangPerPoint / 100;
-  return (
-    <>
-      <Section title="ตั้งค่าแต้ม" card>
-        <p className="text-xs text-[color:var(--color-muted)]">
-          {settings.active
-            ? `อัตราสะสมปัจจุบัน: ทุก ${bahtPerPoint} บาท = 1 แต้ม`
-            : "การสะสมแต้มถูกปิดอยู่ — ลูกค้าจะยังไม่ได้รับแต้มจากการซื้อ"}
-        </p>
-        <PointSettingsForm systemId={systemId} bahtPerPoint={bahtPerPoint} active={settings.active} />
-      </Section>
-
-      <Section title="ปรับ/แจกแต้ม">
-        {customers.length > 0 ? (
-          <AdjustPointsForm systemId={systemId} customers={customers} />
-        ) : (
-          <EmptyState text="ยังไม่มีสมาชิก — ลูกค้าจะเป็นสมาชิกอัตโนมัติเมื่อจอง/ซื้อในกิจการที่เชื่อมกับระบบแต้มนี้ แล้วจึงปรับ/แจกแต้มได้" />
-        )}
-      </Section>
-
-      <Section title="รายการแต้มล่าสุด">
-        <DataList
-          items={ledger.map((l) => ({
-            key: l.id,
-            primary: `${l.delta > 0 ? "+" : ""}${l.delta} แต้ม · ${l.reason ?? l.type}`,
-            trailing: <span className="text-xs text-[color:var(--color-muted)]">{fmt(l.createdAt)}</span>,
-          }))}
-          empty="ยังไม่มีรายการแต้ม — จะบันทึกอัตโนมัติเมื่อลูกค้าสะสมแต้ม"
-        />
-      </Section>
-    </>
   );
 }
 
@@ -288,113 +183,6 @@ async function PosContent({ systemId, tenantId }: { systemId: string; tenantId: 
             ),
           }))}
           empty="ยังไม่มีการขาย — บิลจะแสดงที่นี่เมื่อขายผ่านระบบที่เชื่อมไว้"
-        />
-      </Section>
-    </>
-  );
-}
-
-async function RewardContent({ systemId, tenantId }: { systemId: string; tenantId: string }) {
-  const [allRewards, redemptions, customers, pointSystemId] = await Promise.all([
-    listRewards(tenantId, systemId),
-    listRedemptions(tenantId, systemId, 30),
-    listRewardCustomers(tenantId, systemId),
-    resolvePointSystemId(tenantId, systemId),
-  ]);
-  const rewards = allRewards.filter((r) => r.active);
-  const statusTone = (s: string): "muted" | "strong" | "danger" =>
-    s === "CANCELLED" ? "danger" : s === "FULFILLED" ? "strong" : "muted";
-  const canRedeem = rewards.length > 0 && customers.length > 0 && !!pointSystemId;
-
-  return (
-    <>
-      <Section title="รายการรางวัล">
-        <DataList
-          items={rewards.map((r) => ({
-            key: r.id,
-            primary: `${r.name} · ${r.pointsCost} แต้ม${r.stock !== null ? ` · เหลือ ${r.stock}` : ""}`,
-            trailing: (
-              <ConfirmDialog
-                triggerLabel="ลบ"
-                triggerClassName="text-xs text-[color:var(--color-danger)] underline"
-                title="ลบรางวัลนี้?"
-                detail={`รางวัล "${r.name}" จะถูกลบออกจากระบบแลกแต้ม`}
-                confirmLabel="ยืนยันลบ"
-                danger
-                action={removeRewardAction}
-                fields={{ id: r.id, systemId }}
-              />
-            ),
-          }))}
-          empty="ยังไม่มีรางวัล — เพิ่มรางวัลด้านล่างให้ลูกค้าแลกแต้ม"
-        />
-        <form action={addRewardAction} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <input type="hidden" name="systemId" value={systemId} />
-          <input name="name" required placeholder="ชื่อรางวัล" className="input col-span-2" />
-          <input name="pointsCost" type="number" min={1} required placeholder="แต้ม" className="input" />
-          <button className="btn btn-ghost text-sm">+ เพิ่ม</button>
-        </form>
-      </Section>
-
-      <Section title="แลกรางวัล">
-        {canRedeem ? (
-          <RedeemForm
-            systemId={systemId}
-            rewards={rewards.map((r) => ({
-              id: r.id,
-              name: r.name,
-              pointsCost: r.pointsCost,
-              stock: r.stock,
-            }))}
-            customers={customers}
-          />
-        ) : !pointSystemId ? (
-          <EmptyState text="ยังแลกรางวัลไม่ได้ — เชื่อมระบบรางวัลนี้เข้ากับกิจการเดียวกับ 'ระบบแต้ม' ก่อน (ที่การเชื่อมต่อด้านบน)" />
-        ) : rewards.length === 0 ? (
-          <EmptyState text="ยังไม่มีรางวัลให้แลก — เพิ่มรางวัลด้านบนก่อน" />
-        ) : (
-          <EmptyState text="ยังไม่มีสมาชิก — ลูกค้าจะเป็นสมาชิกอัตโนมัติเมื่อจอง/ซื้อในกิจการที่เชื่อมไว้ แล้วจึงแลกแต้มได้" />
-        )}
-      </Section>
-
-      <Section title="ประวัติการแลก">
-        <DataList
-          items={redemptions.map((r) => ({
-            key: r.id,
-            primary: `${r.rewardName} · ${r.customerName}`,
-            secondary: `โค้ด ${r.code} · ${r.pointsCost} แต้ม · ${fmt(r.createdAt)}`,
-            trailing: (
-              <span className="flex flex-col items-end gap-1.5">
-                <StatusChip
-                  value={r.status}
-                  map={REWARD_REDEMPTION_STATUS_LABEL}
-                  tone={statusTone(r.status)}
-                />
-                {r.status === "PENDING" && (
-                  <span className="flex items-center gap-2">
-                    <form action={fulfillRedemptionAction}>
-                      <input type="hidden" name="systemId" value={systemId} />
-                      <input type="hidden" name="redemptionId" value={r.id} />
-                      <SubmitButton variant="ghost" pendingText="กำลังบันทึก…">
-                        รับแล้ว
-                      </SubmitButton>
-                    </form>
-                    <ConfirmDialog
-                      triggerLabel="ยกเลิก+คืนแต้ม"
-                      triggerClassName="text-xs text-[color:var(--color-danger)] underline"
-                      title="ยกเลิกการแลกนี้?"
-                      detail={`คืน ${r.pointsCost} แต้มให้ ${r.customerName} และคืนสต็อกรางวัล`}
-                      confirmLabel="ยืนยันยกเลิก + คืนแต้ม"
-                      danger
-                      action={cancelRedemptionAction}
-                      fields={{ systemId, redemptionId: r.id }}
-                    />
-                  </span>
-                )}
-              </span>
-            ),
-          }))}
-          empty="ยังไม่มีการแลกรางวัล — เมื่อแลกให้สมาชิกแล้ว รายการจะแสดงที่นี่"
         />
       </Section>
     </>

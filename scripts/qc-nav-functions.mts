@@ -24,7 +24,7 @@ function chk(id: string, name: string, ok: boolean, detail: string, sev: Sev = "
 
 // ─── ระบบที่ "ควรมี" children (ตาม WO แตกฟังก์ชัน) ─────────────────────────────
 const EXPECT_BUSINESS = ["HOTEL", "RESTAURANT", "SHOP", "QUEUE", "TICKET", "BOOKING"];
-const EXPECT_FEATURE = ["POS", "ACCOUNT", "HR", "INVENTORY", "CRM", "MARKETING", "COUPON"];
+const EXPECT_FEATURE = ["POS", "ACCOUNT", "HR", "INVENTORY", "CRM", "MARKETING", "COUPON", "MEMBER", "POINT", "REWARD"];
 
 // ─── map href (route) → path ไฟล์ page.tsx จริง ──────────────────────────────
 // business: /app/u/${slugOrId}/rest  → src/app/app/u/[unitSlug]/rest/page.tsx
@@ -213,6 +213,14 @@ for (const b of BIZ_COMPLETE) {
   requiredByType.set("MARKETING", [...sysRoot, ...routesUnder(join(POS_BASE, "marketing"), POS_BASE)]);
   requiredByType.set("COUPON", [...sysRoot, ...routesUnder(join(POS_BASE, "coupon"), POS_BASE)]);
 }
+// MEMBER / POINT / REWARD: root overview (sys/[id]/page.tsx → "") + ทุกหน้าย่อยใต้ folder ของระบบ
+// (batch 3 แตกฟังก์ชัน สมาชิก+แต้ม+รางวัล — MEMBER แตกจริง 3 หน้า · POINT/REWARD อย่างละ 2 หน้า)
+{
+  const sysRoot = existsSync(join(POS_BASE, "page.tsx")) ? [""] : [];
+  requiredByType.set("MEMBER", [...sysRoot, ...routesUnder(join(POS_BASE, "member"), POS_BASE)]);
+  requiredByType.set("POINT", [...sysRoot, ...routesUnder(join(POS_BASE, "point"), POS_BASE)]);
+  requiredByType.set("REWARD", [...sysRoot, ...routesUnder(join(POS_BASE, "reward"), POS_BASE)]);
+}
 
 const incomplete: string[] = [];
 for (const [type, required] of requiredByType) {
@@ -224,7 +232,7 @@ for (const [type, required] of requiredByType) {
 }
 chk(
   "S5",
-  "accordion กางครบทุก sub-route จริง (completeness: hotel/restaurant/shop/queue/ticket/booking/POS/HR/INVENTORY/CRM/MARKETING/COUPON)",
+  "accordion กางครบทุก sub-route จริง (completeness: hotel/restaurant/shop/queue/ticket/booking/POS/HR/INVENTORY/CRM/MARKETING/COUPON/MEMBER/POINT/REWARD)",
   incomplete.length === 0,
   `ไม่ครบ:\n     - ${incomplete.join("\n     - ")}`,
   "CRITICAL",
