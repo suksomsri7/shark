@@ -283,3 +283,13 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 - follow-up ย่อย: kanban "งานของฉัน" UI+AI tool (listMyCards พร้อม) · restaurant createOrder idempotency · hotel no-show/edit
 - ราย migration ใหม่คืนนี้ (apply prod แล้ว): shop/hotel/school/rental/clinic REFUNDED · booking idempotencyKey · payroll REVERSED
 📋 แผนเต็ม: ledger/FULLFUNCTION_PLAN.md + FULLFUNCTION_AUDIT.json
+
+## 🌙 RUN ยาวรอบ 2 (18 ก.ค. เช้า — เจ้าของสั่งต่ออีก 5 ชม.) — Wave 5 + Wave 4 เพิ่ม
+| WO | งาน | ข้อสอบ | commit |
+|---|---|---|---|
+| W5-A | **AI read tools 6 โมดูล**: restaurant_today/ticket_event_sales/financial_summary/recent_leads/customer_points/upcoming_schedule + eval 12 เคส (heuristic 32/32) | qc-ai-eval 4/4 | 40b87ce |
+| W5-B | **AI write tools**: point_adjust/ticket_mark_paid/restaurant_close_bill(DESTRUCTIVE)+kanban_my_tasks (proposal-confirm, assertCan จริง) | qc-ai-wave5b 23/23 + cpa107 | 737726a |
+| W5-C | **KB fuzzy search**: tokenize+OR-match+rank (เดิม exact substring AI ตอบมั่ว) | qc-kb-search 7/7 | c10d69d |
+| W5-D | **Meeting เชิญสมาชิก+realtime**: addChannelMember(admin/creator)+auto-refresh 7s | qc-meeting-invite 22/22 | 42460a2 |
+| W4-D | **Member subscription เก็บเงินจริง**: subscribe→pos.createSale C-2 (เดิมเงินหาย)+payMethod | qc-subscription-money 14/14 + cpa107 | 7b40f96 |
+✅ **Wave 5 เกือบครบ** (AI ครบทุกโมดูล + KB ฉลาด + meeting realtime) · เหลือ: kanban "งานของฉัน" UI (service พร้อม) · Wave 3 public จอง/จ่าย · Wave 6 CSV import/audit UI/PDPA
