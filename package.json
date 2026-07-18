@@ -18,6 +18,7 @@
     "qc:chat-notify": "tsx scripts/qc-chat-notify.mts",
     "qc:member-public": "tsx scripts/qc-member-public.mts",
     "qc:systems": "tsx scripts/qc-systems.mts",
+    "qc:nav-functions": "tsx scripts/qc-nav-functions.mts",
     "drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

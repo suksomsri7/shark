@@ -6,6 +6,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ModuleTabs } from "@/components/module-tabs";
 import { HOTEL_ROOM_STATUS_LABEL } from "@/lib/ui/status-labels";
 
 function fmtDate(d: Date) {
@@ -45,6 +46,13 @@ export default async function HotelPage({
             </Link>
           </>
         }
+      />
+      <ModuleTabs
+        items={[
+          { href: `/app/u/${unitSlug}/hotel`, label: "ภาพรวม" },
+          { href: `/app/u/${unitSlug}/hotel/reservations`, label: "การจอง" },
+          { href: `/app/u/${unitSlug}/hotel/setup`, label: "ตั้งค่าห้อง" },
+        ]}
       />
 
       {/* สรุปสถานะห้อง */}

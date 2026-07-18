@@ -23,6 +23,7 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ModuleTabs } from "@/components/module-tabs";
 import { QUEUE_STATUS_LABEL } from "@/lib/ui/status-labels";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +61,12 @@ export default async function QueueBoardPage({
             ตั้งค่า
           </Link>
         }
+      />
+      <ModuleTabs
+        items={[
+          { href: `/app/u/${unitSlug}/queue`, label: "ภาพรวม" },
+          { href: `/app/u/${unitSlug}/queue/setup`, label: "ตั้งค่าคิว" },
+        ]}
       />
 
       {/* ตัวเลขวันนี้ */}

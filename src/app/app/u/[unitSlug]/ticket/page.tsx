@@ -5,6 +5,7 @@ import { createEventAction } from "@/lib/modules/ticket/actions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ModuleTabs } from "@/components/module-tabs";
 import { TICKET_STATUS_LABEL } from "@/lib/ui/status-labels";
 import { formatBaht } from "@/lib/ui/money";
 
@@ -40,6 +41,12 @@ export default async function TicketPage({
             เช็คอิน
           </Link>
         }
+      />
+      <ModuleTabs
+        items={[
+          { href: `/app/u/${unitSlug}/ticket`, label: "อีเวนต์" },
+          { href: `/app/u/${unitSlug}/ticket/checkin`, label: "เช็คอิน" },
+        ]}
       />
 
       {/* สร้างอีเวนต์ใหม่ */}

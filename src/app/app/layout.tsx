@@ -20,35 +20,104 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     prisma.appSystem.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: "asc" } }),
   ]);
 
-  // ต้นแบบ "แตกฟังก์ชันย่อยในเมนู" — ระบบที่รองรับจะกาง submenu ใต้ชื่อระบบ (จองคิว + POS)
-  const bookingChildren = (slug: string) => [
-    { href: `/app/u/${slug}/booking`, label: "นัดวันนี้" },
-    { href: `/app/u/${slug}/booking/services`, label: "บริการ" },
-    { href: `/app/u/${slug}/booking/staff`, label: "พนักงาน" },
-    { href: `/app/u/${slug}/booking/hours`, label: "เวลาทำการ" },
-  ];
-  const posChildren = (id: string) => [
-    { href: `/app/sys/${id}`, label: "ภาพรวม" },
-    { href: `/app/sys/${id}/pos/sales`, label: "ประวัติบิล" },
-    { href: `/app/sys/${id}/pos/close`, label: "ปิดวัน" },
-  ];
+  // "แตกฟังก์ชันย่อยในเมนู" — ทุกระบบที่มี sub-route จริงจะกาง submenu (accordion) ใต้ชื่อระบบ
+  // business = ต่อด้วย slug (/app/u/<slug>/...) · feature = ต่อด้วย id (/app/sys/<id>/...)
+  // ⚠️ ทุก href ที่นี่ต้องมี page.tsx จริง (กัน dead link) — ตรวจโดย scripts/qc-nav-functions.mts
+  const childrenFor = (
+    type: string,
+    slugOrId: string,
+    kind: "business" | "feature",
+  ): { href: string; label: string }[] | undefined => {
+    if (kind === "business") {
+      const b = `/app/u/${slugOrId}`;
+      switch (type) {
+        case "HOTEL":
+          return [
+            { href: `${b}/hotel`, label: "ภาพรวม" },
+            { href: `${b}/hotel/reservations`, label: "การจอง" },
+            { href: `${b}/hotel/setup`, label: "ตั้งค่าห้อง" },
+          ];
+        case "RESTAURANT":
+          return [
+            { href: `${b}/restaurant`, label: "หน้าร้าน" },
+            { href: `${b}/restaurant/menu`, label: "เมนู" },
+            { href: `${b}/restaurant/menu/stock`, label: "สต็อกเมนู" },
+            { href: `${b}/restaurant/kds`, label: "ครัว" },
+            { href: `${b}/restaurant/setup`, label: "ตั้งค่า" },
+          ];
+        case "SHOP":
+          return [
+            { href: `${b}/shop`, label: "ภาพรวม" },
+            { href: `${b}/shop/orders`, label: "ออเดอร์" },
+          ];
+        case "QUEUE":
+          return [
+            { href: `${b}/queue`, label: "ภาพรวม" },
+            { href: `${b}/queue/setup`, label: "ตั้งค่าคิว" },
+          ];
+        case "TICKET":
+          return [
+            { href: `${b}/ticket`, label: "อีเวนต์" },
+            { href: `${b}/ticket/checkin`, label: "เช็คอิน" },
+          ];
+        case "BOOKING":
+          return [
+            { href: `${b}/booking`, label: "นัดวันนี้" },
+            { href: `${b}/booking/services`, label: "บริการ" },
+            { href: `${b}/booking/staff`, label: "พนักงาน" },
+            { href: `${b}/booking/hours`, label: "เวลาทำการ" },
+          ];
+        default:
+          return undefined; // RENTAL/SCHOOL/CLINIC = หน้าเดียว ไม่ต้องกาง
+      }
+    }
+    const s = `/app/sys/${slugOrId}`;
+    switch (type) {
+      case "POS":
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/pos/register`, label: "ขายหน้าร้าน" },
+          { href: `${s}/pos/sales`, label: "ประวัติบิล" },
+          { href: `${s}/pos/close`, label: "ปิดวัน" },
+        ];
+      case "ACCOUNT":
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/account/documents`, label: "เอกสาร" },
+          { href: `${s}/account/journal`, label: "สมุดรายวัน" },
+          { href: `${s}/account/reports`, label: "รายงาน" },
+          { href: `${s}/account/accounts`, label: "ผังบัญชี" },
+          { href: `${s}/account/tax`, label: "ภาษี" },
+          { href: `${s}/account/contacts`, label: "คู่ค้า" },
+          { href: `${s}/account/aging`, label: "อายุหนี้" },
+        ];
+      default:
+        return undefined; // INVENTORY/HR/MEMBER/… = render inline หน้าเดียว ไม่มี sub-route
+    }
+  };
 
   // ระบบทั้งหมด (business + feature) เป็นรายการเดียว
   const items: NavItem[] = [
-    ...units.map((u) => ({
-      key: `u-${u.id}`,
-      href: `/app/u/${u.slug}`,
-      icon: systemDef(u.type)?.icon ?? "•",
-      label: u.name,
-      ...(u.type === "BOOKING" ? { children: bookingChildren(u.slug) } : {}),
-    })),
-    ...appSystems.map((s) => ({
-      key: `s-${s.id}`,
-      href: `/app/sys/${s.id}`,
-      icon: systemDef(s.type)?.icon ?? "•",
-      label: s.name,
-      ...(s.type === "POS" ? { children: posChildren(s.id) } : {}),
-    })),
+    ...units.map((u) => {
+      const children = childrenFor(u.type, u.slug, "business");
+      return {
+        key: `u-${u.id}`,
+        href: `/app/u/${u.slug}`,
+        icon: systemDef(u.type)?.icon ?? "•",
+        label: u.name,
+        ...(children ? { children } : {}),
+      };
+    }),
+    ...appSystems.map((s) => {
+      const children = childrenFor(s.type, s.id, "feature");
+      return {
+        key: `s-${s.id}`,
+        href: `/app/sys/${s.id}`,
+        icon: systemDef(s.type)?.icon ?? "•",
+        label: s.name,
+        ...(children ? { children } : {}),
+      };
+    }),
     // ระบบ "หน้า fixed ระดับ tenant" ที่เปิดใช้แล้ว (เช่น คลังความรู้ /app/kb) — เข้าถึงตรงจากเมนู
     ...SYSTEM_DEFS.filter(
       (s) => s.status === "available" && isFixedPageSystem(s.code),

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { listProducts, listInventoryItems } from "@/lib/modules/shop/service";
 import { createProductAction, toggleProductAction } from "@/lib/modules/shop/actions";
+import { ModuleTabs } from "@/components/module-tabs";
 
 const baht = (satang: number) => (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 0 });
 
@@ -33,6 +34,12 @@ export default async function ShopManagePage({
           </Link>
         </div>
       </div>
+      <ModuleTabs
+        items={[
+          { href: `/app/u/${unitSlug}/shop`, label: "ภาพรวม" },
+          { href: `/app/u/${unitSlug}/shop/orders`, label: "ออเดอร์" },
+        ]}
+      />
 
       {/* เพิ่มสินค้า */}
       <form action={createProductAction.bind(null, unitSlug)} className="card flex flex-col gap-3">
