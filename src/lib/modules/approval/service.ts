@@ -27,6 +27,16 @@ export type CreatePolicyInput = {
   steps: StepInput[];
 };
 
+// แก้กติกาที่มีอยู่ — เปลี่ยนได้ทุกอย่างยกเว้น entityType (ชนิดเอกสารคงเดิม)
+// steps = แทนที่ทั้งชุด (ไม่ใช่ merge) → ส่ง steps ที่ต้องการทั้งหมดมาเสมอ
+export type UpdatePolicyInput = {
+  name: string;
+  thresholdSatang?: number | null;
+  unitId?: string | null;
+  systemId?: string | null;
+  steps: StepInput[];
+};
+
 export type ResolveInput = {
   entityType: string;
   unitId?: string | null;
@@ -78,6 +88,43 @@ export async function createPolicy(ctx: Ctx, input: CreatePolicyInput): Promise<
 // เปิด/ปิดกติกา (ปิดแล้ว resolvePolicy ข้าม)
 export async function setPolicyActive(ctx: Ctx, policyId: string, active: boolean): Promise<ApprovalPolicy> {
   return tenantDb(ctx).approvalPolicy.update({ where: { id: policyId }, data: { active } });
+}
+
+// แก้กติกา + แทนที่ steps ทั้งชุด แบบ atomic ($transaction)
+// - guard tenant: อ่านผ่าน tenantDb ก่อน (cross-tenant → ไม่พบ → throw → ไม่แตะข้อมูลเลย)
+// - steps ว่าง → throw เหมือน createPolicy
+// - entityType ไม่แก้ (คงเดิม) → ApprovalRequest ที่ยื่นไปแล้วอ้าง policyId เดิมและใช้ claim ของตัวเอง
+//   (decide โหลด steps สด ๆ ทุกครั้ง — in-flight ที่ค้างยังไม่ถูกกดจะเริ่มใช้ steps ชุดใหม่ · ตามสเปค)
+export async function updatePolicy(ctx: Ctx, policyId: string, input: UpdatePolicyInput): Promise<{ id: string }> {
+  if (!input.steps || input.steps.length === 0) {
+    throw new Error("ต้องมีขั้นอนุมัติอย่างน้อย 1 ขั้น");
+  }
+  const existing = await tenantDb(ctx).approvalPolicy.findFirst({ where: { id: policyId } });
+  if (!existing) throw new Error("ไม่พบสายอนุมัติในร้านนี้");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.approvalPolicy.update({
+      where: { id: policyId },
+      data: {
+        name: input.name.trim(),
+        thresholdSatang: input.thresholdSatang ?? null,
+        unitId: input.unitId ?? null,
+        systemId: input.systemId ?? null,
+      },
+    });
+    // แทนที่ steps ทั้งชุด: ลบเดิม (scope tenant+policy) แล้วสร้างใหม่
+    await tx.approvalStep.deleteMany({ where: { tenantId: ctx.tenantId, policyId } });
+    await tx.approvalStep.createMany({
+      data: input.steps.map((s) => ({
+        tenantId: ctx.tenantId,
+        policyId,
+        order: s.order,
+        approverRole: s.approverRole,
+        approverUserId: s.approverUserId ?? null,
+      })),
+    });
+  });
+  return { id: policyId };
 }
 
 // รายการกติกาของร้านนี้ (ใหม่สุดก่อน) + ขั้นอนุมัติเรียงลำดับ
@@ -282,6 +329,26 @@ export async function listPending(ctx: Ctx, m: MembershipCtx & { userId: string 
   return requests.filter((r) => {
     const step = steps.find((s) => s.policyId === r.policyId && s.order === r.currentStepOrder);
     return !!step && canDecideStep(m, step);
+  });
+}
+
+// คำขอที่ "ฉันเป็นผู้ยื่น" (requestedById=userId) — ใหม่สุดก่อน + ชื่อสาย + จำนวนขั้นรวม
+// (ผู้ยื่นดูสถานะคำขอตัวเองได้ · totalSteps ไว้แสดง "ขั้น x/y")
+export type MyRequest = ApprovalRequest & { policyName: string; totalSteps: number };
+export async function listMyRequests(ctx: Ctx, userId: string): Promise<MyRequest[]> {
+  const requests = await tenantDb(ctx).approvalRequest.findMany({
+    where: { requestedById: userId },
+    orderBy: { createdAt: "desc" },
+  });
+  if (requests.length === 0) return [];
+  const policyIds = [...new Set(requests.map((r) => r.policyId))];
+  const policies = await tenantDb(ctx).approvalPolicy.findMany({
+    where: { id: { in: policyIds } },
+    include: { steps: true },
+  });
+  return requests.map((r) => {
+    const p = policies.find((x) => x.id === r.policyId);
+    return { ...r, policyName: p?.name ?? "", totalSteps: p?.steps.length ?? 0 };
   });
 }
 

@@ -6,8 +6,9 @@
 
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
+import { tenantDb } from "@/lib/core/db";
 import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
-import { createPolicy, setPolicyActive, decide } from "./service";
+import { createPolicy, updatePolicy, setPolicyActive, decide, cancelRequest } from "./service";
 
 const SETTINGS_PATH = "/app/settings/approval";
 const APPROVALS_PATH = "/app/approvals";
@@ -76,6 +77,52 @@ export async function createPolicyAction(
   return { status: "ok" };
 }
 
+// แก้สายอนุมัติที่มีอยู่ — ชื่อ/วงเงิน/ขั้นอนุมัติ (แทน steps ทั้งชุด) · entityType คงเดิม
+// การกระทำระดับตั้งกฎ maker-checker → จำกัดเฉพาะ OWNER (RESUME: policy.create/update ควร OWNER)
+export async function updatePolicyAction(
+  _prev: CreatePolicyState,
+  formData: FormData,
+): Promise<CreatePolicyState> {
+  const auth = await requireTenant();
+  assertCan(membershipOf(auth), { module: "approval", action: "approval.policy.update" });
+  if (auth.active.role !== "OWNER") {
+    return { status: "error", message: "เฉพาะเจ้าของร้านเท่านั้นที่แก้สายอนุมัติได้" };
+  }
+
+  const policyId = String(formData.get("policyId") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const minBahtRaw = String(formData.get("minBaht") ?? "").trim();
+  const role1 = String(formData.get("role1") ?? "").trim();
+  const role2 = String(formData.get("role2") ?? "").trim();
+
+  if (!policyId) return { status: "error", message: "ไม่พบสายอนุมัติที่จะแก้ไข" };
+  if (!name) return { status: "error", message: "กรุณาตั้งชื่อสายอนุมัติ" };
+  if (!ROLES.has(role1)) return { status: "error", message: "กรุณาเลือกผู้อนุมัติขั้นที่ 1" };
+
+  let thresholdSatang: number | null = null;
+  if (minBahtRaw !== "") {
+    const baht = Number(minBahtRaw);
+    if (!Number.isFinite(baht) || baht < 0) {
+      return { status: "error", message: "วงเงินขั้นต่ำต้องเป็นตัวเลขไม่ติดลบ" };
+    }
+    thresholdSatang = Math.round(baht * 100);
+  }
+
+  const steps: { order: number; approverRole: "MANAGER" | "OWNER" }[] = [
+    { order: 1, approverRole: role1 as "MANAGER" | "OWNER" },
+  ];
+  if (ROLES.has(role2)) steps.push({ order: 2, approverRole: role2 as "MANAGER" | "OWNER" });
+
+  try {
+    await updatePolicy(ctxOf(auth), policyId, { name, thresholdSatang, steps });
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "บันทึกไม่สำเร็จ" };
+  }
+
+  revalidatePath(SETTINGS_PATH);
+  return { status: "ok" };
+}
+
 // เปิด/ปิดสายอนุมัติ (ปุ่ม toggle ในแถว)
 export async function togglePolicyAction(formData: FormData): Promise<void> {
   const auth = await requireTenant();
@@ -96,5 +143,18 @@ export async function decideAction(formData: FormData): Promise<void> {
   const note = String(formData.get("note") ?? "").trim() || null;
   if (!requestId || (rawDecision !== "APPROVED" && rawDecision !== "REJECTED")) return;
   await decide(membershipOf(auth), ctxOf(auth), requestId, { decision: rawDecision, note });
+  revalidatePath(APPROVALS_PATH);
+}
+
+// ผู้ยื่นยกเลิกคำขอของตัวเอง (หน้า "คำขอของฉัน") — เฉพาะที่ตัวเองยื่น + ยัง PENDING
+export async function cancelMyRequestAction(formData: FormData): Promise<void> {
+  const auth = await requireTenant();
+  const requestId = String(formData.get("requestId") ?? "");
+  if (!requestId) return;
+  const ctx = ctxOf(auth);
+  // ownership: ยกเลิกได้เฉพาะคำขอที่ตัวเองเป็นผู้ยื่น (กันยกเลิกของคนอื่น)
+  const req = await tenantDb(ctx).approvalRequest.findFirst({ where: { id: requestId } });
+  if (!req || req.requestedById !== auth.active.userId) return;
+  await cancelRequest(ctx, requestId);
   revalidatePath(APPROVALS_PATH);
 }
