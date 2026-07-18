@@ -81,10 +81,13 @@ export async function subscribeAction(formData: FormData) {
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   const startRaw = String(formData.get("startAt") ?? "").trim();
   const startAt = startRaw ? new Date(startRaw) : undefined;
+  // วิธีจ่าย (เก็บเงินจริงผ่าน POS) — เงินสด/พร้อมเพย์ · ค่าอื่น → เงินสด
+  const payMethod = String(formData.get("payMethod") ?? "") === "PROMPTPAY" ? "PROMPTPAY" : "CASH";
   await subscribe(ctx, {
     customerId,
     planId,
     startAt: startAt && !Number.isNaN(startAt.getTime()) ? startAt : undefined,
+    payMethod,
   });
   revalidate(systemId);
 }

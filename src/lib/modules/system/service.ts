@@ -67,6 +67,20 @@ export async function systemForUnit(
   return l?.systemId ?? null;
 }
 
+// resolve unit(s) ที่ระบบหนึ่งผูกอยู่ (readonly) — ใช้ resolve ข้ามระบบผ่าน unit ร่วม
+// (เช่น ระบบ MEMBER ที่ไม่มี unitId ใน ctx → หา unit ก่อน แล้วค่อยหา POS บน unit นั้น)
+export async function unitsForSystem(
+  tenantId: string,
+  systemId: string,
+  client: Client = prisma,
+): Promise<string[]> {
+  const links = await client.appSystemUnit.findMany({
+    where: { tenantId, systemId },
+    select: { unitId: true },
+  });
+  return links.map((l) => l.unitId);
+}
+
 // ── management ──
 export async function listSystems(tenantId: string, type?: SystemType) {
   return prisma.appSystem.findMany({

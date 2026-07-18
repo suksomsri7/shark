@@ -285,6 +285,10 @@ const ALLOWED_EDGES = new Set([
   // chokepoint (WO-0049b): PO/ใบลา เข้าสายอนุมัติผ่าน approval facade
   "inventory→approval",
   "hr→approval",
+  // chokepoint (WO-Wave4-D): สมัครสมาชิกเก็บค่าสมาชิกผ่าน pos.createSale (C-2) → ลงบัญชีอัตโนมัติ
+  // + resolve ระบบ POS/POINT ที่ผูก unit เดียวกับระบบ MEMBER (เหมือน school→pos/system)
+  "member→pos",
+  "member→system",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

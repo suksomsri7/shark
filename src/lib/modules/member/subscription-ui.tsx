@@ -132,6 +132,12 @@ export async function SubscriptionSection({ systemId }: { systemId: string }) {
             <FormField label="วันเริ่ม" hint="ว่างไว้ = เริ่มวันนี้">
               <input name="startAt" type="date" className="input" />
             </FormField>
+            <FormField label="วิธีชำระเงิน" hint="เก็บค่าสมาชิกเข้าบัญชีอัตโนมัติ">
+              <select name="payMethod" className="input" defaultValue="CASH">
+                <option value="CASH">เงินสด</option>
+                <option value="PROMPTPAY">พร้อมเพย์</option>
+              </select>
+            </FormField>
           </div>
           <SubmitButton>สมัครสมาชิก</SubmitButton>
         </form>

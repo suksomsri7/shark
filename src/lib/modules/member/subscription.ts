@@ -1,4 +1,7 @@
 import { tenantDb } from "@/lib/core/db";
+import type { PosPayType } from "@prisma/client";
+import * as pos from "@/lib/modules/pos/service";
+import { systemForUnit, unitsForSystem } from "@/lib/modules/system/service";
 
 // Subscription (WO-0027) — สมาชิกรายเดือน/รายปี ในระบบ MEMBER (fitness/สปา/คอร์ส)
 // scope: ใช้ tenantDb({ tenantId, systemId }) — inject tenantId+systemId ทุก query (defense-in-depth)
@@ -52,9 +55,28 @@ export async function setPlanActive(ctx: Ctx, planId: string, active: boolean): 
   return r.count > 0;
 }
 
+// ── resolve จุดตัดเงิน POS ที่ผูก unit เดียวกับระบบ MEMBER (+ POINT ถ้ามี) ──
+// MEMBER เป็น feature system → หา unit ที่ระบบนี้ผูกผ่าน appSystemUnit → หา POS/POINT บน unit นั้น
+// (pattern เดียวกับ reward.resolvePointSystemId · ผ่าน system facade = ไม่ใช้ raw prisma ในโมดูล)
+// null = ไม่ผูก POS → ร้าน standalone: สมัครได้ ข้ามการเก็บเงิน (เหมือน school/ticket/hotel)
+async function resolvePosForMember(
+  ctx: Ctx,
+): Promise<{ unitId: string; posSystemId: string; pointSystemId: string | null } | null> {
+  const unitIds = await unitsForSystem(ctx.tenantId, ctx.systemId);
+  for (const unitId of unitIds) {
+    const posSystemId = await systemForUnit(ctx.tenantId, unitId, "POS");
+    if (posSystemId) {
+      const pointSystemId = await systemForUnit(ctx.tenantId, unitId, "POINT");
+      return { unitId, posSystemId, pointSystemId };
+    }
+  }
+  return null;
+}
+
 // ── สมัครสมาชิกให้ลูกค้า — endAt = startAt + periodDays ──
 // ลูกค้าที่มีแพ็กเกจ ACTIVE อยู่แล้ว สมัครซ้อนไม่ได้ (ต้องรอหมดอายุ/ยกเลิกก่อน)
-export type SubscribeInput = { customerId: string; planId: string; startAt?: Date };
+// เก็บเงินจริง (WO-Wave4-D): plan.priceSatang > 0 + ผูก POS → pos.createSale (chokepoint C-2) ลงบัญชีอัตโนมัติ
+export type SubscribeInput = { customerId: string; planId: string; startAt?: Date; payMethod?: PosPayType };
 
 export async function subscribe(ctx: Ctx, input: SubscribeInput): Promise<{ id: string }> {
   const db = tenantDb(ctx);
@@ -70,6 +92,7 @@ export async function subscribe(ctx: Ctx, input: SubscribeInput): Promise<{ id: 
   const startAt = input.startAt ?? new Date();
   const endAt = new Date(startAt.getTime() + plan.periodDays * MS_PER_DAY);
 
+  // 1) สร้าง subscription ก่อน (ไม่มี tx เปิดค้าง) — createSale เปิด tx ของตัวเอง จึงเรียกหลังได้ ไม่ nested
   const sub = await db.memberSubscription.create({
     data: {
       tenantId: ctx.tenantId,
@@ -81,6 +104,27 @@ export async function subscribe(ctx: Ctx, input: SubscribeInput): Promise<{ id: 
       endAt,
     },
   });
+
+  // 2) เส้นเงิน C-2 — เก็บค่าสมาชิกผ่าน POS (idempotent ต่อ `subscription-<id>`) ถ้ามีราคา + ผูก POS
+  //    ไม่ผูก POS = standalone → ข้าม (สมัครได้ ไม่ error) · ฟรี (ราคา 0) → ไม่ออกบิล
+  if (plan.priceSatang > 0) {
+    const target = await resolvePosForMember(ctx);
+    if (target) {
+      await pos.createSale({
+        tenantId: ctx.tenantId,
+        unitId: target.unitId,
+        systemId: target.posSystemId,
+        pointSystemId: target.pointSystemId ?? undefined,
+        memberId: input.customerId,
+        sourceModule: "MEMBER",
+        sourceId: sub.id,
+        idempotencyKey: `subscription-${sub.id}`,
+        lines: [{ name: `ค่าสมาชิก ${plan.name}`, qty: 1, unitPriceSatang: plan.priceSatang }],
+        payMethods: [{ type: input.payMethod ?? "CASH", amountSatang: plan.priceSatang }],
+      });
+    }
+  }
+
   return { id: sub.id };
 }
 
