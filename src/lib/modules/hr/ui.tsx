@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
+import { ModuleTabs } from "@/components/module-tabs";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
@@ -16,7 +18,6 @@ import {
   createEmployeeAction,
   requestLeaveAction,
 } from "./actions";
-import { PayrollSection } from "./payroll-ui";
 import BulkLeaveApprovals from "./BulkLeaveApprovals";
 
 const muted = "text-[color:var(--color-muted)]";
@@ -45,17 +46,25 @@ const dateRange = (from: Date, to: Date) =>
     ? formatThaiDate(from)
     : `${formatThaiDate(from)} – ${formatThaiDate(to)}`;
 
-// ───────────── HrContent (ฝังในหน้า /app/sys/[id]) ─────────────
-export async function HrContent({ systemId }: { systemId: string }) {
+// แท็บฟังก์ชันย่อยของระบบ HR (ใช้ทั้งหน้า hub + ทุกหน้าย่อย ให้ตรงกันเสมอ)
+// ⚠️ ต้องตรงกับ childrenFor("HR") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions.mts)
+export function hrTabs(systemId: string): { href: string; label: string }[] {
+  const s = `/app/sys/${systemId}`;
+  return [
+    { href: s, label: "ภาพรวม" },
+    { href: `${s}/hr/attendance`, label: "ลงเวลา" },
+    { href: `${s}/hr/leave`, label: "ใบลา" },
+    { href: `${s}/hr/employees`, label: "พนักงาน" },
+    { href: `${s}/hr/payroll`, label: "เงินเดือน" },
+  ];
+}
+
+// ───────────── ลงเวลา (attendance) ─────────────
+export async function HrAttendanceSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  const [employees, pending, leaves, attendance] = await Promise.all([
-    listEmployees(ctx),
-    pendingLeaves(ctx),
-    listLeaves(ctx),
-    listAttendance(ctx),
-  ]);
+  const [employees, attendance] = await Promise.all([listEmployees(ctx), listAttendance(ctx)]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -94,6 +103,34 @@ export async function HrContent({ systemId }: { systemId: string }) {
         )}
       </Section>
 
+      {/* บันทึกลงเวลาล่าสุด */}
+      <Section title="บันทึกลงเวลาล่าสุด">
+        <DataList
+          items={attendance.map((a) => ({
+            key: a.id,
+            primary: `${a.employee.name} · ${KIND_LABEL[a.kind] ?? a.kind}`,
+            trailing: <span className={`text-xs ${muted}`}>{formatThaiDateTime(a.at)}</span>,
+          }))}
+          empty="ยังไม่มีการลงเวลา — กดเข้างาน/ออกงานด้านบนเพื่อเริ่มบันทึก"
+        />
+      </Section>
+    </div>
+  );
+}
+
+// ───────────── ใบลา (leave) ─────────────
+export async function HrLeaveSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  const [employees, pending, leaves] = await Promise.all([
+    listEmployees(ctx),
+    pendingLeaves(ctx),
+    listLeaves(ctx),
+  ]);
+
+  return (
+    <div className="flex flex-col gap-6">
       {/* ใบลารออนุมัติ — เลือกหลายใบอนุมัติ/ปฏิเสธพร้อมกันได้ */}
       <Section title={`ใบลารออนุมัติ (${pending.length})`}>
         {pending.length === 0 ? (
@@ -166,51 +203,80 @@ export async function HrContent({ systemId }: { systemId: string }) {
           empty="ยังไม่มีประวัติการลา"
         />
       </Section>
-
-      {/* บันทึกลงเวลาล่าสุด */}
-      <Section title="บันทึกลงเวลาล่าสุด">
-        <DataList
-          items={attendance.map((a) => ({
-            key: a.id,
-            primary: `${a.employee.name} · ${KIND_LABEL[a.kind] ?? a.kind}`,
-            trailing: <span className={`text-xs ${muted}`}>{formatThaiDateTime(a.at)}</span>,
-          }))}
-          empty="ยังไม่มีการลงเวลา — กดเข้างาน/ออกงานด้านบนเพื่อเริ่มบันทึก"
-        />
-      </Section>
-
-      {/* รายชื่อพนักงาน */}
-      <Section title={`พนักงาน (${employees.length})`}>
-        <DataList
-          items={employees.map((e) => ({
-            key: e.id,
-            primary: e.name,
-            secondary: [e.position, e.phone].filter(Boolean).join(" · ") || undefined,
-          }))}
-          empty="ยังไม่มีพนักงาน — เพิ่มพนักงานคนแรกเพื่อเริ่มลงเวลาและจัดการวันลา"
-        />
-        <form action={createEmployeeAction} className="mt-1 flex flex-wrap items-end gap-2">
-          <input type="hidden" name="systemId" value={systemId} />
-          <label className={`flex flex-1 flex-col gap-1 text-xs ${muted}`}>
-            ชื่อพนักงาน
-            <input name="name" required placeholder="เช่น สมชาย ใจดี" className="input min-w-0" />
-          </label>
-          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
-            ตำแหน่ง
-            <input name="position" placeholder="เช่น ช่าง" className="input" />
-          </label>
-          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
-            เบอร์โทร
-            <input name="phone" inputMode="tel" placeholder="080-000-0000" className="input" />
-          </label>
-          <SubmitButton variant="ghost">+ เพิ่มพนักงาน</SubmitButton>
-        </form>
-      </Section>
-
-      {/* เงินเดือน (Payroll) — โปรไฟล์ + รอบจ่าย + สลิป */}
-      <PayrollSection systemId={systemId} />
     </div>
   );
 }
 
-export default HrContent;
+// ───────────── พนักงาน (employees) ─────────────
+export async function HrEmployeesSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  const employees = await listEmployees(ctx);
+
+  return (
+    <Section title={`พนักงาน (${employees.length})`}>
+      <DataList
+        items={employees.map((e) => ({
+          key: e.id,
+          primary: e.name,
+          secondary: [e.position, e.phone].filter(Boolean).join(" · ") || undefined,
+        }))}
+        empty="ยังไม่มีพนักงาน — เพิ่มพนักงานคนแรกเพื่อเริ่มลงเวลาและจัดการวันลา"
+      />
+      <form action={createEmployeeAction} className="mt-1 flex flex-wrap items-end gap-2">
+        <input type="hidden" name="systemId" value={systemId} />
+        <label className={`flex flex-1 flex-col gap-1 text-xs ${muted}`}>
+          ชื่อพนักงาน
+          <input name="name" required placeholder="เช่น สมชาย ใจดี" className="input min-w-0" />
+        </label>
+        <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+          ตำแหน่ง
+          <input name="position" placeholder="เช่น ช่าง" className="input" />
+        </label>
+        <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+          เบอร์โทร
+          <input name="phone" inputMode="tel" placeholder="080-000-0000" className="input" />
+        </label>
+        <SubmitButton variant="ghost">+ เพิ่มพนักงาน</SubmitButton>
+      </form>
+    </Section>
+  );
+}
+
+// ───────────── HrHub (หน้าภาพรวม ฝังใน /app/sys/[id]) ─────────────
+// การ์ดสรุปสั้น + ลิงก์เข้าแต่ละฟังก์ชัน (ไม่ dump ทุก section แล้ว — แตกเป็นหน้าย่อยจริง)
+export async function HrHub({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  const [employees, pending] = await Promise.all([listEmployees(ctx), pendingLeaves(ctx)]);
+
+  const cards = [
+    { href: `/app/sys/${systemId}/hr/attendance`, label: "ลงเวลา", desc: "เข้า/ออกงาน + ประวัติ" },
+    { href: `/app/sys/${systemId}/hr/leave`, label: "ใบลา", value: `${pending.length} รออนุมัติ`, desc: "อนุมัติ/ยื่นใบลา" },
+    { href: `/app/sys/${systemId}/hr/employees`, label: "พนักงาน", value: `${employees.length} คน`, desc: "รายชื่อ + เพิ่มพนักงาน" },
+    { href: `/app/sys/${systemId}/hr/payroll`, label: "เงินเดือน", desc: "โปรไฟล์ + รอบจ่าย + สลิป" },
+  ];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <ModuleTabs items={hrTabs(systemId)} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {cards.map((c) => (
+          <Link
+            key={c.href}
+            href={c.href}
+            className="card flex min-h-[76px] flex-col gap-1 p-4 transition-colors hover:bg-[color:var(--color-surface-2)]"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{c.label}</span>
+              {c.value && <span className="text-sm tabular-nums text-[color:var(--color-accent)]">{c.value}</span>}
+            </div>
+            <span className={`text-xs ${muted}`}>{c.desc}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}

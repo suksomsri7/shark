@@ -24,7 +24,7 @@ function chk(id: string, name: string, ok: boolean, detail: string, sev: Sev = "
 
 // ─── ระบบที่ "ควรมี" children (ตาม WO แตกฟังก์ชัน) ─────────────────────────────
 const EXPECT_BUSINESS = ["HOTEL", "RESTAURANT", "SHOP", "QUEUE", "TICKET", "BOOKING"];
-const EXPECT_FEATURE = ["POS", "ACCOUNT"];
+const EXPECT_FEATURE = ["POS", "ACCOUNT", "HR", "INVENTORY"];
 
 // ─── map href (route) → path ไฟล์ page.tsx จริง ──────────────────────────────
 // business: /app/u/${slugOrId}/rest  → src/app/app/u/[unitSlug]/rest/page.tsx
@@ -198,6 +198,13 @@ for (const b of BIZ_COMPLETE) {
   const posSub = routesUnder(join(POS_BASE, "pos"), POS_BASE); // "/pos/register" ฯลฯ
   requiredByType.set("POS", [...posRoot, ...posSub]);
 }
+// HR / INVENTORY: root overview (sys/[id]/page.tsx → "") + ทุกหน้าย่อยใต้ folder ของระบบ
+// (batch แตกฟังก์ชัน HR+Inventory — 1 ฟังก์ชัน = 1 หน้า)
+{
+  const sysRoot = existsSync(join(POS_BASE, "page.tsx")) ? [""] : [];
+  requiredByType.set("HR", [...sysRoot, ...routesUnder(join(POS_BASE, "hr"), POS_BASE)]);
+  requiredByType.set("INVENTORY", [...sysRoot, ...routesUnder(join(POS_BASE, "inventory"), POS_BASE)]);
+}
 
 const incomplete: string[] = [];
 for (const [type, required] of requiredByType) {
@@ -209,7 +216,7 @@ for (const [type, required] of requiredByType) {
 }
 chk(
   "S5",
-  "accordion กางครบทุก sub-route จริง (completeness: hotel/restaurant/shop/queue/ticket/booking/POS)",
+  "accordion กางครบทุก sub-route จริง (completeness: hotel/restaurant/shop/queue/ticket/booking/POS/HR/INVENTORY)",
   incomplete.length === 0,
   `ไม่ครบ:\n     - ${incomplete.join("\n     - ")}`,
   "CRITICAL",

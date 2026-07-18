@@ -98,8 +98,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/account/assets`, label: "สินทรัพย์" },
           { href: `${s}/account/cheque`, label: "เช็ค" },
         ];
+      case "HR":
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/hr/attendance`, label: "ลงเวลา" },
+          { href: `${s}/hr/leave`, label: "ใบลา" },
+          { href: `${s}/hr/employees`, label: "พนักงาน" },
+          { href: `${s}/hr/payroll`, label: "เงินเดือน" },
+        ];
+      case "INVENTORY":
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/inventory/items`, label: "สินค้า" },
+          { href: `${s}/inventory/count`, label: "นับสต็อก" },
+          { href: `${s}/inventory/movements`, label: "รับเข้า" },
+          { href: `${s}/inventory/locations`, label: "คลัง" },
+          { href: `${s}/inventory/procurement`, label: "จัดซื้อ" },
+        ];
       default:
-        return undefined; // INVENTORY/HR/MEMBER/… = render inline หน้าเดียว ไม่มี sub-route
+        return undefined; // MEMBER/POINT/… = render inline หน้าเดียว ไม่มี sub-route
     }
   };
 

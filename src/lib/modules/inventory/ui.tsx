@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
+import { ModuleTabs } from "@/components/module-tabs";
 import { env } from "@/lib/env";
 import { CopyLink } from "@/app/app/forms/CopyLink";
 import { Section } from "@/components/ui/Section";
@@ -45,6 +47,7 @@ import {
 } from "./procurement-actions";
 
 const muted = "text-[color:var(--color-muted)]";
+const qty = (v: number, unit: string) => `${v.toLocaleString("th-TH")} ${unit}`;
 
 // สถานะใบสั่งซื้อ (ไทย) + โทนสี
 const PO_STATUS: Record<string, string> = {
@@ -67,28 +70,35 @@ const MOVE_LABEL: Record<string, string> = {
   TRANSFER: "โอนย้าย",
 };
 
-// ───────────── InventoryContent (ฝังในหน้า /app/sys/[id]) ─────────────
-export async function InventoryContent({ systemId }: { systemId: string }) {
+// แท็บฟังก์ชันย่อยของระบบคลังสินค้า (ใช้ทั้งหน้า hub + ทุกหน้าย่อย ให้ตรงกันเสมอ)
+// ⚠️ ต้องตรงกับ childrenFor("INVENTORY") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions.mts)
+export function invTabs(systemId: string): { href: string; label: string }[] {
+  const s = `/app/sys/${systemId}`;
+  return [
+    { href: s, label: "ภาพรวม" },
+    { href: `${s}/inventory/items`, label: "สินค้า" },
+    { href: `${s}/inventory/count`, label: "นับสต็อก" },
+    { href: `${s}/inventory/movements`, label: "รับเข้า" },
+    { href: `${s}/inventory/locations`, label: "คลัง" },
+    { href: `${s}/inventory/procurement`, label: "จัดซื้อ" },
+  ];
+}
+
+// ───────────── สินค้า (items) — ค้นบาร์โค้ด + ใกล้หมด + รายการสินค้า + เพิ่ม + นำเข้า CSV ─────────────
+export async function InvItemsSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  // มีคลังหลักเสมอ (get-or-create) ก่อนโหลดรายการคลัง
   await ensureDefaultLocation(ctx);
-  const [items, low, movements, suppliers, pos, locations, stockMap, lotMap, pendingPoIds] = await Promise.all([
+  const [items, low, locations, stockMap, lotMap] = await Promise.all([
     listItems(ctx),
     lowStock(ctx),
-    recentMovements(ctx),
-    listSuppliers(ctx),
-    listPos(ctx),
     listLocations(ctx),
     stockByLocationMap(ctx),
     lotsByItemMap(ctx),
-    pendingApprovalPoIds(ctx),
   ]);
-
   const lowIds = new Set(low.map((i) => i.id));
-  const multiWarehouse = locations.length > 1; // มีมากกว่าคลังหลัก → แสดงตัวเลือกคลัง/โอนย้าย
-  const qty = (v: number, unit: string) => `${v.toLocaleString("th-TH")} ${unit}`;
+  const multiWarehouse = locations.length > 1;
 
   return (
     <div className="flex flex-col gap-6">
@@ -121,8 +131,224 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
         />
       </Section>
 
+      {/* รายการสินค้า + ยอดคงเหลือ (กดดูยอดแยกคลังได้เมื่อมีหลายคลัง) */}
+      <Section title={`สินค้าในคลัง (${items.length})`}>
+        {items.length === 0 ? (
+          <EmptyState text="ยังไม่มีสินค้า — เพิ่มสินค้ารายการแรกด้านล่างเพื่อเริ่มนับสต็อก" />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {items.map((i) => {
+              const breakdown = stockMap.get(i.id) ?? [];
+              const lots = lotMap.get(i.id) ?? [];
+              const showLocations = multiWarehouse && breakdown.length > 0;
+              const showLots = lots.length > 0;
+              const header = (
+                <>
+                  <div className="min-w-0">
+                    <div className="truncate">{i.name}</div>
+                    <div className={`truncate text-xs ${muted}`}>
+                      {[`รหัส ${i.sku}`, i.category].filter(Boolean).join(" · ")}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 text-right">
+                    <div className="text-right">
+                      <div className={`text-sm tabular-nums ${i.onHand < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
+                        {qty(i.onHand, i.unitLabel)}
+                      </div>
+                      <div className={`text-xs ${muted}`}>
+                        ต้นทุน <MoneyText satang={i.costSatang} />
+                      </div>
+                    </div>
+                    {lowIds.has(i.id) && <StatusChip value="LOW" map={{ LOW: "ใกล้หมด" }} tone="muted" />}
+                  </div>
+                </>
+              );
+              return (
+                <div key={i.id} className="flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-3">{header}</div>
+
+                  {/* ยอดแยกคลัง / ล็อต (กดดู) */}
+                  {(showLocations || showLots) && (
+                    <details className="text-sm">
+                      <summary className={`cursor-pointer text-xs ${muted}`}>
+                        {showLots ? (showLocations ? "ดูล็อต / ยอดแยกคลัง" : "ดูล็อตคงเหลือ") : "ดูยอดแยกคลัง"}
+                      </summary>
+                      <div className="mt-1 flex flex-col gap-1 border-t pt-2">
+                        {showLocations &&
+                          breakdown.map((b) => (
+                            <div key={b.locationId} className="flex items-center justify-between">
+                              <span className={muted}>{b.name}</span>
+                              <span className={`tabular-nums ${b.onHand < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
+                                {qty(b.onHand, i.unitLabel)}
+                              </span>
+                            </div>
+                          ))}
+                        {showLots && (
+                          <>
+                            {showLocations && <div className={`mt-1 text-xs ${muted}`}>ล็อต / วันหมดอายุ</div>}
+                            {lots.map((l) => (
+                              <div key={l.id} className="flex items-center justify-between">
+                                <span className={muted}>
+                                  ล็อต {l.lotCode}
+                                  {l.expiryDate ? ` · หมดอายุ ${formatThaiDate(l.expiryDate)}` : ""}
+                                </span>
+                                <span className="tabular-nums">{qty(l.onHand, i.unitLabel)}</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    </details>
+                  )}
+
+                  {/* จัดการ: แก้ไขข้อมูล / ปิดการใช้งาน */}
+                  <div className="flex flex-wrap items-center gap-2 border-t pt-2">
+                    <details className="min-w-0 flex-1">
+                      <summary className="cursor-pointer text-xs font-medium text-[color:var(--color-ink)]">
+                        แก้ไขข้อมูล
+                      </summary>
+                      <form action={updateItemAction} className="mt-2 flex flex-col gap-2">
+                        <input type="hidden" name="systemId" value={systemId} />
+                        <input type="hidden" name="itemId" value={i.id} />
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <FormField label="ชื่อสินค้า" required>
+                            <input name="name" required defaultValue={i.name} className="input" />
+                          </FormField>
+                          <FormField label="รหัสสินค้า (SKU)" required>
+                            <input name="sku" required defaultValue={i.sku} className="input" />
+                          </FormField>
+                          <FormField label="บาร์โค้ด">
+                            <input name="barcode" inputMode="numeric" defaultValue={i.barcode ?? ""} className="input" />
+                          </FormField>
+                          <FormField label="หน่วยนับ">
+                            <input name="unitLabel" defaultValue={i.unitLabel} className="input" />
+                          </FormField>
+                          <FormField label="หมวดหมู่">
+                            <input name="category" defaultValue={i.category ?? ""} className="input" />
+                          </FormField>
+                          <FormField label="จุดสั่งซื้อ" hint="เตือนเมื่อคงเหลือถึงจำนวนนี้">
+                            <input name="reorderPoint" type="number" min={0} step={1} defaultValue={i.reorderPoint} className="input" />
+                          </FormField>
+                        </div>
+                        <p className={`text-xs ${muted}`}>
+                          หมายเหตุ: ยอดคงเหลือและต้นทุนแก้ที่นี่ไม่ได้ — ใช้ &quot;รับเข้า / ตัดออก / ปรับสต็อก&quot; เท่านั้น
+                        </p>
+                        <SubmitButton variant="ghost">บันทึกการแก้ไข</SubmitButton>
+                      </form>
+                    </details>
+                    <ConfirmDialog
+                      triggerLabel="ปิดการใช้งาน"
+                      title={`ปิดการใช้งานสินค้า — ${i.name}?`}
+                      detail="สินค้าจะไม่โผล่ในรายการ/หน้าขาย (POS) แต่ประวัติการเคลื่อนไหวยังอยู่ครบ เปิดใช้ใหม่ได้ภายหลัง"
+                      confirmLabel="ยืนยันปิดการใช้งาน"
+                      danger
+                      action={archiveItemAction}
+                      fields={{ systemId, itemId: i.id }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* เพิ่มสินค้าใหม่ */}
+        <form action={createItemAction} className="mt-2 flex flex-col gap-3 rounded-lg border border-dashed p-4">
+          <input type="hidden" name="systemId" value={systemId} />
+          <h3 className="text-sm font-medium">เพิ่มสินค้าใหม่</h3>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <FormField label="รหัสสินค้า (SKU)" required>
+              <input name="sku" required placeholder="เช่น SH-01" className="input" />
+            </FormField>
+            <FormField label="ชื่อสินค้า" required>
+              <input name="name" required placeholder="เช่น แชมพู" className="input" />
+            </FormField>
+            <FormField label="บาร์โค้ด" hint="ใช้ค้นหา/สแกน">
+              <input name="barcode" inputMode="numeric" placeholder="เช่น 8850001112223" className="input" />
+            </FormField>
+            <FormField label="หน่วยนับ" hint="ค่าเริ่มต้น: ชิ้น">
+              <input name="unitLabel" placeholder="ชิ้น / ขวด / กล่อง" className="input" />
+            </FormField>
+            <FormField label="หมวดหมู่">
+              <input name="category" placeholder="เช่น เครื่องดื่ม" className="input" />
+            </FormField>
+            <FormField label="จุดสั่งซื้อ" hint="เตือนเมื่อคงเหลือถึงจำนวนนี้">
+              <input name="reorderPoint" type="number" min={0} step={1} placeholder="0" className="input" />
+            </FormField>
+            <FormField label="ต้นทุนตั้งต้น/หน่วย (บาท)">
+              <input name="cost" type="number" min={0} step="0.01" placeholder="0" className="input" />
+            </FormField>
+          </div>
+          <SubmitButton variant="ghost">+ เพิ่มสินค้า</SubmitButton>
+        </form>
+      </Section>
+
+      {/* นำเข้าสินค้าจาก CSV */}
+      <Section title="นำเข้าสินค้าจาก CSV">
+        <CsvImport
+          systemId={systemId}
+          entityLabel="สินค้า"
+          templateHeader="ชื่อสินค้า,รหัสสินค้า,บาร์โค้ด,หมวดหมู่,หน่วยนับ,ราคาทุน,จุดสั่งซื้อ"
+          templateSample="แชมพู,SH-01,8850001112223,ของใช้,ขวด,45,10"
+          templateFilename="สินค้า-ตัวอย่าง.csv"
+          supportedHeaders="ชื่อสินค้า (name), รหัสสินค้า/SKU, บาร์โค้ด (barcode), หมวดหมู่ (category), หน่วยนับ (unit), ราคาทุน บาท (cost), จุดสั่งซื้อ (reorder) — ต้องมีชื่อสินค้า · SKU ซ้ำจะถูกข้าม"
+          successNote="นำเข้าสำเร็จ — ยอดคงเหลือเริ่มที่ 0 ทุกรายการ ใช้ ‘รับเข้า (เพิ่มสต็อก)’ เพื่อบันทึกยอดจริง แล้วรีเฟรชหน้า"
+          action={importItemsAction}
+        />
+      </Section>
+    </div>
+  );
+}
+
+// ───────────── นับสต็อก (count) ─────────────
+export async function InvCountSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  const items = await listItems(ctx);
+
+  return (
+    <Section title="นับสต็อก (ปรับหลายรายการพร้อมกัน)">
+      {items.length === 0 ? (
+        <EmptyState text="ยังไม่มีสินค้า — เพิ่มสินค้าในหน้า “สินค้า” ก่อนจึงนับสต็อกได้" />
+      ) : (
+        <>
+          <p className={`mb-2 text-xs ${muted}`}>
+            กรอกเฉพาะรายการที่นับ — ระบบจะตั้งยอดคงเหลือเป็นจำนวนที่นับได้ (บันทึกเป็น &quot;ปรับปรุง&quot;)
+          </p>
+          <StockCount
+            systemId={systemId}
+            items={items.map((i) => ({
+              id: i.id,
+              name: i.name,
+              sku: i.sku,
+              onHand: i.onHand,
+              unitLabel: i.unitLabel,
+            }))}
+          />
+        </>
+      )}
+    </Section>
+  );
+}
+
+// ───────────── รับเข้า/เคลื่อนไหว (movements) — รับเข้า + ตัดออก + ประวัติ ─────────────
+export async function InvMovementsSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  await ensureDefaultLocation(ctx);
+  const [items, locations, movements] = await Promise.all([
+    listItems(ctx),
+    listLocations(ctx),
+    recentMovements(ctx),
+  ]);
+  const multiWarehouse = locations.length > 1;
+
+  return (
+    <div className="flex flex-col gap-6">
       {/* บันทึกความเคลื่อนไหว (รับเข้า / ตัดออก) */}
-      {items.length > 0 && (
+      {items.length > 0 ? (
         <Section title="บันทึกความเคลื่อนไหว">
           <div className="grid gap-3 sm:grid-cols-2">
             {/* รับเข้า */}
@@ -214,98 +440,141 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
             </form>
           </div>
         </Section>
-      )}
-
-      {/* นับสต็อก — กรอกจำนวนจริงหลายรายการแล้วบันทึกทีเดียว */}
-      {items.length > 0 && (
-        <Section title="นับสต็อก (ปรับหลายรายการพร้อมกัน)">
-          <p className={`mb-2 text-xs ${muted}`}>
-            กรอกเฉพาะรายการที่นับ — ระบบจะตั้งยอดคงเหลือเป็นจำนวนที่นับได้ (บันทึกเป็น &quot;ปรับปรุง&quot;)
-          </p>
-          <StockCount
-            systemId={systemId}
-            items={items.map((i) => ({
-              id: i.id,
-              name: i.name,
-              sku: i.sku,
-              onHand: i.onHand,
-              unitLabel: i.unitLabel,
-            }))}
-          />
+      ) : (
+        <Section title="บันทึกความเคลื่อนไหว">
+          <EmptyState text="ยังไม่มีสินค้า — เพิ่มสินค้าในหน้า “สินค้า” ก่อนจึงรับเข้า/ตัดออกได้" />
         </Section>
       )}
 
-      {/* คลังสินค้า (จัดการ + โอนย้าย) */}
-      <Section title={`คลังสินค้า (${locations.length})`}>
+      {/* ความเคลื่อนไหวล่าสุด */}
+      <Section title="ความเคลื่อนไหวล่าสุด">
         <DataList
-          items={locations.map((l) => ({
-            key: l.id,
-            primary: l.name,
-            secondary: l.isDefault ? "คลังหลัก (ค่าเริ่มต้น)" : "คลังสาขา",
+          items={movements.map((m) => ({
+            key: m.id,
+            primary: `${MOVE_LABEL[m.type] ?? m.type} · ${m.item.name}`,
+            secondary: [
+              formatThaiDateTime(m.createdAt),
+              m.sourceModule ? `จาก ${m.sourceModule}` : null,
+              m.needsReview ? "⚠ รอตรวจสอบ (ติดลบ)" : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+            trailing: (
+              <div className="text-right">
+                <div className={`text-sm tabular-nums ${m.qtyDelta < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
+                  {m.qtyDelta > 0 ? "+" : ""}
+                  {m.qtyDelta.toLocaleString("th-TH")} {m.item.unitLabel}
+                </div>
+                <div className={`text-xs ${muted}`}>คงเหลือ {m.balanceAfter.toLocaleString("th-TH")}</div>
+              </div>
+            ),
           }))}
-          empty="ยังไม่มีคลัง"
+          empty="ยังไม่มีความเคลื่อนไหว — รับเข้าหรือตัดออกสินค้าเพื่อเริ่มบันทึกประวัติ"
         />
+      </Section>
+    </div>
+  );
+}
 
-        {/* เพิ่มคลังใหม่ */}
-        <form
-          action={createLocationAction}
-          className="mt-2 flex flex-col gap-3 rounded-lg border border-dashed p-4 sm:flex-row sm:items-end"
-        >
+// ───────────── คลังสินค้า (locations) — จัดการคลัง + โอนย้าย ─────────────
+export async function InvLocationsSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  await ensureDefaultLocation(ctx);
+  const [items, locations] = await Promise.all([listItems(ctx), listLocations(ctx)]);
+  const multiWarehouse = locations.length > 1;
+
+  return (
+    <Section title={`คลังสินค้า (${locations.length})`}>
+      <DataList
+        items={locations.map((l) => ({
+          key: l.id,
+          primary: l.name,
+          secondary: l.isDefault ? "คลังหลัก (ค่าเริ่มต้น)" : "คลังสาขา",
+        }))}
+        empty="ยังไม่มีคลัง"
+      />
+
+      {/* เพิ่มคลังใหม่ */}
+      <form
+        action={createLocationAction}
+        className="mt-2 flex flex-col gap-3 rounded-lg border border-dashed p-4 sm:flex-row sm:items-end"
+      >
+        <input type="hidden" name="systemId" value={systemId} />
+        <FormField label="ชื่อคลังใหม่" required>
+          <input name="name" required placeholder="เช่น คลังสาขา 2 / หน้าร้าน" className="input" />
+        </FormField>
+        <SubmitButton variant="ghost">+ เพิ่มคลัง</SubmitButton>
+      </form>
+
+      {/* โอนสต็อกระหว่างคลัง (ต้องมีสินค้า + อย่างน้อย 2 คลัง) */}
+      {items.length > 0 && multiWarehouse && (
+        <form action={transferAction} className="mt-3 flex flex-col gap-3 rounded-lg border p-4">
           <input type="hidden" name="systemId" value={systemId} />
-          <FormField label="ชื่อคลังใหม่" required>
-            <input name="name" required placeholder="เช่น คลังสาขา 2 / หน้าร้าน" className="input" />
-          </FormField>
-          <SubmitButton variant="ghost">+ เพิ่มคลัง</SubmitButton>
-        </form>
-
-        {/* โอนสต็อกระหว่างคลัง (ต้องมีสินค้า + อย่างน้อย 2 คลัง) */}
-        {items.length > 0 && multiWarehouse && (
-          <form action={transferAction} className="mt-3 flex flex-col gap-3 rounded-lg border p-4">
-            <input type="hidden" name="systemId" value={systemId} />
-            <h3 className="text-sm font-medium">โอนสต็อกระหว่างคลัง</h3>
-            <FormField label="สินค้า" required>
-              <select name="itemId" required className="input" defaultValue="">
-                <option value="" disabled>
-                  เลือกสินค้า
+          <h3 className="text-sm font-medium">โอนสต็อกระหว่างคลัง</h3>
+          <FormField label="สินค้า" required>
+            <select name="itemId" required className="input" defaultValue="">
+              <option value="" disabled>
+                เลือกสินค้า
+              </option>
+              {items.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name} ({i.sku})
                 </option>
-                {items.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.name} ({i.sku})
+              ))}
+            </select>
+          </FormField>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <FormField label="จากคลัง" required>
+              <select name="fromLocationId" required className="input" defaultValue={locations[0].id}>
+                {locations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
                   </option>
                 ))}
               </select>
             </FormField>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <FormField label="จากคลัง" required>
-                <select name="fromLocationId" required className="input" defaultValue={locations[0].id}>
-                  {locations.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="ไปคลัง" required>
-                <select name="toLocationId" required className="input" defaultValue={locations[1].id}>
-                  {locations.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-            </div>
-            <FormField label="จำนวน" required hint="โอนเกินยอดคลังต้นทางได้ ระบบจะตั้งธงให้ตรวจสอบ">
-              <input name="qty" type="number" min={1} step={1} required placeholder="0" className="input" />
+            <FormField label="ไปคลัง" required>
+              <select name="toLocationId" required className="input" defaultValue={locations[1].id}>
+                {locations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
             </FormField>
-            <FormField label="หมายเหตุ">
-              <input name="note" placeholder="เช่น เติมของหน้าร้าน" className="input" />
-            </FormField>
-            <SubmitButton>โอนสต็อก</SubmitButton>
-          </form>
-        )}
-      </Section>
+          </div>
+          <FormField label="จำนวน" required hint="โอนเกินยอดคลังต้นทางได้ ระบบจะตั้งธงให้ตรวจสอบ">
+            <input name="qty" type="number" min={1} step={1} required placeholder="0" className="input" />
+          </FormField>
+          <FormField label="หมายเหตุ">
+            <input name="note" placeholder="เช่น เติมของหน้าร้าน" className="input" />
+          </FormField>
+          <SubmitButton>โอนสต็อก</SubmitButton>
+        </form>
+      )}
+    </Section>
+  );
+}
 
+// ───────────── จัดซื้อ (procurement) — ซัพพลายเออร์ + ใบสั่งซื้อ (PO) ─────────────
+export async function InvProcurementSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  await ensureDefaultLocation(ctx);
+  const [items, suppliers, pos, locations, pendingPoIds] = await Promise.all([
+    listItems(ctx),
+    listSuppliers(ctx),
+    listPos(ctx),
+    listLocations(ctx),
+    pendingApprovalPoIds(ctx),
+  ]);
+  const multiWarehouse = locations.length > 1;
+
+  return (
+    <div className="flex flex-col gap-6">
       {/* ซัพพลายเออร์ */}
       <Section title={`ซัพพลายเออร์ (${suppliers.length})`}>
         {suppliers.length === 0 ? (
@@ -530,201 +799,52 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
           </form>
         )}
       </Section>
-
-      {/* รายการสินค้า + ยอดคงเหลือ (กดดูยอดแยกคลังได้เมื่อมีหลายคลัง) */}
-      <Section title={`สินค้าในคลัง (${items.length})`}>
-        {items.length === 0 ? (
-          <EmptyState text="ยังไม่มีสินค้า — เพิ่มสินค้ารายการแรกด้านล่างเพื่อเริ่มนับสต็อก" />
-        ) : (
-          <div className="flex flex-col gap-2">
-            {items.map((i) => {
-              const breakdown = stockMap.get(i.id) ?? [];
-              const lots = lotMap.get(i.id) ?? [];
-              const showLocations = multiWarehouse && breakdown.length > 0;
-              const showLots = lots.length > 0;
-              const header = (
-                <>
-                  <div className="min-w-0">
-                    <div className="truncate">{i.name}</div>
-                    <div className={`truncate text-xs ${muted}`}>
-                      {[`รหัส ${i.sku}`, i.category].filter(Boolean).join(" · ")}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2 text-right">
-                    <div className="text-right">
-                      <div className={`text-sm tabular-nums ${i.onHand < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
-                        {qty(i.onHand, i.unitLabel)}
-                      </div>
-                      <div className={`text-xs ${muted}`}>
-                        ต้นทุน <MoneyText satang={i.costSatang} />
-                      </div>
-                    </div>
-                    {lowIds.has(i.id) && <StatusChip value="LOW" map={{ LOW: "ใกล้หมด" }} tone="muted" />}
-                  </div>
-                </>
-              );
-              return (
-                <div key={i.id} className="flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm">
-                  <div className="flex items-center justify-between gap-3">{header}</div>
-
-                  {/* ยอดแยกคลัง / ล็อต (กดดู) */}
-                  {(showLocations || showLots) && (
-                    <details className="text-sm">
-                      <summary className={`cursor-pointer text-xs ${muted}`}>
-                        {showLots ? (showLocations ? "ดูล็อต / ยอดแยกคลัง" : "ดูล็อตคงเหลือ") : "ดูยอดแยกคลัง"}
-                      </summary>
-                      <div className="mt-1 flex flex-col gap-1 border-t pt-2">
-                        {showLocations &&
-                          breakdown.map((b) => (
-                            <div key={b.locationId} className="flex items-center justify-between">
-                              <span className={muted}>{b.name}</span>
-                              <span className={`tabular-nums ${b.onHand < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
-                                {qty(b.onHand, i.unitLabel)}
-                              </span>
-                            </div>
-                          ))}
-                        {showLots && (
-                          <>
-                            {showLocations && <div className={`mt-1 text-xs ${muted}`}>ล็อต / วันหมดอายุ</div>}
-                            {lots.map((l) => (
-                              <div key={l.id} className="flex items-center justify-between">
-                                <span className={muted}>
-                                  ล็อต {l.lotCode}
-                                  {l.expiryDate ? ` · หมดอายุ ${formatThaiDate(l.expiryDate)}` : ""}
-                                </span>
-                                <span className="tabular-nums">{qty(l.onHand, i.unitLabel)}</span>
-                              </div>
-                            ))}
-                          </>
-                        )}
-                      </div>
-                    </details>
-                  )}
-
-                  {/* จัดการ: แก้ไขข้อมูล / ปิดการใช้งาน */}
-                  <div className="flex flex-wrap items-center gap-2 border-t pt-2">
-                    <details className="min-w-0 flex-1">
-                      <summary className="cursor-pointer text-xs font-medium text-[color:var(--color-ink)]">
-                        แก้ไขข้อมูล
-                      </summary>
-                      <form action={updateItemAction} className="mt-2 flex flex-col gap-2">
-                        <input type="hidden" name="systemId" value={systemId} />
-                        <input type="hidden" name="itemId" value={i.id} />
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <FormField label="ชื่อสินค้า" required>
-                            <input name="name" required defaultValue={i.name} className="input" />
-                          </FormField>
-                          <FormField label="รหัสสินค้า (SKU)" required>
-                            <input name="sku" required defaultValue={i.sku} className="input" />
-                          </FormField>
-                          <FormField label="บาร์โค้ด">
-                            <input name="barcode" inputMode="numeric" defaultValue={i.barcode ?? ""} className="input" />
-                          </FormField>
-                          <FormField label="หน่วยนับ">
-                            <input name="unitLabel" defaultValue={i.unitLabel} className="input" />
-                          </FormField>
-                          <FormField label="หมวดหมู่">
-                            <input name="category" defaultValue={i.category ?? ""} className="input" />
-                          </FormField>
-                          <FormField label="จุดสั่งซื้อ" hint="เตือนเมื่อคงเหลือถึงจำนวนนี้">
-                            <input name="reorderPoint" type="number" min={0} step={1} defaultValue={i.reorderPoint} className="input" />
-                          </FormField>
-                        </div>
-                        <p className={`text-xs ${muted}`}>
-                          หมายเหตุ: ยอดคงเหลือและต้นทุนแก้ที่นี่ไม่ได้ — ใช้ &quot;รับเข้า / ตัดออก / ปรับสต็อก&quot; เท่านั้น
-                        </p>
-                        <SubmitButton variant="ghost">บันทึกการแก้ไข</SubmitButton>
-                      </form>
-                    </details>
-                    <ConfirmDialog
-                      triggerLabel="ปิดการใช้งาน"
-                      title={`ปิดการใช้งานสินค้า — ${i.name}?`}
-                      detail="สินค้าจะไม่โผล่ในรายการ/หน้าขาย (POS) แต่ประวัติการเคลื่อนไหวยังอยู่ครบ เปิดใช้ใหม่ได้ภายหลัง"
-                      confirmLabel="ยืนยันปิดการใช้งาน"
-                      danger
-                      action={archiveItemAction}
-                      fields={{ systemId, itemId: i.id }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* เพิ่มสินค้าใหม่ */}
-        <form action={createItemAction} className="mt-2 flex flex-col gap-3 rounded-lg border border-dashed p-4">
-          <input type="hidden" name="systemId" value={systemId} />
-          <h3 className="text-sm font-medium">เพิ่มสินค้าใหม่</h3>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <FormField label="รหัสสินค้า (SKU)" required>
-              <input name="sku" required placeholder="เช่น SH-01" className="input" />
-            </FormField>
-            <FormField label="ชื่อสินค้า" required>
-              <input name="name" required placeholder="เช่น แชมพู" className="input" />
-            </FormField>
-            <FormField label="บาร์โค้ด" hint="ใช้ค้นหา/สแกน">
-              <input name="barcode" inputMode="numeric" placeholder="เช่น 8850001112223" className="input" />
-            </FormField>
-            <FormField label="หน่วยนับ" hint="ค่าเริ่มต้น: ชิ้น">
-              <input name="unitLabel" placeholder="ชิ้น / ขวด / กล่อง" className="input" />
-            </FormField>
-            <FormField label="หมวดหมู่">
-              <input name="category" placeholder="เช่น เครื่องดื่ม" className="input" />
-            </FormField>
-            <FormField label="จุดสั่งซื้อ" hint="เตือนเมื่อคงเหลือถึงจำนวนนี้">
-              <input name="reorderPoint" type="number" min={0} step={1} placeholder="0" className="input" />
-            </FormField>
-            <FormField label="ต้นทุนตั้งต้น/หน่วย (บาท)">
-              <input name="cost" type="number" min={0} step="0.01" placeholder="0" className="input" />
-            </FormField>
-          </div>
-          <SubmitButton variant="ghost">+ เพิ่มสินค้า</SubmitButton>
-        </form>
-      </Section>
-
-      {/* นำเข้าสินค้าจาก CSV */}
-      <Section title="นำเข้าสินค้าจาก CSV">
-        <CsvImport
-          systemId={systemId}
-          entityLabel="สินค้า"
-          templateHeader="ชื่อสินค้า,รหัสสินค้า,บาร์โค้ด,หมวดหมู่,หน่วยนับ,ราคาทุน,จุดสั่งซื้อ"
-          templateSample="แชมพู,SH-01,8850001112223,ของใช้,ขวด,45,10"
-          templateFilename="สินค้า-ตัวอย่าง.csv"
-          supportedHeaders="ชื่อสินค้า (name), รหัสสินค้า/SKU, บาร์โค้ด (barcode), หมวดหมู่ (category), หน่วยนับ (unit), ราคาทุน บาท (cost), จุดสั่งซื้อ (reorder) — ต้องมีชื่อสินค้า · SKU ซ้ำจะถูกข้าม"
-          successNote="นำเข้าสำเร็จ — ยอดคงเหลือเริ่มที่ 0 ทุกรายการ ใช้ ‘รับเข้า (เพิ่มสต็อก)’ เพื่อบันทึกยอดจริง แล้วรีเฟรชหน้า"
-          action={importItemsAction}
-        />
-      </Section>
-
-      {/* ความเคลื่อนไหวล่าสุด */}
-      <Section title="ความเคลื่อนไหวล่าสุด">
-        <DataList
-          items={movements.map((m) => ({
-            key: m.id,
-            primary: `${MOVE_LABEL[m.type] ?? m.type} · ${m.item.name}`,
-            secondary: [
-              formatThaiDateTime(m.createdAt),
-              m.sourceModule ? `จาก ${m.sourceModule}` : null,
-              m.needsReview ? "⚠ รอตรวจสอบ (ติดลบ)" : null,
-            ]
-              .filter(Boolean)
-              .join(" · "),
-            trailing: (
-              <div className="text-right">
-                <div className={`text-sm tabular-nums ${m.qtyDelta < 0 ? "text-[color:var(--color-danger)]" : ""}`}>
-                  {m.qtyDelta > 0 ? "+" : ""}
-                  {m.qtyDelta.toLocaleString("th-TH")} {m.item.unitLabel}
-                </div>
-                <div className={`text-xs ${muted}`}>คงเหลือ {m.balanceAfter.toLocaleString("th-TH")}</div>
-              </div>
-            ),
-          }))}
-          empty="ยังไม่มีความเคลื่อนไหว — รับเข้าหรือตัดออกสินค้าเพื่อเริ่มบันทึกประวัติ"
-        />
-      </Section>
     </div>
   );
 }
 
-export default InventoryContent;
+// ───────────── InvHub (หน้าภาพรวม ฝังใน /app/sys/[id]) ─────────────
+// การ์ดสรุปสั้น + ลิงก์เข้าแต่ละฟังก์ชัน (ไม่ dump ทุก section แล้ว — แตกเป็นหน้าย่อยจริง)
+export async function InvHub({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  await ensureDefaultLocation(ctx);
+  const [items, low, locations, pos, pendingPoIds] = await Promise.all([
+    listItems(ctx),
+    lowStock(ctx),
+    listLocations(ctx),
+    listPos(ctx),
+    pendingApprovalPoIds(ctx),
+  ]);
+  const openPo = pos.filter((p) => p.status === "DRAFT" || p.status === "ORDERED").length;
+
+  const cards = [
+    { href: `/app/sys/${systemId}/inventory/items`, label: "สินค้า", value: `${items.length} รายการ`, desc: `ใกล้หมด ${low.length} · ค้นบาร์โค้ด + นำเข้า CSV` },
+    { href: `/app/sys/${systemId}/inventory/count`, label: "นับสต็อก", desc: "ปรับหลายรายการพร้อมกัน" },
+    { href: `/app/sys/${systemId}/inventory/movements`, label: "รับเข้า / เคลื่อนไหว", desc: "รับเข้า · ตัดออก · ประวัติ" },
+    { href: `/app/sys/${systemId}/inventory/locations`, label: "คลัง", value: `${locations.length} คลัง`, desc: "จัดการคลัง + โอนย้าย" },
+    { href: `/app/sys/${systemId}/inventory/procurement`, label: "จัดซื้อ", value: openPo > 0 ? `${openPo} ค้าง` : undefined, desc: `ซัพพลายเออร์ + ใบสั่งซื้อ${pendingPoIds.size > 0 ? ` · รออนุมัติ ${pendingPoIds.size}` : ""}` },
+  ];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <ModuleTabs items={invTabs(systemId)} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {cards.map((c) => (
+          <Link
+            key={c.href}
+            href={c.href}
+            className="card flex min-h-[76px] flex-col gap-1 p-4 transition-colors hover:bg-[color:var(--color-surface-2)]"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{c.label}</span>
+              {c.value && <span className="text-sm tabular-nums text-[color:var(--color-accent)]">{c.value}</span>}
+            </div>
+            <span className={`text-xs ${muted}`}>{c.desc}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}

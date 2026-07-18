@@ -29,7 +29,7 @@ const RUN_STATUS_LABEL: Record<string, string> = {
 const runTone = (v: string): "muted" | "strong" =>
   v === "DRAFT" || v === "REVERSED" ? "muted" : "strong";
 
-// ───────────── PayrollSection (ฝังใน HrContent) ─────────────
+// ───────────── PayrollSection (หน้าย่อย /app/sys/[id]/hr/payroll) ─────────────
 export async function PayrollSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
 
