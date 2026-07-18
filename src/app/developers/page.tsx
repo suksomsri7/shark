@@ -39,6 +39,12 @@ const ENDPOINTS: Endpoint[] = [
     desc: "คำสั่งซื้อร้านค้าออนไลน์ทุกกิจการของร้าน เรียงจากใหม่ไปเก่า",
     sample: `{ "data": [ { "id": "clx...", "code": "SO-0001", "status": "PAID", "totalSatang": 25000 } ] }`,
   },
+  {
+    method: "GET",
+    path: "/api/v1/sales?take=50",
+    desc: "รายการขาย POS ที่ชำระแล้ว (PAID) ทุกระบบ POS ของร้าน เรียงจากใหม่ไปเก่า",
+    sample: `{ "data": [ { "id": "clx...", "receiptNo": "R-0001", "grandTotalSatang": 12000, "status": "PAID", "createdAt": "2026-07-18T..." } ] }`,
+  },
 ];
 
 const codeBox = "block overflow-x-auto rounded-lg bg-neutral-900 p-3 text-xs text-neutral-100";

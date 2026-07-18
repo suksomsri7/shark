@@ -62,6 +62,15 @@ try {
       chk("PA-2.4", "GET /inventory/items ไม่มีระบบคลัง → 200 data []", ri.status === 200 && ((await ri.json()) as { data?: unknown[] }).data?.length === 0, "[]", `${ri.status}`);
       const so = (await import("@/app/api/v1/shop/orders/route" as string)) as unknown as { GET: (r: Request) => Promise<Response> };
       chk("PA-2.5", "GET /shop/orders → 200", (await so.GET(req("/api/v1/shop/orders", k2.rawKey))).status === 200, "200", "?");
+      // Wave6-C: GET /sales — ไม่มีระบบ POS → 200 data [] · key ผิด → 401
+      const sales = (await import("@/app/api/v1/sales/route" as string).catch(() => null)) as { GET: (r: Request) => Promise<Response> } | null;
+      if (!sales) { chk("PA-2.7", "มี /api/v1/sales/route.ts", false, "มี", "ยังไม่สร้าง"); }
+      else {
+        const rs = await sales.GET(req("/api/v1/sales", k2.rawKey));
+        const sb = (await rs.json()) as { data?: unknown[] };
+        chk("PA-2.7", "GET /sales + key ถูก → 200 data เป็น array", rs.status === 200 && Array.isArray(sb.data), "200 array", `${rs.status}`);
+        chk("PA-2.8", "GET /sales ไม่มี key → 401", (await sales.GET(req("/api/v1/sales"))).status === 401, "401", "?");
+      }
       // rate limit: ยิง /me จน 429 (limit 60/นาที)
       let got429 = false;
       for (let i = 0; i < 70; i++) { const r = await me.GET(req("/api/v1/me", k2.rawKey)); if (r.status === 429) { got429 = true; break; } }
