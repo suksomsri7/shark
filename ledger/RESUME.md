@@ -355,3 +355,12 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 **PDPA = auto-covered · POS shift state machine = follow-up (ปิดวันตอนนี้ read-only)**
 | แตกฟังก์ชัน | **กางฟังก์ชันย่อยเข้าเมนู accordion ครบทุกระบบ** (2→8 ระบบ 30 links) + **เพิ่ม "ขายหน้าร้าน" POS ที่หายจากเมนู** + ModuleTabs hotel/shop/queue/ticket · account 8 หมวด (งานที่เจ้าของสั่งแต่แรกแต่ลืม) | qc-nav-functions 5/5 | b04a401 |
 | แตกฟังก์ชัน-ครบ | เจ้าของทัก POS+booking ไม่ครบ → accordion completeness (oracle S5 บังคับทุก sub-route) + **สร้างหน้า POS สินค้า/ราคา** (setItemSalePrice→AccountProduct) + booking/ตั้งค่า + restaurant/order+menu-options | qc-nav-functions 6/6 + qc-pos-products 24/24 | 57bf33c |
+
+## 🧩 แตกฟังก์ชันเป็นหน้าย่อยจริง (เจ้าของสั่ง "กางทุกระบบ · 1 ฟังก์ชัน=1 หน้า") — ✅ ครบทุกระบบ (UI/UX ล้วน ไม่แตะ logic)
+แพตเทิร์น: แตก Section→component + xxxTabs() + XxxHub + sub-route page (mirror POS) · qc-nav-functions บังคับ completeness (ทุก sub-route อยู่ในเมนู · dead link 0)
+- b1 HR(ลงเวลา/ใบลา/พนักงาน/เงินเดือน) + INVENTORY(สินค้า/นับสต็อก/รับเข้า/คลัง/จัดซื้อ) — 99a0288
+- b2 CRM(ดีล/งานติดตาม/ผู้ติดต่อ) + MARKETING(1) + COUPON(1) — f54d63a
+- b3 MEMBER(รายชื่อ/CSV/แพ็กเกจ) + POINT(จัดการ/ประวัติ) + REWARD(รายการ/แลก) — 9ea7419
+- b4 CHAT(สนทนา/ช่องทาง) + KANBAN(งานของฉัน/บอร์ด) + MEETING(1) + KB(fixed-page ครบ) — 56de088
++ business/POS/account จาก b04a401/57bf33c · **ทุกระบบมี accordion กางฟังก์ชัน + ModuleTabs ในหน้า**
+หมายเหตุ: F5 raw-prisma baseline ตัน 44 → section ใหม่ใช้ service เดิม/prisma เฉพาะใน src/app/page.tsx
