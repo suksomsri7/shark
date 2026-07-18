@@ -252,6 +252,10 @@ const ALLOWED_EDGES = new Set([
   // chokepoint (WO-0036): payroll ลงบัญชีเงินเดือนผ่าน account facade (postPayrollJV)
   // — Fable อนุมัติ 2026-07-17 (NIGHT RUN) · import ได้เฉพาะ account/index
   "hr→account",
+  // chokepoint (WO Inventory→Account): perpetual inventory — ทุก movement (รับซื้อ/ตัดขาย/คืน)
+  // โพสต์ต้นทุนสต็อกอัตโนมัติผ่าน account facade (postInventoryGl) · import ได้เฉพาะ account/index
+  // — account-bridge.ts (mirror pos/account-bridge) resolve ระบบ ACCOUNT แล้วเลือก Dr/Cr ตามชนิด movement
+  "inventory→account",
   "ticket→system",  // resolve POS/POINT ที่ผูก unit (เหมือน restaurant→system, booking→system)
   "hotel→pos",
   "hotel→system",

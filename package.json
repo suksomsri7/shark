@@ -61,6 +61,7 @@
     "qc:rental-race": "tsx scripts/qc-rental-race.mts",
     "qc:rental-public": "tsx scripts/qc-rental-public.mts",
     "qc:inventory-item": "tsx scripts/qc-inventory-item.mts",
+    "qc:inventory-account": "tsx scripts/qc-inventory-account.mts",
     "qc:csv-import": "tsx scripts/qc-csv-import.mts",
     "qc:clinic-refund": "tsx scripts/qc-clinic-refund.mts",
     "qc:booking-race": "tsx scripts/qc-booking-race.mts",

@@ -4,6 +4,7 @@ import { cell, columnIndex, type CsvTable, type ImportSummary } from "@/lib/core
 import { emitOutbox } from "@/lib/core/outbox";
 import { formatThaiDate } from "@/lib/ui/date";
 import { isNegative, movingAvgCost, needsReorder } from "./rules";
+import { bridgeInventoryMovement, type MovementForGl } from "./account-bridge";
 
 // Inventory (ระบบ 18) — สต็อกกลาง + movement ledger (contract C-1)
 // ⚠️ กติกาทั้งหมดมาจาก rules.ts (สมอง FREEZE) — ที่นี่แค่เรียกใช้ + ผูก DB
@@ -329,6 +330,21 @@ export async function unarchiveItem(ctx: Ctx, itemId: string): Promise<{ id: str
   return { id: itemId };
 }
 
+// ── บัญชีต้นทุนอัตโนมัติ (perpetual) — โพสต์ GL หลังบันทึก movement (WO Inventory→Account) ──
+// resolve ระบบ ACCOUNT ของกิจการ (type ACCOUNT · ผูก tenant) — ไม่มี = ข้ามเงียบ (standalone)
+// โพสต์ "หลัง" tx ของ movement (คนละ tx): tenantDb tx ผูก systemId=INVENTORY → inject ทับ systemId
+//   ของ accountJournalEntry ไม่ได้ (จะเพี้ยนเป็นระบบคลัง) จึงโพสต์นอก tx ผ่าน facade ที่ scope=ACCOUNT
+// idempotent ที่ชั้น gl (InvMovement#id#event) — movement เดิม (dup guard คืน row เดิม) โพสต์ซ้ำไม่เบิ้ล
+// GL ล้ม = ไม่ล้ม movement (catch) · ทุก entry Dr=Cr ในตัว → งบไม่มีทางเสียสมดุลจากตรงนี้
+async function postMovementGl(ctx: Ctx, mv: MovementForGl): Promise<void> {
+  try {
+    const acct = await tenantDb(ctx).appSystem.findFirst({ where: { type: "ACCOUNT" }, select: { id: true } });
+    await bridgeInventoryMovement(acct?.id ?? null, ctx.tenantId, mv);
+  } catch {
+    // โพสต์บัญชีไม่สำเร็จ → เก็บ movement ไว้ (ระบบคลังทำงานต่อได้) — ไม่ปล่อย error ทับงานคลัง
+  }
+}
+
 // ── รับเข้า (IN) — เพิ่ม onHand + คำนวณต้นทุนถัวเฉลี่ยเคลื่อนที่ (จากกติกา) ──
 // idempotent ต่อ idempotencyKey: เรียกซ้ำด้วย key เดิม → ไม่เพิ่มซ้ำ
 export type ReceiveInput = {
@@ -351,11 +367,11 @@ export async function receive(ctx: Ctx, input: ReceiveInput): Promise<{ id: stri
   const lotCode = input.lotCode?.trim() || null;
   const db = tenantDb(ctx);
 
-  return db.$transaction(async (tx) => {
+  const mv = await db.$transaction(async (tx) => {
     const txc = tx as unknown as Db;
     // idempotent guard — key เดิมเคยบันทึกแล้ว → คืนรายการเดิม ไม่แตะสต็อก
     const dup = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
-    if (dup) return { id: dup.id };
+    if (dup) return dup;
 
     const item = await tx.invItem.findFirst({ where: { id: input.itemId } });
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
@@ -375,7 +391,7 @@ export async function receive(ctx: Ctx, input: ReceiveInput): Promise<{ id: stri
     // ระบุ lot → เดิน InvLot (get-or-create + ตั้งวันหมดอายุ) · ไม่ระบุ = ไม่แตะ lot เลย
     if (lotCode) await applyLotDelta(txc, ctx, item.id, lotCode, qty, input.expiryDate ?? null);
 
-    const mv = await tx.invMovement.create({
+    return tx.invMovement.create({
       data: {
         tenantId: ctx.tenantId,
         systemId: ctx.systemId,
@@ -394,8 +410,10 @@ export async function receive(ctx: Ctx, input: ReceiveInput): Promise<{ id: stri
         needsReview: isNegative(newOnHand),
       },
     });
-    return { id: mv.id };
   });
+  // perpetual: โพสต์ต้นทุนเข้าบัญชี (นอก tx · idempotent ต่อ movement) — ไม่มีระบบ ACCOUNT = ข้าม
+  await postMovementGl(ctx, mv);
+  return { id: mv.id };
 }
 
 // ── ตัดออก (OUT) — ลด onHand · ยอมติดลบ ไม่ block ·  ติดลบ = ตั้งธง needsReview ──
@@ -417,10 +435,10 @@ export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: stri
   const lotCode = input.lotCode?.trim() || null;
   const db = tenantDb(ctx);
 
-  return db.$transaction(async (tx) => {
+  const mv = await db.$transaction(async (tx) => {
     const txc = tx as unknown as Db;
     const dup = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
-    if (dup) return { id: dup.id };
+    if (dup) return dup;
 
     const item = await tx.invItem.findFirst({ where: { id: input.itemId } });
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
@@ -439,7 +457,7 @@ export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: stri
     let lotNegative = false;
     if (lotCode) lotNegative = isNegative(await applyLotDelta(txc, ctx, item.id, lotCode, -qty));
 
-    const mv = await tx.invMovement.create({
+    return tx.invMovement.create({
       data: {
         tenantId: ctx.tenantId,
         systemId: ctx.systemId,
@@ -459,8 +477,10 @@ export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: stri
         needsReview: isNegative(newOnHand) || lotNegative,
       },
     });
-    return { id: mv.id };
   });
+  // perpetual: รับรู้ต้นทุนขาย (นอก tx · idempotent ต่อ movement) — ไม่มีระบบ ACCOUNT = ข้าม
+  await postMovementGl(ctx, mv);
+  return { id: mv.id };
 }
 
 // ── ปรับสต็อก (ADJUST) — ตั้ง onHand เป็นค่านับจริง (stock take) โดยตรง ──

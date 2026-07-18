@@ -917,6 +917,68 @@ export async function postManualJV(
   });
 }
 
+// ─────────────────── postInventoryGl (perpetual inventory — WO Inventory→Account) ───────────────────
+
+/**
+ * โพสต์ต้นทุนสต็อกอัตโนมัติจาก InvMovement (perpetual inventory)
+ * caller = inventory (ผ่าน account facade เท่านั้น — chokepoint inventory→account · F2.2)
+ * บรรทัดเดียวคู่ Dr/Cr เท่ากันเป๊ะ (สมดุลในตัว) · value = |qtyDelta| × costSatang (valuation source เดียว)
+ * เลือกบัญชี Dr/Cr ตามชนิด movement (caller ส่ง code มาตรง ๆ — resolve by code เหมือน postPayrollJV)
+ * idempotent ต่อ (InvMovement, movementId, event) → รับ/ตัดซ้ำ key เดิม ไม่โพสต์ GL เบิ้ล
+ * ensureAccounting ก่อน (seed ผัง + งวดปัจจุบัน OPEN) — ถ้าไม่มีระบบ ACCOUNT caller ข้ามก่อนถึงตรงนี้
+ */
+export async function postInventoryGl(
+  ctx: GlCtx,
+  o: {
+    movementId: string;
+    event: "RECEIVE" | "CONSUME";
+    date: Date;
+    drCode: string;
+    crCode: string;
+    amountSatang: number;
+    memo?: string;
+  },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    if (o.amountSatang <= 0) return { skipped: true }; // มูลค่า 0 → ไม่มีอะไรให้ลง
+    if (await alreadyPosted(ctx, `InvMovement#${o.movementId}#${o.event}`, db)) return { skipped: true };
+
+    await ensureAccounting(ctx, db as Tx);
+    const codes = [o.drCode, o.crCode];
+    const ledgers = await db.accountLedger.findMany({
+      where: { systemId: ctx.systemId, code: { in: codes } },
+      select: { id: true, code: true },
+    });
+    const idByCode = new Map(ledgers.map((l) => [l.code, l.id]));
+    const acctId = (code: string): string => {
+      const id = idByCode.get(code);
+      if (!id) throw new Error(`ไม่พบบัญชี ${code} ในผังบัญชี`);
+      return id;
+    };
+
+    const b = new Book(ctx, db);
+    b.dr(acctId(o.drCode), o.amountSatang);
+    b.cr(acctId(o.crCode), o.amountSatang);
+
+    const entry = await commitEntry(
+      ctx,
+      {
+        book: "GENERAL",
+        journal: "ADJUST",
+        date: o.date,
+        refType: "InvMovement",
+        refId: o.movementId,
+        event: o.event,
+        memo: o.memo ?? "ต้นทุนสินค้าคงเหลือ (perpetual)",
+      },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+
 // ─────────────────── postChequeEntry (ทะเบียนเช็ค — R-B/M7) ───────────────────
 
 /**

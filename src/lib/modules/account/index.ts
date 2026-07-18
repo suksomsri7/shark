@@ -132,6 +132,10 @@ export async function createExternalQuotation(input: {
 // reverseEntry (WO Wave2-K) — hr เรียกกลับ JV เงินเดือนตาม journalEntryId (immutable ledger)
 export { postPayrollJV, reverseEntry, type PayrollPostingInput } from "./gl";
 
+// Perpetual inventory (WO Inventory→Account) — จุดเดียวที่ inventory เรียกลงบัญชีต้นทุนสต็อก
+// (idempotent ต่อ movementId · Dr=Cr เสมอ · ไม่มีระบบ ACCOUNT → inventory ข้ามก่อนถึงที่นี่)
+export { postInventoryGl, type GlCtx } from "./gl";
+
 // รายงานอายุหนี้ (WO-0039) — ลูกหนี้/เจ้าหนี้ค้างชำระ (UI/รายงานเรียกผ่าน facade)
 export {
   agingReport,
