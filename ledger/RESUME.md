@@ -335,3 +335,11 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 - minor: member สมัคร public/ฟอร์มแก้ลูกค้า · booking public ยกเลิกนัดเอง
 | Inv→บัญชี | **Perpetual inventory** (เจ้าของอนุมัติ): รับของ→Dr1200/Cr2100 · ขาย→Dr5000 COGS/Cr1200 · refund→กลับ COGS · manual→Cr3000 · postInventoryGl idempotent | qc-inventory-account 23/23 + cpa 107 | cf0d179 |
 ✅ **~90%** · เหลือ: 🔑 marketing LINE · POS ตัดสต็อก+COGS (follow-up) · bulk ops · i18n public · dashboard/ปิดวัน · approval policy · member public
+
+## 🌙 RUN 3 ต่อ (18 ก.ค. — เจ้าของ: inventory→บัญชี ทำเลย + polish รันยาว)
+| WO | งาน | ข้อสอบ | commit |
+|---|---|---|---|
+| Approval-edit | แก้สายอนุมัติ (updatePolicy) + หน้า "คำขอของฉัน" | qc-approval-edit 12/12 | ddc4ace |
+| Member-pub | สมัครสมาชิก public + ฟอร์มแก้ลูกค้า | qc-member-public 19/19 | 26a12a4 |
+| POS-inv | **POS ตัดสต็อก+COGS+void restock** → perpetual ครบทุกช่องขาย | qc-pos-inventory 25/25 + cpa107 | 87c3d97 |
+✅ **~93%** · เหลือ cred-free: bulk ops · dashboard/ปิดวัน · i18n public · 🔑 marketing LINE
