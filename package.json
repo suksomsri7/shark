@@ -58,6 +58,7 @@
     "qc:school-refund": "tsx scripts/qc-school-refund.mts",
     "qc:rental-refund": "tsx scripts/qc-rental-refund.mts",
     "qc:rental-race": "tsx scripts/qc-rental-race.mts",
+    "qc:rental-public": "tsx scripts/qc-rental-public.mts",
     "qc:inventory-item": "tsx scripts/qc-inventory-item.mts",
     "qc:csv-import": "tsx scripts/qc-csv-import.mts",
     "qc:clinic-refund": "tsx scripts/qc-clinic-refund.mts",

@@ -8,6 +8,7 @@ import {
   returnAction,
   cancelAction,
   refundRentalAction,
+  recordRentalDepositAction,
 } from "@/lib/modules/rental/actions";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
@@ -133,7 +134,10 @@ export default async function RentalManagePage({
                     {b.customerPhone && ` · ${b.customerPhone}`}
                   </div>
                   <div className="text-xs text-[color:var(--color-muted)]">
-                    {b.depositHeldSatang > 0 && `ถือมัดจำ ฿${baht(b.depositHeldSatang)}`}
+                    {b.depositSatang > 0 &&
+                      (b.depositPaidAt
+                        ? `รับมัดจำแล้ว ฿${baht(b.depositSatang)}`
+                        : `มัดจำ ฿${baht(b.depositSatang)} (รอรับ)`)}
                     {b.status === "RETURNED" && ` · ค่าเช่ารวม ฿${baht(b.totalSatang)}${b.lateFeeSatang > 0 ? ` (ค่าปรับ ฿${baht(b.lateFeeSatang)})` : ""}`}
                   </div>
                 </div>
@@ -142,6 +146,13 @@ export default async function RentalManagePage({
 
               {b.status === "BOOKED" && (
                 <div className="flex flex-wrap gap-2">
+                  {b.depositSatang > 0 && !b.depositPaidAt && (
+                    <form action={recordRentalDepositAction.bind(null, unitSlug, b.id)}>
+                      <button className="rounded-full border border-emerald-600 px-3 py-1 text-xs text-emerald-700 hover:bg-[color:var(--color-surface-2)]">
+                        ยืนยันรับมัดจำ ฿{baht(b.depositSatang)}
+                      </button>
+                    </form>
+                  )}
                   <form action={pickUpAction.bind(null, unitSlug, b.id)}>
                     <button className="rounded-full border px-3 py-1 text-xs hover:bg-[color:var(--color-surface-2)]">รับของ</button>
                   </form>

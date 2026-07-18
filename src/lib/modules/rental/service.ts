@@ -6,7 +6,9 @@
 // เงินต้องเข้าเสมอ: คืนของ = ปิดบิลค่าเช่า(+ค่าปรับ) ผ่าน POS (บังคับ · ไม่มี POS = โยน + revert)
 import { prisma, tenantDb } from "@/lib/core/db";
 import * as pos from "@/lib/modules/pos/service";
-import { listSystems } from "@/lib/modules/system/service";
+import { listSystems, systemForUnit } from "@/lib/modules/system/service";
+import { promptpayPayload } from "@/lib/payment/promptpay";
+import type { PosPayType } from "@prisma/client";
 
 export type RentalCtx = { tenantId: string; unitId: string };
 
@@ -118,7 +120,7 @@ export type CreateBookingInput = {
 export async function createBooking(
   ctx: RentalCtx,
   input: CreateBookingInput,
-): Promise<{ id: string; days: number; quoteSatang: number }> {
+): Promise<{ id: string; days: number; quoteSatang: number; publicToken: string | null }> {
   const days = daysBetween(input.startDate, input.endDate);
   if (days <= 0) throw new Error("วันคืนต้องหลังวันรับอย่างน้อย 1 วัน");
   const name = input.customerName?.trim();
@@ -159,10 +161,11 @@ export async function createBooking(
         startDate: input.startDate,
         endDate: input.endDate,
         depositHeldSatang: asset.depositSatang,
+        depositSatang: asset.depositSatang, // snapshot มัดจำ (จองออนไลน์จ่าย PromptPay แล้วร้านยืนยัน)
         note: input.note?.trim() || null,
       },
     });
-    return { id: bk.id, days, quoteSatang };
+    return { id: bk.id, days, quoteSatang, publicToken: bk.publicToken };
   });
 }
 
@@ -293,4 +296,136 @@ export async function listBookings(
     include: { asset: true },
     take: 200,
   });
+}
+
+// ───────────────────────── Public storefront (ลูกค้าจองเช่าเอง · no-auth) ─────────────────────────
+// resolve unit จาก slug (public) → tenantId+unitId · unit ต้อง ACTIVE + type=RENTAL (กันสวมร้าน/ประเภทผิด)
+// mirror resolveHotelUnit
+export async function resolveRentalUnit(tenantSlug: string, unitSlug: string) {
+  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+  if (!tenant || tenant.status !== "ACTIVE") return null;
+  const unit = await prisma.businessUnit.findUnique({
+    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
+  });
+  if (!unit || unit.status !== "ACTIVE" || unit.type !== "RENTAL") return null;
+  return { tenant, unit };
+}
+
+// สินทรัพย์ให้เช่าสำหรับหน้าจองลูกค้า + ว่างไหมในช่วง [from, to) (mirror listPublicAvailability)
+// ช่วงไม่ถูกต้อง → available=false ทุกตัว (จองไม่ได้)
+export type PublicRentalAsset = {
+  id: string;
+  name: string;
+  code: string | null;
+  dailyRateSatang: number;
+  depositSatang: number;
+  available: boolean;
+};
+
+export async function listPublicRentalAssets(
+  ctx: RentalCtx,
+  range: { from: Date; to: Date } | null,
+): Promise<PublicRentalAsset[]> {
+  const db = tenantDb(ctx);
+  const assets = await db.rentalAsset.findMany({
+    where: { active: true },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  const validRange = !!range && range.to.getTime() > range.from.getTime();
+  // clash ทั้งหมดในช่วง (query เดียว) → เช็ค available ต่อ asset ใน memory
+  const clashes = validRange
+    ? await db.rentalBooking.findMany({
+        where: {
+          status: { in: ["BOOKED", "PICKED_UP"] },
+          startDate: { lt: range!.to },
+          endDate: { gt: range!.from },
+        },
+        select: { assetId: true },
+      })
+    : [];
+  const busy = new Set(clashes.map((c) => c.assetId));
+  return assets.map((a) => ({
+    id: a.id,
+    name: a.name,
+    code: a.code,
+    dailyRateSatang: a.dailyRateSatang,
+    depositSatang: a.depositSatang,
+    available: validRange && !busy.has(a.id),
+  }));
+}
+
+// สถานะการจอง (public จาก publicToken) — กัน cross-tenant: token ต้องเป็นของ unit นี้ (กัน leak PII ลูกค้า)
+// mirror getPublicReservation
+export async function getPublicBooking(unitId: string, publicToken: string) {
+  const token = (publicToken ?? "").trim();
+  if (!token) return null;
+  const bk = await prisma.rentalBooking.findUnique({
+    where: { publicToken: token },
+    include: { asset: { select: { name: true } } },
+  });
+  if (!bk || bk.unitId !== unitId) return null;
+  return bk;
+}
+
+// PromptPay payload สำหรับจ่ายมัดจำการจองนี้ (ยอด = depositSatang) — ร้านยังไม่ตั้งเลข → null
+// mirror promptpayForDeposit
+export async function promptpayForRentalDeposit(
+  ctx: RentalCtx,
+  bookingId: string,
+): Promise<{ payload: string; displayName: string } | null> {
+  const db = tenantDb(ctx);
+  const bk = await db.rentalBooking.findFirst({ where: { id: bookingId } });
+  if (!bk || bk.depositSatang <= 0) return null;
+  const profile = await db.paymentProfile.findFirst({ where: {} });
+  if (!profile?.promptpayId) return null;
+  const payload = promptpayPayload({ id: profile.promptpayId, amountSatang: bk.depositSatang });
+  return { payload, displayName: profile.displayName ?? "" };
+}
+
+// ร้านยืนยันรับมัดจำ — เปิดบิล POS DEPOSIT (Dr 2110 เงินมัดจำรับ) แล้วปั๊ม depositPaidAt (mirror recordDeposit)
+//   guard: การจองมีมัดจำ (depositSatang>0) + ยังไม่จ่าย + ยังไม่ยกเลิก/คืนเงิน
+//   idempotent: createSale key `rental-deposit-<bookingId>` + claim อะตอมมิก depositPaidAt
+//   ไม่ผูก POS → บันทึก depositPaidAt เฉย ๆ (standalone · saleId=null)
+export async function recordRentalDeposit(
+  ctx: RentalCtx,
+  bookingId: string,
+  payMethod: PosPayType = "DEPOSIT",
+): Promise<{ ok: boolean; reason?: string; saleId?: string; noop?: boolean }> {
+  const db = tenantDb(ctx);
+  const bk = await db.rentalBooking.findFirst({ where: { id: bookingId } });
+  if (!bk) return { ok: false, reason: "ไม่พบการจอง" };
+  if (bk.status === "CANCELLED" || bk.status === "REFUNDED")
+    return { ok: false, reason: "การจองนี้ยกเลิก/คืนเงินแล้ว รับมัดจำไม่ได้" };
+  if (bk.depositSatang <= 0) return { ok: false, reason: "การจองนี้ไม่ต้องมัดจำ" };
+  if (bk.depositPaidAt) return { ok: true, noop: true, saleId: bk.depositSaleId ?? undefined };
+
+  const amount = bk.depositSatang;
+  // เปิดบิลมัดจำผ่าน POS (chokepoint เงิน) — idempotent · ไม่มี POS = ข้าม (บันทึก paidAt เฉย ๆ)
+  let saleId: string | null = null;
+  const posSystemId = await systemForUnit(ctx.tenantId, ctx.unitId, "POS");
+  if (posSystemId) {
+    const sale = await pos.createSale({
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      systemId: posSystemId,
+      sourceModule: "RENTAL",
+      sourceId: bookingId,
+      idempotencyKey: `rental-deposit-${bookingId}`,
+      lines: [{ name: `มัดจำเช่า ${bk.customerName}`, qty: 1, unitPriceSatang: amount }],
+      payMethods: [{ type: payMethod, amountSatang: amount }],
+    });
+    saleId = sale.saleId;
+  }
+
+  // claim อะตอมมิก: ปั๊ม depositPaidAt เฉพาะแถวที่ยังไม่จ่าย (กัน 2 request แข่งกัน)
+  const claim = await db.rentalBooking.updateMany({
+    where: { id: bookingId, depositPaidAt: null },
+    data: { depositPaidAt: new Date(), depositSaleId: saleId },
+  });
+  if (claim.count === 0) {
+    const cur = await db.rentalBooking.findFirst({ where: { id: bookingId } });
+    return { ok: true, noop: true, saleId: cur?.depositSaleId ?? undefined };
+  }
+  return { ok: true, saleId: saleId ?? undefined };
 }

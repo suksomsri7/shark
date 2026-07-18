@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { resolveUnit, getBookingData } from "@/lib/modules/booking/service";
 import { resolveUnit as resolveTicketUnit } from "@/lib/modules/ticket/service";
+import { resolveRentalUnit } from "@/lib/modules/rental/service";
 import { PublicBooking } from "@/components/public-booking";
 import { getLocaleFromCookie, makeT } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -17,6 +18,10 @@ export default async function StoreBookingPage({
   // ร้านขายตั๋ว (TICKET): landing เด้งเข้า storefront ตั๋วสาธารณะ (ลูกค้าซื้อตั๋วเอง)
   const ticketUnit = await resolveTicketUnit(tenantSlug, unitSlug);
   if (ticketUnit) redirect(`/s/${tenantSlug}/${unitSlug}/ticket`);
+
+  // ร้านให้เช่า (RENTAL): landing เด้งเข้า storefront เช่าสาธารณะ (ลูกค้าจองเช่าเอง)
+  const rentalUnit = await resolveRentalUnit(tenantSlug, unitSlug);
+  if (rentalUnit) redirect(`/s/${tenantSlug}/${unitSlug}/rental`);
 
   const resolved = await resolveUnit(tenantSlug, unitSlug);
   if (!resolved) notFound();

@@ -95,6 +95,17 @@ export async function createBookingAction(unitSlug: string, formData: FormData) 
   revalidatePath(`/app/u/${unitSlug}/rental`);
 }
 
+// ร้านยืนยันรับมัดจำ (เปิดบิล POS DEPOSIT Dr 2110 + ปั๊ม depositPaidAt) — เฉพาะการจองที่มีมัดจำและยังไม่จ่าย
+export async function recordRentalDepositAction(unitSlug: string, bookingId: string) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertRentalCan(auth, unit.id, "rental.booking.update"); // สิทธิ์ระดับหน้างาน (รับเงินหน้าเคาน์เตอร์)
+  const res = await rental.recordRentalDeposit(ctxOf(auth, unit.id), bookingId);
+  revalidatePath(`/app/u/${unitSlug}/rental`);
+  if (!res.ok) {
+    redirect(`/app/u/${unitSlug}/rental?err=${encodeURIComponent(res.reason ?? "รับมัดจำไม่สำเร็จ")}`);
+  }
+}
+
 export async function pickUpAction(unitSlug: string, bookingId: string) {
   const { auth, unit } = await requireUnit(unitSlug);
   assertRentalCan(auth, unit.id, "rental.booking.update");

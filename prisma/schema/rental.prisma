@@ -47,6 +47,12 @@ model RentalBooking {
   note            String?
   createdAt       DateTime     @default(now())
 
+  // ── จองออนไลน์ (public/no-auth) + มัดจำ PromptPay (mirror HotelReservation) ──
+  publicToken     String?      @unique @default(cuid()) // ลิงก์สถานะลูกค้า (public) — แถวเดิม NULL, แถวใหม่ปั๊ม cuid
+  depositSatang   Int          @default(0) // snapshot มัดจำจาก asset ตอนจอง (0 = ไม่ต้องมัดจำ)
+  depositPaidAt   DateTime? // เวลาที่ร้านยืนยันรับมัดจำ (null = ยังไม่จ่าย)
+  depositSaleId   String? // PosSale.id ของบิลมัดจำ DEPOSIT (Dr 2110)
+
   @@index([tenantId, unitId, status])
   @@index([assetId, startDate])
 }
