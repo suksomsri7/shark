@@ -14,10 +14,10 @@ import {
 import {
   clockAction,
   createEmployeeAction,
-  decideLeaveAction,
   requestLeaveAction,
 } from "./actions";
 import { PayrollSection } from "./payroll-ui";
+import BulkLeaveApprovals from "./BulkLeaveApprovals";
 
 const muted = "text-[color:var(--color-muted)]";
 
@@ -94,36 +94,20 @@ export async function HrContent({ systemId }: { systemId: string }) {
         )}
       </Section>
 
-      {/* ใบลารออนุมัติ */}
+      {/* ใบลารออนุมัติ — เลือกหลายใบอนุมัติ/ปฏิเสธพร้อมกันได้ */}
       <Section title={`ใบลารออนุมัติ (${pending.length})`}>
-        <DataList
-          items={pending.map((l) => ({
-            key: l.id,
-            primary: `${l.employee.name} · ${LEAVE_TYPE_LABEL[l.type] ?? l.type}`,
-            secondary: [dateRange(l.fromDate, l.toDate), l.reason].filter(Boolean).join(" · ") || undefined,
-            trailing: (
-              <div className="flex items-center gap-2">
-                <form action={decideLeaveAction}>
-                  <input type="hidden" name="systemId" value={systemId} />
-                  <input type="hidden" name="leaveId" value={l.id} />
-                  <input type="hidden" name="status" value="APPROVED" />
-                  <SubmitButton variant="primary" pendingText="กำลังอนุมัติ…">
-                    อนุมัติ
-                  </SubmitButton>
-                </form>
-                <form action={decideLeaveAction}>
-                  <input type="hidden" name="systemId" value={systemId} />
-                  <input type="hidden" name="leaveId" value={l.id} />
-                  <input type="hidden" name="status" value="REJECTED" />
-                  <SubmitButton variant="ghost" pendingText="กำลังบันทึก…">
-                    ไม่อนุมัติ
-                  </SubmitButton>
-                </form>
-              </div>
-            ),
-          }))}
-          empty="ไม่มีใบลารออนุมัติ — คำขอลาของพนักงานจะมาแสดงที่นี่"
-        />
+        {pending.length === 0 ? (
+          <p className={`text-sm ${muted}`}>ไม่มีใบลารออนุมัติ — คำขอลาของพนักงานจะมาแสดงที่นี่</p>
+        ) : (
+          <BulkLeaveApprovals
+            systemId={systemId}
+            items={pending.map((l) => ({
+              id: l.id,
+              label: `${l.employee.name} · ${LEAVE_TYPE_LABEL[l.type] ?? l.type}`,
+              meta: [dateRange(l.fromDate, l.toDate), l.reason].filter(Boolean).join(" · "),
+            }))}
+          />
+        )}
         {/* ยื่นใบลา */}
         {employees.length > 0 && (
           <form action={requestLeaveAction} className="mt-1 flex flex-wrap items-end gap-2">

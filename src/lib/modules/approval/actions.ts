@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
 import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
-import { createPolicy, updatePolicy, setPolicyActive, decide, cancelRequest } from "./service";
+import { createPolicy, updatePolicy, setPolicyActive, decide, bulkDecide, cancelRequest } from "./service";
 
 const SETTINGS_PATH = "/app/settings/approval";
 const APPROVALS_PATH = "/app/approvals";
@@ -144,6 +144,36 @@ export async function decideAction(formData: FormData): Promise<void> {
   if (!requestId || (rawDecision !== "APPROVED" && rawDecision !== "REJECTED")) return;
   await decide(membershipOf(auth), ctxOf(auth), requestId, { decision: rawDecision, note });
   revalidatePath(APPROVALS_PATH);
+}
+
+// อนุมัติ/ปฏิเสธหลายคำขอพร้อมกัน (checkbox หลายรายการ) — สิทธิ์เดียวกับตัดสินรายใบ
+// คืนสรุปผลให้ useActionState แสดง inline (สำเร็จ N · ล้มเหลว M พร้อมเหตุผล)
+export type BulkDecideState =
+  | { status: "idle" }
+  | { status: "done"; done: number; failed: { id: string; reason: string }[] }
+  | { status: "error"; message: string };
+
+export async function bulkDecideAction(
+  _prev: BulkDecideState,
+  formData: FormData,
+): Promise<BulkDecideState> {
+  const auth = await requireTenant();
+  assertCan(membershipOf(auth), { module: "approval", action: "approval.request.decide" });
+
+  const requestIds = formData.getAll("requestIds").map(String).filter(Boolean);
+  const rawDecision = String(formData.get("decision") ?? "");
+  const note = String(formData.get("note") ?? "").trim() || null;
+  if (rawDecision !== "APPROVED" && rawDecision !== "REJECTED") {
+    return { status: "error", message: "การตัดสินไม่ถูกต้อง" };
+  }
+  if (requestIds.length === 0) return { status: "error", message: "กรุณาเลือกอย่างน้อย 1 คำขอ" };
+  if (rawDecision === "REJECTED" && !note) {
+    return { status: "error", message: "กรุณาระบุเหตุผลที่ไม่อนุมัติ" };
+  }
+
+  const res = await bulkDecide(membershipOf(auth), ctxOf(auth), requestIds, rawDecision, note);
+  revalidatePath(APPROVALS_PATH);
+  return { status: "done", done: res.done, failed: res.failed };
 }
 
 // ผู้ยื่นยกเลิกคำขอของตัวเอง (หน้า "คำขอของฉัน") — เฉพาะที่ตัวเองยื่น + ยัง PENDING

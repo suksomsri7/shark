@@ -314,6 +314,42 @@ export async function decide(
   });
 }
 
+// ── ตัดสินหลายใบพร้อมกัน (bulk) ──────────────────────────────────
+
+export type BulkDecideResult = { done: number; failed: { id: string; reason: string }[] };
+
+// เหตุผลไทยที่ decide คืน ok:false — status ไม่ใช่ PENDING หรือสิทธิ์/สถานะเปลี่ยนระหว่างกด
+function bulkFailReason(status: string): string {
+  if (status === "NOT_FOUND") return "ไม่พบคำขอในร้านนี้";
+  if (status === "APPROVED") return "อนุมัติไปแล้ว";
+  if (status === "REJECTED") return "ปฏิเสธไปแล้ว";
+  if (status === "CANCELLED") return "ถูกยกเลิกแล้ว";
+  return "ไม่มีสิทธิ์ตัดสินขั้นนี้ หรือถูกตัดสินไปแล้ว";
+}
+
+// อนุมัติ/ปฏิเสธหลายคำขอพร้อมกัน — วน decide() ทีละใบ (แต่ละใบ assertCan/claim/atomic เดิม)
+// ไม่ atomic ทั้งชุด: ใบไหนพลาด (สิทธิ์ไม่พอ/สถานะเปลี่ยน/ไม่พบ/ข้ามร้าน) → บันทึกใน failed แล้วทำใบต่อไป
+// note ใช้ร่วมทุกใบที่เลือก (เช่น เหตุผลปฏิเสธชุดเดียว)
+export async function bulkDecide(
+  m: MembershipCtx & { userId: string },
+  ctx: Ctx,
+  requestIds: string[],
+  decision: "APPROVED" | "REJECTED",
+  note?: string | null,
+): Promise<BulkDecideResult> {
+  const result: BulkDecideResult = { done: 0, failed: [] };
+  for (const id of requestIds) {
+    try {
+      const r = await decide(m, ctx, id, { decision, note: note ?? null });
+      if (r.ok) result.done += 1;
+      else result.failed.push({ id, reason: bulkFailReason(r.status) });
+    } catch (e) {
+      result.failed.push({ id, reason: e instanceof Error ? e.message.slice(0, 120) : "เกิดข้อผิดพลาด" });
+    }
+  }
+  return result;
+}
+
 // ── รายการ + ยกเลิก ─────────────────────────────────────────────
 
 // คำขอ PENDING ที่ step ปัจจุบันรอ "คนแบบนี้" (role/userId) ตัดสิน

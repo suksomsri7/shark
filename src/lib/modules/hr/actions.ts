@@ -8,6 +8,7 @@ import {
   clock,
   createEmployee,
   decideLeave,
+  bulkDecideLeave,
   requestLeave,
   type Ctx,
 } from "./service";
@@ -93,4 +94,31 @@ export async function decideLeaveAction(formData: FormData) {
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   await decideLeave(ctx, leaveId, rawStatus, auth.active.userId);
   revalidate(systemId);
+}
+
+// ── อนุมัติ/ปฏิเสธใบลาหลายใบพร้อมกัน (checkbox) — สิทธิ์เดียวกับตัดสินรายใบ ──
+// คืนสรุปผลให้ useActionState แสดง inline (สำเร็จ N · ล้มเหลว M)
+export type BulkLeaveState =
+  | { status: "idle" }
+  | { status: "done"; done: number; failed: { id: string; reason: string }[] }
+  | { status: "error"; message: string };
+
+export async function bulkDecideLeaveAction(
+  systemId: string,
+  _prev: BulkLeaveState,
+  formData: FormData,
+): Promise<BulkLeaveState> {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.leave.decide");
+  const leaveIds = formData.getAll("leaveIds").map(String).filter(Boolean);
+  const rawStatus = String(formData.get("status") ?? "");
+  if (!systemId) return { status: "error", message: "ไม่พบระบบ" };
+  if (rawStatus !== "APPROVED" && rawStatus !== "REJECTED") {
+    return { status: "error", message: "การตัดสินไม่ถูกต้อง" };
+  }
+  if (leaveIds.length === 0) return { status: "error", message: "กรุณาเลือกอย่างน้อย 1 ใบลา" };
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const res = await bulkDecideLeave(ctx, leaveIds, rawStatus, auth.active.userId);
+  revalidate(systemId);
+  return { status: "done", done: res.done, failed: res.failed };
 }

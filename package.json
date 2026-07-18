@@ -74,7 +74,8 @@
     "qc:subscription-money": "tsx scripts/qc-subscription-money.mts",
     "qc:approval": "tsx scripts/qc-approval.mts",
     "qc:approval-wiring": "tsx scripts/qc-approval-wiring.mts",
-    "qc:approval-edit": "tsx scripts/qc-approval-edit.mts"
+    "qc:approval-edit": "tsx scripts/qc-approval-edit.mts",
+    "qc:bulk-ops": "tsx scripts/qc-bulk-ops.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

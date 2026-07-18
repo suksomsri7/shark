@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { cell, columnIndex, type CsvTable, type ImportSummary } from "@/lib/core/csv";
@@ -536,6 +537,30 @@ export async function adjust(ctx: Ctx, input: AdjustInput): Promise<{ id: string
     });
     return { id: mv.id };
   });
+}
+
+// ── นับสต็อกหลายรายการพร้อมกัน (bulk stock take) — วน adjust() ตั้ง onHand = จำนวนนับจริง ทีละตัว ──
+// reuse adjust ต่อรายการ (atomic/idempotent เดิม · movement ADJUST ไม่โพสต์ GL ตาม account-bridge)
+// ไม่ atomic ทั้งชุด: id ข้ามร้าน/ไม่พบ → adjust โยน "ไม่พบสินค้าในคลัง" → บันทึก failed แล้วไปต่อ
+// reason = "นับสต็อก" · idempotencyKey ใหม่ต่อรายการ (การนับเป็น action ครั้งเดียวเหมือน manual receive/consume)
+export type BulkCountLine = { itemId: string; countedQty: number };
+export type BulkCountResult = { done: number; failed: { itemId: string; reason: string }[] };
+export async function bulkCount(ctx: Ctx, counts: BulkCountLine[]): Promise<BulkCountResult> {
+  const result: BulkCountResult = { done: 0, failed: [] };
+  for (const c of counts) {
+    try {
+      await adjust(ctx, {
+        itemId: c.itemId,
+        newQty: Math.round(c.countedQty),
+        idempotencyKey: `count-${randomUUID()}`,
+        note: "นับสต็อก",
+      });
+      result.done += 1;
+    } catch (e) {
+      result.failed.push({ itemId: c.itemId, reason: e instanceof Error ? e.message.slice(0, 120) : "ปรับสต็อกไม่สำเร็จ" });
+    }
+  }
+  return result;
 }
 
 // ── โอนระหว่างคลัง (TRANSFER) — ย้ายสต็อกข้ามคลัง onHand รวมไม่เปลี่ยน (WO-0037) ──

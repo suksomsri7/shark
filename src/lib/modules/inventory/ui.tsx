@@ -12,6 +12,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { formatThaiDate, formatThaiDateTime } from "@/lib/ui/date";
 import CsvImport from "@/components/CsvImport";
 import BarcodeSearch from "./BarcodeSearch";
+import StockCount from "./StockCount";
 import {
   ensureDefaultLocation,
   listItems,
@@ -212,6 +213,25 @@ export async function InventoryContent({ systemId }: { systemId: string }) {
               <SubmitButton variant="ghost">ตัดออก</SubmitButton>
             </form>
           </div>
+        </Section>
+      )}
+
+      {/* นับสต็อก — กรอกจำนวนจริงหลายรายการแล้วบันทึกทีเดียว */}
+      {items.length > 0 && (
+        <Section title="นับสต็อก (ปรับหลายรายการพร้อมกัน)">
+          <p className={`mb-2 text-xs ${muted}`}>
+            กรอกเฉพาะรายการที่นับ — ระบบจะตั้งยอดคงเหลือเป็นจำนวนที่นับได้ (บันทึกเป็น &quot;ปรับปรุง&quot;)
+          </p>
+          <StockCount
+            systemId={systemId}
+            items={items.map((i) => ({
+              id: i.id,
+              name: i.name,
+              sku: i.sku,
+              onHand: i.onHand,
+              unitLabel: i.unitLabel,
+            }))}
+          />
         </Section>
       )}
 

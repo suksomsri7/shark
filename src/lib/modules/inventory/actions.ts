@@ -7,6 +7,7 @@ import { assertCan } from "@/lib/core/rbac";
 import { parseCsv, type ImportSummary } from "@/lib/core/csv";
 import {
   archiveItem,
+  bulkCount,
   consume,
   createItem,
   createLocation,
@@ -150,6 +151,37 @@ export async function consumeAction(formData: FormData) {
     lotCode: String(formData.get("lotCode") ?? "").trim() || null,
   });
   revalidate(systemId);
+}
+
+// ── นับสต็อกหลายรายการพร้อมกัน (stock take) — ตั้ง onHand = จำนวนนับจริง เฉพาะแถวที่กรอก ──
+// สิทธิ์เดียวกับปรับสต็อกรายตัว (inventory.movement.adjust) · คืนสรุปผลให้ useActionState แสดง inline
+export type BulkCountState =
+  | { status: "idle" }
+  | { status: "done"; done: number; failed: { itemId: string; reason: string }[] }
+  | { status: "error"; message: string };
+
+export async function bulkCountAction(
+  systemId: string,
+  _prev: BulkCountState,
+  formData: FormData,
+): Promise<BulkCountState> {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.movement.adjust");
+  if (!systemId) return { status: "error", message: "ไม่พบระบบ" };
+  // แถวขนาน: countItemId[] / countQty[] — เฉพาะแถวที่กรอกจำนวนจริง (ว่าง = ไม่นับ · "0" = นับได้ 0)
+  const itemIds = formData.getAll("countItemId");
+  const rawQtys = formData.getAll("countQty");
+  const counts = itemIds
+    .map((raw, i) => ({ itemId: String(raw ?? "").trim(), rawQty: String(rawQtys[i] ?? "").trim() }))
+    .filter((c) => c.itemId && c.rawQty !== "")
+    .map((c) => ({ itemId: c.itemId, countedQty: Math.max(0, Math.round(Number(c.rawQty) || 0)) }));
+  if (counts.length === 0) {
+    return { status: "error", message: "กรุณากรอกจำนวนที่นับได้อย่างน้อย 1 รายการ" };
+  }
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const res = await bulkCount(ctx, counts);
+  revalidate(systemId);
+  return { status: "done", done: res.done, failed: res.failed };
 }
 
 // ── นำเข้าสินค้าจาก CSV (WO Wave6-A) — ใช้กับ useActionState · onHand เริ่ม 0 ──

@@ -113,6 +113,28 @@ export async function decideLeave(
   });
 }
 
+// อนุมัติ/ปฏิเสธใบลาหลายใบพร้อมกัน (bulk) — วน decideLeave() ทีละใบ (แต่ละใบ scope tenant+system เดิม)
+// ไม่ atomic ทั้งชุด: ใบไหน id ข้ามร้าน/ไม่พบ → guard tenantDb โยน (P2025) → บันทึก failed แล้วไปต่อ
+export type BulkLeaveResult = { done: number; failed: { id: string; reason: string }[] };
+export async function bulkDecideLeave(
+  ctx: Ctx,
+  leaveIds: string[],
+  status: "APPROVED" | "REJECTED",
+  decidedById?: string | null,
+): Promise<BulkLeaveResult> {
+  const result: BulkLeaveResult = { done: 0, failed: [] };
+  for (const id of leaveIds) {
+    try {
+      await decideLeave(ctx, id, status, decidedById ?? null);
+      result.done += 1;
+    } catch {
+      // id ข้ามร้าน/ไม่พบ → guard โยน P2025 (ข้อความอังกฤษ) → ใช้เหตุผลไทยแทน
+      result.failed.push({ id, reason: "ไม่พบใบลา หรืออยู่นอกร้านนี้" });
+    }
+  }
+  return result;
+}
+
 // ── availability (contract C-2) ──
 // โหลดใบลาของพนักงาน แล้วให้ rules ตัดสิน — rules นับเฉพาะ APPROVED (PENDING ไม่ทำให้ไม่ว่าง)
 export async function isAvailable(ctx: Ctx, employeeId: string, date: Date): Promise<boolean> {
