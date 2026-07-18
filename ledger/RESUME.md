@@ -376,3 +376,19 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 - b4 CHAT(สนทนา/ช่องทาง) + KANBAN(งานของฉัน/บอร์ด) + MEETING(1) + KB(fixed-page ครบ) — 56de088
 + business/POS/account จาก b04a401/57bf33c · **ทุกระบบมี accordion กางฟังก์ชัน + ModuleTabs ในหน้า**
 หมายเหตุ: F5 raw-prisma baseline ตัน 44 → section ใหม่ใช้ service เดิม/prisma เฉพาะใน src/app/page.tsx
+
+## 🎓 บทเรียนรอบนี้ (Full-Function drive + แตกฟังก์ชัน · 17-18 ก.ค.) — ห้ามพลาดซ้ำ
+### ❌ ความผิดพลาด → ✅ วิธีแก้
+1. **ลืมทำงานที่สั่งพร้อมกัน**: เจ้าของสั่งแต่แรก "แตกฟังชั่น + ทำ Full function" = 2 งาน แต่ผมทำแค่ "สร้างฟังก์ชัน" (44 WO) **ลืม "แตกฟังก์ชันเข้าเมนู" ไปเลย** จนเจ้าของทักพร้อม screenshot → **แก้: parse คำสั่งให้ครบทุกส่วน ตอนเริ่มลิสต์งานย่อยทั้งหมดก่อน อย่า drop ส่วนใดส่วนหนึ่ง**
+2. **Curate เอง งาน completeness ไม่ครบ**: กาง accordion แค่บางฟังก์ชัน (POS ลืม "ขายหน้าร้าน", booking ลืม "ตั้งค่า") เจ้าของทัก 2 รอบ → **แก้: งาน "ครบทุก X" ต้อง enumerate ทั้งหมดจาก source of truth (fs/DB) แล้วใส่ให้ครบ + เขียน oracle บังคับ completeness (qc-nav-functions นับ sub-route จริงเทียบเมนู · dead-link 0) กันลืมซ้ำเชิงกลไก**
+3. **รวมฟังก์ชันในหน้าเดียว ทั้งที่สั่ง "1 ฟังก์ชัน=1 หน้า"**: point manage=ตั้งค่า+ปรับ, reward redeem=แลก+ประวัติ (builder ตัดสิน "conservative combine") → **แก้: เมื่อ user บอกเกณฑ์ชัด (1 ฟังก์ชัน=1 หน้า) ห้าม combine เอง ทำตามเกณฑ์เป๊ะ**
+4. **ประเมินงานเกินจริง**: บอก "แตกฟังก์ชัน = งานใหญ่" ทั้งที่เป็น UI/UX ล้วน (ย้าย section→หน้า ไม่แตะ logic) เจ้าของทัก → **แก้: แยก "จำนวน item" ออกจาก "ความยาก" · งานย้าย UI = เบา/เสี่ยงต่ำ อย่าทำให้ดูน่ากลัว**
+5. **Over-classify ว่า blocked**: บอก Wave 3 public storefront "ติด creds/ต้องเทส" ทั้งที่ **PromptPay QR = cred-free** (คำนวณจากเลขพร้อมเพย์ร้านเอง) เทสด้วย oracle ได้ · ที่ติดจริงมีแค่ LINE OA + Beam(บัตร) → **แก้: ตรวจให้ชัดว่าอะไร blocked จริง อย่าเหมารวม**
+
+### 🔧 Patterns ที่พิสูจน์แล้ว (reuse ได้เลย)
+- **Refund/void** = mirror `pos.voidSale` (กลับบัญชี+แต้ม+คูปอง) + side-effect ย้อนกลับ (คืนสต็อก/seat/ยา) · claim สถานะอะตอมมิกก่อน void นอก tx
+- **Notification** = mirror `chat.announceInbound` (AppNotification + emitOutbox + de-dup transition 0→1) + ลงทะเบียน consumer ใน outbox-consumers.ts
+- **Public storefront** = mirror `hotel` public (resolve slug + rate-limit + PromptPayQr + status page + publicToken cuid) · store landing route ต่อ
+- **GL posting ต้องทำหลัง tx (ไม่ใช่ใน tx เดิม)** — เพราะ tenantDb(ctx) inject systemId=โมดูลนั้น จะทับ accountJournalEntry.systemId (บัญชีเพี้ยน) · แพตเทิร์นเดียวกับ postPayrollJV
+- **Race guard** = `SELECT ... FOR UPDATE` row-lock ต้น tx (ไม่ใช้ exclusion constraint บน prod live) · perpetual accounting = consume→COGS / receive→AP หรือ reverse-COGS ตาม sourceModule
+- **แตก UI** = Section→async component + `xxxTabs()` + `XxxHub` + sub-route page (mirror POS/HR) · F5 raw-prisma ตัน 44 → section ใหม่ใช้ service เดิม, prisma เฉพาะ src/app/page.tsx
