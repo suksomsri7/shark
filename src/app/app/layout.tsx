@@ -115,6 +115,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/inventory/locations`, label: "คลัง" },
           { href: `${s}/inventory/procurement`, label: "จัดซื้อ" },
         ];
+      case "CRM":
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/crm/deals`, label: "ดีล" },
+          { href: `${s}/crm/activities`, label: "งานติดตาม" },
+          { href: `${s}/crm/contacts`, label: "ผู้ติดต่อ" },
+        ];
+      case "MARKETING":
+        // ระบบการตลาดมีฟังก์ชันจริงเดียว (แคมเปญ) — ไม่ฝืนแตกเกินจริง
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/marketing/campaigns`, label: "แคมเปญ" },
+        ];
+      case "COUPON":
+        // ระบบคูปองมีฟังก์ชันจริงเดียว (คูปอง) — ไม่ฝืนแตกเกินจริง
+        return [
+          { href: s, label: "ภาพรวม" },
+          { href: `${s}/coupon/list`, label: "คูปอง" },
+        ];
       default:
         return undefined; // MEMBER/POINT/… = render inline หน้าเดียว ไม่มี sub-route
     }

@@ -24,7 +24,7 @@ function chk(id: string, name: string, ok: boolean, detail: string, sev: Sev = "
 
 // ─── ระบบที่ "ควรมี" children (ตาม WO แตกฟังก์ชัน) ─────────────────────────────
 const EXPECT_BUSINESS = ["HOTEL", "RESTAURANT", "SHOP", "QUEUE", "TICKET", "BOOKING"];
-const EXPECT_FEATURE = ["POS", "ACCOUNT", "HR", "INVENTORY"];
+const EXPECT_FEATURE = ["POS", "ACCOUNT", "HR", "INVENTORY", "CRM", "MARKETING", "COUPON"];
 
 // ─── map href (route) → path ไฟล์ page.tsx จริง ──────────────────────────────
 // business: /app/u/${slugOrId}/rest  → src/app/app/u/[unitSlug]/rest/page.tsx
@@ -205,6 +205,14 @@ for (const b of BIZ_COMPLETE) {
   requiredByType.set("HR", [...sysRoot, ...routesUnder(join(POS_BASE, "hr"), POS_BASE)]);
   requiredByType.set("INVENTORY", [...sysRoot, ...routesUnder(join(POS_BASE, "inventory"), POS_BASE)]);
 }
+// CRM / MARKETING / COUPON: root overview (sys/[id]/page.tsx → "") + ทุกหน้าย่อยใต้ folder ของระบบ
+// (batch 2 แตกฟังก์ชัน CRM+Marketing+Coupon — CRM แตกจริง 3 หน้า · Marketing/Coupon ฟังก์ชันเดียว = hub + 1 หน้า)
+{
+  const sysRoot = existsSync(join(POS_BASE, "page.tsx")) ? [""] : [];
+  requiredByType.set("CRM", [...sysRoot, ...routesUnder(join(POS_BASE, "crm"), POS_BASE)]);
+  requiredByType.set("MARKETING", [...sysRoot, ...routesUnder(join(POS_BASE, "marketing"), POS_BASE)]);
+  requiredByType.set("COUPON", [...sysRoot, ...routesUnder(join(POS_BASE, "coupon"), POS_BASE)]);
+}
 
 const incomplete: string[] = [];
 for (const [type, required] of requiredByType) {
@@ -216,7 +224,7 @@ for (const [type, required] of requiredByType) {
 }
 chk(
   "S5",
-  "accordion กางครบทุก sub-route จริง (completeness: hotel/restaurant/shop/queue/ticket/booking/POS/HR/INVENTORY)",
+  "accordion กางครบทุก sub-route จริง (completeness: hotel/restaurant/shop/queue/ticket/booking/POS/HR/INVENTORY/CRM/MARKETING/COUPON)",
   incomplete.length === 0,
   `ไม่ครบ:\n     - ${incomplete.join("\n     - ")}`,
   "CRITICAL",

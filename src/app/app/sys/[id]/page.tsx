@@ -13,15 +13,15 @@ import { RedeemForm } from "@/lib/modules/reward/forms";
 import { getPointSettings, listPointCustomers } from "@/lib/modules/point/service";
 import { closeDaySummary } from "@/lib/modules/pos/service";
 import { PointSettingsForm, AdjustPointsForm } from "@/lib/modules/point/forms";
-import { CouponContent } from "@/lib/modules/coupon/ui";
+import { CouponHub } from "@/lib/modules/coupon/ui";
 import { MeetingContent } from "@/lib/modules/meeting/ui";
 import { KanbanContent } from "@/lib/modules/kanban/ui";
 import { AccountContent } from "@/lib/modules/account/ui";
 import { ChatContent } from "@/lib/modules/chat/ui";
-import { CrmContent } from "@/lib/modules/crm/ui";
+import { CrmHub } from "@/lib/modules/crm/ui";
 import { InvHub } from "@/lib/modules/inventory/ui";
 import { HrHub } from "@/lib/modules/hr/ui";
-import { MarketingContent } from "@/lib/modules/marketing/ui";
+import { MarketingHub } from "@/lib/modules/marketing/ui";
 import { SubscriptionSection } from "@/lib/modules/member/subscription-ui";
 import { importCustomersAction } from "@/lib/modules/member/import-actions";
 import CsvImport from "@/components/CsvImport";
@@ -121,15 +121,15 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
       {sys.type === "POINT" && <PointContent systemId={id} />}
       {sys.type === "POS" && <PosContent systemId={id} tenantId={tenantId} />}
       {sys.type === "REWARD" && <RewardContent systemId={id} tenantId={tenantId} />}
-      {sys.type === "COUPON" && <CouponContent systemId={id} tenantId={tenantId} />}
+      {sys.type === "COUPON" && <CouponHub systemId={id} tenantId={tenantId} />}
       {sys.type === "MEETING" && <MeetingContent systemId={id} tenantId={tenantId} />}
       {sys.type === "KANBAN" && <KanbanContent systemId={id} tenantId={tenantId} />}
       {sys.type === "ACCOUNT" && <AccountContent systemId={id} tenantId={tenantId} />}
       {sys.type === "CHAT" && <ChatContent systemId={id} tenantId={tenantId} />}
-      {sys.type === "CRM" && <CrmContent systemId={id} />}
+      {sys.type === "CRM" && <CrmHub systemId={id} />}
       {sys.type === "INVENTORY" && <InvHub systemId={id} />}
       {sys.type === "HR" && <HrHub systemId={id} />}
-      {sys.type === "MARKETING" && <MarketingContent systemId={id} />}
+      {sys.type === "MARKETING" && <MarketingHub systemId={id} />}
     </div>
   );
 }

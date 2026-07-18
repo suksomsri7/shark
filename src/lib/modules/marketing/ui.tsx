@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
+import { ModuleTabs } from "@/components/module-tabs";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
@@ -9,6 +11,17 @@ import { listCampaigns, previewAudience, type Ctx } from "./service";
 import { createCampaignAction, sendCampaignAction } from "./actions";
 
 const muted = "text-[color:var(--color-muted)]";
+
+// แท็บฟังก์ชันย่อยของระบบการตลาด (ใช้ทั้งหน้า hub + ทุกหน้าย่อย ให้ตรงกันเสมอ)
+// ⚠️ ต้องตรงกับ childrenFor("MARKETING") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions.mts)
+// หมายเหตุ: ระบบการตลาดมีฟังก์ชันจริงเดียว (แคมเปญ = รายการ + สร้าง + ส่ง) — ไม่ฝืนแตกเกินจริง
+export function marketingTabs(systemId: string): { href: string; label: string }[] {
+  const s = `/app/sys/${systemId}`;
+  return [
+    { href: s, label: "ภาพรวม" },
+    { href: `${s}/marketing/campaigns`, label: "แคมเปญ" },
+  ];
+}
 
 // สถานะแคมเปญ (ไทย) — DRAFT/SCHEDULED ระหว่างทาง(เทา) · SENT ส่งแล้ว(ดำ) · CANCELLED ยกเลิก(แดง)
 const STATUS_LABEL: Record<string, string> = {
@@ -39,8 +52,8 @@ function segmentSummary(raw: unknown): string {
   return parts.length ? parts.join(" · ") : "ลูกค้าทุกคน";
 }
 
-// ───────────── MarketingContent (ฝังในหน้า /app/sys/[id]) ─────────────
-export async function MarketingContent({ systemId }: { systemId: string }) {
+// ───────────── แคมเปญ (campaigns) — รายการ + สร้าง + ส่ง ─────────────
+export async function MarketingCampaignsSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
@@ -196,4 +209,44 @@ export async function MarketingContent({ systemId }: { systemId: string }) {
   );
 }
 
-export default MarketingContent;
+// ───────────── MarketingHub (หน้าภาพรวม ฝังใน /app/sys/[id]) ─────────────
+// การ์ดสรุปสั้น + ลิงก์เข้าฟังก์ชันแคมเปญ (ระบบมีฟังก์ชันเดียว → hub + 1 หน้าย่อย)
+export async function MarketingHub({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  const campaigns = await listCampaigns(ctx);
+  const sent = campaigns.filter((c) => c.status === "SENT").length;
+
+  const cards = [
+    {
+      href: `/app/sys/${systemId}/marketing/campaigns`,
+      label: "แคมเปญ",
+      value: `${campaigns.length} รายการ`,
+      desc: sent > 0 ? `ส่งแล้ว ${sent} · สร้าง/ส่งโปรถึงกลุ่มลูกค้า` : "สร้าง/ส่งโปรถึงกลุ่มลูกค้า",
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <ModuleTabs items={marketingTabs(systemId)} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {cards.map((c) => (
+          <Link
+            key={c.href}
+            href={c.href}
+            className="card flex min-h-[76px] flex-col gap-1 p-4 transition-colors hover:bg-[color:var(--color-surface-2)]"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{c.label}</span>
+              {c.value && <span className="text-sm tabular-nums text-[color:var(--color-accent)]">{c.value}</span>}
+            </div>
+            <span className={`text-xs ${muted}`}>{c.desc}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default MarketingHub;

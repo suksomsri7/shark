@@ -1,9 +1,12 @@
+import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
+import { ModuleTabs } from "@/components/module-tabs";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { formatBaht } from "@/lib/ui/money";
 import {
   getBoard,
   listContacts,
@@ -49,22 +52,32 @@ const lifecycleTone = (v: string): "muted" | "strong" | "danger" =>
 const fmtDue = (d: Date) =>
   d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "Asia/Bangkok" });
 
-// ───────────── CrmContent (ฝังในหน้า /app/sys/[id]) ─────────────
-export async function CrmContent({ systemId }: { systemId: string }) {
+// แท็บฟังก์ชันย่อยของระบบ CRM (ใช้ทั้งหน้า hub + ทุกหน้าย่อย ให้ตรงกันเสมอ)
+// ⚠️ ต้องตรงกับ childrenFor("CRM") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions.mts)
+export function crmTabs(systemId: string): { href: string; label: string }[] {
+  const s = `/app/sys/${systemId}`;
+  return [
+    { href: s, label: "ภาพรวม" },
+    { href: `${s}/crm/deals`, label: "ดีล" },
+    { href: `${s}/crm/activities`, label: "งานติดตาม" },
+    { href: `${s}/crm/contacts`, label: "ผู้ติดต่อ" },
+  ];
+}
+
+// ───────────── ดีล / ไปป์ไลน์ / ยอดคาดการณ์ (deals) ─────────────
+export async function CrmDealsSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  const [board, contacts, pending, activities, forecastSatang] = await Promise.all([
+  const [board, contacts, activities, forecastSatang] = await Promise.all([
     getBoard(ctx),
     listContacts(ctx),
-    listPendingActivities(ctx),
     listActivities(ctx, {}),
     forecast(ctx),
   ]);
 
   const stages = board.pipeline.stages; // เรียง sortOrder แล้วจาก service
   const lastIdx = stages.length - 1;
-  const contactName = (id: string) => contacts.find((c) => c.id === id)?.name;
 
   return (
     <div className="flex flex-col gap-6">
@@ -253,66 +266,141 @@ export async function CrmContent({ systemId }: { systemId: string }) {
           <p className={`text-xs ${muted}`}>เพิ่มผู้ติดต่อก่อน แล้วจึงสร้างดีลได้</p>
         )}
       </Section>
-
-      {/* งานค้าง (follow-up) */}
-      <Section title={`งานติดตามค้างอยู่ (${pending.length})`}>
-        <DataList
-          items={pending.map((a) => ({
-            key: a.id,
-            primary: a.title,
-            secondary: [
-              a.contact?.name ?? (a.dealId ? contactName(a.contactId ?? "") : null),
-              a.deal?.title,
-            ]
-              .filter(Boolean)
-              .join(" · ") || undefined,
-            trailing: (
-              <>
-                {a.dueAt && <span className={`text-xs ${muted}`}>ครบกำหนด {fmtDue(a.dueAt)}</span>}
-                <form action={completeActivityAction}>
-                  <input type="hidden" name="systemId" value={systemId} />
-                  <input type="hidden" name="activityId" value={a.id} />
-                  <button className="btn-sm px-3 text-xs">ปิดงาน</button>
-                </form>
-              </>
-            ),
-          }))}
-          empty="ไม่มีงานติดตามค้าง — เพิ่มงานจากดีลหรือผู้ติดต่อเพื่อไม่ให้ลืมตาม"
-        />
-      </Section>
-
-      {/* รายชื่อผู้ติดต่อ */}
-      <Section title={`ผู้ติดต่อ (${contacts.length})`}>
-        <DataList
-          items={contacts.map((c) => ({
-            key: c.id,
-            primary: c.name,
-            secondary: [c.phone, c.source].filter(Boolean).join(" · ") || undefined,
-            trailing: (
-              <StatusChip value={c.lifecycleStage} map={LIFECYCLE_LABEL} tone={lifecycleTone(c.lifecycleStage)} />
-            ),
-          }))}
-          empty="ยังไม่มีผู้ติดต่อ — เพิ่มผู้สนใจรายแรกเพื่อเริ่มติดตามการขาย"
-        />
-        <form action={createContactAction} className="mt-1 flex flex-wrap items-end gap-2">
-          <input type="hidden" name="systemId" value={systemId} />
-          <label className={`flex flex-1 flex-col gap-1 text-xs ${muted}`}>
-            ชื่อผู้ติดต่อ
-            <input name="name" required placeholder="เช่น คุณสมชาย" className="input min-w-0" />
-          </label>
-          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
-            เบอร์โทร
-            <input name="phone" inputMode="tel" placeholder="080-000-0000" className="input" />
-          </label>
-          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
-            ที่มา
-            <input name="source" placeholder="เช่น LINE" className="input" />
-          </label>
-          <button className="btn btn-ghost text-sm">+ เพิ่มผู้ติดต่อ</button>
-        </form>
-      </Section>
     </div>
   );
 }
 
-export default CrmContent;
+// ───────────── งานติดตามค้าง (activities / follow-up) ─────────────
+export async function CrmActivitiesSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  const [contacts, pending] = await Promise.all([listContacts(ctx), listPendingActivities(ctx)]);
+  const contactName = (id: string) => contacts.find((c) => c.id === id)?.name;
+
+  return (
+    <Section title={`งานติดตามค้างอยู่ (${pending.length})`}>
+      <DataList
+        items={pending.map((a) => ({
+          key: a.id,
+          primary: a.title,
+          secondary: [
+            a.contact?.name ?? (a.dealId ? contactName(a.contactId ?? "") : null),
+            a.deal?.title,
+          ]
+            .filter(Boolean)
+            .join(" · ") || undefined,
+          trailing: (
+            <>
+              {a.dueAt && <span className={`text-xs ${muted}`}>ครบกำหนด {fmtDue(a.dueAt)}</span>}
+              <form action={completeActivityAction}>
+                <input type="hidden" name="systemId" value={systemId} />
+                <input type="hidden" name="activityId" value={a.id} />
+                <button className="btn-sm px-3 text-xs">ปิดงาน</button>
+              </form>
+            </>
+          ),
+        }))}
+        empty="ไม่มีงานติดตามค้าง — เพิ่มงานจากดีลหรือผู้ติดต่อเพื่อไม่ให้ลืมตาม"
+      />
+    </Section>
+  );
+}
+
+// ───────────── ผู้ติดต่อ / lead (contacts) ─────────────
+export async function CrmContactsSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  const contacts = await listContacts(ctx);
+
+  return (
+    <Section title={`ผู้ติดต่อ (${contacts.length})`}>
+      <DataList
+        items={contacts.map((c) => ({
+          key: c.id,
+          primary: c.name,
+          secondary: [c.phone, c.source].filter(Boolean).join(" · ") || undefined,
+          trailing: (
+            <StatusChip value={c.lifecycleStage} map={LIFECYCLE_LABEL} tone={lifecycleTone(c.lifecycleStage)} />
+          ),
+        }))}
+        empty="ยังไม่มีผู้ติดต่อ — เพิ่มผู้สนใจรายแรกเพื่อเริ่มติดตามการขาย"
+      />
+      <form action={createContactAction} className="mt-1 flex flex-wrap items-end gap-2">
+        <input type="hidden" name="systemId" value={systemId} />
+        <label className={`flex flex-1 flex-col gap-1 text-xs ${muted}`}>
+          ชื่อผู้ติดต่อ
+          <input name="name" required placeholder="เช่น คุณสมชาย" className="input min-w-0" />
+        </label>
+        <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+          เบอร์โทร
+          <input name="phone" inputMode="tel" placeholder="080-000-0000" className="input" />
+        </label>
+        <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+          ที่มา
+          <input name="source" placeholder="เช่น LINE" className="input" />
+        </label>
+        <button className="btn btn-ghost text-sm">+ เพิ่มผู้ติดต่อ</button>
+      </form>
+    </Section>
+  );
+}
+
+// ───────────── CrmHub (หน้าภาพรวม ฝังใน /app/sys/[id]) ─────────────
+// การ์ดสรุปสั้น + ลิงก์เข้าแต่ละฟังก์ชัน (ไม่ dump ทุก section แล้ว — แตกเป็นหน้าย่อยจริง)
+export async function CrmHub({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+
+  const [board, contacts, pending, forecastSatang] = await Promise.all([
+    getBoard(ctx),
+    listContacts(ctx),
+    listPendingActivities(ctx),
+    forecast(ctx),
+  ]);
+
+  const cards = [
+    {
+      href: `/app/sys/${systemId}/crm/deals`,
+      label: "ดีล / ไปป์ไลน์",
+      value: `${board.deals.length} ดีล`,
+      desc: `ยอดคาดการณ์ ${formatBaht(forecastSatang)}`,
+    },
+    {
+      href: `/app/sys/${systemId}/crm/activities`,
+      label: "งานติดตาม",
+      value: `${pending.length} ค้าง`,
+      desc: "follow-up ที่ต้องทำ",
+    },
+    {
+      href: `/app/sys/${systemId}/crm/contacts`,
+      label: "ผู้ติดต่อ",
+      value: `${contacts.length} ราย`,
+      desc: "lead + ผู้ติดต่อ",
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <ModuleTabs items={crmTabs(systemId)} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {cards.map((c) => (
+          <Link
+            key={c.href}
+            href={c.href}
+            className="card flex min-h-[76px] flex-col gap-1 p-4 transition-colors hover:bg-[color:var(--color-surface-2)]"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{c.label}</span>
+              {c.value && <span className="text-sm tabular-nums text-[color:var(--color-accent)]">{c.value}</span>}
+            </div>
+            <span className={`text-xs ${muted}`}>{c.desc}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default CrmHub;
