@@ -353,3 +353,4 @@ CI: 9 suite ~240 ข้อ · เขียวแท้
 - 🎨 **i18n public** (EN หน้าลูกค้า 8 storefront) — cred-free แต่ mechanical กว้าง (~3-4 วัน) · มี infra (src/lib/i18n/dict + LanguageSwitcher) พร้อมต่อยอด
 - 🔑 **Marketing ส่ง LINE จริง** — ต้อง LINE OA creds จากเจ้าของ
 **PDPA = auto-covered · POS shift state machine = follow-up (ปิดวันตอนนี้ read-only)**
+| แตกฟังก์ชัน | **กางฟังก์ชันย่อยเข้าเมนู accordion ครบทุกระบบ** (2→8 ระบบ 30 links) + **เพิ่ม "ขายหน้าร้าน" POS ที่หายจากเมนู** + ModuleTabs hotel/shop/queue/ticket · account 8 หมวด (งานที่เจ้าของสั่งแต่แรกแต่ลืม) | qc-nav-functions 5/5 | b04a401 |
