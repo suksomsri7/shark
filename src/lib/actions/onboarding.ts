@@ -2,9 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { prisma } from "@/lib/core/db";
 import { requireAuth, setActiveTenant } from "@/lib/core/context";
-import { uniqueTenantSlug } from "@/lib/slug";
+import { createTenantForUser } from "@/lib/mobile/tenants";
 
 const schema = z.object({
   orgName: z.string().trim().min(2, "ชื่อร้านสั้นเกินไป").max(80),
@@ -25,16 +24,8 @@ export async function createTenantAction(
   }
   const { orgName } = parsed.data;
 
-  const tenant = await prisma.$transaction(async (tx) => {
-    const slug = await uniqueTenantSlug(tx, orgName);
-    const t = await tx.tenant.create({
-      data: { name: orgName, slug, status: "ACTIVE", limits: { maxUnits: 10 } },
-    });
-    await tx.membership.create({
-      data: { userId: auth.user.id, tenantId: t.id, role: "OWNER", unitAccess: ["*"], acceptedAt: new Date() },
-    });
-    return t;
-  });
+  // single source: logic transaction ย้ายไป src/lib/mobile/tenants.ts (แชร์กับ /api/mobile/tenants)
+  const tenant = await createTenantForUser(auth.user.id, orgName);
 
   await setActiveTenant(tenant.id);
   redirect("/app/dna"); // → AI สัมภาษณ์ → ประกอบระบบ (ข้ามไปเลือกเองได้จากในหน้า wizard)
