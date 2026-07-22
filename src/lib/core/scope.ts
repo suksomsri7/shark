@@ -39,6 +39,7 @@ const CORE_SCOPES: Record<string, ScopeDescriptor> = {
   User: g("ตัวตนเดียวข้าม tenant ได้ — auth ต้อง query ด้วย email/id ข้ามร้าน"),
   AuthToken: g("ใช้ตอนยังไม่รู้ว่า tenant ไหน (ขั้น login)"),
   Session: g("ผูก user ไม่ผูก tenant — 1 session สลับ tenant ได้"),
+  PushDevice: g("ผูก user (mobile push) — tenantId เป็นแค่ hint กิจการ active ตอนลงทะเบียน"),
   Membership: g("auth ต้อง list membership ทุก tenant ของ user (tenant switcher) — ตรวจสิทธิ์ผ่าน can() ไม่ใช่ row filter"),
   PlatformUser: { axis: "platform", why: "backoffice — เข้าผ่าน platformDb เท่านั้น" },
   BusinessUnit: tenant,

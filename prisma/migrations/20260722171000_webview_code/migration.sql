@@ -1,0 +1,1 @@
+ALTER TYPE "AuthPurpose" ADD VALUE 'WEBVIEW';

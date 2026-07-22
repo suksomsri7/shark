@@ -1,0 +1,14 @@
+// Mobile app (Shark AI App — ledger/MOBILE_PLAN.md)
+// อุปกรณ์รับ push ต่อ user (Expo push token) — ลงทะเบียนหลัง login · ลบตอน logout
+model PushDevice {
+  id        String   @id @default(cuid())
+  userId    String
+  tenantId  String? // tenant ที่ active ตอนลงทะเบียน (แจ้งเตือนเรื่องของกิจการไหน)
+  expoToken String   @unique // ExponentPushToken[...] — unique: เครื่องย้าย user → แถวย้ายตาม
+  platform  String // "ios" | "android"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([tenantId])
+}

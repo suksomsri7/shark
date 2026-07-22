@@ -140,6 +140,7 @@ model Membership {
 enum AuthPurpose {
   MAGIC_LINK
   OTP
+  WEBVIEW // mobile: one-time code 60 วิ แลก cookie เข้า WebView (email เก็บ "userId|tenantId")
 }
 
 model AuthToken {

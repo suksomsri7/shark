@@ -6,11 +6,13 @@ enum AiRole {
 }
 
 model AiConversation {
-  id        String   @id @default(cuid())
-  tenantId  String
-  title     String   @default("") // บรรทัดแรกของข้อความแรก (ตัด 60 ตัว)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String    @id @default(cuid())
+  tenantId   String
+  title      String    @default("") // บรรทัดแรกของข้อความแรก (ตัด 60 ตัว) — mobile แก้ชื่อได้
+  lastReadAt DateTime? // mobile: user เปิดอ่านล่าสุด → unread = มี ASSISTANT msg ใหม่กว่านี้
+  deletedAt  DateTime? // mobile: สไลด์ลบ = soft delete (ประวัติคงอยู่เพื่อ audit/usage)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   messages AiMessage[]
 

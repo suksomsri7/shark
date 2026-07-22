@@ -20,6 +20,7 @@ model SupportCase {
   status                 SupportCaseStatus @default(OPEN)
   assigneePlatformUserId String?
   shopLastReadAt         DateTime? // ร้านเปิดอ่านเธรดล่าสุดเมื่อไหร่ (คำนวณ badge unread)
+  conversationId         String? // mobile: เคสที่ AI เปิดจาก session แชท — admin ตอบ → bridge กลับห้องเดิม
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
 
