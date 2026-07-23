@@ -20,6 +20,12 @@
 - 🛑 **กติกาเจ้าของ: ห้าม build Android จนกว่า iOS สมบูรณ์** (APK รอบ 2 ถูก cancel)
 - รอ feedback รอบถัดไปจากเจ้าของหลังเทส build #7
 
+## 📱 P1.2 FEEDBACK รอบสอง SHIPPED → TestFlight build #8 (23 ก.ค.)
+- **Help ผ่าน AI เต็มวงจร** (แนวคิดเจ้าของแทน Help Center): tool support_open_case (ผูก conversationId + สคริปต์ "อย่าปิด session") · admin ตอบ backoffice → bridge "🛟 ทีมงาน:" เข้าห้องเดิม + unread เด้ง (addPlatformMessage ใน $transaction) · Topbar เอาปุ่มช่วยเหลือออก · NavDrawer เอา ✕ ออก + ซ่อน logout ใน app · oracle qc-mobile-help 9/9
+- **แอป**: orb.png วงแหวนเรืองแสงจริงทุกจุด (ปุ่มลอย/login/DNA/empty) · sessions header เหลือ ‹ + · **logout sync**: WebView intercept /login+/ → signOut ฝั่งแอป · /login?err=code → auto ขอ code ใหม่ (บั๊กเจ้าของเจอ: logout เว็บค้าง error — ปิดแล้ว)
+- QC: qc-mobile-app 29/29 + regression 5 ชุดเขียว · เว็บ deploy READY (5641438) · follow-up เล็ก: เคสจาก AI ใช้ openedByUserId="ai-assistant" (ToolCtx ยังไม่มี userId จริง)
+- รอ feedback เจ้าของหลังเทส build #8 · 🛑 ห้าม build Android จนกว่า iOS สมบูรณ์
+
 ## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
 **สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
 **ทำอะไรไปแล้ว (Full-Function drive คำสั่งเจ้าของ 17 ก.ค. + งาน UI แตกฟังก์ชัน):**
