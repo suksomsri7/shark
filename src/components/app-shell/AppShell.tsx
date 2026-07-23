@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Topbar } from "./Topbar";
-import { NavDrawer, type NavItem, type SoonItem } from "./NavDrawer";
+import { NavDrawer, type NavItem, type SoonItem, type TenantOption } from "./NavDrawer";
 import { AiDock } from "./AiDock";
 import { loadNavBadgesAction } from "@/lib/support/actions";
 
@@ -15,12 +15,16 @@ export function AppShell({
   items,
   soon,
   addHref,
+  memberships,
+  activeTenantId,
 }: {
   tenantName: string;
   userEmail: string;
   items: NavItem[];
   soon: SoonItem[];
   addHref: string;
+  memberships: TenantOption[];
+  activeTenantId: string;
 }) {
   const [drawer, setDrawer] = useState(false);
   // perf A: โหลด badge แชท AI หลังหน้าโผล่ (ไม่บล็อกการเปลี่ยนหน้า)
@@ -50,6 +54,8 @@ export function AppShell({
         items={items}
         soon={soon}
         addHref={addHref}
+        memberships={memberships}
+        activeTenantId={activeTenantId}
       />
       {!inApp && <AiDock aiUnread={aiUnread} />}
     </>
