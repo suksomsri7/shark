@@ -3,9 +3,10 @@
 // ⚠️ ห้ามมี native header — เว็บมี top bar ของตัวเอง · SafeAreaView กันชนติ่งจอ
 // UA ต่อท้าย "SharkApp/1" → ฝั่งเว็บซ่อน orb ของตัวเอง (กัน orb ซ้อน) · ปุ่ม orb AI ลอยมุมล่างขวา → /sessions
 // เปลี่ยนกิจการ (activeTenantId) → ขอ code ใหม่ reload อัตโนมัติ
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
+import { AnimatedOrb } from "@/src/components/ui/orb";
 import { WebView } from "react-native-webview";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -20,30 +21,6 @@ export default function DashboardScreen() {
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // เอฟเฟค orb ลอย แบบเว็บ: หมุนช้า (ai-orb-spin 16s linear) + เต้นแบบหัวใจ (ai-orb-breathe 3.2s)
-  const spin = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const spinAnim = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 16000, easing: Easing.linear, useNativeDriver: true }),
-    );
-    const breatheAnim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(scale, { toValue: 1.07, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(scale, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
-    spinAnim.start();
-    breatheAnim.start();
-    return () => {
-      spinAnim.stop();
-      breatheAnim.stop();
-    };
-  }, [spin, scale]);
-
-  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
 
   const requestCode = useCallback(async () => {
     setError(null);
@@ -148,13 +125,9 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        {/* ปุ่ม orb AI ลอยมุมล่างขวา (native) — วงแหวนน้ำเงินเรืองแสงแบบเว็บ (glow อยู่ในตัว png) */}
+        {/* ปุ่ม orb AI ลอยมุมล่างขวา (native) — หมุนช้า+เต้นหัวใจ (AnimatedOrb) · glow อยู่ในตัว png */}
         <Pressable onPress={() => router.push("/sessions")} hitSlop={16} style={styles.orb}>
-          <Animated.Image
-            source={require("../../assets/orb.png")}
-            style={[styles.orbImg, { transform: [{ rotate }, { scale }] }]}
-            resizeMode="contain"
-          />
+          <AnimatedOrb size={64} />
         </Pressable>
       </View>
     </SafeAreaView>
@@ -186,5 +159,4 @@ const styles = StyleSheet.create({
     right: S.lg,
     bottom: S.lg,
   },
-  orbImg: { width: 64, height: 64 },
 });
