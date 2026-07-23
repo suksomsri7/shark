@@ -6,6 +6,7 @@ import { Text, TextInput } from "@/src/components/ui/text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import FontAwesome6 from "@expo/vector-icons/FontAwesome6";
 import { api, apiErrorText, sendChat } from "@/src/api/client";
 import { ChatBubble } from "@/src/components/chat/ChatBubble";
 import { ProposalCard, type ProposalView } from "@/src/components/chat/ProposalCard";
@@ -251,7 +252,7 @@ export default function ChatScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
+        <Pressable onPress={() => router.replace("/sessions")} hitSlop={10} style={styles.backBtn}>
           <Text style={styles.backText}>‹</Text>
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>
@@ -309,7 +310,7 @@ export default function ChatScreen() {
             multiline
           />
           <Pressable onPress={send} disabled={!canSend} style={[styles.sendBtn, !canSend && styles.disabled]}>
-            {sending ? <ActivityIndicator color="#ffffff" size="small" /> : <Text style={styles.sendArrow}>↑</Text>}
+            {sending ? <ActivityIndicator color="#ffffff" size="small" /> : <FontAwesome6 name="paper-plane" size={16} color="#ffffff" solid />}
           </Pressable>
         </View>
       </KeyboardAvoidingView>

@@ -41,5 +41,37 @@ export async function* sendMobileChat(
     // ข้าม — mark read พลาดไม่กระทบคำตอบ
   }
 
+  // ตั้งชื่อห้องอัตโนมัติจากคำถามแรก (คำสั่งเจ้าของ: "วิเคราะห์ตามที่ user ถาม")
+  // best-effort: AI fast-tier ตั้งชื่อสั้น · พลาด = ตัดข้อความแรก 40 ตัว — ห้ามพังการตอบ
+  try {
+    await autoTitle(ctx, result.conversationId, input.text);
+  } catch {
+    // ข้าม
+  }
+
   yield { type: "done", result };
+}
+
+// ตั้งชื่อห้องจากคำถามแรก — ทำเฉพาะห้องที่ยังไม่มีชื่อ (title ว่าง) · ชื่อ ≤40 ตัวอักษร
+async function autoTitle(ctx: Ctx, conversationId: string, firstText: string): Promise<void> {
+  const db = tenantDb(ctx);
+  const conv = await db.aiConversation.findFirst({ where: { id: conversationId } });
+  if (!conv || conv.title.trim() !== "") return;
+  const fallback = firstText.trim().replace(/\s+/g, " ").slice(0, 40);
+  let title = fallback;
+  try {
+    const { resolveProvider } = await import("@/lib/ai/provider");
+    const provider = resolveProvider("fast");
+    if (provider) {
+      const reply = await provider.chat(
+        [{ role: "user", content: `ตั้งชื่อหัวข้อสั้น ๆ ภาษาไทยไม่เกิน 30 ตัวอักษร สรุปว่าผู้ใช้ต้องการอะไรจากข้อความนี้ ตอบเฉพาะชื่อหัวข้อ ห้ามมีเครื่องหมายคำพูด:\n${firstText.slice(0, 500)}` }],
+        { maxTokens: 60 },
+      );
+      const t = (reply.text ?? "").trim().replace(/^["'“”]+|["'“”]+$/g, "").slice(0, 40);
+      if (t.length >= 2) title = t;
+    }
+  } catch {
+    // ใช้ fallback
+  }
+  await db.aiConversation.updateMany({ where: { id: conversationId }, data: { title } });
 }

@@ -73,6 +73,7 @@ try {
     chk("MC-2.2", "DB มีคู่ USER+ASSISTANT", msgs.some((m) => m.role === "USER") && msgs.some((m) => m.role === "ASSISTANT"), "คู่", JSON.stringify(msgs.map((m) => m.role)));
     const convRow = cid ? await prisma.aiConversation.findUnique({ where: { id: cid } }) : null;
     chk("MC-2.3", "จบแล้ว set lastReadAt (คนส่งอ่านอยู่แล้ว — ไม่ขึ้น unread เอง)", !!convRow?.lastReadAt, "มี", String(convRow?.lastReadAt));
+    chk("MC-2.4", "ตั้งชื่อห้องอัตโนมัติหลังคุยครั้งแรก (title ไม่ว่าง — คำสั่งเจ้าของ)", (convRow?.title ?? "").trim().length >= 2, "มีชื่อ", JSON.stringify(convRow?.title));
   }
 
   // ── routes (ต้องมี Bearer จริง) ──
