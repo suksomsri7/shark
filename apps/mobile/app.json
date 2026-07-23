@@ -41,7 +41,8 @@
         {
           "photosPermission": "แอปขอเข้าถึงรูปภาพเพื่อส่งรูปให้ผู้ช่วย AI ดู"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "scheme": "sharkai",
     "backgroundColor": "#000000",

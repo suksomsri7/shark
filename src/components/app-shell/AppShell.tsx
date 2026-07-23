@@ -27,6 +27,12 @@ export function AppShell({
   // perf A: โหลด badge หลังหน้าโผล่ (ไม่บล็อกการเปลี่ยนหน้า) · refresh เมื่อปิดศูนย์ช่วยเหลือ (อ่านแล้วเคลียร์)
   const [helpUnread, setHelpUnread] = useState(0);
   const [aiUnread, setAiUnread] = useState(0);
+  // เปิดจากแอปมือถือ (WebView ส่ง UA "SharkApp") → ซ่อน orb เว็บ (แอปมีปุ่ม AI native ของตัวเอง — กัน orb ซ้อน)
+  // เช็คใน effect กัน hydration mismatch (SSR ไม่รู้ UA client)
+  const [inApp, setInApp] = useState(false);
+  useEffect(() => {
+    if (navigator.userAgent.includes("SharkApp")) setInApp(true);
+  }, []);
   useEffect(() => {
     let alive = true;
     loadNavBadgesAction()
@@ -53,7 +59,7 @@ export function AppShell({
         addHref={addHref}
       />
       <HelpSheet open={help} onClose={() => setHelp(false)} />
-      <AiDock aiUnread={aiUnread} />
+      {!inApp && <AiDock aiUnread={aiUnread} />}
     </>
   );
 }
