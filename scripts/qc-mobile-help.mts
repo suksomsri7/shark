@@ -62,6 +62,10 @@ try {
   chk("HA-4.1", "Topbar ไม่มีปุ่มศูนย์ช่วยเหลือ (เช็ค prop onHelp/badge จริง ไม่นับ comment)", !/onHelp|helpUnread/.test(topbar), "ไม่มี", "ยังอยู่");
   const nav = readFileSync("src/components/app-shell/NavDrawer.tsx", "utf8");
   chk("HA-4.2", "NavDrawer ไม่มีปุ่ม ✕ (เช็ค JSX จริง ไม่นับ comment)", !/>\s*✕\s*</.test(nav) && !/aria-label="ปิด/.test(nav), "ไม่มี", "ยังอยู่");
+  chk("HA-4.3", "NavDrawer: dropdown กิจการ + ปุ่มเพิ่มกิจการ (คำสั่งเจ้าของ)", nav.includes("เพิ่มกิจการ") && /memberships/.test(nav), "มี", "ไม่ครบ");
+  chk("HA-4.4", "NavDrawer: ปุ่มออกจากระบบกลับมา (ห้ามซ่อนใน app — intercept ฝั่ง native จัดการแล้ว)", nav.includes("ออกจากระบบ") && !/inApp\s*&&[^}]*logout|!inApp[^}]*ออกจากระบบ/i.test(nav), "มี+ไม่ซ่อน", "?");
+  const tenantAct = ((): string => { try { return readFileSync("src/lib/actions/tenant.ts", "utf8"); } catch { return ""; } })();
+  chk("HA-4.5", "switchTenantAction: ตรวจ membership + redirect /app?switched= (ให้ native sync)", tenantAct.includes("switched=") && /membership/i.test(tenantAct), "มี", "ไม่พบ");
 } finally {
   for (const tid of tids) {
     for (const m of ["aiMessage", "aiConversation", "supportMessage", "supportCase", "membership"] as const) {
