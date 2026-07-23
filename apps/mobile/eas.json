@@ -21,6 +21,13 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascApiKeyPath": "./credentials/AuthKey_U9DGP7TVFK.p8",
+        "ascApiKeyId": "U9DGP7TVFK",
+        "ascApiKeyIssuerId": "40d5244e-97b6-47a8-9487-0ffa8db07dc4",
+        "appleTeamId": "3DD2VCN6JQ"
+      }
+    }
   }
 }

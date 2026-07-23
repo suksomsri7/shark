@@ -57,3 +57,10 @@
 
 ---
 *ไฟล์นี้เครื่องอัปเดตเองเมื่อสถานะเปลี่ยน — อ้างใน ledger/RESUME.md*
+
+## 📱 Shark AI App — สร้าง app record ใน App Store Connect (2 นาที · 2026-07-23)
+ทุกอย่างพร้อมแล้ว (ipa build เสร็จ + ASC key + profile) เหลือขั้นเดียวที่ Apple บังคับทำในเว็บ:
+1. เข้า https://appstoreconnect.apple.com → My Apps → ปุ่ม **+** → **New App**
+2. กรอก: Platform **iOS** · Name **SHARK AI** · Primary Language **Thai** · Bundle ID เลือก **th.in.shark.ai** · SKU **sharkai2026**
+3. กด Create เสร็จแล้วบอก AI ว่า "สร้าง app แล้ว" → AI จะ submit ขึ้น TestFlight ให้อัตโนมัติ
+(ถ้าอยากเทส Android ก่อน: ลิงก์ APK อยู่ใน ledger/RESUME.md block 📱)

@@ -7,7 +7,12 @@
 - **Builder B (Opus)**: conversations CRUD+unread/soft-delete · chat/send **SSE** (wrap sendMessage) · proposals list/confirm(needsSecondConfirm บังคับ server)/reject · plans · dna questions/answers/apply
 - **QC**: qc-mobile-auth **24/24** + qc-mobile-chat **22/22** + fitness 14/14 + regression qc-ai 17/17 + phase-a 9/9 + qc-dna 22/22 + typecheck · smoke prod จริง: 401 ทุก endpoint ไม่มี token · otp 200 เสมอไม่หลุดรหัส · webview code ปลอม → 307 /login?err=code
 - **App icon เสร็จ**: assets-mobile/ (orb วงแหวนน้ำเงินวาดจาก CSS จริง — public/ai-orb.png คือรูปเก่า ห้ามใช้)
-- **NEXT: Phase 1 Expo app MVP** (apps/mobile · EAS build org @siamdive · bundle th.in.shark.ai) — จอ Login OTP→DNA native→drawer กิจการ→session list สไตล์ Claude Remote→chat SSE→WebView handshake · ดู MOBILE_PLAN.md §Phase 1
+- **PHASE 1 APP เสร็จ (23 ก.ค.)**: apps/mobile (Expo SDK57+Router) จอครบ login OTP/DNA native/drawer กิจการ/session list สไตล์ Claude Remote/chat SSE+proposal/webview handshake · qc-mobile-app 22/22 + expo-doctor 20/20 + tsc + Metro export เขียว
+- **Build สำเร็จทั้งคู่**: iOS .ipa https://expo.dev/artifacts/eas/Mt4EfynkvgGvV8TZ4f91LIjyUEaUHoNWrdwNk4zVZwU.ipa · Android .apk https://expo.dev/artifacts/eas/e4ZE94nnoLr0p1cWkr0_3UowffspggTiQDo-SIIjStg.apk · EAS project @siamdive/shark-ai (c24ec712)
+- **iOS credentials playbook**: bundle th.in.shark.ai + profile shark-ai-appstore สร้างผ่าน ASC API (key U9DGP7TVFK ทีม 3DD2VCN6JQ) · cert ร่วมทีม siamdive (7XJF27JU5M ถึง ก.ค.27) · p12 ต้อง openssl **-legacy** (keychain mac อ่านแบบใหม่ไม่ได้) · push capability ต้องเปิดใน bundleId ก่อน gen profile · credentials อยู่ apps/mobile/credentials/ (gitignored)
+- 🔑 **รอเจ้าของขั้นเดียว**: สร้าง app record ใน App Store Connect (ดู OWNER_TODO.md) → แล้ว submit TestFlight ด้วย `eas submit -p ios --profile production --id <buildId>` (ascAppId เติมใน eas.json)
+- **NEXT หลัง TestFlight**: เทสจริง iPhone → Phase 2 (push+unread+Help ผ่าน AI) ตาม MOBILE_PLAN.md
+- **แผนเดิม Phase 1** (apps/mobile · EAS build org @siamdive · bundle th.in.shark.ai) — จอ Login OTP→DNA native→drawer กิจการ→session list สไตล์ Claude Remote→chat SSE→WebView handshake · ดู MOBILE_PLAN.md §Phase 1
 
 ## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
 **สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
