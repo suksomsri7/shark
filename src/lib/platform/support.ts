@@ -102,6 +102,20 @@ export async function addPlatformMessage(
         ]
       : []),
   ]);
+
+  // push เข้าเครื่องมือถือของร้าน — best-effort ห้ามพัง flow ตอบเคส
+  if (c.conversationId) {
+    try {
+      const { sendPushToTenant } = await import("@/lib/core/push");
+      await sendPushToTenant(c.tenantId, {
+        title: "ทีมงานตอบกลับแล้ว",
+        body: body.slice(0, 80),
+        data: { conversationId: c.conversationId },
+      });
+    } catch {
+      // push พัง → เงียบ (เคสถูกบันทึกแล้ว)
+    }
+  }
   return true;
 }
 

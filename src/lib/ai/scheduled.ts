@@ -3,7 +3,7 @@
 //
 // กฎเหล็ก:
 // - งานประจำเป็นการ "สรุป/อ่าน" → เดินผ่าน sendMessage (มีเครื่องมืออ่านข้อมูลจริงครบ) ด้วย tier "fast" (haiku) ประหยัด
-// - ผลลัพธ์ = AppNotification ให้เจ้าของเปิดอ่านเอง (ไม่ push/ไม่ทำ mutation — งานประจำห้ามลงมือแก้ข้อมูลเงียบ ๆ)
+// - ผลลัพธ์ = AppNotification + push แจ้งเข้าเครื่อง (ไม่ทำ mutation — งานประจำห้ามลงมือแก้ข้อมูลเงียบ ๆ)
 // - createTask/listTasks/setTaskActive/deleteTask เป็น tenant-scoped → tenantDb({ tenantId }) inject tenantId
 // - runScheduledTasks เดินข้ามร้าน (cron ระดับแพลตฟอร์ม) → prisma ตรงได้ (นอก modules) · task พังตัวเดียว ไม่ล้มทั้งรอบ
 
@@ -101,6 +101,16 @@ export async function runScheduledTasks(
           body: `${task.instruction}\n\n${res.reply}`,
         },
       });
+      // push แจ้งเข้าเครื่อง — best-effort ห้ามพารอบ cron พัง
+      try {
+        const { sendPushToTenant } = await import("@/lib/core/push");
+        await sendPushToTenant(task.tenantId, {
+          title: "งานประจำจากผู้ช่วย AI",
+          body: task.instruction.slice(0, 80),
+        });
+      } catch {
+        // push พัง → เงียบ (noti ถูกบันทึกแล้ว)
+      }
       // mark วันนี้แล้ว — รันซ้ำชั่วโมงเดิมในวันเดียวกันจะถูกข้าม
       await prisma.aiScheduledTask.update({ where: { id: task.id }, data: { lastRunDay: today } });
       ran++;
