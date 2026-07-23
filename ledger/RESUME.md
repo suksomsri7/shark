@@ -15,6 +15,11 @@
 - **NEXT หลัง TestFlight**: เทสจริง iPhone → Phase 2 (push+unread+Help ผ่าน AI) ตาม MOBILE_PLAN.md
 - **แผนเดิม Phase 1** (apps/mobile · EAS build org @siamdive · bundle th.in.shark.ai) — จอ Login OTP→DNA native→drawer กิจการ→session list สไตล์ Claude Remote→chat SSE→WebView handshake · ดู MOBILE_PLAN.md §Phase 1
 
+## 📱 P1.1 FEEDBACK รอบแรก SHIPPED → TestFlight build #7 (23 ก.ค.)
+- แก้ครบ 5 ข้อ: light mode + ฟอนต์ IBM Plex Sans Thai (defaultProps+render patch 2 ชั้น) + หน้าแรก=dashboard WebView (UA SharkApp เว็บซ่อน AiDock — AppShell.tsx) + orb ลอย→/sessions + login orb กลางไร้ขอบ · qc-mobile-app v2 26/26 · build #7 VALID บน TestFlight แล้ว (กลุ่มเห็นอัตโนมัติ)
+- 🛑 **กติกาเจ้าของ: ห้าม build Android จนกว่า iOS สมบูรณ์** (APK รอบ 2 ถูก cancel)
+- รอ feedback รอบถัดไปจากเจ้าของหลังเทส build #7
+
 ## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
 **สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
 **ทำอะไรไปแล้ว (Full-Function drive คำสั่งเจ้าของ 17 ก.ค. + งาน UI แตกฟังก์ชัน):**
