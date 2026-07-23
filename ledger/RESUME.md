@@ -10,7 +10,8 @@
 - **PHASE 1 APP เสร็จ (23 ก.ค.)**: apps/mobile (Expo SDK57+Router) จอครบ login OTP/DNA native/drawer กิจการ/session list สไตล์ Claude Remote/chat SSE+proposal/webview handshake · qc-mobile-app 22/22 + expo-doctor 20/20 + tsc + Metro export เขียว
 - **Build สำเร็จทั้งคู่**: iOS .ipa https://expo.dev/artifacts/eas/Mt4EfynkvgGvV8TZ4f91LIjyUEaUHoNWrdwNk4zVZwU.ipa · Android .apk https://expo.dev/artifacts/eas/e4ZE94nnoLr0p1cWkr0_3UowffspggTiQDo-SIIjStg.apk · EAS project @siamdive/shark-ai (c24ec712)
 - **iOS credentials playbook**: bundle th.in.shark.ai + profile shark-ai-appstore สร้างผ่าน ASC API (key U9DGP7TVFK ทีม 3DD2VCN6JQ) · cert ร่วมทีม siamdive (7XJF27JU5M ถึง ก.ค.27) · p12 ต้อง openssl **-legacy** (keychain mac อ่านแบบใหม่ไม่ได้) · push capability ต้องเปิดใน bundleId ก่อน gen profile · credentials อยู่ apps/mobile/credentials/ (gitignored)
-- 🔑 **รอเจ้าของขั้นเดียว**: สร้าง app record ใน App Store Connect (ดู OWNER_TODO.md) → แล้ว submit TestFlight ด้วย `eas submit -p ios --profile production --id <buildId>` (ascAppId เติมใน eas.json)
+- ✅ **TestFlight LIVE (23 ก.ค.)**: เจ้าของสร้าง app record "SHARK BC" (ascAppId 6793749205 — อยู่ใน eas.json แล้ว) → eas submit สำเร็จ → Apple process VALID (build #6) → สร้างกลุ่ม internal "ทีมเทส SHARK" (hasAccessToAllBuilds) + เพิ่ม suksomsri@gmail.com เป็น tester ผ่าน ASC API ครบ — เจ้าของรับคำเชิญในแอป TestFlight ได้เลย
+- 📌 build iOS รอบใหม่ครั้งหน้า: แค่ `eas build -p ios --profile production` + `eas submit --id <buildId>` — เข้ากลุ่มเทสอัตโนมัติ (allBuilds)
 - **NEXT หลัง TestFlight**: เทสจริง iPhone → Phase 2 (push+unread+Help ผ่าน AI) ตาม MOBILE_PLAN.md
 - **แผนเดิม Phase 1** (apps/mobile · EAS build org @siamdive · bundle th.in.shark.ai) — จอ Login OTP→DNA native→drawer กิจการ→session list สไตล์ Claude Remote→chat SSE→WebView handshake · ดู MOBILE_PLAN.md §Phase 1
 
