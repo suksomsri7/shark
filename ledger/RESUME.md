@@ -38,6 +38,11 @@
 - icon แอปพื้นขาว (compose_light) + หัวกิจการใน NavDrawer เด่น (กล่อง+ป้าย+ตัวใหญ่+▾ น้ำเงิน)
 - qc-mobile-help 14/14 · fitness 14/14 · build #10 VALID · รอ feedback เจ้าของ
 
+## 📱 P1.5 SHIPPED → TestFlight build #11 (23 ก.ค.)
+- **Sign in with Apple LIVE จริง**: capability APPLE_ID_AUTH (settings PRIMARY_APP_CONSENT) + profile ใหม่ + `/api/mobile/auth/apple` (jose JWKS verify iss/aud=th.in.shark.ai → find-or-create user ด้วย email → Bearer) + จอ login กด Apple ได้จริง · oracle MA-11 26/26
+- login: AnimatedOrb กลาง (component เดียวกับปุ่มลอย — spin16s+heartbeat) + แถว social 5 ปุ่ม FontAwesome6 (google/facebook/line/tiktok = "เปิดใช้เร็ว ๆ นี้" รอ creds เจ้าของ — ดู OWNER_TODO ตาราง social)
+- qc-mobile-app 33/33 · doctor 20/20 · build #11 VALID · **สถานะ: รอเจ้าของเทสรอบใหญ่ — iOS ใกล้สมบูรณ์**
+
 ## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
 **สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
 **ทำอะไรไปแล้ว (Full-Function drive คำสั่งเจ้าของ 17 ก.ค. + งาน UI แตกฟังก์ชัน):**
