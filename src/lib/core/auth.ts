@@ -48,10 +48,11 @@ export async function requestLogin(
   });
 
   const link = `${env.APP_URL}/auth/verify?token=${linkToken}`;
+  // อีเมลใส่ OTP อย่างเดียว (คำสั่งเจ้าของ 23 ก.ค. — ลิงก์ทำให้สับสนโดยเฉพาะบนมือถือ) · magic link ยังอยู่ใน preview/dev
   await sendEmail(
     email,
     "เข้าสู่ระบบ SHARK",
-    `รหัสเข้าสู่ระบบ (OTP): ${code}\n\nหรือคลิกลิงก์นี้เพื่อเข้าสู่ระบบ:\n${link}\n\nรหัส/ลิงก์นี้หมดอายุใน 10 นาที หากคุณไม่ได้ร้องขอ กรุณาเพิกเฉย`,
+    `รหัสเข้าสู่ระบบ (OTP): ${code}\n\nรหัสนี้หมดอายุใน 10 นาที หากคุณไม่ได้ร้องขอ กรุณาเพิกเฉย`,
   );
   return previewOtp ? { otp: code, link } : null;
 }
