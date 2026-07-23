@@ -253,7 +253,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         soon={soon}
         addHref="/app/settings/systems"
         // รายชื่อกิจการทั้งหมดของ user (สำหรับ dropdown สลับกิจการในหัว drawer)
-        memberships={auth.memberships.map((m) => ({ tenantId: m.tenantId, name: m.tenant.name }))}
+        memberships={auth.memberships.map((m) => ({ tenantId: m.tenantId, name: m.tenant.name, role: m.role }))}
         activeTenantId={auth.active.tenantId}
       />
       {/* pt-14 = เว้นให้พ้น topbar (สูง 56px) · pb-24 = เว้นให้พ้นปุ่ม AI มุมซ้ายล่าง */}

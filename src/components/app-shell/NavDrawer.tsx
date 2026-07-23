@@ -13,7 +13,7 @@ export type NavChild = { href: string; label: string };
 export type NavItem = { key: string; href: string; icon: string; label: string; children?: NavChild[] };
 export type SoonItem = { code: string; icon: string; label: string };
 // กิจการ 1 แห่งใน account (สำหรับ dropdown สลับกิจการ)
-export type TenantOption = { tenantId: string; name: string };
+export type TenantOption = { tenantId: string; name: string; role: string };
 
 // ระบบที่แตกฟังก์ชันย่อย — หัวข้อกดพับ/กาง (accordion) + ลิงก์ฟังก์ชันย่อยใต้ระบบ
 // auto-กาง เมื่ออยู่ในฟังก์ชันย่อยของระบบนั้น · ฟังก์ชัน active = เทียบ path ตรงตัว
@@ -79,6 +79,7 @@ export function NavDrawer({
   const pathname = usePathname();
   // dropdown รายชื่อกิจการในหัว drawer — ปิดเมื่อกดสลับ/กดนอก
   const [tenantOpen, setTenantOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   // ลิงก์ active = จุดเน้นด้วย --color-accent (ปุ่ม primary ยังเป็น ink)
   const isActive = (href: string) =>
     pathname === href || (href !== "/app" && pathname.startsWith(href + "/")) || pathname.startsWith(href);
@@ -113,12 +114,43 @@ export function NavDrawer({
                   const isCurrent = m.tenantId === activeTenantId;
                   // แถว active = โชว์ ✓ น้ำเงิน · กิจการอื่น = submit สลับกิจการ
                   return isCurrent ? (
-                    <div
-                      key={m.tenantId}
-                      className="flex items-center gap-2 px-3 py-2 text-sm font-medium"
-                    >
-                      <span className="min-w-0 flex-1 truncate">{m.name}</span>
-                      <span className="shrink-0 text-[color:var(--color-accent)]">✓</span>
+                    <div key={m.tenantId} className="px-3 py-2 text-sm font-medium">
+                      {renaming ? (
+                        // แก้ชื่อกิจการ — GET /tenant/rename (pattern drawer: ห้าม server action)
+                        <form action="/tenant/rename" method="get" className="flex items-center gap-2">
+                          <input type="hidden" name="to" value={m.tenantId} />
+                          <input
+                            name="name"
+                            defaultValue={m.name}
+                            minLength={2}
+                            maxLength={80}
+                            autoFocus
+                            className="min-w-0 flex-1 rounded-lg border border-[color:var(--color-border)] px-2 py-1 text-sm"
+                          />
+                          <button type="submit" className="shrink-0 rounded-lg bg-[color:var(--color-accent)] px-2 py-1 text-xs text-white">
+                            บันทึก
+                          </button>
+                          <button type="button" onClick={() => setRenaming(false)} className="shrink-0 text-xs text-[color:var(--color-muted)]">
+                            ยกเลิก
+                          </button>
+                        </form>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                          {m.role === "OWNER" && (
+                            <button
+                              type="button"
+                              onClick={() => setRenaming(true)}
+                              aria-label="แก้ไขชื่อกิจการ"
+                              title="แก้ไขชื่อกิจการ"
+                              className="shrink-0 text-[color:var(--color-muted)] hover:text-[color:var(--color-accent)]"
+                            >
+                              ✎
+                            </button>
+                          )}
+                          <span className="shrink-0 text-[color:var(--color-accent)]">✓</span>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <a

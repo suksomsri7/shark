@@ -69,6 +69,8 @@ try {
   const loRoute = ((): string => { try { return readFileSync("src/app/logout/route.ts", "utf8"); } catch { return ""; } })();
   chk("HA-4.6", "GET /logout: destroySession + redirect /login (ไม่พึ่ง server action)", loRoute.includes("destroySession") && loRoute.includes("/login"), "มี", "ไม่พบ");
   chk("HA-4.7", "NavDrawer ใช้ลิงก์ /logout + /tenant/switch (ห้ามใช้ form server action ใน drawer)", nav.includes('"/logout"') && nav.includes("/tenant/switch?to="), "ใช่", "ไม่ใช่");
+  const rnRoute = ((): string => { try { return readFileSync("src/app/tenant/rename/route.ts", "utf8"); } catch { return ""; } })();
+  chk("HA-4.8", "GET /tenant/rename: requireMembership + OWNER เท่านั้น + NavDrawer มีปุ่มแก้ชื่อ", rnRoute.includes("requireMembership") && rnRoute.includes('"OWNER"') && nav.includes("/tenant/rename"), "ครบ", "ไม่ครบ");
 } finally {
   for (const tid of tids) {
     for (const m of ["aiMessage", "aiConversation", "supportMessage", "supportCase", "membership"] as const) {
