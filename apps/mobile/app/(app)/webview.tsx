@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { DrawerActions } from "@react-navigation/native";
 import { useNavigation } from "expo-router";
 import { api, apiErrorText, BASE_URL } from "@/src/api/client";
 import { useAuth } from "@/src/lib/auth-context";
@@ -44,7 +43,7 @@ export default function WebViewScreen() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+          onPress={() => (navigation as unknown as { openDrawer: () => void }).openDrawer()}
           hitSlop={10}
           style={styles.iconBtn}
         >

@@ -15,7 +15,6 @@ import {
 } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { DrawerActions } from "@react-navigation/native";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import { api, apiErrorText } from "@/src/api/client";
 import { useAuth } from "@/src/lib/auth-context";
@@ -190,7 +189,7 @@ export default function SessionsScreen() {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+          onPress={() => (navigation as unknown as { openDrawer: () => void }).openDrawer()}
           hitSlop={10}
           style={styles.iconBtn}
         >

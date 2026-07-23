@@ -2,9 +2,8 @@
 // กติกาเจ้าของ: บนสุด=ชื่อกิจการ active + ▾ กางรายการ · ปุ่ม + เพิ่มกิจการ → /dna
 //               ไม่มีปุ่ม X ปิด (ปิดด้วยแตะข้างนอก/สไลด์) · ล่างสุด=อีเมล + ออกจากระบบ (ยืนยัน 2 จังหวะ)
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View, ScrollView } from "react-native";
 import { Drawer } from "expo-router/drawer";
-import { DrawerContentScrollView } from "@react-navigation/drawer";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/src/lib/auth-context";
@@ -37,7 +36,7 @@ function DrawerBody(props: { navigation: DrawerNav }) {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + S.md, paddingBottom: insets.bottom + S.md }]}>
-      <DrawerContentScrollView
+      <ScrollView
         contentContainerStyle={styles.scroll}
         style={styles.flex}
       >
@@ -93,7 +92,7 @@ function DrawerBody(props: { navigation: DrawerNav }) {
         >
           <Text style={styles.menuText}>ระบบงาน</Text>
         </Pressable>
-      </DrawerContentScrollView>
+      </ScrollView>
 
       {/* ── ล่างสุด: อีเมล + ออกจากระบบ ── */}
       <View style={styles.bottom}>
