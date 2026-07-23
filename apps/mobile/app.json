@@ -27,7 +27,14 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "cover",
+          "backgroundColor": "#000000"
+        }
+      ],
       "expo-notifications",
       [
         "expo-image-picker",
@@ -38,11 +45,6 @@
     ],
     "scheme": "sharkai",
     "backgroundColor": "#000000",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "cover",
-      "backgroundColor": "#000000"
-    },
     "extra": {
       "router": {},
       "eas": {
