@@ -4,7 +4,7 @@
 // UA ต่อท้าย "SharkApp/1" → ฝั่งเว็บซ่อน orb ของตัวเอง (กัน orb ซ้อน) · ปุ่ม orb AI ลอยมุมล่างขวา → /sessions
 // เปลี่ยนกิจการ (activeTenantId) → ขอ code ใหม่ reload อัตโนมัติ
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { AnimatedOrb } from "@/src/components/ui/orb";
 import { WebView } from "react-native-webview";
@@ -112,7 +112,7 @@ export default function DashboardScreen() {
 
         {loading && !error && (
           <View style={styles.overlay}>
-            <ActivityIndicator color={C.blue} size="large" />
+            <AnimatedOrb size={72} />
           </View>
         )}
 
