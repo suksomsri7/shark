@@ -4,7 +4,7 @@
 // UA ต่อท้าย "SharkApp/1" → ฝั่งเว็บซ่อน orb ของตัวเอง (กัน orb ซ้อน) · ปุ่ม orb AI ลอยมุมล่างขวา → /sessions
 // เปลี่ยนกิจการ (activeTenantId) → ขอ code ใหม่ reload อัตโนมัติ
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -14,7 +14,7 @@ import { C, R, S } from "@/src/theme";
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { activeTenantId } = useAuth();
+  const { activeTenantId, signOut } = useAuth();
 
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +40,37 @@ export default function DashboardScreen() {
 
   const uri = code ? `${BASE_URL}/api/mobile/webview-exchange?code=${code}` : null;
 
+  // เว็บใน WebView logout เอง → cookie เว็บตายแต่แอปยัง login → กัน webview ค้างหน้า error
+  // เทียบด้วย pathname ของ host shark.in.th เท่านั้น (อย่า includes ตรง ๆ กันชนกับ path อื่นที่มีคำว่า login)
+  const onShouldStartLoadWithRequest = useCallback(
+    (req: { url: string }) => {
+      let path: string;
+      let search: string;
+      try {
+        const u = new URL(req.url);
+        if (u.host !== new URL(BASE_URL).host) return true; // host อื่น (เช่น gateway) ปล่อยผ่าน
+        path = u.pathname;
+        search = u.search;
+      } catch {
+        return true;
+      }
+      if (path === "/login") {
+        if (search.includes("err=code")) {
+          void requestCode(); // code หมดอายุ — ขอใหม่แล้วโหลดซ้ำ
+        } else {
+          void signOut(); // session เว็บจบ — logout ฝั่ง native (gate พาไปจอ login แอปเอง)
+        }
+        return false;
+      }
+      if (path === "/") {
+        void signOut(); // logout เว็บ redirect กลับ landing root — session เว็บจบ
+        return false;
+      }
+      return true; // /app/*, /api/mobile/webview-exchange ฯลฯ โหลดตามปกติ
+    },
+    [requestCode, signOut],
+  );
+
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.flex}>
@@ -47,6 +78,7 @@ export default function DashboardScreen() {
           <WebView
             source={{ uri }}
             applicationNameForUserAgent="SharkApp/1"
+            onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
             style={styles.webview}
             onLoadEnd={() => setLoading(false)}
             onError={() => {
@@ -75,17 +107,15 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        {/* ปุ่ม orb AI ลอยมุมล่างขวา (native) — เหมือน icon AI มุมล่างขวาบนเว็บ */}
-        <Pressable onPress={() => router.push("/sessions")} hitSlop={8} style={styles.orb}>
-          <View style={styles.orbMid} />
-          <View style={styles.orbCore} />
+        {/* ปุ่ม orb AI ลอยมุมล่างขวา (native) — วงแหวนน้ำเงินเรืองแสงแบบเว็บ (glow อยู่ในตัว png) */}
+        <Pressable onPress={() => router.push("/sessions")} hitSlop={16} style={styles.orb}>
+          <Image source={require("../../assets/orb.png")} style={styles.orbImg} resizeMode="contain" />
         </Pressable>
       </View>
     </SafeAreaView>
   );
 }
 
-const ORB = 56;
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
   flex: { flex: 1, backgroundColor: C.bg },
@@ -105,34 +135,11 @@ const styles = StyleSheet.create({
   errorText: { color: C.textDim, fontSize: 15, textAlign: "center" },
   retryBtn: { backgroundColor: C.blue, borderRadius: R.md, paddingHorizontal: S.xl, paddingVertical: S.md, minHeight: 44, justifyContent: "center" },
   retryText: { color: "#ffffff", fontSize: 15, fontFamily: "IBMPlexSansThai_700Bold" },
-  // orb ทรงกลม 3 ชั้น (ขอบเข้ม→กลางสว่าง) ให้ดูเป็นทรงกลมเรืองแสง + เงาเบา
+  // ปุ่ม orb ลอย — รูป orb.png มี glow ในตัว ไม่ต้องมีพื้นวงกลม/เงา container
   orb: {
     position: "absolute",
     right: S.lg,
     bottom: S.lg,
-    width: ORB,
-    height: ORB,
-    borderRadius: ORB / 2,
-    backgroundColor: C.blueSoft,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: C.blue,
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
   },
-  orbMid: {
-    position: "absolute",
-    width: ORB - 8,
-    height: ORB - 8,
-    borderRadius: (ORB - 8) / 2,
-    backgroundColor: C.blue,
-  },
-  orbCore: {
-    width: ORB * 0.42,
-    height: ORB * 0.42,
-    borderRadius: (ORB * 0.42) / 2,
-    backgroundColor: C.blueHi,
-  },
+  orbImg: { width: 64, height: 64 },
 });

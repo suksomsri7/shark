@@ -1,5 +1,5 @@
 // หน้ารวม Session ผู้ช่วย AI — หลายห้องแชท ผูกกิจการ active
-// header: ‹ กลับ dashboard + ☰ drawer + ชื่อกิจการ + ＋ สร้างห้อง · การ์ดต่อ session (unread สีต่าง+จุดน้ำเงิน)
+// header: ‹ กลับ dashboard (ซ้าย) + ＋ สร้างห้อง (ขวา) เท่านั้น · การ์ดต่อ session (unread สีต่าง+จุดน้ำเงิน)
 // สไลด์ซ้าย = แก้ชื่อ (modal inline) / ลบ (2 จังหวะ) · pull-to-refresh + refresh เมื่อ focus
 import { useCallback, useRef, useState } from "react";
 import {
@@ -15,14 +15,12 @@ import {
 } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFocusEffect, useNavigation, useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { api, apiErrorText } from "@/src/api/client";
-import { useAuth } from "@/src/lib/auth-context";
 import { Orb } from "@/src/components/chat/Orb";
 import { C, R, S } from "@/src/theme";
 
 type Conversation = { id: string; title: string | null; updatedAt: string; unread: boolean };
-type Nav = { openDrawer: () => void; navigate: (name: string) => void };
 
 // เวลาไทยแบบสั้น (เมื่อกี้ / x นาที / x ชม. / วันที่) — เลี่ยง Intl (Hermes ไม่ครบ)
 function thaiTime(iso: string): string {
@@ -40,9 +38,6 @@ function thaiTime(iso: string): string {
 export default function SessionsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const navigation = useNavigation() as unknown as Nav;
-  const { tenants, activeTenantId } = useAuth();
-  const activeName = tenants.find((t) => t.tenantId === activeTenantId)?.name ?? "กิจการ";
 
   const [items, setItems] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,15 +184,10 @@ export default function SessionsScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => navigation.navigate("index")} hitSlop={10} style={styles.iconBtn}>
+        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.iconBtn}>
           <Text style={styles.back}>‹</Text>
         </Pressable>
-        <Pressable onPress={() => navigation.openDrawer()} hitSlop={10} style={styles.iconBtn}>
-          <Text style={styles.hamburger}>☰</Text>
-        </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {activeName}
-        </Text>
+        <View style={styles.headerSpacer} />
         <Pressable onPress={createRoom} disabled={creating} style={styles.addBtn} hitSlop={8}>
           {creating ? <ActivityIndicator color="#ffffff" size="small" /> : <Text style={styles.addPlus}>＋</Text>}
         </Pressable>
@@ -282,8 +272,7 @@ const styles = StyleSheet.create({
   },
   iconBtn: { padding: S.xs },
   back: { color: C.text, fontSize: 30, lineHeight: 30 },
-  hamburger: { color: C.text, fontSize: 22 },
-  headerTitle: { flex: 1, color: C.text, fontSize: 17, fontFamily: "IBMPlexSansThai_700Bold" },
+  headerSpacer: { flex: 1 },
   addBtn: {
     width: 34,
     height: 34,
