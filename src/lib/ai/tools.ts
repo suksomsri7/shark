@@ -17,7 +17,7 @@ import { listCustomers as memberListCustomers } from "@/lib/modules/member/servi
 import { listRedemptions as rewardListRedemptions } from "@/lib/modules/reward/service";
 import { getCustomerPoints } from "@/lib/modules/point/service";
 import { listMyCards as kanbanListMyCards } from "@/lib/modules/kanban/service";
-import { searchKb as kbSearchArticles } from "@/lib/modules/kb/service";
+import { searchKb as kbSearchArticles, createArticle as kbCreateArticleSvc } from "@/lib/modules/kb/service";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { createProposal, type ProposalKind } from "./proposals";
 import { createPlan } from "./plans";
@@ -2345,6 +2345,39 @@ const supportOpenCase: AiTool = {
   },
 };
 
+// ── KB-AUTO) kb_auto_save — เก็บความรู้ถาวรของกิจการเข้าคลังความรู้อัตโนมัติ (เขียนทันที ไม่ผ่าน proposal) ──
+// kb-auto: ระหว่างสนทนา ถ้า user ให้ "ความรู้ถาวรของกิจการ" (นโยบาย/ราคา/ขั้นตอน/กติกา/ข้อมูลสินค้า-บริการ)
+// → บันทึกเข้า KB ทันทีผ่าน createArticle เดิม (ห้าม fork) แล้วแจ้ง user สั้น ๆ ว่าบันทึกแล้ว
+// ต่างจาก remember_fact: fact = ความจำสั้น/บริบทของ AI · KB = ความรู้ที่ทีมงานร้านอ่าน/ใช้ร่วมกัน
+const kbAutoSave: AiTool = {
+  def: {
+    name: "kb_auto_save",
+    description:
+      "บันทึก 'ความรู้ถาวรของกิจการ' เข้าคลังความรู้ให้ทีมงานร้านใช้ร่วมกันโดยอัตโนมัติ (บันทึกทันที ไม่ต้องให้ผู้ใช้ยืนยัน) — เรียกเมื่อผู้ใช้บอกข้อมูลที่เป็นความรู้ถาวร เช่น นโยบายร้าน ราคา ขั้นตอนการทำงาน กติกา หรือข้อมูลสินค้า-บริการ · ห้ามใช้เก็บเรื่องชั่วคราว คำสั่งงาน หรือบทสนทนาทั่วไป (เรื่องเหล่านั้นไม่ใช่ความรู้ถาวร) · ก่อนบันทึกให้เรียก kb_search เช็คก่อนกันซ้ำ — ถ้ามีบทความเดิมอยู่แล้วให้แก้ผ่านช่องทางปกติ ไม่บันทึกซ้ำ · ระบุ title (หัวข้อสั้น) และ content (เนื้อหาความรู้) และ category ถ้ามี",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "หัวข้อความรู้สั้น ๆ เช่น 'นโยบายคืนสินค้า'" },
+        content: { type: "string", description: "เนื้อหาความรู้ถาวรของกิจการ" },
+        category: { type: "string", description: "หมวดหมู่ (ถ้ามี) เช่น 'นโยบายร้าน' 'ราคา'" },
+      },
+      required: ["title", "content"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const title = String(a.title ?? "").trim();
+    const content = String(a.content ?? "").trim();
+    if (!title) return JSON.stringify({ error: "ต้องระบุหัวข้อความรู้" });
+    if (!content) return JSON.stringify({ error: "ต้องระบุเนื้อหาความรู้" });
+    const category = String(a.category ?? "").trim() || null;
+    // ใช้ service เดิม (ห้าม fork) — content → body ของบทความ
+    await kbCreateArticleSvc({ tenantId: ctx.tenantId }, { title, body: content, category });
+    return JSON.stringify({ ตอบผู้ใช้: `บันทึกลงคลังความรู้แล้ว: ${title}` });
+  },
+};
+
 const MAX_MEMORY_TAKE = 100; // ดึงความจำสูงสุดตอน list/ค้นเพื่อลบ
 
 // หาชื่อพนักงานของใบลา (best-effort สำหรับ summary) — พังก็คืน null ไม่โยน
@@ -2400,6 +2433,8 @@ export function toolRegistry(): AiTool[] {
     listMemoriesTool,
     // help-v2 — แจ้งปัญหา/ร้องเรียนผ่านแชท → เปิดเคสส่งทีมงาน (เขียนทันที ไม่ผ่าน proposal)
     supportOpenCase,
+    // kb-auto — เก็บความรู้ถาวรของกิจการเข้าคลังความรู้อัตโนมัติ (เขียนทันที ไม่ผ่าน proposal)
+    kbAutoSave,
     // action / ทำแทน
     inventoryReceive,
     hrDecideLeave,
