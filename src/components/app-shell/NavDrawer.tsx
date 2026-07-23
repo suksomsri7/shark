@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { logoutAction } from "@/lib/actions/auth";
+import { switchTenantAction } from "@/lib/actions/tenant";
 import { NavIcon } from "./NavIcon";
 
 // drawer เมนูระบบ — เลื่อนออกจากซ้าย เปิดจากปุ่มแฮมเบอร์เกอร์บน topbar
@@ -13,6 +14,8 @@ import { NavIcon } from "./NavIcon";
 export type NavChild = { href: string; label: string };
 export type NavItem = { key: string; href: string; icon: string; label: string; children?: NavChild[] };
 export type SoonItem = { code: string; icon: string; label: string };
+// กิจการ 1 แห่งใน account (สำหรับ dropdown สลับกิจการ)
+export type TenantOption = { tenantId: string; name: string };
 
 // ระบบที่แตกฟังก์ชันย่อย — หัวข้อกดพับ/กาง (accordion) + ลิงก์ฟังก์ชันย่อยใต้ระบบ
 // auto-กาง เมื่ออยู่ในฟังก์ชันย่อยของระบบนั้น · ฟังก์ชัน active = เทียบ path ตรงตัว
@@ -62,6 +65,8 @@ export function NavDrawer({
   items,
   soon,
   addHref,
+  memberships,
+  activeTenantId,
 }: {
   open: boolean;
   onClose: () => void;
@@ -70,14 +75,12 @@ export function NavDrawer({
   items: NavItem[];
   soon: SoonItem[];
   addHref: string;
+  memberships: TenantOption[];
+  activeTenantId: string;
 }) {
   const pathname = usePathname();
-  // เปิดจากแอปมือถือ (WebView UA "SharkApp") → ซ่อนแถวอีเมล+ปุ่มออกจากระบบของเว็บ
-  // (แอปมี logout native ของตัวเอง · กันบั๊ก session เว็บตายแต่แอปยัง login → หน้า error ค้าง)
-  const [inApp, setInApp] = useState(false);
-  useEffect(() => {
-    if (navigator.userAgent.includes("SharkApp")) setInApp(true);
-  }, []);
+  // dropdown รายชื่อกิจการในหัว drawer — ปิดเมื่อกดสลับ/กดนอก
+  const [tenantOpen, setTenantOpen] = useState(false);
   // ลิงก์ active = จุดเน้นด้วย --color-accent (ปุ่ม primary ยังเป็น ink)
   const isActive = (href: string) =>
     pathname === href || (href !== "/app" && pathname.startsWith(href + "/")) || pathname.startsWith(href);
@@ -90,11 +93,58 @@ export function NavDrawer({
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
 
       <aside className="absolute left-0 top-0 flex h-full w-72 max-w-[85%] flex-col overflow-y-auto bg-[color:var(--color-surface)] shadow-[2px_0_12px_rgba(0,0,0,0.08)]">
-        {/* หัว drawer — ชื่อกิจการ · เอาปุ่ม ✕ ออกตามคำสั่งเจ้าของ (ปิดด้วยแตะฉากหลัง) */}
-        <div className="flex items-center px-4 py-3">
-          <div className="min-w-0">
-            <div className="truncate text-lg font-bold">{tenantName}</div>
-          </div>
+        {/* หัว drawer — ชื่อกิจการ active + ปุ่ม ▾ เปิด dropdown สลับ/เพิ่มกิจการ (คำสั่งเจ้าของ) */}
+        <div className="relative px-2 py-2">
+          <button
+            type="button"
+            onClick={() => setTenantOpen((o) => !o)}
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-[color:var(--color-surface-2)]"
+          >
+            <span className="min-w-0 flex-1 truncate text-left text-lg font-bold">{tenantName}</span>
+            <span className="shrink-0 text-xs text-[color:var(--color-muted)]">{tenantOpen ? "▴" : "▾"}</span>
+          </button>
+          {tenantOpen && (
+            <>
+              {/* คลุมหลัง dropdown แตะเพื่อปิด (ไม่ปิดทั้ง drawer) */}
+              <div className="fixed inset-0 z-0" onClick={() => setTenantOpen(false)} />
+              <div className="absolute left-2 right-2 z-10 mt-1 flex flex-col rounded-lg border bg-[color:var(--color-surface)] py-1 shadow-lg">
+                {memberships.map((m) => {
+                  const isCurrent = m.tenantId === activeTenantId;
+                  // แถว active = โชว์ ✓ น้ำเงิน · กิจการอื่น = submit สลับกิจการ
+                  return isCurrent ? (
+                    <div
+                      key={m.tenantId}
+                      className="flex items-center gap-2 px-3 py-2 text-sm font-medium"
+                    >
+                      <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                      <span className="shrink-0 text-[color:var(--color-accent)]">✓</span>
+                    </div>
+                  ) : (
+                    <form key={m.tenantId} action={switchTenantAction.bind(null, m.tenantId)}>
+                      <button
+                        type="submit"
+                        onClick={() => setTenantOpen(false)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
+                      >
+                        <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                      </button>
+                    </form>
+                  );
+                })}
+                <div className="my-1 border-t" />
+                <Link
+                  href="/onboarding"
+                  onClick={() => {
+                    setTenantOpen(false);
+                    onClose();
+                  }}
+                  className="px-3 py-2 text-sm font-medium text-[color:var(--color-accent)] hover:bg-[color:var(--color-surface-2)]"
+                >
+                  + เพิ่มกิจการ
+                </Link>
+              </div>
+            </>
+          )}
         </div>
 
         <nav className="flex flex-col gap-0.5 px-2 text-sm">
@@ -200,17 +250,15 @@ export function NavDrawer({
               + เพิ่มระบบ
             </Link>
           </div>
-          {/* ซ่อนอีเมล+ออกจากระบบเมื่อเปิดจากแอป — แอปมี logout native เอง (กัน session เว็บตายแต่แอปยัง login) */}
-          {!inApp && (
-            <div className="flex items-center justify-between px-1">
-              <span className="truncate text-xs text-[color:var(--color-muted)]">{userEmail}</span>
-              <form action={logoutAction}>
-                <button type="submit" className="text-xs underline">
-                  ออกจากระบบ
-                </button>
-              </form>
-            </div>
-          )}
+          {/* อีเมล + ออกจากระบบ — โชว์เสมอ (ฝั่งแอป native intercept logout เอง) */}
+          <div className="flex items-center justify-between px-1">
+            <span className="truncate text-xs text-[color:var(--color-muted)]">{userEmail}</span>
+            <form action={logoutAction}>
+              <button type="submit" className="text-xs underline">
+                ออกจากระบบ
+              </button>
+            </form>
+          </div>
         </div>
       </aside>
     </div>
