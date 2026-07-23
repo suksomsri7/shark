@@ -59,9 +59,9 @@ try {
 
   // ── 4. web static ──
   const topbar = readFileSync("src/components/app-shell/Topbar.tsx", "utf8");
-  chk("HA-4.1", "Topbar ไม่มีปุ่มศูนย์ช่วยเหลือ (เอาออกตามแนวคิดใหม่)", !topbar.includes("ศูนย์ช่วยเหลือ") && !/onHelp/.test(topbar), "ไม่มี", "ยังอยู่");
+  chk("HA-4.1", "Topbar ไม่มีปุ่มศูนย์ช่วยเหลือ (เช็ค prop onHelp/badge จริง ไม่นับ comment)", !/onHelp|helpUnread/.test(topbar), "ไม่มี", "ยังอยู่");
   const nav = readFileSync("src/components/app-shell/NavDrawer.tsx", "utf8");
-  chk("HA-4.2", "NavDrawer ไม่มีปุ่ม ✕ (คำสั่งเจ้าของ)", !nav.includes("✕"), "ไม่มี", "ยังอยู่");
+  chk("HA-4.2", "NavDrawer ไม่มีปุ่ม ✕ (เช็ค JSX จริง ไม่นับ comment)", !/>\s*✕\s*</.test(nav) && !/aria-label="ปิด/.test(nav), "ไม่มี", "ยังอยู่");
 } finally {
   for (const tid of tids) {
     for (const m of ["aiMessage", "aiConversation", "supportMessage", "supportCase", "membership"] as const) {
