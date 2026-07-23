@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { NavIcon } from "./NavIcon";
@@ -79,7 +80,12 @@ export function NavDrawer({
   const pathname = usePathname();
   // dropdown รายชื่อกิจการในหัว drawer — ปิดเมื่อกดสลับ/กดนอก
   const [tenantOpen, setTenantOpen] = useState(false);
+  const router = useRouter();
   const [renaming, setRenaming] = useState(false);
+  const [saving, setSaving] = useState(false);
+  // ชื่อที่เพิ่งแก้ (optimistic) — โชว์ทันทีไม่ต้องรอโหลดหน้าใหม่ · router.refresh ตามหลังเงียบ ๆ
+  const [localNames, setLocalNames] = useState<Record<string, string>>({});
+  const displayName = (t: TenantOption) => localNames[t.tenantId] ?? t.name;
   // ลิงก์ active = จุดเน้นด้วย --color-accent (ปุ่ม primary ยังเป็น ink)
   const isActive = (href: string) =>
     pathname === href || (href !== "/app" && pathname.startsWith(href + "/")) || pathname.startsWith(href);
@@ -101,7 +107,7 @@ export function NavDrawer({
           >
             <span className="min-w-0 flex-1 text-left">
               <span className="block text-[11px] text-[color:var(--color-muted)]">กิจการ</span>
-              <span className="block truncate text-xl font-extrabold">{tenantName}</span>
+              <span className="block truncate text-xl font-extrabold">{localNames[activeTenantId] ?? tenantName}</span>
             </span>
             <span className="shrink-0 text-lg font-bold text-[color:var(--color-accent)]">{tenantOpen ? "▴" : "▾"}</span>
           </button>
@@ -117,18 +123,38 @@ export function NavDrawer({
                     <div key={m.tenantId} className="px-3 py-2 text-sm font-medium">
                       {renaming ? (
                         // แก้ชื่อกิจการ — GET /tenant/rename (pattern drawer: ห้าม server action)
-                        <form action="/tenant/rename" method="get" className="flex items-center gap-2">
+                        <form
+                          action="/tenant/rename"
+                          method="get"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const input = e.currentTarget.elements.namedItem("name") as HTMLInputElement | null;
+                            const newName = (input?.value ?? "").trim();
+                            if (newName.length < 2) return;
+                            setSaving(true);
+                            // ยิงเบื้องหลัง — ไม่โหลดหน้าใหม่ (redirect: manual ไม่ตามไปโหลด /app)
+                            fetch("/tenant/rename?to=" + m.tenantId + "&name=" + encodeURIComponent(newName), { redirect: "manual" })
+                              .catch(() => {})
+                              .finally(() => {
+                                setLocalNames((p) => ({ ...p, [m.tenantId]: newName }));
+                                setSaving(false);
+                                setRenaming(false);
+                                router.refresh(); // sync ชื่อจริงจาก server ตามหลังเงียบ ๆ
+                              });
+                          }}
+                          className="flex items-center gap-2"
+                        >
                           <input type="hidden" name="to" value={m.tenantId} />
                           <input
                             name="name"
-                            defaultValue={m.name}
+                            defaultValue={displayName(m)}
                             minLength={2}
                             maxLength={80}
                             autoFocus
                             className="min-w-0 flex-1 rounded-lg border border-[color:var(--color-border)] px-2 py-1 text-sm"
                           />
-                          <button type="submit" className="shrink-0 rounded-lg bg-[color:var(--color-accent)] px-2 py-1 text-xs text-white">
-                            บันทึก
+                          <button type="submit" disabled={saving} className="shrink-0 rounded-lg bg-[color:var(--color-accent)] px-2 py-1 text-xs text-white disabled:opacity-60">
+                            {saving ? "กำลังบันทึก…" : "บันทึก"}
                           </button>
                           <button type="button" onClick={() => setRenaming(false)} className="shrink-0 text-xs text-[color:var(--color-muted)]">
                             ยกเลิก
@@ -136,7 +162,7 @@ export function NavDrawer({
                         </form>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                          <span className="min-w-0 flex-1 truncate">{displayName(m)}</span>
                           {m.role === "OWNER" && (
                             <button
                               type="button"
@@ -158,7 +184,7 @@ export function NavDrawer({
                       href={"/tenant/switch?to=" + m.tenantId}
                       className="flex w-full items-center gap-2 px-3 py-3 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
                     >
-                      <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                      <span className="min-w-0 flex-1 truncate">{displayName(m)}</span>
                     </a>
                   );
                 })}
