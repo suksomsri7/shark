@@ -1,14 +1,8 @@
 // จอเข้าสู่ระบบ — OTP ทางอีเมล (Phase 1: ยังไม่มี social login — ห้ามวางปุ่มหลอก)
 // ขั้น 1: กรอกอีเมล → ขอรหัส · ขั้น 2: กรอกรหัส 6 หลัก → ยืนยัน → signIn (gate เด้งต่อเอง)
 import { useEffect, useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "@/src/components/ui/text";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api, ApiError, apiErrorText } from "@/src/api/client";
 import { useAuth } from "@/src/lib/auth-context";

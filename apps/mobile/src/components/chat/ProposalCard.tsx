@@ -1,6 +1,7 @@
 // การ์ด proposal ใต้แชท — AI เสนอการกระทำ user ยืนยัน/ไม่ทำ
 // DESTRUCTIVE = ปุ่มแดง 2 จังหวะ (armed แล้วกดซ้ำถึงส่ง confirm2x) · resolved = โชว์ note ใต้การ์ด
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Text } from "@/src/components/ui/text";
 import { C, R, S } from "@/src/theme";
 
 export type ProposalView = {

@@ -1,6 +1,7 @@
 // bubble "กำลังคิด…" — จุด 3 จุดกระพริบ (label เปลี่ยนได้จาก event status)
 import { useEffect, useRef } from "react";
-import { Animated, StyleSheet, Text, View } from "react-native";
+import { Animated, StyleSheet, View } from "react-native";
+import { Text } from "@/src/components/ui/text";
 import { C, R, S } from "@/src/theme";
 
 function Dot({ delay }: { delay: number }) {

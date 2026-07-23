@@ -1,22 +1,13 @@
 // Root layout — ยามหน้าประตูของทั้งแอป (บังคับ login → ไม่มีกิจการ → DNA สร้างกิจการแรก)
 // โครง route: /login /dna (นอกกิจการ) · /(app)/* = ใน drawer กิจการ (Builder A/B เติมจอ)
 import { useEffect } from "react";
-import { Text, TextInput } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider, useAuth } from "@/src/lib/auth-context";
-import { useAppFonts, applyGlobalFont } from "@/src/lib/fonts";
+import { useAppFonts } from "@/src/lib/fonts";
 import { C } from "@/src/theme";
 
-// override ฟอนต์ default ทั้งแอปเป็น IBM Plex Sans Thai — สองชั้นกันพลาด:
-// 1) defaultProps (เผื่อ RN รุ่นนี้ยังอ่าน) 2) applyGlobalFont patch render (ชัวร์บน React 19)
-type WithDefaultStyle = { defaultProps?: { style?: object } };
-const TextAny = Text as unknown as WithDefaultStyle;
-TextAny.defaultProps = { ...(TextAny.defaultProps ?? {}), style: { fontFamily: "IBMPlexSansThai_400Regular" } };
-const InputAny = TextInput as unknown as WithDefaultStyle;
-InputAny.defaultProps = { ...(InputAny.defaultProps ?? {}), style: { fontFamily: "IBMPlexSansThai_400Regular" } };
-applyGlobalFont();
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { ready, token, tenants } = useAuth();

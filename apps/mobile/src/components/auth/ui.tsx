@@ -1,7 +1,8 @@
 // UI ร่วมของจอ auth/DNA/drawer — orb โลโก้ + ปุ่มหลัก + ลิงก์ + ข้อความ error inline
 // ใช้ธีม C/R/S เท่านั้น (ห้าม hardcode สี) · ปุ่มยิง API ต้องมี loading เสมอ
 import { useEffect, useRef } from "react";
-import { ActivityIndicator, Animated, Easing, Image, Pressable, StyleSheet, Text } from "react-native";
+import { ActivityIndicator, Animated, Easing, Image, Pressable, StyleSheet } from "react-native";
+import { Text } from "@/src/components/ui/text";
 import { C, R, S } from "@/src/theme";
 
 const ORB = require("../../../assets/orb.png");

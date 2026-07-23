@@ -2,7 +2,8 @@
 // กติกาเจ้าของ: บนสุด=ชื่อกิจการ active + ▾ กางรายการ · ปุ่ม + เพิ่มกิจการ → /dna
 //               ไม่มีปุ่ม X ปิด (ปิดด้วยแตะข้างนอก/สไลด์) · ล่างสุด=อีเมล + ออกจากระบบ (ยืนยัน 2 จังหวะ)
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View, ScrollView } from "react-native";
+import { Pressable, StyleSheet, View, ScrollView } from "react-native";
+import { Text } from "@/src/components/ui/text";
 import { Drawer } from "expo-router/drawer";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";

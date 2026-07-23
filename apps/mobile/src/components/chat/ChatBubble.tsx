@@ -1,5 +1,6 @@
 // bubble ข้อความ — USER ขวา (พื้นน้ำเงิน) / ASSISTANT ซ้าย (พื้น surface) + รูปแนบ
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
+import { Text } from "@/src/components/ui/text";
 import { C, R, S } from "@/src/theme";
 
 export function ChatBubble({

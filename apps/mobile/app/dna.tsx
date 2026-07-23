@@ -4,16 +4,8 @@
 // ⚠️ questions มาจาก GET (JSON) → ฟังก์ชัน skipIf/defaultWhenSkipped ฝั่ง server หลุดไปตอน serialize
 //    จึงต้อง replicate เงื่อนไขข้ามคำถามฝั่ง client (ตรงกับ questions.ts: rewardRedeem, vatRegistered)
 import { useMemo, useRef, useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "@/src/components/ui/text";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { api, apiErrorText } from "@/src/api/client";

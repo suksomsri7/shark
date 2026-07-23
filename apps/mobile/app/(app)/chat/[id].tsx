@@ -1,18 +1,8 @@
 // จอแชท (id = conversationId) — bubble USER/ASSISTANT + การ์ด proposal + แนบรูป + SSE
 // ส่งผ่าน sendChat() (SSE) · ระหว่างรอโชว์ "กำลังคิด…" · error = bubble แดง + ปุ่มส่งใหม่
 import { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "@/src/components/ui/text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";

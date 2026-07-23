@@ -2,17 +2,8 @@
 // header: ‹ กลับ dashboard (ซ้าย) + ＋ สร้างห้อง (ขวา) เท่านั้น · การ์ดต่อ session (unread สีต่าง+จุดน้ำเงิน)
 // สไลด์ซ้าย = แก้ชื่อ (modal inline) / ลบ (2 จังหวะ) · pull-to-refresh + refresh เมื่อ focus
 import { useCallback, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Modal,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "@/src/components/ui/text";
 import { Swipeable } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
