@@ -43,6 +43,11 @@
 - login: AnimatedOrb กลาง (component เดียวกับปุ่มลอย — spin16s+heartbeat) + แถว social 5 ปุ่ม FontAwesome6 (google/facebook/line/tiktok = "เปิดใช้เร็ว ๆ นี้" รอ creds เจ้าของ — ดู OWNER_TODO ตาราง social)
 - qc-mobile-app 33/33 · doctor 20/20 · build #11 VALID · **สถานะ: รอเจ้าของเทสรอบใหญ่ — iOS ใกล้สมบูรณ์**
 
+## 📱 P1.6 → TestFlight build #12 (23 ก.ค. บ่าย)
+- **fix signIn race**: setTok หลัง loadMe เสร็จ (เดิมเด้ง /dna ทั้งที่มีกิจการ — เจ้าของเจอ) · อีเมล OTP เหลือรหัสอย่างเดียว (ตัด magic link)
+- **ล่า OTP หาย**: Resend ส่งสำเร็จจริง (200) — ปลายทาง Gmail spam · sendEmail ล้ม → OpsEvent แล้ว (เลิกเงียบ) · **แก้บั๊กแฝง prod: `export type` re-export ในไฟล์ use server → ReferenceError: Attachment (น่าจะเป็นต้นตอ 500 logout เดิม)** ⚠️ กติกา: ไฟล์ "use server" ห้ามมี export type re-export
+- Apple Sign-In LIVE · social 4 ค่ายรอ creds (OWNER_TODO) · สถานะ: รอเจ้าของเทสรอบใหญ่ iOS
+
 ## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
 **สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
 **ทำอะไรไปแล้ว (Full-Function drive คำสั่งเจ้าของ 17 ก.ค. + งาน UI แตกฟังก์ชัน):**
