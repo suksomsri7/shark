@@ -32,6 +32,12 @@
 - **requireMembership helper ใหม่ใน core/context.ts** = F6 marker การตรวจสิทธิ์ระดับ account (fitness ยอมรับคู่ assertCan)
 - QC: qc-mobile-app 31/31 · qc-mobile-help 12/12 · fitness 14/14 · build #9 VALID · รอ feedback เจ้าของ
 
+## 📱 P1.4 SHIPPED → TestFlight build #10 (23 ก.ค.)
+- **ต้นตอ logout/สลับกิจการพังใน WebView = server action POST จาก WKWebView 500** → เปลี่ยนเป็น GET route: `/logout` (destroySession→/login) + `/tenant/switch?to=` (requireMembership→/app?switched=) · NavDrawer ใช้ลิงก์ล้วน **⚠️ กติกา: ห้ามใช้ form server action ใน drawer/webview path — ใช้ GET route + oracle HA-4.7 คุม**
+- **smoke จริงบน prod ก่อนส่ง**: จำลอง session webview ด้วย curl — switch 307+switched= ✓ กันคนนอก ✓ logout 307+session ตาย ✓ (repro user ลบแล้ว)
+- icon แอปพื้นขาว (compose_light) + หัวกิจการใน NavDrawer เด่น (กล่อง+ป้าย+ตัวใหญ่+▾ น้ำเงิน)
+- qc-mobile-help 14/14 · fitness 14/14 · build #10 VALID · รอ feedback เจ้าของ
+
 ## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
 **สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
 **ทำอะไรไปแล้ว (Full-Function drive คำสั่งเจ้าของ 17 ก.ค. + งาน UI แตกฟังก์ชัน):**
