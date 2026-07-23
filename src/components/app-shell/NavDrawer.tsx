@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { logoutAction } from "@/lib/actions/auth";
-import { switchTenantAction } from "@/lib/actions/tenant";
 import { NavIcon } from "./NavIcon";
 
 // drawer เมนูระบบ — เลื่อนออกจากซ้าย เปิดจากปุ่มแฮมเบอร์เกอร์บน topbar
@@ -98,10 +96,13 @@ export function NavDrawer({
           <button
             type="button"
             onClick={() => setTenantOpen((o) => !o)}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-[color:var(--color-surface-2)]"
+            className="flex w-full items-center gap-2 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface-2)] px-3 py-3"
           >
-            <span className="min-w-0 flex-1 truncate text-left text-lg font-bold">{tenantName}</span>
-            <span className="shrink-0 text-xs text-[color:var(--color-muted)]">{tenantOpen ? "▴" : "▾"}</span>
+            <span className="min-w-0 flex-1 text-left">
+              <span className="block text-[11px] text-[color:var(--color-muted)]">กิจการ</span>
+              <span className="block truncate text-xl font-extrabold">{tenantName}</span>
+            </span>
+            <span className="shrink-0 text-lg font-bold text-[color:var(--color-accent)]">{tenantOpen ? "▴" : "▾"}</span>
           </button>
           {tenantOpen && (
             <>
@@ -120,15 +121,13 @@ export function NavDrawer({
                       <span className="shrink-0 text-[color:var(--color-accent)]">✓</span>
                     </div>
                   ) : (
-                    <form key={m.tenantId} action={switchTenantAction.bind(null, m.tenantId)}>
-                      <button
-                        type="submit"
-                        onClick={() => setTenantOpen(false)}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
-                      >
-                        <span className="min-w-0 flex-1 truncate">{m.name}</span>
-                      </button>
-                    </form>
+                    <a
+                      key={m.tenantId}
+                      href={"/tenant/switch?to=" + m.tenantId}
+                      className="flex w-full items-center gap-2 px-3 py-3 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
+                    >
+                      <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                    </a>
                   );
                 })}
                 <div className="my-1 border-t" />
@@ -253,11 +252,9 @@ export function NavDrawer({
           {/* อีเมล + ออกจากระบบ — โชว์เสมอ (ฝั่งแอป native intercept logout เอง) */}
           <div className="flex items-center justify-between px-1">
             <span className="truncate text-xs text-[color:var(--color-muted)]">{userEmail}</span>
-            <form action={logoutAction}>
-              <button type="submit" className="text-xs underline">
-                ออกจากระบบ
-              </button>
-            </form>
+            <a href="/logout" className="text-xs underline">
+              ออกจากระบบ
+            </a>
           </div>
         </div>
       </aside>

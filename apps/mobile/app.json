@@ -16,7 +16,7 @@
     "android": {
       "package": "th.in.shark.ai",
       "adaptiveIcon": {
-        "backgroundColor": "#000000",
+        "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/adaptive-icon.png"
       },
       "predictiveBackGestureEnabled": false

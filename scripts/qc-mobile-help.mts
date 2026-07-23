@@ -64,8 +64,11 @@ try {
   chk("HA-4.2", "NavDrawer ไม่มีปุ่ม ✕ (เช็ค JSX จริง ไม่นับ comment)", !/>\s*✕\s*</.test(nav) && !/aria-label="ปิด/.test(nav), "ไม่มี", "ยังอยู่");
   chk("HA-4.3", "NavDrawer: dropdown กิจการ + ปุ่มเพิ่มกิจการ (คำสั่งเจ้าของ)", nav.includes("เพิ่มกิจการ") && /memberships/.test(nav), "มี", "ไม่ครบ");
   chk("HA-4.4", "NavDrawer: ปุ่มออกจากระบบกลับมา (ห้ามซ่อนใน app — intercept ฝั่ง native จัดการแล้ว)", nav.includes("ออกจากระบบ") && !/inApp\s*&&[^}]*logout|!inApp[^}]*ออกจากระบบ/i.test(nav), "มี+ไม่ซ่อน", "?");
-  const tenantAct = ((): string => { try { return readFileSync("src/lib/actions/tenant.ts", "utf8"); } catch { return ""; } })();
-  chk("HA-4.5", "switchTenantAction: ตรวจ membership + redirect /app?switched= (ให้ native sync)", tenantAct.includes("switched=") && /membership/i.test(tenantAct), "มี", "ไม่พบ");
+  const swRoute = ((): string => { try { return readFileSync("src/app/tenant/switch/route.ts", "utf8"); } catch { return ""; } })();
+  chk("HA-4.5", "GET /tenant/switch: requireMembership + redirect /app?switched= (native sync — แทน server action ที่พังใน WebView)", swRoute.includes("switched=") && swRoute.includes("requireMembership"), "มี", "ไม่พบ");
+  const loRoute = ((): string => { try { return readFileSync("src/app/logout/route.ts", "utf8"); } catch { return ""; } })();
+  chk("HA-4.6", "GET /logout: destroySession + redirect /login (ไม่พึ่ง server action)", loRoute.includes("destroySession") && loRoute.includes("/login"), "มี", "ไม่พบ");
+  chk("HA-4.7", "NavDrawer ใช้ลิงก์ /logout + /tenant/switch (ห้ามใช้ form server action ใน drawer)", nav.includes('"/logout"') && nav.includes("/tenant/switch?to="), "ใช่", "ไม่ใช่");
 } finally {
   for (const tid of tids) {
     for (const m of ["aiMessage", "aiConversation", "supportMessage", "supportCase", "membership"] as const) {
