@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { logoutAction } from "@/lib/actions/auth";
 import { NavIcon } from "./NavIcon";
@@ -72,6 +72,12 @@ export function NavDrawer({
   addHref: string;
 }) {
   const pathname = usePathname();
+  // เปิดจากแอปมือถือ (WebView UA "SharkApp") → ซ่อนแถวอีเมล+ปุ่มออกจากระบบของเว็บ
+  // (แอปมี logout native ของตัวเอง · กันบั๊ก session เว็บตายแต่แอปยัง login → หน้า error ค้าง)
+  const [inApp, setInApp] = useState(false);
+  useEffect(() => {
+    if (navigator.userAgent.includes("SharkApp")) setInApp(true);
+  }, []);
   // ลิงก์ active = จุดเน้นด้วย --color-accent (ปุ่ม primary ยังเป็น ink)
   const isActive = (href: string) =>
     pathname === href || (href !== "/app" && pathname.startsWith(href + "/")) || pathname.startsWith(href);
@@ -84,18 +90,11 @@ export function NavDrawer({
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
 
       <aside className="absolute left-0 top-0 flex h-full w-72 max-w-[85%] flex-col overflow-y-auto bg-[color:var(--color-surface)] shadow-[2px_0_12px_rgba(0,0,0,0.08)]">
-        <div className="flex items-center justify-between px-4 py-3">
+        {/* หัว drawer — ชื่อกิจการ · เอาปุ่ม ✕ ออกตามคำสั่งเจ้าของ (ปิดด้วยแตะฉากหลัง) */}
+        <div className="flex items-center px-4 py-3">
           <div className="min-w-0">
             <div className="truncate text-lg font-bold">{tenantName}</div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="ปิดเมนู"
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-xl leading-none hover:bg-[color:var(--color-surface-2)]"
-          >
-            ✕
-          </button>
         </div>
 
         <nav className="flex flex-col gap-0.5 px-2 text-sm">
@@ -201,14 +200,17 @@ export function NavDrawer({
               + เพิ่มระบบ
             </Link>
           </div>
-          <div className="flex items-center justify-between px-1">
-            <span className="truncate text-xs text-[color:var(--color-muted)]">{userEmail}</span>
-            <form action={logoutAction}>
-              <button type="submit" className="text-xs underline">
-                ออกจากระบบ
-              </button>
-            </form>
-          </div>
+          {/* ซ่อนอีเมล+ออกจากระบบเมื่อเปิดจากแอป — แอปมี logout native เอง (กัน session เว็บตายแต่แอปยัง login) */}
+          {!inApp && (
+            <div className="flex items-center justify-between px-1">
+              <span className="truncate text-xs text-[color:var(--color-muted)]">{userEmail}</span>
+              <form action={logoutAction}>
+                <button type="submit" className="text-xs underline">
+                  ออกจากระบบ
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </aside>
     </div>
