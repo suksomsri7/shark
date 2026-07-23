@@ -48,6 +48,14 @@
 - **ล่า OTP หาย**: Resend ส่งสำเร็จจริง (200) — ปลายทาง Gmail spam · sendEmail ล้ม → OpsEvent แล้ว (เลิกเงียบ) · **แก้บั๊กแฝง prod: `export type` re-export ในไฟล์ use server → ReferenceError: Attachment (น่าจะเป็นต้นตอ 500 logout เดิม)** ⚠️ กติกา: ไฟล์ "use server" ห้ามมี export type re-export
 - Apple Sign-In LIVE · social 4 ค่ายรอ creds (OWNER_TODO) · สถานะ: รอเจ้าของเทสรอบใหญ่ iOS
 
+## 📱 P2 SHIPPED (23 ก.ค. ค่ำ) — Push server + KB auto + OTA · รอเจ้าของเทสรอบใหญ่ + โควต้า EAS รีเซ็ต 1 ส.ค.
+- **Push ฝั่ง server LIVE**: `core/push.ts` sendPushToTenant (transport ฉีดได้ · chunk 100 · DeviceNotRegistered→ลบ token · ล้ม→OpsEvent) + wire 3 จุด: ทีมงานตอบเคส/proactive/scheduled · qc-push 7/7 — **จะติดจริงเมื่อ build แรกหลัง 1 ส.ค. ออก** (แอปเพิ่ง wire registerPush + แตะ noti เปิดห้องแชท)
+- **KB auto-capture LIVE**: tool `kb_auto_save` (เขียนทันที · createArticle เดิม · description กันซ้ำ/เฉพาะความรู้ถาวร) + persona แยกบทบาท remember_fact vs KB · qc-kb-auto 4/4 — **ใช้ได้ทันทีใน build #14**
+- **OTA พร้อม**: expo-updates + updates.url + runtimeVersion appVersion + channel production/preview ใน eas.json — build แรกหลัง 1 ส.ค. เปิดทาง `eas update --channel production` แก้ JS ไม่ต้อง build อีก
+- **ค้างรอโควต้า EAS (1 ส.ค.)**: build #16 = icon ส่ง paper-plane + ‹ กลับ sessions + push register + OTA runtime — โค้ดพร้อมหมดใน main แล้ว แค่สั่ง `eas build -p ios --profile production` + submit
+- regression เขียวหมด: fitness 14/14 · qc-ai 17/17 · ai-tools 14/14 · ai-tools2 8/8 · mobile-help 15/15 · mobile-chat 24/24 · mobile-app 35/35
+- **สถานะ: รอเจ้าของเทสข้อ 1 (ระบบงานทั้ง 14 ระบบผ่านแอป + AI) — feedback เว็บ/AI แก้ได้ทันทีไม่ติดโควต้า** · 🛑 ห้าม build iOS/Android จนกว่าโควต้ารีเซ็ตหรือเจ้าของอัปเกรด EAS
+
 ## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
 **สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
 **ทำอะไรไปแล้ว (Full-Function drive คำสั่งเจ้าของ 17 ก.ค. + งาน UI แตกฟังก์ชัน):**
