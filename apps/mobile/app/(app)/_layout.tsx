@@ -84,13 +84,13 @@ function DrawerBody(props: { navigation: DrawerNav }) {
           onPress={() => navigation.navigate("index")}
           style={({ pressed }) => [styles.menuItem, pressed && styles.rowPressed]}
         >
-          <Text style={styles.menuText}>ผู้ช่วย AI</Text>
+          <Text style={styles.menuText}>ระบบงาน</Text>
         </Pressable>
         <Pressable
-          onPress={() => navigation.navigate("webview")}
+          onPress={() => navigation.navigate("sessions")}
           style={({ pressed }) => [styles.menuItem, pressed && styles.rowPressed]}
         >
-          <Text style={styles.menuText}>ระบบงาน</Text>
+          <Text style={styles.menuText}>ผู้ช่วย AI</Text>
         </Pressable>
       </ScrollView>
 
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: S.sm,
   },
   tenantLabel: { color: C.textFaint, fontSize: 12 },
-  tenantName: { color: C.text, fontSize: 22, fontWeight: "800", marginTop: 2 },
+  tenantName: { color: C.text, fontSize: 22, fontFamily: "IBMPlexSansThai_700Bold", marginTop: 2 },
   caret: { color: C.textDim, fontSize: 20, paddingHorizontal: S.sm },
 
   tenantList: {
@@ -165,9 +165,9 @@ const styles = StyleSheet.create({
   },
   rowPressed: { backgroundColor: C.surfaceHi },
   tenantRowText: { color: C.textDim, fontSize: 15, flex: 1 },
-  tenantRowOn: { color: C.text, fontWeight: "700" },
+  tenantRowOn: { color: C.text, fontFamily: "IBMPlexSansThai_700Bold" },
   check: { color: C.blueHi, fontSize: 16, fontWeight: "800", paddingLeft: S.sm },
-  addText: { color: C.blueHi, fontSize: 15, fontWeight: "700" },
+  addText: { color: C.blueHi, fontSize: 15, fontFamily: "IBMPlexSansThai_700Bold" },
 
   divider: { height: 1, backgroundColor: C.border, marginVertical: S.md },
 
@@ -178,11 +178,11 @@ const styles = StyleSheet.create({
   email: { color: C.textDim, fontSize: 13, marginBottom: S.sm },
   logout: {
     borderWidth: 1,
-    borderColor: C.dangerDim,
+    borderColor: C.danger,
     borderRadius: R.md,
     paddingVertical: S.md,
     alignItems: "center",
   },
   logoutArmed: { backgroundColor: C.dangerDim },
-  logoutText: { color: C.danger, fontSize: 15, fontWeight: "700" },
+  logoutText: { color: C.danger, fontSize: 15, fontFamily: "IBMPlexSansThai_700Bold" },
 });

@@ -1,18 +1,18 @@
-// ธีมกลางของแอป — ดำสนิท + น้ำเงิน orb (สีชุดเดียวกับ .ai-orb ใน globals.css ฝั่งเว็บ)
+// ธีมกลางของแอป — light mode + น้ำเงิน orb (สีชุดเดียวกับ .ai-orb ใน globals.css ฝั่งเว็บ)
 export const C = {
-  bg: "#000000",
-  surface: "#101014", // การ์ด/แถบ
-  surfaceHi: "#1a1a20", // กดแล้ว/ยกระดับ
-  border: "#26262e",
-  text: "#f4f4f5",
-  textDim: "#9ca3af",
-  textFaint: "#6b7280",
+  bg: "#ffffff",
+  surface: "#f4f5f7", // การ์ด/แถบ
+  surfaceHi: "#e9eaee", // กดแล้ว/ยกระดับ
+  border: "#e5e7eb",
+  text: "#111827",
+  textDim: "#6b7280",
+  textFaint: "#9ca3af",
   blue: "#2563eb", // ปุ่มหลัก (โทนเดียวกับเว็บ)
   blueHi: "#60a5fa", // accent/ลิงก์/จุด unread
   blueSoft: "#1e3a8a",
   cyan: "#7dd3fc",
   danger: "#ef4444",
-  dangerDim: "#7f1d1d",
+  dangerDim: "#fee2e2", // พื้นปุ่มแดงอ่อนบน light
   ok: "#22c55e",
 } as const;
 

@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "th.in.shark.ai",
@@ -32,7 +32,7 @@
         {
           "image": "./assets/splash.png",
           "resizeMode": "cover",
-          "backgroundColor": "#000000"
+          "backgroundColor": "#ffffff"
         }
       ],
       "expo-notifications",
@@ -45,7 +45,7 @@
       "expo-font"
     ],
     "scheme": "sharkai",
-    "backgroundColor": "#000000",
+    "backgroundColor": "#ffffff",
     "extra": {
       "router": {},
       "eas": {

@@ -1,11 +1,20 @@
 // Root layout — ยามหน้าประตูของทั้งแอป (บังคับ login → ไม่มีกิจการ → DNA สร้างกิจการแรก)
 // โครง route: /login /dna (นอกกิจการ) · /(app)/* = ใน drawer กิจการ (Builder A/B เติมจอ)
 import { useEffect } from "react";
+import { Text, TextInput } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider, useAuth } from "@/src/lib/auth-context";
+import { useAppFonts } from "@/src/lib/fonts";
 import { C } from "@/src/theme";
+
+// override ฟอนต์ default ทั้งแอปเป็น IBM Plex Sans Thai (ทำครั้งเดียวใน module scope)
+type WithDefaultStyle = { defaultProps?: { style?: object } };
+const TextAny = Text as unknown as WithDefaultStyle;
+TextAny.defaultProps = { ...(TextAny.defaultProps ?? {}), style: { fontFamily: "IBMPlexSansThai_400Regular" } };
+const InputAny = TextInput as unknown as WithDefaultStyle;
+InputAny.defaultProps = { ...(InputAny.defaultProps ?? {}), style: { fontFamily: "IBMPlexSansThai_400Regular" } };
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { ready, token, tenants } = useAuth();
@@ -33,11 +42,15 @@ function Gate({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
+  const fontsReady = useAppFonts();
+  // ยังโหลดฟอนต์ไม่เสร็จ — คง splash ไว้ (อย่าเพิ่งวาด UI ด้วยฟอนต์ระบบ)
+  if (!fontsReady) return null;
+
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
       <AuthProvider>
         <Gate>
-          <StatusBar style="light" />
+          <StatusBar style="dark" />
           <Stack
             screenOptions={{
               headerShown: false,

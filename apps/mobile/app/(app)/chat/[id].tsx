@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 40, height: 32, alignItems: "center", justifyContent: "center" },
   backText: { color: C.text, fontSize: 30, lineHeight: 32 },
-  headerTitle: { flex: 1, color: C.text, fontSize: 17, fontWeight: "600", textAlign: "center" },
+  headerTitle: { flex: 1, color: C.text, fontSize: 17, fontFamily: "IBMPlexSansThai_700Bold", textAlign: "center" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   listContent: { padding: S.md, gap: 0 },
   sep: { height: S.sm },
