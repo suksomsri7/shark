@@ -33,6 +33,13 @@
       "image": "./assets/splash.png",
       "resizeMode": "cover",
       "backgroundColor": "#000000"
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c24ec712-4c6f-438c-95d4-44ab9f2428a2"
+      }
+    },
+    "owner": "siamdive"
   }
 }

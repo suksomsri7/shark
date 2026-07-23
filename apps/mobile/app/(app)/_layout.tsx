@@ -4,13 +4,16 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Drawer } from "expo-router/drawer";
-import { DrawerContentScrollView, type DrawerContentComponentProps } from "@react-navigation/drawer";
+import { DrawerContentScrollView } from "@react-navigation/drawer";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/src/lib/auth-context";
 import { C, R, S } from "@/src/theme";
 
-function DrawerBody(props: DrawerContentComponentProps) {
+// type ของ props ระหว่าง expo-router/drawer กับ @react-navigation/drawer ชนกัน (identity ซ้ำสองแพ็กเกจ)
+// → ประกาศเฉพาะ structural type ที่ใช้จริง (closeDrawer/navigate) พอ — ปลอด any และไม่ผูก identity ใคร
+type DrawerNav = { closeDrawer: () => void; navigate: (name: string) => void };
+function DrawerBody(props: { navigation: DrawerNav }) {
   const { navigation } = props;
   const { tenants, activeTenantId, user, switchTenant, signOut } = useAuth();
   const router = useRouter();
