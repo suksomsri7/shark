@@ -46,6 +46,15 @@ export async function requireTenant(): Promise<Auth & { active: Membership & { t
   return auth as Auth & { active: Membership & { tenant: Tenant } };
 }
 
+// authz ระดับ account: ต้องเป็นสมาชิก (acceptedAt) ของ tenant นั้นจริง — ใช้กับ action นอกขอบ RBAC รายโมดูล
+// (fitness F6 นับเป็น marker การตรวจสิทธิ์เทียบเท่า assertCan สำหรับ action ระดับ account)
+export async function requireMembership(tenantId: string): Promise<Membership & { tenant: Tenant }> {
+  const auth = await requireAuth();
+  const member = auth.memberships.find((m) => m.tenantId === tenantId);
+  if (!member) throw new Error("ไม่พบสิทธิ์ในกิจการนี้");
+  return member;
+}
+
 export async function setActiveTenant(tenantId: string): Promise<void> {
   (await cookies()).set(ACTIVE_TENANT_COOKIE, tenantId, {
     httpOnly: true,
