@@ -6,7 +6,7 @@ import { C, R, S } from "@/src/theme";
 
 const LOGO = require("../../../assets/icon.png");
 
-// วง orb โลโก้ (นิ่ง) — รูปวงกลม + ขอบน้ำเงินเรืองแสง
+// วง orb โลโก้ (นิ่ง) — รูปวงกลม + แสงน้ำเงินเรืองรอบ (ไม่มีขอบวงแหวน)
 export function Orb({ size = 84 }: { size?: number }) {
   return (
     <View
@@ -57,7 +57,7 @@ export function PrimaryButton({
       disabled={off}
       style={({ pressed }) => [styles.btn, off && styles.btnOff, pressed && !off && styles.btnPressed]}
     >
-      {loading ? <ActivityIndicator color={C.text} /> : <Text style={styles.btnText}>{label}</Text>}
+      {loading ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.btnText}>{label}</Text>}
     </Pressable>
   );
 }
@@ -112,8 +112,6 @@ export const inputPlaceholder = C.textFaint;
 const styles = StyleSheet.create({
   orb: {
     overflow: "hidden",
-    borderWidth: 2,
-    borderColor: C.blue,
     shadowColor: C.blueHi,
     shadowOpacity: 0.6,
     shadowRadius: 16,
@@ -129,7 +127,7 @@ const styles = StyleSheet.create({
   },
   btnOff: { opacity: 0.45 },
   btnPressed: { backgroundColor: C.blueSoft },
-  btnText: { color: C.text, fontSize: 16, fontWeight: "700" },
+  btnText: { color: "#ffffff", fontSize: 16, fontFamily: "IBMPlexSansThai_700Bold" },
   link: { alignItems: "center", paddingVertical: S.sm },
   linkText: { fontSize: 14, fontWeight: "600" },
   linkOff: { opacity: 0.4 },

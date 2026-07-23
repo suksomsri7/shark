@@ -408,7 +408,7 @@ const styles = StyleSheet.create({
   progress: { color: C.textDim, fontSize: 14, fontWeight: "600" },
   scroll: { flexGrow: 1, justifyContent: "center", padding: S.xl },
   block: { gap: S.xs },
-  h1: { color: C.text, fontSize: 24, fontWeight: "800" },
+  h1: { color: C.text, fontSize: 24, fontFamily: "IBMPlexSansThai_700Bold" },
   sub: { color: C.textDim, fontSize: 15, marginTop: S.xs },
   label: { color: C.textDim, fontSize: 14, marginBottom: S.sm },
   gap: { height: S.lg },
@@ -421,7 +421,7 @@ const styles = StyleSheet.create({
     padding: S.xl,
     gap: S.md,
   },
-  ask: { color: C.text, fontSize: 20, fontWeight: "700", lineHeight: 28 },
+  ask: { color: C.text, fontSize: 20, fontFamily: "IBMPlexSansThai_700Bold", lineHeight: 28 },
   choices: { gap: S.sm },
   choiceBtn: {
     backgroundColor: C.surfaceHi,
@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
     paddingVertical: S.xl,
     alignItems: "center",
   },
-  boolText: { color: C.text, fontSize: 18, fontWeight: "700" },
+  boolText: { color: C.text, fontSize: 18, fontFamily: "IBMPlexSansThai_700Bold" },
   pressed: { backgroundColor: C.blueSoft, borderColor: C.blue },
   numInput: { fontSize: 22, fontWeight: "700" },
 
@@ -470,10 +470,10 @@ const styles = StyleSheet.create({
   },
   stepNumText: { color: C.blueHi, fontSize: 13, fontWeight: "700" },
   stepBody: { flex: 1, gap: S.xs },
-  stepHead: { color: C.text, fontSize: 15, fontWeight: "700" },
+  stepHead: { color: C.text, fontSize: 15, fontFamily: "IBMPlexSansThai_700Bold" },
   stepWhy: { color: C.textDim, fontSize: 13, lineHeight: 19 },
 
   overlay: { flex: 1, alignItems: "center", justifyContent: "center", gap: S.lg, padding: S.xl },
-  overlayText: { color: C.text, fontSize: 20, fontWeight: "700", marginTop: S.md },
+  overlayText: { color: C.text, fontSize: 20, fontFamily: "IBMPlexSansThai_700Bold", marginTop: S.md },
   overlayDim: { color: C.textDim, fontSize: 14, textAlign: "center" },
 });

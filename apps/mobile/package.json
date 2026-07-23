@@ -3,11 +3,13 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@expo-google-fonts/ibm-plex-sans-thai": "^0.4.1",
     "@react-navigation/drawer": "^7.13.4",
     "@react-navigation/native": "^7.3.13",
     "expo": "~57.0.8",
     "expo-constants": "~57.0.7",
     "expo-device": "~57.0.1",
+    "expo-font": "~57.0.7",
     "expo-image-picker": "~57.0.6",
     "expo-linking": "~57.0.4",
     "expo-notifications": "~57.0.7",

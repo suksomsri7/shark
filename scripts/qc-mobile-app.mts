@@ -27,11 +27,14 @@ const required: [string, string][] = [
   ["app/login.tsx", "จอ login"],
   ["app/dna.tsx", "DNA Wizard native"],
   ["app/(app)/_layout.tsx", "drawer กิจการ"],
-  ["app/(app)/index.tsx", "หน้ารวม session"],
+  ["app/(app)/index.tsx", "หน้าแรก = dashboard กิจการ (WebView /app)"],
+  ["app/(app)/sessions.tsx", "หน้ารวม session ผู้ช่วย AI"],
   ["app/(app)/chat/[id].tsx", "จอแชท"],
-  ["app/(app)/webview.tsx", "จอระบบงาน WebView"],
+  ["src/lib/fonts.ts", "โหลดฟอนต์ไทย IBM Plex Sans Thai"],
 ];
 for (const [f, why] of required) chk("APP-1", `มี ${f} (${why})`, existsSync(join(APP, f)), "มี", "ไม่มี");
+// webview.tsx รวมเข้า dashboard (index.tsx) แล้ว → ต้องไม่มีไฟล์เดิม
+chk("APP-1.1", "ลบ webview.tsx เดิม (รวมเข้า dashboard แล้ว)", !existsSync(join(APP, "app/(app)/webview.tsx")), "ลบแล้ว", "ยังอยู่");
 
 // ── 2. Security ──
 const allSrc = [...walk(join(APP, "app")), ...walk(join(APP, "src"))];
@@ -41,7 +44,7 @@ chk("APP-2.1", "ไม่มี AsyncStorage (token ต้องอยู่ Sec
 const secretPat = /(sk-or-|sk-ant-|SHARK_AI_KEY|SHARK_CRON_SECRET|password\s*[:=]\s*["'][^"']+["'])/;
 const leaked = allText.filter(([, t]) => secretPat.test(t));
 chk("APP-2.2", "ไม่มี secret/key ฝังในแอป", leaked.length === 0, "0", leaked.map(([p]) => p).join(","));
-const wv = read("app/(app)/webview.tsx");
+const wv = read("app/(app)/index.tsx"); // dashboard = WebView หน้าแรก
 chk("APP-2.3", "WebView ใช้ one-time code (webview-session) — Bearer ห้ามเข้า URL", wv.includes("webview-session") && !/Bearer \$\{|token=\$\{|\?token=/.test(wv), "code only", "พบ token ใน URL หรือไม่ใช้ webview-session");
 chk("APP-2.4", "client ชี้ prod https://shark.in.th", read("src/api/client.ts").includes('BASE_URL = "https://shark.in.th"'), "ใช่", "ผิด");
 chk("APP-2.5", "logout เรียก API (revoke ฝั่ง server ไม่ใช่แค่ลบ local)", read("src/lib/auth-context.tsx").includes("/api/mobile/auth/logout"), "ใช่", "ไม่พบ");
@@ -50,7 +53,7 @@ chk("APP-2.5", "logout เรียก API (revoke ฝั่ง server ไม่
 const drawer = read("app/(app)/_layout.tsx");
 chk("APP-3.1", "drawer มีปุ่มเพิ่มกิจการ → /dna", drawer.includes("เพิ่มกิจการ") && drawer.includes("/dna"), "มี", "ไม่พบ");
 chk("APP-3.2", "drawer ไม่มีปุ่ม X ปิด (คำสั่งเจ้าของ)", !/[✕✖❌]|closeButton|CloseIcon/.test(drawer), "ไม่มี", "พบ X", "MAJOR");
-const sessions = read("app/(app)/index.tsx");
+const sessions = read("app/(app)/sessions.tsx");
 chk("APP-3.3", "หน้ารวม session: สไลด์ซ้าย (Swipeable) + unread", /Swipeable|SwipeListView|renderRightActions/.test(sessions) && sessions.includes("unread"), "มี", "ไม่ครบ");
 const chat = read("app/(app)/chat/[id].tsx");
 chk("APP-3.4", "จอแชท: ใช้ sendChat (SSE) + การ์ด proposal + confirm2x (DESTRUCTIVE 2 จังหวะ)", chat.includes("sendChat") && chat.includes("confirm2x") && chat.includes("DESTRUCTIVE"), "ครบ", "ไม่ครบ");
@@ -59,9 +62,22 @@ chk("APP-3.5", "จอ login: OTP flow (otp→verify→signIn)", login.includes(
 const dna = read("app/dna.tsx");
 chk("APP-3.6", "DNA: ดึงคำถามจาก API + answers + apply", dna.includes("/api/mobile/dna/questions") && dna.includes("/api/mobile/dna/answers") && dna.includes("/api/mobile/dna/apply"), "ครบ", "ไม่ครบ");
 
+// ── 3b. Feedback รอบเทส iPhone (light + ฟอนต์ไทย + โครงหน้าใหม่ + orb) ──
+chk("APP-3.7", "theme = light mode (bg ขาว)", read("src/theme.ts").includes('bg: "#ffffff"'), "ใช่", "ยังดำ");
+const fonts = read("src/lib/fonts.ts");
+chk("APP-3.8", "fonts.ts: useAppFonts โหลด IBM Plex Sans Thai", fonts.includes("useAppFonts") && fonts.includes("@expo-google-fonts/ibm-plex-sans-thai"), "มี", "ไม่พบ");
+const rootLayout = read("app/_layout.tsx");
+chk("APP-3.9", "_layout: StatusBar dark + useAppFonts + override ฟอนต์ default (Text/TextInput)", rootLayout.includes('style="dark"') && rootLayout.includes("useAppFonts") && rootLayout.includes("defaultProps") && rootLayout.includes("IBMPlexSansThai_400Regular"), "ครบ", "ไม่ครบ");
+const dash = read("app/(app)/index.tsx");
+chk("APP-3.10", 'dashboard: WebView UA "SharkApp/1" + ปุ่ม orb → /sessions', dash.includes('applicationNameForUserAgent="SharkApp/1"') && dash.includes('router.push("/sessions")'), "ครบ", "ไม่ครบ");
+chk("APP-3.11", "dashboard ไม่มี native header ซ้อน (ไม่มีปุ่ม ☰ ในจอนี้)", !dash.includes("☰"), "ไม่มี", "พบ ☰", "MAJOR");
+chk("APP-3.12", "drawer สลับเมนู: ระบบงาน→index · ผู้ช่วย AI→sessions", drawer.includes('navigation.navigate("sessions")') && drawer.includes('navigation.navigate("index")'), "ครบ", "ไม่ครบ");
+chk("APP-3.13", "sessions: ปุ่มย้อนกลับ → dashboard (navigate index)", sessions.includes('navigation.navigate("index")'), "มี", "ไม่พบ", "MAJOR");
+chk("APP-3.14", "login orb: ไม่มีขอบวงแหวน (เอา borderColor ออกจาก orb)", !/orb:\s*\{[^}]*borderColor/.test(read("src/components/auth/ui.tsx")), "ไม่มี", "ยังมีขอบ", "MAJOR");
+
 // ── 4. config + กัน Vercel/root พัง ──
 const appJson = JSON.parse(read("app.json") || "{}") as { expo?: { android?: { package?: string }; ios?: { bundleIdentifier?: string }; userInterfaceStyle?: string } };
-chk("APP-4.1", "bundle th.in.shark.ai ทั้ง 2 platform + dark", appJson.expo?.android?.package === "th.in.shark.ai" && appJson.expo?.ios?.bundleIdentifier === "th.in.shark.ai" && appJson.expo?.userInterfaceStyle === "dark", "ครบ", JSON.stringify(appJson.expo?.android));
+chk("APP-4.1", "bundle th.in.shark.ai ทั้ง 2 platform + light", appJson.expo?.android?.package === "th.in.shark.ai" && appJson.expo?.ios?.bundleIdentifier === "th.in.shark.ai" && appJson.expo?.userInterfaceStyle === "light", "ครบ", JSON.stringify({ android: appJson.expo?.android?.package, ui: appJson.expo?.userInterfaceStyle }));
 const rootTs = JSON.parse(readFileSync("tsconfig.json", "utf8")) as { exclude?: string[] };
 chk("APP-4.2", "root tsconfig exclude apps (กัน Vercel typecheck RN)", rootTs.exclude?.includes("apps") === true, "มี", "ไม่มี");
 chk("APP-4.3", ".vercelignore มี apps/", existsSync(".vercelignore") && readFileSync(".vercelignore", "utf8").includes("apps/"), "มี", "ไม่มี");
