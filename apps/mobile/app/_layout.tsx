@@ -6,15 +6,17 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider, useAuth } from "@/src/lib/auth-context";
-import { useAppFonts } from "@/src/lib/fonts";
+import { useAppFonts, applyGlobalFont } from "@/src/lib/fonts";
 import { C } from "@/src/theme";
 
-// override ฟอนต์ default ทั้งแอปเป็น IBM Plex Sans Thai (ทำครั้งเดียวใน module scope)
+// override ฟอนต์ default ทั้งแอปเป็น IBM Plex Sans Thai — สองชั้นกันพลาด:
+// 1) defaultProps (เผื่อ RN รุ่นนี้ยังอ่าน) 2) applyGlobalFont patch render (ชัวร์บน React 19)
 type WithDefaultStyle = { defaultProps?: { style?: object } };
 const TextAny = Text as unknown as WithDefaultStyle;
 TextAny.defaultProps = { ...(TextAny.defaultProps ?? {}), style: { fontFamily: "IBMPlexSansThai_400Regular" } };
 const InputAny = TextInput as unknown as WithDefaultStyle;
 InputAny.defaultProps = { ...(InputAny.defaultProps ?? {}), style: { fontFamily: "IBMPlexSansThai_400Regular" } };
+applyGlobalFont();
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { ready, token, tenants } = useAuth();
