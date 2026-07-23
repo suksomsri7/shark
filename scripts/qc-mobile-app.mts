@@ -62,12 +62,29 @@ chk("APP-3.7", "หน้าแรก: ปุ่ม orb ลอย → /sessions 
 chk("APP-3.6", "DNA: ดึงคำถามจาก API + answers + apply", dna.includes("/api/mobile/dna/questions") && dna.includes("/api/mobile/dna/answers") && dna.includes("/api/mobile/dna/apply"), "ครบ", "ไม่ครบ");
 
 // ── 3.6 feedback รอบสอง 23 ก.ค.: header session เหลือ ‹ + · orb ใช้รูปจริง ──
+const orb = read("src/components/ui/orb.tsx"); // AnimatedOrb กลาง (หมุน+เต้นหัวใจ) — login + ปุ่มลอย reuse
 chk("APP-3.8", "หน้ารวม session: ไม่มี ☰/openDrawer และไม่มีชื่อกิจการใน header (คำสั่งเจ้าของ)", !sessions.includes("openDrawer") && !sessions.includes("☰"), "ไม่มี", "ยังอยู่");
-chk("APP-3.9", "ปุ่ม orb ลอยใช้รูป orb จริง (assets/orb.png — วงแหวนเรืองแสงแบบเว็บ)", wv.includes("orb.png"), "มี", "ไม่พบ");
-chk("APP-3.10", "จอ login ใช้ orb จริง (assets/orb.png)", read("app/login.tsx").includes("orb.png") || read("src/components/auth/ui.tsx").includes("orb.png"), "มี", "ไม่พบ");
+chk("APP-3.9", "ปุ่ม orb ลอยใช้ AnimatedOrb (รูป orb.png จริง — วงแหวนเรืองแสงแบบเว็บ)", wv.includes("AnimatedOrb") && orb.includes("orb.png"), "มี", "ไม่พบ");
+chk("APP-3.10", "จอ login ใช้ orb จริง (AnimatedOrb → assets/orb.png)", (read("app/login.tsx").includes("AnimatedOrb") && orb.includes("orb.png")) || read("src/components/auth/ui.tsx").includes("orb.png"), "มี", "ไม่พบ");
 
-chk("APP-3.11", "orb ลอยมีเอฟเฟค: หมุนช้า + เต้นแบบหัวใจ (Animated loop rotate+scale)", /Animated\.loop/.test(wv) && /rotate/.test(wv) && /scale/.test(wv), "มี", "ไม่ครบ");
+chk("APP-3.11", "orb ลอยมีเอฟเฟค: หมุนช้า (16s) + เต้นแบบหัวใจ (Animated loop rotate+scale ใน orb.tsx)", /Animated\.loop/.test(orb) && /rotate/.test(orb) && /scale/.test(orb) && orb.includes("16000"), "มี", "ไม่ครบ");
 chk("APP-3.12", "intercept เว็บ: /onboarding → native /dna · /app?switched= → switchTenant (sync กิจการ)", wv.includes("/onboarding") && wv.includes("/dna") && wv.includes("switched") && wv.includes("switchTenant"), "ครบ", "ไม่ครบ");
+
+// ── 3.7 feedback เจ้าของ 23 ก.ค.: orb login เต้น + ปุ่ม social 5 ค่าย ──
+chk("APP-3.13", "จอ login: orb เป็น AnimatedOrb (หมุนช้า+เต้นหัวใจ ไม่นิ่ง) ขนาด 96", login.includes("AnimatedOrb") && login.includes("size={96}"), "มี", "ไม่พบ");
+chk(
+  "APP-3.14",
+  "จอ login: ปุ่ม social 5 ค่าย (FontAwesome6 google/facebook/apple/line/tiktok) · Apple ใช้จริง (signInAsync→/api/mobile/auth/apple→signIn, ยกเลิก=ERR_REQUEST_CANCELED เงียบ) · ซ่อนตอน phase code",
+  login.includes("FontAwesome6") &&
+    ["google", "facebook", "apple", "line", "tiktok"].every((k) => login.includes(`"${k}"`)) &&
+    login.includes("expo-apple-authentication") &&
+    login.includes("signInAsync") &&
+    login.includes("/api/mobile/auth/apple") &&
+    login.includes("ERR_REQUEST_CANCELED") &&
+    login.includes('phase === "email"'),
+  "ครบ",
+  "ไม่ครบ",
+);
 
 // ── 3.5 feedback เจ้าของ 23 ก.ค.: light mode + ฟอนต์ไทยตามเว็บ ──
 const themeSrc = read("src/theme.ts");
