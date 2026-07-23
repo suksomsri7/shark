@@ -163,41 +163,6 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {/* การ์ดระบบที่เปิดใช้ */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-medium">ระบบที่เปิดใช้</h2>
-          <Link
-            href="/app/settings/systems"
-            aria-label="เพิ่มระบบ"
-            title="เพิ่มระบบ"
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-[color:var(--color-accent)] text-white hover:opacity-90"
-          >
-            <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </Link>
-        </div>
-
-        {cards.length === 0 ? (
-          <div className="card py-8 text-center text-sm text-[color:var(--color-muted)]">
-            ยังไม่มีระบบ — กด &quot;เพิ่มระบบ&quot; เพื่อเริ่มต้นใช้งาน
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {cards.map((c) => (
-              <Link key={c.key} href={c.href} className="card hover:bg-[color:var(--color-surface-2)]">
-                <div className="flex items-center gap-2 text-sm text-[color:var(--color-muted)]">
-                  <span aria-hidden>{c.icon}</span>
-                  <span>{c.typeLabel}</span>
-                </div>
-                <div className="mt-1 text-lg font-medium">{c.name}</div>
-                <div className="mt-3 text-xs text-[color:var(--color-muted)]">{c.detail}</div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

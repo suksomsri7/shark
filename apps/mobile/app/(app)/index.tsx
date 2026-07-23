@@ -126,9 +126,11 @@ export default function DashboardScreen() {
         )}
 
         {/* ปุ่ม orb AI ลอยมุมล่างขวา (native) — หมุนช้า+เต้นหัวใจ (AnimatedOrb) · glow อยู่ในตัว png */}
+        {!loading && !error && (
         <Pressable onPress={() => router.push("/sessions")} hitSlop={16} style={styles.orb}>
           <AnimatedOrb size={64} />
         </Pressable>
+        )}
       </View>
     </SafeAreaView>
   );
