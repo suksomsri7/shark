@@ -17,7 +17,6 @@ import {
   type Attachment,
 } from "./service";
 
-export type { Attachment };
 
 export type CaseView = {
   id: string;

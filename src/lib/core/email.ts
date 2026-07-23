@@ -21,9 +21,15 @@ export async function sendEmail(to: string, subject: string, text: string): Prom
       body: JSON.stringify({ from: env.EMAIL_FROM, to, subject, text }),
     });
     if (!res.ok) {
-      console.warn(`[email] Resend ส่งไม่สำเร็จ (${res.status}): ${await res.text()}`);
+      const body = await res.text();
+      console.warn(`[email] Resend ส่งไม่สำเร็จ (${res.status}): ${body}`);
+      // เมลคือเส้นเลือด login — ล้มเงียบไม่ได้อีกแล้ว (เคส OTP หายเงียบ 23 ก.ค.) → ลง OpsEvent ให้ตรวจย้อนได้
+      const { logOps } = await import("@/lib/core/ops");
+      await logOps("ERROR", "email", `Resend ${res.status} ถึง ${to}`, { detail: body.slice(0, 500) });
     }
   } catch (e) {
     console.warn("[email] Resend error:", e);
+    const { logOps } = await import("@/lib/core/ops");
+    await logOps("ERROR", "email", `Resend exception ถึง ${to}`, { detail: String(e).slice(0, 500) }).catch(() => {});
   }
 }

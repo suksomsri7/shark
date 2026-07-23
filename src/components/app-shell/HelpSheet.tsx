@@ -1,16 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  loadMyCasesAction,
-  loadCaseThreadAction,
-  openCaseAction,
-  addMessageAction,
-  markCaseReadAction,
-  type CaseView,
-  type MessageView,
-  type Attachment,
-} from "@/lib/support/actions";
+import { loadMyCasesAction, loadCaseThreadAction, openCaseAction, addMessageAction, markCaseReadAction, type CaseView, type MessageView } from "@/lib/support/actions";
+import type { Attachment } from "@/lib/support/service";
 
 // ศูนย์ช่วยเหลือ — เปิดจากปุ่ม "?" บน topbar
 // 3 มุมมอง: รายการเคสของฉัน / เปิดเคสใหม่ / บทสนทนาในเคส
