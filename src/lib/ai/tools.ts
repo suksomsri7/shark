@@ -23,6 +23,7 @@ import { createProposal, type ProposalKind } from "./proposals";
 import { createPlan } from "./plans";
 import { dayKeyBangkok } from "./rules";
 import { rememberFact, forgetMemory, listMemories } from "./memory";
+import { openCaseFromAi } from "@/lib/support/service";
 
 export type ToolCtx = { tenantId: string; conversationId?: string };
 
@@ -2304,6 +2305,46 @@ const listMemoriesTool: AiTool = {
   },
 };
 
+// ── SUP-1) support_open_case — เปิดเคสแจ้งทีมงานจากห้องแชท (เขียนทันที ไม่ผ่าน proposal) ──
+// help-v2: user แจ้งปัญหาระบบ/ร้องเรียน/ขอสิ่งที่ AI ทำแทนไม่ได้ → เปิดเคสส่งแอดมิน แล้วคำตอบเด้งกลับ session เดิม
+// action=false (เหมือน remember_fact) — ผูกห้องแชทปัจจุบัน (ctx.conversationId)
+// ToolCtx ไม่มี userId (AiConversation ไม่ผูก user) → openedByUserId = "ai-assistant" (sentinel)
+const supportOpenCase: AiTool = {
+  def: {
+    name: "support_open_case",
+    description:
+      "เปิดเคสแจ้งทีมงาน SHARK เมื่อผู้ใช้แจ้งปัญหาระบบ ร้องเรียน หรือขอสิ่งที่ผู้ช่วยทำแทนให้ไม่ได้ (เช่น ระบบขัดข้อง บั๊ก ขอฟีเจอร์ใหม่ ปัญหาบิล/การเงินจากแพลตฟอร์ม) — บันทึกเคสส่งทีมงานทันที (ไม่ต้องให้ผู้ใช้ยืนยัน) แล้วทีมงานจะตอบกลับในห้องแชทนี้ · ระบุ subject (หัวข้อสั้น ๆ) และ detail (รายละเอียดปัญหาตามที่ผู้ใช้แจ้ง)",
+    parameters: {
+      type: "object",
+      properties: {
+        subject: { type: "string", description: "หัวข้อปัญหาสั้น ๆ เช่น 'เครื่องพิมพ์ใบเสร็จไม่ทำงาน'" },
+        detail: { type: "string", description: "รายละเอียดปัญหา/คำร้องขอ ตามที่ผู้ใช้แจ้ง" },
+      },
+      required: ["subject", "detail"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    if (!ctx.conversationId) {
+      return JSON.stringify({ error: "ต้องอยู่ในห้องแชทก่อนจึงจะเปิดเคสแจ้งทีมงานได้" });
+    }
+    const a = asRecord(args);
+    const subject = String(a.subject ?? "").trim();
+    const detail = String(a.detail ?? "").trim();
+    if (!subject) return JSON.stringify({ error: "ต้องระบุหัวข้อปัญหา" });
+    if (!detail) return JSON.stringify({ error: "ต้องระบุรายละเอียดปัญหา" });
+    const { caseNo } = await openCaseFromAi(
+      { tenantId: ctx.tenantId },
+      { userId: "ai-assistant", conversationId: ctx.conversationId, subject, body: detail },
+    );
+    // สคริปต์ตอบรับตามคำสั่งเจ้าของ — รับทราบ + อย่าปิด session + จะตอบกลับในห้องนี้
+    return JSON.stringify({
+      caseNo,
+      ตอบผู้ใช้: `รับทราบความต้องการแล้วครับ ทีมงานจะรีบดำเนินการให้เร็วที่สุด กรุณาอย่าปิด session นี้ — ทีมงานจะตอบกลับมาในห้องนี้ (เคส #${caseNo})`,
+    });
+  },
+};
+
 const MAX_MEMORY_TAKE = 100; // ดึงความจำสูงสุดตอน list/ค้นเพื่อลบ
 
 // หาชื่อพนักงานของใบลา (best-effort สำหรับ summary) — พังก็คืน null ไม่โยน
@@ -2357,6 +2398,8 @@ export function toolRegistry(): AiTool[] {
     rememberFactTool,
     forgetFactTool,
     listMemoriesTool,
+    // help-v2 — แจ้งปัญหา/ร้องเรียนผ่านแชท → เปิดเคสส่งทีมงาน (เขียนทันที ไม่ผ่าน proposal)
+    supportOpenCase,
     // action / ทำแทน
     inventoryReceive,
     hrDecideLeave,

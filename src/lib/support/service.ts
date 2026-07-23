@@ -80,6 +80,21 @@ export async function createCase(
   throw new Error("เปิดเคสไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
 }
 
+// help-v2 (mobile): เปิดเคสจากผู้ช่วย AI — ผู้ใช้แจ้งปัญหาในห้องแชท → ผูก conversationId
+//   เพื่อ bridge คำตอบแอดมินกลับ session เดิม · reuse createCase (caseNo running race-safe + SHOP msg แรก)
+//   แล้วค่อยผูก conversationId — ไม่ทำ caseNo logic ซ้ำ
+export async function openCaseFromAi(
+  ctx: Ctx,
+  input: { userId: string; conversationId: string; subject: string; body: string },
+): Promise<{ id: string; caseNo: number }> {
+  const c = await createCase(ctx, { userId: input.userId, subject: input.subject, body: input.body });
+  await tenantDb(ctx).supportCase.update({
+    where: { id: c.id },
+    data: { conversationId: input.conversationId },
+  });
+  return c;
+}
+
 // เคสของร้านนี้ (มีความเคลื่อนไหวล่าสุดก่อน)
 export async function listMyCases(ctx: Ctx, take = 50): Promise<SupportCase[]> {
   return tenantDb(ctx).supportCase.findMany({ orderBy: { updatedAt: "desc" }, take });

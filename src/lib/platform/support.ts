@@ -83,6 +83,24 @@ export async function addPlatformMessage(
       where: { id: caseId },
       data: { status: "PENDING", assigneePlatformUserId: pu.id },
     }),
+    // help-v2 (mobile): เคสที่ AI เปิดจากห้องแชท → เด้งคำตอบทีมงานกลับ session เดิม
+    //   (ห้องจะขึ้น unread เองในแอปเพราะมี ASSISTANT ใหม่กว่า lastReadAt — อย่าแตะ lastReadAt) + ดันห้องขึ้นบนสุด
+    ...(c.conversationId
+      ? [
+          prisma.aiMessage.create({
+            data: {
+              tenantId: c.tenantId,
+              conversationId: c.conversationId,
+              role: "ASSISTANT",
+              content: `🛟 ทีมงาน: ${body}`,
+            },
+          }),
+          prisma.aiConversation.update({
+            where: { id: c.conversationId },
+            data: { updatedAt: new Date() },
+          }),
+        ]
+      : []),
   ]);
   return true;
 }
