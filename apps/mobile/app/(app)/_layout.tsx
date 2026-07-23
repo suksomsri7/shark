@@ -1,13 +1,15 @@
 // Drawer ของโซนในกิจการ — สลับกิจการ/เพิ่มกิจการ/เมนู/ออกจากระบบ
 // กติกาเจ้าของ: บนสุด=ชื่อกิจการ active + ▾ กางรายการ · ปุ่ม + เพิ่มกิจการ → /dna
 //               ไม่มีปุ่ม X ปิด (ปิดด้วยแตะข้างนอก/สไลด์) · ล่างสุด=อีเมล + ออกจากระบบ (ยืนยัน 2 จังหวะ)
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View, ScrollView } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { Drawer } from "expo-router/drawer";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import * as Notifications from "expo-notifications";
 import { useAuth } from "@/src/lib/auth-context";
+import { registerPush, conversationIdFromNotification } from "@/src/lib/push-register";
 import { C, R, S } from "@/src/theme";
 
 // type ของ props ระหว่าง expo-router/drawer กับ @react-navigation/drawer ชนกัน (identity ซ้ำสองแพ็กเกจ)
@@ -120,6 +122,16 @@ function DrawerBody(props: { navigation: DrawerNav }) {
 }
 
 export default function AppLayout() {
+  const router = useRouter();
+  // ลงทะเบียน push ครั้งเดียวหลังเข้าโซนกิจการ + แตะแจ้งเตือน → เปิดห้องแชทที่เกี่ยว
+  useEffect(() => {
+    void registerPush();
+    const sub = Notifications.addNotificationResponseReceivedListener((resp) => {
+      const cid = conversationIdFromNotification(resp);
+      if (cid) router.push(`/chat/${cid}`);
+    });
+    return () => sub.remove();
+  }, [router]);
   return (
     <Drawer
       drawerContent={(props) => <DrawerBody {...props} />}

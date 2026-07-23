@@ -92,6 +92,11 @@ chk("APP-6.1", "ธีม light mode (bg ขาว ไม่ใช่ดำ — 
 const rootLayout = read("app/_layout.tsx");
 chk("APP-6.2", "โหลดฟอนต์ IBM Plex Sans Thai (ฟอนต์เดียวกับเว็บ)", /IBMPlexSansThai/.test(rootLayout) || /IBMPlexSansThai/.test(read("src/lib/fonts.ts")), "มี", "ไม่พบ");
 
+// ── 3.7 Phase 2: OTA + push register (เตรียมไว้ build แรกหลัง 1 ส.ค.) ──
+const appJson2 = JSON.parse(read("app.json") || "{}") as { expo?: { updates?: { url?: string }; runtimeVersion?: unknown } };
+chk("APP-7.1", "OTA: updates.url (u.expo.dev) + runtimeVersion + channel ใน eas.json", !!appJson2.expo?.updates?.url?.includes("u.expo.dev") && !!appJson2.expo?.runtimeVersion && read("eas.json").includes('"channel": "production"'), "ครบ", "ไม่ครบ");
+chk("APP-7.2", "แอปลงทะเบียน push (push-register + เรียกใน (app)/_layout + แตะ noti เปิดห้อง)", read("src/lib/push-register.ts").includes("/api/mobile/push/register") && read("app/(app)/_layout.tsx").includes("registerPush"), "ครบ", "ไม่ครบ");
+
 // ── 4. config + กัน Vercel/root พัง ──
 const appJson = JSON.parse(read("app.json") || "{}") as { expo?: { android?: { package?: string }; ios?: { bundleIdentifier?: string }; userInterfaceStyle?: string } };
 chk("APP-4.1", "bundle th.in.shark.ai ทั้ง 2 platform + light", appJson.expo?.android?.package === "th.in.shark.ai" && appJson.expo?.ios?.bundleIdentifier === "th.in.shark.ai" && appJson.expo?.userInterfaceStyle === "light", "ครบ", JSON.stringify(appJson.expo?.android));
