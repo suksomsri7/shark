@@ -101,6 +101,18 @@ try {
     chk("MC-3.3", "PATCH/read/DELETE → 200 ครบ", pa.status === 200 && rd.status === 200 && de.status === 200, "200x3", `${pa.status}/${rd.status}/${de.status}`);
   }
 
+  const rMsgs = await route("@/app/api/mobile/conversations/[id]/messages/route");
+  if (!rMsgs?.GET) chk("MC-3.4", "มี route conversations/[id]/messages", false, "มี", "ยังไม่สร้าง");
+  else {
+    const cv = await prisma.aiConversation.create({ data: { tenantId: t1.id, title: "ห้องอ่านย้อน" } });
+    await prisma.aiMessage.create({ data: { tenantId: t1.id, conversationId: cv.id, role: "USER", content: "คำถาม" } });
+    await prisma.aiMessage.create({ data: { tenantId: t1.id, conversationId: cv.id, role: "ASSISTANT", content: "คำตอบ" } });
+    const ms = await rMsgs.GET(J(`/api/mobile/conversations/${cv.id}/messages`, "GET", undefined, H), P(cv.id));
+    const mb = (await ms.json().catch(() => ({}))) as { messages?: { role: string; content: string }[] };
+    const msX = await rMsgs.GET(J(`/api/mobile/conversations/${cv.id}/messages`, "GET", undefined, { ...H, "x-tenant-id": t2.id }), P(cv.id));
+    chk("MC-3.4", "GET messages → คู่ USER/ASSISTANT · ข้าม tenant = 403 (ไม่ใช่สมาชิก)", ms.status === 200 && mb.messages?.length === 2 && msX.status === 403, "2 แถว/403", `${ms.status}/${mb.messages?.length}/${msX.status}`);
+  }
+
   const rSend = await route("@/app/api/mobile/chat/send/route");
   if (!rSend?.POST) chk("MC-4.0", "มี route chat/send", false, "มี", "ยังไม่สร้าง");
   else {
