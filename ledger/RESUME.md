@@ -26,6 +26,12 @@
 - QC: qc-mobile-app 29/29 + regression 5 ชุดเขียว · เว็บ deploy READY (5641438) · follow-up เล็ก: เคสจาก AI ใช้ openedByUserId="ai-assistant" (ToolCtx ยังไม่มี userId จริง)
 - รอ feedback เจ้าของหลังเทส build #8 · 🛑 ห้าม build Android จนกว่า iOS สมบูรณ์
 
+## 📱 P1.3 SHIPPED → TestFlight build #9 (23 ก.ค.)
+- **ฟอนต์แก้ขาด (เจ้าของทัก 2 รอบ)**: defaultProps/render-patch เงียบตายบน RN 0.86/React 19 → wrapper `src/components/ui/text.tsx` ฝัง IBM Plex ตรงตัว component + map fontWeight→หน้าฟอนต์จริง + codemod 11 ไฟล์ **⚠️ กติกาใหม่: จอห้าม import Text/TextInput จาก react-native — ใช้ @/src/components/ui/text เสมอ**
+- orb spin 16s + heartbeat 3.2s (Animated native driver) · NavDrawer เว็บ: dropdown กิจการ+✓ active+"+ เพิ่มกิจการ"(/onboarding — ในแอป intercept→native /dna) + logout กลับมา (เลิกซ่อน — intercept ฝั่งแอปทำงานแล้ว) · switchTenantAction redirect /app?switched= → native sync switchTenant กันห้อง AI ข้ามกิจการ
+- **requireMembership helper ใหม่ใน core/context.ts** = F6 marker การตรวจสิทธิ์ระดับ account (fitness ยอมรับคู่ assertCan)
+- QC: qc-mobile-app 31/31 · qc-mobile-help 12/12 · fitness 14/14 · build #9 VALID · รอ feedback เจ้าของ
+
 ## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
 **สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
 **ทำอะไรไปแล้ว (Full-Function drive คำสั่งเจ้าของ 17 ก.ค. + งาน UI แตกฟังก์ชัน):**
