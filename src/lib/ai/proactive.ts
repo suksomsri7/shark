@@ -143,6 +143,13 @@ export async function sweepProactiveNudges(now: Date = new Date()): Promise<numb
 
       const body = insights.map((i) => `• ${i.message}`).join("\n");
       await prisma.appNotification.create({ data: { tenantId: t.id, title: PROACTIVE_TITLE, body } });
+      // push เข้าเครื่องมือถือด้วย — best-effort ห้ามพารอบ cron พัง
+      try {
+        const { sendPushToTenant } = await import("@/lib/core/push");
+        await sendPushToTenant(t.id, { title: PROACTIVE_TITLE, body: insights[0].message.slice(0, 80) });
+      } catch {
+        // push พัง → เงียบ (noti ถูกบันทึกแล้ว)
+      }
       notified += 1;
     } catch {
       // ร้านนี้พัง → ข้ามไปทำร้านถัดไป
