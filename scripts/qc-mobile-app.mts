@@ -61,6 +61,11 @@ const dna = read("app/dna.tsx");
 chk("APP-3.7", "หน้าแรก: ปุ่ม orb ลอย → /sessions (feedback เจ้าของ: dashboard ขึ้นก่อน AI orb มุมล่างขวา)", wv.includes("/sessions"), "มี", "ไม่พบ");
 chk("APP-3.6", "DNA: ดึงคำถามจาก API + answers + apply", dna.includes("/api/mobile/dna/questions") && dna.includes("/api/mobile/dna/answers") && dna.includes("/api/mobile/dna/apply"), "ครบ", "ไม่ครบ");
 
+// ── 3.6 feedback รอบสอง 23 ก.ค.: header session เหลือ ‹ + · orb ใช้รูปจริง ──
+chk("APP-3.8", "หน้ารวม session: ไม่มี ☰/openDrawer และไม่มีชื่อกิจการใน header (คำสั่งเจ้าของ)", !sessions.includes("openDrawer") && !sessions.includes("☰"), "ไม่มี", "ยังอยู่");
+chk("APP-3.9", "ปุ่ม orb ลอยใช้รูป orb จริง (assets/orb.png — วงแหวนเรืองแสงแบบเว็บ)", wv.includes("orb.png"), "มี", "ไม่พบ");
+chk("APP-3.10", "จอ login ใช้ orb จริง (assets/orb.png)", read("app/login.tsx").includes("orb.png") || read("src/components/auth/ui.tsx").includes("orb.png"), "มี", "ไม่พบ");
+
 // ── 3.5 feedback เจ้าของ 23 ก.ค.: light mode + ฟอนต์ไทยตามเว็บ ──
 const themeSrc = read("src/theme.ts");
 chk("APP-6.1", "ธีม light mode (bg ขาว ไม่ใช่ดำ — feedback เจ้าของ)", /bg:\s*"#(fff|ffffff|f\w{5})"/i.test(themeSrc) && !/bg:\s*"#000/.test(themeSrc), "ขาว", themeSrc.match(/bg:[^,]+/)?.[0] ?? "?");
