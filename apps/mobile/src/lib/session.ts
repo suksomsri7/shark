@@ -1,4 +1,4 @@
-// เก็บ Bearer token + กิจการ active ใน SecureStore เท่านั้น (กติกา security: ห้าม AsyncStorage)
+// เก็บ Bearer token + กิจการ active ใน SecureStore เท่านั้น (กติกา security: ห้ามเก็บ token ใน storage แบบ plain)
 import * as SecureStore from "expo-secure-store";
 
 const KEY_TOKEN = "shark_token";
