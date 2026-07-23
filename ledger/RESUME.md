@@ -1,5 +1,14 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 📱 MOBILE PHASE 0 SHIPPED (2026-07-22/23 · เจ้าของสั่ง "วางแผนงานให้ดีที่สุด อย่าลืม qc และเริ่มงานเลย")
+**สถานะ: main=3560bc7 deploy READY · /api/mobile/* ครบ 20 endpoint LIVE บน prod · แผนเต็ม ledger/MOBILE_PLAN.md**
+- **Fable (กลาง)**: migration mobile_phase0+webview_code (apply prod แล้ว: AiConversation.lastReadAt/deletedAt · PushDevice · SupportCase.conversationId · AuthPurpose.WEBVIEW) + `src/lib/mobile/auth.ts` (Bearer reuse Session + requireMobile X-Tenant-Id + webview one-time code 60วิ กัน replay) + oracle 2 ชุด contract-first
+- **Builder A (Opus)**: auth otp/verify/logout · me · tenants list/create (สกัด createTenantForUser เป็น single source — onboarding เว็บเรียกตัวเดียวกัน) · push/register · webview-session/exchange
+- **Builder B (Opus)**: conversations CRUD+unread/soft-delete · chat/send **SSE** (wrap sendMessage) · proposals list/confirm(needsSecondConfirm บังคับ server)/reject · plans · dna questions/answers/apply
+- **QC**: qc-mobile-auth **24/24** + qc-mobile-chat **22/22** + fitness 14/14 + regression qc-ai 17/17 + phase-a 9/9 + qc-dna 22/22 + typecheck · smoke prod จริง: 401 ทุก endpoint ไม่มี token · otp 200 เสมอไม่หลุดรหัส · webview code ปลอม → 307 /login?err=code
+- **App icon เสร็จ**: assets-mobile/ (orb วงแหวนน้ำเงินวาดจาก CSS จริง — public/ai-orb.png คือรูปเก่า ห้ามใช้)
+- **NEXT: Phase 1 Expo app MVP** (apps/mobile · EAS build org @siamdive · bundle th.in.shark.ai) — จอ Login OTP→DNA native→drawer กิจการ→session list สไตล์ Claude Remote→chat SSE→WebView handshake · ดู MOBILE_PLAN.md §Phase 1
+
 ## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
 **สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
 **ทำอะไรไปแล้ว (Full-Function drive คำสั่งเจ้าของ 17 ก.ค. + งาน UI แตกฟังก์ชัน):**
