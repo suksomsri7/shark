@@ -57,11 +57,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadMe]);
 
   const signIn = useCallback(async (newToken: string) => {
-    await setToken(newToken);
-    setTok(newToken);
+    await setToken(newToken); // ลง SecureStore ก่อน — loadMe ใช้ token จาก store ได้ทันที
     const me = await loadMe();
     const first = me?.memberships[0] ?? null;
     if (first) { await setTenantId(first.tenantId); setActive(first.tenantId); }
+    // ตั้ง state token เป็นลำดับสุดท้าย — Gate ต้องเห็น token พร้อมรายชื่อกิจการครบในเฟรมเดียว
+    // (บั๊กเจ้าของเจอ: setTok ก่อน loadMe → เสี้ยววิที่ tenants ยัง [] → โดนเด้งเข้า /dna ทั้งที่มีกิจการ)
+    setTok(newToken);
   }, [loadMe]);
 
   const signOut = useCallback(async () => {
