@@ -69,6 +69,10 @@ chk("APP-3.10", "จอ login ใช้ orb จริง (assets/orb.png)", read
 chk("APP-3.11", "orb ลอยมีเอฟเฟค: หมุนช้า + เต้นแบบหัวใจ (Animated loop rotate+scale)", /Animated\.loop/.test(wv) && /rotate/.test(wv) && /scale/.test(wv), "มี", "ไม่ครบ");
 chk("APP-3.12", "intercept เว็บ: /onboarding → native /dna · /app?switched= → switchTenant (sync กิจการ)", wv.includes("/onboarding") && wv.includes("/dna") && wv.includes("switched") && wv.includes("switchTenant"), "ครบ", "ไม่ครบ");
 
+const loginSrc = read("app/login.tsx");
+chk("APP-3.13", "orb หน้า login หมุน+เต้น (AnimatedOrb — feedback เจ้าของ)", /AnimatedOrb|Animated\.loop/.test(loginSrc) || /Animated\.loop/.test(read("src/components/ui/orb.tsx")), "มี", "ไม่พบ");
+chk("APP-3.14", "ปุ่ม social ครบ 5 (google/facebook/apple/line/tiktok) + Apple ใช้จริง (identityToken)", ["google", "facebook", "apple", "line", "tiktok"].every((n) => loginSrc.includes(n)) && loginSrc.includes("identityToken"), "ครบ", "ไม่ครบ");
+
 // ── 3.5 feedback เจ้าของ 23 ก.ค.: light mode + ฟอนต์ไทยตามเว็บ ──
 const themeSrc = read("src/theme.ts");
 chk("APP-6.1", "ธีม light mode (bg ขาว ไม่ใช่ดำ — feedback เจ้าของ)", /bg:\s*"#(fff|ffffff|f\w{5})"/i.test(themeSrc) && !/bg:\s*"#000/.test(themeSrc), "ขาว", themeSrc.match(/bg:[^,]+/)?.[0] ?? "?");

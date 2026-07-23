@@ -133,6 +133,13 @@ try {
     chk("MA-10.1", "webview-session → code แลกเป็น user+tenant ถูก", res.status === 200 && got?.userId === u1.id && got?.tenantId === t1.id, "match", JSON.stringify(got));
     chk("MA-10.2", "ไม่ล็อกอิน → 401", (await rWv.POST(J("/api/mobile/webview-session", "POST"))).status === 401, "401", "?");
   }
+  const rApple = await route("@/app/api/mobile/auth/apple/route");
+  if (!rApple?.POST) chk("MA-11.0", "มี route auth/apple (Sign in with Apple)", false, "มี", "ยังไม่สร้าง");
+  else {
+    chk("MA-11.1", "apple: ไม่มี token → 400", (await rApple.POST(J("/api/mobile/auth/apple", "POST", {}))).status === 400, "400", "?");
+    const bad = await rApple.POST(J("/api/mobile/auth/apple", "POST", { identityToken: "fake.jwt.token" }));
+    chk("MA-11.2", "apple: token ปลอม → 401 (ต้อง verify กับ Apple JWKS เสมอ)", bad.status === 401, "401", String(bad.status));
+  }
 } finally {
   for (const tid of tids) { await prisma.membership.deleteMany({ where: { tenantId: tid } }); await prisma.appSystemUnit.deleteMany({ where: { tenantId: tid } }).catch(() => {}); await prisma.appSystem.deleteMany({ where: { tenantId: tid } }).catch(() => {}); await prisma.businessUnit.deleteMany({ where: { tenantId: tid } }).catch(() => {}); await prisma.tenant.deleteMany({ where: { id: tid } }); }
   for (const uid of uids) { await prisma.pushDevice.deleteMany({ where: { userId: uid } }); await prisma.session.deleteMany({ where: { userId: uid } }); await prisma.user.deleteMany({ where: { id: uid } }); }

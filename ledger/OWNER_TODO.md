@@ -64,3 +64,12 @@
 2. กรอก: Platform **iOS** · Name **SHARK AI** · Primary Language **Thai** · Bundle ID เลือก **th.in.shark.ai** · SKU **sharkai2026**
 3. กด Create เสร็จแล้วบอก AI ว่า "สร้าง app แล้ว" → AI จะ submit ขึ้น TestFlight ให้อัตโนมัติ
 (ถ้าอยากเทส Android ก่อน: ลิงก์ APK อยู่ใน ledger/RESUME.md block 📱)
+
+## 🔑 Social Login แอป (2026-07-23) — Apple ใช้ได้แล้ว · 4 ค่ายรอ creds จากเจ้าของ
+| ค่าย | ต้องมี | ที่ทำ |
+|---|---|---|
+| Google | OAuth Client (iOS) จาก console.cloud.google.com — ส่ง Client ID มา | สร้างโปรเจกต์ → Credentials → OAuth client ID → iOS → bundle th.in.shark.ai |
+| LINE | LINE Login channel (developers.line.biz) — Channel ID + Secret | สร้าง channel ใต้ provider เดิม แล้วเปิด LINE Login |
+| Facebook | เปิด Facebook Login ใน Meta App 1377933440828067 + ผ่าน review | developers.facebook.com → Add Product → Facebook Login |
+| TikTok | สมัคร TikTok for Developers + สร้าง app — Client Key + Secret | developers.tiktok.com (review ค่อนข้างช้า) |
+ปุ่มในแอปขึ้นครบ 5 แล้ว — ค่ายที่ยังไม่มี creds กดแล้วบอก "เปิดใช้เร็ว ๆ นี้" · ส่ง creds มาเมื่อไหร่ต่อให้ทันที
