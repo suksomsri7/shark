@@ -107,6 +107,8 @@ export function CalendarMonth({
   const todayInMonth =
     todayStr.startsWith(`${year}-${pad(month)}`) ? Number(todayStr.slice(8, 10)) : null;
   const [selected, setSelected] = useState<number | null>(todayInMonth);
+  // แตะวัน = เปิด modal รายการของวันนั้นทันที (feedback เจ้าของ: เดิมลิสต์อยู่ใต้ตาราง มือถือมองไม่เห็นว่าเกิดอะไรขึ้น)
+  const [dayOpen, setDayOpen] = useState(false);
 
   const selectedEvents = useMemo(() => {
     if (selected == null) return [];
@@ -160,7 +162,7 @@ export function CalendarMonth({
               <button
                 key={d}
                 type="button"
-                onClick={() => setSelected(d)}
+                onClick={() => { setSelected(d); setDayOpen(true); }}
                 className={`flex aspect-square flex-col items-center justify-start rounded-lg border p-1 text-sm hover:bg-[color:var(--color-surface-2)] ${
                   isSel
                     ? "border-[color:var(--color-ink)]"
@@ -195,15 +197,17 @@ export function CalendarMonth({
         ))}
       </div>
 
-      {/* รายการของวันที่เลือก */}
-      <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">
-          {selected != null
-            ? `รายการวันที่ ${selected} ${monthLabel}`
-            : "แตะวันในปฏิทินเพื่อดูรายการ"}
-        </h2>
-        {selected != null && selectedEvents.length === 0 && (
-          <div className="card py-6 text-center text-sm text-[color:var(--color-muted)]">
+      {/* modal รายการของวันที่แตะ (กลางจอ — แตะฉากหลัง/ปุ่มปิดเพื่อออก) */}
+      {dayOpen && selected != null && (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/40" onClick={() => setDayOpen(false)} />
+        <div className="relative z-10 flex max-h-[75vh] w-full max-w-md flex-col gap-2 overflow-y-auto rounded-2xl border bg-[color:var(--color-surface)] p-4 shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">{`รายการวันที่ ${selected} ${monthLabel}`}</h2>
+          <button type="button" aria-label="ปิด" onClick={() => setDayOpen(false)} className="text-[color:var(--color-muted)] hover:text-[color:var(--color-ink)]">✕</button>
+        </div>
+        {selectedEvents.length === 0 && (
+          <div className="py-6 text-center text-sm text-[color:var(--color-muted)]">
             ไม่มีรายการในวันนี้
           </div>
         )}
@@ -224,7 +228,9 @@ export function CalendarMonth({
             </div>
           </div>
         ))}
+        </div>
       </div>
+      )}
     </div>
   );
 }

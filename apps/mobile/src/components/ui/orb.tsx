@@ -16,7 +16,7 @@ export function AnimatedOrb({ size = 84 }: { size?: number }) {
     );
     const breatheAnim = Animated.loop(
       Animated.sequence([
-        Animated.timing(scale, { toValue: 1.07, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1.12, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         Animated.timing(scale, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ]),
     );
