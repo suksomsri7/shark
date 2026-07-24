@@ -63,7 +63,7 @@ export function NavDrawer({
   userEmail,
   items,
   soon,
-  addHref,
+  onAddSystem,
   memberships,
   activeTenantId,
 }: {
@@ -73,7 +73,7 @@ export function NavDrawer({
   userEmail: string;
   items: NavItem[];
   soon: SoonItem[];
-  addHref: string;
+  onAddSystem: () => void;
   memberships: TenantOption[];
   activeTenantId: string;
 }) {
@@ -299,13 +299,14 @@ export function NavDrawer({
 
         <div className="mt-auto flex flex-col gap-2 px-4 pb-4 pt-3">
           <div className="border-t pt-3">
-            <Link
-              href={addHref}
-              onClick={onClose}
+            {/* เปิด Modal เพิ่มระบบกลางจอ (ไม่ navigate ไปหน้า settings — คง flow อยู่ในหน้าเดิม) */}
+            <button
+              type="button"
+              onClick={onAddSystem}
               className="flex w-full items-center justify-center gap-1 rounded-lg bg-[color:var(--color-accent)] px-3 py-2.5 text-sm font-medium text-white hover:opacity-90"
             >
               + เพิ่มระบบ
-            </Link>
+            </button>
           </div>
           {/* อีเมล + ออกจากระบบ — โชว์เสมอ (ฝั่งแอป native intercept logout เอง) */}
           <div className="flex items-center justify-between px-1">

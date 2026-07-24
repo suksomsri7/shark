@@ -8,16 +8,6 @@ import { onboardingChecklist } from "@/lib/platform/onboarding-drip";
 import { WIDGETS, getDashboardLayout, runWidgets } from "@/lib/dashboard/widgets";
 import { DashboardCustomizer } from "./DashboardCustomizer";
 
-// ลิงก์ช่วยทำต่อของแต่ละข้อในเช็กลิสต์เริ่มต้นร้าน
-const ONBOARDING_HREF: Record<string, string> = {
-  hasSystem: "/app/settings/systems",
-  hasUnit: "/app/settings/units/new",
-  hasProduct: "/app/settings/systems",
-  hasPromptpay: "/app/settings/payment",
-  hasTeam: "/app/settings/systems",
-  triedAi: "/app/dna",
-};
-
 // หน้าแรก /app = แดชบอร์ดของกิจการ (ไม่ใช่ "ระบบทั้งหมด" อีกต่อไป — ย้ายไปอยู่ใน drawer)
 // แสดง: ชื่อกิจการ + ตัวเลขวันนี้ + การ์ดระบบที่เปิดใช้ + ลิงก์เพิ่มระบบ
 export default async function DashboardPage() {
@@ -56,6 +46,19 @@ export default async function DashboardPage() {
   // เช็กลิสต์เริ่มต้นร้าน — ซ่อนการ์ดทั้งใบเมื่อทำครบทุกข้อ
   const onboardingDone = checklist.filter((c) => c.done).length;
   const showOnboarding = onboardingDone < checklist.length;
+
+  // ลิงก์ "ทำต่อ" ของแต่ละข้อ — deep-link ไปหน้าระบบจริงถ้าเปิดแล้ว ไม่งั้นเปิด modal เพิ่มระบบ (?add-system=1)
+  // (เดิม hasProduct/hasTeam โยนไป /app/settings/systems ทั้งหมด → หลงไปหน้าเพิ่มระบบ)
+  const invSystem = appSystems.find((s) => s.type === "INVENTORY");
+  const hrSystem = appSystems.find((s) => s.type === "HR");
+  const onboardingHref: Record<string, string> = {
+    hasSystem: "/app?add-system=1",
+    hasUnit: "/app/settings/units/new",
+    hasProduct: invSystem ? `/app/sys/${invSystem.id}` : "/app?add-system=1",
+    hasPromptpay: "/app/settings/payment",
+    hasTeam: hrSystem ? `/app/sys/${hrSystem.id}` : "/app?add-system=1",
+    triedAi: "/app/dna",
+  };
 
   // ประกาศจากแพลตฟอร์ม — แสดงฉบับล่าสุด 1 ฉบับเหนือ "ภาพรวมวันนี้" (ไม่มี = ไม่แสดง)
   const announcement = announcements[0] ?? null;
@@ -119,7 +122,7 @@ export default async function DashboardPage() {
                   </div>
                 ) : (
                   <Link
-                    href={ONBOARDING_HREF[c.key] ?? "/app/settings/systems"}
+                    href={onboardingHref[c.key] ?? "/app?add-system=1"}
                     className="flex items-center gap-2 rounded-md px-1 py-1 text-sm hover:bg-[color:var(--color-surface)]"
                   >
                     <span aria-hidden>⬜</span>

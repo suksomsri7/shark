@@ -243,6 +243,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     label: s.label,
   }));
 
+  // ระบบที่ tenant เปิดใช้แล้ว (business unit + feature system) — ส่งให้ modal เพิ่มระบบ ปิด/ติดป้าย "เปิดแล้ว"
+  const openedCodes = Array.from(
+    new Set<string>([...units.map((u) => u.type), ...appSystems.map((s) => s.type)]),
+  );
+
   return (
     <div className="min-h-full">
       <NavProgress />
@@ -251,7 +256,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         userEmail={auth.user.email}
         items={items}
         soon={soon}
-        addHref="/app/settings/systems"
+        openedCodes={openedCodes}
         // รายชื่อกิจการทั้งหมดของ user (สำหรับ dropdown สลับกิจการในหัว drawer)
         memberships={auth.memberships.map((m) => ({ tenantId: m.tenantId, name: m.tenant.name, role: m.role }))}
         activeTenantId={auth.active.tenantId}
