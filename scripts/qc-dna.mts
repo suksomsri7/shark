@@ -38,7 +38,7 @@ ZBlueprintPlan.parse(p1);
 const types = (t: string) => p1.steps.filter((s) => s.type === t);
 chk("CMP-1.1", "compile pure (facts เดิม → hash เดิม)", planHash(p1) === planHash(compile(salon, "QC DNA ร้านผมสวย")), "hash ตรง", "ไม่ตรง");
 chk("CMP-1.2", "ร้านตัดผม: มีหน่วยจองคิว 1", types("CREATE_UNIT").length === 1 && (types("CREATE_UNIT")[0] as { unitType: string }).unitType === "BOOKING", "BOOKING ×1", JSON.stringify(types("CREATE_UNIT").map((s) => (s as { unitType: string }).unitType)));
-chk("CMP-1.3", "ร้านตัดผม: feature ครบ POS/MEMBER/POINT/REWARD/CHAT/ACCOUNT", ["POS", "MEMBER", "POINT", "REWARD", "CHAT", "ACCOUNT"].every((t) => types("CREATE_SYSTEM").some((s) => (s as { systemType: string }).systemType === t)), "ครบ 6", JSON.stringify(types("CREATE_SYSTEM").map((s) => (s as { systemType: string }).systemType)));
+chk("CMP-1.3", "ร้านตัดผม: feature ครบ POS/INVENTORY/HR/MEMBER/POINT/REWARD/CHAT/ACCOUNT (กติกาใหม่ 24 ก.ค.: ขายของ→คลัง · พนักงาน≥2→HR)", ["POS", "INVENTORY", "HR", "MEMBER", "POINT", "REWARD", "CHAT", "ACCOUNT"].every((t) => types("CREATE_SYSTEM").some((s) => (s as { systemType: string }).systemType === t)), "ครบ 6", JSON.stringify(types("CREATE_SYSTEM").map((s) => (s as { systemType: string }).systemType)));
 chk("CMP-1.4", "ต่อสาย POS→Account อัตโนมัติ (ท่อ M1)", types("LINK_ACCOUNT_POS").length === 1, "1", String(types("LINK_ACCOUNT_POS").length));
 chk("CMP-1.5", "ตั้งค่าบัญชี vatRegistered=true", types("ACCOUNT_SETTINGS").length === 1 && (types("ACCOUNT_SETTINGS")[0] as { settings: { vatRegistered: boolean } }).settings.vatRegistered === true, "true", "ดูข้างบน");
 chk("CMP-1.6", "ทุก step มี because ไม่ว่าง", p1.steps.every((s) => s.because.trim().length > 0), "ครบ", "มีตัวว่าง");
@@ -87,14 +87,14 @@ try {
       prisma.accountSettings.findFirst({ where: { tenantId } }),
     ]);
     chk("APPLY-2.2", "BusinessUnit เกิดตามแผน (BOOKING ×1)", units.length === 1 && units[0].type === "BOOKING", "1 BOOKING", JSON.stringify(units.map((u) => u.type)));
-    chk("APPLY-2.3", "AppSystem ครบ 6 (POS/MEMBER/POINT/REWARD/CHAT/ACCOUNT)", systems.length === 6, "6", String(systems.length));
+    chk("APPLY-2.3", "AppSystem ครบ 8 (+INVENTORY+HR ตามกติกาใหม่)", systems.length === 8, "8", String(systems.length));
     chk("APPLY-2.4", "เชื่อม unit↔feature ครบ (POS/MEMBER/POINT/REWARD ×1 unit = 4)", links.length === 4, "4", String(links.length));
     chk("APPLY-2.5", "AccountSystemLink POS↔ACCOUNT เกิด (ท่อ M1 ต่อให้อัตโนมัติ)", accLinks.length === 1 && accLinks[0].linkedKind === "POS", "1 POS", JSON.stringify(accLinks.map((l) => l.linkedKind)));
     chk("APPLY-2.6", "AccountSettings.vatRegistered = true + orgName = ชื่อกิจการ", settings?.vatRegistered === true && settings?.orgName === "QC DNA ร้านผมสวย", "true/ชื่อตรง", JSON.stringify({ vat: settings?.vatRegistered, org: settings?.orgName }));
 
     const res2 = await apply.applyBlueprint(tenantId, prop.blueprintId);
     const systems2 = await prisma.appSystem.count({ where: { tenantId } });
-    chk("APPLY-3.1", "apply ซ้ำ idempotent (ระบบไม่งอกเพิ่ม)", res2.ok === true && systems2 === 6, "6 คงเดิม", String(systems2));
+    chk("APPLY-3.1", "apply ซ้ำ idempotent (ระบบไม่งอกเพิ่ม)", res2.ok === true && systems2 === 8, "8 คงเดิม", String(systems2));
 
     const bp = await prisma.dnaBlueprint.findUnique({ where: { id: prop.blueprintId } });
     chk("APPLY-3.2", "blueprint สถานะ APPLIED + มี stepResults ครบทุก step", bp?.status === "APPLIED" && Array.isArray(bp?.stepResults) && (bp!.stepResults as unknown[]).length === p1.steps.length, `APPLIED · ${p1.steps.length} results`, `${bp?.status} · ${(bp?.stepResults as unknown[])?.length ?? 0}`);

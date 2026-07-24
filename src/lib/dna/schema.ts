@@ -61,7 +61,7 @@ export const ZBlueprintStep = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("CREATE_SYSTEM"),
-    systemType: z.enum(["MEMBER", "POINT", "POS", "REWARD", "COUPON", "CHAT", "ACCOUNT", "MEETING", "KANBAN"]),
+    systemType: z.enum(["MEMBER", "POINT", "POS", "REWARD", "COUPON", "CHAT", "ACCOUNT", "MEETING", "KANBAN", "INVENTORY", "HR"]),
     name: z.string().min(1),
     because,
   }),

@@ -5,7 +5,7 @@
 //   ห้ามใช้ Date.now()/random/DB — ทุกอย่าง derive จาก facts + tenantName เท่านั้น
 // - ทุก step มี `because` ชี้ข้อเท็จจริงที่ทำให้เกิด — support ไล่ย้อนได้ทุกเมนู
 // - ดูข้อเท็จจริงรายข้อ ห้าม switch(industryHint) — hint ใช้แค่ตั้งชื่อให้เป็นธรรมชาติ
-// - เลือกจากระบบที่ available เท่านั้น (HR/INVENTORY/AI/KB ยัง coming_soon — ไม่แตะ)
+// - เลือกจากระบบที่ available เท่านั้น (HR/INVENTORY เปิดแล้ว 2026-07-16 — กติกาอัปเดต 24 ก.ค. หลังเจ้าของจับได้ว่าค้างเก่า)
 
 import type { BlueprintPlan, BlueprintStep, DnaFacts } from "./schema";
 
@@ -44,12 +44,16 @@ export function compile(facts: DnaFacts, tenantName: string): BlueprintPlan {
 
   // ── 2) ระบบ feature — สร้างชุดเดียวแชร์ทุกสาขา (หลัก blueprint: หลาย unit เชื่อม feature เดียว = แชร์ข้อมูล) ──
   const featureRef: Partial<Record<string, string>> = {};
-  const addFeature = (systemType: BlueprintStep extends never ? never : "MEMBER" | "POINT" | "POS" | "REWARD" | "CHAT" | "ACCOUNT", name: string, because: string) => {
+  const addFeature = (systemType: BlueprintStep extends never ? never : "MEMBER" | "POINT" | "POS" | "REWARD" | "CHAT" | "ACCOUNT" | "INVENTORY" | "HR", name: string, because: string) => {
     steps.push({ type: "CREATE_SYSTEM", systemType, name, because });
     featureRef[systemType] = ref();
   };
 
-  if (facts.sellsGoods) addFeature("POS", "ขายหน้าร้าน", "ขายสินค้า/คิดเงินหน้าร้าน (sellsGoods=true)");
+  if (facts.sellsGoods) {
+    addFeature("POS", "ขายหน้าร้าน", "ขายสินค้า/คิดเงินหน้าร้าน (sellsGoods=true)");
+    addFeature("INVENTORY", "คลังสินค้า", "ขายสินค้าต้องมีคลังเก็บสต็อก (sellsGoods=true)");
+  }
+  if (facts.staffCount >= 2) addFeature("HR", "ทีมงาน", `มีพนักงาน ${facts.staffCount} คน (staffCount>=2 — คนเดียว=เจ้าของเอง ไม่ยัดเยียด)`);
   if (facts.membership) {
     addFeature("MEMBER", "สมาชิก", "มีระบบสมาชิก (membership=true)");
     addFeature("POINT", "สะสมแต้ม", "สมาชิกสะสมแต้ม (membership=true)");
