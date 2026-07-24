@@ -94,6 +94,19 @@ export async function createSystem(tenantId: string, type: SystemType, name: str
   return prisma.appSystem.create({ data: { tenantId, type, name } });
 }
 
+// สร้างระบบ + ถ้ากิจการมี "สาขาเดียว" เชื่อมให้อัตโนมัติ
+// (กล่องเชื่อมบนหน้าระบบถูกซ่อนสำหรับสาขาเดียวแล้ว ระบบใหม่จึงต้องไม่หลุดการเชื่อม —
+//  กิจการหลายสาขาปล่อยว่างไว้ให้เจ้าของเลือกเองที่หน้ารวม /app/settings/connections)
+export async function createSystemAutoLink(tenantId: string, type: SystemType, name: string) {
+  const sys = await createSystem(tenantId, type, name);
+  const units = await prisma.businessUnit.findMany({
+    where: { tenantId, status: { not: "ARCHIVED" } },
+    select: { id: true },
+  });
+  if (units.length === 1) await linkUnit(tenantId, sys.id, units[0].id);
+  return sys;
+}
+
 // ผูก unit เข้าระบบ (ย้ายออกจากระบบเดิมของประเภทนั้นก่อน — 1 unit/1 ระบบ/ประเภท)
 export async function linkUnit(tenantId: string, systemId: string, unitId: string) {
   const system = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId } });

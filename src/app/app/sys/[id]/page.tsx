@@ -16,8 +16,6 @@ import { MarketingHub } from "@/lib/modules/marketing/ui";
 import { MemberHub } from "@/lib/modules/member/ui";
 import { PointHub } from "@/lib/modules/point/ui";
 import { RewardHub } from "@/lib/modules/reward/ui";
-import { linkUnitAction, unlinkUnitAction } from "@/lib/actions/systems";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
@@ -39,17 +37,11 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
   if (!sys) notFound();
   const def = systemDef(sys.type);
 
-  const [links, units] = await Promise.all([
-    prisma.appSystemUnit.findMany({ where: { tenantId, systemId: id } }),
-    prisma.businessUnit.findMany({
-      where: { tenantId, status: { not: "ARCHIVED" } },
-      orderBy: { createdAt: "asc" },
-    }),
-  ]);
-  const linkedIds = new Set(links.map((l) => l.unitId));
-  const linkedUnits = units.filter((u) => linkedIds.has(u.id));
-  const otherUnits = units.filter((u) => !linkedIds.has(u.id));
-  const back = `/app/sys/${id}`;
+  // เชื่อมระบบย้ายไปจัดการรวมที่ /app/settings/connections แล้ว
+  // สาขาเดียว = ซ่อนทั้งหมด (createSystemAutoLink เชื่อมให้แล้ว) · หลายสาขา = โชว์ลิงก์เล็ก ๆ
+  const unitCount = await prisma.businessUnit.count({
+    where: { tenantId, status: { not: "ARCHIVED" } },
+  });
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
@@ -58,44 +50,14 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
         desc={`ระบบ${def?.label ?? ""}`}
       />
 
-      {/* การเชื่อมต่อ */}
-      <Section title="เชื่อมต่อกับระบบ" card>
-        {linkedUnits.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">
-            ยังไม่ได้เชื่อม — เชื่อมกับระบบธุรกิจ (จองคิว ฯลฯ) เพื่อให้ทำงานร่วมกัน
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {linkedUnits.map((u) => (
-              <ConfirmDialog
-                key={u.id}
-                triggerLabel={`${u.name} ✕`}
-                triggerClassName="rounded-full border px-3 py-1.5 text-xs hover:bg-[color:var(--color-surface-2)]"
-                title="ยกเลิกการเชื่อมระบบนี้?"
-                detail={`หน่วยงาน "${u.name}" จะถูกตัดการเชื่อมกับระบบนี้`}
-                confirmLabel="ยืนยันยกเลิกการเชื่อม"
-                danger
-                action={unlinkUnitAction}
-                fields={{ systemId: id, unitId: u.id, back }}
-              />
-            ))}
-          </div>
-        )}
-        {otherUnits.length > 0 && (
-          <form action={linkUnitAction} className="flex gap-2">
-            <input type="hidden" name="systemId" value={id} />
-            <input type="hidden" name="back" value={back} />
-            <select name="unitId" className="input flex-1">
-              {otherUnits.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
-            <button className="btn btn-ghost text-sm">+ เชื่อม</button>
-          </form>
-        )}
-      </Section>
+      {unitCount > 1 && (
+        <Link
+          href="/app/settings/connections"
+          className="text-sm text-[color:var(--color-accent)]"
+        >
+          จัดการการเชื่อมระบบ →
+        </Link>
+      )}
 
       {/* เนื้อหาตามประเภท */}
       {sys.type === "MEMBER" && <MemberHub systemId={id} />}

@@ -14,7 +14,7 @@ import {
   isFixedPageSystem,
   FIXED_PAGE_SYSTEMS,
 } from "@/lib/systems";
-import { createSystem, linkUnit } from "@/lib/modules/system/service";
+import { createSystemAutoLink, linkUnit } from "@/lib/modules/system/service";
 import {
   createReward,
   removeReward,
@@ -89,7 +89,7 @@ export async function addSystemAction(
   if (!AVAILABLE_FEATURE.has(code as SystemType)) {
     return { status: "error", message: "ระบบนี้ยังไม่เปิดให้บริการ" };
   }
-  const sys = await createSystem(tenantId, code as SystemType, name);
+  const sys = await createSystemAutoLink(tenantId, code as SystemType, name);
   redirect(`/app/sys/${sys.id}`);
 }
 

@@ -255,6 +255,7 @@ export function NavDrawer({
             { href: "/app/forms", icon: "📝", label: "ฟอร์ม" },
             { href: "/app/notifications", icon: "🔔", label: "ศูนย์แจ้งเตือน" },
             { href: "/app/approvals", icon: "✅", label: "รออนุมัติของฉัน" },
+            { href: "/app/settings/connections", icon: "🔗", label: "สาขาและการเชื่อมระบบ" },
             { href: "/app/settings/approval", icon: "🧾", label: "สายอนุมัติ" },
             { href: "/app/settings/automation", icon: "⚙️", label: "ระบบอัตโนมัติ" },
             { href: "/app/settings/payment", icon: "💳", label: "ช่องรับเงิน" },

@@ -33,7 +33,7 @@ import * as pointSvc from "@/lib/modules/point/service";
 import * as ticketSvc from "@/lib/modules/ticket/service";
 import * as restaurantSvc from "@/lib/modules/restaurant/order";
 import * as accountFacade from "@/lib/modules/account";
-import { createSystem } from "@/lib/modules/system/service";
+import { createSystemAutoLink } from "@/lib/modules/system/service";
 import * as scheduledSvc from "./scheduled";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 
@@ -423,7 +423,7 @@ async function dispatch(
     const p = payload as CreateCampaignPayload;
     // เปิดระบบการตลาดให้อัตโนมัติถ้ายังไม่มี (แคมเปญ system-scoped ต้องมีระบบก่อน)
     const system =
-      (await resolveSystem(tenantId, "MARKETING")) ?? (await createSystem(tenantId, "MARKETING", "การตลาด"));
+      (await resolveSystem(tenantId, "MARKETING")) ?? (await createSystemAutoLink(tenantId, "MARKETING", "การตลาด"));
     const member = await resolveSystem(tenantId, "MEMBER");
     await mktSvc.createCampaign(
       { tenantId, systemId: system.id },
@@ -465,7 +465,7 @@ async function dispatch(
     const existing = await resolveSystem(tenantId, type as SystemType);
     if (existing) throw new Error(`ระบบ${def.label}เปิดอยู่แล้ว`);
     const name = String(p.name ?? "").trim() || def.label;
-    await createSystem(tenantId, type as SystemType, name);
+    await createSystemAutoLink(tenantId, type as SystemType, name);
     return `เปิดระบบ${def.label}ให้ร้านเรียบร้อยแล้ว`;
   }
 
