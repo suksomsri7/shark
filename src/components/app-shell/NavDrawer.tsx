@@ -82,6 +82,8 @@ export function NavDrawer({
   const [tenantOpen, setTenantOpen] = useState(false);
   const router = useRouter();
   const [renaming, setRenaming] = useState(false);
+  // หมวดตั้งค่าพับเก็บได้ — เริ่มพับไว้ก่อน (คำสั่งเจ้าของ 24 ก.ค. — ลดความยาวเมนู)
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   // ชื่อที่เพิ่งแก้ (optimistic) — โชว์ทันทีไม่ต้องรอโหลดหน้าใหม่ · router.refresh ตามหลังเงียบ ๆ
   const [localNames, setLocalNames] = useState<Record<string, string>>({});
@@ -239,8 +241,15 @@ export function NavDrawer({
           )}
 
           <div className="my-2 border-t" />
-          <div className="px-2 pb-1 text-xs text-[color:var(--color-muted)]">ตั้งค่า</div>
-          {[
+          <button
+            type="button"
+            onClick={() => setSettingsOpen((o) => !o)}
+            className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-xs text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)]"
+          >
+            <span>ตั้งค่า</span>
+            <span>{settingsOpen ? "▴" : "▾"}</span>
+          </button>
+          {settingsOpen && [
             { href: "/app/marketplace", icon: "🧩", label: "ตลาดเทมเพลต" },
             { href: "/app/reports", icon: "📊", label: "รายงาน" },
             { href: "/app/forms", icon: "📝", label: "ฟอร์ม" },

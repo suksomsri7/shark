@@ -61,8 +61,6 @@ export default async function CalendarPage({
         year={year}
         month={month}
         events={dtos}
-        prevYm={shiftYm(year, month, -1)}
-        nextYm={nextYm}
         todayStr={todayStr()}
       />
     </div>

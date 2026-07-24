@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
+import { useMemo, useState, useEffect } from "react";
 import { StatusChip } from "@/components/ui/StatusChip";
 import {
   BOOKING_STATUS_LABEL,
@@ -67,23 +66,49 @@ function whenText(ev: CalEventDTO): string {
 }
 
 export function CalendarMonth({
-  year,
-  month, // 1–12
-  events,
-  prevYm,
-  nextYm,
-  navBase = "/app/calendar",
+  year: initialYear,
+  month: initialMonth, // 1–12
+  events: initialEvents,
   todayStr, // "YYYY-MM-DD" ตามเวลาไทย
 }: {
   year: number;
   month: number;
   events: CalEventDTO[];
-  prevYm: string;
-  nextYm: string;
-  /** ฐานลิงก์ปุ่มเดือนก่อนหน้า/ถัดไป — หน้าแรกส่ง "/app" เพื่อไม่เด้งไปหน้าเต็ม */
-  navBase?: string;
   todayStr: string;
 }) {
+  // เปลี่ยนเดือนฝั่ง client ล้วน (ไม่ reload หน้า) — โหลดเดือนใหม่จาก /api/calendar/month + cache + สไลด์
+  const ymOf = (y: number, m: number) => `${y}-${pad(m)}`;
+  const [view, setView] = useState({ year: initialYear, month: initialMonth });
+  const [monthCache, setMonthCache] = useState<Record<string, CalEventDTO[]>>({
+    [ymOf(initialYear, initialMonth)]: initialEvents,
+  });
+  const [dir, setDir] = useState<"L" | "R">("R");
+  const [loadingMonth, setLoadingMonth] = useState(false);
+  const year = view.year;
+  const month = view.month;
+  const ymKey = ymOf(year, month);
+  const events = monthCache[ymKey] ?? [];
+
+  async function shiftMonth(delta: -1 | 1) {
+    const total = year * 12 + (month - 1) + delta;
+    const ny = Math.floor(total / 12);
+    const nm = (total % 12) + 1;
+    const key = ymOf(ny, nm);
+    setDir(delta === 1 ? "R" : "L");
+    if (!monthCache[key]) {
+      setLoadingMonth(true);
+      try {
+        const res = await fetch(`/api/calendar/month?ym=${key}`);
+        const data = (await res.json()) as { events?: CalEventDTO[] };
+        setMonthCache((c) => ({ ...c, [key]: data.events ?? [] }));
+      } catch {
+        setMonthCache((c) => ({ ...c, [key]: [] }));
+      } finally {
+        setLoadingMonth(false);
+      }
+    }
+    setView({ year: ny, month: nm });
+  }
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   // วันในสัปดาห์ของวันที่ 1 (0=อาทิตย์) ตามเวลาไทย → จำนวนช่องว่างนำหน้า grid
   const startBlank = new Date(`${year}-${pad(month)}-01T12:00:00+07:00`).getUTCDay();
@@ -110,6 +135,10 @@ export function CalendarMonth({
   const todayInMonth =
     todayStr.startsWith(`${year}-${pad(month)}`) ? Number(todayStr.slice(8, 10)) : null;
   const [selected, setSelected] = useState<number | null>(todayInMonth);
+  // เปลี่ยนเดือน → เลือกวันนี้ถ้าอยู่เดือนนั้น ไม่งั้นล้างการเลือก
+  useEffect(() => {
+    setSelected(todayStr.startsWith(`${year}-${pad(month)}`) ? Number(todayStr.slice(8, 10)) : null);
+  }, [year, month, todayStr]);
 
   const selectedEvents = useMemo(() => {
     if (selected == null) return [];
@@ -135,17 +164,17 @@ export function CalendarMonth({
     <div className="flex flex-col gap-4">
       {/* แถบเดือน + ปุ่มก่อน/ถัดไป */}
       <div className="flex items-center justify-between">
-        <Link href={`${navBase}?ym=${prevYm}`} className="btn-sm" aria-label="เดือนก่อนหน้า">
+        <button type="button" onClick={() => void shiftMonth(-1)} disabled={loadingMonth} className="btn-sm" aria-label="เดือนก่อนหน้า">
           ← ก่อนหน้า
-        </Link>
+        </button>
         <div className="text-base font-semibold">{monthLabel}</div>
-        <Link href={`${navBase}?ym=${nextYm}`} className="btn-sm" aria-label="เดือนถัดไป">
+        <button type="button" onClick={() => void shiftMonth(1)} disabled={loadingMonth} className="btn-sm" aria-label="เดือนถัดไป">
           ถัดไป →
-        </Link>
+        </button>
       </div>
 
-      {/* ตารางเดือน */}
-      <div className="card p-3">
+      {/* ตารางเดือน — key ต่อเดือน + สไลด์ตามทิศ */}
+      <div key={ymKey} className={dir === "R" ? "cal-slide-r card p-3" : "cal-slide-l card p-3"}>
         <div className="grid grid-cols-7 gap-1 text-center text-xs text-[color:var(--color-muted)]">
           {WEEKDAYS.map((w) => (
             <div key={w} className="py-1">

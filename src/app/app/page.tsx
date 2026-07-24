@@ -196,7 +196,7 @@ export default async function DashboardPage({
       {/* ปฏิทินรวมของเดือนนี้ (ย้ายจากเมนูมาหน้าแรก — คำสั่งเจ้าของ 24 ก.ค.) */}
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-medium">ปฏิทิน</h2>
-        <CalendarMonth year={calYear} month={calMonth} events={calEvents} prevYm={calPrev} nextYm={calNext.slice(0, 7)} todayStr={calToday} navBase="/app" />
+        <CalendarMonth year={calYear} month={calMonth} events={calEvents} todayStr={calToday} />
       </div>
     </div>
   );

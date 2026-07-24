@@ -128,3 +128,10 @@ body {
   .ai-orb, .ai-orb-breathe, .ai-orb-fast { animation: none; }
   .ai-orb-breathe { filter: drop-shadow(0 0 7px rgba(96, 165, 250, 0.6)); }
 }
+
+/* ปฏิทิน: สไลด์เปลี่ยนเดือน (R = ไปเดือนถัดไป เข้าจากขวา · L = ย้อน เข้าจากซ้าย) */
+@keyframes cal-in-r { from { transform: translateX(28px); opacity: 0.25; } to { transform: translateX(0); opacity: 1; } }
+@keyframes cal-in-l { from { transform: translateX(-28px); opacity: 0.25; } to { transform: translateX(0); opacity: 1; } }
+.cal-slide-r { animation: cal-in-r 0.22s ease-out; }
+.cal-slide-l { animation: cal-in-l 0.22s ease-out; }
+@media (prefers-reduced-motion: reduce) { .cal-slide-r, .cal-slide-l { animation: none; } }
