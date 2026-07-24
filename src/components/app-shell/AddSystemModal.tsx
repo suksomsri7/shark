@@ -15,20 +15,24 @@ export function AddSystemModal({
   open,
   onClose,
   openedCodes = [],
+  preselect,
 }: {
   open: boolean;
   onClose: () => void;
   openedCodes?: string[];
+  preselect?: string | null;
 }) {
   const [state, action, pending] = useActionState(addSystemAction, initial);
   // จังหวะ: null = เลือกระบบ · มีค่า = ฟอร์มตั้งชื่อระบบที่เลือก
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(preselect ?? null);
   const selectedDef = selected ? SYSTEM_DEFS.find((s) => s.code === selected) : null;
 
+  // เปิดพร้อม preselect (จาก checklist ?add-system=<CODE>) → เข้าจังหวะตั้งชื่อทันที
   // ปิด modal = รีเซ็ตกลับจังหวะเลือกระบบเสมอ (เปิดครั้งหน้าเริ่มใหม่)
   useEffect(() => {
-    if (!open) setSelected(null);
-  }, [open]);
+    if (open) setSelected(preselect ?? null);
+    else setSelected(null);
+  }, [open, preselect]);
 
   if (!open) return null;
 

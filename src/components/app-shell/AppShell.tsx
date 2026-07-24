@@ -31,12 +31,16 @@ export function AppShell({
   const [drawer, setDrawer] = useState(false);
   // Modal เพิ่มระบบ (กลางจอ) — เปิดจากปุ่มใน drawer หรือ deep-link ?add-system=1 (จากเช็กลิสต์ "ทำต่อ")
   const [addSystemOpen, setAddSystemOpen] = useState(false);
+  // ?add-system=<CODE> จาก checklist → เปิด modal พร้อมเลือกระบบนั้นให้เลย (เข้าจังหวะตั้งชื่อทันที)
+  const [addSystemPreselect, setAddSystemPreselect] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
   // เปิด modal เมื่อมี query ?add-system=1 แล้วลบ query ทิ้ง (กันเปิดซ้ำตอน refresh/back)
   useEffect(() => {
-    if (searchParams.get("add-system") === "1") {
+    const want = searchParams.get("add-system");
+    if (want) {
+      if (want !== "1") setAddSystemPreselect(want); // ?add-system=<CODE> → เลือกระบบนั้นให้เลย (จาก checklist)
       setAddSystemOpen(true);
       router.replace(pathname, { scroll: false });
     }
@@ -75,8 +79,12 @@ export function AppShell({
         activeTenantId={activeTenantId}
       />
       <AddSystemModal
+        preselect={addSystemPreselect}
         open={addSystemOpen}
-        onClose={() => setAddSystemOpen(false)}
+        onClose={() => {
+          setAddSystemOpen(false);
+          setAddSystemPreselect(null); // เปิดครั้งหน้าจากปุ่มปกติ = เริ่มที่จังหวะเลือกระบบ
+        }}
         openedCodes={openedCodes}
       />
       {!inApp && <AiDock aiUnread={aiUnread} />}

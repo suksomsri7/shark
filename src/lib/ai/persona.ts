@@ -3,6 +3,8 @@
 
 export type PersonaContext = {
   tenantName: string;
+  /** สรุปข้อเท็จจริงจากตอนตั้งค่ากิจการ (DNA facts เป็น bullet ไทย) — ฉีดเมื่อมี */
+  dna?: string;
   systems: { type: string; name: string }[];
   /** ความจำถาวรของร้าน (bullet ไทยจาก memoryBlock) — ฉีดเข้า prompt เมื่อมี */
   memories?: string;
@@ -16,6 +18,8 @@ export function buildSystemPrompt(ctx: PersonaContext): string {
       ? ctx.systems.map((s) => `- ${s.name} (${s.type})`).join("\n")
       : "- ยังไม่ได้เปิดระบบใด";
   // แทรกบล็อกความจำถาวรของร้าน (ถ้ามี) — AI ใช้เป็นบริบทตอบทุกบทสนทนา
+  const dna = (ctx.dna ?? "").trim();
+  const dnaBlock = dna ? ["", "ข้อมูลกิจการจากตอนตั้งค่า (DNA):", dna] : [];
   const memories = (ctx.memories ?? "").trim();
   const memoryBlock = memories
     ? ["", "สิ่งที่จำได้เกี่ยวกับร้านนี้:", memories, ""]
@@ -31,6 +35,7 @@ export function buildSystemPrompt(ctx: PersonaContext): string {
     "",
     "ระบบที่กิจการนี้เปิดใช้อยู่:",
     sysList,
+    ...dnaBlock,
     ...memoryBlock,
     "",
     ...tweakBlock,

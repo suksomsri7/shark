@@ -49,14 +49,17 @@ export default async function DashboardPage() {
 
   // ลิงก์ "ทำต่อ" ของแต่ละข้อ — deep-link ไปหน้าระบบจริงถ้าเปิดแล้ว ไม่งั้นเปิด modal เพิ่มระบบ (?add-system=1)
   // (เดิม hasProduct/hasTeam โยนไป /app/settings/systems ทั้งหมด → หลงไปหน้าเพิ่มระบบ)
-  const invSystem = appSystems.find((s) => s.type === "INVENTORY");
+  // hasProduct: ระบบไหนที่ "ใส่สินค้า/เมนู" ได้ก่อน (คลัง → ร้านอาหาร → ร้านออนไลน์) · ไม่มีเลย → modal เลือกคลังให้ล่วงหน้า
+  const productSystem = ["INVENTORY", "RESTAURANT", "SHOP"]
+    .map((t) => appSystems.find((s) => s.type === t))
+    .find((s) => s !== undefined);
   const hrSystem = appSystems.find((s) => s.type === "HR");
   const onboardingHref: Record<string, string> = {
     hasSystem: "/app?add-system=1",
     hasUnit: "/app/settings/units/new",
-    hasProduct: invSystem ? `/app/sys/${invSystem.id}` : "/app?add-system=1",
+    hasProduct: productSystem ? `/app/sys/${productSystem.id}` : "/app?add-system=INVENTORY",
     hasPromptpay: "/app/settings/payment",
-    hasTeam: hrSystem ? `/app/sys/${hrSystem.id}` : "/app?add-system=1",
+    hasTeam: hrSystem ? `/app/sys/${hrSystem.id}` : "/app?add-system=HR",
     triedAi: "/app/dna",
   };
 

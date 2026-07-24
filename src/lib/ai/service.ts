@@ -103,6 +103,8 @@ export async function sendMessage(
     memoryBlock({ tenantId: ctx.tenantId }),
     approvedPromptTweaksText().catch(() => ""),
   ]);
+  // สรุป DNA facts (ข้อมูลตอนสร้างกิจการ) — ฉีดเข้า persona ให้ AI เข้าใจธุรกิจตั้งแต่แรก (best-effort)
+  const dnaSummary = await dnaFactsSummary(ctx.tenantId);
 
   // บทสนทนา: ต่อของเดิมถ้าระบุ ไม่งั้นเปิดใหม่
   const conv = input.conversationId
@@ -121,7 +123,7 @@ export async function sendMessage(
   });
 
   const messages: AiChatMessage[] = [
-    { role: "system", content: buildSystemPrompt({ tenantName: tenant.name, systems, memories, promptTweaks }) },
+    { role: "system", content: buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks }) },
     ...trimHistory(
       history
         .reverse()
@@ -238,4 +240,32 @@ export async function sendMessage(
     reply: finalText,
     ...(clarify ? { clarify } : {}),
   };
+}
+
+// สรุปข้อเท็จจริง DNA เป็น bullet ไทยสั้น ๆ (best-effort — ไม่มี/parse ไม่ผ่าน = undefined)
+async function dnaFactsSummary(tenantId: string): Promise<string | undefined> {
+  try {
+    const { ZDnaFacts } = await import("@/lib/dna/schema");
+    const profile = await prisma.dnaProfile.findFirst({ where: { tenantId }, orderBy: { createdAt: "desc" } });
+    if (!profile) return undefined;
+    const parsed = ZDnaFacts.safeParse(profile.facts);
+    if (!parsed.success) return undefined;
+    const f = parsed.data;
+    const hintTh: Record<string, string> = { SALON: "ร้านเสริมสวย/บริการ", RESTAURANT: "ร้านอาหาร", HOTEL: "ที่พัก/โรงแรม", CLINIC: "คลินิก", RETAIL: "ค้าปลีก", SERVICE: "งานบริการ", OTHER: "อื่น ๆ" };
+    const b: string[] = [
+      `- ประเภทธุรกิจ: ${hintTh[f.industryHint] ?? f.industryHint} · สาขา ${f.branchCount} แห่ง · พนักงาน ~${f.staffCount} คน`,
+      `- ${f.vatRegistered ? "จดทะเบียน VAT" : "ไม่ได้จด VAT"} · ${f.wantsAccounting ? "ใช้ระบบบัญชี" : "ไม่เน้นบัญชี"}${f.usesLineOA ? " · ใช้ LINE OA คุยลูกค้า" : ""}`,
+    ];
+    const traits: string[] = [];
+    if (f.appointment) traits.push("รับนัดหมาย/จองคิวล่วงหน้า");
+    if (f.walkinQueue) traits.push("มีคิวหน้าร้าน");
+    if (f.tables) traits.push("มีโต๊ะนั่ง");
+    if (f.rooms) traits.push("มีห้องพัก");
+    if (f.sellsGoods) traits.push("ขายสินค้าหน้าร้าน");
+    if (f.membership) traits.push(f.rewardRedeem ? "มีสมาชิก+แลกแต้ม" : "มีระบบสมาชิก");
+    if (traits.length) b.push(`- ลักษณะงาน: ${traits.join(" · ")}`);
+    return b.join("\n");
+  } catch {
+    return undefined;
+  }
 }
