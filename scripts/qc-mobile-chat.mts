@@ -146,6 +146,25 @@ try {
   const rPlanR = await route("@/app/api/mobile/plans/reject/route");
   chk("MC-5.4", "มี routes plans confirm+reject (ผ่าน executePlan/rejectPlan เดิม)", !!rPlanC?.POST && !!rPlanR?.POST, "มี", "ยังไม่สร้าง", "MAJOR");
 
+  // ── first-tap welcome (คำสั่งเจ้าของ 24 ก.ค.: กด orb ครั้งแรก = AI ทักพาตั้งค่า) ──
+  const rWel = await route("@/app/api/mobile/chat/welcome/route");
+  if (!rWel?.POST) chk("MC-8.0", "มี route chat/welcome", false, "มี", "ยังไม่สร้าง");
+  else {
+    const tw = await prisma.tenant.create({ data: { name: "ร้านกาแฟ QC Welcome", slug: `qc-wel-${ts}` } }); tids.push(tw.id);
+    await prisma.membership.create({ data: { userId: u.id, tenantId: tw.id, role: "OWNER", unitAccess: ["*"], acceptedAt: new Date() } });
+    const HW = { authorization: `Bearer ${token}`, "x-tenant-id": tw.id };
+    const w1 = await rWel.POST(J("/api/mobile/chat/welcome", "POST", {}, HW));
+    const wb = (await w1.json().catch(() => ({}))) as { existing?: boolean; conversationId?: string; choices?: string[] };
+    chk("MC-8.1", "ครั้งแรก (0 ห้อง) → สร้างห้อง + choices ≥1 + existing=false", w1.status === 200 && wb.existing === false && !!wb.conversationId && (wb.choices?.length ?? 0) >= 1, "ครบ", JSON.stringify(wb).slice(0, 120));
+    const wmsg = wb.conversationId ? await prisma.aiMessage.findFirst({ where: { conversationId: wb.conversationId, role: "ASSISTANT" } }) : null;
+    chk("MC-8.2", "มีข้อความทัก ASSISTANT ที่รู้จักร้าน (มีชื่อร้าน) + ห้องมีชื่อ", !!wmsg && wmsg.content.includes("ร้านกาแฟ QC Welcome") && ((wb.conversationId ? (await prisma.aiConversation.findUnique({ where: { id: wb.conversationId } }))?.title ?? "" : "").trim().length > 0), "มี", String(wmsg?.content).slice(0, 80));
+    chk("MC-8.3", "ข้อความทักห้ามสัญญาว่าจะติดต่อกลับ (กติกา AI เดิม)", !!wmsg && !wmsg.content.includes("ติดต่อกลับ"), "ไม่มี", "?", "MAJOR");
+    const w2 = await rWel.POST(J("/api/mobile/chat/welcome", "POST", {}, HW));
+    const wb2 = (await w2.json().catch(() => ({}))) as { existing?: boolean };
+    chk("MC-8.4", "เรียกซ้ำ (มีห้องแล้ว) → existing=true ไม่สร้างเพิ่ม", wb2.existing === true && (await prisma.aiConversation.count({ where: { tenantId: tw.id } })) === 1, "true/1 ห้อง", JSON.stringify(wb2));
+    chk("MC-8.5", "ไม่มี Bearer → 401", (await rWel.POST(J("/api/mobile/chat/welcome", "POST", {}))).status === 401, "401", "?");
+  }
+
   // ── dna (tenant สด td) ──
   const rDq = await route("@/app/api/mobile/dna/questions/route");
   const rDa = await route("@/app/api/mobile/dna/answers/route");
