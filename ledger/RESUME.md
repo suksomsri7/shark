@@ -69,6 +69,12 @@
 - **เชื่อมระบบรวมที่เดียว (มติเจ้าของ)**: กล่องเชื่อมออกจากหน้า sys ทุกหน้า · settings/connections ตารางสาขา×ระบบ (reuse link/unlinkUnitAction) · **createSystemAutoLink**: สาขาเดียว=เชื่อมอัตโนมัติ (addSystemAction + AI proposals open_system/marketing ใช้ด้วย — Builder จับเอง) · qc-connections 7/7
 - regression: qc-ai-proposals 16/16 · growth 8/8 · actions 12/12 · fitness 14/14
 
+## 📱 P2.3 SHIPPED (24 ก.ค. ค่ำ) — Tier สมาชิกกำหนดเอง + AI ตั้งกฎ automation
+- **MemberTierConfig** (migrate prod แล้ว · scope tenant): get/setTierConfig (validate เรียง S<G<P + throw ไทย) · computeTierFor(config) แทน hardcode · recordSpend ใช้ config ร้าน · เปลี่ยนเกณฑ์→recompute ลูกค้าทั้งร้าน · UI: member/tiers "ระดับสมาชิก" (ชื่อ+ยอดบาท) + badge tierLabel ใน list/detail/hub · qc-member-tier 7/7
+- **AI automation**: tool automation_create_rule (validate event จาก AUTOMATION_EVENTS catalog จริง — src/lib/automation ไม่ใช่ modules/) → proposal NORMAL → confirm → createRule NOTIFY · v1 ไม่มี WEBHOOK (เสี่ยง) · qc-ai-automation 4/4
+- regression: fitness/qc-ai/proposals/nav-functions/pos-account เขียวหมด
+- 🔑 OWNER_TODO: Google OAuth (iOS client + Web client+secret) — สอนวิธีสมัครในแชทแล้ว
+
 ## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
 **สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
 **ทำอะไรไปแล้ว (Full-Function drive คำสั่งเจ้าของ 17 ก.ค. + งาน UI แตกฟังก์ชัน):**
