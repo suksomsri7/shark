@@ -1,5 +1,19 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🔵🔵 HANDOFF 2026-07-24 ค่ำ — SESSION ใหม่เริ่มอ่านตรงนี้ (งานแอป SHARK AI)
+**โหมดถาวร: Fable 5 = หัวหน้า (oracle ก่อน+ตรวจรับ+merge+gates+deploy+บันทึก) · Opus = Builder ≤2 ใน worktree · กติกาเหล็ก 9 ข้อดู CHECKPOINT ล่าง**
+
+**สถานะตอนนี้ (ทุกอย่าง main ล่าสุด · deploy READY · gates เขียวหมด):**
+- 📱 **แอป iOS บน TestFlight build #14** ("SHARK BC" ascAppId 6793749205 · EAS @siamdive/shark-ai) — เจ้าของเทสวนแก้มา 6 รอบ feedback แล้ว
+- 🛑 **EAS free quota iOS หมด — รีเซ็ต 1 ส.ค.** (เจ้าของเลือกรอ) · 🛑 **ห้าม build Android จนเจ้าของบอก "iOS สมบูรณ์"**
+- **คิว 1 ส.ค. (build #16 — โค้ดพร้อมหมดใน main แค่กดปุ่ม):** `cd apps/mobile && EXPO_TOKEN=<ใน memory> npx eas-cli build -p ios --profile production --non-interactive --no-wait` → เสร็จแล้ว `submit --id <buildId>` → ของที่ติดมา: icon ส่ง paper-plane · ‹ กลับ sessions · push notification จริง (server พร้อมแล้ว) · OTA (หลังจากนี้แก้ JS ผ่าน `eas update --channel production` ไม่ต้อง build) · first-tap welcome ฝั่ง orb · orb เต้น 1.12 · icon แอปพื้นขาว
+- **LIVE บน prod แล้ว (เว็บ/server — ใช้ได้ใน build #14 เลย):** Phase 0 API 21 endpoint · Help ผ่าน AI ครบวงจร (เปิดเคส→admin ตอบ→เด้งกลับห้อง) · KB auto-capture · ชื่อ session อัตโนมัติ · first-tap welcome (ฝั่ง server) · dropdown กิจการ+แก้ชื่อ (✎ OWNER)+เพิ่มกิจการ+logout (GET routes กัน WKWebView) · modal เพิ่มระบบ 2 จังหวะ+preselect · checklist deep-link · ปฏิทินบนหน้าแรก (เดือน client+สไลด์ ไม่ refresh) · หมวดตั้งค่าพับได้ · เชื่อมระบบรวมที่ settings/connections + auto-link สาขาเดียว · **Tier สมาชิกกำหนดเอง** (member/tiers) · **AI ตั้งกฎ automation** ผ่านการ์ดยืนยัน · AI รู้ DNA · DNA เปิด INVENTORY/HR ตามคำตอบแล้ว · Sign in with Apple LIVE
+- ⚡ **perf: Vercel region = sin1** (ห้ามย้ายกลับ — DB Neon SG · เคย iad1 ช้า 5-10 วิ)
+- 🔑 **รอเจ้าของ:** Google OAuth (iOS client + Web client+secret — สอนวิธีแล้ว) · LINE Login channel · FB Login เปิดใน Meta App เดิม · TikTok dev — ดู OWNER_TODO.md · ได้เมื่อไหร่ต่อปุ่ม social ทันที
+- **oracle ใหม่ของรอบแอป:** qc-mobile-auth 26 · qc-mobile-chat 29 · qc-mobile-app 35 · qc-mobile-help 15 · qc-push 7 · qc-kb-auto 4 · qc-add-system-modal 10 · qc-connections 7 · qc-member-tier 7 · qc-ai-automation 4 — **contract-first เสมอ: แก้อะไรรัน suite ที่เกี่ยว + fitness + typecheck ก่อน push**
+- ⚠️ กติกาเฉพาะแอปที่ต้องจำ: จอ RN ห้าม import Text/TextInput จาก react-native (ใช้ @/src/components/ui/text — ฟอนต์ IBM Plex) · ห้าม server action ใน drawer/webview path (ใช้ GET route) · ไฟล์ "use server" ห้าม export type re-export · iOS credentials playbook อยู่ block 📱 P1.4-P1.5 (ASC API + p12 -legacy)
+- **แผนใหญ่:** ledger/MOBILE_PLAN.md (Phase 2 เหลือ: เทส push จริงหลัง build #16 · Phase 3: social login เมื่อ creds มา · Phase 4: AiUsageWindow/voice) · memory: project_shark_ai_app.md
+
 ## 📱 MOBILE PHASE 0 SHIPPED (2026-07-22/23 · เจ้าของสั่ง "วางแผนงานให้ดีที่สุด อย่าลืม qc และเริ่มงานเลย")
 **สถานะ: main=3560bc7 deploy READY · /api/mobile/* ครบ 20 endpoint LIVE บน prod · แผนเต็ม ledger/MOBILE_PLAN.md**
 - **Fable (กลาง)**: migration mobile_phase0+webview_code (apply prod แล้ว: AiConversation.lastReadAt/deletedAt · PushDevice · SupportCase.conversationId · AuthPurpose.WEBVIEW) + `src/lib/mobile/auth.ts` (Bearer reuse Session + requireMobile X-Tenant-Id + webview one-time code 60วิ กัน replay) + oracle 2 ชุด contract-first
