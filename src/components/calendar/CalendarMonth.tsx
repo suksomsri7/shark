@@ -72,6 +72,7 @@ export function CalendarMonth({
   events,
   prevYm,
   nextYm,
+  navBase = "/app/calendar",
   todayStr, // "YYYY-MM-DD" ตามเวลาไทย
 }: {
   year: number;
@@ -79,6 +80,8 @@ export function CalendarMonth({
   events: CalEventDTO[];
   prevYm: string;
   nextYm: string;
+  /** ฐานลิงก์ปุ่มเดือนก่อนหน้า/ถัดไป — หน้าแรกส่ง "/app" เพื่อไม่เด้งไปหน้าเต็ม */
+  navBase?: string;
   todayStr: string;
 }) {
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -132,11 +135,11 @@ export function CalendarMonth({
     <div className="flex flex-col gap-4">
       {/* แถบเดือน + ปุ่มก่อน/ถัดไป */}
       <div className="flex items-center justify-between">
-        <Link href={`/app/calendar?ym=${prevYm}`} className="btn-sm" aria-label="เดือนก่อนหน้า">
+        <Link href={`${navBase}?ym=${prevYm}`} className="btn-sm" aria-label="เดือนก่อนหน้า">
           ← ก่อนหน้า
         </Link>
         <div className="text-base font-semibold">{monthLabel}</div>
-        <Link href={`/app/calendar?ym=${nextYm}`} className="btn-sm" aria-label="เดือนถัดไป">
+        <Link href={`${navBase}?ym=${nextYm}`} className="btn-sm" aria-label="เดือนถัดไป">
           ถัดไป →
         </Link>
       </div>
@@ -163,7 +166,7 @@ export function CalendarMonth({
                 onClick={() => setSelected(d)}
                 className={`flex aspect-square flex-col items-center justify-start rounded-lg border p-1 text-sm hover:bg-[color:var(--color-surface-2)] ${
                   isSel
-                    ? "border-2 border-[color:var(--color-accent)]"
+                    ? "border-2 border-[#2563eb] shadow-[0_0_0_2px_rgba(37,99,235,0.25),0_0_14px_rgba(59,130,246,0.55)]"
                     : "border-[color:var(--color-line)]"
                 }`}
                 aria-label={`วันที่ ${d}${info && info.count > 0 ? ` มี ${info.count} รายการ` : ""}`}

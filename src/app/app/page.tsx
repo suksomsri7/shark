@@ -12,7 +12,12 @@ import { CalendarMonth, type CalEventDTO } from "@/components/calendar/CalendarM
 
 // หน้าแรก /app = แดชบอร์ดของกิจการ (ไม่ใช่ "ระบบทั้งหมด" อีกต่อไป — ย้ายไปอยู่ใน drawer)
 // แสดง: ชื่อกิจการ + ตัวเลขวันนี้ + การ์ดระบบที่เปิดใช้ + ลิงก์เพิ่มระบบ
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ym?: string }>;
+}) {
+  const { ym } = await searchParams;
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
 
@@ -48,8 +53,10 @@ export default async function DashboardPage() {
   // เช็กลิสต์เริ่มต้นร้าน — ซ่อนการ์ดทั้งใบเมื่อทำครบทุกข้อ
   // ปฏิทินเดือนปัจจุบัน (เวลาไทย) สำหรับ section หน้าแรก
   const calNow = new Date(Date.now() + 7 * 3_600_000);
-  const calYear = calNow.getUTCFullYear();
-  const calMonth = calNow.getUTCMonth() + 1;
+  // ?ym=YYYY-MM จากปุ่มเดือนก่อนหน้า/ถัดไปบนหน้าแรก (ไม่ตรง format = เดือนปัจจุบัน)
+  const ymMatch = /^(\d{4})-(\d{2})$/.exec(ym ?? "");
+  const calYear = ymMatch ? Number(ymMatch[1]) : calNow.getUTCFullYear();
+  const calMonth = ymMatch && Number(ymMatch[2]) >= 1 && Number(ymMatch[2]) <= 12 ? Number(ymMatch[2]) : calNow.getUTCMonth() + 1;
   const calToday = calNow.toISOString().slice(0, 10);
   const pad2 = (n: number) => String(n).padStart(2, "0");
   const calFrom = new Date(`${calYear}-${pad2(calMonth)}-01T00:00:00+07:00`);
@@ -188,13 +195,8 @@ export default async function DashboardPage() {
 
       {/* ปฏิทินรวมของเดือนนี้ (ย้ายจากเมนูมาหน้าแรก — คำสั่งเจ้าของ 24 ก.ค.) */}
       <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">ปฏิทิน</h2>
-          <Link href="/app/calendar" className="text-xs text-[color:var(--color-accent)] underline">
-            ดูเต็มหน้า
-          </Link>
-        </div>
-        <CalendarMonth year={calYear} month={calMonth} events={calEvents} prevYm={calPrev} nextYm={calNext.slice(0, 7)} todayStr={calToday} />
+        <h2 className="text-sm font-medium">ปฏิทิน</h2>
+        <CalendarMonth year={calYear} month={calMonth} events={calEvents} prevYm={calPrev} nextYm={calNext.slice(0, 7)} todayStr={calToday} navBase="/app" />
       </div>
     </div>
   );
