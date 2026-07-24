@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/core/db";
+import { prisma, tenantDb } from "@/lib/core/db";
 import { cell, columnIndex, type CsvTable, type ImportSummary } from "@/lib/core/csv";
 import type { MemberTier, Prisma, PrismaClient } from "@prisma/client";
 
@@ -7,12 +7,105 @@ import type { MemberTier, Prisma, PrismaClient } from "@prisma/client";
 
 type Client = PrismaClient | Prisma.TransactionClient;
 
-// tier จากยอดสะสม (สตางค์)
+// tier จากยอดสะสม (สตางค์) — ค่า hardcode เดิม (คงไว้ให้ callsite เก่า/ข้อสอบเก่าใช้ได้)
 export function computeTier(totalSpentSatang: number): MemberTier {
   if (totalSpentSatang >= 3_000_000) return "PLATINUM";
   if (totalSpentSatang >= 1_000_000) return "GOLD";
   if (totalSpentSatang >= 300_000) return "SILVER";
   return "MEMBER";
+}
+
+// ─────────────────────────── ระดับสมาชิกกำหนดเอง (MemberTierConfig) ───────────────────────────
+// เจ้าของร้านตั้งชื่อ + ยอดขั้นต่ำของแต่ละระดับได้เอง (SILVER/GOLD/PLATINUM) · ไม่ตั้ง = ค่า default เดิม
+// scope: tenant (เกณฑ์ชุดเดียวใช้ทั้งร้าน) — ลูกค้าเลื่อนระดับอัตโนมัติตามยอดสะสม
+
+export type TierName = "SILVER" | "GOLD" | "PLATINUM";
+export type TierConfigRow = { tier: TierName; label: string; minSpendSatang: number };
+
+// ลำดับระดับจากต่ำ→สูง (ใช้จัดเรียงผลลัพธ์ + วนคำนวณให้ deterministic)
+const TIER_ORDER: TierName[] = ["SILVER", "GOLD", "PLATINUM"];
+
+// ค่า default เดิม (สตางค์) — ตรงกับ computeTier hardcode
+const DEFAULT_TIER_CONFIG: TierConfigRow[] = [
+  { tier: "SILVER", label: "SILVER", minSpendSatang: 300_000 },
+  { tier: "GOLD", label: "GOLD", minSpendSatang: 1_000_000 },
+  { tier: "PLATINUM", label: "PLATINUM", minSpendSatang: 3_000_000 },
+];
+
+// อ่านเกณฑ์ระดับของร้าน (ผ่าน tenantDb) — ไม่ครบ 3 ระดับ = เติมด้วยค่า default ต่อระดับ
+export async function getTierConfig(ctx: { tenantId: string }): Promise<TierConfigRow[]> {
+  const rows = await tenantDb(ctx).memberTierConfig.findMany();
+  const byTier = new Map(rows.map((r) => [r.tier as TierName, r]));
+  return TIER_ORDER.map((tier) => {
+    const r = byTier.get(tier);
+    if (r) return { tier, label: r.label, minSpendSatang: r.minSpendSatang };
+    return DEFAULT_TIER_CONFIG.find((d) => d.tier === tier) as TierConfigRow;
+  });
+}
+
+// tier จากยอดสะสม (สตางค์) ตาม config ของร้าน (pure) — ใช้แทน computeTier ในจุดบันทึกยอด
+export function computeTierFor(totalSpentSatang: number, config: TierConfigRow[]): MemberTier {
+  const min = (t: TierName) =>
+    config.find((c) => c.tier === t)?.minSpendSatang ??
+    (DEFAULT_TIER_CONFIG.find((d) => d.tier === t) as TierConfigRow).minSpendSatang;
+  if (totalSpentSatang >= min("PLATINUM")) return "PLATINUM";
+  if (totalSpentSatang >= min("GOLD")) return "GOLD";
+  if (totalSpentSatang >= min("SILVER")) return "SILVER";
+  return "MEMBER";
+}
+
+// ชื่อระดับที่แสดงผล (helper) — MEMBER = "สมาชิก" · อื่น ๆ ใช้ label จาก config
+export function tierLabel(config: TierConfigRow[], tier: MemberTier): string {
+  if (tier === "MEMBER") return "สมาชิก";
+  return config.find((c) => c.tier === tier)?.label ?? tier;
+}
+
+// บันทึกเกณฑ์ระดับ (validate + upsert find→update/create + recompute ลูกค้าทุกคนของร้าน)
+export async function setTierConfig(ctx: { tenantId: string }, rows: TierConfigRow[]): Promise<void> {
+  const byTier = new Map(rows.map((r) => [r.tier, r]));
+  const ordered = TIER_ORDER.map((t) => byTier.get(t));
+  if (ordered.some((r) => !r)) throw new Error("ต้องกำหนดครบทั้ง 3 ระดับ (SILVER, GOLD, PLATINUM)");
+  const [silver, gold, platinum] = ordered as TierConfigRow[];
+
+  for (const r of [silver, gold, platinum]) {
+    if (!r.label.trim()) throw new Error("ชื่อระดับห้ามว่าง");
+    if (!Number.isFinite(r.minSpendSatang) || r.minSpendSatang < 0) {
+      throw new Error("ยอดขั้นต่ำต้องเป็นจำนวนไม่ติดลบ");
+    }
+  }
+  if (!(silver.minSpendSatang < gold.minSpendSatang && gold.minSpendSatang < platinum.minSpendSatang)) {
+    throw new Error("ยอดขั้นต่ำต้องเรียงจากน้อยไปมาก: SILVER < GOLD < PLATINUM");
+  }
+
+  // upsert แบบ find→update/create (tenantDb().upsert ใช้กับ compound-unique ไม่ได้ · create ใส่ tenantId ตรง ๆ)
+  const db = tenantDb(ctx);
+  for (const r of [silver, gold, platinum]) {
+    const label = r.label.trim();
+    const minSpendSatang = Math.round(r.minSpendSatang);
+    const existing = await db.memberTierConfig.findFirst({ where: { tier: r.tier } });
+    if (existing) {
+      await db.memberTierConfig.update({ where: { id: existing.id }, data: { label, minSpendSatang } });
+    } else {
+      await db.memberTierConfig.create({
+        data: { tenantId: ctx.tenantId, tier: r.tier, label, minSpendSatang },
+      });
+    }
+  }
+
+  // recompute tier ลูกค้าทุกคนของร้าน (updateMany เป็นช่วง ๆ ตามเกณฑ์ — deterministic)
+  await recomputeAllTiers(ctx.tenantId, await getTierConfig(ctx));
+}
+
+// อัปเดต tier ลูกค้าทั้ง tenant ตาม config ใหม่ (แบ่งเป็นช่วงยอดสะสม)
+async function recomputeAllTiers(tenantId: string, config: TierConfigRow[]): Promise<void> {
+  const min = (t: TierName) => config.find((c) => c.tier === t)?.minSpendSatang ?? 0;
+  const s = min("SILVER");
+  const g = min("GOLD");
+  const p = min("PLATINUM");
+  await prisma.customer.updateMany({ where: { tenantId, totalSpentSatang: { lt: s } }, data: { tier: "MEMBER" } });
+  await prisma.customer.updateMany({ where: { tenantId, totalSpentSatang: { gte: s, lt: g } }, data: { tier: "SILVER" } });
+  await prisma.customer.updateMany({ where: { tenantId, totalSpentSatang: { gte: g, lt: p } }, data: { tier: "GOLD" } });
+  await prisma.customer.updateMany({ where: { tenantId, totalSpentSatang: { gte: p } }, data: { tier: "PLATINUM" } });
 }
 
 // รหัสสมาชิก 6 ตัว (ตัดตัวสับสน 0/O/1/I)
@@ -184,9 +277,11 @@ export async function recordSpend(
   const c = await client.customer.findFirst({ where: { id: customerId, tenantId } });
   if (!c) return;
   const total = c.totalSpentSatang + amountSatang;
+  // ใช้เกณฑ์ระดับของร้าน (ไม่ใช่ค่า hardcode) — เจ้าของกำหนดชื่อ+ยอดขั้นต่ำเองได้
+  const config = await getTierConfig({ tenantId });
   await client.customer.update({
     where: { id: customerId },
-    data: { totalSpentSatang: total, tier: computeTier(total) },
+    data: { totalSpentSatang: total, tier: computeTierFor(total, config) },
   });
 }
 

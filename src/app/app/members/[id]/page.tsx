@@ -1,13 +1,11 @@
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
-import { getProfile } from "@/lib/modules/member/service";
+import { getProfile, getTierConfig, tierLabel } from "@/lib/modules/member/service";
 import { getCustomerPoints } from "@/lib/modules/point/service";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
-import { StatusChip } from "@/components/ui/StatusChip";
 import { MoneyText } from "@/components/ui/MoneyText";
-import { MEMBER_TIER_LABEL } from "@/lib/ui/status-labels";
 import { MemberEditForm } from "@/lib/modules/member/customer-form";
 
 function fmt(d: Date) {
@@ -30,7 +28,10 @@ export default async function MemberDetailPage({
   const data = await getProfile(auth.active.tenantId, id);
   if (!data) notFound();
   const { customer: c, activities } = data;
-  const points = await getCustomerPoints(auth.active.tenantId, c.memberSystemId, id);
+  const [points, tierConfig] = await Promise.all([
+    getCustomerPoints(auth.active.tenantId, c.memberSystemId, id),
+    getTierConfig({ tenantId: auth.active.tenantId }),
+  ]);
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
@@ -38,7 +39,11 @@ export default async function MemberDetailPage({
         title={c.name ?? "ไม่ระบุชื่อ"}
         back={{ href: "/app/members", label: "สมาชิกทั้งหมด" }}
         desc={[c.phone ?? "—", c.email, c.memberCode].filter(Boolean).join(" · ")}
-        actions={<StatusChip value={c.tier} map={MEMBER_TIER_LABEL} tone="strong" />}
+        actions={
+          <span className="rounded-full bg-[color:var(--color-surface-2)] px-3 py-1 text-sm font-medium">
+            {tierLabel(tierConfig, c.tier)}
+          </span>
+        }
       />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
