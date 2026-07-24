@@ -95,6 +95,8 @@ export function CalendarMonth({
     const nm = (total % 12) + 1;
     const key = ymOf(ny, nm);
     setDir(delta === 1 ? "R" : "L");
+    // optimistic: สไลด์เดือนใหม่ทันที (จุดสีตามมาเมื่อโหลดเสร็จ) — เดิมรอ fetch ก่อนค่อยเลื่อน = ค้าง ~3 วิ
+    setView({ year: ny, month: nm });
     if (!monthCache[key]) {
       setLoadingMonth(true);
       try {
@@ -107,7 +109,6 @@ export function CalendarMonth({
         setLoadingMonth(false);
       }
     }
-    setView({ year: ny, month: nm });
   }
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   // วันในสัปดาห์ของวันที่ 1 (0=อาทิตย์) ตามเวลาไทย → จำนวนช่องว่างนำหน้า grid
