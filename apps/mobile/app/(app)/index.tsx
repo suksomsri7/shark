@@ -4,7 +4,7 @@
 // UA ต่อท้าย "SharkApp/1" → ฝั่งเว็บซ่อน orb ของตัวเอง (กัน orb ซ้อน) · ปุ่ม orb AI ลอยมุมล่างขวา → /sessions
 // เปลี่ยนกิจการ (activeTenantId) → ขอ code ใหม่ reload อัตโนมัติ
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { AnimatedOrb } from "@/src/components/ui/orb";
 import { WebView } from "react-native-webview";
@@ -21,6 +21,29 @@ export default function DashboardScreen() {
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [orbBusy, setOrbBusy] = useState(false);
+
+  // แตะ orb ครั้งแรก = ให้ AI ทักพาตั้งค่า (welcome) · มีห้องแล้ว/พลาด → เข้ารายการห้องเดิม
+  const openAssistant = useCallback(async () => {
+    if (orbBusy) return;
+    setOrbBusy(true);
+    try {
+      const res = await api<{ existing: boolean; conversationId?: string; choices?: string[] }>(
+        "/api/mobile/chat/welcome",
+        { body: {} },
+      );
+      if (!res.existing && res.conversationId) {
+        const chips = encodeURIComponent(JSON.stringify(res.choices ?? []));
+        router.push(`/(app)/chat/${res.conversationId}?chips=${chips}`);
+      } else {
+        router.push("/sessions");
+      }
+    } catch {
+      router.push("/sessions"); // ออฟไลน์/พลาด → fallback รายการห้อง
+    } finally {
+      setOrbBusy(false);
+    }
+  }, [orbBusy, router]);
 
   const requestCode = useCallback(async () => {
     setError(null);
@@ -127,8 +150,13 @@ export default function DashboardScreen() {
 
         {/* ปุ่ม orb AI ลอยมุมล่างขวา (native) — หมุนช้า+เต้นหัวใจ (AnimatedOrb) · glow อยู่ในตัว png */}
         {!loading && !error && (
-        <Pressable onPress={() => router.push("/sessions")} hitSlop={16} style={styles.orb}>
+        <Pressable onPress={openAssistant} disabled={orbBusy} hitSlop={16} style={styles.orb}>
           <AnimatedOrb size={64} />
+          {orbBusy && (
+            <View style={styles.orbSpinner}>
+              <ActivityIndicator color="#ffffff" size="small" />
+            </View>
+          )}
         </Pressable>
         )}
       </View>
@@ -160,5 +188,15 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: S.lg,
     bottom: S.lg,
+  },
+  // spinner เล็กทับ orb ระหว่างรอ welcome (ห้ามค้างเงียบ)
+  orbSpinner: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

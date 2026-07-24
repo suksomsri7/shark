@@ -1,7 +1,7 @@
 // จอแชท (id = conversationId) — bubble USER/ASSISTANT + การ์ด proposal + แนบรูป + SSE
 // ส่งผ่าน sendChat() (SSE) · ระหว่างรอโชว์ "กำลังคิด…" · error = bubble แดง + ปุ่มส่งใหม่
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text, TextInput } from "@/src/components/ui/text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
@@ -28,9 +28,24 @@ type Item =
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string; title?: string }>();
+  const params = useLocalSearchParams<{ id: string; title?: string; chips?: string }>();
   const conversationId = params.id;
   const headerTitle = params.title && params.title.trim() ? params.title : "แชท";
+
+  // ปุ่มชวนเริ่ม (welcome) — parse ครั้งเดียวจาก param · เพี้ยน = ไม่โชว์
+  const [chips] = useState<string[]>(() => {
+    try {
+      const raw = params.chips;
+      if (typeof raw === "string" && raw) {
+        const arr = JSON.parse(raw) as unknown;
+        if (Array.isArray(arr)) return arr.filter((x): x is string => typeof x === "string");
+      }
+    } catch {
+      /* chips เพี้ยน — ข้าม */
+    }
+    return [];
+  });
+  const [chipsHidden, setChipsHidden] = useState(false);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [proposals, setProposals] = useState<ProposalView[]>([]);
@@ -150,11 +165,21 @@ export default function ChatScreen() {
     setText("");
     setImages([]);
     setFailed(null);
+    setChipsHidden(true);
     setMessages((m) => [
       ...m,
       { key: "u-" + Date.now(), role: "USER", content: sendText, images: imgs.length ? imgs : undefined },
     ]);
     void doSend(sendText, imgs);
+  }
+
+  // แตะปุ่มชวนเริ่ม = ส่งข้อความนั้นผ่าน flow ปกติ + ซ่อนแถวปุ่ม
+  function sendChip(chipText: string) {
+    if (sending) return;
+    setChipsHidden(true);
+    setFailed(null);
+    setMessages((m) => [...m, { key: "u-" + Date.now(), role: "USER", content: chipText }]);
+    void doSend(chipText, []);
   }
 
   function retry() {
@@ -248,6 +273,8 @@ export default function ChatScreen() {
   }
 
   const canSend = (text.trim().length > 0 || images.length > 0) && !sending;
+  // โชว์ปุ่มชวนเริ่มเฉพาะตอนยังไม่เคยส่งข้อความ (ห้องทัก welcome มี 1 ข้อความ)
+  const showChips = chips.length > 0 && !chipsHidden && messages.length <= 1;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -295,6 +322,21 @@ export default function ChatScreen() {
               </View>
             ))}
           </View>
+        )}
+
+        {showChips && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipsRow}
+            keyboardShouldPersistTaps="handled"
+          >
+            {chips.map((c, i) => (
+              <Pressable key={i} onPress={() => sendChip(c)} style={styles.chip}>
+                <Text style={styles.chipText} numberOfLines={1}>{c}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
         )}
 
         <View style={[styles.inputBar, { paddingBottom: insets.bottom + S.sm }]}>
@@ -349,6 +391,16 @@ const styles = StyleSheet.create({
   errorText: { color: C.text, fontSize: 14 },
   retryBtn: { alignSelf: "flex-start", backgroundColor: C.danger, borderRadius: R.md, paddingHorizontal: S.md, paddingVertical: 6 },
   retryText: { color: "#ffffff", fontSize: 13, fontWeight: "600" },
+  chipsRow: { flexDirection: "row", gap: S.sm, paddingHorizontal: S.md, paddingBottom: S.sm },
+  chip: {
+    backgroundColor: C.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.border,
+    borderRadius: R.full,
+    paddingHorizontal: S.md,
+    paddingVertical: S.sm,
+  },
+  chipText: { color: C.text, fontSize: 14 },
   attachRow: { flexDirection: "row", flexWrap: "wrap", gap: S.sm, paddingHorizontal: S.md, paddingBottom: S.sm },
   attachThumbWrap: { position: "relative" },
   attachThumb: { width: 64, height: 64, borderRadius: R.md, backgroundColor: C.surfaceHi },

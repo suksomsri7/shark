@@ -243,7 +243,7 @@ export async function sendMessage(
 }
 
 // สรุปข้อเท็จจริง DNA เป็น bullet ไทยสั้น ๆ (best-effort — ไม่มี/parse ไม่ผ่าน = undefined)
-async function dnaFactsSummary(tenantId: string): Promise<string | undefined> {
+export async function dnaFactsSummary(tenantId: string): Promise<string | undefined> {
   try {
     const { ZDnaFacts } = await import("@/lib/dna/schema");
     const profile = await prisma.dnaProfile.findFirst({ where: { tenantId }, orderBy: { createdAt: "desc" } });
