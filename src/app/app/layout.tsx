@@ -150,12 +150,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/coupon/list`, label: "คูปอง" },
         ];
       case "MEMBER":
-        // ระบบสมาชิกแตกจริง 4 ฟังก์ชัน: รายชื่อสมาชิก · นำเข้า CSV · แพ็กเกจสมาชิก (สร้าง/เปิด-ปิด) · สมัครสมาชิก (สมัครให้ลูกค้า)
+        // ระบบสมาชิกแตกจริง 5 ฟังก์ชัน: รายชื่อสมาชิก · นำเข้า CSV · แพ็กเกจสมาชิก · ระดับสมาชิก (เกณฑ์เลื่อนขั้น) · สมัครสมาชิก
         return [
           { href: s, label: "ภาพรวม" },
           { href: `${s}/member/customers`, label: "รายชื่อสมาชิก" },
           { href: `${s}/member/import`, label: "นำเข้า CSV" },
           { href: `${s}/member/plans`, label: "แพ็กเกจสมาชิก" },
+          { href: `${s}/member/tiers`, label: "ระดับสมาชิก" },
           { href: `${s}/member/subscribe`, label: "สมัครสมาชิก" },
         ];
       case "POINT":

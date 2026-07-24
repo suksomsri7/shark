@@ -5,8 +5,9 @@ import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { MoneyText } from "@/components/ui/MoneyText";
 import CsvImport from "@/components/CsvImport";
-import { listCustomers } from "./service";
+import { getTierConfig, listCustomers, tierLabel } from "./service";
 import { importCustomersAction } from "./import-actions";
+import { MemberTiersForm } from "./tier-form";
 
 const muted = "text-[color:var(--color-muted)]";
 
@@ -26,6 +27,7 @@ export function memberTabs(systemId: string): { href: string; label: string }[] 
     { href: `${s}/member/customers`, label: "รายชื่อสมาชิก" },
     { href: `${s}/member/import`, label: "นำเข้า CSV" },
     { href: `${s}/member/plans`, label: "แพ็กเกจสมาชิก" },
+    { href: `${s}/member/tiers`, label: "ระดับสมาชิก" },
     { href: `${s}/member/subscribe`, label: "สมัครสมาชิก" },
   ];
 }
@@ -33,7 +35,10 @@ export function memberTabs(systemId: string): { href: string; label: string }[] 
 // ───────────── รายชื่อสมาชิก (customers) ─────────────
 export async function MemberCustomersSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
-  const customers = await memberCustomers(auth.active.tenantId, systemId);
+  const [customers, tierConfig] = await Promise.all([
+    memberCustomers(auth.active.tenantId, systemId),
+    getTierConfig({ tenantId: auth.active.tenantId }),
+  ]);
 
   return (
     <Section title={`สมาชิก (${customers.length})`}>
@@ -44,13 +49,33 @@ export async function MemberCustomersSection({ systemId }: { systemId: string })
           primary: c.name ?? "ไม่ระบุชื่อ",
           secondary: `${c.phone ?? "—"} · ${c.memberCode}`,
           trailing: (
-            <span className="text-xs text-[color:var(--color-muted)]">
+            <span className="flex items-center gap-2 text-xs text-[color:var(--color-muted)]">
+              <span className="rounded-full bg-[color:var(--color-surface-2)] px-2 py-0.5 font-medium text-[color:var(--color-fg)]">
+                {tierLabel(tierConfig, c.tier)}
+              </span>
               {c.visitCount} ครั้ง · <MoneyText satang={c.totalSpentSatang} />
             </span>
           ),
         }))}
         empty="ยังไม่มีสมาชิก — จะถูกสร้างอัตโนมัติเมื่อลูกค้าจอง/ซื้อในระบบที่เชื่อมไว้"
       />
+    </Section>
+  );
+}
+
+// ───────────── ระดับสมาชิก (tiers) — ตั้งชื่อ + ยอดขั้นต่ำแต่ละระดับ ─────────────
+export async function MemberTiersSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const config = await getTierConfig({ tenantId: auth.active.tenantId });
+  const rows = config.map((c) => ({
+    tier: c.tier,
+    label: c.label,
+    minBaht: c.minSpendSatang / 100,
+  }));
+
+  return (
+    <Section title="ระดับสมาชิก" card>
+      <MemberTiersForm systemId={systemId} rows={rows} />
     </Section>
   );
 }
@@ -94,6 +119,11 @@ export async function MemberHub({ systemId }: { systemId: string }) {
       href: `/app/sys/${systemId}/member/plans`,
       label: "แพ็กเกจสมาชิก",
       desc: "สร้าง/เปิด-ปิดขายแพ็กเกจรายเดือน-รายปี",
+    },
+    {
+      href: `/app/sys/${systemId}/member/tiers`,
+      label: "ระดับสมาชิก",
+      desc: "ตั้งชื่อ+ยอดขั้นต่ำแต่ละระดับ (เลื่อนอัตโนมัติ)",
     },
     {
       href: `/app/sys/${systemId}/member/subscribe`,
