@@ -33,6 +33,8 @@ import * as pointSvc from "@/lib/modules/point/service";
 import * as ticketSvc from "@/lib/modules/ticket/service";
 import * as restaurantSvc from "@/lib/modules/restaurant/order";
 import * as accountFacade from "@/lib/modules/account";
+import * as automationSvc from "@/lib/automation/service";
+import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 import { createSystemAutoLink } from "@/lib/modules/system/service";
 import * as scheduledSvc from "./scheduled";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
@@ -71,6 +73,8 @@ export type ProposalKind =
   | "ticket_mark_paid"
   // ── agentic-3: ตั้งงานประจำให้ผู้ช่วย AI (NORMAL — ยืนยันชั้นเดียว) ──
   | "ai_schedule_task"
+  // ── automation: ตั้งกฎอัตโนมัติแบบแจ้งเตือน (NORMAL — ยืนยันชั้นเดียว) ──
+  | "automation_create_rule"
   // ── destructive (ลบ/void/ยกเลิก/ปิดบิล — ต้องยืนยัน 2 ชั้น) ──
   | "void_sale"
   | "cancel_appointment"
@@ -132,6 +136,8 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   restaurant_close_bill: { module: "restaurant", action: "restaurant.checkout.create" },
   // agentic-3 — ตั้งงานประจำผู้ช่วย AI (module ai · action เฉพาะ AI schedule)
   ai_schedule_task: { module: "ai", action: "ai.schedule.create" },
+  // automation — ตั้งกฎอัตโนมัติ (module automation · action สร้างกฎ)
+  automation_create_rule: { module: "automation", action: "automation.rule.create" },
   // destructive — action string ตรงกับปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
   void_sale: { module: "pos", action: "pos.sale.void" },
   cancel_appointment: { module: "booking", action: "booking.appointment.setStatus" },
@@ -236,6 +242,12 @@ type RestaurantCloseBillPayload = {
   payMethod?: "CASH" | "TRANSFER" | "PROMPTPAY";
 };
 type AiScheduleTaskPayload = { instruction: string; hourBkk: number };
+type AutomationCreateRulePayload = {
+  name: string;
+  event: string;
+  minAmountSatang?: number;
+  notifyTitle?: string;
+};
 type VoidSalePayload = { saleId: string };
 type CancelAppointmentPayload = { appointmentId: string };
 type CancelReservationPayload = { reservationId: string; reason?: string };
@@ -1198,6 +1210,35 @@ async function dispatch(
     );
     const hh = String(Math.round(Number(p.hourBkk))).padStart(2, "0");
     return `ตั้งงานประจำให้ผู้ช่วยทำทุกวันเวลา ${hh}:00 น. เรียบร้อยแล้ว — ผลจะส่งเป็นการแจ้งเตือนให้อ่าน`;
+  }
+
+  if (kind === "automation_create_rule") {
+    const p = payload as AutomationCreateRulePayload;
+    const name = String(p.name ?? "").trim();
+    if (!name) throw new Error("ต้องระบุชื่อกฎ");
+    const event = String(p.event ?? "").trim();
+    // ตรวจ event กับ catalog จริงอีกครั้งฝั่ง execute (กัน payload เพี้ยน) — ไม่รู้จัก → FAILED ไทย
+    if (!AUTOMATION_EVENTS.some((e) => e.value === event)) {
+      throw new Error(`ไม่รู้จักเหตุการณ์ "${event}"`);
+    }
+    const minAmountSatang =
+      Number.isFinite(Number(p.minAmountSatang)) && Number(p.minAmountSatang) >= 0
+        ? Math.round(Number(p.minAmountSatang))
+        : null;
+    const notifyTitle = String(p.notifyTitle ?? "").trim();
+    // v1: action = NOTIFY เท่านั้น · enabled = true (default schema) · เรียก service เดิมของ automation
+    await automationSvc.createRule(
+      { tenantId },
+      {
+        name,
+        event,
+        minAmountSatang,
+        actionType: "NOTIFY",
+        actionConfig: notifyTitle ? { title: notifyTitle } : {},
+      },
+    );
+    const baht = minAmountSatang != null ? ` ยอด ≥ ${(minAmountSatang / 100).toLocaleString("th-TH")} บาท` : "";
+    return `ตั้งกฎแจ้งเตือน "${name}" เมื่อ${eventLabel(event)}${baht} เรียบร้อยแล้ว — จะแจ้งในศูนย์แจ้งเตือนของแอป`;
   }
 
   throw new Error("ไม่รู้จักประเภทข้อเสนอนี้");

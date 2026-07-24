@@ -24,6 +24,7 @@ import { createPlan } from "./plans";
 import { dayKeyBangkok } from "./rules";
 import { rememberFact, forgetMemory, listMemories } from "./memory";
 import { openCaseFromAi } from "@/lib/support/service";
+import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 
 export type ToolCtx = { tenantId: string; conversationId?: string };
 
@@ -887,6 +888,58 @@ const scheduleTask: AiTool = {
     const hh = String(hourBkk).padStart(2, "0");
     const summary = `ตั้งงานประจำทุกวันเวลา ${hh}:00 น. — ${instruction}`;
     return propose(ctx, "ai_schedule_task", summary, { instruction, hourBkk });
+  },
+};
+
+// ── automation_create_rule — เสนอตั้ง "กฎอัตโนมัติ" (แจ้งเตือนเมื่อเกิดเหตุการณ์) ──
+// v1: action = NOTIFY เท่านั้น (แจ้งเตือนในแอป) · WEBHOOK มี URL ภายนอก = ความเสี่ยง ให้ตั้งเองที่หน้า settings/automation
+// event ต้องอยู่ใน AUTOMATION_EVENTS จริง (catalog เดียวกับหน้าตั้งค่า) · เพี้ยน → validate-explain ไม่สร้าง proposal
+const automationCreateRule: AiTool = {
+  action: true,
+  def: {
+    name: "automation_create_rule",
+    description:
+      "เสนอการตั้งกฎอัตโนมัติแบบแจ้งเตือน (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) เช่น 'แจ้งเตือนเมื่อขายได้บิลเกิน 1,000 บาท' หรือ 'แจ้งเตือนเมื่อสินค้าใกล้หมดอายุ' · ระบุ name (ชื่อกฎ), event (รหัสเหตุการณ์ที่จะให้ทำงาน เช่น pos.sale.paid=เมื่อขายสำเร็จ, pos.sale.voided=เมื่อยกเลิกบิล, inventory.lot.expiring=เมื่อสินค้าใกล้หมดอายุ), minAmountBaht (ยอดขั้นต่ำเป็นบาท ถ้าต้องการให้ทำงานเฉพาะบิลใหญ่) และ notifyTitle (หัวข้อการแจ้งเตือน) · กฎนี้จะแจ้งเตือนในแอปเท่านั้น — ถ้าต้องการส่งเว็บฮุคภายนอกให้ตั้งเองที่หน้าตั้งค่าอัตโนมัติ",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "ชื่อกฎ (ให้เจ้าของจำได้ว่ากฎนี้ทำอะไร)" },
+        event: {
+          type: "string",
+          description: "รหัสเหตุการณ์ที่จะให้ทำงาน เช่น pos.sale.paid, pos.sale.voided, inventory.lot.expiring",
+        },
+        minAmountBaht: { type: "number", minimum: 0, description: "ยอดขั้นต่ำเป็นบาท ถ้าต้องการให้ทำงานเฉพาะยอด ≥ นี้ (ถ้ามี)" },
+        notifyTitle: { type: "string", description: "หัวข้อการแจ้งเตือนที่จะขึ้นในแอป (ถ้ามี)" },
+      },
+      required: ["name", "event"],
+      additionalProperties: false,
+    },
+  },
+  async execute(ctx, args) {
+    const a = asRecord(args);
+    const name = String(a.name ?? "").trim();
+    if (!name) return JSON.stringify({ error: "ต้องระบุชื่อกฎ" });
+    const event = String(a.event ?? "").trim();
+    // validate-explain: event ต้องอยู่ใน catalog จริงของระบบอัตโนมัติ (ไม่พิมพ์ list เอง)
+    if (!AUTOMATION_EVENTS.some((e) => e.value === event)) {
+      return JSON.stringify({
+        error: `ไม่รู้จักเหตุการณ์ "${event}"`,
+        suggestion: `เหตุการณ์ที่ตั้งกฎได้ตอนนี้: ${AUTOMATION_EVENTS.map((e) => `${e.label} (${e.value})`).join(", ")}`,
+      });
+    }
+    const minBaht = Number(a.minAmountBaht);
+    // validate-explain: ยอดขั้นต่ำติดลบไม่สมเหตุสมผล → อธิบาย ไม่สร้าง proposal
+    if (a.minAmountBaht !== undefined && Number.isFinite(minBaht) && minBaht < 0) {
+      return JSON.stringify({ error: "ยอดขั้นต่ำติดลบไม่ได้", suggestion: "ระบุยอดเป็นบาทที่มากกว่าหรือเท่ากับ 0 หรือเว้นว่างถ้าไม่จำกัดยอด" });
+    }
+    const hasMin = a.minAmountBaht !== undefined && Number.isFinite(minBaht) && minBaht >= 0;
+    const notifyTitle = String(a.notifyTitle ?? "").trim();
+    const payload: Record<string, unknown> = { name, event };
+    if (hasMin) payload.minAmountSatang = Math.round(minBaht * 100);
+    if (notifyTitle) payload.notifyTitle = notifyTitle;
+    const summary =
+      `ตั้งกฎ: แจ้งเตือนเมื่อ${eventLabel(event)}` + (hasMin ? ` ยอด ≥ ${minBaht.toLocaleString("th-TH")} บาท` : "");
+    return propose(ctx, "automation_create_rule", summary, payload);
   },
 };
 
@@ -2449,6 +2502,7 @@ export function toolRegistry(): AiTool[] {
     kanbanCreateCard,
     recordExpense,
     scheduleTask,
+    automationCreateRule,
     voidSale,
     // Phase B1 action — เงินเดิน (เปิดบิล / จองบริการ / จองห้อง / บัตรคิว / ยืนยันออเดอร์)
     posCreateSale,
