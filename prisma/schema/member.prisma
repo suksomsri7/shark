@@ -51,3 +51,15 @@ model MemberActivity {
 
   @@index([tenantId, customerId, createdAt])
 }
+
+// เกณฑ์ระดับสมาชิกต่อกิจการ (เจ้าของกำหนดชื่อ+ยอดเอง — ไม่ตั้ง = ใช้ค่า default เดิมใน service)
+model MemberTierConfig {
+  id             String     @id @default(cuid())
+  tenantId       String
+  tier           MemberTier
+  label          String // ชื่อที่ร้านตั้ง เช่น "ลูกค้าประจำ"
+  minSpendSatang Int // ยอดสะสมขั้นต่ำ (สตางค์)
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([tenantId, tier])
+}

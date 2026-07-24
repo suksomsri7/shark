@@ -157,6 +157,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AppSystemUnit: tenant, // ตารางเชื่อม system↔unit — query ด้วย unitId/tenantId ไม่ใช่ scope ใต้ system
   // Member — ⚠️ ใช้ชื่อฟิลด์ memberSystemId ไม่ใช่ systemId
   Customer: sys("memberSystemId"),
+  MemberTierConfig: tenant, // เกณฑ์ระดับสมาชิกของร้าน (เจ้าของกำหนดเอง)
   MemberActivity: tenant,
   // Reward
   Reward: sys(),
