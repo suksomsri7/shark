@@ -56,6 +56,13 @@
 - regression เขียวหมด: fitness 14/14 · qc-ai 17/17 · ai-tools 14/14 · ai-tools2 8/8 · mobile-help 15/15 · mobile-chat 24/24 · mobile-app 35/35
 - **สถานะ: รอเจ้าของเทสข้อ 1 (ระบบงานทั้ง 14 ระบบผ่านแอป + AI) — feedback เว็บ/AI แก้ได้ทันทีไม่ติดโควต้า** · 🛑 ห้าม build iOS/Android จนกว่าโควต้ารีเซ็ตหรือเจ้าของอัปเกรด EAS
 
+## 📱 P2.1 + รอบ feedback 24 ก.ค. SHIPPED
+- **First-tap welcome**: POST /api/mobile/chat/welcome (deterministic ไม่ยิง LLM · DNA+checklist → ทัก+choices ≤3 · ซ้ำ=existing) + app: orb แตะแรก→เข้าห้อง+chips (ติด build #16) · qc-mobile-chat 29/29
+- **DNA กติกาค้างเก่าแก้แล้ว (เจ้าของจับได้)**: sellsGoods→INVENTORY คู่ POS · staffCount≥2→HR · enum schema ขยาย · qc-dna 22/22 สัญญาใหม่
+- **AI รู้ DNA แล้ว**: dnaFactsSummary (export) ฉีดเข้า persona ทุกแชท
+- **checklist deep-link + modal เพิ่มระบบ 2 จังหวะ + preselect ?add-system=CODE** (business สร้างซ้ำได้) · qc-add-system-modal 10/10
+- consult ปิด: orb โชว์เสมอ (เจ้าของเห็นด้วย) → first-tap welcome แทนการซ่อน
+
 ## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
 **สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
 **ทำอะไรไปแล้ว (Full-Function drive คำสั่งเจ้าของ 17 ก.ค. + งาน UI แตกฟังก์ชัน):**
