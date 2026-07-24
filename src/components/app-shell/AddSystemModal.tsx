@@ -73,7 +73,8 @@ export function AddSystemModal({
             // ── จังหวะ 1 — เลือกระบบจาก catalog จริง (SYSTEM_DEFS) ──
             <div className="grid grid-cols-2 gap-2">
               {CREATABLE_DEFS.map((s) => {
-                const opened = openedCodes.includes(s.code);
+                // business สร้างซ้ำได้ (หลายสาขา) — "เปิดแล้ว" บล็อกเฉพาะ feature ที่ instantiate ครั้งเดียว
+                const opened = s.kind === "feature" && openedCodes.includes(s.code);
                 const comingSoon = s.status === "coming_soon";
                 const disabled = comingSoon || opened;
                 return (

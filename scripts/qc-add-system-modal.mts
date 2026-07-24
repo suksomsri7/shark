@@ -19,7 +19,7 @@ else {
   chk("AS-2.1", "modal กลางจอ (overlay + จัดกลาง)", /fixed inset-0/.test(modal) && /items-center/.test(modal) && /justify-center/.test(modal), "มี", "ไม่ครบ");
   chk("AS-2.2", "2 จังหวะ: เลือกระบบ → modal ตั้งชื่อ (มี state step/เลือกแล้วค่อยกรอกชื่อ)", /step|selected|chosen/i.test(modal) && /ชื่อ/.test(modal), "มี", "ไม่ครบ");
   chk("AS-2.3", "ใช้ catalog ระบบจริง (SYSTEM_DEFS) — ห้ามพิมพ์รายชื่อเอง", /SYSTEM_DEFS|systems\b/.test(modal), "มี", "ไม่พบ");
-  chk("AS-2.4", "สร้างผ่าน action เดิมของหน้า settings/systems (ห้าม fork logic)", /Action|action/.test(modal) && !/prisma/.test(modal), "reuse", "แตะ prisma ตรง");
+  chk("AS-2.4", "สร้างผ่าน action เดิมของหน้า settings/systems (เช็ค import จริง ไม่นับ comment)", /addSystemAction/.test(modal) && !/from "@\/lib\/core\/db"|prisma\./.test(modal), "reuse", "fork/แตะ prisma");
   chk("AS-2.5", "ปิดได้: กดฉากหลัง/ปุ่มยกเลิก + ย้อนกลับจาก step ตั้งชื่อ", /onClose|ปิด|ยกเลิก/.test(modal) && /ย้อน|กลับ/.test(modal), "มี", "ไม่ครบ", "MAJOR");
 }
 const shell = readFileSync("src/components/app-shell/AppShell.tsx", "utf8");
