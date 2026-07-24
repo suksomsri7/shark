@@ -63,6 +63,12 @@
 - **checklist deep-link + modal เพิ่มระบบ 2 จังหวะ + preselect ?add-system=CODE** (business สร้างซ้ำได้) · qc-add-system-modal 10/10
 - consult ปิด: orb โชว์เสมอ (เจ้าของเห็นด้วย) → first-tap welcome แทนการซ่อน
 
+## 📱 24 ก.ค. (บ่าย-ค่ำ) — perf sin1 + ปฏิทิน client + เชื่อมระบบรวมที่เดียว SHIPPED
+- **PERF ใหญ่: Vercel region iad1→sin1** (เจ้าของบ่นช้า 5-10 วิ — function อเมริกา DB สิงคโปร์!) → /app 2.5-8s → **0.13-0.38s warm** · ⚠️ กติกาใหม่: region function ต้องติด DB เสมอ (vercel.json "regions":["sin1"] + project setting)
+- ปฏิทิน: หน้าแรก widget · เปลี่ยนเดือน client (API /api/calendar/month + cache + สไลด์ optimistic cal-slide-l/r) · วันเลือกขอบน้ำเงินฟุ้ง · หน้าเต็ม /app/calendar ซ่อน (route คงไว้) · drawer หมวดตั้งค่าพับได้ (เริ่มพับ)
+- **เชื่อมระบบรวมที่เดียว (มติเจ้าของ)**: กล่องเชื่อมออกจากหน้า sys ทุกหน้า · settings/connections ตารางสาขา×ระบบ (reuse link/unlinkUnitAction) · **createSystemAutoLink**: สาขาเดียว=เชื่อมอัตโนมัติ (addSystemAction + AI proposals open_system/marketing ใช้ด้วย — Builder จับเอง) · qc-connections 7/7
+- regression: qc-ai-proposals 16/16 · growth 8/8 · actions 12/12 · fitness 14/14
+
 ## 🔵 SESSION ใหม่เริ่มตรงนี้ (handoff 2026-07-18 · เจ้าของพักไปเทสระบบ รอ weekly limit reset)
 **สถานะ: clean · main=798fc05 · deploy Vercel READY · prisma migrate up-to-date · fitness 14/14 · ไม่มี worktree/branch ค้าง · ทุก WO gate เขียว**
 **ทำอะไรไปแล้ว (Full-Function drive คำสั่งเจ้าของ 17 ก.ค. + งาน UI แตกฟังก์ชัน):**
