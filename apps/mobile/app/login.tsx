@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from "react-native";
 import { FontAwesome6 } from "@expo/vector-icons";
 import * as AppleAuthentication from "expo-apple-authentication";
+import { GoogleSignin, isSuccessResponse, statusCodes } from "@react-native-google-signin/google-signin";
 import { Text, TextInput } from "@/src/components/ui/text";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api, ApiError, apiErrorText } from "@/src/api/client";
@@ -19,6 +20,12 @@ import { AnimatedOrb } from "@/src/components/ui/orb";
 import { C, R, S } from "@/src/theme";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Google Sign-In (creds เจ้าของ 25 ก.ค. — idToken aud = web client → server ตรวจกับ Google JWKS)
+GoogleSignin.configure({
+  iosClientId: "732040229931-pudkdofrj1qbj7lbhrfie5m5dpmfi1pv.apps.googleusercontent.com",
+  webClientId: "732040229931-nk82v61v46bln5q5rodeuftknn27ok8l.apps.googleusercontent.com",
+});
 
 // ปุ่ม social — icon แบรนด์ (FontAwesome6) · Apple ใช้จริง · อื่น ๆ ยังไม่มี creds → notice สีเทา
 const SOCIALS = [
@@ -135,13 +142,44 @@ export default function LoginScreen() {
     }
   }
 
+  async function googleSignIn() {
+    setErr(null);
+    setNotice(null);
+    setSocialBusy(true);
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: false }).catch(() => {});
+      const resp = await GoogleSignin.signIn();
+      if (!isSuccessResponse(resp)) return; // ผู้ใช้กดยกเลิก — เงียบ
+      const idToken = resp.data.idToken;
+      if (!idToken) {
+        setErr("เข้าสู่ระบบด้วย Google ไม่สำเร็จ ลองใหม่อีกครั้ง");
+        return;
+      }
+      const r = await api<{ token: string }>("/api/mobile/auth/google", {
+        body: { idToken },
+        auth: false,
+        tenant: false,
+      });
+      await signIn(r.token); // gate เด้งต่อเอง
+    } catch (x) {
+      if ((x as { code?: string }).code === statusCodes.SIGN_IN_CANCELLED) return;
+      setErr(apiErrorText(x));
+    } finally {
+      setSocialBusy(false);
+    }
+  }
+
   function onSocial(key: string, label: string) {
     if (socialBusy) return;
     if (key === "apple") {
       void appleSignIn();
       return;
     }
-    // Google/Facebook/LINE/TikTok — creds ยังไม่มา → notice สีเทา (ไม่ใช่ error) ห้ามปุ่มตายเงียบ
+    if (key === "google") {
+      void googleSignIn();
+      return;
+    }
+    // Facebook/LINE/TikTok — creds ยังไม่มา → notice สีเทา (ไม่ใช่ error) ห้ามปุ่มตายเงียบ
     setErr(null);
     setNotice(`เข้าสู่ระบบด้วย ${label} จะเปิดใช้เร็ว ๆ นี้ — ตอนนี้ใช้อีเมลได้เลย`);
   }

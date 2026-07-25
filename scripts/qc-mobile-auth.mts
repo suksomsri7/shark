@@ -140,6 +140,13 @@ try {
     const bad = await rApple.POST(J("/api/mobile/auth/apple", "POST", { identityToken: "fake.jwt.token" }));
     chk("MA-11.2", "apple: token ปลอม → 401 (ต้อง verify กับ Apple JWKS เสมอ)", bad.status === 401, "401", String(bad.status));
   }
+  const rGoog = await route("@/app/api/mobile/auth/google/route");
+  if (!rGoog?.POST) chk("MA-12.0", "มี route auth/google", false, "มี", "ยังไม่สร้าง");
+  else {
+    chk("MA-12.1", "google: ไม่มี token → 400", (await rGoog.POST(J("/api/mobile/auth/google", "POST", {}))).status === 400, "400", "?");
+    const bad = await rGoog.POST(J("/api/mobile/auth/google", "POST", { idToken: "fake.jwt.token" }));
+    chk("MA-12.2", "google: token ปลอม → 401 (ต้อง verify กับ Google JWKS + aud ของเราเสมอ)", bad.status === 401, "401", String(bad.status));
+  }
 } finally {
   for (const tid of tids) { await prisma.membership.deleteMany({ where: { tenantId: tid } }); await prisma.appSystemUnit.deleteMany({ where: { tenantId: tid } }).catch(() => {}); await prisma.appSystem.deleteMany({ where: { tenantId: tid } }).catch(() => {}); await prisma.businessUnit.deleteMany({ where: { tenantId: tid } }).catch(() => {}); await prisma.tenant.deleteMany({ where: { id: tid } }); }
   for (const uid of uids) { await prisma.pushDevice.deleteMany({ where: { userId: uid } }); await prisma.session.deleteMany({ where: { userId: uid } }); await prisma.user.deleteMany({ where: { id: uid } }); }
