@@ -1,10 +1,11 @@
-// จอเข้าสู่ระบบ — OTP ทางอีเมล + ปุ่ม social (Apple ใช้จริง · อื่น ๆ เปิดใช้เร็ว ๆ นี้ — ห้ามปุ่มตายเงียบ)
+// จอเข้าสู่ระบบ — OTP ทางอีเมล + ปุ่ม social (Apple/Google/LINE ใช้จริง · FB/TikTok เปิดใช้เร็ว ๆ นี้)
 // ขั้น 1: กรอกอีเมล → ขอรหัส · ขั้น 2: กรอกรหัส 6 หลัก → ยืนยัน → signIn (gate เด้งต่อเอง)
 import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from "react-native";
 import { FontAwesome6 } from "@expo/vector-icons";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { GoogleSignin, isSuccessResponse, statusCodes } from "@react-native-google-signin/google-signin";
+import * as WebBrowser from "expo-web-browser";
 import { Text, TextInput } from "@/src/components/ui/text";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api, ApiError, apiErrorText } from "@/src/api/client";
@@ -169,6 +170,35 @@ export default function LoginScreen() {
     }
   }
 
+  async function lineSignIn() {
+    setErr(null);
+    setNotice(null);
+    setSocialBusy(true);
+    try {
+      // LINE ผ่าน browser (LINE ไม่มี native SDK ฝั่ง Expo ที่เบา) → callback เด้งกลับ sharkai://auth?code= → แลกเป็น Bearer
+      const result = await WebBrowser.openAuthSessionAsync(
+        "https://shark.in.th/api/auth/line/start?mobile=1",
+        "sharkai://auth",
+      );
+      if (result.type !== "success" || !result.url) return; // ผู้ใช้ปิดเอง — เงียบ
+      const m = /[?&]code=([^&]+)/.exec(result.url);
+      if (!m) {
+        setErr("เข้าสู่ระบบด้วย LINE ไม่สำเร็จ ลองใหม่อีกครั้ง");
+        return;
+      }
+      const r = await api<{ token: string }>("/api/mobile/auth/exchange", {
+        body: { code: m[1] },
+        auth: false,
+        tenant: false,
+      });
+      await signIn(r.token);
+    } catch (x) {
+      setErr(apiErrorText(x));
+    } finally {
+      setSocialBusy(false);
+    }
+  }
+
   function onSocial(key: string, label: string) {
     if (socialBusy) return;
     if (key === "apple") {
@@ -177,6 +207,10 @@ export default function LoginScreen() {
     }
     if (key === "google") {
       void googleSignIn();
+      return;
+    }
+    if (key === "line") {
+      void lineSignIn();
       return;
     }
     // Facebook/LINE/TikTok — creds ยังไม่มา → notice สีเทา (ไม่ใช่ error) ห้ามปุ่มตายเงียบ

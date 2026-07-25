@@ -29,6 +29,13 @@ export function AuthForm({ heading }: { heading: string }) {
             <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4"><path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.1h6.5c-.1 1.1-.8 2.7-2.4 3.8l3.7 2.9c2.2-2 3.7-5 3.7-8.6z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.2 1.2-3.2 0-5.9-2.1-6.9-5.1L1.3 17.2C3.3 21.2 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.1 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3L1.3 6.8C.5 8.4 0 10.1 0 12s.5 3.6 1.3 5.2l3.8-2.9z"/><path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l3.3-3.2C17.9 1.1 15.2 0 12 0 7.3 0 3.3 2.8 1.3 6.8l3.8 2.9c1-3 3.7-5 6.9-5z"/></svg>
             เข้าสู่ระบบด้วย Google
           </a>
+          <a
+            href="/api/auth/line/start"
+            className="flex items-center justify-center gap-2 rounded-lg border border-[color:var(--color-border)] px-4 py-2.5 text-sm font-medium hover:bg-[color:var(--color-surface-2)]"
+          >
+            <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="#06C755"><path d="M12 2C6.48 2 2 5.64 2 10.13c0 4.03 3.6 7.4 8.47 8.04.33.07.78.22.89.5.1.26.07.66.03.92l-.14.87c-.04.26-.2 1.01.89.55 1.1-.46 5.91-3.48 8.07-5.96C21.72 13.5 22 11.87 22 10.13 22 5.64 17.52 2 12 2z"/></svg>
+            เข้าสู่ระบบด้วย LINE
+          </a>
           <div className="flex items-center gap-3 text-xs text-[color:var(--color-muted)]">
             <div className="h-px flex-1 bg-[color:var(--color-border)]" />
             หรือใช้อีเมล

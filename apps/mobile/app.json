@@ -45,7 +45,8 @@
       ],
       "expo-font",
       "expo-apple-authentication",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "expo-web-browser"
     ],
     "scheme": "sharkai",
     "backgroundColor": "#ffffff",

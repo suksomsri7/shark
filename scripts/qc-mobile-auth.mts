@@ -147,6 +147,17 @@ try {
     const bad = await rGoog.POST(J("/api/mobile/auth/google", "POST", { idToken: "fake.jwt.token" }));
     chk("MA-12.2", "google: token ปลอม → 401 (ต้อง verify กับ Google JWKS + aud ของเราเสมอ)", bad.status === 401, "401", String(bad.status));
   }
+  const rEx = await route("@/app/api/mobile/auth/exchange/route");
+  if (!rEx?.POST) chk("MA-13.0", "มี route auth/exchange (social ผ่าน browser → Bearer)", false, "มี", "ยังไม่สร้าง");
+  else {
+    chk("MA-13.1", "exchange: ไม่มี code → 400", (await rEx.POST(J("/api/mobile/auth/exchange", "POST", {}))).status === 400, "400", "?");
+    chk("MA-13.2", "exchange: code ปลอม → 401", (await rEx.POST(J("/api/mobile/auth/exchange", "POST", { code: "fake" }))).status === 401, "401", "?");
+    const libx = (await import("@/lib/mobile/auth")) as unknown as { issueLoginCode: (u: string) => Promise<string>; };
+    const lcode = await libx.issueLoginCode(u1.id);
+    const ok1 = await rEx.POST(J("/api/mobile/auth/exchange", "POST", { code: lcode }));
+    const okb = (await ok1.json().catch(() => ({}))) as { token?: string };
+    chk("MA-13.3", "exchange: code จริง → Bearer + replay → 401", ok1.status === 200 && !!okb.token && (await rEx.POST(J("/api/mobile/auth/exchange", "POST", { code: lcode }))).status === 401, "200→401", String(ok1.status));
+  }
 } finally {
   for (const tid of tids) { await prisma.membership.deleteMany({ where: { tenantId: tid } }); await prisma.appSystemUnit.deleteMany({ where: { tenantId: tid } }).catch(() => {}); await prisma.appSystem.deleteMany({ where: { tenantId: tid } }).catch(() => {}); await prisma.businessUnit.deleteMany({ where: { tenantId: tid } }).catch(() => {}); await prisma.tenant.deleteMany({ where: { id: tid } }); }
   for (const uid of uids) { await prisma.pushDevice.deleteMany({ where: { userId: uid } }); await prisma.session.deleteMany({ where: { userId: uid } }); await prisma.user.deleteMany({ where: { id: uid } }); }

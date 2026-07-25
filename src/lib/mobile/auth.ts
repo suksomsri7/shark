@@ -126,3 +126,31 @@ export async function consumeWebviewCode(
   if (!userId || !tenantId) return null;
   return { userId, tenantId };
 }
+
+// ── Login code สำหรับ social flow ผ่าน browser (LINE ฯลฯ): callback ฝั่งเว็บออก code → แอปแลกเป็น Bearer ──
+// ใช้ AuthToken purpose WEBVIEW เดิม (email เก็บ "userId|login") อายุ 60 วิ ใช้ครั้งเดียว — คนละคีย์กับ webview code (tenantId จริง)
+export async function issueLoginCode(userId: string): Promise<string> {
+  const code = randomToken();
+  await prisma.authToken.create({
+    data: {
+      email: `${userId}|login`,
+      purpose: "WEBVIEW",
+      tokenHash: sha256(code),
+      expiresAt: new Date(Date.now() + WEBVIEW_CODE_MS),
+    },
+  });
+  return code;
+}
+
+// แลก login code → Bearer (สำหรับ /api/mobile/auth/exchange) — atomic กัน replay แบบเดียวกับ webview
+export async function consumeLoginCode(code: string): Promise<string | null> {
+  const consumed = await prisma.authToken.updateMany({
+    where: { tokenHash: sha256(code), purpose: "WEBVIEW", consumedAt: null, expiresAt: { gt: new Date() } },
+    data: { consumedAt: new Date() },
+  });
+  if (consumed.count !== 1) return null;
+  const row = await prisma.authToken.findFirst({ where: { tokenHash: sha256(code), purpose: "WEBVIEW" } });
+  const [userId, tag] = (row?.email ?? "").split("|");
+  if (!userId || tag !== "login") return null;
+  return userId;
+}
