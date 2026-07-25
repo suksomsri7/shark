@@ -36,6 +36,13 @@ export function AuthForm({ heading }: { heading: string }) {
             <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="#06C755"><path d="M12 2C6.48 2 2 5.64 2 10.13c0 4.03 3.6 7.4 8.47 8.04.33.07.78.22.89.5.1.26.07.66.03.92l-.14.87c-.04.26-.2 1.01.89.55 1.1-.46 5.91-3.48 8.07-5.96C21.72 13.5 22 11.87 22 10.13 22 5.64 17.52 2 12 2z"/></svg>
             เข้าสู่ระบบด้วย LINE
           </a>
+          <a
+            href="/api/auth/facebook/start"
+            className="flex items-center justify-center gap-2 rounded-lg border border-[color:var(--color-border)] px-4 py-2.5 text-sm font-medium hover:bg-[color:var(--color-surface-2)]"
+          >
+            <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="#1877F2"><path d="M24 12c0-6.63-5.37-12-12-12S0 5.37 0 12c0 5.99 4.39 10.95 10.13 11.85v-8.38H7.08V12h3.05V9.36c0-3 1.79-4.67 4.53-4.67 1.31 0 2.68.24 2.68.24v2.95H15.83c-1.49 0-1.96.93-1.96 1.87V12h3.33l-.53 3.47h-2.8v8.38C19.61 22.95 24 17.99 24 12z"/></svg>
+            เข้าสู่ระบบด้วย Facebook
+          </a>
           <div className="flex items-center gap-3 text-xs text-[color:var(--color-muted)]">
             <div className="h-px flex-1 bg-[color:var(--color-border)]" />
             หรือใช้อีเมล

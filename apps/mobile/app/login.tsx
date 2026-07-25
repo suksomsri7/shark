@@ -1,4 +1,4 @@
-// จอเข้าสู่ระบบ — OTP ทางอีเมล + ปุ่ม social (Apple/Google/LINE ใช้จริง · FB/TikTok เปิดใช้เร็ว ๆ นี้)
+// จอเข้าสู่ระบบ — OTP ทางอีเมล + ปุ่ม social (Apple/Google/LINE/Facebook ใช้จริง · TikTok เปิดใช้เร็ว ๆ นี้)
 // ขั้น 1: กรอกอีเมล → ขอรหัส · ขั้น 2: กรอกรหัส 6 หลัก → ยืนยัน → signIn (gate เด้งต่อเอง)
 import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from "react-native";
@@ -170,20 +170,22 @@ export default function LoginScreen() {
     }
   }
 
-  async function lineSignIn() {
+  async function lineSignIn() { await browserSocial("line"); }
+
+  async function browserSocial(provider: "line" | "facebook") {
     setErr(null);
     setNotice(null);
     setSocialBusy(true);
     try {
-      // LINE ผ่าน browser (LINE ไม่มี native SDK ฝั่ง Expo ที่เบา) → callback เด้งกลับ sharkai://auth?code= → แลกเป็น Bearer
+      // LINE/Facebook ผ่าน browser → callback เด้งกลับ sharkai://auth?code= → แลกเป็น Bearer
       const result = await WebBrowser.openAuthSessionAsync(
-        "https://shark.in.th/api/auth/line/start?mobile=1",
+        `https://shark.in.th/api/auth/${provider}/start?mobile=1`,
         "sharkai://auth",
       );
       if (result.type !== "success" || !result.url) return; // ผู้ใช้ปิดเอง — เงียบ
       const m = /[?&]code=([^&]+)/.exec(result.url);
       if (!m) {
-        setErr("เข้าสู่ระบบด้วย LINE ไม่สำเร็จ ลองใหม่อีกครั้ง");
+        setErr("เข้าสู่ระบบไม่สำเร็จ ลองใหม่อีกครั้ง");
         return;
       }
       const r = await api<{ token: string }>("/api/mobile/auth/exchange", {
@@ -211,6 +213,10 @@ export default function LoginScreen() {
     }
     if (key === "line") {
       void lineSignIn();
+      return;
+    }
+    if (key === "facebook") {
+      void browserSocial("facebook");
       return;
     }
     // Facebook/LINE/TikTok — creds ยังไม่มา → notice สีเทา (ไม่ใช่ error) ห้ามปุ่มตายเงียบ
