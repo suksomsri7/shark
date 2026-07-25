@@ -42,7 +42,7 @@ export default function PrivacyPage() {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-lg font-medium">ติดต่อเรา</h2>
-        <p className="text-sm leading-6">คำถามเรื่องข้อมูลส่วนบุคคล: suksomsri@gmail.com</p>
+        <p className="text-sm leading-6">คำถามเรื่องข้อมูลส่วนบุคคล: support@shark.in.th</p>
       </section>
     </main>
   );
