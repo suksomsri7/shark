@@ -1,6 +1,15 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
-## 🔵🔵 HANDOFF 2026-07-24 ค่ำ — SESSION ใหม่เริ่มอ่านตรงนี้ (งานแอป SHARK AI)
+## 🔵🔵 HANDOFF 2026-07-26 — SESSION ใหม่เริ่มอ่านตรงนี้ (งานแอป SHARK AI)
+**🔑 SOCIAL LOGIN สรุป (26 ก.ค.) — เว็บใช้ได้ทันที · แอปติด build #16:**
+- ✅ **Apple / Google / LINE / Facebook = LIVE ครบ** (เว็บ /login มีปุ่มครบ · server verify token ทุกค่าย · creds ใน .env+Vercel)
+  - Google: project shark-497403 (จาก shark.guide) · LINE: channel 2008778482 · FB: App 1377933440828067 (Graph API+appsecret_proof · redirect URI ใส่+บันทึกแล้ว · **ยัง dev mode = เฉพาะ tester จน review**)
+  - flow: Apple/Google = native SDK (idToken) · LINE/FB = browser (openAuthSession → sharkai://auth?code= → /api/mobile/auth/exchange → Bearer)
+- ⚠️ **LINE/FB ถ้าเด้ง err=line_email/fb_email** = ผู้ใช้นั้นไม่มี/ไม่แชร์อีเมล (บัญชีเราผูกด้วยอีเมล) — LINE ต้อง approve Email permission ใน console (แนบ /privacy)
+- 🔴 **เหลือ TikTok** ค่ายเดียว (เจ้าของยังไม่สมัคร dev — review นาน · endpoint pattern พร้อมทำเหมือน LINE/FB)
+- **หน้า public เสร็จ**: /privacy /terms /data-deletion (ยื่นทุก review ได้) · **email**: catch-all *@shark.in.th → siamdivethailand@gmail.com (ImprovMX บัญชีแยก · ยิงเทสผ่านแล้ว)
+- oracle auth ล่าสุด: qc-mobile-auth **31/31** (รวม MA-11 apple / MA-12 google / MA-13 exchange)
+
 **โหมดถาวร: Fable 5 = หัวหน้า (oracle ก่อน+ตรวจรับ+merge+gates+deploy+บันทึก) · Opus = Builder ≤2 ใน worktree · กติกาเหล็ก 9 ข้อดู CHECKPOINT ล่าง**
 
 **สถานะตอนนี้ (ทุกอย่าง main ล่าสุด · deploy READY · gates เขียวหมด):**
