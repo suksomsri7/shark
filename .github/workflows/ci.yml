@@ -7,10 +7,20 @@ name: CI
 # ทำไมต้องมี: ก่อนหน้านี้ไม่มี CI เลย — กฎ "107/107 ก่อน deploy" เป็นแค่ประโยคใน _RESUME.md
 # ที่อาศัยความจำของคน. ไฟล์นี้เปลี่ยนมันเป็นฟิสิกส์
 
+# ค่าใช้จ่าย (2026-07-30): เดือน ก.ค. รีโปนี้ใช้ ~2,700 runner-นาที ($15.13) จาก 340 รอบ —
+# 88% เป็น T1 (QC บน Neon) ที่รันครบทุกชุดในทุก push แม้ push นั้นแก้แค่เอกสาร
+# แก้ 3 ชั้น โดยไม่ลดการป้องกัน: (1) push ที่แตะแค่ .md/docs/ledger ไม่รันเลย
+# (2) push ปกติรันเฉพาะ oracle ของโปรเจกต์ (drift + account 107/107 + QC7 46/46)
+# (3) ชุดเต็ม 11 suites รันบน PR และตอนสั่งเอง (workflow_dispatch)
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'ledger/**'
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -59,6 +69,17 @@ jobs:
             echo "ready=true" >> $GITHUB_OUTPUT
           fi
 
+      # ขอบเขตชุดเทสต์: push = เฉพาะ oracle (เร็ว ~ครึ่งเวลา) · PR/สั่งเอง = ครบทุกชุด
+      - name: ขอบเขตชุดเทสต์
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "full=false" >> $GITHUB_OUTPUT
+            echo "::notice::push → รันเฉพาะ drift + account(107) + QC7(46) · ชุดเต็มรันบน PR หรือสั่ง workflow_dispatch"
+          else
+            echo "full=true" >> $GITHUB_OUTPUT
+          fi
+
       # 1 run = 1 Neon branch → ไม่มี global mutation, รันขนานได้
       # ใช้สคริปต์ของเราเอง (scripts/neon-branch.mts — ทดสอบกับของจริงแล้ว มีด่านกัน production)
       # แทน neondatabase/create-branch-action ที่ตาย "Multiple roles found" แม้ระบุ role (run #5,#6)
@@ -99,35 +120,35 @@ jobs:
         run: pnpm qc:account:qc7
 
       - name: QC chat security (23/23)
-        if: steps.guard.outputs.ready == 'true'
+        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
         run: pnpm qc:chat
 
       - name: QC POS→Account (M1 — ยอดขายเข้าบัญชี)
-        if: steps.guard.outputs.ready == 'true'
+        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
         run: pnpm qc:pos
 
       - name: QC DNA Wizard (M3 — ประกอบระบบ)
-        if: steps.guard.outputs.ready == 'true'
+        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
         run: pnpm qc:dna
 
       - name: QC สายเงินร้านอาหาร (โต๊ะ→POS→บัญชี E2E)
-        if: steps.guard.outputs.ready == 'true'
+        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
         run: pnpm qc:restaurant-money
 
       - name: QC POS×Coupon (คูปองกับการขาย)
-        if: steps.guard.outputs.ready == 'true'
+        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
         run: pnpm qc:coupon
 
       - name: QC Ticket→บัญชี
-        if: steps.guard.outputs.ready == 'true'
+        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
         run: pnpm qc:ticket
 
       - name: QC Hotel→บัญชี
-        if: steps.guard.outputs.ready == 'true'
+        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
         run: pnpm qc:hotel
 
       - name: QC CRM (Lead→ดีล→ลูกค้า)
-        if: steps.guard.outputs.ready == 'true'
+        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
         run: pnpm qc:crm
 
       - name: ลบ Neon branch (กันค่าใช้จ่ายบาน)
