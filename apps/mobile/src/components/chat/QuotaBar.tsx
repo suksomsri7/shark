@@ -1,6 +1,6 @@
 // แถบโควตาผู้ช่วย AI — โผล่เมื่อใช้เกินครึ่งเท่านั้น (หน้าปกติสะอาด ไม่ยัดตัวเลขให้เจ้าของร้าน)
 // ยิง GET /api/mobile/usage · ล้ม/ยังไม่ถึงครึ่ง = ไม่แสดงอะไรเลย (ห้ามขึ้น error รบกวน)
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Text } from "@/src/components/ui/text";
@@ -33,8 +33,13 @@ function backAt(iso: string): string {
 export function QuotaBar() {
   const [usage, setUsage] = useState<Usage | null>(null);
 
+  // ยิงถี่ไม่มีประโยชน์ — โควตาขยับเฉพาะตอนคุย · cache 30 วิ ลดคำขอตอนสลับหน้าไป-มา
+  const lastRef = useRef(0);
   useFocusEffect(
     useCallback(() => {
+      const now = Date.now();
+      if (now - lastRef.current < 30_000) return;
+      lastRef.current = now;
       api<Usage>("/api/mobile/usage")
         .then(setUsage)
         .catch(() => setUsage(null));

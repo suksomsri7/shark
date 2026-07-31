@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveUnit, resolveTableSession, tableStatusForGuest } from "@/lib/modules/restaurant/storefront";
+import { checkRateLimit } from "@/lib/core/rate-limit";
 
 // GET ?qrToken= — สถานะโต๊ะ + ออเดอร์รวมโต๊ะ (สำหรับ polling ฝั่งลูกค้า)
 export async function GET(req: Request, { params }: { params: Promise<{ tenantSlug: string; unitSlug: string }> }) {
@@ -7,6 +8,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ tenantSl
   const qrToken = new URL(req.url).searchParams.get("qrToken") ?? "";
   const resolved = await resolveUnit(tenantSlug, unitSlug);
   if (!resolved) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  // กันยิงถล่ม — 20 ครั้ง/นาที/IP ต่อสาขา (public ไม่ต้องล็อกอิน)
+  const rlIp = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+  const rl = checkRateLimit(`resto-session:${resolved.unit.id}:${rlIp}`, { limit: 20, windowMs: 60000 });
+  if (!rl.ok)
+    return NextResponse.json(
+      { error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec ?? 60) } },
+    );
 
   const sess = await resolveTableSession(resolved.tenant.id, resolved.unit.id, qrToken);
   if (!sess.ok) return NextResponse.json({ error: "session", reason: sess.reason }, { status: 410 });

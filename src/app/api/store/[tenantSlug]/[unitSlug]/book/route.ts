@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveUnit, getAvailableSlots, createAppointment } from "@/lib/modules/booking/service";
+import { checkRateLimit } from "@/lib/core/rate-limit";
 
 const schema = z.object({
   serviceId: z.string().min(1),
@@ -21,6 +22,15 @@ export async function POST(
   const { tenantSlug, unitSlug } = await params;
   const resolved = await resolveUnit(tenantSlug, unitSlug);
   if (!resolved) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  // กันยิงถล่ม — 10 ครั้ง/นาที/IP ต่อสาขา (public ไม่ต้องล็อกอิน)
+  const rlIp = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+  const rl = checkRateLimit(`book:${resolved.unit.id}:${rlIp}`, { limit: 10, windowMs: 60000 });
+  if (!rl.ok)
+    return NextResponse.json(
+      { error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec ?? 60) } },
+    );
 
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);

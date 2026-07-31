@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveUnit, resolveTableSession } from "@/lib/modules/restaurant/storefront";
 import { createServiceRequest } from "@/lib/modules/restaurant/order";
+import { checkRateLimit } from "@/lib/core/rate-limit";
 
 const schema = z.object({
   qrToken: z.string().min(1),
@@ -14,6 +15,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ tenantS
   const { tenantSlug, unitSlug } = await params;
   const resolved = await resolveUnit(tenantSlug, unitSlug);
   if (!resolved) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  // กันยิงถล่ม — 10 ครั้ง/นาที/IP ต่อสาขา (public ไม่ต้องล็อกอิน)
+  const rlIp = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+  const rl = checkRateLimit(`resto-call:${resolved.unit.id}:${rlIp}`, { limit: 10, windowMs: 60000 });
+  if (!rl.ok)
+    return NextResponse.json(
+      { error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec ?? 60) } },
+    );
 
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "bad_request" }, { status: 400 });

@@ -93,6 +93,9 @@ model BusinessUnit {
 
   @@unique([tenantId, slug])
   @@index([tenantId, type])
+  // resolve หน้า storefront สาธารณะ: ค้นด้วย slug ของสาขา + เงื่อนไข tenant ในคิวรีเดียว
+  // (ถ้าไม่มี index นี้ Postgres ต้อง scan ทั้งตารางทุกครั้งที่ลูกค้าเปิดหน้าร้าน)
+  @@index([slug, status])
 }
 
 // ─────────────────────────────────────────────────────────────

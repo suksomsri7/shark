@@ -1,3 +1,4 @@
+import { resolvePublicUnit } from "@/lib/core/storefront";
 import { prisma } from "@/lib/core/db";
 import type {
   Prisma,
@@ -30,13 +31,8 @@ function ticketNumber(prefix: string, seq: number): string {
 
 // ── resolve unit สาธารณะ (public/no-auth) จาก slug → ต้องเป็นระบบ QUEUE ที่ ACTIVE ──
 export async function resolveQueueUnit(tenantSlug: string, unitSlug: string) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
-  if (!tenant || tenant.status !== "ACTIVE") return null;
-  const unit = await prisma.businessUnit.findUnique({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
-  });
-  if (!unit || unit.status !== "ACTIVE" || unit.type !== "QUEUE") return null;
-  return { tenant, unit };
+  // คิวรีเดียว (เดิมยิง tenant แล้ว unit เรียงกัน = 2 round-trip ไปสิงคโปร์)
+  return resolvePublicUnit(tenantSlug, unitSlug, "QUEUE");
 }
 
 // ── ประเภทคิวที่รับออนไลน์ได้ (public — หน้ารับบัตรของลูกค้า) ──

@@ -1,12 +1,12 @@
 import { prisma } from "@/lib/core/db";
+import { randomCode } from "@/lib/core/hash";
 import * as point from "@/lib/modules/point/service";
 
 // Reward — แลกของด้วยแต้ม. scope ตาม systemId (ระบบรางวัล)
+// ⚠️ ต้องเป็น crypto: โค้ดนี้ = สิทธิ์แลกของ (พนักงานกรอกโค้ดเพื่อจ่ายรางวัล)
+//    Math.random เดาต่อได้ → คนอื่นแลกรางวัลของเราไปได้
 function redeemCode(): string {
-  const A = "ACDEFGHJKLMNPQRSTUVWXY3456789";
-  let s = "";
-  for (let i = 0; i < 6; i++) s += A[Math.floor(Math.random() * A.length)];
-  return s;
+  return randomCode(6, "ACDEFGHJKLMNPQRSTUVWXY3456789");
 }
 
 export async function listRewards(tenantId: string, systemId: string, activeOnly = false) {

@@ -4,6 +4,7 @@ import * as pos from "@/lib/modules/pos/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
 import type { HotelReservationStatus, HotelRoomStatus, PosPayType, SystemType } from "@prisma/client";
+import { resolvePublicUnit } from "@/lib/core/storefront";
 
 // ลงทะเบียน scope ของ Hotel models (unit-scoped) — ให้ tenantDb() inject tenantId+unitId อัตโนมัติ
 // (ตามกลไก modules ใน src/lib/core/scope.ts — idempotent-safe ถ้า core ประกาศซ้ำด้วย scope เดียวกัน)
@@ -597,13 +598,8 @@ export async function getReservation(tenantId: string, unitId: string, id: strin
 // ───────────────────────── Public storefront (จองออนไลน์ · no-auth) ─────────────────────────
 // resolve unit จาก slug (public) → tenantId+unitId · unit ต้อง ACTIVE + type=HOTEL (กันสวมร้าน/ประเภทผิด)
 export async function resolveHotelUnit(tenantSlug: string, unitSlug: string) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
-  if (!tenant || tenant.status !== "ACTIVE") return null;
-  const unit = await prisma.businessUnit.findUnique({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
-  });
-  if (!unit || unit.status !== "ACTIVE" || unit.type !== "HOTEL") return null;
-  return { tenant, unit };
+  // คิวรีเดียว (เดิมยิง tenant แล้ว unit เรียงกัน = 2 round-trip ไปสิงคโปร์)
+  return resolvePublicUnit(tenantSlug, unitSlug, "HOTEL");
 }
 
 // ประเภทห้อง + จำนวนว่างน้อยสุดตลอดช่วง (สำหรับหน้าจองลูกค้า) — ถ้า from/to ไม่ถูกต้อง คืน free=0

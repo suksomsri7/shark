@@ -9,6 +9,7 @@ import * as pos from "@/lib/modules/pos/service";
 import * as inventory from "@/lib/modules/inventory/service";
 import * as member from "@/lib/modules/member/service";
 import { listSystems } from "@/lib/modules/system/service";
+import { resolvePublicUnit } from "@/lib/core/storefront";
 
 export type ClinicCtx = { tenantId: string; unitId: string };
 
@@ -327,13 +328,8 @@ export async function refundVisit(
 // PDPA: symptom = ข้อมูลสุขภาพ → optional เก็บเท่าที่จำเป็น
 // resolve unit จาก slug (public) · unit ต้อง ACTIVE + type=CLINIC (กันสวมร้าน/ประเภทผิด) · mirror resolveRentalUnit
 export async function resolveClinicUnit(tenantSlug: string, unitSlug: string) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
-  if (!tenant || tenant.status !== "ACTIVE") return null;
-  const unit = await prisma.businessUnit.findUnique({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
-  });
-  if (!unit || unit.status !== "ACTIVE" || unit.type !== "CLINIC") return null;
-  return { tenant, unit };
+  // คิวรีเดียว (เดิมยิง tenant แล้ว unit เรียงกัน = 2 round-trip ไปสิงคโปร์)
+  return resolvePublicUnit(tenantSlug, unitSlug, "CLINIC");
 }
 
 export type RequestAppointmentInput = {

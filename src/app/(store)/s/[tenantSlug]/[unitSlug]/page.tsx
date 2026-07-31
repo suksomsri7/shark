@@ -1,13 +1,19 @@
 import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { resolveUnit, getBookingData } from "@/lib/modules/booking/service";
-import { resolveUnit as resolveTicketUnit } from "@/lib/modules/ticket/service";
-import { resolveRentalUnit } from "@/lib/modules/rental/service";
-import { resolveSchoolUnit } from "@/lib/modules/school/service";
-import { resolveClinicUnit } from "@/lib/modules/clinic/service";
+import { getBookingData } from "@/lib/modules/booking/service";
+import { resolvePublicUnit } from "@/lib/core/storefront";
 import { PublicBooking } from "@/components/public-booking";
 import { getLocaleFromCookie, makeT } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+
+// ประเภทกิจการที่มี storefront ของตัวเอง → landing เด้งเข้าหน้านั้น
+// (ลูกค้าซื้อตั๋ว/จองเช่า/สมัครเรียน/ขอนัด ได้เองโดยไม่ต้องล็อกอิน)
+const REDIRECT_BY_TYPE: Record<string, string> = {
+  TICKET: "ticket",
+  RENTAL: "rental",
+  SCHOOL: "school",
+  CLINIC: "clinic",
+};
 
 // หน้าจองสาธารณะของกิจการ (BOOKING) — /s/[tenantSlug]/[unitSlug]
 export default async function StoreBookingPage({
@@ -17,24 +23,15 @@ export default async function StoreBookingPage({
 }) {
   const { tenantSlug, unitSlug } = await params;
 
-  // ร้านขายตั๋ว (TICKET): landing เด้งเข้า storefront ตั๋วสาธารณะ (ลูกค้าซื้อตั๋วเอง)
-  const ticketUnit = await resolveTicketUnit(tenantSlug, unitSlug);
-  if (ticketUnit) redirect(`/s/${tenantSlug}/${unitSlug}/ticket`);
-
-  // ร้านให้เช่า (RENTAL): landing เด้งเข้า storefront เช่าสาธารณะ (ลูกค้าจองเช่าเอง)
-  const rentalUnit = await resolveRentalUnit(tenantSlug, unitSlug);
-  if (rentalUnit) redirect(`/s/${tenantSlug}/${unitSlug}/rental`);
-
-  // โรงเรียน/สถาบัน (SCHOOL): landing เด้งเข้า storefront สมัครเรียนสาธารณะ (ผู้ปกครองสมัคร+จ่ายเอง)
-  const schoolUnit = await resolveSchoolUnit(tenantSlug, unitSlug);
-  if (schoolUnit) redirect(`/s/${tenantSlug}/${unitSlug}/school`);
-
-  // คลินิก (CLINIC): landing เด้งเข้า storefront ขอนัดสาธารณะ (ผู้ป่วยจองนัดเอง)
-  const clinicUnit = await resolveClinicUnit(tenantSlug, unitSlug);
-  if (clinicUnit) redirect(`/s/${tenantSlug}/${unitSlug}/clinic`);
-
-  const resolved = await resolveUnit(tenantSlug, unitSlug);
+  // เดิม: เรียก resolver 5 ตัวเรียงกัน = สูงสุด 10 round-trip ไป DB สิงคโปร์ก่อนเริ่ม render
+  // ตอนนี้: คิวรีเดียว แล้วแตกทางตาม unit.type (ผลลัพธ์เหมือนเดิมทุกกรณี)
+  const resolved = await resolvePublicUnit(tenantSlug, unitSlug);
   if (!resolved) notFound();
+
+  const target = REDIRECT_BY_TYPE[resolved.unit.type];
+  if (target) redirect(`/s/${tenantSlug}/${unitSlug}/${target}`);
+  if (resolved.unit.type !== "BOOKING") notFound();
+
   const { services, staff } = await getBookingData(resolved.tenant.id, resolved.unit.id);
 
   const locale = getLocaleFromCookie((await cookies()).get("lang")?.value);

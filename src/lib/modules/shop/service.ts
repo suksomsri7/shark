@@ -9,18 +9,14 @@ import * as pos from "@/lib/modules/pos/service";
 import * as inventory from "@/lib/modules/inventory/service";
 import { listSystems } from "@/lib/modules/system/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
+import { resolvePublicUnit } from "@/lib/core/storefront";
 
 export type ShopCtx = { tenantId: string; unitId: string };
 
 // resolve unit จาก slug (public/no-auth) → tenant+unit (ต้อง ACTIVE + type SHOP)
 export async function resolveUnit(tenantSlug: string, unitSlug: string) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
-  if (!tenant || tenant.status !== "ACTIVE") return null;
-  const unit = await prisma.businessUnit.findUnique({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
-  });
-  if (!unit || unit.status !== "ACTIVE" || unit.type !== "SHOP") return null;
-  return { tenant, unit };
+  // คิวรีเดียว (เดิมยิง tenant แล้ว unit เรียงกัน = 2 round-trip ไปสิงคโปร์)
+  return resolvePublicUnit(tenantSlug, unitSlug, "SHOP");
 }
 
 // รายการสินค้าคลัง (สำหรับ dropdown ผูก invItemId ในหน้าจัดการ) — ไม่มีระบบคลัง → []
@@ -122,11 +118,16 @@ export async function createOrder(ctx: ShopCtx, input: CreateOrderInput): Promis
   const db = tenantDb(ctx);
 
   // validate + snapshot ชื่อ/ราคา ณ ตอนสั่ง
+  // ดึงสินค้าทั้งตะกร้าในคิวรีเดียว — เดิมยิงทีละชิ้นในลูป (ตะกร้า 20 ชิ้น = 20 round-trip ต่อ 1 ออเดอร์)
+  const products = await db.shopProduct.findMany({
+    where: { id: { in: [...new Set(rawLines.map((l) => l.productId))] } },
+  });
+  const byId = new Map(products.map((p) => [p.id, p]));
   const snap: { productId: string; name: string; qty: number; unitPriceSatang: number; lineTotalSatang: number }[] = [];
   for (const l of rawLines) {
     const qty = Math.round(l.qty);
     if (!Number.isFinite(qty) || qty <= 0) throw new Error("จำนวนสินค้าต้องมากกว่า 0");
-    const product = await db.shopProduct.findFirst({ where: { id: l.productId } });
+    const product = byId.get(l.productId);
     if (!product || !product.active) throw new Error("ไม่พบสินค้า หรือสินค้าปิดการขายแล้ว");
     snap.push({
       productId: product.id,
@@ -239,11 +240,17 @@ export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUser
   const invSys = invSystems[0];
   if (invSys) {
     const invCtx = { tenantId: ctx.tenantId, systemId: invSys.id };
+    // ดึงสินค้าทุกบรรทัดครั้งเดียว (เดิมยิงต่อบรรทัดในลูป)
+    const prods = await db.shopProduct.findMany({
+      where: { id: { in: [...new Set(lines.map((l) => l.productId))] } },
+      select: { id: true, invItemId: true },
+    });
+    const invItemOf = new Map(prods.map((p) => [p.id, p.invItemId]));
     for (const l of lines) {
-      const product = await db.shopProduct.findFirst({ where: { id: l.productId } });
-      if (!product?.invItemId) continue;
+      const invItemId = invItemOf.get(l.productId);
+      if (!invItemId) continue;
       await inventory.consume(invCtx, {
-        itemId: product.invItemId,
+        itemId: invItemId,
         qty: l.qty,
         idempotencyKey: `ecom-${orderId}-${l.id}`,
         sourceModule: "ECOM",
@@ -295,13 +302,24 @@ export async function refundOrder(ctx: ShopCtx, orderId: string): Promise<{ ok: 
   if (invSys) {
     const invCtx = { tenantId: ctx.tenantId, systemId: invSys.id };
     const invDb = tenantDb(invCtx);
+    // ดึงสินค้า + item ในคลังครั้งเดียว (เดิมยิง 2 คิวรีต่อบรรทัด)
+    const prods = await db.shopProduct.findMany({
+      where: { id: { in: [...new Set(lines.map((l) => l.productId))] } },
+      select: { id: true, invItemId: true },
+    });
+    const invItemOf = new Map(prods.map((p) => [p.id, p.invItemId]));
+    const items = await invDb.invItem.findMany({
+      where: { id: { in: [...new Set([...invItemOf.values()].filter((v): v is string => !!v))] } },
+      select: { id: true, costSatang: true },
+    });
+    const itemById = new Map(items.map((i) => [i.id, i]));
     for (const l of lines) {
-      const product = await db.shopProduct.findFirst({ where: { id: l.productId } });
-      if (!product?.invItemId) continue;
-      const item = await invDb.invItem.findFirst({ where: { id: product.invItemId } });
+      const invItemId = invItemOf.get(l.productId);
+      if (!invItemId) continue;
+      const item = itemById.get(invItemId);
       if (!item) continue; // สินค้าในคลังถูกลบ → ไม่มีที่ให้คืน ข้ามเงียบ
       await inventory.receive(invCtx, {
-        itemId: product.invItemId,
+        itemId: invItemId,
         qty: l.qty,
         costSatang: item.costSatang, // คืนที่ต้นทุนเดิม → ไม่กระทบต้นทุนถัวเฉลี่ย
         idempotencyKey: `ecom-refund-${orderId}-${l.id}`,

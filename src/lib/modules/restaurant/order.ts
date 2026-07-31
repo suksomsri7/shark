@@ -45,17 +45,21 @@ async function resolveLines(
   const lines: ResolvedLine[] = [];
   const unavailable: string[] = [];
 
+  // ดึงเมนูทุกบรรทัดในคิวรีเดียว — เดิมยิงต่อบรรทัด (สั่ง 10 อย่าง = 10 round-trip ก่อนเริ่มบันทึก)
+  const menuItems = await db.menuItem.findMany({
+    where: { id: { in: [...new Set(cart.map((c) => c.menuItemId))] }, archivedAt: null },
+    include: {
+      optionGroups: {
+        orderBy: { sortOrder: "asc" },
+        include: { group: { include: { choices: { where: { archivedAt: null } } } } },
+      },
+    },
+  });
+  const menuById = new Map(menuItems.map((m) => [m.id, m]));
+
   for (const c of cart) {
     if (c.qty < 1) return { ok: false, err: { code: "BAD_OPTIONS", reason: "จำนวนไม่ถูกต้อง" } };
-    const item = await db.menuItem.findFirst({
-      where: { id: c.menuItemId, archivedAt: null },
-      include: {
-        optionGroups: {
-          orderBy: { sortOrder: "asc" },
-          include: { group: { include: { choices: { where: { archivedAt: null } } } } },
-        },
-      },
-    });
+    const item = menuById.get(c.menuItemId);
     if (!item) {
       unavailable.push(c.menuItemId);
       continue;

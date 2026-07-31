@@ -1,4 +1,5 @@
 import { prisma, tenantDb } from "@/lib/core/db";
+import { randomCode } from "@/lib/core/hash";
 import type {
   Prisma,
   PrismaClient,
@@ -8,6 +9,7 @@ import type {
 import * as pos from "@/lib/modules/pos/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
+import { resolvePublicUnit } from "@/lib/core/storefront";
 
 type Client = PrismaClient | Prisma.TransactionClient;
 type Ctx = { tenantId: string; unitId: string };
@@ -26,11 +28,13 @@ function bkkDayCode(): string {
   return `${String(d.getUTCFullYear()).slice(2)}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
-// รหัสตั๋วสุ่ม (opaque) — base36 ~10 ตัว
+// รหัสตั๋วสุ่ม (opaque) — 10 ตัวจากชุดที่ตัดตัวสับสน
+// ⚠️ ต้องเป็น crypto: รหัสนี้ = "บัตรผ่านเข้างาน" (checkIn ค้นด้วย code ตรง ๆ)
+//    ถ้าใช้ Math.random คนที่มีตั๋วจริงไม่กี่ใบเดารหัสใบอื่นได้
 function genCode(): string {
-  const rand = () => Math.random().toString(36).slice(2, 7).toUpperCase();
-  return `TK-${rand()}${rand()}`;
+  return `TK-${randomCode(10, TICKET_ALPHABET)}`;
 }
+const TICKET_ALPHABET = "ACDEFGHJKLMNPQRSTUVWXY3456789";
 
 // ─────────────────────────── Event ───────────────────────────
 
@@ -496,13 +500,8 @@ export async function listOrders(tenantId: string, unitId: string, eventId: stri
 // resolve unit จาก slug (public/no-auth) — storefront ขายตั๋วสาธารณะ
 // unit ต้อง ACTIVE + type=TICKET (กันสวมร้าน/ประเภทผิด) · tenant ต้อง ACTIVE
 export async function resolveUnit(tenantSlug: string, unitSlug: string) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
-  if (!tenant || tenant.status !== "ACTIVE") return null;
-  const unit = await prisma.businessUnit.findUnique({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
-  });
-  if (!unit || unit.status !== "ACTIVE" || unit.type !== "TICKET") return null;
-  return { tenant, unit };
+  // คิวรีเดียว (เดิมยิง tenant แล้ว unit เรียงกัน = 2 round-trip ไปสิงคโปร์)
+  return resolvePublicUnit(tenantSlug, unitSlug, "TICKET");
 }
 
 // ───────────────────────── Public storefront (ซื้อตั๋วออนไลน์ · no-auth) ─────────────────────────

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveUnit, getAvailableSlots } from "@/lib/modules/booking/service";
+import { checkRateLimit } from "@/lib/core/rate-limit";
 
 // GET ช่องเวลาว่าง (public) ?serviceId=&staffId=&date=YYYY-MM-DD  (staffId=any = ใครก็ได้)
 export async function GET(
@@ -16,6 +17,15 @@ export async function GET(
   }
   const resolved = await resolveUnit(tenantSlug, unitSlug);
   if (!resolved) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  // กันยิงถล่ม — 60 ครั้ง/นาที/IP ต่อสาขา (public ไม่ต้องล็อกอิน)
+  const rlIp = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+  const rl = checkRateLimit(`slots:${resolved.unit.id}:${rlIp}`, { limit: 60, windowMs: 60000 });
+  if (!rl.ok)
+    return NextResponse.json(
+      { error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec ?? 60) } },
+    );
 
   const slots = await getAvailableSlots(
     resolved.tenant.id,

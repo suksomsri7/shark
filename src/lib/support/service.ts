@@ -22,13 +22,37 @@ export type CaseMeta = {
   unreadCount: number;
 };
 
-// sanitize attachments จาก client → เก็บเฉพาะ field ที่ต้องการ
+// ── กติกาไฟล์แนบ (บังคับฝั่ง server — UI จำกัดไว้แล้วแต่ client แก้ได้) ──
+export const MAX_ATTACHMENTS = 5;
+export const MAX_ATTACHMENT_URL_LEN = 3_000_000; // ~2MB base64 + หัว data URL
+// อนุญาตเฉพาะรูป data URL กับลิงก์ http(s) — กัน javascript:/vbscript:/data:text/html
+// (url นี้ถูกเอาไป render เป็น href/src ตรง ๆ ใน HelpSheet → scheme อันตราย = stored XSS)
+const SAFE_DATA_IMAGE = /^data:image\/(png|jpe?g|gif|webp|heic|heif);base64,[A-Za-z0-9+/=]+$/i;
+function isSafeAttachmentUrl(u: string): boolean {
+  if (SAFE_DATA_IMAGE.test(u)) return true;
+  try {
+    const p = new URL(u).protocol;
+    return p === "http:" || p === "https:";
+  } catch {
+    return false;
+  }
+}
+
+// sanitize attachments จาก client → เก็บเฉพาะ field ที่ต้องการ + ตรวจ scheme/ขนาด/จำนวน
 function cleanAttachments(attachments?: Attachment[]): Attachment[] {
   if (!Array.isArray(attachments)) return [];
   return attachments
-    .filter((a) => a && typeof a.url === "string" && a.url.length > 0)
+    .filter(
+      (a) =>
+        a &&
+        typeof a.url === "string" &&
+        a.url.length > 0 &&
+        a.url.length <= MAX_ATTACHMENT_URL_LEN &&
+        isSafeAttachmentUrl(a.url),
+    )
+    .slice(0, MAX_ATTACHMENTS)
     .map((a) => ({
-      name: String(a.name ?? "ไฟล์แนบ"),
+      name: String(a.name ?? "ไฟล์แนบ").slice(0, 200),
       url: String(a.url),
       kind: a.kind === "image" ? "image" : "file",
     }));

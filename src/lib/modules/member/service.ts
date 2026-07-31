@@ -1,3 +1,5 @@
+import { randomCode } from "@/lib/core/hash";
+import { resolvePublicUnit } from "@/lib/core/storefront";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { cell, columnIndex, type CsvTable, type ImportSummary } from "@/lib/core/csv";
 import type { MemberTier, Prisma, PrismaClient } from "@prisma/client";
@@ -110,10 +112,9 @@ async function recomputeAllTiers(tenantId: string, config: TierConfigRow[]): Pro
 
 // รหัสสมาชิก 6 ตัว (ตัดตัวสับสน 0/O/1/I)
 const CODE_ALPHABET = "ACDEFGHJKLMNPQRSTUVWXY3456789";
+// ใช้ crypto — รหัสสมาชิกใช้อ้างตัวที่หน้าร้าน (เดาได้ = สวมสิทธิ์สะสม/ใช้แต้มคนอื่น)
 function randCode(): string {
-  let s = "";
-  for (let i = 0; i < 6; i++) s += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
-  return s;
+  return randomCode(6, CODE_ALPHABET);
 }
 async function uniqueMemberCode(client: Client, memberSystemId: string): Promise<string> {
   for (let i = 0; i < 6; i++) {
@@ -223,20 +224,17 @@ export async function updateCustomer(
 // resolve unit จาก slug → หา "ระบบสมาชิก" (AppSystem type=MEMBER) ที่ผูก unit นั้น
 // unit ประเภทใดก็ได้ (MEMBER เป็น feature ไม่ใช่ UnitType) ขอเพียง ACTIVE + มีระบบสมาชิกผูก + ระบบ active
 export async function resolveMemberUnit(tenantSlug: string, unitSlug: string) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
-  if (!tenant || tenant.status !== "ACTIVE") return null;
-  const unit = await prisma.businessUnit.findUnique({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
-  });
-  if (!unit || unit.status !== "ACTIVE") return null;
+  // คิวรีเดียวสำหรับ tenant+unit (เดิมยิงเรียงกัน 2 ครั้ง) — ระบบสมาชิกยังต้องเช็คต่ออีกชั้น
+  const resolved = await resolvePublicUnit(tenantSlug, unitSlug);
+  if (!resolved) return null;
+  const { tenant, unit } = resolved;
+  // ดึงระบบสมาชิกมาพร้อม link ในคิวรีเดียว (เดิมแยกเป็น 2 คิวรีเรียงกัน)
   const link = await prisma.appSystemUnit.findUnique({
     where: { tenantId_unitId_type: { tenantId: tenant.id, unitId: unit.id, type: "MEMBER" } },
+    include: { system: true },
   });
-  if (!link) return null;
-  const system = await prisma.appSystem.findFirst({
-    where: { id: link.systemId, tenantId: tenant.id },
-  });
-  if (!system || !system.active) return null;
+  const system = link?.system;
+  if (!system || system.tenantId !== tenant.id || !system.active) return null;
   return { tenant, unit, memberSystemId: system.id, systemName: system.name };
 }
 

@@ -35,11 +35,13 @@ export type MessageView = {
 };
 
 // แปลง attachmentsJson (Json) → Attachment[] ที่ปลอดภัยสำหรับ client
+// กรอง scheme ซ้ำอีกชั้นตอน "อ่าน" ด้วย — แถวเก่าที่บันทึกไว้ก่อนมีด่านตอนเขียนจะได้ไม่หลุดออกจอ
+const SAFE_ATTACH_URL = /^(https?:\/\/|data:image\/(png|jpe?g|gif|webp|heic|heif);base64,)/i;
 function parseAttachments(raw: unknown): Attachment[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((a): a is Record<string, unknown> => !!a && typeof a === "object")
-    .filter((a) => typeof a.url === "string" && (a.url as string).length > 0)
+    .filter((a) => typeof a.url === "string" && SAFE_ATTACH_URL.test(a.url as string))
     .map((a) => ({
       name: typeof a.name === "string" ? a.name : "ไฟล์แนบ",
       url: a.url as string,

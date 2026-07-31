@@ -1,3 +1,4 @@
+import { resolvePublicUnit } from "@/lib/core/storefront";
 import { prisma, tenantDb } from "@/lib/core/db";
 import type { AppointmentStatus, PosPayType } from "@prisma/client";
 import * as member from "@/lib/modules/member/service";
@@ -15,13 +16,8 @@ import {
 
 // resolve unit จาก slug (public/no-auth) → tenantId+unitId
 export async function resolveUnit(tenantSlug: string, unitSlug: string) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
-  if (!tenant || tenant.status !== "ACTIVE") return null;
-  const unit = await prisma.businessUnit.findUnique({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
-  });
-  if (!unit || unit.status !== "ACTIVE" || unit.type !== "BOOKING") return null;
-  return { tenant, unit };
+  // คิวรีเดียว (เดิมยิง tenant แล้ว unit เรียงกัน = 2 round-trip ไปสิงคโปร์)
+  return resolvePublicUnit(tenantSlug, unitSlug, "BOOKING");
 }
 
 // ── data สำหรับหน้าจอง ──

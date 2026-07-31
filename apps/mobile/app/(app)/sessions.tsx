@@ -57,8 +57,13 @@ export default function SessionsScreen() {
   }, []);
 
   // refresh ทุกครั้งที่กลับมาหน้านี้ (กลับจากแชท → เห็นสถานะ unread ล่าสุด)
+  // แต่ถ้าเพิ่งโหลดไปไม่ถึง 3 วิ (กดเข้า-ออกเร็ว ๆ) ข้ามไป — ลดคำขอซ้ำบนเน็ตมือถือ
+  const lastLoadRef = useRef(0);
   useFocusEffect(
     useCallback(() => {
+      const now = Date.now();
+      if (now - lastLoadRef.current < 3000) return;
+      lastLoadRef.current = now;
       load();
     }, [load]),
   );

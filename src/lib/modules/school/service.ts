@@ -8,6 +8,7 @@ import * as pos from "@/lib/modules/pos/service";
 import * as member from "@/lib/modules/member/service";
 import { listSystems } from "@/lib/modules/system/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
+import { resolvePublicUnit } from "@/lib/core/storefront";
 
 export type SchoolCtx = { tenantId: string; unitId: string };
 
@@ -330,13 +331,8 @@ export async function attendanceSheet(
 // resolve unit จาก slug (public) → tenantId+unitId · unit ต้อง ACTIVE + type=SCHOOL (กันสวมร้าน/ประเภทผิด)
 // mirror resolveRentalUnit / resolveUnit(ticket)
 export async function resolveSchoolUnit(tenantSlug: string, unitSlug: string) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
-  if (!tenant || tenant.status !== "ACTIVE") return null;
-  const unit = await prisma.businessUnit.findUnique({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
-  });
-  if (!unit || unit.status !== "ACTIVE" || unit.type !== "SCHOOL") return null;
-  return { tenant, unit };
+  // คิวรีเดียว (เดิมยิง tenant แล้ว unit เรียงกัน = 2 round-trip ไปสิงคโปร์)
+  return resolvePublicUnit(tenantSlug, unitSlug, "SCHOOL");
 }
 
 // รอบเรียนที่เปิดรับสมัคร (คอร์ส active) + ค่าเรียน + ที่ว่างคงเหลือ (สำหรับหน้าผู้ปกครอง)

@@ -5,16 +5,12 @@ import { createOrder, billPreview, createServiceRequest, type CartLine, type Bil
 import { getPaymentProfile } from "@/lib/payment/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
 import "./scope";
+import { resolvePublicUnit } from "@/lib/core/storefront";
 
 // resolve unit จาก slug (public/no-auth) → tenant+unit (type RESTAURANT, ACTIVE)
 export async function resolveUnit(tenantSlug: string, unitSlug: string) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
-  if (!tenant || tenant.status !== "ACTIVE") return null;
-  const unit = await prisma.businessUnit.findUnique({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
-  });
-  if (!unit || unit.status !== "ACTIVE" || unit.type !== "RESTAURANT") return null;
-  return { tenant, unit };
+  // คิวรีเดียว (เดิมยิง tenant แล้ว unit เรียงกัน = 2 round-trip ไปสิงคโปร์)
+  return resolvePublicUnit(tenantSlug, unitSlug, "RESTAURANT");
 }
 
 // เมนู public: หมวด/เมนู กรอง 86/ซ่อน/นอกเวลาแล้ว + สถานะครัว

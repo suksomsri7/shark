@@ -13,6 +13,7 @@ export async function listConversations(ctx: Ctx): Promise<ConversationRow[]> {
   const rows = await db.aiConversation.findMany({
     where: { deletedAt: null },
     orderBy: { updatedAt: "desc" },
+    take: 100, // ร้านที่คุยเยอะมีห้องหลักพัน — จอในแอปเลื่อนดูล่าสุดอยู่แล้ว ไม่ต้องขนมาทั้งหมด
   });
   if (rows.length === 0) return [];
 

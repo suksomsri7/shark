@@ -9,6 +9,7 @@ import * as pos from "@/lib/modules/pos/service";
 import { listSystems, systemForUnit } from "@/lib/modules/system/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
 import type { PosPayType } from "@prisma/client";
+import { resolvePublicUnit } from "@/lib/core/storefront";
 
 export type RentalCtx = { tenantId: string; unitId: string };
 
@@ -302,13 +303,8 @@ export async function listBookings(
 // resolve unit จาก slug (public) → tenantId+unitId · unit ต้อง ACTIVE + type=RENTAL (กันสวมร้าน/ประเภทผิด)
 // mirror resolveHotelUnit
 export async function resolveRentalUnit(tenantSlug: string, unitSlug: string) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
-  if (!tenant || tenant.status !== "ACTIVE") return null;
-  const unit = await prisma.businessUnit.findUnique({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: unitSlug } },
-  });
-  if (!unit || unit.status !== "ACTIVE" || unit.type !== "RENTAL") return null;
-  return { tenant, unit };
+  // คิวรีเดียว (เดิมยิง tenant แล้ว unit เรียงกัน = 2 round-trip ไปสิงคโปร์)
+  return resolvePublicUnit(tenantSlug, unitSlug, "RENTAL");
 }
 
 // สินทรัพย์ให้เช่าสำหรับหน้าจองลูกค้า + ว่างไหมในช่วง [from, to) (mirror listPublicAvailability)

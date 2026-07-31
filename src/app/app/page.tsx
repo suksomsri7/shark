@@ -28,30 +28,7 @@ export default async function DashboardPage({
   const todayStart = new Date(bkkMidnight.getTime() - 7 * 3600 * 1000);
   const todayEnd = new Date(todayStart.getTime() + 24 * 3600 * 1000);
 
-  const layout = await getDashboardLayout({ tenantId });
-  const [units, appSystems, links, appointmentsToday, widgetResults, announcements, checklist] =
-    await Promise.all([
-      prisma.businessUnit.findMany({
-        where: { tenantId, status: { not: "ARCHIVED" } },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      }),
-      prisma.appSystem.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: "asc" } }),
-      prisma.appSystemUnit.findMany({ where: { tenantId } }),
-      prisma.appointment.count({
-        where: { tenantId, startAt: { gte: todayStart, lt: todayEnd }, status: { not: "CANCELLED" } },
-      }),
-      runWidgets({ tenantId }, layout),
-      activeAnnouncements({ tenantId }),
-      onboardingChecklist({ tenantId }),
-    ]);
-
-  // ค่า widget สำหรับการ์ด layout ปัจจุบัน (เงินยังเป็นสตางค์ — client ค่อยแปลงบาท)
-  const widgetValues: Record<string, number> = {};
-  for (const r of widgetResults) widgetValues[r.key] = r.value;
-  const widgetMetas = Object.entries(WIDGETS).map(([key, def]) => ({ key, ...def }));
-
-  // เช็กลิสต์เริ่มต้นร้าน — ซ่อนการ์ดทั้งใบเมื่อทำครบทุกข้อ
-  // ปฏิทินเดือนปัจจุบัน (เวลาไทย) สำหรับ section หน้าแรก
+  // ปฏิทินเดือนปัจจุบัน (เวลาไทย) — คำนวณช่วงก่อน เพื่อยิงพร้อมชุดอื่นในรอบเดียว
   const calNow = new Date(Date.now() + 7 * 3_600_000);
   // ?ym=YYYY-MM จากปุ่มเดือนก่อนหน้า/ถัดไปบนหน้าแรก (ไม่ตรง format = เดือนปัจจุบัน)
   const ymMatch = /^(\d{4})-(\d{2})$/.exec(ym ?? "");
@@ -63,7 +40,35 @@ export default async function DashboardPage({
   const calNext = calMonth === 12 ? `${calYear + 1}-01` : `${calYear}-${pad2(calMonth + 1)}`;
   const calPrev = calMonth === 1 ? `${calYear - 1}-12` : `${calYear}-${pad2(calMonth - 1)}`;
   const calTo = new Date(`${calNext}-01T00:00:00+07:00`);
-  const calEvents: CalEventDTO[] = (await getCalendarEventsAction({ from: calFrom.toISOString(), to: calTo.toISOString() })).map((e) => ({
+
+  // ยิงทุกอย่างพร้อมกันรอบเดียว — เดิม layout กับปฏิทินเป็น 2 รอบแยก (รวม 3 รอบเรียงกัน)
+  // widgets ต้องรู้ layout ก่อน จึงต่อท้ายอยู่ใน promise เดียวกัน ไม่บล็อกคิวรีอื่น
+  const [units, appSystems, links, appointmentsToday, widgetPair, announcements, checklist, calRaw] =
+    await Promise.all([
+      prisma.businessUnit.findMany({
+        where: { tenantId, status: { not: "ARCHIVED" } },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      }),
+      prisma.appSystem.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: "asc" } }),
+      prisma.appSystemUnit.findMany({ where: { tenantId } }),
+      prisma.appointment.count({
+        where: { tenantId, startAt: { gte: todayStart, lt: todayEnd }, status: { not: "CANCELLED" } },
+      }),
+      getDashboardLayout({ tenantId }).then(async (l) => ({ layout: l, results: await runWidgets({ tenantId }, l) })),
+      activeAnnouncements({ tenantId }),
+      onboardingChecklist({ tenantId }),
+      getCalendarEventsAction({ from: calFrom.toISOString(), to: calTo.toISOString() }),
+    ]);
+  const layout = widgetPair.layout;
+  const widgetResults = widgetPair.results;
+
+  // ค่า widget สำหรับการ์ด layout ปัจจุบัน (เงินยังเป็นสตางค์ — client ค่อยแปลงบาท)
+  const widgetValues: Record<string, number> = {};
+  for (const r of widgetResults) widgetValues[r.key] = r.value;
+  const widgetMetas = Object.entries(WIDGETS).map(([key, def]) => ({ key, ...def }));
+
+  // เช็กลิสต์เริ่มต้นร้าน — ซ่อนการ์ดทั้งใบเมื่อทำครบทุกข้อ
+  const calEvents: CalEventDTO[] = calRaw.map((e) => ({
     id: e.id, kind: e.kind, title: e.title, start: new Date(e.startAt).toISOString(), end: new Date(e.endAt).toISOString(), status: e.status,
   }));
 
