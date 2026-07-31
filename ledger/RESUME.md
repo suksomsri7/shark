@@ -24,6 +24,19 @@
 - ⚠️ กติกาเฉพาะแอปที่ต้องจำ: จอ RN ห้าม import Text/TextInput จาก react-native (ใช้ @/src/components/ui/text — ฟอนต์ IBM Plex) · ห้าม server action ใน drawer/webview path (ใช้ GET route) · ไฟล์ "use server" ห้าม export type re-export · iOS credentials playbook อยู่ block 📱 P1.4-P1.5 (ASC API + p12 -legacy)
 - **แผนใหญ่:** ledger/MOBILE_PLAN.md (Phase 2 เหลือ: เทส push จริงหลัง build #16 · Phase 3: social login เมื่อ creds มา · **Phase 4 เครดิต AI = SHIPPED 31 ก.ค.** เหลือ voice) · memory: project_shark_ai_app.md
 
+## 🌏 i18n PUBLIC ครบ 8 storefront SHIPPED (31 ก.ค. · main=88b9288 · deploy READY)
+**ปิดข้อ 2 ของ "เหลือทำ" ใน block 🔵 ล่าง** — เดิม i18n v1/v2 ปิดแค่จองคิว/ใบเสร็จ/เมนูร้านอาหาร/จอคิว TV
+- **dict.ts 67 → 358 คีย์** (parity th/en 100%): shop/hotel/ticket/school/clinic/rental/queue/member
+- **15 หน้า public + 2 component** (shop-storefront, queue-public-form) ใช้ t() + cookie lang · ปุ่มสลับภาษาบนหน้าแรกทุก storefront
+- ตัวเลข/วันที่ตาม locale (en = en-GB) · **฿ คงเดิมทั้งสองภาษา**
+- ⚠️ **เปลี่ยนสัญญา error ของ server action 7 ไฟล์**: `?err=<รหัส>` แทนข้อความไทย → หน้าเป็นคนแปล (`*.err.*`) · รหัสแปลกปลอม → `err.general` — เดิมส่งไทยมาโชว์ทับหน้า EN
+- ป้ายสถานะทุกโมดูล `statusMeta` คืน **คีย์ dict** แทนข้อความตรง
+- oracle ใหม่ **qc-i18n3 19/19** (enumerate 15 หน้าตายตัว + ห้ามมีไทยฝังหลังตัดคอมเมนต์ + parity + en ห้ามมีไทย)
+- ⚠️ **กับดักที่เจอ**: `฿` (U+0E3F) อยู่ในบล็อกยูนิโค้ดไทย → regex ตรวจต้องยกเว้น ไม่งั้นข้อสอบฟ้องบรรทัดราคาที่ถูกแล้ว
+- gates: qc-i18n3 19/19 · qc-i18n 7/7 · qc-i18n2 6/6 · fitness 14/14 · typecheck เขียว · public suites: queue 20/20 · hotel 15/15 · ticket 24/24 · school 18/18 · clinic 15/15 · rental 16/16 · member 19/19 · shop-refund 12/12
+- **smoke prod จริง**: `/s/barbershop/a-barber/member` EN = อังกฤษล้วน · TH = ไทยเหมือนเดิม · `?err=<รหัสมั่ว>` → ข้อความกลาง (ไม่หลุด code ดิบ) · 7 หน้าที่ร้านยังไม่เปิดโมดูล = หน้า "ไม่พบ" แปลครบ
+- 🔭 **นอกขอบเขต (จงใจ ไม่ใช่ลืม)**: `/f/[token]` ฟอร์ม · `/vendor/[token]` · `/chat/[connectionId]` (ไม่ใช่หน้าซื้อของลูกค้า) · **`<title>` ใน layout ยังเป็นไทย** (metadata ระดับแอป — งานถัดไปถ้าจะทำ EN ให้ครบ)
+
 ## 💳 P4 SHIPPED (31 ก.ค.) — เครดิตผู้ช่วย AI 2 ชั้นแบบ Claude (main=bde9273 · deploy READY · migrate prod แล้ว)
 **ทำไม**: เพดานรายวันเดิม (AiUsage) กันยอดรวมได้ แต่ผู้ใช้คนเดียวยิงรัวใน 10 นาทีก็กินโควตาทั้งวันของร้านหมด
 - **`src/lib/ai/usage.ts` (แหล่งความจริงเดียว)**: `creditsFor` 1 เครดิต = 1,000 weighted token (output ×5 · น้ำหนักโมเดล haiku 1/sonnet 3/opus 15 · ใช้จริงแต่ปัดได้ 0 → คิดขั้นต่ำ 1) · `weekStartBangkok` จันทร์ 00:00 ไทย · `applyDegrade` SMART→FAST · `planLimits` (FREE 1,200/หน้าต่าง · 6,000/สัปดาห์ · degrade 70% · warn 80% — **env ทับได้ทุกค่า** SHARK_AI_SESSION_CREDITS/WEEKLY_CREDITS/DEGRADE_PCT/WARN_PCT → เปิด PRO ทีหลังแค่เพิ่มบรรทัดในตาราง) · `recordQuotaUsage`/`getQuotaStatus`/`quotaMessage`
