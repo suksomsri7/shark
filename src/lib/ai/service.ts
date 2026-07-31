@@ -10,6 +10,7 @@ import { buildSystemPrompt } from "./persona";
 import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage, type AiProvider } from "./provider";
 import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
 import { runTool, toolRegistry } from "./tools";
+import { applyDegrade, getQuotaStatus, recordQuotaUsage, type QuotaScope } from "./usage";
 
 export type Ctx = { tenantId: string };
 
@@ -25,7 +26,8 @@ export type Clarify = { question: string; options: ClarifyOption[] };
 
 export type SendResult =
   | { ok: true; conversationId: string; reply: string; clarify?: Clarify }
-  | { ok: false; error: "ai_disabled" | "over_budget" | "empty" };
+  // over_budget: scope บอกว่าชั้นไหนเต็ม (หน้าต่าง 5 ชม./สัปดาห์/รายวัน) + resetAt = เวลาที่โควตากลับมา
+  | { ok: false; error: "ai_disabled" | "over_budget" | "empty"; scope?: QuotaScope | "day"; resetAt?: string };
 
 // แปลง args ของ ask_clarify เป็น Clarify ที่สะอาด (กัน args เพี้ยน) — คืน null ถ้าไม่มีคำถาม/ตัวเลือกใช้ได้
 function parseClarify(rawArgs: unknown): Clarify | null {
@@ -78,13 +80,28 @@ export async function sendMessage(
 
   // routing ชั้น 1: เลือกโมเดลตามเนื้อความ (env SHARK_AI_MODEL ตั้งไว้ = คืนตัวนั้นเสมอ)
   // → ชั้น 2: resolveProvider ตาม tier · provider ฉีดได้ (ข้อสอบ) ไม่งั้นเลือกจาก env
-  const routedModel = pickModel(text, (input.imageUrls?.length ?? 0) > 0);
-  const tier = routedModel === FAST_MODEL ? "fast" : "smart";
-  const provider = deps?.provider ?? resolveProvider(tier);
+  const hasImages = (input.imageUrls?.length ?? 0) > 0;
+  let routedModel = pickModel(text, hasImages);
+  let provider = deps?.provider ?? resolveProvider(routedModel === FAST_MODEL ? "fast" : "smart");
   if (!provider) return { ok: false, error: "ai_disabled" };
 
   const db = tenantDb(ctx);
-  const day = dayKeyBangkok(new Date());
+  const now = new Date();
+
+  // เพดาน 2 ชั้นแบบ Claude (หน้าต่าง 5 ชม. + สัปดาห์) — เช็คก่อนแตะ provider เสมอ (ห้ามจ่ายเงินแล้วค่อยตัด)
+  const quota = await getQuotaStatus(ctx, now);
+  if (quota.blocked) {
+    const layer = quota.blocked === "week" ? quota.week : quota.session;
+    return {
+      ok: false,
+      error: "over_budget",
+      scope: quota.blocked,
+      resetAt: layer.resetAt.toISOString(),
+    };
+  }
+
+  // เพดานรายวันเดิม = ตาข่ายชั้นนอก (กันยอดรวมทั้งวันของร้าน — ยังคงไว้ ไม่ถอด)
+  const day = dayKeyBangkok(now);
   const usage = await db.aiUsage.findFirst({ where: { day } });
   if (
     overBudget(
@@ -92,7 +109,21 @@ export async function sendMessage(
       dailyLimits(),
     )
   ) {
-    return { ok: false, error: "over_budget" };
+    return { ok: false, error: "over_budget", scope: "day" };
+  }
+
+  // soft degrade: ใกล้เต็มโควตา → ลดชั้นเหลือ haiku ก่อน (ยังคุยได้) ค่อยตัดเมื่อครบเพดานจริง
+  // ข้อยกเว้น: เจ้าของบังคับโมเดลเอง (SHARK_AI_MODEL) หรือมีรูปแนบ (งาน vision) = ไม่ลดชั้น
+  const forcedModel = Boolean(process.env.SHARK_AI_MODEL?.trim());
+  if (quota.degraded && !forcedModel && !hasImages && !deps?.provider) {
+    const degraded = applyDegrade(routedModel, true);
+    if (degraded !== routedModel) {
+      const fallback = resolveProvider("fast");
+      if (fallback) {
+        routedModel = degraded;
+        provider = fallback;
+      }
+    }
   }
 
   // persona ต้องรู้ชื่อกิจการ + ระบบที่เปิด + ความจำถาวรของร้าน + แนวทางที่ปรับปรุงระดับแพลตฟอร์ม
@@ -221,6 +252,17 @@ export async function sendMessage(
       },
     }),
   ]);
+
+  // หักเครดิต 2 ชั้น (หน้าต่าง 5 ชม. + สัปดาห์) — คนละ write กับ tx ข้างบนเพราะต้องอ่านหน้าต่างปัจจุบันก่อน
+  // ล้ม = บันทึก OpsEvent แล้วไปต่อ (ห้ามให้คำตอบที่ผู้ใช้ได้แล้วหายไปเพราะบัญชีโควตา)
+  try {
+    await recordQuotaUsage(ctx, { model: routedModel, tokensIn, tokensOut }, new Date());
+  } catch (e) {
+    await logOps("ERROR", "ai", "หักเครดิต AI ไม่สำเร็จ", {
+      tenantId: ctx.tenantId,
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    }).catch(() => {});
+  }
 
   // เก็บ dataset (ฐาน self-host) — best-effort เท่านั้น: ห้ามให้พังการตอบ · gate ด้วย env ภายใน
   try {

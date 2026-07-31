@@ -76,6 +76,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AiConversation: tenant,
   AiMessage: tenant,
   AiUsage: tenant,
+  AiUsageWindow: tenant,
   AiProposal: tenant,
   AiTrainingSample: tenant,
   AiMemory: tenant,

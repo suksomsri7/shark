@@ -6,6 +6,7 @@ import { aiEnabled, latestConversation, listMessages, sendMessage, type Clarify 
 import { executeProposal, listPendingProposals, rejectProposal } from "./proposals";
 import { executePlan, listPendingPlans, rejectPlan } from "./plans";
 import { recordFeedback, type FeedbackRating } from "./feedback";
+import { getQuotaStatus, quotaMessage } from "./usage";
 
 // convention action = "ai.<entity>.<verb>" — OWNER/MANAGER ผ่าน · STAFF ต้องมี ai.chat.send หรือ ai.*
 function assertAiCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
@@ -40,13 +41,55 @@ function toPlanSteps(v: unknown): PendingPlanStep[] {
   });
 }
 
+/**
+ * โควตาที่โชว์ผู้ใช้ — ยุบ 2 ชั้น (หน้าต่าง 5 ชม./สัปดาห์) เหลือ "ชั้นที่ใกล้เต็มที่สุด" ชั้นเดียว
+ * เจ้าของร้านไม่ต้องเข้าใจว่ามีกี่ชั้น รู้แค่ "เหลือเท่าไหร่ · เต็มแล้วกลับมาใช้ได้เมื่อไหร่"
+ */
+export type AiQuotaView = {
+  scope: "session" | "week";
+  used: number;
+  limit: number;
+  pct: number; // 0-100
+  warn: boolean; // ใกล้เต็ม → เตือนใน UI
+  degraded: boolean; // ลดชั้นเหลือโมเดลเร็ว/ประหยัดแล้ว
+  resetAt: string;
+};
+
 export type AiChatState = {
   enabled: boolean;
   conversationId: string | null;
   messages: { id: string; role: "USER" | "ASSISTANT"; content: string }[];
   pendingProposals: PendingProposal[];
   pendingPlans: PendingPlan[];
+  quota: AiQuotaView | null;
 };
+
+// ชั้นที่ใกล้เต็มที่สุดคือชั้นที่ผู้ใช้จะชนก่อน → เอาชั้นนั้นขึ้นแถบ
+function toQuotaView(q: Awaited<ReturnType<typeof getQuotaStatus>>): AiQuotaView {
+  const useWeek = q.week.pct > q.session.pct;
+  const layer = useWeek ? q.week : q.session;
+  return {
+    scope: useWeek ? "week" : "session",
+    used: layer.used,
+    limit: layer.limit,
+    pct: Math.round(layer.pct * 100),
+    warn: q.warn,
+    degraded: q.degraded,
+    resetAt: layer.resetAt.toISOString(),
+  };
+}
+
+/** โควตาผู้ช่วย AI ของกิจการปัจจุบัน — refresh หลังส่งข้อความทุกครั้ง */
+export async function loadAiQuotaAction(): Promise<AiQuotaView | null> {
+  const auth = await requireTenant();
+  assertAiCan(auth, "ai.chat.send");
+  try {
+    return toQuotaView(await getQuotaStatus({ tenantId: auth.active.tenantId }));
+  } catch {
+    // อ่านโควตาไม่ได้ = ไม่โชว์แถบ (ห้ามให้แชทพังเพราะแถบสถานะ)
+    return null;
+  }
+}
 
 /** MembershipCtx ของคนกด — ใช้ตรวจสิทธิ์จริง ณ ตอน execute proposal */
 function membershipOf(auth: Awaited<ReturnType<typeof requireTenant>>): MembershipCtx {
@@ -67,8 +110,10 @@ export async function loadAiChatAction(): Promise<AiChatState> {
   const [messages, pending, plans] = conv
     ? await Promise.all([listMessages(ctx, conv.id), listPendingProposals(ctx, conv.id), listPendingPlans(ctx, conv.id)])
     : [[], [], []];
+  const quota = await getQuotaStatus(ctx).then(toQuotaView).catch(() => null);
   return {
     enabled: aiEnabled(),
+    quota,
     conversationId: conv?.id ?? null,
     messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content })),
     pendingProposals: pending.map((p) => ({ id: p.id, summary: p.summary, risk: toRisk(p.risk) })),
@@ -178,7 +223,8 @@ export async function sendAiMessageAction(input: {
     if (res.ok) return res;
     const msg: Record<typeof res.error, string> = {
       ai_disabled: "ผู้ช่วย AI ยังไม่เปิดใช้งานในระบบ — เร็ว ๆ นี้",
-      over_budget: "วันนี้ใช้ผู้ช่วย AI ครบโควตาแล้ว พรุ่งนี้กลับมาคุยกันใหม่ได้เลย",
+      // โควตาหมด: บอกด้วยว่ากลับมาใช้ได้เมื่อไหร่ (ชั้นหน้าต่าง 5 ชม./สัปดาห์/รายวัน)
+      over_budget: quotaMessage(res.scope, res.resetAt),
       empty: "พิมพ์ข้อความก่อนส่งนะครับ",
     };
     return { ok: false, message: msg[res.error] };

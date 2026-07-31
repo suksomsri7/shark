@@ -3,6 +3,7 @@
 // จบสำเร็จ = set lastReadAt ของห้อง (คนส่งกำลังอ่านคำตอบอยู่แล้ว ไม่ต้องขึ้น unread เอง)
 
 import { sendMessage, type Ctx, type SendResult } from "@/lib/ai/service";
+import { quotaMessage } from "@/lib/ai/usage";
 import { tenantDb } from "@/lib/core/db";
 
 type ChatInput = { conversationId?: string; text: string; imageUrls?: string[] };
@@ -27,7 +28,14 @@ export async function* sendMobileChat(
   }
 
   if (!result.ok) {
-    yield { type: "error", error: result.error };
+    // แปลงเป็นข้อความไทยตั้งแต่ฝั่ง server — แอปโชว์ตรง ๆ ได้ ไม่ต้องรู้จัก error code
+    const th =
+      result.error === "over_budget"
+        ? quotaMessage(result.scope, result.resetAt)
+        : result.error === "ai_disabled"
+          ? "ผู้ช่วย AI ยังไม่เปิดใช้งานในระบบ — เร็ว ๆ นี้"
+          : "พิมพ์ข้อความก่อนส่งนะครับ";
+    yield { type: "error", error: th };
     return;
   }
 

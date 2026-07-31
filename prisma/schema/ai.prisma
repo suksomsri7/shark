@@ -72,6 +72,28 @@ model AiUsage {
   @@unique([tenantId, day])
 }
 
+// ชั้นของหน้าต่างเครดิต AI — SESSION = หน้าต่างกลิ้ง 5 ชม. (เริ่มนับที่ข้อความแรก) · WEEK = สัปดาห์ไทย (จันทร์)
+enum AiUsageKind {
+  SESSION
+  WEEK
+}
+
+// เครดิตผู้ช่วย AI 2 ชั้นแบบ Claude (docs/AI_LAYER.md) — คุมทั้งการใช้รวดเดียวและการใช้ทั้งสัปดาห์
+// credits = weighted token (output แพงกว่า input 5 เท่า × น้ำหนักโมเดล) ÷ 1,000 ปัดขึ้น
+model AiUsageWindow {
+  id          String      @id @default(cuid())
+  tenantId    String
+  kind        AiUsageKind
+  windowStart DateTime // SESSION = เวลาข้อความแรกของหน้าต่าง (ปัดลงเป็นนาที) · WEEK = จันทร์ 00:00 ไทย
+  credits     Int         @default(0)
+  requests    Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([tenantId, kind, windowStart])
+  @@index([tenantId, kind, windowStart])
+}
+
 // AI training samples (distillation dataset — เก็บไว้เทรนโมเดลเล็ก self-host อนาคต)
 // ⚠️ PDPA: anonymize ก่อนเก็บ (แทนชื่อ/เบอร์/อีเมล ด้วย placeholder) · เก็บเมื่อ SHARK_AI_COLLECT=1 เท่านั้น
 // ของมีค่า = โครง tool-calling (คำสั่ง → เครื่องมือที่เลือก) ไม่ใช่ข้อมูลลูกค้า

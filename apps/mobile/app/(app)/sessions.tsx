@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { api, apiErrorText } from "@/src/api/client";
 import { Orb } from "@/src/components/chat/Orb";
+import { QuotaBar } from "@/src/components/chat/QuotaBar";
 import { C, R, S } from "@/src/theme";
 
 type Conversation = { id: string; title: string | null; updatedAt: string; unread: boolean };
@@ -185,6 +186,8 @@ export default function SessionsScreen() {
       </View>
 
       {error && <Text style={styles.errorBar}>{error}</Text>}
+
+      <QuotaBar />
 
       {loading ? (
         <View style={styles.center}>

@@ -6,12 +6,14 @@ import {
   confirmProposalAction,
   listPendingProposalsAction,
   loadAiChatAction,
+  loadAiQuotaAction,
   loadPlansAction,
   rejectPlanAction,
   rejectProposalAction,
   sendAiFeedbackAction,
   sendAiMessageAction,
   type AiChatState,
+  type AiQuotaView,
   type PendingPlan,
   type PendingProposal,
 } from "@/lib/ai/actions";
@@ -87,7 +89,7 @@ export function AiChat() {
       })
       .catch(() => {
         // โหลดพลาด/ช้า → เปิดแชทเปล่าให้ใช้งานได้เลย (ไม่ค้าง "กำลังโหลด" ตลอด)
-        setState({ enabled: true, conversationId: null, messages: [], pendingProposals: [], pendingPlans: [] });
+        setState({ enabled: true, conversationId: null, messages: [], pendingProposals: [], pendingPlans: [], quota: null });
       });
   }, []);
 
@@ -131,8 +133,15 @@ export function AiChat() {
         ]);
         setProposals(fresh);
         setPlans(freshPlans);
+        // โควตาขยับทุกครั้งที่คุย → อัปเดตแถบให้ตรง (พลาด = คงค่าเดิม ไม่รบกวนแชท)
+        loadAiQuotaAction()
+          .then((q) => setState((s) => (s ? { ...s, quota: q } : s)))
+          .catch(() => {});
       } else {
         setError(res.message);
+        loadAiQuotaAction()
+          .then((q) => setState((s) => (s ? { ...s, quota: q } : s)))
+          .catch(() => {});
       }
     });
   }
@@ -275,6 +284,7 @@ export function AiChat() {
 
   return (
     <div className="flex flex-col gap-3">
+      <AiQuotaBar quota={state.quota} />
       <div className="flex max-h-[50vh] min-h-40 flex-col gap-2 overflow-y-auto">
         {messages.length === 0 && (
           <p className="py-6 text-center text-sm text-[color:var(--color-muted)]">
@@ -574,6 +584,41 @@ export function AiChat() {
           ส่ง
         </button>
       </form>
+    </div>
+  );
+}
+
+/**
+ * แถบโควตาผู้ช่วย AI — โผล่เมื่อใช้ไปแล้วเกินครึ่งเท่านั้น (ไม่รก · เจ้าของร้านทั่วไปไม่ต้องเห็นตัวเลขทุกวัน)
+ * ใกล้เต็ม = สีส้ม + บอกเวลาที่โควตากลับมา · ลดชั้นโมเดลแล้ว = บอกตรง ๆ ว่ายังคุยได้แต่ตอบสั้นลง
+ */
+function AiQuotaBar({ quota }: { quota: AiQuotaView | null }) {
+  if (!quota || quota.pct < 50) return null;
+  const back = new Intl.DateTimeFormat("th-TH", {
+    timeZone: "Asia/Bangkok",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(quota.resetAt));
+  return (
+    <div className="rounded-xl bg-[color:var(--color-surface-2)] px-3 py-2 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className={quota.warn ? "font-medium text-amber-600" : "text-[color:var(--color-muted)]"}>
+          ใช้โควตาผู้ช่วย AI แล้ว {quota.pct}%
+        </span>
+        <span className="text-[color:var(--color-muted)]">โควตาใหม่ {back} น.</span>
+      </div>
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[color:var(--color-border)]">
+        <div
+          className={`h-full rounded-full ${quota.warn ? "bg-amber-500" : "bg-[color:var(--color-ink)]"}`}
+          style={{ width: `${Math.min(100, quota.pct)}%` }}
+        />
+      </div>
+      {quota.degraded && (
+        <p className="mt-1.5 text-[color:var(--color-muted)]">
+          ตอนนี้สลับไปใช้โหมดประหยัดชั่วคราว (ตอบเร็วขึ้น สั้นลงเล็กน้อย) เพื่อให้คุยต่อได้จนครบรอบ
+        </p>
+      )}
     </div>
   );
 }
