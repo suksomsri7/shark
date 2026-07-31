@@ -24,6 +24,26 @@
 - ⚠️ กติกาเฉพาะแอปที่ต้องจำ: จอ RN ห้าม import Text/TextInput จาก react-native (ใช้ @/src/components/ui/text — ฟอนต์ IBM Plex) · ห้าม server action ใน drawer/webview path (ใช้ GET route) · ไฟล์ "use server" ห้าม export type re-export · iOS credentials playbook อยู่ block 📱 P1.4-P1.5 (ASC API + p12 -legacy)
 - **แผนใหญ่:** ledger/MOBILE_PLAN.md (Phase 2 เหลือ: เทส push จริงหลัง build #16 · Phase 3: social login เมื่อ creds มา · **Phase 4 เครดิต AI = SHIPPED 31 ก.ค.** เหลือ voice) · memory: project_shark_ai_app.md
 
+## 🛡️ AUDIT ช่องโหว่+บัค+ความเร็ว (31 ก.ค. · main=658c0c5 · deploy READY · migrate prod แล้ว)
+**ช่องโหว่ที่ปิด (oracle ใหม่ `qc-hardening2` 14/14):**
+1. **stored XSS ผ่านไฟล์แนบเคส support** — `url` ถูก render เป็น `href`/`src` ตรง ๆ แต่ไม่เคยตรวจ scheme → คนในร้านเดียวกันยิง `javascript:` เข้ามาแล้วเจ้าของกดลิงก์ = รันสคริปต์ในเซสชันเจ้าของ · แก้: รับเฉพาะ `http(s)` + `data:image/*` · จำกัด **5 ไฟล์ · ยาว ≤3MB** (เดิมยัด data URL ขนาดเท่าไหร่ก็ได้ลง DB) · กรองซ้ำตอน "อ่าน" ด้วยเผื่อแถวเก่า
+2. **รหัสยืนยันสิทธิ์สุ่มด้วย `Math.random`** (V8 = xorshift128+ เดาค่าถัดไปได้) — **ตั๋วเข้างาน** (checkIn ค้นด้วย code ตรง ๆ) · **โค้ดแลกรางวัล** · **รหัสสมาชิก** → เปลี่ยนเป็น `randomCode()` (crypto) ใน `core/hash.ts`
+3. **endpoint สาธารณะที่เขียน DB ไม่มีด่านกันถล่ม 5 ตัว** (book · restaurant order/service-request/session · slots) → ใส่ครบรูปแบบเดียวกับ shop/order · **พิสูจน์บน prod: ยิงพร้อมกัน 80 ครั้ง → 429 ไป 44** ⚠️ limiter เป็น in-memory ต่อ instance (ยิงเรียง ๆ ข้าม instance ยังหลุดได้ — เป็นข้อจำกัดเดิมของ core/rate-limit)
+4. **OTP ฝั่งแอปไม่เคยส่ง IP** เข้า `requestLogin` → ด่าน "20 ครั้ง/10 นาที/IP" ไม่ทำงานบนเส้นทางแอปเลย (เหลือแค่ด่านต่ออีเมล = สุ่มอีเมลยิงจาก IP เดียวได้ไม่จำกัด) · แก้แล้ว **⚠️ ต้องอ่าน IP จาก `req.headers` ไม่ใช่ `next/headers`** — ข้อสอบเรียก handler ตรง ๆ นอก request scope (บั๊กนี้ qc-mobile-auth จับได้ตอนแก้)
+
+**ความเร็ว (วัดจริง ไม่ใช่เดา):**
+- `core/storefront.ts` `resolvePublicUnit()` = คิวรีเดียว + index ใหม่ `BusinessUnit(slug,status)` — ทุกโมดูลเดิมยิง tenant→unit เรียงกัน 2 ครั้ง
+- **หน้า `/s/[t]/[u]` เดิมเรียก resolver 5 ตัวเรียงกัน = 10 round-trip ก่อน render → เหลือ 1** (วัดจาก VPS→Neon SG: ~109ms → ~21ms · prod warm 0.48s → **0.13-0.22s**)
+- `/app` แดชบอร์ด: layout + ปฏิทิน เดิม 3 รอบเรียงกัน → รวมเป็นรอบขนานเดียว
+- **N+1 ที่ลูกค้าเจอตรง ๆ**: ตะกร้าร้านค้า (createOrder/confirm/refund) + สั่งอาหาร (resolveCart) ดึงทีละชิ้นในลูป → ดึงชุดเดียว `id in []` (ตะกร้า 20 ชิ้น = 20 round-trip → 1)
+- แอป: รายการห้องแชท `take: 100` (เดิมไม่จำกัด) · กันยิงซ้ำตอน focus <3 วิ · QuotaBar cache 30 วิ
+- 🔭 ที่ตรวจแล้ว "ไม่พบปัญหา": XSS ผ่าน dangerouslySetInnerHTML (ไม่มีเลย) · SQLi (ไม่มี raw ต่อสตริง) · webhook LINE verify ลายเซ็นครบ · webchat มี limiter M9 · cookie session httpOnly+secure+sameSite · ไม่มี secret หลุด log/ตอบกลับ client · .env ไม่เข้า git
+
+**📱 เตรียม build #16 ครบแล้ว (รอโควต้า EAS รีเซ็ต 1 ส.ค.):**
+- อัป dependency ให้ตรง SDK 57 ครบ 9 ตัว (patch-level: expo 57.0.9 · RN 0.86.2 · reanimated 4.5.1 ฯลฯ) → **expo-doctor 20/20 เขียว** (เดิม 1 check fail) · tsc + qc-mobile-app 35/35 ผ่าน
+- สคริปต์พร้อมยิง: **`EXPO_TOKEN=<memory> bash apps/mobile/tools/build-ios.sh`** (มีด่าน doctor+tsc+oracle ก่อนบิว กันเสียโควต้าฟรี) · เสร็จแล้ว `eas submit -p ios --id <buildId>`
+- ของที่จะติดไปกับ #16: paper-plane · ‹ กลับ sessions · push จริง · OTA · welcome orb · icon ขาว · **QuotaBar (P4)**
+
 ## 🌏 i18n PUBLIC ครบ 8 storefront SHIPPED (31 ก.ค. · main=88b9288 · deploy READY)
 **ปิดข้อ 2 ของ "เหลือทำ" ใน block 🔵 ล่าง** — เดิม i18n v1/v2 ปิดแค่จองคิว/ใบเสร็จ/เมนูร้านอาหาร/จอคิว TV
 - **dict.ts 67 → 358 คีย์** (parity th/en 100%): shop/hotel/ticket/school/clinic/rental/queue/member
