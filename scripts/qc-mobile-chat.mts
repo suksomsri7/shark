@@ -188,7 +188,7 @@ try {
   }
 } finally {
   for (const tid of tids) {
-    for (const m of ["aiMessage", "aiConversation", "aiProposal", "aiMemory", "aiUsage", "appNotification", "dnaProfile", "dnaBlueprint", "appSystemUnit", "appSystem", "businessUnit", "membership"] as const) {
+    for (const m of ["aiMessage", "aiConversation", "aiProposal", "aiMemory", "aiUsage", "aiUsageWindow", "appNotification", "dnaProfile", "dnaBlueprint", "appSystemUnit", "appSystem", "businessUnit", "membership"] as const) {
       await (prisma as unknown as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m]?.deleteMany({ where: { tenantId: tid } }).catch(() => {});
     }
     await prisma.tenant.deleteMany({ where: { id: tid } });

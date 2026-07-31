@@ -66,6 +66,7 @@ finally {
   for (const id of [tid, tid2].filter(Boolean)) {
     await d(() => prisma.kbArticle.deleteMany({ where: { tenantId: id } }));
     await d(() => prisma.aiUsage.deleteMany({ where: { tenantId: id } }));
+    await d(() => prisma.aiUsageWindow.deleteMany({ where: { tenantId: id } }));
     await d(() => prisma.tenant.delete({ where: { id } }));
   }
   await prisma.$disconnect();

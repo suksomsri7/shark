@@ -66,7 +66,7 @@ try {
 } catch (e) { chk("CRASH", "จบ", false, "จบ", e instanceof Error ? e.message.slice(0, 160) : String(e)); }
 finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch {} };
-  if (tid) { for (const m of ["aiMessage", "aiProposal", "aiConversation", "aiUsage", "accountJournalLine", "accountJournalEntry", "accountDocumentLine", "accountDocument", "accountLedger", "accountContact", "accountDocSequence", "accountSettings", "appSystemUnit", "appSystem"]) await d(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId: tid } })); await d(() => prisma.businessUnit.deleteMany({ where: { tenantId: tid } })); await d(() => prisma.tenant.delete({ where: { id: tid } })); }
+  if (tid) { for (const m of ["aiMessage", "aiProposal", "aiConversation", "aiUsage", "aiUsageWindow", "accountJournalLine", "accountJournalEntry", "accountDocumentLine", "accountDocument", "accountLedger", "accountContact", "accountDocSequence", "accountSettings", "appSystemUnit", "appSystem"]) await d(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId: tid } })); await d(() => prisma.businessUnit.deleteMany({ where: { tenantId: tid } })); await d(() => prisma.tenant.delete({ where: { id: tid } })); }
   await prisma.$disconnect();
 }
 const f = cks.filter((c) => !c.ok);

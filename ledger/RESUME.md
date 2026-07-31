@@ -22,7 +22,18 @@
 - 🔑 **รอเจ้าของ:** Google OAuth (iOS client + Web client+secret — สอนวิธีแล้ว) · LINE Login channel · FB Login เปิดใน Meta App เดิม · TikTok dev — ดู OWNER_TODO.md · ได้เมื่อไหร่ต่อปุ่ม social ทันที
 - **oracle ใหม่ของรอบแอป:** qc-mobile-auth 26 · qc-mobile-chat 29 · qc-mobile-app 35 · qc-mobile-help 15 · qc-push 7 · qc-kb-auto 4 · qc-add-system-modal 10 · qc-connections 7 · qc-member-tier 7 · qc-ai-automation 4 — **contract-first เสมอ: แก้อะไรรัน suite ที่เกี่ยว + fitness + typecheck ก่อน push**
 - ⚠️ กติกาเฉพาะแอปที่ต้องจำ: จอ RN ห้าม import Text/TextInput จาก react-native (ใช้ @/src/components/ui/text — ฟอนต์ IBM Plex) · ห้าม server action ใน drawer/webview path (ใช้ GET route) · ไฟล์ "use server" ห้าม export type re-export · iOS credentials playbook อยู่ block 📱 P1.4-P1.5 (ASC API + p12 -legacy)
-- **แผนใหญ่:** ledger/MOBILE_PLAN.md (Phase 2 เหลือ: เทส push จริงหลัง build #16 · Phase 3: social login เมื่อ creds มา · Phase 4: AiUsageWindow/voice) · memory: project_shark_ai_app.md
+- **แผนใหญ่:** ledger/MOBILE_PLAN.md (Phase 2 เหลือ: เทส push จริงหลัง build #16 · Phase 3: social login เมื่อ creds มา · **Phase 4 เครดิต AI = SHIPPED 31 ก.ค.** เหลือ voice) · memory: project_shark_ai_app.md
+
+## 💳 P4 SHIPPED (31 ก.ค.) — เครดิตผู้ช่วย AI 2 ชั้นแบบ Claude (main=bde9273 · deploy READY · migrate prod แล้ว)
+**ทำไม**: เพดานรายวันเดิม (AiUsage) กันยอดรวมได้ แต่ผู้ใช้คนเดียวยิงรัวใน 10 นาทีก็กินโควตาทั้งวันของร้านหมด
+- **`src/lib/ai/usage.ts` (แหล่งความจริงเดียว)**: `creditsFor` 1 เครดิต = 1,000 weighted token (output ×5 · น้ำหนักโมเดล haiku 1/sonnet 3/opus 15 · ใช้จริงแต่ปัดได้ 0 → คิดขั้นต่ำ 1) · `weekStartBangkok` จันทร์ 00:00 ไทย · `applyDegrade` SMART→FAST · `planLimits` (FREE 1,200/หน้าต่าง · 6,000/สัปดาห์ · degrade 70% · warn 80% — **env ทับได้ทุกค่า** SHARK_AI_SESSION_CREDITS/WEEKLY_CREDITS/DEGRADE_PCT/WARN_PCT → เปิด PRO ทีหลังแค่เพิ่มบรรทัดในตาราง) · `recordQuotaUsage`/`getQuotaStatus`/`quotaMessage`
+- **หน้าต่าง SESSION = กลิ้ง 5 ชม. เริ่มนับที่ "ข้อความแรก" หลังหน้าต่างเดิมหมด** (แบบ Claude) ไม่ใช่ช่องเวลาตายตัว · windowStart ปัดลงเป็นนาที = unique key ชนกันเมื่อ 2 คำขอเปิดหน้าต่างพร้อมกัน (กันหน้าต่างซ้ำ)
+- **service.ts**: เช็คโควตา**ก่อน**แตะ provider เสมอ (ห้ามจ่ายเงินแล้วค่อยตัด) → `over_budget` + `scope` + `resetAt` · soft degrade ลดชั้นเหลือ haiku ก่อนตัด (ยกเว้น SHARK_AI_MODEL บังคับเอง / มีรูปแนบ / provider ฉีดจากข้อสอบ) · หักเครดิตหลังตอบสำเร็จ (ล้ม = OpsEvent แล้วไปต่อ ห้ามให้คำตอบหาย) · **เพดานรายวันเดิมคงไว้เป็นตาข่ายชั้นนอก**
+- **ผิว UI**: เว็บ = `AiQuotaBar` ใน AiChat (โผล่เมื่อเกิน 50% · ใกล้เต็ม=ส้ม · บอกเวลาโควตาใหม่) · แอป = `QuotaBar` + **GET /api/mobile/usage** (requireMobile) — ยุบ 2 ชั้นเหลือ "ชั้นที่ใกล้เต็มที่สุด" ชั้นเดียว เจ้าของร้านไม่ต้องรู้ว่ามีกี่ชั้น · mobile/chat.ts แปลง over_budget เป็นไทยตั้งแต่ server (แอปไม่ต้องรู้จัก error code)
+- **migration 20260731090000_ai_usage_window** additive (CREATE TYPE+TABLE) — `pnpm exec prisma migrate deploy` บน prod แล้ว · scope.ts AiUsageWindow=tenant
+- gates: **qc-ai-usage 31/31** · fitness 14/14 · qc-ai 17/17 · ai-tools 14/14 · ai-tools2 8/8 · ai-plan 7/7 · mobile-chat 29/29 · mobile-app 35/35 · mobile-auth 31/31 · typecheck เว็บ+แอปเขียว · smoke prod: /api/mobile/usage ไม่มี token → 401 ✓
+- 🧹 **ฝากไว้**: QC 11 ชุดที่ยิง sendMessage เพิ่ม `aiUsageWindow` ในรายการล้าง (เดิมทิ้งแถวขยะไว้ใน DB prod ทุกครั้งที่รัน — ลบของเก่า 6 แถวแล้ว ยืนยันเหลือ 0)
+- ⚠️ **ต้องรู้**: QuotaBar ในแอปคือ **โค้ดใหม่ที่ยังไม่ติด build** — จะเห็นจริงใน build #16 (คิว 1 ส.ค.) · เว็บใช้ได้ทันทีแล้ว
 
 ## 📱 MOBILE PHASE 0 SHIPPED (2026-07-22/23 · เจ้าของสั่ง "วางแผนงานให้ดีที่สุด อย่าลืม qc และเริ่มงานเลย")
 **สถานะ: main=3560bc7 deploy READY · /api/mobile/* ครบ 20 endpoint LIVE บน prod · แผนเต็ม ledger/MOBILE_PLAN.md**

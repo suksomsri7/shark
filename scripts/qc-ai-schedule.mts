@@ -46,7 +46,7 @@ try {
 } catch (e) { chk("CRASH", "จบ: " + (e instanceof Error ? e.message.slice(0, 140) : String(e)), false); }
 finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch {} };
-  if (tid) { for (const m of ["aiScheduledTask", "aiMessage", "aiConversation", "aiUsage", "appNotification"]) await d(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId: tid } })); await d(() => prisma.tenant.delete({ where: { id: tid } })); }
+  if (tid) { for (const m of ["aiScheduledTask", "aiMessage", "aiConversation", "aiUsage", "aiUsageWindow", "appNotification"]) await d(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId: tid } })); await d(() => prisma.tenant.delete({ where: { id: tid } })); }
   await prisma.$disconnect();
 }
 const f = cks.filter((c) => !c.ok);

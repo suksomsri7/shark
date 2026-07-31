@@ -66,7 +66,7 @@ try {
 finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch {} };
   for (const id of [tid, tid2].filter(Boolean)) {
-    for (const m of ["aiProposal", "aiMessage", "aiConversation", "aiUsage", "memberActivity", "posSale", "customer", "appSystemUnit", "appSystem", "businessUnit"]) {
+    for (const m of ["aiProposal", "aiMessage", "aiConversation", "aiUsage", "aiUsageWindow", "memberActivity", "posSale", "customer", "appSystemUnit", "appSystem", "businessUnit"]) {
       await d(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId: id } }));
     }
     await d(() => prisma.tenant.delete({ where: { id } }));

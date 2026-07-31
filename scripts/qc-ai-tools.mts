@@ -110,7 +110,7 @@ try {
 } catch (e) { chk("CRASH", "จบ", false, "จบ", e instanceof Error ? e.message.slice(0, 160) : String(e)); }
 finally {
   if (tid) { const d = async (f: () => Promise<unknown>) => { try { await f(); } catch {} };
-    for (const m of ["aiMessage", "aiConversation", "aiUsage", "posSale", "hrLeave", "hrAttendance", "hrEmployee", "invMovement", "invItem", "customer", "appSystemUnit", "appSystem", "businessUnit"]) {
+    for (const m of ["aiMessage", "aiConversation", "aiUsage", "aiUsageWindow", "posSale", "hrLeave", "hrAttendance", "hrEmployee", "invMovement", "invItem", "customer", "appSystemUnit", "appSystem", "businessUnit"]) {
       await d(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId: tid } }));
     }
     await d(() => prisma.tenant.delete({ where: { id: tid } }));

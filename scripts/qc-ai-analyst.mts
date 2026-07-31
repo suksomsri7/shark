@@ -71,7 +71,7 @@ try {
 } catch (e) { chk("CRASH", "จบ", false, "จบ", e instanceof Error ? e.message.slice(0, 160) : String(e)); }
 finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch {} };
-  if (tid) { for (const m of ["appNotification", "aiUsage", "posSale", "customer", "appSystemUnit", "appSystem", "businessUnit"]) await d(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId: tid } })); await d(() => prisma.tenant.delete({ where: { id: tid } })); }
+  if (tid) { for (const m of ["appNotification", "aiUsage", "aiUsageWindow", "posSale", "customer", "appSystemUnit", "appSystem", "businessUnit"]) await d(() => (prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>)[m].deleteMany({ where: { tenantId: tid } })); await d(() => prisma.tenant.delete({ where: { id: tid } })); }
   await prisma.$disconnect();
 }
 const f = cks.filter((c) => !c.ok);

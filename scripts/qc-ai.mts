@@ -63,6 +63,7 @@ finally {
     await d(() => prisma.aiMessage.deleteMany({ where: { tenantId: id } }));
     await d(() => prisma.aiConversation.deleteMany({ where: { tenantId: id } }));
     await d(() => prisma.aiUsage.deleteMany({ where: { tenantId: id } }));
+    await d(() => prisma.aiUsageWindow.deleteMany({ where: { tenantId: id } }));
     await d(() => prisma.tenant.delete({ where: { id } }));
   }
   await prisma.$disconnect();

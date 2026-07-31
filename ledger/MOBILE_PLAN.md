@@ -42,6 +42,8 @@ QC Phase 1: Maestro E2E flow หลัก + QC gate ก่อน TestFlight (enu
 ## Phase 2 — Push (Expo Push + PushDevice) · unread สีต่าง · **Help ผ่าน AI**: tool `support_open_case` ผูก conversationId → admin ตอบ backoffice → bridge กลับห้องเดิม + push
 ## Phase 3 — KB auto-capture (แยก memory สั้น vs KbArticle ถาวร + chip "บันทึกแล้ว") · social login ครบ 4
 ## Phase 4 — polish: voice/haptics/AiUsageWindow (เครดิต 2 ชั้นแบบ Claude)
+- ✅ **AiUsageWindow SHIPPED 31 ก.ค.** (main bde9273): หน้าต่างกลิ้ง 5 ชม. + สัปดาห์ไทย · soft degrade → haiku ก่อนตัด · แถบโควตาเว็บ+แอป · GET /api/mobile/usage · oracle qc-ai-usage 31/31 — รายละเอียดใน RESUME.md block 💳 P4 · **แอปเห็นจริงเมื่อ build #16**
+- ⬜ เหลือ: voice (พูดแทนพิมพ์) · haptics
 
 ## Security checklist (ทุก phase)
 SecureStore เก็บ token (ห้าม AsyncStorage) · revoke ผ่าน Session เดิม · membership check ทุก request · webview code ใช้ครั้งเดียว 60 วิ · proposal ใช้ assertCan สิทธิ์คนกด · rate limit OTP เดิม · upload ≤2MB+MIME · ปุ่มลบบัญชี (PENDING_DELETE มีแล้ว) + demo account สำหรับ store review · push token ลบตอน logout · ไม่มี secret ฝั่งแอป
