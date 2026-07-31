@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import {
   resolveHotelUnit,
   getPublicReservation,
@@ -6,26 +7,32 @@ import {
 } from "@/lib/modules/hotel/service";
 import { AutoRefresh } from "@/components/queue-auto-refresh";
 import { PromptPayQr } from "@/components/PromptPayQr";
+import { getLocaleFromCookie, makeT, type Locale } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
-const baht = (satang: number) =>
-  (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 0 });
+// ฿ คงเดิมทั้งสองภาษา · ตัวเลข/วันที่จัดรูปตาม locale (en ใช้ en-GB)
+const baht = (satang: number, locale: Locale) =>
+  (satang / 100).toLocaleString(locale === "en" ? "en-GB" : "th-TH", { minimumFractionDigits: 0 });
 
-function fmtDate(d: Date) {
-  return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "UTC" });
+function fmtDate(d: Date, locale: Locale) {
+  return d.toLocaleDateString(locale === "en" ? "en-GB" : "th-TH", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 }
 
-// ป้ายสถานะการจอง (ลูกค้าเห็น) — ผูกกับมัดจำ/สถานะห้อง
+// ป้ายสถานะการจอง (ลูกค้าเห็น) — ผูกกับมัดจำ/สถานะห้อง · คืน "คีย์" ให้หน้าเป็นคนแปล
 function statusMeta(status: string, depositRequired: boolean, depositPaid: boolean) {
-  if (status === "CANCELLED") return { label: "การจองถูกยกเลิกแล้ว", tone: "gone" as const };
-  if (status === "REFUNDED") return { label: "คืนเงินแล้ว", tone: "gone" as const };
-  if (status === "CHECKED_OUT") return { label: "เช็คเอาท์แล้ว ขอบคุณที่มาพัก", tone: "done" as const };
-  if (status === "CHECKED_IN") return { label: "เช็คอินแล้ว", tone: "done" as const };
+  if (status === "CANCELLED") return { key: "hotel.st.CANCELLED", tone: "gone" as const };
+  if (status === "REFUNDED") return { key: "hotel.st.REFUNDED", tone: "gone" as const };
+  if (status === "CHECKED_OUT") return { key: "hotel.st.CHECKED_OUT", tone: "done" as const };
+  if (status === "CHECKED_IN") return { key: "hotel.st.CHECKED_IN", tone: "done" as const };
   // BOOKED
-  if (depositRequired && !depositPaid) return { label: "รอชำระมัดจำ", tone: "wait" as const };
-  if (depositRequired && depositPaid) return { label: "ยืนยันแล้ว รอวันเข้าพัก", tone: "done" as const };
-  return { label: "จองสำเร็จ รอวันเข้าพัก", tone: "done" as const };
+  if (depositRequired && !depositPaid) return { key: "hotel.st.awaitDeposit", tone: "wait" as const };
+  if (depositRequired && depositPaid) return { key: "hotel.st.confirmed", tone: "done" as const };
+  return { key: "hotel.st.booked", tone: "done" as const };
 }
 
 // หน้าสถานะการจอง + จ่ายมัดจำ (public จาก publicToken) — auto-refresh ตอนยังรอยืนยัน
@@ -36,15 +43,15 @@ export default async function PublicReservationStatusPage({
 }) {
   const { tenantSlug, unitSlug, publicToken } = await params;
   const base = `/s/${tenantSlug}/${unitSlug}/hotel`;
+  const locale = getLocaleFromCookie((await cookies()).get("lang")?.value);
+  const t = makeT(locale);
 
   const resolved = await resolveHotelUnit(tenantSlug, unitSlug);
   if (!resolved) {
     return (
       <main className="mx-auto w-full max-w-md flex-1 px-5 py-16 text-center">
-        <div className="text-lg font-semibold">ไม่พบที่พักนี้</div>
-        <p className="mt-2 text-sm text-[color:var(--color-muted)]">
-          ลิงก์อาจไม่ถูกต้อง หรือที่พักปิดรับจองออนไลน์
-        </p>
+        <div className="text-lg font-semibold">{t("hotel.notFound.title")}</div>
+        <p className="mt-2 text-sm text-[color:var(--color-muted)]">{t("hotel.notFound.desc")}</p>
       </main>
     );
   }
@@ -55,12 +62,10 @@ export default async function PublicReservationStatusPage({
   if (!rv) {
     return (
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col items-center gap-4 px-5 py-16 text-center">
-        <div className="text-lg font-semibold">ไม่พบการจองนี้</div>
-        <p className="text-sm text-[color:var(--color-muted)]">
-          ลิงก์อาจไม่ถูกต้อง กรุณาจองใหม่อีกครั้ง
-        </p>
+        <div className="text-lg font-semibold">{t("hotel.rv.notFound.title")}</div>
+        <p className="text-sm text-[color:var(--color-muted)]">{t("hotel.rv.notFound.desc")}</p>
         <Link href={base} className="btn btn-primary min-h-[48px] w-full max-w-xs text-base">
-          จองห้องพัก
+          {t("hotel.rv.bookCta")}
         </Link>
       </main>
     );
@@ -84,7 +89,7 @@ export default async function PublicReservationStatusPage({
       {/* สรุปการจอง */}
       <section className="card flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">การจอง {rv.code}</span>
+          <span className="text-sm font-medium">{t("hotel.rv.title", { code: rv.code })}</span>
           <span
             className={`rounded-full px-3 py-1 text-xs font-medium ${
               meta.tone === "wait"
@@ -94,21 +99,22 @@ export default async function PublicReservationStatusPage({
                   : "bg-gray-200 text-gray-700"
             }`}
           >
-            {meta.label}
+            {t(meta.key)}
           </span>
         </div>
         <div className="text-sm">{rv.guestName}</div>
         <div className="text-xs text-[color:var(--color-muted)]">
-          {rv.roomType.name} · {fmtDate(rv.checkInDate)}–{fmtDate(rv.checkOutDate)} · {rv.nights} คืน
+          {rv.roomType.name} · {fmtDate(rv.checkInDate, locale)}–{fmtDate(rv.checkOutDate, locale)} ·{" "}
+          {t("hotel.nights", { n: rv.nights })}
         </div>
         <div className="mt-1 flex items-center justify-between border-t pt-2 text-sm">
-          <span className="text-[color:var(--color-muted)]">ค่าห้องรวม</span>
-          <span className="font-semibold">฿{baht(rv.totalSatang)}</span>
+          <span className="text-[color:var(--color-muted)]">{t("hotel.rv.roomTotal")}</span>
+          <span className="font-semibold">฿{baht(rv.totalSatang, locale)}</span>
         </div>
         {depositRequired && (
           <div className="flex items-center justify-between text-sm">
-            <span className="text-[color:var(--color-muted)]">มัดจำ</span>
-            <span className="font-medium">฿{baht(rv.depositSatang)}</span>
+            <span className="text-[color:var(--color-muted)]">{t("hotel.deposit")}</span>
+            <span className="font-medium">฿{baht(rv.depositSatang, locale)}</span>
           </div>
         )}
       </section>
@@ -118,18 +124,18 @@ export default async function PublicReservationStatusPage({
         <section className="card flex flex-col items-center gap-3">
           {pp ? (
             <>
-              <div className="text-sm font-medium">สแกนจ่ายมัดจำด้วย PromptPay</div>
-              <PromptPayQr payload={pp.payload} caption={`฿${baht(rv.depositSatang)}`} />
+              <div className="text-sm font-medium">{t("hotel.rv.scanDeposit")}</div>
+              <PromptPayQr payload={pp.payload} caption={`฿${baht(rv.depositSatang, locale)}`} />
               {pp.displayName && (
                 <div className="text-xs text-[color:var(--color-muted)]">{pp.displayName}</div>
               )}
               <p className="text-center text-sm text-[color:var(--color-muted)]">
-                สแกนจ่ายแล้วรอร้านยืนยัน หน้านี้จะอัปเดตอัตโนมัติ
+                {t("hotel.rv.afterScan")}
               </p>
             </>
           ) : (
             <p className="text-center text-sm text-[color:var(--color-muted)]">
-              ร้านยังไม่ได้ตั้งค่า PromptPay — กรุณาติดต่อร้านเพื่อจ่ายมัดจำ
+              {t("hotel.rv.noPromptpay")}
             </p>
           )}
         </section>
@@ -137,18 +143,18 @@ export default async function PublicReservationStatusPage({
 
       {rv.status === "BOOKED" && depositRequired && depositPaid && (
         <p className="text-center text-sm text-green-700">
-          ร้านได้รับมัดจำแล้ว การจองของคุณได้รับการยืนยัน ✓
+          {t("hotel.rv.depositPaid")}
         </p>
       )}
       {rv.status === "BOOKED" && !depositRequired && (
         <p className="text-center text-sm text-[color:var(--color-muted)]">
-          จองสำเร็จแล้ว พบกันวันเข้าพัก
+          {t("hotel.rv.confirmed")}
         </p>
       )}
 
       <div className="text-center">
         <Link href={base} className="text-sm underline">
-          ← จองห้องเพิ่ม
+          {t("hotel.rv.back")}
         </Link>
       </div>
     </main>

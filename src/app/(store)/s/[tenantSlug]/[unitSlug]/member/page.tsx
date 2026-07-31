@@ -1,8 +1,14 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { resolveMemberUnit } from "@/lib/modules/member/service";
 import { registerMemberAction } from "./actions";
+import { getLocaleFromCookie, makeT } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 export const dynamic = "force-dynamic";
+
+// ?err= จาก action เป็นรหัส → หน้าเป็นคนแปล
+const ERR_CODES = new Set(["rate", "shop", "identity", "phone", "email", "failed"]);
 
 // หน้าสมัครสมาชิกออนไลน์ (public · ไม่ต้องล็อกอิน) — กรอกชื่อ/เบอร์/อีเมล + ยินยอมรับข่าวสาร (PDPA)
 export default async function PublicMemberSignupPage({
@@ -14,15 +20,15 @@ export default async function PublicMemberSignupPage({
 }) {
   const { tenantSlug, unitSlug } = await params;
   const sp = await searchParams;
+  const locale = getLocaleFromCookie((await cookies()).get("lang")?.value);
+  const t = makeT(locale);
 
   const resolved = await resolveMemberUnit(tenantSlug, unitSlug);
   if (!resolved) {
     return (
       <main className="mx-auto w-full max-w-md flex-1 px-5 py-16 text-center">
-        <div className="text-lg font-semibold">ยังไม่เปิดรับสมัครสมาชิก</div>
-        <p className="mt-2 text-sm text-[color:var(--color-muted)]">
-          ลิงก์อาจไม่ถูกต้อง หรือร้านยังไม่เปิดระบบสมาชิกออนไลน์ กรุณาสอบถามที่หน้าร้าน
-        </p>
+        <div className="text-lg font-semibold">{t("member.notFound.title")}</div>
+        <p className="mt-2 text-sm text-[color:var(--color-muted)]">{t("member.notFound.desc")}</p>
       </main>
     );
   }
@@ -32,22 +38,22 @@ export default async function PublicMemberSignupPage({
   if (sp.code) {
     return (
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 px-5 py-12 text-center">
-        <div className="text-2xl font-semibold">สมัครสมาชิกสำเร็จ 🎉</div>
+        <div className="text-2xl font-semibold">{t("member.done.title")}</div>
         <p className="text-sm text-[color:var(--color-muted)]">
-          ยินดีต้อนรับสู่สมาชิกของ {unit.name}
+          {t("member.done.welcome", { shop: unit.name })}
         </p>
         <div className="rounded-2xl border p-5">
-          <div className="text-xs text-[color:var(--color-muted)]">รหัสสมาชิกของคุณ</div>
+          <div className="text-xs text-[color:var(--color-muted)]">{t("member.done.codeLabel")}</div>
           <div className="mt-1 text-3xl font-bold tracking-widest">{sp.code}</div>
         </div>
         <p className="text-xs text-[color:var(--color-muted)]">
-          กรุณาบันทึกหรือแจ้งรหัสนี้ที่หน้าร้านเพื่อรับสิทธิ์สมาชิก
+          {t("member.done.saveHint")}
         </p>
         <Link
           href={`/s/${encodeURIComponent(tenantSlug)}/${encodeURIComponent(unitSlug)}/member`}
           className="btn min-h-[44px] text-sm"
         >
-          สมัครอีกคน
+          {t("member.done.again")}
         </Link>
       </main>
     );
@@ -55,14 +61,17 @@ export default async function PublicMemberSignupPage({
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 px-5 py-8">
-      <header className="text-center">
-        <div className="text-xl font-semibold">สมัครสมาชิก {unit.name}</div>
-        <div className="text-sm text-[color:var(--color-muted)]">{tenant.name}</div>
+      <header className="flex items-start justify-between gap-3">
+        <div className="flex-1 text-center">
+          <div className="text-xl font-semibold">{t("member.title", { shop: unit.name })}</div>
+          <div className="text-sm text-[color:var(--color-muted)]">{tenant.name}</div>
+        </div>
+        <LanguageSwitcher locale={locale} />
       </header>
 
       {sp.err && (
         <div className="rounded-xl border border-[color:var(--color-danger)] px-4 py-3 text-center text-sm text-[color:var(--color-danger)]">
-          {sp.err}
+          {ERR_CODES.has(sp.err) ? t(`member.err.${sp.err}`) : t("err.general")}
         </div>
       )}
 
@@ -71,28 +80,28 @@ export default async function PublicMemberSignupPage({
         <input type="hidden" name="unitSlug" value={unitSlug} />
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-[color:var(--color-muted)]">ชื่อ</span>
+          <span className="text-xs text-[color:var(--color-muted)]">{t("member.form.name")}</span>
           <input
             name="name"
             defaultValue={sp.name ?? ""}
-            placeholder="ชื่อของคุณ"
+            placeholder={t("member.ph.name")}
             className="input min-h-[44px]"
           />
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-[color:var(--color-muted)]">เบอร์โทร</span>
+          <span className="text-xs text-[color:var(--color-muted)]">{t("member.form.phone")}</span>
           <input
             name="phone"
             inputMode="tel"
             defaultValue={sp.phone ?? ""}
-            placeholder="เช่น 0812345678"
+            placeholder={t("member.ph.phone")}
             className="input min-h-[44px]"
           />
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-[color:var(--color-muted)]">อีเมล (ไม่บังคับ)</span>
+          <span className="text-xs text-[color:var(--color-muted)]">{t("member.form.email")}</span>
           <input
             name="email"
             type="email"
@@ -104,14 +113,14 @@ export default async function PublicMemberSignupPage({
 
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" name="marketingConsent" className="mt-0.5 h-5 w-5" />
-          <span>ยินยอมรับข่าวสารและโปรโมชันจากร้าน (ยกเลิกได้ภายหลัง)</span>
+          <span>{t("member.consent")}</span>
         </label>
 
         <p className="text-xs text-[color:var(--color-muted)]">
-          กรอกชื่อหรือเบอร์โทรอย่างน้อย 1 อย่าง
+          {t("member.hint")}
         </p>
 
-        <button className="btn btn-primary min-h-[44px] text-sm">สมัครสมาชิก</button>
+        <button className="btn btn-primary min-h-[44px] text-sm">{t("member.submit")}</button>
       </form>
     </main>
   );

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { makeT, type Locale } from "@/lib/i18n";
 
 type PublicType = { id: string; name: string; prefix: string; requireContact: boolean };
 
@@ -14,6 +15,7 @@ export function QueuePublicForm({
   types,
   serverError,
   presetTypeId,
+  locale = "th",
 }: {
   action: (formData: FormData) => void | Promise<void>;
   tenantSlug: string;
@@ -21,7 +23,9 @@ export function QueuePublicForm({
   types: PublicType[];
   serverError?: string;
   presetTypeId?: string;
+  locale?: Locale;
 }) {
+  const tr = useMemo(() => makeT(locale), [locale]);
   const initial =
     types.find((t) => t.id === presetTypeId)?.id ?? types[0]?.id ?? "";
   const [typeId, setTypeId] = useState(initial);
@@ -35,14 +39,14 @@ export function QueuePublicForm({
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     if (!typeId) {
       e.preventDefault();
-      setErr("กรุณาเลือกประเภทคิว");
+      setErr(tr("queue.err.type"));
       return;
     }
     if (needPhone) {
       const digits = phone.replace(/\D/g, "");
       if (digits.length < 9 || digits.length > 15) {
         e.preventDefault();
-        setErr("กรุณากรอกเบอร์โทรให้ถูกต้อง");
+        setErr(tr("queue.err.phone"));
         return;
       }
     }
@@ -60,7 +64,7 @@ export function QueuePublicForm({
 
       {types.length > 1 && (
         <div className="flex flex-col gap-2">
-          <div className="text-sm font-medium">เลือกประเภทคิว</div>
+          <div className="text-sm font-medium">{tr("queue.form.pickType")}</div>
           <div className="flex flex-col gap-2">
             {types.map((t) => (
               <button
@@ -83,9 +87,9 @@ export function QueuePublicForm({
 
       {needPhone && (
         <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">เบอร์โทร</span>
+          <span className="text-sm font-medium">{tr("queue.form.phone")}</span>
           <span className="text-xs text-[color:var(--color-muted)]">
-            เพื่อแจ้งเตือนเมื่อใกล้ถึงคิวคุณ
+            {tr("queue.form.phoneWhy")}
           </span>
           <input
             name="phone"
@@ -94,7 +98,7 @@ export function QueuePublicForm({
             autoComplete="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="08x-xxx-xxxx"
+            placeholder={tr("queue.form.phonePh")}
             className="min-h-[44px] w-full rounded-xl border px-4 py-2 text-base"
           />
         </label>
@@ -111,7 +115,7 @@ export function QueuePublicForm({
         disabled={submitting || !typeId}
         className="btn btn-primary min-h-[52px] w-full text-base font-semibold disabled:opacity-60"
       >
-        {submitting ? "กำลังรับบัตร…" : "รับบัตรคิว"}
+        {submitting ? tr("queue.form.submitting") : tr("queue.form.submit")}
       </button>
     </form>
   );

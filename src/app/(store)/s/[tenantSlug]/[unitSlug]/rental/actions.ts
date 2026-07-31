@@ -23,8 +23,10 @@ export async function createPublicRentalAction(formData: FormData) {
 
   const base = `/s/${encodeURIComponent(tenantSlug)}/${encodeURIComponent(unitSlug)}/rental`;
   const keep = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-  const backErr = (msg: string): never =>
-    redirect(`${base}?err=${encodeURIComponent(msg)}&${keep}`);
+  // ส่ง "รหัส" ไม่ใช่ข้อความไทย — หน้าจองเช่ารองรับ 2 ภาษา (แปลผ่าน dict rental.err.*)
+  const backErr = (
+    code: "rate" | "shop" | "dates" | "past" | "asset" | "name" | "phone" | "failed",
+  ): never => redirect(`${base}?err=${code}&${keep}`);
 
   // กันยิงถล่ม — 5 ครั้ง/นาที/IP ต่อ unit
   const h = await headers();
@@ -33,19 +35,19 @@ export async function createPublicRentalAction(formData: FormData) {
     limit: 5,
     windowMs: 60_000,
   });
-  if (!rl.ok) backErr("จองถี่เกินไป กรุณารอสักครู่แล้วลองใหม่");
+  if (!rl.ok) backErr("rate");
 
   const resolved = await resolveRentalUnit(tenantSlug, unitSlug);
-  if (!resolved) backErr("ไม่พบร้านนี้ หรือร้านปิดรับจองออนไลน์");
+  if (!resolved) backErr("shop");
   const ctx = { tenantId: resolved!.tenant.id, unitId: resolved!.unit.id };
 
-  if (!RE_DATE.test(from) || !RE_DATE.test(to)) backErr("กรุณาเลือกวันรับและวันคืนให้ถูกต้อง");
-  if (from < todayBkk()) backErr("เลือกวันรับในอดีตไม่ได้");
-  if (!assetId) backErr("กรุณาเลือกสินทรัพย์ที่จะเช่า");
-  if (customerName.length < 1) backErr("กรุณากรอกชื่อผู้เช่า");
+  if (!RE_DATE.test(from) || !RE_DATE.test(to)) backErr("dates");
+  if (from < todayBkk()) backErr("past");
+  if (!assetId) backErr("asset");
+  if (customerName.length < 1) backErr("name");
   const phoneDigits = customerPhoneRaw.replace(/\D/g, "");
   if (phoneDigits.length < 9 || phoneDigits.length > 15)
-    backErr("กรุณากรอกเบอร์โทรให้ถูกต้อง");
+    backErr("phone");
 
   let publicToken: string | null = null;
   try {
@@ -58,7 +60,7 @@ export async function createPublicRentalAction(formData: FormData) {
     });
     publicToken = bk.publicToken;
   } catch (e) {
-    backErr(e instanceof Error ? e.message : "จองไม่สำเร็จ กรุณาลองใหม่");
+    backErr("failed"); // เหตุผลจริงอยู่ใน service/exception — ผู้ใช้เห็นข้อความเดียวที่แปลได้
   }
 
   // สำเร็จ → หน้าสถานะ/จ่ายมัดจำ (publicToken)

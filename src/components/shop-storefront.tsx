@@ -2,22 +2,28 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { makeT, type Locale } from "@/lib/i18n";
 
 type Product = { id: string; name: string; description: string | null; priceSatang: number; imageUrl: string | null };
 
-const baht = (satang: number) => (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 0 });
+// ฿ คงเดิมทั้งสองภาษา · ตัวเลขจัดกลุ่มตาม locale (en ใช้ en-GB)
+const baht = (satang: number, locale: Locale) =>
+  (satang / 100).toLocaleString(locale === "en" ? "en-GB" : "th-TH", { minimumFractionDigits: 0 });
 
 // หน้าร้านสาธารณะ: เลือกสินค้า → ตะกร้า → กรอกชื่อ/เบอร์ → สร้างออเดอร์ → ไปหน้าสถานะ+QR
 export function ShopStorefront({
   tenantSlug,
   unitSlug,
   products,
+  locale = "th",
 }: {
   tenantSlug: string;
   unitSlug: string;
   products: Product[];
+  locale?: Locale;
 }) {
   const router = useRouter();
+  const t = useMemo(() => makeT(locale), [locale]);
   const [cart, setCart] = useState<Record<string, number>>({});
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -42,9 +48,9 @@ export function ShopStorefront({
 
   async function submit() {
     setError(null);
-    if (count === 0) return setError("กรุณาเลือกสินค้าอย่างน้อย 1 ชิ้น");
-    if (!name.trim()) return setError("กรุณากรอกชื่อผู้สั่ง");
-    if (!phone.trim()) return setError("กรุณากรอกเบอร์โทร");
+    if (count === 0) return setError(t("shop.err.empty"));
+    if (!name.trim()) return setError(t("shop.err.name"));
+    if (!phone.trim()) return setError(t("shop.err.phone"));
     setSubmitting(true);
     try {
       const res = await fetch(`/api/store/${tenantSlug}/${unitSlug}/shop/order`, {
@@ -59,19 +65,19 @@ export function ShopStorefront({
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
-        setError(data?.message || (res.status === 429 ? "สั่งบ่อยเกินไป กรุณารอสักครู่" : "สร้างออเดอร์ไม่สำเร็จ กรุณาลองใหม่"));
+        setError(data?.message || (res.status === 429 ? t("shop.err.rate") : t("shop.err.create")));
         setSubmitting(false);
         return;
       }
       router.push(`/s/${tenantSlug}/${unitSlug}/shop/order/${data.code}`);
     } catch {
-      setError("เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่");
+      setError(t("shop.err.network"));
       setSubmitting(false);
     }
   }
 
   if (products.length === 0) {
-    return <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีสินค้าวางขายในขณะนี้</p>;
+    return <p className="text-sm text-[color:var(--color-muted)]">{t("shop.empty")}</p>;
   }
 
   return (
@@ -91,7 +97,7 @@ export function ShopStorefront({
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{p.name}</div>
                 {p.description && <div className="truncate text-xs text-[color:var(--color-muted)]">{p.description}</div>}
-                <div className="text-sm font-semibold">฿{baht(p.priceSatang)}</div>
+                <div className="text-sm font-semibold">฿{baht(p.priceSatang, locale)}</div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <button
@@ -99,7 +105,7 @@ export function ShopStorefront({
                   onClick={() => setQty(p.id, qty - 1)}
                   className="h-8 w-8 rounded-full border text-lg leading-none disabled:opacity-40"
                   disabled={qty === 0}
-                  aria-label="ลด"
+                  aria-label={t("shop.qty.less")}
                 >
                   −
                 </button>
@@ -108,7 +114,7 @@ export function ShopStorefront({
                   type="button"
                   onClick={() => setQty(p.id, qty + 1)}
                   className="h-8 w-8 rounded-full border text-lg leading-none"
-                  aria-label="เพิ่ม"
+                  aria-label={t("shop.qty.more")}
                 >
                   +
                 </button>
@@ -122,25 +128,25 @@ export function ShopStorefront({
       {count > 0 && (
         <div className="card flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-[color:var(--color-muted)]">รวม {count} ชิ้น</span>
-            <span className="text-lg font-semibold">฿{baht(total)}</span>
+            <span className="text-sm text-[color:var(--color-muted)]">{t("shop.cart.count", { count })}</span>
+            <span className="text-lg font-semibold">฿{baht(total, locale)}</span>
           </div>
           <input
             className="w-full rounded-lg border px-3 py-2 text-sm"
-            placeholder="ชื่อผู้สั่ง"
+            placeholder={t("shop.form.name")}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
           <input
             className="w-full rounded-lg border px-3 py-2 text-sm"
-            placeholder="เบอร์โทร"
+            placeholder={t("shop.form.phone")}
             inputMode="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
           />
           <textarea
             className="w-full rounded-lg border px-3 py-2 text-sm"
-            placeholder="หมายเหตุ (ถ้ามี)"
+            placeholder={t("shop.form.note")}
             rows={2}
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -152,7 +158,7 @@ export function ShopStorefront({
             disabled={submitting}
             className="btn btn-primary w-full disabled:opacity-60"
           >
-            {submitting ? "กำลังสั่ง…" : `สั่งซื้อ · ฿${baht(total)}`}
+            {submitting ? t("shop.submitting") : t("shop.submit", { total: baht(total, locale) })}
           </button>
         </div>
       )}

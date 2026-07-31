@@ -17,8 +17,9 @@ export async function createPublicEnrollmentAction(formData: FormData) {
   const parentPhoneRaw = String(formData.get("parentPhone") ?? "").trim();
 
   const base = `/s/${encodeURIComponent(tenantSlug)}/${encodeURIComponent(unitSlug)}/school`;
-  const backErr = (msg: string): never =>
-    redirect(`${base}?err=${encodeURIComponent(msg)}&class=${encodeURIComponent(classId)}`);
+  // ส่ง "รหัส" ไม่ใช่ข้อความไทย — หน้าสมัครรองรับ 2 ภาษา (แปลผ่าน dict school.err.*)
+  const backErr = (code: "rate" | "shop" | "class" | "name" | "phone" | "failed"): never =>
+    redirect(`${base}?err=${code}&class=${encodeURIComponent(classId)}`);
 
   // กันยิงถล่ม — 5 ครั้ง/นาที/IP ต่อ unit (in-memory ต่อ instance ตามสัญญา core)
   const h = await headers();
@@ -27,16 +28,16 @@ export async function createPublicEnrollmentAction(formData: FormData) {
     limit: 5,
     windowMs: 60_000,
   });
-  if (!rl.ok) backErr("สมัครถี่เกินไป กรุณารอสักครู่แล้วลองใหม่");
+  if (!rl.ok) backErr("rate");
 
   const resolved = await resolveSchoolUnit(tenantSlug, unitSlug);
-  if (!resolved) backErr("ไม่พบสถาบันนี้ หรือปิดรับสมัครออนไลน์");
+  if (!resolved) backErr("shop");
   const ctx = { tenantId: resolved!.tenant.id, unitId: resolved!.unit.id };
 
-  if (!classId) backErr("กรุณาเลือกรอบเรียน");
-  if (studentName.length < 1) backErr("กรุณากรอกชื่อผู้เรียน");
+  if (!classId) backErr("class");
+  if (studentName.length < 1) backErr("name");
   const phoneDigits = parentPhoneRaw.replace(/\D/g, "");
-  if (phoneDigits.length < 9 || phoneDigits.length > 15) backErr("กรุณากรอกเบอร์โทรให้ถูกต้อง");
+  if (phoneDigits.length < 9 || phoneDigits.length > 15) backErr("phone");
 
   let publicToken: string | null = null;
   try {
@@ -47,7 +48,7 @@ export async function createPublicEnrollmentAction(formData: FormData) {
     });
     publicToken = res.publicToken;
   } catch (e) {
-    backErr(e instanceof Error ? e.message : "สมัครไม่สำเร็จ กรุณาลองใหม่");
+    backErr("failed"); // เหตุผลจริงอยู่ใน service/exception — ผู้ใช้เห็นข้อความเดียวที่แปลได้
   }
 
   // สำเร็จ → หน้าจ่ายค่าเรียน/สถานะ (publicToken)

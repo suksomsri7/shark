@@ -1,8 +1,11 @@
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import type { CSSProperties } from "react";
 import { resolveUnit, listProducts } from "@/lib/modules/shop/service";
 import { getPublicBranding } from "@/lib/branding/service";
 import { ShopStorefront } from "@/components/shop-storefront";
+import { getLocaleFromCookie, makeT } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 // หน้าร้านค้าสาธารณะ (SHOP) — /s/[tenantSlug]/[unitSlug]/shop
 export default async function StoreShopPage({
@@ -21,9 +24,13 @@ export default async function StoreShopPage({
     ? ({ ["--color-accent"]: branding.brandColor } as CSSProperties)
     : undefined;
 
+  const locale = getLocaleFromCookie((await cookies()).get("lang")?.value);
+  const t = makeT(locale);
+
   return (
     <main className="mx-auto w-full max-w-md flex-1 px-5 py-8" style={accentStyle}>
-      <div className="mb-6">
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
         <div className="flex items-center gap-2">
           {branding.logoUrl && (
             /* eslint-disable-next-line @next/next/no-img-element */
@@ -43,11 +50,14 @@ export default async function StoreShopPage({
         >
           {resolved.unit.name}
         </h1>
-        <p className="text-sm text-[color:var(--color-muted)]">เลือกสินค้าแล้วสั่งซื้อ ชำระด้วย PromptPay</p>
+        <p className="text-sm text-[color:var(--color-muted)]">{t("shop.subtitle")}</p>
+        </div>
+        <LanguageSwitcher locale={locale} />
       </div>
       <ShopStorefront
         tenantSlug={tenantSlug}
         unitSlug={unitSlug}
+        locale={locale}
         products={products.map((p) => ({
           id: p.id,
           name: p.name,

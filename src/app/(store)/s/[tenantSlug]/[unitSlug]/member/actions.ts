@@ -19,8 +19,9 @@ export async function registerMemberAction(formData: FormData) {
 
   const base = `/s/${encodeURIComponent(tenantSlug)}/${encodeURIComponent(unitSlug)}/member`;
   const keep = `name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phoneRaw)}&email=${encodeURIComponent(email)}`;
-  const backErr = (msg: string): never =>
-    redirect(`${base}?err=${encodeURIComponent(msg)}&${keep}`);
+  // ส่ง "รหัส" ไม่ใช่ข้อความไทย — หน้าสมัครรองรับ 2 ภาษา (แปลผ่าน dict member.err.*)
+  const backErr = (code: "rate" | "shop" | "identity" | "phone" | "email" | "failed"): never =>
+    redirect(`${base}?err=${code}&${keep}`);
 
   // กันยิงถล่ม — 5 ครั้ง/นาที/IP ต่อ unit (in-memory ต่อ instance ตามสัญญา core)
   const h = await headers();
@@ -29,18 +30,18 @@ export async function registerMemberAction(formData: FormData) {
     limit: 5,
     windowMs: 60_000,
   });
-  if (!rl.ok) backErr("สมัครถี่เกินไป กรุณารอสักครู่แล้วลองใหม่");
+  if (!rl.ok) backErr("rate");
 
   const resolved = await resolveMemberUnit(tenantSlug, unitSlug);
-  if (!resolved) backErr("ไม่พบร้านนี้ หรือร้านยังไม่เปิดรับสมัครสมาชิก");
+  if (!resolved) backErr("shop");
 
   // validate: ต้องมีชื่อหรือเบอร์อย่างน้อย 1 อย่าง
   const phoneDigits = phoneRaw.replace(/\D/g, "");
-  if (!name && !phoneRaw) backErr("กรุณากรอกชื่อหรือเบอร์โทรอย่างน้อย 1 อย่าง");
+  if (!name && !phoneRaw) backErr("identity");
   if (phoneRaw && (phoneDigits.length < 9 || phoneDigits.length > 15))
-    backErr("กรุณากรอกเบอร์โทรให้ถูกต้อง");
+    backErr("phone");
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-    backErr("กรุณากรอกอีเมลให้ถูกต้อง หรือเว้นว่างไว้");
+    backErr("email");
 
   let memberCode: string | null = null;
   try {
@@ -55,7 +56,7 @@ export async function registerMemberAction(formData: FormData) {
     });
     memberCode = customer.memberCode;
   } catch {
-    backErr("สมัครไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    backErr("failed");
   }
 
   // สำเร็จ → หน้า "สมัครสำเร็จ" แสดง memberCode

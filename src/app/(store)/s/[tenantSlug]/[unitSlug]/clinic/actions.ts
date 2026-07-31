@@ -20,7 +20,9 @@ export async function createPublicAppointmentAction(formData: FormData) {
   const symptom = String(formData.get("symptom") ?? "").trim();
 
   const base = `/s/${encodeURIComponent(tenantSlug)}/${encodeURIComponent(unitSlug)}/clinic`;
-  const backErr = (msg: string): never => redirect(`${base}?err=${encodeURIComponent(msg)}`);
+  // ส่ง "รหัส" ไม่ใช่ข้อความไทย — หน้าขอนัดรองรับ 2 ภาษา (แปลผ่าน dict clinic.err.*)
+  const backErr = (code: "rate" | "shop" | "name" | "phone" | "when" | "past" | "failed"): never =>
+    redirect(`${base}?err=${code}`);
 
   // กันยิงถล่ม — 5 ครั้ง/นาที/IP ต่อ unit (in-memory ต่อ instance ตามสัญญา core)
   const h = await headers();
@@ -29,19 +31,19 @@ export async function createPublicAppointmentAction(formData: FormData) {
     limit: 5,
     windowMs: 60_000,
   });
-  if (!rl.ok) backErr("ขอนัดถี่เกินไป กรุณารอสักครู่แล้วลองใหม่");
+  if (!rl.ok) backErr("rate");
 
   const resolved = await resolveClinicUnit(tenantSlug, unitSlug);
-  if (!resolved) backErr("ไม่พบคลินิกนี้ หรือปิดรับนัดออนไลน์");
+  if (!resolved) backErr("shop");
   const ctx = { tenantId: resolved!.tenant.id, unitId: resolved!.unit.id };
 
-  if (patientName.length < 1) backErr("กรุณากรอกชื่อผู้ป่วย");
+  if (patientName.length < 1) backErr("name");
   const phoneDigits = patientPhoneRaw.replace(/\D/g, "");
-  if (phoneDigits.length < 9 || phoneDigits.length > 15) backErr("กรุณากรอกเบอร์โทรให้ถูกต้อง");
-  if (!RE_DTLOCAL.test(preferredRaw)) backErr("กรุณาเลือกวันเวลาที่สะดวก");
+  if (phoneDigits.length < 9 || phoneDigits.length > 15) backErr("phone");
+  if (!RE_DTLOCAL.test(preferredRaw)) backErr("when");
   const preferredAt = new Date(`${preferredRaw}:00+07:00`);
-  if (Number.isNaN(preferredAt.getTime())) backErr("กรุณาเลือกวันเวลาที่สะดวก");
-  if (preferredAt.getTime() < Date.now() - 60_000) backErr("เลือกวันเวลาในอดีตไม่ได้");
+  if (Number.isNaN(preferredAt.getTime())) backErr("when");
+  if (preferredAt.getTime() < Date.now() - 60_000) backErr("past");
 
   let publicToken: string | null = null;
   try {
@@ -53,7 +55,7 @@ export async function createPublicAppointmentAction(formData: FormData) {
     });
     publicToken = res.publicToken;
   } catch (e) {
-    backErr(e instanceof Error ? e.message : "ขอนัดไม่สำเร็จ กรุณาลองใหม่");
+    backErr("failed"); // เหตุผลจริงอยู่ใน service/exception — ผู้ใช้เห็นข้อความเดียวที่แปลได้
   }
 
   // สำเร็จ → หน้าสถานะนัด (publicToken)
