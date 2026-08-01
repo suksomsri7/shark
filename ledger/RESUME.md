@@ -24,6 +24,17 @@
 - ⚠️ กติกาเฉพาะแอปที่ต้องจำ: จอ RN ห้าม import Text/TextInput จาก react-native (ใช้ @/src/components/ui/text — ฟอนต์ IBM Plex) · ห้าม server action ใน drawer/webview path (ใช้ GET route) · ไฟล์ "use server" ห้าม export type re-export · iOS credentials playbook อยู่ block 📱 P1.4-P1.5 (ASC API + p12 -legacy)
 - **แผนใหญ่:** ledger/MOBILE_PLAN.md (Phase 2 เหลือ: เทส push จริงหลัง build #16 · Phase 3: social login เมื่อ creds มา · **Phase 4 เครดิต AI = SHIPPED 31 ก.ค.** เหลือ voice) · memory: project_shark_ai_app.md
 
+## 🚀 BUILD #19 ขึ้น TestFlight แล้ว (1 ส.ค. 07:30 · commit e1d77b4 · submit สำเร็จ 07:35)
+- **โควต้า**: free plan จำกัด **iOS แยกต่างหาก** ไม่ใช่ยอดรวม 30 (API รายงาน 22/30 แต่ iOS หมด) — รีเซ็ตตามรอบบิล UTC (1 ของเดือน 07:00 น. ไทย) · รอบใหม่ใช้ไป 2/30
+- 🔴 **build #18 ERRORED ที่ Install pods** — บิว iOS ตัวแรกที่มี Google Sign-In (lib เข้ามา 25 ก.ค. หลัง build #14 จึงไม่เคยผ่านบิวจริง):
+  `The Swift pod AppCheckCore depends upon GoogleUtilities and RecaptchaInterop, which do not define modules`
+  → แก้ด้วย `expo-build-properties` + `extraPods` ระบุ `modular_headers: true` ให้ 2 pod นั้น (commit 561a669)
+  **จงใจไม่ใช้ `use_frameworks!:static`** — เปลี่ยนวิธีลิงก์ทั้งโปรเจกต์ (hermes/reanimated/webview) เสี่ยงกว่าที่แก้
+- ⚠️ **บทเรียน**: dependency เนทีฟที่เพิ่มหลังบิวล่าสุด = ยังไม่เคยพิสูจน์ — ต้องเผื่อว่าบิวแรกหลังเพิ่มจะล้มที่ pod/gradle เสมอ · VPS ตรวจแทนไม่ได้ (ไม่มี CocoaPods) พิสูจน์ได้ด้วยบิวจริงเท่านั้น
+- ของที่ติดไปกับ #19: paper-plane · ‹ กลับ sessions · **push จริง** · OTA · welcome orb · icon ขาว · **QuotaBar (P4)** · **social login 4 ค่ายครั้งแรกบน iOS** · dependency ตรง SDK 57 (doctor 20/20)
+- **หลังจากนี้แก้ JS ไม่ต้องบิวใหม่**: `eas update --channel production` (OTA ติดมากับ build นี้แล้ว)
+- ⏭️ รอ Apple process ~5-20 นาที → เจ้าของเปิดแอป TestFlight เทสได้เลย (กลุ่ม "ทีมเทส SHARK" เข้าอัตโนมัติ)
+
 ## 🛡️ AUDIT ช่องโหว่+บัค+ความเร็ว (31 ก.ค. · main=658c0c5 · deploy READY · migrate prod แล้ว)
 **ช่องโหว่ที่ปิด (oracle ใหม่ `qc-hardening2` 14/14):**
 1. **stored XSS ผ่านไฟล์แนบเคส support** — `url` ถูก render เป็น `href`/`src` ตรง ๆ แต่ไม่เคยตรวจ scheme → คนในร้านเดียวกันยิง `javascript:` เข้ามาแล้วเจ้าของกดลิงก์ = รันสคริปต์ในเซสชันเจ้าของ · แก้: รับเฉพาะ `http(s)` + `data:image/*` · จำกัด **5 ไฟล์ · ยาว ≤3MB** (เดิมยัด data URL ขนาดเท่าไหร่ก็ได้ลง DB) · กรองซ้ำตอน "อ่าน" ด้วยเผื่อแถวเก่า
