@@ -6,6 +6,7 @@ import { Topbar } from "./Topbar";
 import { NavDrawer, type NavItem, type SoonItem, type TenantOption } from "./NavDrawer";
 import { AiDock } from "./AiDock";
 import { AddSystemModal } from "./AddSystemModal";
+import { useInApp } from "./use-in-app";
 import { loadNavBadgesAction } from "@/lib/support/actions";
 
 // โครงแอปฝั่ง client: จัดการสถานะเปิด/ปิด drawer
@@ -48,11 +49,8 @@ export function AppShell({
   // perf A: โหลด badge แชท AI หลังหน้าโผล่ (ไม่บล็อกการเปลี่ยนหน้า)
   const [aiUnread, setAiUnread] = useState(0);
   // เปิดจากแอปมือถือ (WebView ส่ง UA "SharkApp") → ซ่อน orb เว็บ (แอปมีปุ่ม AI native ของตัวเอง — กัน orb ซ้อน)
-  // เช็คใน effect กัน hydration mismatch (SSR ไม่รู้ UA client)
-  const [inApp, setInApp] = useState(false);
-  useEffect(() => {
-    if (navigator.userAgent.includes("SharkApp")) setInApp(true);
-  }, []);
+  // + ไม่ปักแถบเมนูซ้าย (แอปมีเมนูของตัวเอง และจอมือถือไม่มีที่พอ)
+  const inApp = useInApp();
   useEffect(() => {
     let alive = true;
     loadNavBadgesAction()
@@ -63,7 +61,7 @@ export function AppShell({
 
   return (
     <>
-      <Topbar tenantName={tenantName} onMenu={() => setDrawer(true)} />
+      <Topbar tenantName={tenantName} onMenu={() => setDrawer(true)} pinnedNav={!inApp} />
       <NavDrawer
         open={drawer}
         onClose={() => setDrawer(false)}
@@ -78,6 +76,21 @@ export function AppShell({
         memberships={memberships}
         activeTenantId={activeTenantId}
       />
+      {/* เว็บบนจอใหญ่ (≥ lg): กางเมนูปักซ้ายให้เลย ไม่ต้องกดแฮมเบอร์เกอร์ · ในแอปไม่ปัก */}
+      {!inApp && (
+        <NavDrawer
+          variant="pinned"
+          open
+          onClose={() => {}}
+          tenantName={tenantName}
+          userEmail={userEmail}
+          items={items}
+          soon={soon}
+          onAddSystem={() => setAddSystemOpen(true)}
+          memberships={memberships}
+          activeTenantId={activeTenantId}
+        />
+      )}
       <AddSystemModal
         preselect={addSystemPreselect}
         open={addSystemOpen}

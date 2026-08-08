@@ -80,7 +80,8 @@ export default async function BlueprintPage() {
           </div>
 
           <div className="sticky bottom-4">
-            <DnaApplyButton blueprintId={blueprintId} />
+            {/* ป้ายภาษาคนของแต่ละขั้น — ปุ่มเอาไปโชว์บนแถบ progress ว่ากำลังทำอะไรอยู่ */}
+            <DnaApplyButton blueprintId={blueprintId} stepLabels={steps.map(headline)} />
           </div>
         </>
       )}

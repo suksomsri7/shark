@@ -5,7 +5,16 @@
 // help-v2: เอาปุ่มศูนย์ช่วยเหลือออก — แจ้งปัญหาผ่านแชท AI แทน (ทีมงานตอบกลับในห้องเดิม)
 // ไม่มีเส้นขีดใต้ topbar — ใช้เงาบาง (shadow) แทน border ตามวิชันเจ้าของ
 
-export function Topbar({ tenantName, onMenu }: { tenantName: string; onMenu: () => void }) {
+export function Topbar({
+  tenantName,
+  onMenu,
+  pinnedNav = false,
+}: {
+  tenantName: string;
+  onMenu: () => void;
+  /** เว็บจอใหญ่มีแถบเมนูปักซ้ายอยู่แล้ว → ซ่อนปุ่มแฮมเบอร์เกอร์ตั้งแต่ lg ขึ้นไป (ปุ่มที่ไม่มีประโยชน์) */
+  pinnedNav?: boolean;
+}) {
   return (
     <header className="fixed inset-x-0 top-0 z-40 h-14 bg-[color:var(--color-surface)] shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
       <div className="mx-auto flex h-full items-center gap-2 px-3 sm:px-4">
@@ -14,7 +23,9 @@ export function Topbar({ tenantName, onMenu }: { tenantName: string; onMenu: () 
           type="button"
           onClick={onMenu}
           aria-label="เมนูระบบ"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-xl leading-none hover:bg-[color:var(--color-surface-2)]"
+          className={`h-11 w-11 shrink-0 items-center justify-center rounded-lg text-xl leading-none hover:bg-[color:var(--color-surface-2)] ${
+            pinnedNav ? "flex lg:hidden" : "flex"
+          }`}
         >
           ☰
         </button>

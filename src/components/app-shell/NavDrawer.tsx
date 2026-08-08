@@ -66,6 +66,7 @@ export function NavDrawer({
   onAddSystem,
   memberships,
   activeTenantId,
+  variant = "overlay",
 }: {
   open: boolean;
   onClose: () => void;
@@ -76,6 +77,11 @@ export function NavDrawer({
   onAddSystem: () => void;
   memberships: TenantOption[];
   activeTenantId: string;
+  /**
+   * overlay = เลื่อนออกมาทับจอ (มือถือ/แอป — เปิดจากปุ่มแฮมเบอร์เกอร์)
+   * pinned  = ปักไว้ซ้ายจอถาวร ไม่มีฉากหลัง ไม่ปิดเมื่อกดลิงก์ (เว็บบนจอใหญ่ ≥ lg)
+   */
+  variant?: "overlay" | "pinned";
 }) {
   const pathname = usePathname();
   // dropdown รายชื่อกิจการในหัว drawer — ปิดเมื่อกดสลับ/กดนอก
@@ -92,14 +98,29 @@ export function NavDrawer({
   const isActive = (href: string) =>
     pathname === href || (href !== "/app" && pathname.startsWith(href + "/")) || pathname.startsWith(href);
 
-  if (!open) return null;
+  const pinned = variant === "pinned";
+  if (!pinned && !open) return null;
 
   return (
-    <div className="fixed inset-0 z-50">
-      {/* ฉากหลังคลุมจอ แตะเพื่อปิด */}
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+    <div
+      className={
+        pinned
+          ? // ปักซ้ายใต้ topbar — โผล่เฉพาะจอ ≥ lg (จอเล็กใช้ overlay เหมือนเดิม)
+            "fixed bottom-0 left-0 top-14 z-30 hidden w-72 border-r border-[color:var(--color-border)] lg:block"
+          : // overlay: จอใหญ่ไม่ต้องใช้แล้ว (มีแถบปักซ้ายอยู่) — กันเมนูซ้อนกัน 2 ชั้นตอนย่อ/ขยายจอ
+            "fixed inset-0 z-50 lg:hidden"
+      }
+    >
+      {/* ฉากหลังคลุมจอ แตะเพื่อปิด — โหมดปักซ้ายไม่มี */}
+      {!pinned && <div className="absolute inset-0 bg-black/30" onClick={onClose} />}
 
-      <aside className="absolute left-0 top-0 flex h-full w-72 max-w-[85%] flex-col overflow-y-auto bg-[color:var(--color-surface)] shadow-[2px_0_12px_rgba(0,0,0,0.08)]">
+      <aside
+        className={
+          pinned
+            ? "flex h-full w-full flex-col overflow-y-auto bg-[color:var(--color-surface)]"
+            : "absolute left-0 top-0 flex h-full w-72 max-w-[85%] flex-col overflow-y-auto bg-[color:var(--color-surface)] shadow-[2px_0_12px_rgba(0,0,0,0.08)]"
+        }
+      >
         {/* หัว drawer — ชื่อกิจการ active + ปุ่ม ▾ เปิด dropdown สลับ/เพิ่มกิจการ (คำสั่งเจ้าของ) */}
         <div className="relative px-2 py-2">
           <button

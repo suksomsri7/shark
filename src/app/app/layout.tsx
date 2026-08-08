@@ -2,6 +2,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef, SYSTEM_DEFS, FIXED_PAGE_SYSTEMS, isFixedPageSystem } from "@/lib/systems";
 import { AppShell } from "@/components/app-shell/AppShell";
+import { AppMain } from "@/components/app-shell/AppMain";
 import { NavProgress } from "@/components/app-shell/NavProgress";
 import type { NavItem, SoonItem } from "@/components/app-shell/NavDrawer";
 
@@ -262,8 +263,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         memberships={auth.memberships.map((m) => ({ tenantId: m.tenantId, name: m.tenant.name, role: m.role }))}
         activeTenantId={auth.active.tenantId}
       />
-      {/* pt-14 = เว้นให้พ้น topbar (สูง 56px) · pb-24 = เว้นให้พ้นปุ่ม AI มุมซ้ายล่าง */}
-      <main className="px-4 pb-24 pt-[calc(3.5rem+1rem)] sm:px-6">{children}</main>
+      {/* ระยะขอบ (รวมการเว้นที่ให้แถบเมนูปักซ้ายบนจอใหญ่) อยู่ใน AppMain */}
+      <AppMain>{children}</AppMain>
     </div>
   );
 }

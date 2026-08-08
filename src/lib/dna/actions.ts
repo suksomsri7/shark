@@ -7,7 +7,8 @@ import { requireTenant } from "@/lib/core/context";
 import { ZDnaFacts } from "./schema";
 import type { BlueprintPlan, DnaFacts } from "./schema";
 import { finalizeFacts } from "./questions";
-import { saveDnaFacts, proposeBlueprint, applyBlueprint } from "./apply";
+import { saveDnaFacts, proposeBlueprint, applyBlueprint, applyBlueprintStep } from "./apply";
+import type { ApplyProgress } from "./apply";
 import { resolveProvider } from "@/lib/ai/provider";
 import { aiEnabled } from "@/lib/ai/service";
 import { nextInterviewTurn } from "@/lib/ai/interview";
@@ -67,7 +68,14 @@ export async function proposeAction(): Promise<{ blueprintId: string; plan: Blue
   return proposeBlueprint(auth.active.tenantId);
 }
 
-// ประกอบระบบจริงตามพิมพ์เขียว
+// ประกอบระบบทีละขั้น — UI เรียกซ้ำจนกว่า finished เพื่อวาดแถบความคืบหน้าตามจริง
+// (ขั้นเดียวต่อ 1 request → เห็นคืบหน้าจริง + ไม่ค้างยาวจน request timeout)
+export async function applyStepAction(blueprintId: string): Promise<ApplyProgress> {
+  const auth = await requireTenant();
+  return applyBlueprintStep(auth.active.tenantId, blueprintId);
+}
+
+// ประกอบระบบจริงตามพิมพ์เขียว (รวดเดียว — ใช้โดย /api/mobile/dna/apply)
 export async function applyAction(
   blueprintId: string,
 ): Promise<{ ok: boolean; results: { step: number; ok: boolean; createdId?: string; error?: string }[] }> {

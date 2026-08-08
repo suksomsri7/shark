@@ -98,6 +98,37 @@ try {
 
     const bp = await prisma.dnaBlueprint.findUnique({ where: { id: prop.blueprintId } });
     chk("APPLY-3.2", "blueprint สถานะ APPLIED + มี stepResults ครบทุก step", bp?.status === "APPLIED" && Array.isArray(bp?.stepResults) && (bp!.stepResults as unknown[]).length === p1.steps.length, `APPLIED · ${p1.steps.length} results`, `${bp?.status} · ${(bp?.stepResults as unknown[])?.length ?? 0}`);
+
+    // ── ประกอบ "ทีละขั้น" (แถบ progress บนหน้าพิมพ์เขียว) ──
+    // สัญญา: applyBlueprintStep(tenantId, blueprintId) → { total, done, stepIndex, ok, finished, error? }
+    // ทำทีละ 1 ขั้นต่อการเรียก · done เพิ่มทีละ 1 · เรียกซ้ำหลังจบต้องไม่งอกระบบเพิ่ม
+    console.log("── APPLY (ทีละขั้น): แถบความคืบหน้าต้องเดินตามจริง ──");
+    await apply.saveDnaFacts(tenantId, resto); // แผนใหม่ (ร้านอาหาร 2 สาขา) — เริ่มจากศูนย์ทุกขั้น
+    const propS = await apply.proposeBlueprint(tenantId);
+    const totalS = propS.plan.steps.length;
+    const sysBefore = await prisma.appSystem.count({ where: { tenantId } });
+
+    let prog = await apply.applyBlueprintStep(tenantId, propS.blueprintId);
+    chk("APPLY-4.1", "ก้าวแรก = ทำ 1 ขั้น (done=1 · stepIndex=0 · total ตรงแผน)", prog.ok === true && prog.done === 1 && prog.stepIndex === 0 && prog.total === totalS, `1/${totalS} · index 0`, JSON.stringify({ ok: prog.ok, done: prog.done, i: prog.stepIndex, total: prog.total }));
+
+    let rounds = 1;
+    let monotonic = true;
+    while (!prog.finished && prog.ok && rounds <= totalS + 2) {
+      const prev = prog.done;
+      prog = await apply.applyBlueprintStep(tenantId, propS.blueprintId);
+      rounds++;
+      if (prog.done !== prev + 1) monotonic = false;
+    }
+    chk("APPLY-4.2", "เดินจนจบ: จำนวนรอบ = จำนวนขั้น · done เพิ่มทีละ 1 ทุกรอบ", prog.finished === true && prog.ok === true && rounds === totalS && monotonic && prog.done === totalS, `${totalS} รอบ · done เพิ่มทีละ 1`, JSON.stringify({ rounds, done: prog.done, monotonic, finished: prog.finished }));
+
+    const bpS = await prisma.dnaBlueprint.findUnique({ where: { id: propS.blueprintId } });
+    chk("APPLY-4.3", "จบครบ → blueprint APPLIED + ระบบเกิดจริง (ไม่ใช่แค่ตัวเลขวิ่ง)", bpS?.status === "APPLIED" && (await prisma.appSystem.count({ where: { tenantId } })) > sysBefore && (await prisma.businessUnit.count({ where: { tenantId, type: "RESTAURANT" } })) === 2, "APPLIED · ระบบเพิ่ม · RESTAURANT ×2", `${bpS?.status} · units ${await prisma.businessUnit.count({ where: { tenantId, type: "RESTAURANT" } })}`);
+
+    const sysAfter = await prisma.appSystem.count({ where: { tenantId } });
+    const again = await apply.applyBlueprintStep(tenantId, propS.blueprintId);
+    chk("APPLY-4.4", "เรียกซ้ำหลังจบ (กดปุ่มซ้ำ/รีเฟรช) → finished ทันที ระบบไม่งอก", again.finished === true && again.ok === true && again.stepIndex === -1 && (await prisma.appSystem.count({ where: { tenantId } })) === sysAfter, "finished · index -1 · ระบบเท่าเดิม", JSON.stringify({ f: again.finished, i: again.stepIndex, sys: await prisma.appSystem.count({ where: { tenantId } }), was: sysAfter }));
+
+    chk("APPLY-4.5", "โหมดทีละขั้นกับรวดเดียวใช้ผลชุดเดียวกัน (applyBlueprint หลังจากนั้น = ok ไม่ทำซ้ำ)", (await apply.applyBlueprint(tenantId, propS.blueprintId)).ok === true && (await prisma.appSystem.count({ where: { tenantId } })) === sysAfter, "ok · ระบบเท่าเดิม", String(await prisma.appSystem.count({ where: { tenantId } })));
   }
 } catch (e) {
   chk("CRASH", "harness ทำงานจนจบ", false, "จบปกติ", e instanceof Error ? e.message.slice(0, 140) : String(e));
