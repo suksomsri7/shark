@@ -60,7 +60,7 @@ const safeDate = (d: Date | null | undefined): string | null => {
 const listSystems: AiTool = {
   def: {
     name: "list_systems",
-    description: "ดูรายชื่อระบบที่กิจการนี้เปิดใช้อยู่ (เช่น สมาชิก คลังสินค้า พนักงาน ขายหน้าร้าน)",
+    description: "List the systems this business currently has enabled (e.g. members, inventory, staff, point of sale).",
     parameters: NO_ARGS,
   },
   async execute(ctx) {
@@ -308,11 +308,11 @@ const kbSearch: AiTool = {
   def: {
     name: "kb_search",
     description:
-      "ค้นคลังความรู้ของร้าน (FAQ / นโยบาย / ขั้นตอน / ความรู้เฉพาะร้าน) ด้วยคำค้น — ใช้ก่อนตอบคำถามที่ขึ้นกับร้านนี้โดยเฉพาะ เช่น นโยบายคืนสินค้า เวลาเปิด-ปิด เงื่อนไขบริการ วิธีทำสิ่งต่าง ๆ เพื่อตอบจากข้อมูลจริงของร้าน (ไม่เดา). คืนหัวข้อและเนื้อหาบทความที่เกี่ยวข้อง",
+      "Search this business's knowledge base (FAQs, policies, procedures, shop-specific know-how). Use it before answering anything specific to this shop — return policy, opening hours, service terms, how-to steps — so the answer comes from real data instead of a guess. Returns matching article titles and excerpts.",
     parameters: {
       type: "object",
       properties: {
-        query: { type: "string", description: "คำค้น เช่น 'คืนสินค้า' 'เวลาเปิด' 'จัดส่ง'" },
+        query: { type: "string", description: "Search terms, e.g. returns, opening hours, delivery" },
       },
       required: ["query"],
       additionalProperties: false,
@@ -564,12 +564,12 @@ const openSystem: AiTool = {
   def: {
     name: "open_system",
     description:
-      "เสนอการเปิดระบบใหม่ให้ร้าน (ยังไม่เปิดทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) ระบุ type เป็นรหัสระบบ เช่น MARKETING, INVENTORY, CRM, HR และตั้ง name เองได้ถ้าต้องการ",
+      "Propose enabling a new system for this business. Does not enable it immediately — creates a proposal the user must confirm. Set type to a system code such as MARKETING, INVENTORY, CRM, HR; name is optional.",
     parameters: {
       type: "object",
       properties: {
-        type: { type: "string", description: "รหัสระบบที่จะเปิด เช่น MARKETING, INVENTORY, CRM, HR" },
-        name: { type: "string", description: "ชื่อระบบที่ต้องการ (ถ้าไม่ระบุจะใช้ชื่อเริ่มต้นภาษาไทย)" },
+        type: { type: "string", description: "System code to enable, e.g. MARKETING, INVENTORY, CRM, HR" },
+        name: { type: "string", description: "Display name; defaults to the standard Thai name if omitted" },
       },
       required: ["type"],
       additionalProperties: false,
@@ -951,20 +951,20 @@ const proposePlan: AiTool = {
   def: {
     name: "propose_plan",
     description:
-      "เสนอแผนงานหลายขั้นในครั้งเดียว เมื่อผู้ใช้สั่งงานหลายอย่างต่อเนื่องในคำสั่งเดียว (เช่น 'สร้างสินค้า แล้วรับเข้า แล้วปรับสต็อก') — ยังไม่ทำทันที สร้างแผนให้ผู้ใช้เห็นทุกขั้นแล้วกดยืนยันครั้งเดียว ระบบจะทำต่อเนื่องและรายงานทีละขั้น · ระบุ title (ชื่อแผนสั้น ๆ ภาษาไทย) และ steps เป็นลำดับขั้น (สูงสุด 8 ขั้น) แต่ละขั้นมี kind (ชนิดงาน เช่น inventory_create_item, inventory_receive, inventory_adjust, pos_create_sale, member_create — ใช้ชื่อเดียวกับเครื่องมือเสนอรายการเดี่ยว), summary (คำอธิบายขั้นนั้นภาษาไทย) และ payload (ข้อมูลของขั้นนั้น รูปแบบเดียวกับที่เครื่องมือเสนอรายการเดี่ยวส่งเข้า service)",
+      "Propose a multi-step plan when one instruction covers several actions in sequence (e.g. create a product, then receive stock, then adjust it). Nothing runs yet: the user sees every step and confirms once, then the system executes them in order and reports step by step. title is a short plan name in Thai; steps is the ordered list (max 8), each with kind (the action, named after the equivalent single-action tool such as inventory_create_item, inventory_receive, pos_create_sale, member_create), summary (that step described in Thai) and payload (that step's data, same shape the single-action tool takes).",
     parameters: {
       type: "object",
       properties: {
-        title: { type: "string", description: "ชื่อแผนสั้น ๆ ภาษาไทย เช่น 'ตั้งสต็อกกาแฟ'" },
+        title: { type: "string", description: "Short plan name in Thai" },
         steps: {
           type: "array",
-          description: "ลำดับขั้นของแผน (1-8 ขั้น) ทำจากบนลงล่างต่อเนื่อง",
+          description: "Ordered steps (1-8), executed top to bottom",
           items: {
             type: "object",
             properties: {
-              kind: { type: "string", description: "ชนิดงานของขั้นนี้ (เช่น inventory_create_item, inventory_receive, pos_create_sale)" },
-              summary: { type: "string", description: "คำอธิบายขั้นนี้ภาษาไทย" },
-              payload: { type: "object", description: "ข้อมูลของขั้นนี้ (โครงเดียวกับเครื่องมือเสนอรายการเดี่ยวชนิดเดียวกัน)", additionalProperties: true },
+              kind: { type: "string", description: "Action for this step, e.g. inventory_create_item, inventory_receive, pos_create_sale" },
+              summary: { type: "string", description: "This step described in Thai (shown to the user)" },
+              payload: { type: "object", description: "This step's data, same shape as the matching single-action tool", additionalProperties: true },
             },
             required: ["kind", "summary", "payload"],
             additionalProperties: false,
@@ -1011,19 +1011,19 @@ const askClarify: AiTool = {
   def: {
     name: "ask_clarify",
     description:
-      "ถามกลับผู้ใช้พร้อมตัวเลือกให้กด เมื่อคำสั่งกำกวมหรือขาดข้อมูลจำเป็น (เช่น ไม่บอกจำนวน ไม่บอกว่าบอร์ด/สินค้า/บิลไหน) — อย่าเดา ให้เรียกเครื่องมือนี้เพื่อให้ผู้ใช้เลือก ระบุ question (คำถามสั้น ๆ) และ options 2-4 ตัวเลือก แต่ละตัวมี label (ข้อความบนปุ่ม) และ value (ข้อความที่จะส่งกลับเมื่อผู้ใช้กดปุ่มนั้น)",
+      "Ask the user back with tappable options when the request is ambiguous or missing something required (no quantity given, unclear which board/product/bill). Never guess — call this instead. Question and options must be written in Thai: question is one short question, options is 2-4 choices, each with label (button text) and value (text sent back when tapped).",
     parameters: {
       type: "object",
       properties: {
-        question: { type: "string", description: "คำถามที่จะถามผู้ใช้" },
+        question: { type: "string", description: "The question, in Thai" },
         options: {
           type: "array",
-          description: "ตัวเลือกให้ผู้ใช้กด (2-4 ตัว)",
+          description: "2-4 choices for the user to tap",
           items: {
             type: "object",
             properties: {
-              label: { type: "string", description: "ข้อความบนปุ่ม" },
-              value: { type: "string", description: "ข้อความที่ส่งกลับเมื่อกดปุ่มนี้" },
+              label: { type: "string", description: "Button text, in Thai" },
+              value: { type: "string", description: "Text sent back when this button is tapped, in Thai" },
             },
             required: ["label", "value"],
             additionalProperties: false,
@@ -2288,11 +2288,11 @@ const rememberFactTool: AiTool = {
   def: {
     name: "remember_fact",
     description:
-      "จดจำข้อเท็จจริงหรือความชอบถาวรเกี่ยวกับร้านนี้/เจ้าของ เพื่อใช้ในบทสนทนาต่อ ๆ ไป (จดทันที ไม่ต้องยืนยัน) — เรียกเมื่อได้ยินข้อมูลที่ควรจำระยะยาว เช่น เวลาเปิด-ปิด วันหยุดประจำ ชื่อ/สไตล์ที่เจ้าของชอบ ชื่อลูกค้าประจำ ข้อกำหนดเฉพาะร้าน · ระบุ content เป็นประโยคสั้น ๆ กระชับ 1 เรื่อง",
+      "Remember a durable fact or preference about this business or its owner for use in later conversations. Writes immediately, no confirmation needed. Call it when you hear something worth keeping long term: opening hours, regular closing days, the owner's preferred style, names of regular customers, shop-specific rules. Put one short fact in content.",
     parameters: {
       type: "object",
       properties: {
-        content: { type: "string", description: "ข้อเท็จจริงสั้น ๆ 1 เรื่อง เช่น 'ร้านหยุดทุกวันจันทร์'" },
+        content: { type: "string", description: "One short fact, e.g. the shop is closed every Monday" },
       },
       required: ["content"],
       additionalProperties: false,
@@ -2347,7 +2347,7 @@ const listMemoriesTool: AiTool = {
   def: {
     name: "list_memories",
     description:
-      "ดูรายการความจำถาวรที่จดไว้เกี่ยวกับร้านนี้ทั้งหมด (พร้อมรหัสไว้ใช้ลบ) — ใช้เมื่อผู้ใช้ถามว่าจำอะไรไว้บ้าง หรือก่อนจะลบความจำ",
+      "List every durable fact remembered about this business, with ids for deletion. Use it when the user asks what you remember, or before forgetting something.",
     parameters: NO_ARGS,
   },
   async execute(ctx) {
@@ -2366,12 +2366,12 @@ const supportOpenCase: AiTool = {
   def: {
     name: "support_open_case",
     description:
-      "เปิดเคสแจ้งทีมงาน SHARK เมื่อผู้ใช้แจ้งปัญหาระบบ ร้องเรียน หรือขอสิ่งที่ผู้ช่วยทำแทนให้ไม่ได้ (เช่น ระบบขัดข้อง บั๊ก ขอฟีเจอร์ใหม่ ปัญหาบิล/การเงินจากแพลตฟอร์ม) — บันทึกเคสส่งทีมงานทันที (ไม่ต้องให้ผู้ใช้ยืนยัน) แล้วทีมงานจะตอบกลับในห้องแชทนี้ · ระบุ subject (หัวข้อสั้น ๆ) และ detail (รายละเอียดปัญหาตามที่ผู้ใช้แจ้ง)",
+      "Open a support case with the SHARK team when the user reports a system problem, makes a complaint, or asks for something the assistant cannot do (outage, bug, feature request, platform billing issue). Records the case immediately without asking the user to confirm; the team replies inside this same chat. Provide subject (short title) and detail (the problem as the user described it).",
     parameters: {
       type: "object",
       properties: {
-        subject: { type: "string", description: "หัวข้อปัญหาสั้น ๆ เช่น 'เครื่องพิมพ์ใบเสร็จไม่ทำงาน'" },
-        detail: { type: "string", description: "รายละเอียดปัญหา/คำร้องขอ ตามที่ผู้ใช้แจ้ง" },
+        subject: { type: "string", description: "Short title, e.g. receipt printer not working" },
+        detail: { type: "string", description: "The problem or request, as the user described it" },
       },
       required: ["subject", "detail"],
       additionalProperties: false,

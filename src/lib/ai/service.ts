@@ -10,6 +10,9 @@ import { buildSystemPrompt } from "./persona";
 import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage, type AiProvider } from "./provider";
 import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
 import { runTool, toolRegistry } from "./tools";
+import {
+  CORE_TOOLS, LOAD_SKILL_TOOL, skillById, skillIndexPrompt, skillsForTenant, toolNamesOfSkills,
+} from "./skills";
 import { applyDegrade } from "./usage";
 import { balanceOf, canSpend, chargeUsageSafe } from "./credit";
 import type { AiCreditSource } from "@prisma/client";
@@ -136,6 +139,23 @@ export async function sendMessage(
   // สรุป DNA facts (ข้อมูลตอนสร้างกิจการ) — ฉีดเข้า persona ให้ AI เข้าใจธุรกิจตั้งแต่แรก (best-effort)
   const dnaSummary = await dnaFactsSummary(ctx.tenantId);
 
+  // ── โหลดเครื่องมือแบบทยอย (progressive disclosure) ──
+  // เดิมยัด tool ครบ 63 ตัวทุกคำขอ = 76,703 token = 94.5% ของบิล (วัดจริงบน prod)
+  // ตอนนี้: แกนกลาง + load_skill เท่านั้น · AI สั่งโหลดชุดที่ต้องใช้เอง แล้วเครื่องมือจะโผล่ในรอบถัดไป
+  const registry = toolRegistry();
+  const defOf = (name: string) => registry.find((t) => t.def.name === name)?.def;
+  const visibleSkills = skillsForTenant(systems.map((s) => s.type));
+  const loadedSkillIds = new Set<string>();
+  const activeToolNames = new Set<string>(CORE_TOOLS);
+  const currentTools = () => {
+    const list = [...activeToolNames].map(defOf).filter((d): d is NonNullable<typeof d> => Boolean(d));
+    // ยื่น load_skill ต่อเมื่อยังมีสกิลให้โหลด (โหลดครบแล้วยื่นต่อ = ชวนให้ AI เรียกวนเปล่า ๆ)
+    if (visibleSkills.some((s) => !loadedSkillIds.has(s.id))) {
+      list.push(LOAD_SKILL_TOOL(visibleSkills.filter((s) => !loadedSkillIds.has(s.id)).map((s) => s.id)));
+    }
+    return list;
+  };
+
   // บทสนทนา: ต่อของเดิมถ้าระบุ ไม่งั้นเปิดใหม่
   const conv = input.conversationId
     ? await db.aiConversation.findFirst({ where: { id: input.conversationId } })
@@ -153,7 +173,13 @@ export async function sendMessage(
   });
 
   const messages: AiChatMessage[] = [
-    { role: "system", content: buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks }) },
+    {
+      role: "system",
+      content: [
+        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks }),
+        skillIndexPrompt(visibleSkills),
+      ].filter(Boolean).join("\n\n"),
+    },
     ...trimHistory(
       history
         .reverse()
@@ -173,7 +199,6 @@ export async function sendMessage(
   // token/usage รวมทุกรอบ · persist เฉพาะ USER + ASSISTANT ตัวจบ (ไม่เก็บ tool traffic)
   // ยื่นเครื่องมือครบชุดเสมอ (test = prod ห้ามต่างกัน) — action tools แค่ "เสนอ" proposal
   // การทำจริงเกิดที่ปุ่มยืนยันใน UI + assertCan สิทธิ์คนกด จึงปลอดภัยแม้ LLM เรียกมั่ว
-  const tools = toolRegistry().map((t) => t.def);
   let tokensIn = 0;
   let tokensOut = 0;
   let finalText = "";
@@ -183,7 +208,7 @@ export async function sendMessage(
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     let reply;
     try {
-      reply = await provider.chat(messages, { tools });
+      reply = await provider.chat(messages, { tools: currentTools() });
     } catch (e) {
       // provider ล่ม → บันทึก ERROR แล้วโยนต่อ (พฤติกรรมเดิมห้ามเปลี่ยน)
       await logOps("ERROR", "ai", "provider.chat ล้มเหลว", {
@@ -209,6 +234,28 @@ export async function sendMessage(
       messages.push({ role: "assistant", content: reply.text ?? "", toolCalls: reply.toolCalls });
       for (const tc of reply.toolCalls) {
         usedTools.push({ name: tc.name, args: tc.args });
+        // load_skill = เครื่องมือของชั้น service เอง ไม่ได้อยู่ในทะเบียน tool ธุรกิจ
+        if (tc.name === "load_skill") {
+          const want = Array.isArray((tc.args as { skills?: unknown })?.skills)
+            ? ((tc.args as { skills: unknown[] }).skills.map(String))
+            : [];
+          const ok: string[] = [];
+          for (const id of want) {
+            const sk = skillById(id);
+            if (!sk || !visibleSkills.some((v) => v.id === id)) continue;
+            loadedSkillIds.add(id);
+            ok.push(id);
+          }
+          for (const n of toolNamesOfSkills(ok)) activeToolNames.add(n);
+          messages.push({
+            role: "tool",
+            toolCallId: tc.id,
+            content: ok.length
+              ? `Loaded skills: ${ok.join(", ")}. Their tools are now available — call them now.`
+              : "No matching skill. Pick an id from the AVAILABLE SKILLS list.",
+          });
+          continue;
+        }
         // ส่ง conversation.id เข้าไปด้วย — action tool ต้องใช้ผูก proposal กับบทสนทนา
         const result = await runTool(
           { tenantId: ctx.tenantId, conversationId: conversation.id },

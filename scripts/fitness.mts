@@ -419,6 +419,25 @@ chk(
   "MINOR",
 );
 
+// ─────────────────── F10: ทะเบียนสกิล AI ครบถ้วน ───────────────────
+// ทำไมต้องมีด่าน: ตั้งแต่ 8 ส.ค. 2026 เราไม่ยัด tool ครบทุกตัวให้ LLM แล้ว (แพง 76,703 token)
+// AI เห็นเฉพาะเครื่องมือในสกิลที่โหลด → **tool ที่ไม่ได้ลงทะเบียนสกิล = AI เรียกไม่ได้เลย และเงียบสนิท**
+console.log("\n── F10: ทะเบียนสกิล AI (tool ทุกตัวต้องมีบ้าน) ──");
+{
+  let detail = "ครบ";
+  let ok = true;
+  try {
+    const { assertSkillRegistryComplete, SKILLS, CORE_TOOLS } = await import("@/lib/ai/skills");
+    const { toolRegistry } = await import("@/lib/ai/tools");
+    assertSkillRegistryComplete();
+    detail = `${toolRegistry().length} tool · ${SKILLS.length} สกิล + แกนกลาง ${CORE_TOOLS.length}`;
+  } catch (e) {
+    ok = false;
+    detail = e instanceof Error ? e.message.slice(0, 300) : String(e);
+  }
+  chk("F10.1", "ทุก tool อยู่ในสกิลหรือแกนกลาง พอดี 1 ที่", ok, detail);
+}
+
 // ─────────────────── สรุป ───────────────────
 const failed = checks.filter((c) => !c.ok);
 const bySev = (s: Sev) => failed.filter((c) => c.sev === s).length;

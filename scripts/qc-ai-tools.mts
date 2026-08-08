@@ -95,7 +95,35 @@ try {
     ]);
     const r = await svc.sendMessage(ctx, { text: "มีสมาชิกกี่คน" }, { provider: sp });
     chk("TU-3.1", "loop: tool call → คำตอบจบ", r.ok === true && (r as { reply: string }).reply.includes("2 คน"), "คำตอบจบ", JSON.stringify(r).slice(0, 80));
-    chk("TU-3.2", "รอบแรกส่ง tools ครบทั้ง registry ให้ LLM (test=prod)", (sp.captured[0]?.tools?.length ?? 0) === tools.toolRegistry().length, String(tools.toolRegistry().length), String(sp.captured[0]?.tools?.length));
+    // 🔄 8 ส.ค. 2026: เลิกยัด tool ครบ 63 ตัวทุกคำขอ (วัดจริง = 76,703 token = 94.5% ของบิล)
+    //    สัญญาใหม่: รอบแรกส่งเฉพาะ "แกนกลาง + load_skill" · ที่เหลือ AI สั่งโหลดเอง
+    //    ⚠️ ยังต้อง test=prod: ชุดที่ส่งต้องมาจากทะเบียนจริง ไม่ใช่ชุดย่อสำหรับเทส
+    const skills = await import("@/lib/ai/skills");
+    const firstNames = (sp.captured[0]?.tools ?? []).map((t: { name: string }) => t.name).sort();
+    const expectFirst = [...skills.CORE_TOOLS, "load_skill"].sort();
+    chk("TU-3.2", "รอบแรกส่งเฉพาะแกนกลาง + load_skill (ไม่ยัดทั้ง registry)",
+      JSON.stringify(firstNames) === JSON.stringify(expectFirst),
+      JSON.stringify(expectFirst), JSON.stringify(firstNames));
+    chk("TU-3.2b", "ชุดแรกเล็กกว่าทะเบียนเต็มอย่างมีนัย (< 1 ใน 4)",
+      firstNames.length * 4 < tools.toolRegistry().length,
+      `< ${Math.floor(tools.toolRegistry().length / 4)}`, String(firstNames.length));
+
+    // ── โหลดสกิลแล้วเครื่องมือต้องโผล่จริงในรอบถัดไป (ถ้าไม่โผล่ = AI ทำงานไม่ได้เลย) ──
+    const spSkill = new Scripted([
+      { toolCalls: [{ id: "1", name: "load_skill", args: { skills: ["members"] } }] },
+      { toolCalls: [{ id: "2", name: "member_count", args: {} }] },
+      { text: "มีสมาชิก 2 คนครับ" },
+    ]);
+    const rSkill = await svc.sendMessage(ctx, { text: "มีสมาชิกกี่คน" }, { provider: spSkill });
+    const secondNames = (spSkill.captured[1]?.tools ?? []).map((t: { name: string }) => t.name);
+    chk("TU-3.7", "สั่ง load_skill แล้วเครื่องมือของสกิลนั้นโผล่ในรอบถัดไป",
+      secondNames.includes("member_count") && secondNames.includes("customer_search"),
+      "มี member_count + customer_search", JSON.stringify(secondNames));
+    chk("TU-3.8", "โหลดแล้วยังทำงานจบได้จริง (ไม่ใช่แค่โผล่ในลิสต์)",
+      rSkill.ok === true && (rSkill as { reply: string }).reply.includes("2 คน"), "คำตอบจบ", JSON.stringify(rSkill).slice(0, 80));
+    chk("TU-3.9", "สกิลที่โหลดแล้วไม่ถูกยื่นให้โหลดซ้ำ (กัน AI วนเรียกเปล่า)",
+      !JSON.stringify(spSkill.captured[1]?.tools ?? []).includes('"members"'),
+      "ไม่มี members ใน enum", "ยังมี");
     const toolMsg = sp.captured[1]?.messages.find((m) => m.role === "tool");
     chk("TU-3.3", "รอบสองมี tool result (เลข 2 + toolCallId)", !!toolMsg && toolMsg.content.includes("2") && toolMsg.toolCallId === "1", "มี", JSON.stringify(toolMsg).slice(0, 80));
     if (r.ok) {
