@@ -1,5 +1,18 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🖥️ 8 ส.ค. — แถบ progress ตอนประกอบระบบ + เมนูปักซ้ายบนเว็บจอใหญ่ (main=d18522d · deploy READY · verify บน prod แล้ว)
+**คำสั่งเจ้าของ 3 ข้อ (ข้อ 3 = ตรวจ ไม่ใช่แก้)**
+1. **ประกอบระบบมีแถบ progress** — `applyBlueprintStep()` ใน `dna/apply.ts` ทำทีละ 1 ขั้น คืน `{total,done,stepIndex,ok,finished}` · บันทึก stepResults ทุกขั้น (เน็ตหลุด → กด "ประกอบต่อ" ทำต่อจากที่ค้าง) · `applyBlueprint` (รวดเดียว, `/api/mobile/dna/apply` ใช้) พฤติกรรมเดิมครบ · oracle **qc-dna 22→27** (APPLY-4.1..4.5)
+   - 🔴 **บั๊กที่เจอตอนเทส prod จริง (ถ้าไม่เรนเดอร์จะไม่มีทางเจอ)**: แถบวิ่งครบ 100% แต่ `router.push("/app")` ค้างที่หน้าเดิม ≥30 วิ ไม่มี error/console/HTTP ผิดเลย → เปลี่ยนเป็น `window.location.assign("/app")` (ถูกกว่าด้วย เพราะประกอบเสร็จแล้วเมนูซ้ายเปลี่ยนทั้งชุด layout ต้องดึงใหม่) · verify: 64% ที่ 1 วิ → เด้ง /app ที่ 2 วิ
+2. **เว็บจอใหญ่กางเมนูปักซ้ายเลย** — `NavDrawer variant="pinned"` (≥ lg เท่านั้น · overlay เดิม `lg:hidden`) · ซ่อนแฮมเบอร์เกอร์ตั้งแต่ lg · `AppMain` เว้นซ้าย 19.5rem · แยกเว็บ/แอปด้วย `useInApp()` (hook ใหม่ ดึงตรรกะ UA "SharkApp" ที่ AppShell ใช้ซ่อน orb อยู่แล้วมาใช้ร่วม)
+   - **วัดพิกเซลบน prod จริง**: 1440px → aside x=0 w=287 · main padding-left 312px · แฮมเบอร์เกอร์ display:none · 390px → aside ซ่อน แฮมเบอร์เกอร์ flex · **UA SharkApp ที่ 1440px → ไม่มี aside เลย · padding-left 24px · orb ซ่อน** (แอปไม่กระทบ)
+3. **ตรวจจุดที่เสียค่า AI API** (ไม่ได้แก้โค้ด): ทางที่ยิง OpenRouter จริงมี 6 ทาง — แชท(sendMessage) · งานประจำ cron รายชั่วโมง · รายงานสัปดาห์ (จันทร์ sonnet) · ตั้งชื่อห้องอัตโนมัติ · สัมภาษณ์ DNA แบบพิมพ์อิสระ · ร่างคำตอบเคสใน backoffice
+   - 🔴 **4 ทางหลังไม่ผ่านมิเตอร์เครดิต** (ไม่เรียก recordQuotaUsage/aiUsage) = ใช้ฟรีไม่จำกัดตามโควตาร้าน — ยังไม่แก้ รอเจ้าของสั่ง
+   - วัดจริง: tool schema 63 ตัว = **~9.9k token** + persona ~1.4k → **~11.4k token ขาเข้าต่อ 1 รอบ agent loop** (สูงสุด 5 รอบ/ข้อความ) · prompt caching ใส่ cache_control ที่ system เท่านั้น (Anthropic cache prefix คลุม tools ให้ แต่ **เราไม่เคย log cached token เลยพิสูจน์ไม่ได้ว่าโดนจริง**)
+   - QC ทุกชุดใช้ MockProvider/spy → **ข้อสอบไม่เผาเงิน** (ยืนยันแล้วทั้ง 11 ชุดที่ยิง sendMessage)
+- วิธีเทสหน้า login-only บน prod (ใช้ซ้ำได้): mint Session ตรงใน DB → puppeteer-core + /usr/bin/chromium-browser ตั้ง cookie `__Host-shark_session` + `shark_tenant` → ลบ tenant/session ทิ้งหลังเสร็จ
+- ⚠️ **dev server บน VPS ไม่ hydrate ใน headless** (HMR ws ล้ม) → React ไม่ทำงาน กดปุ่มไม่ได้ · CSS/เลย์เอาต์เทส local ได้ แต่ **อะไรที่พึ่ง state ต้องเทสบน prod เท่านั้น**
+
 ## 🔵🔵 HANDOFF 2026-07-26 — SESSION ใหม่เริ่มอ่านตรงนี้ (งานแอป SHARK AI)
 **🔑 SOCIAL LOGIN สรุป (26 ก.ค.) — เว็บใช้ได้ทันที · แอปติด build #16:**
 - ✅ **Apple / Google / LINE / Facebook = LIVE ครบ** (เว็บ /login มีปุ่มครบ · server verify token ทุกค่าย · creds ใน .env+Vercel)
