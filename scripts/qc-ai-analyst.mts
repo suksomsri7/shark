@@ -61,12 +61,36 @@ try {
     chk("AN-2.1", "weeklyAnalysis → ได้ text + AppNotification เกิด", text === "สรุป: ร้านไปได้ดี ยอด 7 วัน 500 บาท" && (await prisma.appNotification.count({ where: { tenantId: tid, title: "รายงานธุรกิจประจำสัปดาห์" } })) === 1, "1 ฉบับ", "?");
     const sysMsg = sp.captured[0]?.map((m) => m.content).join(" ") ?? "";
     chk("AN-2.2", "prompt แนบตัวเลขจริงจาก snapshot (50000)", sysMsg.includes("50000") || sysMsg.includes("500.00") || sysMsg.includes("500 บาท"), "มีเลขจริง", sysMsg.slice(0, 60));
-    chk("AN-2.3", "ไม่มี provider (mock ปิด) → null ไม่ throw", await (async () => { delete process.env.SHARK_AI_MOCK; const r = await an.weeklyAnalysis({ tenantId: tid }); process.env.SHARK_AI_MOCK = "1"; return r === null; })(), "null", "?");
+    // ⚠️ ต้องปิด "ทั้ง" mock และคีย์จริง — ปิดแค่ mock แล้วเครื่องมีคีย์อยู่ = เทสยิง LLM จริงและเผาเงิน
+    chk("AN-2.3", "ไม่มี provider เลย → null ไม่ throw (และไม่ยิง LLM จริง)", await (async () => {
+      const mock = process.env.SHARK_AI_MOCK, key = process.env.SHARK_AI_KEY, model = process.env.SHARK_AI_MODEL;
+      delete process.env.SHARK_AI_MOCK; delete process.env.SHARK_AI_KEY; delete process.env.SHARK_AI_MODEL;
+      let r: unknown;
+      try { r = await an.weeklyAnalysis({ tenantId: tid }); } finally {
+        if (mock !== undefined) process.env.SHARK_AI_MOCK = mock;
+        if (key !== undefined) process.env.SHARK_AI_KEY = key;
+        if (model !== undefined) process.env.SHARK_AI_MODEL = model;
+      }
+      return r === null;
+    })(), "null", "ไม่ null");
 
     // sweep: อังคาร → 0 · จันทร์ → รัน (2026-07-20 = จันทร์ · 2026-07-21 = อังคาร — เวลาไทย)
     chk("AN-3.1", "ไม่ใช่วันจันทร์ → 0", (await an.sweepWeeklyAnalysis(new Date("2026-07-21T03:00:00+07:00"), { provider: new Scripted("x") })) === 0, "0", "?");
+    // 🔄 8 ส.ค. 2026: รายงานสัปดาห์ **ปิดไว้ก่อน** ต้องให้เจ้าของเปิดเอง
+    //    (เดิมยิงทุกร้านที่มีระบบ = หักเครดิตจากงานที่เจ้าของไม่เคยสั่ง)
+    const cr = await import("@/lib/ai/credit");
+    const before32 = await prisma.appNotification.count({ where: { tenantId: tid, title: "รายงานธุรกิจประจำสัปดาห์" } });
+    const nOff = await an.sweepWeeklyAnalysis(new Date("2026-07-20T03:00:00+07:00"), { provider: new Scripted("ไม่ควรถูกส่ง") });
+    const afterOff = await prisma.appNotification.count({ where: { tenantId: tid, title: "รายงานธุรกิจประจำสัปดาห์" } });
+    chk("AN-3.2", "🔴 วันจันทร์แต่ร้านยังไม่เปิดสวิตช์ → ไม่ส่ง ไม่หักเครดิต", afterOff === before32,
+      `คงเดิม ${before32}`, String(afterOff));
+    void nOff;
+
+    await cr.setWeeklyReportEnabled(tid, true);
     const n = await an.sweepWeeklyAnalysis(new Date("2026-07-20T03:00:00+07:00"), { provider: new Scripted("รายงานอัตโนมัติ") });
-    chk("AN-3.2", "วันจันทร์ → รัน ≥1 (ครอบ tenant ทดสอบ)", n >= 1 && (await prisma.appNotification.count({ where: { tenantId: tid, title: "รายงานธุรกิจประจำสัปดาห์" } })) >= 2, "≥1", String(n));
+    chk("AN-3.3", "เปิดสวิตช์แล้ว วันจันทร์ → ส่งจริง", n >= 1 &&
+      (await prisma.appNotification.count({ where: { tenantId: tid, title: "รายงานธุรกิจประจำสัปดาห์" } })) > before32,
+      "≥1", String(n));
   }
 } catch (e) { chk("CRASH", "จบ", false, "จบ", e instanceof Error ? e.message.slice(0, 160) : String(e)); }
 finally {

@@ -79,6 +79,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AiUsageWindow: tenant,
   // กระเป๋าเครดิต AI (prepaid) — แถว tenantId="__platform__" = บัญชีกลางของแพลตฟอร์ม
   // (เข้าผ่าน prisma ตรงใน lib/ai/credit.ts เท่านั้น ไม่ผ่าน tenantDb)
+  AiSettings: tenant,
   AiCreditWallet: tenant,
   AiCreditTxn: tenant,
   AiProposal: tenant,

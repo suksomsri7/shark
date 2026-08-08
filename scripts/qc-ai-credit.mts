@@ -152,6 +152,25 @@ try {
     (by.find((r) => r.source === "WEEKLY_REPORT")?.spentMicro ?? 0) >
       (by.find((r) => r.source === "AUTO_TITLE")?.spentMicro ?? 0), "weekly > title", JSON.stringify(by));
 
+  // ─────────── [8] งานที่ระบบทำเองต้องปิดไว้ก่อน ───────────
+  console.log("── ค่าเริ่มต้น: ระบบต้องไม่หักเงินจากงานที่ร้านไม่ได้สั่ง ──");
+  const s0 = await credit.getAiSettings(tenantId);
+  chk("AU-8.1", "ร้านใหม่: รายงานสัปดาห์ปิดอยู่ (ไม่ต้องสร้างแถวก่อน)", s0.weeklyReportEnabled === false, "false", String(s0.weeklyReportEnabled));
+  chk("AU-8.2", "ร้านที่ยังไม่เปิดสวิตช์ ไม่อยู่ในรายชื่อที่ cron จะยิง",
+    !(await credit.tenantsWithWeeklyReport()).includes(tenantId), "ไม่อยู่", "อยู่");
+  await credit.setWeeklyReportEnabled(tenantId, true);
+  chk("AU-8.3", "เปิดสวิตช์แล้วเข้ารายชื่อที่ cron ยิง",
+    (await credit.tenantsWithWeeklyReport()).includes(tenantId) && (await credit.getAiSettings(tenantId)).weeklyReportEnabled,
+    "อยู่/true", "ไม่อยู่");
+  await credit.setWeeklyReportEnabled(tenantId, false);
+  chk("AU-8.4", "ปิดกลับได้ (ไม่ใช่ทางเดียว)",
+    !(await credit.tenantsWithWeeklyReport()).includes(tenantId), "ไม่อยู่", "ยังอยู่");
+  const analystSrc = (await import("node:fs")).readFileSync("src/lib/ai/analyst.ts", "utf8");
+  chk("AU-8.5", "cron รายงานสัปดาห์กรองด้วยสวิตช์จริง ไม่ใช่ยิงทุกร้านที่มีระบบ",
+    analystSrc.includes("tenantsWithWeeklyReport"), "มีการกรอง", "ยังยิงทุกร้าน");
+  chk("AU-8.6", "การ์ดตั้งงานประจำบอกค่าใช้จ่ายก่อนให้กดยืนยัน",
+    (await import("node:fs")).readFileSync("src/lib/ai/tools.ts", "utf8").includes("ใช้เครดิตประมาณ"), "บอกราคา", "ไม่บอก");
+
   // ─────────── ledger ต้องอ่านย้อนหลังได้ ───────────
   const page = await credit.listTxns(tenantId, { take: 3 });
   chk("LG-8.1", "ประวัติเรียงล่าสุดก่อน + มี cursor ให้ดูต่อ",
@@ -167,6 +186,7 @@ try {
     };
     await del("txn", () => prisma.aiCreditTxn.deleteMany({ where: { tenantId: id } }));
     await del("wallet", () => prisma.aiCreditWallet.deleteMany({ where: { tenantId: id } }));
+    await del("aiSettings", () => prisma.aiSettings.deleteMany({ where: { tenantId: id } }));
     await del("aiMessage", () => prisma.aiMessage.deleteMany({ where: { tenantId: id } }));
     await del("aiConversation", () => prisma.aiConversation.deleteMany({ where: { tenantId: id } }));
     await del("aiUsage", () => prisma.aiUsage.deleteMany({ where: { tenantId: id } }));

@@ -55,3 +55,14 @@ model AiCreditTxn {
   @@unique([tenantId, ref])
   @@index([tenantId, createdAt])
 }
+
+// ตั้งค่าผู้ช่วย AI ระดับกิจการ — บ้านของสวิตช์ที่กระทบ "เงินที่ร้านต้องจ่าย"
+// กติกา: อะไรที่ระบบทำเองแล้วหักเครดิต ต้อง **ปิดไว้ก่อน** ให้เจ้าของเปิดเอง
+// (มติเจ้าของ 8 ส.ค. 2026 — เดิมรายงานสัปดาห์ยิงทุกร้านอัตโนมัติโดยไม่มีใครสั่ง)
+model AiSettings {
+  id                  String   @id @default(cuid())
+  tenantId            String   @unique
+  weeklyReportEnabled Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}

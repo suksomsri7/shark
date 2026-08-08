@@ -7,7 +7,7 @@ import { requireTenant } from "@/lib/core/context";
 import { env } from "@/lib/env";
 import { beamEnabled, createCharge } from "@/lib/payment/beam";
 import { buildReference, packById, type StartTopUpResult } from "./topup";
-import { listTxns } from "./credit";
+import { listTxns, setWeeklyReportEnabled } from "./credit";
 import { MICRO_PER_USD } from "./pricing";
 
 /** เริ่มเติมเครดิต → คืน URL หน้ากรอกบัตรของ Beam (เครดิตยังไม่เข้าจนกว่า webhook จะยืนยัน) */
@@ -48,4 +48,16 @@ export async function loadMoreTxnsAction(cursor: string) {
     rows: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     nextCursor,
   };
+}
+
+/** เปิด/ปิดรายงานธุรกิจรายสัปดาห์ — เจ้าของเท่านั้น (เป็นสวิตช์ที่ทำให้เกิดค่าใช้จ่าย) */
+export async function setWeeklyReportAction(
+  enabled: boolean,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  if (auth.active.role !== "OWNER") {
+    return { ok: false, message: "เฉพาะเจ้าของกิจการเท่านั้นที่เปลี่ยนการตั้งค่านี้ได้" };
+  }
+  await setWeeklyReportEnabled(auth.active.tenantId, enabled);
+  return { ok: true };
 }

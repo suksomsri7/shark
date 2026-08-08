@@ -2,7 +2,8 @@ import { requireTenant } from "@/lib/core/context";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { AiCreditPanel } from "@/components/ai-credit-panel";
 import { CreditHistory } from "@/components/ai-credit-history";
-import { ensureWallet, listTxns, usageBySource } from "@/lib/ai/credit";
+import { AiAutoSettings } from "@/components/ai-auto-settings";
+import { ensureWallet, getAiSettings, listTxns, usageBySource } from "@/lib/ai/credit";
 import { formatUsd, priceOf } from "@/lib/ai/pricing";
 import { topUpPacks, thbPerUsd } from "@/lib/ai/topup";
 import { beamEnabled } from "@/lib/payment/beam";
@@ -29,9 +30,10 @@ export default async function CreditPage() {
   // ⚠️ ต้องเปิดกระเป๋าให้เสร็จ **ก่อน** อ่านประวัติ — ขนานกันแล้วรายการเครดิตต้อนรับจะยังไม่เกิด
   // ตอน listTxns อ่าน (เจอจากการเรนเดอร์จริงบน prod: ยอดขึ้น $10 แต่ประวัติว่าง)
   const wallet = await ensureWallet(tenantId);
-  const [first, bySource] = await Promise.all([
+  const [first, bySource, settings] = await Promise.all([
     listTxns(tenantId, { take: 20 }),
     usageBySource(tenantId, 30),
+    getAiSettings(tenantId),
   ]);
 
   const spent30 = bySource.reduce((s, r) => s + r.spentMicro, 0);
@@ -52,6 +54,11 @@ export default async function CreditPage() {
         packs={packs}
         thbPerUsd={rate}
         payEnabled={beamEnabled()}
+        isOwner={auth.active.role === "OWNER"}
+      />
+
+      <AiAutoSettings
+        weeklyReportEnabled={settings.weeklyReportEnabled}
         isOwner={auth.active.role === "OWNER"}
       />
 

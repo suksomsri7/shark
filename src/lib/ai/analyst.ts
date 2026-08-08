@@ -10,7 +10,7 @@ import type { SystemType } from "@prisma/client";
 import { needsReorder } from "@/lib/modules/inventory/rules";
 import { dayKeyBangkok } from "./rules";
 import { resolveProvider, type AiProvider } from "./provider";
-import { canSpend, chargeUsageSafe } from "./credit";
+import { canSpend, chargeUsageSafe, tenantsWithWeeklyReport } from "./credit";
 
 export type AnalystCtx = { tenantId: string };
 
@@ -179,8 +179,16 @@ export async function sweepWeeklyAnalysis(
   const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Bangkok", weekday: "short" }).format(now);
   if (weekday !== "Mon") return 0;
 
-  // AppSystem ไม่มี relation บน Tenant → หา tenantId ที่มีระบบก่อน (distinct) แล้วกรอง ACTIVE
-  const rows = await prisma.appSystem.findMany({ distinct: ["tenantId"], select: { tenantId: true } });
+  // 🔴 ยิงเฉพาะร้านที่ **เปิดสวิตช์เอง** (มติเจ้าของ 8 ส.ค. 2026)
+  // เดิมยิงทุกร้านที่มีระบบ ≥1 = หักเครดิตจากงานที่เจ้าของไม่เคยสั่ง
+  const enabled = await tenantsWithWeeklyReport();
+  if (enabled.length === 0) return 0;
+  // ต้องมีระบบอย่างน้อย 1 ระบบด้วย ไม่งั้นรายงานไม่มีอะไรให้วิเคราะห์
+  const rows = await prisma.appSystem.findMany({
+    where: { tenantId: { in: enabled } },
+    distinct: ["tenantId"],
+    select: { tenantId: true },
+  });
   const ids = rows.map((r) => r.tenantId);
   if (ids.length === 0) return 0;
   const tenants = await prisma.tenant.findMany({

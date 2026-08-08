@@ -260,3 +260,33 @@ export async function usageBySource(
 export function outOfCreditMessage(): string {
   return "เครดิตผู้ช่วย AI หมดแล้ว — เติมเครดิตที่ ตั้งค่า → เครดิต AI แล้วใช้งานต่อได้ทันที";
 }
+
+// ─────────────────── ตั้งค่าผู้ช่วย AI ระดับกิจการ ───────────────────
+// กติกา (มติเจ้าของ 8 ส.ค. 2026): อะไรที่ระบบทำเองแล้วหักเครดิตร้าน ต้อง **ปิดไว้ก่อน**
+// เดิมรายงานสัปดาห์ยิงให้ทุกร้านอัตโนมัติโดยไม่มีใครสั่ง = เก็บเงินจากสิ่งที่ลูกค้าไม่ได้ขอ
+
+export type AiSettingsView = { weeklyReportEnabled: boolean };
+
+/** อ่านการตั้งค่า — ยังไม่เคยตั้ง = ค่าเริ่มต้น (ปิดหมด) โดยไม่ต้องสร้างแถว */
+export async function getAiSettings(tenantId: string): Promise<AiSettingsView> {
+  const row = await prisma.aiSettings.findUnique({ where: { tenantId } });
+  return { weeklyReportEnabled: row?.weeklyReportEnabled ?? false };
+}
+
+/** เปิด/ปิดรายงานธุรกิจรายสัปดาห์ */
+export async function setWeeklyReportEnabled(tenantId: string, enabled: boolean): Promise<void> {
+  await prisma.aiSettings.upsert({
+    where: { tenantId },
+    create: { tenantId, weeklyReportEnabled: enabled },
+    update: { weeklyReportEnabled: enabled },
+  });
+}
+
+/** รายชื่อร้านที่เปิดรายงานสัปดาห์ไว้ — cron ใช้กรอง (ไม่เปิด = ไม่ยิง ไม่หักเงิน) */
+export async function tenantsWithWeeklyReport(): Promise<string[]> {
+  const rows = await prisma.aiSettings.findMany({
+    where: { weeklyReportEnabled: true },
+    select: { tenantId: true },
+  });
+  return rows.map((r) => r.tenantId);
+}
