@@ -26,8 +26,10 @@ export default async function CreditPage() {
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
 
-  const [wallet, first, bySource] = await Promise.all([
-    ensureWallet(tenantId),
+  // ⚠️ ต้องเปิดกระเป๋าให้เสร็จ **ก่อน** อ่านประวัติ — ขนานกันแล้วรายการเครดิตต้อนรับจะยังไม่เกิด
+  // ตอน listTxns อ่าน (เจอจากการเรนเดอร์จริงบน prod: ยอดขึ้น $10 แต่ประวัติว่าง)
+  const wallet = await ensureWallet(tenantId);
+  const [first, bySource] = await Promise.all([
     listTxns(tenantId, { take: 20 }),
     usageBySource(tenantId, 30),
   ]);
