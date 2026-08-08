@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { applyStepAction } from "@/lib/dna/actions";
 
 // ปุ่ม "ประกอบระบบให้เลย" + แถบความคืบหน้าจริง
@@ -14,7 +13,6 @@ export function DnaApplyButton({
   blueprintId: string;
   stepLabels: string[];
 }) {
-  const router = useRouter();
   const total = stepLabels.length;
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(0);
@@ -48,8 +46,9 @@ export function DnaApplyButton({
         return;
       }
       if (progress.finished) {
-        router.push("/app");
-        router.refresh();
+        // โหลดหน้าใหม่เต็ม ๆ (ไม่ใช่ router.push) — ประกอบเสร็จแล้วเมนู/ระบบทั้งชุดเปลี่ยน
+        // ต้องให้ layout ดึงรายการระบบใหม่ทั้งหมด · เทสบน prod แล้ว: router.push ค้างที่หน้าเดิม
+        window.location.assign("/app");
         return;
       }
     }
