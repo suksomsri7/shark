@@ -11,9 +11,12 @@ import type { DnaFacts } from "@/lib/dna/schema";
 import type { AiChatMessage, AiProvider } from "@/lib/ai/provider";
 
 export type InterviewTurn = { role: "user" | "assistant"; content: string };
-export type InterviewResult =
+/** usage ติดมาทุกผลลัพธ์ — ชั้นบนต้องหักเครดิตได้ทุกเทิร์น (เดิมทางนี้ยิง LLM ฟรีไม่ผ่านมิเตอร์) */
+export type InterviewUsage = { model: string; tokensIn: number; tokensOut: number };
+export type InterviewResult = { usage: InterviewUsage } & (
   | { done: false; question: string }
-  | { done: true; facts: DnaFacts };
+  | { done: true; facts: DnaFacts }
+);
 
 const MARKER = "FACTS_JSON:";
 
@@ -89,27 +92,28 @@ export async function nextInterviewTurn(
 
   const reply = await provider.chat(messages);
   const text = reply.text ?? "";
+  const usage = { model: reply.model, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut };
 
   const markerAt = text.indexOf(MARKER);
   if (markerAt === -1) {
     // ไม่มี marker → คำถามถัดไป = ข้อความ LLM ทั้งก้อน
-    return { done: false, question: text.trim() };
+    return { usage, done: false, question: text.trim() };
   }
 
   // มี marker → สกัด object แรกหลัง marker แล้ว parse ที่ boundary
   const after = text.slice(markerAt + MARKER.length);
   const json = extractFirstJsonObject(after);
-  if (!json) return { done: false, question: RETRY_QUESTION };
+  if (!json) return { usage, done: false, question: RETRY_QUESTION };
 
   let raw: unknown;
   try {
     raw = JSON.parse(json);
   } catch {
-    return { done: false, question: RETRY_QUESTION };
+    return { usage, done: false, question: RETRY_QUESTION };
   }
 
   const parsed = ZDnaFacts.safeParse(raw);
-  if (!parsed.success) return { done: false, question: RETRY_QUESTION };
+  if (!parsed.success) return { usage, done: false, question: RETRY_QUESTION };
 
-  return { done: true, facts: parsed.data };
+  return { usage, done: true, facts: parsed.data };
 }

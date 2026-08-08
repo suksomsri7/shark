@@ -593,32 +593,18 @@ export function AiChat() {
  * ใกล้เต็ม = สีส้ม + บอกเวลาที่โควตากลับมา · ลดชั้นโมเดลแล้ว = บอกตรง ๆ ว่ายังคุยได้แต่ตอบสั้นลง
  */
 function AiQuotaBar({ quota }: { quota: AiQuotaView | null }) {
-  if (!quota || quota.pct < 50) return null;
-  const back = new Intl.DateTimeFormat("th-TH", {
-    timeZone: "Asia/Bangkok",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(quota.resetAt));
+  // โชว์เฉพาะตอนที่มีเรื่องต้องบอก: เครดิตหมด หรือใกล้หมด (ปกติ = หน้าสะอาด ไม่ยัดตัวเลข)
+  if (!quota || (!quota.empty && !quota.low)) return null;
   return (
-    <div className="rounded-xl bg-[color:var(--color-surface-2)] px-3 py-2 text-xs">
-      <div className="flex items-center justify-between gap-2">
-        <span className={quota.warn ? "font-medium text-amber-600" : "text-[color:var(--color-muted)]"}>
-          ใช้โควตาผู้ช่วย AI แล้ว {quota.pct}%
-        </span>
-        <span className="text-[color:var(--color-muted)]">โควตาใหม่ {back} น.</span>
-      </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[color:var(--color-border)]">
-        <div
-          className={`h-full rounded-full ${quota.warn ? "bg-amber-500" : "bg-[color:var(--color-ink)]"}`}
-          style={{ width: `${Math.min(100, quota.pct)}%` }}
-        />
-      </div>
-      {quota.degraded && (
-        <p className="mt-1.5 text-[color:var(--color-muted)]">
-          ตอนนี้สลับไปใช้โหมดประหยัดชั่วคราว (ตอบเร็วขึ้น สั้นลงเล็กน้อย) เพื่อให้คุยต่อได้จนครบรอบ
-        </p>
-      )}
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[color:var(--color-surface-2)] px-3 py-2 text-xs">
+      <span className={quota.empty ? "font-medium text-[color:var(--color-danger)]" : "font-medium text-amber-600"}>
+        {quota.empty
+          ? "เครดิตผู้ช่วย AI หมดแล้ว"
+          : `เครดิตใกล้หมด เหลือ ${quota.balanceUsd} (สลับโหมดประหยัดอัตโนมัติ)`}
+      </span>
+      <a href="/app/settings/credit" className="shrink-0 font-medium text-[color:var(--color-accent)] underline">
+        เติมเครดิต
+      </a>
     </div>
   );
 }

@@ -77,6 +77,15 @@ async function autoTitle(ctx: Ctx, conversationId: string, firstText: string): P
       );
       const t = (reply.text ?? "").trim().replace(/^["'“”]+|["'“”]+$/g, "").slice(0, 40);
       if (t.length >= 2) title = t;
+      // เล็กมาก (haiku ~60 token) แต่ก็เป็นเงินจริง — เดิมทางนี้ไม่ผ่านมิเตอร์เลย
+      const { chargeUsageSafe } = await import("@/lib/ai/credit");
+      await chargeUsageSafe(ctx, {
+        source: "AUTO_TITLE",
+        model: reply.model,
+        tokensIn: reply.tokensIn,
+        tokensOut: reply.tokensOut,
+        conversationId,
+      });
     }
   } catch {
     // ใช้ fallback

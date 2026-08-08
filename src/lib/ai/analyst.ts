@@ -10,6 +10,7 @@ import type { SystemType } from "@prisma/client";
 import { needsReorder } from "@/lib/modules/inventory/rules";
 import { dayKeyBangkok } from "./rules";
 import { resolveProvider, type AiProvider } from "./provider";
+import { canSpend, chargeUsageSafe } from "./credit";
 
 export type AnalystCtx = { tenantId: string };
 
@@ -136,6 +137,9 @@ export async function weeklyAnalysis(
 ): Promise<string | null> {
   const provider = deps?.provider ?? resolveProvider();
   if (!provider) return null; // ยังไม่เปิดใช้ AI — เงียบ ๆ
+  // รายงานนี้ระบบยิงเอง ไม่ใช่ร้านสั่ง — แต่เป็นเงินจริง จึงต้องผ่านกระเป๋าเครดิตเหมือนทางอื่น
+  // เครดิตไม่พอ = ข้ามเงียบ ๆ (ไม่ใช่ error — ร้านไม่ได้ทำอะไรผิด)
+  if (!(await canSpend(ctx.tenantId))) return null;
 
   const snapshot = await gatherBusinessSnapshot(ctx);
   const userPrompt = [
@@ -150,6 +154,10 @@ export async function weeklyAnalysis(
     { role: "user", content: userPrompt },
   ]);
   const text = reply.text;
+  await chargeUsageSafe(
+    { tenantId: ctx.tenantId },
+    { source: "WEEKLY_REPORT", model: reply.model, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut },
+  );
 
   // บันทึกเป็นแจ้งเตือนในร้าน — ใส่ tenantId ตรง ๆ
   await prisma.appNotification.create({

@@ -10,13 +10,17 @@ import { buildSystemPrompt } from "./persona";
 import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage, type AiProvider } from "./provider";
 import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
 import { runTool, toolRegistry } from "./tools";
-import { applyDegrade, getQuotaStatus, recordQuotaUsage, type QuotaScope } from "./usage";
+import { applyDegrade } from "./usage";
+import { balanceOf, canSpend, chargeUsageSafe } from "./credit";
+import type { AiCreditSource } from "@prisma/client";
 
 export type Ctx = { tenantId: string };
 
 const HISTORY_MAX_CHARS = 24_000; // งบบริบทต่อ request (ประมาณ ~6k token)
 const HISTORY_TAKE = 40; // ดึงล่าสุดกี่แถวก่อน trim
 const MAX_TOOL_ROUNDS = 5; // เพดานรอบ agent loop (กันวนไม่จบ)
+// เครดิตเหลือน้อยกว่านี้ → ลดชั้นเป็น haiku อัตโนมัติ เพื่อยืดเครดิตก้อนสุดท้ายให้คุยได้นานขึ้น
+const LOW_BALANCE_MICRO = 500_000; // = $0.50
 // ข้อความปิดสุภาพเมื่อวนครบเพดานแต่ยังไม่ได้คำตอบ
 const FALLBACK_REPLY =
   "ขอโทษครับ ผมยังหาคำตอบให้ไม่เสร็จในตอนนี้ ลองถามใหม่หรือถามให้เจาะจงขึ้นอีกนิดได้ครับ";
@@ -26,8 +30,8 @@ export type Clarify = { question: string; options: ClarifyOption[] };
 
 export type SendResult =
   | { ok: true; conversationId: string; reply: string; clarify?: Clarify }
-  // over_budget: scope บอกว่าชั้นไหนเต็ม (หน้าต่าง 5 ชม./สัปดาห์/รายวัน) + resetAt = เวลาที่โควตากลับมา
-  | { ok: false; error: "ai_disabled" | "over_budget" | "empty"; scope?: QuotaScope | "day"; resetAt?: string };
+  // over_budget: scope="credit" = เครดิตในกระเป๋าหมด (ต้องเติม) · "day" = ชนตาข่ายกันยิงรัวรายวัน
+  | { ok: false; error: "ai_disabled" | "over_budget" | "empty"; scope?: "credit" | "day"; resetAt?: string };
 
 // แปลง args ของ ask_clarify เป็น Clarify ที่สะอาด (กัน args เพี้ยน) — คืน null ถ้าไม่มีคำถาม/ตัวเลือกใช้ได้
 function parseClarify(rawArgs: unknown): Clarify | null {
@@ -73,7 +77,7 @@ export function aiEnabled(): boolean {
 export async function sendMessage(
   ctx: Ctx,
   input: { conversationId?: string; text: string; imageUrls?: string[] },
-  deps?: { provider?: AiProvider },
+  deps?: { provider?: AiProvider; source?: AiCreditSource },
 ): Promise<SendResult> {
   const text = input.text.trim();
   if (!text) return { ok: false, error: "empty" };
@@ -88,16 +92,10 @@ export async function sendMessage(
   const db = tenantDb(ctx);
   const now = new Date();
 
-  // เพดาน 2 ชั้นแบบ Claude (หน้าต่าง 5 ชม. + สัปดาห์) — เช็คก่อนแตะ provider เสมอ (ห้ามจ่ายเงินแล้วค่อยตัด)
-  const quota = await getQuotaStatus(ctx, now);
-  if (quota.blocked) {
-    const layer = quota.blocked === "week" ? quota.week : quota.session;
-    return {
-      ok: false,
-      error: "over_budget",
-      scope: quota.blocked,
-      resetAt: layer.resetAt.toISOString(),
-    };
+  // กระเป๋าเครดิต (prepaid) — เช็คก่อนแตะ provider เสมอ (ห้ามจ่ายเงินให้ผู้ให้บริการแล้วค่อยพบว่าเครดิตหมด)
+  // เครดิตหมด = ตัด ไม่มีโควตาฟรีรีเซ็ตรายรอบอีกแล้ว (กติกาเจ้าของ 8 ส.ค.)
+  if (!(await canSpend(ctx.tenantId))) {
+    return { ok: false, error: "over_budget", scope: "credit" };
   }
 
   // เพดานรายวันเดิม = ตาข่ายชั้นนอก (กันยอดรวมทั้งวันของร้าน — ยังคงไว้ ไม่ถอด)
@@ -115,7 +113,8 @@ export async function sendMessage(
   // soft degrade: ใกล้เต็มโควตา → ลดชั้นเหลือ haiku ก่อน (ยังคุยได้) ค่อยตัดเมื่อครบเพดานจริง
   // ข้อยกเว้น: เจ้าของบังคับโมเดลเอง (SHARK_AI_MODEL) หรือมีรูปแนบ (งาน vision) = ไม่ลดชั้น
   const forcedModel = Boolean(process.env.SHARK_AI_MODEL?.trim());
-  if (quota.degraded && !forcedModel && !hasImages && !deps?.provider) {
+  const lowBalance = (await balanceOf(ctx.tenantId)) < LOW_BALANCE_MICRO;
+  if (lowBalance && !forcedModel && !hasImages && !deps?.provider) {
     const degraded = applyDegrade(routedModel, true);
     if (degraded !== routedModel) {
       const fallback = resolveProvider("fast");
@@ -253,16 +252,15 @@ export async function sendMessage(
     }),
   ]);
 
-  // หักเครดิต 2 ชั้น (หน้าต่าง 5 ชม. + สัปดาห์) — คนละ write กับ tx ข้างบนเพราะต้องอ่านหน้าต่างปัจจุบันก่อน
-  // ล้ม = บันทึก OpsEvent แล้วไปต่อ (ห้ามให้คำตอบที่ผู้ใช้ได้แล้วหายไปเพราะบัญชีโควตา)
-  try {
-    await recordQuotaUsage(ctx, { model: routedModel, tokensIn, tokensOut }, new Date());
-  } catch (e) {
-    await logOps("ERROR", "ai", "หักเครดิต AI ไม่สำเร็จ", {
-      tenantId: ctx.tenantId,
-      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
-    }).catch(() => {});
-  }
+  // หักเงินจากกระเป๋าเครดิต (prepaid) — คนละ write กับ tx ข้างบนเพราะต้องอ่านยอดสดก่อนหัก
+  // ล้ม = บันทึก OpsEvent แล้วไปต่อ (ห้ามให้คำตอบที่ผู้ใช้ได้แล้วหายไปเพราะบัญชีเครดิต)
+  await chargeUsageSafe(ctx, {
+    source: deps?.source ?? "CHAT",
+    model: routedModel,
+    tokensIn,
+    tokensOut,
+    conversationId: conversation.id,
+  });
 
   // เก็บ dataset (ฐาน self-host) — best-effort เท่านั้น: ห้ามให้พังการตอบ · gate ด้วย env ภายใน
   try {

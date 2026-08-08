@@ -91,7 +91,7 @@ export async function runScheduledTasks(
       const res = await sendMessage(
         { tenantId: task.tenantId },
         { text: task.instruction },
-        { provider },
+        { provider, source: "SCHEDULED" },
       );
       if (!res.ok) continue; // เกินเพดาน/ปิดใช้ → ข้าม ไม่ mark เพื่อให้ลองใหม่รอบถัดไปได้
       await prisma.appNotification.create({

@@ -6,7 +6,9 @@ import { aiEnabled, latestConversation, listMessages, sendMessage, type Clarify 
 import { executeProposal, listPendingProposals, rejectProposal } from "./proposals";
 import { executePlan, listPendingPlans, rejectPlan } from "./plans";
 import { recordFeedback, type FeedbackRating } from "./feedback";
-import { getQuotaStatus, quotaMessage } from "./usage";
+import { quotaMessage } from "./usage";
+import { ensureWallet } from "./credit";
+import { formatUsd } from "./pricing";
 
 // convention action = "ai.<entity>.<verb>" — OWNER/MANAGER ผ่าน · STAFF ต้องมี ai.chat.send หรือ ai.*
 function assertAiCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
@@ -42,17 +44,14 @@ function toPlanSteps(v: unknown): PendingPlanStep[] {
 }
 
 /**
- * โควตาที่โชว์ผู้ใช้ — ยุบ 2 ชั้น (หน้าต่าง 5 ชม./สัปดาห์) เหลือ "ชั้นที่ใกล้เต็มที่สุด" ชั้นเดียว
- * เจ้าของร้านไม่ต้องเข้าใจว่ามีกี่ชั้น รู้แค่ "เหลือเท่าไหร่ · เต็มแล้วกลับมาใช้ได้เมื่อไหร่"
+ * สถานะเครดิตที่โชว์ผู้ใช้ — โมเดล prepaid: มีแค่ "เหลือเท่าไหร่" ไม่มีรอบรีเซ็ตให้รอ
+ * (เดิมเป็นโควตา 2 ชั้นแบบ Claude — เปลี่ยนเป็นกระเป๋าเติมเงินตามมติเจ้าของ 8 ส.ค. 2026)
  */
 export type AiQuotaView = {
-  scope: "session" | "week";
-  used: number;
-  limit: number;
-  pct: number; // 0-100
-  warn: boolean; // ใกล้เต็ม → เตือนใน UI
-  degraded: boolean; // ลดชั้นเหลือโมเดลเร็ว/ประหยัดแล้ว
-  resetAt: string;
+  balanceUsd: string; // ยอดคงเหลือแบบอ่านง่าย เช่น "$8.42"
+  balanceMicro: number;
+  empty: boolean; // หมดแล้ว — ผู้ช่วยหยุดทำงานจนกว่าจะเติม
+  low: boolean; // ใกล้หมด (< $1) — เตือน + สลับโหมดประหยัด
 };
 
 export type AiChatState = {
@@ -64,29 +63,25 @@ export type AiChatState = {
   quota: AiQuotaView | null;
 };
 
-// ชั้นที่ใกล้เต็มที่สุดคือชั้นที่ผู้ใช้จะชนก่อน → เอาชั้นนั้นขึ้นแถบ
-function toQuotaView(q: Awaited<ReturnType<typeof getQuotaStatus>>): AiQuotaView {
-  const useWeek = q.week.pct > q.session.pct;
-  const layer = useWeek ? q.week : q.session;
+// แถบสถานะเครดิต (prepaid) — แสดงยอดคงเหลือ ไม่ใช่ % ของโควตารอบแล้ว
+async function creditView(tenantId: string): Promise<AiQuotaView> {
+  const w = await ensureWallet(tenantId);
   return {
-    scope: useWeek ? "week" : "session",
-    used: layer.used,
-    limit: layer.limit,
-    pct: Math.round(layer.pct * 100),
-    warn: q.warn,
-    degraded: q.degraded,
-    resetAt: layer.resetAt.toISOString(),
+    balanceUsd: formatUsd(w.balanceMicro),
+    balanceMicro: w.balanceMicro,
+    empty: w.balanceMicro <= 0,
+    low: w.balanceMicro > 0 && w.balanceMicro < 1_000_000, // < $1
   };
 }
 
-/** โควตาผู้ช่วย AI ของกิจการปัจจุบัน — refresh หลังส่งข้อความทุกครั้ง */
+/** เครดิตผู้ช่วย AI ของกิจการปัจจุบัน — refresh หลังส่งข้อความทุกครั้ง */
 export async function loadAiQuotaAction(): Promise<AiQuotaView | null> {
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
   try {
-    return toQuotaView(await getQuotaStatus({ tenantId: auth.active.tenantId }));
+    return await creditView(auth.active.tenantId);
   } catch {
-    // อ่านโควตาไม่ได้ = ไม่โชว์แถบ (ห้ามให้แชทพังเพราะแถบสถานะ)
+    // อ่านเครดิตไม่ได้ = ไม่โชว์แถบ (ห้ามให้แชทพังเพราะแถบสถานะ)
     return null;
   }
 }
@@ -110,7 +105,7 @@ export async function loadAiChatAction(): Promise<AiChatState> {
   const [messages, pending, plans] = conv
     ? await Promise.all([listMessages(ctx, conv.id), listPendingProposals(ctx, conv.id), listPendingPlans(ctx, conv.id)])
     : [[], [], []];
-  const quota = await getQuotaStatus(ctx).then(toQuotaView).catch(() => null);
+  const quota = await creditView(ctx.tenantId).catch(() => null);
   return {
     enabled: aiEnabled(),
     quota,

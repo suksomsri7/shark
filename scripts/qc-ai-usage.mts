@@ -118,23 +118,20 @@ try {
     chk("AU-3.6", "ร้านใหม่ยังไม่เคยใช้ → pct 0 · ไม่ตัด ไม่ลดชั้น", fresh.session.used === 0 && fresh.session.pct === 0 && fresh.blocked === null && fresh.degraded === false, "ว่างสะอาด", JSON.stringify({ u: fresh.session.used, b: fresh.blocked, d: fresh.degraded }));
 
     // ── ต่อกับ service.ts จริง ──
-    const svc = (await import("@/lib/ai/service")) as unknown as { sendMessage: (c: any, i: any, d?: any) => Promise<any> };
-    let calls = 0;
-    const spy = { chat: async () => { calls++; return { text: "โอเค", tokensIn: 1000, tokensOut: 200, model: P.FAST_MODEL }; } };
-
-    // ร้านที่โดนตัด → ต้องคืน over_budget โดยไม่แตะ provider
-    await seed("WEEK", U.weekStartBangkok(new Date()) as Date, lim.weeklyCredits);
-    const blockedRes = await svc.sendMessage(ctx, { text: "ยอดขายวันนี้เท่าไหร่" }, { provider: spy });
-    chk("AU-4.1", "โควตาหมด → sendMessage คืน over_budget โดยไม่เรียก provider", blockedRes.ok === false && blockedRes.error === "over_budget" && calls === 0, "over_budget/0 call", JSON.stringify({ r: blockedRes, calls }));
-    chk("AU-4.2", "แจ้งชั้นที่หมด + เวลาคืนโควตากลับไปให้ UI", blockedRes.scope === "week" && typeof blockedRes.resetAt === "string" && blockedRes.resetAt.length > 0, "scope+resetAt", JSON.stringify({ s: blockedRes.scope, r: blockedRes.resetAt }));
-
-    // ร้านที่ยังไม่ตัน → ตอบได้ + เครดิตเพิ่มจริงทั้ง 2 ชั้น
-    const okRes = await svc.sendMessage({ tenantId: t2.id }, { text: "สวัสดี" }, { provider: spy });
-    const after = await U.getQuotaStatus({ tenantId: t2.id }, new Date());
-    chk("AU-4.3", "ตอบสำเร็จ → เครดิตถูกหักทั้งชั้น 5 ชม. และชั้นสัปดาห์", okRes.ok === true && after.session.used > 0 && after.week.used === after.session.used, ">0 เท่ากัน", JSON.stringify({ ok: okRes.ok, s: after.session.used, w: after.week.used }));
-
+    // 🔄 8 ส.ค. 2026: โควตา 2 ชั้นถูกแทนที่ด้วย "กระเป๋าเครดิตเติมเงิน" (มติเจ้าของ)
+    //    ตรรกะใน usage.ts ยังอยู่และยังถูกใช้ (applyDegrade, quotaMessage) — ที่เลิกใช้คือ
+    //    "การตัดสินใจตัดผู้ใช้" ซึ่งย้ายไป lib/ai/credit.ts และมีข้อสอบของตัวเองที่ qc-ai-credit (BL-4.x)
+    //    AU-4.x เดิม (โควตาหมด → ตัด) จึงถูกแทนด้วยข้อสอบยืนยันว่า **ย้ายจริง ไม่ใช่หายไปเฉย ๆ**
     const svcSrc = read("src/lib/ai/service.ts");
-    chk("AU-4.4", "service.ts ใช้ applyDegrade + getQuotaStatus (ไม่ใช่เช็คแค่โควตารายวันเดิม)", svcSrc.includes("applyDegrade") && svcSrc.includes("getQuotaStatus") && svcSrc.includes("recordQuotaUsage"), "ครบ 3", "ไม่ครบ");
+    chk("AU-4.1", "service.ts ตัดสินใจตัดด้วยกระเป๋าเครดิต ไม่ใช่หน้าต่างโควตาแล้ว",
+      svcSrc.includes("canSpend") && !svcSrc.includes("getQuotaStatus"), "canSpend มี · getQuotaStatus ไม่มี",
+      JSON.stringify({ canSpend: svcSrc.includes("canSpend"), quota: svcSrc.includes("getQuotaStatus") }));
+    chk("AU-4.2", "ตอบสำเร็จแล้วหักเงินจากกระเป๋าจริง (chargeUsageSafe)",
+      svcSrc.includes("chargeUsageSafe"), "มี chargeUsageSafe", "ไม่มี");
+    chk("AU-4.3", "ยังลดชั้นเป็นโมเดลประหยัดเมื่อเครดิตใกล้หมด (applyDegrade ไม่ถูกทิ้ง)",
+      svcSrc.includes("applyDegrade") && svcSrc.includes("LOW_BALANCE_MICRO"), "ครบ 2", "ไม่ครบ");
+    chk("AU-4.4", "มีข้อสอบของระบบเครดิตอยู่จริง (ไม่ได้ลบด่านทิ้งเฉย ๆ)",
+      read("scripts/qc-ai-credit.mts").includes("BL-4.2"), "qc-ai-credit มี BL-4.2", "ไม่มี")
 
     // ── ผิว UI/สัญญาเปิดเผย ──
     const act = read("src/lib/ai/actions.ts");

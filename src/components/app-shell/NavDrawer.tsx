@@ -271,6 +271,7 @@ export function NavDrawer({
             <span>{settingsOpen ? "▴" : "▾"}</span>
           </button>
           {settingsOpen && [
+            { href: "/app/settings/credit", icon: "⚡", label: "เครดิต AI" },
             { href: "/app/marketplace", icon: "🧩", label: "ตลาดเทมเพลต" },
             { href: "/app/reports", icon: "📊", label: "รายงาน" },
             { href: "/app/forms", icon: "📝", label: "ฟอร์ม" },

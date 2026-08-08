@@ -10,6 +10,7 @@ import { finalizeFacts } from "./questions";
 import { saveDnaFacts, proposeBlueprint, applyBlueprint, applyBlueprintStep } from "./apply";
 import type { ApplyProgress } from "./apply";
 import { resolveProvider } from "@/lib/ai/provider";
+import { canSpend, chargeUsageSafe } from "@/lib/ai/credit";
 import { aiEnabled } from "@/lib/ai/service";
 import { nextInterviewTurn } from "@/lib/ai/interview";
 import type { InterviewTurn } from "@/lib/ai/interview";
@@ -53,8 +54,19 @@ export async function interviewTurnAction(
   const auth = await requireTenant();
   const provider = resolveProvider();
   if (!provider) return { enabled: false };
+  // เครดิตหมด → ปิดโหมดพิมพ์อิสระ (UI พับกลับไปโหมดตอบทีละข้อ ซึ่งไม่ใช้ AI เลย จึงไม่มีทางตัน)
+  if (!(await canSpend(auth.active.tenantId))) return { enabled: false };
 
   const result = await nextInterviewTurn(provider, auth.active.tenant.name, transcript);
+  await chargeUsageSafe(
+    { tenantId: auth.active.tenantId },
+    {
+      source: "DNA_INTERVIEW",
+      model: result.usage.model,
+      tokensIn: result.usage.tokensIn,
+      tokensOut: result.usage.tokensOut,
+    },
+  );
   if (result.done) {
     await saveDnaFacts(auth.active.tenantId, result.facts);
     return { enabled: true, done: true };

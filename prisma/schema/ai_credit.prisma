@@ -1,0 +1,57 @@
+// กระเป๋าเครดิตผู้ช่วย AI — เติมเงินล่วงหน้า (prepaid) ไม่ใช่โควตาต่อรอบ
+//
+// หน่วยเงิน = ไมโครดอลลาร์ (1 USD = 1,000,000) เก็บเป็น Int
+//   ทำไมไม่เก็บเป็นดอลลาร์ทศนิยม: ค่า 1 ข้อความถูกระดับ $0.0001 — ทศนิยมลอยตัวจะปัดหาย
+//   เพดาน Int = ~$2,147 ต่อค่าเดียว (พอสำหรับกระเป๋าร้าน · ถ้าจะขายก้อนใหญ่กว่านี้ต้องขยับเป็น BigInt)
+//
+// ledger เป็น append-only: ทุกแถวเก็บ balanceAfter ไว้ → ตรวจย้อนหลังได้ว่ายอดเดินยังไง
+
+model AiCreditWallet {
+  id           String    @id @default(cuid())
+  tenantId     String    @unique
+  balanceMicro Int       @default(0) // ยอดคงเหลือ (ไมโครดอลลาร์)
+  grantedAt    DateTime? // เคยรับเครดิตต้อนรับแล้วหรือยัง — กันแจกซ้ำ (null = ยังไม่เคย)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+enum AiCreditKind {
+  GRANT // เครดิตต้อนรับ (แจกครั้งเดียวตอนเปิดกระเป๋า)
+  TOPUP // เติมเงินเข้ามา
+  USAGE // ใช้ไปกับการเรียก AI
+  REFUND // คืนเงิน (เช่น ยกเลิกรายการเติม)
+  ADJUST // ปรับมือโดยแอดมินแพลตฟอร์ม
+}
+
+// ต้นทางของรายการ — ตอบคำถาม "เงินหายไปกับอะไร" ได้รายทาง (เดิมดูไม่ได้เลย)
+enum AiCreditSource {
+  CHAT // แชทผู้ช่วย AI (ผู้ใช้พิมพ์เอง)
+  SCHEDULED // งานประจำรายชั่วโมง
+  WEEKLY_REPORT // รายงานธุรกิจรายสัปดาห์ (cron วันจันทร์)
+  DNA_INTERVIEW // สัมภาษณ์ธุรกิจแบบพิมพ์อิสระ
+  AUTO_TITLE // ตั้งชื่อห้องแชทอัตโนมัติ
+  SUPPORT_DRAFT // ร่างคำตอบเคสใน backoffice (ลงบัญชีแพลตฟอร์ม ไม่หักร้าน)
+  TOPUP // เติมเงิน
+  GRANT // เครดิตต้อนรับ
+  ADJUST // ปรับมือ
+}
+
+model AiCreditTxn {
+  id             String         @id @default(cuid())
+  tenantId       String
+  kind           AiCreditKind
+  source         AiCreditSource
+  amountMicro    Int // + เข้ากระเป๋า · − ออกจากกระเป๋า
+  balanceAfter   Int // ยอดคงเหลือหลังรายการนี้ (snapshot — ตรวจย้อนหลังได้)
+  model          String? // โมเดลที่ใช้จริง (เฉพาะ USAGE)
+  tokensIn       Int            @default(0)
+  tokensOut      Int            @default(0)
+  note           String?
+  conversationId String?
+  userId         String?
+  ref            String? // กันซ้ำจากภายนอก (เช่น charge id ของ Beam)
+  createdAt      DateTime       @default(now())
+
+  @@unique([tenantId, ref])
+  @@index([tenantId, createdAt])
+}

@@ -7,6 +7,7 @@
 import type { SupportCase, SupportMessage } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { resolveProvider, type AiProvider } from "@/lib/ai/provider";
+import { chargePlatform } from "@/lib/ai/credit";
 
 type Deps = { provider?: AiProvider };
 
@@ -62,6 +63,11 @@ export async function draftCaseReply(caseId: string, deps?: Deps): Promise<strin
       { role: "system", content: SUPPORT_RULES },
       { role: "user", content: userPrompt },
     ]);
+    // ค่าใช้จ่ายนี้ทีมเราเป็นคนก่อ ไม่ใช่ร้าน → ลงบัญชีกลางแพลตฟอร์ม ไม่หักกระเป๋าร้าน
+    await chargePlatform({
+      source: "SUPPORT_DRAFT", model: reply.model, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut,
+      forTenantId: thread.case.tenantId, note: `ร่างคำตอบเคส ${caseId}`,
+    }).catch(() => 0);
     const text = reply.text.trim();
     return text.length > 0 ? text : null;
   } catch {
@@ -91,6 +97,10 @@ export async function summarizeCase(caseId: string, deps?: Deps): Promise<string
       { role: "system", content: SUPPORT_RULES },
       { role: "user", content: userPrompt },
     ]);
+    await chargePlatform({
+      source: "SUPPORT_DRAFT", model: reply.model, tokensIn: reply.tokensIn, tokensOut: reply.tokensOut,
+      forTenantId: thread.case.tenantId, note: `สรุปเคส ${caseId}`,
+    }).catch(() => 0);
     const text = reply.text.trim();
     return text.length > 0 ? text : null;
   } catch {

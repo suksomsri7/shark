@@ -174,7 +174,14 @@ export async function recordQuotaUsage(
 }
 
 /** ข้อความไทยสุภาพเมื่อโควตาหมด — บอกด้วยว่ากลับมาใช้ได้เมื่อไหร่ (UI ทุกช่องทางใช้ตัวเดียวกัน) */
-export function quotaMessage(scope?: QuotaScope | "day" | null, resetAt?: string | Date | null): string {
+export function quotaMessage(
+  scope?: QuotaScope | "day" | "credit" | null,
+  resetAt?: string | Date | null,
+): string {
+  // เครดิตหมด = ไม่มี "รอบใหม่" ให้รอ ต้องเติมเท่านั้น (โมเดล prepaid ตั้งแต่ 8 ส.ค. 2026)
+  if (scope === "credit") {
+    return "เครดิตผู้ช่วย AI หมดแล้วครับ — เติมเครดิตที่ ตั้งค่า → เครดิต AI แล้วคุยกันต่อได้ทันที";
+  }
   const when = resetAt ? new Date(resetAt) : null;
   const timeTh =
     when && !Number.isNaN(when.getTime())
