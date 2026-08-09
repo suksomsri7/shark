@@ -156,6 +156,45 @@ try {
   chk("XT-3", "ร้าน B ยิง posSystem ร้าน A → false", crossSys === false, "false", String(crossSys), "CRITICAL");
   const leak = await reg.posCatalog(tenantBId, invSys.id);
   chk("XT-4", "posCatalog ข้ามร้านไม่รั่ว (0 รายการ)", leak.length === 0, "0", String(leak.length), "CRITICAL");
+
+  // ═══════ บริการหน้าร้าน (9 ส.ค. 2026 — เจ้าของร้านตัดผมทัก: POS มีแต่สินค้า ขาดบริการ) ═══════
+  // บริการใช้ BookingService ตัวเดียวกับระบบจอง → ตั้งราคาที่ไหนก็เห็นเหมือนกัน ไม่มีข้อมูลซ้ำสองที่
+  console.log("── บริการหน้าร้าน ──");
+  const svcCut = await prisma.bookingService.create({
+    data: { tenantId, unitId: unit.id, name: "ตัดผมชาย", durationMin: 30, priceSatang: 15000 },
+  });
+  await prisma.bookingService.create({
+    data: { tenantId, unitId: unit.id, name: "บริการที่ปิดแล้ว", durationMin: 30, priceSatang: 9900, active: false },
+  });
+  await prisma.bookingService.create({
+    data: { tenantId: tenantBId, unitId: unitB.id, name: "บริการร้าน B", durationMin: 30, priceSatang: 5000 },
+  });
+
+  const svcs = await reg.posServices(tenantId, unit.id);
+  chk("SV-1", "หน้าขายเห็นบริการของหน้างานนี้", svcs.some((x) => x.id === svcCut.id), "มีตัดผมชาย", JSON.stringify(svcs.map((x) => x.name)), "CRITICAL");
+  chk("SV-2", "บริการที่ปิดแล้วไม่ขึ้นหน้าขาย", !svcs.some((x) => x.name === "บริการที่ปิดแล้ว"), "ไม่มี", JSON.stringify(svcs.map((x) => x.name)));
+  chk("SV-3", "ราคา/ระยะเวลามาครบ (หน้าขายต้องโชว์ได้ทันที)",
+    svcs.find((x) => x.id === svcCut.id)?.priceSatang === 15000 && svcs.find((x) => x.id === svcCut.id)?.durationMin === 30,
+    "15000/30", JSON.stringify(svcs.find((x) => x.id === svcCut.id)));
+  const svcLeak = await reg.posServices(tenantBId, unit.id);
+  chk("SV-4", "🔴 บริการไม่รั่วข้ามร้าน (ร้าน B ยิง unit ร้าน A)", svcLeak.length === 0, "0", String(svcLeak.length), "CRITICAL");
+  const svcLeak2 = await reg.posServices(tenantId, unitB.id);
+  chk("SV-5", "🔴 ยิง unit ของร้านอื่นด้วย tenant ตัวเอง ก็ไม่เห็น", svcLeak2.length === 0, "0", String(svcLeak2.length), "CRITICAL");
+
+  // ขายบริการจริง — ต้องไม่ตัดสต็อก (บริการไม่มีของให้ตัด)
+  const stockBefore = (await inventory.listItems({ tenantId, systemId: invSys.id })).reduce((a, i) => a + i.onHand, 0);
+  const svcSale = await pos.createSale({
+    tenantId, unitId: unit.id, systemId: posSys.id,
+    idempotencyKey: `svc-${Date.now()}`,
+    lines: [{ name: svcCut.name, qty: 1, unitPriceSatang: svcCut.priceSatang }],
+    payMethods: [{ type: "CASH", amountSatang: svcCut.priceSatang }],
+  });
+  const svcSaleRow = await prisma.posSale.findUnique({ where: { id: svcSale.saleId } });
+  const stockAfter = (await inventory.listItems({ tenantId, systemId: invSys.id })).reduce((a, i) => a + i.onHand, 0);
+  chk("SV-6", "ขายบริการได้ → บิล PAID ยอดตรง", svcSaleRow?.status === "PAID" && svcSale.grandTotalSatang === 15000, "PAID/15000", JSON.stringify({ s: svcSaleRow?.status, g: svcSale.grandTotalSatang }), "CRITICAL");
+  chk("SV-7", "🔴 ขายบริการแล้วสต็อกสินค้าไม่ขยับ (บริการไม่มีของให้ตัด)", stockAfter === stockBefore, String(stockBefore), String(stockAfter), "CRITICAL");
+  const svcLine = await prisma.posSaleLine.findFirst({ where: { saleId: svcSale.saleId } });
+  chk("SV-8", "รายการบริการไม่ผูก InvItem (itemId = null ตามสัญญา schema)", svcLine?.itemId == null, "null", String(svcLine?.itemId));
 } catch (e) {
   chk("CRASH", "harness ทำงานจนจบ", false, "จบปกติ", e instanceof Error ? e.message.slice(0, 160) : String(e), "CRITICAL");
 } finally {
@@ -175,6 +214,7 @@ try {
     await del("invMovement", () => prisma.invMovement.deleteMany({ where: { tenantId: tid } }));
     await del("invLocationStock", () => prisma.invLocationStock.deleteMany({ where: { tenantId: tid } }));
     await del("invLot", () => prisma.invLot.deleteMany({ where: { tenantId: tid } }));
+    await del("bookingService", () => prisma.bookingService.deleteMany({ where: { tenantId: tid } }));
     await del("invLocation", () => prisma.invLocation.deleteMany({ where: { tenantId: tid } }));
     await del("invItem", () => prisma.invItem.deleteMany({ where: { tenantId: tid } }));
     await del("accountProduct", () => prisma.accountProduct.deleteMany({ where: { tenantId: tid } }));

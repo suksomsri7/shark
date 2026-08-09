@@ -4,8 +4,13 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { assertCan } from "@/lib/core/rbac";
 import { systemDef } from "@/lib/systems";
-import { listPosProducts } from "@/lib/modules/pos/register";
-import { setItemSalePriceAction } from "@/lib/actions/pos";
+import { listPosProducts, posUnits, posServices } from "@/lib/modules/pos/register";
+import {
+  setItemSalePriceAction,
+  addPosServiceAction,
+  setPosServicePriceAction,
+  removePosServiceAction,
+} from "@/lib/actions/pos";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -42,24 +47,93 @@ export default async function PosProductsPage({
   const tabs = [
     { href: `/app/sys/${id}`, label: "ภาพรวม" },
     { href: `/app/sys/${id}/pos/register`, label: "ขาย" },
-    { href: `/app/sys/${id}/pos/products`, label: "สินค้า/ราคา" },
+    { href: `/app/sys/${id}/pos/products`, label: "บริการ/สินค้า" },
     { href: `/app/sys/${id}/pos/sales`, label: "ประวัติบิล" },
     { href: `/app/sys/${id}/pos/close`, label: "ปิดวัน" },
   ];
 
   const { inventorySystemId, accountSystemId, items } = await listPosProducts(tenantId, id);
+  // บริการของหน้างานที่ผูก POS — ร้านบริการ (ตัดผม/นวด/คลินิก) ขายบริการเป็นหลัก ไม่ใช่สินค้า
+  // ใช้ BookingService ตัวเดียวกับระบบจอง → ตั้งราคาที่นี่ก็เห็นที่หน้าจอง ไม่มีข้อมูลซ้ำสองที่
+  const units = await posUnits(tenantId, id);
+  const serviceUnit = units[0] ?? null;
+  const services = serviceUnit ? await posServices(tenantId, serviceUnit.id) : [];
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
-      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="สินค้า/ราคา — ตั้งราคาขายหน้าร้าน" />
+      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="บริการ/สินค้า — ตั้งรายการที่ขายหน้าร้าน" />
       <ModuleTabs items={tabs} />
 
       {err && <p className="text-sm text-[color:var(--color-danger)]">{err}</p>}
-      {ok && <p className="text-sm text-[color:var(--color-success)]">บันทึกราคาขายแล้ว</p>}
+      {ok && <p className="text-sm text-[color:var(--color-success)]">{ok}</p>}
+
+      {/* ── บริการ ── ต้องมาก่อนสินค้า: ร้านบริการเปิดหน้านี้มาเพื่อตั้งราคาบริการ */}
+      {serviceUnit && (
+        <Section title="บริการ">
+          <p className="mb-2 text-xs text-[color:var(--color-muted)]">
+            รายการที่ขายเป็นบริการ (ตัดผม สระ นวด ฯลฯ) — ขึ้นให้กดในหน้าขายทันที ไม่ตัดสต็อก
+            {" · "}ใช้รายการเดียวกับระบบจองคิว ตั้งที่นี่แล้วหน้าจองเห็นด้วย
+          </p>
+
+          <div className="flex flex-col gap-2">
+            {services.map((sv) => (
+              <div key={sv.id} className="flex flex-wrap items-end gap-2 rounded-lg border px-3 py-2 text-sm">
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate font-medium">{sv.name}</span>
+                  <span className="text-xs text-[color:var(--color-muted)]">ใช้เวลา {sv.durationMin} นาที</span>
+                </div>
+                <form action={setPosServicePriceAction} className="flex items-end gap-2">
+                  <input type="hidden" name="systemId" value={id} />
+                  <input type="hidden" name="unitId" value={serviceUnit.id} />
+                  <input type="hidden" name="serviceId" value={sv.id} />
+                  <label className="flex flex-col text-xs text-[color:var(--color-muted)]">
+                    ราคา (บาท)
+                    <input
+                      name="priceBaht"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      inputMode="decimal"
+                      defaultValue={String(sv.priceSatang / 100)}
+                      className="input w-28"
+                    />
+                  </label>
+                  <SubmitButton variant="ghost">บันทึก</SubmitButton>
+                </form>
+                <form action={removePosServiceAction}>
+                  <input type="hidden" name="systemId" value={id} />
+                  <input type="hidden" name="unitId" value={serviceUnit.id} />
+                  <input type="hidden" name="serviceId" value={sv.id} />
+                  <SubmitButton variant="ghost">เอาออก</SubmitButton>
+                </form>
+              </div>
+            ))}
+
+            {/* เพิ่มบริการใหม่ — ฟอร์มเดียวจบ ไม่ต้องเด้งไปหน้าอื่น */}
+            <form action={addPosServiceAction} className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed px-3 py-2 text-sm">
+              <input type="hidden" name="systemId" value={id} />
+              <input type="hidden" name="unitId" value={serviceUnit.id} />
+              <label className="flex min-w-0 flex-1 flex-col text-xs text-[color:var(--color-muted)]">
+                ชื่อบริการ
+                <input name="name" placeholder="เช่น ตัดผมชาย" className="input" maxLength={80} />
+              </label>
+              <label className="flex flex-col text-xs text-[color:var(--color-muted)]">
+                ราคา (บาท)
+                <input name="priceBaht" type="number" step="0.01" min="0" inputMode="decimal" placeholder="0.00" className="input w-24" />
+              </label>
+              <label className="flex flex-col text-xs text-[color:var(--color-muted)]">
+                ใช้เวลา (นาที)
+                <input name="durationMin" type="number" min="5" max="600" inputMode="numeric" defaultValue={30} className="input w-24" />
+              </label>
+              <SubmitButton>+ เพิ่มบริการ</SubmitButton>
+            </form>
+          </div>
+        </Section>
+      )}
 
       {!inventorySystemId ? (
         <EmptyState
-          text="ยังตั้งราคาไม่ได้ — เชื่อมระบบคลังสินค้ากับระบบขายนี้ก่อนที่หน้าภาพรวม"
+          text="ยังไม่ได้เชื่อมคลังสินค้า — ร้านที่ขายสินค้าด้วยให้เชื่อมคลังก่อนที่หน้าภาพรวม (ร้านที่ขายเฉพาะบริการไม่ต้องเชื่อมก็ได้)"
           action={{ href: `/app/sys/${id}`, label: "ไปเชื่อมคลัง" }}
         />
       ) : items.length === 0 ? (

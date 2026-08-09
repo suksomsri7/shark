@@ -4,7 +4,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { getPaymentProfile } from "@/lib/payment/service";
-import { posUnits, resolvePosLinks, posCatalog, posMembers } from "@/lib/modules/pos/register";
+import { posUnits, resolvePosLinks, posCatalog, posMembers, posServices } from "@/lib/modules/pos/register";
 import { PosRegister } from "@/lib/modules/pos/register-ui";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
@@ -31,7 +31,7 @@ export default async function PosRegisterPage({
   const tabs = [
     { href: `/app/sys/${id}`, label: "ภาพรวม" },
     { href: `/app/sys/${id}/pos/register`, label: "ขาย" },
-    { href: `/app/sys/${id}/pos/products`, label: "สินค้า/ราคา" },
+    { href: `/app/sys/${id}/pos/products`, label: "บริการ/สินค้า" },
     { href: `/app/sys/${id}/pos/sales`, label: "ประวัติบิล" },
     { href: `/app/sys/${id}/pos/close`, label: "ปิดวัน" },
   ];
@@ -56,9 +56,11 @@ export default async function PosRegisterPage({
   const active = units.find((u) => u.id === unitParam) ?? units[0];
 
   const [links, profile] = await Promise.all([resolvePosLinks(tenantId, active.id), getPaymentProfile({ tenantId })]);
-  const [catalog, members] = await Promise.all([
+  const [catalog, members, services] = await Promise.all([
     links.inventorySystemId ? posCatalog(tenantId, links.inventorySystemId) : Promise.resolve([]),
     links.memberSystemId ? posMembers(tenantId, links.memberSystemId) : Promise.resolve([]),
+    // บริการของหน้างานที่กำลังขาย — ร้านบริการรายได้หลักอยู่ตรงนี้ (ไม่ผูกกับระบบคลัง)
+    posServices(tenantId, active.id),
   ]);
   const hasPromptPay = !!profile?.promptpayId;
 
@@ -95,6 +97,7 @@ export default async function PosRegisterPage({
 
       <Section>
         <PosRegister
+        services={services}
           systemId={id}
           unitId={active.id}
           catalog={catalog}

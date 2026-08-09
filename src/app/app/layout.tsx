@@ -96,7 +96,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         return [
           { href: s, label: "ภาพรวม" },
           { href: `${s}/pos/register`, label: "ขายหน้าร้าน" },
-          { href: `${s}/pos/products`, label: "สินค้า/ราคา" },
+          { href: `${s}/pos/products`, label: "บริการ/สินค้า" },
           { href: `${s}/pos/sales`, label: "ประวัติบิล" },
           { href: `${s}/pos/close`, label: "ปิดวัน" },
         ];

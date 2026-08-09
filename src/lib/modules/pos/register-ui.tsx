@@ -4,7 +4,7 @@ import { useState, useRef, useMemo } from "react";
 import { formatBaht } from "@/lib/ui/money";
 import { PromptPayQr } from "@/components/PromptPayQr";
 import { posQuoteAction, registerSaleAction, type QuoteState, type RegisterSaleState } from "@/lib/actions/pos";
-import type { PosCatalogItem, PosMember } from "@/lib/modules/pos/register";
+import type { PosServiceItem, PosCatalogItem, PosMember } from "@/lib/modules/pos/register";
 
 // itemId = InvItem.id (สินค้าจาก catalog → ตัดสต็อก) · undefined = รายการเพิ่มเอง
 type CartRow = { key: string; name: string; qty: number; unitPriceSatang: number; itemId?: string };
@@ -23,6 +23,7 @@ export function PosRegister({
   systemId,
   unitId,
   catalog,
+  services,
   members,
   couponEnabled,
   hasPromptPay,
@@ -30,6 +31,8 @@ export function PosRegister({
   systemId: string;
   unitId: string;
   catalog: PosCatalogItem[];
+  /** บริการของหน้างานนี้ (ตัดผม/นวด ฯลฯ) — ไม่ตัดสต็อก */
+  services: PosServiceItem[];
   members: PosMember[];
   couponEnabled: boolean;
   hasPromptPay: boolean;
@@ -59,6 +62,11 @@ export function PosRegister({
     if (!q) return catalog;
     return catalog.filter((c) => c.name.toLowerCase().includes(q) || c.sku.toLowerCase().includes(q) || (c.barcode ?? "").toLowerCase().includes(q));
   }, [catalog, search]);
+  const filteredServices = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return services;
+    return services.filter((s) => s.name.toLowerCase().includes(q));
+  }, [services, search]);
 
   // ── ตะกร้า ──
   function addCatalog(item: PosCatalogItem) {
@@ -66,6 +74,15 @@ export function PosRegister({
       const found = prev.find((r) => r.key === item.id);
       if (found) return prev.map((r) => (r.key === item.id ? { ...r, qty: r.qty + 1 } : r));
       return [...prev, { key: item.id, name: item.name, qty: 1, unitPriceSatang: item.priceSatang, itemId: item.id }];
+    });
+  }
+  // บริการ = ไม่ผูก InvItem จึงไม่ตัดสต็อก · key ใช้ srv- กัน id ชนกับสินค้า
+  function addService(sv: PosServiceItem) {
+    const key = `srv-${sv.id}`;
+    setCart((prev) => {
+      const found = prev.find((r) => r.key === key);
+      if (found) return prev.map((r) => (r.key === key ? { ...r, qty: r.qty + 1 } : r));
+      return [...prev, { key, name: sv.name, qty: 1, unitPriceSatang: sv.priceSatang }];
     });
   }
   function addCustom() {
@@ -269,14 +286,41 @@ export function PosRegister({
     <div className="flex flex-col gap-4">
       {/* Catalog */}
       <div className="flex flex-col gap-2">
-        {catalog.length > 0 && (
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า / บาร์โค้ด" className="input" />
+        {(catalog.length > 0 || services.length > 0) && (
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาบริการ / สินค้า / บาร์โค้ด" className="input" />
         )}
-        {catalog.length === 0 ? (
+
+        {/* บริการ — ร้านตัดผม/นวด/คลินิก รายได้หลักอยู่ตรงนี้ จึงวางไว้ก่อนสินค้า */}
+        {services.length > 0 && (
+          <>
+            <div className="text-xs text-[color:var(--color-muted)]">บริการ</div>
+            {filteredServices.length === 0 ? (
+              <p className="p-2 text-center text-xs text-[color:var(--color-muted)]">ไม่พบบริการที่ค้นหา</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {filteredServices.map((sv) => (
+                  <button
+                    key={sv.id}
+                    onClick={() => addService(sv)}
+                    className="flex min-h-[56px] flex-col items-start justify-center rounded-xl border border-[color:var(--color-accent)] p-2 text-left hover:bg-[color:var(--color-surface-2)]"
+                  >
+                    <span className="line-clamp-2 text-sm font-medium">{sv.name}</span>
+                    <span className="text-xs tabular-nums text-[color:var(--color-muted)]">
+                      {formatBaht(sv.priceSatang)} · {sv.durationMin} นาที
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {catalog.length > 0 && <div className="mt-1 text-xs text-[color:var(--color-muted)]">สินค้า</div>}
+          </>
+        )}
+
+        {catalog.length === 0 && services.length === 0 ? (
           <p className="rounded-xl border border-dashed p-3 text-center text-xs text-[color:var(--color-muted)]">
-            ยังไม่มีสินค้าในคลัง — พิมพ์รายการเองด้านล่าง หรือเพิ่มสินค้าที่ระบบคลัง
+            ยังไม่มีบริการหรือสินค้าให้ขาย — ตั้งรายการที่แท็บ “บริการ/สินค้า” หรือพิมพ์รายการเองด้านล่าง
           </p>
-        ) : filtered.length === 0 ? (
+        ) : catalog.length === 0 ? null : filtered.length === 0 ? (
           <p className="p-2 text-center text-xs text-[color:var(--color-muted)]">ไม่พบสินค้าที่ค้นหา</p>
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -305,7 +349,7 @@ export function PosRegister({
         <h2 className="text-sm font-medium">ตะกร้า ({cart.length})</h2>
         {cart.length === 0 ? (
           <p className="rounded-xl border border-dashed p-4 text-center text-sm text-[color:var(--color-muted)]">
-            แตะสินค้าด้านบนหรือพิมพ์รายการเองเพื่อเริ่มบิล
+            แตะบริการ/สินค้าด้านบน หรือพิมพ์รายการเองเพื่อเริ่มบิล
           </p>
         ) : (
           <div className="flex flex-col divide-y rounded-xl border">

@@ -266,3 +266,106 @@ export async function setItemSalePriceAction(formData: FormData): Promise<void> 
   revalidatePath(`/app/sys/${systemId}/pos/register`);
   redirect(`${base}?ok=1`);
 }
+
+// ═══════════ บริการหน้าร้าน (WO 9 ส.ค. — ร้านตัดผม/นวด/คลินิก) ═══════════
+// ปัญหาที่เจ้าของร้านเจอ: เปิด "ขายหน้าร้าน" มาแล้วมีแต่สินค้า ทั้งที่ร้านบริการขายบริการเป็นหลัก
+// บริการเก็บที่ BookingService (ผูก unit) — ตัวเดียวกับที่ระบบจองใช้ จึงไม่มีข้อมูลซ้ำสองที่
+// (ตั้งราคาที่ไหนก็เห็นเหมือนกันทั้งหน้าขายและหน้าจอง)
+
+function assertPosServiceCan(auth: Auth & { active: NonNullable<Auth["active"]> }) {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "pos", action: "pos.product.setPrice" },
+  );
+}
+
+/** ตรวจว่า POS นี้ผูกกับ unit ที่อ้างจริง — กันยิง unitId ของกิจการอื่นเข้ามา */
+async function posOwnedUnit(tenantId: string, systemId: string, unitId: string): Promise<void> {
+  const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { id: true } });
+  if (!sys) throw new Error("ไม่พบระบบขายนี้");
+  if (!(await posUnitIsLinked(tenantId, systemId, unitId))) throw new Error("ระบบขายนี้ไม่ได้ผูกกับหน้างานที่ระบุ");
+}
+
+export async function addPosServiceAction(formData: FormData): Promise<void> {
+  const systemId = String(formData.get("systemId") ?? "").trim();
+  const unitId = String(formData.get("unitId") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const priceRaw = String(formData.get("priceBaht") ?? "").trim();
+  const durRaw = String(formData.get("durationMin") ?? "").trim();
+
+  const auth = await requireTenant();
+  const tenantId = auth.active.tenantId;
+  assertPosServiceCan(auth);
+  await posOwnedUnit(tenantId, systemId, unitId);
+
+  const base = `/app/sys/${systemId}/pos/products`;
+  const priceBaht = Number(priceRaw);
+  // ระยะเวลาเป็นของระบบจอง — หน้าขายไม่ต้องกรอก ใส่ค่าเริ่มต้น 30 นาทีให้เอาไปจัดคิวต่อได้
+  const durationMin = durRaw === "" ? 30 : Number(durRaw);
+  if (!name) redirect(`${base}?err=${encodeURIComponent("ใส่ชื่อบริการก่อน")}`);
+  if (!Number.isFinite(priceBaht) || priceBaht < 0) {
+    redirect(`${base}?err=${encodeURIComponent("กรอกราคาบริการเป็นตัวเลขไม่ติดลบ")}`);
+  }
+  if (!Number.isFinite(durationMin) || durationMin < 5 || durationMin > 600) {
+    redirect(`${base}?err=${encodeURIComponent("ระยะเวลาต้องอยู่ระหว่าง 5-600 นาที")}`);
+  }
+
+  await prisma.bookingService.create({
+    data: {
+      tenantId,
+      unitId,
+      name: name.slice(0, 80),
+      durationMin: Math.round(durationMin),
+      priceSatang: Math.round(priceBaht * 100),
+    },
+  });
+  revalidatePath(base);
+  redirect(`${base}?ok=${encodeURIComponent(`เพิ่มบริการ "${name}" แล้ว`)}`);
+}
+
+export async function setPosServicePriceAction(formData: FormData): Promise<void> {
+  const systemId = String(formData.get("systemId") ?? "").trim();
+  const unitId = String(formData.get("unitId") ?? "").trim();
+  const serviceId = String(formData.get("serviceId") ?? "").trim();
+  const priceRaw = String(formData.get("priceBaht") ?? "").trim();
+
+  const auth = await requireTenant();
+  const tenantId = auth.active.tenantId;
+  assertPosServiceCan(auth);
+  await posOwnedUnit(tenantId, systemId, unitId);
+
+  const base = `/app/sys/${systemId}/pos/products`;
+  const priceBaht = Number(priceRaw);
+  if (priceRaw === "" || !Number.isFinite(priceBaht) || priceBaht < 0) {
+    redirect(`${base}?err=${encodeURIComponent("กรอกราคาเป็นตัวเลขไม่ติดลบ")}`);
+  }
+  // updateMany + เงื่อนไข tenant/unit = กันแก้ของกิจการอื่นแม้ส่ง id มามั่ว
+  const res = await prisma.bookingService.updateMany({
+    where: { id: serviceId, tenantId, unitId },
+    data: { priceSatang: Math.round(priceBaht * 100) },
+  });
+  if (res.count === 0) redirect(`${base}?err=${encodeURIComponent("ไม่พบบริการนี้")}`);
+  revalidatePath(base);
+  redirect(`${base}?ok=${encodeURIComponent("บันทึกราคาบริการแล้ว")}`);
+}
+
+export async function removePosServiceAction(formData: FormData): Promise<void> {
+  const systemId = String(formData.get("systemId") ?? "").trim();
+  const unitId = String(formData.get("unitId") ?? "").trim();
+  const serviceId = String(formData.get("serviceId") ?? "").trim();
+
+  const auth = await requireTenant();
+  const tenantId = auth.active.tenantId;
+  assertPosServiceCan(auth);
+  await posOwnedUnit(tenantId, systemId, unitId);
+
+  // ปิดการใช้งาน ไม่ลบจริง — นัดหมายเก่าที่อ้างบริการนี้ต้องยังอ่านชื่อได้
+  await prisma.bookingService.updateMany({ where: { id: serviceId, tenantId, unitId }, data: { active: false } });
+  const base = `/app/sys/${systemId}/pos/products`;
+  revalidatePath(base);
+  redirect(`${base}?ok=${encodeURIComponent("เอาบริการออกจากหน้าขายแล้ว")}`);
+}

@@ -79,6 +79,23 @@ export async function posCatalog(tenantId: string, inventorySystemId: string): P
   });
 }
 
+/** บริการที่ขายหน้าร้านได้ — มาจากบริการของหน้างานที่ผูก POS (BookingService) */
+export type PosServiceItem = { id: string; name: string; priceSatang: number; durationMin: number };
+
+/**
+ * บริการของ unit ที่กำลังขาย — ร้านบริการ (ตัดผม/นวด/คลินิก) รายได้หลักคือบริการ ไม่ใช่สินค้า
+ * เดิม POS ดึงแต่ InvItem → ร้านตัดผมเปิดหน้าขายมาแล้วว่างเปล่า ต้องพิมพ์ชื่อ+ราคาเองทุกบิล
+ * บริการไม่ตัดสต็อก (PosSaleLine.itemId = null) — ตรงกับสัญญาเดิมของ schema
+ */
+export async function posServices(tenantId: string, unitId: string): Promise<PosServiceItem[]> {
+  const rows = await prisma.bookingService.findMany({
+    where: { tenantId, unitId, active: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true, name: true, priceSatang: true, durationMin: true },
+  });
+  return rows;
+}
+
 // ═══════════ หน้า "สินค้า/ราคา" ของ POS (WO ส่วน B) ═══════════
 // ตั้งราคาขายต่อสินค้าในคลังที่ผูก POS · ราคาขายเก็บที่ AccountProduct.salePrice (master data)
 //   - resolve inventorySystemId จาก unit แรกที่ผูกคลัง (POS หน้าเดียวต่อระบบ)
