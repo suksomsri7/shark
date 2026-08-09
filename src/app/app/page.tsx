@@ -8,7 +8,8 @@ import { onboardingChecklist } from "@/lib/platform/onboarding-drip";
 import { WIDGETS, getDashboardLayout, runWidgets } from "@/lib/dashboard/widgets";
 import { DashboardCustomizer } from "./DashboardCustomizer";
 import { getCalendarEventsAction } from "@/lib/modules/calendar/actions";
-import { CalendarMonth, type CalEventDTO } from "@/components/calendar/CalendarMonth";
+import { CalendarDayNav } from "@/components/calendar/CalendarDayNav";
+import type { CalEventDTO } from "@/components/calendar/shared";
 
 // หน้าแรก /app = แดชบอร์ดของกิจการ (ไม่ใช่ "ระบบทั้งหมด" อีกต่อไป — ย้ายไปอยู่ใน drawer)
 // แสดง: ชื่อกิจการ + ตัวเลขวันนี้ + การ์ดระบบที่เปิดใช้ + ลิงก์เพิ่มระบบ
@@ -198,10 +199,11 @@ export default async function DashboardPage({
       </div>
 
 
-      {/* ปฏิทินรวมของเดือนนี้ (ย้ายจากเมนูมาหน้าแรก — คำสั่งเจ้าของ 24 ก.ค.) */}
+      {/* แถบวัน + รายการของวันนั้น (คำสั่งเจ้าของ 9 ส.ค. — เอาตารางเดือนออกจากหน้าแรก
+          เหลือ ‹ ก่อนหน้า | วันที่ | ถัดไป › · กดวันที่เปิดปฏิทินกลางจอ) */}
       <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium">ปฏิทิน</h2>
-        <CalendarMonth year={calYear} month={calMonth} events={calEvents} todayStr={calToday} />
+        <h2 className="text-sm font-medium">รายการตามวัน</h2>
+        <CalendarDayNav year={calYear} month={calMonth} events={calEvents} todayStr={calToday} />
       </div>
     </div>
   );

@@ -1,0 +1,239 @@
+"use client";
+
+// ชิ้นส่วนที่ใช้ร่วมของปฏิทิน — ตารางเดือน / รายการของวัน / คำอธิบายสัญลักษณ์
+// แยกออกมาเพราะมีผู้ใช้ 2 ที่: หน้าแรก (แถบวัน + ปฏิทินใน modal) และหน้า /app/calendar (ปฏิทินเต็ม)
+// ถ้าไม่แยก สองที่นี้จะค่อย ๆ เพี้ยนจากกันเมื่อแก้ทีละที่
+
+import { useMemo } from "react";
+import { StatusChip } from "@/components/ui/StatusChip";
+import {
+  BOOKING_STATUS_LABEL,
+  HOTEL_RESV_STATUS_LABEL,
+  HR_LEAVE_STATUS_LABEL,
+} from "@/lib/ui/status-labels";
+
+export type CalEventKind = "APPOINTMENT" | "HOTEL_STAY" | "HR_LEAVE";
+export type CalEventDTO = {
+  id: string;
+  kind: CalEventKind;
+  title: string;
+  start: string; // ISO
+  end: string; // ISO
+  status: string;
+};
+
+// สีแยก kind — ใช้ token เท่านั้น (ink=ดำ / accent=น้ำเงิน / muted=เทา) ไม่มีสีสด
+export const KIND: Record<CalEventKind, { label: string; color: string }> = {
+  APPOINTMENT: { label: "นัดหมาย", color: "var(--color-ink)" },
+  HOTEL_STAY: { label: "การเข้าพัก", color: "var(--color-accent)" },
+  HR_LEAVE: { label: "วันลา", color: "var(--color-muted)" },
+};
+export const KIND_ORDER: CalEventKind[] = ["APPOINTMENT", "HOTEL_STAY", "HR_LEAVE"];
+
+const STATUS_LABEL: Record<CalEventKind, Record<string, string>> = {
+  APPOINTMENT: BOOKING_STATUS_LABEL,
+  HOTEL_STAY: HOTEL_RESV_STATUS_LABEL,
+  HR_LEAVE: HR_LEAVE_STATUS_LABEL,
+};
+
+const WEEKDAYS = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+
+export const pad = (n: number) => String(n).padStart(2, "0");
+/** ขอบเขตวัน (BKK) เป็น Date — เที่ยงคืนไทย = +07:00 */
+export const dayStart = (y: number, m: number, d: number) =>
+  new Date(`${y}-${pad(m)}-${pad(d)}T00:00:00+07:00`);
+
+/** event ทับวัน D ⇔ start < สิ้นวัน (D+1 เที่ยงคืน) และ end > ต้นวัน D */
+export function overlapsDay(ev: CalEventDTO, ds: Date, de: Date): boolean {
+  return new Date(ev.start).getTime() < de.getTime() && new Date(ev.end).getTime() > ds.getTime();
+}
+
+export function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  });
+}
+export function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("th-TH", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Bangkok",
+  });
+}
+/** บรรทัดเวลา/ช่วงของ event ในรายการวัน */
+export function whenText(ev: CalEventDTO): string {
+  if (ev.kind === "APPOINTMENT") return `${fmtTime(ev.start)} – ${fmtTime(ev.end)} น.`;
+  return `${fmtDate(ev.start)} – ${fmtDate(ev.end)}`;
+}
+
+export function monthLabelOf(year: number, month: number): string {
+  return new Date(`${year}-${pad(month)}-15T12:00:00+07:00`).toLocaleDateString("th-TH", {
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Bangkok",
+  });
+}
+
+/** เดือนถัดไป/ก่อนหน้าแบบข้ามปีถูกต้อง */
+export function shiftMonth(year: number, month: number, delta: number): { year: number; month: number } {
+  const total = year * 12 + (month - 1) + delta;
+  return { year: Math.floor(total / 12), month: (total % 12) + 1 };
+}
+
+/** จำนวนวันในเดือน */
+export function daysInMonthOf(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+export function eventsOfDay(
+  events: CalEventDTO[],
+  year: number,
+  month: number,
+  day: number,
+): CalEventDTO[] {
+  const ds = dayStart(year, month, day);
+  const de = dayStart(year, month, day + 1);
+  return events
+    .filter((ev) => overlapsDay(ev, ds, de))
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+}
+
+/** ตารางเดือน (อ่านอย่างเดียว) — จุดสีต่อ kind + กดวันเพื่อเลือก */
+export function MonthGrid({
+  year,
+  month,
+  events,
+  todayStr,
+  selected,
+  onSelect,
+}: {
+  year: number;
+  month: number;
+  events: CalEventDTO[];
+  todayStr: string; // "YYYY-MM-DD" ตามเวลาไทย
+  selected: number | null;
+  onSelect: (day: number) => void;
+}) {
+  const daysInMonth = daysInMonthOf(year, month);
+  // วันในสัปดาห์ของวันที่ 1 (0=อาทิตย์) ตามเวลาไทย → จำนวนช่องว่างนำหน้า grid
+  const startBlank = new Date(`${year}-${pad(month)}-01T12:00:00+07:00`).getUTCDay();
+
+  const perDay = useMemo(() => {
+    const map = new Map<number, { kinds: Set<CalEventKind>; count: number }>();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const ds = dayStart(year, month, d);
+      const de = dayStart(year, month, d + 1);
+      const kinds = new Set<CalEventKind>();
+      let count = 0;
+      for (const ev of events) {
+        if (overlapsDay(ev, ds, de)) {
+          kinds.add(ev.kind);
+          count++;
+        }
+      }
+      map.set(d, { kinds, count });
+    }
+    return map;
+  }, [events, year, month, daysInMonth]);
+
+  const todayInMonth = todayStr.startsWith(`${year}-${pad(month)}`)
+    ? Number(todayStr.slice(8, 10))
+    : null;
+
+  const cells: (number | null)[] = [
+    ...Array<null>(startBlank).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+
+  return (
+    <div>
+      <div className="grid grid-cols-7 gap-1 text-center text-xs text-[color:var(--color-muted)]">
+        {WEEKDAYS.map((w) => (
+          <div key={w} className="py-1">
+            {w}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((d, i) => {
+          if (d == null) return <div key={`b-${i}`} className="aspect-square" />;
+          const info = perDay.get(d);
+          const isToday = todayInMonth === d;
+          const isSel = selected === d;
+          return (
+            <button
+              key={d}
+              type="button"
+              onClick={() => onSelect(d)}
+              className={`flex aspect-square flex-col items-center justify-start rounded-lg border p-1 text-sm hover:bg-[color:var(--color-surface-2)] ${
+                isSel
+                  ? "border-2 border-[#2563eb] shadow-[0_0_0_2px_rgba(37,99,235,0.25),0_0_14px_rgba(59,130,246,0.55)]"
+                  : "border-[color:var(--color-line)]"
+              }`}
+              aria-label={`วันที่ ${d}${info && info.count > 0 ? ` มี ${info.count} รายการ` : ""}`}
+              aria-current={isToday ? "date" : undefined}
+            >
+              <span className={isToday ? "font-semibold text-[color:var(--color-accent)]" : ""}>{d}</span>
+              <span className="mt-auto flex min-h-[8px] items-center gap-0.5">
+                {info &&
+                  KIND_ORDER.filter((k) => info.kinds.has(k)).map((k) => (
+                    <span
+                      key={k}
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ backgroundColor: KIND[k].color }}
+                    />
+                  ))}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** คำอธิบายสัญลักษณ์จุดสี */
+export function KindLegend() {
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--color-muted)]">
+      {KIND_ORDER.map((k) => (
+        <span key={k} className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: KIND[k].color }} />
+          {KIND[k].label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** รายการ event ของวันที่เลือก */
+export function EventList({ events, emptyText }: { events: CalEventDTO[]; emptyText: string }) {
+  if (events.length === 0) {
+    return (
+      <div className="card py-6 text-center text-sm text-[color:var(--color-muted)]">{emptyText}</div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {events.map((ev) => (
+        <div key={`${ev.kind}-${ev.id}`} className="card flex flex-col gap-1 p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span
+                className="mt-0.5 h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: KIND[ev.kind].color }}
+              />
+              <span className="text-sm font-medium">{ev.title}</span>
+            </div>
+            <StatusChip value={ev.status} map={STATUS_LABEL[ev.kind]} />
+          </div>
+          <div className="pl-4 text-xs text-[color:var(--color-muted)]">
+            {KIND[ev.kind].label} · {whenText(ev)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
