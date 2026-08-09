@@ -35,7 +35,8 @@ export type CreateSaleInput = {
   sourceId?: string;
   idempotencyKey: string;
   // itemId = InvItem.id ที่ผูก → ตัดสต็อก + COGS perpetual (null/ไม่ระบุ = รายการเพิ่มเอง/บริการ ไม่ตัดสต็อก)
-  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang?: number; itemId?: string }[];
+  // serviceId = BookingService.id (บริการ) → ใช้แยกยอดสินค้า/บริการในรายงาน · ไม่ตัดสต็อก
+  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang?: number; itemId?: string; serviceId?: string }[];
   billDiscountSatang?: number;
   // คูปอง (contract 2.3) — ต้องมาคู่กันเสมอ · ระบุแล้วใช้ไม่ได้ = โยน error (ห้ามขายต่อเงียบ ๆ)
   couponSystemId?: string;
@@ -131,7 +132,7 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
       },
     });
     await tx.posSaleLine.createMany({
-      data: lines.map((l) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId ?? null })),
+      data: lines.map((l) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId ?? null, serviceId: l.serviceId ?? null })),
     });
     await tx.posPayment.createMany({
       data: input.payMethods.map((p) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, type: p.type, amountSatang: p.amountSatang, refSaleId: p.refSaleId })),
@@ -378,6 +379,11 @@ export type PosDaySummary = {
   voidTotalSatang: number; // ยอดรวมบิล void
   byMethod: PayMethodLine[]; // แยกตามวิธีจ่าย (จาก PosPayment ของบิล PAID วันนั้น) — เรียงตาม enum
   cashInDrawerSatang: number; // เงินสดที่ควรมีในลิ้นชัก = ยอดจ่ายเงินสดของบิล PAID วันนั้น
+  // แยกยอดตามชนิดรายการ — ธุรกิจที่มีทั้งสินค้าและบริการต้องรู้ว่ารายได้มาจากทางไหน
+  // (ยอดรวม 3 ก้อนนี้ = ยอดก่อนหักส่วนลดท้ายบิล จึงอาจไม่เท่า netSales พอดี)
+  productSalesSatang: number; // รายการที่ผูกสินค้าในคลัง
+  serviceSalesSatang: number; // รายการที่ผูกบริการ
+  otherSalesSatang: number; // รายการที่พนักงานพิมพ์เอง (ไม่ผูกทั้งสองอย่าง)
 };
 
 const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"];
@@ -449,6 +455,22 @@ export async function closeDaySummary(ctx: CloseCtx, businessDate?: string): Pro
     count: agg.get(t)!.count,
   }));
 
+  // แยกยอดสินค้า/บริการ/พิมพ์เอง จากบรรทัดของบิล PAID วันนั้น
+  const saleLines = paidIds.length
+    ? await prisma.posSaleLine.findMany({
+        where: { tenantId: ctx.tenantId, saleId: { in: paidIds } },
+        select: { lineTotalSatang: true, itemId: true, serviceId: true },
+      })
+    : [];
+  let productSalesSatang = 0;
+  let serviceSalesSatang = 0;
+  let otherSalesSatang = 0;
+  for (const l of saleLines) {
+    if (l.serviceId) serviceSalesSatang += l.lineTotalSatang;
+    else if (l.itemId) productSalesSatang += l.lineTotalSatang;
+    else otherSalesSatang += l.lineTotalSatang;
+  }
+
   return {
     businessDate: date,
     netSalesSatang: paid.reduce((s, x) => s + x.grandTotalSatang, 0),
@@ -457,6 +479,9 @@ export async function closeDaySummary(ctx: CloseCtx, businessDate?: string): Pro
     voidTotalSatang: voided.reduce((s, x) => s + x.grandTotalSatang, 0),
     byMethod,
     cashInDrawerSatang: agg.get("CASH")?.amountSatang ?? 0,
+    productSalesSatang,
+    serviceSalesSatang,
+    otherSalesSatang,
   };
 }
 

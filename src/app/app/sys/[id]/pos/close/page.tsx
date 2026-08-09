@@ -96,6 +96,30 @@ export default async function PosCloseDayPage({
         </div>
       </Section>
 
+      {/* แยกตามชนิดรายการ — ธุรกิจที่มีทั้งสินค้าและบริการต้องรู้ว่ารายได้มาจากทางไหน
+          ซ่อนทั้งบล็อกถ้ายังไม่มียอด (ร้านที่ขายอย่างเดียวไม่ต้องเห็นตัวเลข 0 สามช่อง) */}
+      {summary.productSalesSatang + summary.serviceSalesSatang + summary.otherSalesSatang > 0 && (
+        <Section title="แยกตามชนิดรายการ">
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "สินค้า", value: summary.productSalesSatang },
+              { label: "บริการ", value: summary.serviceSalesSatang },
+              { label: "รายการอื่น", value: summary.otherSalesSatang },
+            ].map((r) => (
+              <div key={r.label} className="rounded-xl border p-3">
+                <div className="text-xs text-[color:var(--color-muted)]">{r.label}</div>
+                <div className="text-base font-semibold">
+                  <MoneyText satang={r.value} decimals />
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-[color:var(--color-muted)]">
+            ยอดก่อนหักส่วนลดท้ายบิล — รวมสามช่องจึงอาจไม่เท่ายอดขายสุทธิพอดี
+          </p>
+        </Section>
+      )}
+
       {/* แยกตามวิธีจ่าย */}
       <Section title="แยกตามวิธีจ่าย">
         {summary.byMethod.length === 0 ? (

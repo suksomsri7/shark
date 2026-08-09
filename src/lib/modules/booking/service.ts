@@ -25,7 +25,8 @@ export async function getBookingData(tenantId: string, unitId: string) {
   const db = tenantDb({ tenantId, unitId });
   const [services, staff] = await Promise.all([
     db.bookingService.findMany({
-      where: { active: true },
+      // bookable=false = รายการที่ขายหน้าร้านอย่างเดียว (ค่าจัดส่ง/ห่อของขวัญ) ห้ามโผล่ให้ลูกค้าจอง
+      where: { active: true, bookable: true },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
     db.bookingStaff.findMany({
@@ -94,7 +95,7 @@ export async function getAvailableSlots(
   dateStr: string,
 ): Promise<SlotOption[]> {
   const db = tenantDb({ tenantId, unitId });
-  const service = await db.bookingService.findFirst({ where: { id: serviceId, active: true } });
+  const service = await db.bookingService.findFirst({ where: { id: serviceId, active: true, bookable: true } });
   if (!service) return [];
 
   const weekday = localWeekday(dateStr);

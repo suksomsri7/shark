@@ -195,6 +195,49 @@ try {
   chk("SV-7", "🔴 ขายบริการแล้วสต็อกสินค้าไม่ขยับ (บริการไม่มีของให้ตัด)", stockAfter === stockBefore, String(stockBefore), String(stockAfter), "CRITICAL");
   const svcLine = await prisma.posSaleLine.findFirst({ where: { saleId: svcSale.saleId } });
   chk("SV-8", "รายการบริการไม่ผูก InvItem (itemId = null ตามสัญญา schema)", svcLine?.itemId == null, "null", String(svcLine?.itemId));
+
+  // ═══════ ธุรกิจผสม: มีทั้งสินค้าและบริการ (เจ้าของทัก 9 ส.ค.) ═══════
+  // เคสจริง: ร้านค้ามีสินค้า + "ค่าจัดส่ง" ที่ขายหน้าร้านได้แต่ **ห้ามโผล่ให้ลูกค้าจองคิว**
+  console.log("── ธุรกิจผสม สินค้า+บริการ ──");
+  const feeShip = await prisma.bookingService.create({
+    data: { tenantId, unitId: unit.id, name: "ค่าจัดส่ง", durationMin: 0, priceSatang: 5000, bookable: false },
+  });
+  const posAll = await reg.posServices(tenantId, unit.id);
+  chk("MX-1", "หน้าขายเห็นทั้งบริการมีคิว และค่าบริการที่ไม่ใช่คิว",
+    posAll.some((x) => x.id === svcCut.id) && posAll.some((x) => x.id === feeShip.id),
+    "เห็นทั้งคู่", JSON.stringify(posAll.map((x) => x.name)), "CRITICAL");
+
+  const booking = await import("@/lib/modules/booking/service");
+  const setup = await booking.getBookingData(tenantId, unit.id);
+  const bookNames = setup.services.map((x) => x.name);
+  chk("MX-2", "🔴 ค่าบริการที่ไม่ใช่คิว ต้องไม่โผล่ในระบบจอง (ไม่งั้นลูกค้าจอง 'ค่าจัดส่ง' ได้)",
+    !bookNames.includes("ค่าจัดส่ง"), "ไม่มี", JSON.stringify(bookNames), "CRITICAL");
+  chk("MX-3", "บริการมีคิวยังโผล่ในระบบจองตามเดิม", bookNames.includes("ตัดผมชาย"), "มีตัดผมชาย", JSON.stringify(bookNames), "CRITICAL");
+
+  // ขายผสมบิลเดียว: สินค้า + บริการ + ค่าบริการ → รายงานต้องแยกออก
+  const mixKey = `mix-${Date.now()}`;
+  const mixSale = await pos.createSale({
+    tenantId, unitId: unit.id, systemId: posSys.id, idempotencyKey: mixKey,
+    lines: [
+      { name: cNam!.name, qty: 1, unitPriceSatang: 700, itemId: cNam!.id },
+      { name: svcCut.name, qty: 1, unitPriceSatang: 15000, serviceId: svcCut.id },
+      { name: feeShip.name, qty: 1, unitPriceSatang: 5000, serviceId: feeShip.id },
+      { name: "ลดราคาพิเศษหน้าร้าน", qty: 1, unitPriceSatang: 1000 },
+    ],
+    payMethods: [{ type: "CASH", amountSatang: 700 + 15000 + 5000 + 1000 }],
+  });
+  const mixLines = await prisma.posSaleLine.findMany({ where: { saleId: mixSale.saleId }, select: { name: true, itemId: true, serviceId: true } });
+  chk("MX-4", "บิลเดียวมีทั้งสินค้า/บริการ/รายการพิมพ์เอง แยกกันได้จาก itemId+serviceId",
+    mixLines.filter((l) => l.itemId).length === 1 &&
+      mixLines.filter((l) => l.serviceId).length === 2 &&
+      mixLines.filter((l) => !l.itemId && !l.serviceId).length === 1,
+    "1/2/1", JSON.stringify(mixLines.map((l) => ({ n: l.name, i: !!l.itemId, s: !!l.serviceId }))), "CRITICAL");
+
+  const sum = await pos.closeDaySummary({ tenantId, systemId: posSys.id });
+  chk("MX-5", "สรุปปิดวันแยกยอดสินค้า/บริการ/อื่น ๆ ได้",
+    sum.serviceSalesSatang >= 20000 && sum.productSalesSatang >= 700 && sum.otherSalesSatang >= 1000,
+    "บริการ≥20000 สินค้า≥700 อื่น≥1000",
+    JSON.stringify({ p: sum.productSalesSatang, s: sum.serviceSalesSatang, o: sum.otherSalesSatang }), "CRITICAL");
 } catch (e) {
   chk("CRASH", "harness ทำงานจนจบ", false, "จบปกติ", e instanceof Error ? e.message.slice(0, 160) : String(e), "CRITICAL");
 } finally {

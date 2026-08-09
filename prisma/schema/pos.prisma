@@ -55,7 +55,9 @@ model PosSaleLine {
   unitPriceSatang Int
   discountSatang Int     @default(0)
   lineTotalSatang Int
-  itemId         String? // InvItem.id ที่ผูก (ตัด/คืนสต็อก perpetual) · null = รายการเพิ่มเอง/บริการ (ไม่ตัดสต็อก)
+  itemId         String? // InvItem.id ที่ผูก (ตัด/คืนสต็อก perpetual) · null = บริการ/รายการเพิ่มเอง (ไม่ตัดสต็อก)
+  serviceId      String? // BookingService.id ที่ผูก — ใช้แยกยอด "สินค้า vs บริการ" ในรายงาน
+                         // (itemId=null อย่างเดียวแยกไม่ออกว่าเป็นบริการหรือรายการพิมพ์เอง)
 
   @@index([saleId])
 }

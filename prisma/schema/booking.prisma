@@ -21,6 +21,9 @@ model BookingService {
   depositSatang Int    @default(0) // มัดจำต่อบริการ (0 = ไม่ต้องมัดจำ) — ร้านตั้งเอง กัน no-show
   bufferMin   Int      @default(0) // เวลาพักหลังบริการ
   active      Boolean  @default(true)
+  // ให้ลูกค้าจองล่วงหน้าได้ไหม — false = ขายหน้าร้านอย่างเดียว (ค่าจัดส่ง/ห่อของขวัญ/ค่าติดตั้ง)
+  // ธุรกิจที่มีทั้งสินค้าและบริการต้องแยกสองอย่างนี้ ไม่งั้น "ค่าจัดส่ง" จะโผล่เป็นคิวให้จอง
+  bookable    Boolean  @default(true)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

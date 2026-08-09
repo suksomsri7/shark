@@ -14,7 +14,8 @@ import * as coupon from "@/lib/modules/coupon/service";
 
 // ── รูปแบบข้อมูลที่ client ส่งมา ──
 // itemId = InvItem.id จาก catalog (ตัดสต็อก) · undefined = รายการเพิ่มเอง (ไม่ตัดสต็อก)
-export type CartLine = { name: string; qty: number; unitPriceSatang: number; itemId?: string };
+// serviceId = BookingService.id (บริการ) — server ตรวจซ้ำว่าเป็นของ unit นี้จริงก่อนบันทึก
+export type CartLine = { name: string; qty: number; unitPriceSatang: number; itemId?: string; serviceId?: string };
 type SaleInput = {
   systemId: string;
   unitId: string;
@@ -60,7 +61,8 @@ function normalizeLines(raw: CartLine[]): { ok: true; lines: CartLine[]; subtota
     if (!Number.isFinite(qty) || qty <= 0) return { ok: false, message: `จำนวนของ "${name}" ต้องมากกว่า 0` };
     if (!Number.isFinite(unitPriceSatang) || unitPriceSatang < 0) return { ok: false, message: `ราคาของ "${name}" ติดลบไม่ได้` };
     const itemId = String(l?.itemId ?? "").trim() || undefined; // ผูกสินค้าคลัง (ตัดสต็อก) · ว่าง = รายการเพิ่มเอง
-    lines.push({ name, qty, unitPriceSatang, itemId });
+    const serviceId = String(l?.serviceId ?? "").trim() || undefined; // ผูกบริการ (ไม่ตัดสต็อก) — ตรวจของจริงอีกชั้นด้านล่าง
+    lines.push({ name, qty, unitPriceSatang, itemId, serviceId });
   }
   const subtotal = lines.reduce((s, l) => s + l.unitPriceSatang * l.qty, 0);
   return { ok: true, lines, subtotal };
@@ -209,6 +211,20 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
   }
 
   const links = await resolvePosLinks(tenantId, input.unitId);
+  // serviceId ที่ client ส่งมา ต้องเป็นบริการของ unit นี้จริง — ไม่งั้นทิ้ง id ทิ้ง (ขายต่อได้ แต่ไม่ผูกผิดตัว)
+  // client ส่ง id มั่วแล้วรายงานจะเพี้ยน · ราคายังคิดจากที่ส่งมาเหมือนเดิม (พนักงานแก้ราคาได้อยู่แล้ว)
+  const wantSvc = [...new Set(norm.lines.map((l) => l.serviceId).filter((x): x is string => !!x))];
+  const okSvc = wantSvc.length
+    ? new Set(
+        (
+          await prisma.bookingService.findMany({
+            where: { tenantId, unitId: input.unitId, id: { in: wantSvc } },
+            select: { id: true },
+          })
+        ).map((r) => r.id),
+      )
+    : new Set<string>();
+  const safeLines = norm.lines.map((l) => (l.serviceId && !okSvc.has(l.serviceId) ? { ...l, serviceId: undefined } : l));
 
   try {
     const res = await createSale({
@@ -219,7 +235,7 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
       memberId: mem.memberId,
       sourceModule: "POS",
       idempotencyKey,
-      lines: norm.lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, itemId: l.itemId })),
+      lines: safeLines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, itemId: l.itemId, serviceId: l.serviceId })),
       billDiscountSatang: totals.billDiscount,
       couponSystemId: totals.couponSystemId ?? undefined,
       couponCode: totals.couponSystemId ? input.couponCode?.trim().toUpperCase() : undefined,
@@ -296,6 +312,8 @@ export async function addPosServiceAction(formData: FormData): Promise<void> {
   const name = String(formData.get("name") ?? "").trim();
   const priceRaw = String(formData.get("priceBaht") ?? "").trim();
   const durRaw = String(formData.get("durationMin") ?? "").trim();
+  // ติ๊ก = ให้ลูกค้าจองล่วงหน้าได้ (บริการมีคิว) · ไม่ติ๊ก = ขายหน้าร้านอย่างเดียว (ค่าจัดส่ง/ห่อของขวัญ)
+  const bookable = String(formData.get("bookable") ?? "") === "on";
 
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
@@ -304,14 +322,14 @@ export async function addPosServiceAction(formData: FormData): Promise<void> {
 
   const base = `/app/sys/${systemId}/pos/products`;
   const priceBaht = Number(priceRaw);
-  // ระยะเวลาเป็นของระบบจอง — หน้าขายไม่ต้องกรอก ใส่ค่าเริ่มต้น 30 นาทีให้เอาไปจัดคิวต่อได้
-  const durationMin = durRaw === "" ? 30 : Number(durRaw);
+  // ระยะเวลาใช้เฉพาะตอนจองคิว — รายการที่ขายหน้าร้านอย่างเดียวไม่ต้องมีเวลา (0 = ไม่ระบุ)
+  const durationMin = bookable ? (durRaw === "" ? 30 : Number(durRaw)) : 0;
   if (!name) redirect(`${base}?err=${encodeURIComponent("ใส่ชื่อบริการก่อน")}`);
   if (!Number.isFinite(priceBaht) || priceBaht < 0) {
     redirect(`${base}?err=${encodeURIComponent("กรอกราคาบริการเป็นตัวเลขไม่ติดลบ")}`);
   }
-  if (!Number.isFinite(durationMin) || durationMin < 5 || durationMin > 600) {
-    redirect(`${base}?err=${encodeURIComponent("ระยะเวลาต้องอยู่ระหว่าง 5-600 นาที")}`);
+  if (bookable && (!Number.isFinite(durationMin) || durationMin < 5 || durationMin > 600)) {
+    redirect(`${base}?err=${encodeURIComponent("บริการที่ให้จองล่วงหน้าต้องระบุเวลา 5-600 นาที")}`);
   }
 
   await prisma.bookingService.create({
@@ -321,6 +339,7 @@ export async function addPosServiceAction(formData: FormData): Promise<void> {
       name: name.slice(0, 80),
       durationMin: Math.round(durationMin),
       priceSatang: Math.round(priceBaht * 100),
+      bookable,
     },
   });
   revalidatePath(base);

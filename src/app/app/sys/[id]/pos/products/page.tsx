@@ -71,8 +71,9 @@ export default async function PosProductsPage({
       {serviceUnit && (
         <Section title="บริการ">
           <p className="mb-2 text-xs text-[color:var(--color-muted)]">
-            รายการที่ขายเป็นบริการ (ตัดผม สระ นวด ฯลฯ) — ขึ้นให้กดในหน้าขายทันที ไม่ตัดสต็อก
-            {" · "}ใช้รายการเดียวกับระบบจองคิว ตั้งที่นี่แล้วหน้าจองเห็นด้วย
+            รายการที่ไม่ใช่ของในคลัง — ทั้งงานบริการ (ตัดผม นวด ซ่อม) และค่าบริการอื่น (ค่าจัดส่ง ห่อของขวัญ ค่าติดตั้ง)
+            {" · "}ขึ้นให้กดในหน้าขายทันที ไม่ตัดสต็อก
+            {" · "}ติ๊ก “ให้จองล่วงหน้าได้” เฉพาะรายการที่ต้องจองคิว — รายการนั้นจะไปโผล่ในระบบจองด้วย
           </p>
 
           <div className="flex flex-col gap-2">
@@ -80,7 +81,9 @@ export default async function PosProductsPage({
               <div key={sv.id} className="flex flex-wrap items-end gap-2 rounded-lg border px-3 py-2 text-sm">
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate font-medium">{sv.name}</span>
-                  <span className="text-xs text-[color:var(--color-muted)]">ใช้เวลา {sv.durationMin} นาที</span>
+                  <span className="text-xs text-[color:var(--color-muted)]">
+                    {sv.bookable ? `จองล่วงหน้าได้ · ใช้เวลา ${sv.durationMin} นาที` : "ขายหน้าร้านอย่างเดียว"}
+                  </span>
                 </div>
                 <form action={setPosServicePriceAction} className="flex items-end gap-2">
                   <input type="hidden" name="systemId" value={id} />
@@ -124,6 +127,11 @@ export default async function PosProductsPage({
               <label className="flex flex-col text-xs text-[color:var(--color-muted)]">
                 ใช้เวลา (นาที)
                 <input name="durationMin" type="number" min="5" max="600" inputMode="numeric" defaultValue={30} className="input w-24" />
+              </label>
+              <label className="flex items-center gap-1.5 self-end pb-2 text-xs">
+                {/* ค่าเริ่มต้นตามชนิดหน้างาน: หน้างานจองคิว = ติ๊กไว้ · หน้างานอื่น (ร้านค้า/ร้านอาหาร) = ไม่ติ๊ก */}
+                <input type="checkbox" name="bookable" defaultChecked={serviceUnit.type === "BOOKING"} />
+                ให้จองล่วงหน้าได้
               </label>
               <SubmitButton>+ เพิ่มบริการ</SubmitButton>
             </form>

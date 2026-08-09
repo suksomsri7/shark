@@ -8,7 +8,8 @@ import { systemForUnit } from "@/lib/modules/system/service";
 import * as inventory from "@/lib/modules/inventory/service";
 import * as account from "@/lib/modules/account";
 
-export type PosUnit = { id: string; name: string };
+// type = ชนิดหน้างาน (BOOKING/SHOP/RESTAURANT…) — หน้า POS ใช้ตั้งค่าเริ่มต้นว่าบริการใหม่ควรจองล่วงหน้าได้ไหม
+export type PosUnit = { id: string; name: string; type: string };
 export type PosCatalogItem = {
   id: string;
   name: string;
@@ -35,7 +36,7 @@ export async function posUnits(tenantId: string, posSystemId: string): Promise<P
   const units = await prisma.businessUnit.findMany({
     where: { tenantId, id: { in: links.map((l) => l.unitId) }, status: { not: "ARCHIVED" } },
     orderBy: { createdAt: "asc" },
-    select: { id: true, name: true },
+    select: { id: true, name: true, type: true },
   });
   return units;
 }
@@ -80,7 +81,7 @@ export async function posCatalog(tenantId: string, inventorySystemId: string): P
 }
 
 /** บริการที่ขายหน้าร้านได้ — มาจากบริการของหน้างานที่ผูก POS (BookingService) */
-export type PosServiceItem = { id: string; name: string; priceSatang: number; durationMin: number };
+export type PosServiceItem = { id: string; name: string; priceSatang: number; durationMin: number; bookable: boolean };
 
 /**
  * บริการของ unit ที่กำลังขาย — ร้านบริการ (ตัดผม/นวด/คลินิก) รายได้หลักคือบริการ ไม่ใช่สินค้า
@@ -91,7 +92,7 @@ export async function posServices(tenantId: string, unitId: string): Promise<Pos
   const rows = await prisma.bookingService.findMany({
     where: { tenantId, unitId, active: true },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    select: { id: true, name: true, priceSatang: true, durationMin: true },
+    select: { id: true, name: true, priceSatang: true, durationMin: true, bookable: true },
   });
   return rows;
 }

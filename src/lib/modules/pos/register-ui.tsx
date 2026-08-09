@@ -7,7 +7,7 @@ import { posQuoteAction, registerSaleAction, type QuoteState, type RegisterSaleS
 import type { PosServiceItem, PosCatalogItem, PosMember } from "@/lib/modules/pos/register";
 
 // itemId = InvItem.id (สินค้าจาก catalog → ตัดสต็อก) · undefined = รายการเพิ่มเอง
-type CartRow = { key: string; name: string; qty: number; unitPriceSatang: number; itemId?: string };
+type CartRow = { key: string; name: string; qty: number; unitPriceSatang: number; itemId?: string; serviceId?: string };
 type PayMethod = "CASH" | "PROMPTPAY";
 
 // สตางค์จากช่องกรอกบาท (รับ "" → 0) — ปัดเป็นสตางค์เต็ม
@@ -82,7 +82,7 @@ export function PosRegister({
     setCart((prev) => {
       const found = prev.find((r) => r.key === key);
       if (found) return prev.map((r) => (r.key === key ? { ...r, qty: r.qty + 1 } : r));
-      return [...prev, { key, name: sv.name, qty: 1, unitPriceSatang: sv.priceSatang }];
+      return [...prev, { key, name: sv.name, qty: 1, unitPriceSatang: sv.priceSatang, serviceId: sv.id }];
     });
   }
   function addCustom() {
@@ -102,7 +102,7 @@ export function PosRegister({
   const inputPayload = () => ({
     systemId,
     unitId,
-    lines: cart.map((r) => ({ name: r.name, qty: r.qty, unitPriceSatang: r.unitPriceSatang, itemId: r.itemId })),
+    lines: cart.map((r) => ({ name: r.name, qty: r.qty, unitPriceSatang: r.unitPriceSatang, itemId: r.itemId, serviceId: r.serviceId })),
     billDiscountSatang: bahtToSatang(billDiscount),
     memberId: memberId || undefined,
     couponCode: couponCode.trim() || undefined,
@@ -306,7 +306,8 @@ export function PosRegister({
                   >
                     <span className="line-clamp-2 text-sm font-medium">{sv.name}</span>
                     <span className="text-xs tabular-nums text-[color:var(--color-muted)]">
-                      {formatBaht(sv.priceSatang)} · {sv.durationMin} นาที
+                      {formatBaht(sv.priceSatang)}
+                      {sv.bookable && sv.durationMin > 0 ? ` · ${sv.durationMin} นาที` : ""}
                     </span>
                   </button>
                 ))}
