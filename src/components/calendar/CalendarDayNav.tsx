@@ -125,7 +125,8 @@ export function CalendarDayNav({
   return (
     <div className="flex flex-col gap-3">
       {/* แถบเดินวัน — ‹ ก่อนหน้า | วันที่ | ถัดไป › */}
-      <div className="card flex items-center justify-between gap-2 p-2">
+      {/* จำกัดความกว้างบนจอใหญ่ — ไม่งั้นปุ่มก่อนหน้า/ถัดไปถูกดันไปสุดขอบ ห่างจากวันที่มาก */}
+      <div className="card mx-auto flex w-full max-w-md items-center justify-between gap-2 p-2">
         <button
           type="button"
           onClick={() => setSel((d) => shiftDay(d, -1))}
