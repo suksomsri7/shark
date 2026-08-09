@@ -43,6 +43,8 @@ export async function applyExternalSale(input: {
   refId: string; // PosSale.id
   occurredAt: Date;
   grossSatang: number; // ยอดรวม (ราคารวม VAT ถ้าร้านจด)
+  // ส่วนของยอดรวมที่มาจาก "บริการ" — ไม่ระบุ = ถือเป็นขายสินค้าทั้งก้อน (พฤติกรรมเดิม)
+  serviceGrossSatang?: number;
   payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE"; amountSatang: number }[];
 }): Promise<{ posted: boolean; reason?: string }> {
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
@@ -77,11 +79,16 @@ export async function applyExternalSale(input: {
     amountSatang: p.amountSatang,
   }));
 
+  // ถอด VAT จากฝั่งบริการด้วยอัตราส่วนเดียวกับทั้งบิล แล้ว clamp ไม่ให้เกินฐานรวม
+  const svcGross = Math.min(Math.max(0, Math.round(input.serviceGrossSatang ?? 0)), gross);
+  const svcBase = gross > 0 ? Math.min(base, Math.round((base * svcGross) / gross)) : 0;
+
   const res = await postExternalSale(ctx, {
     refId: input.refId,
     date: input.occurredAt,
     baseSatang: base,
     vatSatang: vat,
+    serviceBaseSatang: svcBase,
     drLines,
   });
   return { posted: "entryId" in res };

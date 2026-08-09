@@ -234,6 +234,53 @@ try {
     "1/2/1", JSON.stringify(mixLines.map((l) => ({ n: l.name, i: !!l.itemId, s: !!l.serviceId }))), "CRITICAL");
 
   const sum = await pos.closeDaySummary({ tenantId, systemId: posSys.id });
+  // ═══════ เชื่อมระบบบัญชี: บริการต้องเข้า 4030 ไม่ใช่ 4000 ═══════
+  // ผังบัญชีมี "รายได้ค่าบริการ (4030)" อยู่แล้ว แต่ POS ลง 4000 ทั้งหมดมาตลอด
+  // ร้านตัดผมจึงเห็นรายได้ทั้งร้านเป็น "ขายสินค้า" ในงบกำไรขาดทุน
+  console.log("── เชื่อมบัญชี: แยกรายได้สินค้า/บริการ ──");
+  {
+    const acctSys = await sys.createSystem(tenantId, "ACCOUNT", "บัญชี");
+    await prisma.accountSystemLink.create({
+      data: { tenantId, systemId: acctSys.id, linkedKind: "POS", linkedId: posSys.id },
+    });
+    const { drainAll } = await import("@/lib/outbox-consumers");
+    const gl = await import("@/lib/modules/account/gl");
+    await gl.ensureAccounting({ tenantId, systemId: acctSys.id });
+
+    const acctKey = `acct-${Date.now()}`;
+    const acctSale = await pos.createSale({
+      tenantId, unitId: unit.id, systemId: posSys.id, idempotencyKey: acctKey,
+      lines: [
+        { name: cNam!.name, qty: 1, unitPriceSatang: 1000, itemId: cNam!.id },   // สินค้า 10 บาท
+        { name: svcCut.name, qty: 1, unitPriceSatang: 30000, serviceId: svcCut.id }, // บริการ 300 บาท
+      ],
+      payMethods: [{ type: "CASH", amountSatang: 31000 }],
+    });
+    await drainAll();
+
+    const entry = await prisma.accountJournalEntry.findFirst({
+      where: { tenantId, systemId: acctSys.id, refType: "PosSale", refId: acctSale.saleId },
+      include: { lines: { include: { account: { select: { code: true } } } } },
+    });
+    const cr = (code: string) =>
+      (entry?.lines ?? []).filter((l) => l.account.code === code).reduce((n, l) => n + l.credit, 0);
+    chk("AC-1", "มี journal entry ของบิลนี้", !!entry, "มี", String(!!entry), "CRITICAL");
+    // ร้านจด VAT → ฐานคือยอดหลังถอด VAT แล้วแบ่งตามสัดส่วนบริการ/สินค้าของบิล
+    // (คาดหวังเป็นสัดส่วน ไม่ใช่เลขดิบ — ไม่งั้นข้อสอบพังทุกครั้งที่ร้านเปลี่ยนสถานะจด VAT)
+    const baseTotal = cr("4000") + cr("4030");
+    chk("AC-2", "🔴 ยอดบริการเข้าบัญชี 4030 รายได้ค่าบริการ (สัดส่วน 300/310 ของฐาน)",
+      cr("4030") > 0 && Math.abs(cr("4030") - Math.round((baseTotal * 30000) / 31000)) <= 1,
+      String(Math.round((baseTotal * 30000) / 31000)), String(cr("4030")), "CRITICAL");
+    chk("AC-3", "ยอดสินค้าเข้าบัญชี 4000 รายได้ขายสินค้า (ส่วนที่เหลือ)",
+      cr("4000") > 0 && cr("4000") === baseTotal - cr("4030"),
+      String(baseTotal - cr("4030")), String(cr("4000")), "CRITICAL");
+    chk("AC-3b", "รายได้ 2 หมวดรวมกัน = ฐานก่อน VAT ของทั้งบิล (ไม่มีเงินหาย/งอก)",
+      baseTotal === 31000 - cr("2200"), String(31000 - cr("2200")), String(baseTotal), "CRITICAL");
+    const drSum = (entry?.lines ?? []).reduce((n, l) => n + l.debit, 0);
+    const crSum = (entry?.lines ?? []).reduce((n, l) => n + l.credit, 0);
+    chk("AC-4", "🔴 งบยังบาลานซ์ (Dr = Cr) หลังแยกรายได้ 2 หมวด", drSum === crSum && drSum === 31000, "31000/31000", `${drSum}/${crSum}`, "CRITICAL");
+  }
+
   chk("MX-5", "สรุปปิดวันแยกยอดสินค้า/บริการ/อื่น ๆ ได้",
     sum.serviceSalesSatang >= 20000 && sum.productSalesSatang >= 700 && sum.otherSalesSatang >= 1000,
     "บริการ≥20000 สินค้า≥700 อื่น≥1000",
@@ -257,6 +304,12 @@ try {
     await del("invMovement", () => prisma.invMovement.deleteMany({ where: { tenantId: tid } }));
     await del("invLocationStock", () => prisma.invLocationStock.deleteMany({ where: { tenantId: tid } }));
     await del("invLot", () => prisma.invLot.deleteMany({ where: { tenantId: tid } }));
+    await del("journalLine", () => prisma.accountJournalLine.deleteMany({ where: { tenantId: tid } }));
+    await del("journalEntry", () => prisma.accountJournalEntry.deleteMany({ where: { tenantId: tid } }));
+    await del("accountMapping", () => prisma.accountMapping.deleteMany({ where: { tenantId: tid } }));
+    await del("accountLedger", () => prisma.accountLedger.deleteMany({ where: { tenantId: tid } }));
+    await del("accountPeriod", () => prisma.accountPeriod.deleteMany({ where: { tenantId: tid } }));
+    await del("accountSystemLink", () => prisma.accountSystemLink.deleteMany({ where: { tenantId: tid } }));
     await del("bookingService", () => prisma.bookingService.deleteMany({ where: { tenantId: tid } }));
     await del("invLocation", () => prisma.invLocation.deleteMany({ where: { tenantId: tid } }));
     await del("invItem", () => prisma.invItem.deleteMany({ where: { tenantId: tid } }));

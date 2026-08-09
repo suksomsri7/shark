@@ -25,7 +25,10 @@ try {
   const rmList = await hotel.listRooms(tenantId, unit.id);
   let roomId = rmList[0]?.id;
   if (!roomId) { const rm = await hotel.createRoom({ tenantId, unitId: unit.id, roomTypeId: rtId, number: "101" } as never); roomId = (rm as { id?: string }).id ?? ""; }
-  const inD = "2026-08-01", outD = "2026-08-02"; // 1 คืน ฿1,070
+  // 🔴 เดิมฮาร์ดโค้ด "2026-08-01" → พอเวลาผ่านไปวันนั้นกลายเป็นอดีต ระบบปฏิเสธการจอง
+  //    ข้อสอบเลยแดงเองโดยที่โค้ดไม่ได้พัง (เน่าตามเวลา) — ใช้วันพรุ่งนี้เสมอ
+  const dPlus = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  const inD = dPlus(1), outD = dPlus(2); // 1 คืน ฿1,070
   const rv = await hotel.createReservation({ tenantId, unitId: unit.id, roomTypeId: rtId, checkInDate: inD, checkOutDate: outD, guestName: "สมหญิง" } as never);
   const rvId = (rv as { id?: string }).id ?? (rv as { reservationId?: string }).reservationId ?? "";
   chk("HT-1.1", "จองได้ (1 คืน ฿1,070)", !!rvId, "id", JSON.stringify(rv).slice(0, 60));

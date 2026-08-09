@@ -22,11 +22,14 @@ const posSalePaid: OutboxHandler = async (evt) => {
   if (!saleId) return;
   const sale = await prisma.posSale.findFirst({
     where: { id: saleId, tenantId: evt.tenantId },
-    include: { payments: true },
+    include: { payments: true, lines: { select: { serviceId: true, lineTotalSatang: true } } },
   });
   if (!sale) return;
   if (sale.status !== "PAID") return; // ถูก void ก่อน drain → ไม่ต้อง post (void handler จัดการ)
-  await bridgePosSalePaid(sale, sale.payments);
+  // ยอดฝั่งบริการ → ลงบัญชี 4030 รายได้ค่าบริการ (ที่เหลือเข้า 4000 ขายสินค้า)
+  // ใช้ยอดก่อนหักส่วนลดท้ายบิล — facade ถอด VAT/ปรับสัดส่วนให้เอง
+  const serviceGross = sale.lines.reduce((n, l) => n + (l.serviceId ? l.lineTotalSatang : 0), 0);
+  await bridgePosSalePaid(sale, sale.payments, serviceGross);
 };
 
 // void บิล POS → กลับรายการบัญชี

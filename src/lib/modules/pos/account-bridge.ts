@@ -38,6 +38,8 @@ type SaleForBridge = {
 export async function bridgePosSalePaid(
   sale: SaleForBridge,
   payments: { type: PosPayType; amountSatang: number }[],
+  /** ยอดรวมของบรรทัดที่เป็นบริการ — แยกลงบัญชีรายได้ค่าบริการ (4030) · 0/ไม่ส่ง = ขายสินค้าทั้งบิล */
+  serviceGrossSatang = 0,
 ): Promise<{ posted: boolean; reason?: string }> {
   return applyExternalSale({
     tenantId: sale.tenantId,
@@ -45,6 +47,8 @@ export async function bridgePosSalePaid(
     refId: sale.id,
     occurredAt: sale.paidAt ?? sale.createdAt,
     grossSatang: sale.grandTotalSatang,
+    // clamp: ส่วนลดท้ายบิลอาจทำให้ยอดบริการ (ก่อนลด) มากกว่ายอดสุทธิ — กันไม่ให้เกินทั้งบิล
+    serviceGrossSatang: Math.min(serviceGrossSatang, sale.grandTotalSatang),
     payMethods: payments.map((p) => ({ channel: channelOf(p.type), amountSatang: p.amountSatang })),
   });
 }

@@ -1221,6 +1221,13 @@ export async function postExternalSale(
     date: Date;
     baseSatang: number;
     vatSatang: number;
+    /**
+     * ส่วนของฐานที่เป็น "รายได้ค่าบริการ" (4030) — ที่เหลือเข้ารายได้ขายสินค้า (4000)
+     * ไม่ระบุ = เข้ารายได้ขายสินค้าทั้งก้อน (พฤติกรรมเดิมของผู้เรียกที่ยังไม่ได้แยก)
+     * ทำไมต้องแยก: ร้านบริการ (ตัดผม/นวด/คลินิก) ถ้าลงรวมเป็น "ขายสินค้า" งบกำไรขาดทุนผิดหมวด
+     * และแยกยื่นภาษีไม่ได้ — ผังบัญชีมี 4030 อยู่แล้วแต่ POS ไม่เคยใช้
+     */
+    serviceBaseSatang?: number;
     drLines: { key: "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR"; amountSatang: number }[];
   },
   tx?: Tx,
@@ -1231,7 +1238,11 @@ export async function postExternalSale(
 
     const b = new Book(ctx, db);
     for (const l of o.drLines) b.dr(await b.id(l.key), l.amountSatang);
-    b.cr(await b.id("INCOME_GOODS"), o.baseSatang);
+    // แยกรายได้ 2 หมวดตามสัดส่วนจริงของบิล — ปัดให้สองก้อนรวมกันเท่า baseSatang เป๊ะ (งบต้องบาลานซ์)
+    const svcBase = Math.min(Math.max(0, Math.round(o.serviceBaseSatang ?? 0)), o.baseSatang);
+    const goodsBase = o.baseSatang - svcBase;
+    if (goodsBase > 0) b.cr(await b.id("INCOME_GOODS"), goodsBase);
+    if (svcBase > 0) b.cr(await b.id("INCOME_SERVICE"), svcBase);
     if (o.vatSatang > 0) b.cr(await b.id("VAT_OUTPUT"), o.vatSatang);
 
     const entry = await commitEntry(

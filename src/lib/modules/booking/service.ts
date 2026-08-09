@@ -409,7 +409,7 @@ export async function recordDeposit(
       sourceModule: "BOOKING",
       sourceId: appointmentId,
       idempotencyKey: `booking-deposit-${appointmentId}`,
-      lines: [{ name: `มัดจำ ${appt.service.name}`, qty: 1, unitPriceSatang: amount }],
+      lines: [{ name: `มัดจำ ${appt.service.name}`, qty: 1, unitPriceSatang: amount, serviceId: appt.serviceId }],
       payMethods: [{ type: payMethod, amountSatang: amount }],
     });
     saleId = sale.saleId;

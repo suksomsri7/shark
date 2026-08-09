@@ -186,7 +186,8 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
         sourceModule: "BOOKING",
         sourceId: appt.id,
         idempotencyKey: `booking-sale-${appt.id}`,
-        lines: [{ name: appt.service.name, qty: 1, unitPriceSatang: spent }],
+        // ผูก serviceId → รายงานแยก "บริการ" ได้ตรงกับที่ขายผ่านหน้าขาย (ไม่งั้นนัดจะไปกอง "รายการอื่น")
+        lines: [{ name: appt.service.name, qty: 1, unitPriceSatang: spent, serviceId: appt.serviceId }],
         payMethods: [{ type: "CASH", amountSatang: spent }],
       });
     }
