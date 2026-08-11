@@ -69,6 +69,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrEmployee: sys(),
   HrAttendance: sys(),
   HrLeave: sys(),
+  HrWorkSchedule: sys(),
   // Marketing (ระบบ 20 — WO-0013)
   MktCampaign: sys(),
   MktRecipient: sys(),
@@ -182,6 +183,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   BookingStaff: unit,
   BookingStaffHours: unit,
   BookingHours: unit,
+  BookingClosure: unit,
   Appointment: unit,
   // Coupon
   Coupon: sys(),

@@ -103,10 +103,19 @@ export async function getAvailableSlots(
   const dayEnd = localToUtc(dateStr, 24 * 60);
 
   // กรอบเวลา = เวลาทำการร้านของ weekday นั้น (เดิมใช้ตารางรายช่าง)
+  // แล้ว **วันหยุด/เวลาพิเศษรายวัน (BookingClosure) ทับทีหลัง** — ปีใหม่/สงกรานต์/วันเปิดสั้น
   const unitHours = await getUnitHours(tenantId, unitId);
   const day = unitHours.find((h) => h.weekday === weekday);
-  if (!day || day.closed) return [];
-  const window: HoursWindow[] = [{ startMin: day.openMin, endMin: day.closeMin }];
+  const closure = await db.bookingClosure.findFirst({ where: { date: dateStr } });
+  if (closure?.closed) return []; // ปิดทั้งวัน — ชนะเวลาทำการรายสัปดาห์เสมอ
+  const openMin = closure && !closure.closed ? (closure.openMin ?? day?.openMin) : day?.openMin;
+  const closeMin = closure && !closure.closed ? (closure.closeMin ?? day?.closeMin) : day?.closeMin;
+  // ไม่มี closure แล้วสัปดาห์นั้นปิด/ไม่ได้ตั้ง = ปิด · มี closure เปิดพิเศษ = เปิดแม้ weekday ปิดอยู่
+  if (openMin == null || closeMin == null || (!closure && day?.closed !== false)) {
+    if (!closure || closure.closed) return [];
+  }
+  if (openMin == null || closeMin == null || closeMin <= openMin) return [];
+  const window: HoursWindow[] = [{ startMin: openMin, endMin: closeMin }];
 
   const staffList = staffId
     ? await db.bookingStaff.findMany({ where: { id: staffId, active: true } })
@@ -191,11 +200,69 @@ export async function createStaff(input: {
     employeeId = emp.id;
   } else if (name.length < 1) {
     throw new Error("กรุณากรอกชื่อพนักงาน");
+  } else {
+    // พิมพ์ชื่อเอง + ร้านเปิดระบบพนักงานอยู่ → ขึ้นทะเบียนใน HR ให้เลยแล้วผูกกัน
+    // เจ้าของทัก 11 ส.ค.: "จองคิว>พนักงาน" กับ "ทีมงาน>พนักงาน" ซ้ำซ้อน — ต้นเหตุคือ
+    // เพิ่มช่างในระบบจองแล้ว HR ไม่รู้จัก เลยต้องกรอกคนเดิมสองที่ (และลงเวลา/เงินเดือนไม่ได้)
+    const hrSystem = await prisma.appSystem.findFirst({
+      where: { tenantId: input.tenantId, type: "HR", active: true },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+    if (hrSystem) {
+      // ชื่อซ้ำ = ถือว่าคนเดียวกัน ผูกของเดิม (ไม่สร้างซ้ำ)
+      const dup = await prisma.hrEmployee.findFirst({
+        where: { tenantId: input.tenantId, systemId: hrSystem.id, name, active: true },
+        select: { id: true },
+      });
+      const emp =
+        dup ??
+        (await prisma.hrEmployee.create({
+          data: { tenantId: input.tenantId, systemId: hrSystem.id, name },
+          select: { id: true },
+        }));
+      employeeId = emp.id;
+    }
   }
 
   return db.bookingStaff.create({
     data: { tenantId: input.tenantId, unitId: input.unitId, name, employeeId },
   });
+}
+
+/**
+ * รวมช่างในระบบจองที่ยังไม่ผูก HR เข้าทะเบียนพนักงาน — ใช้กับร้านที่เพิ่มช่างไว้ก่อนมีระบบนี้
+ * ชื่อซ้ำ = ผูกของเดิม ไม่สร้างซ้ำ · คืนจำนวนที่ผูกได้
+ */
+export async function linkStaffToHr(ctx: BookingCtx): Promise<{ linked: number; created: number }> {
+  const hrSystem = await prisma.appSystem.findFirst({
+    where: { tenantId: ctx.tenantId, type: "HR", active: true },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!hrSystem) return { linked: 0, created: 0 };
+  const db = tenantDb(ctx);
+  const orphans = await db.bookingStaff.findMany({ where: { active: true, employeeId: null } });
+  let linked = 0;
+  let created = 0;
+  for (const st of orphans) {
+    const dup = await prisma.hrEmployee.findFirst({
+      where: { tenantId: ctx.tenantId, systemId: hrSystem.id, name: st.name, active: true },
+      select: { id: true },
+    });
+    let empId = dup?.id;
+    if (!empId) {
+      const emp = await prisma.hrEmployee.create({
+        data: { tenantId: ctx.tenantId, systemId: hrSystem.id, name: st.name },
+        select: { id: true },
+      });
+      empId = emp.id;
+      created += 1;
+    }
+    await db.bookingStaff.updateMany({ where: { id: st.id }, data: { employeeId: empId } });
+    linked += 1;
+  }
+  return { linked, created };
 }
 
 // ── สร้างนัด (กันจองซ้อนใน transaction) ──
@@ -296,6 +363,8 @@ export async function createAppointment(input: {
           source: input.source ?? "ONLINE",
           // snapshot มัดจำจากบริการ ณ ตอนสร้างนัด (ราคาบริการเปลี่ยนภายหลังไม่กระทบนัดเดิม)
           // ไม่บังคับจ่ายตอนนี้ — ร้านเก็บทีหลังผ่าน recordDeposit
+          // snapshot ราคา+มัดจำ ณ วันจอง — ร้านขึ้นราคาทีหลังไม่กระทบนัดใบนี้
+          priceSatang: service.priceSatang,
           depositSatang: service.depositSatang,
           idempotencyKey: idem,
         },
@@ -456,4 +525,68 @@ export async function refundDeposit(
     }
   }
   return { ok: true };
+}
+
+
+// ─────────────────── วันหยุด/เวลาพิเศษรายวัน (11 ส.ค. 2026) ───────────────────
+// เดิมตั้งได้แค่รายสัปดาห์ → ร้านปิดปีใหม่/สงกรานต์ หรือวันไหนเปิดสั้นกว่าปกติ ทำไม่ได้เลย
+// กติกา: closure ของวันไหน "ทับ" เวลาทำการรายสัปดาห์ของวันนั้นเสมอ
+
+export type ClosureRow = {
+  id: string;
+  date: string;
+  closed: boolean;
+  openMin: number | null;
+  closeMin: number | null;
+  note: string | null;
+};
+
+/** วันหยุด/เวลาพิเศษตั้งแต่วันที่ระบุเป็นต้นไป (ค่าเริ่มต้น = วันนี้) เรียงตามวัน */
+export async function listClosures(
+  ctx: BookingCtx,
+  fromDate?: string,
+  take = 60,
+): Promise<ClosureRow[]> {
+  // วันนี้ตามเวลาไทย (ไม่ import จาก pos — ข้ามโมดูล) — booking ใช้ +07:00 คงที่อยู่แล้วทั้งไฟล์
+  const from = fromDate ?? new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+  return tenantDb(ctx).bookingClosure.findMany({
+    where: { date: { gte: from } },
+    orderBy: { date: "asc" },
+    take,
+    select: { id: true, date: true, closed: true, openMin: true, closeMin: true, note: true },
+  });
+}
+
+/** ตั้ง/แก้วันหยุดของวันหนึ่ง — upsert ต่อ (unit, date) · กดซ้ำวันเดิมไม่งอกแถว */
+export async function setClosure(
+  ctx: BookingCtx,
+  input: { date: string; closed: boolean; openMin?: number | null; closeMin?: number | null; note?: string | null },
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return { ok: false, reason: "รูปแบบวันไม่ถูกต้อง" };
+  if (!input.closed) {
+    const o = input.openMin ?? null;
+    const c = input.closeMin ?? null;
+    if (o == null || c == null) return { ok: false, reason: "เปิดเวลาพิเศษต้องระบุเวลาเปิด-ปิด" };
+    if (o < 0 || c > 24 * 60 || c <= o) return { ok: false, reason: "เวลาปิดต้องหลังเวลาเปิด" };
+  }
+  const data = {
+    closed: input.closed,
+    openMin: input.closed ? null : (input.openMin ?? null),
+    closeMin: input.closed ? null : (input.closeMin ?? null),
+    note: input.note?.trim() || null,
+  };
+  const existing = await tenantDb(ctx).bookingClosure.findFirst({ where: { date: input.date } });
+  if (existing) {
+    await tenantDb(ctx).bookingClosure.updateMany({ where: { id: existing.id }, data });
+  } else {
+    await prisma.bookingClosure.create({
+      data: { tenantId: ctx.tenantId, unitId: ctx.unitId, date: input.date, ...data },
+    });
+  }
+  return { ok: true };
+}
+
+/** ลบวันหยุด (กลับไปใช้เวลาทำการรายสัปดาห์ตามปกติ) */
+export async function removeClosure(ctx: BookingCtx, id: string): Promise<void> {
+  await tenantDb(ctx).bookingClosure.deleteMany({ where: { id } });
 }

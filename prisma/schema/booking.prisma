@@ -98,6 +98,9 @@ model Appointment {
   customerPhone String // snapshot
   note          String?
   source        String            @default("STAFF") // STAFF | ONLINE
+  // snapshot ราคา ณ วันจอง — ร้านขึ้นราคาทีหลังต้องไม่กระทบนัดที่จองไว้แล้ว
+  // -1 = นัดเก่าที่จองก่อนมีฟิลด์นี้ (อ่านราคาจากบริการตามเดิม)
+  priceSatang   Int               @default(-1)
   depositSatang Int               @default(0) // snapshot มัดจำจากบริการตอนสร้างนัด (0 = ไม่ต้องมัดจำ)
   depositPaidAt DateTime? // เวลาที่ร้านรับมัดจำ (null = ยังไม่จ่าย)
   depositSaleId String? // PosSale.id ของบิลมัดจำ (null = ไม่ผูก POS / ยังไม่จ่าย)
@@ -108,4 +111,23 @@ model Appointment {
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, unitId, startAt])
   @@index([staffId, startAt])
+}
+
+// วันหยุด/เวลาพิเศษรายวัน (11 ส.ค. 2026 — เจ้าของทัก: เดิมตั้งได้แค่รายสัปดาห์)
+// ใช้ทับ BookingHours ของ weekday นั้นเฉพาะวันที่ระบุ
+//   closed=true  → ปิดทั้งวัน (ปีใหม่ สงกรานต์ ลาพักร้อน)
+//   closed=false → เปิดเวลาพิเศษ (เช่น วันสิ้นปีเปิด 10:00-14:00)
+model BookingClosure {
+  id        String   @id @default(cuid())
+  tenantId  String
+  unitId    String
+  date      String // "YYYY-MM-DD" เวลาไทย
+  closed    Boolean  @default(true)
+  openMin   Int?
+  closeMin  Int?
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([unitId, date])
+  @@index([tenantId, unitId])
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
-import { addServiceAction, removeServiceAction, setServiceDepositAction } from "@/lib/actions/booking";
+import { addServiceAction, editServiceAction, removeServiceAction } from "@/lib/actions/booking";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { formatBaht } from "@/lib/ui/money";
 
@@ -21,7 +21,10 @@ export default async function BookingServicesPage({
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="บริการ" desc="รายการบริการที่เปิดให้ลูกค้าจอง" />
+      <PageHeader
+        title="บริการ"
+        desc="รายการบริการที่เปิดให้ลูกค้าจอง — แก้ราคาได้ตลอด บิลที่ขายไปแล้วและนัดที่จองไว้ยังใช้ราคาเดิม"
+      />
 
       <section className="flex flex-col gap-3">
         {services.length === 0 && (
@@ -43,21 +46,30 @@ export default async function BookingServicesPage({
                 <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
               </form>
             </div>
-            {/* มัดจำต่อบริการ — กัน no-show (0 = ไม่ต้องมัดจำ) */}
+            {/* แก้ไขบริการ — ชื่อ/เวลา/ราคา/มัดจำ ในฟอร์มเดียว
+                ราคาใหม่มีผลกับการขาย/การจองครั้งถัดไปเท่านั้น (บิลเก่า+นัดที่จองไว้ใช้ราคาเดิม) */}
             <form
-              action={setServiceDepositAction.bind(null, unitSlug)}
-              className="flex items-center gap-2"
+              action={editServiceAction.bind(null, unitSlug)}
+              className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto] sm:items-end"
             >
               <input type="hidden" name="id" value={s.id} />
-              <span className="text-xs text-[color:var(--color-muted)]">มัดจำ (บาท)</span>
-              <input
-                name="depositBaht"
-                type="number"
-                min={0}
-                defaultValue={s.depositSatang / 100}
-                className="w-24 rounded-lg border px-2 py-2 text-sm"
-              />
-              <button className="btn-sm min-h-[44px]">บันทึกมัดจำ</button>
+              <label className="col-span-2 flex flex-col gap-1 sm:col-span-1">
+                <span className="text-xs text-[color:var(--color-muted)]">ชื่อบริการ</span>
+                <input name="name" required defaultValue={s.name} className="w-full rounded-lg border px-3 py-2 text-sm" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-[color:var(--color-muted)]">นาที</span>
+                <input name="durationMin" type="number" required min={5} defaultValue={s.durationMin} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-20" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-[color:var(--color-muted)]">ราคา (บาท)</span>
+                <input name="priceBaht" type="number" min={0} defaultValue={s.priceSatang / 100} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-24" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-[color:var(--color-muted)]">มัดจำ (บาท)</span>
+                <input name="depositBaht" type="number" min={0} defaultValue={s.depositSatang / 100} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-24" />
+              </label>
+              <button className="btn-sm col-span-2 min-h-[44px] sm:col-span-1">บันทึก</button>
             </form>
           </div>
         ))}

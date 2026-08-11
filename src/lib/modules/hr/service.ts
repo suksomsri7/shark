@@ -182,3 +182,63 @@ export async function monthlyMinutes(ctx: Ctx, employeeId: string, monthStart: D
   });
   return workedMinutes(events);
 }
+
+// ─────────────────── ตารางเวลาทำงานรายพนักงาน (11 ส.ค. 2026) ───────────────────
+// เดิมมีแค่บันทึกเข้า-ออก แต่ไม่มี "ควรเข้ากี่โมง" → บอกไม่ได้ว่าใครสาย ใครขาด
+// ครึ่งวัน = ตั้งช่วงเวลาสั้นลง (เสาร์ 09:00-13:00) ไม่ต้องมีชนิดพิเศษให้จำเพิ่ม
+
+export type ScheduleRow = {
+  weekday: number;
+  dayOff: boolean;
+  startMin: number;
+  endMin: number;
+  graceMin: number;
+};
+
+/** ตารางของพนักงานคนหนึ่ง ครบ 7 วัน — วันที่ยังไม่ตั้งคืน null เพื่อให้ UI รู้ว่า "ยังไม่ได้ตั้ง" */
+export async function getSchedule(ctx: Ctx, employeeId: string): Promise<(ScheduleRow | null)[]> {
+  const rows = await tenantDb(ctx).hrWorkSchedule.findMany({ where: { employeeId } });
+  const byDay = new Map(rows.map((r) => [r.weekday, r]));
+  return Array.from({ length: 7 }, (_, wd) => {
+    const r = byDay.get(wd);
+    return r ? { weekday: wd, dayOff: r.dayOff, startMin: r.startMin, endMin: r.endMin, graceMin: r.graceMin } : null;
+  });
+}
+
+/** ตั้งตารางทั้งสัปดาห์ในครั้งเดียว (upsert ต่อวัน) — ไม่ส่งวันไหนมา = ลบวันนั้นทิ้ง (กลับเป็น "ยังไม่ตั้ง") */
+export async function setSchedule(ctx: Ctx, employeeId: string, rows: ScheduleRow[]): Promise<{ ok: boolean; reason?: string }> {
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId } });
+  if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
+  for (const r of rows) {
+    if (r.weekday < 0 || r.weekday > 6) return { ok: false, reason: "วันในสัปดาห์ไม่ถูกต้อง" };
+    if (!r.dayOff && (r.startMin < 0 || r.endMin > 24 * 60 || r.endMin <= r.startMin)) {
+      return { ok: false, reason: "เวลาออกงานต้องหลังเวลาเข้างาน" };
+    }
+  }
+  // เขียนผ่าน tenantDb ตามกติกาโมดูล (ห้ามแตะ prisma ตรง — fitness F5.1 คุมไว้)
+  // ไม่ห่อ transaction: เป็นหน้าตั้งค่า ไม่ใช่เส้นทางเงิน · พังกลางคันแค่กดบันทึกใหม่
+  const db = tenantDb(ctx);
+  const keep = rows.map((r) => r.weekday);
+  await db.hrWorkSchedule.deleteMany({ where: { employeeId, weekday: { notIn: keep } } });
+  for (const r of rows) {
+    const data = { dayOff: r.dayOff, startMin: r.startMin, endMin: r.endMin, graceMin: Math.max(0, r.graceMin) };
+    const existing = await db.hrWorkSchedule.findFirst({ where: { employeeId, weekday: r.weekday } });
+    if (existing) await db.hrWorkSchedule.updateMany({ where: { id: existing.id }, data });
+    else await db.hrWorkSchedule.create({ data: { ...ctx, employeeId, weekday: r.weekday, ...data } });
+  }
+  return { ok: true };
+}
+
+export type AttendanceJudgement = "ON_TIME" | "LATE" | "DAY_OFF" | "NO_SCHEDULE";
+
+/**
+ * ตัดสินว่าการเข้างานครั้งนี้สายไหม — เทียบกับตารางของวันนั้น
+ * ยังไม่ตั้งตาราง = NO_SCHEDULE (ไม่ตัดสิน) — สำคัญ: ห้ามบอกว่า "สาย" ทั้งที่ร้านยังไม่เคยกำหนดเวลา
+ */
+export function judgeClockIn(at: Date, sch: ScheduleRow | null): AttendanceJudgement {
+  if (!sch) return "NO_SCHEDULE";
+  if (sch.dayOff) return "DAY_OFF";
+  const bkk = new Date(at.getTime() + 7 * 3_600_000);
+  const minOfDay = bkk.getUTCHours() * 60 + bkk.getUTCMinutes();
+  return minOfDay > sch.startMin + sch.graceMin ? "LATE" : "ON_TIME";
+}

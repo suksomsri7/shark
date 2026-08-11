@@ -9,6 +9,7 @@ import { formatThaiDate, formatThaiDateTime } from "@/lib/ui/date";
 import {
   listAttendance,
   listEmployees,
+  getSchedule,
   listLeaves,
   pendingLeaves,
   type Ctx,
@@ -16,6 +17,7 @@ import {
 import {
   clockAction,
   createEmployeeAction,
+  setWorkScheduleAction,
   requestLeaveAction,
 } from "./actions";
 import BulkLeaveApprovals from "./BulkLeaveApprovals";
@@ -208,6 +210,11 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
 }
 
 // ───────────── พนักงาน (employees) ─────────────
+// ลำดับแสดง จันทร์→อาทิตย์ (weekday DB 0=อาทิตย์) + ชื่อวันสั้น
+const DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const WD_LABEL: Record<number, string> = { 0: "อาทิตย์", 1: "จันทร์", 2: "อังคาร", 3: "พุธ", 4: "พฤหัสบดี", 5: "ศุกร์", 6: "เสาร์" };
+const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
 export async function HrEmployeesSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
@@ -224,6 +231,81 @@ export async function HrEmployeesSection({ systemId }: { systemId: string }) {
         }))}
         empty="ยังไม่มีพนักงาน — เพิ่มพนักงานคนแรกเพื่อเริ่มลงเวลาและจัดการวันลา"
       />
+      {/* ตารางเวลาทำงานรายคน — เดิมระบบมีแค่ปุ่มลงเวลา ไม่รู้ว่า "ควรเข้ากี่โมง" จึงบอกสาย/ขาดไม่ได้
+          ครึ่งวัน = ตั้งเวลาให้สั้นลง (เช่น เสาร์ 09:00-13:00) ไม่ต้องมีชนิดพิเศษให้จำ */}
+      {employees.length > 0 && (
+        <div className="mt-3 flex flex-col gap-3 border-t pt-3">
+          <div>
+            <div className="text-sm font-medium">ตารางเข้างาน</div>
+            <p className={`text-xs ${muted}`}>
+              ติ๊กวันที่ทำงาน แล้วใส่เวลาเข้า-ออก · ครึ่งวันให้ใส่เวลาสั้นลง · วันที่ไม่ติ๊ก = ยังไม่กำหนด (ระบบจะไม่ตัดสินว่าสาย)
+            </p>
+          </div>
+          {await Promise.all(
+            employees.map(async (e) => {
+              const sch = await getSchedule(ctx, e.id);
+              const grace = sch.find((x) => x)?.graceMin ?? 15;
+              return (
+                <details key={e.id} className="rounded-lg border px-3 py-2">
+                  <summary className="cursor-pointer text-sm font-medium">
+                    {e.name}
+                    <span className={`ml-2 text-xs font-normal ${muted}`}>
+                      {sch.every((x) => x == null)
+                        ? "ยังไม่ตั้งตาราง"
+                        : `ทำงาน ${sch.filter((x) => x && !x.dayOff).length} วัน/สัปดาห์`}
+                    </span>
+                  </summary>
+                  <form action={setWorkScheduleAction} className="mt-2 flex flex-col gap-2">
+                    <input type="hidden" name="systemId" value={systemId} />
+                    <input type="hidden" name="employeeId" value={e.id} />
+                    {DISPLAY_ORDER.map((wd) => {
+                      const r = sch[wd];
+                      return (
+                        <div key={wd} className="flex flex-wrap items-center gap-2 text-sm">
+                          <label className="flex w-24 items-center gap-1.5">
+                            <input type="checkbox" name={`on-${wd}`} defaultChecked={r != null} />
+                            {WD_LABEL[wd]}
+                          </label>
+                          <input
+                            type="time"
+                            name={`start-${wd}`}
+                            defaultValue={hhmm(r?.startMin ?? 540)}
+                            className="rounded-lg border px-2 py-1"
+                          />
+                          <span className={`text-xs ${muted}`}>ถึง</span>
+                          <input
+                            type="time"
+                            name={`end-${wd}`}
+                            defaultValue={hhmm(r?.endMin ?? 1080)}
+                            className="rounded-lg border px-2 py-1"
+                          />
+                          <label className="flex items-center gap-1 text-xs">
+                            <input type="checkbox" name={`off-${wd}`} defaultChecked={r?.dayOff ?? false} />
+                            วันหยุดประจำ
+                          </label>
+                        </div>
+                      );
+                    })}
+                    <label className={`flex items-center gap-2 text-xs ${muted}`}>
+                      เข้าช้าได้ (นาที) ก่อนนับว่าสาย
+                      <input
+                        name="graceMin"
+                        type="number"
+                        min={0}
+                        max={120}
+                        defaultValue={grace}
+                        className="input w-20"
+                      />
+                    </label>
+                    <SubmitButton variant="ghost">บันทึกตาราง</SubmitButton>
+                  </form>
+                </details>
+              );
+            }),
+          )}
+        </div>
+      )}
+
       <form action={createEmployeeAction} className="mt-1 flex flex-wrap items-end gap-2">
         <input type="hidden" name="systemId" value={systemId} />
         <label className={`flex flex-1 flex-col gap-1 text-xs ${muted}`}>

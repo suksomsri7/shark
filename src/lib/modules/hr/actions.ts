@@ -10,6 +10,7 @@ import {
   decideLeave,
   bulkDecideLeave,
   requestLeave,
+  setSchedule,
   type Ctx,
 } from "./service";
 
@@ -121,4 +122,30 @@ export async function bulkDecideLeaveAction(
   const res = await bulkDecideLeave(ctx, leaveIds, rawStatus, auth.active.userId);
   revalidate(systemId);
   return { status: "done", done: res.done, failed: res.failed };
+}
+
+// ── ตารางเวลาทำงานรายพนักงาน (11 ส.ค. 2026) ──
+// ฟอร์มส่งมาทั้งสัปดาห์ในครั้งเดียว: off-<wd> (ติ๊ก=หยุด) · start-<wd> · end-<wd> · grace
+export async function setWorkScheduleAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.employee.create");
+  const systemId = String(formData.get("systemId") ?? "");
+  const employeeId = String(formData.get("employeeId") ?? "");
+  if (!systemId || !employeeId) return;
+  const toMin = (v: FormDataEntryValue | null): number | null => {
+    const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(v ?? ""));
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const grace = Math.max(0, Math.min(120, Number(formData.get("graceMin") ?? 15) || 0));
+  const rows = [];
+  for (let wd = 0; wd < 7; wd++) {
+    // ไม่ติ๊ก "ทำงาน" = วันนั้นไม่อยู่ในตาราง (ต่างจาก "หยุด" ที่ตั้งใจกำหนดว่าเป็นวันหยุดประจำ)
+    if (formData.get(`on-${wd}`) == null) continue;
+    const dayOff = formData.get(`off-${wd}`) != null;
+    const startMin = toMin(formData.get(`start-${wd}`)) ?? 540;
+    const endMin = toMin(formData.get(`end-${wd}`)) ?? 1080;
+    rows.push({ weekday: wd, dayOff, startMin, endMin, graceMin: grace });
+  }
+  await setSchedule({ tenantId: auth.active.tenantId, systemId }, employeeId, rows);
+  revalidatePath(`/app/sys/${systemId}/hr/employees`);
 }

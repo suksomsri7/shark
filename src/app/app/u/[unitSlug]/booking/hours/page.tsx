@@ -1,6 +1,6 @@
 import { requireUnit } from "@/lib/core/context";
-import { getUnitHours } from "@/lib/modules/booking/service";
-import { setBookingHoursAction } from "@/lib/actions/booking";
+import { getUnitHours, listClosures } from "@/lib/modules/booking/service";
+import { setBookingHoursAction, addClosureAction, removeClosureAction } from "@/lib/actions/booking";
 import { minutesToHHMM } from "@/lib/modules/booking/slots";
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -23,12 +23,13 @@ export default async function BookingHoursPage({
 }) {
   const { unitSlug } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
-  const hours = await getUnitHours(auth.active.tenantId, unit.id);
+  const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
+  const [hours, closures] = await Promise.all([getUnitHours(ctx.tenantId, ctx.unitId), listClosures(ctx)]);
   const byWeekday = new Map(hours.map((h) => [h.weekday, h]));
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="เวลาทำการ" desc="กำหนดเวลาเปิด-ปิด และวันหยุดของร้าน — ใช้เป็นกรอบช่องจอง" />
+      <PageHeader title="เวลาทำการ" desc="เวลาทำการประจำสัปดาห์ + วันหยุด/เวลาพิเศษรายวัน — ใช้เป็นกรอบช่องจอง" />
 
       <form action={setBookingHoursAction.bind(null, unitSlug)} className="flex flex-col gap-3">
         {DISPLAY_ORDER.map((wd) => {
@@ -66,6 +67,78 @@ export default async function BookingHoursPage({
         })}
         <button className="btn btn-primary self-start text-sm">บันทึก</button>
       </form>
+
+      {/* ── วันหยุด/เวลาพิเศษรายวัน ──
+          ทับเวลาทำการรายสัปดาห์เฉพาะวันที่ระบุ (ปีใหม่ สงกรานต์ ลาพักร้อน หรือวันเปิดสั้น) */}
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="text-sm font-medium">วันหยุด / เวลาพิเศษรายวัน</h2>
+          <p className="text-xs text-[color:var(--color-muted)]">
+            ใช้ทับตารางด้านบนเฉพาะวันที่เลือก — ปิดทั้งวัน หรือเปิดเวลาพิเศษก็ได้
+          </p>
+        </div>
+
+        {closures.length === 0 ? (
+          <p className="text-sm text-[color:var(--color-muted)]">ยังไม่ได้ตั้งวันหยุด</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {closures.map((c) => (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
+                <div className="flex min-w-0 flex-col">
+                  <span className="font-medium">
+                    {new Date(`${c.date}T12:00:00+07:00`).toLocaleDateString("th-TH", {
+                      weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Bangkok",
+                    })}
+                  </span>
+                  <span className="text-xs text-[color:var(--color-muted)]">
+                    {c.closed
+                      ? "ปิดทั้งวัน"
+                      : `เปิดพิเศษ ${minutesToHHMM(c.openMin ?? 0)} – ${minutesToHHMM(c.closeMin ?? 0)} น.`}
+                    {c.note ? ` · ${c.note}` : ""}
+                  </span>
+                </div>
+                <form action={removeClosureAction.bind(null, unitSlug)}>
+                  <input type="hidden" name="id" value={c.id} />
+                  <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
+                </form>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <form
+          action={addClosureAction.bind(null, unitSlug)}
+          className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed px-3 py-2 text-sm"
+        >
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-[color:var(--color-muted)]">วันที่</span>
+            <input type="date" name="date" required className="rounded-lg border px-2 py-2" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-[color:var(--color-muted)]">แบบ</span>
+            <select name="mode" defaultValue="closed" className="rounded-lg border px-2 py-2">
+              <option value="closed">ปิดทั้งวัน</option>
+              <option value="open">เปิดเวลาพิเศษ</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-[color:var(--color-muted)]">เปิด</span>
+            <input type="time" name="openAt" defaultValue="10:00" className="rounded-lg border px-2 py-2" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-[color:var(--color-muted)]">ปิด</span>
+            <input type="time" name="closeAt" defaultValue="14:00" className="rounded-lg border px-2 py-2" />
+          </label>
+          <label className="flex min-w-[8rem] flex-1 flex-col gap-1">
+            <span className="text-xs text-[color:var(--color-muted)]">หมายเหตุ</span>
+            <input name="note" placeholder="เช่น หยุดปีใหม่" className="w-full rounded-lg border px-2 py-2" />
+          </label>
+          <button className="btn btn-primary min-h-[40px] text-sm">เพิ่ม</button>
+        </form>
+        <p className="text-xs text-[color:var(--color-muted)]">
+          เลือก “ปิดทั้งวัน” ไม่ต้องสนใจช่องเวลา · เลือก “เปิดเวลาพิเศษ” ระบบจะใช้เวลาในช่องแทนตารางประจำสัปดาห์
+        </p>
+      </section>
     </div>
   );
 }

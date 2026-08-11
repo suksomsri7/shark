@@ -31,6 +31,7 @@ model HrEmployee {
   updatedAt   DateTime @updatedAt
   attendances HrAttendance[]
   leaves      HrLeave[]
+  schedules   HrWorkSchedule[]
   @@index([systemId, active])
   @@index([tenantId])
 }
@@ -62,4 +63,25 @@ model HrLeave {
   createdAt  DateTime      @default(now())
   @@index([systemId, status])
   @@index([systemId, employeeId, fromDate])
+}
+
+// ตารางเวลาทำงานรายพนักงาน (11 ส.ค. 2026 — เจ้าของทัก: ระบบยังไม่มีเลย)
+// เดิมมีแค่บันทึกเข้า-ออก (HrAttendance) แต่ไม่มี "ควรเข้ากี่โมง" → บอกไม่ได้ว่าสายหรือขาด
+// 1 แถว = 1 วันในสัปดาห์ของพนักงานคนนั้น · ไม่มีแถว = ยังไม่ตั้ง (ไม่ตัดสินว่าสาย/ขาด)
+// ครึ่งวัน = ตั้งช่วงเวลาให้สั้นลง (เช่น เสาร์ 09:00-13:00) ไม่ต้องมีชนิดพิเศษ
+model HrWorkSchedule {
+  id         String     @id @default(cuid())
+  tenantId   String
+  systemId   String
+  employeeId String
+  employee   HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  weekday    Int // 0=อาทิตย์ … 6=เสาร์
+  dayOff     Boolean    @default(false) // วันหยุดประจำของคนนี้
+  startMin   Int        @default(540) // 09:00
+  endMin     Int        @default(1080) // 18:00
+  graceMin   Int        @default(15) // เข้าช้าได้กี่นาทีก่อนนับว่าสาย
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([employeeId, weekday])
+  @@index([systemId, employeeId])
 }
