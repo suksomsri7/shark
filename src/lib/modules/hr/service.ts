@@ -46,21 +46,33 @@ export async function listEmployees(ctx: Ctx, take = 200) {
 }
 
 // ── ลงเวลา (IN/OUT) ──
+// เข้างาน = ตัดสินทันทีเทียบกับตารางของวันนั้น แล้ว **เก็บคำตัดสินติดแถวไว้** (snapshot)
+//   ทำไมไม่คิดสดตอนอ่าน: ร้านแก้ตารางเดือนหน้า ไม่ควรย้อนไปเปลี่ยนว่าเมื่อวานใครสาย
+//   (บทเรียนเดียวกับ Appointment.priceSatang — ประวัติต้องนิ่ง)
+// ออกงาน = ไม่ตัดสิน (judgement null) — "ออกก่อนเวลา" ยังไม่ใช่สัญญาที่เจ้าของสั่ง
 export async function clock(
   ctx: Ctx,
   input: { employeeId: string; kind: HrAttendanceKind; note?: string | null },
-): Promise<{ id: string }> {
+): Promise<{ id: string; judgement: AttendanceJudgement | null; lateMin: number | null }> {
+  const at = new Date();
+  const detail =
+    input.kind === "IN"
+      ? clockInDetail(at, (await getSchedule(ctx, input.employeeId))[bkkParts(at).weekday] ?? null)
+      : null;
   const a = await tenantDb(ctx).hrAttendance.create({
     data: {
       tenantId: ctx.tenantId,
       systemId: ctx.systemId,
       employeeId: input.employeeId,
       kind: input.kind,
+      at,
       note: input.note?.trim() || null,
-      // at = now() (default ใน schema)
+      judgement: detail?.judgement ?? null,
+      dueMin: detail?.dueMin ?? null,
+      lateMin: detail?.lateMin ?? null,
     },
   });
-  return { id: a.id };
+  return { id: a.id, judgement: detail?.judgement ?? null, lateMin: detail?.lateMin ?? null };
 }
 
 // ── ลา ──
@@ -231,14 +243,125 @@ export async function setSchedule(ctx: Ctx, employeeId: string, rows: ScheduleRo
 
 export type AttendanceJudgement = "ON_TIME" | "LATE" | "DAY_OFF" | "NO_SCHEDULE";
 
+// เวลาไทยคงที่ +7 (ทั้งโปรเจกต์ใช้ค่านี้ ไม่มี DST) — อ่านค่าด้วย getUTC* บนเวลาที่บวกแล้ว
+const BKK_MS = 7 * 3_600_000;
+/** แปลง instant → วัน/เวลาแบบไทย (วันที่ "YYYY-MM-DD" · weekday 0=อาทิตย์ · นาทีจากเที่ยงคืน) */
+export function bkkParts(at: Date): { dateStr: string; weekday: number; minOfDay: number } {
+  const d = new Date(at.getTime() + BKK_MS);
+  return {
+    dateStr: d.toISOString().slice(0, 10),
+    weekday: d.getUTCDay(),
+    minOfDay: d.getUTCHours() * 60 + d.getUTCMinutes(),
+  };
+}
+
+export type ClockInDetail = {
+  judgement: AttendanceJudgement;
+  dueMin: number | null; // ควรเข้ากี่โมง (นาทีเวลาไทย)
+  lateMin: number | null; // สายกี่นาทีจากเวลาที่ควรเข้า (ไม่หักเวลาผ่อนผัน) · 0 = ไม่สาย
+};
+
 /**
- * ตัดสินว่าการเข้างานครั้งนี้สายไหม — เทียบกับตารางของวันนั้น
+ * ตัดสินการเข้างาน + เก็บหลักฐานที่ใช้ตัดสิน
  * ยังไม่ตั้งตาราง = NO_SCHEDULE (ไม่ตัดสิน) — สำคัญ: ห้ามบอกว่า "สาย" ทั้งที่ร้านยังไม่เคยกำหนดเวลา
+ * ผ่อนผัน (graceMin) ใช้ตัดสินว่า "สายไหม" · แต่ lateMin รายงานตามจริงจากเวลาที่ควรเข้า
  */
+export function clockInDetail(at: Date, sch: ScheduleRow | null): ClockInDetail {
+  if (!sch) return { judgement: "NO_SCHEDULE", dueMin: null, lateMin: null };
+  if (sch.dayOff) return { judgement: "DAY_OFF", dueMin: null, lateMin: null };
+  const { minOfDay } = bkkParts(at);
+  const late = minOfDay > sch.startMin + sch.graceMin;
+  return {
+    judgement: late ? "LATE" : "ON_TIME",
+    dueMin: sch.startMin,
+    lateMin: late ? minOfDay - sch.startMin : 0,
+  };
+}
+
+/** สัญญาเดิม (oracle + ผู้เรียกเก่าใช้อยู่) — คำตัดสินอย่างเดียว */
 export function judgeClockIn(at: Date, sch: ScheduleRow | null): AttendanceJudgement {
-  if (!sch) return "NO_SCHEDULE";
-  if (sch.dayOff) return "DAY_OFF";
-  const bkk = new Date(at.getTime() + 7 * 3_600_000);
-  const minOfDay = bkk.getUTCHours() * 60 + bkk.getUTCMinutes();
-  return minOfDay > sch.startMin + sch.graceMin ? "LATE" : "ON_TIME";
+  return clockInDetail(at, sch).judgement;
+}
+
+// ─────────────────── สรุปการเข้างานรายเดือน (13 ส.ค. 2026) ───────────────────
+// เดิมมีตารางเข้างาน + ปุ่มลงเวลา แต่ไม่มีใครเอาสองอย่างมาชนกัน → เจ้าของยังตอบไม่ได้ว่า
+// เดือนนี้ใครสายกี่ครั้ง ขาดกี่วัน · ที่นี่คือจุดที่ตารางเริ่มมีประโยชน์จริง
+//
+// 🔴 กติกา "ห้ามกล่าวหาจากข้อมูลที่ยังไม่มี" (3 ชั้น):
+//   1) ไม่มีแถวตารางของวันนั้น = ไม่นับอะไรเลย (ไม่ใช่ขาดงาน)
+//   2) วันก่อนที่ร้านตั้งตารางให้คนนี้ = ไม่นับ (createdAt ของแถวตาราง)
+//   3) วันนี้ยังไม่จบ = ไม่นับขาดงาน (นับเฉพาะวันที่ผ่านไปแล้ว)
+// วันลาที่อนุมัติแล้ว = "ลา" ไม่ใช่ "ขาด"
+export type MonthAttendance = {
+  workedMinutes: number; // ชั่วโมงทำงานจริงจากการจับคู่ IN/OUT
+  onTimeCount: number;
+  lateCount: number;
+  lateMinutes: number;
+  absentDays: number; // ต้องมาแต่ไม่มีบันทึกเข้างาน (ไม่ใช่วันลา)
+  leaveDays: number; // วันที่ต้องมาแต่ลาและได้อนุมัติ
+  workDays: number; // วันที่ต้องมาทำงานตามตาราง (ไม่รวมวันลา) นับถึงเมื่อวาน
+  unjudgedCount: number; // เข้างานตอนที่ยังไม่มีตาราง → ระบบไม่ตัดสิน
+};
+
+/** พนักงานที่ "ตั้งตารางแล้ว" (มีแถวตารางอย่างน้อย 1 วัน) — หน้าจอใช้แยกว่าไม่มีข้อมูล vs ไม่มาทำงาน */
+export async function employeesWithSchedule(ctx: Ctx): Promise<Set<string>> {
+  const rows = await tenantDb(ctx).hrWorkSchedule.findMany({ select: { employeeId: true } });
+  return new Set(rows.map((r) => r.employeeId));
+}
+
+export async function monthlyAttendance(
+  ctx: Ctx,
+  employeeId: string,
+  monthStart: Date,
+): Promise<MonthAttendance> {
+  const y = monthStart.getUTCFullYear();
+  const m = monthStart.getUTCMonth();
+  // ขอบเดือนแบบเวลาไทย (เที่ยงคืนไทย = 17:00Z ของวันก่อนหน้า) — ไม่ใช้ขอบ UTC ตรง ๆ
+  const startUtc = new Date(Date.UTC(y, m, 1) - BKK_MS);
+  const endUtc = new Date(Date.UTC(y, m + 1, 1) - BKK_MS);
+  const db = tenantDb(ctx);
+  const [events, schedRows, leaves] = await Promise.all([
+    db.hrAttendance.findMany({
+      where: { employeeId, at: { gte: startUtc, lt: endUtc } },
+      select: { kind: true, at: true, judgement: true, lateMin: true },
+      orderBy: { at: "asc" },
+    }),
+    db.hrWorkSchedule.findMany({ where: { employeeId } }),
+    db.hrLeave.findMany({ where: { employeeId }, select: { fromDate: true, toDate: true, status: true } }),
+  ]);
+
+  const ins = events.filter((e) => e.kind === "IN");
+  const inDates = new Set(ins.map((e) => bkkParts(e.at).dateStr));
+  const byWeekday = new Map(schedRows.map((r) => [r.weekday, r]));
+  const todayStr = bkkParts(new Date()).dateStr;
+  const daysInMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+
+  let absentDays = 0;
+  let leaveDays = 0;
+  let workDays = 0;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dayUtc = new Date(Date.UTC(y, m, day));
+    const dateStr = dayUtc.toISOString().slice(0, 10);
+    if (dateStr >= todayStr) break; // ชั้น 3: วันนี้/อนาคตยังตัดสินไม่ได้
+    const sch = byWeekday.get(dayUtc.getUTCDay());
+    if (!sch || sch.dayOff) continue; // ชั้น 1
+    if (dateStr < bkkParts(sch.createdAt).dateStr) continue; // ชั้น 2
+    if (!rulesIsAvailable(leaves, dayUtc)) {
+      leaveDays++;
+      continue;
+    }
+    workDays++;
+    if (!inDates.has(dateStr)) absentDays++;
+  }
+
+  return {
+    workedMinutes: workedMinutes(events),
+    onTimeCount: ins.filter((e) => e.judgement === "ON_TIME").length,
+    lateCount: ins.filter((e) => e.judgement === "LATE").length,
+    lateMinutes: ins.reduce((s, e) => s + (e.judgement === "LATE" ? (e.lateMin ?? 0) : 0), 0),
+    absentDays,
+    leaveDays,
+    workDays,
+    unjudgedCount: ins.filter((e) => e.judgement == null || e.judgement === "NO_SCHEDULE").length,
+  };
 }

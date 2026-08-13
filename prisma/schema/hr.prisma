@@ -17,6 +17,16 @@ enum HrAttendanceKind {
   OUT
 }
 
+// ผลตัดสินการเข้างาน (13 ส.ค. 2026) — snapshot ณ วินาทีที่กดเข้างาน ไม่คิดสดตอนอ่าน
+// เหตุผล: ตารางแก้ทีหลังต้องไม่ย้อนไปเปลี่ยนคำตัดสินของวันที่ผ่านมาแล้ว (บทเรียนเดียวกับ Appointment.priceSatang)
+// NO_SCHEDULE = ยังไม่ตั้งตาราง → ไม่ใช่ความผิดพนักงาน ห้ามนับเป็นสาย
+enum HrAttendanceJudgement {
+  ON_TIME
+  LATE
+  DAY_OFF
+  NO_SCHEDULE
+}
+
 model HrEmployee {
   id          String   @id @default(cuid())
   tenantId    String
@@ -45,6 +55,10 @@ model HrAttendance {
   kind       HrAttendanceKind
   at         DateTime         @default(now())
   note       String?
+  // ผลตัดสิน + หลักฐานที่ใช้ตัดสิน (เฉพาะ kind=IN · null = แถวก่อน 13 ส.ค. 2026 หรือการลงเวลาออก)
+  judgement  HrAttendanceJudgement?
+  dueMin     Int? // ควรเข้ากี่โมง (นาทีจากเที่ยงคืนเวลาไทย) ณ วันนั้น
+  lateMin    Int? // สายกี่นาที (นับจาก dueMin ไม่รวมเวลาผ่อนผัน) · 0 = ไม่สาย
   @@index([systemId, employeeId, at])
 }
 
@@ -80,6 +94,8 @@ model HrWorkSchedule {
   startMin   Int        @default(540) // 09:00
   endMin     Int        @default(1080) // 18:00
   graceMin   Int        @default(15) // เข้าช้าได้กี่นาทีก่อนนับว่าสาย
+  // 🔴 วันที่เริ่มมีตาราง — ห้ามนับ "ขาดงาน" ย้อนหลังไปก่อนวันที่ร้านตั้งตารางให้คนนี้
+  createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
   @@unique([employeeId, weekday])

@@ -12,6 +12,9 @@ import {
   getSchedule,
   listLeaves,
   pendingLeaves,
+  monthlyAttendance,
+  employeesWithSchedule,
+  bkkParts,
   type Ctx,
 } from "./service";
 import {
@@ -43,6 +46,26 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
 
 const KIND_LABEL: Record<string, string> = { IN: "เข้างาน", OUT: "ออกงาน" };
 
+// ผลตัดสินการเข้างาน — "ยังไม่ตั้งตาราง" ต้องอ่านออกว่าเป็นข้อมูลที่ร้านยังไม่ได้กรอก ไม่ใช่ความผิดพนักงาน
+const JUDGEMENT_LABEL: Record<string, string> = {
+  ON_TIME: "ตรงเวลา",
+  LATE: "สาย",
+  DAY_OFF: "วันหยุดของคนนี้",
+  NO_SCHEDULE: "ยังไม่ตั้งตาราง",
+};
+const judgementTone = (v: string): "muted" | "strong" | "danger" =>
+  v === "LATE" ? "danger" : v === "ON_TIME" ? "strong" : "muted";
+
+// ระยะเวลา (นาที) → "8 ชม. 30 น." (ตัด 0 ทิ้งให้อ่านง่าย) — คนละอย่างกับ hhmm ที่เป็น "เวลาบนหน้าปัด"
+const durHm = (min: number) => {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h === 0 ? `${m} น.` : m === 0 ? `${h} ชม.` : `${h} ชม. ${m} น.`;
+};
+
+const monthLabel = () =>
+  new Date().toLocaleDateString("th-TH", { month: "long", year: "numeric", timeZone: "Asia/Bangkok" });
+
 const dateRange = (from: Date, to: Date) =>
   from.getTime() === to.getTime()
     ? formatThaiDate(from)
@@ -66,7 +89,18 @@ export async function HrAttendanceSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  const [employees, attendance] = await Promise.all([listEmployees(ctx), listAttendance(ctx)]);
+  const [employees, attendance, scheduled] = await Promise.all([
+    listEmployees(ctx),
+    listAttendance(ctx),
+    employeesWithSchedule(ctx),
+  ]);
+  // สรุปเดือนนี้ (เวลาไทย) รายคน — ต้องมีตารางก่อน ไม่งั้นไม่มีอะไรให้เทียบ
+  // ⚠️ เดือนต้องมาจากวันที่ไทย: ตี 3 ของวันที่ 1 ยังเป็นเดือนก่อนตาม UTC
+  const [yy, mm] = bkkParts(new Date()).dateStr.split("-").map(Number);
+  const monthStart = new Date(Date.UTC(yy!, mm! - 1, 1));
+  const summaries = await Promise.all(
+    employees.map(async (e) => ({ emp: e, sum: await monthlyAttendance(ctx, e.id, monthStart) })),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -105,13 +139,52 @@ export async function HrAttendanceSection({ systemId }: { systemId: string }) {
         )}
       </Section>
 
+      {/* สรุปเดือนนี้ — จุดที่ "ตารางเข้างาน" เริ่มตอบคำถามเจ้าของได้จริง */}
+      <Section title={`สรุปเดือน${monthLabel()}`}>
+        {employees.length === 0 ? (
+          <p className={`text-xs ${muted}`}>ยังไม่มีพนักงาน</p>
+        ) : (
+          <DataList
+            items={summaries.map(({ emp, sum }) => ({
+              key: emp.id,
+              primary: emp.name,
+              secondary: scheduled.has(emp.id)
+                ? [
+                    `มาสาย ${sum.lateCount} ครั้ง${sum.lateMinutes > 0 ? ` (${durHm(sum.lateMinutes)})` : ""}`,
+                    `ขาดงาน ${sum.absentDays} วัน`,
+                    `ลา ${sum.leaveDays} วัน`,
+                    `ต้องเข้า ${sum.workDays} วัน`,
+                  ].join(" · ")
+                : "ยังไม่ตั้งตารางเข้างาน — ตั้งที่แท็บ “พนักงาน” แล้วระบบจะเริ่มนับสาย/ขาดให้",
+              trailing: (
+                <span className={`text-xs ${muted}`}>
+                  ทำงาน {sum.workedMinutes > 0 ? durHm(sum.workedMinutes) : "—"}
+                </span>
+              ),
+            }))}
+            empty="ยังไม่มีพนักงาน"
+          />
+        )}
+      </Section>
+
       {/* บันทึกลงเวลาล่าสุด */}
       <Section title="บันทึกลงเวลาล่าสุด">
         <DataList
           items={attendance.map((a) => ({
             key: a.id,
             primary: `${a.employee.name} · ${KIND_LABEL[a.kind] ?? a.kind}`,
-            trailing: <span className={`text-xs ${muted}`}>{formatThaiDateTime(a.at)}</span>,
+            secondary:
+              a.kind === "IN" && a.judgement === "LATE" && a.dueMin != null
+                ? `ควรเข้า ${hhmm(a.dueMin)} · สาย ${durHm(a.lateMin ?? 0)}`
+                : undefined,
+            trailing: (
+              <>
+                {a.kind === "IN" && a.judgement != null && (
+                  <StatusChip value={a.judgement} map={JUDGEMENT_LABEL} toneOf={judgementTone} />
+                )}
+                <span className={`text-xs ${muted}`}>{formatThaiDateTime(a.at)}</span>
+              </>
+            ),
           }))}
           empty="ยังไม่มีการลงเวลา — กดเข้างาน/ออกงานด้านบนเพื่อเริ่มบันทึก"
         />
