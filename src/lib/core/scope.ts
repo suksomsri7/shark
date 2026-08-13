@@ -61,6 +61,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   CrmActivity: sys(),
   // Inventory (ระบบ 18 — WO-0011)
   InvItem: sys(),
+  InvCategory: sys(),
+  InvSettings: sys(),
+  InvItemImage: sys(),
   InvMovement: sys(),
   InvLocation: sys(),
   InvLocationStock: sys(),

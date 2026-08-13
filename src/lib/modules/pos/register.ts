@@ -80,21 +80,25 @@ export async function posCatalog(tenantId: string, inventorySystemId: string): P
   });
 }
 
-/** บริการที่ขายหน้าร้านได้ — มาจากบริการของหน้างานที่ผูก POS (BookingService) */
+/** บริการที่ขายหน้าร้านได้ — มาจาก **แคตตาล็อกกลาง** (InvItem kind=SERVICE) */
 export type PosServiceItem = { id: string; name: string; priceSatang: number; durationMin: number; bookable: boolean };
 
 /**
- * บริการของ unit ที่กำลังขาย — ร้านบริการ (ตัดผม/นวด/คลินิก) รายได้หลักคือบริการ ไม่ใช่สินค้า
- * เดิม POS ดึงแต่ InvItem → ร้านตัดผมเปิดหน้าขายมาแล้วว่างเปล่า ต้องพิมพ์ชื่อ+ราคาเองทุกบิล
- * บริการไม่ตัดสต็อก (PosSaleLine.itemId = null) — ตรงกับสัญญาเดิมของ schema
+ * บริการที่ขายหน้าร้านได้ — ร้านบริการ (ตัดผม/นวด/คลินิก) รายได้หลักคือบริการ ไม่ใช่สินค้า
+ * 🔴 13 ส.ค. 2026 (เจ้าของสั่งข้อ 14-15): ดึงจาก **แคตตาล็อกกลาง** ไม่ใช่ BookingService อีกแล้ว
+ *    ต้นฉบับเดียว → ตั้งราคาที่ระบบสินค้า/บริการ แล้วทั้งหน้าขายและหน้าจองเห็นตรงกัน
+ * บริการไม่ตัดสต็อก: บรรทัดบิลใส่ serviceId (ไม่ใส่ itemId) — ตรงกับสัญญาเดิมของ PosSaleLine
  */
-export async function posServices(tenantId: string, unitId: string): Promise<PosServiceItem[]> {
-  const rows = await prisma.bookingService.findMany({
-    where: { tenantId, unitId, active: true },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    select: { id: true, name: true, priceSatang: true, durationMin: true, bookable: true },
-  });
-  return rows;
+export async function posServices(tenantId: string, inventorySystemId: string | null): Promise<PosServiceItem[]> {
+  if (!inventorySystemId) return [];
+  const rows = await inventory.listServices({ tenantId, systemId: inventorySystemId });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    priceSatang: r.priceSatang,
+    durationMin: r.durationMin ?? 0,
+    bookable: r.bookable,
+  }));
 }
 
 // ═══════════ หน้า "สินค้า/ราคา" ของ POS (WO ส่วน B) ═══════════

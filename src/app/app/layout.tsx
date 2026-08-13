@@ -127,10 +127,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         return [
           { href: s, label: "ภาพรวม" },
           { href: `${s}/inventory/items`, label: "สินค้า" },
+          { href: `${s}/inventory/services`, label: "บริการ" },
           { href: `${s}/inventory/count`, label: "นับสต็อก" },
           { href: `${s}/inventory/movements`, label: "รับเข้า" },
           { href: `${s}/inventory/locations`, label: "คลัง" },
           { href: `${s}/inventory/procurement`, label: "จัดซื้อ" },
+          { href: `${s}/inventory/settings`, label: "ตั้งค่า" },
         ];
       case "CRM":
         return [

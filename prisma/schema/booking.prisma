@@ -11,6 +11,9 @@ enum AppointmentStatus {
   CANCELLED
 }
 
+// ⚠️ 13 ส.ค. 2026: บริการ "ต้นฉบับ" ย้ายไปอยู่แคตตาล็อกกลาง (InvItem kind=SERVICE)
+// แถวนี้เหลือหน้าที่ = "บริการที่สาขานี้เปิดรับจอง" (projection) — นัดอ้างถึงแถวนี้ ห้ามลบจริง
+// itemId = ต้นฉบับในแคตตาล็อก (null = บริการเก่าที่ยังไม่ย้าย — กดย้ายได้ที่หน้าบริการ)
 model BookingService {
   id          String   @id @default(cuid())
   tenantId    String
@@ -25,12 +28,14 @@ model BookingService {
   // ธุรกิจที่มีทั้งสินค้าและบริการต้องแยกสองอย่างนี้ ไม่งั้น "ค่าจัดส่ง" จะโผล่เป็นคิวให้จอง
   bookable    Boolean  @default(true)
   sortOrder   Int      @default(0)
+  itemId      String? // ต้นฉบับในแคตตาล็อกกลาง (InvItem kind=SERVICE)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   appointments Appointment[]
 
   @@index([tenantId, unitId])
+  @@index([unitId, itemId])
 }
 
 model BookingStaff {

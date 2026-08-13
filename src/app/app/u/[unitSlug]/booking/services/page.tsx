@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
-import { tenantDb } from "@/lib/core/db";
-import { addServiceAction, editServiceAction, removeServiceAction } from "@/lib/actions/booking";
+import { serviceRoster } from "@/lib/modules/booking/service";
+import { setServiceOfferedAction, importServicesToCatalogAction } from "@/lib/actions/booking";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import { formatBaht } from "@/lib/ui/money";
 
-// ฟังก์ชันย่อย "บริการ" ของระบบจอง (แตกออกจากหน้าตั้งค่าเดิม)
+// ฟังก์ชันย่อย "บริการ" ของระบบจอง
+// 🔴 มติเจ้าของ 13 ส.ค. 2026 (ข้อ 12-15): ต้นฉบับบริการอยู่ระบบสินค้า/บริการที่เดียว
+// หน้านี้เหลือหน้าที่เดียว = ติ๊กว่าสาขานี้เปิดรับจองบริการไหน (ราคา/เวลา/มัดจำ แก้ที่แคตตาล็อก)
 export default async function BookingServicesPage({
   params,
 }: {
@@ -13,100 +16,86 @@ export default async function BookingServicesPage({
 }) {
   const { unitSlug } = await params;
   const { auth, unit } = await requireUnit(unitSlug);
-  const db = tenantDb({ tenantId: auth.active.tenantId, unitId: unit.id });
-  const services = await db.bookingService.findMany({
-    where: { active: true },
-    orderBy: { createdAt: "asc" },
+  const { rows, catalogSystemId, legacy } = await serviceRoster({
+    tenantId: auth.active.tenantId,
+    unitId: unit.id,
   });
+  const muted = "text-[color:var(--color-muted)]";
+  const offeredCount = rows.filter((r) => r.offered).length;
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="บริการ"
-        desc="รายการบริการที่เปิดให้ลูกค้าจอง — แก้ราคาได้ตลอด บิลที่ขายไปแล้วและนัดที่จองไว้ยังใช้ราคาเดิม"
+        desc="ติ๊กบริการที่สาขานี้เปิดรับจอง — ราคา/เวลา/มัดจำ ตั้งที่ระบบ “สินค้า/บริการ” ที่เดียว"
       />
 
-      <section className="flex flex-col gap-3">
-        {services.length === 0 && (
-          <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีบริการ เพิ่มด้านล่าง</p>
-        )}
-        {services.map((s) => (
-          <div key={s.id} className="flex flex-col gap-2 rounded-lg border px-3 py-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm">
-                <span className="font-medium">{s.name}</span>
-                <span className="text-[color:var(--color-muted)]">
-                  {" "}
-                  · {s.durationMin} นาที · {s.priceSatang > 0 ? formatBaht(s.priceSatang) : "—"}
-                  {s.depositSatang > 0 ? ` · มัดจำ ${formatBaht(s.depositSatang)}` : ""}
-                </span>
-              </div>
-              <form action={removeServiceAction.bind(null, unitSlug)}>
-                <input type="hidden" name="id" value={s.id} />
-                <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
-              </form>
-            </div>
-            {/* แก้ไขบริการ — ชื่อ/เวลา/ราคา/มัดจำ ในฟอร์มเดียว
-                ราคาใหม่มีผลกับการขาย/การจองครั้งถัดไปเท่านั้น (บิลเก่า+นัดที่จองไว้ใช้ราคาเดิม) */}
-            <form
-              action={editServiceAction.bind(null, unitSlug)}
-              className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto] sm:items-end"
-            >
-              <input type="hidden" name="id" value={s.id} />
-              <label className="col-span-2 flex flex-col gap-1 sm:col-span-1">
-                <span className="text-xs text-[color:var(--color-muted)]">ชื่อบริการ</span>
-                <input name="name" required defaultValue={s.name} className="w-full rounded-lg border px-3 py-2 text-sm" />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-[color:var(--color-muted)]">นาที</span>
-                <input name="durationMin" type="number" required min={5} defaultValue={s.durationMin} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-20" />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-[color:var(--color-muted)]">ราคา (บาท)</span>
-                <input name="priceBaht" type="number" min={0} defaultValue={s.priceSatang / 100} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-24" />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-[color:var(--color-muted)]">มัดจำ (บาท)</span>
-                <input name="depositBaht" type="number" min={0} defaultValue={s.depositSatang / 100} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-24" />
-              </label>
-              <button className="btn-sm col-span-2 min-h-[44px] sm:col-span-1">บันทึก</button>
-            </form>
-          </div>
-        ))}
-        <form
-          action={addServiceAction.bind(null, unitSlug)}
-          className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end"
-        >
-          <label className="col-span-2 flex flex-col gap-1 sm:col-span-1">
-            <span className="text-xs text-[color:var(--color-muted)]">ชื่อบริการ</span>
-            <input name="name" required placeholder="เช่น ตัดผม" className="w-full rounded-lg border px-3 py-2 text-sm" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-[color:var(--color-muted)]">นาที</span>
-            <input name="durationMin" type="number" required defaultValue={30} min={5} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-20" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-[color:var(--color-muted)]">ราคา (บาท)</span>
-            <input name="priceBaht" type="number" defaultValue={0} min={0} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-24" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-[color:var(--color-muted)]">มัดจำ (บาท)</span>
-            <input name="depositBaht" type="number" defaultValue={0} min={0} className="w-full rounded-lg border px-2 py-2 text-sm sm:w-24" />
-          </label>
-          <button className="btn btn-primary col-span-2 text-sm sm:col-span-1">เพิ่ม</button>
-        </form>
-      </section>
+      {catalogSystemId == null ? (
+        <p className="text-sm">
+          ยังไม่ได้เปิดระบบ <b>สินค้า/บริการ</b> — เปิดก่อนแล้วเพิ่มบริการที่นั่น แล้วกลับมาติ๊กว่าสาขานี้รับจองอะไร
+          <Link href="/app/settings/systems" className="ml-1 underline">
+            เปิดระบบ
+          </Link>
+        </p>
+      ) : (
+        <>
+          <p className={`text-xs ${muted}`}>
+            เปิดรับจอง {offeredCount} จาก {rows.length} บริการ ·{" "}
+            <Link href={`/app/sys/${catalogSystemId}/inventory/services`} className="underline">
+              เพิ่ม/แก้บริการ (ราคา เวลา มัดจำ รูป)
+            </Link>
+          </p>
 
-      {/* ลิงก์หน้าจองสาธารณะ */}
-      <section className="card flex flex-col gap-2">
-        <div className="text-sm font-medium">ลิงก์จองสำหรับลูกค้า</div>
-        <code className="break-all rounded bg-[color:var(--color-surface-2)] px-2 py-1 text-xs">
-          /s/{auth.active.tenant.slug}/{unit.slug}
-        </code>
-        <Link href={`/s/${auth.active.tenant.slug}/${unit.slug}`} target="_blank" className="text-sm underline">
-          เปิดหน้าจอง →
-        </Link>
-      </section>
+          {/* บริการเก่าที่สร้างไว้ก่อนมีแคตตาล็อกกลาง — ย้ายเข้าให้ในคลิกเดียว (นัด/บิลเก่าไม่ถูกแตะ) */}
+          {legacy.length > 0 && (
+            <form
+              action={importServicesToCatalogAction.bind(null, unitSlug)}
+              className="card flex flex-wrap items-center justify-between gap-2 p-3"
+            >
+              <span className={`text-xs ${muted}`}>
+                มีบริการเดิม {legacy.length} รายการที่ยังไม่อยู่ในแคตตาล็อกกลาง ({legacy.map((l) => l.name).join(" · ")})
+                — ย้ายเข้าให้เพื่อให้แก้ที่เดียวได้ · นัดและบิลเก่าไม่ถูกแตะ
+              </span>
+              <button className="btn-sm min-h-[40px]">ย้ายเข้าแคตตาล็อก</button>
+            </form>
+          )}
+
+          {rows.length === 0 ? (
+            <p className="text-sm">
+              ยังไม่มีบริการในแคตตาล็อก —{" "}
+              <Link href={`/app/sys/${catalogSystemId}/inventory/services`} className="underline">
+                เพิ่มบริการรายการแรก
+              </Link>
+            </p>
+          ) : (
+            <section className="flex flex-col gap-2">
+              {rows.map((r) => (
+                <div key={r.itemId} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{r.name}</div>
+                    <div className={`truncate text-xs ${muted}`}>
+                      {r.offered ? "เปิดรับจอง" : "ไม่เปิดรับจอง"} · {formatBaht(r.priceSatang)} · {r.durationMin} นาที
+                      {r.depositSatang > 0 ? ` · มัดจำ ${formatBaht(r.depositSatang)}` : ""}
+                      {r.bookable ? "" : " · ตั้งไว้ว่าไม่ให้จองล่วงหน้า"}
+                      {r.appointmentCount > 0 ? ` · มีนัด ${r.appointmentCount} ใบ` : ""}
+                    </div>
+                  </div>
+                  <form action={setServiceOfferedAction.bind(null, unitSlug)} className="shrink-0">
+                    <input type="hidden" name="itemId" value={r.itemId} />
+                    <input type="hidden" name="offered" value={r.offered ? "0" : "1"} />
+                    <SubmitButton variant={r.offered ? "ghost" : "primary"}>
+                      {r.offered ? "ปิดรับจอง" : "เปิดรับจอง"}
+                    </SubmitButton>
+                  </form>
+                </div>
+              ))}
+              <p className={`text-xs ${muted}`}>
+                ปิดรับจอง = ลูกค้าจองบริการนี้ที่สาขานี้ไม่ได้ · นัดที่จองไว้แล้วยังอยู่ครบ (ไม่ถูกยกเลิก)
+              </p>
+            </section>
+          )}
+        </>
+      )}
     </div>
   );
 }

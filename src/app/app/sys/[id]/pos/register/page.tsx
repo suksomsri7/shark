@@ -54,8 +54,8 @@ export default async function PosRegisterPage({
   const [catalog, members, services] = await Promise.all([
     links.inventorySystemId ? posCatalog(tenantId, links.inventorySystemId) : Promise.resolve([]),
     links.memberSystemId ? posMembers(tenantId, links.memberSystemId) : Promise.resolve([]),
-    // บริการของหน้างานที่กำลังขาย — ร้านบริการรายได้หลักอยู่ตรงนี้ (ไม่ผูกกับระบบคลัง)
-    posServices(tenantId, active.id),
+    // บริการจากแคตตาล็อกกลาง (ระบบสินค้า/บริการ) — ต้นฉบับเดียวกับที่หน้าจองใช้
+    posServices(tenantId, links.inventorySystemId),
   ]);
   const hasPromptPay = !!profile?.promptpayId;
 

@@ -293,6 +293,9 @@ const ALLOWED_EDGES = new Set([
   // contract C-2 (13 ส.ค. 2026): availability = ของ HR — ระบบจองถาม hr.employeesOnLeave
   // ลาอนุมัติแล้ว → ช่องจองของช่างคนนั้นปิดเอง · ห้าม copy สูตรวันลาไปไว้ในโมดูลจอง
   "booking→hr",
+  // contract (13 ส.ค. 2026 · ข้อ 12-15): บริการมีต้นฉบับเดียวในแคตตาล็อกกลาง (InvItem kind=SERVICE)
+  // ระบบจองอ่านบริการจาก inventory + สร้าง projection ต่อสาขา · ห้ามสร้าง/แก้บริการเองอีก
+  "booking→inventory",
   // chokepoint (WO-Wave4-D): สมัครสมาชิกเก็บค่าสมาชิกผ่าน pos.createSale (C-2) → ลงบัญชีอัตโนมัติ
   // + resolve ระบบ POS/POINT ที่ผูก unit เดียวกับระบบ MEMBER (เหมือน school→pos/system)
   "member→pos",

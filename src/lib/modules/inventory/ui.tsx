@@ -13,12 +13,18 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { formatThaiDate, formatThaiDateTime } from "@/lib/ui/date";
 import CsvImport from "@/components/CsvImport";
+import ImageEditor from "./ImageEditor";
+import { formatBaht } from "@/lib/ui/money";
 import BarcodeSearch from "./BarcodeSearch";
 import StockCount from "./StockCount";
 import {
   ensureDefaultLocation,
+  getSettings,
+  listCategories,
+  listItemImages,
   listItems,
   listLocations,
+  listServices,
   lotsByItemMap,
   lowStock,
   recentMovements,
@@ -30,10 +36,17 @@ import {
   consumeAction,
   createItemAction,
   createLocationAction,
+  createServiceAction,
   importItemsAction,
   receiveAction,
+  removeCategoryAction,
+  removeItemImageAction,
+  saveCategoryAction,
+  saveSettingsAction,
+  setPrimaryImageAction,
   transferAction,
   updateItemAction,
+  updateServiceAction,
 } from "./actions";
 import { listPos, listSuppliers, pendingApprovalPoIds } from "./procurement";
 import {
@@ -77,10 +90,12 @@ export function invTabs(systemId: string): { href: string; label: string }[] {
   return [
     { href: s, label: "ภาพรวม" },
     { href: `${s}/inventory/items`, label: "สินค้า" },
+    { href: `${s}/inventory/services`, label: "บริการ" },
     { href: `${s}/inventory/count`, label: "นับสต็อก" },
     { href: `${s}/inventory/movements`, label: "รับเข้า" },
     { href: `${s}/inventory/locations`, label: "คลัง" },
     { href: `${s}/inventory/procurement`, label: "จัดซื้อ" },
+    { href: `${s}/inventory/settings`, label: "ตั้งค่า" },
   ];
 }
 
@@ -845,6 +860,319 @@ export async function InvHub({ systemId }: { systemId: string }) {
           </Link>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ═════════════ บริการ (services) — ต้นฉบับเดียวของทั้งระบบ (เจ้าของสั่งข้อ 12-15) ═════════════
+// จองคิว = ติ๊กว่าสาขาไหนเปิดรับจองบริการนี้ · POS = อ่านไปขายหน้าร้าน · แก้ที่นี่ที่เดียว
+export async function InvServicesSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const [services, categories] = await Promise.all([listServices(ctx), listCategories(ctx)]);
+  const serviceCats = categories.filter((c) => c.kind === "SERVICE");
+  const imagesByItem = new Map<string, { id: string; url: string }[]>();
+  for (const sv of services) {
+    imagesByItem.set(sv.id, (await listItemImages(ctx, sv.id)).map((i) => ({ id: i.id, url: i.url })));
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Section title={`บริการ (${services.length})`}>
+        <p className={`mb-2 text-xs ${muted}`}>
+          🔴 <b>ที่เดียวที่แก้บริการได้</b> — หน้าจองคิวและหน้าขาย POS ดึงจากที่นี่ ตั้งราคาที่นี่แล้วเห็นตรงกันทุกที่
+          {" · "}ติ๊ก “ให้ลูกค้าจองล่วงหน้าได้” เฉพาะบริการที่ต้องจองคิว (ค่าจัดส่ง/ค่าติดตั้ง ไม่ต้องติ๊ก)
+        </p>
+        {services.length === 0 && <p className={`text-xs ${muted}`}>ยังไม่มีบริการ — เพิ่มด้านล่าง</p>}
+        <div className="flex flex-col gap-3">
+          {services.map((sv) => {
+            const imgs = imagesByItem.get(sv.id) ?? [];
+            return (
+              <details key={sv.id} className="rounded-lg border px-3 py-2">
+                <summary className="cursor-pointer text-sm font-medium">
+                  {sv.name}
+                  <span className={`ml-2 text-xs font-normal ${muted}`}>
+                    {formatBaht(sv.priceSatang)} · {sv.durationMin ?? 0} นาที
+                    {sv.depositSatang > 0 ? ` · มัดจำ ${formatBaht(sv.depositSatang)}` : ""}
+                    {sv.bookable ? "" : " · ไม่ให้จองล่วงหน้า"}
+                    {imgs.length > 0 ? ` · ${imgs.length} รูป` : ""}
+                  </span>
+                </summary>
+                <form action={updateServiceAction} className="mt-2 flex flex-wrap items-end gap-2">
+                  <input type="hidden" name="systemId" value={systemId} />
+                  <input type="hidden" name="itemId" value={sv.id} />
+                  <label className={`flex min-w-[10rem] flex-1 flex-col gap-1 text-xs ${muted}`}>
+                    ชื่อบริการ
+                    <input name="name" required defaultValue={sv.name} className="input min-w-0" />
+                  </label>
+                  <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                    ราคา (บาท)
+                    <input name="priceBaht" inputMode="decimal" defaultValue={String(sv.priceSatang / 100)} className="input w-24" />
+                  </label>
+                  <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                    ใช้เวลา (นาที)
+                    <input name="durationMin" type="number" min={1} max={600} defaultValue={sv.durationMin ?? 30} className="input w-24" />
+                  </label>
+                  <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                    เผื่อเวลา (นาที)
+                    <input name="bufferMin" type="number" min={0} max={120} defaultValue={sv.bufferMin} className="input w-24" />
+                  </label>
+                  <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                    มัดจำ (บาท)
+                    <input name="depositBaht" inputMode="decimal" defaultValue={String(sv.depositSatang / 100)} className="input w-24" />
+                  </label>
+                  {serviceCats.length > 0 && (
+                    <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                      หมวดหมู่
+                      <select name="categoryId" defaultValue={sv.categoryId ?? ""} className="input">
+                        <option value="">ไม่ระบุ</option>
+                        {serviceCats.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <label className="flex items-center gap-1.5 self-end pb-2 text-xs">
+                    <input type="checkbox" name="bookable" defaultChecked={sv.bookable} />
+                    ให้ลูกค้าจองล่วงหน้าได้
+                  </label>
+                  <SubmitButton variant="ghost">บันทึก</SubmitButton>
+                </form>
+
+                {/* รูปของบริการ (ข้อ 16) */}
+                <div className="mt-3 border-t pt-3">
+                  <div className="text-xs font-medium">รูป ({imgs.length}/8)</div>
+                  {imgs.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {imgs.map((im, idx) => (
+                        <div key={im.id} className="flex flex-col items-center gap-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={im.url} alt="" className="h-20 w-20 rounded-lg border object-cover" />
+                          <div className="flex gap-1">
+                            {idx !== 0 && (
+                              <form action={setPrimaryImageAction}>
+                                <input type="hidden" name="systemId" value={systemId} />
+                                <input type="hidden" name="itemId" value={sv.id} />
+                                <input type="hidden" name="imageId" value={im.id} />
+                                <button className="text-[10px] underline">ตั้งเป็นรูปหลัก</button>
+                              </form>
+                            )}
+                            {idx === 0 && <span className={`text-[10px] ${muted}`}>รูปหลัก</span>}
+                            <form action={removeItemImageAction}>
+                              <input type="hidden" name="systemId" value={systemId} />
+                              <input type="hidden" name="imageId" value={im.id} />
+                              <button className="text-[10px] text-[color:var(--color-danger)] underline">ลบ</button>
+                            </form>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-2">
+                    <ImageEditor systemId={systemId} itemId={sv.id} itemName={sv.name} />
+                  </div>
+                </div>
+
+                <div className="mt-3 border-t pt-2">
+                  <ConfirmDialog
+                    triggerLabel="เอาบริการนี้ออก"
+                    triggerClassName="btn-sm min-h-[40px] text-[color:var(--color-danger)]"
+                    title={`เอา ${sv.name} ออกจากรายการ?`}
+                    detail="บิลที่ขายไปแล้วและนัดที่จองไว้ยังอยู่ครบ (ไม่ได้ลบประวัติ) · บริการจะไม่โผล่ให้ขาย/ให้จองอีก"
+                    confirmLabel="ยืนยัน"
+                    danger
+                    action={archiveItemAction}
+                    fields={{ systemId, itemId: sv.id }}
+                  />
+                </div>
+              </details>
+            );
+          })}
+        </div>
+
+        {/* เพิ่มบริการใหม่ */}
+        <form action={createServiceAction} className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3">
+          <input type="hidden" name="systemId" value={systemId} />
+          <label className={`flex min-w-[10rem] flex-1 flex-col gap-1 text-xs ${muted}`}>
+            ชื่อบริการ
+            <input name="name" required placeholder="เช่น ตัดผมชาย" className="input min-w-0" />
+          </label>
+          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+            ราคา (บาท)
+            <input name="priceBaht" inputMode="decimal" placeholder="150" className="input w-24" />
+          </label>
+          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+            ใช้เวลา (นาที)
+            <input name="durationMin" type="number" min={1} max={600} defaultValue={30} className="input w-24" />
+          </label>
+          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+            มัดจำ (บาท)
+            <input name="depositBaht" inputMode="decimal" placeholder="0" className="input w-24" />
+          </label>
+          {serviceCats.length > 0 && (
+            <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+              หมวดหมู่
+              <select name="categoryId" className="input" defaultValue="">
+                <option value="">ไม่ระบุ</option>
+                {serviceCats.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="flex items-center gap-1.5 self-end pb-2 text-xs">
+            <input type="checkbox" name="bookable" defaultChecked />
+            ให้ลูกค้าจองล่วงหน้าได้
+          </label>
+          <SubmitButton>+ เพิ่มบริการ</SubmitButton>
+        </form>
+        <p className={`mt-1 text-xs ${muted}`}>SKU เว้นว่างได้ — ระบบตั้งให้ตามรูปแบบในแท็บ “ตั้งค่า”</p>
+      </Section>
+    </div>
+  );
+}
+
+// ═════════════ ตั้งค่า (settings) — หมวดหมู่ · SKU · บาร์โค้ด (เจ้าของสั่งข้อ 17) ═════════════
+const BARCODE_LABEL: Record<string, string> = {
+  NONE: "ไม่ใช้",
+  EAN13: "EAN-13 (สินค้าทั่วไป)",
+  CODE128: "Code 128",
+  QR: "QR Code",
+};
+
+export async function InvSettingsSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const [settings, categories] = await Promise.all([getSettings(ctx), listCategories(ctx)]);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Section title="รูปแบบรหัสสินค้า (SKU) + บาร์โค้ด">
+        <form action={saveSettingsAction} className="flex flex-wrap items-end gap-2">
+          <input type="hidden" name="systemId" value={systemId} />
+          <label className="flex items-center gap-1.5 self-end pb-2 text-xs">
+            <input type="checkbox" name="skuAuto" defaultChecked={settings.skuAuto} />
+            เว้น SKU ว่าง = ระบบตั้งให้
+          </label>
+          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+            คำนำหน้า
+            <input name="skuPrefix" defaultValue={settings.skuPrefix} maxLength={10} className="input w-28" />
+          </label>
+          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+            จำนวนหลัก
+            <input name="skuPadding" type="number" min={2} max={8} defaultValue={settings.skuPadding} className="input w-20" />
+          </label>
+          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+            บาร์โค้ดเริ่มต้น
+            <select name="barcodeType" defaultValue={settings.barcodeType} className="input">
+              {Object.entries(BARCODE_LABEL).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
+          <SubmitButton variant="ghost">บันทึก</SubmitButton>
+          <p className={`w-full text-xs ${muted}`}>
+            ตัวอย่างรหัสถัดไป: <b>{`${settings.skuPrefix}-${String(settings.nextSeq).padStart(settings.skuPadding, "0")}`}</b>
+            {" · "}หมวดหมู่ที่ตั้งคำนำหน้าเองจะใช้คำนำหน้าของหมวดนั้นแทน
+          </p>
+        </form>
+      </Section>
+
+      <Section title={`หมวดหมู่ (${categories.length})`}>
+        <p className={`mb-2 text-xs ${muted}`}>
+          ตั้งค่าเริ่มต้นต่อหมวด (หน่วยนับ · ราคา · เวลาบริการ · คำนำหน้า SKU · ชนิดบาร์โค้ด) — เพิ่มของใหม่ในหมวดนั้นจะได้ค่าเหล่านี้เป็นค่าตั้งต้น
+        </p>
+        <div className="flex flex-col gap-2">
+          {categories.map((c) => (
+            <details key={c.id} className="rounded-lg border px-3 py-2">
+              <summary className="cursor-pointer text-sm font-medium">
+                {c.name}
+                <span className={`ml-2 text-xs font-normal ${muted}`}>
+                  {c.kind === "SERVICE" ? "บริการ" : "สินค้า"}
+                  {c.skuPrefix ? ` · SKU ${c.skuPrefix}-` : ""}
+                  {c.barcodeType !== "NONE" ? ` · ${BARCODE_LABEL[c.barcodeType]}` : ""}
+                </span>
+              </summary>
+              <form action={saveCategoryAction} className="mt-2 flex flex-wrap items-end gap-2">
+                <input type="hidden" name="systemId" value={systemId} />
+                <input type="hidden" name="id" value={c.id} />
+                <input type="hidden" name="kind" value={c.kind} />
+                <label className={`flex flex-1 flex-col gap-1 text-xs ${muted}`}>
+                  ชื่อหมวด
+                  <input name="name" required defaultValue={c.name} className="input min-w-0" />
+                </label>
+                <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                  คำนำหน้า SKU
+                  <input name="skuPrefix" defaultValue={c.skuPrefix ?? ""} maxLength={10} className="input w-24" />
+                </label>
+                <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                  บาร์โค้ด
+                  <select name="barcodeType" defaultValue={c.barcodeType} className="input">
+                    {Object.entries(BARCODE_LABEL).map(([k, v]) => (
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                  หน่วยนับ
+                  <input name="defaultUnitLabel" defaultValue={c.defaultUnitLabel ?? ""} placeholder="ชิ้น/ครั้ง" className="input w-24" />
+                </label>
+                <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                  ราคาเริ่มต้น (บาท)
+                  <input name="defaultPriceBaht" inputMode="decimal" defaultValue={c.defaultPriceSatang != null ? String(c.defaultPriceSatang / 100) : ""} className="input w-24" />
+                </label>
+                {c.kind === "SERVICE" && (
+                  <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                    เวลาเริ่มต้น (นาที)
+                    <input name="defaultDurationMin" type="number" min={1} max={600} defaultValue={c.defaultDurationMin ?? ""} className="input w-24" />
+                  </label>
+                )}
+                <SubmitButton variant="ghost">บันทึก</SubmitButton>
+              </form>
+              <div className="mt-2 border-t pt-2">
+                <ConfirmDialog
+                  triggerLabel="ลบหมวดนี้"
+                  triggerClassName="btn-sm min-h-[40px] text-[color:var(--color-danger)]"
+                  title={`ลบหมวด ${c.name}?`}
+                  detail="สินค้า/บริการในหมวดนี้ไม่ถูกลบ — แค่หลุดออกจากหมวด (จัดหมวดใหม่ได้ทีหลัง)"
+                  confirmLabel="ยืนยันลบ"
+                  danger
+                  action={removeCategoryAction}
+                  fields={{ systemId, id: c.id }}
+                />
+              </div>
+            </details>
+          ))}
+        </div>
+
+        <form action={saveCategoryAction} className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3">
+          <input type="hidden" name="systemId" value={systemId} />
+          <label className={`flex flex-1 flex-col gap-1 text-xs ${muted}`}>
+            ชื่อหมวดใหม่
+            <input name="name" required placeholder="เช่น ตัดผม / แชมพู" className="input min-w-0" />
+          </label>
+          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+            ใช้กับ
+            <select name="kind" defaultValue="PRODUCT" className="input">
+              <option value="PRODUCT">สินค้า</option>
+              <option value="SERVICE">บริการ</option>
+            </select>
+          </label>
+          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+            คำนำหน้า SKU
+            <input name="skuPrefix" placeholder="เช่น HAIR" maxLength={10} className="input w-24" />
+          </label>
+          <SubmitButton>+ เพิ่มหมวด</SubmitButton>
+        </form>
+      </Section>
     </div>
   );
 }

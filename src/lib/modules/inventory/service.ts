@@ -164,6 +164,15 @@ export type CreateItemInput = {
   category?: string | null;
   reorderPoint?: number | null;
   costSatang?: number | null;
+  // ── บริการ (13 ส.ค. 2026 · ข้อ 12) — kind=SERVICE ไม่มีสต็อก ──
+  kind?: "PRODUCT" | "SERVICE";
+  priceSatang?: number | null; // ราคาขาย (บริการใช้ช่องนี้)
+  durationMin?: number | null;
+  bufferMin?: number | null;
+  depositSatang?: number | null;
+  bookable?: boolean;
+  description?: string | null;
+  categoryId?: string | null;
 };
 
 export async function createItem(ctx: Ctx, input: CreateItemInput): Promise<{ id: string }> {
@@ -177,8 +186,16 @@ export async function createItem(ctx: Ctx, input: CreateItemInput): Promise<{ id
       // unitLabel มี default "ชิ้น" ใน schema — ส่งเฉพาะเมื่อระบุ
       ...(input.unitLabel?.trim() ? { unitLabel: input.unitLabel.trim() } : {}),
       category: input.category?.trim() || null,
+      categoryId: input.categoryId?.trim() || null,
       reorderPoint: Math.max(0, Math.round(input.reorderPoint ?? 0)),
       costSatang: Math.max(0, Math.round(input.costSatang ?? 0)),
+      kind: input.kind ?? "PRODUCT",
+      priceSatang: Math.max(0, Math.round(input.priceSatang ?? 0)),
+      ...(input.durationMin != null ? { durationMin: Math.max(1, Math.round(input.durationMin)) } : {}),
+      bufferMin: Math.max(0, Math.round(input.bufferMin ?? 0)),
+      depositSatang: Math.max(0, Math.round(input.depositSatang ?? 0)),
+      ...(input.bookable !== undefined ? { bookable: input.bookable } : {}),
+      description: input.description?.trim() || null,
       // onHand = 0 (default ใน schema)
     },
   });
@@ -268,8 +285,16 @@ export type UpdateItemPatch = Partial<{
   sku: string;
   barcode: string | null;
   category: string | null;
+  categoryId: string | null;
   unitLabel: string;
   reorderPoint: number;
+  // บริการ/ราคา (ข้อ 12-15) — แก้ได้ที่ระบบสินค้า/บริการเท่านั้น
+  priceSatang: number;
+  durationMin: number;
+  bufferMin: number;
+  depositSatang: number;
+  bookable: boolean;
+  description: string | null;
 }>;
 
 export async function updateItem(ctx: Ctx, itemId: string, patch: UpdateItemPatch): Promise<{ id: string }> {
@@ -295,6 +320,17 @@ export async function updateItem(ctx: Ctx, itemId: string, patch: UpdateItemPatc
     if (u) data.unitLabel = u; // ว่าง = คงหน่วยเดิม (unitLabel มี default ห้ามตั้งว่าง)
   }
   if (patch.reorderPoint !== undefined) data.reorderPoint = Math.max(0, Math.round(patch.reorderPoint));
+  if (patch.categoryId !== undefined) data.categoryId = patch.categoryId?.trim() || null;
+  if (patch.priceSatang !== undefined) data.priceSatang = Math.max(0, Math.round(patch.priceSatang));
+  if (patch.durationMin !== undefined) {
+    const d = Math.round(patch.durationMin);
+    if (item.kind === "SERVICE" && d < 1) throw new Error("บริการต้องใช้เวลาอย่างน้อย 1 นาที");
+    data.durationMin = d;
+  }
+  if (patch.bufferMin !== undefined) data.bufferMin = Math.max(0, Math.round(patch.bufferMin));
+  if (patch.depositSatang !== undefined) data.depositSatang = Math.max(0, Math.round(patch.depositSatang));
+  if (patch.bookable !== undefined) data.bookable = patch.bookable;
+  if (patch.description !== undefined) data.description = patch.description?.trim() || null;
 
   if (Object.keys(data).length === 0) return { id: itemId };
 
@@ -376,6 +412,8 @@ export async function receive(ctx: Ctx, input: ReceiveInput): Promise<{ id: stri
 
     const item = await tx.invItem.findFirst({ where: { id: input.itemId } });
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+    // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
+    if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
 
     const locId = await resolveLocationId(txc, ctx, input.locationId);
     await seedDefaultStockIfNeeded(txc, ctx, item); // ก่อน apply delta (invariant)
@@ -443,6 +481,8 @@ export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: stri
 
     const item = await tx.invItem.findFirst({ where: { id: input.itemId } });
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+    // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
+    if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
 
     const locId = await resolveLocationId(txc, ctx, input.locationId);
     await seedDefaultStockIfNeeded(txc, ctx, item);
@@ -507,6 +547,8 @@ export async function adjust(ctx: Ctx, input: AdjustInput): Promise<{ id: string
 
     const item = await tx.invItem.findFirst({ where: { id: input.itemId } });
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+    // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
+    if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
 
     const locId = await resolveLocationId(txc, ctx, input.locationId);
     await seedDefaultStockIfNeeded(txc, ctx, item);
@@ -593,6 +635,8 @@ export async function transfer(ctx: Ctx, input: TransferInput): Promise<{ ok: bo
 
     const item = await tx.invItem.findFirst({ where: { id: input.itemId } });
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+    // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
+    if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
 
     await seedDefaultStockIfNeeded(txc, ctx, item);
 
@@ -678,17 +722,29 @@ export async function stockByLocationMap(ctx: Ctx): Promise<Map<string, { locati
 // ── สินค้าใกล้หมด/หมด (ต่ำกว่าจุดสั่งซื้อ ตามกติกา needsReorder) ──
 export async function lowStock(ctx: Ctx) {
   const items = await tenantDb(ctx).invItem.findMany({
-    where: { archivedAt: null },
+    where: { archivedAt: null, kind: "PRODUCT" }, // บริการไม่มีสต็อก → ไม่มี "ใกล้หมด"
+
     orderBy: { onHand: "asc" },
   });
   return items.filter((i) => needsReorder(i.onHand, i.reorderPoint));
 }
 
 // ── reads สำหรับ UI ──
+// 🔴 13 ส.ค. 2026: แคตตาล็อกมี 2 ชนิด — listItems = **สินค้าเท่านั้น** (หน้าสต็อก/รับเข้า/นับ ใช้ตัวนี้)
+//    บริการอยู่ listServices() · ถ้าเผลอรวมกัน หน้าสต็อกจะมีบริการโผล่มาให้นับ (ไม่มีของให้นับ)
 export async function listItems(ctx: Ctx, take = 200) {
   return tenantDb(ctx).invItem.findMany({
-    where: { archivedAt: null },
+    where: { archivedAt: null, kind: "PRODUCT" },
     orderBy: { createdAt: "desc" },
+    take,
+  });
+}
+
+/** บริการในแคตตาล็อก (ต้นฉบับเดียวของทั้งระบบ — จองคิว/POS ดึงจากที่นี่) */
+export async function listServices(ctx: Ctx, take = 200) {
+  return tenantDb(ctx).invItem.findMany({
+    where: { archivedAt: null, kind: "SERVICE" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     take,
   });
 }
@@ -838,4 +894,168 @@ export async function sweepExpiringLots(now: Date = new Date()): Promise<number>
     }
   }
   return notified;
+}
+
+// ═══════════ หมวดหมู่ · ตั้งค่า SKU/บาร์โค้ด · รูป (13 ส.ค. 2026 · เจ้าของสั่งข้อ 16-17) ═══════════
+
+export type BarcodeType = "NONE" | "EAN13" | "CODE128" | "QR";
+
+/** ตั้งค่าระดับระบบ (สร้างค่าเริ่มต้นให้ถ้ายังไม่มี — lazy เหมือนกระเป๋าเครดิต) */
+export async function getSettings(ctx: Ctx) {
+  const db = tenantDb(ctx);
+  const found = await db.invSettings.findFirst({ where: { systemId: ctx.systemId } });
+  if (found) return found;
+  return db.invSettings.create({ data: { tenantId: ctx.tenantId, systemId: ctx.systemId } });
+}
+
+export async function saveSettings(
+  ctx: Ctx,
+  patch: { skuAuto?: boolean; skuPrefix?: string; skuPadding?: number; barcodeType?: BarcodeType },
+): Promise<{ ok: boolean; reason?: string }> {
+  const cur = await getSettings(ctx);
+  const prefix = patch.skuPrefix?.trim().toUpperCase();
+  if (prefix !== undefined && !/^[A-Z0-9-]{1,10}$/.test(prefix)) {
+    return { ok: false, reason: "คำนำหน้า SKU ใช้ได้แค่ A-Z 0-9 และ - (ไม่เกิน 10 ตัว)" };
+  }
+  await tenantDb(ctx).invSettings.updateMany({
+    where: { id: cur.id },
+    data: {
+      ...(patch.skuAuto !== undefined ? { skuAuto: patch.skuAuto } : {}),
+      ...(prefix ? { skuPrefix: prefix } : {}),
+      ...(patch.skuPadding !== undefined ? { skuPadding: Math.min(8, Math.max(2, Math.round(patch.skuPadding))) } : {}),
+      ...(patch.barcodeType !== undefined ? { barcodeType: patch.barcodeType } : {}),
+    },
+  });
+  return { ok: true };
+}
+
+export async function listCategories(ctx: Ctx) {
+  return tenantDb(ctx).invCategory.findMany({
+    where: { systemId: ctx.systemId },
+    orderBy: [{ kind: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+  });
+}
+
+export async function saveCategory(
+  ctx: Ctx,
+  input: {
+    id?: string | null;
+    name: string;
+    kind?: "PRODUCT" | "SERVICE";
+    skuPrefix?: string | null;
+    barcodeType?: BarcodeType;
+    defaultUnitLabel?: string | null;
+    defaultPriceBaht?: number | null;
+    defaultDurationMin?: number | null;
+  },
+): Promise<{ ok: boolean; reason?: string; id?: string }> {
+  const name = input.name.trim();
+  if (!name) return { ok: false, reason: "ตั้งชื่อหมวดหมู่ก่อน" };
+  const prefix = input.skuPrefix?.trim().toUpperCase() || null;
+  if (prefix && !/^[A-Z0-9-]{1,10}$/.test(prefix)) {
+    return { ok: false, reason: "คำนำหน้า SKU ใช้ได้แค่ A-Z 0-9 และ - (ไม่เกิน 10 ตัว)" };
+  }
+  const data = {
+    name,
+    kind: input.kind ?? "PRODUCT",
+    skuPrefix: prefix,
+    ...(input.barcodeType ? { barcodeType: input.barcodeType } : {}),
+    defaultUnitLabel: input.defaultUnitLabel?.trim() || null,
+    defaultPriceSatang:
+      input.defaultPriceBaht != null && Number.isFinite(input.defaultPriceBaht)
+        ? Math.max(0, Math.round(input.defaultPriceBaht * 100))
+        : null,
+    defaultDurationMin:
+      input.defaultDurationMin != null && Number.isFinite(input.defaultDurationMin)
+        ? Math.max(1, Math.round(input.defaultDurationMin))
+        : null,
+  };
+  const db = tenantDb(ctx);
+  try {
+    if (input.id) {
+      const cur = await db.invCategory.findFirst({ where: { id: input.id } });
+      if (!cur) return { ok: false, reason: "ไม่พบหมวดหมู่" };
+      await db.invCategory.updateMany({ where: { id: cur.id }, data });
+      return { ok: true, id: cur.id };
+    }
+    const row = await db.invCategory.create({ data: { ...ctx, ...data } });
+    return { ok: true, id: row.id };
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return { ok: false, reason: "มีหมวดหมู่ชื่อนี้อยู่แล้ว" };
+    }
+    throw e;
+  }
+}
+
+/** ลบหมวดหมู่ — ของที่อยู่ในหมวดนี้ไม่ถูกลบ แค่หลุดหมวด (ห้ามทำข้อมูลสินค้าหาย) */
+export async function removeCategory(ctx: Ctx, id: string): Promise<{ ok: boolean; moved: number }> {
+  const db = tenantDb(ctx);
+  const moved = await db.invItem.updateMany({ where: { categoryId: id }, data: { categoryId: null } });
+  await db.invCategory.deleteMany({ where: { id } });
+  return { ok: true, moved: moved.count };
+}
+
+/**
+ * SKU อัตโนมัติ: <คำนำหน้าของหมวด หรือของระบบ>-<เลขลำดับ zero-pad>
+ * เดินเลขจนไม่ชนของเดิม (unique [systemId, sku]) — ร้านที่เคยตั้ง SKU มือไว้แล้วจึงไม่พัง
+ */
+export async function nextSku(ctx: Ctx, categoryId?: string | null): Promise<string> {
+  const st = await getSettings(ctx);
+  const cat = categoryId ? await tenantDb(ctx).invCategory.findFirst({ where: { id: categoryId } }) : null;
+  const prefix = (cat?.skuPrefix || st.skuPrefix).toUpperCase();
+  const db = tenantDb(ctx);
+  let seq = st.nextSeq;
+  for (let i = 0; i < 500; i++) {
+    const sku = `${prefix}-${String(seq).padStart(st.skuPadding, "0")}`;
+    const dup = await db.invItem.findFirst({ where: { sku }, select: { id: true } });
+    if (!dup) {
+      await db.invSettings.updateMany({ where: { id: st.id }, data: { nextSeq: seq + 1 } });
+      return sku;
+    }
+    seq++;
+  }
+  return `${prefix}-${Date.now().toString().slice(-6)}`;
+}
+
+// ── รูปของสินค้า/บริการ (ข้อ 16) ──
+export async function listItemImages(ctx: Ctx, itemId: string) {
+  return tenantDb(ctx).invItemImage.findMany({
+    where: { itemId },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+}
+
+export async function addItemImage(
+  ctx: Ctx,
+  itemId: string,
+  input: { url: string; alt?: string | null },
+): Promise<{ ok: boolean; reason?: string; id?: string }> {
+  const item = await tenantDb(ctx).invItem.findFirst({ where: { id: itemId } });
+  if (!item) return { ok: false, reason: "ไม่พบสินค้า/บริการ" };
+  const url = input.url.trim();
+  // รับเฉพาะลิงก์ที่ปลอดภัย (บทเรียน stored XSS จากไฟล์แนบเคส support 31 ก.ค.)
+  if (!/^https?:\/\//i.test(url)) return { ok: false, reason: "ลิงก์รูปต้องเป็น http(s)" };
+  const count = await tenantDb(ctx).invItemImage.count({ where: { itemId } });
+  if (count >= 8) return { ok: false, reason: "เก็บรูปได้ไม่เกิน 8 รูปต่อรายการ" };
+  const row = await tenantDb(ctx).invItemImage.create({
+    data: { ...ctx, itemId, url, alt: input.alt?.trim() || null, sortOrder: count },
+  });
+  return { ok: true, id: row.id };
+}
+
+export async function removeItemImage(ctx: Ctx, imageId: string): Promise<{ ok: boolean }> {
+  await tenantDb(ctx).invItemImage.deleteMany({ where: { id: imageId } });
+  return { ok: true };
+}
+
+/** เลื่อนลำดับรูป (รูปแรก = รูปหลักที่โผล่ในหน้าขาย/หน้าจอง) */
+export async function setPrimaryImage(ctx: Ctx, itemId: string, imageId: string): Promise<{ ok: boolean }> {
+  const db = tenantDb(ctx);
+  const imgs = await db.invItemImage.findMany({ where: { itemId }, orderBy: { sortOrder: "asc" } });
+  let order = 1;
+  for (const img of imgs) {
+    await db.invItemImage.updateMany({ where: { id: img.id }, data: { sortOrder: img.id === imageId ? 0 : order++ } });
+  }
+  return { ok: true };
 }

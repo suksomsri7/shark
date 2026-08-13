@@ -5,8 +5,16 @@ import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { parseCsv, type ImportSummary } from "@/lib/core/csv";
+import { uploadFile } from "@/lib/storage/service";
 import {
+  addItemImage,
   archiveItem,
+  nextSku,
+  removeCategory,
+  removeItemImage,
+  saveCategory,
+  saveSettings,
+  setPrimaryImage,
   bulkCount,
   consume,
   createItem,
@@ -268,4 +276,171 @@ export async function findItemByBarcodeAction(
     ok: true,
     item: { id: item.id, name: item.name, sku: item.sku, onHand: item.onHand, unitLabel: item.unitLabel },
   };
+}
+
+// ═══════════ บริการ · หมวดหมู่ · ตั้งค่า SKU · รูป (13 ส.ค. 2026 · เจ้าของสั่งข้อ 12-17) ═══════════
+// 🔴 นี่คือ "ที่เดียว" ที่เพิ่ม/แก้/ลบ สินค้าและบริการได้ — POS/จองคิว อ่านอย่างเดียว
+
+const toBaht = (v: FormDataEntryValue | null): number | null => {
+  const raw = String(v ?? "").replace(/,/g, "").trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
+export async function createServiceAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.create");
+  const systemId = String(formData.get("systemId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!systemId || !name) return;
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const categoryId = String(formData.get("categoryId") ?? "").trim() || null;
+  const sku = String(formData.get("sku") ?? "").trim() || (await nextSku(ctx, categoryId));
+  const price = toBaht(formData.get("priceBaht"));
+  const deposit = toBaht(formData.get("depositBaht"));
+  await createItem(ctx, {
+    sku,
+    name,
+    kind: "SERVICE",
+    unitLabel: String(formData.get("unitLabel") ?? "").trim() || "ครั้ง",
+    categoryId,
+    priceSatang: price != null ? Math.round(price * 100) : 0,
+    durationMin: toQty(formData.get("durationMin")) || 30,
+    bufferMin: toQty(formData.get("bufferMin")),
+    depositSatang: deposit != null ? Math.round(deposit * 100) : 0,
+    bookable: formData.get("bookable") != null,
+    description: String(formData.get("description") ?? "").trim() || null,
+  });
+  revalidate(systemId);
+}
+
+/** แก้บริการ (ชื่อ/ราคา/เวลา/มัดจำ/ให้จองได้) — ต้นฉบับเดียว หน้าจอง+POS เห็นตามทันที */
+export async function updateServiceAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.update");
+  const systemId = String(formData.get("systemId") ?? "");
+  const itemId = String(formData.get("itemId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!systemId || !itemId || !name) return;
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const price = toBaht(formData.get("priceBaht"));
+  const deposit = toBaht(formData.get("depositBaht"));
+  await updateItem(ctx, itemId, {
+    name,
+    ...(price != null ? { priceSatang: Math.round(price * 100) } : {}),
+    durationMin: toQty(formData.get("durationMin")) || 30,
+    bufferMin: toQty(formData.get("bufferMin")),
+    ...(deposit != null ? { depositSatang: Math.round(deposit * 100) } : {}),
+    bookable: formData.get("bookable") != null,
+    categoryId: String(formData.get("categoryId") ?? "").trim() || null,
+    description: String(formData.get("description") ?? "").trim() || null,
+  });
+  revalidate(systemId);
+}
+
+// ── หมวดหมู่ + ค่าเริ่มต้น (ข้อ 17) ──
+export async function saveCategoryAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.update");
+  const systemId = String(formData.get("systemId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!systemId || !name) return;
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await saveCategory(ctx, {
+    id: String(formData.get("id") ?? "").trim() || null,
+    name,
+    kind: String(formData.get("kind") ?? "PRODUCT") === "SERVICE" ? "SERVICE" : "PRODUCT",
+    skuPrefix: String(formData.get("skuPrefix") ?? "").trim() || null,
+    barcodeType: String(formData.get("barcodeType") ?? "NONE") as "NONE",
+    defaultUnitLabel: String(formData.get("defaultUnitLabel") ?? "").trim() || null,
+    defaultPriceBaht: toBaht(formData.get("defaultPriceBaht")),
+    defaultDurationMin: toQty(formData.get("defaultDurationMin")) || null,
+  });
+  revalidate(systemId);
+}
+
+export async function removeCategoryAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.update");
+  const systemId = String(formData.get("systemId") ?? "");
+  const id = String(formData.get("id") ?? "");
+  if (!systemId || !id) return;
+  await removeCategory({ tenantId: auth.active.tenantId, systemId }, id);
+  revalidate(systemId);
+}
+
+export async function saveSettingsAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.update");
+  const systemId = String(formData.get("systemId") ?? "");
+  if (!systemId) return;
+  await saveSettings(
+    { tenantId: auth.active.tenantId, systemId },
+    {
+      skuAuto: formData.get("skuAuto") != null,
+      skuPrefix: String(formData.get("skuPrefix") ?? "").trim() || undefined,
+      skuPadding: toQty(formData.get("skuPadding")) || undefined,
+      barcodeType: String(formData.get("barcodeType") ?? "NONE") as "NONE",
+    },
+  );
+  revalidate(systemId);
+}
+
+// ── รูปสินค้า/บริการ (ข้อ 16) ──
+export type ImageState = { status: "idle" } | { status: "ok"; message: string } | { status: "error"; message: string };
+
+/** อัปโหลดรูปที่ editor ตัด/แต่งแล้ว (dataURL) → เก็บบน storage แล้วผูกกับรายการ */
+export async function uploadItemImageAction(
+  systemId: string,
+  itemId: string,
+  _prev: ImageState,
+  formData: FormData,
+): Promise<ImageState> {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.update");
+  const dataUrl = String(formData.get("dataUrl") ?? "");
+  const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(dataUrl);
+  if (!m) return { status: "error", message: "รูปไม่ถูกต้อง — ลองเลือกไฟล์ใหม่" };
+  const bytes = Buffer.from(m[2]!, "base64");
+  if (bytes.length > 5 * 1024 * 1024) return { status: "error", message: "รูปใหญ่เกิน 5MB — ย่อขนาดในตัวแก้รูปก่อน" };
+  const up = await uploadFile(
+    { tenantId: auth.active.tenantId },
+    { kind: "ATTACHMENT", filename: `item-${itemId}.png`, contentType: m[1]!, data: new Uint8Array(bytes) },
+  );
+  if (!up.ok) return { status: "error", message: up.error };
+  const res = await addItemImage({ tenantId: auth.active.tenantId, systemId }, itemId, {
+    url: up.cdnUrl,
+    alt: String(formData.get("alt") ?? "") || null,
+  });
+  if (!res.ok) return { status: "error", message: res.reason ?? "บันทึกรูปไม่ได้" };
+  revalidate(systemId);
+  revalidatePath(`/app/sys/${systemId}/inventory/services`);
+  revalidatePath(`/app/sys/${systemId}/inventory/items`);
+  return { status: "ok", message: "เพิ่มรูปแล้ว" };
+}
+
+export async function removeItemImageAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.update");
+  const systemId = String(formData.get("systemId") ?? "");
+  const imageId = String(formData.get("imageId") ?? "");
+  if (!systemId || !imageId) return;
+  await removeItemImage({ tenantId: auth.active.tenantId, systemId }, imageId);
+  revalidate(systemId);
+  revalidatePath(`/app/sys/${systemId}/inventory/services`);
+  revalidatePath(`/app/sys/${systemId}/inventory/items`);
+}
+
+export async function setPrimaryImageAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertInventoryCan(auth, "inventory.item.update");
+  const systemId = String(formData.get("systemId") ?? "");
+  const itemId = String(formData.get("itemId") ?? "");
+  const imageId = String(formData.get("imageId") ?? "");
+  if (!systemId || !itemId || !imageId) return;
+  await setPrimaryImage({ tenantId: auth.active.tenantId, systemId }, itemId, imageId);
+  revalidate(systemId);
+  revalidatePath(`/app/sys/${systemId}/inventory/services`);
+  revalidatePath(`/app/sys/${systemId}/inventory/items`);
 }

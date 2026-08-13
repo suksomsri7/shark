@@ -8,6 +8,73 @@ enum InvMovementType {
   TRANSFER
 }
 
+// สินค้า vs บริการ (13 ส.ค. 2026 · เจ้าของสั่งข้อ 12-15)
+// แคตตาล็อกกลาง = แหล่งข้อมูลเดียว · ระบบจองคิว + POS ดึงจากที่นี่ ห้ามสร้าง/แก้ที่อื่น
+// SERVICE ไม่มีสต็อก (ไม่ตัด/ไม่รับเข้า) แต่มีเวลาให้บริการ/มัดจำ/เปิดให้จองออนไลน์
+enum InvItemKind {
+  PRODUCT
+  SERVICE
+}
+
+// หมวดหมู่ + ค่าเริ่มต้นต่อหมวด (ข้อ 17) — คำนำหน้า SKU / ชนิดบาร์โค้ด / หน่วยนับ
+enum InvBarcodeType {
+  NONE
+  EAN13
+  CODE128
+  QR
+}
+
+model InvCategory {
+  id            String         @id @default(cuid())
+  tenantId      String
+  systemId      String
+  name          String
+  kind          InvItemKind    @default(PRODUCT)
+  skuPrefix     String? // เช่น "HAIR" → SKU อัตโนมัติ HAIR-0001
+  barcodeType   InvBarcodeType @default(NONE)
+  defaultUnitLabel String? // หน่วยเริ่มต้นของหมวดนี้ (ชิ้น/ครั้ง/ชั่วโมง)
+  defaultPriceSatang Int? // ราคาเริ่มต้นเวลาเพิ่มของใหม่ในหมวดนี้
+  defaultDurationMin Int? // เวลาเริ่มต้น (หมวดบริการ)
+  sortOrder     Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([systemId, name])
+  @@index([tenantId])
+}
+
+// ตั้งค่าระดับระบบสินค้า/บริการ (ข้อ 17) — รูปแบบ SKU อัตโนมัติ + บาร์โค้ดเริ่มต้น
+model InvSettings {
+  id             String         @id @default(cuid())
+  tenantId       String
+  systemId       String
+  skuAuto        Boolean        @default(true) // เว้น SKU ว่าง = ระบบตั้งให้
+  skuPrefix      String         @default("SKU") // ใช้เมื่อหมวดไม่ได้ตั้ง prefix เอง
+  skuPadding     Int            @default(4) // SKU-0001
+  barcodeType    InvBarcodeType @default(NONE)
+  nextSeq        Int            @default(1) // เลขลำดับถัดไปของ SKU อัตโนมัติ
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([systemId])
+  @@index([tenantId])
+}
+
+// รูปของสินค้า/บริการ (ข้อ 16) — หลายรูปต่อรายการ · รูปแรก (sortOrder ต่ำสุด) = รูปหลัก
+model InvItemImage {
+  id        String   @id @default(cuid())
+  tenantId  String
+  systemId  String
+  itemId    String
+  item      InvItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([systemId, itemId])
+  @@index([tenantId])
+}
+
 model InvItem {
   id             String   @id @default(cuid())
   tenantId       String
@@ -16,7 +83,17 @@ model InvItem {
   barcode        String?
   name           String
   unitLabel      String   @default("ชิ้น")
-  category       String?
+  category       String? // ชื่อหมวด (ข้อความ — เก็บไว้เพื่อความเข้ากันได้)
+  categoryId     String? // หมวดหมู่จริง (InvCategory) — ใช้ค่าเริ่มต้น/คำนำหน้า SKU
+  // ── สินค้า vs บริการ (ข้อ 12) ──
+  kind           InvItemKind @default(PRODUCT)
+  priceSatang    Int      @default(0) // ราคาขาย (บริการใช้ช่องนี้ · สินค้ายังใช้ AccountProduct.salePrice ตามเดิม)
+  durationMin    Int? // บริการ: ใช้เวลากี่นาที
+  bufferMin      Int      @default(0) // บริการ: เวลาเผื่อหลังจบงาน
+  depositSatang  Int      @default(0) // บริการ: มัดจำ
+  bookable       Boolean  @default(true) // บริการ: ให้ลูกค้าจองออนไลน์ได้
+  description    String?
+  sortOrder      Int      @default(0)
   costSatang     Int      @default(0) // ต้นทุนถัวเฉลี่ย
   onHand         Int      @default(0) // cache — sync จาก movement (source of truth = ledger)
   reorderPoint   Int      @default(0)
@@ -25,6 +102,7 @@ model InvItem {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   movements InvMovement[]
+  images    InvItemImage[]
   @@unique([systemId, sku])
   @@index([systemId, onHand])
   @@index([tenantId])

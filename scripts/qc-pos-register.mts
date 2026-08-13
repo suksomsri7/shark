@@ -147,6 +147,8 @@ try {
   const unitB = await prisma.businessUnit.create({ data: { tenantId: tenantBId, type: "BOOKING", name: "ร้าน B", slug: `b-${Date.now()}` } });
   const posSysB = await sys.createSystem(tenantBId, "POS", "POS ร้าน B");
   await sys.linkUnit(tenantBId, posSysB.id, unitB.id);
+  const invSysB = await sys.createSystem(tenantBId, "INVENTORY", "สินค้า/บริการ ร้าน B");
+  await sys.linkUnit(tenantBId, invSysB.id, unitB.id);
 
   const okLinked = await reg.posUnitIsLinked(tenantId, posSys.id, unit.id);
   chk("XT-1", "posUnitIsLinked ของตัวเอง = true", okLinked === true, "true", String(okLinked), "CRITICAL");
@@ -158,36 +160,40 @@ try {
   chk("XT-4", "posCatalog ข้ามร้านไม่รั่ว (0 รายการ)", leak.length === 0, "0", String(leak.length), "CRITICAL");
 
   // ═══════ บริการหน้าร้าน (9 ส.ค. 2026 — เจ้าของร้านตัดผมทัก: POS มีแต่สินค้า ขาดบริการ) ═══════
-  // บริการใช้ BookingService ตัวเดียวกับระบบจอง → ตั้งราคาที่ไหนก็เห็นเหมือนกัน ไม่มีข้อมูลซ้ำสองที่
-  console.log("── บริการหน้าร้าน ──");
-  const svcCut = await prisma.bookingService.create({
-    data: { tenantId, unitId: unit.id, name: "ตัดผมชาย", durationMin: 30, priceSatang: 15000 },
+  // 🔴 13 ส.ค. 2026 (เจ้าของสั่งข้อ 12-15): ต้นฉบับบริการย้ายไป **แคตตาล็อกกลาง** (InvItem kind=SERVICE)
+  //    POS อ่านจากที่นั่น (ไม่ใช่ BookingService) → ตั้งราคาที่เดียว เห็นตรงกันทั้งหน้าขายและหน้าจอง
+  console.log("── บริการหน้าร้าน (จากแคตตาล็อกกลาง) ──");
+  const svcCut = await inventory.createItem({ tenantId, systemId: invSys.id }, {
+    sku: "SVC-CUT", name: "ตัดผมชาย", kind: "SERVICE", unitLabel: "ครั้ง",
+    priceSatang: 15000, durationMin: 30, bookable: true,
   });
-  await prisma.bookingService.create({
-    data: { tenantId, unitId: unit.id, name: "บริการที่ปิดแล้ว", durationMin: 30, priceSatang: 9900, active: false },
+  const svcClosed = await inventory.createItem({ tenantId, systemId: invSys.id }, {
+    sku: "SVC-OFF", name: "บริการที่ปิดแล้ว", kind: "SERVICE", priceSatang: 9900, durationMin: 30,
   });
-  await prisma.bookingService.create({
-    data: { tenantId: tenantBId, unitId: unitB.id, name: "บริการร้าน B", durationMin: 30, priceSatang: 5000 },
+  await inventory.archiveItem({ tenantId, systemId: invSys.id }, svcClosed.id);
+  await inventory.createItem({ tenantId: tenantBId, systemId: invSysB.id }, {
+    sku: "SVC-B", name: "บริการร้าน B", kind: "SERVICE", priceSatang: 5000, durationMin: 30,
   });
 
-  const svcs = await reg.posServices(tenantId, unit.id);
+  const svcs = await reg.posServices(tenantId, invSys.id);
   chk("SV-1", "หน้าขายเห็นบริการของหน้างานนี้", svcs.some((x) => x.id === svcCut.id), "มีตัดผมชาย", JSON.stringify(svcs.map((x) => x.name)), "CRITICAL");
   chk("SV-2", "บริการที่ปิดแล้วไม่ขึ้นหน้าขาย", !svcs.some((x) => x.name === "บริการที่ปิดแล้ว"), "ไม่มี", JSON.stringify(svcs.map((x) => x.name)));
   chk("SV-3", "ราคา/ระยะเวลามาครบ (หน้าขายต้องโชว์ได้ทันที)",
     svcs.find((x) => x.id === svcCut.id)?.priceSatang === 15000 && svcs.find((x) => x.id === svcCut.id)?.durationMin === 30,
     "15000/30", JSON.stringify(svcs.find((x) => x.id === svcCut.id)));
-  const svcLeak = await reg.posServices(tenantBId, unit.id);
-  chk("SV-4", "🔴 บริการไม่รั่วข้ามร้าน (ร้าน B ยิง unit ร้าน A)", svcLeak.length === 0, "0", String(svcLeak.length), "CRITICAL");
-  const svcLeak2 = await reg.posServices(tenantId, unitB.id);
-  chk("SV-5", "🔴 ยิง unit ของร้านอื่นด้วย tenant ตัวเอง ก็ไม่เห็น", svcLeak2.length === 0, "0", String(svcLeak2.length), "CRITICAL");
+  const svcLeak = await reg.posServices(tenantBId, invSys.id);
+  chk("SV-4", "🔴 บริการไม่รั่วข้ามร้าน (ร้าน B ยิงระบบสินค้า/บริการของร้าน A)", svcLeak.length === 0, "0", String(svcLeak.length), "CRITICAL");
+  const svcLeak2 = await reg.posServices(tenantId, invSysB.id);
+  chk("SV-5", "🔴 ยิงระบบของร้านอื่นด้วย tenant ตัวเอง ก็ไม่เห็น", svcLeak2.length === 0, "0", String(svcLeak2.length), "CRITICAL");
 
   // ขายบริการจริง — ต้องไม่ตัดสต็อก (บริการไม่มีของให้ตัด)
   const stockBefore = (await inventory.listItems({ tenantId, systemId: invSys.id })).reduce((a, i) => a + i.onHand, 0);
   const svcSale = await pos.createSale({
     tenantId, unitId: unit.id, systemId: posSys.id,
     idempotencyKey: `svc-${Date.now()}`,
-    lines: [{ name: svcCut.name, qty: 1, unitPriceSatang: svcCut.priceSatang }],
-    payMethods: [{ type: "CASH", amountSatang: svcCut.priceSatang }],
+    // ขายบริการจากแคตตาล็อก: ส่ง serviceId = id ของรายการในแคตตาล็อก (ไม่ส่ง itemId → ไม่ตัดสต็อก)
+    lines: [{ name: "ตัดผมชาย", qty: 1, unitPriceSatang: 15000, serviceId: svcCut.id }],
+    payMethods: [{ type: "CASH", amountSatang: 15000 }],
   });
   const svcSaleRow = await prisma.posSale.findUnique({ where: { id: svcSale.saleId } });
   const stockAfter = (await inventory.listItems({ tenantId, systemId: invSys.id })).reduce((a, i) => a + i.onHand, 0);
@@ -199,15 +205,18 @@ try {
   // ═══════ ธุรกิจผสม: มีทั้งสินค้าและบริการ (เจ้าของทัก 9 ส.ค.) ═══════
   // เคสจริง: ร้านค้ามีสินค้า + "ค่าจัดส่ง" ที่ขายหน้าร้านได้แต่ **ห้ามโผล่ให้ลูกค้าจองคิว**
   console.log("── ธุรกิจผสม สินค้า+บริการ ──");
-  const feeShip = await prisma.bookingService.create({
-    data: { tenantId, unitId: unit.id, name: "ค่าจัดส่ง", durationMin: 0, priceSatang: 5000, bookable: false },
+  const feeShip = await inventory.createItem({ tenantId, systemId: invSys.id }, {
+    sku: "SVC-SHIP", name: "ค่าจัดส่ง", kind: "SERVICE", priceSatang: 5000, durationMin: 1, bookable: false,
   });
-  const posAll = await reg.posServices(tenantId, unit.id);
+  const posAll = await reg.posServices(tenantId, invSys.id);
   chk("MX-1", "หน้าขายเห็นทั้งบริการมีคิว และค่าบริการที่ไม่ใช่คิว",
     posAll.some((x) => x.id === svcCut.id) && posAll.some((x) => x.id === feeShip.id),
     "เห็นทั้งคู่", JSON.stringify(posAll.map((x) => x.name)), "CRITICAL");
 
   const booking = await import("@/lib/modules/booking/service");
+  // เปิดรับจองที่สาขานี้ (ติ๊กจากแคตตาล็อก) — "ค่าจัดส่ง" ตั้ง bookable=false จึงห้ามโผล่ในหน้าจอง
+  await booking.setServiceOffered({ tenantId, unitId: unit.id }, svcCut.id, true);
+  await booking.setServiceOffered({ tenantId, unitId: unit.id }, feeShip.id, true);
   const setup = await booking.getBookingData(tenantId, unit.id);
   const bookNames = setup.services.map((x) => x.name);
   chk("MX-2", "🔴 ค่าบริการที่ไม่ใช่คิว ต้องไม่โผล่ในระบบจอง (ไม่งั้นลูกค้าจอง 'ค่าจัดส่ง' ได้)",
@@ -220,8 +229,8 @@ try {
     tenantId, unitId: unit.id, systemId: posSys.id, idempotencyKey: mixKey,
     lines: [
       { name: cNam!.name, qty: 1, unitPriceSatang: 700, itemId: cNam!.id },
-      { name: svcCut.name, qty: 1, unitPriceSatang: 15000, serviceId: svcCut.id },
-      { name: feeShip.name, qty: 1, unitPriceSatang: 5000, serviceId: feeShip.id },
+      { name: "ตัดผมชาย", qty: 1, unitPriceSatang: 15000, serviceId: svcCut.id },
+      { name: "ค่าจัดส่ง", qty: 1, unitPriceSatang: 5000, serviceId: feeShip.id },
       { name: "ลดราคาพิเศษหน้าร้าน", qty: 1, unitPriceSatang: 1000 },
     ],
     payMethods: [{ type: "CASH", amountSatang: 700 + 15000 + 5000 + 1000 }],
@@ -252,7 +261,7 @@ try {
       tenantId, unitId: unit.id, systemId: posSys.id, idempotencyKey: acctKey,
       lines: [
         { name: cNam!.name, qty: 1, unitPriceSatang: 1000, itemId: cNam!.id },   // สินค้า 10 บาท
-        { name: svcCut.name, qty: 1, unitPriceSatang: 30000, serviceId: svcCut.id }, // บริการ 300 บาท
+        { name: "ตัดผมชาย", qty: 1, unitPriceSatang: 30000, serviceId: svcCut.id }, // บริการ 300 บาท
       ],
       payMethods: [{ type: "CASH", amountSatang: 31000 }],
     });

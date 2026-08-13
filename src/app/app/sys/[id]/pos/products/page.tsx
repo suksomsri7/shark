@@ -5,12 +5,7 @@ import { prisma } from "@/lib/core/db";
 import { assertCan } from "@/lib/core/rbac";
 import { systemDef } from "@/lib/systems";
 import { listPosProducts, posUnits, posServices } from "@/lib/modules/pos/register";
-import {
-  setItemSalePriceAction,
-  addPosServiceAction,
-  setPosServicePriceAction,
-  removePosServiceAction,
-} from "@/lib/actions/pos";
+import { setItemSalePriceAction } from "@/lib/actions/pos";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
@@ -48,11 +43,8 @@ export default async function PosProductsPage({
   const tabs = posTabs(id);
 
   const { inventorySystemId, accountSystemId, items } = await listPosProducts(tenantId, id);
-  // บริการของหน้างานที่ผูก POS — ร้านบริการ (ตัดผม/นวด/คลินิก) ขายบริการเป็นหลัก ไม่ใช่สินค้า
-  // ใช้ BookingService ตัวเดียวกับระบบจอง → ตั้งราคาที่นี่ก็เห็นที่หน้าจอง ไม่มีข้อมูลซ้ำสองที่
-  const units = await posUnits(tenantId, id);
-  const serviceUnit = units[0] ?? null;
-  const services = serviceUnit ? await posServices(tenantId, serviceUnit.id) : [];
+  // บริการมาจากแคตตาล็อกกลาง (ต้นฉบับเดียวกับหน้าจอง) — หน้านี้อ่านอย่างเดียว
+  const services = await posServices(tenantId, inventorySystemId);
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
@@ -62,77 +54,41 @@ export default async function PosProductsPage({
       {err && <p className="text-sm text-[color:var(--color-danger)]">{err}</p>}
       {ok && <p className="text-sm text-[color:var(--color-success)]">{ok}</p>}
 
-      {/* ── บริการ ── ต้องมาก่อนสินค้า: ร้านบริการเปิดหน้านี้มาเพื่อตั้งราคาบริการ */}
-      {serviceUnit && (
-        <Section title="บริการ">
-          <p className="mb-2 text-xs text-[color:var(--color-muted)]">
-            รายการที่ไม่ใช่ของในคลัง — ทั้งงานบริการ (ตัดผม นวด ซ่อม) และค่าบริการอื่น (ค่าจัดส่ง ห่อของขวัญ ค่าติดตั้ง)
-            {" · "}ขึ้นให้กดในหน้าขายทันที ไม่ตัดสต็อก
-            {" · "}ติ๊ก “ให้จองล่วงหน้าได้” เฉพาะรายการที่ต้องจองคิว — รายการนั้นจะไปโผล่ในระบบจองด้วย
-          </p>
-
+      {/* ── บริการ ── อ่านอย่างเดียว: ต้นฉบับอยู่ระบบสินค้า/บริการ (เจ้าของสั่งข้อ 14-15) */}
+      <Section title="บริการ">
+        <p className="mb-2 text-xs text-[color:var(--color-muted)]">
+          บริการที่ขายหน้าร้านได้ — <b>เพิ่ม/แก้ราคา/ลบ ทำที่ระบบสินค้า/บริการที่เดียว</b> แล้วทั้งหน้าขายและหน้าจองเห็นตรงกัน
+          {" · "}บริการไม่ตัดสต็อก
+        </p>
+        {!inventorySystemId ? (
+          <EmptyState
+            text="ยังไม่ได้เชื่อมระบบสินค้า/บริการ — เชื่อมที่หน้าภาพรวมก่อน แล้วบริการจะมาโผล่ที่นี่"
+            action={{ href: `/app/sys/${id}`, label: "ไปเชื่อมระบบ" }}
+          />
+        ) : services.length === 0 ? (
+          <EmptyState
+            text="ยังไม่มีบริการในแคตตาล็อก — เพิ่มที่ระบบสินค้า/บริการ แท็บ “บริการ”"
+            action={{ href: `/app/sys/${inventorySystemId}/inventory/services`, label: "ไปเพิ่มบริการ" }}
+          />
+        ) : (
           <div className="flex flex-col gap-2">
             {services.map((sv) => (
-              <div key={sv.id} className="flex flex-wrap items-end gap-2 rounded-lg border px-3 py-2 text-sm">
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate font-medium">{sv.name}</span>
-                  <span className="text-xs text-[color:var(--color-muted)]">
-                    {sv.bookable ? `จองล่วงหน้าได้ · ใช้เวลา ${sv.durationMin} นาที` : "ขายหน้าร้านอย่างเดียว"}
+              <div key={sv.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{sv.name}</span>
+                  <span className="block truncate text-xs text-[color:var(--color-muted)]">
+                    {sv.bookable ? `จองล่วงหน้าได้${sv.durationMin ? ` · ใช้เวลา ${sv.durationMin} นาที` : ""}` : "ขายหน้าร้านอย่างเดียว"}
                   </span>
-                </div>
-                <form action={setPosServicePriceAction} className="flex items-end gap-2">
-                  <input type="hidden" name="systemId" value={id} />
-                  <input type="hidden" name="unitId" value={serviceUnit.id} />
-                  <input type="hidden" name="serviceId" value={sv.id} />
-                  <label className="flex flex-col text-xs text-[color:var(--color-muted)]">
-                    ราคา (บาท)
-                    <input
-                      name="priceBaht"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      inputMode="decimal"
-                      defaultValue={String(sv.priceSatang / 100)}
-                      className="input w-28"
-                    />
-                  </label>
-                  <SubmitButton variant="ghost">บันทึก</SubmitButton>
-                </form>
-                <form action={removePosServiceAction}>
-                  <input type="hidden" name="systemId" value={id} />
-                  <input type="hidden" name="unitId" value={serviceUnit.id} />
-                  <input type="hidden" name="serviceId" value={sv.id} />
-                  <SubmitButton variant="ghost">เอาออก</SubmitButton>
-                </form>
+                </span>
+                <MoneyText satang={sv.priceSatang} />
               </div>
             ))}
-
-            {/* เพิ่มบริการใหม่ — ฟอร์มเดียวจบ ไม่ต้องเด้งไปหน้าอื่น */}
-            <form action={addPosServiceAction} className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed px-3 py-2 text-sm">
-              <input type="hidden" name="systemId" value={id} />
-              <input type="hidden" name="unitId" value={serviceUnit.id} />
-              <label className="flex min-w-0 flex-1 flex-col text-xs text-[color:var(--color-muted)]">
-                ชื่อบริการ
-                <input name="name" placeholder="เช่น ตัดผมชาย" className="input" maxLength={80} />
-              </label>
-              <label className="flex flex-col text-xs text-[color:var(--color-muted)]">
-                ราคา (บาท)
-                <input name="priceBaht" type="number" step="0.01" min="0" inputMode="decimal" placeholder="0.00" className="input w-24" />
-              </label>
-              <label className="flex flex-col text-xs text-[color:var(--color-muted)]">
-                ใช้เวลา (นาที)
-                <input name="durationMin" type="number" min="5" max="600" inputMode="numeric" defaultValue={30} className="input w-24" />
-              </label>
-              <label className="flex items-center gap-1.5 self-end pb-2 text-xs">
-                {/* ค่าเริ่มต้นตามชนิดหน้างาน: หน้างานจองคิว = ติ๊กไว้ · หน้างานอื่น (ร้านค้า/ร้านอาหาร) = ไม่ติ๊ก */}
-                <input type="checkbox" name="bookable" defaultChecked={serviceUnit.type === "BOOKING"} />
-                ให้จองล่วงหน้าได้
-              </label>
-              <SubmitButton>+ เพิ่มบริการ</SubmitButton>
-            </form>
+            <Link href={`/app/sys/${inventorySystemId}/inventory/services`} className="text-xs underline">
+              แก้ราคา/เพิ่มบริการที่ระบบสินค้า/บริการ →
+            </Link>
           </div>
-        </Section>
-      )}
+        )}
+      </Section>
 
       {!inventorySystemId ? (
         <EmptyState

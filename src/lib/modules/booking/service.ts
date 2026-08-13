@@ -4,6 +4,7 @@ import type { AppointmentStatus, PosPayType } from "@prisma/client";
 import * as member from "@/lib/modules/member/service";
 import * as pos from "@/lib/modules/pos/service";
 import * as hr from "@/lib/modules/hr/service";
+import * as inv from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 
 export type BookingCtx = { tenantId: string; unitId: string };
@@ -185,6 +186,158 @@ export async function getAvailableSlots(
   return [...byTime.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([startMin, sid]) => ({ startMin, hhmm: minutesToHHMM(startMin), staffId: sid }));
+}
+
+// ═════════ บริการมาจากแคตตาล็อกกลาง (13 ส.ค. 2026 · เจ้าของสั่งข้อ 12-15) ═════════
+// เดิมบริการถูกสร้าง/แก้ได้ 2 ที่ (หน้าจองคิว + หน้า POS) → ราคาไม่ตรงกัน แก้ที่หนึ่งอีกที่ไม่รู้
+// ใหม่: **ต้นฉบับอยู่ระบบสินค้า/บริการ (InvItem kind=SERVICE)** · ที่นี่แค่ติ๊กว่า "สาขานี้เปิดรับจองอะไร"
+//   BookingService = projection ต่อสาขา (นัดอ้างถึงแถวนี้ → ห้ามลบจริง · ปิด active พอ)
+
+/** ระบบสินค้า/บริการ (INVENTORY) ที่ผูกกับสาขานี้ — ไม่มี = ยังไม่เปิดระบบ */
+async function catalogSystemFor(ctx: BookingCtx): Promise<string | null> {
+  const linked = await systemForUnit(ctx.tenantId, ctx.unitId, "INVENTORY");
+  if (linked) return linked;
+  // ยังไม่ผูกสาขา แต่ร้านเปิดระบบไว้แล้ว → ใช้ระบบแรกของร้าน (ร้านเดียวสาขาเดียวเป็นส่วนใหญ่)
+  const any = await prisma.appSystem.findFirst({
+    where: { tenantId: ctx.tenantId, type: "INVENTORY", active: true },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return any?.id ?? null;
+}
+
+export type ServiceRosterRow = {
+  itemId: string;
+  name: string;
+  priceSatang: number;
+  durationMin: number;
+  depositSatang: number;
+  bookable: boolean;
+  offered: boolean; // สาขานี้เปิดรับจองบริการนี้อยู่ไหม
+  serviceId: string | null;
+  appointmentCount: number;
+};
+
+/** บริการทั้งหมดในแคตตาล็อก + สถานะเปิดรับจองของสาขานี้ (sync ชื่อ/ราคา/เวลาให้ตรงต้นฉบับ) */
+export async function serviceRoster(ctx: BookingCtx): Promise<{
+  rows: ServiceRosterRow[];
+  catalogSystemId: string | null;
+  legacy: { id: string; name: string; priceSatang: number; durationMin: number }[];
+}> {
+  const db = tenantDb(ctx);
+  const catalogSystemId = await catalogSystemFor(ctx);
+  const services = catalogSystemId
+    ? await inv.listServices({ tenantId: ctx.tenantId, systemId: catalogSystemId })
+    : [];
+  const projections = await db.bookingService.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
+  const byItem = new Map(projections.filter((p) => p.itemId).map((p) => [p.itemId!, p]));
+  const counts = await db.appointment.groupBy({ by: ["serviceId"], _count: { _all: true } });
+  const countBy = new Map(counts.map((c) => [c.serviceId, c._count._all]));
+
+  // ต้นฉบับเปลี่ยน (ราคา/ชื่อ/เวลา) → sync ลง projection ให้ตรง · นัดที่จองไว้ใช้ราคา snapshot ของตัวเองอยู่แล้ว
+  for (const it of services) {
+    const p = byItem.get(it.id);
+    if (!p) continue;
+    const want = {
+      name: it.name,
+      priceSatang: it.priceSatang,
+      durationMin: it.durationMin ?? p.durationMin,
+      bufferMin: it.bufferMin,
+      depositSatang: it.depositSatang,
+      bookable: it.bookable,
+    };
+    const changed =
+      p.name !== want.name || p.priceSatang !== want.priceSatang || p.durationMin !== want.durationMin ||
+      p.bufferMin !== want.bufferMin || p.depositSatang !== want.depositSatang || p.bookable !== want.bookable;
+    if (changed) await db.bookingService.updateMany({ where: { id: p.id }, data: want });
+  }
+
+  return {
+    catalogSystemId,
+    // บริการเก่าที่ยังไม่ได้ย้ายเข้าแคตตาล็อก (ร้านที่ใช้ระบบมาก่อน 13 ส.ค. 2026)
+    legacy: projections
+      .filter((p) => !p.itemId && p.active)
+      .map((p) => ({ id: p.id, name: p.name, priceSatang: p.priceSatang, durationMin: p.durationMin })),
+    rows: services.map((it) => {
+      const p = byItem.get(it.id);
+      return {
+        itemId: it.id,
+        name: it.name,
+        priceSatang: it.priceSatang,
+        durationMin: it.durationMin ?? 30,
+        depositSatang: it.depositSatang,
+        bookable: it.bookable,
+        offered: !!p?.active,
+        serviceId: p?.id ?? null,
+        appointmentCount: p ? (countBy.get(p.id) ?? 0) : 0,
+      };
+    }),
+  };
+}
+
+/** ติ๊ก/เอาติ๊กออก "เปิดรับจองบริการนี้ที่สาขานี้" */
+export async function setServiceOffered(
+  ctx: BookingCtx,
+  itemId: string,
+  offered: boolean,
+): Promise<{ ok: boolean; reason?: string }> {
+  const catalogSystemId = await catalogSystemFor(ctx);
+  if (!catalogSystemId) return { ok: false, reason: "ยังไม่ได้เปิดระบบสินค้า/บริการ" };
+  const it = await inv.getItem({ tenantId: ctx.tenantId, systemId: catalogSystemId }, itemId);
+  if (!it || it.kind !== "SERVICE") return { ok: false, reason: "ไม่พบบริการนี้ในแคตตาล็อก" };
+  const db = tenantDb(ctx);
+  const existing = await db.bookingService.findFirst({ where: { itemId } });
+  const data = {
+    name: it.name,
+    priceSatang: it.priceSatang,
+    durationMin: it.durationMin ?? 30,
+    bufferMin: it.bufferMin,
+    depositSatang: it.depositSatang,
+    bookable: it.bookable,
+    active: offered,
+  };
+  if (existing) await db.bookingService.updateMany({ where: { id: existing.id }, data });
+  else if (offered) await db.bookingService.create({ data: { ...ctx, ...data, itemId } });
+  return { ok: true };
+}
+
+/**
+ * ย้ายบริการเก่าของสาขา (ที่ยังไม่มีต้นฉบับ) เข้าแคตตาล็อกกลาง — กดครั้งเดียว รันซ้ำได้
+ * ชื่อซ้ำในแคตตาล็อก = ผูกของเดิม (ไม่สร้างซ้ำ) · นัด/บิลเก่าไม่ถูกแตะเลย
+ */
+export async function importServicesToCatalog(ctx: BookingCtx): Promise<{ moved: number; linked: number; reason?: string }> {
+  const catalogSystemId = await catalogSystemFor(ctx);
+  if (!catalogSystemId) return { moved: 0, linked: 0, reason: "ยังไม่ได้เปิดระบบสินค้า/บริการ" };
+  const invCtx = { tenantId: ctx.tenantId, systemId: catalogSystemId };
+  const db = tenantDb(ctx);
+  const legacy = await db.bookingService.findMany({ where: { itemId: null } });
+  const existing = await inv.listServices(invCtx, 500);
+  const byName = new Map(existing.map((e) => [e.name.trim(), e]));
+  let moved = 0;
+  let linked = 0;
+  for (const s of legacy) {
+    const found = byName.get(s.name.trim());
+    if (found) {
+      await db.bookingService.updateMany({ where: { id: s.id }, data: { itemId: found.id } });
+      linked++;
+      continue;
+    }
+    const created = await inv.createItem(invCtx, {
+      sku: await inv.nextSku(invCtx),
+      name: s.name,
+      kind: "SERVICE",
+      unitLabel: "ครั้ง",
+      priceSatang: s.priceSatang,
+      durationMin: s.durationMin,
+      bufferMin: s.bufferMin,
+      depositSatang: s.depositSatang,
+      bookable: s.bookable,
+    });
+    await db.bookingService.updateMany({ where: { id: s.id }, data: { itemId: created.id } });
+    byName.set(s.name.trim(), { ...(created as unknown as { id: string }), name: s.name } as never);
+    moved++;
+  }
+  return { moved, linked };
 }
 
 // ─────────────── ใครรับคิวที่สาขานี้ (13 ส.ค. 2026 — มติเจ้าของ) ───────────────

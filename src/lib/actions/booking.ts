@@ -25,69 +25,9 @@ function assertBookingCan(auth: UnitAuth, unitId: string, action: string) {
   );
 }
 
-const serviceSchema = z.object({
-  name: z.string().trim().min(1).max(80),
-  durationMin: z.coerce.number().int().min(5).max(600),
-  priceBaht: z.coerce.number().min(0).max(1_000_000),
-  depositBaht: z.coerce.number().min(0).max(1_000_000).optional().default(0),
-});
-
-export async function addServiceAction(unitSlug: string, formData: FormData) {
-  const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.service.create");
-  const p = serviceSchema.safeParse({
-    name: formData.get("name"),
-    durationMin: formData.get("durationMin"),
-    priceBaht: formData.get("priceBaht"),
-    depositBaht: formData.get("depositBaht"),
-  });
-  if (!p.success) return;
-  const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
-  const db = tenantDb(ctx);
-  await db.bookingService.create({
-    data: {
-      ...ctx,
-      name: p.data.name,
-      durationMin: p.data.durationMin,
-      priceSatang: Math.round(p.data.priceBaht * 100),
-      depositSatang: Math.round(p.data.depositBaht * 100),
-    },
-  });
-  revalidatePath(`/app/u/${unitSlug}/booking/services`);
-}
-
-/**
- * แก้ไขบริการ — ชื่อ/เวลา/ราคา/มัดจำ
- * 🔴 ไม่กระทบประวัติเดิม โดยการออกแบบ (ไม่ต้องทำอะไรเพิ่ม):
- *   - บิลที่ขายไปแล้ว: PosSaleLine เก็บ name + unitPriceSatang เป็น snapshot ตอนขาย
- *   - บัญชี: journal entry ลงแล้วเป็น immutable (post ครั้งเดียวต่อ PosSale#id#PAID)
- *   - นัดที่จองไว้แล้ว: Appointment.priceSatang เป็น snapshot ณ วันจอง
- *   → ราคาใหม่มีผลกับ "การขาย/การจองครั้งถัดไป" เท่านั้น
- */
-export async function editServiceAction(unitSlug: string, formData: FormData) {
-  const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.service.create");
-  const id = String(formData.get("id") ?? "").trim();
-  const p = serviceSchema.safeParse({
-    name: formData.get("name"),
-    durationMin: formData.get("durationMin"),
-    priceBaht: formData.get("priceBaht"),
-    depositBaht: formData.get("depositBaht"),
-  });
-  if (!id || !p.success) return;
-  const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
-  // updateMany + scope ของ tenantDb = แก้ของหน้างานอื่นไม่ได้แม้ส่ง id มามั่ว
-  await tenantDb(ctx).bookingService.updateMany({
-    where: { id },
-    data: {
-      name: p.data.name,
-      durationMin: p.data.durationMin,
-      priceSatang: Math.round(p.data.priceBaht * 100),
-      depositSatang: Math.round(p.data.depositBaht * 100),
-    },
-  });
-  revalidatePath(`/app/u/${unitSlug}/booking/services`);
-}
+// 🔴 13 ส.ค. 2026 (เจ้าของสั่งข้อ 15): สร้าง/แก้/ลบบริการ ทำที่ระบบสินค้า/บริการ "ที่เดียว"
+// action addService/editService ที่เคยอยู่ตรงนี้ถูกถอดออกโดยเจตนา — หน้าจองคิวเหลือแค่ติ๊กเปิด/ปิดรับจอง
+// (ของเดิม: บริการสร้างได้ทั้งที่จองคิวและที่ POS → ราคาไม่ตรงกัน แก้ที่หนึ่งอีกที่ไม่รู้)
 
 const depositSchema = z.object({
   id: z.string().min(1),
@@ -125,15 +65,6 @@ export async function refundDepositAction(unitSlug: string, formData: FormData) 
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
   await booking.refundDeposit(ctx, id);
   revalidatePath(`/app/u/${unitSlug}/booking`);
-}
-
-export async function removeServiceAction(unitSlug: string, formData: FormData) {
-  const { auth, unit } = await requireUnit(unitSlug);
-  assertBookingCan(auth, unit.id, "booking.service.delete");
-  const id = String(formData.get("id") ?? "");
-  const db = tenantDb({ tenantId: auth.active.tenantId, unitId: unit.id });
-  await db.bookingService.update({ where: { id }, data: { active: false } });
-  revalidatePath(`/app/u/${unitSlug}/booking/setup`);
 }
 
 export async function addStaffAction(unitSlug: string, formData: FormData) {
@@ -264,6 +195,24 @@ export async function removeClosureAction(unitSlug: string, formData: FormData) 
 }
 
 /** รวมช่างที่ยังไม่ผูกทะเบียนพนักงาน — ปุ่มบนหน้าพนักงานของระบบจอง */
+// ── บริการ: ติ๊กเปิดรับจองจากแคตตาล็อกกลาง + ย้ายบริการเก่าเข้าแคตตาล็อก (ข้อ 12-15) ──
+export async function setServiceOfferedAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingCan(auth, unit.id, "booking.service.update");
+  const itemId = String(formData.get("itemId") ?? "");
+  const offered = String(formData.get("offered") ?? "") === "1";
+  if (!itemId) return;
+  await booking.setServiceOffered({ tenantId: auth.active.tenantId, unitId: unit.id }, itemId, offered);
+  revalidatePath(`/app/u/${unitSlug}/booking/services`);
+}
+
+export async function importServicesToCatalogAction(unitSlug: string) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingCan(auth, unit.id, "booking.service.create");
+  await booking.importServicesToCatalog({ tenantId: auth.active.tenantId, unitId: unit.id });
+  revalidatePath(`/app/u/${unitSlug}/booking/services`);
+}
+
 // ติ๊ก "รับคิวที่สาขานี้" ให้พนักงาน HR คนหนึ่ง (มติเจ้าของ 13 ส.ค.: เพิ่ม/ลบคนทำที่ HR ที่เดียว)
 export async function setStaffReceivingAction(unitSlug: string, formData: FormData) {
   const { auth, unit } = await requireUnit(unitSlug);
