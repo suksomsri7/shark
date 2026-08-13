@@ -53,9 +53,42 @@ export default async function PayslipPage({
         )}
       </div>
 
-      {/* รายการเงินได้/หัก */}
+      {/* รายการเงินได้/หัก — แยกบรรทัด OT/คอมมิชชั่น/หักเงิน ตามที่อนุมัติในงวด */}
       <div className="mt-3 border-t pt-2">
-        <Row label="เงินเดือน" value={formatBaht(item.grossSatang, { decimals: true })} />
+        {(() => {
+          const snap = (item.snapshotJson ?? {}) as {
+            baseSalarySatang?: number;
+            adjustments?: { kind: string; amountSatang: number; note: string | null }[];
+          };
+          const KIND: Record<string, string> = {
+            OT: "ค่าล่วงเวลา (OT)",
+            COMMISSION: "คอมมิชชั่น",
+            BONUS: "โบนัส",
+            ALLOWANCE: "เบี้ยเลี้ยง",
+            DEDUCTION: "หักเงิน",
+            ADVANCE: "หักเบิกล่วงหน้า",
+          };
+          const ADD = new Set(["OT", "COMMISSION", "BONUS", "ALLOWANCE"]);
+          const rows = snap.adjustments ?? [];
+          return (
+            <>
+              <Row
+                label="เงินเดือน"
+                value={formatBaht(snap.baseSalarySatang ?? item.grossSatang, { decimals: true })}
+              />
+              {rows.map((r, i) => (
+                <Row
+                  key={i}
+                  label={`${ADD.has(r.kind) ? "" : "หัก "}${KIND[r.kind] ?? r.kind}${r.note ? ` (${r.note})` : ""}`}
+                  value={`${ADD.has(r.kind) ? "" : "− "}${formatBaht(r.amountSatang, { decimals: true })}`}
+                />
+              ))}
+              {rows.length > 0 && (
+                <Row label="รวมเป็นเงินได้" value={formatBaht(item.grossSatang, { decimals: true })} />
+              )}
+            </>
+          );
+        })()}
         <Row
           label={`หัก ประกันสังคม (ฐาน ${formatBaht(item.ssoBaseSatang)})`}
           value={`− ${formatBaht(item.ssoEmployeeSatang, { decimals: true })}`}

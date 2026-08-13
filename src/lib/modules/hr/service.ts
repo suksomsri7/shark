@@ -77,6 +77,165 @@ export async function updateEmployee(
   return { ok: true };
 }
 
+// ─────────── ทะเบียนพนักงานเต็มรูปแบบ (13 ส.ค. 2026 · เจ้าของสั่งข้อ 8) ───────────
+// 🔒 ฟิลด์อ่อนไหว (PDPA) = เลขบัตร ประกันสังคม ทะเบียนบ้าน บัญชีธนาคาร + เอกสารแนบ
+//    ชั้นหน้าจอ/action กันด้วยสิทธิ์เดียวกับเงินเดือน (canViewPayroll) — service ไม่ตัดสินสิทธิ์เอง
+//    แต่ประกาศไว้ที่นี่ที่เดียวว่า "ช่องไหนอ่อนไหว" เพื่อไม่ให้แต่ละหน้าจำเอง (ลืม = ข้อมูลรั่ว)
+export const SENSITIVE_EMPLOYEE_FIELDS = [
+  "nationalId",
+  "ssoNumber",
+  "houseRegAddress",
+  "bankName",
+  "bankAccountNo",
+  "bankAccountName",
+] as const;
+
+export type EmployeeProfileInput = {
+  // ทั่วไป
+  name?: string;
+  nickname?: string | null;
+  code?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  gender?: "MALE" | "FEMALE" | "OTHER" | null;
+  birthDate?: string | null; // "YYYY-MM-DD"
+  maritalStatus?: "SINGLE" | "MARRIED" | "DIVORCED" | "WIDOWED" | "OTHER" | null;
+  // งาน
+  position?: string | null;
+  department?: string | null;
+  employmentType?: "FULL_TIME" | "PART_TIME" | "CONTRACT" | "DAILY" | "PROBATION" | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  // ที่อยู่
+  addressLine?: string | null;
+  subdistrict?: string | null;
+  district?: string | null;
+  province?: string | null;
+  postcode?: string | null;
+  // ผู้ติดต่อฉุกเฉิน
+  emergencyName?: string | null;
+  emergencyPhone?: string | null;
+  emergencyRelation?: string | null;
+  note?: string | null;
+  // 🔒 อ่อนไหว
+  nationalId?: string | null;
+  ssoNumber?: string | null;
+  houseRegAddress?: string | null;
+  bankName?: string | null;
+  bankAccountNo?: string | null;
+  bankAccountName?: string | null;
+};
+
+/** พนักงาน 1 คนพร้อมเอกสารแนบ (ใช้ในหน้าโปรไฟล์) */
+export async function getEmployee(ctx: Ctx, employeeId: string) {
+  return tenantDb(ctx).hrEmployee.findFirst({
+    where: { id: employeeId },
+    include: { docs: { orderBy: { createdAt: "desc" } } },
+  });
+}
+
+const dateOrNull = (v: string | null | undefined): Date | null | undefined => {
+  if (v === undefined) return undefined;
+  const s = v?.trim();
+  if (!s) return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00Z`) : undefined;
+};
+const strOrNull = (v: string | null | undefined): string | null | undefined =>
+  v === undefined ? undefined : v?.trim() || null;
+
+/**
+ * บันทึกโปรไฟล์พนักงาน — ส่งมาช่องไหนแก้ช่องนั้น (ช่องที่ไม่ส่ง = ไม่แตะ)
+ * 🔴 ผู้เรียกต้องกรองฟิลด์อ่อนไหวออกก่อน ถ้าผู้ใช้ไม่มีสิทธิ์ (ดู SENSITIVE_EMPLOYEE_FIELDS)
+ */
+export async function saveEmployeeProfile(
+  ctx: Ctx,
+  employeeId: string,
+  input: EmployeeProfileInput,
+): Promise<{ ok: boolean; reason?: string }> {
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId } });
+  if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
+  const name = input.name?.trim();
+  if (input.name !== undefined && !name) return { ok: false, reason: "ต้องมีชื่อพนักงาน" };
+  const nid = strOrNull(input.nationalId);
+  if (nid && !/^\d{13}$/.test(nid.replace(/\D/g, "")) ) {
+    return { ok: false, reason: "เลขบัตรประชาชนต้องเป็นตัวเลข 13 หลัก" };
+  }
+  const bd = dateOrNull(input.birthDate);
+  const sd = dateOrNull(input.startDate);
+  const ed = dateOrNull(input.endDate);
+  if (bd === undefined && input.birthDate !== undefined) return { ok: false, reason: "วันเกิดไม่ถูกต้อง" };
+  if (sd === undefined && input.startDate !== undefined) return { ok: false, reason: "วันเริ่มงานไม่ถูกต้อง" };
+  if (ed === undefined && input.endDate !== undefined) return { ok: false, reason: "วันสิ้นสุดงานไม่ถูกต้อง" };
+  const startCmp = sd ?? emp.startDate;
+  const endCmp = ed ?? emp.endDate;
+  if (startCmp && endCmp && endCmp < startCmp) {
+    return { ok: false, reason: "วันสิ้นสุดงานต้องไม่ก่อนวันเริ่มงาน" };
+  }
+
+  await tenantDb(ctx).hrEmployee.updateMany({
+    where: { id: employeeId },
+    data: {
+      ...(name ? { name } : {}),
+      ...(input.nickname !== undefined ? { nickname: strOrNull(input.nickname) } : {}),
+      ...(input.code !== undefined ? { code: strOrNull(input.code) } : {}),
+      ...(input.phone !== undefined ? { phone: strOrNull(input.phone) } : {}),
+      ...(input.email !== undefined ? { email: strOrNull(input.email) } : {}),
+      ...(input.gender !== undefined ? { gender: input.gender } : {}),
+      ...(bd !== undefined ? { birthDate: bd } : {}),
+      ...(input.maritalStatus !== undefined ? { maritalStatus: input.maritalStatus } : {}),
+      ...(input.position !== undefined ? { position: strOrNull(input.position) } : {}),
+      ...(input.department !== undefined ? { department: strOrNull(input.department) } : {}),
+      ...(input.employmentType !== undefined ? { employmentType: input.employmentType } : {}),
+      ...(sd !== undefined ? { startDate: sd } : {}),
+      ...(ed !== undefined ? { endDate: ed } : {}),
+      ...(input.addressLine !== undefined ? { addressLine: strOrNull(input.addressLine) } : {}),
+      ...(input.subdistrict !== undefined ? { subdistrict: strOrNull(input.subdistrict) } : {}),
+      ...(input.district !== undefined ? { district: strOrNull(input.district) } : {}),
+      ...(input.province !== undefined ? { province: strOrNull(input.province) } : {}),
+      ...(input.postcode !== undefined ? { postcode: strOrNull(input.postcode) } : {}),
+      ...(input.emergencyName !== undefined ? { emergencyName: strOrNull(input.emergencyName) } : {}),
+      ...(input.emergencyPhone !== undefined ? { emergencyPhone: strOrNull(input.emergencyPhone) } : {}),
+      ...(input.emergencyRelation !== undefined ? { emergencyRelation: strOrNull(input.emergencyRelation) } : {}),
+      ...(input.note !== undefined ? { note: strOrNull(input.note) } : {}),
+      ...(input.nationalId !== undefined ? { nationalId: nid } : {}),
+      ...(input.ssoNumber !== undefined ? { ssoNumber: strOrNull(input.ssoNumber) } : {}),
+      ...(input.houseRegAddress !== undefined ? { houseRegAddress: strOrNull(input.houseRegAddress) } : {}),
+      ...(input.bankName !== undefined ? { bankName: strOrNull(input.bankName) } : {}),
+      ...(input.bankAccountNo !== undefined ? { bankAccountNo: strOrNull(input.bankAccountNo) } : {}),
+      ...(input.bankAccountName !== undefined ? { bankAccountName: strOrNull(input.bankAccountName) } : {}),
+    },
+  });
+  return { ok: true };
+}
+
+/** แนบเอกสาร (สำเนาบัตร/ทะเบียนบ้าน/สัญญา) — 🔒 ผู้เรียกต้องเช็คสิทธิ์ก่อน */
+export async function addEmployeeDoc(
+  ctx: Ctx,
+  employeeId: string,
+  input: { kind: string; title: string; url: string; note?: string | null },
+): Promise<{ ok: boolean; reason?: string }> {
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId } });
+  if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
+  const title = input.title.trim();
+  const url = input.url.trim();
+  if (!title) return { ok: false, reason: "ตั้งชื่อเอกสารก่อน" };
+  // รับเฉพาะลิงก์ที่ปลอดภัย (บทเรียน stored XSS จากไฟล์แนบเคส support 31 ก.ค.)
+  if (!/^https?:\/\//i.test(url) && !/^data:image\//i.test(url)) {
+    return { ok: false, reason: "ลิงก์ต้องเป็น http(s) หรือรูปภาพ" };
+  }
+  const KINDS = ["ID_CARD", "HOUSE_REG", "CONTRACT", "CERTIFICATE", "SSO_FORM", "BANK_BOOK", "OTHER"];
+  const kind = (KINDS.includes(input.kind) ? input.kind : "OTHER") as "OTHER";
+  await tenantDb(ctx).hrEmployeeDoc.create({
+    data: { ...ctx, employeeId, kind, title, url, note: input.note?.trim() || null },
+  });
+  return { ok: true };
+}
+
+export async function removeEmployeeDoc(ctx: Ctx, docId: string): Promise<{ ok: boolean }> {
+  await tenantDb(ctx).hrEmployeeDoc.deleteMany({ where: { id: docId } });
+  return { ok: true };
+}
+
 /**
  * ลบ / กู้คืนพนักงาน — 🔴 soft delete เท่านั้น (active=false)
  * เหตุผล: บันทึกลงเวลา ใบลา สลิปเงินเดือน และนัดในระบบจองอ้างถึงคนนี้อยู่

@@ -345,6 +345,9 @@ export async function HrEmployeesSection({ systemId }: { systemId: string }) {
                         : `ทำงาน ${sch.filter((x) => x && !x.dayOff).length} วัน/สัปดาห์`}
                     </span>
                   </summary>
+                  <Link href={`/app/sys/${systemId}/hr/employees/${e.id}`} className="mt-2 block text-xs underline">
+                    ข้อมูลเต็ม (ที่อยู่ · วันเริ่มงาน · ประกันสังคม · เอกสาร) →
+                  </Link>
                   {/* แก้ข้อมูลพื้นฐาน — เดิมกรอกตอนสร้างแล้วแก้ไม่ได้ (ช่างที่ระบบจองสร้างให้ไม่มีตำแหน่งเลย) */}
                   <form action={updateEmployeeAction} className="mt-2 flex flex-wrap items-end gap-2 border-b pb-2">
                     <input type="hidden" name="systemId" value={systemId} />

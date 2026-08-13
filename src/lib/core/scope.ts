@@ -70,6 +70,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrAttendance: sys(),
   HrLeave: sys(),
   HrWorkSchedule: sys(),
+  HrEmployeeDoc: sys(),
   // Marketing (ระบบ 20 — WO-0013)
   MktCampaign: sys(),
   MktRecipient: sys(),
@@ -120,6 +121,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrSalaryProfile: sys(),
   HrPayrollRun: sys(),
   HrPayrollItem: sys(),
+  HrPayAdjustment: sys(),
   // Subscription (WO-0027) + Procurement (WO-0028)
   MemberPlan: sys(),
   MemberSubscription: sys(),

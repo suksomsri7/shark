@@ -2,16 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { assertCan } from "@/lib/core/rbac";
+import { assertCan, canViewPayroll } from "@/lib/core/rbac";
 import type { HrAttendanceKind, HrLeaveType } from "@prisma/client";
 import { checkRateLimit } from "@/lib/core/rate-limit";
 import {
+  addEmployeeDoc,
   clock,
   clockWithPin,
   createEmployee,
   decideLeave,
   bulkDecideLeave,
+  removeEmployeeDoc,
   requestLeave,
+  saveEmployeeProfile,
   setEmployeeActive,
   setPin,
   setSchedule,
@@ -102,6 +105,98 @@ export async function restoreEmployeeAction(formData: FormData) {
   if (!systemId || !employeeId) return;
   await setEmployeeActive({ tenantId: auth.active.tenantId, systemId }, employeeId, true);
   revalidatePath(`/app/sys/${systemId}/hr/employees`);
+}
+
+// ── โปรไฟล์พนักงานเต็มรูปแบบ (ข้อ 8) ──
+// 🔒 PDPA: ช่องอ่อนไหว (เลขบัตร/ประกันสังคม/ทะเบียนบ้าน/บัญชีธนาคาร) + เอกสารแนบ
+//    ต้องมีสิทธิ์เดียวกับเงินเดือน (OWNER หรือ hr.payroll.read) — คนอื่นแก้ช่องทั่วไปได้เท่านั้น
+function canSeeSensitive(auth: Awaited<ReturnType<typeof requireTenant>>): boolean {
+  return canViewPayroll({
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  });
+}
+
+export type ProfileState = { status: "idle" } | { status: "ok"; message: string } | { status: "error"; message: string };
+
+export async function saveEmployeeProfileAction(
+  systemId: string,
+  employeeId: string,
+  _prev: ProfileState,
+  formData: FormData,
+): Promise<ProfileState> {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.employee.create");
+  const f = (k: string) => (formData.has(k) ? String(formData.get(k) ?? "") : undefined);
+  const sensitive = canSeeSensitive(auth);
+  const res = await saveEmployeeProfile({ tenantId: auth.active.tenantId, systemId }, employeeId, {
+    name: f("name"),
+    nickname: f("nickname"),
+    code: f("code"),
+    phone: f("phone"),
+    email: f("email"),
+    gender: (f("gender") || null) as "MALE" | null,
+    birthDate: f("birthDate"),
+    maritalStatus: (f("maritalStatus") || null) as "SINGLE" | null,
+    position: f("position"),
+    department: f("department"),
+    employmentType: (f("employmentType") || null) as "FULL_TIME" | null,
+    startDate: f("startDate"),
+    endDate: f("endDate"),
+    addressLine: f("addressLine"),
+    subdistrict: f("subdistrict"),
+    district: f("district"),
+    province: f("province"),
+    postcode: f("postcode"),
+    emergencyName: f("emergencyName"),
+    emergencyPhone: f("emergencyPhone"),
+    emergencyRelation: f("emergencyRelation"),
+    note: f("note"),
+    // ช่องอ่อนไหว: ไม่มีสิทธิ์ = ไม่ส่งเข้า service เลย (ค่าเดิมคงอยู่ ไม่ถูกล้าง)
+    ...(sensitive
+      ? {
+          nationalId: f("nationalId"),
+          ssoNumber: f("ssoNumber"),
+          houseRegAddress: f("houseRegAddress"),
+          bankName: f("bankName"),
+          bankAccountNo: f("bankAccountNo"),
+          bankAccountName: f("bankAccountName"),
+        }
+      : {}),
+  });
+  if (!res.ok) return { status: "error", message: res.reason ?? "บันทึกไม่ได้" };
+  revalidatePath(`/app/sys/${systemId}/hr/employees/${employeeId}`);
+  revalidatePath(`/app/sys/${systemId}/hr/employees`);
+  return { status: "ok", message: "บันทึกแล้ว" };
+}
+
+export async function addEmployeeDocAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.employee.create");
+  if (!canSeeSensitive(auth)) return; // 🔒 เอกสารพนักงาน = ข้อมูลอ่อนไหวทั้งชุด
+  const systemId = String(formData.get("systemId") ?? "");
+  const employeeId = String(formData.get("employeeId") ?? "");
+  if (!systemId || !employeeId) return;
+  await addEmployeeDoc({ tenantId: auth.active.tenantId, systemId }, employeeId, {
+    kind: String(formData.get("kind") ?? "OTHER"),
+    title: String(formData.get("title") ?? ""),
+    url: String(formData.get("url") ?? ""),
+    note: String(formData.get("note") ?? ""),
+  });
+  revalidatePath(`/app/sys/${systemId}/hr/employees/${employeeId}`);
+}
+
+export async function removeEmployeeDocAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.employee.create");
+  if (!canSeeSensitive(auth)) return;
+  const systemId = String(formData.get("systemId") ?? "");
+  const employeeId = String(formData.get("employeeId") ?? "");
+  const docId = String(formData.get("docId") ?? "");
+  if (!systemId || !docId) return;
+  await removeEmployeeDoc({ tenantId: auth.active.tenantId, systemId }, docId);
+  revalidatePath(`/app/sys/${systemId}/hr/employees/${employeeId}`);
 }
 
 // ── kiosk: ตั้ง PIN + พนักงานลงเวลาเอง ──

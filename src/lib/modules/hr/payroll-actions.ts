@@ -8,10 +8,14 @@ import { assertCan, canViewPayroll, ForbiddenError } from "@/lib/core/rbac";
 import { writeAudit } from "@/lib/modules/account";
 import {
   approveRun,
+  cancelAdjustment,
   createPayrollRun,
+  decideAdjustment,
   markPaid,
+  requestAdjustment,
   reverseRun,
   setSalaryProfile,
+  type AdjustKind,
   type Ctx,
 } from "./payroll";
 
@@ -128,4 +132,94 @@ export async function markPaidAction(formData: FormData) {
     after: { ok: res.ok, note: res.note },
   });
   revalidate(systemId);
+}
+
+// ─────────── รายการเพิ่ม/หัก: OT · คอมมิชชั่น · โบนัส · เบี้ยเลี้ยง · หักเงิน · เบิกล่วงหน้า ───────────
+// (13 ส.ค. 2026 · เจ้าของสั่งข้อ 5+7) — สิทธิ์แยก 2 ชั้นตามที่เจ้าของสั่ง:
+//   ยื่น    = hr.payadjust.request (หัวหน้างาน/ธุรการยื่นได้ ไม่ต้องเห็นเงินเดือนคนอื่น)
+//   อนุมัติ = hr.payadjust.approve + ต้องผ่านด่านข้อมูลอ่อนไหว (OWNER หรือ hr.payroll.read)
+// 🔴 คนยื่น ≠ คนอนุมัติ (service บังคับอีกชั้นด้วย isOwner)
+function assertRequestAdjust(auth: Awaited<ReturnType<typeof requireTenant>>) {
+  assertCan(
+    {
+      role: auth.active.role,
+      unitAccess: auth.active.unitAccess as string[],
+      permissions: auth.active.permissions as Record<string, unknown>,
+    },
+    { module: "hr", action: "hr.payadjust.request" },
+  );
+}
+
+export type AdjustState =
+  | { status: "idle" }
+  | { status: "ok"; message: string }
+  | { status: "error"; message: string };
+
+export async function requestAdjustmentAction(
+  systemId: string,
+  _prev: AdjustState,
+  formData: FormData,
+): Promise<AdjustState> {
+  const auth = await requireTenant();
+  assertRequestAdjust(auth);
+  const employeeId = String(formData.get("employeeId") ?? "");
+  const periodKey = String(formData.get("periodKey") ?? "").trim();
+  const kind = String(formData.get("kind") ?? "") as AdjustKind;
+  const hoursRaw = String(formData.get("hours") ?? "").trim();
+  const amountRaw = String(formData.get("amountBaht") ?? "").replace(/,/g, "").trim();
+  if (!employeeId || !periodKey) return { status: "error", message: "เลือกพนักงานและงวดก่อน" };
+  const hours = hoursRaw ? Number(hoursRaw) : undefined;
+  const amountBaht = amountRaw ? Number(amountRaw) : undefined;
+  if (hours !== undefined && !Number.isFinite(hours)) return { status: "error", message: "ชั่วโมงไม่ถูกต้อง" };
+  if (amountBaht !== undefined && !Number.isFinite(amountBaht)) return { status: "error", message: "จำนวนเงินไม่ถูกต้อง" };
+
+  const res = await requestAdjustment(
+    { tenantId: auth.active.tenantId, systemId },
+    {
+      employeeId,
+      periodKey,
+      kind,
+      ...(amountBaht !== undefined ? { amountSatang: Math.round(amountBaht * 100) } : {}),
+      ...(hours !== undefined ? { hours } : {}),
+      note: String(formData.get("note") ?? ""),
+      requestedById: auth.active.userId,
+    },
+  );
+  if (!res.ok) return { status: "error", message: res.reason ?? "ยื่นไม่ได้" };
+  revalidatePath(`/app/sys/${systemId}/hr/payroll`);
+  return { status: "ok", message: `ยื่นแล้ว ${((res.amountSatang ?? 0) / 100).toLocaleString("th-TH")} บาท — รออนุมัติ` };
+}
+
+export async function decideAdjustmentAction(formData: FormData) {
+  const auth = await requireTenant();
+  // อนุมัติ = สิทธิ์แตะเงินเดือน (ผ่านด่าน PDPA เหมือน action เงินเดือนอื่น)
+  assertHrCan(auth, "hr.payadjust.approve");
+  const systemId = String(formData.get("systemId") ?? "");
+  const id = String(formData.get("id") ?? "");
+  const status = String(formData.get("status") ?? "");
+  if (!systemId || !id || (status !== "APPROVED" && status !== "REJECTED")) return;
+  const res = await decideAdjustment({ tenantId: auth.active.tenantId, systemId }, id, status, {
+    userId: auth.active.userId,
+    isOwner: auth.active.role === "OWNER",
+  });
+  if (res.ok) {
+    await writeAudit({
+      tenantId: auth.active.tenantId,
+      actorId: auth.user.id,
+      action: status === "APPROVED" ? "hr.payadjust.approve" : "hr.payadjust.reject",
+      targetType: "HrPayAdjustment",
+      targetId: id,
+    });
+  }
+  revalidatePath(`/app/sys/${systemId}/hr/payroll`);
+}
+
+export async function cancelAdjustmentAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.payadjust.approve");
+  const systemId = String(formData.get("systemId") ?? "");
+  const id = String(formData.get("id") ?? "");
+  if (!systemId || !id) return;
+  await cancelAdjustment({ tenantId: auth.active.tenantId, systemId }, id);
+  revalidatePath(`/app/sys/${systemId}/hr/payroll`);
 }

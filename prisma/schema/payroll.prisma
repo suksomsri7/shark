@@ -7,12 +7,53 @@ enum PayrollRunStatus {
   REVERSED // กลับรายการ JV แล้ว (immutable — reversal เท่านั้น ห้ามลบ entry เดิม) · WO Wave2-K
 }
 
+// รายการเพิ่ม/หักในงวดเงินเดือน (13 ส.ค. 2026 · เจ้าของสั่งข้อ 5+7)
+// ทิศทางมาจาก kind (amountSatang เป็นบวกเสมอ — อ่านง่าย ไม่ต้องเดาเครื่องหมาย)
+enum HrPayItemKind {
+  OT // ค่าล่วงเวลา
+  COMMISSION // คอมมิชชั่น
+  BONUS // โบนัส
+  ALLOWANCE // เบี้ยเลี้ยง/ค่าเดินทาง
+  DEDUCTION // หักเงิน (มาสาย/ขาดงาน/ค่าเสียหาย)
+  ADVANCE // เบิกล่วงหน้า (หักคืน)
+}
+enum HrPayItemStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// 🔴 คนยื่น ≠ คนอนุมัติ (สิทธิ์แยกกัน) — เงินเข้า/ออกจากเงินเดือนต้องมีร่องรอยว่าใครขอ ใครอนุมัติ
+model HrPayAdjustment {
+  id            String          @id @default(cuid())
+  tenantId      String
+  systemId      String
+  employeeId    String
+  periodKey     String // งวด "2026-08"
+  kind          HrPayItemKind
+  amountSatang  Int // จำนวนเงิน (บวกเสมอ)
+  hours         Float? // ชั่วโมง OT (ถ้าคิดจากชั่วโมง)
+  rateSatang    Int? // อัตราต่อชั่วโมง ณ ตอนยื่น (snapshot)
+  note          String?
+  status        HrPayItemStatus @default(PENDING)
+  requestedById String? // User ที่ยื่น
+  decidedById   String? // User ที่อนุมัติ/ปฏิเสธ
+  decidedAt     DateTime?
+  runId         String? // ผูกกับรอบจ่ายเมื่อถูกดึงเข้างวดแล้ว (กันนับซ้ำข้ามงวด)
+  createdAt     DateTime        @default(now())
+
+  @@index([systemId, periodKey, status])
+  @@index([systemId, employeeId])
+  @@index([tenantId])
+}
+
 model HrSalaryProfile {
   id                    String   @id @default(cuid())
   tenantId              String
   systemId              String
   employeeId            String
   baseSalarySatang      Int // เงินเดือน (MONTHLY v1)
+  otHourlyRateSatang    Int? // อัตรา OT ต่อชั่วโมง (ไม่ตั้ง = คิดจากเงินเดือน ÷30 ÷8 ×1.5)
   ssoEligible           Boolean  @default(true)
   taxId                 String? // เลขผู้เสียภาษี 13 หลัก
   personalDeductionJson Json     @default("{}") // {spouse:bool, children:int, ssoPaidYearSatang?...}
@@ -35,6 +76,8 @@ model HrPayrollRun {
   totalSsoEmployerSatang Int              @default(0)
   totalWhtSatang         Int              @default(0)
   totalNetSatang         Int              @default(0)
+  totalAddSatang         Int              @default(0) // OT+คอม+โบนัส+เบี้ยเลี้ยง ที่อนุมัติแล้วในงวด
+  totalDeductSatang      Int              @default(0) // หักเงิน+เบิกล่วงหน้า ที่อนุมัติแล้วในงวด
   journalEntryId         String? // AccountJournalEntry ที่ลงบัญชี (approve แล้ว)
   note                   String?
   createdAt              DateTime         @default(now())
@@ -58,7 +101,9 @@ model HrPayrollItem {
   ssoEmployerSatang Int
   whtSatang         Int // ภงด.1 หักต่อเดือน
   netSatang         Int
-  snapshotJson      Json         @default("{}") // freeze สูตร/ลดหย่อน ณ วันคำนวณ
+  addSatang         Int          @default(0) // รวมรายการเพิ่มของคนนี้ในงวด
+  deductSatang      Int          @default(0) // รวมรายการหักของคนนี้ในงวด
+  snapshotJson      Json         @default("{}") // freeze สูตร/ลดหย่อน/รายการเพิ่ม-หัก ณ วันคำนวณ
 
   @@unique([runId, employeeId])
   @@index([tenantId, systemId])

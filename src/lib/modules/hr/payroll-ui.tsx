@@ -8,9 +8,12 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { formatBaht } from "@/lib/ui/money";
 import { listEmployees, monthlyAttendance, employeesWithSchedule, bkkParts, type Ctx } from "./service";
-import { listSalaryProfiles, listRuns } from "./payroll";
+import { listSalaryProfiles, listRuns, listAdjustments } from "./payroll";
+import PayAdjustForm from "./PayAdjustForm";
 import {
   approvePayrollRunAction,
+  decideAdjustmentAction,
+  cancelAdjustmentAction,
   createPayrollRunAction,
   markPaidAction,
   reverseRunAction,
@@ -28,6 +31,24 @@ const RUN_STATUS_LABEL: Record<string, string> = {
 };
 const runTone = (v: string): "muted" | "strong" =>
   v === "DRAFT" || v === "REVERSED" ? "muted" : "strong";
+
+// รายการเพิ่ม/หักในงวด (OT · คอมมิชชั่น · หักเงิน)
+const ADJUST_KIND_LABEL: Record<string, string> = {
+  OT: "ค่าล่วงเวลา",
+  COMMISSION: "คอมมิชชั่น",
+  BONUS: "โบนัส",
+  ALLOWANCE: "เบี้ยเลี้ยง",
+  DEDUCTION: "หักเงิน",
+  ADVANCE: "หักเบิกล่วงหน้า",
+};
+const ADJUST_ADD = new Set(["OT", "COMMISSION", "BONUS", "ALLOWANCE"]);
+const ADJUST_STATUS_LABEL: Record<string, string> = {
+  PENDING: "รออนุมัติ",
+  APPROVED: "อนุมัติแล้ว",
+  REJECTED: "ไม่อนุมัติ",
+};
+const adjustTone = (v: string): "muted" | "strong" | "danger" =>
+  v === "APPROVED" ? "strong" : v === "REJECTED" ? "danger" : "muted";
 
 // ───────────── PayrollSection (หน้าย่อย /app/sys/[id]/hr/payroll) ─────────────
 export async function PayrollSection({ systemId }: { systemId: string }) {
@@ -51,11 +72,12 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
 
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  const [employees, profiles, runs, scheduled] = await Promise.all([
+  const [employees, profiles, runs, scheduled, adjustments] = await Promise.all([
     listEmployees(ctx),
     listSalaryProfiles(ctx),
     listRuns(ctx),
     employeesWithSchedule(ctx),
+    listAdjustments(ctx),
   ]);
   // การเข้างานเดือนนี้ + เดือนก่อน (งวดที่มักจะกำลังจ่าย) — ใช้ประกอบการตัดสินใจ
   // 🔴 ระบบไม่หักเงินอัตโนมัติจากการสาย/ขาด: เป็นนโยบายของร้าน + มีผลทางกฎหมาย ต้องให้คนตัดสิน
@@ -172,6 +194,70 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
             ))}
           </div>
         )}
+      </Section>
+
+      {/* OT / คอมมิชชั่น / หักเงิน — ยื่นแล้วรออนุมัติ (คนยื่น ≠ คนอนุมัติ) */}
+      <Section title="OT · คอมมิชชั่น · หักเงิน">
+        <div className="flex flex-col gap-3">
+          <p className={`text-xs ${muted}`}>
+            ยื่นรายการเข้างวด → <b>อนุมัติ</b> ก่อน จึงจะถูกดึงเข้ารอบจ่ายของงวดนั้น ·
+            รายการที่ยังไม่อนุมัติจะไม่มีผลกับเงินเดือน · เข้ารอบจ่ายแล้วแก้ไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)
+          </p>
+          <PayAdjustForm
+            systemId={systemId}
+            employees={employees.map((e) => ({ id: e.id, name: e.name }))}
+            defaultPeriod={new Date().toISOString().slice(0, 7)}
+          />
+          <div className="flex flex-col gap-2 border-t pt-3">
+            {adjustments.length === 0 ? (
+              <p className={`text-xs ${muted}`}>ยังไม่มีรายการในงวดไหน</p>
+            ) : (
+              adjustments.slice(0, 30).map((a) => (
+                <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm">
+                      {nameByEmp.get(a.employeeId) ?? "—"} · {ADJUST_KIND_LABEL[a.kind] ?? a.kind}{" "}
+                      {ADJUST_ADD.has(a.kind) ? "+" : "−"}
+                      {formatBaht(a.amountSatang)}
+                    </span>
+                    <span className={`block truncate text-xs ${muted}`}>
+                      งวด {a.periodKey}
+                      {a.hours ? ` · ${a.hours} ชม.` : ""}
+                      {a.note ? ` · ${a.note}` : ""}
+                      {a.runId ? " · เข้ารอบจ่ายแล้ว" : ""}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <StatusChip value={a.status} map={ADJUST_STATUS_LABEL} toneOf={adjustTone} />
+                    {a.status === "PENDING" && !a.runId && (
+                      <>
+                        <form action={decideAdjustmentAction}>
+                          <input type="hidden" name="systemId" value={systemId} />
+                          <input type="hidden" name="id" value={a.id} />
+                          <input type="hidden" name="status" value="APPROVED" />
+                          <SubmitButton variant="primary">อนุมัติ</SubmitButton>
+                        </form>
+                        <form action={decideAdjustmentAction}>
+                          <input type="hidden" name="systemId" value={systemId} />
+                          <input type="hidden" name="id" value={a.id} />
+                          <input type="hidden" name="status" value="REJECTED" />
+                          <SubmitButton variant="ghost">ไม่อนุมัติ</SubmitButton>
+                        </form>
+                      </>
+                    )}
+                    {a.status !== "PENDING" && !a.runId && (
+                      <form action={cancelAdjustmentAction}>
+                        <input type="hidden" name="systemId" value={systemId} />
+                        <input type="hidden" name="id" value={a.id} />
+                        <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
+                      </form>
+                    )}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </Section>
 
       {/* สร้างรอบจ่าย */}

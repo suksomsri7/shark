@@ -90,3 +90,65 @@ export function monthlyWhtSatang(input: {
   const annualTax = annualTaxSatang(netIncome);
   return Math.max(0, Math.round(annualTax / 12));
 }
+
+// ── 4) OT + รายการเพิ่ม/หักในงวด (13 ส.ค. 2026 · เจ้าของสั่งข้อ 5+7) ──
+// ⚠️ pure ทั้งหมด — oracle ยิงตรง (scripts/qc-hr-payadjust.mts)
+//
+// อัตรา OT: กฎหมายแรงงานไทยให้ค่าล่วงเวลาวันทำงานปกติ 1.5 เท่าของค่าจ้างต่อชั่วโมง
+//   ค่าจ้างต่อชั่วโมง (ลูกจ้างเงินเดือน) = เงินเดือน ÷ 30 วัน ÷ 8 ชั่วโมง
+//   ร้านตั้งอัตราเองได้ (otHourlyRateSatang ในโปรไฟล์) — ไม่ตั้งจึงใช้สูตรนี้
+export function otHourlyRateSatang(
+  monthlySalarySatang: number,
+  opts?: { daysPerMonth?: number; hoursPerDay?: number; multiplier?: number },
+): number {
+  const days = opts?.daysPerMonth ?? 30;
+  const hours = opts?.hoursPerDay ?? 8;
+  const mult = opts?.multiplier ?? 1.5;
+  if (monthlySalarySatang <= 0 || days <= 0 || hours <= 0) return 0;
+  return Math.round((monthlySalarySatang / days / hours) * mult);
+}
+
+/** เงิน OT จากชั่วโมง × อัตรา (ปัดเป็นสตางค์เต็ม) */
+export function otAmountSatang(hours: number, hourlyRateSatang: number): number {
+  if (hours <= 0 || hourlyRateSatang <= 0) return 0;
+  return Math.round(hours * hourlyRateSatang);
+}
+
+// ทิศทางของรายการ: เพิ่มเงิน (OT/คอม/โบนัส/เบี้ยเลี้ยง) vs หักเงิน (หักเงิน/เบิกล่วงหน้า)
+const ADD_KINDS = new Set(["OT", "COMMISSION", "BONUS", "ALLOWANCE"]);
+export function isAddKind(kind: string): boolean {
+  return ADD_KINDS.has(kind);
+}
+
+/**
+ * รวมรายการเพิ่ม/หักของพนักงาน 1 คนในงวดหนึ่ง (นับเฉพาะที่อนุมัติแล้ว — ผู้เรียกกรองมาก่อน)
+ * 🔴 amountSatang เป็นบวกเสมอ · ทิศทางมาจาก kind (กันบั๊กเครื่องหมายกลับด้าน)
+ */
+export function sumAdjustments(rows: { kind: string; amountSatang: number }[]): {
+  addSatang: number;
+  deductSatang: number;
+} {
+  let addSatang = 0;
+  let deductSatang = 0;
+  for (const r of rows) {
+    const amt = Math.max(0, Math.round(r.amountSatang));
+    if (isAddKind(r.kind)) addSatang += amt;
+    else deductSatang += amt;
+  }
+  return { addSatang, deductSatang };
+}
+
+/**
+ * ค่าจ้างที่จ่ายจริงก่อนหักตามกฎหมาย = เงินเดือน + รายการเพิ่ม − รายการหัก
+ * 🔴 ฐาน ปสส./ภงด.1 ยังคิดจาก "เงินเดือนประจำ" เท่านั้น (ไม่ใช่ยอดนี้) — ตั้งใจ:
+ *    รายการผันแปรแต่ละเดือนไม่ควรทำให้ภาษีหักต่อเดือนแกว่ง และเป็นวิธีที่ร้านเล็กใช้จริง
+ *    (ถ้าจะทำภาษีตามยอดจริงทั้งปี ต้องปรับที่ ภงด.91 ปลายปี — คนละเรื่องกับหักรายเดือน)
+ * ไม่ปล่อยให้ติดลบ: หักมากกว่าที่ได้ = จ่าย 0 (ส่วนเกินร้านต้องยกไปงวดหน้าเอง)
+ */
+export function payableGrossSatang(input: {
+  baseSalarySatang: number;
+  addSatang: number;
+  deductSatang: number;
+}): number {
+  return Math.max(0, input.baseSalarySatang + input.addSatang - input.deductSatang);
+}
