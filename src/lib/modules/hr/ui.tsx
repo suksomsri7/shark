@@ -144,26 +144,37 @@ export async function HrAttendanceSection({ systemId }: { systemId: string }) {
         {employees.length === 0 ? (
           <p className={`text-xs ${muted}`}>ยังไม่มีพนักงาน</p>
         ) : (
-          <DataList
-            items={summaries.map(({ emp, sum }) => ({
-              key: emp.id,
-              primary: emp.name,
-              secondary: scheduled.has(emp.id)
-                ? [
-                    `มาสาย ${sum.lateCount} ครั้ง${sum.lateMinutes > 0 ? ` (${durHm(sum.lateMinutes)})` : ""}`,
-                    `ขาดงาน ${sum.absentDays} วัน`,
-                    `ลา ${sum.leaveDays} วัน`,
-                    `ต้องเข้า ${sum.workDays} วัน`,
-                  ].join(" · ")
-                : "ยังไม่ตั้งตารางเข้างาน — ตั้งที่แท็บ “พนักงาน” แล้วระบบจะเริ่มนับสาย/ขาดให้",
-              trailing: (
-                <span className={`text-xs ${muted}`}>
-                  ทำงาน {sum.workedMinutes > 0 ? durHm(sum.workedMinutes) : "—"}
-                </span>
-              ),
-            }))}
-            empty="ยังไม่มีพนักงาน"
-          />
+          // ⚠️ ไม่ใช้ DataList ที่นี่: secondary ของมันเป็น truncate บรรทัดเดียว → บนมือถือตัวเลข
+          //    "ขาดงาน/ลา" ถูกตัดหาย (เห็นจากภาพจริงบน prod) · ตัวเลขสรุปต้องอ่านครบทุกตัว
+          <div className="flex flex-col gap-2">
+            {summaries.map(({ emp, sum }) => (
+              <div key={emp.id} className="rounded-lg border px-3 py-2">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="truncate text-sm font-medium">{emp.name}</span>
+                  <span className={`shrink-0 text-xs ${muted}`}>
+                    ทำงาน {sum.workedMinutes > 0 ? durHm(sum.workedMinutes) : "—"}
+                  </span>
+                </div>
+                {scheduled.has(emp.id) ? (
+                  <div className={`mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs ${muted}`}>
+                    <span className={sum.lateCount > 0 ? "text-[color:var(--color-danger)]" : ""}>
+                      มาสาย {sum.lateCount} ครั้ง
+                      {sum.lateMinutes > 0 ? ` (${durHm(sum.lateMinutes)})` : ""}
+                    </span>
+                    <span className={sum.absentDays > 0 ? "text-[color:var(--color-danger)]" : ""}>
+                      ขาดงาน {sum.absentDays} วัน
+                    </span>
+                    <span>ลา {sum.leaveDays} วัน</span>
+                    <span>ต้องเข้า {sum.workDays} วัน</span>
+                  </div>
+                ) : (
+                  <p className={`mt-1 text-xs ${muted}`}>
+                    ยังไม่ตั้งตารางเข้างาน — ตั้งที่แท็บ “พนักงาน” แล้วระบบจะเริ่มนับสาย/ขาดให้
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </Section>
 
