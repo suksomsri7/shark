@@ -1,7 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { uploadItemImageAction, type ImageState } from "./actions";
+
+// สถานะผลลัพธ์ของ action อัปโหลด (โครงเดียวกับ ImageState ใน actions ของแต่ละโมดูล)
+export type EditorState = { status: "idle" } | { status: "ok"; message: string } | { status: "error"; message: string };
 
 // ตัวแก้รูปในเบราว์เซอร์ (เจ้าของสั่งข้อ 16) — ครอป · ปรับสี · ใส่ข้อความ · ย่อ/ขยาย
 // ทำงานฝั่งเครื่องผู้ใช้ทั้งหมด (canvas) แล้วส่งรูปที่แต่งเสร็จขึ้น storage ครั้งเดียว
@@ -16,19 +18,15 @@ const RATIOS: { label: string; value: number | null }[] = [
 const SIZES = [640, 960, 1280];
 const POSITIONS = ["ซ้ายบน", "กลางบน", "ขวาบน", "ซ้ายกลาง", "กลาง", "ขวากลาง", "ซ้ายล่าง", "กลางล่าง", "ขวาล่าง"];
 
+// generic: ผู้ใช้ส่ง server action (bind ค่าที่ต้องใช้มาแล้ว) — inventory/pages ใช้ตัวเดียวกัน
 export default function ImageEditor({
-  systemId,
-  itemId,
+  action,
   itemName,
 }: {
-  systemId: string;
-  itemId: string;
+  action: (prev: EditorState, formData: FormData) => Promise<EditorState>;
   itemName: string;
 }) {
-  const [state, formAction, pending] = useActionState<ImageState, FormData>(
-    async (prev, formData) => uploadItemImageAction(systemId, itemId, prev, formData),
-    { status: "idle" },
-  );
+  const [state, formAction, pending] = useActionState<EditorState, FormData>(action, { status: "idle" });
   const [src, setSrc] = useState<string | null>(null);
   const [ratio, setRatio] = useState<number | null>(1);
   const [outW, setOutW] = useState(960);

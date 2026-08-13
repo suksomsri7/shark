@@ -74,6 +74,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   HrLeave: sys(),
   HrWorkSchedule: sys(),
   HrEmployeeDoc: sys(),
+  Page: unit,
+  PageWidget: tenant,
+  PageMember: tenant,
   // Marketing (ระบบ 20 — WO-0013)
   MktCampaign: sys(),
   MktRecipient: sys(),

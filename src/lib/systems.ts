@@ -1,6 +1,6 @@
 import type { SystemType, UnitType } from "@prisma/client";
 
-// ทะเบียน "ระบบ" ทั้ง 23 — ทุกอย่างคือระบบ เท่าเทียมกัน สร้างได้หลายชุด เชื่อมถึงกันได้
+// ทะเบียน "ระบบ" ทั้ง 24 — ทุกอย่างคือระบบ เท่าเทียมกัน สร้างได้หลายชุด เชื่อมถึงกันได้
 // ⚠️ จำนวนใน comment นี้ถูกตรวจโดย scripts/fitness.mts (F9.2) — แก้ SYSTEM_DEFS แล้วต้องแก้ที่นี่ด้วย
 // kind "business" = ระบบที่มีหน้างาน/ลูกค้า (เก็บเป็น BusinessUnit — มี slug/storefront)
 // kind "feature"  = ระบบข้อมูล/บริการ (เก็บเป็น AppSystem — เชื่อมเข้าระบบ business ได้)
@@ -46,6 +46,8 @@ export const SYSTEM_DEFS: SystemDef[] = [
   { code: "RENTAL", no: 22, kind: "business", label: "เช่าสินทรัพย์", hint: "รถเช่า/อุปกรณ์ จอง รับ-คืน ค่าปรับ", icon: "🛵", status: "available" },
   { code: "SCHOOL", no: 23, kind: "business", label: "โรงเรียน/คอร์สเรียน", hint: "คอร์ส รอบเรียน สมัคร ชำระ เช็คชื่อ", icon: "🎓", status: "available" },
   { code: "CLINIC", no: 24, kind: "business", label: "คลินิก", hint: "ผู้ป่วย ตรวจรักษา จ่ายยา เก็บเงิน", icon: "🏥", status: "available" },
+  // ระบบ "การจัดการ" (13 ส.ค. 2026) — หน้า Page + widget ต่อกิจการ · fixed page เหมือน KB (ไม่ instantiate)
+  { code: "PAGES", no: 25, kind: "feature", label: "การจัดการ (Page)", hint: "หน้า Page + widget ให้พนักงาน / LINE LIFF", icon: "🧩", status: "available" },
 ];
 
 export const systemDef = (code: string) => SYSTEM_DEFS.find((s) => s.code === code);
@@ -54,7 +56,7 @@ export const systemDef = (code: string) => SYSTEM_DEFS.find((s) => s.code === co
 // ต่างจาก feature ทั่วไปตรงที่ "ไม่ได้" สร้างเป็น AppSystem instance → ไม่อยู่ใน enum SystemType
 // และไม่ผ่าน createSystem/AddSystemForm · KB (คลังความรู้) เป็นแบบนี้: บทความเป็น tenant-scoped ตรง ๆ
 // (จึงถูกยกเว้นจาก AVAILABLE_FEATURE = ชุดระบบที่สร้าง instance ได้ · fitness F9.1 ตรวจเฉพาะระบบ instantiable)
-export const FIXED_PAGE_SYSTEMS: Record<string, string> = { KB: "/app/kb" };
+export const FIXED_PAGE_SYSTEMS: Record<string, string> = { KB: "/app/kb", PAGES: "/app/pages" };
 export const isFixedPageSystem = (code: string) =>
   Object.prototype.hasOwnProperty.call(FIXED_PAGE_SYSTEMS, code);
 

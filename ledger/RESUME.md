@@ -1,5 +1,19 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🧩 13 ส.ค. — ระบบ "การจัดการ" (Page + Widget) P1 SHIPPED (verify prod ก่อนบอกเสร็จ · แผน 3 เฟส)
+**มติเจ้าของที่เคาะแล้ว (ตอบคำถาม 5 ข้อ)**: (1) 1 Page ผูก 1 กิจการ เห็นเฉพาะ widget ของกิจการนั้น (2) พนักงาน login ด้วย **PIN แยก** ไม่ใช่ OTP อีเมล (3) วงกลม = ปุ่มกลม 1 ช่อง · **ทุกทรงกว้าง 1 ช่อง** (ทรง = สไตล์การวาด: ผืนผ้า/จัตุรัส/วงกลม) (4) **โดเมน = ทำสุดท้าย** (5) widget = ทุกเมนู
+### ✅ P1 ที่ส่งแล้ว
+- **โมเดล**: `Page` (unit-scoped · slug สาธารณะ global-unique · ช่อง `domain` จองไว้แล้ว) + `PageWidget` (widgetKey/title/imageUrl/shape/sortOrder) + `PageMember` (membershipId + `pinHash` scrypt + `allowedWidgetKeys` จองไว้ให้ P2) — migration additive · migrate prod แล้ว
+- **Widget Registry** `src/lib/pages/registry.ts` = **ทุกเมนูในแอป ~70 ตัว** · 🔴 ด่าน RG-1 ใน qc-pages บังคับ sync กับ `childrenFor` ใน layout — **เพิ่มเมนูใหม่ในแอปต้องเพิ่ม widget ด้วย ไม่งั้นข้อสอบแดง**
+- **Builder** `/app/pages` (เมนูใหม่ "การจัดการ (Page)" — fixed-page ระบบที่ 24 แบบ KB): ลิสต์ทุกกิจการ + Page · `/app/pages/<id>` = drag & drop จัดลำดับ (มีปุ่ม ‹ › สำหรับมือถือ) · ทรง 3 แบบ · เปลี่ยนชื่อ/รูป (ใช้ ImageEditor ตัวเดียวกับสินค้า — **refactor เป็น prop `action`** ส่ง server action ที่ bind แล้วเข้าไป) · เพิ่มพนักงาน + ตั้ง PIN
+- **หน้าแสดงผล** `/p/<slug>` (สาธารณะ · เอาไปใส่ LINE LIFF ได้ตามกติกา LIFF=URL-only): จอ login เลือกชื่อ+PIN → grid widget · **login เป็นฟอร์ม HTML ธรรมดา POST `/api/page-login`** (route ไม่ใช่ server action — บทเรียน WKWebView + ใช้ได้ทุก webview) → ได้ session ปกติของบัญชีนั้น + ตั้ง tenant cookie · `/logout?to=/p/<slug>` กลับจอ login ของ Page เดิม (รับเฉพาะ path `/p/` กัน open redirect)
+- 🔴 **หลักความปลอดภัยที่ตั้งใจ**: ซ่อน/โชว์ widget = UI เท่านั้น — สิทธิ์จริงอยู่ที่ `assertCan` ชั้น action ของทุกระบบตามเดิม (PIN login ได้สิทธิ์ไม่เกิน role ของ Membership นั้น) · PIN เดาง่าย → rate limit 2 ชั้น (5/นาที/สมาชิก + 20/นาที/IP) · จอ login สาธารณะโชว์เฉพาะ displayName ที่ admin ตั้ง (ไม่มีอีเมล)
+- ข้อสอบใหม่ **qc-pages 30/30** (`pnpm qc:pages`) · gates: typecheck · fitness 15/15 (F9 นับ 24 ระบบ) · nav 7/7 · catalog 35/35 · hr-roster 24/24 · booking-edit 26/26
+### ⏭️ P2 (คิวถัดไป — รอเจ้าของเทส P1 ก่อน)
+หน้า Permission UI: ต่อพนักงาน × widget (เขียน `allowedWidgetKeys` — enforcement ฝั่ง render มีแล้ว AC-3) + ตั้งสิทธิ์ เพิ่ม/ลบ/แก้ รายเมนู (เขียน `Membership.permissions` ที่ `assertCan` อ่าน — ปิดหนี้ "ไม่มี UI ตั้งสิทธิ์ STAFF" ทั้งแอป)
+### 🔔 P3 (เจ้าของสั่ง "ทำสุดท้าย แต่บันทึกไว้ด้วยเดี๋ยวจะลืม") — **ผูกโดเมนของร้านเข้า Page**
+ช่อง `Page.domain` (unique) จองไว้ในสคีมาแล้ว · งานที่เหลือ: (ก) resolver ใน `proxy.ts` map Host → Page (ข) ต่อ Vercel Domain API (add domain + รอ SSL) (ค) หน้าแนะนำร้านตั้ง CNAME + สถานะ verify (ง) ราคา/นโยบาย (พิมพ์เขียวเดิมเคยตั้ง custom domain 1,500฿/ปี — รอเจ้าของเคาะ)
+
 ## ✅ 13 ส.ค. — คำสั่งเจ้าของ 17 ข้อ **ครบทั้ง 17 ข้อ** (main=87404cd+ · deploy READY · verify prod แล้วทุก wave)
 ### ✅ Wave C+D (main=1028f1a/87404cd) — ข้อ 12/13/14/15/16/17
 - **ข้อ 12 แคตตาล็อกกลาง 2 ชนิด**: `InvItem.kind = PRODUCT | SERVICE` · บริการมีราคา/เวลา/เวลาเผื่อ/มัดจำ/ให้จองล่วงหน้า

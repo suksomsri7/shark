@@ -44,6 +44,7 @@ import {
   saveCategoryAction,
   saveSettingsAction,
   setPrimaryImageAction,
+  uploadItemImageAction,
   transferAction,
   updateItemAction,
   updateServiceAction,
@@ -971,7 +972,7 @@ export async function InvServicesSection({ systemId }: { systemId: string }) {
                     </div>
                   )}
                   <div className="mt-2">
-                    <ImageEditor systemId={systemId} itemId={sv.id} itemName={sv.name} />
+                    <ImageEditor action={uploadItemImageAction.bind(null, systemId, sv.id)} itemName={sv.name} />
                   </div>
                 </div>
 

@@ -1,0 +1,64 @@
+// ระบบ "การจัดการ" — หน้า Page + Widget (13 ส.ค. 2026 · มติเจ้าของ)
+// Page = หน้ารวมทางลัด (widget) ของกิจการ ใช้เป็นหน้าจัดการหลักของพนักงาน หรือเอา URL ไปใส่ LINE LIFF
+// มติที่เคาะแล้ว: 1 Page ผูก 1 กิจการ (เห็นเฉพาะ widget ของกิจการนั้น) · 1 กิจการมีได้หลาย Page
+// · พนักงาน login ด้วยรหัส PIN แยก (ไม่ใช่ OTP อีเมล) · widget ทุกทรงกว้าง 1 ช่อง (ทรง = สไตล์การวาด)
+enum PageWidgetShape {
+  RECT // ผืนผ้า (การ์ดแบนแนวนอน)
+  SQUARE // จัตุรัส (การ์ดสี่เหลี่ยม)
+  CIRCLE // วงกลม (ไอคอนกลมแบบแอปมือถือ)
+}
+
+model Page {
+  id       String  @id @default(cuid())
+  tenantId String
+  unitId   String // กิจการเจ้าของหน้า — widget เลือกได้เฉพาะระบบของกิจการนี้
+  name     String
+  slug     String  @unique // URL สาธารณะ /p/<slug> (global unique — ไม่มี tenant ใน URL)
+  active   Boolean @default(true)
+  // 🔜 P3 (เจ้าของสั่ง "ทำสุดท้าย แต่บันทึกไว้เดี๋ยวลืม"): ผูกโดเมนของร้านเข้า Page นี้
+  //    งานที่ต้องทำตอนนั้น: resolver ใน proxy.ts (Host → Page) + Vercel Domain API + หน้าแนะนำตั้ง CNAME
+  domain   String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  widgets PageWidget[]
+  members PageMember[]
+
+  @@index([tenantId, unitId])
+}
+
+model PageWidget {
+  id        String          @id @default(cuid())
+  tenantId  String
+  pageId    String
+  page      Page            @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  widgetKey String // อ้าง WIDGET_DEFS ใน src/lib/pages/registry.ts (เมนูจริงของระบบ)
+  title     String? // ชื่อที่ admin เปลี่ยนเอง (null = ใช้ชื่อจาก registry)
+  imageUrl  String? // รูปที่ admin เปลี่ยนเอง (null = ใช้ไอคอน emoji)
+  shape     PageWidgetShape @default(SQUARE)
+  sortOrder Int             @default(0)
+  createdAt DateTime        @default(now())
+
+  @@unique([pageId, widgetKey])
+  @@index([tenantId])
+}
+
+// พนักงานที่เข้า Page นี้ได้ — อิง Membership เดิม (บัญชีเดียวทั้งระบบ สิทธิ์ action คุมโดย RBAC เดิม)
+// PIN = ทางเข้าแบบเบาของบัญชีนั้นบนหน้า Page (login แล้วได้ session ปกติ · สิทธิ์ไม่เกิน role เดิม)
+model PageMember {
+  id           String  @id @default(cuid())
+  tenantId     String
+  pageId       String
+  page         Page    @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  membershipId String
+  displayName  String // ชื่อที่โชว์บนจอ login (admin ตั้ง — ไม่โชว์อีเมลบนหน้าสาธารณะ)
+  pinHash      String? // scrypt "salt:hash" · null = ยังตั้ง PIN ไม่ได้เข้า
+  // สิทธิ์ราย widget (P2): [] = เห็นทุก widget ของ page · ["key",...] = เห็นเฉพาะที่ระบุ
+  allowedWidgetKeys Json @default("[]")
+  active       Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([pageId, membershipId])
+  @@index([tenantId])
+}

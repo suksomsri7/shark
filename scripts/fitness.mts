@@ -396,7 +396,7 @@ const unitType = new Set(enumVals(coreSrc, "UnitType"));
 // available ทุกตัวต้องมีใน enum จริง ไม่งั้นสร้างไม่ได้ตอน runtime
 // ยกเว้น: fixed-page system (WO-0073 — เช่น KB) = หน้า /app/* ระดับ tenant ไม่ instantiate เป็น AppSystem
 //   จึงไม่ต้องมีใน enum · รายชื่อต้องตรงกับ FIXED_PAGE_SYSTEMS ใน src/lib/systems.ts
-const FIXED_PAGE_EXEMPT = new Set(["KB"]);
+const FIXED_PAGE_EXEMPT = new Set(["KB", "PAGES"]);
 const availableBad: string[] = [];
 for (const m of systemsSrc.matchAll(/code:\s*"([A-Z_]+)"[^}]*kind:\s*"(business|feature)"[^}]*status:\s*"(available|coming_soon)"/g)) {
   const [, code, kind, status] = m;
