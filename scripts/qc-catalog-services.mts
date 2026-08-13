@@ -102,7 +102,7 @@ try {
   // ── [2] บริการไม่มีสต็อก ──
   let recvErr = "";
   try {
-    await inv.receive(invCtx, { itemId: svc.id, qty: 5, unitCostSatang: 100, idempotencyKey: `qc-${Date.now()}` });
+    await inv.receive(invCtx, { itemId: svc.id, qty: 5, costSatang: 100, idempotencyKey: `qc-${Date.now()}` });
   } catch (e) {
     recvErr = e instanceof Error ? e.message : String(e);
   }
