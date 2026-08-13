@@ -16,7 +16,7 @@ export default async function BookingLayout({
         items={[
           { href: base, label: "นัดวันนี้" },
           { href: `${base}/services`, label: "บริการ" },
-          { href: `${base}/staff`, label: "พนักงาน" },
+          { href: `${base}/staff`, label: "ใครรับคิว" },
           { href: `${base}/hours`, label: "เวลาทำการ" },
         ]}
       />

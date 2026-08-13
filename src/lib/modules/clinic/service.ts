@@ -171,7 +171,7 @@ export async function dispense(
   // ไม่มีระบบคลัง (INVENTORY) → ตัดสต็อกไม่ได้ → โยน
   const invSystems = await listSystems(ctx.tenantId, "INVENTORY");
   const invSys = invSystems[0];
-  if (!invSys) throw new Error("เปิดระบบคลังสินค้า (Inventory) ก่อนจ่ายยา");
+  if (!invSys) throw new Error("เปิดระบบสินค้า/บริการ (Inventory) ก่อนจ่ายยา");
   const invCtx = { tenantId: ctx.tenantId, systemId: invSys.id };
 
   const lines = (items ?? []).filter((it) => it.invItemId && Math.round(it.qty) > 0);

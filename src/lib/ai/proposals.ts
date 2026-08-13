@@ -399,7 +399,7 @@ async function dispatch(
   if (kind === "inventory_receive") {
     const p = payload as ReceivePayload;
     const system = await resolveSystem(tenantId, "INVENTORY");
-    if (!system) throw new Error("ยังไม่ได้เปิดระบบคลังสินค้า");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบสินค้า/บริการ");
     // resolve item จาก sku (อ่านในขอบเขตระบบเดิม — mutate จริงยังผ่าน invSvc.receive)
     const item = await tenantDb({ tenantId, systemId: system.id }).invItem.findFirst({
       where: { sku: String(p.sku ?? "").trim() },
@@ -484,7 +484,7 @@ async function dispatch(
   if (kind === "inventory_create_item") {
     const p = payload as CreateItemPayload;
     const system = await resolveSystem(tenantId, "INVENTORY");
-    if (!system) throw new Error("ยังไม่ได้เปิดระบบคลังสินค้า");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบสินค้า/บริการ");
     const sku = String(p.sku ?? "").trim();
     const name = String(p.name ?? "").trim();
     if (!sku || !name) throw new Error("ต้องระบุรหัสสินค้าและชื่อสินค้า");
@@ -506,7 +506,7 @@ async function dispatch(
   if (kind === "inventory_adjust") {
     const p = payload as AdjustPayload;
     const system = await resolveSystem(tenantId, "INVENTORY");
-    if (!system) throw new Error("ยังไม่ได้เปิดระบบคลังสินค้า");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบสินค้า/บริการ");
     const sku = String(p.sku ?? "").trim();
     const item = await tenantDb({ tenantId, systemId: system.id }).invItem.findFirst({ where: { sku } });
     if (!item) throw new Error(`ไม่พบสินค้ารหัส ${sku} ในคลัง`);
@@ -1031,7 +1031,7 @@ async function dispatch(
   if (kind === "inventory_consume") {
     const p = payload as InventoryConsumePayload;
     const system = await resolveSystem(tenantId, "INVENTORY");
-    if (!system) throw new Error("ยังไม่ได้เปิดระบบคลังสินค้า");
+    if (!system) throw new Error("ยังไม่ได้เปิดระบบสินค้า/บริการ");
     const sku = String(p.sku ?? "").trim();
     // resolve item จาก sku (อ่านในขอบเขตระบบเดิม — ตัดจริงผ่าน invSvc.consume)
     const item = await tenantDb({ tenantId, systemId: system.id }).invItem.findFirst({ where: { sku } });

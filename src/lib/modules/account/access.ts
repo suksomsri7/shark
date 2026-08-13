@@ -148,7 +148,7 @@ const AUDIT_GROUP_LABELS: Record<string, string> = {
   rental: "เช่า",
   school: "โรงเรียน",
   clinic: "คลินิก",
-  inventory: "คลังสินค้า",
+  inventory: "สินค้า/บริการ",
   kanban: "งาน",
   kb: "คลังความรู้",
   marketing: "การตลาด",

@@ -11,6 +11,7 @@ import {
   setPosServicePriceAction,
   removePosServiceAction,
 } from "@/lib/actions/pos";
+import { posTabs } from "@/lib/modules/pos/tabs";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -44,13 +45,7 @@ export default async function PosProductsPage({
   );
   const def = systemDef(sys.type);
 
-  const tabs = [
-    { href: `/app/sys/${id}`, label: "ภาพรวม" },
-    { href: `/app/sys/${id}/pos/register`, label: "ขาย" },
-    { href: `/app/sys/${id}/pos/products`, label: "บริการ/สินค้า" },
-    { href: `/app/sys/${id}/pos/sales`, label: "ประวัติบิล" },
-    { href: `/app/sys/${id}/pos/close`, label: "ปิดวัน" },
-  ];
+  const tabs = posTabs(id);
 
   const { inventorySystemId, accountSystemId, items } = await listPosProducts(tenantId, id);
   // บริการของหน้างานที่ผูก POS — ร้านบริการ (ตัดผม/นวด/คลินิก) ขายบริการเป็นหลัก ไม่ใช่สินค้า
@@ -141,7 +136,7 @@ export default async function PosProductsPage({
 
       {!inventorySystemId ? (
         <EmptyState
-          text="ยังไม่ได้เชื่อมคลังสินค้า — ร้านที่ขายสินค้าด้วยให้เชื่อมคลังก่อนที่หน้าภาพรวม (ร้านที่ขายเฉพาะบริการไม่ต้องเชื่อมก็ได้)"
+          text="ยังไม่ได้เชื่อมระบบสินค้า/บริการ — ร้านที่ขายสินค้าด้วยให้เชื่อมก่อนที่หน้าภาพรวม (ร้านที่ขายเฉพาะบริการไม่ต้องเชื่อมก็ได้)"
           action={{ href: `/app/sys/${id}`, label: "ไปเชื่อมคลัง" }}
         />
       ) : items.length === 0 ? (

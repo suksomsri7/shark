@@ -4,6 +4,7 @@ import { prisma } from "@/lib/core/db";
 import { assertCan } from "@/lib/core/rbac";
 import { systemDef } from "@/lib/systems";
 import { closeDaySummary, closeDayBills, bkkToday } from "@/lib/modules/pos/service";
+import { posTabs } from "@/lib/modules/pos/tabs";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { MoneyText } from "@/components/ui/MoneyText";
@@ -50,13 +51,7 @@ export default async function PosCloseDayPage({
     <div className="flex max-w-2xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="ปิดวัน — สรุปยอดสิ้นวัน" />
       <ModuleTabs
-        items={[
-          { href: `/app/sys/${id}`, label: "ภาพรวม" },
-          { href: `/app/sys/${id}/pos/register`, label: "ขาย" },
-          { href: `/app/sys/${id}/pos/products`, label: "บริการ/สินค้า" },
-          { href: `/app/sys/${id}/pos/sales`, label: "ประวัติบิล" },
-          { href: `/app/sys/${id}/pos/close`, label: "ปิดวัน" },
-        ]}
+        items={posTabs(id)}
       />
 
       {/* เลือกวัน */}

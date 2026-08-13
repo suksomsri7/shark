@@ -175,7 +175,7 @@ export async function setItemSalePrice(
   const price = Math.round(salePriceSatang);
 
   const inventorySystemId = await inventorySystemForPos(tenantId, posSystemId);
-  if (!inventorySystemId) return { ok: false, reason: "ยังไม่ได้เชื่อมคลังสินค้ากับระบบขายนี้" };
+  if (!inventorySystemId) return { ok: false, reason: "ยังไม่ได้เชื่อมระบบสินค้า/บริการกับระบบขายนี้" };
 
   const invCtx = { tenantId, systemId: inventorySystemId };
   const item = await inventory.getItem(invCtx, itemId); // scope tenant+system → กัน itemId ข้ามร้าน/ข้ามระบบ

@@ -264,6 +264,17 @@ export async function removeClosureAction(unitSlug: string, formData: FormData) 
 }
 
 /** รวมช่างที่ยังไม่ผูกทะเบียนพนักงาน — ปุ่มบนหน้าพนักงานของระบบจอง */
+// ติ๊ก "รับคิวที่สาขานี้" ให้พนักงาน HR คนหนึ่ง (มติเจ้าของ 13 ส.ค.: เพิ่ม/ลบคนทำที่ HR ที่เดียว)
+export async function setStaffReceivingAction(unitSlug: string, formData: FormData) {
+  const { auth, unit } = await requireUnit(unitSlug);
+  assertBookingCan(auth, unit.id, "booking.staff.create");
+  const employeeId = String(formData.get("employeeId") ?? "");
+  const receiving = String(formData.get("receiving") ?? "") === "1";
+  if (!employeeId) return;
+  await booking.setStaffReceiving({ tenantId: auth.active.tenantId, unitId: unit.id }, employeeId, receiving);
+  revalidatePath(`/app/u/${unitSlug}/booking/staff`);
+}
+
 export async function linkStaffToHrAction(unitSlug: string) {
   const { auth, unit } = await requireUnit(unitSlug);
   assertBookingCan(auth, unit.id, "booking.staff.create");

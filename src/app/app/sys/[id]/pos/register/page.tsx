@@ -6,6 +6,7 @@ import { systemDef } from "@/lib/systems";
 import { getPaymentProfile } from "@/lib/payment/service";
 import { posUnits, resolvePosLinks, posCatalog, posMembers, posServices } from "@/lib/modules/pos/register";
 import { PosRegister } from "@/lib/modules/pos/register-ui";
+import { posTabs } from "@/lib/modules/pos/tabs";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -28,13 +29,7 @@ export default async function PosRegisterPage({
   if (!sys) notFound();
   const def = systemDef(sys.type);
 
-  const tabs = [
-    { href: `/app/sys/${id}`, label: "ภาพรวม" },
-    { href: `/app/sys/${id}/pos/register`, label: "ขาย" },
-    { href: `/app/sys/${id}/pos/products`, label: "บริการ/สินค้า" },
-    { href: `/app/sys/${id}/pos/sales`, label: "ประวัติบิล" },
-    { href: `/app/sys/${id}/pos/close`, label: "ปิดวัน" },
-  ];
+  const tabs = posTabs(id);
 
   const units = await posUnits(tenantId, id);
 

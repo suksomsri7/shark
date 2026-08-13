@@ -12,8 +12,10 @@ import {
   decideLeave,
   bulkDecideLeave,
   requestLeave,
+  setEmployeeActive,
   setPin,
   setSchedule,
+  updateEmployee,
   type Ctx,
 } from "./service";
 
@@ -63,6 +65,43 @@ export async function clockAction(formData: FormData) {
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   await clock(ctx, { employeeId, kind: rawKind as HrAttendanceKind });
   revalidate(systemId);
+}
+
+// ── แก้ข้อมูลพนักงาน / ลบ (soft) / กู้คืน ──
+export async function updateEmployeeAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.employee.create");
+  const systemId = String(formData.get("systemId") ?? "");
+  const employeeId = String(formData.get("employeeId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!systemId || !employeeId || !name) return;
+  await updateEmployee({ tenantId: auth.active.tenantId, systemId }, employeeId, {
+    name,
+    position: String(formData.get("position") ?? ""),
+    phone: String(formData.get("phone") ?? ""),
+  });
+  revalidatePath(`/app/sys/${systemId}/hr/employees`);
+}
+
+// ลบ = soft delete (ประวัติลงเวลา/ลา/เงินเดือน + นัดในระบบจองยังอ่านได้) · กู้คืนได้
+export async function removeEmployeeAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.employee.create");
+  const systemId = String(formData.get("systemId") ?? "");
+  const employeeId = String(formData.get("employeeId") ?? "");
+  if (!systemId || !employeeId) return;
+  await setEmployeeActive({ tenantId: auth.active.tenantId, systemId }, employeeId, false);
+  revalidatePath(`/app/sys/${systemId}/hr/employees`);
+}
+
+export async function restoreEmployeeAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.employee.create");
+  const systemId = String(formData.get("systemId") ?? "");
+  const employeeId = String(formData.get("employeeId") ?? "");
+  if (!systemId || !employeeId) return;
+  await setEmployeeActive({ tenantId: auth.active.tenantId, systemId }, employeeId, true);
+  revalidatePath(`/app/sys/${systemId}/hr/employees`);
 }
 
 // ── kiosk: ตั้ง PIN + พนักงานลงเวลาเอง ──

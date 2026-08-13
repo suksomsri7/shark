@@ -118,7 +118,7 @@ const lowStock: AiTool = {
   },
   async execute(ctx) {
     const inv = await findSystem(ctx.tenantId, "INVENTORY");
-    if (!inv) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบคลังสินค้า" });
+    if (!inv) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบสินค้า/บริการ" });
 
     const items = await invLowStock({ tenantId: ctx.tenantId, systemId: inv.id });
     return JSON.stringify({

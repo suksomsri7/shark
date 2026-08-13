@@ -251,7 +251,7 @@ export default async function ClinicManagePage({
                   <p className="border-t pt-3 text-xs text-[color:var(--color-muted)]">ยังไม่มีรายการยาในคลัง</p>
                 )
               ) : (
-                <p className="border-t pt-3 text-xs text-[color:var(--color-muted)]">เปิดระบบคลังสินค้าเพื่อจ่ายยา</p>
+                <p className="border-t pt-3 text-xs text-[color:var(--color-muted)]">เปิดระบบสินค้า/บริการเพื่อจ่ายยา</p>
               )}
 
               {/* เก็บเงิน */}

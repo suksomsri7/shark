@@ -108,7 +108,8 @@ async function staffOnLeave(
   const empIds = linked.map((s) => s.employeeId);
   const onLeaveEmp = new Set<string>();
   for (const sys of hrSystems) {
-    for (const id of await hr.employeesOnLeave({ tenantId, systemId: sys.id }, empIds, date)) {
+    // "ใช้งานไม่ได้" = ลาอนุมัติแล้ว หรือถูกลบออกจากทะเบียนพนักงาน (soft delete)
+    for (const id of await hr.employeesUnavailable({ tenantId, systemId: sys.id }, empIds, date)) {
       onLeaveEmp.add(id);
     }
   }
@@ -184,6 +185,84 @@ export async function getAvailableSlots(
   return [...byTime.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([startMin, sid]) => ({ startMin, hhmm: minutesToHHMM(startMin), staffId: sid }));
+}
+
+// ─────────────── ใครรับคิวที่สาขานี้ (13 ส.ค. 2026 — มติเจ้าของ) ───────────────
+// เดิมหน้านี้เพิ่ม/ลบ "ช่าง" ได้เอง → ซ้ำซ้อนกับทะเบียนพนักงาน HR (กรอกคนเดิม 2 ที่)
+// ใหม่: **เพิ่ม/ลบคนทำที่ระบบพนักงาน HR ที่เดียว** · ที่นี่แค่ติ๊กว่าใครรับคิวสาขานี้
+//   BookingStaff = "ทะเบียนผู้รับคิวของสาขา" (นัดอ้างถึงแถวนี้ → ห้ามลบจริง ปิด active พอ)
+export type QueueRosterRow = {
+  employeeId: string;
+  name: string;
+  position: string | null;
+  receiving: boolean; // ติ๊กรับคิวที่สาขานี้อยู่ไหม
+  staffId: string | null;
+  appointmentCount: number; // มีนัดที่อ้างถึงคนนี้กี่ใบ (ไว้บอกว่าปิดแล้วประวัติยังอยู่)
+};
+
+export async function queueRoster(ctx: BookingCtx): Promise<{ rows: QueueRosterRow[]; hrSystemId: string | null; unlinked: number }> {
+  const db = tenantDb(ctx);
+  const hrSystem = await prisma.appSystem.findFirst({
+    where: { tenantId: ctx.tenantId, type: "HR", active: true },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const employees = hrSystem
+    ? await prisma.hrEmployee.findMany({
+        where: { tenantId: ctx.tenantId, systemId: hrSystem.id, active: true },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true, position: true },
+      })
+    : [];
+  const staff = await db.bookingStaff.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
+  const byEmp = new Map(staff.filter((s) => s.employeeId).map((s) => [s.employeeId!, s]));
+  const counts = await db.appointment.groupBy({ by: ["staffId"], _count: { _all: true } });
+  const countBy = new Map(counts.map((c) => [c.staffId, c._count._all]));
+
+  // ชื่อใน BookingStaff เป็นสำเนา (นัดเก่าต้องอ่านชื่อได้แม้ HR เปลี่ยนชื่อ)
+  // แต่ถ้า HR เปลี่ยนชื่อคนนี้แล้ว ให้ sync สำเนาให้ตรงตอนเปิดหน้านี้ — ไม่งั้นหน้าจอ 2 ที่ไม่ตรงกัน
+  for (const e of employees) {
+    const s = byEmp.get(e.id);
+    if (s && s.name !== e.name) await db.bookingStaff.updateMany({ where: { id: s.id }, data: { name: e.name } });
+  }
+
+  return {
+    hrSystemId: hrSystem?.id ?? null,
+    unlinked: staff.filter((s) => s.active && !s.employeeId).length,
+    rows: employees.map((e) => {
+      const s = byEmp.get(e.id);
+      return {
+        employeeId: e.id,
+        name: e.name,
+        position: e.position,
+        receiving: !!s?.active,
+        staffId: s?.id ?? null,
+        appointmentCount: s ? (countBy.get(s.id) ?? 0) : 0,
+      };
+    }),
+  };
+}
+
+/** ติ๊ก/เอาติ๊กออก "รับคิวที่สาขานี้" — ไม่ใช่การลบพนักงาน (ทะเบียนคนอยู่ที่ HR) */
+export async function setStaffReceiving(
+  ctx: BookingCtx,
+  employeeId: string,
+  receiving: boolean,
+): Promise<{ ok: boolean; reason?: string }> {
+  const hrSystems = await prisma.appSystem.findMany({
+    where: { tenantId: ctx.tenantId, type: "HR", active: true },
+    select: { id: true },
+  });
+  const emp = await prisma.hrEmployee.findFirst({
+    where: { id: employeeId, tenantId: ctx.tenantId, systemId: { in: hrSystems.map((s) => s.id) }, active: true },
+    select: { id: true, name: true },
+  });
+  if (!emp) return { ok: false, reason: "ไม่พบพนักงานคนนี้ในทะเบียน" };
+  const db = tenantDb(ctx);
+  const existing = await db.bookingStaff.findFirst({ where: { employeeId: emp.id } });
+  if (existing) await db.bookingStaff.updateMany({ where: { id: existing.id }, data: { active: receiving, name: emp.name } });
+  else if (receiving) await db.bookingStaff.create({ data: { ...ctx, name: emp.name, employeeId: emp.id } });
+  return { ok: true };
 }
 
 // ── เชื่อมพนักงานกับระบบ HR (A) ──

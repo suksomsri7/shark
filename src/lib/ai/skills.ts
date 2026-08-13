@@ -53,7 +53,7 @@ export const SKILLS: Skill[] = [
   },
   {
     id: "inventory",
-    label: "คลังสินค้า",
+    label: "สินค้า/บริการ",
     summary: "Stock: low-stock alerts, receive goods, create items, adjust or consume stock.",
     tools: ["low_stock", "inventory_receive", "inventory_create_item", "inventory_adjust", "inventory_consume"],
     systems: ["INVENTORY"],

@@ -21,6 +21,7 @@ import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { MoneyText } from "@/components/ui/MoneyText";
+import { posTabs } from "@/lib/modules/pos/tabs";
 import { POS_SALE_STATUS_LABEL } from "@/lib/ui/status-labels";
 import { ModuleTabs } from "@/components/module-tabs";
 
@@ -94,15 +95,7 @@ async function PosContent({ systemId, tenantId }: { systemId: string; tenantId: 
   const total = paidAll._sum.grandTotalSatang ?? 0;
   return (
     <>
-      <ModuleTabs
-        items={[
-          { href: `/app/sys/${systemId}`, label: "ภาพรวม" },
-          { href: `/app/sys/${systemId}/pos/register`, label: "ขาย" },
-          { href: `/app/sys/${systemId}/pos/products`, label: "บริการ/สินค้า" },
-          { href: `/app/sys/${systemId}/pos/sales`, label: "ประวัติบิล" },
-          { href: `/app/sys/${systemId}/pos/close`, label: "ปิดวัน" },
-        ]}
-      />
+      <ModuleTabs items={posTabs(systemId)} />
       <Link
         href={`/app/sys/${systemId}/pos/register`}
         className="btn btn-primary min-h-[52px] text-base"

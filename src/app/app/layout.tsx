@@ -82,7 +82,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           return [
             { href: `${b}/booking`, label: "นัดวันนี้" },
             { href: `${b}/booking/services`, label: "บริการ" },
-            { href: `${b}/booking/staff`, label: "พนักงาน" },
+            { href: `${b}/booking/staff`, label: "ใครรับคิว" },
             { href: `${b}/booking/hours`, label: "เวลาทำการ" },
             { href: `${b}/booking/setup`, label: "ตั้งค่า" },
           ];
@@ -96,7 +96,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         return [
           { href: s, label: "ภาพรวม" },
           { href: `${s}/pos/register`, label: "ขายหน้าร้าน" },
-          { href: `${s}/pos/products`, label: "บริการ/สินค้า" },
+          { href: `${s}/pos/products`, label: "สินค้า/บริการ" },
           { href: `${s}/pos/sales`, label: "ประวัติบิล" },
           { href: `${s}/pos/close`, label: "ปิดวัน" },
         ];

@@ -45,6 +45,55 @@ export async function listEmployees(ctx: Ctx, take = 200) {
   });
 }
 
+/** พนักงานที่ถูกลบแล้ว (soft delete) — ยังอยู่ในฐานเพื่อให้ประวัติลงเวลา/ลา/เงินเดือนอ่านได้ */
+export async function listRemovedEmployees(ctx: Ctx, take = 200) {
+  return tenantDb(ctx).hrEmployee.findMany({
+    where: { active: false },
+    orderBy: { updatedAt: "desc" },
+    take,
+  });
+}
+
+export type UpdateEmployeeInput = { name?: string; phone?: string | null; position?: string | null };
+
+/** แก้ข้อมูลพื้นฐานของพนักงาน (ชื่อ/ตำแหน่ง/เบอร์) — เดิมกรอกตอนสร้างแล้วแก้ไม่ได้เลย */
+export async function updateEmployee(
+  ctx: Ctx,
+  employeeId: string,
+  input: UpdateEmployeeInput,
+): Promise<{ ok: boolean; reason?: string }> {
+  const name = input.name?.trim();
+  if (input.name !== undefined && !name) return { ok: false, reason: "ต้องมีชื่อพนักงาน" };
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId } });
+  if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
+  await tenantDb(ctx).hrEmployee.updateMany({
+    where: { id: employeeId },
+    data: {
+      ...(name ? { name } : {}),
+      ...(input.position !== undefined ? { position: input.position?.trim() || null } : {}),
+      ...(input.phone !== undefined ? { phone: input.phone?.trim() || null } : {}),
+    },
+  });
+  return { ok: true };
+}
+
+/**
+ * ลบ / กู้คืนพนักงาน — 🔴 soft delete เท่านั้น (active=false)
+ * เหตุผล: บันทึกลงเวลา ใบลา สลิปเงินเดือน และนัดในระบบจองอ้างถึงคนนี้อยู่
+ * ลบจริงจะทำให้ประวัติที่ผ่านมาอ่านไม่ได้ (และบิล/บัญชีที่ปิดไปแล้วต้องนิ่ง)
+ * ผลข้างเคียงที่ตั้งใจ: ระบบจองคิวมองคนที่ถูกลบเป็น "ไม่รับคิว" อัตโนมัติ (ถามผ่าน employeesUnavailable)
+ */
+export async function setEmployeeActive(
+  ctx: Ctx,
+  employeeId: string,
+  active: boolean,
+): Promise<{ ok: boolean; reason?: string; name?: string }> {
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId } });
+  if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
+  await tenantDb(ctx).hrEmployee.updateMany({ where: { id: employeeId }, data: { active } });
+  return { ok: true, name: emp.name };
+}
+
 // ── ลงเวลา (IN/OUT) ──
 // เข้างาน = ตัดสินทันทีเทียบกับตารางของวันนั้น แล้ว **เก็บคำตัดสินติดแถวไว้** (snapshot)
 //   ทำไมไม่คิดสดตอนอ่าน: ร้านแก้ตารางเดือนหน้า ไม่ควรย้อนไปเปลี่ยนว่าเมื่อวานใครสาย
@@ -233,6 +282,21 @@ export async function employeesOnLeave(ctx: Ctx, employeeIds: string[], date: Da
   });
   const out = new Set<string>();
   for (const l of leaves) if (!rulesIsAvailable([l], date)) out.add(l.employeeId);
+  return out;
+}
+
+/**
+ * "วันนั้นคนไหนใช้งานไม่ได้" = ลาอนุมัติแล้ว **หรือ** ถูกลบ/ลาออกจากทะเบียน (active=false)
+ * ระบบอื่นควรถามตัวนี้ (จุดเดียว) แทนที่จะเช็ค active เองแล้วลืมเรื่องใบลา หรือกลับกัน
+ */
+export async function employeesUnavailable(ctx: Ctx, employeeIds: string[], date: Date): Promise<Set<string>> {
+  if (employeeIds.length === 0) return new Set();
+  const out = await employeesOnLeave(ctx, employeeIds, date);
+  const gone = await tenantDb(ctx).hrEmployee.findMany({
+    where: { id: { in: employeeIds }, active: false },
+    select: { id: true },
+  });
+  for (const g of gone) out.add(g.id);
   return out;
 }
 

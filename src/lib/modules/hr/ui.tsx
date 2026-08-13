@@ -9,6 +9,7 @@ import { formatThaiDate, formatThaiDateTime } from "@/lib/ui/date";
 import {
   listAttendance,
   listEmployees,
+  listRemovedEmployees,
   getSchedule,
   listLeaves,
   pendingLeaves,
@@ -23,7 +24,11 @@ import {
   createEmployeeAction,
   setWorkScheduleAction,
   requestLeaveAction,
+  updateEmployeeAction,
+  removeEmployeeAction,
+  restoreEmployeeAction,
 } from "./actions";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import BulkLeaveApprovals from "./BulkLeaveApprovals";
 import PinField from "./PinField";
 import KioskClock from "./KioskClock";
@@ -307,26 +312,23 @@ export async function HrEmployeesSection({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  const employees = await listEmployees(ctx);
+  const [employees, removed] = await Promise.all([listEmployees(ctx), listRemovedEmployees(ctx)]);
 
   return (
     <Section title={`พนักงาน (${employees.length})`}>
-      <DataList
-        items={employees.map((e) => ({
-          key: e.id,
-          primary: e.name,
-          secondary: [e.position, e.phone].filter(Boolean).join(" · ") || undefined,
-        }))}
-        empty="ยังไม่มีพนักงาน — เพิ่มพนักงานคนแรกเพื่อเริ่มลงเวลาและจัดการวันลา"
-      />
+      {employees.length === 0 && (
+        <p className={`text-xs ${muted}`}>
+          ยังไม่มีพนักงาน — เพิ่มพนักงานคนแรกเพื่อเริ่มลงเวลา จัดการวันลา และให้รับคิวในระบบจอง
+        </p>
+      )}
       {/* ตารางเวลาทำงานรายคน — เดิมระบบมีแค่ปุ่มลงเวลา ไม่รู้ว่า "ควรเข้ากี่โมง" จึงบอกสาย/ขาดไม่ได้
           ครึ่งวัน = ตั้งเวลาให้สั้นลง (เช่น เสาร์ 09:00-13:00) ไม่ต้องมีชนิดพิเศษให้จำ */}
       {employees.length > 0 && (
         <div className="mt-3 flex flex-col gap-3 border-t pt-3">
           <div>
-            <div className="text-sm font-medium">ตารางเข้างาน</div>
+            <div className="text-sm font-medium">ข้อมูลรายคน</div>
             <p className={`text-xs ${muted}`}>
-              ติ๊กวันที่ทำงาน แล้วใส่เวลาเข้า-ออก · ครึ่งวันให้ใส่เวลาสั้นลง · วันที่ไม่ติ๊ก = ยังไม่กำหนด (ระบบจะไม่ตัดสินว่าสาย)
+              กดชื่อเพื่อแก้ข้อมูล ตั้งตารางเข้างาน ตั้ง PIN หรือลบออกจากทะเบียน · วันที่ไม่ติ๊กในตาราง = ยังไม่กำหนด (ระบบจะไม่ตัดสินว่าสาย)
             </p>
           </div>
           {await Promise.all(
@@ -343,6 +345,24 @@ export async function HrEmployeesSection({ systemId }: { systemId: string }) {
                         : `ทำงาน ${sch.filter((x) => x && !x.dayOff).length} วัน/สัปดาห์`}
                     </span>
                   </summary>
+                  {/* แก้ข้อมูลพื้นฐาน — เดิมกรอกตอนสร้างแล้วแก้ไม่ได้ (ช่างที่ระบบจองสร้างให้ไม่มีตำแหน่งเลย) */}
+                  <form action={updateEmployeeAction} className="mt-2 flex flex-wrap items-end gap-2 border-b pb-2">
+                    <input type="hidden" name="systemId" value={systemId} />
+                    <input type="hidden" name="employeeId" value={e.id} />
+                    <label className={`flex flex-1 flex-col gap-1 text-xs ${muted}`}>
+                      ชื่อ
+                      <input name="name" required defaultValue={e.name} className="input min-w-0" />
+                    </label>
+                    <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                      ตำแหน่งงาน
+                      <input name="position" defaultValue={e.position ?? ""} placeholder="เช่น ช่างตัดผม" className="input" />
+                    </label>
+                    <label className={`flex flex-col gap-1 text-xs ${muted}`}>
+                      เบอร์โทร
+                      <input name="phone" inputMode="tel" defaultValue={e.phone ?? ""} className="input" />
+                    </label>
+                    <SubmitButton variant="ghost">บันทึกข้อมูล</SubmitButton>
+                  </form>
                   <form action={setWorkScheduleAction} className="mt-2 flex flex-col gap-2">
                     <input type="hidden" name="systemId" value={systemId} />
                     <input type="hidden" name="employeeId" value={e.id} />
@@ -391,11 +411,45 @@ export async function HrEmployeesSection({ systemId }: { systemId: string }) {
                   <div className="mt-2 border-t pt-2">
                     <PinField systemId={systemId} employeeId={e.id} hasPin={!!e.pinCode} />
                   </div>
+                  {/* ลบ = soft delete · ประวัติลงเวลา/ลา/เงินเดือน และนัดเก่ายังอยู่ครบ */}
+                  <div className="mt-2 border-t pt-2">
+                    <ConfirmDialog
+                      triggerLabel="ลบพนักงานคนนี้"
+                      triggerClassName="btn-sm min-h-[40px] text-[color:var(--color-danger)]"
+                      title={`ลบ ${e.name} ออกจากทะเบียน?`}
+                      detail="ประวัติลงเวลา ใบลา สลิปเงินเดือน และนัดที่เคยรับไว้ยังอยู่ครบ (ไม่ได้ลบข้อมูลย้อนหลัง) · คนนี้จะหยุดรับคิวในระบบจองทันที และกู้คืนได้ภายหลัง"
+                      confirmLabel="ยืนยันลบ"
+                      danger
+                      action={removeEmployeeAction}
+                      fields={{ systemId, employeeId: e.id }}
+                    />
+                  </div>
                 </details>
               );
             }),
           )}
         </div>
+      )}
+
+      {removed.length > 0 && (
+        <details className="mt-3 border-t pt-3">
+          <summary className={`cursor-pointer text-sm ${muted}`}>พนักงานที่ลบแล้ว ({removed.length})</summary>
+          <div className="mt-2 flex flex-col gap-2">
+            {removed.map((e) => (
+              <div key={e.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm">{e.name}</span>
+                  {e.position && <span className={`block truncate text-xs ${muted}`}>{e.position}</span>}
+                </span>
+                <form action={restoreEmployeeAction}>
+                  <input type="hidden" name="systemId" value={systemId} />
+                  <input type="hidden" name="employeeId" value={e.id} />
+                  <SubmitButton variant="ghost">กู้คืน</SubmitButton>
+                </form>
+              </div>
+            ))}
+          </div>
+        </details>
       )}
 
       <form action={createEmployeeAction} className="mt-1 flex flex-wrap items-end gap-2">

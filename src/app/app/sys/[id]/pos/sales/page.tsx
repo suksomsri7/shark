@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
+import { posTabs } from "@/lib/modules/pos/tabs";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
@@ -34,13 +35,7 @@ export default async function PosSalesPage({ params }: { params: Promise<{ id: s
     <div className="flex max-w-2xl flex-col gap-5">
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="ประวัติการขาย" />
       <ModuleTabs
-        items={[
-          { href: `/app/sys/${id}`, label: "ภาพรวม" },
-          { href: `/app/sys/${id}/pos/register`, label: "ขาย" },
-          { href: `/app/sys/${id}/pos/products`, label: "บริการ/สินค้า" },
-          { href: `/app/sys/${id}/pos/sales`, label: "ประวัติบิล" },
-          { href: `/app/sys/${id}/pos/close`, label: "ปิดวัน" },
-        ]}
+        items={posTabs(id)}
       />
 
       <Section title="ประวัติบิล">

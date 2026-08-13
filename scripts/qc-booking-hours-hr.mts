@@ -67,7 +67,8 @@ try {
 
   // ── source: UI/nav ──
   const staffPage = "src/app/app/u/[unitSlug]/booking/staff/page.tsx";
-  chk("UI-1.1", "หน้าพนักงานอ้าง listLinkableEmployees + employeeId", existsSync(staffPage) && /listLinkableEmployees/.test(readFileSync(staffPage, "utf8")) && /employeeId/.test(readFileSync(staffPage, "utf8")), "MAJOR");
+  // 13 ส.ค. 2026: หน้านี้เลิกเพิ่ม/ลบคนเอง → เหลือติ๊ก "ใครรับคิว" จากทะเบียนพนักงาน HR
+  chk("UI-1.1", "หน้าใครรับคิวอ้าง queueRoster + setStaffReceivingAction (ไม่มีฟอร์มสร้างคนใหม่)", existsSync(staffPage) && /queueRoster/.test(readFileSync(staffPage, "utf8")) && /setStaffReceivingAction/.test(readFileSync(staffPage, "utf8")) && !/addStaffAction/.test(readFileSync(staffPage, "utf8")), "MAJOR");
   chk("UI-2.1", "มีหน้า booking/hours (เวลาทำการ)", existsSync("src/app/app/u/[unitSlug]/booking/hours/page.tsx"), "MAJOR");
   const layout = "src/app/app/u/[unitSlug]/booking/layout.tsx";
   chk("UI-2.2", "แท็บ booking มี 'เวลาทำการ'", existsSync(layout) && /เวลาทำการ/.test(readFileSync(layout, "utf8")), "MAJOR");

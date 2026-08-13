@@ -50,10 +50,10 @@ export function compile(facts: DnaFacts, tenantName: string): BlueprintPlan {
   };
 
   if (facts.sellsGoods) {
-    addFeature("POS", "ขายหน้าร้าน", "ขายสินค้า/คิดเงินหน้าร้าน (sellsGoods=true)");
-    addFeature("INVENTORY", "คลังสินค้า", "ขายสินค้าต้องมีคลังเก็บสต็อก (sellsGoods=true)");
+    addFeature("POS", "ขายหน้าร้าน POS", "ขายสินค้า/คิดเงินหน้าร้าน (sellsGoods=true)");
+    addFeature("INVENTORY", "สินค้า/บริการ", "ขายสินค้าต้องมีคลังเก็บสต็อก (sellsGoods=true)");
   }
-  if (facts.staffCount >= 2) addFeature("HR", "ทีมงาน", `มีพนักงาน ${facts.staffCount} คน (staffCount>=2 — คนเดียว=เจ้าของเอง ไม่ยัดเยียด)`);
+  if (facts.staffCount >= 2) addFeature("HR", "พนักงาน HR", `มีพนักงาน ${facts.staffCount} คน (staffCount>=2 — คนเดียว=เจ้าของเอง ไม่ยัดเยียด)`);
   if (facts.membership) {
     addFeature("MEMBER", "สมาชิก", "มีระบบสมาชิก (membership=true)");
     addFeature("POINT", "สะสมแต้ม", "สมาชิกสะสมแต้ม (membership=true)");
