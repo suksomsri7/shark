@@ -75,6 +75,70 @@ export async function clock(
   return { id: a.id, judgement: detail?.judgement ?? null, lateMin: detail?.lateMin ?? null };
 }
 
+// ─────────────────── kiosk: พนักงานกดลงเวลาเองด้วย PIN (13 ส.ค. 2026) ───────────────────
+// เดิมมีแต่หน้าที่เจ้าของกดลงเวลา "แทน" พนักงาน (ใครกดก็ได้ ไม่มีการยืนยันตัวตน)
+// kiosk = เปิดหน้านี้ค้างไว้บนแท็บเล็ตหน้าร้าน · พนักงานเลือกชื่อ + ใส่ PIN ของตัวเอง
+// PIN = รหัสหน้าประตู 4-6 หลัก (ไม่ใช่รหัสผ่านบัญชี) เจ้าของตั้ง/ดู/เปลี่ยนได้ → เก็บเป็นข้อความ
+//   ป้องกันการเดาด้วย rate limit ที่ชั้น action (ห้ามยิงรัว) ไม่ใช่ด้วยการซ่อนค่า
+
+/** ตั้ง/ล้าง PIN ให้พนักงาน — ว่าง = ปิดการลงเวลาเองของคนนี้ */
+export async function setPin(ctx: Ctx, employeeId: string, pin: string): Promise<{ ok: boolean; reason?: string }> {
+  const clean = pin.trim();
+  if (clean && !/^\d{4,6}$/.test(clean)) return { ok: false, reason: "PIN ต้องเป็นตัวเลข 4-6 หลัก" };
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId } });
+  if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
+  if (clean) {
+    // PIN ซ้ำกับคนอื่นในร้านได้ (เลือกชื่อก่อนใส่ PIN อยู่แล้ว) แต่เตือนไว้ว่าอย่าซ้ำจะดีกว่า
+    const dup = await tenantDb(ctx).hrEmployee.findFirst({
+      where: { pinCode: clean, active: true, NOT: { id: employeeId } },
+      select: { name: true },
+    });
+    if (dup) return { ok: false, reason: `PIN นี้ ${dup.name} ใช้อยู่ — ตั้งเลขอื่นเพื่อไม่ให้สับสน` };
+  }
+  await tenantDb(ctx).hrEmployee.updateMany({ where: { id: employeeId }, data: { pinCode: clean || null } });
+  return { ok: true };
+}
+
+/** ครั้งถัดไปของวันนี้ (เวลาไทย) ควรเป็นเข้าหรือออก — พนักงานไม่ต้องเลือกเอง */
+export async function nextClockKind(ctx: Ctx, employeeId: string): Promise<HrAttendanceKind> {
+  const { dateStr } = bkkParts(new Date());
+  const dayStart = new Date(`${dateStr}T00:00:00+07:00`);
+  const last = await tenantDb(ctx).hrAttendance.findFirst({
+    where: { employeeId, at: { gte: dayStart } },
+    orderBy: { at: "desc" },
+    select: { kind: true },
+  });
+  return last?.kind === "IN" ? "OUT" : "IN";
+}
+
+export type KioskClockResult =
+  | { ok: true; employeeName: string; kind: HrAttendanceKind; at: Date; judgement: AttendanceJudgement | null; lateMin: number | null }
+  | { ok: false; reason: string };
+
+/**
+ * พนักงานลงเวลาเองด้วย PIN — ไม่บอกว่า "PIN ผิด" หรือ "คนนี้ไม่มี PIN" แยกกันเวลาเดาไม่ได้อยู่แล้ว
+ * เพราะเลือกชื่อจากรายชื่อบนจอ (ไม่ใช่ระบบล็อกอิน) แต่ยังบอกให้ชัดว่าเกิดอะไรขึ้นเพื่อไม่ให้คนงง
+ */
+export async function clockWithPin(ctx: Ctx, employeeId: string, pin: string): Promise<KioskClockResult> {
+  const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: employeeId, active: true } });
+  if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
+  if (!emp.pinCode) return { ok: false, reason: `${emp.name} ยังไม่มี PIN — ให้เจ้าของตั้งที่หน้าพนักงาน` };
+  if (emp.pinCode !== pin.trim()) return { ok: false, reason: "PIN ไม่ถูกต้อง" };
+  const kind = await nextClockKind(ctx, employeeId);
+  const res = await clock(ctx, { employeeId, kind });
+  return { ok: true, employeeName: emp.name, kind, at: new Date(), judgement: res.judgement, lateMin: res.lateMin };
+}
+
+/** รายชื่อสำหรับจอ kiosk — บอกด้วยว่าใครยังไม่ได้ตั้ง PIN (เจ้าของจะรู้ว่าต้องไปตั้ง) */
+export async function kioskRoster(ctx: Ctx) {
+  const emps = await tenantDb(ctx).hrEmployee.findMany({
+    where: { active: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, name: true, position: true, pinCode: true },
+  });
+  return emps.map((e) => ({ id: e.id, name: e.name, position: e.position, hasPin: !!e.pinCode }));
+}
+
 // ── ลา ──
 export type RequestLeaveInput = {
   employeeId: string;
@@ -155,6 +219,21 @@ export async function isAvailable(ctx: Ctx, employeeId: string, date: Date): Pro
     select: { fromDate: true, toDate: true, status: true },
   });
   return rulesIsAvailable(leaves, date);
+}
+
+/**
+ * contract C-2 (13 ส.ค. 2026): ใครลา "อนุมัติแล้ว" ในวันนั้น — ถามเป็นชุดคิวรีเดียว
+ * ระบบอื่น (จองคิว) เรียกตัวนี้ ห้าม copy สูตรวันลาไปคิดเอง · สูตรอยู่ rules.isAvailable ที่เดียว
+ */
+export async function employeesOnLeave(ctx: Ctx, employeeIds: string[], date: Date): Promise<Set<string>> {
+  if (employeeIds.length === 0) return new Set();
+  const leaves = await tenantDb(ctx).hrLeave.findMany({
+    where: { employeeId: { in: employeeIds } },
+    select: { employeeId: true, fromDate: true, toDate: true, status: true },
+  });
+  const out = new Set<string>();
+  for (const l of leaves) if (!rulesIsAvailable([l], date)) out.add(l.employeeId);
+  return out;
 }
 
 // ── reads (สำหรับ UI) ──

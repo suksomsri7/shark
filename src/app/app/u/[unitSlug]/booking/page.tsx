@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireUnit } from "@/lib/core/context";
-import { listAppointments } from "@/lib/modules/booking/service";
+import { listAppointments, appointmentsHitByLeave } from "@/lib/modules/booking/service";
 import { daySummary } from "@/lib/modules/pos/service";
 import { setStatusAction, recordDepositAction, refundDepositAction } from "@/lib/actions/booking";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -44,6 +44,8 @@ export default async function BookingPage({
     listAppointments(auth.active.tenantId, unit.id, todayBkk()),
     daySummary(auth.active.tenantId, unit.id),
   ]);
+  // contract C-2: นัดที่ค้างอยู่ในวันที่ช่างลา (อนุมัติแล้ว) — เตือนให้เห็น ไม่ยกเลิกให้เอง
+  const hitByLeave = await appointmentsHitByLeave(auth.active.tenantId, appts);
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
@@ -85,6 +87,11 @@ export default async function BookingPage({
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <StatusChip value={a.status} map={BOOKING_STATUS_LABEL} toneOf={apptTone} />
+                    {hitByLeave.has(a.id) && (
+                      <span className="rounded-full border px-2 py-0.5 text-xs whitespace-nowrap text-[color:var(--color-danger)] [border-color:var(--color-danger)]">
+                        ช่างลาวันนี้
+                      </span>
+                    )}
                     {a.depositSatang > 0 && (
                       <span
                         className={

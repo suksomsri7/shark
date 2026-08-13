@@ -7,7 +7,7 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { formatBaht } from "@/lib/ui/money";
-import { listEmployees, type Ctx } from "./service";
+import { listEmployees, monthlyAttendance, employeesWithSchedule, bkkParts, type Ctx } from "./service";
 import { listSalaryProfiles, listRuns } from "./payroll";
 import {
   approvePayrollRunAction,
@@ -51,11 +51,26 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
 
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  const [employees, profiles, runs] = await Promise.all([
+  const [employees, profiles, runs, scheduled] = await Promise.all([
     listEmployees(ctx),
     listSalaryProfiles(ctx),
     listRuns(ctx),
+    employeesWithSchedule(ctx),
   ]);
+  // การเข้างานเดือนนี้ + เดือนก่อน (งวดที่มักจะกำลังจ่าย) — ใช้ประกอบการตัดสินใจ
+  // 🔴 ระบบไม่หักเงินอัตโนมัติจากการสาย/ขาด: เป็นนโยบายของร้าน + มีผลทางกฎหมาย ต้องให้คนตัดสิน
+  const [byy, bmm] = bkkParts(new Date()).dateStr.split("-").map(Number);
+  const thisMonth = new Date(Date.UTC(byy!, bmm! - 1, 1));
+  const prevMonth = new Date(Date.UTC(byy!, bmm! - 2, 1));
+  const monthName = (d: Date) =>
+    d.toLocaleDateString("th-TH", { month: "long", year: "numeric", timeZone: "UTC" });
+  const attendance = await Promise.all(
+    employees.map(async (e) => ({
+      emp: e,
+      now: await monthlyAttendance(ctx, e.id, thisMonth),
+      prev: await monthlyAttendance(ctx, e.id, prevMonth),
+    })),
+  );
   const profileByEmp = new Map(profiles.map((p) => [p.employeeId, p]));
   const nameByEmp = new Map(employees.map((e) => [e.id, e.name]));
 
@@ -122,6 +137,39 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                 </form>
               );
             })}
+          </div>
+        )}
+      </Section>
+
+      {/* การเข้างาน (สาย/ขาด) ประกอบการจ่าย — ไม่หักเงินให้อัตโนมัติ */}
+      <Section title="การเข้างานประกอบการจ่าย">
+        {employees.length === 0 ? (
+          <p className={`text-xs ${muted}`}>เพิ่มพนักงานก่อน</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className={`text-xs ${muted}`}>
+              ระบบ<b>ไม่หักเงินอัตโนมัติ</b>จากการสาย/ขาด — ตัวเลขนี้ให้ดูประกอบก่อนตั้งเงินได้/หัก
+              (พนักงานที่ยังไม่ตั้งตารางเข้างาน ระบบไม่ตัดสินว่าสาย)
+            </p>
+            {attendance.map(({ emp, now, prev }) => (
+              <div key={emp.id} className="rounded-lg border px-3 py-2">
+                <div className="truncate text-sm font-medium">{emp.name}</div>
+                {scheduled.has(emp.id) ? (
+                  <div className={`mt-0.5 flex flex-col gap-0.5 text-xs ${muted}`}>
+                    <span>
+                      {monthName(thisMonth)}: สาย {now.lateCount} ครั้ง · ขาด {now.absentDays} วัน · ลา{" "}
+                      {now.leaveDays} วัน · ทำงาน {Math.floor(now.workedMinutes / 60)} ชม.
+                    </span>
+                    <span>
+                      {monthName(prevMonth)}: สาย {prev.lateCount} ครั้ง · ขาด {prev.absentDays} วัน · ลา{" "}
+                      {prev.leaveDays} วัน · ทำงาน {Math.floor(prev.workedMinutes / 60)} ชม.
+                    </span>
+                  </div>
+                ) : (
+                  <p className={`mt-0.5 text-xs ${muted}`}>ยังไม่ตั้งตารางเข้างาน — ตั้งที่แท็บ “พนักงาน”</p>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </Section>

@@ -151,6 +151,42 @@ try {
   const offDay = (await hr.getSchedule(ctx, emp4.id))[weekdayOf(today)]!;
   chk("AT-14", "มาลงเวลาในวันหยุดของตัวเอง = DAY_OFF (ไม่นับสาย)", hr.clockInDetail(new Date(), offDay).judgement === "DAY_OFF", "DAY_OFF", hr.clockInDetail(new Date(), offDay).judgement);
 
+  // ── [9] kiosk: พนักงานลงเวลาเองด้วย PIN ──
+  console.log("── kiosk PIN ──");
+  const { existsSync, readFileSync } = await import("node:fs");
+  const kio = await hr.createEmployee(ctx, { name: "ช่างกด PIN เอง" });
+  await hr.setSchedule(ctx, kio.id, Array.from({ length: 7 }, (_, wd) => ({ weekday: wd, ...full })));
+  chk("KI-1", "PIN ต้องเป็นเลข 4-6 หลัก (ตัวอักษร/สั้นไป = ปฏิเสธ)",
+    (await hr.setPin(ctx, kio.id, "12a4")).ok === false && (await hr.setPin(ctx, kio.id, "123")).ok === false,
+    "ปฏิเสธทั้งคู่", JSON.stringify([await hr.setPin(ctx, kio.id, "12a4"), await hr.setPin(ctx, kio.id, "123")]));
+  chk("KI-2", "ตั้ง PIN 4 หลักได้", (await hr.setPin(ctx, kio.id, "2468")).ok === true, "ok", "-");
+  chk("KI-3", "PIN ซ้ำกับคนอื่นในร้าน → เตือน ไม่ให้ตั้ง (กันสับสน)",
+    (await hr.setPin(ctx, emp2.id, "2468")).ok === false, "false", JSON.stringify(await hr.setPin(ctx, emp2.id, "2468")));
+  chk("KI-4", "PIN ผิด → ไม่บันทึกเวลา",
+    (await hr.clockWithPin(ctx, kio.id, "1111")).ok === false, "false", JSON.stringify(await hr.clockWithPin(ctx, kio.id, "1111")));
+  const noPinEmp = await hr.createEmployee(ctx, { name: "ช่างไม่มี PIN" });
+  const noPinRes = await hr.clockWithPin(ctx, noPinEmp.id, "2468");
+  chk("KI-5", "คนที่ยังไม่มี PIN → บอกให้ไปตั้ง ไม่ใช่ 'PIN ผิด' (ไม่โทษพนักงาน)",
+    noPinRes.ok === false && /ยังไม่มี PIN/.test((noPinRes as { reason: string }).reason), "บอกให้ตั้ง PIN", JSON.stringify(noPinRes));
+  const kIn = await hr.clockWithPin(ctx, kio.id, "2468");
+  chk("KI-6", "PIN ถูก → ครั้งแรกของวัน = เข้างาน + ตัดสินตามตาราง",
+    kIn.ok === true && kIn.kind === "IN" && kIn.judgement != null, "IN + มีคำตัดสิน", JSON.stringify(kIn));
+  const kOut = await hr.clockWithPin(ctx, kio.id, "2468");
+  chk("KI-7", "กดอีกครั้ง = ออกงาน (พนักงานไม่ต้องเลือกเข้า/ออกเอง)",
+    kOut.ok === true && kOut.kind === "OUT", "OUT", JSON.stringify(kOut));
+  const kOut2 = await hr.clockWithPin(ctx, kio.id, "2468");
+  chk("KI-8", "กดครั้งที่สาม = เข้างานอีกรอบ (พักเที่ยงกลับมา)",
+    kOut2.ok === true && kOut2.kind === "IN", "IN", JSON.stringify(kOut2));
+  const roster = await hr.kioskRoster(ctx);
+  chk("KI-9", "จอ kiosk บอกได้ว่าใครยังไม่มี PIN",
+    roster.find((r) => r.id === kio.id)?.hasPin === true && roster.find((r) => r.id === noPinEmp.id)?.hasPin === false,
+    "true/false", JSON.stringify(roster.map((r) => r.hasPin)));
+  chk("KI-10", "🔴 action kiosk มีด่านกันเดา PIN (rate limit)",
+    /checkRateLimit\(\s*`hr-kiosk:/.test(readFileSync("src/lib/modules/hr/actions.ts", "utf8")), "มี", "ไม่มี");
+  chk("KI-11", "มีหน้าจอลงเวลา + แท็บในเมนู",
+    existsSync("src/app/app/sys/[id]/hr/kiosk/page.tsx") && /hr\/kiosk/.test(readFileSync("src/app/app/layout.tsx", "utf8")),
+    "มีทั้งคู่", "ขาด", "MAJOR");
+
   // ── [8] ไม่รั่วข้ามร้าน ──
   const t2 = await prisma.tenant.create({ data: { name: "QC ร้านอื่น", slug: `qc-hrb-${Date.now()}` } });
   otherTid = t2.id;
@@ -160,6 +196,9 @@ try {
     cross.lateCount === 0 && cross.workDays === 0 && cross.workedMinutes === 0, "ว่าง", JSON.stringify(cross));
   const crossSet = await hr.employeesWithSchedule({ tenantId: otherTid, systemId: sys2.id });
   chk("AT-16", "รายชื่อคนที่ตั้งตารางแล้ว ไม่รั่วข้ามร้าน", !crossSet.has(emp2.id), "ไม่มี", String(crossSet.size));
+  const crossPin = await hr.clockWithPin({ tenantId: otherTid, systemId: sys2.id }, kio.id, "2468");
+  chk("AT-17", "🔴 ร้านอื่นรู้ PIN ก็ลงเวลาให้พนักงานเราไม่ได้",
+    crossPin.ok === false, "false", JSON.stringify(crossPin));
 } catch (e) {
   chk("CRASH", "harness ทำงานจนจบ", false, "จบปกติ", e instanceof Error ? (e.stack ?? e.message).slice(0, 300) : String(e));
 } finally {

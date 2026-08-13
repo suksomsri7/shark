@@ -14,6 +14,7 @@ import {
   pendingLeaves,
   monthlyAttendance,
   employeesWithSchedule,
+  kioskRoster,
   bkkParts,
   type Ctx,
 } from "./service";
@@ -24,6 +25,8 @@ import {
   requestLeaveAction,
 } from "./actions";
 import BulkLeaveApprovals from "./BulkLeaveApprovals";
+import PinField from "./PinField";
+import KioskClock from "./KioskClock";
 
 const muted = "text-[color:var(--color-muted)]";
 
@@ -78,6 +81,7 @@ export function hrTabs(systemId: string): { href: string; label: string }[] {
   return [
     { href: s, label: "ภาพรวม" },
     { href: `${s}/hr/attendance`, label: "ลงเวลา" },
+    { href: `${s}/hr/kiosk`, label: "จอลงเวลา" },
     { href: `${s}/hr/leave`, label: "ใบลา" },
     { href: `${s}/hr/employees`, label: "พนักงาน" },
     { href: `${s}/hr/payroll`, label: "เงินเดือน" },
@@ -383,6 +387,10 @@ export async function HrEmployeesSection({ systemId }: { systemId: string }) {
                     </label>
                     <SubmitButton variant="ghost">บันทึกตาราง</SubmitButton>
                   </form>
+                  {/* PIN ลงเวลาเอง — ให้พนักงานกดเองที่จอ kiosk แทนเจ้าของกดให้ทุกครั้ง */}
+                  <div className="mt-2 border-t pt-2">
+                    <PinField systemId={systemId} employeeId={e.id} hasPin={!!e.pinCode} />
+                  </div>
                 </details>
               );
             }),
@@ -407,6 +415,30 @@ export async function HrEmployeesSection({ systemId }: { systemId: string }) {
         <SubmitButton variant="ghost">+ เพิ่มพนักงาน</SubmitButton>
       </form>
     </Section>
+  );
+}
+
+// ───────────── จอลงเวลา (kiosk) ─────────────
+// เจ้าของเปิดหน้านี้ค้างบนแท็บเล็ตหน้าร้าน แล้วพนักงานกดลงเวลาเองด้วย PIN
+export async function HrKioskSection({ systemId }: { systemId: string }) {
+  const auth = await requireTenant();
+  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const people = await kioskRoster(ctx);
+  const noPin = people.filter((p) => !p.hasPin);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Section title="ลงเวลาเอง">
+        <KioskClock systemId={systemId} people={people} />
+      </Section>
+      {noPin.length > 0 && (
+        <Section title="ยังไม่มี PIN">
+          <p className={`text-xs ${muted}`}>
+            {noPin.map((p) => p.name).join(" · ")} — ตั้ง PIN ให้ที่แท็บ “พนักงาน” ก่อน จึงจะกดลงเวลาเองได้
+          </p>
+        </Section>
+      )}
+    </div>
   );
 }
 

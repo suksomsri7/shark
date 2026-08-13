@@ -118,6 +118,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         return [
           { href: s, label: "ภาพรวม" },
           { href: `${s}/hr/attendance`, label: "ลงเวลา" },
+          { href: `${s}/hr/kiosk`, label: "จอลงเวลา" },
           { href: `${s}/hr/leave`, label: "ใบลา" },
           { href: `${s}/hr/employees`, label: "พนักงาน" },
           { href: `${s}/hr/payroll`, label: "เงินเดือน" },

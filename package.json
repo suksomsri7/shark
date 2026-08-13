@@ -82,7 +82,8 @@
     "qc:ai-credit": "tsx scripts/qc-ai-credit.mts",
     "qc:ai-skills": "tsx scripts/qc-ai-skills.mts",
     "qc:booking-edit": "tsx scripts/qc-booking-edit-schedule.mts",
-    "qc:hr-attendance": "tsx scripts/qc-hr-attendance.mts"
+    "qc:hr-attendance": "tsx scripts/qc-hr-attendance.mts",
+    "qc:hr-leave-booking": "tsx scripts/qc-hr-leave-booking.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

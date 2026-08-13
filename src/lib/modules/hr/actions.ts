@@ -4,12 +4,15 @@ import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import type { HrAttendanceKind, HrLeaveType } from "@prisma/client";
+import { checkRateLimit } from "@/lib/core/rate-limit";
 import {
   clock,
+  clockWithPin,
   createEmployee,
   decideLeave,
   bulkDecideLeave,
   requestLeave,
+  setPin,
   setSchedule,
   type Ctx,
 } from "./service";
@@ -60,6 +63,60 @@ export async function clockAction(formData: FormData) {
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   await clock(ctx, { employeeId, kind: rawKind as HrAttendanceKind });
   revalidate(systemId);
+}
+
+// ── kiosk: ตั้ง PIN + พนักงานลงเวลาเอง ──
+// ตั้ง PIN = สิทธิ์ระดับจัดการพนักงาน (เท่ากับเพิ่มพนักงาน)
+export type PinState = { status: "idle" } | { status: "ok"; message: string } | { status: "error"; message: string };
+export async function setPinAction(systemId: string, employeeId: string, _prev: PinState, formData: FormData): Promise<PinState> {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.employee.create");
+  const pin = String(formData.get("pin") ?? "");
+  const res = await setPin({ tenantId: auth.active.tenantId, systemId }, employeeId, pin);
+  if (!res.ok) return { status: "error", message: res.reason ?? "บันทึกไม่ได้" };
+  revalidatePath(`/app/sys/${systemId}/hr/employees`);
+  return { status: "ok", message: pin.trim() ? "ตั้ง PIN แล้ว" : "ปิดการลงเวลาเองของคนนี้แล้ว" };
+}
+
+export type KioskState =
+  | { status: "idle" }
+  | { status: "ok"; message: string; detail?: string }
+  | { status: "error"; message: string };
+
+/**
+ * พนักงานกดลงเวลาเองบนจอ kiosk (หน้านี้เปิดค้างด้วยเซสชันของร้าน)
+ * 🔴 กันเดา PIN: 5 ครั้ง/นาที ต่อพนักงาน 1 คน (ยิงรัวไม่ได้) — limiter เป็น in-memory ต่อ instance
+ *    ตามข้อจำกัดเดิมของ core/rate-limit · PIN 4 หลักจึงถูกจำกัดที่ชั้นนี้ ไม่ใช่ที่ความยาว PIN
+ */
+export async function kioskClockAction(systemId: string, _prev: KioskState, formData: FormData): Promise<KioskState> {
+  const auth = await requireTenant();
+  assertHrCan(auth, "hr.attendance.clock");
+  const employeeId = String(formData.get("employeeId") ?? "");
+  const pin = String(formData.get("pin") ?? "");
+  if (!employeeId) return { status: "error", message: "เลือกชื่อของคุณก่อน" };
+  if (!/^\d{4,6}$/.test(pin.trim())) return { status: "error", message: "ใส่ PIN 4-6 หลัก" };
+  const gate = checkRateLimit(`hr-kiosk:${employeeId}`, { limit: 5, windowMs: 60_000 });
+  if (!gate.ok) return { status: "error", message: `ลองใหม่ในอีก ${gate.retryAfterSec} วินาที` };
+
+  const res = await clockWithPin({ tenantId: auth.active.tenantId, systemId }, employeeId, pin);
+  if (!res.ok) return { status: "error", message: res.reason };
+  revalidatePath(`/app/sys/${systemId}/hr/attendance`);
+  const time = new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }).format(res.at);
+  const detail =
+    res.judgement === "LATE"
+      ? `สาย ${res.lateMin} นาที`
+      : res.judgement === "ON_TIME"
+        ? "ตรงเวลา"
+        : res.judgement === "DAY_OFF"
+          ? "วันหยุดของคุณ (บันทึกไว้แล้ว)"
+          : res.judgement === "NO_SCHEDULE"
+            ? "ยังไม่ได้ตั้งตารางของคุณ — ระบบไม่ตัดสินว่าสาย"
+            : undefined;
+  return {
+    status: "ok",
+    message: `${res.employeeName} · ${res.kind === "IN" ? "เข้างาน" : "ออกงาน"} ${time}`,
+    ...(detail ? { detail } : {}),
+  };
 }
 
 // ── ขอลา (สถานะเริ่มต้น = รออนุมัติ) ──

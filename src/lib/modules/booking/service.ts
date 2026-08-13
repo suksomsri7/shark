@@ -3,6 +3,7 @@ import { prisma, tenantDb } from "@/lib/core/db";
 import type { AppointmentStatus, PosPayType } from "@prisma/client";
 import * as member from "@/lib/modules/member/service";
 import * as pos from "@/lib/modules/pos/service";
+import * as hr from "@/lib/modules/hr/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 
 export type BookingCtx = { tenantId: string; unitId: string };
@@ -86,6 +87,34 @@ export async function setUnitHours(
 
 export type SlotOption = { hhmm: string; startMin: number; staffId: string };
 
+/**
+ * contract C-2: ช่างคนไหน "ลาอนุมัติแล้ว" ในวันนั้น (คืนเป็น staffId ของระบบจอง)
+ * 🔴 ถาม HR เท่านั้น (hr.employeesOnLeave) — ห้ามคิดสูตรวันลาเองที่นี่
+ * ช่างที่ไม่ผูกทะเบียนพนักงาน (employeeId = null) = ไม่มีข้อมูลลา → ถือว่าทำงาน (ไม่กล่าวหา ไม่เดา)
+ */
+async function staffOnLeave(
+  tenantId: string,
+  staffList: { id: string; employeeId: string | null }[],
+  dateStr: string,
+): Promise<Set<string>> {
+  const linked = staffList.filter((s): s is { id: string; employeeId: string } => !!s.employeeId);
+  if (linked.length === 0) return new Set();
+  const hrSystems = await prisma.appSystem.findMany({
+    where: { tenantId, type: "HR", active: true },
+    select: { id: true },
+  });
+  if (hrSystems.length === 0) return new Set(); // ร้านไม่เปิดระบบทีมงาน = ไม่มีใบลาในระบบ
+  const date = new Date(`${dateStr}T00:00:00Z`); // @db.Date เทียบกันที่เที่ยงคืน UTC
+  const empIds = linked.map((s) => s.employeeId);
+  const onLeaveEmp = new Set<string>();
+  for (const sys of hrSystems) {
+    for (const id of await hr.employeesOnLeave({ tenantId, systemId: sys.id }, empIds, date)) {
+      onLeaveEmp.add(id);
+    }
+  }
+  return new Set(linked.filter((s) => onLeaveEmp.has(s.employeeId)).map((s) => s.id));
+}
+
 // ช่องว่างของวัน — staffId=null = ใครก็ได้ (คืน staff ที่ว่างคนแรกต่อเวลา)
 export async function getAvailableSlots(
   tenantId: string,
@@ -117,9 +146,15 @@ export async function getAvailableSlots(
   if (openMin == null || closeMin == null || closeMin <= openMin) return [];
   const window: HoursWindow[] = [{ startMin: openMin, endMin: closeMin }];
 
-  const staffList = staffId
+  const allStaff = staffId
     ? await db.bookingStaff.findMany({ where: { id: staffId, active: true } })
     : await db.bookingStaff.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } });
+  if (allStaff.length === 0) return [];
+
+  // contract C-2: ลาอนุมัติแล้ว → ช่องจองของช่างคนนั้นหายไปเลยในวันนั้น
+  // (เลือก "ใครก็ได้" = ตกไปคนที่เหลือ · เลือกคนที่ลา = ไม่มีเวลาว่าง)
+  const onLeave = await staffOnLeave(tenantId, allStaff, dateStr);
+  const staffList = allStaff.filter((s) => !onLeave.has(s.id));
   if (staffList.length === 0) return [];
 
   const appts = await db.appointment.findMany({
@@ -294,6 +329,10 @@ export async function createAppointment(input: {
   if (!service) return { ok: false, reason: "ไม่พบบริการ" };
   const staff = await db.bookingStaff.findFirst({ where: { id: input.staffId, active: true } });
   if (!staff) return { ok: false, reason: "ไม่พบช่าง" };
+  // contract C-2: กันจองตรง ๆ ด้วย (ไม่ใช่แค่ซ่อนช่องใน getAvailableSlots — API สาธารณะยิงเวลามาเองได้)
+  if ((await staffOnLeave(input.tenantId, [staff], input.dateStr)).has(staff.id)) {
+    return { ok: false, reason: `${staff.name} ลาในวันที่เลือก` };
+  }
 
   const startAt = localToUtc(input.dateStr, input.startMin);
   const endAt = localToUtc(input.dateStr, input.startMin + service.durationMin + service.bufferMin);
@@ -412,6 +451,33 @@ export async function listAppointments(tenantId: string, unitId: string, fromDat
     include: { staff: true, service: true },
     take: 200,
   });
+}
+
+/**
+ * contract C-2 ต่อ: นัดที่ค้างอยู่ในช่วงที่ช่างลา (อนุมัติแล้ว) — คืน id ของนัดที่ชน
+ * 🔴 ไม่ยกเลิกนัดให้อัตโนมัติ: นัดที่รับลูกค้าไว้แล้วเป็นสัญญากับลูกค้า ร้านต้องเป็นคนตัดสิน
+ *    (ระบบแค่บอกให้เห็นว่ามีนัดชน แล้วให้ร้านย้ายช่าง/เลื่อน/โทรแจ้งเอง)
+ */
+export async function appointmentsHitByLeave(
+  tenantId: string,
+  appts: { id: string; startAt: Date; staffId: string; staff: { id: string; employeeId: string | null } }[],
+): Promise<Set<string>> {
+  const byDate = new Map<string, typeof appts>();
+  for (const a of appts) {
+    // วันไทยของนัด (startAt เป็น UTC)
+    const dateStr = new Date(a.startAt.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+    byDate.set(dateStr, [...(byDate.get(dateStr) ?? []), a]);
+  }
+  const out = new Set<string>();
+  for (const [dateStr, list] of byDate) {
+    const onLeave = await staffOnLeave(
+      tenantId,
+      list.map((a) => a.staff),
+      dateStr,
+    );
+    for (const a of list) if (onLeave.has(a.staffId)) out.add(a.id);
+  }
+  return out;
 }
 
 export async function setAppointmentStatus(
