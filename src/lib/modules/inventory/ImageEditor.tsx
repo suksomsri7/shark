@@ -190,18 +190,19 @@ export default function ImageEditor({
             </label>
           </div>
 
-          <div className="flex flex-wrap items-end gap-2 border-t pt-2">
-            <label className={`flex flex-1 flex-col gap-1 text-xs ${muted}`}>
+          <div className="flex flex-col gap-2 border-t pt-2">
+            <label className={`flex w-full flex-col gap-1 text-xs ${muted}`}>
               ข้อความบนรูป (ไม่ใส่ก็ได้)
-              <input value={text} onChange={(e) => setText(e.target.value)} maxLength={40} placeholder={itemName} className="input min-w-0" />
+              <input value={text} onChange={(e) => setText(e.target.value)} maxLength={40} placeholder={itemName} className="input w-full" />
             </label>
+            <div className="flex flex-wrap items-end gap-3">
             <label className={`flex flex-col gap-1 text-xs ${muted}`}>
               ขนาด
               <input type="range" min={4} max={16} value={textSize} onChange={(e) => setTextSize(Number(e.target.value))} />
             </label>
             <label className={`flex flex-col gap-1 text-xs ${muted}`}>
-              สี
-              <input type="color" value={textColor} onChange={(e) => setTextColor(e.target.value)} className="h-9 w-12" />
+              สีตัวอักษร
+              <input type="color" value={textColor} onChange={(e) => setTextColor(e.target.value)} className="h-9 w-14 rounded border" />
             </label>
             <label className={`flex flex-col gap-1 text-xs ${muted}`}>
               ตำแหน่ง
@@ -213,6 +214,7 @@ export default function ImageEditor({
                 ))}
               </select>
             </label>
+            </div>
           </div>
 
           <form action={formAction} className="flex items-center gap-3">

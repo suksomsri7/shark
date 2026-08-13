@@ -310,7 +310,9 @@ export async function importServicesToCatalog(ctx: BookingCtx): Promise<{ moved:
   if (!catalogSystemId) return { moved: 0, linked: 0, reason: "ยังไม่ได้เปิดระบบสินค้า/บริการ" };
   const invCtx = { tenantId: ctx.tenantId, systemId: catalogSystemId };
   const db = tenantDb(ctx);
-  const legacy = await db.bookingService.findMany({ where: { itemId: null } });
+  // เฉพาะบริการที่ยังเปิดใช้อยู่ — บริการที่ร้านเอาออกไปแล้วไม่ต้องไปโผล่ในแคตตาล็อกใหม่
+  // (ตรงกับจำนวนที่แถบเตือนบอก = legacy ใน serviceRoster)
+  const legacy = await db.bookingService.findMany({ where: { itemId: null, active: true } });
   const existing = await inv.listServices(invCtx, 500);
   const byName = new Map(existing.map((e) => [e.name.trim(), e]));
   let moved = 0;
