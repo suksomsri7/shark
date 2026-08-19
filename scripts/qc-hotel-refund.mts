@@ -29,8 +29,13 @@ try {
   let roomId = (await hotel.listRooms(tenantId, unit.id))[0]?.id;
   if (!roomId) { const rm = await hotel.createRoom({ tenantId, unitId: unit.id, roomTypeId: rtId, number: "101" } as never); roomId = (rm as { id?: string }).id ?? ""; }
 
+  // 🔴 เดิมฮาร์ดโค้ด "2026-08-01"/"2026-08-10" → พอถึงวันนั้นจริงกลายเป็นอดีต ระบบปฏิเสธการจอง
+  //    ข้อสอบเลยแดงเองโดยที่โค้ดไม่ได้พัง (เน่าตามเวลา — แดงเงียบตั้งแต่ 1 ส.ค. 69)
+  //    ใช้วันสัมพัทธ์เสมอ (เหมือน qc-hotel-money.mts) — ห้ามใส่วันที่ตายตัวในข้อสอบที่มีด่านกันจองย้อนหลัง
+  const dPlus = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+
   // ── happy path: จอง → เช็คอิน → เช็คเอาท์ (เก็บเงิน POS) ─────────────────────
-  const rvA = await hotel.createReservation({ tenantId, unitId: unit.id, roomTypeId: rtId, checkInDate: "2026-08-01", checkOutDate: "2026-08-02", guestName: "สมหญิง" } as never);
+  const rvA = await hotel.createReservation({ tenantId, unitId: unit.id, roomTypeId: rtId, checkInDate: dPlus(1), checkOutDate: dPlus(2), guestName: "สมหญิง" } as never);
   const rvAId = (rvA as { id?: string }).id ?? "";
   const rowA = await prisma.hotelReservation.findUnique({ where: { id: rvAId } });
   await hotel.checkIn(tenantId, unit.id, rvAId, rowA?.roomId ?? roomId);
@@ -78,7 +83,7 @@ try {
   chk("RF-4.3", "refund ซ้ำ → posSale VOIDED ยังมีใบเดียว", voidedCount === 1, "1", String(voidedCount));
 
   // ── guard: refund reservation ที่ยังไม่เช็คเอาท์ (CHECKED_IN) → ok:false ───────
-  const rvB = await hotel.createReservation({ tenantId, unitId: unit.id, roomTypeId: rtId, checkInDate: "2026-08-10", checkOutDate: "2026-08-11", guestName: "สมชาย" } as never);
+  const rvB = await hotel.createReservation({ tenantId, unitId: unit.id, roomTypeId: rtId, checkInDate: dPlus(10), checkOutDate: dPlus(11), guestName: "สมชาย" } as never);
   const rvBId = (rvB as { id?: string }).id ?? "";
   await hotel.checkIn(tenantId, unit.id, rvBId, roomId);
   const rfGuard = await hotel.refundStay(tenantId, unit.id, rvBId);

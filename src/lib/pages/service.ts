@@ -2,6 +2,7 @@
 // ที่มอง "ทุกกิจการ + ทุกระบบ" (แบบเดียวกับ src/lib/platform) — ทุก query ระบุ tenantId เสมอ
 // 🔴 ความปลอดภัย: การซ่อน/โชว์ widget เป็นเรื่อง UI เท่านั้น — สิทธิ์จริงบังคับที่ assertCan
 //    ชั้น action ของแต่ละระบบเหมือนเดิม (PIN login ได้ session ปกติ สิทธิ์ไม่เกิน role เดิม)
+import { cache } from "react";
 import { scryptSync, timingSafeEqual, randomBytes } from "node:crypto";
 import { prisma } from "@/lib/core/db";
 import { randomCode } from "@/lib/core/hash";
@@ -167,11 +168,15 @@ export async function removeWidget(ctx: PageCtx, widgetId: string): Promise<{ ok
 export async function reorderWidgets(ctx: PageCtx, pageId: string, orderedIds: string[]): Promise<{ ok: boolean }> {
   const rows = await prisma.pageWidget.findMany({ where: { pageId, tenantId: ctx.tenantId }, select: { id: true } });
   const valid = new Set(rows.map((r) => r.id));
-  let i = 0;
-  for (const id of orderedIds) {
-    if (!valid.has(id)) continue;
-    await prisma.pageWidget.updateMany({ where: { id }, data: { sortOrder: i++ } });
-  }
+  const writes = orderedIds
+    .filter((id) => valid.has(id))
+    .map((id, i) =>
+      // tenantId ใน where ด้วย — กันแก้ข้ามร้านแม้ id หลุดมาจาก valid set ผิดพลาด (defense-in-depth)
+      prisma.pageWidget.updateMany({ where: { id, tenantId: ctx.tenantId }, data: { sortOrder: i } }),
+    );
+  // ลากสลับทีนึงมี widget ได้ถึง ~70 ตัว → เดิม await ทีละตัว = 70 รอบเดินทางไป Neon SG (ช้ามากบนมือถือ)
+  // $transaction แบบ array = ยิงเป็นชุดเดียว + ได้ atomicity ฟรี (ลำดับไม่มีทางค้างครึ่ง ๆ กลาง ๆ)
+  if (writes.length) await prisma.$transaction(writes);
   return { ok: true };
 }
 
@@ -281,6 +286,13 @@ export async function verifyPageLogin(slug: string, pageMemberId: string, pin: s
 }
 
 // ── ข้อมูลสำหรับหน้าแสดงผล /p/<slug> ──
+// หน้า /p ต้องรู้ 2 อย่างที่เริ่มจาก slug เดียวกัน: "คนนี้เข้าได้ไหม" (accessFor) และ "หน้ามีอะไรบ้าง"
+// (pageForRender) → ห่อการค้นหน้าไว้ใน cache() ของ React เพื่อ **ยิงจริงครั้งเดียวต่อ request**
+// แม้จะเรียกทั้งสองทางพร้อมกัน (เดิมค้นซ้ำ 2 รอบ + เรียงกัน = เสียรอบเดินทางไป Neon SG เปล่า)
+export const pageBySlug = cache(async function pageBySlug(slug: string) {
+  return prisma.page.findFirst({ where: { slug, active: true }, select: { id: true, tenantId: true } });
+});
+
 export type RenderWidget = {
   id: string;
   key: string;
@@ -297,12 +309,15 @@ export async function pageForRender(slug: string) {
     include: { widgets: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] } },
   });
   if (!page) return null;
-  const unit = await prisma.businessUnit.findFirst({
-    where: { id: page.unitId, tenantId: page.tenantId },
-    select: { slug: true, name: true, type: true },
-  });
+  // unit กับ systems ไม่ขึ้นแก่กัน → ยิงพร้อมกัน (เดิมเรียงกัน = เสียรอบเดินทางไป Neon SG ฟรี ๆ 1 รอบ)
+  const [unit, systems] = await Promise.all([
+    prisma.businessUnit.findFirst({
+      where: { id: page.unitId, tenantId: page.tenantId },
+      select: { slug: true, name: true, type: true },
+    }),
+    unitSystemMap(page.tenantId, page.unitId),
+  ]);
   if (!unit) return null;
-  const systems = await unitSystemMap(page.tenantId, page.unitId);
   const widgets: RenderWidget[] = [];
   for (const w of page.widgets) {
     const def = widgetDef(w.widgetKey);
@@ -339,7 +354,7 @@ export async function loginRoster(slug: string) {
 
 /** สิทธิ์เข้าดู /p ของ user ที่ login แล้ว: OWNER/MANAGER ของร้าน = เห็นหมด · PageMember = ตามที่กำหนด */
 export async function accessFor(slug: string, userId: string) {
-  const page = await prisma.page.findFirst({ where: { slug, active: true }, select: { id: true, tenantId: true } });
+  const page = await pageBySlug(slug);
   if (!page) return null;
   const membership = await prisma.membership.findFirst({
     where: { tenantId: page.tenantId, userId, acceptedAt: { not: null } },

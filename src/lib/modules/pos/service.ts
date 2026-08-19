@@ -318,16 +318,27 @@ async function restoreVoidedInventory(tenantId: string, unitId: string, saleId: 
     where: { tenantId, systemId: inventorySystemId, type: "OUT", refType: "PosSale", refId: saleId, sourceModule: "POS" },
     select: { id: true, itemId: true, qtyDelta: true },
   });
+  // N+1: เดิมยิงหา InvItem ทีละแถวในลูป → บิล 20 บรรทัด = 20 รอบเดินทางไป DB ระหว่างที่ลูกค้ารอ "ยกเลิกบิล"
+  // ดึงชุดเดียวด้วย id in [] (แพตเทิร์นเดียวกับที่ใช้ปิด N+1 ตะกร้าร้านค้า/สั่งอาหาร)
+  const itemIds = [...new Set(outMoves.map((m) => m.itemId).filter((id): id is string => !!id))];
+  const costById = new Map(
+    (
+      await prisma.invItem.findMany({
+        where: { id: { in: itemIds }, tenantId },
+        select: { id: true, costSatang: true },
+      })
+    ).map((i) => [i.id, i.costSatang]),
+  );
   for (const mv of outMoves) {
     const returnQty = -mv.qtyDelta; // qtyDelta ติดลบตอนตัด → คืนเท่าที่ตัดจริง
     if (returnQty <= 0) continue;
-    const item = await prisma.invItem.findFirst({ where: { id: mv.itemId, tenantId }, select: { costSatang: true } });
-    if (!item) continue; // สินค้าถูกลบจากคลัง → ไม่มีที่ให้คืน
+    const costSatang = mv.itemId ? costById.get(mv.itemId) : undefined;
+    if (costSatang === undefined) continue; // สินค้าถูกลบจากคลัง → ไม่มีที่ให้คืน
     try {
       await inventory.receive(invCtx, {
         itemId: mv.itemId,
         qty: returnQty,
-        costSatang: item.costSatang, // คืนที่ต้นทุนปัจจุบัน → ต้นทุนถัวเฉลี่ยไม่เพี้ยน
+        costSatang, // คืนที่ต้นทุนปัจจุบัน → ต้นทุนถัวเฉลี่ยไม่เพี้ยน
         idempotencyKey: `pos-refund-${saleId}-${mv.id}`,
         sourceModule: "POS",
         refType: "PosSale",

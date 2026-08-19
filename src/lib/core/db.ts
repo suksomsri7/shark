@@ -118,11 +118,18 @@ export function tenantDb(ctx: Ctx) {
             return query(a);
           }
 
-          // ── READ unique: where เป็น unique → ตรวจผลหลัง query (อ่านอย่างเดียว ไม่มีผลข้างเคียง)
+          // ── READ unique (findUnique/findUniqueOrThrow) ──
+          // ของเดิมใช้ท่า "query ก่อนแล้วค่อยเทียบ row.tenantId" → **มีช่องโหว่จริง**:
+          // ถ้า callsite ใส่ `select` ที่ไม่มี tenantId (เช่น `select: { id: true }`)
+          // ค่าที่อ่านได้เป็น undefined → ตัวเทียบตีความว่า "ผ่าน" → อ่านแถวข้ามร้านได้ฟรี
+          // (พิสูจน์แล้วใน scripts/qc-kernel-guard.mts KG-3.* — fail-before 16/19)
+          //
+          // แก้ด้วยกลไกเดียวกับ WRITE_UNIQUE: ยัดตัวกรองเข้า where ตั้งแต่ต้น (extended where unique
+          // — Prisma รับฟิลด์ non-unique เพิ่มใน where ของ findUnique ได้ ยืนยันกับ Neon แล้ว)
+          // → ตัวกรองลงไปอยู่ใน SQL จริง ไม่ขึ้นกับ `select` อีกต่อไป และ OrThrow โยนเองตามธรรมชาติ
           if (READ_UNIQUE.has(operation)) {
-            const result = (await query(a)) as (Record<string, unknown> & Partial<Ctx>) | null;
-            if (result && !inScope(result, filter)) return cross(model, operation);
-            return result;
+            a.where = { ...(a.where as object), ...filter };
+            return query(a);
           }
 
           // ── WRITE unique (update/delete): ห้ามใช้ท่า "เขียนก่อนแล้วค่อยเช็ค"
@@ -150,15 +157,7 @@ export function tenantDb(ctx: Ctx) {
   });
 }
 
-const inScope = (row: Record<string, unknown>, filter: Record<string, unknown>) =>
-  Object.entries(filter).every(([k, v]) => row[k] === undefined || row[k] === v);
-
-// เจอ record ข้ามขอบเขต → ปฏิบัติเหมือนไม่พบ (404) ไม่ leak ว่ามีอยู่
-function cross(model: string, operation: string) {
-  if (operation.endsWith("OrThrow") || operation === "update" || operation === "delete") {
-    throw new Error(`[tenantDb] ${model}.${operation}: record อยู่นอกขอบเขต tenant/unit/system`);
-  }
-  return null;
-}
+// (ลบ inScope/cross ออกแล้ว — เป็นท่า "ตรวจหลัง query" ที่พึ่งคอลัมน์ในผลลัพธ์
+//  ซึ่ง `select` ตัดทิ้งได้ = ช่องโหว่ KG-3. ตอนนี้ทุก operation กรองใน SQL หมดแล้ว)
 
 export type TenantDb = ReturnType<typeof tenantDb>;

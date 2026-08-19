@@ -5,6 +5,7 @@ import type { BusinessUnit, Membership, Tenant, User } from "@prisma/client";
 import { prisma } from "./db";
 import { getSessionUser } from "./session";
 import { canAccessUnit } from "./rbac";
+import { secureCookies } from "@/lib/env";
 
 const ACTIVE_TENANT_COOKIE = "shark_tenant";
 
@@ -58,6 +59,9 @@ export async function requireMembership(tenantId: string): Promise<Membership & 
 export async function setActiveTenant(tenantId: string): Promise<void> {
   (await cookies()).set(ACTIVE_TENANT_COOKIE, tenantId, {
     httpOnly: true,
+    // cookie ตัวเดียวในระบบที่เคยลืม secure → เบราว์เซอร์ยอมส่ง/ให้ทับผ่าน http ธรรมดาได้
+    // (ตัวอื่นทั้งหมด — session, backoffice, oauth state, webchat — ตั้ง secure หมดแล้ว)
+    secure: secureCookies,
     sameSite: "lax",
     path: "/",
   });

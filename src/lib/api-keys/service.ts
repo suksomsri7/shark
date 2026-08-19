@@ -28,13 +28,22 @@ export async function createApiKey(ctx: ApiKeyCtx, name: string): Promise<Create
 
 export type VerifiedApiKey = { tenantId: string; keyId: string };
 
-// ตรวจ rawKey → คืน tenant/keyId ถ้าใช้ได้ · เพิกถอนแล้ว/ไม่มี → null · อัป lastUsedAt เมื่อผ่าน
+// lastUsedAt เป็นข้อมูล "เห็นภาพว่าคีย์ยังถูกใช้อยู่ไหม" ไม่ใช่ audit log ที่ต้องละเอียดถึงวินาที
+// เดิมเขียนทุก request → เพดาน 60 ครั้ง/นาที/คีย์ = เขียน DB 60 ครั้ง/นาที เปล่า ๆ
+// และผู้เรียกต้องรอ UPDATE จบก่อนได้คำตอบ (บวกรอบเดินทางไป Neon SG ให้ทุก API call)
+const LAST_USED_GRANULARITY_MS = 60_000;
+
+// ตรวจ rawKey → คืน tenant/keyId ถ้าใช้ได้ · เพิกถอนแล้ว/ไม่มี → null · แตะ lastUsedAt แบบหยาบ ๆ
 export async function verifyApiKey(rawKey: unknown): Promise<VerifiedApiKey | null> {
   if (typeof rawKey !== "string" || !rawKey.startsWith("shark_")) return null;
   // hash lookup ก่อนรู้ tenant → prisma ตรงได้เฉพาะจุดนี้ (keyHash @unique · ยังไม่มีบริบท tenant)
   const row = await prisma.apiKey.findUnique({ where: { keyHash: sha256hex(rawKey) } });
   if (!row || row.revokedAt) return null;
-  await prisma.apiKey.update({ where: { id: row.id }, data: { lastUsedAt: new Date() } });
+  const now = Date.now();
+  if (!row.lastUsedAt || now - row.lastUsedAt.getTime() > LAST_USED_GRANULARITY_MS) {
+    // ไม่ await — คำตอบของ API ไม่ควรรอ bookkeeping · พังก็ไม่กระทบการยืนยันคีย์
+    void prisma.apiKey.update({ where: { id: row.id }, data: { lastUsedAt: new Date(now) } }).catch(() => {});
+  }
   return { tenantId: row.tenantId, keyId: row.id };
 }
 

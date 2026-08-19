@@ -1,5 +1,54 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🛡️ 19 ส.ค. — AUDIT รอบใหญ่: ช่องโหว่ + บั๊ก + ความเร็ว + เทสทั้งระบบ (คำสั่งเจ้าของ "ตรวจ code ทั้งหมด")
+รันบน **Neon branch แยก (`wo-audit819`)** ตลอด — ไม่แตะ DB prod เลย · gates: typecheck 0 · fitness **17/17** · **ข้อสอบ 150 ชุด เขียวหมด**
+
+### 🔴 ช่องโหว่ที่ปิด
+1. **อ่านข้อมูลข้ามร้านได้ผ่าน kernel guard** (`src/lib/core/db.ts` · CRITICAL) — `tenantDb().findUnique()` ใช้ท่า
+   "query ก่อนแล้วค่อยเทียบ `row.tenantId`" · พอ callsite ใส่ `select` ที่ไม่มี `tenantId` (เช่น `select:{id:true}`)
+   ค่าที่อ่านได้เป็น `undefined` → ตัวเทียบตีความว่า **"ผ่าน"** = อ่านแถวของร้านอื่นได้ฟรีทุกจุดที่ใช้ select
+   · แก้: ยัดตัวกรองเข้า `where` ตั้งแต่ต้น (extended where unique — ยืนยันกับ Neon แล้วว่า Prisma 7 รับ) →
+   ตัวกรองอยู่ใน SQL จริง ไม่ขึ้นกับ `select` อีก · ลบ `inScope`/`cross` (ท่าตรวจหลัง query) ทิ้ง
+   · **ข้อสอบใหม่ `qc-kernel-guard` 19/19** (`pnpm qc:kernel`) — ยามชั้น 2 ของทั้งแพลตฟอร์มไม่เคยมีข้อสอบยิงตรง ๆ มาก่อน
+   · **fail-before พิสูจน์แล้ว 16/19** (KG-3.1/3.2/3.3 แดง = อ่าน Page ร้านอื่นได้จริง) → pass-after 19/19
+2. **cookie `shark_tenant` ไม่มี `secure`** (`core/context.ts`) — ตัวเดียวในระบบที่หลุด (session/backoffice/oauth-state/webchat ตั้งครบ)
+   → เบราว์เซอร์ยอมส่ง/ให้ทับผ่าน http ธรรมดา · แก้ + **ด่าน F12** ในfitness (ทุกจุดที่ตั้ง cookie ต้องระบุ secure)
+
+### 🐛 บั๊กที่แก้
+3. **ชื่อ widget ที่ร้านตั้งเองถูกล้างทิ้งเงียบ ๆ** (`pages/actions.ts`) — ฟอร์ม "เอารูปออก" ส่งมาแค่ `imageUrl`
+   แต่ `updateWidgetAction` อ่าน `title` แบบดิบ (`String(get("title") ?? "")`) → `""` → service เซ็ตเป็น `null`
+   · กติกาใหม่: **ช่องที่ไม่ได้ส่งมา = "ไม่แตะ" ไม่ใช่ "ล้างค่า"** (ทุกช่องผ่าน `formData.has()`) · ด่าน **RG-5** ใน qc-pages (fail-before 30/31)
+
+### 📏 ไม้บรรทัดโกหก — ข้อสอบแดงเงียบ + ข้อสอบที่ไม่มีใครรัน
+4. 🔴 **repo มี oracle 149 ชุด แต่ `package.json` ผูกไว้แค่ 63** → อีก **86 ชุดไม่เคยถูกรันเป็น gate เลย**
+   (รวม `qc-hardening` `qc-hardening2` `qc-pdpa` `qc-public-api` `qc-mobile-auth` `qc-payment` `qc-domain`)
+   → เพิ่ม **`pnpm qc:all`** (รันทุกชุด + สรุปตารางเดียว + exit 1 ถ้ามีแดง · กรองได้ `pnpm qc:all pos hr`)
+5. **2 ชุดแดงค้างอยู่จริงโดยไม่มีใครรู้ — ทั้งคู่ "ข้อสอบเน่าตามเวลา" ไม่ใช่โค้ดพัง**:
+   · `qc-hotel-refund` — ฮาร์ดโค้ดวันเข้าพัก `"2026-08-01"` → พอถึงวันจริงกลายเป็นอดีต `createReservation` ปฏิเสธตามด่านที่ถูกต้องของมันเอง → แดง 6 ข้อตั้งแต่ 1 ส.ค. (แก้แล้ว **15/15**)
+   · `qc-ai-phase-b1` — เหตุเดียวกันที่ payload จองคิว/จองห้อง (แก้แล้ว **9/9**)
+   → **ด่าน F11** ในfitness: ข้อสอบที่ยิง flow ซึ่งกันจองย้อนหลัง ห้ามมีวันที่ตายตัวที่ "เป็นอดีตไปแล้ว"
+     (จับเฉพาะตอนที่มันเน่าจริง → false positive = 0 · กรองคอมเมนต์ก่อน grep ตามบทเรียนซ้ำ 3 รอบของ repo นี้)
+
+### ⚡ ความเร็ว (วัดจริงจาก VPS → Neon SG ไม่ใช่เดา)
+- **หน้า `/p/<slug>`** (หน้า Page ที่พนักงานเปิดทุกวัน/ใน LIFF): เดิม accessFor เสร็จก่อนค่อยเริ่ม pageForRender + ค้น Page จาก slug ซ้ำ 2 รอบ + ข้างใน unit/systems เรียงกัน
+  → ยิงขนาน + `cache()` dedupe การค้น Page · **วัดได้ median 56ms → 27ms** (min 52→26)
+- **ยกเลิกบิล POS ที่มีสินค้า**: N+1 — เดิมยิงหา `InvItem` ทีละแถวในลูปคืนสต็อก (บิล 20 บรรทัด = 20 รอบเดินทาง) → ดึงชุดเดียว `id in []`
+- **ลากสลับ widget**: เดิม `await updateMany` ทีละตัว (สูงสุด ~70 รอบ) → `$transaction` ชุดเดียว + ได้ atomicity ฟรี · **ตั้งรูปหลักสินค้า** เหมือนกัน (≤8 รอบ → 1)
+- **Public API `/api/v1/*`**: เดิมเขียน `lastUsedAt` **ทุก request** แล้วรอ UPDATE จบก่อนตอบ (เพดาน 60 ครั้ง/นาที/คีย์ = เขียน DB 60 ครั้ง/นาทีเปล่า ๆ) → เขียนหยาบ 1 นาที + ไม่ await
+
+### 🔭 ตรวจแล้ว "ไม่พบปัญหา"
+`dangerouslySetInnerHTML` 0 จุด · ไม่มี `$queryRawUnsafe`/ต่อสตริง SQL (raw ทุกจุดเป็น parameterized `FOR UPDATE`/advisory lock) ·
+`Math.random` ไม่ถูกใช้กับรหัสที่ยืนยันสิทธิ์แล้ว · LINE webhook verify HMAC + timingSafeEqual ครบ · Beam webhook ไม่มี secret = ปฏิเสธ ·
+Google/LINE/FB OAuth มี state CSRF + verify JWKS/appsecret_proof · public token ทุกโมดูล (hotel/rental/school/ticket/clinic/forms) เช็ค `unitId` ซ้ำหลัง lookup ·
+API route 65 เส้นมีด่านครบทุกเส้น · ไม่มี secret หลุด client component/log · `/logout?to=` รับเฉพาะ `/p/<slug>`
+
+### ⏭️ หนี้ที่ยังเหลือ (ตั้งใจ ไม่ได้แตะรอบนี้)
+- rate limit ยัง in-memory ต่อ instance (ยิงเรียง ๆ ข้าม instance ยังหลุด) — ข้อจำกัดเดิมของ `core/rate-limit`
+- PIN login ไม่ revoke session เก่าของเครื่องเดียวกัน (แถว Session ค้างจนหมดอายุ — ไม่มี token ฝั่ง client แล้ว)
+- **`pnpm qc:all` ยังไม่ได้ผูกเข้า CI** — ตอนนี้ต้องสั่งเอง (CI ยังรันชุดเดิม)
+
+---
+
 ## 🧩 13 ส.ค. — ระบบ "การจัดการ" (Page + Widget) P1 SHIPPED (verify prod ก่อนบอกเสร็จ · แผน 3 เฟส)
 **มติเจ้าของที่เคาะแล้ว (ตอบคำถาม 5 ข้อ)**: (1) 1 Page ผูก 1 กิจการ เห็นเฉพาะ widget ของกิจการนั้น (2) พนักงาน login ด้วย **PIN แยก** ไม่ใช่ OTP อีเมล (3) วงกลม = ปุ่มกลม 1 ช่อง · **ทุกทรงกว้าง 1 ช่อง** (ทรง = สไตล์การวาด: ผืนผ้า/จัตุรัส/วงกลม) (4) **โดเมน = ทำสุดท้าย** (5) widget = ทุกเมนู
 ### ✅ P1 ที่ส่งแล้ว

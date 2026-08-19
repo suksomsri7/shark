@@ -87,7 +87,9 @@
     "qc:hr-roster": "tsx scripts/qc-hr-roster.mts",
     "qc:hr-payadjust": "tsx scripts/qc-hr-payadjust.mts",
     "qc:catalog": "tsx scripts/qc-catalog-services.mts",
-    "qc:pages": "tsx scripts/qc-pages.mts"
+    "qc:pages": "tsx scripts/qc-pages.mts",
+    "qc:kernel": "tsx scripts/qc-kernel-guard.mts",
+    "qc:all": "tsx scripts/qc-all.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

@@ -86,8 +86,10 @@ export async function updateWidgetAction(formData: FormData) {
   const widgetId = String(formData.get("widgetId") ?? "");
   if (!widgetId) return;
   const shapeRaw = String(formData.get("shape") ?? "");
+  // 🔴 patch บางส่วนเท่านั้น — ช่องที่ไม่ได้ส่งมา = "ไม่แตะ" ไม่ใช่ "ล้างค่า"
+  //    (บั๊กเดิม: ฟอร์ม "เอารูปออก" ส่งแค่ imageUrl → title ที่ร้านตั้งไว้เองถูกล้างทิ้งเงียบ ๆ)
   await updateWidget({ tenantId: auth.active.tenantId }, widgetId, {
-    title: String(formData.get("title") ?? ""),
+    ...(formData.has("title") ? { title: String(formData.get("title") ?? "") } : {}),
     ...(["RECT", "SQUARE", "CIRCLE"].includes(shapeRaw) ? { shape: shapeRaw as "RECT" } : {}),
     ...(formData.has("imageUrl") ? { imageUrl: String(formData.get("imageUrl") ?? "") } : {}),
   });

@@ -1054,8 +1054,10 @@ export async function setPrimaryImage(ctx: Ctx, itemId: string, imageId: string)
   const db = tenantDb(ctx);
   const imgs = await db.invItemImage.findMany({ where: { itemId }, orderBy: { sortOrder: "asc" } });
   let order = 1;
-  for (const img of imgs) {
-    await db.invItemImage.updateMany({ where: { id: img.id }, data: { sortOrder: img.id === imageId ? 0 : order++ } });
-  }
+  // ยิงเป็นชุดเดียว (เดิม await ทีละรูป = สูงสุด 8 รอบเดินทางไป DB ต่อการกด "ตั้งเป็นรูปหลัก" 1 ครั้ง)
+  const writes = imgs.map((img) =>
+    db.invItemImage.updateMany({ where: { id: img.id }, data: { sortOrder: img.id === imageId ? 0 : order++ } }),
+  );
+  if (writes.length) await db.$transaction(writes);
   return { ok: true };
 }

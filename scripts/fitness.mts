@@ -444,6 +444,64 @@ console.log("\n── F10: ทะเบียนสกิล AI (tool ทุก�
   chk("F10.1", "ทุก tool อยู่ในสกิลหรือแกนกลาง พอดี 1 ที่", ok, detail);
 }
 
+// ─────────────────── F11: ข้อสอบต้องไม่เน่าตามเวลา ───────────────────
+// เหตุการณ์จริง 19 ส.ค. 2026: `qc-hotel-refund` ฮาร์ดโค้ดวันเข้าพัก "2026-08-01"
+// พอถึงวันจริง วันนั้นกลายเป็น "อดีต" → `createReservation` ปฏิเสธตามด่านที่ถูกต้องของมันเอง
+// → ข้อสอบแดง 6 ข้อ **ทั้งที่โค้ดไม่ได้พัง** และแดงเงียบมา ~3 สัปดาห์ (ไม้บรรทัดโกหก)
+// ด่านนี้จับ "วันที่ตายตัวที่กลายเป็นอดีตไปแล้ว" เฉพาะในข้อสอบที่ยิง flow ซึ่งมีด่านกันจองย้อนหลัง
+// → false positive = 0 (วันอนาคตผ่านตลอด และจะแดงพอดีตอนที่มันเน่าจริง ๆ)
+console.log("\n── F11: ข้อสอบไม่เน่าตามเวลา (ห้ามฮาร์ดโค้ดวันที่ที่เป็นอดีตแล้ว) ──");
+{
+  // flow ที่ "ปฏิเสธวันในอดีต" เท่านั้น — เรียก service ตรง หรือผ่าน payload ของ AI proposal
+  // 🔴 ห้ามจับกว้างกว่านี้ (เช่น `checkInDate:` เปล่า ๆ): ข้อสอบหลายชุด seed แถวด้วย prisma ตรง ๆ
+  //    ซึ่งไม่ผ่านด่านวันที่ → วันที่ตายตัวที่นั่นเป็น fixture ที่ถูกต้อง ไม่ใช่ของเน่า (เคส qc-calendar)
+  const DATE_GUARDED_CALLS =
+    /\bcreateReservation\s*\(|\bcreateAppointment\s*\(|\bdateStr\s*:|hotel_create_reservation/;
+  const DATE_LIT = /"(\d{4}-\d{2}-\d{2})"/g;
+  const today = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10); // business date ไทย
+  const rotten: string[] = [];
+  // 🔴 บทเรียนซ้ำ 3 รอบของ repo นี้: grep แยกโค้ดกับคอมเมนต์ไม่ออก
+  //    (คอมเมนต์อธิบายบั๊กเก่ามักอ้างวันที่เดิม → จะโดนจับเองทั้งที่โค้ดแก้แล้ว)
+  const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  for (const p of walk(join(ROOT, "scripts"), (f) => /qc-.*\.mts$/.test(f))) {
+    const src = stripComments(readFileSync(p, "utf8"));
+    if (!DATE_GUARDED_CALLS.test(src)) continue;
+    for (const m of src.matchAll(DATE_LIT)) {
+      if (m[1]! < today) rotten.push(`${rel(p)}: "${m[1]}"`);
+    }
+  }
+  chk(
+    "F11.1",
+    "ข้อสอบที่ยิง flow กันจองย้อนหลัง ไม่มีวันที่ตายตัวที่เป็นอดีตแล้ว",
+    rotten.length === 0,
+    rotten.length ? `${rotten.length} จุดเน่า: ${rotten.slice(0, 5).join(" · ")} — ใช้วันสัมพัทธ์ (dPlus(n)) แทน` : "ไม่มี",
+  );
+}
+
+// ─────────────────── F12: cookie ทุกตัวต้องมี secure ───────────────────
+// เจอจริง 19 ส.ค. 2026: `shark_tenant` (setActiveTenant) เป็น cookie ตัวเดียวในระบบที่ลืม `secure`
+// ขณะที่ session / backoffice / oauth-state / webchat ตั้งครบหมด → หลุดเพราะ "ไม่มีใครเฝ้า" ไม่ใช่เพราะตั้งใจ
+// ด่านนี้ทำให้ลืมอีกไม่ได้: ทุกจุดที่ตั้ง cookie ต้องระบุ secure ในบล็อก option เดียวกัน
+console.log("\n── F12: cookie ทุกตัวตั้ง secure (ห้ามหลุดผ่าน http) ──");
+{
+  const SET_RE = /(?:cookies\(\)\s*\)?|jar|store|res\.cookies|\bcookieStore)\s*\.set\(/g;
+  const bad: string[] = [];
+  for (const p of walk(join(ROOT, "src"), (f) => /\.tsx?$/.test(f))) {
+    const src = readFileSync(p, "utf8");
+    if (!/\.set\(/.test(src)) continue;
+    for (const m of src.matchAll(SET_RE)) {
+      // ดูบล็อก option ที่ตามมา (ถึงวงเล็บปิดของ .set — พอสำหรับ literal ที่เราเขียนกันจริง)
+      const tail = src.slice(m.index!, m.index! + 400);
+      if (!/httpOnly\s*:/.test(tail)) continue; // ไม่ใช่ cookie ที่มี option (เช่น Map.set/searchParams.set)
+      if (!/secure\s*:/.test(tail)) {
+        bad.push(`${rel(p)}:${src.slice(0, m.index!).split("\n").length}`);
+      }
+    }
+  }
+  chk("F12.1", "ทุกจุดที่ตั้ง cookie ระบุ secure", bad.length === 0,
+    bad.length ? `ขาด secure ที่: ${bad.join(" · ")}` : "ครบทุกจุด");
+}
+
 // ─────────────────── สรุป ───────────────────
 const failed = checks.filter((c) => !c.ok);
 const bySev = (s: Sev) => failed.filter((c) => c.sev === s).length;

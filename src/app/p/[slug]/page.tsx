@@ -18,10 +18,13 @@ export default async function PublicPage({
   const muted = "text-[color:var(--color-muted)]";
 
   const user = await getSessionUser();
-  const access = user ? await accessFor(slug, user.id) : null;
+  // "เข้าได้ไหม" กับ "หน้ามีอะไร" ไม่ขึ้นแก่กัน → ยิงพร้อมกัน (เดิมรอ accessFor จบก่อนค่อยเริ่มโหลดหน้า)
+  // การค้น Page จาก slug ถูก dedupe ด้วย cache() ใน service → ไม่ได้ยิง DB เพิ่ม
+  const [access, data] = user
+    ? await Promise.all([accessFor(slug, user.id), pageForRender(slug)])
+    : [null, null];
 
   if (user && access) {
-    const data = await pageForRender(slug);
     if (!data) notFound();
     const widgets = data.widgets.filter((w) => !access.allowedKeys || access.allowedKeys.has(w.key));
     return (

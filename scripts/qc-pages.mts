@@ -69,6 +69,17 @@ try {
     /checkRateLimit\(\s*`page-login:/.test(readFileSync("src/app/api/page-login/route.ts", "utf8")) &&
       /checkRateLimit\(\s*`page-login-ip:/.test(readFileSync("src/app/api/page-login/route.ts", "utf8")),
     "มี 2 ชั้น", "ขาด");
+  // 🔴 RG-5 — บั๊กจริง 19 ส.ค.: ฟอร์ม "เอารูปออก" ส่งมาแค่ imageUrl แต่ action อ่าน title แบบดิบ
+  //    (`String(formData.get("title") ?? "")`) → ชื่อ widget ที่ร้านตั้งเองถูกล้างเป็น null เงียบ ๆ
+  //    กติกา: ทุกช่องของ updateWidgetAction ต้องผ่าน formData.has() = "ไม่ส่งมา แปลว่าไม่แตะ"
+  {
+    const actSrc = readFileSync("src/lib/pages/actions.ts", "utf8");
+    const fnBody = actSrc.slice(actSrc.indexOf("export async function updateWidgetAction"));
+    const call = fnBody.slice(0, fnBody.indexOf("revalidate("));
+    chk("RG-5", "🔴 updateWidgetAction เป็น patch บางส่วน (ช่องที่ไม่ส่งมา = ไม่แตะ ไม่ใช่ล้างค่า)",
+      /formData\.has\("title"\)/.test(call) && /formData\.has\("imageUrl"\)/.test(call),
+      "title+imageUrl ผ่าน formData.has()", "มีช่องที่เขียนทับแบบดิบ");
+  }
 
   // ── setup: ร้านตัดผม (BOOKING) + ระบบ POS/HR ผูกกิจการ ──
   const t = await prisma.tenant.create({ data: { name: "QC Page", slug: `qc-pg-${Date.now()}` } });

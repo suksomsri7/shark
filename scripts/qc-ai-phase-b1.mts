@@ -47,8 +47,12 @@ try {
   const bkUnit = await prisma.businessUnit.create({ data: { tenantId: tid, type: "BOOKING", name: "ร้านตัดผม", slug: `pb1b-${Date.now()}` } });
   const svc = await prisma.bookingService.create({ data: { tenantId: tid, unitId: bkUnit.id, name: "ตัดผมชาย", durationMin: 30 } });
   const stf = await prisma.bookingStaff.create({ data: { tenantId: tid, unitId: bkUnit.id, name: "ช่างเอ" } });
-  await prisma.bookingStaffHours.create({ data: { tenantId: tid, unitId: bkUnit.id, staffId: stf.id, weekday: new Date("2026-08-03T00:00:00+07:00").getDay(), startMin: 540, endMin: 1080 } });
-  const bp = await props.createProposal(ctx, { conversationId: conv.id, kind: "booking_create_appointment", summary: "จองตัดผม", payload: { serviceName: "ตัดผม", dateStr: "2026-08-03", startMin: 600, customerName: "คุณจอง", customerPhone: "0801234567" } });
+  // 🔴 ห้ามฮาร์ดโค้ดวันที่: จองคิว/จองห้องมีด่านกันจองย้อนหลัง → พอถึงวันจริง ข้อสอบแดงเองทั้งที่โค้ดไม่พัง
+  //    (เกิดขึ้นแล้ว: B1-2.1/B1-3.1 แดงเงียบตั้งแต่ ส.ค. 69 — ใช้วันสัมพัทธ์เสมอ · ด่าน F11 ใน fitness เฝ้าอยู่)
+  const dPlus = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  const bookDate = dPlus(3);
+  await prisma.bookingStaffHours.create({ data: { tenantId: tid, unitId: bkUnit.id, staffId: stf.id, weekday: new Date(`${bookDate}T00:00:00+07:00`).getDay(), startMin: 540, endMin: 1080 } });
+  const bp = await props.createProposal(ctx, { conversationId: conv.id, kind: "booking_create_appointment", summary: "จองตัดผม", payload: { serviceName: "ตัดผม", dateStr: bookDate, startMin: 600, customerName: "คุณจอง", customerPhone: "0801234567" } });
   const bx = await props.executeProposal(OWNER, ctx, bp.id);
   chk("B1-2.1", "booking_create_appointment → นัดเกิดจริง (resolve service จากชื่อบางส่วน + ช่างคนแรก)", bx?.ok === true && (await prisma.appointment.count({ where: { tenantId: tid, customerName: "คุณจอง" } })) === 1);
 
@@ -57,12 +61,12 @@ try {
   const rtDeluxe = await prisma.hotelRoomType.create({ data: { tenantId: tid, unitId: htUnit.id, name: "Deluxe" } });
   await prisma.hotelRoom.create({ data: { tenantId: tid, unitId: htUnit.id, roomTypeId: rtDeluxe.id, number: "101" } });
   await prisma.hotelRoomType.create({ data: { tenantId: tid, unitId: htUnit.id, name: "Suite ไม่มีห้อง" } }); // ประเภทที่ยังไม่ตั้งห้องจริง
-  const hp = await props.createProposal(ctx, { conversationId: conv.id, kind: "hotel_create_reservation", summary: "จองห้อง", payload: { roomTypeName: "Deluxe", guestName: "คุณพัก", checkInDate: "2026-08-10", checkOutDate: "2026-08-12" } });
+  const hp = await props.createProposal(ctx, { conversationId: conv.id, kind: "hotel_create_reservation", summary: "จองห้อง", payload: { roomTypeName: "Deluxe", guestName: "คุณพัก", checkInDate: dPlus(10), checkOutDate: dPlus(12) } });
   const hx = await props.executeProposal(OWNER, ctx, hp.id);
   const resv = await prisma.hotelReservation.findFirst({ where: { tenantId: tid, guestName: "คุณพัก" } });
   chk("B1-3.1", "hotel_create_reservation → ใบจองเกิด (มี code)", hx?.ok === true && !!resv?.code);
   // ประเภทห้องไม่มีห้องจริง → ห้าม auto-เปิดห้อง ต้อง throw ไทยบอกให้ตั้งห้องก่อน (กันจองผี)
-  const hp2 = await props.createProposal(ctx, { conversationId: conv.id, kind: "hotel_create_reservation", summary: "จองห้องผี", payload: { roomTypeName: "Suite", guestName: "คุณผี", checkInDate: "2026-08-15", checkOutDate: "2026-08-16" } });
+  const hp2 = await props.createProposal(ctx, { conversationId: conv.id, kind: "hotel_create_reservation", summary: "จองห้องผี", payload: { roomTypeName: "Suite", guestName: "คุณผี", checkInDate: dPlus(15), checkOutDate: dPlus(16) } });
   const hx2 = await props.executeProposal(OWNER, ctx, hp2.id);
   chk("B1-3.2", "ประเภทห้องไม่มีห้องจริง → ok:false บอกให้เพิ่มห้องก่อน + ไม่แอบสร้างห้อง", hx2?.ok === false && (await prisma.hotelRoom.count({ where: { tenantId: tid } })) === 1 && (await prisma.hotelReservation.count({ where: { tenantId: tid, guestName: "คุณผี" } })) === 0);
 
