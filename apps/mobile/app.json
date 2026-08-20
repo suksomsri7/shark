@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "SHARK AI",
-    "slug": "shark-ai",
+    "slug": "shark-th",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -12,7 +12,8 @@
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "buildNumber": "20"
     },
     "android": {
       "package": "th.in.shark.ai",
@@ -70,12 +71,12 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "c24ec712-4c6f-438c-95d4-44ab9f2428a2"
+        "projectId": "06c3edc8-5b84-4359-ac7f-88dc009779db"
       }
     },
-    "owner": "siamdive",
+    "owner": "shark-in-ths-team",
     "updates": {
-      "url": "https://u.expo.dev/c24ec712-4c6f-438c-95d4-44ab9f2428a2"
+      "url": "https://u.expo.dev/06c3edc8-5b84-4359-ac7f-88dc009779db"
     },
     "runtimeVersion": {
       "policy": "appVersion"
