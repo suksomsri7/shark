@@ -93,6 +93,17 @@ console.log("\n── AS-5 คำสัญญาในหน้ากฎหม�
     "มีทั้ง 2 action", "ขาด");
   chk("AS-5.4", "🔴 ช่วงพัก 30 วันถูกกวาดลบจริงด้วย cron (ไม่ใช่ค้าง PENDING_DELETE ตลอดกาล)",
     /sweepPendingDeletes/.test(read("src/lib/platform/cron.ts")), "cron เรียก sweepPendingDeletes", "ไม่เรียก");
+
+  // เจอของจริงตอนเขียนหน้านี้: ผมเผลอเขียนว่า "แจ้งปัญหาจากปุ่มช่วยเหลือ" แต่ปุ่มนั้น
+  // ถูกถอดออกไปแล้วตั้งแต่ help-v2 (เปลี่ยนเป็นแจ้งผ่านแชท AI → openCaseFromAi)
+  // → ด่านนี้ผูกข้อความในหน้า support เข้ากับกลไกที่ยังมีอยู่จริง
+  const sup = read(ROUTES["/support"]!);
+  const claimsHelpButton = /ปุ่ม\s*[“"]?ช่วยเหลือ/.test(sup);
+  const helpButtonGone = /เอาปุ่มศูนย์ช่วยเหลือออก/.test(read("src/components/app-shell/Topbar.tsx"));
+  chk("AS-5.5", "🔴 /support ไม่อ้างปุ่มช่วยเหลือที่ถูกถอดออกไปแล้ว",
+    !(claimsHelpButton && helpButtonGone), "ไม่อ้างปุ่มที่ไม่มี", "อ้างปุ่มที่ถอดไปแล้ว");
+  chk("AS-5.6", "เส้นทางแจ้งปัญหาที่ /support อ้าง (แชท AI → เปิดเคส) มีของจริง",
+    /openCaseFromAi/.test(read("src/lib/support/service.ts")), "มี openCaseFromAi", "ไม่มี");
 }
 
 // ── AS-6 landing ต้องบอกว่าแอปทำอะไร ──
