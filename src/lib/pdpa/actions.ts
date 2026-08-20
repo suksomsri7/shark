@@ -5,12 +5,15 @@
 // เฉพาะ OWNER: export ข้อมูล + ขอลบร้าน/ยกเลิก (การกระทำระดับทำลายทั้งร้าน)
 
 import { revalidatePath } from "next/cache";
-import { requireTenant } from "@/lib/core/context";
+import { redirect } from "next/navigation";
+import { requireAuth, requireTenant } from "@/lib/core/context";
+import { destroySession } from "@/lib/core/session";
 import {
   exportTenantData,
   requestTenantDeletion,
   cancelTenantDeletion,
 } from "@/lib/platform/pdpa";
+import { deleteAccount } from "@/lib/platform/account-deletion";
 
 const PRIVACY_PATH = "/app/settings/privacy";
 
@@ -51,4 +54,15 @@ export async function cancelDeleteAction(): Promise<void> {
   const auth = await requireOwner();
   await cancelTenantDeletion(auth.active.tenantId);
   revalidatePath(PRIVACY_PATH);
+}
+
+// ── ลบบัญชีผู้ใช้ (App Store 5.1.1(v)) — คนละเรื่องกับลบร้านด้านบน ──
+// 🔴 ทุกคนที่ล็อกอินอยู่ทำได้ ไม่ใช่แค่ OWNER (พนักงานก็ต้องลบตัวตนตัวเองได้)
+//    userId มาจาก session เท่านั้น (requireAuth) — ห้ามรับจาก client เด็ดขาด
+export async function deleteMyAccountAction(): Promise<void> {
+  const auth = await requireAuth();
+  const res = await deleteAccount(auth.user.id);
+  if (!res.ok) throw new Error(res.reason);
+  await destroySession(); // session ถูก cascade ไปแล้ว — ล้าง cookie ค้างในเบราว์เซอร์ด้วย
+  redirect("/?deleted=1");
 }

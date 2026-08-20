@@ -2,7 +2,7 @@ import type { User } from "@prisma/client";
 import { prisma } from "./db";
 import { sha256, randomToken, otpCode, safeEqualHex } from "./hash";
 import { sendEmail } from "./email";
-import { env, previewOtp } from "@/lib/env";
+import { env, previewOtp, reviewLogin } from "@/lib/env";
 
 const TTL_MS = 1000 * 60 * 10; // 10 นาที
 const MAX_ATTEMPTS = 5;
@@ -36,7 +36,11 @@ export async function requestLogin(
     if (ipCount >= RL_MAX_PER_IP) throw new Error(RL_MESSAGE);
   }
 
-  const code = otpCode();
+  // 🔴 บัญชีผู้ตรวจสโตร์เท่านั้น — รหัสคงที่ ไม่ต้องรออีเมล (ดู lib/env.ts §reviewLogin)
+  //    ทุกอย่างที่เหลือเดินเส้นทางปกติทั้งหมด: ยังนับ rate limit, ยังเก็บเป็น hash,
+  //    ยังหมดอายุ 10 นาที, ยังนับ attempts → ไม่ได้เปิดประตูหลัง แค่ "รู้รหัสล่วงหน้า" อีเมลเดียว
+  const isReviewer = reviewLogin !== null && email === reviewLogin.email;
+  const code = isReviewer ? reviewLogin!.otp : otpCode();
   const linkToken = randomToken();
   const expiresAt = new Date(Date.now() + TTL_MS);
 
@@ -48,12 +52,15 @@ export async function requestLogin(
   });
 
   const link = `${env.APP_URL}/auth/verify?token=${linkToken}`;
-  // อีเมลใส่ OTP อย่างเดียว (คำสั่งเจ้าของ 23 ก.ค. — ลิงก์ทำให้สับสนโดยเฉพาะบนมือถือ) · magic link ยังอยู่ใน preview/dev
-  await sendEmail(
-    email,
-    "เข้าสู่ระบบ SHARK",
-    `รหัสเข้าสู่ระบบ (OTP): ${code}\n\nรหัสนี้หมดอายุใน 10 นาที หากคุณไม่ได้ร้องขอ กรุณาเพิกเฉย`,
-  );
+  // บัญชีผู้ตรวจไม่ต้องส่งเมล (กล่องจดหมายนั้นไม่มีอยู่จริง — ผู้ตรวจใช้รหัสที่เราแจ้งใน App Review Notes)
+  if (!isReviewer) {
+    // อีเมลใส่ OTP อย่างเดียว (คำสั่งเจ้าของ 23 ก.ค. — ลิงก์ทำให้สับสนโดยเฉพาะบนมือถือ) · magic link ยังอยู่ใน preview/dev
+    await sendEmail(
+      email,
+      "เข้าสู่ระบบ SHARK",
+      `รหัสเข้าสู่ระบบ (OTP): ${code}\n\nรหัสนี้หมดอายุใน 10 นาที หากคุณไม่ได้ร้องขอ กรุณาเพิกเฉย`,
+    );
+  }
   return previewOtp ? { otp: code, link } : null;
 }
 

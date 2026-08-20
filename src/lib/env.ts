@@ -11,6 +11,12 @@ const schema = z.object({
   EMAIL_FROM: z.string().default("SHARK <noreply@shark.in.th>"),
   STORAGE_PROVIDER: z.enum(["local", "bunny", "vercel-blob"]).default("local"),
   CRON_SECRET: z.string().default("dev-cron-secret"),
+  // ── บัญชีสำหรับผู้ตรวจของสโตร์ (App Review) ──
+  // แอป login ด้วย OTP อีเมลล้วน → ผู้ตรวจของ Apple/Google ไม่มีอีเมลของเรา = เข้าระบบไม่ได้เลย
+  // = ถูกตีกลับข้อ 2.1 แน่นอน · ทางออก: อีเมลเดียวที่ระบุไว้เท่านั้นได้รหัสคงที่
+  // 🔴 ไม่ตั้งค่า = ไม่มีทางลัดใด ๆ ในระบบ (ค่าว่าง = ปิดสนิท) · ต้องตั้งทั้งคู่ถึงจะทำงาน
+  REVIEW_EMAIL: z.string().default(""),
+  REVIEW_OTP: z.string().default(""),
 });
 
 export const env = schema.parse(process.env);
@@ -23,3 +29,10 @@ export const emailEnabled = env.RESEND_API_KEY.length > 0;
 // โชว์ OTP บนจอทุก env ที่ไม่ใช่ production (แม้ต่อ Resend แล้ว) — กัน login ติดตอน
 // domain ยังไม่ verify (ส่งได้เฉพาะเจ้าของบัญชี). production = ปิด โชว์เฉพาะเมลจริง
 export const previewOtp = env.APP_ENV !== "production";
+
+// บัญชีผู้ตรวจสโตร์: เปิดใช้เมื่อ **ตั้งครบทั้งคู่** เท่านั้น · รหัสต้อง 6 หลักตามรูปแบบ OTP ปกติ
+// (ตั้งไม่ครบ/รูปแบบผิด = ถือว่าไม่ได้เปิด — fail-closed ไม่ใช่เดาให้)
+export const reviewLogin: { email: string; otp: string } | null =
+  env.REVIEW_EMAIL.trim() && /^\d{6}$/.test(env.REVIEW_OTP.trim())
+    ? { email: env.REVIEW_EMAIL.trim().toLowerCase(), otp: env.REVIEW_OTP.trim() }
+    : null;

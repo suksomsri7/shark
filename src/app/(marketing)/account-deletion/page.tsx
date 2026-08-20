@@ -63,21 +63,45 @@ export default function AccountDeletionPage() {
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium">2. ลบบัญชีผู้ใช้ของคุณ</h2>
+        <h2 className="text-lg font-medium">2. ลบบัญชีผู้ใช้ของคุณ (ทำเองได้ทันที)</h2>
+        <p className={`text-sm leading-6 ${muted}`}>
+          ทำได้ทุกคน ไม่ว่าจะเป็นเจ้าของร้านหรือพนักงาน — ทั้งในแอป SHARK และบนเว็บ ขั้นตอนเดียวกัน
+        </p>
+        <ol className="list-decimal pl-6 text-sm leading-6">
+          <li>เข้าสู่ระบบที่ shark.in.th หรือเปิดแอป SHARK</li>
+          <li>
+            เปิดเมนู → <strong>ตั้งค่า</strong> → <strong>ความเป็นส่วนตัว (PDPA)</strong>
+          </li>
+          <li>
+            เลื่อนลงที่หัวข้อ <strong>“ลบบัญชีของฉัน”</strong> — หน้าจอจะบอกก่อนว่าร้านของคุณจะเป็นอย่างไร
+          </li>
+          <li>
+            กด <strong>“ลบบัญชีของฉันถาวร”</strong> แล้วยืนยัน
+          </li>
+        </ol>
         <p className="text-sm leading-6">
-          ส่งอีเมล<strong>จากที่อยู่อีเมลที่ใช้สมัคร</strong>มาที่{" "}
-          <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium underline underline-offset-4">
+          อีเมล ชื่อ และการเข้าสู่ระบบทุกช่องทางของคุณจะถูกลบออกจากระบบ <strong>ทันที</strong> กู้คืนไม่ได้
+        </p>
+        <div className="card flex flex-col gap-2 p-4 text-sm leading-6">
+          <div className="font-medium">ร้านของคุณจะเป็นอย่างไร</div>
+          <ul className="list-disc pl-5">
+            <li>
+              ร้านที่คุณเป็นเจ้าของ <strong>แต่ยังมีสมาชิกคนอื่นอยู่</strong> → ระบบส่งมอบให้สมาชิกคนอื่นดูแลต่อ
+              (ผู้จัดการก่อน ถ้าไม่มีก็คนที่อยู่มานานที่สุด) — ร้านไม่ถูกลบ พนักงานทำงานต่อได้
+            </li>
+            <li>
+              ร้านที่ <strong>ไม่เหลือสมาชิกคนอื่นเลย</strong> → เข้าช่วงพัก 30 วันก่อนถูกลบถาวร
+            </li>
+            <li>ร้านที่คุณเป็นแค่พนักงาน → คุณออกจากร้านนั้น ข้อมูลร้านไม่ถูกแตะ</li>
+          </ul>
+          <p className={muted}>หน้าจอยืนยันจะระบุชื่อร้านและผลที่จะเกิดขึ้นจริงให้ดูก่อนเสมอ</p>
+        </div>
+        <p className={`text-sm leading-6 ${muted}`}>
+          เข้าระบบไม่ได้แล้ว? ส่งอีเมลจากที่อยู่ที่ใช้สมัครมาที่{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-4">
             {SUPPORT_EMAIL}
           </a>{" "}
-          หัวข้อ <strong>“ขอลบบัญชี”</strong>
-        </p>
-        <p className="text-sm leading-6">
-          เราจะลบอีเมล ชื่อ และการเข้าสู่ระบบทั้งหมดของคุณออกจากระบบ แล้วยืนยันกลับทางอีเมล
-          ภายใน <strong>30 วัน</strong> (โดยปกติเร็วกว่านั้นมาก)
-        </p>
-        <p className={`text-sm leading-6 ${muted}`}>
-          หากคุณเป็นเจ้าของร้านที่ยังมีข้อมูลอยู่ เราจะยืนยันกับคุณก่อนว่าต้องการให้ลบร้านนั้นไปด้วยหรือไม่
-          เพื่อไม่ให้พนักงานคนอื่นในร้านเสียข้อมูลโดยไม่ตั้งใจ
+          หัวข้อ “ขอลบบัญชี” แล้วเราจะดำเนินการให้ภายใน 30 วัน
         </p>
       </section>
 
@@ -122,12 +146,19 @@ export default function AccountDeletionPage() {
           data is permanently erased.
         </p>
         <p className="text-sm leading-6">
-          <strong>Delete your user account:</strong> email{" "}
+          <strong>Delete your user account — in app:</strong> sign in, open Menu → Settings →
+          Privacy (PDPA) → “Delete my account” → confirm. Your email, name and all sign-in records
+          are erased immediately. Available to every signed-in user, owner or staff.
+        </p>
+        <p className="text-sm leading-6">
+          Businesses you own are handed over to a remaining member (manager first); a business with
+          no remaining members enters a 30-day grace period before permanent deletion. The
+          confirmation screen names each affected business before you confirm. If you can no longer
+          sign in, email{" "}
           <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-4">
             {SUPPORT_EMAIL}
-          </a>{" "}
-          from the address you signed up with, subject “Delete my account”. We erase your email,
-          name and all sign-in records and confirm by email within 30 days.
+          </a>
+          .
         </p>
         <p className="text-sm leading-6">
           Issued tax and accounting documents may be retained where Thai law requires it, and are

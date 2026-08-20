@@ -104,6 +104,17 @@ console.log("\n── AS-5 คำสัญญาในหน้ากฎหม�
     !(claimsHelpButton && helpButtonGone), "ไม่อ้างปุ่มที่ไม่มี", "อ้างปุ่มที่ถอดไปแล้ว");
   chk("AS-5.6", "เส้นทางแจ้งปัญหาที่ /support อ้าง (แชท AI → เปิดเคส) มีของจริง",
     /openCaseFromAi/.test(read("src/lib/support/service.ts")), "มี openCaseFromAi", "ไม่มี");
+
+  // 🔴 Apple 5.1.1(v): ลบ "บัญชี" ต้องทำได้จากในแอป ไม่ใช่แค่ลบ "ร้าน" หรือให้ส่งอีเมลมา
+  chk("AS-5.7", "🔴 หน้าลบบัญชีบอกว่าลบบัญชีเองได้ในแอป (ไม่ใช่แค่ให้เมลมา)",
+    /ลบบัญชีของฉัน/.test(del), "อ้างปุ่มลบบัญชีในแอป", "ไม่อ้าง");
+  chk("AS-5.8", "🔴 ปุ่มลบบัญชีมีของจริง — action + service + อยู่บนหน้า PDPA",
+    /export async function deleteMyAccountAction/.test(read("src/lib/pdpa/actions.ts")) &&
+      /export async function deleteAccount/.test(read("src/lib/platform/account-deletion.ts")) &&
+      /deleteMyAccountAction/.test(read("src/app/app/settings/privacy/page.tsx")),
+    "ครบ 3 ชั้น", "ขาด");
+  chk("AS-5.9", "ลบบัญชีไม่จำกัดเฉพาะ OWNER (พนักงานต้องลบตัวเองได้)",
+    !/deleteMyAccountAction[\s\S]{0,200}requireOwner/.test(read("src/lib/pdpa/actions.ts")), "ใช้ requireAuth", "ติด requireOwner");
 }
 
 // ── AS-6 landing ต้องบอกว่าแอปทำอะไร ──
