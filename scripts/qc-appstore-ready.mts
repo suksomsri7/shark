@@ -121,9 +121,20 @@ console.log("\n── AS-5 คำสัญญาในหน้ากฎหม�
 console.log("\n── AS-6 landing อธิบายแอป (Apple 2.3 Accurate Metadata) ──");
 {
   const src = read("src/app/page.tsx");
-  const feats = (src.match(/title:\s*"/g) ?? []).length;
-  chk("AS-6.1", `landing มีรายการความสามารถ ≥ 6 อัน (มี ${feats})`, feats >= 6, "≥6", String(feats), "MAJOR");
+  // เดิมนับ `title: "` ในไฟล์ = นับ "ลิสต์ที่พิมพ์มือ" ซึ่งวัดผิดตัว: ลิสต์นั้นเพี้ยนจากแอปได้
+  // (และเพี้ยนจริง — ไอคอน POS ในลิสต์เป็น 💵 แต่แอปใช้ 🧾) · 21 ส.ค. landing อ่าน SYSTEM_DEFS ตรง ๆ
+  // → วัดที่ "รายการที่ผู้ใช้เห็นจริง" = จำนวนระบบ available ในทะเบียน + ต้องผูกกับทะเบียนจริง
+  const { SYSTEM_DEFS } = await import("@/lib/systems");
+  const available = SYSTEM_DEFS.filter((s) => s.status === "available").length;
+  chk("AS-6.1", `landing มีรายการความสามารถ ≥ 6 อัน (มี ${available})`, available >= 6, "≥6", String(available), "MAJOR");
   chk("AS-6.2", "landing มีทางไปศูนย์ช่วยเหลือ", /\/support/.test(src), "มีลิงก์", "ไม่มี", "MAJOR");
+  chk("AS-6.3", "🔴 landing อ่านรายการระบบจากทะเบียนเดียวกับแอป (ห้ามพิมพ์ลิสต์ซ้ำ — เพี้ยนจากแอปได้)",
+    /SYSTEM_DEFS/.test(src), "ใช้ SYSTEM_DEFS", "พิมพ์ลิสต์เอง");
+  // ภาพบน landing ต้องมีไฟล์อยู่จริง — ผู้ตรวจเปิดหน้าแล้วเจอรูปแตกคือหน้าไม่พร้อมยื่น
+  const imgs = [...src.matchAll(/src:\s*"(\/[^"]+\.(?:webp|png|jpg|jpeg|svg))"/g)].map((m) => m[1]!);
+  const missing = imgs.filter((p) => !existsSync(`public${p}`));
+  chk("AS-6.4", `รูปบน landing มีไฟล์จริงครบ (${imgs.length} รูป)`,
+    imgs.length > 0 && missing.length === 0, "ครบ", missing.join(",") || "ไม่มีรูปเลย");
 }
 
 const failed = cks.filter((c) => !c.ok);

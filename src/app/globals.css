@@ -101,8 +101,11 @@ body {
   border-radius: 9999px;
   animation: ai-orb-breathe 3.2s ease-in-out infinite;
 }
-/* ชั้นใน (วงแหวน): ไล่โทนน้ำเงินรอบวง + เจาะกลางโปร่ง + หมุนช้า ๆ 16 วิ/รอบ */
+/* ชั้นใน (วงแหวน): ไล่โทนน้ำเงินรอบวง + เจาะกลางโปร่ง + หมุนช้า ๆ 16 วิ/รอบ
+   --orb-ring = ความหนาวงแหวน · ค่าเริ่ม 8px = ปุ่มในแอป (ห้ามเปลี่ยน — ของที่เจ้าของเคาะแล้ว)
+   ขนาดใหญ่กว่านี้ให้ override ตัวแปร ไม่ใช่ก๊อป gradient ไปเขียนใหม่ (จะเพี้ยนจากแอป) */
 .ai-orb {
+  --orb-ring: 8px;
   position: absolute;
   inset: 0;
   border-radius: 9999px;
@@ -116,17 +119,54 @@ body {
     #3b82f6 320deg,
     #1e3a8a 360deg
   );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7.5px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7.5px));
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--orb-ring)),
+    #000 calc(100% - var(--orb-ring) + 0.5px)
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--orb-ring)),
+    #000 calc(100% - var(--orb-ring) + 0.5px)
+  );
   animation: ai-orb-spin 16s linear infinite;
+}
+/* landing: orb ตัวใหญ่กลางหน้าแรก — วงแหวนหนาขึ้นตามขนาด (สัดส่วนเท่าปุ่มในแอป) */
+.ai-orb-lg {
+  --orb-ring: 14px;
+}
+/* หัวใจเต้น (ตุบ-ตุบ แล้วพัก) — ต่างจาก ai-orb-breathe ของปุ่มในแอปที่เป็นลมหายใจสม่ำเสมอ */
+@keyframes ai-orb-heartbeat {
+  0% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.5)) drop-shadow(0 0 26px rgba(59, 130, 246, 0.28));
+  }
+  9% {
+    transform: scale(1.075);
+    filter: drop-shadow(0 0 16px rgba(125, 211, 252, 0.9)) drop-shadow(0 0 40px rgba(59, 130, 246, 0.5));
+  }
+  18% { transform: scale(1); }
+  27% {
+    transform: scale(1.045);
+    filter: drop-shadow(0 0 13px rgba(125, 211, 252, 0.7)) drop-shadow(0 0 32px rgba(59, 130, 246, 0.4));
+  }
+  38%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.5)) drop-shadow(0 0 26px rgba(59, 130, 246, 0.28));
+  }
+}
+.ai-orb-heartbeat {
+  border-radius: 9999px;
+  animation: ai-orb-heartbeat 2.6s ease-in-out infinite;
 }
 /* overlay ระหว่างเปลี่ยนหน้า — orb หมุนเร็ว (1.1 วิ/รอบ) */
 .ai-orb-fast {
   animation: ai-orb-spin 1.1s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .ai-orb, .ai-orb-breathe, .ai-orb-fast { animation: none; }
+  .ai-orb, .ai-orb-breathe, .ai-orb-fast, .ai-orb-heartbeat { animation: none; }
   .ai-orb-breathe { filter: drop-shadow(0 0 7px rgba(96, 165, 250, 0.6)); }
+  .ai-orb-heartbeat { filter: drop-shadow(0 0 12px rgba(96, 165, 250, 0.55)); }
 }
 
 /* ปฏิทิน: สไลด์เปลี่ยนเดือน (R = ไปเดือนถัดไป เข้าจากขวา · L = ย้อน เข้าจากซ้าย) */
