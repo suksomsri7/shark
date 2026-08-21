@@ -232,7 +232,7 @@ export default function LoginScreen() {
       >
         <View style={styles.center}>
           <AnimatedOrb size={96} />
-          <Text style={styles.brand}>SHARK AI</Text>
+          <Text style={styles.brand}>SHARK HUB</Text>
           <Text style={styles.tagline}>ผู้ช่วย AI ประจำกิจการของคุณ</Text>
 
           <View style={styles.card}>
