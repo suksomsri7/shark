@@ -108,7 +108,13 @@ jobs:
           DIRECT=$(grep -E '^DIRECT_URL=' branch.out | cut -d= -f2-)
           echo "DIRECT_URL=$DIRECT" >> "$GITHUB_ENV"
           echo "DATABASE_URL=$DIRECT" >> "$GITHUB_ENV"
-          echo "SESSION_SECRET=ci-only-not-a-real-secret" >> "$GITHUB_ENV"
+          # 🔴 ต้องยาว ≥ 32 ตัวอักษร — src/lib/env.ts บังคับ z.string().min(32) แล้ว throw ตอน import
+          # ของเดิมยาว 25 → ทุกชุดที่แตะ session พังตั้งแต่ boot (ซ่อนอยู่นาน เพราะ CI เดิมรันแค่ 3 ชุดที่ไม่แตะ)
+          echo "SESSION_SECRET=ci-only-not-a-real-secret-do-not-use-anywhere" >> "$GITHUB_ENV"
+          # ค่าปลอมล้วน — ไม่ตั้ง = route google ตอบ 503 "google_disabled" แล้วข้อสอบ MA-12.2
+          # (token ปลอมต้องโดนปฏิเสธ 401) วัดไม่ได้เลย · ค่านี้ทำให้เส้นทาง verify ทำงานจริง
+          # ไม่ใช่ความลับ ไม่ผูกกับบัญชี Google ของเรา
+          echo "GOOGLE_WEB_CLIENT_ID=ci-dummy-not-a-real-client.apps.googleusercontent.com" >> "$GITHUB_ENV"
 
       - name: อุ่นเครื่อง DB (Neon compute เพิ่งเกิด — รอพร้อมจริงก่อนยิงชุดเทสต์)
         if: steps.guard.outputs.ready == 'true'

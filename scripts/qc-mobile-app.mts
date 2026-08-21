@@ -105,8 +105,24 @@ chk("APP-4.2", "root tsconfig exclude apps (กัน Vercel typecheck RN)", roo
 chk("APP-4.3", ".vercelignore มี apps/", existsSync(".vercelignore") && readFileSync(".vercelignore", "utf8").includes("apps/"), "มี", "ไม่มี");
 
 // ── 5. typecheck ของแอป ──
+// 🔴 apps/mobile **ไม่ได้อยู่ใน pnpm workspace** (ใช้ npm ของตัวเอง — package-lock.json แยก)
+// → `pnpm install` ที่ราก **ไม่ลง** dependency ของแอป · บนเครื่อง dev มีอยู่แล้วเลยไม่เคยเห็นปัญหา
+// แต่บน CI ที่ checkout ใหม่ ไม่มี node_modules → tsc ฟ้อง "Cannot find module 'react-native'"
+// = ข้อสอบแดงเพราะ **สภาพแวดล้อม** ไม่ใช่เพราะโค้ดแอปพัง (เจอจริง 21 ส.ค. รอบเปิดด่านครบ 152 ชุด)
+// → ข้อสอบเตรียมของที่ตัวเองต้องใช้ ไม่ผลักภาระไปให้ ci.yml จำว่าต้องลงให้ชุดไหน
+//   (ถ้าไปใส่ใน ci.yml = กลับไปเป็น "ต้องมีคนจำ" ซึ่งเป็นต้นเหตุเดิมที่เพิ่งแก้ไป)
 let tscOk = false; let tscOut = "";
-try { execSync("npx tsc --noEmit", { cwd: APP, stdio: "pipe", timeout: 240000 }); tscOk = true; } catch (e) { tscOut = String((e as { stdout?: Buffer }).stdout ?? e).slice(0, 300); }
+if (!existsSync(join(APP, "node_modules"))) {
+  console.log("  … apps/mobile ยังไม่มี node_modules → npm ci ก่อน (ครั้งแรกใช้เวลาสักครู่)");
+  try {
+    execSync("npm ci --no-audit --no-fund", { cwd: APP, stdio: "pipe", timeout: 900000 });
+  } catch (e) {
+    tscOut = "npm ci ล้ม: " + String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 200);
+  }
+}
+if (!tscOut) {
+  try { execSync("npx tsc --noEmit", { cwd: APP, stdio: "pipe", timeout: 240000 }); tscOk = true; } catch (e) { tscOut = String((e as { stdout?: Buffer }).stdout ?? e).slice(0, 300); }
+}
 chk("APP-5.1", "tsc --noEmit ใน apps/mobile ผ่าน", tscOk, "ผ่าน", tscOut);
 
 const crit = cks.filter((c) => !c.ok && c.sev === "CRITICAL").length;
