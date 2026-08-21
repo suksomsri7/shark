@@ -17,7 +17,14 @@ name: CI
 # **ไม่เคยเป็นด่านเลย** และพบ 2 ชุดแดงค้างมาเป็นสัปดาห์โดยไม่มีใครรู้
 # ตอนนี้ด่าน = "ทุกชุดที่มีในโฟลเดอร์" ไม่ใช่ "ชุดที่ใครสักคนจำได้ว่าต้องใส่"
 # → ข้อสอบใหม่เข้าเป็นด่านอัตโนมัติตั้งแต่วินาทีที่ไฟล์ถูกสร้าง ไม่ต้องมาแก้ไฟล์นี้อีก
-# แลกด้วยเวลา: ~8 นาทีบนเครื่อง dev (ยาวกว่านี้บน runner) ต่อ 1 push ที่แตะโค้ด
+#
+# 🔴 รอบแรกพลาด — จดไว้กันทำซ้ำ: ตอนแรกรัน qc:all ทั้ง 152 ชุดในงานเดียว timeout 45 นาที
+# ประเมินจากเวลาเครื่อง dev (8 นาที) แล้วเผื่อ 5 เท่า **ยังไม่พอ** → ถูกตัดจบเปล่า 2 รอบ
+# ของจริงคือ runner ช้ากว่าเครื่อง dev ~10 เท่า เพราะ DB อยู่ ap-southeast-1 แต่ runner อยู่ US
+# (วัดตรง ๆ: qc:account 18 วิ บนเครื่อง → 195 วิ บน CI) → 152 ชุด ≈ 92 นาที
+# **บทเรียน: อย่าประเมินเวลา CI จากเวลาเครื่อง dev เมื่อ workload เป็น latency-bound**
+# → แก้เป็นซอย 6 ส่วนรันขนาน (`qc:all --shard=i/6`) ส่วนละ ~26 ชุด ≈ 15-20 นาที
+#   ครอบคลุมเท่าเดิม 152/152 · Neon compute-time รวมเท่าเดิม · runner ฟรี (รีโป public)
 on:
   push:
     branches: [main]
@@ -52,12 +59,19 @@ jobs:
         run: pnpm fitness
 
   t1:
-    name: T1 — ข้อสอบทุกชุด (qc:all) บน Neon branch
+    name: T1 — ข้อสอบ ${{ matrix.shard }}/6 บน Neon branch
     runs-on: ubuntu-latest
     needs: t0
-    # กันค่าใช้จ่ายบานถ้าชุดใดค้าง — ปกติจบใน ~10-25 นาที (152 ชุด รันเรียงทีละตัว)
-    # ถ้าชนเพดานนี้บ่อย ให้ดูว่าชุดไหนช้าจากตารางเวลาท้าย log แทนการดันเลขขึ้น
-    timeout-minutes: 45
+    # 🔴 วัดจริง 21 ส.ค. 2026: บน runner ข้อสอบช้ากว่าเครื่อง dev ~10 เท่า
+    # (qc:account 18 วิ บนเครื่อง → 195 วิ บน CI) เพราะ DB อยู่ ap-southeast-1 แต่ runner อยู่ US
+    # → รันเรียง 152 ชุดในงานเดียว = ~92 นาที · ทะลุ timeout ตัดจบเปล่า 2 รอบ (run 32442205050 / 32444463505)
+    # → ซอย 6 ส่วนรันขนาน · ส่วนละ ~26 ชุด ≈ 15-20 นาที · ครอบคลุมเท่าเดิม 152/152
+    # Neon compute-time รวมเท่าเดิม (งานเท่าเดิม แค่ขนาน) · runner ฟรีเพราะรีโปเป็น public
+    strategy:
+      fail-fast: false # ส่วนอื่นต้องรันต่อให้จบ — อยากเห็นทุกชุดที่แดงในรอบเดียว ไม่ใช่ตัวแรกแล้วหยุด
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -87,7 +101,7 @@ jobs:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
         run: |
-          pnpm exec tsx scripts/neon-branch.mts create ci-${{ github.run_id }} | tee branch.out
+          pnpm exec tsx scripts/neon-branch.mts create ci-${{ github.run_id }}-s${{ matrix.shard }} | tee branch.out
           # CI ใช้ direct ทั้งคู่ — pooler มีไว้เพื่อ serverless concurrency ซึ่ง CI ไม่ต้องใช้
           # และ pgbouncer บน endpoint เย็น ๆ เคยทำ FK violation ปริศนาใน interactive tx (run #8:
           # ensureAccounting ที่ทุกอย่างอยู่ใน tx เดียว ยัง FK พัง — ทำซ้ำบนเครื่องไม่ได้)
@@ -111,13 +125,13 @@ jobs:
       # ด่านเดียว = ข้อสอบทุกชุดในโฟลเดอร์ (qc-all.mts อ่าน scripts/qc-*.mts เอง)
       # ห้ามกลับไปไล่ชื่อชุดทีละบรรทัดที่นี่อีก — นั่นคือต้นเหตุที่ 89 ชุดตกสำรวจมาก่อน
       # ชุดไหนแดง แสดงชื่อในตารางสรุปท้าย log + บรรทัด JSON_SUMMARY
-      - name: ข้อสอบทุกชุด (pnpm qc:all — 152 ชุด · รวม CPA 107/107 + kernel guard)
+      - name: ข้อสอบส่วนที่ ${{ matrix.shard }}/6 (qc:all --shard)
         if: steps.guard.outputs.ready == 'true'
-        run: pnpm qc:all
+        run: pnpm qc:all --shard=${{ matrix.shard }}/6
 
       - name: ลบ Neon branch (กันค่าใช้จ่ายบาน)
         if: always() && steps.guard.outputs.ready == 'true'
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
-        run: pnpm exec tsx scripts/neon-branch.mts delete ci-${{ github.run_id }} || true
+        run: pnpm exec tsx scripts/neon-branch.mts delete ci-${{ github.run_id }}-s${{ matrix.shard }} || true
