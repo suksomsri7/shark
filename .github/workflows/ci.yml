@@ -9,9 +9,15 @@ name: CI
 
 # ค่าใช้จ่าย (2026-07-30): เดือน ก.ค. รีโปนี้ใช้ ~2,700 runner-นาที ($15.13) จาก 340 รอบ —
 # 88% เป็น T1 (QC บน Neon) ที่รันครบทุกชุดในทุก push แม้ push นั้นแก้แค่เอกสาร
-# แก้ 3 ชั้น โดยไม่ลดการป้องกัน: (1) push ที่แตะแค่ .md/docs/ledger ไม่รันเลย
-# (2) push ปกติรันเฉพาะ oracle ของโปรเจกต์ (drift + account 107/107 + QC7 46/46)
-# (3) ชุดเต็ม 11 suites รันบน PR และตอนสั่งเอง (workflow_dispatch)
+# → push ที่แตะแค่ .md/docs/ledger ไม่รันเลย (paths-ignore ข้างล่าง) = ตัวลดค่าใช้จ่ายหลัก
+#
+# 🔴 21 ส.ค. 2026 — T1 เปลี่ยนเป็น `pnpm qc:all` (ทุกชุดใน scripts/qc-*.mts) ตามคำสั่งเจ้าของ
+# เหตุ (จริง 19 ส.ค.): CI เดิมเลือกชุดมาด้วยมือ — push รันแค่ 3 ชุด · PR รันแค่ 11 ชุด
+# จาก 152 ชุดที่มีในรีโป → ชุดที่เหลือ (รวม qc-hardening/qc-pdpa/qc-public-api/qc-kernel-guard)
+# **ไม่เคยเป็นด่านเลย** และพบ 2 ชุดแดงค้างมาเป็นสัปดาห์โดยไม่มีใครรู้
+# ตอนนี้ด่าน = "ทุกชุดที่มีในโฟลเดอร์" ไม่ใช่ "ชุดที่ใครสักคนจำได้ว่าต้องใส่"
+# → ข้อสอบใหม่เข้าเป็นด่านอัตโนมัติตั้งแต่วินาทีที่ไฟล์ถูกสร้าง ไม่ต้องมาแก้ไฟล์นี้อีก
+# แลกด้วยเวลา: ~8 นาทีบนเครื่อง dev (ยาวกว่านี้บน runner) ต่อ 1 push ที่แตะโค้ด
 on:
   push:
     branches: [main]
@@ -46,9 +52,12 @@ jobs:
         run: pnpm fitness
 
   t1:
-    name: T1 — QC suites บน Neon branch
+    name: T1 — ข้อสอบทุกชุด (qc:all) บน Neon branch
     runs-on: ubuntu-latest
     needs: t0
+    # กันค่าใช้จ่ายบานถ้าชุดใดค้าง — ปกติจบใน ~10-25 นาที (152 ชุด รันเรียงทีละตัว)
+    # ถ้าชนเพดานนี้บ่อย ให้ดูว่าชุดไหนช้าจากตารางเวลาท้าย log แทนการดันเลขขึ้น
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -67,17 +76,6 @@ jobs:
             echo "::warning::ข้าม T1 — ยังไม่ได้ตั้ง secret NEON_API_KEY/NEON_PROJECT_ID (ดู docs/10_OPERATIONS.md)"
           else
             echo "ready=true" >> $GITHUB_OUTPUT
-          fi
-
-      # ขอบเขตชุดเทสต์: push = เฉพาะ oracle (เร็ว ~ครึ่งเวลา) · PR/สั่งเอง = ครบทุกชุด
-      - name: ขอบเขตชุดเทสต์
-        id: scope
-        run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "full=false" >> $GITHUB_OUTPUT
-            echo "::notice::push → รันเฉพาะ drift + account(107) + QC7(46) · ชุดเต็มรันบน PR หรือสั่ง workflow_dispatch"
-          else
-            echo "full=true" >> $GITHUB_OUTPUT
           fi
 
       # 1 run = 1 Neon branch → ไม่มี global mutation, รันขนานได้
@@ -110,46 +108,12 @@ jobs:
         if: steps.guard.outputs.ready == 'true'
         run: pnpm drift
 
-      # oracle: แตะ account ต้อง 107/107 เสมอ (กฎเดิมของโปรเจกต์ ทำให้เป็นเครื่องบังคับ)
-      - name: QC account CPA (107/107)
+      # ด่านเดียว = ข้อสอบทุกชุดในโฟลเดอร์ (qc-all.mts อ่าน scripts/qc-*.mts เอง)
+      # ห้ามกลับไปไล่ชื่อชุดทีละบรรทัดที่นี่อีก — นั่นคือต้นเหตุที่ 89 ชุดตกสำรวจมาก่อน
+      # ชุดไหนแดง แสดงชื่อในตารางสรุปท้าย log + บรรทัด JSON_SUMMARY
+      - name: ข้อสอบทุกชุด (pnpm qc:all — 152 ชุด · รวม CPA 107/107 + kernel guard)
         if: steps.guard.outputs.ready == 'true'
-        run: pnpm qc:account
-
-      - name: QC account QC7 (46/46)
-        if: steps.guard.outputs.ready == 'true'
-        run: pnpm qc:account:qc7
-
-      - name: QC chat security (23/23)
-        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
-        run: pnpm qc:chat
-
-      - name: QC POS→Account (M1 — ยอดขายเข้าบัญชี)
-        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
-        run: pnpm qc:pos
-
-      - name: QC DNA Wizard (M3 — ประกอบระบบ)
-        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
-        run: pnpm qc:dna
-
-      - name: QC สายเงินร้านอาหาร (โต๊ะ→POS→บัญชี E2E)
-        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
-        run: pnpm qc:restaurant-money
-
-      - name: QC POS×Coupon (คูปองกับการขาย)
-        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
-        run: pnpm qc:coupon
-
-      - name: QC Ticket→บัญชี
-        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
-        run: pnpm qc:ticket
-
-      - name: QC Hotel→บัญชี
-        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
-        run: pnpm qc:hotel
-
-      - name: QC CRM (Lead→ดีล→ลูกค้า)
-        if: steps.guard.outputs.ready == 'true' && steps.scope.outputs.full == 'true'
-        run: pnpm qc:crm
+        run: pnpm qc:all
 
       - name: ลบ Neon branch (กันค่าใช้จ่ายบาน)
         if: always() && steps.guard.outputs.ready == 'true'
