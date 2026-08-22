@@ -42,7 +42,19 @@ python3 scripts/asc-listing.py show     # ต้องเห็น "build ที
 
 ## 2. App Privacy (แบบสอบถามในเว็บ ASC) — Apple ไม่เปิดให้ API ตอบ
 
-เข้า App Store Connect → แอป **SHARK HUB** → **App Privacy** → Get Started
+### วิธีกดทีละขั้น (จอนี้กดยากกว่าที่คิด เพราะต้องกด "Publish" ท้ายสุด ไม่งั้นไม่นับ)
+1. เปิด https://appstoreconnect.apple.com → **Apps** → **SHARK HUB**
+2. แถบซ้ายมือ (ใต้ General) → **App Privacy** → ปุ่ม **Get Started** (ถ้าเคยเริ่มไว้แล้วจะเป็น **Edit**)
+3. คำถามแรก **"Do you or your third-party partners collect data from this app?"** → เลือก
+   **"Yes, we collect data from this app"** → **Next**
+4. จอถัดมาเป็น **ตารางติ๊กประเภทข้อมูล** (Contact Info / Health / Financial / Location / …)
+   ติ๊กเฉพาะ 7 ช่องที่มี ✅ ในตารางข้างล่าง แล้วกด **Save**
+5. จากนั้น Apple จะถามซ้ำ **ทีละประเภทที่ติ๊กไว้** 3 คำถามเหมือนกันหมด — ตอบตามคอลัมน์ในตาราง:
+   - *"How is this data used?"* → ติ๊ก **App Functionality** อย่างเดียว (ห้ามติ๊ก Analytics / Advertising)
+   - *"Is this data linked to the user's identity?"* → **Yes**
+   - *"Do you or your partners use this data for tracking?"* → **No**
+6. กลับมาหน้ารวม ตรวจว่าไม่มีอะไรค้างเป็น "Not Started" → กดปุ่ม **Publish** มุมขวาบน
+   🔴 **ถ้าไม่กด Publish จะยื่นไม่ผ่าน** — ASC จะยังฟ้องว่า App Privacy ไม่สมบูรณ์
 
 **คำถามแรก: "Do you or your third-party partners collect data from this app?" → YES**
 
@@ -71,6 +83,20 @@ python3 scripts/asc-listing.py show     # ต้องเห็น "build ที
 
 ---
 
+## 2.5 ช่องอื่นที่ ASC บังคับ — ✅ ตั้งครบแล้วด้วยสคริปต์ (22 ส.ค.)
+
+`python3 scripts/asc-compliance.py show|apply` (ตรวจแล้วอ่านกลับมายืนยันทุกครั้ง)
+
+| ช่อง | ค่าที่ตั้ง |
+|---|---|
+| **Age Rating** | ตอบครบ 24 ช่อง · เนื้อหาทั้งหมด NONE · **มีแชท = ใช่** (ร้าน↔ลูกค้า + ผู้ช่วย AI) · UGC = ไม่ · เข้าเว็บอิสระ = ไม่ → **Apple ให้เรต 4+** |
+| **ราคา** | **ฟรี** (price point 0 · สกุลฐาน USD) |
+| **ประเทศที่วางขาย** | **175 ประเทศ** + รับประเทศใหม่อัตโนมัติ |
+| **Content Rights** | ไม่มีเนื้อหาของบุคคลที่สาม (`DOES_NOT_USE_THIRD_PARTY_CONTENT`) |
+
+เหตุผลที่ตอบ **"ไม่มีเนื้อหาของบุคคลที่สาม"**: ทุกอย่างที่แอปแสดงคือข้อมูลที่ร้านบันทึกเองกับของที่เราเขียนเอง
+ไม่มีเพลง/หนัง/ภาพ/ข่าว/แบรนด์ของคนอื่นในแอป (ฟอนต์ IBM Plex เป็นโอเพนซอร์ส ไม่นับ)
+
 ## 3. ก่อนกด Submit (ทำวันเดียวกับที่กด)
 
 ```bash
@@ -84,9 +110,10 @@ cd /root/projects/shark-in-th && pnpm exec tsx scripts/seed-review-shop.mts
 - 🔴 **หลังแอปผ่าน review ให้ลบ env `REVIEW_EMAIL` / `REVIEW_OTP` บน Vercel ทิ้ง**
 
 ## 4. เช็คลิสต์สุดท้าย
-- [ ] build #22 ขึ้น TestFlight แล้ว (`IN_BETA_TESTING`)
-- [ ] `asc-listing.py show` → build ที่ผูก: **22**
-- [ ] เปิดแอปบนเครื่องจริง เห็นชื่อใต้ไอคอนเป็น **SHARK HUB**
-- [ ] App Privacy ตอบครบตามตารางข้อ 2
+- [x] build #22 บิลด์เสร็จ + ส่งขึ้น App Store Connect แล้ว (22 ส.ค.)
+- [x] Age Rating (4+) · ราคาฟรี · 175 ประเทศ · Content Rights
+- [ ] `asc-listing.py show` → build ที่ผูก: **22** (รอ Apple ประมวลผลเสร็จก่อน แล้วรัน `asc-listing.py apply`)
+- [ ] เปิดแอปบนเครื่องจริงจาก TestFlight เห็นชื่อใต้ไอคอนเป็น **SHARK HUB** + ลองแจ้งเตือน
+- [ ] **App Privacy ตอบครบตามข้อ 2 แล้วกด Publish** ← เหลืออันนี้เป็นหลัก
 - [ ] รัน `seed-review-shop.mts` วันเดียวกับที่ยื่น
 - [ ] กด **Add for Review → Submit**
