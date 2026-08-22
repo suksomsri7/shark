@@ -96,6 +96,13 @@ chk("APP-6.2", "โหลดฟอนต์ IBM Plex Sans Thai (ฟอนต์�
 const appJson2 = JSON.parse(read("app.json") || "{}") as { expo?: { updates?: { url?: string }; runtimeVersion?: unknown } };
 chk("APP-7.1", "OTA: updates.url (u.expo.dev) + runtimeVersion + channel ใน eas.json", !!appJson2.expo?.updates?.url?.includes("u.expo.dev") && !!appJson2.expo?.runtimeVersion && read("eas.json").includes('"channel": "production"'), "ครบ", "ไม่ครบ");
 chk("APP-7.2", "แอปลงทะเบียน push (push-register + เรียกใน (app)/_layout + แตะ noti เปิดห้อง)", read("src/lib/push-register.ts").includes("/api/mobile/push/register") && read("app/(app)/_layout.tsx").includes("registerPush"), "ครบ", "ไม่ครบ");
+// 🔴 22 ส.ค.: เจอ projectId ฮาร์ดโค้ดเป็นของบัญชี @siamdive เดิม (ค้างมาตั้งแต่ย้ายบัญชี 20 ส.ค.)
+// ขอ token ด้วย id ที่แอปไม่ได้เป็นเจ้าของ = push ไม่ติด และ catch กลืนเงียบ ไม่มีใครรู้
+const pushSrc = read("src/lib/push-register.ts");
+chk("APP-7.3", "🔴 projectId ของ push อ่านจาก app.json (ห้ามพิมพ์ uuid ซ้ำในโค้ด — ย้ายบัญชีแล้วเพี้ยนเงียบ)",
+  pushSrc.includes("Constants.expoConfig") && !/projectId:\s*"[0-9a-f-]{36}"/.test(pushSrc), "อ่านจาก config", "ฮาร์ดโค้ด uuid");
+chk("APP-7.4", "🔴 logout ส่ง expoToken ไปด้วย (ไม่งั้นเครื่องที่ออกจากระบบยังได้แจ้งเตือนของบัญชีเดิม)",
+  /logout[\s\S]{0,200}expoToken/.test(read("src/lib/auth-context.tsx")), "ส่ง", "ไม่ส่ง");
 
 // ── 4. config + กัน Vercel/root พัง ──
 const appJson = JSON.parse(read("app.json") || "{}") as { expo?: { android?: { package?: string }; ios?: { bundleIdentifier?: string }; userInterfaceStyle?: string } };

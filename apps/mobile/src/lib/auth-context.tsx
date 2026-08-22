@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "@/src/api/client";
 import { clearSession, getTenantId, getToken, setTenantId, setToken } from "@/src/lib/session";
+import { currentPushToken, resetPushRegistration } from "@/src/lib/push-register";
 
 export type TenantRow = { tenantId: string; name: string; role: string };
 type Me = { user: { id: string; email: string; name: string | null }; memberships: TenantRow[] };
@@ -67,7 +68,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadMe]);
 
   const signOut = useCallback(async () => {
-    try { await api("/api/mobile/auth/logout", { body: {}, tenant: false }); } catch { /* ออฟไลน์ก็ออกได้ */ }
+    // ส่ง expoToken ไปด้วย → เซิร์ฟเวอร์ลบทะเบียนเครื่องนี้ทิ้ง
+    // (ไม่ส่ง = เครื่องที่ออกจากระบบแล้วยังได้รับแจ้งเตือนของบัญชีเดิมต่อไป)
+    let expoToken: string | null = null;
+    try { expoToken = await currentPushToken(); } catch { /* ไม่มี token ก็ออกได้ */ }
+    try {
+      await api("/api/mobile/auth/logout", { body: expoToken ? { expoToken } : {}, tenant: false });
+    } catch { /* ออฟไลน์ก็ออกได้ */ }
+    resetPushRegistration();
     await clearSession();
     setTok(null); setUser(null); setTenants([]); setActive(null);
   }, []);
