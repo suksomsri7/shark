@@ -110,9 +110,10 @@ cd /root/projects/shark-in-th && pnpm exec tsx scripts/seed-review-shop.mts
 - 🔴 **หลังแอปผ่าน review ให้ลบ env `REVIEW_EMAIL` / `REVIEW_OTP` บน Vercel ทิ้ง**
 
 ## 4. เช็คลิสต์สุดท้าย
-- [x] build #22 บิลด์เสร็จ + ส่งขึ้น App Store Connect แล้ว (22 ส.ค.)
+- [x] build #22 บิลด์เสร็จ + ส่งขึ้น App Store Connect แล้ว (22 ส.ค.) · Apple ประมวลผลแล้ว = **VALID**
 - [x] Age Rating (4+) · ราคาฟรี · 175 ประเทศ · Content Rights
-- [ ] `asc-listing.py show` → build ที่ผูก: **22** (รอ Apple ประมวลผลเสร็จก่อน แล้วรัน `asc-listing.py apply`)
+- [x] ผูก build **22** เข้าเวอร์ชัน 1.0.0 แล้ว (ยืนยันด้วย `asc-listing.py show`)
+- [x] TestFlight: กลุ่ม "ทีมเทส SHARK" (internal · รับทุกบิลด์อัตโนมัติ · suksomsri@gmail.com) → **โหลดได้เลย**
 - [ ] เปิดแอปบนเครื่องจริงจาก TestFlight เห็นชื่อใต้ไอคอนเป็น **SHARK HUB** + ลองแจ้งเตือน
 - [ ] **App Privacy ตอบครบตามข้อ 2 แล้วกด Publish** ← เหลืออันนี้เป็นหลัก
 - [ ] รัน `seed-review-shop.mts` วันเดียวกับที่ยื่น
