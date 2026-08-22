@@ -12,6 +12,7 @@
 //   AS-4 ลิงก์ใน footer ชี้ไปหน้าที่มีจริงทุกอัน (ผู้ตรวจกดแล้วต้องไม่เจอ 404)
 //   AS-5 🔴 หน้ากฎหมายห้ามสัญญาเกินของจริง — เส้นทางในแอปที่หน้านั้นบอกให้ผู้ใช้เดินตาม ต้องมีไฟล์อยู่จริง
 //   AS-6 landing ต้องอธิบายว่าแอปทำอะไร (Apple 2.3 Accurate Metadata) ไม่ใช่หน้าเปล่า
+//   AS-7 🔴 ของที่ "เน่าตามเวลา" ต้องรีเฟรชได้ด้วยการรันซ้ำ + ชื่อแอปในเครื่องต้องตรงกับชื่อในสโตร์
 //
 // รัน: pnpm qc:appstore
 import { existsSync, readFileSync } from "node:fs";
@@ -135,6 +136,30 @@ console.log("\n── AS-6 landing อธิบายแอป (Apple 2.3 Accura
   const missing = imgs.filter((p) => !existsSync(`public${p}`));
   chk("AS-6.4", `รูปบน landing มีไฟล์จริงครบ (${imgs.length} รูป)`,
     imgs.length > 0 && missing.length === 0, "ครบ", missing.join(",") || "ไม่มีรูปเลย");
+}
+
+// ── AS-7 ข้อมูลร้านผู้ตรวจต้องรีเฟรชได้ + ชื่อแอปต้องตรงกัน ──
+// ที่มา (22 ส.ค.): เจอว่าบิลขายในร้านผู้ตรวจลงวันที่ของเมื่อวาน → "ยอดขายวันนี้" เป็น ฿0
+// ทั้งที่สคริปต์ seed ตั้งใจกันเรื่องนี้ไว้ — เพราะกุญแจกันซ้ำของบิลไม่มีวันที่อยู่ในตัว
+// รันซ้ำก่อนยื่นกี่รอบก็ไม่เกิดบิลใหม่ · ด่านนี้ทำให้ "รันซ้ำแล้วสด" เป็นกลไก ไม่ใช่ความจำของคน
+console.log("\n── AS-7 ร้านผู้ตรวจรีเฟรชได้ + ชื่อแอปตรงสโตร์ ──");
+{
+  const seed = read("scripts/seed-review-shop.mts");
+  chk("AS-7.1", "🔴 กุญแจกันซ้ำของบิลขายมีวันที่ (รันซ้ำวันใหม่ = ยอดขายวันนี้ไม่เป็น ฿0)",
+    /idempotencyKey:\s*`seed-review-sale-\$\{dayKey\}/.test(seed), "มี ${dayKey}", "ไม่มีวันที่ในกุญแจ");
+  chk("AS-7.2", "กุญแจกันซ้ำของนัดหมายมีวันที่ (ปฏิทินผู้ตรวจไม่ว่าง)",
+    /idempotencyKey:\s*`seed-review-appt-\$\{p\.dateStr\}/.test(seed), "มี ${p.dateStr}", "ไม่มีวันที่ในกุญแจ");
+  chk("AS-7.3", "สคริปต์ seed ไม่มีวันที่ฮาร์ดโค้ด (ระเบิดเวลา)",
+    !/["'`]20\d\d-\d\d-\d\d/.test(seed), "ไม่มี", "มีวันที่ตายตัว", "MAJOR");
+
+  // ชื่อใต้ไอคอน (app.json) กับชื่อในสโตร์ (asc-listing.py) เพี้ยนกันได้ง่าย เพราะอยู่คนละไฟล์
+  // และแก้คนละจังหวะ (สโตร์แก้ทันที · ใต้ไอคอนต้องบิลด์ใหม่) → ผูกให้เพี้ยนแล้วแดง
+  const appJson = read("apps/mobile/app.json");
+  const asc = read("scripts/asc-listing.py");
+  const localName = (appJson.match(/"name":\s*"([^"]+)"/) ?? [])[1] ?? "";
+  const storeName = (asc.match(/"locale":\s*locale,\s*"name":\s*"([^"]+)"/) ?? [])[1] ?? "";
+  chk("AS-7.4", `🔴 ชื่อใต้ไอคอน = ชื่อในสโตร์ (${localName || "?"} / ${storeName || "?"})`,
+    Boolean(localName) && localName === storeName, storeName || "อ่านไม่ออก", localName || "อ่านไม่ออก");
 }
 
 const failed = cks.filter((c) => !c.ok);

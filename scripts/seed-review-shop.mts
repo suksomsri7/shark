@@ -151,7 +151,11 @@ if (unit) {
 
 // ── 5. บิลขายวันนี้ (ให้ "ยอดขายวันนี้" ไม่เป็น ฿0) ──
 // ใช้ line แบบพิมพ์ชื่อเอง (ไม่ผูก itemId) → ไม่ตัดสต็อก ไม่ต้องมีระบบบัญชีผูก
+// 🔴 กุญแจกันซ้ำต้องมี "วันที่" อยู่ในตัว (บทเรียน 22 ส.ค.): รอบแรกใช้ `seed-review-sale-a` เฉย ๆ
+//    → รันซ้ำวันถัดไปไม่เกิดบิลใหม่ ยอดขายวันนี้กลับเป็น ฿0 ทั้งที่ตั้งใจกันไว้ (เจอจริงตอนเช็ควันที่ 22 ส.ค.
+//    บิลทั้ง 4 ใบลงวันที่ 21) · เทียบกับนัดหมายด้านบนที่ใส่ dateStr ในกุญแจอยู่แล้วจึงรีเฟรชเองได้
 if (unit && posId) {
+  const dayKey = new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10); // วันไทย
   const BILLS = [
     { key: "a", lines: [{ name: "ตัดผมชาย", qty: 1, unitPriceSatang: 15000 }], pay: "CASH" as const },
     { key: "b", lines: [{ name: "สระ+ไดร์", qty: 1, unitPriceSatang: 25000 }, { name: "แชมพูสูตรอ่อนโยน 300ml", qty: 1, unitPriceSatang: 19000 }], pay: "PROMPTPAY" as const },
@@ -167,7 +171,7 @@ if (unit && posId) {
         tenantId,
         unitId: unit.id,
         systemId: posId,
-        idempotencyKey: `seed-review-sale-${b.key}`,
+        idempotencyKey: `seed-review-sale-${dayKey}-${b.key}`,
         lines: b.lines,
         payMethods: [{ type: b.pay, amountSatang: total }],
       });
