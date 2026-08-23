@@ -114,7 +114,7 @@ cd /root/projects/shark-in-th && pnpm exec tsx scripts/seed-review-shop.mts
 - [x] Age Rating (4+) · ราคาฟรี · 175 ประเทศ · Content Rights
 - [x] ผูก build **22** เข้าเวอร์ชัน 1.0.0 แล้ว (ยืนยันด้วย `asc-listing.py show`)
 - [x] TestFlight: กลุ่ม "ทีมเทส SHARK" (internal · รับทุกบิลด์อัตโนมัติ · suksomsri@gmail.com) → **โหลดได้เลย**
-- [ ] เปิดแอปบนเครื่องจริงจาก TestFlight เห็นชื่อใต้ไอคอนเป็น **SHARK HUB** + ลองแจ้งเตือน
-- [ ] **App Privacy ตอบครบตามข้อ 2 แล้วกด Publish** ← เหลืออันนี้เป็นหลัก
-- [ ] รัน `seed-review-shop.mts` วันเดียวกับที่ยื่น
+- [ ] เปิดแอปบนเครื่องจริงจาก TestFlight เห็นชื่อใต้ไอคอนเป็น **SHARK HUB** + ลอง login ด้วยบัญชีผู้ตรวจ (พิสูจน์ว่ารหัส OTP คงที่ยังใช้ได้)
+- [x] **App Privacy ตอบครบ + กด Publish แล้ว** (23 ส.ค. · 7 ประเภทข้อมูล · App Functionality/Linked=Yes/Tracking=No)
+- [x] รัน `seed-review-shop.mts` แล้ว 23 ส.ค. (บิล 4 ใบ ฿2,140 · นัดที่ยังไม่ถึง 5 รายการ) — **ถ้ายื่นวันอื่นให้รันใหม่**
 - [ ] กด **Add for Review → Submit**
