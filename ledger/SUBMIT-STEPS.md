@@ -119,7 +119,19 @@ cd /root/projects/shark-in-th && pnpm exec tsx scripts/seed-review-shop.mts
 - [x] **App Privacy ตอบครบ + กด Publish แล้ว** (23 ส.ค. · 7 ประเภทข้อมูล · App Functionality/Linked=Yes/Tracking=No)
 - [x] รัน `seed-review-shop.mts` แล้ว 23 ส.ค. (บิล 4 ใบ ฿2,140 · นัดที่ยังไม่ถึง 5 รายการ) — **ถ้ายื่นวันอื่นให้รันใหม่**
 - [x] Copyright (24 ส.ค. — เป็นตัวเดียวที่บล็อกปุ่ม Add for Review)
-- [ ] กด **Add for Review → Submit**
+- [x] **ยื่นเข้า App Review แล้ว 24 ส.ค. 03:19 UTC (10:19 ไทย) → สถานะ `WAITING_FOR_REVIEW`**
+
+### 🔴 กับดักที่เจอตอนยื่น: "Add for Review" ≠ "ยื่นแล้ว"
+กด Add for Review แล้ว ASC สร้าง **ใบยื่น (reviewSubmission)** ขึ้นมา แต่ยังไม่ส่ง —
+ต้องกด **Submit to App Review** ในหน้าใบยื่นอีกทีถึงจะเข้าคิวจริง
+วิธีตรวจว่าส่งจริงหรือยัง (ห้ามดูแค่ปุ่ม): `reviewSubmissions` ต้องมี **`submittedDate` ไม่ว่าง**
+และ state ต้องเป็น `WAITING_FOR_REVIEW` — ถ้ายังเป็น `READY_FOR_REVIEW` + submittedDate ว่าง = **ยังไม่ได้ยื่น**
+สั่งส่งผ่าน API ได้: `PATCH reviewSubmissions/{id} {"attributes":{"submitted":true}}`
+
+## 5. ระหว่างรอ / หลังผลออก
+- ปล่อยขึ้นสโตร์แบบ **อัตโนมัติทันทีที่ผ่าน** (`releaseType: AFTER_APPROVAL`) — อยากกดปล่อยเองบอกได้
+- 🔴 **ผ่าน review แล้วให้ลบ env `REVIEW_EMAIL` / `REVIEW_OTP` บน Vercel ทิ้ง**
+- ถ้าโดนตีกลับ: อ่านเหตุผลใน ASC → แก้ → ถ้าแก้โค้ดต้องบิลด์ใหม่ (#23) แล้ว `asc-listing.py apply` ผูกบิลด์ใหม่
 
 ### ❓ รูป iPad — ไม่ต้องมี
 แอปตั้งเป็น **iPhone อย่างเดียว** (`app.json ios.supportsTablet: false`) → ASC โชว์แท็บ iPad ไว้เฉย ๆ แต่ไม่บังคับ
