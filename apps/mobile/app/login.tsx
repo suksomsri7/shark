@@ -304,7 +304,9 @@ export default function LoginScreen() {
                 <View style={styles.dividerLine} />
               </View>
               <View style={styles.socialRow}>
-                {SOCIALS.map((s) => (
+                {/* Apple = ปุ่มของ iOS เท่านั้น — บน Android `isAvailableAsync()` คืน false เสมอ
+                    โชว์ไว้ = ผู้ใช้กดแล้วเจอ error ทั้งที่ไม่ใช่ความผิดเขา (กติกา: error ห้ามโทษผู้ใช้) */}
+                {SOCIALS.filter((s) => s.key !== "apple" || Platform.OS === "ios").map((s) => (
                   <Pressable
                     key={s.key}
                     onPress={() => onSocial(s.key, s.label)}

@@ -17,6 +17,7 @@
     },
     "android": {
       "package": "th.in.shark.ai",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/adaptive-icon.png"
