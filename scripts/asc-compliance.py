@@ -59,7 +59,11 @@ AGE_RATING = {
 }
 
 BASE_TERRITORY = "USA"  # สกุลเงินฐานที่ Apple ใช้คำนวณราคาประเทศอื่น (แอปฟรี ไม่มีผลกับผู้ใช้)
-CONTENT_RIGHTS = "DOES_NOT_USE_THIRD_PARTY_CONTENT"  # ไม่มีเนื้อหาของบุคคลที่สามในแอป
+CONTENT_RIGHTS = "DOES_NOT_USE_THIRD_PARTY_CONTENT"  # ไม่มีเนื้อหาของบุคคลที่สาม
+
+# ช่อง Copyright ของเวอร์ชัน — **ASC บล็อกการยื่นถ้าเว้นว่าง** (24 ส.ค. ปุ่ม Add for Review ฟ้องข้อนี้ข้อเดียว)
+# รูปแบบที่ Apple กำหนด: "<ปี> <ชื่อเจ้าของสิทธิ์>" — ใช้ชื่อนิติบุคคลเดียวกับบัญชี Apple Developer
+COPYRIGHT = "2026 SIAM DIVE CENTER COMPANY LIMITED"
 
 
 def age_rating() -> dict:
@@ -155,8 +159,16 @@ def show() -> None:
     app = api("GET", f"apps/{APP_ID}")["data"]["attributes"]
     print("Content Rights:", app.get("contentRightsDeclaration") or "❌ ยังไม่ตอบ")
 
+    v = api("GET", f"appStoreVersions/{_ascl.version_id()}")["data"]["attributes"]
+    print("Copyright:", v.get("copyright") or "❌ ยังไม่กรอก (ASC บล็อกการยื่น)")
+
 
 def apply() -> None:
+    vid = _ascl.version_id()
+    r = api("PATCH", f"appStoreVersions/{vid}",
+            {"data": {"type": "appStoreVersions", "id": vid, "attributes": {"copyright": COPYRIGHT}}})
+    print("Copyright:", "❌ " + r["detail"] if "ERR" in r else "✅ " + COPYRIGHT)
+
     arid = age_rating_id()
     r = api("PATCH", f"ageRatingDeclarations/{arid}",
             {"data": {"type": "ageRatingDeclarations", "id": arid, "attributes": AGE_RATING}})

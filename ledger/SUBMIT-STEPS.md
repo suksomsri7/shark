@@ -93,6 +93,7 @@ python3 scripts/asc-listing.py show     # ต้องเห็น "build ที
 | **ราคา** | **ฟรี** (price point 0 · สกุลฐาน USD) |
 | **ประเทศที่วางขาย** | **175 ประเทศ** + รับประเทศใหม่อัตโนมัติ |
 | **Content Rights** | ไม่มีเนื้อหาของบุคคลที่สาม (`DOES_NOT_USE_THIRD_PARTY_CONTENT`) |
+| **Copyright** | `2026 SIAM DIVE CENTER COMPANY LIMITED` — 🔴 **ช่องนี้เว้นว่างไม่ได้** ปุ่ม Add for Review จะฟ้อง "You must provide copyright information" (เจอ 24 ส.ค.) |
 
 เหตุผลที่ตอบ **"ไม่มีเนื้อหาของบุคคลที่สาม"**: ทุกอย่างที่แอปแสดงคือข้อมูลที่ร้านบันทึกเองกับของที่เราเขียนเอง
 ไม่มีเพลง/หนัง/ภาพ/ข่าว/แบรนด์ของคนอื่นในแอป (ฟอนต์ IBM Plex เป็นโอเพนซอร์ส ไม่นับ)
@@ -117,4 +118,11 @@ cd /root/projects/shark-in-th && pnpm exec tsx scripts/seed-review-shop.mts
 - [ ] เปิดแอปบนเครื่องจริงจาก TestFlight เห็นชื่อใต้ไอคอนเป็น **SHARK HUB** + ลอง login ด้วยบัญชีผู้ตรวจ (พิสูจน์ว่ารหัส OTP คงที่ยังใช้ได้)
 - [x] **App Privacy ตอบครบ + กด Publish แล้ว** (23 ส.ค. · 7 ประเภทข้อมูล · App Functionality/Linked=Yes/Tracking=No)
 - [x] รัน `seed-review-shop.mts` แล้ว 23 ส.ค. (บิล 4 ใบ ฿2,140 · นัดที่ยังไม่ถึง 5 รายการ) — **ถ้ายื่นวันอื่นให้รันใหม่**
+- [x] Copyright (24 ส.ค. — เป็นตัวเดียวที่บล็อกปุ่ม Add for Review)
 - [ ] กด **Add for Review → Submit**
+
+### ❓ รูป iPad — ไม่ต้องมี
+แอปตั้งเป็น **iPhone อย่างเดียว** (`app.json ios.supportsTablet: false`) → ASC โชว์แท็บ iPad ไว้เฉย ๆ แต่ไม่บังคับ
+(ยืนยันจากกล่องแดงของ ASC เอง: รายการที่บล็อกมีข้อเดียวคือ Copyright)
+บน iPad ผู้ใช้ยังโหลดได้ แสดงผลแบบหน้าจอ iPhone · ถ้าจะรองรับ iPad เต็มรูปแบบ ต้อง `supportsTablet: true`
++ **บิลด์ใหม่** + ตรวจเลย์เอาต์ทุกจอบนจอใหญ่ก่อน (งานคนละก้อน อย่าพ่วงกับการยื่นรอบแรก)
