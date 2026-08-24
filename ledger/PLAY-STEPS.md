@@ -18,7 +18,7 @@
 ต้องลงทะเบียน **2 ตัว** เพราะแอปถูกเซ็น 2 ชั้น:
 | คีย์ | ใช้ตอนไหน | หา SHA-1 ได้จาก |
 |---|---|---|
-| **upload key ของ EAS** | APK/AAB ที่เราบิลด์เอง (เทสเครื่อง · internal testing) | ผมดึงจากไฟล์ APK ให้ได้ |
+| **upload key ของ EAS** | APK/AAB ที่เราบิลด์เอง (เทสเครื่อง · internal testing) | **`D9:3A:A1:B0:7E:1A:DB:9E:A3:D7:B6:7F:C9:A7:1A:8C:11:5E:8D:53`** (ดึง 24 ส.ค. ยืนยันด้วย openssl) |
 | **Play App Signing key** | แอปที่ผู้ใช้โหลดจาก Play จริง (Google เซ็นทับให้) | Play Console → **Test and release → App integrity → App signing** |
 
 วิธีเพิ่ม (มือเจ้าของ): console.cloud.google.com → เลือกโปรเจกต์เดิม → **APIs & Services → Credentials**
@@ -94,8 +94,19 @@ EXPO_TOKEN=<ดู reference_expo_token_shark> \
 # เลข versionCode ถูก autoIncrement เขียนกลับ app.json → ต้อง commit ตาม
 ```
 
+### เครื่องมือ: ดู SHA-1 ของ APK
+```bash
+python3 scripts/android-sha1.py /path/to/app.apk
+```
+เขียนเองเพราะเครื่องนี้ไม่มี JDK (`keytool`) และ APK ที่ EAS บิลด์ **เซ็นแบบ v2 อย่างเดียว**
+→ ไม่มี `META-INF/*.RSA` ให้ดึงด้วย openssl · สคริปต์อ่านใบรับรองจาก APK Signing Block ตรง ๆ
+🔴 มีด่านกันตอบผิดแบบเงียบในตัว (รอบแรกอ่านผิดไปหนึ่งชั้น ได้ hash ที่ดูดีแต่ไม่ใช่ใบรับรอง —
+ถ้าเอาไปลงทะเบียนจริงจะ login ไม่ติดโดยไม่มีใครรู้สาเหตุ)
+
 ## เช็คลิสต์
 - [x] versionCode + ซ่อนปุ่ม Apple บน Android (24 ส.ค.)
+- [x] บิลด์ APK แล้ว 24 ส.ค. (โปรไฟล์ `preview` · EAS สร้าง keystore ให้ · SHA-256 ของคีย์
+      `FA:1E:D6:C2:7C:4D:46:BB:36:E3:8D:6A:51:22:5A:62:8F:CE:48:1D:D7:8C:D9:AA:D1:93:38:5C:7B:42:53:41`)
 - [ ] APK เทสบนเครื่องจริง — ดูว่าจอไหนเพี้ยนบ้าง
 - [ ] เพิ่ม Android OAuth client (SHA-1) ใน Google Cloud → ปุ่ม Google ถึงจะใช้ได้
 - [ ] สร้างแอปใน Play Console + Data Safety + Content rating + App content
