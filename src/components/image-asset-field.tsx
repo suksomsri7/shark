@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { uploadLogoAction } from "@/lib/storage/actions";
+import { fetchImageForEditingAction, uploadLogoAction } from "@/lib/storage/actions";
 
 const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
 
@@ -34,6 +34,8 @@ export function ImageAssetField({
   const [note, setNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
+  // เก็บไฟล์ที่เพิ่งเลือกไว้ในเครื่อง — ใช้เป็นต้นทางตอนลบพื้นหลัง จะได้ไม่ติดกำแพง CORS ของ CDN
+  const localFile = useRef<File | Blob | null>(null);
 
   function upload(file: File | Blob, filename: string) {
     const fd = new FormData();
@@ -59,20 +61,35 @@ export function ImageAssetField({
     if (!file) return;
     setError(null);
     setNote(null);
+    localFile.current = file;
     upload(file, file.name);
   }
 
   async function removeBackground() {
     setError(null);
     setNote(null);
+    // ลำดับต้นทางรูป: ไฟล์ในเครื่องที่เพิ่งเลือก → ขอผ่าน server (รูปบน CDN ของเรา)
+    // เพราะ canvas อ่านพิกเซลรูปข้ามโดเมนไม่ได้ถ้าปลายทางไม่ส่ง CORS มา
+    let src = url;
+    if (localFile.current) {
+      src = URL.createObjectURL(localFile.current);
+    } else {
+      const got = await fetchImageForEditingAction(url);
+      if (!got.ok) {
+        setError(got.error);
+        return;
+      }
+      src = got.dataUrl;
+    }
     try {
-      const blob = await stripBackground(url);
+      const blob = await stripBackground(src);
+      localFile.current = blob; // กดซ้ำได้เรื่อย ๆ โดยไม่ต้องโหลดใหม่
       upload(blob, "no-bg.png");
-      setNote("ลบพื้นหลังแล้ว — ตรวจตัวอย่างก่อนกดบันทึก");
+      setNote("ลบพื้นหลังแล้ว — ดูตัวอย่างบนพื้นตาราง ถ้าโอเคกดบันทึกการตั้งค่า");
     } catch {
-      setError(
-        "ลบพื้นหลังไม่ได้ — รูปนี้มาจากที่อื่นและไม่อนุญาตให้ประมวลผลข้ามเว็บ ลองอัปโหลดไฟล์เข้ามาก่อน",
-      );
+      setError("ลบพื้นหลังไม่สำเร็จ — ลองอัปโหลดไฟล์รูปเข้ามาใหม่อีกครั้ง");
+    } finally {
+      if (src.startsWith("blob:")) URL.revokeObjectURL(src);
     }
   }
 
@@ -130,6 +147,7 @@ export function ImageAssetField({
               setUrl("");
               setNote(null);
               setError(null);
+              localFile.current = null;
             }}
             disabled={pending}
             className="btn btn-ghost text-xs disabled:opacity-50"
