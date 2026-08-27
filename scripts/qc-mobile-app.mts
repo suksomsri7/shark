@@ -103,6 +103,22 @@ chk("APP-7.3", "🔴 projectId ของ push อ่านจาก app.json (�
   pushSrc.includes("Constants.expoConfig") && !/projectId:\s*"[0-9a-f-]{36}"/.test(pushSrc), "อ่านจาก config", "ฮาร์ดโค้ด uuid");
 chk("APP-7.4", "🔴 logout ส่ง expoToken ไปด้วย (ไม่งั้นเครื่องที่ออกจากระบบยังได้แจ้งเตือนของบัญชีเดิม)",
   /logout[\s\S]{0,200}expoToken/.test(read("src/lib/auth-context.tsx")), "ส่ง", "ไม่ส่ง");
+// 🔴 27 ส.ค.: เจ้าของกดปุ่ม Google บน TestFlight แล้ว **แอปดับทันที**
+// เหตุ: plugin google-signin ใส่ไว้แบบไม่มี option → มันไปเดินเส้นทาง Firebase (ต้องมี GoogleService-Info.plist)
+// ผลคือ URL scheme `com.googleusercontent.apps.<client ที่กลับด้าน>` **ไม่ถูกใส่ลง Info.plist**
+// → GIDSignIn โยน exception ระดับ native ตอนเปิดหน้าล็อกอิน = ดับ ไม่มีทาง try/catch จาก JS
+// ด่านนี้ผูก scheme ใน app.json เข้ากับ iosClientId ในจอ login ให้เพี้ยนกันไม่ได้
+{
+  const cfg = JSON.parse(read("app.json") || "{}") as { expo?: { plugins?: unknown[] } };
+  const entry = (cfg.expo?.plugins ?? []).find(
+    (p) => Array.isArray(p) && p[0] === "@react-native-google-signin/google-signin",
+  ) as [string, { iosUrlScheme?: string }] | undefined;
+  const scheme = entry?.[1]?.iosUrlScheme ?? "";
+  const clientId = (read("app/login.tsx").match(/iosClientId:\s*"([^"]+)"/) ?? [])[1] ?? "";
+  const expected = clientId ? `com.googleusercontent.apps.${clientId.replace(".apps.googleusercontent.com", "")}` : "";
+  chk("APP-7.5", "🔴 Google Sign-In iOS: app.json ต้องมี iosUrlScheme ตรงกับ iosClientId (ขาด = กดปุ่ม Google แล้วแอปดับ)",
+    Boolean(expected) && scheme === expected, expected || "อ่าน iosClientId ไม่ได้", scheme || "ไม่มี iosUrlScheme");
+}
 
 // ── 4. config + กัน Vercel/root พัง ──
 const appJson = JSON.parse(read("app.json") || "{}") as { expo?: { android?: { package?: string }; ios?: { bundleIdentifier?: string }; userInterfaceStyle?: string } };
