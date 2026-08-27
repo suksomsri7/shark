@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
-import { getDocument, getSettings, DOC_LABEL, baht } from "@/lib/modules/account/service";
+import { getDocument, getSettings, DOC_LABEL, baht, orgDisplayName } from "@/lib/modules/account/service";
 import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
 
 
@@ -54,7 +54,7 @@ export default async function PrintPage({
             <img src={s.logoUrl} alt="logo" className="h-14 w-14 object-contain" />
           )}
           <div>
-            <div className="text-lg font-bold">{s.orgName || "กิจการของคุณ"}</div>
+            <div className="text-lg font-bold">{orgDisplayName(s) || "กิจการของคุณ"}</div>
             {s.address && <div className="text-xs text-neutral-600">{s.address}</div>}
             {sellerBranch && <div className="text-xs text-neutral-600">{sellerBranch}</div>}
             {s.taxId && (

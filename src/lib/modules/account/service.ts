@@ -252,6 +252,9 @@ export function computeTotals(input: {
 // ─────────────────── ตั้งค่า ───────────────────
 
 export type AccountSettingsView = {
+  // คำนำหน้าชื่อนิติบุคคล ("บริษัท" / "ห้างหุ้นส่วนจำกัด" / …) — เก็บแยกจากชื่อ
+  // เพราะเอกสารภาษีต้องพิมพ์ชื่อเต็มตามที่จดทะเบียน แต่คนกรอกมักลืมพิมพ์คำนำหน้า
+  orgPrefix: string | null;
   orgName: string;
   orgNameEn: string | null;
   taxId: string | null;
@@ -317,6 +320,7 @@ function readStr(docConfig: unknown, key: string): string | null {
 }
 
 const SETTINGS_DEFAULT: AccountSettingsView = {
+  orgPrefix: null,
   orgName: "",
   orgNameEn: null,
   taxId: null,
@@ -338,6 +342,39 @@ const SETTINGS_DEFAULT: AccountSettingsView = {
   docTypes: {},
 };
 
+/** คำนำหน้าชื่อนิติบุคคลที่ให้เลือก — ค่าว่าง = ไม่มีคำนำหน้า (บุคคลธรรมดา/ร้านค้า) */
+export const ORG_PREFIXES = [
+  "",
+  "บริษัท",
+  "ห้างหุ้นส่วนจำกัด",
+  "ห้างหุ้นส่วนสามัญนิติบุคคล",
+  "ร้าน",
+  "มูลนิธิ",
+  "สมาคม",
+  "สหกรณ์",
+] as const;
+
+/**
+ * ชื่อกิจการที่ใช้พิมพ์บนเอกสาร = คำนำหน้า + ชื่อ
+ * รวมที่เดียวเพราะเอกสารภาษีมีหลายหน้า (ใบกำกับ · 50 ทวิ · ใบเสร็จสาธารณะ) ถ้าต่างคนต่างต่อสตริง
+ * จะมีสักหน้าที่ลืมคำนำหน้าแล้วชื่อบนเอกสารไม่ตรงกับที่จดทะเบียน
+ */
+export function orgDisplayName(s: { orgPrefix?: string | null; orgName?: string | null }): string {
+  return [s.orgPrefix?.trim(), s.orgName?.trim()].filter(Boolean).join(" ");
+}
+
+/**
+ * เว็บไซต์: คนกรอกมักพิมพ์ `shark.in.th` เฉย ๆ ซึ่งพอเอาไปทำลิงก์บนเอกสารจะกลายเป็น path ในเว็บเรา
+ * → เติม https:// ให้เมื่อไม่มี scheme · ค่าว่าง = null (ไม่ใช่ "https://")
+ */
+export function normalizeWebsite(v: string | null | undefined): string | null {
+  const raw = (v ?? "").trim();
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return raw; // scheme อื่น (mailto: ฯลฯ) ปล่อยตามที่พิมพ์
+  return `https://${raw}`;
+}
+
 // อ่าน taxPointBasis จาก docConfig JSON (ไม่มีคอลัมน์เฉพาะใน schema)
 function readTaxPointBasis(docConfig: unknown): AccountVatTiming {
   const v = (docConfig as Record<string, unknown> | null)?.taxPointBasis;
@@ -351,6 +388,7 @@ export async function getSettings(
   const s = await prisma.accountSettings.findFirst({ where: { tenantId, systemId } });
   if (!s) return { ...SETTINGS_DEFAULT };
   return {
+    orgPrefix: readStr(s.docConfig, "orgPrefix"),
     orgName: s.orgName,
     orgNameEn: s.orgNameEn,
     taxId: s.taxId,
@@ -386,6 +424,7 @@ export async function saveSettings(
     input.taxPointBasis === "ON_PAYMENT" ? "ON_PAYMENT" : "ON_ISSUE";
   const docConfig: Record<string, unknown> = { ...prevConfig, taxPointBasis };
   // §3.8 ตราประทับ/ลายเซ็น + per-docType (เก็บใน docConfig — คงคีย์เดิมถ้าไม่ได้ส่งมา)
+  if (input.orgPrefix !== undefined) docConfig.orgPrefix = input.orgPrefix || null;
   if (input.stampUrl !== undefined) docConfig.stampUrl = input.stampUrl || null;
   if (input.signatureUrl !== undefined) docConfig.signatureUrl = input.signatureUrl || null;
   if (input.docTypes !== undefined) {
@@ -406,7 +445,7 @@ export async function saveSettings(
     address: input.address ?? null,
     phone: input.phone ?? null,
     email: input.email ?? null,
-    website: input.website ?? null,
+    website: normalizeWebsite(input.website),
     logoUrl: input.logoUrl ?? null,
     vatRegistered: input.vatRegistered ?? true,
     vatRateBp: input.vatRateBp ?? 700,
@@ -1607,7 +1646,7 @@ export async function getPublicTaxContext(token: string): Promise<{
   return {
     systemId: doc.systemId,
     tenantId: doc.tenantId,
-    orgName: settings.orgName,
+    orgName: orgDisplayName(settings),
     docType: doc.docType,
     docNo: doc.docNo,
     issueDate: doc.issueDate,

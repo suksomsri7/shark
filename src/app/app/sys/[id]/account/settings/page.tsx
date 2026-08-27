@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
-import { getSettings, DOC_LABEL, CONFIGURABLE_DOC_TYPES } from "@/lib/modules/account/service";
+import {
+  getSettings,
+  DOC_LABEL,
+  CONFIGURABLE_DOC_TYPES,
+  ORG_PREFIXES,
+  orgDisplayName,
+} from "@/lib/modules/account/service";
 import { saveSettingsAction } from "@/lib/modules/account/actions";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { LogoUploader } from "@/components/logo-uploader";
+import { ImageAssetField } from "@/components/image-asset-field";
 import { storageEnabled } from "@/lib/storage/service";
 
 const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
@@ -34,9 +40,24 @@ export default async function AccountSettingsPage({
       <form action={saveSettingsAction} className="card grid grid-cols-1 gap-3 sm:grid-cols-2">
         <input type="hidden" name="systemId" value={systemId} />
         <h2 className="text-sm font-medium sm:col-span-2">ข้อมูลกิจการ</h2>
-        <label className={`${labelCls} sm:col-span-2`}>
+        <label className={labelCls}>
+          คำนำหน้า
+          <select name="orgPrefix" defaultValue={s.orgPrefix ?? ""} className={inputCls}>
+            {ORG_PREFIXES.map((p) => (
+              <option key={p || "none"} value={p}>
+                {p || "— ไม่มี —"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={labelCls}>
           ชื่อกิจการ
           <input name="orgName" defaultValue={s.orgName} required className={inputCls} />
+          <span className="text-[11px]">
+            พิมพ์เฉพาะชื่อ + คำต่อท้าย เช่น <b>ฉลามน้อย จำกัด</b> แล้วเลือกคำนำหน้าเป็น
+            &nbsp;<b>บริษัท</b> · บนเอกสารจะพิมพ์ว่า{" "}
+            <b>{orgDisplayName(s) || "บริษัท ฉลามน้อย จำกัด"}</b>
+          </span>
         </label>
         <label className={labelCls}>
           ชื่อ (อังกฤษ)
@@ -68,7 +89,18 @@ export default async function AccountSettingsPage({
         </label>
         <label className={labelCls}>
           เว็บไซต์
-          <input name="website" defaultValue={s.website ?? ""} className={inputCls} />
+          <input
+            name="website"
+            type="url"
+            inputMode="url"
+            defaultValue={s.website ?? ""}
+            placeholder="https://shark.in.th"
+            className={inputCls}
+          />
+          <span className="text-[11px]">
+            ใส่ที่อยู่เว็บแบบเต็ม ขึ้นต้นด้วย <b>https://</b> เช่น <b>https://shark.in.th</b>
+            &nbsp;· ถ้าพิมพ์แค่ชื่อโดเมน ระบบจะเติม https:// ให้ตอนบันทึก
+          </span>
         </label>
 
         <h2 className="mt-2 text-sm font-medium sm:col-span-2">ภาษีและเอกสาร</h2>
@@ -106,18 +138,33 @@ export default async function AccountSettingsPage({
         <h2 className="mt-2 text-sm font-medium sm:col-span-2">โลโก้ / ตราประทับ / ลายเซ็น</h2>
         <p className="text-[11px] text-[color:var(--color-muted)] sm:col-span-2">
           {storageEnabled()
-            ? "อัปโหลดโลโก้ได้ในตัว หรือวาง URL รูปเอง · ตราประทับ/ลายเซ็นยังใช้วาง URL · รูปจะแสดงบนใบกำกับภาษี/เอกสารพิมพ์"
-            : "ยังไม่มีระบบอัปโหลดไฟล์ในตัว — วาง URL รูป (โฮสต์ไว้ที่อื่น) รูปจะแสดงบนใบกำกับภาษี/เอกสารพิมพ์"}
+            ? "อัปโหลดรูปได้ทั้ง 3 ช่อง (หรือวาง URL เองก็ได้) · รูปจะแสดงบนใบกำกับภาษี/เอกสารพิมพ์"
+            : "ยังไม่ได้เปิดระบบอัปโหลดไฟล์ — วาง URL รูป (โฮสต์ไว้ที่อื่น) รูปจะแสดงบนใบกำกับภาษี/เอกสารพิมพ์"}
+          {" "}ตราประทับ/ลายเซ็นที่ถ่ายหรือสแกนจากกระดาษ กด <b>ลบพื้นหลัง</b> เพื่อให้พื้นขาวโปร่งใส
+          ไม่ไปทับเนื้อเอกสาร
         </p>
-        <LogoUploader defaultUrl={s.logoUrl ?? ""} enabled={storageEnabled()} />
-        <label className={labelCls}>
-          ตราประทับบริษัท (URL)
-          <input name="stampUrl" defaultValue={s.stampUrl ?? ""} placeholder="https://…" className={inputCls} />
-        </label>
-        <label className={labelCls}>
-          ลายเซ็นผู้มีอำนาจ (URL)
-          <input name="signatureUrl" defaultValue={s.signatureUrl ?? ""} placeholder="https://…" className={inputCls} />
-        </label>
+        <ImageAssetField
+          name="logoUrl"
+          label="โลโก้"
+          defaultUrl={s.logoUrl ?? ""}
+          enabled={storageEnabled()}
+          previewClass="h-12 w-12 object-contain"
+        />
+        <ImageAssetField
+          name="stampUrl"
+          label="ตราประทับบริษัท"
+          hint="ประทับมุมล่างซ้ายของเอกสาร"
+          defaultUrl={s.stampUrl ?? ""}
+          enabled={storageEnabled()}
+          previewClass="h-16 w-16 object-contain"
+        />
+        <ImageAssetField
+          name="signatureUrl"
+          label="ลายเซ็นผู้มีอำนาจ"
+          hint="แสดงเหนือชื่อผู้มีอำนาจลงนาม"
+          defaultUrl={s.signatureUrl ?? ""}
+          enabled={storageEnabled()}
+        />
 
         <h2 className="mt-2 text-sm font-medium sm:col-span-2">ตั้งค่ารายเอกสาร</h2>
         <p className="text-[11px] text-[color:var(--color-muted)] sm:col-span-2">

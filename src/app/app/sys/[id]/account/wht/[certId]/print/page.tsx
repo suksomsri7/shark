@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
-import { getSettings, baht } from "@/lib/modules/account/service";
+import { getSettings, baht, orgDisplayName } from "@/lib/modules/account/service";
 import { getWhtCert, WHT_INCOME_LABEL } from "@/lib/modules/account/wht";
 import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
 
@@ -39,7 +39,7 @@ export default async function WhtCertPrintPage({ params }: { params: Promise<{ i
       {/* ผู้มีหน้าที่หักภาษี ณ ที่จ่าย (ผู้จ่าย = กิจการ) */}
       <div className="mt-5 border-t pt-3">
         <div className="mb-1 text-xs font-semibold">ผู้มีหน้าที่หักภาษี ณ ที่จ่าย (ผู้จ่ายเงิน)</div>
-        <Cell label="ชื่อ" value={s.orgName || "กิจการของคุณ"} />
+        <Cell label="ชื่อ" value={orgDisplayName(s) || "กิจการของคุณ"} />
         <Cell label="เลขประจำตัวผู้เสียภาษี" value={s.taxId ?? ""} />
         {s.address && <Cell label="ที่อยู่" value={s.address} />}
       </div>

@@ -27,6 +27,7 @@ import {
   isVisibleDocType,
   ensurePublicTaxInvoiceLink,
   CONFIGURABLE_DOC_TYPES,
+  ORG_PREFIXES,
   type LineInput,
   type DocTypeConfig,
 } from "./service";
@@ -395,6 +396,10 @@ export async function saveSettingsAction(formData: FormData) {
     }
   }
   await saveSettings(tenantId, systemId, {
+    // รับเฉพาะค่าที่อยู่ในรายการ — กันค่าที่ยิงตรงมาจากนอกฟอร์ม
+    orgPrefix: (ORG_PREFIXES as readonly string[]).includes(str(formData, "orgPrefix"))
+      ? str(formData, "orgPrefix") || null
+      : null,
     orgName: str(formData, "orgName"),
     orgNameEn: str(formData, "orgNameEn") || null,
     taxId: str(formData, "taxId") || null,
