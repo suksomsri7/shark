@@ -5,6 +5,7 @@ import { AppShell } from "@/components/app-shell/AppShell";
 import { AppMain } from "@/components/app-shell/AppMain";
 import { NavProgress } from "@/components/app-shell/NavProgress";
 import type { NavItem, SoonItem } from "@/components/app-shell/NavDrawer";
+import { accountNavChildren } from "@/lib/modules/account/nav";
 
 // ฟังก์ชันย่อยของ "ระบบหน้า fixed" (เช่น KB /app/kb) → กาง accordion เหมือนระบบอื่น
 // ⚠️ ทุก href ต้องมี page.tsx จริง — ตรวจโดย scripts/qc-nav-functions.mts (บล็อก KB)
@@ -28,13 +29,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const tenantId = auth.active.tenantId;
   // perf A: badge (help/AI) ย้ายไปโหลดฝั่ง client หลังหน้าโผล่ — ไม่บล็อกการเปลี่ยนหน้า
   // layout เหลือแค่ query ที่จำเป็นต้องมีตอน render เมนู (units + appSystems)
-  const [units, appSystems] = await Promise.all([
+  const [units, appSystems, accountSettings] = await Promise.all([
     prisma.businessUnit.findMany({
       where: { tenantId, status: { not: "ARCHIVED" } },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
     prisma.appSystem.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: "asc" } }),
+    // ต้องรู้ว่าระบบบัญชีแต่ละชุดจด VAT ไหม — เมนูใบกำกับภาษีขายโผล่เฉพาะร้านที่จด
+    prisma.accountSettings.findMany({ where: { tenantId }, select: { systemId: true, vatRegistered: true } }),
   ]);
+  const vatOf = new Map(accountSettings.map((a) => [a.systemId, a.vatRegistered]));
 
   // "แตกฟังก์ชันย่อยในเมนู" — ทุกระบบที่มี sub-route จริงจะกาง submenu (accordion) ใต้ชื่อระบบ
   // business = ต่อด้วย slug (/app/u/<slug>/...) · feature = ต่อด้วย id (/app/sys/<id>/...)
@@ -101,18 +105,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/pos/close`, label: "ปิดวัน" },
         ];
       case "ACCOUNT":
+        // เมนูบัญชีทั้งชุด (8 หมวด ~30 รายการ) มาจากทะเบียนเดียวกับ sidebar ในโมดูล
+        // → เปิด ☰ แล้วไปได้ทุกฟังก์ชันจากทุกหน้า ไม่ต้องกลับไปเลื่อนหน้าแรกของระบบบัญชี
         return [
           { href: s, label: "ภาพรวม" },
-          { href: `${s}/account/documents`, label: "เอกสาร" },
-          { href: `${s}/account/journal`, label: "สมุดรายวัน" },
-          { href: `${s}/account/reports`, label: "รายงาน" },
-          { href: `${s}/account/accounts`, label: "ผังบัญชี" },
-          { href: `${s}/account/tax`, label: "ภาษี" },
-          { href: `${s}/account/contacts`, label: "คู่ค้า" },
-          { href: `${s}/account/aging`, label: "อายุหนี้" },
-          { href: `${s}/account/periods`, label: "งวดบัญชี" },
-          { href: `${s}/account/assets`, label: "สินทรัพย์" },
-          { href: `${s}/account/cheque`, label: "เช็ค" },
+          ...accountNavChildren(`${s}/account`, vatOf.get(slugOrId) ?? true),
         ];
       case "HR":
         return [

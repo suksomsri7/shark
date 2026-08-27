@@ -73,4 +73,21 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): SubNavGroup[]
   ];
 }
 
+/**
+ * เมนูเดียวกันในรูปแบบ "ลิสต์แบน" สำหรับ drawer ของแอป (☰ ด้านบน)
+ *
+ * ทำไมต้องแปลงจากตัวเดิม ไม่พิมพ์ใหม่: เดิม drawer มีลิสต์บัญชีที่พิมพ์มือไว้ 11 รายการ
+ * ซึ่ง **เพี้ยนจากเมนูจริงไปแล้ว** (ไม่มีใบเสนอราคา/ใบแจ้งหนี้/ใบเสร็จ ทั้งที่เป็นของที่ใช้บ่อยสุด)
+ * — บทเรียนเดียวกับลิสต์ระบบบน landing ที่เคยพิมพ์มือแล้วเพี้ยน
+ * `group` ใส่เฉพาะรายการแรกของแต่ละหมวด เพื่อให้ drawer ขึ้นหัวข้อคั่นได้
+ */
+export function accountNavChildren(
+  base: string,
+  vatRegistered: boolean,
+): { href: string; label: string; group?: string }[] {
+  return ACCOUNT_NAV(base, vatRegistered).flatMap((g) =>
+    g.items.map((it, i) => (i === 0 ? { ...it, group: g.title } : { ...it })),
+  );
+}
+
 export default ACCOUNT_NAV;

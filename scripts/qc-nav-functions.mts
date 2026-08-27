@@ -32,7 +32,21 @@ const EXPECT_FEATURE = ["POS", "ACCOUNT", "HR", "INVENTORY", "CRM", "MARKETING",
 function pageFileFor(kind: "business" | "feature", rest: string): string {
   const base = kind === "business" ? "src/app/app/u/[unitSlug]" : "src/app/app/sys/[id]";
   const clean = rest.replace(/^\//, "");
-  return join(ROOT, base, clean, "page.tsx");
+  const direct = join(ROOT, base, clean, "page.tsx");
+  if (existsSync(direct) || !clean) return direct;
+  // route แบบ dynamic: /account/docs/RECEIPT → .../account/docs/[docType]/page.tsx
+  // (ไม่รองรับตรงนี้ = ฟ้อง dead link ปลอมให้ลิงก์ที่ใช้ได้จริง แล้วคนจะเริ่มไม่เชื่อข้อสอบ)
+  let dir = join(ROOT, base);
+  for (const seg of clean.split("/")) {
+    const exact = join(dir, seg);
+    if (existsSync(exact)) { dir = exact; continue; }
+    const dyn = existsSync(dir)
+      ? readdirSync(dir).find((d) => d.startsWith("[") && statSync(join(dir, d)).isDirectory())
+      : undefined;
+    if (!dyn) return direct; // ไม่มีทั้งชื่อตรงและ dynamic → dead link จริง
+    dir = join(dir, dyn);
+  }
+  return join(dir, "page.tsx");
 }
 
 const src = readFileSync(LAYOUT, "utf8");
@@ -69,6 +83,19 @@ function parseCases(text: string, kind: "business" | "feature"): ParsedCase[] {
 }
 
 const cases = [...parseCases(businessBody, "business"), ...parseCases(featureBody, "feature")];
+
+// 🔴 ระบบบัญชีไม่พิมพ์ลิสต์ไว้ใน layout แล้ว — ดึงจากทะเบียนกลาง `account/nav.ts` (ตัวเดียวกับ sidebar)
+// ถ้าไม่ตามไปอ่านที่นั่น ด่าน "dead link" จะเหลือแค่ 1 ลิงก์ของบัญชี = ข้อสอบวัดอะไรไม่ได้
+const accCase = cases.find((c) => c.type === "ACCOUNT");
+if (accCase) {
+  const navSrc = readFileSync(join(ROOT, "src/lib/modules/account/nav.ts"), "utf8");
+  const navHrefs = [...navSrc.matchAll(/href:\s*`\$\{base\}([^`]*)`/g)].map((m) => m[1]);
+  chk("S0.1", `ตามลิงก์บัญชีไปที่ account/nav.ts ได้ (${navHrefs.length} รายการ)`,
+    navHrefs.length >= 20 && /accountNavChildren/.test(featureBody),
+    `เจอ ${navHrefs.length} href · layout อ้าง accountNavChildren = ${/accountNavChildren/.test(featureBody)}`,
+    "CRITICAL");
+  accCase.hrefs.push(...navHrefs.map((h) => `\`\${s}/account${h}\``));
+}
 
 // แปลง href token → rest path (เทียบกับ base ของ kind)
 function hrefToRest(token: string): string | null {

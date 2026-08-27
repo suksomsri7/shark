@@ -99,24 +99,25 @@ export async function AccountContent({
         </Link>
       </div>
 
-      {/* การ์ดหมวด 8 ใบ */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {nav.map((g) => (
-          <div key={g.title} className="card flex flex-col gap-2">
-            <h2 className="text-sm font-medium">{g.title}</h2>
-            <div className="flex flex-col gap-0.5">
-              {g.items.map((it) => (
-                <Link
-                  key={it.href}
-                  href={it.href}
-                  className="rounded-lg px-2 py-1.5 text-sm text-[color:var(--color-ink-soft)] hover:bg-[color:var(--color-surface-2)]"
-                >
-                  {it.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-        ))}
+      {/* เมนูทั้งชุดอยู่ที่ ☰ (มือถือ) และแถบซ้าย (จอใหญ่) แล้ว — หน้าแรกไม่ต้องเป็นลิสต์ยาวอีก
+          (คำสั่งเจ้าของ 27 ส.ค.: "เมนูพวกนี้ควรไปอยู่ในเมนูระบบบัญชี จะใช้งานง่ายกว่า")
+          เหลือไว้เฉพาะทางลัดที่ใช้บ่อยจริง ๆ ให้กดถึงใน 1 ครั้ง */}
+      <div className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium">ใช้บ่อย</h2>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {SHORTCUTS(base).map((it) => (
+            <Link
+              key={it.href}
+              href={it.href}
+              className="rounded-xl border p-3 text-sm hover:bg-[color:var(--color-surface-2)]"
+            >
+              {it.label}
+            </Link>
+          ))}
+        </div>
+        <p className="text-xs text-[color:var(--color-muted)] md:hidden">
+          เมนูบัญชีทั้งหมด ({nav.reduce((n, g) => n + g.items.length, 0)} รายการ) อยู่ในปุ่ม ☰ มุมบนซ้าย
+        </p>
       </div>
 
       {/* เอกสารล่าสุด */}
@@ -140,6 +141,16 @@ export async function AccountContent({
       </div>
     </section>
   );
+}
+
+// ทางลัดบนหน้าแรก — เลือกจาก "งานที่ทำทุกวัน" ไม่ใช่ยกเมนูทั้งชุดมาวาง
+function SHORTCUTS(base: string): { href: string; label: string }[] {
+  return [
+    { href: `${base}/docs/RECEIPT`, label: "ใบเสร็จรับเงิน" },
+    { href: `${base}/docs/INVOICE`, label: "ใบแจ้งหนี้" },
+    { href: `${base}/expense`, label: "บันทึกค่าใช้จ่าย" },
+    { href: `${base}/contacts`, label: "ลูกค้าและผู้ขาย" },
+  ];
 }
 
 function StatCard({

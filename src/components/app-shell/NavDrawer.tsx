@@ -10,7 +10,8 @@ import { NavIcon } from "./NavIcon";
 // รวม "ระบบทั้งหมด" (grid เดิมที่ย้ายมาจากหน้า /app) + ระบบที่กำลังจะมา + เพิ่มระบบ + ออกจากระบบ
 // nav item data ยังมาจาก layout (DB-driven) เหมือนเดิม — เปลี่ยนแค่การนำเสนอ
 
-export type NavChild = { href: string; label: string };
+// group = หัวข้อคั่นก่อนรายการนี้ (ระบบที่เมนูยาวอย่างบัญชี จะได้ไม่เป็นลิสต์ยาวพืด)
+export type NavChild = { href: string; label: string; group?: string };
 export type NavItem = { key: string; href: string; icon: string; label: string; children?: NavChild[] };
 export type SoonItem = { code: string; icon: string; label: string };
 // กิจการ 1 แห่งใน account (สำหรับ dropdown สลับกิจการ)
@@ -39,16 +40,22 @@ function NavGroup({ item, onNavigate }: { item: NavItem; onNavigate: () => void 
       {open && (
         <div className="ml-3.5 flex flex-col gap-0.5 border-l pl-2">
           {children.map((c) => (
-            <Link
-              key={c.href}
-              href={c.href}
-              onClick={onNavigate}
-              className={`rounded-lg px-2 py-2 text-sm hover:bg-[color:var(--color-surface-2)] ${
-                pathname === c.href ? "font-medium text-[color:var(--color-accent)]" : ""
-              }`}
-            >
-              {c.label}
-            </Link>
+            <div key={c.href} className="flex flex-col">
+              {c.group && (
+                <span className="mt-1.5 px-2 py-1 text-[11px] font-medium text-[color:var(--color-muted)]">
+                  {c.group}
+                </span>
+              )}
+              <Link
+                href={c.href}
+                onClick={onNavigate}
+                className={`rounded-lg px-2 py-2 text-sm hover:bg-[color:var(--color-surface-2)] ${
+                  pathname === c.href ? "font-medium text-[color:var(--color-accent)]" : ""
+                }`}
+              >
+                {c.label}
+              </Link>
+            </div>
           ))}
         </div>
       )}
