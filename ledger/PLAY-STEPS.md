@@ -21,9 +21,26 @@
 | **upload key ของ EAS** | APK/AAB ที่เราบิลด์เอง (เทสเครื่อง · internal testing) | **`D9:3A:A1:B0:7E:1A:DB:9E:A3:D7:B6:7F:C9:A7:1A:8C:11:5E:8D:53`** (ดึง 24 ส.ค. ยืนยันด้วย openssl) |
 | **Play App Signing key** | แอปที่ผู้ใช้โหลดจาก Play จริง (Google เซ็นทับให้) | Play Console → **Test and release → App integrity → App signing** |
 
-วิธีเพิ่ม (มือเจ้าของ): console.cloud.google.com → เลือกโปรเจกต์เดิม → **APIs & Services → Credentials**
-→ **Create Credentials → OAuth client ID** → Application type **Android**
-→ Package name `th.in.shark.ai` + วาง SHA-1 → Create · ทำซ้ำอีกใบสำหรับ SHA-1 อีกตัว
+### วิธีเพิ่ม (มือเจ้าของ)
+1. เปิด **https://console.cloud.google.com/apis/credentials**
+2. เลือกโปรเจกต์ให้ถูก — ต้องเป็นโปรเจกต์เดียวกับที่ออก client ของ iOS/web อยู่แล้ว
+   (หมายเลขโปรเจกต์ **732040229931** — สังเกตจาก client id ที่ขึ้นต้นด้วยเลขนี้ในหน้า Credentials)
+   🔴 เพิ่มผิดโปรเจกต์ = ไม่มี error อะไรเลย แต่ล็อกอินไม่ติด
+3. **+ CREATE CREDENTIALS → OAuth client ID**
+4. Application type: **Android**
+   · Name: `SHARK HUB Android (EAS upload key)`
+   · Package name: `th.in.shark.ai`
+   · SHA-1 certificate fingerprint: `D9:3A:A1:B0:7E:1A:DB:9E:A3:D7:B6:7F:C9:A7:1A:8C:11:5E:8D:53`
+5. **Create** → เสร็จ ไม่ต้องคัดลอก client id/secret ไปใส่โค้ด
+   (แอปใช้ `webClientId` ตัวเดิมตอนรัน · ใบ Android มีไว้ให้ Google ยอมรับคู่ package+SHA-1 เท่านั้น)
+6. ทำซ้ำอีกใบชื่อ `SHARK HUB Android (Play App Signing)` ด้วย SHA-1 จาก Play Console
+   (**Test and release → Setup → App integrity → App signing key certificate**) — ทำได้หลังอัป AAB ขึ้น Play แล้ว
+
+⏱️ ใช้เวลา 5 นาที - 2 ชม. กว่าจะมีผล · หลังมีผลแล้วแค่เปิดแอปใหม่ ไม่ต้องบิลด์ใหม่
+
+🔴 **ตรวจหน้า OAuth consent screen ด้วย**: ถ้า Publishing status ยังเป็น **Testing**
+จะล็อกอินได้เฉพาะอีเมลที่อยู่ในรายชื่อ test users เท่านั้น (คนอื่นเจอ "Access blocked")
+→ ต้องกด **Publish app** ให้เป็น In production ก่อนเปิดให้ผู้ใช้จริง
 
 ⚠️ ระหว่างที่ยังไม่ทำ: **เข้าสู่ระบบด้วยอีเมล OTP ใช้ได้ปกติ** แค่ปุ่ม Google จะยังไม่ทำงานบน Android
 
