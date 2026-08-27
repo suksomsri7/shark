@@ -48,8 +48,13 @@ export function ImageAssetField({
         } else {
           setError(res.error);
         }
-      } catch {
-        setError("อัปโหลดไม่สำเร็จ — กรุณาลองใหม่อีกครั้ง");
+      } catch (e) {
+        // 🔴 ห้ามกลืน error ของ Next (redirect/not-found) — ถ้ากลืน ผู้ใช้จะเห็นแค่ "อัปโหลดไม่สำเร็จ"
+        //    ทั้งที่ของจริงคือเซสชันหลุดแล้วระบบกำลังจะพาไปหน้า login (เสียเวลาไล่หาสาเหตุ 27 ส.ค.)
+        const digest = (e as { digest?: string })?.digest ?? "";
+        if (typeof digest === "string" && digest.startsWith("NEXT_")) throw e;
+        console.error("[upload]", e);
+        setError(`อัปโหลดไม่สำเร็จ (${(e as Error)?.message?.slice(0, 80) || "ไม่ทราบสาเหตุ"})`);
       } finally {
         if (fileRef.current) fileRef.current.value = "";
       }
