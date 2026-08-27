@@ -119,7 +119,11 @@ cd /root/projects/shark-in-th && pnpm exec tsx scripts/seed-review-shop.mts
 - [x] **App Privacy ตอบครบ + กด Publish แล้ว** (23 ส.ค. · 7 ประเภทข้อมูล · App Functionality/Linked=Yes/Tracking=No)
 - [x] รัน `seed-review-shop.mts` แล้ว 23 ส.ค. (บิล 4 ใบ ฿2,140 · นัดที่ยังไม่ถึง 5 รายการ) — **ถ้ายื่นวันอื่นให้รันใหม่**
 - [x] Copyright (24 ส.ค. — เป็นตัวเดียวที่บล็อกปุ่ม Add for Review)
-- [x] **ยื่นเข้า App Review แล้ว 24 ส.ค. 03:19 UTC (10:19 ไทย) → สถานะ `WAITING_FOR_REVIEW`**
+- [x] ~~ยื่นเข้า App Review 24 ส.ค.~~ → **ถอนออกเอง 27 ส.ค.** (เจอปุ่ม Google ทำแอปดับบน build #22)
+      ถอนทัน Apple ยังไม่เริ่มตรวจ = ไม่มีประวัติโดนตีกลับ · เวอร์ชันกลับเป็น `DEVELOPER_REJECTED` แล้ว `PREPARE_FOR_SUBMISSION`
+- [x] **build #23 (แก้ปุ่ม Google) VALID + ผูกเข้า 1.0.0 แล้ว 27 ส.ค.**
+- [ ] เจ้าของเทส TestFlight #23: กดปุ่ม Google ต้องเปิดหน้าเลือกบัญชีได้ (ไม่ดับ)
+- [ ] รัน `seed-review-shop.mts` ใหม่ในวันที่ยื่น แล้วยื่นซ้ำ
 
 ### 🔴 กับดักที่เจอตอนยื่น: "Add for Review" ≠ "ยื่นแล้ว"
 กด Add for Review แล้ว ASC สร้าง **ใบยื่น (reviewSubmission)** ขึ้นมา แต่ยังไม่ส่ง —
