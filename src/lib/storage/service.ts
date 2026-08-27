@@ -7,6 +7,7 @@
 // (ข้อสอบฉีด deps.put แทน เพื่อไม่ยิงจริง) · cdnUrl = <SHARK_BUNNY_CDN>/<path>
 
 import { tenantDb } from "@/lib/core/db";
+import { logOps } from "@/lib/core/ops";
 import type { FileKind } from "@prisma/client";
 
 // ชนิดไฟล์ที่อนุญาต → นามสกุลไฟล์ (ext) ที่ใช้ประกอบ path
@@ -123,8 +124,14 @@ export async function uploadFile(
     });
 
     return { ok: true, cdnUrl, assetId: asset.id };
-  } catch {
+  } catch (e) {
     // เน็ตหลุด/DB ล่ม — ปิดสุภาพ ไม่ให้ throw ทะลุขึ้น UI
+    // 🔴 แต่ต้อง "เงียบต่อผู้ใช้ ไม่เงียบต่อเรา": catch เปล่า ๆ ทำให้ 27 ส.ค. ไล่หาสาเหตุอยู่นาน
+    //    ทั้งที่ FileAsset ในระบบจริงเป็น 0 แถวมาตลอด = อัปโหลดไม่เคยสำเร็จเลยสักครั้ง
+    await logOps("ERROR", "storage.upload", "อัปโหลดไฟล์ไม่สำเร็จ", {
+      tenantId: ctx.tenantId,
+      detail: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+    });
     return { ok: false, error: "อัปโหลดไม่สำเร็จ — กรุณาลองใหม่อีกครั้ง" };
   }
 }
