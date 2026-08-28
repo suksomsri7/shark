@@ -8,21 +8,16 @@
 //    โดยไม่ตั้งใจ** — ห้ามยกตัวเลขเดิมมาดื้อ ๆ ต้องคำนวณจากผู้ใช้จริงใหม่ทุกครั้ง
 //    (ตัวเลขของ chat API v1 คำนวณไว้ใน `modules/chat/public-auth.ts`)
 //
-// 🔴 ภาระการเขียน: ทุก request = 1 คำสั่ง UPDATE ⇒ **ห้ามซ้อนหลายชั้นโดยไม่จำเป็น**
-//    ทางร้อน (แถวมีอยู่แล้ว · ยังไม่เต็ม) ใช้ query เดียว — `updateMany` ที่ใส่เงื่อนไข
-//    "อยู่ในหน้าต่าง" + "ยังไม่ถึงเพดาน" ลงใน WHERE แล้ว `increment` ⇒ atomic ในตัวเอง
-//    (ไม่มีช่วง read-then-write ให้ 2 instance นับทับกัน)
+// 🔴 ภาระการเขียน: ทุก request = 1 คำสั่ง ⇒ **ห้ามซ้อนหลายชั้นโดยไม่จำเป็น**
+//    ใช้ `INSERT … ON CONFLICT DO UPDATE … RETURNING` คำสั่งเดียวจบทุกกรณี (สร้าง/เพิ่ม/รีเซ็ต)
+//    ⇒ atomic ในตัวเอง ไม่มีช่วง read-then-write ให้คำขอที่มาพร้อมกันนับทับกัน (ดูเหตุผลเต็มในฟังก์ชัน)
 //
 // fail-open: ตัวจำกัดล่ม **ห้าม** ทำให้แชททั้งระบบใช้ไม่ได้ (เหมือน siamdive2 `rate-limit.ts`)
 
 import { prisma } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
-import { Prisma } from "@prisma/client";
 
 export type RateVerdict = { ok: boolean; retryAfterSec?: number };
-
-const isP2002 = (e: unknown) =>
-  e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 
 /**
  * นับ 1 ครั้งเมื่อผ่าน · ถึงเพดานในหน้าต่างเวลา → `{ ok:false, retryAfterSec }`
@@ -37,44 +32,38 @@ export async function checkRateLimitDb(
   now = Date.now(),
 ): Promise<RateVerdict> {
   const { limit, windowMs } = opts;
-  const nowDate = new Date(now);
-  const floor = new Date(now - windowMs); // ต้นหน้าต่างที่ยังนับอยู่ — เก่ากว่านี้ = หมดอายุ
 
-  // ทางร้อน: แถวมีอยู่ · หน้าต่างยังไม่หมด · ยังไม่ถึงเพดาน → +1 ในคำสั่งเดียว (atomic)
-  const bump = async () =>
-    (
-      await prisma.chatRateBucket.updateMany({
-        where: { key, windowStart: { gt: floor }, count: { lt: limit } },
-        data: { count: { increment: 1 } },
-      })
-    ).count === 1;
-
+  // 🔴 คำสั่งเดียวจบ — `INSERT … ON CONFLICT DO UPDATE … RETURNING` (ยกวิธีจาก siamdive2
+  //    `src/lib/rate-limit.ts` ซึ่งพิสูจน์บน prod มาแล้ว)
+  //
+  //    เวอร์ชันแรกของไฟล์นี้แยกเป็นหลายคำสั่ง (updateMany → updateMany → findUnique → create
+  //    → กู้ P2002) ซึ่ง **นับพลาดจริงเมื่อมีการยิงพร้อมกัน** — วัดแล้วบน Neon prod:
+  //      ยิงพร้อมกัน 20 ครั้งบน key ใหม่ → ผ่านแค่ 15/20 และ count ใน DB = 15
+  //      (ยิงเรียงกัน 20 ครั้ง → ถูกต้อง 20/20)
+  //    ผิดสองทางพร้อมกัน: ปฏิเสธผู้ใช้ที่ยังไม่ถึงเพดาน **และ** นับหายทำให้เพดานรั่ว
+  //    เหตุ: ทุกคำขอเห็น "ยังไม่มีแถว" พร้อมกัน → แข่งกันสร้าง → ตัวที่แพ้ต้องไปนับใหม่
+  //    ซึ่งเป็นช่วง read-then-write ที่ไม่ atomic ระหว่างคำสั่ง
+  //    ⇒ กติกาของไฟล์นี้: **ห้ามแตกเป็นหลายคำสั่ง** ไม่ว่าจะดูอ่านง่ายกว่าแค่ไหน
+  //    (ด่าน: `qc-chat-security.mts` M9 ยิง 20 ครั้งพร้อมกันด้วย Promise.all)
+  //
+  //    fixed window: หน้าต่างหมดอายุ → รีเซ็ตเป็น 1 · ยังไม่หมด → +1 · ตัดสินจาก count ที่คืนมา
   try {
-    if (await bump()) return { ok: true };
+    const rows = await prisma.$queryRaw<{ count: number; windowStart: Date }[]>`
+      INSERT INTO "ChatRateBucket" ("id", "key", "count", "windowStart", "createdAt", "updatedAt")
+      VALUES (gen_random_uuid()::text, ${key}, 1, ${new Date(now)}, NOW(), NOW())
+      ON CONFLICT ("key") DO UPDATE SET
+        "count" = CASE WHEN "ChatRateBucket"."windowStart" <= ${new Date(now - windowMs)}
+                       THEN 1 ELSE "ChatRateBucket"."count" + 1 END,
+        "windowStart" = CASE WHEN "ChatRateBucket"."windowStart" <= ${new Date(now - windowMs)}
+                             THEN ${new Date(now)} ELSE "ChatRateBucket"."windowStart" END,
+        "updatedAt" = NOW()
+      RETURNING "count", "windowStart"`;
 
-    // ไม่ผ่านทางร้อน = อย่างใดอย่างหนึ่ง: (ก) ไม่มีแถว (ข) หน้าต่างหมดอายุ (ค) เต็มเพดาน
-    // (ข) → รีเซ็ตหน้าต่างแล้วนับเป็นครั้งที่ 1 (ยังคงเป็น atomic เพราะเงื่อนไขอยู่ใน WHERE)
-    const reset = await prisma.chatRateBucket.updateMany({
-      where: { key, windowStart: { lte: floor } },
-      data: { count: 1, windowStart: nowDate },
-    });
-    if (reset.count === 1) return { ok: true };
+    const row = rows[0];
+    if (!row) return { ok: true }; // ไม่ควรเกิด (RETURNING เสมอ) — ปล่อยผ่านดีกว่าปิดแชท
+    if (row.count <= limit) return { ok: true };
 
-    const row = await prisma.chatRateBucket.findUnique({ where: { key } });
-    if (!row) {
-      // (ก) ครั้งแรกของ key นี้
-      try {
-        await prisma.chatRateBucket.create({ data: { key, count: 1, windowStart: nowDate } });
-        return { ok: true };
-      } catch (e) {
-        // แข่งกันสร้าง: อีก instance ชนะไปแล้ว → กลับไปนับกับแถวของเขา **ห้ามปล่อยผ่านเฉย ๆ**
-        // (ปล่อยผ่าน = ยิงพร้อมกัน N ครั้งแรกนับได้ 1 ⇒ เพดานรั่วทุกครั้งที่ key เกิดใหม่)
-        if (!isP2002(e)) throw e;
-        return { ok: await bump() };
-      }
-    }
-
-    // (ค) เต็มเพดาน — บอกเวลาที่หน้าต่างจะหมดจริงจากแถวใน DB
+    // เต็มเพดาน — บอกเวลาที่หน้าต่างจะหมดจริงจากแถวใน DB
     const resetAt = row.windowStart.getTime() + windowMs;
     return { ok: false, retryAfterSec: Math.max(1, Math.ceil((resetAt - now) / 1000)) };
   } catch (e) {
@@ -88,7 +77,7 @@ export async function checkRateLimitDb(
 
 /**
  * กวาดแถวที่หมดอายุแล้วทิ้ง — ตารางนี้โตตามจำนวน key ที่เคยเห็น (ip/guest ไม่ซ้ำกันเลย)
- * ⚠️ ยังไม่มีใครเรียก: cron อยู่ในมืออีกสาย (`platform/cron.ts` ห้ามแตะในรอบนี้) → ต้องต่อสายทีหลัง
+ * ต่อเข้า cron รายวันแล้วที่ `platform/cron.ts` (`rateBucketsSwept`)
  */
 export async function sweepRateBuckets(olderThanMs = 24 * 60 * 60_000, now = Date.now()): Promise<number> {
   const res = await prisma.chatRateBucket.deleteMany({

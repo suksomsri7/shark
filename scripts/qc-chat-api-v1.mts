@@ -177,7 +177,31 @@ const fakePrisma: unknown = new Proxy({} as Record<string, unknown>, {
       return async (fn: unknown) => (typeof fn === "function" ? await (fn as (tx: unknown) => unknown)(fakePrisma) : undefined);
     }
     if (p === "$executeRaw" || p === "$executeRawUnsafe" || p === "$queryRaw") {
-      return async (...a: unknown[]) => { calls.push({ op: "$executeRaw", args: { sql: Array.isArray(a[0]) ? (a[0] as string[]).join("?") : String(a[0]) } }); return 0; };
+      return async (...a: unknown[]) => {
+        const sql = Array.isArray(a[0]) ? (a[0] as string[]).join("?") : String(a[0]);
+        // 🔴 ตัวนับ rate limit เป็น `INSERT … ON CONFLICT DO UPDATE … RETURNING` คำสั่งเดียว
+        //    (core/rate-limit-db.ts — จงใจไม่แตกเป็นหลายคำสั่ง เพราะเวอร์ชันที่แตกนับพลาด
+        //     เมื่อมีคำขอพร้อมกัน: วัดบน Neon จริงได้ 15/20)
+        //    fake ต้องจำลองความหมายของ SQL นี้จริง ๆ ไม่ใช่คืน 0 — ไม่งั้นข้อ CA-6.* วัดอะไรไม่ได้เลย
+        if (sql.includes('"ChatRateBucket"')) {
+          const [key, nowD, floorD] = [a[1] as string, a[2] as Date, a[3] as Date];
+          calls.push({ op: "chatRateBucket.upsertRaw", args: { key } }); // CA-6.5 นับ "เขียนถังกี่ครั้ง" จากตรงนี้
+          const rs = (tables.chatRateBucket ??= []);
+          let r = rs.find((x) => x.key === key);
+          if (!r) {
+            r = { id: `fk-chatRateBucket-${++seq}`, key, count: 1, windowStart: nowD, createdAt: new Date(), updatedAt: new Date() };
+            rs.push(r);
+          } else if ((r.windowStart as Date).getTime() <= floorD.getTime()) {
+            r.count = 1; // หน้าต่างหมดอายุ → เริ่มนับใหม่ (ไม่ใช่ล็อกตลอดกาล)
+            r.windowStart = nowD;
+          } else {
+            r.count = (r.count as number) + 1;
+          }
+          return [{ count: r.count, windowStart: r.windowStart }];
+        }
+        calls.push({ op: "$executeRaw", args: { sql } });
+        return 0;
+      };
     }
     if (p === "$disconnect" || p === "$connect") return async () => {};
     if (p.startsWith("$")) return () => { throw new Error(`[fake] ห้ามเรียก prisma.${p} ในข้อสอบนี้ (ห้ามแตะ DB)`); };
@@ -521,7 +545,12 @@ try {
       const verdicts = [];
       for (let i = 0; i < 4; i++) verdicts.push(await rl.checkRateLimitDb("k1", { limit: 3, windowMs: 60_000 }, t0 + i));
       const bucket = (tables.chatRateBucket ?? []).find((b) => b.key === "k1");
-      chk("CA-6.1", "🔴 ตัวเลขที่นับอยู่บนแถวจริงใน ChatRateBucket (ไม่ใช่ Map ใน process)", !!bucket && bucket.count === 3, "แถว k1 count=3", j({ rows: (tables.chatRateBucket ?? []).length, count: bucket?.count }));
+      // 🔴 ไม่ล็อกว่า count ต้องเท่ากับ "จำนวนที่ผ่าน" เป๊ะ — ตัวนับ atomic คำสั่งเดียว
+      //    (INSERT … ON CONFLICT) เพิ่มค่าทุกคำขอรวมคำขอที่ถูกปฏิเสธ ซึ่งไม่กระทบการตัดสิน
+      //    (CA-6.2 คุมพฤติกรรมที่ผู้ใช้เห็นจริงอยู่แล้ว) การล็อกค่าเป๊ะเท่ากับล็อกรายละเอียด
+      //    ภายในของ implementation หนึ่ง แล้วบังคับให้กลับไปใช้แบบหลายคำสั่งที่นับพลาดตอนยิงพร้อมกัน
+      //    สัญญาที่ต้องคุมจริงคือ "ตัวเลขอยู่บนแถวใน DB และขยับตามคำขอ" — Map ใน process = 0 แถว
+      chk("CA-6.1", "🔴 ตัวเลขที่นับอยู่บนแถวจริงใน ChatRateBucket (ไม่ใช่ Map ใน process)", !!bucket && (bucket.count as number) >= 3, "แถว k1 · count ≥ 3 (ขยับตามคำขอ)", j({ rows: (tables.chatRateBucket ?? []).length, count: bucket?.count }));
       chk("CA-6.2", "ครบเพดานแล้วถูกปฏิเสธ + บอก retry-after", verdicts.slice(0, 3).every((v) => v.ok) && verdicts[3]!.ok === false && (verdicts[3]!.retryAfterSec ?? 0) > 0, "3 ผ่าน · ที่ 4 ถูกปฏิเสธ", j(verdicts));
       const other = await rl.checkRateLimitDb("k2", { limit: 3, windowMs: 60_000 }, t0);
       chk("CA-6.3", "คนละ key คนละถัง", other.ok === true && (tables.chatRateBucket ?? []).length === 2, "ผ่าน + 2 แถว", j({ ok: other.ok, rows: (tables.chatRateBucket ?? []).length }), "MAJOR");
