@@ -247,6 +247,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   ChatQuickReply: sys(),
   ChatSetting: sys(),
   ChatWebhookLog: g("log ดิบตอนรับ webhook — ยังไม่รู้ว่า tenant ไหนจนกว่าจะ resolve connection (ตั้งใจไม่มี tenantId)"),
+  ChatRateBucket: g("bucket นับ rate limit ต่อ key ดิบ (ip/connectionId) — สร้างก่อนรู้ tenant (ตั้งใจไม่มี tenantId)"),
   // Restaurant
   RestaurantSetting: unit,
   MenuCategory: unit,

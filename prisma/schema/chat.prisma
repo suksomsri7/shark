@@ -72,6 +72,10 @@ model ChatChannelConnection {
   webhookKey        String               @unique @default(cuid())
   defaultUnitId     String? // conversation จาก connection นี้ tag unit ไหน
   status            ChatConnectionStatus @default(CONNECTED)
+  // widget ฝัง (D2/D3) — กุญแจสาธารณะ + กันเอา id ไปแปะเว็บอื่น
+  originAllowlist   Json                 @default("[]") // ["https://www.siamdive.com"] · [] = ยังไม่เปิด CORS ให้ origin ไหน
+  publicKeyHash     String? // sha256(raw public key) — เก็บ hash เท่านั้น เหมือน ApiKey.keyHash
+  publicKeyPrefix   String? // 12 ตัวแรกของ raw ไว้แสดงในตาราง (ApiKey.prefix)
   tokenExpiresAt    DateTime? // Shopee/Lazada/FB — cron refresh ล่วงหน้า
   lastInboundAt     DateTime?
   lastErrorAt       DateTime?
@@ -84,6 +88,7 @@ model ChatChannelConnection {
   conversations ChatConversation[]
 
   @@unique([systemId, type, externalAccountId])
+  @@unique([publicKeyHash]) // lookup widget key ด้วย hash (nullable = หลายแถวว่างได้)
   @@index([tenantId, systemId, status])
   @@index([tokenExpiresAt])
 }
@@ -103,6 +108,9 @@ model ChatContact {
   phone               String?
   email               String?
   customerId          String? // Member id ในระบบ Member ที่เชื่อม — nullable
+  lang                String? // ภาษาที่ลูกค้าใช้ (BCP-47 สั้น: th/en/cn/ja/de) — ใช้เลือก greeting/offline
+  externalRef         String? // id ฝั่งระบบต้นทาง เช่น deviceId ของ SiamDive
+  verifiedEmail       Boolean                @default(false) // true = email ผ่าน OTP ฝั่งต้นทางแล้ว
   linkedByUserId      String?
   linkedAt            DateTime?
   blockedAt           DateTime?
@@ -133,6 +141,7 @@ model ChatConversation {
   status              ChatConversationStatus @default(OPEN)
   assigneeUserId      String?
   tags                Json                   @default("[]")
+  meta                Json? // บริบทลูกค้า §3.3 — { pageUrl, country, userAgent, lang, ... }
 
   // denormalized เพื่อ inbox list
   lastMessageAt        DateTime?
@@ -178,6 +187,7 @@ model ChatMessage {
   direction         ChatMessageDirection
   type              ChatMessageType      @default(TEXT)
   senderUserId      String? // OUT: staff ผู้ส่ง (null = system/auto)
+  senderName        String? // ชื่อที่ลูกค้าเห็น (เช่น "ทีมงาน SiamDive") — null = ใช้ ChatSetting.senderAlias
   body              String?              @db.Text
   stickerMeta       Json?
   orderContext      Json?
@@ -286,14 +296,33 @@ model ChatSetting {
   memberSystemId        String? // 🔗 เชื่อมระบบ Member (opt-in)
   widgetEnabled         Boolean  @default(true)
   widgetDisabledUnitIds Json     @default("[]")
-  greetingMessage       Json     @default("{}") // { th, en }
-  offlineMessage        Json     @default("{}")
+  // map ภาษาเปิด: { "<locale>": "ข้อความ" } เช่น { th, en, cn, ja, de } — เพิ่มภาษาได้โดยไม่ต้อง migrate
+  greetingMessage       Json     @default("{}")
+  offlineMessage        Json     @default("{}") // map ภาษาเปิดแบบเดียวกับ greetingMessage
+  senderAlias           String? // ชื่อ default ที่ลูกค้าเห็นเวลาแอดมินตอบ (fallback ของ ChatMessage.senderName)
+  theme                 Json     @default("{}") // หน้าตา widget ฝัง: { primaryColor, position, launcherIcon, ... }
   preChatFormEnabled    Boolean  @default(false)
   slaFirstResponseMin   Int      @default(15)
   unassignedAlertMin    Int      @default(5)
   retentionDays         Int      @default(365) // 90–730
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+// ─────────────── Rate limit bucket (บน Postgres — แก้ B2) ───────────────
+// in-memory ต่อ process กันอะไรไม่ได้บน Vercel หลาย instance → ย้ายมาที่นี่
+// แนวคิดลอกจาก siamdive2 `RateLimitBucket` (prisma/schema.prisma) แต่มี id/createdAt/updatedAt ตามแบบ repo นี้
+// ตั้งใจไม่มี tenantId/systemId: key ถูกสร้างก่อนรู้ tenant (เช่น "chat:ip:1.2.3.4") — ดู scope.ts
+
+model ChatRateBucket {
+  id          String   @id @default(cuid())
+  key         String   @unique // เช่น "chat:webchat:<connectionId>:<ip>"
+  count       Int      @default(0)
+  windowStart DateTime // ต้นหน้าต่างเวลาปัจจุบัน — เกินหน้าต่างแล้วรีเซ็ต count
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([windowStart]) // sweep แถวเก่าทิ้ง
 }
 
 // ─────────────── Webhook log (dedupe + debug) ───────────────
