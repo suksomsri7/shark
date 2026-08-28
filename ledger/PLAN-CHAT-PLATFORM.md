@@ -429,8 +429,12 @@ S1 (auth ของ upload), S2 (rate limit → DB), S3 (OTP ประทับ e
 | **C4 (บางส่วน) + C11** | ✅ **เสร็จ 28 ส.ค.** | B1/B5/B6/B10 · `qc-chat-security-scope.mts` **20/20** (พิสูจน์ fail-before: ก่อนแก้ 8/20 · CRITICAL 11) · `typecheck` + `fitness 17/17` เขียว |
 | **C10 (บางส่วน)** | ✅ **เสร็จ 28 ส.ค.** | S1/S2/S6 · `bunx tsc --noEmit` EXIT=0 (มี positive control) · `bun run build` ผ่าน · **ยังไม่ push/deploy** |
 | **C2 core** | ✅ **เสร็จ 28 ส.ค.** | `receiveExternalInbound` · `publicThread` (แก้ B3) · outbox ขาออก (แก้ B4) · หลายภาษา + `senderAlias` · `qc-chat-core-v2.mts` **41/41** (fail-before 8 รอบ) |
-| C3, C5–C9 | 📋 ยังไม่เริ่ม | C3 (API v1) เป็นตัวถัดไป |
-| **C12** 🆕 | 📋 ยังไม่เริ่ม | `retentionDays` (PDPA) — ทำก่อน C8 |
+| **C3 + C5 + B2** | ✅ **เสร็จ 28 ส.ค.** | API v1 ครบ 8 เส้น · ตัวตน 2 ระดับ · CORS ผูก origin · REST upload · rate limit บน DB · `qc-chat-api-v1.mts` **89/89** (fail-before 12 รอบ) |
+| C6–C9 | 📋 ยังไม่เริ่ม | **C6 (SiamDive proxy) เป็นตัวถัดไป** |
+| **C13** 🆕 | 📋 ยังไม่เริ่ม | schema รอบ 2: `ChatConversation.customerLastReadAt` — เลิกใช้ `ChatReadState.userId = "contact:<id>"` |
+| **C14** 🆕 | 📋 ยังไม่เริ่ม | หน้าจอออก/เพิกถอน widget key + ตั้ง originAllowlist (service มีครบแล้ว) — **ต้องมีก่อนใครฝัง widget ได้** |
+| **C15** 🆕 | 📋 ยังไม่เริ่ม | ลบไฟล์จริงบน Bunny CDN ตามคิว (`ChatAttachment` ที่ `url=""` แต่ `storageKey` ยังอยู่) |
+| **C12** 🆕 | ✅ **เสร็จ 28 ส.ค.** | `retentionDays` ถูกอ่านจริงแล้ว — `chat/retention.ts` + cron `chatPurged` + ช่องตั้งค่าในหน้า channels · `qc-chat-retention.mts` **37/37** (fail-before 8 รอบ) · ⚠️ **หนี้: ไฟล์จริงบน Bunny CDN ยังไม่ถูกลบ** |
 
 **บันทึกความคืบหน้า**
 - 28 ส.ค. 2026 — สำรวจโค้ดจริงทั้ง 2 ฝั่งด้วย sub agent 3 ตัว · เขียนแผนฉบับนี้ · พบบั๊กที่มีอยู่แล้ว 17 ข้อ (SHARK 10 · SiamDive 7)
@@ -465,4 +469,39 @@ S1 (auth ของ upload), S2 (rate limit → DB), S3 (OTP ประทับ e
   ⚠️ พฤติกรรมที่รับไว้อย่างตั้งใจ: `senderName` ที่เป็น null จะ resolve จาก `senderAlias` ตอนอ่าน
   ⇒ **ร้านแก้นามแฝงแล้วข้อความเก่าเปลี่ยนชื่อตามย้อนหลัง** (ตรงตามเจตนาใน `chat.prisma:190`
   เพราะเป็นนามแฝงระดับร้าน ไม่ใช่ชื่อบุคคล) ถ้าเจ้าของอยากได้ความถูกต้องเชิงประวัติ แก้ที่เดียวใน `sendReply`
+- 28 ส.ค. 2026 — **C12 เสร็จ** (37 ข้อสอบ · fail-before 8 รอบ) · `src/lib/modules/chat/retention.ts`
+  🔴 **ตัดสินใจ: "ลบ" = ปกปิดเนื้อหา (redact) เก็บแถวไว้ ไม่ใช่ลบแถวทิ้ง** — เพราะ (1) `purgedAt`
+  มีในสคีมาอยู่แล้ว = แถวที่ถูกลบถือ timestamp ไม่ได้ (2) `@@unique([conversationId, externalMessageId])`
+  คือสมุดกัน webhook ซ้ำ — ลบแถว = ของเก่ายิงซ้ำเด้งกลับเข้า inbox ได้ (3) SLA/สถิติเธรดจะโกหก
+  (4) `ChatAttachment → ChatMessage` ไม่มี `onDelete: Cascade` ⇒ ลบตรง ๆ ชน FK จริง
+  🔴 **ช่องโหว่ที่มองไม่เห็นและต้องปิดคู่กันเสมอ**: `ChatConversation.lastMessagePreview` เป็น denorm
+  ที่ **เก็บสำเนาเนื้อความไว้อีกที่** — ปกปิดข้อความอย่างเดียวแล้วเนื้อหายังโผล่ในหน้ารายการ inbox
+  ⚠️ **หนี้ค้าง (สำคัญ)**: **ไฟล์จริงบน Bunny CDN ยังลบไม่ได้ในรอบนี้** (ตัวลบต้องอยู่ `src/lib/storage/**`
+  ซึ่งรอบนี้ห้ามแตะ) → จึง **จงใจไม่ลบ `ChatAttachment.storageKey`** เพราะเป็น handle เดียวที่จะไปลบ
+  วัตถุจริงได้ทีหลัง (ลบแถว = ไฟล์กำพร้าบน CDN ตลอดกาล) · แถวที่ `url = ""` แต่ `storageKey != ""`
+  = **คิวรอลบไฟล์** ของ WO ถัดไป · `FileAsset` ของไฟล์แชทก็ยังไม่ถูกกวาดเช่นกัน
+  ⚠️ `pnpm fitness` F5 baseline ขยับ 44 → 45 (retention.ts ใช้ raw prisma เพราะกวาดข้ามร้าน
+  เหมือน `sweepExpiringLots`) — ตามแบบ 10 รายการก่อนหน้าที่จดเหตุผลไว้ในคอมเมนต์ BASELINE
 - 🔴 **ค้างต้องทำก่อนใช้งานจริง**: `pnpm exec prisma migrate deploy` บน prod (Vercel ไม่รันให้ — `RESUME.md:555`)
+- 28 ส.ค. 2026 — **C3 + C5 + B2 เสร็จ (89 ข้อสอบ · fail-before 12 รอบ)** — ชั้น 2 ครบแล้ว
+  🔴 ข้อสอบจับบั๊กจริงของผู้เขียนเอง 3 ข้อระหว่างทาง รวมถึง **บทเรียน §12 ซ้ำรอยเป๊ะ**:
+  fake prisma ตั้ง `lastReadAt` เป็นค่าคงที่ตอนโหลดไฟล์แทนที่จะเป็น `now()` → `/unread` ไม่เป็น 0
+  ⇒ **ค่าเวลาใน fake ต้องเป็น thunk เสมอ** ไม่งั้นได้ผลลวงคนละทิศ
+  🔴 ตัวเลข rate limit ต้องเลือก**แกนที่นับ**ให้ถูก ไม่ใช่แค่ตัวเลข:
+  · secret = นับ **ต่อคีย์** เพราะคำขอออกจาก IP ของ Vercel ไม่กี่ตัว นับต่อ IP ไร้ความหมาย
+  · widget = นับ **ต่อ guest** ไม่ใช่ต่อ IP เพราะมือถือไทยอยู่หลัง CGNAT ร่วม IP กันเป็นร้อยคน
+    (นับต่อ IP = ตัดคนบริสุทธิ์ทิ้ง) · 1 คำขอ = เขียนถังครั้งเดียว ห้ามซ้อนชั้น
+  🔴 `__resetRateLimit()` ที่ไม่ระบุ key เปลี่ยนเป็น **ไม่ทำอะไร** — เพราะ `qc-chat-security.mts`
+  ต่อ Neon prod จริง การล้างทั้งตาราง = รีเซ็ตเพดานของทุกร้านบน prod
+  ⚠️ **หนี้ที่รับไว้อย่างตั้งใจ**: schema ไม่มีที่เก็บ "ลูกค้าอ่านถึงไหน" → ใช้ `ChatReadState`
+  ร่วมโดยตั้ง `userId = "contact:<contactId>"` (ชนกับ userId จริงไม่ได้เพราะ cuid ไม่มี `:`)
+  **ห้ามเอา `staffUnreadCount` มาใช้แทน** — นั่นเป็นแบดจ์ของทีม ลูกค้าเปิดอ่านแล้วงานจะหายจากกล่อง "รอตอบ"
+  → แก้ให้สะอาดใน **WO-C13**
+- 28 ส.ค. 2026 — Fable ต่อ `sweepRateBuckets()` เข้า cron รายวัน (ปิดหนี้ที่ 2 สายส่งต่อกันไม่ได้
+  เพราะต่างฝ่ายต่างถูกห้ามแตะไฟล์ของอีกฝ่าย) · `ChatRateBucket` โตตามจำนวน key ที่ไม่ซ้ำ ถ้าไม่กวาดจะโตไม่จำกัด
+- 28 ส.ค. 2026 — **ยืนยันรวมงาน 2 สาย**: `typecheck` EXIT=0 · `fitness 17/17` ·
+  `qc-chat-api-v1 89/89` · `qc-chat-core-v2 41/41` · `qc-chat-security-scope 20/20` · `qc-chat-retention 37/37`
+  = **187 ข้อสอบเขียวทั้งหมด**
+- 🔴 **ยังพิสูจน์ไม่ได้จนกว่าจะ `migrate deploy`**: `qc-chat-notify.mts` และ `qc-chat-security.mts`
+  ต่อ Neon prod จริง → แดงด้วย `ChatChannelConnection.originAllowlist does not exist`
+  **นี่คืออาการที่ถูกต้อง** ของ prod ที่ยังไม่ได้รับ migration (โค้ดใหม่ยังไม่ push จึงยังไม่กระทบผู้ใช้)

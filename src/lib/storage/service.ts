@@ -11,15 +11,32 @@ import { logOps } from "@/lib/core/ops";
 import type { FileKind } from "@prisma/client";
 
 // ชนิดไฟล์ที่อนุญาต → นามสกุลไฟล์ (ext) ที่ใช้ประกอบ path
+//
+// 🔴 ตารางนี้เป็น **ตัวเดียวกัน**กับด่านอนุญาต: mime ที่ไม่มีในนี้ = ปฏิเสธ ⇒ ไม่มีทางตกเป็น `.bin`
+//    (ต่างจาก `siamdive2/src/lib/bunny.ts:46` ที่ `|| "bin"` ทำให้ไฟล์ที่รับแล้วได้นามสกุลผิด
+//     แล้ว CDN เสิร์ฟเป็น octet-stream → ผู้ใช้กดแล้วดาวน์โหลดแทนที่จะเปิด)
+//    เพิ่ม mime ใหม่เมื่อไหร่ **ต้องใส่ ext จริง** — ข้อสอบ qc-chat-api-v1 (CA-7) คอยจับ
+//
+// ชุดที่รองรับ = ของเดิมของ SHARK + ของที่ SiamDive ใช้อยู่จริง (support-chat/upload/route.ts:17)
 const ALLOWED_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
   "image/gif": "gif",
+  "image/heic": "heic", // รูปจาก iPhone (ค่าเริ่มต้นของกล้อง iOS)
+  "image/heif": "heif",
   "application/pdf": "pdf",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "text/plain": "txt",
 };
 
-const MAX_BYTES = 5 * 1024 * 1024; // 5MB
+export const ALLOWED_UPLOAD_TYPES = Object.freeze({ ...ALLOWED_TYPES });
+
+const MAX_BYTES = 5 * 1024 * 1024; // 5MB — ค่าตั้งต้นของทั้งระบบ (โลโก้/รูปสินค้า)
+/** เพดานไฟล์แนบในแชท — SiamDive ใช้ 10MB อยู่แล้ว ลดลงมา = ผู้ใช้เดิมส่งไฟล์ไม่ผ่าน */
+export const CHAT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 
 const BUNNY_HOST = "https://sg.storage.bunnycdn.com";
 
@@ -30,6 +47,8 @@ export type UploadInput = {
   filename: string;
   contentType: string;
   data: Uint8Array;
+  /** เพดานขนาดเฉพาะงานนี้ (ไม่ส่ง = 5MB ตามค่าตั้งต้นของระบบ) — แชทส่ง 10MB */
+  maxBytes?: number;
 };
 
 export type UploadDeps = {
@@ -77,15 +96,22 @@ export async function uploadFile(
       return { ok: false, error: "ยังไม่ได้ตั้งค่าที่เก็บไฟล์ (storage) — ติดต่อผู้ดูแลระบบ" };
     }
 
-    // ตรวจชนิดไฟล์
-    const ext = ALLOWED_TYPES[input.contentType];
+    // ตรวจชนิดไฟล์ (ตารางเดียวกับที่ใช้เลือกนามสกุล — ไม่มีในตาราง = ไม่รับ)
+    const ext = ALLOWED_TYPES[input.contentType.trim().toLowerCase()];
     if (!ext) {
-      return { ok: false, error: "ชนิดไฟล์นี้อัปโหลดไม่ได้ — รองรับเฉพาะรูป (jpg/png/webp/gif) และ PDF" };
+      return {
+        ok: false,
+        error: "ชนิดไฟล์นี้อัปโหลดไม่ได้ — รองรับรูป (jpg/png/webp/gif/heic), PDF, Word, Excel และ txt",
+      };
     }
 
     // ตรวจขนาด
-    if (input.data.length > MAX_BYTES) {
-      return { ok: false, error: "ไฟล์ใหญ่เกิน 5MB — กรุณาย่อขนาดก่อนอัปโหลด" };
+    const maxBytes = input.maxBytes ?? MAX_BYTES;
+    if (input.data.length > maxBytes) {
+      return {
+        ok: false,
+        error: `ไฟล์ใหญ่เกิน ${Math.round(maxBytes / (1024 * 1024))}MB — กรุณาย่อขนาดก่อนอัปโหลด`,
+      };
     }
 
     // ประกอบ path: t/<tenantId>/<kind ตัวเล็ก>/<id>.<ext>

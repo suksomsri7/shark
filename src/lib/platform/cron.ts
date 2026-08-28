@@ -13,6 +13,8 @@ import { sweepAutoClosePeriods } from "@/lib/modules/account/period-sweep";
 import { sweepOnboardingDrip } from "@/lib/platform/onboarding-drip";
 import { sweepDnaReview } from "@/lib/ai/dna-review";
 import { sweepProactiveNudges } from "@/lib/ai/proactive";
+import { purgeExpiredChatMessages } from "@/lib/modules/chat/retention";
+import { sweepRateBuckets } from "@/lib/core/rate-limit-db";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -51,6 +53,8 @@ export async function runDailyCron(
   onboardingDripped: number;
   dnaReviews: number;
   proactiveNudges: number;
+  chatPurged: number;
+  rateBucketsSwept: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -63,6 +67,8 @@ export async function runDailyCron(
   let onboardingDripped = -1;
   let dnaReviews = -1;
   let proactiveNudges = -1;
+  let chatPurged = -1;
+  let rateBucketsSwept = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -128,6 +134,19 @@ export async function runDailyCron(
   } catch {
     // ทัก proactive พัง → -1 ไปต่อ
   }
+  try {
+    // WO-C12 (PDPA): ปกปิดเนื้อหาข้อความแชทที่เกิน ChatSetting.retentionDays ของแต่ละระบบ
+    chatPurged = (await purgeExpiredChatMessages({ now })).purged;
+  } catch {
+    // กวาดข้อความหมดอายุพัง → -1 ไปต่อ
+  }
+  try {
+    // WO-C3/B2: ChatRateBucket โตตามจำนวน key ที่ไม่ซ้ำ (ip/guest) — ไม่มีตัวกวาด = โตไม่จำกัด
+    // ถังที่หน้าต่างเก่ากว่า 24 ชม. ไม่มีใครอ่านแล้ว (หน้าต่างยาวสุดของ chat = 1 ชม.)
+    rateBucketsSwept = await sweepRateBuckets(24 * 60 * 60_000, now.getTime());
+  } catch {
+    // กวาดถัง rate limit พัง → -1 ไปต่อ
+  }
 
   return {
     subsExpired,
@@ -141,5 +160,7 @@ export async function runDailyCron(
     onboardingDripped,
     dnaReviews,
     proactiveNudges,
+    chatPurged,
+    rateBucketsSwept,
   };
 }

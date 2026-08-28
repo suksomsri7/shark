@@ -14,6 +14,7 @@ import {
   setConnectionStatus,
   setMemberSystem,
 } from "./service";
+import { setRetentionDays } from "./retention";
 
 // ทุก action: requireTenant + revalidate หน้า chat ของระบบนั้น
 
@@ -187,6 +188,20 @@ export async function disableConnectionAction(formData: FormData) {
   const connectionId = String(formData.get("connectionId") ?? "");
   if (systemId && connectionId) {
     await setConnectionStatus(auth.active.tenantId, connectionId, "DISABLED");
+  }
+  revalidateChat(systemId);
+  redirect(chatPath(systemId));
+}
+
+// ── อายุการเก็บข้อความ (PDPA · WO-C12) ──
+// ค่าที่รับมาถูกบีบเข้าช่วง 90–730 ที่ setRetentionDays อีกชั้น (ฟอร์มโกงได้ เซิร์ฟเวอร์ต้องกันเอง)
+export async function setRetentionDaysAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertChatCan(auth, "chat.setting.setRetention");
+  const systemId = String(formData.get("systemId") ?? "");
+  const raw = String(formData.get("retentionDays") ?? "").trim();
+  if (systemId && raw) {
+    await setRetentionDays(auth.active.tenantId, systemId, Number(raw));
   }
   revalidateChat(systemId);
   redirect(chatPath(systemId));

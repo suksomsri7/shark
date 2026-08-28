@@ -122,11 +122,14 @@ try {
   // ─────────────── M9: rate limit + contact cap ───────────────
   console.log("\nM9 rate limit + contact cap:");
   {
-    __resetRateLimit();
+    // B2 (WO-C3): rateLimit นับบนแถวจริงใน ChatRateBucket แล้ว → เป็น async ต้อง await
+    // (key ใหม่ทุกรอบรัน จึงไม่ต้องล้างถัง — __resetRateLimit() ไม่มี key = ไม่ทำอะไร โดยตั้งใจ
+    //  ห้ามล้างทั้งตารางบน prod เพราะสคริปต์นี้ต่อ Neon จริง)
+    await __resetRateLimit();
     const key = "k:" + Date.now();
-    const first20 = Array.from({ length: 20 }, () => rateLimit(key, 20, 60_000));
-    const c21 = rateLimit(key, 20, 60_000);
-    const otherKey = rateLimit("other:" + Date.now(), 20, 60_000);
+    const first20 = await Promise.all(Array.from({ length: 20 }, () => rateLimit(key, 20, 60_000)));
+    const c21 = await rateLimit(key, 20, 60_000);
+    const otherKey = await rateLimit("other:" + Date.now(), 20, 60_000);
     assert("rateLimit: 20 ครั้งแรกผ่าน", first20.every(Boolean));
     assert("rateLimit: ครั้งที่ 21 โดนบล็อก", c21 === false);
     assert("rateLimit: คนละ key ไม่โดนบล็อก", otherKey === true);

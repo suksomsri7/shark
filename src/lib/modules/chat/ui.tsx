@@ -26,7 +26,9 @@ import {
   connectLineAction,
   disableConnectionAction,
   setMemberSystemAction,
+  setRetentionDaysAction,
 } from "./actions";
+import { RETENTION_MIN_DAYS, RETENTION_MAX_DAYS } from "./retention";
 
 // ป้ายสถานะ/ช่องทาง ภาษาไทย (B&W)
 const CONV_STATUS_LABEL: Record<string, string> = {
@@ -376,6 +378,35 @@ export async function ChatChannelsSection({
                   </option>
                 ))}
               </select>
+              <SubmitButton variant="ghost" pendingText="กำลังบันทึก…">
+                บันทึก
+              </SubmitButton>
+            </form>
+          </div>
+
+          {/* อายุการเก็บข้อความ (PDPA · WO-C12) */}
+          <div className="flex flex-col gap-2 border-t pt-4">
+            <h3 className="text-sm font-medium">อายุการเก็บข้อความ</h3>
+            <p className="text-xs text-[color:var(--color-muted)]">
+              ทุกวันระบบจะลบเนื้อหาข้อความและไฟล์แนบที่เก่ากว่าจำนวนวันที่ตั้งไว้ทิ้งถาวร
+              บทสนทนายังอยู่ในรายการ แต่เนื้อหาจะหายไปและกู้คืนไม่ได้
+            </p>
+            <form action={setRetentionDaysAction} className="flex items-center gap-2">
+              <input type="hidden" name="systemId" value={systemId} />
+              <input
+                name="retentionDays"
+                type="number"
+                inputMode="numeric"
+                min={RETENTION_MIN_DAYS}
+                max={RETENTION_MAX_DAYS}
+                step={1}
+                required
+                defaultValue={setting.retentionDays}
+                className="input w-24"
+              />
+              <span className="text-xs text-[color:var(--color-muted)]">
+                วัน (ตั้งได้ {RETENTION_MIN_DAYS}–{RETENTION_MAX_DAYS})
+              </span>
               <SubmitButton variant="ghost" pendingText="กำลังบันทึก…">
                 บันทึก
               </SubmitButton>

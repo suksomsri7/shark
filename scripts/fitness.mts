@@ -223,7 +223,7 @@ chk(
 // ═══════════════════════════════════════════════════════════════
 console.log("\n── F2/F5: ขอบเขตโมดูล (baseline ratchet — ห้ามเพิ่ม) ──");
 
-const BASELINE = { f5RawPrisma: 44 }; // 34 (2026-07-15) +approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
+const BASELINE = { f5RawPrisma: 45 }; // 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
 
 const moduleDir = join(ROOT, "src", "lib", "modules");
 const moduleNames = existsSync(moduleDir)

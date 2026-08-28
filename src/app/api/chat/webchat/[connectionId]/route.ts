@@ -53,7 +53,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ connect
   if (!conn) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   const ip = clientIp(req.headers);
-  if (!rateLimit(`webchat:${ip}:${connectionId}`, POST_LIMIT, WINDOW_MS)) {
+  // 🔴 ต้อง await — rateLimit นับบน DB แล้ว (B2) · ลืม await = ได้ Promise ที่ truthy เสมอ = ด่านเปิดโล่ง
+  if (!(await rateLimit(`webchat:${ip}:${connectionId}`, POST_LIMIT, WINDOW_MS))) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 

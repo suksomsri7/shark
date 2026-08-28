@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type {
   ChatAttachment,
@@ -657,6 +658,34 @@ export type ExternalAttachmentInput = {
 
 const MAX_EXTERNAL_ATTACHMENTS = 10;
 
+export type ExternalIdentityFields = {
+  email?: string;
+  phone?: string;
+  lang?: string;
+  verifiedEmail?: boolean;
+  externalRef?: string;
+};
+
+// ตัวตนที่ระบบต้นทางรู้ (M2) — เขียนเฉพาะที่ส่งมาและค่าเปลี่ยนจริง
+// 🔴 มีที่เดียว: ทั้ง `receiveExternalInbound` (ส่งข้อความ) และ `upsertExternalIdentity`
+//    (POST /identities) ต้องได้กติกาเดียวกัน ไม่งั้นผูกตัวตนคนละแบบตามเส้นที่เรียกเข้ามา
+async function applyContactIdentity<T extends { id: string; lang: string | null; externalRef: string | null; email: string | null; phone: string | null; verifiedEmail: boolean }>(
+  contact: T,
+  args: ExternalIdentityFields,
+): Promise<T> {
+  const patch: Prisma.ChatContactUpdateInput = {};
+  if (args.lang?.trim() && args.lang.trim() !== contact.lang) patch.lang = args.lang.trim();
+  if (args.externalRef?.trim() && args.externalRef.trim() !== contact.externalRef) {
+    patch.externalRef = args.externalRef.trim();
+  }
+  if (args.email?.trim() && args.email.trim() !== contact.email) patch.email = args.email.trim();
+  if (args.phone?.trim() && args.phone.trim() !== contact.phone) patch.phone = args.phone.trim();
+  // verifiedEmail พลิกได้ทางเดียว (false→true): ต้นทางยืนยันแล้วห้ามถูกถอนด้วย payload รอบถัดไป
+  if (args.verifiedEmail === true && !contact.verifiedEmail) patch.verifiedEmail = true;
+  if (Object.keys(patch).length === 0) return contact;
+  return (await prisma.chatContact.update({ where: { id: contact.id }, data: patch })) as unknown as T;
+}
+
 // IMAGE เมื่อ mimeType ขึ้นต้น image/ · นอกนั้น FILE (สติกเกอร์มาจาก provider เท่านั้น ไม่รับทางนี้)
 function attachmentKind(mimeType: string): ChatMessageType {
   return mimeType.trim().toLowerCase().startsWith("image/") ? "IMAGE" : "FILE";
@@ -719,19 +748,7 @@ export async function receiveExternalInbound(args: {
   }
   if (contact.blockedAt) return { ok: true }; // block spam — เก็บเงียบ ไม่สร้างเธรด
 
-  // ตัวตนที่ระบบต้นทางรู้ (M2) — เขียนเฉพาะที่ส่งมาและค่าเปลี่ยนจริง
-  const patch: Prisma.ChatContactUpdateInput = {};
-  if (args.lang?.trim() && args.lang.trim() !== contact.lang) patch.lang = args.lang.trim();
-  if (args.externalRef?.trim() && args.externalRef.trim() !== contact.externalRef) {
-    patch.externalRef = args.externalRef.trim();
-  }
-  if (args.email?.trim() && args.email.trim() !== contact.email) patch.email = args.email.trim();
-  if (args.phone?.trim() && args.phone.trim() !== contact.phone) patch.phone = args.phone.trim();
-  // verifiedEmail พลิกได้ทางเดียว (false→true): ต้นทางยืนยันแล้วห้ามถูกถอนด้วย payload รอบถัดไป
-  if (args.verifiedEmail === true && !contact.verifiedEmail) patch.verifiedEmail = true;
-  if (Object.keys(patch).length > 0) {
-    contact = await prisma.chatContact.update({ where: { id: contact.id }, data: patch });
-  }
+  contact = await applyContactIdentity(contact, args);
 
   const conv = await getOrOpenConversation({
     tenantId,
@@ -1276,6 +1293,10 @@ export async function getLinkedMember(tenantId: string, customerId: string) {
 //    แสดงเป็นช่องว่างในฝั่งลูกค้า · shape นี้เป็น "สัญญาสาธารณะ" เปลี่ยนทีหลัง = ลูกค้าพัง (D2)
 // 🔴 กติกาที่ห้ามหลุด: `isInternal: false` — โน้ตภายในของทีมห้ามถึงลูกค้าเด็ดขาด
 
+// 🔴 กติกาที่ห้ามหลุด ประกาศ **ที่เดียว**: ทุกจุดที่ตอบลูกค้า (อ่านเธรด/นับที่ยังไม่อ่าน/…)
+//    ต้องใช้ตัวนี้ ห้ามพิมพ์เงื่อนไขซ้ำ — เขียนซ้ำเมื่อไหร่คือวันที่ลืมข้อหนึ่งแล้วโน้ตทีมหลุด
+const CUSTOMER_VISIBLE = { isInternal: false } as const;
+
 export type PublicAttachment = {
   url: string;
   name: string;
@@ -1351,7 +1372,7 @@ export async function publicThread(args: {
     where: {
       systemId: connection.systemId,
       conversationId: conv.id,
-      isInternal: false, // 🔴 โน้ตภายในห้ามหลุดถึงลูกค้า
+      ...CUSTOMER_VISIBLE, // 🔴 โน้ตภายในห้ามหลุดถึงลูกค้า
       ...(args.after ? { createdAt: { gt: args.after } } : {}),
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -1376,4 +1397,319 @@ export async function getWebchatThread(
   guestToken: string,
 ): Promise<PublicThread> {
   return publicThread({ connection, externalUserId: guestToken });
+}
+
+// ═════════════ ชั้น 1 สำหรับ Public API v1 (WO-C3) ═════════════
+// ทุกอย่างที่ `/api/v1/chat/*` ต้องใช้ อยู่ที่นี่ทั้งหมด — ชั้น route ห้ามมี logic ธุรกิจ
+// (กฎเหล็กข้อ 1 §2: ไม่งั้น widget ฝังกับ SiamDive จะได้พฤติกรรมคนละแบบ)
+
+// ───────────────────────── กุญแจสาธารณะของ widget (M1) ─────────────────────────
+// รูปแบบเดียวกับ ApiKey ทุกประการ: raw = `swk_` + 16 ไบต์สุ่ม (hex 32) โชว์ **ครั้งเดียว**
+// DB เก็บเฉพาะ sha256(raw) ใน publicKeyHash · prefix 12 ตัวแรกไว้โชว์ในตาราง
+// (คนละ prefix กับ secret key `shark_` — สลับกันใช้แล้วต้องหลุด 401 ทั้งสองทาง)
+
+const WIDGET_KEY_PREFIX = "swk_";
+const sha256hex = (s: string) => createHash("sha256").update(s).digest("hex");
+
+/** origin ให้เทียบกันได้: ตัวพิมพ์เล็ก + ไม่มี / ปิดท้าย · ไม่ใช่ origin ที่ถูกต้อง → null */
+export function normalizeOrigin(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const raw = value.trim().replace(/\/+$/, "");
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.origin.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * รายการ origin ที่ connection นี้ยอมให้เรียกจากเบราว์เซอร์
+ * 🔴 ว่าง = **ปฏิเสธทุก origin** (ปลอดภัยโดยปริยาย) ไม่ใช่ยอมทุกอัน — ห้ามแปลงเป็น "*"
+ */
+export function originAllowlistOf(conn: { originAllowlist: Prisma.JsonValue }): string[] {
+  const raw = conn.originAllowlist;
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const v of raw) {
+    const n = normalizeOrigin(v);
+    if (n && !out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
+export function isOriginAllowed(
+  conn: { originAllowlist: Prisma.JsonValue },
+  origin: string | null,
+): boolean {
+  const n = normalizeOrigin(origin);
+  if (!n) return false; // ไม่มี Origin = ตัดสินไม่ได้ = ไม่อนุญาต
+  return originAllowlistOf(conn).includes(n);
+}
+
+export type CreatedWidgetKey = { rawKey: string; prefix: string };
+
+/** ออกกุญแจ widget ใหม่ให้ connection (ทับของเดิม = หมุนกุญแจ) — คืน raw ให้โชว์ครั้งเดียว */
+export async function createWidgetKey(
+  tenantId: string,
+  systemId: string,
+  connectionId: string,
+): Promise<CreatedWidgetKey | null> {
+  const conn = await getConnection(tenantId, systemId, connectionId);
+  if (!conn) return null;
+  const rawKey = `${WIDGET_KEY_PREFIX}${randomBytes(16).toString("hex")}`;
+  await prisma.chatChannelConnection.update({
+    where: { id: conn.id },
+    data: { publicKeyHash: sha256hex(rawKey), publicKeyPrefix: rawKey.slice(0, 12) },
+  });
+  return { rawKey, prefix: rawKey.slice(0, 12) };
+}
+
+/** ยกเลิกกุญแจ widget (widget ที่ฝังไว้จะใช้ไม่ได้ทันที) */
+export async function revokeWidgetKey(
+  tenantId: string,
+  systemId: string,
+  connectionId: string,
+): Promise<boolean> {
+  const conn = await getConnection(tenantId, systemId, connectionId);
+  if (!conn) return false;
+  await prisma.chatChannelConnection.update({
+    where: { id: conn.id },
+    data: { publicKeyHash: null, publicKeyPrefix: null },
+  });
+  return true;
+}
+
+/** ตั้งรายชื่อโดเมนที่ฝัง widget ได้ — ค่าที่ไม่ใช่ origin จะถูกทิ้ง (ไม่เงียบ: คืนรายการที่บันทึกจริง) */
+export async function setOriginAllowlist(
+  tenantId: string,
+  systemId: string,
+  connectionId: string,
+  origins: unknown[],
+): Promise<string[] | null> {
+  const conn = await getConnection(tenantId, systemId, connectionId);
+  if (!conn) return null;
+  const clean: string[] = [];
+  for (const o of origins) {
+    const n = normalizeOrigin(o);
+    if (n && !clean.includes(n)) clean.push(n);
+  }
+  await prisma.chatChannelConnection.update({
+    where: { id: conn.id },
+    data: { originAllowlist: clean },
+  });
+  return clean;
+}
+
+/**
+ * หา connection จากกุญแจ widget ดิบ — เทียบด้วย hash เท่านั้น (raw ไม่เคยถูกเก็บ)
+ * ไม่ขึ้นต้น `swk_` → null ทันที ⇒ secret key (`shark_`) เอามาใส่ `X-Shark-Widget` ไม่ได้
+ */
+export async function getConnectionByPublicKey(
+  rawKey: unknown,
+): Promise<ChatChannelConnection | null> {
+  if (typeof rawKey !== "string" || !rawKey.startsWith(WIDGET_KEY_PREFIX)) return null;
+  const conn = await prisma.chatChannelConnection.findUnique({
+    where: { publicKeyHash: sha256hex(rawKey) },
+  });
+  if (!conn || conn.status === "DISABLED") return null;
+  return conn;
+}
+
+/**
+ * preflight (OPTIONS) มาถึงก่อนเบราว์เซอร์ส่ง `X-Shark-Widget` เสมอ (spec ของ CORS)
+ * ⇒ ตัดสินได้แค่ว่า "origin นี้มีร้านไหนอนุญาตไว้บ้างไหม" · ปลอดภัยเพราะ preflight ไม่พาข้อมูลใด ๆ
+ *   คำขอจริงยังถูกตรวจกับ allowlist ของ connection ที่เป็นเจ้าของกุญแจอีกชั้น
+ * (แถวที่ต้องอ่านคือ connection ที่เปิด widget เท่านั้น — วันนี้นับหลักสิบ · เกินหลักพันเมื่อไหร่
+ *  ค่อยเปลี่ยนไปใช้ `array_contains` ที่ระดับ DB)
+ */
+export async function isOriginAllowedForAnyWidget(origin: string | null): Promise<boolean> {
+  const n = normalizeOrigin(origin);
+  if (!n) return false;
+  const rows = await prisma.chatChannelConnection.findMany({
+    where: { publicKeyHash: { not: null }, status: { not: "DISABLED" } },
+    select: { originAllowlist: true },
+    take: 1000,
+  });
+  return rows.some((r) => originAllowlistOf(r).includes(n));
+}
+
+// ───────────────────────── resolve ระบบ CHAT จากกุญแจ (secret mode) ─────────────────────────
+// 🔴 API key ผูกกับ **ร้าน** ไม่ใช่ระบบ — แต่ข้อมูลแชทอยู่ใต้ระบบ (AppSystem type CHAT)
+//    กติกา §2 ข้อ 2: tenantId มาจากกุญแจเสมอ · systemId จึงต้อง resolve จาก tenant ของกุญแจ
+//    ร้านที่มีระบบ CHAT หลายชุด ระบุเจาะจงได้ด้วย header แต่ **ต้องเป็นระบบของร้านตัวเองเท่านั้น**
+export async function resolveChatSystemId(
+  tenantId: string,
+  requestedSystemId?: string | null,
+): Promise<string | null> {
+  const want = requestedSystemId?.trim();
+  if (want) {
+    const sys = await prisma.appSystem.findFirst({
+      where: { id: want, tenantId, type: "CHAT", active: true },
+    });
+    return sys?.id ?? null; // ระบบของร้านอื่น/ไม่ใช่ CHAT → null (ผู้เรียกตอบ 403)
+  }
+  const first = await prisma.appSystem.findFirst({
+    where: { tenantId, type: "CHAT", active: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return first?.id ?? null;
+}
+
+// ───────────────────────── POST /identities (secret) ─────────────────────────
+// ออก/ผูก contact ล่วงหน้าโดยยังไม่มีข้อความ — SiamDive เรียกตอนผู้ใช้ยืนยันอีเมล/เปลี่ยนภาษา
+// 🔴 ไม่สร้าง conversation ใหม่: เธรดเปล่าที่ไม่มีข้อความจะไปโผล่ในกล่องงานของทีมโดยไม่มีอะไรให้ตอบ
+//    → คืน conversationId เฉพาะเธรดที่ "มีอยู่แล้ว" เท่านั้น
+export async function upsertExternalIdentity(args: {
+  connection: ChatChannelConnection;
+  externalUserId: string;
+  displayName?: string;
+  meta?: Record<string, unknown>;
+} & ExternalIdentityFields): Promise<
+  { ok: true; contactId: string; conversationId?: string } | { ok: false; reason: string }
+> {
+  const { connection } = args;
+  const externalUserId = (args.externalUserId ?? "").trim();
+  if (!externalUserId) return { ok: false, reason: "ไม่ได้ระบุผู้ใช้ต้นทาง" };
+
+  let contact;
+  try {
+    contact = await findOrCreateContact({
+      tenantId: connection.tenantId,
+      systemId: connection.systemId,
+      channel: connection.type,
+      connectionId: connection.id,
+      externalUserId,
+      profile: args.displayName ? { displayName: args.displayName } : undefined,
+      capNewPerHour: NEW_CONTACT_CAP_PER_HOUR,
+    });
+  } catch (e) {
+    if (e instanceof ContactCapError) return { ok: false, reason: e.message };
+    throw e;
+  }
+  contact = await applyContactIdentity(contact, args);
+
+  const conv = await prisma.chatConversation.findFirst({
+    where: { systemId: connection.systemId, contactId: contact.id },
+    orderBy: { lastMessageAt: "desc" },
+  });
+  // meta (บริบท §3.3) เขียนได้เฉพาะเมื่อมีเธรดอยู่แล้ว — merge ทับของเดิมเหมือนขาส่งข้อความ
+  if (conv && args.meta && Object.keys(args.meta).length > 0) {
+    const prev =
+      conv.meta && typeof conv.meta === "object" && !Array.isArray(conv.meta)
+        ? (conv.meta as Record<string, unknown>)
+        : {};
+    await prisma.chatConversation.update({
+      where: { id: conv.id },
+      data: { meta: { ...prev, ...args.meta } as Prisma.InputJsonValue },
+    });
+  }
+  return { ok: true, contactId: contact.id, ...(conv ? { conversationId: conv.id } : {}) };
+}
+
+// ───────────────────────── ลูกค้าอ่าน / ยังไม่ได้อ่าน (POST /read · GET /unread) ─────────────────────────
+// ⚠️ ข้อจำกัดของ schema วันนี้: ไม่มีที่เก็บ "ลูกค้าอ่านถึงไหน" แยกต่างหาก
+//    (`ChatConversation.staffUnreadCount` เป็นของทีมงาน — เอามาใช้ = แบดจ์ของทีมหายเวลาลูกค้าเปิดอ่าน)
+//    → ใช้ `ChatReadState` ร่วมกัน โดยตั้ง userId = `contact:<contactId>`
+//    ชนกับ userId จริงไม่ได้เพราะ id ของผู้ใช้เป็น cuid ที่ไม่มี ":" · ห้ามแตะ schema ในรอบนี้ (WO-C3)
+const CUSTOMER_READER = (contactId: string) => `contact:${contactId}`;
+
+async function publicContact(connection: ChatChannelConnection, externalUserId: string) {
+  return prisma.chatContact.findFirst({
+    where: {
+      systemId: connection.systemId,
+      channelConnectionId: connection.id,
+      externalUserId,
+    },
+  });
+}
+
+export async function markCustomerRead(args: {
+  connection: ChatChannelConnection;
+  externalUserId: string;
+  lastReadMessageId?: string;
+}): Promise<{ ok: boolean; conversationId?: string }> {
+  const { connection } = args;
+  const contact = await publicContact(connection, args.externalUserId);
+  if (!contact) return { ok: true }; // ยังไม่เคยทัก = ไม่มีอะไรให้ทำเครื่องหมาย (ไม่ใช่ error)
+  const conv = await prisma.chatConversation.findFirst({
+    where: { systemId: connection.systemId, contactId: contact.id },
+    orderBy: { lastMessageAt: "desc" },
+  });
+  if (!conv) return { ok: true };
+  const userId = CUSTOMER_READER(contact.id);
+  await prisma.chatReadState.upsert({
+    where: { conversationId_userId: { conversationId: conv.id, userId } },
+    create: {
+      tenantId: connection.tenantId,
+      systemId: connection.systemId,
+      conversationId: conv.id,
+      userId,
+      lastReadMessageId: args.lastReadMessageId ?? null,
+    },
+    update: { lastReadMessageId: args.lastReadMessageId ?? null, lastReadAt: new Date() },
+  });
+  return { ok: true, conversationId: conv.id };
+}
+
+/** จำนวนข้อความจากร้านที่ลูกค้ายังไม่ได้อ่าน (ไม่นับโน้ตภายใน — ลูกค้าไม่เคยเห็นอยู่แล้ว) */
+export async function customerUnreadCount(args: {
+  connection: ChatChannelConnection;
+  externalUserId: string;
+}): Promise<number> {
+  const { connection } = args;
+  const contact = await publicContact(connection, args.externalUserId);
+  if (!contact) return 0;
+  const conv = await prisma.chatConversation.findFirst({
+    where: { systemId: connection.systemId, contactId: contact.id },
+    orderBy: { lastMessageAt: "desc" },
+  });
+  if (!conv) return 0;
+  const state = await prisma.chatReadState.findUnique({
+    where: {
+      conversationId_userId: { conversationId: conv.id, userId: CUSTOMER_READER(contact.id) },
+    },
+  });
+  return prisma.chatMessage.count({
+    where: {
+      systemId: connection.systemId,
+      conversationId: conv.id,
+      direction: "OUT",
+      ...CUSTOMER_VISIBLE, // โน้ตภายในไม่นับ — ลูกค้าไม่เคยเห็นอยู่แล้ว
+      ...(state?.lastReadAt ? { createdAt: { gt: state.lastReadAt } } : {}),
+    },
+  });
+}
+
+// ───────────────────────── GET /config (widget) ─────────────────────────
+export type PublicConfig = {
+  greeting: string | null;
+  offlineMessage: string | null;
+  locales: string[];
+  theme: Record<string, unknown>;
+  widgetEnabled: boolean;
+};
+
+/** หน้าตา/ข้อความต้อนรับของ widget ตามภาษาที่ขอ — ผ่าน resolveLocale เสมอ (ห้ามฮาร์ดโค้ด .th) */
+export async function publicConfig(
+  connection: ChatChannelConnection,
+  lang?: string | null,
+): Promise<PublicConfig> {
+  const row = await prisma.chatSetting.findUnique({ where: { systemId: connection.systemId } });
+  const greetingMap = toLocaleMap(row?.greetingMessage);
+  const offlineMap = toLocaleMap(row?.offlineMessage);
+  const locales = [...new Set([...Object.keys(greetingMap), ...Object.keys(offlineMap)])];
+  const theme =
+    row?.theme && typeof row.theme === "object" && !Array.isArray(row.theme)
+      ? (row.theme as Record<string, unknown>)
+      : {};
+  return {
+    greeting: resolveLocale(greetingMap, lang),
+    offlineMessage: resolveLocale(offlineMap, lang),
+    locales,
+    theme,
+    widgetEnabled: row?.widgetEnabled ?? true,
+  };
 }
