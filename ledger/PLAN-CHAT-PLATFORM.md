@@ -155,6 +155,14 @@ event ออกในทรานแซกชันเดียวกับก�
 ถ้าอนาคตต้องการ "ยืนยันว่าถึงจริง" ต้องเพิ่ม event แยก (`chat.message.delivered`) ห้ามเปลี่ยนความหมายของตัวนี้
 | **`chat.conversation.status`** 🆕 | ปิด/เปิดเธรด | `{ conversationId, status, externalUserId }` |
 | **`chat.contact.linked`** 🆕 | ผูกกับสมาชิก | `{ contactId, customerId }` |
+| **`chat.message.mirrored`** 🆕 | ระบบภายนอกส่ง**คำตอบของทีม**เข้ามาทาง `/replies` (WO-C3b) | เหมือน `chat.message.sent` ทุกฟิลด์ |
+
+🔴 **`chat.message.mirrored` ≠ `chat.message.sent` — ห้ามรวมเป็นตัวเดียวกัน**
+ตัวนี้แปลว่า "คัดลอกเข้ามาแล้ว **ไม่ต้องส่งอะไรต่อ**" · ข้อความถูกส่งถึงลูกค้าไปแล้วโดยระบบต้นทาง
+ถ้าใช้ `chat.message.sent` ซ้ำ: (ก) ลูกค้าได้แจ้งเตือนซ้ำทันที (WO-C6 ผูก event นั้นกับการยิง push)
+(ข) เปิดทางวนลูปเมื่อต้นทาง dual-write (ค) ต้องเปลี่ยนความหมายของ event ที่ผู้รับรายอื่นพึ่งอยู่
+🔴 **SiamDive ต้อง subscribe เฉพาะ `chat.message.sent` เท่านั้น** — `withWebhooks` ห่อทุก consumer
+ดังนั้น mirrored จะถูกส่งไปหา endpoint ที่ subscribe ไว้ด้วย · subscribe ผิด = push ซ้ำอยู่ดี
 
 ลายเซ็นเดิม: `X-Shark-Signature: hex(hmacSHA256(secret, body))` + `X-Shark-Event`
 
@@ -291,7 +299,18 @@ B1, B2, B5, B6, B7, B10 (B3/B4 อยู่ใน WO-C2 แล้ว)
 ### WO-C7 — ย้ายประวัติ
 **ไฟล์:** `siamdive2/scripts/migrate-chat-to-shark.mts`
 - `SupportThread` → `ChatContact` (`externalUserId = deviceId`) + `ChatConversation` + `ChatMessage`
+- ข้อความลูกค้าเข้าทาง `/messages` · **คำตอบของทีมเข้าทาง `/replies`** (WO-C3b) พร้อม `sentAt` จริง
 - **รันซ้ำได้** — กุญแจกันซ้ำ `clientMessageId = "sd2:" + SupportMessage.id`
+
+🔴 **3 กับดักที่ต้องรู้ก่อนรัน (พบตอนทำ WO-C3b)**
+1. **เพดาน contact ใหม่ 60 คน/ชม. ต่อ connection** (`NEW_CONTACT_CAP_PER_HOUR` — ด่าน M9 กัน DoS)
+   อยู่ครบทั้ง 3 ทาง (`/messages`, `/identities`, webchat) **ไม่มีเส้นไหนเลี่ยงได้**
+   ⇒ ย้ายเกิน 60 อุปกรณ์/ชม. จะได้ 422 · **สคริปต์ต้องหน่วงเอง** (อย่าแก้ด่านความปลอดภัยเพื่อความสะดวก
+   ครั้งเดียว) · รู้จำนวนเธรดจริงก่อนแล้วค่อยประเมินเวลา — พันเธรด ≈ 17 ชม. รันข้ามคืนได้
+2. **ต้องย้ายเรียงเวลาเก่า → ใหม่** — `lastMessageAt` ถูกตั้งเป็น `sentAt` ตรง ๆ ไม่มี guard ห้ามถอยหลัง
+   (ใส่ไม่ได้เพราะ `announceInbound` ใช้ร่วมกับ LINE) ⇒ ย้ายสลับลำดับ = preview ใน inbox ค้างที่ข้อความเก่า
+3. **`/replies` ไม่รับไฟล์แนบ** — คำตอบของทีมที่เคยแนบไฟล์จะได้แต่ข้อความ
+   ถ้าประวัติมีเยอะต้องเพิ่มก่อนย้าย ไม่งั้นของหายถาวร (ข้อความลูกค้าแนบไฟล์ได้ปกติทาง `/messages`)
 - ต้องมี `--dry-run` ที่พิมพ์จำนวนจริงก่อน แล้วเทียบจำนวนหลังย้าย (ห้ามเชื่อว่า "รันแล้วเสร็จ")
 - 🔴 [[feedback_snapshot_not_reference_when_measuring]] — เก็บตัวเลขก่อน/หลังเป็นไฟล์
 
@@ -527,3 +546,19 @@ S1 (auth ของ upload), S2 (rate limit → DB), S3 (OTP ประทับ e
   การล็อกค่าเป๊ะ = บังคับให้กลับไปใช้แบบหลายคำสั่งที่นับพลาด
 - 28 ส.ค. 2026 — **ยืนยันรวมทั้งหมด 233 ข้อเขียว**: api-v1 89 · security 23 (DB จริง) · notify 23 (DB จริง)
   · core-v2 41 · security-scope 20 · retention 37 · `typecheck` EXIT=0 · `fitness 17/17`
+- 28 ส.ค. 2026 — **WO-C6 เสร็จ** (siamdive2 `5697bf0` · ข้อสอบ `qc-shark-chat.ts` 84/84 · fail-before 12 รอบ)
+  `CHAT_BACKEND` ค่าเริ่มต้น `local` = พฤติกรรมเดิมเป๊ะ · ตั้ง dual/shark แต่ไม่มีกุญแจ → ตกกลับ local เอง
+  🔴 **4xx ไม่นับเข้าวงจรตัด** — บั๊กฝั่งเราต้องไม่ปิด dual-write ทั้งระบบทั้งที่ SHARK ยังปกติ
+  🔴 retry เฉพาะ idempotent · `/messages` retry ได้ต่อเมื่อมี `clientMessageId` (ไม่งั้นข้อความโผล่ 2 รอบ)
+  🔴 กันยิง webhook ซ้ำต้องผูก `messageId` **ห้ามใช้แฮชของ body** — `dispatchWebhooks` สร้าง body ใหม่
+  ทุก retry (`sentAt` เปลี่ยน → ลายเซ็นเปลี่ยน · `webhooks/service.ts:143`)
+- 28 ส.ค. 2026 — **WO-C3b เสร็จ** (`qc-chat-replies.mts` 60/60 · fail-before 12 รอบ · รวมทั้งหมด **247 ข้อเขียว**)
+  ปิดช่องว่างที่ **Fable ออกแบบ §3.2 พลาดเอง**: ไม่มีเส้นให้ระบบภายนอกส่งข้อความทิศ OUT
+  ⇒ ช่วงเปลี่ยนผ่านที่ทีมยังตอบในระบบเดิม คำตอบไม่ถึง SHARK และ WO-C7 ย้ายได้แค่ครึ่งเดียว
+  · `POST /api/v1/chat/replies` (**secret เท่านั้น · widget = 403 ไม่ใช่ 401**) → `receiveExternalReply()`
+  · **ไม่แตะ adapter เลย** (ยิงซ้ำ = ลูกค้าได้ข้อความ 2 รอบ) · emit `chat.message.mirrored` ไม่ใช่ `sent`
+  · `sentAt` เชื่อเฉพาะ secret (widget ปลอมเวลาไม่ได้) · ขอบเขต: อนาคต >1 วัน / เก่า >5 ปี = ปฏิเสธ
+  · ไม่สร้าง contact เอง — ตอบให้คนที่ไม่เคยทัก = 422 (กันเธรดผี + กันข้ามเพดาน contact ใหม่)
+  🔴 บทเรียน positive control ที่คุ้มมาก: ข้อสอบ "ต้องไม่ยิงออกช่องทางภายนอก" **เขียวแบบผลลวง**
+  เพราะ fake ตั้ง `credentials: {}` → LINE adapter โยน `TOKEN_MISSING` **ก่อนถึงจุดยิง** โค้ดไม่เคยเดินไปถึง
+  ⇒ ข้อสอบแนว "ต้องไม่เกิด X" **ต้องมีคู่บวกเสมอ** ที่พิสูจน์ว่าเส้นทางนั้นเดินถึงจริง

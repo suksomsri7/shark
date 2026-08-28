@@ -28,6 +28,7 @@ type Body = {
   lang?: unknown;
   verifiedEmail?: unknown;
   externalRef?: unknown;
+  sentAt?: unknown;
 };
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v.trim() : undefined);
@@ -76,6 +77,15 @@ export async function POST(req: Request): Promise<Response> {
   // (เช่น verifiedEmail: widget ตั้งเองได้ = ตราประทับ "ยืนยันอีเมลแล้ว" ไร้ความหมาย)
   const trusted = auth.mode === "secret";
 
+  // WO-C3b: `sentAt` = เวลาจริงของข้อความ (ใช้ตอนย้ายประวัติ) — แปลงรูปแบบที่นี่
+  // ขอบเขตของค่า (อนาคต/เก่าเกินเหตุ) เป็น logic ธุรกิจ อยู่ชั้น 1
+  // 🔴 เชื่อได้เฉพาะ secret — widget ตั้งเองได้ = ปลอมเวลาแทรกข้อความไว้กลางประวัติ/บนสุดของ inbox
+  const sentAtRaw = trusted ? str(body.sentAt) : undefined;
+  const sentAt = sentAtRaw ? new Date(sentAtRaw) : undefined;
+  if (sentAt && Number.isNaN(sentAt.getTime())) {
+    return chatJson(auth, { error: "sentAt ต้องเป็นวันเวลารูปแบบ ISO" }, 400);
+  }
+
   const result = await receiveExternalInbound({
     connection: auth.connection,
     externalUserId: who.externalUserId,
@@ -92,6 +102,7 @@ export async function POST(req: Request): Promise<Response> {
         }
       : {}),
     lang: str(body.lang),
+    ...(sentAt ? { sentAt } : {}),
     context:
       body.context && typeof body.context === "object" && !Array.isArray(body.context)
         ? (body.context as Record<string, unknown>)
@@ -103,6 +114,7 @@ export async function POST(req: Request): Promise<Response> {
     ok: true,
     ...(result.conversationId ? { conversationId: result.conversationId } : {}),
     ...(result.messageId ? { messageId: result.messageId } : {}),
+    ...(result.createdAt ? { createdAt: result.createdAt } : {}), // §3.2 — ผู้เรียกต้องรู้เวลาที่บันทึกจริง
     ...(result.duplicate ? { duplicate: true } : {}),
   });
 }

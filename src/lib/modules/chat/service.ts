@@ -399,6 +399,33 @@ function preview(body?: string | null, type?: ChatMessageType): string {
   return (body ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
 }
 
+// ───────── เวลาจริงของข้อความ (`sentAt`) — WO-C3b ─────────
+// ระบบต้นทางที่ย้ายประวัติเข้ามาต้องประทับ "เวลาที่ข้อความถูกส่งจริง" ไม่ใช่เวลาที่ย้าย
+// ไม่งั้นทั้งเธรดได้เวลาเดียวกันหมด → เรียงผิด อ่านไม่รู้เรื่อง และ retention (WO-C12) นับอายุผิด
+// 🔴 ค่าที่รับต้องมีขอบทั้งสองด้าน:
+//    · อนาคตไกล = ข้อความลอยอยู่บนสุดของ inbox ตลอดกาลและ SLA คำนวณติดลบ
+//      (เผื่อนาฬิกาเครื่องต้นทางเพี้ยนได้ 1 วัน — ไม่ใช่ 0 ไม่งั้น clock skew ปกติก็ถูกปฏิเสธ)
+//    · เก่าเกินเหตุ = อาการของหน่วยเวลาผิด (วินาที vs มิลลิวินาที) ไม่ใช่ประวัติจริง
+// 🔴 ผู้เรียกที่เป็นเบราว์เซอร์ (widget) ห้ามตั้งค่านี้ — ตัดสินที่ชั้น 2 ก่อนถึงที่นี่ (§3.1)
+const SENT_AT_FUTURE_TOLERANCE_MS = 24 * 60 * 60 * 1000; // 1 วัน
+const SENT_AT_MAX_AGE_MS = 5 * 365 * 24 * 60 * 60 * 1000; // 5 ปี
+
+function resolveSentAt(
+  sentAt: Date | undefined,
+  now: Date = new Date(),
+): { ok: true; at: Date } | { ok: false; reason: string } {
+  if (!sentAt) return { ok: true, at: now };
+  const t = sentAt.getTime();
+  if (!Number.isFinite(t)) return { ok: false, reason: "sentAt ไม่ใช่วันเวลาที่ถูกต้อง" };
+  if (t > now.getTime() + SENT_AT_FUTURE_TOLERANCE_MS) {
+    return { ok: false, reason: "sentAt เป็นเวลาในอนาคตเกิน 1 วัน" };
+  }
+  if (t < now.getTime() - SENT_AT_MAX_AGE_MS) {
+    return { ok: false, reason: "sentAt เก่าเกิน 5 ปี" };
+  }
+  return { ok: true, at: sentAt };
+}
+
 const CHANNEL_LABEL_TH: Record<string, string> = {
   LINE: "LINE",
   WEBCHAT: "แชทหน้าเว็บ",
@@ -709,10 +736,13 @@ export async function receiveExternalInbound(args: {
   verifiedEmail?: boolean;
   externalRef?: string;
   context?: Record<string, unknown>;
+  /** WO-C3b: เวลาจริงของข้อความ (เชื่อได้เฉพาะ secret key) — ไม่ระบุ = ตอนนี้ */
+  sentAt?: Date;
 }): Promise<{
   ok: boolean;
   conversationId?: string;
   messageId?: string;
+  createdAt?: string;
   duplicate?: boolean;
   reason?: string;
 }> {
@@ -722,6 +752,10 @@ export async function receiveExternalInbound(args: {
 
   const externalUserId = (args.externalUserId ?? "").trim();
   if (!externalUserId) return { ok: false, reason: "ไม่ได้ระบุผู้ใช้ต้นทาง" };
+
+  const when = resolveSentAt(args.sentAt);
+  if (!when.ok) return { ok: false, reason: when.reason };
+  const at = when.at;
 
   const body = (args.body ?? "").trim();
   const attachments = (args.attachments ?? []).filter((a) => a?.url?.trim() && a?.mimeType?.trim());
@@ -788,6 +822,7 @@ export async function receiveExternalInbound(args: {
           body: body || null,
           clientMessageId: args.clientMessageId ?? null,
           deliveryStatus: "SENT",
+          createdAt: at, // ไม่ระบุ sentAt = now() ตามเดิม
         },
       });
       for (const a of attachments) {
@@ -826,15 +861,17 @@ export async function receiveExternalInbound(args: {
     channel,
     contactLabel: contact.displayName ?? contact.phone ?? "ลูกค้า",
     previewText: preview(body, msgType),
-    sentAt: new Date(),
+    sentAt: at,
   });
+  // 🔴 lastInboundAt = "ช่องทางนี้มีสัญญาณล่าสุดเมื่อไหร่" (สุขภาพการเชื่อมต่อ) — ไม่ใช่เวลาของ
+  //    ข้อความ ⇒ ประวัติเก่าที่ย้ายเข้ามาต้องไม่ทำให้ช่องทางดูเหมือน "เงียบมา 3 ปี"
   await prisma.chatChannelConnection.update({
     where: { id: connection.id },
     data: { lastInboundAt: new Date() },
   });
 
   await maybeAutoLinkMember(tenantId, systemId, contact.id);
-  return { ok: true, conversationId: conv.id, messageId: msg.id };
+  return { ok: true, conversationId: conv.id, messageId: msg.id, createdAt: msg.createdAt.toISOString() };
 }
 
 // hook: ถ้าเชื่อมระบบ Member และ contact มีเบอร์แต่ยังไม่ผูก → findOrCreate + link (opt-in)
@@ -1000,6 +1037,157 @@ export async function sendReply(args: {
   return failReason
     ? { ok: false, reason: failReason, messageId: msg.id }
     : { ok: true, messageId: msg.id };
+}
+
+// ─────────────── คำตอบของทีมงานที่ถูก "สะท้อน" มาจากระบบภายนอก (WO-C3b) ───────────────
+// ทางเข้าของ `POST /api/v1/chat/replies` — 🔴 secret key เท่านั้น (ชั้น 2 กันไว้)
+// ถ้าหลุดถึง widget = ใครก็ปลอมเป็นทีมงานคุยกับลูกค้าได้ในนามร้าน
+//
+// ทำไมต้องมี: ช่วงเปลี่ยนผ่าน (WO-C6/C7) ทีมงานของพาร์ตเนอร์ยังตอบอยู่ในหน้าจอเดิมของตัวเอง
+//   ไม่มีทางนี้ = SHARK เก็บได้แต่ข้อความฝั่งลูกค้า ⇒ inbox ทีมอ่านไม่รู้เรื่อง และประวัติที่ย้ายมา
+//   ได้ครึ่งเดียว
+//
+// 🔴 ต่างจาก `sendReply` 3 ข้อ และทั้ง 3 ข้อคือเหตุผลที่เอา `sendReply` มาใช้ตรง ๆ ไม่ได้:
+//   1. **ห้ามยิงออกช่องทางภายนอกซ้ำ** — ข้อความถูกส่งถึงลูกค้าไปแล้วโดยระบบต้นทาง
+//      ยิงซ้ำ = ลูกค้าได้ข้อความ 2 รอบ ⇒ เส้นนี้ไม่แตะ adapter เลย · `deliveryStatus = SENT`
+//      ตั้งแต่แรก (สถานะสะท้อนความจริง: ส่งถึงแล้ว แค่ไม่ได้ส่งโดยเรา)
+//   2. **ห้าม emit `chat.message.sent`** — §3.4 ตกลงความหมายไว้ว่า "แอดมินตอบแล้ว" และ WO-C6
+//      ผูก event นี้เข้ากับการ push แจ้งลูกค้า · ยิงกลับไปหาระบบที่เพิ่งส่งข้อความนั้นเอง =
+//      ลูกค้าได้ push ซ้ำ และเปิดทางวนลูป (ต้นทางตอบ → mirror → event → ต้นทางแจ้ง/เขียนซ้ำ)
+//      ⇒ ใช้ type ใหม่ `chat.message.mirrored` = "คัดลอกเข้ามาแล้ว ไม่ต้องส่งอะไรต่อ"
+//      (ห้ามแก้ความหมายของ `chat.message.sent` แทน — ผู้รับรายอื่นพึ่งความหมายเดิมอยู่)
+//   3. `senderUserId = null` — คนตอบไม่ใช่ผู้ใช้ใน SHARK ห้ามชี้ไปที่พนักงานคนไหนของร้าน
+//
+// ⚠️ ส่วน **denormalized ต้องเหมือน `sendReply` เป๊ะ** (lastMessage* · staffUnreadCount: 0 ·
+//    firstResponseAt) ไม่งั้นกล่อง "รอตอบ" ของทีมไม่ลดและ SLA โกหก — แก้ที่หนึ่งต้องดูอีกที่เสมอ
+export async function receiveExternalReply(args: {
+  connection: ChatChannelConnection;
+  externalUserId: string;
+  body: string;
+  /** ชื่อที่ลูกค้าเห็นเฉพาะข้อความนี้ · ไม่ใส่ = ตกไปใช้ ChatSetting.senderAlias ตอนอ่าน */
+  senderName?: string;
+  clientMessageId?: string;
+  sentAt?: Date;
+  isInternal?: boolean;
+}): Promise<{
+  ok: boolean;
+  conversationId?: string;
+  messageId?: string;
+  createdAt?: string;
+  duplicate?: boolean;
+  reason?: string;
+}> {
+  const { connection } = args;
+  const { tenantId, systemId } = connection;
+
+  const externalUserId = (args.externalUserId ?? "").trim();
+  if (!externalUserId) return { ok: false, reason: "ไม่ได้ระบุผู้ใช้ต้นทาง" };
+
+  const body = (args.body ?? "").trim();
+  if (!body) return { ok: false, reason: "ข้อความว่าง" };
+  if (body.length > 4000) return { ok: false, reason: "ข้อความยาวเกิน 4,000 ตัวอักษร" };
+
+  const when = resolveSentAt(args.sentAt);
+  if (!when.ok) return { ok: false, reason: when.reason };
+  const at = when.at;
+
+  // 🔴 ห้ามสร้าง contact ที่นี่: "คำตอบ" ต้องมีคนถามก่อนเสมอ · สร้างเองเมื่อไม่เจอ =
+  //    ระบบต้นทางพิมพ์ externalUserId ผิดตัวเดียวแล้วได้เธรดผีที่ทีมต้องมานั่งปิดเอง
+  //    (และเปิดช่องให้ท่วม inbox โดยข้ามเพดาน contact ใหม่/ชม.ของ findOrCreateContact)
+  const contact = await prisma.chatContact.findFirst({
+    where: { systemId, channelConnectionId: connection.id, externalUserId },
+  });
+  if (!contact) {
+    return { ok: false, reason: "ไม่พบผู้ใช้ต้นทางนี้ — ส่งข้อความของลูกค้าหรือเรียก /identities ก่อน" };
+  }
+  if (contact.blockedAt) return { ok: true }; // เหมือนขาเข้า: เก็บเงียบ ไม่ปลุกเธรด
+
+  // ใช้ตัวเดิม (advisory lock) — ห้าม fork logic การเปิด/รื้อฟื้นเธรด (กฎเหล็กข้อ 1)
+  const conv = await getOrOpenConversation({
+    tenantId,
+    systemId,
+    channel: connection.type,
+    connectionId: connection.id,
+    contactId: contact.id,
+    unitId: connection.defaultUnitId,
+  });
+
+  const isInternal = !!args.isInternal;
+  const previewText = preview(body);
+  const rowSenderName = args.senderName?.trim() || null;
+  const setting = isInternal ? null : await prisma.chatSetting.findUnique({ where: { systemId } });
+  const shownSenderName = rowSenderName ?? setting?.senderAlias ?? null;
+
+  let msg;
+  try {
+    // เขียนข้อความ + event + denorm ในทรานแซกชันเดียว (ข้อความรอด = event รอด) เหมือน sendReply
+    // ที่นี่ไม่มี network call ให้ต้องกันออกนอก tx เลย เพราะเส้นนี้ไม่ยิงออกช่องทางภายนอก
+    msg = await prisma.$transaction(async (tx) => {
+      const created = await tx.chatMessage.create({
+        data: {
+          tenantId,
+          systemId,
+          conversationId: conv.id,
+          direction: "OUT",
+          type: "TEXT",
+          senderUserId: null, // ไม่ใช่พนักงานใน SHARK
+          senderName: rowSenderName,
+          body,
+          isInternal,
+          clientMessageId: args.clientMessageId ?? null,
+          deliveryStatus: "SENT", // ถึงลูกค้าไปแล้วโดยระบบต้นทาง
+          createdAt: at,
+        },
+      });
+
+      // 🔴 โน้ตภายในไม่ใช่ข้อความถึงลูกค้า — ห้ามยิง event และห้ามขึ้น preview (เหมือน sendReply)
+      if (!isInternal) {
+        await emitOutbox(tx, {
+          tenantId,
+          type: "chat.message.mirrored",
+          // namespace ที่ 3 — ห้ามชน `chat.msg.` (ขาเข้า) และ `chat.sent.` (แอดมินใน SHARK ตอบ)
+          idempotencyKey: `chat.mirrored.${created.id}`,
+          payload: {
+            conversationId: conv.id,
+            messageId: created.id,
+            externalUserId: contact.externalUserId,
+            channel: conv.channel,
+            preview: previewText,
+            senderName: shownSenderName,
+          },
+          systemId,
+          unitId: conv.unitId,
+        });
+        // denorm — ชุดฟิลด์ต้องตรงกับ sendReply (ทีมตอบแล้ว = ล้าง unread + ประทับ SLA)
+        await tx.chatConversation.update({
+          where: { id: conv.id },
+          data: {
+            lastMessageAt: at,
+            lastMessagePreview: previewText,
+            lastMessageDirection: "OUT",
+            staffUnreadCount: 0,
+            firstResponseAt: conv.firstResponseAt ?? at,
+          },
+        });
+      }
+      return created;
+    });
+  } catch (e) {
+    // ส่งซ้ำ (clientMessageId เดิม) → ไม่เขียนซ้ำ ไม่ยิง event ซ้ำ — WO-C7 รันย้ายข้อมูลซ้ำได้
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return { ok: true, conversationId: conv.id, duplicate: true };
+    }
+    throw e;
+  }
+
+  if (!isInternal) void drainAll().catch(() => {});
+
+  return {
+    ok: true,
+    conversationId: conv.id,
+    messageId: msg.id,
+    createdAt: msg.createdAt.toISOString(),
+  };
 }
 
 // ───────────────────────── Inbox reads ─────────────────────────

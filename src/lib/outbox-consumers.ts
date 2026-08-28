@@ -148,6 +148,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // พร้อม lastError "ไม่มี consumer…" — outbox.ts:111) + เป็นจุดให้ Automation/Webhooks ยิงต่อ
   // ตัวที่ส่งออกจริงคือ withWebhooks ข้างล่าง → SiamDive รับ chat.message.sent ไปส่ง push
   "chat.message.sent": withAutomation(async () => {}),
+  // WO-C3b: คำตอบของทีมงานที่ระบบภายนอก "สะท้อน" เข้ามา (`/api/v1/chat/replies`)
+  // 🔴 แยก type จาก `chat.message.sent` โดยเจตนา — ตัวนั้นแปลว่า "แอดมินใน SHARK ตอบ" และ
+  // WO-C6 ผูกไว้กับการ push แจ้งลูกค้า · ยิงกลับไปหาระบบที่เพิ่งส่งข้อความนั้นเอง = push ซ้ำ
+  // และวนลูปได้ · ตัวนี้แปลว่า "คัดลอกเข้ามาแล้ว ไม่ต้องส่งอะไรต่อ" — no-op เพื่อปิด event เป็น DONE
+  // (ไม่มี handler = ค้าง PENDING ตลอดกาล — outbox.ts:111) + เป็นจุดให้ Automation/Webhooks ยิงต่อ
+  "chat.message.mirrored": withAutomation(async () => {}),
   "chat.conversation.status": withAutomation(async () => {}),
   // Wave4-B: AppNotification "มีคนกรอกฟอร์ม" ถูกสร้างแล้วใน submitPublicForm —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย lead ใหม่
