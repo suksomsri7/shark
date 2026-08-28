@@ -1,9 +1,14 @@
 import { Prisma } from "@prisma/client";
 import type {
+  ChatAttachment,
   ChatChannelType,
   ChatChannelConnection,
   ChatConversation,
+  ChatConversationStatus,
+  ChatMessage,
+  ChatMessageDirection,
   ChatMessageType,
+  ChatSetting,
 } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
@@ -70,8 +75,15 @@ export async function listConnections(tenantId: string, systemId: string) {
   });
 }
 
-export async function getConnection(connectionId: string) {
-  return prisma.chatChannelConnection.findUnique({ where: { id: connectionId } });
+// B1 (WO-C4): เดิมเป็น findUnique({ id }) เปล่า ๆ — ใครรู้ id ก็อ่าน connection ของร้านอื่นได้
+// ตอนนี้บังคับ tenantId + systemId เสมอ (แกนเดียวกับ listConnections) · ไม่ตรง = null
+// ⚠️ ทางเดียวที่ resolve connection โดยไม่มีบริบทร้านได้คือ webhook ขาเข้า
+// (`api/chat/webhook/[connectionId]/route.ts`) ซึ่งพิสูจน์ตัวตนด้วย HMAC ของ provider ไม่ใช่ session
+// → route นั้น query เองในไฟล์ตัวเอง ห้ามเอาฟังก์ชันนี้ไปใช้แล้วส่ง tenantId ที่มาจาก request
+export async function getConnection(tenantId: string, systemId: string, connectionId: string) {
+  return prisma.chatChannelConnection.findFirst({
+    where: { id: connectionId, tenantId, systemId },
+  });
 }
 
 // สร้าง/หา connection WEBCHAT (built-in — 1 ชุด/ระบบ) — lazy ตอนเปิดครั้งแรก
@@ -153,10 +165,57 @@ export async function setConnectionStatus(
 
 // ───────────────────────── Settings ─────────────────────────
 
-export async function getSetting(tenantId: string, systemId: string) {
+// WO-C2/M5: greetingMessage / offlineMessage เป็น **map ภาษาเปิด** ({ th, en, cn, ... })
+// เพิ่มภาษาได้โดยไม่ต้อง migrate · อ่านค่าให้ใช้ resolveLocale() เสมอ ห้ามฮาร์ดโค้ด `.th`
+export type LocaleMap = Record<string, string>;
+
+// Json → map ภาษา (ทิ้งค่าที่ไม่ใช่สตริง — กันข้อมูลเก่า/มือแก้ผิดรูป)
+export function toLocaleMap(value: unknown): LocaleMap {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: LocaleMap = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === "string") out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * เลือกข้อความตามภาษา — ลำดับ: ภาษาที่ขอ → ภาษาฐาน (`th-TH` → `th`) → fallback → ภาษาแรกที่มี
+ *
+ * 🔴 ห้ามใช้ `||` ทั้งฟังก์ชันนี้: `""` คือ **การตั้งใจปิดข้อความ** ของร้าน (เช่น ไม่อยากมี greeting
+ * ภาษาอังกฤษ) — `||` จะกลืนแล้วไหลไป fallback ทำให้ลูกค้าเห็นข้อความภาษาอื่นโผล่มาแทน
+ * ([[feedback_render_all_locales_before_ship]]) → ตัดสินด้วย "มีคีย์นี้จริงไหม" ไม่ใช่ "ค่าจริงไหม"
+ * ไม่มีภาษาไหนเลย → null (ผู้เรียกตัดสินเองว่าจะซ่อนหรือใช้ค่าตั้งต้น)
+ */
+export function resolveLocale(map: unknown, lang?: string | null, fallback = "th"): string | null {
+  const m = toLocaleMap(map);
+  const pick = (k?: string | null): string | undefined =>
+    k && Object.prototype.hasOwnProperty.call(m, k) ? m[k] : undefined;
+
+  const exact = pick(lang?.trim());
+  if (exact !== undefined) return exact;
+
+  const base = lang?.trim().split(/[-_]/)[0]?.toLowerCase();
+  const baseHit = base && base !== lang?.trim() ? pick(base) : undefined;
+  if (baseHit !== undefined) return baseHit;
+
+  const fb = pick(fallback);
+  if (fb !== undefined) return fb;
+
+  const first = Object.keys(m)[0];
+  return first === undefined ? null : m[first]!;
+}
+
+export type ChatSettingView = ChatSetting & { greeting: LocaleMap; offline: LocaleMap };
+
+function withLocaleMaps(row: ChatSetting): ChatSettingView {
+  return { ...row, greeting: toLocaleMap(row.greetingMessage), offline: toLocaleMap(row.offlineMessage) };
+}
+
+export async function getSetting(tenantId: string, systemId: string): Promise<ChatSettingView> {
   const existing = await prisma.chatSetting.findUnique({ where: { systemId } });
-  if (existing) return existing;
-  return prisma.chatSetting.create({ data: { tenantId, systemId } });
+  if (existing) return withLocaleMaps(existing);
+  return withLocaleMaps(await prisma.chatSetting.create({ data: { tenantId, systemId } }));
 }
 
 export async function setMemberSystem(
@@ -335,6 +394,7 @@ async function logEvent(
 function preview(body?: string | null, type?: ChatMessageType): string {
   if (type === "IMAGE") return "[รูปภาพ]";
   if (type === "STICKER") return "[สติกเกอร์]";
+  if (type === "FILE") return "[ไฟล์]";
   return (body ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
 }
 
@@ -576,6 +636,190 @@ export async function receiveWebchatInbound(args: {
   return { ok: true, conversationId: conv.id };
 }
 
+// ───────────────────────── Inbound จากระบบภายนอก (server-to-server) ─────────────────────────
+// WO-C2: ทางเข้าของ "ชั้น 2" (`/api/v1/chat/messages`) — SiamDive และ widget ฝังในอนาคตใช้เส้นนี้
+//
+// 🔴 กฎเหล็กข้อ 1 (§2 ของแผน): ห้าม fork logic — ต้องเดินผ่าน findOrCreateContact +
+//    getOrOpenConversation (advisory lock) + announceInbound ตัวเดียวกับ webchat/LINE
+//    ไม่งั้นลูกค้าแต่ละช่องทางจะได้พฤติกรรม race lock / unread / แจ้งเตือน คนละแบบ
+// ส่วนที่ "เพิ่ม" จาก webchat มีแค่ข้อมูลที่ระบบต้นทางรู้แต่ widget ไม่รู้:
+//    lang / verifiedEmail / externalRef (→ ChatContact, M2) · context (→ ChatConversation.meta, M3)
+//    และไฟล์แนบ (→ ChatAttachment)
+export type ExternalAttachmentInput = {
+  url: string;
+  mimeType: string;
+  fileName?: string;
+  sizeBytes?: number;
+  width?: number;
+  height?: number;
+  storageKey?: string;
+};
+
+const MAX_EXTERNAL_ATTACHMENTS = 10;
+
+// IMAGE เมื่อ mimeType ขึ้นต้น image/ · นอกนั้น FILE (สติกเกอร์มาจาก provider เท่านั้น ไม่รับทางนี้)
+function attachmentKind(mimeType: string): ChatMessageType {
+  return mimeType.trim().toLowerCase().startsWith("image/") ? "IMAGE" : "FILE";
+}
+
+function fileNameFromUrl(url: string): string {
+  const last = url.split("?")[0]!.split("#")[0]!.split("/").filter(Boolean).pop();
+  return last && last.length <= 200 ? decodeURIComponent(last) : "ไฟล์แนบ";
+}
+
+export async function receiveExternalInbound(args: {
+  connection: ChatChannelConnection;
+  externalUserId: string;
+  body?: string;
+  attachments?: ExternalAttachmentInput[];
+  clientMessageId?: string;
+  displayName?: string;
+  email?: string;
+  phone?: string;
+  lang?: string;
+  verifiedEmail?: boolean;
+  externalRef?: string;
+  context?: Record<string, unknown>;
+}): Promise<{
+  ok: boolean;
+  conversationId?: string;
+  messageId?: string;
+  duplicate?: boolean;
+  reason?: string;
+}> {
+  const { connection } = args;
+  const { tenantId, systemId } = connection;
+  const channel = connection.type;
+
+  const externalUserId = (args.externalUserId ?? "").trim();
+  if (!externalUserId) return { ok: false, reason: "ไม่ได้ระบุผู้ใช้ต้นทาง" };
+
+  const body = (args.body ?? "").trim();
+  const attachments = (args.attachments ?? []).filter((a) => a?.url?.trim() && a?.mimeType?.trim());
+  if (!body && attachments.length === 0) return { ok: false, reason: "ข้อความว่าง" };
+  if (body.length > 4000) return { ok: false, reason: "ข้อความยาวเกิน 4,000 ตัวอักษร" };
+  if (attachments.length > MAX_EXTERNAL_ATTACHMENTS) {
+    return { ok: false, reason: `แนบไฟล์ได้ไม่เกิน ${MAX_EXTERNAL_ATTACHMENTS} รายการต่อข้อความ` };
+  }
+
+  let contact;
+  try {
+    contact = await findOrCreateContact({
+      tenantId,
+      systemId,
+      channel,
+      connectionId: connection.id,
+      externalUserId,
+      profile: args.displayName ? { displayName: args.displayName } : undefined,
+      capNewPerHour: NEW_CONTACT_CAP_PER_HOUR, // เพดานเดียวกับ webchat (M9) — s2s ก็ท่วม inbox ได้
+    });
+  } catch (e) {
+    if (e instanceof ContactCapError) return { ok: false, reason: e.message };
+    throw e;
+  }
+  if (contact.blockedAt) return { ok: true }; // block spam — เก็บเงียบ ไม่สร้างเธรด
+
+  // ตัวตนที่ระบบต้นทางรู้ (M2) — เขียนเฉพาะที่ส่งมาและค่าเปลี่ยนจริง
+  const patch: Prisma.ChatContactUpdateInput = {};
+  if (args.lang?.trim() && args.lang.trim() !== contact.lang) patch.lang = args.lang.trim();
+  if (args.externalRef?.trim() && args.externalRef.trim() !== contact.externalRef) {
+    patch.externalRef = args.externalRef.trim();
+  }
+  if (args.email?.trim() && args.email.trim() !== contact.email) patch.email = args.email.trim();
+  if (args.phone?.trim() && args.phone.trim() !== contact.phone) patch.phone = args.phone.trim();
+  // verifiedEmail พลิกได้ทางเดียว (false→true): ต้นทางยืนยันแล้วห้ามถูกถอนด้วย payload รอบถัดไป
+  if (args.verifiedEmail === true && !contact.verifiedEmail) patch.verifiedEmail = true;
+  if (Object.keys(patch).length > 0) {
+    contact = await prisma.chatContact.update({ where: { id: contact.id }, data: patch });
+  }
+
+  const conv = await getOrOpenConversation({
+    tenantId,
+    systemId,
+    channel,
+    connectionId: connection.id,
+    contactId: contact.id,
+    unitId: connection.defaultUnitId,
+  });
+
+  // บริบทลูกค้า §3.3 (pageUrl/country/userAgent/…) — merge ทับของเดิม ทีมงานเห็นว่าลูกค้าดูหน้าไหน
+  if (args.context && Object.keys(args.context).length > 0) {
+    const prev =
+      conv.meta && typeof conv.meta === "object" && !Array.isArray(conv.meta)
+        ? (conv.meta as Record<string, unknown>)
+        : {};
+    await prisma.chatConversation.update({
+      where: { id: conv.id },
+      data: { meta: { ...prev, ...args.context } as Prisma.InputJsonValue },
+    });
+  }
+
+  const msgType: ChatMessageType =
+    attachments.length > 0 ? attachmentKind(attachments[0]!.mimeType) : "TEXT";
+
+  let msg;
+  try {
+    // ข้อความ + ไฟล์แนบต้อง atomic — ไม่งั้นเหลือข้อความเปล่าที่รูปหาย (ลูกค้าเห็นช่องว่าง = B3 ซ้ำรอย)
+    msg = await prisma.$transaction(async (tx) => {
+      const created = await tx.chatMessage.create({
+        data: {
+          tenantId,
+          systemId,
+          conversationId: conv.id,
+          direction: "IN",
+          type: msgType,
+          body: body || null,
+          clientMessageId: args.clientMessageId ?? null,
+          deliveryStatus: "SENT",
+        },
+      });
+      for (const a of attachments) {
+        await tx.chatAttachment.create({
+          data: {
+            tenantId,
+            systemId,
+            messageId: created.id,
+            kind: attachmentKind(a.mimeType),
+            storageKey: a.storageKey?.trim() || a.url.trim(),
+            url: a.url.trim(),
+            fileName: a.fileName?.trim() || fileNameFromUrl(a.url.trim()),
+            mimeType: a.mimeType.trim(),
+            sizeBytes: a.sizeBytes ?? 0,
+            width: a.width ?? null,
+            height: a.height ?? null,
+          },
+        });
+      }
+      return created;
+    });
+  } catch (e) {
+    // ส่งซ้ำ (clientMessageId เดิม) → ไม่แจ้งเตือนซ้ำ เหมือน webchat
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return { ok: true, conversationId: conv.id, duplicate: true };
+    }
+    throw e;
+  }
+
+  await announceInbound({
+    tenantId,
+    systemId,
+    unitId: connection.defaultUnitId,
+    conv,
+    messageId: msg.id,
+    channel,
+    contactLabel: contact.displayName ?? contact.phone ?? "ลูกค้า",
+    previewText: preview(body, msgType),
+    sentAt: new Date(),
+  });
+  await prisma.chatChannelConnection.update({
+    where: { id: connection.id },
+    data: { lastInboundAt: new Date() },
+  });
+
+  await maybeAutoLinkMember(tenantId, systemId, contact.id);
+  return { ok: true, conversationId: conv.id, messageId: msg.id };
+}
+
 // hook: ถ้าเชื่อมระบบ Member และ contact มีเบอร์แต่ยังไม่ผูก → findOrCreate + link (opt-in)
 async function maybeAutoLinkMember(tenantId: string, systemId: string, contactId: string) {
   const setting = await prisma.chatSetting.findUnique({ where: { systemId } });
@@ -608,6 +852,7 @@ export async function sendReply(args: {
   senderUserId: string;
   body: string;
   isInternal?: boolean;
+  senderName?: string; // ชื่อที่ลูกค้าเห็นเฉพาะข้อความนี้ (ไม่ใส่ = ใช้ ChatSetting.senderAlias)
   unitAccess?: string[]; // M11
 }): Promise<{ ok: boolean; reason?: string; messageId?: string }> {
   const body = args.body.trim();
@@ -624,18 +869,71 @@ export async function sendReply(args: {
   const isInternal = !!args.isInternal;
   // insert OUT ก่อน (ทีมเห็นทันที) — PENDING สำหรับช่องทางภายนอก, SENT สำหรับ internal/webchat
   const willSend = !isInternal;
-  const msg = await prisma.chatMessage.create({
-    data: {
-      tenantId: args.tenantId,
-      systemId: args.systemId,
-      conversationId: conv.id,
-      direction: "OUT",
-      type: "TEXT",
-      senderUserId: args.senderUserId,
-      body,
-      isInternal,
-      deliveryStatus: willSend && conv.channel !== "WEBCHAT" ? "PENDING" : "SENT",
-    },
+  const previewText = preview(body);
+
+  // ชื่อที่ลูกค้าควรเห็น (M5) — นามแฝงของร้าน ไม่ใช่ชื่อพนักงานจริง
+  // เก็บบนแถวเฉพาะที่ระบุมาเจาะจง · null = ให้ publicThread ตกไปใช้ senderAlias ตอนอ่าน
+  // (แก้นามแฝงทีหลังแล้วข้อความเก่าเปลี่ยนตาม — ตามเจตนาใน chat.prisma:190)
+  const setting = isInternal
+    ? null
+    : await prisma.chatSetting.findUnique({ where: { systemId: args.systemId } });
+  const rowSenderName = args.senderName?.trim() || null;
+  const shownSenderName = rowSenderName ?? setting?.senderAlias ?? null;
+
+  // 🔴 B4 (WO-C2): "เขียนข้อความ + emitOutbox + denorm" ต้องอยู่ทรานแซกชันเดียว
+  //    (ข้อความรอด = event รอด — แบบเดียวกับ announceInbound ขาเข้า)
+  //    แต่ **การส่งออกช่องทางภายนอกเป็น network call → ต้องอยู่นอกทรานแซกชันเสมอ**
+  //    LINE ตอบช้า/ค้าง = ถือ connection ของ Neon ค้างไปด้วย → pool ตันทั้งแพลตฟอร์ม
+  //    ⇒ ลำดับคือ [tx: insert+outbox+denorm] → [นอก tx: ยิง adapter] → [นอก tx: อัปเดตผลส่ง]
+  //    ผลข้างเคียงที่ยอมรับ: ยิงส่งไม่ผ่าน (deliveryStatus=FAILED) event ก็ออกไปแล้ว
+  //    ผู้รับ webhook ต้องถือว่า "แอดมินตอบแล้ว" ไม่ใช่ "ถึงมือลูกค้าแล้ว" (ดู §3.4)
+  const msg = await prisma.$transaction(async (tx) => {
+    const created = await tx.chatMessage.create({
+      data: {
+        tenantId: args.tenantId,
+        systemId: args.systemId,
+        conversationId: conv.id,
+        direction: "OUT",
+        type: "TEXT",
+        senderUserId: args.senderUserId,
+        senderName: rowSenderName,
+        body,
+        isInternal,
+        deliveryStatus: willSend && conv.channel !== "WEBCHAT" ? "PENDING" : "SENT",
+      },
+    });
+
+    // 🔴 โน้ตภายในไม่ใช่ข้อความถึงลูกค้า — ห้ามยิง event และห้ามขึ้น preview
+    if (!isInternal) {
+      await emitOutbox(tx, {
+        tenantId: args.tenantId,
+        type: "chat.message.sent",
+        // ขาเข้าใช้ `chat.msg.<id>` — ขาออกต้องคนละ namespace ไม่งั้นชนกันแล้ว event หายเงียบ
+        idempotencyKey: `chat.sent.${created.id}`,
+        payload: {
+          conversationId: conv.id,
+          messageId: created.id,
+          externalUserId: conv.contact.externalUserId,
+          channel: conv.channel,
+          preview: previewText,
+          senderName: shownSenderName,
+        },
+        systemId: args.systemId,
+        unitId: conv.unitId,
+      });
+      // denormalized — staff ตอบ = ล้าง unread
+      await tx.chatConversation.update({
+        where: { id: conv.id },
+        data: {
+          lastMessageAt: created.createdAt,
+          lastMessagePreview: previewText,
+          lastMessageDirection: "OUT",
+          staffUnreadCount: 0,
+          firstResponseAt: conv.firstResponseAt ?? new Date(),
+        },
+      });
+    }
+    return created;
   });
 
   let failReason: string | undefined;
@@ -679,19 +977,8 @@ export async function sendReply(args: {
     }
   }
 
-  // อัปเดต denormalized — internal ไม่ขึ้น preview, staff ตอบ = ล้าง unread
-  if (!isInternal) {
-    await prisma.chatConversation.update({
-      where: { id: conv.id },
-      data: {
-        lastMessageAt: msg.createdAt,
-        lastMessagePreview: preview(body),
-        lastMessageDirection: "OUT",
-        staffUnreadCount: 0,
-        firstResponseAt: conv.firstResponseAt ?? new Date(),
-      },
-    });
-  }
+  // drain outbox (automation/webhooks) — fire-and-forget เหมือนขาเข้า ให้ event เดินทันที
+  if (!isInternal) void drainAll().catch(() => {});
 
   return failReason
     ? { ok: false, reason: failReason, messageId: msg.id }
@@ -792,24 +1079,47 @@ export async function setStatus(args: {
 }): Promise<{ ok: boolean; reason?: string }> {
   const conv = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
+    include: { contact: true },
   });
   if (!conv) return { ok: false, reason: "ไม่พบบทสนทนา" };
   if (!canAccessConvUnit(args.unitAccess, conv.unitId)) return { ok: false, reason: "ไม่มีสิทธิ์เข้าถึงบทสนทนานี้" }; // M11
-  if (conv.status === args.status) return { ok: true };
-  await prisma.chatConversation.update({
-    where: { id: conv.id },
-    data: {
-      status: args.status,
-      resolvedAt: args.status === "RESOLVED" ? new Date() : args.status === "OPEN" ? null : conv.resolvedAt,
-    },
+  if (conv.status === args.status) return { ok: true }; // ไม่เปลี่ยนจริง = ไม่ยิง event (กัน webhook รัว)
+
+  // WO-C2: เปลี่ยนสถานะ + event log + outbox อยู่ทรานแซกชันเดียว (ไม่มี network call ในนี้)
+  // idempotencyKey ผูก id ของ ChatConversationEvent → เปิด/ปิดสลับกี่รอบก็ได้ key ไม่ชนกันเอง
+  // (ผูกกับ conversationId เฉย ๆ จะยิงได้ครั้งเดียวตลอดชีพเธรด)
+  await prisma.$transaction(async (tx) => {
+    await tx.chatConversation.update({
+      where: { id: conv.id },
+      data: {
+        status: args.status,
+        resolvedAt: args.status === "RESOLVED" ? new Date() : args.status === "OPEN" ? null : conv.resolvedAt,
+      },
+    });
+    const evt = await tx.chatConversationEvent.create({
+      data: {
+        tenantId: args.tenantId,
+        systemId: args.systemId,
+        conversationId: conv.id,
+        type: "STATUS_CHANGED",
+        actorUserId: args.actorUserId,
+        meta: { from: conv.status, to: args.status },
+      },
+    });
+    await emitOutbox(tx, {
+      tenantId: args.tenantId,
+      type: "chat.conversation.status",
+      idempotencyKey: `chat.status.${evt.id}`,
+      payload: {
+        conversationId: conv.id,
+        status: args.status,
+        externalUserId: conv.contact.externalUserId,
+      },
+      systemId: args.systemId,
+      unitId: conv.unitId,
+    });
   });
-  await logEvent(conv.id, {
-    tenantId: args.tenantId,
-    systemId: args.systemId,
-    type: "STATUS_CHANGED",
-    actorUserId: args.actorUserId,
-    meta: { from: conv.status, to: args.status },
-  });
+  void drainAll().catch(() => {});
   return { ok: true };
 }
 
@@ -826,6 +1136,14 @@ export async function assign(args: {
   });
   if (!conv) return { ok: false, reason: "ไม่พบบทสนทนา" };
   if (!canAccessConvUnit(args.unitAccess, conv.unitId)) return { ok: false, reason: "ไม่มีสิทธิ์เข้าถึงบทสนทนานี้" }; // M11
+  // B5 (WO-C4): assigneeUserId มาจาก form ตรง ๆ — ถ้าไม่ตรวจ จะมอบหมายเธรดให้ user ของร้านอื่นได้
+  // (เธรดหลุดไปอยู่ในมือคนนอก + ชื่อคนนอกโผล่ในหน้าจอทีม) · null = ปล่อยว่าง ไม่ต้องตรวจ
+  if (args.assigneeUserId) {
+    const staff = await listStaff(args.tenantId);
+    if (!staff.some((s) => s.userId === args.assigneeUserId)) {
+      return { ok: false, reason: "ผู้รับมอบหมายไม่ใช่สมาชิกของร้านนี้" };
+    }
+  }
   await prisma.chatConversation.update({
     where: { id: conv.id },
     data: { assigneeUserId: args.assigneeUserId },
@@ -878,6 +1196,7 @@ export async function linkCustomer(args: {
   actorUserId: string;
   phone?: string;
   customerId?: string | null;
+  unitAccess?: string[]; // M11/B6
 }): Promise<{ ok: boolean; reason?: string }> {
   const setting = await prisma.chatSetting.findUnique({ where: { systemId: args.systemId } });
   if (!setting?.memberSystemId) return { ok: false, reason: "ยังไม่ได้เชื่อมระบบสมาชิก" };
@@ -885,6 +1204,18 @@ export async function linkCustomer(args: {
     where: { id: args.contactId, tenantId: args.tenantId, systemId: args.systemId },
   });
   if (!contact) return { ok: false, reason: "ไม่พบผู้ติดต่อ" };
+
+  // B6 (WO-C4): ChatContact ไม่มี unitId ของตัวเอง — unit ผูกอยู่ที่ conversation
+  // → ใช้เธรดล่าสุดของ contact เป็นตัวตัดสินสิทธิ์ เหมือน getThread/sendReply/assign (M11)
+  // (เธรดนี้คือตัวเดียวกับที่ใช้ลง CUSTOMER_LINKED ท้ายฟังก์ชัน — query ครั้งเดียวพอ)
+  // contact ที่ยังไม่มีเธรดเลย = ไม่ผูก unit → ไม่มีอะไรให้รั่วข้าม unit
+  const conv = await prisma.chatConversation.findFirst({
+    where: { systemId: args.systemId, contactId: contact.id },
+    orderBy: { lastMessageAt: "desc" },
+  });
+  if (conv && !canAccessConvUnit(args.unitAccess, conv.unitId)) {
+    return { ok: false, reason: "ไม่มีสิทธิ์เข้าถึงบทสนทนานี้" };
+  }
 
   // ถอด
   if (args.customerId === null) {
@@ -918,10 +1249,6 @@ export async function linkCustomer(args: {
       linkedByUserId: args.actorUserId,
     },
   });
-  const conv = await prisma.chatConversation.findFirst({
-    where: { systemId: args.systemId, contactId: contact.id },
-    orderBy: { lastMessageAt: "desc" },
-  });
   if (conv) {
     await logEvent(conv.id, {
       tenantId: args.tenantId,
@@ -944,31 +1271,109 @@ export async function getLinkedMember(tenantId: string, customerId: string) {
   }
 }
 
-// public: อ่านเธรดของ guest (widget polling) — คืนเฉพาะฟิลด์ปลอดภัย ไม่รวม internal note
-export async function getWebchatThread(connection: ChatChannelConnection, guestToken: string) {
+// ───────────────────────── public thread (สัญญา §3.2 — ใช้ร่วมกันทุกช่องทาง) ─────────────────────────
+// 🔴 B3: ของเดิม (`getWebchatThread`) คืนแค่ 4 ฟิลด์ — ไม่มี `type`/`attachments` ⇒ รูป/สติกเกอร์/ไฟล์
+//    แสดงเป็นช่องว่างในฝั่งลูกค้า · shape นี้เป็น "สัญญาสาธารณะ" เปลี่ยนทีหลัง = ลูกค้าพัง (D2)
+// 🔴 กติกาที่ห้ามหลุด: `isInternal: false` — โน้ตภายในของทีมห้ามถึงลูกค้าเด็ดขาด
+
+export type PublicAttachment = {
+  url: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+};
+
+export type PublicMsg = {
+  id: string;
+  direction: ChatMessageDirection;
+  type: ChatMessageType;
+  body: string | null;
+  attachments: PublicAttachment[];
+  senderName: string | null;
+  createdAt: string;
+};
+
+export type PublicThread = {
+  conversationId?: string;
+  status?: ChatConversationStatus;
+  messages: PublicMsg[];
+};
+
+const PUBLIC_THREAD_MAX = 200;
+
+function toPublicMsg(
+  m: ChatMessage & { attachments?: ChatAttachment[] },
+  alias: string | null,
+): PublicMsg {
+  return {
+    id: m.id,
+    direction: m.direction,
+    type: m.type,
+    body: m.body ?? null,
+    attachments: (m.attachments ?? []).map((a) => ({
+      url: a.url,
+      name: a.fileName,
+      mimeType: a.mimeType,
+      sizeBytes: a.sizeBytes,
+      width: a.width ?? null,
+      height: a.height ?? null,
+    })),
+    // ลูกค้าเห็นได้เฉพาะชื่อฝั่งร้าน (นามแฝง) — ห้ามหลุดชื่อพนักงานจริง · IN = ตัวเขาเอง ไม่ต้องมีชื่อ
+    senderName: m.direction === "OUT" ? (m.senderName ?? alias) : null,
+    createdAt: m.createdAt.toISOString(),
+  };
+}
+
+export async function publicThread(args: {
+  connection: ChatChannelConnection;
+  externalUserId: string;
+  after?: Date;
+  limit?: number;
+}): Promise<PublicThread> {
+  const { connection } = args;
   const contact = await prisma.chatContact.findFirst({
-    where: { systemId: connection.systemId, channelConnectionId: connection.id, externalUserId: guestToken },
+    where: {
+      systemId: connection.systemId,
+      channelConnectionId: connection.id,
+      externalUserId: args.externalUserId,
+    },
   });
-  if (!contact) return { messages: [] as PublicMsg[] };
+  if (!contact) return { messages: [] };
   const conv = await prisma.chatConversation.findFirst({
     where: { systemId: connection.systemId, contactId: contact.id },
     orderBy: { lastMessageAt: "desc" },
   });
-  if (!conv) return { messages: [] as PublicMsg[] };
+  if (!conv) return { messages: [] };
+
   const rows = await prisma.chatMessage.findMany({
-    where: { systemId: connection.systemId, conversationId: conv.id, isInternal: false },
+    where: {
+      systemId: connection.systemId,
+      conversationId: conv.id,
+      isInternal: false, // 🔴 โน้ตภายในห้ามหลุดถึงลูกค้า
+      ...(args.after ? { createdAt: { gt: args.after } } : {}),
+    },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    take: 100,
+    take: Math.min(Math.max(args.limit ?? 100, 1), PUBLIC_THREAD_MAX),
+    include: { attachments: true },
   });
+
+  const setting = await prisma.chatSetting.findUnique({ where: { systemId: connection.systemId } });
+  const alias = setting?.senderAlias ?? null;
+
   return {
     conversationId: conv.id,
-    messages: rows.map<PublicMsg>((m) => ({
-      id: m.id,
-      direction: m.direction,
-      body: m.body,
-      createdAt: m.createdAt.toISOString(),
-    })),
+    status: conv.status,
+    messages: rows.map((m) => toPublicMsg(m, alias)),
   };
 }
 
-type PublicMsg = { id: string; direction: string; body: string | null; createdAt: string };
+// public: อ่านเธรดของ guest (widget polling) — ห่อ publicThread ตัวเดียวกับ API v1
+// (ห้ามเขียน logic ซ้ำ 2 ที่ ไม่งั้น widget กับ SiamDive เห็นข้อความไม่เหมือนกัน)
+export async function getWebchatThread(
+  connection: ChatChannelConnection,
+  guestToken: string,
+): Promise<PublicThread> {
+  return publicThread({ connection, externalUserId: guestToken });
+}

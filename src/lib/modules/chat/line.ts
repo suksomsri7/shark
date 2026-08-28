@@ -23,8 +23,12 @@ export const lineAdapter: ChannelAdapter = {
   verifyWebhook(rawBody, headers, creds) {
     const secret = creds.channelSecret;
     if (!secret) return false;
-    const sig =
-      headers["x-line-signature"] ?? headers["X-Line-Signature"] ?? headers["x-line-signature"];
+    // B10 (WO-C4): สัญญาของ ChannelAdapter คือ headers ถูก lowercase มาแล้ว
+    // (route ทำ `headers[k.toLowerCase()] = v` — api/chat/webhook/[connectionId]/route.ts)
+    // ของเดิมเขียน `?? headers["X-Line-Signature"] ?? headers["x-line-signature"]` ต่อท้าย
+    // = operand ที่ 3 ซ้ำ operand ที่ 1 (dead code) และ operand ที่ 2 ก็ไม่มีวันมีค่าเพราะคีย์ถูก
+    // lowercase ไปแล้ว → fallback ทั้งชุดเป็นของตาย สื่อเจตนาผิดว่ารองรับ header ดิบ ตัดออก
+    const sig = headers["x-line-signature"];
     if (!sig) return false;
     const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest("base64");
     const a = Buffer.from(sig);

@@ -151,6 +151,7 @@ export async function linkCustomerAction(formData: FormData) {
       actorUserId: auth.user.id,
       phone: unlink ? undefined : phone || undefined,
       customerId: unlink ? null : undefined,
+      unitAccess: auth.active.unitAccess as string[], // B6
     });
   }
   revalidateChat(systemId);
