@@ -27,8 +27,17 @@ import {
   disableConnectionAction,
   setMemberSystemAction,
   setRetentionDaysAction,
+  setBusinessHoursAction,
 } from "./actions";
 import { RETENTION_MIN_DAYS, RETENTION_MAX_DAYS } from "./retention";
+import {
+  DAY_LABELS,
+  DEFAULT_TZ,
+  MAX_NOTE_LEN,
+  TIME_PATTERN,
+  TZ_CHOICES,
+  readBusinessHours,
+} from "./business-hours";
 
 // ป้ายสถานะ/ช่องทาง ภาษาไทย (B&W)
 const CONV_STATUS_LABEL: Record<string, string> = {
@@ -256,9 +265,12 @@ export async function ChatInboxSection({
 export async function ChatChannelsSection({
   systemId,
   tenantId,
+  err,
 }: {
   systemId: string;
   tenantId: string;
+  /** ข้อความผิดพลาดจาก `?err=` (แสดง inline ใต้หัวข้อที่เกี่ยว ไม่ใช่ Alert) */
+  err?: string;
 }) {
   // built-in WEBCHAT connection (lazy) + ช่องทางอื่น
   await ensureWebchatConnection(tenantId, systemId);
@@ -275,6 +287,19 @@ export async function ChatChannelsSection({
 
   const lineConns = connections.filter((c) => c.type === "LINE");
   const webchat = connections.find((c) => c.type === "WEBCHAT");
+
+  // เวลาทำการ (WO-C16) — null = ยังไม่ได้ตั้ง (ช่องเวลาจะโชว์ค่าแนะนำ 09:00–18:00 แต่ยังไม่ถูกเปิดใช้)
+  const hours = readBusinessHours(setting.businessHours);
+  const noteTh =
+    typeof hours?.note === "string"
+      ? hours.note
+      : typeof (hours?.note as Record<string, unknown> | undefined)?.th === "string"
+        ? ((hours!.note as Record<string, string>).th ?? "")
+        : "";
+  // เขตเวลาที่ร้านตั้งไว้แล้วอาจไม่อยู่ในรายการแนะนำ (เช่น ตั้งผ่าน API) — ต้องไม่หายไปจาก dropdown
+  const tzOptions = TZ_CHOICES.some((t) => t.value === (hours?.tz ?? DEFAULT_TZ))
+    ? TZ_CHOICES
+    : [{ value: hours!.tz, label: hours!.tz }, ...TZ_CHOICES];
 
   return (
     <section className="flex flex-col gap-4">
@@ -387,6 +412,109 @@ export async function ChatChannelsSection({
               </select>
               <SubmitButton variant="ghost" pendingText="กำลังบันทึก…">
                 บันทึก
+              </SubmitButton>
+            </form>
+          </div>
+
+          {/* เวลาทำการของทีมตอบแชท (WO-C16) */}
+          <div className="flex flex-col gap-2 border-t pt-4">
+            <h3 className="text-sm font-medium">เวลาทำการของทีมตอบแชท</h3>
+            <p className="text-xs text-[color:var(--color-muted)]">
+              ตั้งแล้วหน้าจอแชทของลูกค้าจะบอกว่าทีมงานตอบช่วงไหน (เช่น &quot;ทีมงานตอบ 9:00–18:00
+              น.&quot;) — ไม่ตั้งไว้ = ไม่แสดงอะไรเลย ไม่ใช่ตอบ 24 ชม.
+            </p>
+            {err && (
+              <p className="text-xs text-[color:var(--color-danger)]" role="alert">
+                {err}
+              </p>
+            )}
+            <form action={setBusinessHoursAction} className="flex flex-col gap-3">
+              <input type="hidden" name="systemId" value={systemId} />
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  name="enabled"
+                  defaultChecked={!!hours}
+                  className="size-4 shrink-0"
+                />
+                แสดงเวลาทำการให้ลูกค้าเห็น
+              </label>
+
+              <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+                เขตเวลา
+                <select name="tz" defaultValue={hours?.tz ?? DEFAULT_TZ} className="input">
+                  {tzOptions.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="flex flex-col gap-1.5">
+                {DAY_LABELS.map((label, d) => {
+                  const row = hours?.days.find((x) => x.d === d);
+                  return (
+                    <div key={d} className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        name={`day-${d}`}
+                        defaultChecked={!!row}
+                        className="size-4 shrink-0"
+                      />
+                      <span className="w-12 shrink-0">{label}</span>
+                      <input
+                        name={`open-${d}`}
+                        defaultValue={row?.open ?? "09:00"}
+                        placeholder="09:00"
+                        pattern={TIME_PATTERN}
+                        inputMode="numeric"
+                        maxLength={5}
+                        aria-label={`เวลาเปิดวัน${label}`}
+                        className="input w-[4.5rem] shrink-0 px-2 text-center"
+                      />
+                      <span className="shrink-0 text-[color:var(--color-muted)]">–</span>
+                      <input
+                        name={`close-${d}`}
+                        defaultValue={row?.close ?? "18:00"}
+                        placeholder="18:00"
+                        pattern={TIME_PATTERN}
+                        inputMode="numeric"
+                        maxLength={5}
+                        aria-label={`เวลาปิดวัน${label}`}
+                        className="input w-[4.5rem] shrink-0 px-2 text-center"
+                      />
+                    </div>
+                  );
+                })}
+                <p className="text-xs text-[color:var(--color-muted)]">
+                  วันที่ไม่ติ๊ก = วันหยุดประจำสัปดาห์ · ใช้เวลาแบบ 24 ชม. เช่น 09:00 และ 18:00
+                </p>
+              </div>
+
+              <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+                วันหยุดเฉพาะกิจ (ปปปป-ดด-วว คั่นด้วยลูกน้ำ)
+                <input
+                  name="holidays"
+                  defaultValue={(hours?.holidays ?? []).join(", ")}
+                  placeholder="2026-12-31, 2027-01-01"
+                  className="input"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+                ข้อความเสริม (ต่อท้ายบรรทัดเวลาทำการ)
+                <input
+                  name="note"
+                  defaultValue={noteTh}
+                  maxLength={MAX_NOTE_LEN}
+                  placeholder="นอกเวลาจะตอบให้เช้าวันถัดไป"
+                  className="input"
+                />
+              </label>
+
+              <SubmitButton variant="ghost" pendingText="กำลังบันทึก…">
+                บันทึกเวลาทำการ
               </SubmitButton>
             </form>
           </div>

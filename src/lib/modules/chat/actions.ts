@@ -13,8 +13,10 @@ import {
   connectLine,
   setConnectionStatus,
   setMemberSystem,
+  setBusinessHours,
 } from "./service";
 import { setRetentionDays } from "./retention";
+import { validateBusinessHours } from "./business-hours";
 
 // ทุก action: requireTenant + revalidate หน้า chat ของระบบนั้น
 
@@ -205,6 +207,59 @@ export async function setRetentionDaysAction(formData: FormData) {
   }
   revalidateChat(systemId);
   redirect(chatPath(systemId));
+}
+
+// ── เวลาทำการของทีมตอบแชท (WO-C16) ──
+// ฟอร์มส่งมาเป็นช่องแยกรายวัน (day-<d> / open-<d> / close-<d>) → ประกอบเป็นรูปเดียวกับที่เก็บใน DB
+// 🔴 ตรวจที่เซิร์ฟเวอร์เสมอ: ฟอร์มโกงได้ (input เป็น text ไม่ใช่ type=time เพื่อคุมความกว้างบนมือถือ)
+//    ค่าอย่าง "25:00" ต้องถูกปฏิเสธที่นี่ ไม่ใช่พึ่ง validation ของเบราว์เซอร์
+// error แสดง inline ผ่าน `?err=` (แบบเดียวกับโมดูลบัญชี/คลินิก) ไม่ใช่ Alert
+// [[feedback_validation_inline_not_alert]]
+export async function setBusinessHoursAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertChatCan(auth, "chat.setting.setBusinessHours");
+  const systemId = String(formData.get("systemId") ?? "");
+  if (!systemId) redirect("/app");
+  const path = `/app/sys/${systemId}/chat/channels`;
+  const fail = (msg: string) => redirect(`${path}?err=${encodeURIComponent(msg)}`);
+
+  // ไม่ติ๊ก "แสดงเวลาทำการ" = ล้างค่า → ลูกค้าไม่เห็นบรรทัดเวลาทำการเลย (ไม่ใช่ 24 ชม.)
+  if (String(formData.get("enabled") ?? "") !== "on") {
+    const okClear = await setBusinessHours(auth.active.tenantId, systemId, null);
+    if (!okClear) fail("ไม่พบระบบแชทนี้ในร้านของคุณ");
+    revalidatePath(path);
+    redirect(path);
+  }
+
+  const days: { d: number; open: string; close: string }[] = [];
+  for (let d = 0; d < 7; d++) {
+    if (String(formData.get(`day-${d}`) ?? "") !== "on") continue;
+    days.push({
+      d,
+      open: String(formData.get(`open-${d}`) ?? "").trim(),
+      close: String(formData.get(`close-${d}`) ?? "").trim(),
+    });
+  }
+  const noteRaw = String(formData.get("note") ?? "").trim();
+  const holidays = String(formData.get("holidays") ?? "")
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
+
+  const parsed = validateBusinessHours({
+    tz: String(formData.get("tz") ?? "").trim(),
+    // เก็บเป็น map ภาษา (ตอนนี้หน้าจอมีช่องไทยช่องเดียว) — เพิ่มภาษาทีหลังได้โดยไม่ต้อง migrate
+    note: noteRaw === "" ? null : { th: noteRaw },
+    days,
+    holidays,
+  });
+  if (!parsed.ok) fail(parsed.error);
+  else {
+    const saved = await setBusinessHours(auth.active.tenantId, systemId, parsed.value);
+    if (!saved) fail("ไม่พบระบบแชทนี้ในร้านของคุณ");
+  }
+  revalidatePath(path);
+  redirect(path);
 }
 
 // ── เชื่อมระบบสมาชิก (opt-in) ──

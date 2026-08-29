@@ -17,6 +17,8 @@ import { drainAll } from "@/lib/outbox-consumers";
 import * as member from "@/lib/modules/member/service";
 import { getAdapter, ChannelDeliveryError } from "./adapter";
 import type { ChannelCreds, InboundMessage } from "./adapter";
+import { readBusinessHours } from "./business-hours";
+import type { BusinessDay, StoredBusinessHours } from "./business-hours";
 import { encryptCreds, decryptCreds, mask } from "./crypto";
 
 // Chat service (P1 = LINE + WEBCHAT). scope = systemId (AppSystem type CHAT)
@@ -229,6 +231,36 @@ export async function setMemberSystem(
     create: { tenantId, systemId, memberSystemId },
     update: { memberSystemId },
   });
+}
+
+/**
+ * ตั้ง/ล้างเวลาทำการของระบบแชท (WO-C16) · `null` = ยกเลิกการตั้งค่า (ลูกค้าจะไม่เห็นบรรทัดเวลาทำการ)
+ *
+ * 🔴 ตรวจรูปก่อนเรียกเสมอ (`validateBusinessHours`) — ที่นี่รับเฉพาะค่าที่ผ่านการตรวจแล้ว
+ * 🔴 where ต้องมี `tenantId` เสมอ ห้าม upsert ด้วย `systemId` เปล่า ไม่งั้นรู้ systemId ของร้านอื่น
+ *    ก็แก้เวลาทำการของเขาได้ (บทเรียนเดียวกับ `setRetentionDays` · B1)
+ * คืน false = ระบบนี้ไม่ใช่ของร้านนี้ → ไม่แตะอะไรเลย
+ */
+export async function setBusinessHours(
+  tenantId: string,
+  systemId: string,
+  value: StoredBusinessHours | null,
+): Promise<boolean> {
+  // Json? ต้องใช้ Prisma.DbNull ถึงจะเป็น SQL NULL จริง (JsonNull = ค่า null ใน JSON คนละความหมาย)
+  const businessHours = value === null ? Prisma.DbNull : (value as unknown as Prisma.InputJsonValue);
+  const res = await prisma.chatSetting.updateMany({
+    where: { tenantId, systemId },
+    data: { businessHours },
+  });
+  if (res.count > 0) return true;
+
+  const sys = await prisma.appSystem.findFirst({
+    where: { id: systemId, tenantId, type: "CHAT" },
+    select: { id: true },
+  });
+  if (!sys) return false;
+  await prisma.chatSetting.create({ data: { tenantId, systemId, businessHours } });
+  return true;
 }
 
 // ───────────────────────── Contact + conversation (core) ─────────────────────────
@@ -1911,13 +1943,22 @@ export async function customerUnreadCount(args: {
   });
 }
 
-// ───────────────────────── GET /config (widget) ─────────────────────────
+// ───────────────────────── GET /config (widget + secret) ─────────────────────────
 export type PublicConfig = {
   greeting: string | null;
   offlineMessage: string | null;
   locales: string[];
   theme: Record<string, unknown>;
   widgetEnabled: boolean;
+  /** เวลาทำการของทีมตอบแชท (WO-C16) · null = ร้านยังไม่ได้ตั้ง → ผู้รับ fallback เอง */
+  businessHours: PublicBusinessHours | null;
+};
+
+export type PublicBusinessHours = {
+  tz: string;
+  note: string | null;
+  days: BusinessDay[];
+  holidays: string[];
 };
 
 /** หน้าตา/ข้อความต้อนรับของ widget ตามภาษาที่ขอ — ผ่าน resolveLocale เสมอ (ห้ามฮาร์ดโค้ด .th) */
@@ -1939,5 +1980,26 @@ export async function publicConfig(
     locales,
     theme,
     widgetEnabled: row?.widgetEnabled ?? true,
+    businessHours: publicBusinessHours(row?.businessHours, lang),
+  };
+}
+
+/**
+ * แปลงค่าที่เก็บไว้เป็นรูปตามสัญญา §3.2 · ไม่ได้ตั้ง/รูปเพี้ยน → null
+ *
+ * `note` รองรับทั้งสตริงเดียวและ map ภาษา:
+ * 🔴 คลี่ด้วย `resolveLocale` **ก่อน** แล้วค่อยแปลง "" เป็น null — ห้ามสลับลำดับ
+ *    เพราะ `""` ของภาษาหนึ่งคือ "ร้านตั้งใจไม่ให้มีข้อความในภาษานี้" ถ้าตัดทิ้งก่อน resolve
+ *    ตัวคลี่จะไหลไปหยิบข้อความภาษาอื่นมาแสดงแทน ([[feedback_render_all_locales_before_ship]])
+ */
+export function publicBusinessHours(raw: unknown, lang?: string | null): PublicBusinessHours | null {
+  const bh = readBusinessHours(raw);
+  if (!bh) return null;
+  const resolved = typeof bh.note === "string" ? bh.note : resolveLocale(bh.note, lang);
+  return {
+    tz: bh.tz,
+    note: resolved === null || resolved === "" ? null : resolved,
+    days: bh.days,
+    holidays: bh.holidays,
   };
 }

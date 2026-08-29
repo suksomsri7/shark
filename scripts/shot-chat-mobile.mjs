@@ -60,13 +60,14 @@ const MESSAGES = [
 
 const STUBS = {
   "@/lib/core/context": `export async function requireTenant(){return {user:{id:"u1"},active:{tenantId:"t1",unitAccess:["*"]}}}`,
-  "@/lib/core/db": `export const prisma={appSystem:{findMany:async()=>[]}}`,
+  "@/lib/core/db": `export const prisma={appSystem:{findMany:async()=>[{id:"ms1",name:"สมาชิกร้าน"}]}}`,
   "@/lib/env": `export const env={APP_URL:"https://shark.in.th"}`,
   "@/components/module-tabs": `import React from "react";export function ModuleTabs(){return null}`,
   "next/link": `import React from "react";export default function Link({href,children,...r}){return React.createElement("a",{href,...r},children)}`,
   "./actions": [
     "sendReplyAction", "setStatusAction", "assignAction", "markReadAction", "linkCustomerAction",
     "connectLineAction", "disableConnectionAction", "setMemberSystemAction", "setRetentionDaysAction",
+    "setBusinessHoursAction",
   ].map((n) => `export async function ${n}(){}`).join("\n"),
   "./service": `
     export const DATA = globalThis.__QC_CHAT_DATA;
@@ -74,7 +75,7 @@ const STUBS = {
     export async function listConnections(){return [{id:"cn1",type:"LINE",status:"CONNECTED",displayName:"LINE OA ร้านของฉัน",lastInboundAt:new Date()}]}
     export async function listConversations(){return globalThis.__QC_CHAT_DATA.convs}
     export async function getThread({conversationId}){const c=globalThis.__QC_CHAT_DATA.convs.find(x=>x.id===conversationId);return c?{conversation:c,messages:globalThis.__QC_CHAT_DATA.messages}:null}
-    export async function getSetting(){return {memberSystemId:"ms1",retentionDays:180}}
+    export async function getSetting(){return {memberSystemId:"ms1",retentionDays:180,businessHours:{tz:"Asia/Bangkok",note:{th:"นอกเวลาจะตอบให้เช้าวันถัดไป"},days:[{d:1,open:"09:00",close:"18:00"},{d:2,open:"09:00",close:"18:00"},{d:3,open:"09:00",close:"18:00"},{d:4,open:"09:00",close:"18:00"},{d:5,open:"09:00",close:"18:00"}],holidays:["2026-12-31"]}}}
     export async function getLinkedMember(){return {name:"สมหญิง ศ.",memberCode:"M-0042"}}
     export async function listStaff(){return [{userId:"u1",name:"พี่แนน"},{userId:"u2",name:"ช่างโอ๊ต"}]}
     export function maskedConnection(c){return {...c,tokenPreview:"••••1234"}}
@@ -140,17 +141,22 @@ const STATES = [
   { key: "list", conversationId: undefined },
   { key: "thread", conversationId: "c1" },
   { key: "thread-unlinked", conversationId: "c4" }, // ยังไม่ผูกสมาชิก → มีช่องกรอกเบอร์ (กว้างสุดในหน้า)
+  // WO-C16: หน้า "เชื่อมช่องทาง" มีตารางเวลาทำการ 7 แถว (checkbox + 2 ช่องเวลา) = แถวที่กว้างสุดในหน้า
+  { key: "channels", conversationId: undefined },
 ];
 const pages = [];
 for (const s of STATES) {
   const el = await resolveAsync(
-    React.createElement(ui.ChatInboxSection, { systemId: "sys1", tenantId: "t1", conversationId: s.conversationId }),
+    s.key === "channels"
+      ? React.createElement(ui.ChatChannelsSection, { systemId: "sys1", tenantId: "t1", err: "วันจันทร์ เวลาปิดต้องอยู่หลังเวลาเปิด" })
+      : React.createElement(ui.ChatInboxSection, { systemId: "sys1", tenantId: "t1", conversationId: s.conversationId }),
   );
   // ครอบด้วยโครงหน้าจริง: AppMain (px-4 pb-24 pt-… sm:px-6 lg:pl-[18rem+1.5rem]) + page.tsx (max-w-4xl)
   const inner = renderToStaticMarkup(el);
+  const wrap = s.key === "channels" ? "max-w-2xl" : "max-w-4xl"; // ตาม page.tsx ของแต่ละหน้า
   pages.push([
     s.key,
-    `<main class="px-4 pb-24 pt-[calc(3.5rem+1rem)] sm:px-6 lg:pl-[calc(18rem+1.5rem)]"><div class="flex max-w-4xl flex-col gap-4">${inner}</div></main>`,
+    `<main class="px-4 pb-24 pt-[calc(3.5rem+1rem)] sm:px-6 lg:pl-[calc(18rem+1.5rem)]"><div class="flex ${wrap} flex-col gap-4">${inner}</div></main>`,
   ]);
 }
 const css = await buildCss(pages.map(([k, b]) => [`${k}.html`, b]));

@@ -305,6 +305,16 @@ model ChatSetting {
   slaFirstResponseMin   Int      @default(15)
   unassignedAlertMin    Int      @default(5)
   retentionDays         Int      @default(365) // 90–730
+  // เวลาทำการของทีมตอบแชท (WO-C16) — ส่งออกทาง GET /api/v1/chat/config
+  // 🔴 null = "ร้านยังไม่ได้ตั้ง" → API คืน businessHours: null (ผู้รับ fallback เอง)
+  //    ห้ามใช้ @default("{}") เพราะจะแยก "ไม่ได้ตั้ง" กับ "ตั้งแล้วว่าง" ไม่ออก
+  // รูป: { tz: "Asia/Bangkok", note: {"<locale>":"…"} | "…", days: [{ d:0..6, open:"09:00", close:"18:00" }],
+  //       holidays: ["2026-12-31"] }
+  //  · วันที่ไม่อยู่ใน days = วันหยุดประจำสัปดาห์ (ไม่ต้องมีฟิลด์แยก)
+  //  · holidays = วันหยุดเฉพาะกิจตามปฏิทินของเขตเวลานั้น
+  //  · เป็น Json เพราะเพิ่มช่อง (เช่น พักเที่ยง/หลายช่วงต่อวัน) ได้โดยไม่ต้อง migrate ซ้ำ
+  //    อ่าน/เขียนผ่าน src/lib/modules/chat/business-hours.ts เท่านั้น (ตรวจรูปที่นั่นที่เดียว)
+  businessHours         Json?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }

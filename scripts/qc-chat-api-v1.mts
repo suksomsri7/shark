@@ -26,6 +26,13 @@
 // CA-7) WO-C5 — allowlist ไฟล์ครอบของที่ SiamDive ใช้ (heic/heif/doc/docx/xlsx/txt) · 10MB ·
 //       🔴 ตารางนามสกุลต้องไม่มีตัวไหนตกเป็น `.bin`
 // CA-8) /config ผ่าน resolveLocale (ไม่กลืนสตริงว่างที่ร้านตั้งใจ) + สิทธิ์ต่อเส้นถูกต้อง
+//
+// 📌 แก้สัญญา 2 ข้อเมื่อ WO-C16 (เวลาทำการ) — เจ้าของสั่งเอง ไม่ใช่ builder ตัดสินเอง:
+//    · CA-8.1 คีย์ของ /config เพิ่ม `businessHours` (เพิ่มฟิลด์ · ของเดิม 5 ตัวห้ามหาย — ยังล็อกครบ)
+//    · CA-8.9 `/config` เดิม "widget เท่านั้น" → เปิดให้ **secret เรียกได้ด้วย** เพราะผู้ใช้จริงรายแรก
+//      (เว็บ SiamDive) เรียกจากเซิร์ฟเวอร์ ไม่ได้ฝัง widget ⇒ บังคับ widget key = บังคับให้ร้าน
+//      ออกกุญแจสาธารณะ + ตั้ง originAllowlist ทั้งที่ไม่มีเบราว์เซอร์เข้ามาเกี่ยวเลย
+//      🔴 ที่ยังต้องแดงเหมือนเดิม: widget อ่านของร้านอื่นไม่ได้ (คุมเพิ่มใน qc-chat-business-hours.mts BH-2)
 try { process.loadEnvFile(".env"); } catch {}
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db"; // กันพลาด: ต่อไม่ติดโดยตั้งใจ
 process.env.CHAT_CREDENTIALS_KEY ??= "0".repeat(64);
@@ -654,7 +661,7 @@ try {
       resetAll();
       const g = guest();
       const cfgTh = await call("config", "GET", { headers: widgetHeaders(g), query: { lang: "th" } });
-      chk("CA-8.1", "/config คืน greeting/offlineMessage/locales/theme/widgetEnabled", cfgTh.status === 200 && Object.keys(cfgTh.json).sort().join(",") === "greeting,locales,offlineMessage,theme,widgetEnabled", "5 ฟิลด์", `${cfgTh.status} ${j(cfgTh.json)}`);
+      chk("CA-8.1", "/config คืน greeting/offlineMessage/locales/theme/widgetEnabled + businessHours (WO-C16)", cfgTh.status === 200 && Object.keys(cfgTh.json).sort().join(",") === "businessHours,greeting,locales,offlineMessage,theme,widgetEnabled", "6 ฟิลด์", `${cfgTh.status} ${j(cfgTh.json)}`);
       chk("CA-8.2", "greeting ตามภาษาที่ขอ (ผ่าน resolveLocale)", cfgTh.json.greeting === "สวัสดีค่ะ" && cfgTh.json.offlineMessage === "นอกเวลาทำการ", "สวัสดีค่ะ", j({ g: cfgTh.json.greeting, o: cfgTh.json.offlineMessage }));
       const cfgEn = await call("config", "GET", { headers: widgetHeaders(g), query: { lang: "en" } });
       chk("CA-8.3", "ภาษาอื่นได้ข้อความของภาษานั้น", cfgEn.json.greeting === "Hi there", "Hi there", j(cfgEn.json.greeting));
@@ -669,7 +676,9 @@ try {
       const idw = await call("identities", "POST", { headers: widgetHeaders(g), body: { externalUserId: "ใครก็ได้" } });
       chk("CA-8.8", "🔴 /identities ใช้ได้เฉพาะกุญแจเซิร์ฟเวอร์ → widget ต้อง 403", idw.status === 403, "403", `${idw.status} ${j(idw.json)}`);
       const cfgSec = await call("config", "GET", { headers: secretHeaders() });
-      chk("CA-8.9", "/config ใช้ได้เฉพาะกุญแจ widget → secret ต้อง 403", cfgSec.status === 403, "403", `${cfgSec.status} ${j(cfgSec.json)}`, "MINOR");
+      // WO-C16: เปลี่ยนจาก "secret ต้อง 403" → "secret เรียกได้" (ดูเหตุผลในหัวไฟล์)
+      // ยังล็อกว่าได้ของร้านตัวเองเท่านั้น: greeting ที่ได้ต้องเป็นของ T1 ซึ่งเป็นเจ้าของคีย์
+      chk("CA-8.9", "/config เรียกด้วยกุญแจเซิร์ฟเวอร์ได้ (s2s) และได้ค่าของร้านที่ถือกุญแจ", cfgSec.status === 200 && cfgSec.json.greeting === "สวัสดีค่ะ", "200 + ของ T1", `${cfgSec.status} ${j(cfgSec.json)}`, "MINOR");
 
       resetAll();
       const mint = await call("guest", "POST", { headers: { "x-shark-widget": WIDGET_KEY, origin: GOOD_ORIGIN, "content-type": "application/json" }, body: {} });
