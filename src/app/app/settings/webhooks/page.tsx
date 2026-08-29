@@ -51,6 +51,18 @@ export default async function WebhooksSettingsPage() {
                         ? "ทุกเหตุการณ์"
                         : events.map((e) => webhookEventLabel(e)).join(" · ")}
                     </div>
+                    {/* 29 ส.ค. 2026 — เดิมหน้านี้ **ไม่แสดงรหัสลับเลย** ⇒ สร้างปลายทางได้แต่เอาไป
+                        ตั้งที่ระบบปลายทางไม่ได้ ตรวจลายเซ็นไม่ผ่านตลอดกาล (เจ้าของติดตรงนี้จริง)
+                        แสดงซ้ำได้ไม่เหมือน API key เพราะตัวนี้เก็บเป็น plaintext ใน DB อยู่แล้ว
+                        (ต้องใช้เซ็นทุกครั้งที่ยิง) — ปิด/ลบปลายทางคือวิธีเพิกถอน */}
+                    <div className="mt-1 flex flex-col gap-1">
+                      <span className="text-xs text-[color:var(--color-muted)]">
+                        รหัสลับสำหรับตรวจลายเซ็น (ใส่ที่ระบบปลายทาง)
+                      </span>
+                      <code className="select-all break-all rounded bg-[color:var(--color-surface-2)] px-2 py-1 font-mono text-xs">
+                        {ep.secret}
+                      </code>
+                    </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <form action={toggleEndpointAction}>
