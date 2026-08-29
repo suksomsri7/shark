@@ -1448,20 +1448,57 @@ export async function markRead(args: {
   });
   if (!conv) return;
   if (!canAccessConvUnit(args.unitAccess, conv.unitId)) return; // M11
-  await prisma.chatReadState.upsert({
-    where: { conversationId_userId: { conversationId: conv.id, userId: args.userId } },
-    create: {
-      tenantId: args.tenantId,
-      systemId: args.systemId,
-      conversationId: conv.id,
-      userId: args.userId,
-      lastReadMessageId: args.lastReadMessageId ?? null,
-    },
-    update: { lastReadMessageId: args.lastReadMessageId ?? null, lastReadAt: new Date() },
-  });
-  await prisma.chatConversation.update({
-    where: { id: conv.id },
-    data: { staffUnreadCount: 0 },
+
+  // 🔴 "ทีมเพิ่งกดอ่าน" = ตอนที่ยังมี unread ค้างอยู่เท่านั้น
+  //    หน้า inbox เรียก markRead ทุกครั้งที่เปิดห้อง/รีเฟรช ⇒ ถ้ายิง event ทุกครั้ง
+  //    ระบบปลายทางจะโดนถล่มด้วย event ที่ไม่ได้เปลี่ยนอะไรเลย
+  const hadUnread = conv.staffUnreadCount > 0;
+  // กุญแจกันซ้ำ = "อ่านถึงเวลาไหนของห้องนี้" — ลูกค้าทักใหม่ `lastMessageAt` ขยับ ⇒ ได้กุญแจใหม่
+  // ⚠️ ใช้ค่าที่ denormalize ไว้บนห้องอยู่แล้ว ไม่ไปไล่หาข้อความล่าสุด — ประหยัด query หนึ่งคำสั่ง
+  //    และไม่ต้องพึ่งลำดับ (การเรียงข้อความที่ createdAt ชนกันไม่มีคำตอบเดียว)
+  const readMark = hadUnread ? (conv.lastMessageAt?.toISOString() ?? "none") : null;
+  // ⚠️ อ่านแยกคำสั่ง ไม่ใช้ `include` — ตัวตนของลูกค้าจำเป็นเฉพาะตอนจะยิง event เท่านั้น
+  //    (การกดอ่านซ้ำ ๆ ซึ่งเป็นกรณีส่วนใหญ่ จึงไม่ต้องแบก join ทุกครั้ง)
+  const contact = hadUnread
+    ? await prisma.chatContact.findUnique({
+        where: { id: conv.contactId },
+        select: { externalUserId: true },
+      })
+    : null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.chatReadState.upsert({
+      where: { conversationId_userId: { conversationId: conv.id, userId: args.userId } },
+      create: {
+        tenantId: args.tenantId,
+        systemId: args.systemId,
+        conversationId: conv.id,
+        userId: args.userId,
+        lastReadMessageId: args.lastReadMessageId ?? null,
+      },
+      update: { lastReadMessageId: args.lastReadMessageId ?? null, lastReadAt: new Date() },
+    });
+    await tx.chatConversation.update({
+      where: { id: conv.id },
+      data: { staffUnreadCount: 0 },
+    });
+    // ระบบปลายทาง (เช่น SiamDive) เอาไปทำติ๊กคู่ ✓✓ ให้ลูกค้าเห็นว่าทีมอ่านแล้ว
+    // แม้ทีมจะยังไม่ได้พิมพ์ตอบ — พฤติกรรมเดียวกับ WhatsApp (เจ้าของสั่ง 29 ส.ค. 2026)
+    if (hadUnread) {
+      await emitOutbox(tx, {
+        tenantId: args.tenantId,
+        type: "chat.conversation.read",
+        idempotencyKey: `chat.read.${conv.id}.${readMark}`,
+        payload: {
+          conversationId: conv.id,
+          externalUserId: contact?.externalUserId ?? null,
+          channel: conv.channel,
+          lastReadMessageId: args.lastReadMessageId ?? null,
+        },
+        systemId: args.systemId,
+        unitId: conv.unitId,
+      });
+    }
   });
 }
 

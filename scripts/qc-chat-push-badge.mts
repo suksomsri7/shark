@@ -450,6 +450,42 @@ try {
         /refreshBadges\(\); \/\/ เปิดเมนู/.test(SHELL) && !/setInterval/.test(SHELL),
         "มี refresh ตอนเปิดเมนู · ไม่มี setInterval", j({ onMenu: /refreshBadges\(\)/.test(SHELL), poll: /setInterval/.test(SHELL) }), "MINOR");
     });
+
+    // ═════════ CP-3 · event "ทีมเปิดอ่าน" (ติ๊กคู่ ✓✓ ฝั่งลูกค้า) ═════════
+    //
+    // เจ้าของสั่ง 29 ส.ค. 2026 (สั่งซ้ำ): ต้องเหมือน WhatsApp — ติ๊กเปลี่ยนตอน **อ่าน** ไม่ใช่ตอนตอบ
+    // ⇒ `markRead` ต้องยิง `chat.conversation.read` ออก outbox ให้ระบบปลายทาง (SiamDive) เอาไปประทับ
+    // 🔴 กับดัก: หน้า inbox เรียก markRead ทุกครั้งที่เปิดห้อง ⇒ ยิงทุกครั้ง = ถล่ม webhook ปลายทาง
+    await section("CP-3", "\nCP-3 event 'ทีมเปิดอ่าน' → ติ๊กคู่ฝั่งลูกค้า:", async () => {
+      const readEvents = () => (tables.outboxEvent ?? []).filter((r) => r.type === "chat.conversation.read");
+      const markRead = (convId: string) =>
+        chat.markRead({ tenantId: "T1", systemId: "S1", conversationId: convId, userId: "U1", unitAccess: ["*"] });
+
+      seedShop();
+      await say(chat, "สนใจทริปครับ");
+      const cv = String(tables.chatConversation![0]!.id);
+      await markRead(cv);
+      const ev = readEvents();
+      chk("CP-3.1", "🟢 คู่บวก: ทีมกดอ่านตอนมีข้อความค้าง → ยิง event 'อ่านแล้ว' 1 ใบ พร้อมตัวตนลูกค้า",
+        ev.length === 1 && !!(ev[0]!.payload as Row | undefined) && !!((ev[0]!.payload as Row).externalUserId),
+        "1 ใบ · payload มี externalUserId", j({ n: ev.length, payload: ev[0]?.payload }));
+
+      await markRead(cv);
+      await markRead(cv);
+      chk("CP-3.2", "🔴 เปิดห้องซ้ำโดยไม่มีอะไรค้าง → **ไม่ยิงซ้ำ** (inbox เรียก markRead ทุกครั้งที่เปิด)",
+        readEvents().length === 1, "ยังเป็น 1 ใบ", j({ n: readEvents().length }));
+
+      await say(chat, "ถามเพิ่มอีกนิดครับ");
+      await markRead(cv);
+      chk("CP-3.3", "🟢 ลูกค้าทักใหม่แล้วทีมอ่านอีกรอบ → ยิงอีกใบ (กันซ้ำ ≠ ยิงครั้งเดียวตลอดกาล)",
+        readEvents().length === 2 && new Set(readEvents().map((r) => r.idempotencyKey)).size === 2,
+        "2 ใบ · กุญแจกันซ้ำคนละตัว", j({ n: readEvents().length, keys: readEvents().map((r) => r.idempotencyKey) }));
+
+      const txs = seen("outboxEvent.create").map((c) => c.tx);
+      chk("CP-3.4", "การยิง event อยู่ในทรานแซกชันเดียวกับการล้าง unread (ล้างสำเร็จ = event รอด)",
+        txs.length >= 2 && txs.every((t) => t !== null),
+        "tx ไม่เป็น null", j({ txs }));
+    });
   }
 
   chk("CP-9.9", "ไม่มี query หลุดออก DB จริง (fake prisma รับทุกครั้ง) · HTTP ออกเฉพาะ exp.host ที่ดักไว้",
