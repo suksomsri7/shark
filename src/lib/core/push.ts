@@ -11,7 +11,9 @@ type PushDeps = { post?: (payloads: unknown[]) => Promise<unknown[]> };
 const CHUNK = 100; // Expo push API รับได้ ≤100/ครั้ง
 
 // ticket จาก Expo — เราสนแค่ status + details.error (DeviceNotRegistered = token ตาย)
-type Ticket = { status?: string; details?: { error?: string } };
+// `message` = คำอธิบายจาก Expo ตอน status=error (เช่น "Could not find APNs credentials for …")
+// ต้องมีในชนิดข้อมูล ไม่งั้นเหตุผลจริงของความล้มเหลวถูกทิ้งตั้งแต่ชั้นชนิดข้อมูล
+type Ticket = { status?: string; message?: string; details?: { error?: string } };
 
 // default transport — ยิง Expo push API จริง (POST JSON array) → คืน data (array of tickets)
 async function expoPost(payloads: unknown[]): Promise<unknown[]> {
@@ -52,14 +54,30 @@ export async function sendPushToTenant(
       try {
         const tickets = (await post(payloads)) as Ticket[];
         const dead: string[] = []; // token ที่ตาย → ลบทิ้ง
+        // 🔴 29 ส.ค. 2026 — เดิมนับ `sent += 1` ให้ **ทุกใบที่ไม่ใช่ DeviceNotRegistered**
+        //    รวมใบที่ Expo ตอบ `status:"error"` ด้วยเหตุอื่น ⇒ คืน `{sent:1}` ทั้งที่ไม่มีอะไรถึงเครื่องเลย
+        //    ของจริงที่เจอ: `InvalidCredentials — Could not find APNs credentials for th.in.shark.ai`
+        //    (แอปยังไม่มีใบรับรอง push ของ Apple) · เจ้าของแจ้งว่าไม่ได้รับแจ้งเตือน แต่ระบบรายงานว่า
+        //    ส่งสำเร็จมาตลอด ⇒ **ตัวเลขที่โกหกแพงกว่าไม่มีตัวเลข** เพราะมันปิดทางสงสัย
+        //    ⇒ นับเฉพาะ status === "ok" · error อื่นต้อง logOps ให้เห็น ไม่ใช่กลืนเงียบ
+        const failures: string[] = [];
         batch.forEach((d, idx) => {
           const t = tickets[idx];
           if (t?.status === "error" && t.details?.error === "DeviceNotRegistered") {
             dead.push(d.expoToken);
+          } else if (t?.status === "ok") {
+            sent += 1; // Expo รับไว้แล้ว (ยังไม่ใช่ "ถึงเครื่อง" — ต้องดู receipt อีกชั้น)
           } else {
-            sent += 1; // ส่งเข้าเครื่องนี้ได้
+            failures.push(`${t?.details?.error ?? t?.status ?? "unknown"}: ${t?.message ?? ""}`.slice(0, 160));
           }
         });
+        if (failures.length > 0) {
+          const { logOps } = await import("@/lib/core/ops");
+          await logOps("ERROR", "push", `Expo ปฏิเสธ ${failures.length} ใบ (tenant ${tenantId})`, {
+            detail: failures.slice(0, 5).join(" · "),
+            tenantId,
+          }).catch(() => {});
+        }
         if (dead.length > 0) {
           await prisma.pushDevice.deleteMany({ where: { expoToken: { in: dead } } });
         }
