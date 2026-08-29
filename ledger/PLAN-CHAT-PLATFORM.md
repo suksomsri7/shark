@@ -449,7 +449,8 @@ S1 (auth ของ upload), S2 (rate limit → DB), S3 (OTP ประทับ e
 | **C10 (บางส่วน)** | ✅ **เสร็จ 28 ส.ค.** | S1/S2/S6 · `bunx tsc --noEmit` EXIT=0 (มี positive control) · `bun run build` ผ่าน · **ยังไม่ push/deploy** |
 | **C2 core** | ✅ **เสร็จ 28 ส.ค.** | `receiveExternalInbound` · `publicThread` (แก้ B3) · outbox ขาออก (แก้ B4) · หลายภาษา + `senderAlias` · `qc-chat-core-v2.mts` **41/41** (fail-before 8 รอบ) |
 | **C3 + C5 + B2** | ✅ **เสร็จ 28 ส.ค.** | API v1 ครบ 8 เส้น · ตัวตน 2 ระดับ · CORS ผูก origin · REST upload · rate limit บน DB · `qc-chat-api-v1.mts` **89/89** (fail-before 12 รอบ) |
-| C6–C9 | 📋 ยังไม่เริ่ม | **C6 (SiamDive proxy) เป็นตัวถัดไป** |
+| **C6 SiamDive proxy** | ✅ **เปิดใช้จริง 29 ส.ค.** | `CHAT_BACKEND=dual` บน prod · ข้อความลูกค้าเข้าทั้ง 2 ที่ · webhook + push พร้อม |
+| C7–C9 | 📋 ยังไม่เริ่ม | **C7 (ย้ายประวัติ) เป็นตัวถัดไป** — อ่านกับดัก 3 ข้อใน WO-C7 ก่อน |
 | **C13** 🆕 | 📋 ยังไม่เริ่ม | schema รอบ 2: `ChatConversation.customerLastReadAt` — เลิกใช้ `ChatReadState.userId = "contact:<id>"` |
 | **C14** 🆕 | 📋 ยังไม่เริ่ม | หน้าจอออก/เพิกถอน widget key + ตั้ง originAllowlist (service มีครบแล้ว) — **ต้องมีก่อนใครฝัง widget ได้** |
 | **C15** 🆕 | 📋 ยังไม่เริ่ม | ลบไฟล์จริงบน Bunny CDN ตามคิว (`ChatAttachment` ที่ `url=""` แต่ `storageKey` ยังอยู่) |
@@ -562,3 +563,16 @@ S1 (auth ของ upload), S2 (rate limit → DB), S3 (OTP ประทับ e
   🔴 บทเรียน positive control ที่คุ้มมาก: ข้อสอบ "ต้องไม่ยิงออกช่องทางภายนอก" **เขียวแบบผลลวง**
   เพราะ fake ตั้ง `credentials: {}` → LINE adapter โยน `TOKEN_MISSING` **ก่อนถึงจุดยิง** โค้ดไม่เคยเดินไปถึง
   ⇒ ข้อสอบแนว "ต้องไม่เกิด X" **ต้องมีคู่บวกเสมอ** ที่พิสูจน์ว่าเส้นทางนั้นเดินถึงจริง
+- 29 ส.ค. 2026 — 🎉 **เปิด `CHAT_BACKEND=dual` บน prod จริงแล้ว** (เจ้าของสั่ง) — ข้อความลูกค้าของ
+  SiamDive เข้าทั้ง DB เดิมและ SHARK พร้อมกัน · พิสูจน์ end-to-end บน prod:
+  เปิดห้อง 200 → ส่งข้อความ 200 → อ่านกลับจากระบบเดิมได้ครบ → **โผล่ใน SHARK ด้วย**
+  · webhook ลายเซ็นถูก 200 / ผิด 401 · env ตั้งบน Vercel prod แบบ encrypted แล้วทั้ง 3 ตัว
+  · ปลายทาง `https://www.siamdive.com/api/webhooks/shark-chat` subscribe **เฉพาะ `chat.message.sent`**
+  🔴 **ถอยกลับ**: ลบ env `CHAT_BACKEND` บน Vercel แล้ว redeploy — กลับไปใช้ DB เดิม 100% ทันที
+- 29 ส.ค. 2026 — **3 บั๊กที่เจ้าของเจอจากภาพหน้าจอ ซึ่งข้อสอบจับไม่ได้เลย** (ทั้งหมดเป็น
+  "โค้ดถูกแต่ใช้งานจริงไม่ได้"):
+  1. `WEBHOOK_EVENTS` ไม่มี `chat.*` → เลือกได้แค่ "ทุกเหตุการณ์" → รับ `mirrored` ด้วย → push ซ้ำ
+  2. `/app/settings/webhooks` **เป็นหน้ากำพร้าตั้งแต่ WO-0062** — ไม่มีลิงก์ใน `NavDrawer` เลย
+  3. หน้านั้น**ไม่แสดง `secret`** → สร้างปลายทางได้แต่เอาไปตั้งที่ระบบปลายทางไม่ได้ ลายเซ็นไม่ผ่านตลอดกาล
+  🔴 **บทเรียน**: ข้อสอบทั้ง 247 ข้อวัด "โค้ดทำงานถูกไหม" แต่ไม่มีข้อไหนวัด "คนใช้งานไปถึงได้ไหม"
+  ⇒ ฟีเจอร์ที่ต้องให้เจ้าของร้านกดเอง ต้องเดินเส้นทางจริงจากเมนู ไม่ใช่ยิง endpoint ตรง
