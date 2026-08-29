@@ -290,6 +290,9 @@ export function NavDrawer({
             { href: "/app/settings/payment", icon: "💳", label: "ช่องรับเงิน" },
             { href: "/app/settings/domain", icon: "🌐", label: "โดเมนของร้าน" },
             { href: "/app/settings/api", icon: "🔑", label: "API สำหรับนักพัฒนา" },
+            // 29 ส.ค. 2026 — หน้านี้มีมาตั้งแต่ WO-0062 แต่ **ไม่เคยมีลิงก์ในเมนูเลย** เป็นหน้ากำพร้า
+            // เจ้าของหาไม่เจอตอนจะตั้ง webhook ให้ SiamDive รับ "ทีมตอบแล้ว" (WO-C6)
+            { href: "/app/settings/webhooks", icon: "🪝", label: "Webhooks (แจ้งระบบอื่น)" },
             { href: "/app/settings/billing", icon: "🧾", label: "บิลจากแพลตฟอร์ม" },
             { href: "/app/audit", icon: "🕓", label: "ประวัติการแก้ไข" },
             { href: "/app/settings/privacy", icon: "🔒", label: "ความเป็นส่วนตัว (PDPA)" },
