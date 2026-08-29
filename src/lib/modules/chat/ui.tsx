@@ -164,9 +164,13 @@ export async function ChatInboxSection({
         {connections.filter((c) => c.type === "LINE").length === 0 && conversations.length === 0 ? (
           <EmptyState text="ยังไม่มีแชท — เชื่อม LINE OA หรือเปิดแชทหน้าเว็บด้านล่างเพื่อเริ่มรับข้อความลูกค้า" />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,280px)_1fr]">
-            {/* รายการบทสนทนา */}
-            <aside className="flex flex-col gap-1">
+          /* จอแคบ = คอลัมน์เดียว สลับ "รายการ ↔ ห้องแชท" ด้วย ?c= (ไม่มี state ฝั่ง client
+             → AutoRefresh ที่ router.refresh() ทุก 15 วิ ไม่เด้งคนที่กำลังพิมพ์กลับหน้ารายการ)
+             จอ ≥ sm = 2 คอลัมน์เหมือนเดิม · minmax(0,…) + min-w-0 กันข้อความไทย (ไม่มีช่องว่าง)
+             ดัน track ให้กว้างเกินจอ = การ์ดล้นออกนอกจอบนมือถือ */
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
+            {/* รายการบทสนทนา — เลือกห้องแล้วซ่อนบนมือถือ (แบบเดียวกับ SubNav/NavDrawer) */}
+            <aside className={`min-w-0 flex-col gap-1 ${active ? "hidden sm:flex" : "flex"}`}>
               {conversations.length === 0 ? (
                 <p className="px-1 py-2 text-sm text-[color:var(--color-muted)]">
                   ยังไม่มีบทสนทนา
@@ -200,7 +204,7 @@ export async function ChatInboxSection({
                         )}
                       </span>
                       <span className="flex items-center justify-between gap-2">
-                        <span className="truncate text-xs text-[color:var(--color-muted)]">
+                        <span className="min-w-0 truncate text-xs text-[color:var(--color-muted)]">
                           {c.lastMessagePreview ?? "—"}
                         </span>
                         <StatusChip
@@ -215,8 +219,10 @@ export async function ChatInboxSection({
               )}
             </aside>
 
-            {/* ห้องแชท */}
-            <div className="flex min-h-[360px] flex-col">
+            {/* ห้องแชท — ยังไม่เลือกห้องบนมือถือ = ซ่อนทิ้ง (ไม่กินที่เปล่าใต้รายการ) */}
+            <div
+              className={`min-h-[360px] min-w-0 flex-col ${active ? "flex" : "hidden sm:flex"}`}
+            >
               {!active ? (
                 <div className="flex flex-1 items-center justify-center py-10">
                   <p className="text-sm text-[color:var(--color-muted)]">
@@ -228,6 +234,7 @@ export async function ChatInboxSection({
                   systemId={systemId}
                   tenantId={tenantId}
                   conversationId={active.id}
+                  backHref={base}
                   userId={userId}
                   nameOf={nameOf}
                   staff={staff}
@@ -424,6 +431,7 @@ async function ThreadPane({
   systemId,
   tenantId,
   conversationId,
+  backHref,
   userId,
   nameOf,
   staff,
@@ -433,6 +441,7 @@ async function ThreadPane({
   systemId: string;
   tenantId: string;
   conversationId: string;
+  backHref: string; // ลิงก์กลับไปรายการ (ตัดพารามิเตอร์ ?c= ทิ้ง) — โผล่เฉพาะจอแคบ
   userId: string;
   nameOf: (uid?: string | null) => string;
   staff: { userId: string; name: string }[];
@@ -453,11 +462,20 @@ async function ThreadPane({
       {/* header */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
         <div className="min-w-0">
+          {/* ทางกลับหน้ารายการบนจอแคบ (จอ ≥ sm เห็นรายการอยู่ข้าง ๆ อยู่แล้ว) */}
+          <Link
+            href={backHref}
+            className="mb-1 inline-flex items-center gap-1 text-xs text-[color:var(--color-muted)] underline sm:hidden"
+          >
+            <span aria-hidden>‹</span> รายการแชททั้งหมด
+          </Link>
           <div className="flex items-center gap-1.5 text-sm font-semibold">
-            <span className="rounded border px-1 text-[10px] text-[color:var(--color-muted)]">
+            <span className="shrink-0 rounded border px-1 text-[10px] text-[color:var(--color-muted)]">
               {CHANNEL_LABEL[c.channel] ?? c.channel}
             </span>
-            <span className="truncate">{contact.displayName ?? contact.phone ?? "ลูกค้า"}</span>
+            <span className="min-w-0 truncate">
+              {contact.displayName ?? contact.phone ?? "ลูกค้า"}
+            </span>
           </div>
           <div className="text-xs text-[color:var(--color-muted)]">
             ผู้รับผิดชอบ: {nameOf(c.assigneeUserId)}
@@ -556,7 +574,7 @@ async function ThreadPane({
                 inputMode="tel"
                 placeholder="เบอร์โทรลูกค้า"
                 defaultValue={contact.phone ?? ""}
-                className="input text-xs"
+                className="input min-w-0 text-xs"
               />
               <button className="btn btn-ghost text-xs">ผูกสมาชิก</button>
             </form>
