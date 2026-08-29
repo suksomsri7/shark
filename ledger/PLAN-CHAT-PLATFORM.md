@@ -451,6 +451,8 @@ S1 (auth ของ upload), S2 (rate limit → DB), S3 (OTP ประทับ e
 | **C3 + C5 + B2** | ✅ **เสร็จ 28 ส.ค.** | API v1 ครบ 8 เส้น · ตัวตน 2 ระดับ · CORS ผูก origin · REST upload · rate limit บน DB · `qc-chat-api-v1.mts` **89/89** (fail-before 12 รอบ) |
 | **C6 SiamDive proxy** | ✅ **เปิดใช้จริง 29 ส.ค.** | `CHAT_BACKEND=dual` บน prod · ข้อความลูกค้าเข้าทั้ง 2 ที่ · webhook + push พร้อม |
 | C7–C9 | 📋 ยังไม่เริ่ม | **C7 (ย้ายประวัติ) เป็นตัวถัดไป** — อ่านกับดัก 3 ข้อใน WO-C7 ก่อน |
+| **C16** 🆕 | ✅ **เสร็จ 29 ส.ค.** | เวลาทำการตั้งจาก SHARK · `ChatSetting.businessHours` (Json?) · หน้าตั้งค่าใน channels · `/config` เปิดให้ secret · `qc-chat-business-hours` **73/73** · migrate deploy บน prod แล้ว |
+| **C17** 🆕 | 📋 ยังไม่เริ่ม | จอกล่องแชทลูกค้าใน `apps/mobile` — ตอนนี้ push เด้งได้แต่แตะแล้วตอบในแอปไม่ได้ |
 | **C13** 🆕 | 📋 ยังไม่เริ่ม | schema รอบ 2: `ChatConversation.customerLastReadAt` — เลิกใช้ `ChatReadState.userId = "contact:<id>"` |
 | **C14** 🆕 | 📋 ยังไม่เริ่ม | หน้าจอออก/เพิกถอน widget key + ตั้ง originAllowlist (service มีครบแล้ว) — **ต้องมีก่อนใครฝัง widget ได้** |
 | **C15** 🆕 | 📋 ยังไม่เริ่ม | ลบไฟล์จริงบน Bunny CDN ตามคิว (`ChatAttachment` ที่ `url=""` แต่ `storageKey` ยังอยู่) |
@@ -609,3 +611,16 @@ S1 (auth ของ upload), S2 (rate limit → DB), S3 (OTP ประทับ e
      `ChatConversation` ⇒ ใส่คีย์นั้นไป = แตะแจ้งเตือนแล้วเด้งเข้าจอที่โหลดไม่ขึ้น
      จึงส่ง `data.chatConversationId` + `data.url` แทน (แตะ = เปิดแอปเฉย ๆ ไม่เด้งผิดจอ)
      **WO ถัดไป**: ทำจอ inbox ในแอป แล้วให้ `conversationIdFromNotification` อ่านคีย์ใหม่ (CP-1.3/CP-1.4 เฝ้าอยู่)
+- 29 ส.ค. 2026 — **สรุปวัน: ทุก repo ขึ้น prod ครบ ไม่มีอะไรค้าง push**
+  `shark-in-th 6a58517` · `siamdive2 cda988d` · `siamdive-maps 6d81581` · `siamdive-rn 51fd949` (+OTA `beta-b488`)
+  · เอกสารมุม SiamDive: `/root/projects/siamdive2/HANDOFF-2026-08-29-CHAT.md`
+  · ✅ `CHAT_BACKEND=dual` เปิดใช้จริง · ✅ push แจ้งเตือนทีมงานถึง iPhone แล้ว (เจ้าของยืนยัน)
+  · ✅ APNs: ใช้กุญแจ `BMM6N65VX9` ที่มีอยู่แล้ว (Team Scoped ทุกแอปในทีม) — **ไม่ได้สร้างใหม่**
+    🔴 Apple จำกัด APNs key **2 ใบ/ทีม และใช้ครบแล้ว** — สร้างใหม่ = ต้องลบของเดิม = SiamDive push พัง
+  🔴 **บทเรียนใหญ่สุดของวัน**: บั๊ก 5 ตัวที่เจ้าของเจอ **ผ่านข้อสอบทั้ง 400+ ข้อ**
+    (เมนูที่ไม่มีลิงก์ · รหัสลับที่ไม่เคยแสดง · `{sent:1}` ที่โกหก · ปุ่มที่ไม่มี · ภาษาที่ถูกเขียนทับ)
+    ⇒ ข้อสอบวัด "โค้ดทำงานถูกไหม" แต่ไม่มีข้อไหนวัด "คนใช้งานไปถึงได้ไหม"
+    **ฟีเจอร์ที่ต้องให้คนกดเอง ต้องเดินเส้นทางจริงจากเมนู ไม่ใช่ยิง endpoint ตรง**
+  🔴 `sendPushToTenant` เคยคืน `{sent:1}` ทั้งที่ Expo ปฏิเสธทุกใบ (`InvalidCredentials`)
+    เพราะนับทุกใบที่ไม่ใช่ `DeviceNotRegistered` และ `message` ไม่มีในชนิดข้อมูล
+    **ตัวเลขที่โกหกแพงกว่าไม่มีตัวเลข** — มันปิดทางสงสัยและทำให้ไล่หาสาเหตุช้าลงเป็นชั่วโมง
