@@ -970,6 +970,11 @@ export async function sendReply(args: {
           externalUserId: conv.contact.externalUserId,
           channel: conv.channel,
           preview: previewText,
+          // 🔴 ข้อความเต็ม — `preview` ถูกตัดที่ 140 ตัวอักษร (preview()) ซึ่งพอสำหรับแจ้งเตือน
+          //    แต่ **ไม่พอสำหรับผู้รับที่เอาไปแสดงเป็นข้อความจริง** (SiamDive โหมด dual สะท้อน
+          //    คำตอบกลับเข้า DB ตัวเอง — ใช้ preview = ลูกค้าเห็นข้อความโดนตัดกลางคัน)
+          //    เพิ่มฟิลด์ล้วน ผู้รับเดิมที่อ่าน preview ไม่กระทบ
+          body,
           senderName: shownSenderName,
         },
         systemId: args.systemId,
