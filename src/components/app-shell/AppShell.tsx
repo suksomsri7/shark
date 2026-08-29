@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Topbar } from "./Topbar";
 import { NavDrawer, type NavItem, type SoonItem, type TenantOption } from "./NavDrawer";
@@ -20,6 +20,7 @@ export function AppShell({
   openedCodes,
   memberships,
   activeTenantId,
+  chatSystemIds = [],
 }: {
   tenantName: string;
   userEmail: string;
@@ -28,6 +29,8 @@ export function AppShell({
   openedCodes: string[];
   memberships: TenantOption[];
   activeTenantId: string;
+  /** id ของระบบแชทที่ร้านเปิดใช้ (มาจาก layout — ว่าง = ไม่ถามตัวเลขข้อความค้างเลย) */
+  chatSystemIds?: string[];
 }) {
   const [drawer, setDrawer] = useState(false);
   // Modal เพิ่มระบบ (กลางจอ) — เปิดจากปุ่มใน drawer หรือ deep-link ?add-system=1 (จากเช็กลิสต์ "ทำต่อ")
@@ -48,20 +51,43 @@ export function AppShell({
   }, [searchParams, pathname, router]);
   // perf A: โหลด badge แชท AI หลังหน้าโผล่ (ไม่บล็อกการเปลี่ยนหน้า)
   const [aiUnread, setAiUnread] = useState(0);
+  // badge "ข้อความลูกค้ายังไม่ได้อ่าน" ราย systemId → ใช้เป็น badges ของ NavDrawer (คีย์ `s-<id>`)
+  const [navBadges, setNavBadges] = useState<Record<string, number>>({});
   // เปิดจากแอปมือถือ (WebView ส่ง UA "SharkApp") → ซ่อน orb เว็บ (แอปมีปุ่ม AI native ของตัวเอง — กัน orb ซ้อน)
   // + ไม่ปักแถบเมนูซ้าย (แอปมีเมนูของตัวเอง และจอมือถือไม่มีที่พอ)
   const inApp = useInApp();
-  useEffect(() => {
-    let alive = true;
-    loadNavBadgesAction()
-      .then((b) => { if (alive) setAiUnread(b.aiUnread); })
+  // 🔴 ต้นทุน query ของ badge เมนู — ตั้งใจให้ "ไม่ผูกกับการเรนเดอร์":
+  //  · ยิง 1 ครั้งตอน app shell mount (layout ไม่ re-mount ตอนเปลี่ยนหน้า ⇒ ไม่ใช่ต่อหน้า)
+  //  · ยิงซ้ำเฉพาะตอนผู้ใช้ "กดเปิดเมนู" เอง (ท่าทางของคน = มีขอบเขต ไม่ใช่ polling)
+  //  · ร้านที่ไม่ได้เปิดระบบแชท → ids ว่าง → server ไม่แตะตารางแชทเลย (ดู loadNavBadgesAction)
+  //  · ใช้ round-trip เดิมของ badge AI ที่มีอยู่แล้ว — ไม่มีคำขอใหม่เพิ่ม
+  const chatKey = chatSystemIds.join(","); // dep ที่เสถียร (อาเรย์จาก server สร้างใหม่ทุกครั้ง)
+  const refreshBadges = useCallback(() => {
+    const ids = chatKey ? chatKey.split(",") : [];
+    loadNavBadgesAction(ids)
+      .then((b) => {
+        setAiUnread(b.aiUnread);
+        // NavItem ของระบบ feature ใช้คีย์ `s-<systemId>` — map ให้ตรงกับ layout
+        setNavBadges(
+          Object.fromEntries(Object.entries(b.chatUnread).map(([id, n]) => [`s-${id}`, n])),
+        );
+      })
       .catch(() => {});
-    return () => { alive = false; };
-  }, []);
+  }, [chatKey]);
+  useEffect(() => {
+    refreshBadges();
+  }, [refreshBadges]);
 
   return (
     <>
-      <Topbar tenantName={tenantName} onMenu={() => setDrawer(true)} pinnedNav={!inApp} />
+      <Topbar
+        tenantName={tenantName}
+        onMenu={() => {
+          setDrawer(true);
+          refreshBadges(); // เปิดเมนู = จังหวะที่คนกำลังจะมอง ตัวเลขต้องสด
+        }}
+        pinnedNav={!inApp}
+      />
       <NavDrawer
         open={drawer}
         onClose={() => setDrawer(false)}
@@ -69,6 +95,7 @@ export function AppShell({
         userEmail={userEmail}
         items={items}
         soon={soon}
+        badges={navBadges}
         onAddSystem={() => {
           setDrawer(false);
           setAddSystemOpen(true);
@@ -86,6 +113,7 @@ export function AppShell({
           userEmail={userEmail}
           items={items}
           soon={soon}
+          badges={navBadges}
           onAddSystem={() => setAddSystemOpen(true)}
           memberships={memberships}
           activeTenantId={activeTenantId}

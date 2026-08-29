@@ -17,9 +17,23 @@ export type SoonItem = { code: string; icon: string; label: string };
 // กิจการ 1 แห่งใน account (สำหรับ dropdown สลับกิจการ)
 export type TenantOption = { tenantId: string; name: string; role: string };
 
+// ป้ายตัวเลข "ยังไม่ได้อ่าน" ข้างชื่อระบบในเมนู — สีเดียวกับ badge ของปุ่มผู้ช่วย AI (AiDock)
+// เจ้าของแจ้ง 29 ส.ค.: เดิมต้องเปิดเข้าหน้าแชทถึงจะรู้ว่ามีกี่ห้องค้าง (B9)
+function NavBadge({ n }: { n: number }) {
+  if (!n || n <= 0) return null;
+  return (
+    <span
+      aria-label={`${n} รายการยังไม่ได้อ่าน`}
+      className="ml-auto flex min-w-[18px] shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-[18px] text-white"
+    >
+      {n > 99 ? "99+" : n}
+    </span>
+  );
+}
+
 // ระบบที่แตกฟังก์ชันย่อย — หัวข้อกดพับ/กาง (accordion) + ลิงก์ฟังก์ชันย่อยใต้ระบบ
 // auto-กาง เมื่ออยู่ในฟังก์ชันย่อยของระบบนั้น · ฟังก์ชัน active = เทียบ path ตรงตัว
-function NavGroup({ item, onNavigate }: { item: NavItem; onNavigate: () => void }) {
+function NavGroup({ item, onNavigate, badge = 0 }: { item: NavItem; onNavigate: () => void; badge?: number }) {
   const pathname = usePathname();
   const children = item.children ?? [];
   const anyActive = children.some((c) => pathname === c.href || pathname.startsWith(c.href + "/"));
@@ -34,7 +48,8 @@ function NavGroup({ item, onNavigate }: { item: NavItem; onNavigate: () => void 
         }`}
       >
         <NavIcon emoji={item.icon} />
-        <span className="flex-1 truncate text-left">{item.label}</span>
+        <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+        <NavBadge n={badge} />
         <span className="shrink-0 text-xs text-[color:var(--color-muted)]">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
@@ -73,6 +88,7 @@ export function NavDrawer({
   onAddSystem,
   memberships,
   activeTenantId,
+  badges,
   variant = "overlay",
 }: {
   open: boolean;
@@ -84,6 +100,8 @@ export function NavDrawer({
   onAddSystem: () => void;
   memberships: TenantOption[];
   activeTenantId: string;
+  /** ตัวเลขยังไม่ได้อ่านของแต่ละรายการเมนู — คีย์ = NavItem.key (เช่น `s-<systemId>` ของระบบแชท) */
+  badges?: Record<string, number>;
   /**
    * overlay = เลื่อนออกมาทับจอ (มือถือ/แอป — เปิดจากปุ่มแฮมเบอร์เกอร์)
    * pinned  = ปักไว้ซ้ายจอถาวร ไม่มีฉากหลัง ไม่ปิดเมื่อกดลิงก์ (เว็บบนจอใหญ่ ≥ lg)
@@ -252,7 +270,7 @@ export function NavDrawer({
           )}
           {items.map((it) =>
             it.children && it.children.length > 0 ? (
-              <NavGroup key={it.key} item={it} onNavigate={onClose} />
+              <NavGroup key={it.key} item={it} onNavigate={onClose} badge={badges?.[it.key] ?? 0} />
             ) : (
               <Link
                 key={it.key}
@@ -263,7 +281,8 @@ export function NavDrawer({
                 }`}
               >
                 <NavIcon emoji={it.icon} />
-                <span className="truncate">{it.label}</span>
+                <span className="min-w-0 truncate">{it.label}</span>
+                <NavBadge n={badges?.[it.key] ?? 0} />
               </Link>
             ),
           )}

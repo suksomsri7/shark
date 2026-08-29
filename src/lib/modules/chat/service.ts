@@ -443,6 +443,8 @@ const CHANNEL_LABEL_TH: Record<string, string> = {
 //      "อ่านครบ (staffUnreadCount=0)" → "มี unread" ครั้งแรก (ใช้ updateMany แบบ atomic ตัดสิน
 //      กัน race + ลูกค้าพิมพ์รัวหลายบรรทัด = 1 แจ้งเตือน จนกว่าพนักงานจะอ่าน)
 //   3) emitOutbox "chat.message.received" ทุกข้อความ (idempotencyKey ผูก messageId กัน webhook ซ้ำ)
+// แล้ว **นอกทรานแซกชัน**:
+//   4) push เข้ามือถือทีมงาน (sendPushToTenant) — de-dup ด้วย `firstUnread` ตัวเดียวกับข้อ 2
 // AppNotification เป็น tenant-wide (schema ไม่มี user/role targeting) — ไปโผล่ /app/notifications
 async function announceInbound(args: {
   tenantId: string;
@@ -457,6 +459,7 @@ async function announceInbound(args: {
 }): Promise<void> {
   const { tenantId, systemId, conv } = args;
   const nextStatus = conv.status === "PENDING" ? "OPEN" : conv.status;
+  const channelTh = CHANNEL_LABEL_TH[args.channel] ?? args.channel;
   const denorm = {
     lastMessageAt: args.sentAt,
     lastMessagePreview: args.previewText,
@@ -464,13 +467,15 @@ async function announceInbound(args: {
     status: nextStatus,
   } satisfies Prisma.ChatConversationUpdateManyMutationInput;
 
+  // ผลของ flip 0→1 ต้องอ่านได้จากนอกทรานแซกชันด้วย — push ใช้กติกา de-dup ตัวเดียวกับ AppNotification
+  let firstUnread = false;
   await prisma.$transaction(async (tx) => {
     // atomic: เธรด "อ่านครบ" (0) → flip เป็น 1 = transition ครั้งแรก (คนเดียวชนะ) → แจ้งเตือน
     const flipped = await tx.chatConversation.updateMany({
       where: { id: conv.id, staffUnreadCount: 0 },
       data: { ...denorm, staffUnreadCount: 1 },
     });
-    const firstUnread = flipped.count === 1;
+    firstUnread = flipped.count === 1;
     if (!firstUnread) {
       // เดิมมี unread ค้างอยู่แล้ว → เพิ่มตัวนับเฉย ๆ (ไม่แจ้งซ้ำ)
       await tx.chatConversation.update({
@@ -490,7 +495,6 @@ async function announceInbound(args: {
     });
 
     if (firstUnread) {
-      const channelTh = CHANNEL_LABEL_TH[args.channel] ?? args.channel;
       await tx.appNotification.create({
         data: {
           tenantId,
@@ -500,6 +504,37 @@ async function announceInbound(args: {
       });
     }
   });
+
+  // ── push เข้ามือถือทีมงาน (WO-C14 · เจ้าของแจ้ง 29 ส.ค. "ไม่เห็นแจ้งเตือนเลย") ──
+  // 🔴 อยู่ **นอกทรานแซกชัน** เสมอ: push เป็น network call — ถ้า Expo ตอบช้าแล้วเราขังไว้ใน tx
+  //    จะถือ connection ของ Neon ค้าง → pool ตันทั้งแพลตฟอร์ม (บทเรียนเดียวกับการส่งออก adapter
+  //    ใน sendReply ที่ถูกย้ายออกนอก tx แล้ว · ข้อสอบ XC-3.7)
+  // 🔴 de-dup กติกาเดียวกับ AppNotification เป๊ะ — ใช้ `firstUnread` ตัวเดียวกัน:
+  //    ลูกค้าพิมพ์รัว 5 บรรทัด = แจ้งเตือน 1 ครั้ง จนกว่าทีมจะกดอ่าน (markRead → staffUnreadCount 0)
+  // 🔴 ห้าม throw: ส่งแจ้งเตือนพลาดต้องไม่ทำให้ข้อความลูกค้าหาย (ข้อความถูกบันทึกไปแล้วก่อนถึงตรงนี้)
+  //    sendPushToTenant เองก็ best-effort อยู่แล้ว — try/catch นี้กันแค่ตอน import โมดูลพัง
+  if (firstUnread) {
+    try {
+      const { sendPushToTenant } = await import("@/lib/core/push");
+      await sendPushToTenant(tenantId, {
+        title: `ลูกค้าทักเข้ามา · ${channelTh}`,
+        body: `${args.contactLabel}: ${args.previewText || "ข้อความใหม่"}`.slice(0, 140),
+        // ⚠️ แอปมือถือยัง deep link เข้ากล่องแชทลูกค้าไม่ได้ (ยังไม่มีจอนั้น) — listener ใน
+        //    apps/mobile อ่านเฉพาะ `data.conversationId` แล้วเปิด /chat/<id> ซึ่งเป็นห้อง **แชท AI**
+        //    คนละชนิดกับ ChatConversation ⇒ ใส่คีย์นั้น = พาไปจอที่โหลดไม่ขึ้น
+        //    จึงตั้งชื่อคีย์คนละตัวไว้ก่อน (แตะแจ้งเตือน = เปิดแอปเฉย ๆ ไม่เด้งผิดจอ)
+        //    เมื่อแอปมีจอ inbox แล้วค่อยให้ listener อ่าน `chatConversationId`/`url`
+        data: {
+          kind: "chat.inbound",
+          chatConversationId: conv.id,
+          systemId,
+          url: `/app/sys/${systemId}/chat?c=${conv.id}`,
+        },
+      });
+    } catch {
+      // push พัง → เงียบ (ข้อความลูกค้า + แจ้งเตือนในเว็บ บันทึกครบแล้ว)
+    }
+  }
 
   // drain outbox (automation/webhooks) — fire-and-forget เหมือน POS ให้ event เดินทันที
   void drainAll().catch(() => {});

@@ -250,6 +250,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     new Set<string>([...units.map((u) => u.type), ...appSystems.map((s) => s.type)]),
   );
 
+  // badge "ข้อความลูกค้ายังไม่ได้อ่าน" ที่เมนู (B9) — ส่งแค่ **รายชื่อ id ของระบบแชท** ลงไป
+  // ได้มาจาก appSystems ที่ query ไปแล้วข้างบน ⇒ ไม่มี query เพิ่มใน layout เลย
+  // ร้านที่ไม่ได้เปิดระบบแชท = ลิสต์ว่าง → ฝั่ง client ไม่ถามตัวเลขนี้เลย (ดู loadNavBadgesAction)
+  const chatSystemIds = appSystems.filter((s) => s.type === "CHAT").map((s) => s.id);
+
   return (
     <div className="min-h-full">
       <NavProgress />
@@ -259,6 +264,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         items={items}
         soon={soon}
         openedCodes={openedCodes}
+        chatSystemIds={chatSystemIds}
         // รายชื่อกิจการทั้งหมดของ user (สำหรับ dropdown สลับกิจการในหัว drawer)
         memberships={auth.memberships.map((m) => ({ tenantId: m.tenantId, name: m.tenant.name, role: m.role }))}
         activeTenantId={auth.active.tenantId}

@@ -7,6 +7,8 @@
 import type { SupportAuthorSide, SupportCaseStatus } from "@prisma/client";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
+// B9: `unreadCount()` ของโมดูลแชทมีอยู่แล้วแต่ไม่เคยถูกเรียก — badge เมนูใช้ตัวนี้ ห้ามเขียน query ใหม่
+import { unreadCount as chatUnreadCount } from "@/lib/modules/chat/service";
 import {
   createCase,
   listMyCasesWithMeta,
@@ -125,13 +127,37 @@ export async function addMessageAction(input: {
   return { ok, error: ok ? undefined : "ไม่พบเคสนี้" };
 }
 
-// รวม badge ทั้ง 2 (help + AI แจ้งเตือน) ในครั้งเดียว — โหลดฝั่ง client หลังหน้าโผล่ (perf A: ไม่บล็อกเปลี่ยนหน้า)
-export async function loadNavBadgesAction(): Promise<{ helpUnread: number; aiUnread: number }> {
+// รวม badge ทั้งชุด (help + AI แจ้งเตือน + ข้อความลูกค้าค้างตอบรายระบบแชท) ในครั้งเดียว
+// โหลดฝั่ง client หลังหน้าโผล่ (perf A: ไม่บล็อกเปลี่ยนหน้า) — ใช้ round-trip เดิมที่มีอยู่แล้ว
+// ไม่เพิ่มคำขอใหม่ต่อการเรนเดอร์เมนู
+//
+// 🔴 ต้นทุนของ badge แชท (B9) — ตัดสินใจไว้ตรงนี้:
+//  · `chatSystemIds` มาจาก layout ซึ่ง query `appSystem` อยู่แล้ว ⇒ **ไม่ถาม DB ซ้ำเพื่อหาว่าร้าน
+//    เปิดระบบแชทไหม** · ร้านที่ไม่ได้เปิดระบบแชทส่งลิสต์ว่างมา → ไม่มี query ส่วนเกินแม้แต่ครั้งเดียว
+//  · ร้านที่เปิด = 1 aggregate ต่อระบบแชท (ปกติมีระบบเดียว) ต่อการ mount ของ app shell
+//    ไม่ใช่ต่อการเรนเดอร์หน้า (NavDrawer อยู่ใน layout ที่ไม่ re-mount ตอนเปลี่ยนหน้า)
+//  · นับด้วย `unreadCount()` ของโมดูลแชทตัวเดิม — ห้ามเขียน query ซ้ำที่นี่
+// 🔴 ความปลอดภัย: `tenantId` มาจาก session เสมอ · `unreadCount` ผูก tenantId ทุกครั้ง ⇒ ปลอม
+//    systemId ของร้านอื่นได้แค่เลข 0 · ตัดลิสต์ที่ 10 กันไคลเอนต์ยัดรายการยาวให้เซิร์ฟเวอร์ทำงานไม่จำกัด
+export async function loadNavBadgesAction(chatSystemIds?: string[]): Promise<{
+  helpUnread: number;
+  aiUnread: number;
+  chatUnread: Record<string, number>;
+}> {
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
-  const [helpUnread, aiUnread] = await Promise.all([
+  const ids = Array.from(
+    new Set((chatSystemIds ?? []).filter((s): s is string => typeof s === "string" && s.length > 0)),
+  ).slice(0, 10);
+  const [helpUnread, aiUnread, counts] = await Promise.all([
     unreadCaseTotal({ tenantId }).catch(() => 0),
     prisma.appNotification.count({ where: { tenantId, readAt: null } }).catch(() => 0),
+    Promise.all(ids.map((id) => chatUnreadCount(tenantId, id).catch(() => 0))),
   ]);
-  return { helpUnread, aiUnread };
+  const chatUnread: Record<string, number> = {};
+  ids.forEach((id, i) => {
+    const n = counts[i] ?? 0;
+    if (n > 0) chatUnread[id] = n;
+  });
+  return { helpUnread, aiUnread, chatUnread };
 }

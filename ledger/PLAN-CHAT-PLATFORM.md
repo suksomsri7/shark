@@ -196,7 +196,7 @@ event ออกในทรานแซกชันเดียวกับก�
 | B6 | 🟡 MINOR | `linkCustomer` ไม่มี `unitAccess` → ผูกลูกค้าข้าม unit ได้ | `service.ts:874` |
 | B7 | 🟡 MINOR | LINE webhook URL ใช้ `connection.id` แต่ schema มี `webhookKey @unique` ที่ไม่เคยถูกใช้ → หมุนกุญแจไม่ได้ | `ui.tsx:301` เทียบ `chat.prisma:72` |
 | B8 | 🟡 MINOR | `ChatSetting` 6 ฟิลด์ไม่เคยถูกอ่าน — **ปิดแล้ว 1** (`offlineMessage` มี `resolveLocale` พร้อมใช้) · **เหลือ 5**: `widgetEnabled` `preChatFormEnabled` `slaFirstResponseMin` `unassignedAlertMin` `retentionDays`<br>🔴 `retentionDays` = ข้อ PDPA ใน §11 → แยกเป็น **WO-C12** | grep ทั้ง repo |
-| B9 | 🟡 MINOR | `unreadCount()` ไม่ถูกเรียกที่ไหนเลย | `service.ts:775` |
+| B9 | ✅ **ปิดแล้ว 29 ส.ค.** | ~~`unreadCount()` ไม่ถูกเรียกที่ไหนเลย~~ → เรียกจาก `loadNavBadgesAction` แล้ว เป็นแบดจ์ที่เมนู | `service.ts:1272` · `support/actions.ts:150` |
 | B10 | 🟡 MINOR | `line.ts:26-27` fallback header เป็นของตายทั้งชุด — operand ที่ 3 ซ้ำ operand ที่ 1 (dead) และ operand ที่ 2 (`X-Line-Signature`) ไม่มีวันมีค่าเพราะ route lowercase คีย์ไปก่อนแล้ว (`webhook/route.ts:29`) ⇒ สื่อเจตนาผิดว่ารองรับ header ดิบ<br>_(แก้คำอธิบาย 28 ส.ค. — ฉบับแรกระบุเหตุผิดว่า operand ที่ 2 เข้าไม่ถึง)_ | `line.ts:26-27` |
 
 ### SiamDive (แก้ทีเดียวตอนย้าย)
@@ -588,3 +588,24 @@ S1 (auth ของ upload), S2 (rate limit → DB), S3 (OTP ประทับ e
   → เพิ่ม `body` (ข้อความเต็ม) ใน `chat.message.sent` · อัปเดต §3.4 + ข้อสอบ XC-3.2 (6 → 7 ฟิลด์)
   🔴 **บทเรียน**: "ข้อความไปถึงระบบใหม่แล้ว" ≠ "ใช้งานได้" — ต้องเดินครบ **วงกลม** เสมอ
   (ลูกค้าส่ง → ทีมเห็น → ทีมตอบ → **ลูกค้าเห็นคำตอบ**) ข้อสอบ 247 ข้อวัดแต่ครึ่งทางไป
+- 29 ส.ค. 2026 — **WO-C14 เสร็จ** (`qc-chat-push-badge.mts` 28/28 · fail-before 12 รอบ · รวม **275 ข้อเขียว**)
+  เจ้าของแจ้งจากการใช้จริง 2 เรื่อง: (1) "notification ฝั่ง shark ไม่เห็นมีเลย" (2) "badge ข้อความยังไม่อ่านไม่มี"
+  1. `announceInbound` ต่อ `sendPushToTenant` แล้ว (`chat/service.ts:520`) — **de-dup ด้วย `firstUnread`
+     ตัวเดียวกับ AppNotification เป๊ะ** (พิมพ์รัว 5 บรรทัด = push ครั้งเดียว · ทีมกดอ่านแล้วทักใหม่ = ยิงใหม่)
+     🔴 **อยู่นอกทรานแซกชัน** — push เป็น network call ถ้าขังใน tx = ถือ connection Neon ค้าง pool ตัน
+     (กติกาเดียวกับ adapter ขาออกใน `sendReply` · ข้อสอบ CP-1.9 + XC-3.7) · ห้าม throw ทุกกรณี
+  2. แบดจ์ที่ `NavDrawer` — 🔴 **ระบบแชทเป็น accordion** ⇒ badge ต้องอยู่ที่ **หัว NavGroup** ไม่งั้นมองไม่เห็น
+     (ตกหลุมนี้ไปแล้วรอบหนึ่งตอนเขียน · CP-2.9 ล็อกไว้)
+  🔴 **ต้นทุน query ของแบดจ์ — ตัดสินใจไว้ว่า**: `layout.tsx` query `appSystem` อยู่แล้ว → ส่งแค่
+     `chatSystemIds` เป็น prop ลงไป ⇒ **ร้านที่ไม่เปิดระบบแชทไม่มี query ส่วนเกินเลย** และไม่มีใครถาม DB
+     ซ้ำว่า "ร้านนี้มีระบบแชทไหม" · ตัวเลขโหลดฝั่ง client ผ่าน `loadNavBadgesAction` **ที่มี round-trip อยู่แล้ว**
+     (badge AI) ⇒ ไม่เพิ่มคำขอใหม่ · ยิงตอน mount + ตอนกดเปิดเมนู ไม่ใช่ polling ไม่ใช่ต่อการเรนเดอร์
+  🔴 **แผนไม่ตรงโค้ดจริง**: `B9` ในตารางอ้าง `service.ts:775` แต่ `unreadCount()` อยู่บรรทัด **1272**
+  ⚠️ **ยังพิสูจน์ไม่ได้ (ต้องมีคนถือเครื่องจริง)**: push ถึงมือถือทีมงานจริงไหม — ข้อสอบพิสูจน์ได้แค่ว่า
+     เรายิงถูก payload/ถูกจังหวะ/ถูกที่ · ของจริงขึ้นกับ Expo credentials + มี `PushDevice` ในร้านนั้นจริง
+     (`sendPushToTenant` คืน `{sent:0}` เงียบเมื่อร้านยังไม่มีเครื่องลงทะเบียน — ไม่มี error ให้เห็น)
+  ⚠️ **หนี้ที่รับไว้อย่างตั้งใจ**: `apps/mobile` **ยังไม่มีจอกล่องแชทลูกค้า** — listener อ่านแค่
+     `data.conversationId` แล้วเปิด `/chat/<id>` ซึ่งเป็นห้อง **แชท AI** (`AiConversation`) คนละชนิดกับ
+     `ChatConversation` ⇒ ใส่คีย์นั้นไป = แตะแจ้งเตือนแล้วเด้งเข้าจอที่โหลดไม่ขึ้น
+     จึงส่ง `data.chatConversationId` + `data.url` แทน (แตะ = เปิดแอปเฉย ๆ ไม่เด้งผิดจอ)
+     **WO ถัดไป**: ทำจอ inbox ในแอป แล้วให้ `conversationIdFromNotification` อ่านคีย์ใหม่ (CP-1.3/CP-1.4 เฝ้าอยู่)
