@@ -524,6 +524,29 @@ try {
       chk("CP-4.3", "ตัวนับ unread ยังเดินตามจริงทุกข้อความ (คนละเรื่องกับการแจ้งเตือน)",
         cv.staffUnreadCount === 3, "3", j({ unread: cv.staffUnreadCount }));
     });
+
+    // ═════════ CP-5 · emit แล้วต้อง "ปลุกตัวส่ง" ทุกครั้ง ═════════
+    //
+    // 🔴 กับดักที่เงียบที่สุดในไฟล์นี้ (เจ้าของเจอจริง 30 ส.ค. 2026 — รอบที่สองของเรื่องเดียวกัน):
+    //    `emitOutbox` แค่ **เขียนลงคิว** · ถ้าไม่เรียก `drainAll()` ต่อ event จะนอนรอ cron
+    //    รายชั่วโมง ⇒ ปลายทางเห็นผลช้าเป็นชั่วโมง ซึ่งผู้ใช้อ่านว่า "ไม่ทำงาน"
+    //    ไม่มี error ไม่มี log — ข้อสอบที่ mock ตัว drain ไว้ก็ยังเขียว ⇒ ต้องตรวจที่ **ซอร์ส**
+    await section("CP-5", "\nCP-5 ทุกจุดที่ยิง event ต้องปลุกตัวส่งทันที:", async () => {
+      const SRC = readFileSync("src/lib/modules/chat/service.ts", "utf8");
+      // ตัดคอมเมนต์ทิ้งก่อน — คอมเมนต์ที่ **อธิบายกับดัก** ต้องไม่ถูกนับเป็นโค้ดจริง
+      const code = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/[^\n]*/g, "$1");
+      const fns = code.split(/\nexport async function |\nasync function /).slice(1);
+      const offenders = fns
+        .map((f) => ({ name: f.slice(0, f.indexOf("(")), emits: f.includes("emitOutbox("), drains: f.includes("drainAll(") }))
+        .filter((f) => f.emits && !f.drains)
+        .map((f) => f.name);
+      chk("CP-5.1", "🔴 ทุกฟังก์ชันที่ `emitOutbox` ต้องเรียก `drainAll()` ด้วย (ไม่งั้น event ค้างคิว)",
+        offenders.length === 0, "ไม่มีฟังก์ชันที่ลืม", j({ ลืม: offenders }));
+      // คู่บวก: ต้องมีฟังก์ชันที่ทำถูกอยู่จริง ไม่ใช่ regex หาอะไรไม่เจอเลยแล้วเขียวลอย ๆ
+      const good = fns.filter((f) => f.includes("emitOutbox(") && f.includes("drainAll(")).length;
+      chk("CP-5.2", "🟢 คู่บวก: ตัวตรวจหาฟังก์ชันที่ emit เจอจริง (ไม่ใช่เขียวเพราะหาไม่เจอ)",
+        good >= 3, "อย่างน้อย 3 ฟังก์ชัน", j({ ถูกต้อง: good }));
+    });
   }
 
   chk("CP-9.9", "ไม่มี query หลุดออก DB จริง (fake prisma รับทุกครั้ง) · HTTP ออกเฉพาะ exp.host ที่ดักไว้",
