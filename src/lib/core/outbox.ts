@@ -110,10 +110,20 @@ async function drainOnce(
     const handler = consumers[evt.type];
     if (!handler) {
       // ไม่มี consumer สำหรับ type นี้ → พักไว้ (ไม่นับ fail) รอ deploy handler ใหม่
+      // 🔴 ต้อง **ส่งเสียง** ด้วย — 30 ส.ค. 2026 มี type ใหม่ที่ลืมลงทะเบียน แล้ว event
+      //    นอนค้างเงียบ ๆ อยู่หลายชั่วโมงโดยไม่มีใครรู้ (ปลายทางเห็นเป็น "ระบบไม่ทำงาน")
+      //    logOps มี throttle 60 นาที/source อยู่แล้ว จึงไม่ท่วมแม้ drain จะวนบ่อย
       await prisma.outboxEvent.update({
         where: { id: evt.id },
         data: { lastError: `ไม่มี consumer สำหรับ type "${evt.type}"` },
       });
+      try {
+        const { logOps } = await import("@/lib/core/ops");
+        await logOps("ERROR", "outbox", `ไม่มี consumer สำหรับ event "${evt.type}" — ค้างคิวจนกว่าจะลงทะเบียน`, {
+          detail: `eventId=${evt.id} tenantId=${evt.tenantId}`,
+          tenantId: evt.tenantId,
+        });
+      } catch { /* ห้ามให้การ log ทำ drain พัง */ }
       continue;
     }
 

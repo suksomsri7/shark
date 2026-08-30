@@ -567,6 +567,39 @@ try {
       chk("CP-5.2", "🟢 คู่บวก: ตัวตรวจหาฟังก์ชันที่ emit เจอจริง (ไม่ใช่เขียวเพราะหาไม่เจอ)",
         good >= 3, "อย่างน้อย 3 ฟังก์ชัน", j({ ถูกต้อง: good }));
     });
+
+    // ═════════ CP-6 · ทุก event ที่ยิง ต้องมีตัวรับลงทะเบียนไว้ ═════════
+    //
+    // 🔴 กับดักที่ทำ **production ตันทั้งระบบ** 30 ส.ค. 2026:
+    //    เพิ่ม type `chat.conversation.read` แล้วลืมลงทะเบียนใน `outbox-consumers.ts`
+    //    ⇒ drain เจอแล้วข้าม (ไม่นับ fail) · event ค้าง PENDING เงียบ ๆ · webhook ไม่เคยถูกยิง
+    //    ⇒ ติ๊กคู่ ✓✓ ไม่มีวันขึ้น และคำตอบของทีมไม่ถึงลูกค้า
+    //    ไฟล์ consumers เขียนเตือนกับดักนี้ไว้ตรง ๆ แล้วยังพลาด ⇒ ต้องมีด่านอัตโนมัติ
+    await section("CP-6", "\nCP-6 ทุก event ที่ยิงต้องมีตัวรับ:", async () => {
+      const { readdirSync, statSync } = await import("node:fs");
+      const walk = (dir: string): string[] =>
+        readdirSync(dir).flatMap((f) => {
+          const p = `${dir}/${f}`;
+          return statSync(p).isDirectory() ? walk(p) : p.endsWith(".ts") || p.endsWith(".tsx") ? [p] : [];
+        });
+      // ทุก `type: "xxx.yyy"` ที่อยู่ในบล็อก emitOutbox ทั่วทั้ง src/
+      const emitted = new Set<string>();
+      for (const f of walk("src")) {
+        const src = readFileSync(f, "utf8");
+        for (const m of src.matchAll(/emitOutbox\([\s\S]{0,400}?type:\s*"([a-z0-9._]+)"/g)) emitted.add(m[1]!);
+      }
+      const registry = readFileSync("src/lib/outbox-consumers.ts", "utf8");
+      const registered = new Set(Array.from(registry.matchAll(/^\s{2}"([a-z0-9._]+)":/gm), (m) => m[1]!));
+      const missing = [...emitted].filter((t) => !registered.has(t));
+      chk("CP-6.1", "🔴 ทุก event type ที่ยิงจากที่ไหนก็ตามใน src/ ต้องมี consumer ลงทะเบียนไว้",
+        missing.length === 0, "ไม่มีตัวไหนตกหล่น", j({ ยังไม่ลงทะเบียน: missing }));
+      chk("CP-6.2", "🟢 คู่บวก: ตัวสแกนหา event เจอจริงหลายตัว (ไม่ใช่เขียวเพราะ regex พัง)",
+        emitted.size >= 5 && emitted.has("chat.conversation.read"),
+        "≥5 ตัว และมี chat.conversation.read", j({ เจอ: [...emitted].sort() }));
+      chk("CP-6.3", "ไม่มี consumer = ต้องส่งเสียง ไม่ใช่ค้างเงียบ",
+        /logOps\(\s*"ERROR",\s*"outbox"/.test(readFileSync("src/lib/core/outbox.ts", "utf8")),
+        "มี logOps ERROR ตอนไม่เจอ consumer", "?");
+    });
   }
 
   chk("CP-9.9", "ไม่มี query หลุดออก DB จริง (fake prisma รับทุกครั้ง) · HTTP ออกเฉพาะ exp.host ที่ดักไว้",
