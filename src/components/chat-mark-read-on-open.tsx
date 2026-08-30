@@ -4,18 +4,35 @@ import { useEffect, useRef } from "react";
 import { markReadOnOpenAction } from "@/lib/modules/chat/actions";
 
 /**
- * เปิดห้องแชท = อ่านแล้ว (ไม่ต้องกดปุ่มอะไร)
+ * ตัดสินว่า "รอบนี้ต้องสั่งอ่านไหม" — แยกเป็นฟังก์ชันบริสุทธิ์ให้ข้อสอบเรียกตรง ๆ ได้
  *
- * 🔴 เจ้าของเจอจริง 30 ส.ค. 2026 — **บั๊กเดียวที่ทำให้พังสองอย่างพร้อมกัน**:
- *    เดิม `markRead` ถูกเรียกแค่ 2 ที่ คือ "หลังทีมกดตอบ" กับ "ปุ่มทำเป็นอ่านแล้ว" ⇒ ทีมที่
- *    เปิดอ่านเฉย ๆ ไม่เคยถูกนับว่าอ่าน ตัวนับ `staffUnreadCount` จึงค้างมากกว่า 0 ตลอด
- *      1. แจ้งเตือนขาเข้า de-dup ที่ "0 → 1" ⇒ ค้างแล้วไม่แจ้งอีกเลย
- *         (อาการ: "ข้อความมา แต่ไม่ได้รับ notification")
- *      2. `chat.conversation.read` ยิงเฉพาะตอนมี unread ค้าง ⇒ ไม่เคยยิงเลยสักครั้ง
- *         (อาการ: ติ๊กคู่ ✓✓ ฝั่งลูกค้าไม่เคยขึ้น)
+ * 🔴 รอบแรกผมเขียน guard เป็น "ยิงครั้งเดียวต่อห้อง" ซึ่ง**แน่นเกินไป** (เจ้าของเจอจริง 30 ส.ค. 2026):
+ *    ทีมเปิดห้องค้างไว้ → อ่านรอบแรกสำเร็จ → ลูกค้าส่งข้อความใหม่เข้ามา → ตัวนับขึ้นเป็น 1 อีก
+ *    แต่ guard บล็อกไว้ ⇒ ไม่ถูกนับว่าอ่าน ⇒ ติ๊กค้างที่ ✓ ขีดเดียวทั้งที่ทีมกำลังมองอยู่
+ * ⇒ กติกาที่ถูกคือ "ยิงหนึ่งครั้งต่อ **ช่วงที่มีข้อความค้าง** หนึ่งช่วง" — พอเคลียร์เป็น 0
+ *    ต้องรีเซ็ตเพื่อรอรับรอบถัดไป
+ */
+export function nextMarkReadState(
+  fired: string | null,
+  key: string,
+  unread: number,
+): { fire: boolean; fired: string | null } {
+  if (unread <= 0) return { fire: false, fired: fired === key ? null : fired };
+  if (fired === key) return { fire: false, fired };
+  return { fire: true, fired: key };
+}
+
+/**
+ * เปิดห้องแชท = อ่านแล้ว (ไม่ต้องกดปุ่มอะไร) · รวมถึงข้อความที่เข้ามาระหว่างเปิดค้างไว้ด้วย
  *
- * ⚠️ ยิงครั้งเดียวต่อการเปิดห้องหนึ่งครั้ง (`done` ref) — หน้านี้ revalidate หลัง action
- *    ถ้าไม่กัน จะกลายเป็นวงวน action → revalidate → action
+ * 🔴 นี่คือจุดเดียวที่ทำให้พังสองอย่างพร้อมกันถ้าไม่มี:
+ *    เดิม `markRead` ถูกเรียกแค่ "หลังทีมกดตอบ" กับ "ปุ่มทำเป็นอ่านแล้ว" ⇒ ทีมที่เปิดอ่านเฉย ๆ
+ *    ไม่เคยถูกนับว่าอ่าน · `staffUnreadCount` ค้าง > 0 ตลอด แล้วลามเป็น
+ *      1. แจ้งเตือนขาเข้า de-dup ที่ 0→1 ⇒ ค้างแล้วเงียบ
+ *      2. `chat.conversation.read` ไม่เคยยิง ⇒ ติ๊กคู่ ✓✓ ฝั่งลูกค้าไม่เคยขึ้น
+ *
+ * หน้าแชทมี `<AutoRefresh>` ดึงข้อมูลใหม่เป็นระยะอยู่แล้ว ⇒ `unread` ที่ส่งเข้ามาจะขยับเองเมื่อ
+ * มีข้อความใหม่ · effect จึงทำงานต่อได้โดยไม่ต้อง poll ซ้อนอีกชั้น
  */
 export function ChatMarkReadOnOpen({
   systemId,
@@ -27,12 +44,12 @@ export function ChatMarkReadOnOpen({
   /** 0 = ไม่มีอะไรค้าง ⇒ ไม่ต้องยิงอะไรเลย */
   unread: number;
 }) {
-  const done = useRef("");
+  const fired = useRef<string | null>(null);
   useEffect(() => {
-    if (unread <= 0) return;
-    if (done.current === conversationId) return;
-    done.current = conversationId;
-    void markReadOnOpenAction(systemId, conversationId);
+    const key = `${systemId}:${conversationId}`;
+    const next = nextMarkReadState(fired.current, key, unread);
+    fired.current = next.fired;
+    if (next.fire) void markReadOnOpenAction(systemId, conversationId);
   }, [systemId, conversationId, unread]);
   return null;
 }

@@ -497,6 +497,26 @@ try {
       chk("CP-3.6", "🔴 action ที่ยิงจากตอนเปิดหน้า **ห้าม redirect** (ไม่งั้นวนโหลดหน้าไม่รู้จบ)",
         !/redirect\(/.test(ACT.slice(ACT.indexOf("markReadOnOpenAction"), ACT.indexOf("// ── ทำเป็นอ่านแล้ว ──"))),
         "ไม่มี redirect ในตัว on-open", "?");
+
+      // 🔴 เจ้าของเจอจริง 30 ส.ค. 2026 (รอบที่สองของเรื่องเดียวกัน): guard "ยิงครั้งเดียวต่อห้อง"
+      //    แน่นเกินไป — ทีมเปิดห้องค้างไว้แล้วลูกค้าส่งใหม่ ⇒ ไม่ถูกนับว่าอ่าน ติ๊กค้างที่ ✓
+      const { nextMarkReadState } = (await import("@/components/chat-mark-read-on-open" as string)) as {
+        nextMarkReadState: (f: string | null, k: string, u: number) => { fire: boolean; fired: string | null };
+      };
+      const K = "S1:C1";
+      const s1 = nextMarkReadState(null, K, 1);
+      const s2 = nextMarkReadState(s1.fired, K, 1);      // รอบรีเฟรชระหว่างรอ action → ห้ามยิงซ้ำ
+      const s3 = nextMarkReadState(s2.fired, K, 0);      // อ่านสำเร็จ ตัวนับกลับเป็น 0
+      const s4 = nextMarkReadState(s3.fired, K, 1);      // ลูกค้าส่งใหม่ขณะทีมยังเปิดค้างอยู่
+      chk("CP-3.7", "🔴 เปิดค้างไว้แล้วมีข้อความใหม่เข้ามา → ต้องสั่งอ่าน**อีกครั้ง**",
+        s1.fire && !s2.fire && !s3.fire && s4.fire,
+        "ยิง · ไม่ยิง · ไม่ยิง · ยิง", j([s1.fire, s2.fire, s3.fire, s4.fire]));
+      chk("CP-3.8", "ไม่มีอะไรค้าง → ไม่ยิงเลย (ไม่รบกวนเซิร์ฟเวอร์ทุกรอบรีเฟรช)",
+        !nextMarkReadState(null, K, 0).fire, "ไม่ยิง", "?");
+      const PAGE = readFileSync("src/app/app/sys/[id]/chat/page.tsx", "utf8");
+      chk("CP-3.9", "หน้าแชทรีเฟรชถี่พอที่ติ๊กคู่จะตามทัน (≤ 10 วิ)",
+        (() => { const m = PAGE.match(/<AutoRefresh ms=\{(\d+)\}/); return !!m && Number(m[1]) <= 10_000; })(),
+        "≤ 10000", (PAGE.match(/<AutoRefresh ms=\{(\d+)\}/) ?? [])[1] ?? "ไม่พบ");
     });
 
     // ═════════ CP-4 · แจ้งเตือนต้องกลับมาเมื่อลูกค้าทักรอบใหม่ ═════════

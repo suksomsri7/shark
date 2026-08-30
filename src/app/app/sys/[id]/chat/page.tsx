@@ -24,8 +24,11 @@ export default async function ChatPage({
 
   return (
     <div className="flex max-w-4xl flex-col gap-4">
-      {/* เห็นข้อความ/แจ้งเตือนใหม่โดยไม่ต้องกด F5 (P1 liveness — เหมือนจอคิว) */}
-      <AutoRefresh ms={15000} />
+      {/* เห็นข้อความ/แจ้งเตือนใหม่โดยไม่ต้องกด F5 (P1 liveness — เหมือนจอคิว)
+          🔴 จังหวะนี้คุม **สองอย่าง** ไม่ใช่แค่ความสดของหน้าจอ: ตัวนับ `staffUnreadCount` ที่ส่ง
+             ให้ <ChatMarkReadOnOpen> ก็มาจากรอบรีเฟรชนี้ ⇒ มันคือหน่วงของติ๊กคู่ ✓✓ ฝั่งลูกค้าด้วย
+             15 วิ ช้าเกินไปสำหรับกล่องแชทที่ทีมนั่งจ้องอยู่ (เจ้าของเจอจริง 30 ส.ค. 2026) */}
+      <AutoRefresh ms={7000} />
       <PageHeader title={sys.name} back={{ href: `/app/sys/${id}`, label: sys.name }} />
       <ModuleTabs items={chatTabs(id)} />
       <ChatInboxSection systemId={id} tenantId={tenantId} conversationId={c} />
