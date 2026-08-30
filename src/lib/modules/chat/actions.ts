@@ -138,8 +138,15 @@ export async function markReadOnOpenAction(systemId: string, conversationId: str
       unitAccess: auth.active.unitAccess as string[],
     });
     revalidateChat(systemId);
-  } catch {
-    /* ไม่มีสิทธิ์/ห้องหาย → ไม่ต้องทำอะไร */
+  } catch (e) {
+    // 🔴 ห้ามเงียบสนิท — ถ้าบทบาทของทีมไม่มีสิทธิ์ `chat.conversation.markRead`
+    //    ห้องจะไม่ถูกนับว่าอ่านตลอดกาล แล้วทั้ง "แจ้งเตือนรอบถัดไป" และ "ติ๊กคู่ ✓✓"
+    //    จะตายเงียบโดยไม่มีใครรู้ว่าเพราะอะไร (อาการเดียวกับที่เจ้าของเจอมาแล้วสองรอบ)
+    //    จอผู้ใช้ยังต้องไม่พัง จึงกลืน error ไว้ แต่ต้องทิ้งร่องรอยให้ตามได้
+    const { logOps } = await import("@/lib/core/ops");
+    await logOps("WARN", "chat", "เปิดห้องแล้วทำเป็นอ่านไม่สำเร็จ (ติ๊กคู่/แจ้งเตือนรอบถัดไปจะไม่ทำงาน)", {
+      detail: `systemId=${systemId} conversationId=${conversationId} — ${e instanceof Error ? e.message.slice(0, 200) : String(e)}`,
+    }).catch(() => {});
   }
 }
 
