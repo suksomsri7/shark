@@ -468,6 +468,13 @@ const CHANNEL_LABEL_TH: Record<string, string> = {
   WHATSAPP: "WhatsApp",
 };
 
+/**
+ * เว้นช่วงเกินเท่านี้ = ถือว่าเป็นการทักรอบใหม่ ต้องแจ้งเตือนทีมอีกครั้ง
+ * 🔴 ตัวเลขนี้คือเส้นแบ่งระหว่าง "พิมพ์รัวหลายบรรทัด" (ห้ามแจ้ง 5 ครั้ง) กับ
+ *    "กลับมาทักใหม่" (ต้องแจ้ง) — 3 นาทีครอบคลุมการพิมพ์ต่อเนื่องของคนทั่วไป
+ */
+const INBOUND_NOTIFY_GAP_MS = 3 * 60_000;
+
 // ───────────────────────── "ปิดโมดูลเงียบ": แจ้งเตือน + outbox หลังรับ inbound ─────────────────────────
 // เรียกหลัง insert ChatMessage(direction IN) สำเร็จ (ไม่ใช่ duplicate). ทำใน 1 transaction:
 //   1) อัปเดต denorm ของ conversation (lastMessage*, staffUnreadCount, status)
@@ -499,6 +506,13 @@ async function announceInbound(args: {
     status: nextStatus,
   } satisfies Prisma.ChatConversationUpdateManyMutationInput;
 
+  // 🔴 เจ้าของเจอจริง 30 ส.ค. 2026: "ข้อความมาแต่ไม่ได้รับ notification"
+  //    de-dup เดิมคือ "แจ้งครั้งเดียวจนกว่าทีมจะอ่าน" ⇒ ถ้าตัวนับค้าง ทีมจะเงียบไปตลอดกาล
+  //    เจตนาเดิมคือกัน "ลูกค้าพิมพ์รัวหลายบรรทัด = แจ้ง 5 ครั้ง" ซึ่งวัดด้วย **เวลา** ได้ตรงกว่า
+  //    ⇒ เว้นช่วงจากข้อความก่อนหน้าเกินหน้าต่างนี้ = ถือเป็นการทักรอบใหม่ ต้องแจ้งอีกครั้ง
+  const gapMs = args.sentAt.getTime() - (conv.lastMessageAt?.getTime() ?? 0);
+  const newBurst = gapMs > INBOUND_NOTIFY_GAP_MS;
+
   // ผลของ flip 0→1 ต้องอ่านได้จากนอกทรานแซกชันด้วย — push ใช้กติกา de-dup ตัวเดียวกับ AppNotification
   let firstUnread = false;
   await prisma.$transaction(async (tx) => {
@@ -507,9 +521,13 @@ async function announceInbound(args: {
       where: { id: conv.id, staffUnreadCount: 0 },
       data: { ...denorm, staffUnreadCount: 1 },
     });
-    firstUnread = flipped.count === 1;
-    if (!firstUnread) {
-      // เดิมมี unread ค้างอยู่แล้ว → เพิ่มตัวนับเฉย ๆ (ไม่แจ้งซ้ำ)
+    // 🔴 `flipped` ตัดสิน **ตัวนับ** · `firstUnread` ตัดสิน **การแจ้งเตือน** — คนละเรื่องกัน
+    //    ตัวนับต้องเดินตามจริงเสมอ แต่การแจ้งเตือนต้องกลับมาเมื่อเป็นการทักรอบใหม่ (เว้นช่วงนาน)
+    //    แม้ตัวนับจะยังค้างอยู่ ไม่งั้นทีมจะเงียบไปตลอดกาลถ้าเผลอไม่เคลียร์ unread
+    const flippedNow = flipped.count === 1;
+    firstUnread = flippedNow || newBurst;
+    if (!flippedNow) {
+      // เดิมมี unread ค้างอยู่แล้ว → เพิ่มตัวนับเฉย ๆ
       await tx.chatConversation.update({
         where: { id: conv.id },
         data: { ...denorm, staffUnreadCount: { increment: 1 } },

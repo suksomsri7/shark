@@ -30,6 +30,7 @@ import {
   setBusinessHoursAction,
 } from "./actions";
 import { RETENTION_MIN_DAYS, RETENTION_MAX_DAYS } from "./retention";
+import { ChatMarkReadOnOpen } from "@/components/chat-mark-read-on-open";
 import {
   DAY_LABELS,
   DEFAULT_TZ,
@@ -587,6 +588,8 @@ async function ThreadPane({
 
   return (
     <div className="flex flex-1 flex-col gap-2">
+      {/* เปิดห้อง = อ่านแล้ว (ปลดล็อกทั้งแจ้งเตือนขาเข้ารอบถัดไป และติ๊กคู่ ✓✓ ฝั่งลูกค้า) */}
+      <ChatMarkReadOnOpen systemId={systemId} conversationId={c.id} unread={c.staffUnreadCount} />
       {/* header */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
         <div className="min-w-0">

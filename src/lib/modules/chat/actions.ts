@@ -118,6 +118,31 @@ export async function assignAction(formData: FormData) {
   redirect(chatPath(systemId, conversationId));
 }
 
+/**
+ * เปิดห้อง = อ่านแล้ว — เรียกจาก `<ChatMarkReadOnOpen>` ตอน mount
+ *
+ * 🔴 ห้าม `redirect()` ที่นี่ (ต่างจาก `markReadAction` ที่มาจากการกดปุ่ม) — action นี้ถูกเรียก
+ *    จาก effect ตอนหน้าโหลด ถ้า redirect จะกลายเป็นวงวนโหลดหน้าไม่รู้จบ
+ * เงียบเสมอ: อ่านไม่สำเร็จก็ไม่ควรทำให้หน้าแชทที่ทีมกำลังใช้งานพัง
+ */
+export async function markReadOnOpenAction(systemId: string, conversationId: string): Promise<void> {
+  if (!systemId || !conversationId) return;
+  try {
+    const auth = await requireTenant();
+    assertChatCan(auth, "chat.conversation.markRead");
+    await markRead({
+      tenantId: auth.active.tenantId,
+      systemId,
+      conversationId,
+      userId: auth.user.id,
+      unitAccess: auth.active.unitAccess as string[],
+    });
+    revalidateChat(systemId);
+  } catch {
+    /* ไม่มีสิทธิ์/ห้องหาย → ไม่ต้องทำอะไร */
+  }
+}
+
 // ── ทำเป็นอ่านแล้ว ──
 export async function markReadAction(formData: FormData) {
   const auth = await requireTenant();

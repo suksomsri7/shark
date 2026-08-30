@@ -485,6 +485,44 @@ try {
       chk("CP-3.4", "การยิง event อยู่ในทรานแซกชันเดียวกับการล้าง unread (ล้างสำเร็จ = event รอด)",
         txs.length >= 2 && txs.every((t) => t !== null),
         "tx ไม่เป็น null", j({ txs }));
+
+      // 🔴 เจ้าของเจอจริง 30 ส.ค. 2026 — ต้นเหตุของ **ทั้งสองอาการ**:
+      //    "ข้อความมาแต่ไม่ได้ notification" + "ติ๊กคู่ ✓✓ ไม่เคยขึ้น"
+      //    คือหน้า inbox ไม่เคยเรียก markRead ตอนเปิดห้อง (มีแค่ตอนกดตอบ/กดปุ่มเอง)
+      const UI = readFileSync("src/lib/modules/chat/ui.tsx", "utf8");
+      const ACT = readFileSync("src/lib/modules/chat/actions.ts", "utf8");
+      chk("CP-3.5", "🔴 เปิดห้องแชท = อ่านแล้วอัตโนมัติ (ไม่ต้องรอทีมกดปุ่ม)",
+        /<ChatMarkReadOnOpen/.test(UI) && /markReadOnOpenAction/.test(ACT),
+        "หน้าแชทเรียก ChatMarkReadOnOpen + มี action", j({ ui: /<ChatMarkReadOnOpen/.test(UI), act: /markReadOnOpenAction/.test(ACT) }));
+      chk("CP-3.6", "🔴 action ที่ยิงจากตอนเปิดหน้า **ห้าม redirect** (ไม่งั้นวนโหลดหน้าไม่รู้จบ)",
+        !/redirect\(/.test(ACT.slice(ACT.indexOf("markReadOnOpenAction"), ACT.indexOf("// ── ทำเป็นอ่านแล้ว ──"))),
+        "ไม่มี redirect ในตัว on-open", "?");
+    });
+
+    // ═════════ CP-4 · แจ้งเตือนต้องกลับมาเมื่อลูกค้าทักรอบใหม่ ═════════
+    //
+    // 🔴 เจ้าของ: "ฝั่ง shark ไม่ได้รับ notification แต่ข้อความมา"
+    //    de-dup เดิม = "แจ้งครั้งเดียวจนกว่าทีมจะอ่าน" ⇒ ตัวนับค้าง = เงียบตลอดกาล
+    //    เจตนาจริงคือกัน "พิมพ์รัวหลายบรรทัด" ซึ่งวัดด้วย **เวลา** ตรงกว่า
+    await section("CP-4", "\nCP-4 แจ้งเตือนกลับมาเมื่อทักรอบใหม่ (ไม่ใช่เงียบตลอดกาล):", async () => {
+      const pushes = () => net.filter((n) => n.url.includes("exp.host")).length;
+      seedShop();
+      net.length = 0;
+      await say(chat, "ทักครั้งแรก");
+      const after1 = pushes();
+      await say(chat, "พิมพ์ต่อทันที");
+      const after2 = pushes();
+      chk("CP-4.1", "พิมพ์ต่อทันที (ยังเป็นชุดเดียวกัน) → ไม่แจ้งซ้ำ",
+        after1 === 1 && after2 === 1, "1 แล้วยัง 1", j({ after1, after2 }));
+
+      // ดันเวลาข้อความล่าสุดให้ย้อนไปนานกว่าหน้าต่าง แล้วทักใหม่ = คนละชุด
+      const cv = tables.chatConversation![0]!;
+      cv.lastMessageAt = new Date(Date.now() - 30 * 60_000);
+      await say(chat, "กลับมาถามใหม่อีกครั้ง");
+      chk("CP-4.2", "🔴 เว้นช่วงนานแล้วทักใหม่ → **แจ้งอีกครั้ง** แม้ทีมยังไม่ได้เคลียร์ unread",
+        pushes() === 2, "2 ครั้ง", j({ pushes: pushes(), unread: cv.staffUnreadCount }));
+      chk("CP-4.3", "ตัวนับ unread ยังเดินตามจริงทุกข้อความ (คนละเรื่องกับการแจ้งเตือน)",
+        cv.staffUnreadCount === 3, "3", j({ unread: cv.staffUnreadCount }));
     });
   }
 
