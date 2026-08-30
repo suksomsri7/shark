@@ -1,13 +1,14 @@
 import { requireTenant } from "@/lib/core/context";
 import { listEndpoints, listDeliveries } from "@/lib/webhooks/service";
-import { toggleEndpointAction, deleteEndpointAction, updateEndpointEventsAction } from "@/lib/webhooks/actions";
-import { webhookEventLabel, WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
+import { toggleEndpointAction, deleteEndpointAction } from "@/lib/webhooks/actions";
+import { webhookEventLabel } from "@/lib/webhooks/labels";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { WebhookEndpointForm } from "@/components/webhook-endpoint-form";
+import { WebhookEventsEditor } from "@/components/webhook-events-editor";
 import { formatThaiDateTime } from "@/lib/ui/date";
 
 // ตั้งค่า Webhooks ขาออก (WO-0062): สมัคร URL รับเหตุการณ์ + ลายเซ็น HMAC + ดูประวัติการส่ง
@@ -67,32 +68,7 @@ export default async function WebhooksSettingsPage() {
                     {/* 🔴 30 ส.ค. 2026 — เดิมหน้านี้มีแต่ "เพิ่ม/ลบ" ⇒ ร้านที่อยากรับเหตุการณ์ใหม่เพิ่ม
                         ต้องลบทิ้งแล้วสร้างใหม่ ซึ่ง**สุ่มรหัสลับใหม่** = ระบบปลายทางที่ถือรหัสเดิม
                         ตรวจลายเซ็นไม่ผ่านทุกใบทันที (เจ้าของติดตรงนี้จริงตอนเพิ่ม chat.conversation.read) */}
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-xs text-[color:var(--color-muted)] underline">
-                        แก้เหตุการณ์ที่รับ
-                      </summary>
-                      <form action={updateEndpointEventsAction} className="mt-2 flex flex-col gap-1">
-                        <input type="hidden" name="id" value={ep.id} />
-                        {WEBHOOK_EVENTS.map((w) => (
-                          <label key={w.value} className="flex items-start gap-2 text-xs">
-                            <input
-                              type="checkbox"
-                              name="events"
-                              value={w.value}
-                              defaultChecked={events.includes(w.value)}
-                              className="mt-0.5"
-                            />
-                            <span>{w.label}</span>
-                          </label>
-                        ))}
-                        <p className="text-xs text-[color:var(--color-muted)]">
-                          ไม่ติ๊กเลย = รับทุกเหตุการณ์ · รหัสลับไม่เปลี่ยน ระบบปลายทางไม่ต้องแก้อะไร
-                        </p>
-                        <button type="submit" className="btn-sm self-start">
-                          บันทึกเหตุการณ์
-                        </button>
-                      </form>
-                    </details>
+                    <WebhookEventsEditor id={ep.id} selected={events} />
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <form action={toggleEndpointAction}>

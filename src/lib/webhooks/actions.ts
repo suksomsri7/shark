@@ -67,16 +67,33 @@ export async function toggleEndpointAction(formData: FormData): Promise<void> {
   revalidatePath(SETTINGS_PATH);
 }
 
+export type UpdateEventsState =
+  | { status: "idle" }
+  /** `events` = ค่าที่ **อ่านกลับจากฐานข้อมูล** ไม่ใช่ค่าที่ฟอร์มส่งไป — คำยืนยันต้องเชื่อถือได้ */
+  | { status: "ok"; events: string[] }
+  | { status: "error"; message: string };
+
 // แก้เหตุการณ์ที่ปลายทางเดิมรับ — 🔴 secret ต้องเหมือนเดิม ไม่งั้นปลายทางตรวจลายเซ็นไม่ผ่าน
-export async function updateEndpointEventsAction(formData: FormData): Promise<void> {
+export async function updateEndpointEventsAction(
+  _prev: UpdateEventsState,
+  formData: FormData,
+): Promise<UpdateEventsState> {
   const auth = await requireTenant();
   assertWebhookCan(auth, "webhook.endpoint.update");
   const id = String(formData.get("id") ?? "");
-  if (!id) return;
+  if (!id) return { status: "error", message: "ไม่พบปลายทางนี้" };
   const selected = formData.getAll("events").map((v) => String(v));
   const events = selected.filter((e) => WEBHOOK_EVENTS.some((w) => w.value === e));
-  await setEndpointEvents({ tenantId: auth.active.tenantId }, id, events);
-  revalidatePath(SETTINGS_PATH);
+  try {
+    const saved = await setEndpointEvents({ tenantId: auth.active.tenantId }, id, events);
+    revalidatePath(SETTINGS_PATH);
+    const stored = Array.isArray(saved.eventsJson)
+      ? (saved.eventsJson as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+    return { status: "ok", events: stored };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "บันทึกไม่สำเร็จ" };
+  }
 }
 
 // ลบ endpoint
