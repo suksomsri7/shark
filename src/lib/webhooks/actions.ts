@@ -6,7 +6,7 @@
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
-import { createEndpoint, setEndpointActive, deleteEndpoint } from "./service";
+import { createEndpoint, setEndpointActive, setEndpointEvents, deleteEndpoint } from "./service";
 import { WEBHOOK_EVENTS } from "./labels";
 
 const SETTINGS_PATH = "/app/settings/webhooks";
@@ -64,6 +64,18 @@ export async function toggleEndpointAction(formData: FormData): Promise<void> {
   const active = String(formData.get("active") ?? "") === "true";
   if (!id) return;
   await setEndpointActive({ tenantId: auth.active.tenantId }, id, active);
+  revalidatePath(SETTINGS_PATH);
+}
+
+// แก้เหตุการณ์ที่ปลายทางเดิมรับ — 🔴 secret ต้องเหมือนเดิม ไม่งั้นปลายทางตรวจลายเซ็นไม่ผ่าน
+export async function updateEndpointEventsAction(formData: FormData): Promise<void> {
+  const auth = await requireTenant();
+  assertWebhookCan(auth, "webhook.endpoint.update");
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const selected = formData.getAll("events").map((v) => String(v));
+  const events = selected.filter((e) => WEBHOOK_EVENTS.some((w) => w.value === e));
+  await setEndpointEvents({ tenantId: auth.active.tenantId }, id, events);
   revalidatePath(SETTINGS_PATH);
 }
 

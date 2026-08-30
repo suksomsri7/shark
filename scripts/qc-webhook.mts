@@ -73,6 +73,26 @@ try {
     const src = (await import("node:fs")).readFileSync("src/lib/outbox-consumers.ts", "utf8");
     chk("WB-4.2", "outbox-consumers ผูก dispatchWebhooks (ทุก event)", src.includes("dispatchWebhooks"), "ผูก", "?");
 
+    // 6) แก้เหตุการณ์ที่รับ โดย **ห้ามแตะ secret**
+    //    🔴 เดิม UI มีแต่ "เพิ่ม/ลบ" ⇒ อยากรับ event เพิ่มต้องลบแล้วสร้างใหม่ = secret เปลี่ยน
+    //       ระบบปลายทางที่ถือรหัสเดิมตรวจลายเซ็นไม่ผ่านทุกใบทันที (เจ้าของติดจริง 30 ส.ค. 2026)
+    const epEdit = await wh.createEndpoint(ctx, { url: "https://example.com/edit", events: ["chat.message.sent"] });
+    await wh.setEndpointEvents(ctx, epEdit.id, ["chat.message.sent", "chat.conversation.read"]);
+    const afterEdit = await prisma.webhookEndpoint.findUnique({ where: { id: epEdit.id as string } });
+    chk("WB-6.1", "🔴 แก้รายการเหตุการณ์แล้ว secret ต้องเหมือนเดิม (ไม่งั้นปลายทางพังทันที)",
+      afterEdit?.secret === epEdit.secret, "secret เดิม", afterEdit?.secret === epEdit.secret ? "เดิม" : "เปลี่ยนไป");
+    chk("WB-6.2", "รายการเหตุการณ์ถูกบันทึกจริง", JSON.stringify(afterEdit?.eventsJson) === '["chat.message.sent","chat.conversation.read"]',
+      '["chat.message.sent","chat.conversation.read"]', JSON.stringify(afterEdit?.eventsJson));
+    const cap6: Captured[] = [];
+    await wh.dispatchWebhooks({ tenantId: tid, type: "chat.conversation.read", payload: { externalUserId: "dev_1" } }, { fetchFn: mkFetch(false, cap6) });
+    chk("WB-6.3", "🟢 คู่บวก: หลังติ๊กเพิ่ม → event ใหม่ถูกส่งถึงปลายทางนั้นจริง",
+      cap6.some((c) => c.url.includes("/edit")), "ส่งถึง /edit", JSON.stringify(cap6.map((c) => c.url)));
+    await wh.setEndpointEvents(ctx, epEdit.id, []);
+    const cap6b: Captured[] = [];
+    await wh.dispatchWebhooks({ tenantId: tid, type: "approval.request.approved", payload: {} }, { fetchFn: mkFetch(false, cap6b) });
+    chk("WB-6.4", "ล้างให้ว่าง = กลับไปรับทุกเหตุการณ์ (กติกาเดียวกับตอนสร้าง)",
+      cap6b.some((c) => c.url.includes("/edit")), "ส่งถึง /edit", JSON.stringify(cap6b.map((c) => c.url)));
+
     // 5) isolation
     chk("WB-5.1", "tenant อื่นไม่เห็น endpoint (guard)", await (async () => { const t2 = await prisma.tenant.create({ data: { name: "QC WBH2", slug: `qc-wbh2-${Date.now()}` } }); const l = (await wh.listEndpoints({ tenantId: t2.id })) as unknown[]; await prisma.tenant.delete({ where: { id: t2.id } }); return l.length === 0; })(), "0", "?");
   }

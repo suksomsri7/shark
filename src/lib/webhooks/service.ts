@@ -54,6 +54,22 @@ export async function setEndpointActive(ctx: Ctx, id: string, active: boolean) {
   return tenantDb(ctx).webhookEndpoint.update({ where: { id }, data: { active } });
 }
 
+/**
+ * แก้รายการเหตุการณ์ที่ปลายทางนี้รับ — **โดยไม่แตะ secret**
+ *
+ * 🔴 ก่อนหน้านี้หน้าตั้งค่ามีแต่ "เพิ่ม/ลบ" ⇒ ร้านที่อยากรับ event ใหม่เพิ่มต้องลบทิ้งแล้วสร้างใหม่
+ *    ซึ่ง**สุ่ม secret ใหม่** ⇒ ระบบปลายทางที่ยังถือรหัสเดิมจะตรวจลายเซ็นไม่ผ่านทุกใบทันที
+ *    (เจ้าของเจอเองตอนต้องเพิ่ม `chat.conversation.read` — 30 ส.ค. 2026)
+ * รายการว่าง = รับทุกเหตุการณ์ (กติกาเดียวกับตอนสร้าง · ดู dispatchWebhooks)
+ */
+export async function setEndpointEvents(ctx: Ctx, id: string, events: string[]) {
+  const clean = events.filter((e) => typeof e === "string" && e.trim() !== "");
+  return tenantDb(ctx).webhookEndpoint.update({
+    where: { id },
+    data: { eventsJson: clean as Prisma.InputJsonValue },
+  });
+}
+
 // ลบ endpoint (deliveries ผูก onDelete: Cascade → หายตาม)
 export async function deleteEndpoint(ctx: Ctx, id: string): Promise<void> {
   await tenantDb(ctx).webhookEndpoint.delete({ where: { id } });
