@@ -5,6 +5,8 @@
 
 import { prisma } from "@/lib/core/db";
 import { drainAll } from "@/lib/outbox-consumers";
+import { outboxHealth } from "@/lib/core/outbox";
+import { logOps } from "@/lib/core/ops";
 import { sweepPendingDeletes } from "@/lib/platform/pdpa";
 import { sweepWeeklyAnalysis } from "@/lib/ai/analyst";
 import { sweepExpiringLots } from "@/lib/modules/inventory/service";
@@ -103,6 +105,24 @@ export async function runDailyCron(
     lotsExpiring = await sweepExpiringLots(now);
   } catch {
     // กวาด lot ใกล้หมดอายุพัง → -1 ไปต่อ
+  }
+  try {
+    // 🔴 ตัวเฝ้าคิว (30 ส.ค. 2026) — ตาข่ายนิรภัยที่ไม่มีสัญญาณเตือน = รู้ตัวช้ากว่าผู้ใช้เสมอ
+    //    รอบนี้คิวตันทั้งระบบหลายชั่วโมงโดยไม่มีใครรู้ จนลูกค้ามาบอกว่าข้อความไม่ถึง
+    //    ⇒ ตรวจ **หลัง** drain แล้ว: ถ้ายังมีของค้าง/ตาย แปลว่าระบายไม่ออกจริง ต้องส่งเสียง
+    //    logOps ERROR ส่งอีเมลแจ้งเจ้าของ + throttle 60 นาที/source อยู่แล้ว จึงไม่ท่วม
+    const health = await outboxHealth(now);
+    const deadHooks = await prisma.webhookDelivery.count({ where: { status: "FAILED", attempts: { gte: 5 } } });
+    if (health.stale > 0 || health.dead > 0 || deadHooks > 0) {
+      await logOps(
+        "ERROR",
+        "outbox-health",
+        `คิวส่งข้อความผิดปกติ — ค้างนาน ${health.stale} ใบ · ล้มถาวร ${health.dead} ใบ · webhook ตาย ${deadHooks} ใบ`,
+        { detail: `ใบที่เก่าสุดค้างมา ${health.oldestStaleMin} นาที · ตรวจหลัง drain ของ cron รอบนี้แล้ว` },
+      );
+    }
+  } catch {
+    // ตัวเฝ้าพัง → ห้ามทำให้ cron ทั้งรอบล้ม
   }
   try {
     // Webhooks ขาออก (WO-0062): ยิงซ้ำการส่งที่ล้ม (attempts < 5) ทุกร้าน

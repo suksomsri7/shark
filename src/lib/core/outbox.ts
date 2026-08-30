@@ -84,6 +84,35 @@ export function drainOutbox(
   return run;
 }
 
+/**
+ * สุขภาพของคิว event — ใช้โดย cron รายชั่วโมงเพื่อ "ส่งเสียง" เมื่อมีอะไรค้างผิดปกติ
+ *
+ * 🔴 ทำไมต้องมี (30 ส.ค. 2026): คิวตันทั้งระบบเพราะ event ชนิดใหม่ไม่มีตัวรับ แล้ว
+ *    **ไม่มีใครรู้เลย** จนลูกค้ามาบอกว่าข้อความไม่ถึง · ตาข่ายนิรภัย (cron ระบายคิว) มีอยู่แล้ว
+ *    แต่ตาข่ายที่ไม่มีสัญญาณเตือน = เรารู้ตัวช้ากว่าผู้ใช้เสมอ
+ *
+ * - `stale` = ยังไม่ถูกประมวลผลทั้งที่เก่ากว่าหน้าต่างปกติมาก (drain ทำงานทุกครั้งที่มี event
+ *   และ cron ก็กวาดรายชั่วโมง ⇒ เกิน 15 นาทีคือผิดปกติแน่นอน)
+ * - `dead` = ลองครบจำนวนครั้งแล้วยังไม่สำเร็จ (`FAILED`) — ไม่มีใครยิงซ้ำให้อีก ต้องมีคนมาดู
+ */
+export async function outboxHealth(
+  now: Date,
+  staleMs = 15 * 60_000,
+): Promise<{ stale: number; dead: number; oldestStaleMin: number }> {
+  const cutoff = new Date(now.getTime() - staleMs);
+  const [stale, dead, oldest] = await Promise.all([
+    prisma.outboxEvent.count({ where: { status: "PENDING", createdAt: { lt: cutoff } } }),
+    prisma.outboxEvent.count({ where: { status: "FAILED" } }),
+    prisma.outboxEvent.findFirst({
+      where: { status: "PENDING" },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
+    }),
+  ]);
+  const oldestStaleMin = oldest ? Math.floor((now.getTime() - oldest.createdAt.getTime()) / 60_000) : 0;
+  return { stale, dead, oldestStaleMin };
+}
+
 async function drainOnce(
   consumers: Record<string, OutboxHandler>,
   opts?: { limit?: number },

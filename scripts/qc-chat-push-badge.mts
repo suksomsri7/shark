@@ -599,6 +599,31 @@ try {
       chk("CP-6.3", "ไม่มี consumer = ต้องส่งเสียง ไม่ใช่ค้างเงียบ",
         /logOps\(\s*"ERROR",\s*"outbox"/.test(readFileSync("src/lib/core/outbox.ts", "utf8")),
         "มี logOps ERROR ตอนไม่เจอ consumer", "?");
+
+      // ── ตัวเฝ้าคิว: ตาข่ายนิรภัยต้องมีสัญญาณเตือน ไม่งั้นเรารู้ตัวช้ากว่าผู้ใช้เสมอ ──
+      const { outboxHealth } = await import("@/lib/core/outbox" as string) as {
+        outboxHealth: (n: Date, ms?: number) => Promise<{ stale: number; dead: number; oldestStaleMin: number }>;
+      };
+      const NOW = new Date("2026-08-30T10:00:00.000Z");
+      tables.outboxEvent = [
+        { id: "o1", status: "PENDING", createdAt: new Date("2026-08-30T09:00:00.000Z"), tenantId: "T1" }, // ค้าง 60 นาที
+        { id: "o2", status: "PENDING", createdAt: new Date("2026-08-30T09:59:00.000Z"), tenantId: "T1" }, // เพิ่งเข้า ปกติ
+        { id: "o3", status: "FAILED", createdAt: new Date("2026-08-30T08:00:00.000Z"), tenantId: "T1" },
+        { id: "o4", status: "DONE", createdAt: new Date("2026-08-30T08:00:00.000Z"), tenantId: "T1" },
+      ];
+      const h = await outboxHealth(NOW);
+      chk("CP-6.4", "🔴 ตัวเฝ้านับ 'ค้างนานผิดปกติ' และ 'ล้มถาวร' ได้ถูกต้อง (ใบที่เพิ่งเข้าไม่นับ)",
+        h.stale === 1 && h.dead === 1 && h.oldestStaleMin === 60,
+        "ค้าง 1 · ตาย 1 · เก่าสุด 60 นาที", j(h));
+      tables.outboxEvent = [{ id: "o5", status: "DONE", createdAt: NOW, tenantId: "T1" }];
+      const h2 = await outboxHealth(NOW);
+      chk("CP-6.5", "🟢 คู่บวก: คิวปกติ → เงียบ (ไม่ปลุกเจ้าของทุกชั่วโมง)",
+        h2.stale === 0 && h2.dead === 0, "0/0", j(h2));
+      const CRON = readFileSync("src/lib/platform/cron.ts", "utf8");
+      chk("CP-6.6", "cron รายชั่วโมงเรียกตัวเฝ้า **หลัง** drain แล้วแจ้ง ERROR เมื่อผิดปกติ",
+        /outboxHealth\(now\)/.test(CRON) && /"outbox-health"/.test(CRON) &&
+        CRON.indexOf("drainAll()") < CRON.indexOf("outboxHealth(now)"),
+        "เรียกหลัง drain + logOps ERROR", j({ health: /outboxHealth\(now\)/.test(CRON), source: /"outbox-health"/.test(CRON) }));
     });
   }
 
