@@ -26,7 +26,7 @@ export default async function ChatChannelsPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
-      <PageHeader title={sys.name} back={{ href: `/app/sys/${id}`, label: sys.name }} desc="เชื่อมช่องทาง — LINE OA · แชทหน้าเว็บ · ระบบสมาชิก" />
+      <PageHeader title={sys.name} back={{ href: `/app/sys/${id}`, label: sys.name }} desc="เชื่อมช่องทาง · ผู้ช่วย AI · คลังตัวอย่างคำตอบ" />
       <ModuleTabs items={chatTabs(id)} />
       <ChatChannelsSection systemId={id} tenantId={tenantId} err={err} />
     </div>

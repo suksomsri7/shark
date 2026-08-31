@@ -8,7 +8,8 @@ import { CouponHub } from "@/lib/modules/coupon/ui";
 import { MeetingHub } from "@/lib/modules/meeting/ui";
 import { KanbanHub } from "@/lib/modules/kanban/ui";
 import { AccountContent } from "@/lib/modules/account/ui";
-import { ChatHub } from "@/lib/modules/chat/ui";
+import { ChatInboxSection, chatTabs } from "@/lib/modules/chat/ui";
+import { canReadChat } from "@/lib/modules/chat/guard";
 import { CrmHub } from "@/lib/modules/crm/ui";
 import { InvHub } from "@/lib/modules/inventory/ui";
 import { HrHub } from "@/lib/modules/hr/ui";
@@ -29,14 +30,27 @@ const fmt = (d: Date) =>
   d.toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
 
 // หน้า "ระบบ" ประเภท feature (สมาชิก/แต้ม/POS/รางวัล) — เนื้อหา + การเชื่อมต่อ
-export default async function SystemPage({ params }: { params: Promise<{ id: string }> }) {
+// 🔴 ระบบ CHAT: หน้านี้ = **กล่องแชทเต็มจอ** แล้ว (คำสั่งข้อ 1 ของเจ้าของ · เดิมเป็นการ์ด 2 ใบ)
+//    เลือกห้องด้วย `?c=` · `?err=` มาจาก server action ของแชทที่ redirect กลับมา
+export default async function SystemPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ c?: string; err?: string }>;
+}) {
   const { id } = await params;
+  const { c, err } = await searchParams;
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
 
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId } });
   if (!sys) notFound();
   const def = systemDef(sys.type);
+  const isChat = sys.type === "CHAT";
+  // ซ่อนกล่องแชทให้คนที่ไม่มีสิทธิ์อ่าน แล้วบอกตรง ๆ ว่าต้องทำอะไรต่อ
+  // (ด่านจริงยังอยู่ที่ `requireChatRead()` ใน ChatInboxSection — ตรงนี้แค่ทำให้ข้อความเป็นภาษาคน)
+  const mayReadChat = isChat && canReadChat(auth);
 
   // เชื่อมระบบย้ายไปจัดการรวมที่ /app/settings/connections แล้ว
   // สาขาเดียว = ซ่อนทั้งหมด (createSystemAutoLink เชื่อมให้แล้ว) · หลายสาขา = โชว์ลิงก์เล็ก ๆ
@@ -45,7 +59,7 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
   });
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
+    <div className={`flex flex-col gap-6 ${isChat ? "max-w-6xl" : "max-w-2xl"}`}>
       <PageHeader
         title={`${def?.icon ?? ""} ${sys.name}`.trim()}
         desc={`ระบบ${def?.label ?? ""}`}
@@ -69,7 +83,19 @@ export default async function SystemPage({ params }: { params: Promise<{ id: str
       {sys.type === "MEETING" && <MeetingHub systemId={id} tenantId={tenantId} />}
       {sys.type === "KANBAN" && <KanbanHub systemId={id} tenantId={tenantId} />}
       {sys.type === "ACCOUNT" && <AccountContent systemId={id} tenantId={tenantId} />}
-      {sys.type === "CHAT" && <ChatHub systemId={id} tenantId={tenantId} />}
+      {isChat && (
+        <div className="flex min-w-0 flex-col gap-4">
+          <ModuleTabs items={chatTabs(id)} />
+          {mayReadChat ? (
+            <ChatInboxSection systemId={id} tenantId={tenantId} conversationId={c} err={err} />
+          ) : (
+            <p className="card text-sm text-[color:var(--color-muted)]">
+              บัญชีของคุณยังไม่มีสิทธิ์ดูกล่องแชทลูกค้า — ขอสิทธิ์ “ดูกล่องแชทลูกค้า”
+              จากผู้ดูแลร้านได้ที่หน้าผู้ใช้งาน
+            </p>
+          )}
+        </div>
+      )}
       {sys.type === "CRM" && <CrmHub systemId={id} />}
       {sys.type === "INVENTORY" && <InvHub systemId={id} />}
       {sys.type === "HR" && <HrHub systemId={id} />}

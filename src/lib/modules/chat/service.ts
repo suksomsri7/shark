@@ -15,8 +15,8 @@ import { prisma } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
 import { drainAll } from "@/lib/outbox-consumers";
 import * as member from "@/lib/modules/member/service";
-import { getAdapter, ChannelDeliveryError } from "./adapter";
-import type { ChannelCreds, InboundMessage } from "./adapter";
+import { getAdapter, isSupported, ChannelDeliveryError } from "./adapter";
+import type { ChannelCreds, InboundMessage, OutboundMessage } from "./adapter";
 import { readBusinessHours } from "./business-hours";
 import type { BusinessDay, StoredBusinessHours } from "./business-hours";
 import { encryptCreds, decryptCreds, mask } from "./crypto";
@@ -501,11 +501,17 @@ function resolveSentAt(
   return { ok: true, at: sentAt };
 }
 
-const CHANNEL_LABEL_TH: Record<string, string> = {
+// 🔴 IU-4.7 (31 ส.ค. 2026): เดิมเป็น `Record<string, string>` ⇒ typecheck ไม่แดงเวลา enum โตขึ้น
+//    ผลจริง: `APP`/`TIKTOK` ที่เพิ่งเพิ่ม (WO-CW1 N1) ตกไปใช้ค่าดิบ ⇒ แจ้งเตือนขึ้นว่า
+//    "ลูกค้าทักเข้ามา · APP" เป็นอังกฤษกลางข้อความไทย
+//    ⇒ ผูกกับ `ChatChannelType` เต็มรูป: เพิ่มค่าใน enum แล้วลืมป้าย = typecheck แดงทันที
+const CHANNEL_LABEL_TH: Record<ChatChannelType, string> = {
   LINE: "LINE",
   WEBCHAT: "แชทหน้าเว็บ",
+  APP: "แอปมือถือ",
   FACEBOOK: "Facebook",
   INSTAGRAM: "Instagram",
+  TIKTOK: "TikTok",
   SHOPEE: "Shopee",
   LAZADA: "Lazada",
   WHATSAPP: "WhatsApp",
@@ -588,11 +594,22 @@ async function announceInbound(args: {
     });
 
     if (firstUnread) {
+      // 🔴 PDPA (31 ส.ค. 2026 · ช่องโหว่ตัวที่ 2 ของแพตเทิร์นเดียวกับ G9)
+      //    `AppNotification` เป็น **tenant-wide**: สคีมาไม่มี `userId`/`role` เลย และหน้า
+      //    `/app/notifications` อ่านด้วย `listNotifications({ tenantId })` โดยไม่มี `assertCan`
+      //    ⇒ ใครก็ตามที่เข้าแอปของร้านได้ เปิดศูนย์แจ้งเตือนแล้วอ่าน "ตัวอย่างข้อความลูกค้า"
+      //    ได้ทั้งหมด แม้ไม่มีสิทธิ์แชทสักข้อ (เราเพิ่งปิดทาง push ไปแล้ว แต่ทางนี้ยังเปิดอยู่)
+      //    ⇒ ตัด `previewText` (เนื้อความจริงของลูกค้า) ออก เหลือแค่ **ใคร/ช่องทางไหน/ลิงก์เข้าห้อง**
+      //      ซึ่งไม่ใช่เนื้อหา · คนที่มีสิทธิ์กดลิงก์เข้าไปอ่านของจริงได้อยู่แล้ว (ห้องแชทมีด่าน)
+      //    ⚠️ **มาตรการชั่วคราว** — ถอดออกได้เมื่อ `AppNotification` มีช่องผู้รับ/สิทธิ์
+      //      (เช่น `targetUserId` หรือ `requiredAction`) แล้วขาอ่านกรองผู้รับได้จริง
+      //    ⚠️ ห้ามเอากติกานี้ไปใช้กับ push: `sendPushToChatStaff` คัดผู้รับด้วยสิทธิ์จริงแล้ว
+      //      จึงยังใส่ตัวอย่างข้อความได้ตามเดิม — นั่นคือประโยชน์หลักของการแจ้งเตือน
       await tx.appNotification.create({
         data: {
           tenantId,
           title: "ลูกค้าทักเข้ามา",
-          body: `${args.contactLabel} (${channelTh}): ${args.previewText || "ข้อความใหม่"} · เปิดห้องแชท /app/sys/${systemId}/chat?c=${conv.id}`,
+          body: `${args.contactLabel} (${channelTh}) ส่งข้อความใหม่ · เปิดห้องแชท /app/sys/${systemId}/chat?c=${conv.id}`,
         },
       });
     }
@@ -606,10 +623,17 @@ async function announceInbound(args: {
   //    ลูกค้าพิมพ์รัว 5 บรรทัด = แจ้งเตือน 1 ครั้ง จนกว่าทีมจะกดอ่าน (markRead → staffUnreadCount 0)
   // 🔴 ห้าม throw: ส่งแจ้งเตือนพลาดต้องไม่ทำให้ข้อความลูกค้าหาย (ข้อความถูกบันทึกไปแล้วก่อนถึงตรงนี้)
   //    sendPushToTenant เองก็ best-effort อยู่แล้ว — try/catch นี้กันแค่ตอน import โมดูลพัง
+  // 🔴 WO-CW3 (สัญญากับสาย E): เดิมเป็น `sendPushToTenant` = ยิงทุกเครื่องในร้าน (G9)
+  //    ⇒ พนักงานที่ไม่มีสิทธิ์แชทก็ได้เนื้อความลูกค้าเด้งขึ้นหน้าจอล็อก = ข้อมูลรั่วนอก RBAC
+  //    ตัวใหม่คัดผู้รับจาก `chat.conversation.read` + ให้ผู้รับผิดชอบเธรดมาก่อน
   if (firstUnread) {
     try {
-      const { sendPushToTenant } = await import("@/lib/core/push");
-      await sendPushToTenant(tenantId, {
+      const { sendPushToChatStaff } = await import("@/lib/core/push");
+      await sendPushToChatStaff({
+        tenantId,
+        systemId,
+        conversationId: conv.id,
+        assigneeUserId: conv.assigneeUserId,
         title: `ลูกค้าทักเข้ามา · ${channelTh}`,
         body: `${args.contactLabel}: ${args.previewText || "ข้อความใหม่"}`.slice(0, 140),
         // ⚠️ แอปมือถือยัง deep link เข้ากล่องแชทลูกค้าไม่ได้ (ยังไม่มีจอนั้น) — listener ใน
@@ -1030,19 +1054,50 @@ async function maybeAutoLinkMember(tenantId: string, systemId: string, contactId
 
 // ───────────────────────── Outbound (staff ตอบ) ─────────────────────────
 
+/**
+ * ประกอบข้อความขาออกที่จะยิงเข้า adapter — 1 ข้อความในระบบอาจกลายเป็นหลายชิ้นบนช่องทาง
+ * (LINE ส่ง text กับ image เป็นคนละ message object) · ไฟล์ที่ไม่ใช่รูปส่งเป็นลิงก์
+ * 🔴 ห้ามทิ้งไฟล์เงียบ ๆ: ทีมกดส่งรูปแล้วลูกค้าไม่ได้รับ = ความเสียหายที่ไม่มีใครเห็นจนสายเกินไป
+ */
+function buildOutboundMessages(
+  body: string,
+  attachments: ExternalAttachmentInput[],
+): OutboundMessage[] {
+  const out: OutboundMessage[] = [];
+  if (body) out.push({ type: "TEXT", body });
+  for (const a of attachments) {
+    const url = a.url.trim();
+    const name = a.fileName?.trim() || fileNameFromUrl(url);
+    if (attachmentKind(a.mimeType) === "IMAGE") out.push({ type: "IMAGE", body: name, imageUrl: url });
+    else out.push({ type: "TEXT", body: `[ไฟล์] ${name}\n${url}` });
+  }
+  if (out.length === 0) out.push({ type: "TEXT", body });
+  return out;
+}
+
 export async function sendReply(args: {
   tenantId: string;
   systemId: string;
   conversationId: string;
   senderUserId: string;
-  body: string;
+  body?: string;
+  attachments?: ExternalAttachmentInput[];
   isInternal?: boolean;
-  senderName?: string; // ชื่อที่ลูกค้าเห็นเฉพาะข้อความนี้ (ไม่ใส่ = ใช้ ChatSetting.senderAlias)
-  unitAccess?: string[]; // M11
+  senderName?: string;
+  originalBody?: string;
+  unitAccess?: string[];
 }): Promise<{ ok: boolean; reason?: string; messageId?: string }> {
-  const body = args.body.trim();
-  if (!body) return { ok: false, reason: "ข้อความว่าง" };
+  // 🔴 เงื่อนไขเดิมคือ `if (!body) return` ⇒ ทีมส่ง "รูปอย่างเดียว" ไม่ได้เลย (G3)
+  //    กติกาใหม่: ต้องมีอย่างน้อย body **หรือ** ไฟล์แนบ (ตรงกับขาเข้า receiveExternalInbound)
+  const body = (args.body ?? "").trim();
+  const attachments = (args.attachments ?? []).filter((a) => a?.url?.trim() && a?.mimeType?.trim());
+  if (!body && attachments.length === 0) {
+    return { ok: false, reason: "ต้องมีข้อความหรือไฟล์แนบอย่างน้อยหนึ่งอย่าง" };
+  }
   if (body.length > 4000) return { ok: false, reason: "ข้อความยาวเกิน 4,000 ตัวอักษร" };
+  if (attachments.length > MAX_EXTERNAL_ATTACHMENTS) {
+    return { ok: false, reason: `แนบไฟล์ได้ไม่เกิน ${MAX_EXTERNAL_ATTACHMENTS} รายการต่อข้อความ` };
+  }
 
   const conv = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
@@ -1054,7 +1109,14 @@ export async function sendReply(args: {
   const isInternal = !!args.isInternal;
   // insert OUT ก่อน (ทีมเห็นทันที) — PENDING สำหรับช่องทางภายนอก, SENT สำหรับ internal/webchat
   const willSend = !isInternal;
-  const previewText = preview(body);
+  // ชนิดข้อความตามไฟล์ชิ้นแรก (กติกาเดียวกับขาเข้า) — mime ขึ้นต้น image/ → IMAGE · อื่น ๆ → FILE
+  const msgType: ChatMessageType =
+    attachments.length > 0 ? attachmentKind(attachments[0]!.mimeType) : "TEXT";
+  // 🔴 preview ของข้อความที่มีแต่ไฟล์ต้องไม่ว่าง — ไม่งั้นหน้ารายการ inbox ขึ้นบรรทัดเปล่า
+  //    (preview() ตัดสินจาก type ก่อนเสมอ → ได้ "[รูปภาพ]" / "[ไฟล์]")
+  const previewText = preview(body, msgType);
+  // ต้นฉบับที่ทีมพิมพ์ก่อนกด "แปลก่อนส่ง" — เก็บไว้ให้ทีมย้อนดูว่าตัวเองพิมพ์อะไร (§5.2)
+  const originalBody = args.originalBody?.trim() || null;
 
   // ชื่อที่ลูกค้าควรเห็น (M5) — นามแฝงของร้าน ไม่ใช่ชื่อพนักงานจริง
   // เก็บบนแถวเฉพาะที่ระบุมาเจาะจง · null = ให้ publicThread ตกไปใช้ senderAlias ตอนอ่าน
@@ -1072,6 +1134,8 @@ export async function sendReply(args: {
   //    ⇒ ลำดับคือ [tx: insert+outbox+denorm] → [นอก tx: ยิง adapter] → [นอก tx: อัปเดตผลส่ง]
   //    ผลข้างเคียงที่ยอมรับ: ยิงส่งไม่ผ่าน (deliveryStatus=FAILED) event ก็ออกไปแล้ว
   //    ผู้รับ webhook ต้องถือว่า "แอดมินตอบแล้ว" ไม่ใช่ "ถึงมือลูกค้าแล้ว" (ดู §3.4)
+  //    🔴 ไฟล์ถูก **อัปโหลดเสร็จก่อน**เข้ามาถึงฟังก์ชันนี้แล้ว (ชั้น action) — ที่นี่รับแต่ url
+  //       ถ้าเอา Bunny มาไว้ในนี้ = network call ในทรานแซกชัน = ถือ connection ของ Neon ค้าง
   const msg = await prisma.$transaction(async (tx) => {
     const created = await tx.chatMessage.create({
       data: {
@@ -1079,14 +1143,34 @@ export async function sendReply(args: {
         systemId: args.systemId,
         conversationId: conv.id,
         direction: "OUT",
-        type: "TEXT",
+        type: msgType,
         senderUserId: args.senderUserId,
         senderName: rowSenderName,
-        body,
+        body: body || null,
         isInternal,
+        ...(originalBody ? { meta: { originalBody } as Prisma.InputJsonValue } : {}),
         deliveryStatus: willSend && conv.channel !== "WEBCHAT" ? "PENDING" : "SENT",
       },
     });
+
+    // ข้อความ + ไฟล์แนบต้อง atomic — ไฟล์กำพร้า/ข้อความที่รูปหาย = ผู้ใช้เห็นของไม่ครบ
+    for (const a of attachments) {
+      await tx.chatAttachment.create({
+        data: {
+          tenantId: args.tenantId,
+          systemId: args.systemId,
+          messageId: created.id,
+          kind: attachmentKind(a.mimeType),
+          storageKey: a.storageKey?.trim() || a.url.trim(),
+          url: a.url.trim(),
+          fileName: a.fileName?.trim() || fileNameFromUrl(a.url.trim()),
+          mimeType: a.mimeType.trim(),
+          sizeBytes: a.sizeBytes ?? 0,
+          width: a.width ?? null,
+          height: a.height ?? null,
+        },
+      });
+    }
 
     // 🔴 โน้ตภายในไม่ใช่ข้อความถึงลูกค้า — ห้ามยิง event และห้ามขึ้น preview
     if (!isInternal) {
@@ -1133,14 +1217,33 @@ export async function sendReply(args: {
       : null;
     if (!connection || connection.status === "DISABLED") {
       failReason = "CHANNEL_DISCONNECTED";
+    } else if (!isSupported(conv.channel)) {
+      // 🔴 ช่องทางที่ยังไม่มี adapter (Messenger/IG/TikTok/…): ข้อความของทีม **ต้องไม่หาย**
+      //    ⇒ บันทึกในระบบตามปกติ ไม่ throw · แต่สถานะต้องบอกความจริงว่า "ยังไม่ถึงลูกค้า"
+      //    (SENT ทั้งที่ไม่มีทางส่งได้ = ทีมเข้าใจว่าตอบไปแล้ว แล้วลูกค้ารอเก้อ)
+      await prisma.chatMessage.update({
+        where: { id: msg.id },
+        data: { deliveryStatus: "FAILED", deliveryError: "CHANNEL_NOT_SUPPORTED" },
+      });
+      await logEvent(conv.id, {
+        tenantId: args.tenantId,
+        systemId: args.systemId,
+        type: "DELIVERY_FAILED",
+        actorUserId: args.senderUserId,
+        meta: { messageId: msg.id, reason: "CHANNEL_NOT_SUPPORTED" },
+      });
     } else {
       try {
         const adapter = getAdapter(conv.channel);
-        const result = await adapter.sendMessage({
-          creds: credsOf(connection),
-          externalUserId: conv.contact.externalUserId,
-          message: { type: "TEXT", body },
-        });
+        // 1 ข้อความในระบบ → หลายชิ้นบนช่องทาง (ข้อความ + รูปแต่ละใบ) · ยิงเรียงตามลำดับที่ทีมเห็น
+        let result: { externalMessageId?: string } = {};
+        for (const outbound of buildOutboundMessages(body, attachments)) {
+          result = await adapter.sendMessage({
+            creds: credsOf(connection),
+            externalUserId: conv.contact.externalUserId,
+            message: outbound,
+          });
+        }
         await prisma.chatMessage.update({
           where: { id: msg.id },
           data: { deliveryStatus: "SENT", externalMessageId: result.externalMessageId ?? null },

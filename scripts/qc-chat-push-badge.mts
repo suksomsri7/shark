@@ -12,7 +12,7 @@
 //   ค่าเวลาคงที่ตอนโหลดไฟล์ = ผลลวงคนละทิศ) · บันทึกว่าแต่ละ query/HTTP เกิดในทรานแซกชันไหน
 //
 // สัญญา:
-// CP-1) push ขาเข้า — `announceInbound` ต้องยิง `sendPushToTenant` **จังหวะเดียวกับ AppNotification**
+// CP-1) push ขาเข้า — `announceInbound` ต้องยิง `sendPushToChatStaff` **จังหวะเดียวกับ AppNotification**
 //       · de-dup ด้วย `firstUnread` ตัวเดียวกัน (พิมพ์รัว 5 บรรทัด = push ครั้งเดียว)
 //       · ทีมกดอ่านแล้วลูกค้าทักใหม่ = push อีกครั้ง (de-dup ≠ ยิงครั้งเดียวตลอดกาล)
 //       · 🔴 network call ต้องอยู่ **นอกทรานแซกชัน** (Expo ตอบช้า = ขัง connection Neon → pool ตัน)
@@ -243,6 +243,14 @@ function seedShop(opts?: { devices?: number }) {
   tables.pushDevice = Array.from({ length: opts?.devices ?? 1 }, (_, i) => ({
     id: `pd-${i}`, tenantId: "T1", userId: "U1", expoToken: `ExponentPushToken[dev-${i}]`, platform: "ios", createdAt: new Date(),
   }));
+  // 🔴 Fable แก้ 31 ส.ค. — เดิม seed มี `pushDevice` แต่ **ไม่มีแถว `membership` เลย**
+  //    ตอนที่ push ยิงทุกเครื่องในร้าน (ก่อน WO-CW5) ก็ยังเขียวได้ เพราะไม่มีใครถามเรื่องสิทธิ์
+  //    พอ `sendPushToChatStaff` กรองผู้รับด้วยสิทธิ์จริง ผู้รับเหลือ 0 คน **อย่างถูกต้อง** แล้ว 10 ข้อแดง
+  //    ⇒ ไม่ใช่โค้ดพัง แต่เป็น fake ที่ไม่เหมือนของจริง (ร้านจริงไม่มีทางมีเครื่องลงทะเบียนโดยไม่มีสมาชิก)
+  //    **บทเรียน: fake ที่ "พอใช้" กับสเปคเก่า จะกลายเป็นไม้บรรทัดที่โกหกทันทีที่สเปคเข้มขึ้น**
+  tables.membership = [
+    { id: "mb-1", tenantId: "T1", userId: "U1", role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date(), createdAt: new Date() },
+  ];
   calls.length = 0;
   net.length = 0;
   netMode = "ok";
@@ -294,6 +302,12 @@ try {
 
       // ── de-dup ≠ ยิงครั้งเดียวตลอดกาล: ทีมกดอ่านแล้วลูกค้าทักใหม่ ต้องได้แจ้งเตือนอีก ──
       await chat.markRead({ tenantId: "T1", systemId: "S1", conversationId: String(conv.id), userId: "U1", unitAccess: ["*"] });
+      // 🔴 Fable แก้ 31 ส.ค. — ข้อนี้ตั้งใจวัด "de-dup รีเซ็ต" ไม่ใช่ "กำลังเปิดดูอยู่ไหม"
+      //    WO-CW5 เพิ่มกติกาใหม่: `lastReadAt` สดภายในหน้าต่างเวลา = กำลังเปิดห้องอยู่ → ไม่ต้องแจ้ง
+      //    ฉากเดิมของข้อนี้จึงบังเอิญไปวัด 2 เรื่องพร้อมกัน แล้วกติกาใหม่กลืนกติกาเก่า
+      //    ⇒ ดันเวลาอ่านให้พ้นหน้าต่าง = จำลอง "อ่านแล้วปิดหน้าไป" ซึ่งเป็นฉากที่ข้อนี้ตั้งใจวัดจริง ๆ
+      //    🔴 ห้ามลดการรับประกันเดิม — de-dup ต้องยังรีเซ็ตจริง แค่ให้คนที่วัดเป็นคนที่ไม่ได้เปิดห้องค้าง
+      for (const rs of tables.chatReadState ?? []) rs.lastReadAt = new Date(Date.now() - 10 * 60_000);
       net.length = 0;
       await say(chat, "ยังว่างอยู่ไหมครับ");
       chk("CP-1.7", "🟢 คู่บวก: ทีมกดอ่านแล้วลูกค้าทักใหม่ → push อีกครั้ง (de-dup ไม่ใช่ 'เงียบตลอดกาล')",
@@ -345,9 +359,12 @@ try {
         "HTTP 0 · ข้อความ 1 · แจ้งเตือน 1", j({ net: net.length, msgs: (tables.chatMessage ?? []).length, notif: seen("appNotification.create").length }), "MAJOR");
 
       // ── ไม่ fork logic: ทางเข้าทุกทาง (LINE / webchat / s2s) ผ่าน announceInbound ตัวเดียว ──
-      chk("CP-1.14", "เรียก sendPushToTenant ที่เดียวในทั้งไฟล์ (LINE/webchat/s2s ได้พฤติกรรมเดียวกัน ไม่ fork)",
-        (CODE.match(/sendPushToTenant\(/g) ?? []).length === 1,
-        "1 แห่ง", String((CODE.match(/sendPushToTenant\(/g) ?? []).length), "MAJOR");
+      // 🔴 Fable แก้ 31 ส.ค. — WO-CW5 เปลี่ยนจาก `sendPushToTenant` (ยิงทุกเครื่องในร้าน = ช่องโหว่ G9)
+      //    เป็น `sendPushToChatStaff` (กรองผู้รับด้วยสิทธิ์จริง) · ข้อสอบที่ล็อกชื่อฟังก์ชันเก่าจึงล้าสมัย
+      //    เจตนาของข้อนี้ไม่เปลี่ยน: **ทางเข้าทุกทางต้องผ่านจุดยิงเดียว ห้าม fork**
+      chk("CP-1.14", "เรียก sendPushToChatStaff ที่เดียวในทั้งไฟล์ (LINE/webchat/s2s ได้พฤติกรรมเดียวกัน ไม่ fork)",
+        (CODE.match(/sendPushToChatStaff\(/g) ?? []).length === 1,
+        "1 แห่ง", String((CODE.match(/sendPushToChatStaff\(/g) ?? []).length), "MAJOR");
       // ยืนยันซ้ำจากซอร์ส — 🔴 ต้องตัดเอา **เฉพาะตัว announceInbound** ก่อน
       // (สไลซ์จาก `prisma.$transaction` ตัวแรกของทั้งไฟล์ = วัดผิดฟังก์ชัน แล้วเขียวแบบผลลวง)
       // ในฟังก์ชันนี้ ระหว่างเปิด `prisma.$transaction(` กับจุดเรียก push ต้องมีบรรทัดปิด tx (`\n  });`)
@@ -358,10 +375,10 @@ try {
       const fnEnd = bodyAt >= 0 ? CODE.indexOf("\n}", bodyAt) : -1;
       const FN = fnEnd > fnStart && fnStart >= 0 ? CODE.slice(fnStart, fnEnd) : "";
       const txStart = FN.indexOf("prisma.$transaction");
-      const pushAt = FN.indexOf("sendPushToTenant(tenantId");
+      const pushAt = FN.search(/sendPushToChatStaff\(/);
       const between = txStart >= 0 && pushAt > txStart ? FN.slice(txStart, pushAt) : "";
       chk("CP-1.15", "ยืนยันจากซอร์สของ announceInbound เอง: จุดเรียก push อยู่หลังบรรทัดปิด $transaction และไม่ใช้ตัวจับ tx",
-        FN.includes("drainAll") && txStart >= 0 && pushAt > txStart && between.includes("\n  });") && !/tx\.[\w.]*sendPushToTenant/.test(FN),
+        FN.includes("drainAll") && txStart >= 0 && pushAt > txStart && between.includes("\n  });") && !/tx\.[\w.]*sendPushToChatStaff/.test(FN),
         "ตัดฟังก์ชันได้ครบ (เจอ drainAll) + มีบรรทัดปิด tx คั่นก่อนถึง push", j({ fn: FN.length, whole: FN.includes("drainAll"), txStart, pushAt, closed: between.includes("\n  });") }), "MINOR");
     });
 
@@ -513,10 +530,22 @@ try {
         "ยิง · ไม่ยิง · ไม่ยิง · ยิง", j([s1.fire, s2.fire, s3.fire, s4.fire]));
       chk("CP-3.8", "ไม่มีอะไรค้าง → ไม่ยิงเลย (ไม่รบกวนเซิร์ฟเวอร์ทุกรอบรีเฟรช)",
         !nextMarkReadState(null, K, 0).fire, "ไม่ยิง", "?");
-      const PAGE = readFileSync("src/app/app/sys/[id]/chat/page.tsx", "utf8");
+      // 🔴 Fable 31 ส.ค. — WO-CW4 ย้ายกล่องแชทไปหน้า "ภาพรวม" และเลิกใช้ <AutoRefresh> รีเฟรชทั้งหน้า
+      //    จังหวะความสดย้ายไปอยู่ที่ polling ของ inbox-client.tsx แทน (`/chat` เหลือเป็นหน้าเปลี่ยนทาง)
+      //    เจตนาของข้อนี้ไม่เปลี่ยน: **ต้องมีจังหวะรีเฟรช ≤ 10 วิ ที่ไหนสักแห่ง ไม่งั้นติ๊กคู่ตามไม่ทัน**
+      //    ⇒ อ่านทั้ง 3 ไฟล์ที่จังหวะนั้นอาจอยู่ ไม่ล็อกว่าต้องอยู่ไฟล์ไหน
+      const PAGE = ["src/app/app/sys/[id]/chat/page.tsx", "src/app/app/sys/[id]/page.tsx", "src/lib/modules/chat/inbox-client.tsx"]
+        .map((f) => { try { return readFileSync(f, "utf8"); } catch { return ""; } })
+        .join("\n");
+      const PAGE_TICKS = () => [
+        ...PAGE.matchAll(/<AutoRefresh ms=\{(\d+)\}/g),
+        ...PAGE.matchAll(/\bPOLL(?:_MS|ING_MS)?\s*=\s*(\d[\d_]*)/g),
+      ].map((m) => Number(String(m[1]).replace(/_/g, "")));
       chk("CP-3.9", "หน้าแชทรีเฟรชถี่พอที่ติ๊กคู่จะตามทัน (≤ 10 วิ)",
-        (() => { const m = PAGE.match(/<AutoRefresh ms=\{(\d+)\}/); return !!m && Number(m[1]) <= 10_000; })(),
-        "≤ 10000", (PAGE.match(/<AutoRefresh ms=\{(\d+)\}/) ?? [])[1] ?? "ไม่พบ");
+        // รับได้ 2 รูป: <AutoRefresh ms={7000}> (ของเดิม) หรือ POLL_MS = 5000 (polling ของ WO-CW4)
+        // 🔴 วัด "จังหวะที่สั้นที่สุดที่เจอ" — ถ้ามีหลายค่า ค่าที่ช้าที่สุดไม่ใช่ตัวตัดสินความสด
+        (() => { const v = PAGE_TICKS(); return v.length > 0 && Math.min(...v) <= 10_000; })(),
+        "≤ 10000", (() => { const v = PAGE_TICKS(); return v.length ? String(Math.min(...v)) : "ไม่พบ"; })());
     });
 
     // ═════════ CP-4 · แจ้งเตือนต้องกลับมาเมื่อลูกค้าทักรอบใหม่ ═════════

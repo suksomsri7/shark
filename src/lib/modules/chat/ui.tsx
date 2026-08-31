@@ -1,37 +1,34 @@
-import Link from "next/link";
-import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { publicOrigin } from "@/lib/core/origin";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ModuleTabs } from "@/components/module-tabs";
+import { ChatMarkReadOnOpen } from "@/components/chat-mark-read-on-open";
 import {
   ensureWebchatConnection,
   ensureMemberSystemLink,
   listConnections,
-  listConversations,
-  getThread,
   getSetting,
-  getLinkedMember,
   listStaff,
   maskedConnection,
 } from "./service";
+import { isSupported } from "./adapter";
 import {
-  sendReplyAction,
-  setStatusAction,
-  assignAction,
-  markReadAction,
-  linkCustomerAction,
   connectLineAction,
   disableConnectionAction,
   setMemberSystemAction,
   setRetentionDaysAction,
   setBusinessHoursAction,
+  archiveAnswerExampleAction,
 } from "./actions";
+import { loadInboxAction, loadThreadAction, setChatAiSettingsAction } from "./inbox-actions";
+import { requireChatRead, canReadChat, membershipOf } from "./guard";
+import { evaluate } from "@/lib/core/rbac";
+import { listAnswerExamples } from "./learning";
+import { ChatInboxClient } from "./inbox-client";
+import { CHANNEL_ORDER, ChannelChip } from "./channel-icon";
+import { ALLOWED_UPLOAD_TYPES, CHAT_ATTACHMENT_MAX_BYTES } from "@/lib/storage/service";
 import { RETENTION_MIN_DAYS, RETENTION_MAX_DAYS } from "./retention";
-import { ChatMarkReadOnOpen } from "@/components/chat-mark-read-on-open";
 import {
   DAY_LABELS,
   DEFAULT_TZ,
@@ -41,21 +38,8 @@ import {
   readBusinessHours,
 } from "./business-hours";
 
-// ป้ายสถานะ/ช่องทาง ภาษาไทย (B&W)
-const CONV_STATUS_LABEL: Record<string, string> = {
-  OPEN: "กำลังคุย",
-  PENDING: "พักไว้",
-  RESOLVED: "ปิดแล้ว",
-};
-const CHANNEL_LABEL: Record<string, string> = {
-  LINE: "LINE",
-  WEBCHAT: "เว็บ",
-  FACEBOOK: "Facebook",
-  INSTAGRAM: "IG",
-  SHOPEE: "Shopee",
-  LAZADA: "Lazada",
-  WHATSAPP: "WhatsApp",
-};
+// 🔴 ป้ายช่องทางไม่มีลิสต์อยู่ในไฟล์นี้แล้ว — ทะเบียนเดียวอยู่ที่ `channel-icon.tsx`
+//    (หนี้ H4: เดิมมีลิสต์พิมพ์มือ 3 ที่ แล้ว `APP`/`TIKTOK` ได้ป้ายว่างโดยที่ typecheck ไม่แดง)
 
 const fmt = (d: Date) =>
   d.toLocaleString("th-TH", {
@@ -66,203 +50,90 @@ const fmt = (d: Date) =>
     timeZone: "Asia/Bangkok",
   });
 
-// เดิม: const origin = () => env.APP_URL... → ค้างเป็นโดเมน VPS เก่าที่ปิดไปแล้ว (ดู core/origin.ts)
-
-// แท็บฟังก์ชันย่อยของระบบแชท (Chat) — สนทนา (inbox) + เชื่อมช่องทาง (channels)
-// ⚠️ ต้องตรงกับ childrenFor("CHAT") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions.mts)
+// แท็บฟังก์ชันย่อยของระบบแชท
+// ⚠️ ต้องตรงกับ childrenFor("CHAT") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions + qc-chat-inbox-ui)
 export function chatTabs(systemId: string): { href: string; label: string }[] {
   const s = `/app/sys/${systemId}`;
+  // 🔴 2 แท็บเท่านั้น (§6.1) — "ภาพรวม" **คือกล่องแชทเต็มจอ** ตั้งแต่ WO-CW4 แล้ว
+  //    แท็บ "สนทนา" เดิมชี้ `/chat` ซึ่งตอนนี้ redirect กลับมาที่เดียวกัน = แท็บซ้ำที่พาไปที่เดิม
+  //    (ไฟล์ `/chat/page.tsx` ยังต้องคงอยู่ — push ที่ส่งออกไปแล้วชี้มาที่ `?c=` ของ path นั้น)
+  //    ⚠️ ต้องตรงกับ childrenFor("CHAT") ใน src/app/app/layout.tsx เสมอ (qc-nav-functions เฝ้าอยู่)
   return [
     { href: s, label: "ภาพรวม" },
-    { href: `${s}/chat`, label: "สนทนา" },
     { href: `${s}/chat/channels`, label: "เชื่อมช่องทาง" },
   ];
 }
 
-// ───────────── ChatHub (หน้าภาพรวม ฝังใน /app/sys/[id]) ─────────────
-// การ์ดสรุปสั้น + ลิงก์เข้าแต่ละฟังก์ชัน (แตกเป็นหน้าย่อยจริง: สนทนา + เชื่อมช่องทาง)
-export async function ChatHub({ systemId, tenantId }: { systemId: string; tenantId: string }) {
-  const auth = await requireTenant();
-  const unitAccess = auth.active.unitAccess as string[];
-
-  await ensureWebchatConnection(tenantId, systemId);
-  const [connections, conversations] = await Promise.all([
-    listConnections(tenantId, systemId),
-    listConversations({ tenantId, systemId, unitAccess }),
-  ]);
-  const unread = conversations.reduce((n, c) => n + (c.staffUnreadCount > 0 ? 1 : 0), 0);
-  const lineCount = connections.filter((c) => c.type === "LINE").length;
-
-  const cards = [
-    {
-      href: `/app/sys/${systemId}/chat`,
-      label: "สนทนา",
-      value: unread > 0 ? `${unread} ยังไม่อ่าน` : `${conversations.length} บทสนทนา`,
-      desc: "กล่องข้อความรวมลูกค้าจากทุกช่องทาง",
-    },
-    {
-      href: `/app/sys/${systemId}/chat/channels`,
-      label: "เชื่อมช่องทาง",
-      value: lineCount > 0 ? `LINE ${lineCount}` : "เว็บ",
-      desc: "เชื่อม LINE OA · แชทหน้าเว็บ · ระบบสมาชิก",
-    },
-  ];
-
-  return (
-    <div className="flex flex-col gap-5">
-      <ModuleTabs items={chatTabs(systemId)} />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {cards.map((c) => (
-          <Link
-            key={c.href}
-            href={c.href}
-            className="card flex min-h-[76px] flex-col gap-1 p-4 transition-colors hover:bg-[color:var(--color-surface-2)]"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium">{c.label}</span>
-              <span className="text-sm tabular-nums text-[color:var(--color-accent)]">{c.value}</span>
-            </div>
-            <span className="text-xs text-[color:var(--color-muted)]">{c.desc}</span>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────
-// <ChatInboxSection systemId tenantId conversationId? /> — inbox รวมแชทลูกค้า (P1: LINE + เว็บ)
-// การเลือกบทสนทนาใช้ ?c= (หน้าเต็มที่ /app/sys/[id]/chat)
+// <ChatInboxSection /> — กล่องแชทเต็มจอ (เดิมหน้าภาพรวมเป็นการ์ด 2 ใบ = G1)
+//
+// 🔴 `requireChatRead()` ต้องเป็นบรรทัดแรกสุด **ก่อน** แตะข้อมูลใด ๆ (ปิด G8 ขาอ่าน)
+//    ช่องโหว่เดิม: STAFF ที่เข้าถึงสาขาได้ อ่านแชทลูกค้าทุกห้องได้ทั้งที่ไม่มีสิทธิ์แชทสักข้อ
+//    ด่านต้องอยู่ก่อน query ไม่ใช่หลัง — query ที่วิ่งไปแล้วคือข้อมูลที่ถูกอ่านขึ้นมาแล้วจริง ๆ
 // ─────────────────────────────────────────────────────────────
 export async function ChatInboxSection({
   systemId,
   tenantId,
   conversationId,
+  err,
 }: {
   systemId: string;
   tenantId: string;
   conversationId?: string;
+  err?: string;
 }) {
-  const auth = await requireTenant();
-  const userId = auth.user.id;
-  const unitAccess = auth.active.unitAccess as string[];
+  const auth = await requireChatRead();
+  const ctx = membershipOf(auth);
+  const can = (action: string) => evaluate(ctx, { module: "chat", action });
 
-  // built-in WEBCHAT connection (lazy) + ช่องทางอื่น
   await ensureWebchatConnection(tenantId, systemId);
-  const [connections, conversations, setting, staff] = await Promise.all([
-    listConnections(tenantId, systemId),
-    listConversations({ tenantId, systemId, unitAccess }),
-    getSetting(tenantId, systemId),
+  const [rows, thread, staff, setting] = await Promise.all([
+    loadInboxAction(systemId),
+    conversationId ? loadThreadAction(systemId, conversationId) : Promise.resolve(null),
     listStaff(tenantId),
+    getSetting(tenantId, systemId),
   ]);
-  const nameOf = (uid?: string | null) =>
-    uid ? staff.find((s) => s.userId === uid)?.name ?? "พนักงาน" : "—";
 
-  const base = `/app/sys/${systemId}/chat`;
-  const active = conversationId ? conversations.find((c) => c.id === conversationId) : undefined;
+  // ปุ่มที่ "กินเงินของร้าน" ต้องเปิดใช้ **และ** มีสิทธิ์ทั้งคู่ ไม่งั้นไม่ต้องโชว์เลย
+  const canSuggest = setting.aiSuggestEnabled && can("chat.ai.suggest");
+  const canTranslate = setting.translateEnabled && can("chat.translate.use");
 
   return (
-    <section className="flex flex-col gap-4">
-      {/* ── กล่องข้อความ (2 คอลัมน์) ── */}
-      <div className="card flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">กล่องข้อความ</h2>
-          <span className="text-xs text-[color:var(--color-muted)]">
-            {conversations.length} บทสนทนา
-          </span>
-        </div>
-
-        {connections.filter((c) => c.type === "LINE").length === 0 && conversations.length === 0 ? (
-          <EmptyState text="ยังไม่มีแชท — เชื่อม LINE OA หรือเปิดแชทหน้าเว็บด้านล่างเพื่อเริ่มรับข้อความลูกค้า" />
-        ) : (
-          /* จอแคบ = คอลัมน์เดียว สลับ "รายการ ↔ ห้องแชท" ด้วย ?c= (ไม่มี state ฝั่ง client
-             → AutoRefresh ที่ router.refresh() ทุก 15 วิ ไม่เด้งคนที่กำลังพิมพ์กลับหน้ารายการ)
-             จอ ≥ sm = 2 คอลัมน์เหมือนเดิม · minmax(0,…) + min-w-0 กันข้อความไทย (ไม่มีช่องว่าง)
-             ดัน track ให้กว้างเกินจอ = การ์ดล้นออกนอกจอบนมือถือ */
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
-            {/* รายการบทสนทนา — เลือกห้องแล้วซ่อนบนมือถือ (แบบเดียวกับ SubNav/NavDrawer) */}
-            <aside className={`min-w-0 flex-col gap-1 ${active ? "hidden sm:flex" : "flex"}`}>
-              {conversations.length === 0 ? (
-                <p className="px-1 py-2 text-sm text-[color:var(--color-muted)]">
-                  ยังไม่มีบทสนทนา
-                </p>
-              ) : (
-                conversations.map((c) => {
-                  const on = active?.id === c.id;
-                  return (
-                    <Link
-                      key={c.id}
-                      href={`${base}?c=${c.id}`}
-                      className={`flex flex-col gap-0.5 rounded-lg border px-3 py-2 text-sm ${
-                        on
-                          ? "bg-[color:var(--color-surface-2)] font-medium"
-                          : "hover:bg-[color:var(--color-surface-2)]"
-                      }`}
-                    >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <span className="shrink-0 rounded border px-1 text-[10px] text-[color:var(--color-muted)]">
-                            {CHANNEL_LABEL[c.channel] ?? c.channel}
-                          </span>
-                          <span className="truncate">
-                            {c.contact.displayName ?? c.contact.phone ?? "ลูกค้า"}
-                          </span>
-                        </span>
-                        {c.staffUnreadCount > 0 && (
-                          <span className="shrink-0 rounded-full border px-1.5 text-[10px] font-medium">
-                            {c.staffUnreadCount}
-                          </span>
-                        )}
-                      </span>
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="min-w-0 truncate text-xs text-[color:var(--color-muted)]">
-                          {c.lastMessagePreview ?? "—"}
-                        </span>
-                        <StatusChip
-                          value={c.status}
-                          map={CONV_STATUS_LABEL}
-                          tone={c.status === "OPEN" ? "strong" : "muted"}
-                        />
-                      </span>
-                    </Link>
-                  );
-                })
-              )}
-            </aside>
-
-            {/* ห้องแชท — ยังไม่เลือกห้องบนมือถือ = ซ่อนทิ้ง (ไม่กินที่เปล่าใต้รายการ) */}
-            <div
-              className={`min-h-[360px] min-w-0 flex-col ${active ? "flex" : "hidden sm:flex"}`}
-            >
-              {!active ? (
-                <div className="flex flex-1 items-center justify-center py-10">
-                  <p className="text-sm text-[color:var(--color-muted)]">
-                    เลือกบทสนทนาทางซ้ายเพื่อดูและตอบกลับ
-                  </p>
-                </div>
-              ) : (
-                <ThreadPane
-                  systemId={systemId}
-                  tenantId={tenantId}
-                  conversationId={active.id}
-                  backHref={base}
-                  userId={userId}
-                  nameOf={nameOf}
-                  staff={staff}
-                  memberLinked={!!setting.memberSystemId}
-                  unitAccess={unitAccess}
-                />
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </section>
+    <>
+      {/* ⚠️ ตัวนี้ยิง markRead ตอนเปิดห้อง (ด่าน CP-3.5) — ซ้อนกับ heartbeat ใน loadThreadAction
+          โดยตั้งใจ: heartbeat ทำงานฝั่ง poll ส่วนตัวนี้ทำงานตั้งแต่ก่อน JS ของกล่องแชทพร้อม */}
+      {thread && (
+        <ChatMarkReadOnOpen
+          systemId={systemId}
+          conversationId={thread.conversationId}
+          unread={thread.staffUnreadCount}
+        />
+      )}
+      <ChatInboxClient
+        systemId={systemId}
+        baseHref={`/app/sys/${systemId}`}
+        meUserId={auth.user.id}
+        staff={staff.map((s) => ({ userId: s.userId, name: s.name }))}
+        initialRows={rows}
+        initialThread={thread}
+        activeId={conversationId ?? null}
+        err={err ?? null}
+        canSend={can("chat.message.send")}
+        canAssign={can("chat.conversation.assign")}
+        canSetStatus={can("chat.conversation.setStatus")}
+        canLink={can("chat.customer.link")}
+        canSuggest={canSuggest}
+        canTranslate={canTranslate}
+        memberLinked={!!setting.memberSystemId}
+        maxAttachmentBytes={CHAT_ATTACHMENT_MAX_BYTES}
+        acceptTypes={Object.keys(ALLOWED_UPLOAD_TYPES).join(",")}
+      />
+    </>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-// <ChatChannelsSection systemId tenantId /> — เชื่อมช่องทาง: LINE OA · แชทหน้าเว็บ · ระบบสมาชิก
+// <ChatChannelsSection /> — เชื่อมช่องทาง + ตั้งค่า + คลังตัวอย่างคำตอบ
 // ─────────────────────────────────────────────────────────────
 export async function ChatChannelsSection({
   systemId,
@@ -274,17 +145,15 @@ export async function ChatChannelsSection({
   /** ข้อความผิดพลาดจาก `?err=` (แสดง inline ใต้หัวข้อที่เกี่ยว ไม่ใช่ Alert) */
   err?: string;
 }) {
-  // built-in WEBCHAT connection (lazy) + ช่องทางอื่น
+  const auth = await requireChatRead();
   await ensureWebchatConnection(tenantId, systemId);
-  // ร้านมีระบบสมาชิกชุดเดียว + ยังไม่เคยเลือกเอง → เชื่อมให้เลย (ไม่มีอะไรให้เลือกอยู่แล้ว)
   await ensureMemberSystemLink(tenantId, systemId);
   const [connections, setting, origin] = await Promise.all([
     listConnections(tenantId, systemId),
     getSetting(tenantId, systemId),
-    publicOrigin(), // โดเมนจากคำขอจริง — ไม่พึ่ง env ที่ตั้งด้วยมือแล้วค้าง
+    publicOrigin(),
   ]);
 
-  // ระบบสมาชิกในร้าน (สำหรับ dropdown เชื่อม)
   const memberSystems = await prisma.appSystem.findMany({
     where: { tenantId, type: "MEMBER" },
     orderBy: { createdAt: "asc" },
@@ -293,7 +162,13 @@ export async function ChatChannelsSection({
   const lineConns = connections.filter((c) => c.type === "LINE");
   const webchat = connections.find((c) => c.type === "WEBCHAT");
 
-  // เวลาทำการ (WO-C16) — null = ยังไม่ได้ตั้ง (ช่องเวลาจะโชว์ค่าแนะนำ 09:00–18:00 แต่ยังไม่ถูกเปิดใช้)
+  // 🔴 คลังตัวอย่างคำตอบเก็บ **ข้อความจริงของลูกค้า** ไว้ในช่อง question ⇒ ต้องใช้สิทธิ์ชุดเดียว
+  //    กับการอ่านกล่องแชท · คนที่มีแค่สิทธิ์ตั้งค่าช่องทางต้องไม่เห็นเนื้อความลูกค้าผ่านทางนี้
+  const mayReadChat = canReadChat(auth);
+  const examples = mayReadChat
+    ? await listAnswerExamples({ tenantId, systemId, includeArchived: true, take: 50 })
+    : [];
+
   const hours = readBusinessHours(setting.businessHours);
   const noteTh =
     typeof hours?.note === "string"
@@ -301,14 +176,46 @@ export async function ChatChannelsSection({
       : typeof (hours?.note as Record<string, unknown> | undefined)?.th === "string"
         ? ((hours!.note as Record<string, string>).th ?? "")
         : "";
-  // เขตเวลาที่ร้านตั้งไว้แล้วอาจไม่อยู่ในรายการแนะนำ (เช่น ตั้งผ่าน API) — ต้องไม่หายไปจาก dropdown
   const tzOptions = TZ_CHOICES.some((t) => t.value === (hours?.tz ?? DEFAULT_TZ))
     ? TZ_CHOICES
     : [{ value: hours!.tz, label: hours!.tz }, ...TZ_CHOICES];
 
   return (
     <section className="flex flex-col gap-4">
-      {/* ── ตั้งค่าช่องทาง (setup) ── */}
+      {/* ── ช่องทางทั้งหมด + สถานะจริง ─────────────────────────────────────
+          🔴 ป้าย "ยังไม่เปิด" มาจาก registry ของ adapter (`isSupported`) ไม่ใช่ลิสต์พิมพ์มือ
+             ⇒ วันที่เขียน adapter เสร็จ ป้ายเปลี่ยนเอง ไม่มีทางค้างโกหกเจ้าของ
+          ⚠️ มีไอคอน ≠ ใช้ได้ — คอขวดของ WhatsApp/Messenger/IG/TikTok คือการอนุมัติของแพลตฟอร์ม */}
+      <div className="card">
+        <h2 className="text-sm font-medium">ช่องทางที่ระบบรองรับ</h2>
+        <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+          ช่องทางที่ขึ้นว่า “ยังไม่เปิด” คือยังรับ-ส่งข้อความจริงไม่ได้
+          (รอการอนุมัติจากเจ้าของแพลตฟอร์มนั้น ไม่ใช่รอเราเขียนโค้ด) — ไอคอนที่เห็นในกล่องแชทมีไว้บอกที่มาของข้อความเท่านั้น
+        </p>
+        <ul className="mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          {CHANNEL_ORDER.map((type) => {
+            const conn = connections.find((c) => c.type === type && c.status !== "DISABLED");
+            const ready = isSupported(type);
+            return (
+              <li
+                key={type}
+                className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--color-line)] px-2.5 py-1.5"
+              >
+                <ChannelChip type={type} />
+                <span className="text-xs text-[color:var(--color-muted)]">
+                  {!ready
+                    ? "ยังไม่เปิด"
+                    : conn
+                      ? "เชื่อมแล้ว"
+                      : "พร้อมเชื่อม"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      {/* ── ตั้งค่าช่องทางและการเชื่อมต่อ ── */}
       <div className="card">
         <h2 className="text-sm font-medium">ตั้งค่าช่องทางและการเชื่อมต่อ</h2>
         <div className="mt-3 flex flex-col gap-5">
@@ -514,7 +421,7 @@ export async function ChatChannelsSection({
                 <input
                   name="holidays"
                   defaultValue={(hours?.holidays ?? []).join(", ")}
-                  placeholder="2026-12-31, 2027-01-01"
+                  placeholder="ปปปป-ดด-วว, ปปปป-ดด-วว"
                   className="input"
                 />
               </label>
@@ -566,274 +473,112 @@ export async function ChatChannelsSection({
           </div>
         </div>
       </div>
-    </section>
-  );
-}
 
-// ───────────────────────── Thread pane ─────────────────────────
-
-async function ThreadPane({
-  systemId,
-  tenantId,
-  conversationId,
-  backHref,
-  userId,
-  nameOf,
-  staff,
-  memberLinked,
-  unitAccess,
-}: {
-  systemId: string;
-  tenantId: string;
-  conversationId: string;
-  backHref: string; // ลิงก์กลับไปรายการ (ตัดพารามิเตอร์ ?c= ทิ้ง) — โผล่เฉพาะจอแคบ
-  userId: string;
-  nameOf: (uid?: string | null) => string;
-  staff: { userId: string; name: string }[];
-  memberLinked: boolean;
-  unitAccess: string[];
-}) {
-  const thread = await getThread({ tenantId, systemId, conversationId, unitAccess });
-  if (!thread) {
-    return <p className="text-sm text-[color:var(--color-muted)]">ไม่พบบทสนทนา</p>;
-  }
-  const { conversation: c, messages } = thread;
-  const contact = c.contact;
-  const linkedMember = contact.customerId ? await getLinkedMember(tenantId, contact.customerId) : null;
-  const disabled = c.status === "RESOLVED";
-
-  return (
-    <div className="flex flex-1 flex-col gap-2">
-      {/* เปิดห้อง = อ่านแล้ว (ปลดล็อกทั้งแจ้งเตือนขาเข้ารอบถัดไป และติ๊กคู่ ✓✓ ฝั่งลูกค้า) */}
-      <ChatMarkReadOnOpen systemId={systemId} conversationId={c.id} unread={c.staffUnreadCount} />
-      {/* header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
-        <div className="min-w-0">
-          {/* ทางกลับหน้ารายการบนจอแคบ (จอ ≥ sm เห็นรายการอยู่ข้าง ๆ อยู่แล้ว) */}
-          <Link
-            href={backHref}
-            className="mb-1 inline-flex items-center gap-1 text-xs text-[color:var(--color-muted)] underline sm:hidden"
-          >
-            <span aria-hidden>‹</span> รายการแชททั้งหมด
-          </Link>
-          <div className="flex items-center gap-1.5 text-sm font-semibold">
-            <span className="shrink-0 rounded border px-1 text-[10px] text-[color:var(--color-muted)]">
-              {CHANNEL_LABEL[c.channel] ?? c.channel}
-            </span>
-            <span className="min-w-0 truncate">
-              {contact.displayName ?? contact.phone ?? "ลูกค้า"}
-            </span>
-          </div>
-          <div className="text-xs text-[color:var(--color-muted)]">
-            ผู้รับผิดชอบ: {nameOf(c.assigneeUserId)}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <StatusChip
-            value={c.status}
-            map={CONV_STATUS_LABEL}
-            tone={c.status === "OPEN" ? "strong" : "muted"}
-          />
-        </div>
-      </div>
-
-      {/* action bar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <form action={assignAction}>
+      {/* ── ผู้ช่วย AI + การแปล ────────────────────────────────────────────
+          🔴 ทั้งคู่ปิดอยู่โดยค่าเริ่มต้นเพราะ **มีค่าใช้จ่ายจริงต่อครั้ง** — ของที่กินเงินของร้าน
+             ต้องให้เจ้าของกดเปิดเอง · ไม่เปิด = ปุ่มในกล่องแชทไม่โผล่เลย (ไม่ใช่โผล่แล้วกดไม่ได้) */}
+      <div className="card">
+        <h2 className="text-sm font-medium">ผู้ช่วย AI และการแปลภาษา</h2>
+        <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+          เปิดแล้วทีมจะเห็นปุ่ม “AI แนะนำคำตอบ” และ “แปลก่อนส่ง” ในกล่องพิมพ์ ·
+          ทั้งสองอย่างคิดค่าใช้จ่ายตามจำนวนครั้งที่กดใช้ และต้องให้สิทธิ์รายคนที่หน้าผู้ใช้งานด้วย
+        </p>
+        <form action={setChatAiSettingsAction} className="mt-3 flex flex-col gap-2">
           <input type="hidden" name="systemId" value={systemId} />
-          <input type="hidden" name="conversationId" value={c.id} />
-          <input type="hidden" name="assigneeUserId" value="me" />
-          <button className="btn btn-ghost text-xs">รับเรื่องเอง</button>
-        </form>
-        <form action={assignAction} className="flex items-center gap-1">
-          <input type="hidden" name="systemId" value={systemId} />
-          <input type="hidden" name="conversationId" value={c.id} />
-          <select name="assigneeUserId" defaultValue={c.assigneeUserId ?? "none"} className="input text-xs">
-            <option value="none">ยังไม่มอบหมาย</option>
-            {staff.map((s) => (
-              <option key={s.userId} value={s.userId}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <button className="btn btn-ghost text-xs">มอบหมาย</button>
-        </form>
-        {c.status !== "RESOLVED" ? (
-          <>
-            <form action={setStatusAction}>
-              <input type="hidden" name="systemId" value={systemId} />
-              <input type="hidden" name="conversationId" value={c.id} />
-              <input type="hidden" name="status" value="PENDING" />
-              <button className="btn btn-ghost text-xs">พักไว้</button>
-            </form>
-            <ConfirmDialog
-              triggerLabel="ปิดบทสนทนา"
-              triggerClassName="btn btn-ghost text-xs"
-              title="ปิดบทสนทนานี้?"
-              detail="ปิดแล้วยังอ่านได้ ถ้าลูกค้าทักกลับภายใน 24 ชม. จะเปิดต่อเธรดเดิม"
-              confirmLabel="ยืนยันปิด"
-              action={setStatusAction}
-              fields={{ systemId, conversationId: c.id, status: "RESOLVED" }}
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              name="aiSuggestEnabled"
+              defaultChecked={setting.aiSuggestEnabled}
+              className="size-4 shrink-0"
             />
-          </>
-        ) : (
-          <form action={setStatusAction}>
-            <input type="hidden" name="systemId" value={systemId} />
-            <input type="hidden" name="conversationId" value={c.id} />
-            <input type="hidden" name="status" value="OPEN" />
-            <button className="btn btn-ghost text-xs">เปิดใหม่</button>
-          </form>
-        )}
-        {c.staffUnreadCount > 0 && (
-          <form action={markReadAction}>
-            <input type="hidden" name="systemId" value={systemId} />
-            <input type="hidden" name="conversationId" value={c.id} />
-            <button className="btn btn-ghost text-xs">ทำเป็นอ่านแล้ว</button>
-          </form>
-        )}
+            เปิด “AI แนะนำคำตอบ”
+          </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              name="translateEnabled"
+              defaultChecked={setting.translateEnabled}
+              className="size-4 shrink-0"
+            />
+            เปิด “การแปลข้อความ”
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+            ภาษาที่ทีมอ่าน (ปลายทางของการแปลข้อความลูกค้า)
+            <select name="staffLang" defaultValue={setting.staffLang} className="input w-40">
+              <option value="th">ไทย</option>
+              <option value="en">อังกฤษ</option>
+              <option value="cn">จีน</option>
+              <option value="ja">ญี่ปุ่น</option>
+              <option value="ko">เกาหลี</option>
+              <option value="de">เยอรมัน</option>
+              <option value="fr">ฝรั่งเศส</option>
+              <option value="ru">รัสเซีย</option>
+            </select>
+          </label>
+          <SubmitButton variant="ghost" pendingText="กำลังบันทึก…">
+            บันทึกการตั้งค่า AI
+          </SubmitButton>
+        </form>
       </div>
 
-      {/* customer panel (ย่อ) */}
-      <div className="rounded-lg border px-3 py-2 text-xs">
-        <div className="font-medium">ข้อมูลลูกค้า</div>
-        <div className="text-[color:var(--color-muted)]">
-          {contact.phone ? `เบอร์ ${contact.phone}` : "ยังไม่มีเบอร์"}
-          {linkedMember ? ` · สมาชิก ${linkedMember.name ?? linkedMember.memberCode}` : ""}
-        </div>
-        {memberLinked ? (
-          contact.customerId ? (
-            <form action={linkCustomerAction} className="mt-1">
-              <input type="hidden" name="systemId" value={systemId} />
-              <input type="hidden" name="conversationId" value={c.id} />
-              <input type="hidden" name="contactId" value={contact.id} />
-              <input type="hidden" name="unlink" value="1" />
-              <button className="text-xs text-[color:var(--color-danger)] underline">
-                ถอดการผูกสมาชิก
-              </button>
-            </form>
-          ) : (
-            <form action={linkCustomerAction} className="mt-1 flex items-center gap-1">
-              <input type="hidden" name="systemId" value={systemId} />
-              <input type="hidden" name="conversationId" value={c.id} />
-              <input type="hidden" name="contactId" value={contact.id} />
-              <input
-                name="phone"
-                inputMode="tel"
-                placeholder="เบอร์โทรลูกค้า"
-                defaultValue={contact.phone ?? ""}
-                className="input min-w-0 text-xs"
-              />
-              <button className="btn btn-ghost text-xs">ผูกสมาชิก</button>
-            </form>
-          )
-        ) : (
-          <div className="mt-1 text-[color:var(--color-muted)]">
-            เชื่อมระบบสมาชิกในตั้งค่าเพื่อผูกโปรไฟล์ลูกค้า
-          </div>
-        )}
-      </div>
-
-      {/* messages */}
-      <div className="flex flex-1 flex-col gap-2 overflow-y-auto py-1">
-        {messages.length === 0 ? (
-          <p className="py-6 text-center text-sm text-[color:var(--color-muted)]">
-            ยังไม่มีข้อความ
+      {/* ── คลังตัวอย่างคำตอบ (§5.4 · ข้อ 9 ของเจ้าของ) ────────────────────
+          🔴 ของที่คนแก้ไม่ได้ = ของที่เน่าแล้วซ่อมไม่ได้ — ถอดตัวอย่างที่ไม่ดีออกได้จากที่นี่
+             ถอด = ปัก archivedAt ไม่ลบแถว (ตรวจย้อนได้ว่าเคยแนะนำอะไรผิดไป) */}
+      <div className="card">
+        <h2 className="text-sm font-medium">คลังตัวอย่างคำตอบ</h2>
+        <p className="mt-1 text-xs text-[color:var(--color-muted)]">
+          คำตอบที่ทีมกด “บันทึกเป็นตัวอย่างคำตอบ” ในกล่องแชท จะถูกเก็บไว้ที่นี่และถูกใช้เป็นตัวอย่างให้ AI
+          ตอบได้ตรงขึ้นในครั้งถัดไป · ตัวอย่างที่ไม่ดีให้กด “ถอดออก” — ไม่ถูกลบทิ้ง แค่เลิกนำไปใช้
+        </p>
+        {!mayReadChat ? (
+          <p className="mt-3 text-xs text-[color:var(--color-muted)]">
+            คลังนี้เก็บข้อความจริงของลูกค้าไว้ด้วย — ต้องมีสิทธิ์ “ดูกล่องแชทลูกค้า” จึงจะเปิดดูได้
+          </p>
+        ) : examples.length === 0 ? (
+          <p className="mt-3 text-xs text-[color:var(--color-muted)]">
+            ยังไม่มีตัวอย่างในคลัง — เปิดกล่องแชท แล้วกด “บันทึกเป็นตัวอย่างคำตอบ” ใต้คำตอบที่ตอบได้ดี
           </p>
         ) : (
-          messages.map((m) => <MessageBubble key={m.id} msg={m} nameOf={nameOf} />)
+          <ul className="mt-3 flex flex-col gap-2">
+            {examples.map((ex) => (
+              <li
+                key={ex.id}
+                className={`flex flex-col gap-1 rounded-lg border px-3 py-2 text-xs ${
+                  ex.archivedAt ? "border-dashed opacity-60" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <ChannelChip type={ex.channel} />
+                  <span className="text-[color:var(--color-muted)]">
+                    {ex.archivedAt ? "ถอดออกแล้ว" : `ถูกใช้ ${ex.useCount} ครั้ง`} · {fmt(ex.createdAt)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[color:var(--color-muted)]">ลูกค้าถาม: </span>
+                  <span className="whitespace-pre-wrap break-words">{ex.question}</span>
+                </div>
+                <div>
+                  <span className="text-[color:var(--color-muted)]">ทีมตอบ: </span>
+                  <span className="whitespace-pre-wrap break-words">{ex.answer}</span>
+                </div>
+                {!ex.archivedAt && (
+                  <ConfirmDialog
+                    triggerLabel="ถอดออกจากคลัง"
+                    triggerClassName="self-start text-xs text-[color:var(--color-danger)] underline"
+                    title="ถอดตัวอย่างคำตอบนี้ออก?"
+                    detail="AI จะเลิกใช้ตัวอย่างนี้เป็นแนวทาง · ข้อความเดิมยังอยู่ในประวัติแชทตามปกติ"
+                    confirmLabel="ยืนยันถอด"
+                    danger
+                    action={archiveAnswerExampleAction}
+                    fields={{ systemId, exampleId: ex.id }}
+                  />
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
-
-      {/* composer */}
-      {disabled ? (
-        <p className="rounded-lg border px-3 py-2 text-xs text-[color:var(--color-muted)]">
-          บทสนทนาปิดแล้ว — กด &quot;เปิดใหม่&quot; เพื่อตอบต่อ
-        </p>
-      ) : (
-        <form action={sendReplyAction} className="flex flex-col gap-1">
-          <input type="hidden" name="systemId" value={systemId} />
-          <input type="hidden" name="conversationId" value={c.id} />
-          <textarea
-            name="body"
-            required
-            rows={2}
-            placeholder="พิมพ์ข้อความตอบลูกค้า…"
-            className="input"
-          />
-          <div className="flex items-center justify-between gap-2">
-            <label className="flex items-center gap-1.5 text-xs text-[color:var(--color-muted)]">
-              <input type="checkbox" name="isInternal" /> โน้ตภายใน (ลูกค้าไม่เห็น)
-            </label>
-            <SubmitButton pendingText="กำลังส่ง…">ส่ง</SubmitButton>
-          </div>
-        </form>
-      )}
-    </div>
+    </section>
   );
-}
-
-function MessageBubble({
-  msg,
-  nameOf,
-}: {
-  msg: {
-    id: string;
-    direction: string;
-    type: string;
-    body: string | null;
-    isInternal: boolean;
-    senderUserId: string | null;
-    deliveryStatus: string;
-    deliveryError: string | null;
-    createdAt: Date;
-  };
-  nameOf: (uid?: string | null) => string;
-}) {
-  if (msg.type === "SYSTEM") {
-    return (
-      <div className="my-1 text-center text-xs text-[color:var(--color-muted)]">{msg.body}</div>
-    );
-  }
-  const out = msg.direction === "OUT";
-  const failed = msg.deliveryStatus === "FAILED";
-  const bodyText =
-    msg.body ?? (msg.type === "IMAGE" ? "[รูปภาพ]" : msg.type === "STICKER" ? "[สติกเกอร์]" : "");
-  return (
-    <div className={`flex ${out ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[80%] rounded-lg border px-3 py-1.5 text-sm ${
-          out ? "bg-[color:var(--color-surface-2)]" : ""
-        } ${msg.isInternal ? "border-dashed" : ""} ${failed ? "border-[color:var(--color-danger)]" : ""}`}
-      >
-        {msg.isInternal && (
-          <div className="text-[10px] text-[color:var(--color-muted)]">โน้ตภายใน</div>
-        )}
-        <div className="whitespace-pre-wrap break-words">{bodyText}</div>
-        <div className="mt-0.5 flex items-center gap-2 text-[10px] text-[color:var(--color-muted)]">
-          <span>{out ? nameOf(msg.senderUserId) : "ลูกค้า"}</span>
-          <span>{fmt(msg.createdAt)}</span>
-          {failed && (
-            <span className="text-[color:var(--color-danger)]">
-              ส่งไม่สำเร็จ ({failReasonLabel(msg.deliveryError)})
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function failReasonLabel(reason: string | null): string {
-  switch (reason) {
-    case "TOKEN_EXPIRED":
-      return "การเชื่อมต่อหลุด";
-    case "RATE_LIMITED":
-      return "ส่งถี่เกินไป";
-    case "CHANNEL_DISCONNECTED":
-      return "ช่องทางถูกถอด";
-    case "NETWORK_ERROR":
-      return "เครือข่ายขัดข้อง";
-    default:
-      return "ลองใหม่อีกครั้ง";
-  }
 }

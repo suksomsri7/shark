@@ -14,6 +14,12 @@ enum ChatChannelType {
   SHOPEE // 🔜 เฟส 3
   LAZADA // 🔜 เฟส 3
   WHATSAPP // 🔜 เฟส 4
+  // 🔴 APP แยกจาก WEBCHAT เพราะ "แชทจากแอปมือถือของลูกค้า" ไม่ใช่ "แชทจากหน้าเว็บ":
+  //    วันนี้ SiamDive RN ยิงเข้ามาปนกับ widget เว็บใต้ป้าย WEBCHAT เดียวกัน ⇒ แยกไม่ออกว่า
+  //    ลูกค้าทักมาจากไหน (มีผลกับ deep link ที่ส่งกลับ · การนับสถิติช่องทาง · ไอคอนในกล่องแชท)
+  //    ถ้าไม่มีค่านี้ ต้องไปเดาจาก meta.userAgent ซึ่งเป็นข้อมูลที่ปลอมได้และหายเมื่อ purge
+  APP // 🔜 แอปมือถือของลูกค้า (SiamDive RN ฯลฯ) — ยังไม่มี adapter แยก
+  TIKTOK // 🔜 เฟส 4 (คอขวดคือการอนุมัติของแพลตฟอร์ม ไม่ใช่โค้ด)
 }
 
 enum ChatConnectionStatus {
@@ -197,6 +203,19 @@ model ChatMessage {
   deliveryStatus    ChatDeliveryStatus   @default(SENT)
   deliveryError     String?
   meta              Json?
+  // ── คำแปล (WO-CW1) — มติ W3: "กดแปลเมื่อต้องการ" ไม่ใช่แปลอัตโนมัติ ──
+  // 🔴 เก็บผลแปลไว้ในแถวเดียวกับต้นฉบับ **ไม่ทับ body** เพราะ 2 เหตุผล:
+  //    (1) ค่าใช้จ่าย — 1 ข้อความ ≈ $0.008 ถ้าไม่เก็บ คนกดซ้ำ/รีเฟรชหน้า = จ่ายใหม่ทุกครั้ง
+  //    (2) ต้นฉบับคือหลักฐาน — คำแปลผิดได้ ทีมต้องย้อนดูสิ่งที่ลูกค้าพิมพ์จริงเสมอ
+  // เก็บ 1 คำแปล/ข้อความ (ภาษาปลายทางล่าสุด) ไม่ทำตาราง n:1 เพราะทีมอ่านภาษาเดียว
+  //    (ChatSetting.staffLang) — วันที่ต้องรองรับหลายภาษาพร้อมกันค่อยแตกตาราง ไม่ใช่ตอนนี้
+  detectedLang      String? // ภาษาที่ตรวจได้จากต้นฉบับ (BCP-47 สั้น: th/en/cn) — null = ยังไม่เคยแปล
+  translatedBody    String?              @db.Text
+  translatedLang    String? // ภาษาปลายทางของ translatedBody — ต่างจากที่ขอ = ต้องแปลใหม่
+  translatedAt      DateTime?
+  // 🔴 PDPA: `translatedBody` = สำเนาเนื้อความอีกชุดหนึ่ง ⇒ retention ต้องล้างพร้อม `body`
+  //    วันนี้ chat/retention.ts ล้างแค่ body/stickerMeta/orderContext/meta/senderName
+  //    ⇒ ถ้าไม่เพิ่มฟิลด์นี้เข้าไปด้วย ข้อความที่ "ปกปิดแล้ว" จะยังอ่านได้จากช่องคำแปล (WO-CW3)
   purgedAt          DateTime?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
@@ -287,6 +306,66 @@ model ChatQuickReply {
   @@index([systemId])
 }
 
+// ─────────────── AI แนะนำคำตอบ + คลังคำตอบที่ผ่านมนุษย์ (WO-CW1) ───────────────
+// ทำไมต้องเก็บ "ข้อเสนอ" ไม่ใช่เก็บแค่ผลลัพธ์: ถ้าบันทึกเฉพาะข้อความที่ส่งจริง
+// จะตอบไม่ได้เลยว่า AI ช่วยได้จริงไหม (ทีมกดใช้กี่ครั้ง · แก้เยอะแค่ไหน · ข้ามทิ้งกี่ครั้ง)
+// ⇒ วัดคุณภาพไม่ได้ = ปรับ prompt แบบเดา ๆ และเถียงกันด้วยความรู้สึก
+
+model ChatAiSuggestion {
+  id              String   @id @default(cuid())
+  tenantId        String
+  systemId        String
+  conversationId  String
+  sourceMessageId String // ข้อความลูกค้าที่ AI ใช้ตั้งต้น
+  suggestedBody   String   @db.Text
+  rank            Int      @default(0) // 0..2 (เสนอได้สูงสุด 3 ตัวเลือกต่อครั้ง)
+  model           String
+  costMicro       Int      @default(0)
+  // 🔴 ไม่ใช่ของประดับ — เป็นหลักฐานว่าคำตอบมาจากข้อมูลจริงของร้าน ไม่ใช่ AI แต่งเอง
+  //    ["kb:<id>","example:<id>","tool:sales_today"] · ว่าง = ต้องขึ้นป้ายเตือนบนตัวเลือกนั้น
+  sourcesUsed     Json     @default("[]")
+  // PENDING | IGNORED | SENT_AS_IS | SENT_EDITED
+  // เริ่มที่ PENDING เสมอ เพราะ "เสนอแล้วยังไม่มีใครตัดสิน" ต่างจาก "เสนอแล้วถูกข้าม"
+  outcome         String   @default("PENDING")
+  sentMessageId   String?
+  // 0..100 · ความเหมือนของที่ส่งจริงกับที่เสนอ — แยก AS_IS/EDITED และวัดคุณภาพรายเดือน
+  // เก็บเป็น Int เพราะเป็นตัวชี้วัดเชิงสถิติ ไม่ต้องการความละเอียดระดับทศนิยม
+  similarity      Int?
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([systemId, conversationId, createdAt])
+  @@index([systemId, outcome, createdAt])
+}
+
+model ChatAnswerExample {
+  id               String          @id @default(cuid())
+  tenantId         String
+  systemId         String
+  question         String          @db.Text // ข้อความลูกค้าที่นำไปสู่คำตอบนี้
+  // 🔴 เก็บ "คำตอบที่ส่งจริง" ไม่ใช่ที่ AI เสนอ — ของมนุษย์คือความจริงเสมอ
+  //    (ถ้าเก็บของ AI คลังจะเรียนรู้จากคำตอบที่ทีมเห็นว่าไม่ดีพอจนต้องแก้)
+  answer           String          @db.Text
+  channel          ChatChannelType
+  lang             String?
+  tags             Json            @default("[]")
+  sourceMessageId  String? // ChatMessage.id ของคำตอบที่ส่งจริง
+  fromSuggestionId String? // มาจาก AI ที่ถูกแก้แล้วส่ง (null = พิมพ์เองล้วน)
+  useCount         Int             @default(0)
+  lastUsedAt       DateTime?
+  // ถอดตัวอย่างที่ไม่ดีออกได้โดยไม่ลบแถว — ของที่ลบทิ้งจะตรวจย้อนไม่ได้ว่าเคยแนะนำอะไรผิดไป
+  archivedAt       DateTime?
+  createdByUserId  String
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  // 🔴 PDPA: ตารางนี้เป็น "สำเนาเนื้อความอีกที่หนึ่ง" (question/answer) ⇒ ต้องถูกกวาดด้วย
+  //    ChatSetting.retentionDays เหมือน lastMessagePreview ไม่งั้นข้อความที่ปกปิดแล้วยังโผล่ที่นี่
+  @@index([systemId, archivedAt, createdAt])
+  @@index([systemId, channel, lang])
+}
+
 // ─────────────── Settings (1 แถว/ระบบ) ───────────────
 
 model ChatSetting {
@@ -320,6 +399,16 @@ model ChatSetting {
   //  · เป็น Json เพราะเพิ่มช่อง (เช่น พักเที่ยง/หลายช่วงต่อวัน) ได้โดยไม่ต้อง migrate ซ้ำ
   //    อ่าน/เขียนผ่าน src/lib/modules/chat/business-hours.ts เท่านั้น (ตรวจรูปที่นั่นที่เดียว)
   businessHours         Json?
+  // ── AI + การแปล (WO-CW1) ──
+  // 🔴 default false ทั้งคู่ (opt-in) เพราะทั้งสองอย่าง **มีค่าใช้จ่ายจริงต่อครั้ง** (~$0.008/ข้อความ)
+  //    ของที่กินเงินของร้านต้องให้เจ้าของกดเปิดเอง ห้ามเปิดให้อัตโนมัติตอน migrate
+  //    (ร้านที่มีอยู่ทั้งหมดจะได้ false = พฤติกรรมเดิมไม่เปลี่ยน)
+  aiSuggestEnabled      Boolean   @default(false)
+  translateEnabled      Boolean   @default(false)
+  // ภาษาที่ "ทีมงานอ่าน" — คนละตัวกับ ChatContact.lang (ภาษาที่ลูกค้าใช้)
+  // เป็นปลายทางของการแปลขาเข้า และเป็นต้นทางของการแปลขาออก
+  // ไม่ nullable เพราะทุกร้านต้องมีภาษาอ่านเสมอ · ค่าเริ่ม "th" ตรงกับฐานลูกค้าวันนี้
+  staffLang             String    @default("th")
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 }

@@ -99,6 +99,23 @@ export async function purgeExpiredChatMessages(
       const cutoff = new Date(now.getTime() - clampRetentionDays(s.retentionDays) * DAY_MS);
       let purgedHere = 0;
 
+      // ── (0) 🔴 H2 (WO-CW3): คลังตัวอย่างคำตอบ = "สำเนาเนื้อความอีกที่หนึ่ง" ──
+      //    `question` คือข้อความจริงของลูกค้า · `answer` คือคำตอบจริงของทีม
+      //    ไม่กวาด = ปกปิด ChatMessage ไปแล้วแต่เนื้อหาเดิมยังอ่านได้จากตารางนี้ตลอดกาล
+      //    ปกปิด (ไม่ลบแถว) ด้วยเหตุผลเดียวกับข้อความ: ตัวอย่างที่เคยถูกใช้ต้องตรวจย้อนได้ว่ามีอยู่
+      //    `OR: [{question not ""}, {answer not ""}]` ทำให้รันซ้ำแล้วไม่แตะแถวเดิม (idempotent)
+      //    ⚠️ อยู่นอก while เพราะไม่ผูกกับ "มีข้อความหมดอายุในรอบนี้ไหม" — ตัวอย่างหมดอายุได้เอง
+      //    และไม่กิน `budget` ของข้อความ (คนละตาราง คนละขนาดงาน)
+      await prisma.chatAnswerExample.updateMany({
+        where: {
+          tenantId: s.tenantId,
+          systemId: s.systemId,
+          createdAt: { lt: cutoff },
+          OR: [{ question: { not: "" } }, { answer: { not: "" } }],
+        },
+        data: { question: "", answer: "" },
+      });
+
       while (budget > 0) {
         const take = Math.min(budget, CHUNK);
         // 🔴 where ผูก tenantId + systemId เสมอ — ห้ามกวาดข้ามร้าน
@@ -134,6 +151,15 @@ export async function purgeExpiredChatMessages(
             orderContext: Prisma.DbNull,
             meta: Prisma.DbNull,
             senderName: null,
+            // 🔴 H1 (WO-CW3): `translatedBody` คือ **สำเนาเนื้อความอีกชุด** ที่ WO-CW1 เพิ่งเพิ่ม
+            //    ล้างแต่ `body` = ข้อความที่ "ปกปิดแล้ว" ยังอ่านได้เต็ม ๆ จากช่องคำแปล
+            //    (แพตเทิร์นเดียวกับบั๊ก lastMessagePreview 28 ส.ค. เป๊ะ)
+            //    ล้าง detectedLang/translatedLang/translatedAt ไปด้วย — เป็นร่องรอยว่าใครพูดภาษาอะไร
+            //    และแปลเมื่อไหร่ ซึ่งเป็นข้อมูลส่วนบุคคลของบทสนทนาที่หมดอายุไปแล้ว
+            translatedBody: null,
+            detectedLang: null,
+            translatedLang: null,
+            translatedAt: null,
             purgedAt: now,
           },
         });

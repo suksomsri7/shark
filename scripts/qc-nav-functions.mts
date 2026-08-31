@@ -176,6 +176,15 @@ const BIZ_BASE = join(APP, "u/[unitSlug]");
 const POS_BASE = join(APP, "sys/[id]");
 
 // รวบรวม page.tsx ใต้ dir (recursive) → คืน rest path เทียบกับ baseForRest · ตัด segment ที่เป็น [param]
+// หน้าที่คงอยู่เพื่อ "ลิงก์เก่าที่ส่งออกไปแล้วต้องไม่ตาย" — ไม่ใช่ฟังก์ชันของระบบ จึงไม่ต้องมีในเมนู
+// 🔴 เพิ่มรายชื่อที่นี่ได้เฉพาะเมื่อเขียนเหตุผลกำกับ · ห้ามใส่เพื่อให้ข้อสอบเขียวเฉย ๆ
+const COMPAT_REDIRECTS = new Set<string>([
+  // WO-CW4: กล่องแชทย้ายไปอยู่หน้า "ภาพรวม" แล้ว แต่ push/AppNotification ที่ส่งออกไปก่อนหน้านี้
+  // ชี้มาที่ `/app/sys/<id>/chat?c=<id>` ⇒ ไฟล์ต้องอยู่ต่อและ redirect พา `?c=` ไปด้วย
+  // ถ้าบังคับให้มีในเมนู = ได้แท็บซ้ำที่พาไปที่เดิม ซึ่งขัดกับ §6.1 (เหลือ 2 แท็บ)
+  "src/app/app/sys/[id]/chat/page.tsx",
+]);
+
 function routesUnder(dir: string, baseForRest: string): string[] {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
@@ -186,6 +195,13 @@ function routesUnder(dir: string, baseForRest: string): string[] {
         if (/^\[.*\]$/.test(name)) continue; // ข้ามโฟลเดอร์ [param]
         walk(full);
       } else if (name === "page.tsx") {
+        // 🔴 Fable 31 ส.ค. — ยกเว้นเฉพาะ "หน้าเปลี่ยนทางเพื่อความเข้ากันได้" ที่ประกาศไว้ข้างล่าง
+        //    เจตนาเดิมของ S5 ไม่เปลี่ยน: **หน้าที่มีเนื้อหาจริงห้ามเป็นหน้ากำพร้า**
+        //    ใช้รายชื่อชัดเจน ไม่ใช่ฮิวริสติก "ไม่มี JSX = redirect" เพราะหน้าแบบนี้มักมี JSX
+        //    สำหรับกรณีไม่มีสิทธิ์อยู่ด้วย (ต้องอธิบายให้คนอ่านรู้เรื่อง ไม่ใช่เด้งไปเจอ error ดิบ)
+        //    ⇒ ฮิวริสติกจะกลืนหน้าจริงในอนาคตโดยไม่มีใครรู้ · รายชื่อบังคับให้ต้องเขียนเหตุผลทุกครั้ง
+        // เทียบด้วยหางของ path — `full` เป็น absolute (สร้างจาก ROOT) ส่วนรายชื่อเขียนแบบ repo-relative
+        if ([...COMPAT_REDIRECTS].some((x) => full.endsWith(x))) continue;
         const rel = relative(baseForRest, d); // "" = root · "restaurant/menu" ฯลฯ
         out.push(rel === "" ? "" : "/" + rel.split("/").join("/"));
       }

@@ -66,6 +66,57 @@ export function permissionValue(m: MembershipCtx | null, key: string): number | 
   return typeof v === "number" ? v : undefined;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// การให้สิทธิ์ต่อ (WO-CW2) — ใช้โดย src/lib/staff/service.ts เท่านั้น
+// 🔴 ทุกฟังก์ชันในบล็อกนี้เป็นการ **เพิ่ม** ล้วน ไม่แตะพฤติกรรมของ evaluate() เดิม
+//    (ทั้งระบบพึ่ง evaluate อยู่ — เปลี่ยนที่นี่ = เปลี่ยนสิทธิ์ทุกโมดูลพร้อมกัน)
+//
+// หลักการ: "ห้ามให้สิ่งที่ตัวเองไม่มี" — ไม่งั้นคนที่ตั้งสิทธิ์ได้คนเดียว จะยกระดับตัวเอง
+// ผ่านการตั้งสิทธิ์ให้บัญชีอื่นที่ตัวเองคุมได้ (privilege escalation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** ลำดับอำนาจของบทบาท — เลขน้อย = มีอำนาจมากกว่า */
+export const ROLE_RANK: Record<Role, number> = { OWNER: 0, MANAGER: 1, STAFF: 2 };
+
+/** ตั้งบทบาทนี้ให้คนอื่นได้ไหม — ให้ได้เฉพาะบทบาทที่ "ไม่สูงกว่าตัวเอง" (MANAGER ตั้ง OWNER ไม่ได้) */
+export function canAssignRole(actorRole: Role, targetRole: Role): boolean {
+  return ROLE_RANK[actorRole] <= ROLE_RANK[targetRole];
+}
+
+/**
+ * ให้สิทธิ์เข้าถึงสาขาชุดนี้ได้ไหม — ให้ได้เฉพาะสาขาที่ตัวเองเข้าถึง
+ * `["*"]` (ทุกสาขา) ให้ได้เฉพาะคนที่เองก็เป็น `["*"]` หรือ OWNER
+ */
+export function canGrantUnitAccess(actor: MembershipCtx | null, unitIds: string[]): boolean {
+  if (!actor) return false;
+  if (actor.role === "OWNER" || actor.unitAccess.includes("*")) return true;
+  return unitIds.every((u) => u !== "*" && actor.unitAccess.includes(u));
+}
+
+/**
+ * แจก permission ข้อนี้ให้คนอื่นได้ไหม — ต้องเป็นสิทธิ์ที่ "ตัวเองใช้ได้จริง" ตาม evaluate เดิม
+ * (ตัดสินระดับ tenant: ไม่ผูก unit เพราะสิทธิ์ที่แจกยังไม่ผูกสาขาจนกว่าจะรวมกับ unitAccess)
+ */
+export function canGrantPermission(actor: MembershipCtx | null, module: string, action: string): boolean {
+  return evaluate(actor, { module, action });
+}
+
+/**
+ * แจก "ค่าตัวเลขของสิทธิ์" (เช่นวงเงินอนุมัติ) ได้ไหม — ให้ได้ไม่เกินเพดานของตัวเอง
+ * ⚠️ ตีความให้ตรงกับจุดบังคับใช้จริง (account/expense-actions.ts): ไม่มีค่า = ไม่จำกัด
+ *    ⇒ คนที่ไม่มีเพดานอยู่แล้ว แจกเพดานเท่าไรก็ไม่ถือว่ายกระดับ (ตัวเองก็ไม่จำกัดอยู่แล้ว)
+ */
+export function canGrantPermissionValue(
+  actor: MembershipCtx | null,
+  key: string,
+  value: number,
+): boolean {
+  if (!actor) return false;
+  if (actor.role === "OWNER" || actor.role === "MANAGER") return true;
+  const own = permissionValue(actor, key);
+  return own === undefined || value <= own;
+}
+
 export class ForbiddenError extends Error {
   constructor(q: AccessQuery) {
     super(`ไม่มีสิทธิ์: ${q.action}${q.unitId ? ` @${q.unitId}` : ""}`);

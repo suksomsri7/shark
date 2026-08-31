@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { ChatChannelType } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { getAdapter, isSupported } from "@/lib/modules/chat/adapter";
 import { credsOf, receiveInbound } from "@/lib/modules/chat/service";
@@ -70,7 +71,9 @@ export async function GET() {
 // dedupe ชั้น 1: insert WebhookLog (@@unique([connectionId, eventKey])) — ชน = ประมวลไปแล้ว
 async function recordWebhook(
   connectionId: string,
-  channelType: "LINE" | "WEBCHAT" | "FACEBOOK" | "INSTAGRAM" | "SHOPEE" | "LAZADA" | "WHATSAPP",
+  // 🔴 อ่านชนิดจาก enum จริง ห้ามพิมพ์ลิสต์ช่องทางซ้ำที่นี่ —
+  //    ของเดิมพิมพ์ union ด้วยมือ พอเพิ่ม APP/TIKTOK เข้า enum ก็แดงทันที (WO-CW1)
+  channelType: ChatChannelType,
   eventKey: string,
 ): Promise<boolean> {
   try {
@@ -85,7 +88,7 @@ async function recordWebhook(
 
 async function logWebhook(
   connectionId: string,
-  channelType: "LINE" | "WEBCHAT" | "FACEBOOK" | "INSTAGRAM" | "SHOPEE" | "LAZADA" | "WHATSAPP",
+  channelType: ChatChannelType, // เหตุผลเดียวกับ recordWebhook — ชนิดมาจาก enum ที่เดียว
   eventKey: string,
   status: string,
   error?: string,

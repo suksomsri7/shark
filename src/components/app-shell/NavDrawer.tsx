@@ -305,6 +305,9 @@ export function NavDrawer({
             { href: "/app/approvals", icon: "✅", label: "รออนุมัติของฉัน" },
             // 31 ส.ค. — เจ้าของบอกว่า "ขาดฟังก์ชันลบระบบ ลบกิจการ" · ของอยู่หน้านี้ แต่เมนูไม่เคยชี้มา
             { href: "/app/settings/systems", icon: "🧱", label: "จัดการระบบ (เพิ่ม/เอาออก)" },
+            // 31 ส.ค. — WO-CW2: หน้าจัดการผู้ใช้งานหน้าแรกของระบบ · ต้องมีลิงก์ตั้งแต่วันแรก
+            // (บทเรียน 29 ส.ค.: /app/settings/webhooks เป็นหน้ากำพร้าอยู่หลายเดือนเพราะไม่มีลิงก์)
+            { href: "/app/settings/staff", icon: "👥", label: "ผู้ใช้งานและสิทธิ์" },
             { href: "/app/settings/connections", icon: "🔗", label: "สาขาและการเชื่อมระบบ" },
             { href: "/app/settings/approval", icon: "🧾", label: "สายอนุมัติ" },
             { href: "/app/settings/automation", icon: "⚙️", label: "ระบบอัตโนมัติ" },

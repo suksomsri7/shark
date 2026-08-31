@@ -246,6 +246,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   ChatConversationEvent: sys(),
   ChatQuickReply: sys(),
   ChatSetting: sys(),
+  // WO-CW1 — ทั้งคู่มี tenantId + systemId ครบ และเป็น "ข้อมูลของร้าน" ที่ต้องกันข้ามร้านเด็ดขาด
+  // (prompt ของ AI ประกอบจากตารางนี้ — หลุดข้ามร้าน = คำตอบของร้าน A ไปโผล่ให้ลูกค้าร้าน B)
+  ChatAiSuggestion: sys(),
+  ChatAnswerExample: sys(),
   ChatWebhookLog: g("log ดิบตอนรับ webhook — ยังไม่รู้ว่า tenant ไหนจนกว่าจะ resolve connection (ตั้งใจไม่มี tenantId)"),
   ChatRateBucket: g("bucket นับ rate limit ต่อ key ดิบ (ip/connectionId) — สร้างก่อนรู้ tenant (ตั้งใจไม่มี tenantId)"),
   // Restaurant

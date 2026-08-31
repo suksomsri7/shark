@@ -6,6 +6,9 @@ import { AppMain } from "@/components/app-shell/AppMain";
 import { NavProgress } from "@/components/app-shell/NavProgress";
 import type { NavItem, SoonItem } from "@/components/app-shell/NavDrawer";
 import { accountNavChildren } from "@/lib/modules/account/nav";
+// เมนูของระบบแชทซ่อนตามสิทธิ์จริง — ใช้ทะเบียน/ตัวช่วยชุดเดียวกับด่านของโมดูล (ไม่พิมพ์คีย์ซ้ำ)
+import { evaluate } from "@/lib/core/rbac";
+import { membershipOf, CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
 
 // ฟังก์ชันย่อยของ "ระบบหน้า fixed" (เช่น KB /app/kb) → กาง accordion เหมือนระบบอื่น
 // ⚠️ ทุก href ต้องมี page.tsx จริง — ตรวจโดย scripts/qc-nav-functions.mts (บล็อก KB)
@@ -176,13 +179,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/reward/redeem`, label: "แลกรางวัล" },
           { href: `${s}/reward/history`, label: "ประวัติการแลก" },
         ];
-      case "CHAT":
-        // ระบบแชทลูกค้า: สนทนา (inbox รวมทุกช่องทาง) + เชื่อมช่องทาง (LINE/เว็บ/สมาชิก)
+      case "CHAT": {
+        // ระบบแชทลูกค้า: ภาพรวม = กล่องแชทเต็มจอ (WO-CW4) · /chat = ลิงก์เก่าที่ redirect เข้ามาที่เดียวกัน
+        //   (ไฟล์ /chat/page.tsx ต้องคงอยู่ — push ที่ส่งออกไปแล้วชี้มาที่ `?c=` ของ path นั้น)
+        // 🔴 ไม่มีสิทธิ์อ่านแชท = เมนู 2 ตัวแรกพาไปหน้าที่เปิดไม่ได้ ⇒ ซ่อนทิ้ง เหลือแค่ "เชื่อมช่องทาง"
+        //    ซึ่งใช้สิทธิ์คนละชุด (chat.setting.*) · ด่านจริงอยู่ที่ requireChatRead() ในตัวกล่องแชท
+        const mayReadChat = evaluate(membershipOf(auth), {
+          module: "chat",
+          action: CHAT_READ_ACTION,
+        });
         return [
-          { href: s, label: "ภาพรวม" },
-          { href: `${s}/chat`, label: "สนทนา" },
+          // "ภาพรวม" = กล่องแชทเต็มจอ · ไม่มีแท็บ "สนทนา" แยกอีกแล้ว (ชี้ที่เดิมซ้ำ — §6.1)
+          ...(mayReadChat ? [{ href: s, label: "ภาพรวม" }] : []),
           { href: `${s}/chat/channels`, label: "เชื่อมช่องทาง" },
         ];
+      }
       case "MEETING":
         // ระบบแชทภายในมีฟังก์ชันจริงเดียว (ห้องแชท) — ไม่ฝืนแตกเกินจริง
         return [

@@ -15,8 +15,17 @@ import {
   setMemberSystem,
   setBusinessHours,
 } from "./service";
+import type { ExternalAttachmentInput } from "./service";
 import { setRetentionDays } from "./retention";
 import { validateBusinessHours } from "./business-hours";
+import { translateMessage, translateDraft, type TranslateResult } from "./translate";
+import { suggestReply, recordSuggestionOutcome, ignoreSuggestions, type SuggestResult } from "./ai-suggest";
+import { saveAnswerExample, archiveAnswerExample } from "./learning";
+import {
+  uploadFile,
+  ALLOWED_UPLOAD_TYPES,
+  CHAT_ATTACHMENT_MAX_BYTES,
+} from "@/lib/storage/service";
 
 // ทุก action: requireTenant + revalidate หน้า chat ของระบบนั้น
 
@@ -44,35 +53,259 @@ function revalidateChat(systemId: string) {
   revalidatePath(`/app/sys/${systemId}`);
 }
 
-// ── ส่งข้อความ / โน้ตภายใน ──
+/** error แบบ inline บนหน้าแชท (ไม่ใช่ Alert) — [[feedback_validation_inline_not_alert]] */
+function chatError(systemId: string, conversationId: string, msg: string): never {
+  const base = chatPath(systemId, conversationId);
+  redirect(`${base}${base.includes("?") ? "&" : "?"}err=${encodeURIComponent(msg)}`);
+}
+
+/** ไฟล์แนบสูงสุดต่อข้อความ — ตัวเลขเดียวกับขาเข้า (`MAX_EXTERNAL_ATTACHMENTS` ใน service) */
+const MAX_REPLY_FILES = 10;
+
+/**
+ * รับไฟล์จากฟอร์ม → ตรวจ → อัปขึ้น storage → คืน `ExternalAttachmentInput[]`
+ *
+ * 🔴 **อยู่นอกทรานแซกชันเสมอ** และเกิด **ก่อน** `sendReply` — Bunny เป็น network call
+ *    ขังไว้ในทรานแซกชัน = ถือ connection ของ Neon ค้าง → pool ตันทั้งแพลตฟอร์ม (กฎเหล็กข้อ 5)
+ * 🔴 ตรวจขนาด/ชนิด **ก่อนอัป** ไม่ใช่ปล่อยอัปแล้วค่อยเด้ง error — ผู้ใช้บนมือถือรอ 30 วิ
+ *    แล้วโดนปฏิเสธ คือประสบการณ์ที่แย่กว่าบอกตั้งแต่แรก 10 เท่า
+ * 🔴 อัปไม่ผ่านแม้ไฟล์เดียว = ไม่เขียนข้อความเลย — ข้อความครึ่ง ๆ กลาง ๆ ที่รูปหาย
+ *    ทำให้ทีมเข้าใจว่าส่งไปแล้วทั้งที่ลูกค้าไม่ได้รับรูป
+ */
+async function uploadReplyFiles(
+  tenantId: string,
+  systemId: string,
+  conversationId: string,
+  formData: FormData,
+): Promise<ExternalAttachmentInput[]> {
+  const files = formData
+    .getAll("files")
+    .filter((f): f is File => typeof f === "object" && f !== null && "arrayBuffer" in f)
+    .filter((f) => f.size > 0);
+  if (files.length === 0) return [];
+  if (files.length > MAX_REPLY_FILES) {
+    chatError(systemId, conversationId, `แนบไฟล์ได้ไม่เกิน ${MAX_REPLY_FILES} รายการต่อข้อความ`);
+  }
+
+  for (const f of files) {
+    const mime = (f.type ?? "").trim().toLowerCase();
+    // ทะเบียนชนิดไฟล์เดียวกับ storage/service — ห้ามมีลิสต์ที่สอง
+    if (!(mime in ALLOWED_UPLOAD_TYPES)) {
+      chatError(
+        systemId,
+        conversationId,
+        `ไฟล์ "${f.name}" เป็นชนิดที่ส่งในแชทไม่ได้ — รองรับรูป (jpg/png/webp/gif/heic), PDF, Word, Excel และ txt`,
+      );
+    }
+    // เพดานเดียวกับที่ storage บังคับ (CHAT_ATTACHMENT_MAX_BYTES) — ห้ามพิมพ์ตัวเลขซ้ำที่นี่
+    if (f.size > CHAT_ATTACHMENT_MAX_BYTES) {
+      chatError(
+        systemId,
+        conversationId,
+        `ไฟล์ "${f.name}" ใหญ่เกิน ${Math.round(CHAT_ATTACHMENT_MAX_BYTES / (1024 * 1024))}MB — ย่อขนาดแล้วส่งใหม่ได้เลย`,
+      );
+    }
+  }
+
+  const out: ExternalAttachmentInput[] = [];
+  for (const f of files) {
+    const res = await uploadFile(
+      { tenantId },
+      {
+        kind: "ATTACHMENT",
+        filename: f.name,
+        contentType: f.type,
+        data: new Uint8Array(await f.arrayBuffer()),
+        maxBytes: CHAT_ATTACHMENT_MAX_BYTES,
+      },
+    );
+    if (!res.ok) chatError(systemId, conversationId, res.error);
+    out.push({
+      url: res.cdnUrl,
+      mimeType: f.type,
+      fileName: f.name,
+      sizeBytes: f.size,
+      // path บน CDN = handle เดียวที่จะไปลบไฟล์จริงทีหลังได้ (retention เก็บช่องนี้ไว้โดยเจตนา)
+      storageKey: (() => {
+        try {
+          return new URL(res.cdnUrl).pathname.replace(/^\/+/, "");
+        } catch {
+          return res.cdnUrl;
+        }
+      })(),
+    });
+  }
+  return out;
+}
+
+// ── ส่งข้อความ / รูป / ไฟล์ / โน้ตภายใน ──
 export async function sendReplyAction(formData: FormData) {
   const auth = await requireTenant();
   assertChatCan(auth, "chat.message.send");
   const systemId = String(formData.get("systemId") ?? "");
   const conversationId = String(formData.get("conversationId") ?? "");
   const body = String(formData.get("body") ?? "");
+  const originalBody = String(formData.get("originalBody") ?? "");
+  const suggestionId = String(formData.get("suggestionId") ?? "").trim();
   const isInternal = String(formData.get("isInternal") ?? "") === "on";
-  if (systemId && conversationId && body.trim()) {
-    const unitAccess = auth.active.unitAccess as string[];
-    await sendReply({
-      tenantId: auth.active.tenantId,
-      systemId,
-      conversationId,
-      senderUserId: auth.user.id,
-      body,
-      isInternal,
-      unitAccess,
-    });
-    await markRead({
-      tenantId: auth.active.tenantId,
-      systemId,
-      conversationId,
-      userId: auth.user.id,
-      unitAccess,
-    });
+  if (systemId && conversationId) {
+    const tenantId = auth.active.tenantId;
+    // 🔴 อัปโหลดจบก่อน แล้วค่อยเข้าทรานแซกชันของ sendReply
+    const attachments = await uploadReplyFiles(tenantId, systemId, conversationId, formData);
+    if (body.trim() || attachments.length > 0) {
+      const unitAccess = auth.active.unitAccess as string[];
+      const sent = await sendReply({
+        tenantId,
+        systemId,
+        conversationId,
+        senderUserId: auth.user.id,
+        body,
+        attachments,
+        isInternal,
+        ...(originalBody.trim() ? { originalBody } : {}),
+        unitAccess,
+      });
+      await markRead({
+        tenantId,
+        systemId,
+        conversationId,
+        userId: auth.user.id,
+        unitAccess,
+      });
+      // เส้นทางที่ 1 ของ §5.4 — ส่งด้วยคำแนะนำของ AI (แก้หรือไม่แก้ก็ตาม) → บันทึกผลจริง
+      // 🔴 ความจริงคือข้อความที่ส่ง ไม่ใช่ที่ AI เสนอ · ล้มที่นี่ต้องไม่ทำให้ข้อความหาย
+      if (suggestionId && sent.messageId && !isInternal) {
+        await recordSuggestionOutcome({
+          tenantId,
+          systemId,
+          suggestionId,
+          sentMessageId: sent.messageId,
+          sentBody: body,
+          userId: auth.user.id,
+        }).catch(() => null);
+      }
+    }
   }
   revalidateChat(systemId);
   redirect(chatPath(systemId, conversationId));
+}
+
+// ── 🌐 แปลข้อความของลูกค้า (ปุ่ม "แปล" ใต้ฟองข้อความ) ──
+// คืนผลให้หน้าจอแสดงเอง — ไม่ redirect เพราะร่างที่ทีมกำลังพิมพ์ต้องไม่หาย
+export async function translateMessageAction(
+  systemId: string,
+  messageId: string,
+  targetLang?: string,
+): Promise<TranslateResult> {
+  const auth = await requireTenant();
+  assertChatCan(auth, "chat.translate.use");
+  if (!systemId || !messageId) return { ok: false, reason: "ข้อมูลไม่ครบสำหรับการแปล" };
+  return translateMessage({
+    tenantId: auth.active.tenantId,
+    systemId,
+    messageId,
+    targetLang,
+    userId: auth.user.id,
+  });
+}
+
+// ── 🌐 แปลร่างก่อนส่ง (ทีม → ลูกค้า) ──
+// 🔴 คืนคำแปลเฉย ๆ **ไม่ส่งเอง** — ทีมต้องเห็นและกดส่งเองอีกครั้ง (§5.2)
+export async function translateDraftAction(
+  systemId: string,
+  conversationId: string,
+  body: string,
+  targetLang?: string,
+): Promise<TranslateResult> {
+  const auth = await requireTenant();
+  assertChatCan(auth, "chat.translate.use");
+  if (!systemId || !conversationId) return { ok: false, reason: "ข้อมูลไม่ครบสำหรับการแปล" };
+  return translateDraft({
+    tenantId: auth.active.tenantId,
+    systemId,
+    conversationId,
+    body,
+    targetLang,
+    userId: auth.user.id,
+  });
+}
+
+// ── ✨ AI แนะนำคำตอบ ──
+// 🔴 เป็นข้อเสนอเท่านั้น: ไม่มีการส่งข้อความใด ๆ เกิดขึ้นจาก action นี้
+export async function suggestReplyAction(
+  systemId: string,
+  conversationId: string,
+): Promise<SuggestResult> {
+  const auth = await requireTenant();
+  assertChatCan(auth, "chat.ai.suggest");
+  if (!systemId || !conversationId) return { ok: false, reason: "ข้อมูลไม่ครบสำหรับการขอคำแนะนำ" };
+  return suggestReply({
+    tenantId: auth.active.tenantId,
+    systemId,
+    conversationId,
+    userId: auth.user.id,
+  });
+}
+
+// ── ทีมกดข้ามคำแนะนำทั้งชุด (เส้นทางที่ 3 ของ §5.4 — สัญญาณลบที่ต้องเก็บ) ──
+export async function ignoreSuggestionsAction(
+  systemId: string,
+  conversationId: string,
+  sourceMessageId: string,
+): Promise<{ ok: boolean; count: number }> {
+  const auth = await requireTenant();
+  assertChatCan(auth, "chat.ai.suggest");
+  if (!systemId || !conversationId || !sourceMessageId) return { ok: false, count: 0 };
+  return ignoreSuggestions({
+    tenantId: auth.active.tenantId,
+    systemId,
+    conversationId,
+    sourceMessageId,
+  });
+}
+
+// ── 📚 "บันทึกเป็นตัวอย่างคำตอบ" (เส้นทางที่ 2 ของ §5.4) ──
+// 🔴 ต้องเป็นการกดของคน — ระบบไม่เก็บให้เองตอนส่งข้อความ ไม่งั้นคลังเต็มไปด้วย "ครับ"
+export async function saveAnswerExampleAction(formData: FormData) {
+  const auth = await requireTenant();
+  // 🔴 ไม่ใช่ `chat.message.send` (Fable 31 ส.ค.) — ตอบลูกค้า 1 ครั้ง คือของชั่วคราว
+  //    แต่บันทึกเข้าคลัง = แก้แหล่งอ้างอิงถาวรที่ AI ใช้ตอบให้ **ทุกคนในร้านตลอดไป**
+  assertChatCan(auth, "chat.example.manage");
+  const systemId = String(formData.get("systemId") ?? "");
+  const conversationId = String(formData.get("conversationId") ?? "");
+  const messageId = String(formData.get("messageId") ?? "");
+  if (systemId && messageId) {
+    const res = await saveAnswerExample({
+      tenantId: auth.active.tenantId,
+      systemId,
+      messageId,
+      userId: auth.user.id,
+    });
+    if (!res.ok) chatError(systemId, conversationId, res.reason ?? "บันทึกตัวอย่างคำตอบไม่สำเร็จ");
+  }
+  revalidateChat(systemId);
+  redirect(chatPath(systemId, conversationId));
+}
+
+// ── 📚 ถอดตัวอย่างที่ไม่ดีออกจากคลัง (หน้า "เชื่อมช่องทาง") ──
+// ถอด = ปัก archivedAt ไม่ลบแถว — ของที่ลบทิ้งจะตรวจย้อนไม่ได้ว่าเคยแนะนำอะไรผิดไป
+export async function archiveAnswerExampleAction(formData: FormData) {
+  const auth = await requireTenant();
+  assertChatCan(auth, "chat.example.manage"); // เหตุผลเดียวกับ saveAnswerExampleAction
+  const systemId = String(formData.get("systemId") ?? "");
+  const exampleId = String(formData.get("exampleId") ?? "");
+  const path = `/app/sys/${systemId}/chat/channels`;
+  if (systemId && exampleId) {
+    const res = await archiveAnswerExample({
+      tenantId: auth.active.tenantId,
+      systemId,
+      exampleId,
+      userId: auth.user.id,
+    });
+    if (!res.ok) redirect(`${path}?err=${encodeURIComponent(res.reason ?? "ถอดตัวอย่างไม่สำเร็จ")}`);
+  }
+  revalidatePath(path);
+  redirect(path);
 }
 
 // ── เปลี่ยนสถานะ (ปิด=RESOLVED / พัก=PENDING / เปิด=OPEN) ──

@@ -41,3 +41,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .claude/
+
+# ภาพหน้าจอจาก pnpm qc:visual (ของชั่วคราวสำหรับตรวจด้วยตา ไม่ต้องเก็บในรีโป)
+.qc-shots/

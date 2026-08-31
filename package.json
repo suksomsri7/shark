@@ -89,6 +89,7 @@
     "qc:catalog": "tsx scripts/qc-catalog-services.mts",
     "qc:pages": "tsx scripts/qc-pages.mts",
     "qc:kernel": "tsx scripts/qc-kernel-guard.mts",
+    "qc:visual": "tsx scripts/visual-qc-chat.mts",
     "qc:all": "tsx scripts/qc-all.mts",
     "qc:appstore": "tsx scripts/qc-appstore-ready.mts",
     "qc:account-deletion": "tsx scripts/qc-account-deletion.mts"
