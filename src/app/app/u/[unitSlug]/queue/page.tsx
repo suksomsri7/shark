@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { publicOrigin } from "@/lib/core/origin";
 import { notFound } from "next/navigation";
 import { requireUnit } from "@/lib/core/context";
 import { getBoard, listTypes, listCounters } from "@/lib/modules/queue/service";
@@ -46,7 +47,7 @@ export default async function QueueBoardPage({
   const activeTypes = types.filter((t) => t.status === "ACTIVE");
   const openCounters = board.counterCards.filter((c) => c.counter.status === "OPEN");
   const tenantSlug = auth.active.tenant.slug;
-  const publicUrl = `${env.APP_URL.replace(/\/$/, "")}/s/${tenantSlug}/${unit.slug}/queue`;
+  const publicUrl = `${await publicOrigin()}/s/${tenantSlug}/${unit.slug}/queue`;
   const onlineTypes = activeTypes.filter((t) => t.onlineIssuable);
 
   return (

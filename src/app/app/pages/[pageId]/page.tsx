@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { publicOrigin } from "@/lib/core/origin";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
@@ -45,7 +46,7 @@ export default async function PageBuilderPage({ params }: { params: Promise<{ pa
   ]);
   const muted = "text-[color:var(--color-muted)]";
   const usedKeys = new Set(page.widgets.map((w) => w.widgetKey));
-  const publicUrl = `${env.APP_URL.replace(/\/$/, "")}/p/${page.slug}`;
+  const publicUrl = `${await publicOrigin()}/p/${page.slug}`;
   const boardWidgets = page.widgets.map((w) => {
     const def = widgetDef(w.widgetKey);
     return {

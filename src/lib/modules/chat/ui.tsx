@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { env } from "@/lib/env";
+import { publicOrigin } from "@/lib/core/origin";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -65,7 +65,7 @@ const fmt = (d: Date) =>
     timeZone: "Asia/Bangkok",
   });
 
-const origin = () => env.APP_URL.replace(/\/$/, "");
+// เดิม: const origin = () => env.APP_URL... → ค้างเป็นโดเมน VPS เก่าที่ปิดไปแล้ว (ดู core/origin.ts)
 
 // แท็บฟังก์ชันย่อยของระบบแชท (Chat) — สนทนา (inbox) + เชื่อมช่องทาง (channels)
 // ⚠️ ต้องตรงกับ childrenFor("CHAT") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions.mts)
@@ -275,9 +275,10 @@ export async function ChatChannelsSection({
 }) {
   // built-in WEBCHAT connection (lazy) + ช่องทางอื่น
   await ensureWebchatConnection(tenantId, systemId);
-  const [connections, setting] = await Promise.all([
+  const [connections, setting, origin] = await Promise.all([
     listConnections(tenantId, systemId),
     getSetting(tenantId, systemId),
+    publicOrigin(), // โดเมนจากคำขอจริง — ไม่พึ่ง env ที่ตั้งด้วยมือแล้วค้าง
   ]);
 
   // ระบบสมาชิกในร้าน (สำหรับ dropdown เชื่อม)
@@ -333,7 +334,7 @@ export async function ChatChannelsSection({
                         {c.lastInboundAt ? ` · รับล่าสุด ${fmt(c.lastInboundAt)}` : ""}
                       </div>
                       <div className="break-all rounded bg-[color:var(--color-surface-2)] px-2 py-1 text-xs">
-                        Webhook URL: {origin()}/api/chat/webhook/{c.id}
+                        Webhook URL: {origin}/api/chat/webhook/{c.id}
                       </div>
                       <div className="text-xs text-[color:var(--color-muted)]">
                         วาง URL นี้ในช่อง Webhook ที่ LINE Developers Console แล้วเปิด &quot;Use
@@ -390,7 +391,14 @@ export async function ChatChannelsSection({
             </p>
             {webchat && (
               <div className="break-all rounded bg-[color:var(--color-surface-2)] px-2 py-1 text-xs">
-                {origin()}/chat/{webchat.id}
+                <a
+                  href={`${origin}/chat/${webchat.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                >
+                  {origin}/chat/{webchat.id}
+                </a>
               </div>
             )}
           </div>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { publicOrigin } from "@/lib/core/origin";
 import { requireTenant } from "@/lib/core/context";
 import { ModuleTabs } from "@/components/module-tabs";
 import { env } from "@/lib/env";
@@ -576,6 +577,7 @@ export async function InvLocationsSection({ systemId }: { systemId: string }) {
 
 // ───────────── จัดซื้อ (procurement) — ซัพพลายเออร์ + ใบสั่งซื้อ (PO) ─────────────
 export async function InvProcurementSection({ systemId }: { systemId: string }) {
+  const origin = await publicOrigin(); // โดเมนจากคำขอจริง (env.APP_URL เคยค้างเป็นโดเมนที่ปิดแล้ว)
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
@@ -601,7 +603,7 @@ export async function InvProcurementSection({ systemId }: { systemId: string }) 
           <div className="flex flex-col gap-2">
             {suppliers.map((s) => {
               const vendorUrl = s.portalToken
-                ? `${env.APP_URL.replace(/\/$/, "")}/vendor/${s.portalToken}`
+                ? `${origin}/vendor/${s.portalToken}`
                 : null;
               return (
                 <div key={s.id} className="flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm">

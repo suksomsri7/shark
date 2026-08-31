@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { publicOrigin } from "@/lib/core/origin";
 import { requireTenant } from "@/lib/core/context";
 import { env } from "@/lib/env";
 import { getForm, listSubmissions } from "@/lib/modules/forms/service";
@@ -34,7 +35,7 @@ export default async function EditFormPage({
   const form = await getForm(ctx, id);
   if (!form) notFound();
   const subs = await listSubmissions(ctx, id);
-  const publicUrl = `${env.APP_URL.replace(/\/$/, "")}/f/${form.publicToken}`;
+  const publicUrl = `${await publicOrigin()}/f/${form.publicToken}`;
   // แผนที่ key → label สำหรับแสดงผลรายการที่ส่งเข้ามา
   const labelOf = new Map(form.fields.map((f) => [f.key, f.label]));
 
