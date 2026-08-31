@@ -290,21 +290,26 @@ model ChatQuickReply {
 // ─────────────── Settings (1 แถว/ระบบ) ───────────────
 
 model ChatSetting {
-  id                    String   @id @default(cuid())
+  id                    String    @id @default(cuid())
   tenantId              String
-  systemId              String   @unique
-  memberSystemId        String? // 🔗 เชื่อมระบบ Member (opt-in)
-  widgetEnabled         Boolean  @default(true)
-  widgetDisabledUnitIds Json     @default("[]")
+  systemId              String    @unique
+  memberSystemId        String? // 🔗 เชื่อมระบบ Member
+  // 🔴 เวลาที่ "เจ้าของเลือกเอง" ว่าจะเชื่อมชุดไหน (รวมกรณีเลือก "ไม่เชื่อม")
+  //    null = ยังไม่เคยเลือก → ระบบเชื่อมให้อัตโนมัติได้ถ้าร้านมีระบบสมาชิกชุดเดียว
+  //    ถ้าไม่มีฟิลด์นี้ จะแยก "ยังไม่เคยตั้ง" กับ "ตั้งใจไม่เชื่อม" ไม่ออก แล้วระบบจะไปเชื่อมทับ
+  //    ของที่เจ้าของตั้งใจปิดไว้ทุกครั้งที่เปิดหน้า (บทเรียนเดียวกับ businessHours ด้านล่าง)
+  memberSystemChosenAt  DateTime?
+  widgetEnabled         Boolean   @default(true)
+  widgetDisabledUnitIds Json      @default("[]")
   // map ภาษาเปิด: { "<locale>": "ข้อความ" } เช่น { th, en, cn, ja, de } — เพิ่มภาษาได้โดยไม่ต้อง migrate
-  greetingMessage       Json     @default("{}")
-  offlineMessage        Json     @default("{}") // map ภาษาเปิดแบบเดียวกับ greetingMessage
+  greetingMessage       Json      @default("{}")
+  offlineMessage        Json      @default("{}") // map ภาษาเปิดแบบเดียวกับ greetingMessage
   senderAlias           String? // ชื่อ default ที่ลูกค้าเห็นเวลาแอดมินตอบ (fallback ของ ChatMessage.senderName)
-  theme                 Json     @default("{}") // หน้าตา widget ฝัง: { primaryColor, position, launcherIcon, ... }
-  preChatFormEnabled    Boolean  @default(false)
-  slaFirstResponseMin   Int      @default(15)
-  unassignedAlertMin    Int      @default(5)
-  retentionDays         Int      @default(365) // 90–730
+  theme                 Json      @default("{}") // หน้าตา widget ฝัง: { primaryColor, position, launcherIcon, ... }
+  preChatFormEnabled    Boolean   @default(false)
+  slaFirstResponseMin   Int       @default(15)
+  unassignedAlertMin    Int       @default(5)
+  retentionDays         Int       @default(365) // 90–730
   // เวลาทำการของทีมตอบแชท (WO-C16) — ส่งออกทาง GET /api/v1/chat/config
   // 🔴 null = "ร้านยังไม่ได้ตั้ง" → API คืน businessHours: null (ผู้รับ fallback เอง)
   //    ห้ามใช้ @default("{}") เพราะจะแยก "ไม่ได้ตั้ง" กับ "ตั้งแล้วว่าง" ไม่ออก
@@ -315,8 +320,8 @@ model ChatSetting {
   //  · เป็น Json เพราะเพิ่มช่อง (เช่น พักเที่ยง/หลายช่วงต่อวัน) ได้โดยไม่ต้อง migrate ซ้ำ
   //    อ่าน/เขียนผ่าน src/lib/modules/chat/business-hours.ts เท่านั้น (ตรวจรูปที่นั่นที่เดียว)
   businessHours         Json?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }
 
 // ─────────────── Rate limit bucket (บน Postgres — แก้ B2) ───────────────

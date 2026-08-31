@@ -1,13 +1,13 @@
 // Webhooks ขาออก (WO-0062) — สมัคร URL ต่อ event + ลายเซ็น HMAC + retry
 model WebhookEndpoint {
-  id         String    @id @default(cuid())
+  id         String   @id @default(cuid())
   tenantId   String
   url        String
   secret     String // ใช้เซ็น X-Shark-Signature = hex(hmacSHA256(secret, body))
-  eventsJson Json      @default("[]") // ["pos.sale.paid", ...] ว่าง = ทุก event
-  active     Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  eventsJson Json     @default("[]") // ["pos.sale.paid", ...] ว่าง = ทุก event
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   deliveries WebhookDelivery[]
 

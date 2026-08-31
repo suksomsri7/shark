@@ -15,22 +15,22 @@ enum AppointmentStatus {
 // แถวนี้เหลือหน้าที่ = "บริการที่สาขานี้เปิดรับจอง" (projection) — นัดอ้างถึงแถวนี้ ห้ามลบจริง
 // itemId = ต้นฉบับในแคตตาล็อก (null = บริการเก่าที่ยังไม่ย้าย — กดย้ายได้ที่หน้าบริการ)
 model BookingService {
-  id          String   @id @default(cuid())
-  tenantId    String
-  unitId      String
-  name        String
-  durationMin Int // ใช้เวลา (นาที)
-  priceSatang Int      @default(0)
-  depositSatang Int    @default(0) // มัดจำต่อบริการ (0 = ไม่ต้องมัดจำ) — ร้านตั้งเอง กัน no-show
-  bufferMin   Int      @default(0) // เวลาพักหลังบริการ
-  active      Boolean  @default(true)
+  id            String   @id @default(cuid())
+  tenantId      String
+  unitId        String
+  name          String
+  durationMin   Int // ใช้เวลา (นาที)
+  priceSatang   Int      @default(0)
+  depositSatang Int      @default(0) // มัดจำต่อบริการ (0 = ไม่ต้องมัดจำ) — ร้านตั้งเอง กัน no-show
+  bufferMin     Int      @default(0) // เวลาพักหลังบริการ
+  active        Boolean  @default(true)
   // ให้ลูกค้าจองล่วงหน้าได้ไหม — false = ขายหน้าร้านอย่างเดียว (ค่าจัดส่ง/ห่อของขวัญ/ค่าติดตั้ง)
   // ธุรกิจที่มีทั้งสินค้าและบริการต้องแยกสองอย่างนี้ ไม่งั้น "ค่าจัดส่ง" จะโผล่เป็นคิวให้จอง
-  bookable    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  itemId      String? // ต้นฉบับในแคตตาล็อกกลาง (InvItem kind=SERVICE)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  bookable      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  itemId        String? // ต้นฉบับในแคตตาล็อกกลาง (InvItem kind=SERVICE)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   appointments Appointment[]
 
@@ -87,31 +87,31 @@ model BookingStaffHours {
 }
 
 model Appointment {
-  id            String            @id @default(cuid())
-  tenantId      String
-  unitId        String
-  customerId    String? // มีเมื่อระบบนี้เชื่อมกับระบบสมาชิก
-  customer      Customer?         @relation(fields: [customerId], references: [id])
-  staffId       String
-  staff         BookingStaff      @relation(fields: [staffId], references: [id])
-  serviceId     String
-  service       BookingService    @relation(fields: [serviceId], references: [id])
-  startAt       DateTime
-  endAt         DateTime // รวม buffer แล้ว (กันจองซ้อน)
-  status        AppointmentStatus @default(CONFIRMED)
-  customerName  String // snapshot
-  customerPhone String // snapshot
-  note          String?
-  source        String            @default("STAFF") // STAFF | ONLINE
+  id             String            @id @default(cuid())
+  tenantId       String
+  unitId         String
+  customerId     String? // มีเมื่อระบบนี้เชื่อมกับระบบสมาชิก
+  customer       Customer?         @relation(fields: [customerId], references: [id])
+  staffId        String
+  staff          BookingStaff      @relation(fields: [staffId], references: [id])
+  serviceId      String
+  service        BookingService    @relation(fields: [serviceId], references: [id])
+  startAt        DateTime
+  endAt          DateTime // รวม buffer แล้ว (กันจองซ้อน)
+  status         AppointmentStatus @default(CONFIRMED)
+  customerName   String // snapshot
+  customerPhone  String // snapshot
+  note           String?
+  source         String            @default("STAFF") // STAFF | ONLINE
   // snapshot ราคา ณ วันจอง — ร้านขึ้นราคาทีหลังต้องไม่กระทบนัดที่จองไว้แล้ว
   // -1 = นัดเก่าที่จองก่อนมีฟิลด์นี้ (อ่านราคาจากบริการตามเดิม)
-  priceSatang   Int               @default(-1)
-  depositSatang Int               @default(0) // snapshot มัดจำจากบริการตอนสร้างนัด (0 = ไม่ต้องมัดจำ)
-  depositPaidAt DateTime? // เวลาที่ร้านรับมัดจำ (null = ยังไม่จ่าย)
-  depositSaleId String? // PosSale.id ของบิลมัดจำ (null = ไม่ผูก POS / ยังไม่จ่าย)
+  priceSatang    Int               @default(-1)
+  depositSatang  Int               @default(0) // snapshot มัดจำจากบริการตอนสร้างนัด (0 = ไม่ต้องมัดจำ)
+  depositPaidAt  DateTime? // เวลาที่ร้านรับมัดจำ (null = ยังไม่จ่าย)
+  depositSaleId  String? // PosSale.id ของบิลมัดจำ (null = ไม่ผูก POS / ยังไม่จ่าย)
   idempotencyKey String? // กันสร้างนัดซ้ำจากยิงซ้ำ/ดับเบิลคลิก (null = ไม่ผูก key)
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, unitId, startAt])

@@ -97,53 +97,53 @@ enum AccountLegalType {
 // ───────────── เอกสาร (แกนระบบ — polymorphic docType) ─────────────
 
 model AccountDocument {
-  id             String              @id @default(cuid())
-  tenantId       String
-  systemId       String
-  docType        AccountDocType
-  docNo          String? // จองตอน issue (DRAFT = null → NULL distinct ใน pg)
-  status         AccountDocStatus    @default(DRAFT)
-  direction      AccountDocDirection @default(OUT)
-  issueDate      DateTime            @default(now())
-  dueDate        DateTime? // ครบกำหนดชำระ
-  validUntil     DateTime? // ใบเสนอราคา: ยืนราคาถึง
-  contactId      String?
-  contact        AccountContact?     @relation(fields: [contactId], references: [id])
+  id              String                @id @default(cuid())
+  tenantId        String
+  systemId        String
+  docType         AccountDocType
+  docNo           String? // จองตอน issue (DRAFT = null → NULL distinct ใน pg)
+  status          AccountDocStatus      @default(DRAFT)
+  direction       AccountDocDirection   @default(OUT)
+  issueDate       DateTime              @default(now())
+  dueDate         DateTime? // ครบกำหนดชำระ
+  validUntil      DateTime? // ใบเสนอราคา: ยืนราคาถึง
+  contactId       String?
+  contact         AccountContact?       @relation(fields: [contactId], references: [id])
   contactSnapshot Json? // freeze ชื่อ/ที่อยู่/เลขภาษี ณ วันออก (พ้น DRAFT)
   // ── ยอดเงิน (สตางค์) ──
-  vatMode        AccountVatMode      @default(EXCLUDE)
-  vatTiming      AccountVatTiming    @default(ON_ISSUE) // จุดรับรู้ภาษีขาย (สินค้า/บริการ)
-  subTotal       Int                 @default(0) // Σ บรรทัดหลังส่วนลดบรรทัด (ฐานก่อน VAT)
-  discountAmount Int                 @default(0) // ส่วนลดท้ายบิล
-  vatAmount      Int                 @default(0)
-  whtAmount      Int                 @default(0) // WHT preview (ตัวจริงอยู่ payment)
-  depositDeducted Int                @default(0) // Σ มัดจำที่หักในใบนี้
-  grandTotal     Int                 @default(0) // สุทธิที่ต้องชำระ
-  paidTotal      Int                 @default(0) // Σ payment
+  vatMode         AccountVatMode        @default(EXCLUDE)
+  vatTiming       AccountVatTiming      @default(ON_ISSUE) // จุดรับรู้ภาษีขาย (สินค้า/บริการ)
+  subTotal        Int                   @default(0) // Σ บรรทัดหลังส่วนลดบรรทัด (ฐานก่อน VAT)
+  discountAmount  Int                   @default(0) // ส่วนลดท้ายบิล
+  vatAmount       Int                   @default(0)
+  whtAmount       Int                   @default(0) // WHT preview (ตัวจริงอยู่ payment)
+  depositDeducted Int                   @default(0) // Σ มัดจำที่หักในใบนี้
+  grandTotal      Int                   @default(0) // สุทธิที่ต้องชำระ
+  paidTotal       Int                   @default(0) // Σ payment
   // ── อ้างอิง ──
-  sourceDocId    String? // เอกสารต้นทางที่แปลงมา (quotation→invoice→receipt)
+  sourceDocId     String? // เอกสารต้นทางที่แปลงมา (quotation→invoice→receipt)
   sourcePaymentId String? // QC5-A1: ใบกำกับภาษี(บริการ) ออกต่อ payment งวดที่รับ (1 payment = 1 ใบกำกับ)
-  taxPointBasis  AccountVatTiming? // QC5-A1: จุดรับรู้ภาษี (GOODS=ON_ISSUE / SERVICE=ON_PAYMENT)
-  refSystemId    String? // ระบบต้นทาง (POS system / business unit) เมื่อไหลจาก link
-  refType        String? // ชื่อ Prisma model ตรงตัว (เช่น "PosSale")
-  refId          String?
-  categoryId     String? // กลุ่มจัดประเภท
-  category       AccountCategory?    @relation(fields: [categoryId], references: [id])
-  note           String? // หมายเหตุบนเอกสาร (พิมพ์)
-  internalNote   String? // โน้ตภายใน
-  adjustReason   String? // CN/DN: เหตุผลตามประกาศสรรพากร
-  whtIncomeType  AccountWhtIncomeType? // WHT_CERT: ประเภทเงินได้ ม.40
-  whtRateBp      Int? // WHT_CERT: basis point (300 = 3%)
-  etaxStatus     AccountEtaxStatus   @default(NOT_SENT) // P4
-  etaxMeta       Json? // P4: {providerId, xmlUrl, sentAt, error}
-  pdfUrl         String?
-  publicToken    String?             @unique // ลิงก์สาธารณะ
-  acceptedAt     DateTime? // ใบเสนอราคา accepted
-  approvedById   String? // PO/APO: ผู้อนุมัติ
-  replacedById   String?             @unique // ใบใหม่ที่ออกแทน (คู่ relation REPLACE)
-  voidedAt       DateTime?
-  voidReason     String?
-  createdById    String?
+  taxPointBasis   AccountVatTiming? // QC5-A1: จุดรับรู้ภาษี (GOODS=ON_ISSUE / SERVICE=ON_PAYMENT)
+  refSystemId     String? // ระบบต้นทาง (POS system / business unit) เมื่อไหลจาก link
+  refType         String? // ชื่อ Prisma model ตรงตัว (เช่น "PosSale")
+  refId           String?
+  categoryId      String? // กลุ่มจัดประเภท
+  category        AccountCategory?      @relation(fields: [categoryId], references: [id])
+  note            String? // หมายเหตุบนเอกสาร (พิมพ์)
+  internalNote    String? // โน้ตภายใน
+  adjustReason    String? // CN/DN: เหตุผลตามประกาศสรรพากร
+  whtIncomeType   AccountWhtIncomeType? // WHT_CERT: ประเภทเงินได้ ม.40
+  whtRateBp       Int? // WHT_CERT: basis point (300 = 3%)
+  etaxStatus      AccountEtaxStatus     @default(NOT_SENT) // P4
+  etaxMeta        Json? // P4: {providerId, xmlUrl, sentAt, error}
+  pdfUrl          String?
+  publicToken     String?               @unique // ลิงก์สาธารณะ
+  acceptedAt      DateTime? // ใบเสนอราคา accepted
+  approvedById    String? // PO/APO: ผู้อนุมัติ
+  replacedById    String?               @unique // ใบใหม่ที่ออกแทน (คู่ relation REPLACE)
+  voidedAt        DateTime?
+  voidReason      String?
+  createdById     String?
 
   lines         AccountDocumentLine[]
   payments      AccountDocumentPayment[]
@@ -190,27 +190,27 @@ model AccountDocumentLine {
 }
 
 model AccountDocumentPayment {
-  id             String            @id @default(cuid())
-  tenantId       String
-  systemId       String
-  documentId     String
-  document       AccountDocument   @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  paidAt         DateTime          @default(now())
-  channel        AccountPayChannel @default(TRANSFER)
+  id               String            @id @default(cuid())
+  tenantId         String
+  systemId         String
+  documentId       String
+  document         AccountDocument   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  paidAt           DateTime          @default(now())
+  channel          AccountPayChannel @default(TRANSFER)
   financeAccountId String? // บัญชีเงินที่เข้า/ออก (null เฉพาะ DEPOSIT_APPLY/CREDIT_APPLY)
-  financeAccount AccountFinance?   @relation(fields: [financeAccountId], references: [id])
-  amount         Int // เงินที่เข้า/ออกจริง (ไม่รวม WHT)
-  whtAmountSatang Int              @default(0) // WHT ถูกหัก (รับ) / หักเขา (จ่าย)
-  whtRateBp      Int?
-  whtCertDocId   String?           @unique // Document(WHT_CERT) ที่ออกให้ vendor
-  feeAmount      Int               @default(0) // ค่าธรรมเนียมโอน/gateway
-  chequeId       String?           @unique
-  cheque         AccountCheque?    @relation(fields: [chequeId], references: [id])
-  entryId        String? // AccountJournalEntry ของการชำระ (ไม่ unique — ใบวางบิล/รวมจ่าย 1 entry หลาย payment ได้, Gate B-M4)
-  note           String?
-  voidedAt       DateTime?
-  voidReason     String?
-  createdById    String?
+  financeAccount   AccountFinance?   @relation(fields: [financeAccountId], references: [id])
+  amount           Int // เงินที่เข้า/ออกจริง (ไม่รวม WHT)
+  whtAmountSatang  Int               @default(0) // WHT ถูกหัก (รับ) / หักเขา (จ่าย)
+  whtRateBp        Int?
+  whtCertDocId     String?           @unique // Document(WHT_CERT) ที่ออกให้ vendor
+  feeAmount        Int               @default(0) // ค่าธรรมเนียมโอน/gateway
+  chequeId         String?           @unique
+  cheque           AccountCheque?    @relation(fields: [chequeId], references: [id])
+  entryId          String? // AccountJournalEntry ของการชำระ (ไม่ unique — ใบวางบิล/รวมจ่าย 1 entry หลาย payment ได้, Gate B-M4)
+  note             String?
+  voidedAt         DateTime?
+  voidReason       String?
+  createdById      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -286,25 +286,25 @@ model AccountContact {
 // ───────────── ตั้งค่าเอกสาร/องค์กร (1 ต่อระบบ) ─────────────
 
 model AccountSettings {
-  id             String  @id @default(cuid())
-  tenantId       String
-  systemId       String  @unique
-  orgName        String  @default("")
-  orgNameEn      String?
-  taxId          String?
-  branchCode     String? @default("00000")
-  branchName     String? @default("สำนักงานใหญ่")
-  address        String?
-  phone          String?
-  email          String?
-  website        String?
-  logoUrl        String?
-  vatRegistered  Boolean @default(true)
-  vatRateBp      Int     @default(700) // 700 = 7%
-  defaultDueDays Int     @default(30)
-  defaultValidDays Int   @default(30)
-  footerNote     String?
-  docConfig      Json    @default("{}") // per-docType prefix/pattern override
+  id               String  @id @default(cuid())
+  tenantId         String
+  systemId         String  @unique
+  orgName          String  @default("")
+  orgNameEn        String?
+  taxId            String?
+  branchCode       String? @default("00000")
+  branchName       String? @default("สำนักงานใหญ่")
+  address          String?
+  phone            String?
+  email            String?
+  website          String?
+  logoUrl          String?
+  vatRegistered    Boolean @default(true)
+  vatRateBp        Int     @default(700) // 700 = 7%
+  defaultDueDays   Int     @default(30)
+  defaultValidDays Int     @default(30)
+  footerNote       String?
+  docConfig        Json    @default("{}") // per-docType prefix/pattern override
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

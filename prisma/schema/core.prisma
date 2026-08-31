@@ -37,18 +37,18 @@ enum Plan {
 }
 
 model Tenant {
-  id             String       @id @default(cuid())
-  name           String
-  slug           String       @unique // shark.in.th/s/{slug}
-  status         TenantStatus @default(ACTIVE)
-  plan           Plan         @default(FREE)
-  enabledModules Json         @default("[]") // ["BOOKING","POS",...] เปิด/ปิดรายโมดูล
-  limits         Json         @default("{}") // { maxUnits: 5, ... }
-  customDomain   String?      @unique
-  domainStatus   DomainStatus @default(NONE)
+  id                String       @id @default(cuid())
+  name              String
+  slug              String       @unique // shark.in.th/s/{slug}
+  status            TenantStatus @default(ACTIVE)
+  plan              Plan         @default(FREE)
+  enabledModules    Json         @default("[]") // ["BOOKING","POS",...] เปิด/ปิดรายโมดูล
+  limits            Json         @default("{}") // { maxUnits: 5, ... }
+  customDomain      String?      @unique
+  domainStatus      DomainStatus @default(NONE)
   deleteRequestedAt DateTime? // PDPA (WO-0042): ขอลบร้าน — purge จริงหลัง 30 วัน (cron)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   units       BusinessUnit[]
   memberships Membership[]
@@ -120,18 +120,18 @@ enum Role {
 
 // ผูก User เข้ากับ Tenant + สิทธิ์ (RBAC 4 มิติ: tenant→unit→module→action)
 model Membership {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   role        Role
-  unitAccess  Json     @default("[]") // ["*"] | ["unitId1","unitId2"]
-  permissions Json     @default("{}") // สิทธิ์รายโมดูล/action (STAFF); { "pos.sale.void": true, "_maxDiscountBp": 500 }
-  invitedAt   DateTime @default(now())
+  unitAccess  Json      @default("[]") // ["*"] | ["unitId1","unitId2"]
+  permissions Json      @default("{}") // สิทธิ์รายโมดูล/action (STAFF); { "pos.sale.void": true, "_maxDiscountBp": 500 }
+  invitedAt   DateTime  @default(now())
   acceptedAt  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@unique([userId, tenantId])
   @@index([tenantId])
@@ -162,16 +162,16 @@ model AuthToken {
 }
 
 model Session {
-  id         String    @id @default(cuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash  String    @unique // __Host- cookie hash + rotation
-  userAgent  String?
-  ip         String?
-  expiresAt  DateTime // absolute
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash     String    @unique // __Host- cookie hash + rotation
+  userAgent     String?
+  ip            String?
+  expiresAt     DateTime // absolute
   idleExpiresAt DateTime // idle timeout (rotation)
-  revokedAt  DateTime?
-  createdAt  DateTime  @default(now())
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
 
   @@index([userId])
   @@index([expiresAt])

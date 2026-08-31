@@ -89,25 +89,25 @@ model CrmStage {
 }
 
 model CrmDeal {
-  id            String       @id @default(cuid())
-  tenantId      String
-  systemId      String
-  contactId     String
-  contact       CrmContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  pipelineId    String
-  pipeline      CrmPipeline  @relation(fields: [pipelineId], references: [id])
-  stageId       String
-  stage         CrmStage     @relation(fields: [stageId], references: [id])
-  title         String
-  valueSatang   Int          @default(0)
-  kind          CrmStageKind @default(OPEN) // สำเนา stage.kind ณ ปัจจุบัน (query ง่าย — sync ตอนย้าย stage)
+  id              String       @id @default(cuid())
+  tenantId        String
+  systemId        String
+  contactId       String
+  contact         CrmContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  pipelineId      String
+  pipeline        CrmPipeline  @relation(fields: [pipelineId], references: [id])
+  stageId         String
+  stage           CrmStage     @relation(fields: [stageId], references: [id])
+  title           String
+  valueSatang     Int          @default(0)
+  kind            CrmStageKind @default(OPEN) // สำเนา stage.kind ณ ปัจจุบัน (query ง่าย — sync ตอนย้าย stage)
   expectedCloseAt DateTime?
-  closedAt      DateTime? // ตั้งเมื่อย้ายเข้า stage WON/LOST
-  ownerUserId   String?
-  lostReason    String?
-  quotationDocId String? // hook → AccountDocument (v2)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  closedAt        DateTime? // ตั้งเมื่อย้ายเข้า stage WON/LOST
+  ownerUserId     String?
+  lostReason      String?
+  quotationDocId  String? // hook → AccountDocument (v2)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   activities CrmActivity[]
 

@@ -6,12 +6,14 @@ enum HrLeaveStatus {
   REJECTED
   CANCELLED
 }
+
 enum HrLeaveType {
   SICK
   PERSONAL
   VACATION
   OTHER
 }
+
 enum HrAttendanceKind {
   IN
   OUT
@@ -33,6 +35,7 @@ enum HrGender {
   FEMALE
   OTHER
 }
+
 enum HrMaritalStatus {
   SINGLE
   MARRIED
@@ -40,6 +43,7 @@ enum HrMaritalStatus {
   WIDOWED
   OTHER
 }
+
 enum HrEmploymentType {
   FULL_TIME
   PART_TIME
@@ -60,53 +64,54 @@ enum HrDocKind {
 }
 
 model HrEmployee {
-  id          String   @id @default(cuid())
-  tenantId    String
-  systemId    String
-  name        String
-  phone       String?
-  position    String?
-  pinCode     String?  // สำหรับ kiosk clock-in
+  id           String   @id @default(cuid())
+  tenantId     String
+  systemId     String
+  name         String
+  phone        String?
+  position     String?
+  pinCode      String? // สำหรับ kiosk clock-in
   linkedUserId String? // ผูก User ถ้ามีบัญชี
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // ── ทะเบียนพนักงานเต็มรูปแบบ (13 ส.ค. 2026 · เจ้าของสั่งข้อ 8) — ทุกช่องไม่บังคับ ──
   // ร้านเล็กกรอกแค่ชื่อก็ใช้งานได้เหมือนเดิม · ร้านที่ต้องทำเอกสาร/ประกันสังคมกรอกเพิ่มได้
-  code         String? // รหัสพนักงานของร้าน
-  nickname     String?
-  gender       HrGender?
-  birthDate    DateTime? @db.Date
-  email        String?
-  department   String? // แผนก (คู่กับ position = ตำแหน่ง)
-  employmentType HrEmploymentType?
-  startDate    DateTime? @db.Date // วันเริ่มงาน
-  endDate      DateTime? @db.Date // วันสิ้นสุด/ลาออก (คงข้อมูลไว้ ไม่ลบ)
-  maritalStatus HrMaritalStatus?
+  code              String? // รหัสพนักงานของร้าน
+  nickname          String?
+  gender            HrGender?
+  birthDate         DateTime?         @db.Date
+  email             String?
+  department        String? // แผนก (คู่กับ position = ตำแหน่ง)
+  employmentType    HrEmploymentType?
+  startDate         DateTime?         @db.Date // วันเริ่มงาน
+  endDate           DateTime?         @db.Date // วันสิ้นสุด/ลาออก (คงข้อมูลไว้ ไม่ลบ)
+  maritalStatus     HrMaritalStatus?
   // ที่อยู่ปัจจุบัน
-  addressLine  String?
-  subdistrict  String?
-  district     String?
-  province     String?
-  postcode     String?
+  addressLine       String?
+  subdistrict       String?
+  district          String?
+  province          String?
+  postcode          String?
   // 🔒 ข้อมูลอ่อนไหว (PDPA) — เห็น/แก้ได้เฉพาะ OWNER หรือผู้มีสิทธิ์ hr.payroll.read
-  nationalId       String? // เลขบัตรประชาชน
-  ssoNumber        String? // เลขประกันสังคม
-  houseRegAddress  String? // ที่อยู่ตามทะเบียนบ้าน (ถ้าต่างจากที่อยู่ปัจจุบัน)
-  bankName         String?
-  bankAccountNo    String?
-  bankAccountName  String?
+  nationalId        String? // เลขบัตรประชาชน
+  ssoNumber         String? // เลขประกันสังคม
+  houseRegAddress   String? // ที่อยู่ตามทะเบียนบ้าน (ถ้าต่างจากที่อยู่ปัจจุบัน)
+  bankName          String?
+  bankAccountNo     String?
+  bankAccountName   String?
   // ผู้ติดต่อฉุกเฉิน
   emergencyName     String?
   emergencyPhone    String?
   emergencyRelation String?
-  note         String?
+  note              String?
 
   attendances HrAttendance[]
   leaves      HrLeave[]
   schedules   HrWorkSchedule[]
   docs        HrEmployeeDoc[]
+
   @@index([systemId, active])
   @@index([tenantId])
 }
@@ -130,34 +135,36 @@ model HrEmployeeDoc {
 }
 
 model HrAttendance {
-  id         String           @id @default(cuid())
+  id         String                 @id @default(cuid())
   tenantId   String
   systemId   String
   employeeId String
-  employee   HrEmployee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee   HrEmployee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   kind       HrAttendanceKind
-  at         DateTime         @default(now())
+  at         DateTime               @default(now())
   note       String?
   // ผลตัดสิน + หลักฐานที่ใช้ตัดสิน (เฉพาะ kind=IN · null = แถวก่อน 13 ส.ค. 2026 หรือการลงเวลาออก)
   judgement  HrAttendanceJudgement?
   dueMin     Int? // ควรเข้ากี่โมง (นาทีจากเที่ยงคืนเวลาไทย) ณ วันนั้น
   lateMin    Int? // สายกี่นาที (นับจาก dueMin ไม่รวมเวลาผ่อนผัน) · 0 = ไม่สาย
+
   @@index([systemId, employeeId, at])
 }
 
 model HrLeave {
-  id         String        @id @default(cuid())
-  tenantId   String
-  systemId   String
-  employeeId String
-  employee   HrEmployee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  type       HrLeaveType   @default(PERSONAL)
-  fromDate   DateTime      @db.Date
-  toDate     DateTime      @db.Date
-  status     HrLeaveStatus @default(PENDING)
-  reason     String?
+  id          String        @id @default(cuid())
+  tenantId    String
+  systemId    String
+  employeeId  String
+  employee    HrEmployee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type        HrLeaveType   @default(PERSONAL)
+  fromDate    DateTime      @db.Date
+  toDate      DateTime      @db.Date
+  status      HrLeaveStatus @default(PENDING)
+  reason      String?
   decidedById String?
-  createdAt  DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+
   @@index([systemId, status])
   @@index([systemId, employeeId, fromDate])
 }

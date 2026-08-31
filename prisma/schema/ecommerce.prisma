@@ -8,18 +8,18 @@ enum ShopOrderStatus {
 }
 
 model ShopProduct {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   tenantId    String
   unitId      String
   name        String
   description String?
-  priceSatang Int       @default(0)
+  priceSatang Int      @default(0)
   imageUrl    String?
   invItemId   String? // ผูกสต็อก inventory (optional) — ตัดตอนยืนยันรับเงิน
-  active      Boolean   @default(true)
-  sortOrder   Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   lines ShopOrderLine[]
 

@@ -322,7 +322,7 @@ model AccountPeriod {
 
 // ───────── 4.7 สินทรัพย์ + ค่าเสื่อม ─────────
 model AccountFixedAsset {
-  id               String                @id @default(cuid())
+  id               String             @id @default(cuid())
   tenantId         String
   systemId         String
   code             String // "FA-0001"
@@ -331,18 +331,18 @@ model AccountFixedAsset {
   acquiredDate     DateTime
   startDepDate     DateTime
   cost             Int
-  salvageValue     Int                   @default(100)
+  salvageValue     Int                @default(100)
   usefulLifeMonths Int
   assetAccountId   String // 16xx
   accumAccountId   String // 16x9
   expenseAccountId String // 6800
   sourceDocumentId String?
-  status           AccountAssetStatus    @default(ACTIVE)
+  status           AccountAssetStatus @default(ACTIVE)
   disposedAt       DateTime?
   disposalAmount   Int?
   note             String?
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
   depreciations AccountDepreciation[]
 

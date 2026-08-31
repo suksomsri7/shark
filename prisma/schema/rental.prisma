@@ -9,16 +9,16 @@ enum RentalStatus {
 }
 
 model RentalAsset {
-  id              String    @id @default(cuid())
+  id              String   @id @default(cuid())
   tenantId        String
   unitId          String
   name            String
   code            String?
-  dailyRateSatang Int       @default(0)
-  depositSatang   Int       @default(0)
-  active          Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  dailyRateSatang Int      @default(0)
+  depositSatang   Int      @default(0)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   bookings RentalBooking[]
 
@@ -26,32 +26,32 @@ model RentalAsset {
 }
 
 model RentalBooking {
-  id              String       @id @default(cuid())
-  tenantId        String
-  unitId          String
-  assetId         String
-  asset           RentalAsset  @relation(fields: [assetId], references: [id])
-  customerName    String
-  customerPhone   String
-  startDate       DateTime     @db.Date
-  endDate         DateTime     @db.Date // exclusive (คืนวันนี้ = ไม่นับวันนี้)
-  status          RentalStatus @default(BOOKED)
-  depositHeldSatang Int        @default(0) // ยอดมัดจำที่ถือไว้ (ไม่เข้า GL v1)
-  lateFeeSatang   Int          @default(0)
-  totalSatang     Int          @default(0) // ค่าเช่าจริงตอนปิด (ค่าเช่า+ค่าปรับ)
-  posSaleId       String? // PosSale ตอนคืน (เส้นเงิน C-2)
-  pickedUpAt      DateTime?
-  returnedAt      DateTime?
-  cancelledAt     DateTime?
-  refundedAt      DateTime? // คืนเงิน (RETURNED→REFUNDED) — void PosSale (ห้ามลบ record)
-  note            String?
-  createdAt       DateTime     @default(now())
+  id                String       @id @default(cuid())
+  tenantId          String
+  unitId            String
+  assetId           String
+  asset             RentalAsset  @relation(fields: [assetId], references: [id])
+  customerName      String
+  customerPhone     String
+  startDate         DateTime     @db.Date
+  endDate           DateTime     @db.Date // exclusive (คืนวันนี้ = ไม่นับวันนี้)
+  status            RentalStatus @default(BOOKED)
+  depositHeldSatang Int          @default(0) // ยอดมัดจำที่ถือไว้ (ไม่เข้า GL v1)
+  lateFeeSatang     Int          @default(0)
+  totalSatang       Int          @default(0) // ค่าเช่าจริงตอนปิด (ค่าเช่า+ค่าปรับ)
+  posSaleId         String? // PosSale ตอนคืน (เส้นเงิน C-2)
+  pickedUpAt        DateTime?
+  returnedAt        DateTime?
+  cancelledAt       DateTime?
+  refundedAt        DateTime? // คืนเงิน (RETURNED→REFUNDED) — void PosSale (ห้ามลบ record)
+  note              String?
+  createdAt         DateTime     @default(now())
 
   // ── จองออนไลน์ (public/no-auth) + มัดจำ PromptPay (mirror HotelReservation) ──
-  publicToken     String?      @unique @default(cuid()) // ลิงก์สถานะลูกค้า (public) — แถวเดิม NULL, แถวใหม่ปั๊ม cuid
-  depositSatang   Int          @default(0) // snapshot มัดจำจาก asset ตอนจอง (0 = ไม่ต้องมัดจำ)
-  depositPaidAt   DateTime? // เวลาที่ร้านยืนยันรับมัดจำ (null = ยังไม่จ่าย)
-  depositSaleId   String? // PosSale.id ของบิลมัดจำ DEPOSIT (Dr 2110)
+  publicToken   String?   @unique @default(cuid()) // ลิงก์สถานะลูกค้า (public) — แถวเดิม NULL, แถวใหม่ปั๊ม cuid
+  depositSatang Int       @default(0) // snapshot มัดจำจาก asset ตอนจอง (0 = ไม่ต้องมัดจำ)
+  depositPaidAt DateTime? // เวลาที่ร้านยืนยันรับมัดจำ (null = ยังไม่จ่าย)
+  depositSaleId String? // PosSale.id ของบิลมัดจำ DEPOSIT (Dr 2110)
 
   @@index([tenantId, unitId, status])
   @@index([assetId, startDate])

@@ -8,18 +8,18 @@
 // สถานะห้องจริง (housekeeping/พร้อมขาย) — ห้อง OOO/CLEANING ไม่ถูก assign
 enum HotelRoomStatus {
   AVAILABLE // ว่าง พร้อมขาย
-  OCCUPIED  // มีแขกพักอยู่
-  CLEANING  // รอทำความสะอาด (เช็คเอาท์แล้ว)
-  OOO       // out of order — ปิดใช้งานชั่วคราว
+  OCCUPIED // มีแขกพักอยู่
+  CLEANING // รอทำความสะอาด (เช็คเอาท์แล้ว)
+  OOO // out of order — ปิดใช้งานชั่วคราว
 }
 
 // สถานะการจอง (state machine พื้นฐาน P1)
 enum HotelReservationStatus {
-  BOOKED       // จองแล้ว รอเข้าพัก
-  CHECKED_IN   // เข้าพักอยู่
-  CHECKED_OUT  // ออกแล้ว
-  CANCELLED    // ยกเลิก
-  REFUNDED     // คืนเงินหลังเช็คเอาท์ (POS bill ถูก void — ห้ามลบ การเงินแก้ด้วย reversal)
+  BOOKED // จองแล้ว รอเข้าพัก
+  CHECKED_IN // เข้าพักอยู่
+  CHECKED_OUT // ออกแล้ว
+  CANCELLED // ยกเลิก
+  REFUNDED // คืนเงินหลังเช็คเอาท์ (POS bill ถูก void — ห้ามลบ การเงินแก้ด้วย reversal)
 }
 
 // ─────────────────────── INVENTORY ───────────────────────
@@ -72,44 +72,44 @@ model HotelRoom {
 // ─────────────────────── BOOKING ─────────────────────────
 
 model HotelReservation {
-  id                String                 @id @default(cuid())
-  tenantId          String
-  unitId            String
-  code              String // รหัสจอง เช่น "HR-2607-0001" (running ต่อ unit)
-  publicToken       String?                @unique @default(cuid()) // ลิงก์สถานะลูกค้า (public/no-auth) — จองออนไลน์
-  status            HotelReservationStatus @default(BOOKED)
+  id                 String                 @id @default(cuid())
+  tenantId           String
+  unitId             String
+  code               String // รหัสจอง เช่น "HR-2607-0001" (running ต่อ unit)
+  publicToken        String?                @unique @default(cuid()) // ลิงก์สถานะลูกค้า (public/no-auth) — จองออนไลน์
+  status             HotelReservationStatus @default(BOOKED)
   // ผู้เข้าพัก (snapshot บนเอกสาร) — customerId เชื่อมระบบสมาชิกภายหลังได้ (P1 เก็บเป็น scalar)
-  guestName         String
-  guestPhone        String?
-  guestEmail        String?
-  customerId        String? // Customer.id — 🔜 ผูก member.findOrCreate ตอน check-in
+  guestName          String
+  guestPhone         String?
+  guestEmail         String?
+  customerId         String? // Customer.id — 🔜 ผูก member.findOrCreate ตอน check-in
   // ห้อง
-  roomTypeId        String
-  roomType          HotelRoomType          @relation(fields: [roomTypeId], references: [id])
-  roomId            String? // ห้องจริงที่ assign (ตอนจอง/ตอน check-in)
-  room              HotelRoom?             @relation(fields: [roomId], references: [id])
+  roomTypeId         String
+  roomType           HotelRoomType          @relation(fields: [roomTypeId], references: [id])
+  roomId             String? // ห้องจริงที่ assign (ตอนจอง/ตอน check-in)
+  room               HotelRoom?             @relation(fields: [roomId], references: [id])
   // ช่วงพัก (checkOutDate exclusive — คืนสุดท้าย = checkOutDate-1)
-  checkInDate       DateTime               @db.Date
-  checkOutDate      DateTime               @db.Date
-  nights            Int                    @default(1)
-  adults            Int                    @default(2)
-  children          Int                    @default(0)
+  checkInDate        DateTime               @db.Date
+  checkOutDate       DateTime               @db.Date
+  nights             Int                    @default(1)
+  adults             Int                    @default(2)
+  children           Int                    @default(0)
   // เงิน (snapshot ตอนจอง — สตางค์)
-  ratePerNightSatang Int                   @default(0)
-  totalSatang       Int                    @default(0)
+  ratePerNightSatang Int                    @default(0)
+  totalSatang        Int                    @default(0)
   // มัดจำ (snapshot จาก roomType ตอนจอง — สตางค์) · จ่าย PromptPay แล้วร้านยืนยัน → depositPaidAt + บิล POS DEPOSIT (Dr 2110)
-  depositSatang     Int                    @default(0) // 0 = ไม่ต้องมัดจำ
-  depositPaidAt     DateTime? // เวลาที่ร้านยืนยันรับมัดจำ (null = ยังไม่จ่าย)
-  depositSaleId     String? // PosSale.id ของบิลมัดจำ (null = ไม่ผูก POS / ยังไม่จ่าย)
-  note              String?
-  checkedInAt       DateTime?
-  checkedOutAt      DateTime?
-  cancelledAt       DateTime?
-  cancelReason      String?
-  refundedAt        DateTime? // เวลาที่คืนเงินหลังเช็คเอาท์ (คู่กับ status REFUNDED)
-  createdById       String? // User.id พนักงาน (null = ระบบ/ลูกค้า)
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
+  depositSatang      Int                    @default(0) // 0 = ไม่ต้องมัดจำ
+  depositPaidAt      DateTime? // เวลาที่ร้านยืนยันรับมัดจำ (null = ยังไม่จ่าย)
+  depositSaleId      String? // PosSale.id ของบิลมัดจำ (null = ไม่ผูก POS / ยังไม่จ่าย)
+  note               String?
+  checkedInAt        DateTime?
+  checkedOutAt       DateTime?
+  cancelledAt        DateTime?
+  cancelReason       String?
+  refundedAt         DateTime? // เวลาที่คืนเงินหลังเช็คเอาท์ (คู่กับ status REFUNDED)
+  createdById        String? // User.id พนักงาน (null = ระบบ/ลูกค้า)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
 
   @@unique([unitId, code])
   @@index([tenantId, unitId])

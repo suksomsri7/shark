@@ -226,11 +226,54 @@ export async function setMemberSystem(
   systemId: string,
   memberSystemId: string | null,
 ) {
+  // เจ้าของกดเลือกเอง (รวมกรณีเลือก "ไม่เชื่อม") → ปักเวลาไว้ ระบบจะไม่ไปเชื่อมทับให้อีก
+  await prisma.chatSetting.upsert({
+    where: { systemId },
+    create: { tenantId, systemId, memberSystemId, memberSystemChosenAt: new Date() },
+    update: { memberSystemId, memberSystemChosenAt: new Date() },
+  });
+}
+
+/**
+ * เชื่อมระบบสมาชิกให้เองเมื่อ "ไม่มีอะไรให้เลือก" — ร้านมีระบบสมาชิกชุดเดียว
+ * (เจ้าของถาม 31 ส.ค. 2026: ทำไมต้องมาตั้งเอง ในเมื่อเป็นระบบเดียวกัน — ถูกต้องสำหรับร้านทั่วไป)
+ *
+ * 🔴 มีระบบสมาชิก 2 ชุดขึ้นไป = **ห้ามเดา** — ร้านตั้งใจแยกฐานลูกค้าคนละชุด (เช่น สมาชิกร้านตัดผม
+ *    กับ สมาชิกสปา) เชื่อมผิดชุด ลูกค้าจากแชทจะไหลไปรวมฐานที่ไม่ใช่ แก้ทีหลังยากกว่าตอนตั้ง
+ * 🔴 เจ้าของเคยเลือกเองแล้ว (memberSystemChosenAt ไม่ null) = ไม่แตะ แม้เขาเลือก "ไม่เชื่อม"
+ * 🔴 ตรวจว่าระบบแชทเป็นของร้านนี้จริงก่อนเขียน (กติกาเดียวกับ setBusinessHours · B1)
+ *
+ * คืน memberSystemId ที่ผูกอยู่หลังจบฟังก์ชัน (null = ยังไม่ผูก)
+ */
+export async function ensureMemberSystemLink(
+  tenantId: string,
+  systemId: string,
+): Promise<string | null> {
+  const chatSys = await prisma.appSystem.findFirst({
+    where: { id: systemId, tenantId, type: "CHAT" },
+    select: { id: true },
+  });
+  if (!chatSys) return null;
+
+  const setting = await prisma.chatSetting.findUnique({ where: { systemId } });
+  if (setting?.memberSystemId) return setting.memberSystemId;
+  if (setting?.memberSystemChosenAt) return null; // เจ้าของตั้งใจไม่เชื่อม
+
+  const members = await prisma.appSystem.findMany({
+    where: { tenantId, type: "MEMBER", active: true },
+    select: { id: true },
+    take: 2, // รู้แค่ "ชุดเดียวหรือมากกว่า" ก็พอ
+  });
+  if (members.length !== 1) return null; // 0 = ยังไม่มีให้เชื่อม · 2+ = ต้องให้คนเลือก
+
+  const memberSystemId = members[0]!.id;
+  // ไม่ปัก chosenAt — ถือเป็นค่าที่ระบบเดาให้ เจ้าของยังเปลี่ยนได้ และถ้าเขาเลือกเองเมื่อไหร่ค่อยปัก
   await prisma.chatSetting.upsert({
     where: { systemId },
     create: { tenantId, systemId, memberSystemId },
     update: { memberSystemId },
   });
+  return memberSystemId;
 }
 
 /**
@@ -961,8 +1004,11 @@ export async function receiveExternalInbound(args: {
 
 // hook: ถ้าเชื่อมระบบ Member และ contact มีเบอร์แต่ยังไม่ผูก → findOrCreate + link (opt-in)
 async function maybeAutoLinkMember(tenantId: string, systemId: string, contactId: string) {
-  const setting = await prisma.chatSetting.findUnique({ where: { systemId } });
-  if (!setting?.memberSystemId) return;
+  // ร้านที่มีระบบสมาชิกชุดเดียวและยังไม่เคยตั้งค่า → เชื่อมให้ตรงนี้เลย
+  // (ไม่ต้องรอเจ้าของเปิดหน้า "เชื่อมช่องทาง" — ลูกค้าคนแรกที่ทักเข้ามาก็ถูกผูกเป็นสมาชิกแล้ว)
+  const memberSystemId = await ensureMemberSystemLink(tenantId, systemId);
+  if (!memberSystemId) return;
+  const setting = { memberSystemId };
   const contact = await prisma.chatContact.findFirst({ where: { id: contactId, systemId } });
   if (!contact || contact.customerId || !contact.phone) return;
   try {

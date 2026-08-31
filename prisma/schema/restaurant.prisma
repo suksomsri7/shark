@@ -291,31 +291,31 @@ model RestaurantTable {
 // ─────────────────────── Session โต๊ะ ───────────────────────
 
 model TableSession {
-  id           String             @id @default(cuid())
-  tenantId     String
-  unitId       String
-  tableId      String
-  table        RestaurantTable    @relation(fields: [tableId], references: [id])
-  status       TableSessionStatus @default(OPEN)
-  guestCount   Int?
-  memberId     String? // Customer.id (tenant-scoped) — ผูกเพื่อสะสมแต้ม
+  id             String             @id @default(cuid())
+  tenantId       String
+  unitId         String
+  tableId        String
+  table          RestaurantTable    @relation(fields: [tableId], references: [id])
+  status         TableSessionStatus @default(OPEN)
+  guestCount     Int?
+  memberId       String? // Customer.id (tenant-scoped) — ผูกเพื่อสะสมแต้ม
   openedByUserId String? // staff ที่เปิด (null = ลูกค้าเปิดผ่าน QR)
-  mergedIntoId String? // → TableSession ปลายทาง เมื่อ MERGED
-  mergedInto   TableSession?      @relation("SessionMerge", fields: [mergedIntoId], references: [id])
-  mergedFrom   TableSession[]     @relation("SessionMerge")
-  openedAt     DateTime           @default(now())
-  closedAt     DateTime?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  mergedIntoId   String? // → TableSession ปลายทาง เมื่อ MERGED
+  mergedInto     TableSession?      @relation("SessionMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom     TableSession[]     @relation("SessionMerge")
+  openedAt       DateTime           @default(now())
+  closedAt       DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   orders          RestaurantOrder[]
   serviceRequests RestaurantServiceRequest[]
+  // ⚠️ ต้องมี partial unique index (migration SQL — Prisma ประกาศ partial ไม่ได้):
+  // CREATE UNIQUE INDEX one_open_session_per_table ON "TableSession" ("tableId") WHERE status = 'OPEN';
 
   @@index([tenantId])
   @@index([unitId, status])
   @@index([unitId, tableId, status])
-  // ⚠️ ต้องมี partial unique index (migration SQL — Prisma ประกาศ partial ไม่ได้):
-  // CREATE UNIQUE INDEX one_open_session_per_table ON "TableSession" ("tableId") WHERE status = 'OPEN';
 }
 
 // ─────────────────────── ออเดอร์ + รายการ + ตัวเลือก ───────────────────────
@@ -384,8 +384,8 @@ model RestaurantOrderItem {
 
   nameSnapshot String // freeze ชื่อ ณ เวลาสั่ง
   unitPrice    Int // สตางค์ ราคาฐาน ณ เวลาสั่ง
-  optionsTotal Int    @default(0) // สตางค์ รวม priceDelta ต่อ 1 หน่วย
-  qty          Int    @default(1)
+  optionsTotal Int     @default(0) // สตางค์ รวม priceDelta ต่อ 1 หน่วย
+  qty          Int     @default(1)
   lineTotal    Int // (unitPrice + optionsTotal) * qty — denormalize
   note         String?
 

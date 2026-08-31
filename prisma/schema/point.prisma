@@ -12,12 +12,12 @@ enum PointTxType {
 
 // กติกาสะสมต่อ tenant (default: 25 บาท = 1 แต้ม)
 model PointSettings {
-  id            String   @id @default(cuid())
-  tenantId      String   @unique
-  satangPerPoint Int     @default(2500) // ใช้จ่ายกี่สตางค์ = 1 แต้ม
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(cuid())
+  tenantId       String   @unique
+  satangPerPoint Int      @default(2500) // ใช้จ่ายกี่สตางค์ = 1 แต้ม
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model PointLedger {

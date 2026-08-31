@@ -6,28 +6,28 @@
 // เงินทั้งหมด Int หน่วยสตางค์ (satang) · เวลา DateTime UTC (แสดงผล Asia/Bangkok)
 
 enum TicketEventStatus {
-  DRAFT      // ยังไม่เผยแพร่
-  PUBLISHED  // เปิดขาย
-  ENDED      // จบงานแล้ว
-  CANCELLED  // ยกเลิกงาน
+  DRAFT // ยังไม่เผยแพร่
+  PUBLISHED // เปิดขาย
+  ENDED // จบงานแล้ว
+  CANCELLED // ยกเลิกงาน
 }
 
 enum TicketOrderStatus {
-  PENDING    // จอง/รอชำระ (ตัดโควตาไว้แล้ว)
-  PAID       // ชำระแล้ว
-  CANCELLED  // ยกเลิก (คืนโควตาแล้ว)
+  PENDING // จอง/รอชำระ (ตัดโควตาไว้แล้ว)
+  PAID // ชำระแล้ว
+  CANCELLED // ยกเลิก (คืนโควตาแล้ว)
 }
 
 enum TicketAdmissionStatus {
-  VALID       // ตั๋วใช้ได้ ยังไม่เข้างาน
-  CHECKED_IN  // เช็คอินแล้ว
-  VOID        // ยกเลิก (ออเดอร์ถูกยกเลิก)
+  VALID // ตั๋วใช้ได้ ยังไม่เข้างาน
+  CHECKED_IN // เช็คอินแล้ว
+  VOID // ยกเลิก (ออเดอร์ถูกยกเลิก)
 }
 
 model TicketEvent {
-  id            String            @id @default(cuid())
-  tenantId      String
-  unitId        String
+  id       String @id @default(cuid())
+  tenantId String
+  unitId   String
 
   name          String
   description   String?
@@ -37,14 +37,14 @@ model TicketEvent {
   endAt         DateTime?
   status        TicketEventStatus @default(DRAFT)
 
-  publishedAt   DateTime?
-  archivedAt    DateTime?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  publishedAt DateTime?
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  ticketTypes   TicketType[]
-  orders        TicketOrder[]
-  admissions    TicketAdmission[]
+  ticketTypes TicketType[]
+  orders      TicketOrder[]
+  admissions  TicketAdmission[]
 
   @@index([tenantId])
   @@index([unitId, status])
@@ -52,23 +52,23 @@ model TicketEvent {
 }
 
 model TicketType {
-  id           String            @id @default(cuid())
-  tenantId     String
-  unitId       String
-  eventId      String
-  event        TicketEvent       @relation(fields: [eventId], references: [id])
+  id       String      @id @default(cuid())
+  tenantId String
+  unitId   String
+  eventId  String
+  event    TicketEvent @relation(fields: [eventId], references: [id])
 
-  name         String            // "บัตรทั่วไป", "VIP"
-  description  String?
-  priceSatang  Int               @default(0)
-  quota        Int               @default(0)   // จำนวนที่ขายได้ทั้งหมด
-  sold         Int               @default(0)   // ตัดแล้ว (รวม PENDING + PAID ที่ยังไม่ยกเลิก)
-  sortOrder    Int               @default(0)
-  active       Boolean           @default(true)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  name        String // "บัตรทั่วไป", "VIP"
+  description String?
+  priceSatang Int      @default(0)
+  quota       Int      @default(0) // จำนวนที่ขายได้ทั้งหมด
+  sold        Int      @default(0) // ตัดแล้ว (รวม PENDING + PAID ที่ยังไม่ยกเลิก)
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  admissions   TicketAdmission[]
+  admissions TicketAdmission[]
 
   @@index([tenantId])
   @@index([unitId])
@@ -76,28 +76,28 @@ model TicketType {
 }
 
 model TicketOrder {
-  id           String            @id @default(cuid())
-  tenantId     String
-  unitId       String
-  eventId      String
-  event        TicketEvent       @relation(fields: [eventId], references: [id])
+  id       String      @id @default(cuid())
+  tenantId String
+  unitId   String
+  eventId  String
+  event    TicketEvent @relation(fields: [eventId], references: [id])
 
-  orderNo      String            // "TO-250711-0001" running ต่อ unit ต่อวัน
-  publicToken  String?           @unique @default(cuid()) // ลิงก์สถานะ/ตั๋วลูกค้า (public/no-auth) — ซื้อออนไลน์ · สุ่มกันเดา
-  customerId   String?           // ผูกระบบสมาชิก (optional)
-  buyerName    String            // snapshot
-  buyerPhone   String?           // snapshot
-  status       TicketOrderStatus @default(PENDING)
-  totalSatang  Int               @default(0)
-  channel      String            @default("STAFF") // STAFF (หน้างาน) | ONLINE
-  note         String?
+  orderNo     String // "TO-250711-0001" running ต่อ unit ต่อวัน
+  publicToken String?           @unique @default(cuid()) // ลิงก์สถานะ/ตั๋วลูกค้า (public/no-auth) — ซื้อออนไลน์ · สุ่มกันเดา
+  customerId  String? // ผูกระบบสมาชิก (optional)
+  buyerName   String // snapshot
+  buyerPhone  String? // snapshot
+  status      TicketOrderStatus @default(PENDING)
+  totalSatang Int               @default(0)
+  channel     String            @default("STAFF") // STAFF (หน้างาน) | ONLINE
+  note        String?
 
-  paidAt       DateTime?
-  cancelledAt  DateTime?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  paidAt      DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  admissions   TicketAdmission[]
+  admissions TicketAdmission[]
 
   @@unique([unitId, orderNo])
   @@index([tenantId])
@@ -107,24 +107,24 @@ model TicketOrder {
 }
 
 model TicketAdmission {
-  id            String                @id @default(cuid())
-  tenantId      String
-  unitId        String
-  eventId       String
-  event         TicketEvent           @relation(fields: [eventId], references: [id])
-  orderId       String
-  order         TicketOrder           @relation(fields: [orderId], references: [id])
-  ticketTypeId  String
-  ticketType    TicketType            @relation(fields: [ticketTypeId], references: [id])
+  id           String      @id @default(cuid())
+  tenantId     String
+  unitId       String
+  eventId      String
+  event        TicketEvent @relation(fields: [eventId], references: [id])
+  orderId      String
+  order        TicketOrder @relation(fields: [orderId], references: [id])
+  ticketTypeId String
+  ticketType   TicketType  @relation(fields: [ticketTypeId], references: [id])
 
-  code          String                // รหัสตั๋ว/QR (opaque, กรอกเช็คอินได้) — unique ต่อ unit
-  priceSatang   Int                   @default(0)   // snapshot ราคาต่อใบ
-  attendeeName  String?
-  status        TicketAdmissionStatus @default(VALID)
-  checkedInAt   DateTime?
-  checkedInBy   String?               // userId ที่เช็คอิน
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  code         String // รหัสตั๋ว/QR (opaque, กรอกเช็คอินได้) — unique ต่อ unit
+  priceSatang  Int                   @default(0) // snapshot ราคาต่อใบ
+  attendeeName String?
+  status       TicketAdmissionStatus @default(VALID)
+  checkedInAt  DateTime?
+  checkedInBy  String? // userId ที่เช็คอิน
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
 
   @@unique([unitId, code])
   @@index([tenantId])

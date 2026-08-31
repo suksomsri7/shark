@@ -27,7 +27,9 @@ model DnaBlueprint {
   planHash    String // compile ต้อง pure: facts เดิม → hash เดิม (oracle ตรวจ)
   status      DnaBlueprintStatus @default(PROPOSED)
   appliedAt   DateTime?
-  /** ผลราย step: [{ step: 0, ok: true, createdId: "..." }] — idempotency + audit */
+  /**
+   * ผลราย step: [{ step: 0, ok: true, createdId: "..." }] — idempotency + audit
+   */
   stepResults Json               @default("[]")
   createdAt   DateTime           @default(now())
 

@@ -98,13 +98,13 @@ model AiUsageWindow {
 // ⚠️ PDPA: anonymize ก่อนเก็บ (แทนชื่อ/เบอร์/อีเมล ด้วย placeholder) · เก็บเมื่อ SHARK_AI_COLLECT=1 เท่านั้น
 // ของมีค่า = โครง tool-calling (คำสั่ง → เครื่องมือที่เลือก) ไม่ใช่ข้อมูลลูกค้า
 model AiTrainingSample {
-  id           String   @id @default(cuid())
-  tenantId     String
-  userText     String // anonymized
-  toolCallsJson Json    @default("[]") // [{name, args(anonymized)}]
-  replyText    String // anonymized
-  model        String // haiku | sonnet — ครูที่ผลิต sample
-  createdAt    DateTime @default(now())
+  id            String   @id @default(cuid())
+  tenantId      String
+  userText      String // anonymized
+  toolCallsJson Json     @default("[]") // [{name, args(anonymized)}]
+  replyText     String // anonymized
+  model         String // haiku | sonnet — ครูที่ผลิต sample
+  createdAt     DateTime @default(now())
 
   @@index([tenantId, createdAt])
 }
@@ -122,30 +122,30 @@ model AiMemory {
 
 // AI Plan (agentic-2 — L2) — แผนหลายขั้น: เสนอทั้งชุด ยืนยันครั้งเดียว ทำต่อเนื่อง รายงานทีละขั้น
 model AiPlan {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   tenantId       String
   conversationId String
   title          String // ไทย — "ปิดยอดวันนี้"
-  status         String   @default("PENDING") // PENDING|RUNNING|DONE|FAILED|REJECTED|EXPIRED
-  hasDestructive Boolean  @default(false) // มี step ลบ/ยกเลิก → ยืนยัน 2 ชั้นระดับแผน
-  stepsJson      Json     @default("[]") // [{kind, summary, payload, status:PENDING|DONE|FAILED, note?}]
+  status         String    @default("PENDING") // PENDING|RUNNING|DONE|FAILED|REJECTED|EXPIRED
+  hasDestructive Boolean   @default(false) // มี step ลบ/ยกเลิก → ยืนยัน 2 ชั้นระดับแผน
+  stepsJson      Json      @default("[]") // [{kind, summary, payload, status:PENDING|DONE|FAILED, note?}]
   expiresAt      DateTime
   executedAt     DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
   @@index([tenantId, conversationId, status])
 }
 
 // AI Scheduled Task (agentic-3) — งานประจำที่ AI ทำเองตามเวลา (read/summary → AppNotification)
 model AiScheduledTask {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   tenantId    String
   instruction String // "สรุปยอดขายวันนี้ + สต็อกใกล้หมด"
   hourBkk     Int // 0-23 ชั่วโมงตามเวลาไทยที่ให้รัน
-  active      Boolean   @default(true)
+  active      Boolean  @default(true)
   lastRunDay  String? // "YYYY-MM-DD" (BKK) กันรันซ้ำในวันเดียวกัน
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([tenantId, active])
   @@index([active, hourBkk])
@@ -169,13 +169,13 @@ model AiFeedback {
 // AI Prompt Tweak (self-improving item 4) — ข้อความปรับปรุงระบบ AI ระดับแพลตฟอร์ม (ทุกร้าน)
 // วงจร: วิเคราะห์เคสพลาด → เสนอ (PENDING) → แอดมิน backoffice อนุมัติ (APPROVED=ใช้จริง) / ปฏิเสธ
 model AiPromptTweak {
-  id             String   @id @default(cuid())
-  content        String // คำสั่งเสริมที่จะแทรกเข้า system prompt
-  rationale      String // เหตุผล (สรุปจากเคสที่พลาด)
-  status         String   @default("PENDING") // PENDING | APPROVED | REJECTED
-  decidedById    String? // PlatformUser.id
-  decidedAt      DateTime?
-  createdAt      DateTime @default(now())
+  id          String    @id @default(cuid())
+  content     String // คำสั่งเสริมที่จะแทรกเข้า system prompt
+  rationale   String // เหตุผล (สรุปจากเคสที่พลาด)
+  status      String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  decidedById String? // PlatformUser.id
+  decidedAt   DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([status, createdAt])
 }

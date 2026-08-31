@@ -17,24 +17,24 @@ enum PosPayType {
 }
 
 model PosSale {
-  id              String        @id @default(cuid())
-  tenantId        String
-  unitId          String
-  systemId        String // ระบบ POS ไหน (scope)
-  memberId        String? // Customer.id
-  sourceModule    String        @default("POS") // POS | BOOKING | HOTEL | RESTAURANT | TICKET
-  sourceId        String?
-  idempotencyKey  String
-  receiptNo       String?
-  status          PosSaleStatus @default(PAID)
-  subtotalSatang  Int
-  discountSatang  Int           @default(0)
-  vatSatang       Int           @default(0)
+  id               String        @id @default(cuid())
+  tenantId         String
+  unitId           String
+  systemId         String // ระบบ POS ไหน (scope)
+  memberId         String? // Customer.id
+  sourceModule     String        @default("POS") // POS | BOOKING | HOTEL | RESTAURANT | TICKET
+  sourceId         String?
+  idempotencyKey   String
+  receiptNo        String?
+  status           PosSaleStatus @default(PAID)
+  subtotalSatang   Int
+  discountSatang   Int           @default(0)
+  vatSatang        Int           @default(0)
   grandTotalSatang Int
-  pointEarned     Int           @default(0)
-  paidAt          DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  pointEarned      Int           @default(0)
+  paidAt           DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   lines    PosSaleLine[]
   payments PosPayment[]
@@ -45,33 +45,33 @@ model PosSale {
 }
 
 model PosSaleLine {
-  id             String  @id @default(cuid())
-  tenantId       String
-  unitId         String
-  saleId         String
-  sale           PosSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  name           String
-  qty            Int
+  id              String  @id @default(cuid())
+  tenantId        String
+  unitId          String
+  saleId          String
+  sale            PosSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  name            String
+  qty             Int
   unitPriceSatang Int
-  discountSatang Int     @default(0)
+  discountSatang  Int     @default(0)
   lineTotalSatang Int
-  itemId         String? // InvItem.id ที่ผูก (ตัด/คืนสต็อก perpetual) · null = บริการ/รายการเพิ่มเอง (ไม่ตัดสต็อก)
-  serviceId      String? // BookingService.id ที่ผูก — ใช้แยกยอด "สินค้า vs บริการ" ในรายงาน
-                         // (itemId=null อย่างเดียวแยกไม่ออกว่าเป็นบริการหรือรายการพิมพ์เอง)
+  itemId          String? // InvItem.id ที่ผูก (ตัด/คืนสต็อก perpetual) · null = บริการ/รายการเพิ่มเอง (ไม่ตัดสต็อก)
+  serviceId       String? // BookingService.id ที่ผูก — ใช้แยกยอด "สินค้า vs บริการ" ในรายงาน
+  // (itemId=null อย่างเดียวแยกไม่ออกว่าเป็นบริการหรือรายการพิมพ์เอง)
 
   @@index([saleId])
 }
 
 model PosPayment {
-  id         String     @id @default(cuid())
-  tenantId   String
-  unitId     String
-  saleId     String
-  sale       PosSale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  type       PosPayType
+  id           String     @id @default(cuid())
+  tenantId     String
+  unitId       String
+  saleId       String
+  sale         PosSale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  type         PosPayType
   amountSatang Int
-  refSaleId  String? // DEPOSIT/ROOM_CHARGE อ้างบิลเดิม
-  note       String?
+  refSaleId    String? // DEPOSIT/ROOM_CHARGE อ้างบิลเดิม
+  note         String?
 
   @@index([saleId])
 }

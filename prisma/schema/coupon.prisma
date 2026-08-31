@@ -4,7 +4,7 @@
 
 enum CouponType {
   PERCENT // ลดเป็นเปอร์เซ็นต์ (percent) + cap ด้วย maxDiscountSatang
-  FIXED   // ลดเป็นเงินตายตัว (valueSatang)
+  FIXED // ลดเป็นเงินตายตัว (valueSatang)
 }
 
 enum CouponRedemptionStatus {

@@ -32,15 +32,15 @@ model SupportCase {
 }
 
 model SupportMessage {
-  id         String            @id @default(cuid())
-  tenantId   String
-  caseId     String
-  case       SupportCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  authorSide SupportAuthorSide
-  authorId   String // User.id (SHOP) หรือ PlatformUser.id (PLATFORM)
-  body       String
-  attachmentsJson Json         @default("[]") // [{name, url, kind:"image"|"file"}] — WO help-v2
-  createdAt  DateTime          @default(now())
+  id              String            @id @default(cuid())
+  tenantId        String
+  caseId          String
+  case            SupportCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  authorSide      SupportAuthorSide
+  authorId        String // User.id (SHOP) หรือ PlatformUser.id (PLATFORM)
+  body            String
+  attachmentsJson Json              @default("[]") // [{name, url, kind:"image"|"file"}] — WO help-v2
+  createdAt       DateTime          @default(now())
 
   @@index([tenantId, caseId, createdAt])
 }

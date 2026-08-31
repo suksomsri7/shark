@@ -17,6 +17,7 @@ enum HrPayItemKind {
   DEDUCTION // หักเงิน (มาสาย/ขาดงาน/ค่าเสียหาย)
   ADVANCE // เบิกล่วงหน้า (หักคืน)
 }
+
 enum HrPayItemStatus {
   PENDING
   APPROVED

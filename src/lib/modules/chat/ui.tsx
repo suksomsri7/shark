@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTabs } from "@/components/module-tabs";
 import {
   ensureWebchatConnection,
+  ensureMemberSystemLink,
   listConnections,
   listConversations,
   getThread,
@@ -275,6 +276,8 @@ export async function ChatChannelsSection({
 }) {
   // built-in WEBCHAT connection (lazy) + ช่องทางอื่น
   await ensureWebchatConnection(tenantId, systemId);
+  // ร้านมีระบบสมาชิกชุดเดียว + ยังไม่เคยเลือกเอง → เชื่อมให้เลย (ไม่มีอะไรให้เลือกอยู่แล้ว)
+  await ensureMemberSystemLink(tenantId, systemId);
   const [connections, setting, origin] = await Promise.all([
     listConnections(tenantId, systemId),
     getSetting(tenantId, systemId),
@@ -407,7 +410,12 @@ export async function ChatChannelsSection({
           <div className="flex flex-col gap-2 border-t pt-4">
             <h3 className="text-sm font-medium">เชื่อมระบบสมาชิก</h3>
             <p className="text-xs text-[color:var(--color-muted)]">
-              เชื่อมแล้วจะผูกลูกค้าในแชทเข้ากับโปรไฟล์สมาชิก เห็นเบอร์/ประวัติได้
+              เชื่อมแล้วจะผูกลูกค้าในแชทเข้ากับโปรไฟล์สมาชิก เห็นเบอร์/ประวัติได้ ·
+              {memberSystems.length === 1
+                ? " ร้านมีระบบสมาชิกชุดเดียว ระบบจึงเชื่อมให้อัตโนมัติ (เปลี่ยนเป็นไม่เชื่อมได้)"
+                : memberSystems.length > 1
+                  ? " ร้านมีระบบสมาชิกหลายชุด ต้องเลือกเองว่าจะผูกกับชุดไหน"
+                  : " ยังไม่มีระบบสมาชิกในร้าน — สร้างแล้วระบบจะเชื่อมให้เอง"}
             </p>
             <form action={setMemberSystemAction} className="flex gap-2">
               <input type="hidden" name="systemId" value={systemId} />

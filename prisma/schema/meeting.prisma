@@ -55,13 +55,13 @@ model MeetingChannelMember {
 
 // ─────────────────────────── Message ───────────────────────────
 model MeetingMessage {
-  id             String  @id @default(cuid())
-  tenantId       String
-  systemId       String
-  channelId      String
-  channel        MeetingChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  authorUserId   String
-  body           String  @db.Text
+  id           String         @id @default(cuid())
+  tenantId     String
+  systemId     String
+  channelId    String
+  channel      MeetingChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  authorUserId String
+  body         String         @db.Text
 
   // ── Thread (reply) ── null = ข้อความหลักในห้อง; มีค่า = reply ผูก parent (ไม่ซ้อนชั้น)
   threadParentId String?
