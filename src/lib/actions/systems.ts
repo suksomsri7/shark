@@ -83,6 +83,10 @@ export async function addSystemAction(
     const unit = await prisma.businessUnit.create({
       data: { tenantId, type: code as UnitType, name, slug, sortOrder: count },
     });
+    // 🔴 เมนูซ้าย (drawer) ถูกสร้างใน layout ของ /app ซึ่งถูกแคชไว้
+    //    ถ้าไม่ล้างแคชระดับ layout ระบบใหม่จะ **ยังไม่โผล่จนกว่าจะปิด-เปิดแอปใหม่**
+    //    เจ้าของเจอจริง 31 ส.ค.: กดเพิ่มแล้วไม่เห็น เลยกดเพิ่มซ้ำจนได้ระบบซ้ำซ้อน
+    revalidatePath("/app", "layout");
     redirect(`/app/u/${unit.slug}`);
   }
 
@@ -90,7 +94,41 @@ export async function addSystemAction(
     return { status: "error", message: "ระบบนี้ยังไม่เปิดให้บริการ" };
   }
   const sys = await createSystemAutoLink(tenantId, code as SystemType, name);
+  revalidatePath("/app", "layout"); // เหตุผลเดียวกับฝั่ง business ด้านบน
   redirect(`/app/sys/${sys.id}`);
+}
+
+/**
+ * เอาระบบออกจากกิจการ (เจ้าของสั่ง 31 ส.ค. — เดิมสร้างได้อย่างเดียว เอาออกไม่ได้เลย)
+ *
+ * 🔴 ไม่ลบข้อมูลทิ้ง — feature: `active=false` · business: `status=ARCHIVED`
+ *    เหตุผล: ระบบที่เปิดใช้ไปแล้วมีบิล/นัด/สต็อกผูกอยู่ ลบจริงคือทำลายหลักฐานทางบัญชี
+ *    (เอกสารภาษีต้องเก็บ 5 ปีตามกฎหมาย) · ผลที่ผู้ใช้เห็น = หายจากเมนูและหน้าแรกทันที
+ *    ถ้าต้องการลบข้อมูลถาวรจริง ๆ ใช้ "ขอลบกิจการ" ในหน้าความเป็นส่วนตัว (มีระยะพัก 30 วัน)
+ * 🔴 เจ้าของร้านเท่านั้น — ไม่ใช่ MANAGER (assertCan ให้ MANAGER ผ่านทุก action ในหน่วยที่คุม)
+ */
+export async function removeSystemAction(formData: FormData): Promise<void> {
+  const auth = await requireTenant();
+  if (auth.active.role !== "OWNER") {
+    throw new Error("เฉพาะเจ้าของกิจการเท่านั้นที่เอาระบบออกได้");
+  }
+  const tenantId = auth.active.tenantId;
+  const kind = String(formData.get("kind") ?? "");
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  if (kind === "business") {
+    await prisma.businessUnit.updateMany({
+      where: { id, tenantId },
+      data: { status: "ARCHIVED" },
+    });
+  } else {
+    // ตัดการเชื่อมกับสาขาก่อน ไม่งั้นสาขายังชี้มาที่ระบบที่ถูกปิดแล้ว
+    await prisma.appSystemUnit.deleteMany({ where: { tenantId, systemId: id } });
+    await prisma.appSystem.updateMany({ where: { id, tenantId }, data: { active: false } });
+  }
+  revalidatePath("/app", "layout");
+  redirect("/app/settings/systems?removed=1");
 }
 
 // เชื่อมระบบ business ↔ ระบบ feature (1 ระบบ business เชื่อม 1 ระบบต่อประเภท)

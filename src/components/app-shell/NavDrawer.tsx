@@ -238,7 +238,7 @@ export function NavDrawer({
                 })}
                 <div className="my-1 border-t" />
                 <Link
-                  href="/onboarding"
+                  href="/onboarding?add=1"
                   onClick={() => {
                     setTenantOpen(false);
                     onClose();
@@ -303,6 +303,8 @@ export function NavDrawer({
             { href: "/app/forms", icon: "📝", label: "ฟอร์ม" },
             { href: "/app/notifications", icon: "🔔", label: "ศูนย์แจ้งเตือน" },
             { href: "/app/approvals", icon: "✅", label: "รออนุมัติของฉัน" },
+            // 31 ส.ค. — เจ้าของบอกว่า "ขาดฟังก์ชันลบระบบ ลบกิจการ" · ของอยู่หน้านี้ แต่เมนูไม่เคยชี้มา
+            { href: "/app/settings/systems", icon: "🧱", label: "จัดการระบบ (เพิ่ม/เอาออก)" },
             { href: "/app/settings/connections", icon: "🔗", label: "สาขาและการเชื่อมระบบ" },
             { href: "/app/settings/approval", icon: "🧾", label: "สายอนุมัติ" },
             { href: "/app/settings/automation", icon: "⚙️", label: "ระบบอัตโนมัติ" },

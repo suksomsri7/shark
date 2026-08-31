@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAuth, setActiveTenant } from "@/lib/core/context";
 import { createTenantForUser } from "@/lib/mobile/tenants";
@@ -28,5 +29,6 @@ export async function createTenantAction(
   const tenant = await createTenantForUser(auth.user.id, orgName);
 
   await setActiveTenant(tenant.id);
+  revalidatePath("/app", "layout"); // เมนู/ชื่อกิจการใน drawer มาจาก layout ที่ถูกแคช
   redirect("/app/dna"); // → AI สัมภาษณ์ → ประกอบระบบ (ข้ามไปเลือกเองได้จากในหน้า wizard)
 }
