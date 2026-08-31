@@ -108,16 +108,19 @@ export default async function StaffSettingsPage() {
                       <Link href={`/app/settings/staff/${r.membershipId}`} className="btn btn-ghost text-sm">
                         แก้สิทธิ์
                       </Link>
-                      {r.active ? (
+                      {r.active && r.role === "OWNER" && activeOwners <= 1 ? (
+                        /* 🔴 เจ้าของคนสุดท้าย: ด่านฝั่ง service ปฏิเสธเสมอ (กติกา 4)
+                           ⇒ ยื่นปุ่ม "ยืนยันถอนสิทธิ์" ที่ล้มแน่นอน = หลอกให้กดแล้วเจอ error
+                           บอกตั้งแต่แรกว่าต้องทำอะไรก่อน ดีกว่าให้กดแล้วค่อยปฏิเสธ */
+                        <span className="text-xs text-[color:var(--color-muted)]">
+                          เจ้าของกิจการคนสุดท้าย — ตั้งอีกคนเป็นเจ้าของก่อนจึงจะถอนได้
+                        </span>
+                      ) : r.active ? (
                         <ConfirmDialog
                           triggerLabel="ถอนสิทธิ์"
                           triggerClassName="btn-sm"
                           title={`ถอนสิทธิ์ของ ${r.name}?`}
-                          detail={
-                            r.role === "OWNER" && activeOwners <= 1
-                              ? "คนนี้เป็นเจ้าของกิจการคนสุดท้าย ระบบจะไม่ให้ถอน — ตั้งอีกคนเป็นเจ้าของกิจการก่อน"
-                              : "เขาจะเข้าระบบของร้านนี้ไม่ได้อีกทันที แต่ประวัติการทำงานและชื่อที่แสดงในแชท/ประวัติการแก้ไขยังอยู่ครบ เปิดคืนได้ทุกเมื่อ"
-                          }
+                          detail="เขาจะเข้าระบบของร้านนี้ไม่ได้อีกทันที แต่ประวัติการทำงานและชื่อที่แสดงในแชท/ประวัติการแก้ไขยังอยู่ครบ เปิดคืนได้ทุกเมื่อ"
                           confirmLabel="ยืนยันถอนสิทธิ์"
                           danger
                           action={revokeStaffAccessAction}

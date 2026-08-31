@@ -76,7 +76,7 @@ try {
       scrollH: number; viewH: number; composerTop: number | null; composerInView: boolean;
       tallest: string[]; chatSectionH: number | null };
     // หน้าตาของ puppeteer เท่าที่สคริปต์นี้ใช้ (import แบบ path ดิบจึงไม่มี type ติดมา)
-    type Cookie = { name: string; value: string; domain: string; path: string };
+    type Cookie = { name: string; value: string; path: string; domain?: string; url?: string; secure?: boolean };
     type Page = {
       setViewport(v: { width: number; height: number; deviceScaleFactor: number }): Promise<void>;
       setCookie(...c: Cookie[]): Promise<void>;
@@ -86,19 +86,28 @@ try {
       close(): Promise<void>;
     };
     const newPage = () => (browser as { newPage: () => Promise<Page> }).newPage();
-    const shoot = async (label: string, w: number, h: number, conv?: string): Promise<Shot> => {
+    const shoot = async (label: string, w: number, h: number, conv?: string, path?: string): Promise<Shot> => {
       const page = await newPage();
       await page.setViewport({ width: w, height: h, deviceScaleFactor: 2 });
       // 🔴 ชื่อคุกกี้ผูกกับ APP_ENV: dev = `shark_session` · prod(HTTPS) = `__Host-shark_session`
-      //    ตัว __Host- ตั้งผ่าน http ไม่ได้เลย (CDP ตอบ "Invalid cookie fields") → local ใช้ชื่อธรรมดาเท่านั้น
+      //    __Host- ตั้งผ่าน http ไม่ได้เลย (CDP ตอบ "Invalid cookie fields") และต้องไม่ระบุ domain
+      const host = new URL(BASE).hostname;
+      const https = BASE.startsWith("https:");
       await page.setCookie(
-        { name: "shark_session", value: token, domain: "127.0.0.1", path: "/" },
-        { name: "shark_tenant", value: best!.tenantId, domain: "127.0.0.1", path: "/" },
+        ...(https
+          ? [
+              { name: "__Host-shark_session", value: token, url: BASE, path: "/", secure: true },
+              { name: "shark_tenant", value: best!.tenantId, url: BASE, path: "/", secure: true },
+            ]
+          : [
+              { name: "shark_session", value: token, domain: host, path: "/" },
+              { name: "shark_tenant", value: best!.tenantId, domain: host, path: "/" },
+            ]),
       );
-      const url = `${BASE}/app/sys/${best!.id}${conv ? `?c=${conv}` : ""}`;
+      const url = path ? `${BASE}${path}` : `${BASE}/app/sys/${best!.id}${conv ? `?c=${conv}` : ""}`;
       await page.goto(url, { waitUntil: "networkidle2", timeout: 60_000 });
       await new Promise((r) => setTimeout(r, 2500));
-      const file = `${OUT}/chat-${label}.png`;
+      const file = `${OUT}/chat-${label}${https ? "-prod" : ""}.png`;
       await page.screenshot({ path: file, fullPage: false });
       const info = await page.evaluate<Omit<Shot, "file">>(() => ({
         text: document.body.innerText,
@@ -155,6 +164,13 @@ try {
     chk("V5.2", "ตัวกล่องแชทเองไม่สูงเกินจอ (เลื่อนข้างในตัวเอง — ความสูงของเปลือกแอปเป็นอีกเรื่อง)",
       room.chatSectionH !== null && room.chatSectionH <= room.viewH,
       `section กล่องแชทสูง ${room.chatSectionH}px เทียบจอ ${room.viewH}px`);
+
+    // 🔴 หน้าใหม่ที่ "คนต้องกดเอง" — บทเรียน 29 ส.ค.: /app/settings/webhooks เคยเป็นหน้ากำพร้าอยู่หลายเดือน
+    //    ข้อสอบวัดได้แค่ว่าลิงก์มีในเมนู · ต้องเปิดของจริงถึงจะรู้ว่าหน้าเปิดขึ้นไหม
+    const staff = await shoot("staff", 1440, 900, undefined, "/app/settings/staff");
+    console.log(`\nหน้าผู้ใช้งานและสิทธิ์ → ${staff.file}`);
+    chk("V6.1", "หน้า /app/settings/staff เปิดได้จริงบนของจริง", !/Application error|500/i.test(staff.text) && staff.text.length > 60, staff.text.slice(0, 200));
+    chk("V6.2", "มีปุ่มให้สิทธิ์พนักงานจากทะเบียน HR", /ให้พนักงานเข้าใช้งาน|เพิ่มผู้ใช้งาน|พนักงาน/.test(staff.text), staff.buttons.join(" | ").slice(0, 200));
 
     const phone = await shoot("mobile", 430, 932);
     console.log(`\nจอมือถือ 430×932 → ${phone.file}`);
