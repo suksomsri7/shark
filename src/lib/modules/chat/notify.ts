@@ -69,6 +69,15 @@ export type ChatNotifyInput = {
   excludeUserIds?: readonly string[];
   /** สถานะการอ่านของห้องนี้ — ใช้ตัดคนที่กำลังเปิดห้องอยู่ */
   readers?: readonly ChatNotifyReader[];
+  /**
+   * คนที่ "ปิดเสียงห้องนี้" ไว้ (`ChatConversationPref.mutedUntil` ที่ยังไม่หมดอายุ)
+   *
+   * 🔴 WO-CV10 — ถ้าไม่มีด่านนี้ จะได้ระบบที่ **จอบอกว่าเงียบแล้วแต่มือถือยังเด้ง**
+   *    ซึ่งแย่กว่าไม่มีปุ่มปิดเสียงเลย เพราะผู้ใช้เชื่อว่าปิดแล้วจึงไม่กลับมาดูอีก
+   *    (ข้อสอบ LS-14.1 เฝ้าอยู่ · ปิดเสียงเป็นค่า **รายคน** ไม่ใช่ระดับร้าน)
+   * ⚠️ ผู้รับผิดชอบห้องก็ถูกปิดเสียงได้ — เขาเลือกเองว่าจะเงียบ ไม่ใช่ระบบตัดสินแทน
+   */
+  mutedUserIds?: readonly string[];
   now?: Date;
   viewingWindowMs?: number;
 };
@@ -126,6 +135,7 @@ export function selectChatNotifyRecipients(input: ChatNotifyInput): string[] {
   const now = input.now ?? new Date();
   const windowMs = input.viewingWindowMs ?? VIEWING_WINDOW_MS;
   const excluded = new Set(input.excludeUserIds ?? []);
+  const muted = new Set(input.mutedUserIds ?? []);
   const viewing = new Set(
     (input.readers ?? [])
       .filter((r) => isViewingNow(r.lastReadAt, now, windowMs))
@@ -139,6 +149,7 @@ export function selectChatNotifyRecipients(input: ChatNotifyInput): string[] {
     seen.add(m.userId);
     if (excluded.has(m.userId)) continue;
     if (viewing.has(m.userId)) continue; // กำลังเปิดห้องนี้อยู่ — ไม่ต้องเด้งซ้ำ
+    if (muted.has(m.userId)) continue; // ปิดเสียงห้องนี้ไว้เอง (WO-CV10)
     if (!canReadChatConversation(m, input.unitId)) continue; // ← ด่านที่ปิด G9
     eligible.push(m.userId);
   }

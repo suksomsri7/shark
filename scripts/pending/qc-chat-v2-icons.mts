@@ -38,7 +38,18 @@ try { process.loadEnvFile?.(".env"); } catch {}
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-const ROOT = resolve(import.meta.dirname, "..");
+// 🔴 Fable 1 ก.ย. — หา "รากรีโป" โดยเดินขึ้นจนเจอ package.json แทนการนับชั้นตายตัว
+//    ของเดิม `resolve(import.meta.dirname, "..")` ถูกเมื่ออยู่ใน `scripts/` แต่พังทันทีที่ย้ายมา
+//    `scripts/pending/` (ชี้ไป `scripts/` → `read()` คืนสตริงว่าง → **แดงหลอก 13 ข้อทั้งที่โค้ดถูก**)
+//    ⇒ ชุดนี้ต้องรันได้เหมือนกันทั้งตอนพักและตอนย้ายเข้าเป็นด่านจริง (มติ D5)
+const ROOT = (() => {
+  let d = import.meta.dirname;
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(resolve(d, "package.json"))) return d;
+    d = resolve(d, "..");
+  }
+  throw new Error("หารากรีโปไม่เจอ (เดินขึ้นไป 6 ชั้นแล้วไม่เจอ package.json)");
+})();
 
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

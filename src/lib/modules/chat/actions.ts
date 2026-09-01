@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { assertCan } from "@/lib/core/rbac";
+import { assertChatCan } from "./guard";
 import {
   sendReply,
   setStatus,
@@ -28,19 +28,6 @@ import {
 } from "@/lib/storage/service";
 
 // ทุก action: requireTenant + revalidate หน้า chat ของระบบนั้น
-
-// ตรวจสิทธิ์โมดูล (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
-// หมายเหตุ: scope conversation ระดับ unit ยังบังคับผ่าน unitAccess ใน service (คงเดิม)
-function assertChatCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
-  assertCan(
-    {
-      role: auth.active.role,
-      unitAccess: auth.active.unitAccess as string[],
-      permissions: auth.active.permissions as Record<string, unknown>,
-    },
-    { module: "chat", action },
-  );
-}
 
 function chatPath(systemId: string, conversationId?: string) {
   return conversationId

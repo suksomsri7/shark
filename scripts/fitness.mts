@@ -367,7 +367,64 @@ console.log("\n── F6: authz coverage (ratchet — ห้ามเพิ่�
     ...walk(join(ROOT, "src", "lib", "actions"), (p) => p.endsWith(".ts")),
   ].filter((f) => !f.endsWith("auth.ts") && !f.endsWith("onboarding.ts")); // ก่อน login ไม่มีสิทธิ์ให้ตรวจ
   // requireMembership = authz ระดับ account (สลับกิจการ ฯลฯ) — เข้มเท่ากัน: ตรวจสมาชิกภาพจริงจาก DB ก่อนลงมือ
-  const missing = actionFiles.filter((f) => !/assertCan|assertAccountCan|requireMembership\(/.test(readFileSync(f, "utf8"))).map(rel);
+  // 🔴 วัด "มีด่านสิทธิ์จริงไหม" ไม่ใช่ "พิมพ์คำว่า assertCan ไหม" (ยกระดับ 1 ก.ย.)
+  //    เหตุ: พอยุบตรรกะสิทธิ์ซ้ำ 2 ชุดไปไว้ที่ `chat/guard.ts` แล้ว import มาใช้ (`assertChatCan`)
+  //    ด่านเดิมอ่านว่า "ไฟล์นี้ไม่มีการตรวจสิทธิ์" ⇒ **ด่านที่ลงโทษการยุบโค้ดซ้ำ และให้รางวัลกับ
+  //    การ copy-paste ตรรกะความปลอดภัย** ซึ่งตรงข้ามกับสิ่งที่มันตั้งใจกัน
+  //    (บทเรียนซ้ำรอบที่ 5: ข้อสอบต้องวัดพฤติกรรม ไม่ใช่ล็อกชื่อตัวแปร/ไฟล์)
+  //
+  //    ⚠️ ยังคง **fail-closed** และเข้มกว่าเดิม: ไม่ได้เติมชื่อ `assertChatCan` ลง allowlist
+  //    (นั่นจะทำให้ใครก็ตามตั้งชื่อฟังก์ชันเปล่า ๆ ว่า `assertChatCan` แล้วผ่านด่านได้)
+  //    แต่ **ตามรอย import ลึก 1 ชั้น แล้วเปิดตัวฟังก์ชันปลายทางอ่านว่ามันเรียกด่านจริงหรือเปล่า**
+  //    · ตามรอยไม่ได้ / เปิดไฟล์ไม่เจอ / ในตัวฟังก์ชันไม่มีด่าน ⇒ นับว่า "ไม่มี" เหมือนเดิม
+  const DIRECT_AUTHZ = /assertCan|assertAccountCan|requireMembership\(/;
+
+  /** ตัดตัวฟังก์ชัน `name` ออกมาจากซอร์ส (นับวงเล็บปีกกา) — คืน "" ถ้าไม่เจอ */
+  function bodyOf(src: string, name: string): string {
+    const decl = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\b|(?:export\\s+)?const\\s+${name}\\s*[:=]`);
+    const m = decl.exec(src);
+    if (!m) return "";
+    const open = src.indexOf("{", m.index);
+    if (open < 0) return "";
+    let depth = 0;
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === "{") depth++;
+      else if (src[i] === "}" && --depth === 0) return src.slice(open, i + 1);
+    }
+    return "";
+  }
+
+  /** ไฟล์นี้ import ฟังก์ชันที่ **พิสูจน์ได้ว่าเรียกด่านสิทธิ์จริง** มาใช้หรือเปล่า */
+  function importsProvenGuard(file: string, src: string): boolean {
+    const IMPORT_RE = /import\s*\{([^}]+)\}\s*from\s*["']([^"']+)["']/g;
+    for (const im of src.matchAll(IMPORT_RE)) {
+      const spec = im[2];
+      // เฉพาะโมดูลในรีโปเท่านั้น — ของนอกพิสูจน์ไม่ได้ ⇒ ไม่นับ
+      const base = spec.startsWith("@/")
+        ? join(ROOT, "src", spec.slice(2))
+        : spec.startsWith(".")
+          ? resolve(dirname(file), spec)
+          : "";
+      if (!base) continue;
+      const target = [".ts", ".tsx", "/index.ts", "/index.tsx"]
+        .map((ext) => base + ext)
+        .find((cand) => existsSync(cand));
+      if (!target) continue;
+      const targetSrc = readFileSync(target, "utf8");
+      const names = im[1].split(",").map((n) => n.replace(/^.*\bas\b/, "").trim()).filter(Boolean);
+      for (const n of names) {
+        if (DIRECT_AUTHZ.test(bodyOf(targetSrc, n))) return true;
+      }
+    }
+    return false;
+  }
+
+  const missing = actionFiles
+    .filter((f) => {
+      const src = readFileSync(f, "utf8");
+      return !DIRECT_AUTHZ.test(src) && !importsProvenGuard(f, src);
+    })
+    .map(rel);
   const newMissing = missing.filter((m) => !AUTHZ_BASELINE.has(m));
   const healed = [...AUTHZ_BASELINE].filter((b) => !missing.includes(b));
   chk("F6.1", `ไม่มีไฟล์ action ใหม่ที่ไร้การตรวจสิทธิ์ (หนี้เดิม ${AUTHZ_BASELINE.size})`, newMissing.length === 0,

@@ -1431,7 +1431,14 @@ export function canAccessConvUnit(unitAccess: string[] | undefined, unitId: stri
   return unitAccess.includes(unitId);
 }
 
-function unitAccessWhere(unitAccess?: string[]): Prisma.ChatConversationWhereInput {
+/**
+ * ตัวกรอง unit สำหรับ where ของ `ChatConversation` (ด่าน M11)
+ *
+ * 🔴 export ตั้งแต่ 1 ก.ย. — ก่อนหน้านี้เป็น private แล้ว `inbox-actions.ts` ต้องเขียนซ้ำอีกชุด
+ *    **ตรรกะความปลอดภัยที่มี 2 ชุด = วันที่ทำให้ชุดหนึ่งเข้มขึ้น อีกชุดจะหลวมอยู่เงียบ ๆ**
+ *    (สาย C รายงานเอง ไม่ได้ปล่อยผ่าน) · ผู้เรียกทุกคนต้องใช้ตัวนี้ ห้ามเขียน OR/unitId เอง
+ */
+export function unitAccessWhere(unitAccess?: string[]): Prisma.ChatConversationWhereInput {
   if (!unitAccess || unitAccess.includes("*")) return {};
   return { OR: [{ unitId: null }, { unitId: { in: unitAccess } }] };
 }

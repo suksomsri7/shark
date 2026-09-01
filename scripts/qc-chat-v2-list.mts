@@ -41,7 +41,18 @@ try { process.loadEnvFile?.(".env"); } catch {}
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-const ROOT = resolve(import.meta.dirname, "..");
+// 🔴 Fable 1 ก.ย. — หา "รากรีโป" โดยเดินขึ้นจนเจอ package.json แทนการนับชั้นตายตัว
+//    ของเดิม `resolve(import.meta.dirname, "..")` ถูกเมื่ออยู่ใน `scripts/` แต่พังทันทีที่ย้ายมา
+//    `scripts/pending/` (ชี้ไป `scripts/` → `read()` คืนสตริงว่าง → **แดงหลอก 13 ข้อทั้งที่โค้ดถูก**)
+//    ⇒ ชุดนี้ต้องรันได้เหมือนกันทั้งตอนพักและตอนย้ายเข้าเป็นด่านจริง (มติ D5)
+const ROOT = (() => {
+  let d = import.meta.dirname;
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(resolve(d, "package.json"))) return d;
+    d = resolve(d, "..");
+  }
+  throw new Error("หารากรีโปไม่เจอ (เดินขึ้นไป 6 ชั้นแล้วไม่เจอ package.json)");
+})();
 
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];
@@ -72,7 +83,15 @@ const SERVER = CHAT_TS.map((f) => strip(read(f))).join("\n");
 const SCHEMA = read("prisma/schema/chat.prisma");
 const SCOPE = strip(read("src/lib/core/scope.ts"));
 const PERMS = strip(read("src/lib/core/permissions.ts"));
-const NOTIFY = strip(read("src/lib/modules/chat/notify.ts")) + "\n" + strip(read("src/lib/modules/chat/service.ts"));
+// 🔴 Fable 1 ก.ย. — "เส้นทางแจ้งเตือน" กระจายอยู่ 3 ไฟล์โดยตั้งใจ:
+//    `notify.ts` = การตัดสินใจแบบ pure (ห้ามแตะ prisma เพื่อให้ข้อสอบยิงตรงได้)
+//    `push.ts`   = การอ่านข้อมูลจริง + ยิง Expo  ·  `service.ts` = จุดเรียก
+//    ⇒ ต้องอ่านทั้ง 3 ไม่งั้นสรุปผิดว่า "ไม่มีด่านปิดเสียง" ทั้งที่มีอยู่คนละไฟล์
+const NOTIFY = [
+  strip(read("src/lib/modules/chat/notify.ts")),
+  strip(read("src/lib/modules/chat/service.ts")),
+  strip(read("src/lib/core/push.ts")),
+].join("\n");
 
 /**
  * ตัดตัวฟังก์ชันที่ export ออกมาทั้งก้อน (ตั้งแต่ชื่อจนถึง `export` ตัวถัดไป)
@@ -191,8 +210,13 @@ try {
       /export async function \w*[Mm]ute\w*Action/.test(SERVER), "มี action ปิดเสียง", "ไม่มี action — ปุ่มหลอก");
     // 🔴 ข้อที่สำคัญที่สุดของฟีเจอร์นี้ — ไอคอนบอกว่าเงียบ แต่มือถือยังเด้ง = โกหกผู้ใช้
     chk("LS-14.1", "🔴 ปิดเสียงมีผลกับเส้นทางแจ้งเตือนจริง (push/notify อ่านค่า mute ก่อนยิง)",
-      /ChatConversationPref|chatConversationPref|mutedUntil/.test(NOTIFY), "เส้นทางแจ้งเตือนอ่านค่าปิดเสียง",
-      "ไม่อ่าน — ไอคอนบอกว่าเงียบ แต่มือถือยังเด้ง");
+      // เข้มขึ้นกว่าเดิม: ต้อง **อ่านค่าจากตาราง** และ **ส่งเข้าตัวตัดสินใจ** ทั้งคู่
+      // (อ่านมาแล้วไม่ได้ใช้ = โค้ดตายที่ดูเหมือนมีด่าน)
+      /chatConversationPref|ChatConversationPref/.test(NOTIFY)
+        && /mutedUntil/.test(NOTIFY)
+        && /mutedUserIds/.test(NOTIFY),
+      "อ่านค่าจากตาราง + ส่งเข้าตัวเลือกผู้รับ",
+      "ไม่ครบ — ไอคอนบอกว่าเงียบ แต่มือถือยังเด้ง");
   });
 
   // ═════════ LS-13 · สุขอนามัย ═════════

@@ -1,5 +1,61 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🚨 1 ก.ย. (บ่าย) — กู้ session ที่ตายกลางคัน · **เจอแชทบน prod ดับเงียบ** · ยุบตรรกะสิทธิ์ซ้ำ
+
+### ⛔ ค้างรอเจ้าของ — 1 คำสั่ง กู้ prod (บล็อกอยู่ตอนนี้)
+```
+pnpm exec prisma migrate deploy
+```
+`prisma migrate deploy` **ถูก classifier ของ Claude Code บล็อก** (กติกาของ harness ไม่ใช่ของโปรเจกต์ —
+รูปแบบเดียวกับ `eas-cli build` เมื่อ 21 ส.ค.) ⇒ เจ้าของรันเอง หรือเพิ่ม Bash permission rule ให้ก่อน
+migration ทั้ง 2 ตัว **additive ล้วน** (ADD COLUMN แบบ NULL ได้ · CREATE TABLE ใหม่ · ADD VALUE ของ enum
+— ไม่มี DROP / NOT NULL / backfill) ⇒ apply แล้วแถวเดิมได้ NULL = พฤติกรรมเดิมเป๊ะ
+
+### 🔴 แชทบน prod ดับตั้งแต่ 10:50 น. วันนี้ โดยไม่มีอะไรฟ้อง
+commit `e71aaf5` (schema รอบ 4 ของสาย A) ถูก push → Vercel deploy → **Prisma client บน prod รู้จัก
+`pinnedAt`/`pinnedByUserId`/`durationMs`/`AUDIO` แต่ DB ไม่เคยถูก apply migration**
+🔴 **ความเสียหายกว้างกว่าที่คิด**: `findFirst`/`findMany` ที่ไม่ระบุ `select` = Prisma ขอ**ทุก**คอลัมน์
+⇒ ไม่ใช่แค่ฟีเจอร์ใหม่พัง แต่ **ทุกการอ่านตาราง `ChatConversation` โยนทิ้งหมด** รวม `receiveWebchatInbound`
+(= ข้อความที่ลูกค้าทักเข้ามาตกทั้งหมด)
+
+**ไล่ครบวงจรแล้ว ไม่ใช่การอนุมาน** (4 ข้อต่อ):
+1. Vercel API — deployment `e71aaf5` state **READY** ตั้งแต่ 03:50 UTC (10:50 น. ไทย)
+2. `prisma migrate status` ที่ `ep-royal-night` — 74 migrations · **ค้าง 2**
+3. `git show HEAD:src/lib/modules/chat/service.ts` — บรรทัดที่พัง **เหมือนกันเป๊ะกับที่ deploy อยู่**
+   (ไม่ใช่ของใหม่ใน working tree)
+4. รันฟังก์ชันจริง `receiveWebchatInbound` ยิง DB ตัว prod → โยน `column ... does not exist`
+
+🔴 **บทเรียน (คนละตัวกับ "ต้อง migrate deploy เอง" ที่รู้อยู่แล้ว)**: กติกาเดิมคือ "push schema แล้ว
+ต้อง apply เอง" ซึ่ง **ไม่มีอะไรบังคับ** · รอบนี้พลาดเพราะ commit รอบ 1 จบตอนดึกแล้วข้ามขั้นไป
+⇒ ของที่ควรทำต่อ: ให้ CI หรือ `qc:all` ตรวจ `migrate status` เป็นด่าน (ตอนนี้จับได้แค่โดยบังเอิญ
+ผ่านชุดที่ต่อ DB จริง 2 ชุด และมันรายงานเป็น "HARNESS error" ไม่ใช่ "prod พัง")
+
+### ✅ งานที่ปิดในรอบนี้ (commit แล้ว · **ยังไม่ push** — รอ migration ลง prod ก่อน)
+- **เลื่อนข้อสอบรอบ 2 ขึ้นเป็นด่าน CI ถาวร**: `qc-chat-v2-list` (41) + `qc-chat-v2-quickreply` (28)
+  `git mv` ออกจาก `scripts/pending/` ตามมติ D5 · เหลือพักใน pending 5 ชุด (icons/room/composer/voice/realtime)
+- **ยุบตรรกะสิทธิ์ที่ซ้ำ 2 ชุด** — `assertChatCan` ตัวเดียวกันเป๊ะอยู่ทั้ง `chat/actions.ts` และ
+  `chat/quick-reply-actions.ts` → ย้ายไป `chat/guard.ts` ที่เดียว (ไฟล์ที่เป็นเจ้าของ `membershipOf` อยู่แล้ว)
+  · คู่กับที่สาย C ยุบ `unitAccessWhere` ไปแล้วในรอบเดียวกัน
+- 🔴 **ยกระดับด่าน F6 (fitness) เพราะมันวัดผิดทาง** — เดิม grep หาสตริง `assertCan` ในไฟล์ action ตรง ๆ
+  พอยุบโค้ดซ้ำเสร็จ ด่านแดงทันทีเพราะ `assertChatCan` ไม่มีสตริงนั้นอยู่ข้างใน
+  ⇒ **ด่านที่ลงโทษการยุบโค้ดซ้ำ และให้รางวัลกับการ copy-paste ตรรกะความปลอดภัย**
+  แก้เป็น **ตามรอย import ลึก 1 ชั้น แล้วเปิดตัวฟังก์ชันปลายทางอ่านว่าเรียกด่านจริงไหม**
+  · **ไม่ได้เติมชื่อลง allowlist** (นั่นจะทำให้ตั้งชื่อฟังก์ชันเปล่า ๆ ให้ถูกก็ผ่าน)
+  · ตามรอยไม่ได้ = นับว่าไม่มี (fail-closed เหมือนเดิม)
+  · **พิสูจน์ด้วย positive control 2 ตัว**: ไฟล์ action ไม่มีด่านเลย → จับได้ · wrapper ตัวเปล่าที่ตั้งชื่อถูก → จับได้
+  🔴 นี่คือบทเรียนเดิมรอบที่ **5**: ข้อสอบต้องวัดพฤติกรรม ไม่ใช่ล็อกชื่อตัวแปร/ไฟล์
+
+### ผลด่านที่วัดได้ (1 ก.ย. บ่าย)
+`typecheck` 0 · `fitness` **17/17** · `pnpm build` EXIT=0
+`qc:all` **171/173 ชุด** (578s) — 2 ชุดที่แดงคือ `chat-notify` · `chat-security` ซึ่ง**แดงเพราะ prod DB
+ยังไม่ถูก migrate ไม่ใช่เพราะโค้ดรอบนี้** (ทั้งคู่ขึ้น "ผ่าน 0 ข้อ" = ตายตั้งแต่ harness ไม่ใช่ตกข้อสอบ)
+⇒ **หลัง apply migration ต้องรัน `pnpm qc:all` ซ้ำให้เขียว 173/173 ก่อน push**
+ชุดที่ยืนยันแยกแล้ว: list 41/41 · quickreply 28/28 · notify-v2 30/30 · push-badge 48/48 · staff-perms 49/49
+
+⚠️ หมายเหตุ: ชุดที่ต่อ DB จริงยิงเข้า **prod** (`.env` = `ep-royal-night`) — สร้าง test tenant แล้วลบเอง
+เป็นพฤติกรรมเดิมของรีโป ไม่ใช่ของใหม่รอบนี้ ([[reference_shark_qc_suites_hit_prod_db]])
+
+
 ## 🔀 31 ส.ค. — HANDOFF ย้าย session (main=0700717 · ทุกอย่าง commit + push ขึ้น GitHub แล้ว)
 
 ### ค้างรอเจ้าของ (ไม่ใช่งานที่ทำต่อได้เอง)

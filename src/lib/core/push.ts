@@ -163,7 +163,7 @@ export async function sendPushToChatStaff(args: {
     const devices = await prisma.pushDevice.findMany({ where: { tenantId } });
     if (devices.length === 0) return { sent: 0, skipped: 0 };
 
-    const [conv, memberRows, readerRows] = await Promise.all([
+    const [conv, memberRows, readerRows, mutedRows] = await Promise.all([
       prisma.chatConversation.findUnique({
         where: { id: conversationId },
         select: { unitId: true, assigneeUserId: true },
@@ -178,6 +178,13 @@ export async function sendPushToChatStaff(args: {
         where: { conversationId, lastReadAt: { gte: new Date(Date.now() - VIEWING_WINDOW_MS) } },
         select: { userId: true, lastReadAt: true },
       }),
+      // 🔴 WO-CV10 — คนที่ปิดเสียงห้องนี้ไว้ (รายคน) · อ่านเฉพาะที่ยังไม่หมดอายุ
+      //    ไม่มีด่านนี้ = จอบอกว่าเงียบแล้วแต่มือถือยังเด้ง ซึ่งแย่กว่าไม่มีปุ่มปิดเสียงเลย
+      //    (ผู้ใช้เชื่อว่าปิดแล้วจึงไม่กลับมาดูอีก) · ข้อสอบ LS-14.1 เฝ้าอยู่
+      prisma.chatConversationPref.findMany({
+        where: { conversationId, mutedUntil: { gt: new Date() } },
+        select: { userId: true },
+      }),
     ]);
 
     const recipientUserIds = selectChatNotifyRecipients({
@@ -186,6 +193,7 @@ export async function sendPushToChatStaff(args: {
       // ผู้เรียกรู้ค่าล่าสุดกว่าเสมอ (เพิ่ง assign ในทรานแซกชันเดียวกัน) → ให้ค่าที่ส่งมาชนะ
       assigneeUserId: args.assigneeUserId ?? conv?.assigneeUserId ?? null,
       readers: readerRows,
+      mutedUserIds: mutedRows.map((r) => r.userId),
     });
 
     // เรียงเครื่องตามลำดับผู้รับ — ผู้รับผิดชอบต้องได้ก่อนคนอื่นจริง ๆ ในคิวส่ง

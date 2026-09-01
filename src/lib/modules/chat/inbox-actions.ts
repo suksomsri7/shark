@@ -17,17 +17,25 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { assertCan, evaluate } from "@/lib/core/rbac";
 import { requireChatRead, membershipOf } from "./guard";
 import {
-  listConversations,
+  canAccessConvUnit,
   getThread,
   markRead,
   sendReply,
   getLinkedMember,
-  type ExternalAttachmentInput,
-} from "./service";
+  type ExternalAttachmentInput, unitAccessWhere } from "./service";
+import { CHANNEL_ORDER } from "./channel-icon";
+import {
+  EMPTY_COUNTS,
+  previewKindOf,
+  toInboxFilterKey,
+  type InboxCounts,
+  type InboxFilterKey,
+} from "./list-filters";
 
 /**
  * userId ที่ระบบใช้แทน "ลูกค้า" ในตาราง `ChatReadState`
@@ -43,6 +51,110 @@ const db = (tenantId: string, systemId: string) => tenantDb({ tenantId, systemId
 
 const ms = (d: Date | null | undefined) => (d ? d.getTime() : null);
 
+// ═════════════ ชั้นข้อมูลของ "รายการแชท" (WO-CV3 · WO-CV10) ═════════════
+//
+// 🔴 ทำไมเขียน query เองที่นี่ แทนที่จะเรียก `listConversations()` ของ service.ts
+//    รายการรอบนี้ต้องการ 3 อย่างที่ตัวนั้นให้ไม่ได้ และ `service.ts` เป็นไฟล์ของสายอื่น (อ่านอย่างเดียว):
+//      (1) **เรียงห้องปักหมุดขึ้นก่อน** — ของเดิมเรียง `lastMessageAt` อย่างเดียว
+//      (2) กรอง "ยังไม่อ่าน / ของฉัน / ยังไม่มีคนรับ / ปิดแล้ว" **ที่ชั้นข้อมูล**
+//          ของเดิมกรองบนจอจากแถวที่โหลดมาแล้ว 50 แถว ⇒ ห้องที่ตรงเงื่อนไขแต่ตกอยู่แถวที่ 51
+//          จะ "หายไป" โดยที่ตัวเลขบนชิปก็ผิดตาม (บั๊กชนิดถึงระบบแล้วแต่ใช้งานไม่ได้)
+//      (3) ค้นหาข้อความล่าสุดด้วย (ของเดิมค้นแค่ชื่อ/เบอร์ที่ชั้นข้อมูล)
+//    ⚠️ หนี้ที่ต้องรายงาน: ตัวกรอง unit ด้านล่างซ้ำกับ `unitAccessWhere()` ใน service.ts ซึ่งไม่ได้
+//       export ออกมา — ตรรกะความปลอดภัยไม่ควรมี 2 ชุด ⇒ ควรยุบเหลือที่เดียวตอนประกอบ
+
+/** เพดานแถวต่อรอบ — เท่าเดิมกับ `listConversations` (ยังไม่มีการเลื่อนหน้า) */
+const INBOX_TAKE = 50;
+
+/**
+ * ตัวเลือกของรายการที่ฝั่งจอส่งข้ามมา — ต้อง serialize ได้ทุกช่อง (client → server action)
+ * `closed`/`channel`/`assignee` = ตัวกรองหลังไอคอนกรวย (มติ D3 — "ปิดแล้ว" ของเดิมย้ายมาที่นี่)
+ */
+export type InboxQuery = {
+  q?: string;
+  filter?: InboxFilterKey;
+  closed?: boolean;
+  channel?: string | null;
+  assignee?: string | null;
+};
+
+/**
+ * เงื่อนไขจริงของรายการ — จุดเดียวที่แปล "ชิปบนจอ" เป็น "where ของฐานข้อมูล"
+ * `applyChip=false` ใช้ตอนนับเลขบนชิป (ต้องนับในบริบทเดียวกัน แต่ไม่เอาชิปตัวเองมากรอง)
+ */
+function inboxWhere(
+  meUserId: string,
+  unitAccess: string[],
+  opts: InboxQuery,
+  applyChip: boolean,
+): Prisma.ChatConversationWhereInput {
+  const and: Prisma.ChatConversationWhereInput[] = [];
+
+  // ด่าน unit (M11) — ต้องอยู่ใน where ของ SQL ไม่ใช่กรองหลังอ่าน
+  // 🔴 ใช้ตัวเดียวกับ service.ts ห้ามเขียนซ้ำ — ตรรกะความปลอดภัย 2 ชุดจะเพี้ยนจากกันเสมอ
+  const unitWhere = unitAccessWhere(unitAccess);
+  if (Object.keys(unitWhere).length > 0) and.push(unitWhere);
+
+  // "ปิดแล้ว" อยู่หลังไอคอนกรวย (มติ D3) — ค่าตั้งต้นคือซ่อนห้องที่ปิดไปแล้ว เหมือนพฤติกรรมเดิม
+  and.push(opts.closed ? { status: "RESOLVED" } : { status: { not: "RESOLVED" } });
+
+  if (applyChip) {
+    const f = toInboxFilterKey(opts.filter);
+    if (f === "unread") and.push({ staffUnreadCount: { gt: 0 } });
+    if (f === "mine") and.push({ assigneeUserId: meUserId });
+    // 🔴 ชิปใหม่ของรอบนี้ — เงื่อนไขจริงต้องลงไปถึง SQL ไม่งั้นเป็นปุ่มหลอก
+    if (f === "unassigned") and.push({ assigneeUserId: null });
+  }
+
+  // ตัวกรองหลังกรวย: ตามช่องทาง / ตามผู้รับผิดชอบ
+  const ch = CHANNEL_ORDER.find((c) => c === opts.channel);
+  if (ch) and.push({ channel: ch });
+  if (opts.assignee) and.push({ assigneeUserId: opts.assignee });
+
+  // ค้นหา "ชื่อ เบอร์ หรือข้อความ" ตามที่ช่องค้นหาสัญญาไว้
+  // ⚠️ "ข้อความ" ที่ค้นได้คือ **ข้อความล่าสุดของห้อง** (`lastMessagePreview`) — การค้นทั้งประวัติ
+  //    เป็นงานของ WO-CV4 (ค้นหาในห้อง) และต้องมี index ของตัวเองก่อน ไม่ใช่ ILIKE ทั้งตาราง
+  const q = opts.q?.trim();
+  if (q) {
+    and.push({
+      OR: [
+        { contact: { is: { displayName: { contains: q, mode: "insensitive" } } } },
+        { contact: { is: { phone: { contains: q } } } },
+        { lastMessagePreview: { contains: q, mode: "insensitive" } },
+      ],
+    });
+  }
+  return { AND: and };
+}
+
+/**
+ * ความยาวคลิปเสียงของห้องที่ข้อความล่าสุดเป็น "ข้อความเสียง"
+ *
+ * 🔴 ยิง query เพิ่ม **เฉพาะเมื่อมีห้องแบบนั้นจริง** — ปกติคือศูนย์ห้อง ⇒ ไม่มี query เพิ่มเลย
+ *    (ห้ามดึงข้อความล่าสุดของทุกห้องทุกรอบ poll เพื่อรู้ชนิดข้อความ — นั่นคือการสแกนทั้งตาราง
+ *     ทุก 5 วินาที เพื่อข้อมูลที่ denormalize ไว้แล้วใน `lastMessagePreview`)
+ */
+async function audioDurations(
+  tenantId: string,
+  systemId: string,
+  convs: { id: string; lastMessagePreview: string | null }[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const ids = convs.filter((c) => previewKindOf(c.lastMessagePreview) === "AUDIO").map((c) => c.id);
+  if (ids.length === 0) return out;
+  const atts = await db(tenantId, systemId).chatAttachment.findMany({
+    where: { kind: "AUDIO", message: { is: { conversationId: { in: ids } } } },
+    orderBy: { createdAt: "desc" },
+    take: ids.length * 3,
+    select: { durationMs: true, message: { select: { conversationId: true } } },
+  });
+  for (const a of atts) {
+    const cid = a.message.conversationId;
+    if (a.durationMs != null && !out.has(cid)) out.set(cid, a.durationMs);
+  }
+  return out;
+}
+
 export type InboxRow = {
   id: string;
   channel: string;
@@ -50,11 +162,19 @@ export type InboxRow = {
   phone: string | null;
   preview: string | null;
   lastMessageAt: number | null;
+  /** ข้อความล่าสุดเป็นของใคร — "OUT" = ทีมตอบล่าสุด ⇒ แถวขึ้นคำนำหน้า "คุณ:" + ติ๊ก */
+  lastMessageDirection: string | null;
   staffUnreadCount: number;
   status: string;
   assigneeUserId: string | null;
   /** ลูกค้าอ่านถึงเวลาไหน — ตัวตัดสินติ๊ก ✓✓ (มาจาก markCustomerRead ที่มีข้อมูลอยู่แล้ว) */
   customerLastReadAt: number | null;
+  /** ปักหมุดไว้ไหม — **ระดับร้าน** (ทีมเห็นตรงกัน) ส่งเป็น boolean พอ จอไม่ต้องรู้เวลาที่ปัก */
+  pinned: boolean;
+  /** ปิดเสียงถึงเมื่อไหร่ — **ของคนที่เปิดหน้าอยู่คนเดียว** (ChatConversationPref) */
+  mutedUntil: number | null;
+  /** ความยาวข้อความเสียงล่าสุด (ms) — null = ไม่ใช่ข้อความเสียง/ยังไม่รู้ความยาว */
+  audioMs: number | null;
 };
 
 export type ThreadAttachment = {
@@ -125,21 +245,47 @@ async function customerReadMap(
  *
  * 🔴 ต้องพา **ทั้ง 3 อย่าง** ที่ `AutoRefresh` ของเดิมเคยพามาฟรี ๆ กลับมาด้วย:
  *    ข้อความล่าสุด (preview/lastMessageAt) · ตัวนับ `staffUnreadCount` · ข้อมูลติ๊ก ✓✓
+ * 🔴 พารามิเตอร์ตัวที่ 2 (`q`) คงรูปเดิมไว้เพราะ `ui.tsx` (ฝั่ง server render) เรียกอยู่
+ *    — ของใหม่ทั้งหมดอยู่ใน `opts` ซึ่งไม่ใส่ก็ได้ ⇒ ผู้เรียกเดิมไม่ต้องแก้
  */
-export async function loadInboxAction(systemId: string, q?: string): Promise<InboxRow[]> {
+export async function loadInboxAction(
+  systemId: string,
+  q?: string,
+  opts?: InboxQuery,
+): Promise<InboxRow[]> {
   const auth = await requireChatRead();
   if (!systemId) return [];
-  const convs = await listConversations({
-    tenantId: auth.active.tenantId,
-    systemId,
-    unitAccess: auth.active.unitAccess as string[],
-    ...(q?.trim() ? { q: q.trim() } : {}),
+  const tenantId = auth.active.tenantId;
+  const unitAccess = auth.active.unitAccess as string[];
+  const query: InboxQuery = { ...(opts ?? {}), q: q ?? opts?.q };
+
+  // 🔴 `nulls: "last"` ห้ามลืม — Postgres ตั้งต้นให้ `DESC` = NULLS FIRST
+  //    เขียน `{ pinnedAt: "desc" }` เฉย ๆ จะได้ห้องที่ **ไม่ได้ปักหมุด** ลอยขึ้นบนสุดทั้งหมด (กลับหัว)
+  const convs = await db(tenantId, systemId).chatConversation.findMany({
+    where: inboxWhere(auth.user.id, unitAccess, query, true),
+    include: { contact: { select: { displayName: true, phone: true } } },
+    orderBy: [{ pinnedAt: { sort: "desc", nulls: "last" } }, { lastMessageAt: "desc" }],
+    take: INBOX_TAKE,
   });
-  const readMap = await customerReadMap(
-    auth.active.tenantId,
-    systemId,
-    convs.map((c) => ({ id: c.id, contactId: c.contactId })),
-  );
+
+  const ids = convs.map((c) => c.id);
+  const [readMap, prefs, audio] = await Promise.all([
+    customerReadMap(
+      tenantId,
+      systemId,
+      convs.map((c) => ({ id: c.id, contactId: c.contactId })),
+    ),
+    // ปิดเสียงเป็น **รายคน** ⇒ อ่านเฉพาะแถวของคนที่เปิดหน้าอยู่ ห้ามอ่านของคนอื่นมาโชว์
+    ids.length > 0
+      ? db(tenantId, systemId).chatConversationPref.findMany({
+          where: { conversationId: { in: ids }, userId: auth.user.id },
+          select: { conversationId: true, mutedUntil: true },
+        })
+      : Promise.resolve([]),
+    audioDurations(tenantId, systemId, convs),
+  ]);
+  const mutedMap = new Map(prefs.map((x) => [x.conversationId, ms(x.mutedUntil)] as const));
+
   return convs.map((c) => ({
     id: c.id,
     channel: c.channel,
@@ -147,11 +293,43 @@ export async function loadInboxAction(systemId: string, q?: string): Promise<Inb
     phone: c.contact.phone,
     preview: c.lastMessagePreview,
     lastMessageAt: ms(c.lastMessageAt),
+    lastMessageDirection: c.lastMessageDirection,
     staffUnreadCount: c.staffUnreadCount,
     status: c.status,
     assigneeUserId: c.assigneeUserId,
     customerLastReadAt: readMap.get(c.id) ?? null,
+    pinned: c.pinnedAt !== null,
+    mutedUntil: mutedMap.get(c.id) ?? null,
+    audioMs: audio.get(c.id) ?? null,
   }));
+}
+
+/**
+ * ตัวเลขบนชิปกรอง — **นับที่ชั้นข้อมูล** ไม่ใช่นับจากแถวที่โหลดมา 50 แถว
+ *
+ * 🔴 ทำไมแยก action: `ui.tsx` (server render รอบแรก) เรียก `loadInboxAction` อยู่แล้วและเป็นไฟล์
+ *    ที่สายอื่นถืออยู่รอบนี้ ⇒ เปลี่ยนรูปค่าที่คืนจะไปชนไฟล์คนอื่น · แยกออกมาแล้วให้จอเรียกคู่กัน
+ *    ในรอบ poll เดียวกัน (2 คำสั่งขนานกัน ไม่ได้เพิ่มรอบเดินทาง)
+ * 🔴 นับในบริบทเดียวกับรายการ (คำค้น + ตัวกรองหลังกรวยเดิม) แต่ไม่เอาชิปตัวเองมากรอง
+ *    ไม่งั้นกด "ยังไม่อ่าน" แล้วชิปอื่นจะกลายเป็น 0 ทั้งแถว
+ */
+export async function loadInboxCountsAction(
+  systemId: string,
+  opts?: InboxQuery,
+): Promise<InboxCounts> {
+  const auth = await requireChatRead();
+  if (!systemId) return EMPTY_COUNTS;
+  const tenantId = auth.active.tenantId;
+  const me = auth.user.id;
+  const base = inboxWhere(me, auth.active.unitAccess as string[], opts ?? {}, false);
+  const dbc = db(tenantId, systemId);
+  const [all, unread, mine, unassigned] = await Promise.all([
+    dbc.chatConversation.count({ where: base }),
+    dbc.chatConversation.count({ where: { AND: [base, { staffUnreadCount: { gt: 0 } }] } }),
+    dbc.chatConversation.count({ where: { AND: [base, { assigneeUserId: me }] } }),
+    dbc.chatConversation.count({ where: { AND: [base, { assigneeUserId: null }] } }),
+  ]);
+  return { all, unread, mine, unassigned };
 }
 
 /**
@@ -330,4 +508,121 @@ export async function setChatAiSettingsAction(formData: FormData): Promise<void>
   const path = `/app/sys/${systemId}/chat/channels`;
   revalidatePath(path);
   redirect(path);
+}
+
+// ═══════════════ ปักหมุด · ปิดเสียง (WO-CV10) ═══════════════
+//
+// 🔴 สองอย่างนี้ **คนละระดับกันโดยตั้งใจ** (มติในแผน §3 P1/P2 · สคีมาเขียนเหตุผลไว้แล้ว)
+//    · ปักหมุด = ระดับ **ร้าน** (`ChatConversation.pinnedAt`) — ห้องสำคัญของร้าน คนเข้ากะต่อต้องเห็น
+//    · ปิดเสียง = ระดับ **คน** (`ChatConversationPref`) — ความรำคาญส่วนตัว ปิดของตัวเองไม่ใช่ของทีม
+//    สลับกันเมื่อไหร่คือบั๊กที่เจ็บ: ปักหมุดรายคน = ทีมเห็นคิวไม่ตรงกัน · ปิดเสียงทั้งร้าน = พลาดงานลูกค้า
+//
+// 🔴 ทำไมอยู่ไฟล์นี้ ไม่ใช่ `chat/actions.ts`
+//    รอบนี้ `chat/actions.ts` เป็นไฟล์ของอีกสายที่ทำงานขนานอยู่ (กันชนไฟล์ตามแผน §7)
+//    ⇒ วางไว้ที่นี่ก่อนและรายงานให้ Fable ย้ายรวมทีเดียวตอนประกอบ — ไม่มีอะไรผูกกับชื่อไฟล์
+
+/** ปิดเสียง "ไปเลย" = เก็บวันไกล ๆ (สคีมาเก็บ `mutedUntil` ไม่ใช่ boolean — ดูเหตุผลในสคีมา) */
+const MUTE_FOREVER_MS = 100 * 365 * 24 * 60 * 60 * 1000;
+
+/** ห้องนี้มีอยู่จริงและคนนี้เข้าถึง unit ของมันได้ไหม — กัน IDOR ข้ามสาขา (M11) */
+async function assertConversationVisible(
+  tenantId: string,
+  systemId: string,
+  conversationId: string,
+  unitAccess: string[],
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const conv = await db(tenantId, systemId).chatConversation.findFirst({
+    where: { id: conversationId },
+    select: { id: true, unitId: true },
+  });
+  if (!conv) return { ok: false, reason: "ไม่พบบทสนทนานี้" };
+  if (!canAccessConvUnit(unitAccess, conv.unitId)) {
+    return { ok: false, reason: "ไม่มีสิทธิ์เข้าถึงบทสนทนานี้" };
+  }
+  return { ok: true };
+}
+
+/**
+ * ปักหมุด / ถอนหมุดห้องแชท — **ระดับร้าน**
+ *
+ * 🔴 ด่านสิทธิ์ใช้ `chat.conversation.setStatus` โดยตั้งใจ: การปักหมุดเปลี่ยนสถานะห้องที่
+ *    **ทั้งทีมเห็นตรงกัน** จึงเป็นน้ำหนักเดียวกับการปิด/เปิดห้อง ไม่ใช่ของที่ใครก็กดได้
+ *    ⚠️ ทะเบียนสิทธิ์กลาง (`core/permissions.ts`) เป็นไฟล์ของอีกสายในรอบนี้ ⇒ ไม่เพิ่มคีย์ใหม่เอง
+ *       ถ้าเจ้าของอยากแยกสิทธิ์ "ปักหมุด" ออกมาต่างหาก ให้เพิ่ม `chat.conversation.pin` แล้วสลับที่นี่
+ */
+export async function pinConversationAction(
+  systemId: string,
+  conversationId: string,
+  pinned: boolean,
+): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireChatRead();
+  assertCan(membershipOf(auth), { module: "chat", action: "chat.conversation.setStatus" });
+  if (!systemId || !conversationId) return { ok: false, reason: "ข้อมูลไม่ครบสำหรับการปักหมุด" };
+  const tenantId = auth.active.tenantId;
+  const seen = await assertConversationVisible(
+    tenantId,
+    systemId,
+    conversationId,
+    auth.active.unitAccess as string[],
+  );
+  if (!seen.ok) return seen;
+  await db(tenantId, systemId).chatConversation.updateMany({
+    where: { id: conversationId },
+    data: pinned
+      ? { pinnedAt: new Date(), pinnedByUserId: auth.user.id }
+      : { pinnedAt: null, pinnedByUserId: null },
+  });
+  return { ok: true };
+}
+
+/**
+ * ปิดเสียงแจ้งเตือนของห้องนี้ — **เฉพาะคนที่กด** (แถวใน `ChatConversationPref` ผูก userId)
+ *
+ * `mode`: จำนวนนาที · `"forever"` = ปิดไปเลย · `"off"` = เปิดเสียงคืน
+ * ไม่ต้องมี cron มาล้าง — `mutedUntil` ที่เลยเวลาแล้วถือว่าเปิดเสียงคืนเองโดยอัตโนมัติ
+ *
+ * 🔴 ด่านสิทธิ์คือ `requireChatRead()` (คีย์ `chat.conversation.read`) — ใครอ่านห้องนี้ได้
+ *    ย่อมปิดเสียง "ของตัวเอง" ได้ ไม่ต้องขอสิทธิ์เพิ่ม · แต่ยังต้องผ่านด่าน unit เหมือนทุกเส้น
+ *
+ * ⚠️ **ยังไม่ครบวงจร**: เส้นทางแจ้งเตือนจริง (`chat/notify.ts` + `core/push.ts`) ยังไม่อ่านค่านี้
+ *    ⇒ วันนี้ไอคอนบนรายการบอกว่าเงียบแล้ว แต่ push ยังเด้ง · สองไฟล์นั้นไม่ใช่ของสายนี้
+ *    รายละเอียดสิ่งที่ต้องแก้อยู่ในรายงานส่งมอบ (ห้ามแก้เงียบ ๆ ข้ามขอบเขต)
+ */
+export async function muteConversationAction(
+  systemId: string,
+  conversationId: string,
+  mode: number | "forever" | "off",
+): Promise<{ ok: boolean; reason?: string }> {
+  const auth = await requireChatRead();
+  if (!systemId || !conversationId) return { ok: false, reason: "ข้อมูลไม่ครบสำหรับการปิดเสียง" };
+  const tenantId = auth.active.tenantId;
+  const seen = await assertConversationVisible(
+    tenantId,
+    systemId,
+    conversationId,
+    auth.active.unitAccess as string[],
+  );
+  if (!seen.ok) return seen;
+
+  const mutedUntil =
+    mode === "off"
+      ? null
+      : mode === "forever"
+        ? new Date(Date.now() + MUTE_FOREVER_MS)
+        : new Date(Date.now() + Math.max(1, Math.floor(mode)) * 60_000);
+
+  // ใช้ updateMany+create แทน upsert — ยาม `tenantDb` ยัดตัวกรองลง where เป็น AND
+  // ซึ่ง unique-where ของ upsert ไม่รับ (กติกาของยาม ไม่ใช่ของเรา — แบบเดียวกับ chatReadState ข้างบน)
+  const touched = await db(tenantId, systemId).chatConversationPref.updateMany({
+    where: { conversationId, userId: auth.user.id },
+    data: { mutedUntil },
+  });
+  if (touched.count === 0) {
+    await db(tenantId, systemId)
+      .chatConversationPref.create({
+        data: { tenantId, systemId, conversationId, userId: auth.user.id, mutedUntil },
+      })
+      .catch(() => null); // ชนกับอีกแท็บของคนเดียวกัน = แถวมีอยู่แล้ว ไม่ใช่ความผิดพลาด
+  }
+  return { ok: true };
 }

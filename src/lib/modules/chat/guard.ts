@@ -56,3 +56,14 @@ export async function requireChatRead(): Promise<Auth> {
   assertCan(membershipOf(auth), { module: "chat", action: CHAT_READ_ACTION });
   return auth;
 }
+
+/**
+ * ด่านสิทธิ์ของ **ขาเขียน** ในโมดูลแชท — ทุก server action เรียกตัวนี้ก่อนแตะข้อมูล
+ *
+ * 🔴 อยู่ที่นี่ที่เดียว (ยุบ 1 ก.ย.) — ก่อนหน้านี้ตัวเดียวกันเป๊ะถูกพิมพ์ซ้ำใน `chat/actions.ts`
+ *    และ `chat/quick-reply-actions.ts` · ตรรกะความปลอดภัยที่มี 2 สำเนา = วันหน้าใครทำที่หนึ่ง
+ *    เข้มขึ้น อีกที่จะหลวมอยู่เงียบ ๆ โดยไม่มีอะไรฟ้อง (รูปแบบเดียวกับหนี้ H4 ของทะเบียนช่องทาง)
+ */
+export function assertChatCan(auth: Auth, action: string) {
+  assertCan(membershipOf(auth), { module: "chat", action });
+}
