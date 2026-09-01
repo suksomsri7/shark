@@ -30,7 +30,36 @@ const ALLOWED_TYPES: Record<string, string> = {
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
   "text/plain": "txt",
+  // ── เสียง (WO-CV8 ข้อความเสียง) ──
+  // 🔴 นามสกุลต้องถูกจริง ไม่ใช่แค่ผ่านด่านอนุญาต: Bunny เสิร์ฟ Content-Type จาก **นามสกุล**
+  //    ไฟล์ที่ลงท้าย .bin กลายเป็น octet-stream ⇒ ลูกค้ากดฟองเสียงแล้วได้หน้าต่างดาวน์โหลดแทนการเล่น
+  // 🔴 ต้องมีทั้ง 2 ฝั่งของโลกเบราว์เซอร์ ไม่ใช่แค่ webm:
+  //    · Chrome/Android อัดออกมาเป็น `audio/webm;codecs=opus`
+  //    · Safari/iOS อัด webm ไม่ได้เลย ได้แค่ `audio/mp4` (คอนเทนเนอร์ m4a) — ครึ่งหนึ่งของผู้ใช้ไทย
+  "audio/webm": "webm",
+  "audio/ogg": "ogg",
+  "audio/mp4": "m4a",
+  "audio/x-m4a": "m4a",
+  "audio/aac": "aac",
+  "audio/mpeg": "mp3",
 };
+
+/**
+ * ตัดพารามิเตอร์ท้าย mime ให้เทียบกับตารางได้ (`audio/webm;codecs=opus` → `audio/webm`)
+ *
+ * 🔴 MediaRecorder คืน mime **พร้อม codec เสมอ** ⇒ เทียบดิบ ๆ จะไม่มีวันตรงตาราง
+ *    แล้วเสียงที่อัดสำเร็จจะถูกปฏิเสธที่ด่านอัปโหลดโดยที่ผู้ใช้ไม่รู้ว่าทำอะไรผิด
+ *    (ประกาศที่นี่ที่เดียว — ชั้น action/route ต้องเรียกตัวนี้ ห้ามเขียน `split(";")` ซ้ำเอง)
+ */
+export function normalizeUploadType(raw: string | null | undefined): string {
+  return (raw ?? "").split(";")[0]!.trim().toLowerCase();
+}
+
+/** ชนิดนี้เป็น "เสียง" ไหม (ใช้ตัดสินว่าเป็นข้อความเสียงได้) */
+export function isAudioUploadType(raw: string | null | undefined): boolean {
+  const t = normalizeUploadType(raw);
+  return t.startsWith("audio/") && t in ALLOWED_TYPES;
+}
 
 export const ALLOWED_UPLOAD_TYPES = Object.freeze({ ...ALLOWED_TYPES });
 
@@ -97,11 +126,13 @@ export async function uploadFile(
     }
 
     // ตรวจชนิดไฟล์ (ตารางเดียวกับที่ใช้เลือกนามสกุล — ไม่มีในตาราง = ไม่รับ)
-    const ext = ALLOWED_TYPES[input.contentType.trim().toLowerCase()];
+    // 🔴 normalize ก่อนเทียบ — `audio/webm;codecs=opus` ที่ MediaRecorder ส่งมาต้องหาตารางเจอ
+    const ext = ALLOWED_TYPES[normalizeUploadType(input.contentType)];
     if (!ext) {
       return {
         ok: false,
-        error: "ชนิดไฟล์นี้อัปโหลดไม่ได้ — รองรับรูป (jpg/png/webp/gif/heic), PDF, Word, Excel และ txt",
+        error:
+          "ชนิดไฟล์นี้อัปโหลดไม่ได้ — รองรับรูป (jpg/png/webp/gif/heic), เสียง (webm/m4a/mp3/ogg), PDF, Word, Excel และ txt",
       };
     }
 

@@ -5,7 +5,9 @@ import type { ChannelAdapter } from "./adapter";
 // outbound = เก็บข้อความไว้ ลูกค้าเห็นผ่าน widget (polling) — ไม่มี API ภายนอกต้องยิง
 export const webchatAdapter: ChannelAdapter = {
   type: "WEBCHAT",
-  capabilities: { sendImage: true, sendSticker: false, replyWindowHours: null, typing: true },
+  // audio: true — ข้อความเสียงของ WEBCHAT ไม่ต้องยิงไปไหน ลูกค้าดึงไฟล์จาก url เดียวกับที่
+  // `publicThread()` ส่งให้ (แท็ก <audio> เล่นจาก CDN ได้ตรง ๆ) ⇒ ประกาศ true ได้โดยไม่โกหก
+  capabilities: { sendImage: true, sendSticker: false, audio: true, replyWindowHours: null, typing: true },
 
   // widget authenticate ด้วย guest token ownership ที่ route/service ไม่ใช่ signature
   verifyWebhook() {

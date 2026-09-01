@@ -476,7 +476,9 @@ try {
       chk("CA-4.2", "messages[] มี 7 ฟิลด์ตาม §3.2 เป๊ะ", keys === "attachments,body,createdAt,direction,id,senderName,type", "attachments,body,createdAt,direction,id,senderName,type", keys);
       const at = ((msgs[0]?.attachments ?? []) as Row[])[0];
       const atKeys = at ? Object.keys(at).sort().join(",") : "(ไม่มีไฟล์แนบ)";
-      chk("CA-4.3", "attachments[] มี 6 ฟิลด์ (รวม width/height — widget ใช้กันภาพกระตุก)", atKeys === "height,mimeType,name,sizeBytes,url,width" && at?.width === 800 && at?.height === 600, "height,mimeType,name,sizeBytes,url,width + ค่าถูก", `${atKeys} · ${j(at)}`);
+      // มติ D21 (1 ก.ย.): สัญญา §3.2 = ฟิลด์บังคับต้องครบ · เพิ่มฟิลด์ได้ (WO-CV8 เพิ่ม `durationMs` ให้ลูกค้าเห็นความยาวคลิปโดยไม่ต้องโหลด)
+      const AT_REQUIRED = ["durationMs", "height", "mimeType", "name", "sizeBytes", "url", "width"];
+      chk("CA-4.3", "attachments[] มีฟิลด์บังคับครบ 7 (รวม width/height กันภาพกระตุก · durationMs สำหรับเสียง)", !!at && AT_REQUIRED.every((k) => k in at) && at?.width === 800 && at?.height === 600, "height,mimeType,name,sizeBytes,url,width + ค่าถูก", `${atKeys} · ${j(at)}`);
       chk("CA-4.4", "/thread คืน conversationId + status ตาม §3.2", typeof th.json.conversationId === "string" && th.json.status === "OPEN", "{conversationId, status:OPEN}", j({ c: th.json.conversationId, s: th.json.status }));
 
       // โน้ตภายในห้ามหลุดถึงลูกค้า (ตรวจผ่าน route จริง ไม่ใช่เรียก service ตรง)

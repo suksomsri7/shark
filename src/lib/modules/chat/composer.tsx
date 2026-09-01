@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icons";
 import { searchQuickRepliesAction, applyQuickReplyAction } from "./quick-reply-actions";
 import { shopLocationAction } from "./room-actions";
+import { useVoiceRecorder, VoiceRecordingBar } from "./voice";
 
 const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
 
@@ -46,8 +47,10 @@ export type ChatComposerProps = {
   onSuggest: () => void;
   onTranslate: () => void;
   /**
-   * เริ่มอัดข้อความเสียง — 🔴 ตัวอัดจริงเป็นงานรอบถัดไป (WO-CV8)
-   * ไม่ส่ง prop นี้มา = ปุ่มยังอยู่ตามแบบร่างแต่กดไม่ได้ และบอกเหตุผลตรง ๆ (ไม่ใช่ปุ่มหลอกที่กดแล้วเงียบ)
+   * ผู้เรียกอยากรู้ว่ามีการเริ่มอัดเสียง (เช่น ปิดแผ่นอื่นที่เปิดค้าง) — ไม่จำเป็นต้องส่ง
+   * 🔴 ตัวอัดจริงอยู่ในกล่องพิมพ์เองแล้ว (WO-CV8) ไม่ได้พึ่ง prop นี้อีกต่อไป
+   *    ของเดิม "ไม่ส่ง prop = ปุ่มกดไม่ได้" ถูกถอดทิ้ง เพราะตอนนี้เงื่อนไขที่แท้จริงคือ
+   *    "ช่องทางนี้ส่งเสียงได้ไหม" ซึ่งถามจากเซิร์ฟเวอร์ ไม่ใช่จากผู้เรียกฝั่งจอ
    */
   onRecordStart?: () => void;
 };
@@ -88,6 +91,16 @@ export function ChatComposer(props: ChatComposerProps) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
 
   const ready = draft.trim() !== "" || files.length > 0;
+
+  // ── อัดข้อความเสียง (WO-CV8) ──
+  // 🔴 ส่งเสร็จแล้วไม่ต้องบอกตัวแม่ให้ดึงใหม่: `sendVoiceReplyAction` ทั้ง revalidate และ
+  //    ยิงสัญญาณ realtime ให้แล้ว (และห้องยัง poll อยู่) ⇒ ฟองเสียงขึ้นเองโดยไม่ต้องเพิ่ม prop
+  const voice = useVoiceRecorder({ systemId, conversationId, isInternal });
+  const recording = voice.phase === "recording";
+  const micBlocked = voice.canSendAudio === false || !voice.recorderReady;
+  const micReason = !voice.recorderReady
+    ? "เบราว์เซอร์รุ่นนี้ยังอัดเสียงไม่ได้ — พิมพ์ข้อความหรือแนบไฟล์เสียงแทนได้เลย"
+    : (voice.capabilityReason ?? undefined);
 
   /**
    * ชนิดไฟล์ของปุ่ม "รูปภาพ" / "ถ่ายรูป" — คัดเฉพาะรูป **จากทะเบียนเดียวกับที่เซิร์ฟเวอร์ตรวจ**
@@ -305,6 +318,12 @@ export function ChatComposer(props: ChatComposerProps) {
           {toolErr}
         </p>
       )}
+      {/* ข้อผิดพลาดของการอัดเสียง — inline ใต้กล่องเดียวกัน ไม่ใช่ Alert เด้ง */}
+      {voice.err && (
+        <p className="mb-1.5 text-xs text-[color:var(--color-danger)]" role="alert">
+          {voice.err}
+        </p>
+      )}
 
       {/* ── เมนูคำตอบสำเร็จรูปจากการพิมพ์ `/` ── */}
       {slashOpen && (
@@ -455,6 +474,13 @@ export function ChatComposer(props: ChatComposerProps) {
         className="hidden"
       />
 
+      <VoiceRecordingBar
+        phase={voice.phase}
+        elapsedMs={voice.elapsedMs}
+        onStop={voice.stop}
+        onCancel={voice.cancel}
+      />
+
       {/* ── แถบกล่องพิมพ์ (แบบร่าง `.cbar`) ── */}
       <div className="flex items-end gap-[7px]">
         <button
@@ -496,19 +522,35 @@ export function ChatComposer(props: ChatComposerProps) {
           }`}
         />
 
-        {/* 🔴 ไมค์อยู่ในแถบ **เฉพาะมือถือ** (มติ D4) — เดสก์ท็อปใช้ช่อง "ข้อความเสียง" ในแผ่น ＋ */}
+        {/* มติ D13 (1 ก.ย.): ไมค์อยู่ในแถบ **ทุกจอ** (แบบร่างเดสก์ท็อปเรนเดอร์ใหม่แล้ว) — ไม่มีช่องที่ 9 ในแผ่น ＋
+            🔴 แตะ = เริ่มอัด · แตะซ้ำ = หยุดแล้วส่ง (เหตุผลที่ไม่ใช้ "กดค้าง" อยู่หัวไฟล์ voice.tsx)
+            🔴 ปิดปุ่มเมื่อช่องทางส่งเสียงไม่ได้ **พร้อมบอกเหตุผล** — ปุ่มที่กดได้แต่ส่งไม่ออก = เสียงหายเงียบ ๆ */}
         <button
           type="button"
           data-qc="composer-mic"
-          onClick={() => onRecordStart?.()}
-          // มติ D13 (1 ก.ย.): ไมค์อยู่ในแถบ **ทุกจอ** (แบบร่างเดสก์ท็อปเรนเดอร์ใหม่แล้ว) — ไม่มีช่องที่ 9 ในแผ่น ＋
-          disabled={!onRecordStart}
-          aria-label="อัดข้อความเสียง"
-          title={onRecordStart ? undefined : "การอัดข้อความเสียงจะเปิดใช้ในรุ่นถัดไป"}
-          className={`grid size-9 shrink-0 place-items-center rounded-[11px] disabled:opacity-45 ${
-            isInternal
-              ? "bg-[#fff5df] text-[color:var(--color-note-ink)]"
-              : "bg-[color:var(--color-surface-2)] text-[#4b5563]"
+          onClick={() => {
+            if (recording) {
+              voice.stop();
+              return;
+            }
+            onRecordStart?.();
+            void voice.start();
+          }}
+          // 🔴 ช่องทางที่ส่งเสียงไม่ได้: ทำให้ปุ่มจางลง + `aria-disabled` แต่ **ยังกดได้**
+          //    เพราะปุ่มที่ `disabled` จริงจะกลืนการกดทิ้ง ⇒ บนมือถือ (ไม่มี hover ให้เห็น title)
+          //    ผู้ใช้จะกดแล้วไม่มีอะไรเกิดขึ้นและไม่มีทางรู้เหตุผลเลย · กดแล้วต้องได้คำอธิบายเสมอ
+          //    (`start()` เป็นคนตัดสินและตั้งข้อความอธิบายให้เอง — ไม่มีเงื่อนไขซ้ำสองที่)
+          disabled={voice.phase === "asking" || voice.phase === "sending"}
+          aria-disabled={micBlocked || undefined}
+          aria-pressed={recording}
+          aria-label={recording ? "หยุดอัดแล้วส่งข้อความเสียง" : "อัดข้อความเสียง"}
+          title={micBlocked ? micReason : undefined}
+          className={`grid size-9 shrink-0 place-items-center rounded-[11px] disabled:opacity-45 ${micBlocked ? "opacity-45" : ""} ${
+            recording
+              ? "bg-[color:var(--color-danger)] text-white"
+              : isInternal
+                ? "bg-[#fff5df] text-[color:var(--color-note-ink)]"
+                : "bg-[color:var(--color-surface-2)] text-[#4b5563]"
           }`}
         >
           <Icon name="mic" />

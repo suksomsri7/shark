@@ -167,6 +167,8 @@ export async function purgeExpiredChatMessages(
         purgedHere += res.count;
 
         // (2) ไฟล์แนบ — ลบ url/fileName แต่ **คง storageKey** ไว้เป็นคิวลบไฟล์จริงบน CDN
+        // 🔴 WO-CV8: เสียงคือเนื้อความอีกรูปหนึ่ง — ล้าง url แล้วคลิปเล่นไม่ได้ (ฟองเสียงขึ้นปุ่มเล่นที่กดไม่ได้)
+        //    ล้าง `durationMs` ไปด้วย เพราะ "ข้อความเสียง 1:47" ก็ยังเล่าเรื่องของบทสนทนาที่ถูกปกปิดไปแล้ว
         await prisma.chatAttachment.updateMany({
           where: {
             tenantId: s.tenantId,
@@ -174,7 +176,7 @@ export async function purgeExpiredChatMessages(
             messageId: { in: ids },
             url: { not: "" },
           },
-          data: { url: "", fileName: "" },
+          data: { url: "", fileName: "", durationMs: null },
         });
 
         // (3) 🔴 denorm ที่มองไม่เห็น: `lastMessagePreview` เก็บสำเนาเนื้อความไว้ที่เธรด

@@ -26,8 +26,13 @@
   --radius: 0.5rem;
 }
 
-* {
-  border-color: var(--color-line);
+/* 🔴 ต้องอยู่ใน @layer base — กฎที่ "ไม่มี layer" ชนะ utility ทุกตัวใน Tailwind v4 (unlayered > layered)
+   ผลคือ `border-[color:var(--x)]` ทั้งแอปถูกทับเป็นสีเทาเงียบ ๆ (เจอ 1 ก.ย. จาก visual-qc: ขอบฟองโน้ตได้ #e5e5e5
+   แทน --color-note-line ทั้งที่ utility ถูก generate แล้ว) */
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
 }
 
 html {

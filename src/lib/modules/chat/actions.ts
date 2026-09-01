@@ -16,6 +16,9 @@ import {
   setBusinessHours,
 } from "./service";
 import type { ExternalAttachmentInput } from "./service";
+// ชั้นกลาง realtime (WO-CV9) — ยิงที่ **call site** ไม่ใช่ใน `sendReply`
+// (ฟังก์ชันนั้นเป็นของสายข้อความเสียงในรอบเดียวกัน — สองสายแก้ฟังก์ชันเดียวกัน = ชนกันแน่)
+import { publishChat, EV_CHAT_NEW } from "@/lib/realtime";
 import { setRetentionDays } from "./retention";
 import { validateBusinessHours } from "./business-hours";
 import { translateMessage, translateDraft, type TranslateResult } from "./translate";
@@ -25,7 +28,12 @@ import {
   uploadFile,
   ALLOWED_UPLOAD_TYPES,
   CHAT_ATTACHMENT_MAX_BYTES,
+  normalizeUploadType,
+  isAudioUploadType,
 } from "@/lib/storage/service";
+import { tenantDb } from "@/lib/core/db";
+import { canSendAudio } from "./adapter";
+import { channelSentenceLabel } from "./channel-icon";
 
 // ทุก action: requireTenant + revalidate หน้า chat ของระบบนั้น
 
@@ -81,7 +89,7 @@ async function uploadReplyFiles(
       chatError(
         systemId,
         conversationId,
-        `ไฟล์ "${f.name}" เป็นชนิดที่ส่งในแชทไม่ได้ — รองรับรูป (jpg/png/webp/gif/heic), PDF, Word, Excel และ txt`,
+        `ไฟล์ "${f.name}" เป็นชนิดที่ส่งในแชทไม่ได้ — รองรับรูป (jpg/png/webp/gif/heic), เสียง (webm/m4a/mp3/ogg), PDF, Word, Excel และ txt`,
       );
     }
     // เพดานเดียวกับที่ storage บังคับ (CHAT_ATTACHMENT_MAX_BYTES) — ห้ามพิมพ์ตัวเลขซ้ำที่นี่
@@ -187,6 +195,16 @@ export async function sendReplyAction(formData: FormData): Promise<SendReplyResu
           sentBody: body,
           userId: auth.user.id,
         }).catch(() => null);
+      }
+      // 🔴 สัญญาณ "ห้องนี้มีของใหม่" หลังบันทึกสำเร็จแล้วเท่านั้น — เพื่อนร่วมทีมที่เปิดห้อง
+      //    เดียวกันอยู่จะเห็นทันทีโดยไม่ต้องรอรอบ poll · ส่งแค่ id ห้อง ไม่มีเนื้อความ
+      //    ห้าม throw ที่นี่เด็ดขาด (`publish` กลืน error ให้แล้ว): ข้อความถูกบันทึกไปแล้ว
+      //    ถ้าคืน ok:false ผู้ใช้จะกดส่งซ้ำแล้วได้ข้อความซ้ำ
+      if (sent.messageId) {
+        await publishChat(tenantId, systemId, EV_CHAT_NEW, {
+          conversationId,
+          kind: isInternal ? "note" : "outbound",
+        });
       }
       revalidateChat(systemId);
       return sent.ok
@@ -545,4 +563,127 @@ export async function setMemberSystemAction(formData: FormData) {
   }
   revalidateChat(systemId);
   redirect(chatPath(systemId));
+}
+
+// ═════════════ ข้อความเสียง (WO-CV8) ═════════════
+
+/**
+ * ห้องนี้ส่งข้อความเสียงได้ไหม — ชั้นที่ (ก) ของ VO-4 (หน้าจอถามก่อนโชว์ปุ่มไมค์)
+ *
+ * 🔴 หน้าจอ **ห้ามเดาเอง** ว่าช่องทางไหนส่งเสียงได้ — ความจริงอยู่ที่ `capabilities.audio`
+ *    ของ adapter ฝั่งเซิร์ฟเวอร์ที่เดียว · ลิสต์ที่พิมพ์มือไว้ในหน้าจอจะค้างโกหกวันที่ adapter เปลี่ยน
+ * 🔴 ยังไม่มี adapter ของช่องทางนั้น = ตอบ false พร้อมเหตุผล ไม่ใช่ปล่อยให้กดแล้วเงียบ
+ */
+export async function voiceCapabilityAction(
+  systemId: string,
+  conversationId: string,
+): Promise<{ canSendAudio: boolean; reason?: string }> {
+  const auth = await requireTenant();
+  assertChatCan(auth, "chat.message.send");
+  if (!systemId || !conversationId) return { canSendAudio: false, reason: "ไม่พบบทสนทนา" };
+  const conv = await tenantDb({ tenantId: auth.active.tenantId, systemId }).chatConversation.findFirst({
+    where: { id: conversationId },
+    select: { channel: true },
+  });
+  if (!conv) return { canSendAudio: false, reason: "ไม่พบบทสนทนา" };
+  if (canSendAudio(conv.channel)) return { canSendAudio: true };
+  return {
+    canSendAudio: false,
+    reason: `ช่องทางนี้ยังส่งข้อความเสียงไม่ได้ (${channelSentenceLabel(conv.channel)}) — พิมพ์ข้อความหรือแนบไฟล์แทนได้เลย`,
+  };
+}
+
+/**
+ * ส่งข้อความเสียงที่อัดจากกล่องพิมพ์ — อัปผ่าน **เส้นทางไฟล์แนบเดิม** แล้วเข้า `sendReply` ตัวเดียวกัน
+ *
+ * 🔴 ไม่สร้างที่เก็บไฟล์ใหม่ซ้อน: ใช้ `uploadFile()` + `CHAT_ATTACHMENT_MAX_BYTES` ชุดเดิม
+ *    (ที่เก็บที่สองแปลว่ามีเส้นทางลบไฟล์/นับพื้นที่/ตรวจชนิด อีกชุดที่ไม่มีใครดูแล)
+ * 🔴 ตรวจ **ก่อนอัป** ทั้งชนิดและความยาว — ผู้ใช้บนมือถือรออัปเสร็จแล้วค่อยโดนปฏิเสธ = แย่กว่ามาก
+ * 🔴 คืนผลลัพธ์ ไม่ redirect (บทเรียน 1 ก.ย.: redirect ในเส้นทางที่ถูกเรียกตรง ๆ ถูก catch
+ *    ไปตีความว่าส่งไม่สำเร็จ ทั้งที่ข้อความถูกบันทึกแล้ว)
+ */
+export async function sendVoiceReplyAction(formData: FormData): Promise<SendReplyResult> {
+  const auth = await requireTenant();
+  assertChatCan(auth, "chat.message.send");
+  const systemId = String(formData.get("systemId") ?? "");
+  const conversationId = String(formData.get("conversationId") ?? "");
+  const isInternal = String(formData.get("isInternal") ?? "") === "on";
+  if (!systemId || !conversationId) return { ok: false, reason: "ไม่พบบทสนทนา" };
+
+  const file = formData.get("file");
+  if (!(typeof file === "object" && file !== null && "arrayBuffer" in file)) {
+    return { ok: false, reason: "ไม่พบไฟล์เสียงที่อัดไว้ — กดไมค์แล้วอัดใหม่อีกครั้งได้เลย" };
+  }
+  const f = file as File;
+  const mime = normalizeUploadType(f.type);
+  if (!isAudioUploadType(mime) || !(mime in ALLOWED_UPLOAD_TYPES)) {
+    return {
+      ok: false,
+      reason: "ไฟล์เสียงชนิดนี้ส่งในแชทไม่ได้ — รองรับ webm/m4a/mp3/ogg (อัดใหม่จากเบราว์เซอร์รุ่นล่าสุดได้เลย)",
+    };
+  }
+  if (f.size === 0) return { ok: false, reason: "คลิปเสียงว่างเปล่า — อัดใหม่แล้วส่งอีกครั้งได้เลย" };
+  if (f.size > CHAT_ATTACHMENT_MAX_BYTES) {
+    return {
+      ok: false,
+      reason: `คลิปเสียงใหญ่เกิน ${Math.round(CHAT_ATTACHMENT_MAX_BYTES / (1024 * 1024))}MB — อัดใหม่ให้สั้นลงแล้วส่งได้เลย`,
+    };
+  }
+
+  // ความยาวที่หน้าจอวัดมา — ปลอมได้ จึงบีบให้เป็นจำนวนเต็มบวกก่อน แล้วให้ `sendReply` ตรวจเพดานอีกชั้น
+  const durationMs = Math.trunc(Number(formData.get("durationMs") ?? 0));
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return { ok: false, reason: "ความยาวของคลิปเสียงไม่ถูกต้อง — อัดใหม่แล้วส่งอีกครั้งได้เลย" };
+  }
+
+  const tenantId = auth.active.tenantId;
+  const up = await uploadFile(
+    { tenantId },
+    {
+      kind: "ATTACHMENT",
+      filename: f.name || "voice",
+      contentType: mime,
+      data: new Uint8Array(await f.arrayBuffer()),
+      maxBytes: CHAT_ATTACHMENT_MAX_BYTES,
+    },
+  );
+  if (!up.ok) return { ok: false, reason: up.error };
+
+  const unitAccess = auth.active.unitAccess as string[];
+  const sent = await sendReply({
+    tenantId,
+    systemId,
+    conversationId,
+    senderUserId: auth.user.id,
+    attachments: [
+      {
+        url: up.cdnUrl,
+        mimeType: mime,
+        fileName: f.name || "voice",
+        sizeBytes: f.size,
+        durationMs,
+        // path บน CDN = handle เดียวที่จะไปลบไฟล์จริงทีหลังได้ (เหมือนไฟล์แนบปกติ)
+        storageKey: (() => {
+          try {
+            return new URL(up.cdnUrl).pathname.replace(/^\/+/, "");
+          } catch {
+            return up.cdnUrl;
+          }
+        })(),
+      },
+    ],
+    isInternal,
+    unitAccess,
+  });
+  if (!sent.ok) return { ok: false, reason: sent.reason ?? "ส่งข้อความเสียงไม่สำเร็จ" };
+
+  await markRead({ tenantId, systemId, conversationId, userId: auth.user.id, unitAccess });
+  if (sent.messageId) {
+    await publishChat(tenantId, systemId, EV_CHAT_NEW, {
+      conversationId,
+      kind: isInternal ? "note" : "outbound",
+    });
+  }
+  revalidateChat(systemId);
+  return { ok: true, ...(sent.messageId ? { messageId: sent.messageId } : {}) };
 }

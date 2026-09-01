@@ -48,6 +48,16 @@ export interface ChannelAdapter {
   readonly capabilities: {
     sendImage: boolean;
     sendSticker: boolean;
+    /**
+     * ส่ง "ข้อความเสียง" ออกช่องทางนี้ได้จริงไหม (WO-CV8)
+     *
+     * 🔴 ความจริงเรื่องความสามารถอยู่ที่ adapter **ที่เดียว** — ไม่ใช่ที่หน้าจอ ไม่ใช่ที่ทะเบียนไอคอน
+     *    (`channel-icon.tsx` เป็นทะเบียน "ป้าย/โลโก้" และหัวไฟล์นั้นห้ามพิมพ์ลิสต์ความสามารถไว้ชัดเจน
+     *     เพราะลิสต์ที่พิมพ์มือจะค้างโกหกว่าช่องทางที่ยังไม่มี adapter ส่งได้)
+     * 🔴 ประกาศ true ได้เฉพาะเมื่อ **ส่งถึงลูกค้าได้จริงด้วยไฟล์ที่เบราว์เซอร์อัดออกมาได้เท่านั้น**
+     *    ประกาศเกินจริง = ทีมอัดเสียงส่งไป แล้วลูกค้าไม่ได้ยิน โดยไม่มีใครรู้
+     */
+    audio: boolean;
     replyWindowHours: number | null; // LINE/WEBCHAT = null (ไม่มีหน้าต่าง)
     typing: boolean;
   };
@@ -96,4 +106,14 @@ export function getAdapter(type: ChatChannelType): ChannelAdapter {
 
 export function isSupported(type: ChatChannelType): boolean {
   return !!REGISTRY[type];
+}
+
+/**
+ * ช่องทางนี้ส่งข้อความเสียงได้ไหม — ตัวตอบตัวเดียวที่ทั้งระบบใช้ (หน้าจอ + เซิร์ฟเวอร์)
+ *
+ * 🔴 ยังไม่มี adapter = **ตอบ false** (ไม่ throw) — ผู้เรียกคือ "ปุ่มไมค์ควรกดได้ไหม"
+ *    ให้ throw ที่นี่ = หน้าจอพังทั้งจอเพราะช่องทางที่ยังไม่เปิด ซึ่งไม่ใช่ความผิดของผู้ใช้
+ */
+export function canSendAudio(type: ChatChannelType): boolean {
+  return REGISTRY[type]?.capabilities.audio === true;
 }

@@ -13,9 +13,11 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
+// `after()` = "ตอบคำขอไปก่อน แล้วค่อยทำงานที่เหลือ" (บน Vercel ผูกกับ waitUntil)
+import { after } from "next/server";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 import * as member from "@/lib/modules/member/service";
-import { getAdapter, isSupported, ChannelDeliveryError } from "./adapter";
+import { getAdapter, isSupported, canSendAudio, ChannelDeliveryError } from "./adapter";
 import type { ChannelCreds, InboundMessage, OutboundMessage } from "./adapter";
 import { readBusinessHours } from "./business-hours";
 import type { BusinessDay, StoredBusinessHours } from "./business-hours";
@@ -23,6 +25,8 @@ import { encryptCreds, decryptCreds, mask } from "./crypto";
 import { channelSentenceLabel } from "./channel-icon";
 // ตัวคัดผู้รับแจ้งเตือนตัวเดียวกับที่ push ใช้ (core/push.ts) — ห้ามมีกติกา "ใครควรได้รู้" 2 ชุด
 import { selectChatNotifyRecipients, toChatNotifyMember, VIEWING_WINDOW_MS } from "./notify";
+// ชั้นกลาง realtime (WO-CV9) — ไม่มีกุญแจ = ทุกคำสั่งในนี้คืนทันที ไม่ยิงเน็ต ไม่ throw
+import { publishChat, EV_CHAT_NEW, EV_CHAT_READ } from "@/lib/realtime";
 
 // Chat service (P1 = LINE + WEBCHAT). scope = systemId (AppSystem type CHAT)
 // query ทุกตัวผูก tenantId + systemId ตรง ๆ (ไม่พึ่ง tenantDb — เหมือน reward/meeting)
@@ -474,6 +478,9 @@ function preview(body?: string | null, type?: ChatMessageType): string {
   if (type === "IMAGE") return "[รูปภาพ]";
   if (type === "STICKER") return "[สติกเกอร์]";
   if (type === "FILE") return "[ไฟล์]";
+  // 🔴 เครื่องหมายนี้ต้องตรงกับ `PREVIEW_MARK` ใน list-filters.ts เป๊ะ — หน้ารายการอ่านสตริงนี้
+  //    เพื่อรู้ว่าข้อความล่าสุดเป็นเสียง (แล้วไปหยิบความยาวมาโชว์) ไม่ตรง = แถวขึ้นบรรทัดเปล่า
+  if (type === "AUDIO") return "[ข้อความเสียง]";
   return (body ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
 }
 
@@ -542,6 +549,11 @@ type AnnounceInboundArgs = {
   contactLabel: string;
   previewText: string;
   sentAt: Date;
+  /**
+   * ชนิดของข้อความที่เพิ่งเข้ามา — ใช้ตัดสินว่า "แปลอัตโนมัติ" ควรทำงานไหม (มติ D15)
+   * 🔴 รูป/สติกเกอร์/ไฟล์ ไม่มีตัวอักษรให้แปล ⇒ ยิงไปก็เสียเงินเปล่า ต้องกันตั้งแต่ที่นี่
+   */
+  messageType: ChatMessageType;
 };
 
 async function announceInbound(args: AnnounceInboundArgs): Promise<void> {
@@ -692,8 +704,73 @@ async function announceInbound(args: AnnounceInboundArgs): Promise<void> {
     }
   }
 
+  // ── สัญญาณ realtime "ห้องนี้มีของใหม่" (WO-CV9) ──
+  // 🔴 **นอกทรานแซกชัน** ด้วยเหตุผลเดียวกับ push: network call ในทรานแซกชัน = ถือ connection
+  //    ของ Neon ค้างจนพูลตันทั้งแพลตฟอร์ม
+  // 🔴 ส่งแค่ "ห้องไหน" — ไม่มีเนื้อความ ไม่มีชื่อลูกค้า (PDPA · ชั้น publish กรองซ้ำที่ขอบอีกที)
+  //    จอได้สัญญาณแล้วไป fetch เนื้อความจากเซิร์ฟเวอร์เราเองผ่านเส้นทางที่มีด่านสิทธิ์ครบ
+  // 🔴 ไม่มีกุญแจ (สภาพวันนี้) = คำสั่งนี้คืนทันที ไม่ยิงเน็ต ⇒ เส้นทางรับข้อความไม่ช้าลงเลย
+  await publishChat(tenantId, systemId, EV_CHAT_NEW, { conversationId: conv.id, kind: "inbound" });
+
+  // ── แปลอัตโนมัติในห้องนี้ (มติ D15) ──
+  // ห้องที่ทีมกดเปิด "แปลอัตโนมัติ" ไว้ (`meta.autoTranslate`) → แปลข้อความลูกค้าให้เลย
+  // 🔴 best-effort **นอกทรานแซกชัน** และหลังข้อความถูกบันทึกแล้ว: แปลล้ม/เครดิตหมด/AI ล่ม
+  //    ต้องไม่ทำให้ข้อความของลูกค้าหายหรือ webhook ตอบ error (ช่องทางภายนอกจะยิงซ้ำ)
+  // 🔴 `translateMessage` มีด่านครบอยู่แล้ว: สวิตช์แปลของร้าน → หาข้อความ → คำแปลเดิม →
+  //    **เครดิต (`canSpend`)** → ค่อยยิง LLM ⇒ ที่นี่ไม่ต้องเขียนด่านชุดที่ 2 (และห้ามเขียน
+  //    เพราะกติกา 2 ชุดจะเพี้ยนออกจากกันเสมอ) · เก็บผลที่ `translatedBody` ที่เดียวกับปุ่ม "แปล"
+  //    ⇒ ฟองข้อความแสดงคำแปลได้ทันทีโดยไม่ต้องแก้ `bubble.tsx`
+  // ⚠️ กันเงินก่อนถึง LLM ด้วยการดูชนิดข้อความ: รูป/สติกเกอร์/ไฟล์/เสียง ไม่มีตัวอักษรให้แปล
+  // 🔴 ทำ **หลังตอบคำขอไปแล้ว** ด้วย `after()` แบบเดียวกับ `scheduleDrain()`:
+  //    การแปลคือการยิง LLM ซึ่งกินเวลาเป็นวินาที · ถ้าขังไว้ในเส้นทางตอบ webhook
+  //    ช่องทางภายนอก (LINE) จะถือว่าเรา timeout แล้ว **ยิงข้อความเดิมซ้ำ** = งานซ้ำ+บิลซ้ำ
+  //    บน Vercel `after()` ผูกกับ waitUntil ⇒ งานถูกรันจนจบจริง ไม่ถูกตัดกลางคัน
+  //    นอกบริบทคำขอ (สคริปต์/ข้อสอบ) `after()` โยน ⇒ ตกกลับไปทำแบบ fire-and-forget
+  if (args.messageType === "TEXT" && args.previewText.trim() !== "" && autoTranslateOn(conv.meta)) {
+    const runTranslate = async () => {
+      try {
+        const { translateMessage } = await import("./translate");
+        const done = await translateMessage({
+          tenantId,
+          systemId,
+          messageId: args.messageId,
+          // ผู้กดคือ "ระบบ" ไม่ใช่คน — ผูกบิลกับผู้รับผิดชอบห้องถ้ามี ไม่งั้นปล่อยว่าง
+          // (ค่าใช้จ่ายยังขึ้นกระเป๋าของร้านเหมือนเดิม แค่ไม่จ่าหน้าคนที่ไม่ได้กดอะไร)
+          userId: conv.assigneeUserId ?? "",
+        });
+        // คำแปลมาถึงหลังสัญญาณรอบแรกไปแล้ว ⇒ เคาะอีกทีให้จอไปดึงของที่อัปเดตแล้ว
+        // (ไม่เคาะก็ยังเห็นในรอบ poll ถัดไป — นี่คือการทำให้เร็วขึ้นเฉย ๆ)
+        if (done.ok) {
+          await publishChat(tenantId, systemId, EV_CHAT_NEW, {
+            conversationId: conv.id,
+            kind: "translated",
+          });
+        }
+      } catch {
+        // แปลไม่สำเร็จ = ข้อความยังอยู่ครบ ทีมกดปุ่ม "แปล" เองได้ตลอด
+      }
+    };
+    try {
+      after(() => {
+        void runTranslate();
+      });
+    } catch {
+      void runTranslate();
+    }
+  }
+
   // drain outbox (automation/webhooks) — fire-and-forget เหมือน POS ให้ event เดินทันที
   scheduleDrain();
+}
+
+/**
+ * ห้องนี้เปิด "แปลอัตโนมัติ" ไว้ไหม — อ่านจาก `ChatConversation.meta.autoTranslate`
+ * (เขียนโดย `setRoomAutoTranslateAction` ใน `room-actions.ts` · ปิดเป็นค่าเริ่มต้นเสมอ)
+ * 🔴 ต้องเป็น `true` เป๊ะ ๆ เท่านั้น — ค่าขยะใน Json ที่ truthy (เช่นสตริง "0") ห้ามเปิดของที่กินเงินร้าน
+ */
+function autoTranslateOn(meta: Prisma.JsonValue | null): boolean {
+  if (meta === null || typeof meta !== "object" || Array.isArray(meta)) return false;
+  return (meta as Record<string, unknown>).autoTranslate === true;
 }
 
 // ───────────────────────── Inbound ─────────────────────────
@@ -769,6 +846,7 @@ export async function receiveInbound(args: {
     contactLabel: contact.displayName ?? contact.phone ?? "ลูกค้า",
     previewText: preview(inbound.body, msgType),
     sentAt: inbound.sentAt,
+    messageType: msgType,
   });
   await prisma.chatChannelConnection.update({
     where: { id: connection.id },
@@ -851,6 +929,7 @@ export async function receiveWebchatInbound(args: {
     contactLabel: contact.displayName ?? contact.phone ?? "ลูกค้า",
     previewText: preview(body),
     sentAt: new Date(),
+    messageType: "TEXT",
   });
   return { ok: true, conversationId: conv.id };
 }
@@ -872,9 +951,27 @@ export type ExternalAttachmentInput = {
   width?: number;
   height?: number;
   storageKey?: string;
+  /**
+   * ความยาวคลิปเสียง (ms) — **มีค่า = ผู้ส่งตั้งใจให้เป็น "ข้อความเสียง"** ไม่ใช่ไฟล์เสียงที่แนบมาเฉย ๆ
+   * 🔴 เจตนาต้องมาจากผู้ส่ง ไม่ใช่เดาจาก mimeType: ลูกค้าแนบไฟล์เพลง .mp3 ก็ขึ้นต้นด้วย "audio/" เหมือนกัน
+   *    แต่นั่นคือ "ไฟล์" ไม่ใช่ข้อความเสียง (เหตุผลเดียวกับที่สคีมาแยก AUDIO ออกจาก FILE)
+   */
+  durationMs?: number;
 };
 
 const MAX_EXTERNAL_ATTACHMENTS = 10;
+
+/**
+ * เพดานความยาวข้อความเสียง — 2 นาที
+ *
+ * ทำไม 2 นาที: ข้อความเสียงในงานบริการคือ "พูดสั้น ๆ แทนพิมพ์" (อธิบายเส้นทาง/ยืนยันเวลา)
+ * ยาวกว่านี้ลูกค้าจะไม่ฟังจบและกลายเป็นการซ่อนข้อมูลสำคัญไว้ในไฟล์ที่ค้นไม่ได้/แปลไม่ได้
+ * ที่คุณภาพ opus ~24kbps ⇒ 2 นาที ≈ 360KB = อยู่ใต้เพดานไฟล์แนบ 10MB สบาย ๆ แม้บนเน็ตมือถือ
+ * 🔴 ค่านี้เป็น "ความจริงฝั่งเซิร์ฟเวอร์" — ตัวอัดฝั่งเบราว์เซอร์หยุดเองที่ค่าเดียวกัน แต่ค่าที่ส่งมา
+ *    **ปลอมได้เสมอ** จึงต้องตรวจซ้ำที่นี่ (เผื่อ 5 วิ ให้ความคลาดเคลื่อนของนาฬิกาเบราว์เซอร์)
+ */
+export const MAX_VOICE_MS = 120_000;
+const VOICE_MS_TOLERANCE = 5_000;
 
 export type ExternalIdentityFields = {
   email?: string;
@@ -1053,6 +1150,7 @@ export async function receiveExternalInbound(args: {
     contactLabel: contact.displayName ?? contact.phone ?? "ลูกค้า",
     previewText: preview(body, msgType),
     sentAt: at,
+    messageType: msgType,
   });
   // 🔴 lastInboundAt = "ช่องทางนี้มีสัญญาณล่าสุดเมื่อไหร่" (สุขภาพการเชื่อมต่อ) — ไม่ใช่เวลาของ
   //    ข้อความ ⇒ ประวัติเก่าที่ย้ายเข้ามาต้องไม่ทำให้ช่องทางดูเหมือน "เงียบมา 3 ปี"
@@ -1138,6 +1236,29 @@ export async function sendReply(args: {
     return { ok: false, reason: `แนบไฟล์ได้ไม่เกิน ${MAX_EXTERNAL_ATTACHMENTS} รายการต่อข้อความ` };
   }
 
+  // ── ข้อความเสียง (WO-CV8) ───────────────────────────────────────────────
+  // "เป็นข้อความเสียง" = ไฟล์เดียว + mime ขึ้นต้นด้วย "audio/" + ผู้ส่งบอกความยาวมาด้วย
+  // (ความยาวคือเจตนา — แนบไฟล์เพลงมาเฉย ๆ ไม่มี durationMs จึงยังเป็น FILE ตามเดิม)
+  const voiceAtt =
+    attachments.length === 1 && attachments[0]!.mimeType.trim().toLowerCase().startsWith("audio/")
+      ? attachments[0]!
+      : null;
+  const isVoice = voiceAtt !== null && voiceAtt.durationMs !== undefined;
+  if (isVoice) {
+    const d = voiceAtt!.durationMs!;
+    // 🔴 ค่าจากเบราว์เซอร์ = ปลอมได้ · ติดลบ/ไม่ใช่จำนวนเต็ม/เกินเพดาน ต้องไม่ถูกบันทึก
+    //    (ค่าติดลบทำให้ฟองเสียงโชว์ "-1:00" และตัวเลขเกินจริงทำให้ลูกค้าคิดว่าไฟล์เสีย)
+    if (!Number.isFinite(d) || !Number.isInteger(d) || d <= 0) {
+      return { ok: false, reason: "ความยาวของคลิปเสียงไม่ถูกต้อง — อัดใหม่แล้วส่งอีกครั้งได้เลย" };
+    }
+    if (d > MAX_VOICE_MS + VOICE_MS_TOLERANCE) {
+      return {
+        ok: false,
+        reason: `ข้อความเสียงยาวได้ไม่เกิน ${Math.round(MAX_VOICE_MS / 1000)} วินาที — อัดใหม่ให้สั้นลงแล้วส่งได้เลย`,
+      };
+    }
+  }
+
   const conv = await prisma.chatConversation.findFirst({
     where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
     include: { contact: true },
@@ -1145,12 +1266,27 @@ export async function sendReply(args: {
   if (!conv) return { ok: false, reason: "ไม่พบบทสนทนา" };
   if (!canAccessConvUnit(args.unitAccess, conv.unitId)) return { ok: false, reason: "ไม่มีสิทธิ์เข้าถึงบทสนทนานี้" }; // M11
 
+  // 🔴 VO-4 (ข) กันช่องทางที่ส่งเสียงไม่ได้ **ก่อนสร้างแถวข้อความ** ไม่ใช่สร้างแล้วมาร์ก FAILED
+  //    เสียงที่อัดแล้วส่งไม่ออกคือ "ของที่หายไปเฉย ๆ" — ทีมเห็นฟองเสียงในห้องแล้วเข้าใจว่าลูกค้าได้ยิน
+  //    ⇒ ปฏิเสธตั้งแต่ต้นทางแล้วบอกเหตุผลตรง ๆ ดีกว่าปล่อยให้มีฟองผีค้างอยู่ในห้อง
+  //    (โน้ตภายในไม่ส่งออกช่องทางอยู่แล้ว จึงอัดเสียงเก็บไว้ในทีมได้เสมอ)
+  const sendAudio = canSendAudio(conv.channel); // ธง capabilities.audio ของ adapter ช่องทางนี้
+  if (isVoice && !args.isInternal && !sendAudio) {
+    return {
+      ok: false,
+      reason: `${channelSentenceLabel(conv.channel)} ยังส่งข้อความเสียงไม่ได้ — พิมพ์ข้อความหรือแนบไฟล์แทนได้เลย`,
+    };
+  }
+
   const isInternal = !!args.isInternal;
   // insert OUT ก่อน (ทีมเห็นทันที) — PENDING สำหรับช่องทางภายนอก, SENT สำหรับ internal/webchat
   const willSend = !isInternal;
   // ชนิดข้อความตามไฟล์ชิ้นแรก (กติกาเดียวกับขาเข้า) — mime ขึ้นต้น image/ → IMAGE · อื่น ๆ → FILE
-  const msgType: ChatMessageType =
-    attachments.length > 0 ? attachmentKind(attachments[0]!.mimeType) : "TEXT";
+  const msgType: ChatMessageType = isVoice
+    ? "AUDIO"
+    : attachments.length > 0
+      ? attachmentKind(attachments[0]!.mimeType)
+      : "TEXT";
   // 🔴 preview ของข้อความที่มีแต่ไฟล์ต้องไม่ว่าง — ไม่งั้นหน้ารายการ inbox ขึ้นบรรทัดเปล่า
   //    (preview() ตัดสินจาก type ก่อนเสมอ → ได้ "[รูปภาพ]" / "[ไฟล์]")
   const previewText = preview(body, msgType);
@@ -1199,7 +1335,9 @@ export async function sendReply(args: {
           tenantId: args.tenantId,
           systemId: args.systemId,
           messageId: created.id,
-          kind: attachmentKind(a.mimeType),
+          // ไฟล์ของข้อความเสียงต้องมี kind = AUDIO ด้วย ไม่ใช่แค่ตัวข้อความ —
+          // หน้ารายการหาความยาวคลิปด้วย `where kind: "AUDIO"` (inbox-actions.audioDurations)
+          kind: a === voiceAtt && isVoice ? "AUDIO" : attachmentKind(a.mimeType),
           storageKey: a.storageKey?.trim() || a.url.trim(),
           url: a.url.trim(),
           fileName: a.fileName?.trim() || fileNameFromUrl(a.url.trim()),
@@ -1207,6 +1345,7 @@ export async function sendReply(args: {
           sizeBytes: a.sizeBytes ?? 0,
           width: a.width ?? null,
           height: a.height ?? null,
+          durationMs: a.durationMs ?? null,
         },
       });
     }
@@ -1230,6 +1369,18 @@ export async function sendReply(args: {
           //    เพิ่มฟิลด์ล้วน ผู้รับเดิมที่อ่าน preview ไม่กระทบ
           body,
           senderName: shownSenderName,
+          // 🔴 ชนิด + ไฟล์แนบต้องไปกับ event ด้วย (WO-CV8 · VO-7)
+          //    ระบบปลายทางที่ "สะท้อนคำตอบกลับเข้า DB ตัวเอง" (SiamDive โหมด dual) มีแต่ event นี้
+          //    เป็นข้อมูลตั้งต้น — ส่งแต่ตัวหนังสือ = ข้อความเสียง/รูปของทีมหายทั้งใบ (body ของเสียงเป็น null)
+          //    ฟิลด์เพิ่มล้วน ผู้รับเดิมที่อ่านแค่ preview/body ไม่กระทบ
+          type: msgType,
+          attachments: attachments.map((a) => ({
+            url: a.url.trim(),
+            name: a.fileName?.trim() || fileNameFromUrl(a.url.trim()),
+            mimeType: a.mimeType.trim(),
+            sizeBytes: a.sizeBytes ?? 0,
+            durationMs: a.durationMs ?? null,
+          })),
         },
         systemId: args.systemId,
         unitId: conv.unitId,
@@ -1818,6 +1969,12 @@ export type PublicAttachment = {
   sizeBytes: number;
   width: number | null;
   height: number | null;
+  /**
+   * ความยาวคลิปเสียง (ms) · null = ไม่ใช่เสียง/ไม่รู้ความยาว (WO-CV8 · VO-7)
+   * 🔴 ขาดค่านี้ = ฝั่งลูกค้าได้แค่ลิงก์ไฟล์เปล่า วาดฟองเสียงที่บอก "0:12" ไม่ได้
+   *    และต้องโหลดไฟล์ทั้งก้อนมาอ่าน metadata เองก่อนถึงจะรู้ความยาว (เปลืองเน็ตลูกค้า)
+   */
+  durationMs: number | null;
 };
 
 export type PublicMsg = {
@@ -1854,6 +2011,7 @@ function toPublicMsg(
       sizeBytes: a.sizeBytes,
       width: a.width ?? null,
       height: a.height ?? null,
+      durationMs: a.durationMs ?? null,
     })),
     // ลูกค้าเห็นได้เฉพาะชื่อฝั่งร้าน (นามแฝง) — ห้ามหลุดชื่อพนักงานจริง · IN = ตัวเขาเอง ไม่ต้องมีชื่อ
     senderName: m.direction === "OUT" ? (m.senderName ?? alias) : null,
@@ -2164,6 +2322,12 @@ export async function markCustomerRead(args: {
       lastReadMessageId: args.lastReadMessageId ?? null,
     },
     update: { lastReadMessageId: args.lastReadMessageId ?? null, lastReadAt: new Date() },
+  });
+  // ลูกค้าอ่านแล้ว → บอกจอของทีมให้เปลี่ยนติ๊กเดี่ยวเป็นติ๊กคู่ (WO-CV9)
+  // 🔴 หลังบันทึก read state สำเร็จเท่านั้น · ไม่มีกุญแจ = คืนทันที (จอยังเห็นจากรอบ poll เดิม)
+  await publishChat(connection.tenantId, connection.systemId, EV_CHAT_READ, {
+    conversationId: conv.id,
+    kind: "customer",
   });
   return { ok: true, conversationId: conv.id };
 }

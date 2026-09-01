@@ -32,6 +32,8 @@ import { CHANNEL_ORDER } from "./channel-icon";
 import { listSystemTags, parseTags } from "./labels";
 import { searchAnswerExamples, type AnswerExampleHit } from "./learning";
 import { langLabelTh } from "./translate";
+// ชั้นกลาง realtime (WO-CV9) — ยิงที่ call site หลังบันทึกสำเร็จ ไม่ใช่ใน `sendReply`
+import { publishChat, EV_CHAT_NEW } from "@/lib/realtime";
 import {
   EMPTY_COUNTS,
   previewKindOf,
@@ -187,6 +189,12 @@ export type ThreadAttachment = {
   mimeType: string;
   sizeBytes: number;
   kind: string;
+  /**
+   * ความยาวคลิปเสียง (ms) · null = ไม่ใช่เสียง (มติ D16 · WO-CV8)
+   * 🔴 มากับก้อนเดียวกับข้อความ **โดยเจตนา** — ของเดิมต้องยิง `loadRoomContextAction` อีกคำขอ
+   *    เพื่อเอาเลขนี้อย่างเดียว ⇒ ฟองเสียงขึ้น "เสียง" ก่อนแล้วค่อยกระพริบเป็น "0:12" ทีหลัง
+   */
+  durationMs: number | null;
 };
 
 export type ThreadMessage = {
@@ -430,6 +438,7 @@ export async function loadThreadAction(
           mimeType: a.mimeType,
           sizeBytes: a.sizeBytes,
           kind: a.kind,
+          durationMs: a.durationMs,
         })),
     })),
   };
@@ -467,6 +476,9 @@ export async function retrySendAction(
     fileName: a.fileName,
     sizeBytes: a.sizeBytes,
     storageKey: a.storageKey,
+    // 🔴 ส่งซ้ำต้องพา durationMs ไปด้วย ไม่งั้นข้อความเสียงที่ลองใหม่จะกลายเป็น "ไฟล์แนบ" ธรรมดา
+    //    (ชนิด AUDIO ตัดสินจากความยาวที่ผู้ส่งบอกมา — ตกหล่นตรงนี้ = ฟองเสียงหายไปหนึ่งใบ)
+    ...(a.durationMs !== null ? { durationMs: a.durationMs } : {}),
   }));
   const res = await sendReply({
     tenantId,
@@ -479,6 +491,8 @@ export async function retrySendAction(
     unitAccess: auth.active.unitAccess as string[],
   });
   if (!res.ok) return { ok: false, reason: res.reason ?? "ส่งซ้ำไม่สำเร็จ ลองอีกครั้งในอีกสักครู่" };
+  // สัญญาณ "ห้องนี้มีของใหม่" — ส่งซ้ำสร้างแถวใหม่ในห้อง จอของทุกคนต้องเห็นเหมือนส่งปกติ
+  await publishChat(tenantId, systemId, EV_CHAT_NEW, { conversationId, kind: "outbound" });
   // ผลจริงอ่านจาก deliveryStatus ของแถวใหม่ (D-1) — poll รอบถัดไปจะเห็นเอง
   return { ok: true };
 }

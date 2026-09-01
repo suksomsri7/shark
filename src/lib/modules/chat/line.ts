@@ -18,7 +18,12 @@ function authHeader(creds: ChannelCreds): string {
 
 export const lineAdapter: ChannelAdapter = {
   type: "LINE",
-  capabilities: { sendImage: true, sendSticker: true, replyWindowHours: null, typing: false },
+  // 🔴 audio: false ตามความจริง ไม่ใช่ตามที่อยากให้เป็น (WO-CV8 · รายงานไว้ในสรุปรอบ 4)
+  //    LINE รับ audio message เฉพาะ `originalContentUrl` ที่เป็นไฟล์ **m4a** + ต้องส่ง `duration` มาด้วย
+  //    แต่ไฟล์ที่ MediaRecorder อัดได้บน Chrome/Android คือ `audio/webm;codecs=opus` ซึ่ง LINE ไม่รับ
+  //    ⇒ ถ้าประกาศ true ทีมจะอัดเสียงส่งหาลูกค้า LINE แล้วเด้ง 400 กลับมาเป็น FAILED ทุกครั้ง
+  //    เปิดได้เมื่อไหร่: มีตัวแปลงไฟล์ webm → m4a ฝั่งเซิร์ฟเวอร์ (งานคนละก้อน ยังไม่มีในระบบ)
+  capabilities: { sendImage: true, sendSticker: true, audio: false, replyWindowHours: null, typing: false },
 
   verifyWebhook(rawBody, headers, creds) {
     const secret = creds.channelSecret;

@@ -38,9 +38,18 @@ import {
   loadRoomContextAction,
   searchInRoomAction,
   setRoomAutoTranslateAction,
+  typingAction,
   type RoomContext,
   type RoomSearchHit,
 } from "./room-actions";
+// ── ชั้น realtime (WO-CV9) — **ตัวเร่ง** ของรอบ poll เท่านั้น ไม่ใช่ตัวแทน ──
+// ไม่มีกุญแจ / ต่อไม่ติด = เงียบสนิท จอยังทำงานครบด้วย poll เดิมทุกอย่าง
+import { subscribeChat } from "@/lib/realtime/client";
+import {
+  EV_CHAT_TYPING,
+  TYPING_PING_MS,
+  TYPING_TTL_MS,
+} from "@/lib/realtime/events";
 import {
   loadInboxAction,
   loadInboxCountsAction,
@@ -85,12 +94,9 @@ const POLL_MS = 5000;
  */
 const GROUP_WINDOW_MS = 180_000;
 
-/**
- * "กำลังพิมพ์" อยู่ได้นานสุดกี่มิลลิวินาทีหลังได้รับสัญญาณล่าสุด
- * 🔴 ต้องหมดอายุเอง — สัญญาณ "หยุดพิมพ์" หายระหว่างทางได้เสมอ (ปิดแท็บ/เน็ตหลุด)
- *    ถ้าไม่ตั้งเพดาน จุดสามจุดจะค้างอยู่ตลอดกาลและกลายเป็นข้อมูลที่โกหก
- */
-const TYPING_TTL_MS = 6000;
+// ⚠️ ค่าหมดอายุของ "กำลังพิมพ์" (`TYPING_TTL_MS`) ย้ายไปอยู่ `@/lib/realtime/events` แล้ว
+//    เพราะ **ฝั่งส่งสัญญาณ (server action) ต้องใช้ค่าเดียวกับฝั่งแสดงผล** — พิมพ์ซ้ำ 2 ที่
+//    แล้ววันหนึ่งแก้ที่เดียว = สามจุดค้างครึ่งทางโดยไม่มีอะไรฟ้อง
 
 // 🔴 ชิปกรอง + ตัวกรองหลังกรวยย้ายไป `list-filters.ts` แล้ว — เพราะ **ฝั่งเซิร์ฟเวอร์ต้องใช้ชุดเดียวกัน**
 //    (ชิปที่จอนิยามเอง แต่ query นิยามอีกอย่าง = ชิปที่กดแล้วได้รายการเดิม)
@@ -230,13 +236,25 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
   activeRef.current = activeId;
 
   const draft = activeId ? (drafts[activeId] ?? "") : "";
+  /** ส่งสัญญาณ "กำลังพิมพ์" ครั้งล่าสุดเมื่อไหร่ (epoch ms) — ใช้ throttle */
+  const typingPingRef = useRef(0);
   const setDraft = useCallback(
     (value: string) => {
       const id = activeRef.current;
       if (!id) return;
       setDrafts((d) => ({ ...d, [id]: value }));
+      // ── บอกเพื่อนร่วมทีมว่ากำลังพิมพ์อยู่ในห้องนี้ (WO-CV9) ──
+      // 🔴 ส่งแค่ "ห้องไหน + ใคร" — **ร่างไม่เคยเดินทางออกไป** (ของส่วนตัวที่สุดในระบบ)
+      // 🔴 throttle ≥ TYPING_PING_MS: ยิงทุกตัวอักษร = ยิงเซิร์ฟเวอร์ตัวเองรัว ๆ ฟรี ๆ
+      // 🔴 ล้มแล้วเงียบ — ตัวบอกสถานะพังต้องไม่ขึ้นข้อความแดงขวางคนที่กำลังพิมพ์ตอบลูกค้า
+      //    (ไม่มีกุญแจ = action นี้ไม่ยิงเน็ตออกไปอยู่แล้ว แค่จบเงียบที่ฝั่งเซิร์ฟเวอร์)
+      if (!value.trim()) return;
+      const now = Date.now();
+      if (now - typingPingRef.current < TYPING_PING_MS) return;
+      typingPingRef.current = now;
+      void typingAction(systemId, id).catch(() => null);
     },
-    [],
+    [systemId],
   );
 
   // ── เปลี่ยนห้อง: ล้างของที่ผูกกับห้องเดิม (ไฟล์/คำแนะนำ/คำแปล) แต่ **ไม่ล้างร่าง** ──
@@ -314,8 +332,32 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
     };
   }, [refreshNow, activeId]);
 
-  // เลื่อนลงล่างสุดเมื่อมีข้อความใหม่ (ไม่แตะตำแหน่งถ้าผู้ใช้เลื่อนขึ้นไปอ่านของเก่า)
   const lastMsgId = thread?.messages.at(-1)?.id ?? "";
+  /** ห้องที่ "กระโดดลงล่างสุดครั้งแรก" ไปแล้ว — เก็บเป็น id ห้อง ไม่ใช่ boolean */
+  const jumpedRef = useRef<string | null>(null);
+  const threadRoomId = thread?.conversationId ?? null;
+  const threadMsgCount = thread?.messages.length ?? 0;
+
+  // ── (1) เปิดห้อง = กระโดดลงล่างสุด **แบบบังคับ** ครั้งเดียวต่อห้อง ──
+  // 🔴 บั๊กที่ QC สายตาบน prod เจอ (1 ก.ย. 2026): เปิดห้องที่มีข้อความยาวกว่าจอแล้วจอค้างอยู่
+  //    **บนสุด** ⇒ ทีมเห็นข้อความเก่าที่สุดก่อน ต้องลากลงเองทุกครั้งที่เปิดห้อง
+  //    ต้นเหตุ: ตอนเพิ่งเปิดห้อง `scrollTop = 0` ⇒ เงื่อนไข nearBottom ด้านล่างเป็นเท็จเสมอ
+  //    ⇒ ครั้งแรกของแต่ละห้องต้องเลื่อนโดยไม่ผ่านเงื่อนไขนั้น
+  // ⚠️ ผูกกับ `thread.conversationId` ไม่ใช่แค่ `activeId` — ระหว่างสลับห้อง thread ของห้องเก่า
+  //    ยังค้างอยู่ 1 จังหวะ ถ้าเช็คแค่ activeId จะกระโดดโดยวัดความสูงของห้องผิดตัว
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || !activeId || threadRoomId !== activeId) return;
+    // ยังไม่มีข้อความให้เลื่อน = ยังไม่นับว่ากระโดดแล้ว (ข้อความแรกที่มาถึงต้องยังได้เลื่อน)
+    if (threadMsgCount === 0) return;
+    if (jumpedRef.current === activeId) return;
+    jumpedRef.current = activeId;
+    el.scrollTop = el.scrollHeight;
+  }, [activeId, threadRoomId, threadMsgCount]);
+
+  // ── (2) ข้อความใหม่ระหว่างที่เปิดห้องอยู่ — กติกาเดิม ห้ามแตะตำแหน่งคนที่เลื่อนขึ้นไปอ่านของเก่า ──
+  // 🔴 deps เป็น `lastMsgId` เท่านั้นโดยตั้งใจ: ถ้าใส่ `thread` ทั้งก้อน เอฟเฟกต์จะเดินทุกรอบ poll
+  //    แล้วคนที่เลื่อนค้างอยู่ใกล้ ๆ ล่างสุดจะถูกดึงลงล่างทุก 5 วิ ทั้งที่ไม่มีข้อความใหม่
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
@@ -557,6 +599,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
   const [roomQ, setRoomQ] = useState("");
   const [roomHits, setRoomHits] = useState<RoomSearchHit[] | null>(null);
   const [typingUntil, setTypingUntil] = useState<number | null>(null);
+  const [typingUserId, setTypingUserId] = useState<string | null>(null);
 
   const msgCount = thread?.messages.length ?? 0;
   const activeRow = useMemo(() => rows.find((r) => r.id === activeId) ?? null, [rows, activeId]);
@@ -599,8 +642,10 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
   //    `window.dispatchEvent(new CustomEvent("chat:typing", { detail: { conversationId } }))`
   useEffect(() => {
     const onTyping = (e: Event) => {
-      const detail = (e as CustomEvent<{ conversationId?: string }>).detail;
+      const detail = (e as CustomEvent<{ conversationId?: string; userId?: string | null }>).detail;
       if (!activeRef.current || detail?.conversationId !== activeRef.current) return;
+      // มติ D20: จำว่าใครพิมพ์ — มี userId = ทีมงาน (ชิดขวา+ชื่อ) · ไม่มี = ลูกค้า (ชิดซ้าย)
+      setTypingUserId(detail?.userId ?? null);
       setTypingUntil(Date.now() + TYPING_TTL_MS);
     };
     window.addEventListener("chat:typing", onTyping);
@@ -612,6 +657,47 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
     return () => clearTimeout(t);
   }, [typingUntil]);
   const typing = typingUntil !== null && typingUntil > Date.now();
+
+  // ── realtime = **ตัวเร่ง** ของรอบ poll (WO-CV9 · มติ V4) ──
+  // 🔴 ห้ามปิดรอบ poll เด็ดขาด — ของด้านบนยังเดินทุก 5 วิ เหมือนเดิมไม่ว่าตัวนี้จะติดหรือไม่
+  //    ผู้ให้บริการล่ม/โควตาหมดกลางวัน แล้วทีมไม่เห็นข้อความใหม่เลย = พังเงียบที่ไม่มีใครรู้ตัว
+  //    สิ่งที่ตัวนี้เปลี่ยนคือ "มาถึงเร็วขึ้น" เท่านั้น
+  // 🔴 เนื้อความไม่เคยเดินทางมากับสัญญาณ — ได้สัญญาณแล้วไปดึงจากเซิร์ฟเวอร์เราเองผ่าน
+  //    เส้นทางเดิมที่มีด่านสิทธิ์ครบ (`refreshNow`) · ผู้ให้บริการภายนอกรู้แค่ "ห้องไหนมีของใหม่"
+  // 🔴 ไม่มีกุญแจ (สภาพวันนี้) / ต่อไม่ติด = จบเงียบตั้งแต่คำขอแรก ไม่มีข้อความผิดพลาดบนจอ
+  useEffect(() => {
+    let alive = true;
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const pullSoon = () => {
+      // รวบสัญญาณที่มาติด ๆ กัน (ลูกค้าพิมพ์รัวหลายบรรทัด) ให้เหลือการดึงข้อมูลรอบเดียว
+      if (!alive || pending) return;
+      pending = setTimeout(() => {
+        pending = null;
+        if (alive) void refreshNow();
+      }, 250);
+    };
+    const stop = subscribeChat(systemId, (sig) => {
+      if (!alive) return;
+      if (sig.event === EV_CHAT_TYPING) {
+        if (!sig.conversationId) return;
+        // สัญญาณของตัวเอง (แท็บอื่นของเราเอง) ไม่ต้องขึ้นสามจุดให้ตัวเองดู
+        if (sig.userId && sig.userId === meUserId) return;
+        // ส่งต่อตามสัญญาที่จอตั้งไว้ตั้งแต่รอบ 3 — ตัวรับคือ effect `chat:typing` ด้านบน
+        // (หมดอายุเองที่ฝั่งรับด้วย TYPING_TTL_MS ⇒ ปิดแท็บกลางคันสามจุดก็หายเอง)
+        window.dispatchEvent(
+          new CustomEvent("chat:typing", { detail: { conversationId: sig.conversationId, userId: sig.userId ?? null } }),
+        );
+        return;
+      }
+      // chat.new / chat.read = "มีของใหม่ ไปดึงเอง"
+      pullSoon();
+    });
+    return () => {
+      alive = false;
+      if (pending) clearTimeout(pending);
+      stop();
+    };
+  }, [systemId, meUserId, refreshNow]);
 
   // ── ค้นหาในห้อง ──
   // 🔴 ยิงไปค้นที่ชั้นข้อมูลจริง (`searchInRoomAction`) ไม่ใช่กรอง `thread.messages` ที่โหลดมาแล้ว
@@ -1700,7 +1786,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
                   ))
                 )}
                 {/* 3 จุดของ "กำลังพิมพ์" อยู่ท้ายสุดเสมอ (แบบร่างจอ 2) */}
-                {typing && <TypingBubble />}
+                {typing && <TypingBubble who={typingUserId ? { name: nameOf(typingUserId) } : null} />}
               </div>
 
               {/* ── กล่องพิมพ์ (ติดล่างเสมอ) ── */}

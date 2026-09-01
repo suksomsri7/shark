@@ -72,15 +72,24 @@ export function DateDivider({ ts }: { ts: number }) {
  * "กำลังพิมพ์" = ฟองเปล่ามี 3 จุดเต้น (แบบร่าง `.typing`)
  * 🔴 ตั้งใจไม่ใส่ตัวหนังสือ — แบบร่างวาดเป็นจุดล้วน และข้อความยาว ๆ จะดันฟองจริงกระโดดทุกครั้ง
  */
-export function TypingBubble() {
+/**
+ * สามจุด "กำลังพิมพ์" — ต้องบอกว่า **ใคร** พิมพ์ (มติ D20)
+ * 🔴 สัญญาณวันนี้มาจาก**ทีมงาน**เท่านั้น (ลูกค้าต้องต่อข้ามรีโป) — ถ้าวาดชิดซ้ายเป็นฟองขาเข้าเสมอ
+ *    เพื่อนร่วมทีมพิมพ์ จอจะบอกว่าลูกค้าพิมพ์ ⇒ ทีมงาน = ชิดขวา + ชื่อ · ลูกค้า = ชิดซ้ายแบบเดิม
+ */
+export function TypingBubble({ who }: { who?: { name: string } | null } = {}) {
+  const staff = !!who;
   return (
-    <div className="mb-2.5 flex justify-start">
+    <div className={`mb-2.5 flex ${staff ? "justify-end" : "justify-start"}`}>
       <div
         data-qc="typing"
-        className="flex w-fit items-center gap-1 rounded-[14px] rounded-tl-[4px] bg-[color:var(--color-surface)] px-3.5 py-[11px] shadow-[0_1px_1.5px_rgba(15,23,42,0.08)]"
+        className={`flex w-fit items-center gap-1.5 rounded-[14px] px-3.5 py-[11px] shadow-[0_1px_1.5px_rgba(15,23,42,0.08)] ${
+          staff ? "rounded-tr-[4px] bg-[color:var(--color-out)]" : "rounded-tl-[4px] bg-[color:var(--color-surface)]"
+        }`}
         role="status"
-        aria-label="ลูกค้ากำลังพิมพ์"
+        aria-label={staff ? `${who.name} กำลังพิมพ์` : "ลูกค้ากำลังพิมพ์"}
       >
+        {staff && <span className="mr-0.5 text-[11px] text-[color:var(--color-muted)]">{who.name} กำลังพิมพ์</span>}
         <span className="size-1.5 animate-bounce rounded-full bg-[#c6cad1] [animation-delay:0ms]" />
         <span className="size-1.5 animate-bounce rounded-full bg-[#b2b7bf] [animation-delay:150ms]" />
         <span className="size-1.5 animate-bounce rounded-full bg-[#9ea4ad] [animation-delay:300ms]" />
@@ -269,7 +278,8 @@ export function MessageBubble({
         </span>
       )}
 
-      <div className={`relative ${note ? "max-w-[86%]" : "max-w-[76%]"} min-w-0`}>
+      {/* `group` = ตัวจุดชนวนให้ปุ่ม "เก็บคำตอบ" โผล่ตอนชี้เมาส์ที่ก้อนข้อความ (ดูแถบเครื่องมือใต้ฟอง) */}
+      <div className={`group relative ${note ? "max-w-[86%]" : "max-w-[76%]"} min-w-0`}>
         <div
           data-qc={note ? "bubble-note" : out ? "bubble-out" : "bubble-in"}
           className={[
@@ -287,7 +297,9 @@ export function MessageBubble({
             </span>
           )}
 
-          {audio && <VoiceBody url={audio.url} durationMs={audioMs} />}
+          {/* 🔴 ความยาวมากับตัวไฟล์แนบเอง (มติ D16) — prop `audioMs` เหลือไว้เป็นทางถอย
+              สำหรับผู้เรียกเดิมที่ยังส่งค่ามาจาก `loadRoomContextAction` เท่านั้น */}
+          {audio && <VoiceBody url={audio.url} durationMs={audio.durationMs ?? audioMs} />}
 
           {images.length > 0 && (
             <div className="-mx-1 mb-1 flex flex-col gap-1">
@@ -376,13 +388,29 @@ export function MessageBubble({
               {pending ? "กำลังส่ง…" : "ลองส่งอีกครั้ง"}
             </button>
           )}
+          {/* "เก็บคำตอบ" = บันทึกเป็นตัวอย่างคำตอบ (WO-CW3)
+              🔴 ของเดิมเป็นประโยคเต็มขีดเส้นใต้ใต้ฟอง **ทุกฟองขาออก** ⇒ ห้องรกจนอ่านบทสนทนาไม่รู้เรื่อง
+                 และแบบร่างไม่มีบรรทัดนี้ · ห้ามตัดฟีเจอร์ทิ้ง จึงลดเสียงรบกวนแทน:
+                 · เมาส์ (`pointer: fine`) — ซ่อนไว้ โผล่ตอนชี้ที่ก้อน หรือตอนโฟกัสด้วยคีย์บอร์ด
+                   (`focus-within` สำคัญ: ไม่มีมันแล้วคนที่ใช้ Tab จะกดปุ่มที่มองไม่เห็นไม่ได้เลย)
+                 · นิ้ว — ไม่มี hover ⇒ ต้องเห็นตลอด แต่ย่อเหลือไอคอน + ป้ายสั้น
+              ป้ายเต็มยังอยู่ที่ `title`/`aria-label` เพื่อให้รู้ว่าปุ่มนี้ทำอะไรจริง ๆ */}
           {canSaveExample && out && !note && (msg.body ?? "").trim() !== "" && (
-            <form action={saveAnswerExampleAction}>
+            <form
+              action={saveAnswerExampleAction}
+              className="transition-opacity [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:focus-within:opacity-100 [@media(pointer:fine)]:group-hover:opacity-100"
+            >
               <input type="hidden" name="systemId" value={systemId} />
               <input type="hidden" name="conversationId" value={conversationId} />
               <input type="hidden" name="messageId" value={msg.id} />
-              <button type="submit" className="underline text-[color:var(--color-muted)]">
-                บันทึกเป็นตัวอย่างคำตอบ
+              <button
+                type="submit"
+                title="บันทึกเป็นตัวอย่างคำตอบ"
+                aria-label="บันทึกเป็นตัวอย่างคำตอบ"
+                className="flex items-center gap-1 text-[color:var(--color-muted)]"
+              >
+                <Icon name="bookmark" size="sm" className="size-3.5" />
+                เก็บคำตอบ
               </button>
             </form>
           )}

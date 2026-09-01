@@ -16,10 +16,13 @@
 
 import { Prisma } from "@prisma/client";
 import { requireTenant } from "@/lib/core/context";
+import { guardTranslateEnabled } from "./translate";
 import { tenantDb } from "@/lib/core/db";
 import { assertChatCan } from "./guard";
 import { canAccessConvUnit } from "./service";
 import { parseTags } from "./labels";
+// ชั้นกลาง realtime (WO-CV9) — ไม่มีกุญแจ = คืนทันที ไม่ยิงเน็ต ไม่ throw
+import { publishChat, EV_CHAT_TYPING, TYPING_TTL_MS } from "@/lib/realtime";
 
 type Auth = Awaited<ReturnType<typeof requireTenant>>;
 
@@ -189,6 +192,14 @@ export async function setRoomAutoTranslateAction(
   const room = await openRoom(auth, systemId, conversationId);
   if (!room.ok) return { ok: false, reason: room.reason };
 
+  // 🔴 มติ D19 (สาย G รายงาน): เปิด "แปลอัตโนมัติ" รายห้องได้ทั้งที่ร้านยังไม่เปิดสวิตช์แปลระดับร้าน
+  //    = ปุ่มที่กดแล้วไม่มีอะไรเกิดขึ้นเงียบ ๆ (translateMessage ถูก guard ข้างในทุกครั้ง) ⇒ บอกตรงนี้ก่อน
+  //    ใช้ด่านตัวเดียวกับตัวแปล ไม่พิมพ์เงื่อนไขซ้ำ · ปิด (on=false) ทำได้เสมอ
+  if (on) {
+    const gate = await guardTranslateEnabled(auth.active.tenantId, systemId);
+    if (!gate.ok) return { ok: false, reason: gate.reason };
+  }
+
   const meta = metaObject(room.conv.meta);
   await db(auth.active.tenantId, systemId).chatConversation.updateMany({
     where: { id: conversationId },
@@ -196,6 +207,35 @@ export async function setRoomAutoTranslateAction(
     data: { meta: { ...meta, autoTranslate: on } as Prisma.InputJsonValue },
   });
   return { ok: true, autoTranslate: on };
+}
+
+/**
+ * บอกคนอื่นในทีมว่า "ฉันกำลังพิมพ์อยู่ในห้องนี้" (WO-CV9)
+ *
+ * 🔴 สิ่งที่ส่งออกไปมีแค่ **ใคร · ห้องไหน · หมดอายุเมื่อไหร่** — ห้ามมีเนื้อร่างติดไปเด็ดขาด
+ *    ร่างที่ยังไม่ได้กดส่งคือข้อความส่วนตัวที่สุดที่มีในระบบนี้ (ทีมพิมพ์แล้วลบทิ้งเป็นเรื่องปกติ)
+ * 🔴 มีวันหมดอายุติดไปเสมอ (`TYPING_TTL_MS`) — ไม่มีสัญญาณ "หยุดพิมพ์" ให้พึ่ง
+ *    ปิดแท็บกลางคัน/เน็ตหลุด แล้วสามจุดต้องหายเองที่ฝั่งคนดู
+ * ⚠️ ฝั่งจอ throttle ไว้ไม่ต่ำกว่า `TYPING_PING_MS` — ทุกตัวอักษร = 1 คำขอ คือการยิงตัวเองรัว ๆ
+ *
+ * สิทธิ์: `chat.message.send` (คนที่ดูอย่างเดียวไม่มีทางพิมพ์ ⇒ ไม่มีเหตุให้ประกาศว่ากำลังพิมพ์)
+ * คืน `{ ok:false }` เงียบ ๆ เมื่อผิดพลาด — ตัวบอกสถานะพังต้องไม่ขึ้นข้อความแดงขวางการทำงาน
+ */
+export async function typingAction(
+  systemId: string,
+  conversationId: string,
+): Promise<{ ok: boolean }> {
+  const auth = await requireTenant();
+  assertChatCan(auth, "chat.message.send");
+  if (!systemId || !conversationId) return { ok: false };
+  const room = await openRoom(auth, systemId, conversationId);
+  if (!room.ok) return { ok: false };
+  await publishChat(auth.active.tenantId, systemId, EV_CHAT_TYPING, {
+    conversationId,
+    userId: auth.user.id,
+    until: Date.now() + TYPING_TTL_MS,
+  });
+  return { ok: true };
 }
 
 /**

@@ -1,5 +1,19 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🏁 1 ก.ย. (ดึก) — แชท V2 ครบ 4 รอบ (WO-CV1–CV11 ทั้งหมด) · Fable คุม · Opus 5 สาย A–H
+- **รอบ 4 ปิด**: สาย G realtime (Ably REST ผ่าน fetch · ตัดสินโหมดตอนรัน · payload เหลือตัวชี้ · token route ผ่าน `requireChatRead` ·
+  D15 autoTranslate ขาเข้า · auto-scroll ห้อง) · สาย H ข้อความเสียง (อัด → อัป → กัน capability ก่อน create → API/webhook พา `durationMs`
+  → siamdive2 `BookingChat` เล่นได้ทั้งโหมด shark/dual · LINE = `audio:false` ตามจริง)
+- **ข้อสอบ V2 ครบ 8 ชุด 287 ข้อ เป็นด่าน CI ถาวรแล้ว** · `scripts/pending/` ว่าง · ข้อสอบเก่าขยายแบบ additive 2 จุด (XC-3.2 · CA-4.3)
+- **QC สายตาบน prod** (`visual-qc-chat-v2`): 30/31 → ข้อสุดท้ายแก้ที่ราก `globals.css` (กฎ `border-color` นอก `@layer` ทับ utility ทั้งแอป — D17)
+  · ไม้บรรทัดสายตาแก้ 5 จุดที่วัดผิดเอง (เลือกห้องที่มีของ · พิมพ์ก่อนวัดปุ่มส่ง · svg ของแชท · ปิดเมนูก่อนกด ＋ · shim `__name`)
+- **มติใหม่ D17–D25** ใน `PLAN-CHAT-V2.md` §10 · สถานะทุก WO ใน §9
+- 🔑 **ค้างรอเจ้าของ**: ตั้ง `ABLY_API_KEY` บน Vercel (`docs/REALTIME-SETUP.md` · ไม่ต้อง redeploy · ไม่ตั้ง = polling ใช้ได้ปกติ)
+  · เทสอัดเสียงจริงบนเบราว์เซอร์ (ห้อง WEBCHAT กดไมค์ → อัด → ส่ง → ฟัง) — ยังไม่มีใครพิสูจน์ด้วยเครื่องจริง
+- 🔴 **กับดักที่จดไว้**: `strip()` ในข้อสอบกิน `audio/*`/`image/*` เป็น `/*` (D24 — งานค้างแก้ที่ราก) · `qc-storage.mts` แตะ prod (D25)
+- **คิวถัดไป** (นอกรอบนี้): ลูกค้า subscribe realtime + typing ฝั่งลูกค้า · transcoder webm→m4a ให้ LINE · ลบไฟล์จริงบน Bunny ตอน retention ·
+  ลูกค้าอัดเสียงขาเข้า · ปิด D16 ครึ่งหลัง · ไอคอน pause/stop · หน้าตั้งค่าที่อยู่สาขา (D14) · `strip()` ที่ราก (D24)
+
 ## 🧩 1 ก.ย. (เย็น) — แชท V2 รอบ 3 ปิด (สาย E ห้องแชท+กล่องพิมพ์ · สาย F คอลัมน์บริบท+G11) · Fable ประกอบ
 - **ด่าน**: typecheck 0 · fitness 17/17 · build EXIT=0 · ข้อสอบ V2 **6 ชุดเข้าเป็นด่าน CI ถาวรแล้ว** (list 41 · quickreply 28 ·
   room 42 · composer 37 · icons 35 · context 53) · `qc-chat-inbox-ui` 55/55 · เหลือใน `scripts/pending/` 2 ชุด (realtime · voice = รอบ 4)

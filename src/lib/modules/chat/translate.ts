@@ -160,7 +160,7 @@ async function runTranslate(text: string, targetLang: string): Promise<ProviderR
 }
 
 /** ตั้งค่าของระบบแชท + ด่านสวิตช์ "เปิดใช้การแปล" (ของที่กินเงินร้าน ต้องเปิดเอง) */
-async function guardTranslateEnabled(
+export async function guardTranslateEnabled(
   tenantId: string,
   systemId: string,
 ): Promise<{ ok: true; staffLang: string } | { ok: false; reason: string }> {

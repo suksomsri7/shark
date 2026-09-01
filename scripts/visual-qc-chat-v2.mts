@@ -84,23 +84,27 @@ for (const s of systems) {
 }
 if (!best) { console.log("RESULT NO_CHAT_SYSTEM — ไม่มีระบบแชทให้ดู วัดอะไรไม่ได้"); process.exit(2); }
 
-// 🔴 เลือกห้องที่ "มีของให้วัด" — ต้องมีข้อความขาออก + โน้ตภายใน ไม่งั้น VR-1.2–1.4/1.8/3.4 วัดไม่ได้เลย
-//    (1 ก.ย.: ห้องล่าสุดเป็นห้องทดสอบที่มีแค่ "u" ขาเข้า → 6 ข้อแดงด้วยเหตุผลผิด) · ไม่มีก็ตกไปห้องล่าสุด
+// 🔴 เลือกห้องที่ "มีของให้วัด" — ต้องมีข้อความขาออก ไม่งั้น VR-1.2/1.8/3.4 วัดไม่ได้เลย
+//    (1 ก.ย.: ห้องล่าสุดเป็นห้องทดสอบที่มีแค่ "u" ขาเข้า → 6 ข้อแดงด้วยเหตุผลผิด)
+//    ลำดับ: มีขาออก+โน้ต → มีขาออก → ห้องล่าสุด
+const pick = (where: Record<string, unknown>) =>
+  prisma.chatConversation.findFirst({ where: { systemId: best!.id, ...where }, orderBy: { lastMessageAt: "desc" }, select: { id: true, tenantId: true } });
 const firstConv =
-  (await prisma.chatConversation.findFirst({
-    where: {
-      systemId: best.id,
-      messages: { some: { direction: "OUT", isInternal: false } },
-      AND: [{ messages: { some: { isInternal: true } } }],
-    },
-    orderBy: { lastMessageAt: "desc" },
-    select: { id: true },
-  })) ??
-  (await prisma.chatConversation.findFirst({
-    where: { systemId: best.id },
-    orderBy: { lastMessageAt: "desc" },
-    select: { id: true },
-  }));
+  (await pick({ messages: { some: { direction: "OUT", isInternal: false } }, AND: [{ messages: { some: { isInternal: true } } }] })) ??
+  (await pick({ messages: { some: { direction: "OUT", isInternal: false } } })) ??
+  (await pick({}));
+// 🔴 prod ไม่มี "โน้ตภายใน" สักข้อ (ตรวจ 1 ก.ย.: 0 จาก 43 ขาออก) ⇒ ฟองโน้ตวัดไม่ได้ถ้าไม่มีฉาก
+//    ⇒ แทรกโน้ตทดสอบ 1 แถว **ตรงเข้าตาราง** (ไม่ผ่าน sendReply = ไม่แจ้งเตือน ไม่ขยับ lastMessage ไม่ถึงลูกค้า)
+//    ติดเครื่องหมายไว้ แล้ว **ลบทิ้งตอนจบเสมอ** เหมือน session (ดูท้ายไฟล์) — ไม่ทิ้งขยะไว้ในห้องจริง
+const QC_NOTE_MARK = "[qc-visual2] โน้ตทดสอบไม้บรรทัด — ลบอัตโนมัติ";
+if (firstConv) {
+  const hasNote = await prisma.chatMessage.count({ where: { conversationId: firstConv.id, isInternal: true } });
+  if (hasNote === 0) {
+    await prisma.chatMessage.create({
+      data: { tenantId: firstConv.tenantId, systemId: best.id, conversationId: firstConv.id, direction: "OUT", type: "TEXT", isInternal: true, body: QC_NOTE_MARK, senderName: "QC", deliveryStatus: "SENT" },
+    });
+  }
+}
 const owner = await prisma.membership.findFirst({
   where: { tenantId: best.tenantId, role: "OWNER", acceptedAt: { not: null } },
   include: { user: true },
@@ -148,6 +152,7 @@ try {
       screenshot(o: { path: string; fullPage: boolean }): Promise<unknown>;
       evaluate<T>(fn: (...a: never[]) => T, ...args: unknown[]): Promise<T>;
       click(sel: string): Promise<void>;
+      $(sel: string): Promise<unknown>;
       type(sel: string, text: string): Promise<void>;
       keyboard: { press(key: string): Promise<void> };
       close(): Promise<void>;
@@ -326,7 +331,8 @@ try {
       (() => { const n = Number.parseFloat(d.styles.chip?.["border-radius"] ?? "0"); return n >= 8 && n <= 11; })(),
       j(d.styles.chip));
     chk("VR-1.10", "ไอคอน: viewBox 24 · เส้น 1.7 · ไม่ทาสีทึบ",
-      d.styles.icon?.viewBox === "0 0 24 24" && d.styles.icon?.["stroke-width"] === "1.7" && d.styles.icon?.fill === "none",
+      // getComputedStyle คืน "1.7px" (มีหน่วย) — เทียบตัวเลข ไม่ใช่สตริง (1 ก.ย.: แดงหลอกทั้งที่ค่าถูก)
+      d.styles.icon?.viewBox === "0 0 24 24" && Math.abs(Number.parseFloat(d.styles.icon?.["stroke-width"] ?? "0") - 1.7) < 0.05 && d.styles.icon?.fill === "none",
       j(d.styles.icon));
     chk("VR-1.11", "แบดจ์ช่องทางใหญ่พอให้อ่านออก (19–22px ตาม WO-CV1)",
       (() => { const w = Number(d.styles.badge?.w ?? 0); return w >= 19 && w <= 24; })(), j(d.styles.badge));
@@ -361,7 +367,12 @@ try {
 
     // ปิดเมนู ⋮ ก่อน — ไม่งั้นคลิก ＋ จะไปโดนฉากหลังของเมนู (ปิดเมนูแทนที่จะเปิดแผ่น) ⇒ 0 รายการด้วยเหตุผลผิด
     await desk.keyboard.press("Escape").catch(() => {});
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 300));
+    // ถ้าเมนูไม่ฟัง Escape ให้กดปุ่ม ⋮ ซ้ำเพื่อสลับปิด (toggle) — ตรวจจากจอจริงว่าเมนูหายแล้วก่อนไปต่อ
+    if (await desk.$('[data-qc="room-menu"]').catch(() => null)) {
+      await desk.click('[data-qc="room-menu-button"]').catch(() => {});
+      await new Promise((r) => setTimeout(r, 300));
+    }
     let sheetOpened = false;
     await desk.click('[data-qc="composer-plus"]').then(() => { sheetOpened = true; }).catch(() => {});
     await new Promise((r) => setTimeout(r, 600));
@@ -396,6 +407,8 @@ try {
 } finally {
   // 🔴 กวาดทุกแถวที่ปัก userAgent "qc-visual2" ไม่ใช่เฉพาะของรอบนี้ (รอบที่ล้มกลางทางทิ้ง session ค้างได้)
   const { count: swept } = await prisma.session.deleteMany({ where: { userAgent: "qc-visual2" } });
+  const { count: notes } = await prisma.chatMessage.deleteMany({ where: { body: QC_NOTE_MARK, isInternal: true } });
+  console.log(`ลบโน้ตทดสอบแล้ว ${notes} แถว`);
   const leftover = await prisma.session.count({ where: { userAgent: "qc-visual2" } });
   console.log(`\nลบ session ทดสอบแล้ว ${swept} แถว · เหลือค้าง ${leftover} (ต้องเป็น 0)`);
 }

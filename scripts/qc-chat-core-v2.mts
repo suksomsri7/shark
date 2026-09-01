@@ -333,7 +333,10 @@ try {
     const sent = (sentCalls[0]?.args.data ?? {}) as Row;
     chk("XC-3.1", "แอดมินตอบ → ยิง chat.message.sent 1 event", rep.ok === true && sentCalls.length === 1, "1 event", j({ rep, n: sentCalls.length }));
     const pl = (sent.payload ?? {}) as Row;
-    chk("XC-3.2", "payload ครบตาม §3.4 (7 ฟิลด์ ค่าถูก — body = ข้อความเต็ม ไม่ใช่ preview ที่ถูกตัด)", Object.keys(pl).sort().join(",") === "body,channel,conversationId,externalUserId,messageId,preview,senderName" && pl.conversationId === "conv-1" && pl.messageId === rep.messageId && pl.externalUserId === "guest-1" && pl.channel === "WEBCHAT" && pl.preview === "ได้ครับ เดี๋ยวส่งรายละเอียดให้" && pl.body === "ได้ครับ เดี๋ยวส่งรายละเอียดให้" && pl.senderName === "ทีมงาน SiamDive", "body,channel,conversationId,externalUserId,messageId,preview,senderName ค่าถูก", j(pl));
+    // 🔴 มติ D21 (1 ก.ย.): สัญญา §3.4 = "ต้องมี 7 ฟิลด์นี้ครบ ค่าถูก" ไม่ใช่ "มีได้แค่ 7" — เพิ่มฟิลด์ (type/attachments
+    //    ให้ลูกค้าฟังเสียงได้) เป็น additive ไม่ทำผู้รับ webhook เดิมพัง · ล็อกเซตเป๊ะ = ห้ามต่อยอดสัญญาโดยไม่ตั้งใจ
+    const REQUIRED = ["body", "channel", "conversationId", "externalUserId", "messageId", "preview", "senderName"];
+    chk("XC-3.2", "payload ครบตาม §3.4 (7 ฟิลด์บังคับ ค่าถูก — body = ข้อความเต็ม ไม่ใช่ preview ที่ถูกตัด · เพิ่มฟิลด์ได้)", REQUIRED.every((k) => k in pl) && pl.conversationId === "conv-1" && pl.messageId === rep.messageId && pl.externalUserId === "guest-1" && pl.channel === "WEBCHAT" && pl.preview === "ได้ครับ เดี๋ยวส่งรายละเอียดให้" && pl.body === "ได้ครับ เดี๋ยวส่งรายละเอียดให้" && pl.senderName === "ทีมงาน SiamDive", "body,channel,conversationId,externalUserId,messageId,preview,senderName ค่าถูก", j(pl));
     chk("XC-3.3", "idempotencyKey คนละ namespace กับขาเข้า (chat.msg.*)", typeof sent.idempotencyKey === "string" && !String(sent.idempotencyKey).startsWith("chat.msg.") && String(sent.idempotencyKey).includes(String(rep.messageId)), "ไม่ขึ้นต้น chat.msg. + ผูก messageId", String(sent.idempotencyKey));
     const msgCreateTx = seen("chatMessage.create")[0]?.tx ?? null;
     chk("XC-3.4", "emitOutbox อยู่ทรานแซกชันเดียวกับการเขียนข้อความ", msgCreateTx !== null && sentCalls[0]!.tx === msgCreateTx, "tx เดียวกัน", j({ msgTx: msgCreateTx, evtTx: sentCalls[0]?.tx }));
