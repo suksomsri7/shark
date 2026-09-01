@@ -6,7 +6,7 @@ import * as coupon from "@/lib/modules/coupon/service";
 import * as inventory from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { emitOutbox } from "@/lib/core/outbox";
-import { drainAll } from "@/lib/outbox-consumers";
+import { scheduleDrain } from "@/lib/outbox-consumers";
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
 type Client = PrismaClient | Prisma.TransactionClient;
@@ -220,7 +220,7 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
     // ตัดสต็อกเฉพาะบิลที่มี line ผูก itemId — inventory.consume เปิด tx เอง + โพสต์ COGS หลัง tx
     //   (Dr5000/Cr1200 ผ่าน bridge) จึงทำนอก tx ของบิล = เลี่ยง nested tx
     if (input.lines.some((l) => l.itemId)) await consumeSaleInventory(input.tenantId, input.unitId, result.saleId);
-    void drainAll().catch(() => {}); // post ยอดขาย→บัญชี · cron /api/cron/outbox เก็บตกถ้าล้ม
+    scheduleDrain(); // post ยอดขาย→บัญชี · cron /api/cron/outbox เก็บตกถ้าล้ม
   }
   return result;
 }
@@ -297,7 +297,7 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string)
   });
 
   // best-effort หลัง commit — cron เก็บตกถ้าล้ม
-  void drainAll().catch(() => {});
+  scheduleDrain();
 
   // คืนสต็อก + กลับ COGS (perpetual) — นอก tx (inventory.receive เปิด tx เอง + โพสต์ Dr1200/Cr5000 หลัง tx)
   await restoreVoidedInventory(tenantId, unitId, saleId);

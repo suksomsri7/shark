@@ -2,7 +2,7 @@ import { prisma } from "@/lib/core/db";
 import { Prisma } from "@prisma/client";
 import type { KanbanBoard, KanbanCard, KanbanColumn } from "@prisma/client";
 import { emitOutbox } from "@/lib/core/outbox";
-import { drainAll } from "@/lib/outbox-consumers";
+import { scheduleDrain } from "@/lib/outbox-consumers";
 
 // แจ้งเตือนเมื่อมอบหมายงาน (assignee ตั้งใหม่/เปลี่ยน) — ปิด "โมดูลเงียบ"
 // AppNotification tenant-wide (schema ไม่มี user targeting) → ระบุชื่อผู้รับใน body
@@ -33,7 +33,7 @@ async function notifyAssignment(
       },
     });
   });
-  void drainAll().catch(() => {});
+  scheduleDrain();
 }
 
 // งานของฉัน — การ์ด ACTIVE ที่มอบหมายให้ผู้ใช้ปัจจุบัน ข้ามทุกบอร์ด (เรียงตามกำหนดส่ง)

@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { createContact } from "@/lib/modules/crm/service";
 import { emitOutbox } from "@/lib/core/outbox";
-import { drainAll } from "@/lib/outbox-consumers";
+import { scheduleDrain } from "@/lib/outbox-consumers";
 
 // Form builder v1 (WO-0054) — ฟอร์ม config ได้ + ลิงก์สาธารณะ /f/<token> + submissions → CRM lead
 // scope: FormDef/FormSubmission เป็น tenant-axis → ฝั่งแอปใช้ tenantDb({ tenantId }) ทุก query
@@ -247,7 +247,7 @@ export async function submitPublicForm(
       },
     });
   });
-  void drainAll().catch(() => {});
+  scheduleDrain();
 
   return { id: sub.id };
 }

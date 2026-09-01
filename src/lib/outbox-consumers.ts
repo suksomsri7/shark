@@ -2,6 +2,7 @@
 // ผูก event type → handler · handler อ่านข้อมูลจาก prisma ตรง แล้วส่งให้ pos/account-bridge
 // WO-0002: "pos.sale.paid" (ขายสด→บัญชี) · "pos.sale.voided" (void→กลับรายการ)
 
+import { after } from "next/server";
 import { prisma } from "@/lib/core/db";
 import { drainOutbox, type OutboxHandler } from "@/lib/core/outbox";
 import { bridgePosSalePaid, bridgePosSaleVoided } from "@/lib/modules/pos/account-bridge";
@@ -175,4 +176,29 @@ export const consumers: Record<string, OutboxHandler> = Object.fromEntries(
 
 export async function drainAll() {
   return drainOutbox(consumers);
+}
+
+/**
+ * ระบายคิวหลังตอบ response — ใช้แทน `void drainAll().catch(() => {})` ทุกที่
+ *
+ * 🔴 บั๊กจริงที่เจ้าของเจอ 1 ก.ย. 2026 ("ส่งข้อความไม่ออก"):
+ *    `void drainAll()` เป็น floating promise · บน Vercel แลมบ์ดาถูก **แช่แข็งทันทีที่ response จบ**
+ *    งานที่ยังค้างอยู่จึงถูกตัดกลางคัน ⇒ event ค้างในคิวจนกว่า cron รายชั่วโมงจะมาเก็บ
+ *    วัดจาก prod: ข้อความของทีมหน่วง **557–600 วินาที** กว่าจะถึงลูกค้า (ของเดิมหน่วง 0 วิ)
+ *    กรณีแย่สุด = รอถึงนาทีที่ 0 ของชั่วโมงถัดไป ≈ เกือบ 1 ชม.
+ *
+ * `after()` ของ Next บอกรันไทม์ว่า "ยังมีงานค้าง อย่าเพิ่งตัด" (บน Vercel ผูกกับ waitUntil)
+ * ⇒ ผู้ใช้ไม่ต้องรอ (ไม่ได้ await ก่อนตอบ) แต่ของก็ไม่หาย
+ *
+ * ⚠️ `after()` เรียกได้เฉพาะในบริบทของคำขอ — สคริปต์/ข้อสอบ/cron ที่เรียก service ตรง ๆ
+ *    จะโยน error ⇒ ตกกลับไปใช้แบบเดิมซึ่งใช้ได้ดีนอก serverless
+ */
+export function scheduleDrain(): void {
+  try {
+    after(() => {
+      void drainAll().catch(() => {});
+    });
+  } catch {
+    void drainAll().catch(() => {});
+  }
 }

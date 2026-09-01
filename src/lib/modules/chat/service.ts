@@ -13,7 +13,7 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
-import { drainAll } from "@/lib/outbox-consumers";
+import { scheduleDrain } from "@/lib/outbox-consumers";
 import * as member from "@/lib/modules/member/service";
 import { getAdapter, isSupported, ChannelDeliveryError } from "./adapter";
 import type { ChannelCreds, InboundMessage, OutboundMessage } from "./adapter";
@@ -654,7 +654,7 @@ async function announceInbound(args: {
   }
 
   // drain outbox (automation/webhooks) — fire-and-forget เหมือน POS ให้ event เดินทันที
-  void drainAll().catch(() => {});
+  scheduleDrain();
 }
 
 // ───────────────────────── Inbound ─────────────────────────
@@ -1271,7 +1271,7 @@ export async function sendReply(args: {
   }
 
   // drain outbox (automation/webhooks) — fire-and-forget เหมือนขาเข้า ให้ event เดินทันที
-  if (!isInternal) void drainAll().catch(() => {});
+  if (!isInternal) scheduleDrain();
 
   return failReason
     ? { ok: false, reason: failReason, messageId: msg.id }
@@ -1419,7 +1419,7 @@ export async function receiveExternalReply(args: {
     throw e;
   }
 
-  if (!isInternal) void drainAll().catch(() => {});
+  if (!isInternal) scheduleDrain();
 
   return {
     ok: true,
@@ -1563,7 +1563,7 @@ export async function setStatus(args: {
       unitId: conv.unitId,
     });
   });
-  void drainAll().catch(() => {});
+  scheduleDrain();
   return { ok: true };
 }
 
@@ -1670,7 +1670,7 @@ export async function markRead(args: {
   // 🔴 ปลุกตัวส่ง outbox ทันที — ไม่งั้น event นอนรอ cron รายชั่วโมง
   //    ปลายทางจะเห็นติ๊กคู่ ✓✓ ช้าเป็นชั่วโมง = เท่ากับใช้งานไม่ได้ (เจ้าของเจอจริง 30 ส.ค. 2026)
   //    ทุกจุดที่ emit ในไฟล์นี้ทำแบบเดียวกันหมด (ข้อสอบ CP-5 ล็อกไว้ว่าห้ามลืม)
-  if (hadUnread) void drainAll().catch(() => {});
+  if (hadUnread) scheduleDrain();
 }
 
 // ผูก/ถอด contact เข้ากับสมาชิก (ต้องเชื่อม memberSystemId ก่อน)

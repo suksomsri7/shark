@@ -233,6 +233,9 @@ type Actions = {
   loadNavBadgesAction: (ids?: string[]) => Promise<{ helpUnread: number; aiUnread: number; chatUnread: Record<string, number> }>;
 };
 
+// ตัวกระตุ้นคิวที่ยอมรับได้: `scheduleDrain()` (ท่าใหม่ ห่อ after()) หรือ `drainAll()` (ท่าเดิม)
+const DRAIN_RE = /\b(scheduleDrain|drainAll)\s*\(/;
+
 const CONN_WEB = { id: "conn-web", tenantId: "T1", systemId: "S1", type: "WEBCHAT", displayName: "แชทหน้าเว็บ", status: "CONNECTED", externalAccountId: "webchat", credentials: {}, defaultUnitId: null };
 
 // เครื่องมือถือของทีมงาน 1 เครื่อง — ตัวชี้ขาดว่า "เส้นทาง push เดินถึงจุดยิงจริง" (positive control)
@@ -369,7 +372,7 @@ try {
       // (สไลซ์จาก `prisma.$transaction` ตัวแรกของทั้งไฟล์ = วัดผิดฟังก์ชัน แล้วเขียวแบบผลลวง)
       // ในฟังก์ชันนี้ ระหว่างเปิด `prisma.$transaction(` กับจุดเรียก push ต้องมีบรรทัดปิด tx (`\n  });`)
       // ⚠️ อาร์กิวเมนต์ของฟังก์ชันนี้เป็น object type ที่ปิดด้วย `\n}):` → หา `\n}` เฉย ๆ จะตัดสั้นเกิน
-      //    ต้องเริ่มนับจากปีกกาเปิดของ **ตัวบอดี้** และตรวจว่าตัดครบจริง (ต้องเจอ drainAll ท้ายฟังก์ชัน)
+      //    ต้องเริ่มนับจากปีกกาเปิดของ **ตัวบอดี้** และตรวจว่าตัดครบจริง (ต้องเจอตัวกระตุ้นคิวท้ายฟังก์ชัน)
       const fnStart = CODE.indexOf("async function announceInbound(");
       const bodyAt = fnStart >= 0 ? CODE.indexOf("Promise<void> {", fnStart) : -1;
       const fnEnd = bodyAt >= 0 ? CODE.indexOf("\n}", bodyAt) : -1;
@@ -378,8 +381,8 @@ try {
       const pushAt = FN.search(/sendPushToChatStaff\(/);
       const between = txStart >= 0 && pushAt > txStart ? FN.slice(txStart, pushAt) : "";
       chk("CP-1.15", "ยืนยันจากซอร์สของ announceInbound เอง: จุดเรียก push อยู่หลังบรรทัดปิด $transaction และไม่ใช้ตัวจับ tx",
-        FN.includes("drainAll") && txStart >= 0 && pushAt > txStart && between.includes("\n  });") && !/tx\.[\w.]*sendPushToChatStaff/.test(FN),
-        "ตัดฟังก์ชันได้ครบ (เจอ drainAll) + มีบรรทัดปิด tx คั่นก่อนถึง push", j({ fn: FN.length, whole: FN.includes("drainAll"), txStart, pushAt, closed: between.includes("\n  });") }), "MINOR");
+        DRAIN_RE.test(FN) && txStart >= 0 && pushAt > txStart && between.includes("\n  });") && !/tx\.[\w.]*sendPushToChatStaff/.test(FN),
+        "ตัดฟังก์ชันได้ครบ (เจอตัวกระตุ้นคิว) + มีบรรทัดปิด tx คั่นก่อนถึง push", j({ fn: FN.length, whole: DRAIN_RE.test(FN), txStart, pushAt, closed: between.includes("\n  });") }), "MINOR");
     });
 
     // ═════════ CP-2 · แบดจ์ข้อความค้างที่เมนู (ปิดบั๊ก B9) ═════════
@@ -577,7 +580,10 @@ try {
     // ═════════ CP-5 · emit แล้วต้อง "ปลุกตัวส่ง" ทุกครั้ง ═════════
     //
     // 🔴 กับดักที่เงียบที่สุดในไฟล์นี้ (เจ้าของเจอจริง 30 ส.ค. 2026 — รอบที่สองของเรื่องเดียวกัน):
-    //    `emitOutbox` แค่ **เขียนลงคิว** · ถ้าไม่เรียก `drainAll()` ต่อ event จะนอนรอ cron
+    //    `emitOutbox` แค่ **เขียนลงคิว** · ถ้าไม่กระตุ้นคิวต่อ event จะนอนรอ cron
+    //    🔴 Fable 1 ก.ย. — เลิกล็อกชื่อ `drainAll()` · ของจริงย้ายไป `scheduleDrain()` ซึ่งห่อด้วย
+    //    `after()` ของ Next (บอกรันไทม์ว่ายังมีงานค้าง อย่าเพิ่งตัดแลมบ์ดา) · เจตนาของด่านไม่เปลี่ยน
+    //    แต่ถ้ายังล็อกชื่อเก่า จะบังคับให้กลับไปใช้ท่าที่ทำให้ข้อความหน่วง 10 นาที (บั๊กที่เจ้าของเจอ)
     //    รายชั่วโมง ⇒ ปลายทางเห็นผลช้าเป็นชั่วโมง ซึ่งผู้ใช้อ่านว่า "ไม่ทำงาน"
     //    ไม่มี error ไม่มี log — ข้อสอบที่ mock ตัว drain ไว้ก็ยังเขียว ⇒ ต้องตรวจที่ **ซอร์ส**
     await section("CP-5", "\nCP-5 ทุกจุดที่ยิง event ต้องปลุกตัวส่งทันที:", async () => {
@@ -586,13 +592,13 @@ try {
       const code = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/[^\n]*/g, "$1");
       const fns = code.split(/\nexport async function |\nasync function /).slice(1);
       const offenders = fns
-        .map((f) => ({ name: f.slice(0, f.indexOf("(")), emits: f.includes("emitOutbox("), drains: f.includes("drainAll(") }))
+        .map((f) => ({ name: f.slice(0, f.indexOf("(")), emits: f.includes("emitOutbox("), drains: DRAIN_RE.test(f) }))
         .filter((f) => f.emits && !f.drains)
         .map((f) => f.name);
-      chk("CP-5.1", "🔴 ทุกฟังก์ชันที่ `emitOutbox` ต้องเรียก `drainAll()` ด้วย (ไม่งั้น event ค้างคิว)",
+      chk("CP-5.1", "🔴 ทุกฟังก์ชันที่ `emitOutbox` ต้องกระตุ้นคิวด้วย (scheduleDrain/drainAll) — ไม่งั้น event ค้างคิว",
         offenders.length === 0, "ไม่มีฟังก์ชันที่ลืม", j({ ลืม: offenders }));
       // คู่บวก: ต้องมีฟังก์ชันที่ทำถูกอยู่จริง ไม่ใช่ regex หาอะไรไม่เจอเลยแล้วเขียวลอย ๆ
-      const good = fns.filter((f) => f.includes("emitOutbox(") && f.includes("drainAll(")).length;
+      const good = fns.filter((f) => f.includes("emitOutbox(") && DRAIN_RE.test(f)).length;
       chk("CP-5.2", "🟢 คู่บวก: ตัวตรวจหาฟังก์ชันที่ emit เจอจริง (ไม่ใช่เขียวเพราะหาไม่เจอ)",
         good >= 3, "อย่างน้อย 3 ฟังก์ชัน", j({ ถูกต้อง: good }));
     });
