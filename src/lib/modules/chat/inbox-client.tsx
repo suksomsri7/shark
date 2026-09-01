@@ -28,6 +28,7 @@ import {
   loadInboxAction,
   loadThreadAction,
   type InboxRow,
+  type ThreadMessage,
   type ThreadSnapshot,
 } from "./inbox-actions";
 import {
@@ -133,6 +134,11 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
   const [translatePreview, setTranslatePreview] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
   const [sending, setSending] = useState(false);
+  // 🔴 ฟองชั่วคราวระหว่างรอเซิร์ฟเวอร์ตอบ (เจ้าของสั่ง 1 ก.ย. 2026):
+  //    "ต้องรอสักพักเป็นรูปนาฬิกาว่ากำลังส่ง แล้วถ้าส่งไม่สำเร็จค่อยขึ้นว่าไม่สำเร็จ"
+  //    ของเดิมข้อความหายจากช่องพิมพ์ทันทีแล้วเงียบไปจนกว่ารอบ poll ถัดไปจะดึงมา
+  //    ⇒ ผู้ใช้ไม่รู้ว่ากำลังส่งอยู่หรือหายไปแล้ว · ฟองนี้ใช้ deliveryStatus="PENDING" → 🕐
+  const [pendingMsgs, setPendingMsgs] = useState<ThreadMessage[]>([]);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const attachRef = useRef<HTMLInputElement | null>(null);
@@ -287,6 +293,24 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
     for (const f of files) fd.append("files", f);
 
     const keep = draft;
+    const tempId = `pending-${Date.now()}`;
+    setPendingMsgs((xs) => [
+      ...xs,
+      {
+        id: tempId,
+        direction: "OUT",
+        type: files.length > 0 && !text ? "IMAGE" : "TEXT",
+        body: text || (files.length > 0 ? `กำลังส่งไฟล์ ${files.length} รายการ` : ""),
+        translatedBody: null,
+        translatedLang: null,
+        isInternal,
+        senderUserId: null,
+        deliveryStatus: "PENDING", // → 🕐 "กำลังส่ง" ใน MessageBubble
+        deliveryError: null,
+        createdAt: Date.now(),
+        attachments: [],
+      },
+    ]);
     setDraft("");
     setFiles([]);
     setSuggest(null);
@@ -294,14 +318,30 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
     setOriginalBody(null);
     setTranslatePreview(null);
     startTransition(async () => {
+      let ok = false;
+      let reason: string | null = null;
       try {
-        await sendReplyAction(fd);
+        // 🔴 `sendReplyAction` **คืนผลลัพธ์ ไม่ redirect** แล้ว (แก้ 1 ก.ย. 2026)
+        //    ของเดิมมันจบด้วย redirect() ซึ่ง Next ใช้การ "โยน error" เป็นกลไก
+        //    ⇒ catch ตรงนี้คว้าไปตีความว่าล้ม ทั้งที่ข้อความส่งสำเร็จและขึ้นในห้องแล้ว
+        //    (เจ้าของเจอจริง: จอแดงว่าส่งไม่สำเร็จ + ข้อความเด้งกลับเข้าช่องพิมพ์ = เสี่ยงส่งซ้ำ)
+        const res = await sendReplyAction(fd);
+        ok = res.ok;
+        reason = res.reason ?? null;
       } catch {
-        // redirect ของ server action ถูก Next จัดการเอง — ที่ตกมาถึงนี่คือความผิดพลาดจริง
-        setDraft(keep);
-        setFormErr("ส่งข้อความไม่สำเร็จ — ข้อความที่พิมพ์ไว้ยังอยู่ กดส่งอีกครั้งได้เลย");
+        ok = false;
+        reason = null; // เครือข่ายล่ม/เซิร์ฟเวอร์ไม่ตอบ — ของจริงที่ควรบอกผู้ใช้
       } finally {
         setSending(false);
+        // ฟองชั่วคราวจบหน้าที่แล้ว — ของจริงจะเข้ามาจากรอบ refresh
+        setPendingMsgs((xs) => xs.filter((x) => x.id !== tempId));
+        if (!ok) {
+          // 🔴 คืนข้อความให้ผู้ใช้เฉพาะตอน **ไม่ได้บันทึกจริง** เท่านั้น
+          // คืนร่างให้เฉพาะตอนผู้ใช้ยังไม่พิมพ์อะไรใหม่ทับ — ไม่งั้นจะไปทับสิ่งที่เขากำลังพิมพ์อยู่
+          const backId = activeRef.current;
+          if (backId) setDrafts((d) => (d[backId]?.trim() ? d : { ...d, [backId]: keep }));
+          setFormErr(reason ?? "ส่งข้อความไม่สำเร็จ — ข้อความที่พิมพ์ไว้ยังอยู่ กดส่งอีกครั้งได้เลย");
+        }
         void refreshNow();
       }
     });
@@ -600,7 +640,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
                 ref={listRef}
                 className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto bg-[color:var(--color-surface-2)] px-3 py-2"
               >
-                {thread.messages.length === 0 ? (
+                {thread.messages.length === 0 && pendingMsgs.length === 0 ? (
                   <p className="py-8 text-center text-sm text-[color:var(--color-muted)]">
                     ยังไม่มีข้อความในห้องนี้
                   </p>
@@ -624,6 +664,21 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
                     );
                   })
                 )}
+                {/* ฟองชั่วคราว "กำลังส่ง" — 🕐 จนกว่าของจริงจะเข้ามาจากรอบ refresh
+                    🔴 ไม่ผูกกับ deliveryStatus ของ DB เพราะแถวยังไม่มี · เป็นสถานะฝั่งจอล้วน */}
+                {pendingMsgs.map((m) => (
+                  <div key={m.id} className="flex flex-col opacity-70">
+                    <MessageBubble
+                      systemId={systemId}
+                      conversationId={thread.conversationId}
+                      msg={m}
+                      senderLabel={nameOf(null)}
+                      customerLastReadAt={thread.customerLastReadAt}
+                      canTranslate={false}
+                      canSaveExample={false}
+                    />
+                  </div>
+                ))}
               </div>
 
               {/* ── กล่องพิมพ์ (ติดล่างเสมอ) ── */}

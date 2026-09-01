@@ -232,6 +232,31 @@ try {
   });
 
   // ═════════ IU-7/8 · องค์ประกอบแบบ WhatsApp ═════════
+  // ═════════ IU-11 · เส้นทางกดส่ง (บั๊กจริงที่เจ้าของเจอ 1 ก.ย. 2026 พร้อมภาพหน้าจอ) ═════════
+  section("IU-11", "IU-11 🔴 กดส่งแล้วต้องบอกความจริง (ไม่ใช่ขึ้นแดงทั้งที่ส่งสำเร็จ):", () => {
+    // อาการ: ข้อความส่งสำเร็จและขึ้นในห้องแล้ว แต่จอขึ้น "ส่งข้อความไม่สำเร็จ"
+    //        พร้อมเอาข้อความกลับเข้าช่องพิมพ์ ⇒ ผู้ใช้กดซ้ำ = ข้อความซ้ำ
+    // เหตุ:  `sendReplyAction` จบด้วย `redirect()` ซึ่ง Next ใช้ "การโยน error" เป็นกลไก
+    //        หน้าจอเรียก action ตรง ๆ แล้วครอบ try/catch → catch คว้า error ของ redirect ไปตีความว่าล้ม
+    const sendFn = (() => {
+      const i = ACTIONS.indexOf("export async function sendReplyAction");
+      if (i < 0) return "";
+      const j = ACTIONS.indexOf("\nexport ", i + 10);
+      return ACTIONS.slice(i, j < 0 ? undefined : j);
+    })();
+    chk("IU-11.1", "หา sendReplyAction เจอ (คู่บวกของข้อถัดไป)", sendFn.length > 100, "เจอฟังก์ชัน", `ยาว ${sendFn.length}`);
+    chk("IU-11.2", "🔴 sendReplyAction ต้อง **ไม่** redirect (Next ใช้การโยน error เป็นกลไก → ฝั่งจอตีความว่าล้ม)",
+      !/\bredirect\s*\(/.test(sendFn), "ไม่มี redirect(", "พบ redirect( ในเส้นทางส่ง");
+    chk("IU-11.3", "sendReplyAction คืนผลลัพธ์ให้จอตัดสินเอง (ok/reason)",
+      /Promise<\s*SendReplyResult|:\s*Promise<\{[^}]*ok/.test(sendFn) || /return \{ ok:/.test(sendFn), "คืน { ok, reason }", "ไม่คืนผลลัพธ์");
+    chk("IU-11.4", "จอตัดสินจาก **ค่าที่ได้กลับมา** ไม่ใช่เดาจาก exception อย่างเดียว",
+      /await sendReplyAction\(/.test(INBOX) && /res\.ok|\.ok\b/.test(INBOX), "อ่านค่าที่คืนมา", "ไม่พบการอ่านผลลัพธ์");
+    chk("IU-11.5", "🕐 มีฟองสถานะ 'กำลังส่ง' ระหว่างรอ (เจ้าของสั่ง: ต้องเห็นว่ากำลังส่งอยู่)",
+      /PENDING/.test(INBOX) && /(pendingMsgs|กำลังส่ง)/.test(INBOX), "มีฟองกำลังส่ง", "ไม่มีสถานะกำลังส่ง");
+    chk("IU-11.6", "🕐 ถูกวาดจริงใน bubble เมื่อ deliveryStatus = PENDING",
+      /PENDING/.test(BUBBLE) && /🕐|clock|Clock/.test(BUBBLE), "bubble วาด 🕐", "bubble ไม่มีสัญลักษณ์กำลังส่ง");
+  });
+
   section("IU-7", "IU-7 องค์ประกอบหน้าตาแบบ WhatsApp (มติ W1):", () => {
     chk("IU-7.1", "ติ๊กสถานะส่ง ✓ / ✓✓ / ✗", /✓✓|✓{2}|CheckCheck|DoubleCheck/.test(SCREEN) && /✗|✕|Failed/.test(SCREEN), "มีทั้งชุด", "ไม่ครบ");
     // 🔴 ต้องผูกกับ action จริง — ของเดิมมีสตริง "ลองใหม่อีกครั้ง" เป็น **ข้อความ error** ไม่ใช่ปุ่ม

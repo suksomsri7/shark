@@ -139,7 +139,23 @@ async function uploadReplyFiles(
 }
 
 // ── ส่งข้อความ / รูป / ไฟล์ / โน้ตภายใน ──
-export async function sendReplyAction(formData: FormData) {
+/**
+ * ส่งคำตอบของทีม — **คืนผลลัพธ์ ไม่ redirect**
+ *
+ * 🔴 บั๊กจริงที่เจ้าของเจอ 1 ก.ย. 2026 (มีภาพหน้าจอ):
+ *    ของเดิมจบด้วย `redirect()` ซึ่ง Next ใช้วิธี **โยน error พิเศษ** เป็นกลไก
+ *    หน้าจอใหม่เรียก action นี้ตรง ๆ (ไม่ผ่าน `<form action>`) แล้วครอบด้วย try/catch
+ *    ⇒ catch คว้า error ของ redirect ไปตีความว่า "ส่งไม่สำเร็จ"
+ *    ผลคือ **ข้อความส่งสำเร็จจริงและขึ้นในห้องแล้ว แต่จอขึ้นสีแดงว่าส่งไม่สำเร็จ
+ *    พร้อมเอาข้อความกลับมาใส่ช่องพิมพ์** — ถ้าผู้ใช้กดส่งซ้ำก็จะได้ข้อความซ้ำ
+ *    ⇒ เลิก redirect ทั้งเส้น (ไม่มีใครเรียกผ่านฟอร์มแล้ว) แล้วคืนผลจริงให้หน้าจอตัดสินใจเอง
+ *
+ * 🔴 กติกาที่ต้องรักษา: `ok:false` = **ไม่ได้บันทึก** เท่านั้น
+ *    ส่งออกช่องทางไม่สำเร็จแต่บันทึกแล้ว ให้ดูที่ `ChatMessage.deliveryStatus` (จอแสดง ✗ + ปุ่มลองใหม่)
+ */
+export type SendReplyResult = { ok: boolean; reason?: string; messageId?: string };
+
+export async function sendReplyAction(formData: FormData): Promise<SendReplyResult> {
   const auth = await requireTenant();
   assertChatCan(auth, "chat.message.send");
   const systemId = String(formData.get("systemId") ?? "");
@@ -148,7 +164,8 @@ export async function sendReplyAction(formData: FormData) {
   const originalBody = String(formData.get("originalBody") ?? "");
   const suggestionId = String(formData.get("suggestionId") ?? "").trim();
   const isInternal = String(formData.get("isInternal") ?? "") === "on";
-  if (systemId && conversationId) {
+  if (!systemId || !conversationId) return { ok: false, reason: "ไม่พบบทสนทนา" };
+  {
     const tenantId = auth.active.tenantId;
     // 🔴 อัปโหลดจบก่อน แล้วค่อยเข้าทรานแซกชันของ sendReply
     const attachments = await uploadReplyFiles(tenantId, systemId, conversationId, formData);
@@ -184,10 +201,13 @@ export async function sendReplyAction(formData: FormData) {
           userId: auth.user.id,
         }).catch(() => null);
       }
+      revalidateChat(systemId);
+      return sent.ok
+        ? { ok: true, ...(sent.messageId ? { messageId: sent.messageId } : {}) }
+        : { ok: false, reason: sent.reason ?? "ส่งข้อความไม่สำเร็จ" };
     }
   }
-  revalidateChat(systemId);
-  redirect(chatPath(systemId, conversationId));
+  return { ok: false, reason: "ต้องมีข้อความหรือไฟล์แนบอย่างน้อยหนึ่งอย่าง" };
 }
 
 // ── 🌐 แปลข้อความของลูกค้า (ปุ่ม "แปล" ใต้ฟองข้อความ) ──
