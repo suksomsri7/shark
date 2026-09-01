@@ -212,6 +212,8 @@ try {
         return {
           ok: true,
           text: document.body.innerText,
+          // ข้อความเฉพาะพื้นที่เนื้อหา — sidebar มี "ภาพรวม / เชื่อมช่องทาง" เป็นเมนูซ้ายอยู่แล้ว (ถูกต้อง) ห้ามนับรวม
+          mainText: (document.querySelector("main") as HTMLElement | null)?.innerText ?? document.body.innerText,
           hydrated: Object.keys(document.querySelector("body") ?? {}).some((k) => k.startsWith("__reactFiber$"))
             || !!document.querySelector("textarea, input"),
           overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -423,6 +425,8 @@ try {
     chk("VR-6.1", "🔴 มือถือ: ไม่มีชื่อหน้า/คำอธิบาย \"ระบบรวม Chat\" และไม่มี <h1> เหนือรายการ", !/ระบบรวม Chat/.test(sh.text) && !sh.hasH1, `h1=${sh.hasH1} · text มี 'ระบบรวม Chat'=${/ระบบรวม Chat/.test(sh.text)}`);
     chk("VR-6.2", "🔴 มือถือ: แถบบนของแอป (☰ ชื่อกิจการ) ซ่อนบนหน้าแชท", !sh.topbarVisible, `topbarVisible=${sh.topbarVisible}`);
     chk("VR-6.3", "🔴 มือถือ: ปุ่ม ☰ ของรายการอยู่บนสุดของจอ (top ≤ 24px)", sh.menuTop >= 0 && sh.menuTop <= 24, `menuTop=${sh.menuTop}px listTop=${sh.listTop}px`);
+    // ถ่ายรายการมือถือก่อนกด ☰ (ภาพนี้ใช้เทียบตากับ ref-mobile จอ 1)
+    await phone.screenshot({ path: `${OUT}/chat-v2-mobile-list.png`, fullPage: false }).catch(() => {});
     let drawerOpened = false;
     await phone.click('[data-qc="app-menu"]').then(() => { drawerOpened = true; }).catch(() => {});
     await new Promise((r) => setTimeout(r, 600));
@@ -431,7 +435,9 @@ try {
       : false;
     chk("VR-6.4", "🔴 มือถือ: กด ☰ ในแถบแชทแล้ว drawer ของแอปเปิดจริง (ทางเดินไปโมดูลอื่นไม่หาย)", drawerVisible, `กดได้=${drawerOpened} · drawer=${drawerVisible}`);
     // เดสก์ท็อป: ชื่อหน้า/แท็บต้องหายเหมือนกัน (sidebar+แถบบนยังอยู่ — ไม่วัดที่นี่ วัดจาก d)
-    chk("VR-6.5", "🔴 เดสก์ท็อป: ไม่มี \"ระบบรวม Chat\" และไม่มีแท็บ ภาพรวม/เชื่อมช่องทาง เหนือกล่องแชท", !/ระบบรวม Chat/.test(d.text) && !/ภาพรวม\s*เชื่อมช่องทาง/.test(d.text.replace(/\n/g, " ")), d.text.slice(0, 120).replace(/\n/g, " | "));
+    // 🔴 วัดจาก main เท่านั้น — รอบแรกวัดจาก body แล้วไปเจอเมนูซ้าย "แชทลูกค้า ▸ ภาพรวม / เชื่อมช่องทาง" (ซึ่งต้องมี) = แดงหลอก
+    const mt = (d as unknown as { mainText?: string }).mainText ?? d.text;
+    chk("VR-6.5", "🔴 เดสก์ท็อป: พื้นที่เนื้อหาไม่มี \"ระบบรวม Chat\" และไม่มีแท็บ ภาพรวม/เชื่อมช่องทาง เหนือกล่องแชท", !/ระบบรวม Chat/.test(mt) && !/ภาพรวม\s*เชื่อมช่องทาง/.test(mt.replace(/\n/g, " ")), mt.slice(0, 120).replace(/\n/g, " | "));
     await phone.close();
   } finally {
     await browser.close();

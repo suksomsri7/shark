@@ -1,5 +1,15 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## ✂️ 1 ก.ย. (ค่ำ) — WO-CV12 หน้าแชท "แบบตัด" ขึ้น prod แล้ว (`ddf1a29`) · เจ้าของเคาะจากภาพข้อเสนอ 2 ใบ
+- **มือถือ**: หัวแอป "☰ SIAM DIVE CENTER" + ชื่อหน้า + แท็บ หายหมด · แถบ `☰ · แชทลูกค้า · กรวย · ⋮` เป็นหัวจอ (= จอ 1 แบบร่าง) ·
+  ☰ ในแถบเปิด drawer ของแอปผ่าน CustomEvent `app:drawer-open` (โมดูลแชทไม่ import shell) · orb AI ซ่อนบนหน้าแชท <lg (D26)
+- **เดสก์ท็อป**: ตัดชื่อหน้า/แท็บ · คงแถบบน + sidebar · กล่องแชทชิดใต้แถบบน (+17% พื้นที่)
+- "เชื่อมช่องทาง" → เมนู ⋮ ของรายการ (+ คำตอบสำเร็จรูป `#quick-replies` · ห้องที่ปิดแล้ว · จัดการการเชื่อมระบบ เมื่อหลายสาขา) ·
+  ไม่ใส่ "ตั้งค่าแชท" เพราะชี้หน้าเดียวกัน (D27) · `chatTabs()` คงไว้ให้เมนูซ้าย
+- **ด่าน**: `qc-chat-v2-shell` 26/26 (ใหม่) · qc:all **181/181** · visual QC **36/36** (VR-6 กด ☰ จริงบนมือถือ → drawer เปิด)
+- 🔴 ไม้บรรทัดที่วัดผิดแล้วแก้: VR-6.2 ใช้ `offsetParent` กับ element fixed (เขียวฟรี — D28) · VR-6.5 นับเมนูซ้ายเป็นแท็บ (ต้องวัดจาก `main`)
+- ภาพข้อเสนอที่เคาะ: `docs/design/chat-v2/proposal-mobile-header.png` · `proposal-desktop-header.png`
+
 ## 🏁 1 ก.ย. (ดึก) — แชท V2 ครบ 4 รอบ (WO-CV1–CV11 ทั้งหมด) · Fable คุม · Opus 5 สาย A–H
 - **รอบ 4 ปิด**: สาย G realtime (Ably REST ผ่าน fetch · ตัดสินโหมดตอนรัน · payload เหลือตัวชี้ · token route ผ่าน `requireChatRead` ·
   D15 autoTranslate ขาเข้า · auto-scroll ห้อง) · สาย H ข้อความเสียง (อัด → อัป → กัน capability ก่อน create → API/webhook พา `durationMs`
