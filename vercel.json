@@ -11,5 +11,6 @@
   ],
   "regions": [
     "sin1"
-  ]
+  ],
+  "buildCommand": "bash scripts/vercel-build.sh"
 }

@@ -16,9 +16,19 @@ migration ทั้ง 2 ตัว **additive ล้วน** (ADD COLUMN แบ�
 ⚠️ ขอบเขตของหลักฐาน: endpoint ข้างบนยิงได้หลังแก้เท่านั้น — สภาพ "ก่อน" พิสูจน์จากการรัน
 `receiveWebchatInbound` ยิง DB ตัว prod ตรง ๆ ไม่ใช่จาก endpoint เดียวกัน
 
-🔴 **ตัวจริงที่ต้องทำต่อ (ยังไม่ได้ทำ)**: ทำให้ "โค้ดถูก deploy แต่ DB ยังไม่ถูก migrate" **ฟ้องเอง**
-ตอนนี้ไม่มีอะไรกันเลย — รอบนี้รอดเพราะบังเอิญรัน `qc:all` แล้วเห็นชุดที่ต่อ DB จริงตาย
-เสนอ: ด่านใหม่ที่เรียก `migrate status` แล้วแดงถ้ามี migration ค้าง + ให้ CI รันหลัง deploy
+### ✅ ปิดรากแล้ว (เจ้าของสั่ง "ควรทำให้เสร็จ") — 2 ชั้น
+**ทำไม CI ไม่เคยเห็น**: CI สร้าง Neon branch ของตัวเองแล้ว `migrate deploy` บนนั้น ⇒ ข้อสอบเขียวเสมอ
+แม้ prod จะตกรุ่น · `pnpm drift` ก็รันบน branch นั้นเหมือนกัน — **ไม่มีอะไรเคยมองไปที่ prod เลย**
+1. **`scripts/vercel-build.sh`** (ตั้งใน `vercel.json` → `buildCommand`) — `VERCEL_ENV=production` ⇒
+   `prisma migrate deploy` → `migrate status` → `next build` · **migrate ไม่ผ่าน = build แดง = โค้ดใหม่ไม่ขึ้น**
+   ⇒ "deploy โค้ด" กับ "apply DB" เป็นขั้นเดียวกันแล้ว ไม่พึ่งความจำคน
+   · preview ข้าม (env DB ผูก production เท่านั้น) · migration ต้อง additive (โค้ดเก่ายังเสิร์ฟระหว่าง build)
+   · ทดสอบจริงบนเครื่องด้วย `VERCEL_ENV=production bash scripts/vercel-build.sh` ก่อน push
+2. **`scripts/qc-migrate-status.mts`** — เข้า `qc:all` อัตโนมัติ · วัด DB ที่ `.env` ชี้ (เครื่อง dev = prod):
+   MS-1 ไม่มี migration ค้าง · MS-2 ไม่มี drift (`migrate diff`) · **MS-3 ไม่มี DB URL = แดง ไม่ใช่ข้าม**
+   · standalone ไม่ import `src/` (ต้องทำงานได้แม้ src พังจากคอลัมน์ที่หาย)
+   · **positive control ครบ**: migration ปลอมค้าง → MS-1 แดงพร้อมชื่อ · ไม่มี URL → MS-3 แดง
+🔴 ข้อจำกัดที่ยังเหลือ: ชั้น 2 บน CI ยังวัด branch ไม่ใช่ prod (โดยธรรมชาติของ CI) — ตัวที่กัน prod จริงคือชั้น 1
 
 ### 🔴 แชทบน prod ดับตั้งแต่ 10:50 น. วันนี้ โดยไม่มีอะไรฟ้อง
 commit `e71aaf5` (schema รอบ 4 ของสาย A) ถูก push → Vercel deploy → **Prisma client บน prod รู้จัก
