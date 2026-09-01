@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<style>
+  :root{
+    --ink:#0f172a; --muted:#71767f; --line:#e8e9ed; --surface:#fff; --surface2:#f4f5f7;
+    --accent:#1d4ed8; --out:#e9eefc; --wall:#f3f4f7; --note:#fffaed; --note-line:#ecd9a4; --note-ink:#8a6414;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+  body{font-family:'Noto Sans Thai','Sarabun',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--ink);background:#dcdfe6}
+  .stage{display:flex;gap:26px;padding:26px;align-items:flex-start}
+  .phone{width:390px;height:844px;background:var(--surface);border-radius:24px;overflow:hidden;
+    display:flex;flex-direction:column;box-shadow:0 10px 34px rgba(0,0,0,.15)}
+  .cap{font-size:12px;color:#4b5563;margin:0 0 8px 2px;font-weight:700}
+  svg.i{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  svg.i.sm{width:15px;height:15px;stroke-width:1.9}
+  svg.i.lg{width:24px;height:24px}
+
+  .status{height:32px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-size:12.5px;font-weight:700;color:#0f172a}
+  .hdr{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .hdr h1{font-size:17.5px;font-weight:700;letter-spacing:-.015em;flex:1;padding-left:4px}
+  .icobtn{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#3f4652;flex:none}
+  .icobtn.act{background:var(--surface2)}
+
+  .search{margin:8px 12px 6px;height:36px;border-radius:10px;background:var(--surface2);display:flex;align-items:center;
+    gap:8px;padding:0 11px;color:#9ca2ac;font-size:14px}
+  .chips{display:flex;gap:6px;padding:2px 12px 8px;overflow:hidden}
+  .chip{font-size:12.5px;padding:5px 10px;border-radius:8px;background:var(--surface2);color:#4b5563;white-space:nowrap;
+    display:flex;align-items:center;gap:5px}
+  .chip.on{background:var(--ink);color:#fff;font-weight:600}
+  .chip .n{opacity:.6}
+
+  .list{flex:1;overflow:hidden}
+  .row{display:flex;gap:11px;padding:9px 12px;align-items:center;position:relative}
+  .row+.row::before{content:"";position:absolute;left:66px;right:0;top:0;height:1px;background:var(--line)}
+  .row.on{background:#f1f5ff}
+  .av{width:46px;height:46px;border-radius:14px;background:#e3e6eb;flex:none;display:grid;place-items:center;
+    font-size:16px;font-weight:700;color:#59606c;position:relative}
+  .badge{position:absolute;right:-3px;bottom:-3px;width:19px;height:19px;border-radius:7px;
+    border:2px solid #fff;display:grid;place-items:center;color:#fff}
+  .badge svg{width:11px;height:11px;stroke-width:2.1}
+  .b-line{background:#06c755}.b-web{background:#1d4ed8}.b-app{background:#0f172a}
+  .b-wa{background:#25d366}.b-ig{background:#d6249f}.b-tt{background:#0f0f14}.b-ms{background:#0084ff}
+  .meta{flex:1;min-width:0}
+  .r1{display:flex;align-items:baseline;gap:8px}
+  .nm{font-size:15px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    display:flex;align-items:center;gap:5px}
+  .tm{font-size:11.5px;color:var(--muted);flex:none}
+  .tm.unr{color:var(--accent);font-weight:700}
+  .r2{display:flex;align-items:center;gap:7px;margin-top:2px}
+  .pv{flex:1;min-width:0;font-size:13.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    display:flex;align-items:center;gap:5px}
+  .pv b{color:#3f4652;font-weight:600}
+  .cnt{min-width:20px;height:20px;border-radius:7px;background:var(--accent);color:#fff;font-size:11.5px;
+    font-weight:700;display:grid;place-items:center;padding:0 6px;flex:none}
+  .who-tag{font-size:11px;color:#8b919b}
+  .sect{font-size:11.5px;font-weight:700;color:var(--muted);padding:11px 12px 5px;display:flex;align-items:center;gap:6px}
+
+  .thdr{display:flex;align-items:center;gap:8px;padding:7px 8px;border-bottom:1px solid var(--line)}
+  .thdr .av{width:37px;height:37px;border-radius:12px;font-size:14px}
+  .thdr .badge{width:16px;height:16px;border-radius:6px}.thdr .badge svg{width:9px;height:9px}
+  .tinfo{flex:1;min-width:0}
+  .tname{font-size:15.5px;font-weight:700;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tsub{font-size:11.5px;color:var(--muted);margin-top:1px;display:flex;align-items:center;gap:5px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dot{width:6px;height:6px;border-radius:50%;background:#22c55e;flex:none}
+  .wall{flex:1;background:var(--wall);padding:10px 10px 6px;overflow:hidden;
+    background-image:radial-gradient(rgba(15,23,42,.045) 1px,transparent 1px);background-size:20px 20px}
+  .day{display:flex;justify-content:center;margin:4px 0 12px}
+  .day span{font-size:11px;color:#5b616b;background:rgba(255,255,255,.92);padding:3px 12px;border-radius:8px;
+    box-shadow:0 1px 2px rgba(0,0,0,.05)}
+  .grp{display:flex;flex-direction:column;margin-bottom:10px}
+  .grp.me{align-items:flex-end}
+  .who{font-size:11.5px;color:var(--muted);margin:0 8px 3px;font-weight:600}
+  .bub{max-width:76%;padding:7px 11px 5px;border-radius:14px;font-size:14.5px;line-height:1.44;
+    box-shadow:0 1px 1.5px rgba(15,23,42,.08);margin-bottom:2px}
+  .them .bub{background:#fff;border-top-left-radius:4px}
+  .me .bub{background:var(--out);border-top-right-radius:4px}
+  .grp .bub:not(:first-of-type){border-radius:14px}
+  .stamp{float:right;margin:6px 0 -1px 10px;font-size:10.5px;color:#8b919b;display:inline-flex;align-items:center;gap:3px}
+  .stamp svg{width:14px;height:14px;stroke-width:2.2}
+  .tick{color:var(--accent)} .tick.one{color:#a3a8b1} .tick.wait{color:#a3a8b1}
+  .bub.note{background:var(--note);border:1px solid var(--note-line);max-width:86%}
+  .notetag{font-size:10.5px;color:var(--note-ink);font-weight:700;display:flex;align-items:center;gap:4px;margin-bottom:3px}
+  .notetag svg{width:12px;height:12px;stroke-width:2.1}
+  .typing{display:flex;gap:4px;align-items:center;background:#fff;border-radius:14px;border-top-left-radius:4px;
+    padding:11px 14px;box-shadow:0 1px 1.5px rgba(15,23,42,.08);width:fit-content}
+  .typing i{width:6px;height:6px;border-radius:50%;background:#c6cad1;display:block}
+  .typing i:nth-child(2){background:#b2b7bf}.typing i:nth-child(3){background:#9ea4ad}
+  /* ข้อความเสียง */
+  .voice{display:flex;align-items:center;gap:9px;min-width:180px}
+  .play{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;flex:none}
+  .play svg{width:13px;height:13px;fill:currentColor;stroke:none}
+  .wave{flex:1;display:flex;align-items:center;gap:2px;height:22px}
+  .wave i{width:2.5px;border-radius:2px;background:#9fb0dd;display:block}
+  .vt{font-size:11px;color:#6b7280}
+  /* รูปภาพ */
+  .photo{width:200px;height:132px;border-radius:11px;background:linear-gradient(135deg,#c9d6ea,#e6ecf5);
+    display:grid;place-items:center;color:#8b96a8;margin:-2px -4px 2px}
+
+  .comp{border-top:1px solid var(--line);padding:8px 8px 11px;background:var(--surface)}
+  .cbar{display:flex;align-items:flex-end;gap:7px}
+  .rnd{width:36px;height:36px;border-radius:11px;background:var(--surface2);display:grid;place-items:center;
+    color:#4b5563;flex:none}
+  .field{flex:1;min-height:36px;border-radius:11px;background:var(--surface2);display:flex;align-items:center;
+    padding:8px 12px;font-size:14.5px;color:#9ca2ac}
+  .field.filled{color:var(--ink)}
+  .send{width:36px;height:36px;border-radius:11px;background:var(--accent);color:#fff;display:grid;place-items:center;flex:none;
+    box-shadow:0 2px 8px rgba(29,78,216,.3)}
+  .send.off{background:#e4e6ea;color:#a9aeb7;box-shadow:none}
+  .comp.noteon{background:var(--note);border-top-color:var(--note-line)}
+  .comp.noteon .field{background:#fff5df;color:var(--note-ink)}
+  .comp.noteon .rnd{background:#fff5df;color:var(--note-ink)}
+  .noteflag{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--note-ink);font-weight:600;margin-bottom:7px}
+  .noteflag svg{width:13px;height:13px;stroke-width:2.1}
+  .hint{font-size:11px;color:var(--muted);margin-top:6px}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:16px 16px 0 0;
+    box-shadow:0 -6px 26px rgba(0,0,0,.17);padding:8px 10px 18px}
+  .grab{width:36px;height:4px;border-radius:2px;background:#dfe2e7;margin:2px auto 14px}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 4px}
+  .gi{display:flex;flex-direction:column;align-items:center;gap:7px;padding:6px 2px}
+  .gic{width:50px;height:50px;border-radius:15px;background:var(--surface2);display:grid;place-items:center;color:#3f4652}
+  .gic.hot{background:#eaf0fe;color:var(--accent)}
+  .gt{font-size:11px;color:#4b5563;text-align:center;line-height:1.25}
+  .scrim{position:absolute;inset:0;background:rgba(15,23,42,.3)}
+  .rel{position:relative;flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+  .pop{position:absolute;right:8px;top:50px;background:#fff;border-radius:13px;box-shadow:0 10px 30px rgba(15,23,42,.22);
+    padding:5px;width:228px;z-index:5;border:1px solid var(--line)}
+  .pi{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;font-size:14px;color:#1f2937}
+  .pi.dz{color:#b91c1c}
+  .psep{height:1px;background:var(--line);margin:4px 8px}
+
+  .desk{width:1240px;height:790px;background:#fff;border-radius:14px;overflow:hidden;display:flex;
+    box-shadow:0 10px 34px rgba(0,0,0,.15)}
+  .dcol1{width:335px;border-right:1px solid var(--line);display:flex;flex-direction:column}
+  .dcol2{flex:1;display:flex;flex-direction:column;min-width:0}
+  .dcol3{width:280px;border-left:1px solid var(--line);padding:15px;background:#fbfbfc;overflow:hidden}
+  .dsec{font-size:11px;font-weight:700;color:var(--muted);margin:15px 0 7px;letter-spacing:.03em}
+  .dcard{border:1px solid var(--line);border-radius:11px;padding:10px 12px;background:#fff;font-size:13px}
+  .kv{display:flex;justify-content:space-between;padding:3.5px 0;font-size:12.5px;color:#4b5563}
+  .kv b{font-weight:600;color:var(--ink)}
+  .tag{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;padding:4px 9px;border-radius:8px;
+    background:var(--surface2);color:#4b5563;margin:0 4px 5px 0}
+  .qr{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:8px 10px;border:1px solid var(--line);
+    border-radius:9px;margin-bottom:6px;color:#374151}
+</style></head>
+<body>
+
+<svg style="display:none">
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M4.5 12 20 5l-4 15-4.5-6.5L4.5 12Z"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.4"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/><path d="m4 17 5-4.5 4.5 4 3-2.5L20 17"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="M18 8.5 10 16.5a3.2 3.2 0 0 1-4.5-4.5l8.5-8.5a2.2 2.2 0 0 1 3 3l-8 8a1.2 1.2 0 0 1-1.7-1.7l7.2-7.2"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s6.5-6.2 6.5-10.5A6.5 6.5 0 0 0 5.5 10.5C5.5 14.8 12 21 12 21Z"/><circle cx="12" cy="10.5" r="2.3"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5 14.4 9l5.6.5-4.3 3.8 1.3 5.7L12 16l-5 3 1.3-5.7L4 9.5 9.6 9 12 3.5Z"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.6 3.6 5.5 3.6 8.5S14.4 18.4 12 20.5c-2.4-2.1-3.6-5-3.6-8.5S9.6 6.1 12 3.5Z"/></symbol>
+  <symbol id="i-quick" viewBox="0 0 24 24"><path d="M20 15.5a2.5 2.5 0 0 1-2.5 2.5H8l-4 3V6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5Z"/><path d="M8.5 9h7M8.5 12.5h4.5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2.2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+  <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6.5 4h11a1 1 0 0 1 1 1v15l-6.5-4-6.5 4V5a1 1 0 0 1 1-1Z"/></symbol>
+  <symbol id="i-belloff" viewBox="0 0 24 24"><path d="M8 8a4 4 0 0 1 8 0c0 5 2 6 2 6H6s2-1 2-6ZM10 20h4M4 4l16 16"/></symbol>
+  <symbol id="i-userplus" viewBox="0 0 24 24"><circle cx="10" cy="8" r="3.5"/><path d="M3.5 20c0-3.6 2.9-5.5 6.5-5.5s6.5 1.9 6.5 5.5M19 7v6M22 10h-6"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-5.5 6.5-5.5s6.5 1.9 6.5 5.5M16 5.4a3.4 3.4 0 0 1 0 6.4M18 14.8c2.2.6 3.5 2.3 3.5 5.2"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M4 11V5a1 1 0 0 1 1-1h6l9 9-7 7-9-9Z"/><circle cx="8" cy="8" r="1.3"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
+  <symbol id="i-check2" viewBox="0 0 24 24"><path d="m2 12.5 4 4L14.5 8M9.5 16.5l1 1L20 8"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-checkcircle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.5 2.5 4.5-5"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3.5 13.7 9 19 10.5 13.7 12 12 17.5 10.3 12 5 10.5 10.3 9 12 3.5ZM18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5-11-6.5Z"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8.5 11V5.5a1.6 1.6 0 0 1 3.2 0V11m0-1.5a1.6 1.6 0 0 1 3.2 0V12m0-1a1.6 1.6 0 0 1 3.2 0v4.5c0 3.3-2.4 5.5-5.6 5.5s-5.6-2.2-5.6-5.5v-3a1.6 1.6 0 0 1 3.2 0"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16l-6 7v6l-4-2v-4L4 6Z"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3.5 5v4.5H8"/><path d="M12 8v4.3l2.8 1.7"/></symbol>
+  <!-- ช่องทาง (ย่อให้อ่านออกในขนาด 11px) -->
+  <symbol id="c-line" viewBox="0 0 24 24"><path d="M20 10.4c0-3.8-3.8-6.9-8.4-6.9S3.2 6.6 3.2 10.4c0 3.4 3 6.2 7.1 6.8.9.2.9.6.8 1.2l-.2 1.3c0 .4-.2 1 .9.6 1.1-.5 6-3.5 8.2-6.1"/></symbol>
+  <symbol id="c-wa" viewBox="0 0 24 24"><path d="M4 20l1.3-4A8 8 0 1 1 8 18.7L4 20Z"/><path d="M9.2 9.4c.4 2.2 2.4 4.2 4.6 4.6"/></symbol>
+  <symbol id="c-web" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.6 3.6 5.5 3.6 8.5S14.4 18.4 12 20.5c-2.4-2.1-3.6-5-3.6-8.5S9.6 6.1 12 3.5Z"/></symbol>
+  <symbol id="c-app" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.6"/><path d="M10.5 18.5h3"/></symbol>
+  <symbol id="c-ig" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="16.8" cy="7.2" r=".9" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="c-tt" viewBox="0 0 24 24"><path d="M14 3.5v11.2a3.6 3.6 0 1 1-3.6-3.6"/><path d="M14 3.5c.5 2.4 2.3 4 4.8 4.2"/></symbol>
+  <symbol id="c-ms" viewBox="0 0 24 24"><path d="M12 3.5c-4.8 0-8.5 3.5-8.5 8 0 2.5 1.2 4.7 3.1 6.1v3.4l2.9-1.6c.8.2 1.6.3 2.5.3 4.8 0 8.5-3.5 8.5-8s-3.7-8.2-8.5-8.2Z"/><path d="m7.5 13.5 3-3.2 2.2 2.2 3.3-2.9-3.1 3.4-2.2-2.2-3.2 2.7Z"/></symbol>
+</svg>
+
+<div class="stage" id="s1">
+ <div>
+  <p class="cap">1 · รายการแชท — ไอคอนเส้นบางชุดเดียวทั้งระบบ</p>
+  <div class="phone">
+    <div class="status"><span>09:41</span><span>▮▮▮ ⌁ ▰</span></div>
+    <div class="hdr">
+      <div class="icobtn"><svg class="i"><use href="#i-menu"/></svg></div>
+      <h1>แชทลูกค้า</h1>
+      <div class="icobtn"><svg class="i"><use href="#i-filter"/></svg></div>
+      <div class="icobtn act"><svg class="i"><use href="#i-more"/></svg></div>
+    </div>
+    <div class="search"><svg class="i sm"><use href="#i-search"/></svg><span>ค้นหาชื่อ เบอร์ หรือข้อความ</span></div>
+    <div class="chips">
+      <div class="chip on">ทั้งหมด</div>
+      <div class="chip">ยังไม่อ่าน<span class="n">7</span></div>
+      <div class="chip">ของฉัน<span class="n">2</span></div>
+      <div class="chip">ยังไม่มีคนรับ<span class="n">5</span></div>
+    </div>
+    <div class="list">
+      <div class="sect"><svg class="i sm"><use href="#i-bookmark"/></svg>ปักหมุด</div>
+      <div class="row">
+        <div class="av">ก<div class="badge b-line"><svg><use href="#c-line"/></svg></div></div>
+        <div class="meta">
+          <div class="r1"><div class="nm">คุณกานต์ · ทริปสิมิลัน</div><div class="tm unr">09:38</div></div>
+          <div class="r2"><div class="pv">ขอเลขบัญชีโอนมัดจำหน่อยครับ</div><div class="cnt">2</div></div>
+        </div>
+      </div>
+      <div class="sect">วันนี้</div>
+      <div class="row">
+        <div class="av">ณ<div class="badge b-web"><svg><use href="#c-web"/></svg></div></div>
+        <div class="meta">
+          <div class="r1"><div class="nm">ณัฐพล</div><div class="tm unr">09:12</div></div>
+          <div class="r2"><div class="pv">ทริป 3 วัน 2 คืน ยังมีที่ว่างไหมครับ</div><div class="cnt">1</div></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="av">S<div class="badge b-wa"><svg><use href="#c-wa"/></svg></div></div>
+        <div class="meta">
+          <div class="r1"><div class="nm">Sarah M.</div><div class="tm">08:47</div></div>
+          <div class="r2"><div class="pv"><b>คุณ:</b> Sure! I'll send the itinerary…</div>
+            <svg class="i sm tick one"><use href="#i-check2"/></svg></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="av">ม<div class="badge b-app"><svg><use href="#c-app"/></svg></div></div>
+        <div class="meta">
+          <div class="r1"><div class="nm">มานพ <span style="font-weight:500;color:#8b919b;font-size:12px">สมาชิกทอง</span></div><div class="tm">08:20</div></div>
+          <div class="r2"><div class="pv"><svg class="i sm"><use href="#i-image"/></svg>รูปภาพ</div><div class="who-tag">มุก รับเรื่อง</div></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="av">อ<div class="badge b-ms"><svg><use href="#c-ms"/></svg></div></div>
+        <div class="meta">
+          <div class="r1"><div class="nm">อรุณี</div><div class="tm">07:55</div></div>
+          <div class="r2"><div class="pv"><svg class="i sm"><use href="#i-mic"/></svg>ข้อความเสียง 0:12</div></div>
+        </div>
+      </div>
+      <div class="sect">เมื่อวาน</div>
+      <div class="row">
+        <div class="av">ป<div class="badge b-ig"><svg><use href="#c-ig"/></svg></div></div>
+        <div class="meta">
+          <div class="r1"><div class="nm">ploy.dive</div><div class="tm">18:02</div></div>
+          <div class="r2"><div class="pv">ขอบคุณมากค่ะ</div><svg class="i sm" style="color:#c3c7ce"><use href="#i-belloff"/></svg></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="av">T<div class="badge b-tt"><svg><use href="#c-tt"/></svg></div></div>
+        <div class="meta">
+          <div class="r1"><div class="nm">tonnam_x</div><div class="tm">16:44</div></div>
+          <div class="r2"><div class="pv">คอร์ส Open Water ราคาเท่าไหร่</div>
+            <svg class="i sm" style="color:#c3c7ce"><use href="#i-checkcircle"/></svg></div>
+        </div>
+      </div>
+    </div>
+  </div>
+ </div>
+
+ <div>
+  <p class="cap">2 · ห้องแชท — จัดกลุ่ม · รูป · เสียง · กำลังพิมพ์ · โน้ตภายใน</p>
+  <div class="phone">
+    <div class="status"><span>09:41</span><span>▮▮▮ ⌁ ▰</span></div>
+    <div class="rel">
+      <div class="thdr">
+        <div class="icobtn"><svg class="i"><use href="#i-back"/></svg></div>
+        <div class="av">ณ<div class="badge b-web"><svg><use href="#c-web"/></svg></div></div>
+        <div class="tinfo">
+          <div class="tname">ณัฐพล</div>
+          <div class="tsub"><span class="dot"></span>กำลังดูหน้า ทริปสิมิลัน</div>
+        </div>
+        <div class="icobtn"><svg class="i"><use href="#i-search"/></svg></div>
+        <div class="icobtn act"><svg class="i"><use href="#i-more"/></svg></div>
+      </div>
+      <div class="wall">
+        <div class="day"><span>วันนี้</span></div>
+        <div class="grp them">
+          <div class="bub">สวัสดีครับ ทริป 3 วัน 2 คืน ยังมีที่ว่างไหมครับ<span class="stamp">09:10</span></div>
+          <div class="bub">ไปกัน 2 คนครับ<span class="stamp">09:12</span></div>
+        </div>
+        <div class="grp me">
+          <div class="who">มุก · ทีมงาน</div>
+          <div class="bub">สวัสดีครับ รอบ 12–14 ก.ย. ยังว่าง 4 ที่ครับ
+            <span class="stamp">09:14 <svg class="i sm tick"><use href="#i-check2"/></svg></span></div>
+          <div class="bub" style="padding:5px 5px 4px">
+            <div class="photo"><svg class="i lg"><use href="#i-image"/></svg></div>
+            <span class="stamp" style="margin-right:6px">09:15 <svg class="i sm tick"><use href="#i-check2"/></svg></span></div>
+        </div>
+        <div class="grp them">
+          <div class="bub" style="padding:8px 12px 6px">
+            <div class="voice">
+              <div class="play"><svg><use href="#i-play"/></svg></div>
+              <div class="wave"><i style="height:6px"></i><i style="height:12px"></i><i style="height:18px"></i><i style="height:22px"></i><i style="height:14px"></i><i style="height:9px"></i><i style="height:16px"></i><i style="height:20px"></i><i style="height:11px"></i><i style="height:7px"></i><i style="height:13px"></i><i style="height:17px"></i><i style="height:8px"></i></div>
+              <span class="vt">0:12</span>
+            </div>
+            <span class="stamp">09:16</span></div>
+        </div>
+        <div class="grp me">
+          <div class="bub note"><span class="notetag"><svg><use href="#i-lock"/></svg>โน้ตภายใน · ลูกค้าไม่เห็น</span>เช็คกับพี่เอกแล้วว่าเรือยังไม่เต็ม<span class="stamp">09:17</span></div>
+        </div>
+        <div class="grp them"><div class="typing"><i></i><i></i><i></i></div></div>
+      </div>
+      <div class="comp">
+        <div class="cbar">
+          <div class="rnd"><svg class="i"><use href="#i-plus"/></svg></div>
+          <div class="field">พิมพ์ข้อความ…</div>
+          <div class="rnd"><svg class="i"><use href="#i-mic"/></svg></div>
+          <div class="send off"><svg class="i"><use href="#i-send"/></svg></div>
+        </div>
+      </div>
+    </div>
+  </div>
+ </div>
+
+ <div>
+  <p class="cap">3 · เมนู ⋮ (ซ้าย) และโหมดโน้ตภายใน — กล่องเปลี่ยนสีทั้งกล่อง</p>
+  <div class="phone">
+    <div class="status"><span>09:41</span><span>▮▮▮ ⌁ ▰</span></div>
+    <div class="rel">
+      <div class="thdr">
+        <div class="icobtn"><svg class="i"><use href="#i-back"/></svg></div>
+        <div class="av">ณ<div class="badge b-web"><svg><use href="#c-web"/></svg></div></div>
+        <div class="tinfo"><div class="tname">ณัฐพล</div>
+          <div class="tsub"><span class="dot"></span>กำลังดูหน้า ทริปสิมิลัน</div></div>
+        <div class="icobtn"><svg class="i"><use href="#i-search"/></svg></div>
+        <div class="icobtn act"><svg class="i"><use href="#i-more"/></svg></div>
+      </div>
+      <div class="pop">
+        <div class="pi"><svg class="i"><use href="#i-hand"/></svg>รับเรื่องเอง</div>
+        <div class="pi"><svg class="i"><use href="#i-users"/></svg>มอบหมายให้…</div>
+        <div class="pi"><svg class="i"><use href="#i-tag"/></svg>ติดป้ายกำกับ</div>
+        <div class="pi"><svg class="i"><use href="#i-bookmark"/></svg>ปักหมุดห้องนี้</div>
+        <div class="psep"></div>
+        <div class="pi"><svg class="i"><use href="#i-globe"/></svg>แปลอัตโนมัติในห้องนี้</div>
+        <div class="pi"><svg class="i"><use href="#i-belloff"/></svg>ปิดเสียงแจ้งเตือน</div>
+        <div class="psep"></div>
+        <div class="pi"><svg class="i"><use href="#i-moon"/></svg>พักไว้</div>
+        <div class="pi dz"><svg class="i"><use href="#i-checkcircle"/></svg>ปิดบทสนทนา</div>
+      </div>
+      <div class="wall">
+        <div class="day"><span>วันนี้</span></div>
+        <div class="grp them"><div class="bub">ทริป 3 วัน 2 คืน ยังมีที่ว่างไหมครับ<span class="stamp">09:10</span></div></div>
+        <div class="grp me"><div class="bub">รอบ 12–14 ก.ย. ยังว่าง 4 ที่ครับ
+          <span class="stamp">09:14 <svg class="i sm tick"><use href="#i-check2"/></svg></span></div></div>
+      </div>
+      <div class="comp noteon">
+        <div class="noteflag"><svg><use href="#i-lock"/></svg>โหมดโน้ตภายใน — ลูกค้าจะไม่เห็นข้อความนี้</div>
+        <div class="cbar">
+          <div class="rnd"><svg class="i"><use href="#i-plus"/></svg></div>
+          <div class="field filled">เช็คกับพี่เอกแล้วว่าเรือยังไม่เต็ม</div>
+          <div class="send"><svg class="i"><use href="#i-send"/></svg></div>
+        </div>
+      </div>
+    </div>
+  </div>
+ </div>
+
+ <div>
+  <p class="cap">4 · แผ่นเครื่องมือ ＋ (ครบ 8 อย่างในที่เดียว)</p>
+  <div class="phone">
+    <div class="status"><span>09:41</span><span>▮▮▮ ⌁ ▰</span></div>
+    <div class="rel">
+      <div class="thdr">
+        <div class="icobtn"><svg class="i"><use href="#i-back"/></svg></div>
+        <div class="av">ณ<div class="badge b-web"><svg><use href="#c-web"/></svg></div></div>
+        <div class="tinfo"><div class="tname">ณัฐพล</div>
+          <div class="tsub"><span class="dot"></span>กำลังดูหน้า ทริปสิมิลัน</div></div>
+        <div class="icobtn"><svg class="i"><use href="#i-search"/></svg></div>
+        <div class="icobtn"><svg class="i"><use href="#i-more"/></svg></div>
+      </div>
+      <div class="wall">
+        <div class="day"><span>วันนี้</span></div>
+        <div class="grp them"><div class="bub">ทริป 3 วัน 2 คืน ยังมีที่ว่างไหมครับ<span class="stamp">09:10</span></div></div>
+        <div class="grp me"><div class="bub">กำลังส่งตารางเดินทางให้นะครับ
+          <span class="stamp">09:16 <svg class="i sm tick wait"><use href="#i-clock"/></svg></span></div></div>
+      </div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="grid">
+          <div class="gi"><div class="gic"><svg class="i lg"><use href="#i-image"/></svg></div><div class="gt">รูปภาพ</div></div>
+          <div class="gi"><div class="gic"><svg class="i lg"><use href="#i-camera"/></svg></div><div class="gt">ถ่ายรูป</div></div>
+          <div class="gi"><div class="gic"><svg class="i lg"><use href="#i-clip"/></svg></div><div class="gt">ไฟล์</div></div>
+          <div class="gi"><div class="gic"><svg class="i lg"><use href="#i-pin"/></svg></div><div class="gt">แผนที่ร้าน</div></div>
+          <div class="gi"><div class="gic hot"><svg class="i lg"><use href="#i-sparkle"/></svg></div><div class="gt">AI ช่วยร่าง</div></div>
+          <div class="gi"><div class="gic hot"><svg class="i lg"><use href="#i-globe"/></svg></div><div class="gt">แปลก่อนส่ง</div></div>
+          <div class="gi"><div class="gic"><svg class="i lg"><use href="#i-quick"/></svg></div><div class="gt">คำตอบสำเร็จรูป</div></div>
+          <div class="gi"><div class="gic"><svg class="i lg"><use href="#i-lock"/></svg></div><div class="gt">โน้ตภายใน</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+ </div>
+</div>
+
+<div class="stage" id="s2">
+ <div>
+  <p class="cap">5 · เดสก์ท็อป 3 คอลัมน์ — รายการ | ห้องแชท | บริบทลูกค้า</p>
+  <div class="desk">
+    <div class="dcol1">
+      <div class="hdr"><h1>แชทลูกค้า</h1>
+        <div class="icobtn"><svg class="i"><use href="#i-filter"/></svg></div>
+        <div class="icobtn act"><svg class="i"><use href="#i-more"/></svg></div></div>
+      <div class="search"><svg class="i sm"><use href="#i-search"/></svg><span>ค้นหาชื่อ เบอร์ หรือข้อความ</span></div>
+      <div class="chips">
+        <div class="chip on">ทั้งหมด</div><div class="chip">ยังไม่อ่าน<span class="n">7</span></div>
+        <div class="chip">ของฉัน<span class="n">2</span></div><div class="chip">ยังไม่มีคนรับ<span class="n">5</span></div>
+      </div>
+      <div class="list">
+        <div class="sect"><svg class="i sm"><use href="#i-bookmark"/></svg>ปักหมุด</div>
+        <div class="row">
+          <div class="av">ก<div class="badge b-line"><svg><use href="#c-line"/></svg></div></div>
+          <div class="meta"><div class="r1"><div class="nm">คุณกานต์ · ทริปสิมิลัน</div><div class="tm unr">09:38</div></div>
+          <div class="r2"><div class="pv">ขอเลขบัญชีโอนมัดจำหน่อยครับ</div><div class="cnt">2</div></div></div>
+        </div>
+        <div class="sect">วันนี้</div>
+        <div class="row on">
+          <div class="av">ณ<div class="badge b-web"><svg><use href="#c-web"/></svg></div></div>
+          <div class="meta"><div class="r1"><div class="nm">ณัฐพล</div><div class="tm unr">09:12</div></div>
+          <div class="r2"><div class="pv">ทริป 3 วัน 2 คืน ยังมีที่ว่างไหมครับ</div><div class="cnt">1</div></div></div>
+        </div>
+        <div class="row">
+          <div class="av">S<div class="badge b-wa"><svg><use href="#c-wa"/></svg></div></div>
+          <div class="meta"><div class="r1"><div class="nm">Sarah M.</div><div class="tm">08:47</div></div>
+          <div class="r2"><div class="pv"><b>คุณ:</b> Sure! I'll send the itinerary…</div>
+            <svg class="i sm tick one"><use href="#i-check2"/></svg></div></div>
+        </div>
+        <div class="row">
+          <div class="av">ม<div class="badge b-app"><svg><use href="#c-app"/></svg></div></div>
+          <div class="meta"><div class="r1"><div class="nm">มานพ <span style="font-weight:500;color:#8b919b;font-size:12px">สมาชิกทอง</span></div><div class="tm">08:20</div></div>
+          <div class="r2"><div class="pv"><svg class="i sm"><use href="#i-image"/></svg>รูปภาพ</div><div class="who-tag">มุก รับเรื่อง</div></div></div>
+        </div>
+        <div class="row">
+          <div class="av">อ<div class="badge b-ms"><svg><use href="#c-ms"/></svg></div></div>
+          <div class="meta"><div class="r1"><div class="nm">อรุณี</div><div class="tm">07:55</div></div>
+          <div class="r2"><div class="pv"><svg class="i sm"><use href="#i-mic"/></svg>ข้อความเสียง 0:12</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dcol2">
+      <div class="thdr" style="padding:9px 12px">
+        <div class="av">ณ<div class="badge b-web"><svg><use href="#c-web"/></svg></div></div>
+        <div class="tinfo"><div class="tname">ณัฐพล</div>
+          <div class="tsub"><span class="dot"></span>กำลังดูหน้า ทริปสิมิลัน · ยังไม่มีผู้รับผิดชอบ</div></div>
+        <div class="chip" style="background:#eaf0fe;color:var(--accent);font-weight:600">
+          <svg class="i sm"><use href="#i-hand"/></svg>รับเรื่องเอง</div>
+        <div class="icobtn"><svg class="i"><use href="#i-search"/></svg></div>
+        <div class="icobtn act"><svg class="i"><use href="#i-more"/></svg></div>
+      </div>
+      <div class="wall" style="padding:14px 18px">
+        <div class="day"><span>วันนี้</span></div>
+        <div class="grp them">
+          <div class="bub" style="max-width:60%">สวัสดีครับ ทริป 3 วัน 2 คืน ยังมีที่ว่างไหมครับ<span class="stamp">09:10</span></div>
+          <div class="bub" style="max-width:60%">ไปกัน 2 คนครับ<span class="stamp">09:12</span></div>
+        </div>
+        <div class="grp me">
+          <div class="who">มุก · ทีมงาน</div>
+          <div class="bub" style="max-width:60%">สวัสดีครับ รอบ 12–14 ก.ย. ยังว่าง 4 ที่ครับ
+            <span class="stamp">09:14 <svg class="i sm tick"><use href="#i-check2"/></svg></span></div>
+          <div class="bub" style="max-width:60%">ห้อง Deluxe คู่ 24,900 บาท/ท่าน รวมดำน้ำ 10 ไดฟ์
+            <span class="stamp">09:14 <svg class="i sm tick"><use href="#i-check2"/></svg></span></div>
+        </div>
+        <div class="grp them">
+          <div class="bub" style="padding:8px 12px 6px">
+            <div class="voice"><div class="play"><svg><use href="#i-play"/></svg></div>
+              <div class="wave"><i style="height:6px"></i><i style="height:12px"></i><i style="height:18px"></i><i style="height:22px"></i><i style="height:14px"></i><i style="height:9px"></i><i style="height:16px"></i><i style="height:20px"></i><i style="height:11px"></i><i style="height:7px"></i><i style="height:13px"></i><i style="height:17px"></i></div>
+              <span class="vt">0:12</span></div>
+            <span class="stamp">09:16</span></div>
+        </div>
+        <div class="grp me">
+          <div class="bub note" style="max-width:66%"><span class="notetag"><svg><use href="#i-lock"/></svg>โน้ตภายใน · ลูกค้าไม่เห็น</span>เช็คกับพี่เอกแล้วว่าเรือยังไม่เต็ม<span class="stamp">09:17</span></div>
+        </div>
+        <div class="grp them"><div class="typing"><i></i><i></i><i></i></div></div>
+      </div>
+      <div class="comp" style="padding:9px 14px 12px">
+        <div class="chips" style="padding:0 0 8px">
+          <div class="chip" style="background:#eaf0fe;color:var(--accent);font-weight:600"><svg class="i sm"><use href="#i-sparkle"/></svg>AI ร่างคำตอบ</div>
+          <div class="chip"><svg class="i sm"><use href="#i-quick"/></svg>คำตอบสำเร็จรูป</div>
+          <div class="chip"><svg class="i sm"><use href="#i-globe"/></svg>แปลก่อนส่ง</div>
+          <div class="chip"><svg class="i sm"><use href="#i-lock"/></svg>โน้ตภายใน</div>
+        </div>
+        <div class="cbar">
+          <div class="rnd"><svg class="i"><use href="#i-plus"/></svg></div>
+          <div class="field filled">รอบ 12–14 ก.ย. ยังว่าง 4 ที่ครับ ถ้าสนใจผมกันที่ไว้ให้ก่อนได้เลย</div>
+          <div class="send"><svg class="i"><use href="#i-send"/></svg></div>
+        </div>
+        <div class="hint">Enter = ส่ง · Shift+Enter = ขึ้นบรรทัดใหม่ · พิมพ์ / เพื่อเรียกคำตอบสำเร็จรูป</div>
+      </div>
+    </div>
+
+    <div class="dcol3">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px 0 2px">
+        <div class="av" style="width:60px;height:60px;border-radius:18px;font-size:22px">ณ
+          <div class="badge b-web" style="width:22px;height:22px;border-radius:8px"><svg style="width:13px;height:13px"><use href="#c-web"/></svg></div></div>
+        <div style="font-size:15.5px;font-weight:700">ณัฐพล</div>
+        <div style="font-size:12px;color:var(--muted)">เว็บ · ไทย · ยังไม่ผูกสมาชิก</div>
+        <div class="chip" style="background:#eaf0fe;color:var(--accent);font-weight:600">
+          <svg class="i sm"><use href="#i-userplus"/></svg>ผูกกับสมาชิก</div>
+      </div>
+      <div class="dsec">บริบทตอนนี้</div>
+      <div class="dcard">
+        <div class="kv"><span>กำลังดูหน้า</span><b>ทริปสิมิลัน</b></div>
+        <div class="kv"><span>เข้ามาจาก</span><b>Google</b></div>
+        <div class="kv"><span>ทักครั้งแรก</span><b>วันนี้ 09:10</b></div>
+        <div class="kv"><span>ตอบครั้งแรกใน</span><b style="color:#15803d">4 นาที</b></div>
+      </div>
+      <div class="dsec">ป้ายกำกับ</div>
+      <div>
+        <span class="tag"><svg class="i sm"><use href="#i-tag"/></svg>สนใจทริป</span>
+        <span class="tag"><svg class="i sm"><use href="#i-tag"/></svg>รอโอนมัดจำ</span>
+        <span class="tag" style="color:#9ca2ac"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่ม</span>
+      </div>
+      <div class="dsec">คำตอบที่ทีมใช้บ่อยกับคำถามนี้</div>
+      <div class="qr"><svg class="i sm"><use href="#i-quick"/></svg>ราคาทริปสิมิลัน 3 วัน 2 คืน…</div>
+      <div class="qr"><svg class="i sm"><use href="#i-quick"/></svg>เลขบัญชีสำหรับโอนมัดจำ…</div>
+      <div class="dsec">ประวัติ</div>
+      <div class="dcard" style="color:var(--muted);display:flex;align-items:center;gap:8px">
+        <svg class="i sm"><use href="#i-history"/></svg>ยังไม่เคยจอง — ทักครั้งแรกวันนี้</div>
+    </div>
+  </div>
+ </div>
+</div>
+
+</body></html>
