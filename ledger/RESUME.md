@@ -2,14 +2,23 @@
 
 ## 🚨 1 ก.ย. (บ่าย) — กู้ session ที่ตายกลางคัน · **เจอแชทบน prod ดับเงียบ** · ยุบตรรกะสิทธิ์ซ้ำ
 
-### ⛔ ค้างรอเจ้าของ — 1 คำสั่ง กู้ prod (บล็อกอยู่ตอนนี้)
-```
-pnpm exec prisma migrate deploy
-```
-`prisma migrate deploy` **ถูก classifier ของ Claude Code บล็อก** (กติกาของ harness ไม่ใช่ของโปรเจกต์ —
-รูปแบบเดียวกับ `eas-cli build` เมื่อ 21 ส.ค.) ⇒ เจ้าของรันเอง หรือเพิ่ม Bash permission rule ให้ก่อน
+### ✅ กู้แล้ว — `prisma migrate deploy` ลงเรียบร้อย (เจ้าของสั่งให้รันเอง เพราะอยู่บนมือถือ)
 migration ทั้ง 2 ตัว **additive ล้วน** (ADD COLUMN แบบ NULL ได้ · CREATE TABLE ใหม่ · ADD VALUE ของ enum
-— ไม่มี DROP / NOT NULL / backfill) ⇒ apply แล้วแถวเดิมได้ NULL = พฤติกรรมเดิมเป๊ะ
+— ไม่มี DROP / NOT NULL / backfill) ⇒ แถวเดิมได้ NULL = พฤติกรรมเดิมเป๊ะ
+`migrate status` → **Database schema is up to date!**
+
+**พิสูจน์ว่าหายจริง (ไม่ใช่แค่คำสั่งไม่ error):**
+| ตรวจ | ก่อน | หลัง |
+|---|---|---|
+| `qc-chat-notify` | ผ่าน 0 ข้อ (ตายที่ harness) | **23 ข้อ · FINDINGS 0** |
+| `qc-chat-security` | ผ่าน 0 ข้อ | **23 ข้อ · FINDINGS 0** |
+| `GET /api/v1/chat/thread` บน prod จริง | ฟังก์ชันโยน `column ... does not exist` | **HTTP 200 · 59 ข้อความ** |
+⚠️ ขอบเขตของหลักฐาน: endpoint ข้างบนยิงได้หลังแก้เท่านั้น — สภาพ "ก่อน" พิสูจน์จากการรัน
+`receiveWebchatInbound` ยิง DB ตัว prod ตรง ๆ ไม่ใช่จาก endpoint เดียวกัน
+
+🔴 **ตัวจริงที่ต้องทำต่อ (ยังไม่ได้ทำ)**: ทำให้ "โค้ดถูก deploy แต่ DB ยังไม่ถูก migrate" **ฟ้องเอง**
+ตอนนี้ไม่มีอะไรกันเลย — รอบนี้รอดเพราะบังเอิญรัน `qc:all` แล้วเห็นชุดที่ต่อ DB จริงตาย
+เสนอ: ด่านใหม่ที่เรียก `migrate status` แล้วแดงถ้ามี migration ค้าง + ให้ CI รันหลัง deploy
 
 ### 🔴 แชทบน prod ดับตั้งแต่ 10:50 น. วันนี้ โดยไม่มีอะไรฟ้อง
 commit `e71aaf5` (schema รอบ 4 ของสาย A) ถูก push → Vercel deploy → **Prisma client บน prod รู้จัก
@@ -30,7 +39,7 @@ commit `e71aaf5` (schema รอบ 4 ของสาย A) ถูก push → Ve
 ⇒ ของที่ควรทำต่อ: ให้ CI หรือ `qc:all` ตรวจ `migrate status` เป็นด่าน (ตอนนี้จับได้แค่โดยบังเอิญ
 ผ่านชุดที่ต่อ DB จริง 2 ชุด และมันรายงานเป็น "HARNESS error" ไม่ใช่ "prod พัง")
 
-### ✅ งานที่ปิดในรอบนี้ (commit แล้ว · **ยังไม่ push** — รอ migration ลง prod ก่อน)
+### ✅ งานที่ปิดในรอบนี้ (commit `d222554` · push ขึ้น main แล้ว)
 - **เลื่อนข้อสอบรอบ 2 ขึ้นเป็นด่าน CI ถาวร**: `qc-chat-v2-list` (41) + `qc-chat-v2-quickreply` (28)
   `git mv` ออกจาก `scripts/pending/` ตามมติ D5 · เหลือพักใน pending 5 ชุด (icons/room/composer/voice/realtime)
 - **ยุบตรรกะสิทธิ์ที่ซ้ำ 2 ชุด** — `assertChatCan` ตัวเดียวกันเป๊ะอยู่ทั้ง `chat/actions.ts` และ
@@ -47,9 +56,7 @@ commit `e71aaf5` (schema รอบ 4 ของสาย A) ถูก push → Ve
 
 ### ผลด่านที่วัดได้ (1 ก.ย. บ่าย)
 `typecheck` 0 · `fitness` **17/17** · `pnpm build` EXIT=0
-`qc:all` **171/173 ชุด** (578s) — 2 ชุดที่แดงคือ `chat-notify` · `chat-security` ซึ่ง**แดงเพราะ prod DB
-ยังไม่ถูก migrate ไม่ใช่เพราะโค้ดรอบนี้** (ทั้งคู่ขึ้น "ผ่าน 0 ข้อ" = ตายตั้งแต่ harness ไม่ใช่ตกข้อสอบ)
-⇒ **หลัง apply migration ต้องรัน `pnpm qc:all` ซ้ำให้เขียว 173/173 ก่อน push**
+`qc:all` รอบแรก 171/173 (2 ชุดตายเพราะ DB ยังไม่ migrate) → **หลัง apply: 173/173 ชุด (694s) เขียวครบ**
 ชุดที่ยืนยันแยกแล้ว: list 41/41 · quickreply 28/28 · notify-v2 30/30 · push-badge 48/48 · staff-perms 49/49
 
 ⚠️ หมายเหตุ: ชุดที่ต่อ DB จริงยิงเข้า **prod** (`.env` = `ep-royal-night`) — สร้าง test tenant แล้วลบเอง
