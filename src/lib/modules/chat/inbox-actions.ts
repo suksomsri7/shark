@@ -31,6 +31,7 @@ import {
 import { CHANNEL_ORDER } from "./channel-icon";
 import { listSystemTags, parseTags } from "./labels";
 import { searchAnswerExamples, type AnswerExampleHit } from "./learning";
+import { langLabelTh } from "./translate";
 import {
   EMPTY_COUNTS,
   previewKindOf,
@@ -861,7 +862,8 @@ export async function getConversationContextAction(
     channel: conv.channel,
     title: conv.contact.displayName ?? conv.contact.phone ?? "ลูกค้า",
     phone: conv.contact.phone,
-    lang: metaString(conv.meta, "lang"),
+    // แสดงเป็นชื่อภาษาไทย ("ไทย" ไม่ใช่ "th") — ใช้ทะเบียนเดียวกับตัวแปล (translate.ts) ไม่พิมพ์ซ้ำ
+    lang: ((c) => (c ? langLabelTh(c) : null))(metaString(conv.meta, "lang")),
     pageUrl: metaString(conv.meta, "pageUrl"),
     referrer: metaString(conv.meta, "source") ?? metaString(conv.meta, "referrer"),
     customerId,

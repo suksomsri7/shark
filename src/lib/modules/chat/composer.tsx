@@ -372,17 +372,17 @@ export function ChatComposer(props: ChatComposerProps) {
 
       {/* ── ชิปทางลัดของเดสก์ท็อป (แบบร่าง `.dcol2 .comp .chips`) — มือถือใช้แผ่น ＋ แทน ── */}
       <div className="mb-2 hidden flex-wrap gap-1.5 lg:flex">
-        {canSuggest && (
-          <button
-            type="button"
-            onClick={onSuggest}
-            disabled={busy}
-            className="flex items-center gap-1.5 rounded-lg bg-[#eaf0fe] px-2.5 py-1 text-[12.5px] font-semibold text-[color:var(--color-accent)] disabled:opacity-50"
-          >
-            <Icon name="sparkle" size="sm" />
-            AI ร่างคำตอบ
-          </button>
-        )}
+        {/* แบบร่างมี 4 ชิปเสมอ — ยังไม่เปิดใช้ = ปุ่มปิด + บอกที่เปิด (กติกาเดียวกับแผ่น ＋) ไม่ซ่อนจนไม่รู้ว่ามีฟีเจอร์ */}
+        <button
+          type="button"
+          onClick={onSuggest}
+          disabled={!canSuggest || busy}
+          title={canSuggest ? undefined : "เปิดใช้ AI ช่วยร่างได้ที่หน้า “เชื่อมช่องทาง”"}
+          className="flex items-center gap-1.5 rounded-lg bg-[#eaf0fe] px-2.5 py-1 text-[12.5px] font-semibold text-[color:var(--color-accent)] disabled:opacity-50"
+        >
+          <Icon name="sparkle" size="sm" />
+          AI ร่างคำตอบ
+        </button>
         <button
           type="button"
           onClick={openQuickReplyMenu}
@@ -391,17 +391,16 @@ export function ChatComposer(props: ChatComposerProps) {
           <Icon name="quick" size="sm" />
           คำตอบสำเร็จรูป
         </button>
-        {canTranslate && (
-          <button
-            type="button"
-            onClick={onTranslate}
-            disabled={busy || draft.trim() === ""}
-            className="flex items-center gap-1.5 rounded-lg bg-[color:var(--color-surface-2)] px-2.5 py-1 text-[12.5px] text-[#4b5563] disabled:opacity-50"
-          >
+        <button
+          type="button"
+          onClick={onTranslate}
+          disabled={!canTranslate || busy || draft.trim() === ""}
+          title={canTranslate ? undefined : "เปิดใช้การแปลได้ที่หน้า “เชื่อมช่องทาง”"}
+          className="flex items-center gap-1.5 rounded-lg bg-[color:var(--color-surface-2)] px-2.5 py-1 text-[12.5px] text-[#4b5563] disabled:opacity-50"
+        >
             <Icon name="globe" size="sm" />
             แปลก่อนส่ง
           </button>
-        )}
         <button
           type="button"
           onClick={() => onToggleInternal(!isInternal)}
@@ -502,10 +501,11 @@ export function ChatComposer(props: ChatComposerProps) {
           type="button"
           data-qc="composer-mic"
           onClick={() => onRecordStart?.()}
+          // มติ D13 (1 ก.ย.): ไมค์อยู่ในแถบ **ทุกจอ** (แบบร่างเดสก์ท็อปเรนเดอร์ใหม่แล้ว) — ไม่มีช่องที่ 9 ในแผ่น ＋
           disabled={!onRecordStart}
           aria-label="อัดข้อความเสียง"
           title={onRecordStart ? undefined : "การอัดข้อความเสียงจะเปิดใช้ในรุ่นถัดไป"}
-          className={`grid size-9 shrink-0 place-items-center rounded-[11px] disabled:opacity-45 lg:hidden ${
+          className={`grid size-9 shrink-0 place-items-center rounded-[11px] disabled:opacity-45 ${
             isInternal
               ? "bg-[#fff5df] text-[color:var(--color-note-ink)]"
               : "bg-[color:var(--color-surface-2)] text-[#4b5563]"
@@ -531,7 +531,8 @@ export function ChatComposer(props: ChatComposerProps) {
         </button>
       </div>
 
-      <p className="mt-1.5 text-[11px] text-[color:var(--color-muted)]">{HINT}</p>
+      {/* แบบร่างมือถือไม่มีบรรทัดนี้ — "Enter = ส่ง" ไม่มีความหมายกับคีย์บอร์ดมือถือ ⇒ โชว์ตั้งแต่ sm ขึ้นไป */}
+      <p className="mt-1.5 hidden text-[11px] text-[color:var(--color-muted)] sm:block">{HINT}</p>
       <p className="sr-only">แนบไฟล์ได้ไม่เกิน {mb(maxAttachmentBytes)} ต่อไฟล์</p>
     </div>
   );

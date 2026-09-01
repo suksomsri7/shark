@@ -84,11 +84,23 @@ for (const s of systems) {
 }
 if (!best) { console.log("RESULT NO_CHAT_SYSTEM — ไม่มีระบบแชทให้ดู วัดอะไรไม่ได้"); process.exit(2); }
 
-const firstConv = await prisma.chatConversation.findFirst({
-  where: { systemId: best.id },
-  orderBy: { lastMessageAt: "desc" },
-  select: { id: true },
-});
+// 🔴 เลือกห้องที่ "มีของให้วัด" — ต้องมีข้อความขาออก + โน้ตภายใน ไม่งั้น VR-1.2–1.4/1.8/3.4 วัดไม่ได้เลย
+//    (1 ก.ย.: ห้องล่าสุดเป็นห้องทดสอบที่มีแค่ "u" ขาเข้า → 6 ข้อแดงด้วยเหตุผลผิด) · ไม่มีก็ตกไปห้องล่าสุด
+const firstConv =
+  (await prisma.chatConversation.findFirst({
+    where: {
+      systemId: best.id,
+      messages: { some: { direction: "OUT", isInternal: false } },
+      AND: [{ messages: { some: { isInternal: true } } }],
+    },
+    orderBy: { lastMessageAt: "desc" },
+    select: { id: true },
+  })) ??
+  (await prisma.chatConversation.findFirst({
+    where: { systemId: best.id },
+    orderBy: { lastMessageAt: "desc" },
+    select: { id: true },
+  }));
 const owner = await prisma.membership.findFirst({
   where: { tenantId: best.tenantId, role: "OWNER", acceptedAt: { not: null } },
   include: { user: true },
@@ -136,10 +148,16 @@ try {
       screenshot(o: { path: string; fullPage: boolean }): Promise<unknown>;
       evaluate<T>(fn: (...a: never[]) => T, ...args: unknown[]): Promise<T>;
       click(sel: string): Promise<void>;
+      type(sel: string, text: string): Promise<void>;
+      keyboard: { press(key: string): Promise<void> };
       close(): Promise<void>;
     };
     const newPage = async (w: number, h: number): Promise<Page> => {
       const page = await (browser as { newPage: () => Promise<Page> }).newPage();
+      // 🔴 tsx/esbuild (keepNames) ห่อฟังก์ชันที่ส่งเข้า `page.evaluate` ด้วย helper `__name(...)` ซึ่ง
+      //    **ไม่มีอยู่ในเบราว์เซอร์** ⇒ ReferenceError กลางทาง (เจอ 1 ก.ย. ตอนรันกับ prod) · ฉีด shim ก่อนทุกหน้า
+      await (page as unknown as { evaluateOnNewDocument: (src: string) => Promise<void> })
+        .evaluateOnNewDocument("window.__name = window.__name || ((f) => f);");
       await page.setViewport({ width: w, height: h, deviceScaleFactor: 2 });
       // 🔴 ชื่อคุกกี้ผูกกับ APP_ENV: dev = `shark_session` · prod(HTTPS) = `__Host-shark_session`
       const host = new URL(BASE).hostname;
@@ -202,7 +220,8 @@ try {
             send: styleOf("composer-send", ["background-color", "border-radius"]),
             chip: styleOf("chat-chip", ["border-radius"]),
             icon: (() => {
-              const svg = document.querySelector("svg");
+              // วัด svg ของกล่องแชท ไม่ใช่ตัวแรกของทั้งหน้า (ตัวแรกคือ sidebar ของแอป ⇒ w/h 0 · stroke คนละชุด)
+              const svg = q("room-menu-button")?.querySelector("svg") ?? q("composer-plus")?.querySelector("svg");
               if (!svg) return null;
               const cs = getComputedStyle(svg);
               return {
@@ -273,6 +292,9 @@ try {
       process.exit(2);
     }
     await new Promise((r) => setTimeout(r, 2500));
+    // ปุ่มส่ง "เทาเมื่อว่าง ติดสีเมื่อพร้อม" (WO-CV5) ⇒ ต้องพิมพ์ก่อนถึงจะวัดสี accent ได้ · ไม่ได้กดส่ง
+    await desk.type('[data-qc="composer-field"]', "qc").catch(() => {});
+    await new Promise((r) => setTimeout(r, 300));
     const d = await probe(desk, "desktop");
     console.log(`\nเดสก์ท็อป 1440×900 → ${OUT}/chat-v2-desktop.png`);
     chk("VR-0.1", "หน้าเรนเดอร์ได้ ไม่ใช่หน้า error",
@@ -337,6 +359,9 @@ try {
       MENU_LABELS.every((l, i) => (afterMenu?.order.menu[i] ?? "").includes(l.slice(0, 6))),
       `แบบร่าง ${j(MENU_LABELS)} · ได้ ${j(afterMenu?.order.menu ?? [])}`);
 
+    // ปิดเมนู ⋮ ก่อน — ไม่งั้นคลิก ＋ จะไปโดนฉากหลังของเมนู (ปิดเมนูแทนที่จะเปิดแผ่น) ⇒ 0 รายการด้วยเหตุผลผิด
+    await desk.keyboard.press("Escape").catch(() => {});
+    await new Promise((r) => setTimeout(r, 400));
     let sheetOpened = false;
     await desk.click('[data-qc="composer-plus"]').then(() => { sheetOpened = true; }).catch(() => {});
     await new Promise((r) => setTimeout(r, 600));
