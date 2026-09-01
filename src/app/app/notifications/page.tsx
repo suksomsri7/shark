@@ -10,7 +10,10 @@ import { formatThaiDateTime } from "@/lib/ui/date";
 // ศูนย์แจ้งเตือนในแอป (WO-0026) — ปลายทางของ action NOTIFY + ปุ่มอ่านแล้ว
 export default async function NotificationsPage() {
   const auth = await requireTenant();
-  const items = await listNotifications({ tenantId: auth.active.tenantId });
+  // 🔴 G11: ต้องส่ง `userId` เสมอ — แจ้งเตือนที่จ่าหน้าถึงคนอื่น (เช่น ตัวอย่างข้อความลูกค้า
+  //    จากกล่องแชท ที่คัดผู้รับด้วยสิทธิ์ `chat.conversation.read` มาแล้ว) ห้ามโผล่ที่หน้านี้
+  //    ของคนที่ไม่ใช่ผู้รับ · ไม่ส่ง userId = เห็นเฉพาะประกาศทั้งร้าน (fail-closed)
+  const items = await listNotifications({ tenantId: auth.active.tenantId, userId: auth.user.id });
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">

@@ -379,12 +379,25 @@ console.log("\n── F6: authz coverage (ratchet — ห้ามเพิ่�
   //    · ตามรอยไม่ได้ / เปิดไฟล์ไม่เจอ / ในตัวฟังก์ชันไม่มีด่าน ⇒ นับว่า "ไม่มี" เหมือนเดิม
   const DIRECT_AUTHZ = /assertCan|assertAccountCan|requireMembership\(/;
 
-  /** ตัดตัวฟังก์ชัน `name` ออกมาจากซอร์ส (นับวงเล็บปีกกา) — คืน "" ถ้าไม่เจอ */
+  /** ตัดตัวฟังก์ชัน `name` ออกมาจากซอร์ส (นับวงเล็บปีกกา) — คืน "" ถ้าไม่เจอ
+   *  🔴 ข้ามวงเล็บพารามิเตอร์ก่อนนับปีกกา — ไม่งั้น `function f(args: { a: string }) {` จะได้แค่ type ของพารามิเตอร์
+   *     แล้วตัดสินว่า "ไม่มีด่าน" ทั้งที่มี (จุดบอดที่สาย F เจอใน qc-chat-v2-context 1 ก.ย.) */
   function bodyOf(src: string, name: string): string {
     const decl = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\b|(?:export\\s+)?const\\s+${name}\\s*[:=]`);
     const m = decl.exec(src);
     if (!m) return "";
-    const open = src.indexOf("{", m.index);
+    // ถ้าเป็น function/arrow ที่มีวงเล็บพารามิเตอร์ ให้ข้ามไปหลัง `)` ที่ปิดวงเล็บนั้นก่อน
+    let from = m.index + m[0].length;
+    const paren = src.indexOf("(", from);
+    const braceFirst = src.indexOf("{", from);
+    if (paren >= 0 && (braceFirst < 0 || paren < braceFirst)) {
+      let pd = 0;
+      for (let i = paren; i < src.length; i++) {
+        if (src[i] === "(") pd++;
+        else if (src[i] === ")" && --pd === 0) { from = i + 1; break; }
+      }
+    }
+    const open = src.indexOf("{", from);
     if (open < 0) return "";
     let depth = 0;
     for (let i = open; i < src.length; i++) {

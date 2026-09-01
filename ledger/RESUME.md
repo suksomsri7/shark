@@ -1,5 +1,24 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🧩 1 ก.ย. (เย็น) — แชท V2 รอบ 3 ปิด (สาย E ห้องแชท+กล่องพิมพ์ · สาย F คอลัมน์บริบท+G11) · Fable ประกอบ
+- **ด่าน**: typecheck 0 · fitness 17/17 · build EXIT=0 · ข้อสอบ V2 **6 ชุดเข้าเป็นด่าน CI ถาวรแล้ว** (list 41 · quickreply 28 ·
+  room 42 · composer 37 · icons 35 · context 53) · `qc-chat-inbox-ui` 55/55 · เหลือใน `scripts/pending/` 2 ชุด (realtime · voice = รอบ 4)
+- **migration ใหม่** `20260901120000_app_notification_recipient` (additive) — **apply ลง prod ก่อน push แล้ว** ตามกติกาใหม่
+  (deploy โค้ด กับ apply DB ต้องเป็นขั้นเดียว · `vercel-build.sh` จะเห็นว่าไม่มีค้างแล้ว)
+- **G11 ปิดแล้ว**: `AppNotification.recipientUserId` · แจ้งเตือนแชทเขียนรายผู้รับที่มีสิทธิ์อ่านแชท (กติกาเดียวกับ push) ·
+  ศูนย์แจ้งเตือน + ป้ายตัวเลขกรองผู้รับด้วยเงื่อนไขเดียวกัน (`visibleTo()`) · **คืนตัวอย่างข้อความลูกค้า**ที่ตัดไป 31 ส.ค. กลับมา
+- 🔴 **ข้อสอบเก่า 3 จุดวัดผิดเพราะมติใหม่ (แก้ที่ข้อสอบ)**: `qc-chat-inbox-ui` IU-5.x ล็อกลิสต์ไฟล์ (ไม่รู้จัก `composer.tsx`) ·
+  IU-7.1 บังคับตัวอักษร ✓✗ ที่มติ V2 ห้าม → วัด `deliveryMark()` คืนไอคอน 4 สถานะแทน · `qc-chat-notify-v2` NV-6.2 `=== 1 แถว`
+  → "≥1 · จ่าหน้าทุกแถว · ไม่ซ้ำคน"
+- 🔴 **`bodyOf()` ในข้อสอบมีจุดบอด** (สาย F เจอ): นับปีกกาจาก `{` ตัวแรก ⇒ `function f(args: {…}) {` ได้แค่ type ของพารามิเตอร์
+  → แก้ทั้ง `qc-chat-v2-context` + `fitness.mts` ให้ข้ามวงเล็บก่อน · **บทเรียนตอนแก้: `re.sub` ของ Python กิน backslash**
+  → regex ในไฟล์กลายเป็น `\s` เดี่ยว → 5 ข้อแดงเงียบด้วยเหตุผลผิด · แก้ข้อสอบแล้วต้องรันซ้ำทันทีทุกครั้ง
+- มติใหม่ D8–D16 อยู่ `ledger/PLAN-CHAT-V2.md` §10 (โทเคนสี · createMany ใน fake · countUse · revalidate กวาดร่าง · ไมค์เดสก์ท็อป ·
+  แผนที่ร้านไม่มีที่อยู่ในสคีมา · autoTranslate ขาเข้ายังไม่ต่อ · ยุบ loadRoomContextAction)
+- **ค้างไปรอบ 4**: ไมค์เดสก์ท็อป (แก้ mockup + เรนเดอร์ ref ใหม่) · ต่อ `meta.autoTranslate` ในขาเข้า · `durationMs`/`pageUrl` ลง ThreadSnapshot ·
+  ไอคอน `pause` · **QC สายตาบน prod หลัง deploy** (`scripts/visual-qc-chat-v2.mts`)
+- **ค้างนอกขอบเขตแชท**: หน้าตั้งค่าสาขาให้กรอก `address/mapUrl/lat/lng` (ปุ่ม "แผนที่ร้าน" จะบอก "ยังไม่ได้ตั้ง" จนกว่าจะมี)
+
 ## 🚨 1 ก.ย. (บ่าย) — กู้ session ที่ตายกลางคัน · **เจอแชทบน prod ดับเงียบ** · ยุบตรรกะสิทธิ์ซ้ำ
 
 ### ✅ กู้แล้ว — `prisma migrate deploy` ลงเรียบร้อย (เจ้าของสั่งให้รันเอง เพราะอยู่บนมือถือ)

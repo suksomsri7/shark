@@ -203,6 +203,13 @@ export async function searchAnswerExamples(args: {
   channel?: ChatChannelType | null;
   lang?: string | null;
   take?: number;
+  /**
+   * `false` = อ่านอย่างเดียว ไม่ขยับ `useCount`/`lastUsedAt` (ค่าเริ่มต้น `true` = พฤติกรรมเดิม)
+   * 🔴 เพิ่ม 1 ก.ย. (สาย F รายงาน): คอลัมน์บริบท "แสดง" คำแนะนำทุกครั้งที่เปิดห้อง — ถ้านับทุกครั้ง
+   *    ตัวเลขที่แปลว่า "ทีมยอมรับตัวอย่างนี้" จะถูกปั๊มโดยการแค่มอง ⇒ สัญญาณคุณภาพเพี้ยน
+   *    การนับที่มีความหมายคือตอนทีม **กดใช้** จริง (AI suggest/กดวางลงกล่องพิมพ์)
+   */
+  countUse?: boolean;
 }): Promise<AnswerExampleHit[]> {
   const { tenantId, systemId } = args;
   const take = Math.max(1, Math.min(20, args.take ?? DEFAULT_TAKE));
@@ -243,7 +250,7 @@ export async function searchAnswerExamples(args: {
     .sort((a, b) => b.score - a.score || b.r.useCount - a.r.useCount)
     .slice(0, take);
 
-  if (scored.length > 0) {
+  if (scored.length > 0 && args.countUse !== false) {
     // best-effort: ตัวนับใช้จัดอันดับ ไม่ใช่ข้อมูลการเงิน — พลาดแล้วห้ามทำให้คำแนะนำล้ม
     await d.chatAnswerExample
       .updateMany({

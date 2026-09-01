@@ -82,7 +82,10 @@ const CHATPAGE = strip(read(F.chatPage));
 const CHANNELS = strip(read(F.channelsPage));
 const SCHEMA = read(F.schema);
 // รวมทุกไฟล์ที่ประกอบเป็น "จอกล่องแชท" — ผู้เขียนจะแตกไฟล์ยังไงก็ได้ ขอให้ของอยู่ครบ
-const SCREEN = [UI, INBOX, BUBBLE, ICON, SYSPAGE, CHATPAGE].join("\n");
+const COMPOSER = strip(read("src/lib/modules/chat/composer.tsx"));
+// 🔴 Fable แก้ 1 ก.ย. — WO-CV5 สั่งแยกกล่องพิมพ์ไป `composer.tsx` ⇒ input file/capture/accept ย้ายตามไป
+//    ด่านนี้วัดว่า "มีปุ่มจริงผูก action จริง" ไม่ใช่ที่อยู่ไฟล์ (บทเรียนเดิมรอบที่ 5)
+const SCREEN = [UI, INBOX, BUBBLE, ICON, SYSPAGE, CHATPAGE, COMPOSER].join("\n");
 
 // ── enum ChatChannelType จากสคีมาจริง (ห้ามพิมพ์ลิสต์ในข้อสอบ — ลิสต์พิมพ์มือเพี้ยนเสมอ) ──
 const CHANNELS_ENUM = (() => {
@@ -268,7 +271,14 @@ try {
   });
 
   section("IU-7", "IU-7 องค์ประกอบหน้าตาแบบ WhatsApp (มติ W1):", () => {
-    chk("IU-7.1", "ติ๊กสถานะส่ง ✓ / ✓✓ / ✗", /✓✓|✓{2}|CheckCheck|DoubleCheck/.test(SCREEN) && /✗|✕|Failed/.test(SCREEN), "มีทั้งชุด", "ไม่ครบ");
+    // 🔴 Fable แก้ 1 ก.ย. — มติ V2 ห้ามตัวอักษร ✓/✗ ในซอร์ส (IC-4.9 ของชุด V2 บังคับ) ⇒ ข้อเดิมขัดกันเอง
+    //    วัดพฤติกรรมแทน: `deliveryMark()` ต้องคืนชื่อไอคอนจากทะเบียนครบ 4 สถานะ (กำลังส่ง/ส่งแล้ว/อ่านแล้ว/ล้มเหลว)
+    {
+      const dm = BUBBLE.slice(BUBBLE.indexOf("function deliveryMark"));
+      const icons = ["clock", "check", "check2", "xcircle"].filter((n) => new RegExp(`icon:\\s*["']${n}["']`).test(dm));
+      chk("IU-7.1", "ติ๊กสถานะส่ง 🕐/✓/✓✓/✗ เป็นไอคอนจากทะเบียน (deliveryMark คืนครบ 4 สถานะ)",
+        icons.length === 4, "clock · check · check2 · xcircle", j(icons));
+    }
     // 🔴 ต้องผูกกับ action จริง — ของเดิมมีสตริง "ลองใหม่อีกครั้ง" เป็น **ข้อความ error** ไม่ใช่ปุ่ม
     //    ถ้าจับแค่คำ จะได้เขียวหลอกทันที (grep แยกปุ่มกับข้อความไม่ออก)
     chk("IU-7.2", "ส่งไม่สำเร็จมีปุ่มลองใหม่ที่ผูกกับ action จริง (ไม่ใช่แค่ข้อความ error ที่มีคำว่า 'ลองใหม่')",

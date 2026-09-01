@@ -228,6 +228,9 @@ function resetAll() {
   for (const k of Object.keys(tables)) delete tables[k];
   tables.chatChannelConnection = [{ ...CONN_WEB }, { ...CONN_LINE }];
   tables.chatSetting = [{ id: "st1", tenantId: "T1", systemId: "S1", memberSystemId: null, senderAlias: "ทีมงาน SiamDive", greetingMessage: { th: "สวัสดีค่ะ", en: "Hi there" }, offlineMessage: {} }];
+  // 🔴 G11 (1 ก.ย.): AppNotification เขียน **รายผู้รับที่มีสิทธิ์อ่านแชท** — ร้านที่ไม่มีสมาชิกเลย = 0 แถวอย่างถูกต้อง
+  //    fake เดิมไม่มีตาราง membership ⇒ XC-2.3 แดงทั้งที่โค้ดถูก · seed ให้เหมือนของจริง (สมาชิกจริงมี acceptedAt เสมอ)
+  tables.membership = [{ id: "mb-owner", tenantId: "T1", userId: "U-OWNER", role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() }];
   calls.length = 0;
   netCalls = 0;
 }

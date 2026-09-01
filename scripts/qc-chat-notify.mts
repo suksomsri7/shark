@@ -43,7 +43,7 @@ try {
   const t = await prisma.tenant.create({ data: { name: tag, slug: tag.toLowerCase() } });
   tenantId = t.id;
   const u = await prisma.user.create({ data: { email: tag.toLowerCase() + "@qc.local", name: "QC" } });
-  await prisma.membership.create({ data: { userId: u.id, tenantId, role: "OWNER", unitAccess: ["*"] } });
+  await prisma.membership.create({ data: { userId: u.id, tenantId, role: "OWNER", unitAccess: ["*"], acceptedAt: new Date() /* seed ต้องเหมือนของจริง: สมาชิกจริงมี acceptedAt เสมอ (G11 กรอง) */ } });
   const sys = await system.createSystem(tenantId, "CHAT", "แชท " + tag);
   const conn = await chat.ensureWebchatConnection(tenantId, sys.id);
   console.log(`[seed] tenant ${tenantId} · system ${sys.id} · webchat conn OK\n`);
@@ -84,6 +84,10 @@ try {
   {
     await chat.markRead({ tenantId, systemId: sys.id, conversationId: convId, userId: u.id, unitAccess: ["*"] });
     assert("markRead → staffUnreadCount = 0", (await unread(convId)) === 0);
+    // 🔴 G11 (1 ก.ย.): แจ้งเตือนในเว็บคัดผู้รับด้วยกติกาเดียวกับ push ⇒ คนที่ "กำลังเปิดห้องอยู่" (lastReadAt สด <20 วิ)
+    //    ไม่ถูกแจ้งซ้ำ · ฉากนี้ต้องการวัด "อ่านครบแล้วทักใหม่ → แจ้งอีกครั้ง" ไม่ใช่ "แจ้งคนที่จ้องจออยู่"
+    //    ⇒ จำลองว่าอ่านแล้ว **ออกจากห้องไปนานแล้ว** (บทเรียนเดียวกับ CP-1.7 ใน PLAN-CHAT-WHATSAPP)
+    await prisma.chatReadState.updateMany({ where: { conversationId: convId, userId: u.id }, data: { lastReadAt: new Date(Date.now() - 60_000) } });
     const before = await notifCount(tenantId);
     await chat.receiveWebchatInbound({ connection: conn, guestToken: gtoken, body: "กลับมาถามใหม่" });
     const after = await notifCount(tenantId);
@@ -133,6 +137,8 @@ try {
   {
     const t2 = await prisma.tenant.create({ data: { name: tag + "-2", slug: tag.toLowerCase() + "-2" } });
     tenant2Id = t2.id;
+    // G11: ร้านที่ไม่มีสมาชิกเลย = ไม่มีผู้รับ = 0 แถวอย่างถูกต้อง ⇒ ต้องมีสมาชิกจริง (acceptedAt) ให้ tenant2
+    await prisma.membership.create({ data: { userId: u.id, tenantId: tenant2Id, role: "OWNER", unitAccess: ["*"], acceptedAt: new Date() } });
     const sys2 = await system.createSystem(tenant2Id, "CHAT", "แชท2 " + tag);
     const conn2 = await chat.ensureWebchatConnection(tenant2Id, sys2.id);
     const t1NotifBefore = await notifCount(tenantId);

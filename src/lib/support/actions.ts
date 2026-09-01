@@ -6,9 +6,9 @@
 
 import type { SupportAuthorSide, SupportCaseStatus } from "@prisma/client";
 import { requireTenant } from "@/lib/core/context";
-import { prisma } from "@/lib/core/db";
 // B9: `unreadCount()` ของโมดูลแชทมีอยู่แล้วแต่ไม่เคยถูกเรียก — badge เมนูใช้ตัวนี้ ห้ามเขียน query ใหม่
 import { unreadCount as chatUnreadCount } from "@/lib/modules/chat/service";
+import { countUnread } from "@/lib/automation/service";
 import {
   createCase,
   listMyCasesWithMeta,
@@ -151,7 +151,10 @@ export async function loadNavBadgesAction(chatSystemIds?: string[]): Promise<{
   ).slice(0, 10);
   const [helpUnread, aiUnread, counts] = await Promise.all([
     unreadCaseTotal({ tenantId }).catch(() => 0),
-    prisma.appNotification.count({ where: { tenantId, readAt: null } }).catch(() => 0),
+    // 🔴 G11: นับด้วย `countUnread` ตัวเดียวกับที่ศูนย์แจ้งเตือนใช้ + ส่ง userId
+    //    ถ้านับ tenant-wide เหมือนเดิม ป้ายเลขจะบอก "3 ใหม่" แล้วเปิดเข้าไปเจอ 1
+    //    (แจ้งเตือนของกล่องแชทถูกจ่าหน้าถึงคนที่มีสิทธิ์อ่านแชทเท่านั้นแล้ว)
+    countUnread({ tenantId, userId: auth.user.id }).catch(() => 0),
     Promise.all(ids.map((id) => chatUnreadCount(tenantId, id).catch(() => 0))),
   ]);
   const chatUnread: Record<string, number> = {};

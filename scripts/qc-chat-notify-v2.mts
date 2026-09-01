@@ -385,8 +385,15 @@ try {
       await say(chat, "สวัสดีครับ");
       chk("NV-6.1", "🔴 push อยู่ **นอก** ทรานแซกชัน (Expo ตอบช้า = ขัง connection Neon → pool ตัน)",
         pushCallsTx().length > 0 && pushCallsTx().every((t) => t === null), "tx=null", j(pushCallsTx()));
-      chk("NV-6.2", "AppNotification ในเว็บยังถูกสร้าง (ช่องทางสำรองเมื่อ push ไม่ถึง)",
-        (tables.appNotification ?? []).length === 1, "1 แถว", `${(tables.appNotification ?? []).length} แถว`);
+      // 🔴 ปรับ 1 ก.ย. (G11 ปิดแล้ว): AppNotification เขียน **รายผู้รับที่มีสิทธิ์** ไม่ใช่ 1 แถว tenant-wide
+      //    ⇒ วัด "มีอย่างน้อย 1 · ทุกแถวจ่าหน้าถึงคน · ไม่มีคนซ้ำ" แทน `=== 1` เดิม (สาย F รายงาน ไม่แก้เอง)
+      {
+        const rows = (tables.appNotification ?? []) as { recipientUserId?: string | null }[];
+        const addressed = rows.every((r) => typeof r.recipientUserId === "string" && r.recipientUserId.length > 0);
+        const uniq = new Set(rows.map((r) => r.recipientUserId)).size;
+        chk("NV-6.2", "AppNotification ในเว็บยังถูกสร้าง — รายผู้รับที่มีสิทธิ์ (≥1 · จ่าหน้าทุกแถว · ไม่ซ้ำคน)",
+          rows.length >= 1 && addressed && uniq === rows.length, "≥1 แถว จ่าหน้าครบ", `${rows.length} แถว · จ่าหน้า=${addressed} · ไม่ซ้ำ=${uniq === rows.length}`);
+      }
 
       seedShop({ assignTo: null });
       netMode = "throw";

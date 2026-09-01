@@ -101,6 +101,7 @@ export async function markReadAction(formData: FormData): Promise<void> {
   const auth = await requireTenant();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  await markNotificationRead({ tenantId: auth.active.tenantId }, id);
+  // ส่ง userId ด้วย — แจ้งเตือนที่จ่าหน้าถึงคนอื่น ต้องกดอ่านแทนกันไม่ได้ (G11)
+  await markNotificationRead({ tenantId: auth.active.tenantId, userId: auth.user.id }, id);
   revalidatePath(NOTIFICATIONS_PATH);
 }

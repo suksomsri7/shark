@@ -245,6 +245,8 @@ export async function setConversationTagAction(
   if (!systemId || !conversationId) return { ok: false, reason: "ข้อมูลไม่ครบสำหรับแก้ป้ายกำกับ" };
   const args = { tenantId: auth.active.tenantId, systemId, conversationId, tag };
   const res = on ? await addConversationTag(args) : await removeConversationTag(args);
-  if (res.ok) revalidatePath(chatPath(systemId));
+  // 🔴 ไม่ revalidate ทั้งหน้า (ตัด 1 ก.ย. — สาย F รายงาน): action นี้คืน `tags` ล่าสุดกลับไปให้จออัปเดตเองอยู่แล้ว
+  //    revalidatePath จากคอลัมน์ขวา = สั่ง re-render หน้าแชททั้งหน้า ซึ่งอาจกวาดร่างที่ทีมกำลังพิมพ์ทิ้ง
+  //    (ข้อห้ามที่เขียนไว้หัว inbox-actions.ts) · แบบฟอร์ม add/remove ด้านบนยัง revalidate ได้เพราะมัน redirect อยู่แล้ว
   return res;
 }

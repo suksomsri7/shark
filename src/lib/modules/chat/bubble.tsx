@@ -1,21 +1,26 @@
 "use client";
 
-// bubble.tsx — ฟองข้อความ + ตัวคั่นวันที่ ของกล่องแชท (WO-CW4 · §6.2 · มติ W1)
+// bubble.tsx — ฟองข้อความ · ตัวคั่นวันที่ · ตัวบอก "กำลังพิมพ์" ของห้องแชท
+//               (WO-CV4 · แบบร่าง `docs/design/chat-v2/mockup.html` จอ 2 + `.dcol2`)
 //
-// เลย์เอาต์อ้าง WhatsApp: ขาเข้าชิดซ้าย · ขาออกชิดขวา · **ฟองมีหาง** · ติ๊กสถานะมุมขวาล่าง
-// 🔴 สีอยู่ในโทน SHARK ทั้งหมด (ตัวแปรใน globals.css) — ไม่มีเขียว WhatsApp ที่ไหน
-//    จอนี้ต้องดูเป็นระบบเดียวกับอีก 27 ระบบของร้าน ไม่ใช่แอปคนละตัว
+// 🔴 แบบร่างคือสัญญา (มติ V3) — โทเคนทุกตัวยกมาตรง ๆ:
+//    ฟองมุม 14px · **มุมที่ติดหางของก้อน 4px** · ขาออก `--out` · โน้ต `--note` + เส้น `--note-line`
+//    ชื่อผู้ส่ง (`.who`) อยู่ **นอกฟอง** เหนือก้อนแรกของกลุ่ม ไม่ใช่ในแถวเวลาใต้ฟองแบบของเดิม
+//
+// 🔴 มติ V2 "ห้ามมี emoji" — ของเดิมใช้ ✓ ✓✓ ✗ 🕐 📄 เป็นไอคอนสถานะ
+//    emoji เปลี่ยนรูปตามเครื่องลูกค้า ปรับสีไม่ได้ และโปรแกรมอ่านหน้าจออ่านเป็นชื่อยาว ๆ กลางประโยค
+//    ⇒ ทุกไอคอนมาจากทะเบียน `<Icon name="…"/>` เท่านั้น
 //
 // 🔴 มติ D-1 — สถานะการส่งอ่านจาก `ChatMessage.deliveryStatus` เท่านั้น
-//    `sendReplyAction` ไม่เคยอ่านค่า `ok` ที่ `sendReply` คืนเลย และ `ok` มีความหมาย 2 แบบ
-//    ⇒ ห้ามใช้ผลลัพธ์ของ action มาตัดสินว่า "ส่งสำเร็จไหม"
-//    PENDING = 🕐 · SENT = ✓ · SENT + ลูกค้าอ่านแล้ว = ✓✓ · FAILED = ✗ + ปุ่มลองส่งอีกครั้ง
+//    PENDING = นาฬิกา · SENT = ติ๊กเดี่ยว · ลูกค้าอ่านแล้ว = ติ๊กคู่ · FAILED = กากบาท + ปุ่มลองใหม่
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { translateMessageAction } from "./actions";
 import { saveAnswerExampleAction } from "./actions";
 import { retrySendAction } from "./inbox-actions";
 import type { ThreadMessage } from "./inbox-actions";
+import { Icon, type IconName } from "./icons";
+import { formatDuration } from "./list-filters";
 
 const TZ = "Asia/Bangkok";
 
@@ -52,12 +57,34 @@ export const timeLabel = (ts: number) =>
     minute: "2-digit",
   }).format(new Date(ts));
 
+/** ตัวคั่นวันที่แบบ "เม็ดยา" ลอยกลางจอ (แบบร่าง `.day span`) */
 export function DateDivider({ ts }: { ts: number }) {
   return (
-    <div className="my-2 flex justify-center">
-      <span className="rounded-full border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-3 py-0.5 text-[11px] text-[color:var(--color-muted)]">
+    <div className="mb-3 mt-1 flex justify-center">
+      <span className="rounded-lg bg-white/90 px-3 py-[3px] text-[11px] text-[#5b616b] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
         {dayLabel(ts)}
       </span>
+    </div>
+  );
+}
+
+/**
+ * "กำลังพิมพ์" = ฟองเปล่ามี 3 จุดเต้น (แบบร่าง `.typing`)
+ * 🔴 ตั้งใจไม่ใส่ตัวหนังสือ — แบบร่างวาดเป็นจุดล้วน และข้อความยาว ๆ จะดันฟองจริงกระโดดทุกครั้ง
+ */
+export function TypingBubble() {
+  return (
+    <div className="mb-2.5 flex justify-start">
+      <div
+        data-qc="typing"
+        className="flex w-fit items-center gap-1 rounded-[14px] rounded-tl-[4px] bg-[color:var(--color-surface)] px-3.5 py-[11px] shadow-[0_1px_1.5px_rgba(15,23,42,0.08)]"
+        role="status"
+        aria-label="ลูกค้ากำลังพิมพ์"
+      >
+        <span className="size-1.5 animate-bounce rounded-full bg-[#c6cad1] [animation-delay:0ms]" />
+        <span className="size-1.5 animate-bounce rounded-full bg-[#b2b7bf] [animation-delay:150ms]" />
+        <span className="size-1.5 animate-bounce rounded-full bg-[#9ea4ad] [animation-delay:300ms]" />
+      </div>
     </div>
   );
 }
@@ -78,41 +105,116 @@ export function failReasonLabel(reason: string | null): string {
   }
 }
 
-const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+const kb = (n: number) =>
+  n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 
 /**
  * ติ๊กสถานะการส่ง — คำนวณจากแถวข้อความล้วน ๆ (D-1)
  * แยกเป็นฟังก์ชันบริสุทธิ์เพื่อให้อ่าน/ทดสอบตรรกะได้โดยไม่ต้องเรนเดอร์
+ * คืน **ชื่อไอคอนในทะเบียน** ไม่ใช่ตัวอักษร (มติ V2)
  */
 export function deliveryMark(
   msg: Pick<ThreadMessage, "deliveryStatus" | "createdAt">,
   customerLastReadAt: number | null,
-): { mark: string; title: string; failed: boolean } {
-  if (msg.deliveryStatus === "FAILED") return { mark: "✗", title: "ส่งไม่สำเร็จ", failed: true };
-  if (msg.deliveryStatus === "PENDING") return { mark: "🕐", title: "กำลังส่ง", failed: false };
-  if (customerLastReadAt !== null && customerLastReadAt >= msg.createdAt) {
-    return { mark: "✓✓", title: "ลูกค้าอ่านแล้ว", failed: false };
+): { icon: IconName; title: string; failed: boolean; read: boolean } {
+  if (msg.deliveryStatus === "FAILED") {
+    return { icon: "xcircle", title: "ส่งไม่สำเร็จ", failed: true, read: false };
   }
-  return { mark: "✓", title: "ส่งแล้ว", failed: false };
+  if (msg.deliveryStatus === "PENDING") {
+    return { icon: "clock", title: "กำลังส่ง", failed: false, read: false };
+  }
+  if (customerLastReadAt !== null && customerLastReadAt >= msg.createdAt) {
+    return { icon: "check2", title: "ลูกค้าอ่านแล้ว", failed: false, read: true };
+  }
+  return { icon: "check", title: "ส่งแล้ว", failed: false, read: false };
+}
+
+/**
+ * ความสูงแท่งคลื่นเสียง — ยกจากแบบร่างตรง ๆ
+ * 🔴 ตายตัวโดยตั้งใจ ห้ามสุ่ม: ค่าสุ่มฝั่ง client ทำให้ HTML ที่เซิร์ฟเวอร์ส่งมาไม่ตรงกับที่จอวาด
+ *    (hydration mismatch) และคลื่นจะกระตุกใหม่ทุกรอบ poll
+ */
+const WAVE = [6, 12, 18, 22, 14, 9, 16, 20, 11, 7, 13, 17, 8, 15, 21, 10];
+
+/** ฟองข้อความเสียง (แบบร่าง `.voice`) — ปุ่มเล่น + คลื่น + ความยาว */
+function VoiceBody({ url, durationMs }: { url: string | null; durationMs: number | null }) {
+  const ref = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+
+  const toggle = () => {
+    const el = ref.current;
+    if (!el) return;
+    if (el.paused) void el.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    else {
+      el.pause();
+      setPlaying(false);
+    }
+  };
+
+  return (
+    <div data-qc="bubble-voice" className="flex min-w-[180px] items-center gap-2.5">
+      <button
+        type="button"
+        onClick={toggle}
+        disabled={!url}
+        aria-label={playing ? "หยุดเล่นข้อความเสียง" : "เล่นข้อความเสียง"}
+        // ⚠️ ทะเบียนไอคอนยังไม่มี `pause` — ระหว่างเล่นจึงบอกสถานะด้วยวงแหวนรอบปุ่มแทน
+        //    (ห้ามวาด svg เองในไฟล์นี้ · แจ้ง Fable ให้เพิ่มไอคอนไว้ในรายงานแล้ว)
+        className={`grid size-7 shrink-0 place-items-center rounded-full bg-[color:var(--color-accent)] text-white disabled:opacity-50 ${
+          playing ? "ring-2 ring-[color:var(--color-accent)]/35" : ""
+        }`}
+      >
+        <Icon name="play" size="sm" className="ml-[1px]" />
+      </button>
+      <span aria-hidden className="flex h-[22px] flex-1 items-center gap-[2px]">
+        {WAVE.map((h, i) => (
+          <span key={i} className="w-[2.5px] rounded-sm bg-[#9fb0dd]" style={{ height: `${h}px` }} />
+        ))}
+      </span>
+      <span className="shrink-0 text-[11px] text-[color:var(--color-muted)]">
+        {durationMs !== null ? formatDuration(durationMs) : "เสียง"}
+      </span>
+      {url && (
+        <audio
+          ref={ref}
+          src={url}
+          preload="none"
+          onEnded={() => setPlaying(false)}
+          onPause={() => setPlaying(false)}
+          className="hidden"
+        />
+      )}
+    </div>
+  );
 }
 
 export function MessageBubble({
   systemId,
   conversationId,
   msg,
-  senderLabel,
+  senderName,
   customerLastReadAt,
   canTranslate,
   canSaveExample,
+  isGroupStart = true,
+  audioMs = null,
 }: {
   systemId: string;
   conversationId: string;
   msg: ThreadMessage;
-  senderLabel: string;
+  /**
+   * ชื่อคนที่ส่ง (ฝั่งทีม) — ขึ้น **ครั้งเดียวต่อก้อน** เหนือฟองแรก ตามแบบร่าง `.who` ("มุก · ทีมงาน")
+   * ผู้เรียกเป็นคนประกอบข้อความเอง เพราะข้อความอัตโนมัติไม่มีเจ้าของ (ต้องขึ้นแค่ "ทีมงาน")
+   */
+  senderName: string;
   /** ลูกค้าอ่านถึงเวลาไหน — null = ยังไม่เคยอ่าน (ติ๊กเดียว) */
   customerLastReadAt: number | null;
   canTranslate: boolean;
   canSaveExample: boolean;
+  /** ฟองแรกของก้อน = มุมติดหาง 4px + ขึ้นชื่อผู้ส่ง · ฟองถัด ๆ ไปมุมมน 14px ทุกมุม */
+  isGroupStart?: boolean;
+  /** ความยาวคลิปเสียง (ms) จาก `ChatAttachment.durationMs` — ไม่ต้องโหลดไฟล์มาวัดเอง */
+  audioMs?: number | null;
 }) {
   const [translated, setTranslated] = useState<string | null>(msg.translatedBody);
   const [translateErr, setTranslateErr] = useState<string | null>(null);
@@ -120,13 +222,18 @@ export function MessageBubble({
   const [pending, startTransition] = useTransition();
 
   if (msg.type === "SYSTEM") {
-    return (
-      <div className="my-1 text-center text-xs text-[color:var(--color-muted)]">{msg.body}</div>
-    );
+    return <div className="my-1 text-center text-xs text-[color:var(--color-muted)]">{msg.body}</div>;
   }
 
   const out = msg.direction === "OUT";
-  const status = out && !msg.isInternal ? deliveryMark(msg, customerLastReadAt) : null;
+  const note = msg.isInternal;
+  const status = out && !note ? deliveryMark(msg, customerLastReadAt) : null;
+  const images = msg.attachments.filter((a) => a.mimeType.startsWith("image/"));
+  const audio =
+    msg.type === "AUDIO" ? (msg.attachments.find((a) => a.mimeType.startsWith("audio/")) ?? null) : null;
+  const others = msg.attachments.filter(
+    (a) => !a.mimeType.startsWith("image/") && a.id !== audio?.id,
+  );
 
   const translate = () => {
     setTranslateErr(null);
@@ -145,100 +252,131 @@ export function MessageBubble({
     });
   };
 
+  // มุมของฟอง: มุมที่ "ติดหาง" ของก้อนเท่านั้นที่เป็น 4px (แบบร่าง `.them .bub`/`.me .bub`)
+  const corner = !isGroupStart ? "" : out ? "rounded-tr-[4px]" : "rounded-tl-[4px]";
+  const skin = note
+    ? "bg-[color:var(--color-note)] border border-[color:var(--color-note-line)]"
+    : out
+      ? "bg-[color:var(--color-out)]"
+      : "bg-[color:var(--color-surface)]";
+
   return (
-    <div className={`flex ${out ? "justify-end" : "justify-start"}`}>
-      <div className={`relative max-w-[85%] sm:max-w-[70%] ${out ? "mr-2" : "ml-2"}`}>
-        {/* หางฟองแบบ WhatsApp — สามเหลี่ยมเล็กที่มุมบนของฝั่งตัวเอง */}
-        <span
-          aria-hidden
-          className={`absolute top-0 size-0 border-[7px] border-transparent ${
-            out
-              ? "-right-3 border-l-[color:var(--color-surface-2)] border-t-[color:var(--color-surface-2)]"
-              : "-left-3 border-r-[color:var(--color-surface)] border-t-[color:var(--color-surface)]"
-          }`}
-        />
+    <div className={`flex flex-col ${out ? "items-end" : "items-start"}`}>
+      {/* ชื่อผู้ส่งอยู่นอกฟอง เหนือก้อน — ขึ้นครั้งเดียวต่อก้อนตามแบบร่าง */}
+      {isGroupStart && out && !note && (
+        <span className="mx-2 mb-[3px] text-[11.5px] font-semibold text-[color:var(--color-muted)]">
+          {senderName}
+        </span>
+      )}
+
+      <div className={`relative ${note ? "max-w-[86%]" : "max-w-[76%]"} min-w-0`}>
         <div
+          data-qc={note ? "bubble-note" : out ? "bubble-out" : "bubble-in"}
           className={[
-            "rounded-lg border px-3 py-1.5 text-sm shadow-[0_1px_0_rgba(0,0,0,0.04)]",
-            out
-              ? "rounded-tr-none bg-[color:var(--color-surface-2)]"
-              : "rounded-tl-none bg-[color:var(--color-surface)]",
-            msg.isInternal ? "border-dashed" : "border-[color:var(--color-line)]",
-            status?.failed ? "border-[color:var(--color-danger)]" : "",
+            "rounded-[14px] px-[11px] pb-[5px] pt-[7px] text-[14.5px] leading-[1.44] shadow-[0_1px_1.5px_rgba(15,23,42,0.08)]",
+            corner,
+            skin,
+            status?.failed ? "ring-1 ring-[color:var(--color-danger)]" : "",
           ].join(" ")}
         >
-          {msg.isInternal && (
-            <div className="text-[10px] font-medium text-[color:var(--color-muted)]">
-              โน้ตภายใน (ลูกค้าไม่เห็น)
+          {/* ป้ายโน้ตภายใน — กุญแจ + คำเตือนว่าลูกค้าไม่เห็น (แบบร่าง `.notetag`) */}
+          {note && (
+            <span className="mb-[3px] flex items-center gap-1 text-[10.5px] font-bold text-[color:var(--color-note-ink)]">
+              <Icon name="lock" size="sm" strokeWidth={2.1} className="size-3" />
+              โน้ตภายใน · ลูกค้าไม่เห็น
+            </span>
+          )}
+
+          {audio && <VoiceBody url={audio.url} durationMs={audioMs} />}
+
+          {images.length > 0 && (
+            <div className="-mx-1 mb-1 flex flex-col gap-1">
+              {images.map((a) => (
+                <a key={a.id} href={a.url} target="_blank" rel="noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={a.url}
+                    alt={a.fileName}
+                    className="max-h-56 rounded-[11px] object-cover"
+                  />
+                </a>
+              ))}
             </div>
           )}
 
-          {msg.attachments.length > 0 && (
+          {others.length > 0 && (
             <div className="mb-1 flex flex-col gap-1">
-              {msg.attachments.map((a) =>
-                a.mimeType.startsWith("image/") ? (
-                  <a key={a.id} href={a.url} target="_blank" rel="noreferrer">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={a.url}
-                      alt={a.fileName}
-                      className="max-h-56 rounded border border-[color:var(--color-line)] object-cover"
-                    />
-                  </a>
-                ) : (
-                  <a
-                    key={a.id}
-                    href={a.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1.5 rounded border border-[color:var(--color-line)] px-2 py-1 text-xs underline"
-                  >
-                    <span aria-hidden>📄</span>
-                    <span className="min-w-0 truncate">{a.fileName}</span>
-                    <span className="shrink-0 text-[color:var(--color-muted)]">{kb(a.sizeBytes)}</span>
-                  </a>
-                ),
-              )}
+              {others.map((a) => (
+                <a
+                  key={a.id}
+                  href={a.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 rounded-lg border border-[color:var(--color-line)] bg-white/60 px-2 py-1 text-xs underline"
+                >
+                  <Icon name="clip" size="sm" className="shrink-0" />
+                  <span className="min-w-0 truncate">{a.fileName}</span>
+                  <span className="shrink-0 text-[color:var(--color-muted)]">{kb(a.sizeBytes)}</span>
+                </a>
+              ))}
             </div>
           )}
 
-          {msg.body && <div className="whitespace-pre-wrap break-words">{msg.body}</div>}
+          {msg.body && <span className="whitespace-pre-wrap break-words">{msg.body}</span>}
 
           {/* 🔴 คำแปลอยู่ **ใต้** ต้นฉบับเสมอ ไม่ทับ — ต้นฉบับคือหลักฐาน คำแปลผิดได้ */}
           {translated && (
-            <div className="mt-1 border-t border-dashed border-[color:var(--color-line)] pt-1 text-[13px] text-[color:var(--color-ink-soft)]">
+            <span className="mt-1 block border-t border-dashed border-[color:var(--color-line)] pt-1 text-[13px] text-[color:var(--color-ink-soft)]">
               <span className="text-[10px] text-[color:var(--color-muted)]">คำแปล</span>
-              <div className="whitespace-pre-wrap break-words">{translated}</div>
-            </div>
+              <span className="block whitespace-pre-wrap break-words">{translated}</span>
+            </span>
           )}
 
-          <div className="mt-0.5 flex items-center justify-end gap-2 text-[10px] text-[color:var(--color-muted)]">
-            <span>{out ? senderLabel : "ลูกค้า"}</span>
-            <span>{timeLabel(msg.createdAt)}</span>
+          {/* เวลา + ติ๊ก ลอยชิดขวาล่างในฟอง (แบบร่าง `.stamp` ใช้ float ให้ข้อความไหลรอบ) */}
+          <span className="float-right ml-2.5 mt-1.5 inline-flex items-center gap-[3px] text-[10.5px] text-[#8b919b]">
+            {timeLabel(msg.createdAt)}
             {status && (
-              <span
-                title={status.title}
-                className={status.failed ? "text-[color:var(--color-danger)]" : ""}
-              >
-                {status.mark}
-              </span>
+              <Icon
+                name={status.icon}
+                size="sm"
+                strokeWidth={2.2}
+                label={status.title}
+                className={`size-3.5 ${
+                  status.failed
+                    ? "text-[color:var(--color-danger)]"
+                    : status.read
+                      ? "text-[color:var(--color-accent)]"
+                      : "text-[#a3a8b1]"
+                }`}
+              />
             )}
-          </div>
+          </span>
+          <span className="clear-both block" />
         </div>
 
         {/* แถบเครื่องมือใต้ฟอง — โผล่เฉพาะเมื่อมีของให้กดจริง */}
         <div className={`mt-0.5 flex flex-wrap items-center gap-2 text-[11px] ${out ? "justify-end" : ""}`}>
           {canTranslate && !translated && (msg.body ?? "").trim() !== "" && (
-            <button type="button" onClick={translate} disabled={pending} className="underline text-[color:var(--color-muted)]">
+            <button
+              type="button"
+              onClick={translate}
+              disabled={pending}
+              className="underline text-[color:var(--color-muted)]"
+            >
               {pending ? "กำลังแปล…" : "แปลข้อความ"}
             </button>
           )}
           {status?.failed && (
-            <button type="button" onClick={retry} disabled={pending} className="underline text-[color:var(--color-danger)]">
+            <button
+              type="button"
+              onClick={retry}
+              disabled={pending}
+              className="underline text-[color:var(--color-danger)]"
+            >
               {pending ? "กำลังส่ง…" : "ลองส่งอีกครั้ง"}
             </button>
           )}
-          {canSaveExample && out && !msg.isInternal && (msg.body ?? "").trim() !== "" && (
+          {canSaveExample && out && !note && (msg.body ?? "").trim() !== "" && (
             <form action={saveAnswerExampleAction}>
               <input type="hidden" name="systemId" value={systemId} />
               <input type="hidden" name="conversationId" value={conversationId} />

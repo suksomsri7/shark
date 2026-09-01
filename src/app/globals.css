@@ -12,6 +12,16 @@
   --color-danger: #b91c1c;
   --color-accent: #1d4ed8; /* จุดเน้น: ลิงก์ active, ไอคอน/แถบเน้น (contrast ~6.3:1 บนพื้นขาว) — ไม่ใช่แทน ink */
 
+  /* ── โทเคนกล่องแชท V2 (ยกจาก docs/design/chat-v2/mockup.html §2 — ห้ามคิดใหม่) ──
+     🔴 อยู่ที่นี่เพราะเป็น "สี" ที่ 3 ไฟล์ต้องใช้ร่วมกัน (bubble · composer · inbox-client)
+        ถ้าปล่อยให้แต่ละไฟล์พิมพ์ #e9eefc เอง วันที่แบบร่างเปลี่ยนสีจะแก้ไม่ครบและไม่มีอะไรฟ้อง
+     ใช้เฉพาะโมดูลแชท — จอที่เหลือของ SHARK ยังเป็น grayscale + accent เดียวตามเดิม */
+  --color-out: #e9eefc; /* ฟองข้อความขาออก (ทีมตอบ) */
+  --color-wall: #f3f4f7; /* พื้นหลังพื้นที่ข้อความ */
+  --color-note: #fffaed; /* โน้ตภายใน — พื้น */
+  --color-note-line: #ecd9a4; /* โน้ตภายใน — เส้นขอบ */
+  --color-note-ink: #8a6414; /* โน้ตภายใน — ตัวอักษร */
+
   --font-sans: var(--font-app-sans), ui-sans-serif, system-ui, sans-serif;
   --radius: 0.5rem;
 }

@@ -19,7 +19,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
-import { assertCan, evaluate } from "@/lib/core/rbac";
+import { assertCan, evaluate, filterAccessibleUnitIds } from "@/lib/core/rbac";
 import { requireChatRead, membershipOf } from "./guard";
 import {
   canAccessConvUnit,
@@ -29,6 +29,8 @@ import {
   getLinkedMember,
   type ExternalAttachmentInput, unitAccessWhere } from "./service";
 import { CHANNEL_ORDER } from "./channel-icon";
+import { listSystemTags, parseTags } from "./labels";
+import { searchAnswerExamples, type AnswerExampleHit } from "./learning";
 import {
   EMPTY_COUNTS,
   previewKindOf,
@@ -625,4 +627,253 @@ export async function muteConversationAction(
       .catch(() => null); // ชนกับอีกแท็บของคนเดียวกัน = แถวมีอยู่แล้ว ไม่ใช่ความผิดพลาด
   }
   return { ok: true };
+}
+
+// ═══════════════ คอลัมน์บริบทลูกค้า (WO-CV7 · แบบร่าง `.dcol3`) ═══════════════
+//
+// 🔴 ทำไมรวมทุกอย่างไว้ใน action เดียว
+//    คอลัมน์นี้มี 5 หมวดที่มาจากคนละตาราง (ห้อง · ป้าย · คลังคำตอบ · สมาชิก · ประวัติจอง)
+//    ถ้าแยกเป็น 5 action จอจะยิง 5 รอบเดินทางต่อการเปิด 1 ห้อง และ **ด่านสิทธิ์ต้องเขียน 5 ที่**
+//    ⇒ รวมเป็นเส้นเดียว: ด่านเดียว รอบเดินทางเดียว และเวลาที่เพิ่มด่านใหม่ก็เพิ่มที่เดียว
+//
+// 🔴 ข้อมูลในคอลัมน์นี้อ่อนไหวที่สุดของโมดูล (เนื้อความลูกค้า + ประวัติการจอง + ตัวตนสมาชิก)
+//    ⇒ `requireChatRead()` ก่อนแตะข้อมูล **และ** ด่าน unit ของห้องอีกชั้น (กัน IDOR ข้ามสาขา)
+
+/** คำตอบที่ทีมใช้บ่อย 1 รายการ (มาจากคลัง `ChatAnswerExample` ของ WO-CW3) */
+export type ContextAnswerExample = { id: string; question: string; answer: string };
+
+/** ประวัติการจอง 1 รายการ — รูปกลางที่ครอบได้ทุกโมดูลจอง (นัดหมาย/ห้องพัก/ตั๋ว) */
+export type ContextBooking = {
+  id: string;
+  /** ป้ายชนิดที่คนอ่านออก เช่น "นัดหมาย" · "เข้าพัก" · "ตั๋วงาน" */
+  kindLabel: string;
+  title: string;
+  at: number | null;
+  status: string;
+};
+
+export type ConversationContext = {
+  conversationId: string;
+  contactId: string;
+  channel: string;
+  title: string;
+  phone: string | null;
+  /** ภาษาที่ลูกค้าใช้ (จาก `meta.lang`) — ไม่มี = ซ่อนออกจากบรรทัดสรุป */
+  lang: string | null;
+  /** path ดิบจาก `meta.pageUrl` — ฝั่งจอเป็นคนแปลงผ่านทะเบียน `pageLabelFromPath` (มติ D1) */
+  pageUrl: string | null;
+  /** "เข้ามาจาก" — `meta.source` (utm) มาก่อน `meta.referrer` · ไม่มี = ซ่อนแถว */
+  referrer: string | null;
+  customerId: string | null;
+  memberName: string | null;
+  /** ระบบสมาชิกถูกเชื่อมกับระบบแชทนี้หรือยัง — ยังไม่เชื่อม = ไม่มีอะไรให้ผูก ⇒ ซ่อนชิป */
+  memberSystemLinked: boolean;
+  firstCustomerMessageAt: number | null;
+  firstResponseAt: number | null;
+  tags: string[];
+  tagSuggestions: string[];
+  answers: ContextAnswerExample[];
+  bookings: ContextBooking[];
+  canTag: boolean;
+  canLinkMember: boolean;
+};
+
+/** จำนวนรายการจองที่ดึงต่อสาขา และจำนวนที่ส่งกลับจอ — คอลัมน์แคบ 280px แสดงได้ไม่กี่บรรทัด */
+const BOOKING_TAKE = 5;
+/** คำตอบที่ทีมใช้บ่อย — แบบร่างวาดไว้ 2 ใบ · เผื่อ 3 พอสำหรับคอลัมน์นี้ */
+const ANSWER_TAKE = 3;
+
+/** ค่าใน `meta` เป็น Json อิสระ — ดึงออกมาเป็นสตริงที่ใช้ได้จริงหรือ null เท่านั้น */
+function metaString(meta: unknown, key: string): string | null {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+  const v = (meta as Record<string, unknown>)[key];
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t === "" ? null : t;
+}
+
+/**
+ * ประวัติการจองของสมาชิกที่ผูกไว้ — อ่านจาก **โมดูลจองที่ร้านเปิดจริง** เท่านั้น
+ *
+ * 🔴 ทำไมต้องวนตามชนิดของกิจการ (`BusinessUnit.type`)
+ *    ตารางจองทั้งหมดเป็น **unit-axis** ⇒ ยาม `tenantDb` บังคับให้ระบุ `unitId` ทุกคำสั่ง
+ *    (จงใจ: ไม่มีทางเผลออ่านข้ามสาขา) · และร้านสปาไม่มีทางมีแถวใน `HotelReservation`
+ *    ⇒ ถามเฉพาะกิจการที่เป็นชนิดนั้นจริง = ไม่ยิง query ทิ้งเปล่าให้ร้านที่ไม่ได้เปิดโมดูล
+ * 🔴 กรองสาขาด้วย `filterAccessibleUnitIds` ก่อนเสมอ — พนักงานสาขาเดียวห้ามเห็นประวัติสาขาอื่น
+ *    (กติกาเดียวกับปฏิทินรวม `modules/calendar/service.ts`)
+ * ⚠️ มีแค่ 3 ตารางจองที่ผูก `customerId` กับระบบสมาชิกได้จริง (Appointment · HotelReservation ·
+ *    TicketOrder) · `RentalBooking`/`ClinicAppointment` เก็บแค่ชื่อ-เบอร์แบบ snapshot
+ *    ⇒ จับคู่กับสมาชิกไม่ได้ที่ระดับข้อมูล จึงยังไม่อยู่ในรายการนี้ (ไม่ใช่การลืม)
+ */
+async function memberBookings(
+  tenantId: string,
+  membership: ReturnType<typeof membershipOf>,
+  customerId: string,
+): Promise<ContextBooking[]> {
+  const units = await tenantDb({ tenantId }).businessUnit.findMany({
+    where: { type: { in: ["BOOKING", "HOTEL", "TICKET"] }, status: { not: "ARCHIVED" } },
+    select: { id: true, type: true },
+  });
+  const allowed = new Set(filterAccessibleUnitIds(membership, units.map((u) => u.id)));
+  const mine = units.filter((u) => allowed.has(u.id));
+  if (mine.length === 0) return [];
+
+  const out: ContextBooking[] = [];
+  await Promise.all(
+    mine.map(async (u) => {
+      const udb = tenantDb({ tenantId, unitId: u.id });
+      try {
+        if (u.type === "BOOKING") {
+          const rows = await udb.appointment.findMany({
+            where: { customerId },
+            orderBy: { startAt: "desc" },
+            take: BOOKING_TAKE,
+            select: { id: true, startAt: true, status: true, service: { select: { name: true } } },
+          });
+          for (const r of rows) {
+            out.push({
+              id: r.id,
+              kindLabel: "นัดหมาย",
+              title: r.service?.name ?? "นัดหมาย",
+              at: ms(r.startAt),
+              status: r.status,
+            });
+          }
+        } else if (u.type === "HOTEL") {
+          const rows = await udb.hotelReservation.findMany({
+            where: { customerId },
+            orderBy: { checkInDate: "desc" },
+            take: BOOKING_TAKE,
+            select: {
+              id: true,
+              checkInDate: true,
+              status: true,
+              roomType: { select: { name: true } },
+            },
+          });
+          for (const r of rows) {
+            out.push({
+              id: r.id,
+              kindLabel: "เข้าพัก",
+              title: r.roomType?.name ?? "ห้องพัก",
+              at: ms(r.checkInDate),
+              status: r.status,
+            });
+          }
+        } else {
+          const rows = await udb.ticketOrder.findMany({
+            where: { customerId },
+            orderBy: { createdAt: "desc" },
+            take: BOOKING_TAKE,
+            select: { id: true, createdAt: true, status: true, event: { select: { name: true } } },
+          });
+          for (const r of rows) {
+            out.push({
+              id: r.id,
+              kindLabel: "ตั๋วงาน",
+              title: r.event?.name ?? "ตั๋วงาน",
+              at: ms(r.createdAt),
+              status: r.status,
+            });
+          }
+        }
+      } catch {
+        // สาขานั้นยังไม่ได้ตั้งค่าโมดูล/ตารางว่าง → ข้ามเงียบ ๆ
+        // ประวัติการจองเป็นข้อมูลเสริม ห้ามทำให้คอลัมน์บริบททั้งคอลัมน์ล้ม
+      }
+    }),
+  );
+  return out.sort((a, b) => (b.at ?? 0) - (a.at ?? 0)).slice(0, BOOKING_TAKE);
+}
+
+/**
+ * ข้อมูลทั้งคอลัมน์บริบทของห้องหนึ่ง — เส้นเดียว ด่านเดียว
+ * คืน `null` เมื่อ: ไม่มีห้องนี้ · ห้องอยู่สาขาที่คนนี้เข้าไม่ถึง (ตอบเหมือนกันโดยตั้งใจ —
+ * ไม่บอกว่า "มีห้องนี้อยู่แต่คุณเข้าไม่ได้" ซึ่งเป็นการยืนยันการมีอยู่ของข้อมูล)
+ */
+export async function getConversationContextAction(
+  systemId: string,
+  conversationId: string,
+): Promise<ConversationContext | null> {
+  const auth = await requireChatRead();
+  if (!systemId || !conversationId) return null;
+  const tenantId = auth.active.tenantId;
+  const unitAccess = auth.active.unitAccess as string[];
+  const dbc = db(tenantId, systemId);
+
+  const conv = await dbc.chatConversation.findFirst({
+    where: { id: conversationId },
+    select: {
+      id: true,
+      contactId: true,
+      channel: true,
+      unitId: true,
+      tags: true,
+      meta: true,
+      firstCustomerMessageAt: true,
+      firstResponseAt: true,
+      contact: { select: { displayName: true, phone: true, customerId: true } },
+    },
+  });
+  if (!conv) return null;
+  // ด่าน unit (M11) — ห้องของสาขาที่คนนี้เข้าไม่ถึง ต้องตอบเหมือนไม่มีห้อง
+  if (!canAccessConvUnit(unitAccess, conv.unitId)) return null;
+
+  const membership = membershipOf(auth);
+  const canTag = evaluate(membership, { module: "chat", action: "chat.conversation.tag" });
+  const canLinkMember = evaluate(membership, { module: "chat", action: "chat.customer.link" });
+  const customerId = conv.contact.customerId;
+
+  // ข้อความล่าสุดของ **ลูกค้า** = คำถามที่ใช้ค้นคลังคำตอบ (ทีมพิมพ์เองไม่ใช่คำถาม)
+  const [lastInbound, setting, tagSuggestions, linkedMember] = await Promise.all([
+    dbc.chatMessage.findFirst({
+      where: { conversationId: conv.id, direction: "IN", isInternal: false },
+      orderBy: { createdAt: "desc" },
+      select: { body: true },
+    }),
+    dbc.chatSetting.findFirst({ where: {}, select: { memberSystemId: true } }),
+    canTag
+      ? listSystemTags({ tenantId, systemId })
+      : Promise.resolve<{ tag: string; count: number }[]>([]),
+    customerId ? getLinkedMember(tenantId, customerId) : Promise.resolve(null),
+  ]);
+
+  const question = lastInbound?.body?.trim() ?? "";
+  const [answers, bookings] = await Promise.all([
+    question === ""
+      ? Promise.resolve<AnswerExampleHit[]>([])
+      : searchAnswerExamples({
+          tenantId,
+          systemId,
+          query: question,
+          countUse: false, // แค่แสดงในคอลัมน์บริบท — ยังไม่ได้ "ใช้" (ดูเหตุผลที่ learning.ts)
+          channel: conv.channel,
+          take: ANSWER_TAKE,
+        }),
+    customerId
+      ? memberBookings(tenantId, membership, customerId)
+      : Promise.resolve<ContextBooking[]>([]),
+  ]);
+
+  return {
+    conversationId: conv.id,
+    contactId: conv.contactId,
+    channel: conv.channel,
+    title: conv.contact.displayName ?? conv.contact.phone ?? "ลูกค้า",
+    phone: conv.contact.phone,
+    lang: metaString(conv.meta, "lang"),
+    pageUrl: metaString(conv.meta, "pageUrl"),
+    referrer: metaString(conv.meta, "source") ?? metaString(conv.meta, "referrer"),
+    customerId,
+    memberName: linkedMember ? (linkedMember.name ?? linkedMember.memberCode ?? null) : null,
+    memberSystemLinked: Boolean(setting?.memberSystemId),
+    firstCustomerMessageAt: ms(conv.firstCustomerMessageAt),
+    firstResponseAt: ms(conv.firstResponseAt),
+    tags: parseTags(conv.tags),
+    tagSuggestions: tagSuggestions.map((t) => t.tag),
+    answers: answers.map((a) => ({ id: a.id, question: a.question, answer: a.answer })),
+    bookings,
+    canTag,
+    canLinkMember,
+  };
 }

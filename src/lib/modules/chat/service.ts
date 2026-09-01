@@ -21,6 +21,8 @@ import { readBusinessHours } from "./business-hours";
 import type { BusinessDay, StoredBusinessHours } from "./business-hours";
 import { encryptCreds, decryptCreds, mask } from "./crypto";
 import { channelSentenceLabel } from "./channel-icon";
+// ตัวคัดผู้รับแจ้งเตือนตัวเดียวกับที่ push ใช้ (core/push.ts) — ห้ามมีกติกา "ใครควรได้รู้" 2 ชุด
+import { selectChatNotifyRecipients, toChatNotifyMember, VIEWING_WINDOW_MS } from "./notify";
 
 // Chat service (P1 = LINE + WEBCHAT). scope = systemId (AppSystem type CHAT)
 // query ทุกตัวผูก tenantId + systemId ตรง ๆ (ไม่พึ่ง tenantDb — เหมือน reward/meeting)
@@ -526,8 +528,11 @@ const INBOUND_NOTIFY_GAP_MS = 3 * 60_000;
 //   3) emitOutbox "chat.message.received" ทุกข้อความ (idempotencyKey ผูก messageId กัน webhook ซ้ำ)
 // แล้ว **นอกทรานแซกชัน**:
 //   4) push เข้ามือถือทีมงาน (sendPushToTenant) — de-dup ด้วย `firstUnread` ตัวเดียวกับข้อ 2
-// AppNotification เป็น tenant-wide (schema ไม่มี user/role targeting) — ไปโผล่ /app/notifications
-async function announceInbound(args: {
+// AppNotification เขียน **รายผู้รับ** (`recipientUserId`) ที่ผ่านด่าน `chat.conversation.read`
+// จริงเท่านั้น — ไปโผล่ /app/notifications ของคนนั้นคนเดียว (ปิดหนี้ G11 · 1 ก.ย. 2026)
+// 🔴 ตั้งชื่อ type ของพารามิเตอร์แทนการเขียน object ยัดในวงเล็บ — เพื่อให้เครื่องมือที่ "ตัดตัว
+//    ฟังก์ชันด้วยการนับปีกกา" (ข้อสอบ/สคริปต์ตรวจ) อ่านตัวฟังก์ชันได้จริง ไม่ใช่ได้แต่รูปพารามิเตอร์
+type AnnounceInboundArgs = {
   tenantId: string;
   systemId: string;
   unitId: string | null;
@@ -537,7 +542,9 @@ async function announceInbound(args: {
   contactLabel: string;
   previewText: string;
   sentAt: Date;
-}): Promise<void> {
+};
+
+async function announceInbound(args: AnnounceInboundArgs): Promise<void> {
   const { tenantId, systemId, conv } = args;
   const nextStatus = conv.status === "PENDING" ? "OPEN" : conv.status;
   const channelTh = channelSentenceLabel(args.channel);
@@ -587,24 +594,63 @@ async function announceInbound(args: {
     });
 
     if (firstUnread) {
-      // 🔴 PDPA (31 ส.ค. 2026 · ช่องโหว่ตัวที่ 2 ของแพตเทิร์นเดียวกับ G9)
-      //    `AppNotification` เป็น **tenant-wide**: สคีมาไม่มี `userId`/`role` เลย และหน้า
-      //    `/app/notifications` อ่านด้วย `listNotifications({ tenantId })` โดยไม่มี `assertCan`
-      //    ⇒ ใครก็ตามที่เข้าแอปของร้านได้ เปิดศูนย์แจ้งเตือนแล้วอ่าน "ตัวอย่างข้อความลูกค้า"
-      //    ได้ทั้งหมด แม้ไม่มีสิทธิ์แชทสักข้อ (เราเพิ่งปิดทาง push ไปแล้ว แต่ทางนี้ยังเปิดอยู่)
-      //    ⇒ ตัด `previewText` (เนื้อความจริงของลูกค้า) ออก เหลือแค่ **ใคร/ช่องทางไหน/ลิงก์เข้าห้อง**
-      //      ซึ่งไม่ใช่เนื้อหา · คนที่มีสิทธิ์กดลิงก์เข้าไปอ่านของจริงได้อยู่แล้ว (ห้องแชทมีด่าน)
-      //    ⚠️ **มาตรการชั่วคราว** — ถอดออกได้เมื่อ `AppNotification` มีช่องผู้รับ/สิทธิ์
-      //      (เช่น `targetUserId` หรือ `requiredAction`) แล้วขาอ่านกรองผู้รับได้จริง
-      //    ⚠️ ห้ามเอากติกานี้ไปใช้กับ push: `sendPushToChatStaff` คัดผู้รับด้วยสิทธิ์จริงแล้ว
-      //      จึงยังใส่ตัวอย่างข้อความได้ตามเดิม — นั่นคือประโยชน์หลักของการแจ้งเตือน
-      await tx.appNotification.create({
-        data: {
-          tenantId,
-          title: "ลูกค้าทักเข้ามา",
-          body: `${args.contactLabel} (${channelTh}) ส่งข้อความใหม่ · เปิดห้องแชท /app/sys/${systemId}/chat?c=${conv.id}`,
-        },
+      // 🔴 ปิดหนี้ G11 (1 ก.ย. 2026) — มาตรการชั่วคราวของ 31 ส.ค. ถูกถอดออกแล้ว
+      //    ของเดิม: `AppNotification` เป็น **ประกาศทั้งร้าน** (สคีมาไม่มีช่องผู้รับ) ⇒ ใครที่เข้า
+      //    แอปของร้านได้ เปิด `/app/notifications` อ่าน "ตัวอย่างข้อความลูกค้า" ได้หมด แม้ไม่มี
+      //    สิทธิ์แชทสักข้อ ⇒ รอบนั้นจึงต้อง **ตัดเนื้อความออก** เป็นการชั่วคราว
+      //    ของใหม่: สคีมามี `recipientUserId` แล้ว ⇒ เขียน **รายผู้รับ** ที่ผ่านด่านสิทธิ์จริง
+      //    ⇒ ใส่ตัวอย่างข้อความกลับเข้าไปได้ (ประโยชน์หลักของการแจ้งเตือนคือรู้ว่าเรื่องด่วนแค่ไหน
+      //      โดยไม่ต้องเปิดเข้าไปดูทีละห้อง)
+      //
+      // 🔴 ใช้ `selectChatNotifyRecipients` ตัวเดียวกับ push (`core/push.ts`) — ห้ามพิมพ์กติกา
+      //    "ใครควรได้รู้" ชุดที่ 2 ที่นี่ · ผลลัพธ์ 2 ทางต้องตรงกันเสมอ ไม่งั้นวันหนึ่งมือถือเด้ง
+      //    แต่ศูนย์แจ้งเตือนว่าง (หรือกลับกัน) แล้วไม่มีใครรู้ว่าอันไหนถูก
+      // 🔴 ไม่มีผู้รับที่มีสิทธิ์เลย = **ไม่สร้างแถว** ห้ามตกกลับไปเป็นประกาศทั้งร้าน
+      //    (นั่นคือช่องโหว่เดิมกลับมาทางประตูหลัง)
+      // ⚠️ อ่าน 3 ตารางนี้เฉพาะตอนจะแจ้งจริง (throttle ด้วย `firstUnread` แล้ว) — ไม่ใช่ทุกข้อความ
+      const [memberRows, readerRows, mutedRows] = await Promise.all([
+        // คนที่ถูกถอนสิทธิ์ (acceptedAt=null) ไม่ใช่สมาชิกที่ใช้งานอยู่ — ตรงกับด่านใน core/context.ts
+        tx.membership.findMany({
+          where: { tenantId, acceptedAt: { not: null } },
+          select: { userId: true, role: true, unitAccess: true, permissions: true },
+        }),
+        // อ่านเฉพาะ read state ที่ยังสด — เก่ากว่าหน้าต่างแปลว่าไม่ได้เปิดห้องค้างอยู่แล้ว
+        tx.chatReadState.findMany({
+          where: {
+            conversationId: conv.id,
+            lastReadAt: { gte: new Date(args.sentAt.getTime() - VIEWING_WINDOW_MS) },
+          },
+          select: { userId: true, lastReadAt: true },
+        }),
+        // คนที่ปิดเสียงห้องนี้ไว้ (รายคน · WO-CV10) — เงียบแล้วต้องเงียบทั้งมือถือและในเว็บ
+        tx.chatConversationPref.findMany({
+          where: { conversationId: conv.id, mutedUntil: { gt: args.sentAt } },
+          select: { userId: true },
+        }),
+      ]);
+      const recipientUserIds = selectChatNotifyRecipients({
+        members: memberRows.map(toChatNotifyMember),
+        unitId: conv.unitId,
+        assigneeUserId: conv.assigneeUserId,
+        readers: readerRows,
+        mutedUserIds: mutedRows.map((r) => r.userId),
+        now: args.sentAt,
       });
+      // ⚠️ เขียนทีละแถว ไม่ใช่ `createMany` โดยตั้งใจ: จำนวนผู้รับคือ "คนในร้านที่มีสิทธิ์อ่านแชท"
+      //    ซึ่งเป็นหลักหน่วย และ insert สั้น ๆ ในทรานแซกชันเดียวกันอยู่แล้ว ⇒ กำไรจากการยุบเป็น
+      //    คำสั่งเดียวน้อยมาก · แลกกับการที่ทุกเครื่องมือ (รวม fake prisma ของชุดข้อสอบเดิม
+      //    `qc-chat-push-badge`) เดินเส้นทางนี้ได้เหมือนกันหมด — ถ้าวันหนึ่งร้านมีพนักงานหลักร้อย
+      //    ค่อยเปลี่ยนเป็น createMany พร้อมกับสอน fake ให้รู้จักคำสั่งนั้น
+      for (const recipientUserId of recipientUserIds) {
+        await tx.appNotification.create({
+          data: {
+            tenantId,
+            recipientUserId,
+            title: "ลูกค้าทักเข้ามา",
+            body: `${args.contactLabel} (${channelTh}): ${args.previewText.trim() === "" ? "ข้อความใหม่" : args.previewText.trim().slice(0, 140)} · เปิดห้องแชท /app/sys/${systemId}/chat?c=${conv.id}`,
+          },
+        });
+      }
     }
   });
 

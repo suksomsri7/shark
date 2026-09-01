@@ -26,11 +26,21 @@ import {
   CHANNEL_META,
   CHANNEL_ORDER,
   ChannelBadge,
-  ChannelChip,
   channelLabel,
 } from "./channel-icon";
 import { Icon } from "./icons";
-import { DateDivider, MessageBubble, dayKey, dayLabel } from "./bubble";
+import { DateDivider, MessageBubble, TypingBubble, dayKey, dayLabel } from "./bubble";
+import { ChatComposer } from "./composer";
+import { ContextPanel } from "./context-panel";
+import { pageLabelFromPath } from "./page-label";
+import { setConversationTagAction } from "./quick-reply-actions";
+import {
+  loadRoomContextAction,
+  searchInRoomAction,
+  setRoomAutoTranslateAction,
+  type RoomContext,
+  type RoomSearchHit,
+} from "./room-actions";
 import {
   loadInboxAction,
   loadInboxCountsAction,
@@ -68,6 +78,19 @@ import type { SuggestOption } from "./ai-suggest";
 
 /** จังหวะ poll — ของเดิมคือ 7 วิ · ห้ามช้าลงกว่านี้ (§6.4) */
 const POLL_MS = 5000;
+
+/**
+ * ช่วงจัดกลุ่มข้อความ = 3 นาที (แบบร่างจอ 2: "คนเดียวกันภายใน 3 นาที = ก้อนเดียว")
+ * ก้อนเดียวกัน = ขึ้นชื่อผู้ส่งครั้งเดียว และมีมุมติดหางแค่ฟองแรก
+ */
+const GROUP_WINDOW_MS = 180_000;
+
+/**
+ * "กำลังพิมพ์" อยู่ได้นานสุดกี่มิลลิวินาทีหลังได้รับสัญญาณล่าสุด
+ * 🔴 ต้องหมดอายุเอง — สัญญาณ "หยุดพิมพ์" หายระหว่างทางได้เสมอ (ปิดแท็บ/เน็ตหลุด)
+ *    ถ้าไม่ตั้งเพดาน จุดสามจุดจะค้างอยู่ตลอดกาลและกลายเป็นข้อมูลที่โกหก
+ */
+const TYPING_TTL_MS = 6000;
 
 // 🔴 ชิปกรอง + ตัวกรองหลังกรวยย้ายไป `list-filters.ts` แล้ว — เพราะ **ฝั่งเซิร์ฟเวอร์ต้องใช้ชุดเดียวกัน**
 //    (ชิปที่จอนิยามเอง แต่ query นิยามอีกอย่าง = ชิปที่กดแล้วได้รายการเดิม)
@@ -125,6 +148,8 @@ export type ChatInboxClientProps = {
   canAssign: boolean;
   canSetStatus: boolean;
   canLink: boolean;
+  /** ติด/ถอดป้ายกำกับห้อง (`chat.conversation.tag`) — เมนู ⋮ ใช้ตัวนี้ตัดสินว่าเปิดให้กดไหม */
+  canTag: boolean;
   /** เปิดใช้ + มีสิทธิ์จริงเท่านั้นจึงจะเห็นปุ่ม (ค่าเริ่มต้นของทั้งคู่คือปิด) */
   canSuggest: boolean;
   canTranslate: boolean;
@@ -148,6 +173,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
     canAssign,
     canSetStatus,
     canLink,
+    canTag,
     canSuggest,
     canTranslate,
     memberLinked,
@@ -192,8 +218,6 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
   const [pendingMsgs, setPendingMsgs] = useState<ThreadMessage[]>([]);
 
   const listRef = useRef<HTMLDivElement | null>(null);
-  const attachRef = useRef<HTMLInputElement | null>(null);
-  const cameraRef = useRef<HTMLInputElement | null>(null);
   const qRef = useRef(q);
   qRef.current = q;
   // 🔴 ตัวกรองต้องเดินทางไปถึง query จริง ⇒ เก็บใน ref ให้ลูป poll อ่านค่าล่าสุดได้
@@ -233,18 +257,6 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
   useEffect(() => {
     setFormErr(props.err ?? null);
   }, [props.err]);
-
-  // preview ของไฟล์: สร้าง object URL ครั้งเดียวต่อไฟล์ แล้วคืนหน่วยความจำเมื่อเปลี่ยน
-  // (สร้างตอน render = รั่วรอบละใบทุก 5 วิ ตามจังหวะ poll)
-  const previews = useMemo(
-    () => files.map((f) => (f.type.startsWith("image/") ? URL.createObjectURL(f) : null)),
-    [files],
-  );
-  useEffect(() => {
-    return () => {
-      for (const u of previews) if (u) URL.revokeObjectURL(u);
-    };
-  }, [previews]);
 
   // ── poll: รายการซ้าย + ห้องที่เปิดอยู่ (ไม่แตะ state ของร่าง/ไฟล์เลย) ──
   //
@@ -530,11 +542,239 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
     setTranslatePreview(null);
   };
 
+  // ══════════════════ ห้องแชท (WO-CV4 · แบบร่างจอ 2–4 + `.dcol2`) ══════════════════
+
+  /** ของที่หัวห้อง/ฟองเสียงต้องใช้ แต่ `loadThreadAction` ยังไม่ได้ส่งมา (ดู room-actions.ts) */
+  const [roomCtx, setRoomCtx] = useState<RoomContext | null>(null);
+  const [roomMenu, setRoomMenu] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [tagOpen, setTagOpen] = useState(false);
+  const [tagDraft, setTagDraft] = useState("");
+  /** ข้อผิดพลาดของ "ฝั่งห้อง" — ขึ้นใต้หัวห้องตรงที่ผู้ใช้กด ไม่ใช่ไปโผล่ในกล่องพิมพ์ */
+  const [roomErr, setRoomErr] = useState<string | null>(null);
+  const [roomBusy, setRoomBusy] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [roomQ, setRoomQ] = useState("");
+  const [roomHits, setRoomHits] = useState<RoomSearchHit[] | null>(null);
+  const [typingUntil, setTypingUntil] = useState<number | null>(null);
+
+  const msgCount = thread?.messages.length ?? 0;
+  const activeRow = useMemo(() => rows.find((r) => r.id === activeId) ?? null, [rows, activeId]);
+  const roomMuted = isMuted(activeRow?.mutedUntil ?? null);
+
+  // ── บริบทของห้อง: ดึงตอนเปลี่ยนห้อง และเมื่อมีข้อความใหม่ (ไม่ใช่ทุกรอบ poll — ค่าพวกนี้แทบไม่ขยับ)
+  useEffect(() => {
+    if (!activeId) {
+      setRoomCtx(null);
+      return;
+    }
+    let alive = true;
+    void loadRoomContextAction(systemId, activeId)
+      .then((c) => {
+        if (alive) setRoomCtx(c);
+      })
+      .catch(() => {
+        if (alive) setRoomCtx(null); // ดึงบริบทไม่ได้ = ซ่อนบรรทัดทิ้ง ไม่ใช่โชว์ค่าว่าง (มติ D1)
+      });
+    return () => {
+      alive = false;
+    };
+  }, [systemId, activeId, msgCount]);
+
+  // เปลี่ยนห้อง = ปิดของที่ค้างอยู่ของห้องเดิม (เมนู/ค้นหา/ข้อความผิดพลาด)
+  useEffect(() => {
+    setRoomMenu(false);
+    setAssignOpen(false);
+    setTagOpen(false);
+    setSearchOpen(false);
+    setRoomQ("");
+    setRoomHits(null);
+    setRoomErr(null);
+    setTypingUntil(null);
+  }, [activeId]);
+
+  // ── "กำลังพิมพ์" ──
+  // 🔴 หน้าจอพร้อมแล้ว แต่ **สัญญาณจริงมาจากชั้น realtime ของรอบ 4** (WO-CV9)
+  //    รับผ่าน CustomEvent บน window เพื่อให้สายนั้นต่อได้โดยไม่ต้องแก้ไฟล์นี้:
+  //    `window.dispatchEvent(new CustomEvent("chat:typing", { detail: { conversationId } }))`
+  useEffect(() => {
+    const onTyping = (e: Event) => {
+      const detail = (e as CustomEvent<{ conversationId?: string }>).detail;
+      if (!activeRef.current || detail?.conversationId !== activeRef.current) return;
+      setTypingUntil(Date.now() + TYPING_TTL_MS);
+    };
+    window.addEventListener("chat:typing", onTyping);
+    return () => window.removeEventListener("chat:typing", onTyping);
+  }, []);
+  useEffect(() => {
+    if (typingUntil === null) return;
+    const t = setTimeout(() => setTypingUntil(null), Math.max(0, typingUntil - Date.now()));
+    return () => clearTimeout(t);
+  }, [typingUntil]);
+  const typing = typingUntil !== null && typingUntil > Date.now();
+
+  // ── ค้นหาในห้อง ──
+  // 🔴 ยิงไปค้นที่ชั้นข้อมูลจริง (`searchInRoomAction`) ไม่ใช่กรอง `thread.messages` ที่โหลดมาแล้ว
+  //    ห้องที่คุยกันมา 500 ข้อความ จอถือไว้แค่ท้าย ๆ ⇒ กรองบนจอจะบอกว่า "ไม่เจอ" ทั้งที่มี
+  useEffect(() => {
+    if (!searchOpen || !activeId || roomQ.trim().length < 2) {
+      setRoomHits(null);
+      return;
+    }
+    let alive = true;
+    const t = setTimeout(() => {
+      void searchInRoomAction(systemId, activeId, roomQ)
+        .then((hits) => {
+          if (alive) setRoomHits(hits);
+        })
+        .catch(() => {
+          if (alive) setRoomHits([]);
+        });
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [searchOpen, roomQ, systemId, activeId]);
+
+  /**
+   * ข้อความที่จะวาด = ของจริง + ฟองชั่วคราวที่กำลังส่ง · พร้อมผลการ **จัดกลุ่ม**
+   * ก้อนใหม่เกิดเมื่อ: ข้ามวัน · เปลี่ยนผู้ส่ง/ทิศทาง · หรือห่างจากข้อความก่อนหน้าเกิน 3 นาที
+   */
+  const rendered = useMemo(() => {
+    const all = [...(thread?.messages ?? []), ...pendingMsgs];
+    return all.map((m, i) => {
+      const prev = i > 0 ? all[i - 1] : undefined;
+      const newDay = !prev || dayKey(prev.createdAt) !== dayKey(m.createdAt);
+      const sameSender =
+        !!prev &&
+        prev.direction === m.direction &&
+        (prev.senderUserId ?? "") === (m.senderUserId ?? "") &&
+        prev.isInternal === m.isInternal;
+      const isGroupStart =
+        newDay || !sameSender || m.createdAt - (prev?.createdAt ?? 0) > GROUP_WINDOW_MS;
+      return { m, newDay, isGroupStart };
+    });
+  }, [thread?.messages, pendingMsgs]);
+
+  /** วางข้อความลงกล่องพิมพ์ของห้องนี้ (คอลัมน์บริบทของสาย F เรียกผ่าน `onInsertText`) */
+  const insertIntoDraft = useCallback((text: string) => {
+    const id = activeRef.current;
+    if (!id || text.trim() === "") return;
+    setDrafts((d) => {
+      const cur = d[id] ?? "";
+      return { ...d, [id]: cur.trim() === "" ? text : `${cur}\n${text}` };
+    });
+  }, []);
+
+  /** กระโดดไปยังข้อความที่เจอจากการค้นหา — หาไม่เจอบนจอ = ของเก่ากว่าที่โหลดไว้ ต้องบอกตรง ๆ */
+  const jumpToMessage = (messageId: string) => {
+    const el = document.getElementById(`msg-${messageId}`);
+    if (el) {
+      el.scrollIntoView({ block: "center" });
+      el.classList.add("ring-2", "ring-[color:var(--color-accent)]", "rounded-[14px]");
+      setTimeout(() => el.classList.remove("ring-2", "ring-[color:var(--color-accent)]"), 1600);
+      setRoomErr(null);
+    } else {
+      setRoomErr("ข้อความนี้เก่ากว่าช่วงที่เปิดอยู่บนจอ — เนื้อหาที่ค้นเจอแสดงอยู่ในผลค้นหาแล้ว");
+    }
+  };
+
+  const closeRoomPopovers = () => {
+    setRoomMenu(false);
+    setAssignOpen(false);
+    setTagOpen(false);
+  };
+
+  /** เรียก action ของห้องแบบเดียวกันทุกปุ่ม: ปิดเมนู → ล็อกปุ่ม → ล้มเหลวก็บอกตรง ๆ ไม่เงียบ */
+  const runRoomAction = (
+    run: () => Promise<{ ok: boolean; reason?: string }>,
+    fallback: string,
+  ) => {
+    closeRoomPopovers();
+    setRoomBusy(true);
+    setRoomErr(null);
+    void (async () => {
+      const res = await run().catch(() => ({ ok: false as const, reason: undefined }));
+      setRoomBusy(false);
+      if (!res.ok) setRoomErr(res.reason ?? fallback);
+      await refreshNow();
+    })();
+  };
+
+  const toggleRoomPin = () => {
+    if (!activeId || !activeRow) return;
+    const next = !activeRow.pinned;
+    setRows((xs) => xs.map((x) => (x.id === activeId ? { ...x, pinned: next } : x)));
+    runRoomAction(
+      () => pinConversationAction(systemId, activeId, next),
+      "ปักหมุดไม่สำเร็จ — กดอีกครั้งได้เลย",
+    );
+  };
+
+  const toggleRoomMute = () => {
+    if (!activeId) return;
+    runRoomAction(
+      () => muteConversationAction(systemId, activeId, roomMuted ? "off" : 8 * 60),
+      "ตั้งค่าการแจ้งเตือนไม่สำเร็จ — กดอีกครั้งได้เลย",
+    );
+  };
+
+  const toggleAutoTranslate = () => {
+    if (!activeId) return;
+    const next = !(roomCtx?.autoTranslate ?? false);
+    setRoomCtx((c) => (c ? { ...c, autoTranslate: next } : c));
+    runRoomAction(
+      () => setRoomAutoTranslateAction(systemId, activeId, next),
+      "ตั้งค่าการแปลของห้องนี้ไม่สำเร็จ — กดอีกครั้งได้เลย",
+    );
+  };
+
+  const toggleTag = (tag: string, on: boolean) => {
+    if (!activeId || tag.trim() === "") return;
+    setRoomBusy(true);
+    setRoomErr(null);
+    void (async () => {
+      const res = await setConversationTagAction(systemId, activeId, tag, on).catch(() => ({
+        ok: false as const,
+        tags: undefined,
+        reason: "เครือข่ายขัดข้องระหว่างแก้ป้ายกำกับ — กดอีกครั้งได้เลย",
+      }));
+      setRoomBusy(false);
+      if (res.ok && res.tags) setRoomCtx((c) => (c ? { ...c, tags: res.tags! } : c));
+      else setRoomErr(res.reason ?? "แก้ป้ายกำกับไม่สำเร็จ — กดอีกครั้งได้เลย");
+    })();
+  };
+
+  // 🔴 `meta.pageUrl` ที่ฝั่งลูกค้าส่งมาเป็น **path** (`"/new"`) ไม่ใช่ชื่อหน้า และบางห้องไม่มีค่าเลย
+  //    ⇒ แปลผ่านทะเบียนเดียวกับคอลัมน์บริบท (`page-label.ts`) · ไม่มีค่า = ซ่อนบรรทัดทิ้ง (มติ D1)
+  const pathname = roomCtx?.pageUrl ?? null;
+  const pageLabel = pageLabelFromPath(pathname);
+  const roomTags = roomCtx?.tags ?? [];
+
+  /**
+   * บรรทัดใต้ชื่อห้อง (แบบร่าง `.tsub`): "กำลังดูหน้า … · ยังไม่มีผู้รับผิดชอบ"
+   * 🔴 ประกอบจากชิ้นที่ **มีค่าจริง** เท่านั้น · ไม่มีชิ้นไหนเลย = คืนค่าว่างแล้วผู้เรียกไม่วาดบรรทัด
+   */
+  const subline = useMemo(() => {
+    if (!thread) return "";
+    const parts: string[] = [];
+    if (pageLabel !== null) parts.push(`กำลังดูหน้า ${pageLabel}`);
+    if (thread.status !== "OPEN") parts.push(STATUS_LABEL[thread.status] ?? thread.status);
+    parts.push(
+      thread.assigneeUserId ? `ผู้รับผิดชอบ ${nameOf(thread.assigneeUserId)}` : "ยังไม่มีผู้รับผิดชอบ",
+    );
+    if (roomTags.length > 0) parts.push(roomTags.join(" · "));
+    return parts.join(" · ");
+  }, [thread, pageLabel, roomTags, nameOf]);
+
   const closed = thread?.status === "RESOLVED";
 
   return (
     <section className="flex min-h-0 flex-col gap-2">
-      <div className="grid min-h-0 gap-0 sm:grid-cols-[minmax(0,320px)_minmax(0,1fr)] sm:gap-4">
+      {/* 🔴 เดสก์ท็อป = 3 คอลัมน์ตามแบบร่าง (`ref-desktop.png`): รายการ | ห้องแชท | บริบทลูกค้า
+          คอลัมน์ 3 หายไปต่ำกว่า `lg` เพราะจอแคบไม่มีที่พอ และของในนั้นไม่ใช่ของที่ต้องเห็นตลอดเวลา */}
+      <div className="grid min-h-0 gap-0 sm:grid-cols-[minmax(0,320px)_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)_280px]">
         {/* ══════════ คอลัมน์ซ้าย: รายการแชท (WO-CV3 · แบบร่างจอ 1 + `.dcol1`) ══════════ */}
         <aside
           className={`card relative min-w-0 flex-col gap-0 p-0 ${activeId ? "hidden sm:flex" : "flex"}`}
@@ -709,6 +949,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
                 <button
                   key={key}
                   type="button"
+                  data-qc="chat-chip"
                   onClick={() => setFilter(key)}
                   aria-pressed={on}
                   className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12.5px] ${
@@ -733,7 +974,10 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
           )}
 
           {/* ── รายการ ── */}
-          <div className="flex max-h-[60vh] min-h-0 flex-1 flex-col overflow-y-auto pb-2 sm:max-h-[calc(100vh-19rem)]">
+          <div
+            data-qc="chat-list"
+            className="flex max-h-[60vh] min-h-0 flex-1 flex-col overflow-y-auto pb-2 sm:max-h-[calc(100vh-19rem)]"
+          >
             {rows.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-[color:var(--color-muted)]">
                 {counts.all === 0 && q.trim() === "" && filter === "all" && extraCount === 0
@@ -743,7 +987,10 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
             ) : (
               groups.map((g) => (
                 <div key={g.key} className="flex flex-col">
-                  <div className="flex items-center gap-1.5 px-3 pb-1.5 pt-[11px] text-[11.5px] font-bold text-[color:var(--color-muted)]">
+                  <div
+                    data-qc="chat-section"
+                    className="flex items-center gap-1.5 px-3 pb-1.5 pt-[11px] text-[11.5px] font-bold text-[color:var(--color-muted)]"
+                  >
                     {g.pinned && <Icon name="bookmark" size="sm" />}
                     {g.label}
                   </div>
@@ -756,6 +1003,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
                     return (
                       <div
                         key={r.id}
+                        data-qc="chat-row"
                         className="group relative flex items-center"
                         // 🔴 คลิกขวา (เดสก์ท็อป) / กดค้าง (มือถือ) = เปิดเมนูของแถว
                         //    ทางเข้าที่ไม่กินพื้นที่บนแถวเลย — แบบร่างวาดแถวไว้สะอาด ไม่มีปุ่มใด ๆ
@@ -775,7 +1023,10 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
                         >
                           <span className="relative shrink-0">
                             {/* แบบร่าง `.av` — 46px มุม 14px (ไม่ใช่วงกลม) */}
-                            <span className="grid size-[46px] place-items-center rounded-[14px] bg-[color:var(--color-surface-2)] text-base font-bold text-[color:var(--color-muted)]">
+                            <span
+                              data-qc="chat-avatar"
+                              className="grid size-[46px] place-items-center rounded-[14px] bg-[color:var(--color-surface-2)] text-base font-bold text-[color:var(--color-muted)]"
+                            >
                               {initialsOf(r.title)}
                             </span>
                             <ChannelBadge
@@ -846,7 +1097,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
                                   name="belloff"
                                   size="sm"
                                   className="shrink-0 text-[#c3c7ce]"
-                                  label="ปิดเสียงแจ้งเตือนของห้องนี้อยู่"
+                                  label="ห้องนี้ปิดเสียงอยู่"
                                 />
                               )}
                               {r.status === "RESOLVED" && (
@@ -963,7 +1214,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
           </div>
         </aside>
 
-        {/* ══════════ คอลัมน์ขวา: ห้องแชท ══════════ */}
+        {/* ══════════ คอลัมน์กลาง: ห้องแชท (WO-CV4 · แบบร่างจอ 2–4 + `.dcol2`) ══════════ */}
         {/* 🔴 ความสูง **ตายตัว** ไม่ใช่ min-h — วัดจากจอจริง 31 ส.ค.: ของเดิม `min-h-[60vh]` ทำให้
             การ์ดสูงตามเนื้อหา (header + ฟอง + กล่องพิมพ์) แล้วดันหน้าให้เลื่อนทั้งหน้า
             ⇒ กล่องพิมพ์ตกใต้ขอบจอ (textarea top=933px บนจอสูง 900px · หน้าสูง 1096px)
@@ -971,7 +1222,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
             ⇒ ล็อกความสูงเท่าคอลัมน์ซ้าย แล้วให้ **พื้นที่ข้อความ** เลื่อนข้างในตัวเอง (บรรทัด overflow-y-auto)
             ใช้ dvh บนจอแคบ เพราะแถบเบราว์เซอร์มือถือยืดหดทำให้ vh โกหก */}
         <div
-          className={`card h-[calc(100dvh-13rem)] min-h-0 min-w-0 flex-col p-0 sm:h-[calc(100vh-19rem)] ${activeId ? "flex" : "hidden sm:flex"}`}
+          className={`card h-[calc(100dvh-13rem)] min-h-0 min-w-0 flex-col overflow-hidden p-0 sm:h-[calc(100vh-19rem)] ${activeId ? "flex" : "hidden sm:flex"}`}
         >
           {!thread ? (
             <div className="flex flex-1 items-center justify-center p-8">
@@ -981,384 +1232,591 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
             </div>
           ) : (
             <>
-              {/* ── หัวห้อง ── */}
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--color-line)] px-3 py-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Link href={baseHref} scroll={false} className="text-sm sm:hidden" aria-label="กลับไปรายการแชท">
-                    ‹
+              {/* ── หัวห้อง: ‹ · avatar · ชื่อ+บรรทัดบริบท · ⌕ · ⋮ (แบบร่าง `.thdr`) ──
+                  🔴 **6 ชิ้นเท่านั้น** — ปุ่ม 5 ตัวเดิม (รับเรื่องเอง/มอบหมาย/พักไว้/ปิด/เปิดใหม่)
+                     ถูก **ย้าย** เข้าเมนู ⋮ ไม่ใช่ก๊อป · ทางเข้าเดียวต่อหนึ่งงานเสมอ
+                  ชิป "รับเรื่องเอง" บนหัวมีเฉพาะเดสก์ท็อป ตามที่แบบร่าง `.dcol2` วาดไว้ */}
+              <div className="relative">
+                <div
+                  data-qc="room-header"
+                  className="flex items-center gap-2 border-b border-[color:var(--color-line)] px-2 py-[7px]"
+                >
+                  <Link
+                    href={baseHref}
+                    scroll={false}
+                    aria-label="กลับไปรายการแชท"
+                    className="grid size-[34px] shrink-0 place-items-center rounded-[10px] text-[#3f4652] sm:hidden"
+                  >
+                    <Icon name="back" />
                   </Link>
+
                   <span className="relative shrink-0">
-                    <span className="flex size-8 items-center justify-center rounded-full border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] text-xs font-medium">
+                    <span
+                      data-qc="room-avatar"
+                      className="grid size-[37px] place-items-center rounded-xl bg-[color:var(--color-surface-2)] text-sm font-bold text-[color:var(--color-muted)]"
+                    >
                       {initialsOf(thread.title)}
                     </span>
-                    <ChannelBadge type={thread.channel} />
+                    <ChannelBadge
+                      type={thread.channel}
+                      title={`ทักมาจาก ${channelLabel(thread.channel)}`}
+                    />
                   </span>
-                  <span className="min-w-0">
-                    <span className="flex items-center gap-1.5">
-                      <span className="min-w-0 truncate text-sm font-semibold">{thread.title}</span>
-                      <ChannelChip type={thread.channel} />
+
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15.5px] font-bold leading-tight">
+                      {thread.title}
                     </span>
-                    <span className="block text-[11px] text-[color:var(--color-muted)]">
-                      {STATUS_LABEL[thread.status] ?? thread.status} · ผู้รับผิดชอบ{" "}
-                      {nameOf(thread.assigneeUserId)}
-                      {thread.memberName ? ` · สมาชิก ${thread.memberName}` : ""}
-                      {thread.phone ? ` · ${thread.phone}` : ""}
-                    </span>
+                    {/* 🔴 บรรทัดบริบท (มติ D1) — ไม่มีข้อมูลเลย = **ไม่วาดบรรทัดนี้** ห้ามโชว์ป้ายเปล่า */}
+                    {subline !== "" && (
+                      <span
+                        data-qc="context-line"
+                        className="mt-px flex items-center gap-[5px] text-[11.5px] text-[color:var(--color-muted)]"
+                      >
+                        <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[#22c55e]" />
+                        <span className="min-w-0 truncate">{subline}</span>
+                      </span>
+                    )}
                   </span>
+
+                  {canAssign && !thread.assigneeUserId && (
+                    <form action={assignAction} className="hidden shrink-0 lg:block">
+                      <input type="hidden" name="systemId" value={systemId} />
+                      <input type="hidden" name="conversationId" value={thread.conversationId} />
+                      <input type="hidden" name="assigneeUserId" value="me" />
+                      <button className="flex items-center gap-1.5 rounded-lg bg-[#eaf0fe] px-2.5 py-1 text-[12.5px] font-semibold text-[color:var(--color-accent)]">
+                        <Icon name="hand" size="sm" />
+                        รับเรื่องเอง
+                      </button>
+                    </form>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeRoomPopovers();
+                      setSearchOpen((o) => !o);
+                    }}
+                    aria-expanded={searchOpen}
+                    aria-label="ค้นหาในห้องนี้"
+                    className={`grid size-[34px] shrink-0 place-items-center rounded-[10px] text-[#3f4652] ${
+                      searchOpen ? "bg-[color:var(--color-surface-2)]" : ""
+                    }`}
+                  >
+                    <Icon name="search" />
+                  </button>
+
+                  <button
+                    type="button"
+                    data-qc="room-menu-button"
+                    onClick={() => {
+                      setSearchOpen(false);
+                      setAssignOpen(false);
+                      setTagOpen(false);
+                      setRoomMenu((o) => !o);
+                    }}
+                    aria-expanded={roomMenu}
+                    aria-label="ตัวเลือกของห้องแชทนี้"
+                    className={`grid size-[34px] shrink-0 place-items-center rounded-[10px] text-[#3f4652] ${
+                      roomMenu ? "bg-[color:var(--color-surface-2)]" : ""
+                    }`}
+                  >
+                    <Icon name="more" />
+                  </button>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {canAssign && (
-                    <>
+                {/* กดที่ว่างแล้วต้องปิดเมนู — ไม่ใช่ค้างจนกว่าจะกดปุ่มเดิมซ้ำ */}
+                {(roomMenu || tagOpen || assignOpen) && (
+                  <button
+                    type="button"
+                    aria-label="ปิดเมนูของห้องแชท"
+                    onClick={closeRoomPopovers}
+                    className="fixed inset-0 z-10 cursor-default"
+                  />
+                )}
+
+                {/* ── เมนู ⋮ 8 รายการตามแบบร่าง (`.pop`) ── */}
+                {roomMenu && (
+                  <div
+                    data-qc="room-menu"
+                    className="absolute right-2 top-[50px] z-20 w-[228px] rounded-[13px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-1.5 shadow-[0_10px_30px_rgba(15,23,42,0.22)]"
+                  >
+                    {canAssign ? (
                       <form action={assignAction}>
                         <input type="hidden" name="systemId" value={systemId} />
                         <input type="hidden" name="conversationId" value={thread.conversationId} />
                         <input type="hidden" name="assigneeUserId" value="me" />
-                        <button className="btn-sm">รับเรื่องเอง</button>
-                      </form>
-                      <form action={assignAction} className="flex items-center gap-1">
-                        <input type="hidden" name="systemId" value={systemId} />
-                        <input type="hidden" name="conversationId" value={thread.conversationId} />
-                        <select
-                          name="assigneeUserId"
-                          defaultValue={thread.assigneeUserId ?? "none"}
-                          className="input h-8 py-0 text-xs"
-                          aria-label="มอบหมายให้"
+                        <button
+                          data-qc="room-menu-item"
+                          className="flex w-full items-center gap-[11px] rounded-[9px] px-2.5 py-2 text-sm hover:bg-[color:var(--color-surface-2)]"
                         >
-                          <option value="none">ยังไม่มอบหมาย</option>
-                          {staff.map((s) => (
-                            <option key={s.userId} value={s.userId}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
-                        <button className="btn-sm">มอบหมาย</button>
-                      </form>
-                    </>
-                  )}
-                  {canSetStatus &&
-                    (closed ? (
-                      <form action={setStatusAction}>
-                        <input type="hidden" name="systemId" value={systemId} />
-                        <input type="hidden" name="conversationId" value={thread.conversationId} />
-                        <input type="hidden" name="status" value="OPEN" />
-                        <button className="btn-sm">เปิดใหม่</button>
+                          <Icon name="hand" />
+                          รับเรื่องเอง
+                        </button>
                       </form>
                     ) : (
+                      <p data-qc="room-menu-item" className="px-2.5 py-2 text-[11px] text-[color:var(--color-muted)]">
+                        ต้องมีสิทธิ์มอบหมายจึงจะรับห้องนี้เองได้
+                      </p>
+                    )}
+
+                    <div data-qc="room-menu-item">
+                      <button
+                        type="button"
+                        onClick={() => setAssignOpen((o) => !o)}
+                        aria-expanded={assignOpen}
+                        disabled={!canAssign}
+                        className="flex w-full items-center gap-[11px] rounded-[9px] px-2.5 py-2 text-sm hover:bg-[color:var(--color-surface-2)] disabled:opacity-45"
+                      >
+                        <Icon name="users" />
+                        มอบหมายให้…
+                      </button>
+                      {assignOpen && canAssign && (
+                        <form action={assignAction} className="flex flex-col gap-1.5 px-2.5 pb-2">
+                          <input type="hidden" name="systemId" value={systemId} />
+                          <input type="hidden" name="conversationId" value={thread.conversationId} />
+                          <select
+                            name="assigneeUserId"
+                            defaultValue={thread.assigneeUserId ?? "none"}
+                            className="input h-8 py-0 text-xs"
+                            aria-label="เลือกผู้รับผิดชอบห้องนี้"
+                          >
+                            <option value="none">ยังไม่มอบหมาย</option>
+                            {staff.map((s) => (
+                              <option key={s.userId} value={s.userId}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button className="btn-sm">บันทึกผู้รับผิดชอบ</button>
+                        </form>
+                      )}
+                    </div>
+
+                    <div data-qc="room-menu-item">
+                      <button
+                        type="button"
+                        onClick={() => setTagOpen((o) => !o)}
+                        aria-expanded={tagOpen}
+                        disabled={!canTag}
+                        className="flex w-full items-center gap-[11px] rounded-[9px] px-2.5 py-2 text-sm hover:bg-[color:var(--color-surface-2)] disabled:opacity-45"
+                      >
+                        <Icon name="tag" />
+                        ติดป้ายกำกับ
+                        {roomTags.length > 0 && (
+                          <span className="ml-auto text-[11px] text-[color:var(--color-muted)]">
+                            {roomTags.length}
+                          </span>
+                        )}
+                      </button>
+                      {tagOpen && canTag && (
+                        <div className="flex flex-col gap-1.5 px-2.5 pb-2">
+                          {roomTags.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {roomTags.map((t) => (
+                                <button
+                                  key={t}
+                                  type="button"
+                                  onClick={() => toggleTag(t, false)}
+                                  disabled={roomBusy}
+                                  aria-label={`ถอดป้าย ${t}`}
+                                  className="flex items-center gap-1 rounded-lg bg-[color:var(--color-surface-2)] px-2 py-0.5 text-[11.5px]"
+                                >
+                                  <Icon name="tag" size="sm" />
+                                  {t}
+                                  <Icon name="x" size="sm" className="text-[color:var(--color-muted)]" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <input
+                            value={tagDraft}
+                            onChange={(e) => setTagDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key !== "Enter") return;
+                              e.preventDefault();
+                              toggleTag(tagDraft, true);
+                              setTagDraft("");
+                            }}
+                            placeholder="พิมพ์ชื่อป้ายแล้วกด Enter"
+                            aria-label="เพิ่มป้ายกำกับให้ห้องนี้"
+                            className="input h-8 py-0 text-xs"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {canSetStatus ? (
+                      <button
+                        type="button"
+                        data-qc="room-menu-item"
+                        onClick={toggleRoomPin}
+                        disabled={roomBusy}
+                        aria-pressed={activeRow?.pinned ?? false}
+                        className="flex w-full items-center gap-[11px] rounded-[9px] px-2.5 py-2 text-sm hover:bg-[color:var(--color-surface-2)]"
+                      >
+                        <Icon name="bookmark" />
+                        {/* 🔴 ป้ายคงที่ + บอกสถานะทางขวา (แบบเดียวกับแถวแปล) — ไม่สลับเป็น "เอาหมุดออก"
+                            เพราะรายการที่เปลี่ยนชื่อไปมาทำให้คนหาไม่เจอว่าปุ่มนี้อยู่ตรงไหนในเมนู */}
+                        ปักหมุดห้องนี้
+                        {activeRow?.pinned && (
+                          <span className="ml-auto text-[11px] font-semibold text-[color:var(--color-muted)]">
+                            ปักไว้แล้ว
+                          </span>
+                        )}
+                      </button>
+                    ) : (
+                      <p data-qc="room-menu-item" className="px-2.5 py-2 text-[11px] text-[color:var(--color-muted)]">
+                        ปักหมุดได้เมื่อมีสิทธิ์ปิด/เปิดห้องแชท
+                      </p>
+                    )}
+
+                    <div className="my-1 h-px bg-[color:var(--color-line)]" />
+
+                    {/* 🔴 มติ D2 — เก็บรายการนี้ไว้ตามแบบร่าง แต่ต้องครบ 3 เงื่อนไข:
+                        ปิดเป็นค่าเริ่มต้น · บอกค่าใช้จ่ายต่อข้อความ · ผูกสิทธิ์ `chat.translate.use` */}
+                    <div data-qc="room-menu-item">
+                      <button
+                        type="button"
+                        onClick={toggleAutoTranslate}
+                        disabled={!canTranslate || roomBusy}
+                        aria-pressed={roomCtx?.autoTranslate ?? false}
+                        className="flex w-full items-center gap-[11px] rounded-[9px] px-2.5 py-2 text-sm hover:bg-[color:var(--color-surface-2)] disabled:opacity-45"
+                      >
+                        <Icon name="globe" />
+                        แปลอัตโนมัติในห้องนี้
+                        <span className="ml-auto text-[11px] font-semibold text-[color:var(--color-muted)]">
+                          {roomCtx?.autoTranslate ? "เปิด" : "ปิด"}
+                        </span>
+                      </button>
+                      <p className="px-2.5 pb-1.5 text-[10.5px] leading-snug text-[color:var(--color-muted)]">
+                        {canTranslate
+                          ? "มีค่าใช้จ่ายต่อข้อความที่แปล · ค่าเริ่มต้นคือปิด และยังกดแปลทีละข้อความได้เหมือนเดิม"
+                          : "ต้องมีสิทธิ์ใช้การแปล และเปิดใช้การแปลของร้านที่แท็บ “เชื่อมช่องทาง” ก่อน"}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      data-qc="room-menu-item"
+                      onClick={toggleRoomMute}
+                      disabled={roomBusy}
+                      aria-pressed={roomMuted}
+                      className="flex w-full items-center gap-[11px] rounded-[9px] px-2.5 py-2 text-sm hover:bg-[color:var(--color-surface-2)]"
+                    >
+                      <Icon name="belloff" />
+                      ปิดเสียงแจ้งเตือน
+                      <span className="ml-auto text-[11px] font-semibold text-[color:var(--color-muted)]">
+                        {roomMuted ? "ปิดอยู่ · กดเพื่อเปิดคืน" : "8 ชั่วโมง"}
+                      </span>
+                    </button>
+
+                    <div className="my-1 h-px bg-[color:var(--color-line)]" />
+
+                    {canSetStatus ? (
                       <>
                         <form action={setStatusAction}>
                           <input type="hidden" name="systemId" value={systemId} />
                           <input type="hidden" name="conversationId" value={thread.conversationId} />
                           <input type="hidden" name="status" value="PENDING" />
-                          <button className="btn-sm">พักไว้</button>
+                          <button
+                            data-qc="room-menu-item"
+                            className="flex w-full items-center gap-[11px] rounded-[9px] px-2.5 py-2 text-sm hover:bg-[color:var(--color-surface-2)]"
+                          >
+                            <Icon name="moon" />
+                            พักไว้
+                          </button>
                         </form>
                         <form action={setStatusAction}>
                           <input type="hidden" name="systemId" value={systemId} />
                           <input type="hidden" name="conversationId" value={thread.conversationId} />
-                          <input type="hidden" name="status" value="RESOLVED" />
-                          <button className="btn-sm">ปิดบทสนทนา</button>
+                          <input type="hidden" name="status" value={closed ? "OPEN" : "RESOLVED"} />
+                          <button
+                            data-qc="room-menu-item"
+                            className={`flex w-full items-center gap-[11px] rounded-[9px] px-2.5 py-2 text-sm hover:bg-[color:var(--color-surface-2)] ${
+                              closed ? "" : "text-[#b91c1c]"
+                            }`}
+                          >
+                            <Icon name="checkcircle" />
+                            {closed ? "เปิดห้องคุยต่อ" : "ปิดบทสนทนา"}
+                          </button>
                         </form>
                       </>
-                    ))}
-                </div>
+                    ) : (
+                      <>
+                        <p data-qc="room-menu-item" className="px-2.5 py-2 text-[11px] text-[color:var(--color-muted)]">
+                          พักห้องนี้ไว้ก่อน — ต้องมีสิทธิ์ปิด/เปิดห้องแชท
+                        </p>
+                        <p data-qc="room-menu-item" className="px-2.5 py-2 text-[11px] text-[color:var(--color-muted)]">
+                          ปิดห้องนี้ได้เมื่อมีสิทธิ์ปิด/เปิดห้องแชท
+                        </p>
+                      </>
+                    )}
+
+                    {/* ── ผูกสมาชิก — **เฉพาะจอที่ไม่มีคอลัมน์บริบท** ──
+                        🔴 เดสก์ท็อปมีชิป "ผูกกับสมาชิก" อยู่ในคอลัมน์ที่ 3 แล้ว ⇒ วางไว้ทั้งสองที่
+                           = ทางเข้า 2 ทางของงานเดียวกัน (สิ่งที่ V3 สั่งให้เลิกทำ)
+                        แต่จอแคบไม่มีคอลัมน์นั้น ⇒ ถ้าตัดทิ้งเฉย ๆ ทีมที่ใช้มือถือจะผูกสมาชิกไม่ได้เลย
+                        🔴 ไม่ติด `data-qc="room-menu-item"` โดยตั้งใจ — เมนูตามแบบร่างมี 8 รายการพอดี
+                           ของชิ้นนี้เป็นทางเข้าสำรองของจอแคบ ไม่ใช่รายการที่ 9 ในสัญญา */}
+                    {canLink && memberLinked && (
+                      <div className="lg:hidden">
+                        <div className="my-1 h-px bg-[color:var(--color-line)]" />
+                        {thread.customerId ? (
+                          <form action={linkCustomerAction} className="flex items-center gap-2 px-2.5 py-2 text-[11.5px]">
+                            <input type="hidden" name="systemId" value={systemId} />
+                            <input type="hidden" name="conversationId" value={thread.conversationId} />
+                            <input type="hidden" name="contactId" value={thread.contactId} />
+                            <input type="hidden" name="unlink" value="1" />
+                            <Icon name="userplus" size="sm" />
+                            <span className="min-w-0 flex-1 truncate text-[color:var(--color-muted)]">
+                              สมาชิก {thread.memberName ?? "ที่ผูกไว้"}
+                            </span>
+                            <button className="shrink-0 underline text-[color:var(--color-danger)]">
+                              ถอดการผูก
+                            </button>
+                          </form>
+                        ) : (
+                          <form action={linkCustomerAction} className="flex flex-col gap-1.5 px-2.5 py-2">
+                            <input type="hidden" name="systemId" value={systemId} />
+                            <input type="hidden" name="conversationId" value={thread.conversationId} />
+                            <input type="hidden" name="contactId" value={thread.contactId} />
+                            <span className="flex items-center gap-[11px] text-sm">
+                              <Icon name="userplus" />
+                              ผูกกับสมาชิกของร้าน
+                            </span>
+                            <input
+                              name="phone"
+                              inputMode="tel"
+                              placeholder="เบอร์โทรลูกค้า"
+                              defaultValue={thread.phone ?? ""}
+                              className="input h-8 py-0 text-xs"
+                              aria-label="เบอร์โทรลูกค้าสำหรับผูกสมาชิก"
+                            />
+                            <button className="btn-sm">ผูกสมาชิก</button>
+                          </form>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── ค้นหาในห้องนี้ (⌕ บนหัว) ── */}
+                {searchOpen && (
+                  <div className="absolute inset-x-0 top-[50px] z-20 border-b border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-2 shadow-lg">
+                    <div className="flex h-9 items-center gap-2 rounded-[10px] bg-[color:var(--color-surface-2)] px-3">
+                      <Icon name="search" size="sm" className="shrink-0 text-[color:var(--color-muted)]" />
+                      <input
+                        value={roomQ}
+                        onChange={(e) => setRoomQ(e.target.value)}
+                        placeholder="ค้นหาในห้องนี้ (พิมพ์อย่างน้อย 2 ตัวอักษร)"
+                        aria-label="ค้นหาข้อความในห้องนี้"
+                        autoFocus
+                        className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[color:var(--color-muted)]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchOpen(false);
+                          setRoomQ("");
+                        }}
+                        aria-label="ปิดการค้นหาในห้อง"
+                      >
+                        <Icon name="x" size="sm" className="text-[color:var(--color-muted)]" />
+                      </button>
+                    </div>
+                    {roomHits !== null && (
+                      <div className="mt-1.5 max-h-56 overflow-y-auto">
+                        {roomHits.length === 0 ? (
+                          <p className="px-1 py-2 text-[11.5px] text-[color:var(--color-muted)]">
+                            ไม่พบข้อความที่ตรงกับคำนี้ในห้องนี้
+                          </p>
+                        ) : (
+                          roomHits.map((h) => (
+                            <button
+                              key={h.messageId}
+                              type="button"
+                              onClick={() => jumpToMessage(h.messageId)}
+                              className="flex w-full flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left hover:bg-[color:var(--color-surface-2)]"
+                            >
+                              <span className="flex items-center gap-1.5 text-[10.5px] text-[color:var(--color-muted)]">
+                                {h.isInternal && <Icon name="lock" size="sm" />}
+                                {h.direction === "OUT" ? "ทีมงาน" : "ลูกค้า"} ·{" "}
+                                {dayLabel(h.createdAt)}
+                              </span>
+                              <span className="line-clamp-2 text-[12.5px]">{h.snippet}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* ── ผูกสมาชิก (ย่อ) ── */}
-              {canLink && memberLinked && (
-                <div className="border-b border-[color:var(--color-line)] px-3 py-1.5 text-[11px]">
-                  {thread.customerId ? (
-                    <form action={linkCustomerAction} className="flex items-center gap-2">
-                      <input type="hidden" name="systemId" value={systemId} />
-                      <input type="hidden" name="conversationId" value={thread.conversationId} />
-                      <input type="hidden" name="contactId" value={thread.contactId} />
-                      <input type="hidden" name="unlink" value="1" />
-                      <span className="text-[color:var(--color-muted)]">
-                        ผูกกับสมาชิก {thread.memberName ?? "แล้ว"}
-                      </span>
-                      <button className="underline text-[color:var(--color-danger)]">ถอดการผูก</button>
-                    </form>
-                  ) : (
-                    <form action={linkCustomerAction} className="flex items-center gap-2">
-                      <input type="hidden" name="systemId" value={systemId} />
-                      <input type="hidden" name="conversationId" value={thread.conversationId} />
-                      <input type="hidden" name="contactId" value={thread.contactId} />
-                      <input
-                        name="phone"
-                        inputMode="tel"
-                        placeholder="เบอร์โทรลูกค้า"
-                        defaultValue={thread.phone ?? ""}
-                        className="input h-7 w-40 py-0 text-xs"
-                        aria-label="เบอร์โทรลูกค้า"
-                      />
-                      <button className="underline">ผูกสมาชิก</button>
-                    </form>
-                  )}
-                </div>
+              {roomErr && (
+                <p
+                  className="border-b border-[color:var(--color-line)] px-3 py-1.5 text-xs text-[color:var(--color-danger)]"
+                  role="alert"
+                >
+                  {roomErr}
+                </p>
               )}
 
-              {/* ── ข้อความ ── */}
+              {/* ── พื้นที่ข้อความ (แบบร่าง `.wall`) ── */}
               <div
                 ref={listRef}
-                className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto bg-[color:var(--color-surface-2)] px-3 py-2"
+                data-qc="room-wall"
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[color:var(--color-wall)] px-2.5 pb-1.5 pt-2.5"
               >
-                {thread.messages.length === 0 && pendingMsgs.length === 0 ? (
+                {rendered.length === 0 ? (
                   <p className="py-8 text-center text-sm text-[color:var(--color-muted)]">
                     ยังไม่มีข้อความในห้องนี้
                   </p>
                 ) : (
-                  thread.messages.map((m, i) => {
-                    const prev = thread.messages[i - 1];
-                    const newDay = !prev || dayKey(prev.createdAt) !== dayKey(m.createdAt);
-                    return (
-                      <div key={m.id} className="flex flex-col">
-                        {newDay && <DateDivider ts={m.createdAt} />}
-                        <MessageBubble
-                          systemId={systemId}
-                          conversationId={thread.conversationId}
-                          msg={m}
-                          senderLabel={nameOf(m.senderUserId)}
-                          customerLastReadAt={thread.customerLastReadAt}
-                          canTranslate={canTranslate}
-                          canSaveExample={canSend}
-                        />
-                      </div>
-                    );
-                  })
+                  rendered.map(({ m, newDay, isGroupStart }) => (
+                    <div
+                      key={m.id}
+                      id={`msg-${m.id}`}
+                      className={`flex flex-col ${isGroupStart ? "mt-2.5" : ""} ${
+                        m.id.startsWith("pending-") ? "opacity-70" : ""
+                      }`}
+                    >
+                      {newDay && <DateDivider ts={m.createdAt} />}
+                      <MessageBubble
+                        systemId={systemId}
+                        conversationId={thread.conversationId}
+                        msg={m}
+                        senderName={
+                          m.senderUserId ? `${nameOf(m.senderUserId)} · ทีมงาน` : "ทีมงาน"
+                        }
+                        customerLastReadAt={thread.customerLastReadAt}
+                        canTranslate={canTranslate}
+                        canSaveExample={canSend && !m.id.startsWith("pending-")}
+                        isGroupStart={isGroupStart}
+                        audioMs={roomCtx?.audioMs[m.id] ?? null}
+                      />
+                    </div>
+                  ))
                 )}
-                {/* ฟองชั่วคราว "กำลังส่ง" — 🕐 จนกว่าของจริงจะเข้ามาจากรอบ refresh
-                    🔴 ไม่ผูกกับ deliveryStatus ของ DB เพราะแถวยังไม่มี · เป็นสถานะฝั่งจอล้วน */}
-                {pendingMsgs.map((m) => (
-                  <div key={m.id} className="flex flex-col opacity-70">
-                    <MessageBubble
-                      systemId={systemId}
-                      conversationId={thread.conversationId}
-                      msg={m}
-                      senderLabel={nameOf(null)}
-                      customerLastReadAt={thread.customerLastReadAt}
-                      canTranslate={false}
-                      canSaveExample={false}
-                    />
-                  </div>
-                ))}
+                {/* 3 จุดของ "กำลังพิมพ์" อยู่ท้ายสุดเสมอ (แบบร่างจอ 2) */}
+                {typing && <TypingBubble />}
               </div>
 
               {/* ── กล่องพิมพ์ (ติดล่างเสมอ) ── */}
-              <div className="border-t border-[color:var(--color-line)] p-2">
-                {closed ? (
-                  <p className="rounded-lg border border-[color:var(--color-line)] px-3 py-2 text-xs text-[color:var(--color-muted)]">
-                    บทสนทนานี้ปิดแล้ว — กด “เปิดใหม่” ด้านบนเพื่อตอบต่อ
-                  </p>
-                ) : !canSend ? (
-                  <p className="rounded-lg border border-[color:var(--color-line)] px-3 py-2 text-xs text-[color:var(--color-muted)]">
-                    บัญชีของคุณดูแชทได้อย่างเดียว — ขอสิทธิ์ “ตอบแชทลูกค้า” จากผู้ดูแลร้านเพื่อพิมพ์ตอบ
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {formErr && (
-                      <p className="text-xs text-[color:var(--color-danger)]" role="alert">
-                        {formErr}
-                      </p>
-                    )}
-
-                    {/* คำแนะนำของ AI */}
-                    {suggest && (
-                      <div className="flex flex-col gap-1 rounded-lg border border-[color:var(--color-line)] p-2">
-                        <div className="flex items-center justify-between text-xs font-medium">
-                          <span>AI แนะนำคำตอบ (เลือกแล้วแก้ได้ ระบบไม่ส่งเอง)</span>
-                          <button type="button" onClick={skipSuggestions} className="underline text-[color:var(--color-muted)]">
-                            ข้ามคำแนะนำ
-                          </button>
-                        </div>
-                        {suggest.options.map((o) => (
-                          <button
-                            key={o.id}
-                            type="button"
-                            onClick={() => useSuggestion(o)}
-                            className="rounded border border-[color:var(--color-line)] px-2 py-1 text-left text-xs hover:bg-[color:var(--color-surface-2)]"
-                          >
-                            <span className="block whitespace-pre-wrap">{o.body}</span>
-                            {o.warn && (
-                              <span className="mt-0.5 block text-[10px] text-[color:var(--color-danger)]">
-                                ⚠️ ข้อความนี้ไม่มีแหล่งอ้างอิงจากข้อมูลร้าน — ตรวจให้แน่ใจก่อนส่ง
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* คำแปลของร่าง — ต้องกดยืนยันเอง */}
-                    {translatePreview && (
-                      <div className="flex flex-col gap-1 rounded-lg border border-[color:var(--color-line)] p-2 text-xs">
-                        <span className="font-medium">คำแปลที่จะส่งให้ลูกค้า</span>
-                        <span className="whitespace-pre-wrap">{translatePreview}</span>
-                        <div className="flex gap-2">
-                          <button type="button" onClick={acceptTranslation} className="btn-sm">
-                            ใช้คำแปลนี้
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setTranslatePreview(null)}
-                            className="underline text-[color:var(--color-muted)]"
-                          >
-                            ยกเลิก
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {suggestErr && (
-                      <p className="text-xs text-[color:var(--color-danger)]" role="alert">
-                        {suggestErr}
-                      </p>
-                    )}
-
-                    {/* ตัวอย่างไฟล์ที่เลือกไว้ */}
-                    {files.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {files.map((f, i) => (
-                          <span
-                            key={`${f.name}-${i}`}
-                            className="flex items-center gap-1 rounded border border-[color:var(--color-line)] px-1.5 py-1 text-[11px]"
-                          >
-                            {previews[i] ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={previews[i]!}
-                                alt={f.name}
-                                className="size-10 rounded object-cover"
-                              />
-                            ) : (
-                              <span aria-hidden>📄</span>
-                            )}
-                            <span className="max-w-[9rem] truncate">{f.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => removeFile(i)}
-                              aria-label={`ลบไฟล์ ${f.name}`}
-                              className="text-[color:var(--color-danger)]"
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {fileErr && (
-                      <p className="text-xs text-[color:var(--color-danger)]" role="alert">
-                        {fileErr}
-                      </p>
-                    )}
-
-                    <div className="flex items-end gap-1.5">
-                      {/* 📎 แนบไฟล์ */}
-                      <input
-                        ref={attachRef}
-                        type="file"
-                        name="files"
-                        multiple
-                        accept={acceptTypes}
-                        onChange={(e) => {
-                          addFiles(e.target.files);
-                          e.target.value = "";
-                        }}
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => attachRef.current?.click()}
-                        className="btn-sm"
-                        title="แนบไฟล์"
-                        aria-label="แนบไฟล์"
-                      >
-                        📎
-                      </button>
-
-                      {/* 📷 ถ่ายรูป — มือถือเปิดกล้องจริง เดสก์ท็อปตกเป็นเลือกไฟล์ */}
-                      <input
-                        ref={cameraRef}
-                        type="file"
-                        name="files"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={(e) => {
-                          addFiles(e.target.files);
-                          e.target.value = "";
-                        }}
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => cameraRef.current?.click()}
-                        className="btn-sm"
-                        title="ถ่ายรูป"
-                        aria-label="ถ่ายรูป"
-                      >
-                        📷
-                      </button>
-
-                      <textarea
-                        value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            send();
-                          }
-                        }}
-                        rows={1}
-                        placeholder={isInternal ? "เขียนโน้ตภายใน (ลูกค้าไม่เห็น)…" : "พิมพ์ข้อความตอบลูกค้า…"}
-                        aria-label="ข้อความตอบลูกค้า"
-                        className="input max-h-32 min-h-[2.25rem] flex-1 resize-y py-1.5"
-                      />
-
-                      <button
-                        type="button"
-                        onClick={send}
-                        disabled={sending || busy || (!draft.trim() && files.length === 0)}
-                        className="btn btn-primary px-3 py-1.5 text-sm"
-                      >
-                        {sending ? "กำลังส่ง…" : "ส่ง"}
-                      </button>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                      <label className="flex items-center gap-1.5 text-[color:var(--color-muted)]">
-                        <input
-                          type="checkbox"
-                          checked={isInternal}
-                          onChange={(e) => setIsInternal(e.target.checked)}
-                          className="size-3.5"
-                        />
-                        โน้ตภายใน (ลูกค้าไม่เห็น)
-                      </label>
-                      {canSuggest && (
-                        <button type="button" onClick={askSuggest} disabled={busy} className="underline">
-                          ✨ AI แนะนำคำตอบ
-                        </button>
-                      )}
-                      {canTranslate && (
+              {closed ? (
+                <p className="border-t border-[color:var(--color-line)] p-3 text-xs text-[color:var(--color-muted)]">
+                  บทสนทนานี้ปิดแล้ว — เปิดเมนู ⋮ แล้วกด “เปิดห้องคุยต่อ” เพื่อตอบต่อ
+                </p>
+              ) : !canSend ? (
+                <p className="border-t border-[color:var(--color-line)] p-3 text-xs text-[color:var(--color-muted)]">
+                  บัญชีของคุณดูแชทได้อย่างเดียว — ขอสิทธิ์ “ตอบแชทลูกค้า” จากผู้ดูแลร้านเพื่อพิมพ์ตอบ
+                </p>
+              ) : (
+                <>
+                  {/* คำแนะนำของ AI — ทีมต้องเลือก/แก้เอง ระบบไม่ส่งเอง */}
+                  {suggest && (
+                    <div className="mx-2 mt-2 flex flex-col gap-1 rounded-lg border border-[color:var(--color-line)] p-2">
+                      <div className="flex items-center justify-between text-xs font-medium">
+                        <span>AI แนะนำคำตอบ (เลือกแล้วแก้ได้ ระบบไม่ส่งเอง)</span>
                         <button
                           type="button"
-                          onClick={translateDraft}
-                          disabled={busy || !draft.trim()}
-                          className="underline"
+                          onClick={skipSuggestions}
+                          className="underline text-[color:var(--color-muted)]"
                         >
-                          🌐 แปลก่อนส่ง
+                          ข้ามคำแนะนำ
                         </button>
-                      )}
-                      {originalBody && (
-                        <span className="text-[color:var(--color-muted)]">
-                          จะส่งเป็นคำแปล · เก็บต้นฉบับไว้ให้ย้อนดู
-                        </span>
-                      )}
+                      </div>
+                      {suggest.options.map((o) => (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onClick={() => useSuggestion(o)}
+                          className="rounded border border-[color:var(--color-line)] px-2 py-1 text-left text-xs hover:bg-[color:var(--color-surface-2)]"
+                        >
+                          <span className="block whitespace-pre-wrap">{o.body}</span>
+                          {o.warn && (
+                            <span className="mt-0.5 flex items-center gap-1 text-[10px] text-[color:var(--color-danger)]">
+                              <Icon name="alert" size="sm" />
+                              ข้อความนี้ไม่มีแหล่งอ้างอิงจากข้อมูลร้าน — ตรวจให้แน่ใจก่อนส่ง
+                            </span>
+                          )}
+                        </button>
+                      ))}
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+
+                  {/* คำแปลของร่าง — ต้องกดยืนยันเอง ห้ามส่งแทน */}
+                  {translatePreview && (
+                    <div className="mx-2 mt-2 flex flex-col gap-1 rounded-lg border border-[color:var(--color-line)] p-2 text-xs">
+                      <span className="font-medium">คำแปลที่จะส่งให้ลูกค้า</span>
+                      <span className="whitespace-pre-wrap">{translatePreview}</span>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={acceptTranslation} className="btn-sm">
+                          ใช้คำแปลนี้
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTranslatePreview(null)}
+                          className="underline text-[color:var(--color-muted)]"
+                        >
+                          ยกเลิก
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {suggestErr && (
+                    <p className="mx-2 mt-2 text-xs text-[color:var(--color-danger)]" role="alert">
+                      {suggestErr}
+                    </p>
+                  )}
+
+                  {originalBody && (
+                    <p className="mx-2 mt-2 text-[11px] text-[color:var(--color-muted)]">
+                      จะส่งเป็นคำแปล · เก็บต้นฉบับไว้ให้ย้อนดู
+                    </p>
+                  )}
+
+                  <ChatComposer
+                    systemId={systemId}
+                    conversationId={thread.conversationId}
+                    draft={draft}
+                    onDraftChange={setDraft}
+                    onSend={send}
+                    sending={sending}
+                    busy={busy}
+                    files={files}
+                    onPickFiles={addFiles}
+                    onRemoveFile={removeFile}
+                    maxAttachmentBytes={maxAttachmentBytes}
+                    acceptTypes={acceptTypes}
+                    fileErr={fileErr}
+                    formErr={formErr}
+                    isInternal={isInternal}
+                    onToggleInternal={setIsInternal}
+                    canSuggest={canSuggest}
+                    canTranslate={canTranslate}
+                    onSuggest={askSuggest}
+                    onTranslate={translateDraft}
+                  />
+                </>
+              )}
             </>
           )}
         </div>
+
+        {/* ══════════ คอลัมน์ขวา: บริบทลูกค้า (WO-CV7 — ข้างในเป็นของสาย F) ══════════ */}
+        {/* ซ่อนต่ำกว่า `lg` ตามแบบร่าง — จอแคบไม่มีที่พอ และของในนั้นไม่ใช่ของที่ต้องเห็นตลอดเวลา */}
+        {thread && (
+          <aside className="hidden min-h-0 min-w-0 flex-col overflow-y-auto border-l border-[color:var(--color-line)] bg-[#fbfbfc] p-4 sm:h-[calc(100vh-19rem)] lg:flex">
+            <ContextPanel
+              systemId={systemId}
+              conversationId={thread.conversationId}
+              onInsertText={insertIntoDraft}
+            />
+          </aside>
+        )}
       </div>
     </section>
   );

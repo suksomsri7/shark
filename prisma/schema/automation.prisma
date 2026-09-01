@@ -38,12 +38,23 @@ model AutomationRun {
 
 // ศูนย์แจ้งเตือนในแอป (v1 — ปลายทางของ action NOTIFY)
 model AppNotification {
-  id        String    @id @default(cuid())
-  tenantId  String
-  title     String
-  body      String
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
+  id       String @id @default(cuid())
+  tenantId String
+  // ── ผู้รับ (ปิดหนี้ G11 · PDPA 31 ส.ค. 2026) ──
+  // 🔴 ทำไมต้องมีช่องนี้: ของเดิมเป็น **ประกาศทั้งร้าน** ⇒ ใครที่เข้าแอปของร้านได้
+  //    เปิด /app/notifications แล้วอ่าน "ตัวอย่างข้อความลูกค้า" ได้หมด แม้ไม่มีสิทธิ์แชทสักข้อ
+  //    (ช่องโหว่ตัวเดียวกับ G9 ฝั่ง push ที่ปิดไปแล้วด้วย selectChatNotifyRecipients)
+  //    ⇒ แจ้งเตือนที่มีเนื้อความอ่อนไหวต้องเขียน **รายผู้รับที่ผ่านด่านสิทธิ์จริง**
+  // 🔴 ทำไม nullable ไม่ใช่ NOT NULL: `null` = ประกาศทั้งร้านแบบเดิม ซึ่งยังต้องใช้ได้
+  //    (automation/inventory/forms/shop ฯลฯ สร้างแจ้งเตือนระดับร้านอยู่ 10 กว่าจุด)
+  //    ⇒ migration เป็น additive ล้วน แถวเก่าทุกแถวคงพฤติกรรมเดิมเป๊ะ ไม่ต้อง backfill
+  recipientUserId String? // User.id — null = ทั้งร้านเห็น · มีค่า = คนนี้คนเดียวเห็น
+  title           String
+  body            String
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
 
   @@index([tenantId, readAt, createdAt])
+  // ขาอ่านกรอง "ของทั้งร้าน + ของฉัน" แล้วเรียงใหม่สุดก่อน — index นี้คือเส้นที่ query นั้นเดิน
+  @@index([tenantId, recipientUserId, readAt, createdAt])
 }

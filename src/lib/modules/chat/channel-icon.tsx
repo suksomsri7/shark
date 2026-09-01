@@ -198,6 +198,7 @@ export function ChannelBadge({ type, title }: { type: string; title?: string }) 
   const Icon = meta.Icon;
   return (
     <span
+      data-qc="chat-badge"
       title={title ?? meta.label}
       className="absolute -bottom-0.5 -right-0.5 inline-flex size-[22px] items-center justify-center rounded-[7px] border-2 border-[color:var(--color-surface)] text-white"
       style={{ backgroundColor: meta.color }}

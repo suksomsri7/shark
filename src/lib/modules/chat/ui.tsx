@@ -122,6 +122,7 @@ export async function ChatInboxSection({
         canAssign={can("chat.conversation.assign")}
         canSetStatus={can("chat.conversation.setStatus")}
         canLink={can("chat.customer.link")}
+        canTag={can("chat.conversation.tag")}
         canSuggest={canSuggest}
         canTranslate={canTranslate}
         memberLinked={!!setting.memberSystemId}
