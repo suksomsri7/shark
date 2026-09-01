@@ -8,7 +8,7 @@ import { CouponHub } from "@/lib/modules/coupon/ui";
 import { MeetingHub } from "@/lib/modules/meeting/ui";
 import { KanbanHub } from "@/lib/modules/kanban/ui";
 import { AccountContent } from "@/lib/modules/account/ui";
-import { ChatInboxSection, chatTabs } from "@/lib/modules/chat/ui";
+import { ChatInboxSection } from "@/lib/modules/chat/ui";
 import { canReadChat } from "@/lib/modules/chat/guard";
 import { CrmHub } from "@/lib/modules/crm/ui";
 import { InvHub } from "@/lib/modules/inventory/ui";
@@ -59,13 +59,18 @@ export default async function SystemPage({
   });
 
   return (
-    <div className={`flex flex-col gap-6 ${isChat ? "max-w-6xl" : "max-w-2xl"}`}>
-      <PageHeader
-        title={`${def?.icon ?? ""} ${sys.name}`.trim()}
-        desc={`ระบบ${def?.label ?? ""}`}
-      />
+    // 🔴 WO-CV12: ระบบแชท = "แบบตัด" — ไม่มีชื่อหน้า/คำอธิบาย/แท็บ ทั้งมือถือและเดสก์ท็อป
+    //    ⇒ ไม่มีอะไรมาคั่นเหนือกล่องแชท จึงไม่ต้องมี gap ของ stack ด้วย (ระบบอื่นคงเดิม)
+    <div className={`flex flex-col ${isChat ? "max-w-6xl gap-0" : "max-w-2xl gap-6"}`}>
+      {!isChat && (
+        <PageHeader
+          title={`${def?.icon ?? ""} ${sys.name}`.trim()}
+          desc={`ระบบ${def?.label ?? ""}`}
+        />
+      )}
 
-      {unitCount > 1 && (
+      {/* ลิงก์นี้ของสาขา CHAT ไม่ได้หายไป — ย้ายเข้าเมนู ⋮ ของหัวรายการแชท (ส่งผ่าน prop ข้างล่าง) */}
+      {!isChat && unitCount > 1 && (
         <Link
           href="/app/settings/connections"
           className="text-sm text-[color:var(--color-accent)]"
@@ -85,9 +90,14 @@ export default async function SystemPage({
       {sys.type === "ACCOUNT" && <AccountContent systemId={id} tenantId={tenantId} />}
       {isChat && (
         <div className="flex min-w-0 flex-col gap-4">
-          <ModuleTabs items={chatTabs(id)} />
           {mayReadChat ? (
-            <ChatInboxSection systemId={id} tenantId={tenantId} conversationId={c} err={err} />
+            <ChatInboxSection
+              systemId={id}
+              tenantId={tenantId}
+              conversationId={c}
+              err={err}
+              multiUnit={unitCount > 1}
+            />
           ) : (
             <p className="card text-sm text-[color:var(--color-muted)]">
               บัญชีของคุณยังไม่มีสิทธิ์ดูกล่องแชทลูกค้า — ขอสิทธิ์ “ดูกล่องแชทลูกค้า”

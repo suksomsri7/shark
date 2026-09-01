@@ -9,14 +9,25 @@ export function Topbar({
   tenantName,
   onMenu,
   pinnedNav = false,
+  hideOnMobile = false,
 }: {
   tenantName: string;
   onMenu: () => void;
   /** เว็บจอใหญ่มีแถบเมนูปักซ้ายอยู่แล้ว → ซ่อนปุ่มแฮมเบอร์เกอร์ตั้งแต่ lg ขึ้นไป (ปุ่มที่ไม่มีประโยชน์) */
   pinnedNav?: boolean;
+  /**
+   * WO-CV12 (มติเจ้าของ 1 ก.ย. 2026): หน้ากล่องแชทเต็มจอบนจอที่ไม่มีแถบเมนูปักซ้าย (< lg)
+   * ต้อง "ตัด" แถบบนทิ้ง แล้วให้หัวรายการแชทขึ้นเป็นหัวจอแทน — ปุ่ม ☰ ย้ายไปอยู่ในหัวรายการ
+   * 🔴 เดสก์ท็อป (lg+) ยังต้องมีแถบบนเหมือนเดิม ⇒ ซ่อนด้วย `hidden lg:block` ไม่ใช่ถอดออกจากต้นไม้
+   */
+  hideOnMobile?: boolean;
 }) {
   return (
-    <header className="fixed inset-x-0 top-0 z-40 h-14 bg-[color:var(--color-surface)] shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+    <header
+      className={`fixed inset-x-0 top-0 z-40 h-14 bg-[color:var(--color-surface)] shadow-[0_1px_3px_rgba(0,0,0,0.06)] ${
+        hideOnMobile ? "hidden lg:block" : ""
+      }`}
+    >
       <div className="mx-auto flex h-full items-center gap-2 px-3 sm:px-4">
         {/* ซ้าย: แฮมเบอร์เกอร์ + ชื่อกิจการ */}
         <button

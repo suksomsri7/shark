@@ -281,7 +281,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         activeTenantId={auth.active.tenantId}
       />
       {/* ระยะขอบ (รวมการเว้นที่ให้แถบเมนูปักซ้ายบนจอใหญ่) อยู่ใน AppMain */}
-      <AppMain>{children}</AppMain>
+      <AppMain chatSystemIds={chatSystemIds}>{children}</AppMain>
     </div>
   );
 }

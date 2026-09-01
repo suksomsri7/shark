@@ -140,6 +140,11 @@ export function NavDrawer({
       {!pinned && <div className="absolute inset-0 bg-black/30" onClick={onClose} />}
 
       <aside
+        /* จุดจับสำหรับ visual QC (WO-CV12 SH-8) = ตัวแผงเมนูเอง
+           ⚠️ ทั้ง 2 โหมดใช้จุดจับเดียวกัน · ตัว overlay ถูกเรนเดอร์ก่อนใน AppShell และ
+              **ไม่อยู่ในต้นไม้เลยเมื่อปิด** (`if (!pinned && !open) return null`)
+              ⇒ ที่จอ < lg: ปิดอยู่ = เจอเฉพาะตัวปักซ้ายซึ่ง `hidden` · เปิดแล้ว = เจอ overlay เป็นตัวแรก */
+        data-qc="app-drawer"
         className={
           pinned
             ? "flex h-full w-full flex-col overflow-y-auto bg-[color:var(--color-surface)]"

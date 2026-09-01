@@ -76,11 +76,17 @@ export async function ChatInboxSection({
   tenantId,
   conversationId,
   err,
+  multiUnit = false,
 }: {
   systemId: string;
   tenantId: string;
   conversationId?: string;
   err?: string;
+  /**
+   * ร้านมีมากกว่า 1 สาขา — WO-CV12 ตัดชื่อหน้า/แท็บของหน้าแชททิ้ง ลิงก์ "จัดการการเชื่อมระบบ"
+   * ที่เคยอยู่ใต้ชื่อหน้าจึงย้ายเข้าเมนู ⋮ ของหัวรายการแทน (ไม่มีทางเข้าไหนหายเงียบ)
+   */
+  multiUnit?: boolean;
 }) {
   const auth = await requireChatRead();
   const ctx = membershipOf(auth);
@@ -128,6 +134,7 @@ export async function ChatInboxSection({
         memberLinked={!!setting.memberSystemId}
         maxAttachmentBytes={CHAT_ATTACHMENT_MAX_BYTES}
         acceptTypes={Object.keys(ALLOWED_UPLOAD_TYPES).join(",")}
+        manageLinksHref={multiUnit ? "/app/settings/connections" : null}
       />
     </>
   );

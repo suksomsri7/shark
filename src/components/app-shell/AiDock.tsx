@@ -8,7 +8,11 @@ import { AiChat } from "./AiChat";
 // ไม่แสดงระหว่าง onboarding (/app/dna) — ยังไม่ถึงเวลาแนะนำผู้ช่วย
 // จัดตำแหน่งไม่ให้บังเนื้อหา: main มี padding-bottom เผื่อไว้แล้ว
 
-export function AiDock({ aiUnread = 0 }: { aiUnread?: number }) {
+/**
+ * `hideOnMobile` — หน้าแชทเต็มจอ (<lg) ซ่อน orb (มติ WO-CV12 ข้อ ข): orb `fixed bottom-4 right-4` ทับปุ่มส่งของกล่องพิมพ์
+ * ถ้าให้กล่องแชทเต็มขอบล่างตามแบบร่าง · ผู้ใช้ยังเรียก AI ได้จากปุ่ม "AI ช่วยร่าง" ในกล่องพิมพ์ · เดสก์ท็อปยังมี orb
+ */
+export function AiDock({ aiUnread = 0, hideOnMobile = false }: { aiUnread?: number; hideOnMobile?: boolean }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -21,7 +25,7 @@ export function AiDock({ aiUnread = 0 }: { aiUnread?: number }) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label={aiUnread > 0 ? `ผู้ช่วย AI (${aiUnread} แจ้งเตือนใหม่)` : "ผู้ช่วย AI"}
-        className="ai-orb-breathe fixed bottom-4 right-4 z-40 h-10 w-10"
+        className={`ai-orb-breathe fixed bottom-4 right-4 z-40 h-10 w-10 ${hideOnMobile ? "hidden lg:block" : ""}`}
       >
         <span aria-hidden className="ai-orb" />
         {aiUnread > 0 && (

@@ -164,6 +164,11 @@ export type ChatInboxClientProps = {
   maxAttachmentBytes: number;
   /** ชนิดไฟล์ที่ระบบรับ (มาจากทะเบียนเดียวกับที่เซิร์ฟเวอร์ตรวจ) */
   acceptTypes: string;
+  /**
+   * WO-CV12: ลิงก์ "จัดการการเชื่อมระบบ" ที่เคยอยู่ใต้ชื่อหน้า (โผล่เฉพาะร้านหลายสาขา)
+   * ชื่อหน้าถูกตัดทิ้งแล้ว ⇒ ลิงก์ย้ายเข้าเมนู ⋮ ของหัวรายการ · `null` = ร้านสาขาเดียว ไม่ต้องมี
+   */
+  manageLinksHref?: string | null;
 };
 
 export function ChatInboxClient(props: ChatInboxClientProps) {
@@ -185,6 +190,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
     memberLinked,
     maxAttachmentBytes,
     acceptTypes,
+    manageLinksHref = null,
   } = props;
 
   const [rows, setRows] = useState<InboxRow[]>(initialRows);
@@ -862,11 +868,28 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
           คอลัมน์ 3 หายไปต่ำกว่า `lg` เพราะจอแคบไม่มีที่พอ และของในนั้นไม่ใช่ของที่ต้องเห็นตลอดเวลา */}
       <div className="grid min-h-0 gap-0 sm:grid-cols-[minmax(0,320px)_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)_280px]">
         {/* ══════════ คอลัมน์ซ้าย: รายการแชท (WO-CV3 · แบบร่างจอ 1 + `.dcol1`) ══════════ */}
+        {/* 🔴 WO-CV12: ต่ำกว่า lg ไม่มีแถบบนของแอปแล้ว (Topbar ซ่อน) และ AppMain เว้นแค่ pt-2/pb-2
+            ⇒ พื้นที่ที่การ์ดได้ = 100dvh − 4.5rem (pt-2 + pb-16 ที่เว้นให้ปุ่มผู้ช่วย AI ไม่ทับปุ่มส่ง)
+            ที่ lg ขึ้นไปยังมีแถบบน (3.5rem) + pt 1rem + pb-24 (6rem)
+            ⇒ 100vh − 10.5rem · ตัวเลขเดิม 13rem/19rem เผื่อชื่อหน้า+แท็บที่ถูกตัดทิ้งไปแล้ว
+            จอแคบ: ไม่มีมุมโค้ง/ขอบซ้ายขวา เพื่อให้ชิดขอบจอตามแบบร่าง */}
         <aside
-          className={`card relative min-w-0 flex-col gap-0 p-0 ${activeId ? "hidden sm:flex" : "flex"}`}
+          className={`card relative h-[calc(100dvh-1rem)] min-h-0 min-w-0 flex-col gap-0 rounded-none border-x-0 p-0 sm:rounded-xl sm:border-x lg:h-[calc(100vh-10.5rem)] ${activeId ? "hidden sm:flex" : "flex"}`}
         >
           {/* ── หัวรายการ (แบบร่าง `.hdr`) ── */}
           <div className="flex items-center gap-1 border-b border-[color:var(--color-line)] px-2 py-1.5">
+            {/* 🔴 WO-CV12: จอที่ไม่มีแถบเมนูปักซ้าย (< lg) ตัดแถบบนของแอปทิ้ง ⇒ หัวรายการนี้คือหัวจอ
+                ปุ่ม ☰ จึงต้องอยู่ตรงนี้ ไม่งั้นเมนูระบบทั้งแอปเข้าไม่ถึงจากหน้าแชท
+                สัญญากับ shell = CustomEvent ชื่อเดียว (`app:drawer-open`) — โมดูลนี้ห้าม import app-shell */}
+            <button
+              type="button"
+              data-qc="app-menu"
+              aria-label="เมนูระบบ"
+              onClick={() => window.dispatchEvent(new CustomEvent("app:drawer-open"))}
+              className="grid size-[34px] shrink-0 place-items-center rounded-[10px] text-[color:var(--color-ink)] lg:hidden"
+            >
+              <Icon name="menu" />
+            </button>
             <h2 className="min-w-0 flex-1 truncate px-1 text-[17.5px] font-bold tracking-[-0.015em]">
               แชทลูกค้า
             </h2>
@@ -988,23 +1011,76 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
               🔴 ตัวแจ้งเตือนต้อง **ติดตั้งค้างไว้เสมอ** (ซ่อนด้วย CSS ไม่ใช่ถอดออกจากต้นไม้)
                  ถอดออกเมื่อไหร่ ตัวจับ "ของใหม่" จะลืมสถานะรอบก่อน แล้วเปิดเมนูทีก็มีเสียงเตือนที */}
           <div
-            className={`absolute right-2 top-[46px] z-20 w-[248px] rounded-[13px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-3 shadow-lg ${
+            className={`absolute right-2 top-[46px] z-20 w-[248px] rounded-[13px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-1.5 shadow-lg ${
               menuOpen ? "" : "hidden"
             }`}
           >
-            <p className="pb-2 text-[11px] font-bold tracking-wide text-[color:var(--color-muted)]">
-              การแจ้งเตือนบนเบราว์เซอร์
-            </p>
-            <ChatNotifyClient
-              rows={notifyRows}
-              activeConversationId={activeId}
-              baseTitle="แชทลูกค้า"
-              enabled
-              hideControls={false}
-            />
-            <p className="mt-2 border-t border-[color:var(--color-line)] pt-2 text-[11.5px] text-[color:var(--color-muted)]">
-              {counts.all} ห้องในรายการนี้
-            </p>
+            {/* 🔴 WO-CV12: แท็บ "เชื่อมช่องทาง" ถูกตัดออกจากหน้า ⇒ ทางเข้าย้ายมาที่นี่
+                ไม่มีฟีเจอร์ไหนหายเงียบ · ทุกตัวปิดเมนูเองหลังกด (ไม่ค้างทับรายการ) */}
+            <Link
+              href={`/app/sys/${systemId}/chat/channels`}
+              onClick={() => setMenuOpen(false)}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm hover:bg-[color:var(--color-surface-2)]"
+            >
+              <Icon name="globe" size="sm" />
+              เชื่อมช่องทาง
+            </Link>
+            <Link
+              href={`/app/sys/${systemId}/chat/channels#quick-replies`}
+              onClick={() => setMenuOpen(false)}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm hover:bg-[color:var(--color-surface-2)]"
+            >
+              <Icon name="quick" size="sm" />
+              คำตอบสำเร็จรูป
+            </Link>
+            {manageLinksHref && (
+              <Link
+                href={manageLinksHref}
+                onClick={() => setMenuOpen(false)}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm hover:bg-[color:var(--color-surface-2)]"
+              >
+                <Icon name="clip" size="sm" />
+                จัดการการเชื่อมระบบ
+              </Link>
+            )}
+
+            <div className="my-1 border-t border-[color:var(--color-line)]" />
+
+            {/* "ห้องที่ปิดแล้ว" = ตัวกรอง ไม่ใช่หน้าใหม่ — สลับค่าเดียวกับช่องในแผ่นกรวย (มติ D3)
+                ⚠️ ทางเข้าซ้ำโดยตั้งใจ: กรวยคือที่ของ "ตัวกรองทั้งชุด" ส่วนตัวนี้คือทางลัดตามแบบร่าง */}
+            <button
+              type="button"
+              onClick={() => {
+                setExtra((x) => ({ ...x, closed: !x.closed }));
+                setMenuOpen(false);
+              }}
+              aria-pressed={extra.closed}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
+            >
+              <Icon name="checkcircle" size="sm" />
+              <span className="min-w-0 flex-1">ห้องที่ปิดแล้ว</span>
+              {extra.closed && (
+                <Icon name="check" size="sm" className="text-[color:var(--color-accent)]" />
+              )}
+            </button>
+
+            <div className="my-1 border-t border-[color:var(--color-line)]" />
+
+            <div className="px-1 pb-1">
+              <p className="pb-2 text-[11px] font-bold tracking-wide text-[color:var(--color-muted)]">
+                การแจ้งเตือนบนเบราว์เซอร์
+              </p>
+              <ChatNotifyClient
+                rows={notifyRows}
+                activeConversationId={activeId}
+                baseTitle="แชทลูกค้า"
+                enabled
+                hideControls={false}
+              />
+              <p className="mt-2 border-t border-[color:var(--color-line)] pt-2 text-[11.5px] text-[color:var(--color-muted)]">
+                {counts.all} ห้องในรายการนี้
+              </p>
+            </div>
           </div>
 
           {/* ── ช่องค้นหา (แบบร่าง `.search`) ── */}
@@ -1062,7 +1138,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
           {/* ── รายการ ── */}
           <div
             data-qc="chat-list"
-            className="flex max-h-[60vh] min-h-0 flex-1 flex-col overflow-y-auto pb-2 sm:max-h-[calc(100vh-19rem)]"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-2"
           >
             {rows.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-[color:var(--color-muted)]">
@@ -1308,7 +1384,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
             ⇒ ล็อกความสูงเท่าคอลัมน์ซ้าย แล้วให้ **พื้นที่ข้อความ** เลื่อนข้างในตัวเอง (บรรทัด overflow-y-auto)
             ใช้ dvh บนจอแคบ เพราะแถบเบราว์เซอร์มือถือยืดหดทำให้ vh โกหก */}
         <div
-          className={`card h-[calc(100dvh-13rem)] min-h-0 min-w-0 flex-col overflow-hidden p-0 sm:h-[calc(100vh-19rem)] ${activeId ? "flex" : "hidden sm:flex"}`}
+          className={`card h-[calc(100dvh-1rem)] min-h-0 min-w-0 flex-col overflow-hidden rounded-none border-x-0 p-0 sm:rounded-xl sm:border-x lg:h-[calc(100vh-10.5rem)] ${activeId ? "flex" : "hidden sm:flex"}`}
         >
           {!thread ? (
             <div className="flex flex-1 items-center justify-center p-8">
@@ -1895,7 +1971,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
         {/* ══════════ คอลัมน์ขวา: บริบทลูกค้า (WO-CV7 — ข้างในเป็นของสาย F) ══════════ */}
         {/* ซ่อนต่ำกว่า `lg` ตามแบบร่าง — จอแคบไม่มีที่พอ และของในนั้นไม่ใช่ของที่ต้องเห็นตลอดเวลา */}
         {thread && (
-          <aside className="hidden min-h-0 min-w-0 flex-col overflow-y-auto border-l border-[color:var(--color-line)] bg-[#fbfbfc] p-4 sm:h-[calc(100vh-19rem)] lg:flex">
+          <aside className="hidden min-h-0 min-w-0 flex-col overflow-y-auto border-l border-[color:var(--color-line)] bg-[#fbfbfc] p-4 lg:flex lg:h-[calc(100vh-10.5rem)]">
             <ContextPanel
               systemId={systemId}
               conversationId={thread.conversationId}

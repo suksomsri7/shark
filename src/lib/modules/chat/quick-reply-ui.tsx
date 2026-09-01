@@ -120,7 +120,8 @@ export async function ChatQuickReplySection({
   const archived = rows.filter((r) => r.archivedAt);
 
   return (
-    <div className="card">
+    // จุดยึดของลิงก์ "คำตอบสำเร็จรูป" ในเมนู ⋮ ของกล่องแชท (WO-CV12) — หน้านี้ยาว ต้องพาลงมาถึงคลังจริง
+    <div id="quick-replies" className="card scroll-mt-20">
       <h2 className="flex items-center gap-2 text-sm font-medium">
         <Icon name="quick" size="sm" />
         คำตอบสำเร็จรูป

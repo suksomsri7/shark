@@ -400,6 +400,38 @@ try {
     chk("VR-3.4", "ฟองข้อความกว้างไม่เกิน ~76% ของผนัง (แบบร่าง `.bub{max-width:76%}`)",
       m.bubbleRatio !== null && m.bubbleRatio <= 80, `ได้ ${m.bubbleRatio}%`);
     chk("VR-3.5", "จอมือถือยังเห็นรายการ/ห้องแชทจริง", m.text.length > 60, m.text.slice(0, 160));
+
+    // ═════════ VR-6 · หน้าแชท "แบบตัด" (เจ้าของเคาะ 1 ก.ย. ค่ำ — ดู qc-chat-v2-shell.mts) ═════════
+    // มือถือ: ไม่มีหัวแอป/ชื่อหน้า/แท็บ · แถบ "แชทลูกค้า" อยู่บนสุด · ☰ ในแถบเปิด drawer ได้จริง
+    // 🔴 วัดที่ "รายการ" (ไม่มี ?c=) — หน้าห้องซ่อนรายการอยู่แล้ว วัดตรงนั้นไม่เห็นหัวรายการ
+    await phone.goto(`${BASE}/app/sys/${best.id}`, { waitUntil: "networkidle2", timeout: 60_000 });
+    await new Promise((r) => setTimeout(r, 1500));
+    const sh = await phone.evaluate(() => {
+      const q = (k: string) => document.querySelector(`[data-qc="${k}"]`);
+      const top = (el: Element | null) => (el ? Math.round(el.getBoundingClientRect().top) : -1);
+      // 🔴 element `position:fixed` มี offsetParent === null เสมอ (สเปก) — ใช้ offsetParent จะอ่าน Topbar ว่า "ซ่อน" ทั้งที่โผล่ (สาย I เจอ)
+      const visible = (el: Element | null) => !!el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().height > 0;
+      const topbar = document.querySelector("header.fixed, header[class*='fixed']");
+      return {
+        text: document.body.innerText,
+        menuTop: top(q("app-menu")),
+        listTop: top(q("chat-list")),
+        topbarVisible: visible(topbar),
+        hasH1: !!document.querySelector("main h1, h1"),
+      };
+    });
+    chk("VR-6.1", "🔴 มือถือ: ไม่มีชื่อหน้า/คำอธิบาย \"ระบบรวม Chat\" และไม่มี <h1> เหนือรายการ", !/ระบบรวม Chat/.test(sh.text) && !sh.hasH1, `h1=${sh.hasH1} · text มี 'ระบบรวม Chat'=${/ระบบรวม Chat/.test(sh.text)}`);
+    chk("VR-6.2", "🔴 มือถือ: แถบบนของแอป (☰ ชื่อกิจการ) ซ่อนบนหน้าแชท", !sh.topbarVisible, `topbarVisible=${sh.topbarVisible}`);
+    chk("VR-6.3", "🔴 มือถือ: ปุ่ม ☰ ของรายการอยู่บนสุดของจอ (top ≤ 24px)", sh.menuTop >= 0 && sh.menuTop <= 24, `menuTop=${sh.menuTop}px listTop=${sh.listTop}px`);
+    let drawerOpened = false;
+    await phone.click('[data-qc="app-menu"]').then(() => { drawerOpened = true; }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 600));
+    const drawerVisible = drawerOpened
+      ? await phone.evaluate(() => { const el = document.querySelector('[data-qc="app-drawer"]'); return !!el && (el as HTMLElement).offsetParent !== null; })
+      : false;
+    chk("VR-6.4", "🔴 มือถือ: กด ☰ ในแถบแชทแล้ว drawer ของแอปเปิดจริง (ทางเดินไปโมดูลอื่นไม่หาย)", drawerVisible, `กดได้=${drawerOpened} · drawer=${drawerVisible}`);
+    // เดสก์ท็อป: ชื่อหน้า/แท็บต้องหายเหมือนกัน (sidebar+แถบบนยังอยู่ — ไม่วัดที่นี่ วัดจาก d)
+    chk("VR-6.5", "🔴 เดสก์ท็อป: ไม่มี \"ระบบรวม Chat\" และไม่มีแท็บ ภาพรวม/เชื่อมช่องทาง เหนือกล่องแชท", !/ระบบรวม Chat/.test(d.text) && !/ภาพรวม\s*เชื่อมช่องทาง/.test(d.text.replace(/\n/g, " ")), d.text.slice(0, 120).replace(/\n/g, " | "));
     await phone.close();
   } finally {
     await browser.close();

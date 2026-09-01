@@ -78,6 +78,21 @@ export function AppShell({
     refreshBadges();
   }, [refreshBadges]);
 
+  // WO-CV12: หน้ากล่องแชทเต็มจอ = `/app/sys/<id>` ของระบบที่เป็นแชท (หน้าย่อยอย่าง /chat/channels ไม่นับ)
+  // 🔴 ตัดสินจากทะเบียนที่ layout ส่งมา + pathname — ไม่ฮาร์ดโค้ด id และไม่ให้หน้าไปแตะ DOM ของ shell
+  const chatFullscreen = chatSystemIds.some((id) => pathname === `/app/sys/${id}`);
+
+  // 🔴 สัญญาข้ามชั้น: โมดูลแชทห้าม import จาก app-shell และ shell ห้าม import จากโมดูล
+  //    ⇒ ปุ่ม ☰ ในหัวรายการแชทยิง CustomEvent ชื่อเดียว แล้ว shell เปิด drawer ให้
+  useEffect(() => {
+    const onOpen = () => {
+      setDrawer(true);
+      refreshBadges(); // เปิดเมนู = จังหวะที่คนกำลังจะมอง ตัวเลขต้องสด
+    };
+    window.addEventListener("app:drawer-open", onOpen);
+    return () => window.removeEventListener("app:drawer-open", onOpen);
+  }, [refreshBadges]);
+
   return (
     <>
       <Topbar
@@ -87,6 +102,7 @@ export function AppShell({
           refreshBadges(); // เปิดเมนู = จังหวะที่คนกำลังจะมอง ตัวเลขต้องสด
         }}
         pinnedNav={!inApp}
+        hideOnMobile={chatFullscreen}
       />
       <NavDrawer
         open={drawer}
@@ -128,7 +144,7 @@ export function AppShell({
         }}
         openedCodes={openedCodes}
       />
-      {!inApp && <AiDock aiUnread={aiUnread} />}
+      {!inApp && <AiDock aiUnread={aiUnread} hideOnMobile={chatFullscreen} />}
     </>
   );
 }
