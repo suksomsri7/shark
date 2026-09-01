@@ -201,7 +201,7 @@ export async function ChatChannelsSection({
                 key={type}
                 className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--color-line)] px-2.5 py-1.5"
               >
-                <ChannelChip type={type} />
+                <ChannelChip type={type} isSupported={ready} />
                 <span className="text-xs text-[color:var(--color-muted)]">
                   {!ready
                     ? "ยังไม่เปิด"

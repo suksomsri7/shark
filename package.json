@@ -90,6 +90,8 @@
     "qc:pages": "tsx scripts/qc-pages.mts",
     "qc:kernel": "tsx scripts/qc-kernel-guard.mts",
     "qc:send": "tsx scripts/visual-qc-chat-send.mts",
+    "qc:v2": "for f in scripts/pending/qc-chat-v2-*.mts; do echo \"=== $f\"; tsx \"$f\" || true; done",
+    "qc:visual2": "tsx scripts/visual-qc-chat-v2.mts",
     "qc:visual": "tsx scripts/visual-qc-chat.mts",
     "qc:all": "tsx scripts/qc-all.mts",
     "qc:appstore": "tsx scripts/qc-appstore-ready.mts",

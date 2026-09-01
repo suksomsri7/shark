@@ -20,6 +20,7 @@ import type { ChannelCreds, InboundMessage, OutboundMessage } from "./adapter";
 import { readBusinessHours } from "./business-hours";
 import type { BusinessDay, StoredBusinessHours } from "./business-hours";
 import { encryptCreds, decryptCreds, mask } from "./crypto";
+import { channelSentenceLabel } from "./channel-icon";
 
 // Chat service (P1 = LINE + WEBCHAT). scope = systemId (AppSystem type CHAT)
 // query ทุกตัวผูก tenantId + systemId ตรง ๆ (ไม่พึ่ง tenantDb — เหมือน reward/meeting)
@@ -501,21 +502,13 @@ function resolveSentAt(
   return { ok: true, at: sentAt };
 }
 
-// 🔴 IU-4.7 (31 ส.ค. 2026): เดิมเป็น `Record<string, string>` ⇒ typecheck ไม่แดงเวลา enum โตขึ้น
-//    ผลจริง: `APP`/`TIKTOK` ที่เพิ่งเพิ่ม (WO-CW1 N1) ตกไปใช้ค่าดิบ ⇒ แจ้งเตือนขึ้นว่า
+// 🔴 หนี้ H4 (ปิด 1 ก.ย. 2026): ป้ายช่องทางเคยถูกพิมพ์มือไว้ 3 ที่ (ที่นี่ · ai/tools.ts · chat/ui.tsx)
+//    ลิสต์ที่พิมพ์ซ้ำเพี้ยนเสมอ — รอบก่อน `APP`/`TIKTOK` ตกไปใช้ค่าดิบ ⇒ แจ้งเตือนขึ้นว่า
 //    "ลูกค้าทักเข้ามา · APP" เป็นอังกฤษกลางข้อความไทย
-//    ⇒ ผูกกับ `ChatChannelType` เต็มรูป: เพิ่มค่าใน enum แล้วลืมป้าย = typecheck แดงทันที
-const CHANNEL_LABEL_TH: Record<ChatChannelType, string> = {
-  LINE: "LINE",
-  WEBCHAT: "แชทหน้าเว็บ",
-  APP: "แอปมือถือ",
-  FACEBOOK: "Facebook",
-  INSTAGRAM: "Instagram",
-  TIKTOK: "TikTok",
-  SHOPEE: "Shopee",
-  LAZADA: "Lazada",
-  WHATSAPP: "WhatsApp",
-};
+//    ⇒ ตอนนี้เหลือทะเบียนเดียวที่ `chat/channel-icon.tsx` ซึ่งผูกกับ `Record<ChatChannelType, …>`
+//      เต็มรูป: เพิ่มค่าใน enum แล้วลืมป้าย = typecheck แดงทันที (ที่นี่ไม่ต้องแก้ตามอีกแล้ว)
+//    ⚠️ ใช้ `channelSentenceLabel` (ป้ายยาว "แชทหน้าเว็บ") ไม่ใช่ `channelLabel` (ป้ายสั้น "เว็บ")
+//      เพราะข้อความแจ้งเตือนเป็นประโยคที่คนอ่าน ไม่ใช่ชิปในตาราง
 
 /**
  * เว้นช่วงเกินเท่านี้ = ถือว่าเป็นการทักรอบใหม่ ต้องแจ้งเตือนทีมอีกครั้ง
@@ -547,7 +540,7 @@ async function announceInbound(args: {
 }): Promise<void> {
   const { tenantId, systemId, conv } = args;
   const nextStatus = conv.status === "PENDING" ? "OPEN" : conv.status;
-  const channelTh = CHANNEL_LABEL_TH[args.channel] ?? args.channel;
+  const channelTh = channelSentenceLabel(args.channel);
   const denorm = {
     lastMessageAt: args.sentAt,
     lastMessagePreview: args.previewText,

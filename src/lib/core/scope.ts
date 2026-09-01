@@ -243,6 +243,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   ChatMessage: sys(),
   ChatAttachment: sys(),
   ChatReadState: sys(),
+  // WO-CV2 — ค่าตั้งของคนต่อห้อง (ปิดเสียง) มี tenantId + systemId ครบ ⇒ แกน system เหมือนพี่น้อง
+  // 🔴 ลืมลงทะเบียน = fitness F1.1 แดง และ query โยนตอน runtime (fail-closed ตั้งใจให้เป็นแบบนั้น)
+  ChatConversationPref: sys(),
   ChatConversationEvent: sys(),
   ChatQuickReply: sys(),
   ChatSetting: sys(),

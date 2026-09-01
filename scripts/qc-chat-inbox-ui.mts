@@ -181,10 +181,20 @@ try {
       "มี <svg> + ไม่มี URL ภายนอก", ICON ? "พบ URL ภายนอกหรือไม่มี svg" : "ยังไม่มีไฟล์");
     chk("IU-4.6", "🔴 ไม่มีลิสต์ป้ายช่องทางพิมพ์ซ้ำใน chat/ui.tsx (บทเรียน AS-6.1: ลิสต์ซ้ำเพี้ยนเสมอ)",
       !/const CHANNEL_LABEL\b/.test(UI), "ไม่มี CHANNEL_LABEL ใน ui.tsx", "ยังมีลิสต์พิมพ์มือซ้ำอยู่");
-    const thMap = SERVICE.match(/CHANNEL_LABEL_TH[^=]*=\s*\{([\s\S]*?)\}/);
-    const missingTh = thMap ? CHANNELS_ENUM.filter((c) => !new RegExp(`\\b${c}\\b`).test(thMap[1]!)) : CHANNELS_ENUM;
-    chk("IU-4.7", "ป้ายไทยที่ใช้ในข้อความแจ้งเตือน (CHANNEL_LABEL_TH) ครบทุกค่าเช่นกัน",
-      thMap !== null && missingTh.length === 0, "ครบทุกค่า", thMap ? `ขาด ${j(missingTh)}` : "ไม่พบ CHANNEL_LABEL_TH");
+    // 🔴 Fable แก้ 1 ก.ย. — ข้อนี้เคยล็อกว่า "ต้องมี object ชื่อ `CHANNEL_LABEL_TH` อยู่ใน service.ts"
+    //    ซึ่ง **คือความซ้ำที่หนี้ H4 สั่งให้ยุบ** ⇒ ทำตาม H4 แล้วข้อสอบจะแดง = คำสั่ง 2 อันขัดกันเอง
+    //    เจตนาเดิมไม่เปลี่ยน: **ป้ายไทยเต็มประโยคต้องครบทุกค่าใน enum และมีที่เดียว**
+    //    ⇒ ย้ายไปวัดที่ทะเบียนจริง (`CHANNEL_META` ใน channel-icon.tsx) + service.ts ต้องเรียกใช้ ไม่พิมพ์ซ้ำ
+    //    บทเรียนซ้ำรอบที่ 4 ของรีโปนี้: **ข้อสอบต้องวัดพฤติกรรม ไม่ใช่ล็อกชื่อตัวแปร/ชื่อไฟล์**
+    const metaBlock = ICON.match(/CHANNEL_META[^=]*=\s*\{([\s\S]*?)\n\};/);
+    const missingTh = metaBlock
+      ? CHANNELS_ENUM.filter((c) => !new RegExp(`\\b${c}\\b[^\\n]*sentence:`).test(metaBlock[1]!))
+      : CHANNELS_ENUM;
+    chk("IU-4.7", "ป้ายไทยเต็มประโยคครบทุกค่าในทะเบียนเดียว + service.ts เรียกใช้ (ไม่พิมพ์ซ้ำ)",
+      metaBlock !== null && missingTh.length === 0
+        && !/const CHANNEL_LABEL_TH/.test(SERVICE) && /channelSentenceLabel\(/.test(SERVICE),
+      "ครบทุกค่า + ไม่มีลิสต์ซ้ำ",
+      metaBlock ? `ขาด ${j(missingTh)} · ยังมีลิสต์ซ้ำ=${/const CHANNEL_LABEL_TH/.test(SERVICE)}` : "ไม่พบ CHANNEL_META");
   });
 
   // ═════════ IU-5 · ปุ่มในกล่องพิมพ์ต้องมีจริงและผูกกับของจริง ═════════

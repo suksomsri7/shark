@@ -18,6 +18,7 @@ import { listRedemptions as rewardListRedemptions } from "@/lib/modules/reward/s
 import { getCustomerPoints } from "@/lib/modules/point/service";
 import { listMyCards as kanbanListMyCards } from "@/lib/modules/kanban/service";
 import { searchKb as kbSearchArticles, createArticle as kbCreateArticleSvc } from "@/lib/modules/kb/service";
+import { channelSentenceLabel } from "@/lib/modules/chat/channel-icon";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { createProposal, type ProposalKind } from "./proposals";
 import { createPlan } from "./plans";
@@ -1392,15 +1393,9 @@ const shopPendingOrders: AiTool = {
 };
 
 // ── B1-R4) chat_unread_conversations — ห้องแชทที่มีข้อความลูกค้ายังไม่ได้อ่าน ──
-const CHAT_CHANNEL_TH: Record<string, string> = {
-  LINE: "LINE",
-  WEBCHAT: "แชทหน้าเว็บ",
-  FACEBOOK: "Facebook",
-  INSTAGRAM: "Instagram",
-  SHOPEE: "Shopee",
-  LAZADA: "Lazada",
-  WHATSAPP: "WhatsApp",
-};
+// 🔴 หนี้ H4 (ปิด 1 ก.ย. 2026): เดิมที่นี่มีลิสต์ป้ายช่องทางพิมพ์มือเป็น `Record<string, string>`
+//    ซึ่งตกค่า APP/TIKTOK ไปเงียบ ๆ ⇒ AI สรุปให้เจ้าของอ่านว่า "ช่องทาง: APP" กลางประโยคไทย
+//    ตอนนี้อ่านจากทะเบียนเดียวที่ `chat/channel-icon.tsx` (ผูกกับ enum เต็มรูป ลืมแล้ว typecheck แดง)
 const chatUnreadConversations: AiTool = {
   def: {
     name: "chat_unread_conversations",
@@ -1419,7 +1414,7 @@ const chatUnreadConversations: AiTool = {
       จำนวนห้องที่ยังไม่อ่าน: convs.length,
       ห้องแชท: convs.map((c) => ({
         ลูกค้า: c.contact.displayName ?? c.contact.phone ?? "ลูกค้า",
-        ช่องทาง: CHAT_CHANNEL_TH[c.channel] ?? c.channel,
+        ช่องทาง: channelSentenceLabel(c.channel),
         ข้อความค้าง: c.staffUnreadCount,
         ล่าสุด: c.lastMessagePreview ?? "—",
       })),

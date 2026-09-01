@@ -47,6 +47,11 @@ enum ChatMessageType {
   FILE
   ORDER_CONTEXT // การ์ดออเดอร์/สินค้า (Shopee/Lazada)
   SYSTEM // ข้อความระบบในเธรด — ไม่ส่งออกช่องทาง
+  // 🔴 AUDIO แยกจาก FILE เพราะ "ข้อความเสียง" ไม่ใช่ "ไฟล์ที่แนบมา" (WO-CV8):
+  //    ฟองเสียงต้องวาดปุ่มเล่น+คลื่น+ความยาว และรายการแชทต้องสรุปว่า "ข้อความเสียง"
+  //    ถ้าใช้ FILE ปนกัน ต้องไปเดาจาก mimeType ของไฟล์แนบ = เดาผิดได้ (audio/* ที่ลูกค้าส่งเป็นไฟล์เพลง)
+  //    และช่องทางที่ส่งเสียงไม่ได้จะกันก่อนกดส่งไม่ได้ เพราะแยกไม่ออกว่าอันไหนคือเสียง
+  AUDIO
 }
 
 enum ChatDeliveryStatus {
@@ -157,6 +162,18 @@ model ChatConversation {
 
   replyWindowExpiresAt DateTime? // FB/IG/WA
 
+  // ── ปักหมุดห้องแชท (WO-CV10) ──
+  // 🔴 "ระดับร้าน" ไม่ใช่รายคน (มติ: ทีมต้องเห็นตรงกัน) — ห้องที่ปักหมุดคือ "งานสำคัญของร้าน"
+  //    เช่น ลูกค้าที่กำลังจะโอนมัดจำ · ถ้าเป็นรายคน คนที่เข้ากะต่อจะไม่เห็นว่าห้องไหนต้องตามต่อ
+  //    (ต่างจาก "ปิดเสียง" ที่เป็นความรำคาญส่วนตัว → อยู่ใน ChatConversationPref)
+  // เก็บ `pinnedByUserId` ไว้ตอบคำถาม "ใครปักหมุดไว้" เวลาทีมเถียงกันว่าทำไมห้องนี้ค้างอยู่บนสุด
+  // 🔴 เรียงลำดับต้องสั่ง `nulls: "last"` เสมอ — Postgres ตั้งต้นให้ DESC = NULLS FIRST
+  //    ⇒ เขียน `orderBy: { pinnedAt: "desc" }` เฉย ๆ จะได้ห้องที่ **ไม่ได้ปักหมุด** ขึ้นก่อน (กลับหัว)
+  //    ตั้งใจไม่ทำ index ให้: index ของ pinnedAt เป็น NULLS FIRST จึงใช้กับ order นี้ไม่ได้อยู่ดี
+  //    และห้องที่ปักหมุดมีไม่กี่ห้องต่อร้าน (ตัวกรอง systemId ตัดงานทิ้งไปแล้ว)
+  pinnedAt             DateTime?
+  pinnedByUserId       String?
+
   // SLA
   firstCustomerMessageAt DateTime?
   firstResponseAt        DateTime?
@@ -169,6 +186,7 @@ model ChatConversation {
   messages   ChatMessage[]
   events     ChatConversationEvent[]
   readStates ChatReadState[]
+  prefs      ChatConversationPref[]
 
   @@index([systemId, status, lastMessageAt(sort: Desc)])
   @@index([systemId, channel, status])
@@ -243,6 +261,11 @@ model ChatAttachment {
   sizeBytes  Int
   width      Int?
   height     Int?
+  // ความยาวคลิปเสียง/วิดีโอเป็นมิลลิวินาที (WO-CV8)
+  // 🔴 มีไว้เพื่อ **วาด "0:12" ได้โดยไม่ต้องโหลดไฟล์เสียง** — รายการแชทและฟองเสียงต้องขึ้นความยาว
+  //    ทันทีที่เปิดหน้า ถ้าไม่เก็บ ต้องดึงไฟล์ทุกก้อนมาอ่าน metadata = เปลืองเน็ตลูกค้าและช้า
+  //    เป็น Int (ms) ไม่ใช่วินาที เพราะ MediaRecorder/ffprobe คืนค่าเป็น ms อยู่แล้ว — ปัดที่ชั้นแสดงผล
+  durationMs Int?
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
 
@@ -263,6 +286,32 @@ model ChatReadState {
   lastReadAt        DateTime         @default(now())
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
+
+  @@unique([conversationId, userId])
+  @@index([systemId, userId])
+}
+
+// ─────────────── ค่าตั้งของ "คนต่อห้อง" (WO-CV10) ───────────────
+// 🔴 ทำไมต้องเป็นตารางใหม่ ไม่ไปเกาะ ChatReadState ที่มีคู่ (conversation, user) อยู่แล้ว:
+//    ChatReadState คือ "อ่านถึงไหนแล้ว" — เป็นข้อมูลที่ระบบเขียนทับตลอดเวลาและรีเซ็ต/ล้างได้
+//    (retention · เปลี่ยนเครื่อง · ล้างตัวนับ) ส่วนตารางนี้คือ **ความตั้งใจของผู้ใช้**
+//    ถ้าเอาไปปนกัน วันที่ล้างสถานะการอ่าน ทีมจะถูก "เปิดเสียงคืน" โดยไม่มีใครสั่ง = เสียงเด้งกลางดึก
+//
+// ปิดเสียงเป็น **รายคน** (ไม่ใช่ระดับร้านแบบปักหมุด) เพราะเป็นความรำคาญส่วนตัว:
+// คนที่ไม่ได้ดูแลห้องนั้นปิดเสียงได้ โดยคนที่ดูแลอยู่ต้องยังได้รับแจ้งเตือนตามปกติ
+model ChatConversationPref {
+  id             String           @id @default(cuid())
+  tenantId       String
+  systemId       String
+  conversationId String
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id])
+  userId         String
+  // 🔴 เก็บ "ปิดเสียงถึงเมื่อไหร่" ไม่ใช่ boolean `muted` — เพราะของจริงที่คนใช้คือ
+  //    "ปิด 1 ชม. / ถึงพรุ่งนี้ 9 โมง / ปิดไปเลย" · boolean ทำได้แค่แบบสุดท้าย
+  //    ปิดถาวร = ใส่วันไกล ๆ · null = ไม่เคยปิด/เปิดเสียงคืนแล้ว (หมดอายุเองโดยไม่ต้องมี cron)
+  mutedUntil     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@unique([conversationId, userId])
   @@index([systemId, userId])
