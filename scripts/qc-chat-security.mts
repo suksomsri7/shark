@@ -166,11 +166,136 @@ try {
     assert("widget: ไม่มี localStorage guest token", !/localStorage/.test(widgetSrc));
     assert("widget: ไม่ gen guest token ด้วย Math.random", !/shark_chat_guest|guestTokenFor/.test(widgetSrc));
   }
+
+  // ─────────────── SEC-U (WO-CV15): ไฟล์แนบขาเข้า + context ที่ผู้เยี่ยมชมยัดมาเอง ───────────────
+  //
+  // 🔴 ทำไมต้องมี (Fable ตรวจพบ 2 ก.ย. 2026):
+  //   F1 — `POST /api/v1/chat/messages` โหมด widget เปิดให้ **ผู้เยี่ยมชมทุกคน** บน origin ที่อนุญาต
+  //        ยิงเข้ามาได้ · `url` ของไฟล์แนบเดินทางไปโผล่เป็น `href`/`src` ในกล่องข้อความของทีมตรง ๆ
+  //        ⇒ `javascript:` = stored XSS ที่ยิงตอน "พนักงาน" กด (สิทธิ์สูงกว่าลูกค้าเสมอ)
+  //           `http://` / โฮสต์ภายใน = รั่ว IP/UA ของทีม + เป็นบันไดให้ worker/LINE ไปดึงของภายใน
+  //   F2 — `context` ถูก merge ลง `ChatConversation.meta` ทั้งก้อน ⇒ widget ส่ง
+  //        `{autoTranslate:true}` มาบังคับให้ร้านจ่ายค่าแปลทุกข้อความได้ โดยทีมไม่ได้กด
+  //
+  // 🔴 ต้องปิด **2 ชั้น**: ชั้นข้อมูล (service — ของใหม่เข้ามาไม่ได้) + ชั้นจอ (bubble — ของเก่าที่
+  //    อยู่ใน DB แล้วต้องไม่ถูกวาดเป็นลิงก์) · แก้ชั้นเดียวแปลว่าแถวที่ยัดไว้ก่อนหน้านี้ยังยิงได้อยู่
+  console.log("\nSEC-U ไฟล์แนบ/บริบทขาเข้า (WO-CV15):");
+  {
+    const svcSrc = readFileSync("src/lib/modules/chat/service.ts", "utf8");
+    const bubbleSrc = readFileSync("src/lib/modules/chat/bubble.tsx", "utf8");
+    const AUD = { mimeType: "audio/wav", fileName: "v.wav", sizeBytes: 1000, durationMs: 4200 };
+    const inbound = (url: string, who: string) =>
+      chat.receiveExternalInbound({
+        connection: conn,
+        externalUserId: "web-secu-" + who + "-" + Date.now(),
+        body: "",
+        attachments: [{ ...AUD, url }],
+      });
+
+    // ── F1 ชั้น 1 · receiveExternalInbound ──
+    const thai = (r: { reason?: string }) => /[ก-๙]/.test(r.reason ?? "");
+    const BAD: [string, string][] = [
+      ["javascript:alert(document.cookie)", "javascript:"],
+      ["http://attacker.example/x.wav", "http:// (ไม่เข้ารหัส · รั่ว IP ทีม)"],
+      ["https://127.0.0.1/x.wav", "https://127.0.0.1 (loopback)"],
+      ["https://10.0.0.1/x.wav", "https://10.0.0.1 (IP ภายใน)"],
+      ["https://foo.local/x.wav", "https://foo.local (โฮสต์ในเครือข่าย)"],
+    ];
+    for (const [url, label] of BAD) {
+      const r = await inbound(url, "bad");
+      assert(
+        `inbound: ปฏิเสธ ${label} พร้อมเหตุผลไทย`,
+        r.ok === false && thai(r),
+        JSON.stringify(r),
+      );
+    }
+    // 🟢 คู่บวก — ถ้าข้อนี้แดง แปลว่ากันแรงเกินจนของจริงส่งไม่ได้ (SiamDive ใช้ CDN คนละโดเมนกับเรา)
+    const good = await inbound("https://cdn.example/x.wav", "good");
+    assert(
+      "inbound: 🟢 https โดเมนสาธารณะ (คนละ CDN กับ SHARK) ยังผ่านตามเดิม",
+      good.ok === true && !!good.messageId,
+      JSON.stringify(good),
+    );
+
+    // ── F1 ชั้น 1 · sendReply (ไฟล์แนบที่มาจาก API ก็เข้าเส้นนี้ได้) ──
+    const secuContact = await prisma.chatContact.create({
+      data: { tenantId, systemId: sys.id, channel: "WEBCHAT", channelConnectionId: conn.id, externalUserId: "web-secu-out-" + Date.now() },
+    });
+    const secuConv = await prisma.chatConversation.create({
+      data: { tenantId, systemId: sys.id, channel: "WEBCHAT", channelConnectionId: conn.id, contactId: secuContact.id, unitId: null, status: "OPEN" },
+    });
+    const outBad = await chat.sendReply({
+      tenantId, systemId: sys.id, conversationId: secuConv.id, senderUserId: u.id, unitAccess: ["*"],
+      attachments: [{ url: "javascript:alert(1)", mimeType: "image/png", fileName: "x.png" }],
+    });
+    assert("sendReply: ปฏิเสธไฟล์แนบ javascript: พร้อมเหตุผลไทย", outBad.ok === false && thai(outBad), JSON.stringify(outBad));
+    const outGood = await chat.sendReply({
+      tenantId, systemId: sys.id, conversationId: secuConv.id, senderUserId: u.id, unitAccess: ["*"],
+      attachments: [{ url: "https://cdn.example/ok.png", mimeType: "image/png", fileName: "ok.png" }],
+    });
+    assert("sendReply: 🟢 https ปกติยังส่งได้ (ไม่กันเกินจนของจริงพัง)", outGood.ok === true, JSON.stringify(outGood));
+
+    // ── F1 ชั้น 1 · เส้นที่ 3 (receiveExternalReply) ──
+    // ฟังก์ชันนี้ยัง **ไม่รับ** ไฟล์แนบเลย (body ล้วน · type TEXT) ⇒ วันนี้ไม่มีอะไรให้กรอง
+    // แต่ถ้าวันหนึ่งมันรับเมื่อไหร่ ต้องเดินผ่านตัวกรองตัวเดียวกัน — ล็อกไว้เป็นกติกา ไม่ใช่ความจำ
+    const replyFn = svcSrc.slice(svcSrc.indexOf("export async function receiveExternalReply"));
+    const replyBody = replyFn.slice(0, replyFn.indexOf("\n}\n") + 1);
+    assert(
+      "receiveExternalReply: ถ้ารับไฟล์แนบเมื่อไหร่ ต้องผ่านตัวกรองตัวเดียวกัน",
+      !/attachments/.test(replyBody) || /safeAttachments\(/.test(replyBody),
+      "รับ attachments แล้วแต่ไม่ได้ผ่าน safeAttachments",
+    );
+
+    // ── F1 ชั้น 2 · จอต้องไม่วาดลิงก์ที่ไม่ใช่ https (ของเก่าที่อยู่ใน DB แล้ว) ──
+    assert("bubble: มีตัวกรอง https ก่อนวาด href/src", /safeHttpsUrl/.test(bubbleSrc));
+    assert(
+      "bubble: ไม่มี href/src ที่รับ url ดิบจากแถวข้อมูลตรง ๆ",
+      !/href=\{a\.url\}/.test(bubbleSrc) && !/src=\{a\.url\}/.test(bubbleSrc),
+      "ยังมี href={a.url} / src={a.url}",
+    );
+
+    // ── F2 · context ต้องถูกกรองด้วยบัญชีขาว ──
+    const ctxUser = "web-secu-ctx-" + Date.now();
+    const rCtx = await chat.receiveExternalInbound({
+      connection: conn,
+      externalUserId: ctxUser,
+      body: "ดูทริปอยู่",
+      context: {
+        pageUrl: "/trip/1",
+        country: "TH",
+        autoTranslate: true,
+        tags: ["x"],
+        junk: "y".repeat(10_000),
+        userAgent: "z".repeat(10_000),
+      },
+    });
+    const ctxConv = rCtx.conversationId
+      ? await prisma.chatConversation.findUnique({ where: { id: rCtx.conversationId } })
+      : null;
+    const meta = (ctxConv?.meta ?? {}) as Record<string, unknown>;
+    assert("context: คีย์ที่ SiamDive ใช้จริงยังผ่าน (pageUrl/country)", meta.pageUrl === "/trip/1" && meta.country === "TH", JSON.stringify(meta).slice(0, 200));
+    assert(
+      "🔴 context: คีย์ภายในที่ widget ยัดมาเองถูกทิ้ง (autoTranslate/tags — บังคับให้ร้านจ่ายค่าแปลไม่ได้)",
+      !("autoTranslate" in meta) && !("tags" in meta),
+      JSON.stringify(meta).slice(0, 200),
+    );
+    assert("context: คีย์นอกบัญชีขาวถูกทิ้งเงียบ (ผู้เรียกเดิมไม่พัง)", !("junk" in meta), JSON.stringify(Object.keys(meta)));
+    assert(
+      "context: ค่ายาวเกินถูกจำกัด ≤512 ตัวอักษร (กัน row bloat)",
+      typeof meta.userAgent === "string" && (meta.userAgent as string).length <= 512,
+      `userAgent len=${typeof meta.userAgent === "string" ? (meta.userAgent as string).length : "ไม่ใช่สตริง"}`,
+    );
+  }
+
 } catch (e) {
   bad("HARNESS", e instanceof Error ? (e.stack ?? e.message) : String(e));
 } finally {
   // ── cleanup ──
   if (tenantId) {
+    // 🔴 ไฟล์แนบต้องลบ **ก่อน** ข้อความเสมอ — FK `ChatAttachment_messageId_fkey` เป็น RESTRICT
+    //    (SEC-U เป็นหมวดแรกของชุดนี้ที่สร้างไฟล์แนบจริง · ลืมบรรทัดนี้ = cleanup โยนกลางคัน
+    //     แล้ว **test tenant ค้างอยู่บน Neon จริง** โดยไม่มีใครรู้ เพราะสรุปผลไม่ทันได้พิมพ์)
+    await prisma.chatAttachment.deleteMany({ where: { tenantId } });
     await prisma.chatMessage.deleteMany({ where: { tenantId } });
     await prisma.chatConversationEvent.deleteMany({ where: { tenantId } });
     await prisma.chatReadState.deleteMany({ where: { tenantId } });

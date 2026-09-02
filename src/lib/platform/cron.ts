@@ -16,6 +16,7 @@ import { sweepOnboardingDrip } from "@/lib/platform/onboarding-drip";
 import { sweepDnaReview } from "@/lib/ai/dna-review";
 import { sweepProactiveNudges } from "@/lib/ai/proactive";
 import { purgeExpiredChatMessages } from "@/lib/modules/chat/retention";
+import { deliverPendingVoice } from "@/lib/modules/chat/service";
 import { sweepRateBuckets } from "@/lib/core/rate-limit-db";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
@@ -36,6 +37,25 @@ export async function sweepExpiredProposals(now: Date = new Date()): Promise<num
     data: { status: "EXPIRED" },
   });
   return res.count;
+}
+
+/**
+ * ตาข่ายเก็บตกข้อความเสียงที่ค้างรอส่งเข้าช่องทาง (WO-CV13 M3 ข · รายชั่วโมง)
+ *
+ * เส้นทางหลักคือ `scripts/voice-transcode-worker.mts` บน VPS (ทุก 1 นาที — เป็นทั้งตัวแปลง
+ * และตัวส่ง) · ตัวนี้มีไว้เผื่อ **VPS ตาย/cron ถูกปิด** ⇒ ส่งได้เฉพาะแถวที่ไฟล์เป็น m4a แล้ว
+ * (Vercel ไม่มี ffmpeg แปลงเองไม่ได้) และแถวที่ค้างเกิน 30 นาทีจะถูกมาร์ก FAILED ให้ทีมเห็น ✗
+ * แทนที่จะค้าง PENDING เงียบ ๆ ตลอดกาล
+ *
+ * 🔴 best-effort — ห้าม throw ออกไปทำให้ cron ทั้งรอบล้ม
+ */
+export async function sweepPendingVoiceDelivery(): Promise<number> {
+  try {
+    const r = await deliverPendingVoice({ limit: 50 });
+    return r.sent;
+  } catch {
+    return -1;
+  }
 }
 
 // งานประจำวัน: กวาด subs + proposals + เก็บตก outbox

@@ -275,7 +275,7 @@ CRUD คำตอบสำเร็จรูปในหน้า "เชื่�
 | **D13** | มติ D4 (เดสก์ท็อปอัดเสียงผ่านแผ่น ＋) ขัดกับแบบร่าง+ข้อสอบที่ล็อกแผ่น ＋ = 8 ช่องพอดี (สาย E รายงาน) | ✅ **เดสก์ท็อปมีไมค์ในแถบเหมือนมือถือ** (คอมโพเนนต์เดียว · ไม่มีช่องที่ 9) — ✅ **ทำแล้ว 1 ก.ย. ค่ำ**: แก้ `mockup.html` เดสก์ท็อป + เรนเดอร์ `ref-desktop.png` ใหม่ + ถอด `lg:hidden` ออกจากปุ่มไมค์ใน `composer.tsx` (ปุ่มยัง disabled จนสาย H ต่อการอัดจริง) · D4 ถูกแทนด้วยข้อนี้ |
 | **D14** | แบบร่างมีปุ่ม "แผนที่ร้าน" แต่ทั้งสคีมาไม่มีที่อยู่/พิกัดร้าน (สาย E เจอ) | ✅ อ่านจาก `BusinessUnit.settings` (`address/mapUrl/lat/lng`) · ยังไม่ได้ตั้ง = ปุ่มบอกตรง ๆ ว่ายังไม่ได้ตั้ง ไม่เดา · **งานค้าง**: หน้าตั้งค่าสาขาให้กรอก 4 ช่องนี้ (นอกขอบเขตแชท V2 — เข้าคิวหลังรอบ 4) |
 | **D15** | "แปลอัตโนมัติในห้องนี้" เก็บเจตนาไว้ที่ `meta.autoTranslate` แล้ว แต่เส้นทางรับข้อความยังไม่อ่านค่านี้ (สาย E รายงาน) | ✅ **ต่อในรอบ 4 (สาย G ถือ service.ts ขาเข้า)** — ปุ่มบอกค่าใช้จ่ายและยังกดแปลรายข้อความได้ จึงไม่โฆษณาเกินจริง |
-| **D31** | LINE ส่งเสียง: ไฟล์เป็น m4a แล้ว (worker แปลงทุก 5 นาที) แต่ตอนกดส่งยังเป็น wav — เลือกทาง (ก) sendReply รอ transcode หรือ (ข) ส่งช้า async (วิเคราะห์เต็มในรายงานสาย K) | ✅ **เลือก (ข)** — ไม่เปิดพื้นผิว HTTP ใหม่บน VPS · เงื่อนไขบังคับก่อนเปิด `audio:true` ให้ LINE: (1) cron ถี่ขึ้นเป็นทุก 1 นาที (2) ฟองต้องมีสถานะ "กำลังส่งเข้า LINE" จริง ห้ามโชว์ ✓ ก่อนส่งถึง (3) ลงทะเบียน consumer ใน outbox (บทเรียนคิวตันเงียบ) — **ยังไม่ทำในรอบนี้** เข้าคิวถัดไป · cron ตัวแปลงติดตั้งแล้ว 2 ก.ย. (`*/5` · flock · log `/var/log/shark-voice-transcode.log`) · 🔑 รอเจ้าของ: `BUNNY_ACCOUNT_KEY` เพื่อ purge edge cache (ตอนนี้ลบที่ต้นทางแล้วแต่ edge ถือต่อได้ถึง 30 วัน — ห้ามเขียน /privacy ว่าลบทันที) |
+| **D31** | LINE ส่งเสียง: ไฟล์เป็น m4a แล้ว (worker แปลงทุก 5 นาที) แต่ตอนกดส่งยังเป็น wav — เลือกทาง (ก) sendReply รอ transcode หรือ (ข) ส่งช้า async (วิเคราะห์เต็มในรายงานสาย K) | ✅ **ปิดแล้ว 2 ก.ย. (WO-CV13 · ทาง ข)** — `sendReply` บันทึกเสียง wav ในห้องช่องทางภายนอกเป็น `PENDING` + `meta.pendingReason="TRANSCODE"` **โดยไม่แตะ adapter** · ฟองขึ้นนาฬิกา "กำลังแปลงไฟล์เสียงเพื่อส่งเข้า LINE (ไม่เกิน 1–2 นาที)" (ห้ามขึ้น ✓) · `voice-transcode-worker` แปลง wav→m4a แล้วเรียก `deliverPendingVoice()` **ยิงเข้า LINE เอง** → SENT / FAILED (✗ + ปุ่มส่งซ้ำ) · ค้าง >30 นาที → `TRANSCODE_TIMEOUT` · เงื่อนไขบังคับครบ: (1) cron `* * * * *` แล้ว (2) สถานะฟองตรงความจริง (3) **ไม่เพิ่ม event type ใหม่** ใช้ `chat.message.sent` เดิม (มี consumer อยู่แล้ว) · `lineAdapter.capabilities.audio = true` ⇒ ปุ่มไมค์ในห้อง LINE กดได้ · ด่าน VO-11 (20 ข้อ) คุมถาวร · 🔑 รอเจ้าของ: `BUNNY_ACCOUNT_KEY` เพื่อ purge edge cache (ยังค้างจาก CV9 — ห้ามเขียน /privacy ว่าลบทันที) |
 | **D16 ✅ ปิดครบ 2 ก.ย.** | — | `ThreadSnapshot` พา `pageUrl/tags/autoTranslate` มาก้อนเดียวกับข้อความ · ถอด `loadRoomContextAction` ทิ้งทั้งก้อน (ตัด 1 คำขอ/การเปิดห้อง · บรรทัดบริบทเลิกกระพริบ) · `audioMs` ไม่ต้องใช้แล้ว (อ่านจาก `attachment.durationMs`) |
 | **D24 ✅ ปิดที่ราก 2 ก.ย.** | — | `strip()` ของข้อสอบ 15 ชุดถูกอัปเป็นตัวกัน `image/*`/`audio/*` ในสตริง (จองด้วย \u0000 ก่อนตัดคอมเมนต์) · spot-check 5 ชุดเขียว |
 | **D16 (เดิม)** | `ThreadSnapshot`/`ThreadAttachment` ไม่มี `meta.pageUrl`/`durationMs` ⇒ สาย E ต้องยิง `loadRoomContextAction` แยก | ✅ **รอบ 4 สาย H** ใส่ `durationMs` ลง `ThreadAttachment` (ต้องใช้กับฟองเสียงอยู่แล้ว) + `pageUrl` ลง `ThreadSnapshot` แล้วถอด `loadRoomContextAction` ทิ้ง |
@@ -309,7 +309,7 @@ CRUD คำตอบสำเร็จรูปในหน้า "เชื่�
 |---|---|---|
 | **CV9-1** | `scripts/voice-transcode-worker.mts` — WAV บน CDN → M4A (AAC 64k · faststart) ด้วย ffmpeg บน VPS | ✅ **รันจริงบน prod แล้ว 2/2 ชิ้น** · 163KB→39KB (5,208ms) · 88KB→20KB (3,754ms) · `storageKey`/`FileAsset` ชี้ไฟล์ใหม่ · wav เดิมถูกลบจาก storage zone (ตรวจแล้ว 404) · รันซ้ำ = "ไม่มีงาน" exit 0 |
 | **CV9-2** | `deleteStoredFile()` ใน `storage/service.ts` + retention เรียกใช้ | ✅ `qc-chat-retention` **50/50** (เดิม 37) · RT-5 พิสูจน์ fail-before แล้ว (ถอดการเรียกออก → RT-5.1/5.4 แดง) |
-| **CV9-3** | LINE `audio:true` | ⛔ **ยังไม่เปิด** — ไฟล์ ณ วินาทีที่กดส่งยังเป็น wav (worker เป็น cron) · ทางเลือก (ก) sendReply รอ transcode / (ข) ส่งเข้า LINE แบบ async — **รอเจ้าของ/Fable เคาะ** |
+| **CV9-3** | LINE `audio:true` | ✅ **เปิดแล้ว 2 ก.ย. (WO-CV13 · ทาง ข)** — ดู §12 (ส่งช้าแบบ async: PENDING → worker แปลง → worker ส่งเอง) |
 
 🔴 **ข้อจำกัดที่ยังปิดไม่ได้ — CDN edge cache (ต้องรู้ก่อนประกาศว่า "ลบแล้ว")**
 Bunny ลบวัตถุที่ **storage zone** ทันที แต่ **edge ที่เคยแคชไว้ยังเสิร์ฟ url เดิมต่อ** จนหมดอายุ
@@ -320,3 +320,43 @@ purge ราย URL ต้องยิง `https://api.bunny.net/purge` ด้�
 โค้ดเผื่อไว้แล้ว: มี env ก็ยิง purge ให้อัตโนมัติ ไม่มีก็ข้ามเงียบ ๆ (ไม่ถือว่าลบล้มเหลว)
 ⇒ **จนกว่าจะตั้ง env นี้ "ลบตามอายุเก็บ" = ลบที่ต้นทาง ไม่ใช่หายจาก edge ทันที** — ห้ามเขียนหน้า /privacy
 ว่าลบทันที และห้ามใช้ผลลัพธ์ "url เก่ายังเปิดได้" มาสรุปว่าโค้ดลบไม่ทำงาน
+
+## §12 WO-CV13 — LINE ส่งข้อความเสียงแบบ async (สาย M · 2 ก.ย. 2026 · ปิด D31 ทาง ข)
+
+เส้นทางจริงหลังรอบนี้:
+ทีมกดไมค์ในห้อง LINE → อัด **wav** → `sendReply` เขียนแถว `PENDING` + `meta.pendingReason="TRANSCODE"`
+(ไม่ยิง adapter · ยิง outbox `chat.message.sent` ตามเดิม) → ฟองขึ้น **นาฬิกา + เหตุผล** →
+cron ทุก 1 นาทีบน VPS แปลง wav→m4a → `deliverPendingVoice()` ยิงเข้า LINE → **SENT (✓)** หรือ **FAILED (✗ + ปุ่มส่งซ้ำ)**
+
+| # | งาน | สภาพจริง |
+|---|---|---|
+| **M1** | `adapter.ts` `OutboundMessage` เพิ่ม `type:"AUDIO"` + `audioUrl` + `durationMs` (เพิ่มล้วน) · `line.ts` ส่ง `{type:"audio", originalContentUrl, duration(ms)}` · `capabilities.audio = true` · `buildOutboundMessages` แปลงไฟล์เสียงที่มี `durationMs` เป็น AUDIO (ไม่มี = ลิงก์ข้อความเหมือนเดิม) | ✅ VO-11.1a/1b เขียว · คอมเมนต์ "ยังไม่ตัดสิน" ถูกลบ (VO-11.8d) |
+| **M2** | `sendReply`: wav + ช่องทางภายนอกที่ `canSendAudio` → `PENDING` + `pendingReason` ไม่แตะ adapter · m4a → ส่งทันที · 🔴 รวมตรรกะส่งเป็น `deliverOut()` ตัวเดียว (adapter + SENT/FAILED + TOKEN_EXPIRED + `logEvent DELIVERY_FAILED`) ที่ทั้ง `sendReply` และ M3 ใช้ร่วม | ✅ VO-11.2a–2d / 11.3 เขียว · XC-3.7/3.8 (network นอก tx) ยังเขียว |
+| **M3** | `deliverPendingVoice({limit, now})` export จาก service (เรียกจากสคริปต์นอก Next ได้) · m4a → ส่ง · wav อายุน้อย → ข้าม · wav > 30 นาที → `TRANSCODE_TIMEOUT` · 🔒 **S1** url ต้องอยู่ใต้ `SHARK_BUNNY_CDN` ไม่งั้น `AUDIO_URL_NOT_CDN` (ไม่ยิง) · หลัง SENT `publishChat` best-effort | ✅ VO-11.4a–4e / 11.5a/5b / 11.6 เขียว |
+| **M4** | `voice-transcode-worker.mts`: 🔒 **S2** query เพิ่ม `kind:"AUDIO"` + `url startsWith CDN` (กันแปลงไฟล์เอกสาร + กัน SSRF) · หลังลูปเรียก `deliverPendingVoice` แล้ว log "ส่งเข้า LINE สำเร็จ n · ล้ม n" · ไม่มี wav ค้างก็ยังเดินต่อไปถึงขั้นส่ง | ✅ VO-11.8a–8c เขียว · รันจริงบน VPS แล้ว (dry-run + จริง) exit 0 |
+| **M4b** | crontab บน VPS: `*/5 * * * *` → `* * * * *` (แก้บรรทัดเดียว 91/91 บรรทัดเท่าเดิม · flock เดิมกันซ้อนอยู่แล้ว) | ✅ ติดตั้งแล้ว |
+| **M5** | `ThreadMessage.pendingReason` (จาก `meta`) + `deliveryMark` PENDING+TRANSCODE → `clock` + "กำลังแปลงไฟล์เสียงเพื่อส่งเข้า LINE (ไม่เกิน 1–2 นาที)" `read:false` **ห้ามคืน check** · ปุ่มไมค์ในห้อง LINE ใช้เส้น `canSendAudio` เดิมที่ต่อครบอยู่แล้ว (`actions.voiceCapabilityAction` → `voice.tsx` → `composer.tsx`) ⇒ **ไม่ต้องแตะไฟล์ของสาย N** | ✅ VO-11.7 เขียว · `pendingReason` ประกาศเป็น optional เพราะฟองมองโลกในแง่ดีใน `inbox-client.tsx` (ไฟล์สาย N) ปั้นเองโดยไม่มีค่านี้ |
+| **M6** | ข้อสอบ VO-11 (20 ข้อ) ใน `qc-chat-v2-voice.mts` — prisma จำลอง + ดัก `fetch` อ่าน payload ที่ยิงเข้า LINE | ✅ **fail-before 30/50 (CRITICAL 20) → fail-after 50/50** · ข้อเดิม VO-1…VO-10 ยังเขียวครบ ไม่ลดจำนวนข้อ |
+| **M7** | เอกสาร: D31 → ✅ + §12 นี้ | ✅ (ห้ามแตะ `RESUME.md` — Fable เขียนเอง) |
+
+🔴 กติกาที่ยังต้องถือต่อ
+1. **`capabilities.audio` คือ "ส่งถึงลูกค้าได้จริงไหม" ไม่ใช่ "ส่งได้ทันทีไหม"** — ปิดกลับเป็น `false` เมื่อไหร่ ปุ่มไมค์ในห้อง LINE หายทั้งจอ
+2. **ห้าม fork ตรรกะส่ง** — มีทางเดียวคือ `deliverOut()` · เพิ่มช่องทางใหม่/แก้เรื่องโทเคนหลุด ต้องได้ผลกับทั้ง 2 เส้นทาง (หน้าจอ + worker) พร้อมกัน
+3. **ห้ามเพิ่ม outbox event type ใหม่โดยไม่ลงทะเบียน consumer** — รอบนี้ใช้ `chat.message.sent` เดิมโดยเจตนา (บทเรียนคิวตันเงียบ)
+4. `sweepPendingVoiceDelivery()` (`platform/cron.ts` · เรียกจาก `/api/cron/hourly`) เป็น **ตาข่ายเผื่อ VPS ตาย** เท่านั้น ส่งได้เฉพาะแถวที่เป็น m4a แล้ว — เส้นทางหลักคือ cron บน VPS
+
+### §12.1 WO-CV15 — ปิดช่องโหว่ขาเข้าของ API แชท (สาย M · ต่อจาก CV13 · 2 ก.ย. 2026)
+
+| # | ช่องโหว่ | สภาพจริง |
+|---|---|---|
+| **F1** 🔴 HIGH | ไฟล์แนบขาเข้ารับ url อะไรก็ได้ → stored XSS ในกล่องของ **พนักงาน** (`javascript:` ทำงานใน `href` ของ React) + รั่ว IP/UA ของทีมผ่าน `http://` + เป็นบันไดต่อ SSRF ของ worker | ✅ ปิด **2 ชั้น** · ชั้น 1 `sanitizeAttachmentUrl()` + `safeAttachments()` ใน `service.ts` (ใช้ทั้ง `receiveExternalInbound` และ `sendReply`) · ชั้น 2 `safeHttpsUrl()` ใน `bubble.tsx` ครอบทุกจุดที่วาง `href`/`src` (รูป · ไฟล์ · ฟองเสียง) |
+| **F2** 🟠 MEDIUM | `context` merge ลง `ChatConversation.meta` ทั้งก้อน → widget ส่ง `{autoTranslate:true}` บังคับให้ร้านจ่ายค่าแปลได้ · ทับ `tags` ได้ · row bloat | ✅ บัญชีขาว `pageUrl · userAgent · country · lang · referrer` · string ≤ 512 ตัวอักษร · `null` = ลบคีย์ · คีย์อื่นทิ้งเงียบ (ผู้เรียกเดิมไม่พัง) |
+
+กติกาของ `sanitizeAttachmentUrl` (อ่านก่อนแก้)
+- **https เท่านั้น · ไม่ล็อกโดเมน** — ไฟล์ของพาร์ตเนอร์ (SiamDive) อยู่บน CDN คนละโดเมนกับ SHARK
+  การล็อกเฉพาะ `SHARK_BUNNY_CDN` อยู่ที่ขอบที่อันตรายจริงคือ `deliverPendingVoice` (S1) และ worker (S2) ไม่ใช่ที่นี่
+- ปฏิเสธ: มี `user:pass` ใน url · `localhost`/`.local`/`.internal`/`home.arpa` · **IP ล้วน (v4/v6)** · ชื่อโฮสต์ที่ไม่มีจุด · ยาว > 2048
+- ไม่ผ่าน = **ทิ้งทั้งข้อความพร้อมเหตุผลไทย** ไม่ใช่กรองไฟล์ทิ้งเงียบ (กรองเงียบ = ผู้ส่งเชื่อว่าไฟล์ถึงแล้ว ทั้งที่ทีมไม่เคยเห็น)
+
+ด่าน: `qc-chat-security` หมวด **SEC-U** (15 ข้อ) — **fail-before ผ่าน 27 · แดง 11 → fail-after ผ่าน 38 · แดง 0**
+🔴 บทเรียนจากรอบนี้: SEC-U เป็นหมวดแรกของชุดนั้นที่สร้าง `ChatAttachment` จริง ⇒ ลำดับ cleanup เดิม (ลบ `ChatMessage` ก่อน) ชน FK `RESTRICT` แล้วโยนกลางคัน **ทำให้ test tenant ค้างบน Neon จริงโดยไม่มีใครรู้** (สรุปผลไม่ทันได้พิมพ์) — เพิ่ม `chatAttachment.deleteMany` ไว้บรรทัดแรกของ cleanup แล้ว และเก็บกวาด tenant ที่ค้างเรียบร้อย

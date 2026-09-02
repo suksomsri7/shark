@@ -114,6 +114,19 @@ export function failReasonLabel(reason: string | null): string {
   }
 }
 
+/**
+ * ชั้นที่ 2 ของ WO-CV15 F1 — จอต้องไม่วาดลิงก์ที่ไม่ใช่ https (คืน null = ห้ามใช้เป็น href/src)
+ *
+ * 🔴 ทำไมต้องมีทั้งที่ชั้นข้อมูลกันแล้ว: แถวที่ถูกยัดเข้ามา **ก่อน** วันที่ปิดช่องโหว่ยังอยู่ใน DB
+ *    และจะถูกวาดใหม่ทุกครั้งที่ทีมเปิดห้องเก่า ⇒ แก้แต่ทางเข้าคือปิดประตูหลังแขกเข้ามาแล้ว
+ * 🔴 `javascript:` ใน `href` ทำงานจริงบน React (React ไม่บล็อกให้) และทำงานด้วย **สิทธิ์ของ
+ *    พนักงาน** ซึ่งสูงกว่าลูกค้าเสมอ ⇒ ไม่ผ่าน = แสดงเป็นตัวหนังสือธรรมดา ไม่ใช่ลิงก์
+ */
+export function safeHttpsUrl(url: string | null | undefined): string | null {
+  const s = (url ?? "").trim();
+  return /^https:\/\//i.test(s) ? s : null;
+}
+
 const kb = (n: number) =>
   n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 
@@ -123,13 +136,24 @@ const kb = (n: number) =>
  * คืน **ชื่อไอคอนในทะเบียน** ไม่ใช่ตัวอักษร (มติ V2)
  */
 export function deliveryMark(
-  msg: Pick<ThreadMessage, "deliveryStatus" | "createdAt">,
+  msg: Pick<ThreadMessage, "deliveryStatus" | "createdAt"> & { pendingReason?: string | null },
   customerLastReadAt: number | null,
 ): { icon: IconName; title: string; failed: boolean; read: boolean } {
   if (msg.deliveryStatus === "FAILED") {
     return { icon: "xcircle", title: "ส่งไม่สำเร็จ", failed: true, read: false };
   }
   if (msg.deliveryStatus === "PENDING") {
+    // 🔴 WO-CV13: เสียงที่รอ worker แปลง wav→m4a ใช้เวลาถึงรอบ cron ถัดไป (~1–2 นาที)
+    //    ห้ามคืนติ๊ก ✓ เด็ดขาด — ยังไม่ถึงลูกค้าจริง · และต้องบอกว่ากำลังทำอะไรอยู่
+    //    ไม่งั้นทีมเห็นนาฬิกาค้างแล้วกดส่งซ้ำรัว จนลูกค้าได้เสียงเดียวกันหลายรอบ
+    if (msg.pendingReason === "TRANSCODE") {
+      return {
+        icon: "clock",
+        title: "กำลังแปลงไฟล์เสียงเพื่อส่งเข้า LINE (ไม่เกิน 1–2 นาที)",
+        failed: false,
+        read: false,
+      };
+    }
     return { icon: "clock", title: "กำลังส่ง", failed: false, read: false };
   }
   if (customerLastReadAt !== null && customerLastReadAt >= msg.createdAt) {
@@ -146,7 +170,9 @@ export function deliveryMark(
 const WAVE = [6, 12, 18, 22, 14, 9, 16, 20, 11, 7, 13, 17, 8, 15, 21, 10];
 
 /** ฟองข้อความเสียง (แบบร่าง `.voice`) — ปุ่มเล่น + คลื่น + ความยาว */
-function VoiceBody({ url, durationMs, mimeType }: { url: string | null; durationMs: number | null; mimeType?: string | null }) {
+function VoiceBody({ url: rawUrl, durationMs, mimeType }: { url: string | null; durationMs: number | null; mimeType?: string | null }) {
+  // 🔒 WO-CV15 F1 ชั้น 2 — ลิงก์ที่ไม่ใช่ https ไม่ถูกวางลง href/src เด็ดขาด
+  const url = safeHttpsUrl(rawUrl);
   const ref = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
   // ไฟล์ที่ "ชนิดถูกแต่โครงผิด" (เช่น fragmented MP4) canPlayType ตอบว่าเล่นได้แต่เล่นจริงล้ม
@@ -157,6 +183,15 @@ function VoiceBody({ url, durationMs, mimeType }: { url: string | null; duration
   const playable =
     !mimeType ||
     (typeof document !== "undefined" && document.createElement("audio").canPlayType(mimeType) !== "");
+  // ลิงก์ที่ระบบไม่ยอมเปิดให้ (ของเก่าก่อนปิดช่องโหว่) — บอกตรง ๆ ห้ามโชว์ปุ่มเล่นที่กดแล้วเงียบ
+  if (!url && rawUrl) {
+    return (
+      <span data-qc="bubble-voice" className="flex min-w-[180px] items-center gap-2 text-[12.5px] text-[color:var(--color-muted)]">
+        <Icon name="mic" size="sm" />
+        ไฟล์เสียงนี้มีลิงก์ที่เปิดไม่ได้อย่างปลอดภัย — ขอให้ลูกค้าส่งใหม่อีกครั้งได้เลย
+      </span>
+    );
+  }
   if (url && (!playable || broken)) {
     return (
       <a
@@ -331,34 +366,58 @@ export function MessageBubble({
 
           {images.length > 0 && (
             <div className="-mx-1 mb-1 flex flex-col gap-1">
-              {images.map((a) => (
-                <a key={a.id} href={a.url} target="_blank" rel="noreferrer">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={a.url}
-                    alt={a.fileName}
-                    className="max-h-56 rounded-[11px] object-cover"
-                  />
-                </a>
-              ))}
+              {images.map((a) => {
+                const src = safeHttpsUrl(a.url);
+                // ไม่ผ่าน = แสดงชื่อไฟล์เป็นตัวหนังสือ (ห้ามให้เบราว์เซอร์ยิงไปที่ url นั้นเอง
+                // ด้วยซ้ำ — `<img src="http://…">` รั่ว IP ของทีมโดยไม่ต้องมีใครกด)
+                if (!src) {
+                  return (
+                    <span key={a.id} className="text-xs text-[color:var(--color-muted)]">
+                      {a.fileName} (ลิงก์ไฟล์ไม่ปลอดภัย — ไม่แสดงรูป)
+                    </span>
+                  );
+                }
+                return (
+                  <a key={a.id} href={src} target="_blank" rel="noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={src}
+                      alt={a.fileName}
+                      className="max-h-56 rounded-[11px] object-cover"
+                    />
+                  </a>
+                );
+              })}
             </div>
           )}
 
           {others.length > 0 && (
             <div className="mb-1 flex flex-col gap-1">
-              {others.map((a) => (
-                <a
-                  key={a.id}
-                  href={a.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1.5 rounded-lg border border-[color:var(--color-line)] bg-white/60 px-2 py-1 text-xs underline"
-                >
-                  <Icon name="clip" size="sm" className="shrink-0" />
-                  <span className="min-w-0 truncate">{a.fileName}</span>
-                  <span className="shrink-0 text-[color:var(--color-muted)]">{kb(a.sizeBytes)}</span>
-                </a>
-              ))}
+              {others.map((a) => {
+                const href = safeHttpsUrl(a.url);
+                const inner = (
+                  <>
+                    <Icon name="clip" size="sm" className="shrink-0" />
+                    <span className="min-w-0 truncate">{a.fileName}</span>
+                    <span className="shrink-0 text-[color:var(--color-muted)]">{kb(a.sizeBytes)}</span>
+                  </>
+                );
+                const cls =
+                  "flex items-center gap-1.5 rounded-lg border border-[color:var(--color-line)] bg-white/60 px-2 py-1 text-xs";
+                // ไม่ผ่าน = แถวเดิมทุกอย่าง แต่ **ไม่ใช่ลิงก์** (กดไม่ได้ = ยิง javascript: ไม่ได้)
+                if (!href) {
+                  return (
+                    <span key={a.id} className={`${cls} text-[color:var(--color-muted)]`} title="ลิงก์ไฟล์นี้ไม่ปลอดภัย จึงเปิดให้ไม่ได้">
+                      {inner}
+                    </span>
+                  );
+                }
+                return (
+                  <a key={a.id} href={href} target="_blank" rel="noreferrer" className={`${cls} underline`}>
+                    {inner}
+                  </a>
+                );
+              })}
             </div>
           )}
 

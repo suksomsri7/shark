@@ -7,6 +7,11 @@
 //   แต่ WAV กินที่ ~32KB/วินาที และ **LINE ไม่รับ** (LINE รับเฉพาะ m4a)
 //   ⇒ แปลงทีหลังบนเครื่องที่มี ffmpeg แทนที่จะแปลงตอนอัด (Vercel ไม่มี ffmpeg · VPS เครื่องนี้มี)
 //
+// WO-CV13 (2 ก.ย. 2026 · ปิดมติ D31 ทาง ข): สคริปต์นี้ไม่ได้แค่ "แปลงไฟล์" อีกต่อไป —
+//   **หลังลูปแปลงเสร็จ มันเป็นคนส่งข้อความเสียงเข้า LINE เอง** ผ่าน `deliverPendingVoice()`
+//   (ข้อความถูกบันทึกไว้ตั้งแต่ตอนพนักงานกดส่งเป็น PENDING + `meta.pendingReason="TRANSCODE"`)
+//   ⇒ cron ต้องเป็น **ทุก 1 นาที** ไม่ใช่ทุก 5 นาที ไม่งั้นลูกค้ารอฟังเสียงนานถึง 5 นาที
+//
 // ลำดับที่ **ห้ามสลับ** (ข้อกำหนดของงาน — เหตุผลคือ "พังกลางคันแล้วต้องไม่มีจังหวะที่ DB ชี้ไฟล์ที่หายไป"):
 //   ดาวน์โหลด wav → ffmpeg → **ตรวจผลก่อนเชื่อ** → PUT m4a ขึ้น Bunny → GET กลับมาเช็ค 200
 //   → อัปเดตแถวใน DB → **แล้วค่อย** DELETE wav เก่า
@@ -53,7 +58,8 @@ const log = (s: string) => console.log(s);
 const fail = (s: string) => { console.error(`❌ ${s}`); };
 
 // ───────── ล็อกกันรันซ้อน ─────────
-// cron ทุก 5 นาที + ไฟล์ใหญ่ = รอบก่อนยังไม่จบ รอบใหม่มาแล้ว → 2 ตัวแปลงไฟล์เดียวกัน
+// cron ทุก 1 นาที (WO-CV13 — ถี่ขึ้นจาก 5 นาที เพื่อให้เสียงถึง LINE ไว) + ไฟล์ใหญ่
+// = รอบก่อนยังไม่จบ รอบใหม่มาแล้ว → 2 ตัวแปลงไฟล์เดียวกัน
 // แล้วตัวที่จบทีหลังจะลบ wav ที่อีกตัวกำลังใช้อยู่ (หรือลบ m4a ที่เพิ่งอัปทับ)
 // 🔴 ใช้ O_EXCL (atomic บน POSIX) ไม่ใช่ existsSync แล้วค่อยเขียน — ระยะห่างสองคำสั่งนั้นคือช่องแข่ง
 function takeLock(): boolean {
@@ -109,6 +115,8 @@ type Row = {
 };
 
 let ok = 0;
+let sentToLine = 0;
+let failedToLine = 0;
 const failures: { id: string; why: string }[] = [];
 let prisma: {
   chatAttachment: { findMany: (a: unknown) => Promise<Row[]>; updateMany: (a: unknown) => Promise<{ count: number }> };
@@ -121,10 +129,17 @@ try {
   const { logOps } = (await import("@/lib/core/ops" as string)) as { logOps: (l: string, s: string, m: string, o?: unknown) => Promise<void> };
 
   // ───────── หางาน ─────────
-  // 🔴 `url: { not: "" }` = ตัดแถวที่ retention กวาดไปแล้วออก (ข้อมูลที่ประกาศว่าลบแล้ว ห้ามปลุก)
+  // 🔴 `url: { startsWith: CDN }` ครอบคลุมของเดิม (`url: { not: "" }`) ด้วย = ตัดแถวที่ retention
+  //    กวาดไปแล้ว (url ว่าง) ออกไปในตัว — ข้อมูลที่ประกาศว่าลบแล้ว ห้ามปลุกกลับมาแปลง
   //    เรียงเก่าก่อน — ของที่ค้างนานที่สุดคือของที่ผู้ใช้รอฟังนานที่สุด
   const rows = await prisma!.chatAttachment.findMany({
-    where: { mimeType: { in: WAV_MIMES }, url: { not: "" } },
+    // 🔒 S2 (WO-CV13) — `kind: "AUDIO"` + url ต้องอยู่ใต้ CDN ของเรา:
+    //   (1) wav ที่ผู้ใช้แนบมาเป็น **ไฟล์เอกสาร** (kind FILE) ต้องไม่ถูกแปลง/เปลี่ยนชื่อเงียบ ๆ —
+    //       ของที่ผู้ใช้อัปโหลดมาเป็นไฟล์ ต้องดาวน์โหลดกลับไปได้เหมือนเดิมทุกไบต์
+    //   (2) กัน SSRF: สคริปต์นี้ `fetch(r.url)` จาก VPS ตรง ๆ — ไฟล์แนบเข้ามาทาง API v1 จากระบบ
+    //       ภายนอกได้ (url อะไรก็ได้) แถวที่ยัด `http://169.254.169.254/...` / `localhost` เข้ามา
+    //       จะกลายเป็นคำสั่งให้เครื่องเราไปดึงของภายในตัวเองแล้วอัปขึ้น CDN สาธารณะ
+    where: { mimeType: { in: WAV_MIMES }, kind: "AUDIO", url: { startsWith: `${CDN}/` } },
     select: {
       id: true, tenantId: true, systemId: true, url: true, storageKey: true,
       fileName: true, mimeType: true, sizeBytes: true, durationMs: true,
@@ -133,13 +148,10 @@ try {
     take: LIMIT,
   });
 
-  if (rows.length === 0) {
-    log("✅ ไม่มีไฟล์ WAV ค้างให้แปลง");
-    releaseLock();
-    process.exit(0);
-  }
-
-  log(`พบ ${rows.length} ชิ้นที่ต้องแปลง${DRY ? " (โหมดซ้อม — ไม่เขียนอะไรเลย)" : ""}`);
+  // 🔴 ไม่มี wav ค้าง **ไม่ได้แปลว่าไม่มีงาน** — ยังอาจมีข้อความเสียงที่แปลงไปแล้วแต่ยิงเข้า LINE
+  //    ไม่ผ่านรอบก่อน (เน็ตสะดุด/โทเคนหลุด) ค้าง PENDING อยู่ ⇒ ต้องเดินต่อไปถึงขั้นส่งเสมอ
+  if (rows.length === 0) log("✅ ไม่มีไฟล์ WAV ค้างให้แปลง");
+  else log(`พบ ${rows.length} ชิ้นที่ต้องแปลง${DRY ? " (โหมดซ้อม — ไม่เขียนอะไรเลย)" : ""}`);
 
   for (const r of rows) {
     const tag = `${r.id} (${r.fileName})`;
@@ -259,6 +271,32 @@ try {
       try { rmSync(tmp, { recursive: true, force: true }); } catch { /* tmp ค้างไม่เป็นไร */ }
     }
   }
+
+  // ───────── ส่งข้อความเสียงที่ค้างรอไฟล์แปลงเข้า LINE (WO-CV13 · มติ D31 ทาง ข) ─────────
+  // ทำ **หลัง** ลูปแปลงเสมอ: แถวที่เพิ่งกลายเป็น m4a ในรอบนี้ต้องได้ออกในรอบเดียวกัน
+  //   (ไม่งั้นลูกค้ารออีก 1 นาทีฟรี ๆ ทั้งที่ไฟล์พร้อมแล้ว)
+  // 🔴 ตัวส่งอยู่ใน service เดียวกับที่หน้าจอใช้ — ห้ามเขียนตรรกะส่ง LINE ซ้ำในสคริปต์นี้
+  //    (dynamic import: ที่นี่อยู่นอก Next แต่ `deliverPendingVoice` ออกแบบให้เรียกได้)
+  if (DRY) {
+    log("(โหมดซ้อม — ข้ามขั้นส่งเข้า LINE)");
+  } else {
+    try {
+      const { deliverPendingVoice } = (await import("@/lib/modules/chat/service" as string)) as {
+        deliverPendingVoice: (a?: { limit?: number }) => Promise<{ sent: number; failed: number; skipped: number }>;
+      };
+      const d = await deliverPendingVoice({ limit: 50 });
+      log(`ส่งเข้า LINE สำเร็จ ${d.sent} · ล้ม ${d.failed} · ยังรอแปลง ${d.skipped}`);
+      sentToLine = d.sent;
+      failedToLine = d.failed;
+    } catch (e) {
+      // ส่งไม่ได้ทั้งก้อน = ของยังค้าง PENDING รอรอบหน้า (ไม่ใช่ของหาย) ⇒ ไม่ทำให้รอบนี้ exit 1
+      const why = e instanceof Error ? (e.stack ?? e.message) : String(e);
+      fail(`ส่งข้อความเสียงที่ค้างเข้า LINE ไม่สำเร็จทั้งรอบ: ${why.slice(0, 300)}`);
+      await logOps("WARN", "voice.transcode", "ส่งข้อความเสียงที่ค้างเข้าช่องทางไม่สำเร็จ", {
+        detail: why.slice(0, 500),
+      }).catch(() => {});
+    }
+  }
 } catch (e) {
   fail(`รอบนี้ล้มก่อนเริ่ม: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
   releaseLock();
@@ -268,5 +306,6 @@ try {
 releaseLock();
 log(`\n===== สรุป voice-transcode =====`);
 log(`แปลงสำเร็จ ${ok} ชิ้น · ไม่สำเร็จ ${failures.length} ชิ้น`);
+log(`ส่งเข้า LINE สำเร็จ ${sentToLine} · ล้ม ${failedToLine}`);
 for (const f of failures) log(`  ❌ ${f.id} — ${f.why}`);
 process.exit(0);

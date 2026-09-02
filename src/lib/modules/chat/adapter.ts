@@ -26,10 +26,18 @@ export interface InboundMessage {
 
 // ข้อความขาออก (staff → ลูกค้า)
 export interface OutboundMessage {
-  type: "TEXT" | "IMAGE" | "STICKER";
+  type: "TEXT" | "IMAGE" | "STICKER" | "AUDIO";
   body?: string;
   stickerMeta?: { packageId: string; stickerId: string };
   imageUrl?: string;
+  /**
+   * ข้อความเสียง (WO-CV13) — เพิ่มล้วน adapter เดิมที่ไม่รู้จัก AUDIO ตกไปทาง `else` เหมือนเดิม
+   * 🔴 `audioUrl` ต้องเป็นลิงก์สาธารณะ https ของ **CDN ของเราเอง** และไฟล์ต้องเป็น m4a จริง
+   *    (LINE ไปดึงไฟล์เองจากลิงก์นี้ — ให้ลิงก์ที่อื่น = พาปลายทางไปยิงเครื่องที่เราไม่ได้คุม)
+   * `durationMs` = ความยาวเป็น **มิลลิวินาที** ตามที่ LINE ต้องการ (ไม่ใช่วินาที)
+   */
+  audioUrl?: string;
+  durationMs?: number;
 }
 
 // error ที่ adapter โยนเมื่อส่งไม่สำเร็จ (reason ใช้เก็บใน deliveryError)
@@ -56,6 +64,8 @@ export interface ChannelAdapter {
      *     เพราะลิสต์ที่พิมพ์มือจะค้างโกหกว่าช่องทางที่ยังไม่มี adapter ส่งได้)
      * 🔴 ประกาศ true ได้เฉพาะเมื่อ **ส่งถึงลูกค้าได้จริงด้วยไฟล์ที่เบราว์เซอร์อัดออกมาได้เท่านั้น**
      *    ประกาศเกินจริง = ทีมอัดเสียงส่งไป แล้วลูกค้าไม่ได้ยิน โดยไม่มีใครรู้
+     *    "ได้จริง" รวมถึงทางอ้อม: LINE รับเฉพาะ m4a แต่ตัวอัดผลิต wav ⇒ เปิด true ได้เพราะมีเส้นทาง
+     *    **ส่งช้าแบบ async** ครบวง (แปลงบน VPS แล้ว worker ส่งเอง · WO-CV13/D31 ทาง ข)
      */
     audio: boolean;
     replyWindowHours: number | null; // LINE/WEBCHAT = null (ไม่มีหน้าต่าง)
