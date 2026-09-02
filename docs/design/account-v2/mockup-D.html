@@ -1,0 +1,1007 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<title>SHARK · แบบร่างโมดูลบัญชี V2 รอบ 2 — ชุด D (ตั้งค่าสิทธิ์/การเชื่อมต่อ + คลังเอกสาร + บัญชีรายวัน)</title>
+<style>
+/* ══ โทเคนสี — จานเดียวทั้งไฟล์ (คัดลอกจาก mockup-B.html เวอร์บาติม) ═══
+   ขาว #fff · พื้นรอง #fafafa · พื้นเวที #f4f5f7
+   ตัวอักษร #0a0a0a / #404040 / #737373 / #a3a3a3
+   เส้น #e5e5e5 · เส้นอ่อน/แท่งกราฟจาง #d4d4d4
+   accent #1d4ed8 (+พื้นจาง #e9eefc) · danger #b91c1c
+   ห้ามเพิ่มสีอื่น                                                        */
+:root{
+  --ink:#0a0a0a; --ink2:#404040; --mut:#737373; --mut2:#a3a3a3;
+  --line:#e5e5e5; --line2:#d4d4d4; --sf:#fff; --sf2:#fafafa; --stage:#f4f5f7;
+  --acc:#1d4ed8; --acc-bg:#e9eefc; --dg:#b91c1c;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+body{font-family:'Noto Sans Thai','Sarabun',system-ui,sans-serif;color:var(--ink);
+  background:var(--stage);font-size:14px;line-height:1.45}
+.wrap{padding:26px;display:flex;flex-direction:column;gap:30px;align-items:flex-start}
+.cap{font-size:12.5px;font-weight:700;color:var(--ink2);margin:0 0 9px 3px}
+.cap span{font-weight:400;color:var(--mut)}
+
+/* ── กรอบจอ ───────────────────────────────────────────────────────────── */
+.frame{width:1440px;background:var(--sf);border:1px solid var(--line);border-radius:14px;
+  overflow:hidden;display:flex;flex-direction:column;position:relative}
+.frame.m{width:390px}
+
+/* ── ไอคอน ────────────────────────────────────────────────────────────── */
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.i.sm{width:14px;height:14px;stroke-width:1.9}
+svg.i.xs{width:12px;height:12px;stroke-width:2}
+svg.i.lg{width:22px;height:22px}
+
+/* ── โครงแอปเดิม (topbar + drawer) — จงใจให้จาง ────────────────────────── */
+.top{height:56px;display:flex;align-items:center;gap:11px;padding:0 18px;
+  border-bottom:1px solid var(--line);color:var(--mut);flex:none}
+.top .brand{font-size:14.5px;font-weight:700;color:var(--ink2)}
+.top .sp{flex:1}
+.appbody{display:flex;align-items:stretch;min-height:0}
+.drawer{width:288px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:14px 12px;color:var(--mut2);font-size:13px}
+.dsec{font-size:11px;font-weight:700;color:var(--mut2);padding:10px 8px 5px;letter-spacing:.02em}
+.ditem{display:flex;align-items:center;gap:9px;height:34px;padding:0 9px;border-radius:8px;color:var(--mut2)}
+.ditem.on{background:var(--sf);color:var(--ink);font-weight:700;border:1px solid var(--line)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--sf)}
+
+/* ── แถบเมนูบัญชี 9 หมวด ──────────────────────────────────────────────── */
+.amenu{display:flex;gap:0;padding:0 18px;border-bottom:1px solid var(--line);position:relative;flex:none}
+.am{position:relative;display:flex;align-items:center;gap:7px;padding:13px 13px 11px;font-size:13.5px;
+  color:var(--ink2);border-bottom:2px solid transparent;white-space:nowrap}
+.am.on{color:var(--ink);font-weight:700;border-bottom-color:var(--acc)}
+.am.opened{background:var(--sf2);border-radius:8px 8px 0 0}
+.am .cv{width:11px;height:11px;stroke-width:2.2;opacity:.55}
+
+/* ── หัวหน้า ──────────────────────────────────────────────────────────── */
+.crumb{padding:13px 24px 0;font-size:12px;color:var(--mut);display:flex;align-items:center;gap:6px}
+.ph{display:flex;align-items:center;gap:10px;padding:9px 24px 15px}
+.ph h1{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+.ph .sp{flex:1}
+.pg{padding:0 24px 24px;display:flex;flex-direction:column;gap:15px}
+
+/* ── ปุ่ม ─────────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;
+  padding:0 14px;border-radius:8px;font-size:13.5px;font-weight:500;border:1px solid transparent;
+  white-space:nowrap;background:var(--sf);color:var(--ink)}
+.btn.pri{background:var(--ink);color:var(--sf)}
+.btn.gh{border-color:var(--line)}
+.btn.sm{height:31px;padding:0 10px;font-size:12.5px;border-radius:7px}
+.btn.dg{color:var(--dg);border-color:var(--dg)}
+.btn[disabled],.btn.off{color:var(--mut2);border-color:var(--line)}
+
+/* ── การ์ด ────────────────────────────────────────────────────────────── */
+.card{border:1px solid var(--line);border-radius:12px;background:var(--sf);padding:16px;min-width:0}
+.card.p0{padding:0}
+.ch{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.ch h2{font-size:13.5px;font-weight:700}
+.ch .sp{flex:1}
+.sub{font-size:11.5px;color:var(--mut)}
+.row{display:flex;gap:15px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}
+
+/* ── KPI ──────────────────────────────────────────────────────────────── */
+.kpi .lbl{font-size:12px;color:var(--mut);display:flex;align-items:center;gap:6px}
+.kpi .val{font-size:23px;font-weight:700;letter-spacing:-.025em;margin-top:7px;
+  font-variant-numeric:tabular-nums}
+.kpi .val.dg{color:var(--dg)}
+.kpi .fo{font-size:11.5px;color:var(--mut);margin-top:5px}
+
+/* ── chip สถานะ (3 โทนตาม StatusChip) ─────────────────────────────────── */
+.chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;
+  border-radius:6px;border:1px solid var(--line);font-size:11.5px;color:var(--mut);
+  background:var(--sf);white-space:nowrap}
+.chip.ink{border-color:var(--ink);color:var(--ink);font-weight:700}
+.chip.dg{border-color:var(--dg);color:var(--dg);font-weight:700}
+.chip.acc{border-color:var(--acc);color:var(--acc);font-weight:700;background:var(--acc-bg)}
+
+/* ── แท็บ ─────────────────────────────────────────────────────────────── */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow:hidden}
+.tab{display:flex;align-items:center;gap:6px;padding:9px 12px;font-size:13px;color:var(--mut);
+  border-bottom:2px solid transparent;white-space:nowrap}
+.tab.on{color:var(--ink);font-weight:700;border-bottom-color:var(--acc)}
+.tab .n{font-size:12px;color:var(--mut2);font-variant-numeric:tabular-nums}
+.tab.on .n{color:var(--ink2)}
+
+/* ── ตาราง ────────────────────────────────────────────────────────────── */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:11.5px;font-weight:700;color:var(--mut);padding:9px 10px;
+  border-bottom:1px solid var(--line);white-space:nowrap;background:var(--sf2)}
+.tbl td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl td.nw{white-space:nowrap}
+.tbl tr:last-child td{border-bottom:0}
+.tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl .rt{text-align:right}
+.lnk{color:var(--acc);font-weight:700}
+.dgt{color:var(--dg);font-weight:700}
+.mu{color:var(--mut)}
+.cbx{width:14px;height:14px;border:1.5px solid var(--line2);border-radius:4px;display:inline-block;
+  vertical-align:-2px}
+
+/* ── ช่องกรอก / ตัวกรอง ───────────────────────────────────────────────── */
+.inp{height:34px;border:1px solid var(--line);border-radius:8px;display:inline-flex;
+  align-items:center;gap:7px;padding:0 10px;font-size:12.5px;color:var(--mut);background:var(--sf)}
+.inp b{color:var(--ink);font-weight:600}
+.inp .cv{margin-left:auto;color:var(--mut2)}
+.inp.gro{flex:1}
+.sw{width:34px;height:19px;border-radius:10px;background:var(--ink);position:relative;flex:none}
+.sw::after{content:"";position:absolute;right:2.5px;top:2.5px;width:14px;height:14px;
+  border-radius:50%;background:var(--sf)}
+.sw.off{background:var(--line2)}
+.sw.off::after{left:2.5px;right:auto}
+
+/* ── เมนู "ทำรายการ" ในแถว ────────────────────────────────────────────── */
+.anch{position:relative;display:inline-block}
+
+/* ── แถบสัดส่วน / อายุหนี้ ────────────────────────────────────────────── */
+.mtr{height:8px;border-radius:4px;background:var(--sf2);overflow:hidden;display:flex;gap:2px}
+.mtr i{display:block;height:100%}
+.agerow{display:flex;align-items:center;gap:10px;font-size:12px}
+.agerow .nm{width:98px;color:var(--mut);flex:none}
+.agerow .bar{flex:1;height:9px;background:var(--sf2);border-radius:5px;overflow:hidden}
+.agerow .bar i{display:block;height:100%;border-radius:3px;min-width:5px}
+.agerow .amt{width:88px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+
+/* ── รายการงาน / ลิสต์ ────────────────────────────────────────────────── */
+.lst .li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);
+  font-size:13px}
+.lst .li:first-child{border-top:0}
+.lst .li .sp{flex:1;min-width:0}
+.lst .li .n{font-variant-numeric:tabular-nums;font-weight:700}
+
+/* ── footer ตาราง ─────────────────────────────────────────────────────── */
+.tfoot{display:flex;align-items:center;gap:12px;padding:11px 12px;font-size:12.5px;color:var(--mut);
+  border-top:1px solid var(--line)}
+.tfoot .sp{flex:1}
+.pgr{display:flex;align-items:center;gap:4px}
+.pgr .pb{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;display:grid;
+  place-items:center;color:var(--ink2)}
+
+/* ── slide-over / scrim (ฐานจากรอบ 1) ───────────────────────────────────── */
+.scrim{position:absolute;inset:0;background:rgba(10,10,10,.28);z-index:40}
+
+/* ── เบ็ดเตล็ด ────────────────────────────────────────────────────────── */
+.hr{height:1px;background:var(--line)}
+.av{width:24px;height:24px;border-radius:7px;background:var(--sf2);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--ink2);flex:none}
+.thumb{width:44px;height:44px;border-radius:8px;border:1px solid var(--line);background:var(--sf2);
+  display:grid;place-items:center;color:var(--mut);flex:none;overflow:hidden}
+.kv{display:flex;gap:12px;padding:7px 0;font-size:13px;border-top:1px solid var(--line)}
+.kv:first-child{border-top:0}
+.kv .k{width:180px;color:var(--mut);flex:none}
+.kv .v{flex:1;min-width:0}
+.acc-i{display:flex;align-items:center;gap:8px;height:38px;padding:0 11px;font-size:13px;color:var(--ink2)}
+.acc-i.on{background:var(--sf2);font-weight:700;color:var(--ink);border-left:2px solid var(--acc)}
+.acc-h{display:flex;align-items:center;gap:8px;height:42px;padding:0 11px;font-size:13.5px;
+  font-weight:700;border-top:1px solid var(--line)}
+
+/* ══ องค์ประกอบที่ยืมจากชุด B (โมดัล/สแตกซ้อน) ═══════════════════════════ */
+.stackwrap{display:grid}
+.stackwrap>*{grid-area:1/1}
+.bgpage{display:flex;flex-direction:column;min-height:0}
+.ovlay{position:relative;display:flex;flex-direction:column;align-items:center;
+  padding:38px 20px;gap:14px}
+
+.modal{width:700px;background:var(--sf);border:1px solid var(--line);border-radius:14px;
+  box-shadow:0 24px 60px rgba(10,10,10,.22);display:flex;flex-direction:column;z-index:41}
+.modal.wide{width:760px}
+.mhd{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.mhd h3{font-size:16px;font-weight:700}
+.mhd .sp{flex:1}
+.mbd{padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.mft{display:flex;align-items:center;gap:10px;padding:14px 20px;border-top:1px solid var(--line)}
+.mft .sp{flex:1}
+
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+.fld .lb{font-size:12px;color:var(--ink2);font-weight:600;display:flex;gap:4px;align-items:center}
+.fld .ipt{height:34px;border:1px solid var(--line);border-radius:8px;padding:0 10px;font-size:13px;
+  color:var(--ink);display:flex;align-items:center;gap:6px;background:var(--sf);min-width:0}
+.fld .ipt span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fld .ipt.ph{color:var(--mut2)}
+.fld .ipt .cv{margin-left:auto;color:var(--mut2);flex:none}
+.fld .hint{font-size:11px;color:var(--mut)}
+.fgrid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fgrid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+
+.msec{border:1px solid var(--line);border-radius:10px;padding:13px 14px;display:flex;
+  flex-direction:column;gap:10px}
+.msech{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700}
+.msech .sp{flex:1}
+.msech .lnk{font-size:12px;font-weight:600}
+
+.matchbox{display:flex;align-items:center;gap:10px;background:var(--acc-bg);border:1px solid var(--acc);
+  border-radius:9px;padding:10px 12px;font-size:12.5px;color:var(--ink2)}
+.matchbox b{color:var(--ink)}
+.matchbox .sp{flex:1}
+
+/* ══ องค์ประกอบใหม่เฉพาะชุด D (§9.4, §9.5, §12, §11.2) ═══════════════════
+   ต้องอยู่ในจานสีเดิม — ไม่มีการเพิ่ม hex ใหม่นอกเหนือ token ด้านบน        */
+
+/* checkbox สิทธิ์ */
+.pchk{width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line2);display:inline-flex;
+  align-items:center;justify-content:center;background:var(--sf)}
+.pchk.on{background:var(--ink);border-color:var(--ink)}
+.pchk.on svg{width:12px;height:12px;stroke:var(--sf);stroke-width:2.6;fill:none}
+.pchk.na{border:none;color:var(--mut2);font-size:13px}
+.pcell{position:relative;display:inline-flex}
+
+/* matrix สิทธิ์ */
+.mtx{width:100%;border-collapse:collapse;font-size:12.5px}
+.mtx th{font-size:11px;font-weight:700;color:var(--mut);padding:8px 6px;border-bottom:1px solid var(--line);
+  background:var(--sf2);text-align:center;line-height:1.3}
+.mtx th.gcol{text-align:left;padding-left:12px}
+.mtx td{padding:10px 6px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle}
+.mtx td.gcol{text-align:left;padding-left:12px;font-weight:700;font-size:12.5px}
+.mtx tr:last-child td{border-bottom:0}
+.mtx tr.cap td{background:var(--sf2)}
+
+/* ทูลทิป */
+.tip{position:absolute;bottom:calc(100% + 9px);left:50%;transform:translateX(-50%);background:var(--ink);
+  color:var(--sf);font-size:11px;font-weight:600;padding:6px 10px;border-radius:7px;white-space:nowrap;
+  box-shadow:0 10px 24px rgba(10,10,10,.28);z-index:6}
+.tip::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);
+  border:5px solid transparent;border-top-color:var(--ink)}
+
+/* แท็บบทบาท */
+.roletabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.rtab{height:32px;padding:0 13px;border-radius:8px;border:1px solid var(--line);font-size:12.5px;
+  color:var(--ink2);display:flex;align-items:center;gap:6px}
+.rtab.on{background:var(--ink);color:var(--sf);border-color:var(--ink);font-weight:700}
+.rtab.dash{border-style:dashed;color:var(--mut)}
+
+/* การ์ดระบบเชื่อมต่อ */
+.conngrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.conncard{border:1px solid var(--line);border-radius:12px;padding:15px 16px;display:flex;
+  flex-direction:column;gap:10px;position:relative;min-width:0}
+.conncard.off{background:var(--sf2)}
+.conncard.na{opacity:.55}
+.cchd{display:flex;align-items:center;gap:10px}
+.cchd .ic{width:36px;height:36px;border-radius:9px;background:var(--sf2);border:1px solid var(--line);
+  display:grid;place-items:center;color:var(--ink2);flex:none}
+.cchd .tt{font-size:13.5px;font-weight:700}
+.cchd .sp{flex:1}
+.cmeta{font-size:11.5px;color:var(--mut);display:flex;flex-direction:column;gap:2px}
+.ctog{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--ink2);padding:8px 0 0;
+  border-top:1px solid var(--line)}
+.ctog .sp{flex:1}
+.ctog b{color:var(--ink);font-weight:600}
+.menuflyout{position:absolute;top:40px;right:14px;width:172px;background:var(--sf);border:1px solid var(--line);
+  border-radius:10px;box-shadow:0 14px 30px rgba(10,10,10,.16);padding:5px;z-index:5}
+.mfi{display:flex;align-items:center;gap:8px;height:34px;padding:0 9px;border-radius:7px;font-size:12.5px;
+  color:var(--ink2)}
+
+/* กล่องขาเข้าเอกสาร */
+.inbgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.inbcard{border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;
+  min-width:0}
+.inbthumb{height:110px;background:var(--sf2);display:grid;place-items:center;color:var(--mut2);
+  border-bottom:1px solid var(--line)}
+.inbbody{padding:12px 13px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.inbnm{font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbmeta{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--mut);min-width:0}
+.inbmeta span.tr{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aiblk{background:var(--acc-bg);border:1px solid var(--acc);border-radius:9px;padding:9px 10px;
+  display:flex;flex-direction:column;gap:5px}
+.aihd{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--acc)}
+.aifld{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink2);min-width:0}
+.aifld .k{color:var(--mut);width:68px;flex:none}
+.aifld .v{font-weight:600;color:var(--ink);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.dots{display:flex;gap:2px;flex:none}
+.dots i{width:5px;height:5px;border-radius:50%;background:var(--line2);display:block}
+.dots i.on{background:var(--acc)}
+.aifail{background:var(--sf2);border:1px dashed var(--line2);border-radius:9px;padding:12px;
+  text-align:center;font-size:11.5px;color:var(--mut);display:flex;flex-direction:column;gap:4px;
+  align-items:center}
+.inbbtns{display:flex;flex-direction:column;gap:6px}
+
+/* บัญชีรายวัน */
+.jexpwrap td{padding:0 10px 12px 46px;border-bottom:1px solid var(--line);background:var(--sf2)}
+.jline{display:grid;grid-template-columns:190px 1fr 110px 110px;gap:0;font-size:12px;padding:5px 0;
+  color:var(--ink2)}
+.jline.h{color:var(--mut);font-weight:700;font-size:11px}
+.jline .num{text-align:right;font-variant-numeric:tabular-nums}
+.balbar{display:flex;align-items:center;gap:8px;background:var(--sf2);border:1px solid var(--ink);
+  border-radius:9px;padding:10px 13px;font-size:13px;font-weight:600}
+
+/* ── โหมดถ่ายภาพ 2 สถานะ (ปิด/เปิดป็อปโอเวอร์-โมดัล) — ตามเทคนิค render.mjs รอบ 1 ──
+   .frame.no-menu ซ่อน .menuflyout (g14) / .ovlay (g16) เพื่อถ่ายเวอร์ชัน "ปิด" แยกจากเวอร์ชัน "เปิด" */
+.frame.no-menu .menuflyout,
+.frame.no-menu .ovlay{display:none}
+</style></head>
+<body>
+<svg style="display:none" aria-hidden="true">
+ <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+ <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
+ <symbol id="i-cv" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></symbol>
+ <symbol id="i-ar" viewBox="0 0 24 24"><path d="m9.5 5 7 7-7 7"/></symbol>
+ <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+ <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+ <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+ <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
+ <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/><path d="M9.5 21v-6h5v6"/></symbol>
+ <symbol id="i-in" viewBox="0 0 24 24"><path d="M12 4v13"/><path d="m6.5 11.5 5.5 5.5 5.5-5.5"/><path d="M4 21h16"/></symbol>
+ <symbol id="i-out" viewBox="0 0 24 24"><path d="M12 20V7"/><path d="m6.5 12.5 5.5-5.5 5.5 5.5"/><path d="M4 3h16"/></symbol>
+ <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-5.5 6.5-5.5s6.5 1.9 6.5 5.5M16 5.4a3.4 3.4 0 0 1 0 6.4M18 14.8c2.2.6 3.5 2.3 3.5 5.2"/></symbol>
+ <symbol id="i-box" viewBox="0 0 24 24"><path d="M12 3 4 7v10l8 4 8-4V7Z"/><path d="m4 7 8 4 8-4M12 11v10"/></symbol>
+ <symbol id="i-wallet" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.2" fill="currentColor" stroke="none"/></symbol>
+ <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4h13a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5Z"/><path d="M8.5 4v17M11.5 9h4M11.5 13h4"/></symbol>
+ <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.5A1 1 0 0 1 4.5 5.5h4.2l1.8 2.2h9a1 1 0 0 1 1 1v9.8a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1Z"/></symbol>
+ <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 14a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V20a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H4a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H10a1.6 1.6 0 0 0 1-1.5V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V10a1.6 1.6 0 0 0 1.5 1H20a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></symbol>
+ <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4M9 12h6M9 16h4"/></symbol>
+ <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4"/></symbol>
+ <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 3v11"/><path d="m7.5 9.5 4.5 4.5 4.5-4.5"/><path d="M4 17v3h16v-3"/></symbol>
+ <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6"/><rect x="3.5" y="9" width="17" height="8" rx="2"/><path d="M7 14h10v7H7Z"/></symbol>
+ <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.2"/></symbol>
+ <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4h11l-1.5 3.5L16 11H5"/></symbol>
+ <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+ <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+ <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></symbol>
+ <symbol id="i-bank" viewBox="0 0 24 24"><path d="M3.5 9.5 12 4l8.5 5.5"/><path d="M5.5 9.5v9M10 9.5v9M14 9.5v9M18.5 9.5v9M3 20h18"/></symbol>
+ <symbol id="i-cash" viewBox="0 0 24 24"><rect x="3" y="6.5" width="18" height="11" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 12h.01M17.5 12h.01"/></symbol>
+ <symbol id="i-pct" viewBox="0 0 24 24"><circle cx="7.5" cy="7.5" r="2.6"/><circle cx="16.5" cy="16.5" r="2.6"/><path d="m5 19 14-14"/></symbol>
+ <symbol id="i-list" viewBox="0 0 24 24"><path d="M4.5 6.5h.01M9 6.5h10.5M4.5 12h.01M9 12h10.5M4.5 17.5h.01M9 17.5h10.5"/></symbol>
+ <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+ <symbol id="i-report" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+ <symbol id="i-shop" viewBox="0 0 24 24"><path d="M4 9V4h16v5"/><path d="M3 9h18l-1.4 11a1 1 0 0 1-1 .9H5.4a1 1 0 0 1-1-.9Z"/><path d="M9.5 13h5"/></symbol>
+ <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13.5a3.6 3.6 0 0 0 5.2.3l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.5 1.5"/><path d="M14 10.5a3.6 3.6 0 0 0-5.2-.3l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.5-1.5"/></symbol>
+ <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="2.2"/><path d="m3.6 7 8.4 6 8.4-6"/></symbol>
+ <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17Z"/><path d="m14.5 7.5 2 2"/></symbol>
+ <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
+ <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16l-6 7v6l-4-2v-4L4 6Z"/></symbol>
+ <symbol id="i-truck" viewBox="0 0 24 24"><rect x="2.5" y="7" width="11" height="9" rx="1.4"/><path d="M13.5 10h4l3 3.2V16h-7Z"/><circle cx="7" cy="18.5" r="1.8"/><circle cx="17" cy="18.5" r="1.8"/></symbol>
+ <symbol id="i-tag" viewBox="0 0 24 24"><path d="M4 11V5a1 1 0 0 1 1-1h6l9 9-7 7-9-9Z"/><circle cx="8" cy="8" r="1.3"/></symbol>
+ <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19Z"/><path d="M12 10v4M12 17h.01"/></symbol>
+ <symbol id="i-line" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="4"/><path d="M7 9v6M10.5 9v6l3-6v6M17 9h-3v6h3M14 12h2.4"/></symbol>
+ <symbol id="i-crm" viewBox="0 0 24 24"><path d="M4 19V9l8-5 8 5v10Z"/><path d="M9 19v-6h6v6"/></symbol>
+ <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-4 4V5Z"/><path d="M8 9h8M8 12.5h5"/></symbol>
+ <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+ <symbol id="i-clip" viewBox="0 0 24 24"><path d="M8 12.5V7a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V8"/></symbol>
+ <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3c.6 3.8 2.2 5.4 6 6-3.8.6-5.4 2.2-6 6-.6-3.8-2.2-5.4-6-6 3.8-.6 5.4-2.2 6-6Z"/></symbol>
+</svg>
+<div class="wrap">
+
+<!-- ══════════════════════════════════════════════════════════════════════ g13 -->
+<div>
+<p class="cap">g13 &middot; ตั้งค่า &rsaquo; สิทธิ์ผู้ใช้งาน &rsaquo; สิทธิ์การใช้งาน <span>— §9.4 · matrix 7 action &times; 8 หมวด · เพดานอนุมัติเป็นบาท · ทูลทิปอธิบายสิทธิ์ที่ขาด</span></p>
+<div class="frame" id="g13">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+  <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-clock"/></svg><div class="av">ธ</div></div>
+ <div class="appbody">
+  <div class="drawer">
+   <div class="dsec">ระบบของคุณ</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-home"/></svg>หน้าแรก</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-shop"/></svg>หน้าร้าน (POS)</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-users"/></svg>ลูกค้าสัมพันธ์</div>
+   <div class="ditem on"><svg class="i sm"><use href="#i-book"/></svg>บัญชี</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-box"/></svg>คลังสินค้า</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-users"/></svg>พนักงานและเงินเดือน</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-mail"/></svg>แชทลูกค้า</div>
+   <div class="dsec">ทั่วไป</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่าองค์กร</div>
+  </div>
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>หน้าหลัก</div>
+    <div class="am"><svg class="i sm"><use href="#i-in"/></svg>รายรับ<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-out"/></svg>รายจ่าย<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-users"/></svg>ผู้ติดต่อ<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-box"/></svg>สินค้า<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-wallet"/></svg>การเงิน<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-book"/></svg>บัญชี<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-folder"/></svg>คลังเอกสาร<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am on"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า<svg class="i cv"><use href="#i-cv"/></svg></div>
+   </div>
+   <div class="crumb">บัญชี <span>&rsaquo;</span> ตั้งค่า <span>&rsaquo;</span> สิทธิ์ผู้ใช้งาน <span>&rsaquo;</span> สิทธิ์การใช้งาน</div>
+   <div class="ph"><h1>ตั้งค่า</h1><span class="sp"></span>
+    <div class="btn gh sm">ยกเลิก</div><div class="btn pri"><svg class="i sm"><use href="#i-check"/></svg>บันทึก</div></div>
+   <div class="pg">
+    <div class="row" style="align-items:flex-start">
+     <div class="card p0" style="width:280px;flex:none;align-self:flex-start;overflow:hidden">
+      <div class="acc-h" style="border-top:0">องค์กร<span style="flex:1"></span><svg class="i sm mu" style="transform:rotate(-90deg)"><use href="#i-cv"/></svg></div>
+      <div class="acc-h">เอกสาร<span style="flex:1"></span><svg class="i sm mu" style="transform:rotate(-90deg)"><use href="#i-cv"/></svg></div>
+      <div class="acc-h">นโยบายบัญชี<span style="flex:1"></span><svg class="i sm mu" style="transform:rotate(-90deg)"><use href="#i-cv"/></svg></div>
+      <div class="acc-h">สิทธิ์ผู้ใช้งาน<span style="flex:1"></span><svg class="i sm mu"><use href="#i-cv"/></svg></div>
+      <div class="acc-i" style="padding-left:26px">ผู้ใช้งาน</div>
+      <div class="acc-i on" style="padding-left:26px">สิทธิ์การใช้งาน</div>
+      <div class="acc-h">การเชื่อมต่อ<span style="flex:1"></span><svg class="i sm mu" style="transform:rotate(-90deg)"><use href="#i-cv"/></svg></div>
+     </div>
+     <div class="card" style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+      <div>
+       <h2 style="font-size:14.5px;font-weight:700">สิทธิ์การใช้งาน</h2>
+       <div class="sub" style="margin-top:3px">กำหนดสิทธิ์แต่ละบทบาทต่อหมวดงาน — เปลี่ยนแล้วมีผลทันทีเมื่อกด "บันทึก"</div>
+      </div>
+      <div class="roletabs">
+       <div class="rtab">เจ้าของ</div>
+       <div class="rtab">ผู้จัดการ</div>
+       <div class="rtab on">บัญชี</div>
+       <div class="rtab">พนักงานขาย</div>
+       <div class="rtab dash"><svg class="i xs"><use href="#i-plus"/></svg>เพิ่มบทบาท</div>
+       <span class="sp" style="flex:1"></span>
+       <div class="sub" style="display:flex;align-items:center;gap:5px"><svg class="i xs mu"><use href="#i-warn"/></svg>บทบาทระบบ (เจ้าของ) แก้ไม่ได้</div>
+      </div>
+      <div class="hr"></div>
+      <div style="overflow-x:auto">
+       <table class="mtx">
+        <tr><th class="gcol">หมวด</th><th>ดู</th><th>สร้าง/<br>แก้ไข</th><th>อนุมัติ</th><th>รับ/<br>จ่ายเงิน</th>
+         <th>ยกเลิก/<br>กลับรายการ</th><th>ปิดงวด</th><th>ตั้งค่า</th></tr>
+        <tr><td class="gcol">รายรับ</td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td></tr>
+        <tr><td class="gcol">รายจ่าย</td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td></tr>
+        <tr><td class="gcol">ผู้ติดต่อ</td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td></tr>
+        <tr><td class="gcol">สินค้า</td>
+         <td><span class="pchk"></span></td>
+         <td><span class="pcell"><span class="pchk na">—</span><div class="tip">ต้องมีสิทธิ์ "ดู" ก่อน</div></span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td></tr>
+        <tr><td class="gcol">การเงิน</td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td></tr>
+        <tr><td class="gcol">บัญชี</td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk na">—</span></td></tr>
+        <tr><td class="gcol">คลังเอกสาร</td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td></tr>
+        <tr><td class="gcol">ตั้งค่า</td>
+         <td><span class="pchk on"><svg><use href="#i-check"/></svg></span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td>
+         <td><span class="pchk na">—</span></td></tr>
+        <tr class="cap"><td class="gcol">เพดานอนุมัติ</td>
+         <td colspan="7" style="text-align:left;padding-left:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+           <span class="mu" style="font-size:12px">อนุมัติเอกสารได้ไม่เกิน</span>
+           <div class="fld" style="width:160px"><div class="ipt"><span>฿50,000.00</span></div></div>
+           <span class="mu" style="font-size:12px">ต่อรายการ (เว้นว่าง = ไม่จำกัด)</span>
+          </div></td></tr>
+       </table>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding-top:4px;border-top:1px solid var(--line);margin-top:2px;padding-top:14px">
+       <span class="sp" style="flex:1"></span>
+       <div class="btn gh">ยกเลิก</div>
+       <div class="btn pri"><svg class="i sm"><use href="#i-check"/></svg>บันทึก</div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ g14 -->
+<div>
+<p class="cap">g14 &middot; ตั้งค่า &rsaquo; การเชื่อมต่อ &rsaquo; ระบบใน SHARK <span>— §9.5 · การ์ด 8 ระบบ · เชื่อมแล้ว 6 · ยังไม่เชื่อม 1 · ยังไม่มีระบบ 1 · แบนเนอร์กติกาความปลอดภัย</span></p>
+<div class="frame" id="g14">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+  <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-clock"/></svg><div class="av">ธ</div></div>
+ <div class="appbody">
+  <div class="drawer">
+   <div class="dsec">ระบบของคุณ</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-home"/></svg>หน้าแรก</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-shop"/></svg>หน้าร้าน (POS)</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-users"/></svg>ลูกค้าสัมพันธ์</div>
+   <div class="ditem on"><svg class="i sm"><use href="#i-book"/></svg>บัญชี</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-box"/></svg>คลังสินค้า</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-users"/></svg>พนักงานและเงินเดือน</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-mail"/></svg>แชทลูกค้า</div>
+   <div class="dsec">ทั่วไป</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่าองค์กร</div>
+  </div>
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>หน้าหลัก</div>
+    <div class="am"><svg class="i sm"><use href="#i-in"/></svg>รายรับ<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-out"/></svg>รายจ่าย<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-users"/></svg>ผู้ติดต่อ<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-box"/></svg>สินค้า<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-wallet"/></svg>การเงิน<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-book"/></svg>บัญชี<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-folder"/></svg>คลังเอกสาร<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am on"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า<svg class="i cv"><use href="#i-cv"/></svg></div>
+   </div>
+   <div class="crumb">บัญชี <span>&rsaquo;</span> ตั้งค่า <span>&rsaquo;</span> การเชื่อมต่อ <span>&rsaquo;</span> ระบบใน SHARK</div>
+   <div class="ph"><h1>ตั้งค่า</h1><span class="sp"></span>
+    <div class="btn gh sm">ยกเลิก</div><div class="btn pri"><svg class="i sm"><use href="#i-check"/></svg>บันทึก</div></div>
+   <div class="pg">
+    <div class="row" style="align-items:flex-start">
+     <div class="card p0" style="width:280px;flex:none;align-self:flex-start;overflow:hidden">
+      <div class="acc-h" style="border-top:0">องค์กร<span style="flex:1"></span><svg class="i sm mu" style="transform:rotate(-90deg)"><use href="#i-cv"/></svg></div>
+      <div class="acc-h">เอกสาร<span style="flex:1"></span><svg class="i sm mu" style="transform:rotate(-90deg)"><use href="#i-cv"/></svg></div>
+      <div class="acc-h">นโยบายบัญชี<span style="flex:1"></span><svg class="i sm mu" style="transform:rotate(-90deg)"><use href="#i-cv"/></svg></div>
+      <div class="acc-h">สิทธิ์ผู้ใช้งาน<span style="flex:1"></span><svg class="i sm mu" style="transform:rotate(-90deg)"><use href="#i-cv"/></svg></div>
+      <div class="acc-h">การเชื่อมต่อ<span style="flex:1"></span><svg class="i sm mu"><use href="#i-cv"/></svg></div>
+      <div class="acc-i on" style="padding-left:26px">ระบบใน SHARK</div>
+      <div class="acc-i" style="padding-left:26px;color:var(--mut2)">e-Tax Invoice <span style="font-size:10.5px;margin-left:2px">(เร็ว ๆ นี้)</span></div>
+      <div class="acc-i" style="padding-left:26px">แอปภายนอก/API</div>
+     </div>
+     <div class="card" style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+      <div>
+       <h2 style="font-size:14.5px;font-weight:700">การเชื่อมต่อ &middot; ระบบใน SHARK</h2>
+       <div class="sub" style="margin-top:3px">สมุดบัญชีเล่มนี้รับข้อมูลจากระบบต่อไปนี้อัตโนมัติ</div>
+      </div>
+      <div class="conngrid">
+
+       <div class="conncard">
+        <div class="menuflyout">
+         <div class="mfi"><svg class="i sm"><use href="#i-list"/></svg>ดูรายการที่ลง</div>
+         <div class="mfi" style="color:var(--dg)"><svg class="i sm"><use href="#i-link"/></svg>ตัดการเชื่อม</div>
+        </div>
+        <div class="cchd"><div class="ic"><svg class="i sm"><use href="#i-shop"/></svg></div>
+         <div class="tt">หน้าร้าน (POS)</div><span class="sp"></span>
+         <span class="chip acc">เชื่อมแล้ว</span><svg class="i sm mu"><use href="#i-more"/></svg></div>
+        <div class="cmeta"><span>3 สาขา &middot; POS Terminal 5 เครื่อง</span>
+         <span>ลงบัญชีล่าสุด 30 ก.ย. 14:20 &middot; 128 รายการเดือนนี้</span></div>
+        <div class="ctog"><div class="sw"></div><span>สร้างผู้ติดต่ออัตโนมัติ</span></div>
+        <div class="ctog"><div class="sw"></div><span>ซิงก์ราคา/ต้นทุน</span></div>
+        <div class="ctog"><div class="sw"></div><span>ลงบัญชีอัตโนมัติ</span></div>
+        <div class="ctog"><span>บัญชีที่ใช้ <b>4000 / 1100</b></span><span class="sp"></span><span class="lnk" style="font-size:11.5px">แก้ไข</span></div>
+       </div>
+
+       <div class="conncard">
+        <div class="cchd"><div class="ic"><svg class="i sm"><use href="#i-users"/></svg></div>
+         <div class="tt">สมาชิก</div><span class="sp"></span>
+         <span class="chip acc">เชื่อมแล้ว</span><svg class="i sm mu"><use href="#i-more"/></svg></div>
+        <div class="cmeta"><span>ผูกกับระบบสมาชิกของร้าน</span>
+         <span>ลงบัญชีล่าสุด 30 ก.ย. 09:10 &middot; 46 รายการเดือนนี้</span></div>
+        <div class="ctog"><div class="sw"></div><span>สร้างผู้ติดต่ออัตโนมัติ</span></div>
+        <div class="ctog"><div class="sw off"></div><span class="mu">ลงบัญชีอัตโนมัติ (ปิดอยู่)</span></div>
+        <div class="ctog"><span>บัญชีที่ใช้ <b>4300</b></span><span class="sp"></span><span class="lnk" style="font-size:11.5px">แก้ไข</span></div>
+       </div>
+
+       <div class="conncard">
+        <div class="cchd"><div class="ic"><svg class="i sm"><use href="#i-crm"/></svg></div>
+         <div class="tt">CRM</div><span class="sp"></span>
+         <span class="chip acc">เชื่อมแล้ว</span><svg class="i sm mu"><use href="#i-more"/></svg></div>
+        <div class="cmeta"><span>ลูกค้าสัมพันธ์ &middot; ผูกทุกดีลที่ปิดแล้ว</span>
+         <span>ลงบัญชีล่าสุด 29 ก.ย. 18:40 &middot; 12 รายการเดือนนี้</span></div>
+        <div class="ctog"><div class="sw"></div><span>สร้างผู้ติดต่ออัตโนมัติ</span></div>
+        <div class="ctog"><div class="sw"></div><span>ลงบัญชีอัตโนมัติ</span></div>
+        <div class="ctog"><span>บัญชีที่ใช้ <b>4100</b></span><span class="sp"></span><span class="lnk" style="font-size:11.5px">แก้ไข</span></div>
+       </div>
+
+       <div class="conncard">
+        <div class="cchd"><div class="ic"><svg class="i sm"><use href="#i-chat"/></svg></div>
+         <div class="tt">แชทลูกค้า</div><span class="sp"></span>
+         <span class="chip acc">เชื่อมแล้ว</span><svg class="i sm mu"><use href="#i-more"/></svg></div>
+        <div class="cmeta"><span>LINE OA &middot; Facebook &middot; Instagram</span>
+         <span>ลงบัญชีล่าสุด 28 ก.ย. 20:05 &middot; 9 รายการเดือนนี้</span></div>
+        <div class="ctog"><div class="sw"></div><span>สร้างผู้ติดต่ออัตโนมัติ</span></div>
+        <div class="ctog"><div class="sw off"></div><span class="mu">ลงบัญชีอัตโนมัติ (ปิดอยู่)</span></div>
+       </div>
+
+       <div class="conncard">
+        <div class="cchd"><div class="ic"><svg class="i sm"><use href="#i-box"/></svg></div>
+         <div class="tt">คลังสินค้า</div><span class="sp"></span>
+         <span class="chip acc">เชื่อมแล้ว</span><svg class="i sm mu"><use href="#i-more"/></svg></div>
+        <div class="cmeta"><span>ผูกกับรายการคลังสินค้าทุกรายการ</span>
+         <span>ลงบัญชีล่าสุด 30 ก.ย. 11:00 &middot; 214 รายการเดือนนี้</span></div>
+        <div class="ctog"><div class="sw"></div><span>ซิงก์ราคา/ต้นทุน</span></div>
+        <div class="ctog"><div class="sw"></div><span>ลงบัญชีอัตโนมัติ</span></div>
+        <div class="ctog"><span>บัญชีที่ใช้ <b>1510 / 5010</b></span><span class="sp"></span><span class="lnk" style="font-size:11.5px">แก้ไข</span></div>
+       </div>
+
+       <div class="conncard">
+        <div class="cchd"><div class="ic"><svg class="i sm"><use href="#i-users"/></svg></div>
+         <div class="tt">พนักงานและเงินเดือน</div><span class="sp"></span>
+         <span class="chip acc">เชื่อมแล้ว</span><svg class="i sm mu"><use href="#i-more"/></svg></div>
+        <div class="cmeta"><span>ผูกกับพนักงาน 14 คน</span>
+         <span>ลงบัญชีล่าสุด 25 ก.ย. 17:30 &middot; 14 รายการเดือนนี้</span></div>
+        <div class="ctog"><div class="sw"></div><span>ลงบัญชีอัตโนมัติ</span></div>
+        <div class="ctog"><span>บัญชีที่ใช้ <b>5200</b></span><span class="sp"></span><span class="lnk" style="font-size:11.5px">แก้ไข</span></div>
+       </div>
+
+       <div class="conncard off">
+        <div class="cchd"><div class="ic"><svg class="i sm"><use href="#i-cal"/></svg></div>
+         <div class="tt">จอง/ทริป</div><span class="sp"></span>
+         <span class="chip">ยังไม่เชื่อม</span></div>
+        <div class="cmeta"><span>เชื่อมเพื่อรับข้อมูลการจองทริป/เรือมาลงบัญชีอัตโนมัติ</span></div>
+        <div style="padding-top:8px;border-top:1px solid var(--line)"><div class="btn pri sm"><svg class="i xs"><use href="#i-link"/></svg>เชื่อม</div></div>
+       </div>
+
+       <div class="conncard off na">
+        <div class="cchd"><div class="ic"><svg class="i sm"><use href="#i-home"/></svg></div>
+         <div class="tt">โรงแรม</div><span class="sp"></span>
+         <span class="chip">ยังไม่มีระบบ</span></div>
+        <div class="cmeta"><span>ยังไม่ได้เปิดใช้งานระบบโรงแรมของ SHARK</span></div>
+        <div style="padding-top:8px;border-top:1px solid var(--line)"><div class="btn off sm" style="cursor:not-allowed">เปิดระบบก่อน</div></div>
+       </div>
+
+      </div>
+      <div class="matchbox" style="align-items:flex-start">
+       <svg class="i sm" style="margin-top:1px"><use href="#i-warn"/></svg>
+       <span><b>กติกาความปลอดภัย:</b> ระบบที่ยังไม่เชื่อมจะไม่ลงบัญชีให้ (ไม่เชื่อม = ไม่ลงบัญชีให้)</span>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ g15 -->
+<div>
+<p class="cap">g15 &middot; คลังเอกสาร &rsaquo; กล่องขาเข้า <span>— §12 · การ์ด AI อ่านได้ 4-5 ฟิลด์ + จุดความมั่นใจ · 1 การ์ดอ่านไม่ได้ &rarr; กรอกเอง · แผงขวาสถิติ + วิธีส่งบิล</span></p>
+<div class="frame" id="g15">
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+  <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-clock"/></svg><div class="av">ธ</div></div>
+ <div class="appbody">
+  <div class="drawer">
+   <div class="dsec">ระบบของคุณ</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-home"/></svg>หน้าแรก</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-shop"/></svg>หน้าร้าน (POS)</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-users"/></svg>ลูกค้าสัมพันธ์</div>
+   <div class="ditem on"><svg class="i sm"><use href="#i-book"/></svg>บัญชี</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-box"/></svg>คลังสินค้า</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-users"/></svg>พนักงานและเงินเดือน</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-mail"/></svg>แชทลูกค้า</div>
+   <div class="dsec">ทั่วไป</div>
+   <div class="ditem"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่าองค์กร</div>
+  </div>
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>หน้าหลัก</div>
+    <div class="am"><svg class="i sm"><use href="#i-in"/></svg>รายรับ<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-out"/></svg>รายจ่าย<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-users"/></svg>ผู้ติดต่อ<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-box"/></svg>สินค้า<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-wallet"/></svg>การเงิน<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-book"/></svg>บัญชี<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am on"><svg class="i sm"><use href="#i-folder"/></svg>คลังเอกสาร<svg class="i cv"><use href="#i-cv"/></svg></div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า<svg class="i cv"><use href="#i-cv"/></svg></div>
+   </div>
+   <div class="crumb">บัญชี <span>&rsaquo;</span> คลังเอกสาร <span>&rsaquo;</span> กล่องขาเข้า</div>
+   <div class="ph"><h1>กล่องขาเข้า</h1><span class="sp"></span>
+    <div class="btn pri sm"><svg class="i sm"><use href="#i-import"/></svg>อัปโหลด</div></div>
+   <div class="pg">
+    <div class="tabs">
+     <div class="tab on">ยังไม่เชื่อมต่อ <span class="n">5</span></div>
+     <div class="tab">เชื่อมต่อแล้ว <span class="n">123</span></div>
+    </div>
+    <div class="row" style="align-items:center;flex-wrap:wrap;gap:10px">
+     <div class="inp"><svg class="i xs"><use href="#i-mail"/></svg><span>ส่งเข้าอีเมล: <b>inbox-siamdive@shark.in.th</b></span>
+      <svg class="i xs" style="margin-left:6px;cursor:pointer"><use href="#i-copy"/></svg></div>
+     <div class="inp"><svg class="i xs"><use href="#i-filter"/></svg><span>ที่มา: <b>ทั้งหมด</b></span><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+     <div class="inp gro" style="max-width:260px"><svg class="i xs"><use href="#i-search"/></svg><span class="mu">ค้นหาชื่อไฟล์</span></div>
+    </div>
+    <div class="row" style="align-items:flex-start;gap:16px">
+     <div class="inbgrid" style="flex:1;min-width:0">
+
+      <div class="inbcard">
+       <div class="inbthumb"><svg class="i lg"><use href="#i-cam"/></svg></div>
+       <div class="inbbody">
+        <div class="inbnm">ใบเสร็จ-ปตท-220926.jpg</div>
+        <div class="inbmeta"><svg class="i xs"><use href="#i-cal"/></svg><span>22 ก.ย. 2026</span>
+         <span class="chip" style="height:18px;padding:0 6px;font-size:10px;margin-left:auto"><svg class="i xs"><use href="#i-line"/></svg>LINE</span></div>
+        <div class="inbmeta"><svg class="i xs"><use href="#i-users"/></svg><span class="tr">ผู้ส่ง: เพชร (สาขาภูเก็ต)</span></div>
+        <div class="aiblk">
+         <div class="aihd"><svg class="i xs"><use href="#i-spark"/></svg>AI อ่านได้</div>
+         <div class="aifld"><span class="k">ผู้ขาย</span><span class="v">ปตท. สถานีบริการฉลอง</span><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+         <div class="aifld"><span class="k">ยอด</span><span class="v">฿1,240.00</span><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+         <div class="aifld"><span class="k">วันที่</span><span class="v">22 ส.ค. 2026</span><span class="dots"><i class="on"></i><i class="on"></i><i></i></span></div>
+         <div class="aifld"><span class="k">VAT</span><span class="v">฿81.12</span><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+         <div class="aifld"><span class="k">เลขที่ใบกำกับ</span><span class="v">6609-00231</span><span class="dots"><i class="on"></i><i></i><i></i></span></div>
+        </div>
+        <div class="inbbtns">
+         <div class="btn pri sm">สร้างบันทึกค่าใช้จ่าย</div>
+         <div class="btn gh sm">แนบกับเอกสารที่มี</div>
+         <div class="btn gh sm" style="color:var(--mut)">ไม่ใช่เอกสารบัญชี</div>
+        </div>
+       </div>
+      </div>
+
+      <div class="inbcard">
+       <div class="inbthumb"><svg class="i lg"><use href="#i-doc"/></svg></div>
+       <div class="inbbody">
+        <div class="inbnm">ใบกำกับภาษี-สคูบาโปร-0920.pdf</div>
+        <div class="inbmeta"><svg class="i xs"><use href="#i-cal"/></svg><span>20 ก.ย. 2026</span>
+         <span class="chip" style="height:18px;padding:0 6px;font-size:10px;margin-left:auto"><svg class="i xs"><use href="#i-mail"/></svg>อีเมล</span></div>
+        <div class="inbmeta"><svg class="i xs"><use href="#i-users"/></svg><span class="tr">ผู้ส่ง: inbox-siamdive@shark.in.th</span></div>
+        <div class="aiblk">
+         <div class="aihd"><svg class="i xs"><use href="#i-spark"/></svg>AI อ่านได้</div>
+         <div class="aifld"><span class="k">ผู้ขาย</span><span class="v">บจก. สคูบาโปร ประเทศไทย</span><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+         <div class="aifld"><span class="k">ยอด</span><span class="v">฿8,400.00</span><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+         <div class="aifld"><span class="k">วันที่</span><span class="v">20 ก.ย. 2026</span><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+         <div class="aifld"><span class="k">VAT</span><span class="v">฿549.81</span><span class="dots"><i class="on"></i><i class="on"></i><i></i></span></div>
+        </div>
+        <div class="inbbtns">
+         <div class="btn pri sm">สร้างบันทึกค่าใช้จ่าย</div>
+         <div class="btn gh sm">แนบกับเอกสารที่มี</div>
+         <div class="btn gh sm" style="color:var(--mut)">ไม่ใช่เอกสารบัญชี</div>
+        </div>
+       </div>
+      </div>
+
+      <div class="inbcard">
+       <div class="inbthumb"><svg class="i lg"><use href="#i-cam"/></svg></div>
+       <div class="inbbody">
+        <div class="inbnm">สลิปโอน-ค่าเช่า-กย.jpg</div>
+        <div class="inbmeta"><svg class="i xs"><use href="#i-cal"/></svg><span>27 ก.ย. 2026</span>
+         <span class="chip" style="height:18px;padding:0 6px;font-size:10px;margin-left:auto">แอปถ่ายบิล</span></div>
+        <div class="inbmeta"><svg class="i xs"><use href="#i-users"/></svg><span class="tr">ผู้ส่ง: ธนกร (บัญชี)</span></div>
+        <div class="aiblk">
+         <div class="aihd"><svg class="i xs"><use href="#i-spark"/></svg>AI อ่านได้</div>
+         <div class="aifld"><span class="k">ผู้ขาย</span><span class="v">เจ้าของอาคารสำนักงาน</span><span class="dots"><i class="on"></i><i class="on"></i><i></i></span></div>
+         <div class="aifld"><span class="k">ยอด</span><span class="v">฿15,000.00</span><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+         <div class="aifld"><span class="k">วันที่</span><span class="v">27 ก.ย. 2026</span><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+         <div class="aifld"><span class="k">VAT</span><span class="v mu">— (ไม่มี)</span><span class="dots"><i></i><i></i><i></i></span></div>
+        </div>
+        <div class="inbbtns">
+         <div class="btn pri sm">สร้างบันทึกค่าใช้จ่าย</div>
+         <div class="btn gh sm">แนบกับเอกสารที่มี</div>
+         <div class="btn gh sm" style="color:var(--mut)">ไม่ใช่เอกสารบัญชี</div>
+        </div>
+       </div>
+      </div>
+
+      <div class="inbcard">
+       <div class="inbthumb"><svg class="i lg"><use href="#i-doc"/></svg></div>
+       <div class="inbbody">
+        <div class="inbnm">ใบเสร็จค่าไฟฟ้า-กย2026.pdf</div>
+        <div class="inbmeta"><svg class="i xs"><use href="#i-cal"/></svg><span>18 ก.ย. 2026</span>
+         <span class="chip" style="height:18px;padding:0 6px;font-size:10px;margin-left:auto">อัปโหลด</span></div>
+        <div class="inbmeta"><svg class="i xs"><use href="#i-users"/></svg><span class="tr">ผู้ส่ง: อรวรรณ (บัญชี)</span></div>
+        <div class="aifail"><svg class="i sm mu"><use href="#i-warn"/></svg>
+         <span><b style="color:var(--ink2)">AI อ่านไม่ได้</b> — กรอกเอง</span></div>
+        <div class="inbbtns">
+         <div class="btn pri sm">สร้างบันทึกค่าใช้จ่าย</div>
+         <div class="btn gh sm">แนบกับเอกสารที่มี</div>
+         <div class="btn gh sm" style="color:var(--mut)">ไม่ใช่เอกสารบัญชี</div>
+        </div>
+       </div>
+      </div>
+
+      <div class="inbcard">
+       <div class="inbthumb"><svg class="i lg"><use href="#i-cam"/></svg></div>
+       <div class="inbbody">
+        <div class="inbnm">บิล-ร้านอาหารทะเลสด.jpg</div>
+        <div class="inbmeta"><svg class="i xs"><use href="#i-cal"/></svg><span>21 ก.ย. 2026</span>
+         <span class="chip" style="height:18px;padding:0 6px;font-size:10px;margin-left:auto"><svg class="i xs"><use href="#i-line"/></svg>LINE</span></div>
+        <div class="inbmeta"><svg class="i xs"><use href="#i-users"/></svg><span class="tr">ผู้ส่ง: สมชาย (ทีมขาย)</span></div>
+        <div class="aiblk">
+         <div class="aihd"><svg class="i xs"><use href="#i-spark"/></svg>AI อ่านได้</div>
+         <div class="aifld"><span class="k">ผู้ขาย</span><span class="v">ร้านอาหารทะเลสด</span><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+         <div class="aifld"><span class="k">ยอด</span><span class="v">฿890.00</span><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+         <div class="aifld"><span class="k">วันที่</span><span class="v">21 ก.ย. 2026</span><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+        </div>
+        <div class="inbbtns">
+         <div class="btn pri sm">สร้างบันทึกค่าใช้จ่าย</div>
+         <div class="btn gh sm">แนบกับเอกสารที่มี</div>
+         <div class="btn gh sm" style="color:var(--mut)">ไม่ใช่เอกสารบัญชี</div>
+        </div>
+       </div>
+      </div>
+
+     </div>
+     <div class="card" style="width:320px;flex:none;display:flex;flex-direction:column;gap:14px">
+      <div class="kpi">
+       <div class="lbl">เอกสารที่สร้างจากกล่องขาเข้าเดือนนี้</div>
+       <div class="val">14 <span style="font-size:13px;font-weight:400;color:var(--mut)">ใบ</span></div>
+       <div class="fo">ประหยัดเวลา ~2 ชม.</div>
+      </div>
+      <div class="hr"></div>
+      <div>
+       <div style="font-size:12.5px;font-weight:700;margin-bottom:6px">วิธีส่งบิลเข้ากล่อง</div>
+       <div class="lst">
+        <div class="li"><svg class="i sm"><use href="#i-line"/></svg><span class="sp">ส่งรูปบิลเข้า LINE OA ของร้าน</span></div>
+        <div class="li"><svg class="i sm"><use href="#i-mail"/></svg><span class="sp">แนบไฟล์ส่งอีเมลมาที่ inbox-siamdive@shark.in.th</span></div>
+        <div class="li"><svg class="i sm"><use href="#i-cam"/></svg><span class="sp">ถ่ายรูปบิลผ่านแอป SHARK แล้วอัปโหลด</span></div>
+       </div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ g16 -->
+<div>
+<p class="cap">g16 &middot; บัญชี &rsaquo; บัญชีรายวัน <span>— §11.2 · แท็บสมุด + แถวขยาย Dr/Cr + แถวถูกปักธง "ต้องตรวจ" + modal "สร้างสมุดรายวัน" (JV มือ) ทับหน้ารายการจาง</span></p>
+<div class="frame" id="g16">
+ <div class="stackwrap">
+  <div class="bgpage">
+   <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+    <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-clock"/></svg><div class="av">ธ</div></div>
+   <div class="appbody">
+    <div class="drawer">
+     <div class="dsec">ระบบของคุณ</div>
+     <div class="ditem"><svg class="i sm"><use href="#i-home"/></svg>หน้าแรก</div>
+     <div class="ditem"><svg class="i sm"><use href="#i-shop"/></svg>หน้าร้าน (POS)</div>
+     <div class="ditem"><svg class="i sm"><use href="#i-users"/></svg>ลูกค้าสัมพันธ์</div>
+     <div class="ditem on"><svg class="i sm"><use href="#i-book"/></svg>บัญชี</div>
+     <div class="ditem"><svg class="i sm"><use href="#i-box"/></svg>คลังสินค้า</div>
+     <div class="ditem"><svg class="i sm"><use href="#i-users"/></svg>พนักงานและเงินเดือน</div>
+     <div class="ditem"><svg class="i sm"><use href="#i-mail"/></svg>แชทลูกค้า</div>
+     <div class="dsec">ทั่วไป</div>
+     <div class="ditem"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่าองค์กร</div>
+    </div>
+    <div class="mod">
+     <div class="amenu">
+      <div class="am"><svg class="i sm"><use href="#i-home"/></svg>หน้าหลัก</div>
+      <div class="am"><svg class="i sm"><use href="#i-in"/></svg>รายรับ<svg class="i cv"><use href="#i-cv"/></svg></div>
+      <div class="am"><svg class="i sm"><use href="#i-out"/></svg>รายจ่าย<svg class="i cv"><use href="#i-cv"/></svg></div>
+      <div class="am"><svg class="i sm"><use href="#i-users"/></svg>ผู้ติดต่อ<svg class="i cv"><use href="#i-cv"/></svg></div>
+      <div class="am"><svg class="i sm"><use href="#i-box"/></svg>สินค้า<svg class="i cv"><use href="#i-cv"/></svg></div>
+      <div class="am"><svg class="i sm"><use href="#i-wallet"/></svg>การเงิน<svg class="i cv"><use href="#i-cv"/></svg></div>
+      <div class="am on"><svg class="i sm"><use href="#i-book"/></svg>บัญชี<svg class="i cv"><use href="#i-cv"/></svg></div>
+      <div class="am"><svg class="i sm"><use href="#i-folder"/></svg>คลังเอกสาร<svg class="i cv"><use href="#i-cv"/></svg></div>
+      <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า<svg class="i cv"><use href="#i-cv"/></svg></div>
+     </div>
+     <div class="crumb">บัญชี <span>&rsaquo;</span> บัญชีรายวัน</div>
+     <div class="ph"><h1>บัญชีรายวัน</h1><span class="sp"></span>
+      <div class="btn gh sm"><svg class="i sm"><use href="#i-print"/></svg>พิมพ์รายงาน</div>
+      <div class="btn pri"><svg class="i sm"><use href="#i-plus"/></svg>สร้างสมุดรายวัน</div></div>
+     <div class="pg">
+      <div class="tabs">
+       <div class="tab on">ทั้งหมด <span class="n">8</span></div>
+       <div class="tab">ซื้อ <span class="n">2</span></div>
+       <div class="tab">ขาย <span class="n">2</span></div>
+       <div class="tab">จ่าย <span class="n">1</span></div>
+       <div class="tab">รับ <span class="n">1</span></div>
+       <div class="tab">ทั่วไป <span class="n">2</span></div>
+      </div>
+      <div class="row" style="align-items:center;flex-wrap:wrap;gap:10px">
+       <div class="inp"><svg class="i xs"><use href="#i-cal"/></svg><span>ช่วงวันที่: <b>เดือนนี้</b></span></div>
+       <div class="inp"><svg class="i xs"><use href="#i-book"/></svg><span>บัญชี: <b>ทั้งหมด</b></span><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+       <div class="inp gro" style="max-width:280px"><svg class="i xs"><use href="#i-search"/></svg><span class="mu">ค้นหาเลขที่ JV, คำอธิบาย</span></div>
+      </div>
+      <div class="card p0">
+       <table class="tbl">
+        <tr><th style="width:26px"></th><th>วันที่</th><th>เลขที่ JV</th><th>สมุด</th><th>คำอธิบาย</th>
+         <th>อ้างอิงเอกสาร</th><th class="rt">เดบิต</th><th class="rt">เครดิต</th><th>ผู้บันทึก</th><th style="width:30px"></th></tr>
+
+        <tr><td><svg class="i xs mu" style="transform:rotate(0deg)"><use href="#i-ar"/></svg></td>
+         <td class="nw">30 ก.ย. 2026</td><td class="nw"><span class="lnk">JV-202609-0188</span></td>
+         <td><span class="chip">ทั่วไป</span></td><td>ปรับปรุงค่าเสื่อมราคา</td><td class="nw mu">—</td>
+         <td class="num">4,500.00</td><td class="num">4,500.00</td><td class="nw">ธนกร</td><td></td></tr>
+
+        <tr><td><svg class="i xs mu"><use href="#i-ar"/></svg></td>
+         <td class="nw">30 ก.ย. 2026</td><td class="nw"><span class="lnk">JV-202609-0187</span></td>
+         <td><span class="chip">ขาย</span></td><td>ขาย &ndash; ปิยธิดา อินสุ่ม</td>
+         <td class="nw"><span class="lnk">IV-202609-0142</span></td>
+         <td class="num">12,000.00</td><td class="num">12,000.00</td><td class="nw">สมชาย</td><td></td></tr>
+
+        <tr><td><svg class="i xs mu"><use href="#i-ar"/></svg></td>
+         <td class="nw">29 ก.ย. 2026</td><td class="nw"><span class="lnk">JV-202609-0186</span></td>
+         <td><span class="chip">ซื้อ</span></td><td>ซื้อสินค้า &ndash; สคูบาโปร ประเทศไทย</td>
+         <td class="nw"><span class="lnk">PUR-202609-0031</span></td>
+         <td class="num">8,400.00</td><td class="num">8,400.00</td><td class="nw">ธนกร</td><td></td></tr>
+
+        <tr class="jrow"><td><svg class="i xs" style="transform:rotate(90deg)"><use href="#i-ar"/></svg></td>
+         <td class="nw">29 ก.ย. 2026</td><td class="nw"><span class="lnk">JV-202609-0185</span></td>
+         <td><span class="chip">จ่าย</span></td><td>จ่ายค่าเช่าสำนักงาน</td>
+         <td class="nw"><span class="lnk">EX-202609-0055</span></td>
+         <td class="num">15,000.00</td><td class="num">15,000.00</td><td class="nw">ธนกร</td>
+         <td><span class="pcell"><svg class="i sm dgt"><use href="#i-flag"/></svg><div class="tip">บัญชีพัก 9999</div></span></td></tr>
+        <tr class="jexpwrap"><td colspan="10">
+          <div class="jline h"><span>บัญชี</span><span>คำอธิบาย</span><span class="num">เดบิต</span><span class="num">เครดิต</span></div>
+          <div class="jline"><span>5410 ค่าเช่าสำนักงาน</span><span class="mu">ค่าเช่าเดือน ก.ย. 2026</span><span class="num">15,000.00</span><span class="num">—</span></div>
+          <div class="jline"><span>1110 เงินสด</span><span class="mu">จ่ายเป็นเงินสด</span><span class="num">—</span><span class="num">14,000.00</span></div>
+          <div class="jline"><span>9999 บัญชีพัก <svg class="i xs dgt" style="vertical-align:-2px"><use href="#i-warn"/></svg></span><span class="mu">ส่วนต่างรอตรวจสอบ</span><span class="num">—</span><span class="num">1,000.00</span></div>
+        </td></tr>
+
+        <tr><td><svg class="i xs mu"><use href="#i-ar"/></svg></td>
+         <td class="nw">28 ก.ย. 2026</td><td class="nw"><span class="lnk">JV-202609-0184</span></td>
+         <td><span class="chip">รับ</span></td><td>รับชำระจาก บจก. อันดามัน ทราเวล</td>
+         <td class="nw"><span class="lnk">RE-202609-0077</span></td>
+         <td class="num">24,150.00</td><td class="num">24,150.00</td><td class="nw">สมชาย</td><td></td></tr>
+
+        <tr><td><svg class="i xs mu"><use href="#i-ar"/></svg></td>
+         <td class="nw">28 ก.ย. 2026</td><td class="nw"><span class="lnk">JV-202609-0183</span></td>
+         <td><span class="chip">ขาย</span></td><td>ขายหน้าร้าน (POS) สาขาภูเก็ต</td>
+         <td class="nw"><span class="lnk">PosSale-58231</span></td>
+         <td class="num">3,850.00</td><td class="num">3,850.00</td><td class="nw">ระบบ (POS)</td><td></td></tr>
+
+        <tr><td><svg class="i xs mu"><use href="#i-ar"/></svg></td>
+         <td class="nw">27 ก.ย. 2026</td><td class="nw"><span class="lnk">JV-202609-0182</span></td>
+         <td><span class="chip">ซื้อ</span></td><td>ซื้อวัสดุสิ้นเปลือง</td>
+         <td class="nw"><span class="lnk">PUR-202609-0028</span></td>
+         <td class="num">2,300.00</td><td class="num">2,300.00</td><td class="nw">ธนกร</td><td></td></tr>
+
+        <tr><td><svg class="i xs mu"><use href="#i-ar"/></svg></td>
+         <td class="nw">27 ก.ย. 2026</td><td class="nw"><span class="lnk">JV-202609-0181</span></td>
+         <td><span class="chip">ทั่วไป</span></td><td>โอนเงินระหว่างบัญชี</td>
+         <td class="nw mu">—</td>
+         <td class="num">50,000.00</td><td class="num">50,000.00</td><td class="nw">ธนกร</td><td></td></tr>
+       </table>
+       <div class="tfoot"><span>รวม 8 รายการ</span><span class="sp"></span>
+        <span>รวมเดบิต <b style="color:var(--ink)">฿120,200.00</b></span>
+        <span style="width:8px"></span>
+        <span>รวมเครดิต <b style="color:var(--ink)">฿120,200.00</b></span></div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+
+  <div class="ovlay">
+   <div class="scrim"></div>
+   <div class="modal">
+    <div class="mhd"><h3>สร้างสมุดรายวัน</h3><span class="sp"></span><svg class="i mu"><use href="#i-x"/></svg></div>
+    <div class="mbd">
+     <div class="fgrid3">
+      <div class="fld"><div class="lb">วันที่</div><div class="ipt"><svg class="i xs mu"><use href="#i-cal"/></svg><span>30 ก.ย. 2026</span></div></div>
+      <div class="fld"><div class="lb">สมุด</div><div class="ipt"><span>ทั่วไป</span><svg class="i xs cv"><use href="#i-cv"/></svg></div></div>
+      <div class="fld"><div class="lb">เลขที่ JV</div><div class="ipt ph"><span>JV-202609-0189</span></div><div class="hint">อัตโนมัติ &middot; แก้ไม่ได้</div></div>
+     </div>
+     <div class="fld"><div class="lb">คำอธิบาย</div><div class="ipt ph"><span>ระบุคำอธิบายรายการ</span></div></div>
+
+     <div class="msec">
+      <div class="msech">บรรทัดรายการ<span class="sp"></span></div>
+      <table class="tbl">
+       <tr><th>บัญชี</th><th style="width:150px">ผู้ติดต่อ</th><th>คำอธิบาย</th><th class="rt" style="width:110px">เดบิต</th><th class="rt" style="width:110px">เครดิต</th></tr>
+       <tr><td><div class="ipt" style="height:32px"><svg class="i xs mu"><use href="#i-search"/></svg><span>5330 ค่าใช้จ่ายเบ็ดเตล็ด</span></div></td>
+        <td class="mu">—</td><td class="mu">ค่าใช้จ่ายเบ็ดเตล็ดเดือน ก.ย.</td>
+        <td class="num">5,000.00</td><td class="num mu">—</td></tr>
+       <tr><td><div class="ipt" style="height:32px"><svg class="i xs mu"><use href="#i-search"/></svg><span>1110 เงินสด</span></div></td>
+        <td class="mu">—</td><td class="mu">จ่ายเป็นเงินสด</td>
+        <td class="num mu">—</td><td class="num">5,000.00</td></tr>
+      </table>
+      <div class="btn gh sm" style="align-self:flex-start"><svg class="i xs"><use href="#i-plus"/></svg>เพิ่มบรรทัด</div>
+     </div>
+
+     <div class="balbar"><svg class="i sm"><use href="#i-check"/></svg>
+      เดบิต ฿5,000.00 = เครดิต ฿5,000.00 <span class="sp"></span><span>สมดุล</span></div>
+
+     <div class="fld"><div class="lb">แนบไฟล์</div>
+      <div class="ipt ph" style="height:44px"><svg class="i xs"><use href="#i-clip"/></svg><span>ลากไฟล์มาวาง หรือเลือกไฟล์แนบ</span></div></div>
+    </div>
+    <div class="mft"><div class="btn gh">ยกเลิก</div><span class="sp"></span>
+     <div class="btn gh">บันทึกร่าง</div>
+     <div class="btn pri"><svg class="i sm"><use href="#i-check"/></svg>อนุมัติ</div></div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+
+</div>
+</body></html>

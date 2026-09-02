@@ -1,5 +1,14 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🎨 3 ก.ย. (เช้ามืด) — [session บัญชี] แบบร่างรอบ 2 (ละเอียดระดับฟิลด์) เสร็จ — **รอเจ้าของตรวจ ยังไม่ coding**
+- เจ้าของเคาะรอบ 1 "ชอบทั้งหมด" + ส่ง PEAK 81 ภาพ (Drive) + นโยบาย 4 ข้อ (ไม่เอาแพ็กเกจ · ไม่มีล็อก · ผู้ติดต่อเชื่อมระบบอื่น · สินค้าเชื่อมคลัง/POS)
+- **ส่งมอบ** (`docs/design/account-v2/` · ยังไม่ commit — git ถูก classifier บล็อกหลัง container restart):
+  `DESIGN-SPEC-V2.md` (สเปคหลัก 15 หัวข้อ — coding ต้องอ้างเลขหัวข้อ) · `INTEGRATION-MAP.md` (Party + InvItem กลาง) · `refs-peak/` (ไฟล์ CATALOG-01 … CATALOG-08) (80 ภาพ) + `refs-peak/AccDesign/` (ต้นฉบับ) ·
+  mockup รอบ 2 `mockup-A..E.html` + `render-A..E.mjs` → PNG g1–g20 (+ แบบเปิด/ปิดเมนู 5 ใบ) · `contact-sheet-2.png`
+- 🔴 บทเรียน: sub-agent อ่าน 80 ภาพในตัวเดียว = 470k token โควตาบัญชีหมด → แบ่ง ≤10 ภาพ/ตัว เขียนไฟล์ทีละชุด (memory `feedback_subagent_batch_size_images`) · Opus ติด rate limit → รอบนี้ใช้ Sonnet ทั้งหมด
+- Fable QC ทุกเฟรม + แก้ 1 รอบ (ตัวอักษรกำกับหัวข้อหลุด · ยอดรับชำระไม่ลงตัว · ปี พ.ศ.ปน ค.ศ. · คำโค้ด InvItem/MenuItem/override · แยกภาพ modal เปิด/ปิด) — ผ่านหมด
+- **ถัดไป**: เจ้าของตรวจ g1–g20 → ออก WO coding เป็นสายตาม SPEC §14 (โมเดล) + §2 (เมนู) — ลำดับแนะนำ: (1) nav+shell 9 หมวด+flyout (2) route ราคาถูก DP/CNR/DNR/ASSET_PO/PTX (3) หน้ารายการตาราง+แท็บ+pagination (4) ฟอร์มเอกสาร A–K (5) ผู้ติดต่อ+Party (6) สินค้า+InvItem (7) การเงิน/กระทบยอด (8) คลังเอกสาร+กล่องขาเข้า (9) ตั้งค่า
+
 ## 🎨 2 ก.ย. (บ่าย) — [session บัญชี] แบบร่าง UI/UX โมดูลบัญชี V2 ตามภาพ PEAK — **รอเจ้าของตรวจภาพ ยังไม่ coding**
 - เจ้าของสั่ง: ศึกษาระบบบัญชี + ออกแบบใหม่ตามภาพ PEAK 9 ใบ · เมนู/ฟังก์ชันที่ไม่มีให้เพิ่มให้ครบ · **ออกแบบรูปให้ตรวจก่อน**
 - **ส่งมอบ** (branch `session/accounting` · ไม่แตะ `src/`): `ledger/ACCOUNT-INVENTORY.md` (inventory 47 หน้า + gap matrix 119 ข้อ ✅37 🟡31 ❌51 + §E ของที่ SHARK มีแต่ PEAK ไม่มี ห้ามทำหาย) ·
