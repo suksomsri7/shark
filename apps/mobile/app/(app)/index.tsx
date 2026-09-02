@@ -22,7 +22,9 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [orbBusy, setOrbBusy] = useState(false);
-  // หน้าแชทของเว็บส่งสัญญาณมา → ซ่อน orb native (มันทับปุ่มส่ง/มุมกล่องแชท — เจ้าของสั่ง 2 ก.ย.)
+  // 🔴 เจ้าของสั่ง 2 ก.ย. (รอบสอง): ซ่อน orb "ทุกหน้า" ไปก่อน — ไม่ลบโค้ด เผื่อเปิดคืน
+  //    (สัญญาณ chat-fullscreen จากเว็บยังรับไว้ตามเดิม จะได้ไม่ต้องรื้อตอนเปิดกลับ)
+  const ORB_HIDDEN_FOR_NOW = true;
   const [hideOrb, setHideOrb] = useState(false);
 
   // แตะ orb ครั้งแรก = ให้ AI ทักพาตั้งค่า (welcome) · มีห้องแล้ว/พลาด → เข้ารายการห้องเดิม
@@ -160,7 +162,7 @@ export default function DashboardScreen() {
         )}
 
         {/* ปุ่ม orb AI ลอยมุมล่างขวา (native) — หมุนช้า+เต้นหัวใจ (AnimatedOrb) · glow อยู่ในตัว png */}
-        {!loading && !error && !hideOrb && (
+        {!loading && !error && !hideOrb && !ORB_HIDDEN_FOR_NOW && (
         <Pressable onPress={openAssistant} disabled={orbBusy} hitSlop={16} style={styles.orb}>
           <AnimatedOrb size={64} />
           {orbBusy && (
