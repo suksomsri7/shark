@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "bash scripts/with-gate-lock.sh next build",
     "start": "next start",
     "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit",
@@ -93,7 +93,7 @@
     "qc:v2": "for f in scripts/pending/qc-chat-v2-*.mts; do echo \"=== $f\"; tsx \"$f\" || true; done",
     "qc:visual2": "tsx scripts/visual-qc-chat-v2.mts",
     "qc:visual": "tsx scripts/visual-qc-chat.mts",
-    "qc:all": "tsx scripts/qc-all.mts",
+    "qc:all": "bash scripts/with-gate-lock.sh tsx scripts/qc-all.mts",
     "qc:appstore": "tsx scripts/qc-appstore-ready.mts",
     "qc:account-deletion": "tsx scripts/qc-account-deletion.mts"
   },
