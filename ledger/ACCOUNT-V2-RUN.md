@@ -8,8 +8,8 @@
 |---|---|
 | WO | 0.1 QC env |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | (กำลังมอบหมาย) |
-| ขั้นที่ถึง | ยังไม่เริ่ม — ขั้นถัดไป: สร้าง Neon branch `acc-v2-qc` + `.env.qc` |
+| ผู้ทำ | Opus (sub-agent) · ขนาน: WO 0.2 Opus |
+| ขั้นที่ถึง | มอบหมายแล้ว 3 ก.ย. ~23:20 UTC — ดู `wo-notes/0.1.md` (Neon branch ชื่อ `wo-acc-v2-qc` ตาม prefix ของ neon-branch.mts) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
@@ -17,7 +17,7 @@
 | WO | ชื่อ | ผู้ทำ (สำรอง) | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|---|---|
 | 0.1 | QC env (Neon branch · seed · เฉลย · serve · visual) | Opus (Sonnet) | IN_PROGRESS | | |
-| 0.2 | ปิดรูรั่วเดิม (guard ทุก page · dedupe ผู้ติดต่อ · list server-side) | Opus (Sonnet) | TODO | | |
+| 0.2 | ปิดรูรั่วเดิม (guard ทุก page · dedupe ผู้ติดต่อ · list server-side) | Opus (Sonnet) | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~23:25 UTC ขนานกับ 0.1 · โน้ต `wo-notes/0.2.md` |
 | 0.3 | Schema เฟส 0 | Opus | TODO | | |
 | 0.4 | Shell V2 (เมนู 9 หมวด + flyout + sheet) | Sonnet | TODO | | |
 | 0.5 | ส่วนประกอบกลาง V2 | Sonnet | TODO | | |
