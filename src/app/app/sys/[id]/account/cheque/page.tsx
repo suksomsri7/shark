@@ -37,7 +37,7 @@ export default async function ChequePage({
   const { id } = await params;
   const { dir, err, ok } = await searchParams;
   const direction: AccountChequeDirection = dir === "OUT" ? "OUT" : "IN";
-  const { tenantId, systemId } = await loadAccountSystem(id);
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.cheque.manage" });
   const base = `/app/sys/${id}/account`;
   const [cheques, summary, finances] = await Promise.all([
     listCheques(tenantId, systemId, { direction }),

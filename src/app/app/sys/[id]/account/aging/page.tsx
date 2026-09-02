@@ -28,7 +28,7 @@ export default async function AgingPage({
       href={`${base}/aging?direction=${dir}`}
       className={`rounded-lg border px-3 py-1.5 text-sm ${
         direction === dir
-          ? "bg-[color:var(--color-fg)] font-medium text-[color:var(--color-bg)]"
+          ? "bg-[color:var(--color-ink)] font-medium text-[color:var(--color-surface)]"
           : "text-[color:var(--color-muted)]"
       }`}
     >

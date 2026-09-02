@@ -17,7 +17,7 @@ export default async function StatementPage({
 }) {
   const { id, financeId } = await params;
   const { from, to } = await searchParams;
-  const { tenantId, systemId } = await loadAccountSystem(id);
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.finance.manage" });
   const stmt = await financeStatement(tenantId, systemId, financeId, {
     from: from ? new Date(from) : undefined,
     to: to ? new Date(to) : undefined,

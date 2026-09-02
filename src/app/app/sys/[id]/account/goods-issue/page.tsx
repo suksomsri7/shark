@@ -24,7 +24,7 @@ export default async function GoodsIssuePage({
 }) {
   const { id } = await params;
   const { ok, err } = await searchParams;
-  const { tenantId, systemId } = await loadAccountSystem(id);
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.product.manage" });
   const base = `/app/sys/${id}/account`;
 
   const [allProducts, contacts, movements] = await Promise.all([

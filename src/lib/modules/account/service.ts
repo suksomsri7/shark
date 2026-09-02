@@ -139,6 +139,24 @@ export function normalizeTaxId(taxId: string | null | undefined): string {
   return (taxId ?? "").replace(/\D/g, "");
 }
 
+/**
+ * เบอร์โทรไทยให้อยู่รูปเดียวกัน (WO 0.2) — ใช้เป็นกุญแจจับคู่ผู้ติดต่อซ้ำ
+ *   "08-1234-5678"      → "0812345678"
+ *   "+66 81 234 5678"   → "0812345678"
+ *   "02-090-4301"       → "020904301"
+ *   "+66 (0)81 234 5678"→ "0812345678"
+ * เบอร์ต่างประเทศที่ไม่ใช่ +66 → คืนเฉพาะตัวเลข (ไม่ดัดแปลง)
+ * WO0.3: use phoneNorm column — เมื่อมีคอลัมน์แล้วให้เก็บค่านี้ลง DB แทนการคำนวณตอน query
+ */
+export function normalizePhoneTh(phone: string | null | undefined): string {
+  let d = (phone ?? "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.startsWith("0066")) d = d.slice(4); // 00 = รหัสโทรออก + 66 = รหัสประเทศไทย
+  if (!d.startsWith("66")) return d; // เบอร์ในประเทศ (ขึ้นต้น 0) หรือประเทศอื่น → เลขล้วน
+  d = d.slice(2);
+  return d.startsWith("0") ? d : "0" + d; // +66 (0)81… และ +6681… ให้ผลเดียวกัน
+}
+
 /** ตรวจ checksum เลขผู้เสียภาษีไทย 13 หลัก (mod-11 หลักที่ 13 = check digit) */
 export function isValidThaiTaxId(taxId: string | null | undefined): boolean {
   const id = normalizeTaxId(taxId);
@@ -701,6 +719,151 @@ export async function listDocuments(
   });
   if (tab === "overdue") return rows.filter((r) => isOverdue(r));
   return rows;
+}
+
+// ─── รายการเอกสารแบบกรอง/เรียง/แบ่งหน้า ฝั่ง server (WO 0.2 — เลิก take 500 แล้ว filter ใน UI) ───
+// ⚠️ `listDocuments` ด้านบนคงไว้เหมือนเดิมทุกอย่าง (ยังมี caller/ด่านเก่าใช้อยู่) — ตัวใหม่คือฟังก์ชันแยก
+
+/** ค่าที่ยอมรับใน `status`: สถานะจริง 1 ตัว · หลายตัว · "OVERDUE" (คำนวณใน SQL) · "ALL" (ไม่กรอง) */
+export type DocStatusFilter = AccountDocStatus | AccountDocStatus[] | "OVERDUE" | "ALL";
+
+export type ListDocumentsInput = {
+  docType: AccountDocType;
+  status?: DocStatusFilter;
+  /** ค้นหา: เลขที่เอกสาร หรือ ชื่อผู้ติดต่อ (ไม่สนตัวพิมพ์) */
+  q?: string;
+  contactId?: string;
+  /** ช่วงวันที่ออกเอกสาร (รับ Date หรือ "YYYY-MM-DD") */
+  from?: Date | string;
+  to?: Date | string;
+  page?: number;
+  /** ค่าเริ่มต้น 20 · สูงสุด 100 */
+  pageSize?: number;
+  sort?: DocSort;
+  /** ตัดรายการที่พ้นกำหนดออก (แท็บ "รอชำระ/รอตอบรับ" ที่ไม่รวมพ้นกำหนด) */
+  excludeOverdue?: boolean;
+};
+
+export type DocSort = "recent" | "issueDate" | "docNo" | "amount";
+
+export type DocTabCounts = Partial<Record<AccountDocStatus, number>> & {
+  ALL: number;
+  OVERDUE: number;
+};
+
+export type ListDocumentsPage = {
+  rows: (Prisma.AccountDocumentGetPayload<{
+    include: { contact: { select: { id: true; name: true } } };
+  }>)[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  tabCounts: DocTabCounts;
+};
+
+/**
+ * เงื่อนไข "พ้นกำหนด" ในรูป where ของ Prisma — ตรงกับ `isOverdue()` ทุกกรณี
+ * (คิดใน SQL ไม่ใช่ JS หลัง take — ไม่งั้นนับผิดเมื่อข้อมูลเกินหน้าแรก)
+ */
+function overdueWhere(now: Date): Prisma.AccountDocumentWhereInput {
+  return {
+    OR: [
+      { status: { in: ["AWAITING_PAYMENT", "PARTIAL"] }, dueDate: { lt: now } },
+      { status: "AWAITING_ACCEPT", validUntil: { lt: now } },
+    ],
+  };
+}
+
+function parseDay(v: Date | string | undefined, endOfDay: boolean): Date | undefined {
+  if (!v) return undefined;
+  const d = v instanceof Date ? new Date(v) : new Date(`${v}T00:00:00+07:00`);
+  if (Number.isNaN(d.getTime())) return undefined;
+  if (endOfDay && typeof v === "string") d.setTime(d.getTime() + 24 * 60 * 60 * 1000 - 1);
+  return d;
+}
+
+const DOC_SORT_ORDER: Record<DocSort, Prisma.AccountDocumentOrderByWithRelationInput[]> = {
+  recent: [{ updatedAt: "desc" }, { id: "desc" }],
+  issueDate: [{ issueDate: "desc" }, { id: "desc" }],
+  docNo: [{ docNo: "desc" }, { id: "desc" }],
+  amount: [{ grandTotal: "desc" }, { id: "desc" }],
+};
+
+export async function listDocumentsPaged(
+  tenantId: string,
+  systemId: string,
+  input: ListDocumentsInput,
+): Promise<ListDocumentsPage> {
+  const now = new Date();
+  const pageSize = Math.min(Math.max(Math.trunc(input.pageSize ?? 20) || 20, 1), 100);
+  const page = Math.max(Math.trunc(input.page ?? 1) || 1, 1);
+  const q = (input.q ?? "").trim();
+  const from = parseDay(input.from, false);
+  const to = parseDay(input.to, true);
+
+  // base = ทุกตัวกรองยกเว้นสถานะ → ใช้ทั้งนับแท็บและนับ total ให้บวกกันลงตัว
+  const base: Prisma.AccountDocumentWhereInput = {
+    tenantId,
+    systemId,
+    docType: input.docType,
+    ...(input.contactId ? { contactId: input.contactId } : {}),
+    ...(from || to ? { issueDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { docNo: { contains: q, mode: "insensitive" as const } },
+            { contact: { is: { name: { contains: q, mode: "insensitive" as const } } } },
+          ],
+        }
+      : {}),
+  };
+
+  const status = input.status ?? "ALL";
+  const statusWhere: Prisma.AccountDocumentWhereInput =
+    status === "ALL"
+      ? {}
+      : status === "OVERDUE"
+        ? overdueWhere(now)
+        : Array.isArray(status)
+          ? { status: { in: status } }
+          : { status };
+
+  const where: Prisma.AccountDocumentWhereInput = {
+    AND: [
+      base,
+      statusWhere,
+      ...(input.excludeOverdue ? [{ NOT: overdueWhere(now) }] : []),
+    ],
+  };
+
+  const [rows, total, grouped, overdueCount] = await Promise.all([
+    prisma.accountDocument.findMany({
+      where,
+      include: { contact: { select: { id: true, name: true } } },
+      orderBy: DOC_SORT_ORDER[input.sort ?? "recent"],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.accountDocument.count({ where }),
+    prisma.accountDocument.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
+    prisma.accountDocument.count({ where: { AND: [base, overdueWhere(now)] } }),
+  ]);
+
+  const tabCounts: DocTabCounts = { ALL: 0, OVERDUE: overdueCount };
+  for (const g of grouped) {
+    tabCounts[g.status] = g._count._all;
+    tabCounts.ALL += g._count._all;
+  }
+
+  return {
+    rows,
+    total,
+    page,
+    pageSize,
+    pageCount: Math.max(Math.ceil(total / pageSize), 1),
+    tabCounts,
+  };
 }
 
 export function getDocument(tenantId: string, systemId: string, id: string) {
@@ -1763,18 +1926,92 @@ export async function findAccountLinkFor(tenantId: string, linkedKind: "POS" | "
 export async function findDocByRef(systemId: string, docType: AccountDocType, refType: string, refId: string) {
   return prisma.accountDocument.findFirst({ where: { systemId, docType, refType, refId }, select: { id: true } });
 }
+/**
+ * จับคู่ผู้ติดต่อด้วยเบอร์โทรแบบ normalize (WO 0.2)
+ * ⚠️ schema ยังไม่มีคอลัมน์ phoneNorm (จะเพิ่มใน WO 0.3) จึงต้อง normalize ตอน query:
+ *   (1) ทางเร็ว — เบอร์ที่เก็บไม่มีตัวคั่น ชนได้ด้วย `contains` 9 หลักท้าย (คุมด้วย index systemId)
+ *   (2) ทางสำรอง — เบอร์ที่เก็บมีขีด/เว้นวรรค/วงเล็บ ต้องดึงเฉพาะแถวที่มีเบอร์มา normalize เทียบ
+ * WO0.3: use phoneNorm column — แทนทั้งบล็อกนี้ด้วย `where: { systemId, phoneNorm, archivedAt: null }`
+ */
+async function findContactByPhoneNorm(
+  systemId: string,
+  phone: string,
+): Promise<{ id: string } | null> {
+  const norm = normalizePhoneTh(phone);
+  if (norm.length < 8) return null; // สั้นเกินกว่าจะเป็นกุญแจตัวตน
+  const last9 = norm.slice(-9);
+  const fast = await prisma.accountContact.findFirst({
+    where: { systemId, archivedAt: null, phone: { contains: last9 } },
+    select: { id: true, phone: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (fast && normalizePhoneTh(fast.phone) === norm) return { id: fast.id };
+  const rows = await prisma.accountContact.findMany({
+    where: { systemId, archivedAt: null, NOT: { phone: null } },
+    select: { id: true, phone: true },
+    orderBy: { createdAt: "asc" },
+    take: 5000,
+  });
+  const hit = rows.find((r) => normalizePhoneTh(r.phone) === norm);
+  return hit ? { id: hit.id } : null;
+}
+
+/**
+ * หา/สร้างผู้ติดต่อฝั่งบัญชีจากระบบอื่น (CRM/POS/แชท ผ่าน facade `index.ts`)
+ * ลำดับจับคู่ (MAP §F.4) — **ห้ามจับด้วยชื่อเปล่า** และกรอง `archivedAt: null` เสมอ:
+ *   1) เลขผู้เสียภาษี + รหัสสาขา (คู่นี้คือกุญแจตัวตนตามกฎหมาย)
+ *   2) เบอร์โทร normalize (+66… = 0…)
+ *   3) ชื่อ **และ** อีเมล ตรงกันทั้งคู่
+ *   ไม่เข้าเงื่อนไขไหนเลย → สร้างใหม่ (ยอมมีซ้ำ ดีกว่าหยิบผู้ติดต่อของคนอื่นมาใช้เงียบ ๆ)
+ */
 export async function findOrCreateCustomerContact(
   ctx: { tenantId: string; systemId: string },
-  c: { name: string; phone?: string | null; email?: string | null },
+  c: {
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+    taxId?: string | null;
+    branchCode?: string | null;
+  },
 ) {
-  const existing = await prisma.accountContact.findFirst({
-    where: { systemId: ctx.systemId, OR: [...(c.phone ? [{ phone: c.phone }] : []), { name: c.name }] },
-    select: { id: true },
-  });
-  if (existing) return existing;
+  // (1) เลขผู้เสียภาษี + สาขา
+  const taxId = normalizeTaxId(c.taxId);
+  if (taxId) {
+    const branchCode = c.branchCode || "00000";
+    const byTax = await prisma.accountContact.findFirst({
+      where: { systemId: ctx.systemId, archivedAt: null, taxId, branchCode },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+    if (byTax) return byTax;
+  }
+
+  // (2) เบอร์โทร (normalize)
+  if (c.phone) {
+    const byPhone = await findContactByPhoneNorm(ctx.systemId, c.phone);
+    if (byPhone) return byPhone;
+  }
+
+  // (3) ชื่อ + อีเมล ต้องตรงทั้งคู่ (ชื่ออย่างเดียวไม่พอ — ชื่อซ้ำกันได้)
+  const email = (c.email ?? "").trim();
+  if (email) {
+    const byNameEmail = await prisma.accountContact.findFirst({
+      where: { systemId: ctx.systemId, archivedAt: null, name: c.name, email },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+    if (byNameEmail) return byNameEmail;
+  }
+
   return createContact({
-    tenantId: ctx.tenantId, systemId: ctx.systemId, kind: "CUSTOMER",
-    name: c.name, phone: c.phone ?? null, email: c.email ?? null,
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    kind: "CUSTOMER",
+    name: c.name,
+    phone: c.phone ?? null,
+    email: c.email ?? null,
+    taxId: taxId || null,
+    branchCode: c.branchCode || undefined,
   } as Parameters<typeof createContact>[0]);
 }
 export async function setDocExternalRef(docId: string, ref: { refSystemId: string; refType: string; refId: string }) {

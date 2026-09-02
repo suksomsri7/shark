@@ -1,3 +1,4 @@
+import { requireAccountPage } from "@/lib/modules/account/guard";
 import { ExpenseListPage } from "@/lib/modules/account/expense-page";
 import type { AccountDocType } from "@prisma/client";
 
@@ -10,6 +11,7 @@ export default async function Page({
 }) {
   const { id } = await params;
   const sp = await searchParams;
+  await requireAccountPage(id, "account.doc.create"); // WO 0.2: ด่านสิทธิ์ก่อนโหลดข้อมูล
   const docType = ("PURCHASE") as AccountDocType;
   return <ExpenseListPage systemId={id} docType={docType} variant="purchase" tab={sp.tab} err={sp.err} />;
 }

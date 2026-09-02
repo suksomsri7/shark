@@ -31,7 +31,7 @@ export default async function WhtPage({
   const { id } = await params;
   const { period: periodQ, err, tab } = await searchParams;
   const period = periodQ || defaultPeriod();
-  const { tenantId, systemId } = await loadAccountSystem(id);
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.wht.manage" });
   const base = `/app/sys/${id}/account`;
 
   const [credits, deductions] = await Promise.all([

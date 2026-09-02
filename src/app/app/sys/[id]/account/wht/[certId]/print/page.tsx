@@ -8,7 +8,7 @@ import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
 // หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) — ฟอร์มราชการ B&W A4 · พิมพ์ด้วย Ctrl+P
 export default async function WhtCertPrintPage({ params }: { params: Promise<{ id: string; certId: string }> }) {
   const { id, certId } = await params;
-  const { tenantId, systemId } = await loadAccountSystem(id);
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.wht.manage" });
   const [cert, s] = await Promise.all([
     getWhtCert(tenantId, systemId, certId),
     getSettings(tenantId, systemId),

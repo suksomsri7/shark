@@ -19,7 +19,7 @@ export default async function ContactsPage({
 }) {
   const { id } = await params;
   const { err } = await searchParams;
-  const { tenantId, systemId } = await loadAccountSystem(id);
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.contact.manage" });
   const contacts = await listContacts(tenantId, systemId);
   const base = `/app/sys/${id}/account`;
 

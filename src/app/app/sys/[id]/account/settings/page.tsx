@@ -24,7 +24,7 @@ export default async function AccountSettingsPage({
 }) {
   const { id } = await params;
   const { saved } = await searchParams;
-  const { tenantId, systemId } = await loadAccountSystem(id);
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.settings.manage" });
   const s = await getSettings(tenantId, systemId);
   const base = `/app/sys/${id}/account`;
 

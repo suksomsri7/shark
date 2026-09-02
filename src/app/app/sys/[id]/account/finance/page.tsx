@@ -24,7 +24,7 @@ export default async function FinancePage({
 }) {
   const { id } = await params;
   const { err, ok } = await searchParams;
-  const { tenantId, systemId } = await loadAccountSystem(id);
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.finance.manage" });
   const accounts = await financeBalances(tenantId, systemId);
   const base = `/app/sys/${id}/account`;
   const pettyAccounts = accounts.filter((a) => a.type === "PETTY_CASH");

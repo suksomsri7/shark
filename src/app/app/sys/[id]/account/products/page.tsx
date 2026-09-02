@@ -54,7 +54,7 @@ export default async function ProductsPage({
   const { id } = await params;
   const { tab: tabRaw, err } = await searchParams;
   const tab: Tab = tabRaw === "units" ? "units" : tabRaw === "categories" ? "categories" : "catalog";
-  const { tenantId, systemId } = await loadAccountSystem(id);
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.product.manage" });
   const base = `/app/sys/${id}/account`;
 
   const [products, units, categories, incomeAccts, expenseAccts] = await Promise.all([

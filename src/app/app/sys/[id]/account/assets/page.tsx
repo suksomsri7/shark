@@ -45,7 +45,7 @@ export default async function AssetsPage({
 }) {
   const { id } = await params;
   const { err, ok } = await searchParams;
-  const { tenantId, systemId } = await loadAccountSystem(id);
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.asset.manage" });
   const ctx = { tenantId, systemId };
 
   const [assets, assetAccts, accumAccts, expenseAccts, financeAccts, sourceDocs] = await Promise.all([

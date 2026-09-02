@@ -28,7 +28,7 @@ export default async function TaxPage({
   const period = sp.period || defaultPeriod();
   const type = sp.type === "3" ? 3 : sp.type === "53" ? 53 : 53;
   const year = period.slice(0, 4);
-  const { tenantId, systemId } = await loadAccountSystem(id);
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.tax.view" });
   const base = `/app/sys/${id}/account`;
 
   const [report, creditYear] = await Promise.all([

@@ -25,7 +25,7 @@ export default async function DocumentsPage({
 }) {
   const { id } = await params;
   const { folder, q, err, ok } = await searchParams;
-  const { tenantId, systemId } = await loadAccountSystem(id);
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.document.manage" });
   const base = `/app/sys/${id}/account`;
   const [files, folders] = await Promise.all([
     listAttachments(tenantId, systemId, { folder: folder || undefined, q: q || undefined }),
