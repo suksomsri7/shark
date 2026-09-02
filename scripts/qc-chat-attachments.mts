@@ -29,6 +29,12 @@
 // AT-10) preview ของข้อความที่มีแต่ไฟล์ ต้องไม่ว่าง (หน้ารายการ inbox ต้องไม่เป็นบรรทัดเปล่า)
 // AT-11) แนบได้ไม่เกิน 10 รายการต่อข้อความ (กติกาเดียวกับขาเข้า)
 // AT-12) อัปโหลดล้ม → คืนเหตุผลภาษาไทย ไม่ throw และ **ต้องไม่เขียนข้อความครึ่ง ๆ กลาง ๆ**
+// AT-13) 🔴 WO-CV14 ต่อเนื่อง (Fable ตัดสิน 2 ก.ย.): ด่านชนิดไฟล์ของ `uploadReplyFiles` ต้อง
+//        **normalize ก่อนเทียบทะเบียน** ให้ตรงกับ `sendVoiceReplyAction` และ `uploadFile`
+//        เหตุ: mime ที่มีพารามิเตอร์ห้อย (`audio/wav;codecs=1` · `audio/webm;codecs=opus`) เป็นของจริง
+//        ที่เบราว์เซอร์คืนมา ⇒ เทียบดิบ = ไฟล์ที่ระบบรับอยู่แล้วถูกปฏิเสธ โดยที่ storage เองรับได้
+//        และข้อความ error ของด่านนี้ต้อง **สร้างจากทะเบียน** ไม่ใช่พิมพ์ลิสต์นามสกุลไว้เอง
+//        (ลิสต์พิมพ์มือ = ทะเบียนที่สอง — วันที่เพิ่มชนิดใหม่ ข้อความจะโกหกผู้ใช้ทันที)
 //
 // ═══════ สัญญาชื่อ/ช่องฟอร์มที่สาย D ต้องทำตาม (ถ้าเปลี่ยน ให้แก้ค่าคงที่ตรงนี้ ไม่ใช่แก้ตรรกะ) ═══════
 //   sendReplyAction: ไฟล์มาในช่อง FormData ชื่อ "files" (multiple) — `formData.getAll("files")`
@@ -447,6 +453,58 @@ try {
     chk("AT-9.7", "🟢 คู่บวก: ส่งข้อความตัวอักษรล้วน (ไม่มีไฟล์) ยังทำงานเหมือนเดิม",
       (tables.chatMessage ?? []).length === 1 && net.filter((n) => n.url.includes("bunnycdn")).length === 0,
       "msg 1 · ไม่อัปอะไร", `msg ${(tables.chatMessage ?? []).length} · อัป ${net.filter((n) => n.url.includes("bunnycdn")).length}`);
+  });
+
+  // ═════════ AT-13 · normalize mime ที่ด่านไฟล์แนบ + ข้อความ error จากทะเบียน ═════════
+  await section("AT-13", "AT-13 🔴 mime ที่มีพารามิเตอร์ห้อยต้องผ่านด่าน + ข้อความบอกชนิดต้องมาจากทะเบียน:", async () => {
+    const act = chatActions?.sendReplyAction;
+    if (!act) { chk("AT-13.0", "มี sendReplyAction", false, "มี", "ไม่มี"); return; }
+    const mkFd = (files: File[]) => {
+      const fd = new FormData();
+      fd.set("systemId", "S1"); fd.set("conversationId", "cv-web"); fd.set("body", "");
+      for (const f of files) fd.append("files", f);
+      return fd;
+    };
+    const run = async (fn: () => unknown) => { try { await fn(); } catch { /* action โยน redirect/ChatError ได้ตามปกติ */ } };
+
+    seedShop();
+    await run(() => act(mkFd([new File([new Uint8Array(32)], "เสียงลูกค้า.wav", { type: "audio/wav;codecs=1" })])));
+    const msgs = tables.chatMessage ?? [];
+    const atts = tables.chatAttachment ?? [];
+    const bunny = net.filter((n) => n.url.includes("storage.bunnycdn.com"));
+    chk("AT-13.1", "🔴 `audio/wav;codecs=1` ต้อง **ผ่าน** ด่าน (storage เองรับ `audio/wav` อยู่แล้ว — เทียบดิบคือปฏิเสธของที่ระบบรับได้)",
+      msgs.length === 1 && atts.length === 1 && bunny.length === 1,
+      "msg 1 · att 1 · อัป 1", `msg ${msgs.length} · att ${atts.length} · อัป ${bunny.length}`);
+    chk("AT-13.2", "mime ที่บันทึกลง ChatAttachment เป็นชื่อในทะเบียน (ตัด `;codecs=…` ทิ้ง) ไม่ใช่ค่าดิบ",
+      atts[0]?.mimeType === "audio/wav", "audio/wav", j(atts[0]?.mimeType ?? null));
+    chk("AT-13.3", "ไฟล์ถูกอัปด้วยนามสกุล `.wav` จริง (Bunny เสิร์ฟ Content-Type จากนามสกุล)",
+      bunny.length === 1 && /\.wav$/.test(String(bunny[0]?.url ?? "")), "path ลงท้าย .wav", j(bunny[0]?.url ?? null));
+    chk("AT-13.4", "ชนิดข้อความยังเป็น FILE (ไม่มี durationMs = ไม่ใช่ข้อความเสียง)",
+      msgs[0]?.type === "FILE" && atts[0]?.durationMs == null, "FILE + durationMs null", j({ t: msgs[0]?.type ?? null, d: atts[0]?.durationMs ?? null }));
+
+    seedShop();
+    await run(() => act(mkFd([new File([new Uint8Array(32)], "hack.exe", { type: "application/x-msdownload;charset=binary" })])));
+    chk("AT-13.5", "🔴 คู่ลบ: normalize แล้วยังไม่อยู่ในทะเบียน = ปฏิเสธเหมือนเดิม (normalize ≠ ปล่อยผ่าน)",
+      (tables.chatMessage ?? []).length === 0 && net.filter((n) => n.url.includes("bunnycdn")).length === 0,
+      "msg 0 · อัป 0", `msg ${(tables.chatMessage ?? []).length} · อัป ${net.filter((n) => n.url.includes("bunnycdn")).length}`);
+
+    // ── ข้อความบอกชนิดที่รับได้ ต้องมาจากทะเบียน ไม่ใช่พิมพ์มือ ──
+    chk("AT-13.6", "ด่านนี้ normalize ก่อนเทียบทะเบียน (เลิกเทียบ `f.type` ดิบ)",
+      /normalizeUploadType\(\s*f\.type\s*\)/.test(ACTIONS_SRC) && !/\(f\.type \?\? ""\)\.trim\(\)\.toLowerCase\(\)/.test(ACTIONS_SRC),
+      "ใช้ normalizeUploadType(f.type)", "ยังเทียบ f.type ดิบ");
+    // ขอบเขต: วัดเฉพาะ **ด่านไฟล์แนบ** (`uploadReplyFiles`) ตามที่ Fable สั่ง — เส้นทางข้อความเสียง
+    // (`sendVoiceReplyAction`) ยังมีลิสต์พิมพ์มืออยู่และ **ตกยุคแล้ว** (ไม่มี wav ทั้งที่ตัวอัดใช้ wav
+    // เป็นทางลงบน iOS ตั้งแต่ 2 ก.ย.) — รายงานให้ Fable ส่งต่อสาย M ไม่แก้ข้ามสายเอง
+    const UPLOAD_FN = (() => {
+      const i = ACTIONS_SRC.indexOf("async function uploadReplyFiles");
+      if (i < 0) return "";
+      const j2 = ACTIONS_SRC.slice(i + 10).search(/\nexport\s/);
+      return j2 < 0 ? ACTIONS_SRC.slice(i) : ACTIONS_SRC.slice(i, i + 10 + j2);
+    })();
+    chk("AT-13.7", "🔴 ข้อความ error ของด่านไฟล์แนบ ไม่มีลิสต์นามสกุลพิมพ์มือ (ทะเบียนที่สอง) — ต้องสร้างจาก ALLOWED_UPLOAD_TYPES",
+      UPLOAD_FN !== "" && !/jpg\/png\/webp|webm\/m4a\/mp3/.test(UPLOAD_FN) && /uploadExtensions\(/.test(UPLOAD_FN),
+      "สร้างจากทะเบียน",
+      UPLOAD_FN === "" ? "หา uploadReplyFiles ไม่เจอ" : (/jpg\/png\/webp|webm\/m4a\/mp3/.test(UPLOAD_FN) ? "ยังพิมพ์ลิสต์นามสกุลไว้ในข้อความ" : "ไม่ได้สร้างจากทะเบียน"));
   });
 
   // ═════════ AT-10 · PDPA: ไฟล์แนบขาออกต้องถูกกวาดเหมือนขาเข้า ═════════

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
+import { evaluate } from "@/lib/core/rbac";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { removeSystemAction } from "@/lib/actions/systems";
@@ -19,6 +20,15 @@ export default async function ManageSystemsPage({
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
   const isOwner = auth.active.role === "OWNER";
+  // สิทธิ์แก้ข้อมูลสาขา — ถามเป็นราย **สาขา** เพราะ `unitAccess` จำกัดคนให้คุมได้แค่บางสาขา
+  // 🔴 ปุ่มที่กดแล้วเจอ 404 = โกหกผู้ใช้ ⇒ ต้องใช้ตัวตัดสินตัวเดียวกับหน้าปลายทางและ server action
+  const membership = {
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  };
+  const canEditUnit = (unitId: string) =>
+    evaluate(membership, { module: "systems", action: "systems.unit.update", unitId });
 
   const [units, systems] = await Promise.all([
     prisma.businessUnit.findMany({
@@ -35,6 +45,9 @@ export default async function ManageSystemsPage({
       name: u.name,
       def: systemDef(u.type),
       href: `/app/u/${u.slug}`,
+      // ทางเข้าหน้าตั้งค่าสาขา (ที่อยู่/แผนที่) — WO-CV14 ข · มีเฉพาะแถวที่เป็น "กิจการ/สาขา"
+      // 🔴 หน้าที่ไม่มีทางเข้าคือหน้าที่ไม่มีใครใช้ (ปุ่ม "แผนที่ร้าน" ในแชทชี้ทางมาที่นี่)
+      settingsHref: canEditUnit(u.id) ? `/app/settings/units/${u.id}` : null,
     })),
     ...systems.map((s) => ({
       kind: "feature" as const,
@@ -42,6 +55,7 @@ export default async function ManageSystemsPage({
       name: s.name,
       def: systemDef(s.type),
       href: `/app/sys/${s.id}`,
+      settingsHref: null as string | null,
     })),
   ];
 
@@ -70,6 +84,11 @@ export default async function ManageSystemsPage({
                     {r.def?.label ?? r.kind}
                   </div>
                 </div>
+                {r.settingsHref && (
+                  <Link href={r.settingsHref} className="btn btn-ghost text-xs">
+                    ตั้งค่าสาขา
+                  </Link>
+                )}
                 {isOwner && (
                   <ConfirmDialog
                     triggerLabel="เอาออก"

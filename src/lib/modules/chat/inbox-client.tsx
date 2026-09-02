@@ -23,6 +23,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import Link from "next/link";
 import { ChatNotifyClient, type ChatNotifyRow } from "@/components/chat-notify-client";
 import {
+  inferUploadType,
+  uploadExtensions,
+  withUploadType,
+  type UploadTypeRegistry,
+} from "@/lib/storage/upload-accept";
+import {
   CHANNEL_META,
   CHANNEL_ORDER,
   ChannelBadge,
@@ -160,8 +166,12 @@ export type ChatInboxClientProps = {
   memberLinked: boolean;
   /** เพดานไฟล์แนบจาก `storage/service` — ห้ามพิมพ์ตัวเลขซ้ำที่นี่ */
   maxAttachmentBytes: number;
-  /** ชนิดไฟล์ที่ระบบรับ (มาจากทะเบียนเดียวกับที่เซิร์ฟเวอร์ตรวจ) */
-  acceptTypes: string;
+  /**
+   * ทะเบียนชนิดไฟล์ที่ระบบรับ (`ALLOWED_UPLOAD_TYPES` ตัวเดียวกับที่เซิร์ฟเวอร์ตรวจ)
+   * 🔴 ส่งมาเป็นทะเบียน ไม่ใช่สตริง accept สำเร็จรูป — หน้าจอต้องใช้ทั้งประกอบ `accept`
+   *    และอนุมานชนิดจากนามสกุลตอนตรวจไฟล์ก่อนอัป (import ตรงไม่ได้ ไฟล์นั้นลาก prisma ติดมา)
+   */
+  uploadTypes: UploadTypeRegistry;
   /**
    * WO-CV12: ลิงก์ "จัดการการเชื่อมระบบ" ที่เคยอยู่ใต้ชื่อหน้า (โผล่เฉพาะร้านหลายสาขา)
    * ชื่อหน้าถูกตัดทิ้งแล้ว ⇒ ลิงก์ย้ายเข้าเมนู ⋮ ของหัวรายการ · `null` = ร้านสาขาเดียว ไม่ต้องมี
@@ -187,7 +197,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
     canTranslate,
     memberLinked,
     maxAttachmentBytes,
-    acceptTypes,
+    uploadTypes,
     manageLinksHref = null,
   } = props;
 
@@ -454,19 +464,44 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
   const extraCount = extraFilterCount(extra);
 
   // ── ไฟล์แนบ: ตรวจ **ก่อน** อัป (ไม่ใช่ปล่อยให้รอ 30 วิ แล้วค่อยบอกว่าใหญ่เกิน) ──
+  //
+  // 🔴 WO-CV14: ของเดิมตรวจแต่ "ขนาด" ทั้งที่คอมโพเนนต์เขียนไว้ว่า "ตรวจขนาด/ชนิดก่อนอัปที่ตัวแม่"
+  //    ⇒ ไฟล์ผิดชนิดเดินทางไปจนสุดแล้วค่อยถูกเซิร์ฟเวอร์ปฏิเสธ — ผิดกติกา "ตรวจก่อนอัป" ตรง ๆ
+  // 🔴 ไฟล์ `.wav` บางเครื่องคืน `File.type` ว่าง / `audio/wave` / `audio/vnd.wave`
+  //    ⇒ เทียบ mime ดิบไม่พอ ต้องอนุมานจากนามสกุลด้วย (inferUploadType)
+  // 🔴 อนุมานได้แล้วต้อง **ห่อ File ใหม่ให้มี mime** ด้วย เพราะ `uploadReplyFiles` ฝั่งเซิร์ฟเวอร์
+  //    อ่าน `f.type` ตรง ๆ — ส่งไฟล์ type ว่างขึ้นไป = โดนปฏิเสธเหมือนเดิมทั้งที่จอบอกว่าผ่านแล้ว
+  //    (ด่านฝั่งเซิร์ฟเวอร์ยังอยู่ครบ ที่เพิ่มตรงนี้คือ "บอกให้เร็ว" ไม่ใช่ "ตรวจแทน")
   const addFiles = (picked: FileList | null) => {
     if (!picked || picked.length === 0) return;
     const next: File[] = [];
     const tooBig: string[] = [];
+    const wrongType: string[] = [];
     for (const f of Array.from(picked)) {
-      if (f.size > maxAttachmentBytes) tooBig.push(`${f.name} (${mb(f.size)})`);
-      else next.push(f);
+      const mime = inferUploadType(f, uploadTypes);
+      if (mime === null) {
+        wrongType.push(f.name);
+        continue;
+      }
+      if (f.size > maxAttachmentBytes) {
+        tooBig.push(`${f.name} (${mb(f.size)})`);
+        continue;
+      }
+      next.push(withUploadType(f, mime));
     }
-    setFileErr(
-      tooBig.length > 0
-        ? `ไฟล์ใหญ่เกิน ${mb(maxAttachmentBytes)} จึงยังส่งไม่ได้: ${tooBig.join(", ")} — ย่อขนาดแล้วเลือกใหม่ได้เลย`
-        : null,
-    );
+    const notes: string[] = [];
+    if (tooBig.length > 0) {
+      notes.push(
+        `ไฟล์ใหญ่เกิน ${mb(maxAttachmentBytes)} จึงยังส่งไม่ได้: ${tooBig.join(", ")} — ย่อขนาดแล้วเลือกใหม่ได้เลย`,
+      );
+    }
+    if (wrongType.length > 0) {
+      // ชนิดที่รับได้ดึงจากทะเบียนเดียวกับเซิร์ฟเวอร์ — ไม่พิมพ์มือ (พิมพ์มือ = เพี้ยนวันที่เพิ่มชนิดใหม่)
+      notes.push(
+        `ยังแนบไฟล์เหล่านี้ไม่ได้: ${wrongType.join(", ")} — ชนิดที่แนบได้ตอนนี้คือ ${uploadExtensions(uploadTypes).join(" · ")}`,
+      );
+    }
+    setFileErr(notes.length > 0 ? notes.join(" · ") : null);
     if (next.length > 0) setFiles((cur) => [...cur, ...next].slice(0, 10));
   };
 
@@ -1944,7 +1979,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
                     onPickFiles={addFiles}
                     onRemoveFile={removeFile}
                     maxAttachmentBytes={maxAttachmentBytes}
-                    acceptTypes={acceptTypes}
+                    uploadTypes={uploadTypes}
                     fileErr={fileErr}
                     formErr={formErr}
                     isInternal={isInternal}

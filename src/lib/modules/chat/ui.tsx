@@ -115,6 +115,9 @@ export async function ChatInboxSection({
           unread={thread.staffUnreadCount}
         />
       )}
+      {/* 🔴 `uploadTypes` ส่ง "ทะเบียน" ลงไปทั้งก้อน ไม่ใช่สตริง accept สำเร็จรูป (WO-CV14) —
+          หน้าจอต้องใช้ทั้งประกอบ `accept` (mime + นามสกุล) และอนุมานชนิดจากนามสกุลตอนตรวจ
+          ไฟล์ก่อนอัป · คอมโพเนนต์ client import `storage/service` ตรงไม่ได้ (ลาก prisma ติดไปในบันเดิล) */}
       <ChatInboxClient
         systemId={systemId}
         baseHref={`/app/sys/${systemId}`}
@@ -133,7 +136,7 @@ export async function ChatInboxSection({
         canTranslate={canTranslate}
         memberLinked={!!setting.memberSystemId}
         maxAttachmentBytes={CHAT_ATTACHMENT_MAX_BYTES}
-        acceptTypes={Object.keys(ALLOWED_UPLOAD_TYPES).join(",")}
+        uploadTypes={ALLOWED_UPLOAD_TYPES}
         manageLinksHref={multiUnit ? "/app/settings/connections" : null}
       />
     </>
