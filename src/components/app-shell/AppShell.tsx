@@ -81,6 +81,14 @@ export function AppShell({
   // WO-CV12: หน้ากล่องแชทเต็มจอ = `/app/sys/<id>` ของระบบที่เป็นแชท (หน้าย่อยอย่าง /chat/channels ไม่นับ)
   // 🔴 ตัดสินจากทะเบียนที่ layout ส่งมา + pathname — ไม่ฮาร์ดโค้ด id และไม่ให้หน้าไปแตะ DOM ของ shell
   const chatFullscreen = chatSystemIds.some((id) => pathname === `/app/sys/${id}`);
+  // 🔴 บอก "แอป SHARK" ด้วย — orb ที่ทับหน้าแชทบนมือถือแอปคือปุ่ม native ของแอป ไม่ใช่ของเว็บ
+  //    (เจ้าของเจอ 2 ก.ย. ล้างแคช Safari แล้วก็ไม่หายเพราะคนละตัวกัน) · สัญญา: {ev:"chat-fullscreen", on}
+  //    ฝั่งรับอยู่ apps/mobile/app/(app)/index.tsx · บนเบราว์เซอร์ปกติ ReactNativeWebView ไม่มี = no-op
+  useEffect(() => {
+    (window as { ReactNativeWebView?: { postMessage: (s: string) => void } }).ReactNativeWebView?.postMessage(
+      JSON.stringify({ ev: "chat-fullscreen", on: chatFullscreen }),
+    );
+  }, [chatFullscreen]);
 
   // 🔴 สัญญาข้ามชั้น: โมดูลแชทห้าม import จาก app-shell และ shell ห้าม import จากโมดูล
   //    ⇒ ปุ่ม ☰ ในหัวรายการแชทยิง CustomEvent ชื่อเดียว แล้ว shell เปิด drawer ให้

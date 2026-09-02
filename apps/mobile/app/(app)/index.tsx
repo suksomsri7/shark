@@ -22,6 +22,8 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [orbBusy, setOrbBusy] = useState(false);
+  // หน้าแชทของเว็บส่งสัญญาณมา → ซ่อน orb native (มันทับปุ่มส่ง/มุมกล่องแชท — เจ้าของสั่ง 2 ก.ย.)
+  const [hideOrb, setHideOrb] = useState(false);
 
   // แตะ orb ครั้งแรก = ให้ AI ทักพาตั้งค่า (welcome) · มีห้องแล้ว/พลาด → เข้ารายการห้องเดิม
   const openAssistant = useCallback(async () => {
@@ -121,6 +123,15 @@ export default function DashboardScreen() {
             applicationNameForUserAgent="SharkApp/1"
             onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
             style={styles.webview}
+            onMessage={(ev) => {
+              // สัญญาจากเว็บ (AppShell): {ev:"chat-fullscreen", on:boolean}
+              try {
+                const d = JSON.parse(ev.nativeEvent.data) as { ev?: string; on?: boolean };
+                if (d.ev === "chat-fullscreen") setHideOrb(d.on === true);
+              } catch {
+                // ข้อความอื่นที่ไม่ใช่ของเรา — เงียบ
+              }
+            }}
             onLoadEnd={() => setLoading(false)}
             onError={() => {
               setError("เปิดระบบงานไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองใหม่");
@@ -149,7 +160,7 @@ export default function DashboardScreen() {
         )}
 
         {/* ปุ่ม orb AI ลอยมุมล่างขวา (native) — หมุนช้า+เต้นหัวใจ (AnimatedOrb) · glow อยู่ในตัว png */}
-        {!loading && !error && (
+        {!loading && !error && !hideOrb && (
         <Pressable onPress={openAssistant} disabled={orbBusy} hitSlop={16} style={styles.orb}>
           <AnimatedOrb size={64} />
           {orbBusy && (

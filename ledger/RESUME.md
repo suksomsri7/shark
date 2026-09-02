@@ -1,5 +1,13 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🫧 2 ก.ย. (บ่าย) — orb AI ที่ทับหน้าแชทบน "แอป SHARK" = ปุ่ม native ของแอป ไม่ใช่ของเว็บ
+- เจ้าของล้างแคช Safari/รีสตาร์ตแอปแล้วก็ไม่หาย — เพราะเว็บซ่อนของตัวเองถูกแล้ว (พิสูจน์ด้วย puppeteer บน prod:
+  display=none ทั้ง 390/1440) แต่แอป (apps/mobile = WebView + orb native ลอยทุกหน้า) วาดทับเอง
+- แก้: สัญญาใหม่ **เว็บ→แอป** `postMessage {ev:"chat-fullscreen", on}` จาก AppShell (no-op บนเบราว์เซอร์ปกติ)
+  · แอปรับใน `apps/mobile/app/(app)/index.tsx` → ซ่อน orb เมื่ออยู่หน้าแชท · **OTA shark-ai แล้ว**
+  (branch production · runtime 1.0.0 = build #23 · group `6b4a02d4` · ⚠️ eas update ของแอปนี้ต้องมี `--environment production`)
+- 🔴 บทเรียน: จอในแอปเป็น 2 ชั้น (web + native overlay) — "เห็นบนจอ" ไม่ได้แปลว่าเป็นของเว็บ ต้องถามก่อนว่าเปิดจากแอปหรือเบราว์เซอร์
+
 ## 🔁 2 ก.ย. (สาย) — D30: เสียงพังรอบสอง → ราก 2 ชั้น → แก้ถอนราก + ซ่อมไฟล์ prod
 - เจ้าของเทสซ้ำแล้วเงียบทุกจอ: (1) m4a จาก MediaRecorder ของ Chrome = **fragmented MP4** — iOS เปิดไฟล์ตรงไม่ได้
   และ `canPlayType` จับไม่ได้ (ตอบว่าเล่นได้) · (2) คลิปเทสอัดมาแทบเงียบ (max −39.7dB — เพิ่ม `ctx.resume()`)
