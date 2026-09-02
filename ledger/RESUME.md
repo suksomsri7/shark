@@ -2,7 +2,7 @@
 
 ## 🎨 3 ก.ย. (เช้ามืด) — [session บัญชี] แบบร่างรอบ 2 (ละเอียดระดับฟิลด์) เสร็จ — **รอเจ้าของตรวจ ยังไม่ coding**
 - เจ้าของเคาะรอบ 1 "ชอบทั้งหมด" + ส่ง PEAK 81 ภาพ (Drive) + นโยบาย 4 ข้อ (ไม่เอาแพ็กเกจ · ไม่มีล็อก · ผู้ติดต่อเชื่อมระบบอื่น · สินค้าเชื่อมคลัง/POS)
-- **ส่งมอบ** (`docs/design/account-v2/` · ยังไม่ commit — git ถูก classifier บล็อกหลัง container restart):
+- **ส่งมอบ** (`docs/design/account-v2/` · commit 831fe01 push แล้ว บน branch session/accounting):
   `DESIGN-SPEC-V2.md` (สเปคหลัก 15 หัวข้อ — coding ต้องอ้างเลขหัวข้อ) · `INTEGRATION-MAP.md` (Party + InvItem กลาง) · `refs-peak/` (ไฟล์ CATALOG-01 … CATALOG-08) (80 ภาพ) + `refs-peak/AccDesign/` (ต้นฉบับ) ·
   mockup รอบ 2 `mockup-A..E.html` + `render-A..E.mjs` → PNG g1–g20 (+ แบบเปิด/ปิดเมนู 5 ใบ) · `contact-sheet-2.png`
 - 🔴 บทเรียน: sub-agent อ่าน 80 ภาพในตัวเดียว = 470k token โควตาบัญชีหมด → แบ่ง ≤10 ภาพ/ตัว เขียนไฟล์ทีละชุด (memory `feedback_subagent_batch_size_images`) · Opus ติด rate limit → รอบนี้ใช้ Sonnet ทั้งหมด
