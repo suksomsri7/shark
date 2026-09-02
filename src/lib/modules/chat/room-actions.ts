@@ -78,37 +78,8 @@ export type RoomContext = {
   audioMs: Record<string, number>;
 };
 
-/**
- * ของที่หัวห้อง/ฟองเสียงต้องใช้ แต่ `loadThreadAction` ยังไม่ได้ส่งมา
- * เรียกตอนเปิดห้อง + เมื่อจำนวนข้อความเปลี่ยน (ไม่ใช่ทุกรอบ poll — ค่าพวกนี้แทบไม่ขยับ)
- */
-export async function loadRoomContextAction(
-  systemId: string,
-  conversationId: string,
-): Promise<RoomContext | null> {
-  const auth = await requireTenant();
-  assertChatCan(auth, "chat.conversation.read");
-  if (!systemId || !conversationId) return null;
+// (ถอด `loadRoomContextAction` ออก 2 ก.ย. — ปิด D16: บริบทห้องมากับ ThreadSnapshot ก้อนเดียวแล้ว)
 
-  const room = await openRoom(auth, systemId, conversationId);
-  if (!room.ok) return null;
-  const meta = metaObject(room.conv.meta);
-  const pageUrl = typeof meta.pageUrl === "string" && meta.pageUrl.trim() !== "" ? meta.pageUrl : null;
-
-  const atts = await db(auth.active.tenantId, systemId).chatAttachment.findMany({
-    where: { message: { conversationId }, durationMs: { not: null } },
-    select: { messageId: true, durationMs: true },
-  });
-  const audioMs: Record<string, number> = {};
-  for (const a of atts) if (a.durationMs !== null) audioMs[a.messageId] = a.durationMs;
-
-  return {
-    pageUrl,
-    tags: parseTags(room.conv.tags),
-    autoTranslate: meta.autoTranslate === true,
-    audioMs,
-  };
-}
 
 export type RoomSearchHit = {
   messageId: string;

@@ -224,6 +224,14 @@ export type ThreadSnapshot = {
   assigneeUserId: string | null;
   staffUnreadCount: number;
   customerLastReadAt: number | null;
+  /**
+   * บริบทห้องที่เคยแยกไปอยู่ `loadRoomContextAction` (ปิด D16 ครึ่งหลัง 2 ก.ย.) —
+   * มากับก้อนเดียวกับข้อความ ⇒ ห้องเปิดปุ๊บบรรทัด "กำลังดูหน้า…"/ป้าย/สวิตช์แปล ขึ้นพร้อมกัน ไม่กระพริบ
+   * และตัดคำขอที่ 2 ต่อการเปิดห้องทิ้ง
+   */
+  pageUrl: string | null;
+  tags: string[];
+  autoTranslate: boolean;
   messages: ThreadMessage[];
 };
 
@@ -417,6 +425,9 @@ export async function loadThreadAction(
     // 🔴 ค่าหลัง heartbeat: กดอ่านไปแล้วในรอบนี้ ตัวนับต้องเป็น 0 ไม่ใช่ค่าเก่าที่ค้าง
     staffUnreadCount: canMarkRead ? 0 : conv.staffUnreadCount,
     customerLastReadAt: readMap.get(conv.id) ?? null,
+    pageUrl: ((v) => (typeof v === "string" && v.trim() !== "" ? v : null))(metaString(conv.meta, "pageUrl")),
+    tags: parseTags(conv.tags),
+    autoTranslate: (() => { const m = conv.meta; return !!m && typeof m === "object" && !Array.isArray(m) && (m as Record<string, unknown>).autoTranslate === true; })(),
     messages: messages.map((m) => ({
       id: m.id,
       direction: m.direction,

@@ -20,9 +20,19 @@ export const lineAdapter: ChannelAdapter = {
   type: "LINE",
   // 🔴 audio: false ตามความจริง ไม่ใช่ตามที่อยากให้เป็น (WO-CV8 · รายงานไว้ในสรุปรอบ 4)
   //    LINE รับ audio message เฉพาะ `originalContentUrl` ที่เป็นไฟล์ **m4a** + ต้องส่ง `duration` มาด้วย
-  //    แต่ไฟล์ที่ MediaRecorder อัดได้บน Chrome/Android คือ `audio/webm;codecs=opus` ซึ่ง LINE ไม่รับ
   //    ⇒ ถ้าประกาศ true ทีมจะอัดเสียงส่งหาลูกค้า LINE แล้วเด้ง 400 กลับมาเป็น FAILED ทุกครั้ง
-  //    เปิดได้เมื่อไหร่: มีตัวแปลงไฟล์ webm → m4a ฝั่งเซิร์ฟเวอร์ (งานคนละก้อน ยังไม่มีในระบบ)
+  //
+  // ── สถานะ 2 ก.ย. 2026 (WO-CV9): **มี m4a แล้ว แต่ยังเปิดไม่ได้** ──
+  //    ตอนนี้มีตัวแปลงฝั่งเซิร์ฟเวอร์แล้ว (`scripts/voice-transcode-worker.mts` · ffmpeg บน VPS)
+  //    ไฟล์เสียงทุกชิ้นจะกลายเป็น m4a แท้ (`ftypM4A`) ที่ LINE รับได้ — **แต่ไม่ทันเวลา**:
+  //    ตัวอัดผลิต WAV (D29/D30 — ชนิดเดียวที่เล่นได้ทุกเครื่อง) และ worker เป็น cron
+  //    ⇒ ณ วินาทีที่พนักงานกด "ส่ง" ไฟล์ยัง**เป็น wav อยู่อีกราวหนึ่งรอบ cron** (~1 นาที)
+  //    ประกาศ true ตอนนี้ = ส่ง wav เข้า LINE = 400 เหมือนเดิม แค่เปลี่ยนสาเหตุ
+  //
+  //    🔴 ทางเปิดมี 2 ทาง — **ยังไม่ตัดสิน ต้องให้ Fable/เจ้าของเคาะ** (ดูข้อดี/ข้อเสียในสรุปรอบนี้):
+  //      (ก) sendReply รอ transcode ให้เสร็จก่อนแล้วค่อยส่ง (ส่งช้าลงไม่กี่วินาที แต่ผลลัพธ์แน่นอน)
+  //      (ข) ส่งเข้า LINE แบบ async: บันทึกข้อความไว้ก่อน แล้วให้ worker เป็นคนส่งหลังแปลงเสร็จ
+  //    เปิด `audio: true` ได้ต่อเมื่อเลือกทางใดทางหนึ่งและทำเสร็จแล้วเท่านั้น
   capabilities: { sendImage: true, sendSticker: true, audio: false, replyWindowHours: null, typing: false },
 
   verifyWebhook(rawBody, headers, creds) {

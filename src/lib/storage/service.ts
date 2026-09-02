@@ -196,6 +196,121 @@ export async function uploadFile(
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// ลบไฟล์จริงบน storage (WO-CV9 · ปิดหนี้ PDPA ที่ retention.ts ประกาศไว้)
+//
+// เหตุ: `purgeExpiredChatMessages` ล้างแค่ `url`/`fileName` ในฐานข้อมูล
+//       แต่ **วัตถุจริงบน Bunny ยังเสิร์ฟได้ตามเดิม** — ใครมี url เก่าอยู่ในมือก็ยังเปิดฟัง/ดูรูปได้ตลอดกาล
+//       ⇒ "ลบตามอายุเก็บ" ที่ประกาศไว้หน้า /privacy ยังไม่จริงจนกว่าไฟล์จะหายด้วย
+//
+// 🔴 best-effort โดยเจตนา: ห้าม throw · ห้ามทำให้การล้างฟิลด์ในฐานข้อมูลไม่เกิด
+//    ความเป็นส่วนตัวระดับ DB ต้องเกิดเสมอ แม้ CDN จะลบไม่สำเร็จ (ผู้เรียกล้างฟิลด์ต่อได้ทันที)
+//    แต่ "เงียบต่อผู้ใช้ ≠ เงียบต่อเรา" — ลบไม่สำเร็จต้องลง OpsEvent (แพตเทิร์นเดียวกับ uploadFile)
+//
+// ⚠️ ข้อจำกัดที่ยังปิดไม่ได้ในรอบนี้ — **CDN edge cache**
+//    Bunny ลบวัตถุที่ Storage Zone ทันที แต่ edge ที่เคยแคชไฟล์ไว้ยังเสิร์ฟต่อได้จนกว่าจะหมดอายุ
+//    (ของจริงตอนนี้ `cache-control: public, max-age=2592000` = 30 วัน)
+//    การ purge ราย URL ต้องยิง https://api.bunny.net/purge ด้วย **account key** (คีย์ระดับบัญชี)
+//    ซึ่ง `SHARK_BUNNY_KEY` ไม่ใช่ (นั่นคือ storage-zone password) ⇒ ต้องตั้ง env `BUNNY_ACCOUNT_KEY` เพิ่ม
+//    โค้ดข้างล่างเผื่อไว้แล้ว: มี env → ยิง purge ให้ · ไม่มี → ข้ามเงียบ ๆ (ไม่ถือว่าลบล้มเหลว)
+// ═══════════════════════════════════════════════════════════════
+
+export type DeleteResult = { ok: true; skipped?: false } | { ok: false; reason: string };
+
+export type DeleteDeps = {
+  /** ฉีดได้ (ข้อสอบ) — คืน status code ที่ storage ตอบกลับ */
+  del?: (path: string) => Promise<number>;
+  /** ฉีดได้ (ข้อสอบ) — purge edge cache ราย URL */
+  purge?: (cdnUrl: string) => Promise<void>;
+};
+
+/**
+ * แปลง cdnUrl → path บน storage zone (ส่วนหลัง `SHARK_BUNNY_CDN/`)
+ * คืน null เมื่อ url ไม่ได้อยู่ใต้ CDN ของเรา (ไฟล์ของ provider อื่น เช่นรูปจาก LINE — ห้ามไปยุ่ง)
+ */
+export function storagePathFromCdnUrl(cdnUrl: string | null | undefined): string | null {
+  const url = (cdnUrl ?? "").trim();
+  if (!url) return null;
+  const base = cdnBase();
+  if (!base) return null;
+  if (!url.startsWith(`${base}/`)) return null;
+  // ตัด query/hash ออกก่อน (ลิงก์ที่มี ?v= ติดมาต้องไม่กลายเป็นชื่อไฟล์คนละตัว)
+  const path = url.slice(base.length + 1).split(/[?#]/)[0] ?? "";
+  // กัน path traversal: ".." ที่หลุดเข้ามาแปลว่า url ถูกประกอบผิด → ไม่ลบดีกว่าลบผิดไฟล์
+  if (!path || path.includes("..")) return null;
+  return path;
+}
+
+/**
+ * ลบไฟล์ 1 ชิ้นออกจาก storage จริง — ห้าม throw ทุกทาง
+ *
+ * - ไม่มี env (และไม่ได้ฉีด deps) → `{ ok:false, reason }` **เงียบ ๆ** ไม่ลง OpsEvent
+ *   (สภาพแวดล้อมที่ไม่ได้ตั้ง storage เช่น dev/CI ไม่ควรทำให้ log เต็มไปด้วย error ที่ไม่มีใครแก้ได้)
+ * - 404 = ถือว่าสำเร็จ: ไฟล์ไม่อยู่แล้วคือปลายทางที่เราต้องการ ⇒ **รันซ้ำได้ (idempotent)**
+ * - ลบไม่สำเร็จจริง ๆ (5xx/403/เน็ตหลุด) → ok:false + OpsEvent ERROR (มีคนต้องตามเก็บ)
+ */
+export async function deleteStoredFile(
+  cdnUrl: string | null | undefined,
+  opts?: { tenantId?: string },
+  deps?: DeleteDeps,
+): Promise<DeleteResult> {
+  const url = (cdnUrl ?? "").trim();
+  if (!url) return { ok: false, reason: "ไม่มี url ของไฟล์" };
+
+  const del = deps?.del;
+  if (!del && !storageEnabled()) {
+    return { ok: false, reason: "ยังไม่ได้ตั้งค่าที่เก็บไฟล์ (storage)" };
+  }
+
+  const path = storagePathFromCdnUrl(url);
+  if (!path) return { ok: false, reason: "ไม่ใช่ไฟล์บนที่เก็บของเราเอง — ไม่แตะ" };
+
+  let status = 0;
+  try {
+    if (del) {
+      status = await del(path);
+    } else {
+      const res = await fetch(`${BUNNY_HOST}/${process.env.SHARK_BUNNY_ZONE}/${path}`, {
+        method: "DELETE",
+        headers: { AccessKey: process.env.SHARK_BUNNY_KEY ?? "" },
+      });
+      status = res.status;
+    }
+  } catch (e) {
+    await logOps("ERROR", "storage.delete", "ลบไฟล์บนที่เก็บไม่สำเร็จ (เน็ตเวิร์ก)", {
+      tenantId: opts?.tenantId,
+      detail: `${path} · ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`,
+    });
+    return { ok: false, reason: "ต่อที่เก็บไฟล์ไม่ได้" };
+  }
+
+  // 404 = ไม่มีไฟล์นั้นแล้ว → ปลายทางเดียวกับลบสำเร็จ (รันซ้ำแล้วต้องไม่แดง)
+  if (!((status >= 200 && status < 300) || status === 404)) {
+    await logOps("ERROR", "storage.delete", "ลบไฟล์บนที่เก็บไม่สำเร็จ", {
+      tenantId: opts?.tenantId,
+      detail: `${path} · HTTP ${status}`,
+    });
+    return { ok: false, reason: `ที่เก็บไฟล์ตอบ HTTP ${status}` };
+  }
+
+  // ── purge edge cache (เผื่อไว้ · ไม่มี account key = ข้าม ไม่ถือว่าล้มเหลว) ──
+  try {
+    const purge = deps?.purge;
+    if (purge) {
+      await purge(url);
+    } else if (process.env.BUNNY_ACCOUNT_KEY) {
+      await fetch(`https://api.bunny.net/purge?url=${encodeURIComponent(url)}&async=false`, {
+        method: "POST",
+        headers: { AccessKey: process.env.BUNNY_ACCOUNT_KEY },
+      });
+    }
+  } catch {
+    // purge ล้มไม่ทำให้การลบล้มเหลว — วัตถุต้นทางหายไปแล้ว เหลือแค่ edge ที่จะหมดอายุเอง
+  }
+
+  return { ok: true };
+}
+
 /** รายการไฟล์ของร้าน (ใหม่→เก่า) — กรองตาม kind ได้ */
 export async function listAssets(ctx: StorageCtx, kind?: FileKind, take = 50) {
   return tenantDb(ctx).fileAsset.findMany({

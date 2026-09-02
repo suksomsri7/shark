@@ -26,9 +26,23 @@
 //       · clamp 90–730 (ค่าเพี้ยนน้อยห้ามกวาดของใหม่ทิ้ง · ค่าเพี้ยนมากห้ามกลายเป็นเก็บตลอดกาล)
 // RT-4) ต่อเข้า cron: runDailyCron มี chatPurged + field เดิมครบ · purge พังต้องไม่ล้มทั้งรอบ (-1)
 //       · หน้า channels มีช่องตั้งค่า 90–730 · action ตรวจสิทธิ์ด้วย assertChatCan · setter ไม่ข้ามร้าน
+// RT-5) 🔴 WO-CV9 (เพิ่ม 2 ก.ย.) **ไฟล์จริงบน storage ต้องถูกลบ ไม่ใช่แค่ล้างฟิลด์**
+//       เหตุผลที่แก้ในชุดเดิมแทนสร้างไฟล์ใหม่ (Fable อนุญาตเฉพาะรอบนี้): ชุดนี้คือด่านของ retention
+//       โดยตรง · ข้อ RT-1.7/RT-1.8 ที่มีอยู่ **การันตีตรงข้าม**กับพฤติกรรมใหม่ไม่ได้ถ้าไม่มี RT-5 คู่กัน
+//       — RT-1.8 บอกแค่ "storageKey ต้องอยู่" ซึ่ง**เขียวได้ทั้งที่ไฟล์ยังอยู่บน CDN ตลอดกาล**
+//       ⇒ ต้องมีข้อที่ **fail-before**: ถอด `deleteStoredFile` ออกจาก retention.ts เมื่อไหร่ RT-5.1 แดงทันที
+//       · ไฟล์ที่หลายแถวชี้ร่วมกัน ห้ามลบ (positive control — ฟองของเธรดที่ยังไม่หมดอายุต้องรอด)
+//       · ลบไฟล์ล้มเหลว/ระเบิด → ฟิลด์ต้องถูกล้างอยู่ดี (ความเป็นส่วนตัวใน DB ห้ามขึ้นกับ CDN)
 
 try { process.loadEnvFile(".env"); } catch {}
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db"; // กันพลาด: ต่อไม่ติดโดยตั้งใจ
+// 🔴 ตัด env ของ Bunny ทิ้งทันทีหลัง loadEnvFile — .env ของเครื่องนี้เป็นคีย์ **ของจริง**
+//    retention เรียกตัวลบไฟล์แล้ว (WO-CV9): env ครบเมื่อไหร่ = ยิง DELETE ไปที่ storage prod จริง
+//    ข้อสอบที่ลบไฟล์ลูกค้าทิ้งคือข้อสอบที่อันตรายกว่าบั๊กที่มันจับ
+delete process.env.SHARK_BUNNY_ZONE;
+delete process.env.SHARK_BUNNY_KEY;
+delete process.env.SHARK_BUNNY_CDN;
+delete process.env.BUNNY_ACCOUNT_KEY;
 process.env.CHAT_CREDENTIALS_KEY ??= "0".repeat(64);
 
 const { readFileSync } = await import("node:fs");
@@ -186,8 +200,9 @@ globalThis.fetch = (async (...a: Parameters<typeof realFetch>) => { netCalls++; 
 const UI = readFileSync("src/lib/modules/chat/ui.tsx", "utf8");
 const ACTIONS = readFileSync("src/lib/modules/chat/actions.ts", "utf8");
 
+type PurgeDeps = { deleteFile?: (url: string, o?: { tenantId?: string }) => Promise<{ ok: boolean; reason?: string }> };
 type Retention = {
-  purgeExpiredChatMessages: (o?: { now?: Date; limit?: number }) => Promise<{ scanned: number; purged: number; systems: number }>;
+  purgeExpiredChatMessages: (o?: { now?: Date; limit?: number }, d?: PurgeDeps) => Promise<{ scanned: number; purged: number; systems: number }>;
   setRetentionDays: (t: string, s: string, d: unknown) => Promise<number | null>;
   clampRetentionDays: (v: unknown) => number;
   RETENTION_MIN_DAYS: number;
@@ -378,6 +393,61 @@ try {
       seed();
       const cross = await ret.setRetentionDays("T1", "S2", 100); // S2 เป็นของ T2
       chk("RT-4.9", "🔴 ตั้งค่าข้ามร้าน → ไม่แตะอะไรเลย (คืน null · ค่าเดิมของอีกร้านคงอยู่)", cross === null && tables.chatSetting![1]!.retentionDays === 730, "null · ค่าเดิม 730", j({ cross, v: tables.chatSetting![1]!.retentionDays }));
+    });
+
+    // ───────── RT-5: ลบไฟล์จริงบน storage (WO-CV9 · ปิดหนี้ PDPA) ─────────
+    //
+    // 🔴 ทำไมต้องมีหมวดนี้ (fail-before): RT-1.7 พิสูจน์แค่ว่า `url` ในฐานข้อมูลถูกล้าง
+    //    ซึ่ง **เขียวได้เต็ม ๆ ทั้งที่ไฟล์จริงยังเสิร์ฟอยู่บน CDN ตลอดกาล** — ใครถือ url เก่าก็ยังเปิดได้
+    //    หมวดนี้ผูกไว้กับ "มีการเรียกตัวลบจริงด้วย url ของแถวที่หมดอายุ" ⇒ ถอดโค้ดลบออกเมื่อไหร่ RT-5.1 แดงทันที
+    const OLD_URL = "https://cdn.shark/t/T1/chat/abc123.jpg";
+    const NEW_URL = "https://cdn.shark/t/T1/chat/def456.pdf";
+    const T2_URL = "https://cdn.shark/t/T2/chat/ghi789.pdf";
+    await section("RT-5", "\nRT-5 🔴 ไฟล์จริงบน storage ต้องถูกลบ ไม่ใช่แค่ล้างฟิลด์:", async () => {
+      // (ก) เรียกตัวลบจริงด้วย url ของแถวที่หมดอายุ
+      seed();
+      const del: { url: string; tenantId?: string }[] = [];
+      await ret.purgeExpiredChatMessages({ now: NOW }, { deleteFile: async (u, o) => { del.push({ url: u, tenantId: o?.tenantId }); return { ok: true }; } });
+      chk("RT-5.1", "🔴 fail-before: ต้องเรียกตัวลบไฟล์ด้วย url ของไฟล์แนบที่หมดอายุ (ไม่เรียก = ไฟล์ยังเปิดได้ตลอดกาล)", del.filter((d) => d.url === OLD_URL).length === 1, `เรียก 1 ครั้งด้วย ${OLD_URL}`, j(del));
+      chk("RT-5.2", "🔴 positive control: ไฟล์ของข้อความที่ยังไม่หมดอายุห้ามถูกลบ", !del.some((d) => d.url === NEW_URL), "ไม่เรียกด้วย url ของ at-new", j(del.map((d) => d.url)));
+      chk("RT-5.3", "🔴 positive control ข้ามร้าน: ไฟล์ของร้านที่ยังไม่ถึงกำหนด (retention 730) ห้ามถูกลบ", !del.some((d) => d.url === T2_URL), "ไม่เรียกด้วย url ของ at-t2", j(del.map((d) => d.url)));
+      chk("RT-5.4", "ส่ง tenantId ไปด้วย (OpsEvent ตอนลบไม่สำเร็จต้องรู้ว่าเป็นของร้านไหน)", del.length > 0 && del.every((d) => d.tenantId === "T1"), "tenantId T1 ทุกครั้ง", j(del), "MAJOR");
+      chk("RT-5.5", "ล้างฟิลด์ควบคู่กันเหมือนเดิม (ลบไฟล์ไม่ได้มาแทนการ redact)", att("at-old").url === "" && att("at-old").storageKey === "t/T1/chat/abc123.jpg", 'url "" · storageKey เดิม', j({ u: att("at-old").url, k: att("at-old").storageKey }));
+
+      // (ข) ไฟล์ที่หลายแถวชี้ร่วมกัน — ห้ามลบ (ไม่งั้นฟองของเธรดที่ยังไม่หมดอายุพังไปด้วย)
+      seed();
+      tables.chatAttachment!.find((a) => a.id === "at-new")!.url = OLD_URL; // at-new (ยังไม่หมดอายุ) ใช้ไฟล์เดียวกับ at-old
+      const del2: string[] = [];
+      await ret.purgeExpiredChatMessages({ now: NOW }, { deleteFile: async (u) => { del2.push(u); return { ok: true }; } });
+      chk("RT-5.6", "🔴 ไฟล์ที่แถวอื่น (ยังไม่หมดอายุ) ใช้ร่วมอยู่ ต้องไม่ถูกลบ — แถวที่เหลือจะลบเองตอนมันหมดอายุ", !del2.includes(OLD_URL), "ไม่ลบ", j(del2));
+      chk("RT-5.7", "แต่ฟิลด์ของแถวที่หมดอายุยังต้องถูกล้าง (แชร์ไฟล์ ≠ ยกเว้นการ redact)", att("at-old").url === "" && att("at-new").url === OLD_URL, 'at-old ว่าง · at-new คงเดิม', j({ o: att("at-old").url, n: att("at-new").url }));
+
+      // (ค) ตัวลบระเบิด/ล้มเหลว → การล้างฟิลด์ต้องเกิดอยู่ดี (ความเป็นส่วนตัวใน DB ห้ามขึ้นกับ CDN)
+      seed();
+      const r3 = await ret.purgeExpiredChatMessages({ now: NOW }, { deleteFile: async () => { throw new Error("[fake] CDN ล่ม"); } }).catch((e) => ({ __threw: String(e) }) as never);
+      chk("RT-5.8", "🔴 ตัวลบไฟล์ระเบิด → purge ต้องไม่ล้ม และฟิลด์ยังถูกล้างครบ", (r3 as { purged?: number }).purged === 3 && att("at-old").url === "" && msg("m-old-1").body === null, "purged 3 · url ว่าง · body null", j({ r3, u: att("at-old").url, b: msg("m-old-1").body }));
+      seed();
+      await ret.purgeExpiredChatMessages({ now: NOW }, { deleteFile: async () => ({ ok: false, reason: "HTTP 500" }) });
+      chk("RT-5.9", "ลบไม่สำเร็จ (ok:false) → ยัง redact ต่อ · storageKey เก็บไว้ตามเก็บทีหลังได้", att("at-old").url === "" && att("at-old").storageKey === "t/T1/chat/abc123.jpg", 'url "" · storageKey เดิม', j({ u: att("at-old").url, k: att("at-old").storageKey }));
+
+      // (ง) ไม่มี env storage → ห้ามยิงเน็ตเลยสักครั้ง (เส้นทางจริงของ CI/dev)
+      seed();
+      const netBefore = netCalls;
+      await ret.purgeExpiredChatMessages({ now: NOW });
+      chk("RT-5.10", "🔴 ไม่ฉีด deps + ไม่มี env storage → ไม่ยิง HTTP ออกเลย (ปิดอย่างสุภาพ ไม่ใช่พยายามแล้วพัง)", netCalls === netBefore && att("at-old").url === "", "net เท่าเดิม · ยัง redact", `net +${netCalls - netBefore}`);
+
+      // (จ) ตัวลบใน storage/service.ts ต้องมีจริงและถือ 404 = สำเร็จ (รันซ้ำได้)
+      const st = (await import("@/lib/storage/service" as string).catch(() => null)) as { deleteStoredFile?: (u: string, o?: unknown, d?: unknown) => Promise<{ ok: boolean; reason?: string }>; storagePathFromCdnUrl?: (u: string) => string | null } | null;
+      if (!st?.deleteStoredFile) { chk("RT-5.11", "storage/service.ts export deleteStoredFile()", false, "มีฟังก์ชัน", "ไม่มี"); return; }
+      process.env.SHARK_BUNNY_CDN = "https://cdn.shark";
+      const seenPaths: string[] = [];
+      const okDel = await st.deleteStoredFile(OLD_URL, { tenantId: "T1" }, { del: async (p: string) => { seenPaths.push(p); return 200; } });
+      const gone = await st.deleteStoredFile(OLD_URL, { tenantId: "T1" }, { del: async () => 404 });
+      const bad = await st.deleteStoredFile("https://someone-else.example.com/a.jpg", { tenantId: "T1" }, { del: async (p: string) => { seenPaths.push(p); return 200; } });
+      delete process.env.SHARK_BUNNY_CDN;
+      chk("RT-5.11", "🔴 cdnUrl → path บน storage ถูกต้อง (ส่วนหลัง SHARK_BUNNY_CDN/)", okDel.ok === true && seenPaths[0] === "t/T1/chat/abc123.jpg", "t/T1/chat/abc123.jpg", j({ okDel, seenPaths }));
+      chk("RT-5.12", "🔴 404 = สำเร็จ (ไฟล์หายไปแล้วคือปลายทางที่ต้องการ ⇒ รันซ้ำไม่แดง)", gone.ok === true, "ok true", j(gone));
+      chk("RT-5.13", "🔴 url ที่ไม่ได้อยู่บน CDN ของเรา (ไฟล์ของ provider อื่น) ต้องไม่ถูกยิงลบ", bad.ok === false && seenPaths.length === 1, "ไม่เรียก del · ok false", j({ bad, seenPaths }));
     });
   }
 

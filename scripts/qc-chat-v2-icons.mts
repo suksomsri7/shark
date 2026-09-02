@@ -62,7 +62,7 @@ const section = (id: string, name: string, fn: () => void) => {
 
 const read = (p: string) => (existsSync(join(ROOT, p)) ? readFileSync(join(ROOT, p), "utf8") : "");
 // 🔴 ตัดคอมเมนต์ก่อน grep เสมอ (คง `://` ของ URL ไว้)
-const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "").replace(/([^:])\/\/.*$/gm, "$1");
+const strip = (s: string) => s.replace(/([a-z])\/\*/g, "$1/\u0000").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\u0000/g, "*").replace(/^[ \t]*\/\/.*$/gm, "").replace(/([^:])\/\/.*$/gm, "$1"); // 🔴 D24: กัน `image/*` `audio/*` ในสตริงถูกนับเป็นเปิดคอมเมนต์ (เคยกินโค้ดหาย 12k ตัวอักษร)
 
 /** ไล่ไฟล์ .ts/.tsx ทั้งโฟลเดอร์ (ใช้กับโมดูลแชท + หน้าแชท) */
 function walk(rel: string): string[] {

@@ -53,6 +53,10 @@ function toAttachments(raw: unknown): ExternalAttachmentInput[] | undefined {
         width: posInt(o.width),
         height: posInt(o.height),
         storageKey: str(o.storageKey),
+        // 🔴 ความยาวคลิป = "เจตนาว่านี่คือข้อความเสียง" (ไม่ใช่ไฟล์เสียงที่แนบมาเฉย ๆ)
+        //    ตัดทิ้งตรงนี้ = เสียงที่ลูกค้าอัดจากเว็บ/แอปกลายเป็นไฟล์แนบธรรมดา ฟองเสียงไม่ขึ้นในห้อง
+        //    ขอบเขตค่า (เพดาน 2 นาที) เป็น logic ธุรกิจ → ตรวจที่ชั้น 1 ตามกฎเหล็กข้อ 1
+        durationMs: posInt(o.durationMs),
       },
     ];
   });

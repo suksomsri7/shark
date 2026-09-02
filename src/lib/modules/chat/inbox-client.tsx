@@ -35,11 +35,9 @@ import { ContextPanel } from "./context-panel";
 import { pageLabelFromPath } from "./page-label";
 import { setConversationTagAction } from "./quick-reply-actions";
 import {
-  loadRoomContextAction,
   searchInRoomAction,
   setRoomAutoTranslateAction,
   typingAction,
-  type RoomContext,
   type RoomSearchHit,
 } from "./room-actions";
 // ── ชั้น realtime (WO-CV9) — **ตัวเร่ง** ของรอบ poll เท่านั้น ไม่ใช่ตัวแทน ──
@@ -593,7 +591,8 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
   // ══════════════════ ห้องแชท (WO-CV4 · แบบร่างจอ 2–4 + `.dcol2`) ══════════════════
 
   /** ของที่หัวห้อง/ฟองเสียงต้องใช้ แต่ `loadThreadAction` ยังไม่ได้ส่งมา (ดู room-actions.ts) */
-  const [roomCtx, setRoomCtx] = useState<RoomContext | null>(null);
+  // shape ท้องถิ่น (ปิด D16): ค่าจริงมากับ ThreadSnapshot · setRoomCtx ใช้อัปเดตหลัง toggle ระหว่างรอ poll
+  const [roomCtx, setRoomCtx] = useState<{ pageUrl: string | null; tags: string[]; autoTranslate: boolean } | null>(null);
   const [roomMenu, setRoomMenu] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
@@ -612,23 +611,16 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
   const roomMuted = isMuted(activeRow?.mutedUntil ?? null);
 
   // ── บริบทของห้อง: ดึงตอนเปลี่ยนห้อง และเมื่อมีข้อความใหม่ (ไม่ใช่ทุกรอบ poll — ค่าพวกนี้แทบไม่ขยับ)
+  // ปิด D16 ครึ่งหลัง (2 ก.ย.): บริบทห้องมากับ ThreadSnapshot ก้อนเดียว — ไม่ยิงคำขอที่ 2 อีก
+  //    (`audioMs` เดิมก็ไม่จำเป็นแล้ว — ฟองเสียงอ่าน `attachment.durationMs` ตรง ๆ ตั้งแต่ WO-CV8)
+  //    toggle แปล/ป้าย ยังอัปเดตผ่าน setRoomCtx เดิม แล้วค่าจริงตามมากับ poll รอบถัดไป
   useEffect(() => {
-    if (!activeId) {
+    if (!thread || thread.conversationId !== activeId) {
       setRoomCtx(null);
       return;
     }
-    let alive = true;
-    void loadRoomContextAction(systemId, activeId)
-      .then((c) => {
-        if (alive) setRoomCtx(c);
-      })
-      .catch(() => {
-        if (alive) setRoomCtx(null); // ดึงบริบทไม่ได้ = ซ่อนบรรทัดทิ้ง ไม่ใช่โชว์ค่าว่าง (มติ D1)
-      });
-    return () => {
-      alive = false;
-    };
-  }, [systemId, activeId, msgCount]);
+    setRoomCtx({ pageUrl: thread.pageUrl, tags: thread.tags, autoTranslate: thread.autoTranslate });
+  }, [thread, activeId]);
 
   // เปลี่ยนห้อง = ปิดของที่ค้างอยู่ของห้องเดิม (เมนู/ค้นหา/ข้อความผิดพลาด)
   useEffect(() => {
@@ -1856,7 +1848,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
                         canTranslate={canTranslate}
                         canSaveExample={canSend && !m.id.startsWith("pending-")}
                         isGroupStart={isGroupStart}
-                        audioMs={roomCtx?.audioMs[m.id] ?? null}
+                        audioMs={null} // ความยาวมากับ attachment.durationMs แล้ว (WO-CV8) — prop นี้เหลือไว้เผื่อไฟล์เก่าที่ไม่มีค่า
                       />
                     </div>
                   ))

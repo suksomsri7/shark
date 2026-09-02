@@ -20,11 +20,19 @@
 // สิ่งที่ถูกลบจริง (กู้คืนไม่ได้): body · stickerMeta · orderContext · meta · senderName
 // ของไฟล์แนบ: url · fileName  ⇒ เหลือแค่ซองเปล่า (เวลา/ทิศทาง/ชนิด) ไว้ให้เธรดยังอ่านเป็นเรื่องเป็นราว
 //
-// ⚠️ **หนี้ที่ยังไม่ปิดในรอบนี้ — ไฟล์จริงบน Bunny CDN ยังอยู่**
-//    `ChatAttachment.storageKey` จึง **ตั้งใจไม่ลบ** เพราะเป็น handle เดียวที่จะไปลบวัตถุจริงได้ทีหลัง
-//    (ลบแถวทิ้ง = ไฟล์กลายเป็นขยะกำพร้าบน CDN ที่ไม่มีใครรู้จักอีกเลย = หนี้ที่จ่ายไม่ได้ตลอดกาล)
-//    แถวที่ `url = ""` แต่ `storageKey != ""` คือ **คิวรอลบไฟล์** ของ WO ถัดไป
-//    (ตัวลบต้องอยู่ใน src/lib/storage/** ซึ่งรอบนี้ห้ามแตะ — อีกสายทำอยู่)
+// ✅ **หนี้ที่ปิดแล้ว (WO-CV9 · 2 ก.ย.) — ไฟล์จริงบน Bunny ถูกลบด้วย**
+//    เดิมกวาดแค่ฟิลด์ ⇒ ใครถือ url เก่าอยู่ในมือยังเปิดฟัง/ดูรูปได้ตลอดกาล = "ลบตามอายุเก็บ" ไม่จริง
+//    ตอนนี้เรียก `deleteStoredFile(url เดิม)` **ก่อน** ล้างฟิลด์ · ลบไม่สำเร็จก็ล้างฟิลด์ต่อ
+//    (ความเป็นส่วนตัวระดับ DB ต้องเกิดเสมอ — ห้ามให้ CDN ล่มมาบล็อกการกวาด)
+//    `storageKey` ยัง **ตั้งใจไม่ลบ** — เป็น handle สำรองไว้ตามเก็บไฟล์ที่ลบไม่สำเร็จ (ดู OpsEvent
+//    source `storage.delete`) และไว้กวาดของค้างจากยุคก่อนหน้าฟีเจอร์นี้
+//
+// ⚠️ ข้อจำกัดที่ยังเหลือ — **CDN edge cache**: Bunny ลบวัตถุที่ storage zone ทันที
+//    แต่ edge ที่เคยแคช (`max-age=2592000` = 30 วัน) ยังเสิร์ฟ url เดิมต่อได้จนหมดอายุ
+//    purge ราย URL ต้องใช้ **account key** (`BUNNY_ACCOUNT_KEY`) ซึ่งยังไม่ได้ตั้งเป็น env ของ shark
+//    (`SHARK_BUNNY_KEY` เป็นรหัสของ storage zone คนละตัว ใช้ purge ไม่ได้)
+//    → โค้ดใน storage/service.ts เผื่อไว้แล้ว: มี env ก็ยิง purge ให้ ไม่มีก็ข้าม
+//    🔴 จนกว่าจะตั้ง env นี้ ให้ถือว่า "ลบแล้ว" = ลบที่ต้นทาง ไม่ใช่หายจาก edge ทันที
 // ═══════════════════════════════════════════════════════════════
 //
 // ⚠️ raw prisma: งานนี้กวาด **ข้ามทุกร้าน** (เหมือน sweepExpiringLots / sweepPendingDeletes)
@@ -33,6 +41,7 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
+import { deleteStoredFile } from "@/lib/storage/service";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -60,6 +69,17 @@ export function clampRetentionDays(value: unknown): number {
   return n;
 }
 
+/**
+ * ตัวลบไฟล์จริง — ฉีดได้เพื่อ **พิสูจน์ว่ามีการเรียกจริง** (ข้อสอบ RT-5)
+ * แพตเทิร์นเดียวกับ `uploadFile(deps.put)` — ของจริงยิง Bunny, ข้อสอบฉีดตัวนับ
+ */
+export type PurgeDeps = {
+  deleteFile?: (
+    url: string,
+    opts?: { tenantId?: string },
+  ) => Promise<{ ok: boolean; reason?: string }>;
+};
+
 export type PurgeResult = {
   /** จำนวนข้อความที่ถูกดึงมาพิจารณาในรอบนี้ (= ที่เข้าเงื่อนไขหมดอายุและยังไม่เคยปกปิด) */
   scanned: number;
@@ -79,9 +99,11 @@ export type PurgeResult = {
  */
 export async function purgeExpiredChatMessages(
   opts: { now?: Date; limit?: number } = {},
+  deps?: PurgeDeps,
 ): Promise<PurgeResult> {
   const now = opts.now ?? new Date();
   const limit = Math.max(1, Math.trunc(opts.limit ?? DEFAULT_LIMIT));
+  const deleteFile = deps?.deleteFile ?? deleteStoredFile;
 
   const settings = await prisma.chatSetting.findMany({
     select: { tenantId: true, systemId: true, retentionDays: true },
@@ -166,7 +188,48 @@ export async function purgeExpiredChatMessages(
         purged += res.count;
         purgedHere += res.count;
 
-        // (2) ไฟล์แนบ — ลบ url/fileName แต่ **คง storageKey** ไว้เป็นคิวลบไฟล์จริงบน CDN
+        // (2a) 🔴 WO-CV9: **ลบไฟล์จริงบน storage ก่อน** แล้วค่อยล้างฟิลด์
+        //      ลำดับนี้ห้ามสลับด้วยเหตุผลของ "ถ้าพังกลางคัน":
+        //      · ลบไฟล์ก่อน → ถ้าพังตอนล้างฟิลด์: DB ชี้ไฟล์ที่หายไป = ฟองเสีย แต่ **ข้อมูลไม่รั่ว**
+        //        และรอบถัดไปกวาดฟิลด์ต่อได้เอง (deleteStoredFile ถือ 404 = สำเร็จ)
+        //      · ล้างฟิลด์ก่อน → ถ้าพังตอนลบไฟล์: url หายจาก DB แล้ว = **เสีย handle** ที่จะไปลบไฟล์
+        //        (เหลือแค่ storageKey ที่ยังไม่มีตัวกวาดอัตโนมัติ) ⇒ ไฟล์กำพร้าที่ยังเปิดได้ตลอดกาล
+        //
+        //      ⚠️ ไฟล์ที่ **หลายแถวชี้ร่วมกัน** ห้ามลบ: ข้อความถูกส่งต่อ/ตอบซ้ำใช้ url เดียวกันได้
+        //      ลบทิ้งเพราะแถวหนึ่งหมดอายุ = ฟองของอีกเธรดที่ยังไม่หมดอายุพังไปด้วย
+        //      → แถวที่เหลือจะเป็นคนลบไฟล์เองตอนที่มันหมดอายุ (ตอนนั้นแถวนี้ url = "" แล้ว ไม่ถูกนับ)
+        const atts = await prisma.chatAttachment.findMany({
+          where: {
+            tenantId: s.tenantId,
+            systemId: s.systemId,
+            messageId: { in: ids },
+            url: { not: "" },
+          },
+          select: { id: true, url: true },
+        });
+        if (atts.length > 0) {
+          const batchIds = new Set(atts.map((a) => a.id));
+          const urls = [...new Set(atts.map((a) => a.url).filter((u) => u))];
+          // ⚠️ where ผูกแค่ tenantId **โดยเจตนา** (ไม่ใส่ systemId): ร้านเดียวกันคนละระบบ
+          //    อ้าง url เดียวกันได้ ถ้ากรอง systemId ด้วยจะมองไม่เห็นผู้ใช้ร่วมแล้วลบไฟล์ของเขาทิ้ง
+          //    (ข้ามร้านเป็นไปไม่ได้อยู่แล้ว — path บน CDN ฝัง tenantId ไว้: `t/<tenantId>/...`)
+          const sharers = await prisma.chatAttachment.findMany({
+            where: { tenantId: s.tenantId, url: { in: urls } },
+            select: { id: true, url: true },
+          });
+          for (const url of urls) {
+            const usedElsewhere = sharers.some((x) => x.url === url && !batchIds.has(x.id));
+            if (usedElsewhere) continue;
+            try {
+              await deleteFile(url, { tenantId: s.tenantId });
+            } catch {
+              // best-effort: ลบไฟล์ไม่สำเร็จห้ามหยุดการล้างฟิลด์ (ความเป็นส่วนตัวใน DB ต้องเกิดเสมอ)
+              // ตัวลบลง OpsEvent source `storage.delete` ให้แล้ว — ที่นี่แค่ห้ามระเบิดขึ้นไป
+            }
+          }
+        }
+
+        // (2b) ไฟล์แนบ — ลบ url/fileName แต่ **คง storageKey** ไว้เป็น handle สำรอง
         // 🔴 WO-CV8: เสียงคือเนื้อความอีกรูปหนึ่ง — ล้าง url แล้วคลิปเล่นไม่ได้ (ฟองเสียงขึ้นปุ่มเล่นที่กดไม่ได้)
         //    ล้าง `durationMs` ไปด้วย เพราะ "ข้อความเสียง 1:47" ก็ยังเล่าเรื่องของบทสนทนาที่ถูกปกปิดไปแล้ว
         await prisma.chatAttachment.updateMany({

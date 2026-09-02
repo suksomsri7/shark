@@ -1053,6 +1053,31 @@ export async function receiveExternalInbound(args: {
     return { ok: false, reason: `แนบไฟล์ได้ไม่เกิน ${MAX_EXTERNAL_ATTACHMENTS} รายการต่อข้อความ` };
   }
 
+  // ── ข้อความเสียง "ขาเข้า" (ลูกค้าอัดส่งมาจากเว็บ/แอป) ──────────────────────
+  // 🔴 กติกาเดียวกับขาออก (`sendReply`) เป๊ะ ห้ามแตกต่าง: ไฟล์เดียว + mime ขึ้นต้น "audio/" +
+  //    ผู้ส่งบอกความยาวมาด้วย — **ความยาวคือเจตนา** ไม่ใช่เดาจาก mime (ลูกค้าแนบไฟล์เพลงมาเฉย ๆ
+  //    ก็ขึ้นต้น "audio/" เหมือนกัน แต่นั่นคือ "ไฟล์" ไม่ใช่ข้อความเสียง)
+  // ⇒ ผู้เรียกเดิมที่ไม่เคยส่ง `durationMs` ไม่มีทางเห็นความต่างแม้แต่นิดเดียว (เพิ่มล้วน)
+  const voiceAtt =
+    attachments.length === 1 && attachments[0]!.mimeType.trim().toLowerCase().startsWith("audio/")
+      ? attachments[0]!
+      : null;
+  const isVoice = voiceAtt !== null && voiceAtt.durationMs !== undefined;
+  if (isVoice) {
+    const d = voiceAtt!.durationMs!;
+    // 🔴 ค่าจากเบราว์เซอร์ = ปลอมได้ · ติดลบ/ไม่ใช่จำนวนเต็ม/เกินเพดาน ต้องไม่ถูกบันทึก
+    //    (ค่าติดลบทำให้ฟองเสียงโชว์ "-1:00" · ตัวเลขเกินจริงทำให้ทีมคิดว่าไฟล์เสีย)
+    if (!Number.isFinite(d) || !Number.isInteger(d) || d <= 0) {
+      return { ok: false, reason: "ความยาวของคลิปเสียงไม่ถูกต้อง — อัดใหม่แล้วส่งอีกครั้งได้เลย" };
+    }
+    if (d > MAX_VOICE_MS + VOICE_MS_TOLERANCE) {
+      return {
+        ok: false,
+        reason: `ข้อความเสียงยาวได้ไม่เกิน ${Math.round(MAX_VOICE_MS / 1000)} วินาที — อัดใหม่ให้สั้นลงแล้วส่งได้เลย`,
+      };
+    }
+  }
+
   let contact;
   try {
     contact = await findOrCreateContact({
@@ -1093,8 +1118,13 @@ export async function receiveExternalInbound(args: {
     });
   }
 
-  const msgType: ChatMessageType =
-    attachments.length > 0 ? attachmentKind(attachments[0]!.mimeType) : "TEXT";
+  // 🔴 ต้องเป็น AUDIO ไม่ใช่ FILE — ฟองเสียงในกล่องของทีมเรนเดอร์ตาม `msg.type === "AUDIO"`
+  //    (bubble.tsx) ⇒ ชนิดผิด = ทีมเห็นเป็นลิงก์ไฟล์ ต้องกดออกไปเปิดแท็บใหม่เพื่อฟังลูกค้า
+  const msgType: ChatMessageType = isVoice
+    ? "AUDIO"
+    : attachments.length > 0
+      ? attachmentKind(attachments[0]!.mimeType)
+      : "TEXT";
 
   let msg;
   try {
@@ -1119,7 +1149,9 @@ export async function receiveExternalInbound(args: {
             tenantId,
             systemId,
             messageId: created.id,
-            kind: attachmentKind(a.mimeType),
+            // ไฟล์ของข้อความเสียงต้องมี kind = AUDIO ด้วย ไม่ใช่แค่ตัวข้อความ —
+            // หน้ารายการหาความยาวคลิปด้วย `where kind: "AUDIO"` (inbox-actions.audioDurations)
+            kind: a === voiceAtt && isVoice ? "AUDIO" : attachmentKind(a.mimeType),
             storageKey: a.storageKey?.trim() || a.url.trim(),
             url: a.url.trim(),
             fileName: a.fileName?.trim() || fileNameFromUrl(a.url.trim()),
@@ -1127,6 +1159,9 @@ export async function receiveExternalInbound(args: {
             sizeBytes: a.sizeBytes ?? 0,
             width: a.width ?? null,
             height: a.height ?? null,
+            // 🔴 ต้องบันทึกลงแถว ไม่ใช่แค่ใช้ตัดสินชนิด — ฟองเสียงในห้อง (`room-actions.audioMs`)
+            //    และหน้ารายการอ่านความยาวจากคอลัมน์นี้ ไม่ได้โหลดไฟล์เสียงมาวัดเอง
+            durationMs: a.durationMs ?? null,
           },
         });
       }

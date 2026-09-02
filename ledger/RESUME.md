@@ -1,5 +1,16 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🎙️ 2 ก.ย. (เย็น) — รอบ "เสียงครบวงจร": transcoder + retention ลบไฟล์จริง + ลูกค้าอัดเสียงได้ (สาย K+L · Fable ปิด D16/D24)
+- **สาย K**: `scripts/voice-transcode-worker.mts` (wav→m4a −77% · ตรวจ ftypM4A+ffprobe ก่อนเชื่อ · idempotent · ล็อก 2 ชั้น)
+  **cron ติดตั้งแล้ว** `*/5` → log `/var/log/shark-voice-transcode.log` · retention **ลบไฟล์จริงบน Bunny** (`deleteStoredFile`
+  best-effort + OpsEvent · กันไฟล์แชร์หลายแถว · qc-chat-retention 37→**50/50** fail-before พิสูจน์) · ซ่อมไฟล์กำพร้า 2 ก้อนจาก D30
+- **สาย L**: ลูกค้าเว็บอัดเสียง (WAV · เฉพาะยืนยันอีเมล · `useVoiceRecorder` ต้นแบบจาก shark) · `durationMs` เดินครบ 3 ทอด
+  ที่เคยหาย (sanitize → sharkSend → toAttachments) · `receiveExternalInbound` รู้จัก AUDIO + ปฏิเสธค่าเพี้ยน
+- **Fable**: ปิด **D16** (บริบทห้องมากับ ThreadSnapshot · ถอด loadRoomContextAction) · **D24** (strip 15 ชุด) ·
+  **D31** = LINE ส่งเสียงเลือกทาง async (เงื่อนไข 3 ข้อก่อนเปิด — ดู §10) · ด่านถาวรใหม่: XC-V ×6 (core-v2 47/47) + V1–V4 (qc-shark-chat 143/143)
+- 🔑 **รอเจ้าของ**: `BUNNY_ACCOUNT_KEY` (purge edge cache — ตอนนี้ลบต้นทางแล้วแต่ edge ถือได้ถึง 30 วัน · ห้ามเขียน /privacy ว่าลบทันที)
+- ค้าง: แอปอัดเสียงส่ง (ต้องเส้นอัปโหลด+WAV encoder ฝั่ง RN — จดใน HANDOVER-APP แล้ว) · `.wav` ในหน้าต่างแนบไฟล์ (B3 ล็อกตารางในข้อสอบ — ยังไม่ทำ)
+
 ## 🫧 2 ก.ย. (บ่าย) — orb AI บนแอป SHARK: เจ้าของสั่งสุดท้าย **ซ่อนทุกหน้าไปก่อน** (OTA `7716f1fe` · runtime 1.0.0)
 - โค้ด orb + ตัวรับสัญญาณ chat-fullscreen เก็บไว้ครบ (`ORB_HIDDEN_FOR_NOW = true` ใน `apps/mobile/app/(app)/index.tsx`)
   ⇒ วันไหนจะเปิดคืน สลับธงเดียวแล้ว OTA (อย่าลืม `--environment production`)

@@ -150,7 +150,7 @@ function delegate(model: string) {
       // @@unique([tenantId, idempotencyKey])
       if (model === "outboxEvent" &&
           rows().some((r) => r.tenantId === data.tenantId && r.idempotencyKey === data.idempotencyKey)) p2002(model);
-      const r: Row = { id: `fk-${model}-${++seq}`, createdAt: new Date(), updatedAt: new Date(), ...(DEFAULTS[model] ?? {}), ...data };
+      const r: Row = { id: `fk-${model}-${++seq}`, createdAt: new Date(), updatedAt: new Date(), ...structuredClone(DEFAULTS[model] ?? {}), ...data };
       rows().push(r);
       // ผูก attachment กลับเข้าข้อความ (เลียน relation ของ Prisma เวลา include)
       if (model === "chatAttachment") {
@@ -313,6 +313,33 @@ try {
     chk("XC-2.10", "ไม่ fork logic: advisory lock เขียนไว้ที่เดียวในทั้งไฟล์", (CODE.match(/pg_advisory_xact_lock/g) ?? []).length === 1, "1 แห่ง", String((CODE.match(/pg_advisory_xact_lock/g) ?? []).length), "MAJOR");
     const empty = await chat.receiveExternalInbound({ connection: CONN_WEB, externalUserId: "sd2-device-2", body: "   " });
     chk("XC-2.11", "ไม่มีทั้งข้อความและไฟล์ → ปฏิเสธพร้อมเหตุผลไทย", empty.ok === false && /[ก-๙]/.test(empty.reason ?? ""), "{ok:false, reason ไทย}", j(empty), "MINOR");
+
+    // ───────── XC-V: ข้อความเสียง "ขาเข้า" จากลูกค้า (สาย L 2 ก.ย. — ด่านถาวรของฟีเจอร์) ─────────
+    // 🔴 เขียนหลังโค้ด แต่พิสูจน์ fail-before ด้วยการย้อนเจตนา: ถ้า receiveExternalInbound เลิกรู้จักเสียง
+    //    (kind ไม่เป็น AUDIO / ไม่เขียน durationMs / ไม่ปฏิเสธค่าเพี้ยน) ทุกข้อด้านล่างแดงทันที
+    await section("XC-V", "\nXC-V เสียงขาเข้าจากลูกค้า (additive · D21/D29):", async () => {
+      resetAll();
+      const AUD = { url: "https://cdn.example/v.wav", mimeType: "audio/wav", fileName: "v.wav", sizeBytes: 64000, durationMs: 4200 };
+      const r = await chat.receiveExternalInbound({ connection: CONN_WEB, externalUserId: "sd2-voice-1", body: "", attachments: [AUD] });
+      const msg = (tables.chatMessage ?? []).find((m) => m.id === (r as { messageId?: string }).messageId) as Row | undefined;
+      const att = (tables.chatAttachment ?? [])[0] as Row | undefined;
+      chk("XC-V.1", "เสียง+durationMs → ChatMessage.type = AUDIO (ฟองทีมถึงจะเป็นฟองเสียง)", r.ok === true && msg?.type === "AUDIO", "AUDIO", j({ ok: r.ok, type: msg?.type }));
+      chk("XC-V.2", "ChatAttachment ได้ kind=AUDIO + durationMs ตามจริง", att?.kind === "AUDIO" && att?.durationMs === 4200, "AUDIO·4200", j({ kind: att?.kind, d: att?.durationMs }));
+      const conv1 = (tables.chatConversation ?? [])[0] as Row | undefined;
+      chk("XC-V.3", "preview ของห้องบอกว่าเป็นข้อความเสียง (ไม่ใช่ค่าว่าง)", typeof conv1?.lastMessagePreview === "string" && /เสียง/.test(String(conv1?.lastMessagePreview)), "มีคำว่า 'เสียง'", j(conv1?.lastMessagePreview));
+
+      resetAll();
+      const bad = await chat.receiveExternalInbound({ connection: CONN_WEB, externalUserId: "sd2-voice-2", body: "", attachments: [{ ...AUD, durationMs: 999_999 }] });
+      chk("XC-V.4", "🔴 durationMs เกินเพดาน 120000 → ปฏิเสธ ไม่บันทึก", bad.ok === false && (tables.chatMessage ?? []).length === 0, "ok:false·0 แถว", j({ ok: bad.ok, rows: (tables.chatMessage ?? []).length }));
+      resetAll();
+      const neg = await chat.receiveExternalInbound({ connection: CONN_WEB, externalUserId: "sd2-voice-3", body: "", attachments: [{ ...AUD, durationMs: -5 }] });
+      chk("XC-V.5", "durationMs ติดลบ → ปฏิเสธ", neg.ok === false, "ok:false", j(neg));
+
+      resetAll();
+      const mp3 = await chat.receiveExternalInbound({ connection: CONN_WEB, externalUserId: "sd2-voice-4", body: "", attachments: [{ url: "https://cdn.example/x.mp3", mimeType: "audio/mpeg", fileName: "x.mp3", sizeBytes: 1000 }] });
+      const m2 = (tables.chatMessage ?? []).find((m) => m.id === (mp3 as { messageId?: string }).messageId) as Row | undefined;
+      chk("XC-V.6", "🟢 คู่ลบ: ไฟล์เสียงที่ไม่มี durationMs = ไฟล์แนบธรรมดา (พฤติกรรมเดิมไม่เปลี่ยน)", mp3.ok === true && m2?.type !== "AUDIO", "type ≠ AUDIO", j({ ok: mp3.ok, type: m2?.type }));
+    });
 
     // ───────── XC-3 · B4: outbox ตอนแอดมินตอบ / เปลี่ยนสถานะ ─────────
     });
