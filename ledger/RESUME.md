@@ -1,5 +1,16 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🎨 2 ก.ย. (บ่าย) — [session บัญชี] แบบร่าง UI/UX โมดูลบัญชี V2 ตามภาพ PEAK — **รอเจ้าของตรวจภาพ ยังไม่ coding**
+- เจ้าของสั่ง: ศึกษาระบบบัญชี + ออกแบบใหม่ตามภาพ PEAK 9 ใบ · เมนู/ฟังก์ชันที่ไม่มีให้เพิ่มให้ครบ · **ออกแบบรูปให้ตรวจก่อน**
+- **ส่งมอบ** (branch `session/accounting` · ไม่แตะ `src/`): `ledger/ACCOUNT-INVENTORY.md` (inventory 47 หน้า + gap matrix 119 ข้อ ✅37 🟡31 ❌51 + §E ของที่ SHARK มีแต่ PEAK ไม่มี ห้ามทำหาย) ·
+  `docs/design/account-v2/WO-ACC-UI-01-mockup.md` (สเปคแบบร่าง) · `mockup.html` + `render.mjs` → PNG 23 ใบ (10 เดสก์ท็อป ×2 แบบ เปิด/ปิดเมนู + 4 มือถือ) + `contact-sheet.png` · `SITEMAP.md` (ผังเมนู 9 หมวด 65 รายการ ติดป้าย ✅/🔧/✨/🕓 = สัญญาที่จะไปแก้ `nav.ts`)
+- **มติออกแบบ (Fable ตัดสิน รอเจ้าของยืนยัน)**: โครง PEAK (แถบเมนู 9 หมวด + dropdown · dashboard กราฟ · ตารางจริง+แท็บสถานะ · ผู้ติดต่อมีกลุ่ม · ผังบัญชี tree) แต่ผิว SHARK (token เดิม · accent เดียว · กราฟเทา+accent) ·
+  แถบเมนูแนวนอนแทน SubNav sidebar ⇒ ตอน coding ต้องอัปเดต `UI_STANDARD.md §2.9/§4` · มือถือ = แถบเลื่อน + bottom sheet
+- ⚠️ ถ่ายจอ prod ของหน้าบัญชีเดิม (`scripts/shot-account-current.mts` mint session ใน DB prod) **ถูก permission classifier บล็อก** — ไม่มีภาพ "ของเดิม" เทียบ ต้องให้เจ้าของอนุญาต/รันเองถ้าต้องการ
+- Fable QC จากภาพจริง 14 เฟรม: แก้ 1 รอบ (เมนูบังเนื้อหา → 2 แบบ · ตัวกรอง f3 · ปฏิทิน f7 มีเข้า/ออกต่อวัน) — ตัวเลขกระทบยอดข้ามเฟรมตรงหมด · ไม่มีสีนอกจาน · มือถือไม่ล้น 390
+- **ถัดไป (หลังเจ้าของเคาะ)**: WO coding เป็นสาย — (1) nav+shell 9 หมวด (2) dashboard queries ใหม่ (series 12 เดือน · payableStats ที่มีแล้วแต่ไม่มีใครเรียก · financeBalances ยกมาหน้าแรก) (3) หน้ารายการตาราง+แท็บ+pagination (ย้าย filter ลง `listDocuments`) (4) route ราคาถูก: DEPOSIT_PAYMENT / CN-DN received (posting rule มีแล้วใน `gl.ts`) · ASSET_PO / PURCHASE_TAX_INVOICE เข้าเมนู (5) ของใหม่ต้องมี model: กลุ่มผู้ติดต่อ · ใบรวมจ่าย · กล่องขาเข้า+อัปโหลด · กระทบยอดธนาคาร · ปีบัญชี/WHT default
+- หนี้บัญชีเดิม 3 ข้อ (ลด query flow เงิน · DEPOSIT map TRANSFER · audit booking→POS) ยัง defer — ไม่ได้แตะรอบนี้
+
 ## 🔀 2 ก.ย. (ค่ำ) — HANDOFF ย้าย session (main=6e9ced4 · push ครบทุก repo · working tree สะอาดหมด)
 **สถานะ**: แชท V2 จบทั้งแผน (CV1–CV12 + D1–D31) · เสียงครบวงจร (ทีมส่ง↔ลูกค้าส่ง · transcoder cron `*/5` บน VPS ·
 retention ลบไฟล์จริง) · qc:all 181/181 · siamdive2 `14a7c75` · แอป SiamDive OTA ×4 · แอป SHARK OTA ซ่อน orb
