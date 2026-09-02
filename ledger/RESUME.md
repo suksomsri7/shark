@@ -1,5 +1,16 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🔀 2 ก.ย. (ค่ำ) — HANDOFF ย้าย session (main=6e9ced4 · push ครบทุก repo · working tree สะอาดหมด)
+**สถานะ**: แชท V2 จบทั้งแผน (CV1–CV12 + D1–D31) · เสียงครบวงจร (ทีมส่ง↔ลูกค้าส่ง · transcoder cron `*/5` บน VPS ·
+retention ลบไฟล์จริง) · qc:all 181/181 · siamdive2 `14a7c75` · แอป SiamDive OTA ×4 · แอป SHARK OTA ซ่อน orb
+**รอเจ้าของ**: `ABLY_API_KEY` · `BUNNY_ACCOUNT_KEY` · เทสเสียงเครื่องจริง (เว็บลูกค้าต้องยืนยันอีเมลถึงเห็นไมค์) ·
+ปุ่ม Google build #23 → ยื่น App Store · SHA-1 Android
+**คิวถัดไป**: LINE ส่งเสียง (D31 — เงื่อนไข 3 ข้อ) · แอปอัดเสียงส่ง (จดใน HANDOVER-APP) · หน้าตั้งค่าที่อยู่สาขา (D14) ·
+`.wav` ในหน้าต่างแนบไฟล์ · เปิด orb แอปคืน (ธง `ORB_HIDDEN_FOR_NOW`) · หนี้บัญชีลึก · i18n v1.1
+**กติกาแบ่ง session ตั้งแต่ 2 ก.ย.** (เจ้าของกำหนด): 1 ระบบ/1 session บน repo เดียวกัน — ดู
+memory `project_shark_session_split` · เริ่มกะ = `git pull` + อ่านบล็อกบนสุดนี้ · จบกะ = commit+push+เขียนบล็อกใหม่ ·
+**ห้าม 2 session แก้ repo เดียวกันพร้อมกัน** (เครื่อง 2 คอร์ก็รันขนานไม่ไหวอยู่แล้ว)
+
 ## 🎙️ 2 ก.ย. (เย็น) — รอบ "เสียงครบวงจร": transcoder + retention ลบไฟล์จริง + ลูกค้าอัดเสียงได้ (สาย K+L · Fable ปิด D16/D24)
 - **สาย K**: `scripts/voice-transcode-worker.mts` (wav→m4a −77% · ตรวจ ftypM4A+ffprobe ก่อนเชื่อ · idempotent · ล็อก 2 ชั้น)
   **cron ติดตั้งแล้ว** `*/5` → log `/var/log/shark-voice-transcode.log` · retention **ลบไฟล์จริงบน Bunny** (`deleteStoredFile`
