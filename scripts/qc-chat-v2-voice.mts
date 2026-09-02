@@ -141,13 +141,18 @@ try {
     const V10_STORAGE = strip(read("src/lib/storage/service.ts"));
     const ci = SCREEN.indexOf("CANDIDATE_TYPES");
     const cand = ci >= 0 ? SCREEN.slice(ci, ci + 400) : "";
-    chk("VO-10.1", "🔴 ตัวอัดเลือก m4a (audio/mp4) เป็นอันดับแรก — ชนิดเดียวที่ iOS+Android+LINE เล่น/รับได้",
-      /audio\/mp4/.test(cand) && !/audio\/webm/.test(cand), "mp4 นำ · ไม่มี webm ใน candidates", cand.slice(0, 120));
+    // 🔁 แก้รอบสอง 2 ก.ย.: m4a จาก MediaRecorder ของ Chrome เป็น fragmented MP4 ⇒ iOS เปิดไฟล์ตรง ๆ ไม่ได้
+    //    ⇒ สัญญาใหม่: **WAV ผ่าน Web Audio เป็นเส้นทางเดียว** (candidates ว่าง = MediaRecorder ไม่ถูกใช้ผลิตไฟล์)
+    chk("VO-10.1", "🔴 ตัวอัดผลิตเฉพาะชนิดที่เล่นได้ทุกเครื่องแน่นอน — WAV เส้นทางเดียว (candidates ว่าง)",
+      /CANDIDATE_TYPES = \[\] as const/.test(SCREEN) && /startWav\(stream\)/.test(SCREEN),
+      "CANDIDATE_TYPES ว่าง + startWav", cand.slice(0, 120));
     chk("VO-10.2", "🔴 มีทางลง WAV (Web Audio) สำหรับเบราว์เซอร์ที่อัด m4a ไม่ได้ (Firefox) — ห้ามผลิต webm อีก",
       /encodeWav/.test(SCREEN) && /audio\/wav/.test(SCREEN), "encodeWav + audio/wav", "ไม่พบ");
     chk("VO-10.3", "storage รับ audio/wav พร้อมนามสกุล", /"audio\/wav":\s*"wav"/.test(V10_STORAGE), "มี", "ไม่พบ");
     chk("VO-10.4", "🔴 ฟองเสียงตรวจ canPlayType — ไฟล์เก่าที่เครื่องเล่นไม่ได้ต้องได้ลิงก์เปิด/ดาวน์โหลด ไม่ใช่ปุ่มเงียบ",
       /canPlayType/.test(SCREEN), "มี fallback", "ปุ่มโกหก");
+    chk("VO-10.5", "🔴 ดัก error ตอนเล่นจริงด้วย (ไฟล์ชนิดถูกแต่โครงผิด canPlayType จับไม่ได้ — fMP4)",
+      /onError=/.test(SCREEN) && /\.catch\(/.test(SCREEN), "onError + play().catch สลับเป็นลิงก์", "ไม่พบ");
   });
 
   // ═════════ VO-5/6/8 · การอัดและอัป ═════════

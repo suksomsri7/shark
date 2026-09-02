@@ -42,10 +42,16 @@ export const VOICE_MAX_MS = 120_000;
  * · เบราว์เซอร์ที่อัด m4a ไม่ได้ (Firefox) ตกไปอัด **WAV ผ่าน Web Audio** (ดู recordWav ด้านล่าง)
  *   — ไฟล์ใหญ่กว่าแต่เล่นได้ทุกเครื่องแน่นอน · ห้ามผลิต webm/ogg อีก (D29)
  */
-const CANDIDATE_TYPES = [
-  "audio/mp4", // m4a — Safari/iOS ทุกรุ่น · Chrome/Edge รุ่นปัจจุบัน
-  "audio/aac",
-] as const;
+/*
+ * 🔴 2 ก.ย. (รอบสอง — เจ้าของเทสซ้ำแล้วยังเงียบทุกจอ): m4a จาก MediaRecorder ของ Chrome เป็น
+ * **fragmented MP4** (`ftyp iso5/hlsf/cmfc`) ซึ่ง iOS เปิดเป็นไฟล์ตรง ๆ ไม่ได้ (รองรับเฉพาะ HLS/MSE)
+ * ⇒ ไฟล์ "ชนิดถูก" แต่ "โครงผิด" — `canPlayType("audio/mp4")` ตอบว่าเล่นได้ จับไม่ได้ด้วย
+ * ⇒ เลิกพึ่ง MediaRecorder ทั้งหมด: **อัด WAV ผ่าน Web Audio เป็นเส้นทางเดียว** — ไฟล์ PCM ตรง ๆ
+ *    ไม่มีตัวแปรเรื่อง container/codec/fragment ของแต่ละเบราว์เซอร์อีก · เล่นได้ทุกเครื่องแน่นอน
+ *    (16kHz โมโน · 120 วิ ≈ 3.8MB) · แลกกับไฟล์ใหญ่ขึ้น ~เท่าตัว ซึ่งคุ้มกว่าปุ่มเงียบ
+ * ตัวแปลงเป็น m4a ให้ LINE = งานเซิร์ฟเวอร์ภายหลัง (ffmpeg) — ไม่ใช่หน้าที่เบราว์เซอร์
+ */
+const CANDIDATE_TYPES = [] as const;
 
 /** mime → นามสกุลสำหรับ "ชื่อไฟล์ที่คนอ่าน" (นามสกุลจริงบน CDN เซิร์ฟเวอร์เป็นคนตั้งจากตารางเดียว) */
 const EXT_OF: Record<string, string> = {
@@ -201,6 +207,8 @@ export function useVoiceRecorder(args: {
   const startWav = useCallback(
     (stream: MediaStream) => {
       const ctx = new AudioContext();
+      // Safari เปิด AudioContext มาเป็น suspended จนกว่าจะ resume ใน user gesture — ไม่ resume = อัดได้แต่ความเงียบ
+      void ctx.resume();
       const src = ctx.createMediaStreamSource(stream);
       const proc = ctx.createScriptProcessor(4096, 1, 1);
       const chunks: Float32Array[] = [];
@@ -281,58 +289,9 @@ export function useVoiceRecorder(args: {
       return;
     }
 
-    if (recorderType === null) {
-      // ── เส้นทาง WAV (Firefox ฯลฯ ที่อัด m4a ไม่ได้) — PCM 16kHz โมโน ⇒ 120 วิ ≈ 3.8MB (< เพดาน 10MB)
-      startWav(stream);
-      return;
-    }
-
-    try {
-      const rec = new MediaRecorder(stream, recorderType ? { mimeType: recorderType } : undefined);
-      streamRef.current = stream;
-      recRef.current = rec;
-      chunksRef.current = [];
-      cancelledRef.current = false;
-      rec.ondataavailable = (ev) => {
-        if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data);
-      };
-      rec.onstop = () => {
-        // ความยาวจริง = เวลาที่อัดจริง (ไม่ใช่ค่าที่เดาจากขนาดไฟล์ และไม่ต้องรอ metadata ของ blob
-        // ซึ่ง webm ที่ MediaRecorder ปล่อยออกมามักไม่มี duration เขียนไว้เลย)
-        const ms = Math.round(performance.now() - startedAtRef.current);
-        const blob = new Blob(chunksRef.current, { type: rec.mimeType || recorderType || "audio/mp4" });
-        const cancelled = cancelledRef.current;
-        cleanup();
-        if (cancelled) {
-          setPhase("idle");
-          setElapsedMs(0);
-          return;
-        }
-        if (ms < 700 || blob.size === 0) {
-          setPhase("idle");
-          setElapsedMs(0);
-          setErr("คลิปสั้นเกินไป — กดไมค์แล้วพูดอย่างน้อย 1 วินาที");
-          return;
-        }
-        setPhase("sending");
-        void send(blob, Math.min(ms, VOICE_MAX_MS));
-      };
-      startedAtRef.current = performance.now();
-      rec.start(250); // แบ่งก้อนทุก 250ms — ปิดแท็บกลางคันแล้วยังได้ท่อนที่อัดไปแล้ว
-      setPhase("recording");
-      setElapsedMs(0);
-      tickRef.current = setInterval(() => {
-        const ms = performance.now() - startedAtRef.current;
-        setElapsedMs(ms);
-        // ถึงเพดานแล้วหยุดให้เอง — ไม่ปล่อยให้อัดยาวจนเซิร์ฟเวอร์ปฏิเสธทีหลัง (เสียเวลาผู้ใช้ฟรี ๆ)
-        if (ms >= VOICE_MAX_MS && recRef.current?.state === "recording") recRef.current.stop();
-      }, 200);
-    } catch {
-      cleanup();
-      setPhase("idle");
-      setErr("เริ่มอัดเสียงไม่สำเร็จ — กดไมค์อีกครั้งได้เลย");
-    }
-  }, [recorderType, canSendAudio, capabilityReason, cleanup, send]);
+    // ── เส้นทางเดียว: WAV (ดูเหตุผลที่ CANDIDATE_TYPES — fragmented MP4 ของ MediaRecorder เล่นบน iOS ไม่ได้)
+    startWav(stream);
+  }, [recorderType, canSendAudio, capabilityReason, startWav]);
 
   const stop = useCallback(() => {
     cancelledRef.current = false;

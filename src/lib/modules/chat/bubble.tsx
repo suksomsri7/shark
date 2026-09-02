@@ -149,12 +149,15 @@ const WAVE = [6, 12, 18, 22, 14, 9, 16, 20, 11, 7, 13, 17, 8, 15, 21, 10];
 function VoiceBody({ url, durationMs, mimeType }: { url: string | null; durationMs: number | null; mimeType?: string | null }) {
   const ref = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
+  // ไฟล์ที่ "ชนิดถูกแต่โครงผิด" (เช่น fragmented MP4) canPlayType ตอบว่าเล่นได้แต่เล่นจริงล้ม
+  // ⇒ ดัก error ตอนเล่นจริง แล้วสลับเป็นลิงก์เปิด/ดาวน์โหลด (ห้ามปล่อยปุ่มเงียบ)
+  const [broken, setBroken] = useState(false);
   // 🔴 ไฟล์เก่า (webm ที่อัดก่อน 2 ก.ย.) iPhone/iPad เล่นไม่ได้ — ปุ่ม play ที่กดแล้วเงียบคือปุ่มโกหก
   //    ต้องบอกตรง ๆ + ให้ทางไป (เปิดแท็บใหม่/ดาวน์โหลด) · ไฟล์ใหม่เป็น m4a/wav ซึ่งเล่นได้ทุกเครื่อง
   const playable =
     !mimeType ||
     (typeof document !== "undefined" && document.createElement("audio").canPlayType(mimeType) !== "");
-  if (url && !playable) {
+  if (url && (!playable || broken)) {
     return (
       <a
         data-qc="bubble-voice"
@@ -173,7 +176,14 @@ function VoiceBody({ url, durationMs, mimeType }: { url: string | null; duration
   const toggle = () => {
     const el = ref.current;
     if (!el) return;
-    if (el.paused) void el.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    if (el.paused)
+      void el
+        .play()
+        .then(() => setPlaying(true))
+        .catch(() => {
+          setPlaying(false);
+          setBroken(true); // เล่นไม่ได้จริง — สลับเป็นลิงก์ ไม่ใช่เงียบ
+        });
     else {
       el.pause();
       setPlaying(false);
@@ -209,6 +219,7 @@ function VoiceBody({ url, durationMs, mimeType }: { url: string | null; duration
           src={url}
           preload="none"
           onEnded={() => setPlaying(false)}
+          onError={() => setBroken(true)}
           onPause={() => setPlaying(false)}
           className="hidden"
         />
