@@ -49,6 +49,7 @@ export type IconName =
   | "checkcircle"
   | "sparkle"
   | "play"
+  | "pause"
   | "hand"
   | "filter"
   | "history"
@@ -170,6 +171,8 @@ const SHAPES: Record<IconName, ReactNode> = {
     <path d="M12 3.5 13.7 9 19 10.5 13.7 12 12 17.5 10.3 12 5 10.5 10.3 9 12 3.5ZM18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z" />
   ),
   play: <path d="M8 5.5v13l11-6.5-11-6.5Z" />,
+  // pause คู่กับ play — ทึบเหมือนกัน (เพิ่ม 2 ก.ย. ตามที่สาย E/H ขอ: ปุ่มเล่นเสียงต้องสลับสถานะได้)
+  pause: <path d="M8 5.5h3.2v13H8Zm4.8 0H16v13h-3.2Z" />,
   hand: (
     <path d="M8.5 11V5.5a1.6 1.6 0 0 1 3.2 0V11m0-1.5a1.6 1.6 0 0 1 3.2 0V12m0-1a1.6 1.6 0 0 1 3.2 0v4.5c0 3.3-2.4 5.5-5.6 5.5s-5.6-2.2-5.6-5.5v-3a1.6 1.6 0 0 1 3.2 0" />
   ),
@@ -208,7 +211,7 @@ export const ICON_NAMES = Object.keys(SHAPES) as IconName[];
  * 🔴 ตัวเดียวในชุดที่แบบร่างใช้ `fill` จริง (`.play svg{fill:currentColor;stroke:none}`)
  *    สามเหลี่ยมเล่นเสียงขนาด 13px ถ้าวาดด้วยเส้น จะกลายเป็นสามเหลี่ยมกลวงที่มองไม่ออกว่าคือปุ่มเล่น
  */
-const FILLED = new Set<IconName>(["play"]);
+const FILLED = new Set<IconName>(["play", "pause"]);
 
 /** ขนาดตามแบบร่าง — 3 ค่านี้เท่านั้น (ห้ามให้ที่เรียกใช้ตั้งตัวเลขเอง ไม่งั้นชุดไอคอนจะกระจาย) */
 const SIZE = { sm: 15, md: 21, lg: 24 } as const;

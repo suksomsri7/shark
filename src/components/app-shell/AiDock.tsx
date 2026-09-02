@@ -9,7 +9,7 @@ import { AiChat } from "./AiChat";
 // จัดตำแหน่งไม่ให้บังเนื้อหา: main มี padding-bottom เผื่อไว้แล้ว
 
 /**
- * `hideOnMobile` — หน้าแชทเต็มจอ (<lg) ซ่อน orb (มติ WO-CV12 ข้อ ข): orb `fixed bottom-4 right-4` ทับปุ่มส่งของกล่องพิมพ์
+ * `hideOnMobile` — หน้าแชทเต็มจอซ่อน orb **ทุกจอ** (เจ้าของสั่ง 2 ก.ย. — บนเดสก์ท็อปมันทับมุมล่างขวาของกล่องแชท): orb `fixed bottom-4 right-4` ทับปุ่มส่งของกล่องพิมพ์
  * ถ้าให้กล่องแชทเต็มขอบล่างตามแบบร่าง · ผู้ใช้ยังเรียก AI ได้จากปุ่ม "AI ช่วยร่าง" ในกล่องพิมพ์ · เดสก์ท็อปยังมี orb
  */
 export function AiDock({ aiUnread = 0, hideOnMobile = false }: { aiUnread?: number; hideOnMobile?: boolean }) {
@@ -25,7 +25,7 @@ export function AiDock({ aiUnread = 0, hideOnMobile = false }: { aiUnread?: numb
         type="button"
         onClick={() => setOpen(true)}
         aria-label={aiUnread > 0 ? `ผู้ช่วย AI (${aiUnread} แจ้งเตือนใหม่)` : "ผู้ช่วย AI"}
-        className={`ai-orb-breathe fixed bottom-4 right-4 z-40 h-10 w-10 ${hideOnMobile ? "hidden lg:block" : ""}`}
+        className={`ai-orb-breathe fixed bottom-4 right-4 z-40 h-10 w-10 ${hideOnMobile ? "hidden" : ""}`}
       >
         <span aria-hidden className="ai-orb" />
         {aiUnread > 0 && (

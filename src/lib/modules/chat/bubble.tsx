@@ -197,13 +197,10 @@ function VoiceBody({ url, durationMs, mimeType }: { url: string | null; duration
         onClick={toggle}
         disabled={!url}
         aria-label={playing ? "หยุดเล่นข้อความเสียง" : "เล่นข้อความเสียง"}
-        // ⚠️ ทะเบียนไอคอนยังไม่มี `pause` — ระหว่างเล่นจึงบอกสถานะด้วยวงแหวนรอบปุ่มแทน
-        //    (ห้ามวาด svg เองในไฟล์นี้ · แจ้ง Fable ให้เพิ่มไอคอนไว้ในรายงานแล้ว)
-        className={`grid size-7 shrink-0 place-items-center rounded-full bg-[color:var(--color-accent)] text-white disabled:opacity-50 ${
-          playing ? "ring-2 ring-[color:var(--color-accent)]/35" : ""
-        }`}
+        className="grid size-7 shrink-0 place-items-center rounded-full bg-[color:var(--color-accent)] text-white disabled:opacity-50"
       >
-        <Icon name="play" size="sm" className="ml-[1px]" />
+        {/* เพิ่ม `pause` เข้าทะเบียนแล้ว (2 ก.ย.) — เจ้าของเทสจริง: กดเล่นแล้วไอคอนต้องสลับ */}
+        <Icon name={playing ? "pause" : "play"} size="sm" className={playing ? "" : "ml-[1px]"} />
       </button>
       <span aria-hidden className="flex h-[22px] flex-1 items-center gap-[2px]">
         {WAVE.map((h, i) => (
