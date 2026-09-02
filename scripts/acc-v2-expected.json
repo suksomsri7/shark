@@ -1,0 +1,116 @@
+{
+  "_readme": "เฉลยชุดเดียวของงานบัญชี V2 — เขียนโดย scripts/seed-acc-v2-qc.mts ทุกครั้งที่ seed · จำนวนเงินเป็นสตางค์ (integer)",
+  "generatedAt": "2026-09-02T23:35:32.611Z",
+  "today": "2026-09-30",
+  "oracleValidUntil": "2026-10-31",
+  "tenantId": "cmtkqhbv90000bnkzgqo18c8q",
+  "tenantName": "SIAM DIVE QC",
+  "ownerEmail": "qc-owner@shark.local",
+  "ownerUserId": "cmtkqhbvk0001bnkzvhlkt0ri",
+  "unitId": "cmtkqhbwa0003bnkzerfvinkc",
+  "systemId": "cmtkqhbwl0004bnkzhoqx4dv7",
+  "systems": {
+    "ACCOUNT": "cmtkqhbwl0004bnkzhoqx4dv7",
+    "POS": "cmtkqhbya0006bnkzp7zb3vpu",
+    "INVENTORY": "cmtkqhc0b0008bnkzsdkdrekn",
+    "MEMBER": "cmtkqhc2b000abnkzakm2deln",
+    "CRM": "cmtkqhc4i000cbnkzwll90ozl"
+  },
+  "receivable": 48630000,
+  "receivableDocs": 18,
+  "receivableCustomers": 14,
+  "overdueAmount": 12840000,
+  "overdueDocs": 4,
+  "payable": 21275000,
+  "payableDocs": 9,
+  "payableVendors": 7,
+  "payableOverdueDocs": 2,
+  "finance": {
+    "CSH001": 8640000,
+    "BSV001": 91230000,
+    "EWL001": 26586000,
+    "PTY001": 2000000,
+    "total": 128456000
+  },
+  "financeAccounts": [
+    {
+      "code": "CSH001",
+      "id": "cmtkqhdb7006rbnkzwi747ova",
+      "name": "เงินสด",
+      "type": "CASH",
+      "opening": 1400000,
+      "balance": 8640000
+    },
+    {
+      "code": "BSV001",
+      "id": "cmtkqhdnb008tbnkzszxxk2sr",
+      "name": "กสิกรไทย ออมทรัพย์",
+      "type": "BANK",
+      "opening": 40505000,
+      "balance": 91230000
+    },
+    {
+      "code": "EWL001",
+      "id": "cmtkqhdsh00avbnkzl26xhlu7",
+      "name": "พร้อมเพย์",
+      "type": "E_WALLET",
+      "opening": 5000000,
+      "balance": 26586000
+    },
+    {
+      "code": "PTY001",
+      "id": "cmtkqhdxh00cxbnkzicgr7pqg",
+      "name": "เงินสดย่อย",
+      "type": "PETTY_CASH",
+      "opening": 2000000,
+      "balance": 2000000
+    }
+  ],
+  "invoiceTabs": {
+    "all": 51,
+    "draft": 3,
+    "awaiting": 12,
+    "partial": 2,
+    "paid": 29,
+    "overdue": 4,
+    "cancelled": 1
+  },
+  "contacts": {
+    "all": 63,
+    "customer": 41,
+    "vendor": 22,
+    "archived": 5,
+    "active": 58
+  },
+  "products": 12,
+  "journal": {
+    "needsReview": 0,
+    "suspense9999": 0,
+    "trialBalanceBalanced": true
+  },
+  "fixtures": {
+    "invPiyathidaId": "cmtkqhe0k00d1bnkzbd84hhw6",
+    "invPiyathidaDocNo": "IV-2026-08-0001",
+    "invNattapholId": "cmtkqhf2400lhbnkzhuzbyq1t",
+    "invNattapholDocNo": "IV-2026-09-0001",
+    "invSimilanViewId": "cmtkqhi5y01avbnkzforbphx2",
+    "invSimilanViewDocNo": "IV-2026-09-0013",
+    "depositNattapholId": "cmtkqhvq004vgbnkzge9e9moq",
+    "depositNattapholDocNo": "DR-2026-09-0001",
+    "contactC00019Id": "cmtkqhcn1003kbnkzbfqh0529",
+    "contactNattapholId": "cmtkqhciy0035bnkzu55rlml5",
+    "contactSimilanViewId": "cmtkqhcid0033bnkz21gsz649",
+    "contactC00019Name": "ปิยธิดา อินสุ่ม",
+    "contactC00019Code": "C00019",
+    "invPiyathidaGrand": 3840000,
+    "invPiyathidaIssue": "2026-08-12",
+    "invPiyathidaDue": "2026-08-26",
+    "invNattapholGrand": 2490000,
+    "invNattapholSubTotal": 2327103,
+    "invNattapholVat": 162897,
+    "depositNattapholGrand": 1000000,
+    "invSimilanViewGrand": 12450000,
+    "invSimilanViewPaid": 6225000,
+    "invSimilanViewRemain": 6225000
+  }
+}
