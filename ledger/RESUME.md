@@ -1,6 +1,10 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
-## 🫧 2 ก.ย. (บ่าย) — orb AI ที่ทับหน้าแชทบน "แอป SHARK" = ปุ่ม native ของแอป ไม่ใช่ของเว็บ
+## 🫧 2 ก.ย. (บ่าย) — orb AI บนแอป SHARK: เจ้าของสั่งสุดท้าย **ซ่อนทุกหน้าไปก่อน** (OTA `7716f1fe` · runtime 1.0.0)
+- โค้ด orb + ตัวรับสัญญาณ chat-fullscreen เก็บไว้ครบ (`ORB_HIDDEN_FOR_NOW = true` ใน `apps/mobile/app/(app)/index.tsx`)
+  ⇒ วันไหนจะเปิดคืน สลับธงเดียวแล้ว OTA (อย่าลืม `--environment production`)
+
+## (บริบทเดิม) orb ที่ทับหน้าแชทบน "แอป SHARK" = ปุ่ม native ของแอป ไม่ใช่ของเว็บ
 - เจ้าของล้างแคช Safari/รีสตาร์ตแอปแล้วก็ไม่หาย — เพราะเว็บซ่อนของตัวเองถูกแล้ว (พิสูจน์ด้วย puppeteer บน prod:
   display=none ทั้ง 390/1440) แต่แอป (apps/mobile = WebView + orb native ลอยทุกหน้า) วาดทับเอง
 - แก้: สัญญาใหม่ **เว็บ→แอป** `postMessage {ev:"chat-fullscreen", on}` จาก AppShell (no-op บนเบราว์เซอร์ปกติ)
