@@ -21,7 +21,7 @@
 | 0.3 | Schema เฟส 0 | Opus | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~23:55 UTC ขนานกับ 0.1 · โน้ต `wo-notes/0.3.md` · migration apply เฉพาะ QC branch (prod ได้ตอน deploy) |
 | 0.4 | Shell V2 (เมนู 9 หมวด + flyout + sheet) | Sonnet | TODO | | + สร้าง `account/page.tsx` (ตอนนี้ 404 — บั๊กจาก 0.1) + ด่านสิทธิ์ `AccountContent` |
 | 0.5 | ส่วนประกอบกลาง V2 | Sonnet | TODO | | + `DateText` ใช้ ค.ศ. "24 ก.ย. 2026" ตามแบบ (ของเดิมโชว์ "24 ก.ย. 69") |
-| 0.6 | 🐞 hotfix `gl.postDocument` PURCHASE/EXPENSE โหมดราคารวม VAT Dr เกิน Cr (เจอใน 0.1 · ออกเอกสารไม่ได้) + ข้อสอบ | Opus | TODO | | ต้องเสร็จก่อนเฟส 1 · ดู `wo-notes/0.1.md` ข้อ 7 |
+| 0.6 | 🐞 hotfix `gl.postDocument` PURCHASE/EXPENSE โหมดราคารวม VAT Dr เกิน Cr (เจอใน 0.1 · ออกเอกสารไม่ได้) + ข้อสอบ | Opus | IN_PROGRESS | | มอบหมาย 4 ก.ย. ~00:30 UTC ขนานกับ 0.3 · ต้องเสร็จก่อนเฟส 1 · ดู `wo-notes/0.1.md` ข้อ 7 · โน้ต `wo-notes/0.6.md` |
 | 1.1 | หน้ารายการทุกชนิด | Sonnet | TODO | | |
 | 1.2 | route ราคาถูก DP/CNR/DNR/ASSET_PO/PTX + payableStats | Opus (Sonnet) | TODO | | |
 | 1.3 | DocEditorV2 A–C,E,G,H,I | Opus | TODO | | |
