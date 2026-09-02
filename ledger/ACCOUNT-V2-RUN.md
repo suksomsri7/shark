@@ -18,7 +18,7 @@
 |---|---|---|---|---|---|
 | 0.1 | QC env (Neon branch · seed · เฉลย · serve · visual) | Opus (Sonnet) | IN_PROGRESS | | |
 | 0.2 | ปิดรูรั่วเดิม (guard ทุก page · dedupe ผู้ติดต่อ · list server-side) | Opus | DONE | 1e8d73b | Fable รัน qc-acc-v2-guard เอง 100/0 บน .env.qc · อ่าน diff แล้ว · ค้างตาม: หน้าแรกบัญชี `AccountContent` (นอก account/**) ยังไม่มีด่าน → ใส่ใน WO 0.4 · action `account.*.view` แยกจาก create → WO 0.3 |
-| 0.3 | Schema เฟส 0 | Opus | TODO | | |
+| 0.3 | Schema เฟส 0 | Opus | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~23:55 UTC ขนานกับ 0.1 · โน้ต `wo-notes/0.3.md` · migration apply เฉพาะ QC branch (prod ได้ตอน deploy) |
 | 0.4 | Shell V2 (เมนู 9 หมวด + flyout + sheet) | Sonnet | TODO | | |
 | 0.5 | ส่วนประกอบกลาง V2 | Sonnet | TODO | | |
 | 1.1 | หน้ารายการทุกชนิด | Sonnet | TODO | | |
