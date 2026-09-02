@@ -630,7 +630,10 @@ export async function sendVoiceReplyAction(formData: FormData): Promise<SendRepl
   if (!isAudioUploadType(mime) || !(mime in ALLOWED_UPLOAD_TYPES)) {
     return {
       ok: false,
-      reason: "ไฟล์เสียงชนิดนี้ส่งในแชทไม่ได้ — รองรับ webm/m4a/mp3/ogg (อัดใหม่จากเบราว์เซอร์รุ่นล่าสุดได้เลย)",
+      // ลิสต์ชนิดมาจากทะเบียนเดียวกับด่านข้างบน — ของเดิมพิมพ์มือแล้วตกยุค (ไม่มี wav ทั้งที่ iOS อัด wav ตั้งแต่ D29)
+      reason: `ไฟล์เสียงชนิดนี้ส่งในแชทไม่ได้ — รองรับ ${uploadExtensions(
+        Object.fromEntries(Object.entries(ALLOWED_UPLOAD_TYPES).filter(([m]) => m.startsWith("audio/"))),
+      ).join("/")} (อัดใหม่แล้วส่งอีกครั้งได้เลย)`,
     };
   }
   if (f.size === 0) return { ok: false, reason: "คลิปเสียงว่างเปล่า — อัดใหม่แล้วส่งอีกครั้งได้เลย" };

@@ -135,7 +135,7 @@ export async function uploadFile(
       return {
         ok: false,
         error:
-          "ชนิดไฟล์นี้อัปโหลดไม่ได้ — รองรับรูป (jpg/png/webp/gif/heic), เสียง (webm/m4a/mp3/ogg), PDF, Word, Excel และ txt",
+          `ชนิดไฟล์นี้อัปโหลดไม่ได้ — ชนิดที่รับตอนนี้คือ ${[...new Set(Object.values(ALLOWED_TYPES))].join("/")}`, // ลิสต์จากทะเบียน ไม่พิมพ์มือ (ของเดิมตกยุค ไม่มี wav)
       };
     }
 
