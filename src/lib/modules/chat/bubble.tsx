@@ -146,9 +146,29 @@ export function deliveryMark(
 const WAVE = [6, 12, 18, 22, 14, 9, 16, 20, 11, 7, 13, 17, 8, 15, 21, 10];
 
 /** ฟองข้อความเสียง (แบบร่าง `.voice`) — ปุ่มเล่น + คลื่น + ความยาว */
-function VoiceBody({ url, durationMs }: { url: string | null; durationMs: number | null }) {
+function VoiceBody({ url, durationMs, mimeType }: { url: string | null; durationMs: number | null; mimeType?: string | null }) {
   const ref = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
+  // 🔴 ไฟล์เก่า (webm ที่อัดก่อน 2 ก.ย.) iPhone/iPad เล่นไม่ได้ — ปุ่ม play ที่กดแล้วเงียบคือปุ่มโกหก
+  //    ต้องบอกตรง ๆ + ให้ทางไป (เปิดแท็บใหม่/ดาวน์โหลด) · ไฟล์ใหม่เป็น m4a/wav ซึ่งเล่นได้ทุกเครื่อง
+  const playable =
+    !mimeType ||
+    (typeof document !== "undefined" && document.createElement("audio").canPlayType(mimeType) !== "");
+  if (url && !playable) {
+    return (
+      <a
+        data-qc="bubble-voice"
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="flex min-w-[180px] items-center gap-2 text-[12.5px] text-[color:var(--color-muted)] underline"
+      >
+        <Icon name="mic" size="sm" />
+        เครื่องนี้เล่นไฟล์เสียงชนิดนี้ไม่ได้ — แตะเพื่อเปิด/ดาวน์โหลด
+        {durationMs !== null ? ` (${formatDuration(durationMs)})` : ""}
+      </a>
+    );
+  }
 
   const toggle = () => {
     const el = ref.current;
@@ -299,7 +319,7 @@ export function MessageBubble({
 
           {/* 🔴 ความยาวมากับตัวไฟล์แนบเอง (มติ D16) — prop `audioMs` เหลือไว้เป็นทางถอย
               สำหรับผู้เรียกเดิมที่ยังส่งค่ามาจาก `loadRoomContextAction` เท่านั้น */}
-          {audio && <VoiceBody url={audio.url} durationMs={audio.durationMs ?? audioMs} />}
+          {audio && <VoiceBody url={audio.url} durationMs={audio.durationMs ?? audioMs} mimeType={audio?.mimeType ?? null} />}
 
           {images.length > 0 && (
             <div className="-mx-1 mb-1 flex flex-col gap-1">

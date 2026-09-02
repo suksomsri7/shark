@@ -34,22 +34,25 @@ export const VOICE_MAX_MS = 120_000;
  * 🔴 ทุกชนิดในลิสต์นี้ต้องมีอยู่ใน `ALLOWED_UPLOAD_TYPES` ของ storage ด้วย (พร้อมนามสกุลที่ถูก)
  *    ไม่งั้นอัดได้แต่อัปไม่ขึ้น = เสียงหายหลังกดส่ง
  */
+/*
+ * 🔴 เรียงใหม่ 2 ก.ย. 2026 (เจ้าของเทสจริงแล้วเจอ): เดิม webm มาก่อน ⇒ Chrome เดสก์ท็อปอัดเป็น webm
+ * ซึ่ง **iPhone/iPad เล่นไม่ได้โดยสิ้นเชิง** (ทั้ง <audio>, QuickTime, WebAudio) — ทีมอัดจากคอม
+ * ลูกค้าครึ่งประเทศกดเล่นแล้วเงียบ ⇒ ชนิดที่เลือกต้องตัดสินจาก "ทุกเครื่อง**เล่น**ได้" ไม่ใช่ "เครื่องนี้**อัด**ได้"
+ * · `audio/mp4` (m4a/AAC) เล่นได้ทุกเบราว์เซอร์+iOS+Android และเป็นชนิดเดียวที่ LINE รับ
+ * · เบราว์เซอร์ที่อัด m4a ไม่ได้ (Firefox) ตกไปอัด **WAV ผ่าน Web Audio** (ดู recordWav ด้านล่าง)
+ *   — ไฟล์ใหญ่กว่าแต่เล่นได้ทุกเครื่องแน่นอน · ห้ามผลิต webm/ogg อีก (D29)
+ */
 const CANDIDATE_TYPES = [
-  "audio/webm;codecs=opus", // Chrome/Edge/Firefox บนเดสก์ท็อปและ Android
-  "audio/webm",
-  "audio/mp4", // Safari/iOS (คอนเทนเนอร์ m4a)
+  "audio/mp4", // m4a — Safari/iOS ทุกรุ่น · Chrome/Edge รุ่นปัจจุบัน
   "audio/aac",
-  "audio/ogg;codecs=opus", // Firefox รุ่นเก่า
-  "audio/ogg",
 ] as const;
 
 /** mime → นามสกุลสำหรับ "ชื่อไฟล์ที่คนอ่าน" (นามสกุลจริงบน CDN เซิร์ฟเวอร์เป็นคนตั้งจากตารางเดียว) */
 const EXT_OF: Record<string, string> = {
-  "audio/webm": "webm",
-  "audio/ogg": "ogg",
   "audio/mp4": "m4a",
   "audio/aac": "aac",
   "audio/mpeg": "mp3",
+  "audio/wav": "wav",
 };
 
 /** ชนิดแรกที่เบราว์เซอร์นี้อัดได้จริง · null = อัดไม่ได้เลย */
@@ -68,6 +71,32 @@ export function pickRecordingType(
 }
 
 const baseMime = (t: string) => t.split(";")[0]!.trim().toLowerCase();
+
+/** Float32 หลายก้อน → ไฟล์ WAV 16kHz โมโน 16-bit (ลดจาก sample rate จริงด้วยการหยิบทุก n ตัว —
+ *  เสียงพูดไม่ต้องละเอียดกว่านี้ และคุมขนาด 120 วิ ≈ 3.8MB) */
+function encodeWav(chunks: Float32Array[], inputRate: number): Blob {
+  const TARGET_RATE = 16_000;
+  const step = Math.max(1, Math.round(inputRate / TARGET_RATE));
+  const rate = Math.round(inputRate / step);
+  let total = 0;
+  for (const c of chunks) total += Math.ceil(c.length / step);
+  const pcm = new Int16Array(total);
+  let w = 0;
+  for (const c of chunks) {
+    for (let i = 0; i < c.length; i += step) {
+      const v = Math.max(-1, Math.min(1, c[i]!));
+      pcm[w++] = v < 0 ? v * 0x8000 : v * 0x7fff;
+    }
+  }
+  const header = new ArrayBuffer(44);
+  const dv = new DataView(header);
+  const str = (o: number, t: string) => { for (let i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); };
+  str(0, "RIFF"); dv.setUint32(4, 36 + pcm.byteLength, true); str(8, "WAVE");
+  str(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  str(36, "data"); dv.setUint32(40, pcm.byteLength, true);
+  return new Blob([header, pcm.buffer as ArrayBuffer], { type: "audio/wav" });
+}
 
 export type VoicePhase = "idle" | "asking" | "recording" | "sending";
 
@@ -127,6 +156,8 @@ export function useVoiceRecorder(args: {
     };
   }, [systemId, conversationId]);
 
+  const wavStopRef = useRef<(() => void) | null>(null);
+
   const cleanup = useCallback(() => {
     if (tickRef.current) clearInterval(tickRef.current);
     tickRef.current = null;
@@ -142,8 +173,8 @@ export function useVoiceRecorder(args: {
 
   const send = useCallback(
     async (blob: Blob, durationMs: number) => {
-      const type = baseMime(blob.type || recorderType || "audio/webm");
-      const ext = EXT_OF[type] ?? "webm";
+      const type = baseMime(blob.type || recorderType || "audio/mp4");
+      const ext = EXT_OF[type] ?? "m4a";
       const fd = new FormData();
       fd.set("systemId", systemId);
       fd.set("conversationId", conversationId);
@@ -164,9 +195,61 @@ export function useVoiceRecorder(args: {
     [systemId, conversationId, isInternal, onSent, recorderType],
   );
 
+  /** อัดเป็น WAV ผ่าน Web Audio — ทางลงของเบราว์เซอร์ที่อัด m4a ไม่ได้ (เล่นได้ทุกเครื่องแน่นอน · D29)
+   *  ใช้ ScriptProcessorNode (deprecated แต่ทุกเบราว์เซอร์ยังรองรับ) เพราะ AudioWorklet ต้องมีไฟล์ worker แยก
+   *  ซึ่งเพิ่ม moving part ให้เส้นทางสำรองที่นาน ๆ ใช้ที — แลกไม่คุ้ม */
+  const startWav = useCallback(
+    (stream: MediaStream) => {
+      const ctx = new AudioContext();
+      const src = ctx.createMediaStreamSource(stream);
+      const proc = ctx.createScriptProcessor(4096, 1, 1);
+      const chunks: Float32Array[] = [];
+      proc.onaudioprocess = (ev) => chunks.push(new Float32Array(ev.inputBuffer.getChannelData(0)));
+      src.connect(proc);
+      proc.connect(ctx.destination);
+      cancelledRef.current = false;
+      startedAtRef.current = performance.now();
+      setPhase("recording");
+      setElapsedMs(0);
+      const stopWav = () => {
+        const ms = Math.round(performance.now() - startedAtRef.current);
+        proc.disconnect();
+        src.disconnect();
+        void ctx.close();
+        stream.getTracks().forEach((t) => t.stop());
+        if (tickRef.current) clearInterval(tickRef.current);
+        tickRef.current = null;
+        wavStopRef.current = null;
+        streamRef.current = null;
+        if (cancelledRef.current) {
+          setPhase("idle");
+          setElapsedMs(0);
+          return;
+        }
+        if (ms < 700 || chunks.length === 0) {
+          setPhase("idle");
+          setElapsedMs(0);
+          setErr("คลิปสั้นเกินไป — กดไมค์แล้วพูดอย่างน้อย 1 วินาที");
+          return;
+        }
+        setPhase("sending");
+        void send(encodeWav(chunks, ctx.sampleRate), Math.min(ms, VOICE_MAX_MS));
+      };
+      wavStopRef.current = stopWav;
+      streamRef.current = stream;
+      tickRef.current = setInterval(() => {
+        const ms = performance.now() - startedAtRef.current;
+        setElapsedMs(ms);
+        if (ms >= VOICE_MAX_MS) stopWav();
+      }, 200);
+    },
+    [send],
+  );
+
   const start = useCallback(async () => {
     setErr(null);
-    if (recorderType === null) {
+    // recorderType === null = ไม่มี m4a/aac ⇒ ใช้เส้นทาง WAV (Web Audio) แทน — ไม่ใช่อัดไม่ได้
+    if (recorderType === null && typeof AudioContext === "undefined") {
       setErr("เบราว์เซอร์รุ่นนี้ยังอัดเสียงไม่ได้ — พิมพ์ข้อความหรือแนบไฟล์เสียงแทนได้เลย");
       return;
     }
@@ -198,6 +281,12 @@ export function useVoiceRecorder(args: {
       return;
     }
 
+    if (recorderType === null) {
+      // ── เส้นทาง WAV (Firefox ฯลฯ ที่อัด m4a ไม่ได้) — PCM 16kHz โมโน ⇒ 120 วิ ≈ 3.8MB (< เพดาน 10MB)
+      startWav(stream);
+      return;
+    }
+
     try {
       const rec = new MediaRecorder(stream, recorderType ? { mimeType: recorderType } : undefined);
       streamRef.current = stream;
@@ -211,7 +300,7 @@ export function useVoiceRecorder(args: {
         // ความยาวจริง = เวลาที่อัดจริง (ไม่ใช่ค่าที่เดาจากขนาดไฟล์ และไม่ต้องรอ metadata ของ blob
         // ซึ่ง webm ที่ MediaRecorder ปล่อยออกมามักไม่มี duration เขียนไว้เลย)
         const ms = Math.round(performance.now() - startedAtRef.current);
-        const blob = new Blob(chunksRef.current, { type: rec.mimeType || recorderType || "audio/webm" });
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || recorderType || "audio/mp4" });
         const cancelled = cancelledRef.current;
         cleanup();
         if (cancelled) {
@@ -247,11 +336,13 @@ export function useVoiceRecorder(args: {
 
   const stop = useCallback(() => {
     cancelledRef.current = false;
+    if (wavStopRef.current) { wavStopRef.current(); return; } // เส้นทาง WAV มีตัวหยุดของตัวเอง
     if (recRef.current?.state === "recording") recRef.current.stop();
   }, []);
 
   const cancel = useCallback(() => {
     cancelledRef.current = true;
+    if (wavStopRef.current) { wavStopRef.current(); return; }
     if (recRef.current?.state === "recording") recRef.current.stop();
     else {
       cleanup();
@@ -265,8 +356,8 @@ export function useVoiceRecorder(args: {
     elapsedMs,
     err,
     clearErr: () => setErr(null),
-    /** อัดได้ไหมในทางเทคนิค (undefined = ยังไม่ได้เช็ค · null = เบราว์เซอร์อัดไม่ได้) */
-    recorderReady: recorderType !== null,
+    /** อัดได้ไหมในทางเทคนิค — m4a/aac ผ่าน MediaRecorder หรือ WAV ผ่าน Web Audio ก็นับว่าพร้อม */
+    recorderReady: recorderType !== null || typeof AudioContext !== "undefined",
     canSendAudio,
     capabilityReason,
     start,

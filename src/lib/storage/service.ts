@@ -42,6 +42,9 @@ const ALLOWED_TYPES: Record<string, string> = {
   "audio/x-m4a": "m4a",
   "audio/aac": "aac",
   "audio/mpeg": "mp3",
+  // WAV = ทางลงที่ "เล่นได้ทุกเครื่อง" ของตัวอัด (2 ก.ย. — iOS เล่น webm ไม่ได้ ดู PLAN-CHAT-V2 D29)
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
 };
 
 /**

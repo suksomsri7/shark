@@ -136,6 +136,20 @@ try {
       iCap < 0 ? "ไม่มีการตรวจความสามารถในเส้นทางส่ง" : `ตรวจที่ ${iCap} · create ที่ ${iCreate}`);
   });
 
+  // ═════════ VO-10 · ชนิดไฟล์ต้อง "เล่นได้ทุกเครื่อง" (เพิ่ม 2 ก.ย. — เจ้าของเทสจริงแล้วเจอ iOS เล่น webm ไม่ได้) ═════════
+  await section("VO-10", "VO-10 ชนิดไฟล์เล่นได้ทุกเครื่อง (D29):", () => {
+    const V10_STORAGE = strip(read("src/lib/storage/service.ts"));
+    const ci = SCREEN.indexOf("CANDIDATE_TYPES");
+    const cand = ci >= 0 ? SCREEN.slice(ci, ci + 400) : "";
+    chk("VO-10.1", "🔴 ตัวอัดเลือก m4a (audio/mp4) เป็นอันดับแรก — ชนิดเดียวที่ iOS+Android+LINE เล่น/รับได้",
+      /audio\/mp4/.test(cand) && !/audio\/webm/.test(cand), "mp4 นำ · ไม่มี webm ใน candidates", cand.slice(0, 120));
+    chk("VO-10.2", "🔴 มีทางลง WAV (Web Audio) สำหรับเบราว์เซอร์ที่อัด m4a ไม่ได้ (Firefox) — ห้ามผลิต webm อีก",
+      /encodeWav/.test(SCREEN) && /audio\/wav/.test(SCREEN), "encodeWav + audio/wav", "ไม่พบ");
+    chk("VO-10.3", "storage รับ audio/wav พร้อมนามสกุล", /"audio\/wav":\s*"wav"/.test(V10_STORAGE), "มี", "ไม่พบ");
+    chk("VO-10.4", "🔴 ฟองเสียงตรวจ canPlayType — ไฟล์เก่าที่เครื่องเล่นไม่ได้ต้องได้ลิงก์เปิด/ดาวน์โหลด ไม่ใช่ปุ่มเงียบ",
+      /canPlayType/.test(SCREEN), "มี fallback", "ปุ่มโกหก");
+  });
+
   // ═════════ VO-5/6/8 · การอัดและอัป ═════════
   await section("VO-5", "VO-5/6/8 การอัดและการอัปโหลด:", () => {
     chk("VO-5.1", "อัดด้วย MediaRecorder ในคอมโพเนนต์ฝั่งเบราว์เซอร์", /MediaRecorder/.test(SCREEN), "มี", "ไม่พบ");
