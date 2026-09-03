@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | merge 1.3 ขึ้น main → 1.4 |
+| WO | 1.4 (1.3 อยู่บน main แล้ว `9cb7a12`) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~06:30 UTC: 1.3 DONE → กำลัง qc:all (bg) → merge main → deploy → เปิด 1.4 (มัดจำ D · รับชำระ F · WHT จริง · void การจ่าย DP/DR กลับ JV) |
+| ขั้นที่ถึง | 3 ก.ย. ~06:50 UTC: qc:all 191/191 → push `9cb7a12` ขึ้น main (Vercel กำลัง deploy) · 1.4 กำลังทำ (agent) · Fable: เช็ค deploy READY แล้วรอ 1.4 |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
@@ -28,7 +28,7 @@
 | 1.1 | หน้ารายการทุกชนิด | Sonnet | DONE | 8a3aa52 | ตีกลับ 1 รอบ (11 จุด) → รอบ 2 Fable ดูภาพจริงตรง f3/f13 · ตัวเลขแท็บ=เฉลย · list 144/144 · nav-functions 9/9 · ค้าง: แท็บ derived ออกบางส่วน/ออกครบ · รอออกใบกำกับ · เอกสารอัตโนมัติ (ต้อง relation/field) → 1.5/1.3 |
 | 1.2 | route ราคาถูก DP/CNR/DNR/ASSET_PO/PTX + payableStats | Opus | DONE | 623e8df | Fable รันเอง cheap-routes 105/105 · CPA 107/107 · อ่าน diff GL (Cr 1130 + ลด VAT มัดจำ) · 🐞 แก้ DP โพสต์ซ้ำ · ค้าง: void การจ่าย DP ยังไม่กลับ JV (เหมือน DR ฝั่งขาย) → WO 1.4 · หน้า PTX ยังมีฟอร์มสร้าง → 1.1/1.3 |
 | 1.3 | DocEditorV2 A–C,E,G,H,I | Opus | DONE | fb3c91b | Fable ตีกลับ 2 รอบ (ตารางล้น · default โหมดง่าย · วันที่ native · back link · sticky บังแท็ก · ruler · ช่องจำนวน · cookie โหมด) → รอบ 3 ตรง g1/g17 ทั้ง 2 โหมด · visual 126 ✅ · editor 199 (Fable รันเอง) · ค้าง: CN/DN/CNR/DNR/ใบเบิก ยังใช้ฟอร์มเก่าจนกว่า 1.6 · ร่างเก่าส่วนลดไม่ลงตัวปัดเศษ ≤(qty−1) สตางค์ (จดไว้) |
-| 1.4 | มัดจำ + WHT ต่อบรรทัด + รับชำระหลายครั้ง | Opus | TODO | | |
+| 1.4 | มัดจำ + WHT ต่อบรรทัด + รับชำระหลายครั้ง | Opus | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~06:50 UTC · เทียบ g2 · รวม void การจ่าย DP/DR กลับ JV · โน้ต `wo-notes/1.4.md` |
 | 1.5 | หน้าเอกสาร V2 | Sonnet | TODO | | |
 | 1.6 | wizard CN/DN/CNR/DNR/RPR | Sonnet | TODO | | |
 | 1.7 | ใบวางบิลรวม + ใบรวมจ่าย | Opus | TODO | | |
