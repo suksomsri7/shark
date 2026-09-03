@@ -12,7 +12,7 @@
 | WO | 3.2 หน้าผู้ติดต่อ V2 (เฟส 3) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Sonnet (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~14:45 UTC: 3.1 DONE (Sonnet ทำแทน Opus ที่ 529 ×3) · Fable รันด่านเองครบ · commit แล้ว · กำลังออก WO 3.2 |
+| ขั้นที่ถึง | 3 ก.ย. ~15:50 UTC: 3.2 รอบ 1 ส่งมา (ด่านเขียว 49/49) → Fable ดูภาพเทียบ f5 **ตีกลับ 7 จุด** (ปุ่มหัว · การ์ดกลุ่มซ้าย · แถวค้นหา · ลิงก์เลขที่/เบอร์มีขีด · footer ในการ์ด · dropdown ไอคอน · มือถือปุ่มล้น · overview ลูกค้าใหม่=createdAt ผิดนิยาม) — agent เดิมทำรอบ 2 อยู่ |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 3 ก.ย. 2026 ~15:40 UTC — ⚠️ agent 3.2 รัน `pnpm qc:account` โดยไม่ export env ของ .env.qc → สคริปต์นั้นอ่าน `.env` (prod) → สร้าง tenant ชั่วคราวบน prod แล้วล้มเพราะไม่มีคอลัมน์ partyId (cleanup เอง) · Fable ตรวจ prod แล้ว: ไม่มี migration party · ไม่มี partyId · ไม่มี tenant ใหม่ใน 3 ชม. ✅ · **ต้องแก้**: `qc-account-cpa.mts` ให้เคารพ `QC_ENV_FILE` + ด่านกัน host prod (ใส่ใน WO 3.3 หรือ 9.2) · บั๊กที่ agent เจอ: seed เดิมให้เบอร์ลูกค้า/ผู้ขายซ้ำกัน (076+seq) → Party จับรวมผิดคน (แก้ seed แล้ว) ⇒ **ก่อน backfill prod ต้องตรวจเบอร์ซ้ำข้าม kind บน prod ก่อน**
 - 3 ก.ย. 2026 ~14:45 UTC — 3.1 Party DONE · Opus 529 Overloaded 3 รอบติด → Sonnet ทำ (36/36 · ด่านเดิมเขียวหมด)
 - 3 ก.ย. 2026 ~13:35 UTC — session คุมงานตัวเก่าล้ม (API 500 + 529 Overloaded ฝั่ง Anthropic — ไม่ใช่โค้ด) ระหว่างรอผล 3.1 · ตรวจแล้ว: main=ef6567b · Vercel READY 13:19 UTC · agent 3.1 ยังไม่เขียนอะไร · สั่งตัวใหม่ · เจอเพิ่ม: prod ตอบ 429 challenge จาก VPS (Bot Protection โปรเจกต์ shark)
 - 4 ก.ย. 2026 ~01:30 UTC — 🏁 **เฟส 2 ปิด** (2.1–2.3 + 0.7 CI-compat · main ef6567b · หน้าหลัก f1/f11 + ภาพรวม f4 บน prod)
