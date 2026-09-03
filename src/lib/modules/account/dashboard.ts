@@ -822,6 +822,213 @@ export async function topProducts(
   return (await topProductRows(db, range)).slice(0, n);
 }
 
+// ─────────────────── 6b) "ดูภาพรวม" รายรับ/รายจ่าย (§6 WO 2.3) ───────────────────
+
+export type OverviewSide = "revenue" | "expense";
+
+export type StatusBucket = "paid" | "awaiting" | "overdue";
+
+export type MonthStatusPoint = {
+  periodKey: string;
+  paid: number;
+  awaiting: number;
+  overdue: number;
+  paidCount: number;
+  awaitingCount: number;
+  overdueCount: number;
+};
+
+export type MonthlyStatusSeries = {
+  side: OverviewSide;
+  year: number;
+  months: MonthStatusPoint[]; // 12 เดือนเสมอ (เดือนไม่มีรายการ = 0)
+  total: {
+    paid: number;
+    awaiting: number;
+    overdue: number;
+    paidCount: number;
+    awaitingCount: number;
+    overdueCount: number;
+    grand: number;
+    grandCount: number;
+  };
+};
+
+function emptyStatusPoint(periodKey: string): MonthStatusPoint {
+  return { periodKey, paid: 0, awaiting: 0, overdue: 0, paidCount: 0, awaitingCount: 0, overdueCount: 0 };
+}
+
+/**
+ * กราฟแท่งซ้อน 3 โทน "ค่าใช้จ่ายรายเดือน"/"รายรับรายเดือน" (§6 การ์ดกราฟ) — ชำระแล้ว/รอชำระ/พ้นกำหนด
+ * ต่อเดือนที่ **ออก**เอกสาร (ไม่ใช่เดือนที่ชำระ)
+ *
+ * ขอบเขตเอกสารตั้งใจใช้ **ตัวเดียวกับการ์ดอันดับด้านล่าง**: SALES_WHERE (topCustomers/topProducts) ฝั่งรายรับ ·
+ * PURCHASE_WHERE (topVendors) ฝั่งรายจ่าย — ไม่ใช่นิยามที่ 3 — เพราะเอกสารกลุ่มนี้เท่านั้นที่มี dueDate/paidTotal/
+ * สถานะชำระเงินแบบเดียวกับหน้ารายการจริง (ต่างจาก QUOTATION/PURCHASE_ORDER ที่ไม่ใช่เอกสารเงิน)
+ *
+ * สถานะต่อใบตัดสินด้วย `isOverdue()` ตัวเดียวกับหน้ารายการ/รายงานอายุหนี้ (service.ts) · ยอดต่อถัง = grandTotal
+ * เต็มใบ (ธรรมเนียมเดียวกับ documentsIssued() ที่ไม่ใช้ยอดคงค้าง) ⇒ ชำระแล้ว+รอชำระ+พ้นกำหนด = ยอดที่ออกทั้งเดือนเสมอ
+ *
+ * ใช้ findMany + bucket ฝั่ง JS (ไม่ใช่ $queryRaw) — แนวเดียวกับ loadOpenDocs()/recentRows() ในไฟล์นี้ (ไม่ต้อง
+ * เขียนตรรกะวันที่/overdue ซ้ำเป็น SQL คนละสำนวน) — **1 query**
+ */
+export async function monthlyStatusSeries(
+  ctx: DashCtx,
+  side: OverviewSide,
+  year: number,
+  meter?: QueryMeter,
+): Promise<MonthlyStatusSeries> {
+  const db = dbOf(ctx, meter);
+  const from = monthStart(`${year}-01`);
+  const to = monthEndExclusive(`${year}-12`);
+  const scopeWhere = side === "revenue" ? SALES_WHERE : PURCHASE_WHERE;
+  const docs = await db.accountDocument.findMany({
+    where: { ...scopeWhere, status: { notIn: NOT_ISSUED }, issueDate: { gte: from, lt: to } },
+    select: { issueDate: true, status: true, dueDate: true, validUntil: true, grandTotal: true },
+  });
+
+  const byKey = new Map<string, MonthStatusPoint>();
+  for (const k of yearKeys(year)) byKey.set(k, emptyStatusPoint(k));
+  const total = {
+    paid: 0,
+    awaiting: 0,
+    overdue: 0,
+    paidCount: 0,
+    awaitingCount: 0,
+    overdueCount: 0,
+    grand: 0,
+    grandCount: 0,
+  };
+
+  for (const d of docs) {
+    const bucket = byKey.get(periodKeyBkk(d.issueDate));
+    if (!bucket) continue;
+    const overdue = isOverdue({ status: d.status, dueDate: d.dueDate, validUntil: d.validUntil });
+    if (d.status === "PAID") {
+      bucket.paid += d.grandTotal;
+      bucket.paidCount += 1;
+      total.paid += d.grandTotal;
+      total.paidCount += 1;
+    } else if (overdue) {
+      bucket.overdue += d.grandTotal;
+      bucket.overdueCount += 1;
+      total.overdue += d.grandTotal;
+      total.overdueCount += 1;
+    } else {
+      bucket.awaiting += d.grandTotal;
+      bucket.awaitingCount += 1;
+      total.awaiting += d.grandTotal;
+      total.awaitingCount += 1;
+    }
+    total.grand += d.grandTotal;
+    total.grandCount += 1;
+  }
+
+  return { side, year, months: yearKeys(year).map((k) => byKey.get(k) as MonthStatusPoint), total };
+}
+
+/** ชนิดเอกสารรายรับ/รายจ่ายของการ์ด "เอกสารที่ออก" บนหน้าภาพรวม (§6) — ตรงกับ f4 mockup จริง
+ * (ฝั่งรายจ่าย: บันทึกค่าใช้จ่าย/บันทึกซื้อสินค้า/ใบสั่งซื้อ/ซื้อสินทรัพย์ — ไม่รวม DP/PTX/CNR/DNR/CP
+ * ซึ่งเป็นเอกสารทะเบียน/สนับสนุน ไม่ใช่ "บันทึกรายจ่ายใหม่" · ฝั่งรายรับใช้ 4 ชนิดคู่ขนาน) */
+export const REVENUE_ISSUED_TYPES: readonly AccountDocType[] = ["QUOTATION", "INVOICE", "RECEIPT", "TAX_INVOICE"];
+export const EXPENSE_ISSUED_TYPES: readonly AccountDocType[] = ["EXPENSE", "PURCHASE", "PURCHASE_ORDER", "ASSET_PURCHASE"];
+
+export type IssuedTypeRow = { docType: AccountDocType; label: string; count: number; amount: number; shareBp: number };
+export type IssuedByType = {
+  side: OverviewSide;
+  from: string;
+  to: string;
+  total: { count: number; amount: number };
+  rows: IssuedTypeRow[]; // เรียงยอดมากไปน้อย
+};
+
+/**
+ * การ์ด "เอกสารที่ออก" ของหน้าภาพรวม (§6) — breakdown ตาม **ชนิดเอกสาร** (ต่างจาก `documentsIssued()`
+ * ของหน้าหลักที่ breakdown ตามสถานะของชนิดเดียว) · ช่วงเวลาเลือกได้ (เดือนนี้/เดือนก่อน/ปีนี้ ฯลฯ) — 1 query
+ */
+export async function issuedByType(
+  ctx: DashCtx,
+  side: OverviewSide,
+  range: { from: Date; to: Date },
+  meter?: QueryMeter,
+): Promise<IssuedByType> {
+  const db = dbOf(ctx, meter);
+  const types = side === "revenue" ? REVENUE_ISSUED_TYPES : EXPENSE_ISSUED_TYPES;
+  const groups = await db.accountDocument.groupBy({
+    by: ["docType"],
+    where: {
+      docType: { in: types as AccountDocType[] },
+      status: { notIn: NOT_ISSUED },
+      issueDate: { gte: range.from, lt: range.to },
+    },
+    _count: { _all: true },
+    _sum: { grandTotal: true },
+  });
+  const byType = new Map(groups.map((g) => [g.docType, { count: g._count._all, amount: g._sum.grandTotal ?? 0 }]));
+  const rows: IssuedTypeRow[] = types.map((t) => {
+    const g = byType.get(t) ?? { count: 0, amount: 0 };
+    return { docType: t, label: docTypeLabel(t), count: g.count, amount: g.amount, shareBp: 0 };
+  });
+  const total = rows.reduce((acc, r) => ({ count: acc.count + r.count, amount: acc.amount + r.amount }), { count: 0, amount: 0 });
+  rows.sort((a, b) => b.amount - a.amount);
+  for (const r of rows) r.shareBp = shareBp(r.amount, total.amount);
+  return { side, from: dayKeyBkk(range.from), to: dayKeyBkk(range.to), total, rows };
+}
+
+/** "รายได้อะไรมากที่สุด" (§6 การ์ดล่างฝั่งรายรับ) — คู่กับ `topExpenseCategories` · ช่วงหลายงวดได้ · 1 query */
+export async function topIncomeCategories(
+  ctx: DashCtx,
+  range: { fromKey: string; toKey: string },
+  n = 5,
+  meter?: QueryMeter,
+): Promise<{ total: number; rows: CategorySlice[] }> {
+  const db = dbOf(ctx, meter);
+  bump(meter);
+  const rows = await glAggregate(db, ctx, range.fromKey, range.toKey);
+  return incomeCategoriesFromRows(rows, n);
+}
+
+export type TrackedContactRow = { contactId: string; name: string; outstanding: number; count: number };
+
+/**
+ * "ลูกหนี้ที่ติดตาม"/"เจ้าหนี้ที่ติดตาม" (§6) — AccountContact ยังไม่มีคอลัมน์ `pinned` (ต่างจาก
+ * AccountFinance/AccountLedger ที่ WO 0.3 เพิ่มให้แล้ว) ⇒ ตาม WO 2.3: ไม่มี pinned → โชว์ top-5 ตามยอดค้างแทน
+ * (ห้ามเพิ่ม schema ใน WO นี้) — ยอดค้าง = grandTotal−paidTotal ตรง ๆ (แบบเดียวกับ payableStats เดิม ไม่ได้หัก
+ * ใบลดหนี้เหมือน receivablePayableSummary — เพื่อคง 2 query) — เรียงยอดค้างมาก→น้อย
+ */
+export async function topTrackedContacts(
+  ctx: DashCtx,
+  side: OverviewSide,
+  n = 5,
+  meter?: QueryMeter,
+): Promise<TrackedContactRow[]> {
+  const db = dbOf(ctx, meter);
+  const direction = side === "revenue" ? "OUT" : "IN";
+  const groups = await db.accountDocument.groupBy({
+    by: ["contactId"],
+    where: {
+      direction,
+      status: { in: OPEN_STATUSES },
+      voidedAt: null,
+      docType: { not: "BILLING_NOTE" },
+      contactId: { not: null },
+    },
+    _sum: { grandTotal: true, paidTotal: true },
+    _count: { _all: true },
+  });
+  const rows = groups
+    .map((g) => ({
+      contactId: g.contactId as string,
+      outstanding: Math.max(0, (g._sum.grandTotal ?? 0) - (g._sum.paidTotal ?? 0)),
+      count: g._count._all,
+    }))
+    .filter((r) => r.outstanding > 0)
+    .sort((a, b) => b.outstanding - a.outstanding)
+    .slice(0, n);
+  const names = await contactNames(db, rows.map((r) => r.contactId));
+  return rows.map((r) => ({ ...r, name: names.get(r.contactId) ?? NO_CONTACT }));
+}
+
 // ─────────────────── 7) งานที่รอคุณ (§4 บล็อก 7) ───────────────────
 
 export type PendingTasksDash = {

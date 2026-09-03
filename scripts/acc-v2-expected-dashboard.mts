@@ -352,6 +352,112 @@ const sumTiles = (rows: Array<{ dir: string; c: bigint; amt: bigint }>, dir: "IN
   return { count: sel.reduce((s, r) => s + n(r.c), 0), amount: sel.reduce((s, r) => s + n(r.amt), 0) };
 };
 
+// ─────────────── 10) WO 2.3 — ภาพรวมรายรับ/รายจ่าย (แท่งซ้อนสถานะ + เอกสารที่ออกตามชนิด + ลูกหนี้/เจ้าหนี้ที่ติดตาม) ───────────────
+// ขอบเขตเอกสารเดียวกับ topCustomers(OUT · INVOICE/RECEIPT ไม่มี sourceDocId)/topVendors(IN · PURCHASE/EXPENSE)
+// ด้านบน — ตั้งใจให้ตรงกับ dashboard.ts (SALES_WHERE/PURCHASE_WHERE) เพื่อให้กราฟ+อันดับล่างเป็นเนื้อเดียวกัน
+async function monthlyStatusRowsRevenue() {
+  return prisma.$queryRaw<Array<{ pk: string; status: string; due: Date | null; amount: bigint }>>`
+    SELECT to_char((d."issueDate" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM') AS pk,
+           d."status"::text AS status, d."dueDate" AS due, d."grandTotal"::bigint AS amount
+      FROM "AccountDocument" d
+     WHERE d."tenantId" = ${T} AND d."systemId" = ${S}
+       AND d."status" NOT IN ('DRAFT','CANCELLED','VOIDED')
+       AND d."issueDate" >= ${YEAR_FROM} AND d."issueDate" < ${YEAR_TO}
+       AND d."direction" = 'OUT'
+       AND (d."docType" = 'INVOICE' OR (d."docType" = 'RECEIPT' AND d."sourceDocId" IS NULL))`;
+}
+async function monthlyStatusRowsExpense() {
+  return prisma.$queryRaw<Array<{ pk: string; status: string; due: Date | null; amount: bigint }>>`
+    SELECT to_char((d."issueDate" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM') AS pk,
+           d."status"::text AS status, d."dueDate" AS due, d."grandTotal"::bigint AS amount
+      FROM "AccountDocument" d
+     WHERE d."tenantId" = ${T} AND d."systemId" = ${S}
+       AND d."status" NOT IN ('DRAFT','CANCELLED','VOIDED')
+       AND d."issueDate" >= ${YEAR_FROM} AND d."issueDate" < ${YEAR_TO}
+       AND d."direction" = 'IN'
+       AND d."docType" IN ('PURCHASE','EXPENSE')`;
+}
+
+function bucketMonthlyStatus(rows: Array<{ pk: string; status: string; due: Date | null; amount: bigint }>) {
+  const monthsOv = Array.from({ length: 12 }, (_, i) => `${YEAR}-${String(i + 1).padStart(2, "0")}`).map((pk) => ({
+    periodKey: pk,
+    paid: 0,
+    awaiting: 0,
+    overdue: 0,
+    paidCount: 0,
+    awaitingCount: 0,
+    overdueCount: 0,
+  }));
+  const byKey = new Map(monthsOv.map((m) => [m.periodKey, m]));
+  const total = { paid: 0, awaiting: 0, overdue: 0, paidCount: 0, awaitingCount: 0, overdueCount: 0, grand: 0, grandCount: 0 };
+  for (const r of rows) {
+    const m = byKey.get(r.pk);
+    if (!m) continue;
+    const amount = n(r.amount);
+    const isOverdueRow = (r.status === "AWAITING_PAYMENT" || r.status === "PARTIAL") && r.due !== null && r.due.getTime() < NOW.getTime();
+    const bucket: "paid" | "overdue" | "awaiting" = r.status === "PAID" ? "paid" : isOverdueRow ? "overdue" : "awaiting";
+    m[bucket] += amount;
+    m[`${bucket}Count` as const] += 1;
+    total[bucket] += amount;
+    total[`${bucket}Count` as const] += 1;
+    total.grand += amount;
+    total.grandCount += 1;
+  }
+  return { months: monthsOv, total };
+}
+
+const ovRevenueSeries = bucketMonthlyStatus(await monthlyStatusRowsRevenue());
+const ovExpenseSeries = bucketMonthlyStatus(await monthlyStatusRowsExpense());
+
+async function issuedByTypeRows(types: string[]) {
+  return prisma.$queryRaw<Array<{ docType: string; cnt: bigint; amount: bigint }>>`
+    SELECT d."docType"::text AS "docType", COUNT(*)::bigint AS cnt, SUM(d."grandTotal")::bigint AS amount
+      FROM "AccountDocument" d
+     WHERE d."tenantId" = ${T} AND d."systemId" = ${S}
+       AND d."docType"::text = ANY(${types})
+       AND d."status" NOT IN ('DRAFT','CANCELLED','VOIDED')
+       AND d."issueDate" >= ${MONTH_FROM} AND d."issueDate" < ${MONTH_TO}
+     GROUP BY 1`;
+}
+const REVENUE_ISSUED_TYPES = ["QUOTATION", "INVOICE", "RECEIPT", "TAX_INVOICE"];
+const EXPENSE_ISSUED_TYPES = ["EXPENSE", "PURCHASE", "PURCHASE_ORDER", "ASSET_PURCHASE"];
+function issuedTotal(rows: Array<{ docType: string; cnt: bigint; amount: bigint }>, types: string[]) {
+  const byType = new Map(rows.map((r) => [r.docType, { count: n(r.cnt), amount: n(r.amount) }]));
+  const list = types.map((t) => byType.get(t) ?? { count: 0, amount: 0 });
+  return { count: list.reduce((s, r) => s + r.count, 0), amount: list.reduce((s, r) => s + r.amount, 0) };
+}
+const ovRevenueIssued = issuedTotal(await issuedByTypeRows(REVENUE_ISSUED_TYPES), REVENUE_ISSUED_TYPES);
+const ovExpenseIssued = issuedTotal(await issuedByTypeRows(EXPENSE_ISSUED_TYPES), EXPENSE_ISSUED_TYPES);
+
+async function trackedRows(direction: "OUT" | "IN") {
+  return prisma.$queryRaw<Array<{ contactId: string; name: string | null; outstanding: bigint; cnt: bigint }>>`
+    SELECT d."contactId" AS "contactId", c."name" AS name,
+           SUM(GREATEST(0, d."grandTotal" - d."paidTotal"))::bigint AS outstanding,
+           COUNT(*)::bigint AS cnt
+      FROM "AccountDocument" d
+      LEFT JOIN "AccountContact" c ON c."id" = d."contactId"
+     WHERE d."tenantId" = ${T} AND d."systemId" = ${S}
+       AND d."direction" = ${direction}
+       AND d."status" IN ('AWAITING_PAYMENT','PARTIAL')
+       AND d."voidedAt" IS NULL
+       AND d."docType" <> 'BILLING_NOTE'
+       AND d."contactId" IS NOT NULL
+     GROUP BY 1, 2
+    HAVING SUM(GREATEST(0, d."grandTotal" - d."paidTotal")) > 0
+     ORDER BY 3 DESC
+     LIMIT 5`;
+}
+const ovRevenueTracked = (await trackedRows("OUT")).map((r) => ({ contactId: r.contactId, name: r.name, outstanding: n(r.outstanding), count: n(r.cnt) }));
+const ovExpenseTracked = (await trackedRows("IN")).map((r) => ({ contactId: r.contactId, name: r.name, outstanding: n(r.outstanding), count: n(r.cnt) }));
+
+const overview = {
+  _readme:
+    "เฉลยของ WO 2.3 (ดูภาพรวมรายรับ/รายจ่าย §6) — SQL ดิบคนละสำนวนจาก dashboard.ts (monthlyStatusSeries/issuedByType/topTrackedContacts)",
+  monthKey: MONTH,
+  revenue: { series: ovRevenueSeries, issuedThisMonth: ovRevenueIssued, tracked: ovRevenueTracked },
+  expense: { series: ovExpenseSeries, issuedThisMonth: ovExpenseIssued, tracked: ovExpenseTracked },
+};
+
 const dashboard = {
   _readme:
     "เฉลยของ WO 2.1 (หน้าหลัก/ภาพรวม) — เขียนโดย scripts/acc-v2-expected-dashboard.mts ด้วย SQL ดิบที่ไม่พึ่ง dashboard.ts · สตางค์ล้วน · seed ใหม่ต้องรันสคริปต์นี้ซ้ำ",
@@ -394,10 +500,17 @@ const dashboard = {
 };
 
 E.dashboard = dashboard;
+E.overview = overview;
 writeFileSync(QC.expectedPath, `${JSON.stringify(E, null, 2)}\n`);
 
 const baht = (s: number) => (s / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 });
-console.log(`\n✅ เขียนเฉลย dashboard ลง ${QC.expectedPath} (ณ ${NOW_ISO})`);
+console.log(`\n✅ เขียนเฉลย dashboard+overview ลง ${QC.expectedPath} (ณ ${NOW_ISO})`);
+console.log(
+  `   [2.3] รายรับ ${MONTH}: เอกสารที่ออก ฿${baht(ovRevenueIssued.amount)} (${ovRevenueIssued.count} ใบ) · ปี ${YEAR}: ชำระแล้ว ฿${baht(ovRevenueSeries.total.paid)} · รอชำระ ฿${baht(ovRevenueSeries.total.awaiting)} · พ้นกำหนด ฿${baht(ovRevenueSeries.total.overdue)}`,
+);
+console.log(
+  `   [2.3] รายจ่าย ${MONTH}: เอกสารที่ออก ฿${baht(ovExpenseIssued.amount)} (${ovExpenseIssued.count} ใบ) · ปี ${YEAR}: ชำระแล้ว ฿${baht(ovExpenseSeries.total.paid)} · รอชำระ ฿${baht(ovExpenseSeries.total.awaiting)} · พ้นกำหนด ฿${baht(ovExpenseSeries.total.overdue)}`,
+);
 console.log(`   ${MONTH}: รายได้ ฿${baht(months[Number(MONTH.slice(5, 7)) - 1].revenue)} · ค่าใช้จ่าย ฿${baht(months[Number(MONTH.slice(5, 7)) - 1].expense)} · กำไร ฿${baht(months[Number(MONTH.slice(5, 7)) - 1].profit)}`);
 console.log(`   ปี ${YEAR}: รายได้ ฿${baht(total.revenue)} · ค่าใช้จ่าย ฿${baht(total.expense)} · กำไร ฿${baht(total.profit)} (ปีก่อน ฿${baht(prevYear.profit)})`);
 console.log(`   ค้างรับ ฿${baht(side("OUT").amount)} (${side("OUT").count} ใบ · พ้นกำหนด ${side("OUT").overdueCount} ใบ ฿${baht(side("OUT").overdueAmount)})`);

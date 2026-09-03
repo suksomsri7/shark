@@ -662,7 +662,7 @@ function StatBlock({
   );
 }
 
-function TopListCard({
+export function TopListCard({
   testId,
   title,
   empty,
@@ -682,7 +682,7 @@ function TopListCard({
   );
 }
 
-function TopRow({ name, sub, amount, max }: { name: string; sub?: string; amount: number; max: number }) {
+export function TopRow({ name, sub, amount, max }: { name: string; sub?: string; amount: number; max: number }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2 text-sm">
@@ -700,7 +700,7 @@ function TopRow({ name, sub, amount, max }: { name: string; sub?: string; amount
 }
 
 // สร้าง href ใหม่จาก query ปัจจุบัน — ใช้กับ toggle ที่เป็นลิงก์ล้วน (ไม่มี client JS)
-function buildUrl(
+export function buildUrl(
   pathname: string,
   current: Record<string, string | string[] | undefined>,
   patch: Record<string, string | undefined>,

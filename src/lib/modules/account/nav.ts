@@ -8,12 +8,13 @@
 //   "ready" = มีหน้าจริงอยู่ใต้ src/app/app/sys/[id]/account/** วันนี้ (นับรวม route ที่ใช้ query param
 //             สลับ docType/tab เดิมของ WO ก่อนหน้า เช่น po?docType=ASSET_PURCHASE_ORDER)
 //   "soon"  = ยังไม่มีหน้า (จะทยอยแทนใน WO เฟส 1 เป็นต้นไป) → เมนูจาง + ป้าย "เร็ว ๆ นี้" + href:"#" aria-disabled
-//             (รายการที่ยังไม่มีหน้าจริง ล่าสุดหลัง WO 1.6: ดูภาพรวม (ทุกหมวด)
+//             (รายการที่ยังไม่มีหน้าจริง ล่าสุดหลัง WO 2.3: ดูภาพรวม (การเงิน — WO 5.2)
 //              · นำเข้า (เอกสาร/สินค้า) · กลุ่มผู้ติดต่อ · รวมผู้ติดต่อซ้ำ · การเชื่อมต่อคู่ค้า · หน่วย
 //              · ใบปรับต้นทุนสินค้า (CA) · ไปที่คลังสินค้า ↗ (ต้อง lookup ระบบข้ามโมดูล — เลื่อนไป WO เชื่อมระบบ)
 //              · สำรองรับ/จ่าย · โอนระหว่างช่องทาง · กระทบยอดธนาคาร · กล่องขาเข้า · AI ช่วยบันทึก (ถ่ายบิล — ยังไม่มีจุดเข้าในฟอร์ม)
 //              · DBD e-Filing · ตั้งค่า/นโยบายบัญชี/สิทธิ์ผู้ใช้งาน/การเชื่อมต่อ (หน้าตั้งค่าวันนี้มีแผ่นเดียวรวมองค์กร+เอกสาร)
-//              (WO 1.2 ทำ DP/CNR/DNR ให้ "ready" ไปแล้ว · WO 1.6 ทำ CN/DN/CNR/DNR สร้างตรงได้ผ่าน wizard + RPR "ready")
+//              (WO 1.2 ทำ DP/CNR/DNR ให้ "ready" ไปแล้ว · WO 1.6 ทำ CN/DN/CNR/DNR สร้างตรงได้ผ่าน wizard + RPR "ready"
+//               · WO 2.3 ทำ "ดูภาพรวม" รายรับ/รายจ่าย ให้ "ready" แล้ว)
 //
 // ไอคอน: ค่า `icon` เป็นคีย์ของ src/components/account-v2/AccountIcon.tsx (เส้นบาง stroke 1.7 ตาม mockup.html)
 // **ไม่ใช่ emoji** — QC ของ WO 0.4 รอบ 2 (Fable) ตีกลับเพราะแถบเมนูใช้ emoji ซึ่ง UI_STANDARD ห้ามนอก nav/header
@@ -88,7 +89,13 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
       icon: "in",
       href: `${base}/docs/INVOICE`,
       items: [
-        soon("ดูภาพรวม", "chart", "REVENUE_OVERVIEW"),
+        page({ // WO 2.3: ดูภาพรวมรายรับ (§6)
+          label: "ดูภาพรวม",
+          href: `${base}/overview/revenue`,
+          status: "ready",
+          icon: "chart",
+          testId: "REVENUE_OVERVIEW",
+        }),
         doc({
           label: "ใบเสนอราคา",
           href: `${base}/docs/QUOTATION`,
@@ -232,7 +239,13 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
       icon: "out",
       href: `${base}/expense`,
       items: [
-        soon("ดูภาพรวม", "chart", "EXPENSE_OVERVIEW"),
+        page({ // WO 2.3: ดูภาพรวมรายจ่าย (§6)
+          label: "ดูภาพรวม",
+          href: `${base}/overview/expense`,
+          status: "ready",
+          icon: "chart",
+          testId: "EXPENSE_OVERVIEW",
+        }),
         doc({
           label: "ใบสั่งซื้อ",
           href: `${base}/po`,

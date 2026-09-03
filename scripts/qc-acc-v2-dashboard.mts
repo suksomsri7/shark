@@ -505,6 +505,28 @@ function walk2(v: unknown, out: number[]) {
   else if (v && typeof v === "object") Object.values(v).forEach((x) => walk2(x, out));
 }
 
+// ═══════════════ P13 WO 2.3 — งบ query ของฟังก์ชันใหม่ (ดูภาพรวมรายรับ/รายจ่าย §6) ═══════════════
+// รายละเอียดเต็ม/ตัวเลขจริงอยู่ใน scripts/qc-acc-v2-overview.mts — ที่นี่แค่ตรึงงบ query ต่อฟังก์ชัน
+// (กันใครมาแก้ dashboard.ts แล้วแอบเพิ่ม query โดยไม่รู้ตัว เหมือน P0/P10 ของฟังก์ชันเดิม)
+console.log("\nP13 งบ query ของฟังก์ชัน WO 2.3 (monthlyStatusSeries/issuedByType/topIncomeCategories/topTrackedContacts):");
+{
+  const m1: { count: number } = { count: 0 };
+  await dash.monthlyStatusSeries(ctx, "expense", YEAR, m1);
+  eq("P13.1 monthlyStatusSeries = 1 query", m1.count, 1);
+
+  const m2: { count: number } = { count: 0 };
+  await dash.issuedByType(ctx, "expense", { from: dash.monthStart(MONTH), to: dash.monthEndExclusive(MONTH) }, m2);
+  eq("P13.2 issuedByType = 1 query", m2.count, 1);
+
+  const m3: { count: number } = { count: 0 };
+  await dash.topIncomeCategories(ctx, { fromKey: MONTH, toKey: MONTH }, 5, m3);
+  eq("P13.3 topIncomeCategories = 1 query", m3.count, 1);
+
+  const m4: { count: number } = { count: 0 };
+  await dash.topTrackedContacts(ctx, "revenue", 5, m4);
+  eq("P13.4 topTrackedContacts = 2 query", m4.count, 2);
+}
+
 // ═══════════════ สรุป ═══════════════
 console.log(`\n📊 ตัวเลขที่ seed สร้างจริง (ให้ Fable เทียบกับภาพ f1):`);
 const sep = series.months[Number(MONTH.slice(5, 7)) - 1];

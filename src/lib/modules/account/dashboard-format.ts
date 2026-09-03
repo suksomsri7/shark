@@ -125,6 +125,96 @@ export function chartGeometry(points: ChartPoint[]): ChartGeometry {
   return { bars, profitPolyline, baselineY, gridLines, slot };
 }
 
+// ═══════════════ กราฟแท่งซ้อน 3 โทน (§6 WO 2.3 — ชำระแล้ว/รอชำระ/พ้นกำหนด) ═══════════════
+
+export type StackPoint = { key: string; label: string; paid: number; awaiting: number; overdue: number };
+
+export type StackBarGeom = {
+  key: string;
+  label: string;
+  cx: number;
+  x: number;
+  w: number;
+  paid: { y: number; h: number };
+  awaiting: { y: number; h: number };
+  overdue: { y: number; h: number };
+  total: number;
+};
+
+export type StackChartGeometry = {
+  bars: StackBarGeom[];
+  baselineY: number;
+  gridLines: { y: number; label: string }[];
+  slot: number;
+};
+
+/** เรขาคณิตกราฟแท่งซ้อน 1 แท่ง/เดือน (ชำระแล้ว ล่าง · รอชำระ กลาง · พ้นกำหนด บน) — แกน y ปัดเลขกลมแบบเดียวกับ
+ * `chartGeometry` (nice ticks) แต่สเกลจากผลรวมสูงสุดของแท่ง (ไม่ใช่ค่าดิบแยกซีรีส์) เพราะเป็นแท่งเดียวซ้อนกัน */
+export function stackChartGeometry(points: StackPoint[]): StackChartGeometry {
+  const n = Math.max(points.length, 1);
+  const usable = CHART_VB.w - PAD_LEFT - PAD_RIGHT;
+  const slot = usable / n;
+  const barW = Math.min(22, slot * 0.55);
+
+  const totals = points.map((p) => p.paid + p.awaiting + p.overdue);
+  const rawMaxSatang = Math.max(0, ...totals);
+  const stepBaht = niceCeil(Math.max(rawMaxSatang / 100, 1) / 3);
+  const topBaht = stepBaht * 3;
+  const domainMax = topBaht * 100 || 1;
+  const scale = (BOTTOM - TOP) / domainMax;
+  const yOf = (v: number) => BOTTOM - v * scale;
+  const baselineY = yOf(0);
+
+  const bars: StackBarGeom[] = points.map((p) => {
+    const idx = points.indexOf(p);
+    const cx = PAD_LEFT + slot * idx + slot / 2;
+    let cursor = 0;
+    const seg = (v: number) => {
+      const y0 = yOf(cursor);
+      cursor += v;
+      const y1 = yOf(cursor);
+      return { y: y1, h: Math.max(0, y0 - y1) };
+    };
+    const paid = seg(p.paid);
+    const awaiting = seg(p.awaiting);
+    const overdue = seg(p.overdue);
+    return { key: p.key, label: p.label, cx, x: cx - barW / 2, w: barW, paid, awaiting, overdue, total: cursor };
+  });
+
+  const gridLines = [1, 2, 3].map((mult) => {
+    const vBaht = stepBaht * mult;
+    return { y: yOf(vBaht * 100), label: formatBahtShort(vBaht) };
+  });
+
+  return { bars, baselineY, gridLines, slot };
+}
+
+/** รวมข้อมูลรายเดือน (12 จุด) เป็นรายไตรมาส (4 จุด) — กราฟแท่งซ้อน */
+export function stackMonthsToQuarters(months: { periodKey: string; paid: number; awaiting: number; overdue: number }[]): StackPoint[] {
+  const quarters: StackPoint[] = [];
+  for (let q = 0; q < 4; q++) {
+    const chunk = months.slice(q * 3, q * 3 + 3);
+    quarters.push({
+      key: `Q${q + 1}`,
+      label: `ไตรมาส ${q + 1}`,
+      paid: chunk.reduce((s, m) => s + m.paid, 0),
+      awaiting: chunk.reduce((s, m) => s + m.awaiting, 0),
+      overdue: chunk.reduce((s, m) => s + m.overdue, 0),
+    });
+  }
+  return quarters;
+}
+
+export function monthsToStackPoints(months: { periodKey: string; paid: number; awaiting: number; overdue: number }[]): StackPoint[] {
+  return months.map((m) => ({
+    key: m.periodKey,
+    label: THAI_MONTH_SHORT[Number(m.periodKey.slice(5, 7)) - 1] ?? m.periodKey,
+    paid: m.paid,
+    awaiting: m.awaiting,
+    overdue: m.overdue,
+  }));
+}
+
 /** รวมข้อมูลรายเดือน (12 จุด) เป็นรายไตรมาส (4 จุด) — ใช้ตอนสลับ "รายเดือน/รายไตรมาส" โดยไม่ query ใหม่ */
 export function monthsToQuarters(
   months: { periodKey: string; revenue: number; expense: number; profit: number }[],

@@ -96,6 +96,9 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "journal/new/page.tsx": "account.journal.adjust",
   "journal/page.tsx": "account.journal.view",
   "ledger/page.tsx": "account.journal.view",
+  // WO 2.3: "ดูภาพรวม" รายรับ/รายจ่าย (§6) — อ่านอย่างเดียว เหมือน page.tsx หลัก
+  "overview/expense/page.tsx": "account.doc.view",
+  "overview/revenue/page.tsx": "account.doc.view",
   "periods/page.tsx": "account.period.close",
   "po/[docId]/edit/page.tsx": "account.doc.create",
   "po/[docId]/page.tsx": "account.doc.view",

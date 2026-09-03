@@ -115,7 +115,7 @@
   },
   "dashboard": {
     "_readme": "เฉลยของ WO 2.1 (หน้าหลัก/ภาพรวม) — เขียนโดย scripts/acc-v2-expected-dashboard.mts ด้วย SQL ดิบที่ไม่พึ่ง dashboard.ts · สตางค์ล้วน · seed ใหม่ต้องรันสคริปต์นี้ซ้ำ",
-    "generatedAt": "2026-09-03T12:25:09.824Z",
+    "generatedAt": "2026-09-03T12:57:30.351Z",
     "now": "2026-09-30T12:00:00+07:00",
     "year": 2026,
     "periodKey": "2026-09",
@@ -501,14 +501,14 @@
         "amount": 2490000
       },
       {
-        "contactId": "cmtlhyxu0003qfnkzf1h1k2ye",
-        "name": "คุณจิราพร สุขสมบูรณ์",
+        "contactId": "cmtlhyxw5003xfnkz0r6ph6xb",
+        "name": "โรงแรมในหานวิลล่า",
         "docCount": 1,
         "amount": 2450000
       },
       {
-        "contactId": "cmtlhyxw5003xfnkz0r6ph6xb",
-        "name": "โรงแรมในหานวิลล่า",
+        "contactId": "cmtlhyxu0003qfnkzf1h1k2ye",
+        "name": "คุณจิราพร สุขสมบูรณ์",
         "docCount": 1,
         "amount": 2450000
       },
@@ -728,13 +728,13 @@
       },
       {
         "productId": null,
-        "name": "คอร์สดำน้ำนักเรียน 8 ท่าน (รายการเพิ่มเติม)",
+        "name": "คอร์สดำน้ำนักเรียน 8 ท่าน",
         "qty": 1,
         "amount": 3738318
       },
       {
         "productId": null,
-        "name": "คอร์สดำน้ำนักเรียน 8 ท่าน",
+        "name": "คอร์สดำน้ำนักเรียน 8 ท่าน (รายการเพิ่มเติม)",
         "qty": 1,
         "amount": 3738318
       },
@@ -854,13 +854,13 @@
       },
       {
         "productId": null,
-        "name": "ทริปดำน้ำเกาะราชา",
+        "name": "ทริปดำน้ำเกาะราชา 1 วัน",
         "qty": 1,
         "amount": 1168224
       },
       {
         "productId": null,
-        "name": "ทริปดำน้ำเกาะราชา 1 วัน",
+        "name": "ทริปดำน้ำเกาะราชา",
         "qty": 1,
         "amount": 1168224
       },
@@ -1068,6 +1068,330 @@
         }
       ],
       "expectedDays": []
+    }
+  },
+  "overview": {
+    "_readme": "เฉลยของ WO 2.3 (ดูภาพรวมรายรับ/รายจ่าย §6) — SQL ดิบคนละสำนวนจาก dashboard.ts (monthlyStatusSeries/issuedByType/topTrackedContacts)",
+    "monthKey": "2026-09",
+    "revenue": {
+      "series": {
+        "months": [
+          {
+            "periodKey": "2026-01",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-02",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-03",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-04",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-05",
+            "paid": 10500000,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 3,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-06",
+            "paid": 14640000,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 7,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-07",
+            "paid": 20320000,
+            "awaiting": 0,
+            "overdue": 4200000,
+            "paidCount": 7,
+            "awaitingCount": 0,
+            "overdueCount": 1
+          },
+          {
+            "periodKey": "2026-08",
+            "paid": 27280000,
+            "awaiting": 0,
+            "overdue": 8640000,
+            "paidCount": 8,
+            "awaitingCount": 0,
+            "overdueCount": 3
+          },
+          {
+            "periodKey": "2026-09",
+            "paid": 11086000,
+            "awaiting": 45015000,
+            "overdue": 0,
+            "paidCount": 4,
+            "awaitingCount": 14,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-10",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-11",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-12",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          }
+        ],
+        "total": {
+          "paid": 83826000,
+          "awaiting": 45015000,
+          "overdue": 12840000,
+          "paidCount": 29,
+          "awaitingCount": 14,
+          "overdueCount": 4,
+          "grand": 141681000,
+          "grandCount": 47
+        }
+      },
+      "issuedThisMonth": {
+        "count": 18,
+        "amount": 56101000
+      },
+      "tracked": [
+        {
+          "contactId": "cmtlhyxmu0034fnkzcb4blz62",
+          "name": "โรงเรียนสอนดำน้ำ บลูโอเชียน",
+          "outstanding": 8000000,
+          "count": 2
+        },
+        {
+          "contactId": "cmtlhyxmi0033fnkz9tbgiwfq",
+          "name": "โรงแรมสิมิลันวิว",
+          "outstanding": 6225000,
+          "count": 1
+        },
+        {
+          "contactId": "cmtlhyxm60032fnkz22gwvxtm",
+          "name": "บริษัท อันดามัน ทราเวล จำกัด",
+          "outstanding": 5970000,
+          "count": 2
+        },
+        {
+          "contactId": "cmtlhyxs4003kfnkzd552vg36",
+          "name": "ปิยธิดา อินสุ่ม",
+          "outstanding": 5820000,
+          "count": 2
+        },
+        {
+          "contactId": "cmtlhyxnh0036fnkzs86fjvil",
+          "name": "คุณอรทัย พงษ์ไพบูลย์",
+          "outstanding": 4600000,
+          "count": 2
+        }
+      ]
+    },
+    "expense": {
+      "series": {
+        "months": [
+          {
+            "periodKey": "2026-01",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-02",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-03",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-04",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-05",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-06",
+            "paid": 3200000,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 1,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-07",
+            "paid": 4800000,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 2,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-08",
+            "paid": 6500000,
+            "awaiting": 0,
+            "overdue": 7750000,
+            "paidCount": 3,
+            "awaitingCount": 0,
+            "overdueCount": 2
+          },
+          {
+            "periodKey": "2026-09",
+            "paid": 0,
+            "awaiting": 13525000,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 7,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-10",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-11",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-12",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          }
+        ],
+        "total": {
+          "paid": 14500000,
+          "awaiting": 13525000,
+          "overdue": 7750000,
+          "paidCount": 6,
+          "awaitingCount": 7,
+          "overdueCount": 2,
+          "grand": 35775000,
+          "grandCount": 15
+        }
+      },
+      "issuedThisMonth": {
+        "count": 7,
+        "amount": 13525000
+      },
+      "tracked": [
+        {
+          "contactId": "cmtlhyy1t0047fnkzdhp8sruw",
+          "name": "บริษัท สยามแก๊ส อินดัสทรี จำกัด",
+          "outstanding": 5900000,
+          "count": 2
+        },
+        {
+          "contactId": "cmtlhyy2f0049fnkzit91ef59",
+          "name": "อู่ต่อเรือ ป่าตองมารีนเซอร์วิส",
+          "outstanding": 4000000,
+          "count": 2
+        },
+        {
+          "contactId": "cmtlhyy240048fnkz1tlh8h7j",
+          "name": "บริษัท อควาเทค อุปกรณ์ดำน้ำ จำกัด",
+          "outstanding": 3250000,
+          "count": 1
+        },
+        {
+          "contactId": "cmtlhyy2q004afnkzahv50ojj",
+          "name": "บริษัท ภูเก็ตปิโตรเลียม จำกัด",
+          "outstanding": 2475000,
+          "count": 1
+        },
+        {
+          "contactId": "cmtlhyy31004bfnkzq8dipxg6",
+          "name": "บริษัท ครัวทะเลใต้ เคเทอริ่ง จำกัด",
+          "outstanding": 2200000,
+          "count": 1
+        }
+      ]
     }
   }
 }

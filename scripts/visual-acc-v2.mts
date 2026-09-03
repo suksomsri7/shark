@@ -824,10 +824,59 @@ const PAGES: Record<string, PageSpec[]> = {
       expect: ["เริ่มต้นใช้งานบัญชี", "ตั้งค่ากิจการ", "เพิ่มช่องทางเงิน", "เพิ่มลูกค้า/สินค้า", "ออกเอกสารใบแรก", "เชื่อมระบบ"],
     },
   ],
+  // WO 2.3 — "ดูภาพรวม" รายรับ/รายจ่าย (§6) เทียบ f4-expense-overview.png (+ -menu.png)
+  // ไม่ต้องมี fixture พิเศษ — ตัวเลขทั้งหมดมาจากชุด seed เดิมที่ acc-v2-expected-dashboard.mts (คีย์ "overview") ยืนยันแล้ว
+  "2.3": [
+    {
+      name: "revenue-overview",
+      path: `/app/sys/${SYS}/account/overview/revenue`,
+      note: "ดูภาพรวมรายรับ — กราฟแท่งซ้อน 12 เดือน + 4 ตัวเลข · เอกสารที่ออก · ขายอะไรดีสุด/ขายใคร/รายได้อะไร · ลูกหนี้ที่ติดตาม",
+      expect: [
+        "ภาพรวมรายรับ",
+        "รายรับรายเดือน",
+        "ชำระแล้ว",
+        "รอชำระ",
+        "พ้นกำหนด",
+        "เอกสารที่ออก",
+        "ขายอะไรดีสุด",
+        "ขายใครได้มากที่สุด",
+        "รายได้อะไรมากที่สุด",
+        "ลูกหนี้ที่ติดตาม",
+      ],
+    },
+    {
+      name: "expense-overview",
+      path: `/app/sys/${SYS}/account/overview/expense`,
+      note: "ดูภาพรวมรายจ่าย — ตรง f4 เป๊ะ: กราฟแท่งซ้อน + 4 ตัวเลข · เอกสารที่ออก 4 ชนิด · จ่ายให้ใคร/จ่ายค่าอะไร · เจ้าหนี้ที่ติดตาม",
+      expect: [
+        "ภาพรวมรายจ่าย",
+        "ค่าใช้จ่ายรายเดือน",
+        "ชำระแล้ว",
+        "รอชำระ",
+        "พ้นกำหนด",
+        "เอกสารที่ออก",
+        "คุณจ่ายให้ใครมากที่สุด",
+        "คุณจ่ายค่าอะไรมากที่สุด",
+        "เจ้าหนี้ที่ติดตาม",
+      ],
+    },
+    {
+      name: "expense-overview-menu",
+      path: `/app/sys/${SYS}/account/overview/expense`,
+      note: 'คลิกแท็บ "รายจ่าย" เปิด dropdown — เทียบ f4-expense-overview-menu.png ("ดูภาพรวม" ต้องเป็นลิงก์ใช้ได้ ไม่จาง)',
+      expect: ["ภาพรวมรายจ่าย", "ดูภาพรวม", "ใบสั่งซื้อ"],
+      onlyDevice: "desktop",
+      click: ['[data-testid="acc-menu-expense"]'],
+      waitAfterClick: 300,
+    },
+  ],
 };
 
 // ─────────── ตารางตัวเลขที่อ่านจาก data-testid (ว่างไว้ก่อน — WO ถัดไปเติม) ───────────
 // รูปแบบ: { page: { "testid": ค่าที่คาดหวังเป็นสตางค์ | สตริง } }
+// WO 2.3 — แปลงสตางค์ → ข้อความบาท 2 ตำแหน่งทศนิยม แบบเดียวกับ formatBaht({decimals:true}) ที่ overview-ui.tsx ใช้จริง
+const bahtStr = (satang: number) => "฿" + (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 });
+
 const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>> = {
   // WO 1.4: ตัวเลขบนจอต้องตรงเฉลย g2 เป๊ะ (14,900 + 9,301.87 + WHT 698.13 = 24,900 · ค้าง 0)
   "1.4": {
@@ -915,6 +964,22 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "kpi-payable": "฿212,750.00",
       "kpi-overdue": "฿205,900.00",
       "kpi-cash": "฿1,284,560.00",
+    },
+  },
+  // WO 2.3 — ov-total/ov-paid/ov-awaiting/ov-overdue ต้องตรงเฉลยอิสระ (acc-v2-expected.json.overview
+  // เขียนโดย scripts/acc-v2-expected-dashboard.mts ด้วย SQL คนละสำนวน — ไม่ใช่การเทียบโค้ดกับตัวเอง)
+  "2.3": {
+    "revenue-overview": {
+      "ov-total": bahtStr(E.overview?.revenue?.series?.total?.grand ?? 0),
+      "ov-paid": bahtStr(E.overview?.revenue?.series?.total?.paid ?? 0),
+      "ov-awaiting": bahtStr(E.overview?.revenue?.series?.total?.awaiting ?? 0),
+      "ov-overdue": bahtStr(E.overview?.revenue?.series?.total?.overdue ?? 0),
+    },
+    "expense-overview": {
+      "ov-total": bahtStr(E.overview?.expense?.series?.total?.grand ?? 0),
+      "ov-paid": bahtStr(E.overview?.expense?.series?.total?.paid ?? 0),
+      "ov-awaiting": bahtStr(E.overview?.expense?.series?.total?.awaiting ?? 0),
+      "ov-overdue": bahtStr(E.overview?.expense?.series?.total?.overdue ?? 0),
     },
   },
 };
@@ -1717,6 +1782,46 @@ try {
             c22.push([probe.dash.checklistVisible, `?checklist=1 บังคับให้เช็กลิสต์ [data-testid="dash-checklist"] โชว์แม้ tenant ทำครบแล้ว (สำหรับถ่ายภาพ QC)`]);
           }
           for (const [okc, label] of c22) {
+            if (!okc) failures++;
+            console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
+          }
+        }
+
+        // WO 2.3 — "ดูภาพรวม" รายรับ/รายจ่าย (§6): แท่งซ้อน 5 กลุ่มที่มีข้อมูลจริง (พ.ค.–ก.ย. ตาม wo-notes/2.1.md)
+        // + ป้ายไทยล้วน + มือถือไม่ล้น + dropdown เปิดอยู่ในภาพเมนู (reuse ด่านเดียวกับ WO 0.4)
+        if (ASSERT && WO === "2.3") {
+          const c23: [boolean, string][] = [];
+          if (spec.name === "revenue-overview" || spec.name === "expense-overview") {
+            c23.push(["ov-total" in probe.testids, `หน้ามีตัวเลข [data-testid="ov-total"] จริง`]);
+            // 🔴 ห้ามเช็คด้วย !!probe.testids[tid] — <rect> ของ SVG มี .textContent = "" เสมอ (บทเรียนเดียวกับ WO 2.2)
+            c23.push([
+              "stack-paid-2026-09" in probe.testids,
+              `มีแท่งของเดือน ก.ย. 2026 [data-testid="stack-paid-2026-09"] (5 เดือนที่มีข้อมูลจริงคือ พ.ค.–ก.ย. ตาม wo-notes/2.1.md)`,
+            ]);
+            c23.push([
+              "stack-paid-2026-05" in probe.testids,
+              `มีแท่งของเดือน พ.ค. 2026 (ต้นช่วงข้อมูลจริง 5 เดือน)`,
+            ]);
+            const barGroups = new Set(
+              Object.keys(probe.testids)
+                .filter((k) => k.startsWith("stack-paid-"))
+                .map((k) => k.replace("stack-paid-", "")),
+            ).size;
+            c23.push([barGroups === 12, `กราฟมี 12 กลุ่มแท่งซ้อน (1 ต่อเดือน) — เจอ ${barGroups}`]);
+            c23.push([/^฿[\d,]+\.\d{2}$/.test(probe.testids["ov-total"] ?? ""), `ov-total เป็นเงินรูปแบบ ฿n,nnn.nn (เจอ "${probe.testids["ov-total"]}")`]);
+            if (device === "mobile") {
+              c23.push([w <= 390, `กล้องถ่ายที่ความกว้างมือถือมาตรฐาน 390px (ใช้จริง ${w}px)`]);
+              c23.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
+            }
+          }
+          if (spec.name === "expense-overview-menu") {
+            c23.push([probe.acc.dropdownVisible, `คลิก "รายจ่าย" แล้ว dropdown [data-testid="acc-dropdown"] ต้องเปิดค้างอยู่ (f4-menu)`]);
+            c23.push([
+              (probe.testids["acc-item-EXPENSE_OVERVIEW"] ?? "").includes("ดูภาพรวม"),
+              `รายการ "ดูภาพรวม" ในเมนูเป็นลิงก์ใช้ได้ (ไม่จาง ไม่ใช่ href="#") — เจอ "${probe.testids["acc-item-EXPENSE_OVERVIEW"]}"`,
+            ]);
+          }
+          for (const [okc, label] of c23) {
             if (!okc) failures++;
             console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
           }
