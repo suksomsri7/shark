@@ -100,7 +100,7 @@ export function DocEditorV2(props: DocEditorV2Props) {
 function EditorBody(props: DocEditorV2Props) {
   const router = useRouter();
   const toast = useToast();
-  const [mode] = useAccMode();
+  const [mode] = useAccMode(props.accMode);
   const easy = mode === "easy";
   const [pending, startTransition] = useTransition();
 
@@ -339,7 +339,7 @@ function EditorBody(props: DocEditorV2Props) {
           <span className="text-xs text-[color:var(--color-muted)]" data-testid="autosave-state" aria-live="polite">
             {saving ? "กำลังบันทึกร่าง…" : savedAt ? "บันทึกร่างอัตโนมัติแล้ว" : ""}
           </span>
-          <EasyModeToggle testId="acc-mode" />
+          <EasyModeToggle ssrMode={props.accMode} testId="acc-mode" />
         </div>
       </div>
 

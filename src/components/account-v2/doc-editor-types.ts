@@ -1,4 +1,5 @@
 import type { AmountOrPercent, PriceMode } from "@/lib/modules/account/totals";
+import type { AccMode } from "./mode-shared";
 
 // ─────────────────────────────────────────────────────────────
 // doc-editor-types.ts — สัญญาระหว่าง "หน้า (server)" กับ "ฟอร์ม (client)" ของ DocEditorV2
@@ -136,6 +137,8 @@ export type DocEditorV2Props = {
   docType: string;
   docLabel: string;
   side: "revenue" | "expense";
+  /** โหมดง่าย/นักบัญชีที่ server อ่านจากคุกกี้ `acc_mode` — client ใช้เป็นค่าตั้งต้น (กัน hydration mismatch) */
+  accMode: AccMode;
   basePath: string;
   listPath: string;
   detailPathFor: string; // prefix ของหน้าเอกสาร (ต่อท้ายด้วย /<docId>)

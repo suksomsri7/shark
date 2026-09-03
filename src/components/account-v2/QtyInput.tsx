@@ -25,8 +25,12 @@ export function QtyInput({
   compact?: boolean;
   testId?: string;
 }) {
-  const btn = compact ? "btn-sm h-9 w-7 shrink-0 px-0 text-xs" : "btn-sm h-11 w-11 shrink-0 px-0";
-  const box = compact ? "input w-full min-w-0 px-1 text-center tabular-nums" : "input w-20 text-center tabular-nums";
+  const btn = compact ? "btn-sm h-9 w-6 shrink-0 px-0 text-xs" : "btn-sm h-11 w-11 shrink-0 px-0";
+  // 🔴 min-w-[44px] ไม่ใช่ min-w-0: flex บีบช่องจนเหลือ 0 แล้วตัวเลขหายทั้งช่อง (Fable QC ภาพจริงรอบ 2)
+  //    px-0 ด้วย — padding 12px กินพื้นที่ตัวเลขในคอลัมน์แคบจนเห็นแต่กล่องเปล่า
+  const box = compact
+    ? "input w-full min-w-[44px] px-0 text-center tabular-nums"
+    : "input w-20 text-center tabular-nums";
   const controlled = value !== undefined;
   const [internal, setInternal] = useState(defaultValue);
   const qty = controlled ? value! : internal;

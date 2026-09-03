@@ -312,8 +312,36 @@ eq("E4b โหมดง่ายมี 8 คอลัมน์ (ตัด บั
 
 const toggleSrc = readFileSync(join(ROOT, "src/components/account-v2/EasyModeToggle.tsx"), "utf8");
 const modeSrc = readFileSync(join(ROOT, "src/components/account-v2/mode.ts"), "utf8");
-assert("E4b ค่าเริ่มต้นฝั่ง client = โหมดนักบัญชี (ภาพที่อนุมัติเป็นโหมดเต็ม)", /return "accountant";/.test(toggleSrc) && /ls === "easy" \? "easy" : "accountant"/.test(toggleSrc));
+assert('E4b ค่าเริ่มต้นฝั่ง client = โหมดนักบัญชี (ภาพที่อนุมัติเป็นโหมดเต็ม)', /DEFAULT_ACC_MODE: AccMode = "accountant"/.test(toggleSrc));
 assert("E4b ค่าเริ่มต้นฝั่ง server = โหมดนักบัญชี (ตรงกับ client ไม่ให้ SSR สลับหน้า)", /v === "easy" \? "easy" : "accountant"/.test(modeSrc));
+
+// 🔴 บั๊กรอบ 2: คุกกี้ `acc_mode` ไม่มีผลเลย เพราะไม่มีใครเรียก getAccMode() — โหมดถูกตัดสินฝั่ง client ล้วน
+//    ด่านนี้บังคับให้สายไฟครบ: server อ่านคุกกี้ → ส่งเป็น prop → client ใช้เป็นค่าตั้งต้น
+const pageSrcMode = readFileSync(join(ROOT, "src/lib/modules/account/DocEditorPage.tsx"), "utf8");
+assert("E4b หน้า (server) อ่านโหมดจากคุกกี้ด้วย getAccMode()", pageSrcMode.includes("getAccMode()"));
+assert("E4b หน้า (server) ส่งโหมดลงมาเป็น prop accMode", /accMode=\{accMode\}/.test(pageSrcMode));
+assert("E4b ฟอร์ม (client) ใช้ค่าจาก server เป็นตั้งต้น — useAccMode(props.accMode)", editorSrc.includes("useAccMode(props.accMode)"));
+assert("E4b สวิตช์โหมดรับค่าจาก server ด้วย (ปุ่มไฮไลต์ตรงกับที่เรนเดอร์)", editorSrc.includes("ssrMode={props.accMode}"));
+assert(
+  "E4b ลำดับความสำคัญ: localStorage > คุกกี้จาก server > ค่าเริ่มต้น",
+  /stored \?\? ssrMode \?\? DEFAULT_ACC_MODE/.test(toggleSrc),
+);
+assert(
+  "E4b readStoredMode คืน null เมื่อยังไม่เคยเลือก (ห้ามตีเป็น default แล้วกลืนคุกกี้)",
+  /readStoredMode\(\): AccMode \| null/.test(toggleSrc),
+);
+
+// ข้อ 1 รอบ 3: ช่อง "จำนวน" ในตารางแคบเคยถูกบีบจนเหลือ 0 → ตัวเลขหายทั้งช่อง
+const qtySrc = readFileSync(join(ROOT, "src/components/account-v2/QtyInput.tsx"), "utf8");
+assert("E4b ช่องจำนวนแบบแคบมีความกว้างขั้นต่ำ 44px (ไม่ใช่ min-w-0 ที่ถูกบีบจนหาย)", qtySrc.includes("min-w-[44px]") && !/compact\s*\?\s*"input w-full min-w-0/.test(qtySrc));
+// เนื้อที่จริงในเซลล์ (การ์ด max-w-5xl = 1024px · padding 40 · td px-1.5 = 12)
+const cardW = 1024 - 40;
+const pct = (i: number) => Number(wAcc.split(",")[i].replace(/[^0-9.]/g, ""));
+const cell = (i: number) => (cardW * pct(i)) / 100 - 12;
+assert(`E4b คอลัมน์ "จำนวน/หน่วย" เหลือที่ให้ช่องตัวเลข ≥ 44px (ได้ ${(cell(3) - 24 * 2 - 12 - 40).toFixed(0)}px)`, cell(3) - 24 * 2 - 12 - 40 >= 44);
+assert(`E4b คอลัมน์ "บัญชี" กว้างพออ่าน ~8 อักษรไทย ≥ 100px (ได้ ${cell(2).toFixed(0)}px)`, cell(2) >= 100);
+assert(`E4b คอลัมน์ "หัก ณ ที่จ่าย" กว้างพออ่าน ~8 อักษรไทย ≥ 100px (ได้ ${cell(8).toFixed(0)}px)`, cell(8) >= 100);
+assert(`E4b คอลัมน์ "มูลค่าก่อนภาษี" กว้างพอโชว์ ฿19,800.00 ≥ 80px (ได้ ${cell(7).toFixed(0)}px)`, cell(7) >= 80);
 
 const dateSrc = readFileSync(join(ROOT, "src/components/account-v2/DateInput.tsx"), "utf8");
 assert("E4b DateInput โชว์วันที่ไทย (formatDateTh) ไม่ใช่รูปแบบเบราว์เซอร์", dateSrc.includes("formatDateTh(iso)"));

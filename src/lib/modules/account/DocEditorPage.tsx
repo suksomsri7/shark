@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import type { AccountDocType } from "@prisma/client";
 import { thaiDateKey } from "@/lib/ui/date";
 import { storageEnabled } from "@/lib/storage/service";
+import { getAccMode } from "@/components/account-v2/mode";
 import { DocEditorV2 } from "@/components/account-v2/DocEditorV2";
 import {
   newLineDraft,
@@ -73,6 +74,8 @@ export async function DocEditorPage({
   const listPath = editorListPath(base, docType);
 
   const settings = await getSettings(tenantId, systemId);
+  // โหมดง่าย/นักบัญชี ตัดสินฝั่ง server จากคุกกี้ (§0.3-1) แล้วส่งลงเป็น prop — ห้ามให้ client เดาเอง
+  const accMode = await getAccMode();
   if (docType === "TAX_INVOICE" && !settings.vatRegistered) notFound();
   if (!docId && !canCreateDirect(docType)) {
     // ชนิดที่เกิดจากการแปลงเท่านั้น — เข้าหน้า "สร้าง" ตรง ๆ ไม่ได้ (§5.1)
@@ -196,6 +199,7 @@ export async function DocEditorPage({
         docType={docType}
         docLabel={def.label}
         side={side}
+        accMode={accMode}
         basePath={base}
         listPath={listPath}
         detailPathFor={listPath}
