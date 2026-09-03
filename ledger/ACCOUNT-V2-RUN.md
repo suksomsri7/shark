@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 🏁 ปิดเฟส 3 (rebase main → qc:all → merge → deploy → backfill prod) |
+| WO | 🏁 เฟส 3 ปิด (main `2d97a98` · Vercel กำลัง deploy) → เฟส 4: 4.1 InvItem canonical |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable |
-| ขั้นที่ถึง | 3 ก.ย. ~19:30 UTC: 3.4 DONE (Opus รอบเดียว · ตรง g6/g7) · Fable รันด่านเองครบ · commit แล้ว · เริ่มขั้นปิดเฟส 3 |
+| ผู้ทำ | Opus (sub-agent) |
+| ขั้นที่ถึง | 3 ก.ย. ~18:55 UTC: qc:all 205/205 (686s) · main ff → `2d97a98` push แล้ว · Vercel deploy รอ READY (Fable poll) · ยังไม่ verify prod · 4.1 เริ่ม (Opus) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 3 ก.ย. 2026 ~18:52 UTC — 🏁 **เฟส 3 ปิด** (3.1–3.4 · qc:all 205/205 · main `2d97a98`) · prod ไม่ต้อง backfill (ไม่มีข้อมูลจริง) · 22/46 WO ≈ 48%
 - 3 ก.ย. 2026 ~19:30 UTC — 3.4 โปรไฟล์ 360°+รวมซ้ำ DONE → เฟส 3 ครบ 4 WO เริ่มปิดเฟส
 - 3 ก.ย. 2026 ~18:00 UTC — 3.3 modal ผู้ติดต่อ DONE (Opus รอบเดียว · บั๊ก Modal กลางพิมพ์ได้ตัวเดียวถูกปิด)
 - 3 ก.ย. 2026 ~16:30 UTC — 3.2 หน้าผู้ติดต่อ DONE (ตีกลับ 1 รอบ) · ผ่านด่าน parity f5
