@@ -594,8 +594,11 @@ export type DocumentsIssued = {
 /** สถานะที่ถือว่า "ยังไม่ออก/ไม่มีผล" — ไม่นับในการ์ดนี้ */
 const NOT_ISSUED: AccountDocStatus[] = ["DRAFT", "CANCELLED", "VOIDED"];
 
-/** ป้ายชนิดเอกสารภาษาไทย (ขาย + จ่าย) */
+/** ป้ายชนิดเอกสารภาษาไทย (ขาย + จ่าย)
+ *  TAX_INVOICE_ABB อยู่นอก DOC_LABEL โดยตั้งใจ (ไม่มีหน้ารายการ/ฟอร์มสร้างเอง — เกิดจากบิล POS เท่านั้น)
+ *  แต่ต้องมีชื่อไทยเวลาโผล่ในรายงาน/โปรไฟล์ผู้ติดต่อ */
 export function docTypeLabel(docType: AccountDocType): string {
+  if (docType === "TAX_INVOICE_ABB") return "บิลขายหน้าร้าน (POS)";
   return DOC_LABEL[docType] ?? EXP_DOC_LABEL[docType] ?? docType;
 }
 
@@ -698,10 +701,16 @@ export type TopProductRow = { productId: string | null; name: string; qty: numbe
 
 const NO_CONTACT = "ไม่ระบุคู่ค้า";
 
-/** เอกสารที่นับเป็น "ยอดขาย" — ใบเสร็จที่แปลงมาจากใบแจ้งหนี้ถูกตัดออก (กันนับซ้ำ) */
+/** เอกสารที่นับเป็น "ยอดขาย" — ใบเสร็จที่แปลงมาจากใบแจ้งหนี้ถูกตัดออก (กันนับซ้ำ)
+ *  WO 4.2: + บิลขายหน้าร้าน (POS = ใบกำกับอย่างย่อ) — บิล POS ไม่มีใบแจ้งหนี้/ใบเสร็จคู่กัน
+ *  จึงไม่มีทางนับซ้ำ · ถ้าไม่ใส่ ยอดขายหน้าร้านจะหายไปจาก "ขายอะไรดี/ขายใคร" ทั้งก้อน (SPEC §4 บล็อก 8) */
 const SALES_WHERE = {
   direction: "OUT" as const,
-  OR: [{ docType: "INVOICE" as const }, { docType: "RECEIPT" as const, sourceDocId: null }],
+  OR: [
+    { docType: "INVOICE" as const },
+    { docType: "RECEIPT" as const, sourceDocId: null },
+    { docType: "TAX_INVOICE_ABB" as const },
+  ],
 };
 /** เอกสารที่นับเป็น "รายจ่าย" ฝั่งซื้อ (PO/PTX เป็นทะเบียน ไม่ใช่ค่าใช้จ่าย) */
 const PURCHASE_WHERE = { direction: "IN" as const, docType: { in: ["PURCHASE", "EXPENSE"] as AccountDocType[] } };

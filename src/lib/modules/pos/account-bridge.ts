@@ -32,7 +32,40 @@ type SaleForBridge = {
   grandTotalSatang: number;
   paidAt: Date | null;
   createdAt: Date;
+  receiptNo?: string | null;
 };
+
+/** บรรทัดบิลที่ consumer อ่านมาจาก PosSaleLine (WO 4.2) */
+export type SaleLineForBridge = {
+  name: string;
+  qty: number;
+  unitPriceSatang: number;
+  discountSatang: number;
+  lineTotalSatang: number;
+  itemId: string | null;
+};
+
+/** ลูกค้าของบิล (Customer ของระบบสมาชิก) — ไม่มี = ลูกค้าเดินเข้าร้าน */
+export type SaleCustomerForBridge = {
+  memberId?: string | null;
+  partyId?: string | null;
+  name?: string | null;
+  phone?: string | null;
+};
+
+// เกลี่ย "ส่วนลดท้ายบิล/คูปอง" ลงบรรทัดตามสัดส่วนยอดบรรทัด (largest remainder — ผลรวมตรงเป๊ะ)
+// 🔴 ทำไมต้องเกลี่ย: บัญชีรับบรรทัดได้ก็ต่อเมื่อ Σ บรรทัด = ยอดบิลเป๊ะ · PosSale เก็บส่วนลดท้ายบิลไว้ที่หัวบิล
+//    ถ้าส่งดิบ ๆ บิลที่มีส่วนลด/คูปองจะถูกปฏิเสธทั้งใบ (เงินยังเข้า GL แต่ไม่มีเอกสาร = รายงานสินค้าโหว่)
+function allocateBillDiscount(weights: number[], total: number): number[] {
+  const sumW = weights.reduce((a, b) => a + b, 0);
+  if (total <= 0 || sumW <= 0) return weights.map(() => 0);
+  const raw = weights.map((w) => (total * w) / sumW);
+  const out = raw.map((r) => Math.floor(r));
+  let rem = total - out.reduce((a, b) => a + b, 0);
+  const order = raw.map((r, i) => ({ i, frac: r - Math.floor(r) })).sort((a, b) => b.frac - a.frac);
+  for (let k = 0; rem > 0 && order.length > 0; k++, rem--) out[order[k % order.length].i] += 1;
+  return out;
+}
 
 /** ขาย POS สำเร็จ → post บัญชี (ผ่าน facade) */
 export async function bridgePosSalePaid(
@@ -40,17 +73,45 @@ export async function bridgePosSalePaid(
   payments: { type: PosPayType; amountSatang: number }[],
   /** ยอดรวมของบรรทัดที่เป็นบริการ — แยกลงบัญชีรายได้ค่าบริการ (4030) · 0/ไม่ส่ง = ขายสินค้าทั้งบิล */
   serviceGrossSatang = 0,
-): Promise<{ posted: boolean; reason?: string }> {
-  return applyExternalSale({
+  /** WO 4.2 (MAP §F.13) — บรรทัด + ลูกค้าของบิล · ไม่ส่ง = พฤติกรรมเดิม (ยอดรวมอย่างเดียว) */
+  detail?: { lines?: SaleLineForBridge[]; customer?: SaleCustomerForBridge | null },
+): Promise<{ posted: boolean; reason?: string; docId?: string }> {
+  const gross = sale.grandTotalSatang;
+  const src = detail?.lines ?? [];
+  // ส่วนลดท้ายบิล = Σ บรรทัด − ยอดสุทธิ (เก็บที่หัวบิลใน PosSale.discountSatang รวมคูปองแล้ว)
+  const lineSum = src.reduce((n, l) => n + l.qty * l.unitPriceSatang - l.discountSatang, 0);
+  const billDiscount = lineSum - gross;
+  const alloc =
+    billDiscount > 0 ? allocateBillDiscount(src.map((l) => Math.max(0, l.lineTotalSatang)), billDiscount) : src.map(() => 0);
+  // ส่งบรรทัดเฉพาะบิลที่ "เกลี่ยแล้วลงตัว" — บิลแปลก (ยอดติดลบ/ส่วนลดเกิน) ถอยไปเส้นเดิมแทนที่จะถูกปฏิเสธ
+  const lines =
+    src.length > 0 && gross > 0 && billDiscount >= 0
+      ? src.map((l, i) => ({
+          itemId: l.itemId,
+          name: l.name,
+          qty: l.qty,
+          unitPriceSatang: l.unitPriceSatang,
+          discountSatang: l.discountSatang + alloc[i],
+        }))
+      : undefined;
+
+  const res = await applyExternalSale({
     tenantId: sale.tenantId,
     sourceSystemId: sale.systemId,
     refId: sale.id,
     occurredAt: sale.paidAt ?? sale.createdAt,
-    grossSatang: sale.grandTotalSatang,
+    grossSatang: gross,
     // clamp: ส่วนลดท้ายบิลอาจทำให้ยอดบริการ (ก่อนลด) มากกว่ายอดสุทธิ — กันไม่ให้เกินทั้งบิล
-    serviceGrossSatang: Math.min(serviceGrossSatang, sale.grandTotalSatang),
+    serviceGrossSatang: Math.min(serviceGrossSatang, gross),
     payMethods: payments.map((p) => ({ channel: channelOf(p.type), amountSatang: p.amountSatang })),
+    lines,
+    customer: detail?.customer ?? undefined,
+    receiptNo: sale.receiptNo ?? null,
   });
+  // บรรทัดถูกปฏิเสธ (ยอดไม่ตรง/ข้อมูลเพี้ยน) — เงินยังเข้า GL ตามปกติ · เตือนเป็นภาษาไทย **ห้ามมีข้อมูลลูกค้าใน log**
+  if (lines && res.reason && res.reason !== "unlinked" && !res.docId)
+    console.warn(`[บัญชี] บิล POS ${sale.id}: ไม่บันทึกบรรทัดสินค้าเข้าบัญชี — ${res.reason}`);
+  return res;
 }
 
 /** void บิล POS → กลับรายการบัญชี (ผ่าน facade) */

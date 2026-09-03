@@ -3220,6 +3220,191 @@ export async function setDocExternalRef(docId: string, ref: { refSystemId: strin
   await prisma.accountDocument.update({ where: { id: docId }, data: ref });
 }
 
+// ═══════════════════════════════════════════════════════════════
+// WO 4.2 (MAP §F.13) — เอกสารบัญชีของ "บิลขายหน้าร้าน" (POS)
+//
+// ทำไมต้องมีเอกสาร: JV ของ POS (postExternalSale) รู้แค่ยอดรวม ⇒ รายงาน "ขายอะไรดี/ขายใคร" (§4 บล็อก 8)
+//   มองไม่เห็นยอดขาย POS เลย · เอกสารใบนี้เก็บ **บรรทัดสินค้า + ผู้ติดต่อ** ให้รายงานอ่านได้
+//
+// ชนิดเอกสาร = `TAX_INVOICE_ABB` (ใบกำกับอย่างย่อ — ชนิดที่ schema จองไว้ให้ "POS link" ตั้งแต่ baseline)
+//   🔴 เหตุผลที่ไม่ใช้ RECEIPT: `gl.postDocument` โพสต์ GL ให้ RECEIPT ⇒ ถ้าใครกดออก/รับชำระใบนั้นซ้ำ
+//      รายได้จะเข้า 2 เท่า (JV ของ POS ลงไปแล้ว) · `TAX_INVOICE_ABB` อยู่ในชุด NO_GL ของ postDocument
+//      ⇒ **โครงสร้างเองกันการโพสต์ซ้ำ** ไม่ต้องพึ่งวินัยของผู้ใช้
+// เอกสารนี้ **ไม่โพสต์ GL** — เงินเข้าบัญชีทาง `gl.postExternalSale` เส้นเดิมเท่านั้น
+export const EXTERNAL_SALE_DOC_TYPE: AccountDocType = "TAX_INVOICE_ABB";
+export const EXTERNAL_SALE_REF_TYPE = "PosSale";
+
+export type ExternalSaleDocLine = {
+  description: string;
+  qty: number;
+  unitPrice: number; // สตางค์/หน่วย (ราคาที่ขายจริงหน้าร้าน = รวม VAT เมื่อร้านจด VAT)
+  discount?: number; // ส่วนลดของบรรทัด (สตางค์) — รวมส่วนลดท้ายบิลที่ผู้เรียกเกลี่ยลงมาแล้ว
+  vatRateBp?: number | null;
+  unitName?: string | null;
+  productId?: string | null; // ทะเบียนสินค้าฝั่งบัญชี (null = รายการที่ไม่มีในทะเบียน)
+};
+
+/**
+ * สร้างเอกสารบิล POS **ครั้งเดียวต่อ PosSale** (idempotent ต่อ systemId+docType+refType+refId)
+ * เรียกซ้ำ = ได้ใบเดิม ไม่มีบรรทัดเพิ่ม · ยอดรวมของเอกสารต้องเท่ากับยอดบิลเป๊ะ ไม่งั้นไม่สร้าง
+ */
+export async function upsertExternalSaleDocument(input: {
+  tenantId: string;
+  systemId: string;
+  refSystemId: string; // AppSystem.id ของ POS ต้นทาง
+  refId: string; // PosSale.id
+  docNo?: string | null; // เลขใบเสร็จของ POS (ใช้ซ้ำได้ถ้ายังไม่ถูกใช้ในสมุดเล่มนี้)
+  occurredAt: Date;
+  contactId: string | null; // null = ลูกค้าเดินเข้าร้าน (walk-in) — รายงานแสดง "ไม่ระบุคู่ค้า"
+  vatMode: AccountVatMode;
+  vatRegistered: boolean;
+  vatRateBp: number;
+  grandTotalSatang: number;
+  note?: string | null;
+  lines: ExternalSaleDocLine[];
+}): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
+  const existing = await findDocByRef(input.systemId, EXTERNAL_SALE_DOC_TYPE, EXTERNAL_SALE_REF_TYPE, input.refId);
+  if (existing) return { ok: true, docId: existing.id, created: false };
+
+  if (input.lines.length === 0) return { ok: false, reason: "บิลไม่มีรายการสินค้า — ไม่สร้างเอกสาร" };
+  const totals = computeTotals({
+    lines: input.lines.map((l) => ({
+      description: l.description,
+      qty: l.qty,
+      unitPrice: l.unitPrice,
+      discount: l.discount ?? 0,
+      vatRateBp: l.vatRateBp ?? undefined,
+    })),
+    vatMode: input.vatMode,
+    vatRegistered: input.vatRegistered,
+    vatRateBp: input.vatRateBp,
+  });
+  // ด่านสุดท้าย (ผู้เรียกตรวจมาแล้วชั้นหนึ่ง) — ยอดเอกสารต้องเท่าบิลเป๊ะ ไม่งั้นบัญชีกับหน้าร้านไม่ตรงกัน
+  if (totals.grandTotal !== input.grandTotalSatang)
+    return {
+      ok: false,
+      reason: `ยอดรวมของบรรทัด (${totals.grandTotal}) ไม่เท่ากับยอดบิล (${input.grandTotalSatang}) — ไม่สร้างเอกสารบิลขายหน้าร้าน`,
+    };
+
+  const contact = input.contactId
+    ? await prisma.accountContact.findFirst({
+        where: { id: input.contactId, systemId: input.systemId },
+        select: { name: true, taxId: true, legalType: true, branchCode: true, branchName: true, address: true, phone: true, email: true },
+      })
+    : null;
+
+  try {
+    const doc = await prisma.$transaction(async (tx) => {
+      // กันเบิ้ลอีกชั้นภายใน tx (drain 2 ตัวชนกันตอน lease หมดอายุ)
+      const again = await tx.accountDocument.findFirst({
+        where: { systemId: input.systemId, docType: EXTERNAL_SALE_DOC_TYPE, refType: EXTERNAL_SALE_REF_TYPE, refId: input.refId },
+        select: { id: true },
+      });
+      if (again) return { id: again.id, created: false };
+
+      // เลขที่เอกสาร = เลขใบเสร็จ POS ถ้ายังว่างในสมุดเล่มนี้ (ไม่กินเลขรันของบัญชี) · ชนกัน = ปล่อยว่าง
+      let docNo: string | null = (input.docNo ?? "").trim() || null;
+      if (docNo) {
+        const dup = await tx.accountDocument.findFirst({
+          where: { systemId: input.systemId, docType: EXTERNAL_SALE_DOC_TYPE, docNo },
+          select: { id: true },
+        });
+        if (dup) docNo = null;
+      }
+
+      const created = await tx.accountDocument.create({
+        data: {
+          tenantId: input.tenantId,
+          systemId: input.systemId,
+          docType: EXTERNAL_SALE_DOC_TYPE,
+          docNo,
+          status: "PAID", // ขายสด = รับเงินครบตั้งแต่ออกบิล
+          direction: "OUT",
+          issueDate: input.occurredAt,
+          contactId: input.contactId,
+          contactSnapshot: contact ?? undefined,
+          vatMode: input.vatMode,
+          vatTiming: "ON_ISSUE",
+          taxPointBasis: "ON_ISSUE",
+          subTotal: totals.subTotal,
+          vatAmount: totals.vatAmount,
+          grandTotal: totals.grandTotal,
+          paidTotal: totals.grandTotal,
+          source: "POS",
+          refSystemId: input.refSystemId,
+          refType: EXTERNAL_SALE_REF_TYPE,
+          refId: input.refId,
+          note: input.note ?? null,
+          lines: {
+            create: input.lines.map((l, i) => ({
+              tenantId: input.tenantId,
+              systemId: input.systemId,
+              sortOrder: i,
+              description: l.description,
+              qty: l.qty,
+              unitName: l.unitName ?? null,
+              unitPrice: l.unitPrice,
+              discount: l.discount ?? 0,
+              vatRateBp: l.vatRateBp ?? input.vatRateBp,
+              amount: lineAmount({ description: l.description, qty: l.qty, unitPrice: l.unitPrice, discount: l.discount ?? 0 }),
+              productId: l.productId ?? null,
+            })),
+          },
+        },
+        select: { id: true },
+      });
+      return { id: created.id, created: true };
+    });
+    return { ok: true, docId: doc.id, created: doc.created };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "สร้างเอกสารบิลขายหน้าร้านไม่สำเร็จ" };
+  }
+}
+
+/** ยกเลิกเอกสารบิล POS เมื่อบิลถูก void — กลับสถานะเป็น VOIDED (ไม่ลบบรรทัด · ไม่มี GL ให้กลับ) */
+export async function voidExternalSaleDocument(
+  tenantId: string,
+  systemId: string,
+  refId: string,
+  reason: string,
+): Promise<{ voided: boolean; reason?: string }> {
+  const doc = await findDocByRef(systemId, EXTERNAL_SALE_DOC_TYPE, EXTERNAL_SALE_REF_TYPE, refId);
+  if (!doc) return { voided: false, reason: "ไม่มีเอกสารบิลขายหน้าร้านของบิลนี้" };
+  const res = await voidDocument(tenantId, systemId, doc.id, reason);
+  if (!res.ok) return { voided: false, reason: res.reason };
+  return { voided: true };
+}
+
+/**
+ * แปลง "ของที่ POS รู้จัก" (InvItem.id / AccountProduct.id) → `AccountProduct.id` ของสมุดเล่มนี้
+ * - ทุก query ผูก `systemId` ⇒ id ของร้านอื่นหาไม่เจอ = คืน null (บรรทัดยังบันทึกได้ แค่ไม่ผูกทะเบียนสินค้า)
+ * - คีย์ item ใช้ `AccountProduct.invItemId` (ทิศ canonical ของ WO 4.1)
+ */
+export async function resolveProductIdsForExternalSale(
+  systemId: string,
+  keys: { itemIds: string[]; productIds: string[] },
+): Promise<{ byItemId: Map<string, string>; byProductId: Map<string, string> }> {
+  const byItemId = new Map<string, string>();
+  const byProductId = new Map<string, string>();
+  const itemIds = [...new Set(keys.itemIds.filter(Boolean))];
+  const productIds = [...new Set(keys.productIds.filter(Boolean))];
+  if (itemIds.length > 0) {
+    const rows = await prisma.accountProduct.findMany({
+      where: { systemId, invItemId: { in: itemIds } },
+      select: { id: true, invItemId: true },
+    });
+    for (const r of rows) if (r.invItemId) byItemId.set(r.invItemId, r.id);
+  }
+  if (productIds.length > 0) {
+    const rows = await prisma.accountProduct.findMany({
+      where: { systemId, id: { in: productIds } },
+      select: { id: true },
+    });
+    for (const r of rows) byProductId.set(r.id, r.id);
+  }
+  return { byItemId, byProductId };
+}
+
 
 // ═══════════════════════════════════════════════════════════════
 // ฟอร์มเอกสาร V2 (WO 1.3) — ชั้นข้อมูลของ DocEditorV2

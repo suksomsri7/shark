@@ -10,8 +10,12 @@ import {
   findAccountLinkForPos,
   findDocByRef,
   findOrCreateCustomerContact,
+  resolveProductIdsForExternalSale,
   setDocExternalRef,
+  upsertExternalSaleDocument,
   vatConfigOf,
+  voidExternalSaleDocument,
+  type ExternalSaleDocLine,
 } from "./service";
 
 // ราคาขายสินค้า POS (master data — ไม่กระทบ GL) เปิดผ่าน facade ให้โมดูล pos เรียก
@@ -40,6 +44,12 @@ import { createExpenseDoc as createExpenseDocRaw } from "./expense";
  * 1) หา AccountSystemLink (POS↔Account) — ไม่เจอ = ไม่ post (หลัก standalone) ห้าม throw
  * 2) ถอด VAT จากยอดรวม: จด VAT → ฐาน = round(gross / (1 + rate)) · VAT = gross − ฐาน · ไม่จด → ฐาน = gross
  * 3) โพสต์ผ่าน gl.postExternalSale (idempotent ต่อ PosSale#refId#PAID)
+ *
+ * WO 4.2 (MAP §F.13) — ของเพิ่มที่ "ไม่ส่งก็ได้" (ไม่ส่ง = พฤติกรรมเดิมเป๊ะทุกบรรทัด):
+ *   `lines`    → สร้าง **เอกสารบัญชี 1 ใบต่อบิล** พร้อมบรรทัดสินค้า ⇒ รายงาน "ขายอะไรดี" เห็นยอด POS
+ *   `customer` → ผูกผู้ติดต่อฝั่งบัญชี (partyId ก่อน ตาม WO 3.1) ⇒ รายงาน "ขายใคร" เห็นยอด POS
+ *   🔴 GL ไม่เปลี่ยนแม้แต่สตางค์เดียวไม่ว่าจะส่ง lines หรือไม่ — JV ยังคิดจาก grossSatang/payMethods เส้นเดิม
+ *      เอกสารเป็นชั้น "รายงาน" เท่านั้น (ไม่โพสต์ GL ซ้ำ — ดู service.EXTERNAL_SALE_DOC_TYPE)
  */
 export async function applyExternalSale(input: {
   tenantId: string;
@@ -50,7 +60,27 @@ export async function applyExternalSale(input: {
   // ส่วนของยอดรวมที่มาจาก "บริการ" — ไม่ระบุ = ถือเป็นขายสินค้าทั้งก้อน (พฤติกรรมเดิม)
   serviceGrossSatang?: number;
   payMethods: { channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE"; amountSatang: number }[];
-}): Promise<{ posted: boolean; reason?: string }> {
+  /** WO 4.2 — บรรทัดของบิล (สตางค์ · ราคาต่อหน่วยตามที่ขายจริง = รวม VAT เมื่อร้านจด VAT)
+   *  Σ(qty×unitPriceSatang − discountSatang) ต้องเท่ากับ grossSatang เป๊ะ ไม่งั้นไม่บันทึกอะไรเลย */
+  lines?: {
+    itemId?: string | null; // InvItem.id (คลังกลาง — WO 4.1)
+    accountProductId?: string | null; // AccountProduct.id (ถ้าผู้เรียกรู้ตรง ๆ)
+    name: string;
+    qty: number;
+    unitPriceSatang: number;
+    vatRateBp?: number;
+    discountSatang?: number;
+  }[];
+  /** WO 4.2 — ลูกค้าของบิล (ไม่ส่ง/ไม่มี = ลูกค้าเดินเข้าร้าน → เอกสารไม่ผูกผู้ติดต่อ) */
+  customer?: {
+    memberId?: string | null;
+    partyId?: string | null;
+    name?: string | null;
+    phone?: string | null;
+  };
+  /** เลขใบเสร็จของ POS — ใช้เป็นเลขที่เอกสารถ้ายังว่างในสมุดเล่มนี้ */
+  receiptNo?: string | null;
+}): Promise<{ posted: boolean; reason?: string; docId?: string }> {
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return { posted: false, reason: "unlinked" };
 
@@ -60,6 +90,30 @@ export async function applyExternalSale(input: {
   const gross = input.grossSatang;
   const base = vatRegistered ? Math.round(gross / (1 + vatRateBp / 10000)) : gross;
   const vat = gross - base;
+
+  // ── WO 4.2: ตรวจบรรทัดก่อนแตะอะไรทั้งสิ้น — ไม่ตรงยอด = ไม่โพสต์ ไม่สร้างเอกสาร (บิลเพี้ยนห้ามเข้าบัญชี) ──
+  const lines = input.lines;
+  if (lines && lines.length > 0) {
+    const bad = lines.find(
+      (l) =>
+        !Number.isInteger(l.qty) ||
+        l.qty <= 0 ||
+        !Number.isInteger(l.unitPriceSatang) ||
+        l.unitPriceSatang < 0 ||
+        (l.discountSatang !== undefined && (!Number.isInteger(l.discountSatang) || l.discountSatang < 0)),
+    );
+    if (bad)
+      return {
+        posted: false,
+        reason: `บรรทัด "${bad.name}" มีจำนวน/ราคา/ส่วนลดไม่ถูกต้อง (ต้องเป็นจำนวนเต็มสตางค์ และไม่ติดลบ) — ไม่บันทึกบัญชี`,
+      };
+    const sum = lines.reduce((n, l) => n + l.qty * l.unitPriceSatang - (l.discountSatang ?? 0), 0);
+    if (sum !== gross)
+      return {
+        posted: false,
+        reason: `ยอดรวมของบรรทัด (${sum} สตางค์) ไม่เท่ากับยอดบิล (${gross} สตางค์) — ไม่บันทึกบัญชี`,
+      };
+  }
 
   // ช่องทางเงิน → บัญชีขา Dr (ขา Cr รายได้/VAT คงเดิม):
   //   CASH → 1000 (CASH) · TRANSFER/PROMPTPAY → 1010 (BANK)
@@ -95,24 +149,90 @@ export async function applyExternalSale(input: {
     serviceBaseSatang: svcBase,
     drLines,
   });
-  return { posted: "entryId" in res };
+  const posted = "entryId" in res;
+
+  // ── WO 4.2: ชั้นเอกสาร (ไม่มี lines = ข้ามทั้งบล็อก → เส้นทางเดิมทุกประการ) ──
+  if (!lines || lines.length === 0) return { posted };
+
+  const contactId = await resolveExternalSaleContact(ctx, input.customer);
+  const map = await resolveProductIdsForExternalSale(ctx.systemId, {
+    itemIds: lines.map((l) => l.itemId ?? "").filter(Boolean),
+    productIds: lines.map((l) => l.accountProductId ?? "").filter(Boolean),
+  });
+  const docLines: ExternalSaleDocLine[] = lines.map((l) => ({
+    description: l.name,
+    qty: l.qty,
+    unitPrice: l.unitPriceSatang,
+    discount: l.discountSatang ?? 0,
+    vatRateBp: l.vatRateBp ?? null,
+    productId:
+      (l.accountProductId ? map.byProductId.get(l.accountProductId) : undefined) ??
+      (l.itemId ? map.byItemId.get(l.itemId) : undefined) ??
+      null,
+  }));
+
+  const doc = await upsertExternalSaleDocument({
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    refSystemId: input.sourceSystemId,
+    refId: input.refId,
+    docNo: input.receiptNo ?? null,
+    occurredAt: input.occurredAt,
+    contactId,
+    // ร้านจด VAT: ราคาหน้าร้าน "รวม VAT แล้ว" (เส้นเดียวกับที่ JV ถอด VAT ออกจากยอดรวม)
+    vatMode: vatRegistered ? "INCLUDE" : "NONE",
+    vatRegistered,
+    vatRateBp,
+    grandTotalSatang: gross,
+    note: input.receiptNo ? `ขายหน้าร้าน POS · ใบเสร็จ ${input.receiptNo}` : "ขายหน้าร้าน POS",
+    lines: docLines,
+  });
+  if (!doc.ok) return { posted, reason: doc.reason };
+  return { posted, docId: doc.docId };
+}
+
+/**
+ * ผู้ติดต่อของบิล POS — partyId ก่อน (WO 3.1) แล้วค่อยเบอร์/ชื่อ ตามลำดับของ `findOrCreateCustomerContact`
+ * ไม่มีข้อมูลลูกค้าเลย = **ลูกค้าเดินเข้าร้าน** → คืน null (เอกสารไม่ผูกผู้ติดต่อ · รายงานจัดเป็น "ไม่ระบุคู่ค้า")
+ * — ตั้งใจไม่สร้างผู้ติดต่อ "ลูกค้าทั่วไป" ก้อนเดียวรวมทุกคน เพราะจะกลายเป็นลูกค้าอันดับ 1 ปลอม ๆ ในรายงาน
+ */
+async function resolveExternalSaleContact(
+  ctx: GlCtx,
+  customer?: { memberId?: string | null; partyId?: string | null; name?: string | null; phone?: string | null },
+): Promise<string | null> {
+  if (!customer) return null;
+  const name = (customer.name ?? "").trim();
+  const phone = (customer.phone ?? "").trim();
+  if (!customer.partyId && !name && !phone) return null;
+  const contact = await findOrCreateCustomerContact(
+    { tenantId: ctx.tenantId, systemId: ctx.systemId },
+    {
+      // ไม่มีชื่อ (สมาชิกที่กรอกแค่เบอร์) → ใช้เบอร์เป็นชื่อชั่วคราว เหมือนกติกา Party ของ WO 3.1
+      name: name || phone || "ลูกค้า POS",
+      phone: phone || null,
+      partyId: customer.partyId ?? null,
+    },
+  );
+  return contact.id;
 }
 
 /**
  * กลับรายการยอดขาย POS ที่ถูก void — reversal ครบทุกขา (idempotent)
  * ไม่เชื่อมบัญชี = ไม่มีอะไรกลับ (posted: false)
+ * WO 4.2: ถ้าบิลนั้นมีเอกสารบัญชี (POS ส่ง lines) → ยกเลิกเอกสารด้วย (VOIDED ไม่ลบบรรทัด)
  */
 export async function reverseExternalSale(input: {
   tenantId: string;
   sourceSystemId: string;
   refId: string;
-}): Promise<{ posted: boolean }> {
+}): Promise<{ posted: boolean; docVoided?: boolean }> {
   const link = await findAccountLinkForPos(input.tenantId, input.sourceSystemId);
   if (!link) return { posted: false };
 
   const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
   const reversed = await reverseFor(ctx, "PosSale", input.refId, "POS void บิล");
-  return { posted: reversed.length > 0 };
+  const voided = await voidExternalSaleDocument(input.tenantId, link.systemId, input.refId, "POS void บิล");
+  return { posted: reversed.length > 0, docVoided: voided.voided };
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -833,8 +833,13 @@ export async function reverseFor(
   tx?: Tx,
 ): Promise<{ entryId: string }[]> {
   return withTx(tx, async (db) => {
+    // 🐞 WO 4.2 — **ห้ามกลับรายการของรายการที่เป็น "การกลับรายการ" อยู่แล้ว**
+    //   entry ที่ reverseFor สร้างขึ้น ใช้ refType/refId เดียวกับต้นฉบับ และสถานะเป็น POSTED
+    //   ⇒ ถ้าเรียก reverseFor ซ้ำ (event void ถูก drain 2 รอบ / retry หลัง webhook ล้ม / lease หมดอายุ)
+    //     รอบที่สองจะไปกลับรายการ "ตัวกลับรายการ" = โพสต์รายได้กลับเข้ามาใหม่เงียบ ๆ (เจอจริงด้วยข้อสอบ PL6.9)
+    //   ตัวกรอง `reversalOfId: null` ทำให้เรียกซ้ำกี่ครั้งก็ได้ผลเท่าเดิม (ต้นฉบับถูกกลับไปแล้ว = REVERSED)
     const entries = await db.accountJournalEntry.findMany({
-      where: { systemId: ctx.systemId, refType, refId, status: "POSTED" },
+      where: { systemId: ctx.systemId, refType, refId, status: "POSTED", reversalOfId: null },
       include: { lines: true },
     });
     const out: { entryId: string }[] = [];

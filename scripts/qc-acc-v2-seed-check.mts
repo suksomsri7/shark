@@ -320,6 +320,41 @@ if (MD) {
   );
 }
 
+// ─────────── K. บิลขายหน้าร้าน POS (WO 4.2 · MAP §F.13) ───────────
+// ⚠️ ห้ามลดทอน: หมวด A–J เดิมอยู่ครบ · หมวดนี้ "เพิ่ม" อีก 8 ข้อ
+console.log("\nK. บิลขายหน้าร้าน (POS ส่งบรรทัด — WO 4.2)");
+const PS = (E as unknown as { posSales?: {
+  docType: string;
+  count: number;
+  lineCount: number;
+  grandTotal: number;
+  withContact: number;
+  sales: { key: string; saleId: string; receiptNo: string | null; grandTotalSatang: number }[];
+} }).posSales;
+chk("K1", "เฉลยมีคีย์ posSales (seed ใหม่หลัง WO 4.2 แล้ว)", !!PS, PS ? "มี" : "ไม่มี");
+if (PS) {
+  const posDocs = await prisma.accountDocument.findMany({
+    where: { tenantId, systemId, docType: "TAX_INVOICE_ABB" },
+    include: { lines: true },
+  });
+  eq("K2", `เอกสารบิลขายหน้าร้าน ${PS.count} ใบ`, posDocs.length, PS.count);
+  eq("K3", `บรรทัดสินค้ารวม ${PS.lineCount} บรรทัด`, posDocs.reduce((n, d) => n + d.lines.length, 0), PS.lineCount);
+  eq(
+    "K4",
+    "ทุกบรรทัดผูกทะเบียนสินค้า (productId) — รายงาน 'ขายอะไรดี' นับได้",
+    posDocs.reduce((n, d) => n + d.lines.filter((l) => l.productId).length, 0),
+    PS.lineCount,
+  );
+  eq("K5", `ยอดรวมบิล POS = ฿${baht(PS.grandTotal)}`, posDocs.reduce((n, d) => n + d.grandTotal, 0), PS.grandTotal);
+  eq("K6", "ใบที่ผูกผู้ติดต่อ (สมาชิก) / ใบเดินเข้าร้าน", posDocs.filter((d) => d.contactId).length, PS.withContact);
+  const posEntries = await prisma.accountJournalEntry.count({ where: { systemId, refType: "PosSale" } });
+  eq("K7", "JV ของบิล POS = 1 ต่อบิล (ไม่เบิ้ล)", posEntries, PS.count);
+  const docEntries = await prisma.accountJournalEntry.count({
+    where: { systemId, refType: "AccountDocument", refId: { in: posDocs.map((d) => d.id) } },
+  });
+  eq("K8", "เอกสารบิล POS ไม่มี JV ของตัวเอง (กันรายได้ซ้ำ 2 เท่า)", docEntries, 0);
+}
+
 // ─────────── H. อายุของข้อสอบ ───────────
 console.log("\nH. อายุของชุดข้อมูล");
 chk(

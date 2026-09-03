@@ -81,6 +81,8 @@ const mem = await import("@/lib/modules/member/service"); // WO 3.2: สาธ�
 const crm = await import("@/lib/modules/crm/service"); // WO 3.2: สาธิตป้าย "CRM" (เชื่อม Party)
 const inv = await import("@/lib/modules/inventory/service"); // WO 4.1: สินค้าที่ "ติดตามสต็อกในคลัง"
 const invLink = await import("@/lib/modules/account/inventory-link"); // WO 4.1: ผูกสินค้าบัญชี ↔ InvItem
+const pos = await import("@/lib/modules/pos/service"); // WO 4.2: บิลขายหน้าร้าน (POS ส่งบรรทัดเข้าบัญชี)
+const { drainAll } = await import("@/lib/outbox-consumers"); // WO 4.2: ระบายคิว outbox ให้ bridge ทำงานทันที
 
 // ─────────────────────────── ตัวช่วย ───────────────────────────
 
@@ -452,7 +454,7 @@ console.log(`🗂️  กลุ่มผู้ติดต่อกำหนด�
 // (ไม่ใช่สร้าง Party ใหม่ซ้อน) — พิสูจน์ badge "สมาชิก"/"CRM" ในหน้าผู้ติดต่อจากข้อมูลจริง ไม่ใช่ค่า mock
 const piyathidaPhone = `076${String(100000 + 19).slice(-6)}`; // ปิยธิดา อินสุ่ม = ลูกค้าลำดับ 19 (C00019)
 const somchaiPhone = `076${String(100000 + 9).slice(-6)}`; // คุณสมชาย ใจดี = ลูกค้าลำดับ 9
-await mem.findOrCreate({ tenantId, memberSystemId: memSys.id, phone: piyathidaPhone, name: "ปิยธิดา อินสุ่ม", source: "STAFF" });
+const piyathidaMember = await mem.findOrCreate({ tenantId, memberSystemId: memSys.id, phone: piyathidaPhone, name: "ปิยธิดา อินสุ่ม", source: "STAFF" });
 await crm.createContact({ tenantId, systemId: crmSys.id }, { name: "คุณสมชาย ใจดี", phone: somchaiPhone });
 console.log(`🔗 สาธิตป้าย "ที่มา": สมาชิก 1 ราย (ปิยธิดา อินสุ่ม) · CRM 1 ราย (คุณสมชาย ใจดี)`);
 
@@ -962,6 +964,108 @@ if (!dupRule.ok) throw new Error(`สร้างกฎเอกสารปร�
   console.log(`👯 คู่ผู้ติดต่อซ้ำที่ตั้งใจใส่: ${dupPrimaryRow.code} ↔ C00007 (เลขภาษีเดียวกัน คนละสาขา) — ตัวรองมีเอกสาร ${docs} ใบ · JV ${jv} · กลุ่ม ${groups} · กฎประจำ ${rules}`);
 }
 
+// ─────────── 8.6 บิลขายหน้าร้าน (POS) 2 ใบ — WO 4.2 (MAP §F.13) ───────────
+// ทำไมต้องมีในชุดข้อมูล: รายงาน "ขายอะไรดี / ขายใคร" (SPEC §4 บล็อก 8) ต้องมียอดขายหน้าร้านจริงให้เห็น
+//   และต้องพิสูจน์ว่า POS ที่มีสมาชิก **ไม่สร้างผู้ติดต่อซ้ำ** (จำนวนผู้ติดต่อยังต้องเป็น 63 เท่าเดิม)
+//
+// ยอดเล็ก ๆ ตั้งใจให้จำง่าย (สตางค์):
+//   บิล A (สมาชิก ปิยธิดา อินสุ่ม · เงินสด) — MASK-01 ×1 = 285,000 + TANK-12 ×1 = 780,000 → 1,065,000 (฿10,650.00)
+//   บิล B (ลูกค้าเดินเข้าร้าน · พร้อมเพย์) — MASK-01 ×1 = 285,000 (฿2,850.00)
+//   รวมยอดขาย POS 1,350,000 (฿13,500.00) · ต้นทุนที่ตัดออกจากคลัง 856,000 (฿8,560.00)
+//   สต็อกหลังขาย: MASK-01 24−2 = 22 · TANK-12 9−1 = 8
+//
+// 🔴 ยอดช่องทางการเงินไม่ขยับ: JV ของ POS ลงบัญชี **แม่** 1000/1010 ส่วนช่องทางการเงินใช้บัญชี **ลูก**
+//    (1000-01 ฯลฯ) ⇒ เฉลย finance 1,284,560 เท่าเดิมเป๊ะ
+// ⚠️ วันที่ของ JV ต้นทุนขาย (COGS) = วันที่รัน seed จริง (inventory.consume ใช้ createdAt ของ movement)
+//    ส่วนวันที่ของบิล/รายได้ถูกตรึงไว้ตามด้านล่าง — เฉลยทุกใบถูกสร้างใหม่หลัง seed จึงตรงกันเสมอ
+const posSalesPlan = [
+  {
+    key: "A",
+    date: "2026-09-18",
+    memberId: piyathidaMember.id as string | null,
+    pay: "CASH" as const,
+    lines: [
+      { sku: "MASK-01", qty: 1, unitPriceSatang: 285_000 },
+      { sku: "TANK-12", qty: 1, unitPriceSatang: 780_000 },
+    ],
+  },
+  {
+    key: "B",
+    date: "2026-09-19",
+    memberId: null,
+    pay: "PROMPTPAY" as const,
+    lines: [{ sku: "MASK-01", qty: 1, unitPriceSatang: 285_000 }],
+  },
+];
+const itemIdBySku = new Map(linkedItems.map((i) => [i.sku, i.itemId]));
+const posSaleIds: { key: string; saleId: string; receiptNo: string | null; grandTotalSatang: number }[] = [];
+for (const plan of posSalesPlan) {
+  const gross = plan.lines.reduce((n, l) => n + l.qty * l.unitPriceSatang, 0);
+  // createSale ภายใน tx ของเรา ⇒ ownsTx=false → ไม่ตัดสต็อก/ไม่ drain เอง (เราคุมลำดับเองด้านล่าง
+  // เพื่อ "ตรึงวันที่บิล" ก่อน outbox จะสร้างเอกสารบัญชี — ไม่งั้นวันที่จะเป็นเวลาที่รัน seed)
+  const sale = await prisma.$transaction((tx) =>
+    pos.createSale(
+      {
+        tenantId,
+        unitId: unit.id,
+        systemId: posSys.id,
+        memberId: plan.memberId ?? undefined,
+        idempotencyKey: `seed-acc-v2-pos-${plan.key}`,
+        lines: plan.lines.map((l) => ({
+          name: PRODUCTS.find((p) => p.sku === l.sku)!.name,
+          qty: l.qty,
+          unitPriceSatang: l.unitPriceSatang,
+          itemId: itemIdBySku.get(l.sku),
+        })),
+        payMethods: [{ type: plan.pay, amountSatang: gross }],
+      },
+      tx,
+    ),
+  );
+  await prisma.posSale.update({ where: { id: sale.saleId }, data: { paidAt: D(plan.date), createdAt: D(plan.date) } });
+  // ตัดสต็อก (perpetual) — คีย์เดียวกับ pos.consumeSaleInventory เพื่อให้ void/คืนสต็อกภายหลังเดินเส้นเดิม
+  const saleLines = await prisma.posSaleLine.findMany({
+    where: { tenantId, saleId: sale.saleId, itemId: { not: null } },
+    select: { id: true, itemId: true, qty: true },
+  });
+  for (const l of saleLines) {
+    await inv.consume(invCtx, {
+      itemId: l.itemId!,
+      qty: l.qty,
+      sourceModule: "POS",
+      refType: "PosSale",
+      refId: sale.saleId,
+      idempotencyKey: `pos-consume-${sale.saleId}-${l.id}`,
+    });
+  }
+  posSaleIds.push({ key: plan.key, saleId: sale.saleId, receiptNo: sale.receiptNo, grandTotalSatang: sale.grandTotalSatang });
+}
+// ระบายคิว outbox → bridge → applyExternalSale (JV + เอกสารบิลขายหน้าร้าน + บรรทัดสินค้า)
+await drainAll();
+
+const posDocs = await prisma.accountDocument.findMany({
+  where: { tenantId, systemId, docType: "TAX_INVOICE_ABB" },
+  select: { id: true, docNo: true, contactId: true, grandTotal: true, subTotal: true, vatAmount: true, refId: true, lines: { select: { productId: true, qty: true, amount: true }, orderBy: { sortOrder: "asc" } } },
+  orderBy: { issueDate: "asc" },
+});
+assertEq("บิลขายหน้าร้าน: จำนวนเอกสารบัญชี", posDocs.length, 2);
+assertEq("บิลขายหน้าร้าน: จำนวนบรรทัดรวม", posDocs.reduce((n, d) => n + d.lines.length, 0), 3);
+assertEq("บิลขายหน้าร้าน: บรรทัดที่ผูกทะเบียนสินค้า", posDocs.reduce((n, d) => n + d.lines.filter((l) => l.productId).length, 0), 3);
+assertEq("บิลขายหน้าร้าน: ยอดรวมทั้ง 2 ใบ", posDocs.reduce((n, d) => n + d.grandTotal, 0), 1_350_000);
+assertEq("บิลขายหน้าร้าน: ใบที่ผูกผู้ติดต่อ (สมาชิก)", posDocs.filter((d) => d.contactId).length, 1);
+{
+  const posEntries = await prisma.accountJournalEntry.count({ where: { systemId, refType: "PosSale" } });
+  assertEq("บิลขายหน้าร้าน: JV ที่ลงจากบิล POS", posEntries, 2);
+}
+// สต็อกลดลงจริงจากบิล POS ⇒ อัปเดตเฉลยของ WO 4.1 (linkedItems) ให้เป็นยอดหลังขาย ไม่ใช่ยอดตั้งต้น
+for (const li of linkedItems) {
+  const it = await prisma.invItem.findUniqueOrThrow({ where: { id: li.itemId }, select: { onHand: true } });
+  li.onHand = it.onHand;
+}
+assertEq("คงเหลือ MASK-01 หลังขาย POS", linkedItems.find((i) => i.sku === "MASK-01")!.onHand, 22);
+assertEq("คงเหลือ TANK-12 หลังขาย POS", linkedItems.find((i) => i.sku === "TANK-12")!.onHand, 8);
+console.log(`🧾 บิลขายหน้าร้าน (POS) ${posDocs.length} ใบ · รวม ฿${bahtStr(1_350_000)} · บรรทัดสินค้า 3 บรรทัด (ผูกทะเบียนสินค้าครบ) · สต็อกเหลือ MASK-01=22 · TANK-12=8`);
+
 // ─────────────────────────── 9. อ่านผลจริงกลับมา + เขียนเฉลย ───────────────────────────
 
 const stats = await svc.overviewStats(tenantId, systemId);
@@ -1076,6 +1180,27 @@ const expected = {
     linked: linkedItems,
     linkedCount: linkedItems.length,
     unlinkedCount: 12 - linkedItems.length,
+  },
+  // WO 4.2 — บิลขายหน้าร้าน (POS ส่งบรรทัดเข้าบัญชี) · เอกสารชนิด TAX_INVOICE_ABB (ไม่โพสต์ GL ซ้ำ)
+  posSales: {
+    docType: "TAX_INVOICE_ABB",
+    posSystemId: posSys.id,
+    memberSystemId: memSys.id,
+    count: posDocs.length,
+    lineCount: posDocs.reduce((n, d) => n + d.lines.length, 0),
+    grandTotal: posDocs.reduce((n, d) => n + d.grandTotal, 0),
+    withContact: posDocs.filter((d) => d.contactId).length,
+    sales: posSaleIds,
+    docs: posDocs.map((d) => ({
+      id: d.id,
+      docNo: d.docNo,
+      refId: d.refId,
+      contactId: d.contactId,
+      subTotal: d.subTotal,
+      vatAmount: d.vatAmount,
+      grandTotal: d.grandTotal,
+      lines: d.lines.map((l) => ({ productId: l.productId, qty: Number(l.qty), amount: l.amount })),
+    })),
   },
   journal: { needsReview: 0, suspense9999: 0, trialBalanceBalanced: true },
   fixtures: {

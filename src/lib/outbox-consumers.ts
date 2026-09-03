@@ -23,14 +23,50 @@ const posSalePaid: OutboxHandler = async (evt) => {
   if (!saleId) return;
   const sale = await prisma.posSale.findFirst({
     where: { id: saleId, tenantId: evt.tenantId },
-    include: { payments: true, lines: { select: { serviceId: true, lineTotalSatang: true } } },
+    include: {
+      payments: true,
+      // WO 4.2: อ่านบรรทัดเต็ม (เดิมอ่านแค่ serviceId/lineTotal) → ส่งต่อให้บัญชีสร้างเอกสารต่อสินค้า
+      lines: {
+        select: {
+          id: true,
+          name: true,
+          qty: true,
+          unitPriceSatang: true,
+          discountSatang: true,
+          lineTotalSatang: true,
+          itemId: true,
+          serviceId: true,
+        },
+        orderBy: { id: "asc" },
+      },
+    },
   });
   if (!sale) return;
   if (sale.status !== "PAID") return; // ถูก void ก่อน drain → ไม่ต้อง post (void handler จัดการ)
   // ยอดฝั่งบริการ → ลงบัญชี 4030 รายได้ค่าบริการ (ที่เหลือเข้า 4000 ขายสินค้า)
   // ใช้ยอดก่อนหักส่วนลดท้ายบิล — facade ถอด VAT/ปรับสัดส่วนให้เอง
   const serviceGross = sale.lines.reduce((n, l) => n + (l.serviceId ? l.lineTotalSatang : 0), 0);
-  await bridgePosSalePaid(sale, sale.payments, serviceGross);
+  // WO 4.2 (MAP §F.13): ลูกค้าของบิล — สมาชิกที่ผูกไว้ (Customer) พร้อม partyId เพื่อจับคู่ผู้ติดต่อฝั่งบัญชี
+  //   ไม่มีสมาชิก = ลูกค้าเดินเข้าร้าน (walk-in) → ไม่ส่ง customer → เอกสารไม่ผูกผู้ติดต่อ
+  const member = sale.memberId
+    ? await prisma.customer.findFirst({
+        where: { id: sale.memberId, tenantId: evt.tenantId },
+        select: { id: true, name: true, phone: true, partyId: true },
+      })
+    : null;
+  await bridgePosSalePaid(sale, sale.payments, serviceGross, {
+    lines: sale.lines.map((l) => ({
+      name: l.name,
+      qty: l.qty,
+      unitPriceSatang: l.unitPriceSatang,
+      discountSatang: l.discountSatang,
+      lineTotalSatang: l.lineTotalSatang,
+      itemId: l.itemId,
+    })),
+    customer: member
+      ? { memberId: member.id, partyId: member.partyId, name: member.name, phone: member.phone }
+      : null,
+  });
 };
 
 // void บิล POS → กลับรายการบัญชี

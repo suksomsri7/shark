@@ -518,6 +518,9 @@ export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: stri
   const mv = await db.$transaction((tx) => consumeInTx(tx as unknown as Db, ctx, input));
   // perpetual: รับรู้ต้นทุนขาย (นอก tx · idempotent ต่อ movement) — ไม่มีระบบ ACCOUNT = ข้าม
   await postMovementGl(ctx, mv);
+  // WO 4.2: ตัดสต็อกจาก POS/ฝั่งขาย → กระจก `AccountProduct.qtyOnHand` ต้องตามทัน
+  //   (หนี้ข้อ 4 ของ WO 4.1: เดิม sync เฉพาะตอนรับเข้า/แก้ item ⇒ ขายผ่าน POS แล้วกระจกค้างที่ยอดเก่า)
+  await syncLinkedAccountProduct(ctx, mv.itemId);
   return { id: mv.id };
 }
 
@@ -629,6 +632,10 @@ export async function adjust(ctx: Ctx, input: AdjustInput): Promise<{ id: string
       },
     });
     return { id: mv.id };
+  }).then(async (r) => {
+    // WO 4.2: นับสต็อก/ปรับยอด ก็ทำให้กระจกฝั่งบัญชีล้าสมัยเหมือนกัน → sync หลัง commit (เงียบถ้าไม่ผูก)
+    await syncLinkedAccountProduct(ctx, input.itemId);
+    return r;
   });
 }
 

@@ -234,7 +234,7 @@ const topContactRows = await prisma.$queryRaw<
    WHERE d."tenantId" = ${T} AND d."systemId" = ${S}
      AND d."status" NOT IN ('DRAFT','CANCELLED','VOIDED')
      AND d."issueDate" >= ${YEAR_FROM} AND d."issueDate" < ${YEAR_TO}
-     AND ( (d."direction" = 'OUT' AND (d."docType" = 'INVOICE' OR (d."docType" = 'RECEIPT' AND d."sourceDocId" IS NULL)))
+     AND ( (d."direction" = 'OUT' AND (d."docType" = 'INVOICE' OR d."docType" = 'TAX_INVOICE_ABB' OR (d."docType" = 'RECEIPT' AND d."sourceDocId" IS NULL)))
         OR (d."direction" = 'IN'  AND d."docType" IN ('PURCHASE','EXPENSE')) )
    GROUP BY 1, 2, 3
    ORDER BY 5 DESC`;
@@ -251,7 +251,7 @@ const topProductRows = await prisma.$queryRaw<
     JOIN "AccountDocument" d ON d."id" = ln."documentId"
    WHERE ln."tenantId" = ${T} AND ln."systemId" = ${S}
      AND d."direction" = 'OUT'
-     AND (d."docType" = 'INVOICE' OR (d."docType" = 'RECEIPT' AND d."sourceDocId" IS NULL))
+     AND (d."docType" = 'INVOICE' OR d."docType" = 'TAX_INVOICE_ABB' OR (d."docType" = 'RECEIPT' AND d."sourceDocId" IS NULL))
      AND d."status" NOT IN ('DRAFT','CANCELLED','VOIDED')
      AND d."issueDate" >= ${YEAR_FROM} AND d."issueDate" < ${YEAR_TO}
    GROUP BY 1, 2
@@ -353,7 +353,8 @@ const sumTiles = (rows: Array<{ dir: string; c: bigint; amt: bigint }>, dir: "IN
 };
 
 // ─────────────── 10) WO 2.3 — ภาพรวมรายรับ/รายจ่าย (แท่งซ้อนสถานะ + เอกสารที่ออกตามชนิด + ลูกหนี้/เจ้าหนี้ที่ติดตาม) ───────────────
-// ขอบเขตเอกสารเดียวกับ topCustomers(OUT · INVOICE/RECEIPT ไม่มี sourceDocId)/topVendors(IN · PURCHASE/EXPENSE)
+// ขอบเขตเอกสารเดียวกับ topCustomers(OUT · INVOICE/RECEIPT ไม่มี sourceDocId + บิลขายหน้าร้าน TAX_INVOICE_ABB ของ WO 4.2)
+// /topVendors(IN · PURCHASE/EXPENSE)
 // ด้านบน — ตั้งใจให้ตรงกับ dashboard.ts (SALES_WHERE/PURCHASE_WHERE) เพื่อให้กราฟ+อันดับล่างเป็นเนื้อเดียวกัน
 async function monthlyStatusRowsRevenue() {
   return prisma.$queryRaw<Array<{ pk: string; status: string; due: Date | null; amount: bigint }>>`
@@ -364,7 +365,7 @@ async function monthlyStatusRowsRevenue() {
        AND d."status" NOT IN ('DRAFT','CANCELLED','VOIDED')
        AND d."issueDate" >= ${YEAR_FROM} AND d."issueDate" < ${YEAR_TO}
        AND d."direction" = 'OUT'
-       AND (d."docType" = 'INVOICE' OR (d."docType" = 'RECEIPT' AND d."sourceDocId" IS NULL))`;
+       AND (d."docType" = 'INVOICE' OR d."docType" = 'TAX_INVOICE_ABB' OR (d."docType" = 'RECEIPT' AND d."sourceDocId" IS NULL))`;
 }
 async function monthlyStatusRowsExpense() {
   return prisma.$queryRaw<Array<{ pk: string; status: string; due: Date | null; amount: bigint }>>`
