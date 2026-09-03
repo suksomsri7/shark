@@ -37,7 +37,7 @@
 | 2.1 | query dashboard | Opus | DONE | fb0aee6 | dashboard 164/164 (Fable รันเอง) · 12 query / 44 ms · เฉลยอิสระ SQL · seed มีข้อมูล พ.ค.–ก.ย. เท่านั้น (กราฟ 5 แท่ง) · 🐞 ส่งต่อ: aging นับซ้ำเมื่อมี BN (แก้ใน 5.x) · TIMESTAMP ไม่มีโซน ต้อง AT TIME ZONE 2 ชั้น |
 | 0.7 | 🔧 CI-compat: qc:all บน CI ไม่มี .env.qc/seed → acc-v2 suites แดง | Opus | DONE | (HEAD) | acc-v2-env โหมด CI · qc-all seed ครั้งเดียวต่อ shard (marker) · 🐞 loadEnvFile?.() ไม่กัน ENOENT → try/catch 12 ชุด · จำลอง CI shard 4/6+5/6 เขียว · ⏰ ระเบิดเวลา: seed-check H1 แดง 1 พ.ย. 2026 (oracle วันที่ตายตัว) → แก้ใน 9.x ให้สัมพัทธ์ |
 | 2.2 | หน้าหลัก V2 | Sonnet | DONE | (HEAD) | ตีกลับ 1 รอบ → รอบ 2 ตรง f1/f11 · visual 86/86 · home 87 · 🐞 home test เคยลบ pin ของ seed (แก้) · ค้าง: top 3 เป็นรายปี (รายเดือน = +2 query เกิน budget) → 9.3 |
-| 2.3 | ภาพรวมรายรับ/รายจ่าย | Sonnet | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~23:20 UTC · เทียบ f4 · โน้ต `wo-notes/2.3.md` |
+| 2.3 | ภาพรวมรายรับ/รายจ่าย | Sonnet | REVIEW | 5c3c8f3 (snapshot) | overview 73/73 (Fable รันเอง) · qc:all 200/200 · แต่ **typecheck 2 error ในสคริปต์ → build ล้ม → ภาพยังไม่ได้** (agent แก้อยู่) · ⚠️ agent รายงาน typecheck สะอาดทั้งที่ไม่จริง — Fable ต้องรันเองเสมอ (ทำอยู่แล้ว) |
 | 3.1 | Party | Opus | TODO | | |
 | 3.2 | หน้าผู้ติดต่อ V2 | Sonnet | TODO | | |
 | 3.3 | modal ผู้ติดต่อ + DBD + dedupe | Opus (Sonnet) | TODO | | |
