@@ -3,6 +3,9 @@
 #
 # ใช้:
 #   bash scripts/acc-v2-serve.sh          # build (ผ่าน gate lock) → start → รอจนหน้าตอบ
+#   bash scripts/acc-v2-serve.sh start    # ข้าม build — ใช้ .next เดิม (ของ build ล่าสุด) → start ตรง ๆ
+#                                          # (WO 1.6 รอบ 4: ให้ sub-agent ไล่ debug ฝั่ง client ซ้ำได้เร็วโดยไม่ต้อง
+#                                          #  build ใหม่ทุกรอบ — ใช้ได้เฉพาะตอนยังไม่ได้แก้โค้ดฝั่ง app หลัง build ล่าสุด)
 #   bash scripts/acc-v2-serve.sh stop     # ปิด
 #   bash scripts/acc-v2-serve.sh status   # ดูว่ายังรันอยู่ไหม
 #
@@ -19,7 +22,7 @@ OUT="$ROOT/.qc-shots/acc-v2"
 PIDFILE="$OUT/server.pid"
 LOGFILE="$OUT/server.log"
 ENVFILE="$ROOT/.env.qc"
-CMD="${1:-start}"
+CMD="${1:-build}"
 
 mkdir -p "$OUT"
 
@@ -45,8 +48,9 @@ case "$CMD" in
     if alive; then echo "🟢 กำลังทำงาน pid $(cat "$PIDFILE") ที่ http://127.0.0.1:$PORT"; else echo "⚪ ไม่ได้ทำงาน"; fi
     exit 0
     ;;
-  start) ;;
-  *) echo "ใช้: acc-v2-serve.sh [start|stop|status]"; exit 1 ;;
+  build) DO_BUILD=1 ;;
+  start) DO_BUILD=0 ;;
+  *) echo "ใช้: acc-v2-serve.sh [build|start|stop|status]"; exit 1 ;;
 esac
 
 [ -f "$ENVFILE" ] || { echo "❌ ไม่พบ $ENVFILE — ดู ledger/wo-notes/0.1.md"; exit 1; }
@@ -71,8 +75,13 @@ if alive; then
   exit 0
 fi
 
-echo "🔨 build (ต่อคิว gate lock — อาจรอถ้ามี session อื่น build อยู่)…"
-env "${ENVARR[@]}" bash "$ROOT/scripts/with-gate-lock.sh" pnpm exec next build 2>&1 | tail -25
+if [ "$DO_BUILD" = 1 ]; then
+  echo "🔨 build (ต่อคิว gate lock — อาจรอถ้ามี session อื่น build อยู่)…"
+  env "${ENVARR[@]}" bash "$ROOT/scripts/with-gate-lock.sh" pnpm exec next build 2>&1 | tail -25
+else
+  [ -d "$ROOT/.next" ] || { echo "❌ ไม่มี .next อยู่เลย — ต้อง 'bash scripts/acc-v2-serve.sh build' (หรือเปล่า arg) ก่อนอย่างน้อย 1 ครั้ง"; exit 1; }
+  echo "⏭️  ข้าม build — ใช้ .next เดิม (โค้ดฝั่ง app ต้องไม่เปลี่ยนตั้งแต่ build ล่าสุด ไม่งั้นภาพ/ผลไม่ตรงโค้ดจริง)"
+fi
 
 echo "🚀 start ที่ http://127.0.0.1:$PORT (log: $LOGFILE)"
 : > "$LOGFILE"

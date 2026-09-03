@@ -631,11 +631,6 @@ try {
           .catch(() => false);
         await new Promise((r) => setTimeout(r, 1500)); // ให้ hydrate/สตรีมจบก่อนถ่าย
 
-        // WO 0.4: เปิด dropdown/sheet ก่อนถ่าย (เดสก์ท็อป=dropdown 2 ระดับ · มือถือ=bottom sheet — คลิกปุ่มเดียวกัน
-        // AccountTabBar ตัดสินพฤติกรรมจาก matchMedia ตอนคลิกเอง ไม่ต้องแยกโค้ดที่นี่)
-        for (const sel of spec.click ?? []) {
-          await page.click(sel).catch(() => {});
-        }
         // WO 1.4: ลำดับกรอกฟอร์ม (คลิก/พิมพ์) — MoneyInput ยืนยันค่าเมื่อ blur ⇒ ต้องกด Tab ทุกครั้งหลังพิมพ์
         // เลื่อน element เข้ากลางจอก่อนเสมอ — บนมือถือแถบปุ่มท้าย/แถบยอดบังปุ่มได้ ⇒ page.click() จะพลาด
         const center = (sel: string) =>
@@ -645,6 +640,16 @@ try {
             el.scrollIntoView({ block: "center" });
             return true;
           }, sel);
+        // WO 0.4: เปิด dropdown/sheet ก่อนถ่าย (เดสก์ท็อป=dropdown 2 ระดับ · มือถือ=bottom sheet — คลิกปุ่มเดียวกัน
+        // AccountTabBar ตัดสินพฤติกรรมจาก matchMedia ตอนคลิกเอง ไม่ต้องแยกโค้ดที่นี่)
+        // WO 1.6 รอบ 4 (Fable QC ภาพจริงมือถือ): เปลี่ยนจาก page.click(sel) (คลิกจริงที่พิกัดกลาง element) → scrollIntoView
+        // + คลิกผ่าน DOM (`el.click()`) เหมือน spec.flow ด้านล่าง — page.click() คลิกที่พิกัด (x,y) เฉย ๆ ไม่ตรวจว่า
+        // "จุดนั้นบนจอจริง ๆ เป็นของ element นี้ไหม" ⇒ บนมือถือที่แถบปุ่มท้าย sticky ทับการ์ดใบสุดท้าย พิกัดนั้นโดนแถบดักไปเงียบ ๆ
+        // (ไม่ error เพราะ puppeteer เข้าใจว่าคลิกสำเร็จ) — el.click() เรียก handler ตรง ๆ ไม่ผ่านการตรวจจุดบนจอเลย
+        for (const sel of spec.click ?? []) {
+          if (!(await center(sel))) continue; // ไม่พบ element (เช่น อีก breakpoint ที่ไม่ได้ render) — ข้ามเงียบ ๆ ตามเดิม
+          await page.evaluate((s: string) => (document.querySelector(s) as HTMLElement | null)?.click(), sel).catch(() => {});
+        }
         const flowFail = (msg: string) => {
           failures++;
           console.log(`  ❌ [${spec.name}/${device}] flow: ${msg}`);
