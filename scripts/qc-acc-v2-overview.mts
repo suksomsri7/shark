@@ -140,7 +140,7 @@ for (const side of ["revenue", "expense"] as const) {
   const scopeWhere =
     side === "revenue"
       ? { direction: "OUT" as const, OR: [{ docType: "INVOICE" as const }, { docType: "RECEIPT" as const, sourceDocId: null }] }
-      : { direction: "IN" as const, docType: { in: ["PURCHASE", "EXPENSE"] } };
+      : { direction: "IN" as const, docType: { in: ["PURCHASE", "EXPENSE"] as ("PURCHASE" | "EXPENSE")[] } };
   const docs = await prisma.accountDocument.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, status: { notIn: ["DRAFT", "CANCELLED", "VOIDED"] }, ...scopeWhere },
     select: { status: true, dueDate: true, validUntil: true, grandTotal: true },
