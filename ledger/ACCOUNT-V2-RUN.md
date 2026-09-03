@@ -12,9 +12,9 @@
 | WO | 🏁 เฟส 2 ปิด → เฟส 3: 3.1 Party |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 4 ก.ย. ~01:30 UTC: เฟส 2 ครบ 3 WO · push main `ef6567b` (qc:all 200/200 · Vercel deploy) · ถัดไป 3.1 Party (Opus) |
+| ขั้นที่ถึง | 3 ก.ย. ~13:50 UTC: Vercel ของ `ef6567b` READY แล้ว (ตรวจผ่าน API) · sub-agent 3.1 ตัวแรกตายเพราะ API 500/529 ของ Anthropic หลังอ่านไฟล์เสร็จ (ยังไม่แตะโค้ด · git สะอาด) → สั่ง Opus ตัวใหม่เริ่มขั้น A (schema) — เขียนความคืบหน้าใน `wo-notes/3.1.md` |
 | commit ล่าสุดของงานนี้ | — |
-| บล็อกเกอร์ | — |
+| บล็อกเกอร์ | ⚠️ prod `shark.in.th` ตอบ 429 `x-vercel-mitigated: challenge` จาก VPS (Bot Protection ของโปรเจกต์ shark เปิด 3 ก.ย. 02:49 UTC · ไม่มี IP bypass ของ VPS) → ขั้น "verify บน prod" ของ 10.3 และสคริปต์ที่ยิง prod จะทำไม่ได้จนกว่าเจ้าของเพิ่ม bypass IP 72.62.196.201 / 2a02:4780:5e:ded7::/64 หรือปิด rule |
 
 ## ตาราง WO ทั้งหมด (สถานะ: TODO · IN_PROGRESS · REVIEW (Fable QC) · DONE · BLOCKED · SKIPPED)
 | WO | ชื่อ | ผู้ทำ (สำรอง) | สถานะ | commit | หมายเหตุ |
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 3 ก.ย. 2026 ~13:35 UTC — session คุมงานตัวเก่าล้ม (API 500 + 529 Overloaded ฝั่ง Anthropic — ไม่ใช่โค้ด) ระหว่างรอผล 3.1 · ตรวจแล้ว: main=ef6567b · Vercel READY 13:19 UTC · agent 3.1 ยังไม่เขียนอะไร · สั่งตัวใหม่ · เจอเพิ่ม: prod ตอบ 429 challenge จาก VPS (Bot Protection โปรเจกต์ shark)
 - 4 ก.ย. 2026 ~01:30 UTC — 🏁 **เฟส 2 ปิด** (2.1–2.3 + 0.7 CI-compat · main ef6567b · หน้าหลัก f1/f11 + ภาพรวม f4 บน prod)
 - 3 ก.ย. 2026 ~19:40 UTC — 🏁 **เฟส 1 ปิด** (9 WO · ขึ้น main 1884f8d · บั๊กเก่าที่ปิดระหว่างทาง 11 ตัว รวม RE ลงรายได้ซ้ำ 2 เท่า / DP โพสต์ซ้ำ / ซื้อ INCL_VAT ไม่สมดุล) · crontab เอกสารประจำ+เตือน ติดตั้งแล้ว
 - 3 ก.ย. 2026 ~04:15 UTC — 🏁 **เฟส 0 ปิด + 1.1/1.2 ขึ้น main** (qc:all 190/190 · commit 0d19670) · ระหว่างทาง: reboot 1 ครั้ง (แรม) → กติกางานหนักทีละอย่าง
