@@ -1,5 +1,13 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🏁 4 ก.ย. (เช้า ~02:00 BKK) — [session บัญชี] **เฟส 3 ปิด** (ผู้ติดต่อ+Party ขึ้น main `2d97a98` · qc:all 205/205) · 22/46 WO ≈ 48% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
+- ขึ้น prod แล้ว: Party (ตัวตนลูกค้ากลางระดับ tenant · `partyId` บน 10 โมเดล · facade `party/`) · หน้าผู้ติดต่อ V2 ตรง f5 (กลุ่ม/ค้นหา/ตัวกรอง/ทำรายการ/ผู้ติดต่อยอดนิยม/ภาพรวม) · modal ผู้ติดต่อ g5 (เลขที่ C000xx persist · ที่อยู่แยกช่อง · DBD adapter รอ key · เตือนซ้ำ) · โปรไฟล์ 360° g6 + รวมผู้ติดต่อซ้ำ g7 (ย้ายเอกสาร/JV/กลุ่ม/เอกสารประจำใน tx เดียว)
+- migration ใหม่ 2 ตัว (party · contact_modal) additive — Vercel build รัน migrate เอง · prod **ไม่ต้อง backfill** (AccountContact 16 แถวเป็น tenant ทดสอบ `QC7 บัญชี` ล้วน)
+- บั๊กที่ปิดระหว่างทาง: `Modal.tsx` กลางดึงโฟกัสทุกตัวอักษร (พิมพ์ได้ตัวเดียว — กระทบทุก modal) · retry เลขที่ P2002 ไม่เคยทำงาน (Prisma 7 ไม่ส่ง meta.target) · seed เบอร์ลูกค้า/ผู้ขายชนกัน · qc-acc-v2-import แดงเงียบ
+- 🔴 ส่งต่อ session แชท: `ChatContact.partyId` มีคอลัมน์แล้ว — ให้ `maybeAutoLinkMember` เซ็ตจาก `Customer.partyId` หลัง `member.findOrCreate` (บัญชีไม่แตะ chat/**)
+- 🔑 รอเจ้าของ: `DBD_API_KEY` (openapi.dbd.go.th) · ลบ tenant ทดสอบค้างบน prod (`QC7 บัญชี` ×2 · `QC ลบพื้นหลัง`)
+- ถัดไป: เฟส 4 (4.1 InvItem canonical กำลังทำ → 4.2 POS ส่งบรรทัด → 4.3 หน้าสินค้า f6/g8)
+
 ## 🏁 4 ก.ย. (เช้ามืด) — [session บัญชี] **เฟส 2 ปิด** (หน้าหลัก f1/f11 + ภาพรวมรายรับ/รายจ่าย f4 ขึ้น main `ef6567b` · qc:all 200/200) · 19/46 WO ≈ 41% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
 - เพิ่ม 0.7 CI-compat: ชุด qc-acc-v2-* รันบน CI ได้ (seed อัตโนมัติต่อ shard เมื่อมี marker) · ⏰ seed-check H1 จะแดง 1 พ.ย. 2026 ถ้าไม่ทำ oracle ให้สัมพัทธ์ (จดใน RUN)
 - กำลังเฟส 3: 3.1 Party (ตัวตนลูกค้ากลาง) → 3.2 หน้าผู้ติดต่อ (f5) → 3.3 modal (g5) → 3.4 โปรไฟล์ 360° + รวมซ้ำ (g6/g7)
