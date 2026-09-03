@@ -105,7 +105,8 @@ export function ImportWizard({
 
   return (
     <div className="flex max-w-3xl flex-col gap-6 pb-24">
-      <PageHeader title={title} back={{ href: backHref, label: "กลับ" }} />
+      {/* ไม่ใส่ back ที่นี่ — AccountBreadcrumb เหนือหน้าให้ทางกลับอยู่แล้ว (ตามแบบ DocListPage/ทุกหน้า V2 อื่น) */}
+      <PageHeader title={title} />
       <Stepper steps={steps} testId="import-step" />
 
       {/* ① ดาวน์โหลดเทมเพลต + dropzone */}

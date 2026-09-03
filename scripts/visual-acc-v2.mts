@@ -302,7 +302,15 @@ if (WO === "1.7") {
 // 🔴 เอกสารที่นำเข้าจริงตอนกดชัตเตอร์เป็นร่าง INVOICE จริง — ถ้าไม่ลบทิ้ง ตัวนับแท็บ IV ของ WO 1.1 (เฉลย 51/3/12/2/29/4/1)
 //    จะเพี้ยนไป +18 ทันที ⇒ cleanupFixture ลบทั้งเอกสาร (source=IMPORT) และผู้ติดต่อชั่วคราว (note=FIXTURE_REF_18)
 const FIXTURE_REF_18 = "QC-VISUAL-1.8";
-const FIXTURE_CSV_PATH_18 = "/tmp/qc-visual-acc-v2-1.8-fixture.csv";
+// 🔴 ต้องอยู่ใต้ /root/ ไม่ใช่ /tmp/ — chromium ตัวนี้คือ snap (strict confinement) มี /tmp ส่วนตัวของมันเอง
+//    elementHandle.uploadFile("/tmp/...") จะเห็นไฟล์ "มีอยู่" ฝั่ง input.files แต่พออ่านเนื้อไฟล์จริง (File.text())
+//    จะได้ DOMException NotFoundError เงียบ ๆ (ดู reference_snap_chromium_headless.md) — วางไว้ใต้โฟลเดอร์โปรเจกต์แทน
+//
+// 🔴 Fable QC รอบ 1: spec เดียวกันวนถ่ายทั้ง desktop+mobile ด้วยไฟล์เดียวกัน — ขั้น ⑤ (กดนำเข้าจริง) ทำ 2 รอบ
+//    ด้วย refId เดิม (fileHash เดียวกัน) ⇒ รอบมือถือชนกับ idempotency ของรอบเดสก์ท็อป (สร้างใหม่ 0 · ข้าม 20)
+//    แก้: แยกไฟล์คนละชุดต่อ device (คนละ "เลขอ้างอิง"/ผู้ติดต่อ) + spec ผลลัพธ์แยก onlyDevice ต่อไฟล์
+const FIXTURE_CSV_PATH_18 = `${QC.shotsDir}/1.8-fixture-a.csv`; // ใช้เดสก์ท็อป (และ preview ทั้งคู่ device — preview ไม่สร้างอะไรจริง)
+const FIXTURE_CSV_PATH_18_MOBILE = `${QC.shotsDir}/1.8-fixture-b.csv`; // ใช้มือถือเท่านั้น (คนละชุดข้อมูล กันชนกับรอบเดสก์ท็อป)
 if (WO === "1.8") {
   const { prisma: db } = await import("@/lib/core/db");
   const svc = await import("@/lib/modules/account/service");
@@ -314,26 +322,32 @@ if (WO === "1.8") {
   };
   await cleanupFixture(); // กันซากจากรอบที่ล้มกลางคัน
 
-  for (let i = 1; i <= 18; i++) {
-    await svc.createContact({
-      tenantId: E.tenantId,
-      systemId: SYS,
-      kind: "CUSTOMER",
-      legalType: "COMPANY",
-      name: `ลูกค้า QC ภาพ ${i}`,
-      note: FIXTURE_REF_18,
-    });
-  }
   const headers18 = IS18.IMPORT_FIELDS.documents_revenue.map((f: { aliases: string[] }) => f.aliases[0]);
-  const rows18: string[][] = [];
-  for (let i = 1; i <= 18; i++) {
-    rows18.push([`QCVIS-${i}`, "IV", QC.today, `ลูกค้า QC ภาพ ${i}`, "", `สินค้า QC ${i}`, "1", "ชิ้น", "1000", "0", "7", ""]);
-  }
-  rows18.push(["QCVIS-BAD-DATE", "IV", "01-09-2026", "ลูกค้า QC ภาพ วันที่ผิด", "", "สินค้า", "1", "ชิ้น", "100", "0", "7", ""]);
-  rows18.push(["QCVIS-NEG", "IV", QC.today, "ลูกค้า QC ภาพ ยอดลบ", "", "สินค้า", "1", "ชิ้น", "-100", "0", "7", ""]);
-  const csv18 = "﻿" + [headers18.join(","), ...rows18.map((r) => r.join(","))].join("\n") + "\n";
-  writeFileSync(FIXTURE_CSV_PATH_18, csv18, "utf8");
-  console.log(`[fixture 1.8] เขียนไฟล์ตัวอย่าง ${FIXTURE_CSV_PATH_18} (20 แถว: 18 ok + 2 err) + ผู้ติดต่อ 18 ราย\n`);
+  mkdirSync(QC.shotsDir, { recursive: true });
+
+  const seedFixtureSet = async (refPrefix: string, nameSuffix: string, path: string) => {
+    for (let i = 1; i <= 18; i++) {
+      await svc.createContact({
+        tenantId: E.tenantId,
+        systemId: SYS,
+        kind: "CUSTOMER",
+        legalType: "COMPANY",
+        name: `ลูกค้า QC ภาพ ${nameSuffix}${i}`,
+        note: FIXTURE_REF_18,
+      });
+    }
+    const rows: string[][] = [];
+    for (let i = 1; i <= 18; i++) {
+      rows.push([`${refPrefix}-${i}`, "IV", QC.today, `ลูกค้า QC ภาพ ${nameSuffix}${i}`, "", `สินค้า QC ${i}`, "1", "ชิ้น", "1000", "0", "7", ""]);
+    }
+    rows.push([`${refPrefix}-BAD-DATE`, "IV", "01-09-2026", `ลูกค้า QC ภาพ ${nameSuffix} วันที่ผิด`, "", "สินค้า", "1", "ชิ้น", "100", "0", "7", ""]);
+    rows.push([`${refPrefix}-NEG`, "IV", QC.today, `ลูกค้า QC ภาพ ${nameSuffix} ยอดลบ`, "", "สินค้า", "1", "ชิ้น", "-100", "0", "7", ""]);
+    const csv = "﻿" + [headers18.join(","), ...rows.map((r) => r.join(","))].join("\n") + "\n";
+    writeFileSync(path, csv, "utf8");
+  };
+  await seedFixtureSet("QCVIS-A", "A", FIXTURE_CSV_PATH_18);
+  await seedFixtureSet("QCVIS-B", "B", FIXTURE_CSV_PATH_18_MOBILE);
+  console.log(`[fixture 1.8] เขียนไฟล์ตัวอย่าง 2 ชุด (คนละ device — กัน idempotency ชนกัน) + ผู้ติดต่อ 36 ราย\n`);
 }
 
 // ─────────── รายการหน้าต่อ WO (เติมทีละ WO ตาม BLUEPRINT §3) ───────────
@@ -626,12 +640,31 @@ const PAGES: Record<string, PageSpec[]> = {
       ],
     },
     {
+      // เดสก์ท็อป+มือถือรัน "กดนำเข้าจริง" คนละไฟล์ (FIXTURE_CSV_PATH_18 vs _MOBILE) — ไฟล์เดียวกันจะชน
+      // idempotency (refId เดิม) พอถึงรอบที่สอง ⇒ ได้ "สร้างใหม่ 0" แทน 18 (ดูคอมเมนต์เหนือ FIXTURE_CSV_PATH_18)
       name: "import-documents-result",
       path: `/app/sys/${SYS}/account/import/documents?side=revenue`,
-      note: 'ขั้น ⑤ สรุปผล — ติ๊ก "ข้ามแถวที่ผิดพลาด" (ค่าเริ่มต้น) แล้วกดนำเข้า → 18 ร่างสำเร็จ (ลบทิ้งใน cleanupFixture)',
+      note: 'ขั้น ⑤ สรุปผล (เดสก์ท็อป) — ติ๊ก "ข้ามแถวที่ผิดพลาด" (ค่าเริ่มต้น) แล้วกดนำเข้า → 18 ร่างสำเร็จ (ลบทิ้งใน cleanupFixture)',
       expect: [],
+      onlyDevice: "desktop",
       flow: [
         { upload: 'input[type="file"]', filePath: FIXTURE_CSV_PATH_18 },
+        { waitFor: '[data-testid="import-map-ref"]' },
+        { click: '[data-testid="btn-goto-preview"]' },
+        { waitFor: '[data-testid="btn-import-run"]' },
+        { click: '[data-testid="btn-import-run"]' },
+        { waitFor: '[data-testid="import-result"]' },
+      ],
+      expectBeforeShot: [{ sel: '[data-testid="import-result"]', kind: "text", equals: "สร้างใหม่ 18 รายการ" }],
+    },
+    {
+      name: "import-documents-result",
+      path: `/app/sys/${SYS}/account/import/documents?side=revenue`,
+      note: 'ขั้น ⑤ สรุปผล (มือถือ) — ไฟล์คนละชุดกับเดสก์ท็อป กันชน idempotency',
+      expect: [],
+      onlyDevice: "mobile",
+      flow: [
+        { upload: 'input[type="file"]', filePath: FIXTURE_CSV_PATH_18_MOBILE },
         { waitFor: '[data-testid="import-map-ref"]' },
         { click: '[data-testid="btn-goto-preview"]' },
         { waitFor: '[data-testid="btn-import-run"]' },
