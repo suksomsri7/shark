@@ -46,6 +46,10 @@ const ICONS: Record<string, string> = {
     '<rect x="2.5" y="7" width="11" height="9" rx="1.4"/><path d="M13.5 10h4l3 3.2V16h-7Z"/><circle cx="7" cy="18.5" r="1.8"/><circle cx="17" cy="18.5" r="1.8"/>',
   tag: '<path d="M4 11V5a1 1 0 0 1 1-1h6l9 9-7 7-9-9Z"/><circle cx="8" cy="8" r="1.3"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M8 3v4M16 3v4M3.5 9.5h17"/>',
+  user: '<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4 3.4-6 7.5-6s7.5 2 7.5 6"/>',
+  search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.5-4.5"/>',
+  filter: '<path d="M3.5 5h17L14 13v5.5l-4 2V13Z"/>',
 };
 
 const FALLBACK = '<rect x="5" y="5" width="14" height="14" rx="2"/>';

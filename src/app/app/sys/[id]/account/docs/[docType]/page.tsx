@@ -7,6 +7,7 @@ import {
   listContacts,
   getSettings,
   computeListTabCounts,
+  sumOutstandingForFilter,
   DOC_LABEL,
   isVisibleDocType,
 } from "@/lib/modules/account/service";
@@ -23,13 +24,25 @@ import {
   vatCol,
   paymentChannelCol,
   statusCol,
+  dateLineNode,
+  StatusCell,
   type ListRow,
 } from "@/lib/modules/account/list-columns";
 import DocEditor from "@/lib/modules/account/DocEditor";
 import { DocListPage } from "@/components/account-v2/DocListPage";
+import { MoneyText } from "@/components/ui/MoneyText";
 import type { RowActionItem } from "@/components/account-v2/RowActions";
 import type { DocColumn } from "@/components/account-v2/DocTable";
 import type { DateRangePreset } from "@/components/account-v2/ListFilters";
+
+// docType ที่มีความหมาย "ค้างชำระ" ตาม §5.1 (IV/BN/DR + CN/DN ที่ใช้ชุดคอลัมน์ฐาน+ค้างชำระ)
+const DOC_TYPES_WITH_OUTSTANDING: readonly AccountDocType[] = [
+  "INVOICE",
+  "BILLING_NOTE",
+  "DEPOSIT_RECEIPT",
+  "CREDIT_NOTE",
+  "DEBIT_NOTE",
+];
 
 // หน้ารายการเอกสารฝั่งรายรับทั้ง 8 ชนิด (QT/IV/RE/TX/DR/CN/DN/BN) — WO 1.1 ผ่าน DocListPage กลาง
 // mockup อ้างอิง: f3-invoice-list.png (เดสก์ท็อป) + f3-invoice-list-menu.png (เมนู "ทำรายการ ▾") +
@@ -190,12 +203,36 @@ export default async function DocTypeListPage({
     }
   }
 
+  // มือถือ (f13): บรรทัดสรุปใต้ h1 "N ใบ · ค้างรับ ฿…" — ค้างรับผูกกับตัวกรองวันที่/ผู้ติดต่อ/ค้นหาปัจจุบัน (ไม่ใช่ยอดรวมทั้งระบบ)
+  const hasOutstanding = DOC_TYPES_WITH_OUTSTANDING.includes(dt);
+  const outstandingSatang = hasOutstanding
+    ? await sumOutstandingForFilter(tenantId, systemId, dt, {
+        q: q || undefined,
+        contactId: sp.contact || undefined,
+        from: range.from,
+        to: range.to,
+      })
+    : 0;
+  const mobileSummary = (
+    <>
+      {tabCounts.all ?? 0} ใบ
+      {hasOutstanding && (
+        <>
+          {" "}
+          · ค้างรับ <MoneyText satang={outstandingSatang} decimals />
+        </>
+      )}
+    </>
+  );
+  const mobileDocNo = docNoCol((r) => `${base}/docs/${dt}/${r.id}`);
+
   return (
     <DocListPage<ListRow>
       testId="list-docs"
       base={base}
       pathname={pathname}
       title={label}
+      mobileSummary={mobileSummary}
       searchParams={sp}
       tabs={tabDefs}
       tabCounts={tabCounts}
@@ -206,13 +243,11 @@ export default async function DocTypeListPage({
       rows={result.rows}
       rowActionsFor={(r) => rowActionsFor(dt, base, r)}
       bulkActions={bulkFor(dt)}
-      mobileTitle={(r) => r.docNo ?? "(ร่าง)"}
-      mobileSubtitle={(r) => r.contact?.name}
-      mobileTrailing={(r) => (
-        <span className="tabular-nums">
-          {(r.grandTotal / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-        </span>
-      )}
+      mobileTitle={(r) => mobileDocNo.render(r)}
+      mobileStatus={(r) => <StatusCell row={r} />}
+      mobileSubtitle={(r) => r.contact?.name ?? "—"}
+      mobileTrailing={(r) => <MoneyText satang={r.grandTotal} decimals />}
+      mobileDateLine={(r) => dateLineNode(r)}
       rowTestId={(r) => `row-${r.docNo ?? r.id}`}
       footerTotalSatang={result.rows.reduce((s, r) => s + r.grandTotal, 0)}
       page={result.page}

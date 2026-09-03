@@ -21,21 +21,9 @@ export function CreateSection({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("hashchange", reveal);
   }, []);
 
-  return (
-    <div id="new" ref={ref} data-testid="create-section" data-open={open}>
-      {open ? (
-        children
-      ) : (
-        <button
-          type="button"
-          className="text-sm text-[color:var(--color-muted)] underline"
-          onClick={() => setOpen(true)}
-        >
-          แสดงฟอร์มสร้าง
-        </button>
-      )}
-    </div>
-  );
+  // เปิดได้ทางเดียวคือปุ่ม "+ สร้าง…" ของ PageHeader (ผ่าน #new) — ไม่มีลิงก์สำรอง "แสดงฟอร์มสร้าง"
+  // อีกต่อไป (WO 1.3 จะแทนบล็อกนี้ทั้งหมดด้วยฟอร์มหน้าเต็ม) — ปิดอยู่ = ไม่ render อะไรเลยนอกจาก anchor เปล่า
+  return <div id="new" ref={ref} data-testid="create-section" data-open={open}>{open ? children : null}</div>;
 }
 
 export default CreateSection;

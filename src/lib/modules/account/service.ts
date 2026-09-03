@@ -8,6 +8,9 @@ import type {
   AccountPayChannel,
   AccountContactKind,
   AccountLegalType,
+  AccountPriceMode,
+  AccountDiscountMode,
+  AccountWhtIncomeType,
   Prisma,
 } from "@prisma/client";
 // posting engine (owner = GL-Core, ไฟล์ gl.ts) — subagent แค่ import + เรียกตามลายเซ็น
@@ -648,7 +651,20 @@ async function nextDocNo(
     create: { tenantId, systemId, docType, prefix, periodKey, lastNo: 1 },
     update: { lastNo: { increment: 1 } },
   });
-  const num = String(seq.lastNo).padStart(4, "0");
+  return formatDocNo(cfg, prefix, reset, year, month, seq.lastNo);
+}
+
+// จัดรูปเลขที่เอกสารจากลำดับที่ได้ — แยกออกมาเพื่อให้ "พรีวิวเลขถัดไป" ใช้สูตรเดียวกับตัวจริง
+// (ถ้าปล่อยให้พรีวิวเขียนสูตรเอง วันหนึ่ง pattern เปลี่ยนแล้วเลขบนฟอร์มจะไม่ตรงกับเลขที่ออกจริง)
+function formatDocNo(
+  cfg: SeqConfig,
+  prefix: string,
+  reset: SeqReset,
+  year: string,
+  month: string,
+  lastNo: number,
+): string {
+  const num = String(lastNo).padStart(4, "0");
   if (cfg.pattern) {
     return cfg.pattern
       .replace(/\{PREFIX\}/g, prefix)
@@ -661,6 +677,33 @@ async function nextDocNo(
   if (reset === "NONE") return `${prefix}-${num}`;
   if (reset === "YEAR") return `${prefix}-${year}-${num}`;
   return `${prefix}-${year}-${month}-${num}`;
+}
+
+/**
+ * เลขที่ "ถัดไป" แบบดูอย่างเดียว ฝั่งรายรับ — สำหรับโชว์บนฟอร์มร่าง (DESIGN-SPEC-V2 §5.2 B)
+ * (ฝั่งรายจ่ายมีสูตรเลขของตัวเอง → `previewNextExpenseDocNo` ใน expense.ts)
+ * 🔴 ห้ามเขียนอะไรลง AccountDocSequence: ร่างต้องไม่กินเลข · เลขจริงจองตอน issueDocument เท่านั้น
+ *    ⇒ ค่านี้เป็น "คาดว่าจะได้" ถ้ามีคนอื่นออกเอกสารก่อน เลขจริงจะขยับ (จงใจ)
+ */
+export async function previewNextDocNo(
+  systemId: string,
+  docType: AccountDocType,
+  date: Date,
+): Promise<string> {
+  const settings = await prisma.accountSettings.findFirst({
+    where: { systemId },
+    select: { docConfig: true },
+  });
+  const cfg = readSeqConfig(settings?.docConfig, docType);
+  const { year, month } = bkkYearMonth(date);
+  const prefix = cfg.prefix || DOC_PREFIX[docType] || docType;
+  const reset: SeqReset = cfg.reset ?? "MONTH";
+  const periodKey = reset === "NONE" ? "-" : reset === "YEAR" ? year : `${year}-${month}`;
+  const seq = await prisma.accountDocSequence.findUnique({
+    where: { systemId_docType_periodKey: { systemId, docType, periodKey } },
+    select: { lastNo: true },
+  });
+  return formatDocNo(cfg, prefix, reset, year, month, (seq?.lastNo ?? 0) + 1);
 }
 
 // ─────────────────── เอกสาร ───────────────────
@@ -919,6 +962,39 @@ export async function computeListTabCounts(
     );
   }
   return out;
+}
+
+// ─── WO 1.1 (มือถือ f13): ยอดค้าง (รับ/จ่าย) ของ "AWAITING_PAYMENT" ∪ "PARTIAL" ภายใต้ตัวกรองปัจจุบัน ───
+// (รวมพ้นกำหนดด้วย — ต่างจากแท็บ "รอชำระ"/"ชำระบางส่วน" ของหน้ารายการที่ตัดพ้นกำหนดออกไปเข้าแท็บของตัวเอง)
+// นิยามเดียวกับ `overviewStats().receivable` (ทั้งชุด AWAITING_PAYMENT+PARTIAL) แต่ผูกกับตัวกรอง (วันที่/ผู้ติดต่อ/ค้นหา)
+// ของหน้ารายการแทนที่จะเป็นยอดรวมทั้งระบบ — ใช้แสดงบรรทัดสรุปใต้ h1 บนมือถือ "N ใบ · ค้างรับ/ค้างจ่าย ฿…"
+export async function sumOutstandingForFilter(
+  tenantId: string,
+  systemId: string,
+  docType: AccountDocType,
+  extra?: { q?: string; contactId?: string; from?: Date | string; to?: Date | string },
+): Promise<number> {
+  const from = parseDay(extra?.from, false);
+  const to = parseDay(extra?.to, true);
+  const q = (extra?.q ?? "").trim();
+  const where: Prisma.AccountDocumentWhereInput = {
+    tenantId,
+    systemId,
+    docType,
+    status: { in: ["AWAITING_PAYMENT", "PARTIAL"] },
+    ...(extra?.contactId ? { contactId: extra.contactId } : {}),
+    ...(from || to ? { issueDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { docNo: { contains: q, mode: "insensitive" as const } },
+            { contact: { is: { name: { contains: q, mode: "insensitive" as const } } } },
+          ],
+        }
+      : {}),
+  };
+  const agg = await prisma.accountDocument.aggregate({ where, _sum: { grandTotal: true, paidTotal: true } });
+  return Math.max((agg._sum.grandTotal ?? 0) - (agg._sum.paidTotal ?? 0), 0);
 }
 
 // แมป tab key ของ flyout เมนูบัญชี V2 → สถานะจริง (หรือ "overdue" = derived) ต่อ docType
@@ -2157,3 +2233,256 @@ export async function setDocExternalRef(docId: string, ref: { refSystemId: strin
   await prisma.accountDocument.update({ where: { id: docId }, data: ref });
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// ฟอร์มเอกสาร V2 (WO 1.3) — ชั้นข้อมูลของ DocEditorV2
+//
+// 🔴 ทำไมอยู่ในไฟล์นี้ ไม่ใช่ไฟล์ใหม่: กติกา fitness F5 ห้ามเพิ่ม "ไฟล์ในโมดูลที่ import prisma ตรง ๆ"
+//    (ratchet ลดได้อย่างเดียว) และหลักการเดียวกันคือ **การแตะ DB ต้องอยู่ชั้น service**
+//    ⇒ `editor-actions.ts` (server action) และ `DocEditorPage.tsx` (หน้า) เรียกฟังก์ชันพวกนี้เท่านั้น
+// ═══════════════════════════════════════════════════════════════
+
+/** ยอดค้างรับต่อผู้ติดต่อ (ป้าย "ค้างรับ ฿…" §5.2 B) — 1 query ครอบทุกราย ไม่ใช่ N+1 */
+export async function outstandingByContacts(
+  tenantId: string,
+  systemId: string,
+  contactIds?: string[],
+): Promise<Map<string, number>> {
+  const rows = await prisma.accountDocument.findMany({
+    where: {
+      tenantId,
+      systemId,
+      direction: "OUT",
+      status: { in: ["AWAITING_PAYMENT", "PARTIAL"] },
+      ...(contactIds?.length ? { contactId: { in: contactIds } } : {}),
+    },
+    select: { contactId: true, grandTotal: true, paidTotal: true },
+  });
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    if (!r.contactId) continue;
+    out.set(r.contactId, (out.get(r.contactId) ?? 0) + Math.max(0, r.grandTotal - r.paidTotal));
+  }
+  return out;
+}
+
+export type ContactPickerRow = {
+  id: string;
+  name: string;
+  taxId: string | null;
+  phone: string | null;
+  creditTermDays: number;
+  defaultPriceMode: AccountPriceMode | null;
+  outstandingSatang: number;
+};
+
+/** ค้นผู้ติดต่อสำหรับ lookup ในฟอร์ม (ชื่อ/เลขภาษี/เบอร์/อีเมล) + ยอดค้างรับ */
+export async function searchContactPickerRows(
+  tenantId: string,
+  systemId: string,
+  q: string,
+  take = 20,
+): Promise<ContactPickerRow[]> {
+  const term = q.trim();
+  const rows = await prisma.accountContact.findMany({
+    where: {
+      tenantId,
+      systemId,
+      archivedAt: null,
+      ...(term
+        ? {
+            OR: [
+              { name: { contains: term, mode: "insensitive" as const } },
+              { taxId: { contains: term } },
+              { phone: { contains: term } },
+              { email: { contains: term, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { name: "asc" },
+    take,
+    select: { id: true, name: true, taxId: true, phone: true, creditTermDays: true, defaultPriceMode: true },
+  });
+  const outstanding = await outstandingByContacts(tenantId, systemId, rows.map((r) => r.id));
+  return rows.map((r) => ({ ...r, outstandingSatang: outstanding.get(r.id) ?? 0 }));
+}
+
+/** สมาชิกร้าน (ตัวเลือก "พนักงานขาย" §5.2 B) */
+export async function listTenantMembers(tenantId: string): Promise<{ id: string; name: string }[]> {
+  const rows = await prisma.membership.findMany({
+    where: { tenantId },
+    select: { userId: true, user: { select: { name: true, email: true } } },
+  });
+  return rows.map((m) => ({ id: m.userId, name: m.user.name ?? m.user.email }));
+}
+
+/** แท็กที่เคยใช้ (ตัวเลือกใน multi-select แท็ก) — ดูจากเอกสารล่าสุด 200 ใบ */
+export async function listUsedTags(tenantId: string, systemId: string): Promise<string[]> {
+  const rows = await prisma.accountDocument.findMany({
+    where: { tenantId, systemId, tags: { isEmpty: false } },
+    select: { tags: true },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  return [...new Set(rows.flatMap((r) => r.tags))].sort((a, b) => a.localeCompare(b, "th"));
+}
+
+/**
+ * เอกสารพี่น้องในสายการแปลง (ขึ้นทาง sourceDocId · ลงทาง sourceDocId ของคนอื่น) สำหรับ stepper §5.2 A
+ * จำกัด 4 ชั้น = ความยาวสายที่ยาวที่สุด (QT→IV→RE→TX) ⇒ ไม่มีทางวนไม่จบ
+ */
+export async function docChainMap(
+  tenantId: string,
+  systemId: string,
+  doc: { id: string; sourceDocId: string | null } | null,
+): Promise<Map<string, { id: string; docNo: string | null }>> {
+  const found = new Map<string, { id: string; docNo: string | null }>();
+  if (!doc) return found;
+  let cursor = doc.sourceDocId;
+  for (let hop = 0; hop < 4 && cursor; hop++) {
+    const parent = await prisma.accountDocument.findFirst({
+      where: { id: cursor, tenantId, systemId },
+      select: { id: true, docType: true, docNo: true, sourceDocId: true },
+    });
+    if (!parent) break;
+    found.set(parent.docType, { id: parent.id, docNo: parent.docNo });
+    cursor = parent.sourceDocId;
+  }
+  let ids = [doc.id];
+  for (let hop = 0; hop < 4 && ids.length; hop++) {
+    const kids = await prisma.accountDocument.findMany({
+      where: { tenantId, systemId, sourceDocId: { in: ids }, status: { notIn: ["VOIDED", "CANCELLED"] } },
+      select: { id: true, docType: true, docNo: true },
+    });
+    for (const k of kids) found.set(k.docType, { id: k.id, docNo: k.docNo });
+    ids = kids.map((k) => k.id);
+  }
+  return found;
+}
+
+/** id ที่ฟอร์มอ้างถึงต้องอยู่ในระบบเดียวกันจริง (กัน IDOR ข้าม tenant/system) — โยนเมื่อไม่ผ่าน */
+export async function assertEditorRefs(
+  tenantId: string,
+  systemId: string,
+  refs: { contactId?: string | null; productIds?: string[]; accountIds?: string[]; salesUserId?: string | null },
+): Promise<void> {
+  if (refs.contactId) {
+    const n = await prisma.accountContact.count({ where: { id: refs.contactId, tenantId, systemId } });
+    if (n === 0) throw new Error("ไม่พบผู้ติดต่อรายนี้ในระบบบัญชีนี้");
+  }
+  const productIds = [...new Set(refs.productIds ?? [])];
+  if (productIds.length) {
+    const n = await prisma.accountProduct.count({ where: { id: { in: productIds }, tenantId, systemId } });
+    if (n !== productIds.length) throw new Error("มีสินค้า/บริการที่ไม่อยู่ในระบบบัญชีนี้");
+  }
+  const accountIds = [...new Set(refs.accountIds ?? [])];
+  if (accountIds.length) {
+    const n = await prisma.accountLedger.count({ where: { id: { in: accountIds }, tenantId, systemId } });
+    if (n !== accountIds.length) throw new Error("มีผังบัญชีที่ไม่อยู่ในระบบบัญชีนี้");
+  }
+  if (refs.salesUserId) {
+    const n = await prisma.membership.count({ where: { userId: refs.salesUserId, tenantId } });
+    if (n === 0) throw new Error("ไม่พบพนักงานขายรายนี้ในร้าน");
+  }
+}
+
+/** สถานะร่างของเอกสาร (ตรวจก่อนแก้ — ผูก tenant/system/docType ครบทุกตัว) */
+export async function getDraftMeta(
+  tenantId: string,
+  systemId: string,
+  id: string,
+  docType?: AccountDocType,
+): Promise<{ id: string; status: AccountDocStatus } | null> {
+  return prisma.accountDocument.findFirst({
+    where: { id, tenantId, systemId, ...(docType ? { docType } : {}) },
+    select: { id: true, status: true },
+  });
+}
+
+/**
+ * เขียนฟิลด์ที่ฟอร์ม V2 เพิ่มเข้ามา (WO 0.3 + WO 1.3) ทับหลัง create/update ปกติ
+ * — แยกจาก createDocument/updateDocument เพื่อไม่แตะ contract เดิมที่ POS/CRM/ข้อสอบเก่าใช้อยู่
+ */
+export async function applyEditorExtras(
+  tenantId: string,
+  systemId: string,
+  docId: string,
+  extras: {
+    reference: string | null;
+    priceMode: AccountPriceMode;
+    discountMode: AccountDiscountMode;
+    salesUserId: string | null;
+    tags: string[];
+    internalNote: string | null;
+    autoTaxInvoice: boolean | null;
+    whtAmount: number;
+    lineWht: { whtIncomeType: AccountWhtIncomeType | null; whtRateBp: number | null }[];
+  },
+): Promise<{ docNo: string | null; grandTotal: number } | null> {
+  await prisma.accountDocument.updateMany({
+    where: { id: docId, tenantId, systemId },
+    data: {
+      reference: extras.reference,
+      priceMode: extras.priceMode,
+      discountMode: extras.discountMode,
+      salesUserId: extras.salesUserId,
+      tags: extras.tags,
+      internalNote: extras.internalNote,
+      autoTaxInvoice: extras.autoTaxInvoice,
+      whtAmount: extras.whtAmount,
+    },
+  });
+  const lines = await prisma.accountDocumentLine.findMany({
+    where: { documentId: docId, tenantId, systemId },
+    select: { id: true, sortOrder: true },
+    orderBy: { sortOrder: "asc" },
+  });
+  for (const row of lines) {
+    const src = extras.lineWht[row.sortOrder];
+    if (!src) continue;
+    await prisma.accountDocumentLine.update({
+      where: { id: row.id },
+      data: { whtIncomeType: src.whtIncomeType, whtRateBp: src.whtRateBp },
+    });
+  }
+  return prisma.accountDocument.findFirst({
+    where: { id: docId, tenantId, systemId },
+    select: { docNo: true, grandTotal: true },
+  });
+}
+
+/** ยกเลิกร่าง (ไม่ลบ — กติกา "ยกเลิกได้ปลอดภัย" BLUEPRINT §0.3-8) */
+export async function cancelDraft(tenantId: string, systemId: string, id: string): Promise<boolean> {
+  const res = await prisma.accountDocument.updateMany({
+    where: { id, tenantId, systemId, status: "DRAFT" },
+    data: { status: "CANCELLED" },
+  });
+  return res.count > 0;
+}
+
+// ── รายการโปรด (ชุดบรรทัดที่บันทึกไว้ §5.2 C) — เก็บใน AccountSettings.docConfig.favorites ──
+export type DocFavorite = { name: string; lines: unknown[] };
+
+export async function getDocFavorites(tenantId: string, systemId: string): Promise<DocFavorite[]> {
+  const s = await prisma.accountSettings.findFirst({ where: { tenantId, systemId }, select: { docConfig: true } });
+  const raw = (s?.docConfig as Record<string, unknown> | null)?.favorites;
+  return Array.isArray(raw) ? (raw as DocFavorite[]).slice(0, 20) : [];
+}
+
+export async function saveDocFavorite(
+  tenantId: string,
+  systemId: string,
+  fav: DocFavorite,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const s = await prisma.accountSettings.findFirst({ where: { tenantId, systemId }, select: { id: true, docConfig: true } });
+  if (!s) return { ok: false, reason: "ยังไม่ได้ตั้งค่ากิจการ" };
+  const cfg = (s.docConfig as Record<string, unknown> | null) ?? {};
+  const prev = Array.isArray(cfg.favorites) ? (cfg.favorites as DocFavorite[]) : [];
+  const next = [...prev.filter((f) => f?.name !== fav.name), fav].slice(-20);
+  await prisma.accountSettings.update({
+    where: { id: s.id },
+    data: { docConfig: { ...cfg, favorites: next } as Prisma.InputJsonValue },
+  });
+  return { ok: true };
+}

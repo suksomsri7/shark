@@ -3,7 +3,7 @@
 import { notFound } from "next/navigation";
 import type { AccountDocType } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
-import { getSettings, listContacts, computeListTabCounts, DOC_LABEL } from "./service";
+import { getSettings, listContacts, computeListTabCounts, sumOutstandingForFilter, DOC_LABEL } from "./service";
 import {
   listExpenseDocsPaged,
   getExpenseDoc,
@@ -24,16 +24,22 @@ import {
   vatCol,
   invoiceReceivedCol,
   statusCol,
+  dateLineNode,
+  StatusCell,
   type ListRow,
 } from "./list-columns";
 import { ExpenseDetail } from "./expense-ui";
 import ExpenseEditor from "./ExpenseEditor";
 import { DocListPage } from "@/components/account-v2/DocListPage";
+import { MoneyText } from "@/components/ui/MoneyText";
 import type { RowActionItem } from "@/components/account-v2/RowActions";
 import type { DocColumn } from "@/components/account-v2/DocTable";
 import type { DateRangePreset } from "@/components/account-v2/ListFilters";
 
 type Variant = "purchase" | "expense" | "po" | "asset";
+
+// docType ฝั่งจ่ายที่มีความหมาย "ค้างจ่าย" (บรรทัดสรุปมือถือ f13) — PO/APO/PTX ไม่มี (ยังไม่ตั้งเป็นเจ้าหนี้)
+const DOC_TYPES_WITH_PAYABLE: readonly AccountDocType[] = ["PURCHASE", "EXPENSE", "ASSET_PURCHASE"];
 
 // docType → slug ของ route — WO 1.2: มาจากทะเบียนกลาง EXPENSE_LIST_TYPES (expense.ts) ที่เดียว
 const SLUG_OF = EXP_ROUTE;
@@ -147,12 +153,36 @@ export async function ExpenseListPage(props: {
   const pathname = `${base}/${slug}`;
   const canCreate = docType !== "PURCHASE_TAX_INVOICE"; // รับใบกำกับจากการแปลง/บันทึกรับเท่านั้น
 
+  // มือถือ (f13): บรรทัดสรุปใต้ h1 "N ใบ · ค้างจ่าย ฿…" ผูกกับตัวกรองปัจจุบัน
+  const hasPayable = DOC_TYPES_WITH_PAYABLE.includes(docType);
+  const outstandingSatang = hasPayable
+    ? await sumOutstandingForFilter(tenantId, systemId, docType, {
+        q: q || undefined,
+        contactId: sp.contact || undefined,
+        from: range.from,
+        to: range.to,
+      })
+    : 0;
+  const mobileSummary = (
+    <>
+      {tabCounts.all ?? 0} ใบ
+      {hasPayable && (
+        <>
+          {" "}
+          · ค้างจ่าย <MoneyText satang={outstandingSatang} decimals />
+        </>
+      )}
+    </>
+  );
+  const mobileDocNo = docNoCol((r) => `${base}/${slug}/${r.id}`);
+
   return (
     <DocListPage<ListRow>
       testId="list-expense"
       base={base}
       pathname={pathname}
       title={label}
+      mobileSummary={mobileSummary}
       searchParams={sp}
       tabs={tabDefs}
       tabCounts={tabCounts}
@@ -163,11 +193,11 @@ export async function ExpenseListPage(props: {
       rows={result.rows}
       rowActionsFor={(r) => rowActionsFor(docType, base, slug, r)}
       bulkActions={bulkFor(docType)}
-      mobileTitle={(r) => r.docNo ?? "(ร่าง)"}
-      mobileSubtitle={(r) => r.contact?.name}
-      mobileTrailing={(r) => (
-        <span className="tabular-nums">{(r.grandTotal / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
-      )}
+      mobileTitle={(r) => mobileDocNo.render(r)}
+      mobileStatus={(r) => <StatusCell row={r} />}
+      mobileSubtitle={(r) => r.contact?.name ?? "—"}
+      mobileTrailing={(r) => <MoneyText satang={r.grandTotal} decimals />}
+      mobileDateLine={(r) => dateLineNode(r, { dueLabel: "กำหนดชำระ" })}
       rowTestId={(r) => `row-${r.docNo ?? r.id}`}
       footerTotalSatang={result.rows.reduce((s, r) => s + r.grandTotal, 0)}
       page={result.page}
@@ -216,7 +246,7 @@ export async function ExpenseDetailPage(props: {
         doc={doc}
         systemId={systemId}
         label={label}
-        editHref={`${base}/${slug}/${docId}?edit=1`}
+        editHref={`${base}/${slug}/${docId}/edit`} // WO 1.3: ฟอร์ม V2 เต็มหน้า
         listHref={`${base}/${slug}`}
         err={props.err}
       />

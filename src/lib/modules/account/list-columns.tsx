@@ -63,8 +63,13 @@ export function docNoCol(docHref: (row: ListRow) => string, rowTestPrefix?: stri
     key: "docNo",
     header: "เลขที่",
     sort: "docNo",
+    // ร่าง (ยังไม่มีเลขที่) — ตัวหนังสือเทา ไม่ใช่สีลิงก์ฟ้า (ไม่มีเลขจริงให้กดอ้างอิง) แต่แถวยังกดเข้าดู/แก้ไขได้ปกติ
     render: (r) => (
-      <Link href={docHref(r)} className="text-[color:var(--color-accent)] hover:underline" data-testid={rowTestPrefix ? `${rowTestPrefix}-link` : undefined}>
+      <Link
+        href={docHref(r)}
+        className={r.docNo ? "text-[color:var(--color-accent)] hover:underline" : "text-[color:var(--color-muted)] hover:underline"}
+        data-testid={rowTestPrefix ? `${rowTestPrefix}-link` : undefined}
+      >
         {r.docNo ?? "(ร่าง)"}
       </Link>
     ),
@@ -150,6 +155,37 @@ export const statusCol: DocColumn<ListRow> = {
   header: "สถานะ",
   render: (r) => <StatusCell row={r} />,
 };
+
+// "วันที่ออก · ครบกำหนด …" การ์ดมือถือ (f13 บรรทัด 3) — ครบกำหนดแดงเมื่อเกิน · ไม่มี dueDate/validUntil = แค่วันที่ออก
+export function dateLineNode(r: ListRow, opts?: { dueLabel?: string }): React.ReactNode {
+  const dueLabel = opts?.dueLabel ?? "ครบกำหนด";
+  const overdueStyle = isOverdue(r) ? { color: "var(--color-danger)", fontWeight: 600 } : undefined;
+  if (r.dueDate) {
+    return (
+      <>
+        วันที่ออก <DateText value={r.issueDate} /> · {dueLabel}{" "}
+        <span style={overdueStyle}>
+          <DateText value={r.dueDate} />
+        </span>
+      </>
+    );
+  }
+  if (r.validUntil) {
+    return (
+      <>
+        วันที่ออก <DateText value={r.issueDate} /> · ใช้ได้ถึง{" "}
+        <span style={overdueStyle}>
+          <DateText value={r.validUntil} />
+        </span>
+      </>
+    );
+  }
+  return (
+    <>
+      วันที่ออก <DateText value={r.issueDate} />
+    </>
+  );
+}
 
 // ─── ฝั่งรายจ่าย (§5.1 "PUR/EXP/AP/DP/CP") — คอลัมน์ชื่อต่างจากฝั่งรายรับแต่ render เหมือนกัน ───
 export const vendorCol: DocColumn<ListRow> = { ...contactCol, header: "ผู้ขาย" };

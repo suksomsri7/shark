@@ -176,6 +176,9 @@ model AccountDocument {
   priceMode       AccountPriceMode? // โหมดราคาที่ผู้ใช้เลือกตอนกรอก (null = ตามตั้งค่า)
   discountMode    AccountDiscountMode? // ส่วนลดท้ายบิลกรอกแบบเงิน/เปอร์เซ็นต์ (null = เงิน)
   salesUserId     String? // พนักงานขายเจ้าของใบ (รายงานยอดขายรายคน)
+  // ── V2 (WO 1.3 · ฟอร์ม DocEditorV2 §5.2 B) · additive · nullable ──
+  reference       String? // "อ้างอิง" ที่ผู้ใช้พิมพ์ (เลข PO ลูกค้า / เอกสารต้นทาง) ≤35 ตัว
+  autoTaxInvoice  Boolean? // toggle "ออกใบกำกับภาษีพร้อมกัน" ต่อใบ (null = ตามตั้งค่ากิจการ §9.2)
 
   lines         AccountDocumentLine[]
   payments      AccountDocumentPayment[]
@@ -214,6 +217,11 @@ model AccountDocumentLine {
   accountId   String? // override บัญชี GL (EXPENSE บังคับเลือกหมวด)
   account     AccountLedger?  @relation(fields: [accountId], references: [id])
   assetId     String? // ASSET_PURCHASE: ผูกทะเบียนสินทรัพย์หลังขึ้นทะเบียน
+  // ── V2 (WO 1.3) · additive · nullable ทั้งคู่ = แถวเดิม/โค้ดเดิมพฤติกรรมไม่เปลี่ยน ──
+  // หัก ณ ที่จ่าย "ต่อบรรทัด" (DESIGN-SPEC-V2 §5.2 C) — ฟอร์ม V2 เก็บสิ่งที่ผู้ใช้เลือกไว้
+  // เพื่อให้เปิดร่างกลับมาแก้แล้วค่าไม่หาย · **การสร้าง WHT_CERT/JV จริงยังเป็นงาน WO 1.4**
+  whtIncomeType AccountWhtIncomeType? // ประเภทเงินได้ ม.40
+  whtRateBp     Int? // 300 = 3%
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

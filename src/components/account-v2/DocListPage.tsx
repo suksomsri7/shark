@@ -11,14 +11,16 @@ import type { QueryLike } from "./url";
 // หน้ารายการเอกสารมาตรฐาน V2 (DESIGN-SPEC-V2.md §1, §3, §5.1 · mockup f3-invoice-list.png +
 // f3-invoice-list-menu.png เดสก์ท็อป · f13-m-invoice-list.png มือถือ) — ใช้ร่วมทุกชนิดเอกสาร (WO 1.1)
 //
-// องค์ประกอบตามลำดับ (ต้องตรง f3 เป๊ะ ไล่จากบนลงล่าง):
-//   1. PageHeader: h1 + ปุ่มรอง "พิมพ์รายงาน"/"นำเข้า" (จางถ้ายังไม่มีปลายทาง) + ปุ่มดำ "+ สร้าง…"
+// องค์ประกอบตามลำดับ (ต้องตรง f3/f13 เป๊ะ ไล่จากบนลงล่าง):
+//   1. PageHeader (ไม่มี back — breadcrumb เหนือหน้าให้ทางกลับอยู่แล้ว): h1 + บรรทัดสรุปมือถือ + ปุ่มรอง
+//      "นำเข้า"/"พิมพ์รายงาน" (จางถ้ายังไม่มีปลายทาง) + ปุ่มดำ "+ สร้าง<ชนิด>" (เดสก์ท็อปเท่านั้น — มือถือใช้ FAB)
 //   2. StatusTabs: แท็บสถานะ+ตัวนับ (จาก LIST_TABS ของ list-tabs.ts — ห้ามประกาศแท็บซ้ำที่นี่)
-//   3. ListFilters: ช่วงวันที่/ผู้ติดต่อ/ค้นหา/ตัวกรองเพิ่มเติม
+//   3. ListFilters: ช่วงวันที่/ผู้ติดต่อ/ค้นหา/ตัวกรองเพิ่มเติม (เดสก์ท็อป 1 แถว · มือถือ ช่องค้นหา+ปุ่มกรวยเปิด sheet)
 //   4. bulk bar (โผล่เมื่อติ๊ก ≥1) — ผ่าน DocTable/DocTableInteractive
-//   5. DocTable: ตาราง (เดสก์ท็อป) / การ์ดแถว (มือถือ) + ทำรายการ ▾ ต่อแถว
+//   5. DocTable: ตาราง (เดสก์ท็อป) / การ์ดแถว 3 บรรทัด (มือถือ) + ทำรายการ ▾ / ⋯ ต่อแถว
 //   6. footer: "รวมยอดในหน้านี้" + Pagination ("แสดง 10/20/50 ▾ จาก N รายการ · หน้า n/N")
-//   7. ฟอร์มสร้าง (ซ่อนหลังปุ่มดำ "+ สร้าง…" — เปิดเมื่อ #new อยู่ใน URL)
+//   7. ฟอร์มสร้าง (ซ่อนหลังปุ่มดำ "+ สร้าง…"/FAB — เปิดเมื่อ #new อยู่ใน URL)
+//   8. FAB ดำลอยมุมล่างขวา (มือถือเท่านั้น) เหนือ orb AI
 export type BulkActionDef = {
   label: string;
   href?: string;
@@ -59,13 +61,18 @@ function HeaderActionButton({
 }) {
   if (!href) {
     return (
-      <button type="button" disabled title={disabledTitle ?? "เร็ว ๆ นี้"} className="btn-sm cursor-not-allowed opacity-40">
+      <button
+        type="button"
+        disabled
+        title={disabledTitle ?? "เร็ว ๆ นี้"}
+        className="btn-sm shrink-0 cursor-not-allowed whitespace-nowrap opacity-40"
+      >
         {label}
       </button>
     );
   }
   return (
-    <Link href={href} className="btn-sm">
+    <Link href={href} className="btn-sm shrink-0 whitespace-nowrap">
       {label}
     </Link>
   );
@@ -75,6 +82,7 @@ export function DocListPage<T extends { id: string }>({
   base,
   pathname,
   title,
+  mobileSummary,
   searchParams,
   tabs,
   tabCounts,
@@ -88,6 +96,8 @@ export function DocListPage<T extends { id: string }>({
   mobileTitle,
   mobileSubtitle,
   mobileTrailing,
+  mobileStatus,
+  mobileDateLine,
   rowTestId,
   footerTotalSatang,
   page,
@@ -106,6 +116,8 @@ export function DocListPage<T extends { id: string }>({
   base: string;
   pathname: string;
   title: string;
+  /** บรรทัดสรุปใต้ h1 — โชว์เฉพาะมือถือ (f13: "51 ใบ · ค้างรับ ฿486,300.00") — ไม่ส่ง = ไม่แสดง */
+  mobileSummary?: React.ReactNode;
   searchParams: QueryLike;
   tabs: StatusTabDef[];
   tabCounts: TabCounts;
@@ -119,6 +131,8 @@ export function DocListPage<T extends { id: string }>({
   mobileTitle?: (row: T) => React.ReactNode;
   mobileSubtitle?: (row: T) => React.ReactNode;
   mobileTrailing?: (row: T) => React.ReactNode;
+  mobileStatus?: (row: T) => React.ReactNode;
+  mobileDateLine?: (row: T) => React.ReactNode;
   rowTestId?: (row: T) => string;
   footerTotalSatang?: number;
   page: number;
@@ -126,7 +140,7 @@ export function DocListPage<T extends { id: string }>({
   pageSize: number;
   total: number;
   emptyText: string;
-  /** ป้ายปุ่มดำ เช่น "สร้างใบแจ้งหนี้" — ไม่ส่ง = ไม่มีปุ่มสร้าง (เอกสารที่เกิดจากการแปลงเท่านั้น เช่น RE/TX) */
+  /** ป้ายชนิดเอกสาร เช่น "ใบแจ้งหนี้" — ปุ่มจะขึ้นเป็น "+ สร้างใบแจ้งหนี้" เสมอ — ไม่ส่ง = ไม่มีปุ่มสร้าง (เอกสารที่เกิดจากการแปลงเท่านั้น เช่น RE/TX) */
   createLabel?: string;
   createForm?: React.ReactNode;
   /** ปลายทางพิมพ์รายงานของรายการนี้ — ไม่ส่ง = ปุ่มจาง "เร็ว ๆ นี้" */
@@ -139,18 +153,22 @@ export function DocListPage<T extends { id: string }>({
   errorText?: string;
 }) {
   return (
-    <div className="flex flex-col gap-5 pb-24">
+    <div className="flex flex-col gap-5 pb-28">
       <PageHeader
         title={title}
-        back={{ href: base, label: "ระบบบัญชี" }}
+        desc={mobileSummary ? <span className="md:hidden">{mobileSummary}</span> : undefined}
         actions={
           <>
-            <HeaderActionButton label="🖨 พิมพ์รายงาน" href={printReportHref} />
-            <HeaderActionButton label="⬇ นำเข้า" />
+            <HeaderActionButton label="นำเข้า" />
+            <HeaderActionButton label="พิมพ์รายงาน" href={printReportHref} />
             {extraHeaderActions}
             {createLabel && (
-              <a href="#new" className="btn-primary" data-testid={`${testId}-create-btn`}>
-                + {createLabel}
+              <a
+                href="#new"
+                className="btn btn-primary hidden shrink-0 whitespace-nowrap md:inline-flex"
+                data-testid={`${testId}-create-btn`}
+              >
+                + สร้าง{createLabel}
               </a>
             )}
           </>
@@ -184,6 +202,8 @@ export function DocListPage<T extends { id: string }>({
           mobileTitle={mobileTitle}
           mobileSubtitle={mobileSubtitle}
           mobileTrailing={mobileTrailing}
+          mobileStatus={mobileStatus}
+          mobileDateLine={mobileDateLine}
           rowTestId={rowTestId}
           footerTotalSatang={footerTotalSatang}
           page={page}
@@ -198,6 +218,19 @@ export function DocListPage<T extends { id: string }>({
 
       {createLabel && createForm && <CreateSection>{createForm}</CreateSection>}
       {!createLabel && createForm && <div id="new">{createForm}</div>}
+
+      {/* FAB ดำลอยมุมล่างขวา (มือถือเท่านั้น) — เหนือ orb AI (AiDock: fixed bottom-4 right-4 h-10 w-10) */}
+      {createLabel && (
+        <a
+          href="#new"
+          aria-label={`สร้าง${createLabel}`}
+          data-testid={`${testId}-fab`}
+          className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full text-2xl leading-none shadow-[0_8px_24px_rgba(10,10,10,.24)] md:hidden"
+          style={{ background: "var(--color-ink)", color: "var(--color-surface)" }}
+        >
+          +
+        </a>
+      )}
     </div>
   );
 }

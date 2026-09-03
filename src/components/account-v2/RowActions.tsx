@@ -10,7 +10,9 @@ export type RowActionItem = {
   danger?: boolean;
 };
 
-// เมนู "ทำรายการ ▾" ต่อแถว (DESIGN-SPEC-V2 §1/§3) — ⋯/"ทำรายการ ▾"
+// เมนู "ทำรายการ ▾" ต่อแถว (DESIGN-SPEC-V2 §1/§3)
+// เดสก์ท็อป (f3): ปุ่มรอง "ทำรายการ ▾" · มือถือ (f13): ปุ่มกลม "⋯" 44px มุมขวาการ์ด (ไม่ใช่ปุ่มยาว)
+// ปุ่มทั้งสองใช้ state เดียวกัน (สลับด้วย CSS breakpoint ไม่ใช่ instance คนละตัว) — เมนู dropdown ใช้ร่วมกัน
 export function RowActions({
   items,
   testId,
@@ -48,12 +50,23 @@ export function RowActions({
     <div className="relative inline-block text-left" ref={ref} data-testid={testId}>
       <button
         type="button"
-        className="btn-sm"
+        className="btn-sm hidden md:inline-flex"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
         {label} ▾
+      </button>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-11 w-11 items-center justify-center rounded-full border text-lg leading-none md:hidden"
+        style={{ borderColor: "var(--color-line)" }}
+      >
+        ⋯
       </button>
       {open && (
         <div

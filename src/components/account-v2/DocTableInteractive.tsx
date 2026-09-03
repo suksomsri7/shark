@@ -17,9 +17,16 @@ export type DocTableBodyRow = {
   id: string;
   cells: DocTableBodyCell[];
   rowActions?: React.ReactNode;
+  /** เลขที่เอกสาร (ตัวหนา ลิงก์) — บรรทัด 1 ซ้ายของการ์ดมือถือ (f13) */
   mobileTitle?: React.ReactNode;
+  /** ผู้ติดต่อ/ผู้ขาย — บรรทัด 2 ซ้าย */
   mobileSubtitle?: React.ReactNode;
+  /** ยอดเงิน (ตัวหนา) — บรรทัด 2 ขวา */
   mobileTrailing?: React.ReactNode;
+  /** ชิปสถานะ — บรรทัด 1 ขวา */
+  mobileStatus?: React.ReactNode;
+  /** "วันที่ออก · ครบกำหนด …" (สีเทา — แดงเฉพาะวันที่ที่เกิน) — บรรทัด 3 ซ้าย */
+  mobileDateLine?: React.ReactNode;
   /** data-testid ต่อแถว เช่น `row-IV-202609-0012` (WO 1.1 §C) */
   testId?: string;
 };
@@ -140,32 +147,25 @@ export function DocTableInteractive({
         </table>
       </div>
 
-      {/* มือถือ: การ์ดแถว (DataList style) */}
+      {/* มือถือ (f13): การ์ดแถว 3 บรรทัด — เลขที่+ชิป / ผู้ติดต่อ+ยอด / วันที่·ครบกำหนด+⋯ (ไม่มี checkbox/ปุ่มยาว) */}
       <div className="flex flex-col gap-2 md:hidden">
         {rows.map((r) => (
           <div
             key={r.id}
             data-testid={r.testId ? `${r.testId}-m` : undefined}
-            className="flex items-start gap-3 rounded-lg border px-3 py-2 text-sm"
+            className="flex flex-col gap-1 rounded-lg border px-3 py-3 text-sm"
           >
-            {selectable && (
-              <input
-                type="checkbox"
-                aria-label="เลือกแถวนี้"
-                className="mt-0.5 h-5 w-5 shrink-0"
-                checked={selected.has(r.id)}
-                onChange={() => toggleOne(r.id)}
-              />
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-medium">{r.mobileTitle}</div>
-              {r.mobileSubtitle && (
-                <div className="truncate text-xs text-[color:var(--color-muted)]">{r.mobileSubtitle}</div>
-              )}
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate font-semibold">{r.mobileTitle}</span>
+              <span className="shrink-0">{r.mobileStatus}</span>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-1">
-              {r.mobileTrailing}
-              {r.rowActions}
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-[color:var(--color-muted)]">{r.mobileSubtitle}</span>
+              <span className="shrink-0 font-semibold tabular-nums">{r.mobileTrailing}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-xs text-[color:var(--color-muted)]">{r.mobileDateLine}</span>
+              <span className="shrink-0">{r.rowActions}</span>
             </div>
           </div>
         ))}

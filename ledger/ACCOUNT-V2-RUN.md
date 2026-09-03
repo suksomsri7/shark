@@ -3,6 +3,9 @@
 > พิมพ์เขียว: `docs/design/account-v2/BLUEPRINT-ACCOUNT-V2.md` · สเปคหน้าจอ: `DESIGN-SPEC-V2.md` · โน้ตระหว่างทำของแต่ละ WO: `ledger/wo-notes/<WO>.md`
 > **วิธีกลับมาต่อ**: `cd /root/projects/shark-accounting && git pull --rebase` → อ่านตาราง "WO ปัจจุบัน" → อ่าน `wo-notes/<WO>.md` → `git status` (ไฟล์ dirty = งานค้างของ WO นั้น) → ทำต่อจาก "ขั้นที่ถึง" ห้ามเริ่มใหม่ · ถ้า sub-agent ตายกลางทาง ให้ดู wo-notes ว่าทำถึงไหน แล้วสั่งตัวใหม่ทำต่อ (ไม่ใช่ทำซ้ำ)
 
+
+> 🔴 **เหตุการณ์ 3 ก.ย. 09:10–10:07 BKK (02:10–03:07 UTC)**: session คุมงานสั่ง `typecheck` + `acc-v2-serve.sh` (next build) ขณะ sub-agent WO 1.3 ยังรัน `tsc` อยู่ + session อื่นอีก 3 → กลุ่ม claude-remote แรมทะลุ MemoryHigh 5G → kernel throttle ทั้งกลุ่ม (load 14–16 แต่ CPU ว่าง 90%) 45 นาที → แอปขึ้น Disconnected · เจ้าของต้อง hard reboot. **งานยังไม่หาย**: ไฟล์ dirty ของ 1.1 (รอบ 2) + 1.3 อยู่บนดิสก์ครบ (สำรองไว้ `/root/backups/shark-accounting-wip-20260903-0310/`). ที่ค้าง: build+ถ่ายภาพ 1.1 ยังไม่ได้ทำ (`.next` ค้างครึ่งทาง ต้อง build ใหม่) · agent 1.3 ตายกลางทาง ดู `wo-notes/1.3.md` แล้วสั่งตัวใหม่ทำต่อ. **กติกาใหม่**: งานหนัก (typecheck / next build / qc:all / agent ที่รัน tsc) ทำ**ทีละ 1 อย่าง**ทั้งเครื่อง ไม่ใช่แค่ผ่าน gate lock · แก้ระบบแล้ว: MemoryHigh ปิด + MemoryMax 5G (เกิน = ฆ่าตัวใหญ่สุด ไม่ค้างทั้งเครื่อง) + watchdog ตรวจอาการค้างทุก 5 นาที
+
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|

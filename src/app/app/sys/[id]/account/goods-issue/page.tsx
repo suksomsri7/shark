@@ -20,6 +20,16 @@ import type { DateRangePreset } from "@/components/account-v2/ListFilters";
 // ⚠️ "สาเหตุการเบิก" ยังไม่มีฟิลด์เฉพาะในโมเดล (ยังไม่ทำ select ตาม §8.4) — ใช้ `note` เป็นตัวแทนไปก่อน (จดใน wo-notes)
 // ⚠️ สถานะ: การสร้างวันนี้ตั้งเป็น ISSUED ทันทีเสมอ (ยังไม่มี workflow ร่าง/อนุมัติจริง) — แท็บร่าง/รออนุมัติจึงว่างเสมอ
 
+function PrrStatusChip({ status }: { status: string }) {
+  return (
+    <StatusChip
+      value={status}
+      map={{ ISSUED: "อนุมัติแล้ว", DRAFT: "ร่าง", CANCELLED: "ยกเลิก", VOIDED: "ยกเลิก" }}
+      toneOf={(v) => (v === "ISSUED" ? "strong" : v === "CANCELLED" || v === "VOIDED" ? "danger" : "muted")}
+    />
+  );
+}
+
 const fmt = (d: Date) =>
   d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit", timeZone: "Asia/Bangkok" });
 
@@ -111,6 +121,7 @@ export default async function GoodsIssuePage({
       base={base}
       pathname={pathname}
       title="ใบเบิกสินค้า"
+      mobileSummary={<>{tabCounts.all ?? 0} ใบ</>}
       searchParams={sp}
       tabs={tabDefs}
       tabCounts={tabCounts}
@@ -122,7 +133,10 @@ export default async function GoodsIssuePage({
           key: "docNo",
           header: "เลขที่",
           render: (r) => (
-            <Link href={`${pathname}#new`} className="text-[color:var(--color-accent)] hover:underline">
+            <Link
+              href={`${pathname}#new`}
+              className={r.docNo ? "text-[color:var(--color-accent)] hover:underline" : "text-[color:var(--color-muted)] hover:underline"}
+            >
               {r.docNo ?? "(ร่าง)"}
             </Link>
           ),
@@ -133,13 +147,22 @@ export default async function GoodsIssuePage({
         {
           key: "status",
           header: "สถานะ",
-          render: (r) => <StatusChip value={r.status} map={{ ISSUED: "อนุมัติแล้ว", DRAFT: "ร่าง", CANCELLED: "ยกเลิก", VOIDED: "ยกเลิก" }} toneOf={(v) => (v === "ISSUED" ? "strong" : v === "CANCELLED" || v === "VOIDED" ? "danger" : "muted")} />,
+          render: (r) => <PrrStatusChip status={r.status} />,
         },
       ]}
       rows={result.rows}
-      mobileTitle={(r) => r.docNo ?? "(ร่าง)"}
-      mobileSubtitle={(r) => r.contact?.name ?? r.note ?? undefined}
+      mobileTitle={(r) => (
+        <Link
+          href={`${pathname}#new`}
+          className={r.docNo ? "text-[color:var(--color-accent)] hover:underline" : "text-[color:var(--color-muted)] hover:underline"}
+        >
+          {r.docNo ?? "(ร่าง)"}
+        </Link>
+      )}
+      mobileStatus={(r) => <PrrStatusChip status={r.status} />}
+      mobileSubtitle={(r) => r.contact?.name ?? r.note ?? "—"}
       mobileTrailing={(r) => <span className="tabular-nums">{qtyText(qtySum(r))}</span>}
+      mobileDateLine={(r) => <>วันที่ออก <DateText value={r.issueDate} /></>}
       rowTestId={(r) => `row-${r.docNo ?? r.id}`}
       page={result.page}
       pageCount={result.pageCount}

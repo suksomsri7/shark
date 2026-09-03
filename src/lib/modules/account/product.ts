@@ -509,3 +509,65 @@ export async function productMovements(
     delta: (l.document.docType === "GOODS_ISSUE" ? -1 : 1) * Number(l.qty),
   }));
 }
+
+/**
+ * ค้นสินค้า/บริการสำหรับ lookup ในฟอร์มเอกสาร V2 (WO 1.3 · §5.2 C)
+ * คืนชื่อหน่วยมาด้วย (AccountProduct.unitId ไม่ได้เป็น relation ⇒ ต้อง join มือ 1 query)
+ */
+export async function searchProductPickerRows(
+  tenantId: string,
+  systemId: string,
+  q: string,
+  take = 20,
+): Promise<
+  {
+    id: string;
+    name: string;
+    sku: string | null;
+    salePrice: number | null;
+    buyPrice: number | null;
+    unitName: string | null;
+    vatRateBp: number;
+    incomeAccountId: string | null;
+    expenseAccountId: string | null;
+  }[]
+> {
+  const term = q.trim();
+  const rows = await prisma.accountProduct.findMany({
+    where: {
+      tenantId,
+      systemId,
+      archivedAt: null,
+      ...(term
+        ? {
+            OR: [
+              { name: { contains: term, mode: "insensitive" as const } },
+              { sku: { contains: term, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ pinned: "desc" }, { name: "asc" }],
+    take,
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      salePrice: true,
+      buyPrice: true,
+      unitId: true,
+      vatRateBp: true,
+      incomeAccountId: true,
+      expenseAccountId: true,
+    },
+  });
+  const unitIds = [...new Set(rows.map((r) => r.unitId).filter((x): x is string => !!x))];
+  const units = unitIds.length
+    ? await prisma.accountUnit.findMany({
+        where: { id: { in: unitIds }, tenantId, systemId },
+        select: { id: true, name: true },
+      })
+    : [];
+  const nameOf = new Map(units.map((u) => [u.id, u.name]));
+  return rows.map(({ unitId, ...r }) => ({ ...r, unitName: unitId ? (nameOf.get(unitId) ?? null) : null }));
+}

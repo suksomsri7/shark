@@ -1,0 +1,118 @@
+import type { AccountDocType } from "@prisma/client";
+import { DOC_LABEL, VISIBLE_DOC_TYPES } from "./service";
+import { EXP_DOC_LABEL, EXP_ROUTE, EXPENSE_LIST_TYPES } from "./expense";
+
+// ─────────────────────────────────────────────────────────────
+// doc-editor-config.ts — ทะเบียน "ฟอร์มเอกสาร V2" (WO 1.3) · แหล่งเดียวของ route/ขั้นตอน
+//
+// ใช้โดย: route pages (new/edit) · DocEditorPage.tsx · editor-actions.ts · qc-acc-v2-editor.mts
+// ⚠️ ไฟล์นี้อยู่ฝั่ง server (import service/expense ซึ่งแตะ prisma) — ฟอร์ม client รับเป็น props
+// ─────────────────────────────────────────────────────────────
+
+export type EditorSide = "revenue" | "expense";
+
+export type EditorDocDef = {
+  docType: AccountDocType;
+  /** path ใต้ `/app/sys/<id>/account/` — รายรับ = `docs/<DOCTYPE>` · รายจ่าย = slug ของตัวเอง */
+  route: string;
+  label: string;
+  side: EditorSide;
+};
+
+/** รายรับ 8 ชนิด (VISIBLE_DOC_TYPES) + รายจ่าย 9 ชนิดที่มี route จริง (EXPENSE_LIST_TYPES) */
+export const EDITOR_DOC_TYPES: readonly EditorDocDef[] = [
+  ...VISIBLE_DOC_TYPES.map((dt) => ({
+    docType: dt,
+    route: `docs/${dt}`,
+    label: DOC_LABEL[dt] ?? dt,
+    side: "revenue" as const,
+  })),
+  ...EXPENSE_LIST_TYPES.map((t) => ({
+    docType: t.docType,
+    route: t.route,
+    label: EXP_DOC_LABEL[t.docType] ?? t.label,
+    side: "expense" as const,
+  })),
+];
+
+const BY_TYPE = new Map<string, EditorDocDef>(EDITOR_DOC_TYPES.map((d) => [d.docType, d]));
+
+export function editorDefOf(docType: string): EditorDocDef | undefined {
+  return BY_TYPE.get(docType);
+}
+
+export function sideOf(docType: AccountDocType): EditorSide {
+  return EXP_ROUTE[docType] ? "expense" : "revenue";
+}
+
+/** `/app/sys/<id>/account/<route>` */
+export function editorListPath(base: string, docType: AccountDocType): string {
+  return `${base}/${editorDefOf(docType)?.route ?? `docs/${docType}`}`;
+}
+export function editorNewPath(base: string, docType: AccountDocType): string {
+  return `${editorListPath(base, docType)}/new`;
+}
+export function editorDetailPath(base: string, docType: AccountDocType, docId: string): string {
+  return `${editorListPath(base, docType)}/${docId}`;
+}
+export function editorEditPath(base: string, docType: AccountDocType, docId: string): string {
+  return `${editorDetailPath(base, docType, docId)}/edit`;
+}
+
+// ─────────────────── §5.2 A — สายการแปลงเอกสาร (stepper) ───────────────────
+// รายรับ: QT ··· IV ··· RE ··· TX · รายจ่าย: PO ··· PUR/EXP ··· PTX
+// ชนิดที่ไม่อยู่ในสาย (มัดจำ/CN/DN/วางบิล/สินทรัพย์) = ไม่มี stepper (สเปคไม่ได้กำหนดสายให้)
+
+const REVENUE_CHAIN: AccountDocType[] = ["QUOTATION", "INVOICE", "RECEIPT", "TAX_INVOICE"];
+const PURCHASE_CHAIN: AccountDocType[] = ["PURCHASE_ORDER", "PURCHASE", "PURCHASE_TAX_INVOICE"];
+const EXPENSE_CHAIN: AccountDocType[] = ["PURCHASE_ORDER", "EXPENSE", "PURCHASE_TAX_INVOICE"];
+
+/** ป้ายสั้นบนวงกลม stepper (g17 มือถือใช้ตัวย่อ · g1 เดสก์ท็อปใช้ชื่อเต็ม + ตัวย่อ) */
+export const STEP_CODE: Partial<Record<AccountDocType, string>> = {
+  QUOTATION: "QT",
+  INVOICE: "IV",
+  RECEIPT: "RE",
+  TAX_INVOICE: "TX",
+  PURCHASE_ORDER: "PO",
+  PURCHASE: "PUR",
+  EXPENSE: "EXP",
+  PURCHASE_TAX_INVOICE: "PTX",
+};
+
+export function stepChainFor(docType: AccountDocType): AccountDocType[] {
+  if (REVENUE_CHAIN.includes(docType)) return REVENUE_CHAIN;
+  if (docType === "EXPENSE") return EXPENSE_CHAIN;
+  if (PURCHASE_CHAIN.includes(docType)) return PURCHASE_CHAIN;
+  return [];
+}
+
+export function stepLabelOf(docType: AccountDocType): string {
+  return DOC_LABEL[docType] ?? EXP_DOC_LABEL[docType] ?? docType;
+}
+
+// ─────────────────── ป้ายวันที่ครบกำหนด (§5.2 B) ───────────────────
+export function dueLabelOf(docType: AccountDocType): string {
+  if (docType === "QUOTATION") return "ใช้ได้ถึง";
+  if (docType === "PURCHASE_ORDER" || docType === "ASSET_PURCHASE_ORDER") return "ต้องการรับของวันที่";
+  return "ครบกำหนด";
+}
+
+/** ชนิดที่ต้องเลือก "บัญชี" ต่อบรรทัดจริง ๆ (ฝั่งจ่ายบางชนิดบังคับ — ดู expense.variantFor) */
+export function requiresLineAccount(docType: AccountDocType): boolean {
+  return docType === "EXPENSE" || docType === "ASSET_PURCHASE" || docType === "PURCHASE_TAX_INVOICE";
+}
+
+/** ชนิดที่ห้ามสร้างตรง ๆ (เกิดจากการแปลงเท่านั้น — §5.1) */
+export const CONVERT_ONLY_TYPES: readonly AccountDocType[] = [
+  "RECEIPT",
+  "TAX_INVOICE",
+  "PURCHASE_TAX_INVOICE",
+  "CREDIT_NOTE",
+  "DEBIT_NOTE",
+  "CREDIT_NOTE_RECEIVED",
+  "DEBIT_NOTE_RECEIVED",
+];
+
+export function canCreateDirect(docType: AccountDocType): boolean {
+  return !CONVERT_ONLY_TYPES.includes(docType);
+}

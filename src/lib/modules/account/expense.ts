@@ -175,6 +175,27 @@ async function nextDocNo(
   return `${prefix}-${year}-${month}-${String(seq.lastNo).padStart(4, "0")}`;
 }
 
+/**
+ * เลขที่ "ถัดไป" ฝั่งรายจ่าย แบบดูอย่างเดียว (WO 1.3 · §5.2 B)
+ * 🔴 อ่านอย่างเดียว ห้าม upsert — ร่างต้องไม่กินเลข (เลขจริงจองใน issueExpenseDoc/tx เท่านั้น)
+ *    ใช้สูตรเดียวกับ nextDocNo ข้างบนเป๊ะ (prefix-YYYY-MM-####)
+ */
+export async function previewNextExpenseDocNo(
+  systemId: string,
+  docType: AccountDocType,
+  date: Date,
+): Promise<string> {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const periodKey = `${year}-${month}`;
+  const prefix = EXP_DOC_PREFIX[docType] ?? docType;
+  const seq = await prisma.accountDocSequence.findUnique({
+    where: { systemId_docType_periodKey: { systemId, docType, periodKey } },
+    select: { lastNo: true },
+  });
+  return `${prefix}-${year}-${month}-${String((seq?.lastNo ?? 0) + 1).padStart(4, "0")}`;
+}
+
 // ─────────────────── list + filter tabs (§3.0.3) ───────────────────
 
 export type ExpTab =

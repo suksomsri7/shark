@@ -261,7 +261,8 @@ export default async function DocDetailPage({
       <div className="flex flex-col gap-3 border-t pt-4">
         {doc.status === "DRAFT" && (
           <div className="flex flex-wrap gap-2">
-            <Link href={`${listPath}/${doc.id}?edit=1`} className="btn btn-ghost text-sm">แก้ไข</Link>
+            {/* WO 1.3: ร่าง → ฟอร์ม V2 เต็มหน้า (ของเดิม ?edit=1 ยังอยู่เผื่อลิงก์เก่า) */}
+            <Link href={`${listPath}/${doc.id}/edit`} className="btn btn-ghost text-sm">แก้ไข</Link>
             <form action={issueDocumentAction}>
               <Hidden systemId={systemId} docType={dt} id={doc.id} />
               <SubmitButton pendingText="กำลังออกเอกสาร…">ออกเอกสาร</SubmitButton>

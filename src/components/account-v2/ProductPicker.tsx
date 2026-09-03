@@ -19,6 +19,7 @@ export function ProductPicker({
   search,
   onCreate,
   onSelect,
+  onQueryChange,
   testId,
   defaultOpen = false,
   initialResults,
@@ -30,6 +31,8 @@ export function ProductPicker({
   search: (q: string) => Promise<ProductSearchResult[]>;
   onCreate?: (q: string) => void;
   onSelect?: (r: ProductSearchResult) => void;
+  /** พิมพ์อิสระได้ (§5.2 C) — ฟอร์มเอกสารต้องเก็บข้อความที่พิมพ์แม้ไม่ได้เลือกจากรายการ */
+  onQueryChange?: (q: string) => void;
   testId?: string;
   /** เปิดผลลัพธ์ไว้ตั้งแต่แรก — เฉพาะหน้า gallery สำหรับถ่ายภาพ QC */
   defaultOpen?: boolean;
@@ -76,6 +79,7 @@ export function ProductPicker({
           setQuery(e.target.value);
           setSelectedId("");
           setOpen(true);
+          onQueryChange?.(e.target.value);
           runSearch(e.target.value);
         }}
         onFocus={() => {

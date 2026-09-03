@@ -28,6 +28,8 @@ export function DocTable<T extends { id: string }>({
   mobileTitle,
   mobileSubtitle,
   mobileTrailing,
+  mobileStatus,
+  mobileDateLine,
   footerTotalSatang,
   page,
   pageCount,
@@ -50,6 +52,10 @@ export function DocTable<T extends { id: string }>({
   mobileTitle?: (row: T) => React.ReactNode;
   mobileSubtitle?: (row: T) => React.ReactNode;
   mobileTrailing?: (row: T) => React.ReactNode;
+  /** ชิปสถานะการ์ดมือถือ (f13 บรรทัด 1 ขวา) */
+  mobileStatus?: (row: T) => React.ReactNode;
+  /** "วันที่ออก · ครบกำหนด …" การ์ดมือถือ (f13 บรรทัด 3 ซ้าย) */
+  mobileDateLine?: (row: T) => React.ReactNode;
   /** ผลรวมยอดในหน้านี้ (satang) — แสดงท้ายตาราง ถ้าไม่ส่ง = ไม่แสดงแถวสรุป */
   footerTotalSatang?: number;
   page: number;
@@ -81,6 +87,8 @@ export function DocTable<T extends { id: string }>({
     mobileTitle: mobileTitle?.(r) ?? cols[0]?.render(r),
     mobileSubtitle: mobileSubtitle?.(r),
     mobileTrailing: mobileTrailing?.(r),
+    mobileStatus: mobileStatus?.(r),
+    mobileDateLine: mobileDateLine?.(r),
     testId: rowTestId?.(r),
   }));
 

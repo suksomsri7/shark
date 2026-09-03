@@ -33,11 +33,27 @@ export async function requireAccountPage(systemId: string, action: string) {
  *     ⚠️ ไม่ใช่การลดความปลอดภัย: การสร้าง/แก้/ออกเอกสารยังตรวจ `account.doc.create`/`.issue` ที่ตัว
  *     server action เองทุกตัว (actions.ts / expense-actions.ts) · หน้าเป็นแค่ชั้นแรก
  *     และคนที่มี `account.doc.create` อยู่เดิม **ยังเข้าได้เหมือนเดิม** เพราะตาราง IMPLIES ใน access.ts
+ *   - **หน้าฟอร์ม V2 (`…/new` · `…/[docId]/edit`, WO 1.3)** → `account.doc.create` (ไม่ใช่ `.view`)
+ *     เพราะเปิดหน้าแล้ว autosave สร้างร่างได้ทันที ⇒ คนที่ดูได้อย่างเดียวต้องเข้าไม่ได้ตั้งแต่หน้า
  *   - หน้าอ่านรายงาน → `account.report.view` · สมุดรายวัน/แยกประเภท → `account.journal.view`
  *   - หน้าทะเบียน/ตั้งค่า → action `.manage` ของหมวดนั้น
  */
 export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   // WO 0.4: หน้า hub ราก /account (เดิม 404 เพราะไม่มี page.tsx — ledger/wo-notes/0.1.md ข้อ 8)
+  "asset-buy/[docId]/edit/page.tsx": "account.doc.create",
+  "asset-buy/new/page.tsx": "account.doc.create",
+  "asset-po/[docId]/edit/page.tsx": "account.doc.create",
+  "asset-po/new/page.tsx": "account.doc.create",
+  "credit-note-received/[docId]/edit/page.tsx": "account.doc.create",
+  "credit-note-received/new/page.tsx": "account.doc.create",
+  "debit-note-received/[docId]/edit/page.tsx": "account.doc.create",
+  "debit-note-received/new/page.tsx": "account.doc.create",
+  "deposit-payment/[docId]/edit/page.tsx": "account.doc.create",
+  "deposit-payment/new/page.tsx": "account.doc.create",
+  "docs/[docType]/[docId]/edit/page.tsx": "account.doc.create",
+  "docs/[docType]/new/page.tsx": "account.doc.create",
+  "expense/[docId]/edit/page.tsx": "account.doc.create",
+  "expense/new/page.tsx": "account.doc.create",
   "page.tsx": "account.doc.view",
   // WO 0.5: storybook-lite ส่วนประกอบกลาง V2 — ปิดเองบน production ผ่าน notFound() ในไฟล์ (APP_ENV check)
   // (เดิมชื่อ _dev/components — Next App Router ถือโฟลเดอร์ที่ขึ้นต้น _ เป็น private route ไม่ผูก URL เลย ⇒ 404 ย้ายมาที่นี่)
@@ -70,13 +86,19 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "journal/page.tsx": "account.journal.view",
   "ledger/page.tsx": "account.journal.view",
   "periods/page.tsx": "account.period.close",
+  "po/[docId]/edit/page.tsx": "account.doc.create",
   "po/[docId]/page.tsx": "account.doc.view",
+  "po/new/page.tsx": "account.doc.create",
   "po/page.tsx": "account.doc.view",
   "print/[docId]/page.tsx": "account.doc.view",
   "products/page.tsx": "account.product.manage",
+  "purchase-tax-invoice/[docId]/edit/page.tsx": "account.doc.create",
   "purchase-tax-invoice/[docId]/page.tsx": "account.doc.view", // WO 1.2 (PURCHASE_TAX_INVOICE)
+  "purchase-tax-invoice/new/page.tsx": "account.doc.create",
   "purchase-tax-invoice/page.tsx": "account.doc.view",
+  "purchase/[docId]/edit/page.tsx": "account.doc.create",
   "purchase/[docId]/page.tsx": "account.doc.view",
+  "purchase/new/page.tsx": "account.doc.create",
   "purchase/page.tsx": "account.doc.view",
   "reports/balance-sheet/page.tsx": "account.report.view",
   "reports/cash-flow/page.tsx": "account.report.view",
