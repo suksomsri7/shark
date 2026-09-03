@@ -18,7 +18,7 @@
 |---|---|---|---|---|---|
 | 0.1 | QC env (Neon branch · seed · เฉลย · serve · visual) | Opus | DONE | f7dc9c3 | Fable รัน seed-check เอง 55/55 + ดูภาพ invoice-list จริง · Neon branch `wo-acc-v2-qc` (**ห้าม `pnpm neon:gc`** ระหว่าง run) · ทำซ้ำ: seed → seed-check → `bash scripts/acc-v2-serve.sh` → `visual-acc-v2.mts <WO>` → serve stop |
 | 0.2 | ปิดรูรั่วเดิม (guard ทุก page · dedupe ผู้ติดต่อ · list server-side) | Opus | DONE | 1e8d73b | Fable รัน qc-acc-v2-guard เอง 100/0 บน .env.qc · อ่าน diff แล้ว · ค้างตาม: หน้าแรกบัญชี `AccountContent` (นอก account/**) ยังไม่มีด่าน → ใส่ใน WO 0.4 · action `account.*.view` แยกจาก create → WO 0.3 |
-| 0.3 | Schema เฟส 0 | Opus | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~23:55 UTC ขนานกับ 0.1 · โน้ต `wo-notes/0.3.md` · migration apply เฉพาะ QC branch (prod ได้ตอน deploy) |
+| 0.3 | Schema เฟส 0 | Opus | DONE | 269c354 | Fable ตรวจ SQL (additive ล้วน) + รัน qc-acc-v2-schema 61/61 + drift QC/prod = 0 · ⚠️ **migration หลุดลง prod แล้ว** (agent source `.env.qc` ผิดเพราะ URL มี `&` → fallback .env) — ไม่ rollback (additive) · ผล: CI ของ main จะเห็น drift จนกว่าเฟส 0 จะ merge → เร่ง merge · VOID ไม่เพิ่ม (มี CANCELLED/VOIDED แล้ว) · prod ยัง**ไม่ backfill phoneNorm** |
 | 0.4 | Shell V2 (เมนู 9 หมวด + flyout + sheet) | Sonnet | TODO | | + สร้าง `account/page.tsx` (ตอนนี้ 404 — บั๊กจาก 0.1) + ด่านสิทธิ์ `AccountContent` |
 | 0.5 | ส่วนประกอบกลาง V2 | Sonnet | TODO | | + `DateText` ใช้ ค.ศ. "24 ก.ย. 2026" ตามแบบ (ของเดิมโชว์ "24 ก.ย. 69") |
 | 0.6 | 🐞 hotfix `gl.postDocument` PURCHASE/EXPENSE โหมดราคารวม VAT Dr เกิน Cr (เจอใน 0.1 · ออกเอกสารไม่ได้) + ข้อสอบ | Opus | IN_PROGRESS | | มอบหมาย 4 ก.ย. ~00:30 UTC ขนานกับ 0.3 · ต้องเสร็จก่อนเฟส 1 · ดู `wo-notes/0.1.md` ข้อ 7 · โน้ต `wo-notes/0.6.md` |
@@ -62,7 +62,9 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 4 ก.ย. 2026 ~01:00 UTC — 🔴 เหตุการณ์: migration เฟส 0 หลุดลง prod ระหว่าง WO 0.3 (สาเหตุ: `set -a; . ./.env.qc` พังเพราะ URL มี `&` ไม่มี quote → prisma.config fallback ไป .env) · บทเรียน: ทุกคำสั่ง prisma ในงานนี้ต้องผ่าน `scripts/acc-v2-env.mts`/`grep|cut` + ด่านกัน host prod · จดใน memory
 - 3 ก.ย. 2026 (เช้ามืด) — เริ่ม run ยาว · เจ้าของสั่ง: Fable คุมแทน · QC ต้องเห็นภาพจริง+ตัวเลขจริง · หาบั๊ก/ช่องโหว่ · กลับมาต่อได้เมื่อ session ล้ม · Opus ติด rate limit ตั้งแต่ 2 ก.ย. ~20:00 UTC (ต้องทดสอบก่อนมอบหมายทุกครั้ง)
 
 ## ของที่ต้องส่งต่อ session อื่น / รอเจ้าของ
-- (ว่าง)
+- 🔴 **session แชท**: prod DB มี migration `20260902160000_account_v2_phase0` แล้ว (additive) แต่ main ยังไม่มีไฟล์ migration นี้ → `pnpm drift`/qc-migrate-status บน CI ของ main อาจแดง (MS-2) จนกว่า branch `session/accounting` จะ merge เข้า main (Fable เร่งหลัง WO 0.6) — ห้ามสร้าง migration ชื่อชนกัน
+- prod: รัน `QC_ENV_FILE=.env pnpm tsx scripts/backfill-acc-v2-phone-norm.mts` หลัง merge (Fable)
