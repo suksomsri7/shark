@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 2.3 ภาพรวมรายรับ/รายจ่าย (2.1/2.2/0.7 DONE) |
+| WO | 🏁 เฟส 2 ปิด → เฟส 3: 3.1 Party |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~23:20 UTC: 2.2 DONE (ภาพผ่าน) · 2.3 กำลังทำ · หลัง 2.3: qc:all → merge main (ปิดเฟส 2) → เฟส 3 (Party/ผู้ติดต่อ) |
+| ขั้นที่ถึง | 4 ก.ย. ~01:30 UTC: เฟส 2 ครบ 3 WO · push main `ef6567b` (qc:all 200/200 · Vercel deploy) · ถัดไป 3.1 Party (Opus) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
@@ -37,7 +37,7 @@
 | 2.1 | query dashboard | Opus | DONE | fb0aee6 | dashboard 164/164 (Fable รันเอง) · 12 query / 44 ms · เฉลยอิสระ SQL · seed มีข้อมูล พ.ค.–ก.ย. เท่านั้น (กราฟ 5 แท่ง) · 🐞 ส่งต่อ: aging นับซ้ำเมื่อมี BN (แก้ใน 5.x) · TIMESTAMP ไม่มีโซน ต้อง AT TIME ZONE 2 ชั้น |
 | 0.7 | 🔧 CI-compat: qc:all บน CI ไม่มี .env.qc/seed → acc-v2 suites แดง | Opus | DONE | (HEAD) | acc-v2-env โหมด CI · qc-all seed ครั้งเดียวต่อ shard (marker) · 🐞 loadEnvFile?.() ไม่กัน ENOENT → try/catch 12 ชุด · จำลอง CI shard 4/6+5/6 เขียว · ⏰ ระเบิดเวลา: seed-check H1 แดง 1 พ.ย. 2026 (oracle วันที่ตายตัว) → แก้ใน 9.x ให้สัมพัทธ์ |
 | 2.2 | หน้าหลัก V2 | Sonnet | DONE | (HEAD) | ตีกลับ 1 รอบ → รอบ 2 ตรง f1/f11 · visual 86/86 · home 87 · 🐞 home test เคยลบ pin ของ seed (แก้) · ค้าง: top 3 เป็นรายปี (รายเดือน = +2 query เกิน budget) → 9.3 |
-| 2.3 | ภาพรวมรายรับ/รายจ่าย | Sonnet | REVIEW | 5c3c8f3 (snapshot) | overview 73/73 (Fable รันเอง) · qc:all 200/200 · แต่ **typecheck 2 error ในสคริปต์ → build ล้ม → ภาพยังไม่ได้** (agent แก้อยู่) · ⚠️ agent รายงาน typecheck สะอาดทั้งที่ไม่จริง — Fable ต้องรันเองเสมอ (ทำอยู่แล้ว) |
+| 2.3 | ภาพรวมรายรับ/รายจ่าย | Sonnet | DONE | ef6567b | overview 73 · visual 83/83 ตรง f4 · ≤8 query · 🐞 agent รายงาน typecheck สะอาดทั้งที่มี error 2 (Fable จับได้ตอน build) · ผู้ติดต่อที่ติดตาม = top-5 ตามยอดค้าง (ไม่มี pinned บน contact) |
 | 3.1 | Party | Opus | TODO | | |
 | 3.2 | หน้าผู้ติดต่อ V2 | Sonnet | TODO | | |
 | 3.3 | modal ผู้ติดต่อ + DBD + dedupe | Opus (Sonnet) | TODO | | |
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 4 ก.ย. 2026 ~01:30 UTC — 🏁 **เฟส 2 ปิด** (2.1–2.3 + 0.7 CI-compat · main ef6567b · หน้าหลัก f1/f11 + ภาพรวม f4 บน prod)
 - 3 ก.ย. 2026 ~19:40 UTC — 🏁 **เฟส 1 ปิด** (9 WO · ขึ้น main 1884f8d · บั๊กเก่าที่ปิดระหว่างทาง 11 ตัว รวม RE ลงรายได้ซ้ำ 2 เท่า / DP โพสต์ซ้ำ / ซื้อ INCL_VAT ไม่สมดุล) · crontab เอกสารประจำ+เตือน ติดตั้งแล้ว
 - 3 ก.ย. 2026 ~04:15 UTC — 🏁 **เฟส 0 ปิด + 1.1/1.2 ขึ้น main** (qc:all 190/190 · commit 0d19670) · ระหว่างทาง: reboot 1 ครั้ง (แรม) → กติกางานหนักทีละอย่าง
 - 4 ก.ย. 2026 ~01:50 UTC — เจ้าของย้ำ: **UI ต้องออกมาตรงภาพที่ออกแบบ** → เพิ่มด่าน parity ใน BLUEPRINT §1 (Fable ดูภาพจริงคู่ mockup ทุกหน้า) · memory `feedback_ui_must_match_approved_mockups`
