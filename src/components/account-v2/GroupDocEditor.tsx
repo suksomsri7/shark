@@ -13,7 +13,6 @@ import {
 import { ContactPicker } from "./ContactPicker";
 import { DateInput } from "./DateInput";
 import { SectionCard } from "./SectionCard";
-import { StickyBar } from "./StickyBar";
 
 // ─────────────────────────────────────────────────────────────
 // GroupDocEditor — ฟอร์มพิเศษ §5.2 K (ใบวางบิลรวม BN / ใบรวมจ่าย CP) · WO 1.7
@@ -108,6 +107,11 @@ export function GroupDocEditor({
     [rows, selected],
   );
   const allChecked = eligibleRows.length > 0 && eligibleRows.every((r) => selected.has(r.id));
+  // สรุปบนแถบปุ่มท้าย (เดสก์ท็อป = ซ้ายปุ่ม · มือถือ = บรรทัดเหนือปุ่ม) — รูปแบบเดียวกับ wizard WO 1.6
+  const summaryText =
+    selected.size === 0
+      ? `ยังไม่ได้เลือกเอกสาร`
+      : `เลือก ${selected.size} รายการ · รวม ฿${(total / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })}`;
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -148,7 +152,7 @@ export function GroupDocEditor({
     });
 
   return (
-    <div className="flex flex-col gap-4 pb-28" data-testid="group-editor">
+    <div className="flex w-full max-w-5xl flex-col gap-4 pb-28 md:pb-24" data-testid="group-editor">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">{texts.title}</h1>
       </div>
@@ -237,6 +241,7 @@ export function GroupDocEditor({
                       className={`border-b last:border-0 ${r.eligible ? "" : "opacity-50"}`}
                       data-testid={`child-row-${r.docNo ?? r.id}`}
                       data-selected={selected.has(r.id) ? "1" : "0"}
+                      data-eligible={r.eligible ? "1" : "0"}
                     >
                       <td className="py-2">
                         <input
@@ -279,6 +284,7 @@ export function GroupDocEditor({
                   onClick={() => toggle(r.id)}
                   data-testid={`child-card-${r.docNo ?? r.id}`}
                   data-selected={selected.has(r.id) ? "1" : "0"}
+                  data-eligible={r.eligible ? "1" : "0"}
                   className={`flex flex-col gap-1 rounded-lg border px-3 py-2 text-left text-sm ${r.eligible ? "" : "opacity-50"}`}
                   style={selected.has(r.id) ? { borderColor: "var(--color-ink)", borderWidth: 2 } : undefined}
                 >
@@ -313,25 +319,33 @@ export function GroupDocEditor({
       </SectionCard>
 
       {/* ④ แถบปุ่มท้าย */}
-      <StickyBar
-        testId="group-actions"
-        secondary={
-          <a href={listPath} className="btn btn-ghost text-sm">
+      {/* ④ แถบปุ่มท้าย — โครงเดียวกับ wizard WO 1.6 ที่ผ่าน QC แล้ว: [ยกเลิก] · สรุป · [ปุ่มดำ]
+          `pr-20` เฉพาะมือถือ กันปุ่มไปทับ orb AI ที่ลอยมุมขวาล่าง (`fixed bottom-4 right-4`) */}
+      <div
+        className="sticky bottom-0 z-20 border-t bg-[color:var(--color-surface)] py-3 pr-20 pl-4 md:px-4"
+        data-testid="group-actions"
+      >
+        <div className="mb-2 truncate text-xs text-[color:var(--color-muted)] md:hidden" data-testid="group-summary-m">
+          {summaryText}
+        </div>
+        <div className="flex items-center gap-3">
+          <a href={listPath} className="btn btn-ghost shrink-0 text-sm" data-testid="btn-cancel">
             ยกเลิก
           </a>
-        }
-        primary={
+          <span className="hidden flex-1 truncate text-sm text-[color:var(--color-muted)] md:block" data-testid="group-summary">
+            {summaryText}
+          </span>
           <button
             type="button"
-            className="btn btn-primary w-full text-sm"
+            className="btn btn-primary flex-1 justify-center text-sm md:flex-none"
             disabled={pending || selected.size === 0 || !contact?.id}
             onClick={submit}
             data-testid="btn-create-group"
           >
             {pending ? "กำลังบันทึก…" : texts.submitLabel}
           </button>
-        }
-      />
+        </div>
+      </div>
     </div>
   );
 }

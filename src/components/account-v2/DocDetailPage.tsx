@@ -407,7 +407,7 @@ function GroupChildrenTable({ data, base }: { data: DocDetailData; base: string 
       <h3 className="mb-2 text-sm font-semibold">
         {label} <span data-testid="group-children-count">{rows.length}</span> ใบ
       </h3>
-      <table className="w-full min-w-[640px] text-sm">
+      <table className="w-full min-w-[640px] text-sm" data-testid="group-table">
         <thead>
           <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
             <th className="py-2 font-normal">เลขที่</th>

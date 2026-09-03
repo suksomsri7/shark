@@ -207,7 +207,7 @@ if (WO === "1.5") {
 //   • 3 ใบหลัง → ปล่อยว่าง (ใช้ถ่ายฟอร์มสร้างที่ติ๊กครบ 3 ใบ + แถบ bulk ที่ติ๊ก 2 ใบ)
 // 🔴 ลบทิ้งเสมอใน finally — ใบแจ้งหนี้ที่ออกแล้วจะไปเพิ่มตัวนับแท็บของ WO 1.1 (เฉลย IV ทั้งหมด 51 ใบ)
 const FIXTURE_REF_17 = "QC-VISUAL-1.7";
-let fx17 = { contactId: "", bnId: "", freeIds: [] as string[], freeDocNos: [] as string[], freeSum: 0, groupSum: 0 };
+let fx17 = { contactId: "", bnId: "", bnDocNo: "", freeIds: [] as string[], freeDocNos: [] as string[], freeSum: 0, groupSum: 0 };
 if (WO === "1.7") {
   const { prisma: db } = await import("@/lib/core/db");
   const svc = await import("@/lib/modules/account/service");
@@ -287,6 +287,7 @@ if (WO === "1.7") {
   fx17 = {
     contactId: contact.id,
     bnId: bn.id,
+    bnDocNo: bn.docNo,
     freeIds: [f1, f2, f3],
     freeDocNos: [f1, f2, f3].map((id) => byId.get(id)?.docNo ?? ""),
     freeSum: freeDocs.reduce((s, d) => s + d.grandTotal, 0),
@@ -365,7 +366,7 @@ const PAGES: Record<string, PageSpec[]> = {
       name: "bn-detail",
       path: `/app/sys/${SYS}/account/docs/BILLING_NOTE/${fx17.bnId}`,
       note: 'หน้าเอกสารใบวางบิล — ตาราง "เอกสารในกลุ่ม" แทนตารางสินค้า + ปุ่มดำ "รับชำระ"',
-      expect: ["ใบแจ้งหนี้ที่ยังค้างชำระ", "รับชำระ"],
+      expect: [fx17.bnDocNo, "รับชำระ"],
     },
   ],
   "0.5": [
@@ -1018,7 +1019,13 @@ try {
               hasEditor: !!document.querySelector('[data-testid="group-editor"]'),
               // เดสก์ท็อป = แถวตาราง (child-row-…) · มือถือ = การ์ด (child-card-…) — นับเฉพาะที่มองเห็นจริง
               childRows: [...document.querySelectorAll('[data-testid^="child-row-"], [data-testid^="child-card-"]')].filter(isVisible).length,
+              // แถวที่ "ติ๊กได้จริง" กับ "ถูกล็อก (อยู่ในใบวางบิลอื่นแล้ว)" — fixture จงใจมีทั้ง 2 แบบอย่างละ 3
+              childEligible: [...document.querySelectorAll('[data-eligible="1"]')].filter(isVisible).length,
+              childBlocked: [...document.querySelectorAll('[data-eligible="0"]')].filter(isVisible).length,
               childSelected: [...document.querySelectorAll('[data-testid^="child-row-"][data-selected="1"], [data-testid^="child-card-"][data-selected="1"]')].filter(isVisible).length,
+              tableRows: document.querySelectorAll('[data-testid="group-table"] tbody tr').length,
+              summary: document.querySelector('[data-testid="group-summary"]')?.textContent?.trim() ?? "",
+              summaryM: document.querySelector('[data-testid="group-summary-m"]')?.textContent?.trim() ?? "",
               selectedCount: document.querySelector('[data-testid="group-selected-count"]')?.textContent?.trim() ?? "",
               total: document.querySelector('[data-testid="group-total"]')?.textContent?.trim() ?? "",
               hasChildrenTable: !!document.querySelector('[data-testid="group-children"]'),
@@ -1225,23 +1232,34 @@ try {
             c17.push([probe.group.bulkActionDisabled === false, `เลือกใบของลูกค้ารายเดียวกันที่ยังค้างชำระ → ปุ่มใช้งานได้จริง (ไม่ใช่ปุ่มจาง)`]);
           }
           if (spec.name === "bn-new") {
+            // fixture จงใจสร้าง IV 6 ใบของลูกค้ารายเดียว: 3 ใบว่าง (ติ๊กได้) + 3 ใบที่อยู่ในใบวางบิลแล้ว (ล็อกไว้
+            // พร้อมเหตุผล) ⇒ ไม้บรรทัดต้องวัด "ติ๊กได้ 3 / ล็อก 3" ไม่ใช่ "ตารางมี 3 แถว"
             c17.push([probe.group.hasEditor, `ฟอร์มกลุ่มขึ้นจริง [data-testid="group-editor"] (positive control ของด่านที่เหลือ)`]);
-            c17.push([probe.group.childRows === 3, `ตารางใบแจ้งหนี้ค้างชำระ 3 แถว (เจอ ${probe.group.childRows})`]);
+            c17.push([probe.group.childEligible === 3, `ใบที่ติ๊กได้ 3 ใบ (เจอ ${probe.group.childEligible})`]);
+            c17.push([probe.group.childBlocked === 3, `ใบที่อยู่ในใบวางบิลอื่นแล้วถูกล็อก 3 ใบ (เจอ ${probe.group.childBlocked})`]);
             c17.push([probe.group.childSelected === 3, `ติ๊กไว้ครบ 3 ใบจากปุ่ม bulk (เจอ ${probe.group.childSelected})`]);
             c17.push([probe.group.selectedCount === "3", `บรรทัดสรุปบอก "เลือก 3 รายการ" (เจอ "${probe.group.selectedCount}")`]);
             c17.push([
               probe.group.total.includes(money(fx17.freeSum)),
               `"รวมยอดที่เลือก" = ผลรวมยอดค้างจริงของ 3 ใบ ${money(fx17.freeSum)} (เจอ "${probe.group.total}")`,
             ]);
+            // แถบปุ่มท้าย: สรุปอยู่ซ้ายปุ่มบนเดสก์ท็อป · เป็นบรรทัดเหนือปุ่มบนมือถือ
+            const bar = device === "desktop" ? probe.group.summary : probe.group.summaryM;
+            c17.push([bar.includes("เลือก 3 รายการ") && bar.includes(money(fx17.freeSum)), `แถบปุ่มท้ายสรุป "เลือก 3 รายการ · รวม ${money(fx17.freeSum)}" (เจอ "${bar}")`]);
             if (device === "mobile") c17.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
           }
           if (spec.name === "bn-detail") {
             c17.push([probe.group.hasChildrenTable, `หน้าเอกสารแสดงตาราง "เอกสารในกลุ่ม" [data-testid="group-children"]`]);
-            c17.push([probe.group.groupChildCount === 3, `ตารางกลุ่มมี 3 แถว = ใบแจ้งหนี้ลูก 3 ใบ (เจอ ${probe.group.groupChildCount})`]);
+            c17.push([probe.group.tableRows === 3, `[data-testid="group-table"] มี 3 แถว = ใบแจ้งหนี้ลูก 3 ใบ (เจอ ${probe.group.tableRows})`]);
+            c17.push([probe.h1 === fx17.bnDocNo, `h1 = เลขที่ใบวางบิล ${fx17.bnDocNo} (เจอ "${probe.h1}")`]);
             c17.push([probe.group.childrenCountLabel === "3", `หัวตารางบอกจำนวน 3 ใบ (เจอ "${probe.group.childrenCountLabel}")`]);
             c17.push([
               probe.group.childrenOutstanding.includes(money(fx17.groupSum)),
               `ยอดค้างรวมของกลุ่ม = ${money(fx17.groupSum)} (เจอ "${probe.group.childrenOutstanding}")`,
+            ]);
+            c17.push([
+              (probe.testids["doc-grand"] ?? "").includes(money(fx17.groupSum)),
+              `ยอดสุทธิบนหัวเอกสาร = ${money(fx17.groupSum)} (เจอ "${probe.testids["doc-grand"]}")`,
             ]);
             c17.push([probe.group.primaryAction.includes("รับชำระ"), `ปุ่มดำหลัก = "รับชำระ" (เจอ "${probe.group.primaryAction}")`]);
             if (device === "mobile") c17.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
