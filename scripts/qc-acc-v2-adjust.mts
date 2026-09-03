@@ -130,6 +130,13 @@ console.log("AJ0 สายไฟ static:");
   for (const label of ["เหตุผลการปรับปรุงหนี้", "ยอดคงเหลือของเอกสารอ้างอิง", "ลดได้ไม่เกินนี้"]) {
     assert(`AJ0.22 DocEditorV2.tsx มีป้ายไทย "${label}"`, editorV2Src.includes(label));
   }
+  // AJ0.23–25 (Fable QC ภาพจริง 1.6 รอบ 2 — กันบั๊กเดิมย้อนกลับ):
+  assert("AJ0.23 cap-line ไม่มี ฿ ซ้อนสอง (MoneyText ใส่ ฿ ให้แล้ว)", !/ยอดคงเหลือของเอกสารอ้างอิง ฿</.test(editorV2Src));
+  assert("AJ0.24 ปุ่มอนุมัติถูก disabled เมื่อเกินเพดาน (capExceeded)", /disabled=\{pending \|\| saving \|\| capExceeded\}/.test(editorV2Src));
+  assert("AJ0.25 ปุ่มบันทึกร่างไม่ถูกผูกกับ capExceeded (ยังบันทึกร่างเกินเพดานได้)", !/btn-save-draft[\s\S]{0,200}capExceeded/.test(editorV2Src));
+  assert("AJ0.26 ผู้ติดต่อถูกล็อกเป็น readOnly เมื่ออยู่ในโหมด adjust ที่มีเอกสารอ้างอิง", /props\.adjustMode && props\.refDoc/.test(editorV2Src) && /readOnly value=\{value\.contactLabel/.test(editorV2Src));
+  const wizardStep1Src2 = readFileSync(join(ROOT, "src/components/account-v2/AdjustWizardStep1.tsx"), "utf8");
+  assert("AJ0.27 ตารางขั้น ① มีทั้งเดสก์ท็อป (md:block) และการ์ดมือถือ (md:hidden) แยกกัน", /hidden overflow-x-auto md:block/.test(wizardStep1Src2) && /flex flex-col gap-2 md:hidden/.test(wizardStep1Src2));
 }
 
 // ═══════════════════════════ AJ1–AJ10 — ของจริงบน DB ═══════════════════════════
@@ -143,6 +150,7 @@ const pay = await import("@/lib/modules/account/payment");
 const prod = await import("@/lib/modules/account/product");
 const { assertAccountCan } = await import("@/lib/modules/account/access");
 const { buildAdjustCandidatePage } = await import("@/lib/modules/account/editor-actions");
+const cfg = await import("@/lib/modules/account/doc-editor-config");
 
 const tag = "QCACC16-" + Date.now();
 let tenantId = "";
@@ -261,6 +269,21 @@ try {
   await acc.issueDocument(tenantId, otherSystemId, ivOtherSystem.id);
   const pageThisSystem = await buildAdjustCandidatePage(tenantId, systemId, "CREDIT_NOTE", "INVOICE", {});
   assert("AJ1.6 ขอบเขตระบบ: เอกสารของระบบอื่นไม่ติดมาในระบบนี้", !pageThisSystem.rows.some((r) => r.id === ivOtherSystem.id));
+
+  // AJ1.7–8 (Fable QC ภาพจริง 1.6): ผู้ติดต่อของฟอร์มขั้น ② ต้องพรีฟิลจากเอกสารอ้างอิงเสมอ (บั๊กเดิม: contactId
+  // เซ็ตแล้วแต่ contactLabel ว่าง เพราะ DocEditorPage คำนวณ 2 ค่าแยกกันคนละสูตร) — ทดสอบฟังก์ชันบริสุทธิ์ตรง ๆ
+  // ด้วยข้อมูลจริงจาก getDocument() (โครงเดียวกับที่ DocEditorPage ใช้จริง ไม่ใช่ object ปลอม)
+  const refDocForSeed = await acc.getDocument(tenantId, systemId, ivIssuedA);
+  if (!refDocForSeed) throw new Error("AJ1.7: ไม่พบเอกสารอ้างอิงสำหรับทดสอบ seed ผู้ติดต่อ");
+  const seedNew = cfg.adjustSeedContact(null, refDocForSeed);
+  eq("AJ1.7 สร้างใหม่จาก wizard (?ref=): contactId ดึงจากเอกสารอ้างอิง", seedNew.contactId, refDocForSeed.contactId);
+  assert(
+    "AJ1.8 สร้างใหม่จาก wizard (?ref=): contactLabel ไม่ว่าง (บั๊กเดิม: contactId ถูกแต่ label ว่าง)",
+    seedNew.contactLabel.length > 0 && seedNew.contactLabel === refDocForSeed.contact?.name,
+    `ได้ "${seedNew.contactLabel}"`,
+  );
+  const seedExisting = cfg.adjustSeedContact(refDocForSeed, null);
+  eq("AJ1.9 positive control: เปิดร่างเดิมมาแก้ (docId มีค่า) ใช้ contactId ของร่างตัวเอง ไม่ใช่ refDoc", seedExisting.contactId, refDocForSeed.contactId);
 
   // ═════════ AJ2 — CN cap พื้นฐาน ═════════
   console.log("\nAJ2 CN เกินเพดาน/เท่าเพดานพอดี:");

@@ -48,6 +48,7 @@ import {
   isAdjustType,
   adjustRefDocTypesFor,
   adjustRefLabelFor,
+  adjustSeedContact,
 } from "./doc-editor-config";
 
 // ─────────────────────────────────────────────────────────────
@@ -163,7 +164,8 @@ export async function DocEditorPage({
 
   // ── ค่าเริ่มต้นของฟอร์ม ──
   // WO 1.6: สร้างใหม่จาก wizard (ไม่มี doc ของตัวเองแต่มี refDoc) → ผู้ติดต่อ/รายการ ดึงมาจากเอกสารอ้างอิงให้แก้ไข
-  const contactId = doc?.contactId ?? (!doc ? (refDoc?.contactId ?? null) : null);
+  const seededContact = adjustSeedContact(doc, refDoc);
+  const contactId = seededContact.contactId;
   const contactRow = contactRows.find((c) => c.id === contactId);
   const dueDays = docType === "QUOTATION" ? settings.defaultValidDays : (contactRow?.creditTermDays || settings.defaultDueDays);
   const lineSourceDoc = doc ?? (!doc ? refDoc : null);
@@ -195,7 +197,7 @@ export async function DocEditorPage({
   const initial: DocDraftValue = {
     docNo: docNoPreview,
     contactId,
-    contactLabel: doc?.contact?.name ?? "",
+    contactLabel: seededContact.contactLabel,
     issueDate,
     dueDate:
       isoOf(docType === "QUOTATION" ? doc?.validUntil : doc?.dueDate) || isoPlusDays(issueDate, dueDays),

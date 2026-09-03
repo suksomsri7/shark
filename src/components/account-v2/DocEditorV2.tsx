@@ -448,7 +448,7 @@ function EditorBody(props: DocEditorV2Props) {
               data-testid="cap-line"
               style={capExceeded ? { color: "var(--color-danger)" } : undefined}
             >
-              ยอดคงเหลือของเอกสารอ้างอิง ฿<MoneyText satang={props.capSatang} decimals /> — ลดได้ไม่เกินนี้
+              ยอดคงเหลือของเอกสารอ้างอิง <MoneyText satang={props.capSatang} decimals /> — ลดได้ไม่เกินนี้
               {capExceeded && " · ยอดในฟอร์มนี้เกินยอดคงเหลือ"}
             </p>
           )}
@@ -551,14 +551,19 @@ function EditorBody(props: DocEditorV2Props) {
                     : undefined
                 }
               >
-                <ContactPicker
-                  defaultId={value.contactId ?? undefined}
-                  defaultLabel={value.contactLabel}
-                  search={searchContacts}
-                  onSelect={(r) => pickContact(r.id, r.name)}
-                  onCreate={() => router.push(`${props.basePath}/contacts`)}
-                  testId="contact-picker"
-                />
+                {/* WO 1.6 §5.2 J: อ้างอิงเอกสารเดิมแล้ว → ผู้ติดต่อต้องตรงกับเอกสารต้นทางเสมอ (ล็อกแก้ไม่ได้) */}
+                {props.adjustMode && props.refDoc ? (
+                  <input className="input" readOnly value={value.contactLabel || "—"} data-testid="contact-picker" />
+                ) : (
+                  <ContactPicker
+                    defaultId={value.contactId ?? undefined}
+                    defaultLabel={value.contactLabel}
+                    search={searchContacts}
+                    onSelect={(r) => pickContact(r.id, r.name)}
+                    onCreate={() => router.push(`${props.basePath}/contacts`)}
+                    testId="contact-picker"
+                  />
+                )}
               </span>
               {selectedContact && (
                 <span
@@ -589,9 +594,12 @@ function EditorBody(props: DocEditorV2Props) {
             </span>
           </Field>
 
-          <Field label={props.dueLabel} htmlFor="fld-due">
-            <DateInput id="fld-due" value={value.dueDate} onChange={(iso) => set("dueDate", iso)} testId="fld-due" />
-          </Field>
+          {/* WO 1.6 §5.2 J: CN/DN/CNR/DNR ไม่มีแนวคิด "ครบกำหนด" — ตัดช่องนี้ออก เหลือแค่วันที่ออก */}
+          {!props.adjustMode && (
+            <Field label={props.dueLabel} htmlFor="fld-due">
+              <DateInput id="fld-due" value={value.dueDate} onChange={(iso) => set("dueDate", iso)} testId="fld-due" />
+            </Field>
+          )}
         </div>
 
         {/* มือถือย่อส่วนที่เหลือไว้ตาม g17 ("เพิ่มเติม: อ้างอิง · สกุลเงิน · ใบกำกับ · พนักงานขาย") */}
@@ -829,7 +837,7 @@ function EditorBody(props: DocEditorV2Props) {
       )}
 
       {/* E — สรุปยอด */}
-      <SectionCard title="สรุปยอด" complete={totals.grandTotal > 0} testId="sec-totals">
+      <SectionCard title="สรุปยอด" complete={totals.grandTotal > 0 && !capExceeded} testId="sec-totals">
         <DocTotals
           totals={totals}
           vatRateBp={props.vatRateBp}
@@ -837,6 +845,15 @@ function EditorBody(props: DocEditorV2Props) {
           docDiscount={value.docDiscount}
           onDocDiscountChange={(v) => set("docDiscount", v)}
         />
+        {capExceeded && (
+          <p
+            className="mt-2 text-sm font-semibold"
+            data-testid="cap-exceeded-totals"
+            style={{ color: "var(--color-danger)" }}
+          >
+            เกินยอดคงเหลือ <MoneyText satang={props.capSatang ?? 0} decimals />
+          </p>
+        )}
       </SectionCard>
 
       {/* F — รับชำระเงิน (§5.2 F · ภาพ g2) */}
@@ -972,8 +989,9 @@ function EditorBody(props: DocEditorV2Props) {
             <span className="relative flex justify-end">
               <button
                 type="button"
-                className="btn btn-primary text-sm"
-                disabled={pending || saving}
+                className="btn btn-primary text-sm disabled:opacity-40"
+                disabled={pending || saving || capExceeded}
+                title={capExceeded ? "ยอดเกินยอดคงเหลือของเอกสารอ้างอิง — แก้ยอดหรือเลือกเอกสารอ้างอิงใหม่ก่อนอนุมัติ" : undefined}
                 aria-expanded={approveOpen}
                 onClick={() => setApproveOpen((v) => !v)}
                 data-testid="btn-approve-menu"

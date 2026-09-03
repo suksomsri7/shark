@@ -143,3 +143,17 @@ export function adjustRefLabelFor(docType: AccountDocType): string {
   if (docType === "CREDIT_NOTE_RECEIVED" || docType === "DEBIT_NOTE_RECEIVED") return "เอกสารต้นทาง";
   return "PRR";
 }
+
+/**
+ * WO 1.6 (หลัง QC ภาพจริง) — ผู้ติดต่อเริ่มต้นของฟอร์มขั้น ②: ร่างของตัวเอง (`doc`) มาก่อนเสมอ
+ * ถ้ายังไม่มีร่าง (สร้างใหม่จาก wizard) ใช้ผู้ติดต่อของเอกสารอ้างอิง (`refDoc`) แทน
+ * แยกเป็นฟังก์ชันบริสุทธิ์ให้ `DocEditorPage.tsx` เรียกใช้จุดเดียว + `qc-acc-v2-adjust.mts` ทดสอบตรงได้
+ * (บั๊กเดิม: contactId ถูกเซ็ตจาก refDoc แต่ contactLabel ลืมทำแบบเดียวกัน ⇒ ช่อง "ผู้ติดต่อ" ว่างเปล่าทั้งที่เลือกไว้แล้ว)
+ */
+export function adjustSeedContact(
+  doc: { contactId: string | null; contact: { name: string } | null } | null,
+  refDoc: { contactId: string | null; contact: { name: string } | null } | null,
+): { contactId: string | null; contactLabel: string } {
+  if (doc) return { contactId: doc.contactId, contactLabel: doc.contact?.name ?? "" };
+  return { contactId: refDoc?.contactId ?? null, contactLabel: refDoc?.contact?.name ?? "" };
+}

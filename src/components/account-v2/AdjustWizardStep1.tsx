@@ -167,58 +167,134 @@ export function AdjustWizardStep1({
                 ไม่พบเอกสารที่อ้างอิงได้ตามตัวกรองนี้
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs text-[color:var(--color-muted)]">
-                      <th className="w-8 py-2" />
-                      <th className="py-2">เลขที่</th>
-                      <th className="py-2">วันที่</th>
-                      {dueColLabel && <th className="py-2">{dueColLabel}</th>}
-                      <th className="py-2 text-right">{amountColLabel}</th>
-                      {showOutstanding && <th className="py-2 text-right">ค้างชำระ</th>}
-                      <th className="py-2">สถานะ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => {
-                      const isSel = r.id === selectedId;
-                      return (
-                        <tr
-                          key={r.id}
-                          onClick={() => setSelectedId(r.id)}
-                          className="cursor-pointer border-t"
-                          style={isSel ? { background: "var(--color-surface-2)" } : undefined}
-                          data-testid={`ref-row-${r.docNo ?? r.id}`}
-                          data-selected={isSel ? "1" : "0"}
-                        >
-                          <td className="py-2">
-                            <input type="radio" name="ref-row" checked={isSel} onChange={() => setSelectedId(r.id)} />
-                          </td>
-                          <td className="py-2 font-medium text-[color:var(--color-accent)]">{r.docNo ?? "—"}</td>
-                          <td className="py-2">
-                            <DateText value={r.issueDate} />
-                          </td>
-                          {dueColLabel && (
-                            <td className="py-2">{r.dueDate ? <DateText value={r.dueDate} /> : "—"}</td>
-                          )}
-                          <td className="py-2 text-right tabular-nums">
-                            {r.amountSatang != null ? <MoneyText satang={r.amountSatang} decimals /> : (r.amountText ?? "—")}
-                          </td>
-                          {showOutstanding && (
-                            <td className="py-2 text-right tabular-nums">
-                              <MoneyText satang={r.outstandingSatang ?? 0} decimals />
+              <>
+                {/* เดสก์ท็อป: ตารางจริง — colgroup กำหนดความกว้างต่อคอลัมน์ชัดเจน (กัน "ค้างชำระ"/"สถานะ" ชนกัน) */}
+                <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full table-fixed text-sm">
+                    <colgroup>
+                      <col style={{ width: 32 }} />
+                      <col style={{ width: 160 }} />
+                      <col style={{ width: 100 }} />
+                      {dueColLabel && <col style={{ width: 120 }} />}
+                      <col style={{ width: 130 }} />
+                      {showOutstanding && <col style={{ width: 130 }} />}
+                      <col style={{ width: 130 }} />
+                    </colgroup>
+                    <thead>
+                      <tr className="text-left text-xs text-[color:var(--color-muted)]">
+                        <th className="py-2" />
+                        <th className="py-2">เลขที่</th>
+                        <th className="py-2">วันที่</th>
+                        {dueColLabel && <th className="py-2">{dueColLabel}</th>}
+                        <th className="py-2 pr-3 text-right">{amountColLabel}</th>
+                        {showOutstanding && <th className="py-2 pr-3 text-right">ค้างชำระ</th>}
+                        <th className="py-2">สถานะ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => {
+                        const isSel = r.id === selectedId;
+                        return (
+                          <tr
+                            key={r.id}
+                            onClick={() => setSelectedId(r.id)}
+                            className="cursor-pointer border-t"
+                            style={isSel ? { background: "var(--color-surface-2)" } : undefined}
+                            data-testid={`ref-row-${r.docNo ?? r.id}`}
+                            data-selected={isSel ? "1" : "0"}
+                          >
+                            <td className="py-2">
+                              <input type="radio" name="ref-row" checked={isSel} onChange={() => setSelectedId(r.id)} />
                             </td>
+                            <td className="truncate py-2 font-medium text-[color:var(--color-accent)]">{r.docNo ?? "—"}</td>
+                            <td className="py-2">
+                              <DateText value={r.issueDate} />
+                            </td>
+                            {dueColLabel && (
+                              <td className="py-2">{r.dueDate ? <DateText value={r.dueDate} /> : "—"}</td>
+                            )}
+                            <td className="py-2 pr-3 text-right tabular-nums">
+                              {r.amountSatang != null ? <MoneyText satang={r.amountSatang} decimals /> : (r.amountText ?? "—")}
+                            </td>
+                            {showOutstanding && (
+                              <td className="py-2 pr-3 text-right tabular-nums">
+                                <MoneyText satang={r.outstandingSatang ?? 0} decimals />
+                              </td>
+                            )}
+                            <td className="py-2">
+                              <StatusChip value={r.statusLabel} tone={r.outstandingSatang ? "strong" : "muted"} />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* มือถือ (f13): การ์ดทั้งใบแตะเลือกได้ + radio ที่มุมซ้ายเหมือนช่อง checkbox ของ DocTable */}
+                <div className="flex flex-col gap-2 md:hidden">
+                  {rows.map((r) => {
+                    const isSel = r.id === selectedId;
+                    return (
+                      <div
+                        key={r.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedId(r.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") setSelectedId(r.id);
+                        }}
+                        className="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-3 text-sm"
+                        style={isSel ? { background: "var(--color-surface-2)" } : undefined}
+                        data-testid={`ref-row-${r.docNo ?? r.id}`}
+                        data-selected={isSel ? "1" : "0"}
+                      >
+                        <input
+                          type="radio"
+                          name="ref-row-m"
+                          checked={isSel}
+                          onChange={() => setSelectedId(r.id)}
+                          className="mt-0.5 shrink-0"
+                          aria-label={`เลือก ${r.docNo ?? r.id}`}
+                        />
+                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate font-semibold text-[color:var(--color-accent)]">{r.docNo ?? "—"}</span>
+                            <span className="shrink-0">
+                              <StatusChip value={r.statusLabel} tone={r.outstandingSatang ? "strong" : "muted"} />
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 text-xs text-[color:var(--color-muted)]">
+                            <span>
+                              <DateText value={r.issueDate} />
+                              {dueColLabel && r.dueDate ? (
+                                <>
+                                  {" · "}
+                                  {dueColLabel} <DateText value={r.dueDate} />
+                                </>
+                              ) : null}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-[color:var(--color-muted)]">{amountColLabel}</span>
+                            <span className="font-medium tabular-nums">
+                              {r.amountSatang != null ? <MoneyText satang={r.amountSatang} decimals /> : (r.amountText ?? "—")}
+                            </span>
+                          </div>
+                          {showOutstanding && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs text-[color:var(--color-muted)]">ค้างชำระ</span>
+                              <span className="font-medium tabular-nums">
+                                <MoneyText satang={r.outstandingSatang ?? 0} decimals />
+                              </span>
+                            </div>
                           )}
-                          <td className="py-2">
-                            <StatusChip value={r.statusLabel} tone={r.outstandingSatang ? "strong" : "muted"} />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
             {pageCount > 1 && (
               <div className="flex items-center justify-between text-xs text-[color:var(--color-muted)]">
