@@ -12,7 +12,7 @@
 | WO | 1.7 ใบวางบิลรวม/ใบรวมจ่าย (1.5+1.6 อยู่บน main `844b99e`) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~13:10 UTC: 1.5+1.6 push ขึ้น main `844b99e` (qc:all 193/194 แดงเฉพาะ guard → แก้แล้ว 134/134) · Vercel deploy · 1.7 กำลังทำ |
+| ขั้นที่ถึง | 3 ก.ย. ~13:30 UTC: prod `844b99e` READY (หน้าเอกสาร V2 + wizard ลด/เพิ่มหนี้ ขึ้น prod · migrate status up to date) · 1.7 กำลังทำ (agent) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
