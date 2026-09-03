@@ -75,6 +75,7 @@ const fin = await import("@/lib/modules/account/finance");
 const prod = await import("@/lib/modules/account/product");
 const gl = await import("@/lib/modules/account/gl");
 const sys = await import("@/lib/modules/system/service");
+const coa = await import("@/lib/modules/account/coa"); // WO 2.2: ปักหมุด "บัญชีที่ติดตาม" (ผังบัญชี) ให้ตรง f1
 
 // ─────────────────────────── ตัวช่วย ───────────────────────────
 
@@ -576,6 +577,24 @@ for (const f of FIN_DEF) {
   if (!r.ok) throw new Error(`สร้างช่องทางการเงิน ${f.name} ไม่สำเร็จ: ${r.reason}`);
   finId[f.code] = r.id;
   console.log(`💳 ${f.code} ${f.name} · ยอดยกมา ฿${bahtStr(opening)}`);
+}
+
+// WO 2.2 (Fable QC ภาพจริง): ปักหมุด "บัญชีเงินที่ติดตาม" ให้ตรง f1 — กสิกรไทย ออมทรัพย์ · เงินสด · พร้อมเพย์
+// (เงินสดย่อยไม่ปักหมุด ตามภาพ) · idempotent — เรียกซ้ำแล้วแทนที่ทั้งชุดเสมอ ไม่สะสม
+{
+  const pinFin = await fin.setPinnedFinanceAccounts(tenantId, systemId, [finId["BSV001"], finId["CSH001"], finId["EWL001"]]);
+  if (!pinFin.ok) throw new Error(`ปักหมุดบัญชีเงินไม่สำเร็จ: ${pinFin.reason}`);
+  console.log(`📌 ปักหมุดบัญชีเงินที่ติดตาม: กสิกรไทย ออมทรัพย์ · เงินสด · พร้อมเพย์`);
+
+  // "บัญชีที่ติดตาม" (ผังบัญชี) — รายได้จากการขายสินค้า (4000) + ซื้อสินค้า/ต้นทุนขาย (5000)
+  const pinLedgers = await prisma.accountLedger.findMany({
+    where: { systemId, code: { in: ["4000", "5000"] } },
+    select: { id: true, code: true },
+  });
+  if (pinLedgers.length !== 2) throw new Error(`หาบัญชี 4000/5000 ไม่ครบ (เจอ ${pinLedgers.length}) — ปักหมุดผังบัญชีไม่ได้`);
+  const pinLedger = await coa.setPinnedLedgerAccounts({ tenantId, systemId }, pinLedgers.map((l) => l.id));
+  if (!pinLedger.ok) throw new Error(`ปักหมุดผังบัญชีไม่สำเร็จ: ${pinLedger.reason}`);
+  console.log(`📌 ปักหมุดบัญชีที่ติดตาม: 4000 รายได้จากการขายสินค้า · 5000 ซื้อสินค้า/ต้นทุนขาย`);
 }
 
 // ─────────────────────────── 7. เอกสารฝั่งรับ ───────────────────────────

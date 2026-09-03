@@ -83,7 +83,7 @@ export function DashChart({ points }: { points: ChartPoint[] }) {
             textAnchor="middle"
             fontFamily="'Noto Sans Thai'"
           >
-            {`ขาดทุน −${formatBaht(Math.abs(points[worstLossIdx].profit))}`}
+            {`ขาดทุน −${formatBaht(Math.abs(points[worstLossIdx].profit), { decimals: true })}`}
           </text>
         )}
         <g fill="#737373" fontSize={10} textAnchor="middle" fontFamily="'Noto Sans Thai'">
@@ -108,7 +108,7 @@ export function DashChart({ points }: { points: ChartPoint[] }) {
               onFocus={() => setHover(i)}
               onBlur={() => setHover((h) => (h === i ? null : h))}
               tabIndex={0}
-              aria-label={`${points[i].label}: รายได้ ${formatBaht(points[i].revenue)} · ค่าใช้จ่าย ${formatBaht(points[i].expense)} · กำไร ${formatBaht(points[i].profit)}`}
+              aria-label={`${points[i].label}: รายได้ ${formatBaht(points[i].revenue, { decimals: true })} · ค่าใช้จ่าย ${formatBaht(points[i].expense, { decimals: true })} · กำไร ${formatBaht(points[i].profit, { decimals: true })}`}
             />
           ))}
         </g>
@@ -122,13 +122,13 @@ export function DashChart({ points }: { points: ChartPoint[] }) {
         >
           <div className="font-medium">{points[hover].label}</div>
           <div>
-            รายได้ <span className="font-medium">{formatBaht(points[hover].revenue)}</span>
+            รายได้ <span className="font-medium">{formatBaht(points[hover].revenue, { decimals: true })}</span>
           </div>
           <div>
-            ค่าใช้จ่าย <span className="font-medium">{formatBaht(points[hover].expense)}</span>
+            ค่าใช้จ่าย <span className="font-medium">{formatBaht(points[hover].expense, { decimals: true })}</span>
           </div>
           <div>
-            กำไร/ขาดทุน <span className="font-medium">{formatBaht(points[hover].profit)}</span>
+            กำไร/ขาดทุน <span className="font-medium">{formatBaht(points[hover].profit, { decimals: true })}</span>
           </div>
         </div>
       )}
@@ -148,9 +148,9 @@ export function DashChart({ points }: { points: ChartPoint[] }) {
           {points.map((p) => (
             <tr key={p.key}>
               <td>{p.label}</td>
-              <td>{formatBaht(p.revenue)}</td>
-              <td>{formatBaht(p.expense)}</td>
-              <td>{formatBaht(p.profit)}</td>
+              <td>{formatBaht(p.revenue, { decimals: true })}</td>
+              <td>{formatBaht(p.expense, { decimals: true })}</td>
+              <td>{formatBaht(p.profit, { decimals: true })}</td>
             </tr>
           ))}
         </tbody>

@@ -46,9 +46,37 @@ export type ChartGeometry = {
   slot: number;
 };
 
+/** ปัดค่าขึ้นเป็น "เลขกลม" ที่คนอ่านสบายตา (1/2/2.5/5/10 × 10^n) — มาตรฐาน "nice number" ของแกนกราฟ */
+function niceCeil(v: number): number {
+  if (v <= 0) return 1;
+  const exp = Math.floor(Math.log10(v));
+  const base = Math.pow(10, exp);
+  const n = v / base;
+  let niceN: number;
+  if (n <= 1) niceN = 1;
+  else if (n <= 2) niceN = 2;
+  else if (n <= 2.5) niceN = 2.5;
+  else if (n <= 5) niceN = 5;
+  else niceN = 10;
+  return niceN * base;
+}
+
+/** ป้ายเงินแบบย่อบนแกน (บาทเต็ม ไม่ใช่สตางค์) — "฿0" · "฿200k" · "฿1.2M" */
+export function formatBahtShort(baht: number): string {
+  const abs = Math.abs(baht);
+  const sign = baht < 0 ? "−" : "";
+  if (abs >= 1_000_000) {
+    const m = abs / 1_000_000;
+    return `${sign}฿${Number.isInteger(m) ? m : m.toFixed(1)}M`;
+  }
+  if (abs >= 1000) return `${sign}฿${Math.round(abs / 1000)}k`;
+  return `${sign}฿${Math.round(abs)}`;
+}
+
 /**
  * ตำแหน่ง SVG ของแท่งรายได้/ค่าใช้จ่ายคู่ + จุดเส้นกำไร — สเกลเดียวกันทั้งหมด (แท่งไม่ติดลบ · กำไรติดลบได้)
- * โดเมน y ครอบทั้งค่าสูงสุดของแท่ง และค่าต่ำสุดของกำไร (ถ้าขาดทุน เส้นจะลงไปต่ำกว่าเส้นศูนย์)
+ * แกน y ปัดเป็น "เลขกลม" เสมอ (ไม่ทาบเส้นกริดไปตามค่าสูงสุดดิบ) — เดิมเคยเอาค่าดิบเป็นสตางค์มา /1000
+ * ตรง ๆ (ลืมแปลงสตางค์→บาทก่อน) ทำให้ป้ายแกนพัง เช่น "฿39323k" — Fable QC ภาพจริงจับได้
  */
 export function chartGeometry(points: ChartPoint[]): ChartGeometry {
   const n = Math.max(points.length, 1);
@@ -57,8 +85,16 @@ export function chartGeometry(points: ChartPoint[]): ChartGeometry {
   const barW = Math.min(11, slot * 0.32);
   const gap = 2;
 
-  const domainMax = Math.max(0, ...points.map((p) => p.revenue), ...points.map((p) => p.expense), ...points.map((p) => p.profit));
-  const domainMin = Math.min(0, ...points.map((p) => p.profit));
+  const rawMaxSatang = Math.max(0, ...points.map((p) => p.revenue), ...points.map((p) => p.expense), ...points.map((p) => p.profit));
+  const rawMinSatang = Math.min(0, ...points.map((p) => p.profit));
+
+  // ทำงานเป็น "บาท" ตอนหาเลขกลม (สตางค์/100) แล้วค่อยแปลงกลับเป็นสตางค์สำหรับสเกล y จริง
+  const stepBaht = niceCeil(Math.max(rawMaxSatang / 100, 1) / 3);
+  const topBaht = stepBaht * 3;
+  const bottomBaht = rawMinSatang < 0 ? -niceCeil(Math.max(-rawMinSatang / 100, 1)) : 0;
+
+  const domainMax = topBaht * 100; // กลับเป็นสตางค์ — ใช้สเกลจริงของแท่ง/เส้น
+  const domainMin = bottomBaht * 100;
   const range = domainMax - domainMin || 1;
   const scale = (BOTTOM - TOP) / range;
   const yOf = (v: number) => BOTTOM - (v - domainMin) * scale;
@@ -80,11 +116,10 @@ export function chartGeometry(points: ChartPoint[]): ChartGeometry {
 
   const profitPolyline = bars.map((b) => `${b.profitPoint.x.toFixed(1)},${b.profitPoint.y.toFixed(1)}`).join(" ");
 
-  // เส้นกริดแนวนอน 3 เส้น (แบ่งเท่า ๆ กันจาก TOP ถึง baseline) — ป้ายเป็นจำนวนเงินโดยประมาณ (k บาท)
-  const gridLines = [0.25, 0.5, 0.75].map((frac) => {
-    const y = TOP + (BOTTOM - TOP) * frac;
-    const v = domainMax - (domainMax - domainMin) * frac; // ประมาณค่าเงิน ณ เส้นนี้ (ใช้ domainMax เป็นฐานบน)
-    return { y, label: `฿${Math.round(v / 1000)}k` };
+  // เส้นกริดแนวนอน 3 เส้น ที่ 1/3 · 2/3 · 3/3 ของเพดานกลม (topBaht) — ป้ายเป็นเลขกลมเสมอ (0/100k/200k/…)
+  const gridLines = [1, 2, 3].map((mult) => {
+    const vBaht = stepBaht * mult;
+    return { y: yOf(vBaht * 100), label: formatBahtShort(vBaht) };
   });
 
   return { bars, profitPolyline, baselineY, gridLines, slot };

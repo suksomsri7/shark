@@ -115,7 +115,7 @@ console.log("\nP1 พารามิเตอร์ (query string → ค่า�
   eq("P1.3 ค่าเริ่มต้น: side = receivable", h.params.side, "receivable");
   eq("P1.4 ค่าเริ่มต้น: incomeMonth = periodKey ของ snapshot", h.params.incomeMonth, h.snapshot.periodKey);
   eq("P1.5 ค่าเริ่มต้น: expenseMonth = periodKey ของ snapshot", h.params.expenseMonth, h.snapshot.periodKey);
-  eq("P1.6 ค่าเริ่มต้น: issuedDocType = QUOTATION", h.params.issuedDocType, "QUOTATION");
+  eq("P1.6 ค่าเริ่มต้น: issuedDocType = INVOICE (มีข้อมูลจริง)", h.params.issuedDocType, "INVOICE");
   eq("P1.7 ค่าเริ่มต้น: forceChecklist = false", h.params.forceChecklist, false);
 
   const h2 = await home.loadDashboardHome(ctx, { year: "2025", chartPeriod: "quarter", side: "payable", checklist: "1" }, { now: NOW, base });
@@ -126,7 +126,7 @@ console.log("\nP1 พารามิเตอร์ (query string → ค่า�
 
   const hBad = await home.loadDashboardHome(ctx, { year: "not-a-year", dt: "NOT_A_DOCTYPE", im: "banana" }, { now: NOW, base });
   eq("P1.12 year พังรูปแบบ → fallback เป็นปีปัจจุบัน", hBad.params.year, E.dashboard.year);
-  eq("P1.13 dt ไม่รู้จัก → fallback เป็น QUOTATION", hBad.params.issuedDocType, "QUOTATION");
+  eq("P1.13 dt ไม่รู้จัก → fallback เป็น INVOICE", hBad.params.issuedDocType, "INVOICE");
   eq("P1.14 im พังรูปแบบ → fallback เป็น periodKey ของ snapshot", hBad.params.incomeMonth, hBad.snapshot.periodKey);
 }
 
@@ -216,6 +216,14 @@ console.log("\nP5 ปักหมุดบัญชีเงิน/ผังบ�
 {
   const finances = await prisma.accountFinance.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null }, select: { id: true } });
   const ledgers = await prisma.accountLedger.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null }, select: { id: true }, take: 3 });
+  // 🔴 seed-acc-v2-qc.mts ปักหมุดไว้แล้วจริง (กสิกรไทย/เงินสด/พร้อมเพย์ + 4000/5000) — ต้องจำสภาพเดิมไว้คืน
+  // ไม่ใช่รีเซ็ตเป็น [] เฉย ๆ (เคยทำแบบนั้นแล้วลบหมุดของ seed ทิ้งจริง ทำให้ WO 2.1 regression แดง P3.4)
+  const finPinnedBefore = (
+    await prisma.accountFinance.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, pinned: true }, select: { id: true } })
+  ).map((f) => f.id);
+  const ledgerPinnedBefore = (
+    await prisma.accountLedger.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, pinned: true }, select: { id: true } })
+  ).map((l) => l.id);
 
   // เพดาน 4 — ทดสอบด้วย id สมมติ 5 ตัว (ด่านความยาวทำงานก่อนแตะ DB — ไม่ต้องมีบัญชีจริง 5 ใบ)
   const overCap = await financeMod.setPinnedFinanceAccounts(ctx.tenantId, ctx.systemId, ["a", "b", "c", "d", "e"]);
@@ -245,10 +253,15 @@ console.log("\nP5 ปักหมุดบัญชีเงิน/ผังบ�
         select: { pinned: true },
       });
       assert("P5.6 บัญชีอื่นที่ไม่ได้เลือก → pinned=false (แทนที่ทั้งชุด ไม่ใช่ toggle สะสม)", others.every((a) => a.pinned === false));
-      // คืนสภาพเดิม (ไม่ให้ QC/ภาพจริงชุดอื่นเห็นบัญชีถูกปักหมุดค้าง)
-      await financeMod.setPinnedFinanceAccounts(ctx.tenantId, ctx.systemId, []);
-      const restored = await prisma.accountFinance.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { pinned: true } });
-      assert("P5.7 คืนสภาพเดิม: ทุกบัญชีเงิน pinned=false", restored.every((a) => a.pinned === false));
+      // คืนสภาพเดิม = ชุดที่ seed ปักหมุดไว้จริง (ไม่ใช่ [] — QC tenant มีบัญชีปักหมุดจริงตาม f1)
+      await financeMod.setPinnedFinanceAccounts(ctx.tenantId, ctx.systemId, finPinnedBefore);
+      const restored = await prisma.accountFinance.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true, pinned: true } });
+      assert(
+        "P5.7 คืนสภาพเดิม: ชุดปักหมุดกลับเหมือนก่อนเทสเป๊ะ",
+        new Set(restored.filter((a) => a.pinned).map((a) => a.id)).size === finPinnedBefore.length &&
+          restored.filter((a) => a.pinned).every((a) => finPinnedBefore.includes(a.id)),
+        `ก่อนเทส ${JSON.stringify(finPinnedBefore)} · หลังคืน ${JSON.stringify(restored.filter((a) => a.pinned).map((a) => a.id))}`,
+      );
     } else {
       bad("P5.4-P5.7", `tenant QC มีบัญชีเงินไม่พอทดสอบ (${finances.length} < 2)`);
     }
@@ -259,9 +272,14 @@ console.log("\nP5 ปักหมุดบัญชีเงิน/ผังบ�
       eq("P5.8 ผังบัญชี: ปักหมุด 2 บัญชีจริง → ok:true", res.ok, true);
       const after = await prisma.accountLedger.findMany({ where: { id: { in: pickIds } }, select: { pinned: true } });
       assert("P5.9 ผังบัญชี: หลังปักหมุด pinned=true จริงใน DB", after.every((a) => a.pinned === true));
-      await coaMod.setPinnedLedgerAccounts({ tenantId: ctx.tenantId, systemId: ctx.systemId }, []);
-      const restored = await prisma.accountLedger.findMany({ where: { id: { in: pickIds } }, select: { pinned: true } });
-      assert("P5.10 ผังบัญชี: คืนสภาพเดิม pinned=false", restored.every((a) => a.pinned === false));
+      // คืนสภาพเดิม = ชุดที่ seed ปักหมุดไว้จริง (4000/5000 — ไม่ใช่ [])
+      await coaMod.setPinnedLedgerAccounts({ tenantId: ctx.tenantId, systemId: ctx.systemId }, ledgerPinnedBefore);
+      const restored = await prisma.accountLedger.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, pinned: true }, select: { id: true } });
+      assert(
+        "P5.10 ผังบัญชี: คืนสภาพเดิม ชุดปักหมุดกลับเหมือนก่อนเทสเป๊ะ",
+        new Set(restored.map((a) => a.id)).size === ledgerPinnedBefore.length && restored.every((a) => ledgerPinnedBefore.includes(a.id)),
+        `ก่อนเทส ${JSON.stringify(ledgerPinnedBefore)} · หลังคืน ${JSON.stringify(restored.map((a) => a.id))}`,
+      );
     } else {
       bad("P5.8-P5.10", `tenant QC มีผังบัญชีไม่พอทดสอบ (${ledgers.length} < 2)`);
     }
@@ -314,6 +332,28 @@ console.log("\nP6 เรขาคณิตกราฟ/โดนัท/ไตร
   eq("P6.12 bpToPercent(10000) = 100", fmt.bpToPercent(10000), 100);
   eq("P6.13 bpToPercent(0) = 0", fmt.bpToPercent(0), 0);
   eq("P6.14 bpToPercent เกิน 100 ถูก clamp", fmt.bpToPercent(99999), 100);
+
+  // 🔴 Fable QC ภาพจริงรอบ 2: ป้ายแกน y เคยเป็น "฿39323k" (ลืมแปลงสตางค์→บาทก่อนหาร 1000) — กันไม่ให้กลับมาอีก
+  // ใช้ตัวเลขจริงของ ก.ย. 2026 (สตางค์จาก dashboardSnapshot) ยิงผ่าน chartGeometry ตรง ๆ
+  const bigPts: ChartPoint[] = [{ key: "2026-09", label: "ก.ย.", revenue: 52430842, expense: 12640186, profit: 39790656 }];
+  const geoBig = fmt.chartGeometry(bigPts);
+  assert(
+    "P6.15 ป้ายแกน y เป็นเลขกลม รูปแบบ ฿<n>k/M เท่านั้น (ไม่ใช่ '฿39323k')",
+    geoBig.gridLines.every((g) => /^฿\d+(\.\d+)?[kM]?$/.test(g.label)) && !geoBig.gridLines.some((g) => g.label.includes("39323")),
+    JSON.stringify(geoBig.gridLines.map((g) => g.label)),
+  );
+  eq("P6.16 มีเส้นกริด 3 เส้น", geoBig.gridLines.length, 3);
+  assert(
+    "P6.17 เส้นกริดเรียงจากน้อยไปมาก (1/3, 2/3, 3/3 ของเพดานกลม)",
+    (() => {
+      const nums = geoBig.gridLines.map((g) => Number(g.label.replace(/[฿kM]/g, "")) * (g.label.includes("M") ? 1_000_000 : g.label.includes("k") ? 1000 : 1));
+      return nums[0] < nums[1] && nums[1] < nums[2] && Math.abs(nums[0] * 3 - nums[2]) < 1;
+    })(),
+    JSON.stringify(geoBig.gridLines.map((g) => g.label)),
+  );
+  eq("P6.18 formatBahtShort(200000) = '฿200k'", fmt.formatBahtShort(200000), "฿200k");
+  eq("P6.19 formatBahtShort(1500000) = '฿1.5M'", fmt.formatBahtShort(1500000), "฿1.5M");
+  eq("P6.20 formatBahtShort(0) = '฿0'", fmt.formatBahtShort(0), "฿0");
 }
 
 // ═══════════════ P7 จานสี (positive + negative control) ═══════════════
@@ -339,13 +379,18 @@ console.log("\nP8 ด่านสิทธิ์ของ dashboard-actions.ts:"
   assert("P8.4 revalidatePath ถูกเรียกหลัง pin สำเร็จ (หน้าไม่ค้างข้อมูลเก่า)", /revalidatePath\(/.test(src));
 }
 
-// ═══════════════ P9 formatBaht ตรงกับที่ WO ระบุ (สอบ testid ที่ visual QC จะอ่าน) ═══════════════
-console.log("\nP9 รูปแบบเงินบาทของ testid หน้าหลัก:");
+// ═══════════════ P9 formatBaht — ค่าเริ่มต้นของฟังก์ชัน + โหมด decimals:true ที่หน้าหลักใช้จริง ═══════════════
+// 🔴 Fable QC ภาพจริงรอบ 2: f1 ใช้ 2 ตำแหน่งทศนิยมทุกจุด (KPI/อายุหนี้/เงินคุณอยู่ไหน/โดนัท/อันดับ) —
+// ui.tsx เปลี่ยนทุกจุด (ยกเว้นป้ายแกนกราฟที่ใช้ formatBahtShort ย่อเป็น k/M) ให้เรียก `{ decimals: true }` แล้ว
+console.log("\nP9 รูปแบบเงินบาท (ค่าเริ่มต้น + โหมด decimals:true ที่ ui.tsx ใช้จริงบนหน้าหลัก):");
 {
-  eq("P9.1 ค้างรับ 48,630,000 สตางค์ → '฿486,300' (ไม่มีทศนิยม)", formatBaht(48630000), "฿486,300");
-  eq("P9.2 เงินคงเหลือรวม 128,456,000 สตางค์ → '฿1,284,560'", formatBaht(128456000), "฿1,284,560");
-  eq("P9.3 ยอดมีเศษสตางค์ → โชว์ทศนิยม 2 ตำแหน่งอัตโนมัติ", formatBaht(52430842), "฿524,308.42");
-  eq("P9.4 ยอด 0 → '฿0'", formatBaht(0), "฿0");
+  eq("P9.1 ค่าเริ่มต้น (ไม่ใส่ opts): ยอดลงตัว → ไม่มีทศนิยม", formatBaht(48630000), "฿486,300");
+  eq("P9.2 ค่าเริ่มต้น: ยอดมีเศษสตางค์ → โชว์ทศนิยมอัตโนมัติ", formatBaht(52430842), "฿524,308.42");
+  eq("P9.3 decimals:true (โหมดที่หน้าหลักใช้จริง): ค้างรับ → '฿486,300.00'", formatBaht(48630000, { decimals: true }), "฿486,300.00");
+  eq("P9.4 decimals:true: เงินคงเหลือรวม → '฿1,284,560.00'", formatBaht(128456000, { decimals: true }), "฿1,284,560.00");
+  eq("P9.5 decimals:true: พ้นกำหนดรวม 2 ฝั่ง → '฿205,900.00'", formatBaht(20590000, { decimals: true }), "฿205,900.00");
+  eq("P9.6 decimals:true: ยอดที่เคยพลาด (5,887,850 สตางค์) → '฿58,878.50' ไม่ใช่ '฿58,878.5'", formatBaht(5887850, { decimals: true }), "฿58,878.50");
+  eq("P9.7 decimals:true: ยอด 0 → '฿0.00'", formatBaht(0, { decimals: true }), "฿0.00");
 }
 
 console.log(`\n===== สรุป WO 2.2: ผ่าน ${passed} · ไม่ผ่าน ${findings.length} =====`);

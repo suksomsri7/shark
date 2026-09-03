@@ -911,10 +911,10 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
   //    ยึดเลขรวมตามสเปคที่อนุมัติแล้ว (ledger/wo-notes/2.2.md มีบันทึกความต่างนี้ไว้ให้ Fable ตรวจ)
   "2.2": {
     hub: {
-      "kpi-receivable": "฿486,300",
-      "kpi-payable": "฿212,750",
-      "kpi-overdue": "฿205,900",
-      "kpi-cash": "฿1,284,560",
+      "kpi-receivable": "฿486,300.00",
+      "kpi-payable": "฿212,750.00",
+      "kpi-overdue": "฿205,900.00",
+      "kpi-cash": "฿1,284,560.00",
     },
   },
 };
@@ -1134,7 +1134,9 @@ try {
                 if (!el) return "(ไม่พบ element)";
                 if (o.kind === "value") return (el as HTMLInputElement).value ?? "";
                 // ป้ายของช่อง = ข้อความใน <label> ที่ห่ออยู่ (PaymentSection ใช้ label ห่อ input)
-                return (el as HTMLElement).innerText.trim();
+                // 🔴 SVG element (เช่น data-testid บน <rect>/<circle>/<text> ของกราฟ WO 2.2) ไม่มี .innerText
+                // (คุณสมบัตินี้มีเฉพาะ HTMLElement) — ต้อง fallback ไป .textContent ไม่งั้น .trim() พังเงียบ ๆ
+                return ((el as HTMLElement).innerText ?? el.textContent ?? "").trim();
               },
               { sel: want.sel, kind: want.kind },
             );
@@ -1192,10 +1194,12 @@ try {
             text: (document.querySelector("main")?.textContent ?? document.body.textContent ?? "").slice(0, 4000),
             overflow: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
             viewportH: window.innerHeight,
+            // 🔴 WO 2.2: testid บน SVG (<rect>/<circle>/<text> ของกราฟ/โดนัท) ไม่มี .innerText (HTMLElement เท่านั้น)
+            // → fallback .textContent เสมอ กัน TypeError "Cannot read properties of undefined (reading 'trim')"
             testids: Object.fromEntries(
               [...document.querySelectorAll("[data-testid]")].map((el) => [
                 el.getAttribute("data-testid") ?? "",
-                (el as HTMLElement).innerText.trim(),
+                ((el as HTMLElement).innerText ?? el.textContent ?? "").trim(),
               ]),
             ),
             // WO 0.4 shell V2: ตัวเลขโครงสร้างเมนู — อ่านแยกจาก testids ตรง ๆ เพราะต้อง "นับ" ไม่ใช่อ่านข้อความ
@@ -1367,6 +1371,8 @@ try {
                 isVisible(document.querySelector('[data-testid="create-doc-menu-m"]')),
               checklistVisible: isVisible(document.querySelector('[data-testid="dash-checklist"]')),
               pendingRowCount: document.querySelectorAll('[data-testid^="pending-row-"]').length,
+              pinnedFinanceCount: document.querySelectorAll('[data-testid^="pinned-finance-card-"]').length,
+              pinnedLedgerCount: document.querySelectorAll('[data-testid^="pinned-ledger-card-"]').length,
               donutCenter: document.querySelector('[data-testid="donut-center"]')?.textContent?.trim() ?? "",
               // ผลรวมแถบอายุหนี้ (อ่านจากข้อความ "฿n,nnn" ท้ายแต่ละแถว) — เทียบกับยอดค้างรับ/ค้างจ่ายจริง
               agingSum: [...document.querySelectorAll('[data-testid^="aging-"]')].reduce((sum, el) => {
@@ -1675,7 +1681,12 @@ try {
           if (spec.name === "hub") {
             c22.push([probe.dash.hasHome, `หน้าหลัก V2 ขึ้นจริง [data-testid="dash-home"] (positive control ของด่านที่เหลือ)`]);
             c22.push([probe.dash.barRevenueCount === 12, `กราฟมีแท่งรายได้ครบ 12 เดือน (เจอ ${probe.dash.barRevenueCount})`]);
-            c22.push([!!probe.testids["bar-revenue-2026-09"], `มีแท่งของเดือน ก.ย. 2026 [data-testid="bar-revenue-2026-09"] (5 เดือนที่มีข้อมูลจริงตาม wo-notes/2.1.md คือ พ.ค.–ก.ย.)`]);
+            // 🔴 ห้ามเช็คด้วย !!probe.testids[tid] — <rect> ของ SVG มี .textContent = "" (ไม่ใช่ undefined) เสมอ
+            // ⇒ ค่าว่างเป็น falsy หลอกว่า "ไม่เจอ" ทั้งที่ element มีจริง ต้องเช็คว่า key มีอยู่ใน object แทน
+            c22.push([
+              "bar-revenue-2026-09" in probe.testids,
+              `มีแท่งของเดือน ก.ย. 2026 [data-testid="bar-revenue-2026-09"] (5 เดือนที่มีข้อมูลจริงตาม wo-notes/2.1.md คือ พ.ค.–ก.ย.)`,
+            ]);
             c22.push([
               probe.dash.donutCenter.includes("524,308"),
               `ศูนย์กลางโดนัทรายได้เดือนนี้ = ยอดรวมรายได้ ก.ย. 2026 ตามเฉลย ฿524,308.42 (เจอ "${probe.dash.donutCenter}")`,
@@ -1685,6 +1696,11 @@ try {
               `ผลรวมแถบอายุหนี้ (ฝั่งลูกหนี้ค่าเริ่มต้น) = ยอดค้างรับรวม ฿486,300 (เจอ ${probe.dash.agingSum})`,
             ]);
             c22.push([probe.dash.pendingRowCount === 1, `งานที่รอคุณแสดงเฉพาะแถวที่ค้างจริง (เฉลย pending.total=1 → 1 แถว) — เจอ ${probe.dash.pendingRowCount}`]);
+            c22.push([
+              probe.dash.pinnedFinanceCount === 3,
+              `บัญชีเงินที่ติดตาม 3 การ์ด (กสิกรไทย/เงินสด/พร้อมเพย์ ตาม seed) — เจอ ${probe.dash.pinnedFinanceCount}`,
+            ]);
+            c22.push([probe.dash.pinnedLedgerCount === 2, `บัญชีที่ติดตาม (ผังบัญชี) 2 การ์ด (4000/5000 ตาม seed) — เจอ ${probe.dash.pinnedLedgerCount}`]);
             c22.push([
               probe.dash.paletteViolations.length === 0,
               `SVG ในหน้าหลักใช้สีในโทเคนเท่านั้น (accent/เทา/danger/none) — เจอนอกโทเคน: ${JSON.stringify(probe.dash.paletteViolations)}`,

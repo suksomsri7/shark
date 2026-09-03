@@ -175,42 +175,46 @@ export async function AccountContent({
       {/* ── กราฟรายรับ-รายจ่าย + รอรับชำระ/รอชำระ (§4 ข้อ 3–4) ── */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         <details open data-dash-collapsible="1" className="group card flex min-w-0 flex-1 flex-col gap-0 p-0" data-testid="dash-block-chart">
-          <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4">
-            <h2 className="text-sm font-medium">ภาพรวมรายรับและรายจ่าย</h2>
-            <DashQuerySelect
-              name="year"
-              value={String(s.year)}
-              options={yearOptions}
-              basePath={base}
-              currentQuery={currentQuery}
-              ariaLabel="เลือกปี"
-              testId="sel-chart-year"
-            />
-            <span className="flex-1" />
-            <DashSegToggle
-              ariaLabel="รายเดือน/รายไตรมาส"
-              testIdPrefix="chart-period"
-              current={home.params.chartPeriod}
-              options={[
-                { value: "month", label: "รายเดือน", href: buildUrl(base, currentQuery, { chartPeriod: undefined }) },
-                { value: "quarter", label: "รายไตรมาส", href: buildUrl(base, currentQuery, { chartPeriod: "quarter" }) },
-              ]}
-            />
-            <span className="ml-2 inline-flex items-center gap-3 text-xs text-[color:var(--color-muted)]">
-              <span className="inline-flex items-center gap-1">
-                <i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#1d4ed8" }} />
-                รายได้
+          <summary className="flex cursor-pointer list-none items-start gap-2 px-5 py-4">
+            {/* กลุ่มที่ห่อบรรทัดได้ (ปี/toggle/legend) แยกจาก chevron เสมอ — ก่อนหน้านี้ chevron อยู่ในกลุ่มเดียวกัน
+                แล้วโดน flex-wrap ดันตกไปอยู่บรรทัดของตัวเองที่มุมซ้ายบนของเนื้อหาการ์ด (Fable QC ภาพจริงจับได้) */}
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <h2 className="text-sm font-medium">ภาพรวมรายรับและรายจ่าย</h2>
+              <DashQuerySelect
+                name="year"
+                value={String(s.year)}
+                options={yearOptions}
+                basePath={base}
+                currentQuery={currentQuery}
+                ariaLabel="เลือกปี"
+                testId="sel-chart-year"
+              />
+              <span className="flex-1" />
+              <DashSegToggle
+                ariaLabel="รายเดือน/รายไตรมาส"
+                testIdPrefix="chart-period"
+                current={home.params.chartPeriod}
+                options={[
+                  { value: "month", label: "รายเดือน", href: buildUrl(base, currentQuery, { chartPeriod: undefined }) },
+                  { value: "quarter", label: "รายไตรมาส", href: buildUrl(base, currentQuery, { chartPeriod: "quarter" }) },
+                ]}
+              />
+              <span className="ml-2 inline-flex items-center gap-3 text-xs text-[color:var(--color-muted)]">
+                <span className="inline-flex items-center gap-1">
+                  <i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#1d4ed8" }} />
+                  รายได้
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#a3a3a3" }} />
+                  ค่าใช้จ่าย
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <i className="inline-block h-0.5 w-3" style={{ background: "#0a0a0a" }} />
+                  กำไร/ขาดทุน
+                </span>
               </span>
-              <span className="inline-flex items-center gap-1">
-                <i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#a3a3a3" }} />
-                ค่าใช้จ่าย
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <i className="inline-block h-0.5 w-3" style={{ background: "#0a0a0a" }} />
-                กำไร/ขาดทุน
-              </span>
-            </span>
-            <span aria-hidden className="text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
+            </div>
+            <span aria-hidden className="shrink-0 text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
           </summary>
           <div className="flex min-w-0 flex-col gap-3 px-5 pb-5">
             <div className="grid grid-cols-3 gap-3 text-sm">
@@ -223,19 +227,21 @@ export async function AccountContent({
         </details>
 
         <details open data-dash-collapsible="1" className="group card flex w-full flex-col gap-0 p-0 lg:w-[380px] lg:flex-none" data-testid="dash-block-arap">
-          <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4">
-            <h2 className="text-sm font-medium">รอรับชำระ / รอชำระ</h2>
-            <span className="flex-1" />
-            <DashSegToggle
-              ariaLabel="ลูกหนี้หรือเจ้าหนี้"
-              testIdPrefix="arap-side"
-              current={home.params.side}
-              options={[
-                { value: "receivable", label: "ลูกหนี้", href: buildUrl(base, currentQuery, { side: undefined }) },
-                { value: "payable", label: "เจ้าหนี้", href: buildUrl(base, currentQuery, { side: "payable" }) },
-              ]}
-            />
-            <span aria-hidden className="text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
+          <summary className="flex cursor-pointer list-none items-start gap-2 px-5 py-4">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <h2 className="text-sm font-medium">รอรับชำระ / รอชำระ</h2>
+              <span className="flex-1" />
+              <DashSegToggle
+                ariaLabel="ลูกหนี้หรือเจ้าหนี้"
+                testIdPrefix="arap-side"
+                current={home.params.side}
+                options={[
+                  { value: "receivable", label: "ลูกหนี้", href: buildUrl(base, currentQuery, { side: undefined }) },
+                  { value: "payable", label: "เจ้าหนี้", href: buildUrl(base, currentQuery, { side: "payable" }) },
+                ]}
+              />
+            </div>
+            <span aria-hidden className="shrink-0 text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
           </summary>
           <div className="flex flex-col gap-3 px-5 pb-5">
             <div className="grid grid-cols-3 gap-3 text-sm">
@@ -246,7 +252,7 @@ export async function AccountContent({
             <div className="hr border-t" />
             <div className="flex items-center justify-between text-xs">
               <span className="font-medium">อายุหนี้ 5 ช่วง</span>
-              <span className="text-[color:var(--color-muted)]">รวม {formatBaht(arap.aging.totalSatang)}</span>
+              <span className="text-[color:var(--color-muted)]">รวม {formatBaht(arap.aging.totalSatang, { decimals: true })}</span>
             </div>
             <div className="flex flex-col gap-1.5" data-testid="aging-bars">
               {agingRows.map((r, i) => (
@@ -271,11 +277,13 @@ export async function AccountContent({
       {/* ── โดนัทรายได้/ค่าใช้จ่ายเดือนนี้ + เงินคุณอยู่ไหน (§4 ข้อ 5) ── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <details open data-dash-collapsible="1" className="group card flex flex-col gap-0 p-0" data-testid="dash-block-income">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-4">
-            <h2 className="text-sm font-medium">รายได้เดือนนี้</h2>
-            <span className="flex-1" />
-            <DashQuerySelect name="im" value={home.params.incomeMonth} options={monthOptions(s.year)} basePath={base} currentQuery={currentQuery} ariaLabel="เลือกเดือนรายได้" testId="sel-income-month" />
-            <span aria-hidden className="text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
+          <summary className="flex cursor-pointer list-none items-start gap-2 px-5 py-4">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <h2 className="text-sm font-medium">รายได้เดือนนี้</h2>
+              <span className="flex-1" />
+              <DashQuerySelect name="im" value={home.params.incomeMonth} options={monthOptions(s.year)} basePath={base} currentQuery={currentQuery} ariaLabel="เลือกเดือนรายได้" testId="sel-income-month" />
+            </div>
+            <span aria-hidden className="shrink-0 text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
           </summary>
           <div className="flex flex-col gap-3 px-5 pb-5">
             <div className="flex items-center gap-3.5">
@@ -285,7 +293,7 @@ export async function AccountContent({
                   <li key={r.accountCode || r.name} className="flex items-center gap-2 py-1">
                     <i className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: incomeSlices[i]?.color }} />
                     <span className="min-w-0 flex-1 truncate">{r.name}</span>
-                    <span className="tabular-nums">{formatBaht(r.amount)}</span>
+                    <span className="tabular-nums">{formatBaht(r.amount, { decimals: true })}</span>
                   </li>
                 ))}
               </ul>
@@ -295,7 +303,7 @@ export async function AccountContent({
               <span className="text-[color:var(--color-muted)]">เทียบเดือนก่อน</span>
               <span className="ml-1.5 font-medium tabular-nums">
                 {incomeMomDelta >= 0 ? "+" : "−"}
-                {formatBaht(Math.abs(incomeMomDelta))} ({incomeMomPct === null ? "—" : `${incomeMomPct >= 0 ? "+" : ""}${incomeMomPct.toFixed(1)}%`})
+                {formatBaht(Math.abs(incomeMomDelta), { decimals: true })} ({incomeMomPct === null ? "—" : `${incomeMomPct >= 0 ? "+" : ""}${incomeMomPct.toFixed(1)}%`})
               </span>
               <span className="flex-1" />
               <Link href={`${base}/reports/profit-loss`} style={{ color: "var(--color-accent)" }}>
@@ -306,11 +314,13 @@ export async function AccountContent({
         </details>
 
         <details open data-dash-collapsible="1" className="group card flex flex-col gap-0 p-0" data-testid="dash-block-expense">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-4">
-            <h2 className="text-sm font-medium">ค่าใช้จ่ายเดือนนี้</h2>
-            <span className="flex-1" />
-            <DashQuerySelect name="em" value={home.params.expenseMonth} options={monthOptions(s.year)} basePath={base} currentQuery={currentQuery} ariaLabel="เลือกเดือนค่าใช้จ่าย" testId="sel-expense-month" />
-            <span aria-hidden className="text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
+          <summary className="flex cursor-pointer list-none items-start gap-2 px-5 py-4">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <h2 className="text-sm font-medium">ค่าใช้จ่ายเดือนนี้</h2>
+              <span className="flex-1" />
+              <DashQuerySelect name="em" value={home.params.expenseMonth} options={monthOptions(s.year)} basePath={base} currentQuery={currentQuery} ariaLabel="เลือกเดือนค่าใช้จ่าย" testId="sel-expense-month" />
+            </div>
+            <span aria-hidden className="shrink-0 text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
           </summary>
           <div className="flex flex-col gap-3 px-5 pb-5">
             <div className="flex items-center gap-3.5">
@@ -320,7 +330,7 @@ export async function AccountContent({
                   <li key={r.accountCode || r.name} className="flex items-center gap-2 py-1">
                     <i className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: expenseSlices[i]?.color }} />
                     <span className="min-w-0 flex-1 truncate">{r.name}</span>
-                    <span className="tabular-nums">{formatBaht(r.amount)}</span>
+                    <span className="tabular-nums">{formatBaht(r.amount, { decimals: true })}</span>
                   </li>
                 ))}
               </ul>
@@ -330,7 +340,7 @@ export async function AccountContent({
               <span className="text-[color:var(--color-muted)]">เทียบเดือนก่อน</span>
               <span className="ml-1.5 font-medium tabular-nums">
                 {expenseMomDelta >= 0 ? "+" : "−"}
-                {formatBaht(Math.abs(expenseMomDelta))} ({expenseMomPct === null ? "—" : `${expenseMomPct >= 0 ? "+" : ""}${expenseMomPct.toFixed(1)}%`})
+                {formatBaht(Math.abs(expenseMomDelta), { decimals: true })} ({expenseMomPct === null ? "—" : `${expenseMomPct >= 0 ? "+" : ""}${expenseMomPct.toFixed(1)}%`})
               </span>
               <span className="flex-1" />
               <Link href={`${base}/reports/profit-loss`} style={{ color: "var(--color-accent)" }}>
@@ -347,7 +357,7 @@ export async function AccountContent({
           </summary>
           <div className="flex flex-col gap-2 px-5 pb-5">
             <div className="text-xs text-[color:var(--color-muted)]">ยอดรวมทุกบัญชี</div>
-            <div className="text-2xl font-semibold tabular-nums">{formatBaht(s.cash.total)}</div>
+            <div className="text-2xl font-semibold tabular-nums">{formatBaht(s.cash.total, { decimals: true })}</div>
             <div className="flex h-1.5 overflow-hidden rounded-full">
               {s.cash.accounts.map((a, i) => (
                 <span key={a.id} style={{ width: `${(financeMax[i] / financeMeterTotal) * 100}%`, background: financeGrays[i] ?? "#d4d4d4" }} />
@@ -358,7 +368,7 @@ export async function AccountContent({
                 <li key={a.id} className="flex items-center gap-2 py-1.5">
                   <i className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: financeGrays[i] ?? "#d4d4d4" }} />
                   <span className="min-w-0 flex-1 truncate">{a.name}</span>
-                  <span className="tabular-nums">{formatBaht(a.balance)}</span>
+                  <span className="tabular-nums">{formatBaht(a.balance, { decimals: true })}</span>
                 </li>
               ))}
             </ul>
@@ -368,12 +378,14 @@ export async function AccountContent({
 
       {/* ── เอกสารที่ออก (§4 ข้อ 6) ── */}
       <details open data-dash-collapsible="1" className="group card flex flex-col gap-0 p-0" data-testid="dash-block-issued">
-        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4">
-          <h2 className="text-sm font-medium">เอกสารที่ออก</h2>
-          <DashQuerySelect name="dt" value={home.params.issuedDocType} options={docTypeOptions} basePath={base} currentQuery={currentQuery} ariaLabel="เลือกชนิดเอกสาร" testId="sel-issued-doctype" />
-          <span className="text-xs text-[color:var(--color-muted)]">ปี {s.year}</span>
-          <span className="flex-1" />
-          <span aria-hidden className="text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
+        <summary className="flex cursor-pointer list-none items-start gap-2 px-5 py-4">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <h2 className="text-sm font-medium">เอกสารที่ออก</h2>
+            <DashQuerySelect name="dt" value={home.params.issuedDocType} options={docTypeOptions} basePath={base} currentQuery={currentQuery} ariaLabel="เลือกชนิดเอกสาร" testId="sel-issued-doctype" />
+            <span className="text-xs text-[color:var(--color-muted)]">ปี {s.year}</span>
+            <span className="flex-1" />
+          </div>
+          <span aria-hidden className="shrink-0 text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
         </summary>
         <div className="flex flex-col gap-1.5 px-5 pb-5">
           {s.issued.rows.map((r) => (
@@ -463,7 +475,7 @@ export async function AccountContent({
                       <td className="py-2 text-[color:var(--color-muted)]">{r.docTypeLabel}</td>
                       <td className="py-2">{r.contactName}</td>
                       <td className="py-2 text-right tabular-nums">
-                        <MoneyText satang={r.grandTotal} />
+                        <MoneyText satang={r.grandTotal} decimals />
                       </td>
                       <td className="py-2">
                         <StatusBadge status={r.status} overdue={overdue} />
@@ -485,7 +497,7 @@ export async function AccountContent({
                     </div>
                     <div className="text-[color:var(--color-muted)]">{r.contactName}</div>
                     <div className="tabular-nums">
-                      <MoneyText satang={r.grandTotal} />
+                      <MoneyText satang={r.grandTotal} decimals />
                     </div>
                   </Link>
                 );
@@ -517,20 +529,22 @@ export async function AccountContent({
 
       {/* ── บัญชีเงินที่ติดตาม + บัญชีที่ติดตาม (§4 ข้อ 9) ── */}
       <details open data-dash-collapsible="1" className="group card flex flex-col gap-0 p-0" data-testid="dash-block-pinned-finance">
-        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4">
-          <h2 className="text-sm font-medium">บัญชีเงินที่ติดตาม</h2>
-          <span className="text-xs text-[color:var(--color-muted)]">ปักหมุดได้สูงสุด 4 บัญชี</span>
-          <span className="flex-1" />
-          <DashPinModal
-            triggerLabel="เลือกบัญชี"
-            title="เลือกบัญชีเงินที่ติดตาม"
-            systemId={systemId}
-            max={4}
-            action={pinFinanceAccountsAction}
-            testId="pin-finance"
-            items={s.cash.accounts.map((a) => ({ id: a.id, name: a.name, sub: formatBaht(a.balance), pinned: a.pinned }))}
-          />
-          <span aria-hidden className="text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
+        <summary className="flex cursor-pointer list-none items-start gap-2 px-5 py-4">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <h2 className="text-sm font-medium">บัญชีเงินที่ติดตาม</h2>
+            <span className="text-xs text-[color:var(--color-muted)]">ปักหมุดได้สูงสุด 4 บัญชี</span>
+            <span className="flex-1" />
+            <DashPinModal
+              triggerLabel="เลือกบัญชี"
+              title="เลือกบัญชีเงินที่ติดตาม"
+              systemId={systemId}
+              max={4}
+              action={pinFinanceAccountsAction}
+              testId="pin-finance"
+              items={s.cash.accounts.map((a) => ({ id: a.id, name: a.name, sub: formatBaht(a.balance, { decimals: true }), pinned: a.pinned }))}
+            />
+          </div>
+          <span aria-hidden className="shrink-0 text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
         </summary>
         <div className="grid grid-cols-1 gap-2 px-5 pb-5 sm:grid-cols-2 lg:grid-cols-3">
           {s.cash.accounts.filter((a) => a.pinned).length === 0 && (
@@ -539,15 +553,15 @@ export async function AccountContent({
           {s.cash.accounts
             .filter((a) => a.pinned)
             .map((a) => (
-              <div key={a.id} className="flex items-center gap-3 rounded-lg border px-3.5 py-3">
+              <div key={a.id} data-testid={`pinned-finance-card-${a.id}`} className="flex items-center gap-3 rounded-lg border px-3.5 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{a.name}</div>
                 </div>
                 <div className="text-right">
-                  <div className="tabular-nums font-medium">{formatBaht(a.balance)}</div>
+                  <div className="tabular-nums font-medium">{formatBaht(a.balance, { decimals: true })}</div>
                   <div className="text-xs text-[color:var(--color-muted)]">
                     เดือนนี้ {a.monthDelta >= 0 ? "+" : "−"}
-                    {formatBaht(Math.abs(a.monthDelta))}
+                    {formatBaht(Math.abs(a.monthDelta), { decimals: true })}
                   </div>
                 </div>
               </div>
@@ -556,20 +570,22 @@ export async function AccountContent({
       </details>
 
       <details open data-dash-collapsible="1" className="group card flex flex-col gap-0 p-0" data-testid="dash-block-pinned-ledger">
-        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4">
-          <h2 className="text-sm font-medium">บัญชีที่ติดตาม</h2>
-          <span className="text-xs text-[color:var(--color-muted)]">ปักหมุดได้สูงสุด 4 บัญชี</span>
-          <span className="flex-1" />
-          <DashPinModal
-            triggerLabel="เลือกบัญชี"
-            title="เลือกบัญชีที่ติดตาม"
-            systemId={systemId}
-            max={4}
-            action={pinLedgerAccountsAction}
-            testId="pin-ledger"
-            items={home.ledgerAccounts.map((l) => ({ id: l.id, name: `${l.code} ${l.name}`, pinned: l.pinned }))}
-          />
-          <span aria-hidden className="text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
+        <summary className="flex cursor-pointer list-none items-start gap-2 px-5 py-4">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <h2 className="text-sm font-medium">บัญชีที่ติดตาม</h2>
+            <span className="text-xs text-[color:var(--color-muted)]">ปักหมุดได้สูงสุด 4 บัญชี</span>
+            <span className="flex-1" />
+            <DashPinModal
+              triggerLabel="เลือกบัญชี"
+              title="เลือกบัญชีที่ติดตาม"
+              systemId={systemId}
+              max={4}
+              action={pinLedgerAccountsAction}
+              testId="pin-ledger"
+              items={home.ledgerAccounts.map((l) => ({ id: l.id, name: `${l.code} ${l.name}`, pinned: l.pinned }))}
+            />
+          </div>
+          <span aria-hidden className="shrink-0 text-[color:var(--color-muted)] transition-transform group-open:rotate-180">▾</span>
         </summary>
         <div className="grid grid-cols-1 gap-2 px-5 pb-5 sm:grid-cols-2 lg:grid-cols-3">
           {home.ledgerAccounts.filter((l) => l.pinned).length === 0 && (
@@ -578,7 +594,7 @@ export async function AccountContent({
           {home.ledgerAccounts
             .filter((l) => l.pinned)
             .map((l) => (
-              <Link key={l.id} href={`${base}/ledger?account=${l.id}`} className="flex items-center gap-3 rounded-lg border px-3.5 py-3 hover:bg-[color:var(--color-surface-2)]">
+              <Link key={l.id} href={`${base}/ledger?account=${l.id}`} data-testid={`pinned-ledger-card-${l.id}`} className="flex items-center gap-3 rounded-lg border px-3.5 py-3 hover:bg-[color:var(--color-surface-2)]">
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{l.name}</div>
                   <div className="text-xs text-[color:var(--color-muted)]">{l.code}</div>
@@ -615,7 +631,7 @@ function KpiCard({
         {label}
       </div>
       <div className="text-lg font-semibold tabular-nums" style={danger ? { color: "var(--color-danger)" } : undefined}>
-        {formatBaht(amount)}
+        {formatBaht(amount, { decimals: true })}
       </div>
       <div className="text-xs text-[color:var(--color-muted)]">{sub}</div>
     </div>
@@ -639,7 +655,7 @@ function StatBlock({
     <div>
       <div className="text-xs text-[color:var(--color-muted)]">{label}</div>
       <div className="text-base font-semibold tabular-nums" style={danger ? { color: "var(--color-danger)" } : undefined}>
-        {display ?? (value !== null ? formatBaht(value) : "—")}
+        {display ?? (value !== null ? formatBaht(value, { decimals: true }) : "—")}
       </div>
       {note && <div className="text-xs text-[color:var(--color-muted)]">{note}</div>}
     </div>
@@ -671,7 +687,7 @@ function TopRow({ name, sub, amount, max }: { name: string; sub?: string; amount
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2 text-sm">
         <span className="min-w-0 flex-1 truncate">{name}</span>
-        <span className="tabular-nums font-medium">{formatBaht(amount)}</span>
+        <span className="tabular-nums font-medium">{formatBaht(amount, { decimals: true })}</span>
       </div>
       <div className="flex items-center gap-2">
         {sub && <span className="w-16 shrink-0 text-xs text-[color:var(--color-muted)]">{sub}</span>}

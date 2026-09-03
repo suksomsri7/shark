@@ -11,7 +11,7 @@ export function DashDonut({ title, total, slices }: { title: string; total: numb
       viewBox={`0 0 ${DONUT_VB.w} ${DONUT_VB.h}`}
       style={{ width: 110, height: 110, flex: "none" }}
       role="img"
-      aria-label={`${title} รวม ${formatBaht(total)} แบ่งเป็น ${slices.map((s) => `${s.name} ${formatBaht(s.amount)}`).join(" · ")}`}
+      aria-label={`${title} รวม ${formatBaht(total, { decimals: true })} แบ่งเป็น ${slices.map((s) => `${s.name} ${formatBaht(s.amount, { decimals: true })}`).join(" · ")}`}
     >
       <g transform={`rotate(-90 ${DONUT_VB.cx} ${DONUT_VB.cy})`} fill="none" strokeWidth={17}>
         {arcs.map((a, i) => (
@@ -40,7 +40,7 @@ export function DashDonut({ title, total, slices }: { title: string; total: numb
         fontFamily="'Noto Sans Thai'"
         data-testid="donut-center"
       >
-        {formatBaht(total)}
+        {formatBaht(total, { decimals: true })}
       </text>
     </svg>
   );

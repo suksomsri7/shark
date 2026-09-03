@@ -105,7 +105,9 @@ function normalizeParams(base: string, vatRegistered: boolean, raw: RawParams, c
     side: one(raw.side) === "payable" ? "payable" : "receivable",
     incomeMonth: parsePeriodKey(one(raw.im), currentPeriod),
     expenseMonth: parsePeriodKey(one(raw.em), currentPeriod),
-    issuedDocType: (dt && validDocTypes.has(dt as AccountDocType) ? dt : "QUOTATION") as AccountDocType,
+    // ค่าเริ่มต้น = ใบแจ้งหนี้ (มีข้อมูลจริงใน seed ทุกกรณี) — ใบเสนอราคายังไม่มีข้อมูลใน tenant QC วันนี้
+    // เลยโชว์การ์ดว่างเปล่าตั้งแต่เปิดหน้ามา (Fable QC ภาพจริง 2.2 ขอปรับ)
+    issuedDocType: (dt && validDocTypes.has(dt as AccountDocType) ? dt : "INVOICE") as AccountDocType,
     forceChecklist: one(raw.checklist) === "1",
   };
 }

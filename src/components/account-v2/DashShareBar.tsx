@@ -33,7 +33,7 @@ export function DashShareBar({
         className="w-24 shrink-0 text-right tabular-nums"
         style={danger ? { color: "var(--color-danger)" } : undefined}
       >
-        {formatBaht(amountSatang)}
+        {formatBaht(amountSatang, { decimals: true })}
       </span>
     </div>
   );
