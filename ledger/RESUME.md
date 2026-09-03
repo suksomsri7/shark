@@ -1,5 +1,11 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🏁 3 ก.ย. (สาย) — [session บัญชี] เฟส 0 + WO 1.1/1.2 ขึ้น main แล้ว (`0d19670` · qc:all 190/190) — **สถานะสดอยู่ `ledger/ACCOUNT-V2-RUN.md`**
+- ของที่ขึ้น prod: เมนูบัญชี 9 หมวด + flyout + มือถือ bottom sheet (ตรงแบบ f2/f12/g18) · หน้ารายการเอกสารทุกชนิดแบบตาราง+แท็บ+ตัวกรอง+pagination (f3/f13) · route ใหม่ ใบจ่ายเงินมัดจำ/รับใบลดหนี้/รับใบเพิ่มหนี้/ใบสั่งซื้อสินทรัพย์/ใบกำกับภาษีซื้อ · ด่านสิทธิ์ทุกหน้า · dedupe ผู้ติดต่อ · hotfix GL 2 ตัว (ซื้อราคารวม VAT · DP โพสต์ซ้ำ) · migration additive 2 ตัว
+- 🔴 กติกาใหม่ (reboot 3 ก.ย. เพราะแรม): งานหนัก typecheck/build/qc:all/agent-tsc **ทีละ 1 อย่างทั้งเครื่อง** · ห้าม `source .env*` (URL มี &) → migration เคยหลุด prod
+- QC env: Neon branch `wo-acc-v2-qc` (`.env.qc`) · seed → `scripts/acc-v2-serve.sh` → `visual-acc-v2.mts <WO>` · **ห้าม `pnpm neon:gc`**
+- ถัดไป: 1.3 DocEditorV2 (agent ทำต่อ) → 1.4 → 1.5 … ตาม BLUEPRINT
+
 ## 🎨 3 ก.ย. (เช้ามืด) — [session บัญชี] แบบร่างรอบ 2 (ละเอียดระดับฟิลด์) เสร็จ — **รอเจ้าของตรวจ ยังไม่ coding**
 - เจ้าของเคาะรอบ 1 "ชอบทั้งหมด" + ส่ง PEAK 81 ภาพ (Drive) + นโยบาย 4 ข้อ (ไม่เอาแพ็กเกจ · ไม่มีล็อก · ผู้ติดต่อเชื่อมระบบอื่น · สินค้าเชื่อมคลัง/POS)
 - **ส่งมอบ** (`docs/design/account-v2/` · commit 831fe01 push แล้ว บน branch session/accounting):
