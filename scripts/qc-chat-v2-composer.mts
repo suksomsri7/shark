@@ -29,8 +29,18 @@
 //       ตัวนั้นวัดกล่องเดิม ตัวนี้วัดว่ากล่องใหม่ไม่พาบั๊กเดิมกลับมา
 // CM-10) ตรวจขนาด/ชนิดไฟล์ **ก่อน** อัป (ไม่ใช่ปล่อยให้อัปเสร็จแล้วเด้ง error)
 // CM-11) ไมค์อยู่ในแถบตามแบบร่าง — เงื่อนไข "ช่องทางไม่รองรับเสียง" อยู่ `qc-chat-v2-voice.mts`
+// CM-W) 🔴 WO-CV14 (ก) `.wav` เลือกได้จริงในหน้าต่างแนบไฟล์ + ตรวจชนิด **ก่อน** รับเข้า list
+//       เหตุ: `<input accept>` เป็น MIME ล้วน ⇒ OS/เบราว์เซอร์ที่จับคู่ด้วย **นามสกุล**
+//       (Windows Explorer / GTK / Android) ทำให้ `.wav` `.m4a` กลายเป็นสีเทา เลือกไม่ได้เลย
+//       และไฟล์ wav บางเครื่องคืน `File.type` ว่าง / `audio/wave` / `audio/vnd.wave`
+//       ⇒ accept ต้องมี **ทั้ง MIME และนามสกุล** และต้องสร้างจากทะเบียน ไม่พิมพ์มือ
+//       ⇒ ชนิดที่ไม่รู้จักต้องถูกปฏิเสธ **ก่อนอัป** พร้อมข้อความไทยที่ไม่โทษผู้ใช้ (กติกาเดียวกับ CM-10)
 
 try { process.loadEnvFile?.(".env"); } catch {}
+// 🔴 ชุดนี้ static ล้วน — ทับ DATABASE_URL เป็น host ที่ต่อไม่ติดตั้งแต่ต้น เพราะหมวด CM-W
+//    ต้อง `import` ทะเบียนจริงจาก `src/lib/storage/service.ts` (ซึ่งลาก `core/db` ติดมาด้วย)
+//    ห้ามมีทางที่ข้อสอบไปแตะฐานข้อมูลจริงของร้าน (.env ของเครื่องนี้ชี้ prod)
+process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db";
 
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -175,6 +185,107 @@ try {
       /CHAT_ATTACHMENT_MAX_BYTES|10\s*\*\s*1024\s*\*\s*1024/.test(SCREEN), "ตรวจฝั่งหน้าจอ", "ไม่ตรวจ");
   });
 } catch (e) { chk("CRASH", "จบ", false, "จบ", e instanceof Error ? (e.stack ?? e.message).slice(0, 400) : String(e)); }
+
+// ═════════ CM-W · WO-CV14 (ก) `.wav` ในหน้าต่างแนบไฟล์ ═════════
+// หมวดนี้ต่างจากหมวดอื่นตรงที่ **เรียกฟังก์ชันจริง** ไม่ใช่ grep อย่างเดียว —
+// เพราะสัญญาคือ "accept ต้องสร้างจากทะเบียน" ซึ่งพิสูจน์ด้วยการ grep หาสตริงไม่ได้
+// (grep เจอ `.wav` ก็แปลว่าพิมพ์มือ ซึ่งเป็นสิ่งที่ข้อนี้ห้าม)
+try {
+  console.log("CM-W 🔴 หน้าต่างแนบไฟล์ต้องเลือก .wav ได้ + ตรวจชนิดก่อนรับเข้า list:");
+
+  const storage = (await import("@/lib/storage/service" as string).catch(() => null)) as
+    | { ALLOWED_UPLOAD_TYPES?: Record<string, string>; normalizeUploadType?: (r: unknown) => string }
+    | null;
+  const helper = (await import("@/lib/storage/upload-accept" as string).catch(() => null)) as
+    | {
+        buildAcceptAttr?: (t: Record<string, string>, f?: (m: string) => boolean) => string;
+        inferUploadType?: (f: { name: string; type?: string | null }, t: Record<string, string>) => string | null;
+        normalizeUploadTypeName?: (r: unknown) => string;
+        uploadExtensions?: (t: Record<string, string>) => string[];
+        withUploadType?: (f: File, mime: string) => File;
+      }
+    | null;
+
+  const TYPES = storage?.ALLOWED_UPLOAD_TYPES ?? {};
+  chk("CM-W.0", "🟢 คู่บวก: อ่านทะเบียนชนิดไฟล์จริง (ALLOWED_UPLOAD_TYPES) ได้ และมี audio/wav อยู่",
+    Object.keys(TYPES).length > 5 && TYPES["audio/wav"] === "wav", "มีทะเบียน + audio/wav→wav", j(TYPES["audio/wav"] ?? null));
+  chk("CM-W.0b", "🟢 คู่บวก: มีตัวช่วยกลาง `src/lib/storage/upload-accept.ts` (pure — คอมโพเนนต์ client ใช้ได้)",
+    !!helper?.buildAcceptAttr && !!helper?.inferUploadType, "มี buildAcceptAttr + inferUploadType", helper ? j(Object.keys(helper)) : "import ไม่ผ่าน");
+
+  const accAll = helper?.buildAcceptAttr?.(TYPES) ?? "";
+  const accImg = helper?.buildAcceptAttr?.(TYPES, (m) => m.startsWith("image/")) ?? "";
+  const parts = accAll.split(",").map((x) => x.trim()).filter(Boolean);
+
+  chk("CM-W.1", "🔴 accept ของช่อง “ไฟล์” มีทั้ง MIME และนามสกุลของ wav (OS ที่จับคู่ด้วยนามสกุลต้องเลือกได้)",
+    parts.includes("audio/wav") && parts.includes(".wav"), "มีทั้ง audio/wav และ .wav", j(parts.filter((x) => x.includes("wav"))));
+  chk("CM-W.2", "accept ครบทุกนามสกุลในทะเบียน (ไม่ตกหล่นแม้แต่ตัวเดียว → ไม่มีชนิดที่เซิร์ฟเวอร์รับแต่เลือกไม่ได้)",
+    Object.values(TYPES).every((ext) => parts.includes(`.${ext}`)) && Object.keys(TYPES).every((m) => parts.includes(m)),
+    "ครบทุก mime + ทุกนามสกุล",
+    j(Object.entries(TYPES).filter(([m, e]) => !parts.includes(m) || !parts.includes(`.${e}`)).map(([m]) => m)));
+  chk("CM-W.3", "accept ของช่องรูป/กล้อง = เฉพาะรูป (มีนามสกุลรูปด้วย · ต้องไม่มี .wav/.pdf ปน)",
+    accImg.includes("image/jpeg") && accImg.includes(".jpg") && !accImg.includes(".wav") && !accImg.includes(".pdf"),
+    "image MIME + นามสกุลรูป เท่านั้น", j(accImg));
+
+  const composerSrc = strip(read("src/lib/modules/chat/composer.tsx"));
+  chk("CM-W.4", "🔴 accept สร้างจากทะเบียน ไม่ใช่พิมพ์รายชื่อไว้ในคอมโพเนนต์ (พิมพ์มือ = เพี้ยนจากเซิร์ฟเวอร์วันใดวันหนึ่ง)",
+    /buildAcceptAttr\s*\(/.test(composerSrc) && !/["'][^"']*\.wav[^"']*["']/.test(composerSrc),
+    "เรียก buildAcceptAttr และไม่มีลิสต์นามสกุลพิมพ์มือ",
+    /buildAcceptAttr\s*\(/.test(composerSrc) ? "ยังมีสตริง .wav พิมพ์มือ" : "ไม่เรียก buildAcceptAttr");
+
+  const nz = helper?.normalizeUploadTypeName;
+  const nzServer = storage?.normalizeUploadType;
+  chk("CM-W.5", "ตัว normalize ฝั่งจอให้ผลตรงกับ normalizeUploadType ของเซิร์ฟเวอร์ (ไม่มีกติกาที่สอง)",
+    !!nz && !!nzServer && ["audio/webm;codecs=opus", "AUDIO/WAV", " audio/mp4 ", "", "audio/wav"].every((x) => nz(x) === nzServer(x)),
+    "ตรงกันทุกตัวอย่าง", !nz || !nzServer ? "เรียกไม่ได้" : j(["audio/webm;codecs=opus", "AUDIO/WAV"].map((x) => [nz(x), nzServer(x)])));
+
+  const inf = helper?.inferUploadType;
+  chk("CM-W.6", "🔴 File.type ว่าง (wav บางเครื่องเป็นแบบนี้) → อนุมานจากนามสกุลได้",
+    inf?.({ name: "เสียงลูกค้า.WAV", type: "" }, TYPES) === "audio/wav", "audio/wav", j(inf?.({ name: "เสียงลูกค้า.WAV", type: "" }, TYPES) ?? null));
+  chk("CM-W.7", "ชื่อพ้องของ wav (audio/wave · audio/vnd.wave) ถูกแปลงเป็นชื่อในทะเบียน",
+    inf?.({ name: "a.wav", type: "audio/wave" }, TYPES) === "audio/wav" &&
+    inf?.({ name: "a.wav", type: "audio/vnd.wave" }, TYPES) === "audio/wav",
+    "audio/wav ทั้งคู่", j([inf?.({ name: "a.wav", type: "audio/wave" }, TYPES), inf?.({ name: "a.wav", type: "audio/vnd.wave" }, TYPES)]));
+  chk("CM-W.8", "🔴 fail-closed: ชนิดนอกทะเบียนคืนค่าว่าง ไม่เดาให้ผ่าน (ทั้งกรณีมี mime และไม่มี)",
+    inf?.({ name: "setup.exe", type: "application/x-msdownload" }, TYPES) === null &&
+    inf?.({ name: "setup.exe", type: "" }, TYPES) === null &&
+    inf?.({ name: "ไม่มีนามสกุล", type: "" }, TYPES) === null,
+    "null ทั้ง 3 กรณี", j([inf?.({ name: "setup.exe", type: "application/x-msdownload" }, TYPES), inf?.({ name: "setup.exe", type: "" }, TYPES), inf?.({ name: "ไม่มีนามสกุล", type: "" }, TYPES)]));
+
+  const inboxSrc = strip(read("src/lib/modules/chat/inbox-client.tsx"));
+  const addFn = inboxSrc.slice(Math.max(0, inboxSrc.indexOf("const addFiles")), inboxSrc.indexOf("const addFiles") + 2200);
+  chk("CM-W.9", "🔴 addFiles ตรวจ **ชนิด** ก่อนรับเข้า list (ของเดิมตรวจแต่ขนาด ⇒ รู้ว่าไฟล์ผิดชนิดหลังอัปเสร็จ)",
+    inboxSrc.indexOf("const addFiles") >= 0 && /inferUploadType\s*\(/.test(addFn), "เรียก inferUploadType ใน addFiles", "ไม่ตรวจชนิด");
+  chk("CM-W.9b", "ปฏิเสธแล้วบอกเป็นภาษาไทยแบบไม่โทษผู้ใช้ · inline ไม่ใช่ alert()",
+    /[ก-๙]/.test(addFn) && /setFileErr\s*\(/.test(addFn) && !/\balert\s*\(/.test(addFn) && !/ผิดพลาด|ไม่ถูกต้อง|ห้าม/.test(addFn),
+    "ข้อความไทย inline", "ยังใช้ alert หรือถ้อยคำโทษผู้ใช้");
+  chk("CM-W.9c", "ข้อความบอก “ชนิดที่แนบได้” สร้างจากทะเบียน ไม่พิมพ์มือ",
+    /uploadExtensions\s*\(/.test(addFn) && Array.isArray(helper?.uploadExtensions?.(TYPES)) && (helper!.uploadExtensions!(TYPES)).includes("wav"),
+    "ดึงนามสกุลจากทะเบียน", j(helper?.uploadExtensions?.(TYPES) ?? null));
+  // 🔴 วัด 2 ทอด ไม่ใช่ทอดเดียว: (ก) ตัวห่อทำงานถูกจริง (เรียกฟังก์ชันตรง ๆ)
+  //    (ข) `addFiles` ส่งชนิดที่ **อนุมานได้** เข้าตัวห่อจริง — ไม่ใช่มีตัวห่อไว้เฉย ๆ แล้ว push ไฟล์ดิบ
+  const wrap = helper?.withUploadType;
+  const mkFile = (name: string, type: string) => new File(["เนื้อไฟล์"], name, { type });
+  chk("CM-W.10", "🔴 อนุมานชนิดได้แต่ File.type เดิมว่าง → ห่อ File ใหม่ให้มี mime (ไม่งั้นเซิร์ฟเวอร์ที่อ่าน f.type ยังปฏิเสธเหมือนเดิม)",
+    wrap?.(mkFile("เสียง.wav", ""), "audio/wav").type === "audio/wav" && /withUploadType\(/.test(addFn) && /\.push\([^)\n]*mime/.test(addFn),
+    "ห่อได้ + addFiles ส่ง mime ที่อนุมานได้เข้าตัวห่อ",
+    j({ wrapped: wrap?.(mkFile("เสียง.wav", ""), "audio/wav").type ?? null, usedInAddFiles: /withUploadType\(/.test(addFn) }));
+  chk("CM-W.10b", "🔴 type ที่มีพารามิเตอร์ห้อย/ชื่อพ้อง/พิมพ์ใหญ่ ก็ต้องถูกทำให้ตรงทะเบียน (ด่านเซิร์ฟเวอร์เทียบ f.type ดิบ)",
+    wrap?.(mkFile("a.webm", "audio/webm;codecs=opus"), "audio/webm").type === "audio/webm" &&
+    wrap?.(mkFile("a.wav", "audio/wave"), "audio/wav").type === "audio/wav" &&
+    wrap?.(mkFile("a.wav", "AUDIO/WAV"), "audio/wav").type === "audio/wav",
+    "ได้ชื่อในทะเบียนทุกกรณี",
+    j([wrap?.(mkFile("a.webm", "audio/webm;codecs=opus"), "audio/webm").type ?? null, wrap?.(mkFile("a.wav", "audio/wave"), "audio/wav").type ?? null]));
+  chk("CM-W.10c", "🟢 คู่บวก: type ตรงทะเบียนอยู่แล้ว → คืนไฟล์เดิม (ไม่ก๊อป bytes ซ้ำโดยไม่จำเป็น) และเนื้อไฟล์ไม่หาย",
+    (() => { const f0 = mkFile("a.wav", "audio/wav"); const w = wrap?.(mkFile("a.wav", ""), "audio/wav"); return wrap?.(f0, "audio/wav") === f0 && w?.size === f0.size && w?.name === "a.wav"; })(),
+    "คืนตัวเดิม + ขนาด/ชื่อคงเดิม", "ไฟล์ถูกแปลงจนเนื้อหาเพี้ยน");
+
+  const serverGate = strip(read("src/lib/modules/chat/actions.ts"));
+  chk("CM-W.11", "🔴 ด่านฝั่งเซิร์ฟเวอร์ยังอยู่ครบ (หน้าจอตรวจเพิ่ม ไม่ใช่ตรวจแทน)",
+    /ALLOWED_UPLOAD_TYPES/.test(serverGate) && /CHAT_ATTACHMENT_MAX_BYTES/.test(serverGate),
+    "actions.ts ยังตรวจทะเบียน + เพดานขนาด", "ด่านเซิร์ฟเวอร์ถูกลดทอน");
+} catch (e) {
+  chk("CM-W.CRASH", "หมวด CM-W ล้มกลางคัน", false, "รันจบ", e instanceof Error ? (e.stack ?? e.message).slice(0, 300) : String(e));
+}
 
 const f = cks.filter((c) => !c.ok);
 console.log(`\n===== QC CHAT V2 COMPOSER =====\nผ่าน ${cks.length - f.length}/${cks.length}`);

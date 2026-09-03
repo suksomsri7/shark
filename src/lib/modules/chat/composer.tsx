@@ -14,6 +14,7 @@
 //      (ของเดิมเป็น checkbox ⇒ พลาดง่าย · โน้ตหลุดถึงลูกค้าคือความเสียหายที่กู้ไม่ได้)
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { buildAcceptAttr, type UploadTypeRegistry } from "@/lib/storage/upload-accept";
 import { Icon } from "./icons";
 import { searchQuickRepliesAction, applyQuickReplyAction } from "./quick-reply-actions";
 import { shopLocationAction } from "./room-actions";
@@ -37,7 +38,13 @@ export type ChatComposerProps = {
   onPickFiles: (picked: FileList | null) => void;
   onRemoveFile: (index: number) => void;
   maxAttachmentBytes: number;
-  acceptTypes: string;
+  /**
+   * ทะเบียนชนิดไฟล์ที่ระบบรับ (`ALLOWED_UPLOAD_TYPES` ที่เซิร์ฟเวอร์ส่งลงมา)
+   * 🔴 ส่งลงมาเป็น "ทะเบียน" ไม่ใช่สตริง accept สำเร็จรูป เพราะหน้าจอต้องใช้ทั้ง
+   *    การประกอบ `accept` (mime + นามสกุล) และการอนุมานชนิดจากนามสกุลตอนผู้ใช้เลือกไฟล์
+   *    (import จาก storage/service ตรง ๆ ไม่ได้ — ไฟล์นั้นลาก prisma ติดมา)
+   */
+  uploadTypes: UploadTypeRegistry;
   fileErr: string | null;
   formErr: string | null;
   isInternal: boolean;
@@ -68,7 +75,7 @@ export function ChatComposer(props: ChatComposerProps) {
     onPickFiles,
     onRemoveFile,
     maxAttachmentBytes,
-    acceptTypes,
+    uploadTypes,
     fileErr,
     formErr,
     isInternal,
@@ -103,17 +110,20 @@ export function ChatComposer(props: ChatComposerProps) {
     : (voice.capabilityReason ?? undefined);
 
   /**
-   * ชนิดไฟล์ของปุ่ม "รูปภาพ" / "ถ่ายรูป" — คัดเฉพาะรูป **จากทะเบียนเดียวกับที่เซิร์ฟเวอร์ตรวจ**
-   * 🔴 ไม่ใช้การเหมารวมทุกชนิดรูป เพราะช่องเลือกจะยอมให้หยิบไฟล์ที่เซิร์ฟเวอร์ปฏิเสธ (TIFF/BMP)
-   *    แล้วผู้ใช้จะรู้ว่าไฟล์ไม่ผ่าน **หลัง** อัปเสร็จ — บั๊กชนิดเดียวกับที่กติกา "ตรวจก่อนอัป" ห้ามไว้
+   * ค่า `accept` ของช่องเลือกไฟล์ — ประกอบจากทะเบียนเสมอ **ห้ามพิมพ์รายชื่อไว้ที่นี่**
+   *
+   * 🔴 ต้องมี **นามสกุล** ด้วย ไม่ใช่ MIME ล้วน: หน้าต่างเลือกไฟล์ของ Windows/GTK/Android
+   *    จับคู่ตัวกรองด้วยนามสกุล ⇒ MIME ล้วนทำให้ `.wav`/`.m4a` เป็นสีเทาเลือกไม่ได้เลย
+   *    ทั้งที่เซิร์ฟเวอร์รับอยู่แล้ว (อาการที่เจ้าของแจ้ง 2 ก.ย. — WO-CV14)
+   * 🔴 ปุ่ม "รูปภาพ"/"ถ่ายรูป" คัดเฉพาะรูป **จากทะเบียนเดียวกับที่เซิร์ฟเวอร์ตรวจ** ไม่เหมารวม
+   *    `image/*` เพราะช่องเลือกจะยอมให้หยิบไฟล์ที่เซิร์ฟเวอร์ปฏิเสธ (TIFF/BMP) แล้วผู้ใช้จะรู้
+   *    ว่าไฟล์ไม่ผ่าน **หลัง** อัปเสร็จ — บั๊กชนิดเดียวกับที่กติกา "ตรวจก่อนอัป" ห้ามไว้
    */
-  const imageAccept = useMemo(() => {
-    const onlyImages = acceptTypes
-      .split(",")
-      .map((t) => t.trim())
-      .filter((t) => t.startsWith("image/"));
-    return onlyImages.length > 0 ? onlyImages.join(",") : acceptTypes;
-  }, [acceptTypes]);
+  const fileAccept = useMemo(() => buildAcceptAttr(uploadTypes), [uploadTypes]);
+  const imageAccept = useMemo(
+    () => buildAcceptAttr(uploadTypes, (m) => m.startsWith("image/")),
+    [uploadTypes],
+  );
 
   // ── เมนูคำตอบสำเร็จรูป: เปิดเมื่อร่างขึ้นต้นด้วย `/` (คลังอยู่ที่สาย D ทำไว้แล้ว) ──
   // 🔴 หน่วง 200ms กันยิงทุกตัวอักษร · ปิดทันทีที่ผู้ใช้ลบ `/` ทิ้ง (ไม่ค้างบังจอ)
@@ -466,7 +476,7 @@ export function ChatComposer(props: ChatComposerProps) {
         type="file"
         name="files"
         multiple
-        accept={acceptTypes}
+        accept={fileAccept}
         onChange={(e) => {
           onPickFiles(e.target.files);
           e.target.value = "";

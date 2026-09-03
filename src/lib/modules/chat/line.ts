@@ -18,22 +18,19 @@ function authHeader(creds: ChannelCreds): string {
 
 export const lineAdapter: ChannelAdapter = {
   type: "LINE",
-  // 🔴 audio: false ตามความจริง ไม่ใช่ตามที่อยากให้เป็น (WO-CV8 · รายงานไว้ในสรุปรอบ 4)
-  //    LINE รับ audio message เฉพาะ `originalContentUrl` ที่เป็นไฟล์ **m4a** + ต้องส่ง `duration` มาด้วย
-  //    ⇒ ถ้าประกาศ true ทีมจะอัดเสียงส่งหาลูกค้า LINE แล้วเด้ง 400 กลับมาเป็น FAILED ทุกครั้ง
+  // ── ข้อความเสียง: `audio: true` ตั้งแต่ 2 ก.ย. 2026 (WO-CV13 · ปิดมติ D31 ทาง ข) ──
+  //    LINE รับ audio message เฉพาะ `originalContentUrl` ที่เป็นไฟล์ **m4a** (https) + ต้องส่ง
+  //    `duration` เป็น **มิลลิวินาที** มาด้วย · ตัวอัดฝั่งเบราว์เซอร์ผลิต **WAV** เส้นทางเดียว
+  //    (D29/D30 — ชนิดเดียวที่เล่นได้ทุกเครื่อง) ⇒ ณ วินาทีที่พนักงานกด "ส่ง" ไฟล์ยังเป็น wav
   //
-  // ── สถานะ 2 ก.ย. 2026 (WO-CV9): **มี m4a แล้ว แต่ยังเปิดไม่ได้** ──
-  //    ตอนนี้มีตัวแปลงฝั่งเซิร์ฟเวอร์แล้ว (`scripts/voice-transcode-worker.mts` · ffmpeg บน VPS)
-  //    ไฟล์เสียงทุกชิ้นจะกลายเป็น m4a แท้ (`ftypM4A`) ที่ LINE รับได้ — **แต่ไม่ทันเวลา**:
-  //    ตัวอัดผลิต WAV (D29/D30 — ชนิดเดียวที่เล่นได้ทุกเครื่อง) และ worker เป็น cron
-  //    ⇒ ณ วินาทีที่พนักงานกด "ส่ง" ไฟล์ยัง**เป็น wav อยู่อีกราวหนึ่งรอบ cron** (~1 นาที)
-  //    ประกาศ true ตอนนี้ = ส่ง wav เข้า LINE = 400 เหมือนเดิม แค่เปลี่ยนสาเหตุ
+  //    ทางที่เลือกคือ **ส่งเข้า LINE แบบ async**: `sendReply` บันทึกข้อความเป็น PENDING
+  //    (`meta.pendingReason = "TRANSCODE"` · ฟองขึ้นนาฬิกา "กำลังแปลงไฟล์…" ห้ามขึ้น ✓)
+  //    แล้ว `scripts/voice-transcode-worker.mts` (cron ทุก 1 นาที บน VPS) แปลง wav→m4a เสร็จ
+  //    จึงเรียก `deliverPendingVoice()` ยิงเข้า LINE เองแล้วปรับเป็น SENT/FAILED
   //
-  //    🔴 ทางเปิดมี 2 ทาง — **ยังไม่ตัดสิน ต้องให้ Fable/เจ้าของเคาะ** (ดูข้อดี/ข้อเสียในสรุปรอบนี้):
-  //      (ก) sendReply รอ transcode ให้เสร็จก่อนแล้วค่อยส่ง (ส่งช้าลงไม่กี่วินาที แต่ผลลัพธ์แน่นอน)
-  //      (ข) ส่งเข้า LINE แบบ async: บันทึกข้อความไว้ก่อน แล้วให้ worker เป็นคนส่งหลังแปลงเสร็จ
-  //    เปิด `audio: true` ได้ต่อเมื่อเลือกทางใดทางหนึ่งและทำเสร็จแล้วเท่านั้น
-  capabilities: { sendImage: true, sendSticker: true, audio: false, replyWindowHours: null, typing: false },
+  //    🔴 ธงนี้คือ "ส่งถึงลูกค้าได้จริงไหม" ไม่ใช่ "ส่งได้ทันทีไหม" — ปิดกลับเป็น false เมื่อไหร่
+  //       ปุ่มไมค์ในห้อง LINE จะหายไปทั้งจอ (`canSendAudio` ตัวเดียวคุมทั้งหน้าจอและเซิร์ฟเวอร์)
+  capabilities: { sendImage: true, sendSticker: true, audio: true, replyWindowHours: null, typing: false },
 
   verifyWebhook(rawBody, headers, creds) {
     const secret = creds.channelSecret;
@@ -109,6 +106,14 @@ export const lineAdapter: ChannelAdapter = {
         type: "image",
         originalContentUrl: message.imageUrl,
         previewImageUrl: message.imageUrl,
+      });
+    } else if (message.type === "AUDIO" && message.audioUrl) {
+      // 🔴 LINE ต้องการ `duration` เป็นมิลลิวินาที (ไม่ใช่วินาที) และไฟล์ต้องเป็น m4a บน https
+      //    ตัวตัดสินว่าไฟล์เป็น m4a จริงและอยู่บน CDN ของเราอยู่ที่ service (ก่อนเรียกมาถึงตรงนี้)
+      messages.push({
+        type: "audio",
+        originalContentUrl: message.audioUrl,
+        duration: message.durationMs ?? 0,
       });
     } else if (message.type === "STICKER" && message.stickerMeta) {
       messages.push({

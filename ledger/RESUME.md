@@ -20,6 +20,21 @@
 - **ถัดไป (หลังเจ้าของเคาะ)**: WO coding เป็นสาย — (1) nav+shell 9 หมวด (2) dashboard queries ใหม่ (series 12 เดือน · payableStats ที่มีแล้วแต่ไม่มีใครเรียก · financeBalances ยกมาหน้าแรก) (3) หน้ารายการตาราง+แท็บ+pagination (ย้าย filter ลง `listDocuments`) (4) route ราคาถูก: DEPOSIT_PAYMENT / CN-DN received (posting rule มีแล้วใน `gl.ts`) · ASSET_PO / PURCHASE_TAX_INVOICE เข้าเมนู (5) ของใหม่ต้องมี model: กลุ่มผู้ติดต่อ · ใบรวมจ่าย · กล่องขาเข้า+อัปโหลด · กระทบยอดธนาคาร · ปีบัญชี/WHT default
 - หนี้บัญชีเดิม 3 ข้อ (ลด query flow เงิน · DEPOSIT map TRANSFER · audit booking→POS) ยัง defer — ไม่ได้แตะรอบนี้
 
+## 🎧 2 ก.ย. (ดึก) — session แชท: LINE ส่งเสียง async (D31 ✅) · .wav/ตรวจชนิดก่อนอัป · หน้าตั้งค่าที่อยู่สาขา (D14 ✅) · ปิดช่องโหว่ขาเข้า 2 จุด (main=23e28b2 · push แล้ว)
+**Fable คุม · Opus 5 สาย M (main) + สาย N (worktree `shark-chat-b`) ขนาน · ด่าน: typecheck 0 · fitness 17/17 · qc:all **182/182** · build ผ่าน**
+- **WO-CV13 (D31 ทาง ข)**: ทีมอัด WAV ในห้อง LINE → แถว `PENDING` + `meta.pendingReason=TRANSCODE` (ฟองนาฬิกา "กำลังแปลงไฟล์เสียงเพื่อส่งเข้า LINE" ห้าม ✓) → worker VPS
+  **cron ทุก 1 นาที** (เดิม */5) แปลง wav→m4a แล้วเรียก `deliverPendingVoice()` ยิง LINE `{type:audio, originalContentUrl, duration}` → SENT/FAILED · timeout 30 นาที → `TRANSCODE_TIMEOUT` (✗ + ส่งซ้ำ)
+  · ตรรกะส่งยุบเหลือ `deliverOut()` ตัวเดียว · ตาข่ายรายชั่วโมง `/api/cron/hourly` ส่งได้เฉพาะแถวที่เป็น m4a แล้ว · LINE `capabilities.audio: true` · worker ~1.7 วิ/รอบ
+- **WO-CV15 (ช่องโหว่ที่ Fable พบ)**: F1 🔴 `/api/v1/chat/messages` รับ URL ไฟล์แนบอะไรก็ได้ → `javascript:` = XSS เมื่อทีมกดไฟล์ · โฮสต์ภายนอก = รั่ว IP ทีม → `sanitizeAttachmentUrl` (https เท่านั้น · ไม่รับ IP ล้วน/โฮสต์ไม่มีจุด/.local/user:pass) ทุกทางเข้า + ฟองวาง href/src เฉพาะ https
+  · F2 🟠 `context` ถูก merge ลง meta ทั้งก้อน → widget เปิด `autoTranslate` (เสียเงิน) เองได้ → whitelist 5 คีย์ของ SiamDive ตัด 512 ตัวอักษร · ข้อสอบ SEC-U 15 ข้อ (fail-before 11 แดง)
+  · S2 worker เดิม fetch `url` จาก DB ทุกแถว wav = SSRF จาก VPS → กรอง `kind=AUDIO` + `url` บน CDN เราเท่านั้น
+- **WO-CV14**: `addFiles` เดิมตรวจแค่ขนาด **ไม่ตรวจชนิด** (คอมเมนต์โกหก) + `accept` ไม่มีนามสกุล → ตรวจชนิดก่อนรับ · อนุมานจากนามสกุลเมื่อ `File.type` ว่าง (`upload-accept.ts` pure) · `uploadReplyFiles` เทียบ mime ดิบ (`audio/wav;codecs=1` ตก) → normalize
+  · **หน้าใหม่ `/app/settings/units/[unitId]`** ที่อยู่/ลิงก์แผนที่ (https)/lat/lng → `BusinessUnit.settings` · สิทธิ์ใหม่ `systems.unit.update` **รายสาขา** (ส่ง unitId เข้า assertCan — เดิมร่างแรก MANAGER สาขา A แก้สาขา B ได้ Fable จับ) · ปุ่ม "ตั้งค่าสาขา" ในจัดการระบบตามสิทธิ์ · ข้อสอบ CM-W 17 · AT-13 7 · qc-unit-location 40
+- ข้อความ error ชนิดไฟล์เสียง 2 จุดพิมพ์มือตกยุค (ไม่มี wav ทั้งที่ iOS อัด wav) → สร้างจากทะเบียน
+- 🔴 **prod ยังไม่มี LINE connection เลย (0)** ⇒ "ลูกค้า LINE ได้ยินจริง" ยังพิสูจน์ไม่ได้ — **รอเจ้าของ**: เชื่อม LINE OA ในหน้าเชื่อมช่องทาง → กดไมค์ในห้อง LINE 1 ครั้ง → ฟองต้องเป็นนาฬิกา ~1 นาทีแล้วกลายเป็น ✓ · ลูกค้าได้ยินบน LINE
+- 🔴 ทำไม่ได้/ไม่ทำในกะนี้ (แจ้งเจ้าของแล้ว): **แอปอัดเสียงส่ง** = repo `siamdive-rn` (session แอป) + ต้อง `expo-audio` native + build ใหม่ · **เปิด orb คืน** = เจ้าของเพิ่งสั่งซ่อนวันนี้ ต้องสั่งเอง · **i18n v1.1 / หนี้บัญชี** = นอกระบบแชท
+- บทเรียน: (1) `with-gate-lock.sh` ห้ามซ้อน — สั่ง `with-gate-lock bash vercel-build.sh` แล้วข้างใน `pnpm build` ขอ lock เดิมซ้ำ = ค้างจน timeout · ใช้ `pnpm build` ตรง ๆ (2) ข้อสอบ SEC-U สร้าง ChatAttachment จริงบน prod → cleanup เดิมชน FK ทิ้ง tenant ทดสอบค้าง (สาย M กวาดแล้ว = 0) — ลำดับ cleanup แก้แล้ว
+- ค้างเล็ก: worktree `/root/projects/shark-chat-b` + branch `session/chat-b` (merge เข้า main แล้ว) ลบไม่ได้เพราะติดสิทธิ์ — `git worktree remove` + `git branch -D` ได้เลย · QC สายตาหน้าตั้งค่าสาขาบน prod: `QC_BASE=https://shark.in.th pnpm exec tsx scripts/visual-qc-unit-location.mts` → **รันแล้วบน prod 9/9** (มือถือ 390 + เดสก์ท็อป 1440 · บันทึกจริง/ค่าคืนแล้ว/error http→https inline · ภาพ `/tmp/claude-0/qc-unit-location/`)
 ## 🔀 2 ก.ย. (ค่ำ) — HANDOFF ย้าย session (main=6e9ced4 · push ครบทุก repo · working tree สะอาดหมด)
 **สถานะ**: แชท V2 จบทั้งแผน (CV1–CV12 + D1–D31) · เสียงครบวงจร (ทีมส่ง↔ลูกค้าส่ง · transcoder cron `*/5` บน VPS ·
 retention ลบไฟล์จริง) · qc:all 181/181 · siamdive2 `14a7c75` · แอป SiamDive OTA ×4 · แอป SHARK OTA ซ่อน orb

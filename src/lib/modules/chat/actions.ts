@@ -31,6 +31,8 @@ import {
   normalizeUploadType,
   isAudioUploadType,
 } from "@/lib/storage/service";
+// ชื่อนามสกุลที่ระบบรับ — ประกอบจากทะเบียนเดียวกัน ห้ามพิมพ์ลิสต์ซ้ำในข้อความบอกผู้ใช้
+import { uploadExtensions } from "@/lib/storage/upload-accept";
 import { tenantDb } from "@/lib/core/db";
 import { canSendAudio } from "./adapter";
 import { channelSentenceLabel } from "./channel-icon";
@@ -83,13 +85,19 @@ async function uploadReplyFiles(
   }
 
   for (const f of files) {
-    const mime = (f.type ?? "").trim().toLowerCase();
+    // 🔴 normalize ก่อนเทียบทะเบียน — เหมือน `sendVoiceReplyAction` และ `uploadFile`
+    //    เบราว์เซอร์คืน mime พร้อมพารามิเตอร์เป็นเรื่องปกติ (`audio/wav;codecs=1`
+    //    · `audio/webm;codecs=opus`) ⇒ เทียบดิบ = ปฏิเสธไฟล์ที่ storage เองรับได้อยู่แล้ว
+    //    (normalize ≠ ปล่อยผ่าน — ชนิดที่ normalize แล้วยังไม่อยู่ในทะเบียน ยังถูกปฏิเสธเหมือนเดิม)
+    const mime = normalizeUploadType(f.type);
     // ทะเบียนชนิดไฟล์เดียวกับ storage/service — ห้ามมีลิสต์ที่สอง
     if (!(mime in ALLOWED_UPLOAD_TYPES)) {
       chatError(
         systemId,
         conversationId,
-        `ไฟล์ "${f.name}" เป็นชนิดที่ส่งในแชทไม่ได้ — รองรับรูป (jpg/png/webp/gif/heic), เสียง (webm/m4a/mp3/ogg), PDF, Word, Excel และ txt`,
+        // 🔴 รายชื่อชนิดสร้างจากทะเบียน ไม่พิมพ์มือ — ลิสต์พิมพ์มือคือทะเบียนที่สอง
+        //    วันที่เพิ่มชนิดใหม่ ข้อความจะโกหกผู้ใช้ทันทีโดยไม่มีใครรู้
+        `ไฟล์ "${f.name}" เป็นชนิดที่ส่งในแชทไม่ได้ — ชนิดที่ส่งได้ตอนนี้คือ ${uploadExtensions(ALLOWED_UPLOAD_TYPES).join(" · ")}`,
       );
     }
     // เพดานเดียวกับที่ storage บังคับ (CHAT_ATTACHMENT_MAX_BYTES) — ห้ามพิมพ์ตัวเลขซ้ำที่นี่
@@ -104,12 +112,15 @@ async function uploadReplyFiles(
 
   const out: ExternalAttachmentInput[] = [];
   for (const f of files) {
+    // ใช้ชื่อในทะเบียน (ตัดพารามิเตอร์ทิ้งแล้ว) ทั้งตอนอัปและตอนบันทึกแถว —
+    // ไม่งั้น `ChatAttachment.mimeType` จะเก็บ `audio/wav;codecs=1` ไว้ให้ทุกคนที่อ่านต่อไปเจอเอง
+    const mime = normalizeUploadType(f.type);
     const res = await uploadFile(
       { tenantId },
       {
         kind: "ATTACHMENT",
         filename: f.name,
-        contentType: f.type,
+        contentType: mime,
         data: new Uint8Array(await f.arrayBuffer()),
         maxBytes: CHAT_ATTACHMENT_MAX_BYTES,
       },
@@ -117,7 +128,7 @@ async function uploadReplyFiles(
     if (!res.ok) chatError(systemId, conversationId, res.error);
     out.push({
       url: res.cdnUrl,
-      mimeType: f.type,
+      mimeType: mime,
       fileName: f.name,
       sizeBytes: f.size,
       // path บน CDN = handle เดียวที่จะไปลบไฟล์จริงทีหลังได้ (retention เก็บช่องนี้ไว้โดยเจตนา)
@@ -619,7 +630,10 @@ export async function sendVoiceReplyAction(formData: FormData): Promise<SendRepl
   if (!isAudioUploadType(mime) || !(mime in ALLOWED_UPLOAD_TYPES)) {
     return {
       ok: false,
-      reason: "ไฟล์เสียงชนิดนี้ส่งในแชทไม่ได้ — รองรับ webm/m4a/mp3/ogg (อัดใหม่จากเบราว์เซอร์รุ่นล่าสุดได้เลย)",
+      // ลิสต์ชนิดมาจากทะเบียนเดียวกับด่านข้างบน — ของเดิมพิมพ์มือแล้วตกยุค (ไม่มี wav ทั้งที่ iOS อัด wav ตั้งแต่ D29)
+      reason: `ไฟล์เสียงชนิดนี้ส่งในแชทไม่ได้ — รองรับ ${uploadExtensions(
+        Object.fromEntries(Object.entries(ALLOWED_UPLOAD_TYPES).filter(([m]) => m.startsWith("audio/"))),
+      ).join("/")} (อัดใหม่แล้วส่งอีกครั้งได้เลย)`,
     };
   }
   if (f.size === 0) return { ok: false, reason: "คลิปเสียงว่างเปล่า — อัดใหม่แล้วส่งอีกครั้งได้เลย" };

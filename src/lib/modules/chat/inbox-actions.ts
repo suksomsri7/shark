@@ -208,6 +208,15 @@ export type ThreadMessage = {
   senderUserId: string | null;
   deliveryStatus: string;
   deliveryError: string | null;
+  /**
+   * เหตุผลที่ยังค้างอยู่ (`meta.pendingReason`) — `"TRANSCODE"` = กำลังแปลงไฟล์เสียงเพื่อส่งเข้า LINE
+   * 🔴 PENDING เฉย ๆ กับ PENDING เพราะรอแปลงไฟล์ ต่างกันสำหรับคนที่มองจอ: อันหลังใช้เวลา
+   *    ~1–2 นาที (รอบ cron) ไม่ใช่วินาที ⇒ ต้องบอกเหตุผล ไม่งั้นทีมกดส่งซ้ำรัวเพราะคิดว่าค้าง
+   * ⚠️ ประกาศเป็น optional โดยตั้งใจ: ฟองมองโลกในแง่ดีที่ `inbox-client.tsx` ปั้นเองระหว่างรอ
+   *    เซิร์ฟเวอร์ตอบ ไม่มีทางรู้ค่านี้ (ยังไม่มีแถวใน DB) — บังคับให้ใส่ = ไฟล์นั้นต้องแก้ตาม
+   *    ทั้งที่ความหมายคือ "ไม่รู้" ⇒ ไม่ใส่ = ไม่รู้ = ตกไปทาง "กำลังส่ง" ตามเดิม
+   */
+  pendingReason?: string | null;
   createdAt: number;
   attachments: ThreadAttachment[];
 };
@@ -439,6 +448,7 @@ export async function loadThreadAction(
       senderUserId: m.senderUserId,
       deliveryStatus: m.deliveryStatus,
       deliveryError: m.deliveryError,
+      pendingReason: metaString(m.meta, "pendingReason"),
       createdAt: m.createdAt.getTime(),
       attachments: atts
         .filter((a) => a.messageId === m.id)

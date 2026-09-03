@@ -586,6 +586,7 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     group: "admin",
     actions: {
       "systems.system.create": "เพิ่ม/เอาระบบออกจากร้าน",
+      "systems.unit.update": "แก้ที่อยู่/แผนที่/ข้อมูลสาขา",
       "systems.link.create": "ผูกระบบเข้าด้วยกัน",
       "systems.link.delete": "ยกเลิกการผูกระบบ",
       "systems.reward.create": "เพิ่มของรางวัลในทะเบียน",

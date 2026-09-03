@@ -27,6 +27,9 @@ import { channelSentenceLabel } from "./channel-icon";
 import { selectChatNotifyRecipients, toChatNotifyMember, VIEWING_WINDOW_MS } from "./notify";
 // ชั้นกลาง realtime (WO-CV9) — ไม่มีกุญแจ = ทุกคำสั่งในนี้คืนทันที ไม่ยิงเน็ต ไม่ throw
 import { publishChat, EV_CHAT_NEW, EV_CHAT_READ } from "@/lib/realtime";
+// ตัวแปลง url → path บน storage zone ของเรา · คืน null เมื่อ url ไม่ได้อยู่ใต้ CDN ของเรา
+// (ใช้เป็นด่าน S1 ของ WO-CV13 — ห้ามเขียนกติกา "url นี้ของเราไหม" ซ้ำอีกชุด)
+import { storagePathFromCdnUrl } from "@/lib/storage/service";
 
 // Chat service (P1 = LINE + WEBCHAT). scope = systemId (AppSystem type CHAT)
 // query ทุกตัวผูก tenantId + systemId ตรง ๆ (ไม่พึ่ง tenantDb — เหมือน reward/meeting)
@@ -962,6 +965,103 @@ export type ExternalAttachmentInput = {
 const MAX_EXTERNAL_ATTACHMENTS = 10;
 
 /**
+ * ความยาว url ของไฟล์แนบที่ยอมรับ — ยาวกว่านี้ไม่ใช่ลิงก์ไฟล์จริงแล้ว
+ * (เบราว์เซอร์/พร็อกซีหลายตัวตัดที่ ~2KB อยู่แล้ว · url ยาวผิดปกติคือ payload ที่ยัดมาในลิงก์)
+ */
+export const ATTACHMENT_URL_MAX = 2048;
+
+/** ข้อความเดียวที่ผู้ใช้เห็นเมื่อลิงก์ไฟล์แนบไม่ผ่าน — 🔴 ห้ามโทษผู้ใช้ ต้องบอกว่าทำอะไรต่อได้ */
+const ATTACHMENT_URL_REASON =
+  "ลิงก์ไฟล์แนบต้องเป็น https ที่เปิดได้จากอินเทอร์เน็ต — อัปโหลดไฟล์ใหม่แล้วส่งอีกครั้งได้เลย";
+
+/**
+ * ตรวจ url ของไฟล์แนบก่อนให้เข้าระบบ — **ตัวเดียวของทั้งโมดูลแชท** (WO-CV15 F1 ชั้น 1)
+ *
+ * 🔴 ทำไมต้องมี: `POST /api/v1/chat/messages` โหมด widget เปิดให้ผู้เยี่ยมชมทุกคนบน origin
+ *    ที่อนุญาตยิงเข้ามาได้ และ url ที่ส่งมาเดินทางไปโผล่เป็น `href`/`src` ในกล่องข้อความ
+ *    **ของพนักงาน** ตรง ๆ ⇒ `javascript:` = stored XSS ที่ทำงานด้วยสิทธิ์ของทีม (React ไม่บล็อก
+ *    `href="javascript:"`) · `http://` = รั่ว IP/User-Agent ของทุกคนที่เปิดห้องนั้น
+ *
+ * กติกา (ทุกข้อต้องผ่าน):
+ *  1. parse ได้ด้วย `new URL` และ **https เท่านั้น** — ไม่ใช่ allowlist โดเมน เพราะไฟล์ของ
+ *     พาร์ตเนอร์ (SiamDive) อยู่บน CDN คนละโดเมนกับเรา · การล็อกเฉพาะ CDN ของเราอยู่ที่
+ *     ขอบที่อันตรายจริง (worker/LINE — `deliverPendingVoice` S1) ไม่ใช่ที่นี่
+ *  2. ไม่มี user:pass ใน url (ลิงก์หลอกตาที่โชว์โดเมนปลอมหน้าเครื่องหมาย @)
+ *  3. โฮสต์ต้องเป็นชื่อโดเมนสาธารณะ: ไม่ใช่ localhost / `.local` / `.internal` / `home.arpa`
+ *     ไม่ใช่ **IP ล้วน** และต้องมีจุด — กัน SSRF อีกชั้นก่อนถึง worker บน VPS ที่ `fetch(url)`
+ *     ตรง ๆ จาก DB (ไม่มี CDN จริงเจ้าไหนเสิร์ฟด้วย IP ล้วน ⇒ ตัดทิ้งได้โดยไม่เสียของจริง)
+ */
+export function sanitizeAttachmentUrl(raw: string | null | undefined): string | null {
+  const s = (raw ?? "").trim();
+  if (!s || s.length > ATTACHMENT_URL_MAX) return null;
+  let u: URL;
+  try {
+    u = new URL(s);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:") return null;
+  if (u.username || u.password) return null;
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (!host) return null;
+  if (host === "localhost" || /\.(local|localhost|internal)$|\.home\.arpa$/.test(host)) return null;
+  if (/^[\d.]+$/.test(host) || host.includes(":")) return null; // IPv4/IPv6 ล้วน
+  if (!host.includes(".")) return null; // ชื่อเครื่องในเครือข่ายภายใน (ไม่มีจุด)
+  return s;
+}
+
+/**
+ * กรองรายการไฟล์แนบขาเข้า — จุดเดียวที่ทุกทางเข้าต้องผ่าน (`receiveExternalInbound` · `sendReply`)
+ *
+ * 🔴 ลิงก์ที่ไม่ผ่าน = **ทิ้งทั้งข้อความพร้อมบอกเหตุผล** ไม่ใช่กรองไฟล์นั้นทิ้งเงียบ ๆ —
+ *    กรองเงียบแปลว่าผู้ส่งเชื่อว่าไฟล์ถึงแล้ว ทั้งที่ทีมไม่เคยเห็น (ของที่หายไปเฉย ๆ)
+ * ไฟล์ที่ไม่มี url/mimeType ยังถูกกรองทิ้งเงียบเหมือนเดิม (ผู้เรียกเดิมส่งช่องว่างมาได้ ไม่ใช่การโจมตี)
+ */
+function safeAttachments(
+  list: ExternalAttachmentInput[] | undefined,
+): { ok: true; attachments: ExternalAttachmentInput[] } | { ok: false; reason: string } {
+  const out: ExternalAttachmentInput[] = [];
+  for (const a of list ?? []) {
+    if (!a?.url?.trim() || !a?.mimeType?.trim()) continue;
+    const url = sanitizeAttachmentUrl(a.url);
+    if (!url) return { ok: false, reason: ATTACHMENT_URL_REASON };
+    out.push({ ...a, url });
+  }
+  return { ok: true, attachments: out };
+}
+
+/**
+ * บริบทลูกค้าที่ยอมให้ระบบภายนอก/widget เขียนลง `ChatConversation.meta` ได้ (WO-CV15 F2)
+ *
+ * 🔴 ก่อนหน้านี้ merge ทั้งก้อน ⇒ widget ส่ง `{autoTranslate:true}` มาได้ = **บังคับให้ร้าน
+ *    จ่ายค่าแปลทุกข้อความของห้องนั้น** โดยทีมไม่ได้กด (D15 อ่าน `meta.autoTranslate`)
+ *    และทับ `tags`/คีย์ภายในอื่นได้ · ยัด JSON ก้อนใหญ่ไม่จำกัดได้ (row bloat)
+ * ⇒ บัญชีขาว = คีย์ที่ SiamDive ส่งมาจริง (`siamdive2/src/lib/shark-chat.ts` SharkContext)
+ *    คีย์อื่น **ทิ้งเงียบ** (ไม่ error — ผู้เรียกเดิมที่ส่งของเกินมาต้องไม่พัง)
+ */
+const CONTEXT_ALLOWED_KEYS = ["pageUrl", "userAgent", "country", "lang", "referrer"] as const;
+const CONTEXT_VALUE_MAX = 512;
+
+/** คืน patch ที่เขียนลง meta ได้จริง (ค่า null = สั่งลบคีย์นั้น) · ไม่มีอะไรให้เขียน = null */
+function safeContext(ctx: Record<string, unknown> | undefined): Record<string, unknown> | null {
+  if (!ctx || typeof ctx !== "object" || Array.isArray(ctx)) return null;
+  const out: Record<string, unknown> = {};
+  for (const k of CONTEXT_ALLOWED_KEYS) {
+    if (!(k in ctx)) continue;
+    const v = ctx[k];
+    if (v === null) {
+      out[k] = null; // ตั้งใจล้างค่า (ลูกค้าออกจากหน้าเดิม) — ผู้เรียกบอกมาตรง ๆ
+      continue;
+    }
+    if (typeof v !== "string") continue; // คีย์ถูกแต่ชนิดผิด = ทิ้งเงียบ ไม่ทำให้ข้อความตก
+    const s = v.trim();
+    if (!s) continue;
+    out[k] = s.slice(0, CONTEXT_VALUE_MAX);
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
  * เพดานความยาวข้อความเสียง — 2 นาที
  *
  * ทำไม 2 นาที: ข้อความเสียงในงานบริการคือ "พูดสั้น ๆ แทนพิมพ์" (อธิบายเส้นทาง/ยืนยันเวลา)
@@ -1046,7 +1146,10 @@ export async function receiveExternalInbound(args: {
   const at = when.at;
 
   const body = (args.body ?? "").trim();
-  const attachments = (args.attachments ?? []).filter((a) => a?.url?.trim() && a?.mimeType?.trim());
+  // 🔒 WO-CV15 F1 — ลิงก์ไฟล์แนบที่ผู้เยี่ยมชมยัดมาเอง ต้องผ่านด่านเดียวกับทุกทางเข้า
+  const safeIn = safeAttachments(args.attachments);
+  if (!safeIn.ok) return { ok: false, reason: safeIn.reason };
+  const attachments = safeIn.attachments;
   if (!body && attachments.length === 0) return { ok: false, reason: "ข้อความว่าง" };
   if (body.length > 4000) return { ok: false, reason: "ข้อความยาวเกิน 4,000 ตัวอักษร" };
   if (attachments.length > MAX_EXTERNAL_ATTACHMENTS) {
@@ -1107,14 +1210,22 @@ export async function receiveExternalInbound(args: {
   });
 
   // บริบทลูกค้า §3.3 (pageUrl/country/userAgent/…) — merge ทับของเดิม ทีมงานเห็นว่าลูกค้าดูหน้าไหน
-  if (args.context && Object.keys(args.context).length > 0) {
+  // 🔒 WO-CV15 F2 — ผ่านบัญชีขาวก่อนเสมอ: `meta` ก้อนนี้ยังเก็บ **สวิตช์ภายในของร้าน**
+  //    (`autoTranslate`, `tags`) อยู่ด้วย ⇒ merge ดิบ = ให้ผู้เยี่ยมชมกดสวิตช์ของร้านได้
+  const ctxPatch = safeContext(args.context);
+  if (ctxPatch) {
     const prev =
       conv.meta && typeof conv.meta === "object" && !Array.isArray(conv.meta)
         ? (conv.meta as Record<string, unknown>)
         : {};
+    const merged: Record<string, unknown> = { ...prev };
+    for (const [k, v] of Object.entries(ctxPatch)) {
+      if (v === null) delete merged[k]; // null = ผู้เรียกสั่งลบคีย์ ไม่ใช่เก็บค่า null ไว้
+      else merged[k] = v;
+    }
     await prisma.chatConversation.update({
       where: { id: conv.id },
-      data: { meta: { ...prev, ...args.context } as Prisma.InputJsonValue },
+      data: { meta: merged as Prisma.InputJsonValue },
     });
   }
 
@@ -1241,10 +1352,112 @@ function buildOutboundMessages(
     const url = a.url.trim();
     const name = a.fileName?.trim() || fileNameFromUrl(url);
     if (attachmentKind(a.mimeType) === "IMAGE") out.push({ type: "IMAGE", body: name, imageUrl: url });
+    // 🔴 เกณฑ์เดียวกับที่ใช้ตัดสินชนิดข้อความ: **เสียง + ผู้ส่งบอกความยาวมา** = ข้อความเสียง
+    //    ไฟล์เสียงที่ไม่มี `durationMs` (เพลงที่แนบมาเฉย ๆ) ยังเป็นลิงก์ข้อความเหมือนเดิม —
+    //    ส่งเพลงยาวเป็น audio message จะกลายเป็นฟองเสียงในห้องลูกค้าซึ่งไม่ใช่เจตนาของผู้ส่ง
+    else if (isVoiceAttachment(a)) out.push({ type: "AUDIO", body: name, audioUrl: url, durationMs: a.durationMs });
     else out.push({ type: "TEXT", body: `[ไฟล์] ${name}\n${url}` });
   }
   if (out.length === 0) out.push({ type: "TEXT", body });
   return out;
+}
+
+/** "ไฟล์นี้คือข้อความเสียง" — เสียง + ผู้ส่งบอกความยาวมาด้วย (เกณฑ์เดียวทั้งไฟล์) */
+function isVoiceAttachment(a: { mimeType: string; durationMs?: number | null }): boolean {
+  return (
+    a.mimeType.trim().toLowerCase().startsWith("audio/") &&
+    typeof a.durationMs === "number" &&
+    Number.isFinite(a.durationMs) &&
+    a.durationMs > 0
+  );
+}
+
+// ชนิดไฟล์เสียงที่ยังส่งเข้า LINE ไม่ได้ (ต้องรอ worker แปลง) / ที่ส่งได้ทันที
+// 🔴 ตัวอัดฝั่งเบราว์เซอร์ผลิต wav เส้นทางเดียว (D29/D30) — LINE รับเฉพาะ m4a
+const WAV_MIMES = new Set(["audio/wav", "audio/x-wav"]);
+const M4A_MIMES = new Set(["audio/mp4", "audio/x-m4a", "audio/m4a"]);
+
+/**
+ * ค้างรอไฟล์แปลงนานเกินเท่านี้ = ยอมแพ้ (worker รอบละ 1 นาที ⇒ 30 นาที = พลาดไป ~30 รอบ)
+ * 🔴 ต้องมีเพดาน ไม่งั้นข้อความค้าง PENDING ตลอดกาลโดยไม่มีใครรู้ว่าลูกค้าไม่เคยได้ยิน
+ */
+const TRANSCODE_TIMEOUT_MS = 30 * 60_000;
+
+/**
+ * ส่งข้อความออกช่องทางภายนอก + อัปเดตผลลงแถวข้อความ — **ที่เดียวของทั้งระบบ**
+ *
+ * 🔴 ห้าม fork ตรรกะนี้ (WO-CV13 M2): `sendReply` (ส่งทันที) และ `deliverPendingVoice`
+ *    (worker ส่งทีหลังหลังแปลงไฟล์เสร็จ) ต้องเดินเส้นเดียวกัน ไม่งั้นการแก้เรื่อง
+ *    TOKEN_EXPIRED/DELIVERY_FAILED จะได้ผลแค่ครึ่งเดียวของเส้นทางส่งจริง
+ * 🔴 ต้องเรียก **นอกทรานแซกชัน** เสมอ (network call ในทรานแซกชัน = ถือ connection ของ Neon ค้าง)
+ */
+async function deliverOut(args: {
+  tenantId: string;
+  systemId: string;
+  conversationId: string;
+  messageId: string;
+  channel: ChatChannelType;
+  connection: ChatChannelConnection | null;
+  externalUserId: string;
+  outbound: OutboundMessage[];
+  actorUserId?: string | null;
+}): Promise<{ ok: boolean; reason?: string }> {
+  let failReason: string | undefined;
+  if (!args.connection || args.connection.status === "DISABLED") {
+    failReason = "CHANNEL_DISCONNECTED";
+  } else if (!isSupported(args.channel)) {
+    // 🔴 ช่องทางที่ยังไม่มี adapter (Messenger/IG/TikTok/…): ข้อความของทีม **ต้องไม่หาย**
+    //    ⇒ บันทึกในระบบตามปกติ ไม่ throw · แต่สถานะต้องบอกความจริงว่า "ยังไม่ถึงลูกค้า"
+    //    (SENT ทั้งที่ไม่มีทางส่งได้ = ทีมเข้าใจว่าตอบไปแล้ว แล้วลูกค้ารอเก้อ)
+    failReason = "CHANNEL_NOT_SUPPORTED";
+  } else {
+    try {
+      const adapter = getAdapter(args.channel);
+      // 1 ข้อความในระบบ → หลายชิ้นบนช่องทาง (ข้อความ + รูปแต่ละใบ) · ยิงเรียงตามลำดับที่ทีมเห็น
+      let result: { externalMessageId?: string } = {};
+      for (const outbound of args.outbound) {
+        result = await adapter.sendMessage({
+          creds: credsOf(args.connection),
+          externalUserId: args.externalUserId,
+          message: outbound,
+        });
+      }
+      await prisma.chatMessage.update({
+        where: { id: args.messageId },
+        data: { deliveryStatus: "SENT", externalMessageId: result.externalMessageId ?? null },
+      });
+      return { ok: true };
+    } catch (e) {
+      failReason = e instanceof ChannelDeliveryError ? e.reason : "SEND_FAILED";
+      if (failReason === "TOKEN_EXPIRED") {
+        await setConnectionStatus(args.tenantId, args.connection.id, "ERROR", "TOKEN_EXPIRED");
+      }
+    }
+  }
+  await markDeliveryFailed({ ...args, reason: failReason });
+  return { ok: false, reason: failReason };
+}
+
+/** มาร์กแถวเป็น FAILED + ลงบันทึกในไทม์ไลน์ห้อง (ฟองขึ้น ✗ + ปุ่มส่งซ้ำ) */
+async function markDeliveryFailed(args: {
+  tenantId: string;
+  systemId: string;
+  conversationId: string;
+  messageId: string;
+  actorUserId?: string | null;
+  reason: string;
+}): Promise<void> {
+  await prisma.chatMessage.update({
+    where: { id: args.messageId },
+    data: { deliveryStatus: "FAILED", deliveryError: args.reason },
+  });
+  await logEvent(args.conversationId, {
+    tenantId: args.tenantId,
+    systemId: args.systemId,
+    type: "DELIVERY_FAILED",
+    actorUserId: args.actorUserId ?? undefined,
+    meta: { messageId: args.messageId, reason: args.reason },
+  });
 }
 
 export async function sendReply(args: {
@@ -1262,7 +1475,10 @@ export async function sendReply(args: {
   // 🔴 เงื่อนไขเดิมคือ `if (!body) return` ⇒ ทีมส่ง "รูปอย่างเดียว" ไม่ได้เลย (G3)
   //    กติกาใหม่: ต้องมีอย่างน้อย body **หรือ** ไฟล์แนบ (ตรงกับขาเข้า receiveExternalInbound)
   const body = (args.body ?? "").trim();
-  const attachments = (args.attachments ?? []).filter((a) => a?.url?.trim() && a?.mimeType?.trim());
+  // 🔒 WO-CV15 F1 — ไฟล์แนบเข้าเส้นนี้ได้จาก API v1 ด้วย (ไม่ใช่แค่จากหน้าจอที่เราอัปเอง)
+  const safeOut = safeAttachments(args.attachments);
+  if (!safeOut.ok) return { ok: false, reason: safeOut.reason };
+  const attachments = safeOut.attachments;
   if (!body && attachments.length === 0) {
     return { ok: false, reason: "ต้องมีข้อความหรือไฟล์แนบอย่างน้อยหนึ่งอย่าง" };
   }
@@ -1316,6 +1532,18 @@ export async function sendReply(args: {
   const isInternal = !!args.isInternal;
   // insert OUT ก่อน (ทีมเห็นทันที) — PENDING สำหรับช่องทางภายนอก, SENT สำหรับ internal/webchat
   const willSend = !isInternal;
+
+  // ── WO-CV13 · ส่งเสียงเข้าช่องทางภายนอกแบบ async (มติ D31 ทาง ข) ────────────────────
+  // ตัวอัดผลิต **wav** เส้นทางเดียว (D29/D30) แต่ LINE รับเฉพาะ m4a ⇒ ณ วินาทีที่กด "ส่ง"
+  // ไฟล์ยังส่งไม่ได้ · ยิงไปตอนนี้ = 400 กลับมาเป็น FAILED ทุกครั้ง
+  // ⇒ บันทึกเป็น PENDING + `meta.pendingReason = "TRANSCODE"` แล้ว **ไม่แตะ adapter เลย**
+  //   worker บน VPS (ทุก 1 นาที) แปลงเสร็จแล้วเรียก `deliverPendingVoice()` ส่งเอง
+  // 🔴 สถานะต้องตรงความจริง: ฟองขึ้นนาฬิกา "กำลังแปลงไฟล์…" ห้ามขึ้น ✓ ก่อนถึงลูกค้าจริง
+  const pendingTranscode =
+    isVoice &&
+    willSend &&
+    conv.channel !== "WEBCHAT" &&
+    WAV_MIMES.has(voiceAtt!.mimeType.trim().toLowerCase());
   // ชนิดข้อความตามไฟล์ชิ้นแรก (กติกาเดียวกับขาเข้า) — mime ขึ้นต้น image/ → IMAGE · อื่น ๆ → FILE
   const msgType: ChatMessageType = isVoice
     ? "AUDIO"
@@ -1358,7 +1586,14 @@ export async function sendReply(args: {
         senderName: rowSenderName,
         body: body || null,
         isInternal,
-        ...(originalBody ? { meta: { originalBody } as Prisma.InputJsonValue } : {}),
+        ...(originalBody || pendingTranscode
+          ? {
+              meta: {
+                ...(originalBody ? { originalBody } : {}),
+                ...(pendingTranscode ? { pendingReason: "TRANSCODE" } : {}),
+              } as Prisma.InputJsonValue,
+            }
+          : {}),
         deliveryStatus: willSend && conv.channel !== "WEBCHAT" ? "PENDING" : "SENT",
       },
     });
@@ -1436,63 +1671,25 @@ export async function sendReply(args: {
   });
 
   let failReason: string | undefined;
-  if (willSend && conv.channel !== "WEBCHAT") {
+  // `pendingTranscode` = ไฟล์ยังเป็น wav → **ไม่แตะ adapter** ปล่อยค้าง PENDING ให้ worker ส่งต่อ
+  if (willSend && conv.channel !== "WEBCHAT" && !pendingTranscode) {
     const connection = conv.channelConnectionId
       ? await prisma.chatChannelConnection.findUnique({ where: { id: conv.channelConnectionId } })
       : null;
-    if (!connection || connection.status === "DISABLED") {
-      failReason = "CHANNEL_DISCONNECTED";
-    } else if (!isSupported(conv.channel)) {
-      // 🔴 ช่องทางที่ยังไม่มี adapter (Messenger/IG/TikTok/…): ข้อความของทีม **ต้องไม่หาย**
-      //    ⇒ บันทึกในระบบตามปกติ ไม่ throw · แต่สถานะต้องบอกความจริงว่า "ยังไม่ถึงลูกค้า"
-      //    (SENT ทั้งที่ไม่มีทางส่งได้ = ทีมเข้าใจว่าตอบไปแล้ว แล้วลูกค้ารอเก้อ)
-      await prisma.chatMessage.update({
-        where: { id: msg.id },
-        data: { deliveryStatus: "FAILED", deliveryError: "CHANNEL_NOT_SUPPORTED" },
-      });
-      await logEvent(conv.id, {
-        tenantId: args.tenantId,
-        systemId: args.systemId,
-        type: "DELIVERY_FAILED",
-        actorUserId: args.senderUserId,
-        meta: { messageId: msg.id, reason: "CHANNEL_NOT_SUPPORTED" },
-      });
-    } else {
-      try {
-        const adapter = getAdapter(conv.channel);
-        // 1 ข้อความในระบบ → หลายชิ้นบนช่องทาง (ข้อความ + รูปแต่ละใบ) · ยิงเรียงตามลำดับที่ทีมเห็น
-        let result: { externalMessageId?: string } = {};
-        for (const outbound of buildOutboundMessages(body, attachments)) {
-          result = await adapter.sendMessage({
-            creds: credsOf(connection),
-            externalUserId: conv.contact.externalUserId,
-            message: outbound,
-          });
-        }
-        await prisma.chatMessage.update({
-          where: { id: msg.id },
-          data: { deliveryStatus: "SENT", externalMessageId: result.externalMessageId ?? null },
-        });
-      } catch (e) {
-        failReason = e instanceof ChannelDeliveryError ? e.reason : "SEND_FAILED";
-        if (failReason === "TOKEN_EXPIRED" && connection) {
-          await setConnectionStatus(args.tenantId, connection.id, "ERROR", "TOKEN_EXPIRED");
-        }
-      }
-    }
-    if (failReason) {
-      await prisma.chatMessage.update({
-        where: { id: msg.id },
-        data: { deliveryStatus: "FAILED", deliveryError: failReason },
-      });
-      await logEvent(conv.id, {
-        tenantId: args.tenantId,
-        systemId: args.systemId,
-        type: "DELIVERY_FAILED",
-        actorUserId: args.senderUserId,
-        meta: { messageId: msg.id, reason: failReason },
-      });
-    }
+    const res = await deliverOut({
+      tenantId: args.tenantId,
+      systemId: args.systemId,
+      conversationId: conv.id,
+      messageId: msg.id,
+      channel: conv.channel,
+      connection,
+      externalUserId: conv.contact.externalUserId,
+      outbound: buildOutboundMessages(body, attachments),
+      actorUserId: args.senderUserId,
+    });
+    // CHANNEL_NOT_SUPPORTED = ข้อความถูกเก็บไว้แล้ว ทีมไม่ต้องกดอะไรต่อ ⇒ ไม่คืนเป็นความล้มเหลว
+    // ให้ผู้เรียก (พฤติกรรมเดิมก่อน WO-CV13 — ฟองยังขึ้น ✗ จาก deliveryStatus เหมือนเดิม)
+    if (!res.ok && res.reason !== "CHANNEL_NOT_SUPPORTED") failReason = res.reason;
   }
 
   // drain outbox (automation/webhooks) — fire-and-forget เหมือนขาเข้า ให้ event เดินทันที
@@ -1501,6 +1698,131 @@ export async function sendReply(args: {
   return failReason
     ? { ok: false, reason: failReason, messageId: msg.id }
     : { ok: true, messageId: msg.id };
+}
+
+// ─────────────── ตัวส่งข้อความเสียงที่ค้างรอไฟล์แปลง (WO-CV13 M3 · มติ D31 ทาง ข) ───────────────
+/**
+ * ส่งข้อความเสียงที่ค้างสถานะ PENDING เพราะยังรอ `voice-transcode-worker` แปลง wav→m4a
+ *
+ * เรียกจาก 2 ที่ (ต้องเป็น "ตัวเดียวกัน" ทั้งคู่ ห้ามมี 2 ชุด):
+ *   (ก) ท้าย `scripts/voice-transcode-worker.mts` — เส้นทางหลัก · ทุก 1 นาทีบน VPS
+ *   (ข) `runDailyCron`/cron รายชั่วโมงของแพลตฟอร์ม — **ตาข่ายเผื่อ VPS ตาย** ส่งได้เฉพาะแถวที่
+ *       ไฟล์เป็น m4a แล้ว (Vercel ไม่มี ffmpeg แปลงเองไม่ได้)
+ *
+ * 🔴 ฟังก์ชันนี้ต้องเรียกได้จากสคริปต์นอก Next (ห้ามพึ่ง session/`headers()`/`after()`)
+ * 🔴 ห้าม throw — cron/worker ที่ล้มทั้งรอบเพราะข้อความใบเดียวเสีย = ของที่เหลือค้างต่ออีกทั้งรอบ
+ */
+export async function deliverPendingVoice(
+  args?: { limit?: number; now?: Date },
+): Promise<{ sent: number; failed: number; skipped: number }> {
+  const limit = Math.max(1, Math.trunc(args?.limit ?? 20));
+  const now = args?.now ?? new Date();
+  const out = { sent: 0, failed: 0, skipped: 0 };
+
+  const rows = await prisma.chatMessage.findMany({
+    where: { direction: "OUT", type: "AUDIO", deliveryStatus: "PENDING" },
+    include: { attachments: true, conversation: { include: { contact: true } } },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+  });
+
+  for (const msg of rows) {
+    // 🔴 กรอง `meta.pendingReason` ในหน่วยความจำโดยตั้งใจ: ตัวกรอง JSON path ของ Prisma ผูกกับ
+    //    Postgres ตัวจริง ทำให้ข้อสอบที่ใช้ prisma จำลองอ่านไม่ออก และแถว PENDING ของช่องทางอื่น
+    //    ก็มีน้อยมาก (ค้างได้ไม่กี่วินาที) ⇒ ต้นทุนการกรองฝั่งแอปแทบเป็นศูนย์
+    // 🔴 โน้ตภายในกันไว้ตรงนี้ ไม่ใช่ใน `where` โดยเจตนา — กติกา "กรองโน้ตภายในออกจากสิ่งที่ลูกค้า
+    //    เห็น" ต้องมี **ที่เดียว** ในไฟล์นี้ (ด่าน XR-6.5/XC-1.7) · อันนี้เป็นคนละกติกา:
+    //    "ตัวส่งอัตโนมัติห้ามยิงโน้ตออกช่องทาง" — ตามหลักแล้วเกิดไม่ได้อยู่แล้วเพราะ `sendReply`
+    //    ตั้ง pendingReason เฉพาะข้อความที่จะส่งออกจริง แต่กันไว้เป็นชั้นที่สอง
+    if (msg.isInternal) continue;
+    if (metaValue(msg.meta, "pendingReason") !== "TRANSCODE") continue;
+    const conv = msg.conversation;
+    const att = msg.attachments.find((a) => a.kind === "AUDIO") ?? msg.attachments[0] ?? null;
+    const mime = (att?.mimeType ?? "").trim().toLowerCase();
+    const url = (att?.url ?? "").trim();
+    const ageMs = now.getTime() - msg.createdAt.getTime();
+
+    // ยังไม่ถูกแปลง (หรือไฟล์ถูกกวาดตามอายุเก็บไปแล้ว = url ว่าง) → รอ หรือยอมแพ้เมื่อเกิน 30 นาที
+    if (!att || !url || !M4A_MIMES.has(mime)) {
+      if (ageMs > TRANSCODE_TIMEOUT_MS) {
+        // 🔴 ค้างข้ามคืนแบบไม่มีใครรู้ = ทีมเข้าใจว่าลูกค้าได้ยินไปแล้ว
+        //    ⇒ บอกความจริงว่าไม่ถึง (ฟองขึ้น ✗ + ปุ่มส่งซ้ำ · ส่งซ้ำตอนไฟล์เป็น m4a แล้วจะไปทันที)
+        await markDeliveryFailed({
+          tenantId: msg.tenantId,
+          systemId: msg.systemId,
+          conversationId: conv.id,
+          messageId: msg.id,
+          actorUserId: msg.senderUserId,
+          reason: "TRANSCODE_TIMEOUT",
+        }).catch(() => {});
+        out.failed++;
+      } else {
+        out.skipped++;
+      }
+      continue;
+    }
+
+    // 🔒 S1 — ลิงก์ที่ส่งให้ LINE ต้องอยู่ใต้ CDN ของเราเท่านั้น
+    //    ไฟล์แนบเข้ามาทาง API v1 จากระบบภายนอกได้ (url อะไรก็ได้) — ปล่อยผ่าน = เราสั่งให้ LINE
+    //    ไปดึงไฟล์จากเครื่องที่เราไม่ได้คุม ในนามของร้าน
+    if (storagePathFromCdnUrl(url) === null) {
+      await markDeliveryFailed({
+        tenantId: msg.tenantId,
+        systemId: msg.systemId,
+        conversationId: conv.id,
+        messageId: msg.id,
+        actorUserId: msg.senderUserId,
+        reason: "AUDIO_URL_NOT_CDN",
+      }).catch(() => {});
+      out.failed++;
+      continue;
+    }
+
+    const connection = conv.channelConnectionId
+      ? await prisma.chatChannelConnection.findUnique({ where: { id: conv.channelConnectionId } })
+      : null;
+    const res = await deliverOut({
+      tenantId: msg.tenantId,
+      systemId: msg.systemId,
+      conversationId: conv.id,
+      messageId: msg.id,
+      channel: conv.channel,
+      connection,
+      externalUserId: conv.contact.externalUserId,
+      // ข้อความเสียงคือไฟล์ชิ้นเดียว — ประกอบผ่านตัวเดียวกับ sendReply (ห้ามมีรูปข้อความขาออก 2 ชุด)
+      outbound: buildOutboundMessages(msg.body?.trim() ?? "", [
+        {
+          url,
+          mimeType: att.mimeType,
+          fileName: att.fileName,
+          sizeBytes: att.sizeBytes,
+          storageKey: att.storageKey,
+          durationMs: att.durationMs ?? undefined,
+        },
+      ]),
+      actorUserId: msg.senderUserId,
+    }).catch((e: unknown) => ({ ok: false as const, reason: e instanceof Error ? e.message : "SEND_FAILED" }));
+
+    if (res.ok) {
+      out.sent++;
+      // สัญญาณ "ห้องนี้มีของใหม่" — best-effort (ไม่มี ABLY = no-op · การ poll เห็นเองอยู่แล้ว)
+      await publishChat(msg.tenantId, msg.systemId, EV_CHAT_NEW, {
+        conversationId: conv.id,
+        kind: "outbound",
+      }).catch(() => {});
+    } else {
+      out.failed++;
+    }
+  }
+
+  return out;
+}
+
+/** อ่านค่าสตริงจากคอลัมน์ Json อิสระ — คืน null เมื่อไม่ใช่สตริง (meta เป็นของที่ใครก็เขียนได้) */
+function metaValue(meta: Prisma.JsonValue | null, key: string): string | null {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+  const v = (meta as Record<string, unknown>)[key];
+  return typeof v === "string" ? v : null;
 }
 
 // ─────────────── คำตอบของทีมงานที่ถูก "สะท้อน" มาจากระบบภายนอก (WO-C3b) ───────────────

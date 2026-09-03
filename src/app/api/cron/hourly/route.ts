@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { runScheduledTasks } from "@/lib/ai/scheduled";
+import { sweepPendingVoiceDelivery } from "@/lib/platform/cron";
 import { logOps } from "@/lib/core/ops";
 import { isCronAuthorized } from "@/lib/core/cron-auth";
 
 // GET /api/cron/hourly — งานประจำของผู้ช่วย AI (Vercel Cron เรียกทุกต้นชั่วโมง)
 // auth: isCronAuthorized (Bearer SHARK_CRON_SECRET หรือ X-Cron-Secret) — ผิด/ไม่มี → 401 สั้น ๆ
 // รัน runScheduledTasks(now): task ที่ถึงชั่วโมงไทยตอนนี้และยังไม่ได้รันวันนี้ → สรุปเป็น AppNotification
+// + WO-CV13: ตาข่ายเก็บตกข้อความเสียงที่ค้างรอส่งเข้าช่องทาง (เผื่อ cron บน VPS ตาย)
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
@@ -22,5 +24,7 @@ export async function GET(req: Request) {
     });
     return NextResponse.json({ ok: false, error: "cron_failed" }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, ran, at: new Date().toISOString() });
+  // best-effort — ตัวนี้ล้มห้ามทำให้ cron รอบนี้แดง (งานหลักของ route คือ runScheduledTasks)
+  const voiceSent = await sweepPendingVoiceDelivery();
+  return NextResponse.json({ ok: true, ran, voiceSent, at: new Date().toISOString() });
 }
