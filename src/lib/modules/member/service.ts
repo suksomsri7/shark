@@ -411,6 +411,49 @@ export async function listPartyIdsWithCustomer(
 }
 
 /**
+ * WO 3.4 — หน้า "รวมผู้ติดต่อซ้ำ" (g7 แถว "เชื่อมกับสมาชิก" แสดง "#M-00087")
+ * คืน map partyId → รหัสสมาชิก · 1 query · อ่านอย่างเดียว
+ */
+export async function findMemberCodesByPartyIds(
+  tenantId: string,
+  memberSystemId: string,
+  partyIds: string[],
+): Promise<Map<string, string>> {
+  if (partyIds.length === 0) return new Map();
+  const rows = await tenantDb({ tenantId, systemId: memberSystemId }).customer.findMany({
+    where: { partyId: { in: partyIds } },
+    select: { partyId: true, memberCode: true, id: true },
+  });
+  const out = new Map<string, string>();
+  for (const r of rows) if (r.partyId && !out.has(r.partyId)) out.set(r.partyId, r.memberCode ?? r.id.slice(-6));
+  return out;
+}
+
+/**
+ * WO 3.4 — การ์ด "สมาชิก"/"POS" ในแท็บ **การเชื่อมต่อ** ของโปรไฟล์ผู้ติดต่อ 360° (SPEC §7.1 · ภาพ g6)
+ * อ่านอย่างเดียว · 1 query · คืนสมาชิกที่ผูก Party เดียวกับผู้ติดต่อบัญชี (ไม่มี = null)
+ * `visitCount`/`totalSpentSatang` = ยอดสะสมหน้าร้าน (POS เรียก `recordSpend`/`recordVisit` ตอนปิดบิล)
+ */
+export async function findCustomerByPartyId(
+  tenantId: string,
+  memberSystemId: string,
+  partyId: string,
+): Promise<{
+  id: string;
+  memberCode: string | null;
+  name: string | null;
+  tier: MemberTier;
+  totalSpentSatang: number;
+  visitCount: number;
+} | null> {
+  return tenantDb({ tenantId, systemId: memberSystemId }).customer.findFirst({
+    where: { partyId },
+    select: { id: true, memberCode: true, name: true, tier: true, totalSpentSatang: true, visitCount: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+/**
  * WO 3.3 — บล็อก "เชื่อมกับ › สมาชิก" ของ modal ผู้ติดต่อ (SPEC §7.2 · ภาพ g5)
  * หาสมาชิกที่ "น่าจะเป็นคนเดียวกัน" กับผู้ติดต่อบัญชี จากเบอร์ (ทุกรูปแบบที่ผู้เรียกส่งมา) / อีเมล / partyId
  * อ่านอย่างเดียว · 1 query · จำกัด 5 แถว (แค่พอโชว์การ์ดให้คนกดยืนยัน ไม่ใช่หน้ารายชื่อ)

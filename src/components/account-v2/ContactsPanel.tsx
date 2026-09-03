@@ -12,6 +12,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { AccountIcon } from "./AccountIcon";
 import { RowActions, type RowActionItem } from "./RowActions";
 import { buildHref, type QueryLike } from "./url";
+// WO 3.4 — คลิกแถว = แผงโปรไฟล์ 360° เลื่อนเข้าขวา (§7.1 · f5-contacts-menu.png)
+import { ContactProfileSlideOver } from "./ContactProfilePanel";
 
 export type ContactsPanelGroupItem = {
   key: string;
@@ -74,6 +76,9 @@ function GroupNav({ items, testIdPrefix }: { items: ContactsPanelGroupItem[]; te
 }
 
 export function ContactsPanel({
+  systemId,
+  mergeHref,
+  mergeCount,
   base,
   pathname,
   searchParams,
@@ -96,6 +101,10 @@ export function ContactsPanel({
   total,
   emptyText,
 }: {
+  systemId: string;
+  /** WO 3.4 — ลิงก์ + ตัวนับคู่ซ้ำที่ยังไม่จัดการ (badge ในแถบซ้าย) */
+  mergeHref: string;
+  mergeCount: number;
   base: string;
   pathname: string;
   searchParams: QueryLike;
@@ -119,6 +128,13 @@ export function ContactsPanel({
   emptyText: string;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // WO 3.4 — ผู้ติดต่อที่เปิดแผงโปรไฟล์อยู่ (null = ปิด) · โหลดข้อมูลตอนเปิดเท่านั้น
+  const [openContactId, setOpenContactId] = useState<string | null>(null);
+  // คลิกแถวแล้วเปิดแผง — ยกเว้นตอนกดลิงก์/ปุ่ม/ช่องติ๊ก (ปล่อยให้ทำงานตามปกติ)
+  const rowClick = (id: string) => (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("a,button,input,select,label,details,summary")) return;
+    setOpenContactId(id);
+  };
   const allIds = useMemo(() => rows.map((r) => r.id), [rows]);
   const allChecked = selected.size > 0 && allIds.every((id) => selected.has(id));
 
@@ -211,6 +227,24 @@ export function ContactsPanel({
           <div>
             <h2 className="mb-1 px-2 text-sm font-semibold">ที่มา</h2>
             <GroupNav items={sidebarSource} />
+            {/* WO 3.4 — ทางเข้าหน้า "รวมผู้ติดต่อซ้ำ" (§7.3) + ตัวนับคู่ที่ยังไม่จัดการ */}
+            <Link
+              href={mergeHref}
+              data-testid="link-contact-merge"
+              className="mt-2 flex items-center justify-between gap-2 px-2 text-xs font-medium"
+              style={{ color: "var(--color-accent)" }}
+            >
+              <span>รวมผู้ติดต่อซ้ำ</span>
+              {mergeCount > 0 && (
+                <span
+                  data-testid="merge-candidate-count"
+                  className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold"
+                  style={{ background: "var(--color-danger)", color: "var(--color-surface)" }}
+                >
+                  {mergeCount}
+                </span>
+              )}
+            </Link>
           </div>
         </aside>
 
@@ -298,7 +332,12 @@ export function ContactsPanel({
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <tr key={r.id} data-testid={`contact-row-${r.code}`}>
+                      <tr
+                        key={r.id}
+                        data-testid={`contact-row-${r.code}`}
+                        onClick={rowClick(r.id)}
+                        className="cursor-pointer"
+                      >
                         <td className="border-b px-3 py-3" style={{ borderColor: "var(--color-line)" }}>
                           <input type="checkbox" aria-label="เลือกแถวนี้" className="h-4 w-4" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} />
                         </td>
@@ -326,7 +365,12 @@ export function ContactsPanel({
               {/* มือถือ: การ์ด (เนื้อหาเดิม — ไม่แตะ) */}
               <div className="flex flex-col gap-2 md:hidden">
                 {rows.map((r) => (
-                  <div key={r.id} data-testid={`contact-row-${r.code}-m`} className="flex flex-col gap-1 rounded-lg border px-3 py-3 text-sm">
+                  <div
+                    key={r.id}
+                    data-testid={`contact-row-${r.code}-m`}
+                    onClick={rowClick(r.id)}
+                    className="flex cursor-pointer flex-col gap-1 rounded-lg border px-3 py-3 text-sm"
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate font-semibold">{r.mobile.title}</span>
                     </div>
@@ -360,6 +404,9 @@ export function ContactsPanel({
       >
         +
       </a>
+
+      {/* WO 3.4 — แผงโปรไฟล์ 360° (§7.1 · f5-contacts-menu.png) */}
+      <ContactProfileSlideOver systemId={systemId} contactId={openContactId} onClose={() => setOpenContactId(null)} />
     </div>
   );
 }

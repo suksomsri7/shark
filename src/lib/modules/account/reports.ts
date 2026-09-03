@@ -674,7 +674,18 @@ export type AgingRow = {
 
 export type AgingGrand = Omit<AgingRow, "contactId" | "contactName">;
 
-export type AgingReport = { rows: AgingRow[]; grand: AgingGrand };
+/** จำนวน "ใบ" ที่ยังค้าง (ไม่ใช่ยอดเงิน) ต่อคู่ค้า — WO 3.4 ใช้ทำป้าย KPI "1 ใบ · พ้นกำหนด" */
+export type AgingDocCount = { docs: number; overdueDocs: number };
+
+export type AgingReport = {
+  rows: AgingRow[];
+  grand: AgingGrand;
+  /**
+   * WO 3.4 (additive · ผู้เรียกเดิมไม่ต้องแก้) — จำนวนใบค้าง/ใบพ้นกำหนดต่อคู่ค้า (key = contactId · null → "__none__")
+   * มาจากรอบเดียวกับที่คิด bucket ⇒ ไม่ต้อง query ซ้ำเพื่อนับใบ
+   */
+  docCounts: Map<string, AgingDocCount>;
+};
 
 const AGING_NO_CONTACT = "ไม่ระบุคู่ค้า";
 
@@ -701,7 +712,9 @@ export function agingBucket(daysOverdue: number): keyof AgingGrand {
 
 export async function agingReport(
   ctx: GlCtx,
-  opts: { direction: "OUT" | "IN"; asOf?: Date },
+  // WO 3.4: `contactId` = ตัวกรอง optional (แผงโปรไฟล์ 360° ต้องการอายุหนี้ "ของรายนี้" — ใช้สูตร bucket
+  // ชุดเดียวกันเป๊ะ ไม่ก๊อปไปเขียนใหม่) · ไม่ใส่ = พฤติกรรมเดิมทุกประการ
+  opts: { direction: "OUT" | "IN"; asOf?: Date; contactId?: string },
 ): Promise<AgingReport> {
   const asOf = opts.asOf ?? new Date();
   const DAY = 86400000;
@@ -713,6 +726,7 @@ export async function agingReport(
       direction: opts.direction,
       status: { in: ["AWAITING_PAYMENT", "PARTIAL"] },
       voidedAt: null,
+      ...(opts.contactId ? { contactId: opts.contactId } : {}),
     },
     select: {
       contactId: true,
@@ -730,6 +744,7 @@ export async function agingReport(
     { contactId: string | null; contactName: string; buckets: AgingGrand }
   >();
   const grand = emptyAging();
+  const docCounts = new Map<string, AgingDocCount>();
 
   for (const d of docs) {
     const outstanding = d.grandTotal - d.paidTotal;
@@ -740,6 +755,10 @@ export async function agingReport(
     const bucket = agingBucket(daysOverdue);
 
     const key = d.contactId ?? "__none__";
+    const cnt = docCounts.get(key) ?? { docs: 0, overdueDocs: 0 };
+    cnt.docs += 1;
+    if (daysOverdue > 0) cnt.overdueDocs += 1;
+    docCounts.set(key, cnt);
     let entry = byContact.get(key);
     if (!entry) {
       entry = {
@@ -759,5 +778,5 @@ export async function agingReport(
     .map((e) => ({ contactId: e.contactId, contactName: e.contactName, ...e.buckets }))
     .sort((a, b) => b.totalSatang - a.totalSatang);
 
-  return { rows, grand };
+  return { rows, grand, docCounts };
 }

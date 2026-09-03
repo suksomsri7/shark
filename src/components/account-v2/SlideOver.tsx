@@ -10,10 +10,13 @@ export function SlideOver({
   actions,
   children,
   testId,
+  headerExtra,
 }: {
   open: boolean;
   onClose: () => void;
   title: React.ReactNode;
+  /** ปุ่มเพิ่มเติมทางซ้ายของ ✕ บนหัวแผง (WO 3.4: ✏ แก้ไข ตาม f5) — optional ผู้เรียกเดิมไม่กระทบ */
+  headerExtra?: React.ReactNode;
   actions?: React.ReactNode;
   children: React.ReactNode;
   testId?: string;
@@ -65,8 +68,10 @@ export function SlideOver({
         <div className="flex justify-center pt-2 sm:hidden">
           <span className="h-1 w-10 rounded-full" style={{ background: "var(--color-line)" }} />
         </div>
-        <div className="flex items-center justify-between border-b px-5 py-4">
-          <h2 className="text-lg font-semibold">{title}</h2>
+        <div className="flex items-center justify-between gap-2 border-b px-5 py-4">
+          <h2 className="min-w-0 text-lg font-semibold">{title}</h2>
+          <div className="flex shrink-0 items-center gap-2">
+          {headerExtra}
           <button
             type="button"
             onClick={onClose}
@@ -75,6 +80,7 @@ export function SlideOver({
           >
             ✕
           </button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {actions && <div className="flex justify-end gap-2 border-t px-5 py-4">{actions}</div>}

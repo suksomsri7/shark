@@ -36,6 +36,10 @@ import type { AccountVatTiming, AccountPriceMode } from "@prisma/client";
 // WO 3.3 — ชนิดของผลลัพธ์ที่ action คืนให้ client (type-only: ไม่ดึงโค้ดเข้ามาใน bundle ของ action)
 import type { DbdLookupResult } from "./dbd";
 import type { LinkSuggestions, LinkResult } from "./contact-links";
+// WO 3.4 — type-only เช่นกัน (โค้ดจริง import แบบ dynamic ในตัว action)
+import type { ContactProfile, ProfileTab } from "./contact-profile";
+import type { MergeFieldChoices, MergeResult, DismissResult } from "./contact-merge";
+import type { AccountDocStatus } from "@prisma/client";
 
 // ─────────────────── helpers ───────────────────
 
@@ -764,4 +768,65 @@ export async function saveSettingsAction(formData: FormData) {
   revalidatePath(`/app/sys/${systemId}/account/settings`);
   revalidatePath(`/app/sys/${systemId}`);
   redirect(`/app/sys/${systemId}/account/settings?saved=1`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WO 3.4 — โปรไฟล์ผู้ติดต่อ 360° + รวมผู้ติดต่อซ้ำ (SPEC §7.1/§7.3 · ภาพ g6/g7/g19)
+// ═══════════════════════════════════════════════════════════════
+
+/** โหลดข้อมูลแผงโปรไฟล์ 360° ให้ฝั่ง client (แผงเลื่อนในหน้ารายการเปิดตอนคลิกแถว — ไม่โหลดล่วงหน้าทุกแถว) */
+export async function loadContactProfileAction(
+  systemId: string,
+  contactId: string,
+  opts?: { tab?: ProfileTab; docType?: AccountDocType | null; status?: AccountDocStatus | null; page?: number },
+): Promise<ContactProfile | null> {
+  const { auth, tenantId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.contact.manage");
+  const { contactProfile } = await import("./contact-profile");
+  return contactProfile({ tenantId, systemId }, contactId, {
+    base: `/app/sys/${systemId}/account`,
+    tab: opts?.tab,
+    docType: opts?.docType ?? null,
+    status: opts?.status ?? null,
+    page: opts?.page,
+  });
+}
+
+/** ปุ่ม "รวมผู้ติดต่อ" (g7) — สิทธิ์แยกจากการแก้ผู้ติดต่อทั่วไป (account.contact.merge · WO 0.3) */
+export async function mergeContactsAction(
+  systemId: string,
+  input: { primaryId: string; secondaryId: string; fieldChoices?: MergeFieldChoices },
+): Promise<MergeResult> {
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.contact.merge");
+  const { mergeContacts } = await import("./contact-merge");
+  const res = await mergeContacts({ tenantId, systemId }, { ...input, actorId: userId });
+  if (res.ok) {
+    revalidatePath(`/app/sys/${systemId}/account/contacts`);
+    revalidatePath(`/app/sys/${systemId}/account/contacts/merge`);
+  }
+  return res;
+}
+
+/** ปุ่ม "ข้าม" (= ไม่ใช่คนเดียวกัน) ของ g7 */
+export async function dismissMergeCandidateAction(
+  systemId: string,
+  input: { aId: string; bId: string },
+): Promise<DismissResult> {
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.contact.merge");
+  const { dismissMergeCandidate } = await import("./contact-merge");
+  const res = await dismissMergeCandidate({ tenantId, systemId }, input.aId, input.bId);
+  if (res.ok) {
+    await writeAudit({
+      tenantId,
+      actorId: userId,
+      action: "account.contact.merge",
+      targetType: "AccountContact",
+      targetId: input.aId,
+      after: { dismissedWith: input.bId },
+    });
+    revalidatePath(`/app/sys/${systemId}/account/contacts/merge`);
+  }
+  return res;
 }

@@ -262,9 +262,12 @@ const groups = await prisma.accountContactGroup.findMany({
 });
 chk("I1", "มีกลุ่มผู้ติดต่อกำหนดเอง 3 กลุ่ม", groups.length === 3, groups.map((g) => g.name));
 const gVip = groups.find((g) => g.name === "ลูกค้า VIP");
-chk("I2", 'กลุ่ม "ลูกค้า VIP" มีสมาชิก 5 ราย', gVip?._count.members === 5, gVip?._count.members);
+// WO 3.4: +1 = ตัวรองของ "คู่ผู้ติดต่อซ้ำ" (C00007) ถูกใส่ไว้ในกลุ่มเดียวกับตัวหลัก C00001 โดยตั้งใจ
+// เพื่อให้ข้อสอบ merge ตรวจกิ่ง "กลุ่มซ้ำ → ต้องลบทิ้ง ไม่ใช่ย้าย" ได้จริง (unique(groupId,contactId))
+chk("I2", 'กลุ่ม "ลูกค้า VIP" มีสมาชิก 6 ราย (5 เดิม + ตัวรองของคู่ซ้ำ WO 3.4)', gVip?._count.members === 6, gVip?._count.members);
 const gHotel = groups.find((g) => g.name === "โรงแรมพันธมิตร");
-chk("I3", 'กลุ่ม "โรงแรมพันธมิตร" มีสมาชิก 4 ราย', gHotel?._count.members === 4, gHotel?._count.members);
+// WO 3.4: +1 = ตัวรองของคู่ซ้ำ (กลุ่มที่ตัวหลักไม่ได้อยู่ → ตอนรวมต้อง "ย้าย")
+chk("I3", 'กลุ่ม "โรงแรมพันธมิตร" มีสมาชิก 5 ราย (4 เดิม + ตัวรองของคู่ซ้ำ WO 3.4)', gHotel?._count.members === 5, gHotel?._count.members);
 const gSupplier = groups.find((g) => g.name === "ซัพพลายเออร์หลัก");
 chk("I4", 'กลุ่ม "ซัพพลายเออร์หลัก" มีสมาชิก 4 ราย', gSupplier?._count.members === 4, gSupplier?._count.members);
 
@@ -284,6 +287,38 @@ chk(
   !!somchai?.partyId && linkedCrm?.partyId === somchai.partyId,
   { contactPartyId: somchai?.partyId, crmContactPartyId: linkedCrm?.partyId },
 );
+
+// ─────────── J. คู่ผู้ติดต่อซ้ำที่ตั้งใจใส่ (WO 3.4 §7.3 — fixture ของหน้า "รวมผู้ติดต่อซ้ำ") ───────────
+// ⚠️ ห้ามลดทอน: ข้อ I1–I6 เดิมยังอยู่ครบ · หมวดนี้ "เพิ่ม" อีก 7 ข้อ
+console.log("\nJ. คู่ผู้ติดต่อซ้ำที่ตั้งใจใส่ (WO 3.4)");
+const MD = (E as unknown as { mergeDuplicate?: {
+  taxId: string | null;
+  sharedGroups: number;
+  totalDocsAfterMerge: number;
+  primary: { id: string; code: string | null; branchCode: string | null; docs: number };
+  secondary: { id: string; code: string | null; branchCode: string | null; docs: number; docTypes: number; journalLines: number; groups: number; recurringRules: number };
+} }).mergeDuplicate;
+chk("J1", "เฉลยมีคีย์ mergeDuplicate (รัน acc-v2-expected-contact-profile.mts แล้ว)", !!MD, MD ? "มี" : "ไม่มี");
+if (MD) {
+  const [pRow, sRow] = await Promise.all([
+    prisma.accountContact.findUnique({ where: { id: MD.primary.id }, select: { taxId: true, branchCode: true, archivedAt: true, mergedIntoId: true } }),
+    prisma.accountContact.findUnique({ where: { id: MD.secondary.id }, select: { taxId: true, branchCode: true, archivedAt: true, mergedIntoId: true } }),
+  ]);
+  chk("J2", "คู่ซ้ำใช้เลขภาษีเดียวกัน", !!pRow?.taxId && pRow?.taxId === sRow?.taxId, { p: pRow?.taxId, s: sRow?.taxId });
+  chk("J3", "คู่ซ้ำอยู่คนละสาขา (DB ห้าม taxId+branchCode ซ้ำในรายที่ยังใช้งาน)", pRow?.branchCode !== sRow?.branchCode, { p: pRow?.branchCode, s: sRow?.branchCode });
+  chk("J4", "ทั้งคู่ยังใช้งานอยู่ (ยังไม่ถูกรวม/ปิดใช้งาน)", !pRow?.archivedAt && !sRow?.archivedAt && !pRow?.mergedIntoId && !sRow?.mergedIntoId, {
+    p: { archived: pRow?.archivedAt, merged: pRow?.mergedIntoId },
+    s: { archived: sRow?.archivedAt, merged: sRow?.mergedIntoId },
+  });
+  chk("J5", `ตัวรองมีเอกสาร ${MD.secondary.docs} ใบ (ต้อง ≥ 14)`, MD.secondary.docs >= 14, MD.secondary.docs, "≥ 14");
+  chk("J6", `ตัวรองมีเอกสาร ${MD.secondary.docTypes} ชนิด (ต้อง ≥ 4)`, MD.secondary.docTypes >= 4, MD.secondary.docTypes, "≥ 4");
+  chk(
+    "J7",
+    "ตัวรองมี JV ≥1 · กลุ่ม 2 (ซ้ำกับตัวหลัก 1) · กฎเอกสารประจำ 1",
+    MD.secondary.journalLines >= 1 && MD.secondary.groups === 2 && MD.sharedGroups === 1 && MD.secondary.recurringRules === 1,
+    { jv: MD.secondary.journalLines, groups: MD.secondary.groups, shared: MD.sharedGroups, rules: MD.secondary.recurringRules },
+  );
+}
 
 // ─────────── H. อายุของข้อสอบ ───────────
 console.log("\nH. อายุของชุดข้อมูล");

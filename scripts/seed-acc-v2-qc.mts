@@ -829,6 +829,110 @@ for (const b of OPEN_BILLS) await makeBill(b);
 for (const b of PAID_BILLS) await makeBill(b);
 console.log(`🧾 เอกสารฝั่งจ่าย ${OPEN_BILLS.length + PAID_BILLS.length} ใบ (ค้างจ่าย ${OPEN_BILLS.length})`);
 
+// ─────────── 8.5 คู่ผู้ติดต่อซ้ำที่ "ตั้งใจใส่" (WO 3.4 · SPEC §7.3 · ภาพ g7-contact-merge.png) ───────────
+//
+// กติกาของใบสั่งงาน: **ผู้ติดต่อต้องยังเป็น 63 รายเท่าเดิม** ⇒ ไม่สร้างรายใหม่ แต่ทำให้ 2 รายที่มีอยู่แล้ว
+// กลายเป็น "คู่ซ้ำ" จริง ๆ (เหมือนที่เกิดในร้านจริง: คีย์ซ้ำตอนออกบิลสาขา)
+//   ตัวหลัก (เก็บไว้) = C00001 "บริษัท อันดามัน ทราเวล จำกัด" — สำนักงานใหญ่ 00000
+//   ตัวรอง (ถูกรวม)  = C00007 เปลี่ยนชื่อเป็น "บจก. อันดามัน ทราเวล" + **เลขภาษีเดียวกับ C00001** + สาขา 00002
+//
+// 🔴 ทำไมต้องคนละ branchCode: DB มี partial unique index
+//    `AccountContact_systemId_taxId_branchCode_active_key` (WHERE taxId IS NOT NULL AND archivedAt IS NULL)
+//    ⇒ ผู้ติดต่อที่ยังใช้งานอยู่ 2 รายจะมี (taxId, branchCode) ซ้ำกันไม่ได้เลย
+//    ⇒ "เลขภาษีเท่ากัน" ในโลกจริงจึงเป็นได้เฉพาะกรณี **เลขเดียวกันแต่คนละสาขา/สาขาไม่ตรง**
+//    ⇒ `listMergeCandidates` จึงจับกลุ่มด้วย **เลขภาษีอย่างเดียว** (ไม่รวม branchCode) ต่างจาก
+//       `party.findDuplicateCandidates` ที่รวม branchCode (ตาราง Party ไม่มี unique ตัวนี้) — จดไว้ใน wo-notes/3.4.md
+const dupPrimaryId = cid("บริษัท อันดามัน ทราเวล จำกัด");
+const dupSecondaryId = cid("บริษัท ทะเลใส ทัวร์ จำกัด");
+const dupPrimaryRow = await prisma.accountContact.findUniqueOrThrow({
+  where: { id: dupPrimaryId },
+  select: { taxId: true, code: true },
+});
+await prisma.accountContact.update({
+  where: { id: dupPrimaryId },
+  data: { officeType: "HQ", branchCode: "00000" },
+});
+await prisma.accountContact.update({
+  where: { id: dupSecondaryId },
+  data: {
+    name: "บจก. อันดามัน ทราเวล",
+    taxId: dupPrimaryRow.taxId,
+    branchCode: "00002",
+    officeType: "BRANCH",
+    branchName: "สาขาป่าตอง",
+  },
+});
+
+// กลุ่ม: ตัวรองอยู่ทั้งกลุ่มที่ซ้ำกับตัวหลัก (ลูกค้า VIP → ต้องถูก **ลบทิ้ง** ตอนรวมเพราะ unique(groupId,contactId))
+// และกลุ่มที่ตัวหลักไม่ได้อยู่ (โรงแรมพันธมิตร → ต้อง **ย้าย**) ⇒ ข้อสอบตรวจได้ทั้ง 2 กิ่ง
+await contactsList.addContactsToGroup(ctx, gVip.id, [dupSecondaryId]);
+await contactsList.addContactsToGroup(ctx, gHotel.id, [dupSecondaryId]);
+
+// เอกสารของตัวรองให้ครบ 14 ใบ / ≥4 ชนิด — เพิ่ม 11 ใบเป็น **ร่าง (DRAFT) ทั้งหมด**
+// (ร่างไม่ลง GL · ไม่นับเป็นค้างรับ/ค้างจ่าย · ไม่นับเป็น "เอกสารที่ออก" ⇒ ตัวเลขที่ BLUEPRINT ตรึงไว้
+//  — ค้างรับ 486,300 · IV 51/3/12/2/29/4/1 · ยอดช่องทางเงิน 1,284,560 — ไม่ขยับแม้แต่สตางค์เดียว)
+const DUP_DRAFTS: { docType: "QUOTATION" | "RECEIPT" | "TAX_INVOICE"; grand: number; issue: string; desc: string }[] = [
+  { docType: "QUOTATION", grand: 1_800_000, issue: "2026-05-06", desc: "ร่าง: เสนอราคาทริปหมู่คณะ พ.ค." },
+  { docType: "QUOTATION", grand: 2_100_000, issue: "2026-06-08", desc: "ร่าง: เสนอราคาทริปหมู่คณะ มิ.ย." },
+  { docType: "QUOTATION", grand: 1_450_000, issue: "2026-07-03", desc: "ร่าง: เสนอราคาคอร์ส Open Water" },
+  { docType: "QUOTATION", grand: 3_200_000, issue: "2026-08-04", desc: "ร่าง: เสนอราคาแพ็กเกจ 3 วัน" },
+  { docType: "QUOTATION", grand: 2_650_000, issue: "2026-09-05", desc: "ร่าง: เสนอราคาทริปเกาะห้อง" },
+  { docType: "RECEIPT", grand: 1_250_000, issue: "2026-06-20", desc: "ร่าง: ใบเสร็จรอตรวจ มิ.ย." },
+  { docType: "RECEIPT", grand: 1_900_000, issue: "2026-07-21", desc: "ร่าง: ใบเสร็จรอตรวจ ก.ค." },
+  { docType: "RECEIPT", grand: 2_350_000, issue: "2026-08-22", desc: "ร่าง: ใบเสร็จรอตรวจ ส.ค." },
+  { docType: "RECEIPT", grand: 1_050_000, issue: "2026-09-09", desc: "ร่าง: ใบเสร็จรอตรวจ ก.ย." },
+  { docType: "TAX_INVOICE", grand: 2_800_000, issue: "2026-08-25", desc: "ร่าง: ใบกำกับภาษีรอตรวจ ส.ค." },
+  { docType: "TAX_INVOICE", grand: 1_600_000, issue: "2026-09-23", desc: "ร่าง: ใบกำกับภาษีรอตรวจ ก.ย." },
+];
+for (const d of DUP_DRAFTS) {
+  const { vatMode, lines } = docLines(d.grand, d.desc);
+  await svc.createDocument({
+    tenantId,
+    systemId,
+    docType: d.docType,
+    contactId: dupSecondaryId,
+    issueDate: D(d.issue),
+    vatMode,
+    vatTiming: "ON_ISSUE",
+    lines,
+    createdById: owner.id,
+  });
+}
+
+// กฎเอกสารประจำ 1 กฎของตัวรอง (ต้องถูกย้ายไปตัวหลักตอนรวม — ตาราง AccountRecurringRule)
+const dupRule = await svc.createRecurringRule(
+  tenantId,
+  systemId,
+  {
+    name: "ค่าบริการรายเดือน (คู่ซ้ำสาธิต)",
+    docType: "INVOICE",
+    contactId: dupSecondaryId,
+    template: { priceMode: "EXCLUDE_VAT", lines: docLines(1_200_000, "ค่าบริการรายเดือน").lines, tags: [] },
+    frequency: "MONTHLY",
+    dayOfMonth: 5,
+    startDate: D("2026-10-05"),
+    leadDays: 0,
+    autoApprove: false,
+    active: true,
+  } as never,
+  owner.id,
+);
+if (!dupRule.ok) throw new Error(`สร้างกฎเอกสารประจำของคู่ซ้ำไม่สำเร็จ: ${dupRule.reason}`);
+
+{
+  const [docs, jv, groups, rules] = await Promise.all([
+    prisma.accountDocument.count({ where: { tenantId, systemId, contactId: dupSecondaryId } }),
+    prisma.accountJournalLine.count({ where: { systemId, contactId: dupSecondaryId } }),
+    prisma.accountContactGroupMember.count({ where: { systemId, contactId: dupSecondaryId } }),
+    prisma.accountRecurringRule.count({ where: { systemId, contactId: dupSecondaryId } }),
+  ]);
+  assertEq("คู่ซ้ำ: เอกสารของตัวรอง", docs, 14);
+  assertEq("คู่ซ้ำ: บรรทัดสมุดรายวันของตัวรอง", jv, 1);
+  assertEq("คู่ซ้ำ: กลุ่มของตัวรอง", groups, 2);
+  assertEq("คู่ซ้ำ: กฎเอกสารประจำของตัวรอง", rules, 1);
+  console.log(`👯 คู่ผู้ติดต่อซ้ำที่ตั้งใจใส่: ${dupPrimaryRow.code} ↔ C00007 (เลขภาษีเดียวกัน คนละสาขา) — ตัวรองมีเอกสาร ${docs} ใบ · JV ${jv} · กลุ่ม ${groups} · กฎประจำ ${rules}`);
+}
+
 // ─────────────────────────── 9. อ่านผลจริงกลับมา + เขียนเฉลย ───────────────────────────
 
 const stats = await svc.overviewStats(tenantId, systemId);

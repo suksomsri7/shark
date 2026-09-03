@@ -310,6 +310,38 @@ export async function listPartyIdsWithContact(ctx: Ctx, partyIds: string[]): Pro
 }
 
 /**
+ * WO 3.4 — การ์ด "CRM" ในแท็บ **การเชื่อมต่อ** ของโปรไฟล์ผู้ติดต่อ 360° (SPEC §7.1 · ภาพ g6)
+ * อ่านอย่างเดียว · 1 query · ผู้ติดต่อ CRM ที่ผูก Party เดียวกับผู้ติดต่อบัญชี (ไม่มี = null)
+ */
+export async function findContactByPartyId(
+  ctx: Ctx,
+  partyId: string,
+): Promise<{ id: string; name: string; company: string | null } | null> {
+  return tenantDb(ctx).crmContact.findFirst({
+    where: { partyId },
+    select: { id: true, name: true, company: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+/**
+ * WO 3.4 — ดีลล่าสุดของผู้ติดต่อ CRM รายนั้น (g6: ดีล “ทริปโลซิน ต.ค.” · ขั้น เสนอราคา)
+ * อ่านอย่างเดียว · 1 query (ดึงชื่อ stage มาด้วยผ่าน select ของ relation to-one)
+ */
+export async function findLatestDealForContact(
+  ctx: Ctx,
+  contactId: string,
+): Promise<{ id: string; title: string; stageName: string; valueSatang: number } | null> {
+  const d = await tenantDb(ctx).crmDeal.findFirst({
+    where: { contactId },
+    orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+    select: { id: true, title: true, valueSatang: true, stage: { select: { name: true } } },
+  });
+  if (!d) return null;
+  return { id: d.id, title: d.title, stageName: d.stage?.name ?? "—", valueSatang: d.valueSatang };
+}
+
+/**
  * WO 3.3 — บล็อก "เชื่อมกับ › CRM" ของ modal ผู้ติดต่อ (SPEC §7.2 · ภาพ g5)
  * หาผู้ติดต่อ CRM ที่ "น่าจะเป็นคนเดียวกัน" จากเบอร์ (ทุกรูปแบบที่ผู้เรียกส่งมา) / อีเมล / partyId
  * อ่านอย่างเดียว · 1 query · ≤5 แถว · ข้ามรายที่ปิดใช้งานแล้ว

@@ -943,6 +943,48 @@ const PAGES: Record<string, PageSpec[]> = {
       expect: ["ดูภาพรวมผู้ติดต่อ", "ลูกค้าใหม่เดือนนี้", "ลูกค้าที่กลับมาซื้อ", "10 อันดับยอดซื้อ", "10 อันดับค้างชำระ", "ผู้ขาย 10 อันดับยอดจ่าย"],
     },
   ],
+  // WO 3.4 — โปรไฟล์ผู้ติดต่อ 360° (§7.1 · g6/g19 · f5-contacts-menu) + รวมผู้ติดต่อซ้ำ (§7.3 · g7)
+  "3.4": [
+    {
+      name: "contact-profile-panel",
+      path: `/app/sys/${SYS}/account/contacts?q=${encodeURIComponent("ปิยธิดา")}`,
+      note: "คลิกแถว → แผงโปรไฟล์ 360° เลื่อนเข้าขวา w-560 — เทียบ f5-contacts-menu.png (หัว avatar+ชื่อ+เลขที่ · แท็บ · chip · ข้อมูล · KPI 2 ช่อง · อายุหนี้แนวนอน · เอกสาร 5 ล่าสุด · ปุ่มท้าย)",
+      expect: ["ผู้ติดต่อ", "ปิยธิดา อินสุ่ม", "อายุหนี้ของรายนี้", "สร้างใบแจ้งหนี้"],
+      onlyDevice: "desktop",
+      // คลิกที่เซลล์ "ประเภท" (chip — ไม่ใช่ลิงก์) เพื่อให้ handler ของแถวทำงาน ไม่ใช่พาไปหน้าเต็ม
+      click: ['[data-testid^="contact-row-"] td:nth-child(4)'],
+      waitAfterClick: 1200,
+    },
+    {
+      name: "contact-profile-page",
+      path: `/app/sys/${SYS}/account/contacts/${E.contactProfile?.contactId ?? ""}`,
+      note: "หน้าโปรไฟล์เต็ม — เดสก์ท็อปเทียบ g6-contact-360.png · มือถือเทียบ g19-contact-360.png",
+      expect: ["ปิยธิดา อินสุ่ม", "อายุหนี้ของรายนี้", "ข้อมูล", "เอกสาร", "การเชื่อมต่อ", "สร้างใบแจ้งหนี้"],
+    },
+    {
+      name: "contact-profile-links",
+      path: `/app/sys/${SYS}/account/contacts/${E.contactProfile?.contactId ?? ""}`,
+      note: 'หน้าโปรไฟล์เต็ม แท็บ "การเชื่อมต่อ" (g6 วาดสถานะนี้) — การ์ด สมาชิก/CRM/แชท/POS + การ์ด "ข้อมูล" คอลัมน์ขวา',
+      expect: ["การเชื่อมต่อ", "สมาชิก", "CRM"],
+      click: ['[data-testid="profile-tab-links"]'],
+      waitAfterClick: 1000,
+    },
+    {
+      name: "contact-merge-list",
+      path: `/app/sys/${SYS}/account/contacts/merge`,
+      note: "หน้ารวมผู้ติดต่อซ้ำ — เทียบ g7-contact-merge.png (การ์ดคู่ซ้าย + ตารางเทียบขวา + แถบสรุปหลังรวม + ปุ่ม ข้าม/รวมผู้ติดต่อ)",
+      expect: ["รวมผู้ติดต่อซ้ำ", "เลขภาษีตรงกัน", "หลังรวม", "รวมผู้ติดต่อ"],
+    },
+    {
+      name: "contact-merge-confirm",
+      path: `/app/sys/${SYS}/account/contacts/merge`,
+      note: "modal ยืนยันก่อนรวม — เทียบกล่องกลางจอของ g7 (หัวข้อ + ข้อความ + ยกเลิก/ยืนยันรวม)",
+      expect: ["รวมผู้ติดต่อ 2 รายเป็นรายเดียว?", "ยืนยันรวม"],
+      onlyDevice: "desktop",
+      click: ['[data-testid="merge-submit"]'],
+      waitAfterClick: 600,
+    },
+  ],
   // WO 3.3 — modal เพิ่ม/แก้ไขผู้ติดต่อ (§7.2) เทียบ g5-contact-modal.png (เฟรมนี้วาดสถานะแท็บ "ขั้นสูง")
   // เปิดด้วย query `?new=1` (ปุ่ม "+ เพิ่มผู้ติดต่อ" ไปที่นี่จริง) + `?tab=` เลือกแท็บให้ภาพนิ่ง
   "3.3": [
@@ -990,6 +1032,11 @@ const PAGES: Record<string, PageSpec[]> = {
 // รูปแบบ: { page: { "testid": ค่าที่คาดหวังเป็นสตางค์ | สตริง } }
 // WO 2.3 — แปลงสตางค์ → ข้อความบาท 2 ตำแหน่งทศนิยม แบบเดียวกับ formatBaht({decimals:true}) ที่ overview-ui.tsx ใช้จริง
 const bahtStr = (satang: number) => "฿" + (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 });
+
+/** รูปแบบเงินเดียวกับ formatBaht ของ UI (ใช้สร้างค่าที่คาดหวังจากเฉลยที่เป็นสตางค์) */
+const baht = (satang: number, decimals = false) =>
+  (satang < 0 ? "−฿" : "฿") +
+  (Math.abs(satang) / 100).toLocaleString("th-TH", decimals ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : undefined);
 
 const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>> = {
   // WO 1.4: ตัวเลขบนจอต้องตรงเฉลย g2 เป๊ะ (14,900 + 9,301.87 + WHT 698.13 = 24,900 · ค้าง 0)
@@ -1097,6 +1144,22 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
     },
   },
   // WO 3.2 — ตัวนับกลุ่ม/หน้าผู้ติดต่อ ต้องตรง acc-v2-expected.json.contacts เป๊ะ (เฉลย SQL อิสระ — acc-v2-expected-contacts.mts)
+  // WO 3.4 — ตัวเลขบนโปรไฟล์ 360° ต้องตรงเฉลย (คีย์ contactProfile — SQL ดิบใน acc-v2-expected-contact-profile.mts)
+  "3.4": {
+    "contact-profile-page": {
+      "kpi-outstanding": baht(E.contactProfile?.outstandingSatang ?? 0, true),
+      "kpi-paid-year": baht(E.contactProfile?.paidThisYearSatang ?? 0, true),
+      // 🔴 ใช้ `agingNow` (คิดจากนาฬิกาเครื่อง) ไม่ใช่ `aging` (คิดจาก QC.today = 2026-09-30 ของดีไซน์)
+      //    — หน้าเว็บจริงคิด bucket จาก new Date() ⇒ ถ้าเทียบกับชุดตรึงจะตกคนละช่องกันโดยไม่ใช่บั๊ก
+      "aging-col-d1_30": baht(E.contactProfile?.agingNow?.d1_30 ?? 0),
+      "aging-col-notDue": baht(E.contactProfile?.agingNow?.notDue ?? 0),
+    },
+    "contact-profile-panel": {
+      "kpi-outstanding": baht(E.contactProfile?.outstandingSatang ?? 0, true),
+      "aging-d1_30": baht(E.contactProfile?.agingNow?.d1_30 ?? 0),
+      "aging-notDue": baht(E.contactProfile?.agingNow?.notDue ?? 0),
+    },
+  },
   "3.2": {
     "contacts-list": {
       "group-all-count": E.contacts?.all ?? 0,

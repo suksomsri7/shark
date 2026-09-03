@@ -92,7 +92,10 @@ console.log("P0 สายไฟ/ทะเบียน (อ่านจากซ�
   assert("P0.14 หน้ารายการรายรับส่ง importHref ไป DocListPage", listSrc.includes("import/documents?side=revenue"));
   const expPageSrc = readFileSync(join(ROOT, "src/lib/modules/account/expense-page.tsx"), "utf8");
   assert("P0.15 หน้ารายการรายจ่ายส่ง importHref ไป DocListPage", expPageSrc.includes("import/documents?side=expense"));
-  const contactsSrc = readFileSync(join(ROOT, "src/app/app/sys/[id]/account/contacts/page.tsx"), "utf8");
+  // 🔴 ข้อสอบเน่า (เจอตอน WO 3.4 · ไม่ใช่ของใหม่ — แดงมาตั้งแต่ WO 3.2): WO 3.2 ย้ายเนื้อหาหน้าผู้ติดต่อ
+  //    ออกจาก route file ไปที่ `contacts-ui.tsx` (route เหลือแค่เรียก ContactsPage) ⇒ ปุ่ม "นำเข้า" ยังมีจริง
+  //    แต่สตริงย้ายไฟล์ · ตรวจที่ไฟล์ที่โค้ดอยู่จริงแทน (ไม่ได้ลดทอน — ยังยืนยันว่าปุ่มชี้ import/contacts)
+  const contactsSrc = readFileSync(join(ROOT, "src/lib/modules/account/contacts-ui.tsx"), "utf8");
   assert("P0.16 หน้าผู้ติดต่อมีปุ่มนำเข้าผู้ติดต่อ", contactsSrc.includes("import/contacts"));
   const productsSrc = readFileSync(join(ROOT, "src/app/app/sys/[id]/account/products/page.tsx"), "utf8");
   assert("P0.17 หน้าสินค้ามีปุ่มนำเข้าสินค้า", productsSrc.includes("import/products"));

@@ -1187,7 +1187,11 @@ export async function listDocuments(
 export type DocStatusFilter = AccountDocStatus | AccountDocStatus[] | "OVERDUE" | "ALL";
 
 export type ListDocumentsInput = {
-  docType: AccountDocType;
+  /**
+   * WO 3.4 (ขยายแบบเข้ากันได้): เดิมรับชนิดเดียว — ตอนนี้รับ array ("แท็บเอกสาร" ของโปรไฟล์ 360°
+   * ต้องดูทุกชนิดในตารางเดียว) หรือ undefined = ไม่กรองชนิด · ผู้เรียกเดิมที่ส่งค่าเดี่ยวทำงานเหมือนเดิม
+   */
+  docType?: AccountDocType | AccountDocType[];
   status?: DocStatusFilter;
   /** ค้นหา: เลขที่เอกสาร หรือ ชื่อผู้ติดต่อ (ไม่สนตัวพิมพ์) */
   q?: string;
@@ -1201,6 +1205,12 @@ export type ListDocumentsInput = {
   sort?: DocSort;
   /** ตัดรายการที่พ้นกำหนดออก (แท็บ "รอชำระ/รอตอบรับ" ที่ไม่รวมพ้นกำหนด) */
   excludeOverdue?: boolean;
+  /**
+   * WO 3.4: ไม่ต้อง include ผู้ติดต่อ/การชำระ (Prisma โหลด relation ด้วย query แยกเสมอ = +2 SQL ต่อครั้ง)
+   * ใช้เมื่อผู้เรียกรู้ผู้ติดต่ออยู่แล้ว เช่นแท็บ "เอกสาร" ของโปรไฟล์ 360° ที่กรอง contactId ตัวเดียว
+   * ⇒ ประหยัด 2 query ต่อการเปิด 1 ครั้ง · ไม่ส่ง = พฤติกรรมเดิมเป๊ะ
+   */
+  slim?: boolean;
 };
 
 export type DocSort = "recent" | "issueDate" | "docNo" | "amount";
@@ -1289,7 +1299,9 @@ export async function listDocumentsPaged(
   const base: Prisma.AccountDocumentWhereInput = {
     tenantId,
     systemId,
-    docType: input.docType,
+    ...(input.docType
+      ? { docType: Array.isArray(input.docType) ? { in: input.docType } : input.docType }
+      : {}),
     ...(input.contactId ? { contactId: input.contactId } : {}),
     ...(from || to ? { issueDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
     ...(q
@@ -1320,14 +1332,20 @@ export async function listDocumentsPaged(
     ],
   };
 
+  const listArgs = {
+    where,
+    orderBy: DOC_SORT_ORDER[input.sort ?? "recent"],
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+  };
   const [rows, total, grouped, overdueCount] = await Promise.all([
-    prisma.accountDocument.findMany({
-      where,
-      include: LIST_DOCUMENTS_INCLUDE,
-      orderBy: DOC_SORT_ORDER[input.sort ?? "recent"],
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
+    // slim = ไม่ include relation (ประหยัด 2 SQL) → เติม contact/payments เป็นค่าว่างให้ชนิดคงเดิม
+    // ผู้เรียกที่ขอ slim ต้องไม่พึ่ง 2 ฟิลด์นี้ (โปรไฟล์ 360° รู้ผู้ติดต่ออยู่แล้ว)
+    input.slim
+      ? prisma.accountDocument
+          .findMany(listArgs)
+          .then((rs) => rs.map((r) => ({ ...r, contact: null, payments: [] as { channel: AccountPayChannel }[] })))
+      : prisma.accountDocument.findMany({ ...listArgs, include: LIST_DOCUMENTS_INCLUDE }),
     prisma.accountDocument.count({ where }),
     prisma.accountDocument.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
     prisma.accountDocument.count({ where: { AND: [base, overdueWhere(now)] } }),

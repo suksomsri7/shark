@@ -3,6 +3,7 @@ import { getSettings, accountFlyoutCounts } from "@/lib/modules/account/service"
 import { ACCOUNT_NAV } from "@/lib/modules/account/nav";
 import { AccountTabBar } from "@/components/account-v2/AccountTabBar";
 import { AccountBreadcrumb } from "@/components/account-v2/AccountBreadcrumb";
+import { BreadcrumbTailProvider } from "@/components/account-v2/breadcrumb-tail";
 
 // Shell V2 (WO 0.4): แถบเมนูบัญชี 9 หมวด (แทน sidebar เดิม) + breadcrumb เหนือเนื้อหา
 // เนื้อหาเต็มความกว้างแล้ว (ไม่มี sidebar แบ่งซ้าย) — เมนูอยู่ใน AccountTabBar ทั้งเดสก์ท็อป/มือถือ
@@ -25,8 +26,11 @@ export default async function AccountLayout({
   return (
     <div className="flex flex-col gap-4">
       <AccountTabBar groups={groups} base={base} counts={counts} />
-      <AccountBreadcrumb groups={groups} base={base} />
-      <div className="min-w-0">{children}</div>
+      {/* WO 3.4: provider ครอบทั้ง breadcrumb และเนื้อหา — หน้ารายละเอียดเติมชื่อแถวต่อท้าย breadcrumb ได้ */}
+      <BreadcrumbTailProvider>
+        <AccountBreadcrumb groups={groups} base={base} />
+        <div className="min-w-0">{children}</div>
+      </BreadcrumbTailProvider>
     </div>
   );
 }

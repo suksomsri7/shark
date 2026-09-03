@@ -7,7 +7,7 @@
 // "เลือกอยู่ N รายการ" ตลอดเวลา + ตัวเลือกจำนวนต่อหน้า — ดู ContactsPanel.tsx (client) สำหรับส่วน interactive
 //
 // ความต่างจากภาพจริงที่เหลือ (ตั้งใจ — ดูเหตุผลเต็มใน wo-notes/3.2.md):
-//   1) แถวคลิก → หน้ารายละเอียดย่อ (อ่านอย่างเดียว) ไม่ใช่แผงเลื่อน 360° — TODO(WO 3.4)
+//   1) WO 3.4 แล้ว: แถวคลิก = แผงเลื่อนโปรไฟล์ 360° (§7.1) · เลขที่ยังลิงก์ไปหน้าเต็ม /contacts/<id>
 //   2) dropdown ทำรายการ เพิ่ม "เพิ่มเข้ากลุ่ม" ต่อจาก "แก้ไขข้อมูล" (deliverable text ระบุชัด แม้ภาพตัวอย่างไม่มี)
 //
 // WO 3.3: ฟอร์ม inline เดิมถูกแทนด้วย `ContactModal` (§7.2 · ภาพ g5) — เปิดด้วย `?new=1` / `?edit=<id>`
@@ -32,6 +32,7 @@ import {
   type ContactGroupKey,
 } from "./contacts-list";
 import { getContact, nextContactCode, listTenantMembers } from "./service";
+import { countOpenMergeCandidates } from "./contact-merge";
 import { isDbdConfigured, DBD_REASON } from "./dbd";
 import {
   archiveContactAction,
@@ -81,7 +82,7 @@ export async function ContactsPage({
   const pathname = `${base}/contacts`;
   const ctx = { tenantId, systemId };
 
-  const sidebar = await loadContactsSidebar(ctx);
+  const [sidebar, mergeCount] = await Promise.all([loadContactsSidebar(ctx), countOpenMergeCandidates(ctx)]);
   const group = (searchParams.group as ContactGroupKey | undefined) ?? "all";
   const legalType = searchParams.legalType === "COMPANY" || searchParams.legalType === "PERSON" ? searchParams.legalType : undefined;
   const result = await listContactsPage(
@@ -239,6 +240,9 @@ export async function ContactsPage({
       {searchParams.err && <p className="text-sm text-[color:var(--color-danger)]">กรุณากรอกข้อมูลให้ครบถ้วน</p>}
 
       <ContactsPanel
+        systemId={systemId}
+        mergeHref={`${base}/contacts/merge`}
+        mergeCount={mergeCount}
         base={base}
         pathname={pathname}
         searchParams={{ q: searchParams.q, group: searchParams.group, legalType: searchParams.legalType }}
