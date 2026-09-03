@@ -12,7 +12,7 @@
 | WO | 1.4 (1.3 อยู่บน main แล้ว `9cb7a12`) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~06:50 UTC: qc:all 191/191 → push `9cb7a12` ขึ้น main (Vercel กำลัง deploy) · 1.4 กำลังทำ (agent) · Fable: เช็ค deploy READY แล้วรอ 1.4 |
+| ขั้นที่ถึง | 3 ก.ย. ~07:10 UTC: prod `9cb7a12` READY (ฟอร์มเอกสาร V2 ขึ้น prod แล้ว · migrate status up to date) · 1.4 กำลังทำ (agent) · หมายเหตุ: push branch ทำให้ Vercel สร้าง deployment แล้ว CANCELED เอง (ignored build step) ไม่เสียเงิน |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
