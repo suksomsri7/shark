@@ -12,7 +12,7 @@
 | WO | 1.8 นำเข้า CSV (1.7 ขึ้น main แล้ว) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~15:20 UTC: 1.7 push ขึ้น main (Vercel deploy) · 1.8 กำลังทำ · หมายเหตุ: qc:all มี suite flaky 1 ตัวเมื่อรันขนาน (acc-v2-payments) — ต้องตรวจ isolation ของ fixture ใน 9.3 |
+| ขั้นที่ถึง | 3 ก.ย. ~15:45 UTC: prod `f6f1645` READY (ใบวางบิลรวม/ใบรวมจ่าย ขึ้น prod · migrate status up to date) · 1.8 กำลังทำ (agent) · polish ตารางกลุ่ม commit f7fe5e4 (จะขึ้น main พร้อม 1.8) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
