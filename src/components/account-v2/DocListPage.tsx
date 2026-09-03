@@ -113,6 +113,7 @@ export function DocListPage<T extends { id: string }>({
   createHref,
   createForm,
   printReportHref,
+  importHref,
   extraHeaderActions,
   testId,
   belowTable,
@@ -156,6 +157,8 @@ export function DocListPage<T extends { id: string }>({
   createForm?: React.ReactNode;
   /** ปลายทางพิมพ์รายงานของรายการนี้ — ไม่ส่ง = ปุ่มจาง "เร็ว ๆ นี้" */
   printReportHref?: string;
+  /** WO 1.8: ปลายทางปุ่ม "นำเข้า" (`account/import/documents?side=…`) — ไม่ส่ง = ปุ่มจาง "เร็ว ๆ นี้" */
+  importHref?: string;
   extraHeaderActions?: React.ReactNode;
   testId: string;
   /** บล็อกเสริมใต้ตาราง (เช่น สต็อกคงเหลือของหน้าใบเบิกสินค้า) */
@@ -170,7 +173,7 @@ export function DocListPage<T extends { id: string }>({
         desc={mobileSummary ? <span className="md:hidden">{mobileSummary}</span> : undefined}
         actions={
           <>
-            <HeaderActionButton label="นำเข้า" />
+            <HeaderActionButton label="นำเข้า" href={importHref} />
             <HeaderActionButton label="พิมพ์รายงาน" href={printReportHref} />
             {extraHeaderActions}
             {createLabel &&

@@ -7,6 +7,7 @@ import type {
   AccountPayChannel,
   AccountWhtIncomeType,
   AccountLegalType,
+  AccountDocSource,
   Prisma,
 } from "@prisma/client";
 // posting engine (owner = GL-P2P3, ไฟล์ gl.ts) — subagent P2 แค่ import + เรียกตามลายเซ็น
@@ -662,6 +663,11 @@ export async function createExpenseDoc(input: {
   depositPaymentId?: string | null;
   lines: ExpLineInput[];
   createdById?: string | null;
+  // ── WO 1.8 (นำเข้า CSV) · additive · optional — ไม่ส่ง = พฤติกรรมเดิมเป๊ะ (source MANUAL, tags []) ──
+  source?: AccountDocSource;
+  tags?: string[];
+  refType?: string | null;
+  refId?: string | null;
 }) {
   const settings = await getSettings(input.tenantId, input.systemId);
   const reqVatMode: AccountVatMode = !settings.vatRegistered
@@ -716,6 +722,10 @@ export async function createExpenseDoc(input: {
         adjustReason: input.adjustReason ?? null,
         sourceDocId: input.sourceDocId ?? null,
         createdById: input.createdById ?? null,
+        source: input.source ?? "MANUAL",
+        tags: input.tags ?? [],
+        refType: input.refType ?? null,
+        refId: input.refId ?? null,
         lines: {
           create: input.lines.map((l, i) => ({
             tenantId: input.tenantId,

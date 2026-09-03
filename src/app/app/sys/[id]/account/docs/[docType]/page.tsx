@@ -284,6 +284,7 @@ export default async function DocTypeListPage({
       errorText={sp.err === "empty" ? "ต้องมีรายการอย่างน้อย 1 รายการ" : sp.err}
       createLabel={canCreate ? label : undefined}
       createHref={createHref}
+      importHref={`${base}/import/documents?side=revenue`}
       createForm={
         canCreate && !createHref ? (
           <DocEditor

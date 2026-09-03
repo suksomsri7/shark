@@ -87,6 +87,11 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "goods-issue/page.tsx": "account.product.manage",
   // WO 1.6: RPR wizard — เรียก requireAccountPage(id, "account.product.manage") ตรงกับ goods-issue/page.tsx (สิทธิ์เดียวกัน)
   "goods-issue/return/new/page.tsx": "account.product.manage",
+  // WO 1.8: นำเข้า CSV (§8.5) — action เดียว account.import ครอบทั้งเอกสาร/ผู้ติดต่อ/สินค้า
+  "import/contacts/page.tsx": "account.import",
+  "import/documents/page.tsx": "account.import",
+  "import/products/page.tsx": "account.import",
+  "import/template/route.ts": "account.import",
   "journal/[entryId]/page.tsx": "account.journal.view",
   "journal/new/page.tsx": "account.journal.adjust",
   "journal/page.tsx": "account.journal.view",

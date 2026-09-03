@@ -11,6 +11,7 @@ import type {
   AccountPriceMode,
   AccountDiscountMode,
   AccountWhtIncomeType,
+  AccountDocSource,
   Prisma,
 } from "@prisma/client";
 // posting engine (owner = GL-Core, ไฟล์ gl.ts) — subagent แค่ import + เรียกตามลายเซ็น
@@ -607,6 +608,81 @@ export async function archiveContact(tenantId: string, systemId: string, id: str
     where: { id, tenantId, systemId },
     data: { archivedAt: new Date() },
   });
+}
+
+// ─────────────────── WO 1.8 — นำเข้า CSV: ตัวช่วยผู้ติดต่อ/idempotency ───────────────────
+
+/**
+ * หาผู้ติดต่อที่มีอยู่แล้วให้เอกสารที่นำเข้า — เลขผู้เสียภาษี (สาขา 00000) ก่อน แล้วค่อยชื่อตรงเป๊ะ (ไม่สนตัวพิมพ์)
+ * ไม่พบ → null (ผู้เรียกสร้างใหม่เอง + ติดป้ายเตือน "ผู้ติดต่อไม่พบ (จะสร้างใหม่)")
+ */
+export async function findContactForImport(
+  tenantId: string,
+  systemId: string,
+  input: { name: string; taxId?: string | null },
+): Promise<{ id: string; name: string } | null> {
+  const taxId = normalizeTaxId(input.taxId);
+  if (taxId && /^\d{13}$/.test(taxId)) {
+    const byTax = await prisma.accountContact.findFirst({
+      where: { tenantId, systemId, taxId, branchCode: "00000", archivedAt: null },
+      select: { id: true, name: true },
+    });
+    if (byTax) return byTax;
+  }
+  const name = input.name.trim();
+  if (!name) return null;
+  return prisma.accountContact.findFirst({
+    where: { tenantId, systemId, archivedAt: null, name: { equals: name, mode: "insensitive" } },
+    select: { id: true, name: true },
+  });
+}
+
+/**
+ * ตรวจผู้ติดต่อซ้ำล่วงหน้าเป็นชุด (ก่อนสร้างจริง) — คืนชุด key ที่ชนกับของเดิมในระบบแล้ว
+ * ใช้รายงานเหตุผล "เลขภาษีซ้ำ" ในขั้นพรีวิว ก่อนพยายาม insert จริง (กัน error กลางอากาศ)
+ */
+export async function findContactDuplicates(
+  tenantId: string,
+  systemId: string,
+  keys: { taxId?: string; phoneNorm?: string }[],
+): Promise<{ taxIds: Set<string>; phones: Set<string> }> {
+  const taxIds = [...new Set(keys.map((k) => k.taxId).filter((v): v is string => !!v && /^\d{13}$/.test(v)))];
+  const phones = [...new Set(keys.map((k) => k.phoneNorm).filter((v): v is string => !!v))];
+  const [byTax, byPhone] = await Promise.all([
+    taxIds.length
+      ? prisma.accountContact.findMany({
+          where: { tenantId, systemId, archivedAt: null, taxId: { in: taxIds }, branchCode: "00000" },
+          select: { taxId: true },
+        })
+      : Promise.resolve([]),
+    phones.length
+      ? prisma.accountContact.findMany({
+          where: { tenantId, systemId, archivedAt: null, phoneNorm: { in: phones } },
+          select: { phoneNorm: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  return {
+    taxIds: new Set(byTax.map((r) => r.taxId).filter((v): v is string => !!v)),
+    phones: new Set(byPhone.map((r) => r.phoneNorm).filter((v): v is string => !!v)),
+  };
+}
+
+/**
+ * WO 1.8 — เอกสารที่นำเข้าไปแล้วด้วย refId ชุดนี้ (idempotency: อัปโหลดไฟล์เดิมซ้ำ → ไม่สร้างซ้ำ)
+ * refId = `${fileHash}:${rowKey}` (ดู import-shared.ts fileHashOf + import-actions.ts)
+ */
+export async function findExistingImportRefIds(
+  tenantId: string,
+  systemId: string,
+  refIds: string[],
+): Promise<Set<string>> {
+  if (refIds.length === 0) return new Set();
+  const rows = await prisma.accountDocument.findMany({
+    where: { tenantId, systemId, refType: "CSV_IMPORT", refId: { in: refIds } },
+    select: { refId: true },
+  });
+  return new Set(rows.map((r) => r.refId).filter((v): v is string => !!v));
 }
 
 // ─────────────────── เลขรันเอกสาร ───────────────────
@@ -1311,6 +1387,12 @@ export async function createDocument(input: {
   lines: LineInput[];
   createdById?: string | null;
   sourceDocId?: string | null;
+  // ── WO 1.8 (นำเข้า CSV) · additive · optional — ไม่ส่ง = พฤติกรรมเดิมเป๊ะ (source MANUAL, tags []) ──
+  source?: AccountDocSource;
+  tags?: string[];
+  /** กุญแจกันนำเข้าซ้ำ (refType="CSV_IMPORT" · refId=`${fileHash}:${rowKey}`) — ดู import-actions.ts */
+  refType?: string | null;
+  refId?: string | null;
 }) {
   const settings = await getSettings(input.tenantId, input.systemId);
   // A3: ไม่จด VAT → บังคับ vatMode NONE (ไม่มีบรรทัด VAT)
@@ -1369,6 +1451,10 @@ export async function createDocument(input: {
         adjustReason: input.adjustReason ?? null,
         sourceDocId: input.sourceDocId ?? null,
         createdById: input.createdById ?? null,
+        source: input.source ?? "MANUAL",
+        tags: input.tags ?? [],
+        refType: input.refType ?? null,
+        refId: input.refId ?? null,
         lines: {
           create: input.lines.map((l, i) => ({
             tenantId: input.tenantId,

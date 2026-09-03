@@ -25,7 +25,15 @@ export default async function ContactsPage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <PageHeader title="ผู้ติดต่อ" back={{ href: base, label: "ระบบบัญชี" }} />
+      <PageHeader
+        title="ผู้ติดต่อ"
+        back={{ href: base, label: "ระบบบัญชี" }}
+        actions={
+          <a href={`${base}/import/contacts`} className="btn-sm">
+            นำเข้าผู้ติดต่อ
+          </a>
+        }
+      />
 
       <DataList
         items={contacts.map((c) => ({

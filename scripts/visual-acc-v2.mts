@@ -11,7 +11,7 @@
 // 🔴 session ที่ mint ต้องถูกลบทิ้งเสมอ — ปักธง userAgent = "qc-visual-acc-v2"
 // 🔴 ชื่อคุกกี้ผูกกับ APP_ENV: dev/http = `shark_session` · https = `__Host-shark_session`
 
-import { mkdirSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 // tsconfig ไม่ได้เปิด allowImportingTsExtensions → import แบบ static ที่ลงท้าย .mts จะ typecheck ไม่ผ่าน
 // ⇒ โหลดแบบ dynamic (tsx resolve ตอนรันได้ปกติ) แล้วประกาศชนิดไว้เอง
 const accEnv = (await import("./acc-v2-env.mts" as string)) as {
@@ -296,6 +296,46 @@ if (WO === "1.7") {
   console.log(`[fixture 1.7] ใบวางบิล ${bn.docNo} = ${bn.id} · ใบแจ้งหนี้ว่าง 3 ใบ รวม ${fx17.freeSum / 100} บาท\n`);
 }
 
+// ─────────── WO 1.8: ตัวช่วยนำเข้า CSV — ไฟล์ 20 แถว (18 ok + 2 err: วันที่ผิด/ยอดติดลบ) ───────────
+// เฉลย WO 1.8 (BLUEPRINT §1): "นำเข้า 20 แถว (2 แถวผิด) → 18 ร่าง + 2 error ชี้บรรทัด"
+// เพื่อให้ 18 แถวได้สถานะ "ok" ล้วน (ไม่ใช่ "warn: ผู้ติดต่อไม่พบ") ต้องมีผู้ติดต่อ 18 รายนี้อยู่ในระบบก่อนอัปโหลดไฟล์
+// 🔴 เอกสารที่นำเข้าจริงตอนกดชัตเตอร์เป็นร่าง INVOICE จริง — ถ้าไม่ลบทิ้ง ตัวนับแท็บ IV ของ WO 1.1 (เฉลย 51/3/12/2/29/4/1)
+//    จะเพี้ยนไป +18 ทันที ⇒ cleanupFixture ลบทั้งเอกสาร (source=IMPORT) และผู้ติดต่อชั่วคราว (note=FIXTURE_REF_18)
+const FIXTURE_REF_18 = "QC-VISUAL-1.8";
+const FIXTURE_CSV_PATH_18 = "/tmp/qc-visual-acc-v2-1.8-fixture.csv";
+if (WO === "1.8") {
+  const { prisma: db } = await import("@/lib/core/db");
+  const svc = await import("@/lib/modules/account/service");
+  const IS18 = await import("@/lib/modules/account/import-shared");
+  cleanupFixture = async () => {
+    const delDocs = await db.accountDocument.deleteMany({ where: { systemId: SYS, source: "IMPORT" } });
+    const delContacts = await db.accountContact.deleteMany({ where: { systemId: SYS, note: FIXTURE_REF_18 } });
+    console.log(`ลบ fixture ของ WO 1.8: เอกสารนำเข้า ${delDocs.count} ใบ + ผู้ติดต่อชั่วคราว ${delContacts.count} ราย (ตัวนับแท็บ WO 1.1 กลับเท่าเฉลย)`);
+  };
+  await cleanupFixture(); // กันซากจากรอบที่ล้มกลางคัน
+
+  for (let i = 1; i <= 18; i++) {
+    await svc.createContact({
+      tenantId: E.tenantId,
+      systemId: SYS,
+      kind: "CUSTOMER",
+      legalType: "COMPANY",
+      name: `ลูกค้า QC ภาพ ${i}`,
+      note: FIXTURE_REF_18,
+    });
+  }
+  const headers18 = IS18.IMPORT_FIELDS.documents_revenue.map((f: { aliases: string[] }) => f.aliases[0]);
+  const rows18: string[][] = [];
+  for (let i = 1; i <= 18; i++) {
+    rows18.push([`QCVIS-${i}`, "IV", QC.today, `ลูกค้า QC ภาพ ${i}`, "", `สินค้า QC ${i}`, "1", "ชิ้น", "1000", "0", "7", ""]);
+  }
+  rows18.push(["QCVIS-BAD-DATE", "IV", "01-09-2026", "ลูกค้า QC ภาพ วันที่ผิด", "", "สินค้า", "1", "ชิ้น", "100", "0", "7", ""]);
+  rows18.push(["QCVIS-NEG", "IV", QC.today, "ลูกค้า QC ภาพ ยอดลบ", "", "สินค้า", "1", "ชิ้น", "-100", "0", "7", ""]);
+  const csv18 = "﻿" + [headers18.join(","), ...rows18.map((r) => r.join(","))].join("\n") + "\n";
+  writeFileSync(FIXTURE_CSV_PATH_18, csv18, "utf8");
+  console.log(`[fixture 1.8] เขียนไฟล์ตัวอย่าง ${FIXTURE_CSV_PATH_18} (20 แถว: 18 ok + 2 err) + ผู้ติดต่อ 18 ราย\n`);
+}
+
 // ─────────── รายการหน้าต่อ WO (เติมทีละ WO ตาม BLUEPRINT §3) ───────────
 // expect = ข้อความที่ต้องเจอบนหน้า (ว่าง = ไม่ตรวจ) — พิสูจน์ว่าเปิดถูกหน้า **และต่อ DB QC จริง**
 // (Next โหลด .env ของ prod ให้อัตโนมัติตอน build/start แต่ไม่ทับ env ที่ส่งเข้ามา → ต้องมีหลักฐานจากหน้าจอ)
@@ -332,7 +372,9 @@ type FlowStep =
   | { click: string }
   | { fill: string; value: string }
   | { select: string; value: string }
-  | { waitFor: string };
+  | { waitFor: string }
+  /** WO 1.8: อัปโหลดไฟล์เข้า <input type="file"> ผ่าน DevTools (puppeteer ElementHandle.uploadFile) */
+  | { upload: string; filePath: string };
 const PAGES: Record<string, PageSpec[]> = {
   "0.1": [
     { name: "hub", path: `/app/sys/${SYS}`, note: "หน้าแรกระบบบัญชี (AccountContent)", expect: ["บัญชี", E.tenantName] },
@@ -561,6 +603,42 @@ const PAGES: Record<string, PageSpec[]> = {
       path: `/app/sys/${SYS}/account/docs/CREDIT_NOTE/new?ref=${E.fixtures.invSimilanViewId}`,
       note: "ขั้น ② ฟอร์มใบลดหนี้พรีฟิลจากเอกสารอ้างอิง — cap-line ต้องโชว์ค้างชำระ 62,250.00 (g3 ขั้น 2)",
       expect: ["สร้างใบลดหนี้", E.fixtures.invSimilanViewDocNo],
+    },
+  ],
+  // WO 1.8 — ตัวช่วยนำเข้า CSV (§8.5): อัปโหลดไฟล์ตัวอย่างจริงผ่าน uploadFile() แล้วเดินสเต็ปเปอร์ด้วย DOM
+  // ① อัปโหลด → ② จับคู่คอลัมน์ (auto-match ผ่านแล้ว ใช้ค่าเริ่มต้น) → ③ ตรวจสอบ (ถ่ายภาพ) → ④⑤ กดนำเข้า (ถ่ายภาพผลลัพธ์)
+  "1.8": [
+    {
+      name: "import-documents-preview",
+      path: `/app/sys/${SYS}/account/import/documents?side=revenue`,
+      note: "ขั้น ③ ตรวจสอบ — ไฟล์ตัวอย่าง 20 แถว (18 ok · 2 err: วันที่ผิด/ยอดติดลบ) ผ่าน uploadFile จริง",
+      expect: ["นำเข้าเอกสารรายรับ"],
+      flow: [
+        { upload: 'input[type="file"]', filePath: FIXTURE_CSV_PATH_18 },
+        { waitFor: '[data-testid="import-map-ref"]' },
+        { click: '[data-testid="btn-goto-preview"]' },
+        { waitFor: '[data-testid="import-count-err"]' },
+      ],
+      expectBeforeShot: [
+        { sel: '[data-testid="import-count-ok"]', kind: "text", equals: "18" },
+        { sel: '[data-testid="import-count-warn"]', kind: "text", equals: "0" },
+        { sel: '[data-testid="import-count-err"]', kind: "text", equals: "2" },
+      ],
+    },
+    {
+      name: "import-documents-result",
+      path: `/app/sys/${SYS}/account/import/documents?side=revenue`,
+      note: 'ขั้น ⑤ สรุปผล — ติ๊ก "ข้ามแถวที่ผิดพลาด" (ค่าเริ่มต้น) แล้วกดนำเข้า → 18 ร่างสำเร็จ (ลบทิ้งใน cleanupFixture)',
+      expect: [],
+      flow: [
+        { upload: 'input[type="file"]', filePath: FIXTURE_CSV_PATH_18 },
+        { waitFor: '[data-testid="import-map-ref"]' },
+        { click: '[data-testid="btn-goto-preview"]' },
+        { waitFor: '[data-testid="btn-import-run"]' },
+        { click: '[data-testid="btn-import-run"]' },
+        { waitFor: '[data-testid="import-result"]' },
+      ],
+      expectBeforeShot: [{ sel: '[data-testid="import-result"]', kind: "text", equals: "สร้างใหม่ 18 รายการ" }],
     },
   ],
 };
@@ -803,6 +881,15 @@ try {
               continue;
             }
             await page.select(step.select, step.value).catch(() => flowFail(`เลือกค่าใน ${step.select} ไม่ได้`));
+          } else if ("upload" in step) {
+            // WO 1.8: <input type="file"> มักถูกซ่อนด้วย .hidden (dropzone คลิกที่ <label> ครอบ) — เลือกด้วย $()
+            // ตรง ๆ แทน center()/click() (ไม่ต้องมองเห็นบนจอก็อัปโหลดผ่าน DevTools ได้จริง)
+            const input = await page.$(step.upload);
+            if (!input) {
+              flowFail(`ไม่พบ input[type=file] ${step.upload}`);
+              continue;
+            }
+            await input.uploadFile(step.filePath).catch((e: unknown) => flowFail(`อัปโหลดไฟล์ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`));
           } else {
             if (!(await center(step.fill))) {
               flowFail(`ไม่พบช่องกรอก ${step.fill}`);
@@ -1265,6 +1352,27 @@ try {
             if (device === "mobile") c17.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
           }
           for (const [okc, label] of c17) {
+            if (!okc) failures++;
+            console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
+          }
+        }
+
+        // WO 1.8 — ตัวช่วยนำเข้า CSV (§8.5): ไฟล์ 20 แถว (18 ok + 2 err) → ตัวนับตรงเฉลย + เหตุผล error เห็นบนจอ
+        if (ASSERT && WO === "1.8") {
+          const c18: [boolean, string][] = [];
+          if (spec.name === "import-documents-preview") {
+            c18.push([(probe.testids["import-count-ok"] ?? "").includes("18"), `ตัวนับ "พร้อมนำเข้า" = 18 (เจอ "${probe.testids["import-count-ok"]}")`]);
+            c18.push([(probe.testids["import-count-warn"] ?? "").includes("0"), `ตัวนับ "เตือน" = 0 (เจอ "${probe.testids["import-count-warn"]}")`]);
+            c18.push([(probe.testids["import-count-err"] ?? "").includes("2"), `ตัวนับ "ผิดพลาด" = 2 (เจอ "${probe.testids["import-count-err"]}")`]);
+            c18.push([probe.all.includes("วันที่ผิดรูปแบบ"), `เหตุผล error "วันที่ผิดรูปแบบ" ขึ้นบนจอจริง (ไม่ใช่แค่ในผลลัพธ์ preview ที่ไม่โชว์)`]);
+            c18.push([probe.all.includes("ยอดติดลบ"), `เหตุผล error "ยอดติดลบ" ขึ้นบนจอจริง`]);
+            if (device === "mobile") c18.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
+          }
+          if (spec.name === "import-documents-result") {
+            c18.push([(probe.testids["import-result"] ?? "").includes("สร้างใหม่ 18 รายการ"), `สรุปผล "สร้างใหม่ 18 รายการ" (เจอ "${probe.testids["import-result"]}")`]);
+            if (device === "mobile") c18.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
+          }
+          for (const [okc, label] of c18) {
             if (!okc) failures++;
             console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
           }

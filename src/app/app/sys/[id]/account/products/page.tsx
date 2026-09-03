@@ -68,7 +68,15 @@ export default async function ProductsPage({
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
-      <PageHeader title="สินค้า/บริการ" back={{ href: base, label: "ระบบบัญชี" }} />
+      <PageHeader
+        title="สินค้า/บริการ"
+        back={{ href: base, label: "ระบบบัญชี" }}
+        actions={
+          <a href={`${base}/import/products`} className="btn-sm">
+            นำเข้าสินค้า
+          </a>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <TabPills

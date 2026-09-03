@@ -238,6 +238,7 @@ export async function ExpenseListPage(props: {
       errorText={props.err === "empty" ? "ต้องมีรายการอย่างน้อย 1 รายการ" : props.err}
       createLabel={canCreate ? label : undefined}
       createHref={createHref}
+      importHref={`${base}/import/documents?side=expense`}
       createForm={
         canCreate && !createHref ? (
           <ExpenseEditor
