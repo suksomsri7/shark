@@ -6,10 +6,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 0.4 Shell V2 + 0.6 hotfix (0.1–0.3 DONE) |
+| WO | 0.4 Shell V2 (0.1–0.3, 0.6 DONE) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 0.4 + 0.6 กำลังทำ · ถัดไป: QC ภาพ 0.4 (serve+visual) → 0.5 components → qc:all → merge main (เร่ง เพราะ prod มี migration แล้ว) |
+| ขั้นที่ถึง | 0.4 กำลังทำ · ถัดไป: QC ภาพ 0.4 (serve+visual) → 0.5 components → qc:all → merge main (เร่ง เพราะ prod มี migration แล้ว) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
@@ -21,7 +21,7 @@
 | 0.3 | Schema เฟส 0 | Opus | DONE | 269c354 | Fable ตรวจ SQL (additive ล้วน) + รัน qc-acc-v2-schema 61/61 + drift QC/prod = 0 · ⚠️ **migration หลุดลง prod แล้ว** (agent source `.env.qc` ผิดเพราะ URL มี `&` → fallback .env) — ไม่ rollback (additive) · ผล: CI ของ main จะเห็น drift จนกว่าเฟส 0 จะ merge → เร่ง merge · VOID ไม่เพิ่ม (มี CANCELLED/VOIDED แล้ว) · prod ยัง**ไม่ backfill phoneNorm** |
 | 0.4 | Shell V2 (เมนู 9 หมวด + flyout + sheet) | Sonnet | IN_PROGRESS | | มอบหมาย 4 ก.ย. ~01:10 UTC ขนานกับ 0.6 · + `account/page.tsx` (แก้ 404) + ด่าน AccountContent · โน้ต `wo-notes/0.4.md` |
 | 0.5 | ส่วนประกอบกลาง V2 | Sonnet | TODO | | + `DateText` ใช้ ค.ศ. "24 ก.ย. 2026" ตามแบบ (ของเดิมโชว์ "24 ก.ย. 69") |
-| 0.6 | 🐞 hotfix `gl.postDocument` PURCHASE/EXPENSE โหมดราคารวม VAT Dr เกิน Cr (เจอใน 0.1 · ออกเอกสารไม่ได้) + ข้อสอบ | Opus | IN_PROGRESS | | มอบหมาย 4 ก.ย. ~00:30 UTC ขนานกับ 0.3 · ต้องเสร็จก่อนเฟส 1 · ดู `wo-notes/0.1.md` ข้อ 7 · โน้ต `wo-notes/0.6.md` |
+| 0.6 | 🐞 hotfix `gl.postDocument` PURCHASE/EXPENSE โหมดราคารวม VAT Dr เกิน Cr (เจอใน 0.1 · ออกเอกสารไม่ได้) + ข้อสอบ | Opus | DONE | 91c38f2 | Fable อ่าน diff + รันเอง inclvat 71/71 · CPA 107/107 บน QC branch · เจอบั๊กที่ 2 ด้วย: VAT รอใบกำกับลง 1150 แทน 1155 (แก้แล้ว) · ค้าง: `qc-tax-print-audit.mts` เน่าอยู่ก่อน (taxId 5 หลัก) → เก็บใน 9.2 |
 | 1.1 | หน้ารายการทุกชนิด | Sonnet | TODO | | |
 | 1.2 | route ราคาถูก DP/CNR/DNR/ASSET_PO/PTX + payableStats | Opus (Sonnet) | TODO | | |
 | 1.3 | DocEditorV2 A–C,E,G,H,I | Opus | TODO | | |
