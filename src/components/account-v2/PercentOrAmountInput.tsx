@@ -10,15 +10,20 @@ export function PercentOrAmountInput({
   namePrefix,
   defaultValue = { mode: "amount", amountSatang: 0, percentBp: 0 },
   onChange,
+  compact,
   testId,
 }: {
   /** ส่งฟอร์มเป็น hidden input `${namePrefix}Mode` / `${namePrefix}Satang` / `${namePrefix}PercentBp` */
   namePrefix: string;
   defaultValue?: PercentOrAmount;
   onChange?: (v: PercentOrAmount) => void;
+  /** ใช้ในคอลัมน์แคบของตารางรายการ */
+  compact?: boolean;
   testId?: string;
 }) {
   const [state, setState] = useState<PercentOrAmount>(defaultValue);
+  // คอลัมน์ "ส่วนลด/หน่วย" ในตารางรายการแคบเกินกว่าจะวางปุ่ม ฿/% ข้างช่องกรอก → ซ้อนเป็น 2 บรรทัด
+  const wrap = compact ? "flex w-full min-w-0 flex-col items-stretch gap-1" : "flex items-center gap-1";
 
   const update = (patch: Partial<PercentOrAmount>) => {
     const next = { ...state, ...patch };
@@ -27,11 +32,11 @@ export function PercentOrAmountInput({
   };
 
   return (
-    <div className="flex items-center gap-1" data-testid={testId}>
-      <div className="flex overflow-hidden rounded-lg border text-xs">
+    <div className={wrap} data-testid={testId}>
+      <div className={`flex overflow-hidden rounded-lg border text-xs ${compact ? "self-start" : ""}`}>
         <button
           type="button"
-          className="px-2 py-2"
+          className={compact ? "px-1.5 py-0.5" : "px-2 py-2"}
           aria-pressed={state.mode === "amount"}
           style={
             state.mode === "amount"
@@ -44,7 +49,7 @@ export function PercentOrAmountInput({
         </button>
         <button
           type="button"
-          className="px-2 py-2"
+          className={compact ? "px-1.5 py-0.5" : "px-2 py-2"}
           aria-pressed={state.mode === "percent"}
           style={
             state.mode === "percent"
@@ -66,7 +71,7 @@ export function PercentOrAmountInput({
         <input
           type="number"
           inputMode="decimal"
-          className="input w-24 text-right tabular-nums"
+          className={`input text-right tabular-nums ${compact ? "w-full min-w-0" : "w-24"}`}
           min={0}
           max={100}
           step="0.01"

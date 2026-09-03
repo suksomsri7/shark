@@ -16,7 +16,7 @@ export function SectionCard({
   testId?: string;
 }) {
   return (
-    <details open={defaultOpen} className="group card flex flex-col gap-0 p-0" data-testid={testId}>
+    <details open={defaultOpen} className="group card flex min-w-0 flex-col gap-0 p-0" data-testid={testId}>
       <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4">
         <span className="text-sm font-medium">{title}</span>
         <span className="flex items-center gap-3">
@@ -33,7 +33,7 @@ export function SectionCard({
           <span className="text-[color:var(--color-muted)] transition-transform group-open:rotate-180 md:hidden">▾</span>
         </span>
       </summary>
-      <div className="flex flex-col gap-4 px-5 pb-5">{children}</div>
+      <div className="flex min-w-0 flex-col gap-4 px-5 pb-5">{children}</div>
     </details>
   );
 }

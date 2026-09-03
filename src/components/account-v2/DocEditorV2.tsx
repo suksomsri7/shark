@@ -14,6 +14,7 @@ import {
 } from "@/lib/modules/account/editor-actions";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { ContactPicker, type ContactSearchResult } from "./ContactPicker";
+import { DateInput } from "./DateInput";
 import { DocAttachments } from "./DocAttachments";
 import { DocLineTable } from "./DocLineTable";
 import { DocTotals, MobileTotalsBar } from "./DocTotals";
@@ -322,7 +323,7 @@ function EditorBody(props: DocEditorV2Props) {
   const linesComplete = value.lines.length > 0 && invalidLineKeys.size === 0;
 
   return (
-    <div className="flex w-full max-w-4xl flex-col gap-4 pb-4" data-testid="doc-editor-v2">
+    <div className="flex w-full max-w-5xl flex-col gap-4 pb-40 md:pb-28" data-testid="doc-editor-v2">
       {/* หัวหน้า */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-baseline gap-2">
@@ -389,7 +390,7 @@ function EditorBody(props: DocEditorV2Props) {
                   search={searchContacts}
                   onSelect={(r) => pickContact(r.id, r.name)}
                   onCreate={() => router.push(`${props.basePath}/contacts`)}
-                  testId="fld-contact"
+                  testId="contact-picker"
                 />
               </span>
               {selectedContact && (
@@ -408,26 +409,21 @@ function EditorBody(props: DocEditorV2Props) {
           </Field>
 
           <Field label="วันที่ออก" htmlFor="fld-issue">
-            <input
-              id="fld-issue"
-              type="date"
-              className="input"
-              value={value.issueDate}
-              onChange={(e) => set("issueDate", e.target.value)}
-              style={showErrors && missingDate ? { borderColor: "var(--color-danger)" } : undefined}
-              data-testid="fld-issue"
-            />
+            <span
+              className="block"
+              style={showErrors && missingDate ? { borderRadius: 8, boxShadow: "0 0 0 2px var(--color-danger)" } : undefined}
+            >
+              <DateInput
+                id="fld-issue"
+                value={value.issueDate}
+                onChange={(iso) => set("issueDate", iso)}
+                testId="fld-issue"
+              />
+            </span>
           </Field>
 
           <Field label={props.dueLabel} htmlFor="fld-due">
-            <input
-              id="fld-due"
-              type="date"
-              className="input"
-              value={value.dueDate}
-              onChange={(e) => set("dueDate", e.target.value)}
-              data-testid="fld-due"
-            />
+            <DateInput id="fld-due" value={value.dueDate} onChange={(iso) => set("dueDate", iso)} testId="fld-due" />
           </Field>
         </div>
 

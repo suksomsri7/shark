@@ -131,6 +131,8 @@ type PageSpec = {
   /** จำกัดให้ถ่าย/ตรวจเฉพาะอุปกรณ์นี้ (ไม่ระบุ = ทั้ง 2) — ใช้กับ interaction ที่มีความหมายแค่ device เดียว
    *  เช่น hover flyout (เดสก์ท็อปเท่านั้น) / sheet ชั้น 2 (มือถือเท่านั้น) */
   onlyDevice?: "desktop" | "mobile";
+  /** คุกกี้เพิ่มเฉพาะหน้านี้ (เช่น `acc_mode=easy` เพื่อถ่ายโหมดง่าย) — ตั้งก่อนโหลดหน้า */
+  extraCookies?: { name: string; value: string }[];
 };
 const PAGES: Record<string, PageSpec[]> = {
   "0.1": [
@@ -228,7 +230,8 @@ const PAGES: Record<string, PageSpec[]> = {
       name: "invoice-form",
       path: `/app/sys/${SYS}/account/docs/INVOICE/${fixtureDraftId}/edit`,
       note: "ฟอร์มแก้ไขร่าง (fixture คุณณัฐพล 3 บรรทัดตาม g1) — ตัวเลขจริงจาก DB QC",
-      expect: ["แก้ไขใบแจ้งหนี้", "คุณณัฐพล รุ่งเรือง", "฿24,900.00"],
+      // ⚠️ ชื่อผู้ติดต่ออยู่ใน input.value ไม่ใช่ข้อความบนหน้า → ตรวจใน checks13 ด้วย contactName แทน
+      expect: ["แก้ไขใบแจ้งหนี้", "฿24,900.00"],
     },
     {
       name: "invoice-form-menu",
@@ -237,6 +240,13 @@ const PAGES: Record<string, PageSpec[]> = {
       expect: ["แก้ไขใบแจ้งหนี้"],
       click: ['[data-testid="btn-approve-menu"]'],
       waitAfterClick: 300,
+    },
+    {
+      name: "invoice-form-easy",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/${fixtureDraftId}/edit`,
+      note: 'โหมดง่าย (cookie acc_mode=easy) — ต้องซ่อน บัญชี · ประเภทราคา · หัก ณ ที่จ่าย (BLUEPRINT §0.3-1)',
+      expect: ["แก้ไขใบแจ้งหนี้", "฿24,900.00"],
+      extraCookies: [{ name: "acc_mode", value: "easy" }],
     },
   ],
 };
@@ -269,6 +279,11 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "tot-wht": "594.00",
       "tot-due": "฿24,306.00",
       "tot-words": "สองหมื่นสี่พันเก้าร้อยบาทถ้วน",
+    },
+    // โหมดง่ายซ่อน "ช่องกรอก" เท่านั้น — ยอดต้องเท่าเดิมเป๊ะ (สูตรเดียว computeDocTotals)
+    "invoice-form-easy": {
+      "tot-grand": "฿24,900.00",
+      "tot-due": "฿24,306.00",
     },
   },
 };
@@ -366,11 +381,15 @@ try {
         // tsx/esbuild ห่อฟังก์ชันที่ส่งเข้า page.evaluate ด้วย __name(...) ซึ่งเบราว์เซอร์ไม่มี → ฉีด shim
         await page.evaluateOnNewDocument("window.__name = window.__name || ((f) => f);");
         await page.setViewport({ width: w, height: h, deviceScaleFactor: 2 });
-        await page.setCookie(...cookies);
+        const extra = (spec.extraCookies ?? []).map((c) =>
+          https ? { name: c.name, value: c.value, url: BASE, path: "/", secure: true } : { name: c.name, value: c.value, domain: host, path: "/" },
+        );
+        const pageCookies = [...cookies, ...extra];
+        await page.setCookie(...pageCookies);
         // สถานะ HTTP อ่านจาก fetch ตรง ๆ — ไม่ผูกกับ puppeteer เพราะ waitUntil อาจ timeout
         // ทั้งที่หน้าเรนเดอร์เรียบร้อยแล้ว (หน้ารายการมี stream/suspense) → เคยได้ status 0 หลอก
         const status = await fetch(`${BASE}${spec.path}`, {
-          headers: { cookie: cookies.map((c) => `${c.name}=${c.value}`).join("; ") },
+          headers: { cookie: pageCookies.map((c) => `${c.name}=${c.value}`).join("; ") },
           redirect: "manual",
         })
           .then((r) => r.status)
@@ -474,6 +493,29 @@ try {
               approveMenuVisible: isVisible(document.querySelector('[data-testid="approve-menu"]')),
               stickyBarVisible: isVisible(document.querySelector('[data-testid="editor-actions"]')),
               scrollWidth: document.documentElement.scrollWidth,
+              // ตารางรายการต้อง "พอดีการ์ด" — scrollWidth ≤ clientWidth แปลว่าไม่มีคอลัมน์ไหนถูกตัด
+              tableFits: (() => {
+                const el = document.querySelector('[data-testid="line-table-wrap"]') as HTMLElement | null;
+                if (!el) return null;
+                return { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth };
+              })(),
+              // ชื่อผู้ติดต่ออยู่ใน value ของ input (ไม่ใช่ text) — ไม้บรรทัดต้องอ่านจากตรงนี้
+              contactName: (document.querySelector('[data-testid="contact-picker"] input') as HTMLInputElement | null)?.value ?? "",
+              // วันที่ต้องอ่านเป็นไทย ค.ศ. ไม่ใช่รูปแบบเบราว์เซอร์ (09/30/2026)
+              issueDateText: (document.querySelector('[data-testid="fld-issue"]') as HTMLInputElement | null)?.value ?? "",
+              // โหมดนักบัญชี = ต้องมีคอลัมน์ บัญชี + หัก ณ ที่จ่าย และช่อง ประเภทราคา
+              hasPriceMode: !!document.querySelector('[data-testid="fld-pricemode"]'),
+              hasAccountCol: !!document.querySelector('[data-testid="line-0-account"]'),
+              hasWhtCol: !!document.querySelector('[data-testid="line-0-wht-type"]'),
+              // ไม่มีอะไรถูกแถบปุ่มท้ายทับ: ก้นบล็อกแท็กต้องอยู่เหนือขอบบนของแถบ (หลังเลื่อนสุดหน้า)
+              tagsBottom: (() => {
+                const el = document.querySelector('[data-testid="fld-tags"]');
+                return el ? el.getBoundingClientRect().bottom : null;
+              })(),
+              barTop: (() => {
+                const el = document.querySelector('[data-testid="editor-actions"]');
+                return el ? el.getBoundingClientRect().top : null;
+              })(),
             },
           };
         });
@@ -507,13 +549,50 @@ try {
               `ไม่ล้นแนวนอน: scrollWidth ${probe.editor.scrollWidth} ≤ ${w} (g17 มือถือ 390)`,
             ],
           ];
+          const n = device === "desktop" ? probe.editor.lineRows : probe.editor.lineCards;
           if (spec.name !== "invoice-form-new") {
             // ฟอร์มเปล่ามี 1 บรรทัดว่าง — เฉพาะ fixture เท่านั้นที่ต้องได้ 3 บรรทัดตาม g1
-            const n = device === "desktop" ? probe.editor.lineRows : probe.editor.lineCards;
             checks13.push([n === 3, `รายการ 3 บรรทัดตาม g1 (เจอ ${n} — ${device === "desktop" ? "แถวตาราง" : "การ์ดมือถือ"})`]);
+            checks13.push([
+              probe.editor.contactName.includes("คุณณัฐพล รุ่งเรือง"),
+              `ช่องผู้ติดต่อมีชื่อ "คุณณัฐพล รุ่งเรือง" (input.value = "${probe.editor.contactName}")`,
+            ]);
+            checks13.push([
+              /[ก-๙]/.test(probe.editor.issueDateText),
+              `วันที่ออกอ่านเป็นไทย ไม่ใช่รูปแบบเบราว์เซอร์ (เจอ "${probe.editor.issueDateText}")`,
+            ]);
           } else {
-            const n = device === "desktop" ? probe.editor.lineRows : probe.editor.lineCards;
             checks13.push([n === 1, `ฟอร์มเปล่าเริ่มด้วยบรรทัดว่าง 1 บรรทัด (เจอ ${n})`]);
+          }
+          // Fable QC ภาพจริง 3 ก.ย. ข้อ 1: ตารางรายการเคยถูกตัด (VAT/ก่อนภาษี/🗑 หาย) — ต้องพอดีการ์ดเสมอ
+          if (device === "desktop") {
+            const tf = probe.editor.tableFits;
+            checks13.push([
+              !!tf && tf.scrollWidth <= tf.clientWidth + 1,
+              `ตารางรายการพอดีการ์ด: scrollWidth ${tf?.scrollWidth ?? "?"} ≤ clientWidth ${tf?.clientWidth ?? "?"}`,
+            ]);
+          }
+          // ข้อ 5: แถบปุ่มท้ายต้องไม่ทับบล็อกแท็ก (มีที่ว่างให้เลื่อนพ้นเสมอ)
+          if (probe.editor.tagsBottom !== null && probe.editor.barTop !== null) {
+            checks13.push([
+              probe.editor.tagsBottom <= probe.editor.barTop + 1,
+              `แถบปุ่มท้ายไม่ทับแถว "แท็ก" (ก้นแท็ก ${probe.editor.tagsBottom.toFixed(0)} ≤ หัวแถบ ${probe.editor.barTop.toFixed(0)})`,
+            ]);
+          }
+          // ข้อ 2/7: โหมดเริ่มต้น = นักบัญชี (คอลัมน์ครบตาม g1) · หน้า *-easy = โหมดง่าย (ซ่อน 3 อย่าง)
+          if (spec.name === "invoice-form-easy") {
+            // 🔴 ข้อสอบเชิงลบต้องมี positive control: ถ้าหน้าไม่โหลด "ไม่เจอช่อง" จะผ่านหลอก ๆ
+            //    ⇒ ผูกกับ hasForm เสมอ (ฟอร์มต้องขึ้นจริงก่อน ค่อยพูดได้ว่า "ซ่อนแล้ว")
+            const f = probe.editor.hasForm;
+            checks13.push([f && !probe.editor.hasPriceMode, `โหมดง่าย: ฟอร์มขึ้นจริง + ซ่อนช่อง "ประเภทราคา"`]);
+            checks13.push([f && !probe.editor.hasAccountCol, `โหมดง่าย: ฟอร์มขึ้นจริง + ซ่อนคอลัมน์ "บัญชี"`]);
+            checks13.push([f && !probe.editor.hasWhtCol, `โหมดง่าย: ฟอร์มขึ้นจริง + ซ่อนคอลัมน์ "หัก ณ ที่จ่าย"`]);
+          } else {
+            checks13.push([probe.editor.hasPriceMode, `โหมดนักบัญชี (ค่าเริ่มต้น): มีช่อง "ประเภทราคา" (g1)`]);
+            if (spec.name !== "invoice-form-new" || device === "desktop") {
+              checks13.push([probe.editor.hasAccountCol, `โหมดนักบัญชี: มีคอลัมน์ "บัญชี" (g1)`]);
+              checks13.push([probe.editor.hasWhtCol, `โหมดนักบัญชี: มีคอลัมน์ "หัก ณ ที่จ่าย" (g1)`]);
+            }
           }
           if (spec.name === "invoice-form-menu") {
             checks13.push([probe.editor.approveMenuVisible, `กด "อนุมัติใบแจ้งหนี้ ▾" แล้วเมนู [data-testid="approve-menu"] ต้องเปิด (g1-invoice-form-menu.png)`]);

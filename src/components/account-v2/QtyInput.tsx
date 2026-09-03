@@ -11,6 +11,7 @@ export function QtyInput({
   step = 1,
   onChange,
   disabled,
+  compact,
   testId,
 }: {
   name?: string;
@@ -20,8 +21,12 @@ export function QtyInput({
   step?: number;
   onChange?: (n: number) => void;
   disabled?: boolean;
+  /** ใช้ในตารางรายการ (คอลัมน์แคบ) — ปุ่ม ± เล็กลง ช่องตัวเลขยืดเต็มคอลัมน์ */
+  compact?: boolean;
   testId?: string;
 }) {
+  const btn = compact ? "btn-sm h-9 w-7 shrink-0 px-0 text-xs" : "btn-sm h-11 w-11 shrink-0 px-0";
+  const box = compact ? "input w-full min-w-0 px-1 text-center tabular-nums" : "input w-20 text-center tabular-nums";
   const controlled = value !== undefined;
   const [internal, setInternal] = useState(defaultValue);
   const qty = controlled ? value! : internal;
@@ -33,10 +38,10 @@ export function QtyInput({
   };
 
   return (
-    <div className="flex items-center gap-1" data-testid={testId}>
+    <div className={`flex items-center gap-1 ${compact ? "w-full min-w-0" : ""}`} data-testid={testId}>
       <button
         type="button"
-        className="btn-sm h-11 w-11 shrink-0 px-0"
+        className={btn}
         aria-label="ลดจำนวน"
         disabled={disabled || qty <= min}
         onClick={() => set(qty - step)}
@@ -46,7 +51,7 @@ export function QtyInput({
       <input
         type="number"
         name={name}
-        className="input w-20 text-center tabular-nums"
+        className={box}
         value={qty}
         min={min}
         step={step}
@@ -55,7 +60,7 @@ export function QtyInput({
       />
       <button
         type="button"
-        className="btn-sm h-11 w-11 shrink-0 px-0"
+        className={btn}
         aria-label="เพิ่มจำนวน"
         disabled={disabled}
         onClick={() => set(qty + step)}

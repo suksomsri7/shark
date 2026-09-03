@@ -5,10 +5,12 @@ import { ACC_MODE_COOKIE, type AccMode } from "./mode-shared";
 
 const STORAGE_KEY = "acc.mode";
 
+/** ค่าเริ่มต้น = โหมดนักบัญชี (ยังไม่เคยเลือก) — ภาพที่อนุมัติ (g1/g5/g17) วาดโหมดเต็มทุกใบ
+ *  ผู้ใช้สลับไป "โหมดง่าย" เองได้ และค่าที่เลือกอยู่ยาว (localStorage + cookie) */
 function readInitialMode(): AccMode {
-  if (typeof window === "undefined") return "easy";
+  if (typeof window === "undefined") return "accountant";
   const ls = window.localStorage.getItem(STORAGE_KEY);
-  return ls === "accountant" ? "accountant" : "easy";
+  return ls === "easy" ? "easy" : "accountant";
 }
 
 function writeMode(mode: AccMode) {

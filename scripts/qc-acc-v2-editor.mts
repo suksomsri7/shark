@@ -294,7 +294,37 @@ for (const tid of ["tot-sub", "tot-discount", "tot-net", "tot-vat", "tot-grand",
   assert(`E4 มี data-testid="${tid}" ให้ชุดภาพจริงอ่านตัวเลข`, readFileSync(join(ROOT, "src/components/account-v2/DocTotals.tsx"), "utf8").includes(`"${tid}"`));
 }
 assert('E4 ปุ่มเปิดเมนูอนุมัติมี data-testid="btn-approve-menu" (g1-invoice-form-menu.png)', editorSrc.includes('data-testid="btn-approve-menu"'));
-assert('E4 แถวรายการมี data-testid="line-<i>"', readFileSync(join(ROOT, "src/components/account-v2/DocLineTable.tsx"), "utf8").includes("`line-${i}`"));
+const lineTableSrc = readFileSync(join(ROOT, "src/components/account-v2/DocLineTable.tsx"), "utf8");
+assert('E4 แถวรายการมี data-testid="line-<i>"', lineTableSrc.includes("`line-${i}`"));
+
+// ── E4b: ผลตรวจภาพจริงรอบ Fable (3 ก.ย.) — กันอาการเดิมกลับมา ──
+console.log("\nE4b โครงหน้าที่ Fable ตีกลับจากภาพจริง:");
+assert("E4b ตารางรายการเป็น table-fixed + มี colgroup (ไม่ให้คอลัมน์ถูกตัด)", lineTableSrc.includes("table-fixed") && lineTableSrc.includes("<colgroup>"));
+assert("E4b ไม่มี min-w-[…] บนเซลล์ตาราง (ตัวการเดิมที่ดันตารางเกินการ์ด)", !/className=\{`\$\{TD\} min-w-\[/.test(lineTableSrc));
+assert('E4b ตัวห่อตารางมี min-w-0 + overflow-x-auto + data-testid="line-table-wrap"', lineTableSrc.includes('min-w-0 overflow-x-auto') && lineTableSrc.includes('data-testid="line-table-wrap"'));
+const wAcc = /accountant: \[([^\]]+)\]/.exec(lineTableSrc)?.[1] ?? "";
+const wEasy = /easy: \[([^\]]+)\]/.exec(lineTableSrc)?.[1] ?? "";
+const sumPct = (raw: string) => raw.split(",").map((x) => Number(x.replace(/[^0-9.]/g, ""))).filter((n) => n > 0).reduce((a, b) => a + b, 0);
+eq("E4b ความกว้างคอลัมน์โหมดนักบัญชีรวม 100% พอดี (10 คอลัมน์)", sumPct(wAcc), 100);
+eq("E4b ความกว้างคอลัมน์โหมดง่ายรวม 100% พอดี (8 คอลัมน์)", sumPct(wEasy), 100);
+eq("E4b โหมดนักบัญชีมี 10 คอลัมน์ตาม g1", wAcc.split(",").filter((x) => x.trim()).length, 10);
+eq("E4b โหมดง่ายมี 8 คอลัมน์ (ตัด บัญชี + หัก ณ ที่จ่าย)", wEasy.split(",").filter((x) => x.trim()).length, 8);
+
+const toggleSrc = readFileSync(join(ROOT, "src/components/account-v2/EasyModeToggle.tsx"), "utf8");
+const modeSrc = readFileSync(join(ROOT, "src/components/account-v2/mode.ts"), "utf8");
+assert("E4b ค่าเริ่มต้นฝั่ง client = โหมดนักบัญชี (ภาพที่อนุมัติเป็นโหมดเต็ม)", /return "accountant";/.test(toggleSrc) && /ls === "easy" \? "easy" : "accountant"/.test(toggleSrc));
+assert("E4b ค่าเริ่มต้นฝั่ง server = โหมดนักบัญชี (ตรงกับ client ไม่ให้ SSR สลับหน้า)", /v === "easy" \? "easy" : "accountant"/.test(modeSrc));
+
+const dateSrc = readFileSync(join(ROOT, "src/components/account-v2/DateInput.tsx"), "utf8");
+assert("E4b DateInput โชว์วันที่ไทย (formatDateTh) ไม่ใช่รูปแบบเบราว์เซอร์", dateSrc.includes("formatDateTh(iso)"));
+assert("E4b DateInput สลับเป็นปฏิทินเครื่องตอนโฟกัส + เปิด showPicker", dateSrc.includes('type={editing ? "date" : "text"}') && dateSrc.includes("showPicker"));
+assert("E4b DateInput ส่งค่า ISO ผ่าน hidden input (ไม่ส่งข้อความไทยไปกับฟอร์ม)", dateSrc.includes('<input type="hidden" name={name} value={iso} />'));
+assert("E4b ฟอร์มใช้ DateInput ทั้งวันที่ออกและวันครบกำหนด (ไม่มี type=\"date\" ดิบ)", editorSrc.includes("<DateInput") && !editorSrc.includes('type="date"'));
+
+const pageSrc = readFileSync(join(ROOT, "src/lib/modules/account/DocEditorPage.tsx"), "utf8");
+assert("E4b ไม่มีลิงก์ย้อนกลับซ้ำเหนือ h1 (breadcrumb ของ shell ทำหน้าที่นี้แล้ว)", !pageSrc.includes("← {def.label}"));
+assert("E4b ตัวฟอร์มเผื่อที่ให้แถบปุ่มท้าย (pb-40 มือถือ / pb-28 เดสก์ท็อป)", editorSrc.includes("pb-40 md:pb-28"));
+assert('E4b ช่องผู้ติดต่อมี data-testid="contact-picker" ให้ไม้บรรทัดอ่าน input.value', editorSrc.includes('testId="contact-picker"'));
 
 // ═══════════════════════════ E5–E7 — ของจริงบน DB ═══════════════════════════
 const { prisma } = await import("@/lib/core/db");

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { AccountDocType } from "@prisma/client";
 import { thaiDateKey } from "@/lib/ui/date";
@@ -188,11 +187,10 @@ export async function DocEditorPage({
     sizeBytes: a.sizeBytes ?? 0,
   }));
 
+  // 🔴 ไม่มีลิงก์ "← <ชนิดเอกสาร>" เหนือ h1 — breadcrumb ของ shell V2 (§1) ให้ทางกลับอยู่แล้ว
+  //    (Fable QC ภาพจริง 3 ก.ย.: ซ้ำซ้อนกับ breadcrumb · g1 ไม่มีบรรทัดนี้)
   return (
     <div className="flex flex-col gap-3">
-      <Link href={listPath} className="text-sm text-[color:var(--color-muted)]">
-        ← {def.label}
-      </Link>
       <DocEditorV2
         systemId={systemId}
         docType={docType}

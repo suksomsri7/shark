@@ -21,8 +21,17 @@ import {
 // โหมดง่าย: ซ่อนคอลัมน์ "บัญชี" และ "หัก ณ ที่จ่าย" (BLUEPRINT §0.3-1)
 // ─────────────────────────────────────────────────────────────
 
-const TH = "px-2 py-2 text-left text-xs font-normal text-[color:var(--color-muted)]";
-const TD = "px-2 py-2 align-top text-sm";
+const TH = "px-1.5 py-2 text-left text-xs font-normal text-[color:var(--color-muted)]";
+const TD = "px-1.5 py-2 align-top text-sm";
+
+// 🔴 ตารางรายการต้อง "พอดีการ์ด" เสมอ (Fable QC ภาพจริง 3 ก.ย.: คอลัมน์ VAT ถูกตัด · ก่อนภาษี/🗑 หายทั้งคอลัมน์)
+//    วิธี: `table-fixed` + ความกว้างเป็น % ที่รวมกันได้ 100 พอดี ⇒ ไม่ว่าการ์ดกว้างเท่าไร ตารางก็ไม่ล้น
+//    (ห้ามใช้ min-w-[...] ต่อ cell เด็ดขาด — นั่นคือสาเหตุเดิมที่ดันตารางกว้างเกินการ์ด)
+//    ลำดับคอลัมน์ตาม g1-invoice-form.png · โหมดง่ายตัด "บัญชี" + "หัก ณ ที่จ่าย" ออก แล้วปันส่วนคืนให้ชื่อสินค้า
+const COL_W = {
+  accountant: ["3%", "18%", "11%", "15%", "10%", "11%", "7%", "10%", "11%", "4%"],
+  easy: ["4%", "30%", "16%", "13%", "13%", "9%", "11%", "4%"],
+} as const;
 
 export function DocLineTable({
   lines,
@@ -94,11 +103,18 @@ export function DocLineTable({
   return (
     <>
       {/* ── เดสก์ท็อป ── */}
-      <div className="hidden overflow-x-auto md:block">
-        <table className="w-full border-collapse">
+      {/* overflow-x-auto = ตาข่ายกันตาย (ปกติไม่ควรได้ใช้เพราะ % รวม 100) · min-w-0 จำเป็น ไม่งั้น flex item
+          จะยืดออกนอกการ์ดแทนที่จะสกอลในตัวเอง = อาการ "ถูกตัด" ที่เจอในภาพจริง */}
+      <div className="hidden w-full min-w-0 overflow-x-auto md:block" data-testid="line-table-wrap">
+        <table className="w-full table-fixed border-collapse">
+          <colgroup>
+            {(easy ? COL_W.easy : COL_W.accountant).map((w, i) => (
+              <col key={i} style={{ width: w }} />
+            ))}
+          </colgroup>
           <thead>
             <tr className="border-b">
-              <th className={`${TH} w-6`} aria-label="ลากเรียง" />
+              <th className={TH} aria-label="ลากเรียง" />
               <th className={TH}>สินค้า/บริการ</th>
               {!easy && <th className={TH}>บัญชี</th>}
               <th className={TH}>จำนวน/หน่วย</th>
@@ -107,7 +123,7 @@ export function DocLineTable({
               <th className={TH}>VAT</th>
               <th className={`${TH} text-right`}>ก่อนภาษี</th>
               {!easy && <th className={TH}>หัก ณ ที่จ่าย</th>}
-              <th className={`${TH} w-8`} aria-label="ลบ" />
+              <th className={TH} aria-label="ลบ" />
             </tr>
           </thead>
           <tbody>
@@ -125,7 +141,7 @@ export function DocLineTable({
                   <td className={`${TD} cursor-grab text-[color:var(--color-muted)]`} aria-label="ลากเพื่อเรียงลำดับ">
                     ⠿
                   </td>
-                  <td className={`${TD} min-w-[220px]`}>
+                  <td className={`${TD} min-w-0`}>
                     <ProductPicker
                       defaultId={l.productId ?? undefined}
                       defaultLabel={l.name}
@@ -155,7 +171,7 @@ export function DocLineTable({
                     )}
                   </td>
                   {!easy && (
-                    <td className={`${TD} min-w-[150px]`}>
+                    <td className={`${TD} min-w-0`}>
                       <select
                         className="input"
                         value={l.accountId ?? ""}
@@ -171,16 +187,17 @@ export function DocLineTable({
                       </select>
                     </td>
                   )}
-                  <td className={`${TD} min-w-[170px]`}>
-                    <div className="flex items-center gap-1">
+                  <td className={`${TD} min-w-0`}>
+                    <div className="flex min-w-0 items-center gap-1">
                       <QtyInput
                         value={l.qty}
                         onChange={(n) => onChange(l.key, { qty: n })}
                         step={1}
+                        compact
                         testId={`line-${i}-qty`}
                       />
                       <input
-                        className="input w-16"
+                        className="input w-11 shrink-0 px-1 text-center"
                         placeholder="หน่วย"
                         value={l.unitName}
                         onChange={(e) => onChange(l.key, { unitName: e.target.value })}
@@ -188,14 +205,14 @@ export function DocLineTable({
                       />
                     </div>
                   </td>
-                  <td className={`${TD} min-w-[120px]`}>
+                  <td className={`${TD} min-w-0`}>
                     <MoneyInput
                       value={l.unitPriceSatang}
                       onChangeSatang={(s) => onChange(l.key, { unitPriceSatang: s })}
                       testId={`line-${i}-price`}
                     />
                   </td>
-                  <td className={`${TD} min-w-[140px]`}>
+                  <td className={`${TD} min-w-0`}>
                     <PercentOrAmountInput
                       namePrefix={`lineDiscount_${l.key}`}
                       defaultValue={{
@@ -208,12 +225,13 @@ export function DocLineTable({
                           discount: { mode: d.mode, satang: d.amountSatang, percentBp: d.percentBp },
                         })
                       }
+                      compact
                       testId={`line-${i}-discount`}
                     />
                   </td>
                   <td className={TD}>
                     <select
-                      className="input w-24"
+                      className="input w-full min-w-0 px-1"
                       value={l.vatRateBp}
                       onChange={(e) => onChange(l.key, { vatRateBp: Number(e.target.value) })}
                       aria-label="VAT"
@@ -230,7 +248,7 @@ export function DocLineTable({
                     <MoneyText satang={b?.net ?? 0} decimals />
                   </td>
                   {!easy && (
-                    <td className={`${TD} min-w-[170px]`}>
+                    <td className={`${TD} min-w-0`}>
                       <select
                         className="input"
                         value={l.whtIncomeType ?? ""}
@@ -254,7 +272,7 @@ export function DocLineTable({
                       </select>
                       {l.whtIncomeType && (
                         <select
-                          className="input mt-1 w-20"
+                          className="input mt-1 w-full min-w-0 px-1"
                           value={l.whtRateBp ?? 0}
                           onChange={(e) => onChange(l.key, { whtRateBp: Number(e.target.value) })}
                           aria-label="อัตราหัก ณ ที่จ่าย"
