@@ -200,8 +200,22 @@ type PageSpec = {
   extraCookies?: { name: string; value: string }[];
   /** WO 1.4: ลำดับการกรอกฟอร์มก่อนถ่าย (คลิก/พิมพ์สลับกันได้ — `click` ทำก่อนทั้งหมด)
    *  ใช้สร้างสถานะบนจอแบบเดียวกับภาพ g2 (ขั้นสูง · 2 กล่อง · เปิดถูกหัก ณ ที่จ่าย) โดยผ่าน UI จริง */
-  flow?: ({ click: string } | { fill: string; value: string })[];
+  flow?: FlowStep[];
+  /** WO 1.4: สถานะที่ต้อง "จริงบนจอ" ก่อนกดชัตเตอร์ — ไม่ผ่าน = ตกด่าน + ไม่ถ่ายภาพหลอกตา
+   *  (บทเรียน Fable รอบ 1: flow คลิกพลาดเงียบ ๆ แล้วได้ภาพที่ไม่ใช่สถานะเฉลย g2) */
+  expectBeforeShot?: { sel: string; kind: "value" | "text"; equals: string }[];
+  /** ทำให้แถบ sticky เรนเดอร์ในสายน้ำปกติชั่วคราวก่อนถ่าย fullPage
+   *  เหตุผล: fullPage screenshot วาด element `position:sticky` ไว้ที่ "ขอบล่าง viewport ปัจจุบัน"
+   *  ⇒ หน้าที่ยาวกว่า 1 จอ แถบปุ่มจะไปทับเนื้อหากลางหน้าในภาพ ทั้งที่บนจอจริงไม่ทับ
+   *  (ความ sticky ยังถูกตรวจแยกด้วย `stickyBarVisible` ก่อนสั่ง unstick) */
+  unstickForShot?: string[];
 };
+
+type FlowStep =
+  | { click: string }
+  | { fill: string; value: string }
+  | { select: string; value: string }
+  | { waitFor: string };
 const PAGES: Record<string, PageSpec[]> = {
   "0.1": [
     { name: "hub", path: `/app/sys/${SYS}`, note: "หน้าแรกระบบบัญชี (AccountContent)", expect: ["บัญชี", E.tenantName] },
@@ -330,8 +344,25 @@ const PAGES: Record<string, PageSpec[]> = {
         { click: '[data-testid="pay-mode-advanced"]' },
         { fill: '[data-testid="pay-amount-1"]', value: "14900.00" },
         { click: '[data-testid="btn-add-payment"]' },
+        { waitFor: '[data-testid="pay-box-2"]' },
         { click: '[data-testid="pay-wht-toggle-2"]' },
+        // ช่อง "จำนวนภาษี" โผล่เฉพาะเมื่อ toggle ติดจริง → ใช้เป็นตัวยืนยันว่าคลิกเข้า ไม่ใช่เดาเวลา
+        { waitFor: '[data-testid="pay-wht-amount-2"]' },
+        { select: '[data-testid="pay-wht-type-2"]', value: "M40_8" },
+        { fill: '[data-testid="pay-wht-rate-2"]', value: "3" },
+        { fill: '[data-testid="pay-amount-2"]', value: "9301.87" },
       ],
+      // ต้องเป็นสถานะเฉลย g2 ทั้ง 2 ขนาดจอก่อนถ่าย (ไม่ผ่าน = ตกด่าน ไม่ใช่ภาพผ่าน ๆ)
+      expectBeforeShot: [
+        { sel: '[data-testid="pay-amount-1"]', kind: "value", equals: "14,900.00" },
+        { sel: '[data-testid="pay-amount-2"]', kind: "value", equals: "9,301.87" },
+        { sel: '[data-testid="pay-wht-amount-2"]', kind: "value", equals: "698.13" },
+        { sel: '[data-testid="pay-total-2"]', kind: "text", equals: "฿10,000.00" },
+        { sel: '[data-testid="pay-outstanding"]', kind: "text", equals: "฿0.00" },
+        { sel: '[data-testid="pay-summary-paid"]', kind: "text", equals: "฿24,201.87" },
+        { sel: '[data-testid="pay-summary-wht"]', kind: "text", equals: "฿698.13" },
+      ],
+      unstickForShot: ['[data-testid="editor-actions"]'],
       waitAfterClick: 500,
     },
     {
@@ -512,12 +543,49 @@ try {
           await page.click(sel).catch(() => {});
         }
         // WO 1.4: ลำดับกรอกฟอร์ม (คลิก/พิมพ์) — MoneyInput ยืนยันค่าเมื่อ blur ⇒ ต้องกด Tab ทุกครั้งหลังพิมพ์
+        // เลื่อน element เข้ากลางจอก่อนเสมอ — บนมือถือแถบปุ่มท้าย/แถบยอดบังปุ่มได้ ⇒ page.click() จะพลาด
+        const center = (sel: string) =>
+          page.evaluate((s: string) => {
+            const el = document.querySelector(s) as HTMLElement | null;
+            if (!el) return false;
+            el.scrollIntoView({ block: "center" });
+            return true;
+          }, sel);
+        const flowFail = (msg: string) => {
+          failures++;
+          console.log(`  ❌ [${spec.name}/${device}] flow: ${msg}`);
+        };
         for (const step of spec.flow ?? []) {
+          if ("waitFor" in step) {
+            let seen = false;
+            for (let i = 0; i < 40 && !seen; i++) {
+              seen = await page.evaluate((s: string) => !!document.querySelector(s), step.waitFor);
+              if (!seen) await new Promise((r) => setTimeout(r, 200));
+            }
+            if (!seen) flowFail(`รอ ${step.waitFor} ไม่ขึ้นภายใน 8 วิ`);
+            continue;
+          }
           if ("click" in step) {
-            await page.click(step.click).catch(() => {});
+            if (!(await center(step.click))) {
+              flowFail(`ไม่พบปุ่ม ${step.click}`);
+              continue;
+            }
+            // คลิกผ่าน DOM (React รับ event จาก el.click() ปกติ) — ไม่ติดปัญหา element ถูกแถบ sticky บัง
+            await page.evaluate((s: string) => (document.querySelector(s) as HTMLElement).click(), step.click);
+          } else if ("select" in step) {
+            if (!(await center(step.select))) {
+              flowFail(`ไม่พบ select ${step.select}`);
+              continue;
+            }
+            await page.select(step.select, step.value).catch(() => flowFail(`เลือกค่าใน ${step.select} ไม่ได้`));
           } else {
-            await page.click(step.fill, { clickCount: 3 }).catch(() => {});
-            await page.keyboard.type(step.value).catch(() => {});
+            if (!(await center(step.fill))) {
+              flowFail(`ไม่พบช่องกรอก ${step.fill}`);
+              continue;
+            }
+            // MoneyInput ยืนยันค่าเมื่อ blur ⇒ ต้องพิมพ์จริง (React onChange) แล้วกด Tab
+            await page.click(step.fill, { clickCount: 3 }).catch(() => flowFail(`คลิกช่อง ${step.fill} ไม่ได้`));
+            await page.keyboard.type(step.value).catch(() => flowFail(`พิมพ์ใน ${step.fill} ไม่ได้`));
             await page.keyboard.press("Tab").catch(() => {});
           }
           await new Promise((r) => setTimeout(r, 250));
@@ -532,6 +600,52 @@ try {
         // เคยโดน overflow ของ ancestor บัง (ดู AccountTabBar แก้แล้ว) จะสกอลหน้าไปตำแหน่งแปลก ๆ ก่อนถ่าย ⇒ รีเซ็ตกลับ 0
         // เสมอก่อนถ่ายภาพ (fullPage screenshot ควรไม่ขึ้นกับตำแหน่งสกอลอยู่แล้ว แต่กันไว้สองชั้น)
         await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+
+        // WO 1.4 (ตีกลับข้อ 2): วัดของจริงว่าแถบปุ่มท้ายทับเนื้อหาไหม — ต้องวัด **ก่อน** unstick
+        // เลื่อนสุดหน้าแล้วเทียบ: ก้นการ์ดสุดท้าย (แนบไฟล์) ต้องอยู่เหนือขอบบนของแถบปุ่ม
+        const tailClear = await page.evaluate(() => {
+          window.scrollTo(0, document.body.scrollHeight);
+          const tail = document.querySelector('[data-testid="sec-attachments"]');
+          const bar = document.querySelector('[data-testid="editor-actions"]');
+          if (!tail || !bar) return null;
+          const t = tail.getBoundingClientRect().bottom;
+          const b = bar.getBoundingClientRect().top;
+          window.scrollTo(0, 0);
+          return { tailBottom: Math.round(t), barTop: Math.round(b) };
+        });
+
+        // 🔴 ด่านก่อนกดชัตเตอร์: สถานะบนจอต้อง "เป็นเฉลยจริง" ก่อน ไม่งั้นภาพหลอกตา (บทเรียน 1.4 รอบ 1)
+        for (const want of spec.expectBeforeShot ?? []) {
+          let got = "";
+          let hit = false;
+          for (let i = 0; i < 40 && !hit; i++) {
+            got = await page.evaluate(
+              (o: { sel: string; kind: string }) => {
+                const el = document.querySelector(o.sel);
+                if (!el) return "(ไม่พบ element)";
+                if (o.kind === "value") return (el as HTMLInputElement).value ?? "";
+                // ป้ายของช่อง = ข้อความใน <label> ที่ห่ออยู่ (PaymentSection ใช้ label ห่อ input)
+                return (el as HTMLElement).innerText.trim();
+              },
+              { sel: want.sel, kind: want.kind },
+            );
+            hit = got.includes(want.equals);
+            if (!hit) await new Promise((r) => setTimeout(r, 200));
+          }
+          if (!hit) failures++;
+          console.log(
+            `  ${hit ? "✅" : "❌"} [${spec.name}/${device}] ก่อนถ่าย: ${want.sel} (${want.kind}) = ${JSON.stringify(got)} (ต้องมี ${JSON.stringify(want.equals)})`,
+          );
+        }
+        // แถบ sticky → static เฉพาะตอนถ่าย (ดูเหตุผลที่ PageSpec.unstickForShot)
+        for (const sel of spec.unstickForShot ?? []) {
+          await page
+            .evaluate((s: string) => {
+              const el = document.querySelector(s)?.closest<HTMLElement>(".sticky");
+              if (el) el.style.position = "static";
+            }, sel)
+            .catch(() => {});
+        }
 
         const file = `${OUT}/${spec.name}-${device}.png`;
         await page.screenshot({ path: file, fullPage: true });
@@ -769,6 +883,10 @@ try {
             c.push([probe.all.includes("ยอดคงค้างหลังชำระ"), `มีป้าย "ยอดคงค้างหลังชำระ"`]);
             c.push([probe.all.includes("เพิ่มการรับชำระ"), `มีปุ่ม "+ เพิ่มการรับชำระ"`]);
             c.push([probe.editor.scrollWidth <= w, `ไม่ล้นแนวนอน: scrollWidth ${probe.editor.scrollWidth} ≤ ${w}`]);
+            c.push([
+              !!tailClear && tailClear.tailBottom <= tailClear.barTop,
+              `แถบปุ่มท้ายไม่ทับเนื้อหา: ก้นการ์ด "แนบไฟล์" ${tailClear?.tailBottom} ≤ ขอบบนแถบ ${tailClear?.barTop} (เลื่อนสุดหน้า)`,
+            ]);
           }
           if (spec.name === "invoice-detail-payment") {
             c.push([probe.pay.slideOverVisible, `กด "รับชำระ" แล้วแผง SlideOver ต้องเปิดอยู่จริงบนจอ`]);
