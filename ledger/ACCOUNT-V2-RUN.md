@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 1.9 เอกสารประจำ+เตือน (ตัวสุดท้ายเฟส 1) |
+| WO | 🏁 เฟส 1 ปิด (1.1–1.9 ขึ้น main `1884f8d`) → เฟส 2: 2.1 query dashboard |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~17:30 UTC: 1.8 DONE · 1.9 กำลังทำ · หลัง 1.9: build+ภาพ → qc:all → merge main (ปิดเฟส 1) → verify prod → สรุปเฟส 1 ให้เจ้าของ → เฟส 2 |
+| ขั้นที่ถึง | 3 ก.ย. ~19:40 UTC: เฟส 1 ครบ 9 WO · push main `1884f8d` (Vercel deploy · migration recurring additive จะ apply) · crontab ติดตั้งแล้ว · 2.1 กำลังทำ (server-side) · ถัดไป 2.2 หน้าหลัก V2 (f1/f11) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
@@ -33,8 +33,8 @@
 | 1.6 | wizard CN/DN/CNR/DNR/RPR | Sonnet | DONE | 844b99e | ตีกลับ 3 รอบ (ผู้ติดต่อไม่เติม · เพดาน · คอลัมน์ · มือถือเลือกแถว/ruler click) → ผ่านภาพ g3 ทั้ง 2 ขั้น 2 ขนาด · adjust 96 · guard 134 · เพิ่ม `acc-v2-serve.sh start` (ไม่ build) ให้ agent iterate ภาพเองได้ · ค้าง: RPR ไม่มีหน้ารายการ/รายละเอียด · `?err=` หลัง approve ล้มยังไม่โชว์ inline (ทุกชนิด) |
 | 1.7 | ใบวางบิลรวม + ใบรวมจ่าย | Opus | DONE | (main) | ตีกลับ 1 รอบ → visual 43/43 · groups 174 · qc:all 194/195 (แดง acc-v2-payments แต่รันเดี่ยว 157/157 = flaky ตอนรันขนาน → จดให้ 9.3) · ค้าง: กลุ่มไม่มีสถานะร่าง · updateGroupProgress นับ CN ด้วย (5.x/9.x) · คอลัมน์ตารางกลุ่มกำลังแก้ (เข้า build ถัดไป) |
 | 1.8 | นำเข้า CSV | Sonnet | DONE | (HEAD) | import 114 · E2E จริง 18/0/2 + สร้าง 18 + cleanup ผ่าน 2 ขนาด (Fable ดูภาพขั้นตรวจสอบ) · 🐞 dedupe เบอร์ · บทเรียน ruler: snap chromium มี /tmp ส่วนตัว → fixture ต้องอยู่ใต้ /root · ← กลับ ตัดแล้ว (รอ build ถัดไป) |
-| 1.9 | เอกสารประจำ + เตือน | Opus | REVIEW | (snapshot) | recurring 161/161 (agent) · migration additive (AccountRecurringRule/Run) · cron: `scripts/acc-v2-cron-recurring.mts recurring|reminders` + `/api/cron/account/{recurring,reminders}` — **Fable ต้องติดตั้ง crontab หลัง merge** (23:10 UTC recurring · 01:00 UTC reminders บน shark-in-th) · ค้าง: LINE ทีมงาน (ผ่าน facade แชท) · ฟอร์มกฎยังไม่รองรับ WHT ต่อบรรทัด |
-| 2.1 | query dashboard | Opus | TODO | | |
+| 1.9 | เอกสารประจำ + เตือน | Opus | DONE | 1884f8d | recurring 161 (Fable รันเอง) · visual 57/57 · qc:all 197/197 · 🐞 แก้ fitness F10.1 (email import eager → lazy) · **crontab ติดตั้งแล้ว** บน VPS (23:10 UTC recurring · 01:00 UTC reminders · cwd shark-accounting · log /var/log/shark-acc-cron.log) · polish list (chip/actions) รอ build ถัดไป |
+| 2.1 | query dashboard | Opus | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~19:40 UTC · โน้ต `wo-notes/2.1.md` |
 | 2.2 | หน้าหลัก V2 | Sonnet | TODO | | |
 | 2.3 | ภาพรวมรายรับ/รายจ่าย | Sonnet | TODO | | |
 | 3.1 | Party | Opus | TODO | | |
@@ -65,6 +65,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 3 ก.ย. 2026 ~19:40 UTC — 🏁 **เฟส 1 ปิด** (9 WO · ขึ้น main 1884f8d · บั๊กเก่าที่ปิดระหว่างทาง 11 ตัว รวม RE ลงรายได้ซ้ำ 2 เท่า / DP โพสต์ซ้ำ / ซื้อ INCL_VAT ไม่สมดุล) · crontab เอกสารประจำ+เตือน ติดตั้งแล้ว
 - 3 ก.ย. 2026 ~04:15 UTC — 🏁 **เฟส 0 ปิด + 1.1/1.2 ขึ้น main** (qc:all 190/190 · commit 0d19670) · ระหว่างทาง: reboot 1 ครั้ง (แรม) → กติกางานหนักทีละอย่าง
 - 4 ก.ย. 2026 ~01:50 UTC — เจ้าของย้ำ: **UI ต้องออกมาตรงภาพที่ออกแบบ** → เพิ่มด่าน parity ใน BLUEPRINT §1 (Fable ดูภาพจริงคู่ mockup ทุกหน้า) · memory `feedback_ui_must_match_approved_mockups`
 - 4 ก.ย. 2026 ~01:00 UTC — 🔴 เหตุการณ์: migration เฟส 0 หลุดลง prod ระหว่าง WO 0.3 (สาเหตุ: `set -a; . ./.env.qc` พังเพราะ URL มี `&` ไม่มี quote → prisma.config fallback ไป .env) · บทเรียน: ทุกคำสั่ง prisma ในงานนี้ต้องผ่าน `scripts/acc-v2-env.mts`/`grep|cut` + ด่านกัน host prod · จดใน memory
