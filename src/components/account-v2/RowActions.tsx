@@ -8,6 +8,15 @@ export type RowActionItem = {
   href?: string;
   onClick?: () => void;
   danger?: boolean;
+  /** WO 1.9 — รายการที่ต้อง "ส่งฟอร์ม" ไป server action (เช่น "เตือนชำระ") · รองรับเฉพาะใน DocMoreMenu */
+  submit?: {
+    action: (formData: FormData) => void | Promise<void>;
+    fields?: Record<string, string>;
+  };
+  /** ปิดใช้งานพร้อมเหตุผลไทย (โชว์เป็นบรรทัดจาง — ห้ามซ่อนเงียบ ๆ ให้ผู้ใช้งงว่าปุ่มหายไปไหน) */
+  disabled?: boolean;
+  /** เหตุผลไทยที่กดไม่ได้ (แสดงใต้ป้าย + เป็น title) */
+  hint?: string;
 };
 
 // เมนู "ทำรายการ ▾" ต่อแถว (DESIGN-SPEC-V2 §1/§3)

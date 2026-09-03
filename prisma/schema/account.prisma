@@ -199,24 +199,24 @@ model AccountDocument {
 }
 
 model AccountDocumentLine {
-  id          String          @id @default(cuid())
-  tenantId    String
-  systemId    String
-  documentId  String
-  document    AccountDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  sortOrder   Int             @default(0)
-  description String
-  qty         Decimal         @default(1) @db.Decimal(12, 4)
-  unitName    String?
-  unitPrice   Int // สตางค์/หน่วย
-  discount    Int             @default(0) // ส่วนลดบรรทัด (สตางค์)
-  vatRateBp   Int             @default(700) // 700 = 7% | 0 = 0% | -1 = ยกเว้น
-  amount      Int // qty×unitPrice − discount (ฐานบรรทัด)
-  productId   String? // เลือกจากทะเบียนสินค้า/บริการ
-  product     AccountProduct? @relation(fields: [productId], references: [id])
-  accountId   String? // override บัญชี GL (EXPENSE บังคับเลือกหมวด)
-  account     AccountLedger?  @relation(fields: [accountId], references: [id])
-  assetId     String? // ASSET_PURCHASE: ผูกทะเบียนสินทรัพย์หลังขึ้นทะเบียน
+  id            String                @id @default(cuid())
+  tenantId      String
+  systemId      String
+  documentId    String
+  document      AccountDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  sortOrder     Int                   @default(0)
+  description   String
+  qty           Decimal               @default(1) @db.Decimal(12, 4)
+  unitName      String?
+  unitPrice     Int // สตางค์/หน่วย
+  discount      Int                   @default(0) // ส่วนลดบรรทัด (สตางค์)
+  vatRateBp     Int                   @default(700) // 700 = 7% | 0 = 0% | -1 = ยกเว้น
+  amount        Int // qty×unitPrice − discount (ฐานบรรทัด)
+  productId     String? // เลือกจากทะเบียนสินค้า/บริการ
+  product       AccountProduct?       @relation(fields: [productId], references: [id])
+  accountId     String? // override บัญชี GL (EXPENSE บังคับเลือกหมวด)
+  account       AccountLedger?        @relation(fields: [accountId], references: [id])
+  assetId       String? // ASSET_PURCHASE: ผูกทะเบียนสินทรัพย์หลังขึ้นทะเบียน
   // ── V2 (WO 1.3) · additive · nullable ทั้งคู่ = แถวเดิม/โค้ดเดิมพฤติกรรมไม่เปลี่ยน ──
   // หัก ณ ที่จ่าย "ต่อบรรทัด" (DESIGN-SPEC-V2 §5.2 C) — ฟอร์ม V2 เก็บสิ่งที่ผู้ใช้เลือกไว้
   // เพื่อให้เปิดร่างกลับมาแก้แล้วค่าไม่หาย · **การสร้าง WHT_CERT/JV จริงยังเป็นงาน WO 1.4**
@@ -301,21 +301,21 @@ model AccountDocSequence {
 // ───────────── ผู้ติดต่อ (ลูกค้า/ผู้ขาย) ─────────────
 
 model AccountContact {
-  id             String             @id @default(cuid())
-  tenantId       String
-  systemId       String
-  kind           AccountContactKind @default(CUSTOMER)
-  legalType      AccountLegalType   @default(COMPANY)
-  name           String // ชื่อจดทะเบียน
-  taxId          String? // 13 หลัก
-  branchCode     String?            @default("00000")
-  branchName     String?
-  address        String?
-  phone          String?
-  email          String?
-  creditTermDays Int                @default(0) // 0 = เงินสด
-  note           String?
-  archivedAt     DateTime?
+  id               String             @id @default(cuid())
+  tenantId         String
+  systemId         String
+  kind             AccountContactKind @default(CUSTOMER)
+  legalType        AccountLegalType   @default(COMPANY)
+  name             String // ชื่อจดทะเบียน
+  taxId            String? // 13 หลัก
+  branchCode       String?            @default("00000")
+  branchName       String?
+  address          String?
+  phone            String?
+  email            String?
+  creditTermDays   Int                @default(0) // 0 = เงินสด
+  note             String?
+  archivedAt       DateTime?
   // ── V2 (WO 0.3) · additive ทั้งหมด (SPEC §14.2) ──
   /// เบอร์รูปแบบเดียว (normalizePhoneTh) — คอลัมน์นี้คือกุญแจจับผู้ติดต่อซ้ำจากเบอร์
   /// ทุกจุดที่เขียน phone ต้องเขียนค่านี้ด้วย (service.contactWriteFields)
@@ -327,8 +327,10 @@ model AccountContact {
   defaultWhtRateBp Int? // อัตราหัก ณ ที่จ่ายปริยาย (basis point · 300 = 3%)
   bankAccountNote  String? // บัญชีธนาคารสำหรับโอนจ่าย (ข้อความอิสระ)
 
-  documents AccountDocument[]
-  groups    AccountContactGroupMember[]
+  documents      AccountDocument[]
+  groups         AccountContactGroupMember[]
+  /// WO 1.9 — กฎเอกสารประจำที่ออกให้ผู้ติดต่อรายนี้ (ลบผู้ติดต่อ → contactId ของกฎกลายเป็น null ตาม default ของ Prisma)
+  recurringRules AccountRecurringRule[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -408,4 +410,70 @@ model AccountSettings {
   updatedAt DateTime @updatedAt
 
   @@index([tenantId, systemId])
+}
+
+// ───────────── เอกสารประจำ (recurring · V2 · WO 1.9 — BLUEPRINT §0.3 ข้อ 7) ─────────────
+// "ใบแจ้งหนี้ค่าเช่าทุกวันที่ 1" — กฎ 1 แถว = เครื่องออกร่างให้เองทุกงวด แล้วเตือนคนตรวจ
+// 🔴 กันซ้ำอยู่ที่ `AccountRecurringRun @@unique([ruleId, periodKey])` — ไม่ใช่ที่ตรรกะในโค้ด
+//    (cron ยิงซ้ำ/สองเครื่องยิงพร้อมกัน ก็ได้เอกสารงวดละ 1 ใบเสมอ)
+
+enum AccountRecurringFrequency {
+  WEEKLY // ทุกสัปดาห์ (ใช้ weekday 0=อาทิตย์ … 6=เสาร์)
+  MONTHLY // ทุกเดือน (ใช้ dayOfMonth · 31 ในเดือนสั้นถูกหดเป็นวันสุดท้ายของเดือน)
+  QUARTERLY // ทุก 3 เดือน
+  YEARLY // ทุกปี
+}
+
+model AccountRecurringRule {
+  id       String         @id @default(cuid())
+  tenantId String
+  systemId String
+  /// ชื่อกฎที่คนอ่านรู้เรื่อง — ใช้เป็น "อ้างอิง" บนเอกสารที่สร้างด้วย
+  name     String
+  /// จำกัดที่ INVOICE | QUOTATION | PURCHASE | EXPENSE ในชั้นโค้ด (recurring-shared.RECURRING_DOC_TYPES)
+  docType  AccountDocType
+
+  contactId String?
+  contact   AccountContact? @relation(fields: [contactId], references: [id])
+
+  /// แม่แบบเอกสาร: { priceMode, lines[], note?, tags[], dueDays? } — ดู recurring-shared.parseRecurringTemplate
+  templateJson Json @default("{}")
+
+  frequency   AccountRecurringFrequency
+  dayOfMonth  Int? // 1–31 (MONTHLY/QUARTERLY/YEARLY)
+  weekday     Int? // 0–6 (WEEKLY)
+  startDate   DateTime
+  endDate     DateTime?
+  /// วันที่นัดของงวดถัดไป (UTC เที่ยงคืน) — คือหัวใจของ cron
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  /// สร้างล่วงหน้ากี่วันก่อนถึงวันที่นัด (0 = สร้างวันนั้น)
+  leadDays    Int                       @default(0)
+  /// true = ออกเอกสารให้เลย (ถ้าข้อมูลครบ) · false = ปล่อยเป็นร่างให้คนตรวจ
+  autoApprove Boolean                   @default(false)
+  active      Boolean                   @default(true)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  runs AccountRecurringRun[]
+
+  @@index([systemId, active, nextRunAt])
+  @@index([tenantId, systemId])
+}
+
+model AccountRecurringRun {
+  id         String               @id @default(cuid())
+  tenantId   String
+  systemId   String
+  ruleId     String
+  rule       AccountRecurringRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  /// กุญแจงวด: MONTHLY "2026-09" · QUARTERLY "2026-Q3" · YEARLY "2026" · WEEKLY "2026-09-07"
+  periodKey  String
+  documentId String
+  createdAt  DateTime             @default(now())
+
+  @@unique([ruleId, periodKey])
+  @@index([systemId, createdAt])
 }

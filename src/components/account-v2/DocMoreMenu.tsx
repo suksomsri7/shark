@@ -65,6 +65,28 @@ export function DocMoreMenu({ items, danger, testId }: { items: RowActionItem[];
         >
           {items.map((it, i) => {
             const cls = `${itemCls} ${it.danger ? "text-[color:var(--color-danger)]" : ""}`;
+            // WO 1.9 — รายการที่กดไม่ได้: โชว์เป็นบรรทัดจาง + เหตุผลไทยใต้ป้าย
+            // (ห้ามซ่อนทิ้งเงียบ ๆ — ผู้ใช้ต้องรู้ว่า "ทำไมเตือนชำระไม่ได้" ไม่ใช่หาปุ่มไม่เจอ)
+            if (it.disabled) {
+              return (
+                <div key={i} className={`${itemCls} cursor-not-allowed opacity-60`} title={it.hint} role="menuitem">
+                  <div>{it.label}</div>
+                  {it.hint && <div className="text-xs text-[color:var(--color-muted)]">{it.hint}</div>}
+                </div>
+              );
+            }
+            if (it.submit) {
+              return (
+                <form key={i} action={it.submit.action}>
+                  {Object.entries(it.submit.fields ?? {}).map(([k, v]) => (
+                    <input key={k} type="hidden" name={k} value={v} />
+                  ))}
+                  <button type="submit" role="menuitem" className={cls} onClick={() => setOpen(false)}>
+                    {it.label}
+                  </button>
+                </form>
+              );
+            }
             if (it.href) {
               return (
                 <Link key={i} href={it.href} role="menuitem" className={cls} onClick={() => setOpen(false)}>

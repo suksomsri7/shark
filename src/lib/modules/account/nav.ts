@@ -202,6 +202,16 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             { label: "ล่าสุด", href: `${base}/docs/DEBIT_NOTE?tab=recent` },
           ],
         }),
+        { // WO 1.9: เอกสารประจำ (§0.3 ข้อ 7) — หน้าเดียวใช้ร่วมทั้ง 2 หมวด (กรองชนิดในหน้า)
+          ...page({
+            label: "เอกสารประจำ",
+            href: `${base}/recurring`,
+            status: "ready",
+            icon: "clock",
+            testId: "REVENUE_RECURRING",
+          }),
+          sep: true,
+        },
         { // WO 1.8: นำเข้าเอกสารรายรับจาก CSV (§8.5)
           ...page({
             label: "นำเข้าเอกสาร",
@@ -210,7 +220,6 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             icon: "import",
             testId: "REVENUE_IMPORT",
           }),
-          sep: true,
         },
         { ...page({ label: "ลิงก์ให้ลูกค้าขอใบกำกับภาษี (QR)", href: `${base}/settings`, status: "ready", icon: "qr", testId: "REVENUE_QR_LINK" }), sep: true },
       ],
@@ -369,6 +378,16 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             { label: "ดูทั้งหมด", href: `${base}/combined-payment?tab=all`, countKey: "COMBINED_PAYMENT:all" },
           ],
         }),
+        { // WO 1.9: เอกสารประจำ (§0.3 ข้อ 7) — หน้าเดียวกับฝั่งรายรับ
+          ...page({
+            label: "เอกสารประจำ",
+            href: `${base}/recurring`,
+            status: "ready",
+            icon: "clock",
+            testId: "EXPENSE_RECURRING",
+          }),
+          sep: true,
+        },
         { // WO 1.8: นำเข้าเอกสารรายจ่ายจาก CSV (§8.5)
           ...page({
             label: "นำเข้าเอกสาร",
@@ -377,7 +396,6 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             icon: "import",
             testId: "EXPENSE_IMPORT",
           }),
-          sep: true,
         },
         soon("AI ช่วยบันทึก (ถ่ายบิล)", "spark", "EXPENSE_AI_SCAN"),
       ],

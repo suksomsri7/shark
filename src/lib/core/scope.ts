@@ -229,6 +229,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AccountDepreciation: sys(),
   AccountAttachment: sys(),
   AccountSystemLink: sys(),
+  // Account — เอกสารประจำ (V2 · WO 1.9)
+  AccountRecurringRule: sys(),
+  AccountRecurringRun: sys(),
   // Hotel
   HotelRoomType: unit,
   HotelRoom: unit,

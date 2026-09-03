@@ -350,6 +350,90 @@ if (WO === "1.8") {
   console.log(`[fixture 1.8] เขียนไฟล์ตัวอย่าง 2 ชุด (คนละ device — กัน idempotency ชนกัน) + ผู้ติดต่อ 36 ราย\n`);
 }
 
+// ─────────── fixture ของ WO 1.9: เอกสารประจำ 2 กฎ + แจ้งเตือน 3 รายการ ───────────
+// ต้องมีของจริงในฐานข้อมูล ภาพถึงจะพิสูจน์อะไรได้ (หน้ารายการเปล่า = ภาพ empty state ไม่ใช่ตาราง)
+// 🔴 ลบทิ้งเสมอใน finally — กฎที่ค้างไว้จะถูก cron/ปุ่ม "สร้างรอบที่ถึงกำหนด" หยิบไปออกเอกสารจริง
+//    และแจ้งเตือนที่ค้างจะไปเพิ่มตัวนับกระดิ่งของชุด QC อื่น
+const FIXTURE_REF_19 = "QC-VISUAL-1.9";
+let fx19 = { ruleMonthlyId: "", ruleWeeklyId: "" };
+if (WO === "1.9") {
+  const { prisma: db } = await import("@/lib/core/db");
+  const svc = await import("@/lib/modules/account/service");
+  const rs = await import("@/lib/modules/account/recurring-shared");
+  cleanupFixture = async () => {
+    const rules = await db.accountRecurringRule.findMany({
+      where: { systemId: SYS, name: { startsWith: FIXTURE_REF_19 } },
+      select: { id: true },
+    });
+    const ids = rules.map((r) => r.id);
+    if (ids.length > 0) {
+      const runs = await db.accountRecurringRun.findMany({ where: { ruleId: { in: ids } }, select: { documentId: true } });
+      const docIds = runs.map((r) => r.documentId);
+      await db.accountRecurringRun.deleteMany({ where: { ruleId: { in: ids } } });
+      if (docIds.length > 0) {
+        await db.accountDocumentLine.deleteMany({ where: { documentId: { in: docIds } } });
+        await db.accountDocument.deleteMany({ where: { id: { in: docIds } } });
+      }
+      await db.accountRecurringRule.deleteMany({ where: { id: { in: ids } } });
+    }
+    const noti = await db.appNotification.deleteMany({ where: { tenantId: E.tenantId, body: { contains: FIXTURE_REF_19 } } });
+    console.log(`ลบ fixture ของ WO 1.9: กฎ ${ids.length} ตัว + แจ้งเตือน ${noti.count} รายการ`);
+  };
+  await cleanupFixture(); // กันซากจากรอบที่ล้มกลางคัน
+
+  const tplLine = (name: string, priceSatang: number) => ({
+    name,
+    description: "",
+    qty: 1,
+    unitName: "เดือน",
+    unitPriceSatang: priceSatang,
+    vatRateBp: 700,
+    discountSatang: 0,
+    productId: null,
+    accountId: null,
+  });
+  const mk = async (name: string, freq: "MONTHLY" | "WEEKLY", lineName: string, price: number, dayOfMonth: number | null, weekday: number | null, autoApprove: boolean) => {
+    const res = await svc.createRecurringRule(
+      E.tenantId,
+      SYS,
+      {
+        name: `${FIXTURE_REF_19} ${name}`,
+        docType: "INVOICE",
+        contactId: E.fixtures.contactNattapholId,
+        template: rs.parseRecurringTemplate({ priceMode: "EXCL_VAT", lines: [tplLine(lineName, price)], dueDays: 7 }),
+        frequency: freq,
+        dayOfMonth,
+        weekday,
+        // วันที่เริ่มเป็นอนาคตเสมอ → ยังไม่ถึงรอบ ⇒ fixture ไม่ไปสร้างเอกสารจริงใส่ตัวนับแท็บของ WO 1.1
+        startDate: new Date(Date.now() + 20 * 86_400_000),
+        endDate: null,
+        leadDays: 0,
+        autoApprove,
+        active: true,
+      },
+      E.ownerUserId,
+    );
+    if (!res.ok) throw new Error(`fixture 1.9: สร้างกฎ "${name}" ไม่สำเร็จ — ${res.reason}`);
+    return res.id;
+  };
+  fx19 = {
+    ruleMonthlyId: await mk("ค่าเช่าสำนักงาน", "MONTHLY", "ค่าเช่าสำนักงาน", 1_500_000, 1, null, false),
+    ruleWeeklyId: await mk("ค่าบริการดูแลระบบ", "WEEKLY", "ค่าบริการดูแลระบบรายสัปดาห์", 350_000, null, 1, true),
+  };
+
+  // แจ้งเตือน 3 รายการของ "ศูนย์แจ้งเตือน" — จ่าหน้าถึงเจ้าของ QC โดยตรง (G11 · ไม่ใช่ประกาศทั้งร้าน)
+  for (const [title, body] of [
+    ["ครบกำหนดพรุ่งนี้", "ใบแจ้งหนี้ IV-2026-09-0042 · คุณณัฐพล — ต้องเก็บ ฿24,900.00"],
+    ["พ้นกำหนดชำระแล้ว", "ใบแจ้งหนี้ IV-2026-08-0031 · โรงแรมสิมิลันวิว — ต้องเก็บ ฿62,250.00"],
+    ["เช็คถึงกำหนด", "เช็คจ่าย 0012345 ธนาคารกสิกรไทย ฿18,000.00 — ถึงกำหนดในอีก 2 วัน"],
+  ] as const) {
+    await db.appNotification.create({
+      data: { tenantId: E.tenantId, recipientUserId: E.ownerUserId, title, body: `${body} · ${FIXTURE_REF_19}` },
+    });
+  }
+  console.log(`[fixture 1.9] กฎเอกสารประจำ 2 ตัว + แจ้งเตือน 3 รายการ\n`);
+}
+
 // ─────────── รายการหน้าต่อ WO (เติมทีละ WO ตาม BLUEPRINT §3) ───────────
 // expect = ข้อความที่ต้องเจอบนหน้า (ว่าง = ไม่ตรวจ) — พิสูจน์ว่าเปิดถูกหน้า **และต่อ DB QC จริง**
 // (Next โหลด .env ของ prod ให้อัตโนมัติตอน build/start แต่ไม่ทับ env ที่ส่งเข้ามา → ต้องมีหลักฐานจากหน้าจอ)
@@ -672,6 +756,27 @@ const PAGES: Record<string, PageSpec[]> = {
         { waitFor: '[data-testid="import-result"]' },
       ],
       expectBeforeShot: [{ sel: '[data-testid="import-result"]', kind: "text", equals: "สร้างใหม่ 18 รายการ" }],
+    },
+  ],
+  // WO 1.9 — เอกสารประจำ (§0.3 ข้อ 7) + ศูนย์แจ้งเตือน (§0.3 ข้อ 4)
+  "1.9": [
+    {
+      name: "recurring-list",
+      path: `/app/sys/${SYS}/account/recurring`,
+      note: "หน้ารายการเอกสารประจำ — ต้องเห็น 2 กฎ พร้อมความถี่/รอบถัดไป/สถานะ",
+      expect: ["เอกสารประจำ", "ค่าเช่าสำนักงาน", "ค่าบริการดูแลระบบ", "ทุกเดือน", "ทุกสัปดาห์"],
+    },
+    {
+      name: "recurring-form",
+      path: `/app/sys/${SYS}/account/recurring/${fx19.ruleMonthlyId}/edit`,
+      note: "ฟอร์มเอกสารประจำ — การ์ดตารางเวลา + ผู้ติดต่อ + ตารางรายการ (ฟอร์ม §5.2 ที่ตัดวันที่ออก)",
+      expect: ["แก้ไขเอกสารประจำ", "ตารางเวลา", "ความถี่", "วันที่เริ่ม", "รายการในแม่แบบ"],
+    },
+    {
+      name: "notifications",
+      path: "/app/notifications",
+      note: "ศูนย์แจ้งเตือน — ต้องเห็นแถวเตือน 3 รายการที่ WO 1.9 เขียน",
+      expect: ["ศูนย์แจ้งเตือน", "ครบกำหนดพรุ่งนี้", "พ้นกำหนดชำระแล้ว", "เช็คถึงกำหนด"],
     },
   ],
 };
@@ -1176,6 +1281,25 @@ try {
               hasRefChip: !!document.querySelector('[data-testid="ref-chip"]'),
               hasWizardStep: !!document.querySelector('[data-testid="wizard-step"]'),
             },
+            // WO 1.9 — เอกสารประจำ (รายการ/ฟอร์ม) + ศูนย์แจ้งเตือน
+            recurring: {
+              hasTable: !!document.querySelector('[data-testid="recurring-table"]'),
+              ruleRows: [...document.querySelectorAll('[data-testid^="rec-row-"]')].filter(isVisible).length,
+              statusLabels: [...document.querySelectorAll('[data-testid^="rec-status-"]')].map((el) => el.textContent?.trim() ?? ""),
+              nextRuns: [...document.querySelectorAll('[data-testid^="rec-next-"]')].map((el) => el.textContent?.trim() ?? ""),
+              hasForm: !!document.querySelector('[data-testid="recurring-form"]'),
+              hasScheduleCard: !!document.querySelector('[data-testid="card-schedule"]'),
+              hasLineTable: !!document.querySelector('[data-testid="card-lines"]'),
+              // ฟอร์มเอกสารประจำต้อง **ไม่มี** ช่องวันที่ออก/ครบกำหนดของเอกสาร (นั่นคือของ DocEditorV2)
+              hasIssueDateField: !!document.querySelector('[data-testid="fld-issue"]'),
+              nextPreview: document.querySelector('[data-testid="rec-next-preview"]')?.textContent?.trim() ?? "",
+              frequency: (document.querySelector('[data-testid="rec-frequency"]') as HTMLSelectElement | null)?.value ?? "",
+              ruleName: (document.querySelector('[data-testid="rec-name"]') as HTMLInputElement | null)?.value ?? "",
+              // ศูนย์แจ้งเตือน: นับแถวจากป้ายหัวข้อที่ WO 1.9 เขียน
+              notiRows: ["ครบกำหนดพรุ่งนี้", "พ้นกำหนดชำระแล้ว", "เช็คถึงกำหนด"].filter((t) =>
+                (document.body.innerText ?? "").includes(t),
+              ).length,
+            },
           };
         });
         line.push(`${device} HTTP ${status} · ${w}px · ล้นแนวนอน ${probe.overflow}px${navOk ? "" : " · nav timeout"}`);
@@ -1406,6 +1530,47 @@ try {
             if (device === "mobile") c18.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
           }
           for (const [okc, label] of c18) {
+            if (!okc) failures++;
+            console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
+          }
+        }
+
+        // WO 1.9 — เอกสารประจำ (§0.3 ข้อ 7) + ศูนย์แจ้งเตือน (§0.3 ข้อ 4)
+        if (ASSERT && WO === "1.9") {
+          const c19: [boolean, string][] = [];
+          if (spec.name === "recurring-list") {
+            c19.push([probe.recurring.hasTable, "มีตารางเอกสารประจำจริง (ไม่ใช่ empty state)"]);
+            c19.push([probe.recurring.ruleRows === 2, `ตารางมีกฎ 2 แถว (เจอ ${probe.recurring.ruleRows})`]);
+            c19.push([
+              probe.recurring.statusLabels.every((t: string) => t === "ทำงานอยู่"),
+              `สถานะทุกแถวเป็นไทย "ทำงานอยู่" (เจอ ${JSON.stringify(probe.recurring.statusLabels)})`,
+            ]);
+            c19.push([
+              probe.recurring.nextRuns.every((t: string) => /^\d{1,2} [ก-๙.]+ \d{4}$/.test(t)),
+              `คอลัมน์ "รอบถัดไป" เป็นวันที่ไทย ค.ศ. (เจอ ${JSON.stringify(probe.recurring.nextRuns)})`,
+            ]);
+            c19.push([!probe.all.includes("MONTHLY") && !probe.all.includes("WEEKLY"), "ไม่มีชื่อ enum ดิบโผล่บนจอ"]);
+          }
+          if (spec.name === "recurring-form") {
+            c19.push([probe.recurring.hasForm, "เปิดฟอร์มเอกสารประจำได้จริง"]);
+            c19.push([probe.recurring.hasScheduleCard, 'มีการ์ด "ตารางเวลา"']);
+            c19.push([probe.recurring.hasLineTable, 'มีการ์ด "รายการในแม่แบบ" (ตารางตัวเดียวกับฟอร์มเอกสาร)']);
+            c19.push([!probe.recurring.hasIssueDateField, "ฟอร์มไม่มีช่องวันที่ออกเอกสาร (แม่แบบไม่มีวันที่ — ตามสเปค WO)"]);
+            c19.push([
+              probe.recurring.nextPreview.includes("รอบถัดไป"),
+              `แสดง "รอบถัดไป" ให้ผู้ใช้เห็น (เจอ "${probe.recurring.nextPreview}")`,
+            ]);
+            c19.push([
+              probe.recurring.ruleName.includes("ค่าเช่าสำนักงาน"),
+              `ชื่อกฎถูกเติมกลับเข้าฟอร์ม (เจอ "${probe.recurring.ruleName}")`,
+            ]);
+            c19.push([probe.recurring.frequency === "MONTHLY", `ความถี่ที่เลือกไว้ถูกเติมกลับ (เจอ "${probe.recurring.frequency}")`]);
+          }
+          if (spec.name === "notifications") {
+            c19.push([probe.recurring.notiRows === 3, `ศูนย์แจ้งเตือนแสดงแถวเตือนครบ 3 ชนิด (เจอ ${probe.recurring.notiRows})`]);
+          }
+          if (device === "mobile") c19.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
+          for (const [okc, label] of c19) {
             if (!okc) failures++;
             console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
           }

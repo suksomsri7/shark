@@ -25,6 +25,10 @@ import {
   convertPOAction,
 } from "@/lib/modules/account/expense-actions";
 import { refundDepositFormAction } from "@/lib/modules/account/payment-actions";
+// WO 1.9 — ⋯ "เตือนชำระ" (ส่งอีเมลจริง) + "ตั้งเป็นเอกสารประจำ"
+import { sendPaymentReminderAction } from "@/lib/modules/account/recurring-actions";
+import { paymentReminderBlockReason } from "@/lib/modules/account/service";
+import { isRecurringDocType } from "@/lib/modules/account/recurring-shared";
 import { isGroupDocType, groupDefOf } from "@/lib/modules/account/group";
 import { PaymentPanel } from "./PaymentPanel";
 import { GroupPaymentPanel } from "./GroupPaymentPanel";
@@ -61,6 +65,8 @@ const REVENUE_PAYABLE_TYPES: readonly AccountDocType[] = ["INVOICE", "DEPOSIT_RE
 const EXPENSE_PAYABLE_TYPES: readonly AccountDocType[] = ["PURCHASE", "EXPENSE", "ASSET_PURCHASE", "DEPOSIT_PAYMENT", "COMBINED_PAYMENT"];
 const DEPOSIT_TYPES: readonly AccountDocType[] = ["DEPOSIT_RECEIPT", "DEPOSIT_PAYMENT"];
 const ACTIVE_STATUSES = new Set(["DRAFT", "VOIDED", "CANCELLED", "REJECTED"]);
+// WO 1.9 — ชนิดที่เมนู ⋯ โชว์รายการ "เตือนชำระ" (ตรงกับ PAYMENT_REMINDER_TYPES ฝั่ง service)
+const PAYMENT_REMINDER_UI_TYPES: readonly AccountDocType[] = ["INVOICE", "BILLING_NOTE", "DEBIT_NOTE"];
 
 function labelOf(dt: AccountDocType): string {
   return DOC_LABEL[dt] ?? EXP_DOC_LABEL[dt] ?? dt;
@@ -265,7 +271,7 @@ function dangerMenuItemFor(data: DocDetailData, systemId: string, side: "revenue
 const CN_DN_SOURCE_TYPES: readonly AccountDocType[] = ["INVOICE", "RECEIPT", "TAX_INVOICE"];
 const CNR_DNR_SOURCE_TYPES: readonly AccountDocType[] = ["PURCHASE", "EXPENSE"];
 
-function moreActionsFor(data: DocDetailData, base: string, targets: AccountDocType[]): RowActionItem[] {
+function moreActionsFor(data: DocDetailData, base: string, targets: AccountDocType[], systemId: string, detailPath: string): RowActionItem[] {
   const dt = data.docType;
   const items: RowActionItem[] = [];
   const soon = (label: string): RowActionItem => ({ label: `${label} (เร็ว ๆ นี้)`, href: "#" });
@@ -295,8 +301,33 @@ function moreActionsFor(data: DocDetailData, base: string, targets: AccountDocTy
     }
   }
   items.push(soon("ส่งอีเมล"));
+
+  // WO 1.9 §5.3 — "เตือนชำระ" ส่งอีเมลถึงลูกค้าจริง (IV/BN/DN ที่ยังค้างชำระ)
+  //   ไม่มีอีเมล / ไม่มียอดค้าง → รายการยังอยู่ในเมนูแต่กดไม่ได้ **พร้อมเหตุผลไทย**
+  //   (ห้ามซ่อนทิ้ง — ผู้ใช้ต้องรู้ว่าต้องไปเติมอีเมลที่ผู้ติดต่อ ไม่ใช่หาปุ่มไม่เจอ)
+  const remindBlock = paymentReminderBlockReason({
+    docType: dt,
+    status: data.status,
+    contactEmail: data.contact?.email ?? null,
+  });
+  if (remindBlock === null) {
+    items.push({
+      label: "เตือนชำระ",
+      submit: {
+        action: sendPaymentReminderAction,
+        fields: { systemId, id: data.id, backTo: detailPath },
+      },
+    });
+  } else if (PAYMENT_REMINDER_UI_TYPES.includes(dt)) {
+    items.push({ label: "เตือนชำระ", disabled: true, hint: remindBlock });
+  }
+
+  // WO 1.9 §0.3 ข้อ 7 — "ตั้งเป็นเอกสารประจำ" จากเอกสารที่ออกแล้ว (เติมแม่แบบให้ล่วงหน้า)
+  if (isRecurringDocType(dt) && !ACTIVE_STATUSES.has(data.status)) {
+    items.push({ label: "ตั้งเป็นเอกสารประจำ", href: `${base}/recurring/new?from=${data.id}` });
+  }
+
   if (dt === "INVOICE") {
-    items.push(soon("เตือนชำระ"));
     // WO 1.7: ลิงก์จริงเข้าฟอร์มใบวางบิลรวมพร้อมติ๊กใบนี้ไว้ให้ — ใบที่อยู่ในใบวางบิลแล้วไม่โชว์ซ้ำ
     if (!data.groupChip && (data.status === "AWAITING_PAYMENT" || data.status === "PARTIAL")) {
       items.push({ label: "ใส่ในใบวางบิล", href: `${editorNewPath(base, "BILLING_NOTE")}?ids=${data.id}` });
@@ -714,6 +745,7 @@ export async function DocDetailPage({
   expectDocType,
   tab,
   err,
+  msg,
 }: {
   tenantId: string;
   systemId: string;
@@ -723,6 +755,8 @@ export async function DocDetailPage({
   /** ?tab= — แท็บที่เปิดอยู่ (ค่าเริ่มต้น "รายละเอียด") */
   tab?: string;
   err?: string;
+  /** WO 1.9 — ข้อความสำเร็จ (เช่น "ส่งอีเมลเตือนชำระถึง … แล้ว") */
+  msg?: string;
 }) {
   const [data, settings] = await Promise.all([getDocDetailData(tenantId, systemId, docId), getSettings(tenantId, systemId)]);
   if (!data) notFound();
@@ -733,6 +767,7 @@ export async function DocDetailPage({
   const side = sideOf(dt);
   const listPath = editorListPath(base, dt);
   const editPath = editorEditPath(base, dt, data.id);
+  const selfPath = editorDetailPath(base, dt, data.id);
   const targets =
     side === "revenue" && !ACTIVE_STATUSES.has(data.status) ? visibleConvertTargets(dt, settings.vatRegistered) : [];
   const canShareLink = ["RECEIPT", "DEPOSIT_RECEIPT", "INVOICE"].includes(dt) && !ACTIVE_STATUSES.has(data.status);
@@ -747,6 +782,11 @@ export async function DocDetailPage({
   return (
     <div className="flex max-w-4xl flex-col gap-5">
       {err && <p className="text-sm text-[color:var(--color-danger)]">{decodeURIComponent(err)}</p>}
+      {msg && (
+        <p className="text-sm font-medium" data-testid="doc-msg">
+          {decodeURIComponent(msg)}
+        </p>
+      )}
 
       {/* หัว (g4/f14) — แถวเดียวบนจอกว้าง (lg+) ตาม g4: [เลขที่·chip]·ยอดสุทธิ·ค้างชำระ·ครบกำหนด …[ปุ่มรอง] · ปุ่มดำหลักแยกบรรทัดล่าง */}
       <div className="card flex flex-col gap-4">
@@ -787,7 +827,7 @@ export async function DocDetailPage({
             </button>
             <DocMoreMenu
               testId="doc-more-actions"
-              items={moreActionsFor(data, base, targets)}
+              items={moreActionsFor(data, base, targets, systemId, selfPath)}
               danger={dangerMenuItemFor(data, systemId, side)}
             />
           </div>

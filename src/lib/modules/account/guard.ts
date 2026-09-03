@@ -107,6 +107,12 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "purchase-tax-invoice/[docId]/page.tsx": "account.doc.view", // WO 1.2 (PURCHASE_TAX_INVOICE)
   "purchase-tax-invoice/new/page.tsx": "account.doc.create",
   "purchase-tax-invoice/page.tsx": "account.doc.view",
+  // WO 1.9: เอกสารประจำ (§0.3 ข้อ 7) — ดูรายการ = doc.view · สร้าง/แก้กฎ = doc.create
+  //   (ไม่เพิ่ม permission key ใหม่: กฎเอกสารประจำ = "เครื่องออกเอกสารแทนคน" ⇒ คุมด้วยสิทธิ์สร้างเอกสาร
+  //    ถ้าเพิ่ม key ใหม่ เจ้าของร้านทุกรายต้องไปติ๊กเพิ่มเอง = สิทธิ์หายเงียบ ๆ แบบเดียวกับบทเรียน IMPLIES ของ WO 0.3)
+  "recurring/[ruleId]/edit/page.tsx": "account.doc.create",
+  "recurring/new/page.tsx": "account.doc.create",
+  "recurring/page.tsx": "account.doc.view",
   "purchase/[docId]/edit/page.tsx": "account.doc.create",
   "purchase/[docId]/page.tsx": "account.doc.view",
   "purchase/new/page.tsx": "account.doc.create",

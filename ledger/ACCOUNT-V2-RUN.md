@@ -33,7 +33,7 @@
 | 1.6 | wizard CN/DN/CNR/DNR/RPR | Sonnet | DONE | 844b99e | ตีกลับ 3 รอบ (ผู้ติดต่อไม่เติม · เพดาน · คอลัมน์ · มือถือเลือกแถว/ruler click) → ผ่านภาพ g3 ทั้ง 2 ขั้น 2 ขนาด · adjust 96 · guard 134 · เพิ่ม `acc-v2-serve.sh start` (ไม่ build) ให้ agent iterate ภาพเองได้ · ค้าง: RPR ไม่มีหน้ารายการ/รายละเอียด · `?err=` หลัง approve ล้มยังไม่โชว์ inline (ทุกชนิด) |
 | 1.7 | ใบวางบิลรวม + ใบรวมจ่าย | Opus | DONE | (main) | ตีกลับ 1 รอบ → visual 43/43 · groups 174 · qc:all 194/195 (แดง acc-v2-payments แต่รันเดี่ยว 157/157 = flaky ตอนรันขนาน → จดให้ 9.3) · ค้าง: กลุ่มไม่มีสถานะร่าง · updateGroupProgress นับ CN ด้วย (5.x/9.x) · คอลัมน์ตารางกลุ่มกำลังแก้ (เข้า build ถัดไป) |
 | 1.8 | นำเข้า CSV | Sonnet | DONE | (HEAD) | import 114 · E2E จริง 18/0/2 + สร้าง 18 + cleanup ผ่าน 2 ขนาด (Fable ดูภาพขั้นตรวจสอบ) · 🐞 dedupe เบอร์ · บทเรียน ruler: snap chromium มี /tmp ส่วนตัว → fixture ต้องอยู่ใต้ /root · ← กลับ ตัดแล้ว (รอ build ถัดไป) |
-| 1.9 | เอกสารประจำ + เตือน | Opus (Sonnet) | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~17:30 UTC · โน้ต `wo-notes/1.9.md` |
+| 1.9 | เอกสารประจำ + เตือน | Opus | REVIEW | (snapshot) | recurring 161/161 (agent) · migration additive (AccountRecurringRule/Run) · cron: `scripts/acc-v2-cron-recurring.mts recurring|reminders` + `/api/cron/account/{recurring,reminders}` — **Fable ต้องติดตั้ง crontab หลัง merge** (23:10 UTC recurring · 01:00 UTC reminders บน shark-in-th) · ค้าง: LINE ทีมงาน (ผ่าน facade แชท) · ฟอร์มกฎยังไม่รองรับ WHT ต่อบรรทัด |
 | 2.1 | query dashboard | Opus | TODO | | |
 | 2.2 | หน้าหลัก V2 | Sonnet | TODO | | |
 | 2.3 | ภาพรวมรายรับ/รายจ่าย | Sonnet | TODO | | |

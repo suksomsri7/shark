@@ -266,8 +266,18 @@ export async function ExpenseDetailPage(props: {
   slug: string;
   err?: string;
   tab?: string;
+  msg?: string;
 }) {
   const { systemId, docId } = props;
   const { tenantId } = await loadAccountSystem(systemId);
-  return <DocDetailPage tenantId={tenantId} systemId={systemId} docId={docId} tab={props.tab} err={props.err} />;
+  return (
+    <DocDetailPage
+      tenantId={tenantId}
+      systemId={systemId}
+      docId={docId}
+      tab={props.tab}
+      err={props.err}
+      msg={props.msg}
+    />
+  );
 }

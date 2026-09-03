@@ -240,7 +240,8 @@ export type DocDetailData = {
   issueDate: Date;
   dueDate: Date | null;
   validUntil: Date | null;
-  contact: { id: string; name: string; taxId: string | null } | null;
+  /** WO 1.9 — `email` ใช้ตัดสินว่าปุ่ม ⋯ "เตือนชำระ" กดได้ไหม (ไม่มีอีเมล = ปุ่มจาง + บอกเหตุผล) */
+  contact: { id: string; name: string; taxId: string | null; email: string | null } | null;
   lines: {
     id: string;
     description: string;
@@ -316,7 +317,9 @@ export async function getDocDetailData(
     issueDate: doc.issueDate,
     dueDate: doc.dueDate,
     validUntil: doc.validUntil,
-    contact: doc.contact ? { id: doc.contact.id, name: doc.contact.name, taxId: doc.contact.taxId } : null,
+    contact: doc.contact
+      ? { id: doc.contact.id, name: doc.contact.name, taxId: doc.contact.taxId, email: doc.contact.email }
+      : null,
     lines: doc.lines.map((l) => ({
       id: l.id,
       description: l.description,

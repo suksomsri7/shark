@@ -11,10 +11,10 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ id: string; docType: string; docId: string }>;
-  searchParams: Promise<{ err?: string; edit?: string; tab?: string }>;
+  searchParams: Promise<{ err?: string; edit?: string; tab?: string; msg?: string }>;
 }) {
   const { id, docType, docId } = await params;
-  const { err, edit, tab } = await searchParams;
+  const { err, edit, tab, msg } = await searchParams;
   if (!isVisibleDocType(docType as AccountDocType)) notFound();
   const dt = docType as AccountDocType;
   const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.doc.view" });
@@ -26,5 +26,5 @@ export default async function Page({
     }
   }
 
-  return <DocDetailPage tenantId={tenantId} systemId={systemId} docId={docId} expectDocType={dt} tab={tab} err={err} />;
+  return <DocDetailPage tenantId={tenantId} systemId={systemId} docId={docId} expectDocType={dt} tab={tab} err={err} msg={msg} />;
 }

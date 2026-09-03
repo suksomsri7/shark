@@ -27,6 +27,22 @@ import {
 import { issueWhtCreditCert } from "./wht";
 // WO 1.1: แหล่งเดียวของแมป flyout tab → สถานะ (ร่วมกับ LIST_TABS ของหน้ารายการ V2)
 import { NAV_FLYOUT_TABS } from "./list-tabs";
+// WO 1.9 (เอกสารประจำ + เตือน) — ดูหัวข้อท้ายไฟล์ว่าทำไมโค้ดก้อนนั้นอยู่ในไฟล์นี้ (fitness F5)
+import { evaluate } from "@/lib/core/rbac";
+import { writeAudit } from "./access";
+import {
+  DAY_MS as REC_DAY_MS,
+  RECURRING_TAG,
+  autoApproveBlockReason,
+  firstRunAt,
+  isRecurringDocType,
+  nextRunAfter,
+  parseRecurringTemplate,
+  periodKeyOf,
+  utcDay,
+  type RecurringTemplate,
+} from "./recurring-shared";
+import type { AccountRecurringFrequency } from "@prisma/client";
 
 // Account (บัญชี P1 — ฝั่งรายรับ) service. scope = tenantId + systemId (feature)
 // เอกสารเงิน immutable: DRAFT แก้ได้ · พ้น DRAFT แก้ไม่ได้ → void/reissue
@@ -213,7 +229,7 @@ export function isOverdue(d: {
 // ─────────────────── ยอดเงิน ───────────────────
 
 // (import ตัวที่ไฟล์นี้เรียกใช้เองด้วย — `export … from` ไม่สร้าง binding ในไฟล์)
-import { computeTotals, lineAmount } from "./totals";
+import { computeTotals, computeDocTotals, lineAmount } from "./totals";
 import type { LineInput } from "./totals";
 
 // สูตรเงินทั้งหมดย้ายไป `totals.ts` (WO 1.3) — ไฟล์นั้น "บริสุทธิ์" (ไม่ import prisma)
@@ -3464,5 +3480,1058 @@ export async function getGroupDocHead(
     dueDate: d.dueDate,
     contactId: d.contactId,
     contactName: (snap?.name as string) ?? d.contact?.name ?? null,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WO 1.9 — เอกสารประจำ + เตือนครบกำหนด (BLUEPRINT §0.3 ข้อ 4 และ 7)
+//
+// 🔴 ทำไมโค้ดก้อนนี้อยู่ใน service.ts ไม่ใช่ไฟล์ใหม่:
+//    fitness F5 (raw prisma ในโมดูล) เป็น ratchet baseline 45 ไฟล์ และตอนนี้ **เต็ม 45 พอดี**
+//    ไฟล์ใหม่ที่ `import { prisma }` = CI แดงทันที ⇒ ส่วนที่แตะ DB ต้องอยู่ในไฟล์ที่นับไปแล้ว
+//    ส่วนที่ไม่แตะ DB แยกออกไปเป็น `recurring-shared.ts` (บริสุทธิ์ ใช้ฝั่ง client ได้)
+//
+// 🔴 ทำไม import `./expense` แบบ dynamic:
+//    `expense.ts` import จาก `service.ts` อยู่แล้ว (บรรทัด 16–30 ของไฟล์นั้น)
+//    ⇒ import แบบ static ที่นี่จะเป็นวงกลม static ระหว่าง 2 ไฟล์ (ESM ยอมแต่ลำดับ init เปราะ)
+//    การ `await import()` ตอนเรียกใช้จริงตัดวงนั้นทิ้ง และ Node แคชโมดูลให้อยู่แล้ว
+// ═══════════════════════════════════════════════════════════════════════════
+
+
+const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+/** "วันนี้ตามปฏิทินไทย" คืนเป็น Date ที่เป็นเที่ยงคืน **UTC** ของวันนั้น (ชนิดเดียวกับ dueDate ในตาราง) */
+export function bkkTodayUtcMidnight(now: Date = new Date()): Date {
+  const s = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  return new Date(`${s}T00:00:00.000Z`);
+}
+
+/** เวลาจริง (instant) ของ 00:00 น. วันนี้ตามเวลาไทย — ใช้เป็นขอบล่างของ "กันเตือนซ้ำในวันเดียวกัน" */
+function bkkDayStartInstant(now: Date): Date {
+  return new Date(bkkTodayUtcMidnight(now).getTime() - BKK_OFFSET_MS);
+}
+
+/** ช่วง [วันนั้น, วันถัดไป) สำหรับเทียบคอลัมน์วันที่ที่เก็บเป็นเที่ยงคืน UTC */
+function dayRange(d: Date): { gte: Date; lt: Date } {
+  return { gte: d, lt: new Date(d.getTime() + REC_DAY_MS) };
+}
+
+// ─────────────────── ผู้รับแจ้งเตือน (G11 — รายคน ไม่ใช่ประกาศทั้งร้าน) ───────────────────
+
+/**
+ * userId ของคนในร้านที่ **มีสิทธิ์จริง** ตาม action ที่ระบุ
+ * 🔴 fail-closed: อ่านสิทธิ์เพี้ยน/ไม่รู้จัก = ไม่ส่ง (เหมือน selectChatNotifyRecipients ที่ปิดช่องโหว่ G9)
+ *    ห้ามเขียนแจ้งเตือนแบบ `recipientUserId: null` (ประกาศทั้งร้าน) สำหรับเนื้อหาที่มีเลขเอกสาร/ยอดเงิน
+ */
+export async function selectAccountNotifyRecipients(tenantId: string, action: string): Promise<string[]> {
+  const members = await prisma.membership.findMany({
+    where: { tenantId },
+    select: { userId: true, role: true, unitAccess: true, permissions: true },
+    take: 200,
+  });
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of members) {
+    if (!m.userId || seen.has(m.userId)) continue;
+    seen.add(m.userId);
+    const ctx = {
+      role: m.role,
+      unitAccess: Array.isArray(m.unitAccess) ? (m.unitAccess as string[]) : [],
+      permissions:
+        m.permissions && typeof m.permissions === "object" && !Array.isArray(m.permissions)
+          ? (m.permissions as Record<string, unknown>)
+          : {},
+    };
+    if (evaluate(ctx, { module: "account", action })) out.push(m.userId);
+  }
+  return out;
+}
+
+/**
+ * เขียน AppNotification ถึงผู้รับหลายคน — กันซ้ำด้วย "เนื้อความเดิมภายในวันไทยเดียวกัน"
+ *
+ * 🔴 ทำไมกันซ้ำแบบนี้ ไม่ใช่แปะโค้ดกันซ้ำในข้อความ: `title`+`body` ของแต่ละ (ชนิดเตือน · เอกสาร · วัน)
+ *    ถูกออกแบบให้ **ตายตัว** อยู่แล้ว (มีเลขที่เอกสาร/งวดอยู่ในข้อความ) ⇒ ใช้ตัวข้อความเองเป็นกุญแจได้เลย
+ *    ผู้ใช้จึงไม่ต้องเห็นโค้ดประหลาดอย่าง `[R:DUE:xxx]` ในกล่องแจ้งเตือน
+ * @returns จำนวนแถวที่เขียนจริง (0 = เคยเตือนไปแล้ววันนี้)
+ */
+async function notifyUsersOncePerDay(
+  tenantId: string,
+  userIds: string[],
+  title: string,
+  body: string,
+  now: Date,
+): Promise<number> {
+  if (userIds.length === 0) return 0;
+  const since = bkkDayStartInstant(now);
+  let written = 0;
+  for (const userId of userIds) {
+    const already = await prisma.appNotification.count({
+      where: { tenantId, recipientUserId: userId, title, body, createdAt: { gte: since } },
+    });
+    if (already > 0) continue;
+    await prisma.appNotification.create({
+      data: { tenantId, recipientUserId: userId, title, body },
+    });
+    written += 1;
+  }
+  return written;
+}
+
+// ─────────────────── A. กฎเอกสารประจำ (CRUD) ───────────────────
+
+export type RecurringRuleRow = {
+  id: string;
+  name: string;
+  docType: AccountDocType;
+  contactId: string | null;
+  contactName: string | null;
+  frequency: AccountRecurringFrequency;
+  dayOfMonth: number | null;
+  weekday: number | null;
+  startDate: Date;
+  endDate: Date | null;
+  nextRunAt: Date;
+  lastRunAt: Date | null;
+  leadDays: number;
+  autoApprove: boolean;
+  active: boolean;
+  template: RecurringTemplate;
+  runCount: number;
+};
+
+function toRuleRow(r: {
+  id: string;
+  name: string;
+  docType: AccountDocType;
+  contactId: string | null;
+  contact: { name: string } | null;
+  frequency: AccountRecurringFrequency;
+  dayOfMonth: number | null;
+  weekday: number | null;
+  startDate: Date;
+  endDate: Date | null;
+  nextRunAt: Date;
+  lastRunAt: Date | null;
+  leadDays: number;
+  autoApprove: boolean;
+  active: boolean;
+  templateJson: unknown;
+  _count?: { runs: number };
+}): RecurringRuleRow {
+  return {
+    id: r.id,
+    name: r.name,
+    docType: r.docType,
+    contactId: r.contactId,
+    contactName: r.contact?.name ?? null,
+    frequency: r.frequency,
+    dayOfMonth: r.dayOfMonth,
+    weekday: r.weekday,
+    startDate: r.startDate,
+    endDate: r.endDate,
+    nextRunAt: r.nextRunAt,
+    lastRunAt: r.lastRunAt,
+    leadDays: r.leadDays,
+    autoApprove: r.autoApprove,
+    active: r.active,
+    template: parseRecurringTemplate(r.templateJson),
+    runCount: r._count?.runs ?? 0,
+  };
+}
+
+const RULE_SELECT = {
+  id: true,
+  name: true,
+  docType: true,
+  contactId: true,
+  contact: { select: { name: true } },
+  frequency: true,
+  dayOfMonth: true,
+  weekday: true,
+  startDate: true,
+  endDate: true,
+  nextRunAt: true,
+  lastRunAt: true,
+  leadDays: true,
+  autoApprove: true,
+  active: true,
+  templateJson: true,
+  _count: { select: { runs: true } },
+} as const;
+
+/** รายการกฎทั้งหมดของระบบนี้ (ทำงานอยู่ก่อน แล้วเรียงตามรอบถัดไป) */
+export async function listRecurringRules(tenantId: string, systemId: string): Promise<RecurringRuleRow[]> {
+  const rows = await prisma.accountRecurringRule.findMany({
+    where: { tenantId, systemId },
+    select: RULE_SELECT,
+    orderBy: [{ active: "desc" }, { nextRunAt: "asc" }],
+    take: 200,
+  });
+  return rows.map(toRuleRow);
+}
+
+export async function getRecurringRule(
+  tenantId: string,
+  systemId: string,
+  id: string,
+): Promise<RecurringRuleRow | null> {
+  const r = await prisma.accountRecurringRule.findFirst({
+    where: { id, tenantId, systemId },
+    select: RULE_SELECT,
+  });
+  return r ? toRuleRow(r) : null;
+}
+
+export type RecurringRuleInput = {
+  name: string;
+  docType: AccountDocType;
+  contactId: string | null;
+  template: RecurringTemplate;
+  frequency: AccountRecurringFrequency;
+  dayOfMonth: number | null;
+  weekday: number | null;
+  startDate: Date;
+  endDate: Date | null;
+  leadDays: number;
+  autoApprove: boolean;
+  active: boolean;
+};
+
+/** ตรวจว่า contactId ที่ส่งมาเป็นของระบบนี้จริง (กัน IDOR — id จากเบราว์เซอร์เป็นแค่ "คำขอ") */
+async function assertRuleContact(tenantId: string, systemId: string, contactId: string | null): Promise<string | null> {
+  if (!contactId) return null;
+  const c = await prisma.accountContact.findFirst({
+    where: { id: contactId, tenantId, systemId },
+    select: { id: true },
+  });
+  return c?.id ?? null;
+}
+
+export async function createRecurringRule(
+  tenantId: string,
+  systemId: string,
+  input: RecurringRuleInput,
+  createdByUserId: string | null,
+): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
+  if (!isRecurringDocType(input.docType)) return { ok: false, reason: "ชนิดเอกสารนี้ตั้งเป็นเอกสารประจำไม่ได้" };
+  if (input.template.lines.length === 0) return { ok: false, reason: "ต้องมีรายการอย่างน้อย 1 รายการ" };
+  const contactId = await assertRuleContact(tenantId, systemId, input.contactId);
+  const nextRunAt = firstRunAt({
+    frequency: input.frequency,
+    dayOfMonth: input.dayOfMonth,
+    weekday: input.weekday,
+    startDate: input.startDate,
+    endDate: input.endDate,
+  });
+  const rule = await prisma.accountRecurringRule.create({
+    data: {
+      tenantId,
+      systemId,
+      name: input.name.slice(0, 120),
+      docType: input.docType,
+      contactId,
+      templateJson: input.template as unknown as Prisma.InputJsonValue,
+      frequency: input.frequency,
+      dayOfMonth: input.dayOfMonth,
+      weekday: input.weekday,
+      startDate: utcDay(input.startDate),
+      endDate: input.endDate ? utcDay(input.endDate) : null,
+      nextRunAt,
+      leadDays: input.leadDays,
+      autoApprove: input.autoApprove,
+      active: input.active,
+      createdByUserId,
+    },
+    select: { id: true },
+  });
+  return { ok: true, id: rule.id };
+}
+
+export async function updateRecurringRule(
+  tenantId: string,
+  systemId: string,
+  id: string,
+  input: RecurringRuleInput,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const cur = await prisma.accountRecurringRule.findFirst({
+    where: { id, tenantId, systemId },
+    select: { id: true, nextRunAt: true, frequency: true, dayOfMonth: true, weekday: true, startDate: true },
+  });
+  if (!cur) return { ok: false, reason: "ไม่พบเอกสารประจำนี้" };
+  if (!isRecurringDocType(input.docType)) return { ok: false, reason: "ชนิดเอกสารนี้ตั้งเป็นเอกสารประจำไม่ได้" };
+  if (input.template.lines.length === 0) return { ok: false, reason: "ต้องมีรายการอย่างน้อย 1 รายการ" };
+  const contactId = await assertRuleContact(tenantId, systemId, input.contactId);
+  // ตารางเวลาเปลี่ยน → คิด "รอบถัดไป" ใหม่จากต้น · ตารางเดิม → คงวันนัดเดิมไว้ (ไม่ทำให้งวดหาย/ซ้ำ)
+  const scheduleChanged =
+    cur.frequency !== input.frequency ||
+    (cur.dayOfMonth ?? null) !== (input.dayOfMonth ?? null) ||
+    (cur.weekday ?? null) !== (input.weekday ?? null) ||
+    utcDay(cur.startDate).getTime() !== utcDay(input.startDate).getTime();
+  const nextRunAt = scheduleChanged
+    ? firstRunAt({
+        frequency: input.frequency,
+        dayOfMonth: input.dayOfMonth,
+        weekday: input.weekday,
+        startDate: input.startDate,
+        endDate: input.endDate,
+      })
+    : cur.nextRunAt;
+  await prisma.accountRecurringRule.updateMany({
+    where: { id, tenantId, systemId },
+    data: {
+      name: input.name.slice(0, 120),
+      docType: input.docType,
+      contactId,
+      templateJson: input.template as unknown as Prisma.InputJsonValue,
+      frequency: input.frequency,
+      dayOfMonth: input.dayOfMonth,
+      weekday: input.weekday,
+      startDate: utcDay(input.startDate),
+      endDate: input.endDate ? utcDay(input.endDate) : null,
+      nextRunAt,
+      leadDays: input.leadDays,
+      autoApprove: input.autoApprove,
+      active: input.active,
+    },
+  });
+  return { ok: true };
+}
+
+/** เปิด/ปิดกฎ (ไม่ลบ — ประวัติการสร้างต้องอยู่ครบ) */
+export async function setRecurringRuleActive(
+  tenantId: string,
+  systemId: string,
+  id: string,
+  active: boolean,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const res = await prisma.accountRecurringRule.updateMany({
+    where: { id, tenantId, systemId },
+    data: { active },
+  });
+  return res.count > 0 ? { ok: true } : { ok: false, reason: "ไม่พบเอกสารประจำนี้" };
+}
+
+/** ประวัติการสร้างของกฎ 1 ตัว (ใหม่สุดก่อน) */
+export async function listRecurringRuns(
+  tenantId: string,
+  systemId: string,
+  ruleId: string,
+  limit = 20,
+): Promise<{ periodKey: string; documentId: string; docNo: string | null; status: AccountDocStatus; createdAt: Date }[]> {
+  const runs = await prisma.accountRecurringRun.findMany({
+    where: { tenantId, systemId, ruleId },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(100, Math.max(1, limit)),
+    select: { periodKey: true, documentId: true, createdAt: true },
+  });
+  if (runs.length === 0) return [];
+  const docs = await prisma.accountDocument.findMany({
+    where: { tenantId, systemId, id: { in: runs.map((r) => r.documentId) } },
+    select: { id: true, docNo: true, status: true },
+  });
+  const byId = new Map(docs.map((d) => [d.id, d]));
+  return runs.map((r) => ({
+    periodKey: r.periodKey,
+    documentId: r.documentId,
+    docNo: byId.get(r.documentId)?.docNo ?? null,
+    status: byId.get(r.documentId)?.status ?? "CANCELLED",
+    createdAt: r.createdAt,
+  }));
+}
+
+/**
+ * แม่แบบตั้งต้นจากเอกสารที่ออกแล้ว — ปุ่ม "ตั้งเป็นเอกสารประจำ" บนหน้าเอกสาร (§5.3 ⋯)
+ * คืน null เมื่อเอกสารไม่มีจริง/ยังเป็นร่าง/ชนิดที่ทำเอกสารประจำไม่ได้
+ */
+export async function buildRuleDraftFromDocument(
+  tenantId: string,
+  systemId: string,
+  docId: string,
+): Promise<{ name: string; docType: AccountDocType; contactId: string | null; template: RecurringTemplate } | null> {
+  const doc = await prisma.accountDocument.findFirst({
+    where: { id: docId, tenantId, systemId },
+    select: {
+      docType: true,
+      docNo: true,
+      status: true,
+      contactId: true,
+      note: true,
+      priceMode: true,
+      tags: true,
+      issueDate: true,
+      dueDate: true,
+      contact: { select: { name: true } },
+      lines: {
+        orderBy: { sortOrder: "asc" },
+        select: {
+          description: true,
+          qty: true,
+          unitName: true,
+          unitPrice: true,
+          discount: true,
+          vatRateBp: true,
+          productId: true,
+          accountId: true,
+        },
+      },
+    },
+  });
+  if (!doc) return null;
+  if (!isRecurringDocType(doc.docType)) return null;
+  if (doc.status === "DRAFT" || doc.status === "CANCELLED" || doc.status === "VOIDED") return null;
+  const dueDays =
+    doc.dueDate && doc.issueDate
+      ? Math.max(0, Math.round((utcDay(doc.dueDate).getTime() - utcDay(doc.issueDate).getTime()) / REC_DAY_MS))
+      : null;
+  const template = parseRecurringTemplate({
+    priceMode: doc.priceMode ?? "EXCL_VAT",
+    note: doc.note ?? "",
+    tags: doc.tags ?? [],
+    dueDays,
+    lines: doc.lines.map((l) => {
+      const nl = l.description.indexOf("\n");
+      return {
+        name: nl < 0 ? l.description : l.description.slice(0, nl),
+        description: nl < 0 ? "" : l.description.slice(nl + 1),
+        qty: l.qty,
+        unitName: l.unitName,
+        unitPriceSatang: l.unitPrice,
+        vatRateBp: l.vatRateBp,
+        discountSatang: l.discount,
+        productId: l.productId,
+        accountId: l.accountId,
+      };
+    }),
+  });
+  const who = doc.contact?.name ? ` ${doc.contact.name}` : "";
+  return {
+    name: `${DOC_LABEL[doc.docType] ?? doc.docType}${who}`.slice(0, 120),
+    docType: doc.docType,
+    contactId: doc.contactId,
+    template,
+  };
+}
+
+// ─────────────────── B. ตัวสร้างเอกสารประจำ ───────────────────
+
+export type RecurringRunSummary = {
+  /** จำนวนกฎที่ถึงรอบและถูกประมวลผลรอบนี้ */
+  processed: number;
+  /** ร่างที่สร้างใหม่จริง */
+  created: number;
+  /** ที่ออกเอกสารให้อัตโนมัติสำเร็จ */
+  issued: number;
+  /** ข้ามเพราะงวดนี้เคยสร้างไปแล้ว (idempotent) */
+  skipped: number;
+  /** สร้างไม่สำเร็จ (มีแจ้งเตือนพร้อมเหตุผล) */
+  failed: number;
+  /** กฎที่หมดอายุรอบนี้ (เลย endDate → ปิดเอง) */
+  finished: number;
+};
+
+const EMPTY_RUN_SUMMARY: RecurringRunSummary = {
+  processed: 0,
+  created: 0,
+  issued: 0,
+  skipped: 0,
+  failed: 0,
+  finished: 0,
+};
+
+/** เพดาน lead time — ใช้ตัดช่วง query ก่อน แล้วค่อยกรอง leadDays รายแถวใน JS */
+const MAX_LEAD_DAYS = 60;
+
+/**
+ * สร้างเอกสารตามกฎที่ถึงรอบ — **idempotent ด้วย unique(ruleId, periodKey)**
+ *
+ * ไม่ส่ง `opts` = กวาดทุกระบบบัญชีทั้งแพลตฟอร์ม (เส้นทางของ cron) เหมือน `sweepAutoClosePeriods`
+ * ส่ง `opts` = จำกัดที่ระบบเดียว (ปุ่ม "สร้างตอนนี้" และชุดทดสอบ)
+ *
+ * 🔴 กติกา "ไล่ทีละงวดต่อ 1 รอบ": กฎที่ตั้งวันเริ่มย้อนหลัง (หรือ cron ตายไปหลายวัน) จะได้เอกสาร
+ *    **งวดละ 1 ใบต่อการรัน 1 ครั้ง** ไม่ใช่ถล่มออกมาพร้อมกันทั้งปี — ตั้งใจให้เป็นแบบนี้:
+ *    เจ้าของร้านที่เผลอตั้งวันเริ่มเป็นปีที่แล้ว จะได้ร่างมาตรวจวันละใบ (แก้/ปิดกฎทัน)
+ *    ไม่ใช่ตื่นมาเจอใบแจ้งหนี้ 12 ใบพร้อมเลขรัน 12 เลขที่เรียกคืนไม่ได้
+ */
+export async function runRecurringRules(
+  now: Date = new Date(),
+  opts?: { tenantId: string; systemId: string },
+): Promise<RecurringRunSummary> {
+  const horizon = new Date(now.getTime() + MAX_LEAD_DAYS * REC_DAY_MS);
+  const rules = await prisma.accountRecurringRule.findMany({
+    where: {
+      active: true,
+      nextRunAt: { lte: horizon },
+      ...(opts ? { tenantId: opts.tenantId, systemId: opts.systemId } : {}),
+    },
+    orderBy: { nextRunAt: "asc" },
+    take: 500,
+  });
+
+  const summary = { ...EMPTY_RUN_SUMMARY };
+  for (const rule of rules) {
+    // "สร้างล่วงหน้า n วัน" — เทียบรายแถวเพราะ leadDays เป็นค่าของกฎแต่ละตัว (SQL เดียวเทียบไม่ได้)
+    const dueAt = new Date(rule.nextRunAt.getTime() - rule.leadDays * REC_DAY_MS);
+    if (dueAt.getTime() > now.getTime()) continue;
+
+    // เลย "วันที่สิ้นสุด" แล้ว → ปิดกฎ ไม่สร้างอะไรอีก
+    if (rule.endDate && rule.nextRunAt.getTime() > rule.endDate.getTime()) {
+      await prisma.accountRecurringRule.updateMany({ where: { id: rule.id }, data: { active: false } });
+      summary.finished += 1;
+      continue;
+    }
+
+    summary.processed += 1;
+    try {
+      const res = await generateOneRecurringDocument(rule, now);
+      if (res === "skipped") summary.skipped += 1;
+      else {
+        summary.created += 1;
+        if (res === "issued") summary.issued += 1;
+      }
+    } catch (e) {
+      summary.failed += 1;
+      await notifyRecurringFailure(rule, e instanceof Error ? e.message : "สร้างเอกสารไม่สำเร็จ", now);
+    }
+
+    // เลื่อนงวด — ทำเสมอ ไม่ว่ารอบนี้จะสร้างสำเร็จหรือถูกข้าม (ไม่งั้น cron ติดอยู่ที่งวดเดิมตลอดกาล)
+    const spec = {
+      frequency: rule.frequency,
+      dayOfMonth: rule.dayOfMonth,
+      weekday: rule.weekday,
+      startDate: rule.startDate,
+      endDate: rule.endDate,
+    };
+    const next = nextRunAfter(spec, rule.nextRunAt);
+    const finished = !!rule.endDate && next.getTime() > rule.endDate.getTime();
+    if (finished) summary.finished += 1;
+    await prisma.accountRecurringRule.updateMany({
+      where: { id: rule.id },
+      data: { nextRunAt: next, lastRunAt: now, active: finished ? false : rule.active },
+    });
+  }
+  return summary;
+}
+
+type RecurringRuleRecord = Awaited<ReturnType<typeof prisma.accountRecurringRule.findMany>>[number];
+
+/** สร้างเอกสารของ "งวดปัจจุบัน" ของกฎ 1 ตัว — คืน skipped เมื่องวดนั้นมีเอกสารแล้ว */
+async function generateOneRecurringDocument(
+  rule: RecurringRuleRecord,
+  now: Date,
+): Promise<"created" | "issued" | "skipped"> {
+  const { tenantId, systemId } = rule;
+  const periodKey = periodKeyOf(rule.frequency, rule.nextRunAt);
+
+  // ด่านที่ 1 (เร็ว): งวดนี้เคยสร้างแล้วหรือยัง
+  const existing = await prisma.accountRecurringRun.findFirst({
+    where: { ruleId: rule.id, periodKey },
+    select: { id: true },
+  });
+  if (existing) return "skipped";
+
+  const template = parseRecurringTemplate(rule.templateJson);
+  if (template.lines.length === 0) throw new Error("แม่แบบไม่มีรายการสินค้า/บริการ");
+
+  const settings = await getSettings(tenantId, systemId);
+  const totals = computeDocTotals({
+    lines: template.lines.map((l) => ({
+      qty: l.qty,
+      unitPriceSatang: l.unitPriceSatang,
+      discount: { mode: "amount" as const, satang: l.discountSatang, percentBp: 0 },
+      vatRateBp: l.vatRateBp,
+    })),
+    priceMode: template.priceMode,
+    vatRegistered: settings.vatRegistered,
+    vatRateBp: settings.vatRateBp,
+  });
+
+  const issueDate = new Date(rule.nextRunAt.getTime());
+  const dueDays = template.dueDays ?? settings.defaultDueDays ?? 30;
+  const dueDate = new Date(issueDate.getTime() + dueDays * REC_DAY_MS);
+  const validDate = new Date(issueDate.getTime() + (template.dueDays ?? settings.defaultValidDays ?? 30) * REC_DAY_MS);
+
+  const lineInputs = template.lines.map((l) => ({
+    description: l.description ? `${l.name}\n${l.description}` : l.name,
+    qty: l.qty,
+    unitName: l.unitName,
+    unitPrice: l.unitPriceSatang,
+    discount: l.discountSatang,
+    vatRateBp: l.vatRateBp,
+    accountId: l.accountId,
+    productId: l.productId,
+  }));
+  const tags = Array.from(new Set([...template.tags, RECURRING_TAG]));
+  const isRevenue = rule.docType === "INVOICE" || rule.docType === "QUOTATION";
+
+  // 🔵 ใช้ createDocument/createExpenseDoc **ตัวเดียวกับที่ saveDraftAction (ฟอร์ม V2) เรียก**
+  //    ⇒ ยอดบนเอกสารประจำ = ยอดที่ฟอร์มคิด ไม่มีสูตรคู่ขนาน
+  let doc: { id: string };
+  if (isRevenue) {
+    doc = await createDocument({
+      tenantId,
+      systemId,
+      docType: rule.docType,
+      contactId: rule.contactId,
+      issueDate,
+      dueDate: rule.docType === "QUOTATION" ? null : dueDate,
+      validUntil: rule.docType === "QUOTATION" ? validDate : null,
+      vatMode: totals.vatMode,
+      vatTiming: settings.taxPointBasis,
+      discountAmount: totals.discountAmount,
+      note: template.note || null,
+      lines: lineInputs,
+      createdById: rule.createdByUserId,
+      source: "RECURRING",
+      tags,
+    });
+  } else {
+    const exp = await import("./expense");
+    doc = await exp.createExpenseDoc({
+      tenantId,
+      systemId,
+      docType: rule.docType,
+      contactId: rule.contactId,
+      issueDate,
+      dueDate,
+      vatMode: totals.vatMode,
+      discountAmount: totals.discountAmount,
+      note: template.note || null,
+      lines: lineInputs,
+      createdById: rule.createdByUserId,
+      source: "RECURRING",
+      tags,
+    });
+  }
+
+  // ฟิลด์ V2 ที่ create เดิมยังไม่รู้จัก (อ้างอิง/โหมดราคา) — เส้นเดียวกับฟอร์ม
+  await applyEditorExtras(tenantId, systemId, doc.id, {
+    reference: rule.name.slice(0, 35),
+    priceMode: template.priceMode,
+    discountMode: "AMOUNT",
+    salesUserId: null,
+    tags,
+    internalNote: null,
+    autoTaxInvoice: null,
+    whtAmount: 0,
+    lineWht: template.lines.map(() => ({ whtIncomeType: null, whtRateBp: null })),
+  });
+
+  // ด่านที่ 2 (ของจริง): unique(ruleId, periodKey) — แข่งกันแล้วแพ้ = ลบร่างที่เพิ่งสร้างทิ้ง ไม่ทิ้งขยะ
+  try {
+    await prisma.accountRecurringRun.create({
+      data: { tenantId, systemId, ruleId: rule.id, periodKey, documentId: doc.id },
+    });
+  } catch {
+    await prisma.accountDocumentLine.deleteMany({ where: { documentId: doc.id } });
+    await prisma.accountDocument.deleteMany({ where: { id: doc.id, tenantId, systemId, status: "DRAFT" } });
+    return "skipped";
+  }
+
+  const base = `/app/sys/${systemId}/account`;
+  const label = DOC_LABEL[rule.docType] ?? rule.docType;
+  const link = isRevenue ? `${base}/docs/${rule.docType}/${doc.id}` : `${base}/${rule.docType === "PURCHASE" ? "purchase" : "expense"}/${doc.id}`;
+  const recipients = await recurringRecipients(rule);
+
+  // ออกให้อัตโนมัติเมื่อสั่งไว้ **และข้อมูลครบเท่านั้น** — ไม่ครบ = ปล่อยเป็นร่างให้คนตรวจ (ไม่ใช่ปล่อยเลยตามใจ)
+  if (rule.autoApprove) {
+    const block = autoApproveBlockReason({ contactId: rule.contactId, template });
+    if (block) {
+      await notifyUsersOncePerDay(
+        tenantId,
+        recipients,
+        "เอกสารประจำรอตรวจ",
+        `${rule.name} — สร้างเป็นร่างแล้วแต่ออกอัตโนมัติไม่ได้: ${block} · ${link}`,
+        now,
+      );
+      return "created";
+    }
+    const exp = await import("./expense");
+    const res = isRevenue
+      ? await issueDocument(tenantId, systemId, doc.id)
+      : await exp.issueExpenseDoc(tenantId, systemId, doc.id);
+    if (!res.ok) {
+      await notifyUsersOncePerDay(
+        tenantId,
+        recipients,
+        "เอกสารประจำรอตรวจ",
+        `${rule.name} — สร้างเป็นร่างแล้วแต่ออกอัตโนมัติไม่ได้: ${res.reason} · ${link}`,
+        now,
+      );
+      return "created";
+    }
+    await notifyUsersOncePerDay(
+      tenantId,
+      recipients,
+      "ออกเอกสารประจำแล้ว",
+      `${rule.name} — ออก${label}เลขที่ ${res.docNo} อัตโนมัติแล้ว · ${link}`,
+      now,
+    );
+    return "issued";
+  }
+
+  await notifyUsersOncePerDay(
+    tenantId,
+    recipients,
+    "สร้างเอกสารประจำ",
+    `${rule.name} — สร้าง${label}เป็นร่างแล้ว รอตรวจและอนุมัติ · ${link}`,
+    now,
+  );
+  return "created";
+}
+
+/** ผู้รับแจ้งเตือนของกฎ: ผู้สร้างกฎมาก่อน (ถ้ายังมีสิทธิ์อยู่) แล้วจึงคนอื่นที่สร้างเอกสารได้ */
+async function recurringRecipients(rule: { tenantId: string; createdByUserId: string | null }): Promise<string[]> {
+  const eligible = await selectAccountNotifyRecipients(rule.tenantId, "account.doc.create");
+  const owner = rule.createdByUserId;
+  if (owner && eligible.includes(owner)) return [owner, ...eligible.filter((u) => u !== owner)];
+  return eligible;
+}
+
+async function notifyRecurringFailure(
+  rule: { id: string; tenantId: string; name: string; createdByUserId: string | null },
+  reason: string,
+  now: Date,
+): Promise<void> {
+  const recipients = await recurringRecipients(rule);
+  await notifyUsersOncePerDay(
+    rule.tenantId,
+    recipients,
+    "สร้างเอกสารประจำไม่สำเร็จ",
+    `${rule.name} — ${reason} · แก้แม่แบบแล้วระบบจะลองใหม่รอบหน้า`,
+    now,
+  );
+}
+
+// ─────────────────── C. เตือนอัตโนมัติรายวัน ───────────────────
+
+export type ReminderKind =
+  | "DUE_TOMORROW"
+  | "OVERDUE_TODAY"
+  | "PTX_AWAITING"
+  | "CHEQUE_DUE"
+  | "PP30_DUE";
+
+export const REMINDER_TITLE: Record<ReminderKind, string> = {
+  DUE_TOMORROW: "ครบกำหนดพรุ่งนี้",
+  OVERDUE_TODAY: "พ้นกำหนดชำระแล้ว",
+  PTX_AWAITING: "ใบกำกับภาษีซื้อยังไม่ได้รับ",
+  CHEQUE_DUE: "เช็คถึงกำหนด",
+  PP30_DUE: "ภ.พ.30 ใกล้ครบกำหนดยื่น",
+};
+
+export type ReminderSummary = Record<ReminderKind, number> & { systems: number };
+
+const EMPTY_REMINDER_SUMMARY = (): ReminderSummary => ({
+  systems: 0,
+  DUE_TOMORROW: 0,
+  OVERDUE_TODAY: 0,
+  PTX_AWAITING: 0,
+  CHEQUE_DUE: 0,
+  PP30_DUE: 0,
+});
+
+/** เอกสารที่ "ครบกำหนดแล้วต้องจ่าย/ต้องเก็บ" — ฝั่งขายเก็บเงิน · ฝั่งซื้อจ่ายเงิน */
+const REMIND_DOC_TYPES: readonly AccountDocType[] = [
+  "INVOICE",
+  "BILLING_NOTE",
+  "DEBIT_NOTE",
+  "PURCHASE",
+  "EXPENSE",
+  "ASSET_PURCHASE",
+  "DEPOSIT_PAYMENT",
+  "COMBINED_PAYMENT",
+];
+
+/** วันที่รอใบกำกับภาษีซื้อได้นานสุดก่อนถือว่า "ช้า" */
+const PTX_WAIT_DAYS = 7;
+/** เตือนเช็คล่วงหน้ากี่วัน */
+const CHEQUE_LEAD_DAYS = 3;
+/** ภ.พ.30 ยื่นภายในวันที่ 10 ของเดือนถัดไป — เตือนล่วงหน้า 5 วัน = วันที่ 5 */
+const PP30_DUE_DAY = 10;
+const PP30_LEAD_DAYS = 5;
+
+/**
+ * เตือนงานค้างประจำวัน (BLUEPRINT §0.3 ข้อ 4) — 5 ชนิด
+ * ไม่ส่ง `opts` = กวาดทุกระบบบัญชี (cron) · ส่ง = ระบบเดียว (ชุดทดสอบ)
+ * รันซ้ำในวันเดียวกันไม่เพิ่มแจ้งเตือน (ดู notifyUsersOncePerDay)
+ */
+export async function runAccountReminders(
+  now: Date = new Date(),
+  opts?: { tenantId: string; systemId: string },
+): Promise<ReminderSummary> {
+  const summary = EMPTY_REMINDER_SUMMARY();
+  const systems = opts
+    ? [{ id: opts.systemId, tenantId: opts.tenantId }]
+    : await prisma.appSystem.findMany({ where: { type: "ACCOUNT" }, select: { id: true, tenantId: true }, take: 200 });
+
+  const today = bkkTodayUtcMidnight(now);
+  const tomorrow = new Date(today.getTime() + REC_DAY_MS);
+  const yesterday = new Date(today.getTime() - REC_DAY_MS);
+
+  for (const sys of systems) {
+    summary.systems += 1;
+    const { id: systemId, tenantId } = sys;
+    const to = await selectAccountNotifyRecipients(tenantId, "account.payment.record");
+    if (to.length === 0) continue;
+
+    // (1) ครบกำหนดพรุ่งนี้ · (2) พ้นกำหนด "วันแรก" (ครบกำหนดเมื่อวาน)
+    for (const [kind, range] of [
+      ["DUE_TOMORROW", dayRange(tomorrow)],
+      ["OVERDUE_TODAY", dayRange(yesterday)],
+    ] as [ReminderKind, { gte: Date; lt: Date }][]) {
+      const docs = await prisma.accountDocument.findMany({
+        where: {
+          tenantId,
+          systemId,
+          docType: { in: [...REMIND_DOC_TYPES] },
+          status: { in: ["AWAITING_PAYMENT", "PARTIAL"] },
+          dueDate: range,
+        },
+        select: { docNo: true, docType: true, direction: true, grandTotal: true, paidTotal: true, contact: { select: { name: true } } },
+        take: 100,
+      });
+      for (const d of docs) {
+        const remain = Math.max(0, d.grandTotal - d.paidTotal);
+        const side = d.direction === "IN" ? "ต้องจ่าย" : "ต้องเก็บ";
+        const who = d.contact?.name ? ` · ${d.contact.name}` : "";
+        const body = `${DOC_LABEL[d.docType] ?? EXPENSE_DOC_LABEL_FALLBACK(d.docType)} ${d.docNo ?? "(ไม่มีเลขที่)"}${who} — ${side} ฿${baht(remain)}`;
+        summary[kind] += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE[kind], body, now);
+      }
+    }
+
+    // (3) ใบกำกับภาษีซื้อรอรับเกิน 7 วัน
+    const ptx = await prisma.accountDocument.findMany({
+      where: {
+        tenantId,
+        systemId,
+        docType: "PURCHASE_TAX_INVOICE",
+        status: "AWAITING_RECEIVE",
+        issueDate: { lt: new Date(today.getTime() - PTX_WAIT_DAYS * REC_DAY_MS) },
+      },
+      select: { docNo: true, issueDate: true, grandTotal: true, contact: { select: { name: true } } },
+      take: 100,
+    });
+    for (const d of ptx) {
+      const days = Math.max(
+        PTX_WAIT_DAYS,
+        Math.round((today.getTime() - utcDay(d.issueDate).getTime()) / REC_DAY_MS),
+      );
+      const who = d.contact?.name ? ` · ${d.contact.name}` : "";
+      const body = `ใบกำกับภาษีซื้อ ${d.docNo ?? "(ไม่มีเลขที่)"}${who} — รอรับตัวจริงมา ${days} วันแล้ว`;
+      summary.PTX_AWAITING += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE.PTX_AWAITING, body, now);
+    }
+
+    // (4) เช็คถึงกำหนดใน 3 วัน (รวมที่เลยกำหนดแล้วแต่ยังไม่เคลียร์)
+    const cheques = await prisma.accountCheque.findMany({
+      where: {
+        tenantId,
+        systemId,
+        status: { in: ["ON_HAND", "DEPOSITED", "ISSUED"] },
+        chequeDate: { lt: new Date(today.getTime() + (CHEQUE_LEAD_DAYS + 1) * REC_DAY_MS) },
+      },
+      select: { chequeNo: true, bankName: true, amount: true, chequeDate: true, direction: true },
+      take: 100,
+    });
+    for (const c of cheques) {
+      const side = c.direction === "IN" ? "เช็ครับ" : "เช็คจ่าย";
+      const body = `${side} ${c.chequeNo} ${c.bankName} ฿${baht(c.amount)} — ถึงกำหนด ${utcDay(c.chequeDate).toISOString().slice(0, 10)}`;
+      summary.CHEQUE_DUE += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE.CHEQUE_DUE, body, now);
+    }
+
+    // (5) ภ.พ.30 — เตือนวันที่ 5 ของเดือน (ก่อนกำหนดยื่นวันที่ 10 อยู่ 5 วัน) สำหรับงวดเดือนก่อน
+    if (today.getUTCDate() === PP30_DUE_DAY - PP30_LEAD_DAYS) {
+      const py = today.getUTCMonth() === 0 ? today.getUTCFullYear() - 1 : today.getUTCFullYear();
+      const pm = today.getUTCMonth() === 0 ? 12 : today.getUTCMonth();
+      const periodKey = `${py}-${String(pm).padStart(2, "0")}`;
+      const body = `งวด ${periodKey} — ยื่นภายในวันที่ ${PP30_DUE_DAY} ของเดือนนี้ (เหลือ ${PP30_LEAD_DAYS} วัน)`;
+      summary.PP30_DUE += await notifyUsersOncePerDay(tenantId, to, REMINDER_TITLE.PP30_DUE, body, now);
+    }
+  }
+  return summary;
+}
+
+/** ป้ายชนิดเอกสารฝั่งจ่ายที่ DOC_LABEL (ฝั่งขาย) ไม่มี — เขียนไว้ที่นี่กันวงกลม import กับ expense.ts */
+function EXPENSE_DOC_LABEL_FALLBACK(dt: AccountDocType): string {
+  const m: Partial<Record<AccountDocType, string>> = {
+    PURCHASE: "บันทึกซื้อ",
+    EXPENSE: "บันทึกค่าใช้จ่าย",
+    ASSET_PURCHASE: "ซื้อสินทรัพย์",
+    DEPOSIT_PAYMENT: "ใบจ่ายเงินมัดจำ",
+    COMBINED_PAYMENT: "ใบรวมจ่าย",
+    PURCHASE_TAX_INVOICE: "ใบกำกับภาษีซื้อ",
+  };
+  return m[dt] ?? dt;
+}
+
+// ─────────────────── D. เตือนชำระถึงลูกค้า (⋯ บนหน้าเอกสาร §5.3) ───────────────────
+
+/** เอกสารที่กด "เตือนชำระ" ได้ (ต้องมียอดค้างของลูกค้าจริง) */
+export const PAYMENT_REMINDER_TYPES: readonly AccountDocType[] = ["INVOICE", "BILLING_NOTE", "DEBIT_NOTE"];
+
+/**
+ * เหตุผลไทยที่ยังกด "เตือนชำระ" ไม่ได้ — คืน null = กดได้
+ * ใช้ทั้งฝั่งจอ (ปิดปุ่มพร้อมบอกเหตุผล) และฝั่ง server (ตรวจซ้ำ ห้ามเชื่อจอ)
+ */
+export function paymentReminderBlockReason(doc: {
+  docType: AccountDocType;
+  status: AccountDocStatus;
+  contactEmail: string | null;
+}): string | null {
+  if (!PAYMENT_REMINDER_TYPES.includes(doc.docType)) return "เอกสารชนิดนี้ไม่มีการเตือนชำระ";
+  if (doc.status !== "AWAITING_PAYMENT" && doc.status !== "PARTIAL") return "เอกสารนี้ไม่มียอดค้างชำระ";
+  if (!doc.contactEmail) return "ผู้ติดต่อยังไม่มีอีเมล — เพิ่มอีเมลในข้อมูลผู้ติดต่อก่อน";
+  return null;
+}
+
+/**
+ * ส่งอีเมลเตือนชำระถึงลูกค้า + บันทึก AuditLog
+ * `origin` = โดเมนจริงของ request (มาจาก publicOrigin() ฝั่ง action) — ไม่ประกอบ URL เองในนี้
+ */
+export async function sendPaymentReminder(
+  tenantId: string,
+  systemId: string,
+  docId: string,
+  opts: { actorId?: string | null; origin: string },
+): Promise<{ ok: true; email: string; link: string | null } | { ok: false; reason: string }> {
+  const doc = await prisma.accountDocument.findFirst({
+    where: { id: docId, tenantId, systemId },
+    select: {
+      id: true,
+      docType: true,
+      docNo: true,
+      status: true,
+      dueDate: true,
+      grandTotal: true,
+      paidTotal: true,
+      contactSnapshot: true,
+      contact: { select: { name: true, email: true } },
+    },
+  });
+  if (!doc) return { ok: false, reason: "ไม่พบเอกสาร" };
+  const snap = (doc.contactSnapshot as Record<string, unknown> | null) ?? null;
+  const email = (doc.contact?.email ?? (typeof snap?.email === "string" ? snap.email : null) ?? "").trim() || null;
+  const block = paymentReminderBlockReason({ docType: doc.docType, status: doc.status, contactEmail: email });
+  if (block) return { ok: false, reason: block };
+
+  const settings = await getSettings(tenantId, systemId);
+  const remain = Math.max(0, doc.grandTotal - doc.paidTotal);
+  const label = DOC_LABEL[doc.docType] ?? doc.docType;
+  const due = doc.dueDate ? utcDay(doc.dueDate).toISOString().slice(0, 10) : "—";
+
+  // ลิงก์สาธารณะมีเฉพาะชนิดที่ระบบรองรับ (IV/RE/DP) — BN/DN ส่งเนื้อความอย่างเดียว ไม่ทำลิงก์ปลอม
+  let link: string | null = null;
+  const linkRes = await ensurePublicTaxInvoiceLink(tenantId, systemId, doc.id);
+  if (linkRes.ok) link = `${opts.origin.replace(/\/$/, "")}/r/${linkRes.token}`;
+
+  const who = doc.contact?.name ?? (typeof snap?.name === "string" ? snap.name : "") ?? "";
+  const org = settings.orgName || "";
+  const subject = `แจ้งเตือนการชำระเงิน ${label} ${doc.docNo ?? ""}`.trim();
+  const text = [
+    `เรียน ${who}`.trim(),
+    "",
+    `${label}เลขที่ ${doc.docNo ?? "-"} มียอดค้างชำระ ฿${baht(remain)}`,
+    `กำหนดชำระ: ${due}`,
+    link ? `ดูเอกสาร: ${link}` : "",
+    "",
+    `หากชำระเรียบร้อยแล้ว ขออภัยในความไม่สะดวก`,
+    org ? `— ${org}` : "",
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
+
+  // 🔴 import แบบ dynamic โดยเจตนา: `@/lib/core/email` → `@/lib/env` ซึ่ง `schema.parse(process.env)`
+  //    **ตอนโหลดโมดูล** ⇒ ถ้า import ที่หัวไฟล์ ทุกคนที่ import service.ts (รวมทะเบียน tool ของ AI ที่
+  //    fitness F10 เรียก) จะพังทันทีในเชลล์ที่ไม่มี DATABASE_URL/SESSION_SECRET เช่น pre-commit hook และ CI
+  //    (เจอจริงตอน WO 1.9 — fitness F10.1 แดงเพราะเหตุนี้) · โหลดตอนจะส่งจริงเท่านั้น
+  const { sendEmail } = await import("@/lib/core/email");
+  await sendEmail(email as string, subject, text);
+  await writeAudit({
+    tenantId,
+    actorId: opts.actorId ?? null,
+    action: "account.doc.remind",
+    targetType: "AccountDocument",
+    targetId: doc.id,
+    after: { docNo: doc.docNo, remain, hasLink: !!link },
+  });
+  return { ok: true, email: email as string, link };
+}
+
+// ─────────────────── E. "งานที่รอคุณ" (§4 บล็อก 7 — WO 2.1 เอาไปวาด) ───────────────────
+
+export type PendingTasks = {
+  /** ใบเสนอราคาที่ส่งไปแล้วลูกค้ายังไม่ตอบ */
+  quotationAwaitingAccept: number;
+  /** ใบสั่งซื้อ/ใบสั่งซื้อสินทรัพย์ ที่รออนุมัติ */
+  poAwaitingApproval: number;
+  /** ใบมัดจำ (รับ+จ่าย) ที่ยังไม่ถูกหักเข้าเอกสารจริง */
+  depositAwaitingDeduct: number;
+  /** รายการบัญชีที่ระบบตั้งธงให้คนตรวจ (บัญชีพัก 9999 ฯลฯ) */
+  needsReview: number;
+  /** ใบกำกับภาษีซื้อที่ยังรอรับตัวจริง */
+  purchaseTaxAwaiting: number;
+  /** ร่างที่เอกสารประจำสร้างไว้ รอคนตรวจ/อนุมัติ */
+  recurringDraftsAwaiting: number;
+  /** ผลรวมทุกช่อง — ใช้เป็นตัวเลขบนหัวการ์ด */
+  total: number;
+};
+
+/** ตัวเลขทั้งหมดของการ์ด "งานที่รอคุณ" — 1 ฟังก์ชัน 1 คิวรีชุด (หน้าหลักเรียกครั้งเดียว) */
+export async function pendingTasks(tenantId: string, systemId: string): Promise<PendingTasks> {
+  const [
+    quotationAwaitingAccept,
+    poAwaitingApproval,
+    depositAwaitingDeduct,
+    needsReview,
+    purchaseTaxAwaiting,
+    recurringDraftsAwaiting,
+  ] = await Promise.all([
+    prisma.accountDocument.count({
+      where: { tenantId, systemId, docType: "QUOTATION", status: "AWAITING_ACCEPT" },
+    }),
+    prisma.accountDocument.count({
+      where: {
+        tenantId,
+        systemId,
+        docType: { in: ["PURCHASE_ORDER", "ASSET_PURCHASE_ORDER"] },
+        status: "AWAITING_APPROVAL",
+      },
+    }),
+    prisma.accountDocument.count({
+      where: {
+        tenantId,
+        systemId,
+        docType: { in: ["DEPOSIT_RECEIPT", "DEPOSIT_PAYMENT"] },
+        status: "AWAITING_DEDUCT",
+      },
+    }),
+    prisma.accountJournalEntry.count({ where: { tenantId, systemId, needsReview: true } }),
+    prisma.accountDocument.count({
+      where: { tenantId, systemId, docType: "PURCHASE_TAX_INVOICE", status: "AWAITING_RECEIVE" },
+    }),
+    prisma.accountDocument.count({
+      where: { tenantId, systemId, source: "RECURRING", status: "DRAFT" },
+    }),
+  ]);
+  const total =
+    quotationAwaitingAccept +
+    poAwaitingApproval +
+    depositAwaitingDeduct +
+    needsReview +
+    purchaseTaxAwaiting +
+    recurringDraftsAwaiting;
+  return {
+    quotationAwaitingAccept,
+    poAwaitingApproval,
+    depositAwaitingDeduct,
+    needsReview,
+    purchaseTaxAwaiting,
+    recurringDraftsAwaiting,
+    total,
   };
 }
