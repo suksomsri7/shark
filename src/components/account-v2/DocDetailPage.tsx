@@ -25,7 +25,9 @@ import {
   convertPOAction,
 } from "@/lib/modules/account/expense-actions";
 import { refundDepositFormAction } from "@/lib/modules/account/payment-actions";
+import { isGroupDocType, groupDefOf } from "@/lib/modules/account/group";
 import { PaymentPanel } from "./PaymentPanel";
+import { GroupPaymentPanel } from "./GroupPaymentPanel";
 import { ShareLinkButton } from "./ShareLinkButton";
 import { Stepper, type StepDef } from "./Stepper";
 import type { RowActionItem } from "./RowActions";
@@ -56,7 +58,7 @@ function Hidden({ systemId, docType, id }: { systemId: string; docType: string; 
 const PO_TYPES: readonly AccountDocType[] = ["PURCHASE_ORDER", "ASSET_PURCHASE_ORDER"];
 const ADJUST_RECEIVED_TYPES: readonly AccountDocType[] = ["CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED"];
 const REVENUE_PAYABLE_TYPES: readonly AccountDocType[] = ["INVOICE", "DEPOSIT_RECEIPT", "BILLING_NOTE", "DEBIT_NOTE"];
-const EXPENSE_PAYABLE_TYPES: readonly AccountDocType[] = ["PURCHASE", "EXPENSE", "ASSET_PURCHASE", "DEPOSIT_PAYMENT"];
+const EXPENSE_PAYABLE_TYPES: readonly AccountDocType[] = ["PURCHASE", "EXPENSE", "ASSET_PURCHASE", "DEPOSIT_PAYMENT", "COMBINED_PAYMENT"];
 const DEPOSIT_TYPES: readonly AccountDocType[] = ["DEPOSIT_RECEIPT", "DEPOSIT_PAYMENT"];
 const ACTIVE_STATUSES = new Set(["DRAFT", "VOIDED", "CANCELLED", "REJECTED"]);
 
@@ -145,6 +147,16 @@ function ActionRow({
         <Hidden systemId={systemId} docType={dt} id={data.id} />
         <SubmitButton className="w-full md:w-auto">รับใบกำกับแล้ว</SubmitButton>
       </form>
+    );
+  } else if (canPay && isGroupDocType(dt)) {
+    // WO 1.7 §5.2 K — เอกสารกลุ่ม: 1 ครั้ง = กระจายลงใบลูกทุกใบ (แผงคนละตัวกับ §5.2 F)
+    primary = (
+      <GroupPaymentPanel
+        systemId={systemId}
+        docId={data.id}
+        triggerLabel={groupDefOf(dt)?.texts.payAction ?? "รับชำระ"}
+        triggerClassName="btn btn-primary w-full text-sm md:w-auto"
+      />
     );
   } else if (canPay) {
     primary = (
@@ -283,7 +295,17 @@ function moreActionsFor(data: DocDetailData, base: string, targets: AccountDocTy
     }
   }
   items.push(soon("ส่งอีเมล"));
-  if (dt === "INVOICE") items.push(soon("เตือนชำระ"), soon("ใส่ในใบวางบิล"));
+  if (dt === "INVOICE") {
+    items.push(soon("เตือนชำระ"));
+    // WO 1.7: ลิงก์จริงเข้าฟอร์มใบวางบิลรวมพร้อมติ๊กใบนี้ไว้ให้ — ใบที่อยู่ในใบวางบิลแล้วไม่โชว์ซ้ำ
+    if (!data.groupChip && (data.status === "AWAITING_PAYMENT" || data.status === "PARTIAL")) {
+      items.push({ label: "ใส่ในใบวางบิล", href: `${editorNewPath(base, "BILLING_NOTE")}?ids=${data.id}` });
+    }
+  }
+  if ((dt === "PURCHASE" || dt === "EXPENSE" || dt === "DEBIT_NOTE_RECEIVED" || dt === "DEPOSIT_PAYMENT") &&
+      !data.groupChip && (data.status === "AWAITING_PAYMENT" || data.status === "PARTIAL")) {
+    items.push({ label: "ใส่ในใบรวมจ่าย", href: `${base}/combined-payment/new?ids=${data.id}` });
+  }
   items.push(soon("คัดลอก"));
   return items;
 }
@@ -373,7 +395,72 @@ function JvTable({ entries, testPrefix }: { entries: JvEntryView[]; testPrefix: 
   );
 }
 
-function DetailTab({ data, vatRegistered }: { data: DocDetailData; vatRegistered: boolean }) {
+// WO 1.7 §5.2 K — ตาราง "เอกสารในกลุ่ม" ของ BN/CP (แทนตารางสินค้า/บริการ)
+// แต่ละแถว = ใบลูก 1 ใบ พร้อมยอดค้างและสถานะปัจจุบัน (คลิกเข้าเอกสารนั้นได้)
+function GroupChildrenTable({ data, base }: { data: DocDetailData; base: string }) {
+  const rows = data.groupChildren ?? [];
+  const label = groupDefOf(data.docType)?.texts.childrenTitle ?? "เอกสารในกลุ่ม";
+  const outstandingLabel = groupDefOf(data.docType)?.texts.outstandingLabel ?? "ค้างชำระ";
+  const sumOutstanding = rows.reduce((s, r) => s + r.outstanding, 0);
+  return (
+    <div className="card overflow-x-auto" data-testid="group-children">
+      <h3 className="mb-2 text-sm font-semibold">
+        {label} <span data-testid="group-children-count">{rows.length}</span> ใบ
+      </h3>
+      <table className="w-full min-w-[640px] text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
+            <th className="py-2 font-normal">เลขที่</th>
+            <th className="py-2 font-normal">วันที่</th>
+            <th className="py-2 font-normal">ครบกำหนด</th>
+            <th className="py-2 text-right font-normal">มูลค่า</th>
+            <th className="py-2 text-right font-normal">{outstandingLabel}</th>
+            <th className="py-2 font-normal">สถานะ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} className="border-b last:border-0" data-testid={`group-child-${r.docNo ?? r.id}`}>
+              <td className="py-2">
+                <Link href={editorDetailPath(base, r.docType, r.id)} className="font-medium underline">
+                  {r.docNo ?? "(ร่าง)"}
+                </Link>
+                <span className="block text-xs text-[color:var(--color-muted)]">{r.docLabel}</span>
+              </td>
+              <td className="py-2">{fmtDate(r.issueDate)}</td>
+              <td className="py-2">{r.dueDate ? fmtDate(r.dueDate) : "—"}</td>
+              <td className="py-2 text-right tabular-nums">
+                <MoneyText satang={r.grandTotal} decimals />
+              </td>
+              <td className="py-2 text-right tabular-nums font-medium">
+                <MoneyText satang={r.outstanding} decimals />
+              </td>
+              <td className="py-2">{r.statusLabel}</td>
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={6} className="py-4 text-center text-[color:var(--color-muted)]">
+                ไม่มีเอกสารในกลุ่มนี้
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      <div className="mt-3 ml-auto flex w-full max-w-xs flex-col gap-1 text-sm">
+        <TotalRow label="รวมยอดกลุ่ม" satang={data.grandTotal} />
+        <div className="flex w-full justify-between border-t pt-1 font-semibold">
+          <span>{outstandingLabel}</span>
+          <span data-testid="group-children-outstanding">
+            <MoneyText satang={sumOutstanding} decimals />
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegistered: boolean; base: string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="card text-sm">
@@ -381,6 +468,7 @@ function DetailTab({ data, vatRegistered }: { data: DocDetailData; vatRegistered
         <div className="font-medium">{data.contact?.name ?? "ไม่ระบุ"}</div>
         {data.contact?.taxId && <div className="text-xs text-[color:var(--color-muted)]">เลขภาษี {data.contact.taxId}</div>}
       </div>
+      {data.groupChildren ? <GroupChildrenTable data={data} base={base} /> : (
       <div className="card overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
           <thead>
@@ -423,6 +511,7 @@ function DetailTab({ data, vatRegistered }: { data: DocDetailData; vatRegistered
           </div>
         </div>
       </div>
+      )}
       {(data.note || data.internalNote) && (
         <div className="card flex flex-col gap-1 text-sm">
           {data.note && (
@@ -522,12 +611,21 @@ function PaymentsTab({ data, systemId, side }: { data: DocDetailData; systemId: 
         </table>
         {canPay && (
           <div className="mt-3">
-            <PaymentPanel
-              systemId={systemId}
-              docId={data.id}
-              triggerLabel={side === "expense" ? "+ บันทึกจ่ายเพิ่ม" : "+ รับชำระเพิ่ม"}
-              triggerClassName="btn btn-ghost text-sm"
-            />
+            {isGroupDocType(data.docType) ? (
+              <GroupPaymentPanel
+                systemId={systemId}
+                docId={data.id}
+                triggerLabel={side === "expense" ? "+ บันทึกจ่ายเพิ่ม" : "+ รับชำระเพิ่ม"}
+                triggerClassName="btn btn-ghost text-sm"
+              />
+            ) : (
+              <PaymentPanel
+                systemId={systemId}
+                docId={data.id}
+                triggerLabel={side === "expense" ? "+ บันทึกจ่ายเพิ่ม" : "+ รับชำระเพิ่ม"}
+                triggerClassName="btn btn-ghost text-sm"
+              />
+            )}
           </div>
         )}
       </div>
@@ -757,7 +855,7 @@ function DocDetailTabsPanel({
           </Link>
         ))}
       </div>
-      {active === "detail" && <DetailTab data={data} vatRegistered={vatRegistered} />}
+      {active === "detail" && <DetailTab data={data} vatRegistered={vatRegistered} base={base} />}
       {active === "payments" && <PaymentsTab data={data} systemId={systemId} side={side} />}
       {active === "gl" && <GlTab data={data} base={base} />}
       {active === "attachments" && <AttachmentsTab data={data} systemId={systemId} />}

@@ -257,7 +257,7 @@ eq("E3 ป้ายวันที่ของใบเสนอราคา = �
 eq("E3 ป้ายวันที่ของใบแจ้งหนี้ = ครบกำหนด", cfg.dueLabelOf("INVOICE"), "ครบกำหนด");
 assert("E3 บันทึกค่าใช้จ่าย/ซื้อสินทรัพย์ ต้องเลือกบัญชีต่อบรรทัด", cfg.requiresLineAccount("EXPENSE") && cfg.requiresLineAccount("ASSET_PURCHASE"));
 assert("E3 ใบแจ้งหนี้ไม่บังคับบัญชีต่อบรรทัด (ใช้ค่าเริ่มต้น)", !cfg.requiresLineAccount("INVOICE"));
-eq("E3 ทะเบียนฟอร์มครอบ 17 ชนิด (รายรับ 8 + รายจ่าย 9)", cfg.EDITOR_DOC_TYPES.length, 17);
+eq("E3 ทะเบียนฟอร์มครอบ 18 ชนิด (รายรับ 8 + รายจ่าย 10 — WO 1.7 เพิ่มใบรวมจ่าย)", cfg.EDITOR_DOC_TYPES.length, 18);
 assert(
   "E3 ทุกชนิดในทะเบียนมี route + label ภาษาไทย",
   cfg.EDITOR_DOC_TYPES.every((d) => d.route.length > 0 && /[ก-๙]/.test(d.label)),

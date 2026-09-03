@@ -93,6 +93,8 @@ export const EXPENSE_LIST_TYPES: readonly ExpenseListTypeDef[] = [
   { docType: "PURCHASE_TAX_INVOICE", route: "purchase-tax-invoice", label: "ใบกำกับภาษีซื้อ", prefix: "PTX" },
   { docType: "CREDIT_NOTE_RECEIVED", route: "credit-note-received", label: "รับใบลดหนี้", prefix: "CNR" },
   { docType: "DEBIT_NOTE_RECEIVED", route: "debit-note-received", label: "รับใบเพิ่มหนี้", prefix: "DNR" },
+  // WO 1.7 — ใบรวมจ่าย (ฟอร์มพิเศษ §5.2 K: เลือกผู้ขาย → ติ๊กบิลค้างจ่าย → จ่ายครั้งเดียวกระจายให้ใบลูก)
+  { docType: "COMBINED_PAYMENT", route: "combined-payment", label: "ใบรวมจ่าย", prefix: "CP" },
 ];
 
 /** docType → route (ตัวเดียวกับ EXPENSE_LIST_TYPES · ห้ามพิมพ์แมปซ้ำที่อื่น) */

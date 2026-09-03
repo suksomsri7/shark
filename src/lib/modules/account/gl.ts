@@ -429,7 +429,11 @@ export async function postDocument(
     // docType ที่ไม่โพสต์ GL ที่ตัวมันเอง
     const NO_GL = new Set([
       "QUOTATION",
+      // WO 1.7: เอกสาร "กลุ่ม" ทั้ง 2 ฝั่ง = ใบสรุปยอด ไม่ลง JV ที่ตัวเอง
+      //   BN — ลูกหนี้ตั้งไว้ที่ใบแจ้งหนี้ลูกแล้ว (ลงซ้ำ = AR 2 เท่า)
+      //   CP — เจ้าหนี้ตั้งไว้ที่บันทึกซื้อ/ค่าใช้จ่ายลูกแล้ว · JV เกิดตอนกระจายจ่ายให้ใบลูก (Dr 2100/Cr เงิน)
       "BILLING_NOTE",
+      "COMBINED_PAYMENT",
       "TAX_INVOICE", // ใช้ postTaxInvoice
       "TAX_INVOICE_ABB",
       "PURCHASE_ORDER",

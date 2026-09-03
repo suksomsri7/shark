@@ -9,7 +9,7 @@
 //             สลับ docType/tab เดิมของ WO ก่อนหน้า เช่น po?docType=ASSET_PURCHASE_ORDER)
 //   "soon"  = ยังไม่มีหน้า (จะทยอยแทนใน WO เฟส 1 เป็นต้นไป) → เมนูจาง + ป้าย "เร็ว ๆ นี้" + href:"#" aria-disabled
 //             (รายการที่ยังไม่มีหน้าจริง ล่าสุดหลัง WO 1.6: ดูภาพรวม (ทุกหมวด)
-//              · ใบรวมจ่าย (CP) · นำเข้า (เอกสาร/สินค้า) · กลุ่มผู้ติดต่อ · รวมผู้ติดต่อซ้ำ · การเชื่อมต่อคู่ค้า · หน่วย
+//              · นำเข้า (เอกสาร/สินค้า) · กลุ่มผู้ติดต่อ · รวมผู้ติดต่อซ้ำ · การเชื่อมต่อคู่ค้า · หน่วย
 //              · ใบปรับต้นทุนสินค้า (CA) · ไปที่คลังสินค้า ↗ (ต้อง lookup ระบบข้ามโมดูล — เลื่อนไป WO เชื่อมระบบ)
 //              · สำรองรับ/จ่าย · โอนระหว่างช่องทาง · กระทบยอดธนาคาร · กล่องขาเข้า · AI ช่วยบันทึก (ถ่ายบิล — ยังไม่มีจุดเข้าในฟอร์ม)
 //              · DBD e-Filing · ตั้งค่า/นโยบายบัญชี/สิทธิ์ผู้ใช้งาน/การเชื่อมต่อ (หน้าตั้งค่าวันนี้มีแผ่นเดียวรวมองค์กร+เอกสาร)
@@ -169,7 +169,11 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           icon: "report",
           testId: "BILLING_NOTE",
           flyout: [
+            // WO 1.7: "+ สร้างใบวางบิล" = ฟอร์มพิเศษ §5.2 K (เลือกลูกค้า → ติ๊กใบแจ้งหนี้ค้างชำระ)
             { label: "+ สร้างใบวางบิล", href: `${base}/docs/BILLING_NOTE/new` },
+            { label: "รอรับชำระ", href: `${base}/docs/BILLING_NOTE?tab=awaiting`, countKey: "BILLING_NOTE:awaiting" },
+            { label: "เกินเวลารับชำระ", href: `${base}/docs/BILLING_NOTE?tab=overdue`, countKey: "BILLING_NOTE:overdue" },
+            { label: "รับชำระแล้ว", href: `${base}/docs/BILLING_NOTE?tab=paid`, countKey: "BILLING_NOTE:paid" },
             { label: "ดูทั้งหมด", href: `${base}/docs/BILLING_NOTE?tab=all`, countKey: "BILLING_NOTE:all" },
             { label: "ล่าสุด", href: `${base}/docs/BILLING_NOTE?tab=recent` },
           ],
@@ -342,7 +346,20 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           testId: "DEBIT_NOTE_RECEIVED",
           flyout: [{ label: "+ บันทึกรับใบเพิ่มหนี้", href: `${base}/debit-note-received/new` }],
         }),
-        soon("ใบรวมจ่าย", "report", "COMBINED_PAYMENT"),
+        doc({ // WO 1.7 — ใบรวมจ่าย (§5.2 K): เลือกผู้ขาย → ติ๊กบิลค้างจ่าย → จ่ายครั้งเดียวกระจายให้ใบลูก
+          label: "ใบรวมจ่าย",
+          href: `${base}/combined-payment`,
+          status: "ready",
+          icon: "report",
+          testId: "COMBINED_PAYMENT",
+          flyout: [
+            { label: "+ สร้างใบรวมจ่าย", href: `${base}/combined-payment/new` },
+            { label: "รอชำระ", href: `${base}/combined-payment?tab=awaiting`, countKey: "COMBINED_PAYMENT:awaiting" },
+            { label: "เกินเวลาชำระ", href: `${base}/combined-payment?tab=overdue`, countKey: "COMBINED_PAYMENT:overdue" },
+            { label: "ชำระแล้ว", href: `${base}/combined-payment?tab=paid`, countKey: "COMBINED_PAYMENT:paid" },
+            { label: "ดูทั้งหมด", href: `${base}/combined-payment?tab=all`, countKey: "COMBINED_PAYMENT:all" },
+          ],
+        }),
         soon("นำเข้าเอกสาร", "import", "EXPENSE_IMPORT", true),
         soon("AI ช่วยบันทึก (ถ่ายบิล)", "spark", "EXPENSE_AI_SCAN"),
       ],

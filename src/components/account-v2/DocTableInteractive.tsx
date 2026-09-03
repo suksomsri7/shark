@@ -13,9 +13,27 @@ export type DocTableHeaderCell = {
 
 export type DocTableBodyCell = { key: string; align?: "left" | "right"; node: React.ReactNode };
 
+/** WO 1.7 — ปุ่ม bulk ที่ "ต้องรู้ว่าเลือกแถวไหนอยู่" (f3-invoice-list-menu.png: "ออกใบวางบิลรวม")
+ *  ส่งเป็นข้อมูลล้วน (ไม่ใช่ callback) เพราะฝั่งเรียกเป็น server component — ประกอบ URL ในไคลเอนต์แทน */
+export type DocTableSelectionAction = {
+  label: string;
+  /** URL ปลายทาง — `{ids}` จะถูกแทนที่ด้วย id ที่เลือก คั่นด้วย `,` */
+  hrefTemplate: string;
+  /** ต้องเลือกแถวที่ groupKey (เช่น ผู้ติดต่อ) เดียวกันทั้งหมด */
+  requireSameGroup?: boolean;
+  sameGroupHint?: string;
+  /** ต้องเลือกเฉพาะแถวที่ `eligible` (เช่น ยังค้างชำระอยู่) */
+  requireEligible?: boolean;
+  eligibleHint?: string;
+};
+
 export type DocTableBodyRow = {
   id: string;
   cells: DocTableBodyCell[];
+  /** คีย์จัดกลุ่มของแถว (ผู้ติดต่อ) — ใช้กับ selectionAction.requireSameGroup */
+  groupKey?: string;
+  /** แถวนี้เข้าเงื่อนไขของ selectionAction ไหม (เช่น ยังค้างชำระ) */
+  eligible?: boolean;
   rowActions?: React.ReactNode;
   /** เลขที่เอกสาร (ตัวหนา ลิงก์) — บรรทัด 1 ซ้ายของการ์ดมือถือ (f13) */
   mobileTitle?: React.ReactNode;
@@ -38,6 +56,7 @@ export function DocTableInteractive({
   rows,
   selectable = true,
   bulkActions,
+  selectionActions,
   footer,
   testId,
   initialSelectedIds,
@@ -47,6 +66,8 @@ export function DocTableInteractive({
   selectable?: boolean;
   /** action slots คงที่ (ปุ่ม/ลิงก์ที่ผู้เรียกเตรียมมาแล้ว) — จำนวนที่เลือกแสดงแยกจากนี้ */
   bulkActions?: React.ReactNode;
+  /** ปุ่ม bulk ที่ผูกกับ id ที่เลือก (WO 1.7) */
+  selectionActions?: DocTableSelectionAction[];
   footer?: React.ReactNode;
   testId?: string;
   /** เลือกไว้ล่วงหน้า — ใช้เฉพาะหน้า gallery สำหรับถ่ายภาพ QC (โชว์แถบ bulk ตั้งแต่โหลด) */
@@ -73,7 +94,40 @@ export function DocTableInteractive({
           data-testid={testId ? `${testId}-bulk-bar` : undefined}
         >
           <span>เลือก {selected.size} รายการ</span>
-          <div className="flex flex-wrap gap-2">{bulkActions}</div>
+          <div className="flex flex-wrap gap-2">
+            {(selectionActions ?? []).map((a, i) => {
+              const picked = rows.filter((r) => selected.has(r.id));
+              const groups = new Set(picked.map((r) => r.groupKey ?? ""));
+              const badGroup = !!a.requireSameGroup && groups.size > 1;
+              const badEligible = !!a.requireEligible && picked.some((r) => r.eligible === false);
+              const why = badGroup ? (a.sameGroupHint ?? "ต้องเลือกของผู้ติดต่อรายเดียวกัน") : badEligible ? (a.eligibleHint ?? "เลือกได้เฉพาะเอกสารที่ยังค้างชำระ") : "";
+              if (why) {
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    disabled
+                    title={why}
+                    className="btn-sm cursor-not-allowed opacity-40"
+                    data-testid={`${testId}-bulk-action-${i}`}
+                  >
+                    {a.label}
+                  </button>
+                );
+              }
+              return (
+                <a
+                  key={i}
+                  href={a.hrefTemplate.replace("{ids}", encodeURIComponent(picked.map((r) => r.id).join(",")))}
+                  className="btn-sm"
+                  data-testid={`${testId}-bulk-action-${i}`}
+                >
+                  {a.label}
+                </a>
+              );
+            })}
+            {bulkActions}
+          </div>
         </div>
       )}
 

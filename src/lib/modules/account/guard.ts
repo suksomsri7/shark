@@ -44,6 +44,8 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "asset-buy/new/page.tsx": "account.doc.create",
   "asset-po/[docId]/edit/page.tsx": "account.doc.create",
   "asset-po/new/page.tsx": "account.doc.create",
+  // WO 1.7: ฟอร์มพิเศษเอกสารกลุ่ม (§5.2 K) — เปิดหน้าแล้วสร้างเอกสารได้ทันที ⇒ ต้องมี doc.create ตั้งแต่หน้า
+  "combined-payment/new/page.tsx": "account.doc.create",
   "credit-note-received/[docId]/edit/page.tsx": "account.doc.create",
   "credit-note-received/new/page.tsx": "account.doc.create",
   "debit-note-received/[docId]/edit/page.tsx": "account.doc.create",
@@ -66,6 +68,8 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "asset-po/page.tsx": "account.doc.view",
   "assets/page.tsx": "account.asset.manage",
   "cheque/page.tsx": "account.cheque.manage",
+  "combined-payment/[docId]/page.tsx": "account.doc.view", // WO 1.7 (COMBINED_PAYMENT)
+  "combined-payment/page.tsx": "account.doc.view",
   "contacts/page.tsx": "account.contact.manage",
   "credit-note-received/[docId]/page.tsx": "account.doc.view", // WO 1.2 (CREDIT_NOTE_RECEIVED)
   "credit-note-received/page.tsx": "account.doc.view",

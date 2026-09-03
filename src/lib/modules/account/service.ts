@@ -82,7 +82,9 @@ const ISSUE_STATUS: Partial<Record<AccountDocType, AccountDocStatus>> = {
   DEPOSIT_RECEIPT: "AWAITING_PAYMENT",
   CREDIT_NOTE: "ISSUED",
   DEBIT_NOTE: "ISSUED",
-  BILLING_NOTE: "ISSUED",
+  // WO 1.7: ใบวางบิลรวม = เอกสารเรียกเก็บ ⇒ ออกแล้วต้อง "รอรับชำระ" (ไม่ใช่ ISSUED ลอย ๆ)
+  // ตรงกับชุดแท็บ §3 ของ BN (รอรับชำระ · เกินเวลารับชำระ · รับชำระแล้ว) และทำให้ปุ่ม "รับชำระ" ใช้ได้จริง
+  BILLING_NOTE: "AWAITING_PAYMENT",
 };
 
 // การแปลงเอกสารที่อนุญาต (P1)
@@ -2962,4 +2964,419 @@ export async function saveDocFavorite(
     data: { docConfig: { ...cfg, favorites: next } as Prisma.InputJsonValue },
   });
   return { ok: true };
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// WO 1.7 — ใบวางบิลรวม (BN) / ใบรวมจ่าย (CP) · ชั้น "แตะฐานข้อมูล" เท่านั้น
+//
+// 🔴 กติกาแบ่งชั้น: ไฟล์นี้ = query/insert ล้วน (ไม่มีนโยบาย) · ตรรกะ (ชนิดลูกที่รับได้ · FIFO ·
+//    การกระจายชำระ · สถานะกลุ่ม) อยู่ที่ `group.ts` ซึ่ง **ไม่ import prisma** (fitness F5 ratchet)
+// เอกสารกลุ่มไม่ลง JV ที่ตัวเอง (gl.ts NO_GL ทั้ง BILLING_NOTE และ COMBINED_PAYMENT) —
+// บัญชีเกิดที่ "ใบลูก" ตอนกระจายชำระเท่านั้น
+// ═════════════════════════════════════════════════════════════════════════
+
+export type GroupRelType = "BILL" | "PAY_GROUP";
+
+export type GroupChildDoc = {
+  id: string;
+  docType: AccountDocType;
+  docNo: string | null;
+  issueDate: Date;
+  dueDate: Date | null;
+  contactId: string | null;
+  contactName: string | null;
+  status: AccountDocStatus;
+  statusLabel: string;
+  grandTotal: number;
+  paidTotal: number;
+  /** ใบลดหนี้ที่ออกจากใบนี้แล้ว (เฉพาะ INVOICE — mirror ด่านของ recordPayment) */
+  creditNoteTotal: number;
+  outstanding: number;
+  /** กลุ่มที่ใบนี้อยู่แล้วและยังไม่ถูกยกเลิก (null = ว่าง หยิบไปเข้ากลุ่มใหม่ได้) */
+  groupDocId: string | null;
+  groupDocNo: string | null;
+  groupDocType: AccountDocType | null;
+};
+
+const GROUP_CHILD_SELECT = {
+  id: true,
+  docType: true,
+  docNo: true,
+  issueDate: true,
+  dueDate: true,
+  contactId: true,
+  status: true,
+  grandTotal: true,
+  paidTotal: true,
+  contact: { select: { name: true } },
+  contactSnapshot: true,
+} as const;
+
+type GroupChildRaw = Prisma.AccountDocumentGetPayload<{ select: typeof GROUP_CHILD_SELECT }>;
+
+/** เติมยอดค้าง + กลุ่มที่สังกัด ให้เอกสารลูกชุดหนึ่ง (query 2 ครั้ง ไม่ใช่ N+1 ต่อแถว) */
+async function decorateGroupChildren(
+  tenantId: string,
+  systemId: string,
+  relType: GroupRelType,
+  rows: GroupChildRaw[],
+  opts?: { ignoreGroupId?: string },
+): Promise<GroupChildDoc[]> {
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.id);
+  const invoiceIds = rows.filter((r) => r.docType === "INVOICE").map((r) => r.id);
+  const [cnRows, relRows] = await Promise.all([
+    invoiceIds.length
+      ? prisma.accountDocument.groupBy({
+          by: ["sourceDocId"],
+          where: {
+            tenantId,
+            systemId,
+            docType: "CREDIT_NOTE",
+            sourceDocId: { in: invoiceIds },
+            status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] },
+          },
+          _sum: { grandTotal: true },
+        })
+      : Promise.resolve([] as { sourceDocId: string | null; _sum: { grandTotal: number | null } }[]),
+    prisma.accountDocumentRelation.findMany({
+      where: {
+        tenantId,
+        systemId,
+        type: relType,
+        toId: { in: ids },
+        from: { status: { notIn: ["VOIDED", "CANCELLED"] } },
+        ...(opts?.ignoreGroupId ? { fromId: { not: opts.ignoreGroupId } } : {}),
+      },
+      select: { toId: true, from: { select: { id: true, docNo: true, docType: true } } },
+    }),
+  ]);
+  const cnMap = new Map<string, number>();
+  for (const c of cnRows) if (c.sourceDocId) cnMap.set(c.sourceDocId, c._sum.grandTotal ?? 0);
+  const relMap = new Map<string, { id: string; docNo: string | null; docType: AccountDocType }>();
+  for (const r of relRows) relMap.set(r.toId, r.from);
+
+  return rows.map((r) => {
+    const cn = cnMap.get(r.id) ?? 0;
+    const g = relMap.get(r.id) ?? null;
+    const snap = (r.contactSnapshot as Record<string, unknown> | null) ?? null;
+    return {
+      id: r.id,
+      docType: r.docType,
+      docNo: r.docNo,
+      issueDate: r.issueDate,
+      dueDate: r.dueDate,
+      contactId: r.contactId,
+      contactName: (snap?.name as string) ?? r.contact?.name ?? null,
+      status: r.status,
+      statusLabel: STATUS_LABEL[r.status] ?? r.status,
+      grandTotal: r.grandTotal,
+      paidTotal: r.paidTotal,
+      creditNoteTotal: cn,
+      outstanding: Math.max(0, r.grandTotal - r.paidTotal - cn),
+      groupDocId: g?.id ?? null,
+      groupDocNo: g?.docNo ?? null,
+      groupDocType: g?.docType ?? null,
+    };
+  });
+}
+
+/**
+ * เอกสารที่ "หยิบเข้ากลุ่มได้" — ยังค้างชำระจริง (รอชำระ/ชำระบางส่วน) ของผู้ติดต่อรายที่เลือก
+ * คืนทั้งใบที่อยู่ในกลุ่มอื่นแล้วด้วย (ติดธง groupDocNo) ให้ชั้นนโยบายตัดสินว่าจะตัดออกหรือขึ้นเป็นเทา
+ */
+export async function groupCandidateDocs(
+  tenantId: string,
+  systemId: string,
+  input: {
+    docTypes: readonly AccountDocType[];
+    relType: GroupRelType;
+    contactId?: string;
+    ids?: string[];
+    from?: Date | string;
+    to?: Date | string;
+    /** ไม่นับว่า "อยู่ในกลุ่มแล้ว" ถ้ากลุ่มนั้นคือใบนี้ (ตอนแก้ร่างกลุ่มเดิม) */
+    ignoreGroupId?: string;
+    take?: number;
+  },
+): Promise<GroupChildDoc[]> {
+  const from = parseDay(input.from, false);
+  const to = parseDay(input.to, true);
+  const rows = await prisma.accountDocument.findMany({
+    where: {
+      tenantId,
+      systemId,
+      docType: { in: [...input.docTypes] },
+      status: { in: ["AWAITING_PAYMENT", "PARTIAL"] },
+      ...(input.contactId ? { contactId: input.contactId } : {}),
+      ...(input.ids ? { id: { in: input.ids } } : {}),
+      ...(from || to ? { issueDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+    },
+    select: GROUP_CHILD_SELECT,
+    orderBy: [{ dueDate: "asc" }, { issueDate: "asc" }, { docNo: "asc" }],
+    take: Math.min(Math.max(input.take ?? 200, 1), 500),
+  });
+  return decorateGroupChildren(tenantId, systemId, input.relType, rows, { ignoreGroupId: input.ignoreGroupId });
+}
+
+/** ใบลูกของกลุ่มหนึ่ง เรียงตามกำหนดชำระ (FIFO) — ใช้ทั้งหน้ารายละเอียดและตอนกระจายชำระ */
+export async function groupChildDocs(
+  tenantId: string,
+  systemId: string,
+  groupId: string,
+  relType: GroupRelType,
+): Promise<GroupChildDoc[]> {
+  const rels = await prisma.accountDocumentRelation.findMany({
+    where: { tenantId, systemId, fromId: groupId, type: relType },
+    select: { to: { select: GROUP_CHILD_SELECT } },
+  });
+  const rows = rels.map((r) => r.to);
+  const decorated = await decorateGroupChildren(tenantId, systemId, relType, rows, { ignoreGroupId: groupId });
+  // FIFO: ครบกำหนดก่อนมาก่อน · ไม่มีวันครบกำหนด = ใช้วันที่ออก · เสมอกันเรียงตามเลขที่ (deterministic)
+  return decorated.sort((a, b) => {
+    const ka = (a.dueDate ?? a.issueDate).getTime();
+    const kb = (b.dueDate ?? b.issueDate).getTime();
+    if (ka !== kb) return ka - kb;
+    return (a.docNo ?? "").localeCompare(b.docNo ?? "");
+  });
+}
+
+/** กลุ่มที่ยังไม่ถูกยกเลิกซึ่งใบลูกใบนี้สังกัดอยู่ (ใช้ทำชิป "อยู่ในใบวางบิล …" หน้าเอกสารลูก) */
+export async function openGroupOfChild(
+  tenantId: string,
+  systemId: string,
+  childId: string,
+): Promise<{ id: string; docNo: string | null; docType: AccountDocType; status: AccountDocStatus } | null> {
+  const rel = await prisma.accountDocumentRelation.findFirst({
+    where: {
+      tenantId,
+      systemId,
+      toId: childId,
+      type: { in: ["BILL", "PAY_GROUP"] },
+      from: { status: { notIn: ["VOIDED", "CANCELLED"] } },
+    },
+    select: { from: { select: { id: true, docNo: true, docType: true, status: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  return rel?.from ?? null;
+}
+
+/**
+ * สร้างเอกสารกลุ่ม (ร่าง) + บรรทัด 1 บรรทัดต่อใบลูก + relation BILL/PAY_GROUP
+ * 🔴 ตรวจซ้ำใน tx เดียวกันว่าใบลูกยัง "ว่าง" อยู่จริง (กันสองคนกดพร้อมกันแล้วใบเดียวเข้า 2 กลุ่ม)
+ */
+export async function createGroupDocument(input: {
+  tenantId: string;
+  systemId: string;
+  docType: AccountDocType;
+  direction: "IN" | "OUT";
+  relType: GroupRelType;
+  contactId: string;
+  issueDate: Date;
+  dueDate: Date | null;
+  note: string | null;
+  createdById: string | null;
+  children: { id: string; description: string; amount: number }[];
+}): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
+  if (input.children.length === 0) return { ok: false, reason: "ต้องเลือกเอกสารอย่างน้อย 1 ใบ" };
+  const total = input.children.reduce((s, c) => s + c.amount, 0);
+  try {
+    const id = await prisma.$transaction(async (tx) => {
+      const taken = await tx.accountDocumentRelation.findFirst({
+        where: {
+          tenantId: input.tenantId,
+          systemId: input.systemId,
+          type: input.relType,
+          toId: { in: input.children.map((c) => c.id) },
+          from: { status: { notIn: ["VOIDED", "CANCELLED"] } },
+        },
+        select: { to: { select: { docNo: true } }, from: { select: { docNo: true } } },
+      });
+      if (taken)
+        throw new Error(
+          `เอกสาร ${taken.to.docNo ?? "(ร่าง)"} อยู่ในกลุ่ม ${taken.from.docNo ?? "(ร่าง)"} แล้ว — เอาออกจากกลุ่มนั้นก่อน`,
+        );
+      const doc = await tx.accountDocument.create({
+        data: {
+          tenantId: input.tenantId,
+          systemId: input.systemId,
+          docType: input.docType,
+          status: "DRAFT",
+          direction: input.direction,
+          issueDate: input.issueDate,
+          dueDate: input.dueDate,
+          contactId: input.contactId,
+          vatMode: "NONE", // VAT อยู่ที่ใบลูกแล้ว — เอกสารกลุ่มเป็นใบสรุปยอด ไม่คิดภาษีซ้ำ
+          vatTiming: "ON_ISSUE",
+          taxPointBasis: "ON_ISSUE",
+          discountAmount: 0,
+          depositDeducted: 0,
+          subTotal: total,
+          vatAmount: 0,
+          grandTotal: total,
+          note: input.note,
+          createdById: input.createdById,
+          lines: {
+            create: input.children.map((c, i) => ({
+              tenantId: input.tenantId,
+              systemId: input.systemId,
+              sortOrder: i,
+              description: c.description,
+              qty: 1,
+              unitName: null,
+              unitPrice: c.amount,
+              discount: 0,
+              vatRateBp: -1, // ยกเว้น (ยอดในบรรทัดคือยอดค้างของใบลูกซึ่งรวมภาษีแล้ว)
+              amount: c.amount,
+            })),
+          },
+        },
+      });
+      for (const c of input.children) {
+        await tx.accountDocumentRelation.create({
+          data: {
+            tenantId: input.tenantId,
+            systemId: input.systemId,
+            fromId: doc.id,
+            toId: c.id,
+            type: input.relType,
+            amount: c.amount,
+          },
+        });
+      }
+      return doc.id;
+    });
+    return { ok: true, id };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "สร้างเอกสารกลุ่มไม่สำเร็จ" };
+  }
+}
+
+/**
+ * ปรับ "ความคืบหน้า" ของเอกสารกลุ่มจากยอดค้างจริงของใบลูก (แหล่งความจริง = ใบลูก ไม่ใช่ตัวนับของกลุ่ม)
+ * ⇒ จ่ายใบลูกตรง ๆ นอกกลุ่ม สถานะกลุ่มก็ตามทันเสมอ · ยกเลิกการชำระแล้วก็ถอยกลับเองได้
+ */
+export async function updateGroupProgress(
+  tenantId: string,
+  systemId: string,
+  groupId: string,
+  children: { outstanding: number; status: AccountDocStatus }[],
+): Promise<{ paidTotal: number; status: AccountDocStatus }> {
+  const doc = await prisma.accountDocument.findFirst({
+    where: { id: groupId, tenantId, systemId },
+    select: { id: true, grandTotal: true, status: true },
+  });
+  if (!doc) return { paidTotal: 0, status: "DRAFT" };
+  if (doc.status === "DRAFT" || doc.status === "VOIDED" || doc.status === "CANCELLED")
+    return { paidTotal: 0, status: doc.status };
+  const remain = children.reduce((s, c) => s + c.outstanding, 0);
+  const paidTotal = Math.max(0, doc.grandTotal - remain);
+  const allSettled = children.every((c) => c.outstanding <= 0);
+  const status: AccountDocStatus = allSettled ? "PAID" : paidTotal > 0 ? "PARTIAL" : "AWAITING_PAYMENT";
+  await prisma.accountDocument.update({ where: { id: groupId }, data: { paidTotal, status } });
+  return { paidTotal, status };
+}
+
+/** รายการชำระของใบลูกที่เกิดจากการกระจายของกลุ่มนี้ (คีย์กันซ้ำขึ้นต้นด้วย prefix ของกลุ่ม) */
+export async function findGroupChildPayments(
+  tenantId: string,
+  systemId: string,
+  keyPrefix: string,
+): Promise<
+  {
+    id: string;
+    documentId: string;
+    idempotencyKey: string | null;
+    paidAt: Date;
+    channel: AccountPayChannel;
+    financeName: string | null;
+    amount: number;
+    whtAmount: number;
+    feeAmount: number;
+    note: string | null;
+    voidedAt: Date | null;
+    docNo: string | null;
+  }[]
+> {
+  const rows = await prisma.accountDocumentPayment.findMany({
+    where: { tenantId, systemId, idempotencyKey: { startsWith: keyPrefix } },
+    orderBy: { paidAt: "asc" },
+    select: {
+      id: true,
+      documentId: true,
+      idempotencyKey: true,
+      paidAt: true,
+      channel: true,
+      amount: true,
+      whtAmountSatang: true,
+      feeAmount: true,
+      note: true,
+      voidedAt: true,
+      financeAccount: { select: { name: true } },
+      document: { select: { docNo: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    documentId: r.documentId,
+    idempotencyKey: r.idempotencyKey,
+    paidAt: r.paidAt,
+    channel: r.channel,
+    financeName: r.financeAccount?.name ?? null,
+    amount: r.amount,
+    whtAmount: r.whtAmountSatang,
+    feeAmount: r.feeAmount,
+    note: r.note,
+    voidedAt: r.voidedAt,
+    docNo: r.document.docNo,
+  }));
+}
+
+/** หัวเอกสารกลุ่ม (เท่าที่ชั้นนโยบายต้องใช้) — ไม่ดึงบรรทัด/ไฟล์แนบ */
+export async function getGroupDocHead(
+  tenantId: string,
+  systemId: string,
+  groupId: string,
+): Promise<{
+  id: string;
+  docType: AccountDocType;
+  docNo: string | null;
+  status: AccountDocStatus;
+  direction: string;
+  grandTotal: number;
+  paidTotal: number;
+  dueDate: Date | null;
+  contactId: string | null;
+  contactName: string | null;
+} | null> {
+  const d = await prisma.accountDocument.findFirst({
+    where: { id: groupId, tenantId, systemId },
+    select: {
+      id: true,
+      docType: true,
+      docNo: true,
+      status: true,
+      direction: true,
+      grandTotal: true,
+      paidTotal: true,
+      dueDate: true,
+      contactId: true,
+      contact: { select: { name: true } },
+      contactSnapshot: true,
+    },
+  });
+  if (!d) return null;
+  const snap = (d.contactSnapshot as Record<string, unknown> | null) ?? null;
+  return {
+    id: d.id,
+    docType: d.docType,
+    docNo: d.docNo,
+    status: d.status,
+    direction: d.direction,
+    grandTotal: d.grandTotal,
+    paidTotal: d.paidTotal,
+    dueDate: d.dueDate,
+    contactId: d.contactId,
+    contactName: (snap?.name as string) ?? d.contact?.name ?? null,
+  };
 }

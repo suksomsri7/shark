@@ -10,6 +10,8 @@ import { listJournalEntriesForDocument } from "./gl";
 import { LIST_TABS } from "./list-tabs";
 import { listAttachments, humanSize } from "./attachment";
 import { listDocAuditLogs, auditActionLabelTh } from "./access";
+// WO 1.7 — เอกสารกลุ่ม (BN/CP): ตาราง "เอกสารในกลุ่ม" + ชิป "อยู่ในใบวางบิล/ใบรวมจ่าย" ของใบลูก
+import { groupChipOfChild, groupDefOf, groupPanelData, isGroupDocType, type GroupChildView, type GroupMembershipChip } from "./group";
 import type { AuditLogRow } from "./access";
 import type { AttachmentView } from "@/components/account-v2/doc-editor-types";
 
@@ -102,10 +104,22 @@ export async function relatedSlotsFor(tenantId: string, systemId: string, doc: R
   }
   if (refDoc) slots.push({ kind: "REFERENCE", label: "อ้างอิง", doc: refDoc });
 
+  // WO 1.7: เอกสารกลุ่มมีใบลูกหลายใบ — ไม่ยุบเป็นชิปเดียว (ตาราง "เอกสารในกลุ่ม" แสดงครบอยู่แล้ว)
+  const isGroup = isGroupDocType(doc.docType);
   const downstream = new Map<AccountDocType, RelatedDocRef>();
   for (const r of doc.relationsFrom) {
     if (!["CONVERT", "ADJUST", "TAX_FOR", "BILL", "PAY_GROUP"].includes(r.type)) continue;
+    if (isGroup && (r.type === "BILL" || r.type === "PAY_GROUP")) continue;
     downstream.set(r.to.docType, toRef(r.to));
+  }
+  // WO 1.7: ใบลูก → ชิป "อยู่ในใบวางบิล BN-…" / "อยู่ในใบรวมจ่าย CP-…" (relation ทิศทาง กลุ่ม→ลูก)
+  const memberRel = doc.relationsTo.find((r) => r.type === "BILL" || r.type === "PAY_GROUP");
+  if (memberRel && memberRel.from.status !== "VOIDED" && memberRel.from.status !== "CANCELLED") {
+    slots.push({
+      kind: SLOT_KIND_FOR_DOCTYPE[memberRel.from.docType] ?? "GROUP",
+      label: groupDefOf(memberRel.from.docType)?.texts.memberChip ?? "อยู่ในกลุ่ม",
+      doc: toRef(memberRel.from),
+    });
   }
   for (const [dt, ref] of downstream) {
     slots.push({ kind: SLOT_KIND_FOR_DOCTYPE[dt] ?? dt, label: downstreamLabel(dt), doc: ref });
@@ -256,6 +270,10 @@ export type DocDetailData = {
   jv: JvEntryView[];
   attachments: AttachmentView[];
   auditLogs: AuditLogRow[];
+  /** WO 1.7 — เอกสารกลุ่ม (BN/CP): ใบลูกพร้อมยอดค้าง (แทนตารางรายการสินค้า) · ชนิดอื่น = null */
+  groupChildren: GroupChildView[] | null;
+  /** WO 1.7 — ใบลูกที่อยู่ในกลุ่มที่ยังไม่ถูกยกเลิก (ใช้ทำชิป/ปิดปุ่มรับชำระซ้ำซ้อน) */
+  groupChip: GroupMembershipChip | null;
 };
 
 /** โหลด+ประกอบข้อมูลหน้าเอกสาร 1 ใบ — ใช้ร่วมทั้งฝั่งรายรับและรายจ่าย (getExpenseDoc คิวรีได้ทั้งคู่) */
@@ -275,6 +293,11 @@ export async function getDocDetailData(
   ]);
   const jv = await loadJvEntries(systemId, docId, payments.map((p) => p.id));
   const related = await relatedSlotsFor(tenantId, systemId, doc);
+  const isGroup = isGroupDocType(doc.docType);
+  const [groupPanel, groupChip] = await Promise.all([
+    isGroup ? groupPanelData(tenantId, systemId, docId) : Promise.resolve(null),
+    isGroup ? Promise.resolve(null) : groupChipOfChild(tenantId, systemId, docId),
+  ]);
   const timeline = timelineStepsFor({
     docType: doc.docType,
     status: doc.status,
@@ -329,6 +352,8 @@ export async function getDocDetailData(
       sizeBytes: a.sizeBytes,
     })),
     auditLogs,
+    groupChildren: groupPanel?.children ?? null,
+    groupChip,
   };
 }
 

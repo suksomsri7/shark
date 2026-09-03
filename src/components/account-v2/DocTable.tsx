@@ -1,7 +1,7 @@
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { buildSortHref, type QueryLike } from "./url";
-import { DocTableInteractive, type DocTableBodyRow } from "./DocTableInteractive";
+import { DocTableInteractive, type DocTableBodyRow, type DocTableSelectionAction } from "./DocTableInteractive";
 import { Pagination } from "./Pagination";
 
 export type DocColumn<T> = {
@@ -25,6 +25,9 @@ export function DocTable<T extends { id: string }>({
   selectable = true,
   rowActions,
   bulkActions,
+  selectionActions,
+  rowGroupKey,
+  rowEligible,
   mobileTitle,
   mobileSubtitle,
   mobileTrailing,
@@ -49,6 +52,12 @@ export function DocTable<T extends { id: string }>({
   selectable?: boolean;
   rowActions?: (row: T) => React.ReactNode;
   bulkActions?: React.ReactNode;
+  /** WO 1.7 — ปุ่ม bulk ที่ใช้ id ที่เลือก (เช่น "ออกใบวางบิลรวม") */
+  selectionActions?: DocTableSelectionAction[];
+  /** คีย์จัดกลุ่มของแถว (ผู้ติดต่อ) — คู่กับ selectionActions.requireSameGroup */
+  rowGroupKey?: (row: T) => string | undefined;
+  /** แถวนี้เข้าเงื่อนไขของปุ่ม bulk ไหม — คู่กับ selectionActions.requireEligible */
+  rowEligible?: (row: T) => boolean;
   mobileTitle?: (row: T) => React.ReactNode;
   mobileSubtitle?: (row: T) => React.ReactNode;
   mobileTrailing?: (row: T) => React.ReactNode;
@@ -84,6 +93,8 @@ export function DocTable<T extends { id: string }>({
     id: r.id,
     cells: cols.map((c) => ({ key: c.key, align: c.align, node: c.render(r) })),
     rowActions: rowActions?.(r),
+    groupKey: rowGroupKey?.(r),
+    eligible: rowEligible ? rowEligible(r) : undefined,
     mobileTitle: mobileTitle?.(r) ?? cols[0]?.render(r),
     mobileSubtitle: mobileSubtitle?.(r),
     mobileTrailing: mobileTrailing?.(r),
@@ -98,6 +109,7 @@ export function DocTable<T extends { id: string }>({
       rows={bodyRows}
       selectable={selectable}
       bulkActions={bulkActions}
+      selectionActions={selectionActions}
       testId={testId}
       initialSelectedIds={initialSelectedIds}
       footer={

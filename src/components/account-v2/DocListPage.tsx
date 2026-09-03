@@ -7,6 +7,7 @@ import { DocTable, type DocColumn } from "./DocTable";
 import { RowActions, type RowActionItem } from "./RowActions";
 import { CreateSection } from "./CreateSection";
 import type { QueryLike } from "./url";
+import type { DocTableSelectionAction } from "./DocTableInteractive";
 
 // หน้ารายการเอกสารมาตรฐาน V2 (DESIGN-SPEC-V2.md §1, §3, §5.1 · mockup f3-invoice-list.png +
 // f3-invoice-list-menu.png เดสก์ท็อป · f13-m-invoice-list.png มือถือ) — ใช้ร่วมทุกชนิดเอกสาร (WO 1.1)
@@ -93,6 +94,9 @@ export function DocListPage<T extends { id: string }>({
   rows,
   rowActionsFor,
   bulkActions,
+  selectionActions,
+  rowGroupKey,
+  rowEligible,
   mobileTitle,
   mobileSubtitle,
   mobileTrailing,
@@ -129,6 +133,10 @@ export function DocListPage<T extends { id: string }>({
   rows: T[];
   rowActionsFor?: (row: T) => RowActionItem[];
   bulkActions?: BulkActionDef[];
+  /** WO 1.7 — ปุ่ม bulk ที่ผูกกับแถวที่ติ๊กไว้ (f3-invoice-list-menu.png "ออกใบวางบิลรวม") */
+  selectionActions?: DocTableSelectionAction[];
+  rowGroupKey?: (row: T) => string | undefined;
+  rowEligible?: (row: T) => boolean;
   mobileTitle?: (row: T) => React.ReactNode;
   mobileSubtitle?: (row: T) => React.ReactNode;
   mobileTrailing?: (row: T) => React.ReactNode;
@@ -211,6 +219,9 @@ export function DocListPage<T extends { id: string }>({
           searchParams={searchParams}
           rowActions={rowActionsFor ? (r) => <RowActions items={rowActionsFor(r)} testId={`${testId}-row-actions-${r.id}`} /> : undefined}
           bulkActions={bulkActions ? <>{bulkActions.map((a, i) => <BulkButton key={i} a={a} />)}</> : undefined}
+          selectionActions={selectionActions}
+          rowGroupKey={rowGroupKey}
+          rowEligible={rowEligible}
           mobileTitle={mobileTitle}
           mobileSubtitle={mobileSubtitle}
           mobileTrailing={mobileTrailing}

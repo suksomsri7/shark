@@ -38,7 +38,7 @@ import type { DateRangePreset } from "@/components/account-v2/ListFilters";
 type Variant = "purchase" | "expense" | "po" | "asset";
 
 // docType ฝั่งจ่ายที่มีความหมาย "ค้างจ่าย" (บรรทัดสรุปมือถือ f13) — PO/APO/PTX ไม่มี (ยังไม่ตั้งเป็นเจ้าหนี้)
-const DOC_TYPES_WITH_PAYABLE: readonly AccountDocType[] = ["PURCHASE", "EXPENSE", "ASSET_PURCHASE"];
+const DOC_TYPES_WITH_PAYABLE: readonly AccountDocType[] = ["PURCHASE", "EXPENSE", "ASSET_PURCHASE", "COMBINED_PAYMENT"];
 
 // docType → slug ของ route — WO 1.2: มาจากทะเบียนกลาง EXPENSE_LIST_TYPES (expense.ts) ที่เดียว
 const SLUG_OF = EXP_ROUTE;
@@ -78,6 +78,12 @@ function rowActionsFor(docType: AccountDocType, base: string, slug: string, r: L
       return [soon("อนุมัติ"), soon("ไม่อนุมัติ"), soon("ออกบันทึกซื้อ"), soon("ส่งให้ผู้ขาย"), soon("พิมพ์"), soon("คัดลอก"), soon("ยกเลิก")];
     case "PURCHASE_TAX_INVOICE":
       return [soon("บันทึกรับใบกำกับ"), soon("ยกเลิก")];
+    case "COMBINED_PAYMENT": // WO 1.7 — บันทึกจ่าย/พิมพ์ใบสำคัญจ่าย ทำที่หน้าเอกสาร (แผงกระจายลงใบลูก)
+      return [
+        { label: "บันทึกจ่าย (กระจายให้บิลลูก)", href: detail },
+        { label: "พิมพ์ใบสำคัญจ่าย", href: `${base}/print/${r.id}` },
+        soon("ยกเลิก"),
+      ];
     default: // PURCHASE / EXPENSE / ASSET_PURCHASE
       return [soon("บันทึกจ่าย"), soon("รับใบกำกับภาษี"), soon("ออกหนังสือรับรอง 50 ทวิ"), soon("พิมพ์"), soon("คัดลอก"), soon("ยกเลิก")];
   }
@@ -86,7 +92,27 @@ function rowActionsFor(docType: AccountDocType, base: string, slug: string, r: L
 function bulkFor(docType: AccountDocType) {
   const soon = { disabled: true, disabledTitle: "เร็ว ๆ นี้" };
   if (docType === "PURCHASE_ORDER" || docType === "ASSET_PURCHASE_ORDER") return [{ label: "อนุมัติ", ...soon }, { label: "พิมพ์", ...soon }];
-  return [{ label: "อนุมัติ", ...soon }, { label: "จ่ายรวม (→ใบรวมจ่าย)", ...soon }, { label: "พิมพ์", ...soon }];
+  // WO 1.7: "จ่ายรวม" ย้ายไปเป็น selectionAction (ต้องรู้ id ที่ติ๊ก) — ดู selectionActionsFor
+  return [{ label: "อนุมัติ", ...soon }, { label: "พิมพ์", ...soon }];
+}
+
+// WO 1.7 §3 (แถว PUR/EXP/DNR/DP: bulk "จ่ายรวม (→ใบรวมจ่าย)") — เปิดใช้เมื่อเลือกบิลของผู้ขายรายเดียวกัน
+// ที่ยังค้างจ่ายทั้งหมด · ใบรวมจ่ายเองไม่มีปุ่มนี้ (กันซ้อนกลุ่มในกลุ่ม)
+const COMBINABLE_TYPES: readonly AccountDocType[] = ["PURCHASE", "EXPENSE", "DEBIT_NOTE_RECEIVED", "DEPOSIT_PAYMENT"];
+const OPEN_STATUSES = new Set(["AWAITING_PAYMENT", "PARTIAL"]);
+
+function selectionActionsFor(docType: AccountDocType, base: string) {
+  if (!COMBINABLE_TYPES.includes(docType)) return undefined;
+  return [
+    {
+      label: "จ่ายรวม",
+      hrefTemplate: `${base}/combined-payment/new?ids={ids}`,
+      requireSameGroup: true,
+      sameGroupHint: "ใบรวมจ่าย 1 ใบ = ผู้ขาย 1 ราย — เลือกเฉพาะบิลของผู้ขายรายเดียวกัน",
+      requireEligible: true,
+      eligibleHint: "เลือกได้เฉพาะบิลที่ยังค้างจ่าย (รอชำระ/ชำระบางส่วน)",
+    },
+  ];
 }
 
 // หน้า list + ฟอร์มสร้าง
@@ -194,6 +220,9 @@ export async function ExpenseListPage(props: {
       rows={result.rows}
       rowActionsFor={(r) => rowActionsFor(docType, base, slug, r)}
       bulkActions={bulkFor(docType)}
+      selectionActions={selectionActionsFor(docType, base)}
+      rowGroupKey={(r) => r.contact?.id ?? ""}
+      rowEligible={(r) => OPEN_STATUSES.has(r.status) && r.grandTotal - r.paidTotal > 0}
       mobileTitle={(r) => mobileDocNo.render(r)}
       mobileStatus={(r) => <StatusCell row={r} />}
       mobileSubtitle={(r) => r.contact?.name ?? "—"}

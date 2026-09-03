@@ -158,7 +158,7 @@ try {
 
   // ═════════ P1 — config ครอบทุก docType ที่มี route จริง ═════════
   console.log("P1 config ครอบทุก docType:");
-  eq("P1.1 EDITOR_DOC_TYPES ครอบ 17 ชนิด (รายรับ 8 + รายจ่าย 9 — ยังไม่มี route ของ COMBINED_PAYMENT/WHT_CERT/GOODS_ISSUE*)", cfg.EDITOR_DOC_TYPES.length, 17);
+  eq("P1.1 EDITOR_DOC_TYPES ครอบ 18 ชนิด (รายรับ 8 + รายจ่าย 10 — WO 1.7 เพิ่ม COMBINED_PAYMENT · ยังไม่มี route ของ WHT_CERT/GOODS_ISSUE*)", cfg.EDITOR_DOC_TYPES.length, 18);
   assert("P1.2 ทุกชนิดมี route จริง (ไม่ว่าง)", cfg.EDITOR_DOC_TYPES.every((d) => d.route.length > 0));
   assert("P1.3 ทุกชนิดมีป้ายภาษาไทย", cfg.EDITOR_DOC_TYPES.every((d) => /[ก-๙]/.test(d.label)));
   assert("P1.4 sideOf แยกฝั่งถูก (INVOICE=รายรับ · EXPENSE=รายจ่าย)", cfg.sideOf("INVOICE") === "revenue" && cfg.sideOf("EXPENSE") === "expense");

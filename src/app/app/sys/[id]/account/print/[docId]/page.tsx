@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { getDocument, getSettings, DOC_LABEL, baht, orgDisplayName } from "@/lib/modules/account/service";
+import { EXP_DOC_LABEL } from "@/lib/modules/account/expense";
+import { isGroupDocType } from "@/lib/modules/account/group";
 import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
 
 
@@ -27,6 +29,12 @@ export default async function PrintPage({
   const isTaxInvoice = doc.docType === "TAX_INVOICE";
   // C4 (ม.86/10): ใบลดหนี้/ใบเพิ่มหนี้ ต้องอ้างเลข+วันที่ใบกำกับเดิม + เหตุผลการปรับ
   const isAdjustNote = doc.docType === "CREDIT_NOTE" || doc.docType === "DEBIT_NOTE";
+  // WO 1.7 — เอกสารกลุ่ม (§5.2 K): 1 บรรทัด = 1 ใบลูก ⇒ ตารางเป็น "รายการเอกสาร" ไม่ใช่ "สินค้า/บริการ"
+  // และไม่มี VAT ของตัวเอง (ภาษีอยู่ที่ใบลูกแล้ว) · ใบรวมจ่ายพิมพ์เป็น "ใบสำคัญจ่าย" ตาม §3
+  const isGroup = isGroupDocType(doc.docType);
+  const docTitle = isGroup && doc.docType === "COMBINED_PAYMENT"
+    ? "ใบสำคัญจ่าย (ใบรวมจ่าย)"
+    : DOC_LABEL[doc.docType] ?? EXP_DOC_LABEL[doc.docType] ?? "เอกสาร";
   const origDoc =
     isAdjustNote && doc.sourceDocId ? await getDocument(tenantId, systemId, doc.sourceDocId) : null;
   const snap = (doc.contactSnapshot as Record<string, unknown> | null) ?? null;
@@ -64,7 +72,7 @@ export default async function PrintPage({
           </div>
         </div>
         <div className="text-right">
-          <div className="text-lg font-bold">{DOC_LABEL[doc.docType] ?? "เอกสาร"}</div>
+          <div className="text-lg font-bold">{docTitle}</div>
           {isTaxInvoice && <div className="text-xs font-medium">{setLabel}</div>}
           <div className="mt-1 text-xs">เลขที่ {doc.docNo ?? "(ร่าง)"}</div>
           <div className="text-xs">วันที่ {fmtDate(doc.issueDate)}</div>
@@ -96,6 +104,24 @@ export default async function PrintPage({
         </div>
       )}
 
+      {isGroup ? (
+        <table className="mt-4 w-full border-collapse text-xs">
+          <thead>
+            <tr className="border-y">
+              <th className="py-1 text-left">เอกสาร</th>
+              <th className="py-1 text-right">ยอดค้างชำระ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {doc.lines.map((l) => (
+              <tr key={l.id} className="border-b">
+                <td className="py-1">{l.description}</td>
+                <td className="py-1 text-right">{baht(l.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
       <table className="mt-4 w-full border-collapse text-xs">
         <thead>
           <tr className="border-y">
@@ -124,14 +150,21 @@ export default async function PrintPage({
           ))}
         </tbody>
       </table>
+      )}
 
       <div className="mt-3 flex flex-col items-end gap-0.5 text-xs">
-        <Row label="มูลค่าสินค้า/บริการ" value={baht(doc.subTotal)} />
-        {doc.discountAmount > 0 && <Row label="ส่วนลด" value={`-${baht(doc.discountAmount)}`} />}
-        {doc.depositDeducted > 0 && <Row label="หักเงินมัดจำ" value={`-${baht(doc.depositDeducted)}`} />}
-        {s.vatRegistered && <Row label="ภาษีมูลค่าเพิ่ม (VAT)" value={baht(doc.vatAmount)} />}
+        {isGroup ? (
+          <Row label={`จำนวนเอกสารในรายการ ${doc.lines.length} ใบ`} value={baht(doc.subTotal)} />
+        ) : (
+          <>
+            <Row label="มูลค่าสินค้า/บริการ" value={baht(doc.subTotal)} />
+            {doc.discountAmount > 0 && <Row label="ส่วนลด" value={`-${baht(doc.discountAmount)}`} />}
+            {doc.depositDeducted > 0 && <Row label="หักเงินมัดจำ" value={`-${baht(doc.depositDeducted)}`} />}
+            {s.vatRegistered && <Row label="ภาษีมูลค่าเพิ่ม (VAT)" value={baht(doc.vatAmount)} />}
+          </>
+        )}
         <div className="flex w-56 justify-between border-t pt-1 text-sm font-bold">
-          <span>{s.vatRegistered ? "จำนวนเงินรวมทั้งสิ้น" : "ยอดสุทธิ"}</span>
+          <span>{isGroup ? "รวมยอดที่ต้องชำระ" : s.vatRegistered ? "จำนวนเงินรวมทั้งสิ้น" : "ยอดสุทธิ"}</span>
           <span>฿{baht(doc.grandTotal)}</span>
         </div>
       </div>

@@ -55,18 +55,22 @@ export type RecordPaymentsResult =
   | { ok: false; reason: string };
 
 /** ชนิดเอกสารที่ "รับชำระ/บันทึกจ่าย" ได้ (§3 ทำรายการ) */
+// 🔴 WO 1.7: **ไม่มี** BILLING_NOTE / COMBINED_PAYMENT ในลิสต์นี้ — เอกสารกลุ่มไม่มีลูกหนี้/เจ้าหนี้ของ
+//    ตัวเอง (ตั้งไว้ที่ใบลูกแล้ว) ⇒ รับ/จ่ายที่ตัวกลุ่มตรง ๆ จะสร้าง JV ลอย (Dr 2100 ที่ไม่เคยมี Cr 2100)
+//    ต้องผ่าน `group.ts:recordGroupPayment` ซึ่งกระจายไปบันทึกที่ใบลูกทีละใบเท่านั้น
 export const PAYABLE_DOC_TYPES: readonly AccountDocType[] = [
   "INVOICE",
-  "BILLING_NOTE",
   "DEPOSIT_RECEIPT",
   "DEBIT_NOTE",
   "PURCHASE",
   "EXPENSE",
   "ASSET_PURCHASE",
   "DEPOSIT_PAYMENT",
-  "COMBINED_PAYMENT",
   "DEBIT_NOTE_RECEIVED",
 ];
+
+/** ชนิด "เอกสารกลุ่ม" (§5.2 K) — จ่าย/รับที่ตัวมันเองไม่ได้ ต้องกระจายลงใบลูก */
+export const GROUP_DOC_TYPES: readonly AccountDocType[] = ["BILLING_NOTE", "COMBINED_PAYMENT"];
 
 const clampNote = (v: string | null | undefined) => (v ?? "").trim().slice(0, 20) || null;
 
@@ -202,6 +206,14 @@ export async function recordPayments(
   const found = await paymentTargetOf(tenantId, systemId, docId);
   if (!found) return { ok: false, reason: "ไม่พบเอกสาร" };
   const { doc, target } = found;
+  if (GROUP_DOC_TYPES.includes(target.docType))
+    return {
+      ok: false,
+      reason:
+        target.docType === "BILLING_NOTE"
+          ? "ใบวางบิลรวมต้องรับชำระผ่านปุ่ม “รับชำระ” ของใบวางบิล (ระบบจะกระจายเข้าใบแจ้งหนี้ลูกให้เอง)"
+          : "ใบรวมจ่ายต้องบันทึกจ่ายผ่านปุ่ม “บันทึกจ่าย” ของใบรวมจ่าย (ระบบจะกระจายให้บิลลูกเอง)",
+    };
   if (!PAYABLE_DOC_TYPES.includes(target.docType))
     return { ok: false, reason: "เอกสารชนิดนี้บันทึกรับ/จ่ายชำระไม่ได้" };
 

@@ -13,6 +13,8 @@ import {
 import { listContacts, DOC_LABEL } from "@/lib/modules/account/service";
 import { buildAdjustCandidatePage } from "@/lib/modules/account/editor-actions";
 import { presetRangeBkk } from "@/lib/modules/account/list-tabs";
+import { GroupNewPage } from "@/lib/modules/account/group-page";
+import { isGroupDocType } from "@/lib/modules/account/group";
 import { AdjustWizardStep1 } from "@/components/account-v2/AdjustWizardStep1";
 import type { DateRangePreset } from "@/components/account-v2/ListFilters";
 
@@ -31,6 +33,7 @@ export default async function Page({
     contactId?: string;
     q?: string;
     page?: string;
+    ids?: string;
   }>;
 }) {
   const { id, docType } = await params;
@@ -39,6 +42,11 @@ export default async function Page({
   if (!def || def.side !== "revenue") notFound();
   const dt = docType as AccountDocType;
   const { tenantId, systemId } = await requireAccountPage(id, "account.doc.create");
+
+  // WO 1.7 §5.2 K — ใบวางบิลรวม ใช้ "ฟอร์มพิเศษ" (เลือกลูกค้า → ติ๊กใบแจ้งหนี้ค้างชำระ) ไม่ใช่ DocEditorV2
+  if (isGroupDocType(dt)) {
+    return <GroupNewPage tenantId={tenantId} systemId={systemId} docType={dt} ids={sp.ids} />;
+  }
 
   const adjust = isAdjustType(dt);
   const showStep1 = adjust && !sp.ref && !sp.noref;

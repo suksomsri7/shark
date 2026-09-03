@@ -115,13 +115,31 @@ function rowActionsFor(dt: AccountDocType, base: string, r: ListRow): RowActionI
   }
 }
 
-// §3 bulk ต่อชนิด — ยังไม่ทำจริง (WO 1.1 = โครง UI) → disabled + title อธิบาย ไม่ผูก action จริง
+// §3 bulk ต่อชนิด — ปุ่มที่ยังไม่มีปลายทางจริง = disabled + title อธิบาย
+// WO 1.7: "ออกใบวางบิลรวม" ของ INVOICE ย้ายไปเป็น selectionAction (ต้องรู้ id ที่ติ๊ก) — ดู selectionActionsFor
 function bulkFor(dt: AccountDocType) {
   const soon = { disabled: true, disabledTitle: "เร็ว ๆ นี้" };
-  if (dt === "INVOICE") return [{ label: "ออกใบวางบิลรวม", ...soon }, { label: "พิมพ์", ...soon }, { label: "ส่งอีเมล", ...soon }];
   if (dt === "QUOTATION") return [{ label: "พิมพ์", ...soon }, { label: "ส่งอีเมล", ...soon }, { label: "ยกเลิก", danger: true, ...soon }];
   return [{ label: "พิมพ์", ...soon }, { label: "ส่งอีเมล", ...soon }];
 }
+
+// WO 1.7 §5.2 K + f3-invoice-list-menu.png — ปุ่ม bulk ที่ใช้ id ที่ติ๊กไว้จริง
+// เปิดใช้เมื่อ: เลือกใบแจ้งหนี้ของ "ลูกค้ารายเดียวกัน" ทั้งหมด และทุกใบยังค้างชำระ (รอชำระ/ชำระบางส่วน)
+function selectionActionsFor(dt: AccountDocType, base: string) {
+  if (dt !== "INVOICE") return undefined;
+  return [
+    {
+      label: "ออกใบวางบิลรวม",
+      hrefTemplate: `${base}/docs/BILLING_NOTE/new?ids={ids}`,
+      requireSameGroup: true,
+      sameGroupHint: "ใบวางบิลรวม 1 ใบ = ลูกค้า 1 ราย — เลือกเฉพาะใบของลูกค้ารายเดียวกัน",
+      requireEligible: true,
+      eligibleHint: "เลือกได้เฉพาะใบแจ้งหนี้ที่ยังค้างชำระ (รอชำระ/ชำระบางส่วน)",
+    },
+  ];
+}
+
+const OPEN_STATUSES = new Set(["AWAITING_PAYMENT", "PARTIAL"]);
 
 export default async function DocTypeListPage({
   params,
@@ -248,6 +266,9 @@ export default async function DocTypeListPage({
       rows={result.rows}
       rowActionsFor={(r) => rowActionsFor(dt, base, r)}
       bulkActions={bulkFor(dt)}
+      selectionActions={selectionActionsFor(dt, base)}
+      rowGroupKey={(r) => r.contact?.id ?? ""}
+      rowEligible={(r) => OPEN_STATUSES.has(r.status) && r.grandTotal - r.paidTotal > 0}
       mobileTitle={(r) => mobileDocNo.render(r)}
       mobileStatus={(r) => <StatusCell row={r} />}
       mobileSubtitle={(r) => r.contact?.name ?? "—"}

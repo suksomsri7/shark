@@ -200,6 +200,101 @@ if (WO === "1.5") {
   console.log(`[fixture 1.5] ใบแจ้งหนี้โรงแรมสิมิลันวิว = ${E.fixtures.invSimilanViewId} · บันทึกค่าใช้จ่าย ${exp.docNo} = ${exp.id}\n`);
 }
 
+
+// ─────────── fixture ของ WO 1.7: ใบวางบิลรวม (§5.2 K) ───────────
+// ต้องมีของจริงในฐานข้อมูล ภาพถึงจะพิสูจน์อะไรได้: ผู้ติดต่อชั่วคราว 1 ราย + ใบแจ้งหนี้ 6 ใบ
+//   • 3 ใบแรก → เข้าใบวางบิล (ใช้ถ่ายหน้ารายละเอียด "เอกสารในกลุ่ม")
+//   • 3 ใบหลัง → ปล่อยว่าง (ใช้ถ่ายฟอร์มสร้างที่ติ๊กครบ 3 ใบ + แถบ bulk ที่ติ๊ก 2 ใบ)
+// 🔴 ลบทิ้งเสมอใน finally — ใบแจ้งหนี้ที่ออกแล้วจะไปเพิ่มตัวนับแท็บของ WO 1.1 (เฉลย IV ทั้งหมด 51 ใบ)
+const FIXTURE_REF_17 = "QC-VISUAL-1.7";
+let fx17 = { contactId: "", bnId: "", freeIds: [] as string[], freeDocNos: [] as string[], freeSum: 0, groupSum: 0 };
+if (WO === "1.7") {
+  const { prisma: db } = await import("@/lib/core/db");
+  const svc = await import("@/lib/modules/account/service");
+  const grp = await import("@/lib/modules/account/group");
+  cleanupFixture = async () => {
+    const stale = await db.accountDocument.findMany({
+      where: { systemId: SYS, OR: [{ reference: FIXTURE_REF_17 }, { note: FIXTURE_REF_17 }] },
+      select: { id: true },
+    });
+    const ids = stale.map((d) => d.id);
+    if (ids.length) {
+      await db.accountJournalLine.deleteMany({ where: { entry: { systemId: SYS, refId: { in: ids } } } });
+      await db.accountJournalEntry.deleteMany({ where: { systemId: SYS, refId: { in: ids } } });
+      await db.accountDocumentPayment.deleteMany({ where: { documentId: { in: ids } } });
+      await db.accountDocumentRelation.deleteMany({ where: { OR: [{ fromId: { in: ids } }, { toId: { in: ids } }] } });
+      await db.accountDocumentLine.deleteMany({ where: { documentId: { in: ids } } });
+      await db.accountDocument.updateMany({ where: { id: { in: ids } }, data: { sourceDocId: null } });
+      await db.accountDocument.deleteMany({ where: { id: { in: ids } } });
+    }
+    const del = await db.accountContact.deleteMany({ where: { systemId: SYS, note: FIXTURE_REF_17 } });
+    console.log(`ลบ fixture ของ WO 1.7 ${ids.length} ใบ + ผู้ติดต่อชั่วคราว ${del.count} ราย (ตัวนับแท็บ WO 1.1 กลับเท่าเฉลย)`);
+  };
+  await cleanupFixture(); // กันซากจากรอบที่ล้มกลางคัน
+
+  const contact = await svc.createContact({
+    tenantId: E.tenantId,
+    systemId: SYS,
+    kind: "CUSTOMER",
+    legalType: "COMPANY",
+    name: "บจก. อันดามัน ทราเวล (QC วางบิลรวม)",
+    note: FIXTURE_REF_17,
+  });
+  const dayPlus = (n: number) => {
+    const d = new Date(`${QC.today}T00:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d;
+  };
+  const mkIv = async (priceSatang: number, dueOffset: number) => {
+    const d = await svc.createDocument({
+      tenantId: E.tenantId,
+      systemId: SYS,
+      docType: "INVOICE",
+      contactId: contact.id,
+      issueDate: new Date(`${QC.today}T00:00:00.000Z`),
+      dueDate: dayPlus(dueOffset),
+      vatMode: "EXCLUDE",
+      vatTiming: "ON_ISSUE",
+      note: FIXTURE_REF_17,
+      lines: [{ description: "ทริปดำน้ำหมู่เกาะสิมิลัน", qty: 1, unitName: "งาน", unitPrice: priceSatang, discount: 0, vatRateBp: 700 }],
+      createdById: E.ownerUserId,
+    });
+    const r = await svc.issueDocument(E.tenantId, SYS, d.id);
+    if (!r.ok) throw new Error("fixture 1.7: ออกใบแจ้งหนี้ไม่สำเร็จ — " + r.reason);
+    return d.id;
+  };
+  const g1 = await mkIv(8_640_000, 5);
+  const g2 = await mkIv(4_800_000, 12);
+  const g3 = await mkIv(2_490_000, 19);
+  const f1 = await mkIv(6_230_000, 7);
+  const f2 = await mkIv(3_840_000, 14);
+  const f3 = await mkIv(1_550_000, 21);
+  const bn = await grp.createGroupDoc(E.tenantId, SYS, {
+    docType: "BILLING_NOTE",
+    contactId: contact.id,
+    issueDate: QC.today,
+    dueDate: dayPlus(20).toISOString().slice(0, 10),
+    note: FIXTURE_REF_17,
+    childIds: [g1, g2, g3],
+    createdById: E.ownerUserId,
+  });
+  if (!bn.ok) throw new Error("fixture 1.7: ออกใบวางบิลรวมไม่สำเร็จ — " + bn.reason);
+  const freeDocs = await db.accountDocument.findMany({
+    where: { id: { in: [f1, f2, f3] } },
+    select: { id: true, docNo: true, grandTotal: true },
+  });
+  const byId = new Map(freeDocs.map((d) => [d.id, d]));
+  fx17 = {
+    contactId: contact.id,
+    bnId: bn.id,
+    freeIds: [f1, f2, f3],
+    freeDocNos: [f1, f2, f3].map((id) => byId.get(id)?.docNo ?? ""),
+    freeSum: freeDocs.reduce((s, d) => s + d.grandTotal, 0),
+    groupSum: bn.total,
+  };
+  console.log(`[fixture 1.7] ใบวางบิล ${bn.docNo} = ${bn.id} · ใบแจ้งหนี้ว่าง 3 ใบ รวม ${fx17.freeSum / 100} บาท\n`);
+}
+
 // ─────────── รายการหน้าต่อ WO (เติมทีละ WO ตาม BLUEPRINT §3) ───────────
 // expect = ข้อความที่ต้องเจอบนหน้า (ว่าง = ไม่ตรวจ) — พิสูจน์ว่าเปิดถูกหน้า **และต่อ DB QC จริง**
 // (Next โหลด .env ของ prod ให้อัตโนมัติตอน build/start แต่ไม่ทับ env ที่ส่งเข้ามา → ต้องมีหลักฐานจากหน้าจอ)
@@ -245,6 +340,34 @@ const PAGES: Record<string, PageSpec[]> = {
   ],
   // WO 0.4 (Shell V2): แถบเมนู 9 หมวด + dropdown 2 ระดับ (เดสก์ท็อป) / bottom sheet 2 ชั้น (มือถือ) + breadcrumb
   // "account-root" ของ 0.1 คือ "hub" ที่นี่ — ตอนนี้มี page.tsx แล้ว (แก้บั๊ก 404 ledger/wo-notes/0.1.md ข้อ 8)
+  // WO 1.7 — ใบวางบิลรวม/ใบรวมจ่าย (§5.2 K) · แถบ bulk ตาม f3-invoice-list-menu.png
+  "1.7": [
+    {
+      name: "invoice-list-bulk",
+      path: `/app/sys/${SYS}/account/docs/INVOICE?contact=${fx17.contactId}`,
+      note: 'หน้ารายการใบแจ้งหนี้ ติ๊ก 2 แถว → แถบ bulk "เลือก 2 รายการ · ออกใบวางบิลรวม" (f3-invoice-list-menu.png)',
+      expect: ["ใบแจ้งหนี้"],
+      onlyDevice: "desktop", // แถบ bulk มาจาก checkbox ในตาราง — การ์ดมือถือ (f13) ไม่มี checkbox ตามแบบ
+      flow: [
+        { waitFor: `[data-testid="row-${fx17.freeDocNos[0]}"]` },
+        { click: `[data-testid="row-${fx17.freeDocNos[0]}"] input[type="checkbox"]` },
+        { click: `[data-testid="row-${fx17.freeDocNos[1]}"] input[type="checkbox"]` },
+      ],
+      expectBeforeShot: [{ sel: '[data-testid="list-docs-bulk-bar"]', kind: "text", equals: "เลือก 2 รายการ" }],
+    },
+    {
+      name: "bn-new",
+      path: `/app/sys/${SYS}/account/docs/BILLING_NOTE/new?ids=${fx17.freeIds.join(",")}`,
+      note: "ฟอร์มใบวางบิลรวม (§5.2 K) ติ๊กใบแจ้งหนี้ไว้ 3 ใบ + รวมยอดที่เลือก",
+      expect: ["ออกใบวางบิลรวม", "รวมยอดที่เลือก"],
+    },
+    {
+      name: "bn-detail",
+      path: `/app/sys/${SYS}/account/docs/BILLING_NOTE/${fx17.bnId}`,
+      note: 'หน้าเอกสารใบวางบิล — ตาราง "เอกสารในกลุ่ม" แทนตารางสินค้า + ปุ่มดำ "รับชำระ"',
+      expect: ["ใบแจ้งหนี้ที่ยังค้างชำระ", "รับชำระ"],
+    },
+  ],
   "0.5": [
     { name: "gallery", path: `/app/sys/${SYS}/account/dev-components`, note: "gallery ส่วนประกอบกลาง V2 (เทียบ f3/g1/g5/g17/g18)", expect: ["บัญชี"] },
   ],
@@ -485,6 +608,8 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "ref-chip": E.fixtures.invSimilanViewDocNo,
     },
   },
+  // WO 1.7: ตัวเลขบนจอต้องเท่ากับยอดของ fixture จริง (คำนวณตอนรัน — ดูบล็อก ASSERT WO 1.7 ด้านล่าง)
+  "1.7": {},
   "0.1": {},
   "0.4": {},
   "0.5": {},
@@ -881,6 +1006,27 @@ try {
               whtAmount2:
                 (document.querySelector('[data-testid="pay-wht-amount-2"]') as HTMLInputElement | null)?.value ?? "",
             },
+            // WO 1.7 — เอกสารกลุ่ม (BN/CP · §5.2 K): แถบ bulk · ฟอร์มเลือกใบลูก · ตาราง "เอกสารในกลุ่ม"
+            group: {
+              bulkBarText: document.querySelector('[data-testid="list-docs-bulk-bar"]')?.textContent?.trim() ?? "",
+              bulkActionText: document.querySelector('[data-testid="list-docs-bulk-action-0"]')?.textContent?.trim() ?? "",
+              bulkActionDisabled: (() => {
+                const el = document.querySelector('[data-testid="list-docs-bulk-action-0"]');
+                if (!el) return null;
+                return el.tagName === "BUTTON" ? (el as HTMLButtonElement).disabled : false;
+              })(),
+              hasEditor: !!document.querySelector('[data-testid="group-editor"]'),
+              // เดสก์ท็อป = แถวตาราง (child-row-…) · มือถือ = การ์ด (child-card-…) — นับเฉพาะที่มองเห็นจริง
+              childRows: [...document.querySelectorAll('[data-testid^="child-row-"], [data-testid^="child-card-"]')].filter(isVisible).length,
+              childSelected: [...document.querySelectorAll('[data-testid^="child-row-"][data-selected="1"], [data-testid^="child-card-"][data-selected="1"]')].filter(isVisible).length,
+              selectedCount: document.querySelector('[data-testid="group-selected-count"]')?.textContent?.trim() ?? "",
+              total: document.querySelector('[data-testid="group-total"]')?.textContent?.trim() ?? "",
+              hasChildrenTable: !!document.querySelector('[data-testid="group-children"]'),
+              groupChildCount: document.querySelectorAll('[data-testid^="group-child-"]').length,
+              childrenCountLabel: document.querySelector('[data-testid="group-children-count"]')?.textContent?.trim() ?? "",
+              childrenOutstanding: document.querySelector('[data-testid="group-children-outstanding"]')?.textContent?.trim() ?? "",
+              primaryAction: document.querySelector('[data-testid="btn-primary-action"]')?.textContent?.trim() ?? "",
+            },
             // WO 1.6 — wizard เอกสารปรับปรุงหนี้ (CN/DN/CNR/DNR/RPR · §5.2 J · g3)
             // 🔴 ตาราง (เดสก์ท็อป [data-testid^="ref-row-"]) กับการ์ด (มือถือ [data-testid^="ref-card-"]) เป็นคนละ
             //    element กัน (breakpoint คนละตัวซ่อน/โชว์) — อ่านค่าต้องกรอง "ที่มองเห็นอยู่จริง" เท่านั้น ไม่งั้นตัวที่ถูก
@@ -1064,6 +1210,43 @@ try {
             if (device === "mobile") c16.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
           }
           for (const [okc, label] of c16) {
+            if (!okc) failures++;
+            console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
+          }
+        }
+
+        // WO 1.7 — ใบวางบิลรวม/ใบรวมจ่าย (§5.2 K) เทียบ f3-invoice-list-menu.png + ตัวเลขจริงจาก fixture
+        if (ASSERT && WO === "1.7") {
+          const money = (satang: number) => "฿" + (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 });
+          const c17: [boolean, string][] = [];
+          if (spec.name === "invoice-list-bulk") {
+            c17.push([probe.group.bulkBarText.includes("เลือก 2 รายการ"), `แถบ bulk ขึ้นข้อความ "เลือก 2 รายการ" (เจอ "${probe.group.bulkBarText}")`]);
+            c17.push([probe.group.bulkActionText.includes("ออกใบวางบิลรวม"), `ปุ่มแรกของแถบ bulk = "ออกใบวางบิลรวม" (เจอ "${probe.group.bulkActionText}")`]);
+            c17.push([probe.group.bulkActionDisabled === false, `เลือกใบของลูกค้ารายเดียวกันที่ยังค้างชำระ → ปุ่มใช้งานได้จริง (ไม่ใช่ปุ่มจาง)`]);
+          }
+          if (spec.name === "bn-new") {
+            c17.push([probe.group.hasEditor, `ฟอร์มกลุ่มขึ้นจริง [data-testid="group-editor"] (positive control ของด่านที่เหลือ)`]);
+            c17.push([probe.group.childRows === 3, `ตารางใบแจ้งหนี้ค้างชำระ 3 แถว (เจอ ${probe.group.childRows})`]);
+            c17.push([probe.group.childSelected === 3, `ติ๊กไว้ครบ 3 ใบจากปุ่ม bulk (เจอ ${probe.group.childSelected})`]);
+            c17.push([probe.group.selectedCount === "3", `บรรทัดสรุปบอก "เลือก 3 รายการ" (เจอ "${probe.group.selectedCount}")`]);
+            c17.push([
+              probe.group.total.includes(money(fx17.freeSum)),
+              `"รวมยอดที่เลือก" = ผลรวมยอดค้างจริงของ 3 ใบ ${money(fx17.freeSum)} (เจอ "${probe.group.total}")`,
+            ]);
+            if (device === "mobile") c17.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
+          }
+          if (spec.name === "bn-detail") {
+            c17.push([probe.group.hasChildrenTable, `หน้าเอกสารแสดงตาราง "เอกสารในกลุ่ม" [data-testid="group-children"]`]);
+            c17.push([probe.group.groupChildCount === 3, `ตารางกลุ่มมี 3 แถว = ใบแจ้งหนี้ลูก 3 ใบ (เจอ ${probe.group.groupChildCount})`]);
+            c17.push([probe.group.childrenCountLabel === "3", `หัวตารางบอกจำนวน 3 ใบ (เจอ "${probe.group.childrenCountLabel}")`]);
+            c17.push([
+              probe.group.childrenOutstanding.includes(money(fx17.groupSum)),
+              `ยอดค้างรวมของกลุ่ม = ${money(fx17.groupSum)} (เจอ "${probe.group.childrenOutstanding}")`,
+            ]);
+            c17.push([probe.group.primaryAction.includes("รับชำระ"), `ปุ่มดำหลัก = "รับชำระ" (เจอ "${probe.group.primaryAction}")`]);
+            if (device === "mobile") c17.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
+          }
+          for (const [okc, label] of c17) {
             if (!okc) failures++;
             console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
           }

@@ -178,6 +178,16 @@ export const LIST_TABS: Partial<Record<AccountDocType, DocListTabDef[]>> = {
     { key: "paid", label: "ชำระแล้ว", filter: { status: "PAID" } },
     cancelled,
   ],
+  // WO 1.7 §3 แถว "ใบรวมจ่าย CP": ร่าง · รออนุมัติ · รอชำระ · เกินเวลาชำระ · ชำระแล้ว · ยกเลิก
+  COMBINED_PAYMENT: [
+    all,
+    draft,
+    awaitingApproval,
+    { key: "awaiting", label: "รอชำระ", filter: { status: "AWAITING_PAYMENT", excludeOverdue: true } },
+    overdue,
+    { key: "paid", label: "ชำระแล้ว", filter: { status: "PAID" } },
+    cancelled,
+  ],
   // ─── สินค้า: PRR — โมเดลปัจจุบันสร้างแล้ว = ISSUED ทันที ไม่มี workflow ร่าง/อนุมัติ (ยังนับ 0 เสมอจนกว่าจะมี WO ต่อ)
   GOODS_ISSUE: [all, draft, awaitingApproval, { key: "approved", label: "อนุมัติแล้ว", filter: { status: "ISSUED" } }, cancelled],
   GOODS_ISSUE_RETURN: [all, draft, awaitingApproval, { key: "approved", label: "อนุมัติแล้ว", filter: { status: "ISSUED" } }, cancelled],
@@ -210,13 +220,14 @@ export const NAV_FLYOUT_TABS: Partial<Record<AccountDocType, Record<string, Acco
   TAX_INVOICE: { issued: ["ISSUED"] },
   CREDIT_NOTE: {},
   DEBIT_NOTE: {},
-  BILLING_NOTE: {},
+  BILLING_NOTE: { awaiting: ["AWAITING_PAYMENT"], overdue: "overdue", paid: ["PAID"] },
   PURCHASE: { awaiting: ["AWAITING_PAYMENT"], paid: ["PAID"], overdue: "overdue" },
   EXPENSE: { awaiting: ["AWAITING_PAYMENT"], paid: ["PAID"], overdue: "overdue" },
   ASSET_PURCHASE: { awaiting: ["AWAITING_PAYMENT"], overdue: "overdue", received: ["RECEIVED"] },
   PURCHASE_ORDER: { awaiting_approval: ["AWAITING_APPROVAL"], approved: ["APPROVED"] },
   ASSET_PURCHASE_ORDER: { awaiting_approval: ["AWAITING_APPROVAL"], approved: ["APPROVED"] },
   PURCHASE_TAX_INVOICE: { awaiting_receive: ["AWAITING_RECEIVE"], received: ["RECEIVED"] },
+  COMBINED_PAYMENT: { awaiting: ["AWAITING_PAYMENT"], overdue: "overdue", paid: ["PAID"] },
 };
 
 // ─────────────────────────────────────────────────────────────────────────
