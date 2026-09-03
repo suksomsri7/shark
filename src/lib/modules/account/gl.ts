@@ -796,6 +796,29 @@ export async function postTaxInvoice(
   });
 }
 
+/**
+ * WO 1.5 — รายการ JV (พร้อมบรรทัด Dr/Cr + ชื่อบัญชี) ของ "เอกสารเดียว" (หน้าเอกสาร V2 แท็บ "บัญชี")
+ * รวมทั้ง entry ที่ผูกกับตัวเอกสารเอง (AccountDocument) และ entry ของการชำระเงินแต่ละครั้ง
+ * (AccountDocumentPayment) — ไม่กรอง status เพื่อให้เห็น entry ที่ถูกกลับรายการ (REVERSED) ด้วย
+ */
+export async function listJournalEntriesForDocument(
+  systemId: string,
+  docId: string,
+  paymentIds: string[],
+) {
+  return prisma.accountJournalEntry.findMany({
+    where: {
+      systemId,
+      OR: [
+        { refType: "AccountDocument", refId: docId },
+        { refType: "AccountDocumentPayment", refId: { in: paymentIds.length ? paymentIds : ["__none__"] } },
+      ],
+    },
+    include: { lines: { include: { account: true }, orderBy: { id: "asc" } } },
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+  });
+}
+
 // ─────────────────── reverseFor (VOID → กลับรายการทุก entry ของต้นทาง) ───────────────────
 
 export async function reverseFor(

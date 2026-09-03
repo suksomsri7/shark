@@ -236,6 +236,9 @@ export type ListAuditLogsInput = {
   /** กรองด้วย action — จับคู่แบบ prefix (เช่น "account" ครอบ "account.doc.issue") */
   action?: string;
   actorId?: string;
+  /** WO 1.5: กรองประวัติของเอกสาร 1 ใบ (หน้าเอกสาร แท็บ "ประวัติ") — ต้องคู่กับ targetId เสมอ */
+  targetType?: string;
+  targetId?: string;
   from?: Date;
   to?: Date;
   /** จำนวนต่อหน้า (default 50 · cap 200) */
@@ -260,6 +263,8 @@ export async function listAuditLogs(input: ListAuditLogsInput): Promise<AuditLog
       tenantId: input.tenantId, // ← scope ร้าน (บังคับทุกครั้ง)
       ...(input.action ? { action: { startsWith: input.action } } : {}),
       ...(input.actorId ? { actorId: input.actorId } : {}),
+      ...(input.targetType ? { targetType: input.targetType } : {}),
+      ...(input.targetId ? { targetId: input.targetId } : {}),
       ...(createdAt ? { createdAt } : {}),
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -299,6 +304,12 @@ export async function listAuditLogs(input: ListAuditLogsInput): Promise<AuditLog
   }));
 
   return { rows, nextCursor: hasMore ? page[page.length - 1]!.id : null };
+}
+
+/** ประวัติของเอกสาร 1 ใบ (หน้าเอกสาร V2 §5.3 แท็บ "ประวัติ") — scope tenantId+targetId ผ่าน listAuditLogs */
+export async function listDocAuditLogs(tenantId: string, documentId: string, take = 50): Promise<AuditLogRow[]> {
+  const page = await listAuditLogs({ tenantId, targetType: "AccountDocument", targetId: documentId, take });
+  return page.rows;
 }
 
 /** ชนิด action ที่มีจริงในประวัติของร้าน (สำหรับ dropdown ตัวกรอง) พร้อมป้ายไทย */

@@ -179,6 +179,27 @@ if (WO === "1.4") {
   console.log(`[fixture 1.4] ใบแจ้งหนี้ ${issued.docNo} = ${inv.id} · ร่างใบเสร็จ = ${conv.newId}\n`);
 }
 
+// ─────────── fixture ของ WO 1.5: หน้าเอกสาร V2 — ใช้ของที่ seed ไว้แล้วล้วน (อ่านอย่างเดียว ไม่สร้าง/ไม่ลบ) ───────────
+// ใบแจ้งหนี้โรงแรมสิมิลันวิว (E.fixtures.invSimilanViewId — PARTIAL 124,500 / paid 62,250 · seed-acc-v2-qc.mts)
+// + บันทึกค่าใช้จ่าย "ค่าน้ำมันเรือ มิ.ย." (PAID เต็มจำนวน) — ไม่มี id ผูกใน acc-v2-expected.json (ยังไม่ต้องใช้ที่อื่น)
+// จึงหาแบบ deterministic ด้วย docType+desc ที่ seed สร้างซ้ำได้ทุกครั้งเหมือนกัน (idempotent seed)
+let fx15 = { expensePaidId: "" };
+if (WO === "1.5") {
+  const { prisma: db } = await import("@/lib/core/db");
+  const exp = await db.accountDocument.findFirst({
+    where: {
+      systemId: SYS,
+      docType: "EXPENSE",
+      status: "PAID",
+      lines: { some: { description: { contains: "ค่าน้ำมันเรือ มิ.ย." } } },
+    },
+    select: { id: true, docNo: true },
+  });
+  if (!exp) throw new Error('fixture 1.5: ไม่พบบันทึกค่าใช้จ่าย "ค่าน้ำมันเรือ มิ.ย." (PAID) — รัน seed-acc-v2-qc ก่อน');
+  fx15 = { expensePaidId: exp.id };
+  console.log(`[fixture 1.5] ใบแจ้งหนี้โรงแรมสิมิลันวิว = ${E.fixtures.invSimilanViewId} · บันทึกค่าใช้จ่าย ${exp.docNo} = ${exp.id}\n`);
+}
+
 // ─────────── รายการหน้าต่อ WO (เติมทีละ WO ตาม BLUEPRINT §3) ───────────
 // expect = ข้อความที่ต้องเจอบนหน้า (ว่าง = ไม่ตรวจ) — พิสูจน์ว่าเปิดถูกหน้า **และต่อ DB QC จริง**
 // (Next โหลด .env ของ prod ให้อัตโนมัติตอน build/start แต่ไม่ทับ env ที่ส่งเข้ามา → ต้องมีหลักฐานจากหน้าจอ)
@@ -374,6 +395,27 @@ const PAGES: Record<string, PageSpec[]> = {
       waitAfterClick: 1200,
     },
   ],
+  // WO 1.5 — หน้าเอกสาร V2 (§5.3) เทียบ g4-invoice-detail.png (desktop) + f14-m-doc-detail.png (mobile)
+  "1.5": [
+    {
+      name: "invoice-detail",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/${E.fixtures.invSimilanViewId}`,
+      note: "ใบแจ้งหนี้โรงแรมสิมิลันวิว — ชำระบางส่วน (g4) · แท็บ รายละเอียด",
+      expect: [E.fixtures.invSimilanViewDocNo, "ชำระบางส่วน"],
+    },
+    {
+      name: "invoice-detail-payments-tab",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/${E.fixtures.invSimilanViewId}?tab=payments`,
+      note: "แท็บ การชำระเงิน + preview สมุดรายวัน (g4 ล่าง)",
+      expect: [E.fixtures.invSimilanViewDocNo],
+    },
+    {
+      name: "expense-detail",
+      path: `/app/sys/${SYS}/account/expense/${fx15.expensePaidId}`,
+      note: "หน้าเอกสาร V2 ฝั่งรายจ่าย — บันทึกค่าใช้จ่ายที่ชำระแล้ว (ยืนยันว่าฝั่งจ่ายใช้คอมโพเนนต์เดียวกัน)",
+      expect: ["ชำระเงินแล้ว"],
+    },
+  ],
 };
 
 // ─────────── ตารางตัวเลขที่อ่านจาก data-testid (ว่างไว้ก่อน — WO ถัดไปเติม) ───────────
@@ -389,6 +431,28 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "pay-outstanding": "฿0.00",
       "pay-total-2": "฿10,000.00",
       "tot-grand": "฿24,900.00",
+    },
+  },
+  // WO 1.5: หน้าเอกสาร V2 — ตัวเลข/ป้ายต้องตรงเฉลย g4 (ground truth = acc-v2-expected.json.invSimilanView*)
+  "1.5": {
+    "invoice-detail": {
+      "doc-grand": "฿124,500.00",
+      "doc-outstanding": "฿62,250.00",
+      "doc-status": "ชำระบางส่วน",
+      "related-RE": "ใบเสร็จ",
+      // ไทม์ไลน์ 4 ก้าว (ร่าง·รอชำระ·ชำระบางส่วน·ชำระแล้ว) — มี testid ครบ 4 ตัว = 4 ก้าวจริง
+      // + ก้าวที่ 3 (ชำระบางส่วน) เป็นก้าวปัจจุบัน (มีโน้ต "รับชำระ n" เฉพาะ state=current เท่านั้น)
+      // + ก้าวที่ 4 (ชำระแล้ว) ยังไม่ถึง = แสดง "—"
+      "timeline-draft": "ร่าง",
+      "timeline-awaiting": "รอชำระ",
+      "timeline-partial": "รับชำระ 1",
+      "timeline-paid": "—",
+    },
+    "invoice-detail-payments-tab": {
+      "pay-row-1": "62,250.00",
+      "jv-line-1": "124,500.00",
+      "jv-line-2": "116,355.14",
+      "jv-line-3": "8,144.86",
     },
   },
   "0.1": {},
@@ -898,6 +962,13 @@ try {
             if (!okc) failures++;
             console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
           }
+        }
+
+        // WO 1.5 หน้าเอกสาร V2 — มือถือ (f14) ต้องไม่ล้นแนวนอนบนความกว้าง 390
+        if (ASSERT && WO === "1.5" && device === "mobile") {
+          const ok15 = probe.overflow === 0;
+          if (!ok15) failures++;
+          console.log(`  ${ok15 ? "✅" : "❌"} [${spec.name}/${device}] ไม่ล้นแนวนอน: scrollWidth เกิน ${probe.overflow}px (ต้อง 0)`);
         }
 
         // WO 0.4 shell V2 — เช็คโครงสร้างเมนู (ทุกหน้าที่มี layout บัญชี จะมี tabbar/breadcrumb เหมือนกัน)

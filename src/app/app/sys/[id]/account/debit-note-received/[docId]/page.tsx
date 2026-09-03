@@ -7,10 +7,10 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ id: string; docId: string }>;
-  searchParams: Promise<{ err?: string }>;
+  searchParams: Promise<{ err?: string; tab?: string }>;
 }) {
   const { id, docId } = await params;
   const sp = await searchParams;
   await requireAccountPage(id, "account.doc.view"); // WO 0.2/0.3: หน้าอ่านอย่างเดียว = doc.view
-  return <ExpenseDetailPage systemId={id} docId={docId} slug="debit-note-received" err={sp.err} />;
+  return <ExpenseDetailPage systemId={id} docId={docId} slug="debit-note-received" err={sp.err} tab={sp.tab} />;
 }

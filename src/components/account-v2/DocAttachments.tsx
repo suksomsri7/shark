@@ -31,8 +31,12 @@ export function DocAttachments({
   documentId?: string;
   storageEnabled: boolean;
   initial: AttachmentView[];
-  /** ยังไม่มีร่าง → ให้ฟอร์มบันทึกร่างก่อนแล้วคืน docId กลับมา */
-  onNeedDraft: () => Promise<string | null>;
+  /**
+   * ยังไม่มีร่าง → ให้ฟอร์มบันทึกร่างก่อนแล้วคืน docId กลับมา
+   * ไม่ระบุ = เอกสารมีอยู่แล้วแน่นอน (หน้าเอกสาร V2 WO 1.5 — documentId เสมอ) — ไม่ต้องส่ง closure
+   * ข้ามขอบเขต server/client component (function พล็อตธรรมดาส่งข้ามไม่ได้นอกจาก server action)
+   */
+  onNeedDraft?: () => Promise<string | null>;
   /** รายงานจำนวนไฟล์กลับให้ฟอร์ม (ใช้ติ๊ก ✓ ที่หัว section) */
   onCountChange?: (n: number) => void;
 }) {
@@ -45,7 +49,7 @@ export function DocAttachments({
   const upload = async (files: FileList | File[]) => {
     setError("");
     let docId = documentId;
-    if (!docId) docId = (await onNeedDraft()) ?? undefined;
+    if (!docId) docId = (await onNeedDraft?.()) ?? undefined;
     if (!docId) {
       setError("บันทึกร่างก่อนจึงจะแนบไฟล์ได้");
       return;

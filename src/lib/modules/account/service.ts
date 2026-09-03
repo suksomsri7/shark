@@ -2553,6 +2553,18 @@ export async function findAccountLinkFor(tenantId: string, linkedKind: "POS" | "
 export async function findDocByRef(systemId: string, docType: AccountDocType, refType: string, refId: string) {
   return prisma.accountDocument.findFirst({ where: { systemId, docType, refType, refId }, select: { id: true } });
 }
+
+/** WO 1.5 — เอกสารอ้างอิงแบบย่อ (สำหรับแถบ "เอกสารที่เกี่ยวข้อง" ของหน้าเอกสาร V2) */
+export async function getDocRef(
+  tenantId: string,
+  systemId: string,
+  id: string,
+): Promise<{ id: string; docType: AccountDocType; docNo: string | null; status: AccountDocStatus } | null> {
+  return prisma.accountDocument.findFirst({
+    where: { id, tenantId, systemId },
+    select: { id: true, docType: true, docNo: true, status: true },
+  });
+}
 /**
  * จับคู่ผู้ติดต่อด้วยเบอร์โทรแบบ normalize (WO 0.2 → คอลัมน์จริงใน WO 0.3)
  *

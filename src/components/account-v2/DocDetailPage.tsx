@@ -1,0 +1,709 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import type { AccountDocType } from "@prisma/client";
+import { getDocDetailData, type DocDetailData, type RelatedSlot, type JvEntryView } from "@/lib/modules/account/doc-detail";
+import { getSettings, DOC_LABEL, visibleConvertTargets } from "@/lib/modules/account/service";
+import { editorListPath, editorDetailPath, editorEditPath, sideOf } from "@/lib/modules/account/doc-editor-config";
+import { EXP_DOC_LABEL } from "@/lib/modules/account/expense";
+import { accountTone, StatusBadge } from "@/lib/modules/account/ui";
+import { auditActionLabelTh } from "@/lib/modules/account/access";
+import { storageEnabled } from "@/lib/storage/service";
+import {
+  issueDocumentAction,
+  convertDocumentAction,
+  quotationResponseAction,
+  voidDocumentAction,
+} from "@/lib/modules/account/actions";
+import {
+  issueExpenseDocAction,
+  voidExpenseDocAction,
+  receivePtxAction,
+  markAssetReceivedAction,
+  submitApprovalAction,
+  approvePOAction,
+  rejectPOAction,
+  convertPOAction,
+} from "@/lib/modules/account/expense-actions";
+import { refundDepositFormAction } from "@/lib/modules/account/payment-actions";
+import { PaymentPanel } from "./PaymentPanel";
+import { ShareLinkButton } from "./ShareLinkButton";
+import { Stepper, type StepDef } from "./Stepper";
+import { RowActions, type RowActionItem } from "./RowActions";
+import { DocAttachments } from "./DocAttachments";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { MoneyText } from "@/components/ui/MoneyText";
+import { formatThaiDateLong as fmtDateLong, formatDateTh as fmtDate } from "@/lib/ui/date";
+import { PAY_CHANNEL_LABEL } from "@/lib/ui/status-labels";
+
+// ─────────────────────────────────────────────────────────────
+// DocDetailPage — WO 1.5 · หน้าเอกสาร 1 ใบ ใช้ร่วมกันทั้งฝั่งรายรับ+รายจ่าย (DESIGN-SPEC-V2 §5.3)
+// อ้างเฟรม g4-invoice-detail.png (เดสก์ท็อป) + f14-m-doc-detail.png (มือถือ)
+// แทนที่ src/app/.../docs/[docType]/[docId]/page.tsx (ฝั่งรายรับ) และ ExpenseDetail (ฝั่งรายจ่าย)
+// ─────────────────────────────────────────────────────────────
+
+function Hidden({ systemId, docType, id }: { systemId: string; docType: string; id: string }) {
+  return (
+    <>
+      <input type="hidden" name="systemId" value={systemId} />
+      <input type="hidden" name="docType" value={docType} />
+      <input type="hidden" name="id" value={id} />
+    </>
+  );
+}
+
+const PO_TYPES: readonly AccountDocType[] = ["PURCHASE_ORDER", "ASSET_PURCHASE_ORDER"];
+const ADJUST_RECEIVED_TYPES: readonly AccountDocType[] = ["CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED"];
+const REVENUE_PAYABLE_TYPES: readonly AccountDocType[] = ["INVOICE", "DEPOSIT_RECEIPT", "BILLING_NOTE", "DEBIT_NOTE"];
+const EXPENSE_PAYABLE_TYPES: readonly AccountDocType[] = ["PURCHASE", "EXPENSE", "ASSET_PURCHASE", "DEPOSIT_PAYMENT"];
+const DEPOSIT_TYPES: readonly AccountDocType[] = ["DEPOSIT_RECEIPT", "DEPOSIT_PAYMENT"];
+const ACTIVE_STATUSES = new Set(["DRAFT", "VOIDED", "CANCELLED", "REJECTED"]);
+
+function labelOf(dt: AccountDocType): string {
+  return DOC_LABEL[dt] ?? EXP_DOC_LABEL[dt] ?? dt;
+}
+
+// ─────────────────── ปุ่มดำหลัก + แถบปุ่มรอง ตามสถานะ (§5.3 "ปุ่มดำ action หลักตามสถานะ") ───────────────────
+function ActionRow({
+  data,
+  systemId,
+  side,
+  base,
+  editPath,
+  vatRegistered,
+  targets,
+}: {
+  data: DocDetailData;
+  systemId: string;
+  side: "revenue" | "expense";
+  base: string;
+  editPath: string;
+  vatRegistered: boolean;
+  targets: AccountDocType[];
+}) {
+  const dt = data.docType;
+  const isPO = PO_TYPES.includes(dt);
+  const isAdjustReceived = ADJUST_RECEIVED_TYPES.includes(dt);
+  const canPay =
+    (data.status === "AWAITING_PAYMENT" || data.status === "PARTIAL") &&
+    (REVENUE_PAYABLE_TYPES.includes(dt) || EXPENSE_PAYABLE_TYPES.includes(dt));
+  const canRefundDeposit = DEPOSIT_TYPES.includes(dt) && data.status === "AWAITING_DEDUCT";
+  const hasTaxAlready = data.related.some((s) => s.kind === "TX" && s.doc);
+  const canIssueTax = targets.includes("TAX_INVOICE") && !hasTaxAlready;
+  const active = !ACTIVE_STATUSES.has(data.status);
+
+  let primary: React.ReactNode = null;
+
+  if (data.status === "DRAFT") {
+    primary = isPO ? (
+      <form action={submitApprovalAction}>
+        <Hidden systemId={systemId} docType={dt} id={data.id} />
+        <SubmitButton className="w-full md:w-auto">ส่งอนุมัติ</SubmitButton>
+      </form>
+    ) : side === "expense" ? (
+      <form action={issueExpenseDocAction}>
+        <Hidden systemId={systemId} docType={dt} id={data.id} />
+        <SubmitButton className="w-full md:w-auto">{isAdjustReceived ? "บันทึก" : "บันทึก/ตั้งเจ้าหนี้"}</SubmitButton>
+      </form>
+    ) : (
+      <form action={issueDocumentAction}>
+        <Hidden systemId={systemId} docType={dt} id={data.id} />
+        <SubmitButton className="w-full md:w-auto">ออกเอกสาร</SubmitButton>
+      </form>
+    );
+  } else if (dt === "QUOTATION" && data.status === "AWAITING_ACCEPT") {
+    primary = (
+      <form action={quotationResponseAction}>
+        <Hidden systemId={systemId} docType={dt} id={data.id} />
+        <input type="hidden" name="accepted" value="1" />
+        <SubmitButton className="w-full md:w-auto">ลูกค้ายอมรับ</SubmitButton>
+      </form>
+    );
+  } else if (isPO && data.status === "AWAITING_APPROVAL") {
+    primary = (
+      <form action={approvePOAction}>
+        <Hidden systemId={systemId} docType={dt} id={data.id} />
+        <SubmitButton className="w-full md:w-auto">อนุมัติ</SubmitButton>
+      </form>
+    );
+  } else if (isPO && data.status === "APPROVED") {
+    primary = (
+      <form action={convertPOAction}>
+        <Hidden systemId={systemId} docType={dt} id={data.id} />
+        <SubmitButton className="w-full md:w-auto">แปลงเป็น{dt === "ASSET_PURCHASE_ORDER" ? "ซื้อสินทรัพย์" : "บันทึกซื้อ"}</SubmitButton>
+      </form>
+    );
+  } else if (dt === "PURCHASE_TAX_INVOICE" && data.status === "AWAITING_RECEIVE") {
+    primary = (
+      <form action={receivePtxAction}>
+        <Hidden systemId={systemId} docType={dt} id={data.id} />
+        <SubmitButton className="w-full md:w-auto">รับใบกำกับแล้ว</SubmitButton>
+      </form>
+    );
+  } else if (canPay) {
+    primary = (
+      <PaymentPanel
+        systemId={systemId}
+        docId={data.id}
+        triggerLabel={side === "expense" ? "บันทึกจ่าย" : "รับชำระ"}
+        triggerClassName="btn btn-primary w-full text-sm md:w-auto"
+      />
+    );
+  } else if (canRefundDeposit) {
+    primary = (
+      <ConfirmDialog
+        action={refundDepositFormAction}
+        fields={{ systemId, docType: dt, id: data.id }}
+        reasonField={{ name: "reason", label: dt === "DEPOSIT_RECEIPT" ? "เหตุผลการคืนมัดจำ" : "เหตุผลการรับคืนมัดจำ" }}
+        triggerLabel="คืนมัดจำ"
+        triggerClassName="btn btn-primary w-full text-sm md:w-auto"
+        title={dt === "DEPOSIT_RECEIPT" ? "คืนเงินมัดจำใบนี้?" : "รับเงินมัดจำคืนจากผู้ขาย?"}
+        detail="ระบบจะกลับรายการบัญชีของใบมัดจำทั้งใบและปิดใบนี้เป็นยกเลิก"
+        confirmLabel="ยืนยันคืนมัดจำ"
+        danger
+      />
+    );
+  } else if (canIssueTax) {
+    primary = (
+      <form action={convertDocumentAction}>
+        <Hidden systemId={systemId} docType={dt} id={data.id} />
+        <input type="hidden" name="toDocType" value="TAX_INVOICE" />
+        <SubmitButton className="w-full md:w-auto">ออกใบกำกับ</SubmitButton>
+      </form>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div data-testid="btn-primary-action" className="w-full md:w-auto">
+        {primary}
+      </div>
+      {data.status === "DRAFT" && (
+        <Link href={editPath} className="btn btn-ghost text-sm">
+          แก้ไข
+        </Link>
+      )}
+      {dt === "QUOTATION" && data.status === "AWAITING_ACCEPT" && (
+        <form action={quotationResponseAction}>
+          <Hidden systemId={systemId} docType={dt} id={data.id} />
+          <input type="hidden" name="accepted" value="0" />
+          <SubmitButton variant="ghost">ปฏิเสธ</SubmitButton>
+        </form>
+      )}
+      {isPO && data.status === "AWAITING_APPROVAL" && (
+        <ConfirmDialog
+          action={rejectPOAction}
+          fields={{ systemId, docType: dt, id: data.id }}
+          reasonField={{ name: "reason", label: "เหตุผลไม่อนุมัติ" }}
+          triggerLabel="ไม่อนุมัติ"
+          triggerClassName="btn btn-ghost text-sm text-[color:var(--color-danger)]"
+          title="ไม่อนุมัติใบสั่งซื้อนี้?"
+          detail="ใบสั่งซื้อจะถูกปฏิเสธและนำไปทำรายการต่อไม่ได้"
+          confirmLabel="ยืนยันไม่อนุมัติ"
+          danger
+        />
+      )}
+      {dt === "ASSET_PURCHASE" &&
+        (data.status === "AWAITING_PAYMENT" || data.status === "PARTIAL" || data.status === "PAID") && (
+          <form action={markAssetReceivedAction}>
+            <Hidden systemId={systemId} docType={dt} id={data.id} />
+            <SubmitButton variant="ghost">รับใบเสร็จแล้ว</SubmitButton>
+          </form>
+        )}
+      {data.status === "DRAFT" ? (
+        <ConfirmDialog
+          action={side === "expense" ? voidExpenseDocAction : voidDocumentAction}
+          fields={{ systemId, docType: dt, id: data.id, reason: "ยกเลิกร่าง" }}
+          triggerLabel="ยกเลิกร่าง"
+          triggerClassName="btn btn-ghost text-sm text-[color:var(--color-danger)]"
+          title="ยกเลิกร่างนี้?"
+          detail="ร่างเอกสารจะถูกยกเลิกและแก้ไขไม่ได้อีก"
+          confirmLabel="ยืนยันยกเลิก"
+          danger
+        />
+      ) : (
+        active && (
+          <ConfirmDialog
+            action={side === "expense" ? voidExpenseDocAction : voidDocumentAction}
+            fields={{ systemId, docType: dt, id: data.id }}
+            reasonField={{ name: "reason", label: "เหตุผลการยกเลิก" }}
+            triggerLabel="ยกเลิกเอกสาร"
+            triggerClassName="btn btn-ghost text-sm text-[color:var(--color-danger)]"
+            title="ยกเลิกเอกสารนี้?"
+            detail="เอกสารจะถูกยกเลิก แก้ไขไม่ได้ และต้องออกใหม่เท่านั้น"
+            confirmLabel="ยืนยันยกเลิก"
+            danger
+          />
+        )
+      )}
+    </div>
+  );
+}
+
+// ─────────────────── "⋯" ทำรายการ (§3) — แปลงเอกสารที่ยังทำได้จริง + placeholder "เร็ว ๆ นี้" ───────────────────
+function moreActionsFor(data: DocDetailData, base: string, targets: AccountDocType[]): RowActionItem[] {
+  const dt = data.docType;
+  const items: RowActionItem[] = [];
+  const soon = (label: string): RowActionItem => ({ label: `${label} (เร็ว ๆ นี้)`, href: "#" });
+
+  for (const t of targets) {
+    if (t === "TAX_INVOICE" && data.related.some((s) => s.kind === "TX" && s.doc)) continue;
+    items.push({ label: `แปลงเป็น${labelOf(t)}`, href: `${editorDetailPath(base, t, data.id)}` });
+  }
+  items.push(soon("ส่งอีเมล"));
+  if (dt === "INVOICE") items.push(soon("เตือนชำระ"), soon("ใส่ในใบวางบิล"));
+  items.push(soon("คัดลอก"));
+  return items;
+}
+
+// ─────────────────── แถบเอกสารที่เกี่ยวข้อง ───────────────────
+function RelatedChip({ slot, base }: { slot: RelatedSlot; base: string }) {
+  const testId = `related-${slot.kind}`;
+  if (!slot.doc) {
+    return (
+      <span
+        data-testid={testId}
+        className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs text-[color:var(--color-muted)]"
+        style={{ borderColor: "var(--color-line)" }}
+      >
+        {slot.label} —
+      </span>
+    );
+  }
+  const href = editorDetailPath(base, slot.doc.docType, slot.doc.id);
+  const tone = accountTone(slot.doc.status);
+  return (
+    <Link
+      href={href}
+      data-testid={testId}
+      className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs"
+      style={{ borderColor: "var(--color-line)" }}
+    >
+      {slot.label} {slot.doc.docNo ?? "(ร่าง)"}
+      {slot.doc.status === "PARTIAL" && <span className="text-[color:var(--color-accent)]">บางส่วน</span>}
+      {tone === "strong" && <span aria-hidden>✓</span>}
+    </Link>
+  );
+}
+
+// ─────────────────── แท็บเนื้อหา ───────────────────
+type TabKey = "detail" | "payments" | "gl" | "attachments" | "history";
+const TABS: { key: TabKey; label: (n: number) => string }[] = [
+  { key: "detail", label: () => "รายละเอียด" },
+  { key: "payments", label: (n) => `การชำระเงิน${n ? ` ${n}` : ""}` },
+  { key: "gl", label: () => "บัญชี" },
+  { key: "attachments", label: (n) => `ไฟล์แนบ${n ? ` ${n}` : ""}` },
+  { key: "history", label: () => "ประวัติ" },
+];
+
+function JvTable({ entries, testPrefix }: { entries: JvEntryView[]; testPrefix: string }) {
+  if (entries.length === 0) {
+    return <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีรายการบัญชีสำหรับเอกสารนี้</p>;
+  }
+  let n = 0;
+  return (
+    <div className="flex flex-col gap-4">
+      {entries.map((e) => (
+        <div key={e.id} className="flex flex-col gap-1">
+          <div className="flex items-center justify-between text-xs text-[color:var(--color-muted)]">
+            <span>
+              {e.docNo} · {fmtDate(e.date)} {e.memo ? `· ${e.memo}` : ""}
+              {e.status === "REVERSED" && " · กลับรายการแล้ว"}
+              {e.needsReview && " · ⚑ ต้องตรวจ"}
+            </span>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
+                <th className="py-1.5 font-normal">บัญชี</th>
+                <th className="py-1.5 text-right font-normal">เดบิต</th>
+                <th className="py-1.5 text-right font-normal">เครดิต</th>
+              </tr>
+            </thead>
+            <tbody>
+              {e.lines.map((l) => {
+                n += 1;
+                return (
+                  <tr key={l.id} className="border-b last:border-0" data-testid={`${testPrefix}-${n}`}>
+                    <td className="py-1.5">
+                      {l.accountCode} · {l.accountName}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">{l.debit > 0 ? <MoneyText satang={l.debit} decimals /> : "—"}</td>
+                    <td className="py-1.5 text-right tabular-nums">{l.credit > 0 ? <MoneyText satang={l.credit} decimals /> : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DetailTab({ data, vatRegistered }: { data: DocDetailData; vatRegistered: boolean }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="card text-sm">
+        <div className="text-xs text-[color:var(--color-muted)]">ผู้ติดต่อ</div>
+        <div className="font-medium">{data.contact?.name ?? "ไม่ระบุ"}</div>
+        {data.contact?.taxId && <div className="text-xs text-[color:var(--color-muted)]">เลขภาษี {data.contact.taxId}</div>}
+      </div>
+      <div className="card overflow-x-auto">
+        <table className="w-full min-w-[560px] text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
+              <th className="py-2 font-normal">รายการ</th>
+              <th className="py-2 text-right font-normal">จำนวน</th>
+              <th className="py-2 text-right font-normal">ราคา/หน่วย</th>
+              <th className="py-2 text-right font-normal">มูลค่า</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.lines.map((l) => (
+              <tr key={l.id} className="border-b last:border-0">
+                <td className="py-2">
+                  {l.description}
+                  {l.account && <span className="block text-xs text-[color:var(--color-muted)]">{l.account.code} {l.account.name}</span>}
+                </td>
+                <td className="py-2 text-right tabular-nums">
+                  {l.qty} {l.unitName ?? ""}
+                </td>
+                <td className="py-2 text-right tabular-nums"><MoneyText satang={l.unitPrice} decimals /></td>
+                <td className="py-2 text-right tabular-nums"><MoneyText satang={l.amount} decimals /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="mt-3 ml-auto flex w-full max-w-xs flex-col gap-1 text-sm">
+          <TotalRow label="รวมเป็นเงิน" satang={data.subTotal} />
+          {data.discountAmount > 0 && <TotalRow label="ส่วนลดท้ายบิล" satang={-data.discountAmount} />}
+          {vatRegistered && <TotalRow label="ภาษีมูลค่าเพิ่ม" satang={data.vatAmount} />}
+          {data.whtAmount > 0 && <TotalRow label="หัก ณ ที่จ่าย" satang={-data.whtAmount} />}
+          {data.depositDeducted > 0 && <TotalRow label="หักเงินมัดจำ" satang={-data.depositDeducted} />}
+          <div className="flex w-full justify-between border-t pt-1 font-semibold">
+            <span>ยอดที่ต้องชำระ</span>
+            <span><MoneyText satang={data.grandTotal} decimals /></span>
+          </div>
+        </div>
+      </div>
+      {(data.note || data.internalNote) && (
+        <div className="card flex flex-col gap-1 text-sm">
+          {data.note && (
+            <div>
+              <span className="text-xs text-[color:var(--color-muted)]">หมายเหตุ (พิมพ์บนเอกสาร): </span>
+              {data.note}
+            </div>
+          )}
+          {data.internalNote && (
+            <div>
+              <span className="text-xs text-[color:var(--color-muted)]">หมายเหตุภายใน: </span>
+              {data.internalNote}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TotalRow({ label, satang }: { label: string; satang: number }) {
+  return (
+    <div className="flex w-full justify-between text-[color:var(--color-muted)]">
+      <span>{label}</span>
+      <span className={satang < 0 ? "text-[color:var(--color-danger)]" : ""}>
+        {satang < 0 && "−"}
+        <MoneyText satang={Math.abs(satang)} decimals />
+      </span>
+    </div>
+  );
+}
+
+function PaymentsTab({ data, systemId, side }: { data: DocDetailData; systemId: string; side: "revenue" | "expense" }) {
+  const canPay =
+    (data.status === "AWAITING_PAYMENT" || data.status === "PARTIAL") &&
+    (REVENUE_PAYABLE_TYPES.includes(data.docType) || EXPENSE_PAYABLE_TYPES.includes(data.docType));
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="card overflow-x-auto">
+        <table className="w-full min-w-[560px] text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
+              <th className="py-2 font-normal">ครั้งที่</th>
+              <th className="py-2 font-normal">วันที่</th>
+              <th className="py-2 font-normal">ช่องทาง</th>
+              <th className="py-2 text-right font-normal">จำนวน</th>
+              <th className="py-2 text-right font-normal">WHT</th>
+              <th className="py-2 font-normal">ผู้บันทึก</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.payments.map((p, i) => (
+              <tr
+                key={p.id}
+                className={`border-b last:border-0 ${p.voidedAt ? "opacity-50 line-through" : ""}`}
+                data-testid={`pay-row-${i + 1}`}
+              >
+                <td className="py-2">{i + 1}</td>
+                <td className="py-2">{fmtDate(p.paidAt)}</td>
+                <td className="py-2">
+                  {p.financeName ?? PAY_CHANNEL_LABEL[p.channel as keyof typeof PAY_CHANNEL_LABEL] ?? p.channel}
+                  {p.chequeNo ? ` · เช็ค ${p.chequeNo}` : ""}
+                </td>
+                <td className="py-2 text-right tabular-nums"><MoneyText satang={p.amount} decimals /></td>
+                <td className="py-2 text-right tabular-nums">{p.whtAmount > 0 ? <MoneyText satang={p.whtAmount} decimals /> : "—"}</td>
+                <td className="py-2">S</td>
+              </tr>
+            ))}
+            {data.payments.length === 0 && (
+              <tr>
+                <td colSpan={6} className="py-4 text-center text-[color:var(--color-muted)]">
+                  ยังไม่มีการรับชำระ
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        {canPay && (
+          <div className="mt-3">
+            <PaymentPanel
+              systemId={systemId}
+              docId={data.id}
+              triggerLabel={side === "expense" ? "+ บันทึกจ่ายเพิ่ม" : "+ รับชำระเพิ่ม"}
+              triggerClassName="btn btn-ghost text-sm"
+            />
+          </div>
+        )}
+      </div>
+      {/* g4: preview สมุดรายวันโชว์ใต้ตารางการชำระเงินเสมอ (ไม่ต้องสลับไปแท็บ "บัญชี") */}
+      <div className="card">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-sm font-semibold">บัญชี (ตัวอย่างสมุดรายวัน)</h3>
+          <span className="text-xs text-[color:var(--color-muted)]">ดูสมุดรายวัน ›</span>
+        </div>
+        <JvTable entries={data.jv.slice(0, 1)} testPrefix="jv-line" />
+      </div>
+    </div>
+  );
+}
+
+function GlTab({ data, base }: { data: DocDetailData; base: string }) {
+  return (
+    <div className="card flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">รายการบัญชี (Dr/Cr)</h3>
+        <Link href={`${base}/journal`} className="text-xs underline">
+          ดูสมุดรายวัน ›
+        </Link>
+      </div>
+      <JvTable entries={data.jv} testPrefix="jv-line" />
+    </div>
+  );
+}
+
+function AttachmentsTab({ data, systemId }: { data: DocDetailData; systemId: string }) {
+  return (
+    <div className="card">
+      <DocAttachments systemId={systemId} documentId={data.id} storageEnabled={storageEnabled()} initial={data.attachments} />
+    </div>
+  );
+}
+
+function HistoryTab({ data }: { data: DocDetailData }) {
+  if (data.auditLogs.length === 0) {
+    return <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีประวัติ</p>;
+  }
+  return (
+    <div className="card flex flex-col gap-2 text-sm">
+      {data.auditLogs.map((l) => (
+        <div key={l.id} className="flex items-center justify-between border-b pb-2 last:border-0">
+          <span>{l.actionLabel ?? auditActionLabelTh(l.action)}</span>
+          <span className="text-xs text-[color:var(--color-muted)]">
+            {fmtDateLong(l.createdAt)} · {l.actorName}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────── ส่วนหัว ───────────────────
+function HeaderStat({ label, testId, danger, children }: { label: string; testId: string; danger?: boolean; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs text-[color:var(--color-muted)]">{label}</div>
+      <div
+        className="text-lg font-semibold tabular-nums"
+        style={danger ? { color: "var(--color-danger)" } : undefined}
+        data-testid={testId}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export async function DocDetailPage({
+  tenantId,
+  systemId,
+  docId,
+  expectDocType,
+  tab,
+  err,
+}: {
+  tenantId: string;
+  systemId: string;
+  docId: string;
+  /** เส้นทางฝั่งรายรับมี docType ใน path — ต้องตรงกับเอกสารจริง มิฉะนั้น 404 (กัน route สลับชนิด) */
+  expectDocType?: AccountDocType;
+  /** ?tab= — แท็บที่เปิดอยู่ (ค่าเริ่มต้น "รายละเอียด") */
+  tab?: string;
+  err?: string;
+}) {
+  const [data, settings] = await Promise.all([getDocDetailData(tenantId, systemId, docId), getSettings(tenantId, systemId)]);
+  if (!data) notFound();
+  if (expectDocType && data.docType !== expectDocType) notFound();
+
+  const base = `/app/sys/${systemId}/account`;
+  const dt = data.docType;
+  const side = sideOf(dt);
+  const listPath = editorListPath(base, dt);
+  const editPath = editorEditPath(base, dt, data.id);
+  const targets =
+    side === "revenue" && !ACTIVE_STATUSES.has(data.status) ? visibleConvertTargets(dt, settings.vatRegistered) : [];
+  const canShareLink = ["RECEIPT", "DEPOSIT_RECEIPT", "INVOICE"].includes(dt) && !ACTIVE_STATUSES.has(data.status);
+
+  const steps: StepDef[] = data.timeline.map((s) => ({
+    code: s.code,
+    label: s.label,
+    docNo: s.date ? `${fmtDate(s.date)}${s.note ? ` · ${s.note}` : ""}` : "—",
+    state: s.state,
+  }));
+
+  return (
+    <div className="flex max-w-4xl flex-col gap-5">
+      {err && <p className="text-sm text-[color:var(--color-danger)]">{decodeURIComponent(err)}</p>}
+
+      {/* หัว (g4/f14) */}
+      <div className="card flex flex-col gap-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-6">
+            <div>
+              <Link href={listPath} className="text-xs text-[color:var(--color-muted)] underline">
+                {data.label}เลขที่
+              </Link>
+              <h1 className="text-2xl font-semibold" data-testid="doc-h1">
+                {data.docNo ?? "(ร่าง)"}
+              </h1>
+            </div>
+            <span data-testid="doc-status">
+              <StatusBadge status={data.status} overdue={data.overdue} />
+            </span>
+            <HeaderStat label="ยอดสุทธิ" testId="doc-grand">
+              <MoneyText satang={data.grandTotal} decimals />
+            </HeaderStat>
+            {(REVENUE_PAYABLE_TYPES.includes(dt) || EXPENSE_PAYABLE_TYPES.includes(dt)) && (
+              <HeaderStat label="ค้างชำระ" testId="doc-outstanding" danger={data.overdue && data.remain > 0}>
+                <MoneyText satang={data.remain} decimals />
+              </HeaderStat>
+            )}
+            {data.dueDate && (
+              <HeaderStat label={dt === "QUOTATION" ? "ใช้ได้ถึง" : "ครบกำหนด"} testId="doc-due" danger={data.overdue}>
+                {fmtDate(data.dueDate)}
+              </HeaderStat>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <ShareLinkButton systemId={systemId} docId={data.id} disabled={!canShareLink} />
+            <Link href={`${base}/print/${data.id}`} target="_blank" className="btn btn-ghost text-sm">
+              PDF
+            </Link>
+            <button type="button" className="btn btn-ghost text-sm" disabled title="เร็ว ๆ นี้">
+              อีเมล
+            </button>
+            <RowActions testId="doc-more-actions" items={moreActionsFor(data, base, targets)} />
+          </div>
+        </div>
+
+        <ActionRow data={data} systemId={systemId} side={side} base={base} editPath={editPath} vatRegistered={settings.vatRegistered} targets={targets} />
+      </div>
+
+      {/* ไทม์ไลน์เอกสาร */}
+      {steps.length > 0 && (
+        <div className="card overflow-x-auto">
+          <Stepper steps={steps} testId="timeline" />
+        </div>
+      )}
+
+      {/* เอกสารที่เกี่ยวข้อง */}
+      {data.related.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {data.related.map((s) => (
+            <RelatedChip key={s.kind} slot={s} base={base} />
+          ))}
+        </div>
+      )}
+
+      {/* แท็บ (?tab= — ฝั่ง server เลือก panel โดยตรง ไม่ต้องส่ง client JS เพิ่มเพื่อสลับแท็บ) */}
+      <DocDetailTabsPanel
+        data={data}
+        systemId={systemId}
+        base={base}
+        side={side}
+        vatRegistered={settings.vatRegistered}
+        activeTab={TABS.some((t) => t.key === tab) ? (tab as TabKey) : "detail"}
+      />
+    </div>
+  );
+}
+
+function DocDetailTabsPanel({
+  data,
+  systemId,
+  base,
+  side,
+  vatRegistered,
+  activeTab,
+}: {
+  data: DocDetailData;
+  systemId: string;
+  base: string;
+  side: "revenue" | "expense";
+  vatRegistered: boolean;
+  activeTab: TabKey;
+}) {
+  const active = activeTab;
+  const counts: Record<TabKey, number> = {
+    detail: 0,
+    payments: data.payments.filter((p) => !p.voidedAt).length,
+    gl: 0,
+    attachments: data.attachments.length,
+    history: 0,
+  };
+  const detailPath = editorDetailPath(base, data.docType, data.id);
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex gap-1 overflow-x-auto border-b" role="tablist">
+        {TABS.map((t) => (
+          <Link
+            key={t.key}
+            href={t.key === "detail" ? detailPath : `${detailPath}?tab=${t.key}`}
+            data-testid={`tab-${t.key}`}
+            aria-current={active === t.key ? "page" : undefined}
+            className="whitespace-nowrap border-b-2 px-3 py-2 text-sm"
+            style={active === t.key ? { borderColor: "var(--color-ink)", fontWeight: 600 } : { borderColor: "transparent", color: "var(--color-muted)" }}
+          >
+            {t.label(counts[t.key])}
+          </Link>
+        ))}
+      </div>
+      {active === "detail" && <DetailTab data={data} vatRegistered={vatRegistered} />}
+      {active === "payments" && <PaymentsTab data={data} systemId={systemId} side={side} />}
+      {active === "gl" && <GlTab data={data} base={base} />}
+      {active === "attachments" && <AttachmentsTab data={data} systemId={systemId} />}
+      {active === "history" && <HistoryTab data={data} />}
+    </div>
+  );
+}
+
+export default DocDetailPage;

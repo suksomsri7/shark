@@ -377,6 +377,21 @@ export async function ensurePublicLinkAction(formData: FormData) {
   redirect(path);
 }
 
+// WO 1.5 — ปุ่ม "แชร์ลิงก์" บนหน้าเอกสาร V2: สร้าง token ถ้ายังไม่มี แล้วคืนค่าตรง ๆ (ไม่ redirect)
+// ให้ client component คัดลอกลิงก์เข้าคลิปบอร์ดได้ทันทีโดยไม่รีโหลดหน้า — ใช้ ensurePublicTaxInvoiceLink เดิม
+export async function getOrCreatePublicLinkAction(
+  systemId: string,
+  docId: string,
+): Promise<{ ok: true; token: string } | { ok: false; reason: string }> {
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.doc.issue");
+  const res = await ensurePublicTaxInvoiceLink(tenantId, systemId, docId);
+  if (res.ok) {
+    await writeAudit({ tenantId, actorId: userId, action: "account.doc.public_link", targetType: "AccountDocument", targetId: docId });
+  }
+  return res;
+}
+
 export async function saveSettingsAction(formData: FormData) {
   const systemId = str(formData, "systemId");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);

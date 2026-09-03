@@ -1,12 +1,10 @@
 // ตัวช่วย render หน้า route ฝั่งรายจ่าย (list + create + detail) — ใช้ร่วมทุก slug
 // (purchase/expense/po/asset-buy) เพื่อไม่ซ้ำโค้ด. service+actions+components เสร็จแล้ว
-import { notFound } from "next/navigation";
 import type { AccountDocType } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
 import { getSettings, listContacts, computeListTabCounts, sumOutstandingForFilter, DOC_LABEL } from "./service";
 import {
   listExpenseDocsPaged,
-  getExpenseDoc,
   listExpenseAccounts,
   listAssetAccounts,
   listDeductiblePaidDeposits,
@@ -28,10 +26,10 @@ import {
   StatusCell,
   type ListRow,
 } from "./list-columns";
-import { ExpenseDetail } from "./expense-ui";
 import ExpenseEditor from "./ExpenseEditor";
 import { canCreateDirect } from "./doc-editor-config";
 import { DocListPage } from "@/components/account-v2/DocListPage";
+import { DocDetailPage } from "@/components/account-v2/DocDetailPage";
 import { MoneyText } from "@/components/ui/MoneyText";
 import type { RowActionItem } from "@/components/account-v2/RowActions";
 import type { DocColumn } from "@/components/account-v2/DocTable";
@@ -231,29 +229,15 @@ export async function ExpenseListPage(props: {
   );
 }
 
-// หน้า detail
+// หน้า detail — WO 1.5: เนื้อหาจริงอยู่ที่ DocDetailPage (ใช้ร่วมกับฝั่งรายรับทั้งหมด — §5.3)
 export async function ExpenseDetailPage(props: {
   systemId: string;
   docId: string;
   slug: string;
   err?: string;
+  tab?: string;
 }) {
-  const { systemId, docId, slug } = props;
+  const { systemId, docId } = props;
   const { tenantId } = await loadAccountSystem(systemId);
-  const doc = await getExpenseDoc(tenantId, systemId, docId);
-  if (!doc) notFound();
-  const base = `/app/sys/${systemId}/account`;
-  const label = labelOf(doc.docType);
-  return (
-    <div className="max-w-3xl">
-      <ExpenseDetail
-        doc={doc}
-        systemId={systemId}
-        label={label}
-        editHref={`${base}/${slug}/${docId}/edit`} // WO 1.3: ฟอร์ม V2 เต็มหน้า
-        listHref={`${base}/${slug}`}
-        err={props.err}
-      />
-    </div>
-  );
+  return <DocDetailPage tenantId={tenantId} systemId={systemId} docId={docId} tab={props.tab} err={props.err} />;
 }
