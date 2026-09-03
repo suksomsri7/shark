@@ -204,91 +204,34 @@ export function isOverdue(d: {
 
 // ─────────────────── ยอดเงิน ───────────────────
 
-export type LineInput = {
-  description: string;
-  qty: number;
-  unitName?: string | null;
-  unitPrice: number; // สตางค์
-  discount?: number; // สตางค์
-  vatRateBp?: number;
-};
+// (import ตัวที่ไฟล์นี้เรียกใช้เองด้วย — `export … from` ไม่สร้าง binding ในไฟล์)
+import { computeTotals, lineAmount } from "./totals";
+import type { LineInput } from "./totals";
 
-export function lineAmount(l: LineInput): number {
-  const gross = Math.round((l.qty || 0) * (l.unitPrice || 0));
-  return Math.max(0, gross - (l.discount || 0));
-}
-
-// กระจายยอด (เช่น ส่วนลดท้ายบิล) ตามสัดส่วนน้ำหนักแต่ละบรรทัด — largest remainder ให้ผลรวมตรงเป๊ะ
-// (ledger-M11: ส่วนลดท้ายบิลข้ามหลายอัตรา VAT → allocate ตามสัดส่วนฐานแต่ละบรรทัด/อัตรา)
-export function allocateProportional(total: number, weights: number[]): number[] {
-  const sumW = weights.reduce((a, b) => a + b, 0);
-  if (total <= 0 || sumW <= 0) return weights.map(() => 0);
-  const raw = weights.map((w) => (total * w) / sumW);
-  const out = raw.map((r) => Math.floor(r));
-  let rem = total - out.reduce((a, b) => a + b, 0);
-  const order = raw
-    .map((r, i) => ({ i, frac: r - Math.floor(r) }))
-    .sort((a, b) => b.frac - a.frac);
-  for (let k = 0; rem > 0 && order.length > 0; k++, rem--) out[order[k % order.length].i] += 1;
-  return out;
-}
-
-// อัตรา VAT ต่อบรรทัด: -1 = ยกเว้น, 0 = 0% → คิดเป็น 0 · ไม่จด VAT / vatMode NONE → 0 ทุกบรรทัด
-function lineRate(
-  l: LineInput,
-  vatMode: AccountVatMode,
-  vatRegistered: boolean,
-  fallbackBp: number,
-): number {
-  if (vatMode === "NONE" || !vatRegistered) return 0;
-  const bp = l.vatRateBp ?? fallbackBp;
-  return bp > 0 ? bp / 10000 : 0;
-}
-
-// คำนวณยอดทั้งเอกสาร — ใช้ vatRateBp จริงต่อบรรทัด (pipeline-M5) + กระจายส่วนลดท้ายบิลตามสัดส่วนฐาน (ledger-M11)
-// contract กับ gl.postDocument: afterDiscount = subTotal − discountAmount = ฐานรายได้สุทธิ (สมดุลทั้ง EXCLUDE/INCLUDE)
-export function computeTotals(input: {
-  lines: LineInput[];
-  discountAmount?: number;
-  depositDeducted?: number;
-  vatMode: AccountVatMode;
-  vatRegistered: boolean;
-  vatRateBp: number;
-}): { subTotal: number; vatAmount: number; grandTotal: number } {
-  const bases = input.lines.map(lineAmount); // ฐานบรรทัด (ตามที่ป้อน: EXCLUDE=ก่อน VAT, INCLUDE=รวม VAT)
-  const baseSum = bases.reduce((a, b) => a + b, 0);
-  const docDiscount = Math.min(Math.max(0, input.discountAmount || 0), baseSum);
-  const discAlloc = allocateProportional(docDiscount, bases);
-
-  let vatAmount = 0;
-  let incomeNet = 0; // ฐานรายได้สุทธิ (หลังหักส่วนลดท้ายบิล ก่อน VAT) ทุกบรรทัดรวมกัน
-  let grandBeforeDeposit = 0;
-  input.lines.forEach((l, i) => {
-    const afterBase = Math.max(0, bases[i] - discAlloc[i]);
-    const rate = lineRate(l, input.vatMode, input.vatRegistered, input.vatRateBp);
-    if (rate > 0) {
-      if (input.vatMode === "INCLUDE") {
-        const net = Math.round(afterBase / (1 + rate));
-        vatAmount += afterBase - net;
-        incomeNet += net;
-        grandBeforeDeposit += afterBase; // ราคารวม VAT แล้ว
-      } else {
-        const vat = Math.round(afterBase * rate);
-        vatAmount += vat;
-        incomeNet += afterBase;
-        grandBeforeDeposit += afterBase + vat;
-      }
-    } else {
-      incomeNet += afterBase;
-      grandBeforeDeposit += afterBase;
-    }
-  });
-
-  // subTotal นิยามให้ (subTotal − discountAmount) = incomeNet เพื่อให้ gl สมดุลทั้งสองโหมด
-  const subTotal = incomeNet + docDiscount;
-  const grandTotal = Math.max(0, grandBeforeDeposit - (input.depositDeducted || 0));
-  return { subTotal, vatAmount, grandTotal };
-}
+// สูตรเงินทั้งหมดย้ายไป `totals.ts` (WO 1.3) — ไฟล์นั้น "บริสุทธิ์" (ไม่ import prisma)
+// เพื่อให้ฟอร์ม V2 ฝั่ง client เรียกสูตรเดียวกับ server ได้ · ที่นี่ re-export ให้ผู้เรียกเดิมไม่ต้องแก้
+export {
+  lineAmount,
+  allocateProportional,
+  computeTotals,
+  computeDocTotals,
+  bahtText,
+  vatModeOf,
+  priceModeOf,
+  lineDiscountSatang,
+  ZERO_DISCOUNT,
+} from "./totals";
+export type {
+  LineInput,
+  LineBreakdown,
+  Totals,
+  PriceMode,
+  AmountOrPercent,
+  DocTotalsLine,
+  DocTotalsInput,
+  DocTotalsLineOut,
+  DocTotals,
+} from "./totals";
 
 // ─────────────────── ตั้งค่า ───────────────────
 
