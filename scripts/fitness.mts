@@ -307,6 +307,11 @@ const ALLOWED_EDGES = new Set([
   "crm→party",
   "hr→party", // จาก name/phone/email เท่านั้น — ห้ามส่ง nationalId/PDPA อื่นเข้า party
   "inventory→party", // Supplier (procurement.ts)
+  // chokepoint (WO 3.2 — หน้าผู้ติดต่อ V2): ป้าย "สมาชิก"/"CRM" (badges ที่มา §7.1) มาจาก Customer/CrmContact
+  // ที่ partyId เดียวกัน — อ่านอย่างเดียว (listPartyIdsWithCustomer/listPartyIdsWithContact) อนุมัติล่วงหน้า
+  // ตามใบสั่งงาน WO 3.2 ข้อ A ("Customer / CrmContact / ChatContact rows … read-only queries")
+  "account→member",
+  "account→crm",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

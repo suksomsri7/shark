@@ -422,6 +422,13 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
       href: `${base}/contacts`,
       items: [
         page({ label: "ผู้ติดต่อ", href: `${base}/contacts`, status: "ready", icon: "users", testId: "CONTACTS" }),
+        page({ // WO 3.2: ดูภาพรวมผู้ติดต่อ (§7.4)
+          label: "ดูภาพรวม",
+          href: `${base}/contacts/overview`,
+          status: "ready",
+          icon: "chart",
+          testId: "CONTACTS_OVERVIEW",
+        }),
         soon("กลุ่มผู้ติดต่อ", "tag", "CONTACT_GROUPS"),
         soon("รวมผู้ติดต่อซ้ำ", "copy", "CONTACT_MERGE"),
         soon("การเชื่อมต่อคู่ค้า", "link", "CONTACT_LINK"),

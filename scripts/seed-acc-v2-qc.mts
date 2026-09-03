@@ -76,6 +76,9 @@ const prod = await import("@/lib/modules/account/product");
 const gl = await import("@/lib/modules/account/gl");
 const sys = await import("@/lib/modules/system/service");
 const coa = await import("@/lib/modules/account/coa"); // WO 2.2: ปักหมุด "บัญชีที่ติดตาม" (ผังบัญชี) ให้ตรง f1
+const contactsList = await import("@/lib/modules/account/contacts-list"); // WO 3.2: กลุ่มผู้ติดต่อ
+const mem = await import("@/lib/modules/member/service"); // WO 3.2: สาธิตป้าย "สมาชิก" (เชื่อม Party)
+const crm = await import("@/lib/modules/crm/service"); // WO 3.2: สาธิตป้าย "CRM" (เชื่อม Party)
 
 // ─────────────────────────── ตัวช่วย ───────────────────────────
 
@@ -365,7 +368,11 @@ const mkContact = async (
     name: c.name,
     taxId: String(taxSeq++),
     address: "จ.ภูเก็ต",
-    phone: `076${String(100000 + seq).slice(-6)}`,
+    // WO 3.2 🐞 บั๊กที่เจอ: เดิมทั้งลูกค้า+ผู้ขายใช้สูตรเบอร์เดียวกัน "076" + seq (seq เริ่ม 1 ใหม่ทั้งคู่)
+    // ⇒ ลูกค้าลำดับ 9/19 กับผู้ขายลำดับ 9/19 ได้เบอร์ชนกันเป๊ะ (ผู้เสียภาษีคนละเลขแต่เบอร์เดียวกัน) — WO 3.1
+    // Party จับคู่ด้วย phoneNorm เป็นลำดับรอง (ไม่พบ taxId ก่อน) จึงรวมนิติบุคคลคนละรายเป็น Party เดียวกันผิด ๆ
+    // (เจอจาก WO 3.2 P3 "ที่มา": สมาชิก/CRM นับได้ 2 ราย ทั้งที่ตั้งใจสาธิตแค่รายละ 1) → แยกรหัสพื้นที่ตามชนิด
+    phone: `${kind === "CUSTOMER" ? "076" : "077"}${String(100000 + seq).slice(-6)}`,
     email: null,
     creditTermDays: c.person ? 0 : 30,
     note: `${kind === "CUSTOMER" ? "C" : "V"}${String(seq).padStart(5, "0")}`,
@@ -383,6 +390,42 @@ const cid = (name: string) => {
   if (!id) throw new Error(`ไม่พบผู้ติดต่อ "${name}"`);
   return id;
 };
+
+// ─────────────────────────── 4.5 กลุ่มผู้ติดต่อกำหนดเอง + สาธิตป้าย "ที่มา" (WO 3.2 §7.1) ───────────────────────────
+// ตัวเลขกลุ่มกำหนดเองไม่ใช่เฉลยที่ BLUEPRINT บังคับ (บังคับแค่ 63/41/12/22/5 ของกลุ่มมาตรฐาน) — เลือกสมาชิกให้สมเหตุสมผล
+const ctx = { tenantId, systemId };
+const gVip = await contactsList.createContactGroup(ctx, { name: "ลูกค้า VIP", color: "accent" });
+await contactsList.addContactsToGroup(ctx, gVip.id, [
+  cid("ปิยธิดา อินสุ่ม"),
+  cid("โรงแรมสิมิลันวิว"),
+  cid("บริษัท อันดามัน ทราเวล จำกัด"),
+  cid("บริษัท เกาะพีพี แอดเวนเจอร์ จำกัด"),
+  cid("บริษัท เจ็ตสกี ภูเก็ต จำกัด"),
+]);
+const gHotel = await contactsList.createContactGroup(ctx, { name: "โรงแรมพันธมิตร", color: "muted" });
+await contactsList.addContactsToGroup(ctx, gHotel.id, [
+  cid("โรงแรมสิมิลันวิว"),
+  cid("โรงแรมกะตะบีชรีสอร์ท"),
+  cid("โรงแรมกมลาเบย์"),
+  cid("โรงแรมในหานวิลล่า"),
+]);
+const gSupplier = await contactsList.createContactGroup(ctx, { name: "ซัพพลายเออร์หลัก", color: "strong" });
+await contactsList.addContactsToGroup(ctx, gSupplier.id, [
+  cid("บริษัท สยามแก๊ส อินดัสทรี จำกัด"),
+  cid("บริษัท อควาเทค อุปกรณ์ดำน้ำ จำกัด"),
+  cid("บริษัท ภูเก็ตปิโตรเลียม จำกัด"),
+  cid("บริษัท ครัวทะเลใต้ เคเทอริ่ง จำกัด"),
+]);
+console.log(`🗂️  กลุ่มผู้ติดต่อกำหนดเอง 3 กลุ่ม (VIP 5 · โรงแรมพันธมิตร 4 · ซัพพลายเออร์หลัก 4)`);
+
+// ป้าย "สมาชิก"/"CRM" (§7.1 "ที่มา") มาจาก Customer/CrmContact ที่ partyId เดียวกับ AccountContact (WO 3.1 Party)
+// ใช้เบอร์เดียวกับที่ mkContact สร้างให้ผู้ติดต่อเดิม → party.safeFindOrCreate จับคู่ Party เดิมผ่าน phoneNorm
+// (ไม่ใช่สร้าง Party ใหม่ซ้อน) — พิสูจน์ badge "สมาชิก"/"CRM" ในหน้าผู้ติดต่อจากข้อมูลจริง ไม่ใช่ค่า mock
+const piyathidaPhone = `076${String(100000 + 19).slice(-6)}`; // ปิยธิดา อินสุ่ม = ลูกค้าลำดับ 19 (C00019)
+const somchaiPhone = `076${String(100000 + 9).slice(-6)}`; // คุณสมชาย ใจดี = ลูกค้าลำดับ 9
+await mem.findOrCreate({ tenantId, memberSystemId: memSys.id, phone: piyathidaPhone, name: "ปิยธิดา อินสุ่ม", source: "STAFF" });
+await crm.createContact({ tenantId, systemId: crmSys.id }, { name: "คุณสมชาย ใจดี", phone: somchaiPhone });
+console.log(`🔗 สาธิตป้าย "ที่มา": สมาชิก 1 ราย (ปิยธิดา อินสุ่ม) · CRM 1 ราย (คุณสมชาย ใจดี)`);
 
 // ─────────────────────────── 5. แผนเอกสาร (คิดยอดให้ครบก่อนแตะ DB) ───────────────────────────
 

@@ -870,6 +870,39 @@ const PAGES: Record<string, PageSpec[]> = {
       waitAfterClick: 300,
     },
   ],
+  // WO 3.2 — หน้าผู้ติดต่อ V2 (§7.1/§7.4) เทียบ f5-contacts.png + f5-contacts-menu.png (เดสก์ท็อป) · f13 pattern (มือถือ)
+  "3.2": [
+    {
+      name: "contacts-list",
+      path: `/app/sys/${SYS}/account/contacts`,
+      note: "หน้ารายการผู้ติดต่อ default (f5-contacts.png) — คอลัมน์ซ้าย 63/41/12/22/5 + ตาราง + pagination",
+      // "กลุ่มมาตรฐาน"/"กลุ่มกำหนดเอง"/"ที่มา" เป็นหัวข้อในการ์ดซ้าย (เดสก์ท็อปเท่านั้น hidden md:flex) — มือถือใช้
+      // แถบชิปเลื่อนแนวนอนแทน (ไม่มีหัวข้อกำกับกลุ่ม) ⇒ ไม่เช็คคำเหล่านี้ตรงนี้เพราะ expect ใช้ร่วมทั้ง 2 อุปกรณ์
+      // (ตัวเลขกลุ่มยืนยันด้วย ASSERT_MAP ทั้งสองอุปกรณ์แล้ว — "ลูกค้าประจำ" ยังเจอได้บนมือถือผ่านชิป)
+      expect: ["ผู้ติดต่อ", "ลูกค้าประจำ"],
+    },
+    {
+      name: "contacts-list-menu",
+      path: `/app/sys/${SYS}/account/contacts`,
+      note: 'เปิด dropdown "ทำรายการ" ของแถวแรก — เทียบ f5-contacts-menu.png (สร้างใบเสนอราคา/ใบแจ้งหนี้/ใบเสร็จ/บันทึกค่าใช้จ่าย/ดูประวัติ/แก้ไข/เพิ่มเข้ากลุ่ม/ปิดใช้งาน)',
+      expect: ["ผู้ติดต่อ"],
+      onlyDevice: "desktop",
+      click: ['[data-testid^="contact-row-actions-"] button.btn-sm'],
+      waitAfterClick: 300,
+    },
+    {
+      name: "contacts-list-group",
+      path: `/app/sys/${SYS}/account/contacts?group=vendor`,
+      note: "เลือกกลุ่ม 'ผู้ขาย' จากแถบซ้าย — ตัวนับ/หัวตาราง 'กลุ่ม: ผู้ขาย 22 รายชื่อ' ต้องตรงเฉลย",
+      expect: ["ผู้ติดต่อ", "ผู้ขาย"],
+    },
+    {
+      name: "contacts-overview",
+      path: `/app/sys/${SYS}/account/contacts/overview`,
+      note: "ดูภาพรวมผู้ติดต่อ (§7.4) — ลูกค้าใหม่เดือนนี้/กลับมาซื้อ + 3 การ์ด top 10",
+      expect: ["ดูภาพรวมผู้ติดต่อ", "ลูกค้าใหม่เดือนนี้", "ลูกค้าที่กลับมาซื้อ", "10 อันดับยอดซื้อ", "10 อันดับค้างชำระ", "ผู้ขาย 10 อันดับยอดจ่าย"],
+    },
+  ],
 };
 
 // ─────────── ตารางตัวเลขที่อ่านจาก data-testid (ว่างไว้ก่อน — WO ถัดไปเติม) ───────────
@@ -980,6 +1013,23 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "ov-paid": bahtStr(E.overview?.expense?.series?.total?.paid ?? 0),
       "ov-awaiting": bahtStr(E.overview?.expense?.series?.total?.awaiting ?? 0),
       "ov-overdue": bahtStr(E.overview?.expense?.series?.total?.overdue ?? 0),
+    },
+  },
+  // WO 3.2 — ตัวนับกลุ่ม/หน้าผู้ติดต่อ ต้องตรง acc-v2-expected.json.contacts เป๊ะ (เฉลย SQL อิสระ — acc-v2-expected-contacts.mts)
+  "3.2": {
+    "contacts-list": {
+      "group-all-count": E.contacts?.all ?? 0,
+      "group-customer-count": E.contacts?.customer ?? 0,
+      "group-regular-count": E.contacts?.regular ?? 0,
+      "group-vendor-count": E.contacts?.vendor ?? 0,
+      "group-archived-count": E.contacts?.archived ?? 0,
+    },
+    "contacts-list-group": {
+      "group-total": E.contacts?.vendor ?? 0,
+    },
+    "contacts-overview": {
+      "ov-new-customers": E.contactsOverview?.newCustomersThisMonth ?? 0,
+      "ov-returning-customers": E.contactsOverview?.returningCustomers ?? 0,
     },
   },
 };

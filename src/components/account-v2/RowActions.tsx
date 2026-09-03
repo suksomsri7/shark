@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { AccountIcon } from "./AccountIcon";
 
 export type RowActionItem = {
   label: string;
@@ -17,6 +18,10 @@ export type RowActionItem = {
   disabled?: boolean;
   /** เหตุผลไทยที่กดไม่ได้ (แสดงใต้ป้าย + เป็น title) */
   hint?: string;
+  /** WO 3.2 รอบแก้ 2 — ไอคอนเส้นบางนำหน้าป้าย (คีย์ของ AccountIcon) ตาม f5-contacts-menu.png — ไม่ส่ง = ไม่มีไอคอน */
+  icon?: string;
+  /** WO 3.2 รอบแก้ 2 — เส้นคั่นเหนือรายการนี้ (จัดกลุ่มย่อยใน dropdown ตาม f5-contacts-menu.png) */
+  sepBefore?: boolean;
 };
 
 // เมนู "ทำรายการ ▾" ต่อแถว (DESIGN-SPEC-V2 §1/§3)
@@ -83,15 +88,24 @@ export function RowActions({
           className="absolute right-0 z-20 mt-1 min-w-[180px] rounded-lg border bg-[color:var(--color-surface)] py-1 shadow-[0_8px_24px_rgba(10,10,10,.08)]"
         >
           {items.map((it, i) => {
-            const cls = `block w-full px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)] ${
+            const cls = `flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)] ${
               it.danger ? "text-[color:var(--color-danger)]" : ""
             }`;
+            // WO 3.2 รอบแก้ 2 — เส้นคั่นจัดกลุ่มย่อย (f5-contacts-menu.png: 4 สร้าง | ดูประวัติ/แก้ไข/เพิ่มเข้ากลุ่ม | ปิดใช้งาน)
+            const sep = it.sepBefore && <div role="separator" className="my-1 border-t" style={{ borderColor: "var(--color-line)" }} />;
+            const iconNode = it.icon && <AccountIcon name={it.icon} className="h-4 w-4 shrink-0 text-[color:var(--color-muted)]" />;
             // WO 1.9 — รายการที่กดไม่ได้: บรรทัดจาง + เหตุผลไทย (ห้ามซ่อนทิ้งเงียบ ๆ)
             if (it.disabled) {
               return (
-                <div key={i} className={`${cls} cursor-not-allowed opacity-60`} title={it.hint} role="menuitem">
-                  <div>{it.label}</div>
-                  {it.hint && <div className="text-xs text-[color:var(--color-muted)]">{it.hint}</div>}
+                <div key={i}>
+                  {sep}
+                  <div className={`${cls} cursor-not-allowed opacity-60`} title={it.hint} role="menuitem">
+                    {iconNode}
+                    <div>
+                      <div>{it.label}</div>
+                      {it.hint && <div className="text-xs text-[color:var(--color-muted)]">{it.hint}</div>}
+                    </div>
+                  </div>
                 </div>
               );
             }
@@ -99,36 +113,47 @@ export function RowActions({
             // เรนเดอร์เหมือน DocMoreMenu เป๊ะ: <form action={…}> + hidden fields (ไม่มี JS ก็ยังทำงาน)
             if (it.submit) {
               return (
-                <form key={i} action={it.submit.action}>
-                  {Object.entries(it.submit.fields ?? {}).map(([k, v]) => (
-                    <input key={k} type="hidden" name={k} value={v} />
-                  ))}
-                  <button type="submit" role="menuitem" className={cls} onClick={() => setOpen(false)}>
-                    {it.label}
-                  </button>
-                </form>
+                <div key={i}>
+                  {sep}
+                  <form action={it.submit.action}>
+                    {Object.entries(it.submit.fields ?? {}).map(([k, v]) => (
+                      <input key={k} type="hidden" name={k} value={v} />
+                    ))}
+                    <button type="submit" role="menuitem" className={cls} onClick={() => setOpen(false)}>
+                      {iconNode}
+                      {it.label}
+                    </button>
+                  </form>
+                </div>
               );
             }
             if (it.href) {
               return (
-                <Link key={i} href={it.href} role="menuitem" className={cls} onClick={() => setOpen(false)}>
-                  {it.label}
-                </Link>
+                <div key={i}>
+                  {sep}
+                  <Link href={it.href} role="menuitem" className={cls} onClick={() => setOpen(false)}>
+                    {iconNode}
+                    {it.label}
+                  </Link>
+                </div>
               );
             }
             return (
-              <button
-                key={i}
-                type="button"
-                role="menuitem"
-                className={cls}
-                onClick={() => {
-                  setOpen(false);
-                  it.onClick?.();
-                }}
-              >
-                {it.label}
-              </button>
+              <div key={i}>
+                {sep}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={cls}
+                  onClick={() => {
+                    setOpen(false);
+                    it.onClick?.();
+                  }}
+                >
+                  {iconNode}
+                  {it.label}
+                </button>
+              </div>
             );
           })}
         </div>

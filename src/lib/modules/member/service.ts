@@ -392,6 +392,24 @@ export async function importCustomers(
   return summary;
 }
 
+/**
+ * WO 3.2 — หน้าผู้ติดต่อบัญชี: ป้าย "สมาชิก" (badge) มาจากแถว Customer ที่ partyId เดียวกับ AccountContact
+ * (Party = ตัวตนกลางระดับ tenant จาก WO 3.1) · 1 query ไม่ N+1 (account/contacts-list.ts เรียกครั้งเดียวต่อหน้า)
+ * เส้น import account→member ได้รับอนุมัติล่วงหน้าตามใบสั่งงาน WO 3.2 (อ่านอย่างเดียว)
+ */
+export async function listPartyIdsWithCustomer(
+  tenantId: string,
+  memberSystemId: string,
+  partyIds: string[],
+): Promise<Set<string>> {
+  if (partyIds.length === 0) return new Set();
+  const rows = await tenantDb({ tenantId, systemId: memberSystemId }).customer.findMany({
+    where: { partyId: { in: partyIds } },
+    select: { partyId: true },
+  });
+  return new Set(rows.map((r) => r.partyId).filter((x): x is string => !!x));
+}
+
 export async function getProfile(tenantId: string, id: string) {
   const customer = await prisma.customer.findFirst({ where: { id, tenantId } });
   if (!customer) return null;

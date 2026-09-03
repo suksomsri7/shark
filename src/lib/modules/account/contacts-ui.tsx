@@ -1,0 +1,408 @@
+// contacts-ui.tsx — หน้าผู้ติดต่อ V2 (WO 3.2) — server component ประกอบ data layer (contacts-list.ts)
+// อ้าง DESIGN-SPEC-V2 §7.1 · mockup f5-contacts.png + f5-contacts-menu.png · checklist เต็มใน wo-notes/3.2.md
+//
+// รอบแก้ 2 (Fable QC ภาพจริง) — เขียนใหม่ให้ตรง f5 เกือบทั้งหมด: การ์ดซ้ายเดียวรวมทุกส่วน + จุดนำหน้า +
+// active = ขอบซ้ายฟ้า · แถวปุ่มหัว [เพิ่มเข้ากลุ่ม][นำเข้า][พิมพ์รายงาน][+เพิ่มผู้ติดต่อ] (ย้าย "ยอดนิยม" ไปซ้าย) ·
+// แถวค้นหาอยู่บรรทัดเดียวกับ "กลุ่ม: … รายชื่อ" · เลขที่เป็นลิงก์สีฟ้า · เบอร์จัดขีดแบบไทย · ท้ายตารางมี
+// "เลือกอยู่ N รายการ" ตลอดเวลา + ตัวเลือกจำนวนต่อหน้า — ดู ContactsPanel.tsx (client) สำหรับส่วน interactive
+//
+// ความต่างจากภาพจริงที่เหลือ (ตั้งใจ — ดูเหตุผลเต็มใน wo-notes/3.2.md):
+//   1) แถวคลิก → หน้ารายละเอียดย่อ (อ่านอย่างเดียว) ไม่ใช่แผงเลื่อน 360° — TODO(WO 3.4)
+//   2) modal เพิ่ม/แก้ไขผู้ติดต่อเต็มรูปแบบ (§7.2) = WO 3.3 — ที่นี่ยังใช้ฟอร์ม inline เดิม (ย้ายตำแหน่งเท่านั้น)
+//   3) dropdown ทำรายการ เพิ่ม "เพิ่มเข้ากลุ่ม" ต่อจาก "แก้ไขข้อมูล" (deliverable text ระบุชัด แม้ภาพตัวอย่างไม่มี)
+
+import { StatusChip } from "@/components/ui/StatusChip";
+import { MoneyText } from "@/components/ui/MoneyText";
+import { FormField } from "@/components/ui/FormField";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { formatDateTh } from "@/lib/ui/date";
+import { RowActions, type RowActionItem } from "@/components/account-v2/RowActions";
+import { HashSection } from "@/components/account-v2/HashSection";
+import { ContactsPanel, type ContactsPanelGroupItem, type ContactsPanelRow } from "@/components/account-v2/ContactsPanel";
+import { editorNewPath, editorDetailPath } from "./doc-editor-config";
+import {
+  loadContactsSidebar,
+  listContactsPage,
+  formatPhoneTh,
+  POPULAR_VENDORS,
+  type ContactRow,
+  type ContactGroupKey,
+} from "./contacts-list";
+import { getContact } from "./service";
+import {
+  createContactAction,
+  updateContactAction,
+  archiveContactAction,
+  createContactGroupAction,
+  addContactsToGroupAction,
+  insertPopularVendorsAction,
+} from "./actions";
+
+const KIND_LABEL: Record<string, string> = { CUSTOMER: "ลูกค้า", VENDOR: "ผู้ขาย", BOTH: "ทั้งคู่" };
+
+type SP = {
+  q?: string;
+  group?: string;
+  legalType?: string;
+  page?: string;
+  pageSize?: string;
+  err?: string;
+  bulkIds?: string;
+  edit?: string;
+};
+
+// สลับกลุ่มแล้วคง q/legalType เดิมไว้ (ค้นหาระหว่างเปลี่ยนกลุ่มได้ต่อเนื่อง) — รีเซ็ต page เสมอ (ชุดข้อมูลใหม่)
+function groupHref(pathname: string, current: { q?: string; legalType?: string }, group: ContactGroupKey | "all") {
+  const p = new URLSearchParams();
+  if (current.q) p.set("q", current.q);
+  if (current.legalType) p.set("legalType", current.legalType);
+  if (group !== "all") p.set("group", group);
+  const qs = p.toString();
+  return qs ? `${pathname}?${qs}` : pathname;
+}
+
+export async function ContactsPage({
+  tenantId,
+  systemId,
+  id,
+  searchParams,
+}: {
+  tenantId: string;
+  systemId: string;
+  id: string; // systemId ของ URL (`/app/sys/<id>/...`)
+  searchParams: SP;
+}) {
+  const base = `/app/sys/${id}/account`;
+  const pathname = `${base}/contacts`;
+  const ctx = { tenantId, systemId };
+
+  const sidebar = await loadContactsSidebar(ctx);
+  const group = (searchParams.group as ContactGroupKey | undefined) ?? "all";
+  const legalType = searchParams.legalType === "COMPANY" || searchParams.legalType === "PERSON" ? searchParams.legalType : undefined;
+  const result = await listContactsPage(
+    ctx,
+    { q: searchParams.q, group, legalType, page: Number(searchParams.page) || 1, pageSize: Number(searchParams.pageSize) || 8 },
+    sidebar,
+  );
+
+  const editingContact = searchParams.edit ? await getContact(tenantId, systemId, searchParams.edit) : null;
+
+  const cellsFor = (r: ContactRow): React.ReactNode[] => [
+    // เลขที่ — ลิงก์สีฟ้า (accent) ตรง f5 (ไม่ใช่สีดำแบบรอบแรก)
+    <a key="code" href={`${pathname}/${r.id}`} className="font-semibold" style={{ color: "var(--color-accent)" }} data-testid={`contact-code-${r.code}`}>
+      {r.code}
+    </a>,
+    <a key="name" href={`${pathname}/${r.id}`} className="flex flex-col gap-0.5" style={{ color: "var(--color-ink)" }}>
+      <span className="font-medium">{r.name}</span>
+      {(r.badges.member || r.badges.crm) && (
+        <span className="flex gap-1 text-[10px]">
+          {r.badges.member && <span className="rounded-full border px-1.5 py-0 text-[color:var(--color-muted)]">สมาชิก</span>}
+          {r.badges.crm && <span className="rounded-full border px-1.5 py-0 text-[color:var(--color-muted)]">CRM</span>}
+        </span>
+      )}
+    </a>,
+    <StatusChip key="kind" value={KIND_LABEL[r.kind] ?? r.kind} tone={r.kind === "VENDOR" ? "strong" : "muted"} />,
+    <div key="contact" className="flex flex-col text-xs">
+      {r.phone && <span>{formatPhoneTh(r.phone)}</span>}
+      {r.email && <span className="text-[color:var(--color-muted)]">{r.email}</span>}
+      {!r.phone && !r.email && <span className="text-[color:var(--color-muted)]">—</span>}
+    </div>,
+    r.receivableSatang > 0 ? (
+      <div key="outstanding" className="flex flex-col items-end">
+        <span className="text-xs text-[color:var(--color-muted)]">ค้างรับ</span>
+        <span className="font-semibold" style={{ color: "var(--color-danger)" }}>
+          <MoneyText satang={r.receivableSatang} decimals />
+        </span>
+      </div>
+    ) : r.payableSatang > 0 ? (
+      <div key="outstanding" className="flex flex-col items-end">
+        <span className="text-xs text-[color:var(--color-muted)]">ค้างจ่าย</span>
+        <span className="font-semibold">
+          <MoneyText satang={r.payableSatang} decimals />
+        </span>
+      </div>
+    ) : (
+      <span key="outstanding" className="block text-right text-[color:var(--color-muted)]">
+        —
+      </span>
+    ),
+    r.lastDoc ? (
+      <div key="lastDoc" className="flex flex-col text-xs">
+        <a href={editorDetailPath(base, r.lastDoc.docType, r.lastDoc.docId)} style={{ color: "var(--color-accent)" }}>
+          {r.lastDoc.docNo ?? "(ร่าง)"}
+        </a>
+        <span className="text-[color:var(--color-muted)]">{formatDateTh(r.lastDoc.issueDate)}</span>
+      </div>
+    ) : (
+      <span key="lastDoc" className="text-[color:var(--color-muted)]">
+        —
+      </span>
+    ),
+  ];
+
+  const rowActionsFor = (r: ContactRow): RowActionItem[] => [
+    { label: "สร้างใบเสนอราคา", href: `${editorNewPath(base, "QUOTATION")}?contactId=${r.id}`, icon: "doc" },
+    { label: "สร้างใบแจ้งหนี้", href: `${editorNewPath(base, "INVOICE")}?contactId=${r.id}`, icon: "file" },
+    { label: "สร้างใบเสร็จรับเงิน", href: `${editorNewPath(base, "RECEIPT")}?contactId=${r.id}`, icon: "check" },
+    { label: "บันทึกค่าใช้จ่าย", href: `${editorNewPath(base, "EXPENSE")}?contactId=${r.id}`, icon: "upload" },
+    { label: "ดูประวัติการซื้อขาย", href: `${pathname}/${r.id}`, icon: "clock", sepBefore: true },
+    { label: "แก้ไขข้อมูล", href: `${pathname}?edit=${r.id}#edit-contact`, icon: "edit" },
+    { label: "เพิ่มเข้ากลุ่ม", href: `${pathname}?bulkIds=${r.id}#bulk-group`, icon: "tag" },
+    {
+      label: "ปิดใช้งาน",
+      danger: true,
+      icon: "x",
+      sepBefore: true,
+      submit: { action: archiveContactAction, fields: { systemId, id: r.id } },
+    },
+  ];
+
+  const bulkIds = (searchParams.bulkIds ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const spCurrent = { q: searchParams.q, legalType: searchParams.legalType };
+
+  const std: ContactsPanelGroupItem[] = [
+    { key: "all", label: "ทั้งหมด", count: sidebar.counts.all, href: groupHref(pathname, spCurrent, "all"), active: group === "all", dotTone: "strong" },
+    { key: "customer", label: "ลูกค้า", count: sidebar.counts.customer, href: groupHref(pathname, spCurrent, "customer"), active: group === "customer", dotTone: "strong" },
+    {
+      key: "regular",
+      label: "ลูกค้าประจำ",
+      count: sidebar.counts.regular,
+      href: groupHref(pathname, spCurrent, "regular"),
+      active: group === "regular",
+      dotTone: "strong",
+      subtitle: sidebar.regularRuleLabel,
+    },
+    { key: "vendor", label: "ผู้ขาย", count: sidebar.counts.vendor, href: groupHref(pathname, spCurrent, "vendor"), active: group === "vendor", dotTone: "strong" },
+    { key: "archived", label: "ปิดใช้งาน", count: sidebar.counts.archived, href: groupHref(pathname, spCurrent, "archived"), active: group === "archived", dotTone: "muted" },
+  ];
+  const customGroups: ContactsPanelGroupItem[] = sidebar.counts.custom.map((g) => ({
+    key: `custom:${g.id}`,
+    label: g.name,
+    count: g.count,
+    href: groupHref(pathname, spCurrent, `custom:${g.id}`),
+    active: group === `custom:${g.id}`,
+    dotTone: "muted",
+  }));
+  const sourceGroups: ContactsPanelGroupItem[] = (
+    [
+      ["source:member", "สมาชิก", sidebar.counts.source.member],
+      ["source:crm", "CRM", sidebar.counts.source.crm],
+      ["source:chat", "แชท", sidebar.counts.source.chat],
+      ["source:pos", "POS", sidebar.counts.source.pos],
+      ["source:imported", "นำเข้า", sidebar.counts.source.imported],
+    ] as [ContactGroupKey, string, number][]
+  ).map(([key, label, count]) => ({ key, label, count, href: groupHref(pathname, spCurrent, key), active: group === key, dotTone: "muted" as const }));
+
+  const panelRows: ContactsPanelRow[] = result.rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    cells: cellsFor(r),
+    rowActions: <RowActions items={rowActionsFor(r)} testId={`contact-row-actions-${r.code}`} />,
+    mobile: {
+      title: (
+        <span>
+          {r.code} · {r.name}
+        </span>
+      ),
+      subtitle: `${KIND_LABEL[r.kind] ?? r.kind}${r.phone ? " · " + formatPhoneTh(r.phone) : ""}`,
+      trailing:
+        r.receivableSatang > 0 ? (
+          <span style={{ color: "var(--color-danger)" }}>
+            <MoneyText satang={r.receivableSatang} decimals />
+          </span>
+        ) : r.payableSatang > 0 ? (
+          <MoneyText satang={r.payableSatang} decimals />
+        ) : (
+          "—"
+        ),
+      dateLine: r.lastDoc ? `${r.lastDoc.docNo ?? "(ร่าง)"} · ${formatDateTh(r.lastDoc.issueDate)}` : "ยังไม่มีเอกสาร",
+    },
+  }));
+
+  return (
+    <div className="flex flex-col gap-5 pb-28">
+      {searchParams.err && <p className="text-sm text-[color:var(--color-danger)]">กรุณากรอกข้อมูลให้ครบถ้วน</p>}
+
+      <ContactsPanel
+        base={base}
+        pathname={pathname}
+        searchParams={{ q: searchParams.q, group: searchParams.group, legalType: searchParams.legalType }}
+        importHref={`${base}/import/contacts`}
+        createContactHref="#new-contact"
+        sidebarStandard={std}
+        sidebarCustom={customGroups}
+        newGroupHref="#new-group"
+        popularVendorsHref="#popular-vendors"
+        sidebarSource={sourceGroups}
+        searchQ={searchParams.q}
+        legalType={searchParams.legalType}
+        activeGroupKey={group}
+        groupLabel={result.groupLabel}
+        groupTotal={result.total}
+        rows={panelRows}
+        page={result.page}
+        pageSize={result.pageSize}
+        pageCount={result.pageCount}
+        total={result.total}
+        emptyText="ไม่พบผู้ติดต่อ — ลองค้นหาด้วยคำอื่น หรือเพิ่มผู้ติดต่อใหม่"
+      />
+
+      {/* + เพิ่มผู้ติดต่อ */}
+      <HashSection hash="new-contact">
+        <ContactForm systemId={systemId} action={createContactAction} title="เพิ่มผู้ติดต่อ" submitLabel="+ เพิ่มผู้ติดต่อ" />
+      </HashSection>
+
+      {/* แก้ไขข้อมูล — TODO(WO 3.3): แทนที่ด้วย modal เต็มรูปแบบ §7.2 */}
+      {editingContact && (
+        <HashSection hash="edit-contact" defaultOpen>
+          <ContactForm systemId={systemId} action={updateContactAction} title={`แก้ไขผู้ติดต่อ — ${editingContact.name}`} submitLabel="บันทึก" contact={editingContact} />
+        </HashSection>
+      )}
+
+      {/* เพิ่มเข้ากลุ่ม (bulk) */}
+      {bulkIds.length > 0 && (
+        <HashSection hash="bulk-group" defaultOpen>
+          <div className="card flex flex-col gap-3">
+            <h2 className="text-sm font-medium">เพิ่ม {bulkIds.length} รายการเข้ากลุ่ม</h2>
+            {sidebar.counts.custom.length > 0 ? (
+              <form action={addContactsToGroupAction} className="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="systemId" value={systemId} />
+                <input type="hidden" name="contactIds" value={bulkIds.join(",")} />
+                <FormField label="กลุ่ม">
+                  <select name="groupId" className="input" required>
+                    {sidebar.counts.custom.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <SubmitButton>เพิ่มเข้ากลุ่ม</SubmitButton>
+              </form>
+            ) : (
+              <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีกลุ่มกำหนดเอง — สร้างกลุ่มใหม่ก่อน</p>
+            )}
+          </div>
+        </HashSection>
+      )}
+
+      {/* + เพิ่มกลุ่มใหม่ */}
+      <HashSection hash="new-group">
+        <div className="card flex flex-col gap-3">
+          <h2 className="text-sm font-medium">เพิ่มกลุ่มกำหนดเอง</h2>
+          <form action={createContactGroupAction} className="flex flex-wrap items-end gap-3">
+            <input type="hidden" name="systemId" value={systemId} />
+            <FormField label="ชื่อกลุ่ม" required>
+              <input name="name" required className="input" placeholder="เช่น ลูกค้า VIP" />
+            </FormField>
+            <SubmitButton>+ เพิ่มกลุ่ม</SubmitButton>
+          </form>
+        </div>
+      </HashSection>
+
+      {/* + เพิ่มผู้ติดต่อยอดนิยม (§7.1) */}
+      <HashSection hash="popular-vendors">
+        <div className="card flex flex-col gap-3">
+          <h2 className="text-sm font-medium">เพิ่มผู้ติดต่อยอดนิยม</h2>
+          <p className="text-xs text-[color:var(--color-muted)]">
+            รายชื่อหน่วยงาน/ผู้ให้บริการที่ SME ไทยใช้บ่อย — เลขผู้เสียภาษีเป็นตัวอย่าง แก้ไขได้หลังเพิ่ม
+          </p>
+          <form action={insertPopularVendorsAction} className="flex flex-col gap-2">
+            <input type="hidden" name="systemId" value={systemId} />
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {POPULAR_VENDORS.map((v, i) => (
+                <label key={v.taxId} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                  <input type="checkbox" name="vendorIndex" value={i} className="h-4 w-4" />
+                  <span className="flex flex-col">
+                    <span>{v.name}</span>
+                    <span className="text-xs text-[color:var(--color-muted)]">{v.taxId}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <SubmitButton className="w-fit">+ เพิ่มที่เลือก</SubmitButton>
+          </form>
+        </div>
+      </HashSection>
+    </div>
+  );
+}
+
+// ฟอร์มเพิ่ม/แก้ไขผู้ติดต่อ — inline เดิม (ย้ายมาจาก contacts/page.tsx เดิม) รอ WO 3.3 แทนที่ด้วย modal §7.2
+function ContactForm({
+  systemId,
+  action,
+  title,
+  submitLabel,
+  contact,
+}: {
+  systemId: string;
+  action: (formData: FormData) => void | Promise<void>;
+  title: string;
+  submitLabel: string;
+  contact?: {
+    id: string;
+    name: string;
+    kind: string;
+    legalType: string;
+    taxId: string | null;
+    branchName: string | null;
+    phone: string | null;
+    email: string | null;
+    address: string | null;
+    creditTermDays: number;
+  } | null;
+}) {
+  return (
+    <div className="card flex flex-col gap-3">
+      <h2 className="text-sm font-medium">{title}</h2>
+      <form action={action} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <input type="hidden" name="systemId" value={systemId} />
+        {contact && <input type="hidden" name="id" value={contact.id} />}
+        <div className="sm:col-span-2">
+          <FormField label="ชื่อ / ชื่อจดทะเบียน" required>
+            <input name="name" required defaultValue={contact?.name} className="input" />
+          </FormField>
+        </div>
+        <FormField label="ประเภท">
+          <select name="kind" defaultValue={contact?.kind ?? "CUSTOMER"} className="input">
+            <option value="CUSTOMER">ลูกค้า</option>
+            <option value="VENDOR">ผู้ขาย</option>
+            <option value="BOTH">ทั้งคู่</option>
+          </select>
+        </FormField>
+        <FormField label="รูปแบบ">
+          <select name="legalType" defaultValue={contact?.legalType ?? "COMPANY"} className="input">
+            <option value="COMPANY">นิติบุคคล</option>
+            <option value="PERSON">บุคคลธรรมดา</option>
+          </select>
+        </FormField>
+        <FormField label="เลขผู้เสียภาษี 13 หลัก">
+          <input name="taxId" defaultValue={contact?.taxId ?? undefined} className="input" />
+        </FormField>
+        <FormField label="สาขา" hint="เช่น สำนักงานใหญ่">
+          <input name="branchName" defaultValue={contact?.branchName ?? undefined} className="input" />
+        </FormField>
+        <FormField label="เบอร์โทร">
+          <input name="phone" inputMode="tel" defaultValue={contact?.phone ?? undefined} className="input" />
+        </FormField>
+        <FormField label="อีเมล">
+          <input name="email" type="email" defaultValue={contact?.email ?? undefined} className="input" />
+        </FormField>
+        <div className="sm:col-span-2">
+          <FormField label="ที่อยู่">
+            <input name="address" defaultValue={contact?.address ?? undefined} className="input" />
+          </FormField>
+        </div>
+        <FormField label="เครดิตเทอม (วัน)">
+          <input name="creditTermDays" type="number" min={0} defaultValue={contact?.creditTermDays} className="input" />
+        </FormField>
+        <div className="sm:col-span-2">
+          <SubmitButton className="sm:justify-self-start">{submitLabel}</SubmitButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+export default ContactsPage;

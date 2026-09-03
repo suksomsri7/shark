@@ -295,3 +295,17 @@ export async function issueQuotation(
   return res;
 }
 
+/**
+ * WO 3.2 — หน้าผู้ติดต่อบัญชี: ป้าย "CRM" (badge) มาจากแถว CrmContact ที่ partyId เดียวกับ AccountContact
+ * (Party = ตัวตนกลางระดับ tenant จาก WO 3.1) · 1 query ไม่ N+1 · เส้น import account→crm ได้รับอนุมัติ
+ * ล่วงหน้าตามใบสั่งงาน WO 3.2 (อ่านอย่างเดียว)
+ */
+export async function listPartyIdsWithContact(ctx: Ctx, partyIds: string[]): Promise<Set<string>> {
+  if (partyIds.length === 0) return new Set();
+  const rows = await tenantDb(ctx).crmContact.findMany({
+    where: { partyId: { in: partyIds } },
+    select: { partyId: true },
+  });
+  return new Set(rows.map((r) => r.partyId).filter((x): x is string => !!x));
+}
+

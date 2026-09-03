@@ -360,6 +360,71 @@ export async function archiveContactAction(formData: FormData) {
   revalidatePath(`/app/sys/${systemId}/account/contacts`);
 }
 
+// ─────────────────── ผู้ติดต่อ V2 (WO 3.2 — กลุ่ม/ผู้ติดต่อยอดนิยม) ───────────────────
+
+export async function createContactGroupAction(formData: FormData) {
+  const systemId = str(formData, "systemId");
+  const name = str(formData, "name");
+  const { auth, tenantId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.contact.manage");
+  if (!name) redirect(`/app/sys/${systemId}/account/contacts?err=groupname#new-group`);
+  const { createContactGroup } = await import("./contacts-list");
+  await createContactGroup({ tenantId, systemId }, { name, color: str(formData, "color") || null });
+  revalidatePath(`/app/sys/${systemId}/account/contacts`);
+  redirect(`/app/sys/${systemId}/account/contacts`);
+}
+
+export async function addContactsToGroupAction(formData: FormData) {
+  const systemId = str(formData, "systemId");
+  const groupId = str(formData, "groupId");
+  const ids = str(formData, "contactIds").split(",").map((s) => s.trim()).filter(Boolean);
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.contact.manage");
+  const { addContactsToGroup } = await import("./contacts-list");
+  const res = await addContactsToGroup({ tenantId, systemId }, groupId, ids);
+  await writeAudit({
+    tenantId,
+    actorId: userId,
+    action: "account.contact.manage",
+    targetType: "AccountContactGroup",
+    targetId: groupId,
+    after: { addedContactIds: ids, added: res.added },
+  });
+  revalidatePath(`/app/sys/${systemId}/account/contacts`);
+  redirect(`/app/sys/${systemId}/account/contacts?group=custom:${groupId}`);
+}
+
+export async function removeContactFromGroupAction(formData: FormData) {
+  const systemId = str(formData, "systemId");
+  const groupId = str(formData, "groupId");
+  const contactId = str(formData, "contactId");
+  const { auth, tenantId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.contact.manage");
+  const { removeContactFromGroup } = await import("./contacts-list");
+  await removeContactFromGroup({ tenantId, systemId }, groupId, contactId);
+  revalidatePath(`/app/sys/${systemId}/account/contacts`);
+}
+
+// "+ เพิ่มผู้ติดต่อยอดนิยม" (§7.1) — เลือกได้หลายราย ดัชนีอ้าง POPULAR_VENDORS · dedupe ด้วย taxId ในชั้น data layer
+export async function insertPopularVendorsAction(formData: FormData) {
+  const systemId = str(formData, "systemId");
+  const indexes = formData.getAll("vendorIndex").map((v) => Number(v)).filter((n) => Number.isInteger(n) && n >= 0);
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.contact.manage");
+  const { insertPopularVendors } = await import("./contacts-list");
+  const res = await insertPopularVendors({ tenantId, systemId }, indexes);
+  await writeAudit({
+    tenantId,
+    actorId: userId,
+    action: "account.contact.manage",
+    targetType: "AccountContact",
+    targetId: "popular-vendors",
+    after: res,
+  });
+  revalidatePath(`/app/sys/${systemId}/account/contacts`);
+  redirect(`/app/sys/${systemId}/account/contacts`);
+}
+
 // ─────────────────── ตั้งค่า ───────────────────
 
 // §5.6 สร้างลิงก์สาธารณะให้ลูกค้าขอใบกำกับภาษี (QR/ลิงก์บนใบเสร็จ)

@@ -70,6 +70,8 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "cheque/page.tsx": "account.cheque.manage",
   "combined-payment/[docId]/page.tsx": "account.doc.view", // WO 1.7 (COMBINED_PAYMENT)
   "combined-payment/page.tsx": "account.doc.view",
+  "contacts/[contactId]/page.tsx": "account.contact.manage", // WO 3.2 — หน้ารายละเอียดย่อ (TODO WO 3.4: แผงเลื่อน 360°)
+  "contacts/overview/page.tsx": "account.contact.manage", // WO 3.2 — ดูภาพรวมผู้ติดต่อ (§7.4)
   "contacts/page.tsx": "account.contact.manage",
   "credit-note-received/[docId]/page.tsx": "account.doc.view", // WO 1.2 (CREDIT_NOTE_RECEIVED)
   "credit-note-received/page.tsx": "account.doc.view",

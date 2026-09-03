@@ -253,6 +253,38 @@ chk(
   { grand: ivS?.grandTotal, paid: ivS?.paidTotal, status: ivS?.status },
 );
 
+// ─────────── I. ผู้ติดต่อ V2 (WO 3.2 §7.1 — กลุ่มกำหนดเอง + ป้าย "ที่มา") ───────────
+console.log("\nI. ผู้ติดต่อ V2 (WO 3.2)");
+const groups = await prisma.accountContactGroup.findMany({
+  where: { systemId },
+  include: { _count: { select: { members: true } } },
+  orderBy: { sortOrder: "asc" },
+});
+chk("I1", "มีกลุ่มผู้ติดต่อกำหนดเอง 3 กลุ่ม", groups.length === 3, groups.map((g) => g.name));
+const gVip = groups.find((g) => g.name === "ลูกค้า VIP");
+chk("I2", 'กลุ่ม "ลูกค้า VIP" มีสมาชิก 5 ราย', gVip?._count.members === 5, gVip?._count.members);
+const gHotel = groups.find((g) => g.name === "โรงแรมพันธมิตร");
+chk("I3", 'กลุ่ม "โรงแรมพันธมิตร" มีสมาชิก 4 ราย', gHotel?._count.members === 4, gHotel?._count.members);
+const gSupplier = groups.find((g) => g.name === "ซัพพลายเออร์หลัก");
+chk("I4", 'กลุ่ม "ซัพพลายเออร์หลัก" มีสมาชิก 4 ราย', gSupplier?._count.members === 4, gSupplier?._count.members);
+
+const c19b = await prisma.accountContact.findUnique({ where: { id: fx.contactC00019Id }, select: { partyId: true } });
+const linkedCustomer = c19b?.partyId ? await prisma.customer.findFirst({ where: { partyId: c19b.partyId } }) : null;
+chk(
+  "I5",
+  'ป้าย "สมาชิก": ปิยธิดา อินสุ่ม มี Customer เชื่อม partyId เดียวกัน',
+  !!c19b?.partyId && linkedCustomer?.partyId === c19b.partyId,
+  { contactPartyId: c19b?.partyId, customerPartyId: linkedCustomer?.partyId },
+);
+const somchai = await prisma.accountContact.findFirst({ where: { systemId, name: "คุณสมชาย ใจดี" }, select: { partyId: true } });
+const linkedCrm = somchai?.partyId ? await prisma.crmContact.findFirst({ where: { partyId: somchai.partyId } }) : null;
+chk(
+  "I6",
+  'ป้าย "CRM": คุณสมชาย ใจดี มี CrmContact เชื่อม partyId เดียวกัน',
+  !!somchai?.partyId && linkedCrm?.partyId === somchai.partyId,
+  { contactPartyId: somchai?.partyId, crmContactPartyId: linkedCrm?.partyId },
+);
+
 // ─────────── H. อายุของข้อสอบ ───────────
 console.log("\nH. อายุของชุดข้อมูล");
 chk(

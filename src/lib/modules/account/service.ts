@@ -536,6 +536,25 @@ export async function vatConfigOf(
   return { vatRegistered: s?.vatRegistered ?? true, vatRateBp: s?.vatRateBp ?? 700 };
 }
 
+/**
+ * WO 3.2 — หาว่า tenant นี้เปิดระบบ MEMBER/CRM ไว้ไหม (คืน systemId แรกที่เจอของแต่ละชนิด · null = ไม่เปิด)
+ * ใช้เดา "ที่มา" ของผู้ติดต่อ (badges สมาชิก/CRM ในหน้าผู้ติดต่อ) — AppSystem เป็น model กลาง (เหมือนที่ guard.ts
+ * เรียก prisma.appSystem ตรง ๆ อยู่แล้ว) ไม่ใช่การข้ามขอบเขตโมดูล
+ */
+export async function findLinkedSystemIds(
+  tenantId: string,
+): Promise<{ memberSystemId: string | null; crmSystemId: string | null }> {
+  const rows = await prisma.appSystem.findMany({
+    where: { tenantId, type: { in: ["MEMBER", "CRM"] } },
+    select: { id: true, type: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return {
+    memberSystemId: rows.find((r) => r.type === "MEMBER")?.id ?? null,
+    crmSystemId: rows.find((r) => r.type === "CRM")?.id ?? null,
+  };
+}
+
 // ─────────────────── ผู้ติดต่อ ───────────────────
 
 export function listContacts(
