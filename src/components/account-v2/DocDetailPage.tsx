@@ -407,35 +407,45 @@ function GroupChildrenTable({ data, base }: { data: DocDetailData; base: string 
       <h3 className="mb-2 text-sm font-semibold">
         {label} <span data-testid="group-children-count">{rows.length}</span> ใบ
       </h3>
-      <table className="w-full min-w-[640px] text-sm" data-testid="group-table">
+      {/* colgroup กำหนดความกว้างต่อคอลัมน์ชัดเจน — กัน "ค้างชำระ" กับ "สถานะ" ชนกัน
+          (บั๊กที่ Fable เจอตอน QC ภาพจริง: "฿92,448.00รอชำระเงิน") · แบบเดียวกับ wizard ขั้น ① */}
+      <table className="w-full min-w-[640px] table-fixed text-sm" data-testid="group-table">
+        <colgroup>
+          <col style={{ width: 170 }} />
+          <col style={{ width: 100 }} />
+          <col style={{ width: 110 }} />
+          <col style={{ width: 130 }} />
+          <col style={{ width: 130 }} />
+          <col style={{ width: 130 }} />
+        </colgroup>
         <thead>
           <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
-            <th className="py-2 font-normal">เลขที่</th>
-            <th className="py-2 font-normal">วันที่</th>
-            <th className="py-2 font-normal">ครบกำหนด</th>
-            <th className="py-2 text-right font-normal">มูลค่า</th>
-            <th className="py-2 text-right font-normal">{outstandingLabel}</th>
-            <th className="py-2 font-normal">สถานะ</th>
+            <th className="py-2 pr-3 font-normal">เลขที่</th>
+            <th className="py-2 pr-3 font-normal">วันที่</th>
+            <th className="py-2 pr-3 font-normal">ครบกำหนด</th>
+            <th className="py-2 pr-3 text-right font-normal">มูลค่า</th>
+            <th className="py-2 pr-4 text-right font-normal">{outstandingLabel}</th>
+            <th className="py-2 pl-1 font-normal">สถานะ</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} className="border-b last:border-0" data-testid={`group-child-${r.docNo ?? r.id}`}>
-              <td className="py-2">
+              <td className="py-2 pr-3">
                 <Link href={editorDetailPath(base, r.docType, r.id)} className="font-medium underline">
                   {r.docNo ?? "(ร่าง)"}
                 </Link>
-                <span className="block text-xs text-[color:var(--color-muted)]">{r.docLabel}</span>
+                <span className="block truncate text-xs text-[color:var(--color-muted)]">{r.docLabel}</span>
               </td>
-              <td className="py-2">{fmtDate(r.issueDate)}</td>
-              <td className="py-2">{r.dueDate ? fmtDate(r.dueDate) : "—"}</td>
-              <td className="py-2 text-right tabular-nums">
+              <td className="py-2 pr-3 whitespace-nowrap">{fmtDate(r.issueDate)}</td>
+              <td className="py-2 pr-3 whitespace-nowrap">{r.dueDate ? fmtDate(r.dueDate) : "—"}</td>
+              <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap">
                 <MoneyText satang={r.grandTotal} decimals />
               </td>
-              <td className="py-2 text-right tabular-nums font-medium">
+              <td className="py-2 pr-4 text-right tabular-nums font-medium whitespace-nowrap">
                 <MoneyText satang={r.outstanding} decimals />
               </td>
-              <td className="py-2">{r.statusLabel}</td>
+              <td className="py-2 pl-1 truncate">{r.statusLabel}</td>
             </tr>
           ))}
           {rows.length === 0 && (
