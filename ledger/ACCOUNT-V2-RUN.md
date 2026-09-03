@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 🏁 เฟส 3 ปิด (main `2d97a98` · Vercel กำลัง deploy) → เฟส 4: 4.1 InvItem canonical |
+| WO | 4.1 InvItem canonical (เฟส 4) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~18:55 UTC: qc:all 205/205 (686s) · main ff → `2d97a98` push แล้ว · Vercel deploy รอ READY (Fable poll) · ยังไม่ verify prod · 4.1 เริ่ม (Opus) |
+| ขั้นที่ถึง | 3 ก.ย. ~19:00 UTC: **verify prod ผ่าน** — Vercel READY 18:54 (dpl_RoXNCv…) · `_prisma_migrations` มี party + contact_modal finished · ตาราง Party/PartyMergeCandidate + คอลัมน์ partyId/code/province อยู่บน prod · https 200 · 4.1 กำลังทำ (Opus) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
 
