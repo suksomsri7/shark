@@ -73,9 +73,13 @@ export async function chequeSummary(tenantId: string, systemId: string) {
     rows
       .filter((r) => r.direction === dir && statuses.includes(r.status))
       .reduce((s, r) => s + (r._sum.amount ?? 0), 0);
+  // WO 5.1 — จำนวนเช็คต่อทิศทาง (ทุกสถานะ) ใช้เป็น badge บนแท็บ "เช็ครับ/เช็คจ่าย" ของหน้าการเงิน (g9)
+  const countOf = (dir: AccountChequeDirection) => rows.filter((r) => r.direction === dir).reduce((s, r) => s + r._count._all, 0);
   return {
     inPending: pending("IN", ["ON_HAND", "DEPOSITED"]), // เช็ครับรอเรียกเก็บ
     outPending: pending("OUT", ["ISSUED"]), // เช็คจ่ายรอเรียกเก็บ
+    inCount: countOf("IN"),
+    outCount: countOf("OUT"),
   };
 }
 

@@ -32,12 +32,16 @@ export function RowActions({
   testId,
   label = "ทำรายการ",
   defaultOpen = false,
+  trigger = "label",
 }: {
   items: RowActionItem[];
   testId?: string;
   label?: string;
   /** เปิดเมนูไว้ตั้งแต่แรก — ใช้เฉพาะหน้า gallery สำหรับถ่ายภาพ QC */
   defaultOpen?: boolean;
+  /** WO 5.1 — "icon": ปุ่ม "⋯" เปล่า (ไม่มีกรอบ) ทั้งเดสก์ท็อป/มือถือ ตาม g9-finance-channels.png
+   * (การ์ดช่องทางการเงิน) — ค่าเริ่มต้น "label" = ปุ่ม "ทำรายการ ▾" เดสก์ท็อป + วงกลม "⋯" มือถือ (ของเดิม ไม่กระทบหน้าอื่น) */
+  trigger?: "label" | "icon";
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const ref = useRef<HTMLDivElement>(null);
@@ -62,26 +66,41 @@ export function RowActions({
 
   return (
     <div className="relative inline-block text-left" ref={ref} data-testid={testId}>
-      <button
-        type="button"
-        className="btn-sm hidden md:inline-flex"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        {label} ▾
-      </button>
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={label}
-        onClick={() => setOpen((o) => !o)}
-        className="flex h-11 w-11 items-center justify-center rounded-full border text-lg leading-none md:hidden"
-        style={{ borderColor: "var(--color-line)" }}
-      >
-        ⋯
-      </button>
+      {trigger === "icon" ? (
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label={label}
+          onClick={() => setOpen((o) => !o)}
+          className="flex h-6 w-6 items-center justify-center rounded text-base leading-none text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)]"
+        >
+          ⋯
+        </button>
+      ) : (
+        <>
+          <button
+            type="button"
+            className="btn-sm hidden md:inline-flex"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+          >
+            {label} ▾
+          </button>
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            aria-label={label}
+            onClick={() => setOpen((o) => !o)}
+            className="flex h-11 w-11 items-center justify-center rounded-full border text-lg leading-none md:hidden"
+            style={{ borderColor: "var(--color-line)" }}
+          >
+            ⋯
+          </button>
+        </>
+      )}
       {open && (
         <div
           role="menu"

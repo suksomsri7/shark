@@ -1312,6 +1312,110 @@ export async function postOpening(
   });
 }
 
+// ─────────────────── postFinanceOpening (WO 5.1 · §10.1 modal "ยอดยกมาหลายรายการ") ───────────────────
+
+/**
+ * ยอดยกมา "ต่อรายการ" ของช่องทางการเงิน (ต่างจาก `postOpening` ที่ idempotent ต่อ "งวดทั้งระบบ" —
+ * ถ้าใช้ `postOpening` กับหลายช่องทาง/หลายรายการในเดือนเดียวกันจะชนกันเอง)
+ * idempotent ต่อ (financeId, seq, version) — แก้ไขรายการ = caller ต้อง bump `version` เอง
+ * แล้วเรียกด้วย version ใหม่ (ห้ามใช้ version เดิมซ้ำ เพราะ `alreadyPosted` เช็คแค่ "มีแถวไหม" ไม่สนสถานะ)
+ * amountSatang บวก = เงินเข้าช่องทาง (Dr ช่องทาง / Cr 3999) · ติดลบ = ปรับลด (Dr 3999 / Cr ช่องทาง)
+ */
+export async function postFinanceOpening(
+  ctx: GlCtx,
+  o: {
+    financeId: string;
+    seq: number;
+    version: number;
+    accountId: string; // AccountFinance.ledgerAccountId
+    date: Date;
+    amountSatang: number;
+    memo?: string;
+  },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    if (o.amountSatang === 0) return { skipped: true };
+    const refId = `${o.financeId}:${o.seq}:v${o.version}`;
+    if (await alreadyPosted(ctx, `AccountFinanceOpening#${refId}#OPEN`, db)) return { skipped: true };
+
+    await ensureAccounting(ctx, db as Tx);
+    const b = new Book(ctx, db);
+    const counterId = await b.id("OPENING_BALANCE");
+    const amt = Math.abs(o.amountSatang);
+    if (o.amountSatang > 0) {
+      b.dr(o.accountId, amt, "ยอดยกมา");
+      b.cr(counterId, amt, "บัญชีคู่เปิดบัญชี");
+    } else {
+      b.cr(o.accountId, amt, "ยอดยกมา (ปรับลด)");
+      b.dr(counterId, amt, "บัญชีคู่เปิดบัญชี");
+    }
+
+    const entry = await commitEntry(
+      ctx,
+      {
+        book: "GENERAL",
+        journal: "OPENING",
+        date: o.date,
+        refType: "AccountFinanceOpening",
+        refId,
+        event: "OPEN",
+        memo: o.memo ?? "ยอดยกมาช่องทางการเงิน",
+      },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+
+// ─────────────────── postFinanceTransfer (WO 5.1 · §10.1 เมนู ⋮ "โอน") ───────────────────
+
+/**
+ * โอนเงินระหว่างช่องทาง — idempotent ต่อ transferId ที่ caller เป็นคนกำหนด (กันโพสต์ JV ซ้ำเมื่อ
+ * request ซ้ำ — ต่างจาก `postManualJV` เดิมที่สุ่ม refId ใหม่ทุกครั้ง)
+ * Dr ปลายทาง / Cr ต้นทาง เสมอ (amountSatang > 0)
+ */
+export async function postFinanceTransfer(
+  ctx: GlCtx,
+  o: {
+    transferId: string;
+    fromLedgerId: string;
+    toLedgerId: string;
+    amountSatang: number;
+    date: Date;
+    memo?: string;
+  },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    if (o.amountSatang <= 0) return { skipped: true };
+    if (await alreadyPosted(ctx, `AccountFinanceTransfer#${o.transferId}#TRANSFER`, db)) return { skipped: true };
+
+    await ensureAccounting(ctx, db as Tx);
+    const b = new Book(ctx, db);
+    b.dr(o.toLedgerId, o.amountSatang, "โอนเข้า");
+    b.cr(o.fromLedgerId, o.amountSatang, "โอนออก");
+
+    const entry = await commitEntry(
+      ctx,
+      {
+        book: "GENERAL",
+        journal: "ADJUST",
+        date: o.date,
+        refType: "AccountFinanceTransfer",
+        refId: o.transferId,
+        event: "TRANSFER",
+        memo: o.memo ?? "โอนระหว่างช่องทางการเงิน",
+        source: "MANUAL",
+      },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+
 // ─────────────────── ปิด/เปิดงวด ───────────────────
 
 /**

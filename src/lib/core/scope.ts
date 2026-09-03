@@ -225,6 +225,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AccountProductOpeningLot: sys(),
   AccountCategory: sys(),
   AccountFinance: sys(),
+  // WO 5.1 (บัญชี V2 §10.1) — ยอดยกมาหลายรายการ + โอนระหว่างช่องทาง ของ AccountFinance (ผูก tenantId+systemId ทั้งคู่)
+  AccountFinanceOpening: sys(),
+  AccountFinanceTransfer: sys(),
   AccountCheque: sys(),
   AccountLedger: sys(),
   AccountMapping: sys(),

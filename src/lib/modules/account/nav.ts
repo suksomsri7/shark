@@ -510,7 +510,8 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
         page({ label: "เช็คจ่าย", href: `${base}/cheque?dir=OUT`, status: "ready", icon: "cheque", testId: "CHEQUE_OUT" }),
         page({ label: "ภาษีถูกหัก ณ ที่จ่าย", href: `${base}/wht?tab=credit`, status: "ready", icon: "pct", testId: "WHT_CREDIT" }),
         page({ label: "ภาษีหัก ณ ที่จ่าย", href: `${base}/wht?tab=deduct`, status: "ready", icon: "pct", testId: "WHT_DEDUCT" }),
-        soon("โอนระหว่างช่องทาง", "swap", "FINANCE_TRANSFER", true),
+        // WO 5.1: ทำแล้ว (modal บนหน้าเงินสด/ธนาคาร/e-Wallet — ไม่ใช่หน้าแยก) → เปลี่ยนจาก soon เป็น ready
+        page({ label: "โอนระหว่างช่องทาง", href: `${base}/finance?transfer=1`, status: "ready", icon: "swap", testId: "FINANCE_TRANSFER", sep: true }),
         soon("กระทบยอดธนาคาร", "bank", "BANK_RECONCILE"),
       ],
     },

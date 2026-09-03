@@ -1009,6 +1009,93 @@ const PAGES: Record<string, PageSpec[]> = {
       expect: ["ใบปรับต้นทุนสินค้า"],
     },
   ],
+  // WO 5.1 — ช่องทางการเงิน V2 (§10.1) เทียบ g9-finance-channels.png (list) + g9-finance-channels-modal.png (modal ขั้นสูง)
+  "5.1": [
+    {
+      name: "finance-list",
+      path: `/app/sys/${SYS}/account/finance`,
+      note: "หน้าช่องทางการเงิน (g9) — หัว 'ทั้งหมด 4 ช่องทาง · ยอดตามบัญชีแยกประเภท ณ … · รวม …' · แถบแท็บย่อย · การ์ดจัดกลุ่ม 4 กลุ่ม",
+      // "ย่อ/ขยายทั้งหมด"/"โอนระหว่างช่องทาง" เป็นปุ่ม `hidden md:inline-flex` (เดสก์ท็อปเท่านั้น) —
+      // มือถือย้ายเข้าเมนู "เพิ่มเติม" (RowActions overflow ปิดอยู่ ไม่ใช่ข้อความบนหน้า) เหมือน f6/ProductsPanel
+      expect: [
+        "เงินสด/ธนาคาร/e-Wallet",
+        "ทั้งหมด 4 ช่องทาง",
+        "รวม ฿1,284,560.00",
+        "เพิ่มช่องทาง",
+        "เงินสด",
+        "ออมทรัพย์",
+        "e-Wallet",
+        "สำรองรับ-จ่าย",
+        "CSH001",
+        "BSV001",
+        "EWL001",
+        "PTY001",
+        "กสิกรไทย ออมทรัพย์",
+        "พร้อมเพย์",
+        "เงินสดย่อย",
+      ],
+    },
+    {
+      name: "finance-list-desktop-actions",
+      path: `/app/sys/${SYS}/account/finance`,
+      note: "ปุ่มหัวกระดาษที่โชว์เฉพาะเดสก์ท็อป (มือถือย้ายเข้าเมนู 'เพิ่มเติม')",
+      expect: ["ย่อ/ขยายทั้งหมด", "โอนระหว่างช่องทาง"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "finance-list-menu",
+      path: `/app/sys/${SYS}/account/finance`,
+      note: "เปิดเมนู 'ทำรายการ' ของการ์ดแรก — เทียบเมนู ⋮ (statement · โอน · แก้ไข · ปิดใช้งาน)",
+      expect: ["เงินสด/ธนาคาร/e-Wallet", "ดูความเคลื่อนไหว", "โอน", "แก้ไข", "ปิดใช้งาน"],
+      onlyDevice: "desktop",
+      click: ['[data-testid^="finance-row-actions-"] button'],
+      waitAfterClick: 300,
+    },
+    {
+      name: "finance-modal-basic",
+      path: `/app/sys/${SYS}/account/finance?new=1`,
+      note: 'modal "เพิ่มช่องทางการเงิน" แท็บพื้นฐาน — รหัส auto · ชื่อ · ประเภท 4 ตัวเลือก · ข้อมูลธนาคาร',
+      expect: ["เพิ่มช่องทางการเงิน", "พื้นฐาน", "ขั้นสูง", "ประเภท", "ธนาคาร", "e-Wallet", "สำรองรับ-จ่าย"],
+      onlyDevice: "desktop",
+      expandModalForShot: '[data-testid="finance-modal"]',
+      waitAfterClick: 400,
+    },
+    {
+      name: "finance-modal-advanced",
+      path: `/app/sys/${SYS}/account/finance?new=1`,
+      note: 'modal ขั้นสูง (g9-finance-channels-modal.png) — คำอธิบาย · toggle ใช้รับ/จ่าย/แสดงบนเอกสาร · ยอดยกมาหลายรายการ · เลขบัญชี GL ที่จะสร้าง',
+      expect: ["เพิ่มช่องทางการเงิน", "ขั้นสูง", "ใช้รับเงิน", "ใช้จ่ายเงิน", "แสดงบนเอกสาร", "ยอดยกมา", "เพิ่มยอดยกมา", "ระบบจะสร้างบัญชี"],
+      onlyDevice: "desktop",
+      expandModalForShot: '[data-testid="finance-modal"]',
+      click: ['[data-testid="finance-modal-tab-advanced"]', '[data-testid="finance-type-BANK"]', '[data-testid="finance-opening-add"]'],
+      waitAfterClick: 300,
+    },
+    {
+      name: "finance-modal-mobile",
+      path: `/app/sys/${SYS}/account/finance?new=1`,
+      note: "modal บนมือถือ 390 = แผ่นเต็มจอ (SPEC §13) — ต้องไม่ล้นแนวนอน",
+      expect: ["เพิ่มช่องทางการเงิน", "พื้นฐาน", "ขั้นสูง"],
+      onlyDevice: "mobile",
+      expandModalForShot: '[data-testid="finance-modal"]',
+      waitAfterClick: 400,
+    },
+    {
+      name: "finance-transfer-modal",
+      path: `/app/sys/${SYS}/account/finance?transfer=1`,
+      note: "modal โอนระหว่างช่องทาง — จากบัญชี/ไปบัญชี/จำนวนเงิน/วันที่/หมายเหตุ",
+      expect: ["โอนระหว่างช่องทาง", "จากบัญชี", "ไปบัญชี", "จำนวนเงิน", "โอนเงิน"],
+      onlyDevice: "desktop",
+      expandModalForShot: '[data-testid="finance-transfer-modal"]',
+      waitAfterClick: 400,
+    },
+    {
+      name: "finance-list-mobile",
+      path: `/app/sys/${SYS}/account/finance`,
+      note: "หน้าช่องทางการเงินบนมือถือ 390 — การ์ดเรียงเต็มความกว้าง ไม่ล้นแนวนอน",
+      expect: ["เงินสด/ธนาคาร/e-Wallet", "CSH001", "BSV001"],
+      onlyDevice: "mobile",
+    },
+  ],
   // WO 3.2 — หน้าผู้ติดต่อ V2 (§7.1/§7.4) เทียบ f5-contacts.png + f5-contacts-menu.png (เดสก์ท็อป) · f13 pattern (มือถือ)
   "3.2": [
     {
@@ -1266,6 +1353,15 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "product-type-service-count": E.productsByType?.SERVICE ?? 0,
       "product-type-bundle-count": E.productsByType?.BUNDLE ?? 0,
       "products-total": E.productsByType?.GOODS ?? 0,
+    },
+  },
+  // WO 5.1 — ยอดกลุ่ม/ยอดต่อช่องทาง ต้องตรงเฉลย seed เป๊ะ (คีย์ finance/financeGroups/financeAccounts)
+  "5.1": {
+    "finance-list": {
+      "finance-group-total-CASH": bahtStr(E.financeGroups?.CASH ?? 0),
+      "finance-group-total-BANK_SAVINGS": bahtStr(E.financeGroups?.BANK_SAVINGS ?? 0),
+      "finance-group-total-E_WALLET": bahtStr(E.financeGroups?.E_WALLET ?? 0),
+      "finance-group-total-PETTY_CASH": bahtStr(E.financeGroups?.PETTY_CASH ?? 0),
     },
   },
   "3.2": {

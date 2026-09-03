@@ -696,26 +696,57 @@ const FIN_DEF = [
 ];
 const finId: Record<string, string> = {};
 const finOpening: Record<string, number> = {};
+// WO 5.1 — BSV001 ยกมาเป็น 2 รายการ (แทนก้อนเดียว) พิสูจน์ "ยอดยกมาหลายรายการ" → 2 JV แยกกัน ผลรวมเท่าเดิม
+// (ยอดรวม/ยอดกลุ่มของ BSV001 ต้องไม่ขยับ — split คงที่ 5,000 บาท ก้อนที่สอง)
+const SPLIT_OPENING_CODE = "BSV001";
+const SPLIT_SECOND_SATANG = 500_000; // 5,000.00 บาท
 for (const f of FIN_DEF) {
   const opening = FIN_TARGET[f.code as keyof typeof FIN_TARGET] - flow[f.code];
   if (opening < 0) throw new Error(`ยอดยกมาของ ${f.code} ติดลบ (${opening}) — ปรับแผนการชำระ`);
   finOpening[f.code] = opening;
+  const openingEntries =
+    f.code === SPLIT_OPENING_CODE
+      ? [
+          { date: D(f.openDate), amountSatang: opening - SPLIT_SECOND_SATANG, note: "ยอดยกมาจากระบบเดิม" },
+          { date: D("2026-02-20"), amountSatang: SPLIT_SECOND_SATANG, note: "เงินโอนรับล่วงหน้า" },
+        ]
+      : opening !== 0
+        ? [{ date: D(f.openDate), amountSatang: opening, note: null }]
+        : [];
   const r = await fin.createFinanceAccount({
     tenantId,
     systemId,
     type: f.type,
+    code: f.code, // WO 5.1: รหัสช่องทางตอนนี้ persist จริง (ก่อนหน้านี้เป็นแค่ key ในสคริปต์ seed)
     name: f.name,
     bankName: f.bank,
     accountNo: f.no,
     promptpayId: f.pp,
-    openingBalance: opening,
-    openingDate: D(f.openDate), // คนละงวด — postOpening อนุญาตยอดยกมา 1 ครั้ง/งวด
+    openingEntries, // คนละงวด (openDate ต่าง เดือนกัน) — เดิมพึ่ง postOpening (1 ครั้ง/งวดทั้งระบบ) ตอนนี้ใช้ gl.postFinanceOpening (idempotent ต่อรายการ) ไม่ติดข้อจำกัดนั้นแล้ว
     showOnDocuments: f.type !== "PETTY_CASH",
+    // WO 5.1 — สำรองรับ-จ่าย ต้องมีวงเงิน/ผู้ถือ (g9: "วงเงิน ฿20,000.00 · ผู้ถือ …") ไม่งั้นการ์ดโชว์ "วงเงิน ฿0.00" หลอกตา
+    limitSatang: f.type === "PETTY_CASH" ? FIN_TARGET.PTY001 : undefined,
+    holderUserId: f.type === "PETTY_CASH" ? owner.id : undefined,
   });
   if (!r.ok) throw new Error(`สร้างช่องทางการเงิน ${f.name} ไม่สำเร็จ: ${r.reason}`);
   finId[f.code] = r.id;
   console.log(`💳 ${f.code} ${f.name} · ยอดยกมา ฿${bahtStr(opening)}`);
 }
+
+// WO 5.1 — ช่องทางปิดใช้งาน 1 บัญชี (ยอด 0 ตั้งแต่สร้าง → archive ผ่านได้ทันที) พิสูจน์ว่าไม่นับเข้ายอดรวม/รายการ
+const archivedFin = await fin.createFinanceAccount({
+  tenantId,
+  systemId,
+  type: "BANK",
+  name: "ธนาคารกรุงเทพ (เลิกใช้)",
+  bankName: "ธนาคารกรุงเทพ",
+  accountNo: "999-0-00000-0",
+  showOnDocuments: false,
+});
+if (!archivedFin.ok) throw new Error(`สร้างช่องทางตัวอย่าง (ปิดใช้งาน) ไม่สำเร็จ: ${archivedFin.reason}`);
+const archiveRes = await fin.archiveFinanceAccount(tenantId, systemId, archivedFin.id);
+if (!archiveRes.ok) throw new Error(`ปิดใช้งานช่องทางตัวอย่างไม่สำเร็จ: ${archiveRes.reason}`);
+console.log(`🗄️  ${archivedFin.code} ธนาคารกรุงเทพ (เลิกใช้) · ปิดใช้งานแล้ว (ไม่นับในยอดรวม)`);
 
 // WO 2.2 (Fable QC ภาพจริง): ปักหมุด "บัญชีเงินที่ติดตาม" ให้ตรง f1 — กสิกรไทย ออมทรัพย์ · เงินสด · พร้อมเพย์
 // (เงินสดย่อยไม่ปักหมุด ตามภาพ) · idempotent — เรียกซ้ำแล้วแทนที่ทั้งชุดเสมอ ไม่สะสม
@@ -1235,6 +1266,25 @@ const expected = {
     opening: finOpening[f.code],
     balance: FIN_TARGET[f.code as keyof typeof FIN_TARGET],
   })),
+  // WO 5.1 — กลุ่ม/ยอดกลุ่ม (§10.1): เงินสด·ออมทรัพย์·e-Wallet·สำรองรับ-จ่าย (ไม่มีบัญชีกระแสในชุดข้อมูลนี้)
+  financeGroups: {
+    CASH: FIN_TARGET.CSH001,
+    BANK_SAVINGS: FIN_TARGET.BSV001,
+    E_WALLET: FIN_TARGET.EWL001,
+    PETTY_CASH: FIN_TARGET.PTY001,
+  },
+  // WO 5.1 — BSV001 ยกมา 2 รายการ (ผลรวม = finOpening.BSV001 เท่าเดิม) — qc ยิง 2 JV แยกกันตรง key นี้
+  financeOpeningSplit: {
+    code: SPLIT_OPENING_CODE,
+    financeId: finId[SPLIT_OPENING_CODE],
+    entries: [
+      { seq: 1, amount: finOpening[SPLIT_OPENING_CODE] - SPLIT_SECOND_SATANG },
+      { seq: 2, amount: SPLIT_SECOND_SATANG },
+    ],
+    sum: finOpening[SPLIT_OPENING_CODE],
+  },
+  // WO 5.1 — ช่องทางปิดใช้งาน 1 บัญชี (ไม่นับใน financeAccounts/financeGroups/total ข้างบน)
+  financeArchived: { id: archivedFin.id, code: archivedFin.code },
   invoiceTabs: { all: 51, draft: 3, awaiting: 12, partial: 2, paid: 29, overdue: 4, cancelled: 1 },
   contacts: { all: 63, customer: 41, vendor: 22, archived: 5, active: 58 },
   // WO 4.3: 13 = สินค้า 7 + บริการ 5 + รายการจัดชุด 1 (เดิม 12 · เพิ่ม "ชุดดำน้ำตื้นครบเซ็ต")

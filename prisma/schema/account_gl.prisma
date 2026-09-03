@@ -138,58 +138,58 @@ model AccountUnit {
 }
 
 model AccountProduct {
-  id               String             @id @default(cuid())
-  tenantId         String
-  systemId         String
-  sku              String?
-  name             String
-  nameEn           String?
-  type             AccountProductType @default(GOODS)
-  unitId           String?
-  salePrice        Int? // สตางค์
-  buyPrice         Int?
-  vatRateBp        Int                @default(700)
-  incomeAccountId  String? // override ผังบัญชีต่อสินค้า
-  expenseAccountId String?
-  imageUrl         String?
+  id                   String             @id @default(cuid())
+  tenantId             String
+  systemId             String
+  sku                  String?
+  name                 String
+  nameEn               String?
+  type                 AccountProductType @default(GOODS)
+  unitId               String?
+  salePrice            Int? // สตางค์
+  buyPrice             Int?
+  vatRateBp            Int                @default(700)
+  incomeAccountId      String? // override ผังบัญชีต่อสินค้า
+  expenseAccountId     String?
+  imageUrl             String?
   // ── V2 (WO 4.3 · SPEC §8.1–8.2 · ภาพ g8) · additive ล้วน · nullable/มีค่าเริ่มต้น = แถวเดิมไม่กระทบ ──
   /// เลขที่สินค้า "P00024" / "S00003" / "B00001" (auto ตามชนิด · แก้ได้ · ไม่ซ้ำต่อระบบ)
   /// 🔴 ความไม่ซ้ำบังคับด้วย **partial unique index** `AccountProduct_systemId_code_active_key`
   ///    (เหตุผลเดียวกับ AccountContact.code — ดู account.prisma) · `prisma migrate diff` มองไม่เห็น ห้ามลบจาก migration
-  code             String?
-  barcode          String? // บาร์โค้ด ≤48 (§8.2 ขั้นสูง)
-  category         String? // หมวดหมู่ (ข้อความอิสระ — ตัวกรอง "หมวด" ในหน้ารายการ f6)
-  description      String? // คำอธิบาย ≤500
+  code                 String?
+  barcode              String? // บาร์โค้ด ≤48 (§8.2 ขั้นสูง)
+  category             String? // หมวดหมู่ (ข้อความอิสระ — ตัวกรอง "หมวด" ในหน้ารายการ f6)
+  description          String? // คำอธิบาย ≤500
   /// วิธีคิดต้นทุน: "AVG" = ถัวเฉลี่ย (ค่าเริ่มต้นของคลัง SHARK) · "FIFO" = 🕓 ยังไม่รองรับ (เลือกไม่ได้)
-  costMethod       String             @default("AVG")
-  cogsAccountCode  String? // บัญชีต้นทุนขาย (ค่าเริ่มต้น 5000)
+  costMethod           String             @default("AVG")
+  cogsAccountCode      String? // บัญชีต้นทุนขาย (ค่าเริ่มต้น 5000)
   inventoryAccountCode String? // บัญชีสินค้าคงเหลือ (ค่าเริ่มต้น 1200)
-  purchaseVatRateBp Int? // VAT ซื้อ (null = ใช้ค่าเดียวกับ vatRateBp)
-  defaultWhtType   String? // บริการ: ประเภทเงินได้ที่หัก ณ ที่จ่ายเป็นประจำ (ม.40 (…))
-  defaultWhtRateBp Int? // บริการ: อัตราหัก ณ ที่จ่ายปริยาย (300 = 3%)
+  purchaseVatRateBp    Int? // VAT ซื้อ (null = ใช้ค่าเดียวกับ vatRateBp)
+  defaultWhtType       String? // บริการ: ประเภทเงินได้ที่หัก ณ ที่จ่ายเป็นประจำ (ม.40 (…))
+  defaultWhtRateBp     Int? // บริการ: อัตราหัก ณ ที่จ่ายปริยาย (300 = 3%)
   /// §8.2 "การเชื่อมต่อ" — ขายผ่าน POS (g8 การ์ด toggle ใบที่ 2)
-  posEnabled       Boolean            @default(false)
-  posCategory      String? // หมวดใน POS
-  posPrice         Int? // ราคา POS ถ้าต่างจากราคาขาย (สตางค์ · null = เท่าราคาขาย)
+  posEnabled           Boolean            @default(false)
+  posCategory          String? // หมวดใน POS
+  posPrice             Int? // ราคา POS ถ้าต่างจากราคาขาย (สตางค์ · null = เท่าราคาขาย)
   /// §8.2 "การเชื่อมต่อ" — จองผ่านระบบจอง (บริการเท่านั้น)
-  bookingEnabled   Boolean            @default(false)
-  bookingDurationMin Int?
+  bookingEnabled       Boolean            @default(false)
+  bookingDurationMin   Int?
   bookingDepositSatang Int?
   /// รูปสินค้า ≤5 (array ของ URL) — `imageUrl` เดิม = รูปแรก (ยังใช้ได้ ไม่แตะ)
-  imageUrls        Json               @default("[]")
+  imageUrls            Json               @default("[]")
   // ⚠️ V2 (WO 4.1): สต็อกของสินค้าที่ "ผูกคลัง" (invItemId != null) = InvItem.onHand เท่านั้น
   //    ช่องนี้เหลือเป็นกระจกสะท้อน (mirror) ไว้ให้หน้าจอเก่าอ่าน — ห้ามใช้ตัดสินใจ/รายงาน
   //    สินค้าที่ยังไม่ผูกคลัง ใช้ช่องนี้เป็นสต็อกของตัวเองเหมือนเดิมทุกประการ
-  qtyOnHand        Decimal            @default(0) @db.Decimal(12, 4)
+  qtyOnHand            Decimal            @default(0) @db.Decimal(12, 4)
   // V2 (WO 4.1 · MAP §F.8–9): ต้นฉบับในแคตตาล็อกกลาง (InvItem) — ขากลับของ InvItem.accountProductId
   //   null = ไม่ติดตามสต็อกในคลัง (ไม่มีคอลัมน์ trackStock แยก — "ติดตามสต็อก" = invItemId != null)
-  invItemId        String?
+  invItemId            String?
   // คลังปริยายที่ใบเบิก/ใบส่งคืนของสินค้านี้จะตัด/คืน (InvLocation.id) — null = คลังหลักของระบบคลัง
-  warehouseId      String?
-  pinned           Boolean            @default(false) // V2 (WO 0.3): ปักหมุดขึ้นหัวรายการ/ตัวเลือกด่วน
-  archivedAt       DateTime?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  warehouseId          String?
+  pinned               Boolean            @default(false) // V2 (WO 0.3): ปักหมุดขึ้นหัวรายการ/ตัวเลือกด่วน
+  archivedAt           DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
   lines AccountDocumentLine[]
 
@@ -272,8 +272,8 @@ model AccountFinance {
   bankName        String?
   accountNo       String?
   promptpayId     String?
-  openingBalance  Int                @default(0)
-  openingDate     DateTime?
+  openingBalance  Int                @default(0) // V2 (WO 5.1): ผลรวมของ AccountFinanceOpening ทั้งหมด — เก็บซ้ำไว้ backward-compat (การ์ด/รายงานเดิมอ่านคอลัมน์นี้)
+  openingDate     DateTime? // V2 (WO 5.1): = วันที่ของรายการยอดยกมาแรกสุด (เก็บไว้ backward-compat)
   ledgerAccountId String? // บัญชี GL ที่ผูก (1000/1010 ...)
   showOnDocuments Boolean            @default(false)
   pinned          Boolean            @default(false) // V2 (WO 0.3): ปักหมุดช่องทางเงินที่ใช้บ่อย
@@ -281,10 +281,62 @@ model AccountFinance {
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
+  // ───── V2 (WO 5.1 · DESIGN-SPEC-V2 §10.1 modal ขั้นสูง) ─────
+  code          String? // CSH001/BSV001/BCA001/EWL001/PTY001 — partial unique index (ดู migration)
+  bankSubtype   String? // เฉพาะ type=BANK: "SAVINGS" (ออมทรัพย์ · default) | "CURRENT" (กระแสรายวัน) — เลือก string แทนเพิ่มค่า enum เพราะไม่ต้อง migrate enum แยก
+  bankBranch    String? // สาขา
+  accountName   String? // ชื่อบัญชี (ต่างจาก name = ชื่อที่ตั้งเรียกในระบบ)
+  note          String? // คำอธิบาย ≤500 (validate ชั้น service)
+  useForReceive Boolean @default(true) // ใช้รับเงิน
+  useForPay     Boolean @default(true) // ใช้จ่ายเงิน
+  holderUserId  String? // ผู้ถือ (สำรองรับ/จ่าย)
+  limitSatang   Int? // วงเงิน (สำรองรับ/จ่าย) — สตางค์
+
   payments AccountDocumentPayment[]
 
   @@index([systemId, type, archivedAt])
   @@index([systemId, pinned, archivedAt]) // V2: ช่องทางที่ปักหมุดขึ้นก่อน
+}
+
+// V2 (WO 5.1 · §10.1 modal "ยอดยกมาหลายรายการ"): บันทึกยอดยกมาเป็นรายการย่อยแทนตัวเลขก้อนเดียว
+// แต่ละรายการ = 1 JV ของตัวเอง (idempotent ต่อ financeId+seq+version ผ่าน gl.postFinanceOpening)
+// version เพิ่มทุกครั้งที่แก้ไข (แก้ = กลับรายการเดิม + โพสต์รายการใหม่ด้วย refId คนละตัว — ห้ามใช้ refId เดิมซ้ำ
+// เพราะ gl.alreadyPosted เช็คแค่ "มีแถว idempotencyKey นี้ไหม" ไม่สนสถานะ REVERSED)
+model AccountFinanceOpening {
+  id           String    @id @default(cuid())
+  tenantId     String
+  systemId     String
+  financeId    String
+  seq          Int // ลำดับรายการยอดยกมาต่อบัญชีเงิน (1,2,3…)
+  date         DateTime
+  amountSatang Int // ติดลบได้ (รายการปรับลด) — ทิศทาง Dr/Cr กำหนดจากเครื่องหมาย
+  note         String?
+  version      Int       @default(1) // เพิ่มทุกครั้งที่แก้ไขรายการนี้
+  entryId      String? // AccountJournalEntry.id ล่าสุดที่โพสต์ให้รายการนี้ (เผื่อ query ย้อน)
+  postedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([financeId, seq])
+  @@index([systemId, financeId])
+}
+
+// V2 (WO 5.1 · §10.1 เมนู ⋮ "โอน"): บันทึกการโอนเงินระหว่างช่องทาง — กันโพสต์ JV ซ้ำเมื่อ request ซ้ำ (สร้างแถวนี้ก่อนโพสต์ ผูก transferId เป็น idempotency key)
+model AccountFinanceTransfer {
+  id           String   @id @default(cuid())
+  tenantId     String
+  systemId     String
+  fromId       String
+  toId         String
+  amountSatang Int
+  date         DateTime
+  note         String?
+  entryId      String? // AccountJournalEntry.id ที่โพสต์แล้ว (null = ยังไม่โพสต์สำเร็จ)
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  @@index([systemId, fromId])
+  @@index([systemId, toId])
 }
 
 model AccountCheque {

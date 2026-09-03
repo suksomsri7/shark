@@ -124,6 +124,21 @@ for (const f of E.financeAccounts as { code: string; id: string; name: string; b
 eq("C-TOTAL", `ยอดรวมทุกช่องทาง = ฿${baht(E.finance.total)}`, balances.reduce((a, b) => a + b.balance, 0), E.finance.total);
 eq("C-COUNT", "จำนวนช่องทางการเงิน = 4", balances.length, 4);
 
+// WO 5.1 — รหัสช่องทาง persist จริง (ไม่ใช่แค่ key ในสคริปต์ seed) + ช่องทางปิดใช้งานไม่นับ + ยอดยกมา 2 รายการของ BSV001
+for (const f of E.financeAccounts as { code: string; id: string }[]) {
+  eq(`C-code-${f.code}`, `${f.code} มีรหัส persist = ${f.code}`, balById.get(f.id)?.code ?? null, f.code);
+}
+if (E.financeArchived) {
+  const archivedRow = balById.get(E.financeArchived.id);
+  chk("C-archived-hidden", "ช่องทางที่ปิดใช้งานไม่โผล่ใน financeBalances", archivedRow === undefined, archivedRow);
+}
+if (E.financeOpeningSplit) {
+  const split = E.financeOpeningSplit as { financeId: string; entries: unknown[]; sum: number };
+  const entries = await fin.listFinanceOpeningEntries(split.financeId);
+  eq("C-opening-split-count", "BSV001 ยอดยกมา 2 รายการแยกกัน", entries.length, split.entries.length);
+  eq("C-opening-split-sum", "ผลรวมยอดยกมา 2 รายการ = ยอดยกมารวมเดิม", entries.reduce((s, e) => s + e.amountSatang, 0), split.sum);
+}
+
 // ─────────── D. แท็บหน้ารายการใบแจ้งหนี้ (§3) ───────────
 console.log("\nD. แท็บหน้ารายการใบแจ้งหนี้ (§3)");
 const invoices = await prisma.accountDocument.findMany({
