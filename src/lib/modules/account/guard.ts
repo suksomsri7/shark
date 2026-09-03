@@ -29,23 +29,26 @@ export async function requireAccountPage(systemId: string, action: string) {
  * ใช้โดย `scripts/qc-acc-v2-guard.mts` เป็นเฉลยตรวจว่าทุก route มีด่านจริงและตรงตัว
  *
  * หลักการแมป (ระบบยังไม่มี action ชนิด "read" แยก — ดู permissions.ts:432-461):
- *   - หน้าเอกสาร (list/detail/print ทั้งรายรับและรายจ่าย) → `account.doc.create`
+ *   - หน้าเอกสาร **อ่านอย่างเดียว** (list/detail/print ทั้งรายรับและรายจ่าย) → `account.doc.view` (WO 0.3)
+ *     ⚠️ ไม่ใช่การลดความปลอดภัย: การสร้าง/แก้/ออกเอกสารยังตรวจ `account.doc.create`/`.issue` ที่ตัว
+ *     server action เองทุกตัว (actions.ts / expense-actions.ts) · หน้าเป็นแค่ชั้นแรก
+ *     และคนที่มี `account.doc.create` อยู่เดิม **ยังเข้าได้เหมือนเดิม** เพราะตาราง IMPLIES ใน access.ts
  *   - หน้าอ่านรายงาน → `account.report.view` · สมุดรายวัน/แยกประเภท → `account.journal.view`
  *   - หน้าทะเบียน/ตั้งค่า → action `.manage` ของหมวดนั้น
  */
 export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "accounts/page.tsx": "account.chart.manage",
   "aging/page.tsx": "account.report.view",
-  "asset-buy/[docId]/page.tsx": "account.doc.create",
-  "asset-buy/page.tsx": "account.doc.create",
+  "asset-buy/[docId]/page.tsx": "account.doc.view",
+  "asset-buy/page.tsx": "account.doc.view",
   "assets/page.tsx": "account.asset.manage",
   "cheque/page.tsx": "account.cheque.manage",
   "contacts/page.tsx": "account.contact.manage",
-  "docs/[docType]/[docId]/page.tsx": "account.doc.create",
-  "docs/[docType]/page.tsx": "account.doc.create",
+  "docs/[docType]/[docId]/page.tsx": "account.doc.view",
+  "docs/[docType]/page.tsx": "account.doc.view",
   "documents/page.tsx": "account.document.manage",
-  "expense/[docId]/page.tsx": "account.doc.create",
-  "expense/page.tsx": "account.doc.create",
+  "expense/[docId]/page.tsx": "account.doc.view",
+  "expense/page.tsx": "account.doc.view",
   "finance/[financeId]/statement/page.tsx": "account.finance.manage",
   "finance/page.tsx": "account.finance.manage",
   "goods-issue/page.tsx": "account.product.manage",
@@ -54,12 +57,12 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "journal/page.tsx": "account.journal.view",
   "ledger/page.tsx": "account.journal.view",
   "periods/page.tsx": "account.period.close",
-  "po/[docId]/page.tsx": "account.doc.create",
-  "po/page.tsx": "account.doc.create",
-  "print/[docId]/page.tsx": "account.doc.create",
+  "po/[docId]/page.tsx": "account.doc.view",
+  "po/page.tsx": "account.doc.view",
+  "print/[docId]/page.tsx": "account.doc.view",
   "products/page.tsx": "account.product.manage",
-  "purchase/[docId]/page.tsx": "account.doc.create",
-  "purchase/page.tsx": "account.doc.create",
+  "purchase/[docId]/page.tsx": "account.doc.view",
+  "purchase/page.tsx": "account.doc.view",
   "reports/balance-sheet/page.tsx": "account.report.view",
   "reports/cash-flow/page.tsx": "account.report.view",
   "reports/page.tsx": "account.report.view",

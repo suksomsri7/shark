@@ -85,7 +85,7 @@ export default async function DocTypeListPage({
   if (!(docType in DOC_LABEL)) notFound();
   const dt = docType as AccountDocType;
   if (!isVisibleDocType(dt)) notFound();
-  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.doc.create" });
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.doc.view" });
 
   const tabs = tabsFor(dt);
   const active = tabs.find((t) => t.key === tabParam) ?? tabs[0];

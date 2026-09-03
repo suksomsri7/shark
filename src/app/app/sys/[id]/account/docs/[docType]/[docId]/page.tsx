@@ -47,7 +47,7 @@ export default async function DocDetailPage({
   if (!(docType in DOC_LABEL)) notFound();
   const dt = docType as AccountDocType;
   if (!isVisibleDocType(dt)) notFound();
-  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.doc.create" });
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.doc.view" });
 
   const [doc, contacts, settings] = await Promise.all([
     getDocument(tenantId, systemId, docId),

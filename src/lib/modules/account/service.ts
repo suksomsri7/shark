@@ -146,7 +146,8 @@ export function normalizeTaxId(taxId: string | null | undefined): string {
  *   "02-090-4301"       → "020904301"
  *   "+66 (0)81 234 5678"→ "0812345678"
  * เบอร์ต่างประเทศที่ไม่ใช่ +66 → คืนเฉพาะตัวเลข (ไม่ดัดแปลง)
- * WO0.3: use phoneNorm column — เมื่อมีคอลัมน์แล้วให้เก็บค่านี้ลง DB แทนการคำนวณตอน query
+ * WO 0.3: มีคอลัมน์ `AccountContact.phoneNorm` แล้ว — ทุกจุดที่เขียน `phone` ต้องเขียนค่านี้ลงคอลัมน์ด้วย
+ * (ใช้ `contactWriteFields()` ด้านล่าง อย่าประกอบ data เอง)
  */
 export function normalizePhoneTh(phone: string | null | undefined): string {
   let d = (phone ?? "").replace(/\D/g, "");
@@ -155,6 +156,26 @@ export function normalizePhoneTh(phone: string | null | undefined): string {
   if (!d.startsWith("66")) return d; // เบอร์ในประเทศ (ขึ้นต้น 0) หรือประเทศอื่น → เลขล้วน
   d = d.slice(2);
   return d.startsWith("0") ? d : "0" + d; // +66 (0)81… และ +6681… ให้ผลเดียวกัน
+}
+
+/**
+ * ฟิลด์คู่ `phone` + `phoneNorm` สำหรับทุกจุดที่เขียน AccountContact (WO 0.3)
+ *
+ * 🔴 ทำไมต้องมี: `phoneNorm` คือกุญแจจับผู้ติดต่อซ้ำ ถ้ามีจุดไหนเขียน `phone` โดยไม่เขียน `phoneNorm`
+ *    แถวนั้นจะ "ล่องหน" จากการจับคู่ → ระบบสร้างผู้ติดต่อซ้ำเงียบ ๆ
+ *    ⇒ createContact/updateContact ต้องเรียกตัวนี้เสมอ ห้ามประกอบ data เอง
+ *
+ * - ไม่ส่ง `phone` มาเลย (update ที่ไม่แตะเบอร์) → คืน {} (ไม่แตะทั้งสองคอลัมน์)
+ * - ส่ง `phone` มา (รวม null/"") → เขียนทั้งคู่ให้ตรงกันเสมอ · เบอร์ว่าง → phoneNorm = null
+ */
+export function contactWriteFields(input: { phone?: string | null }): {
+  phone?: string | null;
+  phoneNorm?: string | null;
+} {
+  if (!("phone" in input)) return {};
+  const phone = input.phone ?? null;
+  const norm = normalizePhoneTh(phone);
+  return { phone, phoneNorm: norm || null };
 }
 
 /** ตรวจ checksum เลขผู้เสียภาษีไทย 13 หลัก (mod-11 หลักที่ 13 = check digit) */
@@ -595,7 +616,7 @@ export async function createContact(input: {
       branchCode: input.branchCode || "00000",
       branchName: input.branchName ?? null,
       address: input.address ?? null,
-      phone: input.phone ?? null,
+      ...contactWriteFields({ phone: input.phone ?? null }), // WO 0.3: phone + phoneNorm คู่กันเสมอ
       email: input.email ?? null,
       creditTermDays: input.creditTermDays ?? 0,
       note: input.note ?? null,
@@ -621,7 +642,12 @@ export async function updateContact(
     note: string | null;
   }>,
 ) {
-  await prisma.accountContact.updateMany({ where: { id, tenantId, systemId }, data: input });
+  // WO 0.3: ถ้า caller ส่ง phone มา ต้องอัปเดต phoneNorm ให้ตรงกันในคำสั่งเดียว
+  //         (ไม่ส่ง phone = ไม่แตะทั้งคู่ — พฤติกรรม partial update เดิมคงอยู่)
+  await prisma.accountContact.updateMany({
+    where: { id, tenantId, systemId },
+    data: { ...input, ...contactWriteFields(input) },
+  });
 }
 
 export async function archiveContact(tenantId: string, systemId: string, id: string) {
@@ -1927,11 +1953,16 @@ export async function findDocByRef(systemId: string, docType: AccountDocType, re
   return prisma.accountDocument.findFirst({ where: { systemId, docType, refType, refId }, select: { id: true } });
 }
 /**
- * จับคู่ผู้ติดต่อด้วยเบอร์โทรแบบ normalize (WO 0.2)
- * ⚠️ schema ยังไม่มีคอลัมน์ phoneNorm (จะเพิ่มใน WO 0.3) จึงต้อง normalize ตอน query:
- *   (1) ทางเร็ว — เบอร์ที่เก็บไม่มีตัวคั่น ชนได้ด้วย `contains` 9 หลักท้าย (คุมด้วย index systemId)
- *   (2) ทางสำรอง — เบอร์ที่เก็บมีขีด/เว้นวรรค/วงเล็บ ต้องดึงเฉพาะแถวที่มีเบอร์มา normalize เทียบ
- * WO0.3: use phoneNorm column — แทนทั้งบล็อกนี้ด้วย `where: { systemId, phoneNorm, archivedAt: null }`
+ * จับคู่ผู้ติดต่อด้วยเบอร์โทรแบบ normalize (WO 0.2 → คอลัมน์จริงใน WO 0.3)
+ *
+ * ทางหลัก: `where { systemId, phoneNorm, archivedAt: null }` — ยิงตรงเข้าดัชนี `[systemId, phoneNorm]`
+ *   (ไม่มีการสแกน/ไม่มีเพดานจำนวนแถวอีกแล้ว — ของเดิมโหลดสูงสุด 5000 แถวมา normalize ใน JS)
+ *
+ * ทางสำรอง (ชั่วคราว): ถ้าระบบนี้ **ยังไม่ได้ backfill เลยสักแถว** (มีผู้ติดต่อที่มีเบอร์ แต่ phoneNorm
+ *   ว่างทั้งระบบ) ให้ย้อนไปใช้วิธีเดิม เพื่อไม่ให้ระบบที่ deploy โค้ดใหม่ก่อนรัน backfill
+ *   "จับคู่ไม่ได้ทั้งกระดาน" แล้วสร้างผู้ติดต่อซ้ำเป็นพรวด
+ *   👉 หลังรัน `scripts/backfill-acc-v2-phone-norm.mts` บน prod แล้ว ทางนี้จะไม่ถูกใช้อีกเลย
+ *   (เงื่อนไขคือ "ทั้งระบบว่าง" ไม่ใช่ "หาไม่เจอ" — ไม่งั้นทุกครั้งที่ไม่เจอจะไปสแกนตารางฟรี ๆ)
  */
 async function findContactByPhoneNorm(
   systemId: string,
@@ -1939,21 +1970,35 @@ async function findContactByPhoneNorm(
 ): Promise<{ id: string } | null> {
   const norm = normalizePhoneTh(phone);
   if (norm.length < 8) return null; // สั้นเกินกว่าจะเป็นกุญแจตัวตน
-  const last9 = norm.slice(-9);
-  const fast = await prisma.accountContact.findFirst({
-    where: { systemId, archivedAt: null, phone: { contains: last9 } },
-    select: { id: true, phone: true },
+  const hit = await prisma.accountContact.findFirst({
+    where: { systemId, archivedAt: null, phoneNorm: norm },
+    select: { id: true },
     orderBy: { createdAt: "asc" },
   });
-  if (fast && normalizePhoneTh(fast.phone) === norm) return { id: fast.id };
+  if (hit) return hit;
+  return findContactByPhoneLegacyScan(systemId, norm);
+}
+
+/**
+ * ทางสำรองก่อน backfill เท่านั้น (ดู findContactByPhoneNorm) — คืน null ทันทีถ้าระบบนี้ backfill แล้ว
+ * ⚠️ ห้ามเรียกจากที่อื่น
+ */
+async function findContactByPhoneLegacyScan(
+  systemId: string,
+  norm: string,
+): Promise<{ id: string } | null> {
+  const filled = await prisma.accountContact.count({
+    where: { systemId, archivedAt: null, phoneNorm: { not: null } },
+  });
+  if (filled > 0) return null; // ระบบนี้ backfill แล้ว → ทางหลักคือคำตอบสุดท้าย
   const rows = await prisma.accountContact.findMany({
     where: { systemId, archivedAt: null, NOT: { phone: null } },
     select: { id: true, phone: true },
     orderBy: { createdAt: "asc" },
-    take: 5000,
+    take: 5000, // เพดานเดิมของ WO 0.2 — คงไว้เฉพาะทางสำรองนี้ (กันโหลดทั้งตารางถ้ายังไม่ backfill)
   });
-  const hit = rows.find((r) => normalizePhoneTh(r.phone) === norm);
-  return hit ? { id: hit.id } : null;
+  const found = rows.find((r) => normalizePhoneTh(r.phone) === norm);
+  return found ? { id: found.id } : null;
 }
 
 /**

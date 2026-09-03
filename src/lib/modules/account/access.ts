@@ -2,7 +2,7 @@
 // ใช้ร่วมทุกไฟล์ในโมดูล account (QC5 Gate A-A5: can() + AuditLog ทุกจุดเงิน)
 import type { ActorType, Membership, Tenant } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
-import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
+import { assertCan, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 
 type ActiveAuth = { user: { id: string }; active: Membership & { tenant: Tenant } };
 
@@ -15,8 +15,44 @@ export function mc(auth: ActiveAuth): MembershipCtx {
   };
 }
 
+/**
+ * ตาราง "สิทธิ์ที่กว้างกว่า → สิทธิ์ที่แคบกว่าที่ได้ตามมาเอง" (WO 0.3)
+ *
+ * 🔴 ทำไมต้องมี: WO 0.3 แยก `account.doc.view` (หน้าอ่านอย่างเดียว) ออกจาก `account.doc.create`
+ *    (สร้าง/แก้) ถ้าไม่มีตารางนี้ พนักงานที่เจ้าของเคยติ๊ก `account.doc.create` ไว้ **จะเปิดหน้ารายการ
+ *    /รายละเอียด/พิมพ์ ไม่ได้ทันทีที่ deploy** ทั้งที่สิทธิ์เขากว้างกว่า → สิทธิ์หายเงียบ ๆ
+ *    ตารางนี้ทำให้ "คนสร้างเอกสารได้ ย่อมดูเอกสารได้" โดยไม่ต้องไล่แก้ Membership.permissions ของทุกร้าน
+ *
+ * กติกา: ใส่ได้เฉพาะทิศ **กว้าง → แคบ** เท่านั้น (ห้ามให้สิทธิ์แคบเปิดสิทธิ์กว้าง = ยกระดับสิทธิ์)
+ * ไม่ไล่ต่อเป็นทอด ๆ (1 ชั้นพอ) — ถ้าวันหนึ่งต้องหลายชั้น ให้เขียน closure ที่นี่ที่เดียว
+ */
+export const IMPLIES: Readonly<Record<string, readonly string[]>> = {
+  "account.doc.create": ["account.doc.view"],
+  "account.doc.issue": ["account.doc.view"],
+  "account.doc.approve": ["account.doc.view"],
+};
+
+/**
+ * ตรวจสิทธิ์ action ของโมดูลบัญชี (คืน boolean) — **จุดเดียว** ที่รู้เรื่อง IMPLIES
+ * ทุกที่ในโมดูลบัญชีต้องผ่าน `accountCan`/`assertAccountCan` ไม่เรียก `evaluate` ตรง ๆ
+ */
+export function accountCan(auth: ActiveAuth, action: string): boolean {
+  const ctx = mc(auth);
+  if (can(ctx, action)) return true;
+  for (const [broad, narrow] of Object.entries(IMPLIES)) {
+    if (narrow.includes(action) && can(ctx, broad)) return true;
+  }
+  return false;
+}
+
+function can(ctx: MembershipCtx, action: string): boolean {
+  return evaluate(ctx, { module: "account", action });
+}
+
 /** ตรวจสิทธิ์ action ของโมดูลบัญชี — โยน ForbiddenError ถ้าไม่ผ่าน (action = "account.doc.issue" ฯลฯ) */
 export function assertAccountCan(auth: ActiveAuth, action: string): void {
+  // ผ่านทาง IMPLIES ก็ถือว่าผ่าน · ไม่ผ่านเลย → ให้ assertCan โยน ForbiddenError รูปแบบเดิม
+  if (accountCan(auth, action)) return;
   assertCan(mc(auth), { module: "account", action });
 }
 

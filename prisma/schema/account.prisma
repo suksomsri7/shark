@@ -94,6 +94,32 @@ enum AccountLegalType {
   COMPANY
 }
 
+// ── V2 (WO 0.3) ──────────────────────────────────────────────────────────────
+// ที่มาของเอกสาร — ใช้แยกว่าใบนี้คนพิมพ์เอง หรือไหลมาจากระบบอื่น/AI (SPEC §14.1)
+enum AccountDocSource {
+  MANUAL // คนสร้างเอง (ค่าเดิมของทุกแถวก่อน V2)
+  AI // ผู้ช่วย AI สร้างให้
+  IMPORT // นำเข้าไฟล์
+  INBOX // กล่องขาเข้า (บิลที่ส่งเข้ามา/อ่านด้วย AI)
+  CRM // ไหลมาจาก CRM (ใบเสนอราคาจากดีล)
+  POS // ไหลมาจากขายหน้าร้าน
+  RECURRING // เอกสารประจำงวด (สร้างอัตโนมัติ)
+}
+
+// โหมดราคาที่ผู้ใช้ "คิด" ตอนกรอก — คนละชั้นกับ AccountVatMode ที่เป็นผลลัพธ์ในเอกสาร
+// (เก็บเป็น null = ยังไม่เคยเลือก → ใช้ค่าจากตั้งค่า/พฤติกรรมเดิม)
+enum AccountPriceMode {
+  EXCL_VAT // ราคายังไม่รวม VAT
+  INCL_VAT // ราคารวม VAT แล้ว
+  NO_VAT // ไม่มี VAT
+}
+
+// ส่วนลดท้ายบิลกรอกเป็นจำนวนเงินหรือเปอร์เซ็นต์ (ตัวเลขจริงยังเก็บใน discountAmount = สตางค์)
+enum AccountDiscountMode {
+  AMOUNT
+  PERCENT
+}
+
 // ───────────── เอกสาร (แกนระบบ — polymorphic docType) ─────────────
 
 model AccountDocument {
@@ -144,6 +170,12 @@ model AccountDocument {
   voidedAt        DateTime?
   voidReason      String?
   createdById     String?
+  // ── V2 (WO 0.3) · additive ทั้งหมด — แถวเดิมได้ MANUAL / [] / null = พฤติกรรมเดิมเป๊ะ ──
+  source          AccountDocSource      @default(MANUAL) // ที่มาของเอกสาร (SPEC §14.1)
+  tags            String[]              @default([]) // ป้ายกำกับอิสระของผู้ใช้
+  priceMode       AccountPriceMode? // โหมดราคาที่ผู้ใช้เลือกตอนกรอก (null = ตามตั้งค่า)
+  discountMode    AccountDiscountMode? // ส่วนลดท้ายบิลกรอกแบบเงิน/เปอร์เซ็นต์ (null = เงิน)
+  salesUserId     String? // พนักงานขายเจ้าของใบ (รายงานยอดขายรายคน)
 
   lines         AccountDocumentLine[]
   payments      AccountDocumentPayment[]
@@ -159,6 +191,7 @@ model AccountDocument {
   @@index([systemId, docType, dueDate])
   @@index([systemId, contactId, docType])
   @@index([systemId, direction, issueDate])
+  @@index([systemId, docType, source]) // V2: กรอง "มาจากไหน" ในหน้ารายการ
   @@index([tenantId, systemId])
 }
 
@@ -272,8 +305,19 @@ model AccountContact {
   creditTermDays Int                @default(0) // 0 = เงินสด
   note           String?
   archivedAt     DateTime?
+  // ── V2 (WO 0.3) · additive ทั้งหมด (SPEC §14.2) ──
+  /// เบอร์รูปแบบเดียว (normalizePhoneTh) — คอลัมน์นี้คือกุญแจจับผู้ติดต่อซ้ำจากเบอร์
+  /// ทุกจุดที่เขียน phone ต้องเขียนค่านี้ด้วย (service.contactWriteFields)
+  phoneNorm        String?
+  ownerUserId      String? // เจ้าของผู้ติดต่อ (ผู้ดูแลลูกค้ารายนี้)
+  mergedIntoId     String? // ถูกรวมเข้ากับผู้ติดต่อใด (การรวมรายการซ้ำ — ไม่ลบของเดิม)
+  defaultPriceMode AccountPriceMode? // โหมดราคาปริยายเวลาออกเอกสารให้รายนี้
+  defaultWhtType   String? // ประเภทเงินได้ที่หัก ณ ที่จ่ายเป็นประจำ (ม.40 (…))
+  defaultWhtRateBp Int? // อัตราหัก ณ ที่จ่ายปริยาย (basis point · 300 = 3%)
+  bankAccountNote  String? // บัญชีธนาคารสำหรับโอนจ่าย (ข้อความอิสระ)
 
   documents AccountDocument[]
+  groups    AccountContactGroupMember[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -281,6 +325,49 @@ model AccountContact {
   @@index([systemId, kind, archivedAt])
   @@index([systemId, taxId])
   @@index([systemId, name])
+  @@index([systemId, phoneNorm]) // V2: จับคู่ซ้ำจากเบอร์ (แทนการสแกนทั้งตาราง)
+  /// 🔴 ของจริงที่บังคับความไม่ซ้ำคือ **partial unique index** ที่สร้างด้วย raw SQL ใน migration
+  ///    20260902xxxxxx_account_v2_phase0:
+  ///      CREATE UNIQUE INDEX "AccountContact_systemId_taxId_branchCode_active_key"
+  ///        ON "AccountContact"("systemId","taxId","branchCode")
+  ///        WHERE "taxId" IS NOT NULL AND "archivedAt" IS NULL;
+  ///    Prisma แสดง partial index ไม่ได้ (@@unique ไม่มี where) — ถ้าประกาศ @@unique ตรง ๆ
+  ///    จะกลายเป็น unique เต็มตาราง = ห้ามมีผู้ติดต่อที่ถูกเก็บซ้ำเลขภาษีเดิม ซึ่งผิดจากที่ต้องการ
+  ///    ที่นี่จึงประกาศแค่ @@index (ให้ client มีดัชนีค้นหา) แล้วปล่อยความ "unique" ให้ DB
+  ///    👉 `prisma migrate diff` มองไม่เห็น partial index นี้ → ห้ามลบออกจาก migration
+  @@index([systemId, taxId, branchCode])
+}
+
+// ───────────── กลุ่มผู้ติดต่อ (V2 · WO 0.3 — SPEC §14.2) ─────────────
+// จัดกลุ่มลูกค้า/ผู้ขายแบบหลายกลุ่มต่อคน (ลูกค้าประจำ · ค้างชำระ · ตัวแทน …)
+
+model AccountContactGroup {
+  id        String   @id @default(cuid())
+  tenantId  String
+  systemId  String
+  name      String
+  color     String? // สีป้าย (token ของ UI — เก็บเป็นข้อความ)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  members AccountContactGroupMember[]
+
+  @@unique([systemId, name])
+  @@index([systemId, sortOrder])
+}
+
+model AccountContactGroupMember {
+  id        String              @id @default(cuid())
+  tenantId  String
+  systemId  String
+  groupId   String
+  group     AccountContactGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   AccountContact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  createdAt DateTime            @default(now())
+
+  @@unique([groupId, contactId])
+  @@index([systemId, contactId])
 }
 
 // ───────────── ตั้งค่าเอกสาร/องค์กร (1 ต่อระบบ) ─────────────

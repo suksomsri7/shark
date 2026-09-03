@@ -429,6 +429,9 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     label: "บัญชี",
     group: "back",
     actions: {
+      // V2 (WO 0.3): แยก "ดู" ออกจาก "สร้าง/แก้" — หน้าอ่านอย่างเดียว (list/detail/print) ใช้ตัวนี้
+      // ⚠️ ใครที่มี account.doc.create อยู่เดิม ได้ account.doc.view อัตโนมัติ (ตาราง IMPLIES ใน account/access.ts)
+      "account.doc.view": "ดูเอกสารบัญชี",
       "account.doc.create": "สร้าง/แก้เอกสารบัญชี",
       "account.doc.issue": "ออกเอกสารบัญชี (มีผลทางบัญชี)",
       "account.doc.approve": "อนุมัติเอกสารบัญชี",
@@ -459,6 +462,11 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "account.cheque.clear": "บันทึกเช็คผ่าน",
       "account.cheque.bounce": "บันทึกเช็คคืน",
       "account.cheque.void": "ยกเลิกเช็ค",
+      // V2 (WO 0.3) — ของใหม่ที่เฟส 1+ จะใช้ (SPEC §14.11)
+      "account.reconcile": "กระทบยอดธนาคาร",
+      "account.contact.merge": "รวมผู้ติดต่อซ้ำ",
+      "account.import": "นำเข้าข้อมูลบัญชี",
+      "account.approve.limit": "เพดานยอดอนุมัติ",
     },
   },
   {

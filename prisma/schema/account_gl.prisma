@@ -143,6 +143,7 @@ model AccountProduct {
   expenseAccountId String?
   imageUrl         String?
   qtyOnHand        Decimal            @default(0) @db.Decimal(12, 4)
+  pinned           Boolean            @default(false) // V2 (WO 0.3): ปักหมุดขึ้นหัวรายการ/ตัวเลือกด่วน
   archivedAt       DateTime?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
@@ -151,6 +152,7 @@ model AccountProduct {
 
   @@unique([systemId, sku])
   @@index([systemId, type, archivedAt])
+  @@index([systemId, pinned, archivedAt]) // V2: ดึงรายการที่ปักหมุดขึ้นก่อน
 }
 
 model AccountCategory {
@@ -182,6 +184,7 @@ model AccountFinance {
   openingDate     DateTime?
   ledgerAccountId String? // บัญชี GL ที่ผูก (1000/1010 ...)
   showOnDocuments Boolean            @default(false)
+  pinned          Boolean            @default(false) // V2 (WO 0.3): ปักหมุดช่องทางเงินที่ใช้บ่อย
   archivedAt      DateTime?
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
@@ -189,6 +192,7 @@ model AccountFinance {
   payments AccountDocumentPayment[]
 
   @@index([systemId, type, archivedAt])
+  @@index([systemId, pinned, archivedAt]) // V2: ช่องทางที่ปักหมุดขึ้นก่อน
 }
 
 model AccountCheque {
@@ -227,6 +231,7 @@ model AccountLedger {
   parent           AccountLedger?          @relation("AccountLedgerTree", fields: [parentId], references: [id])
   children         AccountLedger[]         @relation("AccountLedgerTree")
   isSystem         Boolean                 @default(false)
+  pinned           Boolean                 @default(false) // V2 (WO 0.3): ปักหมุดบัญชีที่ลงบ่อย
   archivedAt       DateTime?
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
@@ -237,6 +242,7 @@ model AccountLedger {
 
   @@unique([systemId, code])
   @@index([systemId, type, archivedAt])
+  @@index([systemId, pinned, archivedAt]) // V2: ผังบัญชีที่ปักหมุดขึ้นก่อน
 }
 
 model AccountMapping {

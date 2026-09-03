@@ -211,6 +211,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AccountDocumentRelation: sys(),
   AccountDocSequence: sys(),
   AccountContact: sys(),
+  AccountContactGroup: sys(),
+  AccountContactGroupMember: sys(),
   AccountSettings: sys(),
   // Account — GL/finance/asset (P2/P3)
   AccountUnit: sys(),

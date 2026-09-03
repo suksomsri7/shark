@@ -17,7 +17,7 @@ export default async function PrintPage({
 }) {
   const { id, docId } = await params;
   const { copy } = await searchParams;
-  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.doc.create" });
+  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.doc.view" });
   const [doc, s] = await Promise.all([
     getDocument(tenantId, systemId, docId),
     getSettings(tenantId, systemId),
