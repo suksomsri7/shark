@@ -158,7 +158,7 @@ export type ContactsSidebar = {
   regularIds: Set<string>;
   /** ข้อความอธิบายกฎ "ลูกค้าประจำ" ปัจจุบัน (f5: "ซื้อตั้งแต่ 3 ครั้ง/ปี") — สร้างจากค่ากฎจริง ไม่ hardcode */
   regularRuleLabel: string;
-  /** เลขที่แบบ "C00019" — คำนวณสด (ไม่ persist — ดู wo-notes/3.2.md ข้อ 7) ไล่ตามลำดับสร้างข้ามลูกค้า/ผู้ขาย */
+  /** เลขที่แบบ "C00019" — ใช้คอลัมน์ `code` ถ้ามี (WO 3.3) · ไม่มีก็คำนวณสดตามลำดับสร้าง (WO 3.2) */
   codeOf: Map<string, string>;
   /** partyId ที่มี Customer/CrmContact เชื่อมอยู่ (ทั้งระบบ ไม่ใช่แค่หน้าปัจจุบัน) — ใช้ทั้งกรอง "ที่มา" และป้ายต่อแถว */
   sourceSets: { member: Set<string>; crm: Set<string> };
@@ -173,7 +173,7 @@ export async function loadContactsSidebar(ctx: Ctx, meter?: QueryMeter): Promise
   //    (นับ 2 ใน meter ตรงกับ SQL จริง 2 ก้อนเป๊ะ — งบรวมยังอยู่ในเพดาน ≤ 12 เพราะนับตรงตามจริง)
   const [contactsLight, groupRows, memberRows, rule] = await Promise.all([
     db.accountContact.findMany({
-      select: { id: true, kind: true, archivedAt: true, partyId: true, createdAt: true },
+      select: { id: true, kind: true, archivedAt: true, partyId: true, createdAt: true, code: true },
       orderBy: { createdAt: "asc" },
     }),
     db.accountContactGroup.findMany({
@@ -189,8 +189,10 @@ export async function loadContactsSidebar(ctx: Ctx, meter?: QueryMeter): Promise
   for (const m of memberRows) memberCountByGroup.set(m.groupId, (memberCountByGroup.get(m.groupId) ?? 0) + 1);
   const groups = groupRows.map((g) => ({ ...g, count: memberCountByGroup.get(g.id) ?? 0 }));
 
+  // WO 3.3 — เลขที่เก็บจริงในคอลัมน์ `code` แล้ว · แถวเก่าที่ยังไม่ backfill (code = null) ถอยไปใช้
+  // เลขคำนวณสดตามลำดับ createdAt เหมือน WO 3.2 (ไม่มีอะไรพัง ระหว่างรอ acc-v2-contact-code-backfill.mts)
   const codeOf = new Map<string, string>();
-  contactsLight.forEach((c, i) => codeOf.set(c.id, `C${String(i + 1).padStart(5, "0")}`));
+  contactsLight.forEach((c, i) => codeOf.set(c.id, c.code ?? `C${String(i + 1).padStart(5, "0")}`));
 
   const all = contactsLight.length;
   const customer = contactsLight.filter((c) => c.kind === "CUSTOMER" || c.kind === "BOTH").length;
@@ -463,6 +465,35 @@ export async function addContactsToGroup(ctx: Ctx, groupId: string, contactIds: 
 
 export async function removeContactFromGroup(ctx: Ctx, groupId: string, contactId: string): Promise<void> {
   await dbOf(ctx).accountContactGroupMember.deleteMany({ where: { groupId, contactId } });
+}
+
+/** WO 3.3 — กลุ่มกำหนดเองที่ผู้ติดต่อรายนี้อยู่ (ติ๊กไว้ตอนเปิด modal §7.2) */
+export async function listGroupIdsOfContact(ctx: Ctx, contactId: string): Promise<string[]> {
+  const rows = await dbOf(ctx).accountContactGroupMember.findMany({ where: { contactId }, select: { groupId: true } });
+  return rows.map((r) => r.groupId);
+}
+
+/**
+ * WO 3.3 — ช่อง "กลุ่มกำหนดเอง" ใน modal §7.2: ตั้งชุดกลุ่มของผู้ติดต่อรายนี้ให้เป็นชุดที่ส่งมา
+ * (เพิ่มที่ขาด · ลบที่ไม่ได้ติ๊กแล้ว) · idempotent — ส่งชุดเดิมซ้ำ = ไม่มีอะไรเปลี่ยน
+ * 🔴 ลบเฉพาะกลุ่มที่ **มีอยู่จริงในระบบนี้** — id กลุ่มของร้านอื่นถูก tenantDb กรองทิ้งอยู่แล้ว
+ */
+export async function setContactGroups(ctx: Ctx, contactId: string, groupIds: string[]): Promise<void> {
+  const wanted = new Set(groupIds.filter(Boolean));
+  const valid = new Set(
+    (await dbOf(ctx).accountContactGroup.findMany({ where: { id: { in: [...wanted] } }, select: { id: true } })).map((g) => g.id),
+  );
+  const current = await dbOf(ctx).accountContactGroupMember.findMany({ where: { contactId }, select: { groupId: true } });
+  const have = new Set(current.map((m) => m.groupId));
+  const toAdd = [...valid].filter((id) => !have.has(id));
+  const toRemove = [...have].filter((id) => !valid.has(id));
+  if (toAdd.length > 0)
+    await dbOf(ctx).accountContactGroupMember.createMany({
+      data: toAdd.map((groupId) => ({ tenantId: ctx.tenantId, systemId: ctx.systemId, groupId, contactId })),
+      skipDuplicates: true,
+    });
+  if (toRemove.length > 0)
+    await dbOf(ctx).accountContactGroupMember.deleteMany({ where: { contactId, groupId: { in: toRemove } } });
 }
 
 // ═══════════════════════ "+ เพิ่มผู้ติดต่อยอดนิยม" (§7.1) ═══════════════════════

@@ -8,8 +8,9 @@
 //
 // ความต่างจากภาพจริงที่เหลือ (ตั้งใจ — ดูเหตุผลเต็มใน wo-notes/3.2.md):
 //   1) แถวคลิก → หน้ารายละเอียดย่อ (อ่านอย่างเดียว) ไม่ใช่แผงเลื่อน 360° — TODO(WO 3.4)
-//   2) modal เพิ่ม/แก้ไขผู้ติดต่อเต็มรูปแบบ (§7.2) = WO 3.3 — ที่นี่ยังใช้ฟอร์ม inline เดิม (ย้ายตำแหน่งเท่านั้น)
-//   3) dropdown ทำรายการ เพิ่ม "เพิ่มเข้ากลุ่ม" ต่อจาก "แก้ไขข้อมูล" (deliverable text ระบุชัด แม้ภาพตัวอย่างไม่มี)
+//   2) dropdown ทำรายการ เพิ่ม "เพิ่มเข้ากลุ่ม" ต่อจาก "แก้ไขข้อมูล" (deliverable text ระบุชัด แม้ภาพตัวอย่างไม่มี)
+//
+// WO 3.3: ฟอร์ม inline เดิมถูกแทนด้วย `ContactModal` (§7.2 · ภาพ g5) — เปิดด้วย `?new=1` / `?edit=<id>`
 
 import { StatusChip } from "@/components/ui/StatusChip";
 import { MoneyText } from "@/components/ui/MoneyText";
@@ -18,6 +19,8 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { formatDateTh } from "@/lib/ui/date";
 import { RowActions, type RowActionItem } from "@/components/account-v2/RowActions";
 import { HashSection } from "@/components/account-v2/HashSection";
+import { ContactModal, type ContactModalContact } from "@/components/account-v2/ContactModal";
+import { getAccMode } from "@/components/account-v2/mode";
 import { ContactsPanel, type ContactsPanelGroupItem, type ContactsPanelRow } from "@/components/account-v2/ContactsPanel";
 import { editorNewPath, editorDetailPath } from "./doc-editor-config";
 import {
@@ -28,10 +31,9 @@ import {
   type ContactRow,
   type ContactGroupKey,
 } from "./contacts-list";
-import { getContact } from "./service";
+import { getContact, nextContactCode, listTenantMembers } from "./service";
+import { isDbdConfigured, DBD_REASON } from "./dbd";
 import {
-  createContactAction,
-  updateContactAction,
   archiveContactAction,
   createContactGroupAction,
   addContactsToGroupAction,
@@ -49,6 +51,9 @@ type SP = {
   err?: string;
   bulkIds?: string;
   edit?: string;
+  /** WO 3.3 — "?new=1" เปิด modal เพิ่มผู้ติดต่อ · "?tab=basic|advanced" เลือกแท็บเริ่มต้น (ใช้ถ่ายภาพ QC) */
+  new?: string;
+  tab?: string;
 };
 
 // สลับกลุ่มแล้วคง q/legalType เดิมไว้ (ค้นหาระหว่างเปลี่ยนกลุ่มได้ต่อเนื่อง) — รีเซ็ต page เสมอ (ชุดข้อมูลใหม่)
@@ -85,7 +90,17 @@ export async function ContactsPage({
     sidebar,
   );
 
+  // ── WO 3.3: ข้อมูลที่ modal §7.2 ต้องใช้ (โหลดเฉพาะตอนเปิด modal — หน้ารายการปกติไม่เสีย query เพิ่ม) ──
+  const modalOpen = searchParams.new === "1" || !!searchParams.edit;
   const editingContact = searchParams.edit ? await getContact(tenantId, systemId, searchParams.edit) : null;
+  const [modalNextCode, modalOwners, editingGroupIds, accMode] = modalOpen
+    ? await Promise.all([
+        editingContact ? Promise.resolve("") : nextContactCode(systemId),
+        listTenantMembers(tenantId),
+        editingContact ? listContactGroupIds(ctx, editingContact.id) : Promise.resolve([] as string[]),
+        getAccMode(),
+      ])
+    : ["", [] as { id: string; name: string }[], [] as string[], "accountant" as const];
 
   const cellsFor = (r: ContactRow): React.ReactNode[] => [
     // เลขที่ — ลิงก์สีฟ้า (accent) ตรง f5 (ไม่ใช่สีดำแบบรอบแรก)
@@ -146,7 +161,7 @@ export async function ContactsPage({
     { label: "สร้างใบเสร็จรับเงิน", href: `${editorNewPath(base, "RECEIPT")}?contactId=${r.id}`, icon: "check" },
     { label: "บันทึกค่าใช้จ่าย", href: `${editorNewPath(base, "EXPENSE")}?contactId=${r.id}`, icon: "upload" },
     { label: "ดูประวัติการซื้อขาย", href: `${pathname}/${r.id}`, icon: "clock", sepBefore: true },
-    { label: "แก้ไขข้อมูล", href: `${pathname}?edit=${r.id}#edit-contact`, icon: "edit" },
+    { label: "แก้ไขข้อมูล", href: `${pathname}?edit=${r.id}`, icon: "edit" },
     { label: "เพิ่มเข้ากลุ่ม", href: `${pathname}?bulkIds=${r.id}#bulk-group`, icon: "tag" },
     {
       label: "ปิดใช้งาน",
@@ -228,7 +243,7 @@ export async function ContactsPage({
         pathname={pathname}
         searchParams={{ q: searchParams.q, group: searchParams.group, legalType: searchParams.legalType }}
         importHref={`${base}/import/contacts`}
-        createContactHref="#new-contact"
+        createContactHref={`${pathname}?new=1`}
         sidebarStandard={std}
         sidebarCustom={customGroups}
         newGroupHref="#new-group"
@@ -247,16 +262,19 @@ export async function ContactsPage({
         emptyText="ไม่พบผู้ติดต่อ — ลองค้นหาด้วยคำอื่น หรือเพิ่มผู้ติดต่อใหม่"
       />
 
-      {/* + เพิ่มผู้ติดต่อ */}
-      <HashSection hash="new-contact">
-        <ContactForm systemId={systemId} action={createContactAction} title="เพิ่มผู้ติดต่อ" submitLabel="+ เพิ่มผู้ติดต่อ" />
-      </HashSection>
-
-      {/* แก้ไขข้อมูล — TODO(WO 3.3): แทนที่ด้วย modal เต็มรูปแบบ §7.2 */}
-      {editingContact && (
-        <HashSection hash="edit-contact" defaultOpen>
-          <ContactForm systemId={systemId} action={updateContactAction} title={`แก้ไขผู้ติดต่อ — ${editingContact.name}`} submitLabel="บันทึก" contact={editingContact} />
-        </HashSection>
+      {/* modal เพิ่ม/แก้ไขผู้ติดต่อ §7.2 (ภาพ g5) — เปิดจาก "+ เพิ่มผู้ติดต่อ" (?new=1) หรือ "แก้ไขข้อมูล" (?edit=<id>) */}
+      {modalOpen && (
+        <ContactModal
+          systemId={systemId}
+          contactsPath={pathname}
+          contact={editingContact ? toModalContact(editingContact, editingGroupIds) : null}
+          nextCode={modalNextCode}
+          groups={sidebar.counts.custom.map((g) => ({ id: g.id, name: g.name }))}
+          owners={modalOwners}
+          dbdEnabled={isDbdConfigured()}
+          dbdDisabledReason={DBD_REASON.noKey}
+          defaultTab={searchParams.tab === "advanced" ? "advanced" : searchParams.tab === "basic" ? "basic" : accMode === "easy" ? "basic" : "advanced"}
+        />
       )}
 
       {/* เพิ่มเข้ากลุ่ม (bulk) */}
@@ -328,81 +346,43 @@ export async function ContactsPage({
   );
 }
 
-// ฟอร์มเพิ่ม/แก้ไขผู้ติดต่อ — inline เดิม (ย้ายมาจาก contacts/page.tsx เดิม) รอ WO 3.3 แทนที่ด้วย modal §7.2
-function ContactForm({
-  systemId,
-  action,
-  title,
-  submitLabel,
-  contact,
-}: {
-  systemId: string;
-  action: (formData: FormData) => void | Promise<void>;
-  title: string;
-  submitLabel: string;
-  contact?: {
-    id: string;
-    name: string;
-    kind: string;
-    legalType: string;
-    taxId: string | null;
-    branchName: string | null;
-    phone: string | null;
-    email: string | null;
-    address: string | null;
-    creditTermDays: number;
-  } | null;
-}) {
-  return (
-    <div className="card flex flex-col gap-3">
-      <h2 className="text-sm font-medium">{title}</h2>
-      <form action={action} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <input type="hidden" name="systemId" value={systemId} />
-        {contact && <input type="hidden" name="id" value={contact.id} />}
-        <div className="sm:col-span-2">
-          <FormField label="ชื่อ / ชื่อจดทะเบียน" required>
-            <input name="name" required defaultValue={contact?.name} className="input" />
-          </FormField>
-        </div>
-        <FormField label="ประเภท">
-          <select name="kind" defaultValue={contact?.kind ?? "CUSTOMER"} className="input">
-            <option value="CUSTOMER">ลูกค้า</option>
-            <option value="VENDOR">ผู้ขาย</option>
-            <option value="BOTH">ทั้งคู่</option>
-          </select>
-        </FormField>
-        <FormField label="รูปแบบ">
-          <select name="legalType" defaultValue={contact?.legalType ?? "COMPANY"} className="input">
-            <option value="COMPANY">นิติบุคคล</option>
-            <option value="PERSON">บุคคลธรรมดา</option>
-          </select>
-        </FormField>
-        <FormField label="เลขผู้เสียภาษี 13 หลัก">
-          <input name="taxId" defaultValue={contact?.taxId ?? undefined} className="input" />
-        </FormField>
-        <FormField label="สาขา" hint="เช่น สำนักงานใหญ่">
-          <input name="branchName" defaultValue={contact?.branchName ?? undefined} className="input" />
-        </FormField>
-        <FormField label="เบอร์โทร">
-          <input name="phone" inputMode="tel" defaultValue={contact?.phone ?? undefined} className="input" />
-        </FormField>
-        <FormField label="อีเมล">
-          <input name="email" type="email" defaultValue={contact?.email ?? undefined} className="input" />
-        </FormField>
-        <div className="sm:col-span-2">
-          <FormField label="ที่อยู่">
-            <input name="address" defaultValue={contact?.address ?? undefined} className="input" />
-          </FormField>
-        </div>
-        <FormField label="เครดิตเทอม (วัน)">
-          <input name="creditTermDays" type="number" min={0} defaultValue={contact?.creditTermDays} className="input" />
-        </FormField>
-        <div className="sm:col-span-2">
-          <SubmitButton className="sm:justify-self-start">{submitLabel}</SubmitButton>
-        </div>
-      </form>
-    </div>
-  );
+// ── WO 3.3 · ตัวช่วยของ modal §7.2 ──
+
+/** id ของกลุ่มกำหนดเองที่ผู้ติดต่อรายนี้อยู่ (ติ๊กไว้ในช่อง "กลุ่มกำหนดเอง") */
+async function listContactGroupIds(ctx: { tenantId: string; systemId: string }, contactId: string): Promise<string[]> {
+  const { listGroupIdsOfContact } = await import("./contacts-list");
+  return listGroupIdsOfContact(ctx, contactId);
+}
+
+/** แถว AccountContact (Prisma) → props ของ ContactModal (client component รับได้เฉพาะค่าธรรมดา) */
+function toModalContact(
+  c: {
+    id: string; code: string | null; kind: string; legalType: string; name: string;
+    taxId: string | null; taxIdCountry: string | null; branchCode: string | null; officeType: string | null;
+    legalEntityType: string | null; personTitle: string | null; contactPerson: string | null;
+    addressLine: string | null; subdistrict: string | null; district: string | null; province: string | null;
+    postcode: string | null; country: string | null; email: string | null; phone: string | null;
+    website: string | null; fax: string | null; lineId: string | null; creditTermDays: number;
+    defaultPriceMode: string | null; defaultWhtType: string | null; defaultWhtRateBp: number | null;
+    bankAccountNote: string | null; arAccountCode: string | null; apAccountCode: string | null;
+    ownerUserId: string | null; note: string | null; tags: unknown; partyId: string | null;
+  },
+  groupIds: string[],
+): ContactModalContact {
+  return {
+    id: c.id, code: c.code, kind: c.kind, legalType: c.legalType, name: c.name,
+    taxId: c.taxId, taxIdCountry: c.taxIdCountry, branchCode: c.branchCode, officeType: c.officeType,
+    legalEntityType: c.legalEntityType, personTitle: c.personTitle, contactPerson: c.contactPerson,
+    addressLine: c.addressLine, subdistrict: c.subdistrict, district: c.district, province: c.province,
+    postcode: c.postcode, country: c.country, email: c.email, phone: c.phone, website: c.website,
+    fax: c.fax, lineId: c.lineId, creditTermDays: c.creditTermDays, defaultPriceMode: c.defaultPriceMode,
+    defaultWhtType: c.defaultWhtType, defaultWhtRateBp: c.defaultWhtRateBp,
+    bankAccountNote: c.bankAccountNote, arAccountCode: c.arAccountCode, apAccountCode: c.apAccountCode,
+    ownerUserId: c.ownerUserId, note: c.note,
+    tags: Array.isArray(c.tags) ? (c.tags as unknown[]).map(String) : [],
+    groupIds,
+    partyId: c.partyId,
+  };
 }
 
 export default ContactsPage;

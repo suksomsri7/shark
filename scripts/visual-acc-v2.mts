@@ -434,6 +434,38 @@ if (WO === "1.9") {
   console.log(`[fixture 1.9] กฎเอกสารประจำ 2 ตัว + แจ้งเตือน 3 รายการ\n`);
 }
 
+// ─────────── fixture ของ WO 3.3: ค่าที่ใช้ยิงสถานะ "เตือนซ้ำ" ของ modal (§7.2) ───────────
+// ต้องเป็นชื่อ+เบอร์ของผู้ติดต่อที่ **มีอยู่จริงใน DB QC** ไม่ใช่ค่าที่พิมพ์ทิ้งไว้ในสคริปต์
+// (ค่า hardcode = ระเบิดเวลาเมื่อ seed เปลี่ยน — บทเรียน feedback_oracle_rots_over_time)
+// ไม่สร้าง/ไม่ลบข้อมูลอะไรเลย: อ่านอย่างเดียว ⇒ ตัวนับผู้ติดต่อ 63 ไม่ขยับ
+let fx33 = { dupName: "", dupPhone: "", dupCode: "" };
+if (WO === "3.3") {
+  const { prisma: db } = await import("@/lib/core/db");
+  const c = await db.accountContact.findFirst({
+    where: { systemId: SYS, name: "ปิยธิดา อินสุ่ม", archivedAt: null },
+    select: { name: true, phone: true, code: true },
+  });
+  if (!c?.phone) throw new Error('fixture 3.3: ไม่พบผู้ติดต่อ "ปิยธิดา อินสุ่ม" ที่มีเบอร์ — รัน seed-acc-v2-qc ก่อน');
+  fx33 = { dupName: c.name, dupPhone: c.phone, dupCode: c.code ?? "" };
+  const before = await db.accountContact.count({ where: { systemId: SYS } });
+  const startedAt = new Date();
+  console.log(`[fixture 3.3] ผู้ติดต่อที่จะใช้ยิงสถานะเตือนซ้ำ = ${c.code ?? "(ยังไม่ backfill เลขที่)"} ${c.name} · ผู้ติดต่อก่อนถ่าย ${before} ราย\n`);
+  // 🔴 ตาข่ายกันพลาด: ภาพ "เตือนซ้ำ" ต้องกดปุ่มบันทึกจริง ถ้า flow เพี้ยนแล้วบันทึกสำเร็จ จะได้ผู้ติดต่อเกินมา
+  //    ⇒ ลบทุกแถวที่เกิดหลังกล้องเริ่มทำงานเสมอ (ตัวนับ 63 ของ acc-v2-expected.json ห้ามขยับเด็ดขาด)
+  cleanupFixture = async () => {
+    const extra = await db.accountContact.findMany({
+      where: { systemId: SYS, createdAt: { gte: startedAt } },
+      select: { id: true, name: true, partyId: true },
+    });
+    if (extra.length === 0) return;
+    await db.accountContactGroupMember.deleteMany({ where: { contactId: { in: extra.map((e) => e.id) } } });
+    await db.accountContact.deleteMany({ where: { id: { in: extra.map((e) => e.id) } } });
+    const pids = extra.map((e) => e.partyId).filter((x): x is string => !!x);
+    if (pids.length > 0) await db.party.deleteMany({ where: { id: { in: pids }, tenantId: E.tenantId } });
+    console.log(`⚠️  ลบผู้ติดต่อที่เกิดระหว่างถ่ายภาพ ${extra.length} ราย (flow เตือนซ้ำบันทึกทะลุ) — ตัวนับกลับเป็น ${before}`);
+  };
+}
+
 // ─────────── รายการหน้าต่อ WO (เติมทีละ WO ตาม BLUEPRINT §3) ───────────
 // expect = ข้อความที่ต้องเจอบนหน้า (ว่าง = ไม่ตรวจ) — พิสูจน์ว่าเปิดถูกหน้า **และต่อ DB QC จริง**
 // (Next โหลด .env ของ prod ให้อัตโนมัติตอน build/start แต่ไม่ทับ env ที่ส่งเข้ามา → ต้องมีหลักฐานจากหน้าจอ)
@@ -464,6 +496,10 @@ type PageSpec = {
    *  ⇒ หน้าที่ยาวกว่า 1 จอ แถบปุ่มจะไปทับเนื้อหากลางหน้าในภาพ ทั้งที่บนจอจริงไม่ทับ
    *  (ความ sticky ยังถูกตรวจแยกด้วย `stickyBarVisible` ก่อนสั่ง unstick) */
   unstickForShot?: string[];
+  /** WO 3.3: คลี่ modal (overlay `fixed` + เนื้อหา `overflow-y-auto`) ให้ยืดเต็มความสูงก่อนถ่าย fullPage
+   *  เหตุผล: modal สูงกว่า 90vh ⇒ ภาพ fullPage จะได้แค่ครึ่งบน ทำให้ด่าน parity กับ g5 ตรวจไม่ได้จริง
+   *  (ความ "เลื่อนได้ในตัว" ถูกพิสูจน์แยกด้วย qc-acc-v2-contact-modal + การเปิดบนจอจริง) */
+  expandModalForShot?: string;
 };
 
 type FlowStep =
@@ -471,6 +507,10 @@ type FlowStep =
   | { fill: string; value: string }
   | { select: string; value: string }
   | { waitFor: string }
+  /** WO 3.3: ยืนยันว่าค่าที่พิมพ์ลงช่อง "ถึงจริง" ก่อนจะไปขั้นถัดไป — ไม่ตรง = **หยุด flow ทั้งชุด**
+   *  เหตุผล: ขั้นถัดไปมักเป็นการกดปุ่มที่ "เขียนข้อมูลจริง" (เช่น บันทึกผู้ติดต่อ) ถ้าค่าที่พิมพ์หล่น
+   *  จะได้ภาพผิดสถานะ **และ** ทิ้งขยะไว้ใน DB QC (เจอจริง 4 ก.ย.: สร้างผู้ติดต่อเกินมา 1 ราย → ตัวนับ 63 เพี้ยน) */
+  | { assertValue: string; equals: string }
   /** WO 1.8: อัปโหลดไฟล์เข้า <input type="file"> ผ่าน DevTools (puppeteer ElementHandle.uploadFile) */
   | { upload: string; filePath: string };
 const PAGES: Record<string, PageSpec[]> = {
@@ -903,6 +943,47 @@ const PAGES: Record<string, PageSpec[]> = {
       expect: ["ดูภาพรวมผู้ติดต่อ", "ลูกค้าใหม่เดือนนี้", "ลูกค้าที่กลับมาซื้อ", "10 อันดับยอดซื้อ", "10 อันดับค้างชำระ", "ผู้ขาย 10 อันดับยอดจ่าย"],
     },
   ],
+  // WO 3.3 — modal เพิ่ม/แก้ไขผู้ติดต่อ (§7.2) เทียบ g5-contact-modal.png (เฟรมนี้วาดสถานะแท็บ "ขั้นสูง")
+  // เปิดด้วย query `?new=1` (ปุ่ม "+ เพิ่มผู้ติดต่อ" ไปที่นี่จริง) + `?tab=` เลือกแท็บให้ภาพนิ่ง
+  "3.3": [
+    {
+      name: "contact-modal-basic",
+      path: `/app/sys/${SYS}/account/contacts?new=1&tab=basic`,
+      note: 'modal "เพิ่มผู้ติดต่อ" แท็บ พื้นฐาน — ต้องไม่มีบล็อกขั้นสูง (เครดิตเทอม/เชื่อมกับ) โผล่',
+      expect: ["เพิ่มผู้ติดต่อ", "พื้นฐาน", "ขั้นสูง", "เลขทะเบียน 13 หลัก", "ประเภทสำนักงาน", "ช่องทางติดต่อ"],
+      onlyDevice: "desktop",
+      expandModalForShot: '[data-testid="contact-modal"]',
+      waitAfterClick: 400,
+    },
+    {
+      name: "contact-modal-advanced",
+      path: `/app/sys/${SYS}/account/contacts?new=1&tab=advanced`,
+      note: "modal แท็บ ขั้นสูง — สถานะเดียวกับ g5 (เครดิตเทอม · WHT · บัญชีเฉพาะราย · กลุ่ม/แท็ก · เชื่อมกับ)",
+      // ("ยังไม่พบดีลที่ตรงกัน"/"ยังไม่เชื่อม" ของช่อง CRM/แชท เป็น **placeholder** ตรงตาม g5 ⇒ ไม่อยู่ใน innerText)
+      expect: ["เพิ่มผู้ติดต่อ", "เครดิตเทอม (วัน)", "หัก ณ ที่จ่ายเริ่มต้น — อัตรา", "เชื่อมกับ", "ผู้ดูแล (พนักงาน)", "แท็ก"],
+      expandModalForShot: '[data-testid="contact-modal"]',
+      waitAfterClick: 400,
+    },
+    {
+      name: "contact-modal-duplicate",
+      path: `/app/sys/${SYS}/account/contacts?new=1&tab=basic`,
+      note: 'สถานะ "เตือนซ้ำ" (§7.2) — กรอกชื่อ+เบอร์ของผู้ติดต่อที่มีอยู่แล้วแล้วกดบันทึก → แถบเตือน + ลิงก์ "เปิด C000xx" + toast',
+      expect: ["เพิ่มผู้ติดต่อ"],
+      onlyDevice: "desktop",
+      flow: [
+        { fill: '[data-testid="contact-name"]', value: fx33.dupName },
+        { fill: '[data-testid="contact-phone"]', value: fx33.dupPhone },
+        // 🔴 ยืนยันว่าค่าถึงช่องครบก่อนกด "เพิ่ม" — ไม่ครบ = หยุด (ไม่งั้นจะสร้างผู้ติดต่อจริงเกินมา 1 ราย)
+        { assertValue: '[data-testid="contact-name"]', equals: fx33.dupName },
+        { assertValue: '[data-testid="contact-phone"]', equals: fx33.dupPhone },
+        { click: '[data-testid="contact-modal-submit"]' },
+        { waitFor: '[data-testid="contact-dup-banner"]' },
+      ],
+      expectBeforeShot: [{ sel: '[data-testid="contact-dup-banner"]', kind: "text", equals: "มีอยู่แล้ว" }],
+      expandModalForShot: '[data-testid="contact-modal"]',
+      waitAfterClick: 400,
+    },
+  ],
 };
 
 // ─────────── ตารางตัวเลขที่อ่านจาก data-testid (ว่างไว้ก่อน — WO ถัดไปเติม) ───────────
@@ -1169,7 +1250,23 @@ try {
           failures++;
           console.log(`  ❌ [${spec.name}/${device}] flow: ${msg}`);
         };
+        let flowAborted = false;
         for (const step of spec.flow ?? []) {
+          if (flowAborted) break;
+          if ("assertValue" in step) {
+            let got = "";
+            let hit = false;
+            for (let i = 0; i < 15 && !hit; i++) {
+              got = await page.evaluate((sl: string) => (document.querySelector(sl) as HTMLInputElement | null)?.value ?? "(ไม่พบ)", step.assertValue);
+              hit = got === step.equals;
+              if (!hit) await new Promise((r) => setTimeout(r, 200));
+            }
+            if (!hit) {
+              flowFail(`ค่าที่พิมพ์ใน ${step.assertValue} = ${JSON.stringify(got)} ไม่ตรง ${JSON.stringify(step.equals)} — หยุด flow (กันเขียนข้อมูลผิดลง DB)`);
+              flowAborted = true;
+            }
+            continue;
+          }
           if ("waitFor" in step) {
             let seen = false;
             for (let i = 0; i < 40 && !seen; i++) {
@@ -1208,7 +1305,9 @@ try {
             }
             // MoneyInput ยืนยันค่าเมื่อ blur ⇒ ต้องพิมพ์จริง (React onChange) แล้วกด Tab
             await page.click(step.fill, { clickCount: 3 }).catch(() => flowFail(`คลิกช่อง ${step.fill} ไม่ได้`));
-            await page.keyboard.type(step.value).catch(() => flowFail(`พิมพ์ใน ${step.fill} ไม่ได้`));
+            // delay 25ms/ตัว — controlled input ของ React เรนเดอร์ใหม่ทุกตัวอักษร พิมพ์รัวไม่มี delay
+            // ทำให้ตัวอักษรหล่นจริง (บทเรียน WO 3.3: "ปิยธิดา อินสุ่ม" → "ปิยธิดาอินสุ่ม" · "076100019" → "0")
+            await page.keyboard.type(step.value, { delay: 25 }).catch(() => flowFail(`พิมพ์ใน ${step.fill} ไม่ได้`));
             await page.keyboard.press("Tab").catch(() => {});
           }
           await new Promise((r) => setTimeout(r, 250));
@@ -1275,6 +1374,30 @@ try {
               if (el && scope.contains(el)) el.style.position = "static";
             }, sel)
             .catch(() => {});
+        }
+
+        // WO 3.3 — คลี่ modal ให้สูงเต็มก่อนถ่าย (ดูเหตุผลที่ PageSpec.expandModalForShot)
+        if (spec.expandModalForShot) {
+          await page
+            .evaluate((sel: string) => {
+              const dlg = document.querySelector<HTMLElement>(sel);
+              if (!dlg) return;
+              const overlay = dlg.parentElement;
+              if (overlay instanceof HTMLElement) {
+                overlay.style.position = "absolute";
+                overlay.style.top = "0";
+                overlay.style.height = "auto";
+                overlay.style.alignItems = "flex-start";
+              }
+              dlg.style.maxHeight = "none";
+              dlg.style.height = "auto";
+              for (const el of Array.from(dlg.querySelectorAll<HTMLElement>(".overflow-y-auto"))) {
+                el.style.overflow = "visible";
+                el.style.maxHeight = "none";
+              }
+            }, spec.expandModalForShot)
+            .catch(() => {});
+          await new Promise((r) => setTimeout(r, 200));
         }
 
         // กันล้ำ: รีเซ็ตสกอลกลับ 0 อีกชั้นก่อนกดชัตเตอร์เสมอ (ไม่ว่าจะ click/hover/flow หรือแค่ path ตรง ๆ อย่าง WO 1.5)

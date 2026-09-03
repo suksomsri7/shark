@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 3.3 modal ผู้ติดต่อ + DBD + dedupe (เฟส 3) |
+| WO | 3.4 โปรไฟล์ 360° + รวมผู้ติดต่อซ้ำ (ปิดเฟส 3) |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Sonnet (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~16:30 UTC: 3.2 DONE รอบ 2 ตรง f5 (Fable ดูภาพ + รันด่านเองครบ) · commit แล้ว · กำลังออก WO 3.3 |
+| ผู้ทำ | Opus (sub-agent) |
+| ขั้นที่ถึง | 3 ก.ย. ~18:00 UTC: 3.3 DONE (Opus กลับมาใช้ได้) ตรง g5 · Fable รันด่านเองครบ · commit แล้ว · กำลังออก WO 3.4 |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -40,7 +40,7 @@
 | 2.3 | ภาพรวมรายรับ/รายจ่าย | Sonnet | DONE | ef6567b | overview 73 · visual 83/83 ตรง f4 · ≤8 query · 🐞 agent รายงาน typecheck สะอาดทั้งที่มี error 2 (Fable จับได้ตอน build) · ผู้ติดต่อที่ติดตาม = top-5 ตามยอดค้าง (ไม่มี pinned บน contact) |
 | 3.1 | Party | Sonnet (Opus 529 ×3) | DONE | (HEAD) | Fable อ่าน diff + รันเอง: party 36/36 · seed-check 55 · guard 147 · schema 61 · fitness 17 · CPA 107 · drift clean · typecheck 0 · backfill QC tenant 63/63 กำกวม 0 · หนี้: Party.name = เบอร์เมื่อสมาชิกไม่มีชื่อ (แชท auto-link) → 3.3/3.4 ต้องอัปเดตชื่อเมื่อรู้ · `updateContact` ยังไม่เติม partyId · ChatContact.partyId ยังไม่ wire (session แชท) · prod backfill ยังไม่รัน (รอปิดเฟส 3) |
 | 3.2 | หน้าผู้ติดต่อ V2 | Sonnet | DONE | (HEAD) | ตีกลับ 1 รอบ (7 จุด parity f5) → รอบ 2 ตรง f5 ทั้ง 1440/390 · Fable รันเอง: contacts 49 · seed-check 61 · list 155 · guard 149 · party 36 · fitness 17 · CPA 107 · typecheck 0 · ค้าง: เลขที่ C000xx คำนวณจาก createdAt ไม่ persist → 3.3 เพิ่ม `code` · ตัวเลือกจำนวนต่อหน้าเป็น select ธรรมดา · ที่มา แชท/POS/นำเข้า = 0 จริง (ยังไม่ wire) · ตั้งค่ากฎลูกค้าประจำ UI → 8.2 |
-| 3.3 | modal ผู้ติดต่อ + DBD + dedupe | Opus (Sonnet) | TODO | | |
+| 3.3 | modal ผู้ติดต่อ + DBD + dedupe | Opus | DONE | (HEAD) | ผ่านรอบแรก ตรง g5 (พื้นฐาน/ขั้นสูง/เตือนซ้ำ/มือถือ) · Fable รันเอง: contact-modal 93 · contacts 49 · seed-check 61 · guard 149 · party 36 · schema 61 · fitness 17 · CPA 107 · drift clean · typecheck 0 · 🐞 แก้ 2: Modal กลางดึงโฟกัสทุกตัวอักษร (กระทบทุก modal) · retry เลขที่ไม่เคยทำงาน (Prisma 7 ไม่ส่ง meta.target) · ค้าง: prod ยังไม่ backfill `code` (สคริปต์ acc-v2-contact-code-backfill) · DBD_API_KEY รอเจ้าของ · รหัสไปรษณีย์ไม่ auto · แชท placeholder · `qc-account-cpa.mts` ยังไม่เคารพ QC_ENV_FILE → 9.2 |
 | 3.4 | โปรไฟล์ 360° + รวมซ้ำ | Opus | TODO | | |
 | 4.1 | InvItem canonical + sync + consume | Opus | TODO | | |
 | 4.2 | POS ส่งบรรทัด | Opus | TODO | | |
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 3 ก.ย. 2026 ~18:00 UTC — 3.3 modal ผู้ติดต่อ DONE (Opus รอบเดียว · บั๊ก Modal กลางพิมพ์ได้ตัวเดียวถูกปิด)
 - 3 ก.ย. 2026 ~16:30 UTC — 3.2 หน้าผู้ติดต่อ DONE (ตีกลับ 1 รอบ) · ผ่านด่าน parity f5
 - 3 ก.ย. 2026 ~15:40 UTC — ⚠️ agent 3.2 รัน `pnpm qc:account` โดยไม่ export env ของ .env.qc → สคริปต์นั้นอ่าน `.env` (prod) → สร้าง tenant ชั่วคราวบน prod แล้วล้มเพราะไม่มีคอลัมน์ partyId (cleanup เอง) · Fable ตรวจ prod แล้ว: ไม่มี migration party · ไม่มี partyId · ไม่มี tenant ใหม่ใน 3 ชม. ✅ · **ต้องแก้**: `qc-account-cpa.mts` ให้เคารพ `QC_ENV_FILE` + ด่านกัน host prod (ใส่ใน WO 3.3 หรือ 9.2) · บั๊กที่ agent เจอ: seed เดิมให้เบอร์ลูกค้า/ผู้ขายซ้ำกัน (076+seq) → Party จับรวมผิดคน (แก้ seed แล้ว) ⇒ **ก่อน backfill prod ต้องตรวจเบอร์ซ้ำข้าม kind บน prod ก่อน**
 - 3 ก.ย. 2026 ~14:45 UTC — 3.1 Party DONE · Opus 529 Overloaded 3 รอบติด → Sonnet ทำ (36/36 · ด่านเดิมเขียวหมด)

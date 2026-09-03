@@ -329,6 +329,37 @@ model AccountContact {
   // ── WO 3.1 — Party (INTEGRATION-MAP §F.1) ──
   /// เชื่อมตัวตนกลางระดับ tenant (nullable — ไม่มี = ทำงานเหมือนเดิม) ไม่ใส่ FK/relation ตามใบสั่งงาน
   partyId          String?
+  // ── WO 3.3 — modal ผู้ติดต่อ พื้นฐาน/ขั้นสูง (DESIGN-SPEC-V2 §7.2 · ภาพ g5) · additive ล้วน ──
+  /// เลขที่ผู้ติดต่อ "C00019" — เดิม WO 3.2 คำนวณสดจากลำดับ createdAt (เลขขยับเมื่อมีคนถูกลบ/เพิ่มย้อนหลัง)
+  /// ตอนนี้เก็บจริงและแก้ได้ (SPEC §7.2 "auto C000xx · แก้ได้") · ความไม่ซ้ำบังคับที่ DB ด้วย
+  /// **partial unique index** `AccountContact_systemId_code_active_key` (ดูเหตุผลเดียวกับ taxId ด้านล่าง)
+  /// null = แถวเก่าที่ยังไม่ backfill → UI ถอยไปใช้เลขที่คำนวณสดของ WO 3.2 (ไม่มีอะไรพัง)
+  code             String?
+  /// ประเภทนิติบุคคล (บริษัทจำกัด · หจก. · บมจ. · อื่น ๆ) — ข้อความไทยตรงตามที่ผู้ใช้เลือก ไม่ใช่ enum
+  legalEntityType  String?
+  /// คำนำหน้าบุคคล (นาย/นาง/นางสาว/…) — ใช้กับ legalType = PERSON (g5 แยกช่องจาก legalEntityType)
+  personTitle      String?
+  /// ประเทศของเลขทะเบียน — "TH" = เลขไทย 13 หลัก (ตรวจ 13 หลัก) · อื่น ๆ = ต่างประเทศ (ไม่ตรวจรูปแบบ)
+  taxIdCountry     String?            @default("TH")
+  /// ประเภทสำนักงาน: UNSPECIFIED | HQ | BRANCH (คู่กับ branchCode 5 หลักที่มีอยู่แล้ว)
+  officeType       String?
+  // ที่อยู่แบบแยกช่อง (§7.2) — `address` เดิมยังอยู่และถูกเขียนเป็น "สตริงรวม" เสมอ
+  // เพื่อให้การพิมพ์เอกสาร/ใบกำกับของเดิม (อ่าน `address`) ทำงานต่อได้โดยไม่ต้องแก้
+  addressLine      String?
+  subdistrict      String? // แขวง/ตำบล
+  district         String? // เขต/อำเภอ
+  province         String?
+  postcode         String?
+  country          String?            @default("TH")
+  contactPerson    String? // ชื่อผู้ติดต่อในองค์กร (≤100)
+  website          String?
+  fax              String?
+  lineId           String?
+  /// แท็กอิสระ (array ของสตริง) — เก็บเป็น Json เหมือน Customer.tags (ไม่เพิ่มตาราง)
+  tags             Json               @default("[]")
+  /// บัญชีลูกหนี้/เจ้าหนี้เฉพาะราย — รหัสบัญชี 6 หลัก ใช้แทนค่าเริ่มต้น 1100/2000 (null = ใช้ค่าเริ่มต้น)
+  arAccountCode    String?
+  apAccountCode    String?
 
   documents      AccountDocument[]
   groups         AccountContactGroupMember[]
@@ -353,6 +384,14 @@ model AccountContact {
   ///    ที่นี่จึงประกาศแค่ @@index (ให้ client มีดัชนีค้นหา) แล้วปล่อยความ "unique" ให้ DB
   ///    👉 `prisma migrate diff` มองไม่เห็น partial index นี้ → ห้ามลบออกจาก migration
   @@index([systemId, taxId, branchCode])
+  /// 🔴 WO 3.3 — เหตุผลเดียวกันเป๊ะกับ taxId ด้านบน: ความไม่ซ้ำของ `code` ต่อระบบบังคับด้วย
+  ///    **partial unique index** ใน migration 20260904060000_account_v2_contact_modal:
+  ///      CREATE UNIQUE INDEX "AccountContact_systemId_code_active_key"
+  ///        ON "AccountContact"("systemId","code")
+  ///        WHERE "code" IS NOT NULL AND "archivedAt" IS NULL;
+  ///    (ผู้ติดต่อที่ปิดใช้งานแล้วปล่อยให้เลขซ้ำได้ — เลขเดิมถูกนำกลับมาใช้ใหม่ได้)
+  ///    👉 `prisma migrate diff` มองไม่เห็น → ห้ามลบออกจาก migration
+  @@index([systemId, code])
 }
 
 // ───────────── กลุ่มผู้ติดต่อ (V2 · WO 0.3 — SPEC §14.2) ─────────────

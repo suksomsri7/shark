@@ -410,6 +410,51 @@ export async function listPartyIdsWithCustomer(
   return new Set(rows.map((r) => r.partyId).filter((x): x is string => !!x));
 }
 
+/**
+ * WO 3.3 — บล็อก "เชื่อมกับ › สมาชิก" ของ modal ผู้ติดต่อ (SPEC §7.2 · ภาพ g5)
+ * หาสมาชิกที่ "น่าจะเป็นคนเดียวกัน" กับผู้ติดต่อบัญชี จากเบอร์ (ทุกรูปแบบที่ผู้เรียกส่งมา) / อีเมล / partyId
+ * อ่านอย่างเดียว · 1 query · จำกัด 5 แถว (แค่พอโชว์การ์ดให้คนกดยืนยัน ไม่ใช่หน้ารายชื่อ)
+ * เส้น import account→member อนุมัติไว้แล้วใน fitness.mts (WO 3.2)
+ */
+export async function findCustomersForLink(
+  tenantId: string,
+  memberSystemId: string,
+  keys: { phoneVariants?: string[]; email?: string | null; partyId?: string | null },
+): Promise<
+  { id: string; memberCode: string | null; name: string | null; phone: string | null; email: string | null; partyId: string | null }[]
+> {
+  const or: Prisma.CustomerWhereInput[] = [];
+  const phones = [...new Set((keys.phoneVariants ?? []).map((p) => p.trim()).filter(Boolean))];
+  if (phones.length > 0) or.push({ phone: { in: phones } });
+  if (keys.email?.trim()) or.push({ email: { equals: keys.email.trim(), mode: "insensitive" } });
+  if (keys.partyId) or.push({ partyId: keys.partyId });
+  if (or.length === 0) return [];
+  return tenantDb({ tenantId, systemId: memberSystemId }).customer.findMany({
+    where: { OR: or },
+    select: { id: true, memberCode: true, name: true, phone: true, email: true, partyId: true },
+    orderBy: { createdAt: "asc" },
+    take: 5,
+  });
+}
+
+/**
+ * WO 3.3 — ปุ่ม "ใช่ คนเดียวกัน": ผูกสมาชิกรายนี้เข้ากับ Party เดียวกับผู้ติดต่อบัญชี
+ * 🔴 เขียนผ่านฟังก์ชันนี้เท่านั้น (โมดูลอื่นห้าม update Customer ตรง ๆ) · ผูก tenant+ระบบสมาชิกเสมอ
+ * คืน true เมื่อมีแถวถูกอัปเดตจริง (id ของร้านอื่น = 0 แถว = false ไม่ใช่ throw — กัน IDOR เงียบ ๆ)
+ */
+export async function setCustomerPartyId(
+  tenantId: string,
+  memberSystemId: string,
+  customerId: string,
+  partyId: string,
+): Promise<boolean> {
+  const res = await tenantDb({ tenantId, systemId: memberSystemId }).customer.updateMany({
+    where: { id: customerId },
+    data: { partyId },
+  });
+  return res.count > 0;
+}
+
 export async function getProfile(tenantId: string, id: string) {
   const customer = await prisma.customer.findFirst({ where: { id, tenantId } });
   if (!customer) return null;

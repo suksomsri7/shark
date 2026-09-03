@@ -23,6 +23,7 @@ import {
   createContact,
   updateContact,
   archiveContact,
+  checkContactDuplicates,
   saveSettings,
   isVisibleDocType,
   ensurePublicTaxInvoiceLink,
@@ -31,7 +32,10 @@ import {
   type LineInput,
   type DocTypeConfig,
 } from "./service";
-import type { AccountVatTiming } from "@prisma/client";
+import type { AccountVatTiming, AccountPriceMode } from "@prisma/client";
+// WO 3.3 — ชนิดของผลลัพธ์ที่ action คืนให้ client (type-only: ไม่ดึงโค้ดเข้ามาใน bundle ของ action)
+import type { DbdLookupResult } from "./dbd";
+import type { LinkSuggestions, LinkResult } from "./contact-links";
 
 // ─────────────────── helpers ───────────────────
 
@@ -280,6 +284,256 @@ export async function voidDocumentAction(formData: FormData) {
 }
 
 // ─────────────────── ผู้ติดต่อ ───────────────────
+
+// ═════════════ WO 3.3 — modal ผู้ติดต่อ (SPEC §7.2 · ภาพ g5) ═════════════
+//
+// 🔴 ทำไม action ชุดนี้รับ object แทน FormData แล้ว **คืนค่า** แทน redirect:
+//    modal ต้องขึ้นแถบเตือน "มีอยู่แล้ว: C00012" โดย**ไม่ทำให้สิ่งที่ผู้ใช้พิมพ์หาย**
+//    ถ้า redirect กลับหน้าเดิม ข้อมูลในฟอร์มหายทั้งหมด = ผู้ใช้ต้องพิมพ์ใหม่ (ผิด BLUEPRINT §0.3 ข้อ 9)
+//    ⇒ client เรียกผ่าน useTransition แล้วตัดสินใจเองว่าจะโชว์เตือนหรือปิด modal (pattern เดียวกับ
+//      getOrCreatePublicLinkAction / ShareLinkButton)
+
+/** ค่าที่ modal §7.2 ส่งกลับมา — ชื่อคีย์ตรงกับชื่อคอลัมน์เพื่อไล่ตามง่าย */
+export type ContactFormPayload = {
+  /** มี = แก้ไข · ไม่มี = เพิ่มใหม่ */
+  id?: string;
+  kind: string;
+  legalType: string;
+  name: string;
+  code?: string;
+  taxId?: string;
+  taxIdCountry?: string;
+  branchCode?: string;
+  officeType?: string;
+  legalEntityType?: string;
+  personTitle?: string;
+  contactPerson?: string;
+  addressLine?: string;
+  subdistrict?: string;
+  district?: string;
+  province?: string;
+  postcode?: string;
+  country?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  fax?: string;
+  lineId?: string;
+  creditTermDays?: number;
+  defaultPriceMode?: string;
+  defaultWhtType?: string;
+  defaultWhtRateBp?: number | null;
+  bankAccountNote?: string;
+  arAccountCode?: string;
+  apAccountCode?: string;
+  ownerUserId?: string;
+  note?: string;
+  tags?: string[];
+  /** id ของ AccountContactGroup ที่ติ๊กไว้ (กลุ่มกำหนดเอง) — แทนที่ชุดเดิมทั้งหมด */
+  groupIds?: string[];
+  /** ผู้ใช้เห็นแถบเตือนซ้ำแล้วยืนยันว่า "คนละราย" → บันทึกต่อ (ใช้กับซ้ำระดับเตือนเท่านั้น) */
+  confirmDuplicate?: boolean;
+};
+
+export type SaveContactResult =
+  | { ok: true; id: string; code: string | null }
+  | { ok: false; error: "validation"; fields: Record<string, string> }
+  | {
+      ok: false;
+      error: "duplicate";
+      /** ซ้ำกับใคร — UI เอาไปทำลิงก์ "เปิด C00012" */
+      duplicate: { id: string; code: string | null; name: string; reason: string };
+      /** true = นโยบาย §9.3 ตั้งเป็น "ห้าม" → ปุ่ม "บันทึกต่อไป" ต้องไม่มี */
+      blocked: boolean;
+    }
+  | { ok: false; error: "save"; reason: string };
+
+const CONTACT_MAXLEN: Record<string, number> = {
+  name: 256, contactPerson: 100, addressLine: 200, email: 50, phone: 20,
+  website: 50, fax: 20, lineId: 50, subdistrict: 100, district: 100, province: 100,
+};
+
+/** ตรวจฝั่ง server ซ้ำกับที่ modal ตรวจ inline — ห้ามเชื่อ client (ยาว/ไทย/emoji/ตัดผ่าน devtools) */
+function validateContactPayload(p: ContactFormPayload): Record<string, string> {
+  const f: Record<string, string> = {};
+  const name = (p.name ?? "").trim();
+  if (!name) f.name = "จำเป็นต้องกรอก";
+  const phone = (p.phone ?? "").trim();
+  if (!phone) f.phone = "จำเป็นต้องกรอก";
+  for (const [k, max] of Object.entries(CONTACT_MAXLEN)) {
+    const v = String((p as Record<string, unknown>)[k] ?? "");
+    if (v.length > max) f[k] = `ยาวเกิน ${max} ตัวอักษร`;
+  }
+  const email = (p.email ?? "").trim();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) f.email = "รูปแบบอีเมลไม่ถูกต้อง";
+  const taxId = (p.taxId ?? "").replace(/\D/g, "");
+  if ((p.taxIdCountry ?? "TH") === "TH" && taxId && taxId.length !== 13)
+    f.taxId = "เลขทะเบียนไทยต้องเป็นตัวเลข 13 หลัก";
+  const branch = (p.branchCode ?? "").trim();
+  if (branch && !/^\d{5}$/.test(branch)) f.branchCode = "เลขสาขาต้องเป็นตัวเลข 5 หลัก";
+  if (p.creditTermDays !== undefined && (!Number.isInteger(p.creditTermDays) || p.creditTermDays < 0 || p.creditTermDays > 365))
+    f.creditTermDays = "เครดิตเทอมต้องเป็นจำนวนวัน 0–365";
+  const post = (p.postcode ?? "").trim();
+  if (post && !/^\d{5}$/.test(post)) f.postcode = "รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก";
+  return f;
+}
+
+const trimOrNull = (v: string | undefined) => {
+  const s = (v ?? "").trim();
+  return s ? s : null;
+};
+
+/** เพิ่ม/แก้ไขผู้ติดต่อจาก modal §7.2 — ตรวจสิทธิ์ → ตรวจฟิลด์ → ตรวจซ้ำ → บันทึก → ผูกกลุ่ม */
+export async function saveContactAction(systemId: string, payload: ContactFormPayload): Promise<SaveContactResult> {
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.contact.manage");
+
+  const fields = validateContactPayload(payload);
+  if (Object.keys(fields).length > 0) return { ok: false, error: "validation", fields };
+
+  // ── ตรวจซ้ำ (SPEC §7.2 · นโยบาย §9.3) ──
+  const dup = await checkContactDuplicates(tenantId, systemId, {
+    taxId: payload.taxId,
+    branchCode: payload.branchCode,
+    phone: payload.phone,
+    name: payload.name,
+    excludeId: payload.id ?? null,
+  });
+  const hardHit = dup.blocking[0] ?? null; // เลขภาษีซ้ำ = DB ไม่ยอมอยู่แล้ว ยืนยันข้ามไม่ได้
+  const softHit = dup.warnings[0] ?? null;
+  if (hardHit || (softHit && !payload.confirmDuplicate)) {
+    const hit = hardHit ?? softHit!;
+    const blocked = !!hardHit || dup.policy === "block";
+    return {
+      ok: false,
+      error: "duplicate",
+      duplicate: { id: hit.id, code: hit.code, name: hit.name, reason: hit.reason },
+      blocked,
+    };
+  }
+  if (softHit && dup.policy === "block") {
+    return {
+      ok: false,
+      error: "duplicate",
+      duplicate: { id: softHit.id, code: softHit.code, name: softHit.name, reason: softHit.reason },
+      blocked: true,
+    };
+  }
+
+  const common = {
+    kind: ((payload.kind || "CUSTOMER") as AccountContactKind),
+    legalType: ((payload.legalType || "COMPANY") as AccountLegalType),
+    name: payload.name.trim(),
+    taxId: trimOrNull(payload.taxId),
+    taxIdCountry: (payload.taxIdCountry || "TH").trim(),
+    branchCode: trimOrNull(payload.branchCode),
+    officeType: trimOrNull(payload.officeType),
+    legalEntityType: trimOrNull(payload.legalEntityType),
+    personTitle: trimOrNull(payload.personTitle),
+    contactPerson: trimOrNull(payload.contactPerson),
+    addressLine: trimOrNull(payload.addressLine),
+    subdistrict: trimOrNull(payload.subdistrict),
+    district: trimOrNull(payload.district),
+    province: trimOrNull(payload.province),
+    postcode: trimOrNull(payload.postcode),
+    country: (payload.country || "TH").trim(),
+    email: trimOrNull(payload.email),
+    phone: trimOrNull(payload.phone),
+    website: trimOrNull(payload.website),
+    fax: trimOrNull(payload.fax),
+    lineId: trimOrNull(payload.lineId),
+    creditTermDays: payload.creditTermDays ?? 0,
+    defaultPriceMode: (trimOrNull(payload.defaultPriceMode) as AccountPriceMode | null),
+    defaultWhtType: trimOrNull(payload.defaultWhtType),
+    defaultWhtRateBp: payload.defaultWhtRateBp ?? null,
+    bankAccountNote: trimOrNull(payload.bankAccountNote),
+    arAccountCode: trimOrNull(payload.arAccountCode),
+    apAccountCode: trimOrNull(payload.apAccountCode),
+    ownerUserId: trimOrNull(payload.ownerUserId),
+    note: trimOrNull(payload.note),
+    tags: payload.tags ?? [],
+  };
+
+  let id = payload.id ?? "";
+  let code: string | null = null;
+  try {
+    if (id) {
+      await updateContact(tenantId, systemId, id, { ...common, code: trimOrNull(payload.code) });
+      code = trimOrNull(payload.code);
+    } else {
+      const created = await createContact({ tenantId, systemId, ...common, code: trimOrNull(payload.code) });
+      id = created.id;
+      code = created.code;
+    }
+  } catch (e) {
+    // 🔴 ห้าม log ข้อมูลลูกค้า — ข้อความ error ของ Prisma มีค่าที่ชนอยู่ในนั้น
+    const isUnique = (e as { code?: string })?.code === "P2002";
+    console.error(`[account] บันทึกผู้ติดต่อไม่สำเร็จ (system=${systemId}) — ${isUnique ? "P2002" : "error"}`);
+    return {
+      ok: false,
+      error: "save",
+      reason: isUnique
+        ? "เลขที่หรือเลขทะเบียนนี้มีอยู่แล้วในระบบ — เปลี่ยนค่าแล้วลองใหม่"
+        : "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง",
+    };
+  }
+
+  if (payload.groupIds) {
+    const { setContactGroups } = await import("./contacts-list");
+    await setContactGroups({ tenantId, systemId }, id, payload.groupIds);
+  }
+
+  await writeAudit({
+    tenantId,
+    actorId: userId,
+    action: "account.contact.manage",
+    targetType: "AccountContact",
+    targetId: id,
+    after: { mode: payload.id ? "update" : "create" },
+  });
+  revalidatePath(`/app/sys/${systemId}/account/contacts`);
+  return { ok: true, id, code };
+}
+
+/** ค้นหานิติบุคคลจากกรมพัฒน์ฯ (ปุ่ม "ค้นหา" ข้างเลขทะเบียน · §7.2) — ไม่มีกุญแจ = { ok:false, reason } */
+export async function dbdLookupAction(systemId: string, taxId: string): Promise<DbdLookupResult> {
+  const { auth } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.contact.manage");
+  const { lookupJuristic } = await import("./dbd");
+  return lookupJuristic(taxId);
+}
+
+/** ผลลัพธ์ที่ระบบเดาให้ในบล็อก "เชื่อมกับ" (§7.2) */
+export async function suggestContactLinksAction(
+  systemId: string,
+  input: { phone?: string; email?: string; taxId?: string; partyId?: string },
+): Promise<LinkSuggestions> {
+  const { auth, tenantId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.contact.manage");
+  const { suggestLinks } = await import("./contact-links");
+  return suggestLinks({ tenantId, systemId }, input);
+}
+
+/** ปุ่ม "ใช่ คนเดียวกัน" — ผูก Party เดียวกันให้ผู้ติดต่อบัญชี + สมาชิก/CRM */
+export async function linkContactAction(
+  systemId: string,
+  input: { contactId: string; target: "member" | "crm"; targetId: string },
+): Promise<LinkResult> {
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.contact.manage");
+  const { linkContactTo } = await import("./contact-links");
+  const res = await linkContactTo({ tenantId, systemId }, input);
+  await writeAudit({
+    tenantId,
+    actorId: userId,
+    action: "account.contact.manage",
+    targetType: "AccountContact",
+    targetId: input.contactId,
+    after: res.ok ? { linked: input.target } : { error: res.reason },
+  });
+  if (res.ok) revalidatePath(`/app/sys/${systemId}/account/contacts`);
+  return res;
+}
 
 export async function createContactAction(formData: FormData) {
   const systemId = str(formData, "systemId");

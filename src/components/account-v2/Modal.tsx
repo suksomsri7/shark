@@ -14,6 +14,7 @@ export function Modal({
   size = "md",
   children,
   testId,
+  sheetOnMobile,
 }: {
   open: boolean;
   onClose: () => void;
@@ -22,16 +23,31 @@ export function Modal({
   size?: ModalSize;
   children: React.ReactNode;
   testId?: string;
+  /** WO 3.3 (SPEC §13 · มือถือ 390): บนจอแคบให้กลายเป็นแผ่นเต็มจอ ไม่ใช่กล่องลอยที่มีขอบรอบด้าน */
+  sheetOnMobile?: boolean;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+
+  // 🔴 บั๊กจริงที่เจอตอนถ่ายภาพ WO 3.3 (4 ก.ย.) — ห้ามรวม 2 effect นี้กลับเป็นก้อนเดียว:
+  //    ของเดิมเป็น effect เดียวที่ dependency = [open, onClose] และเรียก `el.focus()` ข้างใน
+  //    ผู้เรียกเกือบทุกที่ส่ง `onClose={() => ...}` (arrow ใหม่ทุกครั้งที่ render)
+  //    ⇒ ทุกครั้งที่ state ใน modal เปลี่ยน (= ทุกตัวอักษรที่ผู้ใช้พิมพ์) effect ถูกล้างแล้วรันใหม่
+  //      → `el.focus()` **ดึงโฟกัสออกจากช่องที่กำลังพิมพ์** ไปไว้ที่กล่อง dialog
+  //      → พิมพ์ได้ตัวเดียวแล้วหยุด (วัดจริง: พิมพ์ "AB CD" ได้ "A")
+  //    แก้: โฟกัสครั้งเดียวตอนเปิด (dep = [open]) · ตัวจับคีย์เก็บ onClose ผ่าน ref (ไม่ผูกกับ dependency)
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (open) dialogRef.current?.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const el = dialogRef.current;
-    el?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab" || !el) return;
@@ -51,19 +67,24 @@ export function Modal({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/40 ${sheetOnMobile ? "p-0 md:p-4" : "p-4"}`}
+      onClick={onClose}
+    >
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={typeof title === "string" ? title : undefined}
         tabIndex={-1}
-        className={`flex max-h-[90vh] w-full ${SIZE_CLS[size]} flex-col rounded-2xl bg-[color:var(--color-surface)] shadow-[0_8px_24px_rgba(10,10,10,.16)] outline-none`}
+        className={`flex w-full flex-col bg-[color:var(--color-surface)] shadow-[0_8px_24px_rgba(10,10,10,.16)] outline-none ${SIZE_CLS[size]} ${
+          sheetOnMobile ? "h-full max-h-full rounded-none md:h-auto md:max-h-[90vh] md:rounded-2xl" : "max-h-[90vh] rounded-2xl"
+        }`}
         onClick={(e) => e.stopPropagation()}
         data-testid={testId}
       >

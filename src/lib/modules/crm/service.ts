@@ -309,3 +309,35 @@ export async function listPartyIdsWithContact(ctx: Ctx, partyIds: string[]): Pro
   return new Set(rows.map((r) => r.partyId).filter((x): x is string => !!x));
 }
 
+/**
+ * WO 3.3 — บล็อก "เชื่อมกับ › CRM" ของ modal ผู้ติดต่อ (SPEC §7.2 · ภาพ g5)
+ * หาผู้ติดต่อ CRM ที่ "น่าจะเป็นคนเดียวกัน" จากเบอร์ (ทุกรูปแบบที่ผู้เรียกส่งมา) / อีเมล / partyId
+ * อ่านอย่างเดียว · 1 query · ≤5 แถว · ข้ามรายที่ปิดใช้งานแล้ว
+ */
+export async function findContactsForLink(
+  ctx: Ctx,
+  keys: { phoneVariants?: string[]; email?: string | null; partyId?: string | null },
+): Promise<{ id: string; name: string; phone: string | null; email: string | null; company: string | null; partyId: string | null }[]> {
+  const or: Prisma.CrmContactWhereInput[] = [];
+  const phones = [...new Set((keys.phoneVariants ?? []).map((p) => p.trim()).filter(Boolean))];
+  if (phones.length > 0) or.push({ phone: { in: phones } });
+  if (keys.email?.trim()) or.push({ email: { equals: keys.email.trim(), mode: "insensitive" } });
+  if (keys.partyId) or.push({ partyId: keys.partyId });
+  if (or.length === 0) return [];
+  return tenantDb(ctx).crmContact.findMany({
+    where: { archivedAt: null, OR: or },
+    select: { id: true, name: true, phone: true, email: true, company: true, partyId: true },
+    orderBy: { createdAt: "asc" },
+    take: 5,
+  });
+}
+
+/**
+ * WO 3.3 — ปุ่ม "ใช่ คนเดียวกัน": ผูกผู้ติดต่อ CRM รายนี้เข้ากับ Party เดียวกับผู้ติดต่อบัญชี
+ * 🔴 เขียนผ่านฟังก์ชันนี้เท่านั้น · ผูก tenant+systemId เสมอ · id ของร้านอื่น = 0 แถว = false (กัน IDOR)
+ */
+export async function setContactPartyId(ctx: Ctx, contactId: string, partyId: string): Promise<boolean> {
+  const res = await tenantDb(ctx).crmContact.updateMany({ where: { id: contactId }, data: { partyId } });
+  return res.count > 0;
+}
+

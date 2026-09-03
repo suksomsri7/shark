@@ -577,6 +577,241 @@ export function getContact(tenantId: string, systemId: string, id: string) {
   return prisma.accountContact.findFirst({ where: { id, tenantId, systemId } });
 }
 
+// ═══════════════ WO 3.3 — ช่องใหม่ของ modal ผู้ติดต่อ (SPEC §7.2 · ภาพ g5) ═══════════════
+
+/** ช่องทั้งหมดที่ modal §7.2 เขียนได้ (นอกเหนือจากของเดิม) — ใช้ร่วมทั้ง create และ update */
+export type ContactExtraFields = Partial<{
+  /** เลขที่ "C00019" — ไม่ส่ง = ให้ระบบออกให้อัตโนมัติตอนสร้าง (ตอนแก้ไข = ไม่แตะ) */
+  code: string | null;
+  taxIdCountry: string | null;
+  officeType: string | null; // UNSPECIFIED | HQ | BRANCH
+  legalEntityType: string | null;
+  personTitle: string | null;
+  addressLine: string | null;
+  subdistrict: string | null;
+  district: string | null;
+  province: string | null;
+  postcode: string | null;
+  country: string | null;
+  contactPerson: string | null;
+  website: string | null;
+  fax: string | null;
+  lineId: string | null;
+  defaultPriceMode: AccountPriceMode | null;
+  defaultWhtType: string | null;
+  defaultWhtRateBp: number | null;
+  bankAccountNote: string | null;
+  arAccountCode: string | null;
+  apAccountCode: string | null;
+  ownerUserId: string | null;
+  tags: string[];
+}>;
+
+/** ที่อยู่แบบแยกช่องที่ประกอบเป็นสตริงเดียวได้ */
+type AddressParts = Pick<
+  ContactExtraFields,
+  "addressLine" | "subdistrict" | "district" | "province" | "postcode"
+>;
+const ADDRESS_KEYS = ["addressLine", "subdistrict", "district", "province", "postcode"] as const;
+
+/**
+ * ประกอบที่อยู่แยกช่อง → สตริงเดียวแบบไทย ("191 ถ.ราษฎร์อุทิศ ต.รัษฎา อ.เมือง ภูเก็ต 83000")
+ *
+ * 🔴 ทำไมต้องมี: คอลัมน์ `address` เดิมคือของที่ **การพิมพ์ใบกำกับ/ใบเสร็จอ่านอยู่** (ม.86/4)
+ *    ถ้า modal ใหม่เขียนเฉพาะช่องแยกแล้วปล่อย `address` ค้างของเก่า เอกสารที่พิมพ์จะเป็นที่อยู่ผิด
+ *    ⇒ ทุกครั้งที่แตะช่องแยก ต้องเขียน `address` ให้ตรงกันในคำสั่งเดียวกัน (เหมือน phone/phoneNorm)
+ */
+export function joinAddressTh(p: AddressParts): string {
+  const parts = [
+    p.addressLine?.trim(),
+    p.subdistrict?.trim() ? `ต.${p.subdistrict.trim()}` : "",
+    p.district?.trim() ? `อ.${p.district.trim()}` : "",
+    p.province?.trim(),
+    p.postcode?.trim(),
+  ].filter((s): s is string => !!s);
+  return parts.join(" ");
+}
+
+/**
+ * ฟิลด์ที่อยู่ที่ต้องเขียนคู่กันเสมอ — ช่องแยก + `address` (สตริงรวม)
+ * - ไม่ส่งช่องแยกมาเลย → คืน {} (ปล่อย `address` ที่ caller ส่งมาเอง หรือของเดิมใน DB)
+ * - ส่งช่องแยกมาอย่างน้อย 1 ช่อง → เขียนช่องแยกทั้งชุด + คำนวณ `address` ใหม่ (ว่าง → null)
+ */
+export function contactAddressFields(
+  input: AddressParts & { address?: string | null },
+): Record<string, string | null> {
+  const touched = ADDRESS_KEYS.some((k) => k in input);
+  if (!touched) return {};
+  const parts: AddressParts = {
+    addressLine: input.addressLine ?? null,
+    subdistrict: input.subdistrict ?? null,
+    district: input.district ?? null,
+    province: input.province ?? null,
+    postcode: input.postcode ?? null,
+  };
+  const joined = joinAddressTh(parts);
+  return { ...parts, address: joined || null };
+}
+
+/** ช่องใหม่ที่ไม่ต้องแปลงอะไร — คัดเฉพาะคีย์ที่ caller ส่งมาจริง (partial update ไม่ล้างของเดิม) */
+function contactExtraWriteFields(input: ContactExtraFields): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const keys = [
+    "taxIdCountry", "officeType", "legalEntityType", "personTitle", "contactPerson",
+    "website", "fax", "lineId", "defaultPriceMode", "defaultWhtType", "defaultWhtRateBp",
+    "bankAccountNote", "arAccountCode", "apAccountCode", "ownerUserId", "country",
+  ] as const;
+  for (const k of keys) if (k in input) out[k] = (input as Record<string, unknown>)[k] ?? null;
+  // tags เป็น Json — เก็บเป็น array ของสตริงที่ตัดช่องว่าง/ตัวซ้ำแล้ว (ค่าว่าง = [] ไม่ใช่ null)
+  if ("tags" in input) {
+    const raw = Array.isArray(input.tags) ? input.tags : [];
+    out.tags = [...new Set(raw.map((t) => String(t).trim()).filter(Boolean))];
+  }
+  return out;
+}
+
+const CONTACT_CODE_RE = /^C(\d{1,})$/;
+
+/** "C00019" → 19 · รูปแบบอื่น (ผู้ใช้พิมพ์เอง เช่น "VIP-1") → null (ไม่นับในการหาเลขถัดไป) */
+export function parseContactCodeSeq(code: string | null | undefined): number | null {
+  const m = CONTACT_CODE_RE.exec((code ?? "").trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
+export function formatContactCode(seq: number): string {
+  return `C${String(seq).padStart(5, "0")}`;
+}
+
+/**
+ * เลขที่ผู้ติดต่อถัดไปของระบบนี้ ("C00020")
+ *
+ * 🔴 ตัวนี้ **ไม่ใช่** ตัวกันเลขซ้ำ — ตัวกันจริงคือ partial unique index
+ *    `AccountContact_systemId_code_active_key` (migration 20260904060000)
+ *    เวลามีคนกดสร้างพร้อมกัน 2 คนจะได้เลขเดียวกันจากที่นี่ แล้วคนที่ช้ากว่าโดน P2002
+ *    → `createContact` จับแล้วขอเลขใหม่ (retry) — ดูคอมเมนต์ที่นั่น
+ *    (บทเรียน `reference_atomic_counter_single_statement`: ตัวนับร่วมห้ามเชื่อ SELECT-then-INSERT)
+ * นับรวมแถวที่ปิดใช้งานแล้วด้วย เพื่อไม่ให้เลขเดิมถูกนำกลับมาใช้ซ้ำโดยไม่ตั้งใจ
+ */
+export async function nextContactCode(systemId: string): Promise<string> {
+  const rows = await prisma.accountContact.findMany({
+    where: { systemId, code: { not: null } },
+    select: { code: true },
+  });
+  let max = 0;
+  for (const r of rows) {
+    const n = parseContactCodeSeq(r.code);
+    if (n !== null && n > max) max = n;
+  }
+  // ยังไม่ backfill (ไม่มีแถวไหนมี code เลย) → เริ่มนับต่อจากจำนวนผู้ติดต่อที่มีอยู่ ไม่ใช่ 1
+  // (ไม่งั้นผู้ติดต่อใหม่จะได้ C00001 ชนกับเลขที่หน้ารายการคำนวณสดให้แถวเก่าอยู่ — WO 3.2)
+  if (max === 0) max = await prisma.accountContact.count({ where: { systemId } });
+  return formatContactCode(max + 1);
+}
+
+// ─────────── ตรวจซ้ำก่อนบันทึก (SPEC §7.2 "มีอยู่แล้ว: C00012" · §9.3 นโยบายชื่อซ้ำ) ───────────
+
+export type ContactDuplicateHit = {
+  /** เหตุที่ถือว่าซ้ำ — เรียงตามความหนักแน่น: เลขภาษี > เบอร์ > ชื่อ */
+  reason: "taxId" | "phone" | "name";
+  id: string;
+  code: string | null;
+  name: string;
+};
+
+export type ContactDuplicateResult = {
+  /** ซ้ำแบบบันทึกไม่ได้แน่นอน — เลขภาษี+สาขาเดียวกันในแถวที่ยังใช้งาน (DB มี unique index กันอยู่) */
+  blocking: ContactDuplicateHit[];
+  /** ซ้ำแบบ "เตือน" — เบอร์/ชื่อเดียวกัน · กลายเป็นห้ามเมื่อ policy = "block" */
+  warnings: ContactDuplicateHit[];
+  /** นโยบาย §9.3 "การสร้างชื่อซ้ำ" ที่ใช้ตัดสิน (ค่าเริ่มต้น "warn") */
+  policy: ContactDupPolicy;
+};
+
+export type ContactDupPolicy = "warn" | "block";
+
+/** อ่านนโยบาย §9.3 จาก AccountSettings.docConfig.dupNamePolicy (ไม่เพิ่มคอลัมน์ — จุดตั้งค่าจริงอยู่ WO 8.2) */
+export async function getDupNamePolicy(systemId: string): Promise<ContactDupPolicy> {
+  const row = await prisma.accountSettings.findFirst({
+    where: { systemId },
+    select: { docConfig: true },
+  });
+  const v = (row?.docConfig as Record<string, unknown> | null)?.dupNamePolicy;
+  return v === "block" ? "block" : "warn";
+}
+
+/**
+ * หาผู้ติดต่อเดิมที่ "น่าจะเป็นรายเดียวกัน" ก่อนบันทึก — คืน payload ให้ UI ขึ้นแถบเตือน
+ * พร้อมลิงก์ "เปิด C00012" (SPEC §7.2) · ไม่โยน exception (การเตือนไม่ใช่ความผิดพลาด)
+ * ดูเฉพาะแถวที่ยังใช้งาน (archivedAt = null) — ของที่ปิดใช้งานแล้วไม่ควรขวางการสร้างใหม่
+ */
+export async function checkContactDuplicates(
+  tenantId: string,
+  systemId: string,
+  input: {
+    taxId?: string | null;
+    branchCode?: string | null;
+    phone?: string | null;
+    name?: string | null;
+    /** ตอนแก้ไข — ไม่ต้องเตือนว่าซ้ำกับตัวเอง */
+    excludeId?: string | null;
+  },
+): Promise<ContactDuplicateResult> {
+  const taxId = normalizeTaxId(input.taxId);
+  const branchCode = input.branchCode || "00000";
+  const phoneNorm = normalizePhoneTh(input.phone);
+  const name = (input.name ?? "").trim();
+
+  const or: Prisma.AccountContactWhereInput[] = [];
+  if (taxId) or.push({ taxId, branchCode });
+  if (phoneNorm) or.push({ phoneNorm });
+  if (name) or.push({ name: { equals: name, mode: "insensitive" } });
+  const policy = await getDupNamePolicy(systemId);
+  if (or.length === 0) return { blocking: [], warnings: [], policy };
+
+  const rows = await prisma.accountContact.findMany({
+    where: {
+      tenantId,
+      systemId,
+      archivedAt: null,
+      ...(input.excludeId ? { id: { not: input.excludeId } } : {}),
+      OR: or,
+    },
+    select: { id: true, code: true, name: true, taxId: true, branchCode: true, phoneNorm: true },
+    take: 20,
+  });
+
+  const blocking: ContactDuplicateHit[] = [];
+  const warnings: ContactDuplicateHit[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const hit = { id: r.id, code: r.code, name: r.name };
+    if (taxId && r.taxId === taxId && (r.branchCode || "00000") === branchCode) {
+      blocking.push({ reason: "taxId", ...hit });
+      seen.add(r.id);
+      continue;
+    }
+    if (phoneNorm && r.phoneNorm === phoneNorm) {
+      warnings.push({ reason: "phone", ...hit });
+      seen.add(r.id);
+      continue;
+    }
+    if (name && r.name.trim().toLowerCase() === name.toLowerCase() && !seen.has(r.id)) {
+      warnings.push({ reason: "name", ...hit });
+      seen.add(r.id);
+    }
+  }
+  return { blocking, warnings, policy };
+}
+
+/** ซ้ำแบบนี้บันทึกไม่ได้หรือไม่ (รวมนโยบาย §9.3) — ใช้ตัดสินใน action ก่อนเรียก createContact */
+export function contactDuplicateBlocks(res: ContactDuplicateResult): ContactDuplicateHit | null {
+  if (res.blocking.length > 0) return res.blocking[0]!;
+  if (res.policy === "block" && res.warnings.length > 0) return res.warnings[0]!;
+  return null;
+}
+
 export async function createContact(input: {
   tenantId: string;
   systemId: string;
@@ -593,10 +828,12 @@ export async function createContact(input: {
   note?: string | null;
   /** WO 3.1 — รู้ partyId อยู่แล้ว (เช่นจาก CRM) → ใช้ตรง ๆ ไม่ต้อง findOrCreate ซ้ำ */
   partyId?: string | null;
-}) {
+} & ContactExtraFields) {
   // R-C: เลขผู้เสียภาษีถ้ากรอกต้องเป็นตัวเลข 13 หลัก (กัน T0 เลขสั้น/ผิดรูปแบบ)
-  const taxId = normalizeTaxId(input.taxId);
-  if (taxId && !/^\d{13}$/.test(taxId))
+  // WO 3.3: กติกานี้ใช้กับเลขทะเบียน**ไทย**เท่านั้น — เลือก "ต่างประเทศ" แล้วรูปแบบเลขเป็นอย่างอื่นได้
+  const isForeignTaxId = !!input.taxIdCountry && input.taxIdCountry !== "TH";
+  const taxId = isForeignTaxId ? (input.taxId ?? "").trim() : normalizeTaxId(input.taxId);
+  if (!isForeignTaxId && taxId && !/^\d{13}$/.test(taxId))
     throw new Error("เลขประจำตัวผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก");
   // WO 3.1 (MAP §F.1/§F.4): เชื่อม Party ตอนสร้างผู้ติดต่อ — ล้มเหลว = partyId null (ไม่ throw)
   const partyId =
@@ -609,24 +846,70 @@ export async function createContact(input: {
       branchCode: input.branchCode || undefined,
       kind: (input.legalType ?? "COMPANY") === "PERSON" ? "PERSON" : "COMPANY",
     }));
-  return prisma.accountContact.create({
-    data: {
-      tenantId: input.tenantId,
-      systemId: input.systemId,
-      kind: input.kind,
-      legalType: input.legalType ?? "COMPANY",
-      name: input.name,
-      taxId: taxId || null,
-      branchCode: input.branchCode || "00000",
-      branchName: input.branchName ?? null,
-      address: input.address ?? null,
-      ...contactWriteFields({ phone: input.phone ?? null }), // WO 0.3: phone + phoneNorm คู่กันเสมอ
-      email: input.email ?? null,
-      creditTermDays: input.creditTermDays ?? 0,
-      note: input.note ?? null,
-      partyId,
-    },
-  });
+
+  const data = {
+    tenantId: input.tenantId,
+    systemId: input.systemId,
+    kind: input.kind,
+    legalType: input.legalType ?? "COMPANY",
+    name: input.name,
+    taxId: taxId || null,
+    branchCode: input.branchCode || "00000",
+    branchName: input.branchName ?? null,
+    address: input.address ?? null,
+    ...contactWriteFields({ phone: input.phone ?? null }), // WO 0.3: phone + phoneNorm คู่กันเสมอ
+    ...contactAddressFields(input), // WO 3.3: ช่องแยก + `address` สตริงรวม (การพิมพ์เอกสารเดิมยังใช้ได้)
+    ...contactExtraWriteFields(input),
+    email: input.email ?? null,
+    creditTermDays: input.creditTermDays ?? 0,
+    note: input.note ?? null,
+    partyId,
+  } as Prisma.AccountContactUncheckedCreateInput;
+
+  // 🔴 เลขที่: ผู้ใช้กรอกเองมา = ใช้ตามนั้น (ซ้ำ = P2002 เด้งให้ผู้ใช้เห็น ไม่ต้องเดาแทน)
+  //    ไม่กรอก = ระบบออกให้ + **retry เมื่อชนกัน** เพราะ nextContactCode เป็น SELECT-then-INSERT
+  //    (2 คนกดพร้อมกันได้เลขเดียวกันแน่นอน — ตัวกันจริงคือ unique index ไม่ใช่ตรรกะนี้)
+  const explicitCode = typeof input.code === "string" ? input.code.trim() : "";
+  if (explicitCode) return prisma.accountContact.create({ data: { ...data, code: explicitCode } });
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const code = await nextContactCode(input.systemId);
+    try {
+      return await prisma.accountContact.create({ data: { ...data, code } });
+    } catch (e) {
+      if (!isContactCodeConflict(e)) throw e;
+      // ชนกับคนที่เร็วกว่า → วนไปขอเลขถัดไป (nextContactCode จะเห็นเลขของเขาแล้ว)
+    }
+  }
+  // ชนติดกัน 6 รอบ = ผิดปกติจริง (ไม่ใช่ race ปกติ) — สร้างโดยไม่มีเลข ดีกว่าทำงานผู้ใช้หาย
+  // (หน้ารายการถอยไปใช้เลขคำนวณสดของ WO 3.2 อยู่แล้ว · backfill เก็บกวาดทีหลังได้)
+  console.warn(`[account] ออกเลขที่ผู้ติดต่อไม่สำเร็จหลัง 6 ครั้ง (system=${input.systemId}) — บันทึกโดยไม่มีเลขที่`);
+  return prisma.accountContact.create({ data });
+}
+
+/** ชื่อ partial unique index ของ `code` (migration 20260904060000) — ใช้แยกว่าชนกันที่คอลัมน์ไหน */
+const CONTACT_CODE_INDEX = "AccountContact_systemId_code_active_key";
+
+/**
+ * error ของ Prisma ที่แปลว่า "เลขที่ผู้ติดต่อชนกัน" (unique index ของ code) — ไม่ใช่ error อื่น
+ *
+ * 🔴 บทเรียน 4 ก.ย. (เจอจากข้อสอบ P6 ตอนสร้างพร้อมกัน 5 ราย): Prisma 7 + `@prisma/adapter-pg`
+ *    **ไม่ได้ใส่ `meta.target` มาให้** — `meta` มีแค่ `modelName` + `driverAdapterError`
+ *    ถ้าเช็คแค่ `meta.target` จะได้ false เสมอ → rethrow → retry ไม่เคยทำงานเลย (ผู้ใช้เห็น 500)
+ *    ⇒ ดูจาก `message` ที่ Prisma ประกอบให้ ("…failed on the fields: (`systemId`, `code`)")
+ *      + ชื่อ index ดิบจาก driver เป็นตัวสำรอง · ระวัง "branchCode" (ตัว C ใหญ่) ไม่ชนกับ `code`
+ */
+function isContactCodeConflict(e: unknown): boolean {
+  const err = e as {
+    code?: string;
+    message?: string;
+    meta?: { driverAdapterError?: { cause?: { originalMessage?: string; constraint?: { fields?: unknown } } } };
+  };
+  if (err?.code !== "P2002") return false;
+  const cause = err.meta?.driverAdapterError?.cause;
+  const blob = [err.message ?? "", cause?.originalMessage ?? "", JSON.stringify(cause?.constraint?.fields ?? "")].join(" | ");
+  if (blob.includes(CONTACT_CODE_INDEX)) return true;
+  return /(^|[^A-Za-z])code([^A-Za-z]|$)/.test(blob);
 }
 
 export async function updateContact(
@@ -645,14 +928,44 @@ export async function updateContact(
     email: string | null;
     creditTermDays: number;
     note: string | null;
-  }>,
+  }> &
+    ContactExtraFields,
 ) {
-  // WO 0.3: ถ้า caller ส่ง phone มา ต้องอัปเดต phoneNorm ให้ตรงกันในคำสั่งเดียว
-  //         (ไม่ส่ง phone = ไม่แตะทั้งคู่ — พฤติกรรม partial update เดิมคงอยู่)
-  await prisma.accountContact.updateMany({
+  const { tags: _tags, ...rest } = input;
+  const data: Record<string, unknown> = {
+    ...rest,
+    // WO 0.3: ถ้า caller ส่ง phone มา ต้องอัปเดต phoneNorm ให้ตรงกันในคำสั่งเดียว
+    //         (ไม่ส่ง phone = ไม่แตะทั้งคู่ — พฤติกรรม partial update เดิมคงอยู่)
+    ...contactWriteFields(input),
+    // WO 3.3: แตะช่องที่อยู่แยก = ต้องเขียน `address` สตริงรวมให้ตรงกันด้วย (การพิมพ์เอกสารอ่านช่องนั้น)
+    ...contactAddressFields(input),
+    ...contactExtraWriteFields(input),
+  };
+  if ("code" in input) {
+    const c = typeof input.code === "string" ? input.code.trim() : "";
+    data.code = c || null;
+  }
+  await prisma.accountContact.updateMany({ where: { id, tenantId, systemId }, data });
+
+  // WO 3.3 (ปิดหนี้ที่ wo-notes/3.1.md ข้อ "updateContact ยังไม่เติม partyId"):
+  // แก้ชื่อ/เบอร์/อีเมล/เลขภาษีของผู้ติดต่อที่ยังไม่มี Party → เชื่อมให้ตอนนี้
+  // (มีอยู่แล้วไม่แตะ — การย้าย Party ของแถวเดิมเป็นงานของ "รวมผู้ติดต่อซ้ำ" WO 3.4 ไม่ใช่ที่นี่)
+  const touchesIdentity = ["name", "phone", "email", "taxId"].some((k) => k in input);
+  if (!touchesIdentity) return;
+  const row = await prisma.accountContact.findFirst({
     where: { id, tenantId, systemId },
-    data: { ...input, ...contactWriteFields(input) },
+    select: { partyId: true, name: true, phone: true, email: true, taxId: true, branchCode: true, legalType: true },
   });
+  if (!row || row.partyId) return;
+  const partyId = await party.safeFindOrCreate(tenantId, {
+    name: row.name,
+    phone: row.phone,
+    email: row.email,
+    taxId: row.taxId,
+    branchCode: row.branchCode || undefined,
+    kind: row.legalType === "PERSON" ? "PERSON" : "COMPANY",
+  });
+  if (partyId) await prisma.accountContact.updateMany({ where: { id, tenantId, systemId }, data: { partyId } });
 }
 
 export async function archiveContact(tenantId: string, systemId: string, id: string) {
