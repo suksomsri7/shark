@@ -667,15 +667,16 @@ try {
 
         // WO 1.4 (ตีกลับข้อ 2): วัดของจริงว่าแถบปุ่มท้ายทับเนื้อหาไหม — ต้องวัด **ก่อน** unstick
         // เลื่อนสุดหน้าแล้วเทียบ: ก้นการ์ดสุดท้าย (แนบไฟล์) ต้องอยู่เหนือขอบบนของแถบปุ่ม
+        // 🔴 บั๊ก Fable QC WO 1.5 รอบ 1: ของเดิม return ก่อน scrollTo(0,0) เมื่อหน้าไม่มี sec-attachments/editor-actions
+        //    (ทุกหน้า DocDetailPage ไม่มี 2 testid นี้เลย) ⇒ หน้าค้างสกอลไปสุดล่างตอนถ่าย fullPage → Topbar/NavDrawer
+        //    (fixed) ถูกวาดผิดตำแหน่งกลางภาพ ⇒ ต้อง scrollTo(0,0) เสมอไม่ว่าจะเจอ element หรือไม่
         const tailClear = await page.evaluate(() => {
           window.scrollTo(0, document.body.scrollHeight);
           const tail = document.querySelector('[data-testid="sec-attachments"]');
           const bar = document.querySelector('[data-testid="editor-actions"]');
-          if (!tail || !bar) return null;
-          const t = tail.getBoundingClientRect().bottom;
-          const b = bar.getBoundingClientRect().top;
-          window.scrollTo(0, 0);
-          return { tailBottom: Math.round(t), barTop: Math.round(b) };
+          const result = tail && bar ? { tailBottom: Math.round(tail.getBoundingClientRect().bottom), barTop: Math.round(bar.getBoundingClientRect().top) } : null;
+          window.scrollTo(0, 0); // ต้องรันเสมอ — ห้าม return ก่อนบรรทัดนี้
+          return result;
         });
 
         // 🔴 ด่านก่อนกดชัตเตอร์: สถานะบนจอต้อง "เป็นเฉลยจริง" ก่อน ไม่งั้นภาพหลอกตา (บทเรียน 1.4 รอบ 1)
@@ -702,14 +703,23 @@ try {
           );
         }
         // แถบ sticky → static เฉพาะตอนถ่าย (ดูเหตุผลที่ PageSpec.unstickForShot)
+        // 🔴 Fable QC WO 1.5 รอบ 1: ต้องขอบเขตอยู่ใน [data-testid="doc-editor-v2"] เท่านั้น — ห้าม .closest(".sticky")
+        //    จากตัว document ตรง ๆ (ถ้าแถบเมนู Topbar/NavDrawer ของแอปดันมี class "sticky" ด้วยจะโดนแก้ผิดตัว)
         for (const sel of spec.unstickForShot ?? []) {
           await page
             .evaluate((s: string) => {
-              const el = document.querySelector(s)?.closest<HTMLElement>(".sticky");
-              if (el) el.style.position = "static";
+              const scope = document.querySelector('[data-testid="doc-editor-v2"]');
+              if (!scope) return;
+              const el = scope.querySelector(s)?.closest<HTMLElement>(".sticky");
+              if (el && scope.contains(el)) el.style.position = "static";
             }, sel)
             .catch(() => {});
         }
+
+        // กันล้ำ: รีเซ็ตสกอลกลับ 0 อีกชั้นก่อนกดชัตเตอร์เสมอ (ไม่ว่าจะ click/hover/flow หรือแค่ path ตรง ๆ อย่าง WO 1.5)
+        // + รอ 200ms ให้ layout/paint นิ่งก่อนถ่าย (กัน fixed Topbar/NavDrawer เพี้ยนตำแหน่งใน fullPage screenshot)
+        await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+        await new Promise((r) => setTimeout(r, 200));
 
         const file = `${OUT}/${spec.name}-${device}.png`;
         await page.screenshot({ path: file, fullPage: true });

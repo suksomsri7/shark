@@ -28,7 +28,8 @@ import { refundDepositFormAction } from "@/lib/modules/account/payment-actions";
 import { PaymentPanel } from "./PaymentPanel";
 import { ShareLinkButton } from "./ShareLinkButton";
 import { Stepper, type StepDef } from "./Stepper";
-import { RowActions, type RowActionItem } from "./RowActions";
+import type { RowActionItem } from "./RowActions";
+import { DocMoreMenu, type DangerMenuItem } from "./DocMoreMenu";
 import { DocAttachments } from "./DocAttachments";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -63,6 +64,12 @@ function labelOf(dt: AccountDocType): string {
   return DOC_LABEL[dt] ?? EXP_DOC_LABEL[dt] ?? dt;
 }
 
+// §5.2 C: VAT ต่อบรรทัด — -1 = ยกเว้น (ไม่ใช่ 0%)
+function vatLabel(vatRateBp: number): string {
+  if (vatRateBp < 0) return "ยกเว้น";
+  return `${vatRateBp / 100}%`;
+}
+
 // ─────────────────── ปุ่มดำหลัก + แถบปุ่มรอง ตามสถานะ (§5.3 "ปุ่มดำ action หลักตามสถานะ") ───────────────────
 function ActionRow({
   data,
@@ -90,7 +97,6 @@ function ActionRow({
   const canRefundDeposit = DEPOSIT_TYPES.includes(dt) && data.status === "AWAITING_DEDUCT";
   const hasTaxAlready = data.related.some((s) => s.kind === "TX" && s.doc);
   const canIssueTax = targets.includes("TAX_INVOICE") && !hasTaxAlready;
-  const active = !ACTIVE_STATUSES.has(data.status);
 
   let primary: React.ReactNode = null;
 
@@ -210,34 +216,36 @@ function ActionRow({
             <SubmitButton variant="ghost">รับใบเสร็จแล้ว</SubmitButton>
           </form>
         )}
-      {data.status === "DRAFT" ? (
-        <ConfirmDialog
-          action={side === "expense" ? voidExpenseDocAction : voidDocumentAction}
-          fields={{ systemId, docType: dt, id: data.id, reason: "ยกเลิกร่าง" }}
-          triggerLabel="ยกเลิกร่าง"
-          triggerClassName="btn btn-ghost text-sm text-[color:var(--color-danger)]"
-          title="ยกเลิกร่างนี้?"
-          detail="ร่างเอกสารจะถูกยกเลิกและแก้ไขไม่ได้อีก"
-          confirmLabel="ยืนยันยกเลิก"
-          danger
-        />
-      ) : (
-        active && (
-          <ConfirmDialog
-            action={side === "expense" ? voidExpenseDocAction : voidDocumentAction}
-            fields={{ systemId, docType: dt, id: data.id }}
-            reasonField={{ name: "reason", label: "เหตุผลการยกเลิก" }}
-            triggerLabel="ยกเลิกเอกสาร"
-            triggerClassName="btn btn-ghost text-sm text-[color:var(--color-danger)]"
-            title="ยกเลิกเอกสารนี้?"
-            detail="เอกสารจะถูกยกเลิก แก้ไขไม่ได้ และต้องออกใหม่เท่านั้น"
-            confirmLabel="ยืนยันยกเลิก"
-            danger
-          />
-        )
-      )}
     </div>
   );
+}
+
+// Fable QC WO 1.5 รอบ 1: "ยกเลิกร่าง/ยกเลิกเอกสาร" ห้ามอยู่ข้างปุ่มดำหลัก — ย้ายเข้าเมนู "⋯" (รายการสุดท้าย)
+function dangerMenuItemFor(data: DocDetailData, systemId: string, side: "revenue" | "expense"): DangerMenuItem | undefined {
+  const dt = data.docType;
+  const voidAction = side === "expense" ? voidExpenseDocAction : voidDocumentAction;
+  if (data.status === "DRAFT") {
+    return {
+      action: voidAction,
+      fields: { systemId, docType: dt, id: data.id, reason: "ยกเลิกร่าง" },
+      triggerLabel: "ยกเลิกร่าง",
+      title: "ยกเลิกร่างนี้?",
+      detail: "ร่างเอกสารจะถูกยกเลิกและแก้ไขไม่ได้อีก",
+      confirmLabel: "ยืนยันยกเลิก",
+    };
+  }
+  if (!ACTIVE_STATUSES.has(data.status)) {
+    return {
+      action: voidAction,
+      fields: { systemId, docType: dt, id: data.id },
+      reasonField: { name: "reason", label: "เหตุผลการยกเลิก" },
+      triggerLabel: "ยกเลิกเอกสาร",
+      title: "ยกเลิกเอกสารนี้?",
+      detail: "เอกสารจะถูกยกเลิก แก้ไขไม่ได้ และต้องออกใหม่เท่านั้น",
+      confirmLabel: "ยืนยันยกเลิก",
+    };
+  }
+  return undefined;
 }
 
 // ─────────────────── "⋯" ทำรายการ (§3) — แปลงเอกสารที่ยังทำได้จริง + placeholder "เร็ว ๆ นี้" ───────────────────
@@ -350,13 +358,16 @@ function DetailTab({ data, vatRegistered }: { data: DocDetailData; vatRegistered
         {data.contact?.taxId && <div className="text-xs text-[color:var(--color-muted)]">เลขภาษี {data.contact.taxId}</div>}
       </div>
       <div className="card overflow-x-auto">
-        <table className="w-full min-w-[560px] text-sm">
+        <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
-              <th className="py-2 font-normal">รายการ</th>
+              <th className="py-2 font-normal">สินค้า/บริการ</th>
               <th className="py-2 text-right font-normal">จำนวน</th>
+              <th className="py-2 font-normal">หน่วย</th>
               <th className="py-2 text-right font-normal">ราคา/หน่วย</th>
-              <th className="py-2 text-right font-normal">มูลค่า</th>
+              <th className="py-2 text-right font-normal">ส่วนลด</th>
+              <th className="py-2 text-right font-normal">VAT</th>
+              <th className="py-2 text-right font-normal">ก่อนภาษี</th>
             </tr>
           </thead>
           <tbody>
@@ -366,10 +377,11 @@ function DetailTab({ data, vatRegistered }: { data: DocDetailData; vatRegistered
                   {l.description}
                   {l.account && <span className="block text-xs text-[color:var(--color-muted)]">{l.account.code} {l.account.name}</span>}
                 </td>
-                <td className="py-2 text-right tabular-nums">
-                  {l.qty} {l.unitName ?? ""}
-                </td>
+                <td className="py-2 text-right tabular-nums">{l.qty}</td>
+                <td className="py-2">{l.unitName ?? "—"}</td>
                 <td className="py-2 text-right tabular-nums"><MoneyText satang={l.unitPrice} decimals /></td>
+                <td className="py-2 text-right tabular-nums">{l.discount > 0 ? <MoneyText satang={l.discount} decimals /> : "—"}</td>
+                <td className="py-2 text-right tabular-nums">{vatLabel(l.vatRateBp)}</td>
                 <td className="py-2 text-right tabular-nums"><MoneyText satang={l.amount} decimals /></td>
               </tr>
             ))}
@@ -407,6 +419,18 @@ function DetailTab({ data, vatRegistered }: { data: DocDetailData; vatRegistered
   );
 }
 
+// ผู้บันทึก (§5.3 แท็บ "การชำระเงิน") — วงกลมอักษรย่อ + ชื่อเต็ม (g4)
+function Avatar({ name }: { name: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[color:var(--color-surface-2)] text-[10px] font-medium">
+        {name.trim().charAt(0).toUpperCase() || "?"}
+      </span>
+      <span className="truncate">{name}</span>
+    </span>
+  );
+}
+
 function TotalRow({ label, satang }: { label: string; satang: number }) {
   return (
     <div className="flex w-full justify-between text-[color:var(--color-muted)]">
@@ -426,7 +450,15 @@ function PaymentsTab({ data, systemId, side }: { data: DocDetailData; systemId: 
   return (
     <div className="flex flex-col gap-4">
       <div className="card overflow-x-auto">
-        <table className="w-full min-w-[560px] text-sm">
+        <table className="w-full min-w-[680px] table-fixed text-sm">
+          <colgroup>
+            <col className="w-14" />
+            <col className="w-24" />
+            <col />
+            <col className="w-28" />
+            <col className="w-20" />
+            <col className="w-44" />
+          </colgroup>
           <thead>
             <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
               <th className="py-2 font-normal">ครั้งที่</th>
@@ -446,13 +478,13 @@ function PaymentsTab({ data, systemId, side }: { data: DocDetailData; systemId: 
               >
                 <td className="py-2">{i + 1}</td>
                 <td className="py-2">{fmtDate(p.paidAt)}</td>
-                <td className="py-2">
+                <td className="truncate py-2">
                   {p.financeName ?? PAY_CHANNEL_LABEL[p.channel as keyof typeof PAY_CHANNEL_LABEL] ?? p.channel}
                   {p.chequeNo ? ` · เช็ค ${p.chequeNo}` : ""}
                 </td>
                 <td className="py-2 text-right tabular-nums"><MoneyText satang={p.amount} decimals /></td>
                 <td className="py-2 text-right tabular-nums">{p.whtAmount > 0 ? <MoneyText satang={p.whtAmount} decimals /> : "—"}</td>
-                <td className="py-2">S</td>
+                <td className="py-2">{p.createdByName ? <Avatar name={p.createdByName} /> : "—"}</td>
               </tr>
             ))}
             {data.payments.length === 0 && (
@@ -530,10 +562,10 @@ function HistoryTab({ data }: { data: DocDetailData }) {
 // ─────────────────── ส่วนหัว ───────────────────
 function HeaderStat({ label, testId, danger, children }: { label: string; testId: string; danger?: boolean; children: React.ReactNode }) {
   return (
-    <div>
+    <div className="shrink-0 whitespace-nowrap">
       <div className="text-xs text-[color:var(--color-muted)]">{label}</div>
       <div
-        className="text-lg font-semibold tabular-nums"
+        className="text-lg font-semibold tabular-nums whitespace-nowrap"
         style={danger ? { color: "var(--color-danger)" } : undefined}
         data-testid={testId}
       >
@@ -584,19 +616,19 @@ export async function DocDetailPage({
     <div className="flex max-w-4xl flex-col gap-5">
       {err && <p className="text-sm text-[color:var(--color-danger)]">{decodeURIComponent(err)}</p>}
 
-      {/* หัว (g4/f14) */}
+      {/* หัว (g4/f14) — แถวเดียวบนจอกว้าง (lg+) ตาม g4: [เลขที่·chip]·ยอดสุทธิ·ค้างชำระ·ครบกำหนด …[ปุ่มรอง] · ปุ่มดำหลักแยกบรรทัดล่าง */}
       <div className="card flex flex-col gap-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-6">
-            <div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:flex-nowrap lg:items-start lg:justify-between">
+          <div className="flex flex-wrap items-center gap-4 lg:flex-nowrap lg:gap-6">
+            <div className="whitespace-nowrap">
               <Link href={listPath} className="text-xs text-[color:var(--color-muted)] underline">
                 {data.label}เลขที่
               </Link>
-              <h1 className="text-2xl font-semibold" data-testid="doc-h1">
+              <h1 className="text-2xl font-semibold whitespace-nowrap" data-testid="doc-h1">
                 {data.docNo ?? "(ร่าง)"}
               </h1>
             </div>
-            <span data-testid="doc-status">
+            <span data-testid="doc-status" className="shrink-0">
               <StatusBadge status={data.status} overdue={data.overdue} />
             </span>
             <HeaderStat label="ยอดสุทธิ" testId="doc-grand">
@@ -613,7 +645,7 @@ export async function DocDetailPage({
               </HeaderStat>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap">
             <ShareLinkButton systemId={systemId} docId={data.id} disabled={!canShareLink} />
             <Link href={`${base}/print/${data.id}`} target="_blank" className="btn btn-ghost text-sm">
               PDF
@@ -621,7 +653,11 @@ export async function DocDetailPage({
             <button type="button" className="btn btn-ghost text-sm" disabled title="เร็ว ๆ นี้">
               อีเมล
             </button>
-            <RowActions testId="doc-more-actions" items={moreActionsFor(data, base, targets)} />
+            <DocMoreMenu
+              testId="doc-more-actions"
+              items={moreActionsFor(data, base, targets)}
+              danger={dangerMenuItemFor(data, systemId, side)}
+            />
           </div>
         </div>
 

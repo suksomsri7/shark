@@ -2172,6 +2172,8 @@ export type DocPaymentRow = {
   chequeNo: string | null;
   certNo: string | null;
   voidedAt: Date | null;
+  /** WO 1.5 §5.3 — ชื่อผู้บันทึกการชำระ (resolve จาก membership+user ของร้านนี้ · ไม่เจอ = null) */
+  createdByName: string | null;
 };
 
 /**
@@ -2202,7 +2204,7 @@ export async function listDocPayments(
     orderBy: { paidAt: "asc" },
     select: {
       id: true, paidAt: true, channel: true, amount: true, whtAmountSatang: true, feeAmount: true,
-      note: true, voidedAt: true, whtCertDocId: true,
+      note: true, voidedAt: true, whtCertDocId: true, createdById: true,
       financeAccount: { select: { name: true } },
       cheque: { select: { chequeNo: true } },
     },
@@ -2215,6 +2217,16 @@ export async function listDocPayments(
       })
     : [];
   const certNo = new Map(certs.map((c) => [c.id, c.docNo]));
+  // ผู้บันทึก (§5.3 ตารางการชำระเงิน คอลัมน์ "ผู้บันทึก") — resolve ผ่าน membership ของร้านนี้เหมือน access.ts
+  const creatorIds = [...new Set(rows.map((r) => r.createdById).filter((x): x is string => !!x))];
+  const creatorName = new Map<string, string>();
+  if (creatorIds.length) {
+    const members = await prisma.membership.findMany({
+      where: { tenantId, userId: { in: creatorIds } },
+      include: { user: true },
+    });
+    for (const m of members) creatorName.set(m.userId, m.user.name ?? m.user.email);
+  }
   return rows.map((p) => ({
     id: p.id,
     paidAt: p.paidAt,
@@ -2227,6 +2239,7 @@ export async function listDocPayments(
     chequeNo: p.cheque?.chequeNo ?? null,
     certNo: p.whtCertDocId ? (certNo.get(p.whtCertDocId) ?? null) : null,
     voidedAt: p.voidedAt,
+    createdByName: p.createdById ? (creatorName.get(p.createdById) ?? null) : null,
   }));
 }
 

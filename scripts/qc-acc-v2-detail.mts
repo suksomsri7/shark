@@ -88,11 +88,27 @@ console.log("P0 สายไฟ+ป้าย DocDetailPage.tsx (ตรงตา�
     assert(`P0.2 มีป้ายปุ่ม "${label}"`, src.includes(label));
   }
   assert("P0.3 รับชำระ/บันทึกจ่าย ผ่าน PaymentPanel (ตัวเดียวกับ WO 1.4)", src.includes("PaymentPanel"));
-  // ทุก action ทำลายล้าง (void/refund/reject) ต้องผ่าน ConfirmDialog — นับจำนวนจุดที่ผูกกับ action ยกเลิก/คืน
+  // Fable QC WO 1.5 รอบ 1: "ยกเลิกร่าง/ยกเลิกเอกสาร" ห้ามอยู่ข้างปุ่มดำหลัก → ย้ายเข้าเมนู "⋯" (DocMoreMenu)
+  // ทุก action ทำลายล้างที่เหลืออยู่หน้าเดิม (คืนมัดจำ/ไม่อนุมัติ PO) ยังต้องผ่าน ConfirmDialog
   const confirmDialogCount = (src.match(/<ConfirmDialog/g) ?? []).length;
-  assert(`P0.4 ใช้ ConfirmDialog ≥4 จุด (ยกเลิกร่าง/ยกเลิกเอกสาร/คืนมัดจำ/ไม่อนุมัติ PO) — เจอ ${confirmDialogCount}`, confirmDialogCount >= 4);
+  assert(`P0.4 ใช้ ConfirmDialog ≥2 จุดที่เหลือในหน้าหลัก (คืนมัดจำ/ไม่อนุมัติ PO) — เจอ ${confirmDialogCount}`, confirmDialogCount >= 2);
   assert("P0.5 void ไม่มีการเรียก .delete( ตรง ๆ (void = reversal ไม่ลบ)", !src.includes(".delete("));
   assert("P0.6 ไม่ import prisma ตรง ๆ (fitness F5 — ผ่าน service/gl แทน)", !/from\s+["']@\/lib\/core\/db["']/.test(src));
+  assert("P0.11 หัวเอกสารใช้ DocMoreMenu (ปุ่มกลม ⋯) ไม่ใช่ RowActions (ทำรายการ ▾) — ตาม g4/f14", src.includes("<DocMoreMenu") && !src.includes("<RowActions"));
+  assert("P0.12 ปุ่มยกเลิก (ร่าง/เอกสาร) ย้ายเข้าเมนู ⋯ ผ่าน dangerMenuItemFor → prop `danger` ของ DocMoreMenu", src.includes("dangerMenuItemFor") && /danger=\{dangerMenuItemFor/.test(src));
+
+  const menuSrc = readFileSync(join(ROOT, "src/components/account-v2/DocMoreMenu.tsx"), "utf8");
+  assert("P0.13 DocMoreMenu ปุ่มทริกเกอร์เป็นวงกลม ⋯ เสมอ (ไม่มี 'ทำรายการ ▾' แบบ RowActions)", menuSrc.includes("⋯") && !menuSrc.includes("ทำรายการ ▾"));
+  assert("P0.14 DocMoreMenu มี ConfirmDialog สำหรับรายการทำลายล้าง (ยกเลิก)", menuSrc.includes("<ConfirmDialog"));
+  assert("P0.15 DocMoreMenu ไม่ import prisma ตรง ๆ (fitness F5)", !/from\s+["']@\/lib\/core\/db["']/.test(menuSrc));
+
+  // Fable QC WO 1.5 รอบ 1: ตารางการชำระเงิน คอลัมน์ WHT/ผู้บันทึก ต้องแยกคอลัมน์ชัดเจน + ผู้บันทึกเป็นชื่อจริง
+  assert("P0.16 ตารางการชำระเงินมีความกว้างคอลัมน์ระบุชัด (colgroup)", src.includes("<colgroup>"));
+  assert('P0.17 คอลัมน์ "ผู้บันทึก" ใช้ createdByName จริง (ไม่ใช่ตัวคงที่ "S")', src.includes("p.createdByName") && !/<td className="py-2">S<\/td>/.test(src));
+  // แท็บ "รายละเอียด" ต้องมี 7 คอลัมน์ตาม §5.2 C (มิเรอร์ตัวแก้ไข)
+  for (const col of ["สินค้า/บริการ", "หน่วย", "ส่วนลด", "ก่อนภาษี"]) {
+    assert(`P0.18 แท็บรายละเอียดมีคอลัมน์ "${col}"`, src.includes(col));
+  }
 
   const detailSrc = readFileSync(join(ROOT, "src/lib/modules/account/doc-detail.ts"), "utf8");
   assert("P0.7 doc-detail.ts export getDocDetailData", detailSrc.includes("export async function getDocDetailData"));
@@ -245,6 +261,8 @@ try {
   const afterPay = await dd.getDocDetailData(tenantId, systemId, iv2.id);
   eqAmt("P5.2 หลังรับชำระเต็มจำนวน: ค้างชำระ = 0", afterPay!.remain, 0);
   eq("P5.3 หลังรับชำระ: มี 1 แถวในตารางการชำระเงิน (ยังไม่ถูก void)", afterPay!.payments.filter((p) => !p.voidedAt).length, 1);
+  // Fable QC WO 1.5 รอบ 1: คอลัมน์ "ผู้บันทึก" ต้องเป็นชื่อจริง (resolve จาก membership+user) ไม่ใช่ตัวคงที่ "S"
+  eq("P5.3b ผู้บันทึกในตารางการชำระเงินเป็นชื่อจริง (ไม่ใช่ตัวคงที่)", afterPay!.payments[0].createdByName, "QC เจ้าของ");
   const paymentId = afterPay!.payments[0].id;
   const voided = await pay.voidPaymentAny(tenantId, systemId, iv2.id, paymentId, "QC 1.5 ทดสอบยกเลิก");
   if (!voided.ok) throw new Error("P5: ยกเลิกการชำระไม่สำเร็จ — " + voided.reason);
@@ -255,10 +273,14 @@ try {
   // ═════════ P6 — ไม่มีป้ายภาษาอังกฤษปนในข้อความที่ผู้ใช้เห็น ═════════
   console.log("\nP6 ภาษาไทยทุกที่ (static):");
   {
-    // "WHT" = คำย่อสากลของ "หัก ณ ที่จ่าย" ที่ใช้ในเอกสารบัญชีไทยจริง — g4-invoice-detail.png ใช้ "WHT"
-    // เป็นหัวคอลัมน์ตรง ๆ (เจ้าของอนุมัติแบบนี้แล้ว) จึงไม่ใช่ป้ายอังกฤษที่หลุดมาโดยไม่ตั้งใจ
-    const ALLOW_EN = new Set(["PDF", "WHT"]);
-    const files = ["src/components/account-v2/DocDetailPage.tsx", "src/components/account-v2/ShareLinkButton.tsx"];
+    // "WHT"/"VAT" = คำย่อสากลที่ใช้ในเอกสารบัญชีไทยจริง (g4-invoice-detail.png ใช้ "WHT" เป็นหัวคอลัมน์ตรง ๆ ·
+    // "VAT" ใช้ทั่วทั้งโมดูลอยู่แล้วเช่น DocTotals.tsx `VAT ${vatRateBp}%`) — ไม่ใช่ป้ายอังกฤษที่หลุดมาโดยไม่ตั้งใจ
+    const ALLOW_EN = new Set(["PDF", "WHT", "VAT"]);
+    const files = [
+      "src/components/account-v2/DocDetailPage.tsx",
+      "src/components/account-v2/ShareLinkButton.tsx",
+      "src/components/account-v2/DocMoreMenu.tsx",
+    ];
     for (const f of files) {
       const src = readFileSync(join(ROOT, f), "utf8");
       // ข้อความ jsx ระหว่าง `>...<` ที่มีตัวอักษรอังกฤษล้วน ≥3 ตัว (คำที่ผู้ใช้จะเห็นจริงบนจอ)
