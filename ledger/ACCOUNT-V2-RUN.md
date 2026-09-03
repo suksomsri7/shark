@@ -12,7 +12,7 @@
 | WO | 1.5 หน้าเอกสาร V2 (1.4 อยู่บน main `8bf9128`) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~08:40 UTC: qc:all 192/192 → push `8bf9128` ขึ้น main (Vercel deploy) · 1.5 กำลังทำ (agent) |
+| ขั้นที่ถึง | 3 ก.ย. ~09:00 UTC: prod `8bf9128` READY (รับชำระ/มัดจำ/WHT V2 + แก้บั๊ก RE ลงรายได้ซ้ำ ขึ้น prod แล้ว · migrate status up to date) · 1.5 กำลังทำ (agent) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
