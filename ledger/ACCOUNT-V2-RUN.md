@@ -12,7 +12,7 @@
 | WO | 🏁 ปิดเฟส 4 (qc:all → main → deploy → verify) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable |
-| ขั้นที่ถึง | 3 ก.ย. ~22:30 UTC: 4.3 DONE (Fable ดูภาพ f6/g8 + รันด่าน 20 ชุดเขียว) · commit แล้ว · qc:all กำลังรัน |
+| ขั้นที่ถึง | 3 ก.ย. ~22:50 UTC: qc:all **208/208** (723s) → กำลัง ff main + push → Vercel · 5.1 เริ่มบน branch (Sonnet) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
 
