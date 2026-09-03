@@ -12,7 +12,7 @@
 | WO | 1.3 DocEditorV2 (ทำต่อ) · เฟส 0 + 1.1/1.2 อยู่บน main แล้ว |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~04:15 UTC: merge origin/main → qc:all **190/190** → push `0d19670` ขึ้น main (Vercel กำลัง deploy · migration 1.3 additive จะ apply ตอน build) · ถัดไป: verify prod (เมนู 9 หมวด + หน้ารายการ) → 1.3 ต่อ (agent ใหม่) → 1.4 |
+| ขั้นที่ถึง | 3 ก.ย. ~04:40 UTC: prod deploy `0d19670` **READY** · `prisma migrate status` prod = up to date (migration 1.3 apply แล้ว) · shark.in.th ตอบ 429 จาก VPS = **Vercel Security Checkpoint (challenge) ไม่ใช่แอปพัง** (deployment URL ตอบ 302 ปกติ) → เจ้าของเปิดจากเบราว์เซอร์จริงได้ · 1.3 agent กำลังทำต่อ |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
