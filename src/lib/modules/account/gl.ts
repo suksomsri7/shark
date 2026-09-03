@@ -553,7 +553,11 @@ export async function postDocument(
           b.dr(await b.id(expKey, doc.docType), doc.subTotal);
         }
         if (doc.discountAmount > 0) b.cr(await b.id("DISCOUNT_RECEIVED"), doc.discountAmount, "ส่วนลดรับ");
-        if (rate > 0) b.dr(await b.id(vatInKey), doc.vatAmount);
+        // WO 1.2 — หักเงินมัดจำจ่าย (DP): กระจกของฝั่งขาย (INVOICE Dr 2110 มัดจำรับ)
+        //   grandTotal ที่เก็บไว้ = ยอดหลังหักมัดจำแล้ว ⇒ ต้อง Cr 1130 ด้วยฐานมัดจำ + ลด VAT ซื้อเท่าส่วน VAT ของมัดจำ
+        //   (VAT ของมัดจำถูกเคลมไปแล้วตอนออกใบมัดจำ — เคลมซ้ำที่นี่ = ภาษีซื้อเกิน)
+        if (rate > 0) b.dr(await b.id(vatInKey), doc.vatAmount - dep.vat);
+        if (dep.base > 0) b.cr(await b.id("DEPOSIT_PAID"), dep.base, "หักมัดจำจ่าย");
         b.cr(await b.id("AP"), doc.grandTotal);
         book = "PURCHASES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "บันทึกซื้อ/ค่าใช้จ่าย" };

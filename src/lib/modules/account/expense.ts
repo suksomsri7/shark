@@ -18,7 +18,13 @@ import {
   getSettings,
   STATUS_LABEL,
   isOverdue,
+  overdueWhere,
+  parseDay,
+  clampPageSize,
+  clampPage,
   type LineInput,
+  type DocStatusFilter,
+  type DocSort,
 } from "./service";
 
 // ─────────────────────────────────────────────────────────────
@@ -61,6 +67,46 @@ export const EXP_DOC_LABEL: Partial<Record<AccountDocType, string>> = {
   COMBINED_PAYMENT: "ใบรวมจ่าย",
   WHT_CERT: "หนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ)",
 };
+
+// ─────────────────── ทะเบียน route ฝั่งจ่าย (แหล่งเดียว · WO 1.2) ───────────────────
+// docType ฝั่งจ่ายทุกชนิดที่ "มีหน้ารายการของตัวเอง" วันนี้ + route จริงใต้ /app/sys/<id>/account/
+// ใช้ร่วมกันโดย: expense-page.tsx (SLUG_OF) · expense-actions.ts (ROUTE_FOR · redirect หลังบันทึก)
+//   · expense-ui.tsx (ลิงก์เอกสารที่เกี่ยวข้อง) · ui.tsx (เอกสารล่าสุดหน้า hub) · guard.ts (ทะเบียนสิทธิ์)
+//   · WO 1.1 (list-tabs.ts / DocListPage) วนลิสต์นี้ได้ตรง ๆ ไม่ต้องพิมพ์ docType ซ้ำ
+// ⚠️ COMBINED_PAYMENT (ใบรวมจ่าย) ยังไม่มี route — เพิ่มเข้าลิสต์นี้ตอน WO 1.7 · WHT_CERT ใช้หน้า /wht (ไม่ใช่ list เอกสาร)
+export type ExpenseListTypeDef = {
+  docType: AccountDocType;
+  /** path ใต้ `/app/sys/<systemId>/account/` (ไม่มี / นำหน้า) */
+  route: string;
+  label: string;
+  prefix: string;
+};
+
+export const EXPENSE_LIST_TYPES: readonly ExpenseListTypeDef[] = [
+  { docType: "PURCHASE_ORDER", route: "po", label: "ใบสั่งซื้อ (PO)", prefix: "PO" },
+  { docType: "ASSET_PURCHASE_ORDER", route: "asset-po", label: "ใบสั่งซื้อสินทรัพย์", prefix: "APO" },
+  { docType: "DEPOSIT_PAYMENT", route: "deposit-payment", label: "ใบจ่ายเงินมัดจำ", prefix: "DP" },
+  { docType: "PURCHASE", route: "purchase", label: "บันทึกซื้อสินค้า", prefix: "PC" },
+  { docType: "EXPENSE", route: "expense", label: "บันทึกค่าใช้จ่าย", prefix: "EX" },
+  { docType: "ASSET_PURCHASE", route: "asset-buy", label: "ซื้อสินทรัพย์", prefix: "AP" },
+  { docType: "PURCHASE_TAX_INVOICE", route: "purchase-tax-invoice", label: "ใบกำกับภาษีซื้อ", prefix: "PTX" },
+  { docType: "CREDIT_NOTE_RECEIVED", route: "credit-note-received", label: "รับใบลดหนี้", prefix: "CNR" },
+  { docType: "DEBIT_NOTE_RECEIVED", route: "debit-note-received", label: "รับใบเพิ่มหนี้", prefix: "DNR" },
+];
+
+/** docType → route (ตัวเดียวกับ EXPENSE_LIST_TYPES · ห้ามพิมพ์แมปซ้ำที่อื่น) */
+export const EXP_ROUTE: Partial<Record<AccountDocType, string>> = Object.fromEntries(
+  EXPENSE_LIST_TYPES.map((t) => [t.docType, t.route]),
+) as Partial<Record<AccountDocType, string>>;
+
+/** variant ของฟอร์ม/ตัวเลือกบัญชีต่อ docType (ใช้โดย route + expense-page) */
+export type ExpVariant = "purchase" | "expense" | "po" | "asset";
+export function variantFor(docType: AccountDocType): ExpVariant {
+  if (docType === "EXPENSE") return "expense";
+  if (docType === "PURCHASE_ORDER" || docType === "ASSET_PURCHASE_ORDER") return "po";
+  if (docType === "ASSET_PURCHASE" || docType === "PURCHASE_TAX_INVOICE") return "asset";
+  return "purchase"; // PURCHASE · DEPOSIT_PAYMENT · CNR · DNR (ลงบัญชีจาก mapping กลาง ไม่ใช่บัญชีราย line)
+}
 
 // ประเภทเงินได้ ม.40 (50 ทวิ) — label สำหรับ picker
 export const WHT_INCOME_LABEL: Record<AccountWhtIncomeType, string> = {
@@ -234,6 +280,112 @@ export async function listExpenseDocs(
   return rows;
 }
 
+// ─── รายการเอกสารฝั่งจ่ายแบบกรอง/เรียง/แบ่งหน้า ฝั่ง server (WO 1.1 — analogous ของ service.ts:listDocumentsPaged) ───
+// `listExpenseDocs` ด้านบนคงไว้เหมือนเดิม (ยังมี caller เก่าใช้) — ตัวนี้คือฟังก์ชันแยกสำหรับหน้ารายการ V2
+// (DocListPage) ที่ต้องการ tabCounts + total + pageCount แบบเดียวกับฝั่งรายรับ ไม่ใช่ take-500-แล้ว-filter-ใน-JS
+
+export type ListExpenseDocsInput = {
+  docType: AccountDocType;
+  status?: DocStatusFilter;
+  q?: string;
+  contactId?: string;
+  from?: Date | string;
+  to?: Date | string;
+  page?: number;
+  pageSize?: number;
+  sort?: DocSort;
+  excludeOverdue?: boolean;
+};
+
+export type ExpDocTabCounts = Partial<Record<AccountDocStatus, number>> & { ALL: number; OVERDUE: number };
+
+export type ListExpenseDocsPage = {
+  rows: Prisma.AccountDocumentGetPayload<{ include: { contact: { select: { id: true; name: true } } } }>[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  tabCounts: ExpDocTabCounts;
+};
+
+const EXP_SORT_ORDER: Record<DocSort, Prisma.AccountDocumentOrderByWithRelationInput[]> = {
+  recent: [{ updatedAt: "desc" }, { id: "desc" }],
+  issueDate: [{ issueDate: "desc" }, { id: "desc" }],
+  docNo: [{ docNo: "desc" }, { id: "desc" }],
+  amount: [{ grandTotal: "desc" }, { id: "desc" }],
+};
+
+export async function listExpenseDocsPaged(
+  tenantId: string,
+  systemId: string,
+  input: ListExpenseDocsInput,
+): Promise<ListExpenseDocsPage> {
+  const now = new Date();
+  const pageSize = clampPageSize(input.pageSize);
+  const page = clampPage(input.page);
+  const q = (input.q ?? "").trim();
+  const from = parseDay(input.from, false);
+  const to = parseDay(input.to, true);
+
+  const base: Prisma.AccountDocumentWhereInput = {
+    tenantId,
+    systemId,
+    docType: input.docType,
+    ...(input.contactId ? { contactId: input.contactId } : {}),
+    ...(from || to ? { issueDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { docNo: { contains: q, mode: "insensitive" as const } },
+            { contact: { is: { name: { contains: q, mode: "insensitive" as const } } } },
+          ],
+        }
+      : {}),
+  };
+
+  const status = input.status ?? "ALL";
+  const statusWhere: Prisma.AccountDocumentWhereInput =
+    status === "ALL"
+      ? {}
+      : status === "OVERDUE"
+        ? overdueWhere(now)
+        : Array.isArray(status)
+          ? { status: { in: status } }
+          : { status };
+
+  const where: Prisma.AccountDocumentWhereInput = {
+    AND: [base, statusWhere, ...(input.excludeOverdue ? [{ NOT: overdueWhere(now) }] : [])],
+  };
+
+  const [rows, total, grouped, overdueCount] = await Promise.all([
+    prisma.accountDocument.findMany({
+      where,
+      include: { contact: { select: { id: true, name: true } } },
+      orderBy: EXP_SORT_ORDER[input.sort ?? "recent"],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.accountDocument.count({ where }),
+    prisma.accountDocument.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
+    prisma.accountDocument.count({ where: { AND: [base, overdueWhere(now)] } }),
+  ]);
+
+  const tabCounts: ExpDocTabCounts = { ALL: 0, OVERDUE: overdueCount };
+  for (const g of grouped) {
+    tabCounts[g.status] = g._count._all;
+    tabCounts.ALL += g._count._all;
+  }
+
+  return {
+    rows,
+    total,
+    page,
+    pageSize,
+    pageCount: Math.max(Math.ceil(total / pageSize), 1),
+    tabCounts,
+  };
+}
+
 export function getExpenseDoc(tenantId: string, systemId: string, id: string) {
   return prisma.accountDocument.findFirst({
     where: { id, tenantId, systemId },
@@ -272,6 +424,64 @@ export type ExpLineInput = LineInput & {
   productId?: string | null; // PURCHASE: อ้างสินค้า
 };
 
+// ─────────────────── มัดจำจ่าย (DP) → หักในบันทึกซื้อ/ค่าใช้จ่าย (§5.2 D) ───────────────────
+// mirror ของฝั่งขาย (service.listDeductibleDeposits + depositAvailable) แต่เป็น DEPOSIT_PAYMENT
+// ยอดที่ยังหักได้ = grandTotal ของใบมัดจำ − Σ relation DEPOSIT_APPLY ที่ยังไม่ถูกยกเลิก
+
+async function paidDepositAvailable(
+  db: Prisma.TransactionClient | typeof prisma,
+  systemId: string,
+  depositId: string,
+  excludeToId?: string,
+): Promise<number> {
+  const dep = await db.accountDocument.findFirst({
+    where: { id: depositId, systemId, docType: "DEPOSIT_PAYMENT" },
+    select: { grandTotal: true },
+  });
+  if (!dep) return 0;
+  const applies = await db.accountDocumentRelation.findMany({
+    where: { systemId, fromId: depositId, type: "DEPOSIT_APPLY", ...(excludeToId ? { toId: { not: excludeToId } } : {}) },
+    include: { to: { select: { status: true } } },
+  });
+  let used = 0;
+  for (const r of applies)
+    if (r.to.status !== "VOIDED" && r.to.status !== "CANCELLED") used += r.amount ?? 0;
+  return Math.max(0, dep.grandTotal - used);
+}
+
+export type DeductibleDeposit = { id: string; docNo: string | null; contactId: string | null; available: number };
+
+/**
+ * ใบจ่ายเงินมัดจำที่ยังหักได้ (picker "เลือกเงินมัดจำ" §5.2 D ในฟอร์มบันทึกซื้อ/ค่าใช้จ่าย)
+ * contactId = undefined → คืนทุกผู้ขาย (ฟอร์มกรองเองตามผู้ขายที่เลือก — ผู้ขายยังเปลี่ยนได้ระหว่างกรอก)
+ */
+export async function listDeductiblePaidDeposits(
+  tenantId: string,
+  systemId: string,
+  contactId?: string,
+): Promise<DeductibleDeposit[]> {
+  const deposits = await prisma.accountDocument.findMany({
+    where: {
+      tenantId,
+      systemId,
+      docType: "DEPOSIT_PAYMENT",
+      status: "AWAITING_DEDUCT",
+      ...(contactId ? { contactId } : {}),
+    },
+    select: { id: true, docNo: true, contactId: true },
+    orderBy: { issueDate: "asc" },
+  });
+  const out: DeductibleDeposit[] = [];
+  for (const d of deposits) {
+    const available = await paidDepositAvailable(prisma, systemId, d.id);
+    if (available > 0) out.push({ id: d.id, docNo: d.docNo, contactId: d.contactId, available });
+  }
+  return out;
+}
+
+/** docType ที่หักเงินมัดจำจ่ายได้ (ตาม §5.2 D: PUR/EXP ฝั่งจ่าย) */
+const DEPOSIT_DEDUCTIBLE_TYPES: readonly AccountDocType[] = ["PURCHASE", "EXPENSE"];
+
 export async function createExpenseDoc(input: {
   tenantId: string;
   systemId: string;
@@ -285,6 +495,8 @@ export async function createExpenseDoc(input: {
   note?: string | null;
   adjustReason?: string | null;
   sourceDocId?: string | null;
+  /** ใบจ่ายเงินมัดจำ (DP) ที่จะหักในเอกสารนี้ — เฉพาะ PURCHASE/EXPENSE ของผู้ขายรายเดียวกัน */
+  depositPaymentId?: string | null;
   lines: ExpLineInput[];
   createdById?: string | null;
 }) {
@@ -297,51 +509,81 @@ export async function createExpenseDoc(input: {
     : input.vatPurchaseMode ?? "CLAIM";
   const { vatMode, vatTiming } = vatFieldsFor(purchaseMode, reqVatMode);
   const issueDate = input.issueDate ?? new Date();
-  const totals = computeTotals({
-    lines: input.lines,
-    discountAmount: input.discountAmount,
-    vatMode,
-    vatRegistered: settings.vatRegistered,
-    vatRateBp: settings.vatRateBp,
-  });
-  return prisma.accountDocument.create({
-    data: {
-      tenantId: input.tenantId,
-      systemId: input.systemId,
-      docType: input.docType,
-      status: "DRAFT",
-      direction: "IN",
-      issueDate,
-      dueDate: input.dueDate ?? null,
-      contactId: input.contactId ?? null,
+  return prisma.$transaction(async (tx) => {
+    // หักเงินมัดจำจ่าย — ใบมัดจำต้องเป็นของผู้ขายรายเดียวกัน + อยู่สถานะรอหักมัดจำ + ยังมียอดเหลือ
+    let depositDeducted = 0;
+    let depositDocId: string | null = null;
+    if (input.depositPaymentId && DEPOSIT_DEDUCTIBLE_TYPES.includes(input.docType)) {
+      const dep = await tx.accountDocument.findFirst({
+        where: { id: input.depositPaymentId, systemId: input.systemId, docType: "DEPOSIT_PAYMENT" },
+        select: { id: true, status: true, contactId: true },
+      });
+      if (dep && dep.status === "AWAITING_DEDUCT" && dep.contactId === (input.contactId ?? null)) {
+        depositDeducted = await paidDepositAvailable(tx, input.systemId, dep.id);
+        depositDocId = depositDeducted > 0 ? dep.id : null;
+      }
+    }
+    const totals = computeTotals({
+      lines: input.lines,
+      discountAmount: input.discountAmount,
+      depositDeducted,
       vatMode,
-      vatTiming,
-      taxPointBasis: vatTiming,
-      discountAmount: input.discountAmount ?? 0,
-      subTotal: totals.subTotal,
-      vatAmount: totals.vatAmount,
-      grandTotal: totals.grandTotal,
-      note: input.note ?? null,
-      adjustReason: input.adjustReason ?? null,
-      sourceDocId: input.sourceDocId ?? null,
-      createdById: input.createdById ?? null,
-      lines: {
-        create: input.lines.map((l, i) => ({
+      vatRegistered: settings.vatRegistered,
+      vatRateBp: settings.vatRateBp,
+    });
+    const doc = await tx.accountDocument.create({
+      data: {
+        tenantId: input.tenantId,
+        systemId: input.systemId,
+        docType: input.docType,
+        status: "DRAFT",
+        direction: "IN",
+        issueDate,
+        dueDate: input.dueDate ?? null,
+        contactId: input.contactId ?? null,
+        vatMode,
+        vatTiming,
+        taxPointBasis: vatTiming,
+        discountAmount: input.discountAmount ?? 0,
+        depositDeducted,
+        subTotal: totals.subTotal,
+        vatAmount: totals.vatAmount,
+        grandTotal: totals.grandTotal,
+        note: input.note ?? null,
+        adjustReason: input.adjustReason ?? null,
+        sourceDocId: input.sourceDocId ?? null,
+        createdById: input.createdById ?? null,
+        lines: {
+          create: input.lines.map((l, i) => ({
+            tenantId: input.tenantId,
+            systemId: input.systemId,
+            sortOrder: i,
+            description: l.description,
+            qty: l.qty,
+            unitName: l.unitName ?? null,
+            unitPrice: l.unitPrice,
+            discount: l.discount ?? 0,
+            vatRateBp: l.vatRateBp ?? settings.vatRateBp,
+            amount: lineAmount(l),
+            accountId: l.accountId ?? null,
+            productId: l.productId ?? null,
+          })),
+        },
+      },
+    });
+    if (depositDocId && depositDeducted > 0) {
+      await tx.accountDocumentRelation.create({
+        data: {
           tenantId: input.tenantId,
           systemId: input.systemId,
-          sortOrder: i,
-          description: l.description,
-          qty: l.qty,
-          unitName: l.unitName ?? null,
-          unitPrice: l.unitPrice,
-          discount: l.discount ?? 0,
-          vatRateBp: l.vatRateBp ?? settings.vatRateBp,
-          amount: lineAmount(l),
-          accountId: l.accountId ?? null,
-          productId: l.productId ?? null,
-        })),
-      },
-    },
+          fromId: depositDocId,
+          toId: doc.id,
+          type: "DEPOSIT_APPLY",
+          amount: depositDeducted,
+        },
+      });
+    }
+    return doc;
   });
 }
 
@@ -416,22 +658,48 @@ export async function updateExpenseDoc(
         });
       }
       const lines = await tx.accountDocumentLine.findMany({ where: { documentId: id } });
+      const lineInputs = lines.map((l) => ({
+        description: l.description,
+        qty: Number(l.qty),
+        unitPrice: l.unitPrice,
+        discount: l.discount,
+        vatRateBp: l.vatRateBp,
+      }));
+      // WO 1.2: ยอดหักมัดจำที่เลือกไว้ตอนสร้างต้องอยู่ในสูตรด้วย ไม่งั้นแก้ร่างแล้ว grandTotal เด้งกลับเป็นยอดก่อนหัก
+      // (แก้บรรทัดจนยอดเอกสารเล็กกว่ามัดจำ → clamp ทั้งเอกสารและ relation ให้เท่ากัน กัน GL ไม่ balance ตอนออก)
+      let depositDeducted = doc.depositDeducted;
+      if (depositDeducted > 0) {
+        const gross = computeTotals({
+          lines: lineInputs,
+          discountAmount,
+          vatMode,
+          vatRegistered: settings.vatRegistered,
+          vatRateBp: settings.vatRateBp,
+        }).grandTotal;
+        if (depositDeducted > gross) {
+          depositDeducted = gross;
+          await tx.accountDocumentRelation.updateMany({
+            where: { systemId, toId: id, type: "DEPOSIT_APPLY" },
+            data: { amount: depositDeducted },
+          });
+        }
+      }
       const totals = computeTotals({
-        lines: lines.map((l) => ({
-          description: l.description,
-          qty: Number(l.qty),
-          unitPrice: l.unitPrice,
-          discount: l.discount,
-          vatRateBp: l.vatRateBp,
-        })),
+        lines: lineInputs,
         discountAmount,
+        depositDeducted,
         vatMode,
         vatRegistered: settings.vatRegistered,
         vatRateBp: settings.vatRateBp,
       });
       await tx.accountDocument.update({
         where: { id },
-        data: { subTotal: totals.subTotal, vatAmount: totals.vatAmount, grandTotal: totals.grandTotal },
+        data: {
+          depositDeducted,
+          subTotal: totals.subTotal,
+          vatAmount: totals.vatAmount,
+          grandTotal: totals.grandTotal,
+        },
       });
     });
     return { ok: true };
@@ -483,6 +751,29 @@ export async function issueExpenseDoc(
       if (doc.direction !== "IN") throw new Error("ไม่ใช่เอกสารฝั่งจ่าย");
       if (doc.status !== "DRAFT") throw new Error("เอกสารนี้ออกแล้ว");
       if (doc.lines.length === 0) throw new Error("ต้องมีรายการอย่างน้อย 1 รายการ");
+
+      // ── WO 1.2: ล็อกการหักเงินมัดจำจ่ายตอนออกเอกสาร (mirror F2 ฝั่งขาย) ──
+      //    ตรวจว่าใบมัดจำยัง "รอหักมัดจำ" + ยอดไม่เกินคงเหลือ · หักครบแล้ว → ใบมัดจำเป็น DEDUCTED
+      if (DEPOSIT_DEDUCTIBLE_TYPES.includes(doc.docType)) {
+        const applies = await tx.accountDocumentRelation.findMany({
+          where: { systemId, toId: id, type: "DEPOSIT_APPLY" },
+        });
+        for (const ap of applies) {
+          const dep = await tx.accountDocument.findFirst({
+            where: { id: ap.fromId, systemId, docType: "DEPOSIT_PAYMENT" },
+            select: { id: true, status: true, grandTotal: true },
+          });
+          if (!dep || dep.status !== "AWAITING_DEDUCT")
+            throw new Error("ใบจ่ายเงินมัดจำที่เลือกหักไม่พร้อมใช้ (ต้องอยู่สถานะรอหักมัดจำ)");
+          const avail = await paidDepositAvailable(tx, systemId, dep.id, id);
+          if ((ap.amount ?? 0) > avail + 1)
+            throw new Error("ยอดหักมัดจำเกินยอดคงเหลือของใบจ่ายเงินมัดจำ");
+          const usedAll = dep.grandTotal - (await paidDepositAvailable(tx, systemId, dep.id));
+          if (usedAll >= dep.grandTotal)
+            await tx.accountDocument.update({ where: { id: dep.id }, data: { status: "DEDUCTED" } });
+        }
+      }
+
       docNo = await nextDocNo(tx, tenantId, systemId, doc.docType, doc.issueDate);
       await tx.accountDocument.update({
         where: { id },
@@ -495,7 +786,10 @@ export async function issueExpenseDoc(
       const ctx = { tenantId, systemId };
       await ensureAccounting(ctx, tx);
       // โพสต์บัญชีฝั่งซื้อ (GL-P2P3 จัดการ mapping/1150-1155/16xx/เจ้าหนี้)
-      await postDocument(ctx, id, tx);
+      // 🔴 ยกเว้นใบจ่ายเงินมัดจำ (DP): posting rule ของมันคือ Dr 1130 มัดจำจ่าย / Cr เงิน — เงินยังไม่ออกตอนออกเอกสาร
+      //    ⇒ โพสต์ตอน "จ่ายครบ" ใน recordVendorPayment เหมือนใบรับมัดจำฝั่งขาย (service.ts DEPOSIT_RECEIPT)
+      //    ถ้าโพสต์ที่นี่จะ Cr เงินซ้ำ 2 รอบ (ตอนออก + ตอนจ่าย) และ Dr 2100 ลอยโดยไม่เคยมี Cr 2100
+      if (doc.docType !== "DEPOSIT_PAYMENT") await postDocument(ctx, id, tx);
       // VAT รอใบกำกับ (vatTiming ON_PAYMENT + มี VAT) → เปิดทะเบียนใบกำกับภาษีซื้อรอรับ
       if (
         doc.vatTiming === "ON_PAYMENT" &&
@@ -668,8 +962,14 @@ export async function recordVendorPayment(
       await tx.accountDocument.update({ where: { id }, data: { paidTotal: newPaid, status } });
       const ctx = { tenantId, systemId };
       await ensureAccounting(ctx, tx);
-      // GL-P2P3: Dr 2100 เจ้าหนี้ / Cr เงิน + Cr 2130 WHT ค้างนำส่ง (direction IN)
-      await postPayment(ctx, payment.id, tx);
+      if (doc.docType === "DEPOSIT_PAYMENT") {
+        // มัดจำจ่าย: ไม่มีเจ้าหนี้ให้ตัด — โพสต์เอกสารเต็มก้อนเมื่อจ่ายครบ (Dr 1130 + Dr 1150 / Cr เงิน)
+        // postDocument อ่านช่องทาง/บัญชีเงินจาก payment แรกของเอกสาร (gl.ts case DEPOSIT_PAYMENT)
+        if (fullyPaid) await postDocument(ctx, id, tx);
+      } else {
+        // GL-P2P3: Dr 2100 เจ้าหนี้ / Cr เงิน + Cr 2130 WHT ค้างนำส่ง (direction IN)
+        await postPayment(ctx, payment.id, tx);
+      }
       // ออกหนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ) อัตโนมัติ
       if (wht > 0 && input.whtIncomeType) {
         // M5: ฐานเงินได้จริง = ยอดจ่ายจริงงวดนี้ก่อน VAT (subTotal × สัดส่วนที่ตัดหนี้) ไม่ย้อนจาก wht/rate
@@ -1009,5 +1309,8 @@ export async function payableStats(tenantId: string, systemId: string) {
       where: { tenantId, systemId, docType: "PURCHASE_TAX_INVOICE", status: "AWAITING_RECEIVE" },
     }),
   ]);
-  return { payable, overdueCount, overdueAmount, pendingApproval, awaitingTaxInvoice };
+  // openCount = จำนวนใบที่ยังค้างจ่าย (KPI "ค้างจ่าย (เจ้าหนี้)" หน้าหลัก · WO 1.2)
+  //   นับทุกเอกสาร direction=IN ที่ยัง AWAITING_PAYMENT/PARTIAL รวม DEPOSIT_PAYMENT ที่ยังไม่จ่าย
+  //   (เป็นภาระเงินออกจริงของกิจการ แม้ GL 2100 จะยังไม่ตั้งเจ้าหนี้ให้ใบมัดจำ)
+  return { payable, openCount: open.length, overdueCount, overdueAmount, pendingApproval, awaitingTaxInvoice };
 }

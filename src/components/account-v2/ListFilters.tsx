@@ -111,7 +111,7 @@ export function ListFilters({
       </div>
 
       <details open={advancedOpen} className="text-sm">
-        <summary className="btn-sm w-fit list-none">🔻 ค้นหาขั้นสูง</summary>
+        <summary className="btn-sm w-fit list-none">▽ ตัวกรองเพิ่มเติม</summary>
         <div className="mt-2 flex flex-wrap gap-2">
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             แท็ก

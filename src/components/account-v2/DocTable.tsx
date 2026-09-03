@@ -32,9 +32,11 @@ export function DocTable<T extends { id: string }>({
   page,
   pageCount,
   pageSize,
+  total,
   emptyText,
   testId,
   initialSelectedIds,
+  rowTestId,
 }: {
   cols: DocColumn<T>[];
   rows: T[];
@@ -53,9 +55,13 @@ export function DocTable<T extends { id: string }>({
   page: number;
   pageCount: number;
   pageSize: number;
+  /** จำนวนรายการทั้งหมดที่ตรงตัวกรอง — ส่งต่อให้ Pagination แสดง "จาก N รายการ" + data-testid="list-total" */
+  total?: number;
   emptyText: string;
   testId?: string;
   initialSelectedIds?: string[];
+  /** testid ต่อแถว เช่น `row-${docNo}` (WO 1.1 §C) — ไม่ส่ง = ไม่ติด testid ต่อแถว */
+  rowTestId?: (row: T) => string;
 }) {
   if (rows.length === 0) return <EmptyState text={emptyText} />;
 
@@ -75,6 +81,7 @@ export function DocTable<T extends { id: string }>({
     mobileTitle: mobileTitle?.(r) ?? cols[0]?.render(r),
     mobileSubtitle: mobileSubtitle?.(r),
     mobileTrailing: mobileTrailing?.(r),
+    testId: rowTestId?.(r),
   }));
 
   return (
@@ -89,7 +96,10 @@ export function DocTable<T extends { id: string }>({
         <div className="flex flex-wrap items-center justify-between gap-3 border-t px-1 pt-2 text-sm">
           {typeof footerTotalSatang === "number" ? (
             <span className="text-[color:var(--color-muted)]">
-              รวมยอดในหน้านี้ <MoneyText satang={footerTotalSatang} decimals />
+              รวมยอดในหน้านี้{" "}
+              <span data-testid="page-sum">
+                <MoneyText satang={footerTotalSatang} decimals />
+              </span>
             </span>
           ) : (
             <span />
@@ -100,6 +110,7 @@ export function DocTable<T extends { id: string }>({
             page={page}
             pageCount={pageCount}
             pageSize={pageSize}
+            total={total}
             testId={testId ? `${testId}-pagination` : undefined}
           />
         </div>

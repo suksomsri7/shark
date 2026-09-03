@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { AccountDocType } from "@prisma/client";
 import { isOverdue } from "./service";
 import { StatusBadge } from "./ui";
-import { EXP_DOC_LABEL, WHT_INCOME_LABEL } from "./expense";
+import { EXP_DOC_LABEL, EXP_ROUTE, WHT_INCOME_LABEL } from "./expense";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -36,6 +36,7 @@ type LoadedDoc = {
   vatMode: string;
   subTotal: number;
   discountAmount: number;
+  depositDeducted: number;
   vatAmount: number;
   grandTotal: number;
   paidTotal: number;
@@ -110,15 +111,8 @@ function Row({ label, value }: { label: string; value: number }) {
   );
 }
 
-// route slug ต่อ docType (ต้องตรงกับ ROUTE_FOR ใน expense-actions)
-const ROUTE_FOR: Partial<Record<AccountDocType, string>> = {
-  PURCHASE: "purchase",
-  EXPENSE: "expense",
-  PURCHASE_ORDER: "po",
-  ASSET_PURCHASE_ORDER: "po",
-  ASSET_PURCHASE: "asset-buy",
-  PURCHASE_TAX_INVOICE: "asset-buy",
-};
+// route slug ต่อ docType — WO 1.2: ทะเบียนกลาง EXPENSE_LIST_TYPES (expense.ts) ที่เดียว
+const ROUTE_FOR = EXP_ROUTE;
 
 export function ExpenseDetail({
   doc,
@@ -186,6 +180,7 @@ export function ExpenseDetail({
           <Row label="รวมเป็นเงิน" value={doc.subTotal} />
           {doc.discountAmount > 0 && <Row label="ส่วนลดท้ายบิล" value={-doc.discountAmount} />}
           {doc.vatMode !== "NONE" && <Row label="ภาษีซื้อ" value={doc.vatAmount} />}
+          {doc.depositDeducted > 0 && <Row label="หักเงินมัดจำ" value={-doc.depositDeducted} />}
           <div className="flex w-full max-w-xs justify-between font-semibold">
             <span>ยอดสุทธิ</span>
             <MoneyText satang={doc.grandTotal} decimals />

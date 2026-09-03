@@ -68,7 +68,11 @@ export function StatusTabs({
               }}
             >
               {t.label}
-              {typeof count === "number" && <span className="ml-1">{count}</span>}
+              {typeof count === "number" && (
+                <span className="ml-1" data-testid={`tab-${t.key}-count`}>
+                  {count}
+                </span>
+              )}
             </Link>
           );
         })}

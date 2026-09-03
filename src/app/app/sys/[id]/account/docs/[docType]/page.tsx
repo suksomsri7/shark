@@ -1,76 +1,112 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { AccountDocType } from "@prisma/client";
+import { prisma } from "@/lib/core/db";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import {
   listDocumentsPaged,
   listContacts,
   getSettings,
+  computeListTabCounts,
   DOC_LABEL,
-  isOverdue,
   isVisibleDocType,
-  type ListDocumentsInput,
 } from "@/lib/modules/account/service";
-import { StatusBadge } from "@/lib/modules/account/ui";
+import { LIST_TABS, tabToFilter, activeTabKey, presetRangeBkk } from "@/lib/modules/account/list-tabs";
+import {
+  docNoCol,
+  contactCol,
+  issueDateCol,
+  dueDateCol,
+  validUntilCol,
+  netCol,
+  outstandingCol,
+  subTotalCol,
+  vatCol,
+  paymentChannelCol,
+  statusCol,
+  type ListRow,
+} from "@/lib/modules/account/list-columns";
 import DocEditor from "@/lib/modules/account/DocEditor";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { FormField } from "@/components/ui/FormField";
-import { TabPills } from "@/components/ui/TabPills";
-import { DataList } from "@/components/ui/DataList";
-import { MoneyText } from "@/components/ui/MoneyText";
+import { DocListPage } from "@/components/account-v2/DocListPage";
+import type { RowActionItem } from "@/components/account-v2/RowActions";
+import type { DocColumn } from "@/components/account-v2/DocTable";
+import type { DateRangePreset } from "@/components/account-v2/ListFilters";
 
-// ตัวกรองต่อแท็บ = คำสั่งที่ส่งให้ service (กรองฝั่ง server ทั้งหมด — ไม่มี take 500 + filter ใน UI แล้ว)
-type TabDef = { key: string; label: string; filter: Partial<ListDocumentsInput> };
+// หน้ารายการเอกสารฝั่งรายรับทั้ง 8 ชนิด (QT/IV/RE/TX/DR/CN/DN/BN) — WO 1.1 ผ่าน DocListPage กลาง
+// mockup อ้างอิง: f3-invoice-list.png (เดสก์ท็อป) + f3-invoice-list-menu.png (เมนู "ทำรายการ ▾") +
+// f13-m-invoice-list.png (มือถือ) — ground truth ของ INVOICE เท่านั้น (ชนิดอื่นยึด DESIGN-SPEC-V2.md §5.1/§3)
 
-// แท็บ/filter ต่อ docType — ตรงตาม docs/modules/12-account.md §3.0.3 เป๊ะ
-function tabsFor(docType: AccountDocType): TabDef[] {
-  const all: TabDef = { key: "all", label: "ทั้งหมด", filter: {} };
-  const recent: TabDef = { key: "recent", label: "ล่าสุด", filter: { sort: "recent" } };
-  const overdue: TabDef = { key: "overdue", label: "พ้นกำหนด", filter: { status: "OVERDUE" } };
-  switch (docType) {
+// §5.1 คอลัมน์เฉพาะชนิด
+function columnsFor(dt: AccountDocType, base: string, refDocNo: Map<string, string | null>): DocColumn<ListRow>[] {
+  const doc = docNoCol((r) => `${base}/docs/${dt}/${r.id}`, "list");
+  switch (dt) {
     case "QUOTATION":
+      return [doc, contactCol, issueDateCol, validUntilCol, netCol, statusCol];
+    case "RECEIPT":
       return [
-        { key: "accepted", label: "ยอมรับ", filter: { status: "ACCEPTED" } },
+        doc,
+        contactCol,
+        issueDateCol,
+        netCol,
+        paymentChannelCol,
         {
-          key: "awaiting",
-          label: "รอตอบรับ",
-          filter: { status: "AWAITING_ACCEPT", excludeOverdue: true },
+          key: "taxInvoice",
+          header: "ใบกำกับ",
+          render: (r) => refDocNo.get(r.id) ?? "—",
         },
-        overdue,
-        all,
-        recent,
+        statusCol,
+      ];
+    case "TAX_INVOICE":
+      return [
+        doc,
+        contactCol,
+        issueDateCol,
+        {
+          key: "ref",
+          header: "อ้างอิง",
+          render: (r) => (r.sourceDocId ? (refDocNo.get(r.sourceDocId) ?? "—") : "—"),
+        },
+        subTotalCol,
+        vatCol,
+        statusCol,
       ];
     case "INVOICE":
-      return [
-        {
-          key: "awaiting",
-          label: "รอชำระเงิน",
-          filter: { status: ["AWAITING_PAYMENT", "PARTIAL"], excludeOverdue: true },
-        },
-        { key: "paid", label: "ชำระเงินแล้ว", filter: { status: "PAID" } },
-        overdue,
-        all,
-        recent,
-      ];
-    case "RECEIPT":
-      return [{ key: "paid", label: "ชำระเงินแล้ว", filter: { status: "PAID" } }, all, recent];
-    case "TAX_INVOICE":
-      return [{ key: "issued", label: "ออกแล้ว", filter: { status: "ISSUED" } }, all, recent];
+    case "BILLING_NOTE":
     case "DEPOSIT_RECEIPT":
-      return [
-        {
-          key: "awaiting",
-          label: "รอชำระเงิน",
-          filter: { status: "AWAITING_PAYMENT", excludeOverdue: true },
-        },
-        overdue,
-        { key: "deduct", label: "รอหักมัดจำ", filter: { status: "AWAITING_DEDUCT" } },
-        all,
-        recent,
-      ];
-    default: // CREDIT_NOTE / DEBIT_NOTE / BILLING_NOTE
-      return [all, recent];
+      return [doc, contactCol, issueDateCol, dueDateCol, netCol, outstandingCol, statusCol];
+    default: // CREDIT_NOTE / DEBIT_NOTE — ไม่ได้ระบุคอลัมน์เฉพาะใน §5.1 ใช้ชุดฐาน + ค้างชำระ
+      return [doc, contactCol, issueDateCol, netCol, outstandingCol, statusCol];
   }
+}
+
+// §3 "ทำรายการ ▾" ต่อชนิด — ลิงก์ที่ยังไม่มีปลายทางจริง → หน้ารายละเอียด + ป้าย "เร็ว ๆ นี้" (ห้ามลิงก์ตาย)
+function rowActionsFor(dt: AccountDocType, base: string, r: ListRow): RowActionItem[] {
+  const detail = `${base}/docs/${dt}/${r.id}`;
+  const soon = (label: string): RowActionItem => ({ label: `${label} (เร็ว ๆ นี้)`, href: detail });
+  const common: RowActionItem[] = [{ label: "พิมพ์ PDF", href: `${base}/print/${r.id}` }];
+  switch (dt) {
+    case "QUOTATION":
+      return [soon("ลูกค้ายอมรับ"), soon("ปฏิเสธ"), soon("ออกใบแจ้งหนี้"), ...common, soon("แก้ไข"), soon("ยกเลิก")];
+    case "INVOICE":
+      return [soon("รับชำระ"), soon("ออกใบเสร็จ"), soon("ออกใบกำกับ"), soon("ใส่ในใบวางบิล"), ...common, soon("ยกเลิก")];
+    case "RECEIPT":
+      return [soon("ออกใบกำกับ"), ...common, soon("ยกเลิก(กลับรายการ)")];
+    case "TAX_INVOICE":
+      return [{ label: "พิมพ์ต้นฉบับ", href: `${base}/print/${r.id}` }, { label: "พิมพ์สำเนา", href: `${base}/print/${r.id}?copy=1` }, soon("ออกใบลดหนี้"), soon("ยกเลิก")];
+    case "DEPOSIT_RECEIPT":
+      return [soon("รับชำระ"), soon("ออกใบกำกับ"), soon("หักในใบแจ้งหนี้"), ...common, soon("ยกเลิก")];
+    case "BILLING_NOTE":
+      return [soon("รับชำระ (กระจายเข้าใบแจ้งหนี้ลูก)"), ...common, soon("ยกเลิก")];
+    default: // CREDIT_NOTE / DEBIT_NOTE
+      return [soon("คืนเงิน/รับชำระ"), ...common, soon("ยกเลิก")];
+  }
+}
+
+// §3 bulk ต่อชนิด — ยังไม่ทำจริง (WO 1.1 = โครง UI) → disabled + title อธิบาย ไม่ผูก action จริง
+function bulkFor(dt: AccountDocType) {
+  const soon = { disabled: true, disabledTitle: "เร็ว ๆ นี้" };
+  if (dt === "INVOICE") return [{ label: "ออกใบวางบิลรวม", ...soon }, { label: "พิมพ์", ...soon }, { label: "ส่งอีเมล", ...soon }];
+  if (dt === "QUOTATION") return [{ label: "พิมพ์", ...soon }, { label: "ส่งอีเมล", ...soon }, { label: "ยกเลิก", danger: true, ...soon }];
+  return [{ label: "พิมพ์", ...soon }, { label: "ส่งอีเมล", ...soon }];
 }
 
 export default async function DocTypeListPage({
@@ -78,27 +114,53 @@ export default async function DocTypeListPage({
   searchParams,
 }: {
   params: Promise<{ id: string; docType: string }>;
-  searchParams: Promise<{ tab?: string; q?: string; page?: string; err?: string }>;
+  searchParams: Promise<{
+    tab?: string;
+    q?: string;
+    page?: string;
+    size?: string;
+    contact?: string;
+    preset?: string;
+    from?: string;
+    to?: string;
+    sort?: string;
+    dir?: string;
+    err?: string;
+  }>;
 }) {
   const { id, docType } = await params;
-  const { tab: tabParam, q: qParam, page: pageParam, err } = await searchParams;
+  const sp = await searchParams;
   if (!(docType in DOC_LABEL)) notFound();
   const dt = docType as AccountDocType;
   if (!isVisibleDocType(dt)) notFound();
   const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.doc.view" });
 
-  const tabs = tabsFor(dt);
-  const active = tabs.find((t) => t.key === tabParam) ?? tabs[0];
-  const q = (qParam ?? "").trim();
-  const page = Math.max(Number.parseInt(pageParam ?? "1", 10) || 1, 1);
+  const tabDefs = LIST_TABS[dt] ?? [];
+  const tab = activeTabKey(dt, sp.tab);
+  const filter = tabToFilter(dt, tab);
+  const preset = (sp.preset as DateRangePreset | undefined) ?? "this_year";
+  const range = preset === "custom" ? { from: sp.from, to: sp.to } : presetRangeBkk(preset);
+  const page = Math.max(Number.parseInt(sp.page ?? "1", 10) || 1, 1);
+  const pageSize = Math.min(Math.max(Number.parseInt(sp.size ?? "20", 10) || 20, 1), 100);
+  const q = (sp.q ?? "").trim();
 
-  const [result, contacts, settings] = await Promise.all([
+  const [result, tabCounts, contacts, settings] = await Promise.all([
     listDocumentsPaged(tenantId, systemId, {
       docType: dt,
-      sort: "issueDate",
-      ...active.filter,
+      ...filter,
+      contactId: sp.contact || undefined,
+      from: range.from,
+      to: range.to,
       q: q || undefined,
       page,
+      pageSize,
+      sort: sp.sort === "docNo" || sp.sort === "amount" || sp.sort === "issueDate" ? sp.sort : "issueDate",
+    }),
+    computeListTabCounts(tenantId, systemId, dt, tabDefs, {
+      q: q || undefined,
+      contactId: sp.contact || undefined,
+      from: range.from,
+      to: range.to,
     }),
     listContacts(tenantId, systemId),
     getSettings(tenantId, systemId),
@@ -107,81 +169,61 @@ export default async function DocTypeListPage({
   if (dt === "TAX_INVOICE" && !settings.vatRegistered) notFound();
 
   const base = `/app/sys/${id}/account`;
+  const pathname = `${base}/docs/${dt}`;
   const label = DOC_LABEL[dt] ?? dt;
-  const canCreate = dt !== "RECEIPT" && dt !== "TAX_INVOICE"; // เกิดจากการแปลงเท่านั้น
-  const listUrl = (opts: { tab?: string; page?: number }) => {
-    const sp = new URLSearchParams();
-    sp.set("tab", opts.tab ?? active.key);
-    if (q) sp.set("q", q);
-    if (opts.page && opts.page > 1) sp.set("page", String(opts.page));
-    return `${base}/docs/${dt}?${sp.toString()}`;
-  };
+  const canCreate = dt !== "RECEIPT" && dt !== "TAX_INVOICE"; // เกิดจากการแปลงเท่านั้น (§5.1)
+
+  // อ้างอิงข้าม docType (RE↔TX) — ดึงเฉพาะ docNo ของแถวหน้านี้ (bounded ด้วย pageSize) ไม่ใช่ N+1 ต่อแถว
+  const refDocNo = new Map<string, string | null>();
+  if (dt === "RECEIPT" && result.rows.length) {
+    const tx = await prisma.accountDocument.findMany({
+      where: { tenantId, systemId, docType: "TAX_INVOICE", sourceDocId: { in: result.rows.map((r) => r.id) } },
+      select: { sourceDocId: true, docNo: true },
+    });
+    for (const t of tx) if (t.sourceDocId) refDocNo.set(t.sourceDocId, t.docNo);
+  }
+  if (dt === "TAX_INVOICE" && result.rows.length) {
+    const srcIds = result.rows.map((r) => r.sourceDocId).filter((v): v is string => !!v);
+    if (srcIds.length) {
+      const src = await prisma.accountDocument.findMany({ where: { id: { in: srcIds } }, select: { id: true, docNo: true } });
+      for (const s of src) refDocNo.set(s.id, s.docNo);
+    }
+  }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-5">
-      <PageHeader title={label} back={{ href: base, label: "ระบบบัญชี" }} />
-
-      {err === "empty" && (
-        <p className="text-sm text-[color:var(--color-danger)]">ต้องมีรายการอย่างน้อย 1 รายการ</p>
+    <DocListPage<ListRow>
+      testId="list-docs"
+      base={base}
+      pathname={pathname}
+      title={label}
+      searchParams={sp}
+      tabs={tabDefs}
+      tabCounts={tabCounts}
+      activeTab={tab}
+      filters={{ preset, from: sp.from, to: sp.to, contactId: sp.contact, q }}
+      contacts={contacts.map((c) => ({ id: c.id, name: c.name }))}
+      cols={columnsFor(dt, base, refDocNo)}
+      rows={result.rows}
+      rowActionsFor={(r) => rowActionsFor(dt, base, r)}
+      bulkActions={bulkFor(dt)}
+      mobileTitle={(r) => r.docNo ?? "(ร่าง)"}
+      mobileSubtitle={(r) => r.contact?.name}
+      mobileTrailing={(r) => (
+        <span className="tabular-nums">
+          {(r.grandTotal / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+        </span>
       )}
-
-      <TabPills
-        active={active.key}
-        tabs={tabs.map((t) => ({ key: t.key, label: t.label, href: listUrl({ tab: t.key, page: 1 }) }))}
-      />
-
-      <form className="flex flex-wrap items-end gap-2">
-        <input type="hidden" name="tab" value={active.key} />
-        <FormField label="ค้นหา">
-          <input name="q" defaultValue={q} className="input" placeholder="เลขที่เอกสาร หรือ ชื่อผู้ติดต่อ" />
-        </FormField>
-        <button className="btn btn-ghost text-sm">ค้นหา</button>
-      </form>
-
-      <DataList
-        items={result.rows.map((d) => ({
-          key: d.id,
-          href: `${base}/docs/${dt}/${d.id}`,
-          primary: `${d.docNo ?? "(ร่าง)"} · ${d.issueDate.toLocaleDateString("th-TH", {
-            day: "numeric",
-            month: "short",
-            year: "2-digit",
-          })}`,
-          trailing: (
-            <>
-              <MoneyText satang={d.grandTotal} decimals />
-              <StatusBadge status={d.status} overdue={isOverdue(d)} />
-            </>
-          ),
-        }))}
-        empty={q ? `ไม่พบ${label}ที่ตรงกับคำค้น` : `ยังไม่มี${label}ในหมวดนี้`}
-      />
-
-      {result.pageCount > 1 && (
-        <div className="flex items-center justify-between text-sm">
-          {page > 1 ? (
-            <Link href={listUrl({ page: page - 1 })} className="underline">
-              ← ก่อนหน้า
-            </Link>
-          ) : (
-            <span />
-          )}
-          <span className="text-[color:var(--color-muted)]">
-            หน้า {page} จาก {result.pageCount} (ทั้งหมด {result.total} รายการ)
-          </span>
-          {page < result.pageCount ? (
-            <Link href={listUrl({ page: page + 1 })} className="underline">
-              ถัดไป →
-            </Link>
-          ) : (
-            <span />
-          )}
-        </div>
-      )}
-
-      {/* id="new" = ปลายทางของ "+ สร้าง..." จาก flyout เมนูบัญชี V2 (AccountTabBar) */}
-      <div id="new">
-        {canCreate ? (
+      rowTestId={(r) => `row-${r.docNo ?? r.id}`}
+      footerTotalSatang={result.rows.reduce((s, r) => s + r.grandTotal, 0)}
+      page={result.page}
+      pageCount={result.pageCount}
+      pageSize={result.pageSize}
+      total={result.total}
+      emptyText={`ไม่พบ${label}ในช่วงวันที่ที่เลือก`}
+      errorText={sp.err === "empty" ? "ต้องมีรายการอย่างน้อย 1 รายการ" : sp.err}
+      createLabel={canCreate ? label : undefined}
+      createForm={
+        canCreate ? (
           <DocEditor
             systemId={systemId}
             docType={dt}
@@ -191,12 +233,8 @@ export default async function DocTypeListPage({
             vatRegistered={settings.vatRegistered}
             defaultVatTiming={settings.taxPointBasis}
           />
-        ) : (
-          <p className="rounded-lg border border-dashed p-4 text-sm text-[color:var(--color-muted)]">
-            {label}สร้างได้จากการแปลงเอกสารต้นทาง (ใบแจ้งหนี้ / ใบเสร็จ) เท่านั้น
-          </p>
-        )}
-      </div>
-    </div>
+        ) : undefined
+      }
+    />
   );
 }

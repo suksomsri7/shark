@@ -5,6 +5,7 @@ import { createExpenseDocAction, updateExpenseDocAction } from "./expense-action
 import { SubmitButton } from "@/components/ui/SubmitButton";
 
 type ContactOpt = { id: string; name: string };
+type DepositOpt = { id: string; docNo: string | null; contactId: string | null; available: number };
 type AccountOpt = { id: string; code: string; name: string };
 type Row = {
   description: string;
@@ -38,6 +39,7 @@ export default function ExpenseEditor({
   requireAccount = false,
   vatRateBp,
   vatRegistered,
+  deposits = [],
   editId,
   initial,
 }: {
@@ -50,6 +52,8 @@ export default function ExpenseEditor({
   requireAccount?: boolean; // บังคับเลือกบัญชีต่อบรรทัด
   vatRateBp: number;
   vatRegistered: boolean;
+  /** §5.2 D — ใบจ่ายเงินมัดจำ (DP) ที่ยังหักได้ ของทุกผู้ขาย (กรองตามผู้ขายที่เลือกในฟอร์ม) */
+  deposits?: DepositOpt[];
   editId?: string;
   initial?: {
     contactId: string | null;
@@ -77,6 +81,8 @@ export default function ExpenseEditor({
         }))
       : [emptyRow()],
   );
+  const [contactId, setContactId] = useState(initial?.contactId ?? "");
+  const [depositId, setDepositId] = useState("");
   const [vatMode, setVatMode] = useState(!vatRegistered ? "NONE" : initial?.vatMode ?? "EXCLUDE");
   const [vatPurchaseMode, setVatPurchaseMode] = useState(initial?.vatPurchaseMode ?? "CLAIM");
   const [discount, setDiscount] = useState(initial ? String(initial.discountAmount / 100) : "");
@@ -118,6 +124,15 @@ export default function ExpenseEditor({
     return { subTotal: sub, vat: v, grand: g, linesJson: JSON.stringify(parsed) };
   }, [rows, discount, effectiveVatMode, vatRateBp]);
 
+  // เงินมัดจำจ่ายของผู้ขายที่เลือก (บาท) — ยอดหักจริงคิดที่ server อีกครั้ง (กันข้อมูลเก่า/แข่งกันหัก)
+  const myDeposits = useMemo(
+    () => (contactId ? deposits.filter((d) => d.contactId === contactId) : []),
+    [deposits, contactId],
+  );
+  const picked = myDeposits.find((d) => d.id === depositId) ?? null;
+  const depositBaht = picked ? Math.min(picked.available / 100, grand) : 0;
+  const netTotal = Math.max(0, grand - depositBaht);
+
   const action = editId ? updateExpenseDocAction : createExpenseDocAction;
 
   return (
@@ -134,7 +149,15 @@ export default function ExpenseEditor({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           ผู้ขาย / ผู้รับเงิน
-          <select name="contactId" defaultValue={initial?.contactId ?? ""} className={inputCls}>
+          <select
+            name="contactId"
+            value={contactId}
+            onChange={(e) => {
+              setContactId(e.target.value);
+              setDepositId("");
+            }}
+            className={inputCls}
+          >
             <option value="">— ไม่ระบุ —</option>
             {contacts.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
@@ -172,6 +195,26 @@ export default function ExpenseEditor({
           </label>
         )}
       </div>
+
+      {/* §5.2 D — เลือกเงินมัดจำ (ใบจ่ายเงินมัดจำที่จ่ายแล้วของผู้ขายรายนี้) */}
+      {myDeposits.length > 0 && !editId && (
+        <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+          เลือกเงินมัดจำ (หักจากยอดที่ต้องจ่าย)
+          <select
+            name="depositPaymentId"
+            value={depositId}
+            onChange={(e) => setDepositId(e.target.value)}
+            className={inputCls}
+          >
+            <option value="">— ไม่หักเงินมัดจำ —</option>
+            {myDeposits.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.docNo ?? "(ร่าง)"} · คงเหลือ ฿{money(d.available / 100)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {/* บรรทัดรายการ */}
       <div className="flex flex-col gap-2">
@@ -218,9 +261,15 @@ export default function ExpenseEditor({
             <span>฿{money(vat)}</span>
           </div>
         )}
+        {depositBaht > 0 && (
+          <div className="flex w-full max-w-xs justify-between">
+            <span className="text-[color:var(--color-muted)]">หักเงินมัดจำ</span>
+            <span>−฿{money(depositBaht)}</span>
+          </div>
+        )}
         <div className="flex w-full max-w-xs justify-between font-semibold">
           <span>ยอดสุทธิ</span>
-          <span>฿{money(grand)}</span>
+          <span>฿{money(netTotal)}</span>
         </div>
       </div>
 

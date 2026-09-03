@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { buildPageHref, buildPageSizeHref, type QueryLike } from "./url";
 
-// "แสดง 10/20/50 ▾ · หน้า n/N ‹ ›" (DESIGN-SPEC-V2 §1)
+// "แสดง 10/20/50 ▾ จาก N รายการ · หน้า n/N ‹ ›" (DESIGN-SPEC-V2 §1 + f3-invoice-list.png)
 export function Pagination({
   pathname,
   searchParams,
   page,
   pageCount,
   pageSize,
+  /** จำนวนรายการทั้งหมดที่ตรงตัวกรอง (ไม่ใช่แค่หน้านี้) — ไม่ส่ง = ไม่แสดง "จาก N รายการ" */
+  total,
   pageSizeOptions = [10, 20, 50],
   testId,
 }: {
@@ -16,6 +18,7 @@ export function Pagination({
   page: number;
   pageCount: number;
   pageSize: number;
+  total?: number;
   pageSizeOptions?: number[];
   testId?: string;
 }) {
@@ -35,6 +38,12 @@ export function Pagination({
             </Link>
           ))}
         </span>
+        ▾
+        {typeof total === "number" && (
+          <span>
+            จาก <span data-testid="list-total">{total}</span> รายการ
+          </span>
+        )}
       </label>
       <span className="text-[color:var(--color-muted)]">
         หน้า {page}/{pageCount}

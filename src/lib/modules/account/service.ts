@@ -19,6 +19,8 @@ import {
   postTaxInvoice,
   reverseFor,
 } from "./gl";
+// WO 1.1: แหล่งเดียวของแมป flyout tab → สถานะ (ร่วมกับ LIST_TABS ของหน้ารายการ V2)
+import { NAV_FLYOUT_TABS } from "./list-tabs";
 
 // Account (บัญชี P1 — ฝั่งรายรับ) service. scope = tenantId + systemId (feature)
 // เอกสารเงิน immutable: DRAFT แก้ได้ · พ้น DRAFT แก้ไม่ได้ → void/reissue
@@ -777,10 +779,20 @@ export type DocTabCounts = Partial<Record<AccountDocStatus, number>> & {
   OVERDUE: number;
 };
 
+// WO 1.1: include สุดท้ายของ listDocumentsPaged (ประกาศเป็น const เดียว กันชนิด rows กับ query จริงเพี้ยนกัน)
+const LIST_DOCUMENTS_INCLUDE = {
+  contact: { select: { id: true, name: true } },
+  // ใช้แสดงคอลัมน์ "ช่องทางรับเงิน" ของหน้ารายการ RECEIPT (§5.1) — เอาแค่รายการล่าสุดที่ไม่ถูก void
+  payments: {
+    where: { voidedAt: null },
+    orderBy: { paidAt: "desc" as const },
+    take: 1,
+    select: { channel: true },
+  },
+} satisfies Prisma.AccountDocumentInclude;
+
 export type ListDocumentsPage = {
-  rows: (Prisma.AccountDocumentGetPayload<{
-    include: { contact: { select: { id: true; name: true } } };
-  }>)[];
+  rows: Prisma.AccountDocumentGetPayload<{ include: typeof LIST_DOCUMENTS_INCLUDE }>[];
   total: number;
   page: number;
   pageSize: number;
@@ -792,7 +804,8 @@ export type ListDocumentsPage = {
  * เงื่อนไข "พ้นกำหนด" ในรูป where ของ Prisma — ตรงกับ `isOverdue()` ทุกกรณี
  * (คิดใน SQL ไม่ใช่ JS หลัง take — ไม่งั้นนับผิดเมื่อข้อมูลเกินหน้าแรก)
  */
-function overdueWhere(now: Date): Prisma.AccountDocumentWhereInput {
+// WO 1.1: export ให้ expense.ts:listExpenseDocsPaged() ใช้เงื่อนไข "พ้นกำหนด" ชุดเดียวกันเป๊ะ (ไม่ก๊อปสูตรสอง)
+export function overdueWhere(now: Date): Prisma.AccountDocumentWhereInput {
   return {
     OR: [
       { status: { in: ["AWAITING_PAYMENT", "PARTIAL"] }, dueDate: { lt: now } },
@@ -801,7 +814,20 @@ function overdueWhere(now: Date): Prisma.AccountDocumentWhereInput {
   };
 }
 
-function parseDay(v: Date | string | undefined, endOfDay: boolean): Date | undefined {
+// WO 1.1 บั๊กที่เจอ+แก้: เดิม `Math.trunc(input.pageSize ?? 20) || 20` — เมื่อผู้เรียกส่ง pageSize=0 มาจริง ๆ
+// (เช่นทดสอบขอบเขต) `0 || 20` จะตกกลับเป็นค่าเริ่มต้น 20 เงียบ ๆ แทนที่จะ clamp ขึ้นเป็น 1 ตามที่ตั้งใจ
+// (0 เป็น falsy แต่ไม่ใช่ nullish — `??` ไม่จับ แต่ `||` จับ) ⇒ รวมเป็นฟังก์ชันเดียวใช้ร่วม 3 จุด (revenue/expense/goods)
+export function clampPageSize(v: number | undefined, def = 20, max = 100): number {
+  const n = Math.trunc(v ?? def);
+  return Math.min(Math.max(Number.isFinite(n) ? n : def, 1), max);
+}
+export function clampPage(v: number | undefined): number {
+  const n = Math.trunc(v ?? 1);
+  return Math.max(Number.isFinite(n) ? n : 1, 1);
+}
+
+// WO 1.1: export ให้ expense.ts ใช้ parser วันที่ชุดเดียวกัน (ตัวกรองช่วงวันที่ของหน้ารายการฝั่งจ่าย)
+export function parseDay(v: Date | string | undefined, endOfDay: boolean): Date | undefined {
   if (!v) return undefined;
   const d = v instanceof Date ? new Date(v) : new Date(`${v}T00:00:00+07:00`);
   if (Number.isNaN(d.getTime())) return undefined;
@@ -822,8 +848,8 @@ export async function listDocumentsPaged(
   input: ListDocumentsInput,
 ): Promise<ListDocumentsPage> {
   const now = new Date();
-  const pageSize = Math.min(Math.max(Math.trunc(input.pageSize ?? 20) || 20, 1), 100);
-  const page = Math.max(Math.trunc(input.page ?? 1) || 1, 1);
+  const pageSize = clampPageSize(input.pageSize);
+  const page = clampPage(input.page);
   const q = (input.q ?? "").trim();
   const from = parseDay(input.from, false);
   const to = parseDay(input.to, true);
@@ -866,7 +892,7 @@ export async function listDocumentsPaged(
   const [rows, total, grouped, overdueCount] = await Promise.all([
     prisma.accountDocument.findMany({
       where,
-      include: { contact: { select: { id: true, name: true } } },
+      include: LIST_DOCUMENTS_INCLUDE,
       orderBy: DOC_SORT_ORDER[input.sort ?? "recent"],
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -892,26 +918,74 @@ export async function listDocumentsPaged(
   };
 }
 
+// ─── WO 1.1: ตัวนับต่อ "แท็บของหน้ารายการ V2" (LIST_TABS ของ list-tabs.ts) ───────────────────
+// ต่างจาก tabCounts ใน ListDocumentsPage (คีย์ = AccountDocStatus ดิบ) — ฟังก์ชันนี้คืนตัวนับ
+// "ต่อคีย์แท็บ" ตรง ๆ (เช่น "awaiting"→12, "partial"→2) พร้อมตัด/รวมพ้นกำหนดตาม excludeOverdue ของ
+// แต่ละแท็บให้เอง — ใช้ได้ทั้งฝั่งรายรับ (service.ts) และฝั่งรายจ่าย (expense.ts, docType ต่างกันแต่โมเดลเดียวกัน)
+// 3 query รวม (groupBy ดิบ + groupBy พ้นกำหนด + count พ้นกำหนดรวม) ไม่ใช่ 1 query ต่อแท็บ (กันงบ query บวม)
+export async function computeListTabCounts(
+  tenantId: string,
+  systemId: string,
+  docType: AccountDocType,
+  tabs: { key: string; filter: { status: DocStatusFilter; excludeOverdue?: boolean } }[],
+  extra?: { q?: string; contactId?: string; from?: Date | string; to?: Date | string },
+): Promise<Record<string, number>> {
+  const now = new Date();
+  const from = parseDay(extra?.from, false);
+  const to = parseDay(extra?.to, true);
+  const q = (extra?.q ?? "").trim();
+  const base: Prisma.AccountDocumentWhereInput = {
+    tenantId,
+    systemId,
+    docType,
+    ...(extra?.contactId ? { contactId: extra.contactId } : {}),
+    ...(from || to ? { issueDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { docNo: { contains: q, mode: "insensitive" as const } },
+            { contact: { is: { name: { contains: q, mode: "insensitive" as const } } } },
+          ],
+        }
+      : {}),
+  };
+  const [rawGroup, overdueGroup, overdueTotal] = await Promise.all([
+    prisma.accountDocument.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
+    prisma.accountDocument.groupBy({ by: ["status"], where: { AND: [base, overdueWhere(now)] }, _count: { _all: true } }),
+    prisma.accountDocument.count({ where: { AND: [base, overdueWhere(now)] } }),
+  ]);
+  const raw = new Map(rawGroup.map((g) => [g.status, g._count._all]));
+  const overdueByStatus = new Map(overdueGroup.map((g) => [g.status, g._count._all]));
+  const all = rawGroup.reduce((s, g) => s + g._count._all, 0);
+
+  const out: Record<string, number> = {};
+  for (const t of tabs) {
+    const f = t.filter;
+    if (f.status === "ALL") {
+      out[t.key] = all;
+      continue;
+    }
+    if (f.status === "OVERDUE") {
+      out[t.key] = overdueTotal;
+      continue;
+    }
+    const statuses = Array.isArray(f.status) ? f.status : [f.status];
+    out[t.key] = statuses.reduce(
+      (n, s) => n + (raw.get(s) ?? 0) - (f.excludeOverdue ? (overdueByStatus.get(s) ?? 0) : 0),
+      0,
+    );
+  }
+  return out;
+}
+
 // แมป tab key ของ flyout เมนูบัญชี V2 → สถานะจริง (หรือ "overdue" = derived) ต่อ docType
 // อ้างตาม DESIGN-SPEC-V2.md §3 คอลัมน์ "flyout" (3–4 รายการต่อชนิด ไม่ใช่ "แท็บ" เต็มชุดของหน้ารายการ)
 // ⚠️ สถานะที่ไม่ใช่ "overdue" ทุกตัว = นับแบบ **ไม่รวมพ้นกำหนด** (excludeOverdue เหมือน tabsFor() ของหน้ารายการจริง)
 //    เช่น IV "รอชำระ" = AWAITING_PAYMENT ล้วน ๆ ที่ยังไม่เลยกำหนด (ไม่รวม PARTIAL — PARTIAL มีแท็บของตัวเองในหน้ารายการ
 //    แต่ SPEC ไม่ได้เอาขึ้น flyout) — เคยรวม PARTIAL มาด้วยและไม่ตัดพ้นกำหนดออกมาก่อน ทำให้ตัวเลขเพี้ยน (12+2+4=18
 //    ทั้งที่ควรได้ 12 ตรงกับ tabCounts ของหน้ารายการจริง) แก้แล้วใน accountFlyoutCounts() ด้านล่าง
-// ⚠️ คู่มือ: เพิ่ม tab ใหม่ในหน้ารายการ ต้องเพิ่มแมปที่นี่ด้วย ไม่งั้นตัวนับใน AccountTabBar จะไม่ขึ้น (ไม่ error — แค่ไม่มีเลข)
-const NAV_FLYOUT_TABS: Partial<Record<AccountDocType, Record<string, AccountDocStatus[] | "overdue">>> = {
-  QUOTATION: { awaiting: ["AWAITING_ACCEPT"], accepted: ["ACCEPTED"], overdue: "overdue" },
-  DEPOSIT_RECEIPT: { awaiting: ["AWAITING_PAYMENT"], overdue: "overdue", deduct: ["AWAITING_DEDUCT"] },
-  INVOICE: { awaiting: ["AWAITING_PAYMENT"], paid: ["PAID"], overdue: "overdue" },
-  RECEIPT: { paid: ["PAID"] },
-  TAX_INVOICE: { issued: ["ISSUED"] },
-  PURCHASE: { awaiting: ["AWAITING_PAYMENT"], paid: ["PAID"], overdue: "overdue" },
-  EXPENSE: { awaiting: ["AWAITING_PAYMENT"], paid: ["PAID"], overdue: "overdue" },
-  ASSET_PURCHASE: { awaiting: ["AWAITING_PAYMENT"], overdue: "overdue", received: ["RECEIVED"] },
-  PURCHASE_ORDER: { awaiting_approval: ["AWAITING_APPROVAL"], approved: ["APPROVED"] },
-  ASSET_PURCHASE_ORDER: { awaiting_approval: ["AWAITING_APPROVAL"], approved: ["APPROVED"] },
-  PURCHASE_TAX_INVOICE: { awaiting_receive: ["AWAITING_RECEIVE"], received: ["RECEIVED"] },
-};
+// WO 1.1: ย้ายไปประกาศที่ src/lib/modules/account/list-tabs.ts (แหล่งเดียวร่วมกับ LIST_TABS ของหน้ารายการ V2 —
+// กันตัวนับ flyout กับแท็บของหน้ารายการเพี้ยนออกจากกัน) — import กลับมาใช้ตรงนี้เฉย ๆ
 
 /**
  * ตัวนับสำหรับ flyout เมนูบัญชี V2 (AccountTabBar ระดับ 2) — g18 mockup โชว์ตัวเลขข้างสถานะ

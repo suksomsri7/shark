@@ -46,9 +46,17 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "aging/page.tsx": "account.report.view",
   "asset-buy/[docId]/page.tsx": "account.doc.view",
   "asset-buy/page.tsx": "account.doc.view",
+  "asset-po/[docId]/page.tsx": "account.doc.view", // WO 1.2 (ASSET_PURCHASE_ORDER)
+  "asset-po/page.tsx": "account.doc.view",
   "assets/page.tsx": "account.asset.manage",
   "cheque/page.tsx": "account.cheque.manage",
   "contacts/page.tsx": "account.contact.manage",
+  "credit-note-received/[docId]/page.tsx": "account.doc.view", // WO 1.2 (CREDIT_NOTE_RECEIVED)
+  "credit-note-received/page.tsx": "account.doc.view",
+  "debit-note-received/[docId]/page.tsx": "account.doc.view", // WO 1.2 (DEBIT_NOTE_RECEIVED)
+  "debit-note-received/page.tsx": "account.doc.view",
+  "deposit-payment/[docId]/page.tsx": "account.doc.view", // WO 1.2 (DEPOSIT_PAYMENT)
+  "deposit-payment/page.tsx": "account.doc.view",
   "docs/[docType]/[docId]/page.tsx": "account.doc.view",
   "docs/[docType]/page.tsx": "account.doc.view",
   "documents/page.tsx": "account.document.manage",
@@ -66,6 +74,8 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "po/page.tsx": "account.doc.view",
   "print/[docId]/page.tsx": "account.doc.view",
   "products/page.tsx": "account.product.manage",
+  "purchase-tax-invoice/[docId]/page.tsx": "account.doc.view", // WO 1.2 (PURCHASE_TAX_INVOICE)
+  "purchase-tax-invoice/page.tsx": "account.doc.view",
   "purchase/[docId]/page.tsx": "account.doc.view",
   "purchase/page.tsx": "account.doc.view",
   "reports/balance-sheet/page.tsx": "account.report.view",

@@ -8,6 +8,8 @@ import type {
   AccountProductType,
   Prisma,
 } from "@prisma/client";
+// WO 1.1: reuse (read-only) ตัวช่วยกรอง/แบ่งหน้าเดียวกับฝั่งรายรับ/รายจ่าย — ไม่ก๊อปสูตรวันที่/พ้นกำหนดซ้ำ
+import { overdueWhere, parseDay, clampPageSize, clampPage, type DocStatusFilter, type DocSort } from "./service";
 
 // ─────────────────── ค่าคงที่ ───────────────────
 
@@ -401,6 +403,82 @@ export function listGoodsMovements(
       lines: { orderBy: { sortOrder: "asc" }, include: { product: { select: { name: true } } } },
     },
   });
+}
+
+// ─── หน้ารายการใบเบิกสินค้า PRR แบบกรอง/เรียง/แบ่งหน้า ฝั่ง server (WO 1.1 — analogous listDocumentsPaged) ───
+export type ListGoodsIssueInput = {
+  docType?: "GOODS_ISSUE" | "GOODS_ISSUE_RETURN";
+  status?: DocStatusFilter;
+  q?: string;
+  contactId?: string;
+  from?: Date | string;
+  to?: Date | string;
+  page?: number;
+  pageSize?: number;
+  sort?: DocSort;
+  excludeOverdue?: boolean;
+};
+
+export type ListGoodsIssuePage = {
+  rows: Prisma.AccountDocumentGetPayload<{
+    include: { contact: { select: { id: true; name: true } }; lines: { select: { qty: true } } };
+  }>[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
+
+export async function listGoodsIssuePaged(
+  tenantId: string,
+  systemId: string,
+  input: ListGoodsIssueInput,
+): Promise<ListGoodsIssuePage> {
+  const now = new Date();
+  const pageSize = clampPageSize(input.pageSize);
+  const page = clampPage(input.page);
+  const q = (input.q ?? "").trim();
+  const from = parseDay(input.from, false);
+  const to = parseDay(input.to, true);
+  const base: Prisma.AccountDocumentWhereInput = {
+    tenantId,
+    systemId,
+    docType: input.docType ?? "GOODS_ISSUE",
+    ...(input.contactId ? { contactId: input.contactId } : {}),
+    ...(from || to ? { issueDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { docNo: { contains: q, mode: "insensitive" as const } },
+            { note: { contains: q, mode: "insensitive" as const } },
+            { contact: { is: { name: { contains: q, mode: "insensitive" as const } } } },
+          ],
+        }
+      : {}),
+  };
+  const status = input.status ?? "ALL";
+  const statusWhere: Prisma.AccountDocumentWhereInput =
+    status === "ALL"
+      ? {}
+      : status === "OVERDUE"
+        ? overdueWhere(now)
+        : Array.isArray(status)
+          ? { status: { in: status } }
+          : { status };
+  const where: Prisma.AccountDocumentWhereInput = {
+    AND: [base, statusWhere, ...(input.excludeOverdue ? [{ NOT: overdueWhere(now) }] : [])],
+  };
+  const [rows, total] = await Promise.all([
+    prisma.accountDocument.findMany({
+      where,
+      include: { contact: { select: { id: true, name: true } }, lines: { select: { qty: true } } },
+      orderBy: input.sort === "docNo" ? { docNo: "desc" } : { issueDate: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.accountDocument.count({ where }),
+  ]);
+  return { rows, total, page, pageSize, pageCount: Math.max(Math.ceil(total / pageSize), 1) };
 }
 
 // ความเคลื่อนไหวย้อนหลังต่อสินค้า (ledger การ์ดสต็อกอย่างง่าย)

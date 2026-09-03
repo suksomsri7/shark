@@ -97,6 +97,17 @@ if (accCase) {
   accCase.hrefs.push(...navHrefs.map((h) => `\`\${s}/account${h}\``));
 }
 
+// ตัด ?query และ #hash ออกจาก href ก่อนแมปเป็นไฟล์ page.tsx — เหมือน stripQueryHash() ใน account/nav.ts
+// 🔴 WO 1.1: ไม่ตัดแล้วพลาด — href ของ flyout เมนูบัญชี V2 มี `?tab=…`/`#new` ต่อท้าย (เช่น `/po?tab=awaiting_approval`,
+// `/purchase#new`) พาธไฟล์จริงคือ `.../po/page.tsx` ไม่ใช่โฟลเดอร์ชื่อ "po?tab=awaiting_approval" — ไม่ตัดก่อนเทียบ
+// ทำให้ S1 ฟ้อง dead link ปลอม 43 ลิงก์ทั้งที่ route มีจริง (เจอ 2 ก.ย. ตอนต่อหน้ารายการ WO 1.1)
+function stripQueryHash(href: string): string {
+  const qi = href.indexOf("?");
+  const hi = href.indexOf("#");
+  const cut = Math.min(...[qi, hi].filter((n) => n >= 0), href.length);
+  return href.slice(0, cut);
+}
+
 // แปลง href token → rest path (เทียบกับ base ของ kind)
 function hrefToRest(token: string): string | null {
   if (token === "s" || token === "b") return ""; // root = /app/sys/<id> หรือ /app/u/<slug>
@@ -104,7 +115,7 @@ function hrefToRest(token: string): string | null {
   const inner = token.slice(1, -1); // ตัด backtick
   const mm = /^\$\{[bs]\}(.*)$/.exec(inner);
   if (!mm) return null;
-  return mm[1]; // เช่น "/hotel/reservations" หรือ ""
+  return stripQueryHash(mm[1]); // เช่น "/hotel/reservations" หรือ "" (query/hash ตัดทิ้งก่อนแมปไฟล์)
 }
 
 // ─── S1: dead link = 0 ────────────────────────────────────────────────────────
@@ -129,6 +140,83 @@ chk(
   `child href ทุกอันมี page.tsx จริง (${totalHrefs} links)`,
   deadLinks.length === 0,
   `dead link ${deadLinks.length}:\n     - ${deadLinks.join("\n     - ")}`,
+  "CRITICAL",
+);
+
+// ─── S1.2: ทุก href บัญชีที่มี ?tab=/&tab= → tab key ต้องมีจริงใน LIST_TABS (list-tabs.ts) ──────
+// WO 1.1: กันลิงก์ flyout เมนู V2 พิมพ์ tab key ผิด (เช่น "awaiting_accept" ทั้งที่หน้ารายการประกาศ "awaiting")
+// เงียบ ๆ ไม่มีใครจับ — S1 เช็คแค่ "ไฟล์ route มีจริง" แต่ไม่เช็คว่า query tab นั้นตรงกับแท็บที่หน้ารายการรู้จัก
+// อ่านแบบ static จากซอร์ส (ไม่ import service.ts/list-tabs.ts ตรง ๆ เพื่อเลี่ยงพ่วง @/lib/core/db —
+// สคริปต์นี้ประกาศตัวเองว่า "ไม่แตะ DB" ที่หัวไฟล์ ต้องรักษาไว้)
+const listTabsSrc = readFileSync(join(ROOT, "src/lib/modules/account/list-tabs.ts"), "utf8");
+// ชื่อ const ทางลัดที่ใช้ซ้ำในหลาย docType (all/draft/awaitingApproval/...) → key จริงของมัน
+const shortcutKeyOf = new Map<string, string>();
+for (const m of listTabsSrc.matchAll(/const (\w+): DocListTabDef = \{\s*key: "([a-z_]+)"/g)) {
+  shortcutKeyOf.set(m[1], m[2]);
+}
+// ตัดเฉพาะบล็อก `export const LIST_TABS = { ... };` แล้วหา key ที่ประกาศจริงต่อ docType
+// (นับสมดุลวงเล็บ `[` `]` เฉพาะระดับอาร์เรย์ของ docType นั้น — object `{}` ข้างในไม่กวนเพราะนับคนละสัญลักษณ์)
+const ltBody = listTabsSrc.slice(listTabsSrc.indexOf("export const LIST_TABS"));
+const tabKeysByDocType = new Map<string, Set<string>>();
+for (const dm of ltBody.matchAll(/\n {2}([A-Z_]+): \[/g)) {
+  const docType = dm[1];
+  let depth = 0;
+  let j = (dm.index ?? 0) + dm[0].length - 1; // ตำแหน่ง "["
+  for (; j < ltBody.length; j++) {
+    if (ltBody[j] === "[") depth++;
+    else if (ltBody[j] === "]") {
+      depth--;
+      if (depth === 0) break;
+    }
+  }
+  const arrText = ltBody.slice((dm.index ?? 0) + dm[0].length - 1, j + 1);
+  const keys = new Set<string>();
+  for (const km of arrText.matchAll(/key:\s*"([a-z_]+)"/g)) keys.add(km[1]);
+  for (const idm of arrText.matchAll(/\b([a-zA-Z]+)\b/g)) {
+    const sc = shortcutKeyOf.get(idm[1]);
+    if (sc) keys.add(sc);
+  }
+  tabKeysByDocType.set(docType, keys);
+}
+// "recent" = ทางลัด "ล่าสุด" ของ flyout เท่านั้น (sort=recent) ไม่ใช่แท็บที่โชว์ในแถบสถานะของหน้ารายการ
+// (ไม่มีใน mockup f3 — ดู list-tabs.ts หัวไฟล์) ⇒ ไม่อยู่ใน LIST_TABS แต่เป็นคีย์ที่ถูกต้องเสมอ
+const ALWAYS_VALID_TAB_KEYS = new Set(["recent"]);
+
+function docTypeAndTabFromHref(h: string): { docType: string; tab: string } | null {
+  const tabMatch = /[?&]tab=([a-z_]+)/.exec(h);
+  if (!tabMatch) return null;
+  const tab = tabMatch[1];
+  const docTypeParam = /[?&]docType=([A-Z_]+)/.exec(h);
+  if (docTypeParam) return { docType: docTypeParam[1], tab };
+  const docsMatch = /^\/docs\/([A-Z_]+)/.exec(h);
+  if (docsMatch) return { docType: docsMatch[1], tab };
+  if (h.startsWith("/po")) return { docType: "PURCHASE_ORDER", tab };
+  if (h.startsWith("/purchase")) return { docType: "PURCHASE", tab };
+  if (h.startsWith("/expense")) return { docType: "EXPENSE", tab };
+  if (h.startsWith("/asset-buy")) return { docType: "ASSET_PURCHASE", tab };
+  if (h.startsWith("/goods-issue")) return { docType: "GOODS_ISSUE", tab };
+  return null; // route นอกขอบเขตแท็บเอกสาร (เช่น /wht?tab=credit) — ไม่ใช่ scope เช็คนี้
+}
+
+const navSrcForTabs = readFileSync(join(ROOT, "src/lib/modules/account/nav.ts"), "utf8");
+const navHrefsForTabs = [...navSrcForTabs.matchAll(/href:\s*`\$\{base\}([^`]*)`/g)].map((m) => m[1]);
+const badTabLinks: string[] = [];
+let tabLinksChecked = 0;
+for (const h of navHrefsForTabs) {
+  const parsed = docTypeAndTabFromHref(h);
+  if (!parsed) continue;
+  tabLinksChecked++;
+  if (ALWAYS_VALID_TAB_KEYS.has(parsed.tab)) continue;
+  const keys = tabKeysByDocType.get(parsed.docType);
+  if (!keys || !keys.has(parsed.tab)) {
+    badTabLinks.push(`${parsed.docType}?tab=${parsed.tab} (href="${h}") — ไม่มีในหน้ารายการ (list-tabs.ts)`);
+  }
+}
+chk(
+  "S1.2",
+  `href บัญชีที่มี ?tab= ทุกอัน ตรงกับแท็บจริงใน list-tabs.ts (${tabLinksChecked} links)`,
+  badTabLinks.length === 0,
+  `tab key ไม่ตรง ${badTabLinks.length}:\n     - ${badTabLinks.join("\n     - ")}`,
   "CRITICAL",
 );
 

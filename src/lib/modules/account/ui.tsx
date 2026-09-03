@@ -12,7 +12,7 @@ import {
   STATUS_LABEL,
   isOverdue,
 } from "./service";
-import { EXP_DOC_LABEL } from "./expense";
+import { EXP_DOC_LABEL, EXP_ROUTE, payableStats } from "./expense";
 
 // โทนสีสถานะบัญชี: อยู่ระหว่างทาง=muted · สำเร็จ/มีผล=strong · เสีย/ยกเลิก=danger
 export function accountTone(status: string): "muted" | "strong" | "danger" {
@@ -50,8 +50,10 @@ export async function AccountContent({
   tenantId: string;
 }) {
   const base = `/app/sys/${systemId}/account`;
-  const [stats, settings, recent] = await Promise.all([
+  const [stats, payStats, settings, recent] = await Promise.all([
     overviewStats(tenantId, systemId),
+    // WO 1.2: ฝั่งจ่ายมีตัวเลขอยู่แล้วใน expense.payableStats แต่เดิมไม่มีหน้าไหนเรียก (INVENTORY §D.1)
+    payableStats(tenantId, systemId),
     getSettings(tenantId, systemId),
     prisma.accountDocument.findMany({
       where: { tenantId, systemId },
@@ -62,6 +64,9 @@ export async function AccountContent({
   ]);
 
   const needsSetup = !settings.orgName;
+  // พ้นกำหนดรวมสองฝั่ง: ลูกหนี้ (overviewStats) + เจ้าหนี้ (payableStats)
+  const overdueCount = stats.overdueCount + payStats.overdueCount;
+  const overdueAmount = stats.overdueAmount + payStats.overdueAmount;
   const nav = ACCOUNT_NAV(base, settings.vatRegistered);
 
   return (
@@ -79,14 +84,25 @@ export async function AccountContent({
         </div>
       )}
 
-      {/* การ์ดสรุป */}
+      {/* การ์ดสรุป — "พ้นกำหนด" นับรวมสองฝั่ง (รับ+จ่าย) ตาม WO 1.2 · โครงการ์ดเดิม (WO 2.2 ค่อยออกแบบใหม่) */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <StatCard label="ค้างรับ" value={<MoneyText satang={stats.receivable} />} />
+        <StatCard label="ค้างรับ (ลูกหนี้)" value={<MoneyText satang={stats.receivable} />} />
         <StatCard
-          label="พ้นกำหนด"
-          value={`${stats.overdueCount} ใบ`}
-          sub={<MoneyText satang={stats.overdueAmount} />}
-          danger={stats.overdueCount > 0}
+          testId="kpi-payable"
+          label="ค้างจ่าย (เจ้าหนี้)"
+          value={`${payStats.openCount} ใบ`}
+          sub={<MoneyText satang={payStats.payable} />}
+        />
+        <StatCard
+          testId="kpi-overdue"
+          label="พ้นกำหนด (รับ+จ่าย)"
+          value={`${overdueCount} ใบ`}
+          sub={
+            <>
+              <MoneyText satang={overdueAmount} /> · รับ {stats.overdueCount} · จ่าย {payStats.overdueCount}
+            </>
+          }
+          danger={overdueCount > 0}
         />
         <StatCard label="เอกสารทั้งหมด" value={`${stats.docCount}`} />
         <StatCard label="ผู้ติดต่อ" value={`${stats.contactCount}`} />
@@ -149,14 +165,8 @@ export async function AccountContent({
 
 // route จริงของเอกสารแต่ละชนิด — ฝั่งรายรับ 8 ชนิดอยู่ใต้ docs/<docType>/<id> (generic list route)
 // ฝั่งรายจ่ายแยก slug ต่อชนิด (purchase/expense/po/asset-buy) ไม่มี docs/<docType> รองรับ (จะ 404)
-const EXP_SLUG: Partial<Record<string, string>> = {
-  PURCHASE: "purchase",
-  EXPENSE: "expense",
-  PURCHASE_ORDER: "po",
-  ASSET_PURCHASE_ORDER: "po",
-  ASSET_PURCHASE: "asset-buy",
-  PURCHASE_TAX_INVOICE: "asset-buy",
-};
+// WO 1.2: ทะเบียนกลาง EXPENSE_LIST_TYPES (expense.ts) ที่เดียว
+const EXP_SLUG: Partial<Record<string, string>> = EXP_ROUTE;
 function docHref(docType: string, id: string): string {
   const slug = EXP_SLUG[docType];
   return slug ? `${slug}/${id}` : `docs/${docType}/${id}`;
@@ -177,14 +187,16 @@ function StatCard({
   value,
   sub,
   danger,
+  testId,
 }: {
   label: string;
   value: React.ReactNode;
   sub?: React.ReactNode;
   danger?: boolean;
+  testId?: string;
 }) {
   return (
-    <div className="rounded-xl border p-3">
+    <div className="rounded-xl border p-3" data-testid={testId}>
       <div className="text-xs text-[color:var(--color-muted)]">{label}</div>
       <div
         className="text-lg font-semibold"

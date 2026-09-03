@@ -26,6 +26,7 @@ import {
   rejectPurchaseOrder,
   convertPurchaseOrder,
   EXP_DOC_PREFIX,
+  EXP_ROUTE,
   type ExpLineInput,
   type VatPurchaseMode,
 } from "./expense";
@@ -42,15 +43,8 @@ const date = (fd: FormData, k: string) => {
   return v ? new Date(v) : undefined;
 };
 
-// route slug ต่อ docType (โฟลเดอร์ที่ subagent P2 เป็นเจ้าของ)
-const ROUTE_FOR: Partial<Record<AccountDocType, string>> = {
-  PURCHASE: "purchase",
-  EXPENSE: "expense",
-  PURCHASE_ORDER: "po",
-  ASSET_PURCHASE_ORDER: "po",
-  ASSET_PURCHASE: "asset-buy",
-  PURCHASE_TAX_INVOICE: "asset-buy",
-};
+// route slug ต่อ docType — WO 1.2: ทะเบียนกลาง EXPENSE_LIST_TYPES (expense.ts) ที่เดียว
+const ROUTE_FOR = EXP_ROUTE;
 
 function pathFor(systemId: string, docType: AccountDocType): string {
   const slug = ROUTE_FOR[docType] ?? "purchase";
@@ -111,10 +105,13 @@ export async function createExpenseDocAction(formData: FormData) {
     lines,
     createdById: userId,
   };
+  // §5.2 D — หักเงินมัดจำจ่าย (DP) ที่ผู้ใช้เลือกในฟอร์ม · service ตรวจสิทธิ์/ยอดคงเหลือซ้ำอีกชั้น
+  const depositPaymentId = str(formData, "depositPaymentId") || null;
   const doc = isPO
     ? await createPurchaseOrder({ ...common, docType: docType as "PURCHASE_ORDER" | "ASSET_PURCHASE_ORDER" })
     : await createExpenseDoc({
         ...common,
+        depositPaymentId,
         vatPurchaseMode: (str(formData, "vatPurchaseMode") as VatPurchaseMode) || "CLAIM",
       });
   await writeAudit({

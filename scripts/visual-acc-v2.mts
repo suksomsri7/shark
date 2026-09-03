@@ -102,6 +102,47 @@ const PAGES: Record<string, PageSpec[]> = {
       waitAfterClick: 300,
     },
   ],
+  // WO 1.1 (DocListPage): หน้ารายการทุกชนิด — เทียบ f3-invoice-list.png (เดสก์ท็อป) + f13-m-invoice-list.png (มือถือ)
+  // ตัวเลขแท็บของ INVOICE ต้องตรง acc-v2-expected.json.invoiceTabs เป๊ะ (ASSERT_MAP ด้านล่าง) · size=20 ให้ตรงกับ
+  // pageCount ที่คาด (51 ใบ / 20 = 3 หน้า → "หน้า 1/3")
+  "1.1": [
+    {
+      name: "invoice-list",
+      path: `/app/sys/${SYS}/account/docs/INVOICE?size=20`,
+      note: "หน้ารายการใบแจ้งหนี้ default tab ทั้งหมด (f3) — ตัวนับแท็บ + pagination หน้า 1/3",
+      expect: ["ใบแจ้งหนี้", "หน้า 1/3"],
+    },
+    {
+      name: "invoice-list-overdue",
+      path: `/app/sys/${SYS}/account/docs/INVOICE?tab=overdue`,
+      note: "แท็บพ้นกำหนด (f3 — แถวสีแดง)",
+      expect: ["พ้นกำหนด"],
+    },
+    {
+      name: "quotation-list",
+      path: `/app/sys/${SYS}/account/docs/QUOTATION`,
+      note: "หน้ารายการใบเสนอราคา (§5.1: เลขที่/ลูกค้า/วันที่ออก/ใช้ได้ถึง/มูลค่าสุทธิ/สถานะ)",
+      expect: ["ใบเสนอราคา"],
+    },
+    {
+      name: "expense-list",
+      path: `/app/sys/${SYS}/account/expense`,
+      note: "หน้ารายการบันทึกค่าใช้จ่าย (ฝั่งจ่าย — listExpenseDocsPaged)",
+      expect: ["บันทึกค่าใช้จ่าย"],
+    },
+    {
+      name: "po-list",
+      path: `/app/sys/${SYS}/account/po`,
+      note: "หน้ารายการใบสั่งซื้อ (§5.1: เลขที่/ผู้ขาย/วันที่/มูลค่าสุทธิ/สถานะ)",
+      expect: ["ใบสั่งซื้อ"],
+    },
+    {
+      name: "goods-issue-list",
+      path: `/app/sys/${SYS}/account/goods-issue`,
+      note: "หน้ารายการใบเบิกสินค้า PRR (เลขที่/วันที่/สาเหตุการเบิก/จำนวนที่เบิก/สถานะ)",
+      expect: ["ใบเบิกสินค้า"],
+    },
+  ],
 };
 
 // ─────────── ตารางตัวเลขที่อ่านจาก data-testid (ว่างไว้ก่อน — WO ถัดไปเติม) ───────────
@@ -110,6 +151,18 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
   "0.1": {},
   "0.4": {},
   "0.5": {},
+  // WO 1.1: ตัวนับแท็บของ INVOICE ต้องตรง acc-v2-expected.json.invoiceTabs เป๊ะ (ground truth = f3-invoice-list.png)
+  "1.1": {
+    "invoice-list": {
+      "tab-all-count": E.invoiceTabs.all,
+      "tab-draft-count": E.invoiceTabs.draft,
+      "tab-awaiting-count": E.invoiceTabs.awaiting,
+      "tab-partial-count": E.invoiceTabs.partial,
+      "tab-paid-count": E.invoiceTabs.paid,
+      "tab-overdue-count": E.invoiceTabs.overdue,
+      "tab-cancelled-count": E.invoiceTabs.cancelled,
+    },
+  },
 };
 
 const specs = PAGES[WO];

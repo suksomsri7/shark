@@ -20,6 +20,8 @@ export type DocTableBodyRow = {
   mobileTitle?: React.ReactNode;
   mobileSubtitle?: React.ReactNode;
   mobileTrailing?: React.ReactNode;
+  /** data-testid ต่อแถว เช่น `row-IV-202609-0012` (WO 1.1 §C) */
+  testId?: string;
 };
 
 // ส่วน interactive ของ DocTable (checkbox เลือกแถว + แถบ bulk sticky) — client เพราะต้องอัปเดตทันทีไม่รีโหลดหน้า
@@ -109,7 +111,7 @@ export function DocTableInteractive({
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} data-testid={testId ? `${testId}-row` : undefined}>
+              <tr key={r.id} data-testid={r.testId ?? (testId ? `${testId}-row` : undefined)}>
                 {selectable && (
                   <td className="border-b border-[color:var(--color-line)] px-3 py-3">
                     <input
@@ -141,7 +143,11 @@ export function DocTableInteractive({
       {/* มือถือ: การ์ดแถว (DataList style) */}
       <div className="flex flex-col gap-2 md:hidden">
         {rows.map((r) => (
-          <div key={r.id} className="flex items-start gap-3 rounded-lg border px-3 py-2 text-sm">
+          <div
+            key={r.id}
+            data-testid={r.testId ? `${r.testId}-m` : undefined}
+            className="flex items-start gap-3 rounded-lg border px-3 py-2 text-sm"
+          >
             {selectable && (
               <input
                 type="checkbox"

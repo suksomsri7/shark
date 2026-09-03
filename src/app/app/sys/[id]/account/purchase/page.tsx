@@ -7,11 +7,23 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; docType?: string; err?: string }>;
+  searchParams: Promise<{
+    tab?: string;
+    docType?: string;
+    q?: string;
+    page?: string;
+    size?: string;
+    contact?: string;
+    preset?: string;
+    from?: string;
+    to?: string;
+    sort?: string;
+    err?: string;
+  }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
   await requireAccountPage(id, "account.doc.view"); // WO 0.2: ด่านสิทธิ์ก่อนโหลดข้อมูล · WO 0.3: หน้าอ่านอย่างเดียว = doc.view (doc.create ครอบให้อยู่แล้ว)
   const docType = ("PURCHASE") as AccountDocType;
-  return <ExpenseListPage systemId={id} docType={docType} variant="purchase" tab={sp.tab} err={sp.err} />;
+  return <ExpenseListPage systemId={id} docType={docType} variant="purchase" searchParams={sp} err={sp.err} />;
 }
