@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 1.3 DocEditorV2 (ทำต่อ) · เฟส 0 + 1.1/1.2 อยู่บน main แล้ว |
+| WO | merge 1.3 ขึ้น main → 1.4 |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~05:40 UTC: ภาพ 1.3 รอบ 1 — ตัวเลข/สรุปยอด/มือถือผ่าน · **ตีกลับ 7 จุด** (ตารางรายการล้นการ์ดถูกตัด · default โหมดง่ายทำให้ไม่ตรง g1 → default นักบัญชี · วันที่ native 09/30/2026 → ไทย · back link ซ้ำ · sticky bar บังแท็ก · ruler ชื่อผู้ติดต่อใน input) · รอแก้ → build รอบ 2 |
+| ขั้นที่ถึง | 3 ก.ย. ~06:30 UTC: 1.3 DONE → กำลัง qc:all (bg) → merge main → deploy → เปิด 1.4 (มัดจำ D · รับชำระ F · WHT จริง · void การจ่าย DP/DR กลับ JV) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
@@ -27,7 +27,7 @@
 | 0.6 | 🐞 hotfix `gl.postDocument` PURCHASE/EXPENSE โหมดราคารวม VAT Dr เกิน Cr (เจอใน 0.1 · ออกเอกสารไม่ได้) + ข้อสอบ | Opus | DONE | 91c38f2 | Fable อ่าน diff + รันเอง inclvat 71/71 · CPA 107/107 บน QC branch · เจอบั๊กที่ 2 ด้วย: VAT รอใบกำกับลง 1150 แทน 1155 (แก้แล้ว) · ค้าง: `qc-tax-print-audit.mts` เน่าอยู่ก่อน (taxId 5 หลัก) → เก็บใน 9.2 |
 | 1.1 | หน้ารายการทุกชนิด | Sonnet | DONE | 8a3aa52 | ตีกลับ 1 รอบ (11 จุด) → รอบ 2 Fable ดูภาพจริงตรง f3/f13 · ตัวเลขแท็บ=เฉลย · list 144/144 · nav-functions 9/9 · ค้าง: แท็บ derived ออกบางส่วน/ออกครบ · รอออกใบกำกับ · เอกสารอัตโนมัติ (ต้อง relation/field) → 1.5/1.3 |
 | 1.2 | route ราคาถูก DP/CNR/DNR/ASSET_PO/PTX + payableStats | Opus | DONE | 623e8df | Fable รันเอง cheap-routes 105/105 · CPA 107/107 · อ่าน diff GL (Cr 1130 + ลด VAT มัดจำ) · 🐞 แก้ DP โพสต์ซ้ำ · ค้าง: void การจ่าย DP ยังไม่กลับ JV (เหมือน DR ฝั่งขาย) → WO 1.4 · หน้า PTX ยังมีฟอร์มสร้าง → 1.1/1.3 |
-| 1.3 | DocEditorV2 A–C,E,G,H,I | Opus | REVIEW | 9615feb | agent ตัว 2 ทำต่อจากไฟล์เดิม: แก้ 7 จุด (VAT hardcode · รายการโปรด · ยกเลิกร่างผี · แถบยอดมือถือ sticky …) · ปุ่ม + สร้าง → /new (CN/DN/CNR/DNR/เบิก ยังใช้ฟอร์มเก่า รอ 1.6) · editor 172/172 (Fable รันเอง) · CPA 107 · กำลัง build+ถ่ายภาพเทียบ g1/g17 |
+| 1.3 | DocEditorV2 A–C,E,G,H,I | Opus | DONE | fb3c91b | Fable ตีกลับ 2 รอบ (ตารางล้น · default โหมดง่าย · วันที่ native · back link · sticky บังแท็ก · ruler · ช่องจำนวน · cookie โหมด) → รอบ 3 ตรง g1/g17 ทั้ง 2 โหมด · visual 126 ✅ · editor 199 (Fable รันเอง) · ค้าง: CN/DN/CNR/DNR/ใบเบิก ยังใช้ฟอร์มเก่าจนกว่า 1.6 · ร่างเก่าส่วนลดไม่ลงตัวปัดเศษ ≤(qty−1) สตางค์ (จดไว้) |
 | 1.4 | มัดจำ + WHT ต่อบรรทัด + รับชำระหลายครั้ง | Opus | TODO | | |
 | 1.5 | หน้าเอกสาร V2 | Sonnet | TODO | | |
 | 1.6 | wizard CN/DN/CNR/DNR/RPR | Sonnet | TODO | | |
