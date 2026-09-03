@@ -55,12 +55,15 @@ model SchoolEnrollment {
   paidAt       DateTime?
   cancelledAt  DateTime?
   refundedAt   DateTime? // คืนเงิน (PAID→REFUNDED) — void PosSale + คืนที่นั่ง (ห้ามลบ record)
+  // WO 3.1 — Party (INTEGRATION-MAP §F.1): คอลัมน์เพิ่มเฉย ๆ — ยังไม่มีโค้ด school เขียนค่านี้ (นอกขอบเขต WO นี้)
+  partyId      String?
   createdAt    DateTime         @default(now())
 
   attendances SchoolAttendance[]
 
   @@index([tenantId, unitId, status])
   @@index([classId])
+  @@index([partyId])
 }
 
 model SchoolAttendance {

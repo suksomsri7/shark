@@ -125,6 +125,10 @@ export async function createExternalQuotation(input: {
   title: string;
   valueSatang: number;
   customer: { name: string; phone?: string | null; email?: string | null };
+  // WO 3.1 (MAP §F.5): CRM ส่ง partyId ของ CrmContact ต้นทางมาด้วย — ใช้เป็นกุญแจจับคู่ผู้ติดต่อฝั่งบัญชี
+  // ตัวแรกก่อน taxId/phone/name+email (lookup แทนการเดาจากชื่อ/เบอร์) · sourceContactId เก็บไว้เผื่อ debug/audit
+  partyId?: string | null;
+  sourceContactId?: string | null;
 }): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
   // 1) หา link → ระบบบัญชีปลายทาง (opt-in — ไม่เชื่อม = ไม่ออก)
   const link = await findAccountLinkFor(input.tenantId, input.sourceKind, input.sourceSystemId);
@@ -135,8 +139,8 @@ export async function createExternalQuotation(input: {
   const existing = await findDocByRef(ctx.systemId, "QUOTATION", input.refType, input.refId);
   if (existing) return { ok: true, docId: existing.id, created: false };
 
-  // 3) findOrCreate ผู้ติดต่อฝั่งบัญชี (เทียบเบอร์ก่อน แล้วค่อยชื่อ)
-  const contact = await findOrCreateCustomerContact(ctx, input.customer);
+  // 3) findOrCreate ผู้ติดต่อฝั่งบัญชี — partyId ก่อน (ถ้ามี) แล้วค่อยเทียบเบอร์/ชื่อ
+  const contact = await findOrCreateCustomerContact(ctx, { ...input.customer, partyId: input.partyId ?? null });
 
   // 4) สร้างใบเสนอราคา (DRAFT — พนักงานตรวจ/ส่งเองในระบบบัญชี) + ผูก ref กลับดีล
   const doc = await createDocument({

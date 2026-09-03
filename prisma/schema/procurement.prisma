@@ -17,8 +17,11 @@ model Supplier {
   note        String?
   createdAt   DateTime @default(now())
   portalToken String?  @unique // WO-0059
+  // WO 3.1 — Party (INTEGRATION-MAP §F.1) — เชื่อมตัวตนกลางระดับ tenant · nullable · ไม่มี FK/relation
+  partyId     String?
 
   @@index([tenantId, systemId])
+  @@index([partyId])
 }
 
 model PurchaseOrder {

@@ -108,6 +108,8 @@ model HotelReservation {
   cancelReason       String?
   refundedAt         DateTime? // เวลาที่คืนเงินหลังเช็คเอาท์ (คู่กับ status REFUNDED)
   createdById        String? // User.id พนักงาน (null = ระบบ/ลูกค้า)
+  // WO 3.1 — Party (INTEGRATION-MAP §F.1): คอลัมน์เพิ่มเฉย ๆ — ยังไม่มีโค้ด hotel เขียนค่านี้ (นอกขอบเขต WO นี้)
+  partyId            String?
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
 
@@ -117,4 +119,5 @@ model HotelReservation {
   @@index([unitId, roomTypeId, checkInDate, checkOutDate]) // ← availability query
   @@index([unitId, roomId, checkInDate, checkOutDate]) // กันห้องจริงถูก assign ซ้อน
   @@index([unitId, guestPhone])
+  @@index([partyId])
 }

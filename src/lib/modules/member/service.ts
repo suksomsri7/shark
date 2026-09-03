@@ -3,6 +3,9 @@ import { resolvePublicUnit } from "@/lib/core/storefront";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { cell, columnIndex, type CsvTable, type ImportSummary } from "@/lib/core/csv";
 import type { MemberTier, Prisma, PrismaClient } from "@prisma/client";
+// WO 3.1 — Party (INTEGRATION-MAP §F.1/§F.7): findOrCreate คือทางเข้าที่แชท (maybeAutoLinkMember)
+// เรียกอยู่แล้ว ⇒ hook ที่นี่พอ ครอบคลุมแชทโดยไม่ต้องแตะ chat/** · เรียกผ่าน facade เท่านั้น (F2.2)
+import * as party from "@/lib/modules/party";
 
 // Member (แกนกลาง CRM) — service ที่โมดูลอื่นเรียก (contract 2.6/2.7)
 // รับ client optional เพื่อ join transaction ของผู้เรียก (Booking/POS)
@@ -152,9 +155,27 @@ export async function findOrCreate(
   if (!c && email) {
     c = await client.customer.findFirst({ where: { memberSystemId, email } });
   }
-  if (c) return c;
+  // ชื่อที่ใช้แทน Party ได้ (Party.name บังคับกรอก — ใช้เบอร์/อีเมลแทนถ้าไม่มีชื่อ) — ว่างทั้งหมด = ข้าม Party
+  const partyName = input.name?.trim() || phone || email || "";
+  if (c) {
+    // WO 3.1 — สมาชิกเก่าที่ยังไม่มี partyId (สร้างก่อน WO นี้) → เติมให้ (backfill on read)
+    if (!c.partyId && partyName) {
+      const partyId = await party.safeFindOrCreate(input.tenantId, {
+        name: partyName,
+        phone: phone ?? c.phone,
+        email: email ?? c.email,
+        kind: "PERSON",
+      });
+      if (partyId) c = await client.customer.update({ where: { id: c.id }, data: { partyId } });
+    }
+    return c;
+  }
   const memberCode = await uniqueMemberCode(client, memberSystemId);
   const marketing = !!input.consents?.includes("marketing");
+  // WO 3.1 (MAP §F.1) — สมาชิกใหม่เชื่อม Party ทันที · ล้มเหลว = partyId null (ไม่ throw)
+  const partyId = partyName
+    ? await party.safeFindOrCreate(input.tenantId, { name: partyName, phone, email, kind: "PERSON" })
+    : null;
   return client.customer.create({
     data: {
       tenantId: input.tenantId,
@@ -165,6 +186,7 @@ export async function findOrCreate(
       email,
       marketingConsent: marketing,
       consentAt: input.consents?.length ? new Date() : null,
+      partyId,
     },
   });
 }
@@ -214,9 +236,16 @@ export async function updateCustomer(
   if (marketingConsent && !existing.marketingConsent) consentAt = new Date();
   if (!marketingConsent) consentAt = null;
 
+  // WO 3.1 — เติม partyId ให้สมาชิกเก่าที่ยังไม่มี (backfill on write) · ล้มเหลว = ข้าม (ไม่ throw)
+  let partyId = existing.partyId;
+  const partyName = name || phone || email || "";
+  if (!partyId && partyName) {
+    partyId = await party.safeFindOrCreate(ctx.tenantId, { name: partyName, phone, email, kind: "PERSON" });
+  }
+
   return prisma.customer.update({
     where: { id: customerId },
-    data: { name, phone, email, marketingConsent, consentAt },
+    data: { name, phone, email, marketingConsent, consentAt, partyId },
   });
 }
 

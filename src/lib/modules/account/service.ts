@@ -27,6 +27,9 @@ import {
 import { issueWhtCreditCert } from "./wht";
 // WO 1.1: แหล่งเดียวของแมป flyout tab → สถานะ (ร่วมกับ LIST_TABS ของหน้ารายการ V2)
 import { NAV_FLYOUT_TABS } from "./list-tabs";
+// WO 3.1 — Party (INTEGRATION-MAP §F.1/§F.4): ตัวตนกลางระดับ tenant · เรียกผ่าน facade เท่านั้น (F2.2)
+// `safeFindOrCreate` ไม่มีวันทำให้ที่นี่ throw (BLUEPRINT §1: ไม่เชื่อม/ล้มเหลว = partyId null ไม่ใช่พัง)
+import * as party from "@/lib/modules/party";
 // WO 1.9 (เอกสารประจำ + เตือน) — ดูหัวข้อท้ายไฟล์ว่าทำไมโค้ดก้อนนั้นอยู่ในไฟล์นี้ (fitness F5)
 import { evaluate } from "@/lib/core/rbac";
 import { writeAudit } from "./access";
@@ -569,11 +572,24 @@ export async function createContact(input: {
   email?: string | null;
   creditTermDays?: number;
   note?: string | null;
+  /** WO 3.1 — รู้ partyId อยู่แล้ว (เช่นจาก CRM) → ใช้ตรง ๆ ไม่ต้อง findOrCreate ซ้ำ */
+  partyId?: string | null;
 }) {
   // R-C: เลขผู้เสียภาษีถ้ากรอกต้องเป็นตัวเลข 13 หลัก (กัน T0 เลขสั้น/ผิดรูปแบบ)
   const taxId = normalizeTaxId(input.taxId);
   if (taxId && !/^\d{13}$/.test(taxId))
     throw new Error("เลขประจำตัวผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก");
+  // WO 3.1 (MAP §F.1/§F.4): เชื่อม Party ตอนสร้างผู้ติดต่อ — ล้มเหลว = partyId null (ไม่ throw)
+  const partyId =
+    input.partyId ??
+    (await party.safeFindOrCreate(input.tenantId, {
+      name: input.name,
+      phone: input.phone ?? null,
+      email: input.email ?? null,
+      taxId: taxId || null,
+      branchCode: input.branchCode || undefined,
+      kind: (input.legalType ?? "COMPANY") === "PERSON" ? "PERSON" : "COMPANY",
+    }));
   return prisma.accountContact.create({
     data: {
       tenantId: input.tenantId,
@@ -589,6 +605,7 @@ export async function createContact(input: {
       email: input.email ?? null,
       creditTermDays: input.creditTermDays ?? 0,
       note: input.note ?? null,
+      partyId,
     },
   });
 }
@@ -2718,12 +2735,12 @@ export async function getDocRef(
 async function findContactByPhoneNorm(
   systemId: string,
   phone: string,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; partyId: string | null } | null> {
   const norm = normalizePhoneTh(phone);
   if (norm.length < 8) return null; // สั้นเกินกว่าจะเป็นกุญแจตัวตน
   const hit = await prisma.accountContact.findFirst({
     where: { systemId, archivedAt: null, phoneNorm: norm },
-    select: { id: true },
+    select: { id: true, partyId: true },
     orderBy: { createdAt: "asc" },
   });
   if (hit) return hit;
@@ -2737,19 +2754,45 @@ async function findContactByPhoneNorm(
 async function findContactByPhoneLegacyScan(
   systemId: string,
   norm: string,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; partyId: string | null } | null> {
   const filled = await prisma.accountContact.count({
     where: { systemId, archivedAt: null, phoneNorm: { not: null } },
   });
   if (filled > 0) return null; // ระบบนี้ backfill แล้ว → ทางหลักคือคำตอบสุดท้าย
   const rows = await prisma.accountContact.findMany({
     where: { systemId, archivedAt: null, NOT: { phone: null } },
-    select: { id: true, phone: true },
+    select: { id: true, phone: true, partyId: true },
     orderBy: { createdAt: "asc" },
     take: 5000, // เพดานเดิมของ WO 0.2 — คงไว้เฉพาะทางสำรองนี้ (กันโหลดทั้งตารางถ้ายังไม่ backfill)
   });
   const found = rows.find((r) => normalizePhoneTh(r.phone) === norm);
-  return found ? { id: found.id } : null;
+  return found ? { id: found.id, partyId: found.partyId } : null;
+}
+
+/**
+ * WO 3.1 — ผู้ติดต่อที่จับคู่ได้แล้วแต่ยังไม่มี partyId (สร้างก่อน WO นี้) → เติมให้ (backfill on read)
+ * ล้มเหลว = เงียบ (ยังคืนผู้ติดต่อเดิมได้ตามปกติ — ไม่ block การออกเอกสาร)
+ */
+async function backfillContactPartyId(
+  ctx: { tenantId: string; systemId: string },
+  contact: { id: string; partyId: string | null },
+  c: { name: string; phone?: string | null; email?: string | null; taxId?: string | null; branchCode?: string | null },
+): Promise<{ id: string }> {
+  if (contact.partyId) return { id: contact.id };
+  const partyId = await party.safeFindOrCreate(ctx.tenantId, {
+    name: c.name,
+    phone: c.phone ?? null,
+    email: c.email ?? null,
+    taxId: c.taxId ?? null,
+    branchCode: c.branchCode ?? null,
+  });
+  if (partyId) {
+    await prisma.accountContact.updateMany({
+      where: { id: contact.id, systemId: ctx.systemId },
+      data: { partyId },
+    });
+  }
+  return { id: contact.id };
 }
 
 /**
@@ -2768,24 +2811,36 @@ export async function findOrCreateCustomerContact(
     email?: string | null;
     taxId?: string | null;
     branchCode?: string | null;
+    /** WO 3.1 (MAP §F.5) — ผู้เรียก (เช่น CRM) รู้ partyId ของผู้ติดต่อฝั่งตัวเองอยู่แล้ว → ใช้เป็นกุญแจแรก */
+    partyId?: string | null;
   },
 ) {
+  // (0) partyId ที่ผู้เรียกส่งมา — ถ้าเคยออกเอกสารให้ตัวตนนี้ในระบบบัญชีนี้แล้ว ใช้ผู้ติดต่อเดิม
+  if (c.partyId) {
+    const byParty = await prisma.accountContact.findFirst({
+      where: { systemId: ctx.systemId, archivedAt: null, partyId: c.partyId },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+    if (byParty) return byParty;
+  }
+
   // (1) เลขผู้เสียภาษี + สาขา
   const taxId = normalizeTaxId(c.taxId);
   if (taxId) {
     const branchCode = c.branchCode || "00000";
     const byTax = await prisma.accountContact.findFirst({
       where: { systemId: ctx.systemId, archivedAt: null, taxId, branchCode },
-      select: { id: true },
+      select: { id: true, partyId: true },
       orderBy: { createdAt: "asc" },
     });
-    if (byTax) return byTax;
+    if (byTax) return backfillContactPartyId(ctx, byTax, c);
   }
 
   // (2) เบอร์โทร (normalize)
   if (c.phone) {
     const byPhone = await findContactByPhoneNorm(ctx.systemId, c.phone);
-    if (byPhone) return byPhone;
+    if (byPhone) return backfillContactPartyId(ctx, byPhone, c);
   }
 
   // (3) ชื่อ + อีเมล ต้องตรงทั้งคู่ (ชื่ออย่างเดียวไม่พอ — ชื่อซ้ำกันได้)
@@ -2793,10 +2848,10 @@ export async function findOrCreateCustomerContact(
   if (email) {
     const byNameEmail = await prisma.accountContact.findFirst({
       where: { systemId: ctx.systemId, archivedAt: null, name: c.name, email },
-      select: { id: true },
+      select: { id: true, partyId: true },
       orderBy: { createdAt: "asc" },
     });
-    if (byNameEmail) return byNameEmail;
+    if (byNameEmail) return backfillContactPartyId(ctx, byNameEmail, c);
   }
 
   return createContact({
@@ -2808,6 +2863,7 @@ export async function findOrCreateCustomerContact(
     email: c.email ?? null,
     taxId: taxId || null,
     branchCode: c.branchCode || undefined,
+    partyId: c.partyId ?? undefined,
   } as Parameters<typeof createContact>[0]);
 }
 export async function setDocExternalRef(docId: string, ref: { refSystemId: string; refType: string; refId: string }) {

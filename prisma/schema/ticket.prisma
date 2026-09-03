@@ -94,6 +94,8 @@ model TicketOrder {
 
   paidAt      DateTime?
   cancelledAt DateTime?
+  // WO 3.1 — Party (INTEGRATION-MAP §F.1): คอลัมน์เพิ่มเฉย ๆ — ยังไม่มีโค้ด ticket เขียนค่านี้ (นอกขอบเขต WO นี้)
+  partyId     String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -104,6 +106,7 @@ model TicketOrder {
   @@index([unitId, status])
   @@index([eventId, status])
   @@index([customerId])
+  @@index([partyId])
 }
 
 model TicketAdmission {

@@ -128,6 +128,11 @@ model ChatContact {
   lastSeenAt          DateTime               @default(now())
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
+  // WO 3.1 — Party (INTEGRATION-MAP §F.1): คอลัมน์เพิ่มเฉย ๆ (additive) — **ไม่มีโค้ด chat เขียนค่านี้**
+  // (กติกา run: ห้ามแตะ src/lib/modules/chat/**) session แชทเป็นผู้เขียนค่านี้เองภายหลัง เมื่อ
+  // `maybeAutoLinkMember` เชื่อม customerId แล้ว ให้ตั้ง partyId = ค่าเดียวกับ Customer.partyId ที่เพิ่ง
+  // ได้จาก `member.findOrCreate` (ตอนนี้ `member.findOrCreate` เซ็ต Customer.partyId ให้แล้วใน WO นี้)
+  partyId             String?
 
   conversations ChatConversation[]
 
@@ -135,6 +140,7 @@ model ChatContact {
   @@index([systemId, customerId])
   @@index([systemId, channel, lastSeenAt])
   @@index([tenantId, phone])
+  @@index([partyId])
 }
 
 // ─────────────── Conversation ───────────────
@@ -171,8 +177,8 @@ model ChatConversation {
   //    ⇒ เขียน `orderBy: { pinnedAt: "desc" }` เฉย ๆ จะได้ห้องที่ **ไม่ได้ปักหมุด** ขึ้นก่อน (กลับหัว)
   //    ตั้งใจไม่ทำ index ให้: index ของ pinnedAt เป็น NULLS FIRST จึงใช้กับ order นี้ไม่ได้อยู่ดี
   //    และห้องที่ปักหมุดมีไม่กี่ห้องต่อร้าน (ตัวกรอง systemId ตัดงานทิ้งไปแล้ว)
-  pinnedAt             DateTime?
-  pinnedByUserId       String?
+  pinnedAt       DateTime?
+  pinnedByUserId String?
 
   // SLA
   firstCustomerMessageAt DateTime?

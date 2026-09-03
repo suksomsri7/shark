@@ -2,6 +2,9 @@ import { tenantDb } from "@/lib/core/db";
 import type { HrAttendanceKind, HrLeaveType } from "@prisma/client";
 import * as approval from "@/lib/modules/approval/service";
 import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
+// WO 3.1 — Party (INTEGRATION-MAP §F.1): จาก name/phone/email เท่านั้น — **ห้ามส่ง nationalId/PDPA อื่น**
+// เรียกผ่าน facade เท่านั้น (F2.2)
+import * as party from "@/lib/modules/party";
 
 // HR (ระบบที่ 17) — service ชั้นประกอบ (systemId-scoped)
 // ⚠️ กติกา availability + ชั่วโมงทำงาน มาจาก rules.ts (สมอง FREEZE) — ที่นี่แค่โหลด DB แล้วเรียกใช้
@@ -23,14 +26,22 @@ export type CreateEmployeeInput = {
 };
 
 export async function createEmployee(ctx: Ctx, input: CreateEmployeeInput): Promise<{ id: string }> {
+  const name = input.name.trim();
+  // WO 3.1 (MAP §F.1) — เชื่อม Party จาก name/phone เท่านั้น · ล้มเหลว = partyId null (ไม่ throw)
+  const partyId = await party.safeFindOrCreate(ctx.tenantId, {
+    name,
+    phone: input.phone ?? null,
+    kind: "PERSON",
+  });
   const e = await tenantDb(ctx).hrEmployee.create({
     data: {
       tenantId: ctx.tenantId,
       systemId: ctx.systemId,
-      name: input.name.trim(),
+      name,
       phone: input.phone?.trim() || null,
       position: input.position?.trim() || null,
       pinCode: input.pinCode?.trim() || null,
+      partyId,
       // active = true (default ใน schema)
     },
   });
@@ -172,6 +183,22 @@ export async function saveEmployeeProfile(
     return { ok: false, reason: "วันสิ้นสุดงานต้องไม่ก่อนวันเริ่มงาน" };
   }
 
+  // WO 3.1 — เติม partyId ให้พนักงานเก่าที่ยังไม่มี จาก name/phone/email เท่านั้น (**ห้าม** nationalId/PDPA อื่น)
+  let partyId = emp.partyId;
+  if (!partyId) {
+    const effName = name ?? emp.name;
+    const effPhone = input.phone !== undefined ? strOrNull(input.phone) : emp.phone;
+    const effEmail = input.email !== undefined ? strOrNull(input.email) : emp.email;
+    if (effName || effPhone || effEmail) {
+      partyId = await party.safeFindOrCreate(ctx.tenantId, {
+        name: effName || effPhone || effEmail || "",
+        phone: effPhone,
+        email: effEmail,
+        kind: "PERSON",
+      });
+    }
+  }
+
   await tenantDb(ctx).hrEmployee.updateMany({
     where: { id: employeeId },
     data: {
@@ -203,6 +230,7 @@ export async function saveEmployeeProfile(
       ...(input.bankName !== undefined ? { bankName: strOrNull(input.bankName) } : {}),
       ...(input.bankAccountNo !== undefined ? { bankAccountNo: strOrNull(input.bankAccountNo) } : {}),
       ...(input.bankAccountName !== undefined ? { bankAccountName: strOrNull(input.bankAccountName) } : {}),
+      ...(partyId ? { partyId } : {}),
     },
   });
   return { ok: true };

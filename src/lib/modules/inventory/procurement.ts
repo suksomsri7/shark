@@ -4,6 +4,8 @@ import { prisma, tenantDb } from "@/lib/core/db";
 import * as approval from "@/lib/modules/approval/service";
 import * as invSvc from "./service";
 import type { Ctx } from "./service";
+// WO 3.1 — Party (INTEGRATION-MAP §F.1): เชื่อมตัวตนกลางระดับ tenant · เรียกผ่าน facade เท่านั้น (F2.2)
+import * as party from "@/lib/modules/party";
 
 // Procurement (WO-0028) — จัดซื้อเข้าคลัง (ระบบ INVENTORY): Supplier → PO → รับของ → movement
 // ⚠️ การเข้าสต็อกจริง "ต้อง" ผ่าน invSvc.receive เท่านั้น (idempotencyKey `po-<lineId>`)
@@ -23,6 +25,13 @@ export type CreateSupplierInput = {
 export async function createSupplier(ctx: Ctx, input: CreateSupplierInput): Promise<{ id: string }> {
   const name = input.name.trim();
   if (!name) throw new Error("กรุณาระบุชื่อซัพพลายเออร์");
+  // WO 3.1 (MAP §F.1) — เชื่อม Party (ผู้ขาย = นิติบุคคลโดยส่วนใหญ่) · ล้มเหลว = partyId null (ไม่ throw)
+  const partyId = await party.safeFindOrCreate(ctx.tenantId, {
+    name,
+    phone: input.phone ?? null,
+    email: input.email ?? null,
+    kind: "COMPANY",
+  });
   const sup = await tenantDb(ctx).supplier.create({
     data: {
       tenantId: ctx.tenantId,
@@ -31,6 +40,7 @@ export async function createSupplier(ctx: Ctx, input: CreateSupplierInput): Prom
       phone: input.phone?.trim() || null,
       email: input.email?.trim() || null,
       note: input.note?.trim() || null,
+      partyId,
     },
   });
   return { id: sup.id };

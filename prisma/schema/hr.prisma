@@ -106,6 +106,8 @@ model HrEmployee {
   emergencyPhone    String?
   emergencyRelation String?
   note              String?
+  // WO 3.1 — Party (INTEGRATION-MAP §F.1) — จาก name/phone/email เท่านั้น **ห้ามคัด nationalId/PDPA อื่น**
+  partyId           String?
 
   attendances HrAttendance[]
   leaves      HrLeave[]
@@ -114,6 +116,7 @@ model HrEmployee {
 
   @@index([systemId, active])
   @@index([tenantId])
+  @@index([partyId])
 }
 
 // เอกสารแนบของพนักงาน — เก็บเป็น URL (อัปโหลด Bunny หรือวางลิงก์)

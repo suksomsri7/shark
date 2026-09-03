@@ -48,6 +48,8 @@ model PatientRecord {
   allergies  String? // แพ้ยา/อาหาร
   note       String?
   customerId String? // ผูกระบบสมาชิก (ถ้ามี)
+  // WO 3.1 — Party (INTEGRATION-MAP §F.1): คอลัมน์เพิ่มเฉย ๆ — ยังไม่มีโค้ด clinic เขียนค่านี้ (นอกขอบเขต WO นี้)
+  partyId    String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -55,6 +57,7 @@ model PatientRecord {
 
   @@index([tenantId, unitId])
   @@index([unitId, phone])
+  @@index([partyId])
 }
 
 model ClinicVisit {

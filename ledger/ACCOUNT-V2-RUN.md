@@ -9,12 +9,12 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 🏁 เฟส 2 ปิด → เฟส 3: 3.1 Party |
+| WO | 3.2 หน้าผู้ติดต่อ V2 (เฟส 3) |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~13:50 UTC: Vercel ของ `ef6567b` READY แล้ว (ตรวจผ่าน API) · sub-agent 3.1 ตัวแรกตายเพราะ API 500/529 ของ Anthropic หลังอ่านไฟล์เสร็จ (ยังไม่แตะโค้ด · git สะอาด) → สั่ง Opus ตัวใหม่เริ่มขั้น A (schema) — เขียนความคืบหน้าใน `wo-notes/3.1.md` |
+| ผู้ทำ | Sonnet (sub-agent) |
+| ขั้นที่ถึง | 3 ก.ย. ~14:45 UTC: 3.1 DONE (Sonnet ทำแทน Opus ที่ 529 ×3) · Fable รันด่านเองครบ · commit แล้ว · กำลังออก WO 3.2 |
 | commit ล่าสุดของงานนี้ | — |
-| บล็อกเกอร์ | ⚠️ prod `shark.in.th` ตอบ 429 `x-vercel-mitigated: challenge` จาก VPS (Bot Protection ของโปรเจกต์ shark เปิด 3 ก.ย. 02:49 UTC · ไม่มี IP bypass ของ VPS) → ขั้น "verify บน prod" ของ 10.3 และสคริปต์ที่ยิง prod จะทำไม่ได้จนกว่าเจ้าของเพิ่ม bypass IP 72.62.196.201 / 2a02:4780:5e:ded7::/64 หรือปิด rule |
+| บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
 
 ## ตาราง WO ทั้งหมด (สถานะ: TODO · IN_PROGRESS · REVIEW (Fable QC) · DONE · BLOCKED · SKIPPED)
 | WO | ชื่อ | ผู้ทำ (สำรอง) | สถานะ | commit | หมายเหตุ |
@@ -38,7 +38,7 @@
 | 0.7 | 🔧 CI-compat: qc:all บน CI ไม่มี .env.qc/seed → acc-v2 suites แดง | Opus | DONE | (HEAD) | acc-v2-env โหมด CI · qc-all seed ครั้งเดียวต่อ shard (marker) · 🐞 loadEnvFile?.() ไม่กัน ENOENT → try/catch 12 ชุด · จำลอง CI shard 4/6+5/6 เขียว · ⏰ ระเบิดเวลา: seed-check H1 แดง 1 พ.ย. 2026 (oracle วันที่ตายตัว) → แก้ใน 9.x ให้สัมพัทธ์ |
 | 2.2 | หน้าหลัก V2 | Sonnet | DONE | (HEAD) | ตีกลับ 1 รอบ → รอบ 2 ตรง f1/f11 · visual 86/86 · home 87 · 🐞 home test เคยลบ pin ของ seed (แก้) · ค้าง: top 3 เป็นรายปี (รายเดือน = +2 query เกิน budget) → 9.3 |
 | 2.3 | ภาพรวมรายรับ/รายจ่าย | Sonnet | DONE | ef6567b | overview 73 · visual 83/83 ตรง f4 · ≤8 query · 🐞 agent รายงาน typecheck สะอาดทั้งที่มี error 2 (Fable จับได้ตอน build) · ผู้ติดต่อที่ติดตาม = top-5 ตามยอดค้าง (ไม่มี pinned บน contact) |
-| 3.1 | Party | Opus | TODO | | |
+| 3.1 | Party | Sonnet (Opus 529 ×3) | DONE | (HEAD) | Fable อ่าน diff + รันเอง: party 36/36 · seed-check 55 · guard 147 · schema 61 · fitness 17 · CPA 107 · drift clean · typecheck 0 · backfill QC tenant 63/63 กำกวม 0 · หนี้: Party.name = เบอร์เมื่อสมาชิกไม่มีชื่อ (แชท auto-link) → 3.3/3.4 ต้องอัปเดตชื่อเมื่อรู้ · `updateContact` ยังไม่เติม partyId · ChatContact.partyId ยังไม่ wire (session แชท) · prod backfill ยังไม่รัน (รอปิดเฟส 3) |
 | 3.2 | หน้าผู้ติดต่อ V2 | Sonnet | TODO | | |
 | 3.3 | modal ผู้ติดต่อ + DBD + dedupe | Opus (Sonnet) | TODO | | |
 | 3.4 | โปรไฟล์ 360° + รวมซ้ำ | Opus | TODO | | |
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 3 ก.ย. 2026 ~14:45 UTC — 3.1 Party DONE · Opus 529 Overloaded 3 รอบติด → Sonnet ทำ (36/36 · ด่านเดิมเขียวหมด)
 - 3 ก.ย. 2026 ~13:35 UTC — session คุมงานตัวเก่าล้ม (API 500 + 529 Overloaded ฝั่ง Anthropic — ไม่ใช่โค้ด) ระหว่างรอผล 3.1 · ตรวจแล้ว: main=ef6567b · Vercel READY 13:19 UTC · agent 3.1 ยังไม่เขียนอะไร · สั่งตัวใหม่ · เจอเพิ่ม: prod ตอบ 429 challenge จาก VPS (Bot Protection โปรเจกต์ shark)
 - 4 ก.ย. 2026 ~01:30 UTC — 🏁 **เฟส 2 ปิด** (2.1–2.3 + 0.7 CI-compat · main ef6567b · หน้าหลัก f1/f11 + ภาพรวม f4 บน prod)
 - 3 ก.ย. 2026 ~19:40 UTC — 🏁 **เฟส 1 ปิด** (9 WO · ขึ้น main 1884f8d · บั๊กเก่าที่ปิดระหว่างทาง 11 ตัว รวม RE ลงรายได้ซ้ำ 2 เท่า / DP โพสต์ซ้ำ / ซื้อ INCL_VAT ไม่สมดุล) · crontab เอกสารประจำ+เตือน ติดตั้งแล้ว

@@ -6,6 +6,8 @@ import {
   lifecycleAfterDealWon,
   weightedForecast,
 } from "./rules";
+// WO 3.1 — Party (INTEGRATION-MAP §F.1/§F.5): ตัวตนกลางระดับ tenant · เรียกผ่าน facade เท่านั้น (F2.2)
+import * as party from "@/lib/modules/party";
 
 // CRM (ระบบที่ 19) — service ชั้นประกอบ (systemId-scoped)
 // ⚠️ กติกาทั้งหมดมาจาก rules.ts (สมอง FREEZE) — ที่นี่แค่เรียกใช้ + ผูก DB
@@ -60,16 +62,25 @@ export type CreateContactInput = {
 };
 
 export async function createContact(ctx: Ctx, input: CreateContactInput): Promise<{ id: string }> {
+  const name = input.name.trim();
+  // WO 3.1 (MAP §F.1): เชื่อม Party ตอนสร้างผู้ติดต่อ CRM — ล้มเหลว = partyId null (ไม่ throw)
+  const partyId = await party.safeFindOrCreate(ctx.tenantId, {
+    name,
+    phone: input.phone ?? null,
+    email: input.email ?? null,
+    kind: "PERSON",
+  });
   const c = await tenantDb(ctx).crmContact.create({
     data: {
       tenantId: ctx.tenantId,
       systemId: ctx.systemId,
-      name: input.name.trim(),
+      name,
       phone: input.phone?.trim() || null,
       email: input.email?.trim() || null,
       company: input.company?.trim() || null,
       source: input.source?.trim() || null,
       ownerUserId: input.ownerUserId || null,
+      partyId,
       // lifecycleStage เริ่มต้น LEAD (default ใน schema)
     },
   });
@@ -272,6 +283,9 @@ export async function issueQuotation(
     title: deal.title,
     valueSatang: deal.valueSatang,
     customer: { name: deal.contact.name, phone: deal.contact.phone, email: deal.contact.email },
+    // WO 3.1 (MAP §F.5): ส่ง partyId ของ CrmContact ต้นทาง → account ใช้เป็นกุญแจจับคู่ตัวแรก
+    partyId: deal.contact.partyId,
+    sourceContactId: deal.contact.id,
   });
   if (!res.ok) return res;
 

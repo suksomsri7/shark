@@ -1,0 +1,68 @@
+// Party (WO 3.1 · INTEGRATION-MAP §F.1–7 · DESIGN-SPEC-V2 §14.3) — "กระดูกสันหลังตัวตนลูกค้า" ระดับ tenant
+//
+// ทำไมต้องมี: วันนี้ไม่มีตัวตนกลาง — AccountContact/Customer/CrmContact/ChatContact/HrEmployee/Supplier
+// เป็นคนละลิสต์กัน แม้เป็นคนเดียวกันจริง (ดู INTEGRATION-MAP §A/§E) ⇒ Party คือ "ใครคือใคร" ระดับ tenant
+// (ข้าม systemId — ตรงข้าม AccountContact ที่ scope ต่อระบบ) ส่วนตารางเดิมทุกตัว**ไม่ย้าย** แค่เพิ่ม
+// `partyId?` (nullable — ไม่เชื่อม = ทำงานเหมือนเดิมทุกประการ ตามกติกาบ้าน "ไม่เชื่อม = ไม่ post")
+//
+// scope: axis "tenant" (ดู core/scope.ts) — เจตนา: มองเห็นข้ามทุกระบบ (บัญชี/CRM/แชท/HR/จัดซื้อ) ใน tenant เดียวกัน
+// เงิน: ไม่มีคอลัมน์เงินในตารางนี้ (Party = ตัวตน ไม่ใช่ยอด)
+
+enum PartyKind {
+  PERSON
+  COMPANY
+}
+
+model Party {
+  id           String    @id @default(cuid())
+  tenantId     String
+  kind         PartyKind @default(PERSON)
+  name         String
+  phone        String?
+  /// เบอร์ normalize (ใช้ normalizePhoneTh แบบเดียวกับ AccountContact.phoneNorm) — กุญแจจับคู่ลำดับ 2
+  phoneNorm    String?
+  email        String?
+  /// เลขผู้เสียภาษี 13 หลัก (normalize เฉพาะตัวเลข) — กุญแจจับคู่ลำดับ 1 (คู่กับ branchCode)
+  taxId        String?
+  branchCode   String?   @default("00000")
+  address      String?
+  /// ถูกรวมเข้ากับ Party รายใด (การรวมผู้ติดต่อซ้ำ — ไม่ลบของเดิม) — ตามด้วย resolveCanonical()
+  mergedIntoId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ดัชนีอย่างเดียว — ไม่ใส่ unique (backfill ต้องทนข้อมูลกำกวมได้ ดู MAP §F.6)
+  @@index([tenantId, taxId])
+  @@index([tenantId, phoneNorm])
+  @@index([tenantId, email])
+  @@index([tenantId, mergedIntoId])
+}
+
+// ───────────── รายการคู่ที่สงสัยว่าเป็นคนเดียวกัน (หน้า "รวมผู้ติดต่อซ้ำ" — SPEC §7.3 / WO 3.4) ─────────────
+
+enum PartyMergeReason {
+  TAX_ID
+  PHONE
+  NAME_SIMILAR
+}
+
+enum PartyMergeStatus {
+  OPEN
+  MERGED
+  DISMISSED
+}
+
+model PartyMergeCandidate {
+  id       String           @id @default(cuid())
+  tenantId String
+  partyAId String
+  partyBId String
+  reason   PartyMergeReason
+  status   PartyMergeStatus @default(OPEN)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, partyAId, partyBId])
+  @@index([tenantId, status])
+}

@@ -326,6 +326,9 @@ model AccountContact {
   defaultWhtType   String? // ประเภทเงินได้ที่หัก ณ ที่จ่ายเป็นประจำ (ม.40 (…))
   defaultWhtRateBp Int? // อัตราหัก ณ ที่จ่ายปริยาย (basis point · 300 = 3%)
   bankAccountNote  String? // บัญชีธนาคารสำหรับโอนจ่าย (ข้อความอิสระ)
+  // ── WO 3.1 — Party (INTEGRATION-MAP §F.1) ──
+  /// เชื่อมตัวตนกลางระดับ tenant (nullable — ไม่มี = ทำงานเหมือนเดิม) ไม่ใส่ FK/relation ตามใบสั่งงาน
+  partyId          String?
 
   documents      AccountDocument[]
   groups         AccountContactGroupMember[]
@@ -339,6 +342,7 @@ model AccountContact {
   @@index([systemId, taxId])
   @@index([systemId, name])
   @@index([systemId, phoneNorm]) // V2: จับคู่ซ้ำจากเบอร์ (แทนการสแกนทั้งตาราง)
+  @@index([partyId]) // WO 3.1
   /// 🔴 ของจริงที่บังคับความไม่ซ้ำคือ **partial unique index** ที่สร้างด้วย raw SQL ใน migration
   ///    20260902xxxxxx_account_v2_phase0:
   ///      CREATE UNIQUE INDEX "AccountContact_systemId_taxId_branchCode_active_key"

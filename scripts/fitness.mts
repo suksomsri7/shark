@@ -300,6 +300,13 @@ const ALLOWED_EDGES = new Set([
   // + resolve ระบบ POS/POINT ที่ผูก unit เดียวกับระบบ MEMBER (เหมือน school→pos/system)
   "member→pos",
   "member→system",
+  // chokepoint (WO 3.1 — Party): ตัวตนกลางระดับ tenant · ผู้ผลิตทุกตัวเรียกผ่าน facade `party/index.ts`
+  // เท่านั้น (findOrCreate/safeFindOrCreate) — Fable อนุมัติล่วงหน้าตามใบสั่งงาน (INTEGRATION-MAP §F.1/§F.7)
+  "account→party",
+  "member→party", // findOrCreate = ทางเข้าเดียวกับที่ chat.maybeAutoLinkMember เรียกอยู่แล้ว (ไม่แตะ chat/**)
+  "crm→party",
+  "hr→party", // จาก name/phone/email เท่านั้น — ห้ามส่ง nationalId/PDPA อื่นเข้า party
+  "inventory→party", // Supplier (procurement.ts)
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {
