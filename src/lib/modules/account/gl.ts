@@ -337,15 +337,16 @@ function effectiveRate(doc: SaleDoc, vatRegistered: boolean, vatRateBp: number):
 }
 
 // โหลดบรรทัดเอกสาร (สำหรับ Dr ราย line + override หมวดบัญชี ฝั่งซื้อ/สินทรัพย์)
+// vatRateBp ต้องมาด้วย เพราะโหมด "ราคารวม VAT" ต้องถอด VAT ตามอัตราของแต่ละบรรทัด
 async function loadDocLines(
   ctx: GlCtx,
   docId: string,
   db: Db,
-): Promise<{ accountId: string | null; amount: number }[]> {
+): Promise<{ accountId: string | null; amount: number; vatRateBp: number }[]> {
   return db.accountDocumentLine.findMany({
     where: { documentId: docId, systemId: ctx.systemId },
     orderBy: { sortOrder: "asc" },
-    select: { accountId: true, amount: true },
+    select: { accountId: true, amount: true, vatRateBp: true },
   });
 }
 
@@ -354,6 +355,42 @@ function depositSplit(depositGross: number, rate: number): { base: number; vat: 
   if (depositGross <= 0 || rate <= 0) return { base: depositGross, vat: 0 };
   const base = Math.round(depositGross / (1 + rate));
   return { base, vat: depositGross - base };
+}
+
+// ฐานสุทธิ (ก่อน VAT) ของบรรทัดฝั่งซื้อ/ค่าใช้จ่าย
+// โหมด EXCLUDE/NONE: amount = ฐานอยู่แล้ว · โหมด INCLUDE: amount รวม VAT แล้ว → ต้องถอดออกก่อนลงต้นทุน
+// ใช้ depositSplit (ตัวถอด VAT ออกจากยอด gross ตัวเดียวกับที่ใช้กับมัดจำ) — ไม่มีสูตร VAT ซ้ำในไฟล์นี้
+// อัตราต่อบรรทัด: vatRateBp ≤ 0 = ยกเว้น/0% (ตรงกับ service.lineRate)
+function lineNetBase(
+  l: { amount: number; vatRateBp: number },
+  docRate: number,
+  vatMode: string,
+): number {
+  if (vatMode !== "INCLUDE" || docRate <= 0) return l.amount;
+  const rate = l.vatRateBp > 0 ? l.vatRateBp / 10000 : 0;
+  return rate > 0 ? depositSplit(l.amount, rate).base : l.amount;
+}
+
+// กระจาย total ลงแต่ละบรรทัดตามน้ำหนัก (largest remainder) — Σ ที่ได้ตรงกับ total เป๊ะเสมอ
+// ใช้ผูกยอดเดบิตราย line เข้ากับ doc.subTotal ที่ service.computeTotals คำนวณไว้แล้ว
+// (ตรรกะเดียวกับ service.allocateProportional แต่ import ขึ้นไปไม่ได้ — service เป็นชั้นบนของ gl จะเป็นวงจร)
+function splitByWeight(total: number, weights: number[]): number[] {
+  if (weights.length === 0) return [];
+  const sumW = weights.reduce((a, b) => a + b, 0);
+  if (sumW === total) return weights.slice(); // ตรงอยู่แล้ว (โหมดราคาแยก VAT) → ไม่แตะการปัดเศษเลย
+  if (sumW <= 0 || total <= 0) {
+    const out = weights.map(() => 0);
+    out[0] = total;
+    return out;
+  }
+  const raw = weights.map((w) => (total * w) / sumW);
+  const out = raw.map((r) => Math.floor(r));
+  let rem = total - out.reduce((a, b) => a + b, 0);
+  const order = raw
+    .map((r, i) => ({ i, frac: r - Math.floor(r) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; rem > 0; k++, rem--) out[order[k % order.length].i] += 1;
+  return out;
 }
 
 // ─────────────────── postDocument ───────────────────
@@ -495,10 +532,23 @@ export async function postDocument(
         // Dr ต้นทุน/ค่าใช้จ่าย (ราย line + override หมวด) · Dr 1150/1155 VAT ซื้อ · Cr 2100 เจ้าหนี้
         // ส่วนลดท้ายบิล → Cr 5800 ส่วนลดรับ (contra) เพื่อให้ Σ line = subTotal คงเดิม
         const expKey = doc.docType === "PURCHASE" ? "PURCHASE_DEFAULT" : "EXPENSE_DEFAULT";
-        const vatInKey = doc.status === "AWAITING_RECEIVE" ? "VAT_INPUT_UNDUE" : "VAT_INPUT";
+        // VAT ซื้อยังไม่ได้ใบกำกับ (vatPurchaseMode AWAITING → vatTiming ON_PAYMENT) → พักที่ 1155
+        // แล้วโอนเข้า 1150 ตอนรับใบกำกับจริง (เคส PURCHASE_TAX_INVOICE ด้านล่าง)
+        const vatInKey =
+          doc.status === "AWAITING_RECEIVE" || (doc.taxPointBasis ?? doc.vatTiming) === "ON_PAYMENT"
+            ? "VAT_INPUT_UNDUE"
+            : "VAT_INPUT";
         const lines = await loadDocLines(ctx, docId, db);
         if (lines.length > 0) {
-          for (const l of lines) b.dr(l.accountId ?? (await b.id(expKey, doc.docType)), l.amount);
+          // เดบิตต้นทุน/ค่าใช้จ่ายด้วย "ฐานสุทธิ" เสมอ — ตรงกับฝั่งขายที่ใช้ subTotal − discountAmount
+          // โหมดราคารวม VAT: l.amount รวม VAT อยู่ → ถ้าเดบิตตรง ๆ Dr จะเกิน Cr เท่ากับ VAT (ออกเอกสารไม่ได้)
+          // กระจาย doc.subTotal ตามน้ำหนักฐานสุทธิรายบรรทัด ⇒ Σ เดบิต = subTotal เป๊ะทุกโหมด
+          const drs = splitByWeight(
+            doc.subTotal,
+            lines.map((l) => lineNetBase(l, rate, doc.vatMode)),
+          );
+          for (let i = 0; i < lines.length; i++)
+            b.dr(lines[i].accountId ?? (await b.id(expKey, doc.docType)), drs[i]);
         } else {
           b.dr(await b.id(expKey, doc.docType), doc.subTotal);
         }
