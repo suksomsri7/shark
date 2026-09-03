@@ -79,6 +79,7 @@
 - 3 ก.ย. 2026 (เช้ามืด) — เริ่ม run ยาว · เจ้าของสั่ง: Fable คุมแทน · QC ต้องเห็นภาพจริง+ตัวเลขจริง · หาบั๊ก/ช่องโหว่ · กลับมาต่อได้เมื่อ session ล้ม · Opus ติด rate limit ตั้งแต่ 2 ก.ย. ~20:00 UTC (ต้องทดสอบก่อนมอบหมายทุกครั้ง)
 
 ## ของที่ต้องส่งต่อ session อื่น / รอเจ้าของ
+- ✅ ตรวจ prod ก่อน backfill เฟส 3 (3 ก.ย. 18:15 UTC · read-only): AccountContact 16 แถว/14 ระบบ · phoneNorm ซ้ำข้าม kind = 0 · เบอร์ชนกับ Customer = 0 ⇒ ปิดเฟส 3: deploy migration party+contact_modal (Vercel build รันเอง) → `acc-v2-party-backfill --apply` + `acc-v2-contact-code-backfill --apply` บน prod (ต้อง export env prod เอง เพราะ acc-v2-env กัน prod — Fable สั่งเอง ห้ามให้ agent)
 - 🔑 **รอเจ้าของ (ไม่บล็อกงาน)**: API ตรวจนิติบุคคลกรมพัฒน์ฯ (DBD OpenAPI `openapi.dbd.go.th` ต้องสมัคร+ขอ key · 3 ก.ย. ยิงจาก VPS ได้ 502) → WO 3.3 ทำเป็น adapter อ่าน `DBD_API_KEY` ไม่มี = ปุ่มจาง+บอกเหตุ ตาม SPEC §7.2
 - session แชท: `ChatContact.partyId` มีคอลัมน์แล้ว (WO 3.1) — ให้ `maybeAutoLinkMember` เซ็ตจาก `Customer.partyId` หลัง `member.findOrCreate`
 - ✅ session แชท: เฟส 0 + 1.1/1.2 merge เข้า main แล้ว (`0d19670` 3 ก.ย.) — migration `20260902160000_account_v2_phase0` และ `20260903090000_account_v2_doc_editor` อยู่บน main แล้ว drift หาย · เมนูบัญชีเป็นแบบใหม่ 9 หมวด (UI_STANDARD §2.9/§4 อัปเดตแล้ว)
