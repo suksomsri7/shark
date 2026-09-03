@@ -6,10 +6,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 0.4 Shell + 0.5 Components (0.1–0.3, 0.6 DONE) |
+| WO | ปิดเฟส 0 (0.1–0.6 DONE) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 4 ก.ย. ~02:40 UTC: build+serve+visual รอบ 1 แล้ว — 0.4 ตีกลับ 4 จุด (emoji→ไอคอนเส้น · dropdown ไม่โผล่ในภาพ · hub ไม่มี h1 · enum ดิบ) · 0.5 ตีกลับ 1 จุด (`_dev` = private folder → 404 → ย้ายเป็น `dev-components`) · รอแก้ → build รอบ 2 → เทียบภาพอีกครั้ง → qc:all → merge main |
+| ขั้นที่ถึง | 4 ก.ย. ~04:10 UTC: กำลังรัน `pnpm qc:all` บน DB QC (log `.qc-shots/acc-v2/qc-all.log`) → ถ้าเขียว: rebase main → merge → push → Vercel READY → verify prod → เริ่มเฟส 1 (WO 1.1) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
@@ -19,8 +19,8 @@
 | 0.1 | QC env (Neon branch · seed · เฉลย · serve · visual) | Opus | DONE | f7dc9c3 | Fable รัน seed-check เอง 55/55 + ดูภาพ invoice-list จริง · Neon branch `wo-acc-v2-qc` (**ห้าม `pnpm neon:gc`** ระหว่าง run) · ทำซ้ำ: seed → seed-check → `bash scripts/acc-v2-serve.sh` → `visual-acc-v2.mts <WO>` → serve stop |
 | 0.2 | ปิดรูรั่วเดิม (guard ทุก page · dedupe ผู้ติดต่อ · list server-side) | Opus | DONE | 1e8d73b | Fable รัน qc-acc-v2-guard เอง 100/0 บน .env.qc · อ่าน diff แล้ว · ค้างตาม: หน้าแรกบัญชี `AccountContent` (นอก account/**) ยังไม่มีด่าน → ใส่ใน WO 0.4 · action `account.*.view` แยกจาก create → WO 0.3 |
 | 0.3 | Schema เฟส 0 | Opus | DONE | 269c354 | Fable ตรวจ SQL (additive ล้วน) + รัน qc-acc-v2-schema 61/61 + drift QC/prod = 0 · ⚠️ **migration หลุดลง prod แล้ว** (agent source `.env.qc` ผิดเพราะ URL มี `&` → fallback .env) — ไม่ rollback (additive) · ผล: CI ของ main จะเห็น drift จนกว่าเฟส 0 จะ merge → เร่ง merge · VOID ไม่เพิ่ม (มี CANCELLED/VOIDED แล้ว) · prod ยัง**ไม่ backfill phoneNorm** |
-| 0.4 | Shell V2 (เมนู 9 หมวด + flyout + sheet) | Sonnet | IN_PROGRESS | | มอบหมาย 4 ก.ย. ~01:10 UTC ขนานกับ 0.6 · + `account/page.tsx` (แก้ 404) + ด่าน AccountContent · โน้ต `wo-notes/0.4.md` |
-| 0.5 | ส่วนประกอบกลาง V2 | Sonnet | IN_PROGRESS | | มอบหมาย 4 ก.ย. ~01:40 UTC ขนานกับ 0.4 · gallery `/account/_dev/components` (ไม่ใช่ production) · `DateText` ค.ศ. · โน้ต `wo-notes/0.5.md` |
+| 0.4 | Shell V2 (เมนู 9 หมวด + flyout + sheet) | Sonnet | DONE | 0770505 | Fable ตีกลับ 2 รอบ (emoji→ไอคอนเส้น · dropdown ถูก overflow ตัด · ตัวนับ 18→12 · offsetParent กับ fixed) → รอบ 3 ตรง f2/f12/g18 · visual 53/53 |
+| 0.5 | ส่วนประกอบกลาง V2 | Sonnet | DONE | 0770505 | ตีกลับ 1 (โฟลเดอร์ `_dev` = private → `dev-components`) · gallery ถ่ายจริง 1440/390 เทียบ f3/g1/g5/g17 ผ่าน · components 78/78 |
 | 0.6 | 🐞 hotfix `gl.postDocument` PURCHASE/EXPENSE โหมดราคารวม VAT Dr เกิน Cr (เจอใน 0.1 · ออกเอกสารไม่ได้) + ข้อสอบ | Opus | DONE | 91c38f2 | Fable อ่าน diff + รันเอง inclvat 71/71 · CPA 107/107 บน QC branch · เจอบั๊กที่ 2 ด้วย: VAT รอใบกำกับลง 1150 แทน 1155 (แก้แล้ว) · ค้าง: `qc-tax-print-audit.mts` เน่าอยู่ก่อน (taxId 5 หลัก) → เก็บใน 9.2 |
 | 1.1 | หน้ารายการทุกชนิด | Sonnet | TODO | | |
 | 1.2 | route ราคาถูก DP/CNR/DNR/ASSET_PO/PTX + payableStats | Opus (Sonnet) | TODO | | |
