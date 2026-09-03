@@ -29,7 +29,7 @@
 | 1.2 | route ราคาถูก DP/CNR/DNR/ASSET_PO/PTX + payableStats | Opus | DONE | 623e8df | Fable รันเอง cheap-routes 105/105 · CPA 107/107 · อ่าน diff GL (Cr 1130 + ลด VAT มัดจำ) · 🐞 แก้ DP โพสต์ซ้ำ · ค้าง: void การจ่าย DP ยังไม่กลับ JV (เหมือน DR ฝั่งขาย) → WO 1.4 · หน้า PTX ยังมีฟอร์มสร้าง → 1.1/1.3 |
 | 1.3 | DocEditorV2 A–C,E,G,H,I | Opus | DONE | fb3c91b | Fable ตีกลับ 2 รอบ (ตารางล้น · default โหมดง่าย · วันที่ native · back link · sticky บังแท็ก · ruler · ช่องจำนวน · cookie โหมด) → รอบ 3 ตรง g1/g17 ทั้ง 2 โหมด · visual 126 ✅ · editor 199 (Fable รันเอง) · ค้าง: CN/DN/CNR/DNR/ใบเบิก ยังใช้ฟอร์มเก่าจนกว่า 1.6 · ร่างเก่าส่วนลดไม่ลงตัวปัดเศษ ≤(qty−1) สตางค์ (จดไว้) |
 | 1.4 | มัดจำ + WHT ต่อบรรทัด + รับชำระหลายครั้ง | Opus | DONE | fc3109c | Fable รันเอง payments 157/157 · CPA 107 · ภาพรอบ 2 ตรง g2 (visual 82 ✅) · 🐞 ปิดบั๊ก 5 รวม RE จาก IV ลงรายได้ซ้ำ 2 เท่า · ค้าง: เช็ค+ค่าธรรมเนียมพร้อมกันยังไม่รองรับ · prefix ฝั่งซื้อคง WHT- |
-| 1.5 | หน้าเอกสาร V2 | Sonnet | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~08:40 UTC · เทียบ g4/f14 · โน้ต `wo-notes/1.5.md` |
+| 1.5 | หน้าเอกสาร V2 | Sonnet | REVIEW | 18af94b (snapshot) | detail 72/72 (Fable รันเอง) · ภาพรอบ 1: ไทม์ไลน์/แท็บ/JV preview ตรง g4 · **ตีกลับ 5** (เลขที่ตัดบรรทัด · ยกเลิกต้องอยู่ใน ⋯ · WHT/ผู้บันทึกเบียด · ตารางรายละเอียดคอลัมน์ไม่ครบ · ruler ถ่ายตอน scroll) |
 | 1.6 | wizard CN/DN/CNR/DNR/RPR | Sonnet | TODO | | |
 | 1.7 | ใบวางบิลรวม + ใบรวมจ่าย | Opus | TODO | | |
 | 1.8 | นำเข้า CSV | Sonnet | TODO | | |
