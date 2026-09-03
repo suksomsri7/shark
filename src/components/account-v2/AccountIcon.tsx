@@ -50,6 +50,9 @@ const ICONS: Record<string, string> = {
   user: '<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4 3.4-6 7.5-6s7.5 2 7.5 6"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.5-4.5"/>',
   filter: '<path d="M3.5 5h17L14 13v5.5l-4 2V13Z"/>',
+  // เพิ่มโดย WO 2.2 (หน้าหลัก V2) — คัดลอก path จริงจาก mockup.html #i-flag / #i-warn (ยังไม่เคยใช้ก่อนหน้านี้)
+  flag: '<path d="M5 21V4h11l-1.5 3.5L16 11H5"/>',
+  warn: '<path d="M12 4 2.5 20h19Z"/><path d="M12 10v4M12 17h.01"/>',
 };
 
 const FALLBACK = '<rect x="5" y="5" width="14" height="14" rx="2"/>';

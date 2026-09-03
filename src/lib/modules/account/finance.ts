@@ -218,6 +218,31 @@ export async function archiveFinanceAccount(tenantId: string, systemId: string, 
   return { ok: true as const };
 }
 
+const MAX_PINNED = 4;
+
+/** ตั้ง "บัญชีเงินที่ติดตาม" ใหม่ทั้งชุด (WO 2.2 §4 ข้อ 9) — แทนที่ pinned ทั้งหมดด้วย `ids` ที่ส่งมา
+ * จำกัด ≤4 · ทุก id ต้องเป็นของ tenant+system นี้เท่านั้น (กัน IDOR ข้ามระบบ) */
+export async function setPinnedFinanceAccounts(
+  tenantId: string,
+  systemId: string,
+  ids: string[],
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const uniq = [...new Set(ids)];
+  if (uniq.length > MAX_PINNED) return { ok: false, reason: `ปักหมุดได้สูงสุด ${MAX_PINNED} บัญชี` };
+  const owned = await prisma.accountFinance.findMany({
+    where: { id: { in: uniq }, tenantId, systemId, archivedAt: null },
+    select: { id: true },
+  });
+  if (owned.length !== uniq.length) return { ok: false, reason: "พบบัญชีที่ไม่ใช่ของระบบนี้" };
+  await prisma.$transaction([
+    prisma.accountFinance.updateMany({ where: { tenantId, systemId, pinned: true }, data: { pinned: false } }),
+    ...(uniq.length
+      ? [prisma.accountFinance.updateMany({ where: { tenantId, systemId, id: { in: uniq } }, data: { pinned: true } })]
+      : []),
+  ]);
+  return { ok: true };
+}
+
 // ─────────────────── statement (ความเคลื่อนไหว + ยอดคงเหลือ) ───────────────────
 
 export type StatementRow = {

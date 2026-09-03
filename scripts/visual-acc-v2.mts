@@ -779,6 +779,51 @@ const PAGES: Record<string, PageSpec[]> = {
       expect: ["ศูนย์แจ้งเตือน", "ครบกำหนดพรุ่งนี้", "พ้นกำหนดชำระแล้ว", "เช็คถึงกำหนด"],
     },
   ],
+  // WO 2.2 — หน้าหลัก V2 (§4) เทียบ f1 (เดสก์ท็อป) + f2 (dropdown "+ สร้างเอกสาร") + f11 (มือถือ)
+  // ไม่ต้องมี fixture พิเศษ — ตัวเลขทั้งหมดมาจากชุด seed เดิมที่ qc-acc-v2-dashboard.mts (WO 2.1) ยืนยันแล้ว
+  "2.2": [
+    {
+      name: "hub",
+      path: `/app/sys/${SYS}/account`,
+      note: "หน้าหลัก V2 เต็มหน้า — KPI 4 · กราฟรายรับ-รายจ่าย + อายุหนี้ · โดนัท 2 ใบ + เงินคุณอยู่ไหน · เอกสารที่ออก · งานที่รอคุณ + เอกสารล่าสุด · 3 การ์ดอันดับ · บัญชีที่ติดตาม (f1)",
+      expect: [
+        "หน้าหลัก",
+        "ค้างรับ (ลูกหนี้)",
+        "ค้างจ่าย (เจ้าหนี้)",
+        "เงินคงเหลือรวม",
+        "ภาพรวมรายรับและรายจ่าย",
+        "รอรับชำระ / รอชำระ",
+        "อายุหนี้ 5 ช่วง",
+        "รายได้เดือนนี้",
+        "ค่าใช้จ่ายเดือนนี้",
+        "เงินคุณอยู่ไหน",
+        "เอกสารที่ออก",
+        "งานที่รอคุณ",
+        "เอกสารล่าสุด",
+        "ขายอะไรดีสุด",
+        "ขายใครได้มากที่สุด",
+        "รายได้อะไรมากที่สุด",
+        "บัญชีเงินที่ติดตาม",
+        "บัญชีที่ติดตาม",
+      ],
+    },
+    {
+      name: "hub-create-open",
+      path: `/app/sys/${SYS}/account`,
+      note: 'ปุ่มดำ "+ สร้างเอกสาร ▾" เปิด dropdown 2 คอลัมน์ (รายรับ | รายจ่าย) — เทียบ f2',
+      expect: ["หน้าหลัก", "รายรับ", "รายจ่าย"],
+      // 2 selector = เดสก์ท็อป + มือถือ (คอมโพเนนต์เดียวกันเรนเดอร์ 2 ชุดซ่อนด้วย CSS — testid แยกกันตาม
+      // DashCreateMenu.tsx กันคลิกโดนปุ่มที่ซ่อนอยู่อีก breakpoint เหมือน ref-row-/ref-card- ของ WO 1.6)
+      click: ['[data-testid="btn-create-doc"]', '[data-testid="btn-create-doc-m"]'],
+      waitAfterClick: 300,
+    },
+    {
+      name: "hub-checklist",
+      path: `/app/sys/${SYS}/account?checklist=1`,
+      note: "บังคับโชว์เช็กลิสต์เริ่มต้น 5 ขั้นด้วย ?checklist=1 (tenant QC ทำครบทุกข้อแล้ว ปกติจะซ่อน — สำหรับถ่ายภาพ QC เท่านั้น)",
+      expect: ["เริ่มต้นใช้งานบัญชี", "ตั้งค่ากิจการ", "เพิ่มช่องทางเงิน", "เพิ่มลูกค้า/สินค้า", "ออกเอกสารใบแรก", "เชื่อมระบบ"],
+    },
+  ],
 };
 
 // ─────────── ตารางตัวเลขที่อ่านจาก data-testid (ว่างไว้ก่อน — WO ถัดไปเติม) ───────────
@@ -857,6 +902,19 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
     "invoice-form-easy": {
       "tot-grand": "฿24,900.00",
       "tot-due": "฿24,306.00",
+    },
+  },
+  // WO 2.2 — ตัวเลข KPI/โดนัท ต้องตรงเฉลย f1/dashboardSnapshot เป๊ะ (ground truth เดียวกับ WO 2.1)
+  // 🔴 kpi-overdue: DESIGN-SPEC-V2 §4 ข้อ 2 กำหนดให้ "พ้นกำหนด (รับ+จ่าย)" รวมทั้ง 2 ฝั่ง — ของจริงจาก
+  //    dashboardSnapshot = 6 ใบ/฿205,900.00 (ลูกหนี้พ้นกำหนด 4 ใบ/฿128,400 ตาม f1 + เจ้าหนี้พ้นกำหนด 2 ใบ/฿77,500
+  //    ที่ f1 รอบ 1 ยังไม่ได้วาด) — ถ้า WO ระบุ "4" เฉย ๆ นั่นคือฝั่งลูกหนี้อย่างเดียว (ก่อนรวม 2 ฝั่งตามสเปครอบ 2)
+  //    ยึดเลขรวมตามสเปคที่อนุมัติแล้ว (ledger/wo-notes/2.2.md มีบันทึกความต่างนี้ไว้ให้ Fable ตรวจ)
+  "2.2": {
+    hub: {
+      "kpi-receivable": "฿486,300",
+      "kpi-payable": "฿212,750",
+      "kpi-overdue": "฿205,900",
+      "kpi-cash": "฿1,284,560",
     },
   },
 };
@@ -1300,6 +1358,41 @@ try {
                 (document.body.innerText ?? "").includes(t),
               ).length,
             },
+            // WO 2.2 — หน้าหลัก V2 (§4): กราฟ/โดนัท/เมนูสร้างเอกสาร/เช็กลิสต์/จานสี
+            dash: {
+              hasHome: !!document.querySelector('[data-testid="dash-home"]'),
+              barRevenueCount: document.querySelectorAll('[data-testid^="bar-revenue-"]').length,
+              createMenuVisible:
+                isVisible(document.querySelector('[data-testid="create-doc-menu"]')) ||
+                isVisible(document.querySelector('[data-testid="create-doc-menu-m"]')),
+              checklistVisible: isVisible(document.querySelector('[data-testid="dash-checklist"]')),
+              pendingRowCount: document.querySelectorAll('[data-testid^="pending-row-"]').length,
+              donutCenter: document.querySelector('[data-testid="donut-center"]')?.textContent?.trim() ?? "",
+              // ผลรวมแถบอายุหนี้ (อ่านจากข้อความ "฿n,nnn" ท้ายแต่ละแถว) — เทียบกับยอดค้างรับ/ค้างจ่ายจริง
+              agingSum: [...document.querySelectorAll('[data-testid^="aging-"]')].reduce((sum, el) => {
+                const matches = (el.textContent ?? "").match(/฿[\d,]+(\.\d+)?/g) ?? [];
+                const last = matches[matches.length - 1] ?? "";
+                return sum + (Number(last.replace(/[฿,]/g, "")) || 0);
+              }, 0),
+              // จานสี: ทุก fill/stroke ของ SVG ในหน้าหลักต้องอยู่ในโทเคนที่อนุญาต (accent/เทา/danger/none) เท่านั้น
+              paletteViolations: (() => {
+                const PALETTE = new Set([
+                  "#1d4ed8", "#0a0a0a", "#404040", "#737373", "#a3a3a3", "#d4d4d4", "#e5e5e5", "#b91c1c", "#ffffff",
+                  "none", "transparent", "currentcolor",
+                ]);
+                const root = document.querySelector('[data-testid="dash-home"]');
+                if (!root) return ["(ไม่พบ dash-home)"];
+                const bad: string[] = [];
+                root.querySelectorAll("svg *").forEach((el) => {
+                  for (const attr of ["fill", "stroke"]) {
+                    const v = (el.getAttribute(attr) ?? "").toLowerCase().trim();
+                    if (!v || PALETTE.has(v)) continue;
+                    bad.push(`${el.tagName}[${attr}=${v}]`);
+                  }
+                });
+                return bad;
+              })(),
+            },
           };
         });
         line.push(`${device} HTTP ${status} · ${w}px · ล้นแนวนอน ${probe.overflow}px${navOk ? "" : " · nav timeout"}`);
@@ -1571,6 +1664,43 @@ try {
           }
           if (device === "mobile") c19.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
           for (const [okc, label] of c19) {
+            if (!okc) failures++;
+            console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
+          }
+        }
+
+        // WO 2.2 — หน้าหลัก V2 (§4) เทียบ f1/f2/f11 + ตัวเลขจริงจาก dashboardSnapshot (เฉลยเดียวกับ WO 2.1)
+        if (ASSERT && WO === "2.2") {
+          const c22: [boolean, string][] = [];
+          if (spec.name === "hub") {
+            c22.push([probe.dash.hasHome, `หน้าหลัก V2 ขึ้นจริง [data-testid="dash-home"] (positive control ของด่านที่เหลือ)`]);
+            c22.push([probe.dash.barRevenueCount === 12, `กราฟมีแท่งรายได้ครบ 12 เดือน (เจอ ${probe.dash.barRevenueCount})`]);
+            c22.push([!!probe.testids["bar-revenue-2026-09"], `มีแท่งของเดือน ก.ย. 2026 [data-testid="bar-revenue-2026-09"] (5 เดือนที่มีข้อมูลจริงตาม wo-notes/2.1.md คือ พ.ค.–ก.ย.)`]);
+            c22.push([
+              probe.dash.donutCenter.includes("524,308"),
+              `ศูนย์กลางโดนัทรายได้เดือนนี้ = ยอดรวมรายได้ ก.ย. 2026 ตามเฉลย ฿524,308.42 (เจอ "${probe.dash.donutCenter}")`,
+            ]);
+            c22.push([
+              Math.abs(probe.dash.agingSum - 486300) < 1,
+              `ผลรวมแถบอายุหนี้ (ฝั่งลูกหนี้ค่าเริ่มต้น) = ยอดค้างรับรวม ฿486,300 (เจอ ${probe.dash.agingSum})`,
+            ]);
+            c22.push([probe.dash.pendingRowCount === 1, `งานที่รอคุณแสดงเฉพาะแถวที่ค้างจริง (เฉลย pending.total=1 → 1 แถว) — เจอ ${probe.dash.pendingRowCount}`]);
+            c22.push([
+              probe.dash.paletteViolations.length === 0,
+              `SVG ในหน้าหลักใช้สีในโทเคนเท่านั้น (accent/เทา/danger/none) — เจอนอกโทเคน: ${JSON.stringify(probe.dash.paletteViolations)}`,
+            ]);
+            if (device === "mobile") {
+              c22.push([w <= 390, `กล้องถ่ายที่ความกว้างมือถือมาตรฐาน 390px (ใช้จริง ${w}px)`]);
+              c22.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px (f11)`]);
+            }
+          }
+          if (spec.name === "hub-create-open") {
+            c22.push([probe.dash.createMenuVisible, `กด "+ สร้างเอกสาร ▾" แล้วเมนู [data-testid="create-doc-menu"] ต้องเปิดค้างอยู่ (f2)`]);
+          }
+          if (spec.name === "hub-checklist") {
+            c22.push([probe.dash.checklistVisible, `?checklist=1 บังคับให้เช็กลิสต์ [data-testid="dash-checklist"] โชว์แม้ tenant ทำครบแล้ว (สำหรับถ่ายภาพ QC)`]);
+          }
+          for (const [okc, label] of c22) {
             if (!okc) failures++;
             console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
           }

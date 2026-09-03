@@ -261,6 +261,19 @@ export type CategoryBreakdown = {
 
 export const OTHER_LABEL = "อื่น ๆ";
 
+/** เหมือน `breakdownFromRows` แต่ export ให้ WO 2.2 (หน้าหลัก V2) เรียกซ้ำได้ฝั่ง UI
+ * โดยไม่ยิง query เพิ่ม — `glRows` ที่ dashboardSnapshot คืนมาครอบคลุม `${year-1}-01`..`${year}-12`
+ * (24 เดือน) อยู่แล้ว ⇒ ตัวเลือกเดือนของโดนัท "รายได้/ค่าใช้จ่ายเดือนนี้" (§4 ข้อ 5) เลือกเดือนไหนในช่วงนั้น
+ * ก็คำนวณจากก้อนเดิมได้ทันที ไม่ต้อง query ใหม่ (กติกา BLUEPRINT §3 WO 2.2: ห้ามเกิน 12 query ของหน้าหลัก) */
+export function categoryBreakdownFromRows(
+  rows: GlPeriodRow[],
+  periodKey: string,
+  kind: "income" | "expense",
+  topN = 5,
+): CategoryBreakdown {
+  return breakdownFromRows(rows, periodKey, kind, topN);
+}
+
 function breakdownFromRows(
   rows: GlPeriodRow[],
   periodKey: string,
@@ -318,6 +331,33 @@ export async function topExpenseCategories(
   bump(meter);
   const rows = await glAggregate(db, ctx, range.fromKey, range.toKey);
   return expenseCategoriesFromRows(rows, n);
+}
+
+/**
+ * "รายได้อะไรมากที่สุด" (§4 ข้อ 8, เพิ่มโดย WO 2.2) — เหมือน `expenseCategoriesFromRows` แต่ฝั่งรายได้
+ * ไม่ยิง query เพิ่ม: หน้าหลักส่ง `snapshot.glRows` (มีอยู่แล้วจากงบ 12 query เดิม) กรองตามปีเอง แล้วเรียกฟังก์ชันนี้
+ */
+export function incomeCategoriesFromRows(rows: GlPeriodRow[], n: number): { total: number; rows: CategorySlice[] } {
+  const byAccount = new Map<string, { code: string; name: string; amount: number }>();
+  for (const r of rows) {
+    if (r.type !== "INCOME") continue;
+    const amount = naturalAmount(r);
+    if (amount === 0) continue;
+    const cur = byAccount.get(r.accountId);
+    if (cur) cur.amount += amount;
+    else byAccount.set(r.accountId, { code: r.code, name: r.name, amount });
+  }
+  const all = [...byAccount.values()].sort((a, b) => b.amount - a.amount || a.code.localeCompare(b.code));
+  const total = all.reduce((s, a) => s + a.amount, 0);
+  return {
+    total,
+    rows: all.slice(0, n).map((a) => ({
+      accountCode: a.code,
+      name: a.name,
+      amount: a.amount,
+      shareBp: shareBp(a.amount, total),
+    })),
+  };
 }
 
 function expenseCategoriesFromRows(rows: GlPeriodRow[], n: number): { total: number; rows: CategorySlice[] } {
@@ -870,6 +910,10 @@ export type RecentDocRow = {
   grandTotal: number;
   issueDate: string;
   updatedAt: string;
+  /** เพิ่มโดย WO 2.2 (select กว้างขึ้นในคำสั่งเดิม — ไม่ยิง query เพิ่ม) ให้หน้าหลักคำนวณ "พ้นกำหนด" เองด้วย
+   * service.isOverdue({status,dueDate,validUntil}) ตรงกับที่หน้ารายการอื่นใช้ */
+  dueDate: string | null;
+  validUntil: string | null;
 };
 
 async function recentRows(db: Db, n: number): Promise<Array<Omit<RecentDocRow, "contactName">>> {
@@ -886,6 +930,8 @@ async function recentRows(db: Db, n: number): Promise<Array<Omit<RecentDocRow, "
       grandTotal: true,
       issueDate: true,
       updatedAt: true,
+      dueDate: true,
+      validUntil: true,
     },
   });
   return docs.map((d) => ({
@@ -900,6 +946,8 @@ async function recentRows(db: Db, n: number): Promise<Array<Omit<RecentDocRow, "
     grandTotal: d.grandTotal,
     issueDate: dayKeyBkk(d.issueDate),
     updatedAt: d.updatedAt.toISOString(),
+    dueDate: d.dueDate ? d.dueDate.toISOString() : null,
+    validUntil: d.validUntil ? d.validUntil.toISOString() : null,
   }));
 }
 
@@ -1065,6 +1113,10 @@ export type DashboardSnapshot = {
   topExpenseCategories: { total: number; rows: CategorySlice[] };
   calendar: CashCalendar | null;
   queryCount: number;
+  /** ก้อน GL ดิบต่องวด×บัญชี ของ `${year-1}-01`..`${year}-12` — เพิ่มโดย WO 2.2 (additive · ไม่ยิง query เพิ่ม
+   * เพราะเป็นผลลัพธ์ของ query #1 อยู่แล้ว) ให้หน้าหลัก derive breakdown ของเดือนอื่นในช่วงนี้ได้เอง
+   * ผ่าน `categoryBreakdownFromRows` โดยไม่ต้องเพิ่มงบ query · WO 2.1 เดิมไม่ใช้ฟิลด์นี้ */
+  glRows: GlPeriodRow[];
 };
 
 export type SnapshotOpts = {
@@ -1170,5 +1222,6 @@ export async function dashboardSnapshot(ctx: DashCtx, opts: SnapshotOpts = {}): 
     ),
     calendar,
     queryCount: meter?.count ?? 0,
+    glRows,
   };
 }

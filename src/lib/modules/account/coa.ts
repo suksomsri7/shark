@@ -254,6 +254,38 @@ export async function archiveLedger(
   return { ok: true, reason: used > 0 ? "มีการเคลื่อนไหวแล้ว — ปิดใช้งาน (ซ่อน) ไว้" : undefined };
 }
 
+const MAX_PINNED_LEDGER = 4;
+
+/** ตั้ง "บัญชีที่ติดตาม" (ผังบัญชี) ใหม่ทั้งชุด (WO 2.2 §4 ข้อ 9) — เหมือน setPinnedFinanceAccounts
+ * แต่เป็นฝั่ง AccountLedger · จำกัด ≤4 · ทุก id ต้องเป็นของ system นี้เท่านั้น */
+export async function setPinnedLedgerAccounts(
+  ctx: CoaCtx,
+  ids: string[],
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const uniq = [...new Set(ids)];
+  if (uniq.length > MAX_PINNED_LEDGER) return { ok: false, reason: `ปักหมุดได้สูงสุด ${MAX_PINNED_LEDGER} บัญชี` };
+  const owned = await prisma.accountLedger.findMany({
+    where: { id: { in: uniq }, tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null },
+    select: { id: true },
+  });
+  if (owned.length !== uniq.length) return { ok: false, reason: "พบบัญชีที่ไม่ใช่ของระบบนี้" };
+  await prisma.$transaction([
+    prisma.accountLedger.updateMany({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, pinned: true },
+      data: { pinned: false },
+    }),
+    ...(uniq.length
+      ? [
+          prisma.accountLedger.updateMany({
+            where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: uniq } },
+            data: { pinned: true },
+          }),
+        ]
+      : []),
+  ]);
+  return { ok: true };
+}
+
 export async function setMapping(
   ctx: CoaCtx,
   key: string,
