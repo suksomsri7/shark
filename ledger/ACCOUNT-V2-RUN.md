@@ -9,9 +9,9 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 🏁 ปิดเฟส 4 (qc:all → main → deploy → verify) |
+| WO | 5.1 ช่องทางการเงิน V2 (เฟส 5) |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable |
+| ผู้ทำ | Sonnet (sub-agent · UI ตาม g9) |
 | ขั้นที่ถึง | 3 ก.ย. ~22:50 UTC: qc:all **208/208** (723s) → กำลัง ff main + push → Vercel · 5.1 เริ่มบน branch (Sonnet) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 3 ก.ย. 2026 ~21:43 UTC — 🏁 **เฟส 4 ปิด** (4.1–4.3 · qc:all 208/208 · main `9231e3a` push · Vercel รอ READY) · 25/46 ≈ 54%
 - 3 ก.ย. 2026 ~22:30 UTC — 4.3 หน้าสินค้า DONE → เฟส 4 ครบ 3 WO เริ่มปิดเฟส
 - 3 ก.ย. 2026 ~20:40 UTC — 4.2 POS ส่งบรรทัด DONE (Opus) · ปิดบั๊ก void ซ้ำใน gl.reverseFor
 - 3 ก.ย. 2026 ~19:45 UTC — 4.1 InvItem canonical DONE (Opus รอบเดียว · ปิดช่องโหว่ locationId ข้าม tenant)

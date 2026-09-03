@@ -1,5 +1,12 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🏁 4 ก.ย. (เช้า ~04:45 BKK) — [session บัญชี] **เฟส 4 ปิด** (สินค้า↔คลัง↔POS ขึ้น main `9231e3a` · qc:all 208/208) · 25/46 WO ≈ 54% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
+- ขึ้น prod: InvItem เป็นแคตตาล็อกกลาง (AccountProduct.invItemId · sync 2 ทาง · เบิก/คืนตัดคลังใน tx เดียว) · POS ส่งบรรทัดเข้าบัญชี (เอกสาร TAX_INVOICE_ABB ต่อบิล · อันดับสินค้า/ลูกค้าเห็นยอด POS) · หน้าสินค้า V2 ตรง f6 + modal g8 (5 แท็บ) · หน่วยนับ · รายการจัดชุด · ใบเบิก PRR (g12) โพสต์ GL · ใบปรับต้นทุน CA · ยอดยกมาหลาย lot
+- migration 3 ตัว (invitem_canonical · products_v2 · —) additive · Vercel build รัน migrate เอง · prod ไม่ต้อง backfill (ไม่มีข้อมูลจริง)
+- บั๊กเก่าที่ปิด: `gl.reverseFor` กลับรายการตัวกลับรายการเอง (void ซ้ำ = รายได้กลับเข้าเงียบ) · เอกสารขายมือไม่เคยเก็บ productId/accountId ของบรรทัด · tenantDb ข้ามโมดูลทำตัดสต็อกล้มเงียบ · `resolveLocationId` รับ locationId ข้าม tenant
+- ค้าง → เฟส 5/9: บิล POS ไม่มี AccountDocumentPayment (ซื้อสะสม/เงินคุณอยู่ไหน ไม่เห็นเงิน POS) · ใบเบิก/คืน/CA ไม่มีหน้ารายละเอียด · void จัดชุดไม่คืนสต็อก · `qc-account-cpa.mts` ไม่เคารพ QC_ENV_FILE
+- ถัดไป: เฟส 5 การเงิน (5.1 ช่องทางการเงิน g9 กำลังทำ → 5.2 ภาพรวม f7 → 5.3 กระทบยอด g10 → 5.4 WHT/เช็ค g11 → 5.5 PromptPay)
+
 ## 🏁 4 ก.ย. (เช้า ~02:00 BKK) — [session บัญชี] **เฟส 3 ปิด** (ผู้ติดต่อ+Party ขึ้น main `2d97a98` · qc:all 205/205) · 22/46 WO ≈ 48% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
 - ขึ้น prod แล้ว: Party (ตัวตนลูกค้ากลางระดับ tenant · `partyId` บน 10 โมเดล · facade `party/`) · หน้าผู้ติดต่อ V2 ตรง f5 (กลุ่ม/ค้นหา/ตัวกรอง/ทำรายการ/ผู้ติดต่อยอดนิยม/ภาพรวม) · modal ผู้ติดต่อ g5 (เลขที่ C000xx persist · ที่อยู่แยกช่อง · DBD adapter รอ key · เตือนซ้ำ) · โปรไฟล์ 360° g6 + รวมผู้ติดต่อซ้ำ g7 (ย้ายเอกสาร/JV/กลุ่ม/เอกสารประจำใน tx เดียว)
 - migration ใหม่ 2 ตัว (party · contact_modal) additive — Vercel build รัน migrate เอง · prod **ไม่ต้อง backfill** (AccountContact 16 แถวเป็น tenant ทดสอบ `QC7 บัญชี` ล้วน)
