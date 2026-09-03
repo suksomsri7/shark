@@ -19,6 +19,8 @@ import {
   type ProductInput,
   type GoodsLineInput,
 } from "./product";
+// WO 4.1 — ผูก/เลิกผูกสินค้าบัญชีกับสินค้าในคลัง ("ติดตามสต็อกในคลังสินค้า" · SPEC §8.2 "การเชื่อมต่อ")
+import { linkProductToItem, unlinkProductFromItem } from "./inventory-link";
 
 // ─────────────────── helpers ───────────────────
 
@@ -152,13 +154,73 @@ export async function createProductAction(formData: FormData) {
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.product.manage");
   const res = await createProduct(tenantId, systemId, readProductInput(formData));
+  // WO 4.1: ติ๊ก "ติดตามสต็อกในคลังสินค้า" ตอนสร้าง → สร้าง InvItem + ผูกสองทางให้เลย
+  //   ผูกไม่สำเร็จ = สินค้าถูกสร้างแล้ว (ไม่ย้อน) แค่เตือนเหตุผลกลับไปที่หน้ารายการ
+  let linkErr = "";
+  if (res.ok && str(formData, "trackStock") === "1") {
+    const link = await linkProductToItem({ tenantId, systemId }, res.id, {
+      createItem: {
+        warehouseId: str(formData, "warehouseId") || null,
+        reorderPoint: num(formData, "reorderPoint") ?? null,
+      },
+    });
+    if (!link.ok) linkErr = link.reason;
+  }
   await writeAudit({
     tenantId,
     actorId: userId,
     action: "account.product.manage",
     targetType: "AccountProduct",
     targetId: res.ok ? res.id : undefined,
-    after: { name: str(formData, "name"), ok: res.ok },
+    after: { name: str(formData, "name"), ok: res.ok, trackStock: str(formData, "trackStock") === "1" },
+  });
+  revalidatePath(productsPath(systemId, "catalog"));
+  const err = res.ok ? linkErr : res.reason;
+  redirect(err ? `${productsPath(systemId, "catalog")}&err=${encodeURIComponent(err)}` : productsPath(systemId, "catalog"));
+}
+
+// ─────────────────── ผูก/เลิกผูกคลังสินค้า (WO 4.1 · SPEC §8.2 "การเชื่อมต่อ") ───────────────────
+
+/** ติ๊ก "ติดตามสต็อกในคลังสินค้า" ของสินค้าที่มีอยู่แล้ว — ระบุ itemId = ผูกของเดิม · ไม่ระบุ = สร้างใหม่ในคลัง */
+export async function linkProductToItemAction(formData: FormData) {
+  const systemId = str(formData, "systemId");
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.product.manage");
+  const id = str(formData, "id");
+  const itemId = str(formData, "itemId");
+  const res = await linkProductToItem(
+    { tenantId, systemId },
+    id,
+    itemId
+      ? { itemId }
+      : { createItem: { warehouseId: str(formData, "warehouseId") || null, reorderPoint: num(formData, "reorderPoint") ?? null } },
+  );
+  await writeAudit({
+    tenantId,
+    actorId: userId,
+    action: "account.product.manage",
+    targetType: "AccountProduct",
+    targetId: id,
+    after: { linked: res.ok, mode: itemId ? "existing" : "create" },
+  });
+  revalidatePath(productsPath(systemId, "catalog"));
+  redirect(res.ok ? productsPath(systemId, "catalog") : `${productsPath(systemId, "catalog")}&err=${encodeURIComponent(res.reason)}`);
+}
+
+/** เลิกติดตามสต็อกในคลัง — สินค้ากลับไปใช้ยอดคงเหลือของตัวเอง (แช่แข็งยอดล่าสุดจากคลังไว้ให้) */
+export async function unlinkProductFromItemAction(formData: FormData) {
+  const systemId = str(formData, "systemId");
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.product.manage");
+  const id = str(formData, "id");
+  const res = await unlinkProductFromItem({ tenantId, systemId }, id);
+  await writeAudit({
+    tenantId,
+    actorId: userId,
+    action: "account.product.manage",
+    targetType: "AccountProduct",
+    targetId: id,
+    after: { unlinked: res.ok },
   });
   revalidatePath(productsPath(systemId, "catalog"));
   redirect(res.ok ? productsPath(systemId, "catalog") : `${productsPath(systemId, "catalog")}&err=${encodeURIComponent(res.reason)}`);

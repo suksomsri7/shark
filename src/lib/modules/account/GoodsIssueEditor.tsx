@@ -3,7 +3,9 @@
 import { useMemo, useState } from "react";
 import { createGoodsMovementAction } from "./product-actions";
 
-type ProductOpt = { id: string; name: string; sku: string | null; qtyOnHand: number };
+// WO 4.1: qtyOnHand = คงเหลือ "จริง" ที่หน้า route คำนวณมาแล้ว (ผูกคลัง → InvItem.onHand)
+// linked = สินค้านี้ติดตามสต็อกในคลังสินค้า (ตัด/คืนไปที่คลังจริง ไม่ใช่ตัวเลขของบัญชีเอง)
+type ProductOpt = { id: string; name: string; sku: string | null; qtyOnHand: number; linked?: boolean };
 type ContactOpt = { id: string; name: string };
 type Row = { productId: string; qty: string; description: string };
 

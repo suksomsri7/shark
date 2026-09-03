@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { AccountDocType } from "@prisma/client";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import {
-  listProducts,
+  listProductsWithStock,
   listUnits,
   listCategories,
   listIncomeAccounts,
@@ -15,6 +15,8 @@ import {
   createProductAction,
   updateProductAction,
   archiveProductAction,
+  linkProductToItemAction,
+  unlinkProductFromItemAction,
   createUnitAction,
   renameUnitAction,
   archiveUnitAction,
@@ -58,7 +60,7 @@ export default async function ProductsPage({
   const base = `/app/sys/${id}/account`;
 
   const [products, units, categories, incomeAccts, expenseAccts] = await Promise.all([
-    listProducts(tenantId, systemId, { includeArchived: true }),
+    listProductsWithStock(tenantId, systemId, { includeArchived: true }),
     listUnits(tenantId, systemId),
     listCategories(tenantId, systemId),
     listIncomeAccounts(tenantId, systemId),
@@ -111,7 +113,8 @@ export default async function ProductsPage({
                       <span className="text-xs text-[color:var(--color-muted)]">
                         {PRODUCT_TYPE_LABEL[p.type]}
                         {p.unitId && unitName.get(p.unitId) ? ` · ${unitName.get(p.unitId)}` : ""}
-                        {p.type === "GOODS" && ` · คงเหลือ ${qtyText(p.qtyOnHand)}`}
+                        {p.type === "GOODS" && ` · คงเหลือ ${qtyText(p.stock)}`}
+                        {p.invItemId && " · ติดตามสต็อกในคลัง"}
                         {p.salePrice != null && (
                           <>
                             {" · ขาย "}
@@ -129,6 +132,28 @@ export default async function ProductsPage({
                     expenseAccts={expenseAccts}
                     product={p}
                   />
+                  {p.type === "GOODS" && (
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+                      {p.invItemId ? (
+                        <>
+                          <span className="text-[color:var(--color-muted)]">
+                            ผูกกับคลังสินค้าแล้ว (คลัง #{p.invItemId.slice(-6)}) · คงเหลือมาจากคลัง
+                          </span>
+                          <form action={unlinkProductFromItemAction}>
+                            <input type="hidden" name="systemId" value={systemId} />
+                            <input type="hidden" name="id" value={p.id} />
+                            <SubmitButton variant="ghost">เลิกติดตามสต็อกในคลัง</SubmitButton>
+                          </form>
+                        </>
+                      ) : (
+                        <form action={linkProductToItemAction} className="flex items-center gap-2">
+                          <input type="hidden" name="systemId" value={systemId} />
+                          <input type="hidden" name="id" value={p.id} />
+                          <SubmitButton variant="ghost">ติดตามสต็อกในคลังสินค้า</SubmitButton>
+                        </form>
+                      )}
+                    </div>
+                  )}
                   <div className="mt-2">
                     <ConfirmDialog
                       action={archiveProductAction}
@@ -346,6 +371,20 @@ function ProductForm({
           <input name="imageUrl" defaultValue={product?.imageUrl ?? ""} className="input" />
         </FormField>
       </div>
+      {/* WO 4.1 · SPEC §8.2 "การเชื่อมต่อ" — ติดตามสต็อกในคลังสินค้า (ตอนสร้างใหม่)
+          หน้าสินค้า V2 เต็มรูปแบบ (เลือกคลัง/จุดสั่งซื้อ/ผูก item เดิม) อยู่ WO 4.3 */}
+      {!product && (
+        <div className="sm:col-span-2 flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="trackStock" value="1" data-testid="product-track-stock" />
+            ติดตามสต็อกในคลังสินค้า (สร้างรายการในคลังให้อัตโนมัติ)
+          </label>
+          <label className="flex items-center gap-2 text-xs text-[color:var(--color-muted)]">
+            จุดสั่งซื้อ
+            <input name="reorderPoint" type="number" min="0" className="input w-24" />
+          </label>
+        </div>
+      )}
       {incomeAccts.length > 0 && (
         <FormField label="บัญชีรายได้">
           <select name="incomeAccountId" defaultValue={product?.incomeAccountId ?? ""} className="input">

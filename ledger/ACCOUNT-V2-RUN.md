@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 4.1 InvItem canonical (เฟส 4) |
+| WO | 4.2 POS ส่งบรรทัด (เฟส 4) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~19:00 UTC: **verify prod ผ่าน** — Vercel READY 18:54 (dpl_RoXNCv…) · `_prisma_migrations` มี party + contact_modal finished · ตาราง Party/PartyMergeCandidate + คอลัมน์ partyId/code/province อยู่บน prod · https 200 · 4.1 กำลังทำ (Opus) |
+| ขั้นที่ถึง | 3 ก.ย. ~19:45 UTC: 4.1 DONE (Fable รันด่านเอง 20 ชุดเขียว) · commit แล้ว · กำลังออก 4.2 |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -42,7 +42,7 @@
 | 3.2 | หน้าผู้ติดต่อ V2 | Sonnet | DONE | (HEAD) | ตีกลับ 1 รอบ (7 จุด parity f5) → รอบ 2 ตรง f5 ทั้ง 1440/390 · Fable รันเอง: contacts 49 · seed-check 61 · list 155 · guard 149 · party 36 · fitness 17 · CPA 107 · typecheck 0 · ค้าง: เลขที่ C000xx คำนวณจาก createdAt ไม่ persist → 3.3 เพิ่ม `code` · ตัวเลือกจำนวนต่อหน้าเป็น select ธรรมดา · ที่มา แชท/POS/นำเข้า = 0 จริง (ยังไม่ wire) · ตั้งค่ากฎลูกค้าประจำ UI → 8.2 |
 | 3.3 | modal ผู้ติดต่อ + DBD + dedupe | Opus | DONE | (HEAD) | ผ่านรอบแรก ตรง g5 (พื้นฐาน/ขั้นสูง/เตือนซ้ำ/มือถือ) · Fable รันเอง: contact-modal 93 · contacts 49 · seed-check 61 · guard 149 · party 36 · schema 61 · fitness 17 · CPA 107 · drift clean · typecheck 0 · 🐞 แก้ 2: Modal กลางดึงโฟกัสทุกตัวอักษร (กระทบทุก modal) · retry เลขที่ไม่เคยทำงาน (Prisma 7 ไม่ส่ง meta.target) · ค้าง: prod ยังไม่ backfill `code` (สคริปต์ acc-v2-contact-code-backfill) · DBD_API_KEY รอเจ้าของ · รหัสไปรษณีย์ไม่ auto · แชท placeholder · `qc-account-cpa.mts` ยังไม่เคารพ QC_ENV_FILE → 9.2 |
 | 3.4 | โปรไฟล์ 360° + รวมซ้ำ | Opus | DONE | (HEAD) | ตรง f5-menu/g6/g7 · Fable รันเอง: profile 59 · merge 56 · modal 93 · contacts 49 · seed-check 68 · guard 151 · party 36 · schema 61 · import 114 · list 155 · fitness 17 · CPA 107 · drift clean · typecheck 0 · เฟส 3 exit: crm/member/chat 26 ชุด เขียว (agent รัน) · 🐞 ปิด: qc-acc-v2-import แดงตั้งแต่ 3.2 · ค้าง: retry เลขที่ยังวน 6 รอบเมื่อชน index อื่น → 9.2 · dismiss คู่ที่เบอร์เดียวกันไม่ได้ (ต้องมีตาราง dismiss ระดับ contact) → 9.x · การ์ดแต้ม/จอง/แชท ยังไม่เชื่อม |
-| 4.1 | InvItem canonical + sync + consume | Opus | TODO | | |
+| 4.1 | InvItem canonical + sync + consume | Opus | DONE | (HEAD) | ไม่มี UI · Fable รันเอง: invitem 88 · seed-check 68 · guard 151 · schema 61 · list 155 · adjust 96 · cheap-routes 105 · inclvat 71 · inventory-account 23 · pos-account 16 · pos-inventory 25 · fitness 17 · CPA 107 · drift clean · typecheck 0 · ทิศ canonical: InvItem=sku/หน่วย/ต้นทุน/onHand · AccountProduct=บัญชี/VAT/ราคาขาย · เบิก/คืนตัดคลังใน tx เดียวกับเอกสาร (`acc-issue-<lineId>`) · 🐞 ปิด: `resolveLocationId` รับ locationId ข้าม tenant (ยอดคลังเพี้ยน) · ค้าง→4.3: ใบเบิกยังไม่โพสต์ GL (ค่าใช้จ่ายที่ปรับปรุง §8.4) · invItemId บน MenuItem/Rental/Ticket/School ยังไม่ wire · qtyOnHand mirror เน่าได้ถ้า POS ตัดตรง (รายงานต้องใช้ productStockMap) · reseed ต้องรัน expected 3 ตัวตาม |
 | 4.2 | POS ส่งบรรทัด | Opus | TODO | | |
 | 4.3 | หน้าสินค้า V2 + หน่วย + จัดชุด + เบิก/คืน/ปรับต้นทุน | Sonnet+Opus | TODO | | |
 | 5.1 | ช่องทางการเงิน V2 | Sonnet | TODO | | |
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 3 ก.ย. 2026 ~19:45 UTC — 4.1 InvItem canonical DONE (Opus รอบเดียว · ปิดช่องโหว่ locationId ข้าม tenant)
 - 3 ก.ย. 2026 ~18:52 UTC — 🏁 **เฟส 3 ปิด** (3.1–3.4 · qc:all 205/205 · main `2d97a98`) · prod ไม่ต้อง backfill (ไม่มีข้อมูลจริง) · 22/46 WO ≈ 48%
 - 3 ก.ย. 2026 ~19:30 UTC — 3.4 โปรไฟล์ 360°+รวมซ้ำ DONE → เฟส 3 ครบ 4 WO เริ่มปิดเฟส
 - 3 ก.ย. 2026 ~18:00 UTC — 3.3 modal ผู้ติดต่อ DONE (Opus รอบเดียว · บั๊ก Modal กลางพิมพ์ได้ตัวเดียวถูกปิด)

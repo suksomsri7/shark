@@ -20,6 +20,10 @@ export {
   createAccountProductWithSalePrice,
 } from "./service";
 
+// WO 4.1 (MAP §F.11) — คลังเรียกกลับเข้ามาเมื่อ item เปลี่ยน (ชื่อ/sku/หน่วย/ต้นทุน)
+//   chokepoint inventory→account · ไม่ throw · ไม่ผูก/ไม่มีระบบ = { synced:false, reason }
+export { syncItemToAccountProduct, type SyncResult } from "./inventory-link";
+
 /** ระบบบัญชีที่ผูกกับ POS ระบบนี้ (systemId) — null = ยังไม่เชื่อมบัญชี */
 export async function posAccountSystemId(
   tenantId: string,

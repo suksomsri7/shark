@@ -5,7 +5,7 @@ import { cell, columnIndex, type CsvTable, type ImportSummary } from "@/lib/core
 import { emitOutbox } from "@/lib/core/outbox";
 import { formatThaiDate } from "@/lib/ui/date";
 import { isNegative, movingAvgCost, needsReorder } from "./rules";
-import { bridgeInventoryMovement, type MovementForGl } from "./account-bridge";
+import { bridgeInventoryMovement, bridgeItemToAccountProduct, type MovementForGl } from "./account-bridge";
 
 // Inventory (ระบบ 18) — สต็อกกลาง + movement ledger (contract C-1)
 // ⚠️ กติกาทั้งหมดมาจาก rules.ts (สมอง FREEZE) — ที่นี่แค่เรียกใช้ + ผูก DB
@@ -25,9 +25,15 @@ export type Ctx = { tenantId: string; systemId: string };
 const DEFAULT_LOCATION_NAME = "คลังหลัก";
 type Db = Prisma.TransactionClient;
 
+// ⚠️ WO 4.1 — helper ชุดล่างนี้ถูกใช้ได้ 2 เส้น:
+//    (ก) เส้นเดิมของคลัง: `db` มาจาก tenantDb(ctx) → มี tenantId/systemId inject ให้อยู่แล้ว
+//    (ข) เส้นใหม่ `*InTx`: `db` = tx ของโมดูลบัญชี (prisma.$transaction ธรรมดา · ไม่ inject อะไรเลย)
+//    ⇒ ทุก where ที่นี่ต้องใส่ `tenantId/systemId` ของ ctx เอง (เส้น ก ได้ตัวกรองซ้ำ = ไม่มีผลข้างเคียง)
+const scope = (ctx: Ctx) => ({ tenantId: ctx.tenantId, systemId: ctx.systemId });
+
 // get-or-create คลัง default (isDefault ชื่อ "คลังหลัก") — race-safe ผ่าน unique [systemId,name]
 async function getOrCreateDefaultLocation(db: Db, ctx: Ctx): Promise<{ id: string }> {
-  const found = await db.invLocation.findFirst({ where: { isDefault: true, archivedAt: null } });
+  const found = await db.invLocation.findFirst({ where: { ...scope(ctx), isDefault: true, archivedAt: null } });
   if (found) return { id: found.id };
   try {
     const created = await db.invLocation.create({
@@ -37,7 +43,7 @@ async function getOrCreateDefaultLocation(db: Db, ctx: Ctx): Promise<{ id: strin
   } catch (e) {
     // ชนกับคนสร้างพร้อมกัน → refind ตามชื่อ (unique [systemId,name])
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      const again = await db.invLocation.findFirst({ where: { name: DEFAULT_LOCATION_NAME } });
+      const again = await db.invLocation.findFirst({ where: { ...scope(ctx), name: DEFAULT_LOCATION_NAME } });
       if (again) return { id: again.id };
     }
     throw e;
@@ -46,7 +52,7 @@ async function getOrCreateDefaultLocation(db: Db, ctx: Ctx): Promise<{ id: strin
 
 // lazy seed: ถ้า item ยังไม่มีแถวสต็อกเลย → สร้างแถวคลัง default ด้วย onHand ปัจจุบัน (ก่อน apply delta)
 async function seedDefaultStockIfNeeded(db: Db, ctx: Ctx, item: { id: string; onHand: number }): Promise<void> {
-  const count = await db.invLocationStock.count({ where: { itemId: item.id } });
+  const count = await db.invLocationStock.count({ where: { ...scope(ctx), itemId: item.id } });
   if (count > 0) return;
   const def = await getOrCreateDefaultLocation(db, ctx);
   await db.invLocationStock.create({
@@ -56,7 +62,7 @@ async function seedDefaultStockIfNeeded(db: Db, ctx: Ctx, item: { id: string; on
 
 // ปรับสต็อกคลังหนึ่งด้วย delta (find→update/create — ห้าม upsert) คืนยอดคงเหลือหลังปรับ
 async function applyLocationDelta(db: Db, ctx: Ctx, itemId: string, locationId: string, delta: number): Promise<number> {
-  const row = await db.invLocationStock.findFirst({ where: { itemId, locationId } });
+  const row = await db.invLocationStock.findFirst({ where: { ...scope(ctx), itemId, locationId } });
   if (row) {
     const after = row.onHand + delta;
     await db.invLocationStock.update({ where: { id: row.id }, data: { onHand: after } });
@@ -80,7 +86,7 @@ async function applyLotDelta(
   delta: number,
   expiryDate?: Date | null,
 ): Promise<number> {
-  const existing = await db.invLot.findFirst({ where: { itemId, lotCode } });
+  const existing = await db.invLot.findFirst({ where: { ...scope(ctx), itemId, lotCode } });
   if (existing) {
     const after = existing.onHand + delta;
     await db.invLot.update({
@@ -102,10 +108,16 @@ async function applyLotDelta(
   return delta;
 }
 
-// resolve locationId ที่จะใช้จริง: ส่งมา = ใช้ตามนั้น · ไม่ส่ง = คลัง default
+// resolve locationId ที่จะใช้จริง: ส่งมา = ใช้ตามนั้น (ต้องเป็นคลังของระบบนี้) · ไม่ส่ง = คลัง default
+// 🔴 WO 4.1: เดิมเชื่อ id ที่ส่งมาโดยไม่ตรวจ — ชี้คลังของระบบอื่นได้ (แถว InvLocationStock จะถูกสร้าง
+//    ด้วย tenantId/systemId ของเรา แต่ locationId เป็นของคนอื่น = ยอดคลังเพี้ยนข้ามระบบ)
 async function resolveLocationId(db: Db, ctx: Ctx, locationId?: string | null): Promise<string> {
   const id = locationId?.trim();
-  if (id) return id;
+  if (id) {
+    const loc = await db.invLocation.findFirst({ where: { ...scope(ctx), id }, select: { id: true } });
+    if (!loc) throw new Error("ไม่พบคลังสินค้าที่เลือก");
+    return loc.id;
+  }
   return (await getOrCreateDefaultLocation(db, ctx)).id;
 }
 
@@ -341,6 +353,8 @@ export async function updateItem(ctx: Ctx, itemId: string, patch: UpdateItemPatc
       throw new Error("มีสินค้ารหัส (SKU) นี้อยู่แล้ว");
     throw e;
   }
+  // WO 4.1: item = ต้นฉบับของ ชื่อ/sku/หน่วย/ต้นทุน → ดันไปที่สินค้าบัญชีที่ผูกกันไว้
+  await syncLinkedAccountProduct(ctx, itemId);
   return { id: itemId };
 }
 
@@ -382,6 +396,26 @@ async function postMovementGl(ctx: Ctx, mv: MovementForGl): Promise<void> {
   }
 }
 
+/** แถว InvMovement เต็ม ๆ (ผลลัพธ์ของ receiveInTx/consumeInTx) */
+export type MovementRow = Awaited<ReturnType<typeof prisma.invMovement.create>>;
+
+/**
+ * WO 4.1 — ให้ผู้เรียก `*InTx` โพสต์ GL ต้นทุนได้ "หลัง commit" ของ tx ตัวเอง
+ * (โพสต์ในระหว่าง tx ไม่ได้ — entry บัญชีต้องอยู่ scope=ACCOUNT ไม่ใช่ scope=INVENTORY · ดูหมายเหตุ postMovementGl)
+ */
+export async function postMovementGlAfterTx(ctx: Ctx, mv: MovementForGl): Promise<void> {
+  await postMovementGl(ctx, mv);
+}
+
+/**
+ * WO 4.1 (MAP §F.11) — item เปลี่ยน → ดันค่าไปที่ AccountProduct ที่ผูกกันไว้ (ชื่อ · sku · หน่วย · ต้นทุน)
+ * เรียกผ่าน facade บัญชี (`account/index`) เท่านั้น — chokepoint inventory→account เดิม
+ * ไม่ผูกกับใคร / ไม่มีระบบบัญชี / พังกลางทาง = เงียบ (คลังต้องทำงานต่อได้ตามกติกา §F.15 "ไม่เชื่อม = ไม่ post")
+ */
+async function syncLinkedAccountProduct(ctx: Ctx, itemId: string): Promise<void> {
+  await bridgeItemToAccountProduct(ctx, itemId); // กลืน error เองแล้วภายใน (คลังต้องทำงานต่อได้)
+}
+
 // ── รับเข้า (IN) — เพิ่ม onHand + คำนวณต้นทุนถัวเฉลี่ยเคลื่อนที่ (จากกติกา) ──
 // idempotent ต่อ idempotencyKey: เรียกซ้ำด้วย key เดิม → ไม่เพิ่มซ้ำ
 export type ReceiveInput = {
@@ -399,18 +433,31 @@ export type ReceiveInput = {
 };
 
 export async function receive(ctx: Ctx, input: ReceiveInput): Promise<{ id: string }> {
+  const db = tenantDb(ctx);
+  const mv = await db.$transaction((tx) => receiveInTx(tx as unknown as Db, ctx, input));
+  // perpetual: โพสต์ต้นทุนเข้าบัญชี (นอก tx · idempotent ต่อ movement) — ไม่มีระบบ ACCOUNT = ข้าม
+  await postMovementGl(ctx, mv);
+  // WO 4.1: ต้นทุนถัวเฉลี่ยเปลี่ยนหลังรับเข้า → ดันไปที่ "ราคาซื้อ/หน่วย" ของสินค้าบัญชีที่ผูกกันไว้
+  await syncLinkedAccountProduct(ctx, mv.itemId);
+  return { id: mv.id };
+}
+
+/**
+ * WO 4.1 — รับเข้า "ภายใน tx ของผู้เรียก" (โมดูลบัญชี: ใบส่งคืนเบิก RPR ต้อง atomic กับเอกสาร)
+ * ⚠️ ไม่โพสต์ GL ให้ (ต้อง commit ก่อน) — ผู้เรียกรับผิดชอบเรียก `postMovementGlAfterTx` เองถ้าต้องการ
+ * ⚠️ `tx` อาจไม่ได้ผูก scope → ทุก where ในนี้ใส่ tenantId/systemId เอง
+ */
+export async function receiveInTx(tx: Db, ctx: Ctx, input: ReceiveInput): Promise<MovementRow> {
   const qty = Math.round(input.qty);
   const inCost = Math.max(0, Math.round(input.costSatang));
   const lotCode = input.lotCode?.trim() || null;
-  const db = tenantDb(ctx);
-
-  const mv = await db.$transaction(async (tx) => {
+  {
     const txc = tx as unknown as Db;
     // idempotent guard — key เดิมเคยบันทึกแล้ว → คืนรายการเดิม ไม่แตะสต็อก
-    const dup = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
+    const dup = await tx.invMovement.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: input.idempotencyKey } });
     if (dup) return dup;
 
-    const item = await tx.invItem.findFirst({ where: { id: input.itemId } });
+    const item = await tx.invItem.findFirst({ where: { ...scope(ctx), id: input.itemId } });
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
     // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
     if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
@@ -449,10 +496,7 @@ export async function receive(ctx: Ctx, input: ReceiveInput): Promise<{ id: stri
         needsReview: isNegative(newOnHand),
       },
     });
-  });
-  // perpetual: โพสต์ต้นทุนเข้าบัญชี (นอก tx · idempotent ต่อ movement) — ไม่มีระบบ ACCOUNT = ข้าม
-  await postMovementGl(ctx, mv);
-  return { id: mv.id };
+  }
 }
 
 // ── ตัดออก (OUT) — ลด onHand · ยอมติดลบ ไม่ block ·  ติดลบ = ตั้งธง needsReview ──
@@ -470,16 +514,26 @@ export type ConsumeInput = {
 };
 
 export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: string }> {
+  const db = tenantDb(ctx);
+  const mv = await db.$transaction((tx) => consumeInTx(tx as unknown as Db, ctx, input));
+  // perpetual: รับรู้ต้นทุนขาย (นอก tx · idempotent ต่อ movement) — ไม่มีระบบ ACCOUNT = ข้าม
+  await postMovementGl(ctx, mv);
+  return { id: mv.id };
+}
+
+/**
+ * WO 4.1 — ตัดออก "ภายใน tx ของผู้เรียก" (โมดูลบัญชี: ใบเบิก PRR ต้อง atomic กับเอกสาร)
+ * ⚠️ ไม่โพสต์ GL ให้ · ⚠️ `tx` อาจไม่ได้ผูก scope → ใส่ tenantId/systemId เองทุก where
+ */
+export async function consumeInTx(tx: Db, ctx: Ctx, input: ConsumeInput): Promise<MovementRow> {
   const qty = Math.round(input.qty);
   const lotCode = input.lotCode?.trim() || null;
-  const db = tenantDb(ctx);
-
-  const mv = await db.$transaction(async (tx) => {
+  {
     const txc = tx as unknown as Db;
-    const dup = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
+    const dup = await tx.invMovement.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: input.idempotencyKey } });
     if (dup) return dup;
 
-    const item = await tx.invItem.findFirst({ where: { id: input.itemId } });
+    const item = await tx.invItem.findFirst({ where: { ...scope(ctx), id: input.itemId } });
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
     // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
     if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
@@ -518,10 +572,7 @@ export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: stri
         needsReview: isNegative(newOnHand) || lotNegative,
       },
     });
-  });
-  // perpetual: รับรู้ต้นทุนขาย (นอก tx · idempotent ต่อ movement) — ไม่มีระบบ ACCOUNT = ข้าม
-  await postMovementGl(ctx, mv);
-  return { id: mv.id };
+  }
 }
 
 // ── ปรับสต็อก (ADJUST) — ตั้ง onHand เป็นค่านับจริง (stock take) โดยตรง ──
@@ -760,6 +811,9 @@ export async function linkAccountProduct(ctx: Ctx, itemId: string, accountProduc
   const item = await db.invItem.findFirst({ where: { id: itemId } });
   if (!item) throw new Error("ไม่พบสินค้าในคลัง");
   await db.invItem.update({ where: { id: item.id }, data: { accountProductId } });
+  // WO 4.1: ผูกแล้วดันค่าฝั่งคลัง (sku/หน่วย/ต้นทุน) ไปตั้งต้นให้สินค้าบัญชีทันที — ขากลับ
+  //   (AccountProduct.invItemId) ตั้งโดย account.linkProductToItem ซึ่งเรียกฟังก์ชันนี้ต่ออีกที
+  await syncLinkedAccountProduct(ctx, itemId);
 }
 
 export async function recentMovements(ctx: Ctx, take = 30) {

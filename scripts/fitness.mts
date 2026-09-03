@@ -312,6 +312,11 @@ const ALLOWED_EDGES = new Set([
   // ตามใบสั่งงาน WO 3.2 ข้อ A ("Customer / CrmContact / ChatContact rows … read-only queries")
   "account→member",
   "account→crm",
+  // chokepoint (WO 4.1 — InvItem canonical · MAP §F.8–12): แคตตาล็อกกลาง = InvItem
+  //   บัญชี → คลัง: อ่านสต็อกจริง + ตัด/คืนใบเบิกผ่าน inventory.consumeInTx/receiveInTx (ทางเดียวที่แตะสต็อกได้)
+  //   คลัง → บัญชี: syncItemToAccountProduct ผ่าน account/index (เส้น inventory→account เดิม)
+  //   — Fable อนุมัติล่วงหน้าตามใบสั่งงาน WO 4.1
+  "account→inventory",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

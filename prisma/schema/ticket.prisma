@@ -65,6 +65,8 @@ model TicketType {
   sold        Int      @default(0) // ตัดแล้ว (รวม PENDING + PAID ที่ยังไม่ยกเลิก)
   sortOrder   Int      @default(0)
   active      Boolean  @default(true)
+  // V2 (WO 4.1 · MAP §F.10): ต้นฉบับในแคตตาล็อกกลาง (InvItem) — null = ไม่ผูกคลัง
+  invItemId   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -73,6 +75,7 @@ model TicketType {
   @@index([tenantId])
   @@index([unitId])
   @@index([eventId])
+  @@index([unitId, invItemId]) // V2 (WO 4.1)
 }
 
 model TicketOrder {

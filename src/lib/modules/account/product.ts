@@ -1,6 +1,11 @@
 // Account — สินค้า/บริการ + หน่วย + กลุ่มจัดประเภท + เบิก/คืนสินค้า (§3.4)
 // scope = feature: ทุกตาราง tenantId + systemId · เงิน Int สตางค์ · จำนวน (qty) Decimal
-// เบิกสินค้า (GOODS_ISSUE/GOODS_ISSUE_RETURN): ตัด/คืน qtyOnHand ใน $transaction — ไม่โพสต์ GL v1 (มูลค่า inventory 🔜)
+// เบิกสินค้า (GOODS_ISSUE/GOODS_ISSUE_RETURN):
+//   • สินค้าที่ **ผูกคลัง** (invItemId != null · WO 4.1) → ตัด/คืนที่ `InvItem` ผ่านโมดูลคลัง
+//     (`consumeInTx`/`receiveInTx` ใน tx เดียวกับเอกสาร ⇒ ล้ม = ไม่เหลือครึ่ง ๆ กลาง ๆ)
+//     idempotencyKey = `acc-issue-<docLineId>` / `acc-return-<docLineId>` ⇒ อนุมัติซ้ำไม่ตัดเบิ้ล
+//   • สินค้าที่ **ยังไม่ผูกคลัง** → ตัด/คืน `qtyOnHand` เหมือนเดิมทุกประการ (ไม่มี regression)
+//   • ยังไม่โพสต์ GL ทั้งสองแบบ (มูลค่าใบเบิก/ค่าใช้จ่ายที่ปรับปรุง = WO 4.3) — เท่าเดิม
 // เจ้าของไฟล์นี้ = subagent Products (ไม่แตะ service.ts/actions.ts/ui.tsx/gl.ts/coa.ts/prisma)
 import { prisma } from "@/lib/core/db";
 import type {
@@ -10,6 +15,10 @@ import type {
 } from "@prisma/client";
 // WO 1.1: reuse (read-only) ตัวช่วยกรอง/แบ่งหน้าเดียวกับฝั่งรายรับ/รายจ่าย — ไม่ก๊อปสูตรวันที่/พ้นกำหนดซ้ำ
 import { overdueWhere, parseDay, clampPageSize, clampPage, type DocStatusFilter, type DocSort } from "./service";
+// WO 4.1 — สินค้าที่ผูกคลัง: ความจริงเรื่องสต็อกอยู่ที่ InvItem (อ่าน/เขียนผ่านชั้นนี้เท่านั้น)
+import { inventorySystemId, productStockMap, syncProductToItem } from "./inventory-link";
+// chokepoint account→inventory (fitness F2 · WO 4.1) — ตัด/คืนสต็อกใน tx ของเอกสาร
+import * as inventory from "@/lib/modules/inventory/service";
 
 // ─────────────────── ค่าคงที่ ───────────────────
 
@@ -157,6 +166,21 @@ export function getProduct(tenantId: string, systemId: string, id: string) {
   return prisma.accountProduct.findFirst({ where: { id, tenantId, systemId } });
 }
 
+/**
+ * WO 4.1 — รายการสินค้าพร้อม "คงเหลือจริง" (`stock`)
+ * ผูกคลัง → `InvItem.onHand` · ไม่ผูก → `qtyOnHand` ของตัวเอง
+ * ⚠️ ทุกหน้าจอ/รายงานที่โชว์คงเหลือ ต้องใช้ตัวนี้ ห้ามอ่าน `qtyOnHand` ตรง ๆ อีก (มันเป็นแค่กระจก)
+ */
+export async function listProductsWithStock(
+  tenantId: string,
+  systemId: string,
+  opts?: { includeArchived?: boolean; type?: AccountProductType },
+) {
+  const rows = await listProducts(tenantId, systemId, opts);
+  const stock = await productStockMap({ tenantId, systemId }, rows);
+  return rows.map((p) => ({ ...p, stock: stock.get(p.id) ?? Number(p.qtyOnHand) }));
+}
+
 export type ProductInput = {
   sku?: string | null;
   name: string;
@@ -227,6 +251,9 @@ export async function updateProduct(
         imageUrl: input.imageUrl?.trim() || null,
       },
     });
+    // WO 4.1: ผูกคลังอยู่ → ดัน ชื่อ/sku/หน่วย ไปที่ item กลาง (ไม่ดันราคา/VAT/ผังบัญชี — เป็นฟิลด์บัญชี)
+    //   ไม่ผูก / ไม่มีระบบคลัง = no-op เงียบ ๆ (§F.15)
+    await syncProductToItem({ tenantId, systemId }, id);
     return { ok: true };
   } catch {
     return { ok: false, reason: "รหัสสินค้า (SKU) ซ้ำกับที่มีอยู่" };
@@ -346,8 +373,10 @@ export function getGoodsIssueDoc(tenantId: string, systemId: string, id: string)
   });
 }
 
-// สร้างเอกสารเบิก/คืน + ตัด/คืน qtyOnHand ใน $transaction (ไม่โพสต์ GL)
-// GOODS_ISSUE = ตัดสต็อก (qtyOnHand -= qty) · GOODS_ISSUE_RETURN = คืน (qtyOnHand += qty)
+// สร้างเอกสารเบิก/คืน + ตัด/คืนสต็อก ใน $transaction เดียว (ไม่โพสต์ GL — ดูหัวไฟล์)
+// GOODS_ISSUE = ตัดสต็อก · GOODS_ISSUE_RETURN = คืน
+// สินค้าผูกคลัง → เดินที่ InvItem ผ่าน inventory.consumeInTx/receiveInTx (idempotent ต่อบรรทัดเอกสาร)
+// สินค้าไม่ผูกคลัง → เดินที่ AccountProduct.qtyOnHand เหมือนเดิม
 export async function createGoodsMovement(input: {
   tenantId: string;
   systemId: string;
@@ -402,6 +431,47 @@ export async function createGoodsMovement(input: {
         }
       }
 
+      // ── WO 4.1: สินค้าที่ผูกคลัง → ความจริงอยู่ที่ InvItem ──
+      const linkedProductIds = products.filter((p) => p.invItemId).map((p) => p.id);
+      let invCtx: { tenantId: string; systemId: string } | null = null;
+      const itemByProductId = new Map<string, { id: string; onHand: number; costSatang: number; kind: string; name: string }>();
+      if (linkedProductIds.length > 0) {
+        const invSystemId = await inventorySystemId(input.tenantId);
+        if (!invSystemId) {
+          // ผูกคลังไว้แต่หาระบบคลังไม่เจอ = ตัดสต็อกให้ตรงความจริงไม่ได้ → ไม่ยอมออกเอกสาร
+          throw new Error("สินค้าในใบนี้ผูกกับคลังสินค้าไว้ แต่ยังไม่พบระบบคลังสินค้าของกิจการ");
+        }
+        invCtx = { tenantId: input.tenantId, systemId: invSystemId };
+        const items = await tx.invItem.findMany({
+          where: {
+            tenantId: invCtx.tenantId,
+            systemId: invCtx.systemId,
+            id: { in: products.filter((p) => p.invItemId).map((p) => p.invItemId as string) },
+          },
+          select: { id: true, onHand: true, costSatang: true, kind: true, name: true },
+        });
+        const byItemId = new Map(items.map((i) => [i.id, i]));
+        for (const p of products) {
+          if (!p.invItemId) continue;
+          const it = byItemId.get(p.invItemId);
+          if (!it) throw new Error(`ไม่พบ "${p.name}" ในคลังสินค้า (ลิงก์เสีย) — เลิกผูกคลังก่อนจึงจะเบิกได้`);
+          if (it.kind === "SERVICE") throw new Error(`"${p.name}" ในคลังเป็นบริการ — เบิกสต็อกไม่ได้`);
+          itemByProductId.set(p.id, it);
+        }
+        // กันสต็อกติดลบ (เฉพาะเบิก) — เช็กจากยอดคลังสด ๆ ใน tx นี้ รวมทุกบรรทัดของ item เดียวกัน
+        if (sign < 0 && !input.allowNegative) {
+          for (const [productId, qty] of deltaById) {
+            const it = itemByProductId.get(productId);
+            if (!it) continue;
+            if (it.onHand - qty < 0) {
+              throw new Error(
+                `สต็อก "${byId.get(productId)!.name}" ในคลังไม่พอ (คงเหลือ ${qtyText(it.onHand)}, เบิก ${qtyText(qty)})`,
+              );
+            }
+          }
+        }
+      }
+
       const docNo = await nextGoodsDocNo(tx, input.tenantId, input.systemId, input.docType, issueDate);
       const doc = await tx.accountDocument.create({
         data: {
@@ -434,10 +504,12 @@ export async function createGoodsMovement(input: {
             })),
           },
         },
+        include: { lines: { orderBy: { sortOrder: "asc" }, select: { id: true, productId: true, qty: true } } },
       });
 
-      // ตัด/คืน qtyOnHand ต่อสินค้า — กันติดลบถ้าไม่อนุญาต (GOODS_ISSUE เท่านั้น)
+      // ── สินค้าที่ไม่ผูกคลัง: ตัด/คืน qtyOnHand ต่อสินค้า (พฤติกรรมเดิมเป๊ะ) ──
       for (const [productId, qty] of deltaById) {
+        if (itemByProductId.has(productId)) continue; // ผูกคลัง → ไปเดินที่ InvItem ด้านล่าง
         const p = byId.get(productId)!;
         const current = Number(p.qtyOnHand);
         const nextQty = current + sign * qty;
@@ -450,6 +522,43 @@ export async function createGoodsMovement(input: {
           where: { id: productId },
           data: { qtyOnHand: nextQty },
         });
+      }
+
+      // ── สินค้าที่ผูกคลัง: ตัด/คืนที่ InvItem ใน tx เดียวกับเอกสาร (atomic) ──
+      // 1 บรรทัดเอกสาร = 1 movement · key `acc-issue-<lineId>` / `acc-return-<lineId>` ⇒ ยิงซ้ำไม่เบิ้ล
+      if (invCtx) {
+        const balanceByItem = new Map<string, number>();
+        for (const line of doc.lines) {
+          if (!line.productId) continue;
+          const it = itemByProductId.get(line.productId);
+          if (!it) continue;
+          const qty = Number(line.qty);
+          const common = {
+            itemId: it.id,
+            qty,
+            sourceModule: "ACCOUNT",
+            refType: "AccountDocument",
+            refId: doc.id,
+            note: docNo,
+            locationId: byId.get(line.productId)!.warehouseId,
+          };
+          const mv =
+            input.docType === "GOODS_ISSUE"
+              ? await inventory.consumeInTx(tx, invCtx, { ...common, idempotencyKey: `acc-issue-${line.id}` })
+              : await inventory.receiveInTx(tx, invCtx, {
+                  ...common,
+                  // คืนของเข้าคลังด้วย "ต้นทุนถัวเฉลี่ยปัจจุบัน" → ค่าเฉลี่ยไม่ขยับจากการคืนเบิก
+                  costSatang: it.costSatang,
+                  idempotencyKey: `acc-return-${line.id}`,
+                });
+          balanceByItem.set(it.id, mv.balanceAfter);
+        }
+        // กระจก (mirror) — ให้หน้าจอ/คิวรีเก่าที่ยังอ่าน qtyOnHand เห็นตัวเลขเดียวกับคลัง
+        for (const [productId, it] of itemByProductId) {
+          const after = balanceByItem.get(it.id);
+          if (after === undefined) continue;
+          await tx.accountProduct.update({ where: { id: productId }, data: { qtyOnHand: after } });
+        }
       }
       if (input.docType === "GOODS_ISSUE_RETURN" && input.sourceDocId) {
         await tx.accountDocumentRelation.create({

@@ -5,7 +5,7 @@
 //   (valuation source = movement ledger เดียว — receive เก็บ inCost, consume/refund เก็บต้นทุนถัวเฉลี่ย ณ ตอนนั้น)
 // ⚠️ ระบบ ACCOUNT ต้อง resolve ที่ service (มี tenantDb) แล้วส่ง accountSystemId เข้ามา — ไม่มี = ข้ามเงียบ
 
-import { postInventoryGl } from "@/lib/modules/account";
+import { postInventoryGl, syncItemToAccountProduct } from "@/lib/modules/account";
 
 // โมดูลฝั่งขาย (ตัดสต็อกเป็นต้นทุนขาย) → receive จากโมดูลเหล่านี้ = คืนสต็อก (refund) กลับ COGS
 const SALE_MODULES = new Set(["ECOM", "CLINIC", "POS"]);
@@ -72,4 +72,22 @@ export async function bridgeInventoryMovement(
     },
   );
   return { posted: "entryId" in res };
+}
+
+/**
+ * WO 4.1 (MAP §F.11) — item ในคลังเปลี่ยน → ดันค่าไปที่ AccountProduct ที่ผูกกันไว้
+ * (ชื่อ · sku · หน่วย · ต้นทุน→ราคาซื้อ) ผ่าน facade บัญชีตัวเดียวกับ postInventoryGl
+ * ไม่ผูกกับใคร / ไม่มีระบบบัญชี / พังกลางทาง = เงียบ — กติกาบ้าน §F.15 "ไม่เชื่อม = ไม่ post"
+ * (ห้าม log ชื่อสินค้า/ข้อมูลลูกค้า)
+ */
+export async function bridgeItemToAccountProduct(
+  ctx: { tenantId: string; systemId: string },
+  itemId: string,
+): Promise<{ synced: boolean }> {
+  try {
+    const res = await syncItemToAccountProduct(ctx, itemId);
+    return { synced: res.synced };
+  } catch {
+    return { synced: false };
+  }
 }

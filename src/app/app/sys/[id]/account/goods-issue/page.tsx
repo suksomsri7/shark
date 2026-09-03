@@ -2,7 +2,7 @@ import Link from "next/link";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { listContacts, computeListTabCounts } from "@/lib/modules/account/service";
 import {
-  listProducts,
+  listProductsWithStock,
   listGoodsMovements,
   listGoodsIssuePaged,
   qtyText,
@@ -94,12 +94,13 @@ export default async function GoodsIssuePage({
       from: range.from,
       to: range.to,
     }),
-    listProducts(tenantId, systemId, { type: "GOODS" }),
+    listProductsWithStock(tenantId, systemId, { type: "GOODS" }),
     listContacts(tenantId, systemId),
     listGoodsMovements(tenantId, systemId, { take: 100 }),
   ]);
 
-  const goods = allProducts.map((p) => ({ id: p.id, name: p.name, sku: p.sku, qtyOnHand: Number(p.qtyOnHand) }));
+  // WO 4.1: `stock` = คงเหลือจริง (ผูกคลัง → InvItem.onHand · ไม่ผูก → qtyOnHand ของตัวเอง)
+  const goods = allProducts.map((p) => ({ id: p.id, name: p.name, sku: p.sku, qtyOnHand: p.stock, linked: p.invItemId != null }));
 
   type Move = { docNo: string | null; docType: string; issueDate: Date; delta: number };
   const perProduct = new Map<string, Move[]>();
@@ -194,7 +195,10 @@ export default async function GoodsIssuePage({
                         {p.name}
                         {p.sku && <span className="ml-1 text-xs text-[color:var(--color-muted)]">({p.sku})</span>}
                       </span>
-                      <span>คงเหลือ {qtyText(p.qtyOnHand)}</span>
+                      <span>
+                        คงเหลือ {qtyText(p.qtyOnHand)}
+                        {p.linked && <span className="ml-1 text-xs text-[color:var(--color-muted)]">· คลังสินค้า</span>}
+                      </span>
                     </summary>
                     <div className="mt-2 flex flex-col gap-1">
                       {moves.length === 0 ? (

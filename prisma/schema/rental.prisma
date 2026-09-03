@@ -17,12 +17,15 @@ model RentalAsset {
   dailyRateSatang Int      @default(0)
   depositSatang   Int      @default(0)
   active          Boolean  @default(true)
+  // V2 (WO 4.1 · MAP §F.10): ต้นฉบับในแคตตาล็อกกลาง (InvItem) — null = ไม่ผูกคลัง
+  invItemId       String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   bookings RentalBooking[]
 
   @@index([tenantId, unitId, active])
+  @@index([unitId, invItemId]) // V2 (WO 4.1)
 }
 
 model RentalBooking {

@@ -142,7 +142,15 @@ model AccountProduct {
   incomeAccountId  String? // override ผังบัญชีต่อสินค้า
   expenseAccountId String?
   imageUrl         String?
+  // ⚠️ V2 (WO 4.1): สต็อกของสินค้าที่ "ผูกคลัง" (invItemId != null) = InvItem.onHand เท่านั้น
+  //    ช่องนี้เหลือเป็นกระจกสะท้อน (mirror) ไว้ให้หน้าจอเก่าอ่าน — ห้ามใช้ตัดสินใจ/รายงาน
+  //    สินค้าที่ยังไม่ผูกคลัง ใช้ช่องนี้เป็นสต็อกของตัวเองเหมือนเดิมทุกประการ
   qtyOnHand        Decimal            @default(0) @db.Decimal(12, 4)
+  // V2 (WO 4.1 · MAP §F.8–9): ต้นฉบับในแคตตาล็อกกลาง (InvItem) — ขากลับของ InvItem.accountProductId
+  //   null = ไม่ติดตามสต็อกในคลัง (ไม่มีคอลัมน์ trackStock แยก — "ติดตามสต็อก" = invItemId != null)
+  invItemId        String?
+  // คลังปริยายที่ใบเบิก/ใบส่งคืนของสินค้านี้จะตัด/คืน (InvLocation.id) — null = คลังหลักของระบบคลัง
+  warehouseId      String?
   pinned           Boolean            @default(false) // V2 (WO 0.3): ปักหมุดขึ้นหัวรายการ/ตัวเลือกด่วน
   archivedAt       DateTime?
   createdAt        DateTime           @default(now())
@@ -153,6 +161,7 @@ model AccountProduct {
   @@unique([systemId, sku])
   @@index([systemId, type, archivedAt])
   @@index([systemId, pinned, archivedAt]) // V2: ดึงรายการที่ปักหมุดขึ้นก่อน
+  @@index([systemId, invItemId]) // V2 (WO 4.1): หาสินค้าบัญชีจาก item กลาง / กรองเฉพาะที่ผูกคลัง
 }
 
 model AccountCategory {

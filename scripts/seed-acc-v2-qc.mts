@@ -79,6 +79,8 @@ const coa = await import("@/lib/modules/account/coa"); // WO 2.2: ปักห�
 const contactsList = await import("@/lib/modules/account/contacts-list"); // WO 3.2: กลุ่มผู้ติดต่อ
 const mem = await import("@/lib/modules/member/service"); // WO 3.2: สาธิตป้าย "สมาชิก" (เชื่อม Party)
 const crm = await import("@/lib/modules/crm/service"); // WO 3.2: สาธิตป้าย "CRM" (เชื่อม Party)
+const inv = await import("@/lib/modules/inventory/service"); // WO 4.1: สินค้าที่ "ติดตามสต็อกในคลัง"
+const invLink = await import("@/lib/modules/account/inventory-link"); // WO 4.1: ผูกสินค้าบัญชี ↔ InvItem
 
 // ─────────────────────────── ตัวช่วย ───────────────────────────
 
@@ -281,6 +283,33 @@ for (const p of PRODUCTS) {
   productIds.set(p.sku, r.id);
 }
 console.log(`📦 สินค้า/บริการ ${productIds.size} รายการ`);
+
+// ── WO 4.1: สินค้า 2 ตัวใน 12 ตัวเดิม "ติดตามสต็อกในคลัง" (จำนวนสินค้ายังเท่าเดิม = 12) ──
+// ตั้งสต็อกด้วย `adjust` (นับสต็อก) ไม่ใช่ `receive` — ตั้งใจ: ADJUST ไม่โพสต์ GL
+//   ⇒ งบ/หน้าหลัก/ภาพรวม ของชุดข้อมูล QC ไม่ขยับแม้แต่บาทเดียว (เฉลยเดิมทุกใบยังใช้ได้)
+// ต้นทุนใน item ตั้งให้ **เท่ากับ** buyPrice ของสินค้าบัญชีเป๊ะ ⇒ sync แล้วไม่มีอะไรเปลี่ยน (idempotent)
+const invCtx = { tenantId, systemId: invSys.id };
+const LINKED_STOCK: { sku: string; onHand: number }[] = [
+  { sku: "MASK-01", onHand: 24 }, // หน้ากากดำน้ำ Aqualung · ต้นทุน 1,680.00
+  { sku: "TANK-12", onHand: 9 }, // ถังอากาศ 12 ลิตร · ต้นทุน 5,200.00
+];
+const linkedItems: { sku: string; itemId: string; onHand: number; costSatang: number }[] = [];
+for (const l of LINKED_STOCK) {
+  const src = PRODUCTS.find((p) => p.sku === l.sku)!;
+  const item = await inv.createItem(invCtx, {
+    sku: l.sku,
+    name: src.name,
+    unitLabel: src.unit,
+    kind: "PRODUCT",
+    costSatang: src.buy ?? 0,
+    reorderPoint: 5,
+  });
+  await inv.adjust(invCtx, { itemId: item.id, newQty: l.onHand, idempotencyKey: `seed-acc-v2-stock-${l.sku}`, note: "ยอดยกมา (ชุดข้อมูล QC)" });
+  const link = await invLink.linkProductToItem({ tenantId, systemId }, productIds.get(l.sku)!, { itemId: item.id });
+  if (!link.ok) throw new Error(`ผูกสินค้า ${l.sku} กับคลังไม่สำเร็จ: ${link.reason}`);
+  linkedItems.push({ sku: l.sku, itemId: item.id, onHand: l.onHand, costSatang: src.buy ?? 0 });
+}
+console.log(`🔗 ผูกคลังสินค้า ${linkedItems.length} รายการ (${linkedItems.map((i) => `${i.sku}=${i.onHand}`).join(" · ")})`);
 
 // ─────────────────────────── 4. ผู้ติดต่อ 63 (ลูกค้า 41 · ผู้ขาย 22 · กรุ 5) ───────────────────────────
 
@@ -1041,6 +1070,13 @@ const expected = {
   invoiceTabs: { all: 51, draft: 3, awaiting: 12, partial: 2, paid: 29, overdue: 4, cancelled: 1 },
   contacts: { all: 63, customer: 41, vendor: 22, archived: 5, active: 58 },
   products: 12,
+  // WO 4.1 — สินค้าที่ผูกคลังสินค้า (ตัวเลขอิสระจากเฉลยชุดอื่น · ยอดคงเหลือมาจาก InvItem.onHand)
+  inventory: {
+    systemId: invSys.id,
+    linked: linkedItems,
+    linkedCount: linkedItems.length,
+    unlinkedCount: 12 - linkedItems.length,
+  },
   journal: { needsReview: 0, suspense9999: 0, trialBalanceBalanced: true },
   fixtures: {
     ...fixtures,

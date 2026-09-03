@@ -156,6 +156,9 @@ model MenuItem {
   stockQty      Int? // null = ไม่นับสต็อก · หักตอน confirm order · 0 = auto-86
   dailyStockQty Int? // null = ไม่ reset
 
+  // V2 (WO 4.1 · MAP §F.10): ต้นฉบับในแคตตาล็อกกลาง (InvItem) — แบบเดียวกับ BookingService.itemId
+  //   null = เมนูนี้ไม่ผูกคลัง (ราคา/ชื่อของเมนูเป็น override ต่อสาขาได้เสมอ)
+  invItemId  String?
   archivedAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
@@ -167,6 +170,7 @@ model MenuItem {
   @@index([tenantId])
   @@index([unitId, categoryId, sortOrder])
   @@index([unitId, status, isOutOfStock])
+  @@index([unitId, invItemId]) // V2 (WO 4.1)
 }
 
 model MenuOptionGroup {
