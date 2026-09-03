@@ -9,7 +9,7 @@
 | WO | ปิดเฟส 0 (0.1–0.6 DONE) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 4 ก.ย. ~04:10 UTC: กำลังรัน `pnpm qc:all` บน DB QC (log `.qc-shots/acc-v2/qc-all.log`) → ถ้าเขียว: rebase main → merge → push → Vercel READY → verify prod → เริ่มเฟส 1 (WO 1.1) |
+| ขั้นที่ถึง | 4 ก.ย. ~04:30 UTC: `qc:all` บน DB QC = **186/187** (แดง 1 = `qc-nav-functions` S1 ไม้บรรทัดไม่ตัด ?query/#hash ของลิงก์ flyout ใหม่ → มอบให้ WO 1.1 แก้ข้อสอบ) · ถัดไป: รัน suite นั้นซ้ำ → merge main → push → Vercel READY → verify prod |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
