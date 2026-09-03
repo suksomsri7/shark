@@ -12,7 +12,7 @@
 | WO | ปิดเฟส 0 (0.1–0.6 DONE) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 4 ก.ย. ~06:15 UTC: nav-functions 9/9 แล้ว (qc:all จะเขียว 187/187) · **ยังไม่ merge main** — จะ merge หลัง 1.1 ผ่านภาพ (เพื่อไม่ส่งหน้ารายการที่ยังไม่ตรงแบบขึ้น prod) · 1.3 กำลังทำ |
+| ขั้นที่ถึง | 3 ก.ย. ~11:00 UTC (หลัง reboot): typecheck ผ่านทั้งต้นไม้ (1.1 รอบ 2 + 1.3 บางส่วน) → snapshot commit b3fbb07 · กำลัง build+visual 1.1 รอบ 2 (งานหนักตัวเดียว) · ถัดไป: ถ้า 1.1 ผ่านภาพ → merge main → สั่ง agent ใหม่ทำ 1.3 ต่อจากไฟล์ที่มี (ไม่มี wo-notes/1.3.md — ตัวเก่าตายก่อนเขียน) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
@@ -27,7 +27,7 @@
 | 0.6 | 🐞 hotfix `gl.postDocument` PURCHASE/EXPENSE โหมดราคารวม VAT Dr เกิน Cr (เจอใน 0.1 · ออกเอกสารไม่ได้) + ข้อสอบ | Opus | DONE | 91c38f2 | Fable อ่าน diff + รันเอง inclvat 71/71 · CPA 107/107 บน QC branch · เจอบั๊กที่ 2 ด้วย: VAT รอใบกำกับลง 1150 แทน 1155 (แก้แล้ว) · ค้าง: `qc-tax-print-audit.mts` เน่าอยู่ก่อน (taxId 5 หลัก) → เก็บใน 9.2 |
 | 1.1 | หน้ารายการทุกชนิด | Sonnet | IN_PROGRESS | | รอบ 1 (4 ก.ย. ~06:10 UTC): ตัวเลขตรงเฉลย · list 144/144 · nav-functions แก้แล้ว 9/9 · **ตีกลับ 11 จุด** (ปุ่มสร้างถูกตัด · emoji ในตัวกรอง · back link ซ้ำ · มือถือไม่ตรง f13: chip/วันที่/⋯/FAB/pill tabs) · โน้ต `wo-notes/1.1.md` |
 | 1.2 | route ราคาถูก DP/CNR/DNR/ASSET_PO/PTX + payableStats | Opus | DONE | 623e8df | Fable รันเอง cheap-routes 105/105 · CPA 107/107 · อ่าน diff GL (Cr 1130 + ลด VAT มัดจำ) · 🐞 แก้ DP โพสต์ซ้ำ · ค้าง: void การจ่าย DP ยังไม่กลับ JV (เหมือน DR ฝั่งขาย) → WO 1.4 · หน้า PTX ยังมีฟอร์มสร้าง → 1.1/1.3 |
-| 1.3 | DocEditorV2 A–C,E,G,H,I | Opus | IN_PROGRESS | | มอบหมาย 4 ก.ย. ~05:20 UTC ขนานกับ 1.1 · เทียบ g1/g17 · โน้ต `wo-notes/1.3.md` |
+| 1.3 | DocEditorV2 A–C,E,G,H,I | Opus | IN_PROGRESS | b3fbb07 (บางส่วน) | agent ตายตอนเครื่อง reboot · ไฟล์ที่มี: DocEditorV2/DocLineTable/DocTotals/DocAttachments/doc-editor-types · DocEditorPage · doc-editor-config · editor-actions · route new/edit 10 ชนิด · migration `20260903090000_account_v2_doc_editor` (apply QC แล้ว · prod ยัง) · **ไม่มี wo-notes** → agent ใหม่ต้องอ่านไฟล์แล้วทำต่อ ไม่เริ่มใหม่ |
 | 1.4 | มัดจำ + WHT ต่อบรรทัด + รับชำระหลายครั้ง | Opus | TODO | | |
 | 1.5 | หน้าเอกสาร V2 | Sonnet | TODO | | |
 | 1.6 | wizard CN/DN/CNR/DNR/RPR | Sonnet | TODO | | |
