@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 🏁 เฟส 1 ปิด (1.1–1.9 ขึ้น main `1884f8d`) → เฟส 2: 2.1 query dashboard |
+| WO | 2.2 หน้าหลัก V2 + 0.7 CI-compat (2.1 DONE) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~20:10 UTC: **prod `1884f8d` READY** (เฟส 1 ทั้งหมดอยู่บน prod · migration recurring apply แล้ว · crontab ทำงานคืนนี้ 23:10 UTC) · 2.1 กำลังทำ · polish 1.9 list commit 01107f3 (ตรวจพร้อม build 2.2) |
+| ขั้นที่ถึง | 3 ก.ย. ~20:40 UTC: 2.1 DONE (commit fb0aee6) · 2.2 + 0.7 กำลังทำขนาน (0.7 ไม่รัน tsc) · ⚠️ CI ของ main อาจแดงตั้งแต่ merge เฟส 0 (acc-v2 suites ต้องมี .env.qc/seed) — 0.7 แก้ · เช็ค GitHub Actions ไม่ได้จากเครื่อง (ไม่มี gh token) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
@@ -34,8 +34,9 @@
 | 1.7 | ใบวางบิลรวม + ใบรวมจ่าย | Opus | DONE | (main) | ตีกลับ 1 รอบ → visual 43/43 · groups 174 · qc:all 194/195 (แดง acc-v2-payments แต่รันเดี่ยว 157/157 = flaky ตอนรันขนาน → จดให้ 9.3) · ค้าง: กลุ่มไม่มีสถานะร่าง · updateGroupProgress นับ CN ด้วย (5.x/9.x) · คอลัมน์ตารางกลุ่มกำลังแก้ (เข้า build ถัดไป) |
 | 1.8 | นำเข้า CSV | Sonnet | DONE | (HEAD) | import 114 · E2E จริง 18/0/2 + สร้าง 18 + cleanup ผ่าน 2 ขนาด (Fable ดูภาพขั้นตรวจสอบ) · 🐞 dedupe เบอร์ · บทเรียน ruler: snap chromium มี /tmp ส่วนตัว → fixture ต้องอยู่ใต้ /root · ← กลับ ตัดแล้ว (รอ build ถัดไป) |
 | 1.9 | เอกสารประจำ + เตือน | Opus | DONE | 1884f8d | recurring 161 (Fable รันเอง) · visual 57/57 · qc:all 197/197 · 🐞 แก้ fitness F10.1 (email import eager → lazy) · **crontab ติดตั้งแล้ว** บน VPS (23:10 UTC recurring · 01:00 UTC reminders · cwd shark-accounting · log /var/log/shark-acc-cron.log) · polish list (chip/actions) รอ build ถัดไป |
-| 2.1 | query dashboard | Opus | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~19:40 UTC · โน้ต `wo-notes/2.1.md` |
-| 2.2 | หน้าหลัก V2 | Sonnet | TODO | | |
+| 2.1 | query dashboard | Opus | DONE | fb0aee6 | dashboard 164/164 (Fable รันเอง) · 12 query / 44 ms · เฉลยอิสระ SQL · seed มีข้อมูล พ.ค.–ก.ย. เท่านั้น (กราฟ 5 แท่ง) · 🐞 ส่งต่อ: aging นับซ้ำเมื่อมี BN (แก้ใน 5.x) · TIMESTAMP ไม่มีโซน ต้อง AT TIME ZONE 2 ชั้น |
+| 0.7 | 🔧 CI-compat: qc:all บน CI ไม่มี .env.qc/seed → acc-v2 suites แดง | Opus | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~20:40 UTC (แก้ acc-v2-env รับ env CI · qc-all seed ก่อน suite ที่ต้องใช้) |
+| 2.2 | หน้าหลัก V2 | Sonnet | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~20:40 UTC · เทียบ f1/f2/f11 · โน้ต `wo-notes/2.2.md` |
 | 2.3 | ภาพรวมรายรับ/รายจ่าย | Sonnet | TODO | | |
 | 3.1 | Party | Opus | TODO | | |
 | 3.2 | หน้าผู้ติดต่อ V2 | Sonnet | TODO | | |
