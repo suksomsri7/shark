@@ -12,7 +12,7 @@
 | WO | 🏁 เฟส 1 ปิด (1.1–1.9 ขึ้น main `1884f8d`) → เฟส 2: 2.1 query dashboard |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~19:40 UTC: เฟส 1 ครบ 9 WO · push main `1884f8d` (Vercel deploy · migration recurring additive จะ apply) · crontab ติดตั้งแล้ว · 2.1 กำลังทำ (server-side) · ถัดไป 2.2 หน้าหลัก V2 (f1/f11) |
+| ขั้นที่ถึง | 3 ก.ย. ~20:10 UTC: **prod `1884f8d` READY** (เฟส 1 ทั้งหมดอยู่บน prod · migration recurring apply แล้ว · crontab ทำงานคืนนี้ 23:10 UTC) · 2.1 กำลังทำ · polish 1.9 list commit 01107f3 (ตรวจพร้อม build 2.2) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
