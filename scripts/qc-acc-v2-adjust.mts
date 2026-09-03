@@ -137,6 +137,18 @@ console.log("AJ0 สายไฟ static:");
   assert("AJ0.26 ผู้ติดต่อถูกล็อกเป็น readOnly เมื่ออยู่ในโหมด adjust ที่มีเอกสารอ้างอิง", /props\.adjustMode && props\.refDoc/.test(editorV2Src) && /readOnly value=\{value\.contactLabel/.test(editorV2Src));
   const wizardStep1Src2 = readFileSync(join(ROOT, "src/components/account-v2/AdjustWizardStep1.tsx"), "utf8");
   assert("AJ0.27 ตารางขั้น ① มีทั้งเดสก์ท็อป (md:block) และการ์ดมือถือ (md:hidden) แยกกัน", /hidden overflow-x-auto md:block/.test(wizardStep1Src2) && /flex flex-col gap-2 md:hidden/.test(wizardStep1Src2));
+  // AJ0.28 (Fable QC ภาพจริง 1.6 รอบ 3): การ์ดมือถือต้องมี testid คนละชื่อกับแถวตารางเดสก์ท็อป (`ref-card-` vs `ref-row-`)
+  // ไม่งั้น querySelector(`[data-testid="ref-row-…"]`) จะไปเจอ <tr> ที่ซ่อนอยู่ (`hidden md:block`) ก่อนเสมอ (DOM order)
+  // แล้วอ่าน/คลิกผิดตัว — บั๊กที่ Fable เจอจากภาพจริงมือถือ (data-selected ไม่ขึ้น + "ถัดไป" ไม่เปิด)
+  {
+    const rowTestidCount = (wizardStep1Src2.match(/data-testid=\{`ref-row-\$\{r\.docNo/g) ?? []).length;
+    const cardTestidCount = (wizardStep1Src2.match(/data-testid=\{`ref-card-\$\{r\.docNo/g) ?? []).length;
+    assert(
+      "AJ0.28 การ์ดมือถือใช้ testid ref-card-<docNo> แยกจาก ref-row-<docNo> ของตาราง (คนละชื่อ อย่างละ 1 จุด)",
+      rowTestidCount === 1 && cardTestidCount === 1,
+      `พบ ref-row- ${rowTestidCount} จุด · ref-card- ${cardTestidCount} จุด`,
+    );
+  }
 }
 
 // ═══════════════════════════ AJ1–AJ10 — ของจริงบน DB ═══════════════════════════

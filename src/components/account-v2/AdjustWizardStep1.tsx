@@ -64,9 +64,26 @@ export function AdjustWizardStep1({
   const preset = filters.preset ?? "this_year";
 
   const nextHref = mode === "ref" ? (selectedId ? `${pathname}?ref=${selectedId}` : undefined) : `${pathname}?noref=1`;
+  // สรุปการเลือก — บรรทัดเดียว ใช้ร่วมทั้งเลย์เอาต์มือถือ (เหนือปุ่ม) และเดสก์ท็อป (กลางแถวปุ่ม) กันเพี้ยนจากกัน
+  const summaryText: React.ReactNode =
+    mode === "ref"
+      ? selected
+        ? (
+            <>
+              เลือกแล้ว 1 ใบ · {selected.docNo}
+              {showOutstanding && (
+                <>
+                  {" "}
+                  · ค้างชำระ <MoneyText satang={selected.outstandingSatang ?? 0} decimals />
+                </>
+              )}
+            </>
+          )
+        : "ยังไม่ได้เลือกเอกสาร"
+      : `จะสร้าง${docLabel}โดยไม่อ้างอิงเอกสารเดิม`;
 
   return (
-    <div className="flex w-full max-w-5xl flex-col gap-4 pb-28" data-testid="adjust-wizard-step1">
+    <div className="flex w-full max-w-5xl flex-col gap-4 pb-32 md:pb-28" data-testid="adjust-wizard-step1">
       <div className="flex items-baseline gap-2">
         <h1 className="text-xl font-semibold">สร้าง{docLabel}</h1>
         <span className="text-sm text-[color:var(--color-muted)]">ขั้น 1 จาก 2 · เลือกเอกสารอ้างอิง</span>
@@ -246,7 +263,7 @@ export function AdjustWizardStep1({
                         }}
                         className="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-3 text-sm"
                         style={isSel ? { background: "var(--color-surface-2)" } : undefined}
-                        data-testid={`ref-row-${r.docNo ?? r.id}`}
+                        data-testid={`ref-card-${r.docNo ?? r.id}`}
                         data-selected={isSel ? "1" : "0"}
                       >
                         <input
@@ -325,34 +342,32 @@ export function AdjustWizardStep1({
         )}
       </div>
 
-      <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 border-t bg-[color:var(--color-surface)] px-4 py-3">
-        <Link href={cancelHref} className="btn btn-ghost text-sm" data-testid="btn-cancel">
-          ยกเลิก
-        </Link>
-        <span className="flex-1 text-sm text-[color:var(--color-muted)]">
-          {mode === "ref" &&
-            (selected
-              ? (
-                <>
-                  เลือกแล้ว 1 ใบ · {selected.docNo}{" "}
-                  {showOutstanding && (
-                    <>
-                      ค้างชำระ <MoneyText satang={selected.outstandingSatang ?? 0} decimals />
-                    </>
-                  )}
-                </>
-              )
-              : "ยังไม่ได้เลือกเอกสาร")}
-        </span>
-        {nextHref ? (
-          <Link href={nextHref} className="btn btn-primary text-sm" data-testid="btn-next">
-            ถัดไป: กรอก{docLabel} →
+      {/* footer: มือถือ = แถวสรุป (บรรทัดเดียว ตัดคำ) เหนือแถวปุ่ม [ยกเลิก][ถัดไป flex-1] · เดสก์ท็อป = แถวเดียวเดิม
+          `pr-20` กันปุ่มไปทับ orb AI ที่ลอยมุมขวาล่าง (`fixed bottom-4 right-4`) — เดสก์ท็อปไม่มี orb ทับ จึงคืน pr ปกติ */}
+      <div className="sticky bottom-0 z-20 border-t bg-[color:var(--color-surface)] py-3 pr-20 pl-4 md:px-4">
+        <div className="mb-2 truncate text-xs text-[color:var(--color-muted)] md:hidden" data-testid="wizard-summary-m">
+          {summaryText}
+        </div>
+        <div className="flex items-center gap-3">
+          <Link href={cancelHref} className="btn btn-ghost shrink-0 text-sm" data-testid="btn-cancel">
+            ยกเลิก
           </Link>
-        ) : (
-          <button type="button" className="btn btn-primary text-sm" disabled data-testid="btn-next">
-            ถัดไป: กรอก{docLabel} →
-          </button>
-        )}
+          <span className="hidden flex-1 truncate text-sm text-[color:var(--color-muted)] md:block">{summaryText}</span>
+          {nextHref ? (
+            <Link href={nextHref} className="btn btn-primary flex-1 justify-center text-sm md:flex-none" data-testid="btn-next">
+              ถัดไป: กรอก{docLabel} →
+            </Link>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary flex-1 justify-center text-sm md:flex-none"
+              disabled
+              data-testid="btn-next"
+            >
+              ถัดไป: กรอก{docLabel} →
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

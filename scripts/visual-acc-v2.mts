@@ -424,7 +424,12 @@ const PAGES: Record<string, PageSpec[]> = {
       path: `/app/sys/${SYS}/account/docs/CREDIT_NOTE/new?contactId=${E.fixtures.contactSimilanViewId}`,
       note: "ขั้น ① เลือกเอกสารอ้างอิง (g3) — ตัวกรองผู้ติดต่อ = โรงแรมสิมิลันวิว + เลือกแถว IV",
       expect: ["สร้างใบลดหนี้", "เลือกเอกสารอ้างอิง", E.fixtures.invSimilanViewDocNo],
-      click: [`[data-testid="ref-row-${E.fixtures.invSimilanViewDocNo}"]`],
+      // เดสก์ท็อป = แถวตาราง [data-testid="ref-row-…"] · มือถือ = การ์ด [data-testid="ref-card-…"] (คนละ element กัน
+      // ชนกันตอนอ่านค่า — ใส่ทั้งคู่ไว้ที่นี่ ตัวที่มองไม่เห็น (`hidden`/`md:hidden`) puppeteer จะคลิกไม่ติดแล้วข้ามไปเอง)
+      click: [
+        `[data-testid="ref-row-${E.fixtures.invSimilanViewDocNo}"]`,
+        `[data-testid="ref-card-${E.fixtures.invSimilanViewDocNo}"]`,
+      ],
       waitAfterClick: 300,
     },
     {
@@ -872,11 +877,18 @@ try {
                 (document.querySelector('[data-testid="pay-wht-amount-2"]') as HTMLInputElement | null)?.value ?? "",
             },
             // WO 1.6 — wizard เอกสารปรับปรุงหนี้ (CN/DN/CNR/DNR/RPR · §5.2 J · g3)
+            // 🔴 ตาราง (เดสก์ท็อป [data-testid^="ref-row-"]) กับการ์ด (มือถือ [data-testid^="ref-card-"]) เป็นคนละ
+            //    element กัน (breakpoint คนละตัวซ่อน/โชว์) — อ่านค่าต้องกรอง "ที่มองเห็นอยู่จริง" เท่านั้น ไม่งั้นตัวที่ถูก
+            //    `display:none` (ของอีก breakpoint) จะมาปนแล้วนับซ้ำ/อ่านค่าจาก element ที่ผู้ใช้มองไม่เห็น
             wizard: {
               hasStep1: !!document.querySelector('[data-testid="adjust-wizard-step1"]'),
-              rowCount: document.querySelectorAll('[data-testid^="ref-row-"]').length,
+              rowCount: [...document.querySelectorAll('[data-testid^="ref-row-"], [data-testid^="ref-card-"]')].filter(
+                isVisible,
+              ).length,
               selectedRowTestId:
-                document.querySelector('[data-testid^="ref-row-"][data-selected="1"]')?.getAttribute("data-testid") ?? "",
+                [...document.querySelectorAll('[data-testid^="ref-row-"][data-selected="1"], [data-testid^="ref-card-"][data-selected="1"]')]
+                  .find(isVisible)
+                  ?.getAttribute("data-testid") ?? "",
               btnNextDisabled: (() => {
                 const el = document.querySelector('[data-testid="btn-next"]');
                 return el ? el.tagName === "BUTTON" && (el as HTMLButtonElement).disabled : null;
@@ -1029,8 +1041,10 @@ try {
             c16.push([probe.wizard.hasWizardStep, `มีสเต็ปเปอร์ [data-testid="wizard-step"]`]);
             c16.push([probe.wizard.rowCount >= 1, `ตารางมีแถวอย่างน้อย 1 แถว (เจอ ${probe.wizard.rowCount})`]);
             c16.push([
-              probe.wizard.selectedRowTestId === `ref-row-${E.fixtures.invSimilanViewDocNo}`,
-              `หลังคลิกแล้วแถว IV ${E.fixtures.invSimilanViewDocNo} ถูกไฮไลต์เลือกไว้ (data-selected="1") — เจอ "${probe.wizard.selectedRowTestId}"`,
+              // เดสก์ท็อป = ref-row-… (ตาราง) · มือถือ = ref-card-… (การ์ด) — ตัวที่มองเห็นอยู่ต้องถูกเลือกไว้เท่านั้น
+              probe.wizard.selectedRowTestId === `ref-row-${E.fixtures.invSimilanViewDocNo}` ||
+                probe.wizard.selectedRowTestId === `ref-card-${E.fixtures.invSimilanViewDocNo}`,
+              `หลังคลิกแล้วแถว/การ์ด IV ${E.fixtures.invSimilanViewDocNo} ถูกไฮไลต์เลือกไว้ (data-selected="1") — เจอ "${probe.wizard.selectedRowTestId}"`,
             ]);
             c16.push([probe.wizard.btnNextDisabled === false, `ปุ่ม "ถัดไป" เปิดใช้งานหลังเลือกแถว (btn-next ไม่ disabled)`]);
             if (device === "mobile") c16.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
