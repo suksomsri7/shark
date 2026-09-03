@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
@@ -7,7 +7,6 @@ import { closeDaySummary } from "@/lib/modules/pos/service";
 import { CouponHub } from "@/lib/modules/coupon/ui";
 import { MeetingHub } from "@/lib/modules/meeting/ui";
 import { KanbanHub } from "@/lib/modules/kanban/ui";
-import { AccountContent } from "@/lib/modules/account/ui";
 import { ChatInboxSection } from "@/lib/modules/chat/ui";
 import { canReadChat } from "@/lib/modules/chat/guard";
 import { CrmHub } from "@/lib/modules/crm/ui";
@@ -46,6 +45,9 @@ export default async function SystemPage({
 
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId } });
   if (!sys) notFound();
+  // WO 0.4: ระบบบัญชีมี hub ของตัวเองแล้ว (`/app/sys/<id>/account` — เดิม 404 เพราะไม่มี page.tsx
+  // ledger/wo-notes/0.1.md ข้อ 8) → กันไม่ให้มีหน้า hub 2 ที่ (ที่นี่ vs ในโมดูล) เหลือที่เดียว
+  if (sys.type === "ACCOUNT") redirect(`/app/sys/${id}/account`);
   const def = systemDef(sys.type);
   const isChat = sys.type === "CHAT";
   // ซ่อนกล่องแชทให้คนที่ไม่มีสิทธิ์อ่าน แล้วบอกตรง ๆ ว่าต้องทำอะไรต่อ
@@ -87,7 +89,6 @@ export default async function SystemPage({
       {sys.type === "COUPON" && <CouponHub systemId={id} tenantId={tenantId} />}
       {sys.type === "MEETING" && <MeetingHub systemId={id} tenantId={tenantId} />}
       {sys.type === "KANBAN" && <KanbanHub systemId={id} tenantId={tenantId} />}
-      {sys.type === "ACCOUNT" && <AccountContent systemId={id} tenantId={tenantId} />}
       {isChat && (
         <div className="flex min-w-0 flex-col gap-4">
           {mayReadChat ? (

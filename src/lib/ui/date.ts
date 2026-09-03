@@ -43,3 +43,36 @@ export const thaiDateKey = (d: Date | string = new Date()) =>
 
 /** งวดบัญชี "2026-07" ตามโซนไทย */
 export const thaiPeriodKey = (d: Date | string = new Date()) => thaiDateKey(d).slice(0, 7);
+
+// ─────────────────── ปี ค.ศ. (โมดูลบัญชี V2) ───────────────────
+// account-v2 ใช้ปี "คริสต์ศักราช" ไม่ใช่ พ.ศ. (ต่างจาก formatThaiDate ด้านบนที่ th-TH ให้ พ.ศ. อัตโนมัติ)
+// ตามมติเจ้าของ (DESIGN-SPEC-V2/BLUEPRINT-ACCOUNT-V2 §1 "Christian-era dates") — ห้ามใช้ toLocaleDateString("th-TH")
+// ตรงนี้เพราะจะได้ปี พ.ศ. ผิดกติกาโมดูล
+
+const THAI_MONTH_SHORT = [
+  "ม.ค.",
+  "ก.พ.",
+  "มี.ค.",
+  "เม.ย.",
+  "พ.ค.",
+  "มิ.ย.",
+  "ก.ค.",
+  "ส.ค.",
+  "ก.ย.",
+  "ต.ค.",
+  "พ.ย.",
+  "ธ.ค.",
+];
+
+/**
+ * วันที่ ค.ศ. แบบไทย — "24 ก.ย. 2026" (withYear ค่าเริ่มต้น true) หรือ "24 ก.ย." (withYear: false)
+ * ใช้ในโมดูลบัญชี V2 เท่านั้น (โมดูลอื่นยังใช้ formatThaiDate พ.ศ. ตามเดิม)
+ */
+export function formatDateTh(d: Date | string, opts?: { withYear?: boolean }): string {
+  const withYear = opts?.withYear ?? true;
+  const iso = thaiDateKey(d); // "YYYY-MM-DD" ตามโซนไทย กันเพี้ยนวันข้าม UTC
+  const [y, m, day] = iso.split("-").map(Number);
+  const dayNum = String(day);
+  const month = THAI_MONTH_SHORT[m - 1] ?? "";
+  return withYear ? `${dayNum} ${month} ${y}` : `${dayNum} ${month}`;
+}

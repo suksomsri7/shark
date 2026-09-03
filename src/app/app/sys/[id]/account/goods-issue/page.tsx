@@ -68,7 +68,10 @@ export default async function GoodsIssuePage({
       {ok && <p className="text-sm text-[color:var(--color-ink)]">บันทึกแล้ว: {ok}</p>}
       {err && <p className="text-sm text-[color:var(--color-danger)]">{err}</p>}
 
-      <GoodsIssueEditor systemId={systemId} products={goods} contacts={contacts.map((c) => ({ id: c.id, name: c.name }))} />
+      {/* id="new" = ปลายทางของ "+ สร้าง..." จาก flyout เมนูบัญชี V2 (AccountTabBar) */}
+      <div id="new">
+        <GoodsIssueEditor systemId={systemId} products={goods} contacts={contacts.map((c) => ({ id: c.id, name: c.name }))} />
+      </div>
 
       {/* สต็อกคงเหลือ + ความเคลื่อนไหวต่อสินค้า */}
       <Section title="สต็อกคงเหลือ (สินค้า)">

@@ -892,6 +892,83 @@ export async function listDocumentsPaged(
   };
 }
 
+// แมป tab key ของ flyout เมนูบัญชี V2 → สถานะจริง (หรือ "overdue" = derived) ต่อ docType
+// อ้างตาม DESIGN-SPEC-V2.md §3 คอลัมน์ "flyout" (3–4 รายการต่อชนิด ไม่ใช่ "แท็บ" เต็มชุดของหน้ารายการ)
+// ⚠️ สถานะที่ไม่ใช่ "overdue" ทุกตัว = นับแบบ **ไม่รวมพ้นกำหนด** (excludeOverdue เหมือน tabsFor() ของหน้ารายการจริง)
+//    เช่น IV "รอชำระ" = AWAITING_PAYMENT ล้วน ๆ ที่ยังไม่เลยกำหนด (ไม่รวม PARTIAL — PARTIAL มีแท็บของตัวเองในหน้ารายการ
+//    แต่ SPEC ไม่ได้เอาขึ้น flyout) — เคยรวม PARTIAL มาด้วยและไม่ตัดพ้นกำหนดออกมาก่อน ทำให้ตัวเลขเพี้ยน (12+2+4=18
+//    ทั้งที่ควรได้ 12 ตรงกับ tabCounts ของหน้ารายการจริง) แก้แล้วใน accountFlyoutCounts() ด้านล่าง
+// ⚠️ คู่มือ: เพิ่ม tab ใหม่ในหน้ารายการ ต้องเพิ่มแมปที่นี่ด้วย ไม่งั้นตัวนับใน AccountTabBar จะไม่ขึ้น (ไม่ error — แค่ไม่มีเลข)
+const NAV_FLYOUT_TABS: Partial<Record<AccountDocType, Record<string, AccountDocStatus[] | "overdue">>> = {
+  QUOTATION: { awaiting: ["AWAITING_ACCEPT"], accepted: ["ACCEPTED"], overdue: "overdue" },
+  DEPOSIT_RECEIPT: { awaiting: ["AWAITING_PAYMENT"], overdue: "overdue", deduct: ["AWAITING_DEDUCT"] },
+  INVOICE: { awaiting: ["AWAITING_PAYMENT"], paid: ["PAID"], overdue: "overdue" },
+  RECEIPT: { paid: ["PAID"] },
+  TAX_INVOICE: { issued: ["ISSUED"] },
+  PURCHASE: { awaiting: ["AWAITING_PAYMENT"], paid: ["PAID"], overdue: "overdue" },
+  EXPENSE: { awaiting: ["AWAITING_PAYMENT"], paid: ["PAID"], overdue: "overdue" },
+  ASSET_PURCHASE: { awaiting: ["AWAITING_PAYMENT"], overdue: "overdue", received: ["RECEIVED"] },
+  PURCHASE_ORDER: { awaiting_approval: ["AWAITING_APPROVAL"], approved: ["APPROVED"] },
+  ASSET_PURCHASE_ORDER: { awaiting_approval: ["AWAITING_APPROVAL"], approved: ["APPROVED"] },
+  PURCHASE_TAX_INVOICE: { awaiting_receive: ["AWAITING_RECEIVE"], received: ["RECEIVED"] },
+};
+
+/**
+ * ตัวนับสำหรับ flyout เมนูบัญชี V2 (AccountTabBar ระดับ 2) — g18 mockup โชว์ตัวเลขข้างสถานะ
+ * (รอชำระ 12 · ชำระแล้ว 29 · พ้นกำหนด 4 · ดูทั้งหมด 51) — คีย์ผลลัพธ์ = `${docType}:${tabKey}` และ `${docType}:all`
+ * ตั้งใจให้เป็น **2 query รวมทุก docType** (ไม่ใช่ต่อชนิดเอกสาร) กันงบ query ของหน้าที่แถบเมนูติดอยู่ทุกหน้าบวม
+ * (ใช้ groupBy + overdueWhere เดียวกับ `listDocumentsPaged`/`tabsFor()` — ทั้งสอง query group by (docType,status)
+ * เหมือนกัน เพื่อหักจำนวน "พ้นกำหนด" ออกจากสถานะดิบได้ต่อสถานะจริง ไม่ใช่แค่ต่อ docType — ถ้าหักแค่ต่อ docType
+ * จะไม่รู้ว่าพ้นกำหนดกี่ใบเป็น AWAITING_PAYMENT กี่ใบเป็น PARTIAL แล้วหักผิดสถานะ)
+ */
+export async function accountFlyoutCounts(
+  tenantId: string,
+  systemId: string,
+): Promise<Record<string, number>> {
+  const now = new Date();
+  const [byStatus, overdueByStatus] = await Promise.all([
+    prisma.accountDocument.groupBy({
+      by: ["docType", "status"],
+      where: { tenantId, systemId },
+      _count: { _all: true },
+    }),
+    prisma.accountDocument.groupBy({
+      by: ["docType", "status"],
+      where: { tenantId, systemId, ...overdueWhere(now) },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const rawCount = new Map<string, number>(); // key = `${docType}:${status}`
+  const totalByType = new Map<string, number>();
+  for (const g of byStatus) {
+    rawCount.set(`${g.docType}:${g.status}`, g._count._all);
+    totalByType.set(g.docType, (totalByType.get(g.docType) ?? 0) + g._count._all);
+  }
+  const overdueCount = new Map<string, number>(); // key = `${docType}:${status}`
+  const overdueByType = new Map<string, number>();
+  for (const g of overdueByStatus) {
+    overdueCount.set(`${g.docType}:${g.status}`, g._count._all);
+    overdueByType.set(g.docType, (overdueByType.get(g.docType) ?? 0) + g._count._all);
+  }
+  // นับสถานะ "ไม่รวมพ้นกำหนด" — เท่ากับ filter { status: sel, excludeOverdue: true } ของ listDocumentsPaged เป๊ะ
+  const nonOverdueSum = (docType: string, statuses: AccountDocStatus[]) =>
+    statuses.reduce((s, st) => {
+      const key = `${docType}:${st}`;
+      return s + ((rawCount.get(key) ?? 0) - (overdueCount.get(key) ?? 0));
+    }, 0);
+
+  const out: Record<string, number> = {};
+  for (const [docType, tabs] of Object.entries(NAV_FLYOUT_TABS)) {
+    out[`${docType}:all`] = totalByType.get(docType) ?? 0;
+    for (const [tabKey, sel] of Object.entries(tabs)) {
+      out[`${docType}:${tabKey}`] =
+        sel === "overdue" ? overdueByType.get(docType) ?? 0 : nonOverdueSum(docType, sel);
+    }
+  }
+  return out;
+}
+
 export function getDocument(tenantId: string, systemId: string, id: string) {
   return prisma.accountDocument.findFirst({
     where: { id, tenantId, systemId },

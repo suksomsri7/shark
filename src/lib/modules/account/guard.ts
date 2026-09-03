@@ -37,6 +37,11 @@ export async function requireAccountPage(systemId: string, action: string) {
  *   - หน้าทะเบียน/ตั้งค่า → action `.manage` ของหมวดนั้น
  */
 export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
+  // WO 0.4: หน้า hub ราก /account (เดิม 404 เพราะไม่มี page.tsx — ledger/wo-notes/0.1.md ข้อ 8)
+  "page.tsx": "account.doc.view",
+  // WO 0.5: storybook-lite ส่วนประกอบกลาง V2 — ปิดเองบน production ผ่าน notFound() ในไฟล์ (APP_ENV check)
+  // (เดิมชื่อ _dev/components — Next App Router ถือโฟลเดอร์ที่ขึ้นต้น _ เป็น private route ไม่ผูก URL เลย ⇒ 404 ย้ายมาที่นี่)
+  "dev-components/page.tsx": "account.doc.view",
   "accounts/page.tsx": "account.chart.manage",
   "aging/page.tsx": "account.report.view",
   "asset-buy/[docId]/page.tsx": "account.doc.view",

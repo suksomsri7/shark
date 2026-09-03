@@ -12,6 +12,7 @@ import {
   STATUS_LABEL,
   isOverdue,
 } from "./service";
+import { EXP_DOC_LABEL } from "./expense";
 
 // โทนสีสถานะบัญชี: อยู่ระหว่างทาง=muted · สำเร็จ/มีผล=strong · เสีย/ยกเลิก=danger
 export function accountTone(status: string): "muted" | "strong" | "danger" {
@@ -65,6 +66,8 @@ export async function AccountContent({
 
   return (
     <section className="flex flex-col gap-6">
+      {/* h1 หน้าหลัก — เดิมหน้านี้ไม่มี h1 เลย (visual QC WO 0.4 รอบ 2 จับได้ว่า probe.h1="") ตาม f1 */}
+      <h1 className="text-2xl font-semibold">หน้าหลัก</h1>
       {needsSetup && (
         <div className="card flex items-center justify-between gap-3 text-sm">
           <span className="text-[color:var(--color-muted)]">
@@ -99,9 +102,8 @@ export async function AccountContent({
         </Link>
       </div>
 
-      {/* เมนูทั้งชุดอยู่ที่ ☰ (มือถือ) และแถบซ้าย (จอใหญ่) แล้ว — หน้าแรกไม่ต้องเป็นลิสต์ยาวอีก
-          (คำสั่งเจ้าของ 27 ส.ค.: "เมนูพวกนี้ควรไปอยู่ในเมนูระบบบัญชี จะใช้งานง่ายกว่า")
-          เหลือไว้เฉพาะทางลัดที่ใช้บ่อยจริง ๆ ให้กดถึงใน 1 ครั้ง */}
+      {/* WO 0.4 Shell V2: เมนูทั้งชุด (9 หมวด) อยู่ในแถบเมนูบัญชีเหนือหน้านี้แล้ว (ทั้งเดสก์ท็อป/มือถือ)
+          — หน้าแรกไม่ต้องเป็นลิสต์ยาวอีก เหลือไว้เฉพาะทางลัดที่ใช้บ่อยจริง ๆ ให้กดถึงใน 1 ครั้ง */}
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-medium">ใช้บ่อย</h2>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -115,8 +117,8 @@ export async function AccountContent({
             </Link>
           ))}
         </div>
-        <p className="text-xs text-[color:var(--color-muted)] md:hidden">
-          เมนูบัญชีทั้งหมด ({nav.reduce((n, g) => n + g.items.length, 0)} รายการ) อยู่ในปุ่ม ☰ มุมบนซ้าย
+        <p className="text-xs text-[color:var(--color-muted)]">
+          เมนูบัญชีทั้งหมด ({nav.reduce((n, g) => n + g.items.length, 0)} รายการ) อยู่ในแถบเมนูด้านบน
         </p>
       </div>
 
@@ -126,8 +128,10 @@ export async function AccountContent({
         <DataList
           items={recent.map((d) => ({
             key: d.id,
-            href: `${base}/docs/${d.docType}/${d.id}`,
-            primary: `${d.docNo ?? "(ร่าง)"} · ${DOC_LABEL[d.docType] ?? d.docType}`,
+            href: `${base}/${docHref(d.docType, d.id)}`,
+            // DOC_LABEL ครอบฝั่งรายรับ (8 ชนิด) · EXP_DOC_LABEL ครอบฝั่งรายจ่าย (PURCHASE/EXPENSE/PO/…)
+            // ก่อนแก้ตรงนี้เคยโชว์ enum ดิบ "PURCHASE"/"EXPENSE" ตรง ๆ เมื่อรายการล่าสุดมีเอกสารฝั่งรายจ่าย
+            primary: `${d.docNo ?? "(ร่าง)"} · ${DOC_LABEL[d.docType] ?? EXP_DOC_LABEL[d.docType] ?? d.docType}`,
             secondary: d.contact?.name ?? "ไม่ระบุผู้ติดต่อ",
             trailing: (
               <>
@@ -141,6 +145,21 @@ export async function AccountContent({
       </div>
     </section>
   );
+}
+
+// route จริงของเอกสารแต่ละชนิด — ฝั่งรายรับ 8 ชนิดอยู่ใต้ docs/<docType>/<id> (generic list route)
+// ฝั่งรายจ่ายแยก slug ต่อชนิด (purchase/expense/po/asset-buy) ไม่มี docs/<docType> รองรับ (จะ 404)
+const EXP_SLUG: Partial<Record<string, string>> = {
+  PURCHASE: "purchase",
+  EXPENSE: "expense",
+  PURCHASE_ORDER: "po",
+  ASSET_PURCHASE_ORDER: "po",
+  ASSET_PURCHASE: "asset-buy",
+  PURCHASE_TAX_INVOICE: "asset-buy",
+};
+function docHref(docType: string, id: string): string {
+  const slug = EXP_SLUG[docType];
+  return slug ? `${slug}/${id}` : `docs/${docType}/${id}`;
 }
 
 // ทางลัดบนหน้าแรก — เลือกจาก "งานที่ทำทุกวัน" ไม่ใช่ยกเมนูทั้งชุดมาวาง

@@ -222,20 +222,16 @@ export const formatBaht = (satang: number, opts?: { decimals?: boolean }) =>
 
 ลบ `const baht = …` ที่ประกาศซ้ำใน 17 ไฟล์ทิ้งให้หมด
 
-### 2.9 `SubNav` (โมดูลเมนูเยอะ)
+### 2.9 `AccountTabBar` + `AccountBreadcrumb` (Shell V2 — โมดูลเมนูเยอะ)
 
-เมนูรองของโมดูลใหญ่ (account) — จัดกลุ่ม ไม่ใช่ปุ่มแบนยาว:
+WO 0.4 แทน `SubNav` sidebar เดิมด้วยแถบเมนูบน (ตาม DESIGN-SPEC-V2.md §1) — ดู `src/components/account-v2/{AccountTabBar,AccountBreadcrumb}.tsx` + แหล่งเมนูเดียว `src/lib/modules/account/nav.ts` (`ACCOUNT_NAV`/`AccountNavGroup`/`AccountNavItem`):
 
-```tsx
-type Group = { title: string; items: { href: string; label: string; badge?: string }[] };
-type Props = { groups: Group[]; active?: string };
-
-<SubNav groups={ACCOUNT_NAV} active={pathname} />
-```
-
-พฤติกรรม:
-- **Desktop (md+):** sidebar รองกว้าง ~200px ชิดซ้ายของเนื้อหา account (ใน `account/layout.tsx` ใหม่) — หัวกลุ่ม `text-xs muted`, รายการ `px-2 py-1.5 rounded-lg`, active = `bg-surface-2 font-medium`
-- **Mobile:** ยุบเป็น accordion ในหน้า hub ของโมดูล (แตะหัวกลุ่มเพื่อกาง) + แถบ back "← ระบบบัญชี" บนทุกหน้าลูก — **ไม่มี** hamburger ซ้อน hamburger
+- **แถบเมนู 9 หมวด** ใต้ Topbar (หน้าหลัก·รายรับ·รายจ่าย·ผู้ติดต่อ·สินค้า·การเงิน·บัญชี·คลังเอกสาร·ตั้งค่า) — หมวด active = ตัวหนา + ขีดล่าง `--color-accent` 2px · `data-testid="acc-menu-<groupKey>"` ต่อหมวด (ต้องมี 9)
+- **Dropdown 2 ระดับ (เดสก์ท็อป ≥lg):** hover/click เปิดระดับ 1 (การ์ด 264px) · รายการที่มี `flyout` โชว์ `›` แล้ว hover/focus/ลูกศร→ เปิดระดับ 2 (240px ทางขวา: "+ สร้าง…" ปุ่มดำ, ทางลัดสถานะพร้อมตัวนับ, ดูทั้งหมด, ล่าสุด) · คีย์บอร์ด ↑↓ เลื่อน · → เปิด flyout · ← ปิด flyout · Esc ปิดชั้นที่เปิดอยู่ก่อน (ปิดทั้งหมดถ้าไม่มี flyout เปิด) · ปิดเมื่อคลิกนอกแถบหรือเปลี่ยนหน้า
+- **มือถือ (<lg):** แถบเดียวกันเลื่อนแนวนอนได้ (ไอคอน+ป้ายสั้น) — แตะหมวด = bottom sheet ระดับ 1 (แถวสูง 48px) · แตะรายการที่มี flyout = sheet ระดับ 2 (ปุ่มย้อนกลับ `‹` ในหัว) — เรนเดอร์ในตัว component เอง (fixed overlay ไม่พึ่ง app-shell)
+- **สถานะ `soon`:** เมนูจาง (`opacity-60`) + ชิป "เร็ว ๆ นี้" ต่อท้าย · ไม่ใช่ `<a href="#">` (ไม่ใช่ลิงก์เลย กันคลิกพาไปหน้าเปล่า)
+- **`AccountBreadcrumb`:** "บัญชี › รายรับ › ใบแจ้งหนี้" ใต้แถบเมนู ไล่จาก `pathname` ผ่าน `findActiveNav()` (nav.ts) — ลิงก์ทุกระดับยกเว้นตัวสุดท้าย · `data-testid="acc-breadcrumb"`
+- เนื้อหาเต็มความกว้าง (ไม่มี sidebar แบ่งซ้ายอีกแล้ว) — `account/layout.tsx` render แค่ tab bar + breadcrumb + `{children}`
 
 ### 2.10 เสริม: `TabPills` + `SubmitButton` (จำเป็นเท่า 9 ตัวหลัก)
 
@@ -278,66 +274,39 @@ export function SubmitButton({ children, pendingText = "กำลังบัน
 
 ---
 
-## 4. โครง nav ใหม่ของโมดูลบัญชี (account)
+## 4. โครง nav ของโมดูลบัญชี (account) — Shell V2 (WO 0.4)
 
-ปัจจุบัน: hub เดียวมีลิงก์ ~23 ตัว (แท็บเอกสาร 8 + ปุ่มรายจ่าย 4 + ปุ่มบัญชี/รายงาน 11) เรียงเป็นแถว ghost button ยาว (`src/lib/modules/account/ui.tsx` L88-138) → วุ่นวาย หาอะไรไม่เจอ
+เดิม (ก่อน WO 0.4): hub เดียวมีลิงก์ ~23 ตัวเรียงเป็นแถว ghost button ยาว + sidebar `SubNav` 8 หมวดข้างซ้าย → วุ่นวาย หาอะไรไม่เจอ · `/account` (root) ไม่มี `page.tsx` → 404
 
-**ใหม่: จัด 8 หมวด (ตามเมนูที่เจ้าของกำหนด) ใช้ `SubNav` + hub แบบการ์ดหมวด**
+**ตอนนี้: `src/lib/modules/account/nav.ts` เป็นแหล่งเดียว (single source) ของเมนูทั้งหมด — 9 หมวดตาม DESIGN-SPEC-V2.md §2**, เรนเดอร์เป็นแถบเมนูบน (`AccountTabBar`, ดู §2.9) แทน sidebar เดิม:
 
 ```ts
-// src/lib/modules/account/nav.ts
-export const ACCOUNT_NAV = (base: string, vatRegistered: boolean): Group[] => [
-  { title: "รายรับ", items: [
-    { href: `${base}/docs/QUOTATION`, label: "ใบเสนอราคา" },
-    { href: `${base}/docs/INVOICE`, label: "ใบแจ้งหนี้" },
-    { href: `${base}/docs/RECEIPT`, label: "ใบเสร็จรับเงิน" },
-    ...(vatRegistered ? [{ href: `${base}/docs/TAX_INVOICE`, label: "ใบกำกับภาษีขาย" }] : []),
-    { href: `${base}/docs/BILLING_NOTE`, label: "ใบวางบิล" },
-    { href: `${base}/docs/DEPOSIT_RECEIPT`, label: "รับเงินมัดจำ" },
-    { href: `${base}/docs/CREDIT_NOTE`, label: "ใบลดหนี้" },
-    { href: `${base}/docs/DEBIT_NOTE`, label: "ใบเพิ่มหนี้" },
-  ]},
-  { title: "รายจ่าย", items: [
-    { href: `${base}/expense`, label: "บันทึกค่าใช้จ่าย" },
-    { href: `${base}/purchase`, label: "บันทึกซื้อสินค้า" },
-    { href: `${base}/po`, label: "ใบสั่งซื้อ" },
-    { href: `${base}/asset-buy`, label: "ซื้อสินทรัพย์" },
-  ]},
-  { title: "ผู้ติดต่อ", items: [
-    { href: `${base}/contacts`, label: "ลูกค้าและผู้ขาย" },
-  ]},
-  { title: "สินค้า", items: [
-    { href: `${base}/products`, label: "สินค้า/บริการ" },
-    { href: `${base}/goods-issue`, label: "เบิกสินค้า" },
-    { href: `${base}/assets`, label: "ทะเบียนสินทรัพย์" },
-  ]},
-  { title: "การเงิน", items: [
-    { href: `${base}/finance`, label: "บัญชีเงิน (เงินสด/ธนาคาร)" },
-    { href: `${base}/wht`, label: "หัก ณ ที่จ่าย (50 ทวิ)" },
-    { href: `${base}/tax`, label: "ภาษี (ภ.พ.30 / ภ.ง.ด.)" },
-  ]},
-  { title: "บัญชี", items: [
-    { href: `${base}/journal`, label: "สมุดรายวัน" },
-    { href: `${base}/ledger`, label: "บัญชีแยกประเภท" },
-    { href: `${base}/accounts`, label: "ผังบัญชี" },
-    { href: `${base}/periods`, label: "ปิดงวดบัญชี" },
-  ]},
-  { title: "เอกสาร", items: [
-    { href: `${base}/reports`, label: "งบการเงิน" },        // งบกำไรขาดทุน/งบดุล/กระแสเงินสด/งบทดลอง อยู่ใต้หน้านี้ (มี hub แล้ว)
-  ]},
-  { title: "ตั้งค่า", items: [
-    { href: `${base}/settings`, label: "ข้อมูลกิจการและเอกสาร" },
-  ]},
-];
+// src/lib/modules/account/nav.ts (รูปทรงจริง — ดูโค้ดเต็มในไฟล์)
+type AccountNavStatus = "ready" | "soon";
+type AccountNavItem = {
+  label: string; href: string; kind: "doc" | "page"; status: AccountNavStatus;
+  flyout?: { label: string; href: string; countKey?: string }[]; // ระดับ 2: ทางลัดสถานะของเอกสารชนิดนี้
+  sep?: boolean; // เส้นคั่นเหนือรายการ (จัดกลุ่มย่อยใน dropdown)
+};
+type AccountNavGroup = { key: string; label: string; icon: string; href: string; items: AccountNavItem[] };
+
+export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGroup[]; // 9 หมวด: หน้าหลัก·รายรับ·รายจ่าย·ผู้ติดต่อ·สินค้า·การเงิน·บัญชี·คลังเอกสาร·ตั้งค่า
+export function accountNavChildren(base: string, vatRegistered: boolean): { href: string; label: string; group?: string }[]; // ลิสต์แบน (เฉพาะ ready) — ใช้ใน app drawer ☰
+export function findActiveNav(pathname: string, base: string, groups: AccountNavGroup[]): { group; item? } | null; // ใช้ทั้ง AccountTabBar (active tab) และ AccountBreadcrumb
 ```
 
-พฤติกรรมหน้า hub (`AccountContent` ใหม่):
-1. การ์ดสรุป 4 ใบ (ค้างรับ/พ้นกำหนด/เอกสาร/ผู้ติดต่อ) — คงเดิม
-2. ปุ่มหลัก 1-2 ปุ่ม: "+ สร้างใบเสนอราคา" (primary) + "+ บันทึกค่าใช้จ่าย" (ghost)
-3. **การ์ดหมวด 8 ใบ** (`grid gap-3 sm:grid-cols-2`): ชื่อหมวด + รายการลิงก์ภายใน (มือถือ = accordion แตะกาง) — แทนทะเลปุ่ม ghost
-4. เอกสารล่าสุด (DataList 8 รายการ)
+กติกาเนื้อหา:
+- **`status: "ready"`** = มีหน้าไฟล์จริงรองรับวันนี้ (นับ route ที่สลับ `docType`/`tab` ผ่าน query เดิม เช่น `po?docType=ASSET_PURCHASE_ORDER`) — เมนูกดได้ตรง ๆ
+- **`status: "soon"`** = ยังไม่มีหน้า (SPEC มีแผนแต่ยังไม่ทำ) → `href:"#"` **แต่ AccountTabBar ไม่เรนเดอร์เป็นลิงก์เลย** (กันคลิกพาไปหน้าเปล่า) เรนเดอร์เป็นแถวจาง + ชิป "เร็ว ๆ นี้" แทน
+- **`flyout`** = ทางลัดสถานะของเอกสารชนิดนั้น ("+ สร้าง…" ปุ่มดำ · สถานะหลัก 2–4 รายการพร้อมตัวนับ `countKey` → คำนวณครั้งเดียวใน `account/layout.tsx` ผ่าน `accountFlyoutCounts()` (service.ts) ไม่ใช่ต่อหน้าเมนู เพื่อกันงบ query บวม · ดูทั้งหมด · ล่าสุด)
+- ใบกำกับภาษีขายซ่อนเมื่อ `!vatRegistered` (ของเดิม — ยังทำงานเหมือนกัน)
 
-ทุกหน้าลูกของ account: เพิ่ม `account/layout.tsx` ที่ render `SubNav` (desktop sidebar / mobile back-bar) — หน้าไม่ต้องประกอบ nav เอง
+พฤติกรรมหน้า hub (`AccountContent`, `/app/sys/<id>/account` — แก้บั๊ก 404 เดิมแล้ว มี `page.tsx` จริง):
+1. การ์ดสรุป 4 ใบ (ค้างรับ/พ้นกำหนด/เอกสาร/ผู้ติดต่อ) — คงเดิม
+2. ปุ่มหลัก: "+ สร้างใบเสนอราคา" (primary) + "+ บันทึกค่าใช้จ่าย" (ghost)
+3. "ใช้บ่อย" (ทางลัด 4 ปุ่มที่ใช้บ่อยจริง) + เอกสารล่าสุด (DataList) — เมนูเต็มทั้ง 9 หมวดอยู่ใน `AccountTabBar` เหนือหน้าแล้ว ไม่ต้องมีการ์ดหมวดซ้ำในหน้านี้อีก
+
+ทุกหน้าลูกของ account: `account/layout.tsx` render `<AccountTabBar>` + `<AccountBreadcrumb>` เหนือ `{children}` — หน้าไม่ต้องประกอบ nav เอง (เนื้อหาเต็มความกว้าง ไม่มี sidebar แบ่งซ้ายแล้ว)
 
 ---
 

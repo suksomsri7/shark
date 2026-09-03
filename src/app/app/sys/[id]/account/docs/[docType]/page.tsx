@@ -179,21 +179,24 @@ export default async function DocTypeListPage({
         </div>
       )}
 
-      {canCreate ? (
-        <DocEditor
-          systemId={systemId}
-          docType={dt}
-          docLabel={label}
-          contacts={contacts.map((c) => ({ id: c.id, name: c.name }))}
-          vatRateBp={settings.vatRateBp}
-          vatRegistered={settings.vatRegistered}
-          defaultVatTiming={settings.taxPointBasis}
-        />
-      ) : (
-        <p className="rounded-lg border border-dashed p-4 text-sm text-[color:var(--color-muted)]">
-          {label}สร้างได้จากการแปลงเอกสารต้นทาง (ใบแจ้งหนี้ / ใบเสร็จ) เท่านั้น
-        </p>
-      )}
+      {/* id="new" = ปลายทางของ "+ สร้าง..." จาก flyout เมนูบัญชี V2 (AccountTabBar) */}
+      <div id="new">
+        {canCreate ? (
+          <DocEditor
+            systemId={systemId}
+            docType={dt}
+            docLabel={label}
+            contacts={contacts.map((c) => ({ id: c.id, name: c.name }))}
+            vatRateBp={settings.vatRateBp}
+            vatRegistered={settings.vatRegistered}
+            defaultVatTiming={settings.taxPointBasis}
+          />
+        ) : (
+          <p className="rounded-lg border border-dashed p-4 text-sm text-[color:var(--color-muted)]">
+            {label}สร้างได้จากการแปลงเอกสารต้นทาง (ใบแจ้งหนี้ / ใบเสร็จ) เท่านั้น
+          </p>
+        )}
+      </div>
     </div>
   );
 }

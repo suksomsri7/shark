@@ -63,17 +63,20 @@ export async function ExpenseListPage(props: {
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <PageHeader title={label} back={{ href: base, label: "ระบบบัญชี" }} />
-      <ExpenseEditor
-        systemId={systemId}
-        docType={docType}
-        docLabel={label}
-        variant={variant}
-        contacts={contacts.map((c) => ({ id: c.id, name: c.name }))}
-        accountOptions={accountOptions}
-        requireAccount={variant === "expense" || variant === "asset"}
-        vatRateBp={settings.vatRateBp}
-        vatRegistered={settings.vatRegistered}
-      />
+      {/* id="new" = ปลายทางของ "+ สร้าง..." จาก flyout เมนูบัญชี V2 (AccountTabBar) */}
+      <div id="new">
+        <ExpenseEditor
+          systemId={systemId}
+          docType={docType}
+          docLabel={label}
+          variant={variant}
+          contacts={contacts.map((c) => ({ id: c.id, name: c.name }))}
+          accountOptions={accountOptions}
+          requireAccount={variant === "expense" || variant === "asset"}
+          vatRateBp={settings.vatRateBp}
+          vatRegistered={settings.vatRegistered}
+        />
+      </div>
       <ExpenseList
         rows={rows}
         tabs={tabs}

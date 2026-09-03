@@ -52,8 +52,13 @@ type PageSpec = {
   expect?: string[];
   /** selector ที่ต้องคลิกหลังหน้าโหลด/hydrate เสร็จ (ทำตามลำดับ) — ใช้เปิด dropdown/sheet ก่อนถ่ายภาพ */
   click?: string[];
-  /** เวลารอ (ms) หลังคลิกครบ ก่อนถ่ายภาพ — ค่าเริ่มต้น 300 (ตาม WO 0.4 "wait 300ms") */
+  /** selector ที่ต้อง hover (ไม่คลิก) หลัง click ครบ — ใช้เปิด flyout ระดับ 2 บนเดสก์ท็อปโดยไม่ navigate ออกจากหน้า */
+  hover?: string[];
+  /** เวลารอ (ms) หลัง click/hover ครบ ก่อนถ่ายภาพ — ค่าเริ่มต้น 300 (ตาม WO 0.4 "wait 300ms") */
   waitAfterClick?: number;
+  /** จำกัดให้ถ่าย/ตรวจเฉพาะอุปกรณ์นี้ (ไม่ระบุ = ทั้ง 2) — ใช้กับ interaction ที่มีความหมายแค่ device เดียว
+   *  เช่น hover flyout (เดสก์ท็อปเท่านั้น) / sheet ชั้น 2 (มือถือเท่านั้น) */
+  onlyDevice?: "desktop" | "mobile";
 };
 const PAGES: Record<string, PageSpec[]> = {
   "0.1": [
@@ -77,6 +82,25 @@ const PAGES: Record<string, PageSpec[]> = {
       click: ['[data-testid="acc-menu-revenue"]'],
       waitAfterClick: 300,
     },
+    {
+      name: "menu-flyout",
+      path: `/app/sys/${SYS}/account`,
+      note: 'คลิก "รายรับ" แล้ว hover "ใบแจ้งหนี้" — เปิด flyout ระดับ 2 (f2 พาเนลขวา: +สร้าง ปุ่มดำ/สถานะพร้อมตัวนับ/ดูทั้งหมด/ล่าสุด)',
+      expect: ["บัญชี"],
+      onlyDevice: "desktop",
+      click: ['[data-testid="acc-menu-revenue"]'],
+      hover: ['[data-testid="acc-item-INVOICE"]'],
+      waitAfterClick: 300,
+    },
+    {
+      name: "sheet-l2",
+      path: `/app/sys/${SYS}/account`,
+      note: 'แตะ "รายรับ" แล้วแตะ "ใบแจ้งหนี้ (ใบส่งของ)" — sheet ชั้น 2 พร้อมปุ่มย้อนกลับ (g18)',
+      expect: ["บัญชี"],
+      onlyDevice: "mobile",
+      click: ['[data-testid="acc-menu-revenue"]', '[data-testid="acc-item-INVOICE"]'],
+      waitAfterClick: 300,
+    },
   ],
 };
 
@@ -98,6 +122,16 @@ const OUT = `${QC.shotsDir}/${WO}`;
 mkdirSync(OUT, { recursive: true });
 
 const { sha256 } = await import("@/lib/core/hash");
+
+// listDocumentsPaged: ใช้ยืนยันตัวนับใน flyout เมนู V2 ตรงกับ query จริงของหน้ารายการ (แหล่งอิสระ ไม่ใช่เช็คตัวเองกับตัวเอง)
+// เป็น optional เหมือน prisma ด้านล่าง — ถ้า worktree กำลังถูกแก้ค้างโดย WO อื่นจน import พัง ให้ข้ามเช็คนี้ไปเงียบ ๆ
+// (ไม่ควรบล็อกกล้องถ่ายรูป) แต่พิมพ์เตือนให้เห็นว่าข้ามไปทำไม
+let listDocumentsPaged: ((tenantId: string, systemId: string, input: Record<string, unknown>) => Promise<{ total: number }>) | null = null;
+try {
+  listDocumentsPaged = (await import("@/lib/modules/account/service")).listDocumentsPaged as unknown as typeof listDocumentsPaged;
+} catch (e) {
+  console.warn(`⚠️  โหลด listDocumentsPaged ไม่ได้ (${e instanceof Error ? e.message.split("\n")[0] : e}) — ข้ามเช็คตัวนับ flyout กับ DB ตรง ๆ`);
+}
 
 // prisma: ปกติใช้ตัวเดียวกับแอป (`@/lib/core/db`) — ตัวนั้นมี boot assert ว่า "ทุก model ใน schema
 // ต้องลงทะเบียนใน scope.ts" ซึ่งจะโยนถ้า worktree กำลังถูกแก้ค้างอยู่โดย WO อื่น (schema เปลี่ยนแล้ว
@@ -166,6 +200,7 @@ try {
         ["desktop", 1440, 900],
         ["mobile", 390, 844],
       ] as const) {
+        if (spec.onlyDevice && spec.onlyDevice !== device) continue; // interaction นี้มีความหมายแค่ device เดียว
         const page = await browser.newPage();
         // tsx/esbuild ห่อฟังก์ชันที่ส่งเข้า page.evaluate ด้วย __name(...) ซึ่งเบราว์เซอร์ไม่มี → ฉีด shim
         await page.evaluateOnNewDocument("window.__name = window.__name || ((f) => f);");
@@ -190,44 +225,84 @@ try {
         for (const sel of spec.click ?? []) {
           await page.click(sel).catch(() => {});
         }
-        if (spec.click?.length) await new Promise((r) => setTimeout(r, spec.waitAfterClick ?? 300));
+        // hover (ไม่ใช่ click) — เปิด flyout ระดับ 2 บนเดสก์ท็อปโดยไม่ navigate ออกจากรายการ (Link ของแถวระดับ 1 มี href จริง)
+        for (const sel of spec.hover ?? []) {
+          await page.hover(sel).catch(() => {});
+        }
+        if (spec.click?.length || spec.hover?.length) await new Promise((r) => setTimeout(r, spec.waitAfterClick ?? 300));
+        // Fable QC รอบ 2: page.hover() ของ puppeteer เรียก scrollIntoViewIfNeeded ก่อนเสมอ — ถ้า element ที่ hover
+        // เคยโดน overflow ของ ancestor บัง (ดู AccountTabBar แก้แล้ว) จะสกอลหน้าไปตำแหน่งแปลก ๆ ก่อนถ่าย ⇒ รีเซ็ตกลับ 0
+        // เสมอก่อนถ่ายภาพ (fullPage screenshot ควรไม่ขึ้นกับตำแหน่งสกอลอยู่แล้ว แต่กันไว้สองชั้น)
+        await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
 
         const file = `${OUT}/${spec.name}-${device}.png`;
         await page.screenshot({ path: file, fullPage: true });
-        const probe = await page.evaluate(() => ({
-          title: document.title,
-          h1: document.querySelector("h1")?.textContent?.trim() ?? "",
-          all: (document.body.innerText ?? "").slice(0, 20000),
-          text: (document.querySelector("main")?.textContent ?? document.body.textContent ?? "").slice(0, 4000),
-          overflow: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
-          testids: Object.fromEntries(
-            [...document.querySelectorAll("[data-testid]")].map((el) => [
-              el.getAttribute("data-testid") ?? "",
-              (el as HTMLElement).innerText.trim(),
-            ]),
-          ),
-          // WO 0.4 shell V2: ตัวเลขโครงสร้างเมนู — อ่านแยกจาก testids ตรง ๆ เพราะต้อง "นับ" ไม่ใช่อ่านข้อความ
-          acc: {
-            hasTabbar: !!document.querySelector('[data-testid="acc-tabbar"]'),
-            menuCount: document.querySelectorAll('[data-testid^="acc-menu-"]').length,
-            breadcrumbText: document.querySelector('[data-testid="acc-breadcrumb"]')?.textContent?.trim() ?? "",
-            // ลิงก์ระดับ 1 ที่เปิดอยู่ (dropdown เดสก์ท็อป หรือ sheet มือถือ) — href="#" ต้องมีชิป "เร็ว ๆ นี้" กำกับเสมอ
-            badDeadLink: (() => {
-              const scopes = [
-                ...document.querySelectorAll('[role="menu"]'),
-                ...document.querySelectorAll(".fixed.inset-0"),
-              ];
-              for (const scope of scopes) {
-                for (const a of scope.querySelectorAll("a[href]")) {
-                  const href = a.getAttribute("href") ?? "";
-                  const hasChip = (a.textContent ?? "").includes("เร็ว ๆ นี้");
-                  if (href === "#" && !hasChip) return a.textContent?.trim() ?? "(ไม่มีข้อความ)";
+        const probe = await page.evaluate(() => {
+          // เช็ค "เปิดอยู่จริงบนจอ" ด้วย getBoundingClientRect + computed style — **ห้ามใช้ offsetParent**
+          // (offsetParent เป็น null เสมอสำหรับ position:fixed ตามสเปก แม้ element จะมองเห็นได้จริง ๆ บนจอ —
+          // บทเรียน VR-6.2 ที่ Fable เจอ: sheet ของ AccountTabBar เป็น `fixed inset-0` ⇒ offsetParent เช็คพลาดเสมอ)
+          const isVisible = (el: Element | null): boolean => {
+            if (!el) return false;
+            const r = el.getBoundingClientRect();
+            if (r.width <= 0 || r.height <= 0) return false;
+            const cs = getComputedStyle(el);
+            return cs.visibility !== "hidden" && cs.display !== "none";
+          };
+          const rectOf = (el: Element | null) => {
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height };
+          };
+          const tabbarEl = document.querySelector('[data-testid="acc-tabbar"]');
+          const dropdownEl = document.querySelector('[data-testid="acc-dropdown"]');
+          return {
+            title: document.title,
+            h1: document.querySelector("h1")?.textContent?.trim() ?? "",
+            all: (document.body.innerText ?? "").slice(0, 20000),
+            text: (document.querySelector("main")?.textContent ?? document.body.textContent ?? "").slice(0, 4000),
+            overflow: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
+            viewportH: window.innerHeight,
+            testids: Object.fromEntries(
+              [...document.querySelectorAll("[data-testid]")].map((el) => [
+                el.getAttribute("data-testid") ?? "",
+                (el as HTMLElement).innerText.trim(),
+              ]),
+            ),
+            // WO 0.4 shell V2: ตัวเลขโครงสร้างเมนู — อ่านแยกจาก testids ตรง ๆ เพราะต้อง "นับ" ไม่ใช่อ่านข้อความ
+            acc: {
+              hasTabbar: !!tabbarEl,
+              menuCount: document.querySelectorAll('[data-testid^="acc-menu-"]').length,
+              breadcrumbText: document.querySelector('[data-testid="acc-breadcrumb"]')?.textContent?.trim() ?? "",
+              // ลิงก์ระดับ 1 ที่เปิดอยู่ (dropdown เดสก์ท็อป หรือ sheet มือถือ) — href="#" ต้องมีชิป "เร็ว ๆ นี้" กำกับเสมอ
+              badDeadLink: (() => {
+                const scopes = [
+                  ...document.querySelectorAll('[role="menu"]'),
+                  ...document.querySelectorAll(".fixed.inset-0"),
+                ];
+                for (const scope of scopes) {
+                  for (const a of scope.querySelectorAll("a[href]")) {
+                    const href = a.getAttribute("href") ?? "";
+                    const hasChip = (a.textContent ?? "").includes("เร็ว ๆ นี้");
+                    if (href === "#" && !hasChip) return a.textContent?.trim() ?? "(ไม่มีข้อความ)";
+                  }
                 }
-              }
-              return null;
-            })(),
-          },
-        }));
+                return null;
+              })(),
+              dropdownVisible: isVisible(dropdownEl),
+              flyoutVisible: isVisible(document.querySelector('[data-testid="acc-flyout"]')),
+              sheetL1Visible: isVisible(document.querySelector('[data-testid="acc-sheet-l1"]')),
+              sheetL2Visible: isVisible(document.querySelector('[data-testid="acc-sheet-l2"]')),
+              sheetL2HasBackArrow: (() => {
+                const sheet = document.querySelector('[data-testid="acc-sheet-l2"]');
+                if (!sheet) return false;
+                return [...sheet.querySelectorAll("button")].some((b) => (b.getAttribute("aria-label") ?? "") === "ย้อนกลับ");
+              })(),
+              // Fable QC รอบ 2 ข้อ 1: dropdown ต้องอยู่ใต้แถบเมนูพอดี ไม่ทะลุขอบล่างจอ
+              tabbarRect: rectOf(tabbarEl),
+              dropdownRect: rectOf(dropdownEl),
+            },
+          };
+        });
         line.push(`${device} HTTP ${status} · ${w}px · ล้นแนวนอน ${probe.overflow}px${navOk ? "" : " · nav timeout"}`);
 
         // กันถ่ายหน้า login/404 มาแล้วนึกว่าผ่าน: ต้อง HTTP 200 + เจอข้อความที่ประกาศไว้ครบ
@@ -255,9 +330,58 @@ try {
             [probe.acc.badDeadLink === null, `ไม่มีลิงก์ href="#" ที่ไม่มีชิป "เร็ว ๆ นี้"${probe.acc.badDeadLink ? ` (เจอ "${probe.acc.badDeadLink}")` : ""}`],
           ];
           if (spec.name === "hub") checks.push([status === 200 && probe.h1.length > 0, `account root คืน 200 + มี h1 (h1="${probe.h1}")`]);
+          // เช็คที่มาจากบั๊กที่ Fable เจอตอนตรวจภาพจริงรอบ 2: dropdown เปิดด้วยคลิกไม่ค้าง (ปิดเองก่อนถ่าย)
+          if (spec.name === "menu-open") {
+            if (device === "desktop") checks.push([probe.acc.dropdownVisible, `คลิก "รายรับ" แล้ว dropdown [data-testid="acc-dropdown"] ต้องเปิดค้างอยู่ (rect > 0 + visible)`]);
+            else checks.push([probe.acc.sheetL1Visible, `แตะ "รายรับ" แล้ว bottom sheet ชั้น 1 ต้องเปิดอยู่`]);
+          }
+          if (spec.name === "menu-flyout") {
+            checks.push([probe.acc.dropdownVisible, `dropdown ระดับ 1 ยังเปิดอยู่ขณะ hover เข้ารายการ`]);
+            checks.push([probe.acc.flyoutVisible, `hover "ใบแจ้งหนี้" แล้ว flyout ระดับ 2 [data-testid="acc-flyout"] ต้องเปิด (f2 พาเนลขวา)`]);
+            // Fable QC รอบ 2 ข้อ 1: dropdown ต้องอยู่ใต้แถบเมนูพอดี (top ≥ ก้นแถบเมนู) และไม่ทะลุขอบล่างจอ
+            if (probe.acc.tabbarRect && probe.acc.dropdownRect) {
+              const tb = probe.acc.tabbarRect;
+              const dd = probe.acc.dropdownRect;
+              checks.push([
+                dd.top >= tb.bottom - 1, // เผื่อ 1px ปัดเศษ subpixel
+                `dropdown.top (${dd.top.toFixed(1)}) ≥ แถบเมนู.bottom (${tb.bottom.toFixed(1)})`,
+              ]);
+              checks.push([
+                dd.bottom <= probe.viewportH + 1,
+                `dropdown.bottom (${dd.bottom.toFixed(1)}) ≤ ความสูงจอ (${probe.viewportH})`,
+              ]);
+            } else {
+              checks.push([false, `อ่าน getBoundingClientRect ของแถบเมนู/dropdown ไม่ได้ (element หาย)`]);
+            }
+          }
+          if (spec.name === "sheet-l2") {
+            checks.push([probe.acc.sheetL2Visible, `แตะ "ใบแจ้งหนี้" แล้ว sheet ชั้น 2 [data-testid="acc-sheet-l2"] ต้องเปิด (g18)`]);
+            checks.push([probe.acc.sheetL2HasBackArrow, `sheet ชั้น 2 ต้องมีปุ่มย้อนกลับ (‹) ในหัว`]);
+          }
           for (const [ok, label] of checks) {
             if (!ok) failures++;
             console.log(`  ${ok ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
+          }
+
+          // Fable QC รอบ 2 ข้อ 2: ตัวนับใน flyout ต้องตรงกับ tabCounts จริงของหน้ารายการ (แหล่งเดียวกัน ไม่ใช่สูตรที่สอง)
+          // เทียบ DOM (badge ที่ AccountTabBar เรนเดอร์จาก accountFlyoutCounts()) กับผลลัพธ์ตรงจาก listDocumentsPaged()
+          // ที่ query DB จริงด้วยฟิลเตอร์เดียวกับหน้ารายการ (excludeOverdue) — เป็นแหล่งอิสระคนละทาง ไม่ใช่เช็คฟังก์ชันกับตัวเอง
+          if (spec.name === "menu-flyout" && device === "desktop" && listDocumentsPaged) {
+            const ldp = listDocumentsPaged; // alias เพื่อให้ TS narrow ทะลุ Promise.all ได้ (let ไม่ narrow ข้าม closure)
+            const awaiting: { total: number } = await ldp(E.tenantId, SYS, { docType: "INVOICE", status: "AWAITING_PAYMENT", excludeOverdue: true, pageSize: 1 });
+            const overdue: { total: number } = await ldp(E.tenantId, SYS, { docType: "INVOICE", status: "OVERDUE", pageSize: 1 });
+            const all: { total: number } = await ldp(E.tenantId, SYS, { docType: "INVOICE", status: "ALL", pageSize: 1 });
+            const domChecks: [string, number][] = [
+              ["acc-count-INVOICE:awaiting", awaiting.total],
+              ["acc-count-INVOICE:overdue", overdue.total],
+              ["acc-count-INVOICE:all", all.total],
+            ];
+            for (const [tid, expected] of domChecks) {
+              const got = probe.testids[tid];
+              const ok = String(got ?? "") === String(expected);
+              if (!ok) failures++;
+              console.log(`  ${ok ? "✅" : "❌"} [${spec.name}/${device}] [data-testid="${tid}"] = ${JSON.stringify(got)} · listDocumentsPaged() ตรงจาก DB = ${expected}`);
+            }
           }
         }
         await page.close();
