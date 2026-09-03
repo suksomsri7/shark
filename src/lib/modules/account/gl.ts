@@ -1094,6 +1094,77 @@ export async function postInventoryGl(
   });
 }
 
+// ─────────────────── postStockDocument (V2 · WO 4.3 §8.4) ───────────────────
+
+/**
+ * โพสต์บัญชีของเอกสารปรับปรุงสต็อก/ต้นทุน — ใบเบิก PRR · ใบส่งคืน RPR · ใบปรับต้นทุน CA
+ *
+ * ต่างจาก `postDocument` ตรงที่ยอดไม่ได้มาจาก subTotal/VAT ของเอกสาร แต่มาจาก **ต้นทุนจริง**
+ * ที่โมดูลคลังคืนมาตอนตัด/คืนของ (`InvMovement.costSatang`) ⇒ ผู้เรียกส่ง `amountSatang` มาเอง
+ *
+ * บัญชี: ระบุเป็น "รหัสบัญชี" (`drCode`/`crCode`) ได้ตรง ๆ — ผู้ใช้เลือกบัญชี Dr เองในฟอร์ม (§8.4)
+ *        ไม่ระบุ = ถอยไปใช้ mapping key (`drKey`/`crKey`) ตามปกติ
+ * idempotent ต่อ (docId, event) · กลับรายการด้วย `reverseFor("AccountDocument", docId)` เหมือนเอกสารอื่น
+ */
+export async function postStockDocument(
+  ctx: GlCtx,
+  o: {
+    docId: string;
+    event: string; // "ISSUE" | "RETURN" | "COST_ADJUST" | "OPENING"
+    date: Date;
+    amountSatang: number; // > 0 เสมอ (ทิศทางกำหนดด้วย dr/cr)
+    drCode?: string | null;
+    crCode?: string | null;
+    drKey?: string;
+    crKey?: string;
+    memo?: string;
+    journal?: AccountJournalType;
+  },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true; reason: string }> {
+  return withTx(tx, async (db) => {
+    if (o.amountSatang <= 0) return { skipped: true, reason: "มูลค่า 0 — ไม่มีอะไรให้ลงบัญชี" };
+    if (await alreadyPosted(ctx, `AccountDocument#${o.docId}#${o.event}`, db))
+      return { skipped: true, reason: "โพสต์แล้ว (idempotent)" };
+
+    await ensureAccounting(ctx, db as Tx);
+    const b = new Book(ctx, db);
+    const idOf = async (code: string | null | undefined, key: string): Promise<string> => {
+      const c = (code ?? "").trim();
+      if (c) {
+        const led = await db.accountLedger.findFirst({
+          where: { systemId: ctx.systemId, code: c, archivedAt: null },
+          select: { id: true },
+        });
+        if (led) return led.id;
+        // บัญชีที่ผู้ใช้เลือกหายไป (ถูกปิด/ลบ) — อย่าเงียบ ให้ลง key ปริยายแล้วตั้งธงให้คนมาตรวจ
+        b.needsReview = true;
+      }
+      return b.id(key);
+    };
+    const drId = await idOf(o.drCode, o.drKey ?? "GOODS_ISSUE_EXPENSE");
+    const crId = await idOf(o.crCode, o.crKey ?? "INVENTORY");
+    b.dr(drId, o.amountSatang);
+    b.cr(crId, o.amountSatang);
+
+    const entry = await commitEntry(
+      ctx,
+      {
+        book: "GENERAL",
+        journal: o.journal ?? "ADJUST",
+        date: o.date,
+        refType: "AccountDocument",
+        refId: o.docId,
+        event: o.event,
+        memo: o.memo ?? "ปรับปรุงสินค้าคงเหลือ",
+      },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+
 // ─────────────────── postChequeEntry (ทะเบียนเช็ค — R-B/M7) ───────────────────
 
 /**

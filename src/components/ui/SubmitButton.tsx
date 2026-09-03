@@ -9,6 +9,8 @@ type Props = {
   pendingText?: string;
   variant?: "primary" | "ghost";
   className?: string;
+  /** ผูกปุ่มกับ <form id="..."> ที่อยู่คนละที่ในหน้า (เช่น ปุ่มอยู่ในเซลล์ตาราง — <form> วางใน <tr> ไม่ได้) */
+  form?: string;
 };
 
 export function SubmitButton({
@@ -16,11 +18,13 @@ export function SubmitButton({
   pendingText = "กำลังบันทึก…",
   variant = "primary",
   className = "",
+  form,
 }: Props) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
+      form={form}
       disabled={pending}
       className={`btn btn-${variant} text-sm disabled:opacity-50 ${className}`}
     >

@@ -251,10 +251,14 @@ console.log(`🏢 ร้าน "${QC.tenantName}" ${tenantId} · ระบบบ
 
 // ─────────────────────────── 3. หน่วยนับ + สินค้า/บริการ 12 ───────────────────────────
 
-for (const u of ["ชิ้น", "ตัว", "ชุด", "คู่", "คน", "ทริป", "วัน", "ครั้ง", "คอร์ส", "ถัง", "กล่อง"]) {
-  await prod.createUnit(tenantId, systemId, u);
+// WO 4.3 §8.3 — หน่วยเริ่มต้น 12 หน่วย (มีรหัส PU/SU + ชื่ออังกฤษ) · idempotent
+const unitSeed = await prod.seedUnits(tenantId, systemId);
+// หน่วยเฉพาะร้านดำน้ำที่ไม่อยู่ในชุดเริ่มต้น
+for (const u of ["ตัว", "คู่", "ถัง"]) {
+  await prod.createUnit(tenantId, systemId, u, { kind: "PRODUCT" });
 }
 const units = new Map((await prod.listUnits(tenantId, systemId)).map((u) => [u.name, u.id]));
+console.log(`📏 หน่วยนับ ${units.size} หน่วย (ชุดเริ่มต้น §8.3 สร้างใหม่ ${unitSeed.created} · เติมรหัสให้ของเดิม ${unitSeed.filled})`);
 
 const PRODUCTS: { sku: string; name: string; type: "GOODS" | "SERVICE"; unit: string; sale: number; buy?: number }[] = [
   { sku: "TRIP-SIM3D", name: "ทริปสิมิลัน 3 วัน 2 คืน", type: "SERVICE", unit: "ทริป", sale: 990_000 },
@@ -312,6 +316,66 @@ for (const l of LINKED_STOCK) {
   linkedItems.push({ sku: l.sku, itemId: item.id, onHand: l.onHand, costSatang: src.buy ?? 0 });
 }
 console.log(`🔗 ผูกคลังสินค้า ${linkedItems.length} รายการ (${linkedItems.map((i) => `${i.sku}=${i.onHand}`).join(" · ")})`);
+
+// ── WO 4.3 §8.2: รายการจัดชุด 1 ชุด (สินค้ารวมเป็น 13) ──
+// ชุด "ดำน้ำตื้นครบเซ็ต" = หน้ากาก 1 + ถังอากาศ 1 (ทั้งคู่ผูกคลัง ⇒ ขายชุด 1 = สต็อกทั้งสองลด 1)
+const bundleRes = await prod.createProduct(tenantId, systemId, {
+  sku: "SET-SNK",
+  name: "ชุดดำน้ำตื้นครบเซ็ต (หน้ากาก + ถังอากาศ)",
+  type: "BUNDLE",
+  unitId: units.get("ชุด") ?? null,
+  salePrice: 1_000_000, // ราคาชุด ฿10,000.00 (ถูกกว่าซื้อแยก 285,000 + 780,000)
+  vatRateBp: 700,
+  category: "ชุดอุปกรณ์",
+});
+if (!bundleRes.ok) throw new Error(`สร้างรายการจัดชุดไม่สำเร็จ: ${bundleRes.reason}`);
+productIds.set("SET-SNK", bundleRes.id);
+const BUNDLE_RECIPE = [
+  { sku: "MASK-01", qty: 1 },
+  { sku: "TANK-12", qty: 1 },
+];
+const bundleSet = await prod.setBundleItems(
+  tenantId,
+  systemId,
+  bundleRes.id,
+  BUNDLE_RECIPE.map((c) => ({ componentProductId: productIds.get(c.sku)!, qty: c.qty })),
+);
+if (!bundleSet.ok) throw new Error(`ตั้งส่วนประกอบของชุดไม่สำเร็จ: ${bundleSet.reason}`);
+console.log(`🎁 รายการจัดชุด 1 ชุด (${bundleRes.code}) · ส่วนประกอบ ${bundleSet.count} รายการ`);
+
+// ── WO 4.3 §8.2: ยอดยกมา 1 lot ของสินค้าที่ไม่ผูกคลัง (สมุดบันทึกการดำน้ำ) ──
+// Dr 1200 สินค้าคงเหลือ / Cr 3999 ยอดยกมา = 50 × ฿180.00 = ฿9,000.00 (งบดุลขยับ · P&L ไม่ขยับ)
+const OPENING_LOT = { sku: "LOGBK-01", qty: 50, unitCost: 18_000, date: "2026-01-01" };
+const openingRes = await prod.addOpeningLot(tenantId, systemId, productIds.get(OPENING_LOT.sku)!, {
+  lotDate: D(OPENING_LOT.date),
+  qty: OPENING_LOT.qty,
+  unitCost: OPENING_LOT.unitCost,
+});
+if (!openingRes.ok) throw new Error(`ยอดยกมาไม่สำเร็จ: ${openingRes.reason}`);
+console.log(`📥 ยอดยกมา ${OPENING_LOT.sku} ${OPENING_LOT.qty} ชิ้น × ฿${bahtStr(OPENING_LOT.unitCost)} = ฿${bahtStr(openingRes.amount)}`);
+
+// ── WO 4.3 §8.4: ใบปรับต้นทุนสินค้า 1 ใบ (CA) ──
+// หน้ากากดำน้ำ: ต้นทุน 1,680.00 → 1,750.00 · คงเหลือ 24 ⇒ กำไรจากการปรับ 24 × ฿70.00 = ฿1,680.00
+// JV: Dr 1200 / Cr 5310 (กำไร/ขาดทุนจากการปรับมูลค่าสินค้า)
+const CA_FIXTURE = { sku: "MASK-01", newCost: 175_000, date: "2026-09-28" };
+const caRes = await prod.createCostAdjustment({
+  tenantId,
+  systemId,
+  productId: productIds.get(CA_FIXTURE.sku)!,
+  newCostSatang: CA_FIXTURE.newCost,
+  issueDate: D(CA_FIXTURE.date),
+  reason: "ต้นทุนซื้อเปลี่ยน",
+  note: "ผู้ขายปรับราคาหน้ากากขึ้น",
+});
+if (!caRes.ok) throw new Error(`ใบปรับต้นทุนไม่สำเร็จ: ${caRes.reason}`);
+console.log(
+  `🧮 ใบปรับต้นทุน ${caRes.docNo} · ${CA_FIXTURE.sku} ฿${bahtStr(caRes.oldCost)} → ฿${bahtStr(caRes.newCost)} × ${caRes.qty} = ฿${bahtStr(caRes.delta)}`,
+);
+// ต้นทุนของ item ที่ผูกไว้ขยับตามใบปรับต้นทุน → เฉลย `inventory.linked` ต้องตามด้วย (ไม่งั้น QC โกหก)
+{
+  const li = linkedItems.find((i) => i.sku === CA_FIXTURE.sku);
+  if (li) li.costSatang = caRes.newCost;
+}
 
 // ─────────────────────────── 4. ผู้ติดต่อ 63 (ลูกค้า 41 · ผู้ขาย 22 · กรุ 5) ───────────────────────────
 
@@ -1173,13 +1237,47 @@ const expected = {
   })),
   invoiceTabs: { all: 51, draft: 3, awaiting: 12, partial: 2, paid: 29, overdue: 4, cancelled: 1 },
   contacts: { all: 63, customer: 41, vendor: 22, archived: 5, active: 58 },
-  products: 12,
+  // WO 4.3: 13 = สินค้า 7 + บริการ 5 + รายการจัดชุด 1 (เดิม 12 · เพิ่ม "ชุดดำน้ำตื้นครบเซ็ต")
+  products: 13,
+  productsByType: { GOODS: 7, SERVICE: 5, BUNDLE: 1 },
+  // WO 4.3 — หน่วยนับ · รายการจัดชุด · ยอดยกมา · ใบปรับต้นทุน (ตัวเลขอิสระจากเฉลยชุดอื่น)
+  units: { seeded: prod.UNIT_SEED.length, total: units.size },
+  bundle: {
+    id: bundleRes.id,
+    code: bundleRes.code,
+    sku: "SET-SNK",
+    name: "ชุดดำน้ำตื้นครบเซ็ต (หน้ากาก + ถังอากาศ)",
+    salePrice: 1_000_000,
+    components: BUNDLE_RECIPE.map((c) => ({ sku: c.sku, productId: productIds.get(c.sku)!, qty: c.qty })),
+  },
+  openingLot: {
+    sku: OPENING_LOT.sku,
+    productId: productIds.get(OPENING_LOT.sku)!,
+    qty: OPENING_LOT.qty,
+    unitCost: OPENING_LOT.unitCost,
+    amount: openingRes.amount, // 900,000 สตางค์
+    drCode: "1200",
+    crCode: "3999",
+  },
+  costAdjustment: {
+    docId: caRes.id,
+    docNo: caRes.docNo,
+    sku: CA_FIXTURE.sku,
+    productId: productIds.get(CA_FIXTURE.sku)!,
+    oldCost: caRes.oldCost,
+    newCost: caRes.newCost,
+    qty: caRes.qty,
+    delta: caRes.delta, // (ใหม่−เดิม)×คงเหลือ — บวก = กำไร
+    drCode: "1200",
+    crCode: "5310",
+  },
   // WO 4.1 — สินค้าที่ผูกคลังสินค้า (ตัวเลขอิสระจากเฉลยชุดอื่น · ยอดคงเหลือมาจาก InvItem.onHand)
   inventory: {
     systemId: invSys.id,
     linked: linkedItems,
     linkedCount: linkedItems.length,
-    unlinkedCount: 12 - linkedItems.length,
+    // WO 4.3: นับจากจำนวนสินค้าจริง (เดิมฮาร์ดโค้ด 12 → พังทันทีที่ seed เพิ่มรายการจัดชุด)
+    unlinkedCount: productIds.size - linkedItems.length,
   },
   // WO 4.2 — บิลขายหน้าร้าน (POS ส่งบรรทัดเข้าบัญชี) · เอกสารชนิด TAX_INVOICE_ABB (ไม่โพสต์ GL ซ้ำ)
   posSales: {

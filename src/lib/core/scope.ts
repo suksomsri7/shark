@@ -220,6 +220,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // Account — GL/finance/asset (P2/P3)
   AccountUnit: sys(),
   AccountProduct: sys(),
+  // WO 4.3 (บัญชี V2 §8.2) — สูตรรายการจัดชุด + ยอดยกมาของสินค้า (ผูก tenantId+systemId ทั้งคู่)
+  AccountProductBundleItem: sys(),
+  AccountProductOpeningLot: sys(),
   AccountCategory: sys(),
   AccountFinance: sys(),
   AccountCheque: sys(),

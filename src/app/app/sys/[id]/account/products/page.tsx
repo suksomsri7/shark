@@ -1,413 +1,279 @@
+// หน้าสินค้า/บริการ V2 (WO 4.3 · DESIGN-SPEC-V2 §8.1–8.2)
+// เฟรม: f6-products.png (รายการ) · f6-products-menu.png (เมนูทำรายการ) · g8-product-modal.png (modal)
+// modal เปิดด้วย query: ?new=1 (เพิ่ม) · ?edit=<id> (แก้ไข) · &mtab=basic|advanced · &atab=info|price|accounting|opening|links
 import Link from "next/link";
-import type { AccountDocType } from "@prisma/client";
-import { loadAccountSystem } from "@/lib/modules/account/guard";
+import { requireAccountPage } from "@/lib/modules/account/guard";
 import {
-  listProductsWithStock,
+  listProductsPaged,
+  trackedProductCards,
   listUnits,
-  listCategories,
   listIncomeAccounts,
   listExpenseAccounts,
-  categoryAppliesTo,
+  listWarehouses,
+  productModalData,
+  nextProductCode,
   qtyText,
+  baht,
   PRODUCT_TYPE_LABEL,
 } from "@/lib/modules/account/product";
-import {
-  createProductAction,
-  updateProductAction,
-  archiveProductAction,
-  linkProductToItemAction,
-  unlinkProductFromItemAction,
-  createUnitAction,
-  renameUnitAction,
-  archiveUnitAction,
-  createCategoryAction,
-  updateCategoryAction,
-  archiveCategoryAction,
-} from "@/lib/modules/account/product-actions";
-import PageHeader from "@/components/ui/PageHeader";
-import Section from "@/components/ui/Section";
-import TabPills from "@/components/ui/TabPills";
-import FormField from "@/components/ui/FormField";
-import EmptyState from "@/components/ui/EmptyState";
-import MoneyText from "@/components/ui/MoneyText";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { SubmitButton } from "@/components/ui/SubmitButton";
+import { archiveProductAction } from "@/lib/modules/account/product-actions";
+import { inventorySystemId } from "@/lib/modules/account/inventory-link";
+import { getAccMode } from "@/components/account-v2/mode";
+import { ProductsPanel, type ProductRow, type ProductTypeTab } from "@/components/account-v2/ProductsPanel";
+import { ProductModal } from "@/components/account-v2/ProductModal";
+import type { RowActionItem } from "@/components/account-v2/RowActions";
+import type { AccountProductType } from "@prisma/client";
+import { buildHref } from "@/components/account-v2/url";
 
-// docType ที่ให้เลือกในกลุ่มจัดประเภท (appliesTo)
-const CAT_DOC_OPTIONS: { code: AccountDocType; label: string }[] = [
-  { code: "QUOTATION", label: "ใบเสนอราคา" },
-  { code: "INVOICE", label: "ใบแจ้งหนี้" },
-  { code: "RECEIPT", label: "ใบเสร็จรับเงิน" },
-  { code: "TAX_INVOICE", label: "ใบกำกับภาษีขาย" },
-  { code: "PURCHASE", label: "บันทึกซื้อ" },
-  { code: "EXPENSE", label: "บันทึกค่าใช้จ่าย" },
-  { code: "GOODS_ISSUE", label: "ใบเบิกสินค้า" },
-];
+const TYPE_KEYS: Record<string, AccountProductType> = { goods: "GOODS", service: "SERVICE", bundle: "BUNDLE" };
+const KEY_OF: Record<AccountProductType, string> = { GOODS: "goods", SERVICE: "service", BUNDLE: "bundle" };
 
-type Tab = "catalog" | "units" | "categories";
+const vatLabel = (bp: number) => (bp < 0 ? "ยกเว้น" : `${bp / 100}%`);
 
 export default async function ProductsPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; err?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
-  const { tab: tabRaw, err } = await searchParams;
-  const tab: Tab = tabRaw === "units" ? "units" : tabRaw === "categories" ? "categories" : "catalog";
-  const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.product.manage" });
+  const sp = await searchParams;
+  const { tenantId, systemId } = await requireAccountPage(id, "account.product.manage");
   const base = `/app/sys/${id}/account`;
+  const pathname = `${base}/products`;
 
-  const [products, units, categories, incomeAccts, expenseAccts] = await Promise.all([
-    listProductsWithStock(tenantId, systemId, { includeArchived: true }),
-    listUnits(tenantId, systemId),
-    listCategories(tenantId, systemId),
-    listIncomeAccounts(tenantId, systemId),
-    listExpenseAccounts(tenantId, systemId),
+  const one = (k: string) => (Array.isArray(sp[k]) ? (sp[k] as string[])[0] : (sp[k] as string | undefined));
+  const type = TYPE_KEYS[one("type") ?? "goods"] ?? "GOODS";
+  const sub = one("sub") === "archived" ? "archived" : "active";
+  const q = (one("q") ?? "").trim();
+  const category = (one("category") ?? "").trim();
+  const page = Math.max(Number.parseInt(one("page") ?? "1", 10) || 1, 1);
+  const pageSize = Math.min(Math.max(Number.parseInt(one("pageSize") ?? "8", 10) || 8, 1), 100);
+
+  const [result, cards, invSystemId, mode] = await Promise.all([
+    listProductsPaged(tenantId, systemId, { type, sub, q: q || undefined, category: category || undefined, page, pageSize }),
+    trackedProductCards(tenantId, systemId, 6),
+    inventorySystemId(tenantId),
+    getAccMode(),
   ]);
-  const unitName = new Map(units.map((u) => [u.id, u.name]));
+
+  // ── modal (§8.2 · g8) ──
+  const editId = one("edit") ?? "";
+  const wantModal = one("new") === "1" || !!editId;
+  const modalData = editId ? await productModalData(tenantId, systemId, editId) : null;
+  const [units, incomeAccounts, expenseAccounts, warehouses, nextCode, pickPage] = wantModal
+    ? await Promise.all([
+        listUnits(tenantId, systemId),
+        listIncomeAccounts(tenantId, systemId),
+        listExpenseAccounts(tenantId, systemId),
+        listWarehouses(tenantId),
+        modalData ? Promise.resolve(modalData.product.code ?? "") : nextProductCode(systemId, "GOODS"),
+        listProductsPaged(tenantId, systemId, { type: "GOODS", pageSize: 100 }),
+      ])
+    : [[], [], [], [], "", null];
+
+  const typeTabs: ProductTypeTab[] = (["GOODS", "SERVICE", "BUNDLE"] as AccountProductType[]).map((t) => ({
+    key: KEY_OF[t],
+    label: PRODUCT_TYPE_LABEL[t],
+    count: result.counts[t],
+    href: buildHref(pathname, sp, { type: KEY_OF[t], page: undefined, sub: undefined }),
+    active: t === type,
+  }));
+  const subTabs: ProductTypeTab[] = [
+    { key: "all", label: "ทั้งหมด", count: result.counts.active, href: buildHref(pathname, sp, { sub: undefined, page: undefined }), active: sub === "active" },
+    { key: "archived", label: "ปิดใช้งาน", count: result.counts.archived, href: buildHref(pathname, sp, { sub: "archived", page: undefined }), active: sub === "archived" },
+  ];
+
+  const rows: ProductRow[] = result.rows.map((p) => {
+    const code = p.code ?? p.sku ?? p.id.slice(-6);
+    const editHref = buildHref(pathname, sp, { edit: p.id, new: undefined, mtab: "basic" });
+    const tracked = !!p.invItemId;
+    const stockCell =
+      p.type === "GOODS" ? (
+        <span style={p.stock < 0 ? { color: "var(--color-danger)", fontWeight: 700 } : undefined} data-testid={`product-stock-${code}`}>
+          {qtyText(p.stock)}
+        </span>
+      ) : (
+        <span className="rounded-full border px-2 py-0.5 text-xs text-[color:var(--color-muted)]" style={{ borderColor: "var(--color-line)" }}>
+          ไม่ติดตามสต็อก
+        </span>
+      );
+    const nameCell = (
+      <span className="flex min-w-0 items-center gap-2">
+        {/* §8.1 "รูป (thumb 32)" — เฟรม f6 ไม่มีคอลัมน์รูปแยก จึงวางไว้หน้าชื่อ (จดใน wo-notes) */}
+        {p.imageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={p.imageUrl} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
+        )}
+        <span className={`truncate font-semibold ${p.archivedAt ? "line-through opacity-50" : ""}`}>{p.name}</span>
+        {p.posEnabled && (
+          <span className="shrink-0 text-xs text-[color:var(--color-muted)]" title="ขายผ่าน POS" data-testid={`product-pos-${code}`}>
+            ✓ POS
+          </span>
+        )}
+      </span>
+    );
+    const rowActions: RowActionItem[] = [
+      { label: "แก้ไขสินค้า", href: editHref, icon: "edit" },
+      ...(p.type === "GOODS"
+        ? [
+            { label: "เบิกสินค้า", href: `${base}/goods-issue/new?product=${p.id}`, icon: "truck" },
+            { label: "รับเข้าคลัง", href: invSystemId ? `/app/sys/${invSystemId}/inventory` : `${base}/products`, icon: "in" },
+            { label: "ปรับต้นทุน", href: `${base}/cost-adjustment/new?product=${p.id}`, icon: "pct" },
+            { label: "ดูความเคลื่อนไหว", href: `${base}/goods-issue?q=${encodeURIComponent(p.name)}`, icon: "clock" },
+          ]
+        : []),
+      {
+        label: p.archivedAt ? "เปิดใช้งาน" : "ปิดใช้งาน",
+        icon: "x",
+        danger: !p.archivedAt,
+        sepBefore: true,
+        submit: {
+          action: archiveProductAction,
+          fields: { systemId, id: p.id, archived: p.archivedAt ? "0" : "1" },
+        },
+      },
+    ];
+    return {
+      id: p.id,
+      code,
+      cells: [
+        <Link key="code" href={editHref} className="font-medium" style={{ color: "var(--color-accent)" }}>
+          {code}
+        </Link>,
+        nameCell,
+        p.category ?? "—",
+        p.unitName ?? "—",
+        stockCell,
+        p.buyPrice == null ? "—" : `฿${baht(p.buyPrice)}`,
+        p.salePrice == null ? "—" : `฿${baht(p.salePrice)}`,
+        vatLabel(p.vatRateBp),
+      ],
+      rowActions,
+      mobile: {
+        title: (
+          <Link href={editHref} style={{ color: "var(--color-accent)" }}>
+            {code} · {p.name}
+          </Link>
+        ),
+        subtitle: `${p.category ?? "ไม่ระบุหมวด"} · ${p.unitName ?? "ไม่ระบุหน่วย"}${tracked ? " · ติดตามสต็อก" : ""}`,
+        trailing: p.salePrice == null ? "—" : `฿${baht(p.salePrice)}`,
+        foot: p.type === "GOODS" ? `คงเหลือ ${qtyText(p.stock)}` : "ไม่ติดตามสต็อก",
+      },
+    };
+  });
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
-      <PageHeader
-        title="สินค้า/บริการ"
-        back={{ href: base, label: "ระบบบัญชี" }}
-        actions={
-          <a href={`${base}/import/products`} className="btn-sm">
-            นำเข้าสินค้า
-          </a>
+    <>
+      <ProductsPanel
+        pathname={pathname}
+        searchParams={sp}
+        typeTabs={typeTabs}
+        subTabs={subTabs}
+        trackedCards={cards.map((c) => ({
+          id: c.id,
+          name: c.name,
+          stockText: qtyText(c.stock),
+          reorderText: `ขั้นต่ำ ${qtyText(c.reorderPoint)}`,
+          ratio: c.ratio,
+          negative: c.negative,
+          low: c.low,
+        }))}
+        trackedHref={`${base}/products?type=goods`}
+        inventoryHref={invSystemId ? `/app/sys/${invSystemId}/inventory` : null}
+        importHref={`${base}/import/products`}
+        createHref={buildHref(pathname, sp, { new: "1", edit: undefined, mtab: "basic" })}
+        categories={result.categories}
+        activeCategory={category || undefined}
+        searchQ={q || undefined}
+        rows={rows}
+        page={result.page}
+        pageSize={result.pageSize}
+        pageCount={result.pageCount}
+        total={result.total}
+        stockValueText={type === "GOODS" ? `฿${baht(result.stockValue)}` : null}
+        emptyText={
+          q
+            ? `ไม่พบสินค้าที่ตรงกับ “${q}” — ลองคำอื่น หรือเพิ่มสินค้าใหม่`
+            : "ยังไม่มีรายการในหมวดนี้ — กด “+ เพิ่มสินค้า” เพื่อเริ่ม"
         }
+        errorText={one("err")}
       />
-
-      <div className="flex flex-wrap items-center gap-2">
-        <TabPills
-          active={tab}
-          tabs={[
-            { key: "catalog", label: "รายการสินค้า", href: "?tab=catalog" },
-            { key: "units", label: "หน่วย", href: "?tab=units" },
-            { key: "categories", label: "กลุ่มจัดประเภท", href: "?tab=categories" },
-          ]}
+      {wantModal && (
+        <ProductModal
+          systemId={systemId}
+          productsPath={buildHref(pathname, sp, { new: undefined, edit: undefined, mtab: undefined, atab: undefined })}
+          nextCode={String(nextCode)}
+          product={
+            modalData
+              ? {
+                  id: modalData.product.id,
+                  code: modalData.product.code,
+                  type: modalData.product.type,
+                  name: modalData.product.name,
+                  nameEn: modalData.product.nameEn,
+                  sku: modalData.product.sku,
+                  barcode: modalData.product.barcode,
+                  category: modalData.product.category,
+                  description: modalData.product.description,
+                  unitId: modalData.product.unitId,
+                  salePrice: modalData.product.salePrice,
+                  buyPrice: modalData.product.buyPrice,
+                  vatRateBp: modalData.product.vatRateBp,
+                  purchaseVatRateBp: modalData.product.purchaseVatRateBp,
+                  incomeAccountId: modalData.product.incomeAccountId,
+                  expenseAccountId: modalData.product.expenseAccountId,
+                  cogsAccountCode: modalData.product.cogsAccountCode,
+                  inventoryAccountCode: modalData.product.inventoryAccountCode,
+                  costMethod: modalData.product.costMethod,
+                  defaultWhtType: modalData.product.defaultWhtType,
+                  defaultWhtRateBp: modalData.product.defaultWhtRateBp,
+                  posEnabled: modalData.product.posEnabled,
+                  posCategory: modalData.product.posCategory,
+                  posPrice: modalData.product.posPrice,
+                  bookingEnabled: modalData.product.bookingEnabled,
+                  bookingDurationMin: modalData.product.bookingDurationMin,
+                  bookingDepositSatang: modalData.product.bookingDepositSatang,
+                  imageUrls: Array.isArray(modalData.product.imageUrls) ? (modalData.product.imageUrls as string[]) : [],
+                  invItemId: modalData.product.invItemId,
+                  warehouseId: modalData.product.warehouseId,
+                  item: modalData.item,
+                  bundleItems: modalData.bundleItems.map((b) => ({
+                    componentProductId: b.componentProductId,
+                    qty: b.qty,
+                    name: b.name,
+                    code: b.code,
+                  })),
+                  openingLots: modalData.openingLots.map((l) => ({
+                    id: l.id,
+                    seq: l.seq,
+                    lotDate: l.lotDate.toISOString(),
+                    qty: qtyText(l.qty as unknown as number),
+                    unitCost: l.unitCost,
+                    warehouseName: warehouses.find((w) => w.id === l.warehouseId)?.name ?? null,
+                  })),
+                }
+              : null
+          }
+          units={units.map((u) => ({ id: u.id, name: u.name, kind: u.kind }))}
+          incomeAccounts={incomeAccounts}
+          expenseAccounts={expenseAccounts}
+          warehouses={warehouses}
+          pickable={(pickPage?.rows ?? [])
+            .filter((r) => r.id !== editId)
+            .map((r) => ({ id: r.id, code: r.code, name: r.name, type: r.type, salePrice: r.salePrice }))}
+          categories={result.categories}
+          defaultTab={one("mtab") === "advanced" ? "advanced" : "basic"}
+          defaultAdvTab={
+            (["info", "price", "accounting", "opening", "links"].includes(one("atab") ?? "")
+              ? (one("atab") as "info" | "price" | "accounting" | "opening" | "links")
+              : "links")
+          }
+          ssrMode={mode}
+          hasInventorySystem={!!invSystemId}
         />
-        <Link href={`${base}/goods-issue`} className="ml-auto text-xs text-[color:var(--color-muted)] underline">
-          เบิก/คืนสินค้า →
-        </Link>
-      </div>
-
-      {err && <p className="text-sm text-[color:var(--color-danger)]">{err}</p>}
-
-      {tab === "catalog" && (
-        <>
-          {products.length === 0 ? (
-            <EmptyState text="ยังไม่มีสินค้า/บริการ — เพิ่มรายการแรกด้านล่างเพื่อเริ่ม" />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {products.map((p) => (
-                <details key={p.id} className="rounded-lg border px-3 py-2 text-sm">
-                  <summary className="flex cursor-pointer items-center justify-between gap-2">
-                    <span className="flex flex-col">
-                      <span className={`font-medium ${p.archivedAt ? "line-through opacity-50" : ""}`}>
-                        {p.name}
-                        {p.sku && <span className="ml-1 text-xs text-[color:var(--color-muted)]">({p.sku})</span>}
-                      </span>
-                      <span className="text-xs text-[color:var(--color-muted)]">
-                        {PRODUCT_TYPE_LABEL[p.type]}
-                        {p.unitId && unitName.get(p.unitId) ? ` · ${unitName.get(p.unitId)}` : ""}
-                        {p.type === "GOODS" && ` · คงเหลือ ${qtyText(p.stock)}`}
-                        {p.invItemId && " · ติดตามสต็อกในคลัง"}
-                        {p.salePrice != null && (
-                          <>
-                            {" · ขาย "}
-                            <MoneyText satang={p.salePrice} />
-                          </>
-                        )}
-                      </span>
-                    </span>
-                  </summary>
-                  <ProductForm
-                    action={updateProductAction}
-                    systemId={systemId}
-                    units={units}
-                    incomeAccts={incomeAccts}
-                    expenseAccts={expenseAccts}
-                    product={p}
-                  />
-                  {p.type === "GOODS" && (
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
-                      {p.invItemId ? (
-                        <>
-                          <span className="text-[color:var(--color-muted)]">
-                            ผูกกับคลังสินค้าแล้ว (คลัง #{p.invItemId.slice(-6)}) · คงเหลือมาจากคลัง
-                          </span>
-                          <form action={unlinkProductFromItemAction}>
-                            <input type="hidden" name="systemId" value={systemId} />
-                            <input type="hidden" name="id" value={p.id} />
-                            <SubmitButton variant="ghost">เลิกติดตามสต็อกในคลัง</SubmitButton>
-                          </form>
-                        </>
-                      ) : (
-                        <form action={linkProductToItemAction} className="flex items-center gap-2">
-                          <input type="hidden" name="systemId" value={systemId} />
-                          <input type="hidden" name="id" value={p.id} />
-                          <SubmitButton variant="ghost">ติดตามสต็อกในคลังสินค้า</SubmitButton>
-                        </form>
-                      )}
-                    </div>
-                  )}
-                  <div className="mt-2">
-                    <ConfirmDialog
-                      action={archiveProductAction}
-                      fields={{ systemId, id: p.id, archived: p.archivedAt ? "0" : "1" }}
-                      triggerLabel={p.archivedAt ? "กู้คืน" : "เก็บเข้าคลัง"}
-                      triggerClassName="text-xs text-[color:var(--color-danger)] underline"
-                      title={p.archivedAt ? "กู้คืนสินค้านี้?" : "เก็บสินค้านี้เข้าคลัง?"}
-                      detail={p.archivedAt ? "สินค้าจะกลับมาใช้งานได้อีกครั้ง" : "สินค้าจะถูกซ่อนจากรายการที่ใช้งาน (ข้อมูลเดิมยังอยู่)"}
-                      confirmLabel={p.archivedAt ? "ยืนยันกู้คืน" : "ยืนยันเก็บเข้าคลัง"}
-                      danger={!p.archivedAt}
-                    />
-                  </div>
-                </details>
-              ))}
-            </div>
-          )}
-
-          <details className="card" open={products.length === 0}>
-            <summary className="cursor-pointer text-sm font-medium">+ เพิ่มสินค้า/บริการ</summary>
-            <ProductForm
-              action={createProductAction}
-              systemId={systemId}
-              units={units}
-              incomeAccts={incomeAccts}
-              expenseAccts={expenseAccts}
-            />
-          </details>
-        </>
       )}
-
-      {tab === "units" && (
-        <>
-          {units.length === 0 ? (
-            <EmptyState text="ยังไม่มีหน่วย (เช่น ชิ้น/กล่อง/ชั่วโมง) — เพิ่มหน่วยแรกด้านล่าง" />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {units.map((u) => (
-                <div key={u.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
-                  <form action={renameUnitAction} className="flex flex-1 items-center gap-2">
-                    <input type="hidden" name="systemId" value={systemId} />
-                    <input type="hidden" name="id" value={u.id} />
-                    <input name="name" defaultValue={u.name} className="input flex-1" />
-                    <SubmitButton variant="ghost">บันทึก</SubmitButton>
-                  </form>
-                  <ConfirmDialog
-                    action={archiveUnitAction}
-                    fields={{ systemId, id: u.id }}
-                    triggerLabel="ลบ"
-                    triggerClassName="text-xs text-[color:var(--color-danger)] underline"
-                    title="ลบหน่วยนี้?"
-                    detail="หน่วยจะถูกลบออกจากรายการ"
-                    confirmLabel="ยืนยันลบ"
-                    danger
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-          <Section title="เพิ่มหน่วย" card>
-            <form action={createUnitAction} className="flex items-center gap-2">
-              <input type="hidden" name="systemId" value={systemId} />
-              <input name="name" required placeholder="ชื่อหน่วย เช่น ชิ้น" className="input flex-1" />
-              <SubmitButton>+ เพิ่มหน่วย</SubmitButton>
-            </form>
-          </Section>
-        </>
-      )}
-
-      {tab === "categories" && (
-        <>
-          {categories.length === 0 ? (
-            <EmptyState text="ยังไม่มีกลุ่มจัดประเภท — เพิ่มกลุ่มแรกด้านล่างเพื่อจัดหมวดเอกสาร" />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {categories.map((c) => {
-                const applies = categoryAppliesTo(c.appliesTo);
-                return (
-                  <details key={c.id} className="rounded-lg border px-3 py-2 text-sm">
-                    <summary className="flex cursor-pointer items-center justify-between gap-2">
-                      <span className="font-medium">{c.name}</span>
-                      <span className="text-xs text-[color:var(--color-muted)]">
-                        {applies.length === 0 ? "ทุกชนิดเอกสาร" : `${applies.length} ชนิดเอกสาร`}
-                      </span>
-                    </summary>
-                    <form action={updateCategoryAction} className="mt-2 flex flex-col gap-2">
-                      <input type="hidden" name="systemId" value={systemId} />
-                      <input type="hidden" name="id" value={c.id} />
-                      <input name="name" defaultValue={c.name} className="input" />
-                      <AppliesToPicker selected={applies} />
-                      <SubmitButton variant="ghost" className="self-start">
-                        บันทึก
-                      </SubmitButton>
-                    </form>
-                    <div className="mt-1">
-                      <ConfirmDialog
-                        action={archiveCategoryAction}
-                        fields={{ systemId, id: c.id }}
-                        triggerLabel="ลบ"
-                        triggerClassName="text-xs text-[color:var(--color-danger)] underline"
-                        title="ลบกลุ่มนี้?"
-                        detail="กลุ่มจัดประเภทจะถูกลบ (เอกสารเดิมไม่กระทบ)"
-                        confirmLabel="ยืนยันลบ"
-                        danger
-                      />
-                    </div>
-                  </details>
-                );
-              })}
-            </div>
-          )}
-          <Section title="เพิ่มกลุ่มจัดประเภท" card>
-            <form action={createCategoryAction} className="flex flex-col gap-2">
-              <input type="hidden" name="systemId" value={systemId} />
-              <FormField label="ชื่อกลุ่ม" hint="เช่น โครงการ A">
-                <input name="name" required className="input" />
-              </FormField>
-              <p className="text-xs text-[color:var(--color-muted)]">ใช้กับเอกสารชนิด (ไม่เลือก = ทุกชนิด):</p>
-              <AppliesToPicker selected={[]} />
-              <SubmitButton className="self-start">เพิ่มกลุ่ม</SubmitButton>
-            </form>
-          </Section>
-        </>
-      )}
-    </div>
-  );
-}
-
-function AppliesToPicker({ selected }: { selected: AccountDocType[] }) {
-  const set = new Set(selected);
-  return (
-    <div className="flex flex-wrap gap-2">
-      {CAT_DOC_OPTIONS.map((o) => (
-        <label key={o.code} className="flex items-center gap-1 text-xs">
-          <input type="checkbox" name="appliesTo" value={o.code} defaultChecked={set.has(o.code)} />
-          {o.label}
-        </label>
-      ))}
-    </div>
-  );
-}
-
-function ProductForm({
-  action,
-  systemId,
-  units,
-  incomeAccts,
-  expenseAccts,
-  product,
-}: {
-  action: (formData: FormData) => void | Promise<void>;
-  systemId: string;
-  units: { id: string; name: string }[];
-  incomeAccts: { id: string; code: string; name: string }[];
-  expenseAccts: { id: string; code: string; name: string }[];
-  product?: {
-    id: string;
-    sku: string | null;
-    name: string;
-    nameEn: string | null;
-    type: string;
-    unitId: string | null;
-    salePrice: number | null;
-    buyPrice: number | null;
-    vatRateBp: number;
-    incomeAccountId: string | null;
-    expenseAccountId: string | null;
-    imageUrl: string | null;
-  };
-}) {
-  const bahtVal = (s: number | null) => (s == null ? "" : String(s / 100));
-  return (
-    <form action={action} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-      <input type="hidden" name="systemId" value={systemId} />
-      {product && <input type="hidden" name="id" value={product.id} />}
-      <div className="sm:col-span-2">
-        <FormField label="ชื่อสินค้า/บริการ" required>
-          <input name="name" required defaultValue={product?.name} className="input" />
-        </FormField>
-      </div>
-      <FormField label="ชื่อภาษาอังกฤษ (ถ้ามี)">
-        <input name="nameEn" defaultValue={product?.nameEn ?? ""} className="input" />
-      </FormField>
-      <FormField label="รหัสสินค้า (SKU)">
-        <input name="sku" defaultValue={product?.sku ?? ""} className="input" />
-      </FormField>
-      <FormField label="ชนิด">
-        <select name="type" defaultValue={product?.type ?? "GOODS"} className="input">
-          <option value="GOODS">สินค้า (ตัดสต็อกได้)</option>
-          <option value="SERVICE">บริการ</option>
-        </select>
-      </FormField>
-      <FormField label="หน่วย">
-        <select name="unitId" defaultValue={product?.unitId ?? ""} className="input">
-          <option value="">ไม่ระบุ</option>
-          {units.map((u) => (
-            <option key={u.id} value={u.id}>{u.name}</option>
-          ))}
-        </select>
-      </FormField>
-      <FormField label="ราคาขาย (บาท)">
-        <input name="salePrice" type="number" step="0.01" min="0" defaultValue={bahtVal(product?.salePrice ?? null)} className="input" />
-      </FormField>
-      <FormField label="ราคาซื้อ (บาท)">
-        <input name="buyPrice" type="number" step="0.01" min="0" defaultValue={bahtVal(product?.buyPrice ?? null)} className="input" />
-      </FormField>
-      <FormField label="ภาษีมูลค่าเพิ่ม (VAT)">
-        <select name="vatRateBp" defaultValue={String(product?.vatRateBp ?? 700)} className="input">
-          <option value="700">VAT 7%</option>
-          <option value="0">VAT 0%</option>
-          <option value="-1">ยกเว้น VAT</option>
-        </select>
-      </FormField>
-      <div className="sm:col-span-2">
-        <FormField label="ลิงก์รูปภาพ (ถ้ามี)">
-          <input name="imageUrl" defaultValue={product?.imageUrl ?? ""} className="input" />
-        </FormField>
-      </div>
-      {/* WO 4.1 · SPEC §8.2 "การเชื่อมต่อ" — ติดตามสต็อกในคลังสินค้า (ตอนสร้างใหม่)
-          หน้าสินค้า V2 เต็มรูปแบบ (เลือกคลัง/จุดสั่งซื้อ/ผูก item เดิม) อยู่ WO 4.3 */}
-      {!product && (
-        <div className="sm:col-span-2 flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="trackStock" value="1" data-testid="product-track-stock" />
-            ติดตามสต็อกในคลังสินค้า (สร้างรายการในคลังให้อัตโนมัติ)
-          </label>
-          <label className="flex items-center gap-2 text-xs text-[color:var(--color-muted)]">
-            จุดสั่งซื้อ
-            <input name="reorderPoint" type="number" min="0" className="input w-24" />
-          </label>
-        </div>
-      )}
-      {incomeAccts.length > 0 && (
-        <FormField label="บัญชีรายได้">
-          <select name="incomeAccountId" defaultValue={product?.incomeAccountId ?? ""} className="input">
-            <option value="">ค่าเริ่มต้น</option>
-            {incomeAccts.map((a) => (
-              <option key={a.id} value={a.id}>{a.code} {a.name}</option>
-            ))}
-          </select>
-        </FormField>
-      )}
-      {expenseAccts.length > 0 && (
-        <FormField label="บัญชีค่าใช้จ่าย">
-          <select name="expenseAccountId" defaultValue={product?.expenseAccountId ?? ""} className="input">
-            <option value="">ค่าเริ่มต้น</option>
-            {expenseAccts.map((a) => (
-              <option key={a.id} value={a.id}>{a.code} {a.name}</option>
-            ))}
-          </select>
-        </FormField>
-      )}
-      <div className="sm:col-span-2">
-        <SubmitButton className="self-start">{product ? "บันทึกการแก้ไข" : "+ เพิ่มสินค้า"}</SubmitButton>
-      </div>
-    </form>
+    </>
   );
 }

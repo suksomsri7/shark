@@ -88,6 +88,11 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "finance/[financeId]/statement/page.tsx": "account.finance.manage",
   "finance/page.tsx": "account.finance.manage",
   "goods-issue/page.tsx": "account.product.manage",
+  // WO 4.3 (§8.3–8.4) — หน่วยนับ · ฟอร์มใบเบิก · ใบปรับต้นทุนสินค้า (ทุกหน้าใช้สิทธิ์เดียวกับทะเบียนสินค้า)
+  "goods-issue/new/page.tsx": "account.product.manage",
+  "units/page.tsx": "account.product.manage",
+  "cost-adjustment/page.tsx": "account.product.manage",
+  "cost-adjustment/new/page.tsx": "account.product.manage",
   // WO 1.6: RPR wizard — เรียก requireAccountPage(id, "account.product.manage") ตรงกับ goods-issue/page.tsx (สิทธิ์เดียวกัน)
   "goods-issue/return/new/page.tsx": "account.product.manage",
   // WO 1.8: นำเข้า CSV (§8.5) — action เดียว account.import ครอบทั้งเอกสาร/ผู้ติดต่อ/สินค้า

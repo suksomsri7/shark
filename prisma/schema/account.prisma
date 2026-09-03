@@ -27,6 +27,7 @@ enum AccountDocType {
   COMBINED_PAYMENT // ใบรวมจ่าย
   GOODS_ISSUE // ใบเบิกสินค้า
   GOODS_ISSUE_RETURN // ใบส่งคืนเบิกสินค้า
+  COST_ADJUSTMENT // ใบปรับต้นทุนสินค้า (CA — V2 WO 4.3 · SPEC §8.4)
   WHT_CERT // หนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ)
 }
 
@@ -157,7 +158,12 @@ model AccountDocument {
   category        AccountCategory?      @relation(fields: [categoryId], references: [id])
   note            String? // หมายเหตุบนเอกสาร (พิมพ์)
   internalNote    String? // โน้ตภายใน
-  adjustReason    String? // CN/DN: เหตุผลตามประกาศสรรพากร
+  adjustReason    String? // CN/DN: เหตุผลตามประกาศสรรพากร · V2 WO 4.3: ใบเบิก = "สาเหตุการเบิก" · CA = "เหตุผลการปรับ"
+  /// V2 (WO 4.3 · SPEC §8.4) — บัญชีคู่ของเอกสารปรับปรุงสต็อก/ต้นทุน (รหัสบัญชี 6 หลัก)
+  ///   ใบเบิก PRR = "ค่าใช้จ่ายที่ปรับปรุง" ขา Dr (ค่าเริ่มต้น 5300)
+  ///   ใบปรับต้นทุน CA = บัญชีกำไร/ขาดทุนจากการปรับมูลค่า (ค่าเริ่มต้น 5310)
+  ///   null = ใช้ค่าเริ่มต้นจาก mapping key ตอนโพสต์
+  adjustAccountCode String?
   whtIncomeType   AccountWhtIncomeType? // WHT_CERT: ประเภทเงินได้ ม.40
   whtRateBp       Int? // WHT_CERT: basis point (300 = 3%)
   etaxStatus      AccountEtaxStatus     @default(NOT_SENT) // P4
@@ -222,6 +228,11 @@ model AccountDocumentLine {
   // เพื่อให้เปิดร่างกลับมาแก้แล้วค่าไม่หาย · **การสร้าง WHT_CERT/JV จริงยังเป็นงาน WO 1.4**
   whtIncomeType AccountWhtIncomeType? // ประเภทเงินได้ ม.40
   whtRateBp     Int? // 300 = 3%
+  // ── V2 (WO 4.3) · additive · nullable = แถวเดิม/โค้ดเดิมไม่กระทบ ──
+  /// ต้นทุน/หน่วย (สตางค์) ของบรรทัดนี้ — ใช้กับเอกสารปรับปรุงสต็อกเท่านั้น:
+  ///   ใบเบิก PRR/ใบส่งคืน RPR = ต้นทุนที่ตัด/คืนจริงตอนอนุมัติ (มาจาก InvMovement.costSatang)
+  ///   ใบปรับต้นทุน CA = **ต้นทุนเดิม** ก่อนปรับ (ต้นทุนใหม่เก็บที่ `unitPrice`)
+  unitCost      Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

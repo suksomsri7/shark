@@ -191,6 +191,8 @@ export const LIST_TABS: Partial<Record<AccountDocType, DocListTabDef[]>> = {
   // ─── สินค้า: PRR — โมเดลปัจจุบันสร้างแล้ว = ISSUED ทันที ไม่มี workflow ร่าง/อนุมัติ (ยังนับ 0 เสมอจนกว่าจะมี WO ต่อ)
   GOODS_ISSUE: [all, draft, awaitingApproval, { key: "approved", label: "อนุมัติแล้ว", filter: { status: "ISSUED" } }, cancelled],
   GOODS_ISSUE_RETURN: [all, draft, awaitingApproval, { key: "approved", label: "อนุมัติแล้ว", filter: { status: "ISSUED" } }, cancelled],
+  // WO 4.3 §8.4 — ใบปรับต้นทุนสินค้า (CA): ชุดแท็บเดียวกับใบเบิก
+  COST_ADJUSTMENT: [all, draft, { key: "approved", label: "อนุมัติแล้ว", filter: { status: "ISSUED" } }, cancelled],
 };
 
 /** คืน filter (status/excludeOverdue) ของแท็บ key ที่ระบุ — ไม่พบ = fallback "ทั้งหมด" (ไม่ throw กันหน้าแตก) */

@@ -37,6 +37,8 @@ export async function posAccountSystemId(
   return link?.systemId ?? null;
 }
 import { postExternalSale, reverseFor, type GlCtx } from "./gl";
+// WO 4.3 (§8.2) — บิล POS ที่มีรายการจัดชุด: ตัดสต็อกส่วนประกอบหลังสร้างเอกสารบิล
+import { consumeBundleComponentsForDoc } from "./product";
 import { createExpenseDoc as createExpenseDocRaw } from "./expense";
 
 /**
@@ -188,6 +190,10 @@ export async function applyExternalSale(input: {
     lines: docLines,
   });
   if (!doc.ok) return { posted, reason: doc.reason };
+  // WO 4.3 (§8.2): บิล POS ที่ขาย "รายการจัดชุด" → ตัดสต็อกส่วนประกอบ
+  //   ตัดเฉพาะตอนเอกสารถูก "สร้างใหม่" (created) — ยิงซ้ำด้วย refId เดิม upsert คืนใบเดิม ⇒ ไม่ตัดซ้ำ
+  //   (ตัวที่ผูกคลังยังมีคีย์ idempotent ต่อบรรทัดซ้อนอีกชั้น)
+  if (doc.created) await consumeBundleComponentsForDoc(ctx, doc.docId);
   return { posted, docId: doc.docId };
 }
 

@@ -8,7 +8,7 @@ import {
   qtyText,
 } from "@/lib/modules/account/product";
 import { LIST_TABS, tabToFilter, activeTabKey, presetRangeBkk } from "@/lib/modules/account/list-tabs";
-import GoodsIssueEditor from "@/lib/modules/account/GoodsIssueEditor";
+import { approveGoodsMovementAction } from "@/lib/modules/account/product-actions";
 import { DocListPage } from "@/components/account-v2/DocListPage";
 import { DateText } from "@/lib/ui/DateText";
 import { StatusChip } from "@/components/ui/StatusChip";
@@ -17,8 +17,8 @@ import EmptyState from "@/components/ui/EmptyState";
 import type { DateRangePreset } from "@/components/account-v2/ListFilters";
 
 // ใบเบิกสินค้า PRR — WO 1.1 §5.1 คอลัมน์: เลขที่ · วันที่ · สาเหตุการเบิก · จำนวนที่เบิก · สถานะ
-// ⚠️ "สาเหตุการเบิก" ยังไม่มีฟิลด์เฉพาะในโมเดล (ยังไม่ทำ select ตาม §8.4) — ใช้ `note` เป็นตัวแทนไปก่อน (จดใน wo-notes)
-// ⚠️ สถานะ: การสร้างวันนี้ตั้งเป็น ISSUED ทันทีเสมอ (ยังไม่มี workflow ร่าง/อนุมัติจริง) — แท็บร่าง/รออนุมัติจึงว่างเสมอ
+// WO 4.3: "สาเหตุการเบิก" มาจาก `adjustReason` (select ตาม §8.4) แล้ว · ฟอร์มย้ายไปหน้า `/goods-issue/new` (g12)
+//          สถานะ: บันทึกร่างได้จริงแล้ว (ปุ่ม "บันทึกร่าง") → อนุมัติทีหลังด้วย approveGoodsMovement
 
 function PrrStatusChip({ status }: { status: string }) {
   return (
@@ -39,6 +39,7 @@ type Row = {
   issueDate: Date;
   status: string;
   note: string | null;
+  adjustReason?: string | null;
   contact: { id: string; name: string } | null;
   lines: { qty: unknown }[];
 };
@@ -143,7 +144,7 @@ export default async function GoodsIssuePage({
           ),
         },
         { key: "issueDate", header: "วันที่", render: (r) => <DateText value={r.issueDate} /> },
-        { key: "reason", header: "สาเหตุการเบิก", render: (r) => r.note ?? "—" },
+        { key: "reason", header: "สาเหตุการเบิก", render: (r) => r.adjustReason ?? r.note ?? "—" },
         { key: "qty", header: "จำนวนที่เบิก", align: "right", render: (r) => qtyText(qtySum(r)) },
         {
           key: "status",
@@ -154,8 +155,16 @@ export default async function GoodsIssuePage({
       rows={result.rows}
       rowActionsFor={(r) =>
         r.status === "ISSUED"
-          ? [{ label: "สร้างใบส่งคืน", href: `${pathname}/return/new?ref=${r.id}` }]
-          : []
+          ? [{ label: "สร้างใบส่งคืน", href: `${pathname}/return/new?ref=${r.id}`, icon: "upload" }]
+          : r.status === "DRAFT"
+            ? [
+                {
+                  label: "อนุมัติใบเบิก",
+                  icon: "check",
+                  submit: { action: approveGoodsMovementAction, fields: { systemId, id: r.id } },
+                },
+              ]
+            : []
       }
       mobileTitle={(r) => (
         <Link
@@ -177,9 +186,7 @@ export default async function GoodsIssuePage({
       emptyText="ไม่พบใบเบิกสินค้าในช่วงวันที่ที่เลือก — บันทึกใบแรกด้วยปุ่ม + สร้างใบเบิกสินค้า"
       errorText={sp.err}
       createLabel="ใบเบิกสินค้า"
-      createForm={
-        <GoodsIssueEditor systemId={systemId} products={goods} contacts={contacts.map((c) => ({ id: c.id, name: c.name }))} />
-      }
+      createHref={`${pathname}/new`}
       belowTable={
         <Section title="สต็อกคงเหลือ (สินค้า)">
           {goods.length === 0 ? (

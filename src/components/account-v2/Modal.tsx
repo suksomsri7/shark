@@ -3,8 +3,9 @@
 import { useEffect, useRef } from "react";
 
 // Modal กลางจอ (g5-contact-modal.png): หัว title ตัวหนา + ✕ มุมขวา (ปุ่มสี่เหลี่ยมมน) · Esc/คลิกฉากหลังปิด · focus trap
-export type ModalSize = "sm" | "md" | "lg";
-const SIZE_CLS: Record<ModalSize, string> = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl" };
+export type ModalSize = "sm" | "md" | "lg" | "xl";
+// xl (WO 4.3): modal สินค้ามีคอลัมน์แท็บซ้าย + เนื้อหาขวา — g8 กว้างกว่ากล่องมาตรฐาน
+const SIZE_CLS: Record<ModalSize, string> = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl" };
 
 export function Modal({
   open,

@@ -12,6 +12,8 @@ enum AccountVatTiming {
 enum AccountProductType {
   GOODS
   SERVICE
+  /// V2 (WO 4.3 · SPEC §8.1–8.2) — "รายการจัดชุด": ขาย 1 ชุด = ตัดสต็อกส่วนประกอบตาม AccountProductBundleItem
+  BUNDLE
 }
 
 enum AccountFinanceType {
@@ -120,11 +122,19 @@ model AccountUnit {
   tenantId   String
   systemId   String
   name       String // "ชิ้น" "กล่อง" "ชั่วโมง"
+  // ── V2 (WO 4.3 · SPEC §8.3) · additive · nullable = แถวเดิมทำงานเหมือนเดิมทุกประการ ──
+  /// รหัสหน่วย "PU01" (หน่วยสินค้า) / "SU01" (หน่วยบริการ) — auto ตอนสร้าง · แก้ได้ · ห้ามซ้ำต่อระบบ
+  code       String?
+  /// ชื่ออังกฤษ ≤20 ("piece" "box" "hour")
+  nameEn     String?
+  /// ชนิดหน่วย: "PRODUCT" = นับเป็นชิ้น (PU) · "SERVICE" = หน่วยบริการ/เวลา (SU) · null = แถวเดิม
+  kind       String?
   archivedAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
   @@unique([systemId, name])
+  @@unique([systemId, code])
 }
 
 model AccountProduct {
@@ -142,6 +152,31 @@ model AccountProduct {
   incomeAccountId  String? // override ผังบัญชีต่อสินค้า
   expenseAccountId String?
   imageUrl         String?
+  // ── V2 (WO 4.3 · SPEC §8.1–8.2 · ภาพ g8) · additive ล้วน · nullable/มีค่าเริ่มต้น = แถวเดิมไม่กระทบ ──
+  /// เลขที่สินค้า "P00024" / "S00003" / "B00001" (auto ตามชนิด · แก้ได้ · ไม่ซ้ำต่อระบบ)
+  /// 🔴 ความไม่ซ้ำบังคับด้วย **partial unique index** `AccountProduct_systemId_code_active_key`
+  ///    (เหตุผลเดียวกับ AccountContact.code — ดู account.prisma) · `prisma migrate diff` มองไม่เห็น ห้ามลบจาก migration
+  code             String?
+  barcode          String? // บาร์โค้ด ≤48 (§8.2 ขั้นสูง)
+  category         String? // หมวดหมู่ (ข้อความอิสระ — ตัวกรอง "หมวด" ในหน้ารายการ f6)
+  description      String? // คำอธิบาย ≤500
+  /// วิธีคิดต้นทุน: "AVG" = ถัวเฉลี่ย (ค่าเริ่มต้นของคลัง SHARK) · "FIFO" = 🕓 ยังไม่รองรับ (เลือกไม่ได้)
+  costMethod       String             @default("AVG")
+  cogsAccountCode  String? // บัญชีต้นทุนขาย (ค่าเริ่มต้น 5000)
+  inventoryAccountCode String? // บัญชีสินค้าคงเหลือ (ค่าเริ่มต้น 1200)
+  purchaseVatRateBp Int? // VAT ซื้อ (null = ใช้ค่าเดียวกับ vatRateBp)
+  defaultWhtType   String? // บริการ: ประเภทเงินได้ที่หัก ณ ที่จ่ายเป็นประจำ (ม.40 (…))
+  defaultWhtRateBp Int? // บริการ: อัตราหัก ณ ที่จ่ายปริยาย (300 = 3%)
+  /// §8.2 "การเชื่อมต่อ" — ขายผ่าน POS (g8 การ์ด toggle ใบที่ 2)
+  posEnabled       Boolean            @default(false)
+  posCategory      String? // หมวดใน POS
+  posPrice         Int? // ราคา POS ถ้าต่างจากราคาขาย (สตางค์ · null = เท่าราคาขาย)
+  /// §8.2 "การเชื่อมต่อ" — จองผ่านระบบจอง (บริการเท่านั้น)
+  bookingEnabled   Boolean            @default(false)
+  bookingDurationMin Int?
+  bookingDepositSatang Int?
+  /// รูปสินค้า ≤5 (array ของ URL) — `imageUrl` เดิม = รูปแรก (ยังใช้ได้ ไม่แตะ)
+  imageUrls        Json               @default("[]")
   // ⚠️ V2 (WO 4.1): สต็อกของสินค้าที่ "ผูกคลัง" (invItemId != null) = InvItem.onHand เท่านั้น
   //    ช่องนี้เหลือเป็นกระจกสะท้อน (mirror) ไว้ให้หน้าจอเก่าอ่าน — ห้ามใช้ตัดสินใจ/รายงาน
   //    สินค้าที่ยังไม่ผูกคลัง ใช้ช่องนี้เป็นสต็อกของตัวเองเหมือนเดิมทุกประการ
@@ -162,6 +197,54 @@ model AccountProduct {
   @@index([systemId, type, archivedAt])
   @@index([systemId, pinned, archivedAt]) // V2: ดึงรายการที่ปักหมุดขึ้นก่อน
   @@index([systemId, invItemId]) // V2 (WO 4.1): หาสินค้าบัญชีจาก item กลาง / กรองเฉพาะที่ผูกคลัง
+  /// 🔴 WO 4.3 — เหตุผลเดียวกับ AccountContact.code: ความไม่ซ้ำของ `code` ต่อระบบบังคับด้วย
+  ///    **partial unique index** ใน migration 20260904190000_account_v2_products_v2:
+  ///      CREATE UNIQUE INDEX "AccountProduct_systemId_code_active_key"
+  ///        ON "AccountProduct"("systemId","code")
+  ///        WHERE "code" IS NOT NULL AND "archivedAt" IS NULL;
+  ///    (สินค้าที่ปิดใช้งานแล้วปล่อยให้เลขซ้ำได้) · `prisma migrate diff` มองไม่เห็น → ห้ามลบออกจาก migration
+  @@index([systemId, code])
+}
+
+// ───────── V2 (WO 4.3 · SPEC §8.2) รายการจัดชุด: ชุด 1 หน่วย ประกอบด้วยสินค้าอะไรบ้าง ─────────
+// ขายชุด 1 (ออกใบแจ้งหนี้/ใบเสร็จ หรือบิล POS) ⇒ ตัดสต็อกส่วนประกอบตามจำนวนในตารางนี้
+// (ตัวชุดเองไม่มีสต็อก — ห้ามผูก invItemId กับสินค้าชนิด BUNDLE)
+model AccountProductBundleItem {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  systemId           String
+  bundleProductId    String // AccountProduct (type = BUNDLE)
+  componentProductId String // AccountProduct (type = GOODS/SERVICE)
+  qty                Decimal  @default(1) @db.Decimal(12, 4)
+  unitId             String? // หน่วยของส่วนประกอบ (null = หน่วยของสินค้านั้น)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([bundleProductId, componentProductId])
+  @@index([systemId, bundleProductId])
+  @@index([systemId, componentProductId])
+}
+
+// ───────── V2 (WO 4.3 · SPEC §8.2 "ยอดยกมา") ยอดยกมาของสินค้า (หลาย lot) ─────────
+// 1 แถว = 1 lot: วันที่ · จำนวน · ราคาต่อหน่วย · คลัง
+// อนุมัติแล้ว (`postedAt` != null) ⇒ สร้างรายการรับเข้าคลัง key `acc-open-<productId>-<seq>` + JV Dr 1200 / Cr 3999
+model AccountProductOpeningLot {
+  id          String    @id @default(cuid())
+  tenantId    String
+  systemId    String
+  productId   String
+  seq         Int // ลำดับ lot ต่อสินค้า (1,2,3…) — เป็นส่วนหนึ่งของ idempotencyKey
+  lotDate     DateTime
+  qty         Decimal   @db.Decimal(12, 4)
+  unitCost    Int // สตางค์/หน่วย
+  warehouseId String? // InvLocation.id (null = คลังหลัก)
+  postedAt    DateTime? // ลงบัญชี/รับเข้าคลังแล้วเมื่อไร (null = ยังไม่ลง)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([productId, seq])
+  @@index([systemId, productId])
 }
 
 model AccountCategory {

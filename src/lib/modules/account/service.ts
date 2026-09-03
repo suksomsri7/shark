@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/core/db";
+// WO 4.3 (§8.2) — ขาย "รายการจัดชุด" = ตัดสต็อกส่วนประกอบ (ไฟล์แยกกัน import วน service↔product)
+import { consumeBundleComponentsInTx } from "./bundle";
 import type {
   AccountDocType,
   AccountDocStatus,
@@ -1767,7 +1769,10 @@ export async function createDocument(input: {
   depositReceiptId?: string | null; // F2: ใบมัดจำที่จะหักในใบแจ้งหนี้นี้
   note?: string | null;
   adjustReason?: string | null;
-  lines: LineInput[];
+  /** 🐞 WO 4.3: เดิมชนิดเป็น `LineInput[]` เฉย ๆ ⇒ `productId`/`accountId` ที่ฟอร์ม V2 ส่งมาถูกทิ้งเงียบ ๆ
+   *  (บรรทัดเอกสารขายที่ทำด้วยมือไม่เคยผูกทะเบียนสินค้าเลย — รายงาน "ขายอะไรดี" เห็นแต่บิล POS
+   *   และ "รายการจัดชุด" ตัดสต็อกส่วนประกอบไม่ได้) — รับเข้ามาและบันทึกจริงแล้ว */
+  lines: (LineInput & { productId?: string | null; accountId?: string | null })[];
   createdById?: string | null;
   sourceDocId?: string | null;
   // ── WO 1.8 (นำเข้า CSV) · additive · optional — ไม่ส่ง = พฤติกรรมเดิมเป๊ะ (source MANUAL, tags []) ──
@@ -1850,6 +1855,9 @@ export async function createDocument(input: {
             discount: l.discount ?? 0,
             vatRateBp: l.vatRateBp ?? settings.vatRateBp,
             amount: lineAmount(l),
+            // 🐞 WO 4.3 — ผูกทะเบียนสินค้า/บัญชี GL ของบรรทัด (เดิมหล่นหาย ดูหมายเหตุที่ชนิดของ `lines`)
+            productId: l.productId ?? null,
+            accountId: l.accountId ?? null,
           })),
         },
       },
@@ -1900,7 +1908,7 @@ export async function updateDocument(
     depositReceiptId?: string | null; // F2: เปลี่ยน/ล้างการหักมัดจำ (undefined = ไม่แตะ)
     note?: string | null;
     adjustReason?: string | null;
-    lines?: LineInput[];
+    lines?: (LineInput & { productId?: string | null; accountId?: string | null })[];
   },
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const settings = await getSettings(tenantId, systemId);
@@ -1971,6 +1979,8 @@ export async function updateDocument(
             discount: l.discount ?? 0,
             vatRateBp: l.vatRateBp ?? settings.vatRateBp,
             amount: lineAmount(l),
+            productId: l.productId ?? null,
+            accountId: l.accountId ?? null,
           })),
         });
       }
@@ -2098,6 +2108,14 @@ export async function issueDocument(
         await postTaxInvoice(ctx, id, tx);
       }
       // DEPOSIT_RECEIPT/BILLING_NOTE ไม่โพสต์ตอน issue (มัดจำโพสต์ตอนรับเงิน · วางบิลโพสต์ตอนกระจายชำระ)
+
+      // ── WO 4.3 (§8.2 รายการจัดชุด): ขายชุด = ตัดสต็อก "ส่วนประกอบ" ใน tx เดียวกับเอกสาร ──
+      //    เฉพาะเอกสารที่ถือว่า "ส่งมอบของ" = ใบแจ้งหนี้/ใบส่งของ · ใบเสร็จขายสด
+      //    ใบเสร็จที่แปลงมาจากใบแจ้งหนี้ = ของถูกส่งมอบไปแล้วตอน IV ⇒ ข้าม (ไม่ตัดซ้ำ)
+      //    ใบกำกับภาษีที่ออกตามหลัง IV ก็ไม่ตัดซ้ำเช่นกัน (ไม่อยู่ในรายชื่อนี้)
+      if (doc.docType === "INVOICE" || (doc.docType === "RECEIPT" && !doc.sourceDocId)) {
+        await consumeBundleComponentsInTx(tx, ctx, id);
+      }
     });
     return { ok: true, docNo };
   } catch (e) {

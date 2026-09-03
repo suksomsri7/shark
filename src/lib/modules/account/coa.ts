@@ -63,6 +63,9 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   ["4900", "INCOME", "รายได้อื่น / กำไรจากการจำหน่ายสินทรัพย์", "Other Income / Disposal Gain"],
   // 5000-5999 ต้นทุน
   ["5000", "COGS", "ซื้อสินค้า/ต้นทุนขาย", "Purchases / COGS"],
+  // V2 (WO 4.3 · SPEC §8.4) — เอกสารปรับปรุงสต็อก/ต้นทุน
+  ["5300", "COGS", "สินค้าที่เบิกใช้ในกิจการ", "Goods Issued for Internal Use"],
+  ["5310", "COGS", "กำไร/ขาดทุนจากการปรับมูลค่าสินค้า", "Inventory Cost Adjustment Gain/Loss"],
   ["5800", "COGS", "ส่วนลดรับ (contra)", "Discounts Received"],
   // 6000-6999 ค่าใช้จ่าย
   ["6000", "EXPENSE", "เงินเดือนและค่าแรง", "Salaries & Wages"],
@@ -93,6 +96,9 @@ const MAPPINGS: [string, string][] = [
   ["INCOME_GOODS", "4000"], // F-09: รายได้ขายสินค้า (tax point ON_ISSUE)
   ["INCOME_SERVICE", "4030"], // F-09: รายได้ค่าบริการ (tax point ON_PAYMENT)
   ["PURCHASE_DEFAULT", "5000"],
+  ["INVENTORY", "1200"], // V2 (WO 4.3): บัญชีสินค้าคงเหลือ — ขา Cr ของใบเบิก · ขา Dr/Cr ของใบปรับต้นทุน
+  ["GOODS_ISSUE_EXPENSE", "5300"], // V2 (WO 4.3 §8.4): "ค่าใช้จ่ายที่ปรับปรุง" ปริยายของใบเบิก (ใช้ในกิจการ)
+  ["INVENTORY_ADJUST_GAINLOSS", "5310"], // V2 (WO 4.3 §8.4): บัญชีคู่ของใบปรับต้นทุนสินค้า
   ["EXPENSE_DEFAULT", "6900"],
   ["ASSET_DEFAULT", "1610"], // P2 ASSET_PURCHASE (บัญชีสินทรัพย์ default เมื่อ line ไม่ระบุ)
   ["OPENING_BALANCE", "3999"], // Gate C ledger-M6 (บัญชีคู่ postOpening)

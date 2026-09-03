@@ -910,6 +910,105 @@ const PAGES: Record<string, PageSpec[]> = {
       waitAfterClick: 300,
     },
   ],
+  // WO 4.3 — หน้าสินค้า/บริการ V2 (§8.1–8.4) เทียบ f6-products.png · f6-products-menu.png · g8-product-modal.png · g12-goods-issue-form.png
+  "4.3": [
+    {
+      name: "products-list",
+      path: `/app/sys/${SYS}/account/products`,
+      note: "หน้ารายการสินค้า แท็บ 'สินค้า' (f6-products.png) — แท็บชนิด 3 · การ์ดสินค้าที่ติดตาม · ตาราง 9 คอลัมน์ · ท้ายตาราง มูลค่าสต็อกรวม + แบ่งหน้า",
+      // เดสก์ท็อปมีตารางจริง → ตรวจหัวคอลัมน์ตาม f6 แยกอีกชุดด้านล่าง (products-list-cols)
+      // หัวคอลัมน์ ("จำนวนคงเหลือ" ฯลฯ) มีเฉพาะตารางเดสก์ท็อป — มือถือเป็นการ์ด (f13 pattern) ⇒ ตรวจคำที่มีทั้ง 2 จอ
+      expect: ["สินค้า/บริการ", "สินค้าที่ติดตาม", "ทั้งหมด", "ปิดใช้งาน"],
+    },
+    {
+      name: "products-list-cols",
+      path: `/app/sys/${SYS}/account/products`,
+      note: "ตรวจหัวคอลัมน์ 9 ช่องของตารางเดสก์ท็อปตรงตาม f6 (มือถือใช้การ์ด จึงตรวจเฉพาะจอกว้าง)",
+      expect: ["รหัส", "ชื่อสินค้า", "หมวด", "หน่วย", "จำนวนคงเหลือ", "ต้นทุน/หน่วย", "ราคาขาย/หน่วย", "VAT", "มูลค่าสต็อกรวม"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "products-list-service",
+      path: `/app/sys/${SYS}/account/products?type=service`,
+      note: "แท็บ 'บริการ' — คอลัมน์คงเหลือต้องเป็นป้าย 'ไม่ติดตามสต็อก'",
+      expect: ["สินค้า/บริการ", "ไม่ติดตามสต็อก"],
+    },
+    {
+      name: "products-list-bundle",
+      path: `/app/sys/${SYS}/account/products?type=bundle`,
+      note: "แท็บ 'รายการจัดชุด' — ชุดที่ seed สร้างไว้ต้องโผล่",
+      expect: ["สินค้า/บริการ", "ชุดดำน้ำตื้นครบเซ็ต"],
+    },
+    {
+      name: "products-list-menu",
+      path: `/app/sys/${SYS}/account/products`,
+      note: "เปิดเมนู 'ทำรายการ' ของแถวแรก — เทียบ f6-products-menu.png (แก้ไขสินค้า/เบิกสินค้า/รับเข้าคลัง/ปรับต้นทุน/ดูความเคลื่อนไหว | ปิดใช้งาน)",
+      expect: ["สินค้า/บริการ"],
+      onlyDevice: "desktop",
+      click: ['[data-testid^="product-row-actions-"] button.btn-sm'],
+      waitAfterClick: 300,
+    },
+    {
+      name: "product-modal-basic",
+      path: `/app/sys/${SYS}/account/products?new=1&mtab=basic`,
+      note: 'modal "เพิ่มสินค้า" แท็บ พื้นฐาน (g8) — รหัส auto · ประเภท 3 ตัวเลือก · ชื่อ/หน่วย/ราคา/บัญชีรายได้',
+      expect: ["เพิ่มสินค้า", "พื้นฐาน", "ขั้นสูง", "ประเภท", "รายการจัดชุด", "ราคาขาย/หน่วย (บาท)"],
+      onlyDevice: "desktop",
+      expandModalForShot: '[data-testid="product-modal"]',
+      waitAfterClick: 400,
+    },
+    ...(["info", "price", "accounting", "opening", "links"] as const).map((atab) => ({
+      name: `product-modal-adv-${atab}`,
+      path: `/app/sys/${SYS}/account/products?new=1&mtab=advanced&atab=${atab}`,
+      note: `modal ขั้นสูง แท็บซ้าย "${atab}" (g8) — การ์ดสรุป "ข้อมูลสินค้า (ย่อ)" + เนื้อหาของแท็บ`,
+      expect: ["เพิ่มสินค้า", "ขั้นสูง", "ข้อมูลสินค้า (ย่อ)"],
+      onlyDevice: "desktop" as const,
+      expandModalForShot: '[data-testid="product-modal"]',
+      waitAfterClick: 400,
+    })),
+    {
+      name: "product-modal-mobile",
+      path: `/app/sys/${SYS}/account/products?new=1&mtab=advanced&atab=links`,
+      note: "modal บนมือถือ 390 = แผ่นเต็มจอ (SPEC §13) — ต้องไม่ล้นแนวนอน",
+      expect: ["เพิ่มสินค้า", "การเชื่อมต่อกับระบบอื่น"],
+      onlyDevice: "mobile",
+      expandModalForShot: '[data-testid="product-modal"]',
+      waitAfterClick: 400,
+    },
+    {
+      name: "units",
+      path: `/app/sys/${SYS}/account/units`,
+      note: "หน้าหน่วยนับ (§8.3) — ตาราง รหัส PU/SU · ไทย · อังกฤษ · ชนิด · ใช้กับสินค้า n + ฟอร์มเพิ่มหน่วย",
+      expect: ["หน่วยนับ", "ชื่ออังกฤษ", "ใช้กับสินค้า", "เพิ่มหน่วย"],
+    },
+    {
+      name: "goods-issue-form",
+      path: `/app/sys/${SYS}/account/goods-issue/new`,
+      note: "ฟอร์มใบเบิกสินค้า PRR — เทียบ g12-goods-issue-form.png ทุกบล็อก",
+      expect: [
+        "สร้างใบเบิกสินค้า",
+        "ข้อมูลทั่วไป",
+        "สาเหตุการเบิก",
+        "รายการที่เบิก",
+        "ค่าใช้จ่ายที่ปรับปรุง",
+        "มูลค่าต้นทุน",
+        "แนบไฟล์",
+        "อนุมัติใบเบิกสินค้า",
+      ],
+    },
+    {
+      name: "cost-adjust-form",
+      path: `/app/sys/${SYS}/account/cost-adjustment/new`,
+      note: "ฟอร์มใบปรับต้นทุนสินค้า CA (§8.4) — สินค้า · ต้นทุนเดิม readonly · ต้นทุนใหม่ · เหตุผล · บัญชีคู่",
+      expect: ["สร้างใบปรับต้นทุนสินค้า", "ต้นทุนเดิม/หน่วย", "ต้นทุนใหม่/หน่วย (บาท)", "เหตุผลการปรับ", "บัญชีคู่"],
+    },
+    {
+      name: "cost-adjust-list",
+      path: `/app/sys/${SYS}/account/cost-adjustment`,
+      note: "รายการใบปรับต้นทุนสินค้า — ใบที่ seed สร้างไว้ต้องโผล่พร้อมผลต่าง",
+      expect: ["ใบปรับต้นทุนสินค้า"],
+    },
+  ],
   // WO 3.2 — หน้าผู้ติดต่อ V2 (§7.1/§7.4) เทียบ f5-contacts.png + f5-contacts-menu.png (เดสก์ท็อป) · f13 pattern (มือถือ)
   "3.2": [
     {
@@ -1158,6 +1257,15 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "kpi-outstanding": baht(E.contactProfile?.outstandingSatang ?? 0, true),
       "aging-d1_30": baht(E.contactProfile?.agingNow?.d1_30 ?? 0),
       "aging-notDue": baht(E.contactProfile?.agingNow?.notDue ?? 0),
+    },
+  },
+  // WO 4.3 — ตัวนับแท็บชนิด/ยอดรวม ต้องตรงเฉลยของ seed (คีย์ productsByType เขียนจาก seed-acc-v2-qc.mts)
+  "4.3": {
+    "products-list": {
+      "product-type-goods-count": E.productsByType?.GOODS ?? 0,
+      "product-type-service-count": E.productsByType?.SERVICE ?? 0,
+      "product-type-bundle-count": E.productsByType?.BUNDLE ?? 0,
+      "products-total": E.productsByType?.GOODS ?? 0,
     },
   },
   "3.2": {

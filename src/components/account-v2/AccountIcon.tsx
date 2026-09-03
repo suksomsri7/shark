@@ -53,6 +53,8 @@ const ICONS: Record<string, string> = {
   // เพิ่มโดย WO 2.2 (หน้าหลัก V2) — คัดลอก path จริงจาก mockup.html #i-flag / #i-warn (ยังไม่เคยใช้ก่อนหน้านี้)
   flag: '<path d="M5 21V4h11l-1.5 3.5L16 11H5"/>',
   warn: '<path d="M12 4 2.5 20h19Z"/><path d="M12 10v4M12 17h.01"/>',
+  // WO 4.3 — ไอคอนแถบแจ้งข้อมูลในฟอร์มใบเบิก (g12)
+  info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>',
   // เพิ่มโดย WO 3.2 รอบแก้ 2 — dropdown "ทำรายการ" ของหน้าผู้ติดต่อ (f5-contacts-menu.png) ต้องการไอคอนต่อรายการ
   x: '<path d="m6 6 12 12M18 6 6 18"/>',
   more: '<circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/>',

@@ -449,15 +449,16 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
       href: `${base}/products`,
       items: [
         page({ label: "สินค้า/บริการ", href: `${base}/products`, status: "ready", icon: "box", testId: "PRODUCTS" }),
-        soon("หน่วย", "tag", "UNITS"),
-        page({
+        // WO 4.3 §8.3 — หน่วยนับ (f6-products-menu.png เรียกว่า "หน่วยนับ")
+        page({ label: "หน่วยนับ", href: `${base}/units`, status: "ready", icon: "tag", testId: "UNITS" }),
+        doc({
           label: "ใบเบิกสินค้า",
           href: `${base}/goods-issue`,
           status: "ready",
           icon: "truck",
           testId: "GOODS_ISSUE",
           flyout: [
-            { label: "+ สร้างใบเบิกสินค้า", href: `${base}/goods-issue#new` },
+            { label: "+ สร้างใบเบิกสินค้า", href: `${base}/goods-issue/new` },
             { label: "ดูทั้งหมด", href: `${base}/goods-issue` },
           ],
         }),
@@ -469,7 +470,18 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           testId: "GOODS_ISSUE_RETURN",
           flyout: [{ label: "+ สร้างใบส่งคืนเบิกสินค้า", href: `${base}/goods-issue/return/new` }],
         }),
-        soon("ใบปรับต้นทุนสินค้า", "edit", "COST_ADJUSTMENT"),
+        // WO 4.3 §8.4 — ใบปรับต้นทุนสินค้า (CA)
+        doc({
+          label: "ใบปรับต้นทุนสินค้า",
+          href: `${base}/cost-adjustment`,
+          status: "ready",
+          icon: "pct",
+          testId: "COST_ADJUSTMENT",
+          flyout: [
+            { label: "+ สร้างใบปรับต้นทุนสินค้า", href: `${base}/cost-adjustment/new` },
+            { label: "ดูทั้งหมด", href: `${base}/cost-adjustment` },
+          ],
+        }),
         { // WO 1.8: นำเข้าสินค้า/บริการจาก CSV (§8.5)
           ...page({
             label: "นำเข้าสินค้า",
