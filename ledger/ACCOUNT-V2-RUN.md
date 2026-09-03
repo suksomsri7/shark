@@ -12,7 +12,7 @@
 | WO | 5.1 ช่องทางการเงิน V2 (เฟส 5) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Sonnet (sub-agent · UI ตาม g9) |
-| ขั้นที่ถึง | 3 ก.ย. ~22:50 UTC: qc:all **208/208** (723s) → กำลัง ff main + push → Vercel · 5.1 เริ่มบน branch (Sonnet) |
+| ขั้นที่ถึง | 3 ก.ย. ~21:50 UTC: **verify prod เฟส 4 ผ่าน** — Vercel READY · `_prisma_migrations` มี invitem_canonical + products_v2 finished · ตาราง BundleItem/OpeningLot + คอลัมน์ invItemId/code/posEnabled + enum COST_ADJUSTMENT อยู่บน prod · https 200 · 5.1 กำลังทำ (Sonnet) |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
 
