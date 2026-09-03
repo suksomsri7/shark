@@ -28,6 +28,7 @@ import {
   priceModeOf,
 } from "./service";
 import { previewNextExpenseDocNo } from "./expense";
+import { listPaymentChannels } from "./payment";
 import { listExpenseAccounts, listIncomeAccounts, listProducts, listUnits } from "./product";
 import { listAttachments } from "./attachment";
 import {
@@ -182,6 +183,25 @@ export async function DocEditorPage({
     internalNote: doc?.internalNote ?? "",
   };
 
+  // ── WO 1.4 ส่วน D/F ──
+  // D: หักเงินมัดจำได้เฉพาะ IV/RE (ขาย) และ PUR/EXP (ซื้อ) ตาม §5.2 D
+  const depositEnabled = (["INVOICE", "RECEIPT", "PURCHASE", "EXPENSE"] as AccountDocType[]).includes(docType);
+  const depositApplied = (doc?.relationsTo ?? [])
+    .filter((r) => r.type === "DEPOSIT_APPLY")
+    .map((r) => ({ depositId: r.from.id, docNo: r.from.docNo, amountSatang: r.amount ?? 0 }));
+  // F: บล็อก "รับชำระเงิน" อยู่บนฟอร์มใบเสร็จรับเงิน (ภาพ g2) — ชนิดอื่นใช้แผงจากหน้าเอกสาร (§5.3)
+  const paymentEnabled = docType === "RECEIPT";
+  const paymentChannels = paymentEnabled ? await listPaymentChannels(tenantId, systemId) : [];
+  const sourceRel = (doc?.relationsTo ?? []).find((r) => r.from.docType === "INVOICE");
+  const sourceDoc =
+    paymentEnabled && sourceRel
+      ? {
+          docNo: sourceRel.from.docNo,
+          href: editorDetailPath(base, "INVOICE", sourceRel.from.id),
+          label: "ใบแจ้งหนี้",
+        }
+      : null;
+
   const attachmentViews: AttachmentView[] = attachments.map((a) => ({
     id: a.id,
     fileName: a.fileName,
@@ -235,6 +255,11 @@ export async function DocEditorPage({
         requireLineAccount={requiresLineAccount(docType)}
         initial={initial}
         depositDeductedSatang={doc?.depositDeducted ?? 0}
+        depositEnabled={depositEnabled}
+        depositApplied={depositApplied}
+        paymentEnabled={paymentEnabled}
+        paymentChannels={paymentChannels}
+        sourceDoc={sourceDoc}
       />
     </div>
   );

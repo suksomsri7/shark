@@ -470,7 +470,15 @@ async function paidDepositAvailable(
   return Math.max(0, dep.grandTotal - used);
 }
 
-export type DeductibleDeposit = { id: string; docNo: string | null; contactId: string | null; available: number };
+export type DeductibleDeposit = {
+  id: string;
+  docNo: string | null;
+  contactId: string | null;
+  issueDate: Date;
+  available: number;
+  /** ยอดที่เอกสารที่กำลังแก้อยู่หักไว้แล้ว (WO 1.4 — ใช้เติมค่าเริ่มต้นใน modal) */
+  appliedHere: number;
+};
 
 /**
  * ใบจ่ายเงินมัดจำที่ยังหักได้ (picker "เลือกเงินมัดจำ" §5.2 D ในฟอร์มบันทึกซื้อ/ค่าใช้จ่าย)
@@ -480,6 +488,8 @@ export async function listDeductiblePaidDeposits(
   tenantId: string,
   systemId: string,
   contactId?: string,
+  /** WO 1.4: เอกสารที่กำลังแก้ — ยอดที่ใบนี้หักไว้ไม่นับว่า "ถูกใช้ไปแล้ว" */
+  excludeDocId?: string,
 ): Promise<DeductibleDeposit[]> {
   const deposits = await prisma.accountDocument.findMany({
     where: {
@@ -489,19 +499,116 @@ export async function listDeductiblePaidDeposits(
       status: "AWAITING_DEDUCT",
       ...(contactId ? { contactId } : {}),
     },
-    select: { id: true, docNo: true, contactId: true },
+    select: { id: true, docNo: true, contactId: true, issueDate: true },
     orderBy: { issueDate: "asc" },
   });
   const out: DeductibleDeposit[] = [];
   for (const d of deposits) {
-    const available = await paidDepositAvailable(prisma, systemId, d.id);
-    if (available > 0) out.push({ id: d.id, docNo: d.docNo, contactId: d.contactId, available });
+    const available = await paidDepositAvailable(prisma, systemId, d.id, excludeDocId);
+    let appliedHere = 0;
+    if (excludeDocId) {
+      const here = await prisma.accountDocumentRelation.findFirst({
+        where: { systemId, fromId: d.id, toId: excludeDocId, type: "DEPOSIT_APPLY" },
+        select: { amount: true },
+      });
+      appliedHere = here?.amount ?? 0;
+    }
+    if (available > 0)
+      out.push({ id: d.id, docNo: d.docNo, contactId: d.contactId, issueDate: d.issueDate, available, appliedHere });
   }
   return out;
 }
 
 /** docType ที่หักเงินมัดจำจ่ายได้ (ตาม §5.2 D: PUR/EXP ฝั่งจ่าย) */
 const DEPOSIT_DEDUCTIBLE_TYPES: readonly AccountDocType[] = ["PURCHASE", "EXPENSE"];
+
+/**
+ * WO 1.4 §5.2 D (ฝั่งจ่าย) — ตั้ง "หักเงินมัดจำจ่าย" ของร่างใหม่ทั้งชุด (หลายใบ · บางส่วนได้)
+ * กระจกของ `service.setDocDeposits` — กติกาเดียวกันเป๊ะ ต่างแค่ DEPOSIT_PAYMENT/ผู้ขาย
+ */
+export async function setExpenseDocDeposits(
+  tenantId: string,
+  systemId: string,
+  docId: string,
+  picks: { depositId: string; amountSatang: number }[],
+): Promise<{ ok: true; depositDeducted: number; grandTotal: number } | { ok: false; reason: string }> {
+  const settings = await getSettings(tenantId, systemId);
+  try {
+    const res = await prisma.$transaction(async (tx) => {
+      const doc = await tx.accountDocument.findFirst({
+        where: { id: docId, tenantId, systemId },
+        include: { lines: true },
+      });
+      if (!doc) throw new Error("ไม่พบเอกสาร");
+      if (doc.status !== "DRAFT") throw new Error("เอกสารที่ออกแล้วแก้การหักมัดจำไม่ได้");
+      if (!DEPOSIT_DEDUCTIBLE_TYPES.includes(doc.docType))
+        throw new Error("เอกสารชนิดนี้หักเงินมัดจำไม่ได้");
+
+      await tx.accountDocumentRelation.deleteMany({ where: { systemId, toId: docId, type: "DEPOSIT_APPLY" } });
+
+      const lineInputs = doc.lines.map((l) => ({
+        description: l.description,
+        qty: Number(l.qty),
+        unitPrice: l.unitPrice,
+        discount: l.discount,
+        vatRateBp: l.vatRateBp,
+      }));
+      const gross = computeTotals({
+        lines: lineInputs,
+        discountAmount: doc.discountAmount,
+        depositDeducted: 0,
+        vatMode: doc.vatMode,
+        vatRegistered: settings.vatRegistered,
+        vatRateBp: settings.vatRateBp,
+      }).grandTotal;
+
+      let total = 0;
+      const seen = new Set<string>();
+      for (const p of picks) {
+        const amount = Math.round(p.amountSatang);
+        if (amount <= 0) continue;
+        if (seen.has(p.depositId)) throw new Error("เลือกใบมัดจำใบเดียวกันซ้ำ");
+        seen.add(p.depositId);
+        const dep = await tx.accountDocument.findFirst({
+          where: { id: p.depositId, tenantId, systemId, docType: "DEPOSIT_PAYMENT" },
+          select: { id: true, docNo: true, status: true, contactId: true },
+        });
+        if (!dep) throw new Error("ไม่พบใบจ่ายเงินมัดจำที่เลือก");
+        if (dep.status !== "AWAITING_DEDUCT") throw new Error("ใบมัดจำที่เลือกไม่พร้อมใช้ (ต้องอยู่สถานะรอหักมัดจำ)");
+        if (dep.contactId !== doc.contactId) throw new Error("ใบมัดจำไม่ใช่ของผู้ขายรายเดียวกัน");
+        const avail = await paidDepositAvailable(tx, systemId, dep.id, docId);
+        if (amount > avail) throw new Error(`ยอดหักเกินยอดคงเหลือของใบมัดจำ ${dep.docNo ?? ""}`);
+        total += amount;
+        await tx.accountDocumentRelation.create({
+          data: { tenantId, systemId, fromId: dep.id, toId: docId, type: "DEPOSIT_APPLY", amount },
+        });
+      }
+      if (total > gross) throw new Error("ยอดหักมัดจำรวมเกินยอดเอกสาร");
+
+      const totals = computeTotals({
+        lines: lineInputs,
+        discountAmount: doc.discountAmount,
+        depositDeducted: total,
+        vatMode: doc.vatMode,
+        vatRegistered: settings.vatRegistered,
+        vatRateBp: settings.vatRateBp,
+      });
+      await tx.accountDocument.update({
+        where: { id: docId },
+        data: {
+          depositDeducted: total,
+          subTotal: totals.subTotal,
+          vatAmount: totals.vatAmount,
+          grandTotal: totals.grandTotal,
+        },
+      });
+      return { depositDeducted: total, grandTotal: totals.grandTotal };
+    });
+    return { ok: true, ...res };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกการหักมัดจำไม่สำเร็จ" };
+  }
+}
 
 export async function createExpenseDoc(input: {
   tenantId: string;
@@ -938,12 +1045,25 @@ export async function recordVendorPayment(
     feeAmount?: number;
     note?: string | null;
     createdById?: string | null;
+    /** WO 1.4: กันบันทึกซ้ำจากการกดปุ่ม/รีทรายซ้ำ — คีย์เดิม = ไม่สร้าง payment/JV ใหม่ */
+    idempotencyKey?: string | null;
   },
-): Promise<{ ok: true; status: AccountDocStatus } | { ok: false; reason: string }> {
+): Promise<{ ok: true; status: AccountDocStatus; paymentId?: string } | { ok: false; reason: string }> {
   if (!input.amount || input.amount <= 0) return { ok: false, reason: "ยอดชำระต้องมากกว่า 0" };
   const wht = Math.max(0, input.whtAmountSatang ?? 0);
+  if (input.idempotencyKey) {
+    const dup = await prisma.accountDocumentPayment.findFirst({
+      where: { idempotencyKey: input.idempotencyKey, tenantId, systemId },
+      select: { id: true, documentId: true, document: { select: { status: true } } },
+    });
+    if (dup) {
+      if (dup.documentId !== id) return { ok: false, reason: "คีย์กันซ้ำนี้ถูกใช้กับเอกสารอื่นแล้ว" };
+      return { ok: true, status: dup.document.status, paymentId: dup.id };
+    }
+  }
   try {
     let status: AccountDocStatus = "PARTIAL";
+    let paymentId = "";
     await prisma.$transaction(async (tx) => {
       const doc = await tx.accountDocument.findFirst({
         where: { id, tenantId, systemId },
@@ -970,8 +1090,10 @@ export async function recordVendorPayment(
           feeAmount: Math.max(0, input.feeAmount ?? 0),
           note: input.note ?? null,
           createdById: input.createdById ?? null,
+          idempotencyKey: input.idempotencyKey ?? null,
         },
       });
+      paymentId = payment.id;
       const newPaid = doc.paidTotal + tieOff;
       const fullyPaid = newPaid >= doc.grandTotal;
       // มัดจำจ่าย: จ่ายครบ → รอหักมัดจำ (mirror ฝั่งรับ)
@@ -986,7 +1108,8 @@ export async function recordVendorPayment(
       if (doc.docType === "DEPOSIT_PAYMENT") {
         // มัดจำจ่าย: ไม่มีเจ้าหนี้ให้ตัด — โพสต์เอกสารเต็มก้อนเมื่อจ่ายครบ (Dr 1130 + Dr 1150 / Cr เงิน)
         // postDocument อ่านช่องทาง/บัญชีเงินจาก payment แรกของเอกสาร (gl.ts case DEPOSIT_PAYMENT)
-        if (fullyPaid) await postDocument(ctx, id, tx);
+        // WO 1.4: จ่ายใหม่หลังยกเลิก → ต้องใช้ event ใหม่ ไม่งั้น alreadyPosted ข้ามการโพสต์เงียบ ๆ
+        if (fullyPaid) await postDocument(ctx, id, tx, { event: await depositRepostEvent(tx, systemId, id) });
       } else {
         // GL-P2P3: Dr 2100 เจ้าหนี้ / Cr เงิน + Cr 2130 WHT ค้างนำส่ง (direction IN)
         await postPayment(ctx, payment.id, tx);
@@ -999,10 +1122,18 @@ export async function recordVendorPayment(
         await issueWhtCert(tx, tenantId, systemId, doc, payment.id, wht, input.whtRateBp ?? null, input.whtIncomeType, realBase, payment.paidAt);
       }
     });
-    return { ok: true, status };
+    return { ok: true, status, paymentId };
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : "บันทึกจ่ายไม่สำเร็จ" };
   }
+}
+
+/** WO 1.4 — คู่แฝดของ `depositRepostEvent` ฝั่งขาย (service.ts) · ดูคำอธิบายเหตุผลที่นั่น */
+async function depositRepostEvent(tx: Prisma.TransactionClient, systemId: string, docId: string): Promise<string> {
+  const n = await tx.accountJournalEntry.count({
+    where: { systemId, refType: "AccountDocument", refId: docId, journal: "REVERSAL" },
+  });
+  return n === 0 ? "ISSUE" : `ISSUE:R${n}`;
 }
 
 // สร้าง WHT_CERT (50 ทวิ) ผูก payment — ไม่โพสต์ GL (WHT โพสต์กับ payment แล้ว, NO_GL)
@@ -1068,6 +1199,15 @@ export async function voidVendorPayment(
       if (pay.voidedAt) throw new Error("รายการจ่ายนี้ถูกยกเลิกแล้ว");
       const doc = await tx.accountDocument.findFirst({ where: { id: documentId, tenantId, systemId } });
       if (!doc) throw new Error("ไม่พบเอกสาร");
+      // WO 1.4: ใบมัดจำจ่ายที่ถูกหักในบันทึกซื้อแล้ว ยกเลิกการจ่ายไม่ได้ (ต้องแก้ที่ปลายทางก่อน)
+      if (doc.docType === "DEPOSIT_PAYMENT") {
+        const applied = await tx.accountDocumentRelation.findMany({
+          where: { systemId, fromId: documentId, type: "DEPOSIT_APPLY" },
+          include: { to: { select: { status: true } } },
+        });
+        if (applied.some((r) => r.to.status !== "VOIDED" && r.to.status !== "CANCELLED"))
+          throw new Error("ใบมัดจำนี้ถูกหักในเอกสารอื่นแล้ว — ยกเลิกการหักที่เอกสารนั้นก่อน");
+      }
       await tx.accountDocumentPayment.update({
         where: { id: paymentId },
         data: { voidedAt: new Date(), voidReason: reason || null },
@@ -1079,6 +1219,12 @@ export async function voidVendorPayment(
         data: { paidTotal: newPaid, status: newPaid > 0 ? "PARTIAL" : "AWAITING_PAYMENT" },
       });
       await reverseFor({ tenantId, systemId }, "AccountDocumentPayment", paymentId, reason, tx);
+
+      // ── WO 1.4 (ปิดรูรั่ว 1.2 §8.1): JV ของใบจ่ายมัดจำ (Dr 1130 + Dr 1150 / Cr เงิน) ผูกกับ
+      //    *ตัวเอกสาร* ไม่ใช่ payment ⇒ reversal ข้างบนไม่แตะ · ต้องกลับรายการเอกสารด้วย
+      if (doc.docType === "DEPOSIT_PAYMENT" && doc.status === "AWAITING_DEDUCT") {
+        await reverseFor({ tenantId, systemId }, "AccountDocument", documentId, reason, tx);
+      }
 
       // ── R-A/C2: cascade → 50 ทวิ (WHT_CERT) ที่ผูก payment นี้ → VOIDED + ล้าง link ──
       //    ไม่งั้น ภงด.53 นำส่งบนเงินที่ไม่ได้จ่าย (จ่าย void แต่ cert ยัง ISSUED)

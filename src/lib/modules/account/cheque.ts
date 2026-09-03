@@ -106,6 +106,9 @@ export async function createCheque(input: {
   financeAccountId?: string | null;
   note?: string | null;
   documentId?: string | null; // R-B: ผูกเอกสาร (IN=เอกสารขาย · OUT=เอกสารซื้อ) → ตัดหนี้จริง
+  /** WO 1.4: เช็คที่เกิดจากการรับ/จ่ายชำระในฟอร์ม §5.2 F — payment + JV (Dr 1040 / Cr 1100) ลงไปแล้ว
+   *  ⇒ ที่นี่ทำแค่ "ขึ้นทะเบียนเช็ค" + ผูกกลับไปที่ payment · ห้ามตัดหนี้/โพสต์ซ้ำ */
+  paymentId?: string | null;
 }): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
   if (!input.chequeNo.trim()) return { ok: false, reason: "กรุณากรอกเลขที่เช็ค" };
   if (!input.bankName.trim()) return { ok: false, reason: "กรุณากรอกชื่อธนาคาร" };
@@ -119,7 +122,7 @@ export async function createCheque(input: {
       // R-B: ผูกเอกสาร → ตรวจทิศทาง/สถานะ/ยอดคงเหลือ + สร้าง payment (ตัดหนี้) + อัปสถานะเอกสาร
       let contactId: string | null = null;
       let doc: { id: string; contactId: string | null; grandTotal: number; paidTotal: number; docType: string } | null = null;
-      if (input.documentId) {
+      if (input.documentId && !input.paymentId) {
         const d = await tx.accountDocument.findFirst({
           where: { id: input.documentId, tenantId: ctx.tenantId, systemId: ctx.systemId },
           select: { id: true, contactId: true, direction: true, status: true, grandTotal: true, paidTotal: true, docType: true },
@@ -176,6 +179,18 @@ export async function createCheque(input: {
             : "PAID"
           : "PARTIAL";
         await tx.accountDocument.update({ where: { id: doc.id }, data: { paidTotal: newPaid, status } });
+      }
+
+      // WO 1.4: เช็คของ payment ที่โพสต์แล้ว → ผูกกลับ แล้วจบ (ไม่ตัดหนี้ซ้ำ ไม่โพสต์ซ้ำ)
+      if (input.paymentId) {
+        const pay = await tx.accountDocumentPayment.findFirst({
+          where: { id: input.paymentId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+          select: { id: true, chequeId: true },
+        });
+        if (!pay) throw new Error("ไม่พบรายการชำระที่จะผูกเช็ค");
+        if (pay.chequeId) throw new Error("รายการชำระนี้ผูกเช็คไว้แล้ว");
+        await tx.accountDocumentPayment.update({ where: { id: pay.id }, data: { chequeId: cq.id } });
+        return cq.id;
       }
 
       // ลงทะเบียนบัญชี (commitEntry refType=AccountCheque event=REGISTER — idempotent/reversible)

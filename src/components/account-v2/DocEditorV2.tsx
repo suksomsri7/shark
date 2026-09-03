@@ -12,8 +12,11 @@ import {
   searchContactsAction,
   searchProductsAction,
 } from "@/lib/modules/account/editor-actions";
+import { approveReceiptWithPaymentsAction } from "@/lib/modules/account/payment-actions";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { ContactPicker, type ContactSearchResult } from "./ContactPicker";
+import { DepositSection, type DepositApplied } from "./DepositSection";
+import { PaymentSection, boxTieOff, newPayBox, type PayBox } from "./PaymentSection";
 import { DateInput } from "./DateInput";
 import { DocAttachments } from "./DocAttachments";
 import { DocLineTable } from "./DocLineTable";
@@ -38,8 +41,9 @@ import {
 // DocEditorV2 — ฟอร์มสร้าง/แก้เอกสารเต็มหน้า (DESIGN-SPEC-V2 §5.2 ส่วน A B C E G H I)
 // ภาพอ้างอิงที่ต้องเหมือน: g1-invoice-form.png (เดสก์ท็อป) · g1-invoice-form-menu.png (เมนูอนุมัติ)
 //                          g17-invoice-form.png (มือถือ: accordion + แถบยอดติดล่าง)
-// ส่วน D (เงินมัดจำ) และ F (รับชำระ) = WO 1.4 — ที่นี่เว้นจุดต่อไว้ (props depositDeductedSatang
-// + บรรทัด "หักเงินมัดจำ" อ่านอย่างเดียวในบล็อกสรุปยอด) ไม่ต้องรื้อฟอร์มตอนทำ 1.4
+// WO 1.4 เติมส่วน D (เงินมัดจำ · `DepositSection`) และ F (รับชำระเงิน · `PaymentSection` ตาม g2)
+//   D อยู่ระหว่าง "รายการ" กับ "สรุปยอด" (ยอดที่หักไหลเข้า `tot-deposit`/`tot-due`)
+//   F โผล่เฉพาะใบเสร็จรับเงิน — ปุ่มอนุมัติเปลี่ยนไปเรียก `approveReceiptWithPaymentsAction`
 //
 // 🔴 ตัวเลขบนจอ = พรีวิวเท่านั้น — server action คำนวณใหม่ด้วย computeDocTotals ตัวเดียวกันก่อนบันทึกเสมอ
 // ─────────────────────────────────────────────────────────────
@@ -122,6 +126,13 @@ function EditorBody(props: DocEditorV2Props) {
   const [tagInput, setTagInput] = useState("");
   const [addingTag, setAddingTag] = useState(false);
   const [mobileTotalsOpen, setMobileTotalsOpen] = useState(false);
+  // ── WO 1.4 ส่วน D/F ──
+  const [depositApplied, setDepositApplied] = useState<DepositApplied[]>(props.depositApplied);
+  const [depositDeducted, setDepositDeducted] = useState(props.depositDeductedSatang);
+  const [payAdvanced, setPayAdvanced] = useState(false);
+  const [payBoxes, setPayBoxes] = useState<PayBox[]>([]);
+  const [payError, setPayError] = useState("");
+  const payKeyRef = useRef(`pay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const approveFormRef = useRef<HTMLFormElement>(null);
   const approveNextRef = useRef<HTMLInputElement>(null);
   const approveIdRef = useRef<HTMLInputElement>(null);
@@ -143,9 +154,9 @@ function EditorBody(props: DocEditorV2Props) {
         vatRegistered: props.vatRegistered,
         vatRateBp: props.vatRateBp,
         docDiscount: value.docDiscount,
-        depositDeductedSatang: props.depositDeductedSatang,
+        depositDeductedSatang: depositDeducted,
       }),
-    [value.lines, value.priceMode, value.docDiscount, props.vatRegistered, props.vatRateBp, props.depositDeductedSatang],
+    [value.lines, value.priceMode, value.docDiscount, props.vatRegistered, props.vatRateBp, depositDeducted],
   );
 
   // ── validation (inline + toast รวม) ──
@@ -275,10 +286,51 @@ function EditorBody(props: DocEditorV2Props) {
   }));
   const stepHref = (code: string) => props.steps.find((s) => s.code === code)?.href;
 
+  // ── WO 1.4 ส่วน F: กล่อง "ครั้งที่ 1" ตั้งต้นของใบเสร็จ = ยอดเต็มใบ (แก้ได้) ──
+  useEffect(() => {
+    if (!props.paymentEnabled) return;
+    setPayBoxes((prev) =>
+      prev.length > 0
+        ? prev
+        : [newPayBox(value.issueDate, totals.grandTotal, props.paymentChannels[0]?.id ?? null)],
+    );
+  }, [props.paymentEnabled, props.paymentChannels, value.issueDate, totals.grandTotal]);
+
   const approve = (next: "" | "pay" | "print" | "email") =>
     startTransition(async () => {
       const id = await save();
       if (!id) return;
+      // ── ใบเสร็จรับเงิน (g2): อนุมัติ = ออกเอกสาร + บันทึกการรับชำระที่กรอกไว้ในคำสั่งเดียว ──
+      if (props.paymentEnabled) {
+        setPayError("");
+        const res = await approveReceiptWithPaymentsAction(
+          props.systemId,
+          id,
+          payBoxes.filter((b) => boxTieOff(b) > 0).map((b) => ({
+            paidAt: b.paidAt,
+            financeAccountId: b.financeAccountId,
+            amountSatang: b.amountSatang,
+            note: b.note,
+            whtIncomeType: b.whtOn ? (b.whtIncomeType as never) : null,
+            whtRateBp: b.whtOn ? b.whtRateBp : null,
+            whtAmountSatang: b.whtOn ? b.whtAmountSatang : 0,
+            feeSatang: b.feeSatang,
+            cheque: b.chequeOn
+              ? { chequeNo: b.chequeNo, bankName: b.bankName, chequeDate: b.chequeDate }
+              : null,
+          })),
+          payKeyRef.current,
+        );
+        if (!res.ok) {
+          setPayError(res.reason);
+          toast.error(res.reason);
+          return;
+        }
+        toast.success(`อนุมัติ${props.docLabel} ${res.docNo} แล้ว`);
+        router.push(res.href);
+        router.refresh();
+        return;
+      }
       if (approveNextRef.current) approveNextRef.current.value = next;
       if (approveIdRef.current) approveIdRef.current.value = id;
       approveFormRef.current?.requestSubmit();
@@ -347,6 +399,31 @@ function EditorBody(props: DocEditorV2Props) {
       {steps.length > 1 && (
         <div className="card px-5 py-4">
           <Stepper steps={steps} hrefFor={(s) => stepHref(s.code)} testId="doc-steps" />
+        </div>
+      )}
+
+      {/* การ์ดหัวของ g2: เลขที่เอกสาร · ผู้ติดต่อ · อ้างอิงใบแจ้งหนี้ · ยอด (เฉพาะฟอร์มที่มีส่วน F) */}
+      {props.paymentEnabled && (
+        <div className="card flex flex-wrap items-center gap-x-7 gap-y-3" data-testid="pay-head">
+          <HeadStat label="เลขที่เอกสาร" value={value.docNo || "—"} />
+          <HeadStat label="ผู้ติดต่อ" value={value.contactLabel || "—"} />
+          {props.sourceDoc && (
+            <HeadStat
+              label={`อ้างอิง${props.sourceDoc.label}`}
+              value={
+                <Link href={props.sourceDoc.href} className="text-[color:var(--color-accent)] underline">
+                  {props.sourceDoc.docNo ?? "—"}
+                </Link>
+              }
+            />
+          )}
+          <span className="flex-1" />
+          <div className="text-right">
+            <div className="text-xs text-[color:var(--color-muted)]">ยอด</div>
+            <div className="text-xl font-semibold tabular-nums" data-testid="pay-head-total">
+              <MoneyText satang={totals.grandTotal} decimals />
+            </div>
+          </div>
         </div>
       )}
 
@@ -642,6 +719,25 @@ function EditorBody(props: DocEditorV2Props) {
         </div>
       </SectionCard>
 
+      {/* D — เงินมัดจำ (§5.2 D) */}
+      {props.depositEnabled && (
+        <SectionCard title="เงินมัดจำ" complete={depositDeducted > 0} testId="sec-deposit">
+          <DepositSection
+            systemId={props.systemId}
+            docType={props.docType}
+            docId={docId}
+            contactId={value.contactId}
+            docGrossSatang={totals.grandTotal + depositDeducted}
+            applied={depositApplied}
+            onApplied={(rows, total) => {
+              setDepositApplied(rows);
+              setDepositDeducted(total);
+            }}
+            onNeedDraft={() => save({ silent: true })}
+          />
+        </SectionCard>
+      )}
+
       {/* E — สรุปยอด */}
       <SectionCard title="สรุปยอด" complete={totals.grandTotal > 0} testId="sec-totals">
         <DocTotals
@@ -652,6 +748,25 @@ function EditorBody(props: DocEditorV2Props) {
           onDocDiscountChange={(v) => set("docDiscount", v)}
         />
       </SectionCard>
+
+      {/* F — รับชำระเงิน (§5.2 F · ภาพ g2) */}
+      {props.paymentEnabled && (
+        <>
+          {payError && <p className="text-sm text-[color:var(--color-danger)]" data-testid="pay-error">{payError}</p>}
+          <PaymentSection
+            value={payBoxes}
+            onChange={setPayBoxes}
+            advanced={payAdvanced}
+            onAdvancedChange={setPayAdvanced}
+            channels={props.paymentChannels}
+            direction={props.side === "expense" ? "IN" : "OUT"}
+            docTotalSatang={totals.grandTotal}
+            alreadyPaidSatang={0}
+            whtBaseSatang={totals.afterDiscount}
+            docTotalLabel={`ยอด${props.docLabel}`}
+          />
+        </>
+      )}
 
       {/* G — หมายเหตุ */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -817,6 +932,16 @@ function EditorBody(props: DocEditorV2Props) {
         <input type="hidden" name="id" ref={approveIdRef} defaultValue={docId ?? ""} />
         <input type="hidden" name="next" ref={approveNextRef} defaultValue="" />
       </form>
+    </div>
+  );
+}
+
+/** ช่องสรุปเล็กบนการ์ดหัวของ g2 (ป้ายจาง + ค่าตัวหนา) */
+function HeadStat({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs text-[color:var(--color-muted)]">{label}</span>
+      <span className="text-base font-semibold">{value}</span>
     </div>
   );
 }

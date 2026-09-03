@@ -119,6 +119,107 @@ export async function listWhtCredits(
   return { rows, totalWht, totalBase };
 }
 
+/**
+ * WO 1.4 — บันทึก "เอกสารภาษีถูกหัก ณ ที่จ่าย" ฝั่งขาย (WTI) จาก payment ที่ลูกค้าหักภาษีไว้
+ *
+ * ต่างจาก 50 ทวิ ฝั่งซื้อ (`issueWhtCert` / prefix `WHT-`) ตรงที่ใบนี้ **เราเป็นผู้ถูกหัก**
+ * ⇒ เป็นหลักฐานเครดิตภาษี 1160 ที่ต้องเก็บไว้ยื่นภาษีปลายปี (ภาพ g2 เรียก `WTI-…`)
+ * ไม่โพสต์ GL (1160 ลงตอน `postPayment` แล้ว — WHT_CERT อยู่ใน NO_GL ของ gl.ts)
+ *
+ * 🔴 เรียกได้เฉพาะ "ใน transaction เดียวกับการสร้าง payment" (รับ tx เข้ามา) —
+ *    ไม่งั้น payment เกิดแล้วแต่ cert ล้ม = เครดิตภาษีหาย
+ */
+export async function issueWhtCreditCert(
+  tx: Prisma.TransactionClient,
+  ctx: Ctx,
+  input: {
+    documentId: string;
+    paymentId: string;
+    whtAmount: number;
+    whtRateBp: number | null;
+    incomeType: AccountWhtIncomeType;
+    /** ฐานเงินได้จริงของงวดนี้ (ก่อน VAT) — ไม่ย้อนจาก wht/rate เพราะปัดเศษแล้วเพี้ยน */
+    base: number;
+    issueDate: Date; // = paidAt (tax point)
+  },
+): Promise<{ id: string; docNo: string }> {
+  const doc = await tx.accountDocument.findFirst({
+    where: { id: input.documentId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+    select: { id: true, contactId: true, contactSnapshot: true },
+  });
+  if (!doc) throw new Error("ไม่พบเอกสารต้นทางของภาษีถูกหัก ณ ที่จ่าย");
+  const docNo = await nextWhtCreditNo(tx, ctx, input.issueDate);
+  const cert = await tx.accountDocument.create({
+    data: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      docType: "WHT_CERT",
+      status: "ISSUED",
+      // 🔴 direction = OUT คือตัวแยกว่า "ถูกหัก (เครดิตเรา)" ไม่ใช่ "เราหักเขา (ต้องนำส่ง)"
+      //    ภ.ง.ด.3/53 อ่านเฉพาะ direction IN ⇒ ใบนี้ไม่หลุดเข้ารายงานนำส่ง
+      direction: "OUT",
+      docNo,
+      issueDate: input.issueDate,
+      contactId: doc.contactId,
+      contactSnapshot: (doc.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
+      vatMode: "NONE",
+      subTotal: input.base,
+      vatAmount: 0,
+      grandTotal: input.base,
+      whtIncomeType: input.incomeType,
+      whtRateBp: input.whtRateBp,
+      whtAmount: input.whtAmount,
+      sourceDocId: doc.id,
+      sourcePaymentId: input.paymentId,
+      note: "เอกสารภาษีถูกหัก ณ ที่จ่าย (เครดิตภาษี)",
+    },
+    select: { id: true, docNo: true },
+  });
+  await tx.accountDocumentPayment.update({
+    where: { id: input.paymentId },
+    data: { whtCertDocId: cert.id, whtRateBp: input.whtRateBp },
+  });
+  await tx.accountDocumentRelation.create({
+    data: { tenantId: ctx.tenantId, systemId: ctx.systemId, fromId: doc.id, toId: cert.id, type: "TAX_FOR", amount: input.whtAmount },
+  });
+  return { id: cert.id, docNo: cert.docNo ?? docNo };
+}
+
+/** เวอร์ชันที่เปิด transaction เอง — ใช้ตอนออกใบให้ payment ที่สร้างไปแล้ว (ใบเสร็จขายสด §5.2 F) */
+export async function issueWhtCreditCertStandalone(
+  ctx: Ctx,
+  input: {
+    documentId: string;
+    paymentId: string;
+    whtAmount: number;
+    whtRateBp: number | null;
+    incomeType: AccountWhtIncomeType;
+    base: number;
+    issueDate: Date;
+  },
+): Promise<{ ok: true; docNo: string } | { ok: false; reason: string }> {
+  try {
+    const cert = await prisma.$transaction((tx) => issueWhtCreditCert(tx, ctx, input));
+    return { ok: true, docNo: cert.docNo };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "ออกเอกสารภาษีถูกหัก ณ ที่จ่ายไม่สำเร็จ" };
+  }
+}
+
+/** เลขรันเอกสารภาษีถูกหัก ฝั่งขาย — ใช้ตารางเลขรันร่วม แต่คนละ periodKey ("WTI:YYYY-MM")
+ *  ⇒ ไม่กินเลขเดียวกับ 50 ทวิ ฝั่งซื้อ (`WHT-`) และไม่ต้องเพิ่ม docType ใหม่ใน enum */
+async function nextWhtCreditNo(tx: Prisma.TransactionClient, ctx: Ctx, date: Date): Promise<string> {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const periodKey = `WTI:${year}-${month}`;
+  const seq = await tx.accountDocSequence.upsert({
+    where: { systemId_docType_periodKey: { systemId: ctx.systemId, docType: "WHT_CERT", periodKey } },
+    create: { tenantId: ctx.tenantId, systemId: ctx.systemId, docType: "WHT_CERT", prefix: "WTI", periodKey, lastNo: 1 },
+    update: { lastNo: { increment: 1 } },
+  });
+  return `WTI-${year}${month}-${String(seq.lastNo).padStart(4, "0")}`;
+}
+
 // ─────────────────── ② WHT เราหัก vendor: ทะเบียน + ออก 50 ทวิ ───────────────────
 
 export type WhtDeductionRow = {
@@ -332,6 +433,9 @@ export async function pnd(
       tenantId,
       systemId,
       docType: "WHT_CERT",
+      // 🔴 WO 1.4: เฉพาะ 50 ทวิ ที่ "เราหักเขา" (direction IN) เท่านั้นที่ต้องนำส่งสรรพากร
+      //    ใบ WTI (direction OUT = ลูกค้าหักเรา) เป็นเครดิตภาษีของเรา ห้ามหลุดเข้า ภ.ง.ด.3/53
+      direction: "IN",
       status: "ISSUED",
       issueDate: { gte, lt },
     },

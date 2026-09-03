@@ -160,8 +160,18 @@ export type DocEditorV2Props = {
   /** เอกสารนี้ต้องเลือกบัญชีต่อบรรทัด (บันทึกค่าใช้จ่าย/ซื้อสินทรัพย์) */
   requireLineAccount: boolean;
   initial: DocDraftValue;
-  /** ยอดหักมัดจำที่มีอยู่แล้วบนร่างนี้ (อ่านอย่างเดียว — WO 1.4 เป็นคนทำ UI เลือก) */
+  /** ยอดหักมัดจำที่มีอยู่แล้วบนร่างนี้ (ส่วน D — ผู้ใช้แก้ผ่าน `DepositSection` ได้ตั้งแต่ WO 1.4) */
   depositDeductedSatang: number;
+  /** ── WO 1.4 ส่วน D ── ชนิดนี้หักเงินมัดจำได้หรือไม่ (IV/RE ฝั่งขาย · PUR/EXP ฝั่งจ่าย) */
+  depositEnabled: boolean;
+  /** ใบมัดจำที่ร่างนี้หักอยู่ตอนนี้ (มาจาก relation DEPOSIT_APPLY) */
+  depositApplied: { depositId: string; docNo: string | null; amountSatang: number }[];
+  /** ── WO 1.4 ส่วน F ── ฟอร์มนี้มีบล็อก "รับชำระเงิน" (ใบเสร็จรับเงิน · ภาพ g2) */
+  paymentEnabled: boolean;
+  /** ช่องทางการเงินให้ dropdown "ช่องทาง" */
+  paymentChannels: { id: string; name: string; type: string; bankName: string | null; accountNo: string | null }[];
+  /** เลขที่ + ลิงก์ของใบแจ้งหนี้ต้นทาง (การ์ดหัวของ g2 "อ้างอิงใบแจ้งหนี้") */
+  sourceDoc?: { docNo: string | null; href: string; label: string } | null;
 };
 
 export function newLineDraft(vatRateBp: number): LineDraft {

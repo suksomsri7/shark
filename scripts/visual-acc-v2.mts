@@ -114,6 +114,71 @@ if (WO === "1.3") {
   console.log(`[fixture 1.3] ร่างใบแจ้งหนี้คุณณัฐพล = ${fixtureDraftId}\n`);
 }
 
+// ─────────── fixture ของ WO 1.4: ใบแจ้งหนี้ 24,900 (ออกแล้ว) + ร่างใบเสร็จที่อ้างถึง (ภาพ g2) ───────────
+// ต้องเป็นของจริงในฐานข้อมูล ตัวเลขบนจอถึงจะพิสูจน์อะไรได้ — สร้างผ่าน service ตัวเดียวกับที่ action เรียก
+// 🔴 ลบทิ้งเสมอใน finally: ใบแจ้งหนี้ที่ออกแล้วจะไปเพิ่มตัวนับแท็บของ WO 1.1 (เฉลย IV ทั้งหมด 51 ใบ)
+const FIXTURE_REF_14 = "QC-VISUAL-1.4";
+let fx14 = { invoiceId: "", receiptId: "", invoiceNo: "" };
+if (WO === "1.4") {
+  const { prisma: db } = await import("@/lib/core/db");
+  const svc = await import("@/lib/modules/account/service");
+  cleanupFixture = async () => {
+    const stale = await db.accountDocument.findMany({
+      where: { systemId: SYS, reference: FIXTURE_REF_14 },
+      select: { id: true },
+    });
+    // ใบเสร็จ/เอกสารลูกที่อ้างใบแจ้งหนี้ fixture ต้องไปด้วย (relation + sourceDocId)
+    const ids = stale.map((d) => d.id);
+    const children = ids.length
+      ? await db.accountDocument.findMany({ where: { systemId: SYS, sourceDocId: { in: ids } }, select: { id: true } })
+      : [];
+    const all = [...ids, ...children.map((c) => c.id)];
+    if (all.length === 0) return;
+    await db.accountJournalLine.deleteMany({ where: { entry: { systemId: SYS, refId: { in: all } } } });
+    await db.accountJournalEntry.deleteMany({ where: { systemId: SYS, refId: { in: all } } });
+    await db.accountDocumentPayment.deleteMany({ where: { documentId: { in: all } } });
+    await db.accountDocumentRelation.deleteMany({ where: { OR: [{ fromId: { in: all } }, { toId: { in: all } }] } });
+    await db.accountDocumentLine.deleteMany({ where: { documentId: { in: all } } });
+    await db.accountDocument.updateMany({ where: { id: { in: all } }, data: { sourceDocId: null } });
+    await db.accountDocument.deleteMany({ where: { id: { in: all } } });
+    console.log(`ลบ fixture ของ WO 1.4 ${all.length} ใบ (ตัวนับแท็บ WO 1.1 กลับเท่าเฉลย)`);
+  };
+  await cleanupFixture(); // กันซากจากรอบที่ล้มกลางคัน
+  const inv = await svc.createDocument({
+    tenantId: E.tenantId,
+    systemId: SYS,
+    docType: "INVOICE",
+    contactId: E.fixtures.contactNattapholId,
+    issueDate: new Date(`${QC.today}T00:00:00.000Z`),
+    dueDate: new Date("2026-10-14T00:00:00.000Z"),
+    vatMode: "EXCLUDE",
+    vatTiming: "ON_ISSUE",
+    lines: [
+      { description: "ทริปสิมิลัน 3 วัน 2 คืน", qty: 2, unitName: "คน", unitPrice: 990_000, vatRateBp: 700 },
+      { description: "ค่าเช่าอุปกรณ์ดำน้ำ", qty: 2, unitName: "วัน", unitPrice: 120_000, vatRateBp: 700 },
+      { description: "เสื้อ SIAM DIVE", qty: 1, unitName: "ตัว", unitPrice: 107_103, vatRateBp: 700 },
+    ],
+    createdById: E.ownerUserId,
+  });
+  await svc.applyEditorExtras(E.tenantId, SYS, inv.id, {
+    reference: FIXTURE_REF_14,
+    priceMode: "EXCL_VAT",
+    discountMode: "AMOUNT",
+    salesUserId: null,
+    tags: [],
+    internalNote: null,
+    autoTaxInvoice: false,
+    whtAmount: 0,
+    lineWht: [],
+  });
+  const issued = await svc.issueDocument(E.tenantId, SYS, inv.id);
+  if (!issued.ok) throw new Error("fixture 1.4: ออกใบแจ้งหนี้ไม่สำเร็จ — " + issued.reason);
+  const conv = await svc.convertDocument(E.tenantId, SYS, inv.id, "RECEIPT", E.ownerUserId);
+  if (!conv.ok) throw new Error("fixture 1.4: แปลงเป็นใบเสร็จไม่สำเร็จ — " + conv.reason);
+  fx14 = { invoiceId: inv.id, receiptId: conv.newId, invoiceNo: issued.docNo };
+  console.log(`[fixture 1.4] ใบแจ้งหนี้ ${issued.docNo} = ${inv.id} · ร่างใบเสร็จ = ${conv.newId}\n`);
+}
+
 // ─────────── รายการหน้าต่อ WO (เติมทีละ WO ตาม BLUEPRINT §3) ───────────
 // expect = ข้อความที่ต้องเจอบนหน้า (ว่าง = ไม่ตรวจ) — พิสูจน์ว่าเปิดถูกหน้า **และต่อ DB QC จริง**
 // (Next โหลด .env ของ prod ให้อัตโนมัติตอน build/start แต่ไม่ทับ env ที่ส่งเข้ามา → ต้องมีหลักฐานจากหน้าจอ)
@@ -133,6 +198,9 @@ type PageSpec = {
   onlyDevice?: "desktop" | "mobile";
   /** คุกกี้เพิ่มเฉพาะหน้านี้ (เช่น `acc_mode=easy` เพื่อถ่ายโหมดง่าย) — ตั้งก่อนโหลดหน้า */
   extraCookies?: { name: string; value: string }[];
+  /** WO 1.4: ลำดับการกรอกฟอร์มก่อนถ่าย (คลิก/พิมพ์สลับกันได้ — `click` ทำก่อนทั้งหมด)
+   *  ใช้สร้างสถานะบนจอแบบเดียวกับภาพ g2 (ขั้นสูง · 2 กล่อง · เปิดถูกหัก ณ ที่จ่าย) โดยผ่าน UI จริง */
+  flow?: ({ click: string } | { fill: string; value: string })[];
 };
 const PAGES: Record<string, PageSpec[]> = {
   "0.1": [
@@ -249,11 +317,49 @@ const PAGES: Record<string, PageSpec[]> = {
       extraCookies: [{ name: "acc_mode", value: "easy" }],
     },
   ],
+  // ─── WO 1.4 · ส่วน D (เงินมัดจำ) + F (รับชำระเงิน) — ภาพตายตัว g2-receipt-payment.png ───
+  "1.4": [
+    {
+      name: "receipt-payment",
+      path: `/app/sys/${SYS}/account/docs/RECEIPT/${fx14.receiptId}/edit`,
+      note: 'ฟอร์มใบเสร็จรับเงิน โหมด "ขั้นสูง" 2 ครั้ง (14,900 ธนาคาร + 9,301.87 เงินสด + ถูกหัก ณ ที่จ่าย 698.13) = เฉลย g2',
+      expect: ["ใบเสร็จรับเงิน", "รับชำระเงิน", "ครั้งที่ 1"],
+      // สร้างสถานะบนจอผ่าน UI จริง (ไม่ยัด state): ขั้นสูง → แก้ยอดครั้งที่ 1 → เพิ่มครั้งที่ 2 → เปิดถูกหัก ณ ที่จ่าย
+      // (เปิด toggle แล้วระบบเติมให้เอง: ภาษี 3% ของฐาน 23,271.03 = 698.13 · เงินรับจริง 10,000 − 698.13)
+      flow: [
+        { click: '[data-testid="pay-mode-advanced"]' },
+        { fill: '[data-testid="pay-amount-1"]', value: "14900.00" },
+        { click: '[data-testid="btn-add-payment"]' },
+        { click: '[data-testid="pay-wht-toggle-2"]' },
+      ],
+      waitAfterClick: 500,
+    },
+    {
+      name: "invoice-detail-payment",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/${fx14.invoiceId}`,
+      note: 'หน้าใบแจ้งหนี้ + แผง "รับชำระ" ที่เปิดใน SlideOver (§5.3 ทำรายการ → §5.2 F)',
+      expect: ["รับชำระ"],
+      click: ['[data-testid="btn-open-payment"]'],
+      waitAfterClick: 1200,
+    },
+  ],
 };
 
 // ─────────── ตารางตัวเลขที่อ่านจาก data-testid (ว่างไว้ก่อน — WO ถัดไปเติม) ───────────
 // รูปแบบ: { page: { "testid": ค่าที่คาดหวังเป็นสตางค์ | สตริง } }
 const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>> = {
+  // WO 1.4: ตัวเลขบนจอต้องตรงเฉลย g2 เป๊ะ (14,900 + 9,301.87 + WHT 698.13 = 24,900 · ค้าง 0)
+  "1.4": {
+    "receipt-payment": {
+      "pay-head-total": "฿24,900.00",
+      "pay-summary-doc": "฿24,900.00",
+      "pay-summary-paid": "฿24,201.87",
+      "pay-summary-wht": "฿698.13",
+      "pay-outstanding": "฿0.00",
+      "pay-total-2": "฿10,000.00",
+      "tot-grand": "฿24,900.00",
+    },
+  },
   "0.1": {},
   "0.4": {},
   "0.5": {},
@@ -405,11 +511,23 @@ try {
         for (const sel of spec.click ?? []) {
           await page.click(sel).catch(() => {});
         }
+        // WO 1.4: ลำดับกรอกฟอร์ม (คลิก/พิมพ์) — MoneyInput ยืนยันค่าเมื่อ blur ⇒ ต้องกด Tab ทุกครั้งหลังพิมพ์
+        for (const step of spec.flow ?? []) {
+          if ("click" in step) {
+            await page.click(step.click).catch(() => {});
+          } else {
+            await page.click(step.fill, { clickCount: 3 }).catch(() => {});
+            await page.keyboard.type(step.value).catch(() => {});
+            await page.keyboard.press("Tab").catch(() => {});
+          }
+          await new Promise((r) => setTimeout(r, 250));
+        }
         // hover (ไม่ใช่ click) — เปิด flyout ระดับ 2 บนเดสก์ท็อปโดยไม่ navigate ออกจากรายการ (Link ของแถวระดับ 1 มี href จริง)
         for (const sel of spec.hover ?? []) {
           await page.hover(sel).catch(() => {});
         }
-        if (spec.click?.length || spec.hover?.length) await new Promise((r) => setTimeout(r, spec.waitAfterClick ?? 300));
+        if (spec.click?.length || spec.hover?.length || spec.flow?.length)
+          await new Promise((r) => setTimeout(r, spec.waitAfterClick ?? 300));
         // Fable QC รอบ 2: page.hover() ของ puppeteer เรียก scrollIntoViewIfNeeded ก่อนเสมอ — ถ้า element ที่ hover
         // เคยโดน overflow ของ ancestor บัง (ดู AccountTabBar แก้แล้ว) จะสกอลหน้าไปตำแหน่งแปลก ๆ ก่อนถ่าย ⇒ รีเซ็ตกลับ 0
         // เสมอก่อนถ่ายภาพ (fullPage screenshot ควรไม่ขึ้นกับตำแหน่งสกอลอยู่แล้ว แต่กันไว้สองชั้น)
@@ -517,6 +635,29 @@ try {
                 return el ? el.getBoundingClientRect().top : null;
               })(),
             },
+            // WO 1.4 ส่วน D/F — โครงของบล็อก "รับชำระเงิน" ตาม g2
+            pay: {
+              hasSection: !!document.querySelector('[data-testid="pay-section"]'),
+              hasHeadCard: !!document.querySelector('[data-testid="pay-head"]'),
+              hasDepositSection: !!document.querySelector('[data-testid="deposit-section"]'),
+              advancedOn:
+                document.querySelector('[data-testid="pay-mode-advanced"]')?.getAttribute("aria-pressed") === "true",
+              boxes: document.querySelectorAll('[data-testid^="pay-box-"]').length,
+              whtOn2:
+                document.querySelector('[data-testid="pay-wht-toggle-2"]')?.getAttribute("aria-checked") === "true",
+              certHint: !!document.querySelector('[data-testid="pay-cert-hint-2"]'),
+              slideOverVisible: isVisible(document.querySelector('[data-testid="payment-slideover"]')),
+              hasRecordButton: !!document.querySelector('[data-testid="btn-record-payments"]'),
+              // ป้ายช่องเงินของกล่องที่เปิดถูกหัก ณ ที่จ่าย ต้องเปลี่ยนเป็น "จำนวนเงินรับจริง" ตาม g2
+              amountLabel2:
+                document.querySelector('[data-testid="pay-amount-2"]')?.closest("label")?.textContent?.trim() ?? "",
+              amount1:
+                (document.querySelector('[data-testid="pay-amount-1"]') as HTMLInputElement | null)?.value ?? "",
+              amount2:
+                (document.querySelector('[data-testid="pay-amount-2"]') as HTMLInputElement | null)?.value ?? "",
+              whtAmount2:
+                (document.querySelector('[data-testid="pay-wht-amount-2"]') as HTMLInputElement | null)?.value ?? "",
+            },
           };
         });
         line.push(`${device} HTTP ${status} · ${w}px · ล้นแนวนอน ${probe.overflow}px${navOk ? "" : " · nav timeout"}`);
@@ -603,6 +744,41 @@ try {
           for (const [ok, label] of checks13) {
             if (!ok) failures++;
             console.log(`  ${ok ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
+          }
+        }
+
+        // WO 1.4 ส่วน D/F — โครงต้องตรง g2 (ไล่ทีละองค์ประกอบ) + ตัวเลขที่ผู้ใช้เห็นจริง
+        if (ASSERT && WO === "1.4") {
+          const c: [boolean, string][] = [];
+          if (spec.name === "receipt-payment") {
+            c.push([probe.editor.hasForm, `ฟอร์มใบเสร็จขึ้นจริง (positive control ของด่านที่เหลือ)`]);
+            c.push([probe.pay.hasHeadCard, `การ์ดหัว g2: เลขที่เอกสาร · ผู้ติดต่อ · อ้างอิงใบแจ้งหนี้ · ยอด`]);
+            c.push([probe.all.includes(`อ้างอิงใบแจ้งหนี้`), `การ์ดหัวมีป้าย "อ้างอิงใบแจ้งหนี้"`]);
+            c.push([probe.all.includes(fx14.invoiceNo), `การ์ดหัวโชว์เลขใบแจ้งหนี้ต้นทาง ${fx14.invoiceNo}`]);
+            c.push([probe.pay.hasSection, `มีบล็อก "รับชำระเงิน" [data-testid="pay-section"]`]);
+            c.push([probe.pay.hasDepositSection, `มีการ์ด "เงินมัดจำ" (ส่วน D) พร้อมปุ่ม "+ เลือกเงินมัดจำ"`]);
+            c.push([probe.all.includes("+ เลือกเงินมัดจำ"), `ปุ่ม "+ เลือกเงินมัดจำ" อยู่บนหน้า (§5.2 D)`]);
+            c.push([probe.pay.advancedOn, `สลับเป็นโหมด "ขั้นสูง" แล้วปุ่มถูกกดค้าง (aria-pressed)`]);
+            c.push([probe.pay.boxes === 2, `มีกล่องการรับชำระ 2 ครั้งตาม g2 (เจอ ${probe.pay.boxes})`]);
+            c.push([probe.pay.whtOn2, `ครั้งที่ 2 เปิด "ถูกหัก ณ ที่จ่าย"`]);
+            c.push([probe.pay.amountLabel2.includes("จำนวนเงินรับจริง"), `เปิดถูกหัก ณ ที่จ่ายแล้วป้ายช่องเงินเป็น "จำนวนเงินรับจริง" (g2) — เจอ "${probe.pay.amountLabel2}"`]);
+            c.push([probe.pay.amount1 === "14,900.00", `ครั้งที่ 1 จำนวนเงิน 14,900.00 (เจอ "${probe.pay.amount1}")`]);
+            c.push([probe.pay.amount2 === "9,301.87", `ครั้งที่ 2 จำนวนเงินรับจริง 9,301.87 (เจอ "${probe.pay.amount2}")`]);
+            c.push([probe.pay.whtAmount2 === "698.13", `ครั้งที่ 2 จำนวนภาษี 698.13 (เจอ "${probe.pay.whtAmount2}")`]);
+            c.push([probe.pay.certHint, `มีแถบ "สร้างเอกสารหัก ณ ที่จ่าย … ให้อัตโนมัติ" ใต้กล่องครั้งที่ 2 (g2)`]);
+            c.push([probe.all.includes("ยอดคงค้างหลังชำระ"), `มีป้าย "ยอดคงค้างหลังชำระ"`]);
+            c.push([probe.all.includes("เพิ่มการรับชำระ"), `มีปุ่ม "+ เพิ่มการรับชำระ"`]);
+            c.push([probe.editor.scrollWidth <= w, `ไม่ล้นแนวนอน: scrollWidth ${probe.editor.scrollWidth} ≤ ${w}`]);
+          }
+          if (spec.name === "invoice-detail-payment") {
+            c.push([probe.pay.slideOverVisible, `กด "รับชำระ" แล้วแผง SlideOver ต้องเปิดอยู่จริงบนจอ`]);
+            c.push([probe.pay.hasSection, `ในแผงมีบล็อกรับชำระตัวเดียวกับฟอร์มใบเสร็จ (g2)`]);
+            c.push([probe.pay.hasRecordButton, `แผงมีปุ่ม "บันทึกการชำระ" [data-testid="btn-record-payments"]`]);
+            c.push([probe.editor.scrollWidth <= w, `ไม่ล้นแนวนอน: scrollWidth ${probe.editor.scrollWidth} ≤ ${w}`]);
+          }
+          for (const [okc, label] of c) {
+            if (!okc) failures++;
+            console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
           }
         }
 

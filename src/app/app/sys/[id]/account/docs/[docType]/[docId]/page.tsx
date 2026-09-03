@@ -17,7 +17,6 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
-import { FormField } from "@/components/ui/FormField";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { DataList } from "@/components/ui/DataList";
 import { PAY_CHANNEL_LABEL } from "@/lib/ui/status-labels";
@@ -25,12 +24,14 @@ import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
 import {
   issueDocumentAction,
   convertDocumentAction,
-  recordPaymentAction,
   voidPaymentAction,
   quotationResponseAction,
   voidDocumentAction,
   ensurePublicLinkAction,
 } from "@/lib/modules/account/actions";
+// WO 1.4 — §5.3 ทำรายการ: "รับชำระ" เปิดแผง §5.2 F ใน SlideOver · "คืนมัดจำ" สำหรับใบรับมัดจำ
+import { PaymentPanel } from "@/components/account-v2/PaymentPanel";
+import { refundDepositFormAction } from "@/lib/modules/account/payment-actions";
 
 
 const toInput = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
@@ -63,7 +64,9 @@ export default async function DocDetailPage({
   const isEditing = edit === "1" && doc.status === "DRAFT";
   const canPay =
     (doc.status === "AWAITING_PAYMENT" || doc.status === "PARTIAL") &&
-    (dt === "INVOICE" || dt === "DEPOSIT_RECEIPT");
+    (dt === "INVOICE" || dt === "DEPOSIT_RECEIPT" || dt === "BILLING_NOTE" || dt === "DEBIT_NOTE");
+  // §3: คืนมัดจำได้เมื่อรับเงินแล้วและยังไม่ถูกหักไปในเอกสารอื่น (service.refundDeposit ตรวจซ้ำ)
+  const canRefundDeposit = dt === "DEPOSIT_RECEIPT" && doc.status === "AWAITING_DEDUCT";
   // A5/A3: เป้าหมายแปลง = ตัด docType ที่ซ่อน + gate ใบกำกับภาษีตาม vatRegistered
   const targets =
     doc.status !== "DRAFT" && doc.status !== "VOIDED" && doc.status !== "CANCELLED"
@@ -309,48 +312,29 @@ export default async function DocDetailPage({
           </div>
         )}
 
-        {/* รับชำระ */}
+        {/* รับชำระ (WO 1.4 §5.2 F) — แผงเดียวกับฟอร์มใบเสร็จ (ภาพ g2) เปิดใน SlideOver */}
         {canPay && (
-          <form action={recordPaymentAction} className="card flex flex-col gap-3">
-            <Hidden systemId={systemId} docType={dt} id={doc.id} />
-            <h2 className="text-sm font-medium">บันทึกรับชำระ</h2>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:items-end">
-              <FormField label="วันที่รับชำระ">
-                <input type="date" name="paidAt" className="input" />
-              </FormField>
-              <FormField label="ช่องทาง">
-                <select name="channel" className="input" defaultValue="TRANSFER">
-                  <option value="CASH">เงินสด</option>
-                  <option value="TRANSFER">โอน</option>
-                  <option value="PROMPTPAY">พร้อมเพย์</option>
-                  <option value="CARD">บัตร</option>
-                  <option value="E_WALLET">อีวอลเล็ต</option>
-                  <option value="OTHER">อื่นๆ</option>
-                </select>
-              </FormField>
-              <FormField label="เงินเข้า (บาท)">
-                <input
-                  name="amount"
-                  type="number"
-                  step="0.01"
-                  defaultValue={(remain / 100).toFixed(2)}
-                  className="input"
-                />
-              </FormField>
-              <SubmitButton>บันทึก</SubmitButton>
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <FormField label="หัก ณ ที่จ่าย (บาท)">
-                <input name="whtAmount" type="number" step="0.01" className="input" />
-              </FormField>
-              <FormField label="ค่าธรรมเนียม (บาท)">
-                <input name="feeAmount" type="number" step="0.01" className="input" />
-              </FormField>
-            </div>
-            <p className="text-xs text-[color:var(--color-muted)]">
-              ยอดที่ตัดหนี้ = เงินเข้า + หัก ณ ที่จ่าย
-            </p>
-          </form>
+          <div className="flex flex-wrap items-center gap-2">
+            <PaymentPanel systemId={systemId} docId={doc.id} triggerLabel="รับชำระ" />
+            <span className="text-xs text-[color:var(--color-muted)]">
+              คงเหลือ <MoneyText satang={remain} decimals />
+            </span>
+          </div>
+        )}
+
+        {/* คืนมัดจำ (§3 ทำรายการ ของใบรับเงินมัดจำ) */}
+        {canRefundDeposit && (
+          <ConfirmDialog
+            action={refundDepositFormAction}
+            fields={{ systemId, docType: dt, id: doc.id }}
+            reasonField={{ name: "reason", label: "เหตุผลการคืนมัดจำ" }}
+            triggerLabel="คืนมัดจำ"
+            triggerClassName="btn btn-ghost text-sm"
+            title="คืนเงินมัดจำใบนี้?"
+            detail="ระบบจะกลับรายการบัญชีของใบมัดจำทั้งใบ (เงินออกจากช่องทางที่รับไว้) และปิดใบนี้เป็นยกเลิก"
+            confirmLabel="ยืนยันคืนมัดจำ"
+            danger
+          />
         )}
 
         {/* void เอกสารมีผล */}

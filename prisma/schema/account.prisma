@@ -248,6 +248,9 @@ model AccountDocumentPayment {
   chequeId         String?           @unique
   cheque           AccountCheque?    @relation(fields: [chequeId], references: [id])
   entryId          String? // AccountJournalEntry ของการชำระ (ไม่ unique — ใบวางบิล/รวมจ่าย 1 entry หลาย payment ได้, Gate B-M4)
+  // WO 1.4: กันบันทึกรับ/จ่ายซ้ำจากการกดปุ่มซ้ำ/รีทราย (คีย์ที่ฝั่งเรียกสร้าง เช่น "<docId>:<n>:<hash>")
+  // null = ไม่คุม (ทางเรียกเดิมทั้งหมด) ⇒ แถวเดิมพฤติกรรมไม่เปลี่ยน
+  idempotencyKey   String?           @unique
   note             String?
   voidedAt         DateTime?
   voidReason       String?

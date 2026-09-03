@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { AccountDocType } from "@prisma/client";
 import { isOverdue } from "./service";
 import { StatusBadge } from "./ui";
-import { EXP_DOC_LABEL, EXP_ROUTE, WHT_INCOME_LABEL } from "./expense";
+import { EXP_DOC_LABEL, EXP_ROUTE } from "./expense";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -11,9 +11,11 @@ import { DataList } from "@/components/ui/DataList";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { PAY_CHANNEL_LABEL } from "@/lib/ui/status-labels";
 import { formatThaiDate as fmtDate } from "@/lib/ui/date";
+// WO 1.4 — §5.3 ทำรายการ: "บันทึกจ่าย" เปิดแผง §5.2 F ใน SlideOver · "คืนมัดจำ" สำหรับใบจ่ายมัดจำ
+import { PaymentPanel } from "@/components/account-v2/PaymentPanel";
+import { refundDepositFormAction } from "./payment-actions";
 import {
   issueExpenseDocAction,
-  recordVendorPaymentAction,
   voidVendorPaymentAction,
   voidExpenseDocAction,
   receivePtxAction,
@@ -324,39 +326,29 @@ export function ExpenseDetail({
           </form>
         )}
 
-        {/* จ่ายชำระ (+ WHT) */}
+        {/* จ่ายชำระ (WO 1.4 §5.2 F) — แผงเดียวกับฝั่งรับ (ภาพ g2) เปิดใน SlideOver */}
         {canPay && (
-          <form action={recordVendorPaymentAction} className="card flex flex-col gap-2">
-            <Hidden systemId={systemId} docType={dt} id={doc.id} />
-            <h2 className="text-sm font-medium">บันทึกจ่ายชำระ</h2>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <input type="date" name="paidAt" className="rounded-lg border px-2 py-1.5 text-sm" />
-              <select name="channel" className="rounded-lg border px-2 py-1.5 text-sm" defaultValue="TRANSFER">
-                <option value="CASH">เงินสด</option>
-                <option value="TRANSFER">โอน</option>
-                <option value="PROMPTPAY">พร้อมเพย์</option>
-                <option value="CARD">บัตร</option>
-                <option value="E_WALLET">อีวอลเล็ต</option>
-                <option value="OTHER">อื่นๆ</option>
-              </select>
-              <input name="amount" type="number" step="0.01" defaultValue={(remain / 100).toFixed(2)} placeholder="เงินจ่าย (บาท)" className="rounded-lg border px-2 py-1.5 text-sm" />
-              <SubmitButton>บันทึก</SubmitButton>
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <input name="whtAmount" type="number" step="0.01" placeholder="หัก ณ ที่จ่าย (บาท)" className="rounded-lg border px-2 py-1.5 text-sm" />
-              <select name="whtIncomeType" className="rounded-lg border px-2 py-1.5 text-sm" defaultValue="">
-                <option value="">ประเภทเงินได้ (ถ้าหัก)</option>
-                {Object.entries(WHT_INCOME_LABEL).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
-                ))}
-              </select>
-              <input name="whtRateBp" type="number" step="1" placeholder="อัตราหัก ณ ที่จ่าย (300 = 3%)" className="rounded-lg border px-2 py-1.5 text-sm" />
-              <input name="feeAmount" type="number" step="0.01" placeholder="ค่าธรรมเนียม (บาท)" className="rounded-lg border px-2 py-1.5 text-sm" />
-            </div>
-            <p className="text-xs text-[color:var(--color-muted)]">
-              ยอดที่ตัดเจ้าหนี้ = เงินจ่าย + หัก ณ ที่จ่าย · ระบุประเภทเงินได้ → ออก 50 ทวิอัตโนมัติ
-            </p>
-          </form>
+          <div className="flex flex-wrap items-center gap-2">
+            <PaymentPanel systemId={systemId} docId={doc.id} triggerLabel="บันทึกจ่าย" />
+            <span className="text-xs text-[color:var(--color-muted)]">
+              คงเหลือ <MoneyText satang={remain} decimals />
+            </span>
+          </div>
+        )}
+
+        {/* คืนมัดจำ (§3 ทำรายการ ของใบจ่ายเงินมัดจำ) */}
+        {dt === "DEPOSIT_PAYMENT" && doc.status === "AWAITING_DEDUCT" && (
+          <ConfirmDialog
+            action={refundDepositFormAction}
+            fields={{ systemId, docType: dt, id: doc.id }}
+            reasonField={{ name: "reason", label: "เหตุผลการรับคืนมัดจำ" }}
+            triggerLabel="คืนมัดจำ"
+            triggerClassName="btn btn-ghost text-sm"
+            title="รับเงินมัดจำคืนจากผู้ขาย?"
+            detail="ระบบจะกลับรายการบัญชีของใบมัดจำทั้งใบ (เงินกลับเข้าช่องทางที่จ่ายไป) และปิดใบนี้เป็นยกเลิก"
+            confirmLabel="ยืนยันคืนมัดจำ"
+            danger
+          />
         )}
 
         {/* void เอกสารมีผล */}

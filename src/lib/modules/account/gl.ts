@@ -320,6 +320,7 @@ type SaleDoc = {
   vatTiming: string;
   taxPointBasis: string | null;
   issueDate: Date;
+  sourceDocId: string | null;
 };
 
 async function settingsOf(ctx: GlCtx, db: Db): Promise<{ vatRegistered: boolean; vatRateBp: number }> {
@@ -399,6 +400,9 @@ export async function postDocument(
   ctx: GlCtx,
   docId: string,
   tx?: Tx,
+  /** WO 1.4: เปลี่ยน "event" ของ idempotencyKey — ใช้ตอนโพสต์ใบมัดจำใหม่หลังยกเลิกการชำระ
+   *  (คีย์เดิม `AccountDocument#id#ISSUE` ถูกใช้ไปแล้วและกลับรายการไปแล้ว ⇒ โพสต์ซ้ำต้องคีย์ใหม่) */
+  postOpts?: { event?: string },
 ): Promise<{ entryId: string } | { skipped: true; reason: string }> {
   return withTx(tx, async (db) => {
     const doc = (await db.accountDocument.findFirst({
@@ -408,6 +412,7 @@ export async function postDocument(
         docType: true,
         direction: true,
         status: true,
+        sourceDocId: true,
         subTotal: true,
         discountAmount: true,
         vatAmount: true,
@@ -435,7 +440,7 @@ export async function postDocument(
     ]);
     if (NO_GL.has(doc.docType)) return { skipped: true, reason: `docType ${doc.docType} ไม่โพสต์ GL` };
 
-    const event = "ISSUE";
+    const event = postOpts?.event ?? "ISSUE";
     if (await alreadyPosted(ctx, `AccountDocument#${docId}#${event}`, db))
       return { skipped: true, reason: "โพสต์แล้ว (idempotent)" };
 
@@ -478,15 +483,39 @@ export async function postDocument(
         break;
       }
       case "RECEIPT": {
-        // ขายสด: Dr เงิน · Cr รายได้ · Cr 2200 (ออกใบกำกับทันที)
-        const pay = await db.accountDocumentPayment.findFirst({
+        // ── WO 1.4 (รูรั่วเดิม): ใบเสร็จที่ "แปลงมาจากใบแจ้งหนี้" ไม่ใช่การขายสด ──
+        //    รายได้/VAT/ลูกหนี้ ถูกตั้งไปแล้วตอนออก IV ⇒ ถ้าโพสต์ขายสดอีกใบ = รายได้ + VAT ขาย ซ้ำ 2 เท่า
+        //    เงินที่รับจริงลงผ่าน `postPayment` ของใบแจ้งหนี้ (Dr เงิน/Dr 1160 · Cr 1100) แทน
+        if (doc.sourceDocId) {
+          const src = await db.accountDocument.findFirst({
+            where: { id: doc.sourceDocId, systemId: ctx.systemId },
+            select: { docType: true },
+          });
+          if (src?.docType === "INVOICE")
+            return { skipped: true, reason: "ใบเสร็จของใบแจ้งหนี้ — บัญชีลงที่การรับชำระของใบแจ้งหนี้" };
+        }
+        // ขายสด: Dr เงิน (ตามการรับชำระจริงทุกครั้ง) · Dr 1160 WHT ที่ลูกค้าหัก · Dr ค่าธรรมเนียม
+        //        · Cr รายได้ · Cr 2200 (ออกใบกำกับทันที)
+        const pays = await db.accountDocumentPayment.findMany({
           where: { documentId: docId, systemId: ctx.systemId, voidedAt: null },
           orderBy: { paidAt: "asc" },
-          select: { financeAccountId: true, channel: true },
+          select: { financeAccountId: true, channel: true, amount: true, whtAmountSatang: true, feeAmount: true },
         });
-        // F-07: ขายสด default เข้าเงินสด (1000) — เลือกช่องทาง/บัญชีเงินอื่นได้ผ่าน payment ที่ผูกใบเสร็จ
-        const cashId = await financeLedgerId(ctx, pay?.financeAccountId, pay?.channel ?? "CASH", db);
-        b.dr(cashId, doc.grandTotal);
+        const tieOff = pays.reduce((s, p) => s + p.amount + p.whtAmountSatang, 0);
+        if (pays.length > 0 && tieOff === doc.grandTotal) {
+          // มีรายการรับเงินครบยอด → เดบิตตามช่องทางจริงทีละครั้ง (g2: ธนาคาร 14,900 + เงินสด 9,301.87 + WHT 698.13)
+          for (const p of pays) {
+            const id = await financeLedgerId(ctx, p.financeAccountId, p.channel ?? "CASH", db);
+            b.dr(id, p.amount - p.feeAmount);
+            if (p.feeAmount > 0) b.dr(await b.id("PAYMENT_FEE"), p.feeAmount, "ค่าธรรมเนียม");
+            if (p.whtAmountSatang > 0)
+              b.dr(await b.id("WHT_ASSET"), p.whtAmountSatang, "ภาษีถูกหัก ณ ที่จ่าย");
+          }
+        } else {
+          // F-07: ขายสด default เข้าเงินสด (1000) — เลือกช่องทาง/บัญชีเงินอื่นได้ผ่าน payment ที่ผูกใบเสร็จ
+          const cashId = await financeLedgerId(ctx, pays[0]?.financeAccountId, pays[0]?.channel ?? "CASH", db);
+          b.dr(cashId, doc.grandTotal);
+        }
         if (dep.base > 0) b.dr(await b.id("DEPOSIT_RECEIVED"), dep.base, "หักมัดจำ");
         await creditIncome(await b.id(incomeKey, doc.docType));
         if (rate > 0) b.cr(await b.id("VAT_OUTPUT"), doc.vatAmount - dep.vat);
