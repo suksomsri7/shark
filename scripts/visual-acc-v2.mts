@@ -42,6 +42,78 @@ if (!existsSync(QC.expectedPath)) {
 const E = JSON.parse(readFileSync(QC.expectedPath, "utf8"));
 const SYS: string = E.systemId;
 
+// ─────────── fixture ของ WO 1.3: "ร่าง" ใบแจ้งหนี้คุณณัฐพล 3 บรรทัดตาม g1 ───────────
+// ต้องมีร่างจริงในฐานข้อมูล ภาพหน้า `/edit` ถึงจะมีตัวเลขให้ดู (ฟอร์มเปล่าพิสูจน์อะไรไม่ได้)
+// สร้างผ่าน `createDocument` **ตัวเดียวกับที่ saveDraftAction เรียก** → ตัวเลขบนจอ = ตัวเลขที่ระบบคิดจริง
+// สร้างใหม่ทุกครั้งที่ถ่าย แล้วลบทิ้งใน finally — DB QC กลับสภาพเดิมเป๊ะหลังรัน
+// 🔴 ร่างนี้เป็น "ของชั่วคราวของกล้อง" — ต้องลบทิ้งเสมอเมื่อถ่ายเสร็จ ไม่งั้นตัวนับแท็บของ WO 1.1
+//    (เฉลย acc-v2-expected.json: IV ทั้งหมด 51 · ร่าง 3) จะเพี้ยนไป 1 ใบ แล้ว qc-acc-v2-list ตกทันที
+const FIXTURE_REF = "QC-VISUAL-1.3";
+let fixtureDraftId = "";
+let cleanupFixture: (() => Promise<void>) | null = null;
+if (WO === "1.3") {
+  const { prisma: db } = await import("@/lib/core/db");
+  cleanupFixture = async () => {
+    const stale = await db.accountDocument.findMany({
+      where: { systemId: SYS, docType: "INVOICE", status: "DRAFT", reference: FIXTURE_REF },
+      select: { id: true },
+    });
+    if (stale.length === 0) return;
+    const ids = stale.map((d) => d.id);
+    await db.accountDocumentLine.deleteMany({ where: { documentId: { in: ids } } });
+    await db.accountAttachment.deleteMany({ where: { documentId: { in: ids } } });
+    await db.accountDocument.deleteMany({ where: { id: { in: ids } } });
+    console.log(`ลบร่าง fixture ของ WO 1.3 ${ids.length} ใบ (ตัวนับแท็บกลับเท่าเฉลย)`);
+  };
+  await cleanupFixture(); // กันซากจากรอบที่ล้มกลางคัน
+  const svc = await import("@/lib/modules/account/service");
+  {
+    const totals = svc.computeDocTotals({
+      lines: [
+        { qty: 2, unitPriceSatang: 990_000, vatRateBp: 700, whtRateBp: 300 },
+        { qty: 2, unitPriceSatang: 120_000, vatRateBp: 700 },
+        { qty: 1, unitPriceSatang: 107_103, vatRateBp: 700 },
+      ],
+      priceMode: "EXCL_VAT",
+      vatRegistered: true,
+      vatRateBp: 700,
+    });
+    const draft = await svc.createDocument({
+      tenantId: E.tenantId,
+      systemId: SYS,
+      docType: "INVOICE",
+      contactId: E.fixtures.contactNattapholId,
+      issueDate: new Date(`${QC.today}T00:00:00.000Z`),
+      dueDate: new Date("2026-10-14T00:00:00.000Z"),
+      vatMode: totals.vatMode,
+      vatTiming: "ON_ISSUE",
+      lines: [
+        { description: "ทริปสิมิลัน 3 วัน 2 คืน\nรวมอาหาร 6 มื้อ + ที่พักบนเรือ 2 คืน", qty: 2, unitName: "คน", unitPrice: 990_000, vatRateBp: 700 },
+        { description: "ค่าเช่าอุปกรณ์ดำน้ำ", qty: 2, unitName: "วัน", unitPrice: 120_000, vatRateBp: 700 },
+        { description: "เสื้อ SIAM DIVE", qty: 1, unitName: "ตัว", unitPrice: 107_103, vatRateBp: 700 },
+      ],
+      createdById: E.ownerUserId,
+    });
+    await svc.applyEditorExtras(E.tenantId, SYS, draft.id, {
+      reference: FIXTURE_REF,
+      priceMode: "EXCL_VAT",
+      discountMode: "AMOUNT",
+      salesUserId: null,
+      tags: ["ทริปดำน้ำ", "ลูกค้าประจำ"],
+      internalNote: "ลูกค้าจองผ่านไลน์ · ยืนยันที่นั่งแล้ว 18 ก.ย.",
+      autoTaxInvoice: true,
+      whtAmount: totals.whtTotal,
+      lineWht: [
+        { whtIncomeType: "M40_8", whtRateBp: 300 },
+        { whtIncomeType: null, whtRateBp: null },
+        { whtIncomeType: null, whtRateBp: null },
+      ],
+    });
+    fixtureDraftId = draft.id;
+  }
+  console.log(`[fixture 1.3] ร่างใบแจ้งหนี้คุณณัฐพล = ${fixtureDraftId}\n`);
+}
+
 // ─────────── รายการหน้าต่อ WO (เติมทีละ WO ตาม BLUEPRINT §3) ───────────
 // expect = ข้อความที่ต้องเจอบนหน้า (ว่าง = ไม่ตรวจ) — พิสูจน์ว่าเปิดถูกหน้า **และต่อ DB QC จริง**
 // (Next โหลด .env ของ prod ให้อัตโนมัติตอน build/start แต่ไม่ทับ env ที่ส่งเข้ามา → ต้องมีหลักฐานจากหน้าจอ)
@@ -143,6 +215,30 @@ const PAGES: Record<string, PageSpec[]> = {
       expect: ["ใบเบิกสินค้า"],
     },
   ],
+  // WO 1.3 (DocEditorV2): ฟอร์มเอกสารเต็มหน้า — เทียบ g1-invoice-form.png (เดสก์ท็อป) ·
+  // g1-invoice-form-menu.png (เมนูอนุมัติเปิด) · g17-invoice-form.png (มือถือ accordion + แถบยอดติดล่าง)
+  "1.3": [
+    {
+      name: "invoice-form-new",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/new`,
+      note: "ฟอร์มสร้างใบแจ้งหนี้ (ฟอร์มเปล่า) — stepper QT/IV/RE/TX · ส่วนหัว · รายการ · สรุปยอด · หมายเหตุ ×2 · แนบไฟล์ · แถบปุ่มท้าย",
+      expect: ["สร้างใบแจ้งหนี้", "ส่วนหัวเอกสาร", "สรุปยอด"],
+    },
+    {
+      name: "invoice-form",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/${fixtureDraftId}/edit`,
+      note: "ฟอร์มแก้ไขร่าง (fixture คุณณัฐพล 3 บรรทัดตาม g1) — ตัวเลขจริงจาก DB QC",
+      expect: ["แก้ไขใบแจ้งหนี้", "คุณณัฐพล รุ่งเรือง", "฿24,900.00"],
+    },
+    {
+      name: "invoice-form-menu",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/${fixtureDraftId}/edit`,
+      note: 'กดปุ่มดำ "อนุมัติใบแจ้งหนี้ ▾" — เมนู 4 ทางเลือก (g1-invoice-form-menu.png)',
+      expect: ["แก้ไขใบแจ้งหนี้"],
+      click: ['[data-testid="btn-approve-menu"]'],
+      waitAfterClick: 300,
+    },
+  ],
 };
 
 // ─────────── ตารางตัวเลขที่อ่านจาก data-testid (ว่างไว้ก่อน — WO ถัดไปเติม) ───────────
@@ -161,6 +257,18 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "tab-paid-count": E.invoiceTabs.paid,
       "tab-overdue-count": E.invoiceTabs.overdue,
       "tab-cancelled-count": E.invoiceTabs.cancelled,
+    },
+  },
+  // WO 1.3: ตัวเลขในบล็อกสรุปยอดต้องตรงเฉลย g1 เป๊ะ (ground truth = g1-invoice-form.png)
+  //   24,900.00 = 23,271.03 + VAT 1,628.97 · ยอดที่ต้องชำระ 24,306.00 = 24,900 − WHT 594 (ยังไม่หักมัดจำ — WO 1.4)
+  "1.3": {
+    "invoice-form": {
+      "tot-sub": "฿23,271.03",
+      "tot-vat": "฿1,628.97",
+      "tot-grand": "฿24,900.00",
+      "tot-wht": "594.00",
+      "tot-due": "฿24,306.00",
+      "tot-words": "สองหมื่นสี่พันเก้าร้อยบาทถ้วน",
     },
   },
 };
@@ -354,6 +462,19 @@ try {
               tabbarRect: rectOf(tabbarEl),
               dropdownRect: rectOf(dropdownEl),
             },
+            // WO 1.3 ฟอร์มเอกสาร V2 — นับแถวรายการ + สถานะเมนูอนุมัติ + ความกว้างจริงของหน้า
+            editor: {
+              hasForm: !!document.querySelector('[data-testid="doc-editor-v2"]'),
+              lineRows: [...document.querySelectorAll("[data-testid]")].filter((el) =>
+                /^line-\d+$/.test(el.getAttribute("data-testid") ?? ""),
+              ).length,
+              lineCards: [...document.querySelectorAll("[data-testid]")].filter((el) =>
+                /^line-m-\d+$/.test(el.getAttribute("data-testid") ?? ""),
+              ).length,
+              approveMenuVisible: isVisible(document.querySelector('[data-testid="approve-menu"]')),
+              stickyBarVisible: isVisible(document.querySelector('[data-testid="editor-actions"]')),
+              scrollWidth: document.documentElement.scrollWidth,
+            },
           };
         });
         line.push(`${device} HTTP ${status} · ${w}px · ล้นแนวนอน ${probe.overflow}px${navOk ? "" : " · nav timeout"}`);
@@ -371,6 +492,38 @@ try {
             const ok = String(got ?? "").includes(String(expected));
             if (!ok) failures++;
             console.log(`  ${ok ? "✅" : "❌"} [${spec.name}/${device}] data-testid="${tid}" = ${JSON.stringify(got)} (คาด ${JSON.stringify(expected)})`);
+          }
+        }
+
+        // WO 1.3 ฟอร์มเอกสาร V2 — โครงสร้างที่ต้องตรง g1 / g1-menu / g17
+        if (ASSERT && WO === "1.3") {
+          const want = spec.name === "invoice-form-new" ? "สร้างใบแจ้งหนี้" : "แก้ไขใบแจ้งหนี้";
+          const checks13: [boolean, string][] = [
+            [probe.editor.hasForm, `มีฟอร์ม [data-testid="doc-editor-v2"] บนหน้า`],
+            [probe.h1.includes(want), `h1 มีคำว่า "${want}" (เจอ "${probe.h1}")`],
+            [probe.editor.stickyBarVisible, `แถบปุ่มท้าย [data-testid="editor-actions"] เห็นอยู่บนจอ (§5.2 I)`],
+            [
+              probe.editor.scrollWidth <= w,
+              `ไม่ล้นแนวนอน: scrollWidth ${probe.editor.scrollWidth} ≤ ${w} (g17 มือถือ 390)`,
+            ],
+          ];
+          if (spec.name !== "invoice-form-new") {
+            // ฟอร์มเปล่ามี 1 บรรทัดว่าง — เฉพาะ fixture เท่านั้นที่ต้องได้ 3 บรรทัดตาม g1
+            const n = device === "desktop" ? probe.editor.lineRows : probe.editor.lineCards;
+            checks13.push([n === 3, `รายการ 3 บรรทัดตาม g1 (เจอ ${n} — ${device === "desktop" ? "แถวตาราง" : "การ์ดมือถือ"})`]);
+          } else {
+            const n = device === "desktop" ? probe.editor.lineRows : probe.editor.lineCards;
+            checks13.push([n === 1, `ฟอร์มเปล่าเริ่มด้วยบรรทัดว่าง 1 บรรทัด (เจอ ${n})`]);
+          }
+          if (spec.name === "invoice-form-menu") {
+            checks13.push([probe.editor.approveMenuVisible, `กด "อนุมัติใบแจ้งหนี้ ▾" แล้วเมนู [data-testid="approve-menu"] ต้องเปิด (g1-invoice-form-menu.png)`]);
+            for (const label of ["อนุมัติและพิมพ์", "อนุมัติและส่งอีเมล", "อนุมัติและรับชำระ"]) {
+              checks13.push([probe.all.includes(label), `เมนูอนุมัติมีตัวเลือก "${label}"`]);
+            }
+          }
+          for (const [ok, label] of checks13) {
+            if (!ok) failures++;
+            console.log(`  ${ok ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
           }
         }
 
@@ -446,6 +599,7 @@ try {
     await browser.close();
   }
 } finally {
+  if (cleanupFixture) await cleanupFixture();
   const { count } = await prisma.session.deleteMany({ where: { userAgent: UA } });
   const left = await prisma.session.count({ where: { userAgent: UA } });
   console.log(`\nลบ session ทดสอบ ${count} แถว · เหลือค้าง ${left} (ต้องเป็น 0)`);

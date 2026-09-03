@@ -6,7 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { computeDocTotals } from "@/lib/modules/account/totals";
 import {
   approveDocAction,
+  discardDraftAction,
   saveDraftAction,
+  saveFavoriteLinesAction,
   searchContactsAction,
   searchProductsAction,
 } from "@/lib/modules/account/editor-actions";
@@ -26,6 +28,7 @@ import {
   type ContactOption,
   type DocDraftPayload,
   type DocEditorV2Props,
+  type FavoriteSet,
   type LineDraft,
   type ProductOption,
 } from "./doc-editor-types";
@@ -105,6 +108,8 @@ function EditorBody(props: DocEditorV2Props) {
   const [contacts, setContacts] = useState<ContactOption[]>(props.contacts);
   const [products, setProducts] = useState<ProductOption[]>(props.products);
   const [tagOptions, setTagOptions] = useState<string[]>(props.tagOptions);
+  const [favorites, setFavorites] = useState<FavoriteSet[]>(props.favorites);
+  const [favName, setFavName] = useState("");
   const [attachmentCount, setAttachmentCount] = useState(props.attachments.length);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -285,6 +290,33 @@ function EditorBody(props: DocEditorV2Props) {
       router.push(where === "new" ? `${props.listPath}/new` : `${props.detailPathFor}/${id}`);
       router.refresh();
     });
+
+  // §5.2 C "รายการโปรด" — บันทึกชุดบรรทัดปัจจุบันไว้ใช้ซ้ำ (เก็บใน AccountSettings.docConfig ผ่าน action)
+  const saveFavorite = () =>
+    startTransition(async () => {
+      const name = favName.trim();
+      const lines = value.lines.filter((l) => l.name.trim()).map(({ key: _key, ...rest }) => rest);
+      if (!name) {
+        toast.error("กรุณาตั้งชื่อชุดรายการ");
+        return;
+      }
+      if (lines.length === 0) {
+        toast.error("ไม่มีรายการให้บันทึก");
+        return;
+      }
+      const res = await saveFavoriteLinesAction(props.systemId, name, lines);
+      if (!res.ok) {
+        toast.error(res.reason);
+        return;
+      }
+      setFavorites((prev) => [...prev.filter((f) => f.name !== name), { name, lines }]);
+      setFavName("");
+      toast.success("บันทึกรายการโปรดแล้ว");
+    });
+
+  /** ร่างที่ "ฟอร์มนี้สร้างเอง" ระหว่าง autosave (เข้าหน้ามาแบบ /new) — กดยกเลิกแล้วต้องไม่ทิ้งร่างผีไว้
+   *  ⚠️ เข้ามาทาง /[docId]/edit (props.docId มีค่า) = ร่างของผู้ใช้เอง → "ยกเลิก" แค่ออกจากหน้า ห้ามยกเลิกร่าง */
+  const autoCreatedDraft = !props.docId && !!docId;
 
   const headerComplete = !missingContact && !missingDate;
   const linesComplete = value.lines.length > 0 && invalidLineKeys.size === 0;
@@ -556,6 +588,7 @@ function EditorBody(props: DocEditorV2Props) {
           searchProducts={searchProducts}
           easy={easy}
           requireLineAccount={props.requireLineAccount}
+          defaultVatRateBp={props.vatRateBp}
           invalidKeys={showErrors ? invalidLineKeys : new Set<string>()}
           onChange={patchLine}
           onRemove={removeLine}
@@ -565,33 +598,51 @@ function EditorBody(props: DocEditorV2Props) {
           <button type="button" className="btn-sm" onClick={addLine} data-testid="line-add">
             + เพิ่มรายการ
           </button>
-          {props.favorites.length > 0 && (
-            <details className="relative">
-              <summary className="btn-sm inline-flex cursor-pointer list-none items-center gap-1" data-testid="fav-menu">
-                รายการโปรด ▾
-              </summary>
-              <div className="absolute z-20 mt-1 min-w-[240px] rounded-lg border bg-[color:var(--color-surface)] py-1 shadow-[0_8px_24px_rgba(10,10,10,.08)]">
-                {props.favorites.map((f) => (
-                  <button
-                    key={f.name}
-                    type="button"
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
-                    onClick={() =>
-                      setValue((p) => ({
-                        ...p,
-                        lines: [
-                          ...p.lines.filter((l) => l.name.trim()),
-                          ...f.lines.map((l) => ({ ...newLineDraft(props.vatRateBp), ...l })),
-                        ],
-                      }))
-                    }
-                  >
-                    {f.name}
-                  </button>
-                ))}
-              </div>
-            </details>
-          )}
+          <details className="relative">
+            <summary className="btn-sm inline-flex cursor-pointer list-none items-center gap-1" data-testid="fav-menu">
+              รายการโปรด ▾
+            </summary>
+            <div className="absolute z-20 mt-1 flex min-w-[280px] flex-col rounded-lg border bg-[color:var(--color-surface)] py-1 shadow-[0_8px_24px_rgba(10,10,10,.08)]">
+              {favorites.length === 0 && (
+                <span className="px-3 py-2 text-xs text-[color:var(--color-muted)]">
+                  ยังไม่มีชุดรายการที่บันทึกไว้ — กรอกรายการแล้วตั้งชื่อด้านล่าง
+                </span>
+              )}
+              {favorites.map((f) => (
+                <button
+                  key={f.name}
+                  type="button"
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
+                  data-testid={`fav-apply-${f.name}`}
+                  onClick={() =>
+                    setValue((p) => ({
+                      ...p,
+                      lines: [
+                        ...p.lines.filter((l) => l.name.trim()),
+                        ...f.lines.map((l) => ({ ...newLineDraft(props.vatRateBp), ...l })),
+                      ],
+                    }))
+                  }
+                >
+                  {f.name}
+                </button>
+              ))}
+              <span className="mt-1 flex items-center gap-1 border-t px-3 pb-1 pt-2">
+                <input
+                  className="input"
+                  maxLength={60}
+                  placeholder="ตั้งชื่อชุดรายการ"
+                  value={favName}
+                  onChange={(e) => setFavName(e.target.value)}
+                  aria-label="ชื่อชุดรายการโปรด"
+                  data-testid="fav-name"
+                />
+                <button type="button" className="btn-sm shrink-0" onClick={saveFavorite} data-testid="fav-save">
+                  บันทึก
+                </button>
+              </span>
+            </div>
+          </details>
         </div>
       </SectionCard>
 
@@ -643,98 +694,125 @@ function EditorBody(props: DocEditorV2Props) {
         />
       </SectionCard>
 
-      {/* I — แถบปุ่มท้าย (sticky) */}
-      <MobileTotalsBar totals={totals} open={mobileTotalsOpen} onToggle={() => setMobileTotalsOpen((v) => !v)} />
-      <StickyBar
-        testId="editor-actions"
-        secondary={
-          <>
-            <Link href={props.listPath} className="btn btn-ghost text-sm" data-testid="btn-cancel">
-              ยกเลิก
-            </Link>
-            <span className="relative">
+      {/* I — แถบปุ่มท้าย (sticky) · g17: แถบยอดมือถืออยู่เหนือปุ่ม และติดล่างจอไปด้วยกัน */}
+      <div className="sticky bottom-0 z-20">
+        {mobileTotalsOpen && (
+          <div
+            className="border-t bg-[color:var(--color-surface)] px-4 py-3 md:hidden"
+            data-testid="totals-m-panel"
+          >
+            <DocTotals
+              totals={totals}
+              vatRateBp={props.vatRateBp}
+              vatRegistered={props.vatRegistered}
+              docDiscount={value.docDiscount}
+              onDocDiscountChange={(v) => set("docDiscount", v)}
+            />
+          </div>
+        )}
+        <MobileTotalsBar totals={totals} open={mobileTotalsOpen} onToggle={() => setMobileTotalsOpen((v) => !v)} />
+        <StickyBar
+          testId="editor-actions"
+          secondary={
+            <>
+              {autoCreatedDraft ? (
+                <form action={discardDraftAction}>
+                  <input type="hidden" name="systemId" value={props.systemId} />
+                  <input type="hidden" name="docType" value={props.docType} />
+                  <input type="hidden" name="id" value={docId ?? ""} />
+                  <button type="submit" className="btn btn-ghost text-sm" data-testid="btn-cancel">
+                    ยกเลิก
+                  </button>
+                </form>
+              ) : (
+                <Link href={props.listPath} className="btn btn-ghost text-sm" data-testid="btn-cancel">
+                  ยกเลิก
+                </Link>
+              )}
+              <span className="relative">
+                <button
+                  type="button"
+                  className="btn btn-ghost text-sm"
+                  onClick={() => setDraftMenuOpen((v) => !v)}
+                  disabled={pending || saving}
+                  aria-expanded={draftMenuOpen}
+                  data-testid="btn-save-draft"
+                >
+                  {saving ? "กำลังบันทึก…" : "บันทึกร่าง"} ▾
+                </button>
+                {draftMenuOpen && (
+                  <span className="absolute bottom-full left-0 z-30 mb-1 flex w-56 flex-col rounded-lg border bg-[color:var(--color-surface)] py-1 shadow-[0_8px_24px_rgba(10,10,10,.12)]">
+                    <button
+                      type="button"
+                      className="px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
+                      onClick={() => {
+                        setDraftMenuOpen(false);
+                        saveDraftAndGo("detail");
+                      }}
+                    >
+                      บันทึกร่าง
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
+                      onClick={() => {
+                        setDraftMenuOpen(false);
+                        saveDraftAndGo("new");
+                      }}
+                    >
+                      บันทึกและสร้างใหม่
+                    </button>
+                  </span>
+                )}
+              </span>
+            </>
+          }
+          primary={
+            <span className="relative flex justify-end">
               <button
                 type="button"
-                className="btn btn-ghost text-sm"
-                onClick={() => setDraftMenuOpen((v) => !v)}
+                className="btn btn-primary text-sm"
                 disabled={pending || saving}
-                aria-expanded={draftMenuOpen}
-                data-testid="btn-save-draft"
+                aria-expanded={approveOpen}
+                onClick={() => setApproveOpen((v) => !v)}
+                data-testid="btn-approve-menu"
               >
-                {saving ? "กำลังบันทึก…" : "บันทึกร่าง"} ▾
+                {pending ? "กำลังอนุมัติ…" : `อนุมัติ${props.docLabel}`} ▾
               </button>
-              {draftMenuOpen && (
-                <span className="absolute bottom-full left-0 z-30 mb-1 flex w-56 flex-col rounded-lg border bg-[color:var(--color-surface)] py-1 shadow-[0_8px_24px_rgba(10,10,10,.12)]">
-                  <button
-                    type="button"
-                    className="px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
-                    onClick={() => {
-                      setDraftMenuOpen(false);
-                      saveDraftAndGo("detail");
-                    }}
-                  >
-                    บันทึกร่าง
-                  </button>
-                  <button
-                    type="button"
-                    className="px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
-                    onClick={() => {
-                      setDraftMenuOpen(false);
-                      saveDraftAndGo("new");
-                    }}
-                  >
-                    บันทึกและสร้างใหม่
-                  </button>
+              {approveOpen && (
+                <span
+                  className="absolute bottom-full right-0 z-30 mb-1 flex w-60 flex-col rounded-lg border bg-[color:var(--color-surface)] py-1 shadow-[0_8px_24px_rgba(10,10,10,.12)]"
+                  data-testid="approve-menu"
+                >
+                  <span className="px-3 py-2 text-xs text-[color:var(--color-muted)]">เลือกการอนุมัติ</span>
+                  {(
+                    [
+                      { next: "" as const, icon: "✓", label: "อนุมัติ" },
+                      { next: "print" as const, icon: "🖨", label: "อนุมัติและพิมพ์" },
+                      { next: "email" as const, icon: "✉", label: "อนุมัติและส่งอีเมล" },
+                      { next: "pay" as const, icon: "💵", label: "อนุมัติและรับชำระ" },
+                    ] as const
+                  ).map((o) => (
+                    <button
+                      key={o.label}
+                      type="button"
+                      className="flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
+                      onClick={() => {
+                        setApproveOpen(false);
+                        approve(o.next);
+                      }}
+                      data-testid={`approve-${o.next || "plain"}`}
+                    >
+                      <span aria-hidden>{o.icon}</span>
+                      {o.label}
+                    </button>
+                  ))}
                 </span>
               )}
             </span>
-          </>
-        }
-        primary={
-          <span className="relative flex justify-end">
-            <button
-              type="button"
-              className="btn btn-primary text-sm"
-              disabled={pending || saving}
-              aria-expanded={approveOpen}
-              onClick={() => setApproveOpen((v) => !v)}
-              data-testid="btn-approve"
-            >
-              {pending ? "กำลังอนุมัติ…" : `อนุมัติ${props.docLabel}`} ▾
-            </button>
-            {approveOpen && (
-              <span
-                className="absolute bottom-full right-0 z-30 mb-1 flex w-60 flex-col rounded-lg border bg-[color:var(--color-surface)] py-1 shadow-[0_8px_24px_rgba(10,10,10,.12)]"
-                data-testid="approve-menu"
-              >
-                <span className="px-3 py-2 text-xs text-[color:var(--color-muted)]">เลือกการอนุมัติ</span>
-                {(
-                  [
-                    { next: "" as const, icon: "✓", label: "อนุมัติ" },
-                    { next: "print" as const, icon: "🖨", label: "อนุมัติและพิมพ์" },
-                    { next: "email" as const, icon: "✉", label: "อนุมัติและส่งอีเมล" },
-                    { next: "pay" as const, icon: "💵", label: "อนุมัติและรับชำระ" },
-                  ] as const
-                ).map((o) => (
-                  <button
-                    key={o.label}
-                    type="button"
-                    className="flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)]"
-                    onClick={() => {
-                      setApproveOpen(false);
-                      approve(o.next);
-                    }}
-                    data-testid={`approve-${o.next || "plain"}`}
-                  >
-                    <span aria-hidden>{o.icon}</span>
-                    {o.label}
-                  </button>
-                ))}
-              </span>
-            )}
-          </span>
-        }
-      />
+          }
+        />
+      </div>
 
       {/* ฟอร์มจริงของการอนุมัติ — ยิง server action (redirect ไปหน้าเอกสาร) */}
       <form ref={approveFormRef} action={approveDocAction} className="hidden">

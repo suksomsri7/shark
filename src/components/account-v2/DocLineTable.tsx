@@ -32,6 +32,7 @@ export function DocLineTable({
   searchProducts,
   easy,
   requireLineAccount,
+  defaultVatRateBp,
   invalidKeys,
   onChange,
   onRemove,
@@ -43,6 +44,8 @@ export function DocLineTable({
   products: ProductOption[];
   searchProducts: (q: string) => Promise<ProductOption[]>;
   easy: boolean;
+  /** อัตรา VAT ของกิจการ — ใช้เมื่อสินค้าที่เลือกไม่ได้กำหนดอัตราไว้เอง (ห้ามฮาร์ดโค้ด 7%) */
+  defaultVatRateBp: number;
   requireLineAccount: boolean;
   invalidKeys: Set<string>;
   onChange: (key: string, patch: Partial<LineDraft>) => void;
@@ -70,7 +73,7 @@ export function DocLineTable({
         ? {
             unitPriceSatang: p.priceSatang,
             unitName: p.unitName ?? "",
-            vatRateBp: p.vatRateBp ?? 700,
+            vatRateBp: p.vatRateBp ?? defaultVatRateBp,
             accountId: p.accountId,
           }
         : {}),

@@ -29,6 +29,7 @@ import {
   type ListRow,
 } from "@/lib/modules/account/list-columns";
 import DocEditor from "@/lib/modules/account/DocEditor";
+import { canCreateDirect } from "@/lib/modules/account/doc-editor-config";
 import { DocListPage } from "@/components/account-v2/DocListPage";
 import { MoneyText } from "@/components/ui/MoneyText";
 import type { RowActionItem } from "@/components/account-v2/RowActions";
@@ -185,6 +186,10 @@ export default async function DocTypeListPage({
   const pathname = `${base}/docs/${dt}`;
   const label = DOC_LABEL[dt] ?? dt;
   const canCreate = dt !== "RECEIPT" && dt !== "TAX_INVOICE"; // เกิดจากการแปลงเท่านั้น (§5.1)
+  // WO 1.3: ปุ่ม "+ สร้าง…" ชี้ฟอร์มเต็มหน้า `<route>/new` (DocEditorV2)
+  // ยกเว้นชนิดที่ยัง "สร้างตรง ๆ ไม่ได้" ตาม doc-editor-config (CN/DN → wizard 2 ขั้น WO 1.6)
+  //   → ชนิดเหล่านั้นคงฟอร์มเดิมแบบซ่อนหลังปุ่ม (#new) ไว้ก่อน ไม่งั้นผู้ใช้จะสร้างไม่ได้เลย
+  const createHref = canCreate && canCreateDirect(dt) ? `${base}/docs/${dt}/new` : undefined;
 
   // อ้างอิงข้าม docType (RE↔TX) — ดึงเฉพาะ docNo ของแถวหน้านี้ (bounded ด้วย pageSize) ไม่ใช่ N+1 ต่อแถว
   const refDocNo = new Map<string, string | null>();
@@ -257,8 +262,9 @@ export default async function DocTypeListPage({
       emptyText={`ไม่พบ${label}ในช่วงวันที่ที่เลือก`}
       errorText={sp.err === "empty" ? "ต้องมีรายการอย่างน้อย 1 รายการ" : sp.err}
       createLabel={canCreate ? label : undefined}
+      createHref={createHref}
       createForm={
-        canCreate ? (
+        canCreate && !createHref ? (
           <DocEditor
             systemId={systemId}
             docType={dt}

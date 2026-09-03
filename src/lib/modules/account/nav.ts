@@ -95,7 +95,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           icon: "doc",
           testId: "QUOTATION",
           flyout: [
-            { label: "+ สร้างใบเสนอราคา", href: `${base}/docs/QUOTATION#new` },
+            { label: "+ สร้างใบเสนอราคา", href: `${base}/docs/QUOTATION/new` },
             { label: "รอตอบรับ", href: `${base}/docs/QUOTATION?tab=awaiting`, countKey: "QUOTATION:awaiting" },
             { label: "ยอมรับแล้ว", href: `${base}/docs/QUOTATION?tab=accepted`, countKey: "QUOTATION:accepted" },
             { label: "พ้นกำหนด", href: `${base}/docs/QUOTATION?tab=overdue`, countKey: "QUOTATION:overdue" },
@@ -110,7 +110,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           icon: "cash",
           testId: "DEPOSIT_RECEIPT",
           flyout: [
-            { label: "+ สร้างใบรับเงินมัดจำ", href: `${base}/docs/DEPOSIT_RECEIPT#new` },
+            { label: "+ สร้างใบรับเงินมัดจำ", href: `${base}/docs/DEPOSIT_RECEIPT/new` },
             { label: "รอชำระ", href: `${base}/docs/DEPOSIT_RECEIPT?tab=awaiting`, countKey: "DEPOSIT_RECEIPT:awaiting" },
             { label: "พ้นกำหนด", href: `${base}/docs/DEPOSIT_RECEIPT?tab=overdue`, countKey: "DEPOSIT_RECEIPT:overdue" },
             { label: "รอหักมัดจำ", href: `${base}/docs/DEPOSIT_RECEIPT?tab=deduct`, countKey: "DEPOSIT_RECEIPT:deduct" },
@@ -125,7 +125,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           icon: "file",
           testId: "INVOICE",
           flyout: [
-            { label: "+ สร้างใบแจ้งหนี้", href: `${base}/docs/INVOICE#new` },
+            { label: "+ สร้างใบแจ้งหนี้", href: `${base}/docs/INVOICE/new` },
             { label: "รอชำระ", href: `${base}/docs/INVOICE?tab=awaiting`, countKey: "INVOICE:awaiting" },
             { label: "ชำระแล้ว", href: `${base}/docs/INVOICE?tab=paid`, countKey: "INVOICE:paid" },
             { label: "พ้นกำหนด", href: `${base}/docs/INVOICE?tab=overdue`, countKey: "INVOICE:overdue" },
@@ -168,7 +168,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           icon: "report",
           testId: "BILLING_NOTE",
           flyout: [
-            { label: "+ สร้างใบวางบิล", href: `${base}/docs/BILLING_NOTE#new` },
+            { label: "+ สร้างใบวางบิล", href: `${base}/docs/BILLING_NOTE/new` },
             { label: "ดูทั้งหมด", href: `${base}/docs/BILLING_NOTE?tab=all`, countKey: "BILLING_NOTE:all" },
             { label: "ล่าสุด", href: `${base}/docs/BILLING_NOTE?tab=recent` },
           ],
@@ -217,7 +217,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           icon: "truck",
           testId: "PURCHASE_ORDER",
           flyout: [
-            { label: "+ สร้างใบสั่งซื้อ", href: `${base}/po#new` },
+            { label: "+ สร้างใบสั่งซื้อ", href: `${base}/po/new` },
             { label: "รออนุมัติ", href: `${base}/po?tab=awaiting_approval`, countKey: "PURCHASE_ORDER:awaiting_approval" },
             { label: "อนุมัติแล้ว", href: `${base}/po?tab=approved`, countKey: "PURCHASE_ORDER:approved" },
             { label: "ดูทั้งหมด", href: `${base}/po?tab=all`, countKey: "PURCHASE_ORDER:all" },
@@ -230,7 +230,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           status: "ready",
           icon: "cash",
           testId: "DEPOSIT_PAYMENT",
-          flyout: [{ label: "+ สร้างใบจ่ายเงินมัดจำ", href: `${base}/deposit-payment#new` }],
+          flyout: [{ label: "+ สร้างใบจ่ายเงินมัดจำ", href: `${base}/deposit-payment/new` }],
         }),
         doc({
           label: "บันทึกซื้อสินค้า",
@@ -239,7 +239,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           icon: "box",
           testId: "PURCHASE",
           flyout: [
-            { label: "+ บันทึกซื้อสินค้า", href: `${base}/purchase#new` },
+            { label: "+ บันทึกซื้อสินค้า", href: `${base}/purchase/new` },
             { label: "รอชำระ", href: `${base}/purchase?tab=awaiting`, countKey: "PURCHASE:awaiting" },
             { label: "ชำระแล้ว", href: `${base}/purchase?tab=paid`, countKey: "PURCHASE:paid" },
             { label: "พ้นกำหนด", href: `${base}/purchase?tab=overdue`, countKey: "PURCHASE:overdue" },
@@ -254,7 +254,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           icon: "doc",
           testId: "EXPENSE",
           flyout: [
-            { label: "+ บันทึกค่าใช้จ่าย", href: `${base}/expense#new` },
+            { label: "+ บันทึกค่าใช้จ่าย", href: `${base}/expense/new` },
             { label: "รอชำระ", href: `${base}/expense?tab=awaiting`, countKey: "EXPENSE:awaiting" },
             { label: "ชำระแล้ว", href: `${base}/expense?tab=paid`, countKey: "EXPENSE:paid" },
             { label: "พ้นกำหนด", href: `${base}/expense?tab=overdue`, countKey: "EXPENSE:overdue" },
@@ -269,7 +269,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           icon: "asset",
           testId: "ASSET_PURCHASE_ORDER",
           flyout: [
-            { label: "+ สร้างใบสั่งซื้อสินทรัพย์", href: `${base}/po?docType=ASSET_PURCHASE_ORDER#new` },
+            { label: "+ สร้างใบสั่งซื้อสินทรัพย์", href: `${base}/asset-po/new` },
             {
               label: "รออนุมัติ",
               href: `${base}/po?docType=ASSET_PURCHASE_ORDER&tab=awaiting_approval`,
@@ -294,7 +294,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           icon: "asset",
           testId: "ASSET_PURCHASE",
           flyout: [
-            { label: "+ ซื้อสินทรัพย์", href: `${base}/asset-buy#new` },
+            { label: "+ ซื้อสินทรัพย์", href: `${base}/asset-buy/new` },
             { label: "รอชำระ", href: `${base}/asset-buy?tab=awaiting`, countKey: "ASSET_PURCHASE:awaiting" },
             { label: "พ้นกำหนด", href: `${base}/asset-buy?tab=overdue`, countKey: "ASSET_PURCHASE:overdue" },
             { label: "รับใบเสร็จแล้ว", href: `${base}/asset-buy?tab=received`, countKey: "ASSET_PURCHASE:received" },

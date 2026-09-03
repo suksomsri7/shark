@@ -106,6 +106,7 @@ export function DocListPage<T extends { id: string }>({
   total,
   emptyText,
   createLabel,
+  createHref,
   createForm,
   printReportHref,
   extraHeaderActions,
@@ -142,6 +143,8 @@ export function DocListPage<T extends { id: string }>({
   emptyText: string;
   /** ป้ายชนิดเอกสาร เช่น "ใบแจ้งหนี้" — ปุ่มจะขึ้นเป็น "+ สร้างใบแจ้งหนี้" เสมอ — ไม่ส่ง = ไม่มีปุ่มสร้าง (เอกสารที่เกิดจากการแปลงเท่านั้น เช่น RE/TX) */
   createLabel?: string;
+  /** WO 1.3: ปลายทางของปุ่ม "+ สร้าง…" = ฟอร์มเต็มหน้า `<route>/new` — ส่งมาแล้วจะไม่ใช้ createForm/#new อีก */
+  createHref?: string;
   createForm?: React.ReactNode;
   /** ปลายทางพิมพ์รายงานของรายการนี้ — ไม่ส่ง = ปุ่มจาง "เร็ว ๆ นี้" */
   printReportHref?: string;
@@ -162,15 +165,24 @@ export function DocListPage<T extends { id: string }>({
             <HeaderActionButton label="นำเข้า" />
             <HeaderActionButton label="พิมพ์รายงาน" href={printReportHref} />
             {extraHeaderActions}
-            {createLabel && (
-              <a
-                href="#new"
-                className="btn btn-primary hidden shrink-0 whitespace-nowrap md:inline-flex"
-                data-testid={`${testId}-create-btn`}
-              >
-                + สร้าง{createLabel}
-              </a>
-            )}
+            {createLabel &&
+              (createHref ? (
+                <Link
+                  href={createHref}
+                  className="btn btn-primary hidden shrink-0 whitespace-nowrap md:inline-flex"
+                  data-testid={`${testId}-create-btn`}
+                >
+                  + สร้าง{createLabel}
+                </Link>
+              ) : (
+                <a
+                  href="#new"
+                  className="btn btn-primary hidden shrink-0 whitespace-nowrap md:inline-flex"
+                  data-testid={`${testId}-create-btn`}
+                >
+                  + สร้าง{createLabel}
+                </a>
+              ))}
           </>
         }
       />
@@ -216,21 +228,32 @@ export function DocListPage<T extends { id: string }>({
 
       {belowTable}
 
-      {createLabel && createForm && <CreateSection>{createForm}</CreateSection>}
+      {createLabel && !createHref && createForm && <CreateSection>{createForm}</CreateSection>}
       {!createLabel && createForm && <div id="new">{createForm}</div>}
 
       {/* FAB ดำลอยมุมล่างขวา (มือถือเท่านั้น) — เหนือ orb AI (AiDock: fixed bottom-4 right-4 h-10 w-10) */}
-      {createLabel && (
-        <a
-          href="#new"
-          aria-label={`สร้าง${createLabel}`}
-          data-testid={`${testId}-fab`}
-          className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full text-2xl leading-none shadow-[0_8px_24px_rgba(10,10,10,.24)] md:hidden"
-          style={{ background: "var(--color-ink)", color: "var(--color-surface)" }}
-        >
-          +
-        </a>
-      )}
+      {createLabel &&
+        (createHref ? (
+          <Link
+            href={createHref}
+            aria-label={`สร้าง${createLabel}`}
+            data-testid={`${testId}-fab`}
+            className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full text-2xl leading-none shadow-[0_8px_24px_rgba(10,10,10,.24)] md:hidden"
+            style={{ background: "var(--color-ink)", color: "var(--color-surface)" }}
+          >
+            +
+          </Link>
+        ) : (
+          <a
+            href="#new"
+            aria-label={`สร้าง${createLabel}`}
+            data-testid={`${testId}-fab`}
+            className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full text-2xl leading-none shadow-[0_8px_24px_rgba(10,10,10,.24)] md:hidden"
+            style={{ background: "var(--color-ink)", color: "var(--color-surface)" }}
+          >
+            +
+          </a>
+        ))}
     </div>
   );
 }

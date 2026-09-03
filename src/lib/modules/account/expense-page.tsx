@@ -30,6 +30,7 @@ import {
 } from "./list-columns";
 import { ExpenseDetail } from "./expense-ui";
 import ExpenseEditor from "./ExpenseEditor";
+import { canCreateDirect } from "./doc-editor-config";
 import { DocListPage } from "@/components/account-v2/DocListPage";
 import { MoneyText } from "@/components/ui/MoneyText";
 import type { RowActionItem } from "@/components/account-v2/RowActions";
@@ -152,6 +153,8 @@ export async function ExpenseListPage(props: {
   const slug = SLUG_OF[docType] ?? "purchase";
   const pathname = `${base}/${slug}`;
   const canCreate = docType !== "PURCHASE_TAX_INVOICE"; // รับใบกำกับจากการแปลง/บันทึกรับเท่านั้น
+  // WO 1.3: ปุ่ม "+ สร้าง…" ชี้ฟอร์มเต็มหน้า `<slug>/new` (DocEditorV2) — ยกเว้น CNR/DNR ที่ยังต้องอ้างอิงเอกสารต้นทาง (WO 1.6)
+  const createHref = canCreate && canCreateDirect(docType) ? `${base}/${slug}/new` : undefined;
 
   // มือถือ (f13): บรรทัดสรุปใต้ h1 "N ใบ · ค้างจ่าย ฿…" ผูกกับตัวกรองปัจจุบัน
   const hasPayable = DOC_TYPES_WITH_PAYABLE.includes(docType);
@@ -207,8 +210,9 @@ export async function ExpenseListPage(props: {
       emptyText={`ไม่พบ${label}ในช่วงวันที่ที่เลือก`}
       errorText={props.err === "empty" ? "ต้องมีรายการอย่างน้อย 1 รายการ" : props.err}
       createLabel={canCreate ? label : undefined}
+      createHref={createHref}
       createForm={
-        canCreate ? (
+        canCreate && !createHref ? (
           <ExpenseEditor
             systemId={systemId}
             docType={docType}
