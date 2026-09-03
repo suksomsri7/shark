@@ -866,6 +866,7 @@ const expected = {
 writeFileSync(QC.expectedPath, `${JSON.stringify(expected, null, 2)}\n`);
 
 console.log(`\n✅ seed เสร็จ — เขียนเฉลยลง ${QC.expectedPath}`);
+console.log("   ⚠️ เฉลยหน้าหลัก (คีย์ dashboard) ถูกเขียนทับไปด้วย — รันต่อ: QC_ENV_FILE=.env.qc pnpm tsx scripts/acc-v2-expected-dashboard.mts");
 console.log(`   ค้างรับ ฿${bahtStr(stats.receivable)} · ${stats.overdueCount} ใบพ้นกำหนด ฿${bahtStr(stats.overdueAmount)}`);
 console.log(`   ค้างจ่าย ฿${bahtStr(pay.payable)} · เงินคงเหลือรวม ฿${bahtStr(sum(balances.map((b) => b.balance)))}`);
 console.log(`   ระบบบัญชี /app/sys/${systemId}`);

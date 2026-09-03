@@ -55,6 +55,8 @@ export async function financeBalances(
   accountNo: string | null;
   ledgerAccountId: string | null;
   balance: number;
+  /** ปักหมุด (V2 WO 0.3) — หน้าหลักใช้เลือกการ์ด "ช่องทางที่ติดตาม" โดยไม่ต้อง query ซ้ำ */
+  pinned: boolean;
 }>> {
   const accounts = await listFinanceAccounts(tenantId, systemId);
   const ledgerIds = accounts
@@ -81,6 +83,7 @@ export async function financeBalances(
     accountNo: a.accountNo,
     ledgerAccountId: a.ledgerAccountId,
     balance: a.ledgerAccountId ? balByLedger.get(a.ledgerAccountId) ?? 0 : 0,
+    pinned: a.pinned,
   }));
 }
 

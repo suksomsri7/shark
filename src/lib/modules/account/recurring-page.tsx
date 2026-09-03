@@ -11,7 +11,11 @@ import {
   type RecurringRuleRow,
 } from "./service";
 import { listExpenseAccounts, listIncomeAccounts, listProducts, listUnits } from "./product";
-import { toggleRecurringRuleAction, runRecurringNowAction } from "./recurring-actions";
+import {
+  toggleRecurringRuleAction,
+  runRecurringNowAction,
+  deleteRecurringRuleAction,
+} from "./recurring-actions";
 import {
   RECURRING_DOC_LABEL,
   RECURRING_DOC_TYPES,
@@ -24,7 +28,9 @@ import { RecurringRuleForm, type RecurringFormInitial } from "@/components/accou
 import { newLineDraft, type LineDraft } from "@/components/account-v2/doc-editor-types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { StatusChip } from "@/components/ui/StatusChip";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { RowActions } from "@/components/account-v2/RowActions";
 import { formatDateTh } from "@/lib/ui/date";
 
 // ─────────────────────────────────────────────────────────────
@@ -60,9 +66,10 @@ export async function RecurringListPage({
 
   return (
     <div className="flex w-full max-w-5xl flex-col gap-4" data-testid="recurring-list">
+      {/* ไม่มีลิงก์ "← ระบบบัญชี" ที่นี่ — breadcrumb ของ shell V2 (AccountBreadcrumb) พาย้อนกลับอยู่แล้ว
+          Fable QC จากภาพจริง: ลิงก์ 2 ชั้นซ้อนกันเหนือ h1 */}
       <PageHeader
         title="เอกสารประจำ"
-        back={{ href: base, label: "ระบบบัญชี" }}
         desc="ตั้งครั้งเดียว ระบบออกเอกสารให้เองทุกงวด แล้วแจ้งเตือนให้คุณตรวจ"
         actions={
           <>
@@ -97,14 +104,25 @@ export async function RecurringListPage({
         />
       ) : (
         <div className="card overflow-x-auto p-0">
-          <table className="w-full min-w-[720px] text-sm" data-testid="recurring-table">
+          <table className="w-full min-w-[860px] text-sm" data-testid="recurring-table">
+            {/* ความกว้างขั้นต่ำต่อคอลัมน์ — ไม่งั้น "ทุก 3 เดือน วันที่ 15" / "บันทึกค่าใช้จ่าย" ตัดคำกลางคำ */}
+            <colgroup>
+              <col />
+              <col style={{ minWidth: 110 }} />
+              <col style={{ minWidth: 140 }} />
+              <col style={{ minWidth: 150 }} />
+              <col style={{ minWidth: 120 }} />
+              <col style={{ minWidth: 110 }} />
+              <col style={{ minWidth: 110 }} />
+              <col style={{ minWidth: 120 }} />
+            </colgroup>
             <thead>
               <tr className="border-b">
                 <th className="px-4 py-3 text-left text-xs font-normal text-[color:var(--color-muted)]">ชื่อ</th>
-                <th className="px-4 py-3 text-left text-xs font-normal text-[color:var(--color-muted)]">ชนิด</th>
+                <th className="px-4 py-3 text-left whitespace-nowrap text-xs font-normal text-[color:var(--color-muted)]">ชนิด</th>
                 <th className="px-4 py-3 text-left text-xs font-normal text-[color:var(--color-muted)]">ผู้ติดต่อ</th>
-                <th className="px-4 py-3 text-left text-xs font-normal text-[color:var(--color-muted)]">ความถี่</th>
-                <th className="px-4 py-3 text-left text-xs font-normal text-[color:var(--color-muted)]">รอบถัดไป</th>
+                <th className="px-4 py-3 text-left whitespace-nowrap text-xs font-normal text-[color:var(--color-muted)]">ความถี่</th>
+                <th className="px-4 py-3 text-left whitespace-nowrap text-xs font-normal text-[color:var(--color-muted)]">รอบถัดไป</th>
                 <th className="px-4 py-3 text-right text-xs font-normal text-[color:var(--color-muted)]">มูลค่าต่อรอบ</th>
                 <th className="px-4 py-3 text-left text-xs font-normal text-[color:var(--color-muted)]">สถานะ</th>
                 <th className="px-4 py-3 text-right text-xs font-normal text-[color:var(--color-muted)]">ทำรายการ</th>
@@ -141,9 +159,9 @@ function RuleRow({ rule, base, systemId }: { rule: RecurringRuleRow; base: strin
           </span>
         )}
       </td>
-      <td className="px-4 py-3">{docLabelOf(rule.docType)}</td>
+      <td className="px-4 py-3 whitespace-nowrap">{docLabelOf(rule.docType)}</td>
       <td className="px-4 py-3">{rule.contactName ?? "—"}</td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3 whitespace-nowrap">
         {scheduleLabel({
           frequency: rule.frequency,
           dayOfMonth: rule.dayOfMonth,
@@ -151,32 +169,49 @@ function RuleRow({ rule, base, systemId }: { rule: RecurringRuleRow; base: strin
           startDate: rule.startDate,
         })}
       </td>
-      <td className="px-4 py-3" data-testid={`rec-next-${rule.id}`}>
+      <td className="px-4 py-3 whitespace-nowrap" data-testid={`rec-next-${rule.id}`}>
         {rule.active ? formatDateTh(rule.nextRunAt) : "—"}
       </td>
-      <td className="px-4 py-3 text-right tabular-nums">฿{baht(total)}</td>
-      <td className="px-4 py-3">
-        <span
-          className="rounded-full border px-2 py-0.5 text-xs"
-          data-testid={`rec-status-${rule.id}`}
-          style={rule.active ? { background: "var(--color-ink)", color: "var(--color-surface)" } : undefined}
-        >
-          {rule.active ? "ทำงานอยู่" : "หยุดชั่วคราว"}
-        </span>
+      <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums">฿{baht(total)}</td>
+      <td className="px-4 py-3" data-testid={`rec-status-${rule.id}`}>
+        {/* ชิปสถานะกลางของระบบ — ทำงานอยู่ = เข้ม · หยุดชั่วคราว = จาง (ไม่ใช่ป้ายดำที่ตัดบรรทัด) */}
+        <StatusChip
+          value={rule.active ? "active" : "paused"}
+          map={{ active: "ทำงานอยู่", paused: "หยุดชั่วคราว" }}
+          tone={rule.active ? "strong" : "muted"}
+        />
       </td>
       <td className="px-4 py-3">
-        <div className="flex items-center justify-end gap-2">
-          <Link href={`${base}/recurring/${rule.id}/edit`} className="btn-sm">
-            แก้ไข
-          </Link>
-          <form action={toggleRecurringRuleAction}>
-            <input type="hidden" name="systemId" value={systemId} />
-            <input type="hidden" name="id" value={rule.id} />
-            <input type="hidden" name="active" value={rule.active ? "0" : "1"} />
-            <SubmitButton className="btn-sm" pendingText="…">
-              {rule.active ? "หยุดชั่วคราว" : "เปิดใช้งาน"}
-            </SubmitButton>
-          </form>
+        <div className="flex justify-end">
+          {/* เมนู "ทำรายการ ▾" มาตรฐานของหน้ารายการ (§1) — ปุ่มแยกกันเต็มแถวไม่ตรงแบบ */}
+          <RowActions
+            testId={`rec-actions-${rule.id}`}
+            items={[
+              { label: "แก้ไข", href: `${base}/recurring/${rule.id}/edit` },
+              {
+                label: rule.active ? "หยุดชั่วคราว" : "เปิดใช้งาน",
+                submit: {
+                  action: toggleRecurringRuleAction,
+                  fields: { systemId, id: rule.id, active: rule.active ? "0" : "1" },
+                },
+              },
+              rule.active
+                ? {
+                    label: "สร้างรอบตอนนี้",
+                    submit: { action: runRecurringNowAction, fields: { systemId, id: rule.id } },
+                  }
+                : {
+                    label: "สร้างรอบตอนนี้",
+                    disabled: true,
+                    hint: "กฎนี้หยุดชั่วคราวอยู่ — เปิดใช้งานก่อน",
+                  },
+              {
+                label: "ลบ",
+                danger: true,
+                submit: { action: deleteRecurringRuleAction, fields: { systemId, id: rule.id } },
+              },
+            ]}
+          />
         </div>
       </td>
     </tr>

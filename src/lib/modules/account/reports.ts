@@ -678,8 +678,8 @@ export type AgingReport = { rows: AgingRow[]; grand: AgingGrand };
 
 const AGING_NO_CONTACT = "ไม่ระบุคู่ค้า";
 
-/** สร้างแถวอายุหนี้เปล่า (ทุก bucket = 0) */
-function emptyAging(): AgingGrand {
+/** สร้างแถวอายุหนี้เปล่า (ทุก bucket = 0) — export ให้ dashboard.ts ใช้นิยาม bucket ชุดเดียวกัน */
+export function emptyAging(): AgingGrand {
   return {
     notDueSatang: 0,
     d1_30Satang: 0,
@@ -690,8 +690,8 @@ function emptyAging(): AgingGrand {
   };
 }
 
-/** เลือก bucket key จากจำนวนวันเกินกำหนด (≤0 = ยังไม่ครบกำหนด) */
-function agingBucket(daysOverdue: number): keyof AgingGrand {
+/** เลือก bucket key จากจำนวนวันเกินกำหนด (≤0 = ยังไม่ครบกำหนด) — export: dashboard.ts ใช้ตัวเดียวกัน */
+export function agingBucket(daysOverdue: number): keyof AgingGrand {
   if (daysOverdue <= 0) return "notDueSatang";
   if (daysOverdue <= 30) return "d1_30Satang";
   if (daysOverdue <= 60) return "d31_60Satang";
