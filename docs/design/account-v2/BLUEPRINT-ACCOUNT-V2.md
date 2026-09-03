@@ -47,6 +47,7 @@
 - **ปิดเฟส**: `pnpm qc:all` เขียว → rebase main → merge → push → Vercel READY → **verify บน prod** (เปิดหน้าจริง + ตัวเลขไม่พัง) → บันทึก RUN + RESUME + memory
 - **หาบั๊ก/ช่องโหว่ทุก WO** (Fable อ่าน diff): auth ทุก route/action (`assertAccountCan`) · tenant/system scope ทุก query · IDOR (id ของคนอื่น) · เงินเป็น satang integer ไม่ใช่ float · idempotency ของ posting · race (row lock) · ห้าม log ข้อมูลลูกค้า · input ยาว/ไทย/emoji · migration additive เท่านั้น
 - **กลับมาต่อได้เมื่อ session ล้ม**: `ledger/ACCOUNT-V2-RUN.md` = สถานะสด (WO ปัจจุบัน · ขั้นที่ถึง · commit ล่าสุด · คำสั่งถัดไป) Fable อัปเดต **ทุกครั้งที่ WO เปลี่ยนสถานะ** + commit/push ทันที · sub-agent เขียน `ledger/wo-notes/<WO>.md` ระหว่างทำ (ทำอะไรไปแล้ว/ค้างอะไร) · memory `project_shark_accounting_v2_redesign` ชี้มาที่ RUN.md · session ใหม่ = `git pull` → อ่าน RUN.md → อ่าน wo-notes ของ WO ที่ค้าง → `git status` ดูไฟล์ dirty → ทำต่อจากขั้นที่จด (ไม่เริ่มใหม่)
+- **ด่าน parity (เจ้าของย้ำ 4 ก.ย.): UI จริงต้องตรงภาพที่ออกแบบ** — ทุก WO ที่มี UI ต้องระบุเฟรมอ้างอิง (f/g) · sub-agent เปิดดูภาพก่อนเขียนและไล่องค์ประกอบเป็น checklist · หลัง serve บน DB QC Fable ดูภาพจริงคู่ mockup ทีละหน้า (1440 + 390) ต่างตรงไหนสั่งแก้จนเหมือน · ห้ามต่าง: โครง/ลำดับบล็อก · ป้ายไทย · ชุดแท็บ/สถานะ · คอลัมน์ · ปุ่ม · token สี · ไอคอน · ระยะ · มือถือไม่ล้น · ต่างได้เฉพาะที่ข้อมูลจริง/SPEC บังคับ และต้องจดใน wo-notes
 - **สิ่งที่ Fable ทำเอง (ไม่มอบ)**: เขียน WO · ตัดสิน QC จากภาพ/ตัวเลข · อ่าน diff หาบั๊ก · merge/push/deploy · บันทึก
 
 ## 2. สภาพแวดล้อม QC (เฟส 0 ต้องมีก่อน)

@@ -62,6 +62,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 4 ก.ย. 2026 ~01:50 UTC — เจ้าของย้ำ: **UI ต้องออกมาตรงภาพที่ออกแบบ** → เพิ่มด่าน parity ใน BLUEPRINT §1 (Fable ดูภาพจริงคู่ mockup ทุกหน้า) · memory `feedback_ui_must_match_approved_mockups`
 - 4 ก.ย. 2026 ~01:00 UTC — 🔴 เหตุการณ์: migration เฟส 0 หลุดลง prod ระหว่าง WO 0.3 (สาเหตุ: `set -a; . ./.env.qc` พังเพราะ URL มี `&` ไม่มี quote → prisma.config fallback ไป .env) · บทเรียน: ทุกคำสั่ง prisma ในงานนี้ต้องผ่าน `scripts/acc-v2-env.mts`/`grep|cut` + ด่านกัน host prod · จดใน memory
 - 3 ก.ย. 2026 (เช้ามืด) — เริ่ม run ยาว · เจ้าของสั่ง: Fable คุมแทน · QC ต้องเห็นภาพจริง+ตัวเลขจริง · หาบั๊ก/ช่องโหว่ · กลับมาต่อได้เมื่อ session ล้ม · Opus ติด rate limit ตั้งแต่ 2 ก.ย. ~20:00 UTC (ต้องทดสอบก่อนมอบหมายทุกครั้ง)
 
