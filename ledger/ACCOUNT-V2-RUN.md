@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | ปิดเฟส 0 + merge 1.1/1.2 เข้า main |
+| WO | 1.3 DocEditorV2 (ทำต่อ) · เฟส 0 + 1.1/1.2 อยู่บน main แล้ว |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~03:30 UTC: 1.1 ผ่านภาพแล้ว (8a3aa52) · กำลัง: fetch+rebase origin/main → qc:all (bg) → merge main → push → Vercel → verify prod (รวม 1.3 บางส่วนที่ไม่มีลิงก์เข้าถึงจาก UI + migration additive) · หลัง merge: สั่ง agent ทำ 1.3 ต่อ |
+| ขั้นที่ถึง | 3 ก.ย. ~04:15 UTC: merge origin/main → qc:all **190/190** → push `0d19670` ขึ้น main (Vercel กำลัง deploy · migration 1.3 additive จะ apply ตอน build) · ถัดไป: verify prod (เมนู 9 หมวด + หน้ารายการ) → 1.3 ต่อ (agent ใหม่) → 1.4 |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
@@ -65,10 +65,11 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 3 ก.ย. 2026 ~04:15 UTC — 🏁 **เฟส 0 ปิด + 1.1/1.2 ขึ้น main** (qc:all 190/190 · commit 0d19670) · ระหว่างทาง: reboot 1 ครั้ง (แรม) → กติกางานหนักทีละอย่าง
 - 4 ก.ย. 2026 ~01:50 UTC — เจ้าของย้ำ: **UI ต้องออกมาตรงภาพที่ออกแบบ** → เพิ่มด่าน parity ใน BLUEPRINT §1 (Fable ดูภาพจริงคู่ mockup ทุกหน้า) · memory `feedback_ui_must_match_approved_mockups`
 - 4 ก.ย. 2026 ~01:00 UTC — 🔴 เหตุการณ์: migration เฟส 0 หลุดลง prod ระหว่าง WO 0.3 (สาเหตุ: `set -a; . ./.env.qc` พังเพราะ URL มี `&` ไม่มี quote → prisma.config fallback ไป .env) · บทเรียน: ทุกคำสั่ง prisma ในงานนี้ต้องผ่าน `scripts/acc-v2-env.mts`/`grep|cut` + ด่านกัน host prod · จดใน memory
 - 3 ก.ย. 2026 (เช้ามืด) — เริ่ม run ยาว · เจ้าของสั่ง: Fable คุมแทน · QC ต้องเห็นภาพจริง+ตัวเลขจริง · หาบั๊ก/ช่องโหว่ · กลับมาต่อได้เมื่อ session ล้ม · Opus ติด rate limit ตั้งแต่ 2 ก.ย. ~20:00 UTC (ต้องทดสอบก่อนมอบหมายทุกครั้ง)
 
 ## ของที่ต้องส่งต่อ session อื่น / รอเจ้าของ
-- 🔴 **session แชท**: prod DB มี migration `20260902160000_account_v2_phase0` แล้ว (additive) แต่ main ยังไม่มีไฟล์ migration นี้ → `pnpm drift`/qc-migrate-status บน CI ของ main อาจแดง (MS-2) จนกว่า branch `session/accounting` จะ merge เข้า main (Fable เร่งหลัง WO 0.6) — ห้ามสร้าง migration ชื่อชนกัน
+- ✅ session แชท: เฟส 0 + 1.1/1.2 merge เข้า main แล้ว (`0d19670` 3 ก.ย.) — migration `20260902160000_account_v2_phase0` และ `20260903090000_account_v2_doc_editor` อยู่บน main แล้ว drift หาย · เมนูบัญชีเป็นแบบใหม่ 9 หมวด (UI_STANDARD §2.9/§4 อัปเดตแล้ว)
 - prod backfill phoneNorm: dry-run แล้ว (4 ก.ย.) — prod มีผู้ติดต่อ 16 แถว ไม่มีแถวที่ต้องเติม ✅ ไม่ต้องทำ
