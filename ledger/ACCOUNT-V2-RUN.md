@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 1.7 ใบวางบิลรวม/ใบรวมจ่าย (1.5+1.6 อยู่บน main `844b99e`) |
+| WO | 1.8 นำเข้า CSV (1.7 ขึ้น main แล้ว) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 3 ก.ย. ~13:30 UTC: prod `844b99e` READY (หน้าเอกสาร V2 + wizard ลด/เพิ่มหนี้ ขึ้น prod · migrate status up to date) · 1.7 กำลังทำ (agent) |
+| ขั้นที่ถึง | 3 ก.ย. ~15:20 UTC: 1.7 push ขึ้น main (Vercel deploy) · 1.8 กำลังทำ · หมายเหตุ: qc:all มี suite flaky 1 ตัวเมื่อรันขนาน (acc-v2-payments) — ต้องตรวจ isolation ของ fixture ใน 9.3 |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
@@ -31,8 +31,8 @@
 | 1.4 | มัดจำ + WHT ต่อบรรทัด + รับชำระหลายครั้ง | Opus | DONE | fc3109c | Fable รันเอง payments 157/157 · CPA 107 · ภาพรอบ 2 ตรง g2 (visual 82 ✅) · 🐞 ปิดบั๊ก 5 รวม RE จาก IV ลงรายได้ซ้ำ 2 เท่า · ค้าง: เช็ค+ค่าธรรมเนียมพร้อมกันยังไม่รองรับ · prefix ฝั่งซื้อคง WHT- |
 | 1.5 | หน้าเอกสาร V2 | Sonnet | DONE | (HEAD) | ตีกลับ 1 รอบ (5 จุด) → รอบ 2 ตรง g4/f14 · detail 85 · visual 35 ✅ · ค้าง: ตารางรายการบนมือถือเลื่อนในการ์ด (f14 เป็นลิสต์ย่อ) → 9.1 · ผู้บันทึกการชำระต้องมี user relation |
 | 1.6 | wizard CN/DN/CNR/DNR/RPR | Sonnet | DONE | 844b99e | ตีกลับ 3 รอบ (ผู้ติดต่อไม่เติม · เพดาน · คอลัมน์ · มือถือเลือกแถว/ruler click) → ผ่านภาพ g3 ทั้ง 2 ขั้น 2 ขนาด · adjust 96 · guard 134 · เพิ่ม `acc-v2-serve.sh start` (ไม่ build) ให้ agent iterate ภาพเองได้ · ค้าง: RPR ไม่มีหน้ารายการ/รายละเอียด · `?err=` หลัง approve ล้มยังไม่โชว์ inline (ทุกชนิด) |
-| 1.7 | ใบวางบิลรวม + ใบรวมจ่าย | Opus | REVIEW | (snapshot) | groups 174/174 (Fable รันเอง) · ภาพรอบ 1: bulk bar ตรง f3-menu · ฟอร์มกลุ่มยอดถูก · ตีกลับ: ruler 4 ข้อ + แถบปุ่มล่างเต็มกว้าง/ทับ orb · กติกา: BN/CP ไม่มี JV ตอนสร้าง · ชำระกลุ่มกระจาย FIFO ลงใบลูก |
-| 1.8 | นำเข้า CSV | Sonnet | TODO | | |
+| 1.7 | ใบวางบิลรวม + ใบรวมจ่าย | Opus | DONE | (main) | ตีกลับ 1 รอบ → visual 43/43 · groups 174 · qc:all 194/195 (แดง acc-v2-payments แต่รันเดี่ยว 157/157 = flaky ตอนรันขนาน → จดให้ 9.3) · ค้าง: กลุ่มไม่มีสถานะร่าง · updateGroupProgress นับ CN ด้วย (5.x/9.x) · คอลัมน์ตารางกลุ่มกำลังแก้ (เข้า build ถัดไป) |
+| 1.8 | นำเข้า CSV | Sonnet | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~15:20 UTC · โน้ต `wo-notes/1.8.md` |
 | 1.9 | เอกสารประจำ + เตือน | Opus (Sonnet) | TODO | | |
 | 2.1 | query dashboard | Opus | TODO | | |
 | 2.2 | หน้าหลัก V2 | Sonnet | TODO | | |
