@@ -11,6 +11,7 @@ import {
   createRecurringRule,
   updateRecurringRule,
   setRecurringRuleActive,
+  deleteRecurringRule,
   runRecurringRules,
   runAccountReminders,
   sendPaymentReminder,
@@ -162,9 +163,11 @@ export async function toggleRecurringRuleAction(formData: FormData) {
  */
 export async function runRecurringNowAction(formData: FormData) {
   const systemId = trim(formData.get("systemId"), 40);
+  // ส่ง `id` มา = สั่งเฉพาะกฎนั้น (เมนู "ทำรายการ" ของแถว) · ไม่ส่ง = ทุกกฎของระบบนี้ (ปุ่มหัวหน้า)
+  const ruleId = trim(formData.get("id"), 40);
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.doc.create");
-  const res = await runRecurringRules(new Date(), { tenantId, systemId });
+  const res = await runRecurringRules(new Date(), { tenantId, systemId, ruleId: ruleId || undefined });
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -180,6 +183,30 @@ export async function runRecurringNowAction(formData: FormData) {
       ? "ยังไม่ถึงรอบของเอกสารประจำใด — ไม่มีอะไรถูกสร้าง"
       : `สร้างเอกสารใหม่ ${res.created} ใบ (ออกอัตโนมัติ ${res.issued} ใบ)`;
   redirect(`${base}?msg=${encodeURIComponent(msg)}`);
+}
+
+/** ลบกฎทิ้ง (เอกสารที่ออกไปแล้วไม่ถูกแตะ) */
+export async function deleteRecurringRuleAction(formData: FormData) {
+  const systemId = trim(formData.get("systemId"), 40);
+  const id = trim(formData.get("id"), 40);
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.doc.create");
+  const res = await deleteRecurringRule(tenantId, systemId, id);
+  await writeAudit({
+    tenantId,
+    actorId: userId,
+    action: "account.doc.create",
+    targetType: "AccountRecurringRule",
+    targetId: id,
+    after: { deleted: res.ok },
+  });
+  const base = `/app/sys/${systemId}/account/recurring`;
+  revalidatePath(base);
+  redirect(
+    res.ok
+      ? `${base}?msg=${encodeURIComponent("ลบเอกสารประจำแล้ว (เอกสารที่ออกไปแล้วยังอยู่ครบ)")}`
+      : `${base}?err=${encodeURIComponent(res.reason)}`,
+  );
 }
 
 /** สั่งรอบเตือนของระบบนี้เอง (ปุ่มทดสอบบนหน้ารายการ — cron ทำให้อยู่แล้ววันละครั้ง) */

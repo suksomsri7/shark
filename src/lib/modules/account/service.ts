@@ -3817,6 +3817,20 @@ export async function setRecurringRuleActive(
   return res.count > 0 ? { ok: true } : { ok: false, reason: "ไม่พบเอกสารประจำนี้" };
 }
 
+/**
+ * ลบกฎทิ้ง — `AccountRecurringRun` ตามไปด้วย (FK ON DELETE CASCADE)
+ * 🔴 **เอกสารที่เคยสร้างไปแล้วไม่ถูกแตะ** (documentId เป็นคอลัมน์ธรรมดา ไม่ใช่ FK) —
+ *    ลบกฎ = หยุดออกใบใหม่ ไม่ใช่ลบบัญชีย้อนหลัง
+ */
+export async function deleteRecurringRule(
+  tenantId: string,
+  systemId: string,
+  id: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const res = await prisma.accountRecurringRule.deleteMany({ where: { id, tenantId, systemId } });
+  return res.count > 0 ? { ok: true } : { ok: false, reason: "ไม่พบเอกสารประจำนี้" };
+}
+
 /** ประวัติการสร้างของกฎ 1 ตัว (ใหม่สุดก่อน) */
 export async function listRecurringRuns(
   tenantId: string,
@@ -3960,7 +3974,7 @@ const MAX_LEAD_DAYS = 60;
  */
 export async function runRecurringRules(
   now: Date = new Date(),
-  opts?: { tenantId: string; systemId: string },
+  opts?: { tenantId: string; systemId: string; ruleId?: string },
 ): Promise<RecurringRunSummary> {
   const horizon = new Date(now.getTime() + MAX_LEAD_DAYS * REC_DAY_MS);
   const rules = await prisma.accountRecurringRule.findMany({
@@ -3968,6 +3982,7 @@ export async function runRecurringRules(
       active: true,
       nextRunAt: { lte: horizon },
       ...(opts ? { tenantId: opts.tenantId, systemId: opts.systemId } : {}),
+      ...(opts?.ruleId ? { id: opts.ruleId } : {}),
     },
     orderBy: { nextRunAt: "asc" },
     take: 500,

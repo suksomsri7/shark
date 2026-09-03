@@ -8,7 +8,7 @@ export type RowActionItem = {
   href?: string;
   onClick?: () => void;
   danger?: boolean;
-  /** WO 1.9 — รายการที่ต้อง "ส่งฟอร์ม" ไป server action (เช่น "เตือนชำระ") · รองรับเฉพาะใน DocMoreMenu */
+  /** WO 1.9 — รายการที่ต้อง "ส่งฟอร์ม" ไป server action (เตือนชำระ · หยุด/เปิดกฎ · ลบ) — รองรับทั้ง RowActions และ DocMoreMenu */
   submit?: {
     action: (formData: FormData) => void | Promise<void>;
     fields?: Record<string, string>;
@@ -86,6 +86,29 @@ export function RowActions({
             const cls = `block w-full px-3 py-2 text-left text-sm hover:bg-[color:var(--color-surface-2)] ${
               it.danger ? "text-[color:var(--color-danger)]" : ""
             }`;
+            // WO 1.9 — รายการที่กดไม่ได้: บรรทัดจาง + เหตุผลไทย (ห้ามซ่อนทิ้งเงียบ ๆ)
+            if (it.disabled) {
+              return (
+                <div key={i} className={`${cls} cursor-not-allowed opacity-60`} title={it.hint} role="menuitem">
+                  <div>{it.label}</div>
+                  {it.hint && <div className="text-xs text-[color:var(--color-muted)]">{it.hint}</div>}
+                </div>
+              );
+            }
+            // WO 1.9 — รายการที่ต้องยิง server action (หยุด/เปิดใช้ · สร้างรอบตอนนี้ · ลบ)
+            // เรนเดอร์เหมือน DocMoreMenu เป๊ะ: <form action={…}> + hidden fields (ไม่มี JS ก็ยังทำงาน)
+            if (it.submit) {
+              return (
+                <form key={i} action={it.submit.action}>
+                  {Object.entries(it.submit.fields ?? {}).map(([k, v]) => (
+                    <input key={k} type="hidden" name={k} value={v} />
+                  ))}
+                  <button type="submit" role="menuitem" className={cls} onClick={() => setOpen(false)}>
+                    {it.label}
+                  </button>
+                </form>
+              );
+            }
             if (it.href) {
               return (
                 <Link key={i} href={it.href} role="menuitem" className={cls} onClick={() => setOpen(false)}>
