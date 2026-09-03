@@ -38,6 +38,41 @@ export const PRICE_MODE_OPTIONS: { value: PriceMode; label: string }[] = [
   { value: "NO_VAT", label: "ไม่มี VAT" },
 ];
 
+/**
+ * WO 1.6 §5.2 J — เหตุผลออกเอกสารปรับปรุงหนี้ (ม.86/10) · ใช้ทั้งขั้น ② ของ CN/DN/CNR/DNR/RPR
+ * ค่า "OTHER" บังคับกรอกข้อความเพิ่ม (`adjustReasonText`) — ตัวอื่นกรอกเพิ่มได้แต่ไม่บังคับ
+ */
+export const REASON_OPTIONS: { value: string; label: string }[] = [
+  { value: "DAMAGED", label: "สินค้าชำรุด/คืนสินค้า" },
+  { value: "PRICE_ERROR", label: "คำนวณราคาผิด" },
+  { value: "EXTRA_DISCOUNT", label: "ส่วนลดเพิ่ม" },
+  { value: "SERVICE_CANCELLED", label: "ยกเลิกบริการ" },
+  { value: "OTHER", label: "อื่น ๆ" },
+];
+export const REASON_LABEL: Record<string, string> = Object.fromEntries(
+  REASON_OPTIONS.map((o) => [o.value, o.label]),
+);
+
+/** เก็บ `adjustReason` (DB เก็บเป็นข้อความก้อนเดียว) → รวม/แยกรหัส+ข้อความเสริม */
+export function packAdjustReason(code: string, text: string): string {
+  const label = REASON_LABEL[code] ?? "";
+  const t = text.trim();
+  if (!label) return t;
+  return t ? `${label} — ${t}` : label;
+}
+
+/** แกะ `adjustReason` ที่บันทึกไว้กลับเป็นรหัส+ข้อความ (สำหรับเปิดร่างเดิมมาแก้ — ทำได้แบบประมาณเท่านั้น) */
+export function unpackAdjustReason(raw: string | null | undefined): { code: string; text: string } {
+  const s = (raw ?? "").trim();
+  if (!s) return { code: "", text: "" };
+  for (const o of REASON_OPTIONS) {
+    if (o.value === "OTHER") continue;
+    if (s === o.label) return { code: o.value, text: "" };
+    if (s.startsWith(`${o.label} — `)) return { code: o.value, text: s.slice(o.label.length + 3) };
+  }
+  return { code: "OTHER", text: s };
+}
+
 /** 1 บรรทัดในตารางรายการ (§5.2 C) */
 export type LineDraft = {
   /** key ฝั่ง React เท่านั้น — ไม่ส่งขึ้น server */
@@ -76,6 +111,9 @@ export type DocDraftValue = {
   docDiscount: AmountOrPercent;
   note: string;
   internalNote: string;
+  /** WO 1.6 §5.2 J — เหตุผล (เฉพาะ CN/DN/CNR/DNR) */
+  adjustReasonCode: string;
+  adjustReasonText: string;
 };
 
 /** payload ที่ส่งขึ้น server action — ตัด key ฝั่ง React ทิ้ง */
@@ -83,6 +121,8 @@ export type DocDraftPayload = {
   systemId: string;
   docType: string;
   docId?: string;
+  /** WO 1.6 — เอกสารอ้างอิงที่เลือกในขั้น ① ของ wizard (ใช้เฉพาะตอนสร้างใหม่ — ตั้งค่าเดียวตอน create แล้วคงที่) */
+  refId?: string | null;
   value: Omit<DocDraftValue, "lines"> & { lines: Omit<LineDraft, "key">[] };
 };
 
@@ -172,6 +212,12 @@ export type DocEditorV2Props = {
   paymentChannels: { id: string; name: string; type: string; bankName: string | null; accountNo: string | null }[];
   /** เลขที่ + ลิงก์ของใบแจ้งหนี้ต้นทาง (การ์ดหัวของ g2 "อ้างอิงใบแจ้งหนี้") */
   sourceDoc?: { docNo: string | null; href: string; label: string } | null;
+  /** ── WO 1.6 §5.2 J — โหมด wizard เอกสารปรับปรุงหนี้ (CN/DN/CNR/DNR) ── */
+  adjustMode?: boolean;
+  /** เอกสารอ้างอิงที่เลือกในขั้น ① (chip "อ้างอิง<label> <docNo>" ในหัวฟอร์ม) — ไม่มี = โหมด "ไม่อ้างอิง" */
+  refDoc?: { id: string; docNo: string | null; href: string; label: string; outstandingSatang: number } | null;
+  /** เพดานยอดคงเหลือของเอกสารอ้างอิง (เฉพาะ CN/CNR ที่มี refDoc) — null = ไม่มีเพดาน (DN/DNR หรือไม่อ้างอิง) */
+  capSatang?: number | null;
 };
 
 export function newLineDraft(vatRateBp: number): LineDraft {

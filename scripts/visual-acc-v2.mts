@@ -416,6 +416,24 @@ const PAGES: Record<string, PageSpec[]> = {
       expect: ["ชำระเงินแล้ว"],
     },
   ],
+  // WO 1.6 — wizard เอกสารปรับปรุงหนี้ (§5.2 J) เทียบ g3-creditnote-wizard.png
+  // ใช้ IV โรงแรมสิมิลันวิวที่ seed ไว้แล้วตรง ๆ (PARTIAL 124,500 / ค้างชำระ 62,250) — ไม่ต้องสร้าง/ลบ fixture เพิ่ม
+  "1.6": [
+    {
+      name: "cn-wizard-step1",
+      path: `/app/sys/${SYS}/account/docs/CREDIT_NOTE/new?contactId=${E.fixtures.contactSimilanViewId}`,
+      note: "ขั้น ① เลือกเอกสารอ้างอิง (g3) — ตัวกรองผู้ติดต่อ = โรงแรมสิมิลันวิว + เลือกแถว IV",
+      expect: ["สร้างใบลดหนี้", "เลือกเอกสารอ้างอิง", E.fixtures.invSimilanViewDocNo],
+      click: [`[data-testid="ref-row-${E.fixtures.invSimilanViewDocNo}"]`],
+      waitAfterClick: 300,
+    },
+    {
+      name: "cn-wizard-step2",
+      path: `/app/sys/${SYS}/account/docs/CREDIT_NOTE/new?ref=${E.fixtures.invSimilanViewId}`,
+      note: "ขั้น ② ฟอร์มใบลดหนี้พรีฟิลจากเอกสารอ้างอิง — cap-line ต้องโชว์ค้างชำระ 62,250.00 (g3 ขั้น 2)",
+      expect: ["สร้างใบลดหนี้", E.fixtures.invSimilanViewDocNo],
+    },
+  ],
 };
 
 // ─────────── ตารางตัวเลขที่อ่านจาก data-testid (ว่างไว้ก่อน — WO ถัดไปเติม) ───────────
@@ -453,6 +471,13 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "jv-line-1": "124,500.00",
       "jv-line-2": "116,355.14",
       "jv-line-3": "8,144.86",
+    },
+  },
+  // WO 1.6 — cap-line ขั้น ② ต้องโชว์ค้างชำระของ IV โรงแรมสิมิลันวิว = 62,250.00 (ground truth เดียวกับ WO 1.5)
+  "1.6": {
+    "cn-wizard-step2": {
+      "cap-line": "62,250.00",
+      "ref-chip": E.fixtures.invSimilanViewDocNo,
     },
   },
   "0.1": {},
@@ -846,6 +871,21 @@ try {
               whtAmount2:
                 (document.querySelector('[data-testid="pay-wht-amount-2"]') as HTMLInputElement | null)?.value ?? "",
             },
+            // WO 1.6 — wizard เอกสารปรับปรุงหนี้ (CN/DN/CNR/DNR/RPR · §5.2 J · g3)
+            wizard: {
+              hasStep1: !!document.querySelector('[data-testid="adjust-wizard-step1"]'),
+              rowCount: document.querySelectorAll('[data-testid^="ref-row-"]').length,
+              selectedRowTestId:
+                document.querySelector('[data-testid^="ref-row-"][data-selected="1"]')?.getAttribute("data-testid") ?? "",
+              btnNextDisabled: (() => {
+                const el = document.querySelector('[data-testid="btn-next"]');
+                return el ? el.tagName === "BUTTON" && (el as HTMLButtonElement).disabled : null;
+              })(),
+              hasCapLine: !!document.querySelector('[data-testid="cap-line"]'),
+              hasReasonSelect: !!document.querySelector('[data-testid="reason-select"]'),
+              hasRefChip: !!document.querySelector('[data-testid="ref-chip"]'),
+              hasWizardStep: !!document.querySelector('[data-testid="wizard-step"]'),
+            },
           };
         });
         line.push(`${device} HTTP ${status} · ${w}px · ล้นแนวนอน ${probe.overflow}px${navOk ? "" : " · nav timeout"}`);
@@ -979,6 +1019,35 @@ try {
           const ok15 = probe.overflow === 0;
           if (!ok15) failures++;
           console.log(`  ${ok15 ? "✅" : "❌"} [${spec.name}/${device}] ไม่ล้นแนวนอน: scrollWidth เกิน ${probe.overflow}px (ต้อง 0)`);
+        }
+
+        // WO 1.6 — wizard เอกสารปรับปรุงหนี้ (§5.2 J) เทียบ g3-creditnote-wizard.png
+        if (ASSERT && WO === "1.6") {
+          const c16: [boolean, string][] = [];
+          if (spec.name === "cn-wizard-step1") {
+            c16.push([probe.wizard.hasStep1, `ขั้น ① ขึ้นจริง [data-testid="adjust-wizard-step1"]`]);
+            c16.push([probe.wizard.hasWizardStep, `มีสเต็ปเปอร์ [data-testid="wizard-step"]`]);
+            c16.push([probe.wizard.rowCount >= 1, `ตารางมีแถวอย่างน้อย 1 แถว (เจอ ${probe.wizard.rowCount})`]);
+            c16.push([
+              probe.wizard.selectedRowTestId === `ref-row-${E.fixtures.invSimilanViewDocNo}`,
+              `หลังคลิกแล้วแถว IV ${E.fixtures.invSimilanViewDocNo} ถูกไฮไลต์เลือกไว้ (data-selected="1") — เจอ "${probe.wizard.selectedRowTestId}"`,
+            ]);
+            c16.push([probe.wizard.btnNextDisabled === false, `ปุ่ม "ถัดไป" เปิดใช้งานหลังเลือกแถว (btn-next ไม่ disabled)`]);
+            if (device === "mobile") c16.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
+          }
+          if (spec.name === "cn-wizard-step2") {
+            c16.push([probe.editor.hasForm, `ขั้น ② เป็นฟอร์มเดียวกับ DocEditorV2 [data-testid="doc-editor-v2"]`]);
+            c16.push([probe.wizard.hasWizardStep, `มีสเต็ปเปอร์ [data-testid="wizard-step"] (① เลือกเอกสาร ✓ · ② current)`]);
+            c16.push([probe.wizard.hasRefChip, `มี chip อ้างอิงเอกสารเดิม [data-testid="ref-chip"]`]);
+            c16.push([probe.wizard.hasCapLine, `มีบรรทัดเพดาน [data-testid="cap-line"]`]);
+            c16.push([probe.testids["cap-line"]?.includes("62,250.00") ?? false, `cap-line มีข้อความ "62,250.00" (เจอ "${probe.testids["cap-line"]}")`]);
+            c16.push([probe.wizard.hasReasonSelect, `มีช่องเลือกเหตุผล [data-testid="reason-select"]`]);
+            if (device === "mobile") c16.push([probe.overflow === 0, `มือถือไม่ล้นแนวนอน (390px) — เจอล้น ${probe.overflow}px`]);
+          }
+          for (const [okc, label] of c16) {
+            if (!okc) failures++;
+            console.log(`  ${okc ? "✅" : "❌"} [${spec.name}/${device}] ${label}`);
+          }
         }
 
         // WO 0.4 shell V2 — เช็คโครงสร้างเมนู (ทุกหน้าที่มี layout บัญชี จะมี tabbar/breadcrumb เหมือนกัน)

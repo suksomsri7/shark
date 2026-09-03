@@ -151,6 +151,11 @@ export default async function GoodsIssuePage({
         },
       ]}
       rows={result.rows}
+      rowActionsFor={(r) =>
+        r.status === "ISSUED"
+          ? [{ label: "สร้างใบส่งคืน", href: `${pathname}/return/new?ref=${r.id}` }]
+          : []
+      }
       mobileTitle={(r) => (
         <Link
           href={`${pathname}#new`}

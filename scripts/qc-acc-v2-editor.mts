@@ -245,7 +245,10 @@ eq("E3 เส้นทางแก้ไข (ใบสั่งซื้อส�
 eq("E3 ฝั่งของเอกสาร: INVOICE = รายรับ", cfg.sideOf("INVOICE"), "revenue");
 eq("E3 ฝั่งของเอกสาร: EXPENSE = รายจ่าย", cfg.sideOf("EXPENSE"), "expense");
 assert("E3 ใบเสร็จ/ใบกำกับ สร้างตรง ๆ ไม่ได้ (เกิดจากการแปลง)", !cfg.canCreateDirect("RECEIPT") && !cfg.canCreateDirect("TAX_INVOICE"));
-assert("E3 ใบลด/เพิ่มหนี้ (ทั้ง 2 ฝั่ง) สร้างตรง ๆ ไม่ได้", ["CREDIT_NOTE", "DEBIT_NOTE", "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED"].every((t) => !cfg.canCreateDirect(t as never)));
+// WO 1.6: CN/DN/CNR/DNR เปลี่ยนจาก "ห้ามสร้างตรง" (เกิดจากการแปลงเท่านั้น) → เข้า /new ได้ตรง ๆ ผ่าน wizard 2 ขั้น
+// (§5.2 J — ขั้น ① เลือกเอกสารอ้างอิง "หรือไม่อ้างอิง" → ขั้น ② ฟอร์มเดิม) ดู ledger/wo-notes/1.6.md
+assert("E3 ใบลด/เพิ่มหนี้ (ทั้ง 2 ฝั่ง) เข้า /new ตรงได้แล้ว (WO 1.6 wizard)", ["CREDIT_NOTE", "DEBIT_NOTE", "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED"].every((t) => cfg.canCreateDirect(t as never)));
+assert("E3 positive control: RECEIPT/TAX_INVOICE/PURCHASE_TAX_INVOICE ยังคงสร้างตรงไม่ได้ (ไม่ได้เปิดหมดทุกชนิด)", !cfg.canCreateDirect("PURCHASE_TAX_INVOICE"));
 assert("E3 ใบแจ้งหนี้/ใบเสนอราคา/ค่าใช้จ่าย สร้างตรงได้", ["QUOTATION", "INVOICE", "EXPENSE", "PURCHASE", "PURCHASE_ORDER"].every((t) => cfg.canCreateDirect(t as never)));
 eq("E3 สาย stepper รายรับ (§5.2 A)", cfg.stepChainFor("INVOICE").join(","), "QUOTATION,INVOICE,RECEIPT,TAX_INVOICE");
 eq("E3 สาย stepper ฝั่งค่าใช้จ่าย", cfg.stepChainFor("EXPENSE").join(","), "PURCHASE_ORDER,EXPENSE,PURCHASE_TAX_INVOICE");

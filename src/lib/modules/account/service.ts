@@ -1134,7 +1134,9 @@ async function depositAvailable(
 }
 
 // ยอดที่ยังลดหนี้ได้ของเอกสารเดิม (CN cap) = grandTotal ต้นทาง − Σ ใบลดหนี้ที่ออกแล้วอ้างต้นทางนี้
-async function creditAvailable(
+// WO 1.6: export ให้ DocEditorPage เรียกอ่านอย่างเดียว (ส่ง `prisma` แทน `tx` ได้ — โครงสร้างเข้ากันได้)
+// สำหรับแสดง "cap-line" ก่อนอนุมัติ — ค่าจริงยังถูกตรวจซ้ำใน issueDocument ตอนอนุมัติเสมอ
+export async function creditAvailable(
   tx: Prisma.TransactionClient,
   systemId: string,
   sourceDocId: string,
@@ -1158,6 +1160,11 @@ async function creditAvailable(
   const used = priorCns.reduce((s, c) => s + c.grandTotal, 0);
   // F-04: CN cap = ยอดคงเหลือค้างชำระจริง (grandTotal − ที่ชำระแล้ว − CN เดิม)
   return Math.max(0, src.grandTotal - src.paidTotal - used);
+}
+
+/** WO 1.6 — เวอร์ชันไม่ต้องมี tx (นอก transaction) ให้ DocEditorPage เรียกแสดง "cap-line" ได้โดยไม่ต้อง import prisma เอง (F5) */
+export function creditAvailableNow(systemId: string, sourceDocId: string, excludeId?: string): Promise<number> {
+  return creditAvailable(prisma, systemId, sourceDocId, excludeId);
 }
 
 // ใบมัดจำที่ยังหักได้ของผู้ติดต่อ (สำหรับ picker หักมัดจำในใบแจ้งหนี้)
@@ -1388,6 +1395,20 @@ export async function createDocument(input: {
         },
       });
     }
+    // WO 1.6 §5.2 J — เอกสารอ้างอิงจาก wizard ขั้น ① (CN/DN) — สร้าง relation ADJUST ไว้ตั้งแต่ตอนร่าง
+    // (ต่างจาก `convertDocument` เดิมที่สร้าง doc+relation พร้อมกันในทีเดียว — เส้นทางนี้แยกเป็น 2 จังหวะ
+    // เพราะ wizard ให้แก้บรรทัดก่อนอนุมัติได้ · ชนิดที่ RELATION_FOR ไม่ใช่ "ADJUST" จะไม่สร้างอะไรเพิ่ม)
+    if (input.sourceDocId && RELATION_FOR[input.docType] === "ADJUST") {
+      await tx.accountDocumentRelation.create({
+        data: {
+          tenantId: input.tenantId,
+          systemId: input.systemId,
+          fromId: input.sourceDocId,
+          toId: doc.id,
+          type: "ADJUST",
+        },
+      });
+    }
     return doc;
   });
 }
@@ -1522,12 +1543,12 @@ export async function issueDocument(
       if (doc.docType === "TAX_INVOICE" && !normalizeTaxId(settings.taxId))
         throw new Error("กรุณากรอกเลขประจำตัวผู้เสียภาษีของกิจการในการตั้งค่าก่อนออกใบกำกับภาษี (ม.86/4)");
 
-      // ── CN/DN (F4, tax-M3): บังคับอ้างเอกสารเดิม + เหตุผลสรรพากร + CN cap ≤ คงเหลือของเอกสารเดิม ──
+      // ── CN/DN (F4, tax-M3, WO 1.6): เหตุผลสรรพากรบังคับเสมอ · อ้างอิงเอกสารเดิมเป็นทางเลือก (§5.2 J
+      //    "ไม่อ้างอิงเอกสารเดิม") · CN cap ≤ คงเหลือของเอกสารเดิม **เฉพาะเมื่อมีการอ้างอิง** (ไม่อ้างอิง = ไม่มีเพดาน)
       if (doc.docType === "CREDIT_NOTE" || doc.docType === "DEBIT_NOTE") {
-        if (!doc.sourceDocId) throw new Error("ต้องอ้างอิงเอกสารเดิม (ใบแจ้งหนี้/ใบเสร็จ/ใบกำกับภาษี)");
         if (!doc.adjustReason || doc.adjustReason.trim().length === 0)
           throw new Error("ต้องระบุเหตุผลการออก (ตามประกาศสรรพากร)");
-        if (doc.docType === "CREDIT_NOTE") {
+        if (doc.docType === "CREDIT_NOTE" && doc.sourceDocId) {
           const cap = await creditAvailable(tx, systemId, doc.sourceDocId, id);
           if (doc.grandTotal > cap + 1)
             throw new Error(`ยอดใบลดหนี้เกินยอดคงเหลือของเอกสารเดิม (คงเหลือ ฿${baht(cap)})`);

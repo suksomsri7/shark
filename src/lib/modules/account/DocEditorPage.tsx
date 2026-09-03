@@ -7,6 +7,7 @@ import { DocEditorV2 } from "@/components/account-v2/DocEditorV2";
 import {
   newLineDraft,
   unpackDescription,
+  unpackAdjustReason,
   type AttachmentView,
   type DocDraftValue,
   type FavoriteSet,
@@ -19,6 +20,7 @@ import {
   docChainMap,
   getDocFavorites,
   getDocument,
+  getDocRef,
   getSettings,
   listContacts,
   listTenantMembers,
@@ -26,8 +28,9 @@ import {
   outstandingByContacts,
   previewNextDocNo,
   priceModeOf,
+  creditAvailableNow,
 } from "./service";
-import { previewNextExpenseDocNo } from "./expense";
+import { previewNextExpenseDocNo, creditAvailableExpenseNow } from "./expense";
 import { listPaymentChannels } from "./payment";
 import { listExpenseAccounts, listIncomeAccounts, listProducts, listUnits } from "./product";
 import { listAttachments } from "./attachment";
@@ -42,6 +45,9 @@ import {
   STEP_CODE,
   stepChainFor,
   stepLabelOf,
+  isAdjustType,
+  adjustRefDocTypesFor,
+  adjustRefLabelFor,
 } from "./doc-editor-config";
 
 // ─────────────────────────────────────────────────────────────
@@ -63,16 +69,20 @@ export async function DocEditorPage({
   systemId,
   docType,
   docId,
+  refId,
 }: {
   systemId: string;
   docType: AccountDocType;
   docId?: string;
+  /** WO 1.6 §5.2 J — เอกสารอ้างอิงที่เลือกจากขั้น ① ของ wizard (เฉพาะตอนสร้างใหม่ `?ref=<id>`) */
+  refId?: string;
 }) {
   const def = editorDefOf(docType);
   if (!def) notFound();
   const { tenantId } = await requireAccountPage(systemId, "account.doc.create");
   const base = `/app/sys/${systemId}/account`;
   const listPath = editorListPath(base, docType);
+  const adjustMode = isAdjustType(docType);
 
   const settings = await getSettings(tenantId, systemId);
   // โหมดง่าย/นักบัญชี ตัดสินฝั่ง server จากคุกกี้ (§0.3-1) แล้วส่งลงเป็น prop — ห้ามให้ client เดาเอง
@@ -86,6 +96,24 @@ export async function DocEditorPage({
   const doc = docId ? await getDocument(tenantId, systemId, docId) : null;
   if (docId && (!doc || doc.docType !== docType)) notFound();
   if (doc && doc.status !== "DRAFT") redirect(editorDetailPath(base, docType, doc.id));
+
+  // ── WO 1.6 §5.2 J — เอกสารอ้างอิงของ wizard ปรับปรุงหนี้ (ขั้น ②) ──
+  // ร่างเดิม (docId มีค่า) → อ้างอิงมาจาก doc.sourceDocId ที่ persist ไว้แล้วเสมอ (ตัด `?ref=` ทิ้ง กันคนแก้ผ่าน URL)
+  // สร้างใหม่ (docId ไม่มีค่า) → อ้างอิงมาจาก query `?ref=` ของ wizard ขั้น ①
+  const effectiveRefId = docId ? (doc?.sourceDocId ?? null) : adjustMode && refId ? refId : null;
+  let refDoc: Awaited<ReturnType<typeof getDocument>> | null = null;
+  let capSatang: number | null = null;
+  if (adjustMode && effectiveRefId) {
+    const refRow = await getDocRef(tenantId, systemId, effectiveRefId);
+    // เชื่อ id จาก query ไม่ได้เฉย ๆ — ต้องเป็นของ tenant/system นี้ + เป็นชนิดที่อนุญาตให้อ้างอิงของ docType นี้เท่านั้น
+    if (refRow && adjustRefDocTypesFor(docType).includes(refRow.docType)) {
+      refDoc = await getDocument(tenantId, systemId, effectiveRefId);
+      if (refDoc) {
+        if (docType === "CREDIT_NOTE") capSatang = await creditAvailableNow(systemId, effectiveRefId, docId);
+        if (docType === "CREDIT_NOTE_RECEIVED") capSatang = await creditAvailableExpenseNow(systemId, effectiveRefId, docId);
+      }
+    }
+  }
 
   const side = sideOf(docType);
   const today = thaiDateKey(new Date());
@@ -134,11 +162,13 @@ export async function DocEditorPage({
   });
 
   // ── ค่าเริ่มต้นของฟอร์ม ──
-  const contactId = doc?.contactId ?? null;
+  // WO 1.6: สร้างใหม่จาก wizard (ไม่มี doc ของตัวเองแต่มี refDoc) → ผู้ติดต่อ/รายการ ดึงมาจากเอกสารอ้างอิงให้แก้ไข
+  const contactId = doc?.contactId ?? (!doc ? (refDoc?.contactId ?? null) : null);
   const contactRow = contactRows.find((c) => c.id === contactId);
   const dueDays = docType === "QUOTATION" ? settings.defaultValidDays : (contactRow?.creditTermDays || settings.defaultDueDays);
-  const lines: LineDraft[] = doc?.lines.length
-    ? doc.lines.map((l) => {
+  const lineSourceDoc = doc ?? (!doc ? refDoc : null);
+  const lines: LineDraft[] = lineSourceDoc?.lines.length
+    ? lineSourceDoc.lines.map((l) => {
         const { name, description } = unpackDescription(l.description);
         const qty = Number(l.qty) || 0;
         return {
@@ -161,6 +191,7 @@ export async function DocEditorPage({
 
   const lineBaseSum = lines.reduce((s, l) => s + Math.max(0, Math.round(l.qty * l.unitPriceSatang) - l.discount.satang * l.qty), 0);
   const docDiscountAmount = doc?.discountAmount ?? 0;
+  const reasonSeed = unpackAdjustReason(doc?.adjustReason);
   const initial: DocDraftValue = {
     docNo: docNoPreview,
     contactId,
@@ -181,6 +212,8 @@ export async function DocEditorPage({
         : { mode: "amount", satang: docDiscountAmount, percentBp: 0 },
     note: doc?.note ?? settings.footerNote ?? "",
     internalNote: doc?.internalNote ?? "",
+    adjustReasonCode: reasonSeed.code,
+    adjustReasonText: reasonSeed.text,
   };
 
   // ── WO 1.4 ส่วน D/F ──
@@ -201,6 +234,17 @@ export async function DocEditorPage({
           label: "ใบแจ้งหนี้",
         }
       : null;
+
+  // WO 1.6 §5.2 J — chip "อ้างอิง<label> <docNo>" + เพดานยอดคงเหลือ (cap-line) ในหัวฟอร์มขั้น ②
+  const refDocView = refDoc
+    ? {
+        id: refDoc.id,
+        docNo: refDoc.docNo,
+        href: editorDetailPath(base, refDoc.docType, refDoc.id),
+        label: adjustRefLabelFor(docType),
+        outstandingSatang: Math.max(0, refDoc.grandTotal - refDoc.paidTotal),
+      }
+    : null;
 
   const attachmentViews: AttachmentView[] = attachments.map((a) => ({
     id: a.id,
@@ -260,6 +304,9 @@ export async function DocEditorPage({
         paymentEnabled={paymentEnabled}
         paymentChannels={paymentChannels}
         sourceDoc={sourceDoc}
+        adjustMode={adjustMode}
+        refDoc={refDocView}
+        capSatang={capSatang}
       />
     </div>
   );

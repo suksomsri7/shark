@@ -18,21 +18,24 @@ import {
   getDraftMeta,
   saveDocFavorite,
   searchContactPickerRows,
+  getDocRef,
+  listDocumentsPaged,
+  STATUS_LABEL,
   type LineInput,
 } from "./service";
 import { searchProductPickerRows } from "./product";
 import { computeDocTotals, type AmountOrPercent, type PriceMode } from "./totals";
-import { createExpenseDoc, updateExpenseDoc, issueExpenseDoc, EXP_ROUTE, WHT_INCOME_LABEL } from "./expense";
+import { createExpenseDoc, updateExpenseDoc, issueExpenseDoc, listExpenseDocsPaged, EXP_ROUTE, WHT_INCOME_LABEL } from "./expense";
 import { createAttachment, deleteAttachment } from "./attachment";
 import { uploadFile, storageEnabled } from "@/lib/storage/service";
-import { editorDetailPath, editorListPath, sideOf } from "./doc-editor-config";
+import { editorDetailPath, editorListPath, sideOf, isAdjustType, adjustRefDocTypesFor } from "./doc-editor-config";
 import type {
   ContactOption,
   DocDraftPayload,
   ProductOption,
   SaveDraftResult,
 } from "@/components/account-v2/doc-editor-types";
-import { packDescription } from "@/components/account-v2/doc-editor-types";
+import { packDescription, packAdjustReason } from "@/components/account-v2/doc-editor-types";
 
 // ─────────────────────────────────────────────────────────────
 // editor-actions.ts — server actions ของฟอร์มเอกสาร V2 (WO 1.3)
@@ -106,6 +109,8 @@ function sanitize(payload: DocDraftPayload) {
     docDiscount: amountOrPercent(v.docDiscount),
     note: trim(v.note, 2000),
     internalNote: trim(v.internalNote, 2000),
+    adjustReasonCode: trim(v.adjustReasonCode, 30),
+    adjustReasonText: trim(v.adjustReasonText, 500),
     lines: lines.filter((l) => l.name.length > 0),
   };
 }
@@ -170,6 +175,10 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
     );
     const vatTiming: AccountVatTiming = v.recognizeVatNow ? "ON_ISSUE" : "ON_PAYMENT";
 
+    // ── WO 1.6 §5.2 J — เอกสารปรับปรุงหนี้: เหตุผล (เก็บเป็นข้อความก้อนเดียวใน `adjustReason`) ──
+    const isAdjust = isAdjustType(docType);
+    const adjustReason = isAdjust ? packAdjustReason(v.adjustReasonCode, v.adjustReasonText) || null : null;
+
     let docId = trim(payload?.docId, 40);
     if (docId) {
       // ต้องเป็นร่างของระบบนี้เท่านั้น (ตรวจก่อนแตะ — updateDocument ตรวจซ้ำอีกชั้น)
@@ -187,6 +196,7 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
               vatTiming,
               discountAmount: totals.discountAmount,
               note: v.note || null,
+              adjustReason: isAdjust ? adjustReason : undefined,
               lines: lineInputs,
             })
           : await updateExpenseDoc(tenantId, systemId, docId, {
@@ -196,10 +206,18 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
               vatMode: totals.vatMode,
               discountAmount: totals.discountAmount,
               note: v.note || null,
+              adjustReason: isAdjust ? adjustReason : undefined,
               lines: lineInputs,
             });
       if (!res.ok) return { ok: false, reason: res.reason };
     } else {
+      // เอกสารอ้างอิงของ wizard ขั้น ① — ตรวจว่าเป็นของ tenant/system นี้จริง + เป็นชนิดที่อนุญาตให้อ้างอิงเท่านั้น
+      // (ไม่เชื่อ id ที่ client ส่งมาเฉย ๆ — กันข้ามระบบ/ปลอมชนิดเอกสาร)
+      let sourceDocId: string | null = null;
+      if (isAdjust && payload.refId) {
+        const ref = await getDocRef(tenantId, systemId, trim(payload.refId, 40));
+        if (ref && adjustRefDocTypesFor(docType).includes(ref.docType)) sourceDocId = ref.id;
+      }
       const doc =
         side === "revenue"
           ? await createDocument({
@@ -214,6 +232,8 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
               vatTiming,
               discountAmount: totals.discountAmount,
               note: v.note || null,
+              adjustReason,
+              sourceDocId,
               lines: lineInputs,
               createdById: userId,
             })
@@ -227,6 +247,8 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
               vatMode: totals.vatMode,
               discountAmount: totals.discountAmount,
               note: v.note || null,
+              adjustReason,
+              sourceDocId,
               lines: lineInputs,
               createdById: userId,
             });
@@ -306,6 +328,94 @@ export async function approveDocAction(formData: FormData) {
 function docTypeEditSuffix(docType: AccountDocType, id: string): string {
   const list = editorListPath("", docType).replace(/^\//, "");
   return `${list}/${id}/edit`;
+}
+
+// ─────────────────── wizard เอกสารปรับปรุงหนี้ ขั้น ① (WO 1.6 §5.2 J) ───────────────────
+
+export type AdjustCandidateRow = {
+  id: string;
+  docNo: string | null;
+  issueDate: Date;
+  dueDate: Date | null;
+  contactName: string | null;
+  grandTotalSatang: number;
+  outstandingSatang: number;
+  statusLabel: string;
+};
+
+export type AdjustCandidatePage = {
+  rows: AdjustCandidateRow[];
+  total: number;
+  page: number;
+  pageCount: number;
+};
+
+const EMPTY_CANDIDATES: AdjustCandidatePage = { rows: [], total: 0, page: 1, pageCount: 1 };
+
+/**
+ * แกนของขั้น ① (ไม่มีด่านสิทธิ์ — เรียกได้ตรง ๆ จากข้อสอบ house harness เพราะไม่แตะ `next/headers`)
+ * `searchAdjustCandidatesAction` ด้านล่างคือชั้นห่อที่ผ่านด่าน loadAccountSystem/assertAccountCan ก่อนเรียกตัวนี้
+ */
+export async function buildAdjustCandidatePage(
+  tenantId: string,
+  systemId: string,
+  docType: string,
+  refDocType: string,
+  filters: { contactId?: string; from?: string; to?: string; q?: string; page?: number },
+): Promise<AdjustCandidatePage> {
+  const dt = trim(docType, 40) as AccountDocType;
+  const refDt = trim(refDocType, 40) as AccountDocType;
+  if (!isAdjustType(dt) || !adjustRefDocTypesFor(dt).includes(refDt)) return EMPTY_CANDIDATES;
+
+  const input = {
+    docType: refDt,
+    status: "ALL" as const,
+    contactId: filters.contactId ? trim(filters.contactId, 40) : undefined,
+    from: filters.from,
+    to: filters.to,
+    q: filters.q ? trim(filters.q, 80) : undefined,
+    page: filters.page ?? 1,
+    pageSize: 20,
+    sort: "issueDate" as const,
+  };
+  const page =
+    sideOf(dt) === "revenue"
+      ? await listDocumentsPaged(tenantId, systemId, input)
+      : await listExpenseDocsPaged(tenantId, systemId, input);
+
+  return {
+    rows: page.rows
+      // ร่าง/ยกเลิก ไม่ใช่เอกสารที่อ้างอิงได้ (ยังไม่มีผลทางบัญชี หรือถูกยกเลิกไปแล้ว)
+      .filter((r) => r.status !== "DRAFT" && r.status !== "CANCELLED" && r.status !== "VOIDED")
+      .map((r) => ({
+        id: r.id,
+        docNo: r.docNo,
+        issueDate: r.issueDate,
+        dueDate: r.dueDate,
+        contactName: r.contact?.name ?? null,
+        grandTotalSatang: r.grandTotal,
+        outstandingSatang: Math.max(0, r.grandTotal - r.paidTotal),
+        statusLabel: STATUS_LABEL[r.status] ?? r.status,
+      })),
+    total: page.total,
+    page: page.page,
+    pageCount: page.pageCount,
+  };
+}
+
+/**
+ * ขั้น ① ของ wizard CN/DN/CNR/DNR — รายการเอกสารอ้างอิงที่เลือกได้ (ระบบเดียวกัน + สิทธิ์เดียวกับสร้างเอกสาร)
+ * `refDocType` ต้องอยู่ใน `adjustRefDocTypesFor(docType)` เท่านั้น (กันเลือกชนิดที่ไม่เกี่ยวข้อง)
+ */
+export async function searchAdjustCandidatesAction(
+  systemId: string,
+  docType: string,
+  refDocType: string,
+  filters: { contactId?: string; from?: string; to?: string; q?: string; page?: number },
+): Promise<AdjustCandidatePage> {
+  const { auth, tenantId } = await loadAccountSystem(trim(systemId, 40));
+  assertAccountCan(auth, "account.doc.create");
+  return buildAdjustCandidatePage(tenantId, systemId, docType, refDocType, filters);
 }
 
 // ─────────────────── lookup (ผู้ติดต่อ / สินค้า) ───────────────────

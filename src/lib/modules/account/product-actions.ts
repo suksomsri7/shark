@@ -229,6 +229,8 @@ export async function createGoodsMovementAction(formData: FormData) {
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.product.manage");
   const docType = str(formData, "docType") === "GOODS_ISSUE_RETURN" ? "GOODS_ISSUE_RETURN" : "GOODS_ISSUE";
+  // WO 1.6 §5.2 J — RPR จาก wizard ส่ง sourceDocId (PRR ที่เลือกในขั้น ①) + เหตุผล มาด้วย — createGoodsMovement ตรวจเพดานเอง
+  const sourceDocId = docType === "GOODS_ISSUE_RETURN" ? str(formData, "sourceDocId") || null : null;
   const res = await createGoodsMovement({
     tenantId,
     systemId,
@@ -239,6 +241,8 @@ export async function createGoodsMovementAction(formData: FormData) {
     lines: parseGoodsLines(formData),
     allowNegative: str(formData, "allowNegative") === "1",
     createdById: userId,
+    sourceDocId,
+    adjustReason: str(formData, "adjustReason") || null,
   });
   await writeAudit({
     tenantId,
@@ -246,7 +250,7 @@ export async function createGoodsMovementAction(formData: FormData) {
     action: "account.product.manage",
     targetType: "AccountDocument",
     targetId: res.ok ? res.id : undefined,
-    after: res.ok ? { docNo: res.docNo, docType } : { error: res.reason },
+    after: res.ok ? { docNo: res.docNo, docType, sourceDocId } : { error: res.reason },
   });
   revalidatePath(goodsPath(systemId));
   revalidatePath(productsPath(systemId, "catalog"));

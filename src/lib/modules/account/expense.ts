@@ -22,6 +22,7 @@ import {
   parseDay,
   clampPageSize,
   clampPage,
+  baht,
   type LineInput,
   type DocStatusFilter,
   type DocSort,
@@ -470,6 +471,38 @@ async function paidDepositAvailable(
   return Math.max(0, dep.grandTotal - used);
 }
 
+// ยอดที่ยังลดหนี้ได้ของเอกสารเดิม (CNR cap, WO 1.6) = grandTotal ต้นทาง (PUR/EXP) − ที่จ่ายแล้ว
+// − Σ ใบรับลดหนี้ที่ออกแล้วอ้างต้นทางนี้ — mirror ของ `creditAvailable` ฝั่งขาย (service.ts) แต่คิดจาก AP แทน AR
+export async function creditAvailableExpense(
+  db: Prisma.TransactionClient | typeof prisma,
+  systemId: string,
+  sourceDocId: string,
+  excludeId?: string,
+): Promise<number> {
+  const src = await db.accountDocument.findFirst({
+    where: { id: sourceDocId, systemId },
+    select: { grandTotal: true, paidTotal: true },
+  });
+  if (!src) return 0;
+  const priorCnrs = await db.accountDocument.findMany({
+    where: {
+      systemId,
+      docType: "CREDIT_NOTE_RECEIVED",
+      sourceDocId,
+      status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] },
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: { grandTotal: true },
+  });
+  const used = priorCnrs.reduce((s, c) => s + c.grandTotal, 0);
+  return Math.max(0, src.grandTotal - src.paidTotal - used);
+}
+
+/** WO 1.6 — เวอร์ชันไม่ต้องมี tx ให้ DocEditorPage เรียกแสดง "cap-line" ได้โดยไม่ต้อง import prisma เอง (F5) */
+export function creditAvailableExpenseNow(systemId: string, sourceDocId: string, excludeId?: string): Promise<number> {
+  return creditAvailableExpense(prisma, systemId, sourceDocId, excludeId);
+}
+
 export type DeductibleDeposit = {
   id: string;
   docNo: string | null;
@@ -711,6 +744,18 @@ export async function createExpenseDoc(input: {
         },
       });
     }
+    // WO 1.6 §5.2 J — เอกสารอ้างอิงจาก wizard ขั้น ① (CNR/DNR) — mirror ของ service.ts createDocument
+    if (input.sourceDocId && (input.docType === "CREDIT_NOTE_RECEIVED" || input.docType === "DEBIT_NOTE_RECEIVED")) {
+      await tx.accountDocumentRelation.create({
+        data: {
+          tenantId: input.tenantId,
+          systemId: input.systemId,
+          fromId: input.sourceDocId,
+          toId: doc.id,
+          type: "ADJUST",
+        },
+      });
+    }
     return doc;
   });
 }
@@ -879,6 +924,18 @@ export async function issueExpenseDoc(
       if (doc.direction !== "IN") throw new Error("ไม่ใช่เอกสารฝั่งจ่าย");
       if (doc.status !== "DRAFT") throw new Error("เอกสารนี้ออกแล้ว");
       if (doc.lines.length === 0) throw new Error("ต้องมีรายการอย่างน้อย 1 รายการ");
+
+      // ── CNR/DNR (WO 1.6, mirror F4 ฝั่งขาย): เหตุผลบังคับเสมอ · อ้างอิงเอกสารเดิมเป็นทางเลือก ──
+      //    CNR cap ≤ คงเหลือของเอกสารเดิม (PUR/EXP) **เฉพาะเมื่อมีการอ้างอิง**
+      if (doc.docType === "CREDIT_NOTE_RECEIVED" || doc.docType === "DEBIT_NOTE_RECEIVED") {
+        if (!doc.adjustReason || doc.adjustReason.trim().length === 0)
+          throw new Error("ต้องระบุเหตุผลการออก (ตามประกาศสรรพากร)");
+        if (doc.docType === "CREDIT_NOTE_RECEIVED" && doc.sourceDocId) {
+          const cap = await creditAvailableExpense(tx, systemId, doc.sourceDocId, id);
+          if (doc.grandTotal > cap + 1)
+            throw new Error(`ยอดรับใบลดหนี้เกินยอดคงเหลือของเอกสารเดิม (คงเหลือ ฿${baht(cap)})`);
+        }
+      }
 
       // ── WO 1.2: ล็อกการหักเงินมัดจำจ่ายตอนออกเอกสาร (mirror F2 ฝั่งขาย) ──
       //    ตรวจว่าใบมัดจำยัง "รอหักมัดจำ" + ยอดไม่เกินคงเหลือ · หักครบแล้ว → ใบมัดจำเป็น DEDUCTED

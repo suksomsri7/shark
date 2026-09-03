@@ -8,11 +8,12 @@
 //   "ready" = มีหน้าจริงอยู่ใต้ src/app/app/sys/[id]/account/** วันนี้ (นับรวม route ที่ใช้ query param
 //             สลับ docType/tab เดิมของ WO ก่อนหน้า เช่น po?docType=ASSET_PURCHASE_ORDER)
 //   "soon"  = ยังไม่มีหน้า (จะทยอยแทนใน WO เฟส 1 เป็นต้นไป) → เมนูจาง + ป้าย "เร็ว ๆ นี้" + href:"#" aria-disabled
-//             (รายการที่ยังไม่มีหน้าจริงตาม WO 0.4: ดูภาพรวม (ทุกหมวด) · ใบจ่ายเงินมัดจำ (DP) · รับใบลดหนี้/เพิ่มหนี้ (CNR/DNR)
+//             (รายการที่ยังไม่มีหน้าจริง ล่าสุดหลัง WO 1.6: ดูภาพรวม (ทุกหมวด)
 //              · ใบรวมจ่าย (CP) · นำเข้า (เอกสาร/สินค้า) · กลุ่มผู้ติดต่อ · รวมผู้ติดต่อซ้ำ · การเชื่อมต่อคู่ค้า · หน่วย
-//              · ใบส่งคืนเบิกสินค้า (RPR) · ใบปรับต้นทุนสินค้า (CA) · ไปที่คลังสินค้า ↗ (ต้อง lookup ระบบข้ามโมดูล — เลื่อนไป WO เชื่อมระบบ)
+//              · ใบปรับต้นทุนสินค้า (CA) · ไปที่คลังสินค้า ↗ (ต้อง lookup ระบบข้ามโมดูล — เลื่อนไป WO เชื่อมระบบ)
 //              · สำรองรับ/จ่าย · โอนระหว่างช่องทาง · กระทบยอดธนาคาร · กล่องขาเข้า · AI ช่วยบันทึก (ถ่ายบิล — ยังไม่มีจุดเข้าในฟอร์ม)
-//              · DBD e-Filing · ตั้งค่า/นโยบายบัญชี/สิทธิ์ผู้ใช้งาน/การเชื่อมต่อ (หน้าตั้งค่าวันนี้มีแผ่นเดียวรวมองค์กร+เอกสาร))
+//              · DBD e-Filing · ตั้งค่า/นโยบายบัญชี/สิทธิ์ผู้ใช้งาน/การเชื่อมต่อ (หน้าตั้งค่าวันนี้มีแผ่นเดียวรวมองค์กร+เอกสาร)
+//              (WO 1.2 ทำ DP/CNR/DNR ให้ "ready" ไปแล้ว · WO 1.6 ทำ CN/DN/CNR/DNR สร้างตรงได้ผ่าน wizard + RPR "ready")
 //
 // ไอคอน: ค่า `icon` เป็นคีย์ของ src/components/account-v2/AccountIcon.tsx (เส้นบาง stroke 1.7 ตาม mockup.html)
 // **ไม่ใช่ emoji** — QC ของ WO 0.4 รอบ 2 (Fable) ตีกลับเพราะแถบเมนูใช้ emoji ซึ่ง UI_STANDARD ห้ามนอก nav/header
@@ -180,7 +181,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           icon: "in",
           testId: "CREDIT_NOTE",
           flyout: [
-            { label: "+ สร้างใบลดหนี้", href: `${base}/docs/CREDIT_NOTE#new` },
+            { label: "+ สร้างใบลดหนี้", href: `${base}/docs/CREDIT_NOTE/new` },
             { label: "ดูทั้งหมด", href: `${base}/docs/CREDIT_NOTE?tab=all`, countKey: "CREDIT_NOTE:all" },
             { label: "ล่าสุด", href: `${base}/docs/CREDIT_NOTE?tab=recent` },
           ],
@@ -192,7 +193,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           icon: "out",
           testId: "DEBIT_NOTE",
           flyout: [
-            { label: "+ สร้างใบเพิ่มหนี้", href: `${base}/docs/DEBIT_NOTE#new` },
+            { label: "+ สร้างใบเพิ่มหนี้", href: `${base}/docs/DEBIT_NOTE/new` },
             { label: "ดูทั้งหมด", href: `${base}/docs/DEBIT_NOTE?tab=all`, countKey: "DEBIT_NOTE:all" },
             { label: "ล่าสุด", href: `${base}/docs/DEBIT_NOTE?tab=recent` },
           ],
@@ -331,7 +332,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           status: "ready",
           icon: "in",
           testId: "CREDIT_NOTE_RECEIVED",
-          flyout: [{ label: "+ บันทึกรับใบลดหนี้", href: `${base}/credit-note-received#new` }],
+          flyout: [{ label: "+ บันทึกรับใบลดหนี้", href: `${base}/credit-note-received/new` }],
         }),
         doc({ // WO 1.2
           label: "รับใบเพิ่มหนี้",
@@ -339,7 +340,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
           status: "ready",
           icon: "out",
           testId: "DEBIT_NOTE_RECEIVED",
-          flyout: [{ label: "+ บันทึกรับใบเพิ่มหนี้", href: `${base}/debit-note-received#new` }],
+          flyout: [{ label: "+ บันทึกรับใบเพิ่มหนี้", href: `${base}/debit-note-received/new` }],
         }),
         soon("ใบรวมจ่าย", "report", "COMBINED_PAYMENT"),
         soon("นำเข้าเอกสาร", "import", "EXPENSE_IMPORT", true),
@@ -381,7 +382,14 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             { label: "ดูทั้งหมด", href: `${base}/goods-issue` },
           ],
         }),
-        soon("ใบส่งคืนเบิกสินค้า", "upload", "GOODS_ISSUE_RETURN"),
+        doc({ // WO 1.6 — RPR wizard 2 ขั้น (§5.2 J): เลือก PRR → กรอกจำนวนที่คืน (ยังไม่มีหน้ารายการแยก — ลิงก์ตรงไป wizard)
+          label: "ใบส่งคืนเบิกสินค้า",
+          href: `${base}/goods-issue/return/new`,
+          status: "ready",
+          icon: "upload",
+          testId: "GOODS_ISSUE_RETURN",
+          flyout: [{ label: "+ สร้างใบส่งคืนเบิกสินค้า", href: `${base}/goods-issue/return/new` }],
+        }),
         soon("ใบปรับต้นทุนสินค้า", "edit", "COST_ADJUSTMENT"),
         soon("นำเข้าสินค้า", "import", "PRODUCTS_IMPORT", true),
         soon("ไปที่คลังสินค้า ↗", "box", "INVENTORY_LINK"),

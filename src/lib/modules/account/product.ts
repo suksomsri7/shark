@@ -293,6 +293,59 @@ export type GoodsLineInput = {
   description?: string | null;
 };
 
+/**
+ * WO 1.6 §5.2 J — จำนวนที่ยังคืนได้ต่อสินค้า ของใบเบิก (PRR) หนึ่งใบ = จำนวนที่เบิกไว้ − Σ ที่คืนไปแล้ว
+ * (ใบส่งคืน RPR ก่อนหน้าที่อ้างอิง `sourceDocId` เดียวกัน) — ใช้ตรวจเพดานตอนสร้าง RPR ใหม่ (เพดานต่อบรรทัด/สินค้า)
+ */
+export async function returnableQtyForIssue(
+  db: Prisma.TransactionClient | typeof prisma,
+  tenantId: string,
+  systemId: string,
+  issueId: string,
+): Promise<Map<string, number>> {
+  const [issue, returns] = await Promise.all([
+    db.accountDocument.findFirst({
+      where: { id: issueId, tenantId, systemId, docType: "GOODS_ISSUE" },
+      include: { lines: { select: { productId: true, qty: true } } },
+    }),
+    db.accountDocument.findMany({
+      where: { tenantId, systemId, docType: "GOODS_ISSUE_RETURN", sourceDocId: issueId },
+      include: { lines: { select: { productId: true, qty: true } } },
+    }),
+  ]);
+  const issued = new Map<string, number>();
+  for (const l of issue?.lines ?? []) {
+    if (!l.productId) continue;
+    issued.set(l.productId, (issued.get(l.productId) ?? 0) + Number(l.qty));
+  }
+  const returned = new Map<string, number>();
+  for (const r of returns) {
+    for (const l of r.lines) {
+      if (!l.productId) continue;
+      returned.set(l.productId, (returned.get(l.productId) ?? 0) + Number(l.qty));
+    }
+  }
+  const out = new Map<string, number>();
+  for (const [productId, qty] of issued) out.set(productId, Math.max(0, qty - (returned.get(productId) ?? 0)));
+  return out;
+}
+
+/** เวอร์ชันไม่ต้องมี tx — ให้หน้า route (server component) เรียกแสดงเพดานต่อบรรทัดในขั้น ② ของ wizard RPR */
+export function returnableQtyForIssueNow(tenantId: string, systemId: string, issueId: string): Promise<Map<string, number>> {
+  return returnableQtyForIssue(prisma, tenantId, systemId, issueId);
+}
+
+/** ใบเบิก (PRR) 1 ใบพร้อมบรรทัด — สำหรับดึงมาแสดง/พรีฟิลในขั้น ② ของ wizard ใบส่งคืน (RPR) */
+export function getGoodsIssueDoc(tenantId: string, systemId: string, id: string) {
+  return prisma.accountDocument.findFirst({
+    where: { id, tenantId, systemId, docType: "GOODS_ISSUE" },
+    include: {
+      contact: { select: { id: true, name: true } },
+      lines: { orderBy: { sortOrder: "asc" }, include: { product: { select: { id: true, name: true, sku: true } } } },
+    },
+  });
+}
+
 // สร้างเอกสารเบิก/คืน + ตัด/คืน qtyOnHand ใน $transaction (ไม่โพสต์ GL)
 // GOODS_ISSUE = ตัดสต็อก (qtyOnHand -= qty) · GOODS_ISSUE_RETURN = คืน (qtyOnHand += qty)
 export async function createGoodsMovement(input: {
@@ -306,6 +359,10 @@ export async function createGoodsMovement(input: {
   lines: GoodsLineInput[];
   allowNegative?: boolean; // GOODS_ISSUE: อนุญาตให้สต็อกติดลบ (default = กัน)
   createdById?: string | null;
+  /** WO 1.6 §5.2 J — ใบเบิก (PRR) ที่ใบส่งคืนนี้อ้างอิง (เฉพาะ GOODS_ISSUE_RETURN จาก wizard) — สร้าง relation ADJUST ให้ */
+  sourceDocId?: string | null;
+  /** WO 1.6 §5.2 J — เหตุผลการคืน (ไม่บังคับ ต่างจาก CN/DN ที่บังคับตาม ม.86/10) */
+  adjustReason?: string | null;
 }): Promise<{ ok: true; id: string; docNo: string } | { ok: false; reason: string }> {
   const clean = input.lines
     .map((l) => ({ productId: l.productId, qty: Number(l.qty), description: l.description ?? null }))
@@ -333,6 +390,18 @@ export async function createGoodsMovement(input: {
         deltaById.set(l.productId, (deltaById.get(l.productId) ?? 0) + l.qty);
       }
 
+      // WO 1.6 §5.2 J — RPR อ้างอิง PRR: คืนได้ไม่เกินจำนวนที่เบิกจริง (หักที่คืนไปแล้วจากใบส่งคืนก่อนหน้า)
+      if (input.docType === "GOODS_ISSUE_RETURN" && input.sourceDocId) {
+        const remaining = await returnableQtyForIssue(tx, input.tenantId, input.systemId, input.sourceDocId);
+        for (const [productId, qty] of deltaById) {
+          const left = remaining.get(productId) ?? 0;
+          if (qty > left + 1e-9) {
+            const name = byId.get(productId)?.name ?? productId;
+            throw new Error(`คืน "${name}" เกินจำนวนที่เบิกไว้ (เบิก-คืนไปแล้วเหลือคืนได้ ${qtyText(left)})`);
+          }
+        }
+      }
+
       const docNo = await nextGoodsDocNo(tx, input.tenantId, input.systemId, input.docType, issueDate);
       const doc = await tx.accountDocument.create({
         data: {
@@ -347,6 +416,8 @@ export async function createGoodsMovement(input: {
           categoryId: input.categoryId || null,
           note: input.note?.trim() || null,
           createdById: input.createdById ?? null,
+          sourceDocId: input.sourceDocId ?? null,
+          adjustReason: input.adjustReason ?? null,
           lines: {
             create: clean.map((l, i) => ({
               tenantId: input.tenantId,
@@ -378,6 +449,17 @@ export async function createGoodsMovement(input: {
         await tx.accountProduct.update({
           where: { id: productId },
           data: { qtyOnHand: nextQty },
+        });
+      }
+      if (input.docType === "GOODS_ISSUE_RETURN" && input.sourceDocId) {
+        await tx.accountDocumentRelation.create({
+          data: {
+            tenantId: input.tenantId,
+            systemId: input.systemId,
+            fromId: input.sourceDocId,
+            toId: doc.id,
+            type: "ADJUST",
+          },
         });
       }
       return { id: doc.id, docNo };

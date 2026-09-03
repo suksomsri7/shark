@@ -26,7 +26,7 @@ export type ListFiltersValue = {
   amountMax?: string;
 };
 
-const PRESET_LABEL: Record<DateRangePreset, string> = {
+export const PRESET_LABEL: Record<DateRangePreset, string> = {
   this_month: "เดือนนี้",
   this_quarter: "ไตรมาสนี้",
   this_year: "ปีนี้",

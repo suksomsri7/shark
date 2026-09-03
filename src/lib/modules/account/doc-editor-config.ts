@@ -102,17 +102,44 @@ export function requiresLineAccount(docType: AccountDocType): boolean {
   return docType === "EXPENSE" || docType === "ASSET_PURCHASE" || docType === "PURCHASE_TAX_INVOICE";
 }
 
-/** ชนิดที่ห้ามสร้างตรง ๆ (เกิดจากการแปลงเท่านั้น — §5.1) */
+/** ชนิดที่ห้ามสร้างตรง ๆ (เกิดจากการแปลงเท่านั้น — §5.1)
+ * WO 1.6: CN/DN/CNR/DNR ย้ายออกจากลิสต์นี้ — เข้า `/new` ได้ตรง ๆ แล้วผ่าน wizard 2 ขั้น (§5.2 J) แทนที่จะบล็อกทิ้ง */
 export const CONVERT_ONLY_TYPES: readonly AccountDocType[] = [
   "RECEIPT",
   "TAX_INVOICE",
   "PURCHASE_TAX_INVOICE",
+];
+
+export function canCreateDirect(docType: AccountDocType): boolean {
+  return !CONVERT_ONLY_TYPES.includes(docType);
+}
+
+// ─────────────────── WO 1.6 — wizard เอกสารปรับปรุงหนี้ (§5.2 J) ───────────────────
+// CN/DN/CNR/DNR/RPR ("ใบส่งคืนเบิก" GOODS_ISSUE_RETURN) เข้าฟอร์มผ่าน `/new` → ขั้น ① เลือกเอกสารอ้างอิง
+// (หรือ "ไม่อ้างอิง") → ขั้น ② ฟอร์มเดิม (B–I) + ช่องเหตุผล + เพดานยอดคงเหลือ
+
+/** 4 ชนิดที่ใช้ DocEditorV2 ในโหมดปรับปรุงหนี้ (ไม่รวม GOODS_ISSUE_RETURN — เส้นทางแยก ไม่ผ่าน DocEditorV2) */
+export const ADJUST_DOC_TYPES: readonly AccountDocType[] = [
   "CREDIT_NOTE",
   "DEBIT_NOTE",
   "CREDIT_NOTE_RECEIVED",
   "DEBIT_NOTE_RECEIVED",
 ];
 
-export function canCreateDirect(docType: AccountDocType): boolean {
-  return !CONVERT_ONLY_TYPES.includes(docType);
+export function isAdjustType(docType: AccountDocType): boolean {
+  return ADJUST_DOC_TYPES.includes(docType);
+}
+
+/** ชนิดเอกสารอ้างอิงที่เลือกได้ในขั้น ① ต่อชนิด adjust (§5.2 J ตัวกรอง "ประเภทเอกสาร") */
+export function adjustRefDocTypesFor(docType: AccountDocType): AccountDocType[] {
+  if (docType === "CREDIT_NOTE" || docType === "DEBIT_NOTE") return ["INVOICE", "RECEIPT", "TAX_INVOICE"];
+  if (docType === "CREDIT_NOTE_RECEIVED" || docType === "DEBIT_NOTE_RECEIVED") return ["PURCHASE", "EXPENSE"];
+  return [];
+}
+
+/** ป้ายเมื่ออ้างอิง (ใช้ทำ chip "อ้างอิง<label> <docNo>" ในหัวฟอร์มขั้น ②) */
+export function adjustRefLabelFor(docType: AccountDocType): string {
+  if (docType === "CREDIT_NOTE" || docType === "DEBIT_NOTE") return "เอกสารต้นทาง";
+  if (docType === "CREDIT_NOTE_RECEIVED" || docType === "DEBIT_NOTE_RECEIVED") return "เอกสารต้นทาง";
+  return "PRR";
 }

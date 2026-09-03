@@ -28,6 +28,7 @@ import { StickyBar } from "./StickyBar";
 import { ToastProvider, useToast } from "./Toast";
 import {
   PRICE_MODE_OPTIONS,
+  REASON_OPTIONS,
   newLineDraft,
   type ContactOption,
   type DocDraftPayload,
@@ -170,16 +171,23 @@ function EditorBody(props: DocEditorV2Props) {
   }, [value.lines, props.requireLineAccount]);
   const missingContact = !value.contactId;
   const missingDate = !value.issueDate;
-  const valid = !missingContact && !missingDate && value.lines.length > 0 && invalidLineKeys.size === 0;
+  // WO 1.6 §5.2 J — เหตุผลบังคับสำหรับเอกสารปรับปรุงหนี้ ("อื่น ๆ" ต้องกรอกข้อความเพิ่ม)
+  const missingReason =
+    !!props.adjustMode &&
+    (!value.adjustReasonCode || (value.adjustReasonCode === "OTHER" && !value.adjustReasonText.trim()));
+  const capExceeded = props.capSatang != null && totals.grandTotal > props.capSatang;
+  const valid = !missingContact && !missingDate && !missingReason && value.lines.length > 0 && invalidLineKeys.size === 0;
 
   const payload = useCallback(
     (): DocDraftPayload => ({
       systemId: props.systemId,
       docType: props.docType,
       docId,
+      // WO 1.6 — เอกสารอ้างอิงจาก wizard ขั้น ① (server ใช้เฉพาะตอนสร้างใหม่ — ไม่มีผลถ้า docId มีค่าแล้ว)
+      refId: props.refDoc?.id ?? null,
       value: { ...value, lines: value.lines.map(({ key: _key, ...rest }) => rest) },
     }),
-    [props.systemId, props.docType, docId, value],
+    [props.systemId, props.docType, docId, props.refDoc?.id, value],
   );
 
   const save = useCallback(
@@ -298,6 +306,11 @@ function EditorBody(props: DocEditorV2Props) {
 
   const approve = (next: "" | "pay" | "print" | "email") =>
     startTransition(async () => {
+      if (capExceeded) {
+        setShowErrors(true);
+        toast.error("ยอดเกินยอดคงเหลือของเอกสารอ้างอิง — แก้ยอดหรือเลือกเอกสารอ้างอิงใหม่");
+        return;
+      }
       const id = await save();
       if (!id) return;
       // ── ใบเสร็จรับเงิน (g2): อนุมัติ = ออกเอกสาร + บันทึกการรับชำระที่กรอกไว้ในคำสั่งเดียว ──
@@ -386,6 +399,17 @@ function EditorBody(props: DocEditorV2Props) {
           <span className="text-sm text-[color:var(--color-muted)]" data-testid="doc-head-no">
             {value.docNo || "เลขที่ออกเมื่ออนุมัติ"} · ร่าง
           </span>
+          {/* WO 1.6 §5.2 J — chip เอกสารอ้างอิงในหัวฟอร์ม (โหมด wizard เท่านั้น) */}
+          {props.refDoc && (
+            <Link
+              href={props.refDoc.href}
+              className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs"
+              style={{ background: "var(--color-surface-2)", color: "var(--color-accent)" }}
+              data-testid="ref-chip"
+            >
+              อ้างอิง{props.refDoc.label} {props.refDoc.docNo ?? "—"}
+            </Link>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-[color:var(--color-muted)]" data-testid="autosave-state" aria-live="polite">
@@ -395,11 +419,77 @@ function EditorBody(props: DocEditorV2Props) {
         </div>
       </div>
 
+      {/* WO 1.6 §5.2 J — สเต็ปเปอร์ wizard 2 ขั้น (① เลือกเอกสาร ✓ · ② ฟอร์มปัจจุบัน) */}
+      {props.adjustMode && (
+        <div className="card px-5 py-4">
+          <Stepper
+            steps={[
+              { code: "1", label: "เลือกเอกสาร", state: "done" },
+              { code: "2", label: props.docLabel, state: "current" },
+            ]}
+            testId="wizard-step"
+          />
+        </div>
+      )}
+
       {/* A — stepper */}
       {steps.length > 1 && (
         <div className="card px-5 py-4">
           <Stepper steps={steps} hrefFor={(s) => stepHref(s.code)} testId="doc-steps" />
         </div>
+      )}
+
+      {/* WO 1.6 §5.2 J — เหตุผลการปรับปรุงหนี้ (ม.86/10) + เพดานยอดคงเหลือของเอกสารอ้างอิง */}
+      {props.adjustMode && (
+        <SectionCard title="เหตุผลการปรับปรุงหนี้" complete={!missingReason} testId="sec-reason">
+          {props.refDoc && props.capSatang != null && (
+            <p
+              className="text-sm"
+              data-testid="cap-line"
+              style={capExceeded ? { color: "var(--color-danger)" } : undefined}
+            >
+              ยอดคงเหลือของเอกสารอ้างอิง ฿<MoneyText satang={props.capSatang} decimals /> — ลดได้ไม่เกินนี้
+              {capExceeded && " · ยอดในฟอร์มนี้เกินยอดคงเหลือ"}
+            </p>
+          )}
+          {!props.refDoc && <p className="text-sm text-[color:var(--color-muted)]">ไม่อ้างอิงเอกสารเดิม</p>}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Field label="เหตุผล (ตามประกาศสรรพากร ม.86/10)" htmlFor="fld-reason">
+              <span
+                style={
+                  showErrors && missingReason
+                    ? { display: "block", borderRadius: 8, boxShadow: "0 0 0 2px var(--color-danger)" }
+                    : undefined
+                }
+              >
+                <select
+                  id="fld-reason"
+                  className="input"
+                  value={value.adjustReasonCode}
+                  onChange={(e) => set("adjustReasonCode", e.target.value)}
+                  data-testid="reason-select"
+                >
+                  <option value="">— เลือกเหตุผล —</option>
+                  {REASON_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </Field>
+            <Field label={value.adjustReasonCode === "OTHER" ? "ระบุเหตุผล (บังคับ)" : "รายละเอียดเพิ่มเติม"} htmlFor="fld-reason-text">
+              <input
+                id="fld-reason-text"
+                className="input"
+                maxLength={500}
+                value={value.adjustReasonText}
+                onChange={(e) => set("adjustReasonText", e.target.value)}
+                data-testid="reason-text"
+              />
+            </Field>
+          </div>
+        </SectionCard>
       )}
 
       {/* การ์ดหัวของ g2: เลขที่เอกสาร · ผู้ติดต่อ · อ้างอิงใบแจ้งหนี้ · ยอด (เฉพาะฟอร์มที่มีส่วน F) */}

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import type { AccountDocType } from "@prisma/client";
 import { getDocDetailData, type DocDetailData, type RelatedSlot, type JvEntryView } from "@/lib/modules/account/doc-detail";
 import { getSettings, DOC_LABEL, visibleConvertTargets } from "@/lib/modules/account/service";
-import { editorListPath, editorDetailPath, editorEditPath, sideOf } from "@/lib/modules/account/doc-editor-config";
+import { editorListPath, editorDetailPath, editorEditPath, editorNewPath, sideOf } from "@/lib/modules/account/doc-editor-config";
 import { EXP_DOC_LABEL } from "@/lib/modules/account/expense";
 import { accountTone, StatusBadge } from "@/lib/modules/account/ui";
 import { auditActionLabelTh } from "@/lib/modules/account/access";
@@ -249,14 +249,38 @@ function dangerMenuItemFor(data: DocDetailData, systemId: string, side: "revenue
 }
 
 // ─────────────────── "⋯" ทำรายการ (§3) — แปลงเอกสารที่ยังทำได้จริง + placeholder "เร็ว ๆ นี้" ───────────────────
+// WO 1.6 §5.2 J — เอกสารต้นทางที่ "ออกใบลดหนี้/เพิ่มหนี้" ได้จริง (สถานะที่ไม่ใช่ร่าง/ยกเลิก)
+const CN_DN_SOURCE_TYPES: readonly AccountDocType[] = ["INVOICE", "RECEIPT", "TAX_INVOICE"];
+const CNR_DNR_SOURCE_TYPES: readonly AccountDocType[] = ["PURCHASE", "EXPENSE"];
+
 function moreActionsFor(data: DocDetailData, base: string, targets: AccountDocType[]): RowActionItem[] {
   const dt = data.docType;
   const items: RowActionItem[] = [];
   const soon = (label: string): RowActionItem => ({ label: `${label} (เร็ว ๆ นี้)`, href: "#" });
+  const wizard = (adjustType: AccountDocType) => `${editorNewPath(base, adjustType)}?ref=${data.id}`;
 
   for (const t of targets) {
     if (t === "TAX_INVOICE" && data.related.some((s) => s.kind === "TX" && s.doc)) continue;
+    // WO 1.6: CN/DN ไม่ใช่ "แปลง" ตรง ๆ อีกต่อไป — ข้ามที่นี่ (เติมทีเดียวรวม RE/TX ด้านล่าง แหล่งเดียว กัน href พังแบบเดิม
+    // ที่เคยชี้ `docs/CREDIT_NOTE/<id ของใบต้นทาง>` ซึ่งไม่มีเอกสารนั้นจริง — CONVERT_MAP มี CN/DN แค่จาก INVOICE เท่านั้น)
+    if (t === "CREDIT_NOTE" || t === "DEBIT_NOTE") continue;
     items.push({ label: `แปลงเป็น${labelOf(t)}`, href: `${editorDetailPath(base, t, data.id)}` });
+  }
+  // WO 1.6 §5.2 J — deep-link เข้า wizard ขั้น ② โดยเลือกเอกสารนี้อ้างอิงไว้ล่วงหน้า (`?ref=<id>`)
+  //   ฝั่งขาย: ออกใบลดหนี้/เพิ่มหนี้จาก IV/RE/TX · ฝั่งซื้อ: บันทึกรับใบลดหนี้/เพิ่มหนี้จาก PUR/EXP (`targets` ฝั่งนี้ว่างเสมอ)
+  if (!ACTIVE_STATUSES.has(data.status)) {
+    if (CN_DN_SOURCE_TYPES.includes(dt)) {
+      items.push(
+        { label: "ออกใบลดหนี้", href: wizard("CREDIT_NOTE") },
+        { label: "ออกใบเพิ่มหนี้", href: wizard("DEBIT_NOTE") },
+      );
+    }
+    if (CNR_DNR_SOURCE_TYPES.includes(dt)) {
+      items.push(
+        { label: "บันทึกรับใบลดหนี้", href: wizard("CREDIT_NOTE_RECEIVED") },
+        { label: "บันทึกรับใบเพิ่มหนี้", href: wizard("DEBIT_NOTE_RECEIVED") },
+      );
+    }
   }
   items.push(soon("ส่งอีเมล"));
   if (dt === "INVOICE") items.push(soon("เตือนชำระ"), soon("ใส่ในใบวางบิล"));
