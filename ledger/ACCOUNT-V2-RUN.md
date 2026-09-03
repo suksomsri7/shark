@@ -12,7 +12,7 @@
 | WO | 5.1 ช่องทางการเงิน V2 (เฟส 5) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Sonnet (sub-agent · UI ตาม g9) |
-| ขั้นที่ถึง | 3 ก.ย. ~21:50 UTC: **verify prod เฟส 4 ผ่าน** — Vercel READY · `_prisma_migrations` มี invitem_canonical + products_v2 finished · ตาราง BundleItem/OpeningLot + คอลัมน์ invItemId/code/posEnabled + enum COST_ADJUSTMENT อยู่บน prod · https 200 · 5.1 กำลังทำ (Sonnet) |
+| ขั้นที่ถึง | 3 ก.ย. ~22:55 UTC: 5.1 รอบ 1 ส่งมา (finance 59/59 · เจอบั๊ก postOpening idempotent ต่อ period ไม่ใช่ต่อบัญชี) → Fable ดูภาพเทียบ g9 **ตีกลับ 5 จุด** (แท็บ underline ไม่ใช่ chip · การ์ดกลุ่มไม่มีกรอบ · ปุ่ม ⋯ แทน ทำรายการ ▾ · ลำดับบรรทัดในการ์ด · 'auto' ในช่องรหัส) — agent เดิมทำรอบ 2 |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
 
