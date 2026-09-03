@@ -9,7 +9,7 @@
 | WO | 0.4 Shell + 0.5 Components (0.1–0.3, 0.6 DONE) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent) |
-| ขั้นที่ถึง | 0.4 กำลังทำ · ถัดไป: QC ภาพ 0.4 (serve+visual) → 0.5 components → qc:all → merge main (เร่ง เพราะ prod มี migration แล้ว) |
+| ขั้นที่ถึง | 4 ก.ย. ~02:40 UTC: build+serve+visual รอบ 1 แล้ว — 0.4 ตีกลับ 4 จุด (emoji→ไอคอนเส้น · dropdown ไม่โผล่ในภาพ · hub ไม่มี h1 · enum ดิบ) · 0.5 ตีกลับ 1 จุด (`_dev` = private folder → 404 → ย้ายเป็น `dev-components`) · รอแก้ → build รอบ 2 → เทียบภาพอีกครั้ง → qc:all → merge main |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — |
 
