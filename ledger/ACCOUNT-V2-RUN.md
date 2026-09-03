@@ -23,7 +23,7 @@
 | 0.5 | ส่วนประกอบกลาง V2 | Sonnet | DONE | 0770505 | ตีกลับ 1 (โฟลเดอร์ `_dev` = private → `dev-components`) · gallery ถ่ายจริง 1440/390 เทียบ f3/g1/g5/g17 ผ่าน · components 78/78 |
 | 0.6 | 🐞 hotfix `gl.postDocument` PURCHASE/EXPENSE โหมดราคารวม VAT Dr เกิน Cr (เจอใน 0.1 · ออกเอกสารไม่ได้) + ข้อสอบ | Opus | DONE | 91c38f2 | Fable อ่าน diff + รันเอง inclvat 71/71 · CPA 107/107 บน QC branch · เจอบั๊กที่ 2 ด้วย: VAT รอใบกำกับลง 1150 แทน 1155 (แก้แล้ว) · ค้าง: `qc-tax-print-audit.mts` เน่าอยู่ก่อน (taxId 5 หลัก) → เก็บใน 9.2 |
 | 1.1 | หน้ารายการทุกชนิด | Sonnet | IN_PROGRESS | | มอบหมาย 4 ก.ย. ~04:15 UTC (ขนานกับ qc:all ปิดเฟส 0) · เทียบ f3/f13 · โน้ต `wo-notes/1.1.md` |
-| 1.2 | route ราคาถูก DP/CNR/DNR/ASSET_PO/PTX + payableStats | Opus (Sonnet) | IN_PROGRESS | | มอบหมาย 4 ก.ย. ~04:40 UTC ขนานกับ 1.1 · โน้ต `wo-notes/1.2.md` |
+| 1.2 | route ราคาถูก DP/CNR/DNR/ASSET_PO/PTX + payableStats | Opus | DONE | 623e8df | Fable รันเอง cheap-routes 105/105 · CPA 107/107 · อ่าน diff GL (Cr 1130 + ลด VAT มัดจำ) · 🐞 แก้ DP โพสต์ซ้ำ · ค้าง: void การจ่าย DP ยังไม่กลับ JV (เหมือน DR ฝั่งขาย) → WO 1.4 · หน้า PTX ยังมีฟอร์มสร้าง → 1.1/1.3 |
 | 1.3 | DocEditorV2 A–C,E,G,H,I | Opus | TODO | | |
 | 1.4 | มัดจำ + WHT ต่อบรรทัด + รับชำระหลายครั้ง | Opus | TODO | | |
 | 1.5 | หน้าเอกสาร V2 | Sonnet | TODO | | |
