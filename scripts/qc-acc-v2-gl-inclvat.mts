@@ -16,8 +16,13 @@ const ENV_FILE = process.env.QC_ENV_FILE ?? ".env";
 try {
   process.loadEnvFile(ENV_FILE);
 } catch {
-  console.error(`❌ โหลด env ไม่ได้: ${ENV_FILE}`);
-  process.exit(1);
+  // CI ไม่มีไฟล์ env เลย — workflow export DATABASE_URL/DIRECT_URL ของ Neon branch มาให้ตรง ๆ (WO 0.7)
+  // ไม่มีไฟล์ **และ** ไม่มี env = วัดอะไรไม่ได้จริง ๆ → ตายเหมือนเดิม
+  if (!process.env.DATABASE_URL) {
+    console.error(`❌ โหลด env ไม่ได้: ${ENV_FILE} (และ env ก็ไม่มี DATABASE_URL)`);
+    process.exit(1);
+  }
+  console.log(`ℹ️  CI env — ไม่มี ${ENV_FILE} · ใช้ DATABASE_URL จาก env`);
 }
 // ด่านกัน prod (BLUEPRINT §2 / reference_shark_qc_suites_hit_prod_db) — ชุดนี้เขียน+ลบข้อมูลจริง
 const PROD_HOST_MARK = "ep-royal-night";

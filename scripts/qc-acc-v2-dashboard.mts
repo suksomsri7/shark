@@ -1,5 +1,8 @@
 // QC WO 2.1 — "query หน้าหลัก + ภาพรวม" (src/lib/modules/account/dashboard.ts)
 //
+// requires: acc-v2-seed
+// ↑ marker (WO 0.7) — `qc-all.mts` เห็นบรรทัดนี้แล้ว seed ชุดข้อมูล QC + สร้างเฉลย dashboard ให้ก่อนรัน
+//
 // รัน (บังคับ DB QC branch):  QC_ENV_FILE=.env.qc pnpm tsx scripts/qc-acc-v2-dashboard.mts
 //   (ต้องมีเฉลยก่อน: QC_ENV_FILE=.env.qc pnpm tsx scripts/acc-v2-expected-dashboard.mts)
 //
@@ -79,6 +82,22 @@ if (!E.dashboard) {
 }
 const X = E.dashboard;
 const ctx = { tenantId: E.tenantId as string, systemId: E.systemId as string };
+
+// 🔴 ด่านกัน "เฉลยคนละ DB" (WO 0.7): ตัวเลขทุกตัวในเฉลยผูกกับ tenant/system ชุดหนึ่งโดยเฉพาะ
+//    ถ้าไฟล์เฉลยที่ commit มาเป็นของ Neon branch อื่น (เช่นบน CI ที่ยังไม่ได้ seed) จะแดงยกแผงแบบไร้เบาะแส
+//    ⇒ เช็กจากคีย์เสถียร (ชื่อร้าน) แล้วบอกให้ชัดว่าต้อง seed ใหม่ ไม่ใช่ปล่อยให้ 164 ข้อแดงทีเดียว
+const { resolveAccV2Scope } = accEnv as unknown as {
+  resolveAccV2Scope: (p: unknown) => Promise<{ tenantId: string; systemId: string } | null>;
+};
+const qcScope = await resolveAccV2Scope(prisma);
+if (!qcScope || qcScope.tenantId !== ctx.tenantId || qcScope.systemId !== ctx.systemId) {
+  console.error(
+    `❌ เฉลย ${QC.expectedPath} ไม่ตรงกับ DB ก้อนนี้ (${host})\n` +
+      `   เฉลย tenantId=${ctx.tenantId} · DB=${qcScope?.tenantId ?? "(ไม่พบร้าน " + QC.tenantName + ")"}\n` +
+      `   แก้: pnpm exec tsx scripts/seed-acc-v2-qc.mts แล้วตามด้วย scripts/acc-v2-expected-dashboard.mts`,
+  );
+  process.exit(1);
+}
 const NOW = new Date(X.now as string);
 const YEAR = X.year as number;
 const MONTH = X.periodKey as string;

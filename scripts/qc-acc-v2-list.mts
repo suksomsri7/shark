@@ -1,4 +1,6 @@
 // QC WO 1.1 — "หน้ารายการทุกชนิด" (DocListPage + list-tabs.ts)
+// requires: acc-v2-seed
+// ↑ marker (WO 0.7) — L7–L10 อ่านชุดข้อมูล QC จริง ⇒ `qc-all.mts` seed ให้ครั้งเดียวก่อนรันส่วนนี้
 // รัน (แนะนำ · DB QC branch):  QC_ENV_FILE=.env.qc pnpm tsx scripts/qc-acc-v2-list.mts
 //
 // 🔴 อ่านอย่างเดียว — ไม่มีการ create/update/delete บน tenant QC เลยทั้งไฟล์ (นับ/เทียบ DB จริงเท่านั้น)
@@ -17,7 +19,9 @@
 //   L9  (DB) page/pageSize bounds ของ listDocumentsPaged/listExpenseDocsPaged/listGoodsIssuePaged (ต่ำกว่า1→1 · เกิน100→100)
 //   L10 (DB) sort="docNo" คืนแถวเรียง docNo จริง (เทียบกับ sort ฝั่ง JS อิสระ)
 
-process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env");
+// CI ไม่มีทั้ง `.env` และ `.env.qc` — env มาจาก DATABASE_URL/DIRECT_URL ที่ workflow export ไว้
+// (process.loadEnvFile โยน ENOENT ถ้าไม่มีไฟล์ · และค่าที่ export มาก่อน "ชนะ" ไฟล์เสมอ — WO 0.7)
+try { process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env"); } catch { /* CI: ไม่มีไฟล์ env */ }
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -118,12 +122,21 @@ assert("L6 INVOICE แท็บ overdue มี tone=danger", invoiceTabs.find((t
 
 // ═══════════════ L7 — (DB) INVOICE tabCounts ตรง acc-v2-expected.json.invoiceTabs ═══════════════
 const expectedPath = join(ROOT, "scripts/acc-v2-expected.json");
+// 🔑 หา tenant/system ของร้าน QC จาก **คีย์เสถียร** (ชื่อร้าน + ชนิดระบบ) ก่อน แล้วค่อยถอยไปใช้ id ในเฉลย
+//    เหตุผล (WO 0.7): `acc-v2-expected.json` ที่ commit ไว้เก็บ id ของ Neon branch `wo-acc-v2-qc`
+//    บน CI แต่ละ shard มี branch ของตัวเอง ⇒ id คนละชุด · ตัวเลข (invoiceTabs) ต่างหากที่เสถียรข้าม branch
+const { prisma } = await import("@/lib/core/db");
+const { resolveAccV2Scope } = (await import("./acc-v2-env.mts" as string)) as {
+  resolveAccV2Scope: (p: unknown) => Promise<{ tenantId: string; systemId: string } | null>;
+};
+const qcScope = await resolveAccV2Scope(prisma);
 if (!existsSync(expectedPath)) {
   bad("L7 มีไฟล์เฉลย acc-v2-expected.json", `ไม่พบ ${expectedPath} — รัน seed-acc-v2-qc.mts ก่อน`);
 } else {
   const E = JSON.parse(readFileSync(expectedPath, "utf8"));
-  const tenantId: string = E.tenantId;
-  const systemId: string = E.systemId;
+  const tenantId: string = qcScope?.tenantId ?? E.tenantId;
+  const systemId: string = qcScope?.systemId ?? E.systemId;
+  assert("L7 หาร้าน QC เจอใน DB ก้อนนี้ (ชื่อ SIAM DIVE QC + ระบบ ACCOUNT)", !!qcScope, "ไม่พบ — รัน seed-acc-v2-qc.mts ก่อน");
   const invExpected = E.invoiceTabs as Record<string, number>;
 
   const counts = await computeListTabCounts(tenantId, systemId, "INVOICE" as never, invoiceTabs as never);
@@ -134,7 +147,6 @@ if (!existsSync(expectedPath)) {
   eq("L7 INVOICE ผลรวม all = Σ(draft+awaiting+partial+paid+overdue+cancelled)", invExpected.all, sumOfParts);
 
   // ═══════════════ L8 — (DB) EXPENSE/PURCHASE: ผลรวมแท็บสอดคล้อง + awaiting ไม่รวมพ้นกำหนด (เทียบ raw count อิสระ) ═══════════════
-  const { prisma } = await import("@/lib/core/db");
   for (const dt of ["EXPENSE", "PURCHASE"] as const) {
     const tabs = LIST_TABS[dt] ?? [];
     const c = await computeListTabCounts(tenantId, systemId, dt as never, tabs as never);
@@ -154,8 +166,8 @@ if (!existsSync(expectedPath)) {
 // ═══════════════ L9 — (DB) page/pageSize bounds ═══════════════
 if (existsSync(expectedPath)) {
   const E = JSON.parse(readFileSync(expectedPath, "utf8"));
-  const tenantId: string = E.tenantId;
-  const systemId: string = E.systemId;
+  const tenantId: string = qcScope?.tenantId ?? E.tenantId;
+  const systemId: string = qcScope?.systemId ?? E.systemId;
 
   const p1 = await listDocumentsPaged(tenantId, systemId, { docType: "INVOICE", pageSize: 0, page: -5 });
   eq("L9 listDocumentsPaged pageSize=0 → clamp 1", p1.pageSize, 1);

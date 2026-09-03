@@ -24,7 +24,9 @@
 //   P10 สินค้า: dedupe SKU · หน่วยไม่รู้จัก = เตือนแต่ยังสร้าง (ไม่ผูก unitId)
 //   P11 ขอบเขต: แถวเกิน IMPORT_MAX_ROWS ถูกตัด · สิทธิ์ไม่มี account.import ถูกปฏิเสธ · ข้ามระบบไม่เห็นของกันเอง
 
-process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env");
+// CI ไม่มีทั้ง `.env` และ `.env.qc` — env มาจาก DATABASE_URL/DIRECT_URL ที่ workflow export ไว้
+// (process.loadEnvFile โยน ENOENT ถ้าไม่มีไฟล์ · และค่าที่ export มาก่อน "ชนะ" ไฟล์เสมอ — WO 0.7)
+try { process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env"); } catch { /* CI: ไม่มีไฟล์ env */ }
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";

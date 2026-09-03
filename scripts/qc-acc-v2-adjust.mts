@@ -26,7 +26,9 @@
 //   AJ9  RPR: คืนเกินจำนวนที่เบิกถูกปฏิเสธ · คืนถูกต้อง = คืนสต็อกจริง + relation ADJUST
 //   AJ10 สิทธิ์/ขอบเขต: ไม่มี account.doc.create ถูกปฏิเสธ (+ positive control) · ข้ามระบบ/ข้าม tenant แตะไม่ได้
 
-process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env");
+// CI ไม่มีทั้ง `.env` และ `.env.qc` — env มาจาก DATABASE_URL/DIRECT_URL ที่ workflow export ไว้
+// (process.loadEnvFile โยน ENOENT ถ้าไม่มีไฟล์ · และค่าที่ export มาก่อน "ชนะ" ไฟล์เสมอ — WO 0.7)
+try { process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env"); } catch { /* CI: ไม่มีไฟล์ env */ }
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

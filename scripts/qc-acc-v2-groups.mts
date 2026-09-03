@@ -23,7 +23,9 @@
 //   G8  idempotency: ยิงคีย์เดิมซ้ำ = ไม่เกิด payment/JV ใหม่
 //   G9  สิทธิ์ · G10 ขอบเขตข้ามระบบ · G11 ใบลูกอยู่ 2 กลุ่มพร้อมกันไม่ได้ · G12 สมุดรายวันสมดุลทั้ง tenant
 
-process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env");
+// CI ไม่มีทั้ง `.env` และ `.env.qc` — env มาจาก DATABASE_URL/DIRECT_URL ที่ workflow export ไว้
+// (process.loadEnvFile โยน ENOENT ถ้าไม่มีไฟล์ · และค่าที่ export มาก่อน "ชนะ" ไฟล์เสมอ — WO 0.7)
+try { process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env"); } catch { /* CI: ไม่มีไฟล์ env */ }
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";

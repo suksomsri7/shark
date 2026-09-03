@@ -10,7 +10,9 @@
 //   G2 findOrCreateCustomerContact: taxId+สาขา → เบอร์ normalize → ชื่อ+อีเมล · ห้ามชื่อเปล่า · ข้ามที่ถูกเก็บ
 //   G3 listDocumentsPaged: tabCounts บวกกันลงตัว · OVERDUE คิดใน SQL · ขอบเขต page/pageSize · ค้นหา
 //   G4 ไม่มี token ผี (--color-fg/--color-bg/--color-success/--color-primary/--color-hover) ในขอบเขตบัญชี
-process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env");
+// CI ไม่มีทั้ง `.env` และ `.env.qc` — env มาจาก DATABASE_URL/DIRECT_URL ที่ workflow export ไว้
+// (process.loadEnvFile โยน ENOENT ถ้าไม่มีไฟล์ · และค่าที่ export มาก่อน "ชนะ" ไฟล์เสมอ — WO 0.7)
+try { process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env"); } catch { /* CI: ไม่มีไฟล์ env */ }
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";

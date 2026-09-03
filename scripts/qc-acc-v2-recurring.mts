@@ -20,7 +20,9 @@
 //   P6  pendingTasks: ทุกช่องตรงกับที่นับมือ
 //   P7  ป้ายไทยล้วน (ไม่มี enum ดิบโผล่หน้าจอ)
 
-process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env");
+// CI ไม่มีทั้ง `.env` และ `.env.qc` — env มาจาก DATABASE_URL/DIRECT_URL ที่ workflow export ไว้
+// (process.loadEnvFile โยน ENOENT ถ้าไม่มีไฟล์ · และค่าที่ export มาก่อน "ชนะ" ไฟล์เสมอ — WO 0.7)
+try { process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env"); } catch { /* CI: ไม่มีไฟล์ env */ }
 // 🔴 ต้องอยู่ก่อน import ทุกตัว (ดูหัวไฟล์)
 delete process.env.RESEND_API_KEY;
 

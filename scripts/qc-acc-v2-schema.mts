@@ -12,7 +12,9 @@
 //   S4 กลุ่มผู้ติดต่อ (สร้าง/เพิ่มสมาชิก/กันซ้ำ/cascade) · pinned ปริยาย false
 //   S5 สิทธิ์: คีย์ใหม่มีจริง · `account.doc.create` ครอบ `account.doc.view` ผ่าน can() ตัวจริง
 //   S6 pnpm drift = ไม่มี drift
-process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env");
+// CI ไม่มีทั้ง `.env` และ `.env.qc` — env มาจาก DATABASE_URL/DIRECT_URL ที่ workflow export ไว้
+// (process.loadEnvFile โยน ENOENT ถ้าไม่มีไฟล์ · และค่าที่ export มาก่อน "ชนะ" ไฟล์เสมอ — WO 0.7)
+try { process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env"); } catch { /* CI: ไม่มีไฟล์ env */ }
 
 import { execFileSync } from "node:child_process";
 

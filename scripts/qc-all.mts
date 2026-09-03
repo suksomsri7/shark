@@ -16,7 +16,12 @@
 // → ทุก round-trip กิน ~200ms · ข้อสอบพวกนี้ยิง query ต่อเนื่องเป็นร้อยครั้ง
 // รันเรียงทีละตัวทั้ง 152 ชุดบน CI = ~92 นาที (ทะลุ timeout ตัดจบเปล่า 2 รอบ)
 // → ซอยเป็นส่วน ๆ ให้ CI รันขนาน · งานรวมเท่าเดิม (Neon compute-time ไม่เพิ่ม) แต่เวลารอหารด้วยจำนวนส่วน
-import { readdirSync } from "node:fs";
+//
+// 🌱 ชุดที่ต้องมี "ชุดข้อมูล QC บัญชี V2" (WO 0.7): ไฟล์ไหนมีบรรทัด `// requires: acc-v2-seed`
+// ที่หัวไฟล์ = ต้องมีร้าน `SIAM DIVE QC` + เฉลย `scripts/acc-v2-expected.json` ที่ตรงกับ DB ก้อนนั้น
+// qc-all จะ seed ให้ **ครั้งเดียวต่อ run** ก่อนเริ่มยิงชุดเทสต์ (ข้ามให้เองถ้า DB มีชุดข้อมูลอยู่แล้ว)
+// seed ล้ม = ชุดพวกนั้นขึ้น ❌ พร้อมเหตุผล แต่ชุดอื่นในส่วนเดียวกัน**ยังรันต่อ** (ไม่ล้มทั้ง run)
+import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -52,11 +57,63 @@ if (picked.length === 0) {
 const scope = shard ? ` · ส่วนที่ ${shard.i}/${shard.n} จากทั้งหมด ${matched.length} ชุด` : "";
 console.log(`▶ รันข้อสอบ ${picked.length} ชุด (เรียงทีละตัว)${scope}\n`);
 
+// ── 🌱 ชุดข้อมูล QC บัญชี V2 (ทำครั้งเดียวก่อนเริ่ม ถ้าส่วนนี้มีชุดที่ต้องใช้) ──
+const SEED_MARKER = "// requires: acc-v2-seed";
+const needsSeed = picked.filter((f) => {
+  try {
+    return readFileSync(join(ROOT, "scripts", f), "utf8").includes(SEED_MARKER);
+  } catch {
+    return false;
+  }
+});
+/** ไม่ null = seed ใช้ไม่ได้ · ชุดที่ต้องใช้จะถูกทำเครื่องหมาย ❌ ด้วยข้อความนี้แทนการรัน */
+let seedBlocked: string | null = null;
+
+function runStep(script: string, args: string[] = []) {
+  const r = spawnSync("pnpm", ["exec", "tsx", join("scripts", script), ...args], {
+    cwd: ROOT,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+    env: process.env, // ← env เดียวกับ qc-all (CI export DATABASE_URL/DIRECT_URL มาให้แล้ว)
+  });
+  const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
+  return { code: r.status ?? 1, out };
+}
+
+if (needsSeed.length) {
+  console.log(`🌱 ${needsSeed.length} ชุดต้องใช้ชุดข้อมูล QC บัญชี V2: ${needsSeed.map((f) => f.replace(/^qc-|\.mts$/g, "")).join(", ")}`);
+  const t0 = Date.now();
+  // --if-missing: มีร้าน QC + เฉลยตรงกับ DB อยู่แล้ว → ข้าม (กันเครื่อง dev เสีย diff ใน acc-v2-expected.json ทุกครั้งที่รัน)
+  const seed = runStep("seed-acc-v2-qc.mts", ["--if-missing"]);
+  if (seed.code !== 0) {
+    seedBlocked = "seed ชุดข้อมูล QC ล้ม (scripts/seed-acc-v2-qc.mts) — ดู log ด้านบน";
+    console.log(seed.out.split("\n").slice(-25).join("\n"));
+  } else if (seed.out.includes("ACC_V2_SEED=skipped")) {
+    console.log(`   ↩︎ มีชุดข้อมูล QC ใน DB นี้อยู่แล้ว + เฉลยตรงกัน → ข้าม seed (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  } else {
+    // seed เขียนทับ acc-v2-expected.json ทั้งไฟล์ ⇒ ต้องสร้างคีย์ `dashboard` ใหม่ทุกครั้ง
+    const oracle = runStep("acc-v2-expected-dashboard.mts");
+    if (oracle.code !== 0) {
+      seedBlocked = "สร้างเฉลย dashboard ล้ม (scripts/acc-v2-expected-dashboard.mts) — ดู log ด้านบน";
+      console.log(oracle.out.split("\n").slice(-25).join("\n"));
+    }
+  }
+  console.log(
+    `   ${seedBlocked ? "❌" : "✅"} เตรียมชุดข้อมูล QC ${((Date.now() - t0) / 1000).toFixed(1)}s${seedBlocked ? ` — ${seedBlocked}` : ""}\n`,
+  );
+}
+
 type Row = { name: string; code: number; summary: string; ms: number };
 const rows: Row[] = [];
 
 for (const f of picked) {
   const t0 = Date.now();
+  if (seedBlocked && needsSeed.includes(f)) {
+    const name = f.replace(/^qc-|\.mts$/g, "");
+    rows.push({ name, code: 1, summary: seedBlocked, ms: 0 });
+    console.log(`  ❌ ${name.padEnd(24)} ${seedBlocked}`);
+    continue;
+  }
   const r = spawnSync("pnpm", ["exec", "tsx", join("scripts", f)], {
     cwd: ROOT,
     encoding: "utf8",

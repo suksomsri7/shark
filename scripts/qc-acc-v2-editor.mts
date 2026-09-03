@@ -20,7 +20,9 @@
 //   E6  (DB) WHT/reference/autoTaxInvoice/แท็ก ต่อบรรทัดถูกเก็บจริง · ไฟล์แนบผูกเอกสาร · รายการโปรด
 //   E7  (DB) สิทธิ์ + ขอบเขต tenant/system: STAFF ไม่มีสิทธิ์ = ถูกปฏิเสธ · เอกสารของระบบอื่นแก้ไม่ได้
 
-process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env");
+// CI ไม่มีทั้ง `.env` และ `.env.qc` — env มาจาก DATABASE_URL/DIRECT_URL ที่ workflow export ไว้
+// (process.loadEnvFile โยน ENOENT ถ้าไม่มีไฟล์ · และค่าที่ export มาก่อน "ชนะ" ไฟล์เสมอ — WO 0.7)
+try { process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env"); } catch { /* CI: ไม่มีไฟล์ env */ }
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

@@ -3,8 +3,10 @@
 // ใช้:  pnpm exec tsx scripts/qc-acc-v2-seed-check.mts
 // ตก 1 ข้อ = exit 1 (ห้ามเขียวตอนวัดอะไรไม่ได้ — ไม่มีข้อมูล = ตก ไม่ใช่ข้าม)
 //
-// 🔴 ชื่อไฟล์ขึ้นต้น `qc-` แต่ **ไม่ได้อยู่ใน qc:all** โดยตั้งใจ — ชุดนี้ต้องมี `.env.qc` + Neon branch
-//    ของงานบัญชี V2 เท่านั้น (CI ไม่มี) · Fable เป็นคนสั่งรัน
+// requires: acc-v2-seed
+// ↑ marker (WO 0.7) — `qc-all.mts` เห็นบรรทัดนี้แล้วจะ seed ชุดข้อมูล QC ให้ครั้งเดียวก่อนรันส่วนนี้
+//    (บน CI = Neon branch เปล่า ⇒ seed เต็ม + สร้างเฉลยใหม่ · เครื่อง dev ที่มีข้อมูลอยู่แล้ว = ข้าม)
+//    env: มี `.env.qc` ใช้ไฟล์ · ไม่มีแต่มี DATABASE_URL/DIRECT_URL ใน env = โหมด CI (acc-v2-env.mts)
 //
 // เฉลย = scripts/acc-v2-expected.json (เขียนโดย seed ทุกครั้ง → ไม่มีทางหลุดจากกัน)
 

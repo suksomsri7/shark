@@ -18,11 +18,13 @@
 //    เพื่อให้ผล "พ้นกำหนด" นิ่งแม้รันจริงคนละวัน (isOverdue อ่าน Date.now() ของเครื่อง)
 //    หลัง QC.oracleValidUntil ตัวเลขจะเริ่มเพี้ยน → สคริปต์เตือนเอง
 
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 // tsconfig ไม่ได้เปิด allowImportingTsExtensions → import แบบ static ที่ลงท้าย .mts จะ typecheck ไม่ผ่าน
 // ⇒ โหลดแบบ dynamic (tsx resolve ตอนรันได้ปกติ) แล้วประกาศชนิดไว้เอง
 const accEnv = (await import("./acc-v2-env.mts" as string)) as {
   loadQcEnv: () => { databaseUrl: string; host: string };
+  isAccV2SeedPresent: (p: unknown) => Promise<boolean>;
+  resolveAccV2Scope: (p: unknown) => Promise<{ tenantId: string; systemId: string } | null>;
   QC: {
     tenantName: string;
     tenantSlug: string;
@@ -34,12 +36,39 @@ const accEnv = (await import("./acc-v2-env.mts" as string)) as {
     oracleValidUntil: string;
   };
 };
-const { loadQcEnv, QC } = accEnv;
+const { loadQcEnv, QC, isAccV2SeedPresent, resolveAccV2Scope } = accEnv;
 
 const { host } = loadQcEnv();
 console.log(`🗄️  DB QC: ${host}\n`);
 
 const { prisma } = await import("@/lib/core/db");
+
+// ── โหมด `--if-missing` (qc-all.mts ใช้ · WO 0.7) ──────────────────────────────
+// seed ใหม่ = id เป็น cuid ชุดใหม่ ⇒ `acc-v2-expected.json` (ไฟล์ที่ commit ไว้) เปลี่ยนทุกครั้ง
+// บนเครื่อง dev จึงไม่ควร seed ซ้ำถ้า DB มีชุดข้อมูลอยู่แล้ว **และ** เฉลยยังตรงกับ DB ก้อนนั้น
+// บน CI (Neon branch สด) จะไม่มีร้าน QC → เข้าเงื่อนไข seed เต็มเสมอ
+// พิมพ์ `ACC_V2_SEED=skipped|created` ให้ qc-all อ่านว่าต้องสร้างเฉลย dashboard ต่อหรือไม่
+if (process.argv.includes("--if-missing")) {
+  const present = await isAccV2SeedPresent(prisma);
+  const scope = present ? await resolveAccV2Scope(prisma) : null;
+  let oracleInSync = false;
+  if (scope && existsSync(QC.expectedPath)) {
+    try {
+      const E = JSON.parse(readFileSync(QC.expectedPath, "utf8"));
+      oracleInSync = E.tenantId === scope.tenantId && E.systemId === scope.systemId && !!E.dashboard;
+    } catch {
+      oracleInSync = false;
+    }
+  }
+  if (present && oracleInSync) {
+    console.log(`ACC_V2_SEED=skipped — มีร้าน "${QC.tenantName}" ใน DB นี้แล้ว และ ${QC.expectedPath} ตรงกัน`);
+    await prisma.$disconnect();
+    process.exit(0);
+  }
+  console.log(
+    `ACC_V2_SEED=missing — ${present ? `เฉลย ${QC.expectedPath} ไม่ตรงกับ DB ก้อนนี้` : "ยังไม่มีชุดข้อมูล QC ใน DB ก้อนนี้"} → seed ใหม่ทั้งก้อน`,
+  );
+}
 const svc = await import("@/lib/modules/account/service");
 const exp = await import("@/lib/modules/account/expense");
 const fin = await import("@/lib/modules/account/finance");
@@ -865,7 +894,7 @@ const expected = {
 };
 writeFileSync(QC.expectedPath, `${JSON.stringify(expected, null, 2)}\n`);
 
-console.log(`\n✅ seed เสร็จ — เขียนเฉลยลง ${QC.expectedPath}`);
+console.log(`\n✅ seed เสร็จ — เขียนเฉลยลง ${QC.expectedPath} · ACC_V2_SEED=created`);
 console.log("   ⚠️ เฉลยหน้าหลัก (คีย์ dashboard) ถูกเขียนทับไปด้วย — รันต่อ: QC_ENV_FILE=.env.qc pnpm tsx scripts/acc-v2-expected-dashboard.mts");
 console.log(`   ค้างรับ ฿${bahtStr(stats.receivable)} · ${stats.overdueCount} ใบพ้นกำหนด ฿${bahtStr(stats.overdueAmount)}`);
 console.log(`   ค้างจ่าย ฿${bahtStr(pay.payable)} · เงินคงเหลือรวม ฿${bahtStr(sum(balances.map((b) => b.balance)))}`);

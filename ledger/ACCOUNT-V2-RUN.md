@@ -35,7 +35,7 @@
 | 1.8 | นำเข้า CSV | Sonnet | DONE | (HEAD) | import 114 · E2E จริง 18/0/2 + สร้าง 18 + cleanup ผ่าน 2 ขนาด (Fable ดูภาพขั้นตรวจสอบ) · 🐞 dedupe เบอร์ · บทเรียน ruler: snap chromium มี /tmp ส่วนตัว → fixture ต้องอยู่ใต้ /root · ← กลับ ตัดแล้ว (รอ build ถัดไป) |
 | 1.9 | เอกสารประจำ + เตือน | Opus | DONE | 1884f8d | recurring 161 (Fable รันเอง) · visual 57/57 · qc:all 197/197 · 🐞 แก้ fitness F10.1 (email import eager → lazy) · **crontab ติดตั้งแล้ว** บน VPS (23:10 UTC recurring · 01:00 UTC reminders · cwd shark-accounting · log /var/log/shark-acc-cron.log) · polish list (chip/actions) รอ build ถัดไป |
 | 2.1 | query dashboard | Opus | DONE | fb0aee6 | dashboard 164/164 (Fable รันเอง) · 12 query / 44 ms · เฉลยอิสระ SQL · seed มีข้อมูล พ.ค.–ก.ย. เท่านั้น (กราฟ 5 แท่ง) · 🐞 ส่งต่อ: aging นับซ้ำเมื่อมี BN (แก้ใน 5.x) · TIMESTAMP ไม่มีโซน ต้อง AT TIME ZONE 2 ชั้น |
-| 0.7 | 🔧 CI-compat: qc:all บน CI ไม่มี .env.qc/seed → acc-v2 suites แดง | Opus | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~20:40 UTC (แก้ acc-v2-env รับ env CI · qc-all seed ก่อน suite ที่ต้องใช้) |
+| 0.7 | 🔧 CI-compat: qc:all บน CI ไม่มี .env.qc/seed → acc-v2 suites แดง | Opus | DONE | (HEAD) | acc-v2-env โหมด CI · qc-all seed ครั้งเดียวต่อ shard (marker) · 🐞 loadEnvFile?.() ไม่กัน ENOENT → try/catch 12 ชุด · จำลอง CI shard 4/6+5/6 เขียว · ⏰ ระเบิดเวลา: seed-check H1 แดง 1 พ.ย. 2026 (oracle วันที่ตายตัว) → แก้ใน 9.x ให้สัมพัทธ์ |
 | 2.2 | หน้าหลัก V2 | Sonnet | IN_PROGRESS | | มอบหมาย 3 ก.ย. ~20:40 UTC · เทียบ f1/f2/f11 · โน้ต `wo-notes/2.2.md` |
 | 2.3 | ภาพรวมรายรับ/รายจ่าย | Sonnet | TODO | | |
 | 3.1 | Party | Opus | TODO | | |

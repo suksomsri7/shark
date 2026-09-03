@@ -15,7 +15,9 @@
 //   P5  ยกเลิกการชำระ (reuse payment.ts ของ 1.4) → ค้างชำระ (getDocDetailData().remain) กลับมาเต็ม
 //   P6  ไม่มีป้ายภาษาอังกฤษปนในข้อความที่ผู้ใช้เห็น (static — ยกเว้นตัวย่อสากล เช่น PDF)
 
-process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env");
+// CI ไม่มีทั้ง `.env` และ `.env.qc` — env มาจาก DATABASE_URL/DIRECT_URL ที่ workflow export ไว้
+// (process.loadEnvFile โยน ENOENT ถ้าไม่มีไฟล์ · และค่าที่ export มาก่อน "ชนะ" ไฟล์เสมอ — WO 0.7)
+try { process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env"); } catch { /* CI: ไม่มีไฟล์ env */ }
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
