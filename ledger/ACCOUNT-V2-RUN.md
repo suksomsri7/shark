@@ -9,11 +9,11 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 5.3 กระทบยอดธนาคาร (เฟส 5) |
-| สถานะ | IN_PROGRESS |
-| ผู้ทำ | Opus (sub-agent · UI ตาม g10) |
-| ขั้นที่ถึง | 4 ก.ย. ~02:40 UTC: 5.2 DONE รอบ 2 ตรง f7 (Fable ดูภาพ + รันด่าน 16 ชุด) · commit แล้ว · กำลังออก 5.3 |
-| commit ล่าสุดของงานนี้ | — |
+| WO | 5.4 WHT 2 ขา V2 + เช็ค V2 (เฟส 5) |
+| สถานะ | REVIEW (Fable QC — โค้ด+ด่านทั้งหมดเขียวแล้ว ยังไม่ commit) |
+| ผู้ทำ | Opus (sub-agent · UI ตาม g11) |
+| ขั้นที่ถึง | 4 ก.ย. 2026: DONE ทุกขั้น A–F (schema → logic → UI → seed → visual → ด่านทั้งหมด) — ดู `wo-notes/5.4.md` รายละเอียดเต็ม · รอ Fable ดูภาพจริงคู่ g11 อีกรอบ + สั่ง commit |
+| commit ล่าสุดของงานนี้ | — (ยังไม่ commit ตามกติกา) |
 | บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
 
 ## ตาราง WO ทั้งหมด (สถานะ: TODO · IN_PROGRESS · REVIEW (Fable QC) · DONE · BLOCKED · SKIPPED)
@@ -48,7 +48,7 @@
 | 5.1 | ช่องทางการเงิน V2 | Sonnet | DONE | (HEAD) | ตีกลับ 1 รอบ (5 จุด parity g9) → รอบ 2 ตรง · Fable รันเอง: finance 59 · payments 157 · dashboard 168 · home 87 · overview 73 · seed-check 83 · guard 155 · schema 61 · list 159 · nav 323 · products 100 · fitness 17 · CPA 107 · drift clean · typecheck 0 · 🐞 ปิด: `postOpening` idempotent ต่อ period ไม่ใช่ต่อบัญชี (ยอดยกมา 2 บัญชีเดือนเดียวกันชนกัน) · ใหม่: code CSH/BSV/EWL/PTY · ยอดยกมาหลายรายการ (JV ต่อรายการ) · โอนระหว่างช่องทาง (AccountFinanceTransfer idempotent) · ใช้รับ/จ่าย · ผู้ถือ+วงเงินเงินสดย่อย · `RowActions trigger=icon` · ค้าง: ไม่มี GL picker ใน modal (g9 ไม่มี) · ธนาคารไม่มีโลโก้ |
 | 5.2 | ภาพรวมการเงิน + ปฏิทิน + สำรองรับ/จ่าย | Sonnet | DONE | (HEAD) | ตีกลับ 1 รอบ (วันที่ ISO · ไทล์คาดว่าจะเข้า/ออก 0 · แถบซ้อน) → รอบ 2 ตรง f7 · Fable รันเอง: finance-overview 45 · finance 59 · payments 157 · dashboard 169 · home 87 · overview 73 · seed-check 83 · guard 158 · schema 61 · list 159 · nav 323 · detail 85 · fitness 17 · CPA 107 · drift clean · typecheck 0 · seed: เติมเงินสดย่อย 10,000 · คชจ. 500/300 · เพิ่ม IV 2 + บิล 1 ครบกำหนด 30 ก.ย. → ค้างรับ 494,300 (20) · ค้างจ่าย 214,750 (10) · เงินรวม 1,283,760 · ค้าง: กระทบยอด = placeholder จนกว่า 5.3 · การ์ดติดตาม 3 ใบ (pinned ตาม f1) · race test reimburse ยังไม่มี |
 | 5.3 | กระทบยอดธนาคาร | Opus ×2 (ตัวแรกโดน MemoryMax ฆ่าหลังขั้น E) | DONE | (HEAD) | ตรง g10 · Fable รันเอง: reconcile 109 · finance-overview 45 · finance 59 · payments 157 · dashboard 169 · home 87 · seed-check 102 · guard 158 · schema 61 · nav 323 · list 159 · fitness 17 · CPA 107 · drift clean · typecheck 0 · parser KBank/SCB/KTB/BBL/generic (UTF-8 เท่านั้น) · auto-match ยอด+วัน ±3 · fee/interest → JV · ยืนยันเดือนล็อกเมื่อส่วนต่าง 0 · fixture สร้างจาก GL จริงด้วย SQL (ไม่เน่า) · 🔴 พบ: `next build` OOM ที่ heap 2G ของ Node → ต้อง `NODE_OPTIONS=--max-old-space-size=3584` (acc-v2-serve.sh ยังไม่ตั้งเอง → 5.4 แก้) · ค้าง: suggestWithAi hook ว่าง · TIS-620 ไม่รองรับ · แถบ sub-tab บนหน้ากระทบยอดยัง highlight 'ภาพรวม' |
-| 5.4 | WHT V2 + เช็ค V2 | Sonnet | TODO | | |
+| 5.4 | WHT V2 + เช็ค V2 | Sonnet (Opus จริง) | REVIEW | (HEAD) | ตรง g11 (ตีกลับตัวเอง 1 รอบ: ลำดับ StatusTabs · สีแท็บยกเลิก · footer ซ้อน) · migration additive (`AccountWhtFiling` + `AccountCheque.depositedAt` + `AccountDocument.whtFiledPeriodKey`) · `markFiled`/`unmarkFiled` idempotent ต่อ (form,periodKey) คำนวณสดจาก `pnd()` · เช็ค 4 ใบ "ลอย" ไม่ผูกเอกสาร (กันกระทบ receivable/payable) · WHT 6 ใบผ่าน CSH001 เท่านั้น (กันปนกับ statement fixture ของ 5.3) → ปรับเฉลย CSH001/total (+฿384.80 สุทธิ) · qc-acc-v2-wht-cheque 68 (ใหม่) · seed-check 112 (ขยาย +10) · payments 157 · finance 59 · finance-overview 45 · reconcile 109 · cheap-routes 105 · dashboard 173 · home 87 · guard 158 · schema 61 · nav 323 · fitness 17 · CPA 107 · drift clean · typecheck 0 · ค้าง: e-WHT จริง 🕓 · เช็ค clear/deposit ผ่านฟอร์มสร้างยังไม่ผูกเอกสารจาก UI (createCheque รองรับแต่ฟอร์มไม่มีช่องเลือกเอกสาร) · pndCsv ยังไม่แยกคำนำหน้าชื่อ (ใช้ชื่อรวมสตริงเดียว) |
 | 5.5 | PromptPay → กระทบยอดอัตโนมัติ | Opus | TODO | | |
 | 6.1 | ผังบัญชี V2 | Sonnet+Opus | TODO | | |
 | 6.2 | สมุดรายวัน V2 + รายงาน drill-down + ปิดงวด + ค่าเสื่อม UI | Sonnet | TODO | | |
@@ -66,6 +66,9 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 4 ก.ย. 2026 ~03:00 UTC — 5.4 WHT V2 + เช็ค V2 REVIEW (agent เดียวจบ ไม่ตาย) · ด่านทั้งหมดเขียว (รายการเต็มใน
+  wo-notes/5.4.md ขั้น 10) · migration additive ใหม่ 1 ตัว `20260906000000_account_v2_wht_cheque` (ยังไม่ลง prod)
+  · NODE_OPTIONS ที่ตั้งไว้ท้าย 5.3 ใช้งานได้จริง (build ผ่านโดยไม่ OOM) · ยังไม่ commit ตามกติกา — รอ Fable ตรวจ
 - 4 ก.ย. 2026 ~02:00 UTC — 5.3 กระทบยอดธนาคาร DONE (2 agent) · สาเหตุ agent ตาย = next build OOM heap 2G ⇒ ต้องตั้ง NODE_OPTIONS
 - 4 ก.ย. 2026 ~01:05 UTC — ⚠️ กลุ่ม claude-remote แรมเกิน 5G → ระบบฆ่า process ใหญ่สุด (agent 5.3 ตอน next build/visual) · งานไม่หาย (ขั้น A–E บนดิสก์) · กติกาเพิ่ม: agent ต้อง `acc-v2-serve.sh stop` ก่อนรัน tsc/qc ทุกครั้ง ห้าม next start ค้างขณะรันด่าน
 - 4 ก.ย. 2026 ~02:40 UTC — 5.2 ภาพรวมการเงิน DONE (ตีกลับ 1 รอบ)
