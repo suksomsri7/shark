@@ -9,12 +9,12 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 5.4 WHT 2 ขา V2 + เช็ค V2 (เฟส 5) |
-| สถานะ | REVIEW รอบ 4 (Fable ตีกลับ 3 รอบ — แก้ครบ + ด่านทั้งหมดเขียว — ยังไม่ commit) |
-| ผู้ทำ | Opus (sub-agent · UI ตาม g11) |
-| ขั้นที่ถึง | 4 ก.ย. 2026: รอบ 4 DONE — รอบ 3 เพิ่ม prop `bulkBarTint`/`variant:"primary"` ในคอมโพเนนต์ถูกต้อง แต่ **ลืมเรียกใช้จากหน้า wht/page.tsx จริง** (Fable grep เจอ) → รอบ 4 ผูกให้แล้ว + เปิดภาพจริงยืนยันด้วยตาก่อนรายงาน (ไม่ใช่แค่เชื่อ grep) — ดู `wo-notes/5.4.md` "รอบ 4" (บทเรียน: ต้องยืนยันจาก PNG จริงเสมอ ไม่ใช่จากโค้ดที่ "น่าจะ" ถูกเรียก) · รอ Fable ยืนยันภาพรอบ 4 + สั่ง commit |
-| commit ล่าสุดของงานนี้ | — (ยังไม่ commit โค้ด — มี commit `eba1c60` แตะแค่ RUN.md จากภายนอก agent นี้) |
-| บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
+| WO | 🏁 ปิดเฟส 5 (qc:all → main → deploy → verify) → เฟส 6: 6.1 ผังบัญชี V2 |
+| สถานะ | IN_PROGRESS |
+| ผู้ทำ | Fable (ปิดเฟส) · Sonnet แก้ hex ดิบ |
+| ขั้นที่ถึง | 4 ก.ย. ~05:20 UTC: 5.1–5.5 DONE commit ครบ (`32ba0d9`) · qc:all เฟส 5 = **212/213** — แดง 1: qc-acc-v2-components จับ hex ดิบ `#eff4ff` ใน DocTableInteractive.tsx (แถบเลือกแถว 5.4) → Sonnet กำลังเปลี่ยนเป็น token → รัน qc:all ซ้ำ → ff main → Vercel → verify → 6.1 |
+| commit ล่าสุดของงานนี้ | 32ba0d9 |
+| บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
 ## ตาราง WO ทั้งหมด (สถานะ: TODO · IN_PROGRESS · REVIEW (Fable QC) · DONE · BLOCKED · SKIPPED)
 | WO | ชื่อ | ผู้ทำ (สำรอง) | สถานะ | commit | หมายเหตุ |
