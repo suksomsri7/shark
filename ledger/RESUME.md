@@ -1,5 +1,13 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🏁 4 ก.ย. (บ่าย ~20:40 BKK) — [session บัญชี] **เฟส 7 ปิด** (คลังเอกสาร+กล่องขาเข้า ขึ้น main `e90e7b5` · qc:all 219/219) · 34/46 WO ≈ 74% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
+- ขึ้น prod: คลังเอกสาร V2 ตรง f9 (อัปโหลดหลายไฟล์จริงขึ้น Bunny · sha256 dedupe · แท็บ/ตัวกรอง/grid · ผูก/แยก/โฟลเดอร์/archive · bulk · ไฟล์แนบบนหน้าเอกสาร) · กล่องขาเข้า g15/g20 (AI อ่านบิลจากรูป → ผู้ขาย/ยอด/VAT/เลขที่ · สร้างบันทึกค่าใช้จ่าย prefill · รับไฟล์จากแชทผ่าน outbox แบบ opt-in)
+- migration 2 ตัว additive (documents_v2 · inbox) · Vercel build รัน migrate เอง
+- บั๊กข้ามหน้าที่ปิด: dropdown "ทำรายการ" ถูก overflow ของตารางตัดที่แถวท้าย (ทุกหน้ารายการ V2) → `PortalMenu` · import cycle account/index→inbox · seed 7.1 รันซ้ำไม่ได้
+- 🔴 ส่งต่อ session แชท: ใส่ `messageId` ใน payload `chat.message.received` (consumer กล่องขาเข้ารองรับทั้ง 2 แบบแล้ว) · เปิดใช้ต้อง `AccountSystemLink.config.inboxFromChat=true` (UI ใน 8.3)
+- 🔑 รอเจ้าของ: อีเมล inbox@ ต้องมี infra รับเมลเข้า (provider + `/api/inbox/email`) · PDF→AI ยังไม่รองรับ · BEAM_* keys · DBD_API_KEY
+- ถัดไป: เฟส 8 ตั้งค่า (8.1 เลขรันเอกสาร/เทมเพลต f10 กำลังทำ → 8.2 นโยบายบัญชี → 8.3 สิทธิ์ matrix + เชื่อมระบบ g13/g14)
+
 ## 🏁 4 ก.ย. (สาย ~16:15 BKK) — [session บัญชี] **เฟส 6 ปิด** (บัญชี ขึ้น main `0c996e4` · qc:all 217/217) · 32/46 WO ≈ 70% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
 - ขึ้น prod: ผังบัญชี V2 ตรง f8 (tree 3 ระดับ · แผงรายละเอียด ยอด ณ วันที่จริง · เปิด/ปิดใช้งานมีด่าน · นำเข้า CSV · พิมพ์) · สมุดรายวัน V2 ตรง g16 (แท็บ book · JV มือ · reversal · ⚑) · รายงาน drill-down 3 ชั้น + ReportToolbar (เทียบงวด · CSV) · ปิดงวดเช็กลิสต์ 4 ข้อ + reopen มีสิทธิ์ · สินทรัพย์ V2 + ตารางค่าเสื่อม + คิดค่าเสื่อม preview + จำหน่าย
 - migration 3 ตัว additive (coa_v2 · journal_period_asset · attachment_ref) · Vercel build รัน migrate เอง
