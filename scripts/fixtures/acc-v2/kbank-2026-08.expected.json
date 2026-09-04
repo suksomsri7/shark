@@ -1,9 +1,9 @@
 {
-  "tenantId": "cmtn623z6000079kzgp4a9xqo",
-  "systemId": "cmtn6240z000479kz4g2tspof",
-  "financeId": "cmtn62a0100j079kz8po56q15",
+  "tenantId": "cmtn6lz0n0000nqkzklg9ec6p",
+  "systemId": "cmtn6lz3b0004nqkzepgm2z9g",
+  "financeId": "cmtn6m53w00j0nqkzg4jidp7f",
   "financeCode": "BSV001",
-  "ledgerAccountId": "cmtn629zq00iz79kzxyjivhox",
+  "ledgerAccountId": "cmtn6m53k00iznqkz091swxgx",
   "ledgerCode": "1010-01",
   "periodKey": "2026-08",
   "openingSatang": 67205000,
