@@ -62,7 +62,19 @@ try {
   // ที่ **ไม่ได้** ทดสอบ: HTTP request จริง (ด่านอยู่หลัง requireTenant() ซึ่งต้องมี request context ของ Next)
   console.log("G1 ด่านสิทธิ์ทุก route บัญชี (static wiring):");
   const shared = readFileSync(join(ROUTE_DIR, "reports/_shared.tsx"), "utf8");
-  const sharedAction = /assertAccountCan\(\s*ctx\.auth\s*,\s*"([^"]+)"/.exec(shared)?.[1] ?? "";
+  // หน้ารายงานเรียกด่านผ่านตัวช่วยใน _shared.tsx — มีได้หลายตัว (WO 8.2 เพิ่ม loadReportWithPolicy)
+  // 🔴 เข้มขึ้นกว่าเดิม: ตัวช่วย **ทุกตัว** ที่ export ออกมาต้องเรียก assertAccountCan ด้วย action เดียวกัน
+  //    ไม่งั้นวันหนึ่งมีคนเพิ่มตัวช่วยที่ลืมด่าน แล้วหน้าที่ใช้ตัวนั้นจะเปิดโล่งเงียบ ๆ
+  const sharedHelpers = [...shared.matchAll(/export async function (loadReport\w*)\s*\(/g)].map((m) => m[1]);
+  const sharedActions = [...shared.matchAll(/assertAccountCan\(\s*ctx\.auth\s*,\s*"([^"]+)"/g)].map((m) => m[1]);
+  const sharedAction = sharedActions[0] ?? "";
+  assert(
+    "G1 ตัวช่วยโหลดหน้ารายงานทุกตัวใน _shared.tsx เรียกด่านสิทธิ์ครบ",
+    sharedHelpers.length > 0 &&
+      sharedActions.length === sharedHelpers.length &&
+      sharedActions.every((a) => a === sharedAction),
+    `helpers=${sharedHelpers.join(",")} · actions=${sharedActions.join(",")}`,
+  );
   const routeEntries = Object.entries(ACCOUNT_PAGE_PERMISSIONS);
   eq("ทะเบียนสิทธิ์ครอบทุกไฟล์ route ที่มีอยู่จริงในโฟลเดอร์", routeEntries.length, listRouteFiles().length);
   for (const [rel, action] of routeEntries) {
@@ -73,7 +85,7 @@ try {
     }
     const src = readFileSync(p, "utf8");
     const direct = src.includes(`"${action}"`);
-    const viaShared = /loadReport\(/.test(src) && sharedAction === action;
+    const viaShared = sharedHelpers.some((h) => new RegExp(`\\b${h}\\(`).test(src)) && sharedAction === action;
     assert(`G1 ${rel} → ${action}`, direct || viaShared, "ไฟล์ไม่ได้บังคับ action นี้ก่อนโหลดข้อมูล");
   }
   // ทุก action ที่ใช้ ต้องมีจริงในทะเบียนสิทธิ์กลาง (กันพิมพ์ผิดแล้วด่านเปิดโล่งเงียบ ๆ)

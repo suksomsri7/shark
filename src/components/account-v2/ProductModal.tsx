@@ -276,6 +276,8 @@ export function ProductModal({
   const [showErrors, setShowErrors] = useState(false);
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState("");
+  // WO 8.2 (§9.3) — แถบเตือน "ชื่อ/รหัสสินค้าซ้ำ" (คู่ขนานกับ ContactModal)
+  const [dup, setDup] = useState<{ id: string; code: string | null; name: string; reason: "name" | "sku"; blocked: boolean } | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: "error" | "success" } | null>(null);
   const [pending, start] = useTransition();
   // ยอดยกมา (เพิ่มได้เฉพาะตอนแก้ไข — ต้องมีสินค้าจริงก่อนจึงรับเข้าคลังได้)
@@ -292,7 +294,7 @@ export function ProductModal({
 
   const close = useCallback(() => router.push(productsPath), [router, productsPath]);
 
-  const submit = () => {
+  const submit = (confirmDuplicate = false) => {
     setShowErrors(true);
     const errs = validate(f);
     if (Object.keys(errs).length > 0) {
@@ -332,6 +334,7 @@ export function ProductModal({
       bookingDurationMin: f.bookingDurationMin === "" ? null : Number(f.bookingDurationMin),
       bookingDepositBaht: f.bookingDepositBaht,
       bundleItems: f.type === "BUNDLE" ? bundleItems.map((b) => ({ componentProductId: b.componentProductId, qty: b.qty })) : undefined,
+      confirmDuplicate,
     };
     start(async () => {
       const res = await saveProductAction(systemId, payload);
@@ -343,6 +346,16 @@ export function ProductModal({
       if (res.error === "validation" && res.fields) {
         setServerErrors(res.fields);
         setToast({ text: "กรอกข้อมูลไม่ครบ — ดูช่องที่มีข้อความสีแดง", tone: "error" });
+        return;
+      }
+      if (res.error === "duplicate" && "duplicate" in res) {
+        setDup({ ...res.duplicate, blocked: res.blocked });
+        setToast({
+          text: res.blocked
+            ? "มีสินค้าชื่อนี้อยู่แล้ว — นโยบายบัญชีตั้งไว้ว่าห้ามสร้างซ้ำ"
+            : "มีสินค้าชื่อนี้อยู่แล้ว — ตรวจก่อนบันทึก",
+          tone: "error",
+        });
         return;
       }
       setSaveError(res.error);
@@ -403,7 +416,7 @@ export function ProductModal({
           <button type="button" className="btn btn-ghost" onClick={close} data-testid="product-modal-cancel">
             ยกเลิก
           </button>
-          <button type="button" className="btn btn-primary" disabled={pending} onClick={submit} data-testid="product-modal-submit">
+          <button type="button" className="btn btn-primary" disabled={pending} onClick={() => submit(false)} data-testid="product-modal-submit">
             {pending ? "กำลังบันทึก…" : "✓ บันทึก"}
           </button>
         </>
@@ -424,6 +437,44 @@ export function ProductModal({
           </button>
         ))}
       </div>
+
+      {dup && (
+        <div
+          className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+          style={{ borderColor: "var(--color-danger)" }}
+          data-testid="product-dup-banner"
+        >
+          <span>
+            <span className="font-semibold">{dup.blocked ? "สร้างซ้ำไม่ได้" : "อาจซ้ำกับที่มีอยู่"}</span>
+            {" · "}
+            {dup.name}
+            <span className="text-[color:var(--color-muted)]">
+              {" · "}
+              {dup.reason === "sku" ? "รหัสสินค้า (SKU) ซ้ำ" : "ชื่อซ้ำ"}
+            </span>
+          </span>
+          <span className="flex-1" />
+          <a
+            href={`${productsPath}/${dup.id}`}
+            className="text-xs font-semibold"
+            style={{ color: "var(--color-accent)" }}
+            data-testid="product-dup-open-link"
+          >
+            เปิด {dup.code ?? "รายการนี้"}
+          </a>
+          {!dup.blocked && (
+            <button
+              type="button"
+              className="btn-sm"
+              onClick={() => submit(true)}
+              disabled={pending}
+              data-testid="product-dup-confirm"
+            >
+              คนละรายการ บันทึกต่อ
+            </button>
+          )}
+        </div>
+      )}
 
       {saveError && (
         <p className="mb-3 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--color-danger)", color: "var(--color-danger)" }} data-testid="product-save-error">

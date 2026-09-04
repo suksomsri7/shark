@@ -760,6 +760,7 @@ function EditorBody(props: DocEditorV2Props) {
           easy={easy}
           requireLineAccount={props.requireLineAccount}
           defaultVatRateBp={props.vatRateBp}
+          whtRateByIncomeType={props.whtRateByIncomeType}
           invalidKeys={showErrors ? invalidLineKeys : new Set<string>()}
           onChange={patchLine}
           onRemove={removeLine}

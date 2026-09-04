@@ -754,9 +754,15 @@ export async function saveSettingsAction(formData: FormData) {
     logoUrl: str(formData, "logoUrl") || null,
     stampUrl: str(formData, "stampUrl") || null,
     signatureUrl: str(formData, "signatureUrl") || null,
-    vatRegistered: str(formData, "vatRegistered") === "1",
-    vatRateBp: num(formData, "vatRateBp") ?? 700,
-    taxPointBasis: (str(formData, "taxPointBasis") as AccountVatTiming) || "ON_ISSUE",
+    // WO 8.2: ช่อง VAT ย้ายไปหน้า "นโยบายบัญชี" (§9.3) — ฟอร์มนี้ไม่มีแล้ว
+    // ⇒ ส่งเฉพาะเมื่อฟอร์มมีช่องจริง (เหตุผลเดียวกับ dt_* ด้านบน: ไม่งั้นค่าที่ตั้งไว้ถูกล้างเงียบ ๆ)
+    ...(formData.get("vatRegistered") === null
+      ? {}
+      : {
+          vatRegistered: str(formData, "vatRegistered") === "1",
+          vatRateBp: num(formData, "vatRateBp") ?? 700,
+          taxPointBasis: (str(formData, "taxPointBasis") as AccountVatTiming) || "ON_ISSUE",
+        }),
     defaultDueDays: num(formData, "defaultDueDays") ?? 30,
     defaultValidDays: num(formData, "defaultValidDays") ?? 30,
     footerNote: str(formData, "footerNote") || null,

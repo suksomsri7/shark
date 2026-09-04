@@ -583,7 +583,8 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
         // WO 8.1: ป้าย/ลำดับตรงกับเมนูซ้ายของหน้าตั้งค่า (f10-settings-menu.png) — แหล่งเดียวที่ settings-nav.ts
         page({ label: "ข้อมูลกิจการ", href: `${base}/settings`, status: "ready", icon: "shop", testId: "SETTINGS_ORG" }),
         page({ label: "เอกสารและเลขที่", href: `${base}/settings/documents`, status: "ready", icon: "doc", testId: "SETTINGS_DOC" }),
-        soon("นโยบายบัญชี", "lock", "SETTINGS_POLICY"),
+        // WO 8.2: เปิดใช้แล้ว (§9.3)
+        page({ label: "นโยบายบัญชี", href: `${base}/settings/policy`, status: "ready", icon: "lock", testId: "SETTINGS_POLICY" }),
         soon("สิทธิ์ผู้ใช้งาน", "users", "SETTINGS_PERMISSIONS"),
         soon("การเชื่อมต่อ", "link", "SETTINGS_CONNECTIONS"),
         soon("แพ็กเกจและการใช้งาน", "tag", "SETTINGS_PLAN"),

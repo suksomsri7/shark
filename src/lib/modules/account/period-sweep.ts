@@ -47,9 +47,22 @@ export async function sweepAutoClosePeriods(now: Date = new Date()): Promise<num
     take: 100,
   });
 
+  // WO 8.2 (§9.3): อ่านสวิตช์ "ปิดงวดอัตโนมัติ / แจ้งเตือน" ของทุกร้านทีเดียว (ไม่ยิงต่อร้าน)
+  // ร้านที่ยังไม่มีแถวตั้งค่าเลย = ไม่เคยเปิดใช้บัญชีจริง ⇒ ไม่ปิดงวดให้ (เดิมปิดให้ทั้งที่ไม่มีข้อมูล)
+  const settingsRows = await prisma.accountSettings.findMany({
+    where: { systemId: { in: systems.map((x) => x.id) } },
+    select: { systemId: true, autoClosePeriods: true, autoCloseNotify: true },
+  });
+  const policyBySystem = new Map(settingsRows.map((r) => [r.systemId, r]));
+
   let closed = 0;
   for (const sys of systems) {
     const ctx = { tenantId: sys.tenantId, systemId: sys.id };
+
+    // §9.3: ปิดเฉพาะร้านที่เปิดสวิตช์ไว้ (migration backfill ร้านเดิมเป็น true ⇒ พฤติกรรมเดิมไม่เปลี่ยน)
+    const pol = policyBySystem.get(sys.id);
+    if (!pol?.autoClosePeriods) continue;
+    const notify = pol.autoCloseNotify;
 
     // CLOSED แล้ว → ข้ามเงียบ
     const existing = await prisma.accountPeriod.findFirst({
@@ -61,15 +74,17 @@ export async function sweepAutoClosePeriods(now: Date = new Date()): Promise<num
     const res = await closePeriod(ctx, periodKey, AUTO_USER);
 
     if (res.ok) {
-      await prisma.appNotification.create({
-        data: {
-          tenantId: sys.tenantId,
-          title: OK_TITLE,
-          body: `ปิดงวด ${periodKey} เรียบร้อยแล้ว (อัตโนมัติ)`,
-        },
-      });
+      if (notify) {
+        await prisma.appNotification.create({
+          data: {
+            tenantId: sys.tenantId,
+            title: OK_TITLE,
+            body: `ปิดงวด ${periodKey} เรียบร้อยแล้ว (อัตโนมัติ)`,
+          },
+        });
+      }
       closed += 1;
-    } else {
+    } else if (notify) {
       // กันสแปม: มี noti เตือนของงวดนี้ (ระบบนี้) แล้ว → ไม่ส่งซ้ำ
       const already = await prisma.appNotification.count({
         where: {

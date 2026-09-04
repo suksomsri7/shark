@@ -7,6 +7,7 @@ import type {
   AccountEntrySource,
 } from "@prisma/client";
 import { seedChartOfAccounts } from "./coa";
+import { isLockedDate, lockedMessage } from "./policy";
 
 // ─────────────────────────────────────────────────────────────
 // gl.ts — Posting engine (double-entry) — QC5 Gate A
@@ -176,6 +177,22 @@ async function assertPeriodOpen(ctx: GlCtx, periodKey: string, db: Db) {
     throw new Error(`งวด ${periodKey} ปิดแล้ว — โพสต์บัญชีไม่ได้`);
 }
 
+/**
+ * WO 8.2 (§9.3) — ด่าน "ล็อกข้อมูลก่อนวันที่"
+ * 🔴 อยู่ตรงนี้เพราะ `commitEntry` คือคอขวดเดียวที่ทุกฟังก์ชัน post / reverse ผ่าน
+ *    ⇒ ปิดที่นี่ที่เดียว = ครอบการโพสต์บัญชีทั้งโมดูล (เอกสาร · ชำระเงิน · เช็ค · สินทรัพย์ · คลัง · POS · เงินเดือน)
+ *    อ่านผ่าน `db` ตัวเดียวกับที่กำลังโพสต์ ⇒ อยู่ใน transaction เดียวกัน เห็นค่าที่เพิ่งบันทึกเสมอ
+ *    ตรรกะตัดสิน (isLockedDate/lockedMessage) เป็นฟังก์ชันบริสุทธิ์ใน policy.ts — ข้อสอบเรียกตรงได้
+ */
+async function assertNotLockedGl(ctx: GlCtx, date: Date, db: Db) {
+  const s = await db.accountSettings.findFirst({
+    where: { systemId: ctx.systemId },
+    select: { lockBeforeDate: true },
+  });
+  const lock = s?.lockBeforeDate ?? null;
+  if (lock && isLockedDate(lock, date)) throw new Error(lockedMessage(lock));
+}
+
 // วันแรกของเดือนถัดไป (เวลาไทย → เที่ยงวันกัน TZ เพี้ยน)
 function firstDayNextMonth(periodKey: string): Date {
   const [y, m] = periodKey.split("-").map(Number);
@@ -221,6 +238,7 @@ async function commitEntry(ctx: GlCtx, o: CommitOpts, book: Book, db: Db): Promi
 
   const { periodKey } = bkkPeriod(o.date);
   await assertPeriodOpen(ctx, periodKey, db);
+  await assertNotLockedGl(ctx, o.date, db);
 
   const docNo = await nextJournalNo(ctx, o.book, o.date, db as Tx);
   const idempotencyKey = `${o.refType}#${o.refId}#${o.event}`;

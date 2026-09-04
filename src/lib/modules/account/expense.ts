@@ -30,6 +30,8 @@ import {
 } from "./service";
 // WO 8.1 — เครื่องออกเลขที่เอกสารร่วม (ที่เดียวทั้งรายรับ/รายจ่าย) + ตารางคำนำหน้ากลาง
 import { issueDocNo, peekDocNo } from "./doc-numbering";
+// WO 8.2 (§9.3) — ล็อกข้อมูลก่อนวันที่ + ค่าเริ่มต้นหัก ณ ที่จ่าย/การแปลงเอกสาร
+import { assertNotLockedTx, assertNotLockedWith } from "./policy";
 import { EXPENSE_DOC_PREFIX, fallbackPrefixOf } from "./settings-schema";
 
 // ─────────────────────────────────────────────────────────────
@@ -669,6 +671,8 @@ export async function createExpenseDoc(input: {
     : input.vatPurchaseMode ?? "CLAIM";
   const { vatMode, vatTiming } = vatFieldsFor(purchaseMode, reqVatMode);
   const issueDate = input.issueDate ?? new Date();
+  // §9.3 ล็อกข้อมูลก่อนวันที่ (ฝั่งรายจ่าย — กติกาเดียวกับฝั่งรายรับ)
+  assertNotLockedWith(settings.policy.lockBeforeDate, issueDate);
   return prisma.$transaction(async (tx) => {
     // หักเงินมัดจำจ่าย — ใบมัดจำต้องเป็นของผู้ขายรายเดียวกัน + อยู่สถานะรอหักมัดจำ + ยังมียอดเหลือ
     let depositDeducted = 0;
@@ -786,6 +790,9 @@ export async function updateExpenseDoc(
       const doc = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId } });
       if (!doc) throw new Error("ไม่พบเอกสาร");
       if (doc.status !== "DRAFT") throw new Error("เอกสารที่ออกแล้วแก้ไขไม่ได้ — ใช้ยกเลิก/ออกใบใหม่");
+      // §9.3: ล็อกทั้งวันที่เดิมและวันที่ใหม่ (กันย้ายเอกสารเข้า/ออกจากช่วงที่ล็อก)
+      assertNotLockedWith(settings.policy.lockBeforeDate, doc.issueDate);
+      if (input.issueDate) assertNotLockedWith(settings.policy.lockBeforeDate, input.issueDate);
       const reqVatMode: AccountVatMode = !settings.vatRegistered
         ? "NONE"
         : input.vatMode ?? doc.vatMode;
@@ -1133,6 +1140,8 @@ export async function recordVendorPayment(
       if (doc.direction !== "IN") throw new Error("ไม่ใช่เอกสารฝั่งจ่าย");
       if (!["AWAITING_PAYMENT", "PARTIAL"].includes(doc.status))
         throw new Error("เอกสารนี้จ่ายชำระไม่ได้ในสถานะปัจจุบัน");
+      // §9.3 ล็อกข้อมูลก่อนวันที่ — ตรวจที่ "วันที่จ่าย"
+      await assertNotLockedTx(tx, systemId, input.paidAt ?? new Date());
       const tieOff = input.amount + wht; // ยอดที่ตัดเจ้าหนี้
       const remain = Math.max(0, doc.grandTotal - doc.paidTotal);
       if (tieOff > remain + 1) throw new Error("ยอดจ่ายเกินยอดคงเหลือ");
@@ -1257,6 +1266,8 @@ export async function voidVendorPayment(
       });
       if (!pay) throw new Error("ไม่พบรายการจ่าย");
       if (pay.voidedAt) throw new Error("รายการจ่ายนี้ถูกยกเลิกแล้ว");
+      // §9.3 (reversal เลื่อนวันได้ ⇒ ด่านใน gl.commitEntry จับวันเดิมไม่ถึง)
+      await assertNotLockedTx(tx, systemId, pay.paidAt);
       const doc = await tx.accountDocument.findFirst({ where: { id: documentId, tenantId, systemId } });
       if (!doc) throw new Error("ไม่พบเอกสาร");
       // WO 1.4: ใบมัดจำจ่ายที่ถูกหักในบันทึกซื้อแล้ว ยกเลิกการจ่ายไม่ได้ (ต้องแก้ที่ปลายทางก่อน)
@@ -1315,6 +1326,8 @@ export async function voidExpenseDoc(
       if (!doc) throw new Error("ไม่พบเอกสาร");
       if (doc.status === "VOIDED" || doc.status === "CANCELLED")
         throw new Error("เอกสารถูกยกเลิกแล้ว");
+      // §9.3 ล็อกข้อมูลก่อนวันที่
+      await assertNotLockedTx(tx, systemId, doc.issueDate);
       if (doc.status !== "DRAFT") {
         const activePay = await tx.accountDocumentPayment.count({
           where: { documentId: id, voidedAt: null },
@@ -1454,8 +1467,17 @@ export async function convertPurchaseOrder(
     if (source.docType !== "PURCHASE_ORDER" && source.docType !== "ASSET_PURCHASE_ORDER")
       return { ok: false, reason: "แปลงได้เฉพาะใบสั่งซื้อ" };
     if (source.status !== "APPROVED") return { ok: false, reason: "ต้องอนุมัติก่อนจึงแปลงได้" };
+    const settings = await getSettings(tenantId, systemId);
+    // §9.3 ล็อกข้อมูลก่อนวันที่ (เอกสารปลายทางลงวันที่วันนี้)
+    assertNotLockedWith(settings.policy.lockBeforeDate, new Date());
+    // §9.3 "การออกเอกสารต่อ": ใบสั่งซื้อทั่วไปไปได้ทั้ง "บันทึกซื้อ" และ "บันทึกค่าใช้จ่าย" ตามที่ตั้งไว้
+    // ใบสั่งซื้อ**สินทรัพย์**ยังบังคับไป ASSET_PURCHASE เสมอ (ทะเบียนสินทรัพย์ต้องเกิดจากเอกสารชนิดนี้เท่านั้น)
     const toDocType: AccountDocType =
-      source.docType === "ASSET_PURCHASE_ORDER" ? "ASSET_PURCHASE" : "PURCHASE";
+      source.docType === "ASSET_PURCHASE_ORDER"
+        ? "ASSET_PURCHASE"
+        : settings.policy.convertPoTo === "EXPENSE"
+          ? "EXPENSE"
+          : "PURCHASE";
 
     const created = await prisma.$transaction(async (tx) => {
       const newDoc = await tx.accountDocument.create({
@@ -1474,7 +1496,8 @@ export async function convertPurchaseOrder(
           subTotal: source.subTotal,
           vatAmount: source.vatAmount,
           grandTotal: source.grandTotal,
-          note: source.note,
+          note: settings.policy.copyNotesOnConvert ? source.note : null,
+          tags: settings.policy.copyTagsOnConvert ? source.tags : [],
           sourceDocId: source.id,
           createdById: createdById ?? null,
           lines: {

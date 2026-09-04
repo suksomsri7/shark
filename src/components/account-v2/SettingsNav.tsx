@@ -26,7 +26,9 @@ export function SettingsNav({
       {groups.map((g) => {
         // f10: หมวดที่มีหัวข้อย่อย (ข้อมูลกิจการ · เอกสารและเลขที่) กางให้เห็นทั้งคู่เสมอ
         // — ผู้ใช้ต้องมองเห็นว่าตั้งค่าอะไรได้บ้างโดยไม่ต้องกดไล่ทีละหมวด
-        const open = g.items.length > 0;
+        // WO 8.2: "นโยบายบัญชี" มี 12 หัวข้อย่อย ⇒ กางเฉพาะตอนอยู่ในหมวดนั้น
+        //          (ถ้ากางตลอดเวลา เมนูซ้ายจะยาวเกินจอและไม่ตรง f10 อีกต่อไป)
+        const open = g.items.length > 0 && (g.key === "org" || g.key === "doc" || g.key === activeGroup);
         const head = (
           <span className="flex w-full items-center justify-between px-4 py-3.5">
             <span className="text-sm font-medium">{g.label}</span>
@@ -51,6 +53,19 @@ export function SettingsNav({
               <div className="pb-2">
                 {g.items.map((it) => {
                   const on = it.sub === activeSub;
+                  // หัวข้อย่อยที่ยังไม่ทำ (Smart Insight 🕓) — จาง กดไม่ได้ + ป้าย "เร็ว ๆ นี้"
+                  if (it.soon)
+                    return (
+                      <span
+                        key={it.key}
+                        data-testid={`settings-sub-${it.key}`}
+                        aria-disabled
+                        className="flex cursor-default items-center gap-2 border-l-2 border-transparent py-2.5 pl-6 pr-4 text-sm text-[color:var(--color-muted)] opacity-60"
+                      >
+                        {it.label}
+                        <span className="rounded-md border px-1.5 py-0.5 text-[11px]">เร็ว ๆ นี้</span>
+                      </span>
+                    );
                   return (
                     <Link
                       key={it.key}

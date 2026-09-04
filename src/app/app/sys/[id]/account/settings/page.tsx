@@ -111,25 +111,9 @@ export default async function AccountSettingsPage({
           </span>
         </label>
 
-        <h2 className="mt-2 text-sm font-medium sm:col-span-2">ภาษีและเอกสาร</h2>
-        <label className={labelCls}>
-          จดทะเบียน VAT
-          <select name="vatRegistered" defaultValue={s.vatRegistered ? "1" : "0"} className={inputCls}>
-            <option value="1">จดทะเบียน VAT</option>
-            <option value="0">ไม่จด VAT</option>
-          </select>
-        </label>
-        <label className={labelCls}>
-          อัตรา VAT (basis point, 700 = 7%)
-          <input name="vatRateBp" type="number" defaultValue={s.vatRateBp} className={inputCls} />
-        </label>
-        <label className={`${labelCls} sm:col-span-2`}>
-          จุดรับรู้ภาษีเริ่มต้น (ประเภทกิจการ)
-          <select name="taxPointBasis" defaultValue={s.taxPointBasis} className={inputCls}>
-            <option value="ON_ISSUE">ขายสินค้า — ออกใบกำกับตอนแจ้งหนี้/ส่งมอบ</option>
-            <option value="ON_PAYMENT">บริการ — ออกใบกำกับตอนรับเงิน</option>
-          </select>
-        </label>
+        {/* WO 8.2: บล็อก VAT (จด/ไม่จด · อัตรา · จุดรับรู้) ย้ายไปหน้า "นโยบายบัญชี" ตาม §9.3
+            — ที่นี่เหลือเฉพาะ "ข้อมูลกิจการ" ตาม §9.1 (ไม่มีค่าเดียวกันอยู่ 2 หน้า) */}
+        <h2 className="mt-2 text-sm font-medium sm:col-span-2">เอกสาร</h2>
         <label className={labelCls}>
           ครบกำหนดชำระ default (วัน)
           <input name="defaultDueDays" type="number" defaultValue={s.defaultDueDays} className={inputCls} />

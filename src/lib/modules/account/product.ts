@@ -449,6 +449,46 @@ function validateProduct(input: ProductInput): string | null {
   return null;
 }
 
+// ─────────────────── WO 8.2 (§9.3) ชื่อสินค้าซ้ำ ───────────────────
+
+export type ProductDuplicateHit = { id: string; code: string | null; name: string; reason: "name" | "sku" };
+
+/**
+ * หาสินค้าเดิมที่ "ชื่อ/รหัสสินค้า (SKU) ซ้ำ" — คู่ขนานกับ `checkContactDuplicates` ฝั่งผู้ติดต่อ
+ * ดูเฉพาะที่ยังใช้งาน (archivedAt = null) — ของที่ปิดใช้งานแล้วไม่ควรขวางการสร้างใหม่
+ * ไม่โยน exception (การเตือนไม่ใช่ความผิดพลาด) · SKU ซ้ำถูกกันด้วย unique index อยู่แล้ว
+ * ที่นี่จึงคืนเป็น "คำเตือนก่อนบันทึก" เพื่อให้ผู้ใช้เห็นรายการเดิมและกดเปิดดูได้
+ */
+export async function checkProductDuplicates(
+  tenantId: string,
+  systemId: string,
+  input: { name?: string | null; sku?: string | null; excludeId?: string | null },
+): Promise<ProductDuplicateHit[]> {
+  const name = (input.name ?? "").trim();
+  const sku = (input.sku ?? "").trim();
+  const or: Prisma.AccountProductWhereInput[] = [];
+  if (name) or.push({ name: { equals: name, mode: "insensitive" } });
+  if (sku) or.push({ sku: { equals: sku, mode: "insensitive" } });
+  if (or.length === 0) return [];
+  const rows = await prisma.accountProduct.findMany({
+    where: {
+      tenantId,
+      systemId,
+      archivedAt: null,
+      ...(input.excludeId ? { id: { not: input.excludeId } } : {}),
+      OR: or,
+    },
+    select: { id: true, code: true, name: true, sku: true },
+    take: 20,
+  });
+  const hits: ProductDuplicateHit[] = [];
+  for (const r of rows) {
+    if (sku && (r.sku ?? "").trim().toLowerCase() === sku.toLowerCase()) hits.push({ id: r.id, code: r.code, name: r.name, reason: "sku" });
+    else if (name && r.name.trim().toLowerCase() === name.toLowerCase()) hits.push({ id: r.id, code: r.code, name: r.name, reason: "name" });
+  }
+  return hits;
+}
+
 export async function createProduct(
   tenantId: string,
   systemId: string,

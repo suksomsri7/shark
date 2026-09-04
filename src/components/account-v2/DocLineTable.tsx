@@ -47,6 +47,7 @@ export function DocLineTable({
   easy,
   requireLineAccount,
   defaultVatRateBp,
+  whtRateByIncomeType,
   invalidKeys,
   onChange,
   onRemove,
@@ -60,6 +61,8 @@ export function DocLineTable({
   easy: boolean;
   /** อัตรา VAT ของกิจการ — ใช้เมื่อสินค้าที่เลือกไม่ได้กำหนดอัตราไว้เอง (ห้ามฮาร์ดโค้ด 7%) */
   defaultVatRateBp: number;
+  /** WO 8.2 (§9.3): อัตรา WHT เริ่มต้นต่อประเภทเงินได้ตามนโยบายร้าน (ไม่มี = ใช้อัตราตามกฎหมาย) */
+  whtRateByIncomeType?: Record<string, number>;
   requireLineAccount: boolean;
   invalidKeys: Set<string>;
   onChange: (key: string, patch: Partial<LineDraft>) => void;
@@ -67,6 +70,25 @@ export function DocLineTable({
   onReorder: (from: number, to: number) => void;
 }) {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
+
+  // ── WO 8.2 (§9.3) ตัวช่วยค่าเริ่มต้นหัก ณ ที่จ่าย ──
+  /** อัตราเริ่มต้นของประเภทเงินได้: นโยบายร้านก่อน → อัตราตามกฎหมาย → 3% */
+  const whtRateOf = (incomeType: string): number =>
+    whtRateByIncomeType?.[incomeType] ?? WHT_TYPE_OPTIONS.find((o) => o.value === incomeType)?.defaultRateBp ?? 300;
+  /**
+   * เลือก "บัญชี" ของบรรทัด → เติมประเภทเงินได้/อัตราให้ตามนโยบาย
+   * 🔴 เติมเฉพาะตอนบรรทัดยัง**ไม่เคยเลือก**ประเภทเงินได้ — ไม่ทับค่าที่ผู้ใช้ตั้งเอง
+   */
+  const patchForAccount = (l: LineDraft, accountId: string | null): Partial<LineDraft> => {
+    const patch: Partial<LineDraft> = { accountId };
+    if (l.whtIncomeType) return patch;
+    const acc = accountId ? accounts.find((a) => a.id === accountId) : null;
+    if (acc?.whtIncomeType) {
+      patch.whtIncomeType = acc.whtIncomeType;
+      patch.whtRateBp = acc.whtRateBp ?? whtRateOf(acc.whtIncomeType);
+    }
+    return patch;
+  };
 
   const productResults = (q: string): Promise<ProductSearchResult[]> =>
     searchProducts(q).then((rows) =>
@@ -180,7 +202,7 @@ export function DocLineTable({
                       <select
                         className="input"
                         value={l.accountId ?? ""}
-                        onChange={(e) => onChange(l.key, { accountId: e.target.value || null })}
+                        onChange={(e) => onChange(l.key, patchForAccount(l, e.target.value || null))}
                         data-testid={`line-${i}-account`}
                       >
                         <option value="">{requireLineAccount ? "— เลือกบัญชี —" : "ตามค่าเริ่มต้น"}</option>
@@ -259,10 +281,9 @@ export function DocLineTable({
                         value={l.whtIncomeType ?? ""}
                         onChange={(e) => {
                           const v = e.target.value || null;
-                          const def = WHT_TYPE_OPTIONS.find((o) => o.value === v);
                           onChange(l.key, {
                             whtIncomeType: v,
-                            whtRateBp: v ? (l.whtRateBp ?? def?.defaultRateBp ?? 300) : null,
+                            whtRateBp: v ? (l.whtRateBp ?? whtRateOf(v)) : null,
                           });
                         }}
                         aria-label="ประเภทเงินได้ หัก ณ ที่จ่าย"
@@ -364,7 +385,7 @@ export function DocLineTable({
                   <select
                     className="input"
                     value={l.accountId ?? ""}
-                    onChange={(e) => onChange(l.key, { accountId: e.target.value || null })}
+                    onChange={(e) => onChange(l.key, patchForAccount(l, e.target.value || null))}
                   >
                     <option value="">{requireLineAccount ? "— เลือกบัญชี —" : "ตามค่าเริ่มต้น"}</option>
                     {accounts.map((a) => (
@@ -394,10 +415,9 @@ export function DocLineTable({
                     value={l.whtIncomeType ?? ""}
                     onChange={(e) => {
                       const v = e.target.value || null;
-                      const def = WHT_TYPE_OPTIONS.find((o) => o.value === v);
                       onChange(l.key, {
                         whtIncomeType: v,
-                        whtRateBp: v ? (l.whtRateBp ?? def?.defaultRateBp ?? 300) : null,
+                        whtRateBp: v ? (l.whtRateBp ?? whtRateOf(v)) : null,
                       });
                     }}
                     aria-label="หัก ณ ที่จ่าย"

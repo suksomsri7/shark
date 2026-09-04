@@ -543,6 +543,41 @@ model AccountSettings {
   footerNote       String?
   docConfig        Json    @default("{}") // per-docType prefix/pattern override
 
+  // ─────────── §9.3 นโยบายบัญชี (WO 8.2) — คอลัมน์จริง ไม่ใช่ JSON ───────────
+  // เหตุผลที่เป็นคอลัมน์: ทุกตัวถูก "ตรรกะเงิน" อ่าน (ล็อกวันที่ · ปีบัญชี · VAT · ปิดงวดอัตโนมัติ)
+  // ⇒ ต้อง query/filter ได้จาก SQL ตรง ๆ และห้ามหายเงียบเวลามีคนเขียนทับ docConfig ทั้งก้อน
+  /** เดือนเริ่มปีบัญชี 1–12 (1 = ม.ค. = ปีปฏิทิน · 4 = เม.ย.–มี.ค.) */
+  fiscalYearStartMonth Int  @default(1)
+  /** วันของเดือนที่ถือว่า "ปิดงวด" (1–28 · null = ไม่กำหนด) — ใช้กับปิดงวดอัตโนมัติ */
+  periodCloseDay       Int?
+  /** จุดรับรู้ภาษีขายเริ่มต้น — ย้ายมาจาก docConfig.taxPointBasis (migration backfill ให้แล้ว) */
+  vatTiming            AccountVatTiming @default(ON_ISSUE)
+  /** ประเภทราคาเริ่มต้นของฟอร์มเอกสาร (null = ตามสถานะจด VAT เหมือนเดิม) */
+  defaultPriceMode     AccountPriceMode?
+  /** ล็อกข้อมูลก่อนวันที่นี้ (null = ไม่ล็อก) — บันทึก/แก้ไข/ยกเลิก รายการที่ลงวันที่ "ก่อน" วันนี้ไม่ได้ */
+  lockBeforeDate       DateTime?
+  /** นโยบายชื่อซ้ำ "WARN" | "BLOCK" (null = อ่านจาก docConfig.dupNamePolicy เดิม → WARN) */
+  dupContactPolicy     String?
+  dupProductPolicy     String?
+  /** รหัสบัญชีเริ่มต้นของรายรับ/รายจ่าย (ผูกกับ mapping key INCOME_DEFAULT / PURCHASE_DEFAULT / EXPENSE_DEFAULT) */
+  defaultSalesAccountCode    String?
+  defaultPurchaseAccountCode String?
+  defaultExpenseAccountCode  String?
+  /** ปลายทางเริ่มต้นของ "ออกเอกสารต่อ": QT → "INVOICE" | "DEPOSIT_RECEIPT" · PO → "PURCHASE" | "EXPENSE" */
+  convertQtTo          String?
+  convertPoTo          String?
+  copyNotesOnConvert   Boolean @default(true)
+  copyTagsOnConvert    Boolean @default(true)
+  /** ปิดงวดอัตโนมัติ + แจ้งเตือนผล */
+  autoClosePeriods     Boolean @default(false)
+  autoCloseNotify      Boolean @default(true)
+  /** รายงานทางอีเมล (สรุปรายวัน/รายสัปดาห์) + ผู้รับ (Json = string[] ของอีเมล) */
+  emailReportDaily     Boolean @default(false)
+  emailReportWeekly    Boolean @default(false)
+  emailReportRecipients Json   @default("[]")
+  /** หัก ณ ที่จ่ายเริ่มต้นต่อประเภทเงินได้ — Json = { incomeType, rateBp, expenseAccountCodes[] }[] */
+  whtDefaults          Json    @default("[]")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 8.2 นโยบายบัญชี (เฟส 8) |
+| WO | 8.3 สิทธิ์ matrix + เชื่อมระบบ + API (ปิดเฟส 8) |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Opus (sub-agent · ไม่มีเฟรม ใช้ภาษาภาพ f10) |
-| ขั้นที่ถึง | 4 ก.ย. ~16:10 UTC: 8.1 DONE (แก้ regression ใบพิมพ์กลุ่ม + เพิ่มด่าน T13.9–11) · Fable รันด่านซ้ำเขียว · commit แล้ว · กำลังออก 8.2 |
+| ผู้ทำ | Opus (sub-agent · UI ตาม g13/g14) |
+| ขั้นที่ถึง | 4 ก.ย. ~18:20 UTC: 8.2 DONE รอบ 2 (DateInput ไทย · import email เป็น lazy) · Fable รันด่านซ้ำ 30 ชุด + fitness ไม่มี .env เขียว · commit แล้ว · กำลังออก 8.3 |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -55,7 +55,7 @@
 | 7.1 | คลังเอกสาร V2 | Sonnet | DONE | (HEAD) | ตรง f9 (2 แบบ) · ตีกลับ 1 รอบ (ปุ่ม ทำรายการ · badge · footer) · Fable รันเอง: attachments 66 · components 78 · contacts 49 · wht-cheque 69 · products 100 · list 159 · detail 85 · editor 200 · import 114 · journal 94 · seed-check 202 · guard 164 · schema 61 · nav 323 · dashboard/home เขียว · fitness 17 · CPA 107 · drift clean · typecheck 0 · อัปโหลดจริงหลายไฟล์ (Bunny ของ QC) · sha256 dedupe · แท็บ/ตัวกรอง/grid · ผูก/แยก/ย้ายโฟลเดอร์/archive · bulk · 🐞 ปิดข้ามหน้า: dropdown ทำรายการถูก overflow ตัดที่แถวท้าย → `PortalMenu` (3.2/5.4 ไม่ regress) · ค้าง: restore ไม่มี UI · ไม่มีถังขยะ · กล่องขาเข้า → 7.2 |
 | 7.2 | กล่องขาเข้า + AI | Opus | DONE | (HEAD) | ตรง g15/g20 · ตีกลับ 1 รอบ (ปุ่มรองมีกรอบ · placeholder thumb) · Fable รันเอง: inbox 128 · attachments 66 · components 78 · detail 85 · editor 200 · cheap-routes 105 · dashboard/home เขียว · seed-check 225 · guard 165 · schema 61 · nav 323 · ai-credit 32 · chat core-v2 47 / attachments 37 / notify 23 · fitness 17 · CPA 107 · drift clean · typecheck 0 · AI อ่านบิล (vision · JSON schema · ตรวจเลขคณิต · ตัดเครดิต ACCOUNT_INBOX ครั้งเดียว · ไม่ throw) · สร้าง EXP prefill (ผู้ขาย taxId→เบอร์→ชื่อ · VAT mode ตาม docKind) · รับไฟล์จากแชทผ่าน outbox consumer (opt-in inboxFromChat) · 🐞 ปิด: import cycle account/index→inbox · seed 7.1 รันซ้ำไม่ได้ · ลิงก์ ?attachmentId= ไปหน้าที่ไม่อ่าน · ค้าง: inbox@ email ไม่มี infra · PDF→AI UNSUPPORTED · หน้าหลัก 'รอยืนยัน n ไฟล์' ไม่ทำ · inboxFromChat ไม่มี UI (8.3) |
 | 8.1 | ตั้งค่าเอกสาร | Opus | DONE | (HEAD) | ตรง f10 (ต่างเฉพาะที่ §9.2 บังคับ: 18 ชนิด · คอลัมน์เลขถัดไป · 9 หัวข้อย่อย) · ตีกลับ 1 รอบ (regression G0.12b ป้ายรวมยอดใบพิมพ์กลุ่ม — Fable จับจากด่านเก่า) · Fable รันเอง: doc-settings 116 · groups 174 · editor 200 · detail 85 · list 159 · payments 161 · cheap-routes 105 · pos-lines 87 · promptpay 84 · recurring 161 · dashboard/home เขียว · reconcile 109 · components 78 · seed-check 243 · guard 166 · schema 61 · nav 326 · fitness 17 · CPA 107 · drift clean · typecheck 0 · ใหม่: doc-numbering (pattern ไทย/อังกฤษ · reset none/yearly/monthly · counter 1 statement · legacy continuation) · ทุกหัวข้อ §9.2 ต่อสายจริง (due/notes/print template+fields+lang/channels/tags/public link/auto tax-invoice/mapping override/POS abb) · 🐞 ปิด: expense.ts มี nextDocNo แยกใช้ TZ เครื่อง · findActiveNav ชี้กลุ่มผิดบนหน้าตั้งค่า · saveSettingsAction ล้าง docTypes · ค้าง: payments P7.9 flaky 1 ครั้ง (ทำซ้ำไม่ได้) → 9.3 |
-| 8.2 | นโยบายบัญชี | Opus | TODO | | |
+| 8.2 | นโยบายบัญชี | Opus | DONE | (HEAD) | ตีกลับ 1 รอบ (native date → DateInput · import eager ดึง env ตอนโหลด = บทเรียน 1.9 ซ้ำ) · Fable รันเอง: policy 143 · ด่านเก่า 30 ชุดเขียว (editor 200 · payments 161 · journal 94 · period-assets 121 · coa 105 · contact-modal 96 · products 100 · groups 174 · CPA 107 …) · fitness 17 (มี/ไม่มี .env) · drift clean · typecheck 0 · บังคับใช้: ล็อกก่อนวันที่ (chokepoint gl.commitEntry + create/update/void/payment/JV/reopen) · ปีบัญชี (งบดุล/ช่วงรายงาน/ตารางงวด) · VAT timing · WHT default · price mode · ชื่อซ้ำ (ผู้ติดต่อ+สินค้าใหม่) · บัญชี default 3 ตัว · ออกเอกสารต่อ+คัดลอกหมายเหตุ/แท็ก · ลูกค้าประจำ · ปิดงวดอัตโนมัติ · รายงานอีเมล (cron mode email-reports) · 🐞 ปิด: convert ไม่คัดลอกแท็ก · saveSettings รีเซ็ต VAT · balanceSheet ไม่เคยได้ fiscalYearEndMonth · sweep ปิดงวดทุกระบบไม่มีสวิตช์ · ค้าง: crontab ต้องเพิ่มบรรทัด email-reports · RESEND_API_KEY บน prod · periodCloseDay ยังไม่มีผู้ใช้ |
 | 8.3 | สิทธิ์ matrix + เชื่อมระบบ + API | Sonnet+Opus | TODO | | |
 | 9.1 | มือถือทำงานได้จริง | Sonnet | TODO | | |
 | 9.2 | audit ความปลอดภัย | Opus | TODO | | |
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 4 ก.ย. 2026 ~18:20 UTC — 8.2 นโยบายบัญชี DONE (ตีกลับ 1 รอบ)
 - 4 ก.ย. 2026 ~16:10 UTC — 8.1 ตั้งค่าเอกสาร DONE (ตีกลับ 1 รอบจาก regression ด่านเก่า)
 - 4 ก.ย. 2026 ~13:30 UTC — 🏁 **เฟส 7 ปิด** (7.1–7.2 · qc:all 219/219) · 34/46 ≈ 74%
 - 4 ก.ย. 2026 ~13:10 UTC — 7.2 DONE → เฟส 7 ครบ 2 WO · เริ่มปิดเฟส

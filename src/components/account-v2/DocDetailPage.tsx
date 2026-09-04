@@ -151,6 +151,17 @@ function ActionRow({
         <SubmitButton className="w-full md:w-auto">แปลงเป็น{dt === "ASSET_PURCHASE_ORDER" ? "ซื้อสินทรัพย์" : "บันทึกซื้อ"}</SubmitButton>
       </form>
     );
+  } else if (dt === "QUOTATION" && data.status === "ACCEPTED" && targets.length > 0) {
+    // §9.3: ใบเสนอราคาที่ลูกค้ายอมรับแล้ว → ปุ่มหลัก = ปลายทางเริ่มต้นตามนโยบาย (ใบแจ้งหนี้ หรือ ใบรับเงินมัดจำ)
+    primary = (
+      <Link
+        href={editorDetailPath(base, targets[0], data.id)}
+        className="btn btn-primary w-full text-sm md:w-auto"
+        data-testid="btn-convert-qt"
+      >
+        แปลงเป็น{DOC_LABEL[targets[0]] ?? targets[0]}
+      </Link>
+    );
   } else if (dt === "PURCHASE_TAX_INVOICE" && data.status === "AWAITING_RECEIVE") {
     primary = (
       <form action={receivePtxAction}>
@@ -857,8 +868,13 @@ export async function DocDetailPage({
   const listPath = editorListPath(base, dt);
   const editPath = editorEditPath(base, dt, data.id);
   const selfPath = editorDetailPath(base, dt, data.id);
-  const targets =
+  const rawTargets =
     side === "revenue" && !ACTIVE_STATUSES.has(data.status) ? visibleConvertTargets(dt, settings.vatRegistered) : [];
+  // §9.3 "การออกเอกสารต่อ": ปลายทางที่ตั้งไว้ต้องมาก่อนเสมอ (ปุ่มหลัก + อันแรกในเมนู ⋯)
+  const preferred = dt === "QUOTATION" ? settings.policy.convertQtTo : null;
+  const targets = preferred
+    ? [...rawTargets].sort((a, b) => (a === preferred ? -1 : b === preferred ? 1 : 0))
+    : rawTargets;
   const canShareLink = ["RECEIPT", "DEPOSIT_RECEIPT", "INVOICE"].includes(dt) && !ACTIVE_STATUSES.has(data.status);
   // WO 5.5 — "ลิงก์ชำระเงิน" ใช้ได้เฉพาะเอกสารรายรับที่ออกแล้วและยังค้างชำระ
   //   กดไม่ได้ต้องบอกเหตุผลไทยเสมอ (BLUEPRINT §0.3 ข้อ 9 — ห้ามซ่อนปุ่มเงียบ ๆ)

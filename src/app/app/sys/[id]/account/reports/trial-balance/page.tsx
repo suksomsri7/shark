@@ -2,7 +2,7 @@ import Link from "next/link";
 import { trialBalance } from "@/lib/modules/account/reports";
 import { ledgerDrillHref, previousRange } from "@/lib/modules/account/report-drill";
 import { MoneyText } from "@/components/ui/MoneyText";
-import { loadReport, currentPeriodKey, ReportHeader, WarnBanner, TableWrap } from "../_shared";
+import { loadReportWithPolicy, fiscalDefaultRange, ReportHeader, WarnBanner, TableWrap } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
 
 // งบทดลอง (§11.3) — คลิกยอดของบัญชี = drill-down ไปแยกประเภทของบัญชีนั้นในช่วงเดียวกัน
@@ -20,13 +20,14 @@ export default async function TrialBalancePage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const { tenantId, systemId } = await loadReport(id);
+  const { tenantId, systemId, policy } = await loadReportWithPolicy(id);
   const base = `/app/sys/${id}/account`;
   const ctx = { tenantId, systemId };
 
-  const now = currentPeriodKey();
-  const from = sp.from || now;
-  const to = sp.to || from;
+  // §9.3: ค่าเริ่มต้น = ตั้งแต่ต้นปีบัญชีถึงเดือนปัจจุบัน
+  const dflt = fiscalDefaultRange(policy);
+  const from = sp.from || dflt.from;
+  const to = sp.to || (sp.from ? sp.from : dflt.to);
   const compare = sp.cmp === "1";
   const prev = previousRange(from, to);
 

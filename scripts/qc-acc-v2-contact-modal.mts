@@ -171,17 +171,33 @@ try {
   eq("P3.6 นโยบายเริ่มต้น = เตือน", dupName.policy, "warn");
   eq("P3.7 นโยบาย 'เตือน' → warning บันทึกต่อได้ (ต้องยืนยัน)", svc.contactDuplicateBlocks(dupPhone), null);
   // สลับนโยบายเป็น "ห้าม" แล้วต้องบล็อก
-  const settings = await prisma.accountSettings.findFirst({ where: { systemId }, select: { id: true, docConfig: true } });
-  const prevConfig = (settings?.docConfig as Record<string, unknown> | null) ?? {};
-  if (settings) await prisma.accountSettings.update({ where: { id: settings.id }, data: { docConfig: { ...prevConfig, dupNamePolicy: "block" } } });
-  else await prisma.accountSettings.create({ data: { tenantId, systemId, docConfig: { dupNamePolicy: "block" } } });
+  // 🔴 WO 8.2: นโยบายนี้ย้ายจาก `docConfig.dupNamePolicy` ขึ้นคอลัมน์ `dupContactPolicy` แล้ว
+  //    ⇒ ต้องสลับผ่าน API จริง (`policy.savePolicy`) ไม่ใช่เขียน JSON ตรง ๆ เหมือนเดิม
+  //    (เขียน JSON แล้วเทสเขียวทั้งที่ของจริงไม่เปลี่ยน = เทสหลอกตา)
+  const polMod = await import("@/lib/modules/account/policy");
+  const savedBlock = await polMod.savePolicy(ctx, { dupContactPolicy: "BLOCK" });
+  eq("P3.7b สลับนโยบายผ่านหน้าตั้งค่าได้", savedBlock.ok, true);
   const dupPhoneBlock = await svc.checkContactDuplicates(tenantId, systemId, { phone: "081-234-5678", name: `${TAG} คนละราย` });
   eq("P3.8 นโยบาย 'ห้าม' → เบอร์ซ้ำกลายเป็นห้ามบันทึก", svc.contactDuplicateBlocks(dupPhoneBlock)?.reason, "phone");
   eq("P3.9 policy ที่คืนมาบอกค่าจริง", dupPhoneBlock.policy, "block");
-  // คืนค่าเดิมทันที (เฉลยของชุดอื่นอ่าน docConfig เดียวกัน)
-  if (settings) await prisma.accountSettings.update({ where: { id: settings.id }, data: { docConfig: prevConfig as never } });
-  else await prisma.accountSettings.deleteMany({ where: { systemId } });
+  // คืนค่าเดิมทันที (ชุดข้อมูล QC seed ไว้เป็น "เตือน" — ชุดอื่นอ่านค่าเดียวกัน)
+  await polMod.savePolicy(ctx, { dupContactPolicy: "WARN" });
   eq("P3.10 คืนนโยบายเดิมแล้ว", await svc.getDupNamePolicy(systemId), "warn");
+  // ทางถอย: ร้านเก่าที่ยังไม่เคยเปิดหน้านโยบาย (คอลัมน์ null) ต้องอ่านค่าเดิมจาก docConfig ได้อยู่
+  {
+    const row = await prisma.accountSettings.findFirstOrThrow({ where: { systemId }, select: { id: true, docConfig: true } });
+    const prevCfg = (row.docConfig as Record<string, unknown> | null) ?? {};
+    await prisma.accountSettings.update({
+      where: { id: row.id },
+      data: { dupContactPolicy: null, docConfig: { ...prevCfg, dupNamePolicy: "block" } as never },
+    });
+    eq("P3.10b คอลัมน์ว่าง → อ่านค่าเดิมจาก docConfig.dupNamePolicy (ร้านก่อน WO 8.2 ไม่หายค่า)", await svc.getDupNamePolicy(systemId), "block");
+    await prisma.accountSettings.update({
+      where: { id: row.id },
+      data: { dupContactPolicy: "WARN", docConfig: prevCfg as never },
+    });
+    eq("P3.10c คืนค่าเดิมครบ", await svc.getDupNamePolicy(systemId), "warn");
+  }
   const dupSelf = await svc.checkContactDuplicates(tenantId, systemId, { taxId: "0105591234567", branchCode: "00001", excludeId: created.id });
   eq("P3.11 แก้ไขตัวเอง = ไม่เตือนว่าซ้ำกับตัวเอง", dupSelf.blocking.length, 0);
 

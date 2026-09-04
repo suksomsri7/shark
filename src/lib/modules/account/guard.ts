@@ -148,6 +148,7 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "settings/page.tsx": "account.settings.manage",
   // WO 8.1 (§9.2): หน้า "ตั้งค่า › เอกสารและเลขที่" — แก้เลขรัน/นโยบายเอกสาร ⇒ ต้องมีสิทธิ์ตั้งค่าเต็ม
   "settings/documents/page.tsx": "account.settings.manage",
+  "settings/policy/page.tsx": "account.settings.manage", // WO 8.2 §9.3
   "tax/export/route.ts": "account.tax.view",
   "tax/page.tsx": "account.tax.view",
   "wht/[certId]/print/page.tsx": "account.wht.manage",

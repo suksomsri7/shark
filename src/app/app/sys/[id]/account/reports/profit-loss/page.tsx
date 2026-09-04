@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import { profitLoss, type ProfitLoss, type PLRow } from "@/lib/modules/account/reports";
 import { ledgerDrillHref } from "@/lib/modules/account/report-drill";
 import { MoneyText } from "@/components/ui/MoneyText";
-import { loadReport, currentPeriodKey, ReportHeader, TableWrap } from "../_shared";
+import { loadReportWithPolicy, fiscalDefaultRange, ReportHeader, TableWrap } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
 
 export default async function ProfitLossPage({
@@ -15,12 +15,13 @@ export default async function ProfitLossPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const { tenantId, systemId } = await loadReport(id);
+  const { tenantId, systemId, policy } = await loadReportWithPolicy(id);
   const base = `/app/sys/${id}/account`;
 
-  const now = currentPeriodKey();
-  const from = sp.from || now;
-  const to = sp.to || from;
+  // §9.3: ค่าเริ่มต้น = ตั้งแต่ต้น**ปีบัญชี**ถึงเดือนปัจจุบัน (ไม่ใช่เดือนเดียว/ปีปฏิทิน)
+  const dflt = fiscalDefaultRange(policy);
+  const from = sp.from || dflt.from;
+  const to = sp.to || (sp.from ? sp.from : dflt.to);
   // WO 6.2: แถบเครื่องมือร่วม (§11.3) ใช้คีย์ `cmp` — รับ `compare` ของเดิมต่อไปด้วย (ลิงก์เก่าไม่พัง)
   const compare = sp.cmp === "1" || sp.compare === "1";
   const pl = await profitLoss({ tenantId, systemId }, from, to, { compare });

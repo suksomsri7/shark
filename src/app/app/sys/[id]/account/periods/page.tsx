@@ -12,6 +12,7 @@ import {
   isPeriodKey,
 } from "@/lib/modules/account/period-close";
 import { formatDateTh } from "@/lib/ui/date";
+import { fiscalYearOf, getPolicy, isLockedPeriod } from "@/lib/modules/account/policy"; // §9.3
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import StatusChip from "@/components/ui/StatusChip";
 import { AccountIcon } from "@/components/account-v2/AccountIcon";
@@ -38,6 +39,10 @@ export default async function PeriodsPage({
 
   const periods = await listPeriods(ctx);
   const cur = currentPeriodKey();
+  // WO 8.2 (§9.3): ตารางงวดต้องบอกว่าอยู่ "ปีบัญชี" ไหน — กิจการ เม.ย.–มี.ค. ดูจากเลขเดือนอย่างเดียวไม่ออก
+  const policy = await getPolicy(ctx);
+  const fyLabelOf = (periodKey: string) => fiscalYearOf(`${periodKey}-01`, policy.fiscalYearStartMonth).label;
+  const lockedPeriod = (periodKey: string) => isLockedPeriod(policy.lockBeforeDate, periodKey);
   // งวดที่เลือกดูเช็กลิสต์ = จาก URL · ไม่ระบุ = งวดเปิดล่าสุดที่ไม่ใช่งวดปัจจุบัน (งวดที่ "ถึงคิวปิด")
   const selected =
     (sp.p && isPeriodKey(sp.p) ? sp.p : null) ??
@@ -197,6 +202,7 @@ export default async function PeriodsPage({
             <thead>
               <tr className="border-b text-left text-xs text-[color:var(--color-muted)]" style={{ borderColor: "var(--color-line)" }}>
                 <th className="px-3 py-3 font-medium">เดือน</th>
+                <th className="px-3 py-3 font-medium">ปีบัญชี</th>
                 <th className="px-3 py-3 font-medium">สถานะ</th>
                 <th className="px-3 py-3 text-right font-medium">ใบสำคัญ</th>
                 <th className="px-3 py-3 font-medium">ปิดโดย</th>
@@ -223,12 +229,24 @@ export default async function PeriodsPage({
                       </span>
                     )}
                   </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-[color:var(--color-muted)]" data-testid={`period-fy-${p.periodKey}`}>
+                    {fyLabelOf(p.periodKey)}
+                  </td>
                   <td className="px-3 py-2.5">
                     <StatusChip
                       value={p.status}
                       map={{ CLOSED: "ปิดแล้ว", OPEN: "เปิดอยู่" }}
                       toneOf={(v) => (v === "CLOSED" ? "strong" : "muted")}
                     />
+                    {lockedPeriod(p.periodKey) && (
+                      <span
+                        className="ml-1.5 rounded-md border px-1.5 py-0.5 text-[11px] text-[color:var(--color-muted)]"
+                        style={{ borderColor: "var(--color-line)" }}
+                        data-testid={`period-locked-${p.periodKey}`}
+                      >
+                        ล็อกข้อมูล
+                      </span>
+                    )}
                     {p.reopenCount > 0 && (
                       <span className="ml-1.5 text-[11px] text-[color:var(--color-muted)]">
                         เปิดใหม่ {p.reopenCount} ครั้ง

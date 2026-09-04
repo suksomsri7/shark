@@ -10,6 +10,7 @@
 import { tenantDb } from "@/lib/core/db";
 import type { AccountJournalBook, Prisma } from "@prisma/client";
 import { postManualJV, reverseEntry } from "./gl";
+import { checkNotLocked } from "./policy"; // §9.3 ล็อกข้อมูลก่อนวันที่
 
 export type JournalCtx = { tenantId: string; systemId: string };
 
@@ -398,6 +399,10 @@ export async function createManualEntry(ctx: JournalCtx, input: ManualJvInput): 
   if (invalid) return { ok: false, reason: invalid };
 
   const db = tenantDb(ctx);
+  // §9.3 ล็อกข้อมูลก่อนวันที่ — ตรวจก่อนทำอย่างอื่น (ด่านจริงอยู่ที่ gl.commitEntry แต่ตรงนี้ตอบเร็วกว่า
+  // และได้ข้อความเดียวกันเป๊ะ เพราะใช้ฟังก์ชันเดียวกัน)
+  const lockCheck = await checkNotLocked(ctx, input.dateKey);
+  if (!lockCheck.ok) return lockCheck;
   const used = input.lines.filter((l) => l.accountId && ((l.debit || 0) !== 0 || (l.credit || 0) !== 0));
 
   const accountIds = [...new Set(used.map((l) => l.accountId))];
@@ -459,10 +464,14 @@ export async function reverseJournalEntry(ctx: JournalCtx, entryId: string, reas
   const db = tenantDb(ctx);
   const e = await db.accountJournalEntry.findFirst({
     where: { id: entryId },
-    select: { id: true, status: true, docNo: true },
+    select: { id: true, status: true, docNo: true, date: true },
   });
   if (!e) return { ok: false, reason: "ไม่พบใบสำคัญนี้" };
   if (e.status === "REVERSED") return { ok: false, reason: `${e.docNo} ถูกกลับรายการไปแล้ว` };
+  // §9.3: กลับรายการใบที่ลงวันที่ในช่วงล็อกไม่ได้
+  // 🔴 ด่านใน gl.commitEntry จับไม่ได้ เพราะ reverseEntry เลื่อนวันไปงวดเปิดถัดไป (resolveOpenDate)
+  const lockCheck = await checkNotLocked(ctx, e.date);
+  if (!lockCheck.ok) return lockCheck;
   const note = reason.trim();
   if (note.length < 3) return { ok: false, reason: "กรุณาระบุเหตุผลในการกลับรายการ" };
   try {

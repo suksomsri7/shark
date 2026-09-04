@@ -13,6 +13,7 @@
 //    (ถ้าสองที่ไม่ตรงกัน gl ชนะ · ข้อสอบ qc-acc-v2-period-assets ตรวจว่าสองที่ให้คำตอบเดียวกัน)
 
 import { tenantDb } from "@/lib/core/db";
+import { isLockedPeriod, lockBeforeDateOf, lockedMessage } from "./policy"; // §9.3
 import { closePeriod, reopenPeriod } from "./gl";
 import { reconcileBlock, listReconcilableChannels } from "./reconcile";
 
@@ -251,6 +252,10 @@ export async function reopenPeriodV2(
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (!isPeriodKey(periodKey)) return { ok: false, reason: "รูปแบบงวดไม่ถูกต้อง (ต้องเป็น YYYY-MM)" };
   if (reason.trim().length < 3) return { ok: false, reason: "กรุณาระบุเหตุผลในการเปิดงวดใหม่" };
+  // §9.3 ล็อกข้อมูลก่อนวันที่ — งวดที่จมอยู่ใต้วันล็อกทั้งงวด เปิดใหม่ไม่ได้
+  // (เปิดได้ก็แก้อะไรไม่ได้อยู่ดี — บอกตรงนี้ดีกว่าให้ไปเจอตอนกดบันทึก)
+  const lock = await lockBeforeDateOf(ctx);
+  if (lock && isLockedPeriod(lock, periodKey)) return { ok: false, reason: lockedMessage(lock) };
   try {
     await reopenPeriod(ctx, periodKey, reason.trim(), userId);
   } catch (e) {

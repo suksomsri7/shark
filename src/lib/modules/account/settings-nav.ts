@@ -9,6 +9,8 @@ export type SettingsSection = {
   path: string;
   /** query `?s=` ของหัวข้อย่อย (ว่าง = หัวข้อหลักไม่มีย่อย) */
   sub?: string;
+  /** ยังไม่ทำ — แสดงจาง + ป้าย "เร็ว ๆ นี้" (§9.3 Smart Insight 🕓) */
+  soon?: boolean;
 };
 
 export type SettingsGroup = {
@@ -36,6 +38,28 @@ export const DOC_SETTINGS_SUBS: { key: string; label: string }[] = [
 ];
 
 export const DEFAULT_DOC_SUB = "numbering";
+
+/** หัวข้อย่อยของ "นโยบายบัญชี" (WO 8.2 · §9.3 — เรียงตามลำดับใน SPEC เป๊ะ) */
+export const POLICY_SETTINGS_SUBS: { key: string; label: string; soon?: boolean }[] = [
+  { key: "fiscal", label: "ปีบัญชี" },
+  { key: "vat", label: "ภาษีมูลค่าเพิ่ม (VAT)" },
+  { key: "wht", label: "หัก ณ ที่จ่ายเริ่มต้น" },
+  { key: "price", label: "ประเภทราคาเริ่มต้น" },
+  { key: "lock", label: "ล็อกข้อมูลก่อนวันที่" },
+  { key: "dup", label: "การสร้างชื่อซ้ำ" },
+  { key: "accounts", label: "บัญชีรายรับ/รายจ่ายเริ่มต้น" },
+  { key: "convert", label: "การออกเอกสารต่อ" },
+  { key: "regular", label: "นิยามลูกค้าประจำ" },
+  { key: "autoclose", label: "ปิดงวดอัตโนมัติ" },
+  { key: "email", label: "รายงานทางอีเมล" },
+  { key: "insight", label: "Smart Insight", soon: true },
+];
+
+export const DEFAULT_POLICY_SUB = "fiscal";
+
+export function policySubLabel(key: string): string {
+  return POLICY_SETTINGS_SUBS.find((x) => x.key === key)?.label ?? POLICY_SETTINGS_SUBS[0].label;
+}
 
 export function docSubLabel(key: string): string {
   return DOC_SETTINGS_SUBS.find((x) => x.key === key)?.label ?? DOC_SETTINGS_SUBS[0].label;
@@ -67,7 +91,19 @@ export function settingsGroups(base: string): SettingsGroup[] {
         sub: x.key,
       })),
     },
-    { key: "policy", label: "นโยบายบัญชี", icon: "lock", path: `${root}/policy`, items: [], soon: true },
+    {
+      key: "policy",
+      label: "นโยบายบัญชี",
+      icon: "lock",
+      path: `${root}/policy`,
+      items: POLICY_SETTINGS_SUBS.map((x) => ({
+        key: x.key,
+        label: x.label,
+        path: `${root}/policy`,
+        sub: x.key,
+        soon: x.soon,
+      })),
+    },
     { key: "permissions", label: "สิทธิ์ผู้ใช้งาน", icon: "users", path: `${root}/permissions`, items: [], soon: true },
     { key: "connections", label: "การเชื่อมต่อ", icon: "link", path: `${root}/connections`, items: [], soon: true },
     { key: "plan", label: "แพ็กเกจและการใช้งาน", icon: "tag", path: `${root}/plan`, items: [], soon: true },

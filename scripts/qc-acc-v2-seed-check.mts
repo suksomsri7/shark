@@ -870,6 +870,69 @@ console.log("\nJ. กล่องขาเข้า + ผลอ่าน AI");
   }
 }
 
+// ─────────── T. นโยบายบัญชี §9.3 (WO 8.2) ───────────
+{
+  console.log("\nT. นโยบายบัญชี (§9.3 · WO 8.2)");
+  const B = (E as { policy?: Record<string, unknown> }).policy;
+  if (!B) {
+    chk("T0", "เฉลยมีคีย์ policy", false, null, "policy");
+  } else {
+    const polMod = await import("@/lib/modules/account/policy");
+    const svcMod2 = await import("@/lib/modules/account/service");
+    const want = B as {
+      fiscalYearStartMonth: number;
+      periodCloseDay: number;
+      fiscalYearLabel: string;
+      fiscalYearOfToday: { startKey: string; endKey: string };
+      vatRegistered: boolean;
+      vatRateBp: number;
+      vatTiming: string;
+      defaultPriceMode: string;
+      lockBeforeYmd: string;
+      lockedMessage: string;
+      dupContactPolicy: string;
+      dupProductPolicy: string;
+      defaultSalesAccountCode: string;
+      defaultPurchaseAccountCode: string;
+      defaultExpenseAccountCode: string;
+      convertQtTo: string;
+      convertPoTo: string;
+      copyNotesOnConvert: boolean;
+      copyTagsOnConvert: boolean;
+      autoClosePeriods: boolean;
+      autoCloseNotify: boolean;
+      emailReportDaily: boolean;
+      emailReportWeekly: boolean;
+      emailReportRecipients: string[];
+      whtDefaults: unknown[];
+      regularCustomer: Record<string, number>;
+      subSections: number;
+    };
+    const pol = await polMod.getPolicy({ tenantId, systemId });
+    eq("T1", "เดือนเริ่มปีบัญชี / วันปิดงวด", [pol.fiscalYearStartMonth, pol.periodCloseDay], [want.fiscalYearStartMonth, want.periodCloseDay]);
+    eq("T2", "ป้ายรอบปีบัญชีที่ครอบวันอ้างอิงของชุดข้อมูล", polMod.fiscalYearOf(QC.today, pol.fiscalYearStartMonth).label, want.fiscalYearLabel);
+    eq("T3", "คีย์งวดต้น/ปลายรอบปีบัญชี", [polMod.fiscalYearOf(QC.today, pol.fiscalYearStartMonth).startKey, polMod.fiscalYearOf(QC.today, pol.fiscalYearStartMonth).endKey], [want.fiscalYearOfToday.startKey, want.fiscalYearOfToday.endKey]);
+    eq("T4", "VAT (จด / อัตรา / จุดรับรู้)", [pol.vatRegistered, pol.vatRateBp, pol.vatTiming], [want.vatRegistered, want.vatRateBp, want.vatTiming]);
+    eq("T5", "จุดรับรู้ VAT ที่ getSettings คืน (คอลัมน์ใหม่ ไม่ใช่ JSON เดิม)", (await svcMod2.getSettings(tenantId, systemId)).taxPointBasis, want.vatTiming);
+    eq("T6", "ประเภทราคาเริ่มต้น", pol.defaultPriceMode, want.defaultPriceMode);
+    eq("T7", "วันล็อกข้อมูล (วันไทย)", pol.lockBeforeDate ? polMod.policyDayKey(pol.lockBeforeDate) : null, want.lockBeforeYmd);
+    eq("T8", "ข้อความล็อกเป็นภาษาคน", polMod.lockedMessage(pol.lockBeforeDate!), want.lockedMessage);
+    eq("T9", "นโยบายชื่อซ้ำ (ผู้ติดต่อ / สินค้า)", [pol.dupContactPolicy, pol.dupProductPolicy], [want.dupContactPolicy, want.dupProductPolicy]);
+    eq("T10", "บัญชีรายรับ/รายจ่ายเริ่มต้น 3 ตัว", [pol.defaultSalesAccountCode, pol.defaultPurchaseAccountCode, pol.defaultExpenseAccountCode], [want.defaultSalesAccountCode, want.defaultPurchaseAccountCode, want.defaultExpenseAccountCode]);
+    eq("T11", "การออกเอกสารต่อ + คัดลอกหมายเหตุ/แท็ก", [pol.convertQtTo, pol.convertPoTo, pol.copyNotesOnConvert, pol.copyTagsOnConvert], [want.convertQtTo, want.convertPoTo, want.copyNotesOnConvert, want.copyTagsOnConvert]);
+    eq("T12", "ปิดงวดอัตโนมัติ + แจ้งเตือน", [pol.autoClosePeriods, pol.autoCloseNotify], [want.autoClosePeriods, want.autoCloseNotify]);
+    eq("T13", "รายงานทางอีเมล + ผู้รับ", [pol.emailReportDaily, pol.emailReportWeekly, pol.emailReportRecipients], [want.emailReportDaily, want.emailReportWeekly, want.emailReportRecipients]);
+    eq("T14", "หัก ณ ที่จ่ายเริ่มต้นต่อประเภทเงินได้", pol.whtDefaults, want.whtDefaults);
+    eq("T15", "นิยามลูกค้าประจำ", pol.regularCustomer, want.regularCustomer);
+    const navMod2 = await import("@/lib/modules/account/settings-nav");
+    eq("T16", "หน้านโยบายบัญชีมีหัวข้อย่อยครบตาม §9.3", navMod2.POLICY_SETTINGS_SUBS.length, want.subSections);
+    chk("T17", "เมนูตั้งค่า: หมวดนโยบายบัญชีเปิดใช้แล้ว (ไม่ใช่ 'เร็ว ๆ นี้')", navMod2.settingsGroups("/b").find((g) => g.key === "policy")?.soon !== true, "ready");
+    // 🔴 ด่านกันงานพัง: วันล็อกต้องอยู่ "หลัง" เอกสารทุกใบของชุดข้อมูล ไม่งั้น seed รอบหน้าจะสร้างข้อมูลไม่ได้
+    const docsAfterLock = await prisma.accountDocument.count({ where: { systemId, issueDate: { gte: new Date(`${want.lockBeforeYmd}T00:00:00+07:00`) } } });
+    chk("T18", "มีเอกสารที่ลงวันที่ตั้งแต่วันล็อกเป็นต้นไป (ล็อกไม่ได้แช่แข็งทั้งชุดข้อมูล)", docsAfterLock > 0, docsAfterLock, "> 0");
+  }
+}
+
 // ─────────── H. อายุของข้อสอบ ───────────
 console.log("\nH. อายุของชุดข้อมูล");
 chk(

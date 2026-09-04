@@ -151,7 +151,14 @@ export type ProductOption = {
   accountId: string | null;
 };
 
-export type LedgerOption = { id: string; code: string; name: string };
+export type LedgerOption = {
+  id: string;
+  code: string;
+  name: string;
+  /** WO 8.2 (§9.3): หัก ณ ที่จ่ายเริ่มต้นของบัญชีนี้ตามนโยบาย — เลือกบัญชีแล้วเติมให้เอง */
+  whtIncomeType?: string | null;
+  whtRateBp?: number | null;
+};
 
 export type FavoriteSet = { name: string; lines: Omit<LineDraft, "key">[] };
 
@@ -192,6 +199,11 @@ export type DocEditorV2Props = {
   contacts: ContactOption[];
   products: ProductOption[];
   accounts: LedgerOption[];
+  /**
+   * WO 8.2 (§9.3): อัตราหัก ณ ที่จ่ายเริ่มต้น **ต่อประเภทเงินได้** ตามนโยบายของร้าน
+   * ไม่ได้ตั้ง = ใช้อัตราตามกฎหมายใน `WHT_TYPE_OPTIONS` เหมือนเดิม
+   */
+  whtRateByIncomeType?: Record<string, number>;
   salesUsers: { id: string; name: string }[];
   tagOptions: string[];
   favorites: FavoriteSet[];

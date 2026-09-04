@@ -1001,6 +1001,103 @@ const PAGES: Record<string, PageSpec[]> = {
       waitAfterClick: 400,
     },
   ],
+  // ─────────── WO 8.2 — นโยบายบัญชี (§9.3 · ไม่มีเฟรม → ใช้ภาษาภาพของ f10 เหมือน 8.1) ───────────
+  "8.2": [
+    {
+      name: "settings-policy-fiscal",
+      path: `/app/sys/${SYS}/account/settings/policy?s=fiscal`,
+      note: "หน้าตั้งค่า › นโยบายบัญชี › ปีบัญชี — โครงเดียวกับ f10 (เมนูซ้าย w-280 · การ์ดขวา max-w-2xl · ปุ่มบันทึก sticky) · เมนูย่อยเรียงตาม §9.3",
+      expect: [
+        "ตั้งค่า",
+        "ข้อมูลกิจการ",
+        "เอกสารและเลขที่",
+        "นโยบายบัญชี",
+        "ปีบัญชี",
+        "ภาษีมูลค่าเพิ่ม (VAT)",
+        "หัก ณ ที่จ่ายเริ่มต้น",
+        "ประเภทราคาเริ่มต้น",
+        "ล็อกข้อมูลก่อนวันที่",
+        "การสร้างชื่อซ้ำ",
+        "บัญชีรายรับ/รายจ่ายเริ่มต้น",
+        "การออกเอกสารต่อ",
+        "นิยามลูกค้าประจำ",
+        "ปิดงวดอัตโนมัติ",
+        "รายงานทางอีเมล",
+        "Smart Insight",
+        "เร็ว ๆ นี้",
+        "เดือนเริ่มปีบัญชี",
+        "เมษายน",
+        "วันปิดงวดของแต่ละเดือน (ไม่บังคับ)",
+        "ปีบัญชี 2026 (เม.ย. 2026–มี.ค. 2027)",
+        "บันทึกการตั้งค่า",
+        "ยกเลิก",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "settings-policy-lock",
+      path: `/app/sys/${SYS}/account/settings/policy?s=lock`,
+      note: "หัวข้อ 'ล็อกข้อมูลก่อนวันที่' — ช่องวันที่ + หมายเหตุสีแดงบอกว่าล็อกอยู่ + ปุ่มปลดล็อก",
+      expect: [
+        "ล็อกข้อมูลก่อนวันที่",
+        "ปิดไม่ให้ใครบันทึก แก้ไข หรือยกเลิกรายการย้อนหลังก่อนวันที่กำหนด",
+        "31 ส.ค. 2026",
+        "ปลดล็อก",
+        "การดูรายงานย้อนหลังไม่กระทบ",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "settings-policy-wht",
+      path: `/app/sys/${SYS}/account/settings/policy?s=wht`,
+      note: "หัวข้อ 'หัก ณ ที่จ่ายเริ่มต้น' — ตารางประเภทเงินได้ 8 แถว + อัตรา + บัญชีที่ผูก",
+      expect: [
+        "หัก ณ ที่จ่ายเริ่มต้น",
+        "ประเภทเงินได้",
+        "อัตรา (%)",
+        "บัญชีค่าใช้จ่ายที่ใช้อัตรานี้",
+        "40(5) ค่าเช่าทรัพย์สิน",
+        "40(8) ค่าบริการ/อื่นๆ",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "settings-policy-convert",
+      path: `/app/sys/${SYS}/account/settings/policy?s=convert`,
+      note: "หัวข้อ 'การออกเอกสารต่อ' — ปลายทางเริ่มต้น + สวิตช์คัดลอกหมายเหตุ/แท็ก (แถวสวิตช์แบบเดียวกับการ์ดกฎอัตโนมัติของ f10)",
+      expect: [
+        "การออกเอกสารต่อ",
+        "จากใบเสนอราคา ไปที่",
+        "ใบรับเงินมัดจำ",
+        "จากใบสั่งซื้อ ไปที่",
+        "คัดลอกหมายเหตุไปเอกสารใหม่",
+        "คัดลอกแท็กไปเอกสารใหม่",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "settings-policy-email",
+      path: `/app/sys/${SYS}/account/settings/policy?s=email`,
+      note: "หัวข้อ 'รายงานทางอีเมล' — สวิตช์รายวัน/รายสัปดาห์ + ช่องผู้รับ",
+      expect: ["รายงานทางอีเมล", "สรุปรายวัน", "สรุปรายสัปดาห์", "ส่งถึงใคร", "รายงานมีแต่ตัวเลขรวม"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "settings-policy-menu-mobile",
+      path: `/app/sys/${SYS}/account/settings/policy`,
+      note: "มือถือ 390: ยังไม่เลือกหัวข้อย่อย = เห็นรายการหัวข้อเต็มความกว้าง",
+      expect: ["ตั้งค่า", "นโยบายบัญชี", "ปีบัญชี", "ล็อกข้อมูลก่อนวันที่", "รายงานทางอีเมล"],
+      onlyDevice: "mobile",
+    },
+    {
+      name: "settings-policy-lock-mobile",
+      path: `/app/sys/${SYS}/account/settings/policy?s=lock`,
+      note: "มือถือ 390: เนื้อหาหัวข้อ 'ล็อกข้อมูลก่อนวันที่' + ปุ่มย้อนกลับ — ต้องไม่ล้นแนวนอน",
+      expect: ["ล็อกข้อมูลก่อนวันที่", "หัวข้อตั้งค่า", "ปลดล็อก"],
+      onlyDevice: "mobile",
+    },
+  ],
+
   // ─────────── WO 8.1 — ตั้งค่าเอกสาร (§9.2 · เฟรม f10-settings.png / f10-settings-menu.png) ───────────
   "8.1": [
     {
@@ -2171,6 +2268,29 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "dep-total": baht(E.wo62?.assets?.[0]?.accumDepreciation ?? 0, true),
     },
   },
+  // WO 8.2 — ค่าบนหน้านโยบายต้องเป็นค่าที่ seed ตั้งไว้จริง (เฉลย policy)
+  "8.2": {
+    "settings-policy-fiscal": {
+      "policy-fy-label": `รอบปัจจุบัน: ${E.policy?.fiscalYearLabel ?? ""}`,
+      "policy-close-day": `${E.policy?.periodCloseDay ?? ""}`,
+      "policy-fy-month": `${E.policy?.fiscalYearStartMonth ?? ""}`,
+    },
+    "settings-policy-lock": {
+      // 🔴 ช่องวันที่ใช้ `DateInput` ⇒ สิ่งที่ผู้ใช้เห็นต้องเป็น "31 ส.ค. 2026" ไม่ใช่ "08/31/2026" ของเบราว์เซอร์
+      //    (ค่า ISO ที่ส่งเข้าฟอร์มอยู่ใน hidden input · ค่าที่เก็บจริงตรวจแล้วที่ qc-acc-v2-policy P15.5)
+      "policy-lock-date": `${E.policy?.lockBeforeDateTh ?? ""}`,
+    },
+    "settings-policy-email": {
+      // ค่าอยู่ใน <textarea> — อ่านผ่าน .value (ตัวอ่าน testid รองรับแล้ว)
+      "policy-email-recipients": `${(E.policy?.emailReportRecipients ?? []).join("\n")}`,
+      "policy-email-weekly": E.policy?.emailReportWeekly ? "on" : "off",
+      "policy-email-daily": E.policy?.emailReportDaily ? "on" : "off",
+    },
+    "settings-policy-convert": {
+      "policy-convert-qt": `${E.policy?.convertQtTo ?? ""}`,
+      "policy-convert-po": `${E.policy?.convertPoTo ?? ""}`,
+    },
+  },
   // WO 8.1 — ตัวอย่างเลขถัดไปบนตาราง ต้องเป็นเลขที่ระบบจะออกจริง (รูปแบบที่ seed ตั้งไว้)
   "8.1": {
     "settings-numbering": {
@@ -2730,11 +2850,22 @@ try {
             viewportH: window.innerHeight,
             // 🔴 WO 2.2: testid บน SVG (<rect>/<circle>/<text> ของกราฟ/โดนัท) ไม่มี .innerText (HTMLElement เท่านั้น)
             // → fallback .textContent เสมอ กัน TypeError "Cannot read properties of undefined (reading 'trim')"
+            // 🔴 WO 8.2: ช่องกรอก (input/select/textarea) เก็บค่าไว้ที่ `.value` ไม่ใช่ข้อความบนหน้า
+            //    ถ้าอ่านแต่ innerText จะได้ "" แล้วข้อสอบที่ตรวจ "ค่าที่ตั้งไว้จริง" จะเขียวหลอกไม่ได้—แดงเสมอ
+            //    (ก่อนหน้านี้เลี่ยงด้วยการตรวจแต่ข้อความ ⇒ ตรวจค่าในฟอร์มไม่ได้เลย)
             testids: Object.fromEntries(
-              [...document.querySelectorAll("[data-testid]")].map((el) => [
-                el.getAttribute("data-testid") ?? "",
-                ((el as HTMLElement).innerText ?? el.textContent ?? "").trim(),
-              ]),
+              [...document.querySelectorAll("[data-testid]")].map((el) => {
+                const tag = el.tagName;
+                const val =
+                  tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA"
+                    ? ((el as HTMLInputElement).type === "checkbox"
+                        ? (el as HTMLInputElement).checked
+                          ? "on"
+                          : "off"
+                        : ((el as HTMLInputElement).value ?? ""))
+                    : ((el as HTMLElement).innerText ?? el.textContent ?? "");
+                return [el.getAttribute("data-testid") ?? "", String(val).trim()];
+              }),
             ),
             // WO 0.4 shell V2: ตัวเลขโครงสร้างเมนู — อ่านแยกจาก testids ตรง ๆ เพราะต้อง "นับ" ไม่ใช่อ่านข้อความ
             acc: {

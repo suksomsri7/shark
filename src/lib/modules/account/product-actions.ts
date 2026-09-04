@@ -22,12 +22,15 @@ import {
   createProduct,
   updateProduct,
   archiveProduct,
+  checkProductDuplicates,
   createGoodsMovement,
   type ProductInput,
   type GoodsLineInput,
 } from "./product";
 // WO 4.1 — ผูก/เลิกผูกสินค้าบัญชีกับสินค้าในคลัง ("ติดตามสต็อกในคลังสินค้า" · SPEC §8.2 "การเชื่อมต่อ")
 import { linkProductToItem, unlinkProductFromItem } from "./inventory-link";
+// WO 8.2 — นโยบายชื่อซ้ำของสินค้า (§9.3)
+import { getProductDupPolicy } from "./service";
 
 // ─────────────────── helpers ───────────────────
 
@@ -404,10 +407,20 @@ export type ProductFormPayload = {
   bookingDepositBaht?: string | null;
   // รายการจัดชุด (§8.2)
   bundleItems?: { componentProductId: string; qty: number; unitId?: string | null }[];
+  /** WO 8.2 (§9.3): ผู้ใช้เห็นแถบเตือนชื่อซ้ำแล้วยืนยันว่า "คนละรายการ" → บันทึกต่อ (ใช้กับนโยบาย "เตือน" เท่านั้น) */
+  confirmDuplicate?: boolean;
 };
 
 export type SaveProductResult =
   | { ok: true; id: string; code: string | null }
+  | {
+      ok: false;
+      error: "duplicate";
+      /** WO 8.2 (§9.3) — ซ้ำกับสินค้ารายการไหน (UI ทำลิงก์ "เปิด …") */
+      duplicate: { id: string; code: string | null; name: string; reason: "name" | "sku" };
+      /** true = นโยบาย §9.3 ตั้งเป็น "ห้าม" → ไม่มีปุ่ม "บันทึกต่อไป" */
+      blocked: boolean;
+    }
   | { ok: false; error: string; fields?: Record<string, string> };
 
 const bahtToSatang = (v: string | null | undefined): number | null => {
@@ -444,6 +457,26 @@ export async function saveProductAction(systemId: string, payload: ProductFormPa
 
   const fields = validateProductPayload(payload);
   if (Object.keys(fields).length > 0) return { ok: false, error: "validation", fields };
+
+  // ── ชื่อ/SKU ซ้ำ (SPEC §9.3 "การสร้างชื่อซ้ำ") ──
+  // เตือน = ผู้ใช้กด "คนละรายการ บันทึกต่อ" ผ่านได้ · ห้าม = ไม่ให้ผ่าน (ปุ่มยืนยันไม่ขึ้น)
+  if (!payload.confirmDuplicate) {
+    const hits = await checkProductDuplicates(tenantId, systemId, {
+      name: payload.name,
+      sku: payload.sku,
+      excludeId: payload.id ?? null,
+    });
+    const hit = hits[0];
+    if (hit) {
+      const policy = await getProductDupPolicy(systemId);
+      return {
+        ok: false,
+        error: "duplicate",
+        duplicate: hit,
+        blocked: policy === "block" || hit.reason === "sku", // SKU ซ้ำ = unique index กันอยู่แล้ว ยืนยันข้ามไม่ได้
+      };
+    }
+  }
 
   const type = (["GOODS", "SERVICE", "BUNDLE"].includes(payload.type) ? payload.type : "GOODS") as AccountProductType;
   const input: ProductInput = {

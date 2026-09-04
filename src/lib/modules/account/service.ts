@@ -35,6 +35,28 @@ import * as party from "@/lib/modules/party";
 // WO 1.9 (เอกสารประจำ + เตือน) — ดูหัวข้อท้ายไฟล์ว่าทำไมโค้ดก้อนนั้นอยู่ในไฟล์นี้ (fitness F5)
 import { evaluate } from "@/lib/core/rbac";
 import { writeAudit } from "./access";
+// 🔴 `sendEmail` **ต้อง import แบบ lazy เท่านั้น** (ดูใน runAccountEmailReports)
+//    `@/lib/core/email` → `@/lib/env` ที่ตรวจ schema ตอน "โหลดโมดูล" (ต้องมี SESSION_SECRET/RESEND_*)
+//    ถ้า import ไว้หัวไฟล์ การ import โมดูลบัญชีเฉย ๆ จะพังในสภาพแวดล้อมที่ไม่มี .env (CI · fitness F10.1)
+//    กติกาเดียวกับที่ WO 1.9 ใช้ และที่ core/email.ts เองใช้กับ logOps
+import {
+  composeAccountReport,
+  reportIdempotencyKey,
+  reportKindsDue,
+  REPORT_MARKER_TITLE,
+} from "./email-report";
+// WO 8.2 (§9.3) นโยบายบัญชี — ล็อกวันที่ · ปีบัญชี · ค่าเริ่มต้นของฟอร์ม/การแปลงเอกสาร
+import {
+  assertNotLockedTx,
+  assertNotLockedWith,
+  defaultPolicy,
+  fiscalYearOf,
+  parsePolicy,
+  POLICY_SELECT,
+  toDupPolicy,
+  type PolicyRow,
+  type AccountPolicy,
+} from "./policy";
 // WO 8.1 (§9.2) — เครื่องออกเลขที่เอกสาร + โครงตั้งค่าเอกสาร (แหล่งเดียวทั้งฝั่งรายรับ/รายจ่าย)
 import {
   bkkParts,
@@ -307,6 +329,12 @@ export type AccountSettingsView = {
    * ⇒ ไม่มี query เพิ่ม และไม่มีใครต้องไปอ่าน docConfig ดิบ ๆ เองอีก
    */
   doc: DocSettingsView;
+  /**
+   * WO 8.2 (§9.3) — นโยบายบัญชีทั้งก้อน (ปีบัญชี · VAT · WHT เริ่มต้น · ประเภทราคา · ล็อกวันที่ ·
+   * ชื่อซ้ำ · บัญชีเริ่มต้น · ออกเอกสารต่อ · ลูกค้าประจำ · ปิดงวดอัตโนมัติ · รายงานอีเมล)
+   * ติดมากับ getSettings ด้วยเหตุผลเดียวกับ `doc` — ทุกจุดที่ต้องใช้เรียก getSettings อยู่แล้ว ⇒ ไม่มี query เพิ่ม
+   */
+  policy: AccountPolicy;
 };
 
 export type DocTypeConfig = {
@@ -371,6 +399,7 @@ const SETTINGS_DEFAULT: AccountSettingsView = {
   footerNote: null,
   docTypes: {},
   doc: defaultDocSettings(),
+  policy: defaultPolicy(),
 };
 
 /** คำนำหน้าชื่อนิติบุคคลที่ให้เลือก — ค่าว่าง = ไม่มีคำนำหน้า (บุคคลธรรมดา/ร้านค้า) */
@@ -406,18 +435,15 @@ export function normalizeWebsite(v: string | null | undefined): string | null {
   return `https://${raw}`;
 }
 
-// อ่าน taxPointBasis จาก docConfig JSON (ไม่มีคอลัมน์เฉพาะใน schema)
-function readTaxPointBasis(docConfig: unknown): AccountVatTiming {
-  const v = (docConfig as Record<string, unknown> | null)?.taxPointBasis;
-  return v === "ON_PAYMENT" ? "ON_PAYMENT" : "ON_ISSUE";
-}
+// WO 8.2: "จุดรับรู้ภาษีขาย" ย้ายขึ้นคอลัมน์ `AccountSettings.vatTiming` แล้ว (migration backfill จาก JSON ให้)
+// เก็บ `taxPointBasis` ไว้ในชื่อเดิมของ view เพราะมีผู้ใช้ ~10 จุด — แต่แหล่งความจริงเป็นคอลัมน์แล้ว
 
 export async function getSettings(
   tenantId: string,
   systemId: string,
 ): Promise<AccountSettingsView> {
   const s = await prisma.accountSettings.findFirst({ where: { tenantId, systemId } });
-  if (!s) return { ...SETTINGS_DEFAULT, doc: defaultDocSettings() };
+  if (!s) return { ...SETTINGS_DEFAULT, doc: defaultDocSettings(), policy: defaultPolicy() };
   return {
     orgPrefix: readStr(s.docConfig, "orgPrefix"),
     orgName: s.orgName,
@@ -434,7 +460,7 @@ export async function getSettings(
     signatureUrl: readStr(s.docConfig, "signatureUrl"),
     vatRegistered: s.vatRegistered,
     vatRateBp: s.vatRateBp,
-    taxPointBasis: readTaxPointBasis(s.docConfig),
+    taxPointBasis: s.vatTiming,
     defaultDueDays: s.defaultDueDays,
     defaultValidDays: s.defaultValidDays,
     footerNote: s.footerNote,
@@ -443,6 +469,7 @@ export async function getSettings(
       defaultValidDays: s.defaultValidDays,
       defaultDueDays: s.defaultDueDays,
     }),
+    policy: parsePolicy(s),
   };
 }
 
@@ -452,12 +479,9 @@ export async function saveSettings(
   input: Partial<AccountSettingsView>,
 ) {
   const existing = await prisma.accountSettings.findFirst({ where: { tenantId, systemId } });
-  // merge taxPointBasis เข้า docConfig (คงคีย์อื่นเดิมไว้)
   const prevConfig =
     (existing?.docConfig as Record<string, unknown> | null | undefined) ?? {};
-  const taxPointBasis: AccountVatTiming =
-    input.taxPointBasis === "ON_PAYMENT" ? "ON_PAYMENT" : "ON_ISSUE";
-  const docConfig: Record<string, unknown> = { ...prevConfig, taxPointBasis };
+  const docConfig: Record<string, unknown> = { ...prevConfig };
   // §3.8 ตราประทับ/ลายเซ็น + per-docType (เก็บใน docConfig — คงคีย์เดิมถ้าไม่ได้ส่งมา)
   if (input.orgPrefix !== undefined) docConfig.orgPrefix = input.orgPrefix || null;
   if (input.stampUrl !== undefined) docConfig.stampUrl = input.stampUrl || null;
@@ -482,8 +506,12 @@ export async function saveSettings(
     email: input.email ?? null,
     website: normalizeWebsite(input.website),
     logoUrl: input.logoUrl ?? null,
-    vatRegistered: input.vatRegistered ?? true,
-    vatRateBp: input.vatRateBp ?? 700,
+    // 🔴 WO 8.2: VAT (จด/ไม่จด · อัตรา · จุดรับรู้) ย้ายไปหน้า "นโยบายบัญชี" (§9.3) แล้ว
+    //    ⇒ เขียนเฉพาะเมื่อผู้เรียกส่งมาจริง · ถ้าเขียนทุกครั้งแบบเดิม (`?? true` / `?? 700`)
+    //    การกดบันทึกหน้า "ข้อมูลกิจการ" จะรีเซ็ต VAT ของร้านทิ้งเงียบ ๆ
+    ...(input.vatRegistered === undefined ? {} : { vatRegistered: input.vatRegistered }),
+    ...(input.vatRateBp === undefined ? {} : { vatRateBp: input.vatRateBp }),
+    ...(input.taxPointBasis === undefined ? {} : { vatTiming: input.taxPointBasis }),
     defaultDueDays: input.defaultDueDays ?? 30,
     defaultValidDays: input.defaultValidDays ?? 30,
     footerNote: input.footerNote ?? null,
@@ -761,14 +789,26 @@ export type ContactDuplicateResult = {
 
 export type ContactDupPolicy = "warn" | "block";
 
-/** อ่านนโยบาย §9.3 จาก AccountSettings.docConfig.dupNamePolicy (ไม่เพิ่มคอลัมน์ — จุดตั้งค่าจริงอยู่ WO 8.2) */
+/**
+ * นโยบายชื่อซ้ำของ **ผู้ติดต่อ** (§9.3) — WO 8.2 ย้ายขึ้นคอลัมน์ `dupContactPolicy` แล้ว
+ * คอลัมน์ null (ร้านที่ยังไม่เคยเปิดหน้านโยบาย) → อ่าน `docConfig.dupNamePolicy` เดิมต่อไป
+ */
 export async function getDupNamePolicy(systemId: string): Promise<ContactDupPolicy> {
   const row = await prisma.accountSettings.findFirst({
     where: { systemId },
-    select: { docConfig: true },
+    select: { dupContactPolicy: true, docConfig: true },
   });
-  const v = (row?.docConfig as Record<string, unknown> | null)?.dupNamePolicy;
-  return v === "block" ? "block" : "warn";
+  const legacy = (row?.docConfig as Record<string, unknown> | null)?.dupNamePolicy;
+  return toDupPolicy(row?.dupContactPolicy ?? legacy, "WARN") === "BLOCK" ? "block" : "warn";
+}
+
+/** นโยบายชื่อซ้ำของ **สินค้า/บริการ** (§9.3) — ไม่มีค่าเดิมใน docConfig ⇒ ไม่ได้ตั้ง = เตือน */
+export async function getProductDupPolicy(systemId: string): Promise<ContactDupPolicy> {
+  const row = await prisma.accountSettings.findFirst({
+    where: { systemId },
+    select: { dupProductPolicy: true },
+  });
+  return toDupPolicy(row?.dupProductPolicy, "WARN") === "BLOCK" ? "block" : "warn";
 }
 
 /**
@@ -1808,6 +1848,8 @@ export async function createDocument(input: {
   // A1: จุดรับรู้ภาษี — ต่อใบ (form) หรือ default ตามประเภทกิจการ
   const vatTiming: AccountVatTiming = input.vatTiming ?? settings.taxPointBasis;
   const issueDate = input.issueDate ?? new Date();
+  // §9.3 ล็อกข้อมูลก่อนวันที่ — ร่างก็ห้าม (ไม่งั้นผู้ใช้กรอกเสร็จแล้วค่อยเด้งตอนกดออกเอกสาร)
+  assertNotLockedWith(settings.policy.lockBeforeDate, issueDate);
 
   return prisma.$transaction(async (tx) => {
     // F2: หักมัดจำ — เฉพาะใบแจ้งหนี้ + ใบมัดจำต้องเป็นของลูกค้าเดียวกันและยังหักได้
@@ -1935,6 +1977,9 @@ export async function updateDocument(
       const doc = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId } });
       if (!doc) throw new Error("ไม่พบเอกสาร");
       if (doc.status !== "DRAFT") throw new Error("เอกสารที่ออกแล้วแก้ไขไม่ได้ — ใช้ยกเลิก/ออกใบใหม่");
+      // §9.3: ล็อกทั้ง "วันที่เดิม" และ "วันที่ใหม่" — กันย้ายเอกสารเข้า/ออกจากช่วงที่ล็อก
+      assertNotLockedWith(settings.policy.lockBeforeDate, doc.issueDate);
+      if (input.issueDate) assertNotLockedWith(settings.policy.lockBeforeDate, input.issueDate);
       // A3: ไม่จด VAT → บังคับ NONE
       const vatMode: AccountVatMode = !settings.vatRegistered
         ? "NONE"
@@ -2182,6 +2227,8 @@ export async function convertDocument(
       return { ok: false, reason: "ต้องออกเอกสารต้นทางก่อนจึงแปลงได้" };
 
     const settings = await getSettings(tenantId, systemId);
+    // §9.3 ล็อกข้อมูลก่อนวันที่ — เอกสารปลายทางลงวันที่ "วันนี้" เสมอ จึงตรวจที่วันนี้
+    assertNotLockedWith(settings.policy.lockBeforeDate, new Date());
     const dueDate =
       toDocType === "INVOICE" && source.contactId
         ? await computeDueDate(tenantId, systemId, source.contactId, settings.defaultDueDays)
@@ -2218,7 +2265,10 @@ export async function convertDocument(
           subTotal: tiSubTotal,
           vatAmount: tiVatAmount,
           grandTotal: tiGrandTotal,
-          note: source.note,
+          // §9.3 "การออกเอกสารต่อ": คัดลอกหมายเหตุ/แท็กตามที่ตั้งไว้
+          // 🐞 ของเดิมคัดลอก note เสมอ และ **ไม่เคยคัดลอก tags เลย** (แท็กหายทุกครั้งที่แปลงเอกสาร)
+          note: settings.policy.copyNotesOnConvert ? source.note : null,
+          tags: settings.policy.copyTagsOnConvert ? source.tags : [],
           sourceDocId: source.id,
           createdById: createdById ?? null,
           lines: {
@@ -2326,6 +2376,8 @@ export async function recordPayment(
       if (!doc) throw new Error("ไม่พบเอกสาร");
       if (!["AWAITING_PAYMENT", "PARTIAL"].includes(doc.status))
         throw new Error("เอกสารนี้รับชำระไม่ได้ในสถานะปัจจุบัน");
+      // §9.3 ล็อกข้อมูลก่อนวันที่ — ตรวจที่ "วันที่รับเงิน" (บอกก่อนสร้างแถว payment จะได้ไม่ต้องม้วนกลับ)
+      assertNotLockedWith(settings.policy.lockBeforeDate, input.paidAt ?? new Date());
       // A5: paidTotal = ยอดที่ตัดหนี้ (เงินเข้า + WHT ถูกหัก) — กันเกินยอด
       const tieOff = input.amount + wht;
       // F-05: หนี้จริง = grandTotal − ที่ชำระแล้ว − ใบลดหนี้ที่ออกแล้ว (กันรับเงินเกินจน GL ลูกหนี้ติดลบ)
@@ -2494,6 +2546,8 @@ export async function voidPayment(
       });
       if (!pay) throw new Error("ไม่พบรายการชำระ");
       if (pay.voidedAt) throw new Error("รายการชำระนี้ถูกยกเลิกแล้ว");
+      // §9.3 (เหตุผลเดียวกับ voidDocument — reversal เลื่อนวันได้ ด่าน gl จึงจับไม่ถึง)
+      await assertNotLockedTx(tx, systemId, pay.paidAt);
       const doc = await tx.accountDocument.findFirst({ where: { id: documentId, tenantId, systemId } });
       if (!doc) throw new Error("ไม่พบเอกสาร");
       // ── WO 1.4: ใบรับมัดจำที่ถูกหักไปในใบแจ้งหนี้/ใบเสร็จแล้ว ยกเลิกการรับเงินไม่ได้ ──
@@ -2846,6 +2900,9 @@ export async function voidDocument(
       if (!doc) throw new Error("ไม่พบเอกสาร");
       if (doc.status === "VOIDED" || doc.status === "CANCELLED")
         throw new Error("เอกสารถูกยกเลิกแล้ว");
+      // §9.3: ยกเลิกเอกสารที่ลงวันที่ในช่วงล็อกไม่ได้
+      // 🔴 ด่านใน gl.commitEntry จับเคสนี้ไม่ได้ เพราะ reversal เลื่อนวันไปงวดเปิดถัดไปแล้ว
+      await assertNotLockedTx(tx, systemId, doc.issueDate);
       // เอกสารมี payment ที่ยังไม่ void → ต้อง void payment ก่อน (กันบัญชีค้าง)
       if (doc.status !== "DRAFT") {
         const activePay = await tx.accountDocumentPayment.count({
@@ -5254,3 +5311,76 @@ export async function pendingTasks(tenantId: string, systemId: string): Promise<
     total,
   };
 }
+
+// ═══════════════════════════════════════════════════════════════
+// WO 8.2 (§9.3) — รายงานทางอีเมล สรุปรายวัน/รายสัปดาห์
+// อยู่ในไฟล์นี้ (ไม่แยกไฟล์ใหม่) เพราะต้องใช้ prisma กวาดข้ามร้าน และ fitness F5.1
+// ตรึงจำนวนไฟล์ในโมดูลที่ import prisma ไว้ — ตัวประกอบข้อความอยู่ใน `email-report.ts` ที่บริสุทธิ์
+// ═══════════════════════════════════════════════════════════════
+
+export type EmailReportResult = { systems: number; sent: number; skipped: number; failed: number };
+
+/**
+ * ส่งรายงานทางอีเมลของทุกร้านที่เปิดไว้ (เรียกจาก cron — `acc-v2-cron-recurring.mts email-reports`)
+ * · ร้านที่ยังไม่ได้เปิด / ไม่มีผู้รับ → ข้าม
+ * · ส่งไปแล้วในงวดนี้ → ข้าม (idempotent)
+ * · ส่งเมลล้ม 1 ร้าน ไม่ล้มทั้งรอบ
+ */
+export async function runAccountEmailReports(now: Date = new Date()): Promise<EmailReportResult> {
+  const rows = await prisma.accountSettings.findMany({
+    where: { OR: [{ emailReportDaily: true }, { emailReportWeekly: true }] },
+    select: { tenantId: true, systemId: true, orgName: true, ...POLICY_SELECT },
+  });
+
+  const out: EmailReportResult = { systems: rows.length, sent: 0, skipped: 0, failed: 0 };
+  for (const row of rows) {
+    const policy = parsePolicy(row as unknown as PolicyRow);
+    if (policy.emailReportRecipients.length === 0) {
+      out.skipped += 1;
+      continue;
+    }
+    const ctx = { tenantId: row.tenantId, systemId: row.systemId };
+    for (const kind of reportKindsDue(policy, now)) {
+      const key = reportIdempotencyKey(row.systemId, kind, now);
+      const already = await prisma.appNotification.count({
+        where: { tenantId: row.tenantId, title: REPORT_MARKER_TITLE, body: { contains: key } },
+      });
+      if (already > 0) {
+        out.skipped += 1;
+        continue;
+      }
+      try {
+        const { dashboardSnapshot } = await import("./dashboard");
+        const { sendEmail } = await import("@/lib/core/email");
+        const snap = await dashboardSnapshot(ctx, { now });
+        const { subject, text } = composeAccountReport({
+          orgName: row.orgName || "กิจการของคุณ",
+          kind,
+          now,
+          kpi: snap.kpi,
+          pending: {
+            quotationAwaitingAccept: snap.pending.quotationAwaitingAccept,
+            poAwaitingApproval: snap.pending.poAwaitingApproval,
+            needsReview: snap.pending.needsReview,
+            total: snap.pending.total,
+          },
+          fiscalYearLabel: fiscalYearOf(now, policy.fiscalYearStartMonth).label,
+        });
+        for (const to of policy.emailReportRecipients) await sendEmail(to, subject, text);
+        // 🔴 ประทับ "ส่งแล้ว" หลังส่งจริงเท่านั้น — ล้มกลางทางแล้วรอบหน้าต้องส่งใหม่ได้
+        await prisma.appNotification.create({
+          data: {
+            tenantId: row.tenantId,
+            title: REPORT_MARKER_TITLE,
+            body: `${key} · ${policy.emailReportRecipients.length} ผู้รับ`,
+          },
+        });
+        out.sent += 1;
+      } catch {
+        out.failed += 1;
+      }
+    }
+  }
+  return out;
+}
+

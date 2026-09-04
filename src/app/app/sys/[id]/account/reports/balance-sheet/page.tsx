@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { balanceSheet, type BSRow } from "@/lib/modules/account/reports";
 import { ledgerDrillHref, shiftPeriod } from "@/lib/modules/account/report-drill";
+import { fiscalYearEndMonth, fiscalYearOf } from "@/lib/modules/account/policy";
 import { MoneyText } from "@/components/ui/MoneyText";
-import { loadReport, currentPeriodKey, ReportHeader, TableWrap, WarnBanner } from "../_shared";
+import { loadReportWithPolicy, currentPeriodKey, ReportHeader, TableWrap, WarnBanner } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
 
 export default async function BalanceSheetPage({
@@ -14,15 +15,19 @@ export default async function BalanceSheetPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const { tenantId, systemId } = await loadReport(id);
+  const { tenantId, systemId, policy } = await loadReportWithPolicy(id);
   const base = `/app/sys/${id}/account`;
   const asOf = sp.asOf || sp.to || currentPeriodKey();
   const compare = sp.cmp === "1";
   // "งวดก่อน" ของงบฐานะ = ณ สิ้นเดือนก่อนหน้า (งบ ณ วันที่ ⇒ เทียบจุดเวลา ไม่ใช่เทียบช่วง)
   const prevAsOf = shiftPeriod(asOf, -1);
+  // 🔴 WO 8.2 (§9.3): เส้นแบ่ง "กำไรสะสม | กำไรงวดปัจจุบัน" ต้องอยู่ที่ต้น**ปีบัญชี** ไม่ใช่ 1 ม.ค. เสมอ
+  //    ของเดิมไม่เคยส่ง opts ⇒ กิจการ เม.ย.–มี.ค. เห็นกำไรสะสมผิดทุกใบ (บั๊กที่ WO นี้ต้องปิด)
+  const bsOpts = { fiscalYearEndMonth: fiscalYearEndMonth(policy.fiscalYearStartMonth) };
+  const fy = fiscalYearOf(`${asOf}-01`, policy.fiscalYearStartMonth);
   const [bs, bsPrev] = await Promise.all([
-    balanceSheet({ tenantId, systemId }, asOf),
-    compare ? balanceSheet({ tenantId, systemId }, prevAsOf) : Promise.resolve(null),
+    balanceSheet({ tenantId, systemId }, asOf, bsOpts),
+    compare ? balanceSheet({ tenantId, systemId }, prevAsOf, bsOpts) : Promise.resolve(null),
   ]);
   const prevAmt = (code: string) =>
     [...(bsPrev?.assets.rows ?? []), ...(bsPrev?.liabilities.rows ?? []), ...(bsPrev?.equity.rows ?? [])].find(
@@ -53,7 +58,7 @@ export default async function BalanceSheetPage({
       ...bs.liabilities.rows.map((r) => ["หนี้สิน", r.code, r.name, r.amount / 100] as (string | number)[]),
       ...bs.equity.rows.map((r) => ["ส่วนของเจ้าของ", r.code, r.name, r.amount / 100] as (string | number)[]),
       ["ส่วนของเจ้าของ", "", "กำไรสะสม", bs.retainedEarnings / 100],
-      ["ส่วนของเจ้าของ", "", "กำไร(ขาดทุน)งวดปัจจุบัน", bs.currentPeriodProfit / 100],
+      ["ส่วนของเจ้าของ", "", "กำไร(ขาดทุน)ปีบัญชีนี้", bs.currentPeriodProfit / 100],
     ],
   };
 
@@ -63,7 +68,7 @@ export default async function BalanceSheetPage({
         <ReportHeader
           base={base}
           title="งบแสดงฐานะการเงิน"
-          subtitle={`ณ สิ้นเดือน ${asOf}${compare ? ` · เทียบ ณ สิ้นเดือน ${prevAsOf}` : ""}`}
+          subtitle={`ณ สิ้นเดือน ${asOf} · ${fy.label}${compare ? ` · เทียบ ณ สิ้นเดือน ${prevAsOf}` : ""}`}
         />
       </div>
       <ReportToolbar filename={`งบฐานะการเงิน-${asOf}`} csv={csv} mode="asof" to={asOf} compare={compare} />
@@ -83,7 +88,7 @@ export default async function BalanceSheetPage({
           <tr className="bg-[color:var(--color-surface-2)] font-medium"><td className="px-3 py-1.5" colSpan={compare ? 3 : 2}>ส่วนของเจ้าของ</td></tr>
           {rows(bs.equity.rows)}
           <tr className="border-b last:border-0"><td className="px-3 py-1.5 pl-6">กำไรสะสม</td><td className="px-3 py-1.5 text-right"><MoneyText satang={bs.retainedEarnings} decimals /></td>{compare && <td className="px-3 py-1.5 text-right text-[color:var(--color-muted)]"><MoneyText satang={bsPrev!.retainedEarnings} decimals /></td>}</tr>
-          <tr className="border-b last:border-0"><td className="px-3 py-1.5 pl-6">กำไร(ขาดทุน)งวดปัจจุบัน</td><td className="px-3 py-1.5 text-right"><MoneyText satang={bs.currentPeriodProfit} decimals /></td>{compare && <td className="px-3 py-1.5 text-right text-[color:var(--color-muted)]"><MoneyText satang={bsPrev!.currentPeriodProfit} decimals /></td>}</tr>
+          <tr className="border-b last:border-0" data-testid="bs-current-profit-row"><td className="px-3 py-1.5 pl-6">กำไร(ขาดทุน)ปีบัญชีนี้</td><td className="px-3 py-1.5 text-right"><MoneyText satang={bs.currentPeriodProfit} decimals /></td>{compare && <td className="px-3 py-1.5 text-right text-[color:var(--color-muted)]"><MoneyText satang={bsPrev!.currentPeriodProfit} decimals /></td>}</tr>
           <tr className="border-b font-medium"><td className="px-3 py-1.5 pl-3">รวมส่วนของเจ้าของ</td><td className="px-3 py-1.5 text-right"><MoneyText satang={bs.totalEquity} decimals /></td>{compare && <td className="px-3 py-1.5 text-right text-[color:var(--color-muted)]"><MoneyText satang={bsPrev!.totalEquity} decimals /></td>}</tr>
           <tr className="border-t-2 text-base font-bold"><td className="px-3 py-2.5">รวมหนี้สินและส่วนของเจ้าของ</td><td className="px-3 py-2.5 text-right" data-testid="bs-total-le"><MoneyText satang={bs.totalLiabilitiesEquity} decimals /></td>{compare && <td className="px-3 py-2.5 text-right text-[color:var(--color-muted)]"><MoneyText satang={bsPrev!.totalLiabilitiesEquity} decimals /></td>}</tr>
         </tbody>

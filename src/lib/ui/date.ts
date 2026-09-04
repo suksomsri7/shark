@@ -49,7 +49,7 @@ export const thaiPeriodKey = (d: Date | string = new Date()) => thaiDateKey(d).s
 // ตามมติเจ้าของ (DESIGN-SPEC-V2/BLUEPRINT-ACCOUNT-V2 §1 "Christian-era dates") — ห้ามใช้ toLocaleDateString("th-TH")
 // ตรงนี้เพราะจะได้ปี พ.ศ. ผิดกติกาโมดูล
 
-const THAI_MONTH_SHORT = [
+export const THAI_MONTH_SHORT = [
   "ม.ค.",
   "ก.พ.",
   "มี.ค.",

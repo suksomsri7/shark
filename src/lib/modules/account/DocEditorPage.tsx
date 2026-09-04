@@ -31,6 +31,7 @@ import {
   creditAvailableNow,
 } from "./service";
 import { computeDueDate, defaultDaysFor } from "./settings-schema";
+import { defaultPriceModeOf, whtDefaultForAccountCode } from "./policy"; // §9.3
 import { previewNextExpenseDocNo, creditAvailableExpenseNow } from "./expense";
 import { listPaymentChannels } from "./payment";
 import { listExpenseAccounts, listIncomeAccounts, listProducts, listUnits } from "./product";
@@ -143,11 +144,20 @@ export async function DocEditorPage({
       : await previewNextExpenseDocNo(systemId, docType, new Date(`${issueDate}T00:00:00.000Z`)));
 
   const unitName = new Map(units.map((u) => [u.id, u.name]));
-  const accounts = (side === "revenue" ? incomeAccounts : expenseAccounts).map((a) => ({
-    id: a.id,
-    code: a.code,
-    name: a.name,
-  }));
+  // §9.3: ติด "หัก ณ ที่จ่ายเริ่มต้น" ของนโยบายมากับตัวเลือกบัญชี → เลือกบัญชีแล้วฟอร์มเติมให้เอง
+  const accounts = (side === "revenue" ? incomeAccounts : expenseAccounts).map((a) => {
+    const w = side === "expense" ? whtDefaultForAccountCode(settings.policy, a.code) : null;
+    return {
+      id: a.id,
+      code: a.code,
+      name: a.name,
+      whtIncomeType: w?.incomeType ?? null,
+      whtRateBp: w?.rateBp ?? null,
+    };
+  });
+  /** อัตราเริ่มต้นต่อประเภทเงินได้ตามนโยบาย (ว่าง = ฟอร์มใช้อัตราตามกฎหมายเหมือนเดิม) */
+  const whtRateByIncomeType: Record<string, number> = {};
+  for (const w of settings.policy.whtDefaults) whtRateByIncomeType[w.incomeType] = w.rateBp;
 
   // ── stepper (§5.2 A) ──
   const chain = stepChainFor(docType);
@@ -210,7 +220,8 @@ export async function DocEditorPage({
       // นับจากวันที่ออก หรือ "สิ้นเดือนของวันที่ออก + n วัน" ตามที่ตั้งไว้ (§9.2)
       computeDueDate(issueDate, dueDays, settings.doc.due.basis),
     reference: doc?.reference ?? "",
-    priceMode: doc ? priceModeOf(doc.vatMode) : settings.vatRegistered ? "EXCL_VAT" : "NO_VAT",
+    // §9.3: ประเภทราคาเริ่มต้นมาจากนโยบายบัญชี (ไม่ได้ตั้ง = พฤติกรรมเดิม จด VAT → แยก VAT)
+    priceMode: doc ? priceModeOf(doc.vatMode) : defaultPriceModeOf(settings.policy),
     autoTaxInvoice: doc?.autoTaxInvoice ?? false,
     recognizeVatNow: doc ? doc.vatTiming !== "ON_PAYMENT" : settings.taxPointBasis !== "ON_PAYMENT",
     salesUserId: doc?.salesUserId ?? null,
@@ -302,6 +313,7 @@ export async function DocEditorPage({
           accountId: (side === "revenue" ? p.incomeAccountId : p.expenseAccountId) ?? null,
         }))}
         accounts={accounts}
+        whtRateByIncomeType={whtRateByIncomeType}
         salesUsers={salesUsers}
         tagOptions={tagOptions}
         favorites={favorites as FavoriteSet[]}

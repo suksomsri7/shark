@@ -1909,6 +1909,52 @@ await prisma.accountDocument.update({
 });
 console.log(`⚙️  ตั้งค่าเอกสาร §9.2: เลขที่ 3 ชนิด · หมายเหตุ 2 ชนิด · แท็ก ${SEED_TAGS.length} · เทมเพลตพิมพ์ กะทัดรัด`);
 
+// ─────────────────── 8.14 นโยบายบัญชี §9.3 (WO 8.2) ───────────────────
+//
+// 🔴 ต้องอยู่ **ท้ายสุดจริง ๆ หลัง 8.13** — `lockBeforeDate` ปิดการเขียนย้อนหลังทั้งระบบ
+//    ถ้าตั้งก่อนสร้างเอกสาร ชุดข้อมูลทั้งก้อนจะสร้างไม่ได้เลย
+// ค่าที่เลือก: ปีบัญชีเริ่ม **เมษายน** (พิสูจน์งบดุลแบบ เม.ย.–มี.ค.) · ล็อกก่อน 31 ส.ค. 2026 ·
+//   VAT ON_ISSUE · ราคารวม VAT · สินค้าชื่อซ้ำ = ห้าม / ผู้ติดต่อชื่อซ้ำ = เตือน ·
+//   ใบเสนอราคาแปลงเป็นใบรับเงินมัดจำ · รายงานอีเมลรายสัปดาห์ถึงเจ้าของ
+const pol = await import("@/lib/modules/account/policy");
+const SEED_POLICY = {
+  fiscalYearStartMonth: 4,
+  periodCloseDay: 5,
+  vatRegistered: true,
+  vatRateBp: 700,
+  vatTiming: "ON_ISSUE" as const,
+  defaultPriceMode: "INCL_VAT" as const,
+  lockBeforeDate: new Date("2026-08-30T17:00:00.000Z"), // = 31 ส.ค. 2026 00:00 เวลาไทย
+  dupContactPolicy: "WARN" as const,
+  dupProductPolicy: "BLOCK" as const,
+  defaultSalesAccountCode: "4030",
+  defaultPurchaseAccountCode: "5000",
+  defaultExpenseAccountCode: "6900",
+  convertQtTo: "DEPOSIT_RECEIPT" as const,
+  convertPoTo: "PURCHASE" as const,
+  copyNotesOnConvert: true,
+  copyTagsOnConvert: true,
+  // ปิดไว้ตั้งต้น — ข้อสอบเปิด/ปิดเองแล้วดูว่า sweep เคารพจริง
+  autoClosePeriods: false,
+  autoCloseNotify: true,
+  emailReportDaily: false,
+  emailReportWeekly: true,
+  emailReportRecipients: ["owner@siamdive-qc.test"],
+  // ค่าเริ่มต้นหัก ณ ที่จ่าย: ค่าบริการ 3% ผูกบัญชี 6900 · ค่าเช่า 5% ผูกบัญชี 6100
+  whtDefaults: [
+    { incomeType: "M40_8" as const, rateBp: 300, expenseAccountCodes: ["6900"] },
+    { incomeType: "M40_5" as const, rateBp: 500, expenseAccountCodes: ["6100"] },
+  ],
+  regularCustomer: { minPaidDocs: 3, minPaidTotalSatang: 3_150_000, periodMonths: 12 },
+};
+{
+  const r = await pol.savePolicy(SETTINGS_CTX, SEED_POLICY);
+  if (!r.ok) throw new Error(`ตั้งนโยบายบัญชีไม่สำเร็จ: ${r.reason}`);
+}
+console.log(
+  `⚙️  นโยบายบัญชี §9.3: ปีบัญชีเริ่ม เม.ย. · ล็อกก่อน 31 ส.ค. 2026 · ราคารวม VAT · สินค้าซ้ำ=ห้าม · QT→ใบรับมัดจำ · รายงานรายสัปดาห์`,
+);
+
 // ─────────────────────────── 9. อ่านผลจริงกลับมา + เขียนเฉลย ───────────────────────────
 
 const stats = await svc.overviewStats(tenantId, systemId);
@@ -2607,6 +2653,48 @@ const expected = {
     taggedInvoiceId: String(fixtures.invNattapholId),
     /** จำนวนชนิดเอกสารที่มีแถวในตาราง "เลขที่เอกสาร" (§9.2) */
     numberedDocTypes: 18,
+  },
+  // WO 8.2 (§9.3) — นโยบายบัญชี: เฉลยเขียนจาก "ค่าที่ seed ตั้ง" ตรง ๆ (กติกาเดียวกับ docSettings)
+  policy: {
+    fiscalYearStartMonth: 4,
+    fiscalYearEndMonth: 3,
+    periodCloseDay: 5,
+    /** รอบปีบัญชีที่ครอบ QC.today (2026-09-30) เมื่อเริ่ม เม.ย. */
+    fiscalYearOfToday: { year: 2026, startKey: "2026-04", endKey: "2027-03", startYmd: "2026-04-01", endYmd: "2027-03-31" },
+    fiscalYearLabel: "ปีบัญชี 2026 (เม.ย. 2026–มี.ค. 2027)",
+    vatRegistered: true,
+    vatRateBp: 700,
+    vatTiming: "ON_ISSUE",
+    defaultPriceMode: "INCL_VAT",
+    /** ล็อก: วันไทยที่ตั้งไว้ · วันที่ "ก่อน" วันนี้เขียนไม่ได้ · วันนี้เองยังเขียนได้ */
+    lockBeforeYmd: "2026-08-31",
+    /** ข้อความที่ผู้ใช้ต้องเห็นในช่องวันที่ (DateInput = ไทย ค.ศ. ไม่ใช่รูปแบบเบราว์เซอร์) */
+    lockBeforeDateTh: "31 ส.ค. 2026",
+    lockedSampleYmd: "2026-08-15",
+    allowedSampleYmd: "2026-09-15",
+    lockedMessage:
+      "ข้อมูลก่อนวันที่ 31 ส.ค. 2026 ถูกล็อกไว้ — ไปที่ ตั้งค่า › นโยบายบัญชี เพื่อปลดล็อก",
+    dupContactPolicy: "WARN",
+    dupProductPolicy: "BLOCK",
+    defaultSalesAccountCode: "4030",
+    defaultPurchaseAccountCode: "5000",
+    defaultExpenseAccountCode: "6900",
+    convertQtTo: "DEPOSIT_RECEIPT",
+    convertPoTo: "PURCHASE",
+    copyNotesOnConvert: true,
+    copyTagsOnConvert: true,
+    autoClosePeriods: false,
+    autoCloseNotify: true,
+    emailReportDaily: false,
+    emailReportWeekly: true,
+    emailReportRecipients: ["owner@siamdive-qc.test"],
+    whtDefaults: [
+      { incomeType: "M40_8", rateBp: 300, expenseAccountCodes: ["6900"] },
+      { incomeType: "M40_5", rateBp: 500, expenseAccountCodes: ["6100"] },
+    ],
+    regularCustomer: { minPaidDocs: 3, minPaidTotalSatang: 3_150_000, periodMonths: 12 },
+    /** จำนวนหัวข้อย่อยของหน้า "นโยบายบัญชี" (§9.3 · รวม Smart Insight ที่ยังจาง) */
+    subSections: 12,
   },
   fixtures: {
     ...fixtures,
