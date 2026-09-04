@@ -12,7 +12,7 @@
 | WO | 6.2 สมุดรายวัน V2 + รายงาน drill-down + ปิดงวด + ค่าเสื่อม UI (ปิดเฟส 6) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent · UI ตาม g16) |
-| ขั้นที่ถึง | 4 ก.ย. ~07:40 UTC: 6.2 agent ตัวแรกทำ A–E เสร็จ (โค้ด+migration 2 ตัวบนดิสก์) แล้วโดน cgroup OOM ฆ่า 07:34 UTC (node 2.7G = tsc ไม่มี NODE_OPTIONS) → container รีสตาร์ท → สั่งตัวใหม่ทำต่อ F/G/H เท่านั้น + แก้ with-gate-lock.sh ให้ตั้ง NODE_OPTIONS เอง |
+| ขั้นที่ถึง | 4 ก.ย. ~08:05 UTC: 6.2 รอบ 1 ส่งมา (journal 94 · reports-drill 57 · period-assets 121 · seed-check 173) → Fable ดูภาพเทียบ g16 **ตีกลับ 2 จุด** (แถวตัวกรองต้องเป็น preset select บรรทัดเดียว ไม่มีปุ่ม 'แสดง' · pagination ต้องอยู่ใน footer การ์ด) — agent เดิมทำรอบ 2 |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
