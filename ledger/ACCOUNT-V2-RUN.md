@@ -12,7 +12,7 @@
 | WO | 7.1 คลังเอกสาร V2 (เฟส 7) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Sonnet (sub-agent · UI ตาม f9) |
-| ขั้นที่ถึง | 4 ก.ย. ~08:45 UTC: **verify prod เฟส 6 ผ่าน** — Vercel READY 08:43 (dpl_2dMzC1…) · migration 3 ตัว finished · คอลัมน์ใหม่อยู่บน prod · https 200 · 7.1 กำลังทำ (Sonnet) |
+| ขั้นที่ถึง | 4 ก.ย. ~09:50 UTC: 7.1 รอบ 1 ส่งมา (attachments 66/66 · seed-check 202 · อัปโหลดจริงขึ้น Bunny ของ QC) → Fable ดูภาพเทียบ f9 **ตีกลับ 3 จุดเล็ก** (ปุ่ม ทำรายการ ▾ · badge ดำที่แท็บ · footer บรรทัดเดียว) + สั่งแก้บั๊กข้ามหน้าที่ agent เจอ: dropdown ทำรายการถูก overflow-x-auto ของ DocTable ตัดที่แถวท้าย (ทุกหน้ารายการ V2) → portal — agent เดิมทำรอบ 2 |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
