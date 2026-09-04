@@ -2,14 +2,13 @@ import Link from "next/link";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import {
   getSettings,
-  DOC_LABEL,
-  CONFIGURABLE_DOC_TYPES,
   ORG_PREFIXES,
   orgDisplayName,
 } from "@/lib/modules/account/service";
 import { saveSettingsAction } from "@/lib/modules/account/actions";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { ImageAssetField } from "@/components/image-asset-field";
+import { SettingsNav } from "@/components/account-v2/SettingsNav";
 import { storageEnabled } from "@/lib/storage/service";
 
 const inputCls = "rounded-lg border px-2 py-1.5 text-sm";
@@ -20,24 +19,33 @@ export default async function AccountSettingsPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ saved?: string }>;
+  searchParams: Promise<{ saved?: string; s?: string }>;
 }) {
   const { id } = await params;
-  const { saved } = await searchParams;
+  const { saved, s: subRaw } = await searchParams;
+  // หัวข้อย่อยของ "ข้อมูลกิจการ" (f10): ข้อมูลทั่วไป · ที่อยู่และสาขา · โลโก้ ตราประทับ ลายเซ็น
+  const sub = ["general", "address", "brand"].includes(subRaw ?? "") ? subRaw! : "general";
   const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.settings.manage" });
   const s = await getSettings(tenantId, systemId);
   const base = `/app/sys/${id}/account`;
 
   return (
-    <div className="flex max-w-2xl flex-col gap-5">
-      <div>
-        <Link href={base} className="text-sm text-[color:var(--color-muted)]">← ระบบบัญชี</Link>
-        <h1 className="mt-1 text-2xl font-semibold">ตั้งค่าเอกสาร</h1>
+    // จำกัดความกว้างให้เท่ากับ เมนู 280 + ฟอร์ม max-w-2xl ⇒ ปุ่มบันทึกด้านบนอยู่ตรงขอบขวาของฟอร์ม (ตาม f10)
+    <div className="flex max-w-[1000px] flex-col gap-4">
+      <div className="sticky top-0 z-20 -mx-1 flex items-center justify-between gap-3 bg-[color:var(--color-surface)] px-1 py-2">
+        <h1 className="text-2xl font-semibold">ตั้งค่า</h1>
+        <SubmitButton form="org-settings-form">บันทึก</SubmitButton>
       </div>
 
       {saved === "1" && <p className="text-sm text-[color:var(--color-ink)]">บันทึกแล้ว ✓</p>}
 
-      <form action={saveSettingsAction} className="card grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start">
+        <SettingsNav base={base} activeGroup="org" activeSub={sub} />
+        <form
+          id="org-settings-form"
+          action={saveSettingsAction}
+          className="card grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 md:max-w-2xl"
+        >
         <input type="hidden" name="systemId" value={systemId} />
         <h2 className="text-sm font-medium sm:col-span-2">ข้อมูลกิจการ</h2>
         <label className={labelCls}>
@@ -166,52 +174,18 @@ export default async function AccountSettingsPage({
           enabled={storageEnabled()}
         />
 
-        <h2 className="mt-2 text-sm font-medium sm:col-span-2">ตั้งค่ารายเอกสาร</h2>
-        <p className="text-[11px] text-[color:var(--color-muted)] sm:col-span-2">
-          คำนำหน้าเลขที่ (prefix) · ออกใบกำกับภาษีอัตโนมัติเมื่อออกใบเสร็จ · เปิดลิงก์/QR ให้ลูกค้าขอใบกำกับเอง
+        {/* WO 8.1: ตั้งค่าเลขที่/หมายเหตุ/ลิงก์สาธารณะ ย้ายไปหน้า "เอกสารและเลขที่" (§9.2) แล้ว
+            — เดิมตารางนี้เก็บ prefix/ลิงก์ซ้ำกับที่นั่น ซึ่งเป็นค่าเดียวกัน 2 ที่ (ต้นเหตุคลาสสิกของค่าไม่ตรงกัน) */}
+        <p className="mt-2 text-xs text-[color:var(--color-muted)] sm:col-span-2">
+          ตั้งค่าเลขที่เอกสาร · ข้อความท้ายเอกสาร · ลิงก์สาธารณะ · เทมเพลตพิมพ์ ย้ายไปที่{" "}
+          <Link href={`${base}/settings/documents`} className="underline">
+            เอกสารและเลขที่
+          </Link>
         </p>
-        <div className="sm:col-span-2 overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b text-left text-[color:var(--color-muted)]">
-                <th className="py-1 pr-2">เอกสาร</th>
-                <th className="py-1 pr-2">prefix</th>
-                <th className="py-1 pr-2 text-center">ออกใบกำกับอัตโนมัติ</th>
-                <th className="py-1 text-center">ลิงก์สาธารณะ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {CONFIGURABLE_DOC_TYPES.map((dt) => {
-                const c = s.docTypes[dt] ?? {};
-                return (
-                  <tr key={dt} className="border-b">
-                    <td className="py-1 pr-2">{DOC_LABEL[dt] ?? dt}</td>
-                    <td className="py-1 pr-2">
-                      <input name={`dt_${dt}_prefix`} defaultValue={c.prefix ?? ""} className={`${inputCls} w-20`} />
-                    </td>
-                    <td className="py-1 pr-2 text-center">
-                      {(dt === "RECEIPT" || dt === "INVOICE") ? (
-                        <input type="checkbox" name={`dt_${dt}_auto`} defaultChecked={c.autoTaxInvoice} />
-                      ) : (
-                        <span className="text-[color:var(--color-muted)]">—</span>
-                      )}
-                    </td>
-                    <td className="py-1 text-center">
-                      {(dt === "RECEIPT" || dt === "TAX_INVOICE") ? (
-                        <input type="checkbox" name={`dt_${dt}_public`} defaultChecked={c.publicLink} />
-                      ) : (
-                        <span className="text-[color:var(--color-muted)]">—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
 
-        <SubmitButton className="sm:col-span-2 sm:justify-self-start">บันทึกการตั้งค่า</SubmitButton>
-      </form>
+          <SubmitButton className="sm:col-span-2 sm:justify-self-start">บันทึกการตั้งค่า</SubmitButton>
+        </form>
+      </div>
     </div>
   );
 }

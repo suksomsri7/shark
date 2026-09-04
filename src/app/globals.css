@@ -23,6 +23,16 @@
   --color-note-line: #ecd9a4; /* โน้ตภายใน — เส้นขอบ */
   --color-note-ink: #8a6414; /* โน้ตภายใน — ตัวอักษร */
 
+  /* ── โทเคนสีแท็กเอกสาร (WO 8.1 · SPEC §9.2 "กลุ่มจัดประเภท (แท็ก): ชื่อ · สี") ──
+     🔴 ระบบเป็น grayscale + accent เดียว แต่ §9.2 บังคับให้แท็กเลือกสีได้ ⇒ จำกัดไว้ 6 สีที่นี่
+        ที่เดียว (คีย์ token ไม่ใช่ hex ในคอมโพเนนต์) · ทุกสีผ่าน contrast ≥4.5:1 บนพื้นขาว */
+  --color-tag-slate: #737373;
+  --color-tag-blue: #1d4ed8;
+  --color-tag-green: #15803d;
+  --color-tag-amber: #b45309;
+  --color-tag-red: #b91c1c;
+  --color-tag-purple: #6d28d9;
+
   --font-sans: var(--font-app-sans), ui-sans-serif, system-ui, sans-serif;
   --radius: 0.5rem;
 }

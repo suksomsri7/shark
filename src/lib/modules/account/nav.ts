@@ -228,7 +228,9 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
             testId: "REVENUE_IMPORT",
           }),
         },
-        { ...page({ label: "ลิงก์ให้ลูกค้าขอใบกำกับภาษี (QR)", href: `${base}/settings`, status: "ready", icon: "qr", testId: "REVENUE_QR_LINK" }), sep: true },
+        // WO 8.1: ชี้ไปหัวข้อย่อยจริงของ §9.2 (เดิมชี้ `${base}/settings` ซึ่งเป็น path เดียวกับเมนู "ข้อมูลกิจการ"
+        // ⇒ breadcrumb/แถบเมนูของหน้าตั้งค่าองค์กร ไปสว่างที่หมวด "รายรับ" แทนหมวด "ตั้งค่า")
+        { ...page({ label: "ลิงก์ให้ลูกค้าขอใบกำกับภาษี (QR)", href: `${base}/settings/documents?s=public`, status: "ready", icon: "qr", testId: "REVENUE_QR_LINK" }), sep: true },
       ],
     },
 
@@ -578,11 +580,13 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
       icon: "gear",
       href: `${base}/settings`,
       items: [
-        page({ label: "องค์กร", href: `${base}/settings`, status: "ready", icon: "shop", testId: "SETTINGS_ORG" }),
-        page({ label: "เอกสาร", href: `${base}/settings`, status: "ready", icon: "doc", testId: "SETTINGS_DOC" }),
+        // WO 8.1: ป้าย/ลำดับตรงกับเมนูซ้ายของหน้าตั้งค่า (f10-settings-menu.png) — แหล่งเดียวที่ settings-nav.ts
+        page({ label: "ข้อมูลกิจการ", href: `${base}/settings`, status: "ready", icon: "shop", testId: "SETTINGS_ORG" }),
+        page({ label: "เอกสารและเลขที่", href: `${base}/settings/documents`, status: "ready", icon: "doc", testId: "SETTINGS_DOC" }),
         soon("นโยบายบัญชี", "lock", "SETTINGS_POLICY"),
         soon("สิทธิ์ผู้ใช้งาน", "users", "SETTINGS_PERMISSIONS"),
         soon("การเชื่อมต่อ", "link", "SETTINGS_CONNECTIONS"),
+        soon("แพ็กเกจและการใช้งาน", "tag", "SETTINGS_PLAN"),
       ],
     },
   ];
@@ -628,15 +632,25 @@ export function findActiveNav(
     const home = groups.find((g) => g.key === "home");
     return home ? { group: home } : null;
   }
-  let best: { group: AccountNavGroup; item: AccountNavItem; len: number } | null = null;
+  // 🔴 WO 8.1: เมนู "ทางลัด" ข้ามหมวดทำให้ path ซ้ำกันได้ (เช่น รายรับ › "ลิงก์ให้ลูกค้าขอใบกำกับภาษี (QR)"
+  //    ชี้เข้าหน้าตั้งค่าเหมือนกับหมวด "ตั้งค่า") — เดิมตัวที่อยู่หมวดก่อนหน้าชนะเสมอ ⇒ เปิดหน้าตั้งค่าแล้ว
+  //    แถบเมนู/breadcrumb ไปสว่างที่ "รายรับ" ซึ่งผิด
+  //    ตัวตัดสินใหม่เมื่อความยาว path เท่ากัน: **หมวดที่เป็นเจ้าของ path นั้นชนะ** (pathname อยู่ใต้ group.href)
+  const ownsPath = (g: AccountNavGroup) => {
+    const gp = stripQueryHash(g.href);
+    return !!gp && gp !== base && (pathname === gp || pathname.startsWith(gp + "/"));
+  };
+  let best: { group: AccountNavGroup; item: AccountNavItem; len: number; own: boolean } | null = null;
   for (const g of groups) {
     for (const it of g.items) {
       if (it.status !== "ready") continue;
       const p = stripQueryHash(it.href);
       if (!p || p === base) continue;
-      if ((pathname === p || pathname.startsWith(p + "/")) && p.length > (best?.len ?? -1)) {
-        best = { group: g, item: it, len: p.length };
-      }
+      if (!(pathname === p || pathname.startsWith(p + "/"))) continue;
+      const own = ownsPath(g);
+      const better =
+        best === null || p.length > best.len || (p.length === best.len && own && !best.own);
+      if (better) best = { group: g, item: it, len: p.length, own };
     }
   }
   if (best) return { group: best.group, item: best.item };

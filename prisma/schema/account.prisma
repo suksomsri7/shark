@@ -614,3 +614,28 @@ model AccountRecurringRun {
   @@unique([ruleId, periodKey])
   @@index([systemId, createdAt])
 }
+
+// ───────────── WO 8.1 (§9.2) — แท็กเอกสาร: ตาราง "นิยามแท็ก" ─────────────
+//
+// 🔴 ทำไมไม่มีตารางเชื่อม (AccountDocTagLink): `AccountDocument.tags String[]` มีอยู่แล้วตั้งแต่ WO 0.3
+//    และถูกใช้จริงโดยตัวกรองรายการ + แม่แบบเอกสารประจำ ⇒ ถ้าเพิ่มตารางเชื่อมอีกชุด จะได้
+//    "แหล่งความจริง 2 แหล่ง" ของสิ่งเดียวกัน (คลาสสิกของบั๊กข้อมูลไม่ตรงกัน)
+//    ⇒ ตารางนี้เก็บแค่ **นิยาม** (ชื่อ/สี/ใช้กับชนิดไหน) · การผูกกับเอกสารยังเป็น tags[] เดิม (จับคู่ด้วยชื่อ)
+model AccountDocTag {
+  id         String    @id @default(cuid())
+  tenantId   String
+  systemId   String
+  name       String
+  /// คีย์ token สีของดีไซน์ (เช่น "slate" | "green" | "amber") — ไม่ใช่ค่า hex (UI_STANDARD: ห้าม hex ดิบ)
+  color      String    @default("slate")
+  /// ชนิดเอกสารที่แท็กนี้ใช้ได้ — array ของ AccountDocType เป็นสตริง · `[]` = ใช้ได้ทุกชนิด
+  docTypes   Json      @default("[]")
+  sortOrder  Int       @default(0)
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([systemId, name])
+  @@index([systemId, archivedAt])
+}

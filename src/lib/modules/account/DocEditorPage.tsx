@@ -30,6 +30,7 @@ import {
   priceModeOf,
   creditAvailableNow,
 } from "./service";
+import { computeDueDate, defaultDaysFor } from "./settings-schema";
 import { previewNextExpenseDocNo, creditAvailableExpenseNow } from "./expense";
 import { listPaymentChannels } from "./payment";
 import { listExpenseAccounts, listIncomeAccounts, listProducts, listUnits } from "./product";
@@ -167,7 +168,12 @@ export async function DocEditorPage({
   const seededContact = adjustSeedContact(doc, refDoc);
   const contactId = seededContact.contactId;
   const contactRow = contactRows.find((c) => c.id === contactId);
-  const dueDays = docType === "QUOTATION" ? settings.defaultValidDays : (contactRow?.creditTermDays || settings.defaultDueDays);
+  // WO 8.1 (§9.2 "วันที่ครบกำหนด"): ค่าเริ่มต้นต่อชนิดมาจากหน้าตั้งค่า · เครดิตเทอมของลูกค้ารายนั้นชนะเสมอ
+  // (ตั้งไว้ที่ผู้ติดต่อ = ข้อตกลงเฉพาะราย ย่อมเจาะจงกว่าค่ากลางของกิจการ)
+  const dueDays =
+    docType === "QUOTATION"
+      ? settings.doc.due.quotationValidDays
+      : (contactRow?.creditTermDays || defaultDaysFor(settings.doc, docType) || settings.defaultDueDays);
   const lineSourceDoc = doc ?? (!doc ? refDoc : null);
   const lines: LineDraft[] = lineSourceDoc?.lines.length
     ? lineSourceDoc.lines.map((l) => {
@@ -200,7 +206,9 @@ export async function DocEditorPage({
     contactLabel: seededContact.contactLabel,
     issueDate,
     dueDate:
-      isoOf(docType === "QUOTATION" ? doc?.validUntil : doc?.dueDate) || isoPlusDays(issueDate, dueDays),
+      isoOf(docType === "QUOTATION" ? doc?.validUntil : doc?.dueDate) ||
+      // นับจากวันที่ออก หรือ "สิ้นเดือนของวันที่ออก + n วัน" ตามที่ตั้งไว้ (§9.2)
+      computeDueDate(issueDate, dueDays, settings.doc.due.basis),
     reference: doc?.reference ?? "",
     priceMode: doc ? priceModeOf(doc.vatMode) : settings.vatRegistered ? "EXCL_VAT" : "NO_VAT",
     autoTaxInvoice: doc?.autoTaxInvoice ?? false,
@@ -212,7 +220,8 @@ export async function DocEditorPage({
       doc?.discountMode === "PERCENT" && lineBaseSum > 0
         ? { mode: "percent", satang: 0, percentBp: Math.round((docDiscountAmount * 10000) / lineBaseSum) }
         : { mode: "amount", satang: docDiscountAmount, percentBp: 0 },
-    note: doc?.note ?? settings.footerNote ?? "",
+    // หมายเหตุท้ายเอกสาร: ของชนิดนี้ก่อน (§9.2) → ข้อความกลางของกิจการ → ว่าง
+    note: doc?.note ?? settings.doc.notes[docType]?.footer ?? settings.footerNote ?? "",
     internalNote: doc?.internalNote ?? "",
     adjustReasonCode: reasonSeed.code,
     adjustReasonText: reasonSeed.text,

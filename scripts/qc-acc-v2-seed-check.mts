@@ -818,6 +818,58 @@ console.log("\nJ. กล่องขาเข้า + ผลอ่าน AI");
   chk("R21", "ที่อยู่อีเมลกล่องขาเข้าเป็นของร้านนี้", B.inboxEmail === `inbox-${QC.tenantSlug}@shark.in.th`, B.inboxEmail);
 }
 
+// ─────────── S. ตั้งค่าเอกสาร §9.2 (WO 8.1) ───────────
+{
+  console.log("\nS. ตั้งค่าเอกสาร (§9.2 · WO 8.1)");
+  const B = (E as { docSettings?: Record<string, unknown> }).docSettings;
+  if (!B) {
+    chk("S0", "เฉลยมีคีย์ docSettings", false, null, "docSettings");
+  } else {
+    const svcMod = await import("@/lib/modules/account/service");
+    const docSetMod = await import("@/lib/modules/account/doc-settings");
+    const st = await svcMod.getSettings(tenantId, systemId);
+    const want = B as {
+      sequences: Record<string, unknown>;
+      notes: Record<string, unknown>;
+      due: Record<string, unknown>;
+      print: { template: string; language: string; productSku: boolean; productImage: boolean };
+      publicView: Record<string, unknown>;
+      autoTaxInvoice: { mode: string; posAbbreviated: boolean };
+      taxRequest: { enabled: boolean; conditionNote: string };
+      rules: Record<string, unknown>;
+      channelOrder: string[];
+      channelCodesInOrder: string[];
+      tags: { name: string; color: string; docTypes: string[] }[];
+      taggedInvoiceId: string;
+      numberedDocTypes: number;
+    };
+    for (const dt of Object.keys(want.sequences)) {
+      eq(`S1.${dt}`, `เลขที่เอกสารของ ${dt}`, st.doc.sequences[dt], (want.sequences as Record<string, unknown>)[dt]);
+    }
+    for (const dt of Object.keys(want.notes)) {
+      eq(`S2.${dt}`, `หมายเหตุ/เงื่อนไขของ ${dt}`, st.doc.notes[dt], (want.notes as Record<string, unknown>)[dt]);
+    }
+    eq("S3", "วันครบกำหนดเริ่มต้น (รวมวิธีนับ)", st.doc.due, want.due);
+    eq("S4", "เทมเพลตพิมพ์ + ภาษา + ฟิลด์รหัส/รูปสินค้า", [st.doc.print.template, st.doc.print.language, st.doc.print.fields.productSku, st.doc.print.fields.productImage], [want.print.template, want.print.language, want.print.productSku, want.print.productImage]);
+    eq("S5", "การแสดงข้อมูลสาธารณะ", st.doc.publicView, want.publicView);
+    eq("S6", "ใบกำกับภาษีอัตโนมัติ", [st.doc.autoTaxInvoice.mode, st.doc.autoTaxInvoice.posAbbreviated], [want.autoTaxInvoice.mode, want.autoTaxInvoice.posAbbreviated]);
+    eq("S7", "ลิงก์ให้ลูกค้าขอใบกำกับ", [st.doc.taxRequest.enabled, st.doc.taxRequest.conditionNote], [want.taxRequest.enabled, want.taxRequest.conditionNote]);
+    eq("S8", "กฎอัตโนมัติของเอกสาร (ล็อกเลข/เตือนข้ามลำดับ)", st.doc.rules, want.rules);
+    eq("S9", "คอลัมน์เดิม defaultValidDays/defaultDueDays = ค่าเดียวกับตั้งค่าใหม่", [st.defaultValidDays, st.defaultDueDays], [want.due.quotationValidDays, want.due.invoiceCreditDays]);
+    const chans = await docSetMod.documentPaymentChannels({ tenantId, systemId });
+    eq("S10", "ช่องทางรับชำระบนเอกสาร เรียงตามลำดับที่ตั้งไว้", chans.map((c) => c.id), want.channelOrder);
+    const tags = await docSetMod.listDocTags({ tenantId, systemId }, { withUsage: true });
+    eq("S11", "แท็กเอกสารที่ seed ไว้", tags.map((t) => ({ name: t.name, color: t.color, docTypes: t.docTypes })), want.tags);
+    const taggedDoc = await prisma.accountDocument.findUnique({ where: { id: want.taggedInvoiceId }, select: { tags: true } });
+    eq("S12", "ใบแจ้งหนี้ตัวอย่างติดแท็กไว้ (ผูกผ่าน tags[] เดิม)", taggedDoc?.tags ?? null, ["ทริปสิมิลัน"]);
+    const rows = await docSetMod.docNumberingRows({ tenantId, systemId }, (dt) => String(dt), new Date(`${QC.today}T12:00:00+07:00`));
+    eq("S13", "ตารางเลขที่เอกสารครบทุกชนิดที่ตั้งค่าได้", rows.length, want.numberedDocTypes);
+    const ivRow = rows.find((r) => r.docType === "INVOICE");
+    chk("S14", "ตัวอย่างเลขถัดไปของใบแจ้งหนี้ใช้รูปแบบ INV-{ปีสั้น}{เดือน}-{0000}", /^INV-\d{4}-\d{4}$/.test(ivRow?.example ?? ""), ivRow?.example);
+    chk("S15", "เอกสารที่ seed ไว้ยังคงเลขเดิม (ตั้งค่าใหม่ไม่ย้อนไปแก้ของเก่า)", (await prisma.accountDocument.count({ where: { systemId, docType: "INVOICE", docNo: { startsWith: "INV-" } } })) === 0, "ไม่มีใบเก่าที่ถูกเปลี่ยนเลข");
+  }
+}
+
 // ─────────── H. อายุของข้อสอบ ───────────
 console.log("\nH. อายุของชุดข้อมูล");
 chk(

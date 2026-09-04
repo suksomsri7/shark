@@ -4,6 +4,9 @@ import { getDocument, getSettings, DOC_LABEL, baht, orgDisplayName } from "@/lib
 import { EXP_DOC_LABEL } from "@/lib/modules/account/expense";
 import { isGroupDocType } from "@/lib/modules/account/group";
 import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
+// WO 8.1 (§9.2 "รายงานเอกสาร"): เทมเพลต/ฟิลด์ที่แสดง/ภาษา + หมายเหตุ+เงื่อนไขต่อชนิด + ช่องทางบนเอกสาร
+import { buildPrintOptions } from "@/lib/modules/account/print-options";
+import { documentPaymentChannels } from "@/lib/modules/account/doc-settings";
 
 
 // หน้าเอกสารสำหรับพิมพ์/บันทึก PDF (Ctrl+P) — B&W A4
@@ -25,6 +28,18 @@ export default async function PrintPage({
     getSettings(tenantId, systemId),
   ]);
   if (!doc) notFound();
+
+  // ตัวเลือกการพิมพ์ตามตั้งค่าเอกสาร (§9.2) — เทมเพลต · ฟิลด์ที่แสดง · ภาษา · หมายเหตุ/เงื่อนไขของชนิดนี้
+  const po = buildPrintOptions(s.doc, doc.docType, s.footerNote);
+  const L = po.labels;
+  // 🔴 WO 1.7 (§5.2 K): เอกสารกลุ่ม (ใบวางบิลรวม/ใบรวมจ่าย) มีตารางของตัวเอง — 1 บรรทัด = 1 ใบลูก
+  //    ไม่ใช่ตารางสินค้า/บริการ · ป้ายไทยเขียนคำต่อคำไว้ตรงนี้ (เอกสาร · ยอดค้างชำระ · รวมยอดที่ต้องชำระ)
+  //    เทมเพลตพิมพ์ของ §9.2 เปลี่ยนได้แค่ระยะ/ภาษา — ห้ามเปลี่ยนโครงตารางของกลุ่ม
+  const G =
+    po.language === "EN"
+      ? { item: L.groupItem, outstanding: L.groupOutstanding, count: L.groupCount, grandTotal: L.groupGrandTotal }
+      : { item: "เอกสาร", outstanding: "ยอดค้างชำระ", count: "จำนวนเอกสารในรายการ", grandTotal: "รวมยอดที่ต้องชำระ" };
+  const channels = po.show.paymentChannels ? await documentPaymentChannels({ tenantId, systemId }) : [];
 
   const isTaxInvoice = doc.docType === "TAX_INVOICE";
   // C4 (ม.86/10): ใบลดหนี้/ใบเพิ่มหนี้ ต้องอ้างเลข+วันที่ใบกำกับเดิม + เหตุผลการปรับ
@@ -51,13 +66,13 @@ export default async function PrintPage({
     s.branchName || (s.branchCode === "00000" ? "สำนักงานใหญ่" : s.branchCode ? `สาขา ${s.branchCode}` : "");
 
   // เอกสารออกเป็นชุด: ต้นฉบับ / สำเนา (?copy=1)
-  const setLabel = copy === "1" ? "สำเนา (Copy)" : "ต้นฉบับ (Original)";
+  const setLabel = copy === "1" ? L.copy : L.original;
 
   return (
-    <div className="mx-auto max-w-2xl bg-white p-8 text-sm text-black">
+    <div className={`mx-auto ${po.style.page}`} data-testid="print-page" data-template={po.template} data-lang={po.language}>
       <div className="flex items-start justify-between border-b pb-4">
         <div className="flex items-start gap-3">
-          {s.logoUrl && (
+          {po.show.logo && s.logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={s.logoUrl} alt="logo" className="h-14 w-14 object-contain" />
           )}
@@ -66,27 +81,28 @@ export default async function PrintPage({
             {s.address && <div className="text-xs text-neutral-600">{s.address}</div>}
             {sellerBranch && <div className="text-xs text-neutral-600">{sellerBranch}</div>}
             {s.taxId && (
-              <div className="text-xs text-neutral-600">เลขประจำตัวผู้เสียภาษี {s.taxId}</div>
+              <div className="text-xs text-neutral-600">{L.taxId} {s.taxId}</div>
             )}
-            {s.phone && <div className="text-xs text-neutral-600">โทร {s.phone}</div>}
+            {s.phone && <div className="text-xs text-neutral-600">{L.phone} {s.phone}</div>}
           </div>
         </div>
         <div className="text-right">
           <div className="text-lg font-bold">{docTitle}</div>
           {isTaxInvoice && <div className="text-xs font-medium">{setLabel}</div>}
-          <div className="mt-1 text-xs">เลขที่ {doc.docNo ?? "(ร่าง)"}</div>
-          <div className="text-xs">วันที่ {fmtDate(doc.issueDate)}</div>
-          {doc.dueDate && <div className="text-xs">ครบกำหนด {fmtDate(doc.dueDate)}</div>}
-          {doc.validUntil && <div className="text-xs">ยืนราคาถึง {fmtDate(doc.validUntil)}</div>}
+          <div className="mt-1 text-xs">{L.docNo} {doc.docNo ?? "(ร่าง)"}</div>
+          <div className="text-xs">{L.date} {fmtDate(doc.issueDate)}</div>
+          {po.show.dueDate && doc.dueDate && <div className="text-xs">{L.dueDate} {fmtDate(doc.dueDate)}</div>}
+          {po.show.dueDate && doc.validUntil && <div className="text-xs">{L.validUntil} {fmtDate(doc.validUntil)}</div>}
+          {po.show.reference && doc.reference && <div className="text-xs">{L.reference} {doc.reference}</div>}
         </div>
       </div>
 
       <div className="mt-4 rounded border p-3">
-        <div className="text-xs text-neutral-600">{isTaxInvoice ? "ผู้ซื้อ / ลูกค้า" : "ลูกค้า"}</div>
+        <div className="text-xs text-neutral-600">{isTaxInvoice ? L.buyerTax : L.buyer}</div>
         <div className="font-medium">{buyerName || "—"}</div>
-        {buyerAddr && <div className="text-xs text-neutral-600">{buyerAddr}</div>}
+        {po.show.buyerAddress && buyerAddr && <div className="text-xs text-neutral-600">{buyerAddr}</div>}
         <div className="flex flex-wrap gap-x-6 text-xs text-neutral-600">
-          {buyerTax && <span>เลขประจำตัวผู้เสียภาษี {buyerTax}</span>}
+          {po.show.buyerTaxId && buyerTax && <span>{L.taxId} {buyerTax}</span>}
           {buyerBranch && <span>{buyerBranch}</span>}
         </div>
       </div>
@@ -105,11 +121,11 @@ export default async function PrintPage({
       )}
 
       {isGroup ? (
-        <table className="mt-4 w-full border-collapse text-xs">
+        <table className={po.style.table} data-testid="print-group-lines">
           <thead>
             <tr className="border-y">
-              <th className="py-1 text-left">เอกสาร</th>
-              <th className="py-1 text-right">ยอดค้างชำระ</th>
+              <th className="py-1 text-left">{G.item}</th>
+              <th className="py-1 text-right">{G.outstanding}</th>
             </tr>
           </thead>
           <tbody>
@@ -122,19 +138,30 @@ export default async function PrintPage({
           </tbody>
         </table>
       ) : (
-      <table className="mt-4 w-full border-collapse text-xs">
+      <table className={po.style.table} data-testid="print-lines">
         <thead>
           <tr className="border-y">
-            <th className="py-1 text-left">รายการ</th>
-            <th className="py-1 text-right">จำนวน</th>
-            <th className="py-1 text-right">ราคา/หน่วย</th>
-            {s.vatRegistered && <th className="py-1 text-right">VAT</th>}
-            <th className="py-1 text-right">จำนวนเงิน</th>
+            {po.show.productImage && <th className="py-1 text-left" />}
+            {po.show.productSku && <th className="py-1 text-left">{L.sku}</th>}
+            <th className="py-1 text-left">{L.item}</th>
+            <th className="py-1 text-right">{L.qty}</th>
+            <th className="py-1 text-right">{L.unitPrice}</th>
+            {s.vatRegistered && <th className="py-1 text-right">{L.vat}</th>}
+            <th className="py-1 text-right">{L.amount}</th>
           </tr>
         </thead>
         <tbody>
           {doc.lines.map((l) => (
             <tr key={l.id} className="border-b">
+              {po.show.productImage && (
+                <td className="py-1">
+                  {l.product?.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={l.product.imageUrl} alt="" className="h-10 w-10 object-cover" />
+                  )}
+                </td>
+              )}
+              {po.show.productSku && <td className="py-1 text-neutral-600">{l.product?.sku ?? ""}</td>}
               <td className="py-1">{l.description}</td>
               <td className="py-1 text-right">
                 {Number(l.qty)} {l.unitName ?? ""}
@@ -154,41 +181,65 @@ export default async function PrintPage({
 
       <div className="mt-3 flex flex-col items-end gap-0.5 text-xs">
         {isGroup ? (
-          <Row label={`จำนวนเอกสารในรายการ ${doc.lines.length} ใบ`} value={baht(doc.subTotal)} />
+          <Row label={`${G.count} ${doc.lines.length} ${po.language === "EN" ? "" : "ใบ"}`.trim()} value={baht(doc.subTotal)} />
         ) : (
           <>
-            <Row label="มูลค่าสินค้า/บริการ" value={baht(doc.subTotal)} />
-            {doc.discountAmount > 0 && <Row label="ส่วนลด" value={`-${baht(doc.discountAmount)}`} />}
-            {doc.depositDeducted > 0 && <Row label="หักเงินมัดจำ" value={`-${baht(doc.depositDeducted)}`} />}
-            {s.vatRegistered && <Row label="ภาษีมูลค่าเพิ่ม (VAT)" value={baht(doc.vatAmount)} />}
+            <Row label={L.subTotal} value={baht(doc.subTotal)} />
+            {doc.discountAmount > 0 && <Row label={L.discount} value={`-${baht(doc.discountAmount)}`} />}
+            {doc.depositDeducted > 0 && <Row label={L.deposit} value={`-${baht(doc.depositDeducted)}`} />}
+            {s.vatRegistered && <Row label={L.vatAmount} value={baht(doc.vatAmount)} />}
           </>
         )}
         <div className="flex w-56 justify-between border-t pt-1 text-sm font-bold">
-          <span>{isGroup ? "รวมยอดที่ต้องชำระ" : s.vatRegistered ? "จำนวนเงินรวมทั้งสิ้น" : "ยอดสุทธิ"}</span>
+          <span>{isGroup ? G.grandTotal : s.vatRegistered ? L.grandTotal : L.netTotal}</span>
           <span>฿{baht(doc.grandTotal)}</span>
         </div>
       </div>
 
-      {doc.note && <div className="mt-4 text-xs text-neutral-600">หมายเหตุ: {doc.note}</div>}
-      {s.footerNote && <div className="mt-1 text-xs text-neutral-600">{s.footerNote}</div>}
+      {po.show.note && doc.note && (
+        <div className="mt-4 text-xs text-neutral-600">{L.note}: {doc.note}</div>
+      )}
+      {po.show.note && po.footerNote && (
+        <div className="mt-1 text-xs text-neutral-600" data-testid="print-footer-note">{po.footerNote}</div>
+      )}
+      {po.show.paymentTerms && po.paymentTerms && (
+        <div className="mt-1 text-xs text-neutral-600" data-testid="print-terms">
+          {L.terms}: {po.paymentTerms}
+        </div>
+      )}
+      {channels.length > 0 && (
+        <div className="mt-2 rounded border p-2 text-xs text-neutral-700" data-testid="print-channels">
+          <div className="font-medium">{L.channels}</div>
+          {channels.map((c) => (
+            <div key={c.id}>
+              {[c.bankName, c.accountNo, c.accountName].filter(Boolean).join(" · ") ||
+                c.promptpayId ||
+                c.name}
+            </div>
+          ))}
+        </div>
+      )}
+      {po.legalText && (
+        <div className="mt-2 text-[10px] text-neutral-500" data-testid="print-legal">{po.legalText}</div>
+      )}
 
-      <div className="mt-12 grid grid-cols-2 gap-8 text-center text-xs">
+      <div className={`${po.style.gapTop} grid grid-cols-2 gap-8 text-center text-xs`}>
         <div className="flex flex-col items-center">
           <div className="relative flex h-16 w-full items-end justify-center">
-            {s.stampUrl && (
+            {po.show.stamp && s.stampUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={s.stampUrl} alt="ตราประทับ" className="absolute left-2 bottom-2 h-16 w-16 object-contain opacity-80" />
             )}
-            {s.signatureUrl && (
+            {po.show.signature && s.signatureUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={s.signatureUrl} alt="ลายเซ็น" className="h-12 object-contain" />
             )}
           </div>
-          <div className="w-full border-t pt-1">ผู้รับเงิน / ผู้มีอำนาจลงนาม</div>
+          <div className="w-full border-t pt-1">{L.signature}</div>
         </div>
         <div className="flex flex-col items-center justify-end">
           <div className="h-16 w-full" />
-          <div className="w-full border-t pt-1">ผู้ซื้อ / ลูกค้า</div>
+          <div className="w-full border-t pt-1">{L.buyerSignature}</div>
         </div>
       </div>
 

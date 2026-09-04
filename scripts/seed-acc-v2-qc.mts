@@ -1826,6 +1826,89 @@ console.log(
   `📒 WO 6.2: สินทรัพย์ 2 ตัว · ค่าเสื่อม ${depExpected.length} แถว (2 ตัว × 3 งวด) (รวม ${bahtStr(DEP_TOTAL)}) · JV มือ 1 · ⚑ 1 (9999 ค้าง ${bahtStr(SUSPENSE_CREDIT)}) · กลับรายการ 1 คู่ · ปิดงวด 2026-08`,
 );
 
+// ─────────────────── 8.13 ตั้งค่าเอกสาร §9.2 (WO 8.1 · f10) ───────────────────
+//
+// 🔴 ต้องอยู่ **ท้ายสุด หลังสร้างเอกสารครบแล้ว** — ถ้าตั้งรูปแบบเลขก่อน เอกสารทั้งชุดจะได้เลขคนละแบบกับเฉลยเดิม
+//    ทุกชุดที่ผูกกับ docNo (list/detail/print) จะแดงยกแผง · ตั้งทีหลัง = เอกสารเดิมคงเลขเดิม
+//    ใบ**ถัดไป**ที่ระบบออกเท่านั้นที่ใช้รูปแบบใหม่ (ซึ่งคือสิ่งที่ข้อสอบ 8.1 ต้องพิสูจน์)
+const docSet = await import("@/lib/modules/account/doc-settings");
+const SETTINGS_CTX = { tenantId, systemId };
+
+// 3 ชนิดที่ตั้งค่า "ไม่ใช่ค่าเริ่มต้น" ครบทั้ง 3 นโยบายรีเซ็ต
+const SEED_SEQ = {
+  INVOICE: { prefix: "INV", pattern: "INV-{ปีสั้น}{เดือน}-{0000}", reset: "MONTH" as const },
+  QUOTATION: { prefix: "QO", pattern: "QO-{ปี}-{00000}", reset: "YEAR" as const },
+  EXPENSE: { prefix: "EXP", pattern: "EXP-{0000}", reset: "NONE" as const },
+};
+{
+  const r = await docSet.saveDocSettings(SETTINGS_CTX, { sequences: SEED_SEQ });
+  if (!r.ok) throw new Error(`ตั้งค่าเลขที่เอกสารไม่สำเร็จ: ${r.reason}`);
+}
+// หมายเหตุ + เงื่อนไขการชำระต่อชนิด (ใช้พิสูจน์ว่าไปโผล่บนกระดาษพิมพ์จริง)
+const SEED_NOTES = {
+  INVOICE: {
+    footer: "ขอบคุณที่ใช้บริการ SIAM DIVE QC — โอนแล้วส่งสลิปทางไลน์ได้เลย",
+    terms: "ชำระภายใน 30 วันนับจากวันที่ออกใบแจ้งหนี้",
+  },
+  QUOTATION: { footer: "ราคานี้รวมอุปกรณ์ดำน้ำครบชุด", terms: "มัดจำ 30% เมื่อยืนยันการจอง" },
+};
+{
+  const r = await docSet.saveDocSettings(SETTINGS_CTX, { notes: SEED_NOTES });
+  if (!r.ok) throw new Error(`ตั้งค่าหมายเหตุเอกสารไม่สำเร็จ: ${r.reason}`);
+}
+// วันครบกำหนด (นับจากสิ้นเดือน) + เทมเพลตพิมพ์ "กะทัดรัด" + ลิงก์สาธารณะ
+{
+  const r = await docSet.saveDocSettings(SETTINGS_CTX, {
+    due: { quotationValidDays: 15, invoiceCreditDays: 30, purchaseOrderDueDays: 10, basis: "MONTH_END" },
+    print: {
+      template: "COMPACT",
+      language: "TH",
+      fields: {
+        logo: true, stamp: true, signature: true, buyerTaxId: true, buyerAddress: true,
+        productSku: true, productImage: false, dueDate: true, reference: true,
+        note: true, paymentTerms: true, paymentChannels: true,
+      },
+    },
+    publicView: { enabled: true, showOutstanding: true, promptPayButton: true, expiryDays: 0 },
+    autoTaxInvoice: {
+      mode: "ON_PAYMENT",
+      posAbbreviated: true,
+      legalText: "ใบกำกับภาษีนี้ออกตามมาตรา 86/4 แห่งประมวลรัษฎากร",
+    },
+    taxRequest: {
+      enabled: true,
+      receiptText: "ต้องการใบกำกับภาษีเต็มรูป? สแกน QR ท้ายใบเสร็จ",
+      conditionNote: "ขอได้ภายใน 7 วันนับจากวันที่ออกใบเสร็จ",
+      minAmountSatang: 0,
+    },
+    rules: { lockNumberOnIssue: true, warnOnGap: true },
+  });
+  if (!r.ok) throw new Error(`ตั้งค่าเอกสารไม่สำเร็จ: ${r.reason}`);
+}
+// ลำดับช่องทางรับชำระบนเอกสาร — สลับให้ "ต่างจากลำดับสร้าง" เพื่อพิสูจน์ว่าลำดับถูกใช้จริง
+const DOC_CHANNEL_ORDER = [finId["EWL001"], finId["BSV001"], finId["CSH001"]].filter(Boolean);
+{
+  const r = await docSet.saveDocSettings(SETTINGS_CTX, { channels: { order: DOC_CHANNEL_ORDER } });
+  if (!r.ok) throw new Error(`ตั้งลำดับช่องทางบนเอกสารไม่สำเร็จ: ${r.reason}`);
+}
+// แท็กเอกสาร 2 อัน (อันหนึ่งจำกัดชนิด อีกอันใช้ได้ทุกชนิด)
+const SEED_TAGS = [
+  { name: "ทริปสิมิลัน", color: "blue", docTypes: ["INVOICE", "QUOTATION"] },
+  { name: "ลูกค้าองค์กร", color: "green", docTypes: [] as string[] },
+];
+const seedTagIds: Record<string, string> = {};
+for (const t of SEED_TAGS) {
+  const r = await docSet.createDocTag(SETTINGS_CTX, t);
+  if (!r.ok) throw new Error(`สร้างแท็ก ${t.name} ไม่สำเร็จ: ${r.reason}`);
+  seedTagIds[t.name] = r.id;
+}
+// ผูกแท็กกับใบแจ้งหนี้ 1 ใบ (การผูกใช้ AccountDocument.tags[] เดิม — ไม่มีตารางเชื่อมใหม่)
+await prisma.accountDocument.update({
+  where: { id: String(fixtures.invNattapholId) },
+  data: { tags: ["ทริปสิมิลัน"] },
+});
+console.log(`⚙️  ตั้งค่าเอกสาร §9.2: เลขที่ 3 ชนิด · หมายเหตุ 2 ชนิด · แท็ก ${SEED_TAGS.length} · เทมเพลตพิมพ์ กะทัดรัด`);
+
 // ─────────────────────────── 9. อ่านผลจริงกลับมา + เขียนเฉลย ───────────────────────────
 
 const stats = await svc.overviewStats(tenantId, systemId);
@@ -2505,6 +2588,25 @@ const expected = {
       confidence: 0.92,
     },
     inboxEmail: `inbox-${tenant.slug}@shark.in.th`,
+  },
+  // WO 8.1 (§9.2) — ตั้งค่าเอกสาร: เฉลยเขียนจาก "ค่าที่ seed ตั้ง" ตรง ๆ (ไม่ได้อ่านกลับจาก DB)
+  // ⇒ ถ้าโค้ดบันทึก/อ่านค่าผิด ข้อสอบจะจับได้ (อ่านกลับมาเทียบเองจะกลายเป็นเทสว่า "DB = DB")
+  docSettings: {
+    sequences: SEED_SEQ,
+    notes: SEED_NOTES,
+    due: { quotationValidDays: 15, invoiceCreditDays: 30, purchaseOrderDueDays: 10, basis: "MONTH_END" },
+    print: { template: "COMPACT", language: "TH", productSku: true, productImage: false },
+    publicView: { enabled: true, showOutstanding: true, promptPayButton: true, expiryDays: 0 },
+    autoTaxInvoice: { mode: "ON_PAYMENT", posAbbreviated: true },
+    taxRequest: { enabled: true, conditionNote: "ขอได้ภายใน 7 วันนับจากวันที่ออกใบเสร็จ" },
+    rules: { lockNumberOnIssue: true, warnOnGap: true },
+    channelOrder: DOC_CHANNEL_ORDER,
+    channelCodesInOrder: ["EWL001", "BSV001", "CSH001"],
+    tags: SEED_TAGS.map((t) => ({ name: t.name, color: t.color, docTypes: t.docTypes })),
+    tagIds: seedTagIds,
+    taggedInvoiceId: String(fixtures.invNattapholId),
+    /** จำนวนชนิดเอกสารที่มีแถวในตาราง "เลขที่เอกสาร" (§9.2) */
+    numberedDocTypes: 18,
   },
   fixtures: {
     ...fixtures,

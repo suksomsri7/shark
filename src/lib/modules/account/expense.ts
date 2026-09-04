@@ -28,6 +28,9 @@ import {
   type DocStatusFilter,
   type DocSort,
 } from "./service";
+// WO 8.1 — เครื่องออกเลขที่เอกสารร่วม (ที่เดียวทั้งรายรับ/รายจ่าย) + ตารางคำนำหน้ากลาง
+import { issueDocNo, peekDocNo } from "./doc-numbering";
+import { EXPENSE_DOC_PREFIX, fallbackPrefixOf } from "./settings-schema";
 
 // ─────────────────────────────────────────────────────────────
 // expense.ts — ฝั่งรายจ่าย (P2) direction=IN
@@ -42,19 +45,8 @@ export { STATUS_LABEL, isOverdue };
 
 // ─────────────────── ทะเบียน docType ฝั่งจ่าย ───────────────────
 
-export const EXP_DOC_PREFIX: Partial<Record<AccountDocType, string>> = {
-  PURCHASE: "PC",
-  EXPENSE: "EX",
-  PURCHASE_ORDER: "PO",
-  ASSET_PURCHASE_ORDER: "APO",
-  ASSET_PURCHASE: "AP",
-  PURCHASE_TAX_INVOICE: "PTX",
-  DEPOSIT_PAYMENT: "DP",
-  CREDIT_NOTE_RECEIVED: "CNR",
-  DEBIT_NOTE_RECEIVED: "DNR",
-  COMBINED_PAYMENT: "CP",
-  WHT_CERT: "WHT",
-};
+// WO 8.1: ตารางจริงย้ายไป settings-schema.ts (หน้าตั้งค่า/เครื่องออกเลขต้องใช้ร่วมกับฝั่งรายรับ)
+export const EXP_DOC_PREFIX = EXPENSE_DOC_PREFIX;
 
 export const EXP_DOC_LABEL: Partial<Record<AccountDocType, string>> = {
   PURCHASE: "บันทึกซื้อสินค้า",
@@ -159,6 +151,12 @@ function vatFieldsFor(
 }
 
 // ─────────────────── เลขรันเอกสาร (จองใน tx) ───────────────────
+//
+// 🔴 WO 8.1: เดิมไฟล์นี้มีสูตรของตัวเอง ซึ่งพัง 2 อย่าง
+//    (1) ไม่อ่านตั้งค่าเลย ⇒ คำนำหน้า/รูปแบบ/นโยบายรีเซ็ตที่เจ้าของตั้งไว้ ไม่มีผลกับเอกสารรายจ่ายเลย
+//    (2) ใช้ `date.getFullYear()/getMonth()` = TZ ของเครื่อง ⇒ บนเซิร์ฟเวอร์ UTC เอกสารที่ออกช่วง
+//        00:00–07:00 เวลาไทยของวันที่ 1 จะถูกนับเป็นเดือนก่อน (เลขรันข้ามงวด)
+//    ⇒ เรียก doc-numbering.ts ตัวเดียวกับฝั่งรายรับ
 
 async function nextDocNo(
   tx: Prisma.TransactionClient,
@@ -167,37 +165,30 @@ async function nextDocNo(
   docType: AccountDocType,
   date: Date,
 ): Promise<string> {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const periodKey = `${year}-${month}`;
-  const prefix = EXP_DOC_PREFIX[docType] ?? docType;
-  const seq = await tx.accountDocSequence.upsert({
-    where: { systemId_docType_periodKey: { systemId, docType, periodKey } },
-    create: { tenantId, systemId, docType, prefix, periodKey, lastNo: 1 },
-    update: { lastNo: { increment: 1 } },
+  return issueDocNo(tx, {
+    tenantId,
+    systemId,
+    docType,
+    fallbackPrefix: fallbackPrefixOf(docType),
+    date,
   });
-  return `${prefix}-${year}-${month}-${String(seq.lastNo).padStart(4, "0")}`;
 }
 
 /**
  * เลขที่ "ถัดไป" ฝั่งรายจ่าย แบบดูอย่างเดียว (WO 1.3 · §5.2 B)
  * 🔴 อ่านอย่างเดียว ห้าม upsert — ร่างต้องไม่กินเลข (เลขจริงจองใน issueExpenseDoc/tx เท่านั้น)
- *    ใช้สูตรเดียวกับ nextDocNo ข้างบนเป๊ะ (prefix-YYYY-MM-####)
  */
 export async function previewNextExpenseDocNo(
   systemId: string,
   docType: AccountDocType,
   date: Date,
 ): Promise<string> {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const periodKey = `${year}-${month}`;
-  const prefix = EXP_DOC_PREFIX[docType] ?? docType;
-  const seq = await prisma.accountDocSequence.findUnique({
-    where: { systemId_docType_periodKey: { systemId, docType, periodKey } },
-    select: { lastNo: true },
+  return peekDocNo(prisma, {
+    systemId,
+    docType,
+    fallbackPrefix: fallbackPrefixOf(docType),
+    date,
   });
-  return `${prefix}-${year}-${month}-${String((seq?.lastNo ?? 0) + 1).padStart(4, "0")}`;
 }
 
 // ─────────────────── list + filter tabs (§3.0.3) ───────────────────

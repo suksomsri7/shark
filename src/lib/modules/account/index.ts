@@ -95,7 +95,7 @@ export async function applyExternalSale(input: {
   if (!link) return { posted: false, reason: "unlinked" };
 
   const ctx: GlCtx = { tenantId: input.tenantId, systemId: link.systemId };
-  const { vatRegistered, vatRateBp } = await vatConfigOf(link.systemId);
+  const { vatRegistered, vatRateBp, posAbbreviatedInvoice } = await vatConfigOf(link.systemId);
 
   const gross = input.grossSatang;
   const base = vatRegistered ? Math.round(gross / (1 + vatRateBp / 10000)) : gross;
@@ -162,7 +162,8 @@ export async function applyExternalSale(input: {
   const posted = "entryId" in res;
 
   // ── WO 4.2: ชั้นเอกสาร (ไม่มี lines = ข้ามทั้งบล็อก → เส้นทางเดิมทุกประการ) ──
-  if (!lines || lines.length === 0) return { posted };
+  //    WO 8.1: เจ้าของปิด "ใบกำกับอย่างย่อจาก POS" ในหน้าตั้งค่า (§9.2) = ไม่สร้างชั้นเอกสารนี้
+  if (!lines || lines.length === 0 || !posAbbreviatedInvoice) return { posted };
 
   const contactId = await resolveExternalSaleContact(ctx, input.customer);
   const map = await resolveProductIdsForExternalSale(ctx.systemId, {

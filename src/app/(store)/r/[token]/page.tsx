@@ -78,8 +78,24 @@ export default async function PublicTaxInvoicePage({
           <span className="text-[color:var(--color-muted)]">{t("receipt.field.total")}</span>
           <span className="font-semibold">฿{baht(ctx.grandTotal, locale)}</span>
         </div>
+        {/* WO 8.1 (§9.2): แสดงยอดค้าง/ปุ่มจ่าย เฉพาะที่เจ้าของเปิดไว้ในหน้าตั้งค่า */}
+        {ctx.outstandingSatang !== null && ctx.outstandingSatang > 0 && (
+          <div className="flex justify-between" data-testid="receipt-outstanding">
+            <span className="text-[color:var(--color-muted)]">{t("receipt.field.outstanding")}</span>
+            <span className="font-semibold">฿{baht(ctx.outstandingSatang, locale)}</span>
+          </div>
+        )}
       </div>
 
+      {ctx.payToken && (
+        <a
+          href={`/pay/${ctx.payToken}`}
+          data-testid="receipt-pay-link"
+          className="rounded-lg bg-[color:var(--color-ink)] px-4 py-2.5 text-center text-sm font-medium text-[color:var(--color-surface)]"
+        >
+          {t("receipt.pay.promptpay")}
+        </a>
+      )}
       {!ctx.vatRegistered && (
         <div className="rounded-lg border bg-[color:var(--color-surface-2)] p-3 text-sm text-[color:var(--color-danger)]">
           {t("receipt.notVat")}
@@ -98,7 +114,16 @@ export default async function PublicTaxInvoicePage({
           <div className="mt-2 text-[color:var(--color-muted)]">{t("receipt.pending.desc")}</div>
         </div>
       ) : (
-        ctx.vatRegistered && (
+        ctx.vatRegistered &&
+        // §9.2: ปิด "ลิงก์ให้ลูกค้าขอใบกำกับภาษี" = ยังดูใบเสร็จได้ แต่ไม่มีฟอร์มให้กรอก
+        (!ctx.taxRequestEnabled ? (
+          <div
+            data-testid="receipt-request-off"
+            className="rounded-xl border bg-[color:var(--color-surface-2)] p-4 text-center text-sm text-[color:var(--color-muted)]"
+          >
+            {t("receipt.request.off")}
+          </div>
+        ) : (
           <form action={requestTaxInvoiceAction} className="flex flex-col gap-3 rounded-xl border bg-[color:var(--color-surface)] p-4">
             <input type="hidden" name="token" value={token} />
             {err && <p className="text-sm text-[color:var(--color-danger)]">{err}</p>}
@@ -138,9 +163,14 @@ export default async function PublicTaxInvoicePage({
               {t("receipt.form.submit")}
             </button>
           </form>
-        )
+        ))
       )}
 
+      {ctx.taxRequestEnabled && ctx.taxRequestNote && (
+        <p className="text-center text-[11px] text-[color:var(--color-muted)]" data-testid="receipt-request-note">
+          {ctx.taxRequestNote}
+        </p>
+      )}
       <p className="text-center text-[11px] text-[color:var(--color-muted)]">
         {t("receipt.footer")}
       </p>

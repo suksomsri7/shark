@@ -35,6 +35,24 @@ import * as party from "@/lib/modules/party";
 // WO 1.9 (เอกสารประจำ + เตือน) — ดูหัวข้อท้ายไฟล์ว่าทำไมโค้ดก้อนนั้นอยู่ในไฟล์นี้ (fitness F5)
 import { evaluate } from "@/lib/core/rbac";
 import { writeAudit } from "./access";
+// WO 8.1 (§9.2) — เครื่องออกเลขที่เอกสาร + โครงตั้งค่าเอกสาร (แหล่งเดียวทั้งฝั่งรายรับ/รายจ่าย)
+import {
+  bkkParts,
+  issueDocNo,
+  peekDocNo,
+  setNextNo,
+  findSeqGaps,
+} from "./doc-numbering";
+import {
+  REVENUE_DOC_PREFIX,
+  applyDueColumns,
+  defaultDocSettings,
+  fallbackPrefixOf,
+  parseDocSettings,
+  type DocSettings as DocSettingsView,
+  type SeqReset as DocSeqReset,
+  type SeqConfig as DocSeqConfig,
+} from "./settings-schema";
 import {
   DAY_MS as REC_DAY_MS,
   RECURRING_TAG,
@@ -54,16 +72,8 @@ import type { AccountRecurringFrequency } from "@prisma/client";
 
 // ─────────────────── ค่าคงที่/ตัวช่วย ───────────────────
 
-export const DOC_PREFIX: Partial<Record<AccountDocType, string>> = {
-  QUOTATION: "QT",
-  INVOICE: "IV",
-  RECEIPT: "RE",
-  TAX_INVOICE: "TX",
-  DEPOSIT_RECEIPT: "DR",
-  CREDIT_NOTE: "CN",
-  DEBIT_NOTE: "DN",
-  BILLING_NOTE: "BN",
-};
+// WO 8.1: ตารางจริงย้ายไป settings-schema.ts (ฝั่งรายจ่ายต้องใช้ด้วย และ 2 ไฟล์นั้น import กันเป็นวง)
+export const DOC_PREFIX = REVENUE_DOC_PREFIX;
 
 export const DOC_LABEL: Partial<Record<AccountDocType, string>> = {
   QUOTATION: "ใบเสนอราคา",
@@ -290,6 +300,13 @@ export type AccountSettingsView = {
   footerNote: string | null;
   // §3.8 per-docType: prefix, ออกใบกำกับอัตโนมัติ, เปิดลิงก์สาธารณะขอใบกำกับ
   docTypes: Record<string, DocTypeConfig>;
+  /**
+   * WO 8.1 (§9.2) — ตั้งค่าเอกสารทั้งก้อน (เลขที่ · หมายเหตุ · วันครบกำหนด · ช่องทางบนเอกสาร ·
+   * ลิงก์สาธารณะ · ใบกำกับอัตโนมัติ · เทมเพลตพิมพ์ · ลิงก์ขอใบกำกับ · กฎอัตโนมัติ)
+   * ติดมากับ getSettings เลย เพราะทุกที่ที่ต้องใช้ (ฟอร์ม/พิมพ์/ลิงก์สาธารณะ/รับชำระ) เรียก getSettings อยู่แล้ว
+   * ⇒ ไม่มี query เพิ่ม และไม่มีใครต้องไปอ่าน docConfig ดิบ ๆ เองอีก
+   */
+  doc: DocSettingsView;
 };
 
 export type DocTypeConfig = {
@@ -353,6 +370,7 @@ const SETTINGS_DEFAULT: AccountSettingsView = {
   defaultValidDays: 30,
   footerNote: null,
   docTypes: {},
+  doc: defaultDocSettings(),
 };
 
 /** คำนำหน้าชื่อนิติบุคคลที่ให้เลือก — ค่าว่าง = ไม่มีคำนำหน้า (บุคคลธรรมดา/ร้านค้า) */
@@ -399,7 +417,7 @@ export async function getSettings(
   systemId: string,
 ): Promise<AccountSettingsView> {
   const s = await prisma.accountSettings.findFirst({ where: { tenantId, systemId } });
-  if (!s) return { ...SETTINGS_DEFAULT };
+  if (!s) return { ...SETTINGS_DEFAULT, doc: defaultDocSettings() };
   return {
     orgPrefix: readStr(s.docConfig, "orgPrefix"),
     orgName: s.orgName,
@@ -421,6 +439,10 @@ export async function getSettings(
     defaultValidDays: s.defaultValidDays,
     footerNote: s.footerNote,
     docTypes: readDocTypes(s.docConfig),
+    doc: applyDueColumns(parseDocSettings(s.docConfig), {
+      defaultValidDays: s.defaultValidDays,
+      defaultDueDays: s.defaultDueDays,
+    }),
   };
 }
 
@@ -443,7 +465,7 @@ export async function saveSettings(
   if (input.docTypes !== undefined) {
     docConfig.docTypes = input.docTypes;
     // sync prefix → docConfig.sequences[docType].prefix (ตัวที่ nextDocNo ใช้จริง)
-    const seqs = { ...((prevConfig.sequences as Record<string, SeqConfig>) ?? {}) };
+    const seqs = { ...((prevConfig.sequences as Record<string, Partial<DocSeqConfig>>) ?? {}) };
     for (const [dt, c] of Object.entries(input.docTypes)) {
       if (c.prefix) seqs[dt] = { ...(seqs[dt] ?? {}), prefix: c.prefix };
     }
@@ -530,12 +552,18 @@ export async function createAccountProductWithSalePrice(
 /** อ่าน config VAT ของระบบบัญชี (default: จด VAT 7% = 700 bp) */
 export async function vatConfigOf(
   systemId: string,
-): Promise<{ vatRegistered: boolean; vatRateBp: number }> {
+): Promise<{ vatRegistered: boolean; vatRateBp: number; posAbbreviatedInvoice: boolean }> {
   const s = await prisma.accountSettings.findFirst({
     where: { systemId },
-    select: { vatRegistered: true, vatRateBp: true },
+    select: { vatRegistered: true, vatRateBp: true, docConfig: true },
   });
-  return { vatRegistered: s?.vatRegistered ?? true, vatRateBp: s?.vatRateBp ?? 700 };
+  return {
+    vatRegistered: s?.vatRegistered ?? true,
+    vatRateBp: s?.vatRateBp ?? 700,
+    // WO 8.1 (§9.2 "ใบกำกับอย่างย่อจาก POS"): ปิดสวิตช์นี้ = ไม่สร้างเอกสารใบกำกับอย่างย่อจากบิลหน้าร้าน
+    // (JV ของ POS ยังลงเหมือนเดิม — เงินไม่หาย · หายแค่ "ชั้นเอกสาร" ที่ใช้ทำรายงานขายรายสินค้า)
+    posAbbreviatedInvoice: parseDocSettings(s?.docConfig ?? null).autoTaxInvoice.posAbbreviated,
+  };
 }
 
 /**
@@ -1053,27 +1081,16 @@ export async function findExistingImportRefIds(
 }
 
 // ─────────────────── เลขรันเอกสาร ───────────────────
+//
+// 🔴 WO 8.1: ตรรกะทั้งหมดย้ายไป `doc-numbering.ts` (ที่เดียวทั้งฝั่งรายรับ/รายจ่าย)
+//    ที่เหลือตรงนี้เป็นแค่ตัวห่อที่ใส่ prisma/tx ให้ — ห้ามเขียนสูตรเลขซ้ำที่นี่อีก
 
-export type SeqReset = "YEAR" | "MONTH" | "NONE";
-type SeqConfig = { prefix?: string; reset?: SeqReset; pattern?: string };
+export type SeqReset = DocSeqReset;
 
-// วันที่ตามเวลาไทย (Asia/Bangkok) → ปี/เดือน (pipeline-M7: TZ ไทยเสมอ ไม่ใช่ TZ เครื่อง)
+/** วันที่ตามเวลาไทย (Asia/Bangkok) → ปี/เดือน (pipeline-M7: TZ ไทยเสมอ ไม่ใช่ TZ เครื่อง) */
 export function bkkYearMonth(date: Date): { year: string; month: string } {
-  const s = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Bangkok",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-  return { year: s.slice(0, 4), month: s.slice(5, 7) };
-}
-
-// อ่านตั้งค่าเลขรันต่อ docType จาก docConfig.sequences[docType] (prefix/reset/pattern)
-function readSeqConfig(docConfig: unknown, docType: AccountDocType): SeqConfig {
-  const seqs = (docConfig as Record<string, unknown> | null)?.sequences as
-    | Record<string, SeqConfig>
-    | undefined;
-  return seqs?.[docType] ?? {};
+  const { year, month } = bkkParts(date);
+  return { year, month };
 }
 
 async function nextDocNo(
@@ -1083,52 +1100,17 @@ async function nextDocNo(
   docType: AccountDocType,
   date: Date,
 ): Promise<string> {
-  const settings = await tx.accountSettings.findFirst({
-    where: { systemId },
-    select: { docConfig: true },
+  return issueDocNo(tx, {
+    tenantId,
+    systemId,
+    docType,
+    fallbackPrefix: docNoFallbackPrefix(docType),
+    date,
   });
-  const cfg = readSeqConfig(settings?.docConfig, docType);
-  const { year, month } = bkkYearMonth(date);
-  const prefix = cfg.prefix || DOC_PREFIX[docType] || docType;
-  const reset: SeqReset = cfg.reset ?? "MONTH";
-  // periodKey = ตัวคุมการรีเซ็ตเลขในตาราง sequence
-  const periodKey = reset === "NONE" ? "-" : reset === "YEAR" ? year : `${year}-${month}`;
-  const seq = await tx.accountDocSequence.upsert({
-    where: { systemId_docType_periodKey: { systemId, docType, periodKey } },
-    create: { tenantId, systemId, docType, prefix, periodKey, lastNo: 1 },
-    update: { lastNo: { increment: 1 } },
-  });
-  return formatDocNo(cfg, prefix, reset, year, month, seq.lastNo);
-}
-
-// จัดรูปเลขที่เอกสารจากลำดับที่ได้ — แยกออกมาเพื่อให้ "พรีวิวเลขถัดไป" ใช้สูตรเดียวกับตัวจริง
-// (ถ้าปล่อยให้พรีวิวเขียนสูตรเอง วันหนึ่ง pattern เปลี่ยนแล้วเลขบนฟอร์มจะไม่ตรงกับเลขที่ออกจริง)
-function formatDocNo(
-  cfg: SeqConfig,
-  prefix: string,
-  reset: SeqReset,
-  year: string,
-  month: string,
-  lastNo: number,
-): string {
-  const num = String(lastNo).padStart(4, "0");
-  if (cfg.pattern) {
-    return cfg.pattern
-      .replace(/\{PREFIX\}/g, prefix)
-      .replace(/\{YYYY\}/g, year)
-      .replace(/\{YY\}/g, year.slice(2))
-      .replace(/\{MM\}/g, month)
-      .replace(/\{SEQ\}/g, num);
-  }
-  // default pattern ต่อ reset: YEAR = PFX-YYYY-0001 · MONTH = PFX-YYYY-MM-0001 · NONE = PFX-0001
-  if (reset === "NONE") return `${prefix}-${num}`;
-  if (reset === "YEAR") return `${prefix}-${year}-${num}`;
-  return `${prefix}-${year}-${month}-${num}`;
 }
 
 /**
  * เลขที่ "ถัดไป" แบบดูอย่างเดียว ฝั่งรายรับ — สำหรับโชว์บนฟอร์มร่าง (DESIGN-SPEC-V2 §5.2 B)
- * (ฝั่งรายจ่ายมีสูตรเลขของตัวเอง → `previewNextExpenseDocNo` ใน expense.ts)
  * 🔴 ห้ามเขียนอะไรลง AccountDocSequence: ร่างต้องไม่กินเลข · เลขจริงจองตอน issueDocument เท่านั้น
  *    ⇒ ค่านี้เป็น "คาดว่าจะได้" ถ้ามีคนอื่นออกเอกสารก่อน เลขจริงจะขยับ (จงใจ)
  */
@@ -1136,21 +1118,52 @@ export async function previewNextDocNo(
   systemId: string,
   docType: AccountDocType,
   date: Date,
+  override?: Partial<DocSeqConfig> | null,
 ): Promise<string> {
-  const settings = await prisma.accountSettings.findFirst({
-    where: { systemId },
-    select: { docConfig: true },
+  return peekDocNo(prisma, {
+    systemId,
+    docType,
+    fallbackPrefix: docNoFallbackPrefix(docType),
+    date,
+    override,
   });
-  const cfg = readSeqConfig(settings?.docConfig, docType);
-  const { year, month } = bkkYearMonth(date);
-  const prefix = cfg.prefix || DOC_PREFIX[docType] || docType;
-  const reset: SeqReset = cfg.reset ?? "MONTH";
-  const periodKey = reset === "NONE" ? "-" : reset === "YEAR" ? year : `${year}-${month}`;
-  const seq = await prisma.accountDocSequence.findUnique({
-    where: { systemId_docType_periodKey: { systemId, docType, periodKey } },
-    select: { lastNo: true },
+}
+
+/** คำนำหน้าปริยายของชนิดเอกสาร (รายรับ + รายจ่าย — แหล่งเดียวที่ settings-schema.ts) */
+export function docNoFallbackPrefix(docType: AccountDocType): string {
+  return fallbackPrefixOf(docType);
+}
+
+/** ตั้ง "เลขถัดไป" เอง (§9.2) — ปฏิเสธถ้าย้อนกลับไปทับเลขที่ออกไปแล้ว */
+export async function setNextDocNo(
+  tenantId: string,
+  systemId: string,
+  docType: AccountDocType,
+  nextNo: number,
+  now: Date,
+): Promise<{ ok: true; nextNo: number } | { ok: false; reason: string }> {
+  return setNextNo(prisma, {
+    tenantId,
+    systemId,
+    docType,
+    fallbackPrefix: docNoFallbackPrefix(docType),
+    date: now,
+    nextNo,
   });
-  return formatDocNo(cfg, prefix, reset, year, month, (seq?.lastNo ?? 0) + 1);
+}
+
+/** ลำดับที่หายไปในงวดปัจจุบัน (§9.2 "เตือนเมื่อเลขที่เอกสารข้ามลำดับ") */
+export async function docNoGaps(
+  systemId: string,
+  docType: AccountDocType,
+  now: Date,
+): Promise<number[]> {
+  return findSeqGaps(prisma, {
+    systemId,
+    docType,
+    fallbackPrefix: docNoFallbackPrefix(docType),
+    date: now,
+  });
 }
 
 // ─────────────────── เอกสาร ───────────────────
@@ -1531,7 +1544,12 @@ export function getDocument(tenantId: string, systemId: string, id: string) {
   return prisma.accountDocument.findFirst({
     where: { id, tenantId, systemId },
     include: {
-      lines: { orderBy: { sortOrder: "asc" } },
+      // WO 8.1: เทมเพลตพิมพ์ "มีรูปสินค้า"/คอลัมน์รหัสสินค้า (§9.2) ต้องใช้ sku+imageUrl ของสินค้าที่ผูกไว้
+      // เลือกมาแค่ 2 ช่อง (ไม่ใช่ทั้งแถว) — ไม่กระทบผู้เรียกเดิมและไม่ลากข้อมูลเกินจำเป็น
+      lines: {
+        orderBy: { sortOrder: "asc" },
+        include: { product: { select: { sku: true, imageUrl: true } } },
+      },
       payments: { where: { voidedAt: null }, orderBy: { paidAt: "asc" } },
       contact: true,
       relationsFrom: { include: { to: true } },
@@ -2360,8 +2378,12 @@ export async function recordPayment(
         // ── A5: โพสต์บัญชีการชำระ (Dr เงิน/WHT/fee, Cr ลูกหนี้ + โอน VAT ถ้า ON_PAYMENT) ──
         await postPayment(ctx, payment.id, tx);
         // ── A1: บริการ (ON_PAYMENT) + จด VAT → ออกใบกำกับภาษีต่อ payment งวดนี้ ──
+        //    WO 8.1 (§9.2): เคารพนโยบาย "ออกใบกำกับภาษีอัตโนมัติเมื่อ …" ของหน้าตั้งค่า
+        //    ค่าเริ่มต้น = ON_PAYMENT ⇒ ร้านที่ไม่เคยแตะตั้งค่า พฤติกรรมเหมือนเดิมเป๊ะ
+        //    MANUAL/ON_INVOICE = ไม่ออกให้อัตโนมัติตอนรับเงิน (staff กดออกเองจากหน้าเอกสาร)
         if (
           settings.vatRegistered &&
+          settings.doc.autoTaxInvoice.mode === "ON_PAYMENT" &&
           doc.vatTiming === "ON_PAYMENT" &&
           doc.vatMode !== "NONE" &&
           doc.docType === "INVOICE"
@@ -2976,17 +2998,31 @@ export async function getPublicTaxContext(token: string): Promise<{
   vatRegistered: boolean;
   existingTaxInvoiceNo: string | null;
   pendingRequest: boolean; // R-D: มีคำขอ DRAFT รอ staff อนุมัติ
+  // ── WO 8.1 (§9.2 "การแสดงข้อมูลสาธารณะ" + "ลิงก์ให้ลูกค้าขอใบกำกับ") ──
+  /** ยอดค้างชำระ (สตางค์) — null = ตั้งค่าปิดไม่ให้แสดง */
+  outstandingSatang: number | null;
+  /** token ของคำขอชำระที่ยังเปิดอยู่ (ปุ่มจ่าย PromptPay) — null = ปิดไว้/ไม่มีคำขอ */
+  payToken: string | null;
+  /** เปิดให้ลูกค้ากรอกขอใบกำกับภาษีเองไหม */
+  taxRequestEnabled: boolean;
+  /** ข้อความ/เงื่อนไขที่เจ้าของตั้งไว้ให้แสดงบนหน้านี้ */
+  taxRequestNote: string;
 } | null> {
   const doc = await prisma.accountDocument.findFirst({
     where: { publicToken: token },
     select: {
       id: true, tenantId: true, systemId: true, docType: true, docNo: true,
-      issueDate: true, grandTotal: true, status: true,
+      issueDate: true, grandTotal: true, paidTotal: true, status: true,
     },
   });
   if (!doc) return null;
   if (!PUBLIC_TAX_SOURCE.includes(doc.docType)) return null;
   const settings = await getSettings(doc.tenantId, doc.systemId);
+  const pub = settings.doc.publicView;
+  // ปิดลิงก์สาธารณะทั้งระบบ = ปฏิบัติเหมือน token ไม่ถูกต้อง (ไม่บอกใบ้ว่ามีเอกสารอยู่จริง)
+  if (!pub.enabled) return null;
+  // อายุลิงก์: 0 = ไม่หมดอายุ · เกินกำหนดนับจากวันที่ออกเอกสาร = ปิด
+  if (pub.expiryDays > 0 && Date.now() - doc.issueDate.getTime() > pub.expiryDays * 86_400_000) return null;
   // ใบกำกับที่ออกไปแล้วจากต้นทางนี้ (idempotent display)
   const existing = await prisma.accountDocument.findFirst({
     where: {
@@ -3001,6 +3037,16 @@ export async function getPublicTaxContext(token: string): Promise<{
     where: { systemId: doc.systemId, docType: "TAX_INVOICE", sourceDocId: doc.id, sourcePaymentId: null, status: "DRAFT" },
     select: { id: true },
   });
+  // ปุ่มจ่าย PromptPay (§9.2) — ใช้คำขอชำระที่ยัง PENDING และยังไม่หมดอายุของเอกสารใบนี้
+  const payReq =
+    pub.promptPayButton && doc.grandTotal > doc.paidTotal
+      ? await prisma.accountPaymentRequest.findFirst({
+          where: { systemId: doc.systemId, documentId: doc.id, status: "PENDING", expiresAt: { gt: new Date() } },
+          orderBy: { createdAt: "desc" },
+          select: { token: true },
+        })
+      : null;
+  const payToken = payReq?.token ?? null;
   return {
     systemId: doc.systemId,
     tenantId: doc.tenantId,
@@ -3012,6 +3058,10 @@ export async function getPublicTaxContext(token: string): Promise<{
     vatRegistered: settings.vatRegistered,
     existingTaxInvoiceNo: existing?.docNo ?? null,
     pendingRequest: !!pending,
+    outstandingSatang: pub.showOutstanding ? Math.max(0, doc.grandTotal - doc.paidTotal) : null,
+    payToken: payToken,
+    taxRequestEnabled: settings.doc.taxRequest.enabled,
+    taxRequestNote: settings.doc.taxRequest.conditionNote,
   };
 }
 

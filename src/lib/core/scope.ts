@@ -213,6 +213,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AccountDocumentPayment: sys(),
   AccountDocumentRelation: sys(),
   AccountDocSequence: sys(),
+  AccountDocTag: sys(), // WO 8.1 — นิยามแท็กเอกสาร (§9.2)
   AccountContact: sys(),
   AccountContactGroup: sys(),
   AccountContactGroupMember: sys(),

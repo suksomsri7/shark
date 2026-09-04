@@ -720,8 +720,12 @@ export async function saveSettingsAction(formData: FormData) {
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.settings.manage");
   // §3.8 per-docType config จากฟอร์ม (dt_{DOCTYPE}_prefix / _auto / _public)
+  // WO 8.1: ตารางรายเอกสารย้ายไปหน้า "เอกสารและเลขที่" แล้ว — ถ้าฟอร์มไม่ได้ส่ง dt_* มาเลย
+  // ต้อง **ไม่แตะ** docConfig.docTypes (ส่ง undefined) ไม่งั้นค่าที่ตั้งไว้จะถูกล้างเงียบ ๆ
+  let sentDocTypeFields = false;
   const docTypes: Record<string, DocTypeConfig> = {};
   for (const dt of CONFIGURABLE_DOC_TYPES) {
+    if (formData.get(`dt_${dt}_prefix`) !== null) sentDocTypeFields = true;
     const prefix = str(formData, `dt_${dt}_prefix`);
     const autoTaxInvoice = formData.get(`dt_${dt}_auto`) === "on";
     const publicLink = formData.get(`dt_${dt}_public`) === "on";
@@ -756,7 +760,7 @@ export async function saveSettingsAction(formData: FormData) {
     defaultDueDays: num(formData, "defaultDueDays") ?? 30,
     defaultValidDays: num(formData, "defaultValidDays") ?? 30,
     footerNote: str(formData, "footerNote") || null,
-    docTypes,
+    ...(sentDocTypeFields ? { docTypes } : {}),
   });
   await writeAudit({
     tenantId,

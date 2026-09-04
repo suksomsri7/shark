@@ -146,6 +146,8 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "reports/profit-loss/page.tsx": "account.report.view",
   "reports/trial-balance/page.tsx": "account.report.view",
   "settings/page.tsx": "account.settings.manage",
+  // WO 8.1 (§9.2): หน้า "ตั้งค่า › เอกสารและเลขที่" — แก้เลขรัน/นโยบายเอกสาร ⇒ ต้องมีสิทธิ์ตั้งค่าเต็ม
+  "settings/documents/page.tsx": "account.settings.manage",
   "tax/export/route.ts": "account.tax.view",
   "tax/page.tsx": "account.tax.view",
   "wht/[certId]/print/page.tsx": "account.wht.manage",
