@@ -12,7 +12,7 @@
 | WO | 7.2 กล่องขาเข้า + AI อ่านบิล (ปิดเฟส 7) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent · UI ตาม g15/g20) |
-| ขั้นที่ถึง | 4 ก.ย. ~11:30 UTC: 7.1 DONE รอบ 2 ตรง f9 + portal menu แก้ dropdown ถูกตัดทุกหน้า · Fable รันด่าน 20 ชุดเอง · commit แล้ว · กำลังออก 7.2 |
+| ขั้นที่ถึง | 4 ก.ย. ~12:45 UTC: 7.2 รอบ 1 ส่งมา (inbox 128/128 · seed-check 224 · AI อ่านบิล ปตท. fixture จริงได้) → Fable ดูภาพเทียบ g15 **ตีกลับ 2 จุดเล็ก** (ปุ่มรองต้องมีกรอบ · placeholder thumb) — agent เดิมทำรอบ 2 |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -107,6 +107,8 @@
 ## ของที่ต้องส่งต่อ session อื่น / รอเจ้าของ
 - ✅ ตรวจ prod ก่อน backfill เฟส 3 (3 ก.ย. 18:15 UTC · read-only): AccountContact 16 แถว/14 ระบบ · phoneNorm ซ้ำข้าม kind = 0 · เบอร์ชนกับ Customer = 0 ⇒ **ตรวจซ้ำ 19:50 UTC: AccountContact ทั้ง 16 แถวบน prod เป็นของ tenant ทดสอบเก่า `QC7 บัญชี` ×2 (16 ก.ค.) ไม่ใช่ลูกค้าจริง · Customer 4 / HrEmployee 8 เป็นร้านตัวอย่าง App Review ⇒ ไม่รัน backfill Party/code บน prod ในเฟส 3** (ไม่มีข้อมูลจริงให้เติม · แถวใหม่ได้ Party+เลขที่อัตโนมัติ · หน้ารายการถอยใช้เลขคำนวณเมื่อ code=null) · ถ้าวันหนึ่งมีข้อมูลจริงก่อน backfill ให้ใช้ 2 สคริปต์นั้น (ต้องเปิดทาง prod เอง เพราะ acc-v2-env กัน prod) · บทเรียน: `pnpm qc:all` ล็อก gate เองแล้ว **ห้ามครอบ with-gate-lock ซ้อน** (exit 1 เงียบ) · เสนอเจ้าของลบ tenant `QC7 บัญชี` ×2 + `QC ลบพื้นหลัง` ที่ค้างบน prod
 - 🔑 **รอเจ้าของ (ไม่บล็อกงาน · เฟส 5.5)**: Beam — `BEAM_MERCHANT_ID` `BEAM_API_KEY` `BEAM_WEBHOOK_SECRET` บน Vercel + ตั้ง webhook URL `https://shark.in.th/api/payment/beam/webhook` ในแดชบอร์ด Beam → ลิงก์ชำระเงินจะเป็นแบบยืนยันอัตโนมัติ (ตอนนี้เป็น QR PromptPay static ยืนยันมือ/จับจาก statement) · ดู [[reference_beam_payment]]
+- 📨 **ส่งต่อ session แชท (7.2)**: event `chat.message.received` payload ควรใส่ `messageId` (ตอนนี้มีแค่ conversationId/channel — consumer กล่องขาเข้าใช้วิธีสแกนข้อความ 10 นาทีหลังสุดแทน) · เปิดใช้ต้องตั้ง `AccountSystemLink.config.inboxFromChat=true` (UI ใน 8.3)
+- 🔑 **รอเจ้าของ (7.2)**: อีเมล inbox@ ยังไม่มี infra รับเมลเข้า — ต้องมีผู้ให้บริการ (เช่น Postmark/Mailgun inbound) + route `/api/inbox/email` แล้วเรียก `ingestInboundEmail()` · PDF → AI ยังไม่รองรับ (ไม่มี rasterizer)
 - 🔑 **รอเจ้าของ (ไม่บล็อกงาน)**: API ตรวจนิติบุคคลกรมพัฒน์ฯ (DBD OpenAPI `openapi.dbd.go.th` ต้องสมัคร+ขอ key · 3 ก.ย. ยิงจาก VPS ได้ 502) → WO 3.3 ทำเป็น adapter อ่าน `DBD_API_KEY` ไม่มี = ปุ่มจาง+บอกเหตุ ตาม SPEC §7.2
 - session แชท: `ChatContact.partyId` มีคอลัมน์แล้ว (WO 3.1) — ให้ `maybeAutoLinkMember` เซ็ตจาก `Customer.partyId` หลัง `member.findOrCreate`
 - ✅ session แชท: เฟส 0 + 1.1/1.2 merge เข้า main แล้ว (`0d19670` 3 ก.ย.) — migration `20260902160000_account_v2_phase0` และ `20260903090000_account_v2_doc_editor` อยู่บน main แล้ว drift หาย · เมนูบัญชีเป็นแบบใหม่ 9 หมวด (UI_STANDARD §2.9/§4 อัปเดตแล้ว)
