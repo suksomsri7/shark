@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 9.1 มือถือทำงานได้จริง (เฟส 9) — เฟส 8 กำลัง ff main + deploy |
+| WO | 9.1 มือถือทำงานได้จริง (เฟส 9) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Sonnet (sub-agent · g17–g20 บน 390) |
-| ขั้นที่ถึง | 4 ก.ย. ~22:30 UTC: qc:all เฟส 8 รอบ 3 = **222/222** (1005s) → ff main + push → Vercel · 9.1 เริ่ม (Sonnet) |
+| ขั้นที่ถึง | 4 ก.ย. ~17:58 UTC: **verify prod เฟส 8 ผ่าน** — Vercel READY 17:54 (dpl_DTenko…) · migration 5 ตัว finished · autoClosePeriods default=true บน prod · https 200 · 9.1 กำลังทำ (Sonnet) |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
