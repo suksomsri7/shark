@@ -1,5 +1,13 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🏁 4 ก.ย. (สาย ~16:15 BKK) — [session บัญชี] **เฟส 6 ปิด** (บัญชี ขึ้น main `0c996e4` · qc:all 217/217) · 32/46 WO ≈ 70% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
+- ขึ้น prod: ผังบัญชี V2 ตรง f8 (tree 3 ระดับ · แผงรายละเอียด ยอด ณ วันที่จริง · เปิด/ปิดใช้งานมีด่าน · นำเข้า CSV · พิมพ์) · สมุดรายวัน V2 ตรง g16 (แท็บ book · JV มือ · reversal · ⚑) · รายงาน drill-down 3 ชั้น + ReportToolbar (เทียบงวด · CSV) · ปิดงวดเช็กลิสต์ 4 ข้อ + reopen มีสิทธิ์ · สินทรัพย์ V2 + ตารางค่าเสื่อม + คิดค่าเสื่อม preview + จำหน่าย
+- migration 3 ตัว additive (coa_v2 · journal_period_asset · attachment_ref) · Vercel build รัน migrate เอง
+- บั๊กเก่าที่ปิด: ยอด "ณ วันที่" ของ 5.1/5.2/หน้าหลัก รวมรายการอนาคต (Fable ตรวจ GL เอง) · หน้าแยกประเภทกรอง POSTED ทำขากลับรายการโผล่ข้างเดียว · `<input type=date>` ดิบ 3 จุด
+- 🔴 เครื่อง: cgroup OOM 2 ครั้ง (next build · tsc ≥2.7G) → `acc-v2-serve.sh` + `with-gate-lock.sh` ตั้ง NODE_OPTIONS=3584 เองแล้ว · agent ห้ามรัน tsc/qc ซ้อนกับ next start
+- ค้าง: งบทดลอง "งวดก่อน" = ยกมา (ควรเทียบ movement) · ไม่มีตัวกรองสาขา · PDF = window.print · /accounts/mapping ไม่มีทางเข้าเมนู (8.2)
+- ถัดไป: เฟส 7 (7.1 คลังเอกสาร f9 กำลังทำ → 7.2 กล่องขาเข้า + AI อ่านบิล g15/g20)
+
 ## 🏁 4 ก.ย. (เช้า ~12:00 BKK) — [session บัญชี] **เฟส 5 ปิด** (การเงินครบ ขึ้น main `ddb51f7` · qc:all 213/213) · 30/46 WO ≈ 65% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
 - ขึ้น prod: ช่องทางการเงิน V2 (g9: การ์ดกลุ่ม · รหัส CSH/BSV/EWL/PTY · ยอดยกมาหลายรายการ · โอนระหว่างช่องทาง) · ภาพรวมการเงิน f7 (6 ไทล์ · ปฏิทิน · เงินสดย่อย เติม/เบิกชดเชย) · กระทบยอดธนาคาร g10 (นำเข้า CSV KBank/SCB/KTB/BBL · auto-match ±3 วัน · ค่าธรรมเนียม/ดอกเบี้ย → JV · ยืนยันเดือน) · WHT 2 ขา + เช็ค g11 (นำส่ง ภ.ง.ด.3/53 CSV · เครดิตสะสม) · ลิงก์ชำระเงิน/QR PromptPay → รับชำระ+JV+กระทบยอดอัตโนมัติ (หน้าสาธารณะ /pay/[token])
 - migration 5 ตัว additive (finance_v2 · finance_overview · bank_reconcile · wht_cheque · promptpay) · Vercel build รัน migrate เอง · prod ไม่ต้อง backfill
