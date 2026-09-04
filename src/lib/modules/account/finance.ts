@@ -6,6 +6,7 @@ import type { AccountFinanceType, Prisma } from "@prisma/client";
 // WO 5.1: postFinanceOpening (ยอดยกมาต่อรายการ idempotent ต่อ financeId+seq+version — ต่างจาก postOpening
 //         ที่ idempotent ต่องวดทั้งระบบ) · postFinanceTransfer (โอน idempotent ต่อ transferId) · reverseFor (แก้/ลบรายการยอดยกมา)
 import { ensureAccounting, postFinanceOpening, postFinanceTransfer, reverseFor } from "./gl";
+import { asOfCutoff } from "./coa-v2"; // WO 6.1 รอบ 2 — กติกา "ยอด ณ วันที่" ร่วมกันทั้งโมดูล
 
 // ─────────────────────────────────────────────────────────────
 // finance.ts — การเงิน (บัญชีเงิน) — §3.5 (P2) · V2 WO 5.1 (DESIGN-SPEC-V2 §10.1 · ภาพ g9)
@@ -174,15 +175,26 @@ export type FinanceAccountBalance = {
   pinned: boolean;
 };
 
-/** ยอดคงเหลือปัจจุบันของทุกบัญชีเงิน (asset: Σdebit − Σcredit ของ ledger ที่ผูก) */
-export async function financeBalances(tenantId: string, systemId: string): Promise<FinanceAccountBalance[]> {
+/**
+ * ยอดคงเหลือ **ณ วันที่ asOf** ของทุกบัญชีเงิน (asset: Σdebit − Σcredit ของ ledger ที่ผูก · ค่าเริ่มต้น = วันนี้)
+ *
+ * 🔴 WO 6.1 รอบ 2: เดิมรวมทุกบรรทัดในสมุดแล้วติดป้ายว่า "ยอด ณ <วันนี้>" — ถ้ามีรายการลงวันที่ล่วงหน้า
+ *    ตัวเลขจะไม่ใช่ยอดวันนี้จริง (ชุด QC ต่างกัน 1,000,000 สตางค์) · ตัดที่สิ้นวันของ asOf (asOfCutoff)
+ *    ⇒ ผังบัญชี (6.1) · หน้าช่องทางการเงิน (5.1) · ภาพรวมการเงิน/หน้าหลัก (5.2/2.2) ใช้กติกาเดียวกันแล้ว
+ */
+export async function financeBalances(
+  tenantId: string,
+  systemId: string,
+  asOf: Date = new Date(),
+): Promise<FinanceAccountBalance[]> {
   const accounts = await listFinanceAccounts(tenantId, systemId);
   const ledgerIds = accounts.map((a) => a.ledgerAccountId).filter((x): x is string => !!x);
+  const cutoff = asOfCutoff(asOf);
 
   const sums = ledgerIds.length
     ? await prisma.accountJournalLine.groupBy({
         by: ["accountId"],
-        where: { systemId, accountId: { in: ledgerIds } },
+        where: { systemId, accountId: { in: ledgerIds }, entry: { date: { lt: cutoff } } },
         _sum: { debit: true, credit: true },
       })
     : [];
@@ -223,7 +235,11 @@ export async function financeMonthChanges(
   const ledgerIds = accounts.map((a) => a.ledgerAccountId).filter((x): x is string => !!x);
   const out = new Map<string, { delta: number; inCount: number }>();
   if (ledgerIds.length === 0) return out;
-  const { from, to } = currentMonthRangeBkk(now);
+  const range = currentMonthRangeBkk(now);
+  const from = range.from;
+  // WO 6.1 รอบ 2: "เดือนนี้" = ตั้งแต่ต้นเดือนถึง **สิ้นวันนี้** (ไม่รวมรายการที่ลงวันที่ล่วงหน้าในเดือนเดียวกัน)
+  const cutoff = asOfCutoff(now);
+  const to = cutoff < range.to ? cutoff : range.to;
 
   const [sums, lines] = await Promise.all([
     prisma.accountJournalLine.groupBy({

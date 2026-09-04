@@ -5,7 +5,7 @@
 import { parseCsv, columnIndex, cell, type CsvTable } from "@/lib/core/csv";
 
 // ─────────────────── ชนิดของการนำเข้า ───────────────────
-export type ImportKind = "documents_revenue" | "documents_expense" | "contacts" | "products";
+export type ImportKind = "documents_revenue" | "documents_expense" | "contacts" | "products" | "chart_of_accounts";
 
 export function importKindOf(base: "documents" | "contacts" | "products", side?: string): ImportKind {
   if (base === "documents") return side === "expense" ? "documents_expense" : "documents_revenue";
@@ -65,11 +65,22 @@ const PRODUCT_FIELDS: ImportFieldDef[] = [
   { key: "vatRate", label: "อัตราภาษีมูลค่าเพิ่ม (%)", required: false, aliases: ["อัตราภาษี", "vat", "vatrate"] },
 ];
 
+// WO 6.1 §11.1 — นำเข้าผังบัญชี (CSV): รหัส · ชื่อ · ชื่ออังกฤษ · ประเภท · หมวดย่อย · คำอธิบาย
+const CHART_FIELDS: ImportFieldDef[] = [
+  { key: "code", label: "รหัสบัญชี", required: true, aliases: ["รหัสบัญชี", "รหัส", "code", "accountcode"] },
+  { key: "name", label: "ชื่อบัญชี", required: true, aliases: ["ชื่อบัญชี", "ชื่อ", "name"] },
+  { key: "nameEn", label: "ชื่อบัญชี (อังกฤษ)", required: false, aliases: ["ชื่ออังกฤษ", "nameen", "englishname"] },
+  { key: "type", label: "ประเภทบัญชี", required: false, aliases: ["ประเภทบัญชี", "ประเภท", "type"] },
+  { key: "parentCode", label: "หมวดย่อย (รหัสนำหน้า)", required: false, aliases: ["หมวดย่อย", "parentcode", "parent", "หมวด"] },
+  { key: "description", label: "คำอธิบาย", required: false, aliases: ["คำอธิบาย", "description", "note"] },
+];
+
 export const IMPORT_FIELDS: Record<ImportKind, ImportFieldDef[]> = {
   documents_revenue: DOC_FIELDS_REVENUE,
   documents_expense: DOC_FIELDS_EXPENSE,
   contacts: CONTACT_FIELDS,
   products: PRODUCT_FIELDS,
+  chart_of_accounts: CHART_FIELDS,
 };
 
 export const IMPORT_KIND_LABEL: Record<ImportKind, string> = {
@@ -77,6 +88,7 @@ export const IMPORT_KIND_LABEL: Record<ImportKind, string> = {
   documents_expense: "เอกสารรายจ่าย",
   contacts: "ผู้ติดต่อ",
   products: "สินค้า/บริการ",
+  chart_of_accounts: "ผังบัญชี",
 };
 
 // ─────────────────── ตัวอย่างแถวเทมเพลต (2 แถว/ชนิด) ───────────────────
@@ -96,6 +108,10 @@ const TEMPLATE_SAMPLES: Record<ImportKind, string[][]> = {
   products: [
     ["สินค้าตัวอย่าง", "SKU-001", "สินค้า", "ชิ้น", "500", "300", "7"],
     ["บริการที่ปรึกษา", "", "บริการ", "งาน", "10000", "", "7"],
+  ],
+  chart_of_accounts: [
+    ["6310", "ค่าโฆษณาออนไลน์", "Online Advertising", "ค่าใช้จ่าย", "631", "ค่ายิงโฆษณาเฟซบุ๊ก/กูเกิล"],
+    ["4040", "รายได้ค่าเช่าอุปกรณ์", "Equipment Rental Income", "รายได้", "404", ""],
   ],
 };
 
@@ -123,6 +139,7 @@ export function templateFilename(kind: ImportKind): string {
     documents_expense: "เทมเพลต-นำเข้าเอกสารรายจ่าย.csv",
     contacts: "เทมเพลต-นำเข้าผู้ติดต่อ.csv",
     products: "เทมเพลต-นำเข้าสินค้า.csv",
+    chart_of_accounts: "เทมเพลต-นำเข้าผังบัญชี.csv",
   };
   return names[kind];
 }
@@ -265,6 +282,63 @@ export function validateProductRowFormat(r: Record<string, string>): RowCheck {
   if (vatRate !== null && (Number.isNaN(vatRate) || vatRate < 0 || vatRate > 100)) {
     warn("อัตราภาษีไม่ถูกต้อง (ใช้ 7%)");
   }
+  return { status, reasons };
+}
+
+/** ชื่อประเภทบัญชีที่ CSV ยอมรับ → AccountLedgerType (ค่าว่าง = เดาจากตัวเลขนำหน้ารหัส) */
+const LEDGER_TYPE_ALIASES: Record<string, string> = {
+  ASSET: "ASSET", สินทรัพย์: "ASSET",
+  LIABILITY: "LIABILITY", หนี้สิน: "LIABILITY",
+  EQUITY: "EQUITY", ส่วนของเจ้าของ: "EQUITY", ทุน: "EQUITY",
+  INCOME: "INCOME", รายได้: "INCOME", REVENUE: "INCOME",
+  COGS: "COGS", ต้นทุนขาย: "COGS", ต้นทุน: "COGS",
+  EXPENSE: "EXPENSE", ค่าใช้จ่าย: "EXPENSE",
+};
+
+/** ตัวเลขนำหน้ารหัส → ประเภทบัญชี (1 สินทรัพย์ … 6 ค่าใช้จ่าย) */
+const LEDGER_TYPE_BY_DIGIT: Record<string, string> = {
+  "1": "ASSET",
+  "2": "LIABILITY",
+  "3": "EQUITY",
+  "4": "INCOME",
+  "5": "COGS",
+  "6": "EXPENSE",
+};
+
+/** ประเภทบัญชีของแถว CSV — คืน null ถ้าระบุมาแล้วไม่รู้จัก/รหัสไม่ขึ้นต้น 1–6 */
+export function resolveLedgerType(rawType: string, code: string): { type: string | null; recognized: boolean } {
+  const key = rawType.trim().toUpperCase().replace(/[\s_-]/g, "");
+  if (key) {
+    const found = LEDGER_TYPE_ALIASES[key] ?? LEDGER_TYPE_ALIASES[rawType.trim()];
+    if (found) return { type: found, recognized: true };
+    return { type: LEDGER_TYPE_BY_DIGIT[code.trim()[0]] ?? null, recognized: false };
+  }
+  return { type: LEDGER_TYPE_BY_DIGIT[code.trim()[0]] ?? null, recognized: true };
+}
+
+/** ตรวจรูปแบบแถว "นำเข้าผังบัญชี" (WO 6.1 · ไม่แตะ DB — รหัสซ้ำใน DB ตรวจอีกชั้นใน import-actions) */
+export function validateChartRowFormat(r: Record<string, string>): RowCheck {
+  const reasons: string[] = [];
+  let status: RowStatus = "ok";
+  const err = (msg: string) => { reasons.push(msg); status = "err"; };
+  const warn = (msg: string) => { if (status !== "err") status = "warn"; reasons.push(msg); };
+
+  const code = (r.code ?? "").trim();
+  const parent = (r.parentCode ?? "").trim();
+  if (!code) err("ไม่มีรหัสบัญชี");
+  else if (!/^\d{3,6}$/.test(code)) err("รหัสบัญชีต้องเป็นตัวเลข 3–6 หลัก");
+  else if (parent) {
+    if (!/^\d{1,5}$/.test(parent)) err("รหัสหมวดย่อยต้องเป็นตัวเลข");
+    else if (!code.startsWith(parent)) err(`รหัส ${code} อยู่นอกช่วงของหมวดย่อย ${parent} (${parent}0–${parent}9)`);
+  }
+  if (!(r.name ?? "").trim()) err("ไม่มีชื่อบัญชี");
+
+  if (code && /^\d{3,6}$/.test(code)) {
+    const t = resolveLedgerType(r.type ?? "", code);
+    if (!t.type) err("รหัสบัญชีต้องขึ้นต้นด้วย 1–6 (หมวดบัญชี)");
+    else if (!t.recognized) warn("ไม่รู้จักประเภทบัญชี (ใช้หมวดตามตัวเลขนำหน้ารหัส)");
+  }
+
   return { status, reasons };
 }
 

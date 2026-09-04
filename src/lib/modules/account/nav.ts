@@ -527,7 +527,7 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
       items: [
         page({ label: "ผังบัญชี", href: `${base}/accounts`, status: "ready", icon: "tree", testId: "CHART_OF_ACCOUNTS" }),
         page({
-          label: "บัญชีรายวัน",
+          label: "สมุดรายวัน", // WO 6.1: เดิม "บัญชีรายวัน" — เฟรม f8-chart-of-accounts-menu.png เขียน "สมุดรายวัน"
           href: `${base}/journal`,
           status: "ready",
           icon: "book",
@@ -545,15 +545,16 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
         }),
         page({ label: "บัญชีแยกประเภท", href: `${base}/ledger`, status: "ready", icon: "list", testId: "LEDGER" }),
         page({ label: "งบทดลอง", href: `${base}/reports/trial-balance`, status: "ready", icon: "report", testId: "TRIAL_BALANCE" }),
-        page({ label: "งบฐานะการเงิน", href: `${base}/reports/balance-sheet`, status: "ready", icon: "report", testId: "BALANCE_SHEET" }),
+        page({ label: "งบแสดงฐานะการเงิน", href: `${base}/reports/balance-sheet`, status: "ready", icon: "report", testId: "BALANCE_SHEET" }),
         page({ label: "งบกำไรขาดทุน", href: `${base}/reports/profit-loss`, status: "ready", icon: "chart", testId: "PROFIT_LOSS" }),
         page({ label: "งบกระแสเงินสด", href: `${base}/reports/cash-flow`, status: "ready", icon: "chart", testId: "CASH_FLOW" }),
         { ...page({ label: "ภ.พ.30", href: `${base}/reports/pp30`, status: "ready", icon: "pct", testId: "PP30" }), sep: true },
         page({ label: "ภ.ง.ด.3/53", href: `${base}/tax`, status: "ready", icon: "pct", testId: "WHT_FILING" }),
-        page({ label: "อายุหนี้", href: `${base}/aging`, status: "ready", icon: "clock", testId: "AGING" }),
-        page({ label: "ปิดงวดบัญชี", href: `${base}/periods`, status: "ready", icon: "lock", testId: "PERIOD_CLOSE" }),
-        page({ label: "สินทรัพย์", href: `${base}/assets`, status: "ready", icon: "asset", testId: "ASSETS" }),
-        soon("DBD e-Filing", "upload", "DBD_EFILING"),
+        // WO 6.1: ลำดับ/ป้าย 3 รายการท้ายให้ตรง f8-chart-of-accounts-menu.png (ปิดงวด → ทะเบียนสินทรัพย์ → อายุหนี้)
+        { ...page({ label: "ปิดงวดบัญชี", href: `${base}/periods`, status: "ready", icon: "lock", testId: "PERIOD_CLOSE" }), sep: true },
+        page({ label: "ทะเบียนสินทรัพย์", href: `${base}/assets`, status: "ready", icon: "asset", testId: "ASSETS" }),
+        page({ label: "อายุหนี้ (ลูกหนี้-เจ้าหนี้)", href: `${base}/aging`, status: "ready", icon: "clock", testId: "AGING" }),
+        soon("DBD e-Filing", "upload", "DBD_EFILING") // f8-menu เขียน "ยื่นงบ DBD e-Filing" แต่ SPEC §2 (แหล่งจริงที่ qc-acc-v2-nav ตรวจ) เขียน "DBD e-Filing",
       ],
     },
 

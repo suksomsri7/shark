@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 6.1 ผังบัญชี V2 (เฟส 6) |
+| WO | 6.2 สมุดรายวัน V2 + รายงาน drill-down + ปิดงวด + ค่าเสื่อม UI (ปิดเฟส 6) |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Opus (sub-agent · UI ตาม f8) |
-| ขั้นที่ถึง | 4 ก.ย. ~06:10 UTC: 6.1 รอบ 1 ส่งมา (coa 92/92 · ภาพตรง f8) → Fable ตรวจ GL เอง: 'ยอดคงเหลือ ณ วันนี้' รวม entry อนาคตด้วย (1000-01 all-time 124,880 vs ณ 4 ก.ย. 114,880) — หน้า 5.1/5.2 ก็เหมือนกัน → **ตีกลับ**: ทำ asOf จริง 3 หน้า + แก้หน้าแยกประเภทกรอง POSTED (บั๊กที่ agent เจอ) + ด่าน visual อ่าน text แค่ 20k — agent เดิมทำรอบ 2 |
+| ผู้ทำ | Opus (sub-agent · UI ตาม g16) |
+| ขั้นที่ถึง | 4 ก.ย. ~06:40 UTC: 6.1 DONE รอบ 2 (asOf จริง 3 หน้า · แก้ ledger page) · Fable รันด่าน 21 ชุด · commit แล้ว · กำลังออก 6.2 |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -50,7 +50,7 @@
 | 5.3 | กระทบยอดธนาคาร | Opus ×2 (ตัวแรกโดน MemoryMax ฆ่าหลังขั้น E) | DONE | (HEAD) | ตรง g10 · Fable รันเอง: reconcile 109 · finance-overview 45 · finance 59 · payments 157 · dashboard 169 · home 87 · seed-check 102 · guard 158 · schema 61 · nav 323 · list 159 · fitness 17 · CPA 107 · drift clean · typecheck 0 · parser KBank/SCB/KTB/BBL/generic (UTF-8 เท่านั้น) · auto-match ยอด+วัน ±3 · fee/interest → JV · ยืนยันเดือนล็อกเมื่อส่วนต่าง 0 · fixture สร้างจาก GL จริงด้วย SQL (ไม่เน่า) · 🔴 พบ: `next build` OOM ที่ heap 2G ของ Node → ต้อง `NODE_OPTIONS=--max-old-space-size=3584` (acc-v2-serve.sh ยังไม่ตั้งเอง → 5.4 แก้) · ค้าง: suggestWithAi hook ว่าง · TIS-620 ไม่รองรับ · แถบ sub-tab บนหน้ากระทบยอดยัง highlight 'ภาพรวม' |
 | 5.4 | WHT V2 + เช็ค V2 | Sonnet (Opus จริง) | REVIEW รอบ 2 | (HEAD) | ตรง g11 (Fable ตีกลับ 1 รอบเทียบภาพจริง: เอา emoji 📅🔍 ออกใช้ AccountIcon จริง+ตัดปุ่มค้นหา(auto-submit) · เลขที่เอกสาร nowrap · แถบท้าย/pagination รวมกรอบเดียว (`DocTable` +prop `footerLeft/footerRight` additive) · เพิ่มภาพ bulk-bar ที่เลือกไว้ · seed เติม markFiled 1 ใบให้เห็นชิปครบ 2 สไตล์ — แก้ครบและรีช็อตแล้ว) · migration additive (`AccountWhtFiling` + `AccountCheque.depositedAt` + `AccountDocument.whtFiledPeriodKey`) · `markFiled`/`unmarkFiled` idempotent ต่อ (form,periodKey) คำนวณสดจาก `pnd()` · เช็ค 4 ใบ "ลอย" ไม่ผูกเอกสาร (กันกระทบ receivable/payable) · WHT 6 ใบผ่าน CSH001 เท่านั้น (กันปนกับ statement fixture ของ 5.3) → ปรับเฉลย CSH001/total (+฿384.80 สุทธิ) · qc-acc-v2-wht-cheque 69 · seed-check 114 · fitness 17 · typecheck 0 · visual 5.4 --assert เขียวครบ 8 ภาพ · ค้าง: e-WHT จริง 🕓 · เช็ค clear/deposit ผ่านฟอร์มสร้างยังไม่ผูกเอกสารจาก UI (createCheque รองรับแต่ฟอร์มไม่มีช่องเลือกเอกสาร) · pndCsv ยังไม่แยกคำนำหน้าชื่อ (ใช้ชื่อรวมสตริงเดียว) |
 | 5.5 | PromptPay → กระทบยอดอัตโนมัติ | Opus | DONE | (HEAD) | ผ่านรอบแรก · Fable รันเอง: promptpay 84 · payments 161 · reconcile 109 · finance 59 · finance-overview 45 · wht-cheque 69 · detail 85 · dashboard 174 · home 87 · recurring 161 · seed-check 129 · guard 158 · schema 61 · nav 323 · payment 16 · ai-credit 32 · pos-account 16 · inventory-account 23 · fitness 17 · CPA 107 · drift clean · typecheck 0 · โมเดล AccountPaymentRequest (token 128 บิต · unique chargeId) · Beam มี key = charge+webhook `acc:` prefix (ไม่กระทบเติมเครดิต AI) · ไม่มี key = QR PromptPay static ล็อกยอด → ยืนยันมือ/จับจาก statement อัตโนมัติ · หน้าสาธารณะ /pay/[token] · 🐞 ปิด: `AccountDocumentPayment.entryId` เป็น null เสมอ (gl.postPayment ไม่เขียนกลับ → 9.2 ตรวจผู้ใช้อื่น) · dashboard สัดส่วนปัดรวม 100.01% · ค้าง: BN ไม่รองรับลิงก์ · ไทล์ 'รอยืนยันรับเงิน' บนหน้าหลัก · 🔑 prod ต้องตั้ง BEAM_MERCHANT_ID/API_KEY/WEBHOOK_SECRET + webhook URL https://shark.in.th/api/payment/beam/webhook (ไม่มี = โหมด QR static) |
-| 6.1 | ผังบัญชี V2 | Sonnet+Opus | TODO | | |
+| 6.1 | ผังบัญชี V2 | Opus | DONE | (HEAD) | ตรง f8 (2 แบบ) · ตีกลับ 1 รอบ (ยอด ณ วันที่รวม entry อนาคต — Fable ตรวจ GL เอง · 5.1/5.2/หน้าหลักแก้พร้อมกันให้กติกาเดียว) · Fable รันเอง: coa 105 · components 78 · finance 59 · finance-overview 45 · reconcile 109 · promptpay 84 · wht-cheque 69 · dashboard 174 · home 87 · overview 73 · seed-check 139 · guard 162 · schema 61 · nav 323 · list 159 · import 114 · cheap-routes 105 · fitness 17 · CPA 107 · drift clean · typecheck 0 · 🐞 ปิด: หน้าแยกประเภทกรอง POSTED (ขากลับรายการโผล่ข้างเดียว) · visual expect อ่าน text 20k · ค้าง: level/sortOrder ว่าง · /accounts/mapping ไม่มีทางเข้าเมนู (8.2) · flyout f8-menu 2 จุด (shell) |
 | 6.2 | สมุดรายวัน V2 + รายงาน drill-down + ปิดงวด + ค่าเสื่อม UI | Sonnet | TODO | | |
 | 7.1 | คลังเอกสาร V2 | Sonnet | TODO | | |
 | 7.2 | กล่องขาเข้า + AI | Opus | TODO | | |
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 4 ก.ย. 2026 ~06:40 UTC — 6.1 ผังบัญชี DONE (ตีกลับ 1 รอบ · asOf จริงทั้งระบบ)
 - 4 ก.ย. 2026 ~05:45 UTC — 🏁 **เฟส 5 ปิด** (5.1–5.5 · qc:all 213/213 หลังแก้ hex ดิบ) · 30/46 ≈ 65%
 - 4 ก.ย. 2026 ~04:50 UTC — 5.5 PromptPay DONE → เฟส 5 ครบ 5 WO เริ่มปิดเฟส
 - 4 ก.ย. 2026 ~03:40 UTC — 5.4 WHT/เช็ค DONE (4 รอบ) · บทเรียน: agent รายงาน 'แก้แล้ว' จากโค้ดที่ควรจะทำงาน ไม่ได้ดู PNG — Fable ต้องเปิดโค้ดยืนยันเมื่อภาพไม่เปลี่ยน

@@ -403,6 +403,13 @@ model AccountLedger {
   isSystem         Boolean                 @default(false)
   pinned           Boolean                 @default(false) // V2 (WO 0.3): ปักหมุดบัญชีที่ลงบ่อย
   archivedAt       DateTime?
+  // ── V2 (WO 6.1 · SPEC §11.1 · §14 ข้อ 6) ผังบัญชี V2 ──
+  description      String? // คำอธิบายบัญชี (แสดงในแผงขวาของผังบัญชี)
+  defaultWhtRateBp Int? // อัตราหัก ณ ที่จ่ายเริ่มต้น (basis point: 300 = 3%) · null = ไม่ใช้กับบัญชีนี้
+  defaultWhtType   String? // ประเภทเงินได้ตั้งต้นของ WHT (ค่าเดียวกับ AccountDocument.whtType)
+  vatTreatment     String? // ประเภทภาษี (ฝั่งซื้อ): CLAIMABLE | NON_CLAIMABLE | PENDING_INVOICE · null = ไม่ระบุ
+  level            Int? // 1 หมวด · 2 หมวดรอง · 3 หมวดย่อย · 4 บัญชี — null = คิดจากความยาวรหัส/parent ตอนอ่าน
+  sortOrder        Int? // ลำดับแสดงในผังบัญชี (null = เรียงตามรหัส)
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
 

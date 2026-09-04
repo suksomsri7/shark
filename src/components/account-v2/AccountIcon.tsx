@@ -58,6 +58,10 @@ const ICONS: Record<string, string> = {
   // เพิ่มโดย WO 3.2 รอบแก้ 2 — dropdown "ทำรายการ" ของหน้าผู้ติดต่อ (f5-contacts-menu.png) ต้องการไอคอนต่อรายการ
   x: '<path d="m6 6 12 12M18 6 6 18"/>',
   more: '<circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
+  // WO 6.1 — ผังบัญชี (f8): ปุ่มย่อ/ขยายกิ่ง (กล่อง −/+) · ปุ่ม "พิมพ์" หัวหน้า
+  minus: '<path d="M6 12h12"/>',
+  plus: '<path d="M12 6v12M6 12h12"/>',
+  printer: '<path d="M7 9V3.5h10V9"/><rect x="3.5" y="9" width="17" height="7.5" rx="2"/><path d="M7 14h10v6.5H7Z"/>',
 };
 
 const FALLBACK = '<rect x="5" y="5" width="14" height="14" rx="2"/>';

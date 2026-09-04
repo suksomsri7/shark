@@ -61,6 +61,8 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   // (เดิมชื่อ _dev/components — Next App Router ถือโฟลเดอร์ที่ขึ้นต้น _ เป็น private route ไม่ผูก URL เลย ⇒ 404 ย้ายมาที่นี่)
   "dev-components/page.tsx": "account.doc.view",
   "accounts/page.tsx": "account.chart.manage",
+  "accounts/mapping/page.tsx": "account.mapping.manage", // WO 6.1 — ย้ายบล็อกผูกบัญชีอัตโนมัติออกจากหน้าผังบัญชี
+  "accounts/print/page.tsx": "account.chart.manage", // WO 6.1 §11.1 — หน้าพิมพ์ผังบัญชี
   "aging/page.tsx": "account.report.view",
   "asset-buy/[docId]/page.tsx": "account.doc.view",
   "asset-buy/page.tsx": "account.doc.view",
@@ -100,6 +102,7 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   // WO 1.6: RPR wizard — เรียก requireAccountPage(id, "account.product.manage") ตรงกับ goods-issue/page.tsx (สิทธิ์เดียวกัน)
   "goods-issue/return/new/page.tsx": "account.product.manage",
   // WO 1.8: นำเข้า CSV (§8.5) — action เดียว account.import ครอบทั้งเอกสาร/ผู้ติดต่อ/สินค้า
+  "import/chart-of-accounts/page.tsx": "account.import", // WO 6.1 §11.1 — นำเข้าผังบัญชี
   "import/contacts/page.tsx": "account.import",
   "import/documents/page.tsx": "account.import",
   "import/products/page.tsx": "account.import",

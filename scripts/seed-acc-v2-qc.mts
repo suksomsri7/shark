@@ -1568,11 +1568,77 @@ console.log(
   `🔗 PromptPay V2: คำขอ 2 ใบ (Beam จ่ายแล้ว ${bahtStr(PP_BEAM_GRAND)} · QR นิ่งรอชำระ ${bahtStr(ppStaticReq.request.amountSatang)}) · EWL001 Δ ${bahtStr(PP_BEAM_GRAND)}`,
 );
 
+// ─────────────────── 8.9 ผังบัญชี V2 (WO 6.1 · §11.1 · f8) ───────────────────
+// เพิ่มบัญชีที่ "ผู้ใช้สร้างเอง" 2 ตัว + บัญชีที่ปิดใช้งานแล้ว 1 ตัว
+//   • ทั้ง 3 ตัวใช้รหัสใน "หมวดย่อย" ที่มีชื่ออยู่แล้ว (630 ค่าการตลาดและโฆษณา · 403 รายได้ค่าบริการ)
+//     เพื่อให้ต้นไม้ในภาพไม่มีกลุ่มชื่อสำรอง "หมวดย่อย 631"
+//   • ตั้งใจ **ไม่มีรายการเคลื่อนไหว** — ตัวเลขเงินทุกตัวของ seed เดิมจึงไม่ขยับแม้แต่สตางค์เดียว
+//     (การทดสอบ "ปิดใช้งานไม่ได้เพราะมีรายการ" ทำในร้านทิ้งของ scripts/qc-acc-v2-coa.mts)
+const coaCustom = await prisma.accountLedger.createManyAndReturn({
+  data: [
+    {
+      tenantId,
+      systemId,
+      code: "6301",
+      name: "ค่าโฆษณาออนไลน์",
+      nameEn: "Online Advertising",
+      type: "EXPENSE" as const,
+      cashflowActivity: "OPERATING" as const,
+      isSystem: false,
+      level: 4,
+      description: "ค่ายิงโฆษณาเฟซบุ๊ก/กูเกิลของทริปดำน้ำ",
+      defaultWhtRateBp: 200,
+      defaultWhtType: "ADVERTISING",
+      vatTreatment: "CLAIMABLE",
+    },
+    {
+      tenantId,
+      systemId,
+      code: "4031",
+      name: "รายได้ค่าเช่าอุปกรณ์",
+      nameEn: "Equipment Rental Income",
+      type: "INCOME" as const,
+      cashflowActivity: "OPERATING" as const,
+      isSystem: false,
+      level: 4,
+      description: "ค่าเช่าอุปกรณ์ดำน้ำรายวัน (ไม่รวมทริป)",
+    },
+    {
+      tenantId,
+      systemId,
+      code: "6302",
+      name: "ค่าโฆษณาสิ่งพิมพ์",
+      nameEn: "Print Advertising",
+      type: "EXPENSE" as const,
+      cashflowActivity: "OPERATING" as const,
+      isSystem: false,
+      level: 4,
+      description: "เลิกใช้แล้ว — เก็บไว้ดูประวัติ",
+      archivedAt: D("2026-08-31"),
+    },
+  ],
+  select: { id: true, code: true },
+});
+const coaCustomId = Object.fromEntries(coaCustom.map((l) => [l.code, l.id])) as Record<string, string>;
+// คำอธิบายของบัญชีลูกที่ผูกช่องทางเงิน (แผงขวาใน f8 มีคำอธิบายจริงให้ดู ไม่ใช่ "—")
+const COA_CHILD_DESC: [string, string][] = [
+  ["1000-01", "เงินสดในลิ้นชักหน้าร้านและเงินทอนของทริป"],
+  ["1010-01", "บัญชีหลักของร้าน รับโอน/จ่ายซัพพลายเออร์"],
+  ["1020-01", "รับเงินลูกค้าผ่านพร้อมเพย์/ลิงก์ชำระเงิน"],
+  ["1030-01", "เงินสดย่อยสำหรับค่าใช้จ่ายหน้างาน"],
+];
+for (const [code, desc] of COA_CHILD_DESC)
+  await prisma.accountLedger.updateMany({ where: { systemId, code }, data: { description: desc } });
+
+console.log(`🧾 ผังบัญชี V2: +บัญชีสร้างเอง 2 (6301/4031) +ปิดใช้งาน 1 (6302)`);
+
 // ─────────────────────────── 9. อ่านผลจริงกลับมา + เขียนเฉลย ───────────────────────────
 
 const stats = await svc.overviewStats(tenantId, systemId);
 const pay = await exp.payableStats(tenantId, systemId);
-const balances = await fin.financeBalances(tenantId, systemId);
+// WO 6.1 รอบ 2: financeBalances/coa คิดยอด "ณ วันที่" แล้ว ⇒ เฉลยต้องตรึงที่ QC.today (ไม่ใช่นาฬิกาเครื่อง)
+const QC_ASOF = new Date(`${QC.today}T12:00:00+07:00`);
+const balances = await fin.financeBalances(tenantId, systemId, QC_ASOF);
 const balByName = new Map(balances.map((b) => [b.name, b.balance]));
 
 assertEq("ค้างรับ (จาก DB)", stats.receivable, 49_430_000);
@@ -1645,6 +1711,41 @@ if (suspenseNet !== 0) throw new Error(`บัญชีพัก 9999 ไม่�
 fixtures.contactC00019Id = cid("ปิยธิดา อินสุ่ม");
 fixtures.contactNattapholId = cid("คุณณัฐพล รุ่งเรือง");
 fixtures.contactSimilanViewId = cid("โรงแรมสิมิลันวิว");
+
+// ── เฉลยผังบัญชี V2 (WO 6.1) — คิดด้วย SQL ดิบคนละสำนวนกับ coa.ts (ไม่เรียกโค้ดจริงมาเช็คตัวเอง) ──
+const COA_MONTH_KEY = QC.today.slice(0, 7); // เฉลยตรึงที่เดือนของ QC.today (ไม่ใช่เดือนของนาฬิกาเครื่อง)
+// ยอด "ณ QC.today" — ตัดที่เที่ยงคืนของวันถัดไป (กติกาเดียวกับ asOfCutoff ใน coa-v2.ts แต่เขียนเป็น SQL/JS คนละสำนวน)
+const COA_CUTOFF = new Date(new Date(`${QC.today}T00:00:00+07:00`).getTime() + 24 * 3600 * 1000);
+const COA_MONTH_FROM = new Date(`${COA_MONTH_KEY}-01T00:00:00+07:00`);
+const COA_SAMPLE_CODES = ["1000-01", "1100", "4000"];
+const coaTypeRows = await prisma.$queryRaw<Array<{ type: string; cnt: bigint }>>`
+  SELECT "type"::text AS type, COUNT(*)::bigint AS cnt
+    FROM "AccountLedger"
+   WHERE "systemId" = ${systemId} AND "archivedAt" IS NULL
+   GROUP BY "type"`;
+const coaGroupRows = await prisma.$queryRaw<Array<{ prefix: string; cnt: bigint }>>`
+  SELECT LEFT(REGEXP_REPLACE("code", '[^0-9]', '', 'g'), 2) AS prefix, COUNT(*)::bigint AS cnt
+    FROM "AccountLedger"
+   WHERE "systemId" = ${systemId} AND "archivedAt" IS NULL
+   GROUP BY 1`;
+const coaSampleRows = await prisma.$queryRaw<Array<{ code: string; id: string; balance: bigint; month: bigint }>>`
+  SELECT l."code",
+         l."id",
+         COALESCE(SUM(CASE WHEN e."id" IS NULL THEN 0
+                           WHEN l."type"::text IN ('LIABILITY','EQUITY','INCOME')
+                           THEN jl."credit" - jl."debit" ELSE jl."debit" - jl."credit" END), 0)::bigint AS balance,
+         COALESCE(SUM(CASE WHEN e."date" >= ${COA_MONTH_FROM}
+                           THEN (CASE WHEN l."type"::text IN ('LIABILITY','EQUITY','INCOME')
+                                      THEN jl."credit" - jl."debit" ELSE jl."debit" - jl."credit" END)
+                           ELSE 0 END), 0)::bigint AS month
+    FROM "AccountLedger" l
+    LEFT JOIN "AccountJournalLine" jl ON jl."accountId" = l."id"
+    -- ยอด "ณ QC.today": เข้าร่วมเฉพาะใบสำคัญที่ลงวันที่ก่อน cutoff (LEFT JOIN + เงื่อนไขใน ON = แถวที่เกินถูกตัดทิ้ง)
+    LEFT JOIN "AccountJournalEntry" e ON e."id" = jl."entryId" AND e."date" < ${COA_CUTOFF}
+   WHERE l."systemId" = ${systemId} AND l."code" = ANY(${COA_SAMPLE_CODES})
+   GROUP BY l."id", l."code"`;
+const coaActive = coaTypeRows.reduce((n, r) => n + Number(r.cnt), 0);
+console.log(`🧾 เฉลยผังบัญชี: ${coaActive} บัญชีที่เปิดใช้งาน · ตัวอย่าง ${coaSampleRows.map((r) => `${r.code}=${bahtStr(Number(r.balance))}`).join(" · ")}`);
 
 const expected = {
   _readme:
@@ -1863,6 +1964,17 @@ const expected = {
     outPendingChequeNo: "5551001",
     outVoidedId: cq4.id,
     outVoidedChequeNo: "5551002",
+  },
+  // WO 6.1 — ผังบัญชี V2 (§11.1 · f8) — ตัวเลขทั้งหมดจาก SQL ดิบด้านบน
+  coa: {
+    monthKey: COA_MONTH_KEY,
+    activeAccounts: coaActive,
+    byType: Object.fromEntries(coaTypeRows.map((r) => [r.type, Number(r.cnt)])),
+    byGroup2: Object.fromEntries(coaGroupRows.map((r) => [r.prefix, Number(r.cnt)])),
+    samples: coaSampleRows
+      .map((r) => ({ code: r.code, id: r.id, balanceSatang: Number(r.balance), monthDeltaSatang: Number(r.month) }))
+      .sort((a, b) => a.code.localeCompare(b.code)),
+    custom: { onlineAds: coaCustomId["6301"], rentalIncome: coaCustomId["4031"], archived: coaCustomId["6302"] },
   },
   fixtures: {
     ...fixtures,

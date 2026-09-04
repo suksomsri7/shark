@@ -115,7 +115,9 @@ eq("B9", `เอกสารจ่ายที่พ้นกำหนด = ${E.
 
 // ─────────── C. ช่องทางการเงิน (f7 / §10.1) ───────────
 console.log("\nC. ช่องทางการเงิน (§10.1)");
-const balances = await fin.financeBalances(tenantId, systemId);
+// WO 6.1 รอบ 2: ยอดคิด "ณ วันที่" ⇒ ตรึงที่ QC.today ไม่งั้นเฉลยขยับตามนาฬิกาเครื่อง
+const QC_ASOF = new Date(`${QC.today}T12:00:00+07:00`);
+const balances = await fin.financeBalances(tenantId, systemId, QC_ASOF);
 const balById = new Map(balances.map((b) => [b.id, b]));
 for (const f of E.financeAccounts as { code: string; id: string; name: string; balance: number }[]) {
   const row = balById.get(f.id);
@@ -556,9 +558,54 @@ console.log("\nN. PromptPay ลิงก์ชำระเงิน");
 
     chk("N14", "token ของทั้ง 2 ใบยาว ≥ 22 ตัว (128 บิต) และไม่ซ้ำกัน", PP.beam.token.length >= 22 && PP.staticPending.token.length >= 22 && PP.beam.token !== PP.staticPending.token, [PP.beam.token.length, PP.staticPending.token.length]);
 
-    const ewl = await fin.financeBalances(tenantId, systemId);
+    const ewl = await fin.financeBalances(tenantId, systemId, QC_ASOF);
     const ewlBal = ewl.find((f) => f.id === PP.financeId)?.balance ?? 0;
     eq("N15", "ยอด EWL001 = เฉลย (รวมเงินที่รับผ่านลิงก์แล้ว)", ewlBal, E.finance.EWL001);
+  }
+}
+
+// ─────────── O. ผังบัญชี V2 (WO 6.1 · §11.1 · f8) ───────────
+console.log("\nO. ผังบัญชี V2");
+{
+  const C = E.coa as
+    | {
+        monthKey: string;
+        activeAccounts: number;
+        byType: Record<string, number>;
+        byGroup2: Record<string, number>;
+        samples: { code: string; id: string; balanceSatang: number; monthDeltaSatang: number }[];
+        custom: { onlineAds: string; rentalIncome: string; archived: string };
+      }
+    | undefined;
+  chk("O1", "เฉลยมีคีย์ coa (seed รุ่น WO 6.1 ขึ้นไป)", !!C, C ? "มี" : "ไม่มี");
+  if (C) {
+    const activeCount = await prisma.accountLedger.count({ where: { systemId, archivedAt: null } });
+    eq("O2", "จำนวนบัญชีที่เปิดใช้งานใน DB = เฉลย", activeCount, C.activeAccounts);
+    const custom = await prisma.accountLedger.findMany({
+      where: { systemId, code: { in: ["6301", "4031", "6302"] } },
+      select: { code: true, name: true, isSystem: true, archivedAt: true, level: true, description: true, defaultWhtRateBp: true, defaultWhtType: true, vatTreatment: true },
+      orderBy: { code: "asc" },
+    });
+    eq("O3", "มีบัญชีที่ผู้ใช้สร้างเอง 2 + ปิดใช้งาน 1 (4031/6301/6302)", custom.map((c) => c.code), ["4031", "6301", "6302"]);
+    const ads = custom.find((c) => c.code === "6301");
+    eq("O4", "6301 ค่าโฆษณาออนไลน์: ไม่ใช่บัญชีระบบ · level 4 · WHT 2% ค่าโฆษณา · ภาษีซื้อขอคืนได้", [ads?.isSystem, ads?.level, ads?.defaultWhtRateBp, ads?.defaultWhtType, ads?.vatTreatment], [false, 4, 200, "ADVERTISING", "CLAIMABLE"]);
+    chk("O5", "6301 มีคำอธิบาย (แผงขวาของ f8 ต้องมีข้อความจริงให้ดู)", !!ads?.description, ads?.description ?? "(ว่าง)");
+    const archived = custom.find((c) => c.code === "6302");
+    chk("O6", "6302 อยู่ในสถานะปิดใช้งาน (ไว้ทดสอบกู้คืน)", !!archived?.archivedAt, archived?.archivedAt ?? "ยังเปิดอยู่");
+    const archivedUsed = archived
+      ? await prisma.accountJournalLine.count({ where: { systemId, account: { code: "6302" } } })
+      : 0;
+    eq("O7", "6302 ไม่มีรายการเคลื่อนไหว (ตัวเลขเงินของ seed จึงไม่ขยับ)", archivedUsed, 0);
+    // ยอด "ณ QC.today" (WO 6.1 รอบ 2) — ตัดที่เที่ยงคืนวันถัดไปเหมือนที่ coa.ts/finance.ts ทำ
+    const coaCutoff = new Date(new Date(`${QC.today}T00:00:00+07:00`).getTime() + 24 * 3600 * 1000);
+    for (const smp of C.samples) {
+      const led = await prisma.accountLedger.findFirst({ where: { systemId, code: smp.code }, select: { id: true, type: true } });
+      const agg = await prisma.accountJournalLine.aggregate({ where: { systemId, accountId: led?.id ?? "", entry: { date: { lt: coaCutoff } } }, _sum: { debit: true, credit: true } });
+      const dr = agg._sum.debit ?? 0;
+      const cr = agg._sum.credit ?? 0;
+      const natural = led && (led.type === "LIABILITY" || led.type === "EQUITY" || led.type === "INCOME") ? cr - dr : dr - cr;
+      eq(`O8-${smp.code}`, `ยอดคงเหลือ ${smp.code} ใน DB = เฉลย (${baht(smp.balanceSatang)})`, natural, smp.balanceSatang);
+    }
   }
 }
 

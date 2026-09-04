@@ -27,6 +27,7 @@ import {
 } from "./service";
 import { createExpenseDoc } from "./expense";
 import { createProduct, listUnits } from "./product";
+import { usedLedgerCodes, createLedgerFromImport } from "./coa";
 import { packDescription } from "@/components/account-v2/doc-editor-types";
 import {
   IMPORT_FIELDS,
@@ -41,7 +42,9 @@ import {
   validateDocRowFormat,
   validateContactRowFormat,
   validateProductRowFormat,
+  validateChartRowFormat,
   resolveDocType,
+  resolveLedgerType,
   bahtToSatang,
   toQty,
   toVatRateBp,
@@ -187,6 +190,28 @@ export async function previewImportCore(
         }
         if (tax) seenTax.add(tax);
         if (phone) seenPhone.add(phone);
+        rowChecks.push({ status, reasons });
+      });
+    } else if (kind === "chart_of_accounts") {
+      // WO 6.1 §11.1 — นำเข้าผังบัญชี: กันรหัสซ้ำทั้งกับผังเดิมใน DB และกับแถวอื่นในไฟล์เดียวกัน
+      const formatChecks = mapped.map((r) => validateChartRowFormat(r));
+      const existing = await usedLedgerCodes({ tenantId, systemId });
+      const seenCode = new Set<string>();
+      mapped.forEach((r, i) => {
+        const fc = formatChecks[i];
+        const reasons = [...fc.reasons];
+        let status = fc.status;
+        const code = (r.code ?? "").trim();
+        if (fc.status !== "err" && code) {
+          if (existing.has(code)) {
+            reasons.push(`มีรหัสบัญชี ${code} อยู่แล้วในผังบัญชี (จะข้าม)`);
+            status = "err";
+          } else if (seenCode.has(code)) {
+            reasons.push(`รหัสบัญชี ${code} ซ้ำในไฟล์เดียวกัน`);
+            status = "err";
+          }
+        }
+        if (code) seenCode.add(code);
         rowChecks.push({ status, reasons });
       });
     } else {
@@ -449,6 +474,46 @@ export async function runImportCore(
           } catch {
             skipped++; // race กับแถวอื่น/เลขภาษีซ้ำที่ DB จับได้ตอน insert จริง
           }
+        }
+      }
+    } else if (kind === "chart_of_accounts") {
+      const rowStatuses = mapped.map((r) => validateChartRowFormat(r));
+      const existing = await usedLedgerCodes({ tenantId, systemId });
+      const seenCode = new Set<string>();
+      for (const batch of chunk(mapped.map((r, i) => ({ r, i })), 100)) {
+        for (const { r, i } of batch) {
+          const fc = rowStatuses[i];
+          if (fc.status === "err") {
+            errors.push({ row: i + 1, reason: fc.reasons.join(" · ") });
+            if (!skipErrorRows) continue;
+            skipped++;
+            continue;
+          }
+          const code = r.code.trim();
+          // ซ้ำ (กับผังเดิม หรือกับแถวก่อนหน้าในไฟล์) = ข้าม ⇒ นำเข้าไฟล์เดิมซ้ำได้ผลลัพธ์ 0 รายการใหม่
+          if (existing.has(code) || seenCode.has(code)) {
+            skipped++;
+            continue;
+          }
+          seenCode.add(code);
+          const t = resolveLedgerType(r.type ?? "", code);
+          if (!t.type) {
+            errors.push({ row: i + 1, reason: "รหัสบัญชีต้องขึ้นต้นด้วย 1–6 (หมวดบัญชี)" });
+            skipped++;
+            continue;
+          }
+          const res = await createLedgerFromImport(
+            { tenantId, systemId },
+            {
+              code,
+              name: r.name.trim(),
+              nameEn: r.nameEn.trim() || null,
+              type: t.type,
+              description: r.description.trim() || null,
+            },
+          );
+          if (res.ok) created++;
+          else skipped++;
         }
       }
     } else {

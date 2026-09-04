@@ -456,10 +456,11 @@ export async function cashPosition(
   meter?: QueryMeter,
 ): Promise<CashPosition> {
   const db = dbOf(ctx, meter);
-  const periodKey = periodKeyBkk(opts.now ?? new Date());
+  const now = opts.now ?? new Date();
+  const periodKey = periodKeyBkk(now);
   bump(meter, 1 + FINANCE_BALANCES_QUERIES);
   const [balances, glRows] = await Promise.all([
-    financeBalances(ctx.tenantId, ctx.systemId),
+    financeBalances(ctx.tenantId, ctx.systemId, now), // WO 6.1 รอบ 2: ยอด "ณ วันที่" เดียวกับหน้าอื่น
     glAggregate(db, ctx, periodKey, periodKey),
   ]);
   return cashFromParts(balances, glRows, periodKey);
@@ -1403,7 +1404,7 @@ export async function dashboardSnapshot(ctx: DashCtx, opts: SnapshotOpts = {}): 
   const [glRows, balances, open, issued, pendingGroups, needsReview, recent, topRows, productRows] =
     await Promise.all([
       glAggregate(db, ctx, `${year - 1}-01`, `${year}-12`),
-      financeBalances(ctx.tenantId, ctx.systemId),
+      financeBalances(ctx.tenantId, ctx.systemId, now), // WO 6.1 รอบ 2: ยอด "ณ วันที่"
       loadOpenDocs(db),
       documentsIssued(ctx, issuedDocType, { from: yearRange.from, to: yearRange.to }, meter),
       db.accountDocument.groupBy({

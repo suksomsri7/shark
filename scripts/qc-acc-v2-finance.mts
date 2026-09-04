@@ -27,7 +27,7 @@
 
 const accEnv = (await import("./acc-v2-env.mts" as string)) as {
   loadQcEnv: () => { databaseUrl: string; host: string };
-  QC: { expectedPath: string };
+  QC: { expectedPath: string; today: string };
 };
 const { loadQcEnv, QC } = accEnv;
 const { host } = loadQcEnv();
@@ -70,6 +70,10 @@ type Expected = {
   financeArchived: { id: string; code: string | null };
 };
 const expected = JSON.parse(readFileSync(QC.expectedPath, "utf8")) as Expected;
+// 🔴 WO 6.1 รอบ 2: ยอดคิด "ณ วันที่" (asOf) แล้ว ⇒ ข้อสอบตรึงที่ QC.today ไม่ใช่นาฬิกาเครื่อง
+const ASOF = new Date(`${QC.today}T12:00:00+07:00`);
+const MONTH_FROM = new Date(`${QC.today.slice(0, 7)}-01T00:00:00+07:00`);
+const MONTH_TO = new Date(new Date(`${QC.today}T00:00:00+07:00`).getTime() + 24 * 3600 * 1000);
 const { tenantId, systemId } = expected;
 
 /** เฉลยอิสระ: ยอด ledger จริงของบัญชีเงิน (raw SQL — ไม่ผ่าน finance.ts ที่กำลังทดสอบ) */
@@ -93,7 +97,7 @@ async function entriesFor(refType: string, refIdPrefix: string, sysId = systemId
 try {
   // ═════════ FN1 — fixture seed: กลุ่ม/ยอดรวม ═════════
   console.log("FN1 fixture seed:");
-  const rows = await fin.financeBalances(tenantId, systemId);
+  const rows = await fin.financeBalances(tenantId, systemId, ASOF);
   assert("FN1.1 จำนวนช่องทางที่ใช้งาน = 4 (ไม่นับที่ปิดใช้งาน)", rows.length === 4, `ได้ ${rows.length}`);
   const total = rows.reduce((s, a) => s + a.balance, 0);
   eq("FN1.2 ยอดรวมทุกช่องทาง = เฉลย", total, expected.finance.total);
@@ -119,15 +123,14 @@ try {
 
   // ═════════ FN3 — เปลี่ยนแปลงเดือนนี้ = SQL อิสระ ═════════
   console.log("\nFN3 เปลี่ยนแปลงเดือนนี้:");
-  const mc = await fin.financeMonthChanges(tenantId, systemId);
+  const mc = await fin.financeMonthChanges(tenantId, systemId, ASOF);
   const bsv = expected.financeAccounts.find((a) => a.code === "BSV001")!;
   const bsvFa = await prisma.accountFinance.findUniqueOrThrow({ where: { id: bsv.id }, select: { ledgerAccountId: true } });
   const monthRows = await prisma.$queryRaw<{ dr: bigint | null; cr: bigint | null }[]>`
     SELECT SUM(jl.debit)::bigint AS dr, SUM(jl.credit)::bigint AS cr
     FROM "AccountJournalLine" jl JOIN "AccountJournalEntry" je ON je.id = jl."entryId"
     WHERE jl."systemId" = ${systemId} AND jl."accountId" = ${bsvFa.ledgerAccountId}
-      AND je.date >= date_trunc('month', now() AT TIME ZONE 'Asia/Bangkok') AT TIME ZONE 'Asia/Bangkok'
-      AND je.date < (date_trunc('month', now() AT TIME ZONE 'Asia/Bangkok') + interval '1 month') AT TIME ZONE 'Asia/Bangkok'`;
+      AND je.date >= ${MONTH_FROM} AND je.date < ${MONTH_TO}`;
   const expectedDelta = Number(monthRows[0]?.dr ?? 0) - Number(monthRows[0]?.cr ?? 0);
   eq("FN3.1 เปลี่ยนแปลงเดือนนี้ BSV001 = SQL อิสระ", mc.get(bsv.id)?.delta, expectedDelta);
 
@@ -301,7 +304,7 @@ try {
 
   // ═════════ FN13 — dashboard.cashPosition ยังตรงกับ financeBalances ═════════
   console.log("\nFN13 dashboard cashPosition:");
-  const cashPos = await dash.cashPosition({ tenantId, systemId });
+  const cashPos = await dash.cashPosition({ tenantId, systemId }, { now: ASOF });
   eq("FN13.1 cashPosition.total = financeBalances total = เฉลย", cashPos.total, expected.finance.total);
 
   // cleanup ร้านทิ้ง

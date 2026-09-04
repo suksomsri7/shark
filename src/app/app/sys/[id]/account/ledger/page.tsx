@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { prisma } from "@/lib/core/db";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { assertAccountCan } from "@/lib/modules/account/access";
-import { listLedgers } from "@/lib/modules/account/coa";
+import { listLedgers, ledgerRunning } from "@/lib/modules/account/coa";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FormField } from "@/components/ui/FormField";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DataTable } from "@/components/ui/DataList";
 import { MoneyText } from "@/components/ui/MoneyText";
+import { formatDateTh } from "@/lib/ui/date";
 
 // แยกประเภท: ยอดยกมา + movement รายบรรทัด + ยอดยกไป
 export default async function LedgerPage({
@@ -34,62 +34,22 @@ export default async function LedgerPage({
   const fromDate = new Date(`${from}T00:00:00.000+07:00`);
   const toDate = new Date(`${to}T23:59:59.999+07:00`);
 
-  let opening = 0;
-  let rows: {
-    id: string;
-    entryId: string;
-    date: Date;
-    docNo: string;
-    journal: string;
-    memo: string | null;
-    debit: number;
-    credit: number;
-  }[] = [];
+  // WO 6.1 รอบ 2: ย้าย query มาที่ coa.ledgerRunning (รวมทุกสถานะ — เดิมกรอง POSTED ทำให้ใบที่ถูก
+  // กลับรายการเหลือแต่ขากลับ ยอดเพี้ยนคนละทางกับผังบัญชี/งบทดลอง) · ข้อสอบ qc-acc-v2-coa T14 คุมไว้
+  const ledgerData = accountId
+    ? await ledgerRunning({ tenantId, systemId }, accountId, { from: fromDate, to: toDate })
+    : { opening: 0, rows: [], movementDebit: 0, movementCredit: 0, closing: 0 };
+  const opening = ledgerData.opening;
+  const rows = ledgerData.rows;
 
-  if (accountId) {
-    const openAgg = await prisma.accountJournalLine.aggregate({
-      where: {
-        systemId,
-        accountId,
-        entry: { status: "POSTED", date: { lt: fromDate } },
-      },
-      _sum: { debit: true, credit: true },
-    });
-    opening = (openAgg._sum.debit ?? 0) - (openAgg._sum.credit ?? 0);
+  const movementDr = ledgerData.movementDebit;
+  const movementCr = ledgerData.movementCredit;
+  const closing = ledgerData.closing;
+  // WO 6.1 รอบ 2: วันที่ในโมดูลบัญชี V2 ใช้ตัวจัดรูปกลาง (ค.ศ. ตาม UI_STANDARD §3.4) — เดิมหน้านี้โชว์ พ.ศ.
+  const fmtDate = (d: Date) => formatDateTh(d);
 
-    const lines = await prisma.accountJournalLine.findMany({
-      where: {
-        systemId,
-        accountId,
-        entry: { status: "POSTED", date: { gte: fromDate, lte: toDate } },
-      },
-      include: { entry: { select: { id: true, date: true, docNo: true, journal: true, memo: true } } },
-      orderBy: [{ entry: { date: "asc" } }, { entry: { createdAt: "asc" } }],
-    });
-    rows = lines.map((l) => ({
-      id: l.id,
-      entryId: l.entry.id,
-      date: l.entry.date,
-      docNo: l.entry.docNo,
-      journal: l.entry.journal,
-      memo: l.entry.memo,
-      debit: l.debit,
-      credit: l.credit,
-    }));
-  }
-
-  const movementDr = rows.reduce((s, r) => s + r.debit, 0);
-  const movementCr = rows.reduce((s, r) => s + r.credit, 0);
-  const closing = opening + movementDr - movementCr;
-  const fmtDate = (d: Date) =>
-    new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "medium" }).format(d);
-
-  // running balance ต่อบรรทัด
-  let run = opening;
-  const lineRows = rows.map((r) => {
-    run += r.debit - r.credit;
-    return { ...r, run };
-  });
+  // running balance ต่อบรรทัด (คิดใน ledgerRunning แล้ว)
+  const lineRows = rows.map((r) => ({ ...r, run: r.running }));
 
   type LedgerRow =
     | { kind: "open" }
@@ -161,6 +121,15 @@ export default async function LedgerPage({
                     </Link>
                     {r.memo && (
                       <span className="ml-1 text-xs text-[color:var(--color-muted)]">— {r.memo}</span>
+                    )}
+                    {r.reversed && (
+                      <span
+                        className="ml-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] text-[color:var(--color-muted)]"
+                        style={{ borderColor: "var(--color-line)" }}
+                        title="ใบสำคัญนี้ถูกกลับรายการแล้ว — ยังนับในยอดคู่กับใบกลับรายการ"
+                      >
+                        กลับรายการแล้ว
+                      </span>
                     )}
                   </span>
                 );

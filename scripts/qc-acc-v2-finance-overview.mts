@@ -142,7 +142,7 @@ try {
   console.log("\nFO4 pettyCashList (PTY001):");
   const members = await prisma.membership.findMany({ where: { tenantId }, select: { userId: true, user: { select: { name: true, email: true } } } });
   const holderNames = new Map(members.map((m) => [m.userId, m.user.name ?? m.user.email]));
-  const boxes = await fov.pettyCashList({ tenantId, systemId }, holderNames);
+  const boxes = await fov.pettyCashList({ tenantId, systemId }, holderNames, { asOf: now }); // WO 6.1 รอบ 2: ยอด "ณ วันที่" ตรึงที่ QC.today
   const pty = boxes.find((b) => b.code === "PTY001");
   assert("FO4.1 พบกล่อง PTY001", !!pty);
   eq("FO4.2 ยอดคงเหลือ = เฉลย (2,970,000 สตางค์)", pty?.balanceSatang, expected.pettyCash.balance);

@@ -309,6 +309,8 @@ const FIXTURE_REF_18 = "QC-VISUAL-1.8";
 // 🔴 Fable QC รอบ 1: spec เดียวกันวนถ่ายทั้ง desktop+mobile ด้วยไฟล์เดียวกัน — ขั้น ⑤ (กดนำเข้าจริง) ทำ 2 รอบ
 //    ด้วย refId เดิม (fileHash เดียวกัน) ⇒ รอบมือถือชนกับ idempotency ของรอบเดสก์ท็อป (สร้างใหม่ 0 · ข้าม 20)
 //    แก้: แยกไฟล์คนละชุดต่อ device (คนละ "เลขอ้างอิง"/ผู้ติดต่อ) + spec ผลลัพธ์แยก onlyDevice ต่อไฟล์
+const COA_CASH_ID: string = (E.coa?.samples ?? []).find((r: { code: string }) => r.code === "1000-01")?.id ?? ""; // WO 6.1 — บัญชีลูกของช่องทาง "เงินสด" (สถานะเดียวกับ f8)
+const FIXTURE_CSV_COA_IMPORT = "scripts/fixtures/acc-v2/coa-import.csv"; // WO 6.1 — ผังบัญชี 10 บัญชี (ซ้ำ 1 · นอกช่วง 1) · ภาพขั้นตรวจสอบเท่านั้น (ไม่กดนำเข้าจริง)
 const FIXTURE_CSV_RECONCILE_PREVIEW = "scripts/fixtures/acc-v2/kbank-preview-sample.csv"; // WO 5.3 — ไฟล์ตัวอย่างของภาพ preview (preview ไม่เขียน DB)
 const FIXTURE_CSV_PATH_18 = `${QC.shotsDir}/1.8-fixture-a.csv`; // ใช้เดสก์ท็อป (และ preview ทั้งคู่ device — preview ไม่สร้างอะไรจริง)
 const FIXTURE_CSV_PATH_18_MOBILE = `${QC.shotsDir}/1.8-fixture-b.csv`; // ใช้มือถือเท่านั้น (คนละชุดข้อมูล กันชนกับรอบเดสก์ท็อป)
@@ -742,6 +744,115 @@ const PAGES: Record<string, PageSpec[]> = {
       path: `/app/sys/${SYS}/account/docs/CREDIT_NOTE/new?ref=${E.fixtures.invSimilanViewId}`,
       note: "ขั้น ② ฟอร์มใบลดหนี้พรีฟิลจากเอกสารอ้างอิง — cap-line ต้องโชว์ค้างชำระ 62,250.00 (g3 ขั้น 2)",
       expect: ["สร้างใบลดหนี้", E.fixtures.invSimilanViewDocNo],
+    },
+  ],
+  // WO 6.1 — ผังบัญชี V2 (§11.1) เทียบ f8-chart-of-accounts.png (+ f8-chart-of-accounts-menu.png = เมนู "บัญชี" ของ shell)
+  "6.1": [
+    {
+      name: "chart-of-accounts",
+      path: `/app/sys/${SYS}/account/accounts?a=${COA_CASH_ID}`,
+      note: "หน้าผังบัญชี สถานะเดียวกับ f8 — ต้นไม้กางถึงบัญชีเงินสด · แผงขวา รหัส·ชื่อ + ป้าย + ฟิลด์ + ยอด + เคลื่อนไหวล่าสุด 5 แถว",
+      expect: [
+        "ผังบัญชี",
+        "รายการบัญชี",
+        "ย่อ/ขยายทั้งหมด",
+        "สินทรัพย์ (1)",
+        "หนี้สิน (2)",
+        "ส่วนของเจ้าของ (3)",
+        "รายได้ (4)",
+        "ต้นทุนขาย (5)",
+        "ค่าใช้จ่าย (6)",
+        "ดูบัญชีแยกประเภท",
+        "เปิดใช้งาน",
+        "ผูกกับบัญชีเงิน",
+        "ผังบัญชีหลัก",
+        "ผังบัญชีรอง",
+        "ผังบัญชีย่อย",
+        "ประเภทบัญชี",
+        "อัตราหัก ณ ที่จ่ายเริ่มต้น",
+        "ประเภทภาษี",
+        "คำอธิบาย",
+        "ยอดคงเหลือ ณ",
+        "เคลื่อนไหวเดือนนี้",
+        "เคลื่อนไหวล่าสุด",
+        "ดูทั้งหมด",
+        "แก้ไขบัญชี",
+        "นำเข้าผังบัญชี",
+        "พิมพ์",
+        "เพิ่มบัญชีเงิน",
+        "เพิ่มบัญชี",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "chart-of-accounts-menu",
+      path: `/app/sys/${SYS}/account/accounts?a=${COA_CASH_ID}`,
+      note: 'เปิดเมนู "บัญชี" บนแถบเมนู — เทียบ f8-chart-of-accounts-menu.png (ผังบัญชี/สมุดรายวัน/บัญชีแยกประเภท/งบ 5 ตัว/ภาษี/ปิดงวด/สินทรัพย์/อายุหนี้)',
+      expect: ["ผังบัญชี", "สมุดรายวัน", "บัญชีแยกประเภท", "งบทดลอง", "ปิดงวดบัญชี"],
+      onlyDevice: "desktop",
+      click: ['[data-testid="acc-menu-accounting"]'],
+      waitAfterClick: 300,
+    },
+    {
+      name: "chart-add-modal",
+      path: `/app/sys/${SYS}/account/accounts?new=1`,
+      note: 'modal "เพิ่มบัญชี" (§11.1) — หมวดย่อย · รหัส + คำใบ้ช่วงรหัส · ประเภท (สืบทอด) · ชื่อ TH/EN · WHT · ภาษี · คำอธิบาย',
+      expect: ["เพิ่มบัญชี", "หมวดย่อย", "รหัสบัญชี", "รหัสต้องอยู่ในช่วง", "ประเภทบัญชี", "ชื่อบัญชี (ไทย)", "ชื่อบัญชี (อังกฤษ)", "อัตราหัก ณ ที่จ่ายเริ่มต้น", "ประเภทภาษี (ฝั่งซื้อ)", "คำอธิบาย", "บันทึก"],
+      onlyDevice: "desktop",
+      expandModalForShot: '[data-testid="coa-modal"]',
+      waitAfterClick: 400,
+    },
+    {
+      name: "chart-import-preview",
+      path: `/app/sys/${SYS}/account/import/chart-of-accounts`,
+      note: "ขั้น ③ ตรวจสอบของการนำเข้าผังบัญชี — ไฟล์ 10 บัญชี (8 ผ่าน · 2 ผิด: รหัสซ้ำ 4910 · รหัสนอกช่วง 6410)",
+      expect: ["นำเข้าผังบัญชี"],
+      onlyDevice: "desktop",
+      flow: [
+        { upload: 'input[type="file"]', filePath: FIXTURE_CSV_COA_IMPORT },
+        { waitFor: '[data-testid="import-map-code"]' },
+        { click: '[data-testid="btn-goto-preview"]' },
+        { waitFor: '[data-testid="import-count-err"]' },
+      ],
+      expectBeforeShot: [
+        { sel: '[data-testid="import-count-ok"]', kind: "text", equals: "พร้อมนำเข้า 8" },
+        { sel: '[data-testid="import-count-err"]', kind: "text", equals: "ผิดพลาด 2" },
+      ],
+    },
+    {
+      name: "chart-print",
+      path: `/app/sys/${SYS}/account/accounts/print`,
+      note: "หน้าพิมพ์ผังบัญชี (ปุ่ม 'พิมพ์' ของ f8) — ตารางแบนเรียงตามรหัส + หมวด/หมวดรอง/หมวดย่อย + ยอดคงเหลือ",
+      expect: ["ผังบัญชี", "รหัส", "ชื่อบัญชี", "หมวดรอง", "หมวดย่อย", "ยอดคงเหลือ", "กลับไปผังบัญชี"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "chart-mapping",
+      path: `/app/sys/${SYS}/account/accounts/mapping`,
+      note: "หน้าผูกบัญชีอัตโนมัติ (§7.10) ที่ย้ายออกจากหน้าผังบัญชีเดิม — เข้าจากแผงขวาของบัญชีที่ระบบใช้",
+      expect: ["การผูกบัญชีอัตโนมัติ", "AR", "AP", "VAT_INPUT", "SUSPENSE", "บันทึก"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "ledger-page",
+      path: `/app/sys/${SYS}/account/ledger?account=${COA_CASH_ID}&from=2026-09-01&to=2026-09-30`,
+      note: "ปลายทางลิงก์ 'ดูบัญชีแยกประเภท' — ยอดยกมา/เคลื่อนไหว/ยอดยกไป (WO 6.1 รอบ 2: รวมทุกสถานะแล้ว)",
+      expect: ["บัญชีแยกประเภท", "ยอดยกมา", "เคลื่อนไหวในงวด", "เดบิต", "เครดิต"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "chart-tree-mobile",
+      path: `/app/sys/${SYS}/account/accounts`,
+      note: "มือถือ 390 — ยังไม่เลือกบัญชี = เห็นต้นไม้เต็มจอ (แบบลิสต์ accordion ตาม f13) ไม่มีคอลัมน์ขวาเบียด",
+      expect: ["ผังบัญชี", "รายการบัญชี", "สินทรัพย์ (1)", "หนี้สิน (2)"],
+      onlyDevice: "mobile",
+    },
+    {
+      name: "chart-detail-mobile",
+      path: `/app/sys/${SYS}/account/accounts?a=${COA_CASH_ID}`,
+      note: "มือถือ 390 — เลือกบัญชีแล้ว = แผ่นรายละเอียดเต็มจอ + ลิงก์ย้อนกลับ (ต้นไม้ซ่อน)",
+      expect: ["กลับไปรายการบัญชี", "ดูบัญชีแยกประเภท", "ยอดคงเหลือ ณ", "เคลื่อนไหวล่าสุด"],
+      onlyDevice: "mobile",
     },
   ],
   // WO 1.8 — ตัวช่วยนำเข้า CSV (§8.5): อัปโหลดไฟล์ตัวอย่างจริงผ่าน uploadFile() แล้วเดินสเต็ปเปอร์ด้วย DOM
@@ -1501,6 +1612,18 @@ const baht = (satang: number, decimals = false) =>
   (Math.abs(satang) / 100).toLocaleString("th-TH", decimals ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : undefined);
 
 const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>> = {
+  // 🔴 WO 6.1 รอบ 2 — ยอดเงินบนหน้าจอคิด "ณ วันนี้" (asOf = นาฬิกาเครื่องตอนถ่ายภาพ) ส่วนเฉลยตรึงที่
+  //    QC.today (30 ก.ย. 2026) ⇒ **ห้าม pin ตัวเลขยอดคงเหลือ/ยอดกลุ่มในภาพ** (จะต่างกันตามวันที่รัน)
+  //    ความถูกต้องของตัวเลขพิสูจน์ในข้อสอบ (qc-acc-v2-coa T3/T14 · finance FN1/FN2 · seed-check O8)
+  //    ที่ส่ง asOf = QC.today เข้าไปตรง ๆ · ภาพเหลือหน้าที่ตรวจ "โครง/ป้าย/จำนวนรายการ"
+
+  // WO 6.1 — ยอดคงเหลือ/เคลื่อนไหวเดือนนี้/จำนวนบัญชี ต้องตรงเฉลย SQL อิสระ (คีย์ coa เขียนตอน seed)
+  "6.1": {
+    "chart-of-accounts": {
+      // จำนวนบัญชีไม่ขึ้นกับวันที่ ⇒ pin ได้ · ยอดเงินไม่ pin (ดูหมายเหตุหัวตาราง)
+      "coa-total": `${E.coa?.activeAccounts ?? 0} บัญชี`,
+    },
+  },
   // WO 1.4: ตัวเลขบนจอต้องตรงเฉลย g2 เป๊ะ (14,900 + 9,301.87 + WHT 698.13 = 24,900 · ค้าง 0)
   "1.4": {
     "receipt-payment": {
@@ -1586,7 +1709,7 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "kpi-receivable": "฿486,300.00",
       "kpi-payable": "฿212,750.00",
       "kpi-overdue": "฿205,900.00",
-      "kpi-cash": "฿1,284,560.00",
+      // "kpi-cash" (ยอดเงินรวม) = ยอด ณ วันนี้แล้ว ⇒ ตรวจใน qc-acc-v2-home/dashboard ที่ส่ง now = QC.today
     },
   },
   // WO 2.3 — ov-total/ov-paid/ov-awaiting/ov-overdue ต้องตรงเฉลยอิสระ (acc-v2-expected.json.overview
@@ -1633,12 +1756,8 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
   },
   // WO 5.1 — ยอดกลุ่ม/ยอดต่อช่องทาง ต้องตรงเฉลย seed เป๊ะ (คีย์ finance/financeGroups/financeAccounts)
   "5.1": {
-    "finance-list": {
-      "finance-group-total-CASH": bahtStr(E.financeGroups?.CASH ?? 0),
-      "finance-group-total-BANK_SAVINGS": bahtStr(E.financeGroups?.BANK_SAVINGS ?? 0),
-      "finance-group-total-E_WALLET": bahtStr(E.financeGroups?.E_WALLET ?? 0),
-      "finance-group-total-PETTY_CASH": bahtStr(E.financeGroups?.PETTY_CASH ?? 0),
-    },
+    // (WO 6.1 รอบ 2: ยอดกลุ่มคิด ณ วันนี้แล้ว — ย้ายไปตรวจใน qc-acc-v2-finance FN1.3–1.6 ที่ตรึง asOf ได้)
+    "finance-list": {},
   },
   // WO 5.3 — 4 ไทล์ของหน้ากระทบยอด ต้องตรงเฉลย fixture (คิดด้วย SQL อิสระใน generator)
   "5.3": {
@@ -1680,11 +1799,9 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "fov-tile-outflow": bahtStr(E.dashboard?.calendar?.tiles?.outflow?.amount ?? 0),
       "fov-tile-overdue-receivable": bahtStr(E.dashboard?.calendar?.tiles?.overdueReceivable?.amount ?? 0),
       "fov-tile-overdue-payable": bahtStr(E.dashboard?.calendar?.tiles?.overduePayable?.amount ?? 0),
-      "fov-cash-total": bahtStr(E.finance?.total ?? 0),
+      // "fov-cash-total"/"petty-balance-*" = ยอดเงิน ณ วันนี้ ⇒ ตรวจในข้อสอบ (finance-overview FO4) แทนภาพ
     },
-    "petty-cash-list": {
-      [`petty-balance-${E.pettyCash?.id}`]: bahtStr(E.pettyCash?.balance ?? 0),
-    },
+    "petty-cash-list": {},
   },
   "3.2": {
     "contacts-list": {
@@ -2017,7 +2134,9 @@ try {
           return {
             title: document.title,
             h1: document.querySelector("h1")?.textContent?.trim() ?? "",
-            all: (document.body.innerText ?? "").slice(0, 20000),
+            // WO 6.1 รอบ 2: เดิมตัดที่ 20,000 ตัว — หน้ายาว (เช่น ผูกบัญชีอัตโนมัติ 32 คีย์) ทำให้ตรวจ
+            //   ข้อความท้ายหน้าไม่เจอทั้งที่มีอยู่จริง · textContent เก็บข้อความที่ไม่ได้เรนเดอร์ด้วยจึงใช้ innerText เหมือนเดิม แค่ขยายเพดาน
+            all: (document.body.innerText ?? "").slice(0, 200000),
             text: (document.querySelector("main")?.textContent ?? document.body.textContent ?? "").slice(0, 4000),
             overflow: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
             viewportH: window.innerHeight,

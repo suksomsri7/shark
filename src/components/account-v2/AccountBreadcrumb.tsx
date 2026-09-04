@@ -16,7 +16,8 @@ export function AccountBreadcrumb({ groups, base }: { groups: AccountNavGroup[];
   if (!active || active.group.key === "home") {
     crumbs.push({ label: "หน้าหลัก" });
   } else {
-    crumbs.push({ label: active.group.label, href: active.group.href });
+    // WO 6.1: หมวด "บัญชี" ชื่อซ้ำกับรากพอดี ("บัญชี › บัญชี › ผังบัญชี") — f8 เขียน "บัญชี › ผังบัญชี"
+    if (active.group.label !== crumbs[0].label) crumbs.push({ label: active.group.label, href: active.group.href });
     // WO 3.4: ชื่อหมวดกับชื่อเมนูซ้ำกัน (เช่น "ผู้ติดต่อ › ผู้ติดต่อ") = ไม่ต้องซ้ำ — f5/g6 วาดไว้ระดับเดียว
     if (active.item && active.item.label !== active.group.label)
       crumbs.push({ label: active.item.label, href: active.item.href });

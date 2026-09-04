@@ -230,9 +230,14 @@ export type PettyCashRow = {
   lastTopUpAmountSatang: number | null;
 };
 
-export async function pettyCashList(ctx: DashCtx, holderNames?: Map<string, string>): Promise<PettyCashRow[]> {
+export async function pettyCashList(
+  ctx: DashCtx,
+  holderNames?: Map<string, string>,
+  opts: { asOf?: Date } = {},
+): Promise<PettyCashRow[]> {
   const { financeBalances } = await import("./finance");
-  const rows = await financeBalances(ctx.tenantId, ctx.systemId);
+  // WO 6.1 รอบ 2: ยอดกล่องสำรองจ่าย = ยอด "ณ วันที่" เดียวกับหน้าช่องทางการเงิน/ผังบัญชี
+  const rows = await financeBalances(ctx.tenantId, ctx.systemId, opts.asOf ?? new Date());
   const boxes = rows.filter((r) => r.type === "PETTY_CASH");
   if (boxes.length === 0) return [];
   const ids = boxes.map((b) => b.id);

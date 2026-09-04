@@ -315,3 +315,397 @@ export async function setMapping(
   });
   return { ok: true };
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ผังบัญชี V2 (WO 6.1 · DESIGN-SPEC-V2 §11.1 · เฟรม f8-chart-of-accounts.png)
+//
+// อยู่ในไฟล์นี้ (ไม่ใช่ coa-v2.ts) เพราะ fitness F5 ห้ามไฟล์โมดูล **ใหม่** import prisma ตรง
+// (ratchet baseline 45 ไฟล์ · ลดได้อย่างเดียว) — ส่วนที่เป็นตรรกะบริสุทธิ์ (โครงต้นไม้ · ชื่อหมวด ·
+// ช่วงรหัส · ป้ายภาษี/WHT · กติกาปิดใช้งาน · validate ฟอร์ม) อยู่ที่ `coa-v2.ts` และถูก import มาที่นี่
+// ═════════════════════════════════════════════════════════════════════════════
+
+import {
+  buildChartTree,
+  archiveBlockReason,
+  naturalAmount,
+  asOfCutoff,
+  bkkMonthStart,
+  bkkMonthKey,
+  prefixOf,
+  groupNameOf,
+  typeFromCode,
+  validateLedgerInput,
+  CHART_TYPE_LABEL,
+  CHART_TYPE_DIGIT,
+  type ChartTree,
+  type LedgerDetail,
+  type LedgerMovementRow,
+  type SaveLedgerInput,
+  type SaveLedgerResult,
+} from "./coa-v2";
+
+/**
+ * chartTree — ต้นไม้ผังบัญชี 3 ระดับ + จำนวนต่อหมวด + ยอดคงเหลือต่อบัญชี
+ * งบประมาณ query: **2 ครั้ง** (รายการบัญชี · Σ debit/credit ต่อบัญชีทั้งหมด) — ประกอบต้นไม้ในหน่วยความจำ
+ * (SPEC §11.1 · เพดานของ WO คือ ≤6 query ต่อการเปิดหน้า — ยอดเดือนนี้/รายละเอียดอยู่ที่ ledgerDetail)
+ */
+export async function chartTree(
+  ctx: CoaCtx,
+  opts: { q?: string; includeArchived?: boolean; asOf?: Date } = {},
+): Promise<ChartTree> {
+  const cutoff = asOfCutoff(opts.asOf ?? new Date());
+  const [ledgers, sums] = await Promise.all([
+    prisma.accountLedger.findMany({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        nameEn: true,
+        type: true,
+        isSystem: true,
+        archivedAt: true,
+        level: true,
+      },
+      orderBy: [{ code: "asc" }],
+    }),
+    // ยอด "ณ วันที่" — ไม่รวมรายการที่ลงวันที่ล่วงหน้า (ดู asOfCutoff ใน coa-v2.ts)
+    prisma.accountJournalLine.groupBy({
+      by: ["accountId"],
+      where: { systemId: ctx.systemId, entry: { date: { lt: cutoff } } },
+      _sum: { debit: true, credit: true },
+    }),
+  ]);
+  const sumBy = new Map(sums.map((s) => [s.accountId, { debit: s._sum.debit ?? 0, credit: s._sum.credit ?? 0 }]));
+  return buildChartTree(ledgers, sumBy, opts);
+}
+
+export async function ledgerDetail(ctx: CoaCtx, id: string, opts: { asOf?: Date } = {}): Promise<LedgerDetail | null> {
+  const led = await prisma.accountLedger.findFirst({
+    where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId },
+  });
+  if (!led) return null;
+
+  // ยอด/รายการทั้งหมดในแผงนี้คิด "ณ วันที่ asOf" (ค่าเริ่มต้น = วันนี้) — รายการลงวันที่ล่วงหน้ายังไม่นับ
+  const asOf = opts.asOf ?? new Date();
+  const cutoff = asOfCutoff(asOf);
+  const monthFrom = bkkMonthStart(asOf);
+  const monthKey = bkkMonthKey(asOf);
+  const [allSum, monthSum, lines, finance, mappings, docLineCount] = await Promise.all([
+    prisma.accountJournalLine.aggregate({
+      where: { systemId: ctx.systemId, accountId: id, entry: { date: { lt: cutoff } } },
+      _sum: { debit: true, credit: true },
+      _count: { _all: true },
+    }),
+    prisma.accountJournalLine.aggregate({
+      where: { systemId: ctx.systemId, accountId: id, entry: { date: { gte: monthFrom, lt: cutoff } } },
+      _sum: { debit: true, credit: true },
+    }),
+    prisma.accountJournalLine.findMany({
+      where: { systemId: ctx.systemId, accountId: id, entry: { date: { lt: cutoff } } },
+      select: {
+        id: true,
+        debit: true,
+        credit: true,
+        note: true,
+        entry: { select: { id: true, date: true, docNo: true, memo: true, createdAt: true } },
+      },
+      orderBy: [{ entry: { date: "desc" } }, { entry: { createdAt: "desc" } }, { id: "desc" }],
+      take: 5,
+    }),
+    prisma.accountFinance.findFirst({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, ledgerAccountId: id },
+      select: { id: true, code: true, name: true },
+    }),
+    prisma.accountMapping.findMany({
+      where: { systemId: ctx.systemId, accountId: id },
+      select: { key: true },
+      orderBy: { key: "asc" },
+    }),
+    prisma.accountDocumentLine.count({ where: { systemId: ctx.systemId, accountId: id } }),
+  ]);
+
+  const balanceSatang = naturalAmount(led.type, allSum._sum.debit ?? 0, allSum._sum.credit ?? 0);
+  const monthDeltaSatang = naturalAmount(led.type, monthSum._sum.debit ?? 0, monthSum._sum.credit ?? 0);
+
+  // ยอดคงเหลือสะสมย้อนหลัง: แถวใหม่สุด = ยอดคงเหลือปัจจุบัน แล้วถอยทีละบรรทัด
+  let running = balanceSatang;
+  const movements: LedgerMovementRow[] = lines.map((l) => {
+    const row: LedgerMovementRow = {
+      id: l.id,
+      entryId: l.entry.id,
+      date: l.entry.date,
+      docNo: l.entry.docNo,
+      memo: l.note ?? l.entry.memo,
+      debit: l.debit,
+      credit: l.credit,
+      runningSatang: running,
+    };
+    running -= naturalAmount(led.type, l.debit, l.credit);
+    return row;
+  });
+
+  // 🔴 ตัวนับสำหรับกติกา "ปิดใช้งานไม่ได้" ต้องนับ **ทุกบรรทัด** ไม่ใช่แค่ถึง asOf
+  //    (บัญชีที่มีรายการลงวันที่ล่วงหน้าก็ถือว่า "ถูกใช้แล้ว")
+  const journalLinesAll = await prisma.accountJournalLine.count({ where: { systemId: ctx.systemId, accountId: id } });
+  const usage = {
+    journalLines: journalLinesAll,
+    docLines: docLineCount,
+    mappings: mappings.length,
+    finance: finance ? 1 : 0,
+  };
+
+  return {
+    id: led.id,
+    code: led.code,
+    name: led.name,
+    nameEn: led.nameEn,
+    type: led.type,
+    typeLabel: CHART_TYPE_LABEL[led.type],
+    isSystem: led.isSystem,
+    archivedAt: led.archivedAt,
+    description: led.description,
+    defaultWhtRateBp: led.defaultWhtRateBp,
+    defaultWhtType: led.defaultWhtType,
+    vatTreatment: led.vatTreatment,
+    group1: { code: CHART_TYPE_DIGIT[led.type], name: CHART_TYPE_LABEL[led.type] },
+    group2: { code: prefixOf(led.code, 2), name: groupNameOf(prefixOf(led.code, 2)) },
+    group3: { code: prefixOf(led.code, 3), name: groupNameOf(prefixOf(led.code, 3)) },
+    asOf,
+    balanceSatang,
+    monthDeltaSatang,
+    monthKey,
+    finance,
+    mappingKeys: mappings.map((m) => m.key),
+    movements,
+    blockReason: archiveBlockReason(led.isSystem, usage),
+    usage,
+  };
+}
+
+/** ข้อความไทยบอกเหตุที่ "ปิดใช้งาน" ไม่ได้ · null = ปิดได้ */
+
+export async function createLedgerV2(ctx: CoaCtx, input: SaveLedgerInput): Promise<SaveLedgerResult> {
+  const fields = validateLedgerInput(input);
+  if (Object.keys(fields).length) return { ok: false, fields };
+  const code = input.code.trim();
+  const type = typeFromCode(input.groupPrefix) ?? typeFromCode(code);
+  if (!type) return { ok: false, fields: { code: "รหัสบัญชีต้องขึ้นต้นด้วย 1–6 (หมวดบัญชี)" } };
+
+  const dup = await prisma.accountLedger.findFirst({
+    where: { systemId: ctx.systemId, code },
+    select: { id: true },
+  });
+  if (dup) return { ok: false, fields: { code: `มีรหัสบัญชี ${code} อยู่แล้ว` } };
+
+  const l = await prisma.accountLedger.create({
+    data: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      code,
+      name: input.name.trim(),
+      nameEn: input.nameEn?.trim() || null,
+      type,
+      cashflowActivity: code.startsWith("16") ? "INVESTING" : code.startsWith("3") ? "FINANCING" : "OPERATING",
+      isSystem: false,
+      level: 4,
+      description: input.description?.trim() || null,
+      defaultWhtRateBp: input.defaultWhtRateBp ?? null,
+      defaultWhtType: input.defaultWhtType?.trim() || null,
+      vatTreatment: input.vatTreatment?.trim() || null,
+    },
+    select: { id: true, code: true },
+  });
+  return { ok: true, id: l.id, code: l.code };
+}
+
+export async function updateLedgerV2(ctx: CoaCtx, id: string, input: SaveLedgerInput): Promise<SaveLedgerResult> {
+  const led = await prisma.accountLedger.findFirst({
+    where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId },
+    select: { id: true, code: true, isSystem: true },
+  });
+  if (!led) return { ok: false, fields: { code: "ไม่พบบัญชีนี้" } };
+
+  const fields = validateLedgerInput(input);
+  const code = input.code.trim();
+  // บัญชีระบบ: แก้ชื่อ/คำอธิบาย/WHT/ภาษีได้ แต่ห้ามย้ายรหัส (งบ/mapping อ้างรหัสเดิม)
+  if (led.isSystem && code !== led.code) fields.code = "บัญชีระบบเปลี่ยนรหัสไม่ได้";
+  if (Object.keys(fields).length) return { ok: false, fields };
+
+  if (code !== led.code) {
+    const dup = await prisma.accountLedger.findFirst({
+      where: { systemId: ctx.systemId, code, NOT: { id } },
+      select: { id: true },
+    });
+    if (dup) return { ok: false, fields: { code: `มีรหัสบัญชี ${code} อยู่แล้ว` } };
+  }
+
+  const type = typeFromCode(input.groupPrefix) ?? typeFromCode(code);
+  await prisma.accountLedger.update({
+    where: { id },
+    data: {
+      code: led.isSystem ? undefined : code,
+      name: input.name.trim(),
+      nameEn: input.nameEn?.trim() || null,
+      type: led.isSystem || !type ? undefined : type,
+      description: input.description?.trim() || null,
+      defaultWhtRateBp: input.defaultWhtRateBp ?? null,
+      defaultWhtType: input.defaultWhtType?.trim() || null,
+      vatTreatment: input.vatTreatment?.trim() || null,
+    },
+  });
+  return { ok: true, id, code };
+}
+
+/** เปิด/ปิดใช้งานบัญชี (SPEC §11.1 toggle) — ปิดได้เฉพาะบัญชีที่ยังไม่ถูกใช้ · กู้คืนได้เสมอ */
+export async function setLedgerActive(
+  ctx: CoaCtx,
+  id: string,
+  active: boolean,
+): Promise<{ ok: true; active: boolean } | { ok: false; reason: string }> {
+  const led = await prisma.accountLedger.findFirst({
+    where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId },
+    select: { id: true, isSystem: true, archivedAt: true },
+  });
+  if (!led) return { ok: false, reason: "ไม่พบบัญชีนี้" };
+
+  if (active) {
+    if (!led.archivedAt) return { ok: true, active: true };
+    await prisma.accountLedger.update({ where: { id }, data: { archivedAt: null } });
+    return { ok: true, active: true };
+  }
+
+  if (led.archivedAt) return { ok: true, active: false };
+  const [journalLines, docLines, mappings, finance] = await Promise.all([
+    prisma.accountJournalLine.count({ where: { systemId: ctx.systemId, accountId: id } }),
+    prisma.accountDocumentLine.count({ where: { systemId: ctx.systemId, accountId: id } }),
+    prisma.accountMapping.count({ where: { systemId: ctx.systemId, accountId: id } }),
+    prisma.accountFinance.count({ where: { systemId: ctx.systemId, ledgerAccountId: id } }),
+  ]);
+  const reason = archiveBlockReason(led.isSystem, { journalLines, docLines, mappings, finance });
+  if (reason) return { ok: false, reason };
+  await prisma.accountLedger.update({ where: { id }, data: { archivedAt: new Date() } });
+  return { ok: true, active: false };
+}
+
+/** รหัสบัญชีที่ใช้ไปแล้วทั้งหมด (รวมที่ปิดใช้งาน) — modal ใช้หา "รหัสถัดไปที่ว่าง" */
+export async function usedLedgerCodes(ctx: CoaCtx): Promise<Set<string>> {
+  const rows = await prisma.accountLedger.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId },
+    select: { code: true },
+  });
+  return new Set(rows.map((r) => r.code));
+}
+
+/**
+ * createLedgerFromImport — สร้างบัญชี 1 ตัวจากแถว CSV (WO 6.1 · §11.1 "นำเข้าผังบัญชี")
+ * ต่างจาก createLedgerV2 ตรงที่ไม่บังคับให้เลือก "หมวดย่อย" (CSV ใช้คอลัมน์ประเภท/รหัสนำหน้าแทน)
+ * และ **ไม่ทับของเดิม** — รหัสซ้ำ = คืน ok:false ให้ตัวเรียกนับเป็น "ข้าม" (นำเข้าไฟล์เดิมซ้ำ = 0 รายการใหม่)
+ */
+export async function createLedgerFromImport(
+  ctx: CoaCtx,
+  input: { code: string; name: string; nameEn?: string | null; type: string; description?: string | null },
+): Promise<{ ok: boolean; id?: string; reason?: string }> {
+  const code = input.code.trim();
+  if (!/^\d{3,6}$/.test(code)) return { ok: false, reason: "รหัสบัญชีต้องเป็นตัวเลข 3–6 หลัก" };
+  if (!input.name.trim()) return { ok: false, reason: "ต้องระบุชื่อบัญชี" };
+  const type = (typeFromCode(code) === null ? null : (input.type as AccountLedgerType)) ?? null;
+  if (!type) return { ok: false, reason: "รหัสบัญชีต้องขึ้นต้นด้วย 1–6 (หมวดบัญชี)" };
+  try {
+    const l = await prisma.accountLedger.create({
+      data: {
+        tenantId: ctx.tenantId,
+        systemId: ctx.systemId,
+        code,
+        name: input.name.trim(),
+        nameEn: input.nameEn?.trim() || null,
+        type,
+        cashflowActivity: activityFor(code),
+        isSystem: false,
+        level: 4,
+        description: input.description?.trim() || null,
+      },
+      select: { id: true },
+    });
+    return { ok: true, id: l.id };
+  } catch {
+    // ชน unique(systemId, code) จากแถว/คำขออื่นที่วิ่งพร้อมกัน = ถือเป็น "ข้าม" ไม่ใช่ error
+    return { ok: false, reason: `มีรหัสบัญชี ${code} อยู่แล้ว` };
+  }
+}
+
+// ─────────────────── บัญชีแยกประเภท (หน้า /account/ledger — ปลายทางของลิงก์ "ดูบัญชีแยกประเภท") ───────────────────
+
+export type LedgerRunningRow = {
+  id: string;
+  entryId: string;
+  date: Date;
+  docNo: string;
+  memo: string | null;
+  debit: number;
+  credit: number;
+  /** ยอดสะสม (Dr−Cr) หลังบรรทัดนี้ */
+  running: number;
+  /** ใบสำคัญนี้ถูกกลับรายการไปแล้ว (ยังต้องนับในยอด — สมุดรายวัน immutable) */
+  reversed: boolean;
+};
+
+export type LedgerRunning = {
+  opening: number;
+  rows: LedgerRunningRow[];
+  movementDebit: number;
+  movementCredit: number;
+  closing: number;
+};
+
+/**
+ * ยอดยกมา + ความเคลื่อนไหวรายบรรทัด + ยอดยกไป ของบัญชีเดียวในช่วงวันที่
+ *
+ * 🐞 WO 6.1 รอบ 2 (บั๊กเดิมของหน้า /account/ledger): เดิมกรอง `entry.status = POSTED`
+ *    แต่การกลับรายการ = ตั้งใบเดิมเป็น REVERSED (บรรทัดยังอยู่) + ลงใบตรงข้ามที่ POSTED
+ *    ⇒ กรอง POSTED = เหลือแต่ "ขากลับ" ยอดในหน้าเลยเพี้ยนไปคนละทางกับ reports.ts/finance.ts/ผังบัญชี
+ *    แก้: รวมทุกสถานะเหมือน reports.ts แล้วติดชิป "กลับรายการแล้ว" ให้ผู้ใช้เห็นว่าใบไหนถูกกลับ
+ */
+export async function ledgerRunning(
+  ctx: CoaCtx,
+  accountId: string,
+  range: { from: Date; to: Date },
+): Promise<LedgerRunning> {
+  const [openAgg, lines] = await Promise.all([
+    prisma.accountJournalLine.aggregate({
+      where: { systemId: ctx.systemId, accountId, entry: { date: { lt: range.from } } },
+      _sum: { debit: true, credit: true },
+    }),
+    prisma.accountJournalLine.findMany({
+      where: { systemId: ctx.systemId, accountId, entry: { date: { gte: range.from, lte: range.to } } },
+      select: {
+        id: true,
+        debit: true,
+        credit: true,
+        note: true,
+        entry: { select: { id: true, date: true, docNo: true, memo: true, status: true, createdAt: true } },
+      },
+      orderBy: [{ entry: { date: "asc" } }, { entry: { createdAt: "asc" } }, { id: "asc" }],
+    }),
+  ]);
+
+  const opening = (openAgg._sum.debit ?? 0) - (openAgg._sum.credit ?? 0);
+  let running = opening;
+  const rows: LedgerRunningRow[] = lines.map((l) => {
+    running += l.debit - l.credit;
+    return {
+      id: l.id,
+      entryId: l.entry.id,
+      date: l.entry.date,
+      docNo: l.entry.docNo,
+      memo: l.note ?? l.entry.memo,
+      debit: l.debit,
+      credit: l.credit,
+      running,
+      reversed: l.entry.status === "REVERSED",
+    };
+  });
+  const movementDebit = rows.reduce((s, r) => s + r.debit, 0);
+  const movementCredit = rows.reduce((s, r) => s + r.credit, 0);
+  return { opening, rows, movementDebit, movementCredit, closing: opening + movementDebit - movementCredit };
+}
