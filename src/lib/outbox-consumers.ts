@@ -139,7 +139,8 @@ const messageIdOf = (payload: unknown): string | null => {
 /** ระบบบัญชีของร้านที่เปิดรับบิลจากแชทไว้ — ไม่เปิด/ไม่มีระบบบัญชี = null (ไม่ทำอะไรต่อ) */
 async function accountSystemForChatInbox(tenantId: string): Promise<string | null> {
   const links = await prisma.accountSystemLink.findMany({
-    where: { tenantId, archivedAt: null },
+    // WO 8.3: `enabled` = สวิตช์ "ตัดการเชื่อม" ของหน้า §9.5 — ตัดแล้วต้องหยุดดูดบิลเข้ากล่องขาเข้าด้วย
+    where: { tenantId, archivedAt: null, enabled: true },
     select: { systemId: true, config: true },
   });
   for (const l of links) {
@@ -299,6 +300,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // Wave4-C: AppNotification "ได้รับมอบหมายงาน" ถูกสร้างแล้วใน kanban.notifyAssignment —
   // consumer ปิด event DONE + จุดให้ Automation/Webhooks ยิงเมื่อมอบหมายการ์ด
   "kanban.card.assigned": withAutomation(async () => {}),
+  // WO 8.3 (§9.5 แอปภายนอก/API): เหตุการณ์บัญชี — ผลข้างเคียงเกิดในโมดูลบัญชีไปแล้ว
+  //   consumer เป็น no-op เพื่อ **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล)
+  //   + เป็นจุดให้ `withWebhooks` ยิงฮุคไปยังปลายทางที่ร้านสมัครไว้ (หน้า "แอปภายนอก/API")
+  "account.document.approved": withAutomation(async () => {}),
+  "account.payment.recorded": withAutomation(async () => {}),
+  "account.invoice.paid": withAutomation(async () => {}),
+  "account.period.closed": withAutomation(async () => {}),
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

@@ -42,6 +42,17 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
     return;
   }
 
+  // WO 8.3 (§9.4 เพดานอนุมัติ): PO ที่ผู้กดอนุมัติ "เกินเพดาน" ถูกยื่นเข้าสายอนุมัติแทน
+  //   เมื่อผู้มีอำนาจสูงกว่ากดผ่านในสายอนุมัติ → ดันเอกสารเป็น APPROVED ให้เอง
+  //   guard สถานะ AWAITING_APPROVAL ⇒ ยิงซ้ำ/replay ปลอดภัย · ปฏิเสธ → REJECTED (เหมือนกด "ไม่อนุมัติ")
+  if (entityType === "AccountDocument") {
+    await prisma.accountDocument.updateMany({
+      where: { id: entityId, tenantId: evt.tenantId, status: "AWAITING_APPROVAL" },
+      data: approved ? { status: "APPROVED" } : { status: "REJECTED", voidReason: "ไม่อนุมัติผ่านสายอนุมัติ" },
+    });
+    return;
+  }
+
   if (entityType === "HrLeave") {
     await prisma.hrLeave.updateMany({
       where: { id: entityId, tenantId: evt.tenantId, status: "PENDING" },

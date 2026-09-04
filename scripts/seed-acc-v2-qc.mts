@@ -215,7 +215,7 @@ const unit = await prisma.businessUnit.create({
 });
 
 // สร้างระบบแบบเดียวกับ DNA onboarding: CREATE_SYSTEM → LINK_UNIT (AppSystemUnit) → LINK_ACCOUNT_POS
-const mkSystem = async (type: "ACCOUNT" | "POS" | "INVENTORY" | "MEMBER" | "CRM", name: string) => {
+const mkSystem = async (type: "ACCOUNT" | "POS" | "INVENTORY" | "MEMBER" | "CRM" | "CHAT" | "HR", name: string) => {
   const s = await sys.createSystem(tenantId, type, name);
   await sys.linkUnit(tenantId, s.id, unit.id);
   return s;
@@ -1955,6 +1955,96 @@ console.log(
   `⚙️  นโยบายบัญชี §9.3: ปีบัญชีเริ่ม เม.ย. · ล็อกก่อน 31 ส.ค. 2026 · ราคารวม VAT · สินค้าซ้ำ=ห้าม · QT→ใบรับมัดจำ · รายงานรายสัปดาห์`,
 );
 
+// ─────────────────── 8.15 สิทธิ์ผู้ใช้งาน §9.4 + การเชื่อมต่อ §9.5 (WO 8.3) ───────────────────
+//
+// ตั้งใจให้ครบทั้ง 3 สถานะของการ์ด §9.5: เชื่อมแล้ว (POS/CRM/สมาชิก/คลัง/แชท) · ยังไม่เชื่อม (HR) ·
+// ยังไม่มีระบบ (จอง/โรงแรม — SHARK ไม่มี SystemType พวกนี้)
+// และครบ 3 บทบาทของ §9.4: STAFF พนักงานขาย (ดู/สร้าง รายรับ) · STAFF ผู้อนุมัติ (เพดาน 50,000) · MANAGER
+const conn = await import("@/lib/modules/account/connections");
+const permSvc = await import("@/lib/modules/account/permissions-service");
+const approvalCap = await import("@/lib/modules/account/approval-cap");
+const approvalSvc = await import("@/lib/modules/approval/service");
+const apiKeysSvc = await import("@/lib/api-keys/service");
+const webhooksSvc = await import("@/lib/webhooks/service");
+
+const chatSys = await mkSystem("CHAT", "แชทลูกค้า");
+const hrSys = await mkSystem("HR", "พนักงานและเงินเดือน");
+await prisma.tenant.update({
+  where: { id: tenantId },
+  data: { enabledModules: ["ACCOUNT", "POS", "INVENTORY", "MEMBER", "CRM", "CHAT", "HR"] },
+});
+
+const CONN_CTX = { tenantId, systemId };
+// POS/CRM ถูกสร้างไว้แล้วตอนตั้งร้าน (บล็อก 2) — ที่นี่เพิ่มอีก 3 + ตั้งตัวเลือกให้ครบทุกใบ
+await conn.connect(CONN_CTX, "MEMBER", memSys.id, owner.id);
+await conn.connect(CONN_CTX, "INVENTORY", invSys.id, owner.id);
+await conn.connect(CONN_CTX, "CHAT", chatSys.id, owner.id);
+await conn.setLinkOptions(CONN_CTX, "POS", posSys.id, { autoCreateContact: true, syncProductPrices: true, autoPost: true }, owner.id);
+await conn.setLinkOptions(CONN_CTX, "CRM", crmSys.id, { autoCreateContact: true, autoPost: true }, owner.id);
+await conn.setLinkOptions(CONN_CTX, "MEMBER", memSys.id, { autoCreateContact: true }, owner.id); // ลงบัญชีอัตโนมัติ = ปิด (ให้เห็นชิป "(ปิดอยู่)")
+await conn.setLinkOptions(CONN_CTX, "CHAT", chatSys.id, { autoCreateContact: true, inboxFromChat: true }, owner.id);
+await conn.setLinkOptions(CONN_CTX, "INVENTORY", invSys.id, { syncProductPrices: true, autoPost: true }, owner.id);
+
+// ── ผู้ใช้งาน 3 คน (นอกเหนือจากเจ้าของ) ──
+const SEED_STAFF = [
+  { email: "sales@siamdive-qc.test", name: "ปนัดดา ขายดี", role: "STAFF" as const },
+  { email: "approver@siamdive-qc.test", name: "วิชัย ผู้อนุมัติ", role: "STAFF" as const },
+  { email: "manager@siamdive-qc.test", name: "สุดา ผู้จัดการ", role: "MANAGER" as const },
+  // ตัวคุมผลลบ: พนักงานที่ไม่มีสิทธิ์บัญชีเลย → **ต้องไม่โผล่** ในตารางผู้ใช้งานของ §9.4
+  { email: "pos@siamdive-qc.test", name: "ธนพล หน้าร้าน", role: "STAFF" as const, permissions: { "pos.sale.create": true } },
+];
+const seedMemberships: Record<string, string> = {};
+// รันซ้ำได้: ตัวรีเซ็ตหัวสคริปต์ลบเฉพาะ user ของเจ้าของ ⇒ ผู้ใช้ชุดนี้ต้องล้างเอง (ไม่งั้น P2002 email ซ้ำ)
+await prisma.membership.deleteMany({ where: { user: { email: { in: SEED_STAFF.map((x) => x.email) } } } });
+await prisma.user.deleteMany({ where: { email: { in: SEED_STAFF.map((x) => x.email) } } });
+for (const st of SEED_STAFF) {
+  const u = await prisma.user.create({ data: { email: st.email, name: st.name } });
+  const m = await prisma.membership.create({
+    data: {
+      userId: u.id,
+      tenantId,
+      role: st.role,
+      unitAccess: ["*"],
+      acceptedAt: new Date(),
+      permissions: (st as { permissions?: Record<string, boolean> }).permissions ?? {},
+    },
+  });
+  seedMemberships[st.email] = m.id;
+}
+
+// ── บทบาทบัญชี 2 ตัว + ผูกคน (saveRole เขียนสิทธิ์จริงลง Membership.permissions ให้ด้วย) ──
+const SALES_CELLS = { revenue: { view: true, create: true }, contact: { view: true }, product: { view: true } };
+const APPROVER_CELLS = {
+  revenue: { view: true, approve: true },
+  expense: { view: true, approve: true },
+  accounting: { view: true },
+};
+await permSvc.saveRole(CONN_CTX, owner.id, { key: "role1", name: "พนักงานขาย", cells: SALES_CELLS, capSatang: null });
+await permSvc.saveRole(CONN_CTX, owner.id, { key: "role2", name: "ผู้อนุมัติ", cells: APPROVER_CELLS, capSatang: 5_000_000 });
+await permSvc.assignRole(CONN_CTX, owner.id, seedMemberships["sales@siamdive-qc.test"], "role1");
+await permSvc.assignRole(CONN_CTX, owner.id, seedMemberships["approver@siamdive-qc.test"], "role2");
+
+// ── สายอนุมัติ: เกินเพดานแล้วต้องมี "คนอื่น" มากดต่อได้จริง (เกณฑ์ผ่าน BLUEPRINT 8.3) ──
+await approvalSvc.createPolicy(
+  { tenantId },
+  {
+    name: "อนุมัติเอกสารบัญชีเกินเพดาน",
+    entityType: approvalCap.ACCOUNT_APPROVAL_ENTITY,
+    systemId,
+    steps: [{ order: 1, approverRole: "OWNER" }],
+  },
+);
+
+// ── คีย์ API 1 อัน + ปลายทาง webhook 1 อัน (ปลายทางเป็น localhost ที่ไม่มีใครฟัง = ส่งแล้วล้มเป็นปกติ) ──
+const seedApiKey = await apiKeysSvc.createApiKey({ tenantId }, "สำนักงานบัญชี");
+const seedHook = await webhooksSvc.createEndpoint(
+  { tenantId },
+  { url: "http://127.0.0.1:9/shark-acc-v2-qc", events: ["account.document.approved", "account.payment.recorded"] },
+);
+console.log(
+  `🔐 สิทธิ์/การเชื่อมต่อ §9.4–9.5: ผู้ใช้ +3 · บทบาท 2 (พนักงานขาย · ผู้อนุมัติ เพดาน ฿50,000) · เชื่อม 5 ระบบ · HR ยังไม่เชื่อม · คีย์ API ${seedApiKey.prefix}… · webhook ${seedHook.id}`,
+);
+
 // ─────────────────────────── 9. อ่านผลจริงกลับมา + เขียนเฉลย ───────────────────────────
 
 const stats = await svc.overviewStats(tenantId, systemId);
@@ -2370,6 +2460,47 @@ const expected = {
     INVENTORY: invSys.id,
     MEMBER: memSys.id,
     CRM: crmSys.id,
+    // WO 8.3 — เพิ่มเพื่อให้หน้า §9.5 มีการ์ดครบทั้ง 3 สถานะ (CHAT เชื่อม · HR ยังไม่เชื่อม)
+    CHAT: chatSys.id,
+    HR: hrSys.id,
+  },
+  // ── WO 8.3 (§9.4–§9.5) — เฉลยเขียนจาก "ค่าที่ seed ตั้ง" ตรง ๆ ไม่ได้อ่านกลับจาก DB ──
+  permissions: {
+    memberships: seedMemberships,
+    roles: [
+      { key: "role1", name: "พนักงานขาย", capSatang: null },
+      { key: "role2", name: "ผู้อนุมัติ", capSatang: 5_000_000 },
+    ],
+    /** คีย์สิทธิ์ที่ "พนักงานขาย" ต้องได้จริงบน Membership.permissions */
+    salesKeys: ["account.contact.manage", "account.doc.create", "account.doc.public_link", "account.doc.view", "account.product.manage"],
+    /** คีย์สิทธิ์ที่ "ผู้อนุมัติ" ต้องได้จริง (+ เพดาน 5,000,000 สตางค์) */
+    approverKeys: [
+      "account.approve.limit",
+      "account.doc.approve",
+      "account.doc.issue",
+      "account.doc.view",
+      "account.journal.view",
+      "account.report.view",
+      "account.tax.view",
+    ],
+    approverCapSatang: 5_000_000,
+    accountActionKeys: 36,
+    /** คนที่ไม่มีสิทธิ์บัญชีเลย (ตัวคุมผลลบของตัวกรองตารางผู้ใช้งาน) */
+    noAccountEmail: "pos@siamdive-qc.test",
+    /** ผู้ใช้ที่ต้องเห็นในตาราง §9.4 (เจ้าของ · ผู้จัดการ · ขาย · อนุมัติ · ผู้อัปโหลดเอกสารจาก 7.1) */
+    visibleUsers: 5,
+    totalMemberships: 6,
+  },
+  connections: {
+    linked: ["POS", "CRM", "MEMBER", "INVENTORY", "CHAT"],
+    // HR = มีระบบแต่ยังไม่ผูก · BUSINESS (จอง/ทริป) = ผูกกับ BusinessUnit "สาขาป่าตอง" ได้แต่ยังไม่ผูก
+    unlinked: ["HR", "BUSINESS"],
+    posOptions: ["autoCreateContact", "syncProductPrices", "autoPost"],
+    memberOptions: ["autoCreateContact"],
+    chatOptions: ["autoCreateContact", "inboxFromChat"],
+    apiKeyPrefix: seedApiKey.prefix,
+    webhookId: seedHook.id,
+    webhookUrl: "http://127.0.0.1:9/shark-acc-v2-qc",
   },
   receivable: 49_430_000,
   receivableDocs: 20,

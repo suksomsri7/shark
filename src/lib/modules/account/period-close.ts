@@ -240,6 +240,16 @@ export async function closePeriodWithChecklist(
     where: { periodKey },
     data: { checklist: checklist.items as never },
   });
+  // WO 8.3 (§9.5): แจ้งระบบภายนอกผ่าน webhook — idempotent ต่อ (systemId, งวด)
+  //   import แบบ lazy: period-close ถูก import จาก service ทางอ้อมได้ ⇒ import หัวไฟล์เสี่ยงวงกลม
+  const { emitAccountEvent } = await import("./service");
+  await emitAccountEvent({
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    type: "account.period.closed",
+    idempotencyKey: `account.period.closed#${ctx.systemId}#${periodKey}`,
+    payload: { periodKey, closedById: userId },
+  });
   return { ok: true, checklist };
 }
 

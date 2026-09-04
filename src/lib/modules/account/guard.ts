@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { assertAccountCan } from "./access";
+import { accountCan, assertAccountCan } from "./access";
 
 // โหลดระบบบัญชี (feature) + ตรวจว่าเป็นของ tenant + ชนิด ACCOUNT
 // opts.can = action สิทธิ์ที่ต้องมี "ก่อนโหลดข้อมูลใด ๆ" (WO 0.2 — ด่านระดับ page)
@@ -21,6 +21,32 @@ export async function loadAccountSystem(systemId: string, opts?: { can?: string 
  */
 export async function requireAccountPage(systemId: string, action: string) {
   return loadAccountSystem(systemId, { can: action });
+}
+
+/**
+ * ธงสิทธิ์สำหรับ "ซ่อน/แสดงปุ่ม" บนหน้าเอกสาร (WO 8.3 · เกณฑ์ผ่าน BLUEPRINT 8.3)
+ *
+ * 🔴 ปุ่มที่ซ่อนคือ **ผิวหน้า** ของกติกาเดียวกับ action: ทั้งคู่ถาม `accountCan()` ตัวเดียวกัน
+ *    ⇒ ปิดสิทธิ์ "รับ/จ่ายเงิน" แล้วปุ่มหาย **และ** ยิง action ตรง ๆ ก็ยังถูกปฏิเสธ (403)
+ *    ห้ามใช้ธงพวกนี้แทนด่านจริง — ด่านจริงยังอยู่ที่ `assertAccountCan` ในทุก action เหมือนเดิม
+ */
+export type AccountPermFlags = {
+  recordPayment: boolean;
+  approve: boolean;
+  void: boolean;
+  issue: boolean;
+  create: boolean;
+};
+
+export async function accountPermFlags(systemId: string): Promise<AccountPermFlags> {
+  const { auth } = await loadAccountSystem(systemId);
+  return {
+    recordPayment: accountCan(auth, "account.payment.record"),
+    approve: accountCan(auth, "account.doc.approve"),
+    void: accountCan(auth, "account.doc.void"),
+    issue: accountCan(auth, "account.doc.issue"),
+    create: accountCan(auth, "account.doc.create"),
+  };
 }
 
 /**
@@ -149,6 +175,10 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   // WO 8.1 (§9.2): หน้า "ตั้งค่า › เอกสารและเลขที่" — แก้เลขรัน/นโยบายเอกสาร ⇒ ต้องมีสิทธิ์ตั้งค่าเต็ม
   "settings/documents/page.tsx": "account.settings.manage",
   "settings/policy/page.tsx": "account.settings.manage", // WO 8.2 §9.3
+  // WO 8.3 (§9.4–§9.5): สิทธิ์ผู้ใช้งาน + การเชื่อมต่อ — แก้ได้ = แก้สิทธิ์คนอื่น/ท่อเงินเข้าบัญชี ⇒ สิทธิ์ตั้งค่าเต็ม
+  //   (การแจกสิทธิ์ให้คนอื่นยังต้องผ่านด่านที่ 2 ของ staff/service ซึ่งบังคับ `settings.staff.write` อีกชั้น)
+  "settings/permissions/page.tsx": "account.settings.manage",
+  "settings/connections/page.tsx": "account.settings.manage",
   "tax/export/route.ts": "account.tax.view",
   "tax/page.tsx": "account.tax.view",
   "wht/[certId]/print/page.tsx": "account.wht.manage",

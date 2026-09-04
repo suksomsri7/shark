@@ -585,8 +585,9 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
         page({ label: "เอกสารและเลขที่", href: `${base}/settings/documents`, status: "ready", icon: "doc", testId: "SETTINGS_DOC" }),
         // WO 8.2: เปิดใช้แล้ว (§9.3)
         page({ label: "นโยบายบัญชี", href: `${base}/settings/policy`, status: "ready", icon: "lock", testId: "SETTINGS_POLICY" }),
-        soon("สิทธิ์ผู้ใช้งาน", "users", "SETTINGS_PERMISSIONS"),
-        soon("การเชื่อมต่อ", "link", "SETTINGS_CONNECTIONS"),
+        // WO 8.3: เปิดใช้แล้ว (§9.4–§9.5)
+        page({ label: "สิทธิ์ผู้ใช้งาน", href: `${base}/settings/permissions`, status: "ready", icon: "users", testId: "SETTINGS_PERMISSIONS" }),
+        page({ label: "การเชื่อมต่อ", href: `${base}/settings/connections`, status: "ready", icon: "link", testId: "SETTINGS_CONNECTIONS" }),
         soon("แพ็กเกจและการใช้งาน", "tag", "SETTINGS_PLAN"),
       ],
     },

@@ -578,6 +578,15 @@ model AccountSettings {
   /** หัก ณ ที่จ่ายเริ่มต้นต่อประเภทเงินได้ — Json = { incomeType, rateBp, expenseAccountCodes[] }[] */
   whtDefaults          Json    @default("[]")
 
+  // ─────────── §9.4 สิทธิ์ผู้ใช้งาน (WO 8.3 · เฟรม g13) ───────────
+  // 🔴 ที่นี่เก็บแค่ "แม่แบบ" (บทบาทบัญชี) — **สิทธิ์ที่บังคับใช้จริงยังอยู่ที่ `Membership.permissions` เท่านั้น**
+  //    (assertAccountCan → evaluate อ่านที่นั่นที่เดียว) การบันทึกบทบาทจะเขียนสิทธิ์ลง Membership ให้ทุกคนในบทบาทนั้น
+  //    ⇒ ไม่มีทางที่หน้าจอจะโชว์สิทธิ์ที่ระบบไม่ได้บังคับจริง (ไม่มี "สิทธิ์ผี")
+  /** บทบาทบัญชีของร้าน — Json = { key, name, cells: {group:{col:boolean}}, capSatang: number|null }[] */
+  accountRoles         Json    @default("[]")
+  /** ใครอยู่บทบาทไหน — Json = { [membershipId]: roleKey } */
+  accountRoleMembers   Json    @default("{}")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

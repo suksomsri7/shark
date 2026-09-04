@@ -25,6 +25,7 @@ import {
   convertPOAction,
 } from "@/lib/modules/account/expense-actions";
 import { refundDepositFormAction } from "@/lib/modules/account/payment-actions";
+import { accountPermFlags, type AccountPermFlags } from "@/lib/modules/account/guard";
 // WO 1.9 — ⋯ "เตือนชำระ" (ส่งอีเมลจริง) + "ตั้งเป็นเอกสารประจำ"
 import { sendPaymentReminderAction } from "@/lib/modules/account/recurring-actions";
 import { paymentReminderBlockReason } from "@/lib/modules/account/service";
@@ -91,6 +92,7 @@ function ActionRow({
   editPath,
   vatRegistered,
   targets,
+  perm,
 }: {
   data: DocDetailData;
   systemId: string;
@@ -99,11 +101,14 @@ function ActionRow({
   editPath: string;
   vatRegistered: boolean;
   targets: AccountDocType[];
+  /** WO 8.3 — ธงสิทธิ์ของผู้ใช้ปัจจุบัน (ปุ่มหาย = ไม่มีสิทธิ์ · action ก็ปฏิเสธด้วยกติกาเดียวกัน) */
+  perm: AccountPermFlags;
 }) {
   const dt = data.docType;
   const isPO = PO_TYPES.includes(dt);
   const isAdjustReceived = ADJUST_RECEIVED_TYPES.includes(dt);
   const canPay =
+    perm.recordPayment &&
     (data.status === "AWAITING_PAYMENT" || data.status === "PARTIAL") &&
     (REVENUE_PAYABLE_TYPES.includes(dt) || EXPENSE_PAYABLE_TYPES.includes(dt));
   const canRefundDeposit = DEPOSIT_TYPES.includes(dt) && data.status === "AWAITING_DEDUCT";
@@ -694,8 +699,19 @@ function PayRequestsCard({ data, systemId }: { data: DocDetailData; systemId: st
   );
 }
 
-function PaymentsTab({ data, systemId, side }: { data: DocDetailData; systemId: string; side: "revenue" | "expense" }) {
+function PaymentsTab({
+  data,
+  systemId,
+  side,
+  perm,
+}: {
+  data: DocDetailData;
+  systemId: string;
+  side: "revenue" | "expense";
+  perm: AccountPermFlags;
+}) {
   const canPay =
+    perm.recordPayment &&
     (data.status === "AWAITING_PAYMENT" || data.status === "PARTIAL") &&
     (REVENUE_PAYABLE_TYPES.includes(data.docType) || EXPENSE_PAYABLE_TYPES.includes(data.docType));
   return (
@@ -858,7 +874,12 @@ export async function DocDetailPage({
   /** WO 1.9 — ข้อความสำเร็จ (เช่น "ส่งอีเมลเตือนชำระถึง … แล้ว") */
   msg?: string;
 }) {
-  const [data, settings] = await Promise.all([getDocDetailData(tenantId, systemId, docId), getSettings(tenantId, systemId)]);
+  const [data, settings, perm] = await Promise.all([
+    getDocDetailData(tenantId, systemId, docId),
+    getSettings(tenantId, systemId),
+    // WO 8.3 (§9.4): ธงสิทธิ์จริงของผู้ใช้ที่เปิดหน้านี้ — ใช้ซ่อนปุ่มที่เขากดไม่ได้
+    accountPermFlags(systemId),
+  ]);
   if (!data) notFound();
   if (expectDocType && data.docType !== expectDocType) notFound();
 
@@ -973,7 +994,7 @@ export async function DocDetailPage({
           </div>
         </div>
 
-        <ActionRow data={data} systemId={systemId} side={side} base={base} editPath={editPath} vatRegistered={settings.vatRegistered} targets={targets} />
+        <ActionRow data={data} systemId={systemId} side={side} base={base} editPath={editPath} vatRegistered={settings.vatRegistered} targets={targets} perm={perm} />
       </div>
 
       {/* ไทม์ไลน์เอกสาร */}
@@ -1000,6 +1021,7 @@ export async function DocDetailPage({
         side={side}
         vatRegistered={settings.vatRegistered}
         activeTab={TABS.some((t) => t.key === tab) ? (tab as TabKey) : "detail"}
+        perm={perm}
       />
     </div>
   );
@@ -1012,6 +1034,7 @@ function DocDetailTabsPanel({
   side,
   vatRegistered,
   activeTab,
+  perm,
 }: {
   data: DocDetailData;
   systemId: string;
@@ -1019,6 +1042,7 @@ function DocDetailTabsPanel({
   side: "revenue" | "expense";
   vatRegistered: boolean;
   activeTab: TabKey;
+  perm: AccountPermFlags;
 }) {
   const active = activeTab;
   const counts: Record<TabKey, number> = {
@@ -1046,7 +1070,7 @@ function DocDetailTabsPanel({
         ))}
       </div>
       {active === "detail" && <DetailTab data={data} vatRegistered={vatRegistered} base={base} />}
-      {active === "payments" && <PaymentsTab data={data} systemId={systemId} side={side} />}
+      {active === "payments" && <PaymentsTab data={data} systemId={systemId} side={side} perm={perm} />}
       {active === "gl" && <GlTab data={data} base={base} />}
       {active === "attachments" && <AttachmentsTab data={data} systemId={systemId} />}
       {active === "history" && <HistoryTab data={data} />}

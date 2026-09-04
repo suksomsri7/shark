@@ -114,6 +114,11 @@ enum AccountLinkedKind {
   POS
   BUSINESS
   CRM // ระบบ CRM ออกใบเสนอราคาเข้าบัญชีชุดนี้ (WO-0010)
+  // ── V2 (WO 8.3 · SPEC §9.5 · เฟรม g14) — additive ล้วน: ค่าเดิม 3 ตัวบนคงเดิมทุกประการ ──
+  MEMBER // ระบบสมาชิก (ขายให้สมาชิก → ผู้ติดต่อ/รายได้เข้าบัญชีชุดนี้)
+  INVENTORY // คลังสินค้า (ซิงก์สินค้า/ต้นทุน + ลงบัญชีสต็อก)
+  CHAT // แชทลูกค้า (ผู้ติดต่อจากห้องแชท + รับบิลจากแชทเข้ากล่องขาเข้า)
+  HR // พนักงานและเงินเดือน (ลงบัญชีเงินเดือน)
 }
 
 // ───────── 4.3 สินค้า / หน่วย / กลุ่มจัดประเภท ─────────
@@ -656,6 +661,11 @@ model AccountSystemLink {
   linkedKind AccountLinkedKind
   linkedId   String // AppSystem.id (POS) | BusinessUnit.id (business)
   config     Json              @default("{}")
+  // ── V2 (WO 8.3): "ตัดการเชื่อม" แบบไม่ลบแถว (ตัวเลือก/ประวัติยังอยู่ · เชื่อมกลับได้เหมือนเดิม)
+  //    false = ไม่ลงบัญชีให้ (กติกาความปลอดภัยของ §9.5: ไม่เชื่อม = ไม่ลงบัญชีให้)
+  enabled     Boolean  @default(true)
+  /** ผู้ที่แก้การเชื่อมต่อครั้งล่าสุด (User.id) — ไว้ตามรอยคู่กับ AuditLog */
+  updatedById String?
   archivedAt DateTime?
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt

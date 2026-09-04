@@ -317,6 +317,10 @@ const ALLOWED_EDGES = new Set([
   //   คลัง → บัญชี: syncItemToAccountProduct ผ่าน account/index (เส้น inventory→account เดิม)
   //   — Fable อนุมัติล่วงหน้าตามใบสั่งงาน WO 4.1
   "account→inventory",
+  // chokepoint (WO 8.3 — เพดานอนุมัติ §9.4): เกินเพดาน = ยื่นเข้า "สายอนุมัติ" กลางของแพลตฟอร์ม
+  //   (approval/service.submitForApproval) แทนการปฏิเสธเฉย ๆ ⇒ คนที่มีเพดานสูงกว่ามากดต่อได้
+  //   ทิศเดียว account→approval · ผลกลับเข้าเอกสารเกิดที่ composition root (approval-effects.ts)
+  "account→approval",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

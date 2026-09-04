@@ -57,6 +57,31 @@ export const POLICY_SETTINGS_SUBS: { key: string; label: string; soon?: boolean 
 
 export const DEFAULT_POLICY_SUB = "fiscal";
 
+/** หัวข้อย่อยของ "สิทธิ์ผู้ใช้งาน" (WO 8.3 · §9.4 — เฟรม g13 เมนูซ้าย) */
+export const PERMISSION_SETTINGS_SUBS: { key: string; label: string }[] = [
+  { key: "users", label: "ผู้ใช้งาน" },
+  { key: "matrix", label: "สิทธิ์การใช้งาน" },
+];
+
+export const DEFAULT_PERMISSION_SUB = "users";
+
+export function permissionSubLabel(key: string): string {
+  return PERMISSION_SETTINGS_SUBS.find((x) => x.key === key)?.label ?? PERMISSION_SETTINGS_SUBS[0].label;
+}
+
+/** หัวข้อย่อยของ "การเชื่อมต่อ" (WO 8.3 · §9.5 — เฟรม g14 เมนูซ้าย) */
+export const CONNECTION_SETTINGS_SUBS: { key: string; label: string; soon?: boolean }[] = [
+  { key: "shark", label: "ระบบใน SHARK" },
+  { key: "etax", label: "e-Tax Invoice", soon: true },
+  { key: "api", label: "แอปภายนอก/API" },
+];
+
+export const DEFAULT_CONNECTION_SUB = "shark";
+
+export function connectionSubLabel(key: string): string {
+  return CONNECTION_SETTINGS_SUBS.find((x) => x.key === key)?.label ?? CONNECTION_SETTINGS_SUBS[0].label;
+}
+
 export function policySubLabel(key: string): string {
   return POLICY_SETTINGS_SUBS.find((x) => x.key === key)?.label ?? POLICY_SETTINGS_SUBS[0].label;
 }
@@ -104,8 +129,31 @@ export function settingsGroups(base: string): SettingsGroup[] {
         soon: x.soon,
       })),
     },
-    { key: "permissions", label: "สิทธิ์ผู้ใช้งาน", icon: "users", path: `${root}/permissions`, items: [], soon: true },
-    { key: "connections", label: "การเชื่อมต่อ", icon: "link", path: `${root}/connections`, items: [], soon: true },
+    {
+      key: "permissions",
+      label: "สิทธิ์ผู้ใช้งาน",
+      icon: "users",
+      path: `${root}/permissions`,
+      items: PERMISSION_SETTINGS_SUBS.map((x) => ({
+        key: x.key,
+        label: x.label,
+        path: `${root}/permissions`,
+        sub: x.key,
+      })),
+    },
+    {
+      key: "connections",
+      label: "การเชื่อมต่อ",
+      icon: "link",
+      path: `${root}/connections`,
+      items: CONNECTION_SETTINGS_SUBS.map((x) => ({
+        key: x.key,
+        label: x.label,
+        path: `${root}/connections`,
+        sub: x.key,
+        soon: x.soon,
+      })),
+    },
     { key: "plan", label: "แพ็กเกจและการใช้งาน", icon: "tag", path: `${root}/plan`, items: [], soon: true },
   ];
 }

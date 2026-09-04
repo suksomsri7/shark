@@ -80,10 +80,19 @@ eq("A3", "userId ของเจ้าของตรงกับเฉลย", 
 
 const systems = await prisma.appSystem.findMany({ where: { tenantId }, select: { id: true, type: true, name: true } });
 const byType = new Map(systems.map((s) => [s.type, s]));
-eq("A4", "มีระบบครบ 5 (ACCOUNT · POS · INVENTORY · MEMBER · CRM)", [...byType.keys()].sort(), ["ACCOUNT", "CRM", "INVENTORY", "MEMBER", "POS"]);
+// WO 8.3: +CHAT +HR (หน้า §9.5 ต้องมีการ์ดครบทั้ง "เชื่อมแล้ว" และ "ยังไม่เชื่อม")
+eq("A4", "มีระบบครบ 7 (ACCOUNT · POS · INVENTORY · MEMBER · CRM · CHAT · HR)", [...byType.keys()].sort(), [
+  "ACCOUNT",
+  "CHAT",
+  "CRM",
+  "HR",
+  "INVENTORY",
+  "MEMBER",
+  "POS",
+]);
 eq("A5", 'ระบบบัญชีชื่อ "บัญชี" และ id ตรงเฉลย', { id: byType.get("ACCOUNT")?.id, name: byType.get("ACCOUNT")?.name }, { id: E.systems.ACCOUNT, name: "บัญชี" });
 const unitLinks = await prisma.appSystemUnit.count({ where: { tenantId, unitId: E.unitId } });
-eq("A6", "ทั้ง 5 ระบบผูกกับสาขาเดียวกัน (AppSystemUnit)", unitLinks, 5);
+eq("A6", "ทั้ง 7 ระบบผูกกับสาขาเดียวกัน (AppSystemUnit)", unitLinks, 7);
 const posLink = await svc.findAccountLinkFor(tenantId, "POS", E.systems.POS);
 chk("A7", "POS เชื่อมเข้าระบบบัญชี (AccountSystemLink · แบบเดียวกับ DNA LINK_ACCOUNT_POS)", posLink?.systemId === systemId, posLink?.systemId, systemId);
 const crmLink = await svc.findAccountLinkFor(tenantId, "CRM", E.systems.CRM);
@@ -930,6 +939,92 @@ console.log("\nJ. กล่องขาเข้า + ผลอ่าน AI");
     // 🔴 ด่านกันงานพัง: วันล็อกต้องอยู่ "หลัง" เอกสารทุกใบของชุดข้อมูล ไม่งั้น seed รอบหน้าจะสร้างข้อมูลไม่ได้
     const docsAfterLock = await prisma.accountDocument.count({ where: { systemId, issueDate: { gte: new Date(`${want.lockBeforeYmd}T00:00:00+07:00`) } } });
     chk("T18", "มีเอกสารที่ลงวันที่ตั้งแต่วันล็อกเป็นต้นไป (ล็อกไม่ได้แช่แข็งทั้งชุดข้อมูล)", docsAfterLock > 0, docsAfterLock, "> 0");
+  }
+}
+
+// ─────────── U. WO 8.3 — สิทธิ์ผู้ใช้งาน §9.4 + การเชื่อมต่อ §9.5 ───────────
+console.log("\nU. สิทธิ์ผู้ใช้งาน + การเชื่อมต่อ (WO 8.3)");
+{
+  const wantP = (E as { permissions?: Record<string, unknown> }).permissions;
+  const wantC = (E as { connections?: Record<string, unknown> }).connections;
+  if (!wantP || !wantC) {
+    chk("U0", "เฉลยมีคีย์ permissions/connections", false, "ไม่มี", "มี");
+  } else {
+    const memberships = wantP.memberships as Record<string, string>;
+    const permSvcMod = await import("@/lib/modules/account/permissions-service");
+    const matrixMod = await import("@/lib/modules/account/permissions-matrix");
+    const connMod = await import("@/lib/modules/account/connections");
+
+    const sales = await prisma.membership.findFirst({ where: { id: memberships["sales@siamdive-qc.test"] } });
+    const approver = await prisma.membership.findFirst({ where: { id: memberships["approver@siamdive-qc.test"] } });
+    const salesPerm = (sales?.permissions ?? {}) as Record<string, unknown>;
+    const approverPerm = (approver?.permissions ?? {}) as Record<string, unknown>;
+    eq("U1", "สิทธิ์บัญชีของพนักงานขายบน Membership", Object.keys(salesPerm).filter((k) => k.startsWith("account.")).sort(), wantP.salesKeys);
+    eq("U2", "สิทธิ์บัญชีของผู้อนุมัติบน Membership", Object.keys(approverPerm).filter((k) => k.startsWith("account.")).sort(), wantP.approverKeys);
+    eq("U3", "เพดานอนุมัติของผู้อนุมัติ (สตางค์)", approverPerm[matrixMod.APPROVE_CAP_KEY], wantP.approverCapSatang);
+    eq("U4", "จำนวนสมาชิกทั้งหมดในร้าน", await prisma.membership.count({ where: { tenantId } }), wantP.totalMemberships);
+
+    const users = await permSvcMod.listAccountUsers({ tenantId, systemId });
+    eq("U5", "ผู้ใช้ที่มีสิทธิ์บัญชี (ตาราง §9.4)", users.length, wantP.visibleUsers);
+    chk("U6", "คนที่ไม่มีสิทธิ์บัญชีเลย ถูกกรองออก", !users.some((u) => u.email === wantP.noAccountEmail), "กรองออกแล้ว", "กรองออก");
+
+    const settings = await permSvcMod.getPermissionSettings({ tenantId, systemId });
+    eq(
+      "U7",
+      "บทบาทบัญชีของร้าน",
+      settings.roles.filter((r) => !r.system).map((r) => ({ key: r.key, name: r.name, capSatang: r.capSatang })),
+      wantP.roles,
+    );
+    eq("U8", "จำนวนคีย์สิทธิ์ account.* ในทะเบียนกลาง", matrixMod.ACCOUNT_PERMISSION_KEYS.length, wantP.accountActionKeys);
+
+    const links = await prisma.accountSystemLink.findMany({ where: { systemId, archivedAt: null }, select: { linkedKind: true, enabled: true, config: true } });
+    eq("U9", "ระบบที่เชื่อมแล้ว", links.filter((l) => l.enabled).map((l) => String(l.linkedKind)).sort(), [...(wantC.linked as string[])].sort());
+    eq(
+      "U10",
+      "ตัวเลือกที่เปิดของการ์ด POS",
+      Object.keys(connMod.parseLinkConfig(links.find((l) => l.linkedKind === "POS")?.config)).sort(),
+      [...(wantC.posOptions as string[])].sort(),
+    );
+    eq(
+      "U11",
+      "ตัวเลือกที่เปิดของการ์ดแชท (มี inboxFromChat ของ 7.2)",
+      Object.keys(connMod.parseLinkConfig(links.find((l) => l.linkedKind === "CHAT")?.config)).sort(),
+      [...(wantC.chatOptions as string[])].sort(),
+    );
+    const hrLink = links.find((l) => l.linkedKind === "HR");
+    chk("U12", "ระบบ HR มีอยู่แต่ยังไม่เชื่อม (การ์ด 'ยังไม่เชื่อม')", !hrLink, hrLink ? "เชื่อมแล้ว" : "ยังไม่เชื่อม", "ยังไม่เชื่อม");
+    chk("U13", "มีระบบ CHAT + HR ในร้าน", (await prisma.appSystem.count({ where: { tenantId, type: { in: ["CHAT", "HR"] } } })) === 2, "2 ระบบ", "2 ระบบ");
+    chk(
+      "U14",
+      "มีคีย์ API ของ seed",
+      (await prisma.apiKey.count({ where: { tenantId, prefix: wantC.apiKeyPrefix as string } })) === 1,
+      "1 คีย์",
+      "1 คีย์",
+    );
+    chk(
+      "U15",
+      "มีปลายทาง webhook ของ seed",
+      (await prisma.webhookEndpoint.count({ where: { tenantId, url: wantC.webhookUrl as string } })) === 1,
+      "1 ปลายทาง",
+      "1 ปลายทาง",
+    );
+    chk(
+      "U16",
+      "มีสายอนุมัติเอกสารบัญชี (ให้คนเพดานสูงกว่ารับช่วง)",
+      (await prisma.approvalPolicy.count({ where: { tenantId, entityType: "AccountDocument", active: true } })) === 1,
+      "1 สาย",
+      "1 สาย",
+    );
+    const navMod3 = await import("@/lib/modules/account/settings-nav");
+    chk(
+      "U17",
+      "เมนูตั้งค่า: หมวดสิทธิ์ผู้ใช้งาน + การเชื่อมต่อ เปิดใช้แล้ว",
+      navMod3.settingsGroups("/b").find((g) => g.key === "permissions")?.soon !== true &&
+        navMod3.settingsGroups("/b").find((g) => g.key === "connections")?.soon !== true,
+      "ready",
+      "ready",
+    );
+    eq("U18", "หัวข้อย่อยของ 2 หมวดใหม่", [navMod3.PERMISSION_SETTINGS_SUBS.length, navMod3.CONNECTION_SETTINGS_SUBS.length], [2, 3]);
   }
 }
 

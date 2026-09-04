@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/core/db";
+import { emitOutbox } from "@/lib/core/outbox";
 // WO 4.3 (§8.2) — ขาย "รายการจัดชุด" = ตัดสต็อกส่วนประกอบ (ไฟล์แยกกัน import วน service↔product)
 import { consumeBundleComponentsInTx } from "./bundle";
 import type {
@@ -14,6 +15,7 @@ import type {
   AccountDiscountMode,
   AccountWhtIncomeType,
   AccountDocSource,
+  AccountLinkedKind,
   Prisma,
 } from "@prisma/client";
 // posting engine (owner = GL-Core, ไฟล์ gl.ts) — subagent แค่ import + เรียกตามลายเซ็น
@@ -533,8 +535,10 @@ export async function findAccountLinkForPos(
   tenantId: string,
   posSystemId: string,
 ): Promise<{ systemId: string } | null> {
+  // WO 8.3 (§9.5): `enabled: false` = ผู้ใช้กด "ตัดการเชื่อม" ที่หน้าการเชื่อมต่อ
+  //   ⇒ ต้องหยุดลงบัญชีทันที (กติกา "ไม่เชื่อม = ไม่ลงบัญชีให้") · แถวเดิมทุกแถว enabled=true จาก migration
   return prisma.accountSystemLink.findFirst({
-    where: { tenantId, linkedKind: "POS", linkedId: posSystemId, archivedAt: null },
+    where: { tenantId, linkedKind: "POS", linkedId: posSystemId, archivedAt: null, enabled: true },
     select: { systemId: true },
   });
 }
@@ -2459,11 +2463,52 @@ export async function recordPayment(
         });
         whtCertNo = cert.docNo;
       }
+      // ── WO 8.3 (§9.5 "แอปภายนอก/API"): เหตุการณ์บัญชีออกทาง webhook ของแพลตฟอร์ม ──
+      //    emit ใน tx เดียวกับการชำระ (transactional outbox) ⇒ เงินรอด = event รอด · idempotent ต่อ paymentId
+      await emitOutbox(tx, {
+        tenantId,
+        type: "account.payment.recorded",
+        idempotencyKey: `account.payment.recorded#${payment.id}`,
+        payload: { documentId: id, paymentId: payment.id, amountSatang: input.amount, docType: doc.docType },
+        systemId,
+      });
+      if (status === "PAID" && doc.docType === "INVOICE") {
+        await emitOutbox(tx, {
+          tenantId,
+          type: "account.invoice.paid",
+          idempotencyKey: `account.invoice.paid#${id}`,
+          payload: { documentId: id, docNo: doc.docNo, grandTotalSatang: doc.grandTotal },
+          systemId,
+        });
+      }
     });
     return { ok: true, status, paymentId, whtCertNo };
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : "บันทึกชำระไม่สำเร็จ" };
   }
+}
+
+// ─────────────────── WO 8.3 (§9.5) — เหตุการณ์บัญชีสำหรับ webhook ขาออก ───────────────────
+//
+// 🔴 เพิ่ม event ใหม่ **ต้องลงทะเบียน consumer** ที่ `src/lib/outbox-consumers.ts` ด้วยเสมอ
+//    ไม่งั้น event ค้าง PENDING ตลอดกาล + webhook ไม่เคยถูกยิง (บทเรียน 30 ส.ค. — ติ๊กคู่ ✓✓ ไม่ขึ้น)
+//    และป้ายไทยต้องอยู่ใน `src/lib/webhooks/labels.ts` ไม่งั้นร้านเลือกสมัครไม่ได้
+export async function emitAccountEvent(input: {
+  tenantId: string;
+  systemId: string;
+  type: "account.document.approved" | "account.period.closed";
+  idempotencyKey: string;
+  payload: Record<string, unknown>;
+}): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await emitOutbox(tx, {
+      tenantId: input.tenantId,
+      type: input.type,
+      idempotencyKey: input.idempotencyKey,
+      payload: input.payload,
+      systemId: input.systemId,
+    });
+  });
 }
 
 // A1: สร้าง+ออกใบกำกับภาษี (บริการ) ต่อ payment งวดที่รับ (1 payment = 1 ใบกำกับ) + โพสต์ VAT
@@ -3219,9 +3264,14 @@ export async function issuePublicTaxInvoice(
 }
 
 // ── helpers สำหรับ facade (index.ts ห้าม import prisma ตรง — F5) · WO-0010 ──
-export async function findAccountLinkFor(tenantId: string, linkedKind: "POS" | "CRM", linkedId: string) {
+export async function findAccountLinkFor(
+  tenantId: string,
+  linkedKind: AccountLinkedKind,
+  linkedId: string,
+) {
+  // WO 8.3: กรอง enabled ด้วย (ดูเหตุผลที่ findAccountLinkForPos)
   return prisma.accountSystemLink.findFirst({
-    where: { tenantId, linkedKind, linkedId, archivedAt: null },
+    where: { tenantId, linkedKind, linkedId, archivedAt: null, enabled: true },
     select: { systemId: true },
   });
 }

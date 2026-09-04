@@ -4,6 +4,12 @@ import { AUTOMATION_EVENTS, type AutomationEventDef } from "@/lib/automation/lab
 
 export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   ...AUTOMATION_EVENTS,
+  // ── บัญชี (WO 8.3 · SPEC §9.5 "แอปภายนอก/API") ────────────────────────────
+  // 🔴 ทุกตัวต้องมี consumer ใน outbox-consumers.ts ด้วย ไม่งั้น event ค้าง PENDING + ฮุคไม่เคยยิง
+  { value: "account.document.approved", label: "เมื่ออนุมัติเอกสารบัญชี" },
+  { value: "account.payment.recorded", label: "เมื่อบันทึกรับ/จ่ายเงิน" },
+  { value: "account.invoice.paid", label: "เมื่อใบแจ้งหนี้ถูกชำระครบ" },
+  { value: "account.period.closed", label: "เมื่อปิดงวดบัญชี" },
   { value: "approval.request.submitted", label: "เมื่อมีคำขออนุมัติใหม่" },
   { value: "approval.request.approved", label: "เมื่อคำขออนุมัติผ่าน" },
   { value: "approval.request.rejected", label: "เมื่อคำขออนุมัติถูกปฏิเสธ" },

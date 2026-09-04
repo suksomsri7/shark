@@ -11,6 +11,9 @@ import type {
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, writeAudit, mc } from "./access";
 import { permissionValue } from "@/lib/core/rbac";
+// WO 8.3 (§9.4): เพดานอนุมัติ + ส่งต่อให้ผู้มีอำนาจสูงกว่า
+import { checkApprovalCap } from "./approval-cap";
+import { emitAccountEvent } from "./service";
 import {
   createExpenseDoc,
   updateExpenseDoc,
@@ -23,6 +26,7 @@ import {
   createPurchaseOrder,
   submitForApproval,
   approvePurchaseOrder,
+  docForApproval,
   rejectPurchaseOrder,
   convertPurchaseOrder,
   EXP_DOC_PREFIX,
@@ -318,6 +322,34 @@ export async function approvePOAction(formData: FormData) {
   assertAccountCan(auth, "account.doc.approve");
   // วงเงินอนุมัติ (permissionValue) — ไม่มีค่า = ไม่จำกัด (OWNER/MANAGER)
   const maxSatang = permissionValue(mc(auth), "_maxApproveSatang");
+  // WO 8.3 (§9.4): เกินเพดาน → **ยื่นเข้าสายอนุมัติ** ให้คนที่มีเพดานสูงกว่ากดแทน (ไม่ใช่แค่ปฏิเสธ)
+  //   ต้องตัดสินก่อนเรียก approvePurchaseOrder เพราะข้อความ/การส่งต่ออยู่ที่ชั้นนี้
+  //   (approvePurchaseOrder ยังคงด่าน maxSatang ของตัวเองไว้ = ด่านสองชั้น ไม่ใช่ย้ายด่าน)
+  const target = await docForApproval(tenantId, systemId, id);
+  if (target && maxSatang !== undefined) {
+    const cap = await checkApprovalCap({
+      m: mc(auth),
+      ctx: { tenantId },
+      systemId,
+      docId: id,
+      docType: target.docType,
+      amountSatang: target.grandTotal,
+      approverUserId: userId,
+      createdById: target.createdById,
+    });
+    if (!cap.ok) {
+      await writeAudit({
+        tenantId,
+        actorId: userId,
+        action: "account.doc.approve",
+        targetType: "AccountDocument",
+        targetId: id,
+        after: { refusedOverCap: true, capSatang: cap.capSatang, amount: target.grandTotal, routed: cap.routed },
+      });
+      const p = `${pathFor(systemId, docType)}/${id}`;
+      redirect(`${p}?err=${encodeURIComponent(cap.reason)}`);
+    }
+  }
   const res = await approvePurchaseOrder(tenantId, systemId, id, userId, { maxSatang });
   await writeAudit({
     tenantId,
@@ -327,6 +359,16 @@ export async function approvePOAction(formData: FormData) {
     targetId: id,
     after: res.ok ? { approved: true } : { error: res.reason },
   });
+  // WO 8.3 (§9.5): แจ้งระบบภายนอกผ่าน webhook (idempotent ต่อเอกสาร)
+  if (res.ok) {
+    await emitAccountEvent({
+      tenantId,
+      systemId,
+      type: "account.document.approved",
+      idempotencyKey: `account.document.approved#${id}`,
+      payload: { documentId: id, docType, approvedById: userId },
+    });
+  }
   const path = `${pathFor(systemId, docType)}/${id}`;
   revalidatePath(path);
   redirect(res.ok ? path : `${path}?err=${encodeURIComponent(res.reason)}`);

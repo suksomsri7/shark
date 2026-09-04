@@ -140,7 +140,7 @@ async function loadChecklist(ctx: DashCtx, base: string, hasOrgName: boolean): P
     prisma.accountContact.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null } }),
     prisma.accountProduct.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null } }),
     prisma.accountDocument.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, status: { notIn: ["DRAFT"] } } }),
-    prisma.accountSystemLink.count({ where: { systemId: ctx.systemId, archivedAt: null } }),
+    prisma.accountSystemLink.count({ where: { systemId: ctx.systemId, archivedAt: null, enabled: true } }),
   ]);
   return computeChecklist(
     {

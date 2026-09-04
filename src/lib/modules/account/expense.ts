@@ -1413,6 +1413,21 @@ export async function submitForApproval(
   }
 }
 
+/**
+ * ข้อมูลย่อของเอกสารสำหรับ "ด่านเพดานอนุมัติ" (WO 8.3 §9.4) — ยอด + ผู้สร้าง
+ * แยกเป็นฟังก์ชันเพื่อให้ชั้น action ตัดสินเพดาน/ยื่นสายอนุมัติได้ก่อนแตะสถานะเอกสาร
+ */
+export async function docForApproval(
+  tenantId: string,
+  systemId: string,
+  id: string,
+): Promise<{ docType: AccountDocType; grandTotal: number; createdById: string | null; status: AccountDocStatus } | null> {
+  return prisma.accountDocument.findFirst({
+    where: { id, tenantId, systemId },
+    select: { docType: true, grandTotal: true, createdById: true, status: true },
+  });
+}
+
 // อนุมัติ: AWAITING_APPROVAL → APPROVED (คุมวงเงิน maxSatang ที่ชั้น action)
 export async function approvePurchaseOrder(
   tenantId: string,
