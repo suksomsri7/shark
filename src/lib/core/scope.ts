@@ -232,6 +232,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AccountBankStatement: sys(),
   AccountBankStatementLine: sys(),
   AccountCheque: sys(),
+  // WO 5.4 (บัญชี V2 §10.5) — บันทึกการนำส่ง ภ.ง.ด.3/53 ต่องวด
+  AccountWhtFiling: sys(),
   AccountLedger: sys(),
   AccountMapping: sys(),
   AccountJournalEntry: sys(),

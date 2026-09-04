@@ -1176,6 +1176,95 @@ const PAGES: Record<string, PageSpec[]> = {
       waitAfterClick: 500,
     },
   ],
+  // WO 5.4 — WHT 2 ขา V2 + เช็ค V2 (§10.4–5) เทียบ g11-wht-deduct.png
+  "5.4": [
+    {
+      name: "wht-deducted",
+      path: `/app/sys/${SYS}/account/wht?tab=deduct`,
+      note: "หน้าภาษีหัก ณ ที่จ่าย (เราหักผู้ขาย) — ตรง g11: subtabs การเงิน · h1+tile เครดิตปีนี้+ปุ่ม · StatusTabs · filter · ตาราง 9 คอลัมน์ · ผลรวมท้าย",
+      expect: [
+        "ภาษีหัก ณ ที่จ่ายที่หักไว้ (จ่ายผู้ขาย)",
+        "เครดิตภาษีถูกหักสะสมปีนี้",
+        "พิมพ์รายงาน",
+        "ส่งออก ภ.ง.ด.3/53 (CSV)",
+        "ทั้งหมด",
+        "ปกติ",
+        "e-WHT (เร็ว ๆ นี้)",
+        "ยกเลิก",
+        "วันที่ชำระ",
+        "เอกสารลำดับที่",
+        "ชื่อผู้ขาย",
+        "อ้างอิงเอกสาร",
+        "ประเภทเงินได้",
+        "การนำส่ง",
+        "ผลรวม",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "wht-deducted-selected",
+      path: `/app/sys/${SYS}/account/wht?tab=deduct`,
+      note: "ติ๊ก 2 แถว → แถบ bulk สีฟ้าอ่อน 'เลือก 2 รายการ' + ปุ่มดำ '✓ ทำเครื่องหมายนำส่งแล้ว' ทางขวา (g11)",
+      expect: ["เลือก 2 รายการ", "ทำเครื่องหมายนำส่งแล้ว"],
+      onlyDevice: "desktop",
+      click: [
+        `[data-testid="wht-row-${E.whtV2?.deductCertIds?.[0]}"] input[type="checkbox"]`,
+        `[data-testid="wht-row-${E.whtV2?.deductCertIds?.[1]}"] input[type="checkbox"]`,
+      ],
+      waitAfterClick: 400,
+      expectBeforeShot: [{ sel: '[data-testid="wht-table-bulk-count"]', kind: "text", equals: "เลือก 2 รายการ" }],
+    },
+    {
+      name: "wht-received",
+      path: `/app/sys/${SYS}/account/wht?tab=credit`,
+      note: "หน้าภาษีถูกหักไว้ (ลูกค้าหักเรา) — กระจก g11: ไม่มีคอลัมน์การนำส่ง/ปุ่มส่งออก ภ.ง.ด.",
+      expect: ["ภาษีถูกหักไว้ที่ได้รับมา (จากลูกค้า)", "เครดิตภาษีถูกหักสะสมปีนี้", "ชื่อผู้ซื้อ (ลูกค้า)"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "wht-mark-filed-modal",
+      path: `/app/sys/${SYS}/account/wht?tab=deduct`,
+      note: "ติ๊กแถวหัก 1 ใบ (บล็อก bulk bar g11 'เลือก n รายการ') → กดทำเครื่องหมายนำส่งแล้ว → modal สรุปแบบ/งวด/ยอด",
+      expect: ["ทำเครื่องหมายนำส่งแล้ว", "แบบ", "งวด", "จำนวนใบ", "ฐานเงินได้รวม", "ภาษีที่หักรวม", "ยืนยันทำเครื่องหมายนำส่งแล้ว"],
+      onlyDevice: "desktop",
+      click: [
+        `[data-testid="wht-row-${E.whtV2?.deductCertIds?.[1]}"] input[type="checkbox"]`,
+        '[data-testid="wht-table-bulk-action-0"]',
+      ],
+      waitAfterClick: 500,
+      expandModalForShot: '[data-testid="wht-mark-filed-modal"]',
+    },
+    {
+      name: "cheque-received",
+      path: `/app/sys/${SYS}/account/cheque?dir=IN`,
+      note: "หน้าเช็ครับ (§10.4 — ไม่มีเฟรม) — 2 ไทล์สรุป · StatusTabs ทุกสถานะ · ตาราง 7 คอลัมน์",
+      expect: ["เช็ครับ", "รอเรียกเก็บ", "ครบกำหนดใน 7 วัน", "เลขที่เช็ค", "ธนาคาร", "วันที่บนเช็ค", "ผู้ติดต่อ", "อ้างอิงเอกสาร", "สถานะ"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "cheque-paid-menu",
+      path: `/app/sys/${SYS}/account/cheque?dir=OUT`,
+      note: "หน้าเช็คจ่าย — เปิดเมนู ⋯ แถวที่ยังไม่ตัดบัญชี (ตัดบัญชี/ยกเลิก)",
+      expect: ["เช็คจ่าย", "เช็คจ่ายรอตัด", "ตัดบัญชี", "ยกเลิก"],
+      onlyDevice: "desktop",
+      click: [`[data-testid="cheque-row-actions-${E.chequeV2?.outPendingId}"] button`],
+      waitAfterClick: 400,
+    },
+    {
+      name: "wht-deducted-mobile",
+      path: `/app/sys/${SYS}/account/wht?tab=deduct`,
+      note: "มือถือ 390 — StatusTabs pill + filter + การ์ดแถว 3 บรรทัด",
+      expect: ["ภาษีหัก ณ ที่จ่ายที่หักไว้ (จ่ายผู้ขาย)", "เครดิตภาษีถูกหักสะสมปีนี้"],
+      onlyDevice: "mobile",
+    },
+    {
+      name: "cheque-received-mobile",
+      path: `/app/sys/${SYS}/account/cheque?dir=IN`,
+      note: "มือถือ 390 — ไทล์ 2 คอลัมน์ + การ์ดแถวเช็ค",
+      expect: ["เช็ครับ", "รอเรียกเก็บ"],
+      onlyDevice: "mobile",
+    },
+  ],
   // WO 5.2 — ภาพรวมการเงิน + ปฏิทินเงินเข้า-ออก + สำรองรับ/จ่าย (§10.2–§10.3) เทียบ f7-finance-overview.png (+ -menu.png)
   "5.2": [
     {
@@ -1530,6 +1619,13 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "reconcile-tile-diff": bahtSignedStr(0),
       "reconcile-tile-matched": `${E.bankReconcile?.prev?.rowCount ?? 0}/${E.bankReconcile?.prev?.rowCount ?? 0}`,
     },
+  },
+  // WO 5.4 — เครดิตภาษีปีนี้ + ไทล์เช็ค ต้องตรงเฉลย seed เป๊ะ (คีย์ whtV2/chequeV2 — SQL อิสระใน qc-acc-v2-wht-cheque.mts)
+  "5.4": {
+    "wht-deducted": { "wht-credit-year-amount": bahtStr(E.whtV2?.creditWhtTotalSatang ?? 0) },
+    "wht-received": { "wht-credit-year-amount": bahtStr(E.whtV2?.creditWhtTotalSatang ?? 0) },
+    "cheque-received": { "cheque-tile-pending": bahtStr(850_000), "cheque-tile-duesoon": "1" },
+    "cheque-paid-menu": { "cheque-tile-pending": bahtStr(950_000) },
   },
   // WO 5.2 — 6 ไทล์/ยอดรวม "เงินคุณอยู่ไหน"/ยอดคงเหลือสำรองจ่าย ต้องตรงเฉลย seed เป๊ะ
   "5.2": {

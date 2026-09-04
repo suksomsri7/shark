@@ -34,6 +34,8 @@ export function DocTable<T extends { id: string }>({
   mobileStatus,
   mobileDateLine,
   footerTotalSatang,
+  footerLeft,
+  footerRight,
   page,
   pageCount,
   pageSize,
@@ -42,6 +44,7 @@ export function DocTable<T extends { id: string }>({
   testId,
   initialSelectedIds,
   rowTestId,
+  bulkBarTint,
 }: {
   cols: DocColumn<T>[];
   rows: T[];
@@ -65,8 +68,13 @@ export function DocTable<T extends { id: string }>({
   mobileStatus?: (row: T) => React.ReactNode;
   /** "วันที่ออก · ครบกำหนด …" การ์ดมือถือ (f13 บรรทัด 3 ซ้าย) */
   mobileDateLine?: (row: T) => React.ReactNode;
-  /** ผลรวมยอดในหน้านี้ (satang) — แสดงท้ายตาราง ถ้าไม่ส่ง = ไม่แสดงแถวสรุป */
+  /** ผลรวมยอดในหน้านี้ (satang) — แสดงท้ายตาราง ถ้าไม่ส่ง = ไม่แสดงแถวสรุป (ใช้ไม่ได้พร้อม footerLeft/footerRight) */
   footerTotalSatang?: number;
+  /** WO 5.4 (g11) — เนื้อหาซ้าย/ขวาแถวสรุปแบบกำหนดเอง (แทน "รวมยอดในหน้านี้" ปริยาย) — ส่งมาคู่กันเมื่อ
+   *  หน้าต้องการข้อความสรุปเฉพาะทาง (เช่น "ผลรวม N รายการ" + "จำนวนเงิน ฿… · มูลค่าภาษี ฿…") · ไม่ส่ง = พฤติกรรมเดิมทุกหน้า
+   *  (Pagination ยังอยู่แถวเดียวกันด้านขวาเหมือนเดิม เว้นแต่ pageCount > 1 ที่จะขึ้นแถวใหม่ใต้แถวสรุปในกรอบเดียวกัน) */
+  footerLeft?: React.ReactNode;
+  footerRight?: React.ReactNode;
   page: number;
   pageCount: number;
   pageSize: number;
@@ -77,6 +85,8 @@ export function DocTable<T extends { id: string }>({
   initialSelectedIds?: string[];
   /** testid ต่อแถว เช่น `row-${docNo}` (WO 1.1 §C) — ไม่ส่ง = ไม่ติด testid ต่อแถว */
   rowTestId?: (row: T) => string;
+  /** WO 5.4 (g11) — แถบ bulk พื้นฟ้าอ่อน+ขอบน้ำเงิน แทนพื้นเทาเดิม — ไม่ส่ง = พฤติกรรมเดิม (ดู DocTableInteractive) */
+  bulkBarTint?: boolean;
 }) {
   if (rows.length === 0) return <EmptyState text={emptyText} />;
 
@@ -112,28 +122,50 @@ export function DocTable<T extends { id: string }>({
       selectionActions={selectionActions}
       testId={testId}
       initialSelectedIds={initialSelectedIds}
+      bulkBarTint={bulkBarTint}
+      footerInsideCard={!!(footerLeft || footerRight)}
       footer={
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-1 pt-2 text-sm">
-          {typeof footerTotalSatang === "number" ? (
-            <span className="text-[color:var(--color-muted)]">
-              รวมยอดในหน้านี้{" "}
-              <span data-testid="page-sum">
-                <MoneyText satang={footerTotalSatang} decimals />
+        footerLeft || footerRight ? (
+          // WO 5.4 (g11) — แถวสรุปกำหนดเอง + Pagination "ในการ์ดเดียวกับตาราง/การ์ดแถว" (เหมือน ContactsPanel f5)
+          // ⇒ footerInsideCard=true ทำให้ DocTableInteractive วางบล็อกนี้ไว้ต่อท้าย <table>/การ์ดมือถือ ไม่ใช่ลอยแยก
+          <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {footerLeft ?? <span />}
+              {footerRight ?? <span />}
+            </div>
+            <Pagination
+              pathname={pathname}
+              searchParams={searchParams}
+              page={page}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              total={total}
+              testId={testId ? `${testId}-pagination` : undefined}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t px-1 pt-2 text-sm">
+            {typeof footerTotalSatang === "number" ? (
+              <span className="text-[color:var(--color-muted)]">
+                รวมยอดในหน้านี้{" "}
+                <span data-testid="page-sum">
+                  <MoneyText satang={footerTotalSatang} decimals />
+                </span>
               </span>
-            </span>
-          ) : (
-            <span />
-          )}
-          <Pagination
-            pathname={pathname}
-            searchParams={searchParams}
-            page={page}
-            pageCount={pageCount}
-            pageSize={pageSize}
-            total={total}
-            testId={testId ? `${testId}-pagination` : undefined}
-          />
-        </div>
+            ) : (
+              <span />
+            )}
+            <Pagination
+              pathname={pathname}
+              searchParams={searchParams}
+              page={page}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              total={total}
+              testId={testId ? `${testId}-pagination` : undefined}
+            />
+          </div>
+        )
       }
     />
   );

@@ -25,6 +25,8 @@ export type DocTableSelectionAction = {
   /** ต้องเลือกเฉพาะแถวที่ `eligible` (เช่น ยังค้างชำระอยู่) */
   requireEligible?: boolean;
   eligibleHint?: string;
+  /** WO 5.4 (g11) — "primary" = ปุ่มดำเข้ม (btn-primary) แทนปุ่มขอบจาง (btn-sm) ปริยาย · ไม่ส่ง = พฤติกรรมเดิม */
+  variant?: "primary";
 };
 
 export type DocTableBodyRow = {
@@ -60,6 +62,8 @@ export function DocTableInteractive({
   footer,
   testId,
   initialSelectedIds,
+  bulkBarTint,
+  footerInsideCard,
 }: {
   headerCells: DocTableHeaderCell[];
   rows: DocTableBodyRow[];
@@ -72,6 +76,12 @@ export function DocTableInteractive({
   testId?: string;
   /** เลือกไว้ล่วงหน้า — ใช้เฉพาะหน้า gallery สำหรับถ่ายภาพ QC (โชว์แถบ bulk ตั้งแต่โหลด) */
   initialSelectedIds?: string[];
+  /** WO 5.4 (g11) — true = แถบ bulk พื้นฟ้าอ่อน+ขอบน้ำเงิน (โทนเดียวกับแถวแนะนำจับคู่ใน 5.3 ReconcilePanel)
+   *  แทนพื้นเทาเดิม · ไม่ส่ง = พฤติกรรมเดิมทุกหน้า (WO 1.7 ฯลฯ ไม่กระทบ) */
+  bulkBarTint?: boolean;
+  /** WO 5.4 (g11) — true = วาง footer "ในกรอบเดียวกับตาราง/การ์ด" (border-t ต่อจากแถวสุดท้าย ไม่ใช่บล็อกลอยแยก)
+   *  ไม่ส่ง = พฤติกรรมเดิม (footer ลอยใต้กรอบ — ทุกหน้าอื่นไม่กระทบ) */
+  footerInsideCard?: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set(initialSelectedIds));
   const allIds = useMemo(() => rows.map((r) => r.id), [rows]);
@@ -90,10 +100,17 @@ export function DocTableInteractive({
     <div className="flex flex-col gap-2" data-testid={testId}>
       {selectable && selected.size > 0 && (
         <div
-          className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-[color:var(--color-surface-2)] px-3 py-2 text-sm"
+          className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+          style={
+            bulkBarTint
+              ? { background: "#eff4ff", borderColor: "var(--color-accent)" }
+              : { background: "var(--color-surface-2)" }
+          }
           data-testid={testId ? `${testId}-bulk-bar` : undefined}
         >
-          <span>เลือก {selected.size} รายการ</span>
+          <span className={bulkBarTint ? "font-semibold" : undefined} data-testid={testId ? `${testId}-bulk-count` : undefined}>
+            เลือก {selected.size} รายการ
+          </span>
           <div className="flex flex-wrap gap-2">
             {(selectionActions ?? []).map((a, i) => {
               const picked = rows.filter((r) => selected.has(r.id));
@@ -119,7 +136,7 @@ export function DocTableInteractive({
                 <a
                   key={i}
                   href={a.hrefTemplate.replace("{ids}", encodeURIComponent(picked.map((r) => r.id).join(",")))}
-                  className="btn-sm"
+                  className={a.variant === "primary" ? "btn btn-primary" : "btn-sm"}
                   data-testid={`${testId}-bulk-action-${i}`}
                 >
                   {a.label}
@@ -199,6 +216,8 @@ export function DocTableInteractive({
             ))}
           </tbody>
         </table>
+        {/* WO 5.4 (g11) — ท้ายตาราง "ในการ์ดเดียวกัน" ไม่ใช่บล็อกลอยแยก (pattern เดียวกับ ContactsPanel f5) */}
+        {footerInsideCard && footer}
       </div>
 
       {/* มือถือ (f13): การ์ดแถว 3 บรรทัด — เลขที่+ชิป / ผู้ติดต่อ+ยอด / วันที่·ครบกำหนด+⋯ (ไม่มี checkbox/ปุ่มยาว) */}
@@ -223,9 +242,10 @@ export function DocTableInteractive({
             </div>
           </div>
         ))}
+        {footerInsideCard && footer}
       </div>
 
-      {footer}
+      {!footerInsideCard && footer}
     </div>
   );
 }

@@ -15,6 +15,11 @@
 # 🔴 build เดินผ่าน scripts/with-gate-lock.sh — เครื่อง 2 คอร์ ห้าม build ซ้อนกับ session อื่น
 set -euo pipefail
 
+# 🔴 WO 5.3 พบ: `next build` OOM ที่ heap เริ่มต้นของ Node (2G) บนเครื่องนี้ (2 คอร์/5G) — ต้องยก
+#    --max-old-space-size ก่อน build/start ทุกครั้ง (WO 5.4: ยกมาไว้ในสคริปต์เอง กันลืม export มือ)
+#    ผู้เรียกที่ตั้ง NODE_OPTIONS มาเองอยู่แล้ว (เช่น debug ค่าอื่น) จะไม่ถูกทับ
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=3584}"
+
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 PORT="${ACC_V2_PORT:-3215}"

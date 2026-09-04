@@ -84,6 +84,8 @@ const invLink = await import("@/lib/modules/account/inventory-link"); // WO 4.1:
 const pos = await import("@/lib/modules/pos/service"); // WO 4.2: บิลขายหน้าร้าน (POS ส่งบรรทัดเข้าบัญชี)
 const finOv = await import("@/lib/modules/account/finance-overview"); // WO 5.2: เติมเงิน/เบิกชดเชยสำรองจ่าย
 const { drainAll } = await import("@/lib/outbox-consumers"); // WO 4.2: ระบายคิว outbox ให้ bridge ทำงานทันที
+const wht = await import("@/lib/modules/account/wht"); // WO 5.4: ภาษีหัก ณ ที่จ่าย 2 ขา V2
+const chq = await import("@/lib/modules/account/cheque"); // WO 5.4: ทะเบียนเช็ค V2
 
 // ─────────────────────────── ตัวช่วย ───────────────────────────
 
@@ -1318,6 +1320,180 @@ console.log(
   `🏦 กระทบยอดธนาคาร BSV001 ${bankPrevFixture.periodKey}: นำเข้า ${bankPrevImport.imported} แถว · จับคู่ครบ · ส่วนต่าง 0 (ปุ่มยืนยันกดได้)`,
 );
 
+// ─────────────────────────── 8.7 ภาษีหัก ณ ที่จ่าย V2 + เช็ค V2 (WO 5.4 · §10.4–5 · g11) ───────────────────────────
+// 3 ใบเครดิต (ลูกค้าหักเรา — หน้า "ภาษีถูกหักไว้") + 3 ใบหัก (เราหักผู้ขาย — หน้า "ภาษีหัก ณ ที่จ่าย") คนละ 2 เดือน
+// (ส.ค./ก.ย. 69) — จ่าย/รับผ่าน **CSH001 เท่านั้น** (ตั้งใจไม่แตะ BSV001: WO 5.3 generate statement CSV เดือน ก.ย.
+// จาก GL จริงของบัญชีนั้นครั้งเดียวแล้ว freeze ไว้ — ถ้ามีรายการใหม่โผล่ใน BSV001 เดือน ก.ย. "ยอดในระบบ" จะขยับ
+// แต่ statement ที่ freeze แล้วไม่ขยับตาม ⇒ ส่วนต่างของ WO 5.3 เพี้ยน)
+// ⇒ เงินเข้า/ออกจริง (WHT ไม่ใช่ "ของฟรี" — payment จริงมีเงินเข้า/ออกเสมอ) → ต้องปรับเฉลย CSH001/total ท้ายไฟล์
+//   ด้วย CASH_WHT_DELTA (คำนวณจากค่าคงที่ด้านล่างเป๊ะ ไม่พิมพ์เลขมือ) — จดไว้ ledger/wo-notes/5.4.md ขั้น 8
+type WhtFix = { name: string; grand: number; issue: string; incomeType: "M40_2" | "M40_6" | "M40_7" | "M40_8" };
+const WHT_RATE_BP = 300; // 3% ทุกใบ (ม.40 ที่ธุรกิจนี้ใช้บ่อยสุด)
+
+const CREDIT_FIX: WhtFix[] = [
+  { name: "บริษัท ภูเก็ตดีปซี จำกัด", grand: 2_140_000, issue: "2026-08-20", incomeType: "M40_8" },
+  { name: "คุณสมชาย ใจดี", grand: 1_605_000, issue: "2026-09-02", incomeType: "M40_8" },
+  { name: "บริษัท ซีสตาร์ รีสอร์ท จำกัด", grand: 2_675_000, issue: "2026-09-03", incomeType: "M40_8" },
+];
+const DEDUCT_FIX: WhtFix[] = [
+  { name: "บริษัท เซฟตี้เฟิร์ส อุปกรณ์นิรภัย จำกัด", grand: 1_070_000, issue: "2026-08-20", incomeType: "M40_8" },
+  { name: "คุณสมบัติ ช่างซ่อมเรือ", grand: 856_000, issue: "2026-09-02", incomeType: "M40_7" },
+  { name: "สำนักงานบัญชี ภูเก็ตแอคเคาท์", grand: 535_000, issue: "2026-09-03", incomeType: "M40_6" },
+];
+
+let creditCashIn = 0;
+let creditWhtTotal = 0;
+const creditCertIds: string[] = [];
+for (const f of CREDIT_FIX) {
+  const doc = await makeInvoice({ cust: f.name, grand: f.grand, issue: f.issue, due: "2026-12-15", desc: `บริการ WHT ทดสอบ (${f.incomeType})`, bucket: "paid" });
+  const base = baseForGrand(f.grand);
+  if (base === null) throw new Error(`หา base ของ WHT credit ${f.name} ไม่ได้`);
+  const wht = Math.round((base * WHT_RATE_BP) / 10000);
+  const cash = f.grand - wht;
+  const r = await svc.recordPayment(tenantId, systemId, doc.id, {
+    paidAt: D(f.issue),
+    channel: "CASH",
+    financeAccountId: finId["CSH001"],
+    amount: cash,
+    whtAmountSatang: wht,
+    whtRateBp: WHT_RATE_BP,
+    whtIncomeType: f.incomeType,
+    createdById: owner.id,
+  });
+  if (!r.ok) throw new Error(`รับชำระ (WHT credit) ${f.name} ไม่สำเร็จ: ${r.reason}`);
+  if (!r.whtCertNo) throw new Error(`ไม่ออกใบเครดิตภาษีให้ ${f.name}`);
+  const cert = await prisma.accountDocument.findFirstOrThrow({ where: { systemId, docType: "WHT_CERT", docNo: r.whtCertNo }, select: { id: true } });
+  creditCertIds.push(cert.id);
+  creditCashIn += cash;
+  creditWhtTotal += wht;
+}
+
+let deductCashOut = 0;
+let deductWhtTotal = 0;
+const deductCertIds: string[] = [];
+for (const f of DEDUCT_FIX) {
+  const auto = docLines(f.grand, `ค่าใช้จ่าย WHT ทดสอบ (${f.incomeType})`);
+  const doc = await exp.createExpenseDoc({
+    tenantId,
+    systemId,
+    docType: "EXPENSE",
+    contactId: cid(f.name),
+    issueDate: D(f.issue),
+    dueDate: D(f.issue),
+    vatMode: auto.vatMode,
+    vatPurchaseMode: "CLAIM",
+    lines: auto.lines.map((l) => ({ ...l, accountId: expenseAccounts[0].id })),
+    createdById: owner.id,
+  });
+  const issued = await exp.issueExpenseDoc(tenantId, systemId, doc.id);
+  if (!issued.ok) throw new Error(`ออกเอกสารจ่าย (WHT deduct) ${f.name} ไม่สำเร็จ: ${issued.reason}`);
+  const base = baseForGrand(f.grand);
+  if (base === null) throw new Error(`หา base ของ WHT deduct ${f.name} ไม่ได้`);
+  const wht = Math.round((base * WHT_RATE_BP) / 10000);
+  const cash = f.grand - wht;
+  const r = await exp.recordVendorPayment(tenantId, systemId, doc.id, {
+    paidAt: D(f.issue),
+    channel: "CASH",
+    financeAccountId: finId["CSH001"],
+    amount: cash,
+    whtAmountSatang: wht,
+    whtRateBp: WHT_RATE_BP,
+    whtIncomeType: f.incomeType,
+    createdById: owner.id,
+  });
+  if (!r.ok) throw new Error(`บันทึกจ่าย (WHT deduct) ${f.name} ไม่สำเร็จ: ${r.reason}`);
+  const pay = await prisma.accountDocumentPayment.findFirstOrThrow({ where: { documentId: doc.id }, select: { whtCertDocId: true } });
+  if (!pay.whtCertDocId) throw new Error(`ไม่ออก 50 ทวิ ให้ ${f.name}`);
+  deductCertIds.push(pay.whtCertDocId);
+  deductCashOut += cash;
+  deductWhtTotal += wht;
+}
+
+// WO 5.4 round 2 (Fable ตีกลับ): ทำเครื่องหมายนำส่งแล้ว 1 งวด (ภ.ง.ด.53 · ก.ย. 69 — ตรงกับใบเดียวที่เป็น
+// นิติบุคคลของเดือน ก.ย. คือ "สำนักงานบัญชี ภูเก็ตแอคเคาท์" ดัชนี 2 ของ DEDUCT_FIX) ให้หน้า g11 โชว์ทั้ง 2 สไตล์ชิป
+// ("ยื่นแล้ว ก.ย." เข้มขอบดำ / "ยังไม่ยื่น" เทาจาง) — ไม่กระทบใบอื่น (บริษัท เซฟตี้เฟิร์ส = ส.ค. · คุณสมบัติ = ภ.ง.ด.3)
+const markFiledSeed = await wht.markFiled(tenantId, systemId, { form: 53, periodKey: "2026-09", filedById: owner.id });
+if (!markFiledSeed.ok) throw new Error(`ทำเครื่องหมายนำส่งแล้ว (seed fixture) ไม่สำเร็จ: ${markFiledSeed.reason}`);
+console.log(`   ทำเครื่องหมายนำส่งแล้ว: ภ.ง.ด.53 ก.ย. 69 (${markFiledSeed.certCount} ใบ · ภาษี ${bahtStr(markFiledSeed.totalTaxSatang)})`);
+
+// ผลต่างเงินสดสุทธิจาก WHT ทั้ง 6 ใบ (รับ − จ่าย) — บวกเข้า CSH001 ในเฉลยส่วนที่ 9 ด้านล่าง
+const CASH_WHT_DELTA = creditCashIn - deductCashOut;
+const CASH_FINAL = FIN_TARGET.CSH001 + CASH_WHT_DELTA;
+console.log(
+  `🧾 WHT V2: เครดิต ${CREDIT_FIX.length} ใบ (รับสุทธิ ${bahtStr(creditCashIn)} · เครดิตภาษี ${bahtStr(creditWhtTotal)}) · ` +
+    `หัก ${DEDUCT_FIX.length} ใบ (จ่ายสุทธิ ${bahtStr(deductCashOut)} · ภาษีที่หัก ${bahtStr(deductWhtTotal)}) · CSH001 Δ ${bahtStr(CASH_WHT_DELTA)}`,
+);
+
+// ── เช็ค V2 — 4 ใบ (§10.4) ตั้งใจเป็น "เช็คลอย" ไม่ผูกเอกสาร (documentId ไม่ระบุ) ──
+// เหตุผล: ผูกเอกสารจริงแล้วให้เด้ง/ยกเลิกจะ "คืนหนี้เอกสารกลับเป็นค้างชำระ" (restoreDocForCheque ใน cheque.ts)
+// ⇒ เอกสารใหม่โผล่มาเป็นค้างรับ/ค้างจ่ายที่ไม่ได้อยู่ในแผนของหมวด 5–6 ด้านบน (จะกระทบ receivable/payable +
+// invoiceTabs ที่ผูกกันเป็นลูกโซ่ทั่วทั้งชุดข้อสอบ) — "เช็คลอย" (financeAccountId ใส่ไว้เป็นบัญชีที่ตั้งใจนำฝาก/
+// จ่ายจาก แต่ยังไม่เคลียร์ = ไม่กระทบ GL เงินสด/ธนาคารเลย) ให้ผลทดสอบ lifecycle เดียวกันโดยไม่มีผลข้างเคียง
+// 🔴 ต่างจากใบสั่งงาน (จดไว้): ใบสั่งงานขอ "2 รับ (1 ครบกำหนด 5 วัน · 1 เคลียร์แล้ว) · 2 จ่าย (1 ค้าง · 1 เด้ง)"
+//   ที่จริงเด้งได้เฉพาะเช็ครับ (bounceCheque บังคับ direction IN) และเช็คจ่ายไม่มีสถานะ "เด้ง" ใน state machine
+//   (SPEC §3: เช็คจ่าย = ออกแล้ว·ตัดบัญชีแล้ว·ยกเลิก เท่านั้น) ⇒ สลับเป็น "1 รับเด้ง" (ใช้ direction ที่ถูกจริง)
+//   และ "1 จ่ายยกเลิก" (VOIDED แทน BOUNCED) · ไม่เคลียร์เช็คใดเลย (เหตุผลเดียวกับข้างบน — เคลียร์ = เงินเข้าจริง
+//   ที่ต้องปรับเฉลยอีกชั้น ทำได้แต่ไม่จำเป็นสำหรับพิสูจน์ UI/summary — QC script 5.4 ทดสอบ clearCheque เองแยก
+//   บนข้อมูลชั่วคราวที่ไม่ผูกกับเฉลยชุดนี้)
+const chequeDueSoon = new Date(Date.now() + 5 * 24 * 3600 * 1000);
+const cq1 = await chq.createCheque({
+  tenantId,
+  systemId,
+  direction: "IN",
+  chequeNo: "1000123",
+  bankName: "ธนาคารกสิกรไทย",
+  chequeDate: chequeDueSoon,
+  amount: 850_000,
+  financeAccountId: finId["BSV001"],
+  note: "เช็ครับ — รอครบกำหนด (WO 5.4 fixture)",
+});
+if (!cq1.ok) throw new Error(`สร้างเช็ครับ #1 ไม่สำเร็จ: ${cq1.reason}`);
+
+const cq2 = await chq.createCheque({
+  tenantId,
+  systemId,
+  direction: "IN",
+  chequeNo: "1000124",
+  bankName: "ธนาคารไทยพาณิชย์",
+  chequeDate: D("2026-08-25"),
+  amount: 1_200_000,
+  financeAccountId: finId["BSV001"],
+  note: "เช็ครับ — เด้ง (WO 5.4 fixture)",
+});
+if (!cq2.ok) throw new Error(`สร้างเช็ครับ #2 ไม่สำเร็จ: ${cq2.reason}`);
+const cq2Bounce = await chq.bounceCheque(tenantId, systemId, cq2.id, "เงินในบัญชีไม่พอ");
+if (!cq2Bounce.ok) throw new Error(`บันทึกเช็คเด้ง #2 ไม่สำเร็จ: ${cq2Bounce.reason}`);
+
+const cq3 = await chq.createCheque({
+  tenantId,
+  systemId,
+  direction: "OUT",
+  chequeNo: "5551001",
+  bankName: "ธนาคารกรุงไทย",
+  chequeDate: D("2026-09-10"),
+  amount: 950_000,
+  financeAccountId: finId["BSV001"],
+  note: "เช็คจ่าย — รอเรียกเก็บ (WO 5.4 fixture)",
+});
+if (!cq3.ok) throw new Error(`สร้างเช็คจ่าย #1 ไม่สำเร็จ: ${cq3.reason}`);
+
+const cq4 = await chq.createCheque({
+  tenantId,
+  systemId,
+  direction: "OUT",
+  chequeNo: "5551002",
+  bankName: "ธนาคารกรุงเทพ",
+  chequeDate: D("2026-08-28"),
+  amount: 600_000,
+  financeAccountId: finId["BSV001"],
+  note: "เช็คจ่าย — ยกเลิก (WO 5.4 fixture)",
+});
+if (!cq4.ok) throw new Error(`สร้างเช็คจ่าย #2 ไม่สำเร็จ: ${cq4.reason}`);
+const cq4Void = await chq.voidCheque(tenantId, systemId, cq4.id, "ออกเช็คผิดจำนวน");
+if (!cq4Void.ok) throw new Error(`ยกเลิกเช็คจ่าย #2 ไม่สำเร็จ: ${cq4Void.reason}`);
+
+console.log(`🖊️  เช็ค V2: เช็ครับ 2 (1 รอครบกำหนด · 1 เด้ง) · เช็คจ่าย 2 (1 รอเรียกเก็บ · 1 ยกเลิก) — ไม่มีใบใดเคลียร์`);
+
 // ─────────────────────────── 9. อ่านผลจริงกลับมา + เขียนเฉลย ───────────────────────────
 
 const stats = await svc.overviewStats(tenantId, systemId);
@@ -1329,9 +1505,11 @@ assertEq("ค้างรับ (จาก DB)", stats.receivable, 49_430_000);
 assertEq("พ้นกำหนด (จาก DB)", stats.overdueAmount, 12_840_000);
 assertEq("จำนวนใบพ้นกำหนด (จาก DB)", stats.overdueCount, 4);
 assertEq("ค้างจ่าย (จาก DB)", pay.payable, 21_475_000);
-// WO 5.2: BSV001/PTY001 ขยับจากเติมเงิน/เบิกชดเชยสำรองจ่าย (บล็อก 8.5) — เทียบกับ PETTY_FINAL แทน FIN_TARGET ตรง ๆ
+// WO 5.2: BSV001/PTY001 ขยับจากเติมเงิน/เบิกชดเชยสำรองจ่าย (บล็อก 8.5) · WO 5.4: CSH001 ขยับจาก WHT V2 สุทธิ
+// (บล็อก 8.7 — CASH_WHT_DELTA) — เทียบกับ PETTY_FINAL/CASH_FINAL แทน FIN_TARGET ตรง ๆ
 for (const f of FIN_DEF) {
-  const want = f.code === "BSV001" ? PETTY_FINAL.BSV001 : f.code === "PTY001" ? PETTY_FINAL.PTY001 : FIN_TARGET[f.code as keyof typeof FIN_TARGET];
+  const want =
+    f.code === "BSV001" ? PETTY_FINAL.BSV001 : f.code === "PTY001" ? PETTY_FINAL.PTY001 : f.code === "CSH001" ? CASH_FINAL : FIN_TARGET[f.code as keyof typeof FIN_TARGET];
   assertEq(`ยอดคงเหลือ ${f.name}`, balByName.get(f.name) ?? 0, want);
 }
 
@@ -1348,11 +1526,12 @@ const tabs = {
   overdue: invoices.filter((d) => svc.isOverdue(d)).length,
   cancelled: invoices.filter((d) => d.status === "CANCELLED" || d.status === "VOIDED").length,
 };
-assertEq("แท็บ ทั้งหมด", tabs.all, 53);
+// WO 5.4: +3 (all/paid) จาก CREDIT_FIX (บล็อก 8.7 — 3 ใบแจ้งหนี้ใหม่ WHT credit จ่ายครบทันที = PAID)
+assertEq("แท็บ ทั้งหมด", tabs.all, 56);
 assertEq("แท็บ ร่าง", tabs.draft, 3);
 assertEq("แท็บ รอชำระ", tabs.awaiting, 14);
 assertEq("แท็บ ชำระบางส่วน", tabs.partial, 2);
-assertEq("แท็บ ชำระแล้ว", tabs.paid, 29);
+assertEq("แท็บ ชำระแล้ว", tabs.paid, 32);
 assertEq("แท็บ พ้นกำหนด", tabs.overdue, 4);
 assertEq("แท็บ ยกเลิก", tabs.cancelled, 1);
 
@@ -1413,13 +1592,13 @@ const expected = {
   payableVendors: 7,
   payableOverdueDocs: 2,
   // WO 5.2: BSV001/PTY001/total อัปเดตเป็นยอดหลังเติมเงิน/เบิกชดเชยสำรองจ่าย (ดูบล็อก 8.5 ด้านบน)
-  // — CSH001/EWL001 ไม่กระทบ (ไม่ได้แตะช่องทางนี้ในบล็อก 8.5)
+  // WO 5.4: CSH001/total อัปเดตเป็นยอดหลังรับ/จ่าย WHT V2 สุทธิ (ดูบล็อก 8.7 — CASH_WHT_DELTA) — EWL001 ไม่กระทบ
   finance: {
-    CSH001: FIN_TARGET.CSH001,
+    CSH001: CASH_FINAL,
     BSV001: PETTY_FINAL.BSV001,
     EWL001: FIN_TARGET.EWL001,
     PTY001: PETTY_FINAL.PTY001,
-    total: FIN_TARGET.CSH001 + PETTY_FINAL.BSV001 + FIN_TARGET.EWL001 + PETTY_FINAL.PTY001,
+    total: CASH_FINAL + PETTY_FINAL.BSV001 + FIN_TARGET.EWL001 + PETTY_FINAL.PTY001,
   },
   financeAccounts: FIN_DEF.map((f) => ({
     code: f.code,
@@ -1428,12 +1607,12 @@ const expected = {
     type: f.type,
     opening: finOpening[f.code],
     balance:
-      f.code === "BSV001" ? PETTY_FINAL.BSV001 : f.code === "PTY001" ? PETTY_FINAL.PTY001 : FIN_TARGET[f.code as keyof typeof FIN_TARGET],
+      f.code === "BSV001" ? PETTY_FINAL.BSV001 : f.code === "PTY001" ? PETTY_FINAL.PTY001 : f.code === "CSH001" ? CASH_FINAL : FIN_TARGET[f.code as keyof typeof FIN_TARGET],
   })),
   // WO 5.1 — กลุ่ม/ยอดกลุ่ม (§10.1): เงินสด·ออมทรัพย์·e-Wallet·สำรองรับ-จ่าย (ไม่มีบัญชีกระแสในชุดข้อมูลนี้)
-  // WO 5.2: BANK_SAVINGS/PETTY_CASH อัปเดตตามยอดหลังเติม/เบิกชดเชย
+  // WO 5.2: BANK_SAVINGS/PETTY_CASH อัปเดตตามยอดหลังเติม/เบิกชดเชย · WO 5.4: CASH อัปเดตตาม WHT V2 สุทธิ
   financeGroups: {
-    CASH: FIN_TARGET.CSH001,
+    CASH: CASH_FINAL,
     BANK_SAVINGS: PETTY_FINAL.BSV001,
     E_WALLET: FIN_TARGET.EWL001,
     PETTY_CASH: PETTY_FINAL.PTY001,
@@ -1460,7 +1639,8 @@ const expected = {
     reimbursed: { paymentId: pettyExpenseAPaymentId, amount: PETTY_EXPENSE_A_SATANG, date: "2026-09-12" },
     pending: { paymentId: pettyExpenseBPaymentId, amount: PETTY_EXPENSE_B_SATANG, date: "2026-09-20" },
   },
-  invoiceTabs: { all: 53, draft: 3, awaiting: 14, partial: 2, paid: 29, overdue: 4, cancelled: 1 },
+  // WO 5.4: +3 (all/paid) จาก CREDIT_FIX (ดูบล็อก 8.7)
+  invoiceTabs: { all: 56, draft: 3, awaiting: 14, partial: 2, paid: 32, overdue: 4, cancelled: 1 },
   contacts: { all: 63, customer: 41, vendor: 22, archived: 5, active: 58 },
   // WO 4.3: 13 = สินค้า 7 + บริการ 5 + รายการจัดชุด 1 (เดิม 12 · เพิ่ม "ชุดดำน้ำตื้นครบเซ็ต")
   products: 13,
@@ -1540,6 +1720,33 @@ const expected = {
       imported: bankPrevImport.imported,
       autoMatched: bankPrevAuto.matched,
     },
+  },
+  // WO 5.4 — WHT 2 ขา V2 + เช็ค V2 (§10.4–5 · g11) — id/ยอดของ fixture ให้ qc-acc-v2-wht-cheque.mts อ้างอิง
+  // (สคริปต์นั้นยังต้องคำนวณผลรวม/ตัวนับซ้ำด้วย SQL อิสระของตัวเอง — คีย์นี้ไว้ระบุ "ใบไหนคือใบไหน" เท่านั้น)
+  whtV2: {
+    creditCertIds,
+    deductCertIds,
+    creditCashInSatang: creditCashIn,
+    creditWhtTotalSatang: creditWhtTotal,
+    deductCashOutSatang: deductCashOut,
+    deductWhtTotalSatang: deductWhtTotal,
+    cashWhtDeltaSatang: CASH_WHT_DELTA,
+    months: ["2026-08", "2026-09"],
+    // WO 5.4 round 2 — 1 ใน 3 ใบหัก (deductCertIds[2] "สำนักงานบัญชี ภูเก็ตแอคเคาท์") ถูกทำเครื่องหมายนำส่งแล้ว
+    filedForm: 53,
+    filedPeriodKey: "2026-09",
+    filedCertId: deductCertIds[2],
+  },
+  chequeV2: {
+    inDueSoonId: cq1.id,
+    inDueSoonChequeNo: "1000123",
+    inDueSoonDate: chequeDueSoon.toISOString(),
+    inBouncedId: cq2.id,
+    inBouncedChequeNo: "1000124",
+    outPendingId: cq3.id,
+    outPendingChequeNo: "5551001",
+    outVoidedId: cq4.id,
+    outVoidedChequeNo: "5551002",
   },
   fixtures: {
     ...fixtures,

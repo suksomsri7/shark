@@ -83,6 +83,136 @@ export async function chequeSummary(tenantId: string, systemId: string) {
   };
 }
 
+// ─────────────────── หน้ารายการ V2 (§10.4) ───────────────────
+// WO 5.4: "ผู้ติดต่อ"/"อ้างอิงเอกสาร" มาจาก join ผ่าน `payment.document` (relation ที่มีอยู่แล้ว) —
+// **ไม่เพิ่มคอลัมน์ contactId/documentId ซ้ำบน AccountCheque** (ดูเหตุผลใน wo-notes/5.4.md ขั้น 3 ข้อ 1) —
+// เช็คที่ยังไม่เคยผูก payment (ยังไม่มีในหน้าปัจจุบัน — ฟอร์มสร้างผูกเอกสารเสมอ) จะได้ contact/doc = null เฉย ๆ
+
+export type ChequeRowV2 = {
+  id: string;
+  direction: AccountChequeDirection;
+  chequeNo: string;
+  bankName: string;
+  bankBranch: string | null;
+  chequeDate: Date;
+  amount: number;
+  status: AccountChequeStatus;
+  depositedAt: Date | null;
+  clearedAt: Date | null;
+  note: string | null;
+  contactName: string | null;
+  documentId: string | null;
+  documentNo: string | null;
+};
+
+export async function listChequesV2(
+  tenantId: string,
+  systemId: string,
+  opts: {
+    direction: AccountChequeDirection;
+    status?: AccountChequeStatus;
+    bank?: string; // ค้นหาชื่อธนาคาร/เลขที่เช็ค/ผู้ติดต่อ
+    from?: Date; // ช่วงวันที่บนเช็ค
+    to?: Date;
+    page?: number;
+    pageSize?: number;
+  },
+): Promise<{ rows: ChequeRowV2[]; total: number; totalSatang: number }> {
+  const all = await prisma.accountCheque.findMany({
+    where: {
+      tenantId,
+      systemId,
+      direction: opts.direction,
+      ...(opts.status ? { status: opts.status } : {}),
+      ...(opts.from || opts.to
+        ? { chequeDate: { ...(opts.from ? { gte: opts.from } : {}), ...(opts.to ? { lt: opts.to } : {}) } }
+        : {}),
+    },
+    include: {
+      payment: {
+        select: {
+          document: { select: { id: true, docNo: true, contactSnapshot: true, contact: { select: { name: true } } } },
+        },
+      },
+    },
+    orderBy: [{ chequeDate: "desc" }, { createdAt: "desc" }],
+  });
+
+  const q = (opts.bank ?? "").trim().toLowerCase();
+  const mapped: ChequeRowV2[] = all.map((c) => {
+    const doc = c.payment?.document ?? null;
+    const snap = (doc?.contactSnapshot as Record<string, unknown> | null) ?? null;
+    const contactName = (snap?.name as string) ?? doc?.contact?.name ?? null;
+    return {
+      id: c.id,
+      direction: c.direction,
+      chequeNo: c.chequeNo,
+      bankName: c.bankName,
+      bankBranch: c.bankBranch,
+      chequeDate: c.chequeDate,
+      amount: c.amount,
+      status: c.status,
+      depositedAt: c.depositedAt,
+      clearedAt: c.clearedAt,
+      note: c.note,
+      contactName,
+      documentId: doc?.id ?? null,
+      documentNo: doc?.docNo ?? null,
+    };
+  });
+  const filtered =
+    q.length === 0
+      ? mapped
+      : mapped.filter(
+          (r) =>
+            r.chequeNo.toLowerCase().includes(q) ||
+            r.bankName.toLowerCase().includes(q) ||
+            (r.contactName ?? "").toLowerCase().includes(q) ||
+            (r.documentNo ?? "").toLowerCase().includes(q),
+        );
+
+  const totalSatang = filtered.reduce((s, r) => s + r.amount, 0);
+  const pageSize = opts.pageSize ?? 20;
+  const page = Math.max(1, opts.page ?? 1);
+  const rows = filtered.slice((page - 1) * pageSize, page * pageSize);
+  return { rows, total: filtered.length, totalSatang };
+}
+
+/** จำนวนเช็คต่อสถานะของทิศทางเดียว — ใช้เป็นตัวนับ StatusTabs (ไม่ผูกกับตัวกรองวันที่/ค้นหาปัจจุบัน
+ *  เหมือน StatusTabs ของหน้าเอกสารอื่น ๆ ที่นับจากทั้งชุดข้อมูล ไม่ใช่หน้าที่กรองแล้ว) — 1 query (groupBy) */
+export async function chequeStatusCounts(
+  tenantId: string,
+  systemId: string,
+  direction: AccountChequeDirection,
+): Promise<Record<AccountChequeStatus, number>> {
+  const rows = await prisma.accountCheque.groupBy({
+    by: ["status"],
+    where: { tenantId, systemId, direction },
+    _count: { _all: true },
+  });
+  const out = {} as Record<AccountChequeStatus, number>;
+  for (const r of rows) out[r.status] = r._count._all;
+  return out;
+}
+
+/** สรุปหัวหน้า V2 ต่อทิศทาง (§10.4): "รอเรียกเก็บ ฿"/"เช็คจ่ายรอตัด ฿" + "ครบกำหนดใน 7 วัน n"
+ *  หน้าต่างเดียวกับ reminders CHEQUE_DUE (`service.ts CHEQUE_LEAD_DAYS`) — รวมที่เลยกำหนดแล้วแต่ยังไม่เคลียร์ */
+export async function chequeSummaryV2(
+  tenantId: string,
+  systemId: string,
+  direction: AccountChequeDirection,
+): Promise<{ pendingSatang: number; dueSoonCount: number }> {
+  const pendingStatuses: AccountChequeStatus[] = direction === "IN" ? ["ON_HAND", "DEPOSITED"] : ["ISSUED"];
+  const rows = await prisma.accountCheque.findMany({
+    where: { tenantId, systemId, direction, status: { in: pendingStatuses } },
+    select: { amount: true, chequeDate: true },
+  });
+  const pendingSatang = rows.reduce((s, r) => s + r.amount, 0);
+  const horizon = new Date(Date.now() + 8 * 24 * 3600 * 1000); // 7 วันข้างหน้า + วันนี้ (รวมที่เลยกำหนดแล้ว)
+  const dueSoonCount = rows.filter((r) => r.chequeDate < horizon).length;
+  return { pendingSatang, dueSoonCount };
+}
+
 // ─────────────────── posting helper ───────────────────
 
 async function bankLedgerId(ctx: Ctx, financeAccountId: string | null, db: Tx): Promise<string> {
@@ -267,12 +397,14 @@ export async function depositCheque(
   tenantId: string,
   systemId: string,
   id: string,
+  depositedAt?: Date,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const cq = await getCheque(tenantId, systemId, id);
   if (!cq) return { ok: false, reason: "ไม่พบเช็ค" };
   if (cq.direction !== "IN") return { ok: false, reason: "นำฝากได้เฉพาะเช็ครับ" };
   if (cq.status !== "ON_HAND") return { ok: false, reason: "เช็คนี้ไม่อยู่สถานะรอนำฝาก" };
-  await prisma.accountCheque.update({ where: { id }, data: { status: "DEPOSITED" } });
+  // WO 5.4 (§10.4): บันทึกวันที่นำฝากจริง (ของเดิมเปลี่ยนแค่ status ไม่มีวันที่เก็บ)
+  await prisma.accountCheque.update({ where: { id }, data: { status: "DEPOSITED", depositedAt: depositedAt ?? new Date() } });
   return { ok: true };
 }
 

@@ -352,6 +352,9 @@ model AccountCheque {
   status           AccountChequeStatus
   financeAccountId String?
   clearedAt        DateTime?
+  // WO 5.4 (§10.4) — วันที่นำฝากจริง (เช็ครับ ON_HAND→DEPOSITED) · ของเดิมเปลี่ยนแค่ status ไม่มีวันที่เก็บ
+  // null = ยังไม่นำฝาก/แถวเก่าก่อน WO นี้ (V1 depositCheque ไม่เคยเซ็ต — ไม่กระทบพฤติกรรมเดิม)
+  depositedAt      DateTime?
   note             String?
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
@@ -359,6 +362,29 @@ model AccountCheque {
   payment AccountDocumentPayment?
 
   @@index([systemId, direction, status])
+}
+
+// WO 5.4 (§10.5) — บันทึกการ "นำส่ง" ภ.ง.ด.3/53 ต่อ (systemId, form, periodKey)
+// 1 แถว = 1 งวดที่ทำเครื่องหมายนำส่งแล้ว (form 3 = บุคคลธรรมดา · 53 = นิติบุคคล — เก็บเป็น Int ตรงกับ `pnd()`)
+// totalBaseSatang/totalTaxSatang/certCount = ภาพนิ่ง ณ ตอนกดยืนยัน (คำนวณจาก pnd() สด — ไม่ increment
+// ⇒ เรียกซ้ำ = เขียนทับค่าเดิมด้วยผลรวมเดิม = idempotent) · unmarkFiled ลบแถวนี้ทิ้ง + เคลียร์ whtFiledPeriodKey
+model AccountWhtFiling {
+  id               String   @id @default(cuid())
+  tenantId         String
+  systemId         String
+  form             Int // 3 | 53
+  periodKey        String // "YYYY-MM"
+  filedAt          DateTime @default(now())
+  filedById        String?
+  totalBaseSatang  Int
+  totalTaxSatang   Int
+  certCount        Int
+  note             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([systemId, form, periodKey])
+  @@index([tenantId, systemId])
 }
 
 // ───────── 4.5 ผังบัญชี + mapping ─────────

@@ -166,6 +166,10 @@ model AccountDocument {
   adjustAccountCode String?
   whtIncomeType   AccountWhtIncomeType? // WHT_CERT: ประเภทเงินได้ ม.40
   whtRateBp       Int? // WHT_CERT: basis point (300 = 3%)
+  // WO 5.4 (§10.5) — WHT_CERT (direction IN = 50 ทวิที่เราหักผู้ขาย) ที่ถูก "ทำเครื่องหมายนำส่งแล้ว"
+  // ค่า = "<form>:<periodKey>" เช่น "53:2026-09" (ยื่น ภ.ง.ด.53 งวด ก.ย. 69) · null = ยังไม่ยื่น
+  // เขียนครั้งเดียวตอน markFiled (idempotent ต่อ (form, periodKey) — ดู wht.ts) · เอกสารชนิดอื่นไม่ใช้ฟิลด์นี้
+  whtFiledPeriodKey String?
   etaxStatus      AccountEtaxStatus     @default(NOT_SENT) // P4
   etaxMeta        Json? // P4: {providerId, xmlUrl, sentAt, error}
   pdfUrl          String?
@@ -202,6 +206,8 @@ model AccountDocument {
   @@index([systemId, direction, issueDate])
   @@index([systemId, docType, source]) // V2: กรอง "มาจากไหน" ในหน้ารายการ
   @@index([tenantId, systemId])
+  // WO 5.4: หา WHT_CERT ที่ยังไม่ยื่นของ (systemId, docType) เร็ว — ใช้ตอน markFiled คำนวณผลรวมใหม่
+  @@index([systemId, docType, whtFiledPeriodKey])
 }
 
 model AccountDocumentLine {

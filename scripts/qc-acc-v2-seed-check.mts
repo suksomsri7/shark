@@ -447,6 +447,56 @@ if (BR) {
   }
 }
 
+// ─────────── M. WHT V2 + เช็ค V2 (WO 5.4 · §10.4–5) ───────────
+// เช็คพื้นฐานว่า fixture ของบล็อก 8.7 ยังอยู่ครบ — ความถูกต้องเชิงลึก (ตัวกรอง/CSV/markFiled/lifecycle)
+// อยู่ใน qc-acc-v2-wht-cheque.mts แยกต่างหาก (ใช้ SQL อิสระ + ร้านทิ้งสำหรับ mutation)
+console.log("\nM. WHT V2 + เช็ค V2");
+{
+  const WV = E.whtV2 as
+    | {
+        creditCertIds?: string[];
+        deductCertIds?: string[];
+        creditWhtTotalSatang?: number;
+        deductWhtTotalSatang?: number;
+        filedForm?: number;
+        filedPeriodKey?: string;
+        filedCertId?: string;
+      }
+    | undefined;
+  chk("M1", "เฉลยมีคีย์ whtV2 (seed ใหม่หลัง WO 5.4 แล้ว)", !!WV, WV ? "มี" : "ไม่มี");
+  if (WV) {
+    const creditCount = await prisma.accountDocument.count({ where: { systemId, docType: "WHT_CERT", direction: "OUT" } });
+    eq("M2", "WHT_CERT ฝั่งเครดิต (ถูกหักไว้) = 3 ใบ", creditCount, 3);
+    const deductCount = await prisma.accountDocument.count({ where: { systemId, docType: "WHT_CERT", direction: "IN" } });
+    eq("M3", "WHT_CERT ฝั่งหัก (เราหักผู้ขาย) = 3 ใบ", deductCount, 3);
+    const creditSum = await prisma.accountDocument.aggregate({ where: { systemId, docType: "WHT_CERT", direction: "OUT" }, _sum: { whtAmount: true } });
+    eq("M4", "ผลรวมภาษีถูกหักไว้ = เฉลย", creditSum._sum.whtAmount ?? 0, WV.creditWhtTotalSatang);
+    const deductSum = await prisma.accountDocument.aggregate({ where: { systemId, docType: "WHT_CERT", direction: "IN" }, _sum: { whtAmount: true } });
+    eq("M5", "ผลรวมภาษีที่หัก = เฉลย", deductSum._sum.whtAmount ?? 0, WV.deductWhtTotalSatang);
+    // WO 5.4 round 2 (Fable ตีกลับ): 1 ใน 3 ใบหักถูกทำเครื่องหมายนำส่งแล้ว (ให้หน้า g11 โชว์ทั้ง 2 สไตล์ชิป)
+    const unfiledCount = await prisma.accountDocument.count({ where: { systemId, docType: "WHT_CERT", direction: "IN", whtFiledPeriodKey: null } });
+    eq("M6", "เหลือ 2 ใบที่ยังไม่ยื่น (1 ใบยื่นแล้ว)", unfiledCount, 2);
+    if (WV.filedCertId) {
+      const filedCert = await prisma.accountDocument.findUnique({ where: { id: WV.filedCertId }, select: { whtFiledPeriodKey: true } });
+      eq("M6b", `ใบที่ยื่นแล้ว whtFiledPeriodKey = ${WV.filedForm}:${WV.filedPeriodKey}`, filedCert?.whtFiledPeriodKey, `${WV.filedForm}:${WV.filedPeriodKey}`);
+    }
+    const filingRow = await prisma.accountWhtFiling.findFirst({ where: { systemId, form: WV.filedForm, periodKey: WV.filedPeriodKey } });
+    chk("M6c", "มีแถว AccountWhtFiling ของงวดที่ยื่นแล้ว", !!filingRow, filingRow ? "มี" : "ไม่มี");
+  }
+
+  const CQ = E.chequeV2 as { inDueSoonId?: string; inBouncedId?: string; outPendingId?: string; outVoidedId?: string } | undefined;
+  chk("M7", "เฉลยมีคีย์ chequeV2 (seed ใหม่หลัง WO 5.4 แล้ว)", !!CQ, CQ ? "มี" : "ไม่มี");
+  if (CQ) {
+    const cqCount = await prisma.accountCheque.count({ where: { systemId } });
+    eq("M8", "เช็คทั้งหมด = 4 ใบ (2 รับ + 2 จ่าย)", cqCount, 4);
+    const byStatus = await prisma.accountCheque.groupBy({ by: ["status"], where: { systemId }, _count: { _all: true } });
+    const statusMap = Object.fromEntries(byStatus.map((s) => [s.status, s._count._all]));
+    eq("M9", "สถานะเช็ค: ON_HAND=1 · BOUNCED=1 · ISSUED=1 · VOIDED=1", [statusMap.ON_HAND ?? 0, statusMap.BOUNCED ?? 0, statusMap.ISSUED ?? 0, statusMap.VOIDED ?? 0], [1, 1, 1, 1]);
+    const noneCleared = await prisma.accountCheque.count({ where: { systemId, status: "CLEARED" } });
+    eq("M10", "ไม่มีเช็คใดถูกเคลียร์ (ตั้งใจ — ดู wo-notes/5.4.md ขั้น 3)", noneCleared, 0);
+  }
+}
+
 // ─────────── H. อายุของข้อสอบ ───────────
 console.log("\nH. อายุของชุดข้อมูล");
 chk(

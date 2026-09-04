@@ -451,6 +451,8 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "account.period.reopen": "เปิดงวดบัญชีที่ปิดไปแล้ว",
       "account.tax.view": "ดูรายงานภาษี",
       "account.wht.manage": "จัดการภาษีหัก ณ ที่จ่าย",
+      // V2 (WO 5.4) — เหมือน account.period.reopen: ยกเลิกเครื่องหมายนำส่ง ภ.ง.ด. ที่ยื่นแล้ว (สิทธิ์ระดับเจ้าของ)
+      "account.wht.unmark": "🔒 ยกเลิกเครื่องหมายนำส่งภาษีหัก ณ ที่จ่าย",
       "account.report.view": "ดูงบการเงิน",
       "account.finance.manage": "จัดการบัญชีธนาคาร/เงินสด",
       "account.asset.manage": "จัดการทะเบียนสินทรัพย์",

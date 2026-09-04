@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/core/db";
-import type { AccountWhtIncomeType, AccountLegalType, Prisma } from "@prisma/client";
+import type { AccountWhtIncomeType, AccountLegalType, AccountDocDirection, Prisma } from "@prisma/client";
 
 // ─────────────────────────────────────────────────────────────
 // wht.ts — ภาษีหัก ณ ที่จ่าย (WHT) สองขา — §3.5 + F5 (P2)
@@ -402,6 +402,7 @@ export type PndRow = {
   paidAt: Date;
   recipientName: string;
   recipientTaxId: string | null;
+  recipientBranch: string | null; // WO 5.4: สาขา (จาก snapshot.branchCode — ม.86/4 ต้องระบุ 00000=สนง.ใหญ่)
   recipientAddress: string | null; // M5: ที่อยู่ผู้รับเงิน (จาก snapshot)
   incomeType: AccountWhtIncomeType | null;
   incomeLabel: string;
@@ -439,7 +440,7 @@ export async function pnd(
       status: "ISSUED",
       issueDate: { gte, lt },
     },
-    include: { contact: { select: { name: true, taxId: true, address: true, legalType: true } } },
+    include: { contact: { select: { name: true, taxId: true, address: true, legalType: true, branchCode: true } } },
     orderBy: { issueDate: "asc" },
   });
   const certs = allCerts.filter((c) => {
@@ -471,6 +472,7 @@ export async function pnd(
       paidAt: c.issueDate,
       recipientName: (snap?.name as string) ?? c.contact?.name ?? "—",
       recipientTaxId: (snap?.taxId as string) ?? c.contact?.taxId ?? null,
+      recipientBranch: (snap?.branchCode as string) ?? c.contact?.branchCode ?? "00000",
       recipientAddress: (snap?.address as string) ?? c.contact?.address ?? null,
       incomeType: c.whtIncomeType,
       incomeLabel: c.whtIncomeType ? WHT_INCOME_LABEL[c.whtIncomeType] : "—",
@@ -506,12 +508,15 @@ export async function pndCsv(
 ): Promise<string> {
   const { rows, grandBase, grandWht } = await pnd(tenantId, systemId, input);
   // M5: + ที่อยู่ผู้รับเงิน + เงื่อนไขการหัก (1 หัก ณ ที่จ่าย · 2 ออกให้ตลอดไป · 3 ออกให้ครั้งเดียว)
+  // WO 5.4: เพิ่ม "สาขา" (ม.86/4 บังคับระบุ 00000=สนง.ใหญ่ หรือรหัสสาขา) — ของจริงมีอยู่แล้วใน
+  // contactSnapshot.branchCode (WO 0.3) เดิมแค่ไม่ได้ export ลง CSV
   const header = [
     "ลำดับ",
     "เลขที่ 50 ทวิ",
     "วันที่จ่าย",
     "ชื่อผู้รับเงิน",
     "เลขประจำตัวผู้เสียภาษี",
+    "สาขา",
     "ที่อยู่",
     "ประเภทเงินได้",
     "จำนวนเงินได้",
@@ -526,6 +531,7 @@ export async function pndCsv(
       r.paidAt.toISOString().slice(0, 10),
       r.recipientName,
       r.recipientTaxId ?? "",
+      r.recipientBranch ?? "00000",
       r.recipientAddress ?? "",
       r.incomeLabel,
       bahtStr(r.base),
@@ -536,7 +542,7 @@ export async function pndCsv(
       .map(csvCell)
       .join(","),
   );
-  const totalLine = ["", "", "", "", "", "", "รวม", bahtStr(grandBase), "", bahtStr(grandWht), ""]
+  const totalLine = ["", "", "", "", "", "", "", "รวม", bahtStr(grandBase), "", bahtStr(grandWht), ""]
     .map(csvCell)
     .join(",");
   return "﻿" + [header.map(csvCell).join(","), ...lines, totalLine].join("\n");
@@ -577,4 +583,272 @@ export async function whtCreditsCsv(
     .map(csvCell)
     .join(",");
   return "﻿" + [header.map(csvCell).join(","), ...lines, totalLine].join("\n");
+}
+
+// ─────────────────── ④ หน้ารายการ V2 (§10.5 · g11) ───────────────────
+// รวม direction เดียว = ทั้ง PERSON+COMPANY ในตารางเดียว (ตรง g11 — คอลัมน์เดียวกัน ไม่แยกแบบ)
+// ต่างจาก listWhtCredits/listWhtDeductions ("payment"-first, กรอง voidedAt:null) ตรงที่ตัวนี้เริ่มจาก
+// AccountDocument WHT_CERT ตรง ๆ (เหมือน pnd()) → เห็นแถวที่ถูกยกเลิกด้วย (แท็บ "ยกเลิก" ต้องมีของจริงให้กรอง)
+
+export type WhtCertStatusTab = "ALL" | "NORMAL" | "CANCELLED";
+
+export type WhtCertRow = {
+  id: string; // = certId (DocTable<T extends {id:string}> ต้องการชื่อนี้ — certId คงไว้เพื่ออ่านเข้าใจง่ายในโค้ดอื่น)
+  certId: string;
+  certNo: string | null;
+  cancelled: boolean; // VOIDED หรือ CANCELLED
+  paidAt: Date; // = issueDate ของ WHT_CERT (= payment.paidAt ตอนออก)
+  contactName: string;
+  contactTaxId: string | null;
+  legalType: AccountLegalType;
+  form: 3 | 53; // PERSON→3 · COMPANY→53 (ใช้กับ direction IN เท่านั้น — ฝั่ง OUT ไม่มีความหมาย)
+  sourceDocId: string | null;
+  sourceDocNo: string | null; // "อ้างอิงเอกสาร" (g11) — เอกสารต้นทาง (ใบแจ้งหนี้/บันทึกซื้อ ฯลฯ)
+  sourceDocType: string | null; // ใช้ประกอบลิงก์ผ่าน editorDetailPath (ทำใน UI ไม่ทำใน wht.ts — คนละชั้น)
+  incomeType: AccountWhtIncomeType | null;
+  incomeLabel: string;
+  base: number;
+  whtRateBp: number | null;
+  whtAmount: number;
+  /** เฉพาะ direction IN — "53:2026-09" = ยื่นแล้วงวดนั้น · null = ยังไม่ยื่น */
+  filedPeriodKey: string | null;
+};
+
+/** หน้ารายการ WHT V2 (ทั้ง 2 ขา) — ตัวกรอง: ช่วงวันที่ชำระ · แท็บสถานะ · ค้นหา · หน้า */
+export async function listWhtCertsV2(
+  tenantId: string,
+  systemId: string,
+  input: {
+    direction: AccountDocDirection; // IN = เราหักผู้ขาย (ต้องนำส่ง) · OUT = ลูกค้าหักเรา (เครดิตภาษี)
+    from?: Date;
+    to?: Date;
+    status?: WhtCertStatusTab;
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  },
+): Promise<{
+  rows: WhtCertRow[];
+  total: number;
+  totalBase: number;
+  totalWht: number;
+  tabCounts: { ALL: number; NORMAL: number; CANCELLED: number };
+}> {
+  const certs = await prisma.accountDocument.findMany({
+    where: {
+      tenantId,
+      systemId,
+      docType: "WHT_CERT",
+      direction: input.direction,
+      status: { in: ["ISSUED", "VOIDED", "CANCELLED"] },
+      ...(input.from || input.to
+        ? { issueDate: { ...(input.from ? { gte: input.from } : {}), ...(input.to ? { lt: input.to } : {}) } }
+        : {}),
+    },
+    include: { contact: { select: { name: true, taxId: true, legalType: true, branchCode: true } } },
+    orderBy: { issueDate: "desc" },
+  });
+
+  const sourceIds = certs.map((c) => c.sourceDocId).filter((x): x is string => !!x);
+  const sources = sourceIds.length
+    ? await prisma.accountDocument.findMany({ where: { systemId, id: { in: sourceIds } }, select: { id: true, docNo: true, docType: true } })
+    : [];
+  const sourceNoById = new Map(sources.map((s) => [s.id, s.docNo]));
+  const sourceTypeById = new Map(sources.map((s) => [s.id, s.docType as string]));
+
+  const q = (input.q ?? "").trim().toLowerCase();
+  const allRows: WhtCertRow[] = certs
+    .map((c) => {
+      const snap = (c.contactSnapshot as Record<string, unknown> | null) ?? null;
+      const legalType = (snap?.legalType as AccountLegalType) ?? c.contact?.legalType ?? "COMPANY";
+      return {
+        id: c.id,
+        certId: c.id,
+        certNo: c.docNo,
+        cancelled: c.status === "VOIDED" || c.status === "CANCELLED",
+        paidAt: c.issueDate,
+        contactName: (snap?.name as string) ?? c.contact?.name ?? "—",
+        contactTaxId: (snap?.taxId as string) ?? c.contact?.taxId ?? null,
+        legalType,
+        form: legalType === "PERSON" ? (3 as const) : (53 as const),
+        sourceDocId: c.sourceDocId,
+        sourceDocNo: c.sourceDocId ? (sourceNoById.get(c.sourceDocId) ?? null) : null,
+        sourceDocType: c.sourceDocId ? (sourceTypeById.get(c.sourceDocId) ?? null) : null,
+        incomeType: c.whtIncomeType,
+        incomeLabel: c.whtIncomeType ? WHT_INCOME_LABEL[c.whtIncomeType] : "—",
+        base: c.subTotal,
+        whtRateBp: c.whtRateBp,
+        whtAmount: c.whtAmount,
+        filedPeriodKey: c.whtFiledPeriodKey,
+      };
+    })
+    .filter((r) =>
+      q.length === 0
+        ? true
+        : r.contactName.toLowerCase().includes(q) ||
+          (r.certNo ?? "").toLowerCase().includes(q) ||
+          (r.sourceDocNo ?? "").toLowerCase().includes(q),
+    );
+
+  const tabCounts = {
+    ALL: allRows.length,
+    NORMAL: allRows.filter((r) => !r.cancelled).length,
+    CANCELLED: allRows.filter((r) => r.cancelled).length,
+  };
+
+  const status = input.status ?? "ALL";
+  const filtered = allRows.filter((r) => (status === "ALL" ? true : status === "NORMAL" ? !r.cancelled : r.cancelled));
+  const totalBase = filtered.reduce((s, r) => s + r.base, 0);
+  const totalWht = filtered.reduce((s, r) => s + r.whtAmount, 0);
+
+  const pageSize = input.pageSize ?? 20;
+  const page = Math.max(1, input.page ?? 1);
+  const rows = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  return { rows, total: filtered.length, totalBase, totalWht, tabCounts };
+}
+
+/** เครดิตภาษีถูกหักสะสมปีนี้ (Σ WHT_CERT direction OUT, ISSUED, ปีนี้) — ไทล์บนหน้า WHT ทั้ง 2 ขา (g11) */
+export async function whtCreditYearTotal(tenantId: string, systemId: string, year: number): Promise<number> {
+  const gte = new Date(Date.UTC(year, 0, 1, -7));
+  const lt = new Date(Date.UTC(year + 1, 0, 1, -7));
+  const agg = await prisma.accountDocument.aggregate({
+    where: { tenantId, systemId, docType: "WHT_CERT", direction: "OUT", status: "ISSUED", issueDate: { gte, lt } },
+    _sum: { whtAmount: true },
+  });
+  return agg._sum.whtAmount ?? 0;
+}
+
+/**
+ * ทำเครื่องหมายนำส่งแล้ว (§10.5 "(งวด)") — คำนวณผลรวมสดจาก `pnd()` เสมอแล้ว upsert (ไม่ increment)
+ * ⇒ idempotent ต่อ (systemId, form, periodKey): เรียกซ้ำได้ผลเดิมเป๊ะ ไม่นับซ้ำ
+ * stamp `whtFiledPeriodKey = "<form>:<periodKey>"` เฉพาะ cert ที่ยังไม่ stamp (cert เก่าที่ stamp ไปแล้วข้ามเงียบ)
+ */
+export async function markFiled(
+  tenantId: string,
+  systemId: string,
+  input: { form: 3 | 53; periodKey: string; filedById?: string | null; note?: string | null },
+): Promise<{ ok: true; certCount: number; totalBaseSatang: number; totalTaxSatang: number } | { ok: false; reason: string }> {
+  try {
+    const report = await pnd(tenantId, systemId, { type: input.form, period: input.periodKey });
+    if (report.rows.length === 0) return { ok: false, reason: "ไม่มี 50 ทวิ ที่ต้องนำส่งในงวดนี้" };
+    const key = `${input.form}:${input.periodKey}`;
+    await prisma.$transaction(async (tx) => {
+      await tx.accountWhtFiling.upsert({
+        where: { systemId_form_periodKey: { systemId, form: input.form, periodKey: input.periodKey } },
+        create: {
+          tenantId,
+          systemId,
+          form: input.form,
+          periodKey: input.periodKey,
+          filedById: input.filedById ?? null,
+          totalBaseSatang: report.grandBase,
+          totalTaxSatang: report.grandWht,
+          certCount: report.rows.length,
+          note: input.note ?? null,
+        },
+        update: {
+          filedAt: new Date(),
+          filedById: input.filedById ?? null,
+          totalBaseSatang: report.grandBase,
+          totalTaxSatang: report.grandWht,
+          certCount: report.rows.length,
+          note: input.note ?? null,
+        },
+      });
+      await tx.accountDocument.updateMany({
+        where: { systemId, docType: "WHT_CERT", id: { in: report.rows.map((r) => r.certId) }, whtFiledPeriodKey: null },
+        data: { whtFiledPeriodKey: key },
+      });
+    });
+    return { ok: true, certCount: report.rows.length, totalBaseSatang: report.grandBase, totalTaxSatang: report.grandWht };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "ทำเครื่องหมายนำส่งแล้วไม่สำเร็จ" };
+  }
+}
+
+/** ยกเลิกเครื่องหมายนำส่งแล้ว (สิทธิ์ระดับเจ้าของ — `account.wht.unmark` ตรวจที่ actions.ts) */
+export async function unmarkFiled(
+  tenantId: string,
+  systemId: string,
+  input: { form: 3 | 53; periodKey: string },
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const key = `${input.form}:${input.periodKey}`;
+  try {
+    await prisma.$transaction(async (tx) => {
+      const filing = await tx.accountWhtFiling.findFirst({
+        where: { tenantId, systemId, form: input.form, periodKey: input.periodKey },
+      });
+      if (!filing) throw new Error("งวดนี้ยังไม่ได้ทำเครื่องหมายนำส่ง");
+      await tx.accountDocument.updateMany({
+        where: { systemId, docType: "WHT_CERT", whtFiledPeriodKey: key },
+        data: { whtFiledPeriodKey: null },
+      });
+      await tx.accountWhtFiling.delete({ where: { id: filing.id } });
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "ยกเลิกเครื่องหมายนำส่งไม่สำเร็จ" };
+  }
+}
+
+/** งวดที่ทำเครื่องหมายนำส่งแล้วทั้งหมดของระบบ — ใช้เช็คสถานะในหน้ารายการ/modal (ไม่ query ทีละ cert) */
+export function listWhtFilings(tenantId: string, systemId: string) {
+  return prisma.accountWhtFiling.findMany({ where: { tenantId, systemId }, orderBy: [{ periodKey: "desc" }, { form: "asc" }] });
+}
+
+const PERIOD_LABEL_TH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+export function periodKeyLabel(periodKey: string): string {
+  const [y, m] = periodKey.split("-").map((x) => parseInt(x, 10));
+  return `${PERIOD_LABEL_TH[m - 1] ?? periodKey} ${y}`;
+}
+
+/** เดือนย่อไม่มีปี "ก.ย." — ใช้กับชิป "ยื่นแล้ว …" ในตาราง (g11: "ยื่นแล้ว ก.ย." ไม่มีปี ต่างจาก modal ที่มีปี) */
+export function periodKeyMonthShort(periodKey: string): string {
+  const m = parseInt(periodKey.split("-")[1] ?? "", 10);
+  return PERIOD_LABEL_TH[m - 1] ?? periodKey;
+}
+
+/**
+ * ตรวจแถวที่ผู้ใช้เลือกไว้ (จาก bulk bar g11) ก่อนเปิด modal "ทำเครื่องหมายนำส่งแล้ว" —
+ * ต้องอยู่แบบ (ภ.ง.ด.3/53) และงวด (เดือนที่ออก) เดียวกันทั้งหมด ไม่งั้น markFiled ไม่รู้จะยื่นงวดไหน
+ */
+export async function validateMarkFiledSelection(
+  tenantId: string,
+  systemId: string,
+  certIds: string[],
+): Promise<
+  | { ok: true; form: 3 | 53; periodKey: string; periodLabel: string; certCount: number; totalBaseSatang: number; totalTaxSatang: number; alreadyFiled: boolean }
+  | { ok: false; reason: string }
+> {
+  if (certIds.length === 0) return { ok: false, reason: "ยังไม่ได้เลือกรายการ" };
+  const certs = await prisma.accountDocument.findMany({
+    where: { tenantId, systemId, docType: "WHT_CERT", direction: "IN", id: { in: certIds } },
+    include: { contact: { select: { legalType: true } } },
+  });
+  if (certs.length === 0) return { ok: false, reason: "ไม่พบรายการที่เลือก" };
+  const forms = new Set(
+    certs.map((c) => {
+      const snap = (c.contactSnapshot as Record<string, unknown> | null) ?? null;
+      const lt = (snap?.legalType as AccountLegalType) ?? c.contact?.legalType ?? "COMPANY";
+      return lt === "PERSON" ? 3 : 53;
+    }),
+  );
+  const periods = new Set(certs.map((c) => `${c.issueDate.getUTCFullYear()}-${String(c.issueDate.getUTCMonth() + 1).padStart(2, "0")}`));
+  if (forms.size > 1) return { ok: false, reason: "เลือกรายการที่เป็นแบบ ภ.ง.ด. เดียวกันเท่านั้น (บุคคลธรรมดา/นิติบุคคล แยกยื่นกันคนละแบบ)" };
+  if (periods.size > 1) return { ok: false, reason: "เลือกรายการในงวด (เดือน) เดียวกันเท่านั้น" };
+  const form = [...forms][0] as 3 | 53;
+  const periodKey = [...periods][0];
+  const report = await pnd(tenantId, systemId, { type: form, period: periodKey });
+  const existing = await prisma.accountWhtFiling.findFirst({ where: { tenantId, systemId, form, periodKey } });
+  return {
+    ok: true,
+    form,
+    periodKey,
+    periodLabel: `ภ.ง.ด.${form} · ${periodKeyLabel(periodKey)}`,
+    certCount: report.rows.length,
+    totalBaseSatang: report.grandBase,
+    totalTaxSatang: report.grandWht,
+    alreadyFiled: !!existing,
+  };
 }

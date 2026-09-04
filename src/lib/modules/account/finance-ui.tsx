@@ -36,19 +36,22 @@ const GROUP_ICON: Record<FinanceGroupKey, string> = {
 
 // WO 5.2 — ดึงแท็บย่อยของหมวดการเงินออกมาใช้ร่วมกัน 3 หน้า (เงินสด/ธนาคาร/e-Wallet เดิม · ดูภาพรวม · เงินสดย่อย ใหม่)
 // เดิม (5.1) "overview"/"petty" ยังชี้ query param บนหน้าเดียวกัน (ยังไม่มีหน้าจริง) — ตอนนี้มีหน้าแยกจริงแล้ว
+// WO 5.4 — เพิ่ม 4 คีย์ active ของเช็ค/WHT (เดิม hardcode active:false เพราะหน้าจริงยังไม่มี — ตอนนี้มีแล้ว g11)
+export type FinanceSubTabActive = "overview" | "channels" | "petty" | "chq-in" | "chq-out" | "wht-credit" | "wht-deduct";
+
 export function financeSubTabs(
   base: string,
-  active: "overview" | "channels" | "petty",
+  active: FinanceSubTabActive,
   chq: { inCount: number; outCount: number },
 ): FinanceSubTab[] {
   return [
     { key: "overview", label: "ภาพรวม", href: `${base}/finance/overview`, active: active === "overview" },
     { key: "channels", label: "เงินสด/ธนาคาร/e-Wallet", href: `${base}/finance`, active: active === "channels" },
     { key: "petty", label: "เงินสดย่อย", href: `${base}/finance/petty-cash`, active: active === "petty" },
-    { key: "chq-in", label: "เช็ครับ", href: `${base}/cheque?dir=IN`, active: false, badge: chq.inCount },
-    { key: "chq-out", label: "เช็คจ่าย", href: `${base}/cheque?dir=OUT`, active: false, badge: chq.outCount },
-    { key: "wht-credit", label: "ภาษีถูกหัก ณ ที่จ่าย", href: `${base}/wht?tab=credit`, active: false },
-    { key: "wht-deduct", label: "ภาษีหัก ณ ที่จ่าย", href: `${base}/wht?tab=deduct`, active: false },
+    { key: "chq-in", label: "เช็ครับ", href: `${base}/cheque?dir=IN`, active: active === "chq-in", badge: chq.inCount },
+    { key: "chq-out", label: "เช็คจ่าย", href: `${base}/cheque?dir=OUT`, active: active === "chq-out", badge: chq.outCount },
+    { key: "wht-credit", label: "ภาษีถูกหัก ณ ที่จ่าย", href: `${base}/wht?tab=credit`, active: active === "wht-credit" },
+    { key: "wht-deduct", label: "ภาษีหัก ณ ที่จ่าย", href: `${base}/wht?tab=deduct`, active: active === "wht-deduct" },
   ];
 }
 
