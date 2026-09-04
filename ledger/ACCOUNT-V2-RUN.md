@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 8.1 ตั้งค่าเอกสาร (เฟส 8) — เฟส 7 กำลัง ff main + deploy |
+| WO | 8.1 ตั้งค่าเอกสาร (เฟส 8) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent · UI ตาม f10) |
-| ขั้นที่ถึง | 4 ก.ย. ~13:30 UTC: qc:all เฟส 7 = **219/219** (836s) → ff main + push → Vercel · 8.1 เริ่ม (Opus) |
+| ขั้นที่ถึง | 4 ก.ย. ~12:05 UTC: **verify prod เฟส 7 ผ่าน** — Vercel READY 12:00 (dpl_9ehQBc…) · migration 2 ตัว finished · คอลัมน์ attachment ใหม่ครบบน prod · https 200 · 8.1 กำลังทำ (Opus) |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
