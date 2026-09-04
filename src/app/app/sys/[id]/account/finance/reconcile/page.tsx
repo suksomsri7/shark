@@ -59,7 +59,9 @@ export default async function Page({
   const channelId = channels.find((c) => c.id === sp.channel)?.id ?? channels[0].id;
   const month = sp.month && isPeriodKey(sp.month) ? sp.month : periodKeyBkk(now);
 
-  const data = await reconcilePageData({ tenantId, systemId }, channelId, month, { base });
+  // WO 9.3: ส่งรายการช่องทางที่โหลดไว้ข้างบนต่อไป — เดิม reconcilePageData ไปอ่าน
+  //         AccountFinance + AccountLedger ซ้ำอีกชุด (4 คำสั่งซ้ำต่อการเปิดหน้า 1 ครั้ง)
+  const data = await reconcilePageData({ tenantId, systemId }, channelId, month, { base, channels });
   if ("ok" in data) {
     return (
       <div className="flex flex-col gap-4 pb-24" data-testid="reconcile-page-error">

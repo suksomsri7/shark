@@ -283,25 +283,40 @@ export async function unlinkProductFromItem(
 
 export type ProductStockRow = { id: string; invItemId: string | null; qtyOnHand: unknown };
 
+const EMPTY_ON_HAND: ReadonlyMap<string, number> = new Map<string, number>();
+
 /**
  * สต็อกจริงต่อสินค้า — ผูกคลัง = `InvItem.onHand` · ไม่ผูก = `AccountProduct.qtyOnHand` (พฤติกรรมเดิม)
  * item หาย/ระบบคลังหาย → ถอยไปใช้กระจก `qtyOnHand` (degrade §F.15 ไม่ระเบิดหน้าจอ)
  */
 export async function productStockMap(ctx: AccCtx, products: ProductStockRow[]): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  for (const p of products) out.set(p.id, Number(p.qtyOnHand ?? 0));
   const linked = products.filter((p) => p.invItemId);
-  if (linked.length === 0) return out;
+  // ไม่มีตัวไหนผูกคลัง / ยังไม่เปิดระบบคลัง → ใช้กระจก qtyOnHand ล้วน (degrade §F.15 · ไม่ยิง DB เพิ่ม)
+  if (linked.length === 0) return productStockMapFrom(products, EMPTY_ON_HAND);
 
   const invSystemId = await inventorySystemId(ctx.tenantId);
-  if (!invSystemId) return out;
+  if (!invSystemId) return productStockMapFrom(products, EMPTY_ON_HAND);
   const items = await tenantDb({ tenantId: ctx.tenantId, systemId: invSystemId }).invItem.findMany({
     where: { id: { in: linked.map((p) => p.invItemId as string) } },
     select: { id: true, onHand: true },
   });
-  const onHandById = new Map(items.map((i) => [i.id, i.onHand]));
-  for (const p of linked) {
-    const oh = onHandById.get(p.invItemId as string);
+  return productStockMapFrom(products, new Map(items.map((i) => [i.id, i.onHand])));
+}
+
+/**
+ * ส่วน "คำนวณล้วน" ของ `productStockMap` — ใช้เมื่อผู้เรียกอ่าน `InvItem.onHand` มาแล้วจากคิวรีของตัวเอง
+ * (WO 9.3 · การ์ดสินค้าที่ติดตาม ต้องอ่าน `reorderPoint` จากแถวเดียวกันอยู่แล้ว ⇒ ไม่ต้องอ่าน InvItem ซ้ำ)
+ * 🔴 สูตรต้องเป็นอันเดียวกับทางปกติเสมอ — ห้าม copy ตรรกะ "ผูกแล้วใช้ onHand" ไปเขียนใหม่ที่อื่น
+ */
+export function productStockMapFrom(
+  products: ProductStockRow[],
+  onHandById: ReadonlyMap<string, number>,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const p of products) out.set(p.id, Number(p.qtyOnHand ?? 0));
+  for (const p of products) {
+    if (!p.invItemId) continue;
+    const oh = onHandById.get(p.invItemId);
     if (oh !== undefined) out.set(p.id, oh);
   }
   return out;

@@ -135,7 +135,7 @@ export function DocAttachments({
         <div key={a.id} className="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm" data-testid="attachment-row">
           {a.mimeType.startsWith("image/") ? (
             // eslint-disable-next-line @next/next/no-img-element -- thumbnail จาก CDN ของ tenant (ขนาดไม่รู้ล่วงหน้า)
-            <img src={a.fileUrl} alt="" className="h-10 w-10 rounded object-cover" />
+            <img src={a.fileUrl} alt="" className="h-10 w-10 rounded object-cover" loading="lazy" decoding="async" />
           ) : (
             <span className="flex h-10 w-10 items-center justify-center rounded bg-[color:var(--color-surface-2)]">📄</span>
           )}

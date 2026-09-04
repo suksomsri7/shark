@@ -36,7 +36,9 @@ export default async function AccountPermissionsSettingsPage({
   const hasSub = !!subRaw && PERMISSION_SETTINGS_SUBS.some((x) => x.key === subRaw);
   const sub = hasSub ? subRaw! : DEFAULT_PERMISSION_SUB;
 
-  const [users, settings] = await Promise.all([listAccountUsers(ctx), getPermissionSettings(ctx)]);
+  // WO 9.3: อ่านตั้งค่าสิทธิ์ครั้งเดียวแล้วส่งต่อ (เดิมอ่านแถว AccountSettings ซ้ำ 2 คำสั่ง)
+  const settings = await getPermissionSettings(ctx);
+  const users = await listAccountUsers(ctx, settings);
 
   const rows: UserRow[] = users.map((u) => ({
     membershipId: u.membershipId,

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { cache } from "react";
 import type { AccountDocType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { writeAudit } from "./access";
@@ -117,6 +118,21 @@ export function listAttachments(
     include: {
       document: { select: { id: true, docType: true, docNo: true } },
     },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/**
+ * WO 9.3 — ไฟล์แนบของ "เอกสารใบเดียว" (หน้ารายละเอียดเอกสาร)
+ *
+ * ทำไมไม่ใช้ `listAttachments({ documentId })`: ตัวนั้น `include: { document: … }` ซึ่ง Prisma ยิง
+ * query ของ relation **เสมอ** แม้ผลลัพธ์จะว่าง → ได้ `WHERE id IN (NULL)` เปล่า ๆ อีก 1 คำสั่ง
+ * และผู้เรียก (doc-detail) ก็ไม่ได้ใช้ฟิลด์ `document` เลย (รู้อยู่แล้วว่าเป็นเอกสารใบไหน)
+ */
+export function listDocumentAttachmentFiles(tenantId: string, systemId: string, documentId: string) {
+  return prisma.accountAttachment.findMany({
+    where: { tenantId, systemId, archivedAt: null, documentId },
+    select: { id: true, fileName: true, fileUrl: true, mimeType: true, sizeBytes: true },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -303,15 +319,51 @@ export type AttachmentListResult = {
   counts: { all: number; unlinked: number; linked: number };
 };
 
+// ─────────── ชื่อผู้อัปโหลด: แปลง userId → ชื่อ "ครั้งเดียวต่อ 1 request" (WO 9.3 · perf) ───────────
+//
+// 🔴 ปัญหาเดิม (วัดจากหน้า /account/documents = 10 คำสั่ง SQL): หน้านั้นเรียกทั้ง `listAttachmentsPaged`
+//    และ `listAttachmentUploaders` และ **ต่างคนต่างแปลงชื่อเอง** ⇒ ยิง Membership + User ซ้ำกัน 2 ชุด
+//    (4 คำสั่ง) ทั้งที่เป็นคำถามเดียวกันกับร้านเดียวกันในคำขอเดียวกัน
+//
+// แก้ 2 ชั้น:
+//  1) ถาม `User` ตรง ๆ แล้วกรอง "ต้องเป็นสมาชิกร้านนี้" ด้วย relation filter — ได้ผลชุดเดียวกับ
+//     `membership.findMany({ include: { user: true } })` เป๊ะ (สคีมามี @@unique([userId,tenantId])
+//     ⇒ 1 คน 1 แถวต่อร้าน) แต่เหลือ **1 คำสั่ง** แทน 2 (Prisma แตก include เป็นอีก query เสมอ)
+//  2) memo ต่อ 1 request ด้วย `cache()` ของ React (ใช้ AsyncLocalStorage ⇒ ข้าม await ได้ — แบบเดียวกับ
+//     `getAuth`/`getSessionUser` ของ core) โดยเก็บเป็น **"สัญญา" (Promise) ไม่ใช่ค่าที่ได้แล้ว**
+//     🔴 สำคัญ: ผู้เรียกทั้งสองวิ่งพร้อมกันใน `Promise.all` เดียวกัน — ถ้าเก็บเฉพาะค่าที่ resolve แล้ว
+//        ทั้งคู่จะเห็น memo ว่างในจังหวะเดียวกันแล้วยิงซ้ำอยู่ดี · ลงทะเบียนสัญญา **ก่อน await**
+//        ⇒ ตัวที่มาทีหลังไปเกาะสัญญาเดิม ไม่ยิงใหม่
+//
+// นอกบริบท request (server action / สคริปต์ QC) React คืน Map ใหม่ทุกครั้ง ⇒ ไม่มีการแคชข้ามคำขอ
+// และพฤติกรรมเท่าเดิมทุกประการ (ไม่มีชื่อค้างเมื่อผู้ใช้เปลี่ยนชื่อ)
+type UploaderNameMemo = Map<string, Promise<string | null>>;
+const uploaderNameMemo = cache((_tenantId: string): UploaderNameMemo => new Map());
+
 async function resolveUploaderNames(tenantId: string, ids: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const clean = [...new Set(ids)].filter(Boolean);
   if (clean.length === 0) return out;
-  const members = await prisma.membership.findMany({
-    where: { tenantId, userId: { in: clean } },
-    include: { user: true },
-  });
-  for (const m of members) out.set(m.userId, m.user.name ?? m.user.email);
+  const memo = uploaderNameMemo(tenantId);
+  const missing = clean.filter((id) => !memo.has(id));
+  if (missing.length > 0) {
+    const batch = prisma.user.findMany({
+      where: { id: { in: missing }, memberships: { some: { tenantId } } },
+      select: { id: true, name: true, email: true },
+    });
+    // จำ "คนที่ไม่ใช่สมาชิกร้านนี้" ไว้เป็น null ด้วย — ไม่งั้นจะโดนถามซ้ำทุกครั้งที่เจอ id เดิม
+    for (const id of missing) {
+      memo.set(
+        id,
+        batch.then((us) => {
+          const u = us.find((x) => x.id === id);
+          return u ? (u.name ?? u.email) : null;
+        }),
+      );
+    }
+  }
+  const entries = await Promise.all(clean.map(async (id) => [id, (await memo.get(id)) ?? null] as const));
+  for (const [id, name] of entries) if (name !== null) out.set(id, name);
   return out;
 }
 
@@ -391,7 +443,7 @@ export async function listAttachmentsPaged(
     f.tab === "unlinked" ? { status: "UNLINKED" } : f.tab === "linked" ? { status: "LINKED" } : {};
   const where: Prisma.AccountAttachmentWhereInput = { AND: [base, tabWhere] };
 
-  const [rows, total, grouped] = await Promise.all([
+  const [rows, grouped] = await Promise.all([
     prisma.accountAttachment.findMany({
       where,
       include: { document: { select: { id: true, docType: true, docNo: true } } },
@@ -399,7 +451,6 @@ export async function listAttachmentsPaged(
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.accountAttachment.count({ where }),
     prisma.accountAttachment.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
   ]);
 
@@ -409,6 +460,12 @@ export async function listAttachmentsPaged(
     if (g.status === "UNLINKED") counts.unlinked += g._count._all;
     if (g.status === "LINKED") counts.linked += g._count._all;
   }
+  // WO 9.3 (perf): `total` = ตัวนับของแท็บที่เปิดอยู่ — คำนวณจาก groupBy ข้างบนแทนการยิง count() แยก
+  // 🔴 คำตอบเท่ากันเป๊ะเพราะ where ของ count เดิมคือ `base AND tabWhere` และ tabWhere มีแค่ 3 แบบ:
+  //    "all" = ไม่กรองสถานะ → ผลรวมทุกกลุ่ม (รวมแถวเก่าที่ status=null ด้วย เหมือน count เดิม) ·
+  //    "unlinked"/"linked" = กรอง status ตัวเดียว → ขนาดของกลุ่มนั้นพอดี
+  //    (แนวเดียวกับ `computeListTabCounts` ใน service.ts ที่ยุบตัวนับทุกแท็บลงเหลือ groupBy เดียว)
+  const total = f.tab === "unlinked" ? counts.unlinked : f.tab === "linked" ? counts.linked : counts.all;
 
   const names = await resolveUploaderNames(tenantId, rows.map((r) => r.uploadedById ?? "").filter(Boolean));
 

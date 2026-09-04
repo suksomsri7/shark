@@ -157,7 +157,7 @@ export default async function PrintPage({
                 <td className="py-1">
                   {l.product?.imageUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={l.product.imageUrl} alt="" className="h-10 w-10 object-cover" />
+                    <img src={l.product.imageUrl} alt="" className="h-10 w-10 object-cover" loading="lazy" decoding="async" />
                   )}
                 </td>
               )}

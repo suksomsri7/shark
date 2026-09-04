@@ -129,7 +129,7 @@ export default async function DocumentsPage({
           <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg" style={{ background: "var(--color-surface-2)" }}>
             {r.mimeType.startsWith("image/") ? (
               // eslint-disable-next-line @next/next/no-img-element -- thumb จาก CDN ของ tenant (ขนาดไม่รู้ล่วงหน้า)
-              <img src={r.thumbUrl ?? r.fileUrl} alt="" className="h-full w-full object-cover" />
+              <img src={r.thumbUrl ?? r.fileUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
             ) : (
               <AccountIcon name="file" className="h-5 w-5 text-[color:var(--color-muted)]" />
             )}

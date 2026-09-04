@@ -652,6 +652,10 @@ model AccountAttachment {
   @@index([systemId, refType, refId])
   @@index([systemId, status, createdAt])
   @@index([systemId, aiStatus])
+  // WO 9.3 (perf): คลังเอกสาร/กล่องขาเข้า กรอง (systemId, archivedAt IS NULL) แล้วเรียง createdAt
+  //   — ดัชนี (systemId, status, createdAt) ของ 7.1 ใช้ได้เฉพาะตอนกรองสถานะ · แท็บ "ทั้งหมด" ไม่กรองสถานะ
+  //   ตารางนี้โตเร็วที่สุดในโมดูล (ทุกบิลที่อัปเข้ามา) ⇒ คุ้มที่จะมีดัชนีตรงรูปที่วิ่งจริง
+  @@index([systemId, archivedAt, createdAt])
 }
 
 model AccountSystemLink {

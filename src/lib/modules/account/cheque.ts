@@ -105,6 +105,41 @@ export type ChequeRowV2 = {
   documentNo: string | null;
 };
 
+/** WO 9.3: แปลงแถวเช็ค → ChequeRowV2 — สูตรเดียวใช้ทั้งทางที่ตัดหน้าที่ DB และทางที่มีคำค้น */
+function toChequeRowV2(c: {
+  id: string;
+  direction: AccountChequeDirection;
+  chequeNo: string;
+  bankName: string;
+  bankBranch: string | null;
+  chequeDate: Date;
+  amount: number;
+  status: AccountChequeStatus;
+  depositedAt: Date | null;
+  clearedAt: Date | null;
+  note: string | null;
+  payment: { document: { id: string; docNo: string | null; contactSnapshot: unknown; contact: { name: string } | null } | null } | null;
+}): ChequeRowV2 {
+  const doc = c.payment?.document ?? null;
+  const snap = (doc?.contactSnapshot as Record<string, unknown> | null) ?? null;
+  return {
+    id: c.id,
+    direction: c.direction,
+    chequeNo: c.chequeNo,
+    bankName: c.bankName,
+    bankBranch: c.bankBranch,
+    chequeDate: c.chequeDate,
+    amount: c.amount,
+    status: c.status,
+    depositedAt: c.depositedAt,
+    clearedAt: c.clearedAt,
+    note: c.note,
+    contactName: (snap?.name as string) ?? doc?.contact?.name ?? null,
+    documentId: doc?.id ?? null,
+    documentNo: doc?.docNo ?? null,
+  };
+}
+
 export async function listChequesV2(
   tenantId: string,
   systemId: string,
@@ -118,48 +153,45 @@ export async function listChequesV2(
     pageSize?: number;
   },
 ): Promise<{ rows: ChequeRowV2[]; total: number; totalSatang: number }> {
-  const all = await prisma.accountCheque.findMany({
-    where: {
-      tenantId,
-      systemId,
-      direction: opts.direction,
-      ...(opts.status ? { status: opts.status } : {}),
-      ...(opts.from || opts.to
-        ? { chequeDate: { ...(opts.from ? { gte: opts.from } : {}), ...(opts.to ? { lt: opts.to } : {}) } }
-        : {}),
-    },
-    include: {
-      payment: {
-        select: {
-          document: { select: { id: true, docNo: true, contactSnapshot: true, contact: { select: { name: true } } } },
-        },
+  // 🔴 WO 9.3 (Part D "แบ่งหน้าที่ฝั่ง DB") — เดิมดึง **ทะเบียนเช็คทั้งระบบ** เข้าหน่วยความจำ (ไม่มี take)
+  //    แล้ว slice ฝั่ง JS ⇒ โตไม่มีเพดานตามจำนวนเช็คที่ร้านเคยออก
+  //    ตอนนี้: ไม่มีคำค้น = ตัดหน้า + รวมยอดที่ DB · มีคำค้นค่อยใช้ทางเดิม (คำค้นครอบชื่อผู้ติดต่อที่แช่แข็ง
+  //    ใน JSON `contactSnapshot` และเลขที่เอกสารที่อยู่คนละตาราง 2 ชั้น — กรองใน SQL ให้ผลเท่าเดิมไม่ได้)
+  const where = {
+    tenantId,
+    systemId,
+    direction: opts.direction,
+    ...(opts.status ? { status: opts.status } : {}),
+    ...(opts.from || opts.to
+      ? { chequeDate: { ...(opts.from ? { gte: opts.from } : {}), ...(opts.to ? { lt: opts.to } : {}) } }
+      : {}),
+  };
+  const docInclude = {
+    payment: {
+      select: {
+        document: { select: { id: true, docNo: true, contactSnapshot: true, contact: { select: { name: true } } } },
       },
     },
-    orderBy: [{ chequeDate: "desc" }, { createdAt: "desc" }],
-  });
-
+  };
+  const orderBy = [{ chequeDate: "desc" as const }, { createdAt: "desc" as const }];
   const q = (opts.bank ?? "").trim().toLowerCase();
-  const mapped: ChequeRowV2[] = all.map((c) => {
-    const doc = c.payment?.document ?? null;
-    const snap = (doc?.contactSnapshot as Record<string, unknown> | null) ?? null;
-    const contactName = (snap?.name as string) ?? doc?.contact?.name ?? null;
+
+  if (q.length === 0) {
+    const pageSize = opts.pageSize ?? 20;
+    const page = Math.max(1, opts.page ?? 1);
+    const [agg, pageRows] = await Promise.all([
+      prisma.accountCheque.aggregate({ where, _count: { _all: true }, _sum: { amount: true } }),
+      prisma.accountCheque.findMany({ where, include: docInclude, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
+    ]);
     return {
-      id: c.id,
-      direction: c.direction,
-      chequeNo: c.chequeNo,
-      bankName: c.bankName,
-      bankBranch: c.bankBranch,
-      chequeDate: c.chequeDate,
-      amount: c.amount,
-      status: c.status,
-      depositedAt: c.depositedAt,
-      clearedAt: c.clearedAt,
-      note: c.note,
-      contactName,
-      documentId: doc?.id ?? null,
-      documentNo: doc?.docNo ?? null,
+      rows: pageRows.map(toChequeRowV2),
+      total: agg._count._all,
+      totalSatang: agg._sum.amount ?? 0,
     };
-  });
+  }
+
+  const all = await prisma.accountCheque.findMany({ where, include: docInclude, orderBy });
+  const mapped: ChequeRowV2[] = all.map(toChequeRowV2);
   const filtered =
     q.length === 0
       ? mapped

@@ -158,6 +158,8 @@ export function InboxCard({
       src={row.thumbUrl ?? row.fileUrl}
       alt={row.fileName}
       className="h-full w-full object-cover"
+      loading="lazy"
+      decoding="async"
       onError={() => setThumbBroken(true)}
     />
   ) : (

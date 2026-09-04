@@ -17,7 +17,7 @@ import type {
 // WO 1.1: reuse (read-only) ตัวช่วยกรอง/แบ่งหน้าเดียวกับฝั่งรายรับ/รายจ่าย — ไม่ก๊อปสูตรวันที่/พ้นกำหนดซ้ำ
 import { overdueWhere, parseDay, clampPageSize, clampPage, type DocStatusFilter, type DocSort } from "./service";
 // WO 4.1 — สินค้าที่ผูกคลัง: ความจริงเรื่องสต็อกอยู่ที่ InvItem (อ่าน/เขียนผ่านชั้นนี้เท่านั้น)
-import { inventorySystemId, productStockMap, syncProductToItem } from "./inventory-link";
+import { inventorySystemId, productStockMap, productStockMapFrom, syncProductToItem } from "./inventory-link";
 // chokepoint account→inventory (fitness F2 · WO 4.1) — ตัด/คืนสต็อกใน tx ของเอกสาร
 import * as inventory from "@/lib/modules/inventory/service";
 // WO 4.3 — ลงบัญชีเอกสารปรับปรุงสต็อก/ต้นทุน (Dr/Cr ระบุด้วยรหัสบัญชี · idempotent ต่อ (docId,event))
@@ -1747,36 +1747,69 @@ export async function listProductsPaged(
     ...search,
   };
 
-  const [rows, total, goods, service, bundle, archived, cats] = await Promise.all([
+  // WO 9.3 (งบ query ≤ 7 ต่อหน้า): แท็บ "สินค้า" ต้องดึงทั้งแท็บมาคิดมูลค่าสต็อกอยู่แล้ว
+  // ⇒ ใช้ `where` ชุดเดียวกันเป๊ะ ๆ จำนวนแถวของชุดนั้นคือ total อยู่แล้ว ไม่ต้องยิง count ซ้ำอีกคำสั่ง
+  const needsAllForStockValue = type === "GOODS";
+
+  const [rows, counted, grouped, cats, all] = await Promise.all([
     prisma.accountProduct.findMany({
       where,
       orderBy: [{ pinned: "desc" }, { code: "desc" }, { createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.accountProduct.count({ where }),
-    prisma.accountProduct.count({ where: { tenantId, systemId, type: "GOODS", archivedAt: null } }),
-    prisma.accountProduct.count({ where: { tenantId, systemId, type: "SERVICE", archivedAt: null } }),
-    prisma.accountProduct.count({ where: { tenantId, systemId, type: "BUNDLE", archivedAt: null } }),
-    prisma.accountProduct.count({ where: { tenantId, systemId, type, archivedAt: { not: null } } }),
+    needsAllForStockValue ? Promise.resolve(null) : prisma.accountProduct.count({ where }),
+    // WO 9.3: นับทุกแท็บด้วย groupBy ครั้งเดียว แทน count() ทีละแท็บ (เดิม 4 คำสั่ง → 1)
+    // `_count.archivedAt` = จำนวนแถวที่ archivedAt **ไม่เป็น null** (SQL COUNT ของคอลัมน์ข้ามค่า null)
+    // ⇒ ที่ใช้งาน = _all − archivedAt · ที่ปิดใช้งาน = archivedAt — ได้ความหมายเดิมทุกตัว
+    prisma.accountProduct.groupBy({
+      by: ["type"],
+      where: { tenantId, systemId },
+      _count: { _all: true, archivedAt: true },
+    }),
     prisma.accountProduct.findMany({
       where: { tenantId, systemId, archivedAt: null, category: { not: null } },
       select: { category: true },
       distinct: ["category"],
       orderBy: { category: "asc" },
     }),
+    needsAllForStockValue
+      ? prisma.accountProduct.findMany({
+          where,
+          select: { id: true, invItemId: true, qtyOnHand: true, buyPrice: true },
+        })
+      : Promise.resolve(null),
   ]);
 
-  const stockMap = await productStockMap({ tenantId, systemId }, rows);
-  const unitIds = [...new Set(rows.map((r) => r.unitId).filter((x): x is string => !!x))];
-  const units = unitIds.length
-    ? await prisma.accountUnit.findMany({ where: { systemId, id: { in: unitIds } }, select: { id: true, name: true } })
-    : [];
-  const unitName = new Map(units.map((u) => [u.id, u.name]));
-  const bundleCounts = await bundleItemCountMap(
-    systemId,
-    rows.filter((r) => r.type === "BUNDLE").map((r) => r.id),
+  const byType = new Map(grouped.map((g) => [g.type, g._count]));
+  const activeOf = (t: AccountProductType) => {
+    const c = byType.get(t);
+    return c ? c._all - c.archivedAt : 0;
+  };
+  const goods = activeOf("GOODS");
+  const service = activeOf("SERVICE");
+  const bundle = activeOf("BUNDLE");
+  const archived = byType.get(type)?.archivedAt ?? 0;
+  const total = all ? all.length : (counted ?? 0);
+
+  // WO 9.3: อ่านสต็อกครั้งเดียวต่อหน้า — เดิมเรียก productStockMap สองรอบ (แถวหน้านี้ + ทั้งแท็บ)
+  // ทำให้ยิง AppSystem + InvItem ซ้ำอีกชุด · `rows` เป็นสับเซตของ `all` (where เดียวกัน) จึงรวมเป็นชุดเดียวได้
+  const allIds = all ? new Set(all.map((p) => p.id)) : null;
+  const stockMap = await productStockMap(
+    { tenantId, systemId },
+    all && allIds ? [...all, ...rows.filter((r) => !allIds.has(r.id))] : rows,
   );
+  const unitIds = [...new Set(rows.map((r) => r.unitId).filter((x): x is string => !!x))];
+  const [units, bundleCounts] = await Promise.all([
+    unitIds.length
+      ? prisma.accountUnit.findMany({ where: { systemId, id: { in: unitIds } }, select: { id: true, name: true } })
+      : Promise.resolve([] as { id: string; name: string }[]),
+    bundleItemCountMap(
+      systemId,
+      rows.filter((r) => r.type === "BUNDLE").map((r) => r.id),
+    ),
+  ]);
+  const unitName = new Map(units.map((u) => [u.id, u.name]));
 
   const out: ProductListRow[] = rows.map((p) => ({
     ...p,
@@ -1787,13 +1820,8 @@ export async function listProductsPaged(
 
   // มูลค่าสต็อกรวมของทั้งแท็บ (ไม่ใช่เฉพาะหน้านี้) — สินค้าเท่านั้นที่มีมูลค่าสต็อก
   let stockValue = 0;
-  if (type === "GOODS") {
-    const all = await prisma.accountProduct.findMany({
-      where,
-      select: { id: true, invItemId: true, qtyOnHand: true, buyPrice: true },
-    });
-    const allStock = await productStockMap({ tenantId, systemId }, all);
-    for (const p of all) stockValue += Math.round((allStock.get(p.id) ?? 0) * (p.buyPrice ?? 0));
+  if (all) {
+    for (const p of all) stockValue += Math.round((stockMap.get(p.id) ?? 0) * (p.buyPrice ?? 0));
   }
 
   return {
@@ -1836,17 +1864,26 @@ export async function trackedProductCards(
     select: { id: true, name: true, code: true, invItemId: true, qtyOnHand: true },
   });
   if (rows.length === 0) return [];
-  const stock = await productStockMap({ tenantId, systemId }, rows);
-  const invSystemId = rows.some((r) => r.invItemId) ? await inventorySystemId(tenantId) : null;
+  // WO 9.3: อ่าน InvItem รอบเดียว — เดิม productStockMap อ่าน `onHand` รอบหนึ่ง (พร้อม resolve ระบบคลัง)
+  // แล้วโค้ดข้างล่างอ่าน `reorderPoint` จากแถวเดียวกันซ้ำอีกรอบ = 4 คำสั่ง · ตอนนี้เหลือ 2 (AppSystem + InvItem)
+  const linkedItemIds = rows.map((r) => r.invItemId).filter((x): x is string => !!x);
+  const invSystemId = linkedItemIds.length ? await inventorySystemId(tenantId) : null;
+  const onHandById = new Map<string, number>();
   const reorder = new Map<string, number>();
   if (invSystemId) {
     const items = await prisma.invItem.findMany({
-      where: { tenantId, systemId: invSystemId, id: { in: rows.map((r) => r.invItemId).filter((x): x is string => !!x) } },
-      select: { id: true, reorderPoint: true },
+      where: { tenantId, systemId: invSystemId, id: { in: linkedItemIds } },
+      select: { id: true, onHand: true, reorderPoint: true },
     });
-    const byItem = new Map(items.map((i) => [i.id, i.reorderPoint]));
-    for (const r of rows) if (r.invItemId) reorder.set(r.id, byItem.get(r.invItemId) ?? 0);
+    const reorderByItem = new Map<string, number>();
+    for (const i of items) {
+      onHandById.set(i.id, i.onHand);
+      reorderByItem.set(i.id, i.reorderPoint);
+    }
+    for (const r of rows) if (r.invItemId) reorder.set(r.id, reorderByItem.get(r.invItemId) ?? 0);
   }
+  // สูตร "ผูกคลัง = onHand · ไม่ผูก = qtyOnHand" ยังมาจาก inventory-link ที่เดียว (ห้ามคำนวณเอง)
+  const stock = productStockMapFrom(rows, onHandById);
   return rows.map((r) => {
     const s = stock.get(r.id) ?? Number(r.qtyOnHand);
     const rp = reorder.get(r.id) ?? 0;

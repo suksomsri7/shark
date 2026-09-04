@@ -486,6 +486,12 @@ model AccountContact {
   ///    (ผู้ติดต่อที่ปิดใช้งานแล้วปล่อยให้เลขซ้ำได้ — เลขเดิมถูกนำกลับมาใช้ใหม่ได้)
   ///    👉 `prisma migrate diff` มองไม่เห็น → ห้ามลบออกจาก migration
   @@index([systemId, code])
+  // WO 9.3 (perf): แถบซ้าย + หน้ารายการผู้ติดต่อ กรอง (systemId, archivedAt IS NULL) แล้วเรียงตาม createdAt
+  //   — วัดจาก query log จริง (PERF_SHAPES=1 ของ qc-acc-v2-perf) 5 ครั้งต่อการเปิดหน้า 1 รอบ
+  //   ดัชนีเดิมขึ้นต้นด้วย kind/taxId/name/phoneNorm/code จึงช่วยทั้งกรองและเรียงชุดนี้ไม่ได้
+  //   🔴 ใบสั่งงาน 9.3 เสนอ (systemId, archivedAt, name) แต่ ORDER BY ที่วิ่งจริงคือ createdAt ไม่ใช่ name
+  //      ⇒ ทำตามที่ log พิสูจน์ ไม่ใช่ทำตามที่เดาไว้
+  @@index([systemId, archivedAt, createdAt])
 }
 
 // ───────────── กลุ่มผู้ติดต่อ (V2 · WO 0.3 — SPEC §14.2) ─────────────

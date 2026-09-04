@@ -33,6 +33,10 @@ loadQcEnv();
 
 const WO = (process.argv[2] ?? "0.1").replace(/^-+/, "");
 const ASSERT = process.argv.includes("--assert");
+/** WO 9.3 Part F — วัดเวลาโหลดหน้าจริง (ปิดไว้เป็นค่าเริ่มต้น: ทำให้ทุกหน้าโหลด 2 รอบ = ช้าขึ้นเท่าตัว) */
+const PERF_TIMING = process.env.PERF_TIMING === "1";
+const PERF_MS_BUDGET = 1500;
+const pageTimings: { name: string; path: string; device: string; ms: number }[] = [];
 const BASE = process.env.QC_BASE ?? "http://127.0.0.1:3215";
 
 if (!existsSync(QC.expectedPath)) {
@@ -2708,11 +2712,20 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
   //    dashboardSnapshot = 6 ใบ/฿205,900.00 (ลูกหนี้พ้นกำหนด 4 ใบ/฿128,400 ตาม f1 + เจ้าหนี้พ้นกำหนด 2 ใบ/฿77,500
   //    ที่ f1 รอบ 1 ยังไม่ได้วาด) — ถ้า WO ระบุ "4" เฉย ๆ นั่นคือฝั่งลูกหนี้อย่างเดียว (ก่อนรวม 2 ฝั่งตามสเปครอบ 2)
   //    ยึดเลขรวมตามสเปคที่อนุมัติแล้ว (ledger/wo-notes/2.2.md มีบันทึกความต่างนี้ไว้ให้ Fable ตรวจ)
+  //
+  // 🔴 WO 9.3 — ข้อสอบชุดนี้เคยฮาร์ดโค้ดเลขเป็นสตริง ("฿486,300.00" ฯลฯ) = สแนปช็อตของ seed ตอน WO 2.2
+  //    พอ WO หลัง ๆ เติมข้อมูล seed (WHT_CERT / มัดจำ / ใบรอตรวจ) เลขจริงขยับ แต่ข้อสอบไม่ขยับตาม
+  //    ⇒ ตก 10 ข้อทั้งที่หน้าถูก (`qc-acc-v2-home` 87 + `qc-acc-v2-dashboard` 174 เขียวบน DB ก้อนเดียวกัน)
+  //    แก้เป็น "อ่านจากเฉลยอิสระ" `acc-v2-expected.json` ที่ `acc-v2-expected-dashboard.mts` เขียนด้วย SQL
+  //    คนละสำนวน — เฉลยเดียวกับที่ WO 2.1/2.2 ใช้ ⇒ seed เปลี่ยนเมื่อไหร่ เฉลยขยับตามเอง ไม่เน่า
   "2.2": {
     hub: {
-      "kpi-receivable": "฿486,300.00",
-      "kpi-payable": "฿212,750.00",
-      "kpi-overdue": "฿205,900.00",
+      "kpi-receivable": bahtStr(E.receivable ?? 0),
+      "kpi-payable": bahtStr(E.payable ?? 0),
+      // DESIGN-SPEC-V2 §4 ข้อ 2: "พ้นกำหนด" = รับ + จ่าย (ไม่ใช่ฝั่งลูกหนี้อย่างเดียว)
+      "kpi-overdue": bahtStr(
+        (E.dashboard?.arap?.receivable?.overdueAmount ?? 0) + (E.dashboard?.arap?.payable?.overdueAmount ?? 0),
+      ),
       // "kpi-cash" (ยอดเงินรวม) = ยอด ณ วันนี้แล้ว ⇒ ตรวจใน qc-acc-v2-home/dashboard ที่ส่ง now = QC.today
     },
   },
@@ -2931,10 +2944,18 @@ try {
         })
           .then((r) => r.status)
           .catch(() => 0);
+        // WO 9.3 (Part F): PERF_TIMING=1 → วัดเวลาโหลดหน้าจริง (HTTP + เรนเดอร์ฝั่งเซิร์ฟเวอร์)
+        //   วัด "รอบที่ 2" เสมอ — รอบแรกของแต่ละ path บน production build ยังต้องคอมไพล์/อุ่น route
+        //   ไม่ใช่เวลาที่ผู้ใช้จริงเจอ (งบ 1.5 วิ ตาม BLUEPRINT §3 แถว 9.3 คือหน้าที่อุ่นแล้ว)
+        if (PERF_TIMING) {
+          await page.goto(`${BASE}${spec.path}`, { waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => {});
+        }
+        const tNav = performance.now();
         const navOk = await page
           .goto(`${BASE}${spec.path}`, { waitUntil: "domcontentloaded", timeout: 60_000 })
           .then(() => true)
           .catch(() => false);
+        if (PERF_TIMING) pageTimings.push({ name: spec.name, path: spec.path, device, ms: Math.round(performance.now() - tNav) });
         await new Promise((r) => setTimeout(r, 1500)); // ให้ hydrate/สตรีมจบก่อนถ่าย
 
         // WO 1.4: ลำดับกรอกฟอร์ม (คลิก/พิมพ์) — MoneyInput ยืนยันค่าเมื่อ blur ⇒ ต้องกด Tab ทุกครั้งหลังพิมพ์
@@ -3656,15 +3677,22 @@ try {
               "bar-revenue-2026-09" in probe.testids,
               `มีแท่งของเดือน ก.ย. 2026 [data-testid="bar-revenue-2026-09"] (5 เดือนที่มีข้อมูลจริงตาม wo-notes/2.1.md คือ พ.ค.–ก.ย.)`,
             ]);
+            // 🔴 WO 9.3: อ่านจากเฉลยอิสระทุกตัว ห้ามฮาร์ดโค้ดเลข (seed โตขึ้นทุก WO → ข้อสอบเน่า)
+            const incomeMonth = E.dashboard?.categories?.income?.total ?? 0;
+            const agingTotal = E.dashboard?.arap?.receivable?.aging?.totalSatang ?? 0;
+            const pendingTotal = E.dashboard?.pending?.total ?? 0;
             c22.push([
-              probe.dash.donutCenter.includes("524,308"),
-              `ศูนย์กลางโดนัทรายได้เดือนนี้ = ยอดรวมรายได้ ก.ย. 2026 ตามเฉลย ฿524,308.42 (เจอ "${probe.dash.donutCenter}")`,
+              probe.dash.donutCenter.includes(bahtStr(incomeMonth).replace("฿", "").replace(/\.\d+$/, "")),
+              `ศูนย์กลางโดนัทรายได้เดือนนี้ = ยอดรวมรายได้เดือนปัจจุบันตามเฉลย ${bahtStr(incomeMonth)} (เจอ "${probe.dash.donutCenter}")`,
             ]);
             c22.push([
-              Math.abs(probe.dash.agingSum - 486300) < 1,
-              `ผลรวมแถบอายุหนี้ (ฝั่งลูกหนี้ค่าเริ่มต้น) = ยอดค้างรับรวม ฿486,300 (เจอ ${probe.dash.agingSum})`,
+              Math.abs(probe.dash.agingSum - agingTotal / 100) < 1,
+              `ผลรวมแถบอายุหนี้ (ฝั่งลูกหนี้ค่าเริ่มต้น) = ยอดค้างรับรวมตามเฉลย ${bahtStr(agingTotal)} (เจอ ${probe.dash.agingSum})`,
             ]);
-            c22.push([probe.dash.pendingRowCount === 1, `งานที่รอคุณแสดงเฉพาะแถวที่ค้างจริง (เฉลย pending.total=1 → 1 แถว) — เจอ ${probe.dash.pendingRowCount}`]);
+            c22.push([
+              probe.dash.pendingRowCount === pendingTotal,
+              `งานที่รอคุณแสดงเฉพาะแถวที่ค้างจริง (เฉลย pending.total=${pendingTotal} → ${pendingTotal} แถว) — เจอ ${probe.dash.pendingRowCount}`,
+            ]);
             c22.push([
               probe.dash.pinnedFinanceCount === 3,
               `บัญชีเงินที่ติดตาม 3 การ์ด (กสิกรไทย/เงินสด/พร้อมเพย์ ตาม seed) — เจอ ${probe.dash.pinnedFinanceCount}`,
@@ -3808,6 +3836,23 @@ try {
   const left = await prisma.session.count({ where: { userAgent: UA } });
   console.log(`\nลบ session ทดสอบ ${count} แถว · เหลือค้าง ${left} (ต้องเป็น 0)`);
   await prisma.$disconnect();
+}
+
+// WO 9.3 Part F — ตารางเวลาโหลดหน้าจริง (เปิดด้วย PERF_TIMING=1)
+if (PERF_TIMING && pageTimings.length > 0) {
+  console.log(`\n⏱  เวลาโหลดหน้า (รอบที่ 2 · เซิร์ฟเวอร์อุ่นแล้ว) — งบ ${PERF_MS_BUDGET} ms/หน้า`);
+  const head = `   ${"หน้า".padEnd(34)} ${"อุปกรณ์".padEnd(8)} ${"ms".padStart(6)}  ผล`;
+  console.log(head);
+  console.log("   " + "─".repeat(head.length - 3));
+  let over = 0;
+  for (const t of pageTimings) {
+    const okMs = t.ms < PERF_MS_BUDGET;
+    if (!okMs) over++;
+    console.log(`   ${t.name.padEnd(34)} ${t.device.padEnd(8)} ${String(t.ms).padStart(6)}  ${okMs ? "PASS" : "FAIL"}`);
+  }
+  const worst = [...pageTimings].sort((a, b) => b.ms - a.ms)[0];
+  console.log(`   ช้าที่สุด: ${worst.name} (${worst.device}) ${worst.ms} ms · เกินงบ ${over}/${pageTimings.length} หน้า`);
+  if (over > 0) failures += over;
 }
 
 console.log(`\n===== VISUAL ACC V2 · WO ${WO} =====`);

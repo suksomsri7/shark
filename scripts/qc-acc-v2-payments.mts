@@ -214,12 +214,25 @@ try {
   const reEntries = await entriesOf(systemId, reId);
   eq("P1.15 ใบเสร็จของใบแจ้งหนี้ไม่ลง JV ซ้ำ (กันรายได้/VAT นับ 2 เท่า)", reEntries.length, 0);
 
-  const payments = await prisma.accountDocumentPayment.findMany({ where: { documentId: ivId }, orderBy: { paidAt: "asc" } });
+  // 🔴 WO 9.3 (แก้ชุดนี้ให้ "ไม่ขึ้นกับลำดับ/รอบที่รัน"):
+  //    ทั้ง 2 รายการรับชำระใช้ `paidAt: TODAY` เท่ากันเป๊ะ (paidAt เก็บเป็นวันที่ ไม่ใช่เวลา)
+  //    ⇒ `orderBy: { paidAt: "asc" }` **ไม่มีตัวตัดสิน** — Postgres คืนลำดับตามใจ (เปลี่ยนตามแผน/หน้าดิสก์)
+  //    รอบที่ payments[1] กลายเป็นใบ 14,900 (ไม่มี WHT) จะแดงยาว P1.17–P1.19 + P7.8/P7.9
+  //    นี่คือต้นเหตุจริงของ "payments flaky ตอนรันขนาน/รันต่อจากชุดอื่น" ที่ 1.7 / 8.1 / 8.3 จดค้างไว้
+  //    แก้ 2 ชั้น: (ก) ของจริง `listDocPayments`/`listWhtCredits` เพิ่มตัวตัดสิน createdAt,id แล้ว
+  //              (ข) ที่นี่ **เลือกแถวจากความหมาย ไม่ใช่จากลำดับ** ⇒ ต่อให้ DB สลับลำดับก็ไม่กระทบ
+  const payments = await prisma.accountDocumentPayment.findMany({
+    where: { documentId: ivId },
+    orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+  });
   eq("P1.16 บันทึกการรับชำระ 2 ครั้ง", payments.length, 2);
-  eqAmt("P1.17 ครั้งที่ 1 เงินเข้า 14,900.00", payments[0].amount, 1_490_000);
-  eqAmt("P1.18 ครั้งที่ 2 เงินเข้าจริง 9,301.87", payments[1].amount, 930_187);
-  eqAmt("P1.19 ครั้งที่ 2 ภาษีถูกหัก 698.13", payments[1].whtAmountSatang, 69_813);
-  eq("P1.20 หมายเหตุ ≤20 ถูกเก็บ", payments[0].note, "โอนมัดจำ");
+  const payBank = payments.find((p) => p.whtAmountSatang === 0); // ครั้งที่ 1 — โอนมัดจำ ไม่มีภาษีถูกหัก
+  const payWht = payments.find((p) => p.whtAmountSatang > 0); // ครั้งที่ 2 — เงินสด + ภาษีถูกหัก + WTI
+  assert("P1.16b แยกรายการรับชำระได้จาก 'มี/ไม่มีภาษีถูกหัก' (ไม่พึ่งลำดับจาก DB)", !!payBank && !!payWht);
+  eqAmt("P1.17 ครั้งที่ 1 เงินเข้า 14,900.00", payBank?.amount ?? -1, 1_490_000);
+  eqAmt("P1.18 ครั้งที่ 2 เงินเข้าจริง 9,301.87", payWht?.amount ?? -1, 930_187);
+  eqAmt("P1.19 ครั้งที่ 2 ภาษีถูกหัก 698.13", payWht?.whtAmountSatang ?? -1, 69_813);
+  eq("P1.20 หมายเหตุ ≤20 ถูกเก็บ", payBank?.note, "โอนมัดจำ");
 
   const payEntries = (await Promise.all(payments.map((p) => entriesOf(systemId, p.id, "AccountDocumentPayment")))).flat();
   eq("P1.21 เกิดสมุดรายวันของการรับชำระ 2 ชุด", payEntries.length, 2);
@@ -455,7 +468,8 @@ try {
 
   // ═════════ P7 — ยกเลิกการชำระ / คืนมัดจำ ═════════
   console.log("\nP7 ยกเลิกการชำระ + คืนมัดจำ (กลับรายการ ไม่ลบ):");
-  const voidTarget = payments[1].id; // ครั้งที่ 2 ของเคส g2 (มีภาษีถูกหัก + WTI)
+  // WO 9.3: อ้างจาก "ใบที่มีภาษีถูกหัก" ไม่ใช่ payments[1] (ลำดับจาก DB ไม่การันตี — ดู P1.16b)
+  const voidTarget = payWht!.id; // ครั้งที่ 2 ของเคส g2 (มีภาษีถูกหัก + WTI)
   const vres = await pay.voidPaymentAny(tenantId, systemId, ivId, voidTarget, "บันทึกผิดรายการ");
   assert("P7.1 ยกเลิกการรับชำระสำเร็จ", vres.ok, vres.ok ? "" : vres.reason);
   const ivAfterVoid = await prisma.accountDocument.findFirstOrThrow({ where: { id: ivId } });

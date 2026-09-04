@@ -105,6 +105,14 @@ const mkTemp = async (input: { name: string; taxId?: string | null; phone?: stri
 };
 
 let needReseed = false;
+/** WO 9.3: เก็บรายการขั้นตอนคืนสภาพที่ล้ม — มีของ = จบด้วย exit 2 (ไม่ใช่ 0) */
+const reseedFailed: string[] = [];
+const RESEED_STEPS = [
+  "scripts/seed-acc-v2-qc.mts",
+  "scripts/acc-v2-expected-dashboard.mts",
+  "scripts/acc-v2-expected-contacts.mts",
+  "scripts/acc-v2-expected-contact-profile.mts",
+] as const;
 
 try {
   // ═══════════════ M1 รายการคู่ที่ระบบสงสัย ═══════════════
@@ -375,17 +383,36 @@ try {
 
   // ── คืนสภาพ fixture: M6 "รวมจริง" คู่ซ้ำของ seed ไปแล้ว (ย้อนกลับไม่ได้ตามดีไซน์) ⇒ seed ใหม่ + เขียนเฉลยใหม่
   //    ทำให้ชุดนี้ "รันซ้ำได้" และไม่ทิ้งสภาพพังไว้ให้ชุดอื่น (กติกา cleanup ของใบสั่งงาน)
+  // 🔴 WO 9.3 — เดิมสั่ง execFileSync แบบ stdio "ignore" แล้วไม่ตรวจผล: ถ้า seed/เฉลยล้ม สคริปต์ยัง
+  //    พิมพ์ "คืนสภาพเรียบร้อย" และ exit 0 ⇒ ชุดถัดไป (journal/dashboard/home) รันบนข้อมูลที่ M6 รวมไปแล้ว
+  //    + เฉลยเก่า = แดงแบบหาสาเหตุไม่เจอ ("เฉลยเน่า" ที่ 9.2 จดไว้) ⇒ ต้อง **ดัง** และ **exit ไม่ใช่ 0**
   if (needReseed) {
     console.log("♻️  คืนสภาพชุดข้อมูล QC (seed ใหม่ + เขียนเฉลยใหม่) …");
     const { execFileSync } = await import("node:child_process");
-    for (const f of [
-      "scripts/seed-acc-v2-qc.mts",
-      "scripts/acc-v2-expected-dashboard.mts",
-      "scripts/acc-v2-expected-contacts.mts",
-      "scripts/acc-v2-expected-contact-profile.mts",
-    ]) {
-      execFileSync("pnpm", ["exec", "tsx", f], { stdio: ["ignore", "ignore", "inherit"], env: process.env });
-      console.log(`   ✓ ${f}`);
+    for (const f of RESEED_STEPS) {
+      try {
+        // stdout เก็บไว้ (ไม่ ignore) — ถ้าล้มต้องเอามาโชว์ ไม่ใช่กลืนทิ้ง
+        execFileSync("pnpm", ["exec", "tsx", f], { stdio: ["ignore", "pipe", "pipe"], env: process.env });
+        console.log(`   ✓ ${f}`);
+      } catch (e) {
+        const err = e as { status?: number; stdout?: Buffer; stderr?: Buffer };
+        reseedFailed.push(f);
+        console.error(`\n   ❌ คืนสภาพล้มที่ ${f} (exit ${err.status ?? "?"})`);
+        const out = `${err.stdout?.toString() ?? ""}${err.stderr?.toString() ?? ""}`.trim();
+        if (out) console.error(out.split("\n").slice(-25).map((l) => "      " + l).join("\n"));
+      }
+    }
+    // idempotent: ตรวจว่าเฉลยกลับมาครบจริง (ไม่ใช่เชื่อว่าคำสั่งไม่ throw = สำเร็จ)
+    if (reseedFailed.length === 0) {
+      // 🔴 seed **สร้าง tenant ใหม่ทุกครั้ง** ⇒ ctx ที่อ่านไว้ตอนต้นสคริปต์ชี้ร้านเก่าที่ถูกลบไปแล้ว
+      //    ต้องอ่านเฉลยใหม่จากดิสก์แล้วประกอบ ctx ใหม่ ไม่งั้นตรวจอะไรก็เจอ 0 เสมอ (ผลลบปลอม)
+      const fresh = JSON.parse(readFileSync(QC.expectedPath, "utf8"));
+      const missing = ["dashboard", "contacts", "contactProfile"].filter((k) => !fresh[k]);
+      if (missing.length) reseedFailed.push(`เฉลยขาดคีย์: ${missing.join(", ")}`);
+      const freshCtx = { tenantId: fresh.tenantId as string, systemId: fresh.systemId as string };
+      // คู่ซ้ำของ seed ต้องกลับมา (M6 รวมมันไปแล้ว — seed ใหม่ต้องสร้างคืน) ⇒ รันชุดนี้ซ้ำได้เลย
+      const pairBack = (await cm.listMergeCandidates(freshCtx)).some((c) => c.reason === "TAX_ID");
+      if (!pairBack) reseedFailed.push("คู่ซ้ำ TAX_ID ของ seed ไม่กลับมา (รันชุดนี้ซ้ำจะตกที่ M1)");
     }
   }
 }
@@ -393,6 +420,19 @@ try {
 console.log(`\n===== QC WO 3.4 · รวมผู้ติดต่อซ้ำ สรุป =====`);
 console.log(`ผ่าน ${passed} · ตก ${findings.length}`);
 if (findings.length > 0) console.log(findings.map((f) => "  - " + f).join("\n"));
-if (needReseed) console.log("♻️  คืนสภาพชุดข้อมูล QC เรียบร้อย (seed + เฉลย เขียนใหม่แล้ว)");
+
+if (reseedFailed.length > 0) {
+  // exit 2 = "โครงสร้างข้อสอบพัง" คนละความหมายกับ 1 = "ข้อสอบตก" — ชุดถัดไปห้ามรันต่อบนข้อมูลนี้
+  console.error(
+    `\n🔴🔴🔴 คืนสภาพชุดข้อมูล QC **ไม่สำเร็จ** — DB ยังอยู่ในสภาพหลังรวมผู้ติดต่อของ M6\n` +
+      reseedFailed.map((f) => `   • ${f}`).join("\n") +
+      `\n   ⇒ ชุดอื่นที่รันต่อจากนี้จะแดงแบบหาสาเหตุไม่เจอ (เฉลยไม่ตรงข้อมูล)\n` +
+      `   ⇒ แก้: QC_ENV_FILE=.env.qc pnpm exec tsx scripts/seed-acc-v2-qc.mts แล้วรันสร้างเฉลยทั้ง 3 ตัวใหม่:\n` +
+      RESEED_STEPS.slice(1).map((f) => `        pnpm exec tsx ${f}`).join("\n"),
+  );
+  await prisma.$disconnect();
+  process.exit(2);
+}
+if (needReseed) console.log("♻️  คืนสภาพชุดข้อมูล QC เรียบร้อย (seed + เฉลย เขียนใหม่แล้ว · ตรวจแล้วว่าเฉลยกลับมาครบ)");
 await prisma.$disconnect();
 process.exit(findings.length === 0 ? 0 : 1);

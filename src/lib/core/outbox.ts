@@ -59,6 +59,44 @@ export async function emitOutbox(
   });
 }
 
+/**
+ * WO 9.3 — emit หลาย event ใน **คำสั่งเดียว**
+ *
+ * `emitOutbox` ตัวเดียวใช้ 2 คำสั่ง (findUnique + create) ⇒ งานที่ emit 2 event เช่น `recordPayment`
+ * (`account.payment.recorded` + `account.invoice.paid`) กิน 4 คำสั่งใน transaction ที่ล็อกแถวเอกสารอยู่
+ * → ยืดเวลาถือล็อกโดยไม่จำเป็น
+ *
+ * ตัวนี้ใช้ `createMany({ skipDuplicates: true })` = 1 คำสั่ง และยังคง idempotent ชั้นเดียวกันเป๊ะ
+ * เพราะ skipDuplicates อาศัย `@@unique(tenantId, idempotencyKey)` ตัวเดิม (ข้ามแถวที่ชนโดยไม่ abort tx
+ * ซึ่งเป็นเหตุผลเดียวกับที่ `emitOutbox` เลือก "เช็คก่อนสร้าง" แทน catch)
+ *
+ * 🔴 event ทุกชนิดที่ส่งเข้ามาต้องมี consumer ที่ `src/lib/outbox-consumers.ts` เหมือนกับ `emitOutbox`
+ */
+export async function emitOutboxMany(
+  tx: Tx,
+  inputs: {
+    tenantId: string;
+    type: string;
+    idempotencyKey: string;
+    payload?: unknown;
+    systemId?: string | null;
+    unitId?: string | null;
+  }[],
+): Promise<void> {
+  if (inputs.length === 0) return;
+  await tx.outboxEvent.createMany({
+    data: inputs.map((input) => ({
+      tenantId: input.tenantId,
+      type: input.type,
+      idempotencyKey: input.idempotencyKey,
+      payload: (input.payload ?? {}) as Prisma.InputJsonValue,
+      systemId: input.systemId ?? null,
+      unitId: input.unitId ?? null,
+    })),
+    skipDuplicates: true,
+  });
+}
+
 // serialize drain ทั้งโปรเซส — drain 2 อันในโปรเซสเดียวห้ามซ้อน (best-effort ของ POS + cron + oracle)
 // → กัน race ระหว่าง drain แบบ fire-and-forget (หลัง createSale) กับ drain ที่ await
 // cross-instance (serverless หลายตัว) พึ่ง DB lease (availableAt) ด้านล่างอีกชั้น

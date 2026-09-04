@@ -104,7 +104,7 @@ export default async function ProductsPage({
         {/* §8.1 "รูป (thumb 32)" — เฟรม f6 ไม่มีคอลัมน์รูปแยก จึงวางไว้หน้าชื่อ (จดใน wo-notes) */}
         {p.imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={p.imageUrl} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
+          <img src={p.imageUrl} alt="" className="h-8 w-8 shrink-0 rounded object-cover" loading="lazy" decoding="async" />
         )}
         <span className={`truncate font-semibold ${p.archivedAt ? "line-through opacity-50" : ""}`}>{p.name}</span>
         {p.posEnabled && (

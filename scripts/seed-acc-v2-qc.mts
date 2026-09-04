@@ -1230,7 +1230,22 @@ for (const plan of posSalesPlan) {
   posSaleIds.push({ key: plan.key, saleId: sale.saleId, receiptNo: sale.receiptNo, grandTotalSatang: sale.grandTotalSatang });
 }
 // ระบายคิว outbox → bridge → applyExternalSale (JV + เอกสารบิลขายหน้าร้าน + บรรทัดสินค้า)
-await drainAll();
+//
+// 🔴 WO 9.3 — เดิมเรียก `drainAll()` **ครั้งเดียว** ซึ่งระบายได้สูงสุด 50 event ต่อรอบ (drainOnce limit 50)
+//    พอ WO 8.3 เพิ่ม event `account.payment.recorded` / `account.invoice.paid` การ seed จึงมี event
+//    ค้างคิวก่อนถึงคิวของ POS ~61 ใบ ⇒ 2 event ของบิลขายหน้าร้าน (ใหม่สุด · drain เรียงเก่า→ใหม่)
+//    **ไม่เคยถูกระบาย** → ไม่มีเอกสาร TAX_INVOICE_ABB → seed ล้มที่ assertEq "ได้ 0 ต้องการ 2"
+//    นี่คือต้นเหตุจริงของ "contact-merge คืนสภาพล้ม" ที่ 9.2 จดค้างไว้ (คิวตันเงียบ ๆ ตามบทเรียน 30 ส.ค.)
+//    ⇒ ระบายเป็นวงจนคิวหมดจริง (หยุดเมื่อรอบหนึ่งทำงานไม่ได้เลย) + เพดานกันวนไม่รู้จบ
+{
+  let rounds = 0;
+  for (;;) {
+    const { processed, failed } = await drainAll();
+    rounds++;
+    if (processed === 0) break;
+    if (rounds > 50) throw new Error(`❌ ระบายคิว outbox ไม่จบใน 50 รอบ (ค้าง processed=${processed} failed=${failed})`);
+  }
+}
 
 const posDocs = await prisma.accountDocument.findMany({
   where: { tenantId, systemId, docType: "TAX_INVOICE_ABB" },

@@ -28,7 +28,7 @@ export function AttachmentGrid({
           <div className="flex h-32 items-center justify-center overflow-hidden rounded-lg" style={{ background: "var(--color-surface-2)" }}>
             {r.mimeType.startsWith("image/") ? (
               // eslint-disable-next-line @next/next/no-img-element -- thumb จาก CDN ของ tenant
-              <img src={r.thumbUrl ?? r.fileUrl} alt={r.fileName} className="h-full w-full object-cover" />
+              <img src={r.thumbUrl ?? r.fileUrl} alt={r.fileName} className="h-full w-full object-cover" loading="lazy" decoding="async" />
             ) : (
               <AccountIcon name="file" className="h-10 w-10 text-[color:var(--color-muted)]" />
             )}

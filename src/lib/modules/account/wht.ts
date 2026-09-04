@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/core/db";
 import { csvCell } from "@/lib/core/csv";
-import type { AccountWhtIncomeType, AccountLegalType, AccountDocDirection, Prisma } from "@prisma/client";
+import type { AccountWhtIncomeType, AccountLegalType, AccountDocDirection, AccountDocStatus, Prisma } from "@prisma/client";
 
 // ─────────────────────────────────────────────────────────────
 // wht.ts — ภาษีหัก ณ ที่จ่าย (WHT) สองขา — §3.5 + F5 (P2)
@@ -93,7 +93,8 @@ export async function listWhtCredits(
         },
       },
     },
-    orderBy: { paidAt: "asc" },
+    // WO 9.3: ตัวตัดสินลำดับ (paidAt เป็นวันที่ ⇒ รับชำระวันเดียวกันเรียงสลับได้) — รายงานต้องนิ่ง
+    orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
 
   let totalWht = 0;
@@ -614,6 +615,52 @@ export type WhtCertRow = {
 };
 
 /** หน้ารายการ WHT V2 (ทั้ง 2 ขา) — ตัวกรอง: ช่วงวันที่ชำระ · แท็บสถานะ · ค้นหา · หน้า */
+/**
+ * WO 9.3: แปลงแถว WHT_CERT → WhtCertRow — สูตรเดียวใช้ทั้งทางที่ตัดหน้าที่ DB และทางที่มีคำค้น
+ * (เดิมเขียน map ไว้ในตัวฟังก์ชัน — แยกออกมาเพื่อไม่ให้ 2 ทางคำนวณต่างกัน)
+ */
+function toWhtCertRow(
+  c: {
+    id: string;
+    docNo: string | null;
+    status: string;
+    issueDate: Date;
+    contactSnapshot: unknown;
+    contact: { name: string; taxId: string | null; legalType: AccountLegalType; branchCode: string | null } | null;
+    sourceDocId: string | null;
+    whtIncomeType: AccountWhtIncomeType | null;
+    subTotal: number;
+    whtRateBp: number | null;
+    whtAmount: number;
+    whtFiledPeriodKey: string | null;
+  },
+  sourceNoById: Map<string, string | null>,
+  sourceTypeById: Map<string, string>,
+): WhtCertRow {
+  const snap = (c.contactSnapshot as Record<string, unknown> | null) ?? null;
+  const legalType = (snap?.legalType as AccountLegalType) ?? c.contact?.legalType ?? "COMPANY";
+  return {
+    id: c.id,
+    certId: c.id,
+    certNo: c.docNo,
+    cancelled: c.status === "VOIDED" || c.status === "CANCELLED",
+    paidAt: c.issueDate,
+    contactName: (snap?.name as string) ?? c.contact?.name ?? "—",
+    contactTaxId: (snap?.taxId as string) ?? c.contact?.taxId ?? null,
+    legalType,
+    form: legalType === "PERSON" ? (3 as const) : (53 as const),
+    sourceDocId: c.sourceDocId,
+    sourceDocNo: c.sourceDocId ? (sourceNoById.get(c.sourceDocId) ?? null) : null,
+    sourceDocType: c.sourceDocId ? (sourceTypeById.get(c.sourceDocId) ?? null) : null,
+    incomeType: c.whtIncomeType,
+    incomeLabel: c.whtIncomeType ? WHT_INCOME_LABEL[c.whtIncomeType] : "—",
+    base: c.subTotal,
+    whtRateBp: c.whtRateBp,
+    whtAmount: c.whtAmount,
+    filedPeriodKey: c.whtFiledPeriodKey,
+  };
+}
+
 export async function listWhtCertsV2(
   tenantId: string,
   systemId: string,
@@ -633,17 +680,73 @@ export async function listWhtCertsV2(
   totalWht: number;
   tabCounts: { ALL: number; NORMAL: number; CANCELLED: number };
 }> {
+  // 🔴 WO 9.3 (Part D "แบ่งหน้าที่ฝั่ง DB") — เดิมฟังก์ชันนี้ดึง **ทุกใบ 50 ทวิของระบบ** เข้าหน่วยความจำ
+  //    (ไม่มี take) แล้วค่อย filter/slice ฝั่ง JS ⇒ ร้านที่ออก 50 ทวิหลักหมื่นใบจะโหลดหมื่นแถวทุกครั้ง
+  //    ที่เปิดหน้า · ตอนนี้: ไม่มีคำค้น = ตัดหน้าที่ DB (นับ/รวมยอดด้วย groupBy+aggregate ทั้งชุด)
+  //
+  //    ⚠️ ยังเหลือทางเดิมไว้เมื่อ "มีคำค้น" เพราะคำค้นครอบ **เลขที่เอกสารต้นทาง** (`sourceDocId` เป็น
+  //    scalar ไม่มี relation ในสคีมา ⇒ กรองใน SQL ไม่ได้) และชื่อผู้ติดต่อที่แช่แข็งใน JSON
+  //    `contactSnapshot` ⇒ ถ้าตัดหน้าที่ DB ตอนมีคำค้น ผลลัพธ์จะเปลี่ยน (หาไม่เจอ) — ทางแก้จริงคือ
+  //    denormalise `sourceDocNo`/`contactName` ลงคอลัมน์ (งานสคีมา → ยกไป 10.x)
+  const baseWhere: Prisma.AccountDocumentWhereInput = {
+    tenantId,
+    systemId,
+    docType: "WHT_CERT",
+    direction: input.direction,
+    status: { in: ["ISSUED", "VOIDED", "CANCELLED"] },
+    ...(input.from || input.to
+      ? { issueDate: { ...(input.from ? { gte: input.from } : {}), ...(input.to ? { lt: input.to } : {}) } }
+      : {}),
+  };
+  const qRaw = (input.q ?? "").trim();
+  const pageSizeIn = input.pageSize ?? 20;
+  const pageIn = Math.max(1, input.page ?? 1);
+
+  if (qRaw.length === 0) {
+    const statusTab = input.status ?? "ALL";
+    const CANCELLED_STATES: AccountDocStatus[] = ["VOIDED", "CANCELLED"];
+    const statusWhere: Prisma.AccountDocumentWhereInput =
+      statusTab === "ALL"
+        ? {}
+        : statusTab === "NORMAL"
+          ? { status: { notIn: CANCELLED_STATES } }
+          : { status: { in: CANCELLED_STATES } };
+    const where: Prisma.AccountDocumentWhereInput = { ...baseWhere, ...statusWhere };
+    const [byStatus, agg, pageRows] = await Promise.all([
+      prisma.accountDocument.groupBy({ by: ["status"], where: baseWhere, _count: { _all: true } }),
+      prisma.accountDocument.aggregate({ where, _count: { _all: true }, _sum: { subTotal: true, whtAmount: true } }),
+      prisma.accountDocument.findMany({
+        where,
+        include: { contact: { select: { name: true, taxId: true, legalType: true, branchCode: true } } },
+        orderBy: { issueDate: "desc" },
+        skip: (pageIn - 1) * pageSizeIn,
+        take: pageSizeIn,
+      }),
+    ]);
+    const cancelledCount = byStatus
+      .filter((g) => (CANCELLED_STATES as string[]).includes(g.status))
+      .reduce((s, g) => s + (g._count?._all ?? 0), 0);
+    const allCount = byStatus.reduce((s, g) => s + (g._count?._all ?? 0), 0);
+    const srcIds = pageRows.map((c) => c.sourceDocId).filter((x): x is string => !!x);
+    const srcRows = srcIds.length
+      ? await prisma.accountDocument.findMany({
+          where: { systemId, id: { in: srcIds } },
+          select: { id: true, docNo: true, docType: true },
+        })
+      : [];
+    const srcNo = new Map(srcRows.map((s) => [s.id, s.docNo]));
+    const srcType = new Map(srcRows.map((s) => [s.id, s.docType as string]));
+    return {
+      rows: pageRows.map((c) => toWhtCertRow(c, srcNo, srcType)),
+      total: agg._count?._all ?? 0,
+      totalBase: agg._sum?.subTotal ?? 0,
+      totalWht: agg._sum?.whtAmount ?? 0,
+      tabCounts: { ALL: allCount, NORMAL: allCount - cancelledCount, CANCELLED: cancelledCount },
+    };
+  }
+
   const certs = await prisma.accountDocument.findMany({
-    where: {
-      tenantId,
-      systemId,
-      docType: "WHT_CERT",
-      direction: input.direction,
-      status: { in: ["ISSUED", "VOIDED", "CANCELLED"] },
-      ...(input.from || input.to
-        ? { issueDate: { ...(input.from ? { gte: input.from } : {}), ...(input.to ? { lt: input.to } : {}) } }
-        : {}),
-    },
+    where: baseWhere,
     include: { contact: { select: { name: true, taxId: true, legalType: true, branchCode: true } } },
     orderBy: { issueDate: "desc" },
   });
@@ -655,32 +758,9 @@ export async function listWhtCertsV2(
   const sourceNoById = new Map(sources.map((s) => [s.id, s.docNo]));
   const sourceTypeById = new Map(sources.map((s) => [s.id, s.docType as string]));
 
-  const q = (input.q ?? "").trim().toLowerCase();
+  const q = qRaw.toLowerCase();
   const allRows: WhtCertRow[] = certs
-    .map((c) => {
-      const snap = (c.contactSnapshot as Record<string, unknown> | null) ?? null;
-      const legalType = (snap?.legalType as AccountLegalType) ?? c.contact?.legalType ?? "COMPANY";
-      return {
-        id: c.id,
-        certId: c.id,
-        certNo: c.docNo,
-        cancelled: c.status === "VOIDED" || c.status === "CANCELLED",
-        paidAt: c.issueDate,
-        contactName: (snap?.name as string) ?? c.contact?.name ?? "—",
-        contactTaxId: (snap?.taxId as string) ?? c.contact?.taxId ?? null,
-        legalType,
-        form: legalType === "PERSON" ? (3 as const) : (53 as const),
-        sourceDocId: c.sourceDocId,
-        sourceDocNo: c.sourceDocId ? (sourceNoById.get(c.sourceDocId) ?? null) : null,
-        sourceDocType: c.sourceDocId ? (sourceTypeById.get(c.sourceDocId) ?? null) : null,
-        incomeType: c.whtIncomeType,
-        incomeLabel: c.whtIncomeType ? WHT_INCOME_LABEL[c.whtIncomeType] : "—",
-        base: c.subTotal,
-        whtRateBp: c.whtRateBp,
-        whtAmount: c.whtAmount,
-        filedPeriodKey: c.whtFiledPeriodKey,
-      };
-    })
+    .map((c) => toWhtCertRow(c, sourceNoById, sourceTypeById))
     .filter((r) =>
       q.length === 0
         ? true

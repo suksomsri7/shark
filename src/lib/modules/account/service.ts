@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/core/db";
-import { emitOutbox } from "@/lib/core/outbox";
+import { emitOutbox, emitOutboxMany } from "@/lib/core/outbox";
 // WO 4.3 (§8.2) — ขาย "รายการจัดชุด" = ตัดสต็อกส่วนประกอบ (ไฟล์แยกกัน import วน service↔product)
 import { consumeBundleComponentsInTx } from "./bundle";
 import type {
@@ -1456,14 +1456,17 @@ export async function computeListTabCounts(
         }
       : {}),
   };
-  const [rawGroup, overdueGroup, overdueTotal] = await Promise.all([
+  // WO 9.3: เดิมมี 3 คำสั่ง — คำสั่งที่ 3 คือ count() ของ "พ้นกำหนดทั้งหมด" ซึ่งเป็น **ตัวกรองเดียวกันเป๊ะ**
+  // กับ groupBy ตัวที่ 2 ⇒ ผลรวมของ groupBy ตัวที่ 2 = ค่าเดียวกัน (groupBy ครอบทุก status ไม่มี take/skip)
+  // ตัดทิ้ง 1 query ต่อการโหลดหน้ารายการทุกหน้า โดยตัวเลขไม่เปลี่ยน
+  const [rawGroup, overdueGroup] = await Promise.all([
     prisma.accountDocument.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
     prisma.accountDocument.groupBy({ by: ["status"], where: { AND: [base, overdueWhere(now)] }, _count: { _all: true } }),
-    prisma.accountDocument.count({ where: { AND: [base, overdueWhere(now)] } }),
   ]);
   const raw = new Map(rawGroup.map((g) => [g.status, g._count._all]));
   const overdueByStatus = new Map(overdueGroup.map((g) => [g.status, g._count._all]));
   const all = rawGroup.reduce((s, g) => s + g._count._all, 0);
+  const overdueTotal = overdueGroup.reduce((s, g) => s + g._count._all, 0);
 
   const out: Record<string, number> = {};
   for (const t of tabs) {
@@ -2492,22 +2495,29 @@ export async function recordPayment(
       }
       // ── WO 8.3 (§9.5 "แอปภายนอก/API"): เหตุการณ์บัญชีออกทาง webhook ของแพลตฟอร์ม ──
       //    emit ใน tx เดียวกับการชำระ (transactional outbox) ⇒ เงินรอด = event รอด · idempotent ต่อ paymentId
-      await emitOutbox(tx, {
-        tenantId,
-        type: "account.payment.recorded",
-        idempotencyKey: `account.payment.recorded#${payment.id}`,
-        payload: { documentId: id, paymentId: payment.id, amountSatang: input.amount, docType: doc.docType },
-        systemId,
-      });
-      if (status === "PAID" && doc.docType === "INVOICE") {
-        await emitOutbox(tx, {
+      // 🔴 WO 9.3: เดิมเรียก emitOutbox ทีละตัว = 2 คำสั่ง/event (findUnique + create) → สูงสุด 4 คำสั่ง
+      //    ใน tx ที่ล็อกแถวเอกสารอยู่ (WO 9.2 เพิ่มการล็อกกันรับชำระซ้อน) ⇒ ยิงชุดเดียว 1 คำสั่งแทน
+      //    ทั้ง 2 ชนิดยังแยกกันเหมือนเดิม (ผู้สมัคร webhook คนละรายการ) — เปลี่ยนแค่วิธีเขียนลงตาราง
+      await emitOutboxMany(tx, [
+        {
           tenantId,
-          type: "account.invoice.paid",
-          idempotencyKey: `account.invoice.paid#${id}`,
-          payload: { documentId: id, docNo: doc.docNo, grandTotalSatang: doc.grandTotal },
+          type: "account.payment.recorded",
+          idempotencyKey: `account.payment.recorded#${payment.id}`,
+          payload: { documentId: id, paymentId: payment.id, amountSatang: input.amount, docType: doc.docType },
           systemId,
-        });
-      }
+        },
+        ...(status === "PAID" && doc.docType === "INVOICE"
+          ? [
+              {
+                tenantId,
+                type: "account.invoice.paid",
+                idempotencyKey: `account.invoice.paid#${id}`,
+                payload: { documentId: id, docNo: doc.docNo, grandTotalSatang: doc.grandTotal },
+                systemId,
+              },
+            ]
+          : []),
+      ]);
     });
     return { ok: true, status, paymentId, whtCertNo };
   } catch (e) {
@@ -2862,24 +2872,42 @@ export async function listDocPayments(
   systemId: string,
   documentId: string,
 ): Promise<DocPaymentRow[]> {
+  // 🔴 WO 9.3: เดิม select ซ้อน `financeAccount` / `cheque` (relation to-one ที่เป็น null ได้)
+  //    Prisma ยิง query ของ relation **เสมอ** แม้ทุกแถวจะมี FK = null → ได้ `WHERE id IN (NULL)`
+  //    เปล่า ๆ 2 คำสั่งต่อการเปิดหน้าเอกสาร 1 ครั้ง ⇒ ดึงแค่ FK แล้วค่อยไปหาชื่อเมื่อ "มีของให้หา"
   const rows = await prisma.accountDocumentPayment.findMany({
     where: { documentId, tenantId, systemId },
-    orderBy: { paidAt: "asc" },
+    // 🔴 WO 9.3: เดิมเรียงด้วย paidAt อย่างเดียว — แต่ paidAt เก็บเป็น "วันที่" (เที่ยงคืน) ⇒ รับชำระ
+    //    2 ครั้งในวันเดียวกันมีค่าเท่ากันเป๊ะ = ไม่มีตัวตัดสิน ⇒ Postgres คืนลำดับตามใจ
+    //    ผลกับผู้ใช้: ตารางการชำระเงินบนหน้าเอกสาร "สลับแถวเอง" ระหว่างการโหลดแต่ละครั้ง
+    //    ผลกับข้อสอบ: qc-acc-v2-payments P1.17–P1.19/P7.8/P7.9 แดงเป็นครั้งคราว (flaky ที่ 1.7/8.1/8.3 จดไว้)
+    orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     select: {
       id: true, paidAt: true, channel: true, amount: true, whtAmountSatang: true, feeAmount: true,
       note: true, voidedAt: true, whtCertDocId: true, createdById: true,
-      financeAccount: { select: { name: true } },
-      cheque: { select: { chequeNo: true } },
+      financeAccountId: true, chequeId: true,
     },
   });
   const certIds = rows.map((r) => r.whtCertDocId).filter((x): x is string => !!x);
-  const certs = certIds.length
-    ? await prisma.accountDocument.findMany({
-        where: { id: { in: certIds }, tenantId, systemId },
-        select: { id: true, docNo: true },
-      })
-    : [];
+  const financeIds = [...new Set(rows.map((r) => r.financeAccountId).filter((x): x is string => !!x))];
+  const chequeIds = [...new Set(rows.map((r) => r.chequeId).filter((x): x is string => !!x))];
+  const [certs, financeRows, chequeRows] = await Promise.all([
+    certIds.length
+      ? prisma.accountDocument.findMany({
+          where: { id: { in: certIds }, tenantId, systemId },
+          select: { id: true, docNo: true },
+        })
+      : Promise.resolve([]),
+    financeIds.length
+      ? prisma.accountFinance.findMany({ where: { id: { in: financeIds }, tenantId, systemId }, select: { id: true, name: true } })
+      : Promise.resolve([]),
+    chequeIds.length
+      ? prisma.accountCheque.findMany({ where: { id: { in: chequeIds }, tenantId, systemId }, select: { id: true, chequeNo: true } })
+      : Promise.resolve([]),
+  ]);
   const certNo = new Map(certs.map((c) => [c.id, c.docNo]));
+  const financeName = new Map(financeRows.map((f) => [f.id, f.name]));
+  const chequeNo = new Map(chequeRows.map((c) => [c.id, c.chequeNo]));
   // ผู้บันทึก (§5.3 ตารางการชำระเงิน คอลัมน์ "ผู้บันทึก") — resolve ผ่าน membership ของร้านนี้เหมือน access.ts
   const creatorIds = [...new Set(rows.map((r) => r.createdById).filter((x): x is string => !!x))];
   const creatorName = new Map<string, string>();
@@ -2894,12 +2922,12 @@ export async function listDocPayments(
     id: p.id,
     paidAt: p.paidAt,
     channel: p.channel,
-    financeName: p.financeAccount?.name ?? null,
+    financeName: p.financeAccountId ? (financeName.get(p.financeAccountId) ?? null) : null,
     amount: p.amount,
     whtAmount: p.whtAmountSatang,
     feeAmount: p.feeAmount,
     note: p.note,
-    chequeNo: p.cheque?.chequeNo ?? null,
+    chequeNo: p.chequeId ? (chequeNo.get(p.chequeId) ?? null) : null,
     certNo: p.whtCertDocId ? (certNo.get(p.whtCertDocId) ?? null) : null,
     voidedAt: p.voidedAt,
     createdByName: p.createdById ? (creatorName.get(p.createdById) ?? null) : null,

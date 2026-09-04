@@ -99,8 +99,13 @@ const capOf = (permissions: Record<string, unknown>): number | null => {
  * ผู้ใช้งานที่เกี่ยวกับบัญชี (§9.4: ตารางจาก /app/settings/staff **กรองเฉพาะที่มีสิทธิ์บัญชี**)
  * — OWNER/MANAGER เข้าเสมอ (มีสิทธิ์ทุกอย่างโดยบทบาท) · STAFF เข้าเมื่อมีคีย์ account.* อย่างน้อย 1 ข้อ
  */
-export async function listAccountUsers(ctx: Ctx): Promise<AccountUserRow[]> {
-  const [rows, settings] = await Promise.all([listStaffAccess(ctx.tenantId), getPermissionSettings(ctx)]);
+// WO 9.3: หน้าตั้งค่าสิทธิ์เรียกทั้ง listAccountUsers และ getPermissionSettings ⇒ อ่านแถว AccountSettings
+// ซ้ำ 2 ครั้ง · รับ settings ที่โหลดไว้แล้วได้ (พารามิเตอร์ optional — ผู้เรียกเดิมทำงานเหมือนเดิมทุกประการ)
+export async function listAccountUsers(ctx: Ctx, preloaded?: PermissionSettings): Promise<AccountUserRow[]> {
+  const [rows, settings] = await Promise.all([
+    listStaffAccess(ctx.tenantId),
+    preloaded ? Promise.resolve(preloaded) : getPermissionSettings(ctx),
+  ]);
   const roleByKey = new Map(settings.roles.map((r) => [r.key, r]));
   const out: AccountUserRow[] = [];
   for (const r of rows) {

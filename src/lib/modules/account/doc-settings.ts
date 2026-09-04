@@ -87,12 +87,16 @@ export async function docNumberingRows(
   labelOf: (dt: AccountDocType) => string,
   now: Date,
 ): Promise<DocNumberingRow[]> {
-  const settings = await getDocSettings(ctx);
-  const db = numberingDb(ctx);
-  const branchRow = await dbOf(ctx).accountSettings.findFirst({
+  // WO 9.3: เดิมอ่านแถว AccountSettings 2 ครั้ง (getDocSettings 1 + branchCode อีก 1) ทั้งที่เป็นแถวเดียวกัน
+  //         ⇒ รวมเป็น findFirst เดียวแล้วแยกใช้ (ผลลัพธ์เท่าเดิมเป๊ะ — parse ชุดเดียวกับ getDocSettings)
+  const row = await dbOf(ctx).accountSettings.findFirst({
     where: { systemId: ctx.systemId },
-    select: { branchCode: true },
+    select: { docConfig: true, defaultDueDays: true, defaultValidDays: true, branchCode: true },
   });
+  const parsed = parseDocSettings(row?.docConfig ?? null);
+  const settings = row ? applyDueColumns(parsed, row) : parsed;
+  const db = numberingDb(ctx);
+  const branchRow = row;
   const rows: DocNumberingRow[] = [];
   for (const docType of NUMBERED_DOC_TYPES) {
     const cfg = seqOf(settings, docType, branchRow?.branchCode ?? null);
@@ -417,18 +421,26 @@ export type DocTypeAccountRow = { docType: AccountDocType; accountId: string | n
 
 /** อ่าน override ปัจจุบันของทุกชนิด (คีย์ `DOC:<docType>` ใน AccountMapping — ตัวที่ gl.resolveLine อ่าน) */
 export async function listDocTypeAccounts(ctx: SettingsCtx): Promise<DocTypeAccountRow[]> {
+  // 🔴 WO 9.3: เดิมใช้ include ของ relation `account` (nullable) — Prisma ยิง query ของ relation เสมอ
+  //    แม้ไม่มีแถว/ไม่มี accountId เลย → `WHERE id IN (NULL)` เปล่า ๆ 1 คำสั่งทุกครั้งที่เปิดหน้าตั้งค่าเอกสาร
   const rows = await dbOf(ctx).accountMapping.findMany({
     where: { key: { startsWith: "DOC:" } },
-    include: { account: { select: { code: true, name: true } } },
+    select: { key: true, accountId: true },
   });
+  const accountIds = [...new Set(rows.map((r) => r.accountId).filter((x): x is string => !!x))];
+  const accounts = accountIds.length
+    ? await dbOf(ctx).accountLedger.findMany({ where: { id: { in: accountIds } }, select: { id: true, code: true, name: true } })
+    : [];
+  const accountById = new Map(accounts.map((a) => [a.id, a]));
   const byType = new Map(rows.map((r) => [r.key.slice(4), r]));
   return NUMBERED_DOC_TYPES.map((docType) => {
     const hit = byType.get(docType);
+    const acc = hit?.accountId ? accountById.get(hit.accountId) : undefined;
     return {
       docType,
       accountId: hit?.accountId ?? null,
-      code: hit?.account?.code ?? null,
-      name: hit?.account?.name ?? null,
+      code: acc?.code ?? null,
+      name: acc?.name ?? null,
     };
   });
 }

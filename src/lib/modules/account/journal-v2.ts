@@ -225,8 +225,10 @@ export async function listJournalPaged(ctx: JournalCtx, input: JournalListInput 
   const where = whereOf(ctx, input, true);
   const whereNoBook = whereOf(ctx, input, false);
 
-  const [total, grouped, entries, sums] = await Promise.all([
-    db.accountJournalEntry.count({ where }),
+  // 🔴 WO 9.3 (งบ query): เดิมมี `count({ where })` อีก 1 คำสั่ง — แต่ groupBy ด้านล่างนับ "ต่อเล่ม"
+  //    ภายใต้ตัวกรองชุดเดียวกัน (ต่างแค่ไม่ใส่ book) และ `book` เป็นคอลัมน์บังคับ (ไม่มี null)
+  //    ⇒ total = ยอดของเล่มที่กรอง (หรือผลรวมทุกเล่มเมื่อดูแท็บ "ทั้งหมด") หาได้จาก groupBy ตรง ๆ
+  const [grouped, entries, sums] = await Promise.all([
     db.accountJournalEntry.groupBy({ by: ["book"], where: whereNoBook, _count: { _all: true } }),
     db.accountJournalEntry.findMany({
       where,
@@ -270,6 +272,8 @@ export async function listJournalPaged(ctx: JournalCtx, input: JournalListInput 
     tabCounts.ALL += g._count._all;
   }
   for (const t of JOURNAL_TABS) tabCounts[t.key] ??= 0;
+  const bookFilter = bookOfTab(input.book);
+  const total = bookFilter ? (tabCounts[bookFilter] ?? 0) : tabCounts.ALL;
 
   // ป้าย/ลิงก์ของคอลัมน์ "อ้างอิงเอกสาร" + ชื่อผู้บันทึก + ชื่อผู้ติดต่อ — โหลดเป็นชุด (กัน N+1)
   const docIds = entries.filter((e) => e.refType === "AccountDocument" && e.refId).map((e) => e.refId!);
@@ -277,6 +281,10 @@ export async function listJournalPaged(ctx: JournalCtx, input: JournalListInput 
   const contactIds = [
     ...new Set(entries.flatMap((e) => e.lines.map((l) => l.contactId)).filter((x): x is string => !!x)),
   ];
+  // 🔴 WO 9.3: **คงด่าน `ids.length ?` ไว้ตามเดิม** — ข้ามคิวรีเมื่อไม่มี id ให้หา คือของดีต่อประสิทธิภาพ
+  //    (เคยมีรอบหนึ่งที่แก้ให้ "ยิงเสมอด้วย id ปลอม" เพื่อให้ตัวนับของด่าน N+1 เท่ากันเป๊ะ — นั่นคือการ
+  //    ทำให้ของจริงแย่ลงเพื่อเอาใจข้อสอบ ⇒ แก้ที่ข้อสอบแทน: `qc-acc-v2-perf` P3 เทียบ pageSize 50 กับ 100
+  //    ซึ่งชุด id ไม่ว่างทั้งคู่ ⇒ จับ "คิวรีต่อแถว" ได้จริงโดยไม่ลงโทษด่านที่ข้ามคิวรีเปล่า)
   const [docs, users, contacts] = await Promise.all([
     docIds.length
       ? db.accountDocument.findMany({ where: { id: { in: docIds } }, select: { id: true, docNo: true, docType: true } })

@@ -109,8 +109,14 @@ export async function listReconcilableChannels(ctx: ReconcileCtx): Promise<Recon
   }));
 }
 
-async function getChannel(ctx: ReconcileCtx, financeId: string): Promise<ReconcileChannel | null> {
-  const all = await listReconcilableChannels(ctx);
+/**
+ * หาช่องทางเดียวจากรายการช่องทางทั้งหมด
+ * 🔴 WO 9.3 (งบ query): หน้าจอ g10 เรียก `listReconcilableChannels` เองอยู่แล้ว (ทำ dropdown)
+ *    ถ้าตัวนี้โหลดซ้ำอีกรอบ = ยิง AccountFinance + AccountLedger ซ้ำเปล่า ๆ 2 query
+ *    → รับรายการที่โหลดมาแล้วผ่าน `channels` ได้ (ไม่ส่งมาก็ยังโหลดเองเหมือนเดิม)
+ */
+async function getChannel(ctx: ReconcileCtx, financeId: string, channels?: ReconcileChannel[]): Promise<ReconcileChannel | null> {
+  const all = channels ?? (await listReconcilableChannels(ctx));
   return all.find((c) => c.id === financeId) ?? null;
 }
 
@@ -419,17 +425,20 @@ export async function listSystemEntries(
   // เอกสารต้นทาง (สำหรับป้าย "รับชำระ IV-…" / "จ่าย PUR-…") — ดึงเป็นชุดเดียว ไม่ยิงต่อแถว
   const paymentIds = lines.filter((l) => l.entry.refType === "AccountDocumentPayment" && l.entry.refId).map((l) => l.entry.refId!);
   const docIds = lines.filter((l) => l.entry.refType === "AccountDocument" && l.entry.refId).map((l) => l.entry.refId!);
-  const [payments, docs] = await Promise.all([
-    paymentIds.length
-      ? tenantDb(ctx).accountDocumentPayment.findMany({
-          where: { systemId: ctx.systemId, id: { in: paymentIds } },
-          select: { id: true, documentId: true, document: { select: { id: true, docNo: true, docType: true } } },
-        })
-      : Promise.resolve([]),
-    docIds.length
-      ? tenantDb(ctx).accountDocument.findMany({ where: { systemId: ctx.systemId, id: { in: docIds } }, select: { id: true, docNo: true, docType: true } })
-      : Promise.resolve([]),
-  ]);
+  // 🔴 WO 9.3 (งบ query): เดิม select ซ้อน `document` ในใบรับชำระ → prisma แตกเป็นอีก query หนึ่ง
+  //    รวมกับ query เอกสารตรง ๆ ด้านล่างกลายเป็นยิง AccountDocument 2 ครั้งด้วยชุด id คนละชุด
+  //    → เอาแค่ documentId มา แล้วยิง AccountDocument **ครั้งเดียว** ด้วย id ที่รวมทั้งสองทาง
+  //    (ทุกตัวมี guard `.length` — ชุดว่างต้องไม่ยิง ไม่งั้น prisma ยิง `IN (NULL)` ทิ้งเปล่า ๆ)
+  const payments = paymentIds.length
+    ? await tenantDb(ctx).accountDocumentPayment.findMany({
+        where: { systemId: ctx.systemId, id: { in: paymentIds } },
+        select: { id: true, documentId: true },
+      })
+    : [];
+  const allDocIds = [...new Set([...docIds, ...payments.map((p) => p.documentId)])];
+  const docs = allDocIds.length
+    ? await tenantDb(ctx).accountDocument.findMany({ where: { systemId: ctx.systemId, id: { in: allDocIds } }, select: { id: true, docNo: true, docType: true } })
+    : [];
   const payMap = new Map(payments.map((p) => [p.id, p]));
   const docMap = new Map(docs.map((d) => [d.id, d]));
 
@@ -439,9 +448,10 @@ export async function listSystemEntries(
     let documentType: AccountDocType | null = null;
     if (l.entry.refType === "AccountDocumentPayment" && l.entry.refId) {
       const p = payMap.get(l.entry.refId);
-      documentId = p?.document?.id ?? null;
-      documentNo = p?.document?.docNo ?? null;
-      documentType = p?.document?.docType ?? null;
+      const d = p ? docMap.get(p.documentId) : undefined; // เอกสารมาจาก docMap ชุดเดียวกับทางตรง
+      documentId = d?.id ?? null;
+      documentNo = d?.docNo ?? null;
+      documentType = d?.docType ?? null;
     } else if (l.entry.refType === "AccountDocument" && l.entry.refId) {
       const d = docMap.get(l.entry.refId);
       documentId = d?.id ?? null;
@@ -912,8 +922,14 @@ export async function systemBalanceAtPeriodEnd(ctx: ReconcileCtx, ledgerAccountI
   return (agg._sum.debit ?? 0) - (agg._sum.credit ?? 0);
 }
 
-export async function summary(ctx: ReconcileCtx, financeId: string, periodKey: string): Promise<ReconcileSummary | ReconcileFail> {
-  const channel = await getChannel(ctx, financeId);
+export async function summary(
+  ctx: ReconcileCtx,
+  financeId: string,
+  periodKey: string,
+  // WO 9.3 — ส่งรายการช่องทางที่โหลดไว้แล้วเข้ามาได้ (ไม่ส่ง = โหลดเอง เหมือนเดิมทุกประการ)
+  opts: { channels?: ReconcileChannel[] } = {},
+): Promise<ReconcileSummary | ReconcileFail> {
+  const channel = await getChannel(ctx, financeId, opts.channels);
   if (!channel) return fail("ไม่พบช่องทางการเงินนี้ (หรือยังไม่ได้ผูกบัญชีแยกประเภท)");
   if (!isPeriodKey(periodKey)) return fail("รูปแบบเดือนไม่ถูกต้อง");
 
@@ -1142,21 +1158,29 @@ export async function reconcilePageData(
   ctx: ReconcileCtx,
   financeId: string,
   periodKey: string,
-  opts: { base?: string } = {},
+  // `channels` = รายการช่องทางที่หน้าจอโหลดไว้แล้ว (WO 9.3 — กันโหลดซ้ำ ดู getChannel)
+  opts: { base?: string; channels?: ReconcileChannel[] } = {},
 ): Promise<ReconcilePageData | ReconcileFail> {
-  const s = await summary(ctx, financeId, periodKey);
+  const s = await summary(ctx, financeId, periodKey, { channels: opts.channels });
   if ("ok" in s) return s;
 
-  const [lines, system, reconciled] = await Promise.all([
+  // 🔴 WO 9.3 (งบ query): เดิมเรียก listSystemEntries 2 รอบ (รอบยังไม่กระทบยอด + รอบรวมที่กระทบยอดแล้ว)
+  //    → บรรทัดสมุดรายวัน/ใบสำคัญ/เอกสารต้นทาง ถูกยิงคนละชุด id เป็น 2 ชุด (AccountDocumentPayment
+  //      และ AccountDocument อย่างละ 2 query) ทั้งที่ชุดหลังครอบชุดแรกอยู่แล้ว
+  //    → ดึงรอบเดียวแบบ includeReconciled แล้วแยกใน JS: ผลลัพธ์/ลำดับเท่าเดิมเป๊ะ
+  //      (เดิม systemRows กรอง reconciledAt=null ที่ SQL · ตอนนี้กรอง !r.reconciled ใน JS — ชุดเดียวกัน
+  //       และ orderBy เหมือนกัน การกรองจึงไม่เปลี่ยนลำดับ)
+  const [lines, all] = await Promise.all([
     s.statementId
       ? tenantDb(ctx).accountBankStatementLine.findMany({
           where: { tenantId: ctx.tenantId, systemId: ctx.systemId, statementId: s.statementId },
           orderBy: [{ txDate: "asc" }, { seq: "asc" }],
         })
       : Promise.resolve([]),
-    listSystemEntries(ctx, { ledgerAccountId: s.channel.ledgerAccountId, periodKey, base: opts.base }),
-    listReconciledEntries(ctx, { ledgerAccountId: s.channel.ledgerAccountId, periodKey, base: opts.base }),
+    listSystemEntries(ctx, { ledgerAccountId: s.channel.ledgerAccountId, periodKey, base: opts.base, includeReconciled: true }),
   ]);
+  const system = all.filter((r) => !r.reconciled);
+  const reconciled = all.filter((r) => r.reconciled);
 
   return {
     summary: s,

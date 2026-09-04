@@ -8,7 +8,7 @@ import { getExpenseDoc, EXP_DOC_LABEL } from "./expense";
 import { DOC_LABEL, STATUS_LABEL, isOverdue, listDocPayments, getDocRef, type DocPaymentRow } from "./service";
 import { listJournalEntriesForDocument } from "./gl";
 import { LIST_TABS } from "./list-tabs";
-import { listAttachments, humanSize } from "./attachment";
+import { listDocumentAttachmentFiles, humanSize } from "./attachment";
 import { listDocAuditLogs, auditActionLabelTh } from "./access";
 // WO 1.7 — เอกสารกลุ่ม (BN/CP): ตาราง "เอกสารในกลุ่ม" + ชิป "อยู่ในใบวางบิล/ใบรวมจ่าย" ของใบลูก
 import { groupChipOfChild, groupDefOf, groupPanelData, isGroupDocType, type GroupChildView, type GroupMembershipChip } from "./group";
@@ -293,7 +293,7 @@ export async function getDocDetailData(
   // listDocPayments คืนทุกครั้งที่ชำระ (รวมที่ voided แล้ว) — ใช้ id ชุดนี้หา JV ของ payment ได้ครบ ไม่ต้องคิวรีซ้ำ
   const [payments, attachmentRows, auditLogs] = await Promise.all([
     listDocPayments(tenantId, systemId, docId),
-    listAttachments(tenantId, systemId, { documentId: docId }),
+    listDocumentAttachmentFiles(tenantId, systemId, docId),
     listDocAuditLogs(tenantId, docId),
   ]);
   const jv = await loadJvEntries(systemId, docId, payments.map((p) => p.id));
