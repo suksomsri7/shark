@@ -67,6 +67,12 @@ const ICONS: Record<string, string> = {
   'chevron-down': '<path d="m5.5 9.5 6.5 7 6.5-7"/>',
   // WO 6.2 — ปุ่ม "ดาวน์โหลด Excel" ของแถบเครื่องมือรายงาน (§11.3)
   download: '<path d="M12 3v12"/><path d="m7 10.5 5 5 5-5"/><path d="M4 20h16"/>',
+  // WO 7.1 — คลังเอกสาร (f9/f9-menu): ดูตัวอย่างไฟล์ · กล่องรายการแบบ grid · ลบไฟล์ · กล้อง (thumb รูปที่ยังไม่โหลด)
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  grid: '<rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.2"/><rect x="13" y="3.5" width="7.5" height="7.5" rx="1.2"/><rect x="3.5" y="13" width="7.5" height="7.5" rx="1.2"/><rect x="13" y="13" width="7.5" height="7.5" rx="1.2"/>',
+  trash: '<path d="M4.5 7h15"/><path d="M9.5 7V4.8a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7"/><path d="M6.5 7 7.3 19.2a1 1 0 0 0 1 .9h7.4a1 1 0 0 0 1-.9L17.5 7"/>',
+  camera:
+    '<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-2h7l1 2h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5Z"/><circle cx="12" cy="13" r="3.3"/>',
 };
 
 const FALLBACK = '<rect x="5" y="5" width="14" height="14" rx="2"/>';

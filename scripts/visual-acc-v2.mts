@@ -339,6 +339,7 @@ const FIXTURE_CSV_COA_IMPORT = "scripts/fixtures/acc-v2/coa-import.csv"; // WO 6
 const FIXTURE_CSV_RECONCILE_PREVIEW = "scripts/fixtures/acc-v2/kbank-preview-sample.csv"; // WO 5.3 — ไฟล์ตัวอย่างของภาพ preview (preview ไม่เขียน DB)
 const FIXTURE_CSV_PATH_18 = `${QC.shotsDir}/1.8-fixture-a.csv`; // ใช้เดสก์ท็อป (และ preview ทั้งคู่ device — preview ไม่สร้างอะไรจริง)
 const FIXTURE_CSV_PATH_18_MOBILE = `${QC.shotsDir}/1.8-fixture-b.csv`; // ใช้มือถือเท่านั้น (คนละชุดข้อมูล กันชนกับรอบเดสก์ท็อป)
+const FIXTURE_ATTACH_DIR = "scripts/fixtures/acc-v2/attach"; // WO 7.1 — pdf/jpg/png ตัวอย่าง (ดู wo-notes/7.1.md)
 if (WO === "1.8") {
   const { prisma: db } = await import("@/lib/core/db");
   const svc = await import("@/lib/modules/account/service");
@@ -376,6 +377,20 @@ if (WO === "1.8") {
   await seedFixtureSet("QCVIS-A", "A", FIXTURE_CSV_PATH_18);
   await seedFixtureSet("QCVIS-B", "B", FIXTURE_CSV_PATH_18_MOBILE);
   console.log(`[fixture 1.8] เขียนไฟล์ตัวอย่าง 2 ชุด (คนละ device — กัน idempotency ชนกัน) + ผู้ติดต่อ 36 ราย\n`);
+}
+
+// ─────────── fixture ของ WO 7.1: อัปโหลดจริง 3 ไฟล์ผ่าน modal (§12) ───────────
+// ภาพ "documents-upload-modal" ต้องกดอัปโหลดจริงผ่าน uploadAttachmentsAction (server action จริง — ไม่ใช่หลอกตา)
+// ⇒ เพิ่มแถวจริงใน AccountAttachment ของร้าน QC ⇒ ตัวนับแท็บ (เฉลย attachments.total=6) จะเพี้ยนถ้าไม่ลบทิ้ง
+// 🔴 ลบทิ้งเสมอใน finally ด้วย fileName ตรงตัว (ชื่อไฟล์ fixture ต้นทาง — ไม่ชนกับชื่อไฟล์จริงที่ seed ตั้งให้ 6 แถวเดิม)
+const FIXTURE_ATTACH_NAMES = ["bill-ptt.jpg", "photo.png", "receipt.pdf"];
+if (WO === "7.1") {
+  const { prisma: db } = await import("@/lib/core/db");
+  cleanupFixture = async () => {
+    const del = await db.accountAttachment.deleteMany({ where: { systemId: SYS, fileName: { in: FIXTURE_ATTACH_NAMES } } });
+    if (del.count) console.log(`ลบ fixture ของ WO 7.1: ไฟล์ที่อัปโหลดผ่านภาพ ${del.count} แถว (ตัวนับแท็บกลับเท่าเฉลย 6)`);
+  };
+  await cleanupFixture(); // กันซากจากรอบที่ล้มกลางคัน
 }
 
 // ─────────── fixture ของ WO 1.9: เอกสารประจำ 2 กฎ + แจ้งเตือน 3 รายการ ───────────
@@ -539,8 +554,9 @@ type FlowStep =
    *  เหตุผล: ขั้นถัดไปมักเป็นการกดปุ่มที่ "เขียนข้อมูลจริง" (เช่น บันทึกผู้ติดต่อ) ถ้าค่าที่พิมพ์หล่น
    *  จะได้ภาพผิดสถานะ **และ** ทิ้งขยะไว้ใน DB QC (เจอจริง 4 ก.ย.: สร้างผู้ติดต่อเกินมา 1 ราย → ตัวนับ 63 เพี้ยน) */
   | { assertValue: string; equals: string }
-  /** WO 1.8: อัปโหลดไฟล์เข้า <input type="file"> ผ่าน DevTools (puppeteer ElementHandle.uploadFile) */
-  | { upload: string; filePath: string };
+  /** WO 1.8: อัปโหลดไฟล์เข้า <input type="file"> ผ่าน DevTools (puppeteer ElementHandle.uploadFile)
+   *  WO 7.1: filePath รับหลายไฟล์ได้ (array) — input ที่มี `multiple` เลือกได้ทีเดียวหลายไฟล์จริงเหมือนผู้ใช้จริง */
+  | { upload: string; filePath: string | string[] };
 const PAGES: Record<string, PageSpec[]> = {
   "0.1": [
     { name: "hub", path: `/app/sys/${SYS}`, note: "หน้าแรกระบบบัญชี (AccountContent)", expect: ["บัญชี", E.tenantName] },
@@ -1146,6 +1162,83 @@ const PAGES: Record<string, PageSpec[]> = {
         { waitFor: '[data-testid="import-result"]' },
       ],
       expectBeforeShot: [{ sel: '[data-testid="import-result"]', kind: "text", equals: "สร้างใหม่ 18 รายการ" }],
+    },
+  ],
+  // WO 7.1 — คลังเอกสาร V2 (§12 · f9-documents.png / f9-documents-menu.png)
+  "7.1": [
+    {
+      name: "documents-list",
+      path: `/app/sys/${SYS}/account/documents`,
+      note: "หน้าคลังเอกสาร สถานะเริ่มต้น (แท็บทั้งหมด) — เทียบ f9-documents.png: แถบอัปโหลด · แท็บ+badge · ตัวกรองบรรทัดเดียว · ตาราง 6 คอลัมน์ · footer ในการ์ด",
+      expect: [
+        "คลังเอกสาร",
+        "กล่องขาเข้า",
+        "อัปโหลดไฟล์",
+        "ลากไฟล์มาวางที่นี่",
+        "ทั้งหมด",
+        "ยังไม่ออกเอกสาร",
+        "ออกเอกสารแล้ว",
+        "วันที่อัปโหลด",
+        "ประเภท",
+        "ผู้อัปโหลด",
+        "ผู้อัปโหลด:",
+        "โฟลเดอร์:",
+        "ไฟล์",
+        // "ค้นหาชื่อไฟล์, ผู้นำเข้า" = placeholder (ไม่อยู่ใน innerText ตามธรรมเนียมไฟล์นี้) · "เอกสารที่ผูก" =
+        // หัวคอลัมน์เดสก์ท็อปเท่านั้น (การ์ดมือถือไม่มีหัวคอลัมน์) — ยืนยันแยกด้วย data-testid ด้านล่างแทน
+      ],
+    },
+    {
+      name: "documents-row-menu",
+      path: `/app/sys/${SYS}/account/documents?tab=unlinked`,
+      note: 'เปิดเมนู "ทำรายการ ▾" ของไฟล์ยังไม่ผูก (unlinked3) — เทียบ f9-documents-menu.png',
+      expect: ["ดูตัวอย่างไฟล์", "สร้างเอกสารจากไฟล์", "แนบกับเอกสารที่มีอยู่", "เปลี่ยนประเภท", "ย้ายโฟลเดอร์", "ดาวน์โหลด", "ลบไฟล์"],
+      onlyDevice: "desktop",
+      click: [`[data-testid="attachment-row-menu-${E.attachments?.ids?.unlinked3 ?? ""}"] button`],
+      waitAfterClick: 300,
+    },
+    {
+      // WO 7.1 round 2 — พิสูจน์บั๊กที่แก้แล้ว: unlinked1 คือแถว "ท้ายสุด" ของแท็บทั้งหมด (สร้างก่อนสุด ⇒ เรียง
+      // created desc มาอยู่ล่างสุด) — ก่อนแก้ (PortalMenu) เมนูของแถวนี้ถูกตัดเหลือ 2/7 รายการ (ดู wo-notes/7.1.md
+      // ข้อ "บั๊กที่พบระหว่างทำ") หลังแก้ต้องเห็นครบ 7 รายการเหมือนแถวอื่นทุกประการ
+      name: "documents-row-menu-last",
+      path: `/app/sys/${SYS}/account/documents`,
+      note: 'เปิดเมนู "ทำรายการ ▾" ของแถวท้ายสุดในตาราง (unlinked1) — พิสูจน์ว่า dropdown ไม่ถูกตัดอีกต่อไป (บั๊ก overflow-x-auto ที่แก้ด้วย PortalMenu)',
+      expect: ["ดูตัวอย่างไฟล์", "สร้างเอกสารจากไฟล์", "แนบกับเอกสารที่มีอยู่", "เปลี่ยนประเภท", "ย้ายโฟลเดอร์", "ดาวน์โหลด", "ลบไฟล์"],
+      onlyDevice: "desktop",
+      click: [`[data-testid="attachment-row-menu-${E.attachments?.ids?.unlinked1 ?? ""}"] button`],
+      waitAfterClick: 300,
+    },
+    {
+      name: "documents-grid",
+      path: `/app/sys/${SYS}/account/documents?view=grid`,
+      note: "มุมมอง grid (§12 list/grid toggle) — การ์ดใหญ่ thumb เต็มความกว้าง",
+      expect: ["คลังเอกสาร", "ทั้งหมด"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "documents-upload-modal",
+      path: `/app/sys/${SYS}/account/documents?upload=1`,
+      note: 'modal "อัปโหลดไฟล์" — อัปโหลดจริง 3 ไฟล์ (pdf/jpg/png) ผ่าน uploadAttachmentsAction แล้วดูรายการความคืบหน้า (ลบทิ้งใน cleanupFixture)',
+      expect: ["อัปโหลดไฟล์", "ลากไฟล์มาวาง หรือ", "เลือกไฟล์", "โฟลเดอร์ (ไม่บังคับ)"],
+      onlyDevice: "desktop",
+      flow: [
+        {
+          upload: '[data-testid="documents-upload-modal-input"]',
+          filePath: [`${FIXTURE_ATTACH_DIR}/receipt.pdf`, `${FIXTURE_ATTACH_DIR}/bill-ptt.jpg`, `${FIXTURE_ATTACH_DIR}/photo.png`],
+        },
+        { waitFor: '[data-testid="attachment-upload-progress"]' },
+        { waitFor: '[data-testid="attachment-upload-ok"]' },
+      ],
+    },
+    {
+      name: "documents-attach-modal",
+      path: `/app/sys/${SYS}/account/documents`,
+      note: 'modal "แนบกับเอกสารที่มีอยู่" (เปิดจากปุ่ม "+ สร้าง/แนบเอกสาร" ในตาราง)',
+      expect: ["แนบกับเอกสารที่มีอยู่"], // ช่องค้นหาเป็น placeholder เท่านั้น — ไม่อยู่ใน innerText
+      onlyDevice: "desktop",
+      click: ['[data-testid="attachment-link-cell-btn"]', '[data-testid="attachment-attach-existing"]'],
+      waitAfterClick: 300,
     },
   ],
   // WO 1.9 — เอกสารประจำ (§0.3 ข้อ 7) + ศูนย์แจ้งเตือน (§0.3 ข้อ 4)
@@ -1889,6 +1982,14 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "coa-total": `${E.coa?.activeAccounts ?? 0} บัญชี`,
     },
   },
+  // WO 7.1 — คลังเอกสาร V2: ตัวนับแท็บต้องตรงเฉลย attachments (บล็อก 8.11 ของ seed)
+  "7.1": {
+    "documents-list": {
+      "tab-all-count": `${E.attachments?.total ?? 0}`,
+      "tab-unlinked-count": `${E.attachments?.unlinked ?? 0}`,
+      "tab-linked-count": `${E.attachments?.linked ?? 0}`,
+    },
+  },
   // WO 1.4: ตัวเลขบนจอต้องตรงเฉลย g2 เป๊ะ (14,900 + 9,301.87 + WHT 698.13 = 24,900 · ค้าง 0)
   "1.4": {
     "receipt-payment": {
@@ -2268,7 +2369,8 @@ try {
               flowFail(`ไม่พบ input[type=file] ${step.upload}`);
               continue;
             }
-            await input.uploadFile(step.filePath).catch((e: unknown) => flowFail(`อัปโหลดไฟล์ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`));
+            const filePaths = Array.isArray(step.filePath) ? step.filePath : [step.filePath];
+            await input.uploadFile(...filePaths).catch((e: unknown) => flowFail(`อัปโหลดไฟล์ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`));
           } else {
             if (!(await center(step.fill))) {
               flowFail(`ไม่พบช่องกรอก ${step.fill}`);

@@ -702,6 +702,70 @@ if (!W) {
   }
 }
 
+// ─────────── I. คลังเอกสาร V2 (WO 7.1 · §12) ───────────
+console.log("\nI. คลังเอกสาร V2");
+{
+  const A = E.attachments as {
+    total: number;
+    unlinked: number;
+    linked: number;
+    notAccounting: number;
+    staffUploaderId: string;
+    ownerUploaderId: string;
+    ids: Record<string, string>;
+    linkedExpDocumentId: string;
+    linkedIvDocumentId: string;
+  };
+  const rows = await prisma.accountAttachment.findMany({ where: { systemId, id: { in: Object.values(A.ids) } } });
+  eq("Q1", "จำนวนไฟล์แนบตัวอย่าง (6 แถว) มีครบใน DB", rows.length, A.total);
+  const byKey = new Map(Object.entries(A.ids).map(([k, id]) => [k, rows.find((r) => r.id === id)]));
+
+  for (const key of ["unlinked1", "unlinked2", "unlinked3"]) {
+    const r = byKey.get(key);
+    chk(`Q2-${key}`, `${key} มีจริงในระบบนี้`, !!r, r?.id ?? "ไม่พบ");
+    if (r) {
+      eq(`Q3-${key}`, `${key} status = UNLINKED`, r.status, "UNLINKED");
+      eq(`Q4-${key}`, `${key} ยังไม่ผูก documentId`, r.documentId, null);
+      chk(`Q5-${key}`, `${key} มี sha256`, !!r.sha256, r.sha256);
+    }
+  }
+
+  const exp = byKey.get("linkedExp");
+  chk("Q6", "linkedExp มีจริง", !!exp, exp?.id ?? "ไม่พบ");
+  if (exp) {
+    eq("Q7", "linkedExp status = LINKED", exp.status, "LINKED");
+    eq("Q8", "linkedExp ผูกกับ EXP ตามเฉลย", exp.documentId, A.linkedExpDocumentId);
+    eq("Q9", "linkedExp docTypeHint = ชนิดเอกสารจริง (EXPENSE)", exp.docTypeHint, "EXPENSE");
+  }
+
+  const iv = byKey.get("linkedIv");
+  chk("Q10", "linkedIv มีจริง", !!iv, iv?.id ?? "ไม่พบ");
+  if (iv) {
+    eq("Q11", "linkedIv status = LINKED", iv.status, "LINKED");
+    eq("Q12", "linkedIv ผูกกับ IV ตามเฉลย", iv.documentId, A.linkedIvDocumentId);
+    eq("Q13", "linkedIv docTypeHint = ชนิดเอกสารจริง (INVOICE)", iv.docTypeHint, "INVOICE");
+  }
+
+  const na = byKey.get("notAccounting");
+  chk("Q14", "notAccounting มีจริง", !!na, na?.id ?? "ไม่พบ");
+  if (na) {
+    eq("Q15", "notAccounting status = NOT_ACCOUNTING", na.status, "NOT_ACCOUNTING");
+    eq("Q16", "notAccounting ไม่ผูกเอกสาร", na.documentId, null);
+  }
+
+  // ตัวนับต่อสถานะทั้งระบบ (ไม่ใช่แค่ id ที่รู้จัก) — กันไฟล์อื่นหลุดเข้ามาปนโดยไม่มีใครรู้
+  const grouped = await prisma.accountAttachment.groupBy({ by: ["status"], where: { systemId, archivedAt: null }, _count: { _all: true } });
+  const cnt = (s: string) => grouped.find((g) => g.status === s)?._count._all ?? 0;
+  eq("Q17", "ตัวนับ UNLINKED ทั้งระบบ = เฉลย", cnt("UNLINKED"), A.unlinked);
+  eq("Q18", "ตัวนับ LINKED ทั้งระบบ = เฉลย", cnt("LINKED"), A.linked);
+  eq("Q19", "ตัวนับ NOT_ACCOUNTING ทั้งระบบ = เฉลย", cnt("NOT_ACCOUNTING"), A.notAccounting);
+
+  // ผู้อัปโหลด 2 คน (owner + staff) ต้อง resolve ชื่อได้จริงผ่าน membership+user (คอลัมน์ "ผู้อัปโหลด")
+  const staffM = await prisma.membership.findFirst({ where: { tenantId, userId: A.staffUploaderId }, include: { user: true } });
+  chk("Q20", "ผู้อัปโหลดพนักงานคนที่ 2 เป็นสมาชิกร้านนี้จริง", staffM?.tenantId === tenantId, staffM?.tenantId);
+  eq("Q21", "ชื่อผู้อัปโหลดพนักงานคนที่ 2 ตรงเฉลย", staffM?.user.name, "นภาพร ใจเย็น");
+}
+
 // ─────────── H. อายุของข้อสอบ ───────────
 console.log("\nH. อายุของชุดข้อมูล");
 chk(

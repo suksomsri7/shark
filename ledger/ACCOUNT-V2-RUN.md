@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 7.1 คลังเอกสาร V2 (เฟส 7) |
+| WO | 7.2 กล่องขาเข้า + AI อ่านบิล (ปิดเฟส 7) |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Sonnet (sub-agent · UI ตาม f9) |
-| ขั้นที่ถึง | 4 ก.ย. ~09:50 UTC: 7.1 รอบ 1 ส่งมา (attachments 66/66 · seed-check 202 · อัปโหลดจริงขึ้น Bunny ของ QC) → Fable ดูภาพเทียบ f9 **ตีกลับ 3 จุดเล็ก** (ปุ่ม ทำรายการ ▾ · badge ดำที่แท็บ · footer บรรทัดเดียว) + สั่งแก้บั๊กข้ามหน้าที่ agent เจอ: dropdown ทำรายการถูก overflow-x-auto ของ DocTable ตัดที่แถวท้าย (ทุกหน้ารายการ V2) → portal — agent เดิมทำรอบ 2 |
+| ผู้ทำ | Opus (sub-agent · UI ตาม g15/g20) |
+| ขั้นที่ถึง | 4 ก.ย. ~11:30 UTC: 7.1 DONE รอบ 2 ตรง f9 + portal menu แก้ dropdown ถูกตัดทุกหน้า · Fable รันด่าน 20 ชุดเอง · commit แล้ว · กำลังออก 7.2 |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -52,7 +52,7 @@
 | 5.5 | PromptPay → กระทบยอดอัตโนมัติ | Opus | DONE | (HEAD) | ผ่านรอบแรก · Fable รันเอง: promptpay 84 · payments 161 · reconcile 109 · finance 59 · finance-overview 45 · wht-cheque 69 · detail 85 · dashboard 174 · home 87 · recurring 161 · seed-check 129 · guard 158 · schema 61 · nav 323 · payment 16 · ai-credit 32 · pos-account 16 · inventory-account 23 · fitness 17 · CPA 107 · drift clean · typecheck 0 · โมเดล AccountPaymentRequest (token 128 บิต · unique chargeId) · Beam มี key = charge+webhook `acc:` prefix (ไม่กระทบเติมเครดิต AI) · ไม่มี key = QR PromptPay static ล็อกยอด → ยืนยันมือ/จับจาก statement อัตโนมัติ · หน้าสาธารณะ /pay/[token] · 🐞 ปิด: `AccountDocumentPayment.entryId` เป็น null เสมอ (gl.postPayment ไม่เขียนกลับ → 9.2 ตรวจผู้ใช้อื่น) · dashboard สัดส่วนปัดรวม 100.01% · ค้าง: BN ไม่รองรับลิงก์ · ไทล์ 'รอยืนยันรับเงิน' บนหน้าหลัก · 🔑 prod ต้องตั้ง BEAM_MERCHANT_ID/API_KEY/WEBHOOK_SECRET + webhook URL https://shark.in.th/api/payment/beam/webhook (ไม่มี = โหมด QR static) |
 | 6.1 | ผังบัญชี V2 | Opus | DONE | (HEAD) | ตรง f8 (2 แบบ) · ตีกลับ 1 รอบ (ยอด ณ วันที่รวม entry อนาคต — Fable ตรวจ GL เอง · 5.1/5.2/หน้าหลักแก้พร้อมกันให้กติกาเดียว) · Fable รันเอง: coa 105 · components 78 · finance 59 · finance-overview 45 · reconcile 109 · promptpay 84 · wht-cheque 69 · dashboard 174 · home 87 · overview 73 · seed-check 139 · guard 162 · schema 61 · nav 323 · list 159 · import 114 · cheap-routes 105 · fitness 17 · CPA 107 · drift clean · typecheck 0 · 🐞 ปิด: หน้าแยกประเภทกรอง POSTED (ขากลับรายการโผล่ข้างเดียว) · visual expect อ่าน text 20k · ค้าง: level/sortOrder ว่าง · /accounts/mapping ไม่มีทางเข้าเมนู (8.2) · flyout f8-menu 2 จุด (shell) |
 | 6.2 | สมุดรายวัน V2 + รายงาน drill-down + ปิดงวด + ค่าเสื่อม UI | Opus ×2 (ตัวแรกโดน OOM หลังขั้น E) | DONE | (HEAD) | ตรง g16 (2 แบบ) · ตีกลับ 1 รอบ (ตัวกรอง preset บรรทัดเดียว · pagination ใน footer) · Fable รันเอง: journal 94 · reports-drill 57 · period-assets 121 · coa 105 · components 78 · finance 59 · reconcile 109 · wht-cheque 69 · promptpay 84 · dashboard/home/overview เขียว · seed-check 173 · guard/schema/nav/list/detail เขียว · fitness 17 · CPA 107 · drift clean · typecheck 0 · ใหม่: JV มือ (สมดุล/งวดเปิด) · reversal · ⚑ · ReportToolbar เทียบงวด/CSV BOM · drill-down 3 ชั้น · ปิดงวดเช็กลิสต์ 4 ข้อ (9999=0 · ไม่มี ⚑ บังคับ · กระทบยอด · VAT ยื่น เตือน) · reopen ต้องมีสิทธิ์ · สินทรัพย์ V2 + ตารางค่าเสื่อม + คิดค่าเสื่อม preview · 'เดือนนี้' = ทั้งเดือน · with-gate-lock ตั้ง NODE_OPTIONS · ค้าง: งบทดลอง 'งวดก่อน' = ยกมา (ควรเทียบ movement) · ไม่มีตัวกรองสาขา · PDF = window.print |
-| 7.1 | คลังเอกสาร V2 | Sonnet | TODO | | |
+| 7.1 | คลังเอกสาร V2 | Sonnet | DONE | (HEAD) | ตรง f9 (2 แบบ) · ตีกลับ 1 รอบ (ปุ่ม ทำรายการ · badge · footer) · Fable รันเอง: attachments 66 · components 78 · contacts 49 · wht-cheque 69 · products 100 · list 159 · detail 85 · editor 200 · import 114 · journal 94 · seed-check 202 · guard 164 · schema 61 · nav 323 · dashboard/home เขียว · fitness 17 · CPA 107 · drift clean · typecheck 0 · อัปโหลดจริงหลายไฟล์ (Bunny ของ QC) · sha256 dedupe · แท็บ/ตัวกรอง/grid · ผูก/แยก/ย้ายโฟลเดอร์/archive · bulk · 🐞 ปิดข้ามหน้า: dropdown ทำรายการถูก overflow ตัดที่แถวท้าย → `PortalMenu` (3.2/5.4 ไม่ regress) · ค้าง: restore ไม่มี UI · ไม่มีถังขยะ · กล่องขาเข้า → 7.2 |
 | 7.2 | กล่องขาเข้า + AI | Opus | TODO | | |
 | 8.1 | ตั้งค่าเอกสาร | Opus | TODO | | |
 | 8.2 | นโยบายบัญชี | Opus | TODO | | |
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 4 ก.ย. 2026 ~11:30 UTC — 7.1 คลังเอกสาร DONE (ตีกลับ 1 รอบ) · ปิดบั๊ก dropdown ถูกตัดทุกหน้ารายการด้วย portal
 - 4 ก.ย. 2026 ~09:10 UTC — 🏁 **เฟส 6 ปิด** (6.1–6.2 · qc:all 217/217) · 32/46 ≈ 70%
 - 4 ก.ย. 2026 ~08:50 UTC — 6.2 DONE → เฟส 6 ครบ 2 WO · เริ่มปิดเฟส
 - 4 ก.ย. 2026 ~07:34 UTC — ⚠️ cgroup OOM ครั้งที่ 2 (node 2.7G RSS ระหว่าง 6.2 ขั้น F — น่าจะ `tsc --noEmit` heap default) · งานไม่หาย · กติกาเพิ่ม: typecheck ต้องผ่าน `with-gate-lock.sh` ซึ่งจะตั้ง NODE_OPTIONS=--max-old-space-size=3584 เอง (6.2 แก้)

@@ -6,7 +6,14 @@ import { useEffect, useRef, useState } from "react";
 import { buildHref, type QueryLike } from "./url";
 
 export type StatusTabTone = "muted" | "strong" | "danger";
-export type StatusTabDef = { key: string; label: string; tone?: StatusTabTone };
+export type StatusTabDef = {
+  key: string;
+  label: string;
+  tone?: StatusTabTone;
+  /** WO 7.1 round 2 (f9-documents.png): "pill" = ตัวเลขในวงกลมดำตัวหนังสือขาว (ไม่ขึ้นกับว่าแท็บ active อยู่ไหม)
+   *  ไม่ส่ง = ตัวเลขธรรมดาต่อท้ายป้าย (พฤติกรรมเดิมทุกหน้า ไม่กระทบ) */
+  badge?: "pill";
+};
 // นับต่อแท็บ — ยอมรับ record ทั่วไป (DocTabCounts เข้ากันได้ตรง ๆ เพราะเป็น Partial<Record<string, number>>)
 export type TabCounts = Partial<Record<string, number>>;
 
@@ -46,7 +53,10 @@ export function StatusTabs({
   const countTestId = (key: string) => `tab-${key}-count`;
 
   return (
-    <div data-testid={testId}>
+    // min-w-0: กัน overflow เมื่อ StatusTabs อยู่เป็น flex item ในแถวเดียวกับปุ่มอื่น (เช่น list/grid toggle
+    // ของ WO 7.1) — ค่าเริ่มต้นของ flex item คือ min-width:auto (ไม่ยอมหดต่ำกว่าความกว้างเนื้อหา) ทำให้แถบเลื่อน
+    // แนวนอนของแท็บ (มือถือ) ดัน parent ให้กว้างเกิน viewport แทนที่จะ scroll ในตัวเอง — WO 7.1 round 2
+    <div className="min-w-0" data-testid={testId}>
       {/* เดสก์ท็อป (f3): ขีดเส้นใต้ */}
       <div className="relative hidden md:block">
         <div ref={scrollerRef} className="flex gap-4 overflow-x-auto pb-px" role="tablist">
@@ -70,11 +80,20 @@ export function StatusTabs({
                 }}
               >
                 {t.label}
-                {typeof count === "number" && (
-                  <span className="ml-1" data-testid={countTestId(t.key)}>
-                    {count}
-                  </span>
-                )}
+                {typeof count === "number" &&
+                  (t.badge === "pill" ? (
+                    <span
+                      className="ml-1.5 inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-semibold"
+                      style={{ background: "var(--color-ink)", color: "var(--color-surface)" }}
+                      data-testid={countTestId(t.key)}
+                    >
+                      {count}
+                    </span>
+                  ) : (
+                    <span className="ml-1" data-testid={countTestId(t.key)}>
+                      {count}
+                    </span>
+                  ))}
               </Link>
             );
           })}
@@ -114,11 +133,24 @@ export function StatusTabs({
               }
             >
               {t.label}
-              {typeof count === "number" && (
-                <span className="ml-1" data-testid={`${countTestId(t.key)}-m`}>
-                  {count}
-                </span>
-              )}
+              {typeof count === "number" &&
+                (t.badge === "pill" ? (
+                  <span
+                    className="ml-1.5 inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-semibold"
+                    style={
+                      isActive
+                        ? { background: "var(--color-surface)", color: "var(--color-ink)" }
+                        : { background: "var(--color-ink)", color: "var(--color-surface)" }
+                    }
+                    data-testid={`${countTestId(t.key)}-m`}
+                  >
+                    {count}
+                  </span>
+                ) : (
+                  <span className="ml-1" data-testid={`${countTestId(t.key)}-m`}>
+                    {count}
+                  </span>
+                ))}
             </Link>
           );
         })}

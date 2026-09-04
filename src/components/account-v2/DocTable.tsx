@@ -45,6 +45,7 @@ export function DocTable<T extends { id: string }>({
   initialSelectedIds,
   rowTestId,
   bulkBarTint,
+  footerOneLine,
 }: {
   cols: DocColumn<T>[];
   rows: T[];
@@ -87,6 +88,9 @@ export function DocTable<T extends { id: string }>({
   rowTestId?: (row: T) => string;
   /** WO 5.4 (g11) — แถบ bulk พื้นฟ้าอ่อน+ขอบน้ำเงิน แทนพื้นเทาเดิม — ไม่ส่ง = พฤติกรรมเดิม (ดู DocTableInteractive) */
   bulkBarTint?: boolean;
+  /** WO 7.1 round 2 (f9-documents.png) — true = footerLeft + Pagination อยู่ "บรรทัดเดียวกัน" (ซ้าย/ขวา)
+   *  แทนที่จะเป็น 2 บรรทัดซ้อนกัน (ค่าเริ่มต้น false = พฤติกรรมเดิมของ WHT/Journal ฯลฯ ไม่กระทบ) */
+  footerOneLine?: boolean;
 }) {
   if (rows.length === 0) return <EmptyState text={emptyText} />;
 
@@ -125,7 +129,24 @@ export function DocTable<T extends { id: string }>({
       bulkBarTint={bulkBarTint}
       footerInsideCard={!!(footerLeft || footerRight)}
       footer={
-        footerLeft || footerRight ? (
+        (footerLeft || footerRight) && footerOneLine ? (
+          // WO 7.1 round 2 (f9-documents.png) — footerLeft ซ้าย + (footerRight +) Pagination ขวา บรรทัดเดียว
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2 text-sm">
+            {footerLeft ?? <span />}
+            <div className="flex flex-wrap items-center gap-3">
+              {footerRight}
+              <Pagination
+                pathname={pathname}
+                searchParams={searchParams}
+                page={page}
+                pageCount={pageCount}
+                pageSize={pageSize}
+                total={total}
+                testId={testId ? `${testId}-pagination` : undefined}
+              />
+            </div>
+          </div>
+        ) : footerLeft || footerRight ? (
           // WO 5.4 (g11) — แถวสรุปกำหนดเอง + Pagination "ในการ์ดเดียวกับตาราง/การ์ดแถว" (เหมือน ContactsPanel f5)
           // ⇒ footerInsideCard=true ทำให้ DocTableInteractive วางบล็อกนี้ไว้ต่อท้าย <table>/การ์ดมือถือ ไม่ใช่ลอยแยก
           <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm">

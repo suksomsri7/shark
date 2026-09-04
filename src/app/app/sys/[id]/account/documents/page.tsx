@@ -1,139 +1,299 @@
+// WO 7.1 — คลังเอกสาร V2 (DESIGN-SPEC-V2 §12 · เฟรม f9-documents.png / f9-documents-menu.png)
+// แทนที่หน้า V1 (วาง URL) ทั้งหมด — อัปโหลดจริงหลายไฟล์ · แท็บสถานะ · list/grid · ตัวกรอง · ผูก/แยก/เปลี่ยนประเภท/
+// ย้ายโฟลเดอร์/ลบ (ลบนุ่ม) · bulk · footer ในการ์ดเดียวกับตาราง (บทเรียน 5.4/6.2)
 import Link from "next/link";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import {
-  listAttachments,
+  listAttachmentsPaged,
   listFolders,
-  humanSize,
-  isImageMime,
+  listAttachmentUploaders,
+  type AttachmentRowView,
+  type AttachmentTab,
 } from "@/lib/modules/account/attachment";
-import { addAttachmentAction, deleteAttachmentAction } from "./actions";
-import PageHeader from "@/components/ui/PageHeader";
-import Section from "@/components/ui/Section";
-import { DataList } from "@/components/ui/DataList";
-import FormField from "@/components/ui/FormField";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { SubmitButton } from "@/components/ui/SubmitButton";
-import { formatThaiDate as fmtDate } from "@/lib/ui/date";
+import {
+  DOCUMENTS_RANGE_PRESETS,
+  documentsRangeOf,
+  type DateRangeKey,
+} from "@/lib/modules/account/attachment-shared";
+import { parseDay } from "@/lib/modules/account/service";
+import { editorDetailPath, editorNewPath } from "@/lib/modules/account/doc-editor-config";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatusTabs, type StatusTabDef } from "@/components/account-v2/StatusTabs";
+import { DocTable, type DocColumn } from "@/components/account-v2/DocTable";
+import { AccountIcon } from "@/components/account-v2/AccountIcon";
+import { AttachmentAvatar } from "@/components/account-v2/AttachmentAvatar";
+import { AttachmentTypeCell } from "@/components/account-v2/AttachmentTypeCell";
+import { AttachmentLinkCell } from "@/components/account-v2/AttachmentLinkCell";
+import { AttachmentRowMenu } from "@/components/account-v2/AttachmentRowMenu";
+import { AttachmentFilterBar } from "@/components/account-v2/AttachmentFilterBar";
+import { AttachmentDropBanner, AttachmentUploadModal } from "@/components/account-v2/AttachmentUpload";
+import { AttachmentGrid } from "@/components/account-v2/AttachmentGrid";
+import { AttachmentBulkModals } from "@/components/account-v2/AttachmentBulkModals";
+import { buildHref } from "@/components/account-v2/url";
+import { Pagination } from "@/components/account-v2/Pagination";
+import { formatDateTh } from "@/lib/ui/date";
 
+type SP = {
+  tab?: string;
+  view?: string;
+  range?: string;
+  from?: string;
+  to?: string;
+  type?: string;
+  uploader?: string;
+  folder?: string;
+  q?: string;
+  page?: string;
+  pageSize?: string;
+  upload?: string;
+  bulkIds?: string;
+  bulkOp?: string;
+};
+
+const TABS: StatusTabDef[] = [
+  { key: "all", label: "ทั้งหมด" },
+  // f9-documents.png: ตัวเลขของแท็บนี้เป็นวงกลมดำตัวหนังสือขาว (ป้ายเดียวที่ต่างจากแท็บอื่น) — WO 7.1 round 2
+  { key: "unlinked", label: "ยังไม่ออกเอกสาร", badge: "pill" },
+  { key: "linked", label: "ออกเอกสารแล้ว" },
+];
 
 export default async function DocumentsPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ folder?: string; q?: string; err?: string; ok?: string }>;
+  searchParams: Promise<SP>;
 }) {
   const { id } = await params;
-  const { folder, q, err, ok } = await searchParams;
+  const sp = await searchParams;
   const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.document.manage" });
   const base = `/app/sys/${id}/account`;
-  const [files, folders] = await Promise.all([
-    listAttachments(tenantId, systemId, { folder: folder || undefined, q: q || undefined }),
-    listFolders(tenantId, systemId),
+  const pathname = `${base}/documents`;
+
+  const tab: AttachmentTab = sp.tab === "unlinked" || sp.tab === "linked" ? sp.tab : "all";
+  const view = sp.view === "grid" ? "grid" : "list";
+  const rangeKey: DateRangeKey = DOCUMENTS_RANGE_PRESETS.some((p) => p.key === sp.range) ? (sp.range as DateRangeKey) : "this_year";
+  const now = new Date();
+  const preset = documentsRangeOf(rangeKey, now);
+  const fromIso = rangeKey === "custom" ? sp.from : (preset.from ?? undefined);
+  const toIso = rangeKey === "custom" ? sp.to : (preset.to ?? undefined);
+  const from = parseDay(fromIso, false);
+  const to = parseDay(toIso, true);
+
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = Math.max(1, parseInt(sp.pageSize ?? "10", 10) || 10);
+
+  const [list, folders, uploaders] = await Promise.all([
+    listAttachmentsPaged(tenantId, systemId, {
+      tab,
+      from,
+      to,
+      docTypeHint: sp.type || undefined,
+      uploaderId: sp.uploader || undefined,
+      folder: sp.folder || undefined,
+      q: sp.q || undefined,
+      page,
+      pageSize,
+    }),
+    listFolders(tenantId, systemId).then((rs) => rs.map((r) => r.folder)),
+    listAttachmentUploaders(tenantId, systemId),
   ]);
-  const docBase = `${base}/documents`;
+  const { rows, total, pageCount, counts } = list;
+
+  const linkedHrefOf = (r: AttachmentRowView): string | null =>
+    r.document ? editorDetailPath(base, r.document.docType, r.document.id) : null;
+  const createExpenseHrefOf = (r: AttachmentRowView): string => `${editorNewPath(base, "EXPENSE")}?attachmentId=${r.id}`;
+
+  const spForHref: Record<string, string | undefined> = {
+    tab,
+    view: view === "grid" ? "grid" : undefined,
+    range: sp.range,
+    from: sp.from,
+    to: sp.to,
+    type: sp.type,
+    uploader: sp.uploader,
+    folder: sp.folder,
+    q: sp.q,
+    pageSize: sp.pageSize,
+  };
+
+  const cols: DocColumn<AttachmentRowView>[] = [
+    {
+      key: "file",
+      header: "ไฟล์",
+      render: (r) => (
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg" style={{ background: "var(--color-surface-2)" }}>
+            {r.mimeType.startsWith("image/") ? (
+              // eslint-disable-next-line @next/next/no-img-element -- thumb จาก CDN ของ tenant (ขนาดไม่รู้ล่วงหน้า)
+              <img src={r.thumbUrl ?? r.fileUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <AccountIcon name="file" className="h-5 w-5 text-[color:var(--color-muted)]" />
+            )}
+          </div>
+          <span className="min-w-0 max-w-[260px] truncate font-medium" title={r.fileName} data-testid="attachment-file-name">
+            {r.fileName}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: "createdAt",
+      header: "วันที่อัปโหลด",
+      sort: "createdAt",
+      render: (r) => <span className="whitespace-nowrap">{formatDateTh(r.createdAt)}</span>,
+    },
+    {
+      key: "type",
+      header: "ประเภท",
+      render: (r) => (
+        <AttachmentTypeCell systemId={systemId} attachmentId={r.id} label={r.typeLabel} docTypeHint={r.docTypeHint} linked={!!r.document} />
+      ),
+    },
+    { key: "uploader", header: "ผู้อัปโหลด", render: (r) => <AttachmentAvatar name={r.uploaderName} /> },
+    {
+      key: "linked",
+      header: "เอกสารที่ผูก",
+      render: (r) => (
+        <AttachmentLinkCell
+          systemId={systemId}
+          attachmentId={r.id}
+          fileName={r.fileName}
+          linkedHref={linkedHrefOf(r)}
+          linkedDocNo={r.document?.docNo ?? null}
+          createExpenseHref={createExpenseHrefOf(r)}
+        />
+      ),
+    },
+  ];
+
+  let bulkModal: React.ReactNode = null;
+  if (sp.bulkOp === "move" || sp.bulkOp === "delete") {
+    const ids = (sp.bulkIds ?? "").split(",").filter(Boolean);
+    const closeHref = buildHref(pathname, spForHref, { bulkOp: undefined, bulkIds: undefined });
+    bulkModal = <AttachmentBulkModals systemId={systemId} closeHref={closeHref} op={sp.bulkOp} ids={ids} folders={folders} />;
+  }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
+    <div className="flex flex-col gap-4 pb-24" data-testid="documents-page">
       <PageHeader
         title="คลังเอกสาร"
-        desc="เก็บไฟล์แนบเอกสารบัญชี + ไฟล์ลอย (สัญญา/ใบเสร็จ/สลิป) — วาง URL ไฟล์"
-        back={{ href: base, label: "ระบบบัญชี" }}
+        actions={
+          <>
+            <button type="button" disabled title="เร็ว ๆ นี้ (WO 7.2)" className="btn-sm inline-flex cursor-not-allowed items-center gap-1.5 opacity-60" data-testid="documents-inbox-btn">
+              <AccountIcon name="mail" className="h-4 w-4" />
+              กล่องขาเข้า
+              {counts.unlinked > 0 && (
+                <span className="rounded-full px-1.5 py-0.5 text-xs font-semibold" style={{ background: "var(--color-ink)", color: "var(--color-surface)" }}>
+                  {counts.unlinked}
+                </span>
+              )}
+            </button>
+            <Link href={buildHref(pathname, spForHref, { upload: "1" })} className="btn btn-primary inline-flex items-center gap-1.5" data-testid="documents-upload-btn">
+              <AccountIcon name="upload" className="h-4 w-4" />
+              อัปโหลดไฟล์
+            </Link>
+          </>
+        }
       />
 
-      {err && <p className="text-sm text-[color:var(--color-danger)]">{err}</p>}
-      {ok === "1" && <p className="text-sm font-medium">บันทึกไฟล์สำเร็จ</p>}
+      <AttachmentDropBanner systemId={systemId} />
 
-      {/* ตัวกรอง: โฟลเดอร์ + ค้นหา */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Link
-          href={docBase}
-          className="rounded-full border px-3 py-1.5 text-sm"
-          style={!folder ? { background: "var(--color-ink)", color: "var(--color-surface)" } : undefined}
-        >
-          ทั้งหมด
-        </Link>
-        {folders.map((f) => (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <StatusTabs tabs={TABS} counts={{ all: counts.all, unlinked: counts.unlinked, linked: counts.linked }} active={tab} testId="documents-tabs" />
+        <div className="flex gap-1">
           <Link
-            key={f.folder}
-            href={`${docBase}?folder=${encodeURIComponent(f.folder)}`}
-            className="rounded-full border px-3 py-1.5 text-sm"
-            style={folder === f.folder ? { background: "var(--color-ink)", color: "var(--color-surface)" } : undefined}
+            href={buildHref(pathname, spForHref, { view: undefined })}
+            aria-label="มุมมองตาราง"
+            className="flex h-8 w-8 items-center justify-center rounded-lg"
+            style={view === "list" ? { background: "var(--color-ink)", color: "var(--color-surface)" } : { border: "1px solid var(--color-line)" }}
+            data-testid="documents-view-list"
           >
-            {f.folder} ({f.count})
+            <AccountIcon name="list" className="h-4 w-4" />
           </Link>
-        ))}
+          <Link
+            href={buildHref(pathname, spForHref, { view: "grid" })}
+            aria-label="มุมมองตาราง grid"
+            className="flex h-8 w-8 items-center justify-center rounded-lg"
+            style={view === "grid" ? { background: "var(--color-ink)", color: "var(--color-surface)" } : { border: "1px solid var(--color-line)" }}
+            data-testid="documents-view-grid"
+          >
+            <AccountIcon name="grid" className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
 
-      <form className="flex flex-wrap items-end gap-2">
-        {folder && <input type="hidden" name="folder" value={folder} />}
-        <FormField label="ค้นหาชื่อไฟล์">
-          <input name="q" defaultValue={q ?? ""} className="input" placeholder="พิมพ์ชื่อไฟล์" />
-        </FormField>
-        <button className="btn btn-ghost text-sm">ค้นหา</button>
-      </form>
-
-      <DataList
-        items={files.map((f) => ({
-          key: f.id,
-          primary: (
-            <a href={f.fileUrl} target="_blank" rel="noreferrer" className="font-medium underline">
-              {isImageMime(f.mimeType) ? "🖼 " : "📄 "}
-              {f.fileName}
-            </a>
-          ),
-          secondary: (
-            <>
-              {f.folder ? `${f.folder} · ` : "ไฟล์ลอย · "}
-              {humanSize(f.sizeBytes)} · {fmtDate(f.createdAt)}
-              {f.document
-                ? ` · แนบกับ ${f.document.docNo ?? f.document.docType}`
-                : ""}
-            </>
-          ),
-          trailing: (
-            <ConfirmDialog
-              action={deleteAttachmentAction}
-              fields={{ systemId, id: f.id }}
-              triggerLabel="ลบ"
-              triggerClassName="text-xs text-[color:var(--color-danger)] underline"
-              title="ลบไฟล์นี้ออกจากคลัง?"
-              detail="ลบเฉพาะรายการอ้างอิง (ไฟล์ต้นทางที่ URL ยังอยู่)"
-              confirmLabel="ยืนยันลบ"
-              danger
-            />
-          ),
-        }))}
-        empty="ยังไม่มีไฟล์ในคลัง — เพิ่มไฟล์ด้านล่างโดยวาง URL"
+      <AttachmentFilterBar
+        pathname={pathname}
+        tab={tab}
+        view={view}
+        range={rangeKey}
+        presets={DOCUMENTS_RANGE_PRESETS}
+        from={fromIso ?? ""}
+        to={toIso ?? ""}
+        docTypeHint={sp.type ?? ""}
+        uploaderId={sp.uploader ?? ""}
+        uploaders={uploaders}
+        folder={sp.folder ?? ""}
+        folders={folders}
+        q={sp.q ?? ""}
       />
 
-      {/* เพิ่มไฟล์เข้าคลัง (URL) */}
-      <Section title="เพิ่มไฟล์เข้าคลัง (วาง URL)" card>
-        <form action={addAttachmentAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <input type="hidden" name="systemId" value={systemId} />
-          <div className="sm:col-span-2">
-            <FormField label="URL ไฟล์" hint="ลิงก์ไฟล์ที่อัปโหลดไว้ที่อื่น (Google Drive/S3/Line)" required>
-              <input name="fileUrl" required className="input" placeholder="https://…" />
-            </FormField>
-          </div>
-          <FormField label="ชื่อไฟล์" required>
-            <input name="fileName" required className="input" placeholder="เช่น สัญญาเช่า.pdf" />
-          </FormField>
-          <FormField label="โฟลเดอร์" hint="เว้นว่าง = ไฟล์ลอย">
-            <input name="folder" defaultValue={folder ?? ""} className="input" list="folder-list" />
-            <datalist id="folder-list">
-              {folders.map((f) => <option key={f.folder} value={f.folder} />)}
-            </datalist>
-          </FormField>
-          <FormField label="ขนาด (KB)" hint="ประมาณ (ไม่บังคับ)">
-            <input name="sizeBytes" type="number" min="0" className="input" />
-          </FormField>
-          <SubmitButton className="sm:col-span-2 sm:justify-self-start">+ เพิ่มไฟล์</SubmitButton>
-        </form>
-        <p className="mt-2 text-xs text-[color:var(--color-muted)]">
-          หมายเหตุ: ยังไม่มีระบบอัปโหลดไฟล์ในตัว (object storage) — v1 ใช้วาง URL ไฟล์ที่โฮสต์ไว้ที่อื่น
-        </p>
-      </Section>
+      {view === "grid" ? (
+        <div className="flex flex-col gap-3 rounded-xl border p-3">
+          <AttachmentGrid systemId={systemId} rows={rows} folders={folders} linkedHrefOf={linkedHrefOf} createExpenseHrefOf={createExpenseHrefOf} />
+          {rows.length === 0 ? (
+            <p className="py-10 text-center text-sm text-[color:var(--color-muted)]">
+              ยังไม่มีไฟล์ในคลังเอกสาร — ลากไฟล์มาวางด้านบน หรือกด "อัปโหลดไฟล์"
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-2 text-sm">
+              <span className="text-[color:var(--color-muted)]">ยังไม่ออกเอกสาร {counts.unlinked} ไฟล์</span>
+              <Pagination pathname={pathname} searchParams={spForHref} page={page} pageCount={pageCount} pageSize={pageSize} total={total} testId="documents-grid-pagination" />
+            </div>
+          )}
+        </div>
+      ) : (
+        <DocTable
+          testId="documents"
+          cols={cols}
+          rows={rows}
+          pathname={pathname}
+          searchParams={spForHref}
+          rowActions={(r) => (
+            <AttachmentRowMenu
+              systemId={systemId}
+              attachmentId={r.id}
+              fileName={r.fileName}
+              fileUrl={r.fileUrl}
+              mimeType={r.mimeType}
+              folder={r.folder}
+              folders={folders}
+              docTypeHint={r.docTypeHint}
+              linked={!!r.document}
+              createExpenseHref={createExpenseHrefOf(r)}
+            />
+          )}
+          selectionActions={[
+            { label: "ย้ายโฟลเดอร์", hrefTemplate: `${buildHref(pathname, spForHref, { bulkOp: "move" })}&bulkIds={ids}` },
+            { label: "ลบ", hrefTemplate: `${buildHref(pathname, spForHref, { bulkOp: "delete" })}&bulkIds={ids}` },
+          ]}
+          bulkBarTint
+          rowTestId={(r) => `attachment-row-${r.id}`}
+          footerLeft={<span className="text-[color:var(--color-muted)]">ยังไม่ออกเอกสาร {counts.unlinked} ไฟล์</span>}
+          footerOneLine
+          page={page}
+          pageCount={pageCount}
+          pageSize={pageSize}
+          total={total}
+          emptyText={`ยังไม่มีไฟล์ในคลังเอกสาร — ลากไฟล์มาวางด้านบน หรือกด "อัปโหลดไฟล์"`}
+        />
+      )}
+
+      {sp.upload === "1" && (
+        <AttachmentUploadModal systemId={systemId} closeHref={buildHref(pathname, spForHref, { upload: undefined })} folders={folders} />
+      )}
+      {bulkModal}
     </div>
   );
 }

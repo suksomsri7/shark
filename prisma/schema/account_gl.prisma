@@ -601,9 +601,31 @@ model AccountAttachment {
   uploadedById String?
   createdAt    DateTime         @default(now())
 
+  // ═════ V2 (WO 7.1 · DESIGN-SPEC-V2 §12) — คลังเอกสาร: แท็บสถานะ + จำแนกชนิด + dedupe + ลบนุ่ม ═════
+  // docTypeHint: ป้ายประเภทที่ตั้ง/เดาไว้ก่อนผูกเอกสารจริง — ค่าที่ใช้จริง: "REVENUE" | "EXPENSE" | "GENERAL"
+  //   หรือรหัส AccountDocType ตรง ๆ ถ้าเจาะจงได้ (เช่น "EXPENSE","PURCHASE_TAX_INVOICE","INVOICE")
+  //   หลังผูกเอกสารแล้ว หน้าจอคำนวณป้ายจริงจาก document.docType เสมอ ไม่ใช้ hint นี้ต่อ (แต่ยังเก็บไว้เผื่อแยกออกภายหลัง)
+  docTypeHint  String?
+  // status: UNLINKED (ค่าเริ่มต้นตอนสร้าง documentId=null) · LINKED (ผูกแล้ว) · NOT_ACCOUNTING (ผู้ใช้บอกว่าไม่ใช่เอกสารบัญชี)
+  //   · ARCHIVED (ลบนุ่ม — ไม่มีทางลบไฟล์จริงทิ้ง) — null = แถวเก่าก่อน WO 7.1 (ของเดิมไม่มีแนวคิดสถานะ)
+  status       String?
+  // source: ไฟล์เข้ามาทางไหน — UPLOAD (ผู้ใช้อัปโหลดเอง) · EMAIL/CHAT (กล่องขาเข้า WO 7.2) · APP (ถ่ายบิลจากแอป)
+  source       String?
+  // thumbUrl: รูปย่อ — ตอนนี้ยังไม่มีบริการย่อรูปจริง จึงเท่ากับ fileUrl สำหรับไฟล์รูป (pdf = null ใช้ไอคอนแทน)
+  thumbUrl     String?
+  // sha256: hash เนื้อไฟล์ — dedupe ไฟล์เดิมที่อัปโหลดซ้ำภายในระบบเดียวกัน (ไม่ข้ามระบบ/ไม่ข้าม tenant)
+  sha256       String?
+  // archivedAt: เวลาที่ "ลบ" (ลบนุ่มเสมอ — ไม่มี hard delete ของไฟล์คลังเอกสาร)
+  archivedAt   DateTime?
+  note         String?
+  // เผื่อไว้ให้ WO 7.2 (กล่องขาเข้า + AI อ่านบิล) — ยังไม่มีใครเขียน/อ่านใน WO นี้
+  aiExtract    Json?
+  aiStatus     String?
+
   @@index([systemId, documentId])
   @@index([systemId, folder])
   @@index([systemId, refType, refId])
+  @@index([systemId, status, createdAt])
 }
 
 model AccountSystemLink {

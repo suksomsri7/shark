@@ -19,6 +19,7 @@
 //    หลัง QC.oracleValidUntil ตัวเลขจะเริ่มเพี้ยน → สคริปต์เตือนเอง
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join as pathJoin } from "node:path";
 // tsconfig ไม่ได้เปิด allowImportingTsExtensions → import แบบ static ที่ลงท้าย .mts จะ typecheck ไม่ผ่าน
 // ⇒ โหลดแบบ dynamic (tsx resolve ตอนรันได้ปกติ) แล้วประกาศชนิดไว้เอง
 const accEnv = (await import("./acc-v2-env.mts" as string)) as {
@@ -86,6 +87,7 @@ const finOv = await import("@/lib/modules/account/finance-overview"); // WO 5.2:
 const { drainAll } = await import("@/lib/outbox-consumers"); // WO 4.2: ระบายคิว outbox ให้ bridge ทำงานทันที
 const wht = await import("@/lib/modules/account/wht"); // WO 5.4: ภาษีหัก ณ ที่จ่าย 2 ขา V2
 const chq = await import("@/lib/modules/account/cheque"); // WO 5.4: ทะเบียนเช็ค V2
+const att = await import("@/lib/modules/account/attachment"); // WO 7.1: คลังเอกสาร V2
 
 // ─────────────────────────── ตัวช่วย ───────────────────────────
 
@@ -967,7 +969,14 @@ async function makeBill(b: BillPlan) {
   }
   return doc.id;
 }
-for (const b of OPEN_BILLS) await makeBill(b);
+// WO 7.1: จับ id ของบิลจ่ายใบแรก (สยามแก๊ส "ค่าอากาศอัดถังดำน้ำ ก.ค." EXPENSE 45,000.00) ไว้ใช้เป็นเอกสารที่
+// ผูกไฟล์แนบตัวอย่างในบล็อก 8.11 ด้านล่าง — ไม่กระทบเลข/ยอดใด ๆ ที่มีอยู่แล้ว (แค่จับ id ที่สร้างอยู่แล้วเก็บไว้)
+let openBillIdx7_1 = 0;
+for (const b of OPEN_BILLS) {
+  const docId = await makeBill(b);
+  if (openBillIdx7_1 === 0) fixtures.firstOpenBillId = docId;
+  openBillIdx7_1++;
+}
 for (const b of PAID_BILLS) await makeBill(b);
 console.log(`🧾 เอกสารฝั่งจ่าย ${OPEN_BILLS.length + PAID_BILLS.length} ใบ (ค้างจ่าย ${OPEN_BILLS.length})`);
 
@@ -1911,6 +1920,104 @@ fixtures.contactC00019Id = cid("ปิยธิดา อินสุ่ม");
 fixtures.contactNattapholId = cid("คุณณัฐพล รุ่งเรือง");
 fixtures.contactSimilanViewId = cid("โรงแรมสิมิลันวิว");
 
+// ─────────────────── 8.11 คลังเอกสาร V2 (WO 7.1 · §12 · f9) ───────────────────
+// อัปโหลดจริงผ่าน storage/service.ts (Bunny — เปิดอยู่บน .env.qc) + attachment.ts createAttachment ·
+// ไม่กระทบเลข/ยอดของ WO อื่นเลย (แค่ผูกไฟล์เข้ากับเอกสารที่มีอยู่แล้ว — firstOpenBillId/invNattapholId)
+// 6 แถว: 3 ไฟล์ลอย (UNLINKED) · 2 ผูกแล้ว (LINKED กับ EXP + IV) · 1 "ไม่ใช่เอกสารบัญชี" (NOT_ACCOUNTING)
+const storageSvc = await import("@/lib/storage/service");
+const FIXTURE_DIR = pathJoin(process.cwd(), "scripts/fixtures/acc-v2/attach");
+const fxJpg = new Uint8Array(readFileSync(pathJoin(FIXTURE_DIR, "bill-ptt.jpg")));
+const fxPng = new Uint8Array(readFileSync(pathJoin(FIXTURE_DIR, "photo.png")));
+const fxPdf = new Uint8Array(readFileSync(pathJoin(FIXTURE_DIR, "receipt.pdf")));
+// เติมท้ายไม่กี่ไบต์ให้ "สำเนา" มีเนื้อไฟล์ต่างจากต้นฉบับจริง (sha256 ไม่ชนกัน — dedupe ของ createAttachment
+// จะเข้าใจผิดว่าเป็นไฟล์เดิมถ้าไบต์เหมือนกันเป๊ะ) — ยังเป็น jpg/pdf ที่เปิดได้ปกติ (ต่อท้ายหลัง EOF/EOI)
+const variant = (b: Uint8Array, tag: string) => {
+  const suffix = new TextEncoder().encode(`\n% ${tag}`);
+  const out = new Uint8Array(b.length + suffix.length);
+  out.set(b, 0);
+  out.set(suffix, b.length);
+  return out;
+};
+
+// พนักงานคนที่สอง ("นภา") — สาธิตผู้อัปโหลดคนละคนตาม f9 (avatar "u")
+const staffUploader = await prisma.user.create({ data: { email: `napa+${tenant.slug}@example.com`, name: "นภาพร ใจเย็น" } });
+await prisma.membership.create({
+  data: { userId: staffUploader.id, tenantId, role: "STAFF", unitAccess: ["*"], permissions: { "account.document.manage": true } },
+});
+
+async function seedAttachment(input: {
+  fileName: string;
+  bytes: Uint8Array;
+  contentType: string;
+  uploadedById: string;
+  documentId?: string;
+  docTypeHint?: string;
+  notAccounting?: boolean;
+}) {
+  const up = await storageSvc.uploadFile({ tenantId }, { kind: "ATTACHMENT", filename: input.fileName, contentType: input.contentType, data: input.bytes });
+  if (!up.ok) throw new Error(`อัปโหลดไฟล์ตัวอย่าง ${input.fileName} ไม่สำเร็จ: ${up.error}`);
+  const res = await att.createAttachment({
+    tenantId,
+    systemId,
+    documentId: input.documentId ?? null,
+    fileName: input.fileName,
+    fileUrl: up.cdnUrl,
+    mimeType: input.contentType,
+    sizeBytes: input.bytes.length,
+    uploadedById: input.uploadedById,
+    docTypeHint: input.docTypeHint ?? null,
+    sha256: att.hashBytes(input.bytes),
+    source: "UPLOAD",
+  });
+  if (!res.ok) throw new Error(`สร้างไฟล์แนบตัวอย่าง ${input.fileName} ไม่สำเร็จ: ${res.reason}`);
+  if (input.notAccounting) await att.markNotAccounting(tenantId, systemId, res.id, owner.id);
+  return res.id;
+}
+
+const attUnlinked1 = await seedAttachment({
+  fileName: "ใบเสร็จ-ปตท-220926.jpg",
+  bytes: fxJpg,
+  contentType: "image/jpeg",
+  uploadedById: staffUploader.id,
+  docTypeHint: "EXPENSE_ANY",
+});
+const attUnlinked2 = await seedAttachment({
+  fileName: "สลิปโอน-อันดามันมารีน.jpg",
+  bytes: variant(fxJpg, "seed-variant-2"),
+  contentType: "image/jpeg",
+  uploadedById: staffUploader.id,
+  docTypeHint: "EXPENSE_ANY",
+});
+const attUnlinked3 = await seedAttachment({
+  fileName: "photo-fixture.png",
+  bytes: fxPng,
+  contentType: "image/png",
+  uploadedById: owner.id,
+});
+const attLinkedExp = await seedAttachment({
+  fileName: "ใบเสร็จค่าอากาศ-สยามแก๊ส.pdf",
+  bytes: fxPdf,
+  contentType: "application/pdf",
+  uploadedById: owner.id,
+  documentId: fixtures.firstOpenBillId,
+});
+const attLinkedIv = await seedAttachment({
+  fileName: "ใบแจ้งหนี้-ณัฐพล-สำเนา.pdf",
+  bytes: variant(fxPdf, "seed-variant-iv"),
+  contentType: "application/pdf",
+  uploadedById: owner.id,
+  documentId: String(fixtures.invNattapholId),
+});
+const attNotAccounting = await seedAttachment({
+  fileName: "สัญญาเช่าอาคาร-2026.pdf",
+  bytes: variant(fxPdf, "seed-variant-general"),
+  contentType: "application/pdf",
+  uploadedById: owner.id,
+  docTypeHint: "GENERAL",
+  notAccounting: true,
+});
+console.log(`📎 คลังเอกสาร: 6 ไฟล์ (3 ลอย · 2 ผูกแล้ว EXP+IV · 1 ไม่ใช่เอกสารบัญชี) · ผู้อัปโหลด 2 คน`);
+
 // ── เฉลยผังบัญชี V2 (WO 6.1) — คิดด้วย SQL ดิบคนละสำนวนกับ coa.ts (ไม่เรียกโค้ดจริงมาเช็คตัวเอง) ──
 const COA_MONTH_KEY = QC.today.slice(0, 7); // เฉลยตรึงที่เดือนของ QC.today (ไม่ใช่เดือนของนาฬิกาเครื่อง)
 // ยอด "ณ QC.today" — ตัดที่เที่ยงคืนของวันถัดไป (กติกาเดียวกับ asOfCutoff ใน coa-v2.ts แต่เขียนเป็น SQL/JS คนละสำนวน)
@@ -2284,6 +2391,26 @@ const expected = {
       .map((r) => ({ code: r.code, id: r.id, balanceSatang: Number(r.balance), monthDeltaSatang: Number(r.month) }))
       .sort((a, b) => a.code.localeCompare(b.code)),
     custom: { onlineAds: coaCustomId["6301"], rentalIncome: coaCustomId["4031"], archived: coaCustomId["6302"] },
+  },
+  // WO 7.1 — คลังเอกสาร V2 (§12 · f9): 6 แถว (3 ลอย · 2 ผูก EXP/IV · 1 ไม่ใช่เอกสารบัญชี) · ผู้อัปโหลด 2 คน
+  attachments: {
+    total: 6,
+    unlinked: 3, // นับ NOT_ACCOUNTING แยกต่างหาก (status ต่างกัน) — แท็บ "ยังไม่ออกเอกสาร" อ่านเฉพาะ UNLINKED
+    linked: 2,
+    notAccounting: 1,
+    staffUploaderId: staffUploader.id,
+    staffUploaderName: "นภาพร ใจเย็น",
+    ownerUploaderId: owner.id,
+    ids: {
+      unlinked1: attUnlinked1,
+      unlinked2: attUnlinked2,
+      unlinked3: attUnlinked3,
+      linkedExp: attLinkedExp,
+      linkedIv: attLinkedIv,
+      notAccounting: attNotAccounting,
+    },
+    linkedExpDocumentId: fixtures.firstOpenBillId,
+    linkedIvDocumentId: String(fixtures.invNattapholId),
   },
   fixtures: {
     ...fixtures,
