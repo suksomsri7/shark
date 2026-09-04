@@ -12,7 +12,7 @@
 | WO | 🏁 ปิดเฟส 8 (qc:all → main → deploy → verify) → เฟส 9: 9.1 มือถือ |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable (ปิดเฟส) |
-| ขั้นที่ถึง | 4 ก.ย. ~20:40 UTC: qc:all เฟส 8 = **221/222** — แดง 1: `qc-account-deep` AD-2.1–2.4 (sweep ปิดงวดไม่ทำงานกับ tenant ใหม่ เพราะ 8.2 ตั้ง default `autoClosePeriods=false`) → สั่ง agent 8.2 เปลี่ยน default เป็น true + migration SET DEFAULT → รัน qc:all ซ้ำก่อน merge |
+| ขั้นที่ถึง | 4 ก.ย. ~21:30 UTC: แก้ autoClose default แล้ว (`cc9042b` · account-deep 10/10) → qc:all รอบ 2 = **221/222** แดง `acc-v2-recurring` P4.13 (เตือน ภ.พ.30 วันที่ 5 ไม่ยิง — regression จากรอบ default เดียวกัน) → สั่ง agent 8.2 แก้ + เพิ่มด่าน → qc:all รอบ 3 |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
