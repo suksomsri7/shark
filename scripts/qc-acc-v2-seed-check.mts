@@ -195,12 +195,25 @@ const tb = await reports.trialBalance({ tenantId, systemId }, "2026-01", "2026-1
 chk("F1", "งบทดลองสมดุล (ปิดยอด Dr = Cr)", tb.balanced, { dr: tb.totals.closingDebit, cr: tb.totals.closingCredit });
 eq("F2", "เดบิตรวม = เครดิตรวม (ความเคลื่อนไหว)", tb.totals.movementDebit, tb.totals.movementCredit);
 const review = await prisma.accountJournalEntry.count({ where: { systemId, needsReview: true } });
-eq("F3", "ไม่มี JV ที่ต้องตรวจ (needsReview)", review, E.journal.needsReview);
+eq("F3", `JV ที่ติดธงต้องตรวจ = เฉลย (${E.journal.needsReview} ใบ · ตั้งใจใส่ใน ก.ย. เพื่อทดสอบปิดงวด)`, review, E.journal.needsReview);
 const suspense = await prisma.accountLedger.findFirst({ where: { systemId, code: "9999" }, select: { id: true } });
 const susp = suspense
   ? await prisma.accountJournalLine.aggregate({ where: { systemId, accountId: suspense.id }, _sum: { debit: true, credit: true } })
   : null;
-eq("F4", "บัญชีพักรายการ 9999 คงเหลือ = 0", (susp?._sum.debit ?? 0) - (susp?._sum.credit ?? 0), E.journal.suspense9999);
+eq("F4", `บัญชีพักรายการ 9999 คงเหลือ = เฉลย (${E.journal.suspense9999} สตางค์)`, (susp?._sum.debit ?? 0) - (susp?._sum.credit ?? 0), E.journal.suspense9999);
+// 🔴 ข้อใหม่ WO 6.2 (แข็งกว่าเดิม): งวดสะสมถึงสิ้น ส.ค. ต้อง "สะอาด" ทั้งธง ⚑ และบัญชีพัก
+//    ไม่งั้นงวด ส.ค. ที่ seed ปิดไว้จะปิดไม่ได้ตั้งแต่แรก (gl.closePeriod ปฏิเสธ) = ชุดข้อมูลขัดแย้งกันเอง
+const reviewAug = await prisma.accountJournalEntry.count({
+  where: { systemId, needsReview: true, periodKey: { lte: "2026-08" } },
+});
+eq("F4b", "ไม่มีธง ⚑ ในงวดสะสมถึงสิ้น ส.ค. (เงื่อนไขที่ทำให้ปิดงวด ส.ค. ได้)", reviewAug, E.journal.needsReviewThroughAug);
+const suspAug = suspense
+  ? await prisma.accountJournalLine.aggregate({
+      where: { systemId, accountId: suspense.id, entry: { periodKey: { lte: "2026-08" } } },
+      _sum: { debit: true, credit: true },
+    })
+  : null;
+eq("F4c", "บัญชีพัก 9999 สะสมถึงสิ้น ส.ค. = 0", (suspAug?._sum.debit ?? 0) - (suspAug?._sum.credit ?? 0), E.journal.suspense9999ThroughAug);
 // ทุกใบสำคัญต้องสมดุลในตัวเอง ไม่ใช่แค่ยอดรวมทั้งระบบหักล้างกันพอดี
 const perEntry = await prisma.accountJournalLine.groupBy({
   by: ["entryId"],
@@ -606,6 +619,86 @@ console.log("\nO. ผังบัญชี V2");
       const natural = led && (led.type === "LIABILITY" || led.type === "EQUITY" || led.type === "INCOME") ? cr - dr : dr - cr;
       eq(`O8-${smp.code}`, `ยอดคงเหลือ ${smp.code} ใน DB = เฉลย (${baht(smp.balanceSatang)})`, natural, smp.balanceSatang);
     }
+  }
+}
+
+// ─────────── P. WO 6.2 — สมุดรายวัน · ปิดงวด · สินทรัพย์/ค่าเสื่อม ───────────
+console.log("\nP. WO 6.2 (สมุดรายวัน V2 · ปิดงวด · ค่าเสื่อม)");
+const W = E.wo62 as {
+  entries: number;
+  manualEntries: number;
+  reversedEntries: number;
+  suspenseCredit: number;
+  byBook: Record<string, number>;
+  assets: { id: string; code: string; cost: number; monthlyAmount: number; accumDepreciation: number; netBookValue: number; periods: number }[];
+  depreciationRows: { code: string; periodKey: string; amount: number }[];
+  depreciationTotal: number;
+  periods: { closed: string[]; open: string };
+  vatFiled: string[];
+  fixtures: Record<string, string>;
+};
+if (!W) {
+  chk("P0", "มีเฉลย wo62 ในไฟล์เฉลย", false, "ไม่มี", "ต้อง seed ใหม่");
+} else {
+  const entryCount = await prisma.accountJournalEntry.count({ where: { systemId } });
+  eq("P1", `จำนวนใบสำคัญทั้งหมด = เฉลย (${W.entries})`, entryCount, W.entries);
+  const manual = await prisma.accountJournalEntry.count({ where: { systemId, source: "MANUAL" } });
+  eq("P2", `ใบสำคัญที่บันทึกด้วยมือ (source=MANUAL) = เฉลย (${W.manualEntries})`, manual, W.manualEntries);
+  const reversed = await prisma.accountJournalEntry.count({ where: { systemId, status: "REVERSED" } });
+  eq("P3", `ใบที่ถูกกลับรายการ = เฉลย (${W.reversedEntries})`, reversed, W.reversedEntries);
+  const reversalSide = await prisma.accountJournalEntry.count({ where: { systemId, reversalOfId: { not: null } } });
+  eq("P4", "ทุกใบที่ถูกกลับมีใบขากลับคู่กันครบ", reversalSide, reversed);
+
+  // ตัวนับต่อสมุด (แท็บของ g16) — นับด้วย groupBy คนละสำนวนกับ journal-v2.listJournalPaged
+  const books = await prisma.accountJournalEntry.groupBy({ by: ["book"], where: { systemId }, _count: { _all: true } });
+  for (const b of books) eq(`P5-${b.book}`, `ตัวนับแท็บสมุด ${b.book} = เฉลย`, b._count._all, W.byBook[b.book] ?? -1);
+
+  // สินทรัพย์ + ค่าเสื่อม
+  const assets = await prisma.accountFixedAsset.findMany({ where: { systemId }, orderBy: { code: "asc" } });
+  eq("P6", `ทะเบียนสินทรัพย์ ${W.assets.length} รายการ`, assets.length, W.assets.length);
+  for (const a of W.assets) {
+    const row = assets.find((x) => x.code === a.code);
+    chk(`P7-${a.code}`, `มีสินทรัพย์ ${a.code} ในทะเบียน`, !!row, row?.code ?? "ไม่พบ");
+    if (!row) continue;
+    eq(`P8-${a.code}`, `ต้นทุน ${a.code} = เฉลย (${baht(a.cost)})`, row.cost, a.cost);
+    const dep = await prisma.accountDepreciation.aggregate({
+      where: { systemId, assetId: row.id },
+      _sum: { amount: true },
+      _count: { _all: true },
+    });
+    eq(`P9-${a.code}`, `จำนวนงวดค่าเสื่อมของ ${a.code}`, dep._count._all, a.periods);
+    eq(`P10-${a.code}`, `ค่าเสื่อมสะสม ${a.code} = เฉลย (${baht(a.accumDepreciation)})`, dep._sum.amount ?? 0, a.accumDepreciation);
+    eq(`P11-${a.code}`, `มูลค่าสุทธิ ${a.code} = ต้นทุน − ค่าเสื่อมสะสม`, row.cost - (dep._sum.amount ?? 0), a.netBookValue);
+  }
+  // ทุกแถวค่าเสื่อมต้องผูกกับใบสำคัญจริง (ตารางในหน้าสินทรัพย์คลิกทะลุได้)
+  const depNoEntry = await prisma.accountDepreciation.count({ where: { systemId, entryId: null } });
+  eq("P12", "ทุกแถวค่าเสื่อมผูกกับใบสำคัญ (entryId ไม่ว่าง)", depNoEntry, 0);
+  const depSum = await prisma.accountDepreciation.aggregate({ where: { systemId }, _sum: { amount: true } });
+  eq("P13", `ค่าเสื่อมรวมทั้งชุด = เฉลย (${baht(W.depreciationTotal)})`, depSum._sum.amount ?? 0, W.depreciationTotal);
+  // ยอดค่าเสื่อมสะสมในสมุดรายวัน (Cr 16x9) ต้องเท่ากับผลรวมในตาราง AccountDepreciation
+  const accumLines = await prisma.$queryRaw<Array<{ net: bigint }>>`
+    SELECT COALESCE(SUM(jl."credit" - jl."debit"), 0)::bigint AS net
+      FROM "AccountJournalLine" jl
+      JOIN "AccountLedger" l ON l."id" = jl."accountId"
+     WHERE jl."systemId" = ${systemId} AND l."code" IN ('1619', '1629', '1639')`;
+  eq("P14", "ค่าเสื่อมสะสมในสมุดรายวัน (16x9) = ผลรวมตารางค่าเสื่อม", Number(accumLines[0]?.net ?? 0), W.depreciationTotal);
+
+  // งวดบัญชี
+  for (const key of W.periods.closed) {
+    const per = await prisma.accountPeriod.findFirst({ where: { systemId, periodKey: key }, select: { status: true, closedById: true } });
+    eq(`P15-${key}`, `งวด ${key} ปิดแล้ว`, per?.status ?? "ไม่มีแถว", "CLOSED");
+    chk(`P16-${key}`, `งวด ${key} มีผู้ปิดบันทึกไว้`, !!per?.closedById, per?.closedById ?? "ว่าง");
+  }
+  const openPer = await prisma.accountPeriod.findFirst({ where: { systemId, periodKey: W.periods.open }, select: { status: true } });
+  eq("P17", `งวด ${W.periods.open} ยังเปิดอยู่`, openPer?.status ?? "ไม่มีแถว", "OPEN");
+  for (const key of W.vatFiled) {
+    const f = await prisma.accountVatFiling.count({ where: { systemId, periodKey: key } });
+    eq(`P18-${key}`, `ทำเครื่องหมายยื่น ภ.พ.30 งวด ${key} แล้ว`, f, 1);
+  }
+  // fixture ที่ข้อสอบ/ภาพอ้างถึงต้องมีอยู่จริง
+  for (const [k, v] of Object.entries(W.fixtures)) {
+    const found = await prisma.accountJournalEntry.count({ where: { systemId, id: v } });
+    eq(`P19-${k}`, `fixture ${k} ยังอยู่ใน DB`, found, 1);
   }
 }
 

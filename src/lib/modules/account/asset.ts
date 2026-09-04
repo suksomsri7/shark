@@ -504,6 +504,8 @@ export async function disposeAsset(ctx: AssetCtx, input: DisposeInput): Promise<
         data: {
           status: input.mode === "SELL" ? "DISPOSED" : "WRITTEN_OFF",
           disposedAt: input.date,
+          // WO 6.2 (§11.5): เก็บ "วิธีจำหน่าย" แยกจาก status — หน้าทะเบียนแสดง "ขาย"/"ตัดบัญชี" ได้ตรง
+          disposalMethod: input.mode,
           disposalAmount: proceeds,
           note: input.note?.trim() ? input.note.trim() : asset.note,
         },

@@ -387,6 +387,26 @@ model AccountWhtFiling {
   @@index([tenantId, systemId])
 }
 
+// V2 (WO 6.2 · §11.4): ทำเครื่องหมาย "ยื่น ภ.พ.30 แล้ว" ต่องวด — ใช้ในเช็กลิสต์ก่อนปิดงวด
+// แยกตารางจาก AccountWhtFiling เพราะ form ของตัวนั้นเป็นเลขแบบ ภ.ง.ด. (3/53) และหน้า WHT ลิสต์ทุกแถวในตาราง
+model AccountVatFiling {
+  id              String   @id @default(cuid())
+  tenantId        String
+  systemId        String
+  periodKey       String // "YYYY-MM"
+  filedAt         DateTime @default(now())
+  filedById       String?
+  salesVatSatang  Int      @default(0)
+  inputVatSatang  Int      @default(0)
+  payableSatang   Int      @default(0) // ภาษีขาย − ภาษีซื้อ (ติดลบ = เครดิตยกไป)
+  note            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([systemId, periodKey])
+  @@index([tenantId, systemId])
+}
+
 // ───────── 4.5 ผังบัญชี + mapping ─────────
 model AccountLedger {
   id               String                  @id @default(cuid())
@@ -452,6 +472,8 @@ model AccountJournalEntry {
   source         AccountEntrySource
   status         AccountEntryStatus   @default(POSTED)
   needsReview    Boolean              @default(false)
+  // V2 (WO 6.2 · §11.2): เหตุผลของธง ⚑ "ต้องตรวจ" ที่คนติด/ปลดเอง (tooltip บนตารางสมุดรายวัน)
+  flagNote       String?
   idempotencyKey String?
   reversalOfId   String?              @unique
   reversalOf     AccountJournalEntry? @relation("AccountReversal", fields: [reversalOfId], references: [id])
@@ -502,6 +524,10 @@ model AccountPeriod {
   status     AccountPeriodStatus @default(OPEN)
   closedAt   DateTime?
   closedById String?
+  // V2 (WO 6.2 · §11.4): ผลเช็กลิสต์ก่อนปิด ณ เวลาที่ปิด (snapshot — auditor ย้อนดูได้ว่าปิดตอนสถานะไหน)
+  checklist  Json?
+  // V2 (WO 6.2): เวลาเปิดงวดใหม่ครั้งล่าสุด (รายละเอียดเต็มยังอยู่ใน reopenLog)
+  reopenedAt DateTime?
   reopenLog  Json                @default("[]")
   createdAt  DateTime            @default(now())
   updatedAt  DateTime            @updatedAt
@@ -528,6 +554,8 @@ model AccountFixedAsset {
   sourceDocumentId String?
   status           AccountAssetStatus @default(ACTIVE)
   disposedAt       DateTime?
+  // V2 (WO 6.2 · §11.5): วิธีจำหน่าย "SELL" (ขาย) | "WRITE_OFF" (ตัดบัญชี) — เดิมรู้ได้แค่จาก status
+  disposalMethod   String?
   disposalAmount   Int?
   note             String?
   createdAt        DateTime           @default(now())
@@ -562,6 +590,10 @@ model AccountAttachment {
   documentId   String?
   document     AccountDocument? @relation(fields: [documentId], references: [id], onDelete: Cascade)
   folder       String?
+  // V2 (WO 6.2 · §11.2): ผูกไฟล์แนบกับ "อย่างอื่นที่ไม่ใช่เอกสาร" — ตอนนี้ใช้กับ JV มือ
+  // (refType = "AccountJournalEntry") · ของเดิมผูกผ่าน documentId เท่านั้น จึงแนบไฟล์เข้า JV ไม่ได้
+  refType      String?
+  refId        String?
   fileName     String
   fileUrl      String
   mimeType     String
@@ -571,6 +603,7 @@ model AccountAttachment {
 
   @@index([systemId, documentId])
   @@index([systemId, folder])
+  @@index([systemId, refType, refId])
 }
 
 model AccountSystemLink {

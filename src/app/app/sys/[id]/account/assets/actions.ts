@@ -74,7 +74,7 @@ export async function runDepreciationAction(fd: FormData): Promise<void> {
   revalidatePath(base(systemId));
   const totalAmt = res.posted.reduce((s, p) => s + p.amount, 0);
   const msg = `งวด ${res.periodKey}: คิดค่าเสื่อม ${res.posted.length} รายการ (${(totalAmt / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)${res.fullyDepreciated.length ? ` · ครบอายุ ${res.fullyDepreciated.length}` : ""}`;
-  redirect(`${base(systemId)}?ok=${encodeURIComponent(msg)}`);
+  redirect(`${base(systemId)}?dep=1&period=${res.periodKey}&ok=${encodeURIComponent(msg)}`);
 }
 
 export async function disposeAssetAction(fd: FormData): Promise<void> {
@@ -93,7 +93,8 @@ export async function disposeAssetAction(fd: FormData): Promise<void> {
     note: str(fd, "note") || null,
   });
 
-  if (!res.ok) redirect(`${base(systemId)}?err=${encodeURIComponent(res.reason)}`);
+  const assetPath = `${base(systemId)}/${str(fd, "assetId")}`;
+  if (!res.ok) redirect(`${assetPath}?dispose=1&err=${encodeURIComponent(res.reason)}`);
   await writeAudit({
     tenantId,
     actorId: userId,
@@ -105,5 +106,6 @@ export async function disposeAssetAction(fd: FormData): Promise<void> {
   revalidatePath(base(systemId));
   const gl = res.gainLoss;
   const glMsg = gl > 0 ? `กำไร ${(gl / 100).toLocaleString("th-TH")} บาท` : gl < 0 ? `ขาดทุน ${(-gl / 100).toLocaleString("th-TH")} บาท` : "ไม่มีกำไร/ขาดทุน";
-  redirect(`${base(systemId)}?ok=${encodeURIComponent(`${mode === "SELL" ? "ขาย" : "ตัดจำหน่าย"}สินทรัพย์สำเร็จ (${glMsg})`)}`);
+  revalidatePath(assetPath);
+  redirect(`${assetPath}?ok=${encodeURIComponent(`${mode === "SELL" ? "ขาย" : "ตัดจำหน่าย"}สินทรัพย์สำเร็จ (${glMsg})`)}`);
 }

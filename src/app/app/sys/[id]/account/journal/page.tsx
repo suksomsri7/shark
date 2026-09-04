@@ -1,131 +1,189 @@
 import Link from "next/link";
-import type { AccountJournalBook, Prisma } from "@prisma/client";
-import { prisma } from "@/lib/core/db";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
-import { assertAccountCan } from "@/lib/modules/account/access";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { TabPills } from "@/components/ui/TabPills";
-import { DataList } from "@/components/ui/DataList";
-import { MoneyText } from "@/components/ui/MoneyText";
+import { assertAccountCan, accountCan } from "@/lib/modules/account/access";
+import {
+  listJournalPaged,
+  jvAccountOptions,
+  jvContactOptions,
+  journalRangeOf,
+  journalRangeKeyOf,
+  JOURNAL_RANGE_PRESETS,
+  JOURNAL_TABS,
+  JOURNAL_PAGE_SIZE,
+  type JournalRangeKey,
+} from "@/lib/modules/account/journal-v2";
+import { nextJournalNo } from "@/lib/modules/account/gl";
+import { AccountIcon } from "@/components/account-v2/AccountIcon";
+import { StatusTabs } from "@/components/account-v2/StatusTabs";
+import { Pagination } from "@/components/account-v2/Pagination";
+import { JournalFilterBar } from "@/components/account-v2/JournalFilterBar";
+import { JournalTable } from "@/components/account-v2/JournalTable";
+import { ManualJvModal } from "@/components/account-v2/ManualJvModal";
+import { createJvAction } from "./actions";
 
-// แท็บสมุดรายวัน — ตรงตาม §3.0.3: ทั้งหมด · ซื้อ · ขาย · จ่าย · รับ · ทั่วไป · ล่าสุด
-const BOOK_TABS: { key: string; label: string }[] = [
-  { key: "ALL", label: "ทั้งหมด" },
-  { key: "PURCHASES", label: "ซื้อ" },
-  { key: "SALES", label: "ขาย" },
-  { key: "PAYMENTS", label: "จ่าย" },
-  { key: "RECEIPTS", label: "รับ" },
-  { key: "GENERAL", label: "ทั่วไป" },
-  { key: "recent", label: "ล่าสุด" },
-];
-
-const JOURNAL_LABEL: Record<string, string> = {
-  DOC: "เอกสาร",
-  PAYMENT: "ชำระเงิน",
-  ADJUST: "ปรับปรุง",
-  REVERSAL: "กลับรายการ",
-  DEPRECIATION: "ค่าเสื่อม",
-  OPENING: "ยอดยกมา",
-};
-
-// map refType → path segment ของเอกสาร (คลิกทะลุ)
-async function docLinks(systemId: string, refIds: string[]) {
-  if (refIds.length === 0) return new Map<string, string>();
-  const docs = await prisma.accountDocument.findMany({
-    where: { systemId, id: { in: refIds } },
-    select: { id: true, docType: true },
-  });
-  return new Map(docs.map((d) => [d.id, d.docType]));
-}
+// บัญชีรายวัน V2 — DESIGN-SPEC-V2 §11.2 · เฟรม g16-journal.png
+// โครงตามเฟรม: breadcrumb → H1 + [พิมพ์รายงาน] [+ สร้างสมุดรายวัน] → แท็บตาม book (มีตัวนับ)
+//              → ตัวกรอง 3 ช่อง (ช่วงวันที่ · สมุด · ค้นหา) → ตาราง 9 คอลัมน์ + แถวสรุปท้าย
+// ตัวกรอง/ค้นหา/หน้า ทำ **ฝั่ง server ทั้งหมด** (journal-v2.listJournalPaged) — ไม่ take ทั้งก้อนมากรองในหน้า
 
 export default async function JournalPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ book?: string; posted?: string }>;
+  searchParams: Promise<{
+    tab?: string;
+    range?: string;
+    from?: string;
+    to?: string;
+    q?: string;
+    review?: string;
+    page?: string;
+    size?: string;
+    new?: string;
+    err?: string;
+    ok?: string;
+  }>;
 }) {
   const { id } = await params;
-  const { book: bookParam, posted } = await searchParams;
+  const sp = await searchParams;
   const { auth, tenantId, systemId } = await loadAccountSystem(id);
   assertAccountCan(auth, "account.journal.view");
-
-  const book = BOOK_TABS.find((b) => b.key === bookParam)?.key ?? "ALL";
+  const ctx = { tenantId, systemId };
   const base = `/app/sys/${id}/account`;
-  const isBookFilter = book !== "ALL" && book !== "recent";
+  const journalPath = `${base}/journal`;
+  const canAdjust = accountCan(auth, "account.journal.adjust");
 
-  const where: Prisma.AccountJournalEntryWhereInput = {
-    tenantId,
-    systemId,
-    ...(isBookFilter ? { book: book as AccountJournalBook } : {}),
-  };
-  const entries = await prisma.accountJournalEntry.findMany({
-    where,
-    orderBy:
-      book === "recent"
-        ? [{ createdAt: "desc" }]
-        : [{ date: "desc" }, { createdAt: "desc" }],
-    take: 100,
-    include: { lines: { select: { debit: true } } },
-  });
+  const now = new Date();
+  // ช่วงวันที่: `?range=` (preset) ชนะ `?from/?to` · ไม่ส่งอะไรมาเลย = "เดือนนี้" (ทั้งเดือน) ตามเฟรม
+  // ลิงก์เก่าที่ส่ง from/to ตรง ๆ ยังใช้ได้เหมือนเดิม (จะถูกอ่านเป็น "กำหนดเอง" ถ้าไม่ตรง preset ตัวไหน)
+  const presetKey = JOURNAL_RANGE_PRESETS.find((p) => p.key === sp.range)?.key;
+  const preset = presetKey ? journalRangeOf(presetKey, now) : null;
+  const from = preset?.from ?? sp.from ?? journalRangeOf("this_month", now).from;
+  const to = preset?.to ?? sp.to ?? journalRangeOf("this_month", now).to;
+  const rangeKey: JournalRangeKey | "custom" = presetKey ?? journalRangeKeyOf(from, to, now);
+  const tab = JOURNAL_TABS.find((t) => t.key === sp.tab)?.key ?? "ALL";
+  const q = (sp.q ?? "").trim();
+  const review = sp.review === "1";
+  const page = Math.max(1, Number(sp.page ?? "1") || 1);
+  const pageSize = Number(sp.size ?? "") || JOURNAL_PAGE_SIZE;
 
-  const docRefIds = entries
-    .filter((e) => e.refType === "AccountDocument" && e.refId)
-    .map((e) => e.refId!) as string[];
-  const docTypeById = await docLinks(systemId, docRefIds);
+  const list = await listJournalPaged(ctx, { book: tab, from, to, q, needsReview: review, page, pageSize });
 
-  const fmtDate = (d: Date) =>
-    new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "medium" }).format(d);
+  // แถวแรกที่มีบัญชีพัก 9999 กางไว้ตั้งแต่โหลด — สถานะเดียวกับ g16 (ผู้ใช้เห็นทันทีว่าทำไมถึงติดธง)
+  const expandedFirst = list.rows.find((r) => r.lines.some((l) => l.suspense))?.id;
+
+  const openModal = sp.new === "1" && canAdjust;
+  const [accounts, contacts] = openModal
+    ? await Promise.all([jvAccountOptions(ctx), jvContactOptions(ctx)])
+    : [[], []];
+  const nextDocNo = openModal ? await nextJournalNo(ctx, "GENERAL", now) : "";
 
   return (
-    <div className="flex max-w-4xl flex-col gap-5">
-      <PageHeader
-        title="สมุดรายวัน"
-        back={{ href: base, label: "ระบบบัญชี" }}
-        actions={
-          <Link href={`${base}/journal/new`} className="btn btn-primary text-sm whitespace-nowrap">
-            + บันทึกด้วยมือ
+    <div className="flex flex-col gap-5">
+      {/* breadcrumb "บัญชี › บัญชีรายวัน" มาจาก layout (AccountBreadcrumb อ่าน pathname เอง) — ไม่ซ้อนที่นี่ */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-2xl font-semibold">บัญชีรายวัน</h1>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`${journalPath}/print?tab=${tab}&from=${from}&to=${to}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+            className="btn btn-ghost text-sm"
+            data-testid="journal-print"
+          >
+            <AccountIcon name="printer" className="h-4 w-4" /> พิมพ์รายงาน
           </Link>
+          {canAdjust && (
+            <Link href={`${journalPath}?new=1`} className="btn btn-primary text-sm" data-testid="journal-new">
+              <AccountIcon name="plus" className="h-4 w-4" /> สร้างสมุดรายวัน
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {sp.err && (
+        <p className="text-sm text-[color:var(--color-danger)]" data-testid="journal-err">
+          {sp.err}
+        </p>
+      )}
+      {sp.ok && (
+        <p className="text-sm font-medium" data-testid="journal-ok">
+          {sp.ok}
+        </p>
+      )}
+
+      <StatusTabs
+        tabs={JOURNAL_TABS.map((t) => ({ key: t.key, label: t.label }))}
+        counts={list.tabCounts}
+        active={tab}
+        paramKey="tab"
+        testId="journal-tabs"
+      />
+
+      {/* ตัวกรองแถวเดียวตาม g16 — preset ช่วงวันที่ · สมุด · ค้นหา · เฉพาะที่ต้องตรวจ (ยิงฟอร์มเองเมื่อเปลี่ยนค่า) */}
+      <JournalFilterBar
+        pathname={journalPath}
+        range={rangeKey}
+        presets={JOURNAL_RANGE_PRESETS}
+        from={from}
+        to={to}
+        tab={tab}
+        books={JOURNAL_TABS}
+        q={q}
+        review={review}
+        pageSize={sp.size}
+      />
+
+      <JournalTable
+        base={base}
+        rows={list.rows.map((r) => ({
+          id: r.id,
+          docNo: r.docNo,
+          dateIso: r.date.toISOString(),
+          bookLabel: r.bookLabel,
+          memo: r.memo,
+          refLabel: r.ref?.label ?? null,
+          refHref: r.ref?.href ?? null,
+          totalDebit: r.totalDebit,
+          totalCredit: r.totalCredit,
+          postedByName: r.postedByName,
+          needsReview: r.needsReview,
+          flagNote: r.flagNote,
+          reversed: r.reversed,
+          isReversal: r.isReversal,
+          lines: r.lines,
+        }))}
+        sumDebit={list.sumDebit}
+        sumCredit={list.sumCredit}
+        total={list.total}
+        expandedFirst={expandedFirst}
+        // แถบแบ่งหน้าอยู่ "ในการ์ดเดียวกับตาราง" ต่อจากแถวสรุป (แบบเดียวกับ footerInsideCard ของ WO 5.4)
+        footer={
+          <Pagination
+            pathname={journalPath}
+            searchParams={new URLSearchParams(
+              Object.entries(sp).filter(([, v]) => typeof v === "string") as [string, string][],
+            )}
+            page={list.page}
+            pageCount={list.pageCount}
+            pageSize={list.pageSize}
+            total={list.total}
+            testId="journal-pagination"
+          />
         }
       />
 
-      {posted === "1" && (
-        <p className="text-sm text-[color:var(--color-ink)]">บันทึกรายการด้วยมือแล้ว ✓</p>
+      {openModal && (
+        <ManualJvModal
+          journalPath={journalPath}
+          systemId={systemId}
+          accounts={accounts}
+          contacts={contacts}
+          defaultDate={new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(now)}
+          nextDocNo={nextDocNo}
+          action={createJvAction}
+          error={sp.err}
+        />
       )}
-
-      <TabPills
-        active={book}
-        tabs={BOOK_TABS.map((t) => ({ key: t.key, label: t.label, href: `${base}/journal?book=${t.key}` }))}
-      />
-
-      <DataList
-        items={entries.map((e) => {
-          const total = e.lines.reduce((s, l) => s + l.debit, 0);
-          const dt = e.refId ? docTypeById.get(e.refId) : undefined;
-          const href =
-            e.refType === "AccountDocument" && dt
-              ? `${base}/docs/${dt}/${e.refId}`
-              : `${base}/journal/${e.id}`;
-          return {
-            key: e.id,
-            href,
-            primary: (
-              <span>
-                {e.docNo} · {JOURNAL_LABEL[e.journal] ?? e.journal}
-                {e.status === "REVERSED" && (
-                  <span className="ml-1 text-xs text-[color:var(--color-danger)]">(กลับรายการแล้ว)</span>
-                )}
-                {e.needsReview && (
-                  <span className="ml-1 text-xs text-[color:var(--color-danger)]">⚑ ตรวจสอบ</span>
-                )}
-              </span>
-            ),
-            secondary: `${fmtDate(e.date)} · ${e.memo ?? "—"}`,
-            trailing: <MoneyText satang={total} decimals />,
-          };
-        })}
-        empty="ยังไม่มีรายการในสมุดนี้ — รายการจะถูกบันทึกอัตโนมัติเมื่อออกเอกสาร"
-      />
     </div>
   );
 }

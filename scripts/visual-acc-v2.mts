@@ -310,6 +310,31 @@ const FIXTURE_REF_18 = "QC-VISUAL-1.8";
 //    ด้วย refId เดิม (fileHash เดียวกัน) ⇒ รอบมือถือชนกับ idempotency ของรอบเดสก์ท็อป (สร้างใหม่ 0 · ข้าม 20)
 //    แก้: แยกไฟล์คนละชุดต่อ device (คนละ "เลขอ้างอิง"/ผู้ติดต่อ) + spec ผลลัพธ์แยก onlyDevice ต่อไฟล์
 const COA_CASH_ID: string = (E.coa?.samples ?? []).find((r: { code: string }) => r.code === "1000-01")?.id ?? ""; // WO 6.1 — บัญชีลูกของช่องทาง "เงินสด" (สถานะเดียวกับ f8)
+// WO 6.2 — fixture ของภาพสมุดรายวัน/สินทรัพย์ (มาจากคีย์ wo62 ที่ seed เขียนด้วย SQL — ไม่ฮาร์ดโค้ด id)
+const WO62 = (E.wo62 ?? {}) as {
+  fixtures?: Record<string, string>;
+  assets?: { id: string; code: string }[];
+  periods?: { closed: string[]; open: string };
+};
+const JV_FLAGGED_ID: string = WO62.fixtures?.flaggedJvId ?? "";
+const ASSET_ID: string = WO62.assets?.[0]?.id ?? "";
+const PERIOD_OPEN: string = WO62.periods?.open ?? "2026-09";
+const PERIOD_CLOSED: string = WO62.periods?.closed?.[0] ?? "2026-08";
+// id บัญชี 2 ตัวสำหรับ flow กรอก modal ให้ถึงสถานะ "สมดุล" ตาม g16 (อ่านจาก DB — ไม่ฮาร์ดโค้ด id)
+// 🔴 อ่านอย่างเดียว ไม่เขียนอะไรเลย · flow ก็ไม่กดปุ่มบันทึก (ตัวนับใบสำคัญของเฉลยห้ามขยับ)
+let jv62 = { expenseId: "", cashId: "" };
+if (WO === "6.2") {
+  const { prisma: db62 } = await import("@/lib/core/db");
+  const rows62 = await db62.accountLedger.findMany({
+    where: { systemId: SYS, code: { in: ["6900", "1000"] } },
+    select: { id: true, code: true },
+  });
+  jv62 = {
+    expenseId: rows62.find((r) => r.code === "6900")?.id ?? "",
+    cashId: rows62.find((r) => r.code === "1000")?.id ?? "",
+  };
+  if (!jv62.expenseId || !jv62.cashId) throw new Error("fixture 6.2: ไม่พบบัญชี 6900/1000 — รัน seed-acc-v2-qc ก่อน");
+}
 const FIXTURE_CSV_COA_IMPORT = "scripts/fixtures/acc-v2/coa-import.csv"; // WO 6.1 — ผังบัญชี 10 บัญชี (ซ้ำ 1 · นอกช่วง 1) · ภาพขั้นตรวจสอบเท่านั้น (ไม่กดนำเข้าจริง)
 const FIXTURE_CSV_RECONCILE_PREVIEW = "scripts/fixtures/acc-v2/kbank-preview-sample.csv"; // WO 5.3 — ไฟล์ตัวอย่างของภาพ preview (preview ไม่เขียน DB)
 const FIXTURE_CSV_PATH_18 = `${QC.shotsDir}/1.8-fixture-a.csv`; // ใช้เดสก์ท็อป (และ preview ทั้งคู่ device — preview ไม่สร้างอะไรจริง)
@@ -747,6 +772,219 @@ const PAGES: Record<string, PageSpec[]> = {
     },
   ],
   // WO 6.1 — ผังบัญชี V2 (§11.1) เทียบ f8-chart-of-accounts.png (+ f8-chart-of-accounts-menu.png = เมนู "บัญชี" ของ shell)
+  // WO 6.2 — สมุดรายวัน V2 (g16) + รายงาน drill-down + ปิดงวดเช็กลิสต์ + ตารางค่าเสื่อม
+  "6.2": [
+    {
+      name: "journal-list",
+      path: `/app/sys/${SYS}/account/journal?from=2026-09-01&to=2026-09-30`,
+      note: "หน้าบัญชีรายวัน สถานะเดียวกับ g16-journal.png — แท็บตามสมุด + ตัวกรองแถวเดียว (preset ช่วงวันที่) + ตาราง 9 คอลัมน์ + ⚑ + แถวสรุป + แบ่งหน้าในการ์ด",
+      expect: [
+        "บัญชีรายวัน",
+        "พิมพ์รายงาน",
+        "สร้างสมุดรายวัน",
+        // ตีกลับรอบ 2: ช่วงวันที่ต้องเป็น preset สั้น ๆ ตามเฟรม (1 ก.ย.–30 ก.ย. = "เดือนนี้" ทั้งเดือน)
+        "เดือนนี้",
+        "ทั้งหมด",
+        "ซื้อ",
+        "ขาย",
+        "จ่าย",
+        "รับ",
+        "ทั่วไป",
+        "ช่วงวันที่",
+        "สมุด",
+        "วันที่",
+        "เลขที่ JV",
+        "คำอธิบาย",
+        "อ้างอิงเอกสาร",
+        "เดบิต",
+        "เครดิต",
+        "ผู้บันทึก",
+        "รวมเดบิต",
+        "รวมเครดิต",
+        "จ่ายค่าเช่าสำนักงาน",
+        "พักรายการ",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "journal-modal",
+      path: `/app/sys/${SYS}/account/journal?new=1&from=2026-09-01&to=2026-09-30`,
+      note: 'modal "สร้างสมุดรายวัน" — เทียบ g16-journal-modal.png (วันที่ · สมุด · เลขที่ JV อัตโนมัติ · คำอธิบาย · บรรทัดรายการ · แถบสมดุล · แนบไฟล์ · ยกเลิก/บันทึกร่าง/อนุมัติ)',
+      expect: [
+        "สร้างสมุดรายวัน",
+        "วันที่",
+        "สมุด",
+        "เลขที่ JV",
+        "อัตโนมัติ · แก้ไม่ได้",
+        "คำอธิบาย",
+        "บรรทัดรายการ",
+        "บัญชี",
+        "ผู้ติดต่อ",
+        "เพิ่มบรรทัด",
+        "แนบไฟล์",
+        "ลากไฟล์มาวาง หรือเลือกไฟล์แนบ",
+        "ยกเลิก",
+        "บันทึกร่าง",
+        "อนุมัติ",
+      ],
+      onlyDevice: "desktop",
+      expandModalForShot: '[data-testid="jv-modal"]',
+      waitAfterClick: 400,
+    },
+    {
+      name: "journal-modal-balanced",
+      path: `/app/sys/${SYS}/account/journal?new=1&from=2026-09-01&to=2026-09-30`,
+      note: 'modal สถานะ "สมดุล" ตาม g16-journal-modal.png — กรอก 2 บรรทัด 5,000/5,000 แล้วแถบล่างต้องขึ้น "สมดุล" และปุ่มอนุมัติกดได้',
+      expect: ["สร้างสมุดรายวัน", "บรรทัดรายการ"],
+      onlyDevice: "desktop",
+      expandModalForShot: '[data-testid="jv-modal"]',
+      flow: [
+        { waitFor: '[data-testid="jv-account-0"]' },
+        { fill: '[data-testid="jv-memo"]', value: "ค่าใช้จ่ายเบ็ดเตล็ดเดือน ก.ย." },
+        { select: '[data-testid="jv-account-0"]', value: jv62.expenseId },
+        { select: '[data-testid="jv-account-1"]', value: jv62.cashId },
+        { fill: '[data-testid="jv-debit-0"]', value: "5000" },
+        { fill: '[data-testid="jv-credit-1"]', value: "5000" },
+      ],
+      // แถบล่างต้องขึ้น "สมดุล" จริงก่อนกดชัตเตอร์ — ไม่งั้นได้ภาพผิดสถานะเหมือนบทเรียน WO 1.4
+      expectBeforeShot: [{ sel: '[data-testid="jv-balance-state"]', kind: "text", equals: "สมดุล" }],
+      // 🔴 ไม่กดปุ่มบันทึก — ภาพนี้ต้องไม่เขียน DB (ตัวนับใบสำคัญของเฉลยห้ามขยับ)
+    },
+    {
+      name: "journal-entry",
+      path: `/app/sys/${SYS}/account/journal/${JV_FLAGGED_ID}`,
+      note: "หน้ารายละเอียดใบสำคัญ (drill-down ชั้นที่ ③) — ธง ⚑ + ปุ่มกลับรายการ + ตารางบรรทัด + งวด",
+      expect: ["สมุด", "ผู้บันทึก", "บัญชี", "เดบิต", "เครดิต", "รวม", "งวด", "กลับรายการ"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "reports-trial-balance",
+      path: `/app/sys/${SYS}/account/reports/trial-balance?from=2026-08&to=2026-09&cmp=1`,
+      note: "งบทดลอง + แถบเครื่องมือร่วม (§11.3) + คอลัมน์เทียบงวดก่อน + ตัวเลขคลิกได้ (drill-down)",
+      expect: [
+        "งบทดลอง",
+        "ตั้งแต่",
+        "ถึง",
+        "เทียบงวดก่อน",
+        "สาขา",
+        "พิมพ์",
+        "PDF",
+        "Excel",
+        "รหัส",
+        "ชื่อบัญชี",
+        "งวดก่อน",
+        "คลิกตัวเลขเพื่อดูที่มา",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "reports-ledger-drill",
+      path: `/app/sys/${SYS}/account/ledger?code=6800&from=2026-06-01&to=2026-08-31`,
+      note: "ปลายทาง drill-down ชั้นที่ ② — บัญชีแยกประเภท 6800 ค่าเสื่อมราคา (ยอดยกมา/เคลื่อนไหว/ยกไป)",
+      expect: ["บัญชีแยกประเภท", "ยอดยกมา", "ใบสำคัญ", "เดบิต", "เครดิต", "คงเหลือ", "ยกไป"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "periods-checklist",
+      path: `/app/sys/${SYS}/account/periods?p=${PERIOD_OPEN}`,
+      note: "หน้าปิดงวด (§11.4) — เช็กลิสต์ 4 ข้อของงวดที่ปิดไม่ได้ + ตารางงวด (ส.ค. ปิดแล้ว · ก.ย. เปิดอยู่)",
+      expect: [
+        "ปิดงวดบัญชี",
+        "เช็กลิสต์ก่อนปิดงวด",
+        "บัญชีพักรายการ (9999) เคลียร์แล้ว",
+        "ไม่มีใบสำคัญที่ต้องตรวจ",
+        "กระทบยอดธนาคารครบทุกช่องทาง",
+        "ยื่น ภ.พ.30 ของงวดแล้ว",
+        "บังคับ",
+        "เตือน",
+        "เดือน",
+        "สถานะ",
+        "ปิดโดย",
+        "ปิดแล้ว",
+        "เปิดอยู่",
+        "สิงหาคม 2026",
+        "กันยายน 2026",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "periods-checklist-closed",
+      path: `/app/sys/${SYS}/account/periods?p=${PERIOD_CLOSED}`,
+      note: "เช็กลิสต์ของงวดที่ปิดแล้ว (ทุกข้อผ่าน) — สถานะที่ 2 ของหน้าปิดงวด",
+      expect: ["เช็กลิสต์ก่อนปิดงวด", PERIOD_CLOSED, "งวดนี้ปิดแล้ว", "เปิดงวดใหม่"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "assets-register",
+      path: `/app/sys/${SYS}/account/assets`,
+      note: "ทะเบียนสินทรัพย์ V2 (§11.5) — ตาราง 9 คอลัมน์ + สรุป 4 กล่อง + ปุ่มคิดค่าเสื่อมงวดนี้",
+      expect: [
+        "ทะเบียนสินทรัพย์",
+        "ขึ้นทะเบียนสินทรัพย์",
+        "คิดค่าเสื่อมงวดนี้",
+        "รหัส",
+        "ชื่อ",
+        "หมวด",
+        "วันที่ได้มา",
+        "ต้นทุน",
+        "ค่าเสื่อมสะสม",
+        "มูลค่าสุทธิ",
+        "สถานะ",
+        "ทำรายการ",
+        "FA-0001",
+        "FA-0002",
+        "ใช้งาน",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "assets-depreciation-preview",
+      path: `/app/sys/${SYS}/account/assets?dep=1&period=${PERIOD_OPEN}`,
+      note: 'พรีวิวก่อนกด "คิดค่าเสื่อมงวดนี้" (§11.5 "preview ก่อน") — ยอดต่อสินทรัพย์ + ยอดรวมที่จะลงบัญชี',
+      expect: ["ตรวจก่อนลงบัญชี", "ค่าเสื่อมงวดนี้", "พร้อมลงบัญชี", "รวม", "ยืนยันลงบัญชีค่าเสื่อมงวด"],
+      onlyDevice: "desktop",
+      // 🔴 ไม่กดปุ่มยืนยัน — ภาพนี้ต้องไม่ลงบัญชีจริง (เฉลยค่าเสื่อม 6 แถวห้ามขยับ)
+    },
+    {
+      name: "asset-detail",
+      path: `/app/sys/${SYS}/account/assets/${ASSET_ID}`,
+      note: "หน้าสินทรัพย์ + **ตารางค่าเสื่อมรายงวด** (§11.5 ของที่ 'มีข้อมูลแล้วแต่ไม่เคยแสดง')",
+      expect: [
+        "FA-0001",
+        "ต้นทุน",
+        "ค่าเสื่อมสะสม",
+        "มูลค่าสุทธิ",
+        "มูลค่าซาก",
+        "วันที่ได้มา",
+        "วันเริ่มคิดค่าเสื่อม",
+        "อายุการใช้งาน",
+        "ตารางค่าเสื่อมรายงวด",
+        "งวด",
+        "ใบสำคัญ",
+        "2026-06",
+        "2026-07",
+        "2026-08",
+        "ขาย / ตัดจำหน่าย",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "journal-mobile",
+      path: `/app/sys/${SYS}/account/journal?from=2026-09-01&to=2026-09-30`,
+      note: "บัญชีรายวันบนมือถือ 390 — ตารางเลื่อนแนวนอนได้ ไม่ล้นจอ",
+      expect: ["บัญชีรายวัน", "ทั้งหมด", "เลขที่ JV", "รวมเดบิต"],
+      onlyDevice: "mobile",
+    },
+    {
+      name: "journal-modal-mobile",
+      path: `/app/sys/${SYS}/account/journal?new=1&from=2026-09-01&to=2026-09-30`,
+      note: "modal สร้างสมุดรายวันบนมือถือ 390 — ต้องกลายเป็นแผ่นเต็มจอ (sheetOnMobile) ไม่ใช่กล่องลอยที่ล้น",
+      expect: ["สร้างสมุดรายวัน", "บรรทัดรายการ", "แนบไฟล์", "อนุมัติ"],
+      onlyDevice: "mobile",
+      expandModalForShot: '[data-testid="jv-modal"]',
+      waitAfterClick: 400,
+    },
+  ],
   "6.1": [
     {
       name: "chart-of-accounts",
@@ -1618,6 +1856,33 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
   //    ที่ส่ง asOf = QC.today เข้าไปตรง ๆ · ภาพเหลือหน้าที่ตรวจ "โครง/ป้าย/จำนวนรายการ"
 
   // WO 6.1 — ยอดคงเหลือ/เคลื่อนไหวเดือนนี้/จำนวนบัญชี ต้องตรงเฉลย SQL อิสระ (คีย์ coa เขียนตอน seed)
+  // WO 6.2 — ตัวเลขที่ pin ได้ต้อง "ไม่ขึ้นกับวันที่ถ่ายภาพ" (บทเรียน 6.1 รอบ 2)
+  //   • ตัวนับแท็บ/จำนวนรายการของช่วง ก.ย. คงที่เพราะช่วงวันที่ตรึงใน URL
+  //   • ยอดรวมเดบิต/เครดิตของช่วงนั้นก็คงที่ด้วยเหตุผลเดียวกัน (คิดจากช่วงใน URL ไม่ใช่ "วันนี้")
+  "6.2": {
+    "journal-list": {
+      "journal-total-count": `รวม ${E.wo62?.septRange?.entries ?? 0} รายการ`,
+      "journal-sum-debit": bahtStr(E.wo62?.septRange?.debit ?? 0),
+      "journal-sum-credit": bahtStr(E.wo62?.septRange?.credit ?? 0),
+    },
+    "periods-checklist": {
+      "checklist-SUSPENSE-detail": `ยังคงเหลือ ${(Math.abs(E.wo62?.suspense9999 ?? 0) / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท (ด้านเครดิต)`,
+      "checklist-NEEDS_REVIEW-detail": "ยังมี 1 รายการรอตรวจ",
+    },
+    "assets-register": {
+      "asset-count": `${(E.wo62?.assets ?? []).length} รายการ`,
+      "asset-accum-FA-0001": baht(E.wo62?.assets?.[0]?.accumDepreciation ?? 0, true),
+      "asset-nbv-FA-0001": baht(E.wo62?.assets?.[0]?.netBookValue ?? 0, true),
+    },
+    "assets-depreciation-preview": {
+      "dep-preview-total": baht(E.wo62?.depreciationPreviewSept ?? 0, true),
+    },
+    "asset-detail": {
+      "asset-accum": baht(E.wo62?.assets?.[0]?.accumDepreciation ?? 0, true),
+      "asset-nbv": baht(E.wo62?.assets?.[0]?.netBookValue ?? 0, true),
+      "dep-total": baht(E.wo62?.assets?.[0]?.accumDepreciation ?? 0, true),
+    },
+  },
   "6.1": {
     "chart-of-accounts": {
       // จำนวนบัญชีไม่ขึ้นกับวันที่ ⇒ pin ได้ · ยอดเงินไม่ pin (ดูหมายเหตุหัวตาราง)

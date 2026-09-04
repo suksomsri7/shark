@@ -62,6 +62,11 @@ const ICONS: Record<string, string> = {
   minus: '<path d="M6 12h12"/>',
   plus: '<path d="M12 6v12M6 12h12"/>',
   printer: '<path d="M7 9V3.5h10V9"/><rect x="3.5" y="9" width="17" height="7.5" rx="2"/><path d="M7 14h10v6.5H7Z"/>',
+  // WO 6.2 — สมุดรายวัน (g16): ปุ่มกางแถวเป็นตารางบรรทัดย่อย (› เมื่อยุบ · ⌄ เมื่อกาง)
+  'chevron-right': '<path d="m9.5 5.5 7 6.5-7 6.5"/>',
+  'chevron-down': '<path d="m5.5 9.5 6.5 7 6.5-7"/>',
+  // WO 6.2 — ปุ่ม "ดาวน์โหลด Excel" ของแถบเครื่องมือรายงาน (§11.3)
+  download: '<path d="M12 3v12"/><path d="m7 10.5 5 5 5-5"/><path d="M4 20h16"/>',
 };
 
 const FALLBACK = '<rect x="5" y="5" width="14" height="14" rx="2"/>';

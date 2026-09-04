@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { Fragment } from "react";
 import { profitLoss, type ProfitLoss, type PLRow } from "@/lib/modules/account/reports";
+import { ledgerDrillHref } from "@/lib/modules/account/report-drill";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { loadReport, currentPeriodKey, ReportHeader, TableWrap } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
@@ -9,7 +11,7 @@ export default async function ProfitLossPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ from?: string; to?: string; compare?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; cmp?: string; compare?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -19,7 +21,8 @@ export default async function ProfitLossPage({
   const now = currentPeriodKey();
   const from = sp.from || now;
   const to = sp.to || from;
-  const compare = sp.compare === "1";
+  // WO 6.2: แถบเครื่องมือร่วม (§11.3) ใช้คีย์ `cmp` — รับ `compare` ของเดิมต่อไปด้วย (ลิงก์เก่าไม่พัง)
+  const compare = sp.cmp === "1" || sp.compare === "1";
   const pl = await profitLoss({ tenantId, systemId }, from, to, { compare });
 
   // สร้างแถวคู่กัน (ปัจจุบัน + งวดก่อน) ตามรหัสบัญชี
@@ -65,21 +68,15 @@ export default async function ProfitLossPage({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <ReportHeader base={base} title="งบกำไรขาดทุน" subtitle={`${from} ถึง ${to}`} />
-        <ReportToolbar filename={`งบกำไรขาดทุน-${from}-${to}`} csv={csv} />
       </div>
-
-      <form className="flex flex-wrap items-end gap-2 print:hidden">
-        <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
-          ตั้งแต่<input type="month" name="from" defaultValue={from} className="rounded-lg border px-2 py-1.5 text-sm" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
-          ถึง<input type="month" name="to" defaultValue={to} className="rounded-lg border px-2 py-1.5 text-sm" />
-        </label>
-        <label className="flex items-center gap-1.5 text-xs text-[color:var(--color-muted)]">
-          <input type="checkbox" name="compare" value="1" defaultChecked={compare} /> เทียบงวดก่อน
-        </label>
-        <button className="btn btn-primary text-sm">แสดง</button>
-      </form>
+      <ReportToolbar
+        filename={`งบกำไรขาดทุน-${from}-${to}`}
+        csv={csv}
+        mode="range"
+        from={from}
+        to={to}
+        compare={compare}
+      />
 
       <TableWrap>
         <thead className="border-b text-left text-xs text-[color:var(--color-muted)]">
@@ -96,10 +93,15 @@ export default async function ProfitLossPage({
                 <td className="px-3 py-1.5" colSpan={compare ? 3 : 2}>{s.label}</td>
               </tr>
               {s.merged.map((r) => (
-                <tr key={`${s.label}-${r.code}`} className="border-b last:border-0">
+                <tr key={`${s.label}-${r.code}`} className="border-b last:border-0" data-testid={`pl-row-${r.code}`}>
                   <td className="px-3 py-1.5 pl-6"><span className="font-mono text-xs">{r.code}</span> {r.name}</td>
-                  <td className="px-3 py-1.5 text-right"><MoneyText satang={r.cur} decimals /></td>
-                  {compare && <td className="px-3 py-1.5 text-right"><MoneyText satang={r.prev} decimals /></td>}
+                  <td className="px-3 py-1.5 text-right">
+                    {/* คลิกตัวเลข = drill-down ไปแยกประเภทของบัญชีนี้ ในช่วงเดียวกับรายงาน (§11.3) */}
+                    <Link href={ledgerDrillHref(base, r.code, from, to)} className="hover:underline" data-testid={`pl-amt-${r.code}`}>
+                      <MoneyText satang={r.cur} decimals />
+                    </Link>
+                  </td>
+                  {compare && <td className="px-3 py-1.5 text-right text-[color:var(--color-muted)]" data-testid={`pl-prev-${r.code}`}><MoneyText satang={r.prev} decimals /></td>}
                 </tr>
               ))}
               <tr key={`t-${s.label}`} className="border-b font-medium">
@@ -118,11 +120,15 @@ export default async function ProfitLossPage({
           ))}
           <tr className="border-t-2 text-base font-bold">
             <td className="px-3 py-2.5">กำไรสุทธิ</td>
-            <td className="px-3 py-2.5 text-right"><MoneyText satang={pl.netProfit} decimals /></td>
+            <td className="px-3 py-2.5 text-right" data-testid="pl-net"><MoneyText satang={pl.netProfit} decimals /></td>
             {compare && <td className="px-3 py-2.5 text-right"><MoneyText satang={p!.netProfit} decimals /></td>}
           </tr>
         </tbody>
       </TableWrap>
+
+      <p className="text-xs text-[color:var(--color-muted)] print:hidden">
+        คลิกตัวเลขเพื่อดูที่มา → บัญชีแยกประเภท → ใบสำคัญ → เอกสารต้นทาง
+      </p>
     </div>
   );
 }

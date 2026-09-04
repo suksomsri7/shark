@@ -2,6 +2,7 @@ import Link from "next/link";
 import { agingReport, type AgingRow } from "@/lib/modules/account/reports";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { loadReport, TableWrap } from "../reports/_shared";
+import ReportToolbar from "../reports/ReportToolbar";
 
 // รายงานอายุหนี้ (Aging) — สลับ ลูกหนี้ (AR/OUT) / เจ้าหนี้ (AP/IN) · ไทยล้วน
 export default async function AgingPage({
@@ -42,9 +43,43 @@ export default async function AgingPage({
     </td>
   );
 
+  // WO 6.2 (§11.3): อายุหนี้ใช้แถบเครื่องมือร่วมเหมือนรายงานอื่น — CSV มี BOM · พิมพ์/PDF ผ่าน print CSS
+  const csv = {
+    headers: [partyLabel, "ยังไม่ครบกำหนด", "1-30 วัน", "31-60 วัน", "61-90 วัน", "เกิน 90 วัน", "รวมค้าง"],
+    rows: [
+      ...rep.rows.map((r) => [
+        r.contactName,
+        (r.notDueSatang / 100).toFixed(2),
+        (r.d1_30Satang / 100).toFixed(2),
+        (r.d31_60Satang / 100).toFixed(2),
+        (r.d61_90Satang / 100).toFixed(2),
+        (r.d90plusSatang / 100).toFixed(2),
+        (r.totalSatang / 100).toFixed(2),
+      ]),
+      [
+        "รวมทั้งหมด",
+        (rep.grand.notDueSatang / 100).toFixed(2),
+        (rep.grand.d1_30Satang / 100).toFixed(2),
+        (rep.grand.d31_60Satang / 100).toFixed(2),
+        (rep.grand.d61_90Satang / 100).toFixed(2),
+        (rep.grand.d90plusSatang / 100).toFixed(2),
+        (rep.grand.totalSatang / 100).toFixed(2),
+      ],
+    ],
+  };
+
+  // คลิกชื่อคู่ค้า = ไปหน้าเอกสารค้างของรายนั้น (drill-down ของรายงานที่จัดกลุ่มตาม "คน" ไม่ใช่ "บัญชี")
   const bucketRow = (r: AgingRow) => (
-    <tr key={r.contactId ?? "__none__"} className="border-b last:border-0">
-      <td className="px-3 py-1.5">{r.contactName}</td>
+    <tr key={r.contactId ?? "__none__"} className="border-b last:border-0" data-testid={`aging-row-${r.contactId ?? "none"}`}>
+      <td className="px-3 py-1.5">
+        {r.contactId ? (
+          <Link href={`${base}/contacts/${r.contactId}`} className="text-[color:var(--color-accent)] hover:underline">
+            {r.contactName}
+          </Link>
+        ) : (
+          r.contactName
+        )}
+      </td>
       {cell(r.notDueSatang)}
       {cell(r.d1_30Satang)}
       {cell(r.d31_60Satang)}
@@ -72,6 +107,9 @@ export default async function AgingPage({
         {tab("OUT", "ลูกหนี้ (AR)")}
         {tab("IN", "เจ้าหนี้ (AP)")}
       </div>
+
+      {/* อายุหนี้คิด "ณ วันนี้" เสมอ (ไม่มีช่วงเวลาให้เลือก) และเทียบงวดก่อนไม่ได้ */}
+      <ReportToolbar filename={`อายุหนี้-${isAR ? "ลูกหนี้" : "เจ้าหนี้"}`} csv={csv} mode="none" showCompare={false} />
 
       <TableWrap>
         <thead>

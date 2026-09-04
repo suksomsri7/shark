@@ -15,7 +15,7 @@ export default async function LedgerPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ account?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ account?: string; code?: string; from?: string; to?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -29,7 +29,10 @@ export default async function LedgerPage({
   const now = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
   const from = sp.from || `${now.slice(0, 7)}-01`;
   const to = sp.to || now;
-  const accountId = sp.account || "";
+  // WO 6.2 (§11.3 drill-down): รายงานส่งมาเป็น "รหัสบัญชี" (แถวของ reports.ts มีแต่ code ไม่มี id)
+  // — แปลงเป็น id ที่นี่ที่เดียว ไม่ต้อง fork ตรรกะรายงานเพื่อยัด id เพิ่ม
+  const byCode = sp.code ? ledgers.find((l) => l.code === sp.code) : undefined;
+  const accountId = sp.account || byCode?.id || "";
 
   const fromDate = new Date(`${from}T00:00:00.000+07:00`);
   const toDate = new Date(`${to}T23:59:59.999+07:00`);

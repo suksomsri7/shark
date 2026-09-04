@@ -10,6 +10,13 @@ const REPORTS = [
   { slug: "pp30", title: "ภ.พ.30 + รายงานภาษี", desc: "ภาษีขาย − ภาษีซื้อ · แยกอัตรา · เครดิตยกมา" },
 ];
 
+// รายงานที่อยู่นอกโฟลเดอร์ reports/ แต่อยู่ในชุดเดียวกันตาม §11.3 (แถบเครื่องมือเดียวกัน)
+const OTHER = [
+  { href: "ledger", title: "บัญชีแยกประเภท", desc: "ยอดยกมา · เคลื่อนไหวรายบรรทัด · ยอดยกไป — ปลายทางของ drill-down" },
+  { href: "tax/wht", title: "ภ.ง.ด.3 / 53", desc: "หนังสือรับรองหัก ณ ที่จ่าย · ไฟล์ยื่นกรมสรรพากร" },
+  { href: "aging", title: "อายุหนี้ (ลูกหนี้-เจ้าหนี้)", desc: "ยอดค้างแยกช่วงเกินกำหนด ณ วันนี้" },
+];
+
 export default async function ReportsIndexPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await loadReport(id);
@@ -30,6 +37,20 @@ export default async function ReportsIndexPage({ params }: { params: Promise<{ i
             <div className="mt-1 text-xs text-[color:var(--color-muted)]">{r.desc}</div>
           </Link>
         ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {OTHER.map((r) => (
+          <Link key={r.href} href={`${base}/${r.href}`} className="card hover:bg-[color:var(--color-surface-2)]">
+            <div className="font-medium">{r.title}</div>
+            <div className="mt-1 text-xs text-[color:var(--color-muted)]">{r.desc}</div>
+          </Link>
+        ))}
+        {/* §11.6 — DBD e-Filing ยังไม่เปิด (เตรียมจาก งบฐานะ + กำไรขาดทุน + ปีบัญชี) */}
+        <div className="card cursor-not-allowed opacity-50" title="เตรียมจากงบแสดงฐานะการเงิน + งบกำไรขาดทุน + ปีบัญชี" data-testid="reports-dbd-soon">
+          <div className="font-medium">ยื่นงบ DBD e-Filing 🕓</div>
+          <div className="mt-1 text-xs text-[color:var(--color-muted)]">เร็ว ๆ นี้</div>
+        </div>
       </div>
     </div>
   );

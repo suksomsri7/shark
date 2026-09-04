@@ -68,6 +68,7 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "asset-buy/page.tsx": "account.doc.view",
   "asset-po/[docId]/page.tsx": "account.doc.view", // WO 1.2 (ASSET_PURCHASE_ORDER)
   "asset-po/page.tsx": "account.doc.view",
+  "assets/[assetId]/page.tsx": "account.asset.manage", // WO 6.2 §11.5 — หน้าสินทรัพย์ + ตารางค่าเสื่อมรายงวด
   "assets/page.tsx": "account.asset.manage",
   "cheque/page.tsx": "account.cheque.manage",
   "combined-payment/[docId]/page.tsx": "account.doc.view", // WO 1.7 (COMBINED_PAYMENT)
@@ -109,6 +110,7 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "import/template/route.ts": "account.import",
   "journal/[entryId]/page.tsx": "account.journal.view",
   "journal/new/page.tsx": "account.journal.adjust",
+  "journal/print/page.tsx": "account.journal.view", // WO 6.2 §11.2 — หน้าพิมพ์สมุดรายวัน
   "journal/page.tsx": "account.journal.view",
   "ledger/page.tsx": "account.journal.view",
   // WO 2.3: "ดูภาพรวม" รายรับ/รายจ่าย (§6) — อ่านอย่างเดียว เหมือน page.tsx หลัก

@@ -1632,6 +1632,191 @@ for (const [code, desc] of COA_CHILD_DESC)
 
 console.log(`🧾 ผังบัญชี V2: +บัญชีสร้างเอง 2 (6301/4031) +ปิดใช้งาน 1 (6302)`);
 
+// ─────────────────── 8.10 สมุดรายวัน + ปิดงวด + สินทรัพย์ (WO 6.2 · §11.2–5 · g16) ───────────────────
+// สิ่งที่บล็อกนี้เติมให้ชุดข้อมูล QC (ทุกอย่างเป็น "ของจริง" ผ่านโค้ดจริง ไม่ยัดแถวดิบ):
+//   • สินทรัพย์ 2 ตัว + ค่าเสื่อม 3 งวด (มิ.ย./ก.ค./ส.ค.)  → ตารางค่าเสื่อมรายงวด §11.5 มีข้อมูลให้ดู
+//   • JV มือ 1 ใบ                                          → แท็บ "ทั่วไป" + ผู้บันทึก + source MANUAL
+//   • ใบสำคัญติดธง ⚑ + บัญชีพัก 9999 1 ใบ (ก.ย.)          → สถานะเดียวกับ g16 + ทำให้ปิดงวด ก.ย. **ไม่ได้**
+//   • คู่กลับรายการ 1 คู่ (ก.ย.)                            → ชิป "กลับรายการแล้ว" + drill-down 2 ขา
+//   • ปิดงวด ส.ค. 2026 · ก.ย. 2026 ยังเปิด                 → §11.4 มีทั้งงวดปิดและงวดเปิดให้ทดสอบ
+//
+// 🔴 กติกาที่คุมไม่ให้ตัวเลขเดิมพัง: **ห้ามแตะบัญชีที่เฉลยเดิมตรึงไว้** — 1000-01/1010-01/1020-01/1030-01
+//    (ช่องทางการเงิน) · 1100 ลูกหนี้ · 4000 รายได้ขาย · 1150/1155/2200 ภาษี · 2100 เจ้าหนี้
+//    บล็อกนี้ใช้เฉพาะ 1000/1010 (บัญชี**แม่** ไม่ผูกช่องทาง) · 1610/1619/1630/1639 · 3999 · 6100/6800/6900 · 9999
+// 🔴 ธง ⚑ กับยอด 9999 อยู่ใน **ก.ย.** เท่านั้น ⇒ ยอดสะสมถึงสิ้น ส.ค. ยังเป็น 0 → ปิดงวด ส.ค. ได้จริง
+const ledgerByCode = Object.fromEntries(
+  (
+    await prisma.accountLedger.findMany({
+      where: { systemId },
+      select: { id: true, code: true },
+    })
+  ).map((l) => [l.code, l.id]),
+) as Record<string, string>;
+const acc = (code: string): string => {
+  const v = ledgerByCode[code];
+  if (!v) throw new Error(`seed 8.10: ไม่พบบัญชี ${code}`);
+  return v;
+};
+
+// ── (ก) สินทรัพย์ 2 ตัว ──
+// อายุ/ซากตั้งให้ "หารไม่ลงตัว" ตั้งใจ — เพื่อให้ข้อสอบพิสูจน์กติกาปัดเศษ (เดือนสุดท้ายเก็บเศษ) ได้จริง
+const ASSET_DEFS = [
+  {
+    code: "FA-0001",
+    name: "เรือยางท้ายติดเครื่อง Zodiac Pro 5.5",
+    category: "ยานพาหนะ",
+    acquired: "2026-05-20",
+    startDep: "2026-06-01",
+    cost: 48_000_000, // 480,000.00 บาท
+    salvage: 100, // 1.00 บาท (ธรรมเนียมไทย)
+    life: 60,
+    assetCode: "1630",
+    accumCode: "1639",
+  },
+  {
+    code: "FA-0002",
+    name: "เครื่องอัดอากาศ Bauer Junior II",
+    category: "อุปกรณ์ดำน้ำ",
+    acquired: "2026-05-25",
+    startDep: "2026-06-01",
+    cost: 36_000_000, // 360,000.00 บาท
+    salvage: 100,
+    life: 120,
+    assetCode: "1610",
+    accumCode: "1619",
+  },
+] as const;
+
+const DEP_PERIODS = ["2026-06", "2026-07", "2026-08"] as const;
+/** สูตรค่าเสื่อมเส้นตรง เขียนซ้ำในเฉลยคนละสำนวนกับ asset.nextDepreciationAmount (ไม่เรียกโค้ดจริงมาเช็คตัวเอง) */
+const monthlyDep = (cost: number, salvage: number, life: number) => Math.round((cost - salvage) / life);
+
+const assetIds: Record<string, string> = {};
+const depExpected: { code: string; periodKey: string; amount: number }[] = [];
+for (const a of ASSET_DEFS) {
+  const row = await prisma.accountFixedAsset.create({
+    data: {
+      tenantId,
+      systemId,
+      code: a.code,
+      name: a.name,
+      category: a.category,
+      acquiredDate: D(a.acquired),
+      startDepDate: D(a.startDep),
+      cost: a.cost,
+      salvageValue: a.salvage,
+      usefulLifeMonths: a.life,
+      assetAccountId: acc(a.assetCode),
+      accumAccountId: acc(a.accumCode),
+      expenseAccountId: acc("6800"),
+      status: "ACTIVE",
+    },
+    select: { id: true },
+  });
+  assetIds[a.code] = row.id;
+}
+
+// ── (ข) ขึ้นบัญชีต้นทุนสินทรัพย์ (ยอดยกมา) — Dr 1630/1610 · Cr 3999 ยอดยกมา ──
+// ใช้ 3999 (บัญชีคู่เปิดบัญชี) แทนเงินสด/ธนาคาร: ยอดช่องทางการเงินของเฉลยเดิมจึงไม่ขยับแม้แต่สตางค์เดียว
+const assetOpeningJv = await gl.postManualJV({ tenantId, systemId }, {
+  date: D("2026-05-31"),
+  book: "GENERAL",
+  memo: "ยอดยกมา — ขึ้นทะเบียนสินทรัพย์ถาวร 2 รายการ",
+  postedById: owner.id,
+  lines: [
+    { accountId: acc("1630"), debit: ASSET_DEFS[0].cost, credit: 0, note: ASSET_DEFS[0].name },
+    { accountId: acc("1610"), debit: ASSET_DEFS[1].cost, credit: 0, note: ASSET_DEFS[1].name },
+    { accountId: acc("3999"), debit: 0, credit: ASSET_DEFS[0].cost + ASSET_DEFS[1].cost, note: "ยอดยกมาสินทรัพย์" },
+  ],
+});
+
+// ── (ค) ค่าเสื่อม 3 งวด ผ่าน gl.postDepreciation (idempotent ต่อ assetId+periodKey) ──
+for (const a of ASSET_DEFS) {
+  const monthly = monthlyDep(a.cost, a.salvage, a.life);
+  for (const periodKey of DEP_PERIODS) {
+    const { entryId } = await gl.postDepreciation({ tenantId, systemId }, {
+      assetId: assetIds[a.code],
+      periodKey,
+      amount: monthly,
+      expenseAccountId: acc("6800"),
+      accumAccountId: acc(a.accumCode),
+    });
+    await prisma.accountDepreciation.create({
+      data: { tenantId, systemId, assetId: assetIds[a.code], periodKey, amount: monthly, entryId },
+    });
+    depExpected.push({ code: a.code, periodKey, amount: monthly });
+  }
+}
+
+// ── (ง) JV มือ 1 ใบ (แท็บ "ทั่วไป" · source = MANUAL · มีผู้บันทึก) ──
+const manualJv = await gl.postManualJV({ tenantId, systemId }, {
+  date: D("2026-09-28"),
+  book: "GENERAL",
+  memo: "ปรับปรุงค่าใช้จ่ายเบ็ดเตล็ดเดือน ก.ย.",
+  postedById: owner.id,
+  lines: [
+    { accountId: acc("6900"), debit: 500_000, credit: 0, note: "ค่าใช้จ่ายเบ็ดเตล็ดเดือน ก.ย." },
+    { accountId: acc("1000"), debit: 0, credit: 500_000, note: "จ่ายเป็นเงินสด" },
+  ],
+});
+
+// ── (จ) ใบสำคัญติดธง ⚑ + บัญชีพัก 9999 (สถานะเดียวกับ g16) ──
+// 🔴 ตั้งใจให้ **ปิดงวด ก.ย. ไม่ได้** — ข้อสอบ qc-acc-v2-period-assets พิสูจน์ทั้ง 2 ข้อบังคับตรงนี้
+const SUSPENSE_CREDIT = 100_000; // 1,000.00 บาท ค้างในบัญชีพัก (เครดิต)
+const flaggedJv = await gl.postManualJV({ tenantId, systemId }, {
+  date: D("2026-09-29"),
+  book: "PAYMENTS",
+  memo: "จ่ายค่าเช่าสำนักงาน",
+  postedById: owner.id,
+  lines: [
+    { accountId: acc("6100"), debit: 1_500_000, credit: 0, note: "ค่าเช่าเดือน ก.ย. 2026" },
+    { accountId: acc("1010"), debit: 0, credit: 1_500_000 - SUSPENSE_CREDIT, note: "จ่ายผ่านธนาคาร" },
+    { accountId: acc("9999"), debit: 0, credit: SUSPENSE_CREDIT, note: "ส่วนต่างรอตรวจสอบ" },
+  ],
+});
+await prisma.accountJournalEntry.update({
+  where: { id: flaggedJv.entryId },
+  data: { needsReview: true, flagNote: "ยอดโอนไม่ตรงใบเสร็จ 1,000.00 บาท — รอเอกสารยืนยัน" },
+});
+
+// ── (ฉ) คู่กลับรายการ 1 คู่ (ใบเดิม REVERSED + ใบกลับ POSTED) ──
+const wrongJv = await gl.postManualJV({ tenantId, systemId }, {
+  date: D("2026-09-02"),
+  book: "GENERAL",
+  memo: "บันทึกค่าสาธารณูปโภคผิดบัญชี (ตัวอย่างการกลับรายการ)",
+  postedById: owner.id,
+  lines: [
+    { accountId: acc("6200"), debit: 320_000, credit: 0, note: "ค่าไฟฟ้าเดือน ส.ค." },
+    { accountId: acc("1000"), debit: 0, credit: 320_000, note: "จ่ายเป็นเงินสด" },
+  ],
+});
+const reversal = await gl.reverseEntry({ tenantId, systemId }, wrongJv.entryId, "ลงผิดบัญชี — ออกใบใหม่แทน");
+if ("skipped" in reversal) throw new Error("seed 8.10: กลับรายการไม่สำเร็จ");
+
+// ── (ช) ทำเครื่องหมายยื่น ภ.พ.30 ของงวด ส.ค. (เช็กลิสต์ก่อนปิดงวดข้อ 4 ผ่าน) ──
+const ppAug = await (await import("@/lib/modules/account/reports")).pp30({ tenantId, systemId }, "2026-08");
+await prisma.accountVatFiling.create({
+  data: {
+    tenantId,
+    systemId,
+    periodKey: "2026-08",
+    filedById: owner.id,
+    salesVatSatang: ppAug.output.total,
+    inputVatSatang: ppAug.input.total,
+    payableSatang: ppAug.output.total - ppAug.input.total,
+    note: "ยื่นผ่าน e-Filing (ข้อมูลตัวอย่างของชุด QC)",
+  },
+});
+
+// ── (ซ) ปิดงวด ส.ค. 2026 (ต้องทำ **หลัง** โพสต์ทุกอย่างเสร็จ ไม่งั้นเอกสารเดือน ส.ค. ลงไม่ได้) ──
+const closeAug = await gl.closePeriod({ tenantId, systemId }, "2026-08", owner.id);
+if (!closeAug.ok) throw new Error(`seed 8.10: ปิดงวด 2026-08 ไม่สำเร็จ — ${closeAug.reason}`);
+
+const DEP_TOTAL = depExpected.reduce((n, d) => n + d.amount, 0);
+console.log(
+  `📒 WO 6.2: สินทรัพย์ 2 ตัว · ค่าเสื่อม ${depExpected.length} แถว (2 ตัว × 3 งวด) (รวม ${bahtStr(DEP_TOTAL)}) · JV มือ 1 · ⚑ 1 (9999 ค้าง ${bahtStr(SUSPENSE_CREDIT)}) · กลับรายการ 1 คู่ · ปิดงวด 2026-08`,
+);
+
 // ─────────────────────────── 9. อ่านผลจริงกลับมา + เขียนเฉลย ───────────────────────────
 
 const stats = await svc.overviewStats(tenantId, systemId);
@@ -1699,14 +1884,28 @@ assertEq("ผู้ติดต่อที่เก็บเข้ากรุ"
 
 const tb = await (await import("@/lib/modules/account/reports")).trialBalance({ tenantId, systemId }, "2026-01", "2026-12");
 if (!tb.balanced) throw new Error("งบทดลองไม่สมดุล");
+// WO 6.2: ชุดข้อมูลมี ⚑ + บัญชีพักค้าง **1 ใบ ในงวด ก.ย. โดยตั้งใจ** (บล็อก 8.10) เพื่อทดสอบ "ปิดงวดไม่ได้"
+// ⇒ เงื่อนไขเดิม "ต้องเป็น 0" เปลี่ยนเป็น "ต้องเป็นค่าที่ตั้งใจเป๊ะ" + เพิ่มข้อใหม่ที่แข็งกว่า:
+//   งวดสะสมถึงสิ้น ส.ค. ต้องสะอาดทั้งคู่ (ไม่งั้นปิดงวด ส.ค. ที่บล็อก 8.10 ทำไว้จะเป็นไปไม่ได้)
 const needsReview = await prisma.accountJournalEntry.count({ where: { systemId, needsReview: true } });
-if (needsReview > 0) throw new Error(`มี JV ที่ต้องตรวจ (needsReview) ${needsReview} รายการ`);
+assertEq("JV ที่ติดธงต้องตรวจ (ทั้งชุด)", needsReview, 1);
+const needsReviewAug = await prisma.accountJournalEntry.count({
+  where: { systemId, needsReview: true, periodKey: { lte: "2026-08" } },
+});
+assertEq("JV ที่ติดธงต้องตรวจ (ถึงสิ้น ส.ค.)", needsReviewAug, 0);
 const suspense = await prisma.accountLedger.findFirst({ where: { systemId, code: "9999" }, select: { id: true } });
 const susAgg = suspense
   ? await prisma.accountJournalLine.aggregate({ where: { systemId, accountId: suspense.id }, _sum: { debit: true, credit: true } })
   : null;
 const suspenseNet = (susAgg?._sum.debit ?? 0) - (susAgg?._sum.credit ?? 0);
-if (suspenseNet !== 0) throw new Error(`บัญชีพัก 9999 ไม่เป็นศูนย์ (${suspenseNet})`);
+assertEq("บัญชีพัก 9999 (ทั้งชุด)", suspenseNet, -SUSPENSE_CREDIT);
+const susAggAug = suspense
+  ? await prisma.accountJournalLine.aggregate({
+      where: { systemId, accountId: suspense.id, entry: { periodKey: { lte: "2026-08" } } },
+      _sum: { debit: true, credit: true },
+    })
+  : null;
+assertEq("บัญชีพัก 9999 (ถึงสิ้น ส.ค.)", (susAggAug?._sum.debit ?? 0) - (susAggAug?._sum.credit ?? 0), 0);
 
 fixtures.contactC00019Id = cid("ปิยธิดา อินสุ่ม");
 fixtures.contactNattapholId = cid("คุณณัฐพล รุ่งเรือง");
@@ -1746,6 +1945,107 @@ const coaSampleRows = await prisma.$queryRaw<Array<{ code: string; id: string; b
    GROUP BY l."id", l."code"`;
 const coaActive = coaTypeRows.reduce((n, r) => n + Number(r.cnt), 0);
 console.log(`🧾 เฉลยผังบัญชี: ${coaActive} บัญชีที่เปิดใช้งาน · ตัวอย่าง ${coaSampleRows.map((r) => `${r.code}=${bahtStr(Number(r.balance))}`).join(" · ")}`);
+
+// ── เฉลย WO 6.2 (สมุดรายวัน · ปิดงวด · ค่าเสื่อม) — SQL ดิบคนละสำนวนกับ journal-v2/period-close/asset-v2 ──
+const AUG = "2026-08";
+const wo62Rows = await prisma.$queryRaw<Array<{ book: string; cnt: bigint; dr: bigint; cr: bigint }>>`
+  SELECT e."book"::text AS book,
+         COUNT(DISTINCT e."id")::bigint AS cnt,
+         COALESCE(SUM(jl."debit"), 0)::bigint AS dr,
+         COALESCE(SUM(jl."credit"), 0)::bigint AS cr
+    FROM "AccountJournalEntry" e
+    JOIN "AccountJournalLine" jl ON jl."entryId" = e."id"
+   WHERE e."systemId" = ${systemId}
+   GROUP BY e."book"`;
+const wo62Susp = await prisma.$queryRaw<Array<{ net: bigint }>>`
+  SELECT COALESCE(SUM(jl."debit" - jl."credit"), 0)::bigint AS net
+    FROM "AccountJournalLine" jl
+    JOIN "AccountJournalEntry" e ON e."id" = jl."entryId"
+    JOIN "AccountLedger" l ON l."id" = jl."accountId"
+   WHERE jl."systemId" = ${systemId} AND l."code" = '9999' AND e."status" = 'POSTED'`;
+const wo62SuspAug = await prisma.$queryRaw<Array<{ net: bigint }>>`
+  SELECT COALESCE(SUM(jl."debit" - jl."credit"), 0)::bigint AS net
+    FROM "AccountJournalLine" jl
+    JOIN "AccountJournalEntry" e ON e."id" = jl."entryId"
+    JOIN "AccountLedger" l ON l."id" = jl."accountId"
+   WHERE jl."systemId" = ${systemId} AND l."code" = '9999' AND e."status" = 'POSTED' AND e."periodKey" <= ${AUG}`;
+const wo62Flags = await prisma.$queryRaw<Array<{ all_cnt: bigint; aug_cnt: bigint }>>`
+  SELECT COUNT(*) FILTER (WHERE "needsReview")::bigint AS all_cnt,
+         COUNT(*) FILTER (WHERE "needsReview" AND "periodKey" <= ${AUG})::bigint AS aug_cnt
+    FROM "AccountJournalEntry"
+   WHERE "systemId" = ${systemId} AND "status" = 'POSTED'`;
+// ยอดของ "ช่วง ก.ย. 2026" — ใช้เป็นเฉลยของภาพหน้าสมุดรายวัน (ช่วงวันที่ตรึงไว้ใน URL ตอนถ่าย
+// ⇒ ตัวเลขไม่ขึ้นกับวันที่รันสคริปต์ ต่างจากยอด "ณ วันนี้" ที่ WO 6.1 รอบ 2 สั่งห้าม pin)
+const wo62Sept = await prisma.$queryRaw<Array<{ cnt: bigint; dr: bigint; cr: bigint }>>`
+  SELECT COUNT(DISTINCT e."id")::bigint AS cnt,
+         COALESCE(SUM(jl."debit"), 0)::bigint AS dr,
+         COALESCE(SUM(jl."credit"), 0)::bigint AS cr
+    FROM "AccountJournalEntry" e
+    JOIN "AccountJournalLine" jl ON jl."entryId" = e."id"
+   WHERE e."systemId" = ${systemId}
+     AND e."date" >= ${new Date("2026-09-01T00:00:00+07:00")}
+     AND e."date" < ${new Date("2026-10-01T00:00:00+07:00")}`;
+const wo62Manual = await prisma.accountJournalEntry.count({ where: { systemId, source: "MANUAL" } });
+const wo62Reversed = await prisma.accountJournalEntry.count({ where: { systemId, status: "REVERSED" } });
+const wo62Entries = await prisma.accountJournalEntry.count({ where: { systemId } });
+// ยอด "แยกประเภท" ของ 2 บัญชีที่ใช้พิสูจน์ drill-down ชั้น ② (รายงาน → แยกประเภท) ทั้งช่วงปี 2026
+const wo62Drill = await prisma.$queryRaw<Array<{ code: string; dr: bigint; cr: bigint; lines: bigint }>>`
+  SELECT l."code",
+         COALESCE(SUM(jl."debit"), 0)::bigint AS dr,
+         COALESCE(SUM(jl."credit"), 0)::bigint AS cr,
+         COUNT(*)::bigint AS lines
+    FROM "AccountJournalLine" jl
+    JOIN "AccountLedger" l ON l."id" = jl."accountId"
+   WHERE jl."systemId" = ${systemId} AND l."code" = ANY(ARRAY['6800', '6100'])
+   GROUP BY l."code"`;
+const wo62 = {
+  _readme: "เฉลย WO 6.2 — สมุดรายวัน V2 · drill-down · ปิดงวด · ค่าเสื่อม (สตางค์ล้วน)",
+  entries: wo62Entries,
+  manualEntries: wo62Manual,
+  reversedEntries: wo62Reversed,
+  needsReview: Number(wo62Flags[0]?.all_cnt ?? 0),
+  needsReviewThroughAug: Number(wo62Flags[0]?.aug_cnt ?? 0),
+  suspense9999: Number(wo62Susp[0]?.net ?? 0),
+  suspense9999ThroughAug: Number(wo62SuspAug[0]?.net ?? 0),
+  suspenseCredit: SUSPENSE_CREDIT,
+  /** ช่วง 1–30 ก.ย. 2026 (ช่วงที่ภาพ visual ตรึงไว้ใน URL) */
+  septRange: {
+    entries: Number(wo62Sept[0]?.cnt ?? 0),
+    debit: Number(wo62Sept[0]?.dr ?? 0),
+    credit: Number(wo62Sept[0]?.cr ?? 0),
+  },
+  byBook: Object.fromEntries(wo62Rows.map((r) => [r.book, Number(r.cnt)])),
+  debitByBook: Object.fromEntries(wo62Rows.map((r) => [r.book, Number(r.dr)])),
+  creditByBook: Object.fromEntries(wo62Rows.map((r) => [r.book, Number(r.cr)])),
+  drill: Object.fromEntries(
+    wo62Drill.map((r) => [r.code, { debit: Number(r.dr), credit: Number(r.cr), lines: Number(r.lines) }]),
+  ),
+  fixtures: {
+    manualJvId: manualJv.entryId,
+    flaggedJvId: flaggedJv.entryId,
+    reversedJvId: wrongJv.entryId,
+    reversalJvId: reversal.entryId,
+    assetOpeningJvId: assetOpeningJv.entryId,
+  },
+  assets: ASSET_DEFS.map((a) => ({
+    id: assetIds[a.code],
+    code: a.code,
+    name: a.name,
+    cost: a.cost,
+    salvageValue: a.salvage,
+    usefulLifeMonths: a.life,
+    monthlyAmount: monthlyDep(a.cost, a.salvage, a.life),
+    periods: DEP_PERIODS.length,
+    accumDepreciation: monthlyDep(a.cost, a.salvage, a.life) * DEP_PERIODS.length,
+    netBookValue: a.cost - monthlyDep(a.cost, a.salvage, a.life) * DEP_PERIODS.length,
+  })),
+  depreciationRows: depExpected,
+  depreciationTotal: DEP_TOTAL,
+  /** ค่าเสื่อมงวด ก.ย. ที่ "ยังไม่ได้ลง" — พรีวิวต้องได้เท่านี้ */
+  depreciationPreviewSept: ASSET_DEFS.reduce((n, a) => n + monthlyDep(a.cost, a.salvage, a.life), 0),
+  periods: { closed: ["2026-08"], open: "2026-09" },
+  vatFiled: ["2026-08"],
+};
 
 const expected = {
   _readme:
@@ -1899,7 +2199,16 @@ const expected = {
       lines: d.lines.map((l) => ({ productId: l.productId, qty: Number(l.qty), amount: l.amount })),
     })),
   },
-  journal: { needsReview: 0, suspense9999: 0, trialBalanceBalanced: true },
+  // WO 6.2: ชุดข้อมูลมีใบสำคัญติดธง ⚑ + บัญชีพักค้าง 1 ใบ (ก.ย.) โดยตั้งใจ — เพื่อให้ทดสอบ "ปิดงวดไม่ได้" ได้จริง
+  // ตัวเลขคิดจาก SQL ดิบในบล็อกเฉลย wo62 ด้านบน (ไม่ฮาร์ดโค้ด) · งวดถึงสิ้น ส.ค. ยังต้องสะอาด = 0 ทั้งคู่
+  journal: {
+    needsReview: wo62.needsReview,
+    needsReviewThroughAug: wo62.needsReviewThroughAug,
+    suspense9999: wo62.suspense9999,
+    suspense9999ThroughAug: wo62.suspense9999ThroughAug,
+    trialBalanceBalanced: true,
+  },
+  wo62,
   // WO 5.3 — กระทบยอดธนาคาร (ค่าทั้งหมดมาจาก generator ที่คิดด้วย SQL อิสระ ไม่ใช่จาก reconcile.ts)
   bankReconcile: {
     ...bankFixture,
