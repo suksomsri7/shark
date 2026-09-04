@@ -395,6 +395,16 @@ export type CashAccount = {
   /** เงินเข้า−ออกของเดือนปัจจุบัน (จาก GL ของบัญชีที่ผูก — นิยามเดียวกับ balance) */
   monthDelta: number;
   pinned: boolean;
+  // ── WO 5.2 (§10.2 "บัญชีเงินที่ติดตาม" การ์ด — subtitle ต้องการฟิลด์พวกนี้) ──
+  // additive: มาจาก financeBalances อยู่แล้ว (ผ่าน parts ที่ cashPosition รับเข้ามา) แค่ผ่านทะลุออกมาเพิ่ม
+  // ไม่กระทบ consumer เดิม (หน้าหลัก) ที่ยังอ่านแค่ id/name/balance/monthDelta/pinned เหมือนเดิม
+  code: string | null;
+  bankName: string | null;
+  accountNo: string | null;
+  bankSubtype: string | null;
+  promptpayId: string | null;
+  limitSatang: number | null;
+  holderUserId: string | null;
 };
 
 export type CashPosition = { total: number; periodKey: string; accounts: CashAccount[] };
@@ -420,6 +430,14 @@ function cashFromParts(
     balance: b.balance,
     monthDelta: b.ledgerAccountId ? move.get(b.ledgerAccountId) ?? 0 : 0,
     pinned: b.pinned,
+    // WO 5.2 — ผ่านทะลุฟิลด์ที่มีอยู่แล้วใน FinanceAccountBalance (ไม่ query เพิ่ม)
+    code: b.code,
+    bankName: b.bankName,
+    accountNo: b.accountNo,
+    bankSubtype: b.bankSubtype,
+    promptpayId: b.promptpayId,
+    limitSatang: b.limitSatang,
+    holderUserId: b.holderUserId,
   }));
   return { total: accounts.reduce((s, a) => s + a.balance, 0), periodKey, accounts };
 }

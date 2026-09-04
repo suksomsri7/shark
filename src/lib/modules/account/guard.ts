@@ -87,6 +87,10 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "expense/page.tsx": "account.doc.view",
   "finance/[financeId]/statement/page.tsx": "account.finance.manage",
   "finance/page.tsx": "account.finance.manage",
+  // WO 5.2 (§10.2–§10.3) — ภาพรวมการเงิน · สำรองรับ/จ่าย · placeholder กระทบยอดธนาคาร (WO 5.3 ทำจริง) — สิทธิ์เดียวกับหน้าการเงินเดิม
+  "finance/overview/page.tsx": "account.finance.manage",
+  "finance/petty-cash/page.tsx": "account.finance.manage",
+  "finance/reconcile/page.tsx": "account.finance.manage",
   "goods-issue/page.tsx": "account.product.manage",
   // WO 4.3 (§8.3–8.4) — หน่วยนับ · ฟอร์มใบเบิก · ใบปรับต้นทุนสินค้า (ทุกหน้าใช้สิทธิ์เดียวกับทะเบียนสินค้า)
   "goods-issue/new/page.tsx": "account.product.manage",

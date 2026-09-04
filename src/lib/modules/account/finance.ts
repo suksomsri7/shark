@@ -814,6 +814,10 @@ export async function transferBetweenFinance(
 /**
  * petty cash เติมเงิน / เบิกชดเชย — ย้ายเงินจากบัญชี counter (ธนาคาร/เงินสด) เข้าบัญชี PETTY_CASH
  * (บัญชีลงเหมือนการโอน — ทั้งเติมและเบิกชดเชยคือเงินไหลเข้าสำรองจ่าย)
+ *
+ * WO 5.2: เพิ่ม `transferId?` ทางเลือก (เดิมไม่มี — สุ่มให้เสมอ = ไม่ idempotent) เพื่อให้
+ * finance-overview.ts `topUpPettyCash`/`reimbursePettyCash` ส่ง id ที่ client generate ครั้งเดียวมาได้
+ * (กดซ้ำ/network retry ไม่โพสต์ JV ซ้ำ) — ไม่ส่ง = พฤติกรรมเดิมเป๊ะ (สุ่มใหม่ทุกครั้ง)
  */
 export async function pettyCashReplenish(
   tenantId: string,
@@ -825,8 +829,9 @@ export async function pettyCashReplenish(
     kind?: "TOPUP" | "REIMBURSE";
     date?: Date;
     note?: string | null;
+    transferId?: string;
   },
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+): Promise<{ ok: true; transferId: string } | { ok: false; reason: string }> {
   const petty = await prisma.accountFinance.findFirst({
     where: { id: input.pettyId, tenantId, systemId },
     select: { type: true },
@@ -835,11 +840,15 @@ export async function pettyCashReplenish(
   if (petty.type !== "PETTY_CASH") return { ok: false, reason: "บัญชีปลายทางต้องเป็นเงินสำรองจ่าย" };
   const memo =
     input.note ?? (input.kind === "REIMBURSE" ? "เบิกชดเชยเงินสำรองจ่าย" : "เติมเงินสำรองจ่าย");
-  return transferBetweenFinance(tenantId, systemId, {
+  const transferId = input.transferId?.trim() || randomUUID();
+  const res = await transferBetweenFinance(tenantId, systemId, {
+    transferId,
     fromId: input.counterFinanceId,
     toId: input.pettyId,
     amount: input.amount,
     date: input.date,
     note: memo,
   });
+  if (!res.ok) return res;
+  return { ok: true, transferId };
 }

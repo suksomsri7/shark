@@ -503,9 +503,10 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
       icon: "wallet",
       href: `${base}/finance`,
       items: [
-        soon("ดูภาพรวม", "chart", "FINANCE_OVERVIEW"),
+        // WO 5.2: ทำแล้ว (หน้าแยก /finance/overview + /finance/petty-cash) → เปลี่ยนจาก soon เป็น ready
+        page({ label: "ดูภาพรวม", href: `${base}/finance/overview`, status: "ready", icon: "chart", testId: "FINANCE_OVERVIEW" }),
         page({ label: "เงินสด/ธนาคาร/e-Wallet", href: `${base}/finance`, status: "ready", icon: "bank", testId: "FINANCE" }),
-        soon("สำรองรับ/จ่าย", "pig", "PETTY_CASH"),
+        page({ label: "สำรองรับ/จ่าย", href: `${base}/finance/petty-cash`, status: "ready", icon: "pig", testId: "PETTY_CASH" }),
         page({ label: "เช็ครับ", href: `${base}/cheque?dir=IN`, status: "ready", icon: "cheque", testId: "CHEQUE_IN" }),
         page({ label: "เช็คจ่าย", href: `${base}/cheque?dir=OUT`, status: "ready", icon: "cheque", testId: "CHEQUE_OUT" }),
         page({ label: "ภาษีถูกหัก ณ ที่จ่าย", href: `${base}/wht?tab=credit`, status: "ready", icon: "pct", testId: "WHT_CREDIT" }),

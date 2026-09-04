@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AccountIcon } from "./AccountIcon";
 import { RowActions, type RowActionItem } from "./RowActions";
+import { FinanceSubTabsBar } from "./FinanceSubTabsBar";
 import { formatBaht } from "@/lib/ui/money";
 
 export type FinanceSubTab = { key: string; label: string; href: string; active: boolean; badge?: number };
@@ -92,51 +93,8 @@ export function FinancePanel({
       {errText && <p className="text-sm text-[color:var(--color-danger)]" data-testid="finance-err">{errText}</p>}
       {okText === "transfer" && <p className="text-sm font-medium" data-testid="finance-ok">โอนเงินระหว่างช่องทางสำเร็จ</p>}
 
-      {/* แถบแท็บย่อยของหมวดการเงิน — g9: ขีดเส้นใต้แบบเดียวกับแท็บสถานะเอกสาร (StatusTabs/WO 1.1) บนเดสก์ท็อป
-          มือถือ 390 = ชิปเลื่อนแนวนอน (แบบเดียวกับ WO 3.2) — hrefs ชี้คนละหน้า (คนละ route) จึงเขียนแยกจาก StatusTabs
-          (StatusTabs ผูกกับ pathname เดียว เปลี่ยนแค่ query param) */}
-      <div data-testid="finance-subtabs">
-        <div className="hidden gap-4 overflow-x-auto border-b pb-px md:flex" style={{ borderColor: "var(--color-line)" }} role="tablist">
-          {subTabs.map((t) => (
-            <Link
-              key={t.key}
-              href={t.href}
-              role="tab"
-              aria-selected={t.active}
-              className="shrink-0 whitespace-nowrap pb-2 text-sm"
-              style={{
-                color: t.active ? "var(--color-ink)" : "var(--color-muted)",
-                fontWeight: t.active ? 600 : 400,
-                borderBottom: t.active ? "2px solid var(--color-accent)" : "2px solid transparent",
-              }}
-              data-testid={`finance-subtab-${t.key}`}
-            >
-              {t.label}
-              {t.badge != null && <span className="ml-1">{t.badge}</span>}
-            </Link>
-          ))}
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 md:hidden" role="tablist">
-          {subTabs.map((t) => (
-            <Link
-              key={t.key}
-              href={t.href}
-              role="tab"
-              aria-selected={t.active}
-              className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm"
-              style={
-                t.active
-                  ? { background: "var(--color-ink)", color: "var(--color-surface)", borderColor: "var(--color-ink)" }
-                  : { borderColor: "var(--color-line)" }
-              }
-              data-testid={`finance-subtab-${t.key}-m`}
-            >
-              {t.label}
-              {t.badge != null && <span className="ml-1 opacity-80">{t.badge}</span>}
-            </Link>
-          ))}
-        </div>
-      </div>
+      {/* แถบแท็บย่อยของหมวดการเงิน (WO 5.2: แยกเป็น FinanceSubTabsBar ใช้ร่วม 3 หน้า) */}
+      <FinanceSubTabsBar subTabs={subTabs} />
 
       {groups.length === 0 ? (
         <EmptyState text="ยังไม่มีช่องทางการเงิน — เพิ่มช่องทางเพื่อเริ่มบันทึกเงินสด/ธนาคาร" action={{ href: createHref, label: "+ เพิ่มช่องทาง" }} />

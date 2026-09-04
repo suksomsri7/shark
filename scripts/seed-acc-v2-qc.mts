@@ -8,10 +8,10 @@
 //    ไม่ยัด AccountDocument/JournalEntry ตรงเข้า DB — ไม่งั้นข้อมูลจะสมดุลปลอมและ QC โกหก
 //
 // ค่าคาดหวัง (BLUEPRINT §2 · เฟรม f1/f3/f5/f6/f7):
-//   ค้างรับ 486,300.00 · 18 ใบ · 14 ลูกค้า      พ้นกำหนด 128,400.00 · 4 ใบ
-//   ค้างจ่าย 212,750.00 · 9 ใบ · 7 ผู้ขาย
-//   ช่องทางการเงิน 4: 86,400 · 912,300 · 265,860 · 20,000 (รวม 1,284,560)
-//   ใบแจ้งหนี้ 51 ใบ: ร่าง 3 · รอชำระ 12 · บางส่วน 2 · ชำระแล้ว 29 · พ้นกำหนด 4 · ยกเลิก 1
+//   ค้างรับ 494,300.00 · 20 ใบ · 14 ลูกค้า      พ้นกำหนด 128,400.00 · 4 ใบ
+//   ค้างจ่าย 214,750.00 · 10 ใบ · 7 ผู้ขาย
+//   ช่องทางการเงิน 4: 86,400 · 901,800 · 265,860 · 29,700 (รวม 1,283,760 — WO 5.2: เติม/เบิกชดเชยสำรองจ่าย)
+//   ใบแจ้งหนี้ 53 ใบ: ร่าง 3 · รอชำระ 14 (2 ใบครบกำหนดเดือนนี้ — WO 5.2 round 2) · บางส่วน 2 · ชำระแล้ว 29 · พ้นกำหนด 4 · ยกเลิก 1
 //   ผู้ติดต่อ 63 (ลูกค้า 41 · ผู้ขาย 22 · เก็บเข้ากรุ 5) · สินค้า/บริการ 12
 //
 // ⏰ วันที่ทั้งหมดอ้าง "วันนี้" ที่ตรึงไว้ = 2026-09-30 · ใบที่ยังไม่พ้นกำหนดตั้ง dueDate พ.ย.–ธ.ค. 2026
@@ -82,6 +82,7 @@ const crm = await import("@/lib/modules/crm/service"); // WO 3.2: สาธิ�
 const inv = await import("@/lib/modules/inventory/service"); // WO 4.1: สินค้าที่ "ติดตามสต็อกในคลัง"
 const invLink = await import("@/lib/modules/account/inventory-link"); // WO 4.1: ผูกสินค้าบัญชี ↔ InvItem
 const pos = await import("@/lib/modules/pos/service"); // WO 4.2: บิลขายหน้าร้าน (POS ส่งบรรทัดเข้าบัญชี)
+const finOv = await import("@/lib/modules/account/finance-overview"); // WO 5.2: เติมเงิน/เบิกชดเชยสำรองจ่าย
 const { drainAll } = await import("@/lib/outbox-consumers"); // WO 4.2: ระบายคิว outbox ให้ bridge ทำงานทันที
 
 // ─────────────────────────── ตัวช่วย ───────────────────────────
@@ -529,7 +530,10 @@ type InvPlan = {
   cust: string;
   grand: number;
   issue: string;
-  due: string;
+  // string = D(due) (10:00 BKK ปกติ) · Date = ใช้ตรง ๆ (WO 5.2 round 2: ต้องคุมเวลาแม่นกว่าวันเดียว —
+  // ครบกำหนด "ท้ายเดือน" ต้องอยู่หลัง QC.today 12:00 ไม่งั้นเฉลย acc-v2-expected-dashboard.mts (NOW ตรึงที่
+  // 2026-09-30T12:00) จะนับเป็น "พ้นกำหนดแล้ว" ปนเข้าไทล์ overdue โดยไม่ตั้งใจ)
+  due: string | Date;
   desc: string;
   pay?: PayPlan;
   bucket: "overdue" | "awaiting" | "partial" | "paid";
@@ -557,6 +561,13 @@ const AWAITING: InvPlan[] = [
   { cust: "คุณอรทัย พงษ์ไพบูลย์", grand: 2_800_000, issue: "2026-09-20", due: "2026-11-19", desc: "ทริปสิมิลัน 3 วัน 2 คืน", bucket: "awaiting" },
   { cust: "ปิยธิดา อินสุ่ม", grand: 1_980_000, issue: "2026-09-22", due: "2026-11-21", desc: "ทริปดำน้ำเกาะราชา 1 วัน (2 ท่าน)", bucket: "awaiting" },
   { cust: "บริษัท อันดามัน ทราเวล จำกัด", grand: 1_770_000, issue: "2026-09-24", due: "2026-12-23", desc: "ค่าบริการไกด์ดำน้ำ ก.ย.", bucket: "awaiting" },
+  // WO 5.2 round 2 (coordinator feedback) — 2 ใบเพิ่ม ครบกำหนด "เดือนนี้" (ไม่ใช่ พ.ย./ธ.ค. เหมือนใบอื่น) เพื่อให้ไทล์
+  // "คาดว่าจะเข้า" ของหน้าภาพรวมการเงิน (f7 §10.2) มีตัวเลขจริงให้ทดสอบ — ใช้ลูกค้าเดิมที่มีอยู่แล้ว (ไม่เพิ่มผู้ติดต่อใหม่
+  // ⇒ ไม่กระทบ receivableCustomers/contacts count) · ยอดเล็ก ๆ ⇒ กระทบแค่ receivable/receivableDocs/invoiceTabs
+  // due = เย็นวันที่ 30 ก.ย. (หลัง QC.today 12:00 ที่ acc-v2-expected-dashboard.mts ตรึงไว้เป็น "วันนี้")
+  // เพื่อให้อยู่ในเดือนนี้แน่ ๆ แต่ "ยังไม่พ้นกำหนด" ตามเฉลย — ดูหมายเหตุที่ type InvPlan.due
+  { cust: "คุณพิมพ์ชนก วัฒนสุข", grand: 500_000, issue: "2026-09-24", due: new Date("2026-09-30T20:00:00+07:00"), desc: "ค่าเช่าอุปกรณ์ดำน้ำเพิ่มเติม (ครบกำหนดเดือนนี้)", bucket: "awaiting" },
+  { cust: "บริษัท เกาะพีพี แอดเวนเจอร์ จำกัด", grand: 300_000, issue: "2026-09-25", due: new Date("2026-09-30T21:00:00+07:00"), desc: "ค่าธรรมเนียมทริปเสริม (ครบกำหนดเดือนนี้)", bucket: "awaiting" },
 ];
 
 // 5.3 ชำระบางส่วน 2 ใบ · คงเหลือรวม 112,250.00
@@ -630,7 +641,7 @@ type BillPlan = {
   vendor: string;
   grand: number;
   issue: string;
-  due: string;
+  due: string | Date; // ดูหมายเหตุที่ InvPlan.due
   desc: string;
   docType: "EXPENSE" | "PURCHASE";
   pay?: { fin: "BSV001"; amount: number; paidAt: string };
@@ -645,6 +656,9 @@ const OPEN_BILLS: BillPlan[] = [
   { vendor: "บริษัท เซฟตี้เฟิร์ส อุปกรณ์นิรภัย จำกัด", grand: 1_600_000, issue: "2026-09-11", due: "2026-12-10", desc: "ชุดปฐมพยาบาลและออกซิเจนฉุกเฉิน", docType: "PURCHASE" },
   { vendor: "บริษัท สยามแก๊ส อินดัสทรี จำกัด", grand: 1_400_000, issue: "2026-09-17", due: "2026-12-15", desc: "ค่าอากาศอัดถังดำน้ำ ส.ค.", docType: "EXPENSE" },
   { vendor: "อู่ต่อเรือ ป่าตองมารีนเซอร์วิส", grand: 1_200_000, issue: "2026-09-19", due: "2026-12-20", desc: "เปลี่ยนใบจักรเรือเล็ก", docType: "PURCHASE" },
+  // WO 5.2 round 2 — 1 ใบเพิ่ม ครบกำหนด "เดือนนี้" ให้ไทล์ "คาดว่าจะออก" มีตัวเลขจริง (เหตุผลเดียวกับฝั่งรับด้านบน)
+  // due = เย็นวันที่ 30 ก.ย. (ดูหมายเหตุที่ type BillPlan.due / InvPlan.due ด้านบน)
+  { vendor: "บริษัท เซฟตี้เฟิร์ส อุปกรณ์นิรภัย จำกัด", grand: 200_000, issue: "2026-09-23", due: new Date("2026-09-30T22:00:00+07:00"), desc: "ชุดปฐมพยาบาลเพิ่มเติม (ครบกำหนดเดือนนี้)", docType: "PURCHASE" },
 ];
 const PAID_BILLS: BillPlan[] = [
   { vendor: "บริษัท ภูเก็ตปิโตรเลียม จำกัด", grand: 3_200_000, issue: "2026-06-05", due: "2026-07-05", desc: "ค่าน้ำมันเรือ มิ.ย.", docType: "EXPENSE", pay: { fin: "BSV001", amount: 3_200_000, paidAt: "2026-07-03" } },
@@ -664,10 +678,10 @@ const receivablePlan =
   sum(OVERDUE.map((d) => d.grand)) +
   sum(AWAITING.map((d) => d.grand)) +
   sum(PARTIAL.map((d) => d.grand - (d.pay?.amount ?? 0)));
-assertEq("ค้างรับตามแผน", receivablePlan, 48_630_000);
+assertEq("ค้างรับตามแผน", receivablePlan, 49_430_000);
 assertEq("พ้นกำหนดตามแผน", sum(OVERDUE.map((d) => d.grand)), 12_840_000);
-assertEq("ค้างจ่ายตามแผน", sum(OPEN_BILLS.map((d) => d.grand)), 21_275_000);
-assertEq("จำนวนใบแจ้งหนี้ตามแผน", OVERDUE.length + AWAITING.length + PARTIAL.length + PAID_SPEC.length + DRAFTS.length + 1, 51);
+assertEq("ค้างจ่ายตามแผน", sum(OPEN_BILLS.map((d) => d.grand)), 21_475_000);
+assertEq("จำนวนใบแจ้งหนี้ตามแผน", OVERDUE.length + AWAITING.length + PARTIAL.length + PAID_SPEC.length + DRAFTS.length + 1, 53);
 assertEq("ใบชำระแล้วตามแผน", PAID_SPEC.length, 29);
 {
   const custs = new Set([...OVERDUE, ...AWAITING, ...PARTIAL].map((d) => d.cust));
@@ -778,7 +792,7 @@ async function makeInvoice(p: InvPlan, lines?: { description: string; qty: numbe
     docType: "INVOICE",
     contactId: cid(p.cust),
     issueDate: D(p.issue),
-    dueDate: D(p.due),
+    dueDate: p.due instanceof Date ? p.due : D(p.due),
     vatMode: lines ? "EXCLUDE" : auto.vatMode,
     lines: lines ?? auto.lines,
     createdById: owner.id,
@@ -929,7 +943,7 @@ async function makeBill(b: BillPlan) {
     docType: b.docType,
     contactId: cid(b.vendor),
     issueDate: D(b.issue),
-    dueDate: D(b.due),
+    dueDate: b.due instanceof Date ? b.due : D(b.due),
     vatMode: auto.vatMode,
     vatPurchaseMode: "CLAIM",
     lines: auto.lines.map((l) => ({ ...l, accountId: acct })),
@@ -954,6 +968,75 @@ async function makeBill(b: BillPlan) {
 for (const b of OPEN_BILLS) await makeBill(b);
 for (const b of PAID_BILLS) await makeBill(b);
 console.log(`🧾 เอกสารฝั่งจ่าย ${OPEN_BILLS.length + PAID_BILLS.length} ใบ (ค้างจ่าย ${OPEN_BILLS.length})`);
+
+// ─────────────────────────── 8.5 สำรองรับ-จ่าย (WO 5.2 · §10.3) ───────────────────────────
+// เติมเงิน 1 ครั้ง (internal transfer — ไม่กระทบยอดรวม) + ค่าใช้จ่าย 2 รายการเล็ก ๆ จ่ายจาก PTY001
+// (1 เบิกชดเชยแล้ว · 1 ค้างเบิก) — ตัวเลขบันทึกไว้ใน wo-notes/5.2.md หัวข้อ "ตัวเลขที่จะเปลี่ยนจาก seed"
+const PETTY_TOPUP_SATANG = 1_000_000; // 10,000.00 ฿ BSV001 → PTY001
+const PETTY_EXPENSE_A_SATANG = 50_000; // 500.00 ฿ "ค่าอาหารว่างประชุม" — เบิกชดเชยแล้ว
+const PETTY_EXPENSE_B_SATANG = 30_000; // 300.00 ฿ "ค่าจอดรถ" — ค้างเบิก (pending)
+
+const pettyTopUp = await finOv.topUpPettyCash(tenantId, systemId, {
+  pettyId: finId["PTY001"],
+  sourceFinanceId: finId["BSV001"],
+  amount: PETTY_TOPUP_SATANG,
+  date: D("2026-09-10"),
+  note: "เติมเงินสำรองจ่ายประจำเดือน",
+});
+if (!pettyTopUp.ok) throw new Error(`เติมเงินสำรองจ่ายไม่สำเร็จ: ${pettyTopUp.reason}`);
+
+const miscAccount = ledgers.find((a) => a.code === "6900") ?? expenseAccounts[0];
+async function makePettyExpense(desc: string, grand: number, issue: string): Promise<string> {
+  const auto = docLines(grand, desc);
+  const doc = await exp.createExpenseDoc({
+    tenantId,
+    systemId,
+    docType: "EXPENSE",
+    issueDate: D(issue),
+    vatMode: auto.vatMode,
+    vatPurchaseMode: "CLAIM",
+    lines: auto.lines.map((l) => ({ ...l, accountId: miscAccount.id })),
+    createdById: owner.id,
+  });
+  const issued = await exp.issueExpenseDoc(tenantId, systemId, doc.id);
+  if (!issued.ok) throw new Error(`ออกเอกสารค่าใช้จ่ายสำรองจ่าย "${desc}" ไม่สำเร็จ: ${issued.reason}`);
+  const pay = await exp.recordVendorPayment(tenantId, systemId, doc.id, {
+    paidAt: D(issue),
+    channel: "CASH",
+    financeAccountId: finId["PTY001"],
+    amount: grand,
+    createdById: owner.id,
+  });
+  if (!pay.ok || !pay.paymentId) throw new Error(`บันทึกจ่ายค่าใช้จ่ายสำรองจ่าย "${desc}" ไม่สำเร็จ: ${!pay.ok ? pay.reason : "ไม่มี paymentId"}`);
+  return pay.paymentId;
+}
+
+const pettyExpenseAPaymentId = await makePettyExpense("ค่าอาหารว่างประชุม", PETTY_EXPENSE_A_SATANG, "2026-09-12");
+const pettyExpenseBPaymentId = await makePettyExpense("ค่าจอดรถ", PETTY_EXPENSE_B_SATANG, "2026-09-20");
+
+const pettyReimburseA = await finOv.reimbursePettyCash(tenantId, systemId, {
+  paymentId: pettyExpenseAPaymentId,
+  sourceFinanceId: finId["BSV001"],
+  date: D("2026-09-14"),
+  note: "เบิกชดเชยค่าอาหารว่างประชุม",
+});
+if (!pettyReimburseA.ok) throw new Error(`เบิกชดเชยค่าอาหารว่างประชุมไม่สำเร็จ: ${pettyReimburseA.reason}`);
+// (pettyExpenseBPaymentId ตั้งใจ "ไม่" เรียก reimbursePettyCash — ค้างเบิกไว้ตามแผน)
+
+// ยอดสุดท้ายหลังบล็อกนี้ (ตรวจทวนกับ SQL อิสระใน qc-acc-v2-finance-overview.mts):
+//   PTY001 = 2,000,000 (opening) + 1,000,000 (topup) − 50,000 (exp A) − 30,000 (exp B) + 50,000 (reimburse A)
+//          = 2,970,000 สตางค์ (฿29,700.00)
+//   BSV001 = 91,230,000 (opening target เดิม) − 1,000,000 (topup out) − 50,000 (reimburse out)
+//          = 90,180,000 สตางค์ (฿901,800.00)
+//   รวมทุกช่องทาง = 128,456,000 − 50,000 − 30,000 = 128,376,000 สตางค์ (฿1,283,760.00)
+//   (เติมเงิน/เบิกชดเชย = โอนภายใน ไม่กระทบยอดรวม — ยอดรวมขยับแค่จาก 2 ค่าใช้จ่ายจริงเท่านั้น)
+const PETTY_FINAL = {
+  PTY001: FIN_TARGET.PTY001 + PETTY_TOPUP_SATANG - PETTY_EXPENSE_A_SATANG - PETTY_EXPENSE_B_SATANG + PETTY_EXPENSE_A_SATANG,
+  BSV001: FIN_TARGET.BSV001 - PETTY_TOPUP_SATANG - PETTY_EXPENSE_A_SATANG,
+};
+assertEq("PTY001 หลังเติม/เบิกชดเชย (WO 5.2)", PETTY_FINAL.PTY001, 2_970_000);
+assertEq("BSV001 หลังเติม/เบิกชดเชย (WO 5.2)", PETTY_FINAL.BSV001, 90_180_000);
+console.log(`🐷 สำรองรับ-จ่าย: เติม ฿10,000 · ค่าใช้จ่าย 2 รายการ (เบิกชดเชยแล้ว 1) → PTY001 ฿${bahtStr(PETTY_FINAL.PTY001)} · BSV001 ฿${bahtStr(PETTY_FINAL.BSV001)}`);
 
 // ─────────── 8.5 คู่ผู้ติดต่อซ้ำที่ "ตั้งใจใส่" (WO 3.4 · SPEC §7.3 · ภาพ g7-contact-merge.png) ───────────
 //
@@ -1168,11 +1251,15 @@ const pay = await exp.payableStats(tenantId, systemId);
 const balances = await fin.financeBalances(tenantId, systemId);
 const balByName = new Map(balances.map((b) => [b.name, b.balance]));
 
-assertEq("ค้างรับ (จาก DB)", stats.receivable, 48_630_000);
+assertEq("ค้างรับ (จาก DB)", stats.receivable, 49_430_000);
 assertEq("พ้นกำหนด (จาก DB)", stats.overdueAmount, 12_840_000);
 assertEq("จำนวนใบพ้นกำหนด (จาก DB)", stats.overdueCount, 4);
-assertEq("ค้างจ่าย (จาก DB)", pay.payable, 21_275_000);
-for (const f of FIN_DEF) assertEq(`ยอดคงเหลือ ${f.name}`, balByName.get(f.name) ?? 0, FIN_TARGET[f.code as keyof typeof FIN_TARGET]);
+assertEq("ค้างจ่าย (จาก DB)", pay.payable, 21_475_000);
+// WO 5.2: BSV001/PTY001 ขยับจากเติมเงิน/เบิกชดเชยสำรองจ่าย (บล็อก 8.5) — เทียบกับ PETTY_FINAL แทน FIN_TARGET ตรง ๆ
+for (const f of FIN_DEF) {
+  const want = f.code === "BSV001" ? PETTY_FINAL.BSV001 : f.code === "PTY001" ? PETTY_FINAL.PTY001 : FIN_TARGET[f.code as keyof typeof FIN_TARGET];
+  assertEq(`ยอดคงเหลือ ${f.name}`, balByName.get(f.name) ?? 0, want);
+}
 
 const invoices = await prisma.accountDocument.findMany({
   where: { tenantId, systemId, docType: "INVOICE" },
@@ -1187,9 +1274,9 @@ const tabs = {
   overdue: invoices.filter((d) => svc.isOverdue(d)).length,
   cancelled: invoices.filter((d) => d.status === "CANCELLED" || d.status === "VOIDED").length,
 };
-assertEq("แท็บ ทั้งหมด", tabs.all, 51);
+assertEq("แท็บ ทั้งหมด", tabs.all, 53);
 assertEq("แท็บ ร่าง", tabs.draft, 3);
-assertEq("แท็บ รอชำระ", tabs.awaiting, 12);
+assertEq("แท็บ รอชำระ", tabs.awaiting, 14);
 assertEq("แท็บ ชำระบางส่วน", tabs.partial, 2);
 assertEq("แท็บ ชำระแล้ว", tabs.paid, 29);
 assertEq("แท็บ พ้นกำหนด", tabs.overdue, 4);
@@ -1242,21 +1329,23 @@ const expected = {
     MEMBER: memSys.id,
     CRM: crmSys.id,
   },
-  receivable: 48_630_000,
-  receivableDocs: 18,
+  receivable: 49_430_000,
+  receivableDocs: 20,
   receivableCustomers: 14,
   overdueAmount: 12_840_000,
   overdueDocs: 4,
-  payable: 21_275_000,
-  payableDocs: 9,
+  payable: 21_475_000,
+  payableDocs: 10,
   payableVendors: 7,
   payableOverdueDocs: 2,
+  // WO 5.2: BSV001/PTY001/total อัปเดตเป็นยอดหลังเติมเงิน/เบิกชดเชยสำรองจ่าย (ดูบล็อก 8.5 ด้านบน)
+  // — CSH001/EWL001 ไม่กระทบ (ไม่ได้แตะช่องทางนี้ในบล็อก 8.5)
   finance: {
     CSH001: FIN_TARGET.CSH001,
-    BSV001: FIN_TARGET.BSV001,
+    BSV001: PETTY_FINAL.BSV001,
     EWL001: FIN_TARGET.EWL001,
-    PTY001: FIN_TARGET.PTY001,
-    total: 128_456_000,
+    PTY001: PETTY_FINAL.PTY001,
+    total: FIN_TARGET.CSH001 + PETTY_FINAL.BSV001 + FIN_TARGET.EWL001 + PETTY_FINAL.PTY001,
   },
   financeAccounts: FIN_DEF.map((f) => ({
     code: f.code,
@@ -1264,14 +1353,16 @@ const expected = {
     name: f.name,
     type: f.type,
     opening: finOpening[f.code],
-    balance: FIN_TARGET[f.code as keyof typeof FIN_TARGET],
+    balance:
+      f.code === "BSV001" ? PETTY_FINAL.BSV001 : f.code === "PTY001" ? PETTY_FINAL.PTY001 : FIN_TARGET[f.code as keyof typeof FIN_TARGET],
   })),
   // WO 5.1 — กลุ่ม/ยอดกลุ่ม (§10.1): เงินสด·ออมทรัพย์·e-Wallet·สำรองรับ-จ่าย (ไม่มีบัญชีกระแสในชุดข้อมูลนี้)
+  // WO 5.2: BANK_SAVINGS/PETTY_CASH อัปเดตตามยอดหลังเติม/เบิกชดเชย
   financeGroups: {
     CASH: FIN_TARGET.CSH001,
-    BANK_SAVINGS: FIN_TARGET.BSV001,
+    BANK_SAVINGS: PETTY_FINAL.BSV001,
     E_WALLET: FIN_TARGET.EWL001,
-    PETTY_CASH: FIN_TARGET.PTY001,
+    PETTY_CASH: PETTY_FINAL.PTY001,
   },
   // WO 5.1 — BSV001 ยกมา 2 รายการ (ผลรวม = finOpening.BSV001 เท่าเดิม) — qc ยิง 2 JV แยกกันตรง key นี้
   financeOpeningSplit: {
@@ -1285,7 +1376,17 @@ const expected = {
   },
   // WO 5.1 — ช่องทางปิดใช้งาน 1 บัญชี (ไม่นับใน financeAccounts/financeGroups/total ข้างบน)
   financeArchived: { id: archivedFin.id, code: archivedFin.code },
-  invoiceTabs: { all: 51, draft: 3, awaiting: 12, partial: 2, paid: 29, overdue: 4, cancelled: 1 },
+  // WO 5.2 (§10.3) — เฉลยสำรองรับ-จ่าย: กล่อง PTY001 เติม 1 ครั้ง (฿10,000 · 2026-09-10) + ค่าใช้จ่าย 2 รายการ
+  pettyCash: {
+    id: finId["PTY001"],
+    code: "PTY001",
+    balance: PETTY_FINAL.PTY001,
+    topUpAmount: PETTY_TOPUP_SATANG,
+    topUpDate: "2026-09-10",
+    reimbursed: { paymentId: pettyExpenseAPaymentId, amount: PETTY_EXPENSE_A_SATANG, date: "2026-09-12" },
+    pending: { paymentId: pettyExpenseBPaymentId, amount: PETTY_EXPENSE_B_SATANG, date: "2026-09-20" },
+  },
+  invoiceTabs: { all: 53, draft: 3, awaiting: 14, partial: 2, paid: 29, overdue: 4, cancelled: 1 },
   contacts: { all: 63, customer: 41, vendor: 22, archived: 5, active: 58 },
   // WO 4.3: 13 = สินค้า 7 + บริการ 5 + รายการจัดชุด 1 (เดิม 12 · เพิ่ม "ชุดดำน้ำตื้นครบเซ็ต")
   products: 13,

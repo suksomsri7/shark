@@ -1096,6 +1096,77 @@ const PAGES: Record<string, PageSpec[]> = {
       onlyDevice: "mobile",
     },
   ],
+  // WO 5.2 — ภาพรวมการเงิน + ปฏิทินเงินเข้า-ออก + สำรองรับ/จ่าย (§10.2–§10.3) เทียบ f7-finance-overview.png (+ -menu.png)
+  "5.2": [
+    {
+      name: "finance-overview",
+      path: `/app/sys/${SYS}/account/finance/overview`,
+      note: "หน้าดูภาพรวมการเงิน (f7) — บัญชีเงินที่ติดตาม · 6 ไทล์ · ปฏิทินเดือน · กระทบยอดธนาคาร (สรุป) · เงินคุณอยู่ไหน",
+      expect: [
+        "การเงิน",
+        "บัญชีเงินที่ติดตาม",
+        "ตารางเงินเข้า-ออก",
+        "เงินเข้า",
+        "เงินออก",
+        "ค้างรับเกินกำหนด",
+        "ค้างจ่ายเกินกำหนด",
+        "คาดว่าจะเข้า",
+        "คาดว่าจะออก",
+        "กระทบยอดธนาคาร",
+        "นำเข้า statement",
+        "รายการที่กระทบยอดแล้ว",
+        "เงินคุณอยู่ไหน",
+      ],
+    },
+    {
+      name: "finance-overview-day",
+      path: `/app/sys/${SYS}/account/finance/overview`,
+      note: "คลิกวันที่ 2026-09-20 ในปฏิทิน (ค่าจอดรถ ค้างเบิก ที่ seed ใส่ไว้) → modal รายการวันนั้น",
+      // round 2 (coordinator feedback): หัว panel ต้องเป็นวันที่ไทย "20 ก.ย. 2026" ไม่ใช่ ISO "2026-09-20" ดิบ
+      expect: ["20 ก.ย. 2026", "฿300.00"],
+      onlyDevice: "desktop",
+      click: ['[data-testid="fov-day-2026-09-20"]'],
+      waitAfterClick: 400,
+    },
+    {
+      name: "finance-overview-mobile",
+      path: `/app/sys/${SYS}/account/finance/overview`,
+      note: "หน้าดูภาพรวมการเงินบนมือถือ 390 — ไทล์ 2 คอลัมน์ · ปฏิทินเป็นรายการวันแบบเลื่อน",
+      expect: ["การเงิน", "บัญชีเงินที่ติดตาม", "เงินเข้า", "เงินออก"],
+      onlyDevice: "mobile",
+    },
+    {
+      name: "petty-cash-list",
+      path: `/app/sys/${SYS}/account/finance/petty-cash`,
+      note: "หน้าสำรองรับ/จ่าย (§10.3) — ตาราง ชื่อ·ผู้ถือ·วงเงิน·คงเหลือ·เติมล่าสุด",
+      expect: ["เงินสดย่อย", "PTY001", "฿29,700.00"],
+    },
+    {
+      name: "petty-cash-topup-modal",
+      path: `/app/sys/${SYS}/account/finance/petty-cash?topup=${E.pettyCash?.id}`,
+      note: 'modal "เติมเงิน" — จากช่องทาง/จำนวนเงิน/วันที่/หมายเหตุ',
+      expect: ["เติมเงิน", "จากช่องทาง", "จำนวนเงิน", "วันที่"],
+      onlyDevice: "desktop",
+      expandModalForShot: '[data-testid="petty-topup-modal"]',
+      waitAfterClick: 400,
+    },
+    {
+      name: "petty-cash-reimburse-modal",
+      path: `/app/sys/${SYS}/account/finance/petty-cash?reimburse=${E.pettyCash?.id}`,
+      note: 'modal "เบิกชดเชย" — รายการค้างเบิก (ค่าจอดรถ ฿300 ที่ seed ใส่ไว้) + เลือกช่องทางโอนเข้าชดเชย',
+      expect: ["เบิกชดเชย", "฿300.00", "จากช่องทาง"],
+      onlyDevice: "desktop",
+      expandModalForShot: '[data-testid="petty-reimburse-modal"]',
+      waitAfterClick: 600,
+    },
+    {
+      name: "petty-cash-mobile",
+      path: `/app/sys/${SYS}/account/finance/petty-cash`,
+      note: "หน้าสำรองรับ/จ่ายบนมือถือ 390 — การ์ดแทนตาราง",
+      expect: ["เงินสดย่อย", "PTY001"],
+      onlyDevice: "mobile",
+    },
+  ],
   // WO 3.2 — หน้าผู้ติดต่อ V2 (§7.1/§7.4) เทียบ f5-contacts.png + f5-contacts-menu.png (เดสก์ท็อป) · f13 pattern (มือถือ)
   "3.2": [
     {
@@ -1362,6 +1433,19 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "finance-group-total-BANK_SAVINGS": bahtStr(E.financeGroups?.BANK_SAVINGS ?? 0),
       "finance-group-total-E_WALLET": bahtStr(E.financeGroups?.E_WALLET ?? 0),
       "finance-group-total-PETTY_CASH": bahtStr(E.financeGroups?.PETTY_CASH ?? 0),
+    },
+  },
+  // WO 5.2 — 6 ไทล์/ยอดรวม "เงินคุณอยู่ไหน"/ยอดคงเหลือสำรองจ่าย ต้องตรงเฉลย seed เป๊ะ
+  "5.2": {
+    "finance-overview": {
+      "fov-tile-inflow": bahtStr(E.dashboard?.calendar?.tiles?.inflow?.amount ?? 0),
+      "fov-tile-outflow": bahtStr(E.dashboard?.calendar?.tiles?.outflow?.amount ?? 0),
+      "fov-tile-overdue-receivable": bahtStr(E.dashboard?.calendar?.tiles?.overdueReceivable?.amount ?? 0),
+      "fov-tile-overdue-payable": bahtStr(E.dashboard?.calendar?.tiles?.overduePayable?.amount ?? 0),
+      "fov-cash-total": bahtStr(E.finance?.total ?? 0),
+    },
+    "petty-cash-list": {
+      [`petty-balance-${E.pettyCash?.id}`]: bahtStr(E.pettyCash?.balance ?? 0),
     },
   },
   "3.2": {

@@ -267,11 +267,20 @@ model AccountDocumentPayment {
   voidReason       String?
   createdById      String?
 
+  // ───── V2 (WO 5.2 · §10.3 "เบิกชดเชย"): เชื่อมรายการจ่ายที่จ่ายจากบัญชีสำรองรับ-จ่าย (PETTY_CASH)
+  // กับการโอนเงินเข้าบัญชีนั้นที่เติมชดเชยให้ — nullable column บน payment เดิม (ตามกติกา WO: ห้ามเพิ่มตารางใหม่
+  // ถ้าเพิ่มคอลัมน์พอ) แทนสร้างตารางกลาง ไม่ผูก relation จริงกับ AccountFinanceTransfer (คนละ table คนละ scope)
+  // — เก็บแค่ id ไว้เผื่อ query ย้อน · reimbursedAt = null คือ "ยังไม่เบิกชดเชย"
+  reimbursedAt         DateTime?
+  reimbursedTransferId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([systemId, paidAt])
   @@index([documentId])
+  // WO 5.2: หา "รายการที่จ่ายจากกล่องนี้ ยังไม่เบิกชดเชย" เร็ว (เบิกชดเชย modal — เลือกช่องทาง + filter reimbursedAt null)
+  @@index([systemId, financeAccountId, reimbursedAt])
 }
 
 model AccountDocumentRelation {

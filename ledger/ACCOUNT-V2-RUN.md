@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 5.2 ภาพรวมการเงิน + ปฏิทิน + สำรองรับ/จ่าย (เฟส 5) |
+| WO | 5.3 กระทบยอดธนาคาร (เฟส 5) |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Sonnet (sub-agent · UI ตาม f7) |
-| ขั้นที่ถึง | 4 ก.ย. ~01:00 UTC: 5.2 รอบ 1 ส่งมา (finance-overview 39/39) → Fable ดูภาพเทียบ f7 **ตีกลับ 3 จุด** (วันที่ ISO ต้องเป็นไทย · ไทล์คาดว่าจะเข้า/ออก = 0 น่าสงสัย ให้พิสูจน์ด้วย SQL อิสระ/เติม seed · เงินคุณอยู่ไหนต้องเป็นแถบซ้อนเดียวเหมือน f1) — agent เดิมทำรอบ 2 |
+| ผู้ทำ | Opus (sub-agent · UI ตาม g10) |
+| ขั้นที่ถึง | 4 ก.ย. ~02:40 UTC: 5.2 DONE รอบ 2 ตรง f7 (Fable ดูภาพ + รันด่าน 16 ชุด) · commit แล้ว · กำลังออก 5.3 |
 | commit ล่าสุดของงานนี้ | — |
 | บล็อกเกอร์ | — (Bot Protection โปรเจกต์ shark เจ้าของปิดแล้ว 13:56 UTC · prod 200) · เจ้าของไปนอน 14:05 UTC สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -46,7 +46,7 @@
 | 4.2 | POS ส่งบรรทัด | Opus | DONE | (HEAD) | ไม่มี UI · docType = TAX_INVOICE_ABB (NO_GL กันรายได้ซ้ำ) · walk-in = contactId null ("ไม่ระบุคู่ค้า") · เกลี่ยส่วนลดท้ายบิลลงบรรทัด · Fable รันเอง: pos-lines 87 · invitem 88 · dashboard 168 · home 87 · overview 73 · seed-check 76 · guard 151 · schema 61 · payments 157 · pos-account 16 · pos-inventory 25 · inventory-account 23 · pos-register 42 · closeday 22 · fitness 17 · CPA 107 · drift clean · typecheck 0 · 🐞 ปิด: `gl.reverseFor` กลับรายการตัวกลับรายการเอง (void ซ้ำ = รายได้กลับเข้าเงียบ ๆ) · qtyOnHand mirror ไม่ตาม POS · ค้าง→เฟส 5: บิล POS ไม่มี AccountDocumentPayment (ซื้อสะสม/เงินคุณอยู่ไหน ไม่เห็นเงิน POS) · ไม่มี unique index กันเอกสาร POS ซ้ำ · TAX_INVOICE_ABB ไม่มีหน้ารายการ · seed: รายได้ ก.ย. 536,925.24 / คชจ. 134,961.86 (ขยับจาก POS fixture) |
 | 4.3 | หน้าสินค้า V2 + หน่วย + จัดชุด + เบิก/คืน/ปรับต้นทุน | Opus | DONE | (HEAD) | ตรง f6/g8/g12 (ต่างเฉพาะข้อมูลจำลอง · คอลัมน์รูป/POS ย้ายเข้าเซลล์ชื่อเพราะ f6 มี 9 คอลัมน์) · Fable รันเอง: products 100 · invitem 88 · pos-lines 87 · adjust 96 · cheap-routes 105 · inclvat 71 · seed-check 76 · guard 155 · schema 61 · list 159 · editor 200 · dashboard 168 · home 87 · inventory-account 23 · pos-account 16 · pos-inventory 25 · fitness 17 · CPA 107 · drift clean · typecheck 0 · 🐞 ปิด 2 ใหญ่: createDocument/updateDocument ทิ้ง productId/accountId ของบรรทัด (เอกสารขายมือไม่เคยผูกสินค้า) · tenantDb(acc).$transaction ยัด systemId บัญชีลงตารางคลัง → ตัดสต็อกล้มเงียบ · seed: สินค้า 13 · หน่วย 15 · ยอดยกมา 9,000 · CA กำไร 1,680 · ค้าง: ใบเบิก/คืน/CA ไม่มีหน้ารายละเอียด+แก้ร่างไม่ได้ → 9.x · แนบไฟล์ต้องบันทึกร่างก่อน · void จัดชุดไม่คืนสต็อก · prod ยังไม่ backfill code สินค้า · seed ไม่มีหมวดสินค้า (คอลัมน์หมวด = —) |
 | 5.1 | ช่องทางการเงิน V2 | Sonnet | DONE | (HEAD) | ตีกลับ 1 รอบ (5 จุด parity g9) → รอบ 2 ตรง · Fable รันเอง: finance 59 · payments 157 · dashboard 168 · home 87 · overview 73 · seed-check 83 · guard 155 · schema 61 · list 159 · nav 323 · products 100 · fitness 17 · CPA 107 · drift clean · typecheck 0 · 🐞 ปิด: `postOpening` idempotent ต่อ period ไม่ใช่ต่อบัญชี (ยอดยกมา 2 บัญชีเดือนเดียวกันชนกัน) · ใหม่: code CSH/BSV/EWL/PTY · ยอดยกมาหลายรายการ (JV ต่อรายการ) · โอนระหว่างช่องทาง (AccountFinanceTransfer idempotent) · ใช้รับ/จ่าย · ผู้ถือ+วงเงินเงินสดย่อย · `RowActions trigger=icon` · ค้าง: ไม่มี GL picker ใน modal (g9 ไม่มี) · ธนาคารไม่มีโลโก้ |
-| 5.2 | ภาพรวมการเงิน + ปฏิทิน + สำรองรับ/จ่าย | Sonnet | TODO | | |
+| 5.2 | ภาพรวมการเงิน + ปฏิทิน + สำรองรับ/จ่าย | Sonnet | DONE | (HEAD) | ตีกลับ 1 รอบ (วันที่ ISO · ไทล์คาดว่าจะเข้า/ออก 0 · แถบซ้อน) → รอบ 2 ตรง f7 · Fable รันเอง: finance-overview 45 · finance 59 · payments 157 · dashboard 169 · home 87 · overview 73 · seed-check 83 · guard 158 · schema 61 · list 159 · nav 323 · detail 85 · fitness 17 · CPA 107 · drift clean · typecheck 0 · seed: เติมเงินสดย่อย 10,000 · คชจ. 500/300 · เพิ่ม IV 2 + บิล 1 ครบกำหนด 30 ก.ย. → ค้างรับ 494,300 (20) · ค้างจ่าย 214,750 (10) · เงินรวม 1,283,760 · ค้าง: กระทบยอด = placeholder จนกว่า 5.3 · การ์ดติดตาม 3 ใบ (pinned ตาม f1) · race test reimburse ยังไม่มี |
 | 5.3 | กระทบยอดธนาคาร | Opus | TODO | | |
 | 5.4 | WHT V2 + เช็ค V2 | Sonnet | TODO | | |
 | 5.5 | PromptPay → กระทบยอดอัตโนมัติ | Opus | TODO | | |
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 4 ก.ย. 2026 ~02:40 UTC — 5.2 ภาพรวมการเงิน DONE (ตีกลับ 1 รอบ)
 - 3 ก.ย. 2026 ~23:55 UTC — 5.1 ช่องทางการเงิน DONE (ตีกลับ 1 รอบ)
 - 3 ก.ย. 2026 ~21:43 UTC — 🏁 **เฟส 4 ปิด** (4.1–4.3 · qc:all 208/208 · main `9231e3a` push · Vercel รอ READY) · 25/46 ≈ 54%
 - 3 ก.ย. 2026 ~22:30 UTC — 4.3 หน้าสินค้า DONE → เฟส 4 ครบ 3 WO เริ่มปิดเฟส
