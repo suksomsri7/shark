@@ -89,3 +89,60 @@ export function documentsRangeOf(key: DateRangeKey, now: Date): { from: string |
   }
   return { from: null, to: null }; // custom — ผู้เรียกอ่านจาก query เอง
 }
+
+// ─────────────────── ตรวจ "เนื้อไฟล์จริง" จากไบต์หัวไฟล์ (WO 9.2 ข้อ 8) ───────────────────
+//
+// 🔴 ทำไมต้องมี: ด่านเดิมเชื่อ `File.type` ที่ **เบราว์เซอร์ส่งมา** อย่างเดียว ⇒ ใครก็เปลี่ยนชื่อ
+//    `payload.html` เป็น `bill.jpg` แล้วประกาศ `Content-Type: image/jpeg` ผ่านฉลุย
+//    ไฟล์นั้นถูกเก็บเป็น `.jpg` บน CDN → ไม่มีใครเปิดดูได้ (คลังเอกสารเต็มไปด้วยขยะ)
+//    และถ้าวันหนึ่งเราเพิ่มชนิดที่เบราว์เซอร์เรนเดอร์ได้ (svg/html) ช่องนี้จะกลายเป็น XSS ทันที
+//    ⇒ ตัดสินจาก **ไบต์จริง** ไม่ใช่คำประกาศ
+//
+// ตารางลายเซ็น (magic bytes) เท่าที่ allowlist ของคลังเอกสารรับ:
+//   PDF  `%PDF`           · JPEG `FF D8 FF`        · PNG `89 50 4E 47 0D 0A 1A 0A`
+//   WEBP `RIFF….WEBP`     · HEIC/HEIF `….ftyp<brand>` (heic/heix/hevc/heim/heis/hevm/mif1/msf1)
+
+const MAGIC_ERR =
+  "เนื้อไฟล์ไม่ตรงกับชนิดที่แจ้ง — ไฟล์นี้เข้าคลังเอกสารไม่ได้ (รองรับเฉพาะ PDF/JPG/PNG/HEIC/WEBP จริง ๆ)";
+
+function ascii(b: Uint8Array, at: number, len: number): string {
+  let s = "";
+  for (let i = at; i < at + len && i < b.length; i++) s += String.fromCharCode(b[i]!);
+  return s;
+}
+
+/** ชนิดจริงจากไบต์หัวไฟล์ — `null` = ไม่ใช่ชนิดที่คลังเอกสารรับ */
+export function sniffAttachmentMime(bytes: Uint8Array): string | null {
+  if (bytes.length < 12) return null;
+  if (ascii(bytes, 0, 4) === "%PDF") return "application/pdf";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (
+    bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+    bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a
+  )
+    return "image/png";
+  if (ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 4) === "WEBP") return "image/webp";
+  if (ascii(bytes, 4, 4) === "ftyp") {
+    const brand = ascii(bytes, 8, 4);
+    if (["heic", "heix", "hevc", "heim", "heis", "hevm", "mif1", "msf1"].includes(brand))
+      return brand === "mif1" || brand === "msf1" ? "image/heif" : "image/heic";
+  }
+  return null;
+}
+
+/**
+ * ด่านอัปโหลดฉบับเต็ม (ฝั่งเซิร์ฟเวอร์เท่านั้น — ต้องมีไบต์จริงในมือ)
+ * ลำดับ: ชนิดที่แจ้ง → ขนาด → **เนื้อไฟล์จริง** · คืน `mimeType` ที่ควรใช้เก็บ = ชนิดที่ sniff ได้
+ * 🔴 HEIC/HEIF สลับกันได้ (ทั้งคู่อยู่ใน allowlist) — ยึดตามไบต์ ไม่ใช่ตามที่เบราว์เซอร์แจ้ง
+ */
+export function validateAttachmentBytes(
+  declaredMime: string,
+  bytes: Uint8Array,
+): { ok: true; mimeType: string } | { ok: false; reason: string } {
+  const pre = validateAttachmentUpload(declaredMime, bytes.length);
+  if (!pre.ok) return pre;
+  const real = sniffAttachmentMime(bytes);
+  if (!real) return { ok: false, reason: MAGIC_ERR };
+  if (!ATTACHMENT_ALLOWED_MIME.has(real)) return { ok: false, reason: MAGIC_ERR };
+  return { ok: true, mimeType: real };
+}

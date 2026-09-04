@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { AccountIcon } from "@/components/account-v2/AccountIcon";
+import { csvRow } from "@/lib/core/csv";
 
 // แถบเครื่องมือร่วมของทุกหน้ารายงาน — DESIGN-SPEC-V2 §11.3
 //   ช่วง/ณ วันที่ · เทียบงวดก่อน · สาขา · พิมพ์ / PDF / Excel
@@ -15,13 +16,11 @@ export type CsvData = { headers: string[]; rows: (string | number)[][] };
 /** โหมดช่วงเวลาของรายงาน: `range` = ตั้งแต่–ถึง (เดือน) · `asof` = ณ สิ้นเดือน · `none` = ไม่มีตัวเลือกเวลา */
 export type RangeMode = "range" | "asof" | "none";
 
+// 🔴 WO 9.2 ข้อ 7: ทุกช่องผ่าน `csvRow`/`csvCell` กลาง (core/csv.ts) — กัน CSV injection
+//    (ชื่อบัญชี/ชื่อคู่ค้าในรายงานมาจากผู้ใช้ · เดิมหนีแค่ quote ไม่ได้กันสูตร)
 function toCsv(data: CsvData): string {
-  const esc = (v: string | number) => {
-    const s = String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const lines = [data.headers.map(esc).join(",")];
-  for (const r of data.rows) lines.push(r.map(esc).join(","));
+  const lines = [csvRow(data.headers)];
+  for (const r of data.rows) lines.push(csvRow(r));
   return lines.join("\r\n");
 }
 

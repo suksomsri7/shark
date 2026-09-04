@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { getPublicTaxContext } from "@/lib/modules/account/service";
+import { accountRateGuard, publicClientIp } from "@/lib/modules/account/rate-limit";
 import { requestTaxInvoiceAction } from "./actions";
 import { formatThaiDateLong } from "@/lib/ui/date";
 import { getLocaleFromCookie, makeT, type Locale } from "@/lib/i18n";
@@ -38,7 +39,9 @@ export default async function PublicTaxInvoicePage({
 }) {
   const { token } = await params;
   const { err, issued, requested } = await searchParams;
-  const ctx = await getPublicTaxContext(token);
+  // WO 9.2 ข้อ 4/11 — เพดานต่อ IP กันไล่เดา token · ชนเพดาน = หน้า "ลิงก์ไม่ถูกต้อง" เหมือน token ผิด
+  const rate = await accountRateGuard("publicToken", await publicClientIp());
+  const ctx = rate.ok ? await getPublicTaxContext(token) : null;
 
   const locale = getLocaleFromCookie((await cookies()).get("lang")?.value);
   const t = makeT(locale);
@@ -126,7 +129,9 @@ export default async function PublicTaxInvoicePage({
         ) : (
           <form action={requestTaxInvoiceAction} className="flex flex-col gap-3 rounded-xl border bg-[color:var(--color-surface)] p-4">
             <input type="hidden" name="token" value={token} />
-            {err && <p className="text-sm text-[color:var(--color-danger)]">{err}</p>}
+            {/* WO 9.2 ข้อ 10: ข้อความ error มาจาก query string ⇒ React escape ให้อยู่แล้ว
+                แต่ยังตัดความยาวไว้ กันคนยัดข้อความยาว ๆ ทำหน้าใบเสร็จเป็นสื่อหลอกลวง */}
+            {err && <p className="text-sm text-[color:var(--color-danger)]">{String(err).slice(0, 200)}</p>}
             <label className={labelCls}>
               {t("receipt.form.name")}
               <input name="name" required className={inputCls} />

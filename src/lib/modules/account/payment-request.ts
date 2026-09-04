@@ -43,6 +43,7 @@ import {
 } from "./service";
 import { listFinanceAccounts } from "./finance";
 import { writeAudit } from "./access";
+import { accountRateGuard } from "./rate-limit";
 
 export type PayReqCtx = { tenantId: string; systemId: string };
 export type PayReqFail = { ok: false; reason: string };
@@ -191,6 +192,10 @@ export async function createPaymentRequest(
   documentId: string,
   opts: { financeId: string; expiresInDays?: number | null; userId?: string | null },
 ): Promise<CreatePaymentRequestResult> {
+  // WO 9.2 ข้อ 11 — สร้างลิงก์ = ยิง charge ที่ผู้ให้บริการจริง (โหมด Beam) ⇒ ต้องมีเพดานต่อระบบ
+  //   ตรวจก่อนแตะข้อมูล/ผู้ให้บริการ · ใบเดิมที่ยังใช้ได้จะถูกคืนให้ตอนหลังอยู่แล้ว (idempotent)
+  const rate = await accountRateGuard("paymentRequest", ctx.systemId);
+  if (!rate.ok) return fail(rate.reason);
   const found = await paymentTargetOf(ctx.tenantId, ctx.systemId, documentId);
   if (!found) return fail("ไม่พบเอกสาร");
   const { target } = found;

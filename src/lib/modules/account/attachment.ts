@@ -6,10 +6,11 @@ import { editorDefOf, sideOf } from "./doc-editor-config";
 import { docTypeLabel } from "./dashboard";
 import type { AttachmentStatus, AttachmentSource } from "./attachment-shared";
 import { normalizeExtract, type BillExtract, type InboxAiStatus } from "./inbox-ai";
+import { clampSearch } from "./search-input";
 // re-export ให้ผู้เรียกเดิมที่ import ค่าเหล่านี้จาก "./attachment" ยังใช้ได้ (ของจริงอยู่ attachment-shared.ts
 // ซึ่งบริสุทธิ์ ไม่แตะ prisma — client component ต้อง import จากไฟล์นั้นตรง ๆ ห้าม import จากไฟล์นี้)
 export type { AttachmentStatus, AttachmentSource } from "./attachment-shared";
-export { ATTACHMENT_MAX_BYTES, ATTACHMENT_ALLOWED_MIME, DOC_TYPE_HINT_OPTIONS, validateAttachmentUpload } from "./attachment-shared";
+export { ATTACHMENT_MAX_BYTES, ATTACHMENT_ALLOWED_MIME, DOC_TYPE_HINT_OPTIONS, validateAttachmentUpload, validateAttachmentBytes, sniffAttachmentMime } from "./attachment-shared";
 
 // ─────────────────────────────────────────────────────────────
 // attachment.ts — คลังเอกสาร (§3.7 · V2 WO 7.1 · DESIGN-SPEC-V2 §12)
@@ -138,10 +139,25 @@ export async function listFolders(
 
 // ─────────────────── เขียน (V1 — ยังใช้โดย DocAttachments/editor-actions) ───────────────────
 
+/**
+ * ชื่อไฟล์ที่ปลอดภัยพอจะเก็บ/แสดง (WO 9.2 ข้อ 8)
+ * 🔴 ชื่อไฟล์ **ไม่ได้** ถูกใช้ประกอบ path ที่เก็บจริง (storage ตั้งเป็น `t/<tenant>/<kind>/<uuid>.<ext>`)
+ *    แต่ยังโดนแสดงบนหน้าจอ/ใช้เป็นชื่อตอนดาวน์โหลด ⇒ ตัดตัวคั่น path + อักขระควบคุมทิ้ง
+ *    (ยูนิโค้ดไทย/อีโมจิเก็บไว้ตามเดิม — ผู้ใช้ตั้งชื่อไฟล์ภาษาไทยเป็นเรื่องปกติ)
+ */
+export function sanitizeAttachmentFileName(raw: string): string {
+  return (raw ?? "")
+    .replace(/[\\/]+/g, "-") // `../../x.pdf` → `..-..-x.pdf`
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]/g, "") // อักขระควบคุม (รวมขึ้นบรรทัดใหม่ที่ยัดใส่ header ได้)
+    .trim()
+    .slice(0, 200);
+}
+
 export async function createAttachment(
   input: AttachmentInput,
 ): Promise<{ ok: true; id: string; duplicate?: boolean } | { ok: false; reason: string }> {
-  const fileName = input.fileName.trim();
+  const fileName = sanitizeAttachmentFileName(input.fileName);
   const fileUrl = input.fileUrl.trim();
   if (!fileName) return { ok: false, reason: "กรุณากรอกชื่อไฟล์" };
   if (!/^https?:\/\//i.test(fileUrl))
@@ -435,7 +451,7 @@ export async function searchDocumentsForAttach(
   systemId: string,
   q: string,
 ): Promise<Array<{ id: string; docType: AccountDocType; docNo: string | null; contactName: string | null }>> {
-  const query = q.trim();
+  const query = clampSearch(q);
   if (!query) return [];
   const rows = await prisma.accountDocument.findMany({
     where: {

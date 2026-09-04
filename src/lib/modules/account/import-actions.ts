@@ -15,6 +15,7 @@
 import type { AccountContactKind, AccountProductType, AccountDocType } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, writeAudit } from "./access";
+import { accountRateGuard } from "./rate-limit";
 import {
   getSettings,
   createDocument,
@@ -282,6 +283,9 @@ export async function runImportAction(
   try {
     const { auth, tenantId, userId } = await loadAccountSystem(systemId);
     assertAccountCan(auth, "account.import");
+    // WO 9.2 ข้อ 11 — นำเข้า 1 ไฟล์ = สร้างได้ถึง IMPORT_MAX_ROWS แถว ⇒ ต้องมีเพดานต่อระบบ
+    const rate = await accountRateGuard("import", systemId);
+    if (!rate.ok) return { ok: false, reason: rate.reason };
     return await runImportCore(tenantId, systemId, userId, kindRaw, csvText, mapping, skipErrorRows);
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : "นำเข้าไม่สำเร็จ" };

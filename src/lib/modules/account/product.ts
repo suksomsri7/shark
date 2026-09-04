@@ -24,6 +24,8 @@ import * as inventory from "@/lib/modules/inventory/service";
 import * as gl from "./gl";
 // WO 4.3 (§8.2) — ตัดสต็อกส่วนประกอบของ "รายการจัดชุด" (ตรรกะอยู่ bundle.ts · ที่นี่แค่ห่อ transaction ให้)
 import { consumeBundleComponentsInTx, type BundleConsumeResult } from "./bundle";
+import { clampSearch } from "./search-input";
+import { isCodeUniqueConflict } from "./unique-conflict";
 
 // ─────────────────── ค่าคงที่ ───────────────────
 
@@ -192,7 +194,9 @@ export async function renameUnit(
   if (opts?.kind !== undefined && opts.kind) data.kind = opts.kind;
   if (opts?.code !== undefined) data.code = opts.code?.trim() || null;
   try {
-    await prisma.accountUnit.updateMany({ where: { id, tenantId, systemId }, data });
+    // WO 9.2 ข้อ 2 — เหตุผลเดียวกับ updateProduct: count 0 = ไม่ใช่ของสโคปนี้ ห้ามตอบ ok:true
+    const res = await prisma.accountUnit.updateMany({ where: { id, tenantId, systemId }, data });
+    if (res.count === 0) return { ok: false as const, reason: "ไม่พบหน่วยนับนี้" };
   } catch {
     return { ok: false as const, reason: "ชื่อ/รหัสหน่วยซ้ำกับที่มีอยู่" };
   }
@@ -365,17 +369,9 @@ const PRODUCT_CODE_INDEX = "AccountProduct_systemId_code_active_key";
  * 🔴 บทเรียน WO 3.3: Prisma 7 + adapter-pg **ไม่ส่ง `meta.target`** ⇒ ต้องอ่านจาก message + ชื่อ index ดิบ
  */
 function isProductCodeConflict(e: unknown): boolean {
-  const err = e as {
-    code?: string;
-    message?: string;
-    meta?: { driverAdapterError?: { cause?: { originalMessage?: string; constraint?: { fields?: unknown } } } };
-  };
-  if (err?.code !== "P2002") return false;
-  const cause = err.meta?.driverAdapterError?.cause;
-  const blob = [err.message ?? "", cause?.originalMessage ?? "", JSON.stringify(cause?.constraint?.fields ?? "")].join(" | ");
-  if (blob.includes(PRODUCT_CODE_INDEX)) return true;
-  // ระวัง "barcode" (มี code อยู่ข้างใน) — บังคับให้ code เป็นคำเดี่ยว
-  return /(^|[^A-Za-z])code([^A-Za-z]|$)/.test(blob) && !/barcode/i.test(blob);
+  // WO 9.2 ข้อ 13 — ตรรกะจริงย้ายไป unique-conflict.ts (ของเดิมค้น substring ในข้อความรวม
+  // ซึ่งมีซอร์สโค้ดที่มีคำว่า `code` ปนอยู่ ⇒ SKU ซ้ำถูกอ่านเป็น "เลขที่ซ้ำ" — ดูเหตุผลเต็มในไฟล์นั้น)
+  return isCodeUniqueConflict(e, PRODUCT_CODE_INDEX);
 }
 
 // ─────────────────── สร้าง/แก้ไขสินค้า ───────────────────
@@ -534,8 +530,16 @@ export async function createProduct(
   }
   // ชนติดกัน 6 รอบ = ผิดปกติจริง — สร้างโดยไม่มีเลขที่ ดีกว่าทำงานผู้ใช้หาย (หน้ารายการถอยไปใช้ sku/เลขคำนวณสด)
   console.warn(`[account] ออกเลขที่สินค้าไม่สำเร็จหลัง 6 ครั้ง (system=${systemId})`);
-  const p = await prisma.accountProduct.create({ data: base });
-  return { ok: true, id: p.id, code: null };
+  try {
+    const p = await prisma.accountProduct.create({ data: base });
+    return { ok: true, id: p.id, code: null };
+  } catch (e) {
+    // 🔴 WO 9.2 ข้อ 13 — ทางสำรองสุดท้ายก็ล้มได้ (เช่น SKU ซ้ำ) · ฟังก์ชันนี้ประกาศว่าคืน
+    //    `{ok:false,reason}` เสมอ ⇒ ห้ามปล่อย error ดิบของ Prisma หลุดไปถึงผู้ใช้
+    const err = e as { code?: string };
+    if (err?.code === "P2002") return { ok: false, reason: "รหัสสินค้า (SKU) ซ้ำกับที่มีอยู่" };
+    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกสินค้าไม่สำเร็จ" };
+  }
 }
 
 export async function updateProduct(
@@ -566,7 +570,11 @@ export async function updateProduct(
     data.code = c || null;
   }
   try {
-    await prisma.accountProduct.updateMany({ where: { id, tenantId, systemId }, data });
+    // 🔴 WO 9.2 ข้อ 2 — `updateMany` ที่ไม่ตรงสโคปคืน count 0 **โดยไม่ error** ⇒ ของเดิมตอบ ok:true
+    //    ทั้งที่ไม่ได้เขียนอะไรเลย (ข้อมูลไม่รั่ว แต่หน้าจอขึ้น "บันทึกแล้ว" ทั้งที่ไม่ได้บันทึก
+    //    และข้อสอบ IDOR แยกไม่ออกว่าถูกกันจริงหรือแค่เงียบ) — ต้องรายงานว่าไม่พบ
+    const res = await prisma.accountProduct.updateMany({ where: { id, tenantId, systemId }, data });
+    if (res.count === 0) return { ok: false, reason: "ไม่พบสินค้า/บริการนี้" };
   } catch (e) {
     if (isProductCodeConflict(e)) return { ok: false, reason: "เลขที่สินค้าซ้ำกับรายการที่ใช้งานอยู่" };
     const err = e as { code?: string };
@@ -1302,7 +1310,7 @@ export async function listGoodsIssuePaged(
   const now = new Date();
   const pageSize = clampPageSize(input.pageSize);
   const page = clampPage(input.page);
-  const q = (input.q ?? "").trim();
+  const q = clampSearch(input.q);
   const from = parseDay(input.from, false);
   const to = parseDay(input.to, true);
   const base: Prisma.AccountDocumentWhereInput = {
@@ -1397,7 +1405,7 @@ export async function searchProductPickerRows(
     expenseAccountId: string | null;
   }[]
 > {
-  const term = q.trim();
+  const term = clampSearch(q);
   const rows = await prisma.accountProduct.findMany({
     where: {
       tenantId,
@@ -1715,7 +1723,7 @@ export async function listProductsPaged(
 ): Promise<ProductListPage> {
   const type = input.type ?? "GOODS";
   const sub = input.sub === "archived" ? "archived" : "active";
-  const q = (input.q ?? "").trim();
+  const q = clampSearch(input.q);
   const pageSize = clampPageSize(input.pageSize);
   const page = clampPage(input.page);
 

@@ -17,6 +17,7 @@ import {
   markNotAccounting,
   searchDocumentsForAttach,
   validateAttachmentUpload,
+  validateAttachmentBytes,
   hashBytes,
   findAttachmentBySha256,
 } from "@/lib/modules/account/attachment";
@@ -73,11 +74,14 @@ export async function uploadAttachmentsAction(formData: FormData): Promise<Uploa
   const results: UploadAttachmentResult[] = [];
   for (const file of files) {
     const data = new Uint8Array(await file.arrayBuffer());
-    const validate = validateAttachmentUpload(file.type, data.length);
+    // 🔴 WO 9.2 ข้อ 8 — ตรวจ **ไบต์จริง** ไม่ใช่แค่ `file.type` ที่เบราว์เซอร์แจ้ง
+    //    (`.html` เปลี่ยนชื่อเป็น `.jpg` เคยผ่านด่านเดิมได้ทั้งดุ้น) · ชนิดที่ใช้เก็บ = ที่ sniff ได้
+    const validate = validateAttachmentBytes(file.type, data);
     if (!validate.ok) {
       results.push({ ok: false, fileName: file.name, reason: validate.reason });
       continue;
     }
+    const realMime = validate.mimeType;
     const sha256 = hashBytes(data);
     const dup = await findAttachmentBySha256(tenantId, systemId, sha256);
     if (dup) {
@@ -92,7 +96,7 @@ export async function uploadAttachmentsAction(formData: FormData): Promise<Uploa
       });
       continue;
     }
-    const up = await uploadFile({ tenantId }, { kind: "ATTACHMENT", filename: file.name, contentType: file.type, data });
+    const up = await uploadFile({ tenantId }, { kind: "ATTACHMENT", filename: file.name, contentType: realMime, data });
     if (!up.ok) {
       results.push({ ok: false, fileName: file.name, reason: up.error });
       continue;
@@ -103,7 +107,7 @@ export async function uploadAttachmentsAction(formData: FormData): Promise<Uploa
       folder,
       fileName: file.name.slice(0, 200),
       fileUrl: up.cdnUrl,
-      mimeType: file.type,
+      mimeType: realMime,
       sizeBytes: data.length,
       uploadedById: userId,
       sha256,
@@ -113,7 +117,7 @@ export async function uploadAttachmentsAction(formData: FormData): Promise<Uploa
       results.push({ ok: false, fileName: file.name, reason: att.reason });
       continue;
     }
-    results.push({ ok: true, id: att.id, fileName: file.name, fileUrl: up.cdnUrl, mimeType: file.type, sizeBytes: data.length });
+    results.push({ ok: true, id: att.id, fileName: file.name, fileUrl: up.cdnUrl, mimeType: realMime, sizeBytes: data.length });
   }
   revalidatePath(base(systemId));
   return results;

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/db";
+import { csvCell } from "@/lib/core/csv";
 import type { AccountWhtIncomeType, AccountLegalType, AccountDocDirection, Prisma } from "@prisma/client";
 
 // ─────────────────────────────────────────────────────────────
@@ -495,10 +496,8 @@ export async function pnd(
 }
 
 // CSV (BOM UTF-8 ให้ Excel เปิดไทยได้) — ยอดเป็นบาททศนิยม 2
-function csvCell(v: string | number): string {
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
+// 🔴 WO 9.2 ข้อ 7: เดิมมีตัวหนีบรรทัด/คอมมาเองแต่ **ไม่กันสูตร** — ชื่อคู่ค้าที่ขึ้นต้นด้วย `=`
+//    กลายเป็นสูตรทันทีที่ฝ่ายบัญชีเปิดไฟล์ ⇒ ใช้ `csvCell` กลางของ core/csv.ts แทน (กันสูตร + quote)
 const bahtStr = (satang: number) => (satang / 100).toFixed(2);
 
 export async function pndCsv(

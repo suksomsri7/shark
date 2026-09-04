@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getPublicPaymentPage } from "@/lib/modules/account";
+import { accountRateGuard, publicClientIp } from "@/lib/modules/account/rate-limit";
 import { PromptPayQr } from "@/components/PromptPayQr";
 import { formatThaiDateLong } from "@/lib/ui/date";
 
@@ -16,7 +17,9 @@ const baht = (satang: number) => (satang / 100).toLocaleString("th-TH", { minimu
 
 export default async function PublicPayPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const page = await getPublicPaymentPage(token);
+  // WO 9.2 ข้อ 4/11 — เพดานต่อ IP กันไล่เดา token (ชนเพดาน = หน้าเดียวกับ token ผิด ไม่บอกใบ้)
+  const rate = await accountRateGuard("publicToken", await publicClientIp());
+  const page = rate.ok ? await getPublicPaymentPage(token) : null;
   if (!page) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-2 bg-[color:var(--color-surface-2)] p-6 text-center">

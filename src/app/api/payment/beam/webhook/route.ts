@@ -4,6 +4,7 @@
 // ลำดับ: อ่าน raw body → ตรวจลายเซ็น HMAC → ดูสถานะ → ลงเครดิต (idempotent ต่อ chargeId)
 // ลายเซ็นไม่ผ่าน = 401 สั้น ๆ ไม่บอกรายละเอียด · payload เพี้ยน = 200 (กัน Beam ยิงซ้ำไม่รู้จบ)
 
+import { createHash } from "node:crypto";
 import { verifyWebhook } from "@/lib/payment/beam";
 import { creditFromCharge } from "@/lib/ai/topup";
 import { handleAccountCharge } from "@/lib/modules/account/index";
@@ -20,7 +21,13 @@ export async function POST(req: Request): Promise<Response> {
     req.headers.get("x-signature");
 
   if (!verifyWebhook(raw, sig)) {
-    await logOps("WARN", "payment", "Beam webhook ลายเซ็นไม่ผ่าน", { detail: raw.slice(0, 200) });
+    // 🔴 WO 9.2 ข้อ 5 — ห้ามทิ้ง body ดิบลง log: คำขอนี้ **ยังไม่ผ่านลายเซ็น** ⇒ เนื้อหาเป็นของ
+    //    คนนอกล้วน (ยัดข้อความปลอม/ข้อมูลส่วนบุคคลเข้ามาให้เราเก็บไว้ก็ได้) · เก็บแค่ขนาด+ลายนิ้วมือ
+    //    ที่พอไล่จับคู่คำขอเดิมได้ตอนดีบัก
+    const fp = createHash("sha256").update(raw).digest("hex").slice(0, 16);
+    await logOps("WARN", "payment", "Beam webhook ลายเซ็นไม่ผ่าน", {
+      detail: `body ${raw.length} ไบต์ · sha256:${fp} · sig ${sig ? "มี" : "ไม่มี"}`,
+    });
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 

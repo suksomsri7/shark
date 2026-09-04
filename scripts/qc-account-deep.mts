@@ -20,7 +20,10 @@
 //      · ปิดแล้ว (CLOSED) → ข้ามเงียบ · userId ที่ใช้ปิด = "system-auto"
 //    cron: runDailyCron เพิ่ม field periodsClosed (try/catch -1 · field เดิมห้ามหาย)
 // 3) UI: หน้า aging ในเมนู account (nav.ts) — ตาราง AR/AP สลับได้ + ปุ่มดู · ไทยล้วน
-try { process.loadEnvFile(".env"); } catch {}
+// WO 9.2 ข้อ 18 — โหลด env ผ่านด่านกลาง: เคารพ QC_ENV_FILE + **ห้ามชี้ prod** (ALLOW_PROD_QC=1 ถึงจะยอม)
+//   (เดิมเรียก process.loadEnvFile(".env") ตรง ๆ → เคยพา suite นี้ไปสร้าง tenant บน prod จริง 3 ก.ย.)
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-account-deep");
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

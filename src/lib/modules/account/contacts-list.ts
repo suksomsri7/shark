@@ -16,6 +16,7 @@ import * as party from "@/lib/modules/party";
 // WO 3.2 — เส้น account→member / account→crm อ่านอย่างเดียว (ป้าย "สมาชิก"/"CRM") อนุมัติล่วงหน้าใน fitness.mts
 import * as memberSvc from "@/lib/modules/member/service";
 import * as crmSvc from "@/lib/modules/crm/service";
+import { clampSearch } from "./search-input";
 
 export type Ctx = { tenantId: string; systemId: string };
 
@@ -316,7 +317,7 @@ export async function listContactsPage(
   const db = dbOf(ctx, meter);
   const page = clampPage(input.page);
   const pageSize = clampPageSize(input.pageSize);
-  const q = (input.q ?? "").trim();
+  const q = clampSearch(input.q);
 
   let where: Prisma.AccountContactWhereInput = whereForGroup(input.group, sidebar.regularIds);
   if (input.group === "source:member" || input.group === "source:crm") {

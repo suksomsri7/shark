@@ -47,6 +47,9 @@ import {
   reportKindsDue,
   REPORT_MARKER_TITLE,
 } from "./email-report";
+import { accountRateGuard } from "./rate-limit";
+import { clampSearch } from "./search-input";
+import { isCodeUniqueConflict } from "./unique-conflict";
 // WO 8.2 (§9.3) นโยบายบัญชี — ล็อกวันที่ · ปีบัญชี · ค่าเริ่มต้นของฟอร์ม/การแปลงเอกสาร
 import {
   assertNotLockedTx,
@@ -974,16 +977,9 @@ const CONTACT_CODE_INDEX = "AccountContact_systemId_code_active_key";
  *      + ชื่อ index ดิบจาก driver เป็นตัวสำรอง · ระวัง "branchCode" (ตัว C ใหญ่) ไม่ชนกับ `code`
  */
 function isContactCodeConflict(e: unknown): boolean {
-  const err = e as {
-    code?: string;
-    message?: string;
-    meta?: { driverAdapterError?: { cause?: { originalMessage?: string; constraint?: { fields?: unknown } } } };
-  };
-  if (err?.code !== "P2002") return false;
-  const cause = err.meta?.driverAdapterError?.cause;
-  const blob = [err.message ?? "", cause?.originalMessage ?? "", JSON.stringify(cause?.constraint?.fields ?? "")].join(" | ");
-  if (blob.includes(CONTACT_CODE_INDEX)) return true;
-  return /(^|[^A-Za-z])code([^A-Za-z]|$)/.test(blob);
+  // WO 9.2 ข้อ 13 — ใช้ตัวอ่าน P2002 ตัวเดียวกับสินค้า (unique-conflict.ts)
+  // ของเดิมค้น substring ในข้อความรวมของ Prisma ซึ่ง **มีซอร์สโค้ดปนมาด้วย** ⇒ ตัดสินผิดได้
+  return isCodeUniqueConflict(e, CONTACT_CODE_INDEX);
 }
 
 export async function updateContact(
@@ -1326,6 +1322,9 @@ export function clampPage(v: number | undefined): number {
   return Math.max(Number.isFinite(n) ? n : 1, 1);
 }
 
+// WO 9.2 ข้อ 9 — ขอบเขตคำค้น: ตรรกะจริงอยู่ `search-input.ts` (บริสุทธิ์ ไม่มีวงจร import)
+export { clampSearch, MAX_SEARCH_LEN } from "./search-input";
+
 // WO 1.1: export ให้ expense.ts ใช้ parser วันที่ชุดเดียวกัน (ตัวกรองช่วงวันที่ของหน้ารายการฝั่งจ่าย)
 export function parseDay(v: Date | string | undefined, endOfDay: boolean): Date | undefined {
   if (!v) return undefined;
@@ -1350,7 +1349,7 @@ export async function listDocumentsPaged(
   const now = new Date();
   const pageSize = clampPageSize(input.pageSize);
   const page = clampPage(input.page);
-  const q = (input.q ?? "").trim();
+  const q = clampSearch(input.q);
   const from = parseDay(input.from, false);
   const to = parseDay(input.to, true);
 
@@ -1441,7 +1440,7 @@ export async function computeListTabCounts(
   const now = new Date();
   const from = parseDay(extra?.from, false);
   const to = parseDay(extra?.to, true);
-  const q = (extra?.q ?? "").trim();
+  const q = clampSearch(extra?.q);
   const base: Prisma.AccountDocumentWhereInput = {
     tenantId,
     systemId,
@@ -1498,7 +1497,7 @@ export async function sumOutstandingForFilter(
 ): Promise<number> {
   const from = parseDay(extra?.from, false);
   const to = parseDay(extra?.to, true);
-  const q = (extra?.q ?? "").trim();
+  const q = clampSearch(extra?.q);
   const where: Prisma.AccountDocumentWhereInput = {
     tenantId,
     systemId,
@@ -2077,6 +2076,9 @@ export async function issueDocument(
     const settings = await getSettings(tenantId, systemId);
     let docNo = "";
     await prisma.$transaction(async (tx) => {
+      // WO 9.2 ข้อ 14 — กดปุ่ม "ออกเอกสาร" รัว 2 ครั้ง: ไม่มีล็อก = ผ่านด่าน DRAFT ทั้งคู่
+      //                  → กินเลขที่เอกสาร 2 เลข (เลขหาย 1 ตัวโดยไม่มีใบ)
+      await lockDocumentRow(tx, tenantId, systemId, id);
       const doc = await tx.accountDocument.findFirst({
         where: { id, tenantId, systemId },
         include: { lines: true, contact: true },
@@ -2334,6 +2336,25 @@ async function depositRepostEvent(tx: Prisma.TransactionClient, systemId: string
   return n === 0 ? "ISSUE" : `ISSUE:R${n}`;
 }
 
+/**
+ * ล็อกแถวเอกสาร 1 ใบภายใน transaction (`SELECT … FOR UPDATE`) — WO 9.2 ข้อ 12/14
+ *
+ * 🔴 ทำไมต้องมี: Postgres ของเราอยู่ระดับ READ COMMITTED ⇒ `findFirst` ใน tx **ไม่กัน**
+ *    คำขอที่มาพร้อมกันจากการอ่านค่าเดียวกัน · ทุกที่ที่ตัดสินใจจากยอด/สถานะที่เพิ่งอ่าน
+ *    (รับชำระ · ยกเลิกชำระ · ยกเลิกเอกสาร) ต้องล็อกแถวก่อน ไม่งั้นด่านเช็คผ่านได้ทั้งคู่
+ * 🔴 ต้องเรียก **ก่อน** อ่านข้อมูลของเอกสารเสมอ · ล็อกจะถูกปล่อยเมื่อ tx จบ (commit/rollback)
+ *    ผูก tenantId+systemId ไว้ด้วยเพื่อไม่ให้ id จากร้านอื่นมาจับล็อกแถวเราได้
+ */
+async function lockDocumentRow(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  systemId: string,
+  id: string,
+): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "AccountDocument"
+    WHERE "id" = ${id} AND "tenantId" = ${tenantId} AND "systemId" = ${systemId} FOR UPDATE`;
+}
+
 // บันทึกรับชำระเงิน → ปรับสถานะ PARTIAL/PAID + โพสต์บัญชี + (บริการ) ออกใบกำกับต่องวด
 export async function recordPayment(
   tenantId: string,
@@ -2376,6 +2397,12 @@ export async function recordPayment(
     let paymentId = "";
     let whtCertNo: string | undefined;
     await prisma.$transaction(async (tx) => {
+      // 🔴 WO 9.2 ข้อ 12 — ล็อกแถวเอกสารก่อนอ่านยอด (SELECT … FOR UPDATE)
+      //    ก่อนหน้านี้ 2 คำขอที่มาพร้อมกันอ่าน `paidTotal` ค่าเดียวกัน (READ COMMITTED) แล้ว
+      //    **ผ่านด่าน "ยอดชำระเกินยอดคงเหลือ" ทั้งคู่** → ได้ payment 2 ใบเต็มยอด + JV 2 ชุด
+      //    (วัดจริงด้วย Promise.all ใน qc-acc-v2-security S12) · ล็อกที่นี่ทำให้คำขอที่สอง
+      //    รอจน tx แรก commit แล้วค่อยอ่าน paidTotal ที่อัปเดตแล้ว → ตกด่านตามที่ควรเป็น
+      await lockDocumentRow(tx, tenantId, systemId, id);
       const doc = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId } });
       if (!doc) throw new Error("ไม่พบเอกสาร");
       if (!["AWAITING_PAYMENT", "PARTIAL"].includes(doc.status))
@@ -2586,6 +2613,8 @@ export async function voidPayment(
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
     await prisma.$transaction(async (tx) => {
+      // WO 9.2 ข้อ 14 — ล็อกแถวเอกสารก่อน (กดยกเลิกรัว 2 ครั้งพร้อมกันเคยลด paidTotal ซ้ำสองได้)
+      await lockDocumentRow(tx, tenantId, systemId, documentId);
       const pay = await tx.accountDocumentPayment.findFirst({
         where: { id: paymentId, documentId, tenantId, systemId },
       });
@@ -2941,6 +2970,8 @@ export async function voidDocument(
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
     await prisma.$transaction(async (tx) => {
+      // WO 9.2 ข้อ 14 — ล็อกแถวก่อนอ่านสถานะ (กดยกเลิกพร้อมกัน 2 ครั้ง = กลับรายการซ้ำ)
+      await lockDocumentRow(tx, tenantId, systemId, id);
       const doc = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId } });
       if (!doc) throw new Error("ไม่พบเอกสาร");
       if (doc.status === "VOIDED" || doc.status === "CANCELLED")
@@ -3194,6 +3225,16 @@ export async function issuePublicTaxInvoice(
       return { ok: false, reason: "เอกสารนี้ขอใบกำกับไม่ได้" };
     const { tenantId, systemId } = source;
     const settings = await getSettings(tenantId, systemId);
+    // 🔴 WO 9.2 ข้อ 4 — ด่านเดียวกับที่ `getPublicTaxContext` ใช้ซ่อนฟอร์ม **ต้องมีที่นี่ด้วย**
+    //    ของเดิมตรวจแค่ตอนเรนเดอร์หน้า ⇒ ใครก็ยิง server action ตรงด้วย token เก่าได้
+    //    (ปิดลิงก์สาธารณะ/ปิดคำขอใบกำกับ/ลิงก์หมดอายุแล้ว ก็ยังสร้างคำขอ DRAFT ได้เงียบ ๆ)
+    //    ข้อความเดียวกับตอน token ผิด — ไม่บอกใบ้ว่ามีเอกสารอยู่จริง
+    const pub = settings.doc.publicView;
+    if (!pub.enabled) return { ok: false, reason: "ลิงก์ไม่ถูกต้องหรือหมดอายุ" };
+    if (pub.expiryDays > 0 && Date.now() - source.issueDate.getTime() > pub.expiryDays * 86_400_000)
+      return { ok: false, reason: "ลิงก์ไม่ถูกต้องหรือหมดอายุ" };
+    if (!settings.doc.taxRequest.enabled)
+      return { ok: false, reason: "ร้านนี้ปิดการขอใบกำกับภาษีผ่านลิงก์อยู่ — ติดต่อร้านค้าโดยตรง" };
     if (!settings.vatRegistered)
       return { ok: false, reason: "กิจการนี้ไม่ได้จดทะเบียนภาษีมูลค่าเพิ่ม" };
 
@@ -3259,7 +3300,12 @@ export async function issuePublicTaxInvoice(
       }) : null;
       return { ok: true, requested: false, docNo: dup?.docNo ?? null };
     }
-    return { ok: false, reason: e instanceof Error ? e.message : "ขอใบกำกับไม่สำเร็จ" };
+    // 🔴 WO 9.2 ข้อ 4 — หน้านี้เป็น "สาธารณะ" ⇒ ห้ามคืนข้อความ error ดิบ (ของเดิมส่ง `e.message`
+    //    ของ Prisma ออกไปเลย = ชื่อตาราง/คอลัมน์/ข้อจำกัดรั่วให้คนนอกอ่าน) · ของจริงลง log ฝั่งเรา
+    console.error(
+      `[account] issuePublicTaxInvoice ล้มเหลว — ${e instanceof Error ? e.name || "Error" : "unknown"}`,
+    );
+    return { ok: false, reason: "ขอใบกำกับไม่สำเร็จ — กรุณาลองใหม่หรือติดต่อร้านค้า" };
   }
 }
 
@@ -3675,7 +3721,7 @@ export async function searchContactPickerRows(
   q: string,
   take = 20,
 ): Promise<ContactPickerRow[]> {
-  const term = q.trim();
+  const term = clampSearch(q);
   const rows = await prisma.accountContact.findMany({
     where: {
       tenantId,
@@ -5396,6 +5442,13 @@ export async function runAccountEmailReports(now: Date = new Date()): Promise<Em
         where: { tenantId: row.tenantId, title: REPORT_MARKER_TITLE, body: { contains: key } },
       });
       if (already > 0) {
+        out.skipped += 1;
+        continue;
+      }
+      // WO 9.2 ข้อ 11 — ชั้นที่ 2 ต่อจาก idempotencyKey: ถ้าวันหนึ่งมีใครเรียกตัวนี้นอก cron
+      //   (หรือ cron เด้งซ้ำ) กล่องจดหมายของเจ้าของร้านต้องไม่โดนถล่ม
+      const rate = await accountRateGuard("emailReport", row.systemId, now.getTime());
+      if (!rate.ok) {
         out.skipped += 1;
         continue;
       }

@@ -96,3 +96,42 @@ export function columnIndex(headers: string[], aliases: string[]): number {
 export function cell(row: string[], idx: number): string {
   return idx >= 0 ? (row[idx] ?? "").trim() : "";
 }
+
+// ─────────────────── เขียน CSV อย่างปลอดภัย (WO 9.2 ข้อ 7) ───────────────────
+//
+// 🔴 CSV injection (formula injection): Excel/LibreOffice/Google Sheets ถือว่า cell ที่ขึ้นต้นด้วย
+//    `=` `+` `-` `@` (และ tab/CR ที่ถูกกินหัวจนเหลือสัญลักษณ์พวกนี้) เป็น **สูตร** ไม่ใช่ข้อความ
+//    ข้อมูลในไฟล์ที่เราส่งออก (ชื่อคู่ค้า · เลขที่เอกสาร · หมายเหตุ) มาจากผู้ใช้ ⇒ ใครก็ตั้งชื่อลูกค้าว่า
+//    `=HYPERLINK("http://evil","คลิก")` หรือ `=cmd|'…'!A1` แล้วรอให้ฝ่ายบัญชีเปิดไฟล์ได้
+//    ⇒ เติม `'` นำหน้าให้กลายเป็นข้อความเปล่า ๆ (วิธีมาตรฐานเดียวกับที่ import-shared.ts ใช้กับเทมเพลต)
+//
+// 🔴 ไฟล์นี้ "บริสุทธิ์" (ไม่แตะ prisma/next) โดยตั้งใจ — ตัวส่งออก CSV มีทั้งฝั่ง server (route/service)
+//    และฝั่ง client (ReportToolbar ปุ่ม Excel) ต้อง import ตัวเดียวกันได้ทั้งคู่
+
+/**
+ * ขึ้นต้นด้วยอักขระที่ spreadsheet ตีความเป็นสูตร → เติม `'` นำหน้า (ตัดหัว tab/CR/LF/ช่องว่างก่อนตัดสิน)
+ *
+ * ⚠️ ยกเว้น "ตัวเลขล้วน" รวมยอดติดลบ (`-1234.50`) — ไม่งั้นคอลัมน์เงินในไฟล์บัญชีจะกลายเป็นข้อความ
+ *    ทั้งคอลัมน์ แล้วฝ่ายบัญชี SUM ไม่ได้ (`-1+1` ที่เป็นสูตรจริงยังโดนเติม เพราะไม่ใช่ตัวเลขล้วน)
+ */
+export function neutralizeFormula(v: string): string {
+  if (/^-?\d+(\.\d+)?$/.test(v)) return v;
+  return /^[\t\r\n ]*[=+\-@]/.test(v) ? `'${v}` : v;
+}
+
+/**
+ * แปลงค่า 1 ช่องให้พร้อมต่อกันเป็นบรรทัด CSV — **ตัวเดียวที่ทุกตัวส่งออกในระบบต้องใช้**
+ * ทำ 2 อย่าง: กันสูตร (`neutralizeFormula`) แล้วค่อยครอบ quote เมื่อมี `"` `,` หรือขึ้นบรรทัดใหม่
+ * ตัวเลขไม่ถูกแตะ (ไม่มีทางขึ้นต้นด้วย `=`) — แต่ค่าติดลบเป็น **สตริง** จะได้ `'` นำหน้าตามกติกา
+ * ⇒ ผู้เรียกที่อยากได้ตัวเลขติดลบเป็นตัวเลขจริง ต้องส่งเป็น `number` ไม่ใช่ string
+ */
+export function csvCell(v: string | number | null | undefined): string {
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : "";
+  const s = neutralizeFormula(String(v ?? ""));
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** ต่อ 1 แถวเป็นบรรทัด CSV (คั่นด้วย `,`) — ทุกช่องผ่าน `csvCell` */
+export function csvRow(cells: readonly (string | number | null | undefined)[]): string {
+  return cells.map(csvCell).join(",");
+}

@@ -2,8 +2,10 @@
 // ทำบัญชีจริงบน Neon ผ่าน service layer → assert → cleanup tenant ทิ้ง (รันซ้ำได้)
 // รัน: cd /root/projects/shark-in-th && pnpm exec tsx scripts/qc-account-qc7.mts
 // กติกา: fail ก่อนแก้ → pass หลังแก้ · ห้ามแก้ oracle qc-account-cpa.mts
-try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
-try { process.loadEnvFile(".env.local"); } catch {}
+// WO 9.2 ข้อ 18 — โหลด env ผ่านด่านกลาง: เคารพ QC_ENV_FILE + **ห้ามชี้ prod** (ALLOW_PROD_QC=1 ถึงจะยอม)
+//   (เดิมเรียก process.loadEnvFile(".env") ตรง ๆ → เคยพา suite นี้ไปสร้าง tenant บน prod จริง 3 ก.ย.)
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-account-qc7");
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

@@ -13,6 +13,7 @@ import { postManualJV, reverseEntry } from "./gl";
 import { checkNotLocked } from "./policy"; // §9.3 ล็อกข้อมูลก่อนวันที่
 
 export type JournalCtx = { tenantId: string; systemId: string };
+import { clampSearch } from "./search-input";
 
 // ─────────────────── ป้ายไทย (แหล่งเดียว — UI + ข้อสอบใช้ตัวนี้) ───────────────────
 
@@ -189,7 +190,7 @@ export function journalRangeKeyOf(from: string, to: string, now: Date): JournalR
 
 function whereOf(ctx: JournalCtx, input: JournalListInput, withBook: boolean): Prisma.AccountJournalEntryWhereInput {
   const book = withBook ? bookOfTab(input.book) : null;
-  const q = (input.q ?? "").trim();
+  const q = clampSearch(input.q);
   return {
     systemId: ctx.systemId,
     ...(book ? { book } : {}),

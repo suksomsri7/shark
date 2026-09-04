@@ -1,7 +1,9 @@
 // QC5 Gate A verify — ขับผ่าน service layer จริง (posting engine) แล้ว assert double-entry + VAT routing
 // รัน: pnpm exec tsx scripts/qc-account-gatea.mts
-try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
-try { process.loadEnvFile(".env.local"); } catch {}
+// WO 9.2 ข้อ 18 — โหลด env ผ่านด่านกลาง: เคารพ QC_ENV_FILE + **ห้ามชี้ prod** (ALLOW_PROD_QC=1 ถึงจะยอม)
+//   (เดิมเรียก process.loadEnvFile(".env") ตรง ๆ → เคยพา suite นี้ไปสร้าง tenant บน prod จริง 3 ก.ย.)
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-account-gatea");
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/account/../system/service");

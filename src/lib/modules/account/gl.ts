@@ -759,6 +759,12 @@ export async function postPayment(
       b,
       db,
     );
+    // 🔴 WO 9.2 ข้อ 19 — เขียน entryId กลับที่แถว payment (พบตอน audit 5.5: คอลัมน์นี้เป็น null
+    //    ทุกแถวมาตลอด ทั้งที่ schema มีไว้ ⇒ ผู้อ่านทุกคนต้องไล่หา JV จาก refType/refId เอง
+    //    เช่น payment-request.ts:612 ที่ต้องเขียนหมายเหตุกำกับไว้ว่า "อย่าใช้ entryId")
+    //    เขียนเพิ่มอย่างเดียว (additive) — ไม่มีใครอ่านค่านี้อยู่ ⇒ ไม่กระทบพฤติกรรมเดิม
+    //    ⚠️ ไม่ unique: ใบวางบิล/รวมจ่าย 1 entry ผูกได้หลาย payment (Gate B-M4)
+    await db.accountDocumentPayment.update({ where: { id: paymentId }, data: { entryId: entry.id } });
     return { entryId: entry.id };
   });
 }

@@ -33,6 +33,7 @@ import { issueDocNo, peekDocNo } from "./doc-numbering";
 // WO 8.2 (§9.3) — ล็อกข้อมูลก่อนวันที่ + ค่าเริ่มต้นหัก ณ ที่จ่าย/การแปลงเอกสาร
 import { assertNotLockedTx, assertNotLockedWith } from "./policy";
 import { EXPENSE_DOC_PREFIX, fallbackPrefixOf } from "./settings-schema";
+import { clampSearch } from "./search-input";
 
 // ─────────────────────────────────────────────────────────────
 // expense.ts — ฝั่งรายจ่าย (P2) direction=IN
@@ -341,7 +342,7 @@ export async function listExpenseDocsPaged(
   const now = new Date();
   const pageSize = clampPageSize(input.pageSize);
   const page = clampPage(input.page);
-  const q = (input.q ?? "").trim();
+  const q = clampSearch(input.q);
   const from = parseDay(input.from, false);
   const to = parseDay(input.to, true);
 
@@ -1443,10 +1444,14 @@ export async function approvePurchaseOrder(
   if (doc.status !== "AWAITING_APPROVAL") return { ok: false, reason: "สถานะไม่ถูกต้อง (ต้องรออนุมัติ)" };
   if (opts?.maxSatang !== undefined && doc.grandTotal > opts.maxSatang)
     return { ok: false, reason: `เกินวงเงินอนุมัติ (จำกัด ฿${(opts.maxSatang / 100).toLocaleString("th-TH")})` };
-  await prisma.accountDocument.update({
-    where: { id },
+  // 🔴 WO 9.2 ข้อ 14 — เปลี่ยนสถานะแบบมีเงื่อนไขในคำสั่งเดียว (ไม่ใช่ read-then-write)
+  //    กดอนุมัติรัว/2 คนกดพร้อมกัน: ของเดิมผ่านด่าน `status !== AWAITING_APPROVAL` ทั้งคู่
+  //    → เขียน approvedById ทับกัน + ยิง audit/webhook ซ้ำ · แบบนี้มีผู้ชนะคนเดียวเสมอ
+  const res = await prisma.accountDocument.updateMany({
+    where: { id, tenantId, systemId, status: "AWAITING_APPROVAL" },
     data: { status: "APPROVED", approvedById },
   });
+  if (res.count === 0) return { ok: false, reason: "สถานะไม่ถูกต้อง (ต้องรออนุมัติ)" };
   return { ok: true };
 }
 
@@ -1459,10 +1464,12 @@ export async function rejectPurchaseOrder(
   const doc = await prisma.accountDocument.findFirst({ where: { id, tenantId, systemId } });
   if (!doc) return { ok: false, reason: "ไม่พบเอกสาร" };
   if (doc.status !== "AWAITING_APPROVAL") return { ok: false, reason: "สถานะไม่ถูกต้อง" };
-  await prisma.accountDocument.update({
-    where: { id },
+  // WO 9.2 ข้อ 14 — เหตุผลเดียวกับ approvePurchaseOrder (ผู้ชนะคนเดียวในคำสั่งเดียว)
+  const res = await prisma.accountDocument.updateMany({
+    where: { id, tenantId, systemId, status: "AWAITING_APPROVAL" },
     data: { status: "REJECTED", voidReason: reason || null },
   });
+  if (res.count === 0) return { ok: false, reason: "สถานะไม่ถูกต้อง" };
   return { ok: true };
 }
 

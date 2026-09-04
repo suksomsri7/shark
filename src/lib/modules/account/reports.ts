@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/db";
+import { csvCell } from "@/lib/core/csv";
 import type { AccountLedgerType, AccountCashflowActivity } from "@prisma/client";
 
 // ─────────────────────────────────────────────────────────────
@@ -622,10 +623,9 @@ export async function pp30(
 
 // ── ภ.พ.30 → CSV ยื่น/ตรวจ (WO-0035) ─────────────────────────────
 // BOM UTF-8 ให้ Excel เปิดไทยได้ · ยอดเป็นบาททศนิยม 2 (แปลงจากสตางค์) — pattern เดียวกับ pndCsv
-const pp30Cell = (v: string | number): string => {
-  const s = typeof v === "number" ? (v / 100).toFixed(2) : v;
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
+// 🔴 WO 9.2 ข้อ 7: กันสูตร + quote ผ่าน `csvCell` กลาง (ชื่อคู่ค้า/เลขที่เอกสารมาจากผู้ใช้)
+//    ตัวเลขที่ส่งเข้ามาเป็น number = สตางค์ → แปลงเป็นบาททศนิยม 2 ก่อนส่งต่อ
+const pp30Cell = (v: string | number): string => csvCell(typeof v === "number" ? (v / 100).toFixed(2) : v);
 
 export async function pp30Csv(
   ctx: GlCtx,

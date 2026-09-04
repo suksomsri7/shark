@@ -12,7 +12,10 @@
 //   RV-1 บัญชีผู้ตรวจ: ตั้ง env ครบ → ได้รหัสคงที่ · ไม่ตั้ง/ตั้งไม่ครบ → ไม่มีทางลัด (fail-closed)
 //
 // รัน: pnpm qc:account-deletion
-try { process.loadEnvFile(".env"); } catch { /* CI */ }
+// WO 9.2 ข้อ 18 — โหลด env ผ่านด่านกลาง: เคารพ QC_ENV_FILE + **ห้ามชี้ prod** (ALLOW_PROD_QC=1 ถึงจะยอม)
+//   (เดิมเรียก process.loadEnvFile(".env") ตรง ๆ → เคยพา suite นี้ไปสร้าง tenant บน prod จริง 3 ก.ย.)
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-account-deletion");
 
 const { prisma } = (await import("@/lib/core/db" as string)) as { prisma: any };
 const del = (await import("@/lib/platform/account-deletion" as string)) as {

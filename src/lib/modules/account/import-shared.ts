@@ -2,7 +2,7 @@
 // 🔴 ห้าม import prisma/next-headers ที่นี่ — ไฟล์นี้ถูกดึงเข้า bundle ฝั่ง client (ImportWizard ใช้พรีวิวสด)
 //    เหมือน totals.ts/doc-editor-types.ts — server action (import-actions.ts) เรียกตัวเดียวกันตรวจซ้ำก่อนบันทึกจริง
 // ใช้ตัวแยก CSV กลางเดิม (src/lib/core/csv.ts — WO Wave6-A) ไม่สร้างตัวแยกใหม่
-import { parseCsv, columnIndex, cell, type CsvTable } from "@/lib/core/csv";
+import { parseCsv, columnIndex, cell, csvCell, neutralizeFormula, type CsvTable } from "@/lib/core/csv";
 
 // ─────────────────── ชนิดของการนำเข้า ───────────────────
 export type ImportKind = "documents_revenue" | "documents_expense" | "contacts" | "products" | "chart_of_accounts";
@@ -116,14 +116,9 @@ const TEMPLATE_SAMPLES: Record<ImportKind, string[][]> = {
 };
 
 // ─────────────────── CSV export ปลอดภัย (กัน CSV injection ตอนดาวน์โหลดเทมเพลต) ───────────────────
-/** สูตร/ฟังก์ชันของ Excel เริ่มด้วย = + - @ — เติม ' นำหน้าให้เป็นข้อความเฉย ๆ (ไม่ให้ spreadsheet รันสูตร) — export แยกไว้ให้ QC ยิงตรง */
-export function neutralizeFormulaPrefix(v: string): string {
-  return /^[=+\-@]/.test(v) ? `'${v}` : v;
-}
-function csvCell(v: string): string {
-  const neutral = neutralizeFormulaPrefix(v);
-  return /[",\n]/.test(neutral) ? `"${neutral.replace(/"/g, '""')}"` : neutral;
-}
+/** สูตร/ฟังก์ชันของ Excel เริ่มด้วย = + - @ — เติม ' นำหน้าให้เป็นข้อความเฉย ๆ (ไม่ให้ spreadsheet รันสูตร)
+ *  WO 9.2 ข้อ 7: ตรรกะจริงย้ายไป `core/csv.ts` แล้ว (ที่เดียวทั้งระบบ) — ชื่อนี้คงไว้ให้ผู้เรียก/QC เดิม */
+export const neutralizeFormulaPrefix = neutralizeFormula;
 
 /** สร้างไฟล์เทมเพลต CSV (BOM UTF-8 ให้ Excel เปิดไทยไม่เพี้ยน) — ใช้ทั้งปุ่ม "ดาวน์โหลดเทมเพลต" และ route ดาวน์โหลด */
 export function buildTemplateCsv(kind: ImportKind): string {

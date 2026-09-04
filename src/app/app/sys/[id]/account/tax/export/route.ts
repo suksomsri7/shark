@@ -17,8 +17,12 @@ export async function GET(
 
   const url = new URL(req.url);
   const kind = url.searchParams.get("kind") ?? "pnd";
-  const period = url.searchParams.get("period") ?? "";
-  const year = url.searchParams.get("year") ?? period.slice(0, 4);
+  // 🔴 WO 9.2 ข้อ 7: `period`/`year` ถูกเอาไปต่อเป็นชื่อไฟล์ใน header `Content-Disposition`
+  //    ของเดิมรับค่าดิบจาก query string ⇒ ยัด `"` เข้าไปแล้วแก้ชื่อไฟล์ที่ลูกค้าดาวน์โหลดได้
+  //    (เช่น `?period=x";filename="งบการเงิน.exe`) · งวดของจริงมีแค่ตัวเลขกับ `-`
+  const safe = (v: string) => v.replace(/[^0-9-]/g, "").slice(0, 10);
+  const period = safe(url.searchParams.get("period") ?? "");
+  const year = safe(url.searchParams.get("year") ?? period.slice(0, 4));
 
   let csv: string;
   let filename: string;

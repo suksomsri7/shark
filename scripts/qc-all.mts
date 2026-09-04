@@ -21,9 +21,25 @@
 // ที่หัวไฟล์ = ต้องมีร้าน `SIAM DIVE QC` + เฉลย `scripts/acc-v2-expected.json` ที่ตรงกับ DB ก้อนนั้น
 // qc-all จะ seed ให้ **ครั้งเดียวต่อ run** ก่อนเริ่มยิงชุดเทสต์ (ข้ามให้เองถ้า DB มีชุดข้อมูลอยู่แล้ว)
 // seed ล้ม = ชุดพวกนั้นขึ้น ❌ พร้อมเหตุผล แต่ชุดอื่นในส่วนเดียวกัน**ยังรันต่อ** (ไม่ล้มทั้ง run)
+//
+// 🔴 ด่านกัน production (WO 9.2 ข้อ 18): ชุดข้อสอบเกือบทั้งหมด **สร้างและลบข้อมูลจริง**
+//    ถ้า DATABASE_URL ที่ส่งเข้ามาชี้ Neon branch `production` = หยุดตั้งแต่ยังไม่เริ่ม
+//    (ตั้ง ALLOW_PROD_QC=1 ถึงจะข้ามได้ — ต้องจงใจ)
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { isProdDbUrl, PROD_HOST_MARK } from "./qc-env-guard.mjs";
+
+if (
+  process.env.ALLOW_PROD_QC !== "1" &&
+  (isProdDbUrl(process.env.DATABASE_URL) || isProdDbUrl(process.env.DIRECT_URL))
+) {
+  console.error(
+    `\n🔴 หยุด! qc:all: DATABASE_URL/DIRECT_URL ชี้ไป production branch (${PROD_HOST_MARK}…) — ข้อสอบเขียนข้อมูลจริง\n` +
+      `   export DATABASE_URL/DIRECT_URL ของ Neon branch สำหรับ QC ก่อน (หรือ ALLOW_PROD_QC=1 ถ้าจงใจ)\n`,
+  );
+  process.exit(1);
+}
 
 const ROOT = resolve(import.meta.dirname, "..");
 const argv = process.argv.slice(2);

@@ -2,8 +2,10 @@
 // แล้วปิดงบแบบนักบัญชี: ไล่ยอดทุกบัญชีเทียบเลขคำนวณมือ (สตางค์) + P&L + งบดุล + ภ.พ.30 + ภ.ง.ด.53 + ปิดงวด
 // รัน: cd /root/projects/shark-in-th && pnpm exec tsx scripts/qc-account-cpa.mts
 // กติกา: assert ไม่ผ่าน = บันทึก finding แล้วทำข้อต่อไป (ไม่หยุดที่ตัวแรก) · ห้ามแก้ code ระบบ
-try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
-try { process.loadEnvFile(".env.local"); } catch {}
+// WO 9.2 ข้อ 18 — โหลด env ผ่านด่านกลาง: เคารพ QC_ENV_FILE + **ห้ามชี้ prod** (ALLOW_PROD_QC=1 ถึงจะยอม)
+//   (เดิมเรียก process.loadEnvFile(".env") ตรง ๆ → เคยพา suite นี้ไปสร้าง tenant บน prod จริง 3 ก.ย.)
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-account-cpa");
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

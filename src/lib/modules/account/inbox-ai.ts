@@ -18,6 +18,7 @@
 import { tenantDb } from "@/lib/core/db";
 import { resolveProvider, type AiChatMessage, type AiProvider } from "@/lib/ai/provider";
 import { canSpend, chargeUsageSafe, outOfCreditMessage } from "@/lib/ai/credit";
+import { accountRateGuard } from "./rate-limit";
 import { MICRO_PER_USD } from "@/lib/ai/pricing";
 
 export type InboxAiStatus = "PENDING" | "DONE" | "FAILED" | "UNSUPPORTED" | "SKIPPED";
@@ -310,6 +311,11 @@ export async function readBill(
   const provider = opts?.provider ?? resolveProvider("smart");
   if (!provider) return skipped("ยังไม่ได้เปิดผู้ช่วย AI ของกิจการนี้ — กรอกข้อมูลเองได้ตามปกติ");
   if (!(await canSpend(ctx.tenantId))) return skipped(outOfCreditMessage());
+  // WO 9.2 ข้อ 11 — เพดานต่อร้านต่อวัน ซ้อนบน credit gate:
+  //   เครดิตกันไม่ให้ "ใช้เกินเงินที่มี" แต่ไม่กัน "ยิงรัวจนหมดเครดิตในนาทีเดียว"
+  //   นับเฉพาะตอนกำลังจะยิง provider จริง (cache/UNSUPPORTED/ปิด AI ไม่กินโควตา)
+  const rate = await accountRateGuard("aiBill", ctx.tenantId);
+  if (!rate.ok) return skipped(rate.reason);
 
   // ทำเครื่องหมาย "กำลังอ่าน" ก่อนยิง — คนที่เปิดหน้าอยู่จะเห็นสถานะจริง และกันกดรัวซ้ำซ้อน
   await db.accountAttachment.update({ where: { id: row.id }, data: { aiStatus: "PENDING" } });

@@ -185,11 +185,16 @@ export function validateDocSettingsPatch(patch: DocSettingsPatch): string | null
     if (patch.due.basis !== "ISSUE" && patch.due.basis !== "MONTH_END")
       return `วิธีนับวันครบกำหนดต้องเป็น "${DUE_BASIS_LABEL.ISSUE}" หรือ "${DUE_BASIS_LABEL.MONTH_END}"`;
   }
-  if (patch.publicView && (patch.publicView.expiryDays < 0 || patch.publicView.expiryDays > 3650))
+  // 🔴 WO 9.2 — ตัว patch เป็น "บางส่วน" ได้จริง (ผู้เรียกส่งมาแค่คีย์ที่แก้) แต่ชนิดของ TS
+  //    ประกาศ sub-object เป็นก้อนเต็ม ⇒ ของเดิมอ่าน `.legalText.length` ตรง ๆ แล้ว **โยน TypeError**
+  //    เมื่อคีย์นั้นไม่ได้ส่งมา (server action ตายพร้อมข้อความอังกฤษของ V8 แทนข้อความไทย)
+  //    ⇒ อ่านแบบทนค่าว่างทุกจุด · ค่าที่ไม่ได้ส่ง = ไม่ต้องตรวจ
+  const expiryDays = patch.publicView?.expiryDays;
+  if (expiryDays !== undefined && (!Number.isFinite(expiryDays) || expiryDays < 0 || expiryDays > 3650))
     return "อายุลิงก์สาธารณะต้องอยู่ระหว่าง 0–3650 วัน (0 = ไม่หมดอายุ)";
-  if (patch.autoTaxInvoice && patch.autoTaxInvoice.legalText.length > 500)
+  if ((patch.autoTaxInvoice?.legalText ?? "").length > 500)
     return "ข้อความตามกฎหมายยาวเกินไป (ไม่เกิน 500 ตัวอักษร)";
-  if (patch.taxRequest && patch.taxRequest.receiptText.length > 200)
+  if ((patch.taxRequest?.receiptText ?? "").length > 200)
     return "ข้อความบนใบเสร็จยาวเกินไป (ไม่เกิน 200 ตัวอักษร)";
   if (patch.notes) {
     for (const [dt, v] of Object.entries(patch.notes)) {

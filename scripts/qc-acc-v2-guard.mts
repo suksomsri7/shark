@@ -77,6 +77,13 @@ try {
   );
   const routeEntries = Object.entries(ACCOUNT_PAGE_PERMISSIONS);
   eq("ทะเบียนสิทธิ์ครอบทุกไฟล์ route ที่มีอยู่จริงในโฟลเดอร์", routeEntries.length, listRouteFiles().length);
+  // 🔴 WO 9.2 เข้มขึ้น: เดิมเช็กแค่ "ไฟล์มีสตริงชื่อ action" — คอมเมนต์ก็ผ่านได้
+  //    ตอนนี้ต้องครบ 2 อย่าง: (1) มีการ **เรียกฟังก์ชันด่านจริง** (2) action ที่บังคับตรงกับทะเบียน
+  //    ฟังก์ชันด่านที่ยอมรับ: requireAccountPage / loadAccountSystem({can}) / assertAccountCan
+  //    หรือเรียกผ่านตัวช่วยของหน้ารายงานใน _shared.tsx (ซึ่งถูกตรวจแยกไว้ข้างบนแล้วว่ามีด่านครบ)
+  const GUARD_CALL = /\b(requireAccountPage|loadAccountSystem|assertAccountCan)\s*\(/;
+  const noGuardCall: string[] = [];
+  const wrongAction: string[] = [];
   for (const [rel, action] of routeEntries) {
     const p = join(ROUTE_DIR, rel);
     if (!existsSync(p)) {
@@ -84,10 +91,21 @@ try {
       continue;
     }
     const src = readFileSync(p, "utf8");
-    const direct = src.includes(`"${action}"`);
-    const viaShared = sharedHelpers.some((h) => new RegExp(`\\b${h}\\(`).test(src)) && sharedAction === action;
-    assert(`G1 ${rel} → ${action}`, direct || viaShared, "ไฟล์ไม่ได้บังคับ action นี้ก่อนโหลดข้อมูล");
+    // ตัดคอมเมนต์ออกก่อนตัดสิน — ชื่อ action ที่อยู่ในคอมเมนต์ไม่ใช่ด่าน
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const viaShared = sharedHelpers.some((h) => new RegExp(`\\b${h}\\(`).test(code));
+    const hasGuardCall = GUARD_CALL.test(code) || viaShared;
+    const enforces = code.includes(`"${action}"`) || (viaShared && sharedAction === action);
+    if (!hasGuardCall) noGuardCall.push(rel);
+    if (!enforces) wrongAction.push(`${rel} (ควรบังคับ ${action})`);
+    assert(`G1 ${rel} → ${action}`, hasGuardCall && enforces, "ไฟล์ไม่ได้บังคับ action นี้ก่อนโหลดข้อมูล");
   }
+  assert("G1 ทุก route เรียกฟังก์ชันด่านจริง (ไม่ใช่แค่มีชื่อ action ในไฟล์)", noGuardCall.length === 0, noGuardCall.join(" | "));
+  assert("G1 action ที่แต่ละ route บังคับ ตรงกับทะเบียนกลางทุกไฟล์", wrongAction.length === 0, wrongAction.join(" | "));
+  // ไฟล์ route ที่ **ไม่ได้** อยู่ในทะเบียน = ช่องโหว่เงียบ (เพิ่มหน้าใหม่แล้วลืมลงทะเบียน)
+  const registered = new Set(routeEntries.map(([rel]) => rel));
+  const orphanRoutes = listRouteFiles().filter((f) => !registered.has(f));
+  assert("G1 ไม่มีไฟล์ route ที่ยังไม่ได้ลงทะเบียนสิทธิ์", orphanRoutes.length === 0, orphanRoutes.join(" | "));
   // ทุก action ที่ใช้ ต้องมีจริงในทะเบียนสิทธิ์กลาง (กันพิมพ์ผิดแล้วด่านเปิดโล่งเงียบ ๆ)
   const unknown = [...new Set(routeEntries.map(([, a]) => a))].filter((a) => !PERMISSION_KEYS.has(a));
   assert("ทุก action ที่ route ใช้มีอยู่จริงใน permissions.ts §account", unknown.length === 0, unknown.join(", "));
