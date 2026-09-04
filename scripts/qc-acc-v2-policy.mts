@@ -887,6 +887,27 @@ try {
   ], ["CLOSED", 1]);
   await policy.savePolicy(S, { autoClosePeriods: false });
 
+  // ═════════════════ P11.7 — ตัวเตือนประจำวันต้องไม่ผูกกับ "มีแถวตั้งค่าไหม" ═════════════════
+  // 🔴 กันรูปแบบบั๊กเดียวกับ P11.0d ซ้ำที่ตัวเตือน: ระบบบัญชีที่ยังไม่มีแถว AccountSettings
+  //    ต้องยังได้เตือน ภ.พ.30 วันที่ 5 เหมือนเดิม (ก่อน WO 8.2 ตัวเตือนไม่เคยอ่านตั้งค่าเลย)
+  console.log("\nP11.7 ตัวเตือน ภ.พ.30 กับระบบที่ไม่มีแถวตั้งค่า:");
+  {
+    const bare2 = await sysMod.createSystem(tid, "ACCOUNT", `บัญชีไร้ตั้งค่า-เตือน ${stamp}`);
+    await glMod.ensureAccounting({ tenantId: tid, systemId: bare2.id });
+    eq(
+      "P11.7a ระบบนี้ยังไม่มีแถว AccountSettings",
+      await prisma.accountSettings.count({ where: { systemId: bare2.id } }),
+      0,
+    );
+    // ใช้วันที่ 5 ของเดือนอนาคต — กันชนกับตัวกันซ้ำที่เทียบ createdAt กับ "ต้นวันไทยของ now"
+    const fifth = d("2026-12-05");
+    const rem = await svc.runAccountReminders(fifth, { tenantId: tid, systemId: bare2.id });
+    assert("P11.7b ไม่มีแถวตั้งค่า → ยังเตือน ภ.พ.30 วันที่ 5 ตามเดิม", rem.PP30_DUE >= 1, JSON.stringify(rem));
+    const eighth = d("2026-12-08");
+    const rem8 = await svc.runAccountReminders(eighth, { tenantId: tid, systemId: bare2.id });
+    eq("P11.7c วันที่ไม่ใช่วันที่ 5 → ไม่เตือน", rem8.PP30_DUE, 0);
+  }
+
   // ═════════════════ P13 — ด่านสิทธิ์ + ค่าที่กรอกผิด ═════════════════
   console.log("\nP13 ด่านสิทธิ์ + ค่าที่กรอกผิด:");
   const authStaff = {
