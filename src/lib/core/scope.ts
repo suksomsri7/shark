@@ -234,6 +234,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   AccountCheque: sys(),
   // WO 5.4 (บัญชี V2 §10.5) — บันทึกการนำส่ง ภ.ง.ด.3/53 ต่องวด
   AccountWhtFiling: sys(),
+  // WO 5.5 (บัญชี V2 §0.3 ข้อ 5) — คำขอชำระเงินผ่านลิงก์+QR PromptPay (ผูก tenantId+systemId)
+  //   ทางเข้าที่ยังไม่รู้ร้าน (webhook ของผู้ให้บริการ · ลิงก์สาธารณะ · cron หมดอายุ) อ่านผ่าน
+  //   ตัวเข้าถึงใน service.ts ที่ตั้งใจไม่ผูก scope — ตัว token/chargeId เองคือ capability
+  AccountPaymentRequest: sys(),
   AccountLedger: sys(),
   AccountMapping: sys(),
   AccountJournalEntry: sys(),

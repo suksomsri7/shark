@@ -4,6 +4,7 @@
 //
 // 🔴 ห้าม import raw prisma ที่นี่ (F5 baseline freeze) — query ผ่าน service.ts / gl.ts เท่านั้น
 
+import { handleBeamPaid, handleBeamFailed } from "./payment-request";
 import {
   createDocument,
   findAccountLinkFor,
@@ -302,6 +303,48 @@ export {
 
 // ปิดงวดบัญชีอัตโนมัติ (WO-0039) — cron ระดับแพลตฟอร์มเรียก
 export { sweepAutoClosePeriods } from "./period-sweep";
+
+// ─────────────────────────────────────────────────────────────
+// WO 5.5 — เก็บเงินผ่านลิงก์+QR PromptPay
+//   · หน้าสาธารณะ `/pay/<token>` เรียก `getPublicPaymentPage` (ไม่มี auth — token คือ capability)
+//   · webhook ของ Beam เรียก `handleAccountCharge` (จุดเดียวที่เงินเข้าจากภายนอกโมดูล)
+//   · cron เรียก `expirePaymentRequests`
+// ─────────────────────────────────────────────────────────────
+export {
+  getPublicPaymentPage,
+  expireRequests as expirePaymentRequests,
+  type PublicPaymentPage,
+} from "./payment-request";
+
+/**
+ * ปลายทางของ webhook Beam เมื่อ referenceId ขึ้นต้นด้วย "acc:" — แปลงสถานะของผู้ให้บริการเป็นการกระทำ
+ * จ่ายสำเร็จ → บันทึกรับชำระ + JV + จับคู่ statement · สถานะอื่น → แตะแค่สถานะคำขอ (ไม่ยุ่งกับเงิน)
+ * 🔴 ไม่คืนข้อมูลลูกค้าใด ๆ กลับไปให้ route (route เอาไป log ได้อย่างปลอดภัย)
+ */
+export async function handleAccountCharge(input: {
+  referenceId: string;
+  chargeId: string;
+  paidSatang: number;
+  status: string;
+}): Promise<{ ok: true; handled: "paid" | "closed" | "ignored" } | { ok: false; reason: string }> {
+  const status = String(input.status ?? "").toUpperCase();
+  if (["SUCCEEDED", "SUCCESS", "PAID", "COMPLETED"].includes(status)) {
+    if (!input.chargeId) return { ok: false, reason: "ไม่มีเลขที่รายการชำระเงิน" };
+    const res = await handleBeamPaid({
+      referenceId: input.referenceId,
+      chargeId: input.chargeId,
+      paidSatang: input.paidSatang,
+    });
+    return res.ok ? { ok: true, handled: "paid" } : { ok: false, reason: res.reason };
+  }
+  if (["FAILED", "FAILURE", "EXPIRED", "CANCELLED", "CANCELED"].includes(status)) {
+    const next = status === "EXPIRED" ? "EXPIRED" : status.startsWith("CANCEL") ? "CANCELLED" : "FAILED";
+    const res = await handleBeamFailed({ referenceId: input.referenceId, status: next });
+    return res.ok ? { ok: true, handled: "closed" } : { ok: false, reason: res.reason };
+  }
+  // PENDING/PROCESSING/สถานะที่ไม่รู้จัก — รับทราบเฉย ๆ (ห้ามเดาว่าจ่ายแล้ว)
+  return { ok: true, handled: "ignored" };
+}
 
 // ประวัติการแก้ไข (WO Wave6-B) — writeAudit เปิดให้โมดูลอื่น (เช่น hr payroll) เขียน log
 // ผ่าน facade เดียว + service อ่าน/ป้ายไทยสำหรับหน้า "ประวัติการแก้ไข"

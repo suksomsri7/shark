@@ -17,6 +17,14 @@ import {
 import { listDeductibleDeposits, setDocDeposits, refundDeposit } from "./service";
 import { listDeductiblePaidDeposits, setExpenseDocDeposits } from "./expense";
 import { editorDetailPath } from "./doc-editor-config";
+// WO 5.5 — ลิงก์ชำระเงิน / QR PromptPay
+import {
+  createPaymentRequest,
+  confirmStaticPaymentRequest,
+  cancelPaymentRequest,
+  type PaymentRequestView,
+} from "./payment-request";
+import { listFinanceAccounts } from "./finance";
 
 // ─────────────────────────────────────────────────────────────
 // payment-actions.ts — server actions ของส่วน D (เงินมัดจำ) และ F (รับชำระ/บันทึกจ่าย) · WO 1.4
@@ -221,4 +229,74 @@ export async function refundDepositAction(
   });
   if (res.ok) revalidatePath(`/app/sys/${sys}/account`, "layout");
   return res;
+}
+
+// ─────────────────────────────────────────────────────────────
+// WO 5.5 · §0.3 ข้อ 5 — ลิงก์ชำระเงิน / QR PromptPay (หน้าเอกสาร)
+// ด่านเดียวกับการรับชำระจริง: `account.payment.record` (สร้างลิงก์ = ตั้งใจจะรับเงิน)
+// ─────────────────────────────────────────────────────────────
+
+export type PaymentRequestActionResult =
+  | { ok: true; request: PaymentRequestView; reused: boolean }
+  | { ok: false; reason: string };
+
+/** สร้าง (หรือคืนใบเดิม) ลิงก์+QR เก็บเงินของเอกสารนี้ — คืนค่าตรง ๆ ให้ modal ใช้ ไม่ redirect */
+export async function createPaymentRequestAction(
+  systemId: string,
+  docId: string,
+  financeId: string,
+  expiresInDays?: number,
+): Promise<PaymentRequestActionResult> {
+  const sys = trim(systemId, 40);
+  const { auth, tenantId, userId } = await loadAccountSystem(sys);
+  assertAccountCan(auth, "account.payment.record");
+  const res = await createPaymentRequest({ tenantId, systemId: sys }, trim(docId, 40), {
+    financeId: trim(financeId, 40),
+    expiresInDays,
+    userId,
+  });
+  if (res.ok) revalidatePath(`/app/sys/${sys}/account`, "layout");
+  return res;
+}
+
+/** ช่องทางที่ใช้รับเงินได้ (dropdown ในโมดัล) */
+export async function listReceiveChannelsAction(
+  systemId: string,
+): Promise<{ id: string; name: string; hasPromptPay: boolean }[]> {
+  const sys = trim(systemId, 40);
+  const { auth, tenantId } = await loadAccountSystem(sys);
+  assertAccountCan(auth, "account.payment.record");
+  const rows = await listFinanceAccounts(tenantId, sys);
+  return rows
+    .filter((r) => r.useForReceive)
+    .map((r) => ({ id: r.id, name: r.name, hasPromptPay: !!r.promptpayId }));
+}
+
+/** "ยืนยันรับเงินแล้ว" ของคำขอโหมด QR นิ่ง → บันทึกรับชำระ + JV เส้นทางเดียวกับ webhook */
+export async function confirmPaymentRequestAction(formData: FormData): Promise<void> {
+  const systemId = trim(formData.get("systemId"), 40);
+  const requestId = trim(formData.get("requestId"), 40);
+  const docType = trim(formData.get("docType"), 40);
+  const docId = trim(formData.get("docId"), 40);
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.payment.record");
+  const res = await confirmStaticPaymentRequest({ tenantId, systemId }, requestId, { userId });
+  // encode ค่าที่มาจากฟอร์ม — กันคนแก้ hidden field ให้ redirect ออกนอกเส้นทางที่ตั้งใจ
+  const path = `/app/sys/${systemId}/account/docs/${encodeURIComponent(docType)}/${encodeURIComponent(docId)}`;
+  if (res.ok) revalidatePath(`/app/sys/${systemId}/account`, "layout");
+  redirect(res.ok ? `${path}?msg=${encodeURIComponent("บันทึกรับเงินแล้ว")}` : `${path}?err=${encodeURIComponent(res.reason)}`);
+}
+
+/** ยกเลิกลิงก์ที่ยังรอชำระ (ลิงก์ที่ส่งออกไปแล้วใช้ไม่ได้ทันที) */
+export async function cancelPaymentRequestAction(formData: FormData): Promise<void> {
+  const systemId = trim(formData.get("systemId"), 40);
+  const requestId = trim(formData.get("requestId"), 40);
+  const docType = trim(formData.get("docType"), 40);
+  const docId = trim(formData.get("docId"), 40);
+  const { auth, tenantId, userId } = await loadAccountSystem(systemId);
+  assertAccountCan(auth, "account.payment.record");
+  const res = await cancelPaymentRequest({ tenantId, systemId }, requestId, userId);
+  const path = `/app/sys/${systemId}/account/docs/${encodeURIComponent(docType)}/${encodeURIComponent(docId)}`;
+  if (res.ok) revalidatePath(`/app/sys/${systemId}/account`, "layout");
+  redirect(res.ok ? `${path}?msg=${encodeURIComponent("ยกเลิกลิงก์แล้ว")}` : `${path}?err=${encodeURIComponent(res.reason)}`);
 }

@@ -23,6 +23,9 @@ import { tenantDb } from "@/lib/core/db";
 import type { Prisma, AccountBankStatementLineStatus, AccountDocType } from "@prisma/client";
 import { postBankReconcileEntry, resolveMapping } from "./gl";
 import { writeAudit } from "./access";
+// WO 5.5 — ตะขอ "คำขอ QR พร้อมเพย์ที่ยังรอชำระ ↔ แถวเงินเข้าใน statement"
+// (payment-request.ts ไม่ import ไฟล์นี้กลับ ⇒ ไม่มีวงจร import)
+import { settleStaticRequestsFromStatement } from "./payment-request";
 import { editorDetailPath } from "./doc-editor-config";
 import { dayKeyBkk, monthStart, monthEndExclusive } from "./dashboard";
 import { formatDateTh } from "@/lib/ui/date";
@@ -493,6 +496,16 @@ export async function autoMatch(ctx: ReconcileCtx, statementId: string, userId?:
   if (statement.confirmedAt) return fail("เดือนนี้ยืนยันกระทบยอดแล้ว — เปิดกลับก่อนจึงจะจับคู่ใหม่ได้");
   const channel = await getChannel(ctx, statement.financeId);
   if (!channel) return fail("ไม่พบช่องทางการเงินนี้");
+
+  // 🔗 WO 5.5 — ก่อนจับคู่: แถวเงินเข้าที่ยอด+วันตรงกับ "คำขอ QR พร้อมเพย์ที่ยังรอชำระ" = ลูกค้าโอนมาแล้วจริง
+  //    → บันทึกรับชำระ + JV ให้ก่อน แล้วรอบจับคู่ด้านล่างจะเห็นบรรทัดใหม่ (วันตรงเป๊ะ) แล้วจับคู่ให้เอง
+  //    🔴 ต้องอยู่ **ก่อน** listSystemEntries เสมอ ไม่งั้นบรรทัดที่เพิ่งสร้างตกสำรวจรอบนี้ (idempotent ในตัว)
+  const preLines = await tenantDb(ctx).accountBankStatementLine.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, statementId },
+    select: { id: true, amountSatang: true, txDate: true, status: true, matchedLineId: true },
+    orderBy: [{ txDate: "asc" }, { seq: "asc" }],
+  });
+  await settleStaticRequestsFromStatement(ctx, statement.financeId, preLines);
 
   const [lines, system] = await Promise.all([
     tenantDb(ctx).accountBankStatementLine.findMany({

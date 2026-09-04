@@ -3,7 +3,8 @@
 // ใช้:
 //   pnpm tsx scripts/acc-v2-cron-recurring.mts recurring    # สร้างเอกสารประจำที่ถึงรอบ
 //   pnpm tsx scripts/acc-v2-cron-recurring.mts reminders    # เตือนครบกำหนด/เช็ค/ภ.พ.30
-//   pnpm tsx scripts/acc-v2-cron-recurring.mts all          # ทั้งสองอย่าง (ค่าเริ่มต้น)
+//   pnpm tsx scripts/acc-v2-cron-recurring.mts promptpay    # ปิดลิงก์ชำระเงินที่หมดอายุ (WO 5.5)
+//   pnpm tsx scripts/acc-v2-cron-recurring.mts all          # ทั้งหมด (ค่าเริ่มต้น)
 //
 // บรรทัด crontab (เครื่อง VPS เป็น UTC · เวลาไทย = UTC+7):
 //   10 23 * * * cd /root/projects/shark-in-th && pnpm tsx scripts/acc-v2-cron-recurring.mts recurring >> /var/log/shark-acc-cron.log 2>&1   # 06:10 ไทย
@@ -19,8 +20,8 @@
 process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env");
 
 const mode = (process.argv[2] ?? "all").replace(/^-+/, "");
-if (!["recurring", "reminders", "all"].includes(mode)) {
-  console.error(`❌ โหมดไม่ถูกต้อง: ${mode} — ใช้ได้: recurring | reminders | all`);
+if (!["recurring", "reminders", "promptpay", "all"].includes(mode)) {
+  console.error(`❌ โหมดไม่ถูกต้อง: ${mode} — ใช้ได้: recurring | reminders | promptpay | all`);
   process.exit(2);
 }
 
@@ -55,6 +56,18 @@ if (mode === "reminders" || mode === "all") {
   } catch (e) {
     failed += 1;
     console.error(`[acc-v2-cron] ❌ รอบเตือนล้ม: ${e instanceof Error ? (e.stack ?? e.message) : e}`);
+  }
+}
+
+// WO 5.5 — ปิดคำขอชำระเงิน (ลิงก์+QR PromptPay) ที่เลยวันหมดอายุ · ปลอดภัยต่อการรันซ้ำ
+if (mode === "promptpay" || mode === "all") {
+  try {
+    const acc = await import("@/lib/modules/account/index");
+    const r = await acc.expirePaymentRequests(startedAt);
+    console.log(`[acc-v2-cron] ลิงก์ชำระเงินหมดอายุ: ปิด ${r.expired} ใบ`);
+  } catch (e) {
+    failed += 1;
+    console.error(`[acc-v2-cron] ❌ ปิดลิงก์ชำระเงินหมดอายุล้ม: ${e instanceof Error ? (e.stack ?? e.message) : e}`);
   }
 }
 

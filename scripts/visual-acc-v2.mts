@@ -1265,6 +1265,39 @@ const PAGES: Record<string, PageSpec[]> = {
       onlyDevice: "mobile",
     },
   ],
+  // WO 5.5 — PromptPay ลิงก์ชำระเงิน (§0.3 ข้อ 5) — ไม่มีเฟรมออกแบบ ⇒ ใช้ภาษาภาพของ g4 (หน้าเอกสาร) + g5/g8 (โมดัลกลาง)
+  "5.5": [
+    {
+      name: "invoice-pay-link-modal",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/${E.fixtures?.invNattapholId}`,
+      note: 'หน้าใบแจ้งหนี้ + โมดัล "ลิงก์ชำระเงิน / QR พร้อมเพย์" เปิดอยู่ (มีคำขอ QR นิ่งค้างอยู่ ⇒ เห็น QR ทันที)',
+      expect: ["ลิงก์ชำระเงิน / QR พร้อมเพย์", "ยอดที่ต้องชำระ", "ลิงก์สำหรับส่งให้ลูกค้า", "คัดลอก", "เงินเข้าที่", "ใช้ได้ถึง"],
+      onlyDevice: "desktop",
+      click: ['[data-testid="btn-pay-link"]'],
+      waitAfterClick: 900,
+      expectBeforeShot: [{ sel: '[data-testid="pay-link-status"]', kind: "text", equals: "รอชำระ" }],
+      expandModalForShot: '[data-testid="pay-link-modal"]',
+    },
+    {
+      name: "invoice-pay-requests",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/${E.fixtures?.invNattapholId}?tab=payments`,
+      note: 'แท็บ "การชำระเงิน" — ตารางลิงก์ชำระเงินพร้อมชิปสถานะ + ปุ่ม "ยืนยันรับเงินแล้ว" (QR นิ่ง) / "ยกเลิกลิงก์"',
+      expect: ["ลิงก์ชำระเงิน / QR พร้อมเพย์", "QR พร้อมเพย์", "รอชำระ", "ยืนยันรับเงินแล้ว", "ยกเลิกลิงก์", "ใช้ได้ถึง"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "pay-public",
+      path: `/pay/${E.promptPay?.staticPending?.token}`,
+      note: "หน้าจ่ายเงินสาธารณะ /pay/<token> — ชื่อกิจการ · เลขที่เอกสาร · ยอด · QR · ขั้นตอน 3 ข้อ · วันหมดอายุ (ไม่มีข้อมูลลูกค้า)",
+      expect: ["ชำระเงินให้", "ใบแจ้งหนี้", "สแกนด้วยแอปธนาคาร", "เปิดแอปธนาคาร", "ลิงก์นี้ใช้ได้ถึง"],
+    },
+    {
+      name: "pay-public-paid",
+      path: `/pay/${E.promptPay?.beam?.token}`,
+      note: 'หน้าจ่ายเงินสาธารณะ สถานะ "จ่ายแล้ว" (ลูกค้าจ่ายผ่านลิงก์แล้ว — webhook ยืนยันแล้ว)',
+      expect: ["จ่ายแล้ว", "ได้รับเงินเรียบร้อยแล้ว"],
+    },
+  ],
   // WO 5.2 — ภาพรวมการเงิน + ปฏิทินเงินเข้า-ออก + สำรองรับ/จ่าย (§10.2–§10.3) เทียบ f7-finance-overview.png (+ -menu.png)
   "5.2": [
     {
@@ -1626,6 +1659,19 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
     "wht-received": { "wht-credit-year-amount": bahtStr(E.whtV2?.creditWhtTotalSatang ?? 0) },
     "cheque-received": { "cheque-tile-pending": bahtStr(850_000), "cheque-tile-duesoon": "1" },
     "cheque-paid-menu": { "cheque-tile-pending": bahtStr(950_000) },
+  },
+  // WO 5.5 — ยอดบนโมดัล/หน้าสาธารณะ ต้องตรงเฉลย seed เป๊ะ (คีย์ promptPay — id/ยอดเขียนตอน seed)
+  "5.5": {
+    "invoice-pay-link-modal": {
+      "pay-link-amount": bahtStr(E.promptPay?.staticPending?.amountSatang ?? 0),
+      "pay-link-status": "รอชำระ",
+    },
+    "pay-public": {
+      "pay-amount": bahtStr(E.promptPay?.staticPending?.amountSatang ?? 0),
+    },
+    "pay-public-paid": {
+      "pay-amount": bahtStr(E.promptPay?.beam?.amountSatang ?? 0),
+    },
   },
   // WO 5.2 — 6 ไทล์/ยอดรวม "เงินคุณอยู่ไหน"/ยอดคงเหลือสำรองจ่าย ต้องตรงเฉลย seed เป๊ะ
   "5.2": {

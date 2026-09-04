@@ -31,6 +31,10 @@ import { paymentReminderBlockReason } from "@/lib/modules/account/service";
 import { isRecurringDocType } from "@/lib/modules/account/recurring-shared";
 import { isGroupDocType, groupDefOf } from "@/lib/modules/account/group";
 import { PaymentPanel } from "./PaymentPanel";
+// WO 5.5 — ลิงก์ชำระเงิน / QR PromptPay (§0.3 ข้อ 5)
+import { PayLinkButton, type PayLinkView } from "./PayLinkButton";
+import { PAYMENT_REQUEST_DOC_TYPES } from "@/lib/modules/account/payment-request";
+import { confirmPaymentRequestAction, cancelPaymentRequestAction } from "@/lib/modules/account/payment-actions";
 import { GroupPaymentPanel } from "./GroupPaymentPanel";
 import { ShareLinkButton } from "./ShareLinkButton";
 import { Stepper, type StepDef } from "./Stepper";
@@ -597,6 +601,88 @@ function TotalRow({ label, satang }: { label: string; satang: number }) {
   );
 }
 
+/**
+ * WO 5.5 — ตารางลิงก์เก็บเงินของเอกสารนี้ (สถานะ · ยอด · หมดอายุ · การกระทำ)
+ * โหมด QR นิ่งที่ยังรอชำระ: ปุ่ม "ยืนยันรับเงินแล้ว" (เส้นทางเงินเดียวกับ webhook) + "ยกเลิกลิงก์"
+ */
+function PayRequestsCard({ data, systemId }: { data: DocDetailData; systemId: string }) {
+  const now = new Date();
+  return (
+    <div className="card overflow-x-auto" data-testid="pay-request-card">
+      <h3 className="mb-2 text-sm font-semibold">ลิงก์ชำระเงิน / QR พร้อมเพย์</h3>
+      <table className="w-full min-w-[620px] table-fixed text-sm">
+        {/* คอลัมน์กว้างคงที่ — กันหัวคอลัมน์ชนกันเป็นคำเดียว ("ยอดสถานะ") เวลาข้อความสั้น */}
+        <colgroup>
+          <col />
+          <col className="w-32" />
+          <col className="w-24" />
+          <col className="w-28" />
+          <col className="w-64" />
+        </colgroup>
+        <thead>
+          <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
+            <th className="py-2 font-normal">วิธี</th>
+            <th className="py-2 pr-4 text-right font-normal">ยอด</th>
+            <th className="py-2 font-normal">สถานะ</th>
+            <th className="py-2 font-normal">ใช้ได้ถึง</th>
+            <th className="py-2 font-normal">การกระทำ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.paymentRequests.map((r, i) => {
+            const expired = r.status === "EXPIRED" || (r.status === "PENDING" && r.expiresAt <= now);
+            const label = expired && r.status === "PENDING" ? "หมดอายุ" : r.statusLabel;
+            return (
+              <tr key={r.id} className="border-b last:border-0" data-testid={`pay-request-row-${i + 1}`}>
+                <td className="py-2">{r.methodLabel}</td>
+                <td className="py-2 pr-4 text-right tabular-nums"><MoneyText satang={r.amountSatang} decimals /></td>
+                <td className="py-2">
+                  <span
+                    className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs"
+                    style={{ borderColor: "var(--color-line)" }}
+                    data-testid={`pay-request-status-${i + 1}`}
+                  >
+                    {label}
+                  </span>
+                </td>
+                <td className="py-2">{fmtDate(r.expiresAt)}</td>
+                <td className="py-2">
+                  {r.status === "PENDING" && !expired ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      {r.method === "PROMPTPAY_STATIC" && (
+                        <form action={confirmPaymentRequestAction}>
+                          <input type="hidden" name="systemId" value={systemId} />
+                          <input type="hidden" name="requestId" value={r.id} />
+                          <input type="hidden" name="docType" value={data.docType} />
+                          <input type="hidden" name="docId" value={data.id} />
+                          <SubmitButton variant="ghost" className="text-xs">
+                            ยืนยันรับเงินแล้ว
+                          </SubmitButton>
+                        </form>
+                      )}
+                      <form action={cancelPaymentRequestAction}>
+                        <input type="hidden" name="systemId" value={systemId} />
+                        <input type="hidden" name="requestId" value={r.id} />
+                        <input type="hidden" name="docType" value={data.docType} />
+                        <input type="hidden" name="docId" value={data.id} />
+                        <SubmitButton variant="ghost" className="text-xs">
+                          ยกเลิกลิงก์
+                        </SubmitButton>
+                      </form>
+                    </span>
+                  ) : (
+                    <span className="text-[color:var(--color-muted)]">—</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function PaymentsTab({ data, systemId, side }: { data: DocDetailData; systemId: string; side: "revenue" | "expense" }) {
   const canPay =
     (data.status === "AWAITING_PAYMENT" || data.status === "PARTIAL") &&
@@ -670,6 +756,9 @@ function PaymentsTab({ data, systemId, side }: { data: DocDetailData; systemId: 
           </div>
         )}
       </div>
+      {/* WO 5.5 — ลิงก์ชำระเงิน / QR พร้อมเพย์ ของเอกสารนี้ (§0.3 ข้อ 5) */}
+      {data.paymentRequests.length > 0 && <PayRequestsCard data={data} systemId={systemId} />}
+
       {/* g4: preview สมุดรายวันโชว์ใต้ตารางการชำระเงินเสมอ (ไม่ต้องสลับไปแท็บ "บัญชี") */}
       <div className="card">
         <div className="mb-2 flex items-center justify-between">
@@ -771,6 +860,33 @@ export async function DocDetailPage({
   const targets =
     side === "revenue" && !ACTIVE_STATUSES.has(data.status) ? visibleConvertTargets(dt, settings.vatRegistered) : [];
   const canShareLink = ["RECEIPT", "DEPOSIT_RECEIPT", "INVOICE"].includes(dt) && !ACTIVE_STATUSES.has(data.status);
+  // WO 5.5 — "ลิงก์ชำระเงิน" ใช้ได้เฉพาะเอกสารรายรับที่ออกแล้วและยังค้างชำระ
+  //   กดไม่ได้ต้องบอกเหตุผลไทยเสมอ (BLUEPRINT §0.3 ข้อ 9 — ห้ามซ่อนปุ่มเงียบ ๆ)
+  const payLinkBlockReason = !PAYMENT_REQUEST_DOC_TYPES.includes(dt)
+    ? "เอกสารชนิดนี้ยังขอเก็บเงินผ่านลิงก์ไม่ได้"
+    : data.status === "DRAFT"
+      ? "ต้องออกเอกสารก่อนจึงสร้างลิงก์เก็บเงินได้"
+      : !["AWAITING_PAYMENT", "PARTIAL"].includes(data.status)
+        ? "เอกสารนี้ไม่มียอดค้างชำระแล้ว"
+        : null;
+  const canPayLink = payLinkBlockReason === null;
+  const currentPayLink: PayLinkView | null = (() => {
+    const r = data.paymentRequests.find((x) => x.status === "PENDING" && x.expiresAt > new Date());
+    if (!r) return null;
+    return {
+      id: r.id,
+      url: r.url,
+      amountSatang: r.amountSatang,
+      method: r.method,
+      status: r.status,
+      statusLabel: r.statusLabel,
+      qrPayload: r.qrPayload,
+      providerUrl: r.providerUrl,
+      financeName: r.financeName,
+      expiresAtText: fmtDate(r.expiresAt),
+      note: r.note,
+    };
+  })();
 
   const steps: StepDef[] = data.timeline.map((s) => ({
     code: s.code,
@@ -819,6 +935,14 @@ export async function DocDetailPage({
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap">
             <ShareLinkButton systemId={systemId} docId={data.id} disabled={!canShareLink} />
+            <PayLinkButton
+              systemId={systemId}
+              docId={data.id}
+              docNo={data.docNo}
+              disabled={!canPayLink}
+              disabledHint={payLinkBlockReason ?? undefined}
+              current={currentPayLink}
+            />
             <Link href={`${base}/print/${data.id}`} target="_blank" className="btn btn-ghost text-sm">
               PDF
             </Link>

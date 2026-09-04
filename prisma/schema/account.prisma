@@ -192,6 +192,7 @@ model AccountDocument {
 
   lines         AccountDocumentLine[]
   payments      AccountDocumentPayment[]
+  paymentRequests AccountPaymentRequest[] // WO 5.5 — คำขอชำระเงิน (ลิงก์+QR PromptPay)
   attachments   AccountAttachment[]
   relationsFrom AccountDocumentRelation[] @relation("AccountRelFrom")
   relationsTo   AccountDocumentRelation[] @relation("AccountRelTo")
@@ -280,6 +281,11 @@ model AccountDocumentPayment {
   reimbursedAt         DateTime?
   reimbursedTransferId String?
 
+  // ───── V2 (WO 5.5 · §0.3 ข้อ 5 "ลิงก์+QR PromptPay"): คำขอชำระเงินที่ทำให้เกิดรายการรับเงินนี้
+  // nullable = แถวเดิม/ทางเรียกเดิมทั้งหมดไม่เปลี่ยนพฤติกรรม · ไม่ผูก relation จริง (อ่านย้อนผ่าน id พอ
+  // และกันวงจร relation กับ AccountPaymentRequest ที่ชี้กลับมาที่ payment ด้วย paymentId)
+  paymentRequestId     String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -287,6 +293,68 @@ model AccountDocumentPayment {
   @@index([documentId])
   // WO 5.2: หา "รายการที่จ่ายจากกล่องนี้ ยังไม่เบิกชดเชย" เร็ว (เบิกชดเชย modal — เลือกช่องทาง + filter reimbursedAt null)
   @@index([systemId, financeAccountId, reimbursedAt])
+  // WO 5.5: หา "รายการรับเงินของคำขอชำระเงินใบนี้" เร็ว (หน้าเอกสาร + ตัวกันซ้ำ)
+  @@index([systemId, paymentRequestId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WO 5.5 · §0.3 ข้อ 5 — "ส่งลิงก์+QR PromptPay ให้ลูกค้า → จ่ายแล้วกระทบยอดอัตโนมัติ"
+//
+// 2 โหมด (เลือกให้เองตามว่าแพลตฟอร์มตั้งกุญแจ Beam ไว้หรือยัง):
+//   PROMPTPAY_BEAM   = มี BEAM_MERCHANT_ID/API_KEY/WEBHOOK_SECRET → สร้าง charge จริง · webhook ยืนยัน
+//                      → บันทึกรับชำระ + JV + จับคู่ statement ให้อัตโนมัติ
+//   PROMPTPAY_STATIC = ยังไม่มีกุญแจ → QR PromptPay นิ่ง (EMVCo ล็อกยอด) ไม่มี webhook
+//                      → ยืนยันเองที่หน้าเอกสาร **หรือ** ให้ตัวนำเข้า statement (WO 5.3) จับยอด+วันแล้วบันทึกให้
+//
+// token = 128 บิต (randomBytes(16).base64url) — ลิงก์สาธารณะ `/pay/<token>` คือ capability
+// ห้ามใส่ id ที่เดาได้ลงใน URL และห้ามให้หน้าสาธารณะเปิดเผยข้อมูลลูกค้ารายอื่น
+// ─────────────────────────────────────────────────────────────────────────────
+enum AccountPaymentRequestMethod {
+  PROMPTPAY_STATIC
+  PROMPTPAY_BEAM
+}
+
+enum AccountPaymentRequestStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+model AccountPaymentRequest {
+  id         String  @id @default(cuid())
+  tenantId   String
+  systemId   String
+  documentId String
+  document   AccountDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  /// ช่องทางการเงินที่เงินจะเข้า (AccountFinance) — ใช้เป็น financeAccountId ตอนบันทึกรับชำระ
+  financeId  String
+
+  token           String @unique // url-safe · 128 บิต
+  amountSatang    Int // ยอดที่ขอเก็บ ณ ตอนสร้าง (= ยอดคงค้างของเอกสาร)
+  currency        String @default("THB")
+  method          AccountPaymentRequestMethod
+  provider        String? // "beam" เมื่อผ่านผู้ให้บริการ · null = QR นิ่ง
+  providerChargeId String? @unique // charge ฝั่ง Beam — กันบันทึกซ้ำระดับฐานข้อมูล
+  qrPayload       String? // สตริง EMVCo (static) — dynamic เก็บ URL ของ Beam
+
+  status    AccountPaymentRequestStatus @default(PENDING)
+  expiresAt DateTime
+
+  paidAt           DateTime?
+  paidAmountSatang Int?
+  paymentId        String? // AccountDocumentPayment ที่บันทึกไว้ (null = ยังไม่จ่าย)
+  statementLineId  String? // AccountBankStatementLine ที่จับคู่ให้ (ถ้ามาจากตัวนำเข้า statement)
+  note             String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([systemId, documentId, status])
+  // หา "คำขอ QR นิ่งที่ยังค้าง" ของช่องทางนี้ตอนนำเข้า statement (WO 5.3 autoMatch)
+  @@index([systemId, financeId, status])
+  @@index([tenantId, systemId])
 }
 
 model AccountDocumentRelation {

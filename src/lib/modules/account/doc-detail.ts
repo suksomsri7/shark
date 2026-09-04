@@ -13,6 +13,8 @@ import { listDocAuditLogs, auditActionLabelTh } from "./access";
 // WO 1.7 — เอกสารกลุ่ม (BN/CP): ตาราง "เอกสารในกลุ่ม" + ชิป "อยู่ในใบวางบิล/ใบรวมจ่าย" ของใบลูก
 import { groupChipOfChild, groupDefOf, groupPanelData, isGroupDocType, type GroupChildView, type GroupMembershipChip } from "./group";
 import type { AuditLogRow } from "./access";
+// WO 5.5 — ลิงก์+QR PromptPay ของเอกสารใบนี้ (§0.3 ข้อ 5)
+import { listPaymentRequests, PAYMENT_REQUEST_DOC_TYPES, type PaymentRequestView } from "./payment-request";
 import type { AttachmentView } from "@/components/account-v2/doc-editor-types";
 
 export function docLabelOf(docType: AccountDocType): string {
@@ -275,6 +277,8 @@ export type DocDetailData = {
   groupChildren: GroupChildView[] | null;
   /** WO 1.7 — ใบลูกที่อยู่ในกลุ่มที่ยังไม่ถูกยกเลิก (ใช้ทำชิป/ปิดปุ่มรับชำระซ้ำซ้อน) */
   groupChip: GroupMembershipChip | null;
+  /** WO 5.5 — คำขอชำระเงิน (ลิงก์+QR PromptPay) ของเอกสารนี้ · ชนิดที่ยังไม่รองรับ = [] */
+  paymentRequests: PaymentRequestView[];
 };
 
 /** โหลด+ประกอบข้อมูลหน้าเอกสาร 1 ใบ — ใช้ร่วมทั้งฝั่งรายรับและรายจ่าย (getExpenseDoc คิวรีได้ทั้งคู่) */
@@ -299,6 +303,9 @@ export async function getDocDetailData(
     isGroup ? groupPanelData(tenantId, systemId, docId) : Promise.resolve(null),
     isGroup ? Promise.resolve(null) : groupChipOfChild(tenantId, systemId, docId),
   ]);
+  const paymentRequests = PAYMENT_REQUEST_DOC_TYPES.includes(doc.docType)
+    ? await listPaymentRequests({ tenantId, systemId }, docId)
+    : [];
   const timeline = timelineStepsFor({
     docType: doc.docType,
     status: doc.status,
@@ -357,6 +364,7 @@ export async function getDocDetailData(
     auditLogs,
     groupChildren: groupPanel?.children ?? null,
     groupChip,
+    paymentRequests,
   };
 }
 

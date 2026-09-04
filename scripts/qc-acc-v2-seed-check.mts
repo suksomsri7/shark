@@ -497,6 +497,71 @@ console.log("\nM. WHT V2 + เช็ค V2");
   }
 }
 
+// ─────────── N. PromptPay ลิงก์ชำระเงิน (WO 5.5 · §0.3 ข้อ 5) ───────────
+console.log("\nN. PromptPay ลิงก์ชำระเงิน");
+{
+  const PP = E.promptPay as
+    | {
+        financeId: string;
+        promptpayId: string;
+        beam: { requestId: string; token: string; chargeId: string; documentId: string; amountSatang: number; paymentId: string | null };
+        staticPending: { requestId: string; token: string; documentId: string; amountSatang: number; qrPayload: string | null };
+        ewalletDeltaSatang: number;
+      }
+    | undefined;
+  chk("N1", "เฉลยมีคีย์ promptPay (seed ใหม่หลัง WO 5.5 แล้ว)", !!PP, PP ? "มี" : "ไม่มี");
+  if (PP) {
+    const rows = await prisma.accountPaymentRequest.findMany({ where: { systemId }, orderBy: { createdAt: "asc" } });
+    eq("N2", "คำขอชำระเงินทั้งหมด = 2 ใบ", rows.length, 2);
+
+    const beam = rows.find((r) => r.id === PP.beam.requestId);
+    chk("N3", "คำขอโหมด Beam อยู่ในฐานข้อมูล", !!beam, beam ? beam.id : "ไม่พบ");
+    if (beam) {
+      eq("N4", "คำขอ Beam: PAID · provider beam · มี chargeId", [beam.status, beam.provider, beam.providerChargeId], ["PAID", "beam", PP.beam.chargeId]);
+      eq("N5", "คำขอ Beam: ยอด + ยอดที่จ่ายจริง = เฉลย", [beam.amountSatang, beam.paidAmountSatang], [PP.beam.amountSatang, PP.beam.amountSatang]);
+      eq("N6", "คำขอ Beam: เงินเข้าช่องทาง EWL001", beam.financeId, PP.financeId);
+      const doc = await prisma.accountDocument.findUnique({ where: { id: beam.documentId }, select: { status: true, paidTotal: true } });
+      eq("N7", "ใบแจ้งหนี้ของคำขอ Beam = ชำระเงินแล้ว ยอดครบ", [doc?.status, doc?.paidTotal], ["PAID", PP.beam.amountSatang]);
+      const pay = beam.paymentId
+        ? await prisma.accountDocumentPayment.findUnique({ where: { id: beam.paymentId }, select: { channel: true, amount: true, idempotencyKey: true, paymentRequestId: true, entryId: true } })
+        : null;
+      eq(
+        "N8",
+        "รายการรับเงิน: ช่องทาง PROMPTPAY · คีย์กันซ้ำ pp:<chargeId> · ผูกกลับคำขอ",
+        [pay?.channel, pay?.amount, pay?.idempotencyKey, pay?.paymentRequestId],
+        ["PROMPTPAY", PP.beam.amountSatang, `pp:${PP.beam.chargeId}`, beam.id],
+      );
+      // JV ของการรับเงินหาจาก refType/refId (payment.entryId ยังไม่ถูกเขียนกลับโดย gl.postPayment)
+      const entry = beam.paymentId
+        ? await prisma.accountJournalEntry.findFirst({
+            where: { systemId, refType: "AccountDocumentPayment", refId: beam.paymentId, status: { not: "REVERSED" } },
+            select: { id: true },
+          })
+        : null;
+      const lines = entry
+        ? await prisma.accountJournalLine.findMany({ where: { entryId: entry.id }, select: { debit: true, credit: true } })
+        : [];
+      const dr = lines.reduce((a, l) => a + l.debit, 0);
+      const cr = lines.reduce((a, l) => a + l.credit, 0);
+      chk("N9", `JV ของการรับเงินสมดุล (Dr ${baht(dr)} = Cr ${baht(cr)})`, lines.length > 0 && dr === cr && dr === PP.beam.amountSatang, [dr, cr], [PP.beam.amountSatang, PP.beam.amountSatang]);
+    }
+
+    const stat = rows.find((r) => r.id === PP.staticPending.requestId);
+    chk("N10", "คำขอโหมด QR นิ่งอยู่ในฐานข้อมูล", !!stat, stat ? stat.id : "ไม่พบ");
+    if (stat) {
+      eq("N11", "คำขอ QR นิ่ง: PENDING · ไม่มี provider · ยอด = ยอดคงค้างของใบเดิม", [stat.status, stat.provider, stat.amountSatang], ["PENDING", null, PP.staticPending.amountSatang]);
+      chk("N12", "คำขอ QR นิ่งมี payload EMVCo (ขึ้นต้น 000201 · ปิดท้าย CRC 4 หลัก)", /^000201/.test(stat.qrPayload ?? "") && /6304[0-9A-F]{4}$/.test(stat.qrPayload ?? ""), (stat.qrPayload ?? "").slice(0, 12));
+      chk("N13", "คำขอ QR นิ่งยังไม่มีรายการรับเงิน (ไม่มีเงินขยับ)", stat.paymentId === null && stat.paidAt === null, [stat.paymentId, stat.paidAt]);
+    }
+
+    chk("N14", "token ของทั้ง 2 ใบยาว ≥ 22 ตัว (128 บิต) และไม่ซ้ำกัน", PP.beam.token.length >= 22 && PP.staticPending.token.length >= 22 && PP.beam.token !== PP.staticPending.token, [PP.beam.token.length, PP.staticPending.token.length]);
+
+    const ewl = await fin.financeBalances(tenantId, systemId);
+    const ewlBal = ewl.find((f) => f.id === PP.financeId)?.balance ?? 0;
+    eq("N15", "ยอด EWL001 = เฉลย (รวมเงินที่รับผ่านลิงก์แล้ว)", ewlBal, E.finance.EWL001);
+  }
+}
+
 // ─────────── H. อายุของข้อสอบ ───────────
 console.log("\nH. อายุของชุดข้อมูล");
 chk(

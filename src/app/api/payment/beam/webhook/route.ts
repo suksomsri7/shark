@@ -6,6 +6,7 @@
 
 import { verifyWebhook } from "@/lib/payment/beam";
 import { creditFromCharge } from "@/lib/ai/topup";
+import { handleAccountCharge } from "@/lib/modules/account/index";
 import { logOps } from "@/lib/core/ops";
 
 export const dynamic = "force-dynamic";
@@ -38,21 +39,42 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const chargeId = body.chargeId ?? body.id ?? "";
+  const referenceId = String(body.referenceId ?? "");
   const status = String(body.status ?? body.state ?? "").toUpperCase();
+  const paidSatang = Math.round(Number(body.amount ?? 0));
+  const succeeded = ["SUCCEEDED", "SUCCESS", "PAID", "COMPLETED"].includes(status);
+
+  // ── WO 5.5: แยกปลายทางตามคำนำหน้าของ referenceId ──
+  //    "acc:<id คำขอ>" = เก็บเงินของโมดูลบัญชี (ลิงก์+QR PromptPay) · อย่างอื่น = เติมเครดิต AI (ของเดิม)
+  //    🔴 ห้าม log ข้อมูลลูกค้า — บันทึกได้แค่ referenceId/chargeId/สถานะ
+  if (referenceId.startsWith("acc:")) {
+    const accRes = await handleAccountCharge({ referenceId, chargeId, paidSatang, status });
+    if (!accRes.ok) {
+      await logOps("ERROR", "payment", "Beam webhook (บัญชี) บันทึกรับชำระไม่สำเร็จ", {
+        detail: `${accRes.reason} · charge ${chargeId} · ref ${referenceId} · status ${status}`,
+      });
+      return Response.json({ ok: false, reason: accRes.reason }, { status: 200 });
+    }
+    await logOps("INFO", "payment", "Beam webhook (บัญชี) รับทราบแล้ว", {
+      detail: `charge ${chargeId} · ref ${referenceId} · status ${status} · handled ${accRes.handled}`,
+    });
+    return Response.json({ ok: true, handled: accRes.handled }, { status: 200 });
+  }
+
   // เติมเฉพาะรายการที่จ่ายสำเร็จจริง — สถานะอื่น (PENDING/FAILED/EXPIRED) แค่รับทราบ
-  if (!chargeId || !["SUCCEEDED", "SUCCESS", "PAID", "COMPLETED"].includes(status)) {
+  if (!chargeId || !succeeded) {
     return Response.json({ ok: true, ignored: status || "no_status" }, { status: 200 });
   }
 
   const result = await creditFromCharge({
-    referenceId: String(body.referenceId ?? ""),
+    referenceId,
     chargeId,
-    paidSatang: Math.round(Number(body.amount ?? 0)),
+    paidSatang,
   });
 
   if (!result.ok) {
     await logOps("ERROR", "payment", "Beam webhook เติมเครดิตไม่สำเร็จ", {
-      detail: `${result.reason} · charge ${chargeId} · ref ${body.referenceId}`,
+      detail: `${result.reason} · charge ${chargeId} · ref ${referenceId}`,
     });
     // ตอบ 200 อยู่ดี: ปัญหาอยู่ที่ข้อมูล ไม่ใช่ที่การส่ง — ให้ Beam เลิกยิงซ้ำแล้วมาดูที่ log
     return Response.json({ ok: false, reason: result.reason }, { status: 200 });

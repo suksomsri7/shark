@@ -1494,6 +1494,80 @@ if (!cq4Void.ok) throw new Error(`ยกเลิกเช็คจ่าย #2 
 
 console.log(`🖊️  เช็ค V2: เช็ครับ 2 (1 รอครบกำหนด · 1 เด้ง) · เช็คจ่าย 2 (1 รอเรียกเก็บ · 1 ยกเลิก) — ไม่มีใบใดเคลียร์`);
 
+// ─────────────────── 8.8 PromptPay ลิงก์ชำระเงิน (WO 5.5 · §0.3 ข้อ 5) ───────────────────
+// 2 คำขอ ตามใบสั่งงาน:
+//   ① โหมด Beam — จ่ายแล้ว: ใบแจ้งหนี้ใหม่ 1 ใบ → สร้างคำขอ → จำลอง webhook → PAID + payment + JV
+//   ② โหมด QR นิ่ง — ยังรอชำระ: ผูกกับ **ใบแจ้งหนี้เดิม** (ณัฐพล 24,900) ⇒ ไม่มีเงินขยับ ไม่มีเลขเฉลยใดเปลี่ยน
+//
+// 🔴 ทำไมเงินเข้า **EWL001 (พร้อมเพย์)** เท่านั้น:
+//    BSV001 = WO 5.3 freeze statement เดือน ก.ย. ไว้ (มีรายการใหม่ = ส่วนต่างกระทบยอดเพี้ยน)
+//    CSH001 = WO 5.4 ใช้เป็นช่องทางของ WHT แล้ว · EWL001 เป็นช่องทางเดียวที่มี promptpayId จริงด้วย
+// ⇒ ต้องปรับเฉลย EWL001/E_WALLET/total ท้ายไฟล์ด้วย PP_BEAM_GRAND (คิดจากค่าคงที่ ไม่พิมพ์เลขมือ)
+const payreq = await import("@/lib/modules/account/payment-request");
+
+/** ยอดใบแจ้งหนี้ของคำขอโหมด Beam — 700,000 + VAT 7% = 749,000 สตางค์ (฿7,490.00) */
+const PP_BEAM_GRAND = 749_000;
+const PP_BEAM_CHARGE_ID = "qc_beam_charge_5_5";
+
+// เสียบ Beam ปลอม (prod ยังไม่มีกุญแจจริง — ทั้ง WO ต้องเดินได้ผ่านตัวเสียบ + webhook จำลอง)
+const realBeamEnabled = payreq.beamAdapter.enabled;
+const realBeamCreateCharge = payreq.beamAdapter.createCharge;
+payreq.beamAdapter.enabled = () => true;
+payreq.beamAdapter.createCharge = async (input) => ({
+  url: `https://beam.qc.local/pay/${encodeURIComponent(input.referenceId)}`,
+  chargeId: PP_BEAM_CHARGE_ID,
+});
+
+const ppBeamInvoice = await makeInvoice({
+  cust: "บริษัท ภูเก็ตดีปซี จำกัด",
+  grand: PP_BEAM_GRAND,
+  issue: "2026-09-02",
+  due: "2026-12-15",
+  desc: "ค่าบริการดำน้ำ (จ่ายผ่านลิงก์พร้อมเพย์)",
+  bucket: "paid",
+});
+const ppBeamReq = await payreq.createPaymentRequest({ tenantId, systemId }, ppBeamInvoice.id, {
+  financeId: finId["EWL001"],
+  expiresInDays: 7,
+  userId: owner.id,
+});
+if (!ppBeamReq.ok) throw new Error(`สร้างคำขอชำระเงิน (Beam) ไม่สำเร็จ: ${ppBeamReq.reason}`);
+if (ppBeamReq.request.method !== "PROMPTPAY_BEAM") throw new Error("คำขอ Beam ไม่ได้เป็นโหมด PROMPTPAY_BEAM");
+
+const ppBeamPaid = await payreq.handleBeamPaid({
+  referenceId: `acc:${ppBeamReq.request.id}`,
+  chargeId: PP_BEAM_CHARGE_ID,
+  paidSatang: PP_BEAM_GRAND,
+});
+if (!ppBeamPaid.ok) throw new Error(`จำลอง webhook (Beam) ไม่สำเร็จ: ${ppBeamPaid.reason}`);
+
+payreq.beamAdapter.enabled = realBeamEnabled;
+payreq.beamAdapter.createCharge = realBeamCreateCharge;
+
+const ppBeamDoc = await prisma.accountDocument.findUniqueOrThrow({
+  where: { id: ppBeamInvoice.id },
+  select: { status: true, paidTotal: true },
+});
+if (ppBeamDoc.status !== "PAID")
+  throw new Error(`❌ ใบแจ้งหนี้ที่จ่ายผ่านลิงก์ต้องเป็น "ชำระเงินแล้ว" แต่ได้ ${ppBeamDoc.status}`);
+assertEq("ยอดที่ชำระของใบนั้น", ppBeamDoc.paidTotal, PP_BEAM_GRAND);
+
+// ② QR นิ่ง — ยังรอชำระ (ผูกใบเดิม ไม่มีเงินขยับ) · Beam ปิดอยู่ ⇒ ตกโหมดนิ่งเองตามตรรกะจริง
+const ppStaticReq = await payreq.createPaymentRequest({ tenantId, systemId }, String(fixtures.invNattapholId), {
+  financeId: finId["EWL001"],
+  expiresInDays: 30,
+  userId: owner.id,
+});
+if (!ppStaticReq.ok) throw new Error(`สร้างคำขอชำระเงิน (QR นิ่ง) ไม่สำเร็จ: ${ppStaticReq.reason}`);
+if (ppStaticReq.request.method !== "PROMPTPAY_STATIC") throw new Error("คำขอ QR นิ่งไม่ได้เป็นโหมด PROMPTPAY_STATIC");
+if (!ppStaticReq.request.qrPayload?.startsWith("00")) throw new Error("payload PromptPay ของคำขอ QR นิ่งไม่ถูกต้อง");
+
+/** ยอด EWL001 หลังรับเงินผ่านลิงก์พร้อมเพย์ (ใช้แทน FIN_TARGET.EWL001 ในเฉลยส่วนที่ 9) */
+const EWALLET_FINAL = FIN_TARGET.EWL001 + PP_BEAM_GRAND;
+console.log(
+  `🔗 PromptPay V2: คำขอ 2 ใบ (Beam จ่ายแล้ว ${bahtStr(PP_BEAM_GRAND)} · QR นิ่งรอชำระ ${bahtStr(ppStaticReq.request.amountSatang)}) · EWL001 Δ ${bahtStr(PP_BEAM_GRAND)}`,
+);
+
 // ─────────────────────────── 9. อ่านผลจริงกลับมา + เขียนเฉลย ───────────────────────────
 
 const stats = await svc.overviewStats(tenantId, systemId);
@@ -1509,7 +1583,15 @@ assertEq("ค้างจ่าย (จาก DB)", pay.payable, 21_475_000);
 // (บล็อก 8.7 — CASH_WHT_DELTA) — เทียบกับ PETTY_FINAL/CASH_FINAL แทน FIN_TARGET ตรง ๆ
 for (const f of FIN_DEF) {
   const want =
-    f.code === "BSV001" ? PETTY_FINAL.BSV001 : f.code === "PTY001" ? PETTY_FINAL.PTY001 : f.code === "CSH001" ? CASH_FINAL : FIN_TARGET[f.code as keyof typeof FIN_TARGET];
+    f.code === "BSV001"
+      ? PETTY_FINAL.BSV001
+      : f.code === "PTY001"
+        ? PETTY_FINAL.PTY001
+        : f.code === "CSH001"
+          ? CASH_FINAL
+          : f.code === "EWL001"
+            ? EWALLET_FINAL // WO 5.5: รับเงินผ่านลิงก์พร้อมเพย์ (บล็อก 8.8)
+            : FIN_TARGET[f.code as keyof typeof FIN_TARGET];
   assertEq(`ยอดคงเหลือ ${f.name}`, balByName.get(f.name) ?? 0, want);
 }
 
@@ -1527,11 +1609,12 @@ const tabs = {
   cancelled: invoices.filter((d) => d.status === "CANCELLED" || d.status === "VOIDED").length,
 };
 // WO 5.4: +3 (all/paid) จาก CREDIT_FIX (บล็อก 8.7 — 3 ใบแจ้งหนี้ใหม่ WHT credit จ่ายครบทันที = PAID)
-assertEq("แท็บ ทั้งหมด", tabs.all, 56);
+// WO 5.5: +1 (all/paid) จากใบแจ้งหนี้ที่จ่ายผ่านลิงก์พร้อมเพย์ (บล็อก 8.8) ⇒ 57 / ชำระแล้ว 33
+assertEq("แท็บ ทั้งหมด", tabs.all, 57);
 assertEq("แท็บ ร่าง", tabs.draft, 3);
 assertEq("แท็บ รอชำระ", tabs.awaiting, 14);
 assertEq("แท็บ ชำระบางส่วน", tabs.partial, 2);
-assertEq("แท็บ ชำระแล้ว", tabs.paid, 32);
+assertEq("แท็บ ชำระแล้ว", tabs.paid, 33);
 assertEq("แท็บ พ้นกำหนด", tabs.overdue, 4);
 assertEq("แท็บ ยกเลิก", tabs.cancelled, 1);
 
@@ -1592,13 +1675,14 @@ const expected = {
   payableVendors: 7,
   payableOverdueDocs: 2,
   // WO 5.2: BSV001/PTY001/total อัปเดตเป็นยอดหลังเติมเงิน/เบิกชดเชยสำรองจ่าย (ดูบล็อก 8.5 ด้านบน)
-  // WO 5.4: CSH001/total อัปเดตเป็นยอดหลังรับ/จ่าย WHT V2 สุทธิ (ดูบล็อก 8.7 — CASH_WHT_DELTA) — EWL001 ไม่กระทบ
+  // WO 5.4: CSH001/total อัปเดตเป็นยอดหลังรับ/จ่าย WHT V2 สุทธิ (ดูบล็อก 8.7 — CASH_WHT_DELTA)
+  // WO 5.5: EWL001/total อัปเดตเป็นยอดหลังรับเงินผ่านลิงก์พร้อมเพย์ (ดูบล็อก 8.8 — PP_BEAM_GRAND)
   finance: {
     CSH001: CASH_FINAL,
     BSV001: PETTY_FINAL.BSV001,
-    EWL001: FIN_TARGET.EWL001,
+    EWL001: EWALLET_FINAL,
     PTY001: PETTY_FINAL.PTY001,
-    total: CASH_FINAL + PETTY_FINAL.BSV001 + FIN_TARGET.EWL001 + PETTY_FINAL.PTY001,
+    total: CASH_FINAL + PETTY_FINAL.BSV001 + EWALLET_FINAL + PETTY_FINAL.PTY001,
   },
   financeAccounts: FIN_DEF.map((f) => ({
     code: f.code,
@@ -1607,14 +1691,22 @@ const expected = {
     type: f.type,
     opening: finOpening[f.code],
     balance:
-      f.code === "BSV001" ? PETTY_FINAL.BSV001 : f.code === "PTY001" ? PETTY_FINAL.PTY001 : f.code === "CSH001" ? CASH_FINAL : FIN_TARGET[f.code as keyof typeof FIN_TARGET],
+      f.code === "BSV001"
+        ? PETTY_FINAL.BSV001
+        : f.code === "PTY001"
+          ? PETTY_FINAL.PTY001
+          : f.code === "CSH001"
+            ? CASH_FINAL
+            : f.code === "EWL001"
+              ? EWALLET_FINAL
+              : FIN_TARGET[f.code as keyof typeof FIN_TARGET],
   })),
   // WO 5.1 — กลุ่ม/ยอดกลุ่ม (§10.1): เงินสด·ออมทรัพย์·e-Wallet·สำรองรับ-จ่าย (ไม่มีบัญชีกระแสในชุดข้อมูลนี้)
   // WO 5.2: BANK_SAVINGS/PETTY_CASH อัปเดตตามยอดหลังเติม/เบิกชดเชย · WO 5.4: CASH อัปเดตตาม WHT V2 สุทธิ
   financeGroups: {
     CASH: CASH_FINAL,
     BANK_SAVINGS: PETTY_FINAL.BSV001,
-    E_WALLET: FIN_TARGET.EWL001,
+    E_WALLET: EWALLET_FINAL, // WO 5.5
     PETTY_CASH: PETTY_FINAL.PTY001,
   },
   // WO 5.1 — BSV001 ยกมา 2 รายการ (ผลรวม = finOpening.BSV001 เท่าเดิม) — qc ยิง 2 JV แยกกันตรง key นี้
@@ -1640,7 +1732,8 @@ const expected = {
     pending: { paymentId: pettyExpenseBPaymentId, amount: PETTY_EXPENSE_B_SATANG, date: "2026-09-20" },
   },
   // WO 5.4: +3 (all/paid) จาก CREDIT_FIX (ดูบล็อก 8.7)
-  invoiceTabs: { all: 56, draft: 3, awaiting: 14, partial: 2, paid: 32, overdue: 4, cancelled: 1 },
+  // WO 5.5: +1 ที่ all/paid — ใบแจ้งหนี้ที่ลูกค้าจ่ายผ่านลิงก์พร้อมเพย์ (บล็อก 8.8)
+  invoiceTabs: { all: 57, draft: 3, awaiting: 14, partial: 2, paid: 33, overdue: 4, cancelled: 1 },
   contacts: { all: 63, customer: 41, vendor: 22, archived: 5, active: 58 },
   // WO 4.3: 13 = สินค้า 7 + บริการ 5 + รายการจัดชุด 1 (เดิม 12 · เพิ่ม "ชุดดำน้ำตื้นครบเซ็ต")
   products: 13,
@@ -1736,6 +1829,29 @@ const expected = {
     filedForm: 53,
     filedPeriodKey: "2026-09",
     filedCertId: deductCertIds[2],
+  },
+  // WO 5.5 — คำขอชำระเงินผ่านลิงก์+QR PromptPay (§0.3 ข้อ 5) · id/ยอด ให้ qc-acc-v2-promptpay.mts อ้างอิง
+  promptPay: {
+    financeId: finId["EWL001"],
+    financeCode: "EWL001",
+    promptpayId: "0835565001234",
+    beam: {
+      requestId: ppBeamReq.request.id,
+      token: ppBeamReq.request.token,
+      chargeId: PP_BEAM_CHARGE_ID,
+      documentId: ppBeamInvoice.id,
+      docNo: ppBeamInvoice.docNo,
+      amountSatang: PP_BEAM_GRAND,
+      paymentId: ppBeamPaid.paymentId,
+    },
+    staticPending: {
+      requestId: ppStaticReq.request.id,
+      token: ppStaticReq.request.token,
+      documentId: String(fixtures.invNattapholId),
+      amountSatang: ppStaticReq.request.amountSatang,
+      qrPayload: ppStaticReq.request.qrPayload,
+    },
+    ewalletDeltaSatang: PP_BEAM_GRAND,
   },
   chequeV2: {
     inDueSoonId: cq1.id,

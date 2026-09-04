@@ -2281,6 +2281,8 @@ export async function recordPayment(
     createdById?: string | null;
     /** WO 1.4: กันบันทึกซ้ำจากการกดปุ่ม/รีทรายซ้ำ — คีย์เดิม = ไม่สร้าง payment/JV ใหม่ */
     idempotencyKey?: string | null;
+    /** WO 5.5: รับเงินใบนี้มาจากคำขอชำระเงิน (ลิงก์+QR PromptPay) ใบไหน — null = ทางเรียกเดิมทั้งหมด */
+    paymentRequestId?: string | null;
   },
 ): Promise<{ ok: true; status: AccountDocStatus; paymentId?: string; whtCertNo?: string } | { ok: false; reason: string }> {
   if (!input.amount || input.amount <= 0) return { ok: false, reason: "ยอดชำระต้องมากกว่า 0" };
@@ -2337,6 +2339,7 @@ export async function recordPayment(
           note: input.note ?? null,
           createdById: input.createdById ?? null,
           idempotencyKey: input.idempotencyKey ?? null,
+          paymentRequestId: input.paymentRequestId ?? null,
         },
       });
       paymentId = payment.id;
@@ -2891,6 +2894,48 @@ export async function overviewStats(tenantId: string, systemId: string) {
     prisma.accountContact.count({ where: { tenantId, systemId, archivedAt: null } }),
   ]);
   return { receivable, overdueCount, overdueAmount, docCount, contactCount };
+}
+
+// ─────────────────── WO 5.5 · ตัวเข้าถึง "คำขอชำระเงิน" ที่ยังไม่รู้ร้าน ───────────────────
+//
+// 🔴 3 ทางเข้านี้ **ไม่มี tenant/system มาก่อน** โดยธรรมชาติของงาน:
+//    webhook ของผู้ให้บริการ (รู้แค่ chargeId/referenceId) · ลิงก์สาธารณะ (รู้แค่ token) · cron หมดอายุ (ทั้งระบบ)
+//    ⇒ ต้องอ่าน/เขียนโดยไม่ผูก scope · ตัว token (128 บิต) และ referenceId คือ capability
+//    วางไว้ที่นี่ (ชั้นข้อมูลของโมดูล) เพื่อให้ `payment-request.ts` เป็นตัวประสานล้วน ไม่แตะ prisma ดิบ
+//    (กติกาเดียวกับ payment.ts ของ WO 1.4)
+
+/** คำขอชำระเงิน 1 ใบจาก id — ใช้โดย webhook (referenceId = "acc:<id>") */
+export async function findPaymentRequestById(id: string) {
+  return prisma.accountPaymentRequest.findUnique({ where: { id } });
+}
+
+/** คำขอชำระเงิน 1 ใบจาก token สาธารณะ + หัวเอกสารเท่าที่หน้าสาธารณะต้องใช้ (ห้ามดึงข้อมูลลูกค้า) */
+export async function findPaymentRequestByToken(token: string) {
+  return prisma.accountPaymentRequest.findUnique({
+    where: { token },
+    select: {
+      token: true,
+      tenantId: true,
+      systemId: true,
+      amountSatang: true,
+      method: true,
+      qrPayload: true,
+      status: true,
+      expiresAt: true,
+      paidAt: true,
+      paidAmountSatang: true,
+      document: { select: { docType: true, docNo: true } },
+    },
+  });
+}
+
+/** ปิดคำขอที่เลยวันหมดอายุทั้งระบบ (cron) — ปลอดภัยต่อการรันซ้ำ (แตะเฉพาะแถวที่ยัง PENDING) */
+export async function expirePaymentRequestsAll(now: Date): Promise<number> {
+  const res = await prisma.accountPaymentRequest.updateMany({
+    where: { status: "PENDING", expiresAt: { lt: now } },
+    data: { status: "EXPIRED" },
+  });
+  return res.count;
 }
 
 // ─────────────────── §5.6 ลิงก์สาธารณะขอใบกำกับภาษี ───────────────────

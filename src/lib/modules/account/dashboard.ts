@@ -683,6 +683,18 @@ function issuedFromGroups(
       shareBp: shareBp(amount, total.amount),
     });
   }
+  // 🐞 WO 5.5: ปัดเศษทีละแถวทำให้ผลรวมสัดส่วนหลุดเป็น 100.01% ได้ (2553+1367+6081 = 10001 bp — เจอจริง
+  //    ตอนชุดข้อมูล QC มีใบเพิ่มมา 1 ใบ) ⇒ ถ้าแถวย่อย "ครอบคลุมยอดทั้งหมด" ให้แถวที่ใหญ่สุดกลืนเศษไป
+  //    (largest-remainder แบบย่อ) · ถ้าครอบไม่ครบ (มีสถานะที่ไม่ได้แสดง) ปล่อยตามจริง — น้อยกว่า 100% ถูกแล้ว
+  const subs = rows.slice(1);
+  const subAmount = subs.reduce((a, r) => a + r.amount, 0);
+  if (total.amount > 0 && subAmount === total.amount && subs.length > 0) {
+    const diff = 10000 - subs.reduce((a, r) => a + r.shareBp, 0);
+    if (diff !== 0) {
+      const biggest = subs.reduce((a, b) => (b.amount > a.amount ? b : a));
+      biggest.shareBp += diff;
+    }
+  }
   return { docType, label, from: dayKeyBkk(from), to: dayKeyBkk(to), total, rows };
 }
 
