@@ -12,7 +12,7 @@
 | WO | 6.2 สมุดรายวัน V2 + รายงาน drill-down + ปิดงวด + ค่าเสื่อม UI (ปิดเฟส 6) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Opus (sub-agent · UI ตาม g16) |
-| ขั้นที่ถึง | 4 ก.ย. ~06:40 UTC: 6.1 DONE รอบ 2 (asOf จริง 3 หน้า · แก้ ledger page) · Fable รันด่าน 21 ชุด · commit แล้ว · กำลังออก 6.2 |
+| ขั้นที่ถึง | 4 ก.ย. ~07:40 UTC: 6.2 agent ตัวแรกทำ A–E เสร็จ (โค้ด+migration 2 ตัวบนดิสก์) แล้วโดน cgroup OOM ฆ่า 07:34 UTC (node 2.7G = tsc ไม่มี NODE_OPTIONS) → container รีสตาร์ท → สั่งตัวใหม่ทำต่อ F/G/H เท่านั้น + แก้ with-gate-lock.sh ให้ตั้ง NODE_OPTIONS เอง |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 4 ก.ย. 2026 ~07:34 UTC — ⚠️ cgroup OOM ครั้งที่ 2 (node 2.7G RSS ระหว่าง 6.2 ขั้น F — น่าจะ `tsc --noEmit` heap default) · งานไม่หาย · กติกาเพิ่ม: typecheck ต้องผ่าน `with-gate-lock.sh` ซึ่งจะตั้ง NODE_OPTIONS=--max-old-space-size=3584 เอง (6.2 แก้)
 - 4 ก.ย. 2026 ~06:40 UTC — 6.1 ผังบัญชี DONE (ตีกลับ 1 รอบ · asOf จริงทั้งระบบ)
 - 4 ก.ย. 2026 ~05:45 UTC — 🏁 **เฟส 5 ปิด** (5.1–5.5 · qc:all 213/213 หลังแก้ hex ดิบ) · 30/46 ≈ 65%
 - 4 ก.ย. 2026 ~04:50 UTC — 5.5 PromptPay DONE → เฟส 5 ครบ 5 WO เริ่มปิดเฟส
