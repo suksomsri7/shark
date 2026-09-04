@@ -1,0 +1,21 @@
+{
+  "tenantId": "cmtm8n9n80000wpkzeagdv1r9",
+  "systemId": "cmtm8n9or0004wpkz1jtmo7v2",
+  "financeId": "cmtm8nf0000j0wpkz98s3rslt",
+  "financeCode": "BSV001",
+  "ledgerAccountId": "cmtm8nezp00izwpkza9syy3o6",
+  "ledgerCode": "1010-01",
+  "periodKey": "2026-08",
+  "openingSatang": 67205000,
+  "systemClosingSatang": 77055000,
+  "statementClosingSatang": 77055000,
+  "differenceBeforeSatang": 0,
+  "rowCount": 6,
+  "expectMatched": 6,
+  "expectSuggested": 0,
+  "expectUnmatched": 0,
+  "nearMatch": null,
+  "feeSatang": 0,
+  "interestSatang": 0,
+  "fileName": "kbank-2026-08.csv"
+}

@@ -30,6 +30,9 @@ export const IMPLIES: Readonly<Record<string, readonly string[]>> = {
   "account.doc.create": ["account.doc.view"],
   "account.doc.issue": ["account.doc.view"],
   "account.doc.approve": ["account.doc.view"],
+  // WO 5.3: `account.reconcile` เป็น action ใหม่ที่เพิ่งมีหน้าใช้จริง — คนที่เจ้าของติ๊ก
+  // `account.finance.manage` ไว้แล้ว (ผู้ดูแลบัญชีธนาคาร) ต้องกระทบยอดได้ทันทีโดยไม่ต้องไล่ติ๊กใหม่
+  "account.finance.manage": ["account.reconcile"],
 };
 
 /**

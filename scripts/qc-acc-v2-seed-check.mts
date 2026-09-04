@@ -370,6 +370,83 @@ if (PS) {
   eq("K8", "เอกสารบิล POS ไม่มี JV ของตัวเอง (กันรายได้ซ้ำ 2 เท่า)", docEntries, 0);
 }
 
+// ─────────── L. กระทบยอดธนาคาร (WO 5.3) ───────────
+console.log("\nL. กระทบยอดธนาคาร (statement ที่ seed นำเข้าไว้)");
+const BR = (E as unknown as {
+  bankReconcile?: {
+    financeId: string;
+    financeCode: string;
+    periodKey: string;
+    openingSatang: number;
+    systemClosingSatang: number;
+    statementClosingSatang: number;
+    differenceBeforeSatang: number;
+    rowCount: number;
+    expectMatched: number;
+    expectSuggested: number;
+    expectUnmatched: number;
+    fileName: string;
+  };
+}).bankReconcile;
+chk("L1", "เฉลยมีคีย์ bankReconcile (seed ใหม่หลัง WO 5.3 แล้ว)", !!BR, BR ? "มี" : "ไม่มี");
+if (BR) {
+  const st = await prisma.accountBankStatement.findFirst({
+    where: { tenantId, systemId, financeId: BR.financeId, periodKey: BR.periodKey },
+  });
+  chk("L2", `มีใบ statement ของ ${BR.financeCode} งวด ${BR.periodKey}`, !!st, st ? "มี" : "ไม่มี");
+  if (st) {
+    eq("L3", `แถวในใบ = ${BR.rowCount}`, st.rowCount, BR.rowCount);
+    eq("L4", `ยอดปลายงวดตาม statement = ฿${baht(BR.statementClosingSatang)}`, st.closingBalanceSatang, BR.statementClosingSatang);
+    eq("L5", `ยอดยกมาตาม statement = ฿${baht(BR.openingSatang)}`, st.openingBalanceSatang ?? 0, BR.openingSatang);
+    chk("L6", "ยังไม่ยืนยันกระทบยอด (สถานะเดียวกับภาพ g10)", st.confirmedAt === null, String(st.confirmedAt));
+    const byStatus = await prisma.accountBankStatementLine.groupBy({
+      by: ["status"],
+      where: { tenantId, systemId, statementId: st.id },
+      _count: { _all: true },
+    });
+    const cnt = (k: string) => byStatus.find((b) => b.status === k)?._count._all ?? 0;
+    eq("L7", `จับคู่แล้ว ${BR.expectMatched} แถว`, cnt("MATCHED"), BR.expectMatched);
+    eq("L8", `แนะนำจับคู่ ${BR.expectSuggested} แถว`, cnt("SUGGESTED"), BR.expectSuggested);
+    eq("L9", `รอจับคู่ ${BR.expectUnmatched} แถว (ค่าธรรมเนียม + ดอกเบี้ย)`, cnt("UNMATCHED"), BR.expectUnmatched);
+    eq("L10", "ยังไม่มีแถวที่สร้างรายการบัญชี (seed ไม่โพสต์ JV เพิ่ม ⇒ ยอดเงินไม่ขยับ)", cnt("CREATED"), 0);
+    const sumLines = await prisma.accountBankStatementLine.aggregate({
+      where: { tenantId, systemId, statementId: st.id },
+      _sum: { amountSatang: true },
+    });
+    eq("L11", "Σ ทุกแถว = ปลายงวด − ต้นงวด", sumLines._sum.amountSatang ?? 0, BR.statementClosingSatang - BR.openingSatang);
+    const stLineIds = (await prisma.accountBankStatementLine.findMany({ where: { systemId, statementId: st.id }, select: { id: true } })).map((l) => l.id);
+    const marked = await prisma.accountJournalLine.count({
+      where: { tenantId, systemId, reconciledStatementLineId: { in: stLineIds } },
+    });
+    eq("L12", "บรรทัดสมุดรายวันที่ถูกทำเครื่องหมายกระทบยอด = จำนวนที่จับคู่", marked, BR.expectMatched);
+    const dupe = await prisma.$queryRaw<{ n: bigint }[]>`
+      SELECT COUNT(*)::bigint AS n FROM (
+        SELECT "reconciledStatementLineId" FROM "AccountJournalLine"
+         WHERE "systemId" = ${systemId} AND "reconciledStatementLineId" IS NOT NULL
+         GROUP BY 1 HAVING COUNT(*) > 1) x`;
+    eq("L13", "ไม่มีบรรทัดสมุดรายวันผูกซ้ำ (1:1)", Number(dupe[0]?.n ?? 0), 0);
+    eq(
+      "L14",
+      `ส่วนต่าง (statement − ระบบ) = ฿${baht(BR.differenceBeforeSatang)} ตามที่ fixture ออกแบบไว้`,
+      BR.statementClosingSatang - BR.systemClosingSatang,
+      BR.differenceBeforeSatang,
+    );
+  }
+
+  // เดือนก่อนหน้า (ส.ค.) — statement ที่ตรงกันพอดี ⇒ สถานะ "ส่วนต่าง 0 · กดยืนยันได้"
+  const P = (BR as unknown as { prev?: { periodKey: string; rowCount: number; statementClosingSatang: number; systemClosingSatang: number } }).prev;
+  chk("L15", "เฉลยมีคีย์ bankReconcile.prev (statement เดือนก่อน)", !!P, P ? "มี" : "ไม่มี");
+  if (P) {
+    const stPrev = await prisma.accountBankStatement.findFirst({ where: { tenantId, systemId, financeId: BR.financeId, periodKey: P.periodKey } });
+    chk("L16", `มีใบ statement งวด ${P.periodKey}`, !!stPrev, stPrev ? "มี" : "ไม่มี");
+    if (stPrev) {
+      eq("L17", `แถว = ${P.rowCount} · จับคู่ครบ`, [stPrev.rowCount, await prisma.accountBankStatementLine.count({ where: { systemId, statementId: stPrev.id, status: "MATCHED" } })], [P.rowCount, P.rowCount]);
+      eq("L18", "ส่วนต่างเดือนก่อน = 0 (พร้อมกดยืนยัน)", stPrev.closingBalanceSatang - P.systemClosingSatang, 0);
+      chk("L19", "ยังไม่กดยืนยันเดือนก่อน (เก็บสถานะ 'ปุ่มเปิดใช้ได้' ไว้ให้ QC ถ่ายภาพ)", stPrev.confirmedAt === null, String(stPrev.confirmedAt));
+    }
+  }
+}
+
 // ─────────── H. อายุของข้อสอบ ───────────
 console.log("\nH. อายุของชุดข้อมูล");
 chk(

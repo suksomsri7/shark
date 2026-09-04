@@ -61,6 +61,7 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   ["4030", "INCOME", "รายได้ค่าบริการ", "Service Revenue"],
   ["4800", "INCOME", "ส่วนลดจ่าย (contra)", "Discounts Given"],
   ["4900", "INCOME", "รายได้อื่น / กำไรจากการจำหน่ายสินทรัพย์", "Other Income / Disposal Gain"],
+  ["4910", "INCOME", "ดอกเบี้ยรับ", "Interest Income"], // V2 (WO 5.3): ดอกเบี้ยเงินฝากจากแถว statement
   // 5000-5999 ต้นทุน
   ["5000", "COGS", "ซื้อสินค้า/ต้นทุนขาย", "Purchases / COGS"],
   // V2 (WO 4.3 · SPEC §8.4) — เอกสารปรับปรุงสต็อก/ต้นทุน
@@ -73,6 +74,9 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   ["6200", "EXPENSE", "ค่าสาธารณูปโภค (น้ำ/ไฟ/เน็ต)", "Utilities"],
   ["6300", "EXPENSE", "ค่าการตลาดและโฆษณา", "Marketing"],
   ["6500", "EXPENSE", "ค่าธรรมเนียมชำระเงิน", "Payment Fees"],
+  // V2 (WO 5.3 · §10.2): สร้างรายการจากแถว statement — ค่าธรรมเนียมธนาคารแยกจากค่าธรรมเนียมชำระเงิน (6500)
+  // เพราะรายงานค่าใช้จ่ายของเจ้าของร้านต้องแยก "ค่าธรรมเนียมบัตร/พร้อมเพย์" กับ "ค่าธรรมเนียมธนาคารรายเดือน"
+  ["6510", "EXPENSE", "ค่าธรรมเนียมธนาคาร", "Bank Charges"],
   ["6800", "EXPENSE", "ค่าเสื่อมราคา", "Depreciation"],
   ["6900", "EXPENSE", "ค่าใช้จ่ายอื่น", "Other Expenses"],
   // 9999 พักรายการ
@@ -105,6 +109,8 @@ const MAPPINGS: [string, string][] = [
   ["DISCOUNT_GIVEN", "4800"],
   ["DISCOUNT_RECEIVED", "5800"],
   ["PAYMENT_FEE", "6500"],
+  ["BANK_FEE", "6510"], // V2 (WO 5.3): ขา Dr ของ "สร้างรายการค่าธรรมเนียมจากแถว statement"
+  ["INTEREST_INCOME", "4910"], // V2 (WO 5.3): ขา Cr ของ "สร้างรายการดอกเบี้ยรับจากแถว statement"
   ["CHEQUE_IN_TRANSIT", "1040"],
   ["CHEQUE_PAYABLE", "2300"], // เช็คจ่ายรอเรียกเก็บ (§3.5 เช็คจ่าย)
   ["DEPRECIATION_EXPENSE", "6800"],

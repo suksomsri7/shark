@@ -259,23 +259,51 @@ export function FinanceOverviewPanel({
               <>
                 <div className="text-sm">{data.reconcile.selectedChannelLabel} · {monthLabelTh(data.monthKey)}</div>
                 <div className="flex flex-col gap-1.5 text-sm">
-                  <div className="flex justify-between"><span className="text-[color:var(--color-muted)]">ยอดตาม statement</span><span data-testid="fov-reconcile-statement">ยังไม่นำเข้า statement</span></div>
+                  <div className="flex justify-between">
+                    <span className="text-[color:var(--color-muted)]">ยอดตาม statement</span>
+                    <span className="tabular-nums" data-testid="fov-reconcile-statement">
+                      {data.reconcile.statementBalanceSatang != null ? formatBaht(data.reconcile.statementBalanceSatang, { decimals: true }) : "ยังไม่นำเข้า statement"}
+                    </span>
+                  </div>
                   <div className="flex justify-between"><span className="text-[color:var(--color-muted)]">ยอดในระบบ</span><span className="tabular-nums" data-testid="fov-reconcile-system">{formatBaht(data.reconcile.systemBalanceSatang ?? 0, { decimals: true })}</span></div>
-                  <div className="flex justify-between"><span className="text-[color:var(--color-muted)]">ส่วนต่าง</span><span data-testid="fov-reconcile-diff">—</span></div>
+                  <div className="flex justify-between">
+                    <span className="text-[color:var(--color-muted)]">ส่วนต่าง</span>
+                    <span
+                      className="tabular-nums"
+                      style={data.reconcile.differenceSatang ? { color: "var(--color-danger)" } : undefined}
+                      data-testid="fov-reconcile-diff"
+                    >
+                      {data.reconcile.differenceSatang != null ? formatBaht(data.reconcile.differenceSatang, { decimals: true }) : "—"}
+                    </span>
+                  </div>
+                  {data.reconcile.statementBalanceSatang != null && (
+                    <div className="flex justify-between">
+                      <span className="text-[color:var(--color-muted)]">รายการรอจับคู่</span>
+                      <span data-testid="fov-reconcile-pending">
+                        {data.reconcile.confirmed ? "ยืนยันแล้ว" : `${data.reconcile.pendingCount} รายการ`}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
               <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีบัญชีธนาคาร — เพิ่มช่องทางประเภทธนาคารก่อน</p>
             )}
-            <Link href={`${financePath}/reconcile`} className="btn btn-primary w-full justify-center" data-testid="fov-reconcile-import">
-              นำเข้า statement
+            <Link
+              href={`${financePath}/reconcile?channel=${data.reconcile.selectedChannelId ?? ""}&month=${data.monthKey}`}
+              className="btn btn-primary w-full justify-center"
+              data-testid="fov-reconcile-import"
+            >
+              {data.reconcile.statementBalanceSatang != null ? "จับคู่รายการ" : "นำเข้า statement"}
             </Link>
           </section>
 
           <section className="card flex flex-col gap-2" data-testid="fov-reconciled-summary">
             <h2 className="text-sm font-semibold">รายการที่กระทบยอดแล้ว</h2>
             <p className="text-sm text-[color:var(--color-muted)]" data-testid="fov-reconciled-count">
-              {data.reconciledCount} รายการ (ยังไม่เริ่มกระทบยอด)
+              {data.reconcile.statementBalanceSatang == null
+                ? `${data.reconciledCount} รายการ (ยังไม่เริ่มกระทบยอด)`
+                : `${data.reconciledCount} รายการ`}
             </p>
           </section>
 

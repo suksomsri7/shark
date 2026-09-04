@@ -228,6 +228,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // WO 5.1 (บัญชี V2 §10.1) — ยอดยกมาหลายรายการ + โอนระหว่างช่องทาง ของ AccountFinance (ผูก tenantId+systemId ทั้งคู่)
   AccountFinanceOpening: sys(),
   AccountFinanceTransfer: sys(),
+  // WO 5.3 (บัญชี V2 §10.2) — กระทบยอดธนาคาร (statement ที่นำเข้า + แถวในนั้น)
+  AccountBankStatement: sys(),
+  AccountBankStatementLine: sys(),
   AccountCheque: sys(),
   AccountLedger: sys(),
   AccountMapping: sys(),

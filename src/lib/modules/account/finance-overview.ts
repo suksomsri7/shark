@@ -26,6 +26,7 @@ import {
 } from "./dashboard";
 import { chequeSummary } from "./cheque";
 import { pettyCashReplenish, financeMonthChanges, type FinanceAccountBalance } from "./finance";
+import { reconcileBlock } from "./reconcile"; // WO 5.3 — บล็อก "กระทบยอดธนาคาร" ใช้ตัวเลขจริง (query เดียว)
 
 // ─────────────────── เดือน (YYYY-MM) ± 1 — ใช้ปุ่ม ‹ › ในปฏิทิน ───────────────────
 
@@ -76,8 +77,13 @@ export type FinanceOverview = {
     selectedChannelId: string | null;
     selectedChannelLabel: string | null;
     systemBalanceSatang: number | null;
+    // WO 5.3: ตัวเลขจริงจาก AccountBankStatement (null = ยังไม่นำเข้า statement ของเดือนนี้)
+    statementBalanceSatang: number | null;
+    differenceSatang: number | null;
+    pendingCount: number;
+    confirmed: boolean;
   };
-  reconciledCount: number; // 0 เสมอในเฟสนี้ (ยังไม่มี AccountBankStatementLine — WO 5.3 ทำจริง)
+  reconciledCount: number; // WO 5.3: จำนวนแถว statement ที่กระทบยอดแล้วของช่องทาง+เดือนที่เลือก
   chequeBadges: { inCount: number; outCount: number };
   queryCount: number;
 };
@@ -119,11 +125,14 @@ export async function financeOverview(
       };
     });
 
-  // กระทบยอดธนาคาร (สรุป/ลิงก์เท่านั้น — WO 5.3 ทำหน้าจับคู่จริง) — เลือกช่องทางธนาคารตัวแรกเป็นค่าเริ่มต้น
+  // กระทบยอดธนาคาร (WO 5.3: อ่านสรุปจริงจาก reconcile.summary) — ช่องทางธนาคารตัวแรกเป็นค่าเริ่มต้น
   const bankOptions = sortedAll.filter((a) => a.type === "BANK");
   const selected = opts.reconcileChannelId
     ? bankOptions.find((a) => a.id === opts.reconcileChannelId)
     : bankOptions[0];
+
+  const rec = selected ? await reconcileBlock(ctx, selected.id, monthKey) : null;
+  if (selected) meter.count += 1; // reconcileBlock = raw query เดียว (งบ query ของหน้านี้จำกัด ≤12)
 
   return {
     monthKey,
@@ -135,9 +144,15 @@ export async function financeOverview(
       channelOptions: bankOptions.map((a) => ({ id: a.id, label: a.code ? `${a.name} · ${a.code}` : a.name })),
       selectedChannelId: selected?.id ?? null,
       selectedChannelLabel: selected ? (selected.code ? `${selected.name} · ${selected.code}` : selected.name) : null,
-      systemBalanceSatang: selected?.balance ?? null,
+      // ยอดในระบบของบล็อกนี้ = ยอด GL ณ "สิ้นเดือนที่เลือก" (ตัวเดียวกับไทล์ "ยอดในระบบ" ของหน้า g10)
+      // ไม่ใช่ยอดคงเหลือปัจจุบัน — สองค่านี้ต่างกันเมื่อดูเดือนย้อนหลัง
+      systemBalanceSatang: rec ? rec.systemBalanceSatang : selected?.balance ?? null,
+      statementBalanceSatang: rec?.statementBalanceSatang ?? null,
+      differenceSatang: rec?.differenceSatang ?? null,
+      pendingCount: rec?.pendingCount ?? 0,
+      confirmed: rec?.confirmed ?? false,
     },
-    reconciledCount: 0,
+    reconciledCount: rec?.matchedCount ?? 0,
     chequeBadges: { inCount: chq.inCount, outCount: chq.outCount },
     queryCount: meter.count,
   };

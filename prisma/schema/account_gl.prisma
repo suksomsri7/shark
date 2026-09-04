@@ -450,9 +450,15 @@ model AccountJournalLine {
   contactId String?
   note      String?
 
+  // ───── V2 (WO 5.3 · §10.2): กระทบยอดธนาคาร — ทำเครื่องหมายที่ "บรรทัด" ไม่ใช่ทั้ง entry
+  // (JV โอนระหว่างช่องทางมีบรรทัดธนาคาร 2 บัญชี ⇒ ระดับ entry จะทับกัน)
+  reconciledAt              DateTime?
+  reconciledStatementLineId String?   @unique // 1 บรรทัดสมุดรายวัน = 1 แถว statement
+
   @@index([entryId])
   @@index([systemId, accountId])
   @@index([systemId, contactId, accountId])
+  @@index([systemId, accountId, reconciledAt]) // "รายการที่กระทบยอดแล้ว" ต่อช่องทาง
 }
 
 model AccountPeriod {
@@ -547,4 +553,79 @@ model AccountSystemLink {
 
   @@unique([systemId, linkedKind, linkedId])
   @@index([linkedKind, linkedId])
+}
+
+// ═════════ V2 (WO 5.3 · DESIGN-SPEC-V2 §10.2 · เฟรม g10) — กระทบยอดธนาคาร ═════════
+// สถานะแถว statement: รอจับคู่ · แนะนำจับคู่ (ยอดตรงแต่วันคลาด/มีหลายตัวเลือก) · จับคู่แล้ว ·
+//                     สร้างรายการแล้ว (ค่าธรรมเนียม/ดอกเบี้ย) · ข้าม
+enum AccountBankStatementLineStatus {
+  UNMATCHED
+  SUGGESTED
+  MATCHED
+  CREATED
+  SKIPPED
+}
+
+// รายการเดินบัญชี 1 งวด/1 ช่องทาง (นำเข้าจาก CSV ของธนาคาร) — 1 ช่องทาง 1 เดือน มีได้ใบเดียว
+// (นำเข้าไฟล์เดิมซ้ำ = เติมแถวใหม่ที่ยังไม่มีลงใบเดิม ไม่สร้างใบใหม่ · กันซ้ำด้วย fingerprint)
+model AccountBankStatement {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  systemId             String
+  financeId            String // AccountFinance (ช่องทางประเภทธนาคาร/e-Wallet)
+  periodKey            String // "2026-09"
+  source               String // "KBANK" | "SCB" | "KTB" | "BBL" | "GENERIC"
+  fileName             String
+  importedAt           DateTime  @default(now())
+  importedById         String?
+  openingBalanceSatang Int? // ยอดยกมาต้นงวดตาม statement (ถ้าไฟล์มีคอลัมน์ยอดคงเหลือ)
+  closingBalanceSatang Int // ยอดปลายงวดตาม statement (คอลัมน์ยอดคงเหลือแถวสุดท้าย หรือ opening + Σ)
+  rowCount             Int       @default(0)
+  confirmedAt          DateTime? // ยืนยันกระทบยอดเดือนนี้ (ล็อกงวด — ส่วนต่างต้องเป็น 0)
+  confirmedById        String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  lines AccountBankStatementLine[]
+
+  @@unique([financeId, periodKey])
+  @@index([systemId, financeId, periodKey])
+}
+
+model AccountBankStatementLine {
+  id                 String               @id @default(cuid())
+  statementId        String
+  statement          AccountBankStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  tenantId           String
+  systemId           String
+  financeId          String // denormalize — unique fingerprint/ดัชนีค้นหาไม่ต้อง join
+  seq                Int // ลำดับแถวในไฟล์ (1,2,3…) — ใช้เรียงเมื่อวันที่ซ้ำ
+  txDate             DateTime
+  description        String
+  refNo              String?
+  amountSatang       Int // เซ็นชื่อ: + = เงินเข้า · − = เงินออก
+  balanceAfterSatang Int?
+  // hash ของ วันที่|จำนวน|รายละเอียด|อ้างอิง|ลำดับที่ซ้ำ — นำเข้าไฟล์เดิมซ้ำ = 0 แถวใหม่
+  // (แถวที่เหมือนกันเป๊ะจริง ๆ ในไฟล์เดียวต่างกันที่ "ลำดับที่ซ้ำ" ⇒ ไม่ถูกกลืน)
+  fingerprint        String
+
+  status AccountBankStatementLineStatus @default(UNMATCHED)
+  // ผูกกับ "บรรทัด" ของสมุดรายวัน ไม่ใช่ทั้ง entry — JV โอนระหว่างช่องทาง 1 ใบมีบรรทัดธนาคาร 2 บัญชี
+  // ถ้าผูกระดับ entry จะชนกันเมื่อกระทบยอดทั้ง 2 ช่องทาง (ดู wo-notes/5.3.md "ต่างจาก WO")
+  matchedLineId    String?
+  matchedEntryId   String? // เก็บคู่ไว้เพื่อลิงก์ไปเอกสาร/ใบสำคัญโดยไม่ต้อง join
+  suggestedLineId  String?
+  suggestedEntryId String?
+  suggestedHint    String? // "ยอดและวันที่ตรงกัน ±1 วัน" (g10)
+  createdEntryId   String? // JV ที่สร้างจากแถวนี้ (ค่าธรรมเนียม/ดอกเบี้ย)
+  skipReason       String?
+  matchedAt        DateTime?
+  matchedById      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([financeId, fingerprint])
+  @@unique([financeId, matchedLineId]) // กันบรรทัดสมุดรายวันเดียวถูกจับคู่ 2 แถว (NULL ซ้ำได้ตามมาตรฐาน Postgres)
+  @@index([systemId, statementId, txDate])
+  @@index([systemId, financeId, status])
 }

@@ -1416,6 +1416,67 @@ export async function postFinanceTransfer(
   });
 }
 
+/**
+ * V2 (WO 5.3 · §10.2 · g10) — "สร้างรายการจากแถว statement" (ค่าธรรมเนียมธนาคาร / ดอกเบี้ยรับ / อื่น ๆ)
+ * ค่าธรรมเนียม (เงินออก): Dr ค่าธรรมเนียมธนาคาร (6510) / Cr บัญชีเงินของช่องทาง
+ * ดอกเบี้ยรับ (เงินเข้า): Dr บัญชีเงินของช่องทาง / Cr ดอกเบี้ยรับ (4910)
+ * idempotent ต่อ "แถว statement" — กดซ้ำ/retry ไม่โพสต์ JV เบิ้ล (key = AccountBankStatementLine#<id>#RECONCILE)
+ * caller = reconcile.ts เท่านั้น (ห้ามโพสต์เองนอก gl.ts — กติกาเจ้าของไฟล์)
+ */
+export async function postBankReconcileEntry(
+  ctx: GlCtx,
+  o: {
+    statementLineId: string;
+    /** บัญชี GL ของช่องทางการเงิน (AccountFinance.ledgerAccountId) */
+    financeLedgerId: string;
+    /** บัญชีคู่ (6510 ค่าธรรมเนียม · 4910 ดอกเบี้ยรับ · หรือบัญชีที่ผู้ใช้เลือก) */
+    counterLedgerId: string;
+    /** + = เงินเข้าช่องทาง (Dr เงิน) · − = เงินออกจากช่องทาง (Cr เงิน) */
+    amountSatang: number;
+    date: Date;
+    memo?: string;
+    note?: string;
+    postedById?: string;
+  },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const amount = Math.abs(Math.round(o.amountSatang));
+    if (amount === 0) return { skipped: true };
+    if (o.financeLedgerId === o.counterLedgerId) throw new Error("บัญชีคู่ต้องไม่ใช่บัญชีเงินของช่องทางเดียวกัน");
+    const event = "RECONCILE";
+    if (await alreadyPosted(ctx, `AccountBankStatementLine#${o.statementLineId}#${event}`, db)) return { skipped: true };
+
+    await ensureAccounting(ctx, db as Tx);
+    const b = new Book(ctx, db);
+    if (o.amountSatang > 0) {
+      b.dr(o.financeLedgerId, amount, o.note);
+      b.cr(o.counterLedgerId, amount, o.note);
+    } else {
+      b.dr(o.counterLedgerId, amount, o.note);
+      b.cr(o.financeLedgerId, amount, o.note);
+    }
+
+    const entry = await commitEntry(
+      ctx,
+      {
+        book: "GENERAL",
+        journal: "ADJUST",
+        date: o.date,
+        refType: "AccountBankStatementLine",
+        refId: o.statementLineId,
+        event,
+        memo: o.memo ?? "รายการจากรายการเดินบัญชีธนาคาร",
+        source: "MANUAL",
+        postedById: o.postedById,
+      },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+
 // ─────────────────── ปิด/เปิดงวด ───────────────────
 
 /**

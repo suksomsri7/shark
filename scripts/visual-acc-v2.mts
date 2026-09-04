@@ -309,6 +309,7 @@ const FIXTURE_REF_18 = "QC-VISUAL-1.8";
 // 🔴 Fable QC รอบ 1: spec เดียวกันวนถ่ายทั้ง desktop+mobile ด้วยไฟล์เดียวกัน — ขั้น ⑤ (กดนำเข้าจริง) ทำ 2 รอบ
 //    ด้วย refId เดิม (fileHash เดียวกัน) ⇒ รอบมือถือชนกับ idempotency ของรอบเดสก์ท็อป (สร้างใหม่ 0 · ข้าม 20)
 //    แก้: แยกไฟล์คนละชุดต่อ device (คนละ "เลขอ้างอิง"/ผู้ติดต่อ) + spec ผลลัพธ์แยก onlyDevice ต่อไฟล์
+const FIXTURE_CSV_RECONCILE_PREVIEW = "scripts/fixtures/acc-v2/kbank-preview-sample.csv"; // WO 5.3 — ไฟล์ตัวอย่างของภาพ preview (preview ไม่เขียน DB)
 const FIXTURE_CSV_PATH_18 = `${QC.shotsDir}/1.8-fixture-a.csv`; // ใช้เดสก์ท็อป (และ preview ทั้งคู่ device — preview ไม่สร้างอะไรจริง)
 const FIXTURE_CSV_PATH_18_MOBILE = `${QC.shotsDir}/1.8-fixture-b.csv`; // ใช้มือถือเท่านั้น (คนละชุดข้อมูล กันชนกับรอบเดสก์ท็อป)
 if (WO === "1.8") {
@@ -1096,6 +1097,85 @@ const PAGES: Record<string, PageSpec[]> = {
       onlyDevice: "mobile",
     },
   ],
+  // WO 5.3 — กระทบยอดธนาคาร (§10.2) เทียบ g10-bank-reconcile.png
+  "5.3": [
+    {
+      name: "reconcile",
+      path: `/app/sys/${SYS}/account/finance/reconcile?channel=${E.bankReconcile?.financeId}&month=${E.bankReconcile?.periodKey}`,
+      note: "หน้ากระทบยอดธนาคาร (g10) — 4 ไทล์ · ตารางซ้าย statement / ขวารายการในระบบ · คู่ที่แนะนำถูกเลือกไว้ · แถบท้าย tooltip + ปุ่มยืนยัน (ปิดอยู่)",
+      expect: [
+        "กระทบยอดธนาคาร",
+        "นำเข้ารายการเดินบัญชี (CSV)",
+        "ยอดตามรายการเดินบัญชี (statement)",
+        "ยอดในระบบ",
+        "ส่วนต่าง",
+        "จับคู่แล้ว",
+        "จับคู่รายการ",
+        "รายการจากธนาคาร (statement)",
+        "รายการในระบบ",
+        "สร้างรายการจากแถวนี้ (ค่าธรรมเนียม/ดอกเบี้ย)",
+        "ข้าม",
+        "แนะนำจับคู่",
+        "รอจับคู่",
+        "ยอดและวันที่ตรงกัน ±1 วัน",
+        "รายการที่กระทบยอดแล้ว",
+        "เหลือรายการรอจับคู่",
+        "ส่วนต่างต้องเป็น 0 ก่อนยืนยัน",
+        "ยืนยันกระทบยอดเดือนนี้",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "reconcile-import-modal",
+      path: `/app/sys/${SYS}/account/finance/reconcile?channel=${E.bankReconcile?.financeId}&month=${E.bankReconcile?.periodKey}&import=1`,
+      note: "modal นำเข้ารายการเดินบัญชี (CSV) — เลือกรูปแบบธนาคาร + ไฟล์ + คำอธิบายรูปแบบวันที่/วงเล็บ",
+      expect: ["นำเข้ารายการเดินบัญชี (CSV)", "รูปแบบไฟล์ของธนาคาร", "ไฟล์ CSV ที่ดาวน์โหลดจากธนาคาร", "ตรวจสอบไฟล์"],
+      onlyDevice: "desktop",
+      expandModalForShot: '[data-testid="reconcile-import-modal"]',
+      waitAfterClick: 400,
+    },
+    {
+      // ขั้น "ตรวจสอบไฟล์" ของโมดัลนำเข้า — อัปโหลดไฟล์จริงผ่าน uploadFile() แล้วกดตรวจสอบ
+      // 🔴 preview เป็น read-only (previewStatement ไม่เขียน DB) ⇒ ยิงภาพนี้ไม่กระทบเฉลย/ยอดใด ๆ
+      // ไฟล์ตัวอย่าง 4 แถว: 3 แถวใหม่ในเดือน ก.ย. + 1 แถววันที่อ่านไม่ออก (โชว์ error ต่อแถวตาม §10.2 ข้อ 20)
+      name: "reconcile-import-preview",
+      path: `/app/sys/${SYS}/account/finance/reconcile?channel=${E.bankReconcile?.financeId}&month=${E.bankReconcile?.periodKey}&import=1`,
+      note: "โมดัลนำเข้า CSV ขั้นตรวจสอบ — สรุปจำนวน (อ่านได้/นำเข้าใหม่/ซ้ำ/นอกเดือน/อ่านไม่ออก) + ตาราง 20 แถวแรก + error ต่อแถว",
+      expect: ["อ่านได้", "นำเข้าใหม่", "ซ้ำ (ข้าม)", "นอกเดือนที่เลือก (ข้าม)", "อ่านไม่ออก", "รูปแบบที่ใช้อ่าน"],
+      onlyDevice: "desktop",
+      flow: [
+        { upload: 'input[type="file"]', filePath: FIXTURE_CSV_RECONCILE_PREVIEW },
+        { click: '[data-testid="reconcile-import-check"]' },
+        { waitFor: '[data-testid="reconcile-import-preview"]' },
+      ],
+      expectBeforeShot: [{ sel: '[data-testid="reconcile-import-new"]', kind: "text", equals: "3" }],
+      expandModalForShot: '[data-testid="reconcile-import-modal"]',
+      waitAfterClick: 500,
+    },
+    {
+      name: "reconcile-balanced",
+      path: `/app/sys/${SYS}/account/finance/reconcile?channel=${E.bankReconcile?.financeId}&month=${E.bankReconcile?.prev?.periodKey}`,
+      note: "สถานะ 'ส่วนต่าง 0 · จับคู่ครบ' ของเดือนก่อน — ปุ่มยืนยันกระทบยอดเปิดใช้ได้ (ไม่มี tooltip)",
+      expect: ["กระทบยอดธนาคาร", "ตรงกันแล้ว", "จับคู่ครบทุกรายการแล้ว", "ยืนยันกระทบยอดเดือนนี้"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "reconcile-mobile",
+      path: `/app/sys/${SYS}/account/finance/reconcile?channel=${E.bankReconcile?.financeId}&month=${E.bankReconcile?.periodKey}`,
+      note: "มือถือ 390 — ไทล์ 2 คอลัมน์ + ลิสต์ statement (แตะแถวเพื่อเปิดแผ่นเลือกคู่)",
+      expect: ["กระทบยอดธนาคาร", "ส่วนต่าง", "จับคู่แล้ว", "จับคู่รายการ"],
+      onlyDevice: "mobile",
+    },
+    {
+      name: "reconcile-mobile-sheet",
+      path: `/app/sys/${SYS}/account/finance/reconcile?channel=${E.bankReconcile?.financeId}&month=${E.bankReconcile?.periodKey}`,
+      note: "มือถือ 390 — แตะแถว statement → bottom sheet แสดงรายการในระบบที่ยอดตรงกัน + ปุ่มจับคู่/สร้างรายการ/ข้าม",
+      expect: ["รายการในระบบที่เข้าคู่ได้", "สร้างรายการจากแถวนี้", "ข้าม"],
+      onlyDevice: "mobile",
+      click: ['[data-testid="reconcile-m-line-9"]'],
+      waitAfterClick: 500,
+    },
+  ],
   // WO 5.2 — ภาพรวมการเงิน + ปฏิทินเงินเข้า-ออก + สำรองรับ/จ่าย (§10.2–§10.3) เทียบ f7-finance-overview.png (+ -menu.png)
   "5.2": [
     {
@@ -1289,6 +1369,9 @@ const PAGES: Record<string, PageSpec[]> = {
 // รูปแบบ: { page: { "testid": ค่าที่คาดหวังเป็นสตางค์ | สตริง } }
 // WO 2.3 — แปลงสตางค์ → ข้อความบาท 2 ตำแหน่งทศนิยม แบบเดียวกับ formatBaht({decimals:true}) ที่ overview-ui.tsx ใช้จริง
 const bahtStr = (satang: number) => "฿" + (satang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 });
+// WO 5.3: ตัวเลขติดลบบนหน้าจอใช้ `formatBaht` = "−฿237.65" (ขีดลบอยู่หน้าสัญลักษณ์ · เป็น U+2212)
+const bahtSignedStr = (satang: number) =>
+  (satang < 0 ? "−฿" : "฿") + (Math.abs(satang) / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** รูปแบบเงินเดียวกับ formatBaht ของ UI (ใช้สร้างค่าที่คาดหวังจากเฉลยที่เป็นสตางค์) */
 const baht = (satang: number, decimals = false) =>
@@ -1433,6 +1516,19 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
       "finance-group-total-BANK_SAVINGS": bahtStr(E.financeGroups?.BANK_SAVINGS ?? 0),
       "finance-group-total-E_WALLET": bahtStr(E.financeGroups?.E_WALLET ?? 0),
       "finance-group-total-PETTY_CASH": bahtStr(E.financeGroups?.PETTY_CASH ?? 0),
+    },
+  },
+  // WO 5.3 — 4 ไทล์ของหน้ากระทบยอด ต้องตรงเฉลย fixture (คิดด้วย SQL อิสระใน generator)
+  "5.3": {
+    reconcile: {
+      "reconcile-tile-statement": bahtSignedStr(E.bankReconcile?.statementClosingSatang ?? 0),
+      "reconcile-tile-system": bahtSignedStr(E.bankReconcile?.systemClosingSatang ?? 0),
+      "reconcile-tile-diff": bahtSignedStr(E.bankReconcile?.differenceBeforeSatang ?? 0),
+      "reconcile-tile-matched": `${E.bankReconcile?.expectMatched ?? 0}/${E.bankReconcile?.rowCount ?? 0}`,
+    },
+    "reconcile-balanced": {
+      "reconcile-tile-diff": bahtSignedStr(0),
+      "reconcile-tile-matched": `${E.bankReconcile?.prev?.rowCount ?? 0}/${E.bankReconcile?.prev?.rowCount ?? 0}`,
     },
   },
   // WO 5.2 — 6 ไทล์/ยอดรวม "เงินคุณอยู่ไหน"/ยอดคงเหลือสำรองจ่าย ต้องตรงเฉลย seed เป๊ะ

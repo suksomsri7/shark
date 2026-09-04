@@ -513,7 +513,8 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
         page({ label: "ภาษีหัก ณ ที่จ่าย", href: `${base}/wht?tab=deduct`, status: "ready", icon: "pct", testId: "WHT_DEDUCT" }),
         // WO 5.1: ทำแล้ว (modal บนหน้าเงินสด/ธนาคาร/e-Wallet — ไม่ใช่หน้าแยก) → เปลี่ยนจาก soon เป็น ready
         page({ label: "โอนระหว่างช่องทาง", href: `${base}/finance?transfer=1`, status: "ready", icon: "swap", testId: "FINANCE_TRANSFER", sep: true }),
-        soon("กระทบยอดธนาคาร", "bank", "BANK_RECONCILE"),
+        // WO 5.3: หน้าจริงพร้อมใช้แล้ว (§10.2 · g10)
+        page({ label: "กระทบยอดธนาคาร", href: `${base}/finance/reconcile`, status: "ready", icon: "bank", testId: "BANK_RECONCILE" }),
       ],
     },
 

@@ -1244,6 +1244,80 @@ assertEq("คงเหลือ MASK-01 หลังขาย POS", linkedItems.
 assertEq("คงเหลือ TANK-12 หลังขาย POS", linkedItems.find((i) => i.sku === "TANK-12")!.onHand, 8);
 console.log(`🧾 บิลขายหน้าร้าน (POS) ${posDocs.length} ใบ · รวม ฿${bahtStr(1_350_000)} · บรรทัดสินค้า 3 บรรทัด (ผูกทะเบียนสินค้าครบ) · สต็อกเหลือ MASK-01=22 · TANK-12=8`);
 
+// ─────────────────────────── 8.6 กระทบยอดธนาคาร (WO 5.3 · §10.2 · g10) ───────────────────────────
+// สร้างไฟล์ statement จากบรรทัด GL จริงของ BSV001 เดือน ก.ย. (SQL อิสระในสคริปต์ generator)
+// แล้วนำเข้า + จับคู่อัตโนมัติ ⇒ ร้าน QC อยู่ในสถานะเดียวกับภาพ g10 (ยังมีส่วนต่าง · ยังจับคู่ไม่ครบ)
+// ⚠️ ขั้นนี้ **ไม่โพสต์ JV ใด ๆ** (ไม่สร้างรายการค่าธรรมเนียม/ดอกเบี้ย) ⇒ ยอดเงินทุกบัญชีไม่ขยับ
+//    ตัวเลขเฉลยเดิมของ WO 5.1/5.2 จึงไม่กระทบเลย (การสร้างรายการเป็นงานของข้อสอบในร้านทิ้ง)
+const fixtureMod = (await import("./acc-v2-fixture-bank-statement.mts" as string)) as {
+  buildBankStatementFixture: (o?: {
+    write?: boolean;
+    periodKey?: string;
+    csvPath?: string;
+    expectedPath?: string;
+    withAdjustments?: boolean;
+  }) => Promise<Record<string, unknown> & { rowCount: number; fileName: string }>;
+  readKbankFixture: (path?: string) => string;
+  KBANK_PREV_CSV: string;
+  KBANK_PREV_EXPECTED: string;
+  FIXTURE_PREV_PERIOD: string;
+};
+const rec = await import("@/lib/modules/account/reconcile");
+const bankFixture = await fixtureMod.buildBankStatementFixture();
+const bankImport = await rec.importStatement(
+  { tenantId, systemId },
+  {
+    financeId: String(bankFixture.financeId),
+    periodKey: String(bankFixture.periodKey),
+    source: "KBANK",
+    fileName: bankFixture.fileName,
+    text: fixtureMod.readKbankFixture(),
+    userId: owner.id,
+  },
+);
+if (!("statementId" in bankImport)) throw new Error(`นำเข้า statement ไม่สำเร็จ: ${JSON.stringify(bankImport)}`);
+const bankAuto = await rec.autoMatch({ tenantId, systemId }, bankImport.statementId, owner.id);
+if (!("matched" in bankAuto)) throw new Error(`จับคู่อัตโนมัติไม่สำเร็จ: ${JSON.stringify(bankAuto)}`);
+assertEq("statement นำเข้า", bankImport.imported, bankFixture.rowCount);
+assertEq("จับคู่อัตโนมัติ", bankAuto.matched, Number(bankFixture.expectMatched));
+assertEq("แนะนำจับคู่", bankAuto.suggested, Number(bankFixture.expectSuggested));
+assertEq("รอจับคู่", bankAuto.unmatched, Number(bankFixture.expectUnmatched));
+console.log(
+  `🏦 กระทบยอดธนาคาร BSV001 ${bankFixture.periodKey}: นำเข้า ${bankImport.imported} แถว · จับคู่ ${bankAuto.matched} · แนะนำ ${bankAuto.suggested} · รอจับคู่ ${bankAuto.unmatched}`,
+);
+
+// เดือนก่อนหน้า (ส.ค.) — statement ที่ตรงกันพอดี ⇒ ส่วนต่าง 0 · จับคู่ครบ · **ปุ่มยืนยันกดได้** (ยังไม่กดให้)
+// ใช้เป็นสถานะตัวอย่างของหน้าจอ (ภาพ QC "ยืนยันได้") โดยไม่ต้องโพสต์ JV เพิ่ม
+const bankPrevFixture = await fixtureMod.buildBankStatementFixture({
+  periodKey: fixtureMod.FIXTURE_PREV_PERIOD,
+  csvPath: fixtureMod.KBANK_PREV_CSV,
+  expectedPath: fixtureMod.KBANK_PREV_EXPECTED,
+  withAdjustments: false,
+});
+const bankPrevImport = await rec.importStatement(
+  { tenantId, systemId },
+  {
+    financeId: String(bankPrevFixture.financeId),
+    periodKey: String(bankPrevFixture.periodKey),
+    source: "KBANK",
+    fileName: bankPrevFixture.fileName,
+    text: fixtureMod.readKbankFixture(fixtureMod.KBANK_PREV_CSV),
+    userId: owner.id,
+  },
+);
+if (!("statementId" in bankPrevImport)) throw new Error(`นำเข้า statement เดือนก่อนไม่สำเร็จ: ${JSON.stringify(bankPrevImport)}`);
+const bankPrevAuto = await rec.autoMatch({ tenantId, systemId }, bankPrevImport.statementId, owner.id);
+if (!("matched" in bankPrevAuto)) throw new Error("จับคู่อัตโนมัติเดือนก่อนไม่สำเร็จ");
+assertEq("statement เดือนก่อน นำเข้า", bankPrevImport.imported, bankPrevFixture.rowCount);
+assertEq("statement เดือนก่อน จับคู่ครบ", bankPrevAuto.matched, bankPrevFixture.rowCount);
+assertEq("statement เดือนก่อน ไม่มีรายการค้าง", bankPrevAuto.suggested + bankPrevAuto.unmatched, 0);
+const bankPrevSummary = await rec.summary({ tenantId, systemId }, String(bankPrevFixture.financeId), String(bankPrevFixture.periodKey));
+if ("ok" in bankPrevSummary) throw new Error("สรุปกระทบยอดเดือนก่อนล้ม");
+assertEq("statement เดือนก่อน ส่วนต่าง 0", bankPrevSummary.differenceSatang ?? -1, 0);
+console.log(
+  `🏦 กระทบยอดธนาคาร BSV001 ${bankPrevFixture.periodKey}: นำเข้า ${bankPrevImport.imported} แถว · จับคู่ครบ · ส่วนต่าง 0 (ปุ่มยืนยันกดได้)`,
+);
+
 // ─────────────────────────── 9. อ่านผลจริงกลับมา + เขียนเฉลย ───────────────────────────
 
 const stats = await svc.overviewStats(tenantId, systemId);
@@ -1452,6 +1526,21 @@ const expected = {
     })),
   },
   journal: { needsReview: 0, suspense9999: 0, trialBalanceBalanced: true },
+  // WO 5.3 — กระทบยอดธนาคาร (ค่าทั้งหมดมาจาก generator ที่คิดด้วย SQL อิสระ ไม่ใช่จาก reconcile.ts)
+  bankReconcile: {
+    ...bankFixture,
+    statementId: bankImport.statementId,
+    imported: bankImport.imported,
+    autoMatched: bankAuto.matched,
+    autoSuggested: bankAuto.suggested,
+    autoUnmatched: bankAuto.unmatched,
+    prev: {
+      ...bankPrevFixture,
+      statementId: bankPrevImport.statementId,
+      imported: bankPrevImport.imported,
+      autoMatched: bankPrevAuto.matched,
+    },
+  },
   fixtures: {
     ...fixtures,
     contactC00019Name: "ปิยธิดา อินสุ่ม",
