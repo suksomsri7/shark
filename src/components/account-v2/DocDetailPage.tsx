@@ -121,17 +121,17 @@ function ActionRow({
     primary = isPO ? (
       <form action={submitApprovalAction}>
         <Hidden systemId={systemId} docType={dt} id={data.id} />
-        <SubmitButton className="w-full md:w-auto">ส่งอนุมัติ</SubmitButton>
+        <SubmitButton className="w-full h-11 md:h-9 md:w-auto">ส่งอนุมัติ</SubmitButton>
       </form>
     ) : side === "expense" ? (
       <form action={issueExpenseDocAction}>
         <Hidden systemId={systemId} docType={dt} id={data.id} />
-        <SubmitButton className="w-full md:w-auto">{isAdjustReceived ? "บันทึก" : "บันทึก/ตั้งเจ้าหนี้"}</SubmitButton>
+        <SubmitButton className="w-full h-11 md:h-9 md:w-auto">{isAdjustReceived ? "บันทึก" : "บันทึก/ตั้งเจ้าหนี้"}</SubmitButton>
       </form>
     ) : (
       <form action={issueDocumentAction}>
         <Hidden systemId={systemId} docType={dt} id={data.id} />
-        <SubmitButton className="w-full md:w-auto">ออกเอกสาร</SubmitButton>
+        <SubmitButton className="w-full h-11 md:h-9 md:w-auto">ออกเอกสาร</SubmitButton>
       </form>
     );
   } else if (dt === "QUOTATION" && data.status === "AWAITING_ACCEPT") {
@@ -139,21 +139,21 @@ function ActionRow({
       <form action={quotationResponseAction}>
         <Hidden systemId={systemId} docType={dt} id={data.id} />
         <input type="hidden" name="accepted" value="1" />
-        <SubmitButton className="w-full md:w-auto">ลูกค้ายอมรับ</SubmitButton>
+        <SubmitButton className="w-full h-11 md:h-9 md:w-auto">ลูกค้ายอมรับ</SubmitButton>
       </form>
     );
   } else if (isPO && data.status === "AWAITING_APPROVAL") {
     primary = (
       <form action={approvePOAction}>
         <Hidden systemId={systemId} docType={dt} id={data.id} />
-        <SubmitButton className="w-full md:w-auto">อนุมัติ</SubmitButton>
+        <SubmitButton className="w-full h-11 md:h-9 md:w-auto">อนุมัติ</SubmitButton>
       </form>
     );
   } else if (isPO && data.status === "APPROVED") {
     primary = (
       <form action={convertPOAction}>
         <Hidden systemId={systemId} docType={dt} id={data.id} />
-        <SubmitButton className="w-full md:w-auto">แปลงเป็น{dt === "ASSET_PURCHASE_ORDER" ? "ซื้อสินทรัพย์" : "บันทึกซื้อ"}</SubmitButton>
+        <SubmitButton className="w-full h-11 md:h-9 md:w-auto">แปลงเป็น{dt === "ASSET_PURCHASE_ORDER" ? "ซื้อสินทรัพย์" : "บันทึกซื้อ"}</SubmitButton>
       </form>
     );
   } else if (dt === "QUOTATION" && data.status === "ACCEPTED" && targets.length > 0) {
@@ -161,7 +161,7 @@ function ActionRow({
     primary = (
       <Link
         href={editorDetailPath(base, targets[0], data.id)}
-        className="btn btn-primary w-full text-sm md:w-auto"
+        className="btn btn-primary h-11 w-full text-sm md:h-9 md:w-auto"
         data-testid="btn-convert-qt"
       >
         แปลงเป็น{DOC_LABEL[targets[0]] ?? targets[0]}
@@ -171,7 +171,7 @@ function ActionRow({
     primary = (
       <form action={receivePtxAction}>
         <Hidden systemId={systemId} docType={dt} id={data.id} />
-        <SubmitButton className="w-full md:w-auto">รับใบกำกับแล้ว</SubmitButton>
+        <SubmitButton className="w-full h-11 md:h-9 md:w-auto">รับใบกำกับแล้ว</SubmitButton>
       </form>
     );
   } else if (canPay && isGroupDocType(dt)) {
@@ -181,7 +181,7 @@ function ActionRow({
         systemId={systemId}
         docId={data.id}
         triggerLabel={groupDefOf(dt)?.texts.payAction ?? "รับชำระ"}
-        triggerClassName="btn btn-primary w-full text-sm md:w-auto"
+        triggerClassName="btn btn-primary h-11 w-full text-sm md:h-9 md:w-auto"
       />
     );
   } else if (canPay) {
@@ -190,7 +190,7 @@ function ActionRow({
         systemId={systemId}
         docId={data.id}
         triggerLabel={side === "expense" ? "บันทึกจ่าย" : "รับชำระ"}
-        triggerClassName="btn btn-primary w-full text-sm md:w-auto"
+        triggerClassName="btn btn-primary h-11 w-full text-sm md:h-9 md:w-auto"
       />
     );
   } else if (canRefundDeposit) {
@@ -200,7 +200,7 @@ function ActionRow({
         fields={{ systemId, docType: dt, id: data.id }}
         reasonField={{ name: "reason", label: dt === "DEPOSIT_RECEIPT" ? "เหตุผลการคืนมัดจำ" : "เหตุผลการรับคืนมัดจำ" }}
         triggerLabel="คืนมัดจำ"
-        triggerClassName="btn btn-primary w-full text-sm md:w-auto"
+        triggerClassName="btn btn-primary h-11 w-full text-sm md:h-9 md:w-auto"
         title={dt === "DEPOSIT_RECEIPT" ? "คืนเงินมัดจำใบนี้?" : "รับเงินมัดจำคืนจากผู้ขาย?"}
         detail="ระบบจะกลับรายการบัญชีของใบมัดจำทั้งใบและปิดใบนี้เป็นยกเลิก"
         confirmLabel="ยืนยันคืนมัดจำ"
@@ -212,7 +212,7 @@ function ActionRow({
       <form action={convertDocumentAction}>
         <Hidden systemId={systemId} docType={dt} id={data.id} />
         <input type="hidden" name="toDocType" value="TAX_INVOICE" />
-        <SubmitButton className="w-full md:w-auto">ออกใบกำกับ</SubmitButton>
+        <SubmitButton className="w-full h-11 md:h-9 md:w-auto">ออกใบกำกับ</SubmitButton>
       </form>
     );
   }
@@ -245,6 +245,7 @@ function ActionRow({
           detail="ใบสั่งซื้อจะถูกปฏิเสธและนำไปทำรายการต่อไม่ได้"
           confirmLabel="ยืนยันไม่อนุมัติ"
           danger
+          testId="reject-po"
         />
       )}
       {dt === "ASSET_PURCHASE" &&
@@ -530,7 +531,25 @@ function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegi
         {data.contact?.taxId && <div className="text-xs text-[color:var(--color-muted)]">เลขภาษี {data.contact.taxId}</div>}
       </div>
       {data.groupChildren ? <GroupChildrenTable data={data} base={base} /> : (
-      <div className="card overflow-x-auto">
+      <div className="card">
+        {/* WO 9.1 (§13 · f14): มือถือ = ลิสต์ย่อ (ชื่อ · จำนวน×ราคา · ยอด) ไม่ใช่ตารางเลื่อนแนวนอน — เดิม (1.5) ใช้ตารางเดียวกันทั้ง 2 จอ ทำให้มือถือต้องเลื่อนในการ์ด */}
+        <div className="flex flex-col gap-3 md:hidden" data-testid="detail-lines-mobile">
+          {data.lines.map((l, i) => (
+            <div key={l.id} className="flex flex-col gap-0.5 border-b pb-3 last:border-0 last:pb-0" data-testid={`detail-line-m-${i + 1}`}>
+              <div className="flex items-start justify-between gap-2">
+                <span className="min-w-0 text-sm font-medium">{l.description}</span>
+                <span className="shrink-0 text-sm font-medium tabular-nums"><MoneyText satang={l.amount} decimals /></span>
+              </div>
+              <span className="text-xs text-[color:var(--color-muted)]">
+                {l.qty} {l.unitName ?? ""} × <MoneyText satang={l.unitPrice} decimals />
+                {l.discount > 0 && <> · ส่วนลด <MoneyText satang={l.discount} decimals /></>}
+                {" · "}{vatLabel(l.vatRateBp)}
+              </span>
+              {l.account && <span className="text-xs text-[color:var(--color-muted)]">{l.account.code} {l.account.name}</span>}
+            </div>
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
@@ -560,6 +579,7 @@ function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegi
             ))}
           </tbody>
         </table>
+        </div>
         <div className="mt-3 ml-auto flex w-full max-w-xs flex-col gap-1 text-sm">
           <TotalRow label="รวมเป็นเงิน" satang={data.subTotal} />
           {data.discountAmount > 0 && <TotalRow label="ส่วนลดท้ายบิล" satang={-data.discountAmount} />}
@@ -934,7 +954,7 @@ export async function DocDetailPage({
 
   return (
     <div className="flex max-w-4xl flex-col gap-5">
-      {err && <p className="text-sm text-[color:var(--color-danger)]">{decodeURIComponent(err)}</p>}
+      {err && <p className="text-sm text-[color:var(--color-danger)]" data-testid="doc-err">{decodeURIComponent(err)}</p>}
       {msg && (
         <p className="text-sm font-medium" data-testid="doc-msg">
           {decodeURIComponent(msg)}

@@ -122,7 +122,7 @@ export function PaymentPanel({
 
   return (
     <>
-      <button type="button" className={triggerClassName ?? "btn btn-primary text-sm"} onClick={openPanel} data-testid="btn-open-payment">
+      <button type="button" className={triggerClassName ?? "btn btn-primary h-11 text-sm md:h-9"} onClick={openPanel} data-testid="btn-open-payment">
         {triggerLabel}
       </button>
       <SlideOver
@@ -133,7 +133,7 @@ export function PaymentPanel({
         actions={
           <button
             type="button"
-            className="btn btn-primary text-sm"
+            className="btn btn-primary h-11 text-sm md:h-9"
             onClick={submit}
             disabled={pending || !data?.canRecord}
             data-testid="btn-record-payments"

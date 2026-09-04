@@ -15,6 +15,8 @@ type Props = {
   action: (formData: FormData) => void | Promise<void>;
   fields?: Record<string, string>; // hidden fields
   reasonField?: { name: string; label: string; required?: boolean };
+  /** WO 9.1 — ให้ QC script หาปุ่มเปิด/แผ่นยืนยันเจอแน่นอน (ไม่ต้องเดาจากข้อความปุ่ม) */
+  testId?: string;
 };
 
 function ConfirmButton({ label, danger }: { label: string; danger?: boolean }) {
@@ -41,11 +43,12 @@ export default function ConfirmDialog({
   action,
   fields,
   reasonField,
+  testId,
 }: Props) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" className={triggerClassName} onClick={() => setOpen(true)}>
+      <button type="button" className={triggerClassName} onClick={() => setOpen(true)} data-testid={testId ? `${testId}-trigger` : undefined}>
         {triggerLabel}
       </button>
       {open && (
@@ -56,6 +59,7 @@ export default function ConfirmDialog({
           <div
             className="w-full max-w-sm rounded-t-2xl bg-[color:var(--color-surface)] p-5 shadow-lg sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
+            data-testid={testId ? `${testId}-sheet` : undefined}
           >
             <h2 className="text-lg font-semibold">{title}</h2>
             {detail && <p className="mt-1 text-sm text-[color:var(--color-muted)]">{detail}</p>}

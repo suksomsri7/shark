@@ -121,7 +121,7 @@ export function InboxCaptureBar({ systemId }: { systemId: string }) {
 
   return (
     <div className="flex flex-col gap-2" data-testid="inbox-capture-bar">
-      <button type="button" className="btn btn-primary w-full justify-center gap-2" disabled={pending} onClick={() => cameraRef.current?.click()} data-testid="inbox-capture-btn">
+      <button type="button" className="btn btn-primary h-11 w-full justify-center gap-2 md:h-9" disabled={pending} onClick={() => cameraRef.current?.click()} data-testid="inbox-capture-btn">
         <AccountIcon name="camera" className="h-4 w-4" />
         ถ่ายบิล
       </button>

@@ -14,10 +14,10 @@ function sideBlock(title: string, s: Pp30Side) {
     <TableWrap>
       <thead>
         <tr className="border-b bg-[color:var(--color-surface-2)] text-left">
-          <th className="px-3 py-2" colSpan={4}>{title}</th>
+          <th className="sticky left-0 z-20 bg-[color:var(--color-surface-2)] px-3 py-2" colSpan={4}>{title}</th>
         </tr>
         <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
-          <th className="px-3 py-1.5">เลขที่</th>
+          <th className="sticky left-0 z-20 bg-[color:var(--color-surface-2)] px-3 py-1.5">เลขที่</th>
           <th className="px-3 py-1.5">คู่ค้า</th>
           <th className="px-3 py-1.5 text-right">ฐานภาษี</th>
           <th className="px-3 py-1.5 text-right">ภาษี</th>
@@ -26,21 +26,21 @@ function sideBlock(title: string, s: Pp30Side) {
       <tbody>
         {s.byRate.map((g) => (
           <tr key={g.rateBp} className="border-b bg-[color:var(--color-surface-2)] text-xs font-medium">
-            <td className="px-3 py-1" colSpan={2}>อัตรา {g.rateBp / 100}%</td>
+            <td className="sticky left-0 z-10 bg-[color:var(--color-surface-2)] px-3 py-1" colSpan={2}>อัตรา {g.rateBp / 100}%</td>
             <td className="px-3 py-1 text-right"><MoneyText satang={g.base} decimals /></td>
             <td className="px-3 py-1 text-right"><MoneyText satang={g.vat} decimals /></td>
           </tr>
         ))}
         {s.rows.map((r, i) => (
           <tr key={`${r.docNo}-${i}`} className="border-b last:border-0">
-            <td className="px-3 py-1.5 font-mono text-xs">{r.docNo}</td>
+            <td className="sticky left-0 z-10 bg-[color:var(--color-surface)] px-3 py-1.5 font-mono text-xs">{r.docNo}</td>
             <td className="px-3 py-1.5">{r.contactName || "—"}<span className="text-xs text-[color:var(--color-muted)]"> {r.taxId}</span></td>
             <td className="px-3 py-1.5 text-right"><MoneyText satang={r.base} decimals /></td>
             <td className="px-3 py-1.5 text-right"><MoneyText satang={r.vat} decimals /></td>
           </tr>
         ))}
         <tr className="border-t-2 font-semibold">
-          <td className="px-3 py-2" colSpan={2}>รวม</td>
+          <td className="sticky left-0 z-10 bg-[color:var(--color-surface)] px-3 py-2" colSpan={2}>รวม</td>
           <td className="px-3 py-2 text-right"><MoneyText satang={s.base} decimals /></td>
           <td className="px-3 py-2 text-right"><MoneyText satang={s.total} decimals /></td>
         </tr>

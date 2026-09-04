@@ -80,7 +80,7 @@ export default async function TrialBalancePage({
       <TableWrap>
         <thead className="sticky top-0 bg-[color:var(--color-surface-2)]">
           <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
-            <th className="px-2 py-2">รหัส</th>
+            <th className="sticky left-0 z-20 bg-[color:var(--color-surface-2)] px-2 py-2">รหัส</th>
             <th className="px-2 py-2">ชื่อบัญชี</th>
             <th className="px-2 py-2 text-right">ยกมาเดบิต</th>
             <th className="px-2 py-2 text-right">ยกมาเครดิต</th>
@@ -97,7 +97,7 @@ export default async function TrialBalancePage({
             const p = prevByCode.get(r.code);
             return (
               <tr key={r.code} className="border-b last:border-0" data-testid={`tb-row-${r.code}`}>
-                <td className="px-2 py-1.5 font-mono text-xs">
+                <td className="sticky left-0 z-10 bg-[color:var(--color-surface)] px-2 py-1.5 font-mono text-xs">
                   <Link href={href} className="text-[color:var(--color-accent)] hover:underline">
                     {r.code}
                   </Link>
@@ -131,7 +131,7 @@ export default async function TrialBalancePage({
         </tbody>
         <tfoot>
           <tr className="border-t-2 font-semibold">
-            <td className="px-2 py-2" colSpan={2}>รวม</td>
+            <td className="sticky left-0 z-10 bg-[color:var(--color-surface)] px-2 py-2" colSpan={2}>รวม</td>
             <td className="px-2 py-2 text-right tabular-nums">{m(tb.totals.openingDebit)}</td>
             <td className="px-2 py-2 text-right tabular-nums">{m(tb.totals.openingCredit)}</td>
             <td className="px-2 py-2 text-right tabular-nums">{m(tb.totals.movementDebit)}</td>

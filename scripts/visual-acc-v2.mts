@@ -509,6 +509,48 @@ if (WO === "3.3") {
   };
 }
 
+// ─────────── fixture ของ WO 9.1: มือถือทำงานได้จริง — ใบสั่งซื้อ "รออนุมัติ" สำหรับภาพ "อนุมัติ (confirm)" ───────────
+// seed ไม่มี PO ค้างรออนุมัติอยู่แล้ว (ทุกใบใน seed จบสถานะแล้ว) ⇒ สร้างชั่วคราวแบบเดียวกับ WO 1.3/1.4/1.7
+// (g17/g18/g19/g20/f11-f14/สรุปยอด/รับชำระ ใช้ข้อมูลที่ seed ไว้แล้วล้วน ไม่ต้องสร้างเพิ่ม)
+let fx91Po = "";
+let fx91Draft = "";
+let fx91AwaitingPay = "";
+if (WO === "9.1") {
+  const { prisma: db } = await import("@/lib/core/db");
+  const expense = await import("@/lib/modules/account/expense");
+  // g17/ปุ่มรับชำระ: ใช้ของที่ seed ไว้แล้วล้วน (ไม่สร้างใหม่) — หาแบบ dynamic กันผูกกับ id ที่เฉลยไม่มี
+  const draft = await db.accountDocument.findFirst({ where: { systemId: SYS, docType: "INVOICE", status: "DRAFT" }, select: { id: true } });
+  fx91Draft = draft?.id ?? "";
+  const awaitingPay = await db.accountDocument.findFirst({ where: { systemId: SYS, docType: "INVOICE", status: "AWAITING_PAYMENT" }, select: { id: true } });
+  fx91AwaitingPay = awaitingPay?.id ?? "";
+  const REF_91 = "QC-VISUAL-9.1";
+  cleanupFixture = async () => {
+    const stale = await db.accountDocument.findMany({ where: { systemId: SYS, reference: REF_91 }, select: { id: true } });
+    if (stale.length === 0) return;
+    const ids = stale.map((d) => d.id);
+    await db.accountDocumentLine.deleteMany({ where: { documentId: { in: ids } } });
+    await db.accountDocument.deleteMany({ where: { id: { in: ids } } });
+    console.log(`ลบ fixture ของ WO 9.1 ${ids.length} ใบ (ตัวนับแท็บ WO 1.1/1.2 กลับเท่าเฉลย)`);
+  };
+  await cleanupFixture(); // กันซากจากรอบที่ล้มกลางคัน
+  const vendor = await db.accountContact.findFirst({ where: { systemId: SYS, kind: "VENDOR", archivedAt: null } });
+  if (!vendor) throw new Error("fixture 9.1: ไม่พบผู้ขายใน tenant QC");
+  const po = await expense.createPurchaseOrder({
+    tenantId: E.tenantId,
+    systemId: SYS,
+    docType: "PURCHASE_ORDER",
+    contactId: vendor.id,
+    issueDate: new Date(`${QC.today}T00:00:00.000Z`),
+    lines: [{ description: "อุปกรณ์ดำน้ำสำหรับสต็อกไตรมาสหน้า", qty: 1, unitName: "ชุด", unitPrice: 4_500_000, vatRateBp: 700 }],
+    createdById: E.ownerUserId,
+  });
+  await db.accountDocument.update({ where: { id: po.id }, data: { reference: REF_91 } });
+  const submitted = await expense.submitForApproval(E.tenantId, SYS, po.id);
+  if (!submitted.ok) throw new Error("fixture 9.1: ส่งอนุมัติ PO ไม่สำเร็จ — " + submitted.reason);
+  fx91Po = po.id;
+  console.log(`[fixture 9.1] ใบสั่งซื้อรออนุมัติ ${submitted.docNo} = ${fx91Po}\n`);
+}
+
 // ─────────── รายการหน้าต่อ WO (เติมทีละ WO ตาม BLUEPRINT §3) ───────────
 // expect = ข้อความที่ต้องเจอบนหน้า (ว่าง = ไม่ตรวจ) — พิสูจน์ว่าเปิดถูกหน้า **และต่อ DB QC จริง**
 // (Next โหลด .env ของ prod ให้อัตโนมัติตอน build/start แต่ไม่ทับ env ที่ส่งเข้ามา → ต้องมีหลักฐานจากหน้าจอ)
@@ -687,8 +729,9 @@ const PAGES: Record<string, PageSpec[]> = {
     {
       name: "invoice-form-menu",
       path: `/app/sys/${SYS}/account/docs/INVOICE/${fixtureDraftId}/edit`,
-      note: 'กดปุ่มดำ "อนุมัติใบแจ้งหนี้ ▾" — เมนู 4 ทางเลือก (g1-invoice-form-menu.png)',
+      note: 'กดปุ่มดำ "อนุมัติใบแจ้งหนี้ ▾" — เมนู 4 ทางเลือก (g1-invoice-form-menu.png — เดสก์ท็อปเท่านั้น: WO 9.1 รอบ 2 มือถือเปลี่ยนเป็นปุ่มอนุมัติตรง + ⋯ แยก ไม่มีเมนูนี้อีกต่อไป)',
       expect: ["แก้ไขใบแจ้งหนี้"],
+      onlyDevice: "desktop",
       click: ['[data-testid="btn-approve-menu"]'],
       waitAfterClick: 300,
     },
@@ -2373,6 +2416,85 @@ const PAGES: Record<string, PageSpec[]> = {
       waitAfterClick: 400,
     },
   ],
+  // WO 9.1 — มือถือทำงานได้จริง (§13 · เฟรม g17-g20 มือถือ 390 + f11-f14 รอบ 1 + payment sheet/approve confirm)
+  // หน้าที่แก้จริงใน WO นี้: DocDetailPage รายการมือถือ (f14) + report ตาราง sticky คอลัมน์แรก + ปุ่มหลัก ≥40px
+  // ที่เหลือ (g17/f11/f12/f13/g19/g20) เป็นด่าน regression ยืนยันว่ายังตรงแบบหลัง WO นี้ ไม่ใช่หน้าที่แก้ใหม่
+  "9.1": [
+    {
+      name: "invoice-form-mobile",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/${fx91Draft}/edit`,
+      note: "ฟอร์มใบแจ้งหนี้มือถือ (g17) — accordion + แถบยอด sticky + ปุ่มท้าย 2 ปุ่ม+⋯ · ตรวจซ้ำหลังปรับความสูงปุ่มอนุมัติ/บันทึกร่างเป็น ≥40px",
+      expect: ["แก้ไขใบแจ้งหนี้"],
+      onlyDevice: "mobile",
+      // แถบล่างมือถือ (WO 9.1 รอบ 2) อยู่ในกล่อง sticky เดียวกับแถบเดสก์ท็อป — ปลดให้อยู่ในสายเนื้อหาปกติก่อนถ่าย
+      // fullPage กันวาดทับแถวส่วนหัว/หมายเหตุที่อยู่ต่ำกว่าจอแรก (บทเรียนเดิม WO 1.5 — สติ๊กกี้ elements วาดผิดตำแหน่ง)
+      unstickForShot: ['[data-testid="editor-actions-m"]'],
+    },
+    {
+      name: "sheet-l1-mobile",
+      path: `/app/sys/${SYS}/account`,
+      note: "bottom sheet ระดับ 1 มือถือ (f12) — แตะหมวด รายรับ",
+      expect: ["บัญชี"],
+      onlyDevice: "mobile",
+      click: ['[data-testid="acc-menu-revenue"]'],
+      waitAfterClick: 300,
+    },
+    {
+      name: "sheet-l2-mobile",
+      path: `/app/sys/${SYS}/account`,
+      note: "bottom sheet ระดับ 2 มือถือ (g18) — แตะ รายรับ แล้วแตะ ใบแจ้งหนี้",
+      expect: ["บัญชี"],
+      onlyDevice: "mobile",
+      click: ['[data-testid="acc-menu-revenue"]', '[data-testid="acc-item-INVOICE"]'],
+      waitAfterClick: 300,
+    },
+    {
+      name: "invoice-list-mobile",
+      path: `/app/sys/${SYS}/account/docs/INVOICE`,
+      note: "หน้ารายการใบแจ้งหนี้มือถือ (f13) — การ์ด 3 บรรทัด + FAB เหนือ orb",
+      expect: ["ใบแจ้งหนี้"],
+      onlyDevice: "mobile",
+    },
+    {
+      name: "doc-detail-mobile",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/${E.fixtures.invSimilanViewId}`,
+      note: "หน้าเอกสารมือถือ (f14) — WO 9.1 แก้: รายการเป็นลิสต์ย่อ (ชื่อ·จำนวน×ราคา·ยอด) แทนตารางเลื่อนแนวนอนของ 1.5",
+      expect: ["ใบแจ้งหนี้"],
+      onlyDevice: "mobile",
+    },
+    {
+      name: "contact-profile-mobile",
+      path: `/app/sys/${SYS}/account/contacts/${E.contactProfile?.contactId ?? ""}`,
+      note: "โปรไฟล์ผู้ติดต่อมือถือเต็มจอ (g19)",
+      expect: ["อายุหนี้ของรายนี้"],
+      onlyDevice: "mobile",
+    },
+    {
+      name: "inbox-mobile",
+      path: `/app/sys/${SYS}/account/documents/inbox`,
+      note: "กล่องขาเข้ามือถือ (g20) — ปุ่มถ่ายบิลเต็มกว้าง ≥40px + FAB ลอยเหนือ orb",
+      expect: ["กล่องขาเข้า"],
+      onlyDevice: "mobile",
+    },
+    {
+      name: "payment-sheet-mobile",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/${fx91AwaitingPay}`,
+      note: "แผ่นรับชำระเต็มจอมือถือ (จาก modal ของ 1.4 → SlideOver เต็มจอ) — ปุ่มบันทึกการชำระ ≥40px",
+      expect: ["ใบแจ้งหนี้"],
+      onlyDevice: "mobile",
+      click: ['[data-testid="btn-open-payment"]'],
+      waitAfterClick: 500,
+    },
+    {
+      name: "approve-confirm-mobile",
+      path: `/app/sys/${SYS}/account/po/${fx91Po}`,
+      note: 'แผ่นยืนยัน bottom-sheet มือถือ (ใช้รูปแบบเดียวกับ "อนุมัติ" — ตัวอย่างจาก ConfirmDialog "ไม่อนุมัติ" PO เพราะปุ่มอนุมัติจริงยิง action ตรงไม่ผ่าน confirm sheet)',
+      expect: ["ใบสั่งซื้อ"],
+      onlyDevice: "mobile",
+      click: ['[data-testid="reject-po-trigger"]'],
+      waitAfterClick: 400,
+    },
+  ],
 };
 
 // ─────────── ตารางตัวเลขที่อ่านจาก data-testid (ว่างไว้ก่อน — WO ถัดไปเติม) ───────────
@@ -3086,6 +3208,10 @@ try {
               ).length,
               approveMenuVisible: isVisible(document.querySelector('[data-testid="approve-menu"]')),
               stickyBarVisible: isVisible(document.querySelector('[data-testid="editor-actions"]')),
+              // WO 9.1 รอบ 2 (§13 · g17): มือถือมีแถบปุ่มท้ายของตัวเอง (editor-actions-m) แยกจากเดสก์ท็อป
+              // (editor-actions ถูกซ่อนด้วย `hidden md:block` บนมือถือโดยตั้งใจ — ไม่ใช่หาย)
+              stickyBarVisibleM: isVisible(document.querySelector('[data-testid="editor-actions-m"]')),
+              approveBtnMVisible: isVisible(document.querySelector('[data-testid="btn-approve-m"]')),
               scrollWidth: document.documentElement.scrollWidth,
               // ตารางรายการต้อง "พอดีการ์ด" — scrollWidth ≤ clientWidth แปลว่าไม่มีคอลัมน์ไหนถูกตัด
               tableFits: (() => {
@@ -3265,7 +3391,10 @@ try {
           const checks13: [boolean, string][] = [
             [probe.editor.hasForm, `มีฟอร์ม [data-testid="doc-editor-v2"] บนหน้า`],
             [probe.h1.includes(want), `h1 มีคำว่า "${want}" (เจอ "${probe.h1}")`],
-            [probe.editor.stickyBarVisible, `แถบปุ่มท้าย [data-testid="editor-actions"] เห็นอยู่บนจอ (§5.2 I)`],
+            // WO 9.1 รอบ 2: มือถือมีแถบปุ่มท้ายแยกของตัวเอง (editor-actions-m) — เดสก์ท็อปยังเป็น editor-actions เดิม
+            device === "desktop"
+              ? [probe.editor.stickyBarVisible, `แถบปุ่มท้าย [data-testid="editor-actions"] เห็นอยู่บนจอ (§5.2 I)`]
+              : [probe.editor.stickyBarVisibleM, `แถบปุ่มท้ายมือถือ [data-testid="editor-actions-m"] เห็นอยู่บนจอ (g17 §13)`],
             [
               probe.editor.scrollWidth <= w,
               `ไม่ล้นแนวนอน: scrollWidth ${probe.editor.scrollWidth} ≤ ${w} (g17 มือถือ 390)`,

@@ -22,7 +22,10 @@ import { DocAttachments } from "./DocAttachments";
 import { DocLineTable } from "./DocLineTable";
 import { DocTotals, MobileTotalsBar } from "./DocTotals";
 import { EasyModeToggle, useAccMode } from "./EasyModeToggle";
+import { Modal } from "./Modal";
+import { RowActions } from "./RowActions";
 import { SectionCard } from "./SectionCard";
+import { formatDateTh } from "@/lib/ui/date";
 import { Stepper, type StepDef } from "./Stepper";
 import { StickyBar } from "./StickyBar";
 import { ToastProvider, useToast } from "./Toast";
@@ -94,6 +97,47 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; 
   );
 }
 
+/** WO 9.1 รอบ 2 (§13 · g17): แถวสรุปช่องหนึ่งของ "ส่วนหัวเอกสาร" บนมือถือ — แตะแล้วเปิดแผ่นเต็มจอแก้ค่านั้น */
+function MobileFieldRow({
+  label,
+  value,
+  sub,
+  invalid,
+  disabled,
+  onClick,
+  testId,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: React.ReactNode;
+  invalid?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center justify-between gap-2 border-b py-2.5 text-left disabled:opacity-60"
+      style={invalid ? { boxShadow: "inset 0 0 0 2px var(--color-danger)", borderRadius: 8 } : undefined}
+      onClick={onClick}
+      disabled={disabled}
+      data-testid={testId}
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs text-[color:var(--color-muted)]">{label}</span>
+        <span className="block truncate text-sm font-medium">{value}</span>
+        {sub && <span className="block truncate text-xs text-[color:var(--color-muted)]">{sub}</span>}
+      </span>
+      {!disabled && (
+        <span className="shrink-0 text-[color:var(--color-muted)]" aria-hidden>
+          ›
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function DocEditorV2(props: DocEditorV2Props) {
   return (
     <ToastProvider testId="toast">
@@ -123,10 +167,15 @@ function EditorBody(props: DocEditorV2Props) {
   const [showErrors, setShowErrors] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [draftMenuOpen, setDraftMenuOpen] = useState(false);
-  const [extraOpen, setExtraOpen] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [addingTag, setAddingTag] = useState(false);
   const [mobileTotalsOpen, setMobileTotalsOpen] = useState(false);
+  // WO 9.1 รอบ 2 — คีย์บรรทัดที่เพิ่งกด "+ เพิ่มรายการ" บนมือถือ (ให้ DocLineTable เปิดแผ่นแก้ไขให้เองครั้งเดียว)
+  const [autoEditLineKey, setAutoEditLineKey] = useState<string | null>(null);
+  // WO 9.1 รอบ 2 — ช่องมือถือที่กำลังเปิดแผ่นแก้ไข (ผู้ติดต่อ/วันที่ออก/ครบกำหนด/ประเภทราคา/แท็ก/เพิ่มเติม)
+  const [mobileFieldSheet, setMobileFieldSheet] = useState<
+    "contact" | "issueDate" | "dueDate" | "priceMode" | "tags" | "more" | null
+  >(null);
   // ── WO 1.4 ส่วน D/F ──
   const [depositApplied, setDepositApplied] = useState<DepositApplied[]>(props.depositApplied);
   const [depositDeducted, setDepositDeducted] = useState(props.depositDeductedSatang);
@@ -241,6 +290,22 @@ function EditorBody(props: DocEditorV2Props) {
   const patchLine = (key: string, patch: Partial<LineDraft>) =>
     setValue((p) => ({ ...p, lines: p.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)) }));
   const addLine = () => setValue((p) => ({ ...p, lines: [...p.lines, newLineDraft(props.vatRateBp)] }));
+  // WO 9.1 รอบ 2 (§13 · g17): มือถือกด "+ เพิ่มรายการ" แล้วเปิดแผ่นแก้ไขของบรรทัดใหม่ทันที (การ์ดอ่านอย่างเดียว
+  // ต้องมีทางเข้าไปกรอกทันที ไม่ใช่โผล่การ์ดว่างแล้วต้องกด ⋯→แก้ไขเองอีกที)
+  const addLineMobile = () => {
+    const draft = newLineDraft(props.vatRateBp);
+    setValue((p) => ({ ...p, lines: [...p.lines, draft] }));
+    setAutoEditLineKey(draft.key);
+  };
+  const duplicateLine = (key: string) =>
+    setValue((p) => {
+      const idx = p.lines.findIndex((l) => l.key === key);
+      if (idx < 0) return p;
+      const copy = { ...p.lines[idx], key: `l${Math.random().toString(36).slice(2, 10)}` };
+      const next = [...p.lines];
+      next.splice(idx + 1, 0, copy);
+      return { ...p, lines: next };
+    });
   const removeLine = (key: string) =>
     setValue((p) => ({ ...p, lines: p.lines.length > 1 ? p.lines.filter((l) => l.key !== key) : p.lines }));
   const reorderLine = (from: number, to: number) =>
@@ -389,6 +454,37 @@ function EditorBody(props: DocEditorV2Props) {
 
   return (
     <div className="flex w-full max-w-5xl flex-col gap-4 pb-40 md:pb-28" data-testid="doc-editor-v2">
+      {/* มือถือ (g17 รอบ 2): แถบบนสุด ‹ ย้อนกลับ + ชื่อชนิดเอกสาร + ⋯ — เดสก์ท็อปใช้ breadcrumb ของ shell แทน */}
+      <div className="-mx-4 flex items-center justify-between border-b bg-[color:var(--color-surface)] px-2 py-2 md:hidden">
+        <Link href={props.listPath} aria-label="ย้อนกลับ" className="flex h-11 w-11 items-center justify-center text-xl" data-testid="editor-back-m">
+          ‹
+        </Link>
+        <span className="min-w-0 flex-1 truncate text-center text-sm font-medium">{props.docLabel}</span>
+        <RowActions
+          testId="editor-topmore-m"
+          label="ตัวเลือกเพิ่มเติม"
+          items={[
+            { label: "บันทึกและสร้างใหม่", onClick: () => saveDraftAndGo("new") },
+            { label: "อนุมัติและพิมพ์", onClick: () => approve("print") },
+            { label: "อนุมัติและส่งอีเมล", onClick: () => approve("email") },
+            { label: "อนุมัติและรับชำระ", onClick: () => approve("pay") },
+            ...(!autoCreatedDraft ? [{ label: "ยกเลิก", href: props.listPath, sepBefore: true }] : []),
+          ]}
+          danger={
+            autoCreatedDraft
+              ? {
+                  triggerLabel: "ยกเลิกร่าง",
+                  title: "ยกเลิกร่างนี้?",
+                  detail: "ร่างที่สร้างระหว่างพิมพ์จะถูกลบทิ้ง",
+                  confirmLabel: "ยืนยันยกเลิก",
+                  action: discardDraftAction,
+                  fields: { systemId: props.systemId, docType: props.docType, id: docId ?? "" },
+                }
+              : undefined
+          }
+        />
+      </div>
+
       {/* หัวหน้า */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-baseline gap-2">
@@ -521,6 +617,68 @@ function EditorBody(props: DocEditorV2Props) {
 
       {/* B — ส่วนหัวเอกสาร */}
       <SectionCard title="ส่วนหัวเอกสาร" complete={headerComplete} testId="sec-header">
+        {/* ── มือถือ (g17 รอบ 2): แถวสรุปอ่านง่าย ๆ แตะแล้วเปิดแผ่นเต็มจอแก้ทีละช่อง — เดสก์ท็อปไม่แตะ (ด้านล่างเป็น hidden md:block)
+            g17 ไม่มีแถว "เลขที่เอกสาร" แยกในนี้ (เห็นในหัว H1 อยู่แล้ว) — เริ่มที่ "ผู้ติดต่อ" ตรงเป๊ะตามแบบ ── */}
+        <div className="flex flex-col md:hidden">
+          <MobileFieldRow
+            label="ผู้ติดต่อ"
+            value={value.contactLabel || "แตะเพื่อเลือกผู้ติดต่อ"}
+            sub={
+              selectedContact ? (
+                <>
+                  {selectedContact.member ? "สมาชิก" : ""}
+                  {selectedContact.sub ? ` · ${selectedContact.sub}` : ""} · ค้างรับ{" "}
+                  <MoneyText satang={selectedContact.outstandingSatang ?? 0} decimals />
+                </>
+              ) : undefined
+            }
+            invalid={showErrors && missingContact}
+            onClick={() => setMobileFieldSheet("contact")}
+            testId="fld-contact-row"
+            disabled={!!(props.adjustMode && props.refDoc)}
+          />
+          <MobileFieldRow
+            label="วันที่ออก"
+            value={value.issueDate ? formatDateTh(value.issueDate) : "แตะเพื่อเลือกวันที่"}
+            invalid={showErrors && missingDate}
+            onClick={() => setMobileFieldSheet("issueDate")}
+            testId="fld-issue-row"
+          />
+          {!props.adjustMode && (
+            <MobileFieldRow
+              label={props.dueLabel}
+              value={value.dueDate ? formatDateTh(value.dueDate) : "ไม่ระบุ"}
+              onClick={() => setMobileFieldSheet("dueDate")}
+              testId="fld-due-row"
+            />
+          )}
+          {!easy && (
+            <MobileFieldRow
+              label="ประเภทราคา"
+              value={PRICE_MODE_OPTIONS.find((o) => o.value === value.priceMode)?.label ?? value.priceMode}
+              onClick={() => setMobileFieldSheet("priceMode")}
+              testId="fld-pricemode-row"
+            />
+          )}
+          <MobileFieldRow
+            label="แท็ก"
+            value={value.tags.length > 0 ? value.tags.join(" · ") : "ไม่มีแท็ก"}
+            onClick={() => setMobileFieldSheet("tags")}
+            testId="fld-tags-row"
+          />
+          <button
+            type="button"
+            className="flex items-center gap-1 py-2.5 text-sm text-[color:var(--color-muted)]"
+            onClick={() => setMobileFieldSheet("more")}
+            data-testid="header-more"
+          >
+            <span aria-hidden>▾</span>
+            เพิ่มเติม: อ้างอิง · สกุลเงิน · ใบกำกับ · พนักงานขาย
+          </button>
+        </div>
+
+        {/* ── เดสก์ท็อป: ฟอร์มเดิมทุกจุด ไม่แตะ ── */}
+        <div className="hidden md:block">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="เลขที่เอกสาร">
             <span className="flex items-center gap-2">
@@ -602,19 +760,9 @@ function EditorBody(props: DocEditorV2Props) {
           )}
         </div>
 
-        {/* มือถือย่อส่วนที่เหลือไว้ตาม g17 ("เพิ่มเติม: อ้างอิง · สกุลเงิน · ใบกำกับ · พนักงานขาย") */}
-        <button
-          type="button"
-          className="flex items-center gap-1 text-sm text-[color:var(--color-muted)] md:hidden"
-          aria-expanded={extraOpen}
-          onClick={() => setExtraOpen((v) => !v)}
-          data-testid="header-more"
-        >
-          <span className={`transition-transform ${extraOpen ? "rotate-180" : ""}`}>▾</span>
-          เพิ่มเติม: อ้างอิง · สกุลเงิน · ใบกำกับ · พนักงานขาย
-        </button>
-
-        <div className={`${extraOpen ? "grid" : "hidden md:grid"} grid-cols-1 gap-4 md:grid-cols-2`}>
+        {/* เดิมมือถือย่อ/ขยายแถวนี้เองด้วย toggle ในตัว — ตอนนี้มือถือมีแถวสรุป+แผ่นของตัวเองด้านบนแล้ว (WO 9.1 รอบ 2)
+            บล็อกนี้อยู่ใน `hidden md:block` ของเดสก์ท็อปอยู่แล้ว จึงแสดงเสมอที่นี่ */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field label="อ้างอิง" htmlFor="fld-ref">
             <input
               id="fld-ref"
@@ -747,10 +895,223 @@ function EditorBody(props: DocEditorV2Props) {
             </div>
           </div>
         </div>
+        </div>
       </SectionCard>
 
+      {/* ── แผ่นแก้ไขทีละช่องของ "ส่วนหัวเอกสาร" บนมือถือ (g17 รอบ 2) — ใช้ตัวเดียวกับที่เดสก์ท็อปใช้ ต่างแค่ห่อด้วยแผ่นเต็มจอ ── */}
+      <Modal
+        open={mobileFieldSheet === "contact"}
+        onClose={() => setMobileFieldSheet(null)}
+        title="ผู้ติดต่อ"
+        size="md"
+        sheetOnMobile
+        testId="sheet-contact"
+      >
+        {props.adjustMode && props.refDoc ? (
+          <input className="input" readOnly value={value.contactLabel || "—"} />
+        ) : (
+          <ContactPicker
+            defaultId={value.contactId ?? undefined}
+            defaultLabel={value.contactLabel}
+            search={searchContacts}
+            onSelect={(r) => {
+              pickContact(r.id, r.name);
+              setMobileFieldSheet(null);
+            }}
+            onCreate={() => router.push(`${props.basePath}/contacts`)}
+            testId="contact-picker-m"
+          />
+        )}
+        {selectedContact && (
+          <span
+            className="mt-2 flex flex-wrap items-center gap-2 rounded-lg px-2 py-1 text-xs"
+            style={{ background: "var(--color-surface-2)", color: "var(--color-accent)" }}
+          >
+            {selectedContact.member ? "สมาชิก" : "ผู้ติดต่อ"}
+            {selectedContact.sub ? ` #${selectedContact.sub}` : ""} · ค้างรับ{" "}
+            <MoneyText satang={selectedContact.outstandingSatang ?? 0} decimals />
+          </span>
+        )}
+      </Modal>
+
+      <Modal
+        open={mobileFieldSheet === "issueDate"}
+        onClose={() => setMobileFieldSheet(null)}
+        title="วันที่ออก"
+        size="sm"
+        sheetOnMobile
+        testId="sheet-issue-date"
+      >
+        <DateInput value={value.issueDate} onChange={(iso) => set("issueDate", iso)} testId="fld-issue-m" />
+      </Modal>
+
+      {!props.adjustMode && (
+        <Modal
+          open={mobileFieldSheet === "dueDate"}
+          onClose={() => setMobileFieldSheet(null)}
+          title={props.dueLabel}
+          size="sm"
+          sheetOnMobile
+          testId="sheet-due-date"
+        >
+          <DateInput value={value.dueDate} onChange={(iso) => set("dueDate", iso)} testId="fld-due-m" />
+        </Modal>
+      )}
+
+      {!easy && (
+        <Modal
+          open={mobileFieldSheet === "priceMode"}
+          onClose={() => setMobileFieldSheet(null)}
+          title="ประเภทราคา"
+          size="sm"
+          sheetOnMobile
+          testId="sheet-pricemode"
+        >
+          <div className="flex flex-col gap-2">
+            {PRICE_MODE_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                className="flex items-center justify-between rounded-lg border px-3 py-3 text-left text-sm"
+                style={
+                  value.priceMode === o.value
+                    ? { borderColor: "var(--color-ink)", background: "var(--color-surface-2)" }
+                    : undefined
+                }
+                onClick={() => {
+                  set("priceMode", o.value);
+                  setMobileFieldSheet(null);
+                }}
+                data-testid={`pricemode-opt-${o.value}`}
+              >
+                {o.label}
+                {value.priceMode === o.value && <span aria-hidden>✓</span>}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
+
+      <Modal
+        open={mobileFieldSheet === "tags"}
+        onClose={() => setMobileFieldSheet(null)}
+        title="แท็ก"
+        size="sm"
+        sheetOnMobile
+        testId="sheet-tags"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          {value.tags.map((t) => (
+            <span key={t} className="flex items-center gap-1 rounded-lg border px-2 py-1 text-xs">
+              {t}
+              <button
+                type="button"
+                aria-label={`ลบแท็ก ${t}`}
+                className="text-[color:var(--color-muted)]"
+                onClick={() => set("tags", value.tags.filter((x) => x !== t))}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+          {addingTag ? (
+            <input
+              autoFocus
+              className="input w-40"
+              list="acc-tag-options"
+              value={tagInput}
+              placeholder="พิมพ์แล้วกด Enter"
+              onChange={(e) => setTagInput(e.target.value)}
+              onBlur={() => setAddingTag(false)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                const t = tagInput.trim();
+                if (t && !value.tags.includes(t)) {
+                  set("tags", [...value.tags, t]);
+                  if (!tagOptions.includes(t)) setTagOptions([...tagOptions, t]);
+                }
+                setTagInput("");
+                setAddingTag(false);
+              }}
+              data-testid="tag-input-m"
+            />
+          ) : (
+            <button
+              type="button"
+              className="text-xs text-[color:var(--color-accent)]"
+              onClick={() => setAddingTag(true)}
+              data-testid="tag-add-m"
+            >
+              + เพิ่มแท็ก
+            </button>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={mobileFieldSheet === "more"}
+        onClose={() => setMobileFieldSheet(null)}
+        title="เพิ่มเติม"
+        size="md"
+        sheetOnMobile
+        testId="sheet-more"
+      >
+        <div className="flex flex-col gap-4">
+          <Field label="อ้างอิง" htmlFor="fld-ref-m">
+            <input
+              id="fld-ref-m"
+              className="input"
+              maxLength={35}
+              placeholder="เลข PO ลูกค้า / เอกสารต้นทาง"
+              value={value.reference}
+              onChange={(e) => set("reference", e.target.value)}
+              data-testid="fld-reference-m"
+            />
+          </Field>
+          <Field label="สกุลเงิน">
+            <input className="input" value="THB (คงที่)" readOnly />
+          </Field>
+          <Field label="พนักงานขาย / สาขา">
+            <span className="flex items-center gap-2">
+              <select
+                className="input"
+                value={value.salesUserId ?? ""}
+                onChange={(e) => set("salesUserId", e.target.value || null)}
+                aria-label="พนักงานขาย"
+              >
+                <option value="">— ไม่ระบุ —</option>
+                {props.salesUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+              <span className="shrink-0 text-sm text-[color:var(--color-muted)]">· {props.branchName}</span>
+            </span>
+          </Field>
+          {props.vatRegistered && (props.docType === "INVOICE" || props.docType === "RECEIPT") && (
+            <div className="flex flex-col gap-2">
+              <span className="text-xs text-[color:var(--color-muted)]">การออกใบกำกับภาษี</span>
+              <div className="flex flex-col gap-3">
+                <Toggle
+                  checked={value.autoTaxInvoice}
+                  onChange={(v) => set("autoTaxInvoice", v)}
+                  label="ออกใบกำกับภาษีพร้อมกัน"
+                />
+                <Toggle
+                  checked={value.recognizeVatNow}
+                  onChange={(v) => set("recognizeVatNow", v)}
+                  label="รับรู้ภาษีขายงวดนี้ (ภ.พ.30)"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+
       {/* C — รายการ */}
-      <SectionCard title="รายการ" complete={linesComplete} testId="sec-lines">
+      <SectionCard title={`รายการ ${value.lines.length}`} complete={linesComplete} testId="sec-lines">
         <DocLineTable
           lines={value.lines}
           breakdown={totals.lines}
@@ -765,8 +1126,20 @@ function EditorBody(props: DocEditorV2Props) {
           onChange={patchLine}
           onRemove={removeLine}
           onReorder={reorderLine}
+          onDuplicate={duplicateLine}
+          autoEditKey={autoEditLineKey}
+          onAutoEditConsumed={() => setAutoEditLineKey(null)}
         />
-        <div className="flex flex-wrap items-center gap-2">
+        {/* มือถือ (g17): ปุ่มเต็มความกว้างเส้นประ — เดสก์ท็อปใช้ปุ่มกะทัดรัดเดิม */}
+        <button
+          type="button"
+          className="btn-sm w-full border-dashed py-3 md:hidden"
+          onClick={addLineMobile}
+          data-testid="line-add-mobile"
+        >
+          + เพิ่มรายการ
+        </button>
+        <div className="hidden flex-wrap items-center gap-2 md:flex">
           <button type="button" className="btn-sm" onClick={addLine} data-testid="line-add">
             + เพิ่มรายการ
           </button>
@@ -820,7 +1193,13 @@ function EditorBody(props: DocEditorV2Props) {
 
       {/* D — เงินมัดจำ (§5.2 D) */}
       {props.depositEnabled && (
-        <SectionCard title="เงินมัดจำ" complete={depositDeducted > 0} testId="sec-deposit">
+        <SectionCard
+          title={depositApplied.length > 0 ? `เงินมัดจำ ${depositApplied.length}` : "เงินมัดจำ"}
+          actions={depositDeducted > 0 ? <span className="text-sm font-medium tabular-nums">−<MoneyText satang={depositDeducted} decimals /></span> : undefined}
+          complete={depositDeducted > 0}
+          testId="sec-deposit"
+          mobileDefaultOpen={false}
+        >
           <DepositSection
             systemId={props.systemId}
             docType={props.docType}
@@ -876,8 +1255,8 @@ function EditorBody(props: DocEditorV2Props) {
         </>
       )}
 
-      {/* G — หมายเหตุ */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {/* G — หมายเหตุ — เดสก์ท็อป: 2 การ์ดข้างกัน (เดิม) · มือถือ (g17 รอบ 2): การ์ดเดียว "หมายเหตุ" รวม 2 ช่องไว้ข้างใน */}
+      <div className="hidden gap-4 md:grid md:grid-cols-2">
         <SectionCard title="หมายเหตุสำหรับลูกค้า" complete={!!value.note.trim()} testId="sec-note">
           <textarea
             className="input"
@@ -900,9 +1279,45 @@ function EditorBody(props: DocEditorV2Props) {
           />
         </SectionCard>
       </div>
+      <div className="md:hidden">
+        <SectionCard
+          title="หมายเหตุ"
+          complete={!!value.note.trim() || !!value.internalNote.trim()}
+          testId="sec-note-m"
+          mobileDefaultOpen={false}
+        >
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+            สำหรับลูกค้า (พิมพ์บนเอกสาร)
+            <textarea
+              className="input"
+              rows={3}
+              maxLength={2000}
+              value={value.note}
+              onChange={(e) => set("note", e.target.value)}
+              data-testid="fld-note-m"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+            ภายใน (ไม่พิมพ์บนเอกสาร)
+            <textarea
+              className="input"
+              rows={3}
+              maxLength={2000}
+              value={value.internalNote}
+              onChange={(e) => set("internalNote", e.target.value)}
+              data-testid="fld-internal-note-m"
+            />
+          </label>
+        </SectionCard>
+      </div>
 
       {/* H — แนบไฟล์ */}
-      <SectionCard title="แนบไฟล์" complete={attachmentCount > 0} testId="sec-attachments">
+      <SectionCard
+        title={attachmentCount > 0 ? `แนบไฟล์ ${attachmentCount}` : "แนบไฟล์"}
+        complete={attachmentCount > 0}
+        testId="sec-attachments"
+        mobileDefaultOpen={false}
+      >
         <DocAttachments
           systemId={props.systemId}
           documentId={docId}
@@ -930,6 +1345,59 @@ function EditorBody(props: DocEditorV2Props) {
           </div>
         )}
         <MobileTotalsBar totals={totals} open={mobileTotalsOpen} onToggle={() => setMobileTotalsOpen((v) => !v)} />
+
+        {/* ── มือถือ (g17 รอบ 2): [บันทึกร่าง][อนุมัติ กว้างกว่า สีดำ][⋯] — ไม่ใช่แถบเดสก์ท็อป [ยกเลิก][บันทึกร่าง ▾][อนุมัติ ▾] ── */}
+        <div
+          className="flex items-center gap-2 border-t bg-[color:var(--color-surface)] px-4 py-3 md:hidden"
+          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+          data-testid="editor-actions-m"
+        >
+          <button
+            type="button"
+            className="btn btn-ghost h-11 text-sm"
+            disabled={pending || saving}
+            onClick={() => saveDraftAndGo("detail")}
+            data-testid="btn-save-draft-m"
+          >
+            {saving ? "กำลังบันทึก…" : "บันทึกร่าง"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary h-11 flex-1 text-sm disabled:opacity-40"
+            disabled={pending || saving || capExceeded}
+            title={capExceeded ? "ยอดเกินยอดคงเหลือของเอกสารอ้างอิง — แก้ยอดหรือเลือกเอกสารอ้างอิงใหม่ก่อนอนุมัติ" : undefined}
+            onClick={() => approve("")}
+            data-testid="btn-approve-m"
+          >
+            {pending ? "กำลังอนุมัติ…" : `อนุมัติ${props.docLabel}`}
+          </button>
+          <RowActions
+            testId="editor-more-m"
+            label="ตัวเลือกเพิ่มเติม"
+            items={[
+              { label: "บันทึกและสร้างใหม่", onClick: () => saveDraftAndGo("new") },
+              { label: "อนุมัติและพิมพ์", onClick: () => approve("print") },
+              { label: "อนุมัติและส่งอีเมล", onClick: () => approve("email") },
+              { label: "อนุมัติและรับชำระ", onClick: () => approve("pay") },
+              // ร่างของผู้ใช้เอง (ไม่ใช่ร่างที่ฟอร์มสร้างเองระหว่างพิมพ์) — "ยกเลิก" แค่ออกจากหน้า ไม่ลบร่าง (เหมือนเดสก์ท็อป)
+              ...(!autoCreatedDraft ? [{ label: "ยกเลิก", href: props.listPath, sepBefore: true }] : []),
+            ]}
+            danger={
+              autoCreatedDraft
+                ? {
+                    triggerLabel: "ยกเลิกร่าง",
+                    title: "ยกเลิกร่างนี้?",
+                    detail: "ร่างที่สร้างระหว่างพิมพ์จะถูกลบทิ้ง",
+                    confirmLabel: "ยืนยันยกเลิก",
+                    action: discardDraftAction,
+                    fields: { systemId: props.systemId, docType: props.docType, id: docId ?? "" },
+                  }
+                : undefined
+            }
+          />
+        </div>
+
+        <div className="hidden md:block">
         <StickyBar
           testId="editor-actions"
           secondary={
@@ -951,7 +1419,7 @@ function EditorBody(props: DocEditorV2Props) {
               <span className="relative">
                 <button
                   type="button"
-                  className="btn btn-ghost text-sm"
+                  className="btn btn-ghost h-11 text-sm md:h-9"
                   onClick={() => setDraftMenuOpen((v) => !v)}
                   disabled={pending || saving}
                   aria-expanded={draftMenuOpen}
@@ -990,7 +1458,7 @@ function EditorBody(props: DocEditorV2Props) {
             <span className="relative flex justify-end">
               <button
                 type="button"
-                className="btn btn-primary text-sm disabled:opacity-40"
+                className="btn btn-primary h-11 text-sm disabled:opacity-40 md:h-9"
                 disabled={pending || saving || capExceeded}
                 title={capExceeded ? "ยอดเกินยอดคงเหลือของเอกสารอ้างอิง — แก้ยอดหรือเลือกเอกสารอ้างอิงใหม่ก่อนอนุมัติ" : undefined}
                 aria-expanded={approveOpen}
@@ -1032,6 +1500,7 @@ function EditorBody(props: DocEditorV2Props) {
             </span>
           }
         />
+        </div>
       </div>
 
       {/* ฟอร์มจริงของการอนุมัติ — ยิง server action (redirect ไปหน้าเอกสาร) */}

@@ -135,6 +135,16 @@ export function RecurringRuleForm({
   const patchLine = (key: string, patch: Partial<LineDraft>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const removeLine = (key: string) => setLines((ls) => (ls.length <= 1 ? ls : ls.filter((l) => l.key !== key)));
+  // WO 9.1 รอบ 2 — DocLineTable ต้องการ onDuplicate (เมนู ⋯ ของการ์ดมือถือ)
+  const duplicateLine = (key: string) =>
+    setLines((ls) => {
+      const idx = ls.findIndex((l) => l.key === key);
+      if (idx < 0) return ls;
+      const copy = { ...ls[idx], key: `l${Math.random().toString(36).slice(2, 10)}` };
+      const next = [...ls];
+      next.splice(idx + 1, 0, copy);
+      return next;
+    });
   const reorderLine = (from: number, to: number) =>
     setLines((ls) => {
       const next = [...ls];
@@ -419,6 +429,7 @@ export function RecurringRuleForm({
             onChange={patchLine}
             onRemove={removeLine}
             onReorder={reorderLine}
+            onDuplicate={duplicateLine}
           />
           <div>
             <button

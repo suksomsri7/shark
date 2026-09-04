@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 9.1 มือถือทำงานได้จริง (เฟส 9) |
+| WO | 9.2 audit ความปลอดภัย (เฟส 9) |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Sonnet (sub-agent · g17–g20 บน 390) |
-| ขั้นที่ถึง | 4 ก.ย. ~19:40 UTC: 9.1 รอบ 1 ส่งมา (mobile E2E 47/47 · 4 งานจบบนมือถือ · f14 ผ่าน · 🐞 cleanup ข้อสอบทิ้ง JV กำพร้าใน QC DB — แก้+ล้างแล้ว) → Fable ดูภาพ **ตีกลับ**: ฟอร์มใบแจ้งหนี้ 390 ยังเป็น input เดสก์ท็อปซ้อนกัน ไม่ใช่ g17 (แถวหัว+chevron → sheet · การ์ดรายการ+⋯ · accordion · sticky ยอด+ปุ่ม 2+⋯) — agent เดิมทำรอบ 2 |
+| ผู้ทำ | Fable นำ · Opus แก้ |
+| ขั้นที่ถึง | 4 ก.ย. ~20:20 UTC: 9.1 DONE รอบ 2 ตรง g17 (agent หยุดรอ build 3 รอบ — Fable เฝ้า build เอง+สั่งทำต่อ) · Fable รันด่าน 20 ชุดเอง · commit แล้ว · กำลังออก 9.2 |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -57,7 +57,7 @@
 | 8.1 | ตั้งค่าเอกสาร | Opus | DONE | (HEAD) | ตรง f10 (ต่างเฉพาะที่ §9.2 บังคับ: 18 ชนิด · คอลัมน์เลขถัดไป · 9 หัวข้อย่อย) · ตีกลับ 1 รอบ (regression G0.12b ป้ายรวมยอดใบพิมพ์กลุ่ม — Fable จับจากด่านเก่า) · Fable รันเอง: doc-settings 116 · groups 174 · editor 200 · detail 85 · list 159 · payments 161 · cheap-routes 105 · pos-lines 87 · promptpay 84 · recurring 161 · dashboard/home เขียว · reconcile 109 · components 78 · seed-check 243 · guard 166 · schema 61 · nav 326 · fitness 17 · CPA 107 · drift clean · typecheck 0 · ใหม่: doc-numbering (pattern ไทย/อังกฤษ · reset none/yearly/monthly · counter 1 statement · legacy continuation) · ทุกหัวข้อ §9.2 ต่อสายจริง (due/notes/print template+fields+lang/channels/tags/public link/auto tax-invoice/mapping override/POS abb) · 🐞 ปิด: expense.ts มี nextDocNo แยกใช้ TZ เครื่อง · findActiveNav ชี้กลุ่มผิดบนหน้าตั้งค่า · saveSettingsAction ล้าง docTypes · ค้าง: payments P7.9 flaky 1 ครั้ง (ทำซ้ำไม่ได้) → 9.3 |
 | 8.2 | นโยบายบัญชี | Opus | DONE | (HEAD) | ตีกลับ 1 รอบ (native date → DateInput · import eager ดึง env ตอนโหลด = บทเรียน 1.9 ซ้ำ) · Fable รันเอง: policy 143 · ด่านเก่า 30 ชุดเขียว (editor 200 · payments 161 · journal 94 · period-assets 121 · coa 105 · contact-modal 96 · products 100 · groups 174 · CPA 107 …) · fitness 17 (มี/ไม่มี .env) · drift clean · typecheck 0 · บังคับใช้: ล็อกก่อนวันที่ (chokepoint gl.commitEntry + create/update/void/payment/JV/reopen) · ปีบัญชี (งบดุล/ช่วงรายงาน/ตารางงวด) · VAT timing · WHT default · price mode · ชื่อซ้ำ (ผู้ติดต่อ+สินค้าใหม่) · บัญชี default 3 ตัว · ออกเอกสารต่อ+คัดลอกหมายเหตุ/แท็ก · ลูกค้าประจำ · ปิดงวดอัตโนมัติ · รายงานอีเมล (cron mode email-reports) · 🐞 ปิด: convert ไม่คัดลอกแท็ก · saveSettings รีเซ็ต VAT · balanceSheet ไม่เคยได้ fiscalYearEndMonth · sweep ปิดงวดทุกระบบไม่มีสวิตช์ · ค้าง: crontab ต้องเพิ่มบรรทัด email-reports · RESEND_API_KEY บน prod · periodCloseDay ยังไม่มีผู้ใช้ |
 | 8.3 | สิทธิ์ matrix + เชื่อมระบบ + API | Opus | DONE | (HEAD) | ตรง g13/g14 รอบเดียว · Fable รันเอง: permissions 160 · guard 170 · policy 143 · doc-settings 116 · detail 85 · editor 200 · payments 161 (เดี่ยว) · cheap-routes 105 · pos-lines 87 · invitem 88 · inbox 128 · party 36 · components 78 · seed-check 279 · schema 61 · nav 326 · list 159 · dashboard/home เขียว · approval 16/12 · webhook 15 · public-api 18 · pos-account 16 · fitness 17 (มี/ไม่มี .env) · CPA 107 · drift clean · typecheck 0 · matrix 36 คีย์ = 1 เซลล์/คีย์ · เพดาน = Membership.permissions._maxApproveSatang → เกิน = submitForApproval + ผลกลับเข้าเอกสาร · เชื่อมระบบ 7 kind + options + enabled · API key/webhook ใช้ของแพลตฟอร์ม + event account.* · 🐞 ปิด: mergePermissions ล้างสิทธิ์โมดูลอื่น · ตัดการเชื่อมแล้วยังลงบัญชี · หน้าเอกสารไม่ดูสิทธิ์ (ปุ่มรับชำระโผล่ทุกคน) · ค้าง: recordPayment emit 2 event → 9.3 · payments suite order-dependent → 9.3 |
-| 9.1 | มือถือทำงานได้จริง | Sonnet | TODO | | |
+| 9.1 | มือถือทำงานได้จริง | Sonnet | DONE | (HEAD) | ตรง g17 (รอบ 2: แถวหัว+chevron→sheet · การ์ดรายการ+⋯→sheet · accordion · sticky ยอด+ปุ่ม) · f11–f14/g18–g20 ผ่าน · 4 งานจบบนมือถือ (qc-acc-v2-mobile 55/55 — browser suite ต้องมี server · Fable รับผลจาก agent + ดู PNG เอง) · Fable รันเอง: editor 200 · recurring 163 · detail 85 · payments 161 · list 159 · contacts 49 · inbox 128 · permissions 160 · components 78 · nav 326 · guard 170 · adjust 96 · groups 174 · seed-check 279 · schema 61 · dashboard/home เขียว · fitness 17 (ไม่มี .env) · CPA 107 · drift clean · typecheck 0 · แก้: doc detail f14 ลิสต์ย่อ · ปุ่มหลัก ≥44px · sticky คอลัมน์แรก งบทดลอง/ภ.พ.30 · 🐞 ข้อสอบ cleanup ทิ้ง JV กำพร้า (แก้+ล้าง) · แอป WebView เปิด route V2 ได้ไม่ต้องแก้ native · ค้าง: งบดุล/กำไรขาดทุน/กระแสเงินสด ยังไม่ sticky คอลัมน์แรก · GroupChildrenTable มือถือยังเป็นตารางเลื่อน |
 | 9.2 | audit ความปลอดภัย | Opus | TODO | | |
 | 9.3 | ประสิทธิภาพ | Opus | TODO | | |
 | 9.4 | ความง่าย | Sonnet | TODO | | |
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 4 ก.ย. 2026 ~20:20 UTC — 9.1 มือถือ DONE (ตีกลับ 1 รอบ) · บทเรียน: Sonnet หยุดเทิร์นรอ build เบื้องหลังซ้ำ ๆ → ใบสั่งงานต้องสั่ง 'รอในเชลล์ ห้ามจบเทิร์นเพื่อรอ'
 - 4 ก.ย. 2026 ~22:30 UTC — 🏁 **เฟส 8 ปิด** (8.1–8.3 · qc:all 222/222 หลังแก้ 3 รอบ: regression ใบพิมพ์กลุ่ม · autoClose default · ระเบิดเวลา P4.13) · 37/46 ≈ 80%
 - 4 ก.ย. 2026 ~22:00 UTC — ⏰ ข้อสอบ 1.9 P4.13 ระเบิดตามวันที่ (keyed ที่ 'วันที่ 5') — บทเรียน: fitness F11.1 จับแค่วันที่ฮาร์ดโค้ดในอดีต ไม่จับข้อสอบที่ผูกกับ 'วันที่ N ของเดือน' → 9.3/10.2 กวาดข้อสอบแบบนี้
 - 4 ก.ย. 2026 ~20:10 UTC — 8.3 DONE → เฟส 8 ครบ 3 WO · เริ่มปิดเฟส
