@@ -568,8 +568,12 @@ model AccountSettings {
   convertPoTo          String?
   copyNotesOnConvert   Boolean @default(true)
   copyTagsOnConvert    Boolean @default(true)
-  /** ปิดงวดอัตโนมัติ + แจ้งเตือนผล */
-  autoClosePeriods     Boolean @default(false)
+  /**
+   * ปิดงวดอัตโนมัติ + แจ้งเตือนผล
+   * 🔴 default = **true** โดยเจตนา: ก่อน WO 8.2 ระบบปิดงวดให้ทุกร้านโดยไม่มีสวิตช์
+   *    ตั้ง false จะเท่ากับปิดฟีเจอร์เดิมทิ้งสำหรับร้าน/แถวตั้งค่าที่สร้างใหม่ (เจอจริงที่ qc-account-deep AD-2.x)
+   */
+  autoClosePeriods     Boolean @default(true)
   autoCloseNotify      Boolean @default(true)
   /** รายงานทางอีเมล (สรุปรายวัน/รายสัปดาห์) + ผู้รับ (Json = string[] ของอีเมล) */
   emailReportDaily     Boolean @default(false)

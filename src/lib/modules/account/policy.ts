@@ -100,7 +100,8 @@ export function defaultPolicy(): AccountPolicy {
     convertPoTo: "PURCHASE",
     copyNotesOnConvert: true,
     copyTagsOnConvert: true,
-    autoClosePeriods: false,
+    // 🔴 ต้องตรงกับ default ของคอลัมน์ (true) — ร้านที่ยังไม่มีแถวตั้งค่าต้องได้พฤติกรรมเดิม (ปิดงวดให้)
+    autoClosePeriods: true,
     autoCloseNotify: true,
     emailReportDaily: false,
     emailReportWeekly: false,

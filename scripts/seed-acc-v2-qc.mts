@@ -1934,7 +1934,8 @@ const SEED_POLICY = {
   convertPoTo: "PURCHASE" as const,
   copyNotesOnConvert: true,
   copyTagsOnConvert: true,
-  // ปิดไว้ตั้งต้น — ข้อสอบเปิด/ปิดเองแล้วดูว่า sweep เคารพจริง
+  // 🔴 ร้าน QC **ตั้งใจปิดสวิตช์นี้เอง** (ค่า default ของระบบคือ "เปิด") — ให้ข้อสอบสลับเปิด/ปิดแล้วดูว่า sweep เคารพจริง
+  //    และกันไม่ให้ตัวกวาดไปปิดงวดของชุดข้อมูล QC ระหว่างที่ชุดอื่นกำลังใช้อยู่
   autoClosePeriods: false,
   autoCloseNotify: true,
   emailReportDaily: false,

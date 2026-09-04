@@ -840,7 +840,35 @@ try {
     (await prisma.accountPeriod.findFirst({ where: { systemId: sid, periodKey: key }, select: { status: true } }))?.status ??
     "OPEN";
   const SWEEP_NOW = d("2026-12-10"); // งวดที่ถูกกวาด = 2026-11
-  await policy.savePolicy(S, { autoClosePeriods: false, autoCloseNotify: true });
+  // 🔴 P11.0 — ค่าเริ่มต้นต้องเป็น "เปิด" ทั้งในโค้ดและใน DB
+  //    ก่อน WO 8.2 ตัวกวาดปิดงวดให้ทุกระบบบัญชีโดยไม่มีสวิตช์ ⇒ ถ้า default เป็น "ปิด"
+  //    ร้าน/แถวตั้งค่าที่สร้างใหม่จะเสียฟีเจอร์เดิมไปเงียบ ๆ (qc-account-deep AD-2.1–2.4 จับได้)
+  eq("P11.0a ค่าเริ่มต้นในโค้ด = เปิด", policy.defaultPolicy().autoClosePeriods, true);
+  {
+    const col = await prisma.$queryRawUnsafe<{ column_default: string | null }[]>(
+      `SELECT column_default FROM information_schema.columns
+        WHERE table_name = 'AccountSettings' AND column_name = 'autoClosePeriods'`,
+    );
+    eq("P11.0b ค่าเริ่มต้นของคอลัมน์ใน DB = true", col[0]?.column_default, "true");
+  }
+  {
+    // ระบบบัญชีที่ **ยังไม่มีแถวตั้งค่าเลย** ต้องถูกปิดงวดให้เหมือนเดิม (เคสที่ qc-account-deep เจอ)
+    // 🔴 ปิดสวิตช์ของระบบหลักก่อน แล้วค่อยกวาด — ไม่งั้นระบบหลัก (ซึ่ง default = เปิด) จะถูกปิดงวดไปด้วย
+    //    แล้วตัวนับงวด/แจ้งเตือนของ P11.1–P11.6 จะเพี้ยนตั้งแต่ต้น
+    await policy.savePolicy(S, { autoClosePeriods: false, autoCloseNotify: true });
+    const bare = await sysMod.createSystem(tid, "ACCOUNT", `บัญชีไร้ตั้งค่า ${stamp}`);
+    await glMod.ensureAccounting({ tenantId: tid, systemId: bare.id });
+    const settingsRows = await prisma.accountSettings.count({ where: { systemId: bare.id } });
+    eq("P11.0c ระบบใหม่ยังไม่มีแถว AccountSettings", settingsRows, 0);
+    await sweep.sweepAutoClosePeriods(SWEEP_NOW);
+    const st = await prisma.accountPeriod.findFirst({
+      where: { systemId: bare.id, periodKey: "2026-11" },
+      select: { status: true },
+    });
+    eq("P11.0d ไม่มีแถวตั้งค่า = ใช้ค่าเริ่มต้น (เปิด) ⇒ sweep ยังปิดงวดให้", st?.status ?? "OPEN", "CLOSED");
+    // ล้างแจ้งเตือนของบล็อกนี้ทิ้ง เพื่อให้ P11.5/P11.6 นับจากศูนย์ (ร้านทิ้ง — ลบได้ปลอดภัย)
+    await prisma.appNotification.deleteMany({ where: { tenantId: tid, title: "ปิดงวดบัญชีอัตโนมัติ" } });
+  }
   await sweep.sweepAutoClosePeriods(SWEEP_NOW);
   eq("P11.1 ปิดสวิตช์ → sweep ไม่ปิดงวดให้", await periodStatus("2026-11"), "OPEN");
   eq("P11.2 ร้าน QC (ปิดสวิตช์ตาม seed) ก็ไม่ถูกแตะ", await periodStatusOf(QCTX.systemId, "2026-11"), "OPEN");

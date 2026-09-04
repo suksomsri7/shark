@@ -48,7 +48,9 @@ export async function sweepAutoClosePeriods(now: Date = new Date()): Promise<num
   });
 
   // WO 8.2 (§9.3): อ่านสวิตช์ "ปิดงวดอัตโนมัติ / แจ้งเตือน" ของทุกร้านทีเดียว (ไม่ยิงต่อร้าน)
-  // ร้านที่ยังไม่มีแถวตั้งค่าเลย = ไม่เคยเปิดใช้บัญชีจริง ⇒ ไม่ปิดงวดให้ (เดิมปิดให้ทั้งที่ไม่มีข้อมูล)
+  // 🔴 ร้านที่ยัง**ไม่มีแถวตั้งค่า** ต้องถือว่า "เปิด" (= ค่า default ของคอลัมน์)
+  //    ก่อน WO 8.2 ตัวกวาดปิดงวดให้ทุกระบบบัญชีโดยไม่มีสวิตช์ — ถ้าตีความว่า "ไม่มีแถว = ปิด"
+  //    ร้านที่สร้างใหม่จะเสียฟีเจอร์เดิมไปเงียบ ๆ (qc-account-deep AD-2.1–2.4 จับได้)
   const settingsRows = await prisma.accountSettings.findMany({
     where: { systemId: { in: systems.map((x) => x.id) } },
     select: { systemId: true, autoClosePeriods: true, autoCloseNotify: true },
@@ -59,10 +61,10 @@ export async function sweepAutoClosePeriods(now: Date = new Date()): Promise<num
   for (const sys of systems) {
     const ctx = { tenantId: sys.tenantId, systemId: sys.id };
 
-    // §9.3: ปิดเฉพาะร้านที่เปิดสวิตช์ไว้ (migration backfill ร้านเดิมเป็น true ⇒ พฤติกรรมเดิมไม่เปลี่ยน)
+    // §9.3: ข้ามเฉพาะร้านที่ "ปิดสวิตช์ไว้เอง" — ไม่มีแถว = ใช้ค่า default (เปิด)
     const pol = policyBySystem.get(sys.id);
-    if (!pol?.autoClosePeriods) continue;
-    const notify = pol.autoCloseNotify;
+    if (!(pol?.autoClosePeriods ?? true)) continue;
+    const notify = pol?.autoCloseNotify ?? true;
 
     // CLOSED แล้ว → ข้ามเงียบ
     const existing = await prisma.accountPeriod.findFirst({

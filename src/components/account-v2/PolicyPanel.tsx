@@ -620,7 +620,7 @@ function AutoCloseSection({ v }: { v: PolicyView }) {
         <Toggle
           name="autoClosePeriods"
           label="ปิดงวดของเดือนก่อนให้อัตโนมัติ"
-          desc="ถ้าเช็กลิสต์ยังไม่ผ่าน ระบบจะไม่ปิดและไม่แก้ข้อมูลใด ๆ"
+          desc="เปิดไว้โดยปริยาย · ถ้าเช็กลิสต์ยังไม่ผ่าน ระบบจะไม่ปิดและไม่แก้ข้อมูลใด ๆ"
           defaultChecked={v.autoClosePeriods}
           testId="policy-autoclose-on"
         />
