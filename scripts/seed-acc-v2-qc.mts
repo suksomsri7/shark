@@ -1927,6 +1927,9 @@ fixtures.contactSimilanViewId = cid("โรงแรมสิมิลันว�
 const storageSvc = await import("@/lib/storage/service");
 const FIXTURE_DIR = pathJoin(process.cwd(), "scripts/fixtures/acc-v2/attach");
 const fxJpg = new Uint8Array(readFileSync(pathJoin(FIXTURE_DIR, "bill-ptt.jpg")));
+// WO 7.2: รูปบิล ปตท. ของจริง (ใบกำกับอย่างย่อ ยอด 1,240.00 · VAT 81.12) — สร้างด้วย
+// `scripts/acc-v2-fixture-bill.mts` · ใช้เป็นไฟล์ของการ์ด "AI อ่านได้" ในกล่องขาเข้า (เฟรม g15)
+const fxBill = new Uint8Array(readFileSync(pathJoin(FIXTURE_DIR, "bill-ptt-real.jpg")));
 const fxPng = new Uint8Array(readFileSync(pathJoin(FIXTURE_DIR, "photo.png")));
 const fxPdf = new Uint8Array(readFileSync(pathJoin(FIXTURE_DIR, "receipt.pdf")));
 // เติมท้ายไม่กี่ไบต์ให้ "สำเนา" มีเนื้อไฟล์ต่างจากต้นฉบับจริง (sha256 ไม่ชนกัน — dedupe ของ createAttachment
@@ -1940,7 +1943,12 @@ const variant = (b: Uint8Array, tag: string) => {
 };
 
 // พนักงานคนที่สอง ("นภา") — สาธิตผู้อัปโหลดคนละคนตาม f9 (avatar "u")
-const staffUploader = await prisma.user.create({ data: { email: `napa+${tenant.slug}@example.com`, name: "นภาพร ใจเย็น" } });
+// 🐞 WO 7.2: เดิมเป็น `user.create` เฉย ๆ → seed **รันซ้ำไม่ได้** (ผู้ใช้คนนี้ไม่ได้ถูกลบใน purgeTenant
+// ซึ่งลบเฉพาะเจ้าของร้าน) รอบที่สองล้มด้วย unique `User_email_key` ⇒ ลบก่อนสร้าง (idempotent ตามกติกา run)
+const staffUploaderEmail = `napa+${tenant.slug}@example.com`;
+await prisma.membership.deleteMany({ where: { user: { email: staffUploaderEmail } } });
+await prisma.user.deleteMany({ where: { email: staffUploaderEmail } });
+const staffUploader = await prisma.user.create({ data: { email: staffUploaderEmail, name: "นภาพร ใจเย็น" } });
 await prisma.membership.create({
   data: { userId: staffUploader.id, tenantId, role: "STAFF", unitAccess: ["*"], permissions: { "account.document.manage": true } },
 });
@@ -1976,7 +1984,7 @@ async function seedAttachment(input: {
 
 const attUnlinked1 = await seedAttachment({
   fileName: "ใบเสร็จ-ปตท-220926.jpg",
-  bytes: fxJpg,
+  bytes: fxBill,
   contentType: "image/jpeg",
   uploadedById: staffUploader.id,
   docTypeHint: "EXPENSE_ANY",
@@ -1988,10 +1996,14 @@ const attUnlinked2 = await seedAttachment({
   uploadedById: staffUploader.id,
   docTypeHint: "EXPENSE_ANY",
 });
+// WO 7.2 (รอบแก้ 2): ไฟล์ใบที่สามเป็น **PDF** ตามเฟรม g15/g20 (การ์ด "AI อ่านไม่ได้" ในแบบทั้งสองภาพเป็น
+// ไฟล์ PDF: "ใบเสร็จค่าไฟฟ้า-กย2026.pdf" / "scan0091.pdf") — และตรงกับความจริงของระบบ: PDF ยังให้ AI อ่านไม่ได้
+// ⇒ การ์ดใบนี้จึงได้ทั้ง thumb แบบไอคอนเอกสาร (ไม่มีรูปย่อ) และสถานะ UNSUPPORTED พร้อมเหตุผลจริง
+// (ของเดิมเป็น photo-fixture.png ซึ่งเป็นรูปเปล่า ⇒ บนจอเห็นเป็นกล่องขาว อ่านไม่ออกว่าไฟล์อะไร)
 const attUnlinked3 = await seedAttachment({
-  fileName: "photo-fixture.png",
-  bytes: fxPng,
-  contentType: "image/png",
+  fileName: "ใบเสร็จค่าไฟฟ้า-กย2026.pdf",
+  bytes: variant(fxPdf, "seed-variant-3"),
+  contentType: "application/pdf",
   uploadedById: owner.id,
 });
 const attLinkedExp = await seedAttachment({
@@ -2017,6 +2029,63 @@ const attNotAccounting = await seedAttachment({
   notAccounting: true,
 });
 console.log(`📎 คลังเอกสาร: 6 ไฟล์ (3 ลอย · 2 ผูกแล้ว EXP+IV · 1 ไม่ใช่เอกสารบัญชี) · ผู้อัปโหลด 2 คน`);
+
+// ─────────────────── 8.12 กล่องขาเข้า + ผลอ่าน AI (WO 7.2 · §12 · g15/g20) ───────────────────
+// **ไม่เพิ่มไฟล์ใหม่** — เติม "ที่มา/ผู้ส่ง/ผลอ่าน AI" ให้ 3 ไฟล์ลอยของบล็อก 8.11 เพื่อให้กล่องขาเข้ามีครบ
+// ทั้ง 3 สถานะตามภาพ g15 (อ่านได้ · ยังไม่ได้อ่าน · อ่านไม่ได้) โดยตัวนับของ WO 7.1 ไม่ขยับแม้แต่ตัวเดียว
+//   • ปตท. (CHAT)  → aiStatus DONE  + ผลอ่านจริงตามเฉลย: 1,240.00 · VAT 7% = 81.12 · ก่อน VAT 1,158.88
+//   • สลิปโอน (APP) → aiStatus null  (ยังไม่ได้อ่าน — ปุ่ม "อ่านด้วย AI" ต้องขึ้น)
+//   • photo (UPLOAD) → aiStatus FAILED (กล่องเส้นประ "AI อ่านไม่ได้ — กรอกเอง")
+// 🔴 ผลอ่านชุดนี้เป็นค่า **ตายตัว** ที่ seed เขียนลง DB เอง ไม่ได้เรียกโมเดลจริง (ข้อสอบ/ภาพต้องไม่ยิงเน็ต)
+const PTT_TOTAL_SATANG = 124_000; // 1,240.00 บาท (ตรงกับ g15)
+const PTT_VAT_SATANG = 8_112; // 81.12 บาท — VAT 7% ที่รวมอยู่ในยอดแล้ว
+const PTT_SUBTOTAL_SATANG = PTT_TOTAL_SATANG - PTT_VAT_SATANG; // 1,158.88 บาท
+const pttExtract = {
+  vendorName: "ปตท. สถานีบริการฉลอง",
+  vendorTaxId: "0107544000094",
+  branchCode: "00000",
+  invoiceNo: "6609-00231",
+  issueDate: "2026-08-22",
+  currency: "THB",
+  subtotalSatang: PTT_SUBTOTAL_SATANG,
+  vatSatang: PTT_VAT_SATANG,
+  vatRateBp: 700,
+  totalSatang: PTT_TOTAL_SATANG,
+  whtSatang: null,
+  lineItems: [{ description: "น้ำมันดีเซล B7", qty: 1, unitPriceSatang: PTT_TOTAL_SATANG, amountSatang: PTT_TOTAL_SATANG }],
+  docKind: "TAX_INVOICE",
+  confidence: 0.92,
+  notes: null,
+};
+await prisma.accountAttachment.update({
+  where: { id: attUnlinked1 },
+  data: {
+    source: "CHAT",
+    senderLabel: "เพชร (สาขาภูเก็ต)",
+    sourceRef: `chat:seed-${tenant.slug}-ptt`,
+    aiStatus: "DONE",
+    aiExtract: pttExtract,
+    aiModel: "anthropic/claude-sonnet-5",
+    aiCostSatang: 12,
+    aiReadAt: new Date(`${QC.today}T03:00:00.000Z`),
+  },
+});
+await prisma.accountAttachment.update({
+  where: { id: attUnlinked2 },
+  data: { source: "APP", senderLabel: "ธนกร (บัญชี)" }, // aiStatus ยัง null = ยังไม่เคยสั่งอ่าน
+});
+await prisma.accountAttachment.update({
+  where: { id: attUnlinked3 },
+  data: {
+    source: "UPLOAD",
+    senderLabel: "อรวรรณ (บัญชี)",
+    // PDF = ยังอ่านด้วย AI ไม่ได้จริง ๆ (inbox-ai.ts ตัดตั้งแต่ก่อนเรียกโมเดล ⇒ ไม่เสียเครดิต)
+    aiStatus: "UNSUPPORTED",
+    aiExtract: { reason: "ยังอ่าน PDF ด้วย AI ไม่ได้ — เปิดไฟล์แล้วกรอกเอง หรือถ่ายรูปบิลส่งเข้ามาใหม่" },
+    aiReadAt: new Date(`${QC.today}T03:05:00.000Z`),
+  },
+});
+console.log(`📥 กล่องขาเข้า: 3 ไฟล์ลอย (AI อ่านได้ 1 · ยังไม่อ่าน 1 · อ่านไม่ได้ 1) · ที่มา CHAT/APP/UPLOAD`);
 
 // ── เฉลยผังบัญชี V2 (WO 6.1) — คิดด้วย SQL ดิบคนละสำนวนกับ coa.ts (ไม่เรียกโค้ดจริงมาเช็คตัวเอง) ──
 const COA_MONTH_KEY = QC.today.slice(0, 7); // เฉลยตรึงที่เดือนของ QC.today (ไม่ใช่เดือนของนาฬิกาเครื่อง)
@@ -2411,6 +2480,31 @@ const expected = {
     },
     linkedExpDocumentId: fixtures.firstOpenBillId,
     linkedIvDocumentId: String(fixtures.invNattapholId),
+  },
+  // WO 7.2 — กล่องขาเข้า (§12 · g15/g20): 3 ไฟล์ลอยเดียวกับบล็อก 8.11 ที่เติมที่มา/ผู้ส่ง/ผลอ่าน AI แล้ว
+  inbox: {
+    unlinked: 3, // = attachments.unlinked (แท็บ "ยังไม่เชื่อมต่อ")
+    aiDone: 1,
+    aiUnread: 1, // ยังไม่เคยสั่งอ่าน (aiStatus null) — ปุ่ม "อ่านด้วย AI ทั้งหมด" ต้องมีงาน 1 ใบ
+    aiFailed: 0, // ไม่มีไฟล์ที่ "อ่านแล้วตีความไม่ได้" ในชุดตั้งต้น
+    aiUnsupported: 1, // ไฟล์ PDF — ชนิดที่ยังอ่านด้วย AI ไม่ได้ (การ์ด "AI อ่านไม่ได้" ของ g15)
+    docsFromInboxThisMonth: 0, // ยังไม่มีใครกดสร้างเอกสารจากกล่องขาเข้าในชุดข้อมูลตั้งต้น
+    ids: { done: attUnlinked1, unread: attUnlinked2, failed: attUnlinked3 }, // failed = ไฟล์ที่การ์ดขึ้น "AI อ่านไม่ได้"
+    sources: { done: "CHAT", unread: "APP", failed: "UPLOAD" },
+    senderLabels: { done: "เพชร (สาขาภูเก็ต)", unread: "ธนกร (บัญชี)", failed: "อรวรรณ (บัญชี)" },
+    ptt: {
+      vendorName: pttExtract.vendorName,
+      vendorTaxId: pttExtract.vendorTaxId,
+      invoiceNo: pttExtract.invoiceNo,
+      issueDate: pttExtract.issueDate,
+      totalSatang: PTT_TOTAL_SATANG,
+      vatSatang: PTT_VAT_SATANG,
+      subtotalSatang: PTT_SUBTOTAL_SATANG,
+      vatRateBp: 700,
+      docKind: "TAX_INVOICE",
+      confidence: 0.92,
+    },
+    inboxEmail: `inbox-${tenant.slug}@shark.in.th`,
   },
   fixtures: {
     ...fixtures,

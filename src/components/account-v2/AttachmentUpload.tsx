@@ -108,6 +108,34 @@ export function AttachmentDropBanner({ systemId }: { systemId: string }) {
   );
 }
 
+/**
+ * WO 7.2 (g20 มือถือ) — แถบ "ถ่ายบิล" ของกล่องขาเข้า: ปุ่มดำเต็มความกว้างเปิดกล้องหลังของเครื่อง
+ * (`capture="environment"` — บนเดสก์ท็อปเบราว์เซอร์จะเปิดหน้าต่างเลือกไฟล์แทน ไม่พัง)
+ * + ลิงก์ "หรืออัปโหลดจากเครื่อง" ใต้ปุ่ม · ใช้ตัวอัปโหลดตัวเดียวกับคลังเอกสาร (ไม่มีเส้นทางอัปโหลดชุดที่ 2)
+ */
+export function InboxCaptureBar({ systemId }: { systemId: string }) {
+  const router = useRouter();
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { items, upload, pending } = useUploader(systemId, undefined, () => router.refresh());
+
+  return (
+    <div className="flex flex-col gap-2" data-testid="inbox-capture-bar">
+      <button type="button" className="btn btn-primary w-full justify-center gap-2" disabled={pending} onClick={() => cameraRef.current?.click()} data-testid="inbox-capture-btn">
+        <AccountIcon name="camera" className="h-4 w-4" />
+        ถ่ายบิล
+      </button>
+      <button type="button" className="inline-flex items-center justify-center gap-1.5 text-sm font-medium" style={{ color: "var(--color-accent)" }} disabled={pending} onClick={() => fileRef.current?.click()} data-testid="inbox-capture-upload">
+        <AccountIcon name="upload" className="h-4 w-4" />
+        หรืออัปโหลดจากเครื่อง
+      </button>
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" data-testid="inbox-capture-input" onChange={(e) => { if (e.target.files?.length) upload(e.target.files); e.target.value = ""; }} />
+      <input ref={fileRef} type="file" multiple accept={ATTACHMENT_ACCEPT} className="hidden" data-testid="inbox-capture-file-input" onChange={(e) => { if (e.target.files?.length) upload(e.target.files); e.target.value = ""; }} />
+      <UploadProgressList items={items} />
+    </div>
+  );
+}
+
 export function AttachmentUploadModal({ systemId, closeHref, folders }: { systemId: string; closeHref: string; folders: string[] }) {
   const router = useRouter();
   const [folder, setFolder] = useState("");

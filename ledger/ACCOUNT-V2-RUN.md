@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 7.2 กล่องขาเข้า + AI อ่านบิล (ปิดเฟส 7) |
+| WO | 🏁 ปิดเฟส 7 (qc:all → main → deploy → verify) → เฟส 8: 8.1 ตั้งค่าเอกสาร |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Opus (sub-agent · UI ตาม g15/g20) |
-| ขั้นที่ถึง | 4 ก.ย. ~12:45 UTC: 7.2 รอบ 1 ส่งมา (inbox 128/128 · seed-check 224 · AI อ่านบิล ปตท. fixture จริงได้) → Fable ดูภาพเทียบ g15 **ตีกลับ 2 จุดเล็ก** (ปุ่มรองต้องมีกรอบ · placeholder thumb) — agent เดิมทำรอบ 2 |
+| ผู้ทำ | Fable (ปิดเฟส) |
+| ขั้นที่ถึง | 4 ก.ย. ~13:10 UTC: 7.2 DONE รอบ 2 ตรง g15/g20 · Fable รันด่าน 20 ชุดเอง · commit แล้ว · qc:all เฟส 7 กำลังรัน |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -53,7 +53,7 @@
 | 6.1 | ผังบัญชี V2 | Opus | DONE | (HEAD) | ตรง f8 (2 แบบ) · ตีกลับ 1 รอบ (ยอด ณ วันที่รวม entry อนาคต — Fable ตรวจ GL เอง · 5.1/5.2/หน้าหลักแก้พร้อมกันให้กติกาเดียว) · Fable รันเอง: coa 105 · components 78 · finance 59 · finance-overview 45 · reconcile 109 · promptpay 84 · wht-cheque 69 · dashboard 174 · home 87 · overview 73 · seed-check 139 · guard 162 · schema 61 · nav 323 · list 159 · import 114 · cheap-routes 105 · fitness 17 · CPA 107 · drift clean · typecheck 0 · 🐞 ปิด: หน้าแยกประเภทกรอง POSTED (ขากลับรายการโผล่ข้างเดียว) · visual expect อ่าน text 20k · ค้าง: level/sortOrder ว่าง · /accounts/mapping ไม่มีทางเข้าเมนู (8.2) · flyout f8-menu 2 จุด (shell) |
 | 6.2 | สมุดรายวัน V2 + รายงาน drill-down + ปิดงวด + ค่าเสื่อม UI | Opus ×2 (ตัวแรกโดน OOM หลังขั้น E) | DONE | (HEAD) | ตรง g16 (2 แบบ) · ตีกลับ 1 รอบ (ตัวกรอง preset บรรทัดเดียว · pagination ใน footer) · Fable รันเอง: journal 94 · reports-drill 57 · period-assets 121 · coa 105 · components 78 · finance 59 · reconcile 109 · wht-cheque 69 · promptpay 84 · dashboard/home/overview เขียว · seed-check 173 · guard/schema/nav/list/detail เขียว · fitness 17 · CPA 107 · drift clean · typecheck 0 · ใหม่: JV มือ (สมดุล/งวดเปิด) · reversal · ⚑ · ReportToolbar เทียบงวด/CSV BOM · drill-down 3 ชั้น · ปิดงวดเช็กลิสต์ 4 ข้อ (9999=0 · ไม่มี ⚑ บังคับ · กระทบยอด · VAT ยื่น เตือน) · reopen ต้องมีสิทธิ์ · สินทรัพย์ V2 + ตารางค่าเสื่อม + คิดค่าเสื่อม preview · 'เดือนนี้' = ทั้งเดือน · with-gate-lock ตั้ง NODE_OPTIONS · ค้าง: งบทดลอง 'งวดก่อน' = ยกมา (ควรเทียบ movement) · ไม่มีตัวกรองสาขา · PDF = window.print |
 | 7.1 | คลังเอกสาร V2 | Sonnet | DONE | (HEAD) | ตรง f9 (2 แบบ) · ตีกลับ 1 รอบ (ปุ่ม ทำรายการ · badge · footer) · Fable รันเอง: attachments 66 · components 78 · contacts 49 · wht-cheque 69 · products 100 · list 159 · detail 85 · editor 200 · import 114 · journal 94 · seed-check 202 · guard 164 · schema 61 · nav 323 · dashboard/home เขียว · fitness 17 · CPA 107 · drift clean · typecheck 0 · อัปโหลดจริงหลายไฟล์ (Bunny ของ QC) · sha256 dedupe · แท็บ/ตัวกรอง/grid · ผูก/แยก/ย้ายโฟลเดอร์/archive · bulk · 🐞 ปิดข้ามหน้า: dropdown ทำรายการถูก overflow ตัดที่แถวท้าย → `PortalMenu` (3.2/5.4 ไม่ regress) · ค้าง: restore ไม่มี UI · ไม่มีถังขยะ · กล่องขาเข้า → 7.2 |
-| 7.2 | กล่องขาเข้า + AI | Opus | TODO | | |
+| 7.2 | กล่องขาเข้า + AI | Opus | DONE | (HEAD) | ตรง g15/g20 · ตีกลับ 1 รอบ (ปุ่มรองมีกรอบ · placeholder thumb) · Fable รันเอง: inbox 128 · attachments 66 · components 78 · detail 85 · editor 200 · cheap-routes 105 · dashboard/home เขียว · seed-check 225 · guard 165 · schema 61 · nav 323 · ai-credit 32 · chat core-v2 47 / attachments 37 / notify 23 · fitness 17 · CPA 107 · drift clean · typecheck 0 · AI อ่านบิล (vision · JSON schema · ตรวจเลขคณิต · ตัดเครดิต ACCOUNT_INBOX ครั้งเดียว · ไม่ throw) · สร้าง EXP prefill (ผู้ขาย taxId→เบอร์→ชื่อ · VAT mode ตาม docKind) · รับไฟล์จากแชทผ่าน outbox consumer (opt-in inboxFromChat) · 🐞 ปิด: import cycle account/index→inbox · seed 7.1 รันซ้ำไม่ได้ · ลิงก์ ?attachmentId= ไปหน้าที่ไม่อ่าน · ค้าง: inbox@ email ไม่มี infra · PDF→AI UNSUPPORTED · หน้าหลัก 'รอยืนยัน n ไฟล์' ไม่ทำ · inboxFromChat ไม่มี UI (8.3) |
 | 8.1 | ตั้งค่าเอกสาร | Opus | TODO | | |
 | 8.2 | นโยบายบัญชี | Opus | TODO | | |
 | 8.3 | สิทธิ์ matrix + เชื่อมระบบ + API | Sonnet+Opus | TODO | | |
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 4 ก.ย. 2026 ~13:10 UTC — 7.2 DONE → เฟส 7 ครบ 2 WO · เริ่มปิดเฟส
 - 4 ก.ย. 2026 ~11:30 UTC — 7.1 คลังเอกสาร DONE (ตีกลับ 1 รอบ) · ปิดบั๊ก dropdown ถูกตัดทุกหน้ารายการด้วย portal
 - 4 ก.ย. 2026 ~09:10 UTC — 🏁 **เฟส 6 ปิด** (6.1–6.2 · qc:all 217/217) · 32/46 ≈ 70%
 - 4 ก.ย. 2026 ~08:50 UTC — 6.2 DONE → เฟส 6 ครบ 2 WO · เริ่มปิดเฟส

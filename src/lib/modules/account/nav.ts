@@ -565,7 +565,8 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
       icon: "folder",
       href: `${base}/documents`,
       items: [
-        soon("กล่องขาเข้า", "mail", "INBOX"),
+        // WO 7.2: หน้าจริงแล้ว (เดิม soon) — §12 "กล่องขาเข้า" · เฟรม g15/g20
+        page({ label: "กล่องขาเข้า", href: `${base}/documents/inbox`, status: "ready", icon: "mail", testId: "INBOX" }),
         page({ label: "คลังเอกสาร", href: `${base}/documents`, status: "ready", icon: "folder", testId: "DOCUMENTS" }),
       ],
     },

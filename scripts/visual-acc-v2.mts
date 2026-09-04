@@ -1164,6 +1164,107 @@ const PAGES: Record<string, PageSpec[]> = {
       expectBeforeShot: [{ sel: '[data-testid="import-result"]', kind: "text", equals: "สร้างใหม่ 18 รายการ" }],
     },
   ],
+  // WO 7.2 — กล่องขาเข้า + AI อ่านบิล (§12 · g15-documents-inbox.png เดสก์ท็อป / g20-inbox.png มือถือ)
+  "7.2": [
+    {
+      name: "inbox",
+      path: `/app/sys/${SYS}/account/documents/inbox`,
+      note:
+        "กล่องขาเข้า สถานะเริ่มต้น — เทียบ g15 (เดสก์ท็อป: แท็บ ยังไม่เชื่อมต่อ/เชื่อมต่อแล้ว · แถบอีเมล+ที่มา+ค้นหา · " +
+        "การ์ด thumb ใหญ่ + แผง AI อ่านได้ (ผู้ขาย/ยอด/วันที่/VAT/เลขที่ใบกำกับ + จุดความมั่นใจ) · ปุ่ม 3 ปุ่ม · แผงขวา) " +
+        "และ g20 (มือถือ: ปุ่มถ่ายบิล + สรุป AI บรรทัดเดียว + ปุ่ม 3 ปุ่มแถวเดียว)",
+      // ข้อความที่ต้องมี **ทั้ง 2 ขนาด** เท่านั้น — ป้ายที่เป็นของเดสก์ท็อปล้วน (แถว label ของแผง AI ·
+      // ปุ่มชื่อยาว) อยู่ในภาพ inbox-desktop-side · ของมือถือล้วนอยู่ใน inbox-mobile-capture
+      expect: [
+        "กล่องขาเข้า",
+        "ยังไม่เชื่อมต่อ",
+        "เชื่อมต่อแล้ว",
+        "AI อ่านได้",
+        "VAT",
+        "AI อ่านไม่ได้",
+        "สร้างบันทึกค่าใช้จ่าย",
+        "ปตท. สถานีบริการฉลอง",
+        "฿1,240.00",
+      ],
+    },
+    {
+      name: "inbox-desktop-side",
+      path: `/app/sys/${SYS}/account/documents/inbox`,
+      note: 'แผงขวาของ g15 ("เอกสารที่สร้างจากกล่องขาเข้าเดือนนี้" + "วิธีส่งบิลเข้ากล่อง") + แถบตัวกรองที่มี inbox@',
+      expect: [
+        "เอกสารที่สร้างจากกล่องขาเข้าเดือนนี้",
+        "ประหยัดเวลา",
+        "วิธีส่งบิลเข้ากล่อง",
+        "ส่งรูปบิลเข้า LINE OA ของร้าน",
+        "ถ่ายรูปบิลผ่านแอป SHARK แล้วอัปโหลด",
+        "ส่งเข้าอีเมล:",
+        "ที่มา:",
+        "อ่านด้วย AI ทั้งหมด",
+        // แถว label ของแผง AI + ปุ่มชื่อเต็ม (เดสก์ท็อปเท่านั้น — g15)
+        "ผู้ขาย",
+        "ยอด",
+        "เลขที่ใบกำกับ",
+        "ผู้ส่ง:",
+        "แนบกับเอกสารที่มี",
+        "ไม่ใช่เอกสารบัญชี",
+        "อ่านด้วย AI",
+      ],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "inbox-mobile-capture",
+      path: `/app/sys/${SYS}/account/documents/inbox`,
+      note: "มือถือ g20: หัวเรื่อง + บรรทัดรอง + ปุ่มดำ ถ่ายบิล + ลิงก์ หรืออัปโหลดจากเครื่อง",
+      // g20: ปุ่มบนการ์ดใช้ป้ายสั้น "แนบ"/"ไม่ใช่" + แผง AI สรุปบรรทัดเดียว
+      expect: ["ไฟล์ที่ยังไม่ผูกเอกสาร", "ถ่ายบิล", "หรืออัปโหลดจากเครื่อง", "แนบ", "ไม่ใช่", "· VAT ฿81.12"],
+      onlyDevice: "mobile",
+    },
+    {
+      name: "inbox-create-sheet",
+      path: `/app/sys/${SYS}/account/documents/inbox`,
+      note:
+        'แผ่นยืนยัน "สร้างบันทึกค่าใช้จ่าย" ของบิล ปตท. — รูปบิลคู่กับค่าที่จะบันทึก (แก้ได้ทุกช่อง) + รายการในบิล ' +
+        "(เปิดอย่างเดียว ไม่กดยืนยัน — ไม่งั้นตัวนับของชุดข้อมูล QC จะเพี้ยน)",
+      expect: [
+        "สร้างบันทึกค่าใช้จ่ายจากบิล",
+        "ผู้ขาย",
+        "เลขผู้เสียภาษี",
+        "เลขที่ใบกำกับ",
+        "วันที่บนบิล",
+        "ชนิดเอกสาร",
+        "ยอดรวมทั้งสิ้น",
+        "VAT ในยอดนี้",
+        "ยอดก่อน VAT",
+        "รายการในบิล",
+        "สร้างร่างค่าใช้จ่าย",
+      ],
+      click: [`[data-testid="inbox-create-${E.inbox?.ids?.done ?? ""}"]`],
+      waitAfterClick: 400,
+      onlyDevice: "desktop",
+      expandModalForShot: '[data-testid="inbox-create-sheet"]',
+    },
+    {
+      // พิสูจน์เส้นทางจากหน้าคลังเอกสาร (WO 7.1): ปุ่ม "+ สร้าง/แนบเอกสาร" ชี้มา `?create=<id>`
+      // แล้วต้องเปิดแผ่นยืนยันของไฟล์นั้นให้เองทันทีที่หน้าโหลด (ไม่ต้องกดซ้ำ)
+      name: "inbox-create-from-documents",
+      path: `/app/sys/${SYS}/account/documents/inbox?create=${E.inbox?.ids?.done ?? ""}`,
+      note: 'เปิดหน้าด้วย ?create=<id> (ลิงก์จากหน้าคลังเอกสาร) → แผ่นยืนยันเปิดเองพร้อมค่าที่ AI อ่านได้',
+      expect: ["สร้างบันทึกค่าใช้จ่ายจากบิล", "ยอดก่อน VAT", "สร้างร่างค่าใช้จ่าย"],
+      onlyDevice: "desktop",
+      waitAfterClick: 300,
+      expandModalForShot: '[data-testid="inbox-create-sheet"]',
+    },
+    {
+      name: "inbox-create-sheet-mobile",
+      path: `/app/sys/${SYS}/account/documents/inbox`,
+      note: "แผ่นยืนยันบนมือถือ (sheet เต็มจอ · §13) — ปุ่มบนการ์ดมือถือคือปุ่มแรกของแถว 3 ปุ่ม",
+      expect: ["สร้างบันทึกค่าใช้จ่ายจากบิล", "ยอดรวมทั้งสิ้น", "สร้างร่างค่าใช้จ่าย"],
+      click: [`[data-testid="inbox-create-m-${E.inbox?.ids?.done ?? ""}"]`],
+      waitAfterClick: 400,
+      onlyDevice: "mobile",
+      expandModalForShot: '[data-testid="inbox-create-sheet"]',
+    },
+  ],
   // WO 7.1 — คลังเอกสาร V2 (§12 · f9-documents.png / f9-documents-menu.png)
   "7.1": [
     {
@@ -1980,6 +2081,24 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
     "chart-of-accounts": {
       // จำนวนบัญชีไม่ขึ้นกับวันที่ ⇒ pin ได้ · ยอดเงินไม่ pin (ดูหมายเหตุหัวตาราง)
       "coa-total": `${E.coa?.activeAccounts ?? 0} บัญชี`,
+    },
+  },
+  // WO 7.2 — กล่องขาเข้า: ค่าที่ AI อ่านได้บนการ์ดต้องตรงเฉลย inbox.ptt (เฟรม g15)
+  "7.2": {
+    inbox: {
+      [`inbox-vendor-${E.inbox?.ids?.done ?? ""}`]: `${E.inbox?.ptt?.vendorName ?? ""}`,
+      [`inbox-total-${E.inbox?.ids?.done ?? ""}`]: "฿1,240.00",
+      [`inbox-vat-${E.inbox?.ids?.done ?? ""}`]: "฿81.12",
+      [`inbox-invno-${E.inbox?.ids?.done ?? ""}`]: `${E.inbox?.ptt?.invoiceNo ?? ""}`,
+      [`inbox-date-${E.inbox?.ids?.done ?? ""}`]: "22 ส.ค. 2026",
+      "tab-unlinked-count": `${E.inbox?.unlinked ?? 0}`,
+    },
+    "inbox-desktop-side": {
+      "inbox-docs-month": `${E.inbox?.docsFromInboxThisMonth ?? 0}`,
+      "inbox-email-address": `${E.inbox?.inboxEmail ?? ""}`,
+    },
+    "inbox-create-sheet": {
+      "inbox-create-subtotal": "฿1,158.88",
     },
   },
   // WO 7.1 — คลังเอกสาร V2: ตัวนับแท็บต้องตรงเฉลย attachments (บล็อก 8.11 ของ seed)

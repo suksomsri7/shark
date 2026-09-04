@@ -618,14 +618,35 @@ model AccountAttachment {
   // archivedAt: เวลาที่ "ลบ" (ลบนุ่มเสมอ — ไม่มี hard delete ของไฟล์คลังเอกสาร)
   archivedAt   DateTime?
   note         String?
-  // เผื่อไว้ให้ WO 7.2 (กล่องขาเข้า + AI อ่านบิล) — ยังไม่มีใครเขียน/อ่านใน WO นี้
+  // ═════ V2 (WO 7.2 · DESIGN-SPEC-V2 §12 "กล่องขาเข้า" · BLUEPRINT §0.3(6)) — AI อ่านบิลจากรูป ═════
+  // aiExtract: ผลอ่านบิล (JSON ตาม BillExtract ใน inbox-ai.ts — ผู้ขาย/ยอด/VAT/เลขที่ใบกำกับ/บรรทัดสินค้า/ความมั่นใจ)
+  //   เก็บทั้งก้อนไว้ที่นี่ **ไม่แตกเป็นคอลัมน์** เพราะเป็น "ข้อเสนอของ AI" ไม่ใช่ข้อมูลบัญชี — ของจริงเกิดตอนกด
+  //   "สร้างบันทึกค่าใช้จ่าย" แล้วเข้า AccountDocument (ที่นั่นตรวจ/แก้ได้และมี GL) · เปลี่ยนสคีมาผลอ่านได้โดยไม่ต้อง migrate
   aiExtract    Json?
+  // aiStatus: PENDING (กำลังอ่าน) · DONE · FAILED (อ่านแล้วตีความไม่ได้) · UNSUPPORTED (ชนิดไฟล์อ่านไม่ได้ เช่น PDF)
+  //   · SKIPPED (ไม่ได้เรียก AI เลย — ปิดผู้ช่วย/เครดิตหมด) · null = ยังไม่เคยสั่งอ่าน
   aiStatus     String?
+  aiModel      String? // โมเดลที่อ่านจริง (เก็บไว้ตรวจย้อนหลังว่าเลขชุดนี้มาจากโมเดลไหน)
+  // ค่าใช้จ่ายของการอ่านครั้งล่าสุด เป็น "สตางค์" — มิเตอร์จริงคิดเป็นไมโครดอลลาร์ (AiCreditTxn)
+  // ที่นี่แปลงเป็นเงินไทยด้วยเรทคงที่ (inbox-ai.ts THB_PER_USD) เพื่อ **แสดงให้เจ้าของร้านอ่านออก** เท่านั้น
+  // 🔴 ห้ามใช้ค่านี้ไปลงบัญชี/เรียกเก็บเงิน — ตัวเลขที่เก็บเงินจริงคือ AiCreditTxn.amountMicro
+  aiCostSatang Int?
+  aiReadAt     DateTime?
+  // senderLabel: "ผู้ส่ง" ที่แสดงบนการ์ด g15 (ชื่อลูกค้าจากแชท / อีเมลต้นทาง / ชื่อผู้ถ่ายบิลจากแอป)
+  //   ต่างจาก uploadedById ตรงที่ผู้ส่งอาจไม่ใช่ผู้ใช้ในระบบ (ลูกค้าที่ทักไลน์เข้ามา)
+  senderLabel  String?
+  // sourceRef: id ฝั่งต้นทาง (ChatMessage.id / Message-ID ของอีเมล) — กันรับซ้ำเมื่อ outbox replay
+  sourceRef    String?
+  // expenseDocId: เอกสารรายจ่ายที่ "สร้างจากไฟล์นี้" (createExpenseFromAttachment) — documentId ผูกไฟล์กับเอกสาร
+  //   ได้หลายทาง (ผูกมือ/แนบตอนแก้เอกสาร) ช่องนี้บอกเฉพาะที่เกิดจากกล่องขาเข้า → กดสร้างซ้ำไม่ได้ + วัดผลได้
+  expenseDocId String?
 
+  @@unique([systemId, sourceRef]) // Postgres ถือ NULL ต่างกันเสมอ ⇒ ไฟล์ที่อัปโหลดเอง (sourceRef=null) ไม่ชนกัน
   @@index([systemId, documentId])
   @@index([systemId, folder])
   @@index([systemId, refType, refId])
   @@index([systemId, status, createdAt])
+  @@index([systemId, aiStatus])
 }
 
 model AccountSystemLink {

@@ -54,6 +54,8 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "deposit-payment/new/page.tsx": "account.doc.create",
   "docs/[docType]/[docId]/edit/page.tsx": "account.doc.create",
   "docs/[docType]/new/page.tsx": "account.doc.create",
+  // WO 7.2 — กล่องขาเข้า: หน้าอ่านไฟล์ที่ยังไม่ผูกเอกสาร (การสร้างเอกสารตรวจ account.doc.create ที่ action)
+  "documents/inbox/page.tsx": "account.document.manage",
   "expense/[docId]/edit/page.tsx": "account.doc.create",
   "expense/new/page.tsx": "account.doc.create",
   "page.tsx": "account.doc.view",

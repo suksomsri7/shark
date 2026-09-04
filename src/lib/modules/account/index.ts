@@ -29,6 +29,13 @@ export {
 //   chokepoint inventory→account · ไม่ throw · ไม่ผูก/ไม่มีระบบ = { synced:false, reason }
 export { syncItemToAccountProduct, type SyncResult } from "./inventory-link";
 
+// WO 7.2 (§12 กล่องขาเข้า) — 🔴 **ห้าม re-export `./inbox` ที่นี่**: index.ts อยู่ในวงจร
+//   service → bundle → inventory/service → inventory/account-bridge → account/index
+//   ⇒ ถ้า index ดึง `./inbox` (ซึ่ง import service/attachment ต่อ) จะเกิดวงกลม
+//   "Cannot access 'VISIBLE_DOC_TYPES' before initialization" ตั้งแต่ตอนโหลดโมดูล (เจอจริงตอน seed)
+//   ตัวเรียกจริงคือ `src/lib/outbox-consumers.ts` ซึ่งเป็น composition root (อยู่นอก src/lib/modules
+//   จึงไม่ติดกฎ F2.2) → ให้ import `@/lib/modules/account/inbox` ตรง ๆ เหมือนที่ทำกับ pos/account-bridge
+
 /** ระบบบัญชีที่ผูกกับ POS ระบบนี้ (systemId) — null = ยังไม่เชื่อมบัญชี */
 export async function posAccountSystemId(
   tenantId: string,

@@ -5,6 +5,7 @@ import { writeAudit } from "./access";
 import { editorDefOf, sideOf } from "./doc-editor-config";
 import { docTypeLabel } from "./dashboard";
 import type { AttachmentStatus, AttachmentSource } from "./attachment-shared";
+import { normalizeExtract, type BillExtract, type InboxAiStatus } from "./inbox-ai";
 // re-export ให้ผู้เรียกเดิมที่ import ค่าเหล่านี้จาก "./attachment" ยังใช้ได้ (ของจริงอยู่ attachment-shared.ts
 // ซึ่งบริสุทธิ์ ไม่แตะ prisma — client component ต้อง import จากไฟล์นั้นตรง ๆ ห้าม import จากไฟล์นี้)
 export type { AttachmentStatus, AttachmentSource } from "./attachment-shared";
@@ -242,7 +243,23 @@ export type AttachmentRowView = {
   uploaderName: string | null;
   document: { id: string; docType: AccountDocType; docNo: string | null } | null;
   typeLabel: string;
+  // ── WO 7.2 (กล่องขาเข้า §12) · additive · หน้าคลังเอกสาร (7.1) ไม่ได้ใช้ช่องพวกนี้ ──
+  aiStatus: InboxAiStatus | null;
+  /** ผลอ่านบิลที่ผ่านการตรวจแล้ว — null = ยังไม่เคยอ่าน/อ่านไม่ได้ (ดู aiStatus + aiReason) */
+  aiExtract: BillExtract | null;
+  /** เหตุผลภาษาไทยเมื่ออ่านไม่ได้/มีข้อสังเกต (มาจาก aiExtract.reason ของแถวที่ FAILED/UNSUPPORTED) */
+  aiReason: string | null;
+  aiReadAt: Date | null;
+  senderLabel: string | null;
+  expenseDocId: string | null;
 };
+
+/** เหตุผลไทยของแถวที่ AI อ่านไม่ได้ — WO 7.2 เก็บไว้ใน aiExtract เป็น `{ reason }` เมื่อ FAILED/UNSUPPORTED */
+function aiReasonOf(aiStatus: string | null, aiExtract: unknown): string | null {
+  if (!aiStatus || aiStatus === "DONE") return null;
+  const o = (aiExtract ?? null) as { reason?: unknown } | null;
+  return o && typeof o.reason === "string" ? o.reason : null;
+}
 
 export type AttachmentTab = "all" | "unlinked" | "linked";
 
@@ -253,6 +270,8 @@ export type AttachmentListFilters = {
   docTypeHint?: string;
   uploaderId?: string;
   folder?: string;
+  /** WO 7.2 — ตัวกรอง "ที่มา ▾" ของกล่องขาเข้า (g15): UPLOAD/EMAIL/CHAT/APP */
+  source?: AttachmentSource;
   q?: string;
   page?: number;
   pageSize?: number;
@@ -330,6 +349,7 @@ async function attachmentsBaseWhere(
     ...(f.docTypeHint ? { docTypeHint: f.docTypeHint } : {}),
     ...(f.uploaderId ? { uploadedById: f.uploaderId } : {}),
     ...(f.folder ? { folder: f.folder } : {}),
+    ...(f.source ? { source: f.source } : {}),
     ...(q
       ? {
           OR: [
@@ -394,6 +414,12 @@ export async function listAttachmentsPaged(
       uploaderName: r.uploadedById ? (names.get(r.uploadedById) ?? "ไม่ทราบชื่อ") : null,
       document: r.document ? { id: r.document.id, docType: r.document.docType, docNo: r.document.docNo } : null,
       typeLabel: attachmentTypeLabel({ docTypeHint: r.docTypeHint, document: r.document }),
+      aiStatus: (r.aiStatus as InboxAiStatus | null) ?? null,
+      aiExtract: r.aiStatus === "DONE" ? normalizeExtract(r.aiExtract) : null,
+      aiReason: aiReasonOf(r.aiStatus, r.aiExtract),
+      aiReadAt: r.aiReadAt,
+      senderLabel: r.senderLabel,
+      expenseDocId: r.expenseDocId,
     })),
     total,
     page,

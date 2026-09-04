@@ -766,6 +766,58 @@ console.log("\nI. คลังเอกสาร V2");
   eq("Q21", "ชื่อผู้อัปโหลดพนักงานคนที่ 2 ตรงเฉลย", staffM?.user.name, "นภาพร ใจเย็น");
 }
 
+// ─────────── J. กล่องขาเข้า + ผลอ่าน AI (WO 7.2 · §12 · g15/g20) ───────────
+console.log("\nJ. กล่องขาเข้า + ผลอ่าน AI");
+{
+  const B = E.inbox as {
+    unlinked: number; aiDone: number; aiUnread: number; aiFailed: number; aiUnsupported: number; docsFromInboxThisMonth: number;
+    ids: { done: string; unread: string; failed: string };
+    sources: { done: string; unread: string; failed: string };
+    senderLabels: { done: string; unread: string; failed: string };
+    ptt: { vendorName: string; vendorTaxId: string; invoiceNo: string; issueDate: string; totalSatang: number; vatSatang: number; subtotalSatang: number; vatRateBp: number; docKind: string };
+    inboxEmail: string;
+  };
+  chk("R0", "เฉลยมีบล็อกกล่องขาเข้า", !!B && !!B.ids, JSON.stringify(!!B));
+  const rows = await prisma.accountAttachment.findMany({
+    where: { systemId, id: { in: [B.ids.done, B.ids.unread, B.ids.failed] } },
+    select: { id: true, source: true, senderLabel: true, aiStatus: true, aiExtract: true, aiModel: true, aiReadAt: true, aiCostSatang: true, status: true },
+  });
+  eq("R1", "ไฟล์กล่องขาเข้าครบ 3 แถว", rows.length, 3);
+  const done = rows.find((r) => r.id === B.ids.done);
+  const unread = rows.find((r) => r.id === B.ids.unread);
+  const failed = rows.find((r) => r.id === B.ids.failed);
+  eq("R2", "สถานะ AI ทั้ง 3 (อ่านได้/ยังไม่อ่าน/ชนิดไฟล์อ่านไม่ได้)", [done?.aiStatus, unread?.aiStatus, failed?.aiStatus], ["DONE", null, "UNSUPPORTED"]);
+  eq("R3", "ที่มาของทั้ง 3 ไฟล์", [done?.source, unread?.source, failed?.source], [B.sources.done, B.sources.unread, B.sources.failed]);
+  eq("R4", "ผู้ส่งของไฟล์จากแชท", done?.senderLabel, B.senderLabels.done);
+  eq("R5", "ทั้ง 3 ไฟล์ยังลอย (UNLINKED) — กล่องขาเข้ามีของให้ทำงาน", [done?.status, unread?.status, failed?.status], ["UNLINKED", "UNLINKED", "UNLINKED"]);
+
+  const ex = (done?.aiExtract ?? {}) as Record<string, unknown>;
+  eq("R6", "ผู้ขายบนบิล ปตท.", ex.vendorName, B.ptt.vendorName);
+  eq("R7", "ยอดรวม (สตางค์)", ex.totalSatang, B.ptt.totalSatang);
+  eq("R8", "VAT (สตางค์)", ex.vatSatang, B.ptt.vatSatang);
+  eq("R9", "ยอดก่อน VAT (สตางค์)", ex.subtotalSatang, B.ptt.subtotalSatang);
+  eq("R10", "เลขที่ใบกำกับ", ex.invoiceNo, B.ptt.invoiceNo);
+  eq("R11", "วันที่บนบิล (ค.ศ.)", ex.issueDate, B.ptt.issueDate);
+  eq("R12", "ชนิดเอกสารที่ AI เดา", ex.docKind, B.ptt.docKind);
+  chk("R13", "เลขคณิตของผลอ่านลงตัว (ก่อน VAT + VAT = ยอดรวม)", Number(ex.subtotalSatang) + Number(ex.vatSatang) === Number(ex.totalSatang), `${ex.subtotalSatang}+${ex.vatSatang}`, `${ex.totalSatang}`);
+  chk("R14", "ทุกยอดเป็นจำนวนเต็มสตางค์", [ex.totalSatang, ex.vatSatang, ex.subtotalSatang].every((n) => Number.isInteger(n)), JSON.stringify([ex.totalSatang, ex.vatSatang, ex.subtotalSatang]));
+  chk("R15", "แถวที่อ่านแล้วมีโมเดล+เวลา+ค่าใช้จ่าย", !!done?.aiModel && !!done?.aiReadAt && Number.isInteger(done?.aiCostSatang), `${done?.aiModel} · ${done?.aiCostSatang}`);
+  chk("R16", "แถวที่อ่านไม่ได้เก็บเหตุผลภาษาไทย", typeof (failed?.aiExtract as { reason?: unknown } | null)?.reason === "string", JSON.stringify((failed?.aiExtract as { reason?: unknown } | null)?.reason));
+
+  // ตัวนับทั้งระบบ (ไม่ใช่แค่ id ที่รู้จัก) — ไฟล์อื่นหลุดเข้ามา = ตก
+  const unreadAll = await prisma.accountAttachment.count({ where: { systemId, archivedAt: null, status: "UNLINKED", aiStatus: null } });
+  eq("R17", "ไฟล์ที่ยังไม่เคยให้ AI อ่าน ทั้งระบบ", unreadAll, B.aiUnread);
+  const doneAll = await prisma.accountAttachment.count({ where: { systemId, archivedAt: null, aiStatus: "DONE" } });
+  eq("R18", "ไฟล์ที่ AI อ่านได้ ทั้งระบบ", doneAll, B.aiDone);
+  const failedAll = await prisma.accountAttachment.count({ where: { systemId, archivedAt: null, aiStatus: "FAILED" } });
+  eq("R19", "ไฟล์ที่ AI อ่านแล้วตีความไม่ได้ ทั้งระบบ", failedAll, B.aiFailed);
+  const unsupportedAll = await prisma.accountAttachment.count({ where: { systemId, archivedAt: null, aiStatus: "UNSUPPORTED" } });
+  eq("R19b", "ไฟล์ชนิดที่ AI ยังอ่านไม่ได้ (PDF) ทั้งระบบ", unsupportedAll, B.aiUnsupported);
+  const fromInbox = await prisma.accountDocument.count({ where: { systemId, source: "INBOX" } });
+  eq("R20", "ยังไม่มีเอกสารที่สร้างจากกล่องขาเข้าในชุดตั้งต้น", fromInbox, B.docsFromInboxThisMonth);
+  chk("R21", "ที่อยู่อีเมลกล่องขาเข้าเป็นของร้านนี้", B.inboxEmail === `inbox-${QC.tenantSlug}@shark.in.th`, B.inboxEmail);
+}
+
 // ─────────── H. อายุของข้อสอบ ───────────
 console.log("\nH. อายุของชุดข้อมูล");
 chk(

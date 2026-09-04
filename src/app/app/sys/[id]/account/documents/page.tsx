@@ -16,7 +16,7 @@ import {
   type DateRangeKey,
 } from "@/lib/modules/account/attachment-shared";
 import { parseDay } from "@/lib/modules/account/service";
-import { editorDetailPath, editorNewPath } from "@/lib/modules/account/doc-editor-config";
+import { editorDetailPath } from "@/lib/modules/account/doc-editor-config";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusTabs, type StatusTabDef } from "@/components/account-v2/StatusTabs";
 import { DocTable, type DocColumn } from "@/components/account-v2/DocTable";
@@ -102,7 +102,10 @@ export default async function DocumentsPage({
 
   const linkedHrefOf = (r: AttachmentRowView): string | null =>
     r.document ? editorDetailPath(base, r.document.docType, r.document.id) : null;
-  const createExpenseHrefOf = (r: AttachmentRowView): string => `${editorNewPath(base, "EXPENSE")}?attachmentId=${r.id}`;
+  // WO 7.2: ปุ่ม "+ สร้าง/แนบเอกสาร" พาไปกล่องขาเข้าแล้วเปิดแผ่นยืนยัน (prefill จากผลอ่าน AI) ของไฟล์นั้น
+  // 🔴 เดิมชี้ไป `expense/new?attachmentId=` ซึ่ง **ไม่มีใครอ่านค่านั้น** (7.1 จองไว้ให้ WO นี้) และหน้า new
+  //    ก็สร้างร่างทันทีที่เปิด ⇒ prefetch ของ Next อาจสร้างร่างเปล่าโดยผู้ใช้ไม่ได้สั่ง — เส้นนี้ปลอดภัยกว่า
+  const createExpenseHrefOf = (r: AttachmentRowView): string => `${base}/documents/inbox?create=${r.id}`;
 
   const spForHref: Record<string, string | undefined> = {
     tab,
@@ -180,7 +183,8 @@ export default async function DocumentsPage({
         title="คลังเอกสาร"
         actions={
           <>
-            <button type="button" disabled title="เร็ว ๆ นี้ (WO 7.2)" className="btn-sm inline-flex cursor-not-allowed items-center gap-1.5 opacity-60" data-testid="documents-inbox-btn">
+            {/* WO 7.2: เปิดใช้จริงแล้ว (เดิมปุ่มจาง "เร็ว ๆ นี้") — f9 วาดปุ่มนี้พร้อม badge จำนวนไฟล์ลอย */}
+            <Link href={`${base}/documents/inbox`} className="btn-sm inline-flex items-center gap-1.5" data-testid="documents-inbox-btn">
               <AccountIcon name="mail" className="h-4 w-4" />
               กล่องขาเข้า
               {counts.unlinked > 0 && (
@@ -188,7 +192,7 @@ export default async function DocumentsPage({
                   {counts.unlinked}
                 </span>
               )}
-            </button>
+            </Link>
             <Link href={buildHref(pathname, spForHref, { upload: "1" })} className="btn btn-primary inline-flex items-center gap-1.5" data-testid="documents-upload-btn">
               <AccountIcon name="upload" className="h-4 w-4" />
               อัปโหลดไฟล์
