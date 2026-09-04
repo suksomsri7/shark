@@ -12,7 +12,7 @@
 | WO | 9.1 มือถือทำงานได้จริง (เฟส 9) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Sonnet (sub-agent · g17–g20 บน 390) |
-| ขั้นที่ถึง | 4 ก.ย. ~17:58 UTC: **verify prod เฟส 8 ผ่าน** — Vercel READY 17:54 (dpl_DTenko…) · migration 5 ตัว finished · autoClosePeriods default=true บน prod · https 200 · 9.1 กำลังทำ (Sonnet) |
+| ขั้นที่ถึง | 4 ก.ย. ~19:40 UTC: 9.1 รอบ 1 ส่งมา (mobile E2E 47/47 · 4 งานจบบนมือถือ · f14 ผ่าน · 🐞 cleanup ข้อสอบทิ้ง JV กำพร้าใน QC DB — แก้+ล้างแล้ว) → Fable ดูภาพ **ตีกลับ**: ฟอร์มใบแจ้งหนี้ 390 ยังเป็น input เดสก์ท็อปซ้อนกัน ไม่ใช่ g17 (แถวหัว+chevron → sheet · การ์ดรายการ+⋯ · accordion · sticky ยอด+ปุ่ม 2+⋯) — agent เดิมทำรอบ 2 |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
