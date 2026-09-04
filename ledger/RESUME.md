@@ -1,5 +1,13 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🏁 4 ก.ย. (เช้า ~12:00 BKK) — [session บัญชี] **เฟส 5 ปิด** (การเงินครบ ขึ้น main `ddb51f7` · qc:all 213/213) · 30/46 WO ≈ 65% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
+- ขึ้น prod: ช่องทางการเงิน V2 (g9: การ์ดกลุ่ม · รหัส CSH/BSV/EWL/PTY · ยอดยกมาหลายรายการ · โอนระหว่างช่องทาง) · ภาพรวมการเงิน f7 (6 ไทล์ · ปฏิทิน · เงินสดย่อย เติม/เบิกชดเชย) · กระทบยอดธนาคาร g10 (นำเข้า CSV KBank/SCB/KTB/BBL · auto-match ±3 วัน · ค่าธรรมเนียม/ดอกเบี้ย → JV · ยืนยันเดือน) · WHT 2 ขา + เช็ค g11 (นำส่ง ภ.ง.ด.3/53 CSV · เครดิตสะสม) · ลิงก์ชำระเงิน/QR PromptPay → รับชำระ+JV+กระทบยอดอัตโนมัติ (หน้าสาธารณะ /pay/[token])
+- migration 5 ตัว additive (finance_v2 · finance_overview · bank_reconcile · wht_cheque · promptpay) · Vercel build รัน migrate เอง · prod ไม่ต้อง backfill
+- บั๊กเก่าที่ปิด: `postOpening` idempotent ต่อ period ไม่ใช่ต่อบัญชี · `AccountDocumentPayment.entryId` เป็น null เสมอ · สัดส่วนเอกสารปัดรวม 100.01%
+- 🔴 บทเรียน: `next build` OOM heap 2G → `acc-v2-serve.sh` ตั้ง NODE_OPTIONS เองแล้ว · agent ต้อง stop server ก่อนรัน tsc/qc · agent รายงาน "แก้แล้ว" จากโค้ดที่ไม่ได้ต่อสาย — Fable ต้องเปิดโค้ดเมื่อภาพไม่เปลี่ยน
+- 🔑 รอเจ้าของ: `BEAM_MERCHANT_ID` `BEAM_API_KEY` `BEAM_WEBHOOK_SECRET` + webhook URL `https://shark.in.th/api/payment/beam/webhook` (ไม่มี = QR static ยืนยันมือ/จับจาก statement) · `DBD_API_KEY` · ลบ tenant ทดสอบค้างบน prod
+- ถัดไป: เฟส 6 บัญชี (6.1 ผังบัญชี f8 กำลังทำ → 6.2 สมุดรายวัน g16 + รายงาน drill-down + ปิดงวด + ค่าเสื่อม)
+
 ## 🏁 4 ก.ย. (เช้า ~04:45 BKK) — [session บัญชี] **เฟส 4 ปิด** (สินค้า↔คลัง↔POS ขึ้น main `9231e3a` · qc:all 208/208) · 25/46 WO ≈ 54% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
 - ขึ้น prod: InvItem เป็นแคตตาล็อกกลาง (AccountProduct.invItemId · sync 2 ทาง · เบิก/คืนตัดคลังใน tx เดียว) · POS ส่งบรรทัดเข้าบัญชี (เอกสาร TAX_INVOICE_ABB ต่อบิล · อันดับสินค้า/ลูกค้าเห็นยอด POS) · หน้าสินค้า V2 ตรง f6 + modal g8 (5 แท็บ) · หน่วยนับ · รายการจัดชุด · ใบเบิก PRR (g12) โพสต์ GL · ใบปรับต้นทุน CA · ยอดยกมาหลาย lot
 - migration 3 ตัว (invitem_canonical · products_v2 · —) additive · Vercel build รัน migrate เอง · prod ไม่ต้อง backfill (ไม่มีข้อมูลจริง)
