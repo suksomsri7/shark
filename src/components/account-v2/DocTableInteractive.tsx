@@ -103,7 +103,7 @@ export function DocTableInteractive({
           className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
           style={
             bulkBarTint
-              ? { background: "#eff4ff", borderColor: "var(--color-accent)" }
+              ? { background: "var(--color-accent-soft)", borderColor: "var(--color-accent)" }
               : { background: "var(--color-surface-2)" }
           }
           data-testid={testId ? `${testId}-bulk-bar` : undefined}

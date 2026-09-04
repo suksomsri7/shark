@@ -11,6 +11,7 @@
   --color-surface-2: #fafafa; /* พื้นรอง / hover */
   --color-danger: #b91c1c;
   --color-accent: #1d4ed8; /* จุดเน้น: ลิงก์ active, ไอคอน/แถบเน้น (contrast ~6.3:1 บนพื้นขาว) — ไม่ใช่แทน ink */
+  --color-accent-soft: color-mix(in srgb, var(--color-accent) 8%, white); /* พื้นทินท์อ่อนของ accent — แถบ bulk bar ที่เลือกไว้ ฯลฯ (WO 5.4) ห้ามพิมพ์ hex ดิบแทน */
 
   /* ── โทเคนกล่องแชท V2 (ยกจาก docs/design/chat-v2/mockup.html §2 — ห้ามคิดใหม่) ──
      🔴 อยู่ที่นี่เพราะเป็น "สี" ที่ 3 ไฟล์ต้องใช้ร่วมกัน (bubble · composer · inbox-client)
