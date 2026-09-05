@@ -46,6 +46,7 @@ try {
   const kA = await ak.createApiKey({ tenantId: tid }, "D2 accountant", { scopes: acct, systemId: SYS });
   const kD = await ak.createApiKey({ tenantId: tid }, "D2 danger", { scopes: [...acct, "account.period.reopen", "account.asset.writeoff", "account.asset.dispose"], systemId: SYS });
   const kR = await ak.createApiKey({ tenantId: tid }, "D2 read", { scopes: scopes.expandBundles(["read-only"]), systemId: SYS });
+  const kW = await ak.createApiKey({ tenantId: tid }, "D2 issue-and-collect", { scopes: scopes.expandBundles(["issue-and-collect"]), systemId: SYS }); // ไม่มี asset.* เลย (Fable แก้: accountant มี asset.dispose ตามสเปค A1)
 
   const call = async (method: string, path: string, key: string, body?: unknown, extra: Record<string, string> = {}) => {
     const headers: Record<string, string> = { authorization: `Bearer ${key}`, ...(method === "GET" ? {} : idem()), ...extra };
@@ -122,8 +123,10 @@ try {
   chk("D2-G3.4", "POST /assets/depreciation/run {period} → 200 {period,posted[1],skipped[],fullyDepreciated[]} + JV", run.status === 200 && run.body?.data?.posted?.length === 1 && run.body.data.posted[0].assetId === assetId && typeof run.body.data.posted[0].journalNo === "string", "posted 1", `${run.status} ${JSON.stringify(run.body?.data).slice(0, 200)}`);
   const runAgain = await call("POST", "/assets/depreciation/run", A, { period });
   chk("D2-G3.5", "run ซ้ำงวดเดิม → 200 posted 0 skipped 1 (idempotent) · ค่าเสื่อม 1 แถว", runAgain.status === 200 && runAgain.body?.data?.posted?.length === 0 && (await prisma.accountDepreciation.count({ where: { assetId } })) === 1, "0/1", `${runAgain.status} ${JSON.stringify(runAgain.body?.data).slice(0, 160)}`);
-  const disposeNo = await call("POST", `/assets/${assetId}/dispose`, A, { confirm: true, reason: "ขายต่อ", mode: "SELL", date: today, proceedsSatang: 900_000, financeAccountId: cash.id });
-  chk("D2-G3.6", "dispose ด้วยคีย์ไม่มี asset.dispose → 403", disposeNo.status === 403, "403", `${disposeNo.status}`);
+  const disposeNo = await call("POST", `/assets/${assetId}/dispose`, kW.rawKey, { confirm: true, reason: "ขายต่อ", mode: "SELL", date: today, proceedsSatang: 900_000, financeAccountId: cash.id });
+  chk("D2-G3.6", "dispose ด้วยคีย์ไม่มี asset.dispose (issue-and-collect) → 403", disposeNo.status === 403, "403", `${disposeNo.status}`);
+  const writeoffNo = await call("POST", `/assets/${assetId}/dispose`, A, { confirm: true, reason: "ตัดทิ้งโดยไม่มีสิทธิ์", mode: "WRITE_OFF", date: today });
+  chk("D2-G3.6b", "WRITE_OFF ด้วยคีย์ accountant (มี asset.dispose แต่ไม่มี asset.writeoff) → 403 + สินทรัพย์ยัง ACTIVE", writeoffNo.status === 403 && (await prisma.accountFixedAsset.findUnique({ where: { id: assetId }, select: { status: true } }))?.status !== "DISPOSED", "403", `${writeoffNo.status} ${writeoffNo.body?.error?.code}`);
   const dispose = await call("POST", `/assets/${assetId}/dispose`, D, { confirm: true, reason: "ขายต่อให้ร้านอื่น", mode: "SELL", date: today, proceedsSatang: 900_000, financeAccountId: cash.id });
   chk("D2-G3.7", "POST /assets/{id}/dispose (danger · asset.dispose) SELL → 200 {journalNo,gainLossSatang} · status DISPOSED", dispose.status === 200 && Number.isInteger(dispose.body?.data?.gainLossSatang) && (await prisma.accountFixedAsset.findUnique({ where: { id: assetId }, select: { status: true } }))?.status === "DISPOSED", "DISPOSED", `${dispose.status} ${JSON.stringify(dispose.body).slice(0, 160)}`);
   const disposeAgain = await call("POST", `/assets/${assetId}/dispose`, D, { confirm: true, reason: "ตัดซ้ำอีกครั้ง", mode: "WRITE_OFF", date: today });

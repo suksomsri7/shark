@@ -229,7 +229,8 @@ export type ClosePeriodResult = { ok: true; checklist: PeriodChecklist } | { ok:
 export async function closePeriodWithChecklist(
   ctx: PeriodCtx,
   periodKey: string,
-  userId: string,
+  /** ผู้ปิดงวด · `null` = คีย์ API (WO D2 — `AccountPeriod.closedById` เป็น nullable อยู่แล้ว) */
+  userId: string | null,
 ): Promise<ClosePeriodResult> {
   if (!isPeriodKey(periodKey)) return { ok: false, reason: "รูปแบบงวดไม่ถูกต้อง (ต้องเป็น YYYY-MM)" };
   const checklist = await periodChecklist(ctx, periodKey);
@@ -262,7 +263,8 @@ export async function reopenPeriodV2(
   ctx: PeriodCtx,
   periodKey: string,
   reason: string,
-  userId: string,
+  /** ผู้เปิดงวด · `null` = คีย์ API (WO D2) */
+  userId: string | null,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (!isPeriodKey(periodKey)) return { ok: false, reason: "รูปแบบงวดไม่ถูกต้อง (ต้องเป็น YYYY-MM)" };
   if (reason.trim().length < 3) return { ok: false, reason: "กรุณาระบุเหตุผลในการเปิดงวดใหม่" };
@@ -287,7 +289,7 @@ export async function reopenPeriodV2(
  */
 export async function markVatFiled(
   ctx: PeriodCtx,
-  input: { periodKey: string; salesVat: number; inputVat: number; userId: string; note?: string | null },
+  input: { periodKey: string; salesVat: number; inputVat: number; userId: string | null; note?: string | null },
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (!isPeriodKey(input.periodKey)) return { ok: false, reason: "รูปแบบงวดไม่ถูกต้อง (ต้องเป็น YYYY-MM)" };
   const db = tenantDb(ctx);

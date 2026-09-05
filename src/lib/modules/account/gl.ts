@@ -1510,7 +1510,8 @@ export async function postBankReconcileEntry(
 export async function closePeriod(
   ctx: GlCtx,
   periodKey: string,
-  userId: string,
+  /** ผู้ปิดงวด · `null` = ไม่ใช่คน (คีย์ API ปิดผ่าน REST — ตัวจริงอยู่ใน AuditLog) */
+  userId: string | null,
 ): Promise<{ ok: boolean; reason?: string }> {
   return prisma.$transaction(async (db) => {
     // 1) suspense 9999 ต้องเคลียร์ (net สะสมถึงสิ้นงวด = 0)
@@ -1563,7 +1564,8 @@ export async function reopenPeriod(
   ctx: GlCtx,
   periodKey: string,
   reason: string,
-  userId: string,
+  /** ผู้เปิดงวด · `null` = คีย์ API (บันทึกลง reopenLog ตามจริง — ผู้ลงมือจริงอยู่ใน AuditLog) */
+  userId: string | null,
 ): Promise<void> {
   await prisma.$transaction(async (db) => {
     const period = await db.accountPeriod.findFirst({

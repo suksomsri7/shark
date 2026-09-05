@@ -486,6 +486,21 @@ export async function createManualEntry(ctx: JournalCtx, input: ManualJvInput): 
   return { ok: true, entryId, docNo: created?.docNo ?? "" };
 }
 
+/**
+ * เลขที่ใบสำคัญของ entry หลายใบพร้อมกัน (WO D2) — ผู้เรียกที่ได้ `entryId` มาจากงานเบื้องหลัง
+ * (ค่าเสื่อมรายเดือน · จำหน่ายสินทรัพย์) ต้องตอบผู้ใช้เป็น "เลขที่ใบสำคัญ" ไม่ใช่ id ภายใน
+ * ⇒ ดึงเป็นชุดเดียว ไม่ใช่ยิง `journalEntryDetail` ทีละใบ (สินทรัพย์ 100 ตัว = 100 รอบ)
+ */
+export async function journalNumbersOf(ctx: JournalCtx, entryIds: string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(entryIds.filter((x) => !!x))];
+  if (ids.length === 0) return new Map();
+  const rows = await tenantDb(ctx).accountJournalEntry.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, docNo: true },
+  });
+  return new Map(rows.map((r) => [r.id, r.docNo]));
+}
+
 // ─────────────────── 3) กลับรายการ (§11.2) ───────────────────
 
 export type ReverseResult = { ok: true; entryId: string; docNo: string } | { ok: false; reason: string };

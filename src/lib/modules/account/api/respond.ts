@@ -186,6 +186,8 @@ export type MappedError = {
   message_en: string;
   /** มีเฉพาะเมื่อ handler โยน `ApiError` ที่ระบุมาเอง — ผู้เรียกเห็นเป็น `error.hint` */
   hint?: string;
+  /** ช่องที่ผิดรายตัว — มีเฉพาะเมื่อ handler โยน `ApiError` ที่แนบ `details` มา */
+  details?: ApiErrorDetail[];
 };
 
 /**
@@ -202,13 +204,27 @@ export class ApiError extends Error {
    * ที่ `refType`/`refId` ชุดนี้สร้างไว้แล้ว ⇒ ผู้เรียกไปอ่านใบนั้นต่อได้โดยไม่ต้องค้นเอง)
    */
   readonly hint?: string;
-  constructor(status: number, code: ApiErrorCode, message_th: string, message_en: string, hint?: string) {
+  /**
+   * ช่องที่ผิดเป็นรายตัว (WO D2) — บริการฝั่งบัญชีคืน `fields: { code: "...", name: "..." }` มาแล้ว
+   * ⇒ ต้องส่งต่อให้ผู้เรียกเห็นเป็น `error.details[{ path, message }]` แบบเดียวกับที่ zod ให้
+   *   ไม่งั้นแอปที่ยิงมาไม่รู้ว่าต้องแก้ช่องไหน (ข้อความรวมบอกได้แค่ว่า "มีบางอย่างผิด")
+   */
+  readonly details?: ApiErrorDetail[];
+  constructor(
+    status: number,
+    code: ApiErrorCode,
+    message_th: string,
+    message_en: string,
+    hint?: string,
+    details?: ApiErrorDetail[],
+  ) {
     super(message_en);
     this.status = status;
     this.code = code;
     this.message_th = message_th;
     this.message_en = message_en;
     this.hint = hint;
+    this.details = details;
   }
 }
 
@@ -242,6 +258,7 @@ export function mapError(e: unknown): MappedError {
       message_th: e.message_th,
       message_en: e.message_en,
       ...(e.hint ? { hint: e.hint } : {}),
+      ...(e.details ? { details: e.details } : {}),
     };
   }
   if (isZodError(e)) {

@@ -17,6 +17,7 @@ import { PRODUCTS_WRITE_OPS } from "./ops/products-write";
 import { FINANCE_READ_OPS } from "./ops/finance-read";
 import { FINANCE_WRITE_OPS } from "./ops/finance-write";
 import { GL_READ_OPS } from "./ops/gl-read";
+import { GL_WRITE_OPS } from "./ops/gl-write";
 import { SETTINGS_READ_OPS } from "./ops/settings-read";
 
 export * from "./op";
@@ -34,6 +35,7 @@ export const ACCOUNT_OPS: ApiOp[] = [
   ...FINANCE_READ_OPS,
   ...FINANCE_WRITE_OPS,
   ...GL_READ_OPS,
+  ...GL_WRITE_OPS,
   ...SETTINGS_READ_OPS,
 ];
 

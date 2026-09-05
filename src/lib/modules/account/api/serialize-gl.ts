@@ -62,6 +62,28 @@ export function chartAccountRow(a: ChartAccountNode, meta: LedgerMetaRow | undef
   };
 }
 
+/**
+ * แถวบัญชีแบบแบน **หน้าตาเดียวกับ `chart.list`** แต่ประกอบจากรายละเอียดบัญชีตัวเดียว (WO D2)
+ * ⇒ ผู้เรียกที่เพิ่งสร้าง/แก้บัญชีได้ของหน้าตาเดิมกับตอนไปอ่านทีหลัง ไม่ต้องแปลงสองแบบ
+ * `meta` = แถว AccountLedger จริง (ต้นไม้ผังบัญชีไม่ได้พก parentId/level มา)
+ */
+export function chartRowView(d: LedgerDetail, meta: { parentId: string | null; level: number | null } | undefined) {
+  return {
+    id: d.id,
+    code: d.code,
+    name: d.name,
+    nameEn: d.nameEn,
+    type: d.type,
+    parentId: meta?.parentId ?? null,
+    level: meta?.level ?? null,
+    isSystem: d.isSystem,
+    active: !d.archivedAt,
+    balanceSatang: d.balanceSatang,
+    vatTreatment: d.vatTreatment,
+    whtDefault: whtDefaultView(d.defaultWhtRateBp, d.defaultWhtType),
+  };
+}
+
 function chartNodeView(n: ChartNode): Record<string, unknown> {
   if (n.kind === "account") {
     return {

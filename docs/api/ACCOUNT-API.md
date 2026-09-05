@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 145 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 160 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -1068,6 +1068,49 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/wht?direction=IN" \
 
 Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name.
 
+#### `assets.depreciation-run`
+
+**POST /assets/depreciation/run** - Run monthly depreciation for a period and post the journal entry for it. Safe to call again: an asset that already has the period posted comes back under skipped, so nothing is booked twice. Preview the same period first to see what it will do. · scope: `account.asset.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `period` | string | no | Period to run, `YYYY-MM`. Default is the current Thai month. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/assets/depreciation/run" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `assets.register`
+
+**POST /assets** - Put a fixed asset on the register so monthly depreciation can be run on it. Depreciation is straight line: the cost minus the residual value spread over the useful life, with the last month taking the rounding. · scope: `account.asset.register` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | What the asset is, such as a pickup truck or an air conditioner. · min length 1 · max length 120 |
+| `category` | one of several shapes | no | Free text group used to sort the register, such as vehicles. |
+| `acquiredDate` | string | yes | Day the asset was bought (Thai calendar day, YYYY-MM-DD). |
+| `startDepDate` | string | yes | Day depreciation starts (Thai calendar day, YYYY-MM-DD). |
+| `costSatang` | integer | yes | Cost of the asset in satang. · min 1 |
+| `salvageValueSatang` | integer | yes | Residual value in satang. Thai practice keeps at least 1 baht, so the minimum is 100. · min 100 |
+| `usefulLifeMonths` | integer | yes | Useful life in months. 5 years is 60. · min 1 · max 1200 |
+| `assetAccountId` | string | yes | Ledger account holding the cost of the asset, usually a 16xx account. · min length 1 · max length 40 |
+| `accumAccountId` | string | yes | Ledger account of accumulated depreciation, usually the 16x9 account. · min length 1 · max length 40 |
+| `expenseAccountId` | string | yes | Ledger account of the depreciation expense, usually 6800. · min length 1 · max length 40 |
+| `sourceDocumentId` | one of several shapes | no | - |
+| `note` | one of several shapes | no | Free note kept with the asset. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/assets" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"example name","acquiredDate":"example acquiredDate","startDepDate":"example startDepDate","costSatang":10000,"salvageValueSatang":10000,"usefulLifeMonths":1,"assetAccountId":"example assetAccountId","accumAccountId":"example accumAccountId","expenseAccountId":"example expenseAccountId"}'
+```
+
 #### `categories.archive`
 
 **DELETE /categories/{id}** - Deactivate a category. · scope: `account.product.manage` · write
@@ -1116,6 +1159,72 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/categories" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"name":"example name"}'
+```
+
+#### `chart.set-active`
+
+**POST /chart/{id}/active** - Turn an account on or off. Turning it off hides it from every picker but keeps the history. An account that already has movement, a posting rule or a money channel behind it cannot be turned off. Turning one back on always works. · scope: `account.chart.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `active` | boolean | yes | true turns the account back on, false hides it from pickers. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/chart/123/active" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"active":true}'
+```
+
+#### `chart.update`
+
+**PATCH /chart/{id}** - Change one account. Only the fields sent are touched, the rest keep their current value. Accounts the system created can be renamed but cannot change code or type, because reports and posting rules point at the old code. · scope: `account.chart.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `code` | string | no | Account code, 3 to 6 digits. The first digit is the account type: 1 asset, 2 liability, 3 equity, 4 income, 5 cost of sales, 6 expense. |
+| `name` | string | no | Thai account name. · min length 1 · max length 80 |
+| `nameEn` | one of several shapes | no | - |
+| `groupPrefix` | string | no | Three digit prefix of the sub group the account belongs to, such as 610. The code must start with it. |
+| `description` | one of several shapes | no | - |
+| `defaultWhtRateBp` | one of several shapes | no | - |
+| `defaultWhtType` | one of several shapes | no | - |
+| `vatTreatment` | one of several shapes | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/chart/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `chart.create`
+
+**POST /chart** - Add an account to the chart of accounts. The account type is taken from the sub group prefix, so 610 makes an expense account. Codes are unique per book. · scope: `account.chart.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `code` | string | yes | Account code, 3 to 6 digits. The first digit is the account type: 1 asset, 2 liability, 3 equity, 4 income, 5 cost of sales, 6 expense. |
+| `name` | string | yes | Thai account name shown in the chart of accounts. · min length 1 · max length 80 |
+| `nameEn` | one of several shapes | no | English account name, optional. |
+| `groupPrefix` | string | yes | Three digit prefix of the sub group the account belongs to, such as 610. The code must start with it. |
+| `description` | one of several shapes | no | What the account is for, shown in the account panel. |
+| `defaultWhtRateBp` | one of several shapes | no | Default withholding rate in basis points: 300 = 3%. |
+| `defaultWhtType` | one of several shapes | no | - |
+| `vatTreatment` | one of several shapes | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/chart" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"example code","name":"example name","groupPrefix":"example groupPrefix"}'
 ```
 
 #### `cheques.bounce`
@@ -1373,6 +1482,24 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/contacts" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"kind":"CUSTOMER","name":"example name"}'
+```
+
+#### `doc-type-accounts.set`
+
+**PUT /doc-type-accounts/{docType}** - Set the income or expense account used when documents of one type are posted, overriding the general rule. Send accountId null to drop the override and fall back to the default account again. · scope: `account.mapping.manage` · write
+
+Path parameters: `docType` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `accountId` | one of several shapes | yes | Ledger account for this document type, or null to remove the override. |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/account/doc-type-accounts/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"accountId":"example accountId"}'
 ```
 
 #### `documents.approve`
@@ -1798,6 +1925,62 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/finance-transfers" \
   -d '{"fromId":"example fromId","toId":"example toId","amountSatang":10000}'
 ```
 
+#### `journal.flag`
+
+**POST /journal/{id}/flag** - Toggle the review flag of one journal entry. Flagged entries block closing the period they sit in, so this is how an app parks something for the accountant to look at. Calling it again clears the flag. · scope: `account.journal.adjust` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `note` | one of several shapes | no | What has to be checked. Cleared when the flag is removed. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/journal/123/flag" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `journal.create`
+
+**POST /journal** - Post a manual journal entry. Total debit must equal total credit and the entry must fall in a period that is still open. The entry is posted straight away, it is not a draft. · scope: `account.journal.adjust` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `date` | string | yes | date (Thai calendar day, YYYY-MM-DD). |
+| `book` | enum("SALES", "PURCHASES", "RECEIPTS", "PAYMENTS", "GENERAL") | no | Journal book the entry belongs to. Default GENERAL. |
+| `memo` | one of several shapes | no | What the entry is for. Shown in the journal list. |
+| `lines` | array of object | yes | At least two lines. Total debit must equal total credit. |
+| `attachmentIds` | array of string | no | Files to attach to the entry as evidence. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/journal" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"date":"example date","lines":[]}'
+```
+
+#### `mappings.set`
+
+**PUT /mappings/{key}** - Point one posting rule at a different ledger account. The keys are the ones returned by the mappings list, such as AR, VAT_OUTPUT or DEPRECIATION_EXPENSE. Every document posted from now on uses the new account. · scope: `account.mapping.manage` · write
+
+Path parameters: `key` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `accountId` | string | yes | Ledger account this rule should post to. · min length 1 · max length 40 |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/account/mappings/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"accountId":"example accountId"}'
+```
+
 #### `payment-requests.cancel`
 
 **POST /payment-requests/{id}/cancel** - Cancel a pending payment request. The link stops working immediately. A request that was already paid cannot be cancelled. · scope: `account.payment.record` · write
@@ -1886,6 +2069,40 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/payments" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"documentId":"example documentId","rows":[]}'
+```
+
+#### `periods.close`
+
+**POST /periods/{key}/close** - Close one accounting period. The pre-close checklist runs first: the suspense account must be clear and no entry in the period may still be flagged for review. Once closed nothing can be posted into it any more. · scope: `account.period.close` · write
+
+Path parameters: `key` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/periods/123/close" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `periods.vat-filed`
+
+**POST /periods/{key}/vat-filed** - Record that the VAT return (form PP.30) of one month has been filed, together with the output and input VAT that were on it. This is checklist item four when the period is closed. · scope: `account.period.close` · write
+
+Path parameters: `key` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `salesVatSatang` | integer | yes | Output VAT on the return, in satang. · min 0 |
+| `inputVatSatang` | integer | yes | Input VAT on the return, in satang. · min 0 |
+| `note` | one of several shapes | no | How it was filed, for example through the e-filing site. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/periods/123/vat-filed" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"salesVatSatang":10000,"inputVatSatang":10000}'
 ```
 
 #### `petty-cash.reimburse`
@@ -2330,6 +2547,30 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/wht/filings" \
 
 Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these.
 
+#### `assets.dispose`
+
+**POST /assets/{id}/dispose** - Sell or write off a fixed asset. The journal entry clears the cost and the accumulated depreciation, books the money received and posts the gain or loss against the net book value. An asset can only leave the register once. · scope: `account.asset.dispose` · danger
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why the asset is leaving the register. At least 5 characters. Kept in the audit log. · min length 5 · max length 500 |
+| `mode` | enum("SELL", "WRITE_OFF") | yes | SELL when the asset was sold and money came in, WRITE_OFF when it is simply taken off the books. WRITE_OFF needs the account.asset.writeoff scope on top of account.asset.dispose. |
+| `date` | string | yes | Day of the disposal (Thai calendar day, YYYY-MM-DD). |
+| `proceedsSatang` | one of several shapes | no | Money received in satang. SELL only. |
+| `financeAccountId` | one of several shapes | no | - |
+| `note` | one of several shapes | no | Free note kept with the asset. |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/assets/123/dispose" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","mode":"SELL","date":"example date","confirm":true}'
+```
+
 #### `cheques.void`
 
 **POST /cheques/{id}/void** - Cancel an issued cheque that has not been presented, for example one written with the wrong amount. The ledger effect is reversed and the vendor is owed again. · scope: `account.cheque.void` · danger
@@ -2424,6 +2665,25 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/void" \
   -d '{"reason":"reason for the audit log","confirm":true}'
 ```
 
+#### `journal.reverse`
+
+**POST /journal/{id}/reverse** - Reverse a posted journal entry by writing a mirror entry with the sides swapped. The original entry stays in the books and is marked REVERSED. If its own period is already closed the reversal is dated in the next open period. · scope: `account.journal.adjust` · danger
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why the entry is being reversed. At least 5 characters. Kept in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/journal/123/reverse" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
+```
+
 #### `payments.void`
 
 **POST /payments/{paymentId}/void** - Reverse one recorded payment. A reversing journal entry is written; nothing is deleted and the document goes back to awaiting payment. · scope: `account.payment.void` · danger
@@ -2462,6 +2722,44 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/payments/group/123/void" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"groupId":"example groupId","reason":"reason for the audit log","confirm":true}'
+```
+
+#### `periods.reopen`
+
+**POST /periods/{key}/reopen** - Reopen a closed period so entries can be posted into it again. Every reopen is stamped in the period log with the reason, because auditors ask about periods that were opened after they were closed. · scope: `account.period.reopen` · danger
+
+Path parameters: `key` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why the period has to be reopened. At least 5 characters. Kept in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/periods/123/reopen" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
+```
+
+#### `periods.vat-unfiled`
+
+**DELETE /periods/{key}/vat-filed** - Undo the filed mark of one month, for example when the wrong month was filed. The period goes back to not filed and the close checklist fails on it again. · scope: `account.period.reopen` · danger
+
+Path parameters: `key` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why the filed mark is being removed. At least 5 characters. Kept in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/periods/123/vat-filed" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
 ```
 
 #### `wht.unmark-filed`
