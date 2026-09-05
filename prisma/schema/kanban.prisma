@@ -8,6 +8,35 @@ enum KanbanEntityStatus {
   ARCHIVED
 }
 
+// ระดับการมองเห็นบอร์ด (D2) — PRIVATE = เฉพาะสมาชิกบอร์ด · TENANT = ทุกคนในร้านที่มีสิทธิ์โมดูล
+// 🔴 default = PRIVATE (บอร์ดใหม่ปิดก่อน) · บอร์ดที่มีอยู่ก่อน K1.1 ถูก backfill เป็น TENANT
+//    เพื่อไม่ให้คนที่เคยเห็นอยู่หลุดสิทธิ์กะทันหันตอน deploy
+enum KanbanBoardVisibility {
+  PRIVATE
+  TENANT
+}
+
+// สีป้าย/บอร์ด 6 สี ตรงกับโทเคน `--color-tag-*` ของดีไซน์ (D9)
+enum KanbanLabelColor {
+  SLATE
+  BLUE
+  GREEN
+  AMBER
+  RED
+  PURPLE
+}
+
+// ที่มาของการ์ด — MANUAL = คนสร้างเอง · ที่เหลือมาจากเทมเพลต/แชท/ฟอร์ม/อีเมล/กฎอัตโนมัติ/AI (P2–P3)
+enum KanbanCardSourceType {
+  MANUAL
+  TEMPLATE
+  CHAT
+  FORM
+  EMAIL
+  AUTOMATION
+  AI
+}
+
 // ───────────────────────── Board ─────────────────────────
 model KanbanBoard {
   id          String             @id @default(cuid())
@@ -21,10 +50,19 @@ model KanbanBoard {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
+  // ── K1.1 (เพิ่มอย่างเดียว · nullable หรือมี default ทุกตัว) ──
+  unitId       String? // BusinessUnit.id — ผูกสาขา (metadata · ใช้คิดสิทธิ์ MANAGER ใน K1.3)
+  color        KanbanLabelColor      @default(SLATE)
+  visibility   KanbanBoardVisibility @default(PRIVATE)
+  cardNoSeq    Int                   @default(0) // เลขการ์ดวิ่งต่อบอร์ด "#128" (UPDATE…RETURNING ใน tx — D14)
+  createdById  String? // User.id ผู้สร้าง
+  templateOfId String? // สร้างมาจากเทมเพลตไหน (K1.12)
+
   columns KanbanColumn[]
   cards   KanbanCard[]
 
   @@index([tenantId, systemId, status])
+  @@index([tenantId, systemId, unitId])
 }
 
 // ───────────────────────── Column ─────────────────────────
@@ -40,6 +78,14 @@ model KanbanColumn {
   archivedAt DateTime?
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
+
+  // ── K1.1 ──
+  // position = fractional index (base62) ตาม docs/modules/13-kanban.md §11.1
+  // nullable ระหว่างเปลี่ยนผ่าน: แถวเก่ายังไม่มีค่าจนกว่า backfill จะรัน → โค้ดอ่าน `position ?? sortOrder` (D10)
+  position     String?
+  isDoneColumn Boolean           @default(false)
+  wipLimit     Int? // null = ไม่จำกัด
+  color        KanbanLabelColor?
 
   cards KanbanCard[]
 
@@ -67,7 +113,22 @@ model KanbanCard {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
+  // ── K1.1 ──
+  cardNo                Int? // เลขการ์ดในบอร์ด "#42" — nullable จนกว่า backfill เสร็จ · @@unique([boardId,cardNo]) เพิ่มใน K1.4
+  position              String? // fractional index ภายในคอลัมน์ (§11.1)
+  startAt               DateTime?
+  completedAt           DateTime? // ตั้งเมื่อย้ายเข้า done column (K1.4)
+  reminderMinutesBefore Int? // null = ไม่เตือน
+  reminderSentAt        DateTime?
+  coverFileId           String? // FileAsset.id (K1.9)
+  sourceType            KanbanCardSourceType @default(MANUAL)
+  sourceId              String?
+  createdById           String?
+  archivedById          String?
+
   @@index([tenantId, systemId, boardId, status])
   @@index([columnId, status, sortOrder])
   @@index([tenantId, systemId, assigneeUserId])
+  @@index([tenantId, systemId, status, dueAt]) // cron เตือนกำหนดส่ง + รายงานเลยกำหนด
+  @@index([boardId, cardNo]) // ค้นด้วยเลขการ์ด (unique เพิ่มหลัง backfill ใน K1.4)
 }

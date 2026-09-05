@@ -1,11 +1,14 @@
 import { prisma } from "@/lib/core/db";
 import { Prisma } from "@prisma/client";
-import type { KanbanBoard, KanbanCard, KanbanColumn } from "@prisma/client";
+import type { KanbanBoard, KanbanBoardVisibility, KanbanCard, KanbanCardSourceType, KanbanColumn, KanbanLabelColor } from "@prisma/client";
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
+import { keyBetween, keysBetween } from "./ordering";
 
 // แจ้งเตือนเมื่อมอบหมายงาน (assignee ตั้งใหม่/เปลี่ยน) — ปิด "โมดูลเงียบ"
-// AppNotification tenant-wide (schema ไม่มี user targeting) → ระบุชื่อผู้รับใน body
+// 🔴 K1.1: ต้องยิงตรงคน — `AppNotification.recipientUserId` = ผู้รับงาน
+//    ของเดิมเขียนเป็นประกาศทั้งร้าน (recipientUserId = null) ⇒ ใครก็ตามที่เข้าแอปของร้านได้
+//    เปิด /app/notifications แล้วเห็นชื่องาน+ชื่อบอร์ดของคนอื่นหมด (บั๊กความเป็นส่วนตัว)
 async function notifyAssignment(
   tenantId: string,
   systemId: string,
@@ -28,6 +31,7 @@ async function notifyAssignment(
     await tx.appNotification.create({
       data: {
         tenantId,
+        recipientUserId: assigneeUserId,
         title: "ได้รับมอบหมายงาน",
         body: `${who}: "${card.title}"${board ? ` · บอร์ด ${board.name}` : ""} · ดูงาน /app/sys/${systemId}/kanban/${card.boardId}`,
       },
@@ -41,7 +45,13 @@ export async function listMyCards(tenantId: string, systemId: string, userId: st
   return prisma.kanbanCard.findMany({
     where: { tenantId, systemId, assigneeUserId: userId, status: "ACTIVE" },
     include: { board: { select: { name: true } }, column: { select: { name: true } } },
-    orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
+    // กำหนดส่งก่อน (หน้า "งานของฉัน" จัดกลุ่มตามวัน) แล้วค่อยลำดับในคอลัมน์ (position → sortOrder → createdAt)
+    orderBy: [
+      { dueAt: { sort: "asc", nulls: "last" } },
+      { position: { sort: "asc", nulls: "first" } },
+      { sortOrder: "asc" },
+      { createdAt: "asc" },
+    ],
     take: 100,
   });
 }
@@ -74,13 +84,17 @@ export async function getBoard(
   const board = await prisma.kanbanBoard.findFirst({
     where: { id: boardId, tenantId, systemId },
     include: {
+      // เรียงด้วย `position` (fractional index) เป็นหลัก · `sortOrder` เป็น fallback ช่วงเปลี่ยนผ่าน (D10)
+      // 🔴 nulls: "first" — แถวที่ยังไม่ backfill (position = null) ต้องอยู่ "ก่อน" แถวที่มี key
+      //    เพราะการ์ด/คอลัมน์ที่โค้ดใหม่สร้าง = ต่อท้ายเสมอ (ถ้าใช้ค่าปริยาย NULLS LAST ของ Postgres
+      //    ของใหม่จะเด้งขึ้นไปอยู่หัวคอลัมน์ในช่วงก่อน backfill)
       columns: {
         where: { status: "ACTIVE" },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }, { createdAt: "asc" }],
         include: {
           cards: {
             where: { status: "ACTIVE" },
-            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+            orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }, { createdAt: "asc" }],
           },
         },
       },
@@ -94,10 +108,18 @@ export async function createBoard(input: {
   systemId: string;
   name: string;
   description?: string | null;
+  /** BusinessUnit.id — บอร์ดของสาขาไหน (null = กลางองค์กร) */
+  unitId?: string | null;
+  /** ไม่ระบุ = PRIVATE ตาม default ของ schema (บอร์ดใหม่ปิดก่อน — D2) */
+  visibility?: KanbanBoardVisibility;
+  color?: KanbanLabelColor;
+  createdById?: string | null;
 }): Promise<KanbanBoard> {
   const count = await prisma.kanbanBoard.count({
     where: { tenantId: input.tenantId, systemId: input.systemId },
   });
+  // คอลัมน์เริ่มต้นได้ position ตั้งแต่แรก ⇒ บอร์ดที่โค้ดใหม่สร้างจะไม่ถูก backfill แตะ (เครื่องหมายใน K1.1)
+  const colKeys = keysBetween(null, null, DEFAULT_COLUMNS.length);
   return prisma.kanbanBoard.create({
     data: {
       tenantId: input.tenantId,
@@ -105,12 +127,17 @@ export async function createBoard(input: {
       name: input.name,
       description: input.description ?? null,
       sortOrder: count,
+      unitId: input.unitId ?? null,
+      ...(input.visibility ? { visibility: input.visibility } : {}),
+      ...(input.color ? { color: input.color } : {}),
+      createdById: input.createdById ?? null,
       columns: {
         create: DEFAULT_COLUMNS.map((name, i) => ({
           tenantId: input.tenantId,
           systemId: input.systemId,
           name,
           sortOrder: i,
+          position: colKeys[i]!,
         })),
       },
     },
@@ -138,6 +165,35 @@ export async function unarchiveBoard(tenantId: string, systemId: string, boardId
   });
 }
 
+// ───────────────────────── ลำดับ (fractional index) ─────────────────────────
+
+/**
+ * คีย์ตำแหน่ง "ต่อท้ายสุด" — ของคอลัมน์ในบอร์ด (kind=column) หรือของการ์ดในคอลัมน์ (kind=card)
+ *
+ * 🔴 อ่านเฉพาะแถวที่ `position` ไม่ null: แถวที่ยังไม่ backfill ไม่มีคีย์ที่ใช้ต่อยอดได้
+ *    (generateKeyBetween ต้องรับคีย์ที่ถูกต้องตามไวยากรณ์เท่านั้น — ยัด "5" จาก sortOrder เข้าไปจะโยน)
+ *    ⇒ คอลัมน์ที่ยังไม่ backfill: ของใหม่เริ่มที่ "a0" แล้วเรียงหลังแถว null ด้วย nulls:"first" ตอนอ่าน
+ */
+async function nextPosition(
+  kind: "column" | "card",
+  scope: { tenantId: string; systemId: string; scopeId: string },
+): Promise<string> {
+  const { tenantId, systemId, scopeId } = scope;
+  const last =
+    kind === "column"
+      ? await prisma.kanbanColumn.findFirst({
+          where: { tenantId, systemId, boardId: scopeId, status: "ACTIVE", position: { not: null } },
+          orderBy: { position: "desc" },
+          select: { position: true },
+        })
+      : await prisma.kanbanCard.findFirst({
+          where: { tenantId, systemId, columnId: scopeId, status: "ACTIVE", position: { not: null } },
+          orderBy: { position: "desc" },
+          select: { position: true },
+        });
+  return keyBetween(last?.position ?? null, null);
+}
+
 // ───────────────────────── Column ─────────────────────────
 
 export async function createColumn(
@@ -149,8 +205,9 @@ export async function createColumn(
   const board = await prisma.kanbanBoard.findFirst({ where: { id: boardId, tenantId, systemId } });
   if (!board) return null;
   const count = await prisma.kanbanColumn.count({ where: { tenantId, systemId, boardId, status: "ACTIVE" } });
+  const position = await nextPosition("column", { tenantId, systemId, scopeId: boardId });
   return prisma.kanbanColumn.create({
-    data: { tenantId, systemId, boardId, name, sortOrder: count },
+    data: { tenantId, systemId, boardId, name, sortOrder: count, position },
   });
 }
 
@@ -185,7 +242,11 @@ export async function createCard(input: {
   description?: string | null;
   assigneeUserId?: string | null;
   dueAt?: Date | null;
+  startAt?: Date | null;
   labels?: string[];
+  sourceType?: KanbanCardSourceType;
+  sourceId?: string | null;
+  createdById?: string | null;
 }): Promise<KanbanCard | null> {
   const col = await prisma.kanbanColumn.findFirst({
     where: { id: input.columnId, tenantId: input.tenantId, systemId: input.systemId, status: "ACTIVE" },
@@ -194,19 +255,38 @@ export async function createCard(input: {
   const count = await prisma.kanbanCard.count({
     where: { columnId: col.id, tenantId: input.tenantId, systemId: input.systemId, status: "ACTIVE" },
   });
-  const card = await prisma.kanbanCard.create({
-    data: {
-      tenantId: input.tenantId,
-      systemId: input.systemId,
-      boardId: col.boardId,
-      columnId: col.id,
-      title: input.title,
-      description: input.description ?? null,
-      assigneeUserId: input.assigneeUserId ?? null,
-      dueAt: input.dueAt ?? null,
-      labels: input.labels ?? [],
-      sortOrder: count,
-    },
+  const position = await nextPosition("card", {
+    tenantId: input.tenantId,
+    systemId: input.systemId,
+    scopeId: col.id,
+  });
+  // 🔴 เลขการ์ด (D14 · §11.2): จองเลขด้วย `UPDATE … SET cardNoSeq = cardNoSeq + 1 … RETURNING`
+  //    ใน transaction เดียวกับการสร้างการ์ด — คำสั่งเดียวจบ ⇒ สร้างพร้อมกันหลายใบก็ไม่ได้เลขซ้ำ
+  //    (อ่านมานับเองแล้วค่อยเขียนคือรูปแบบที่นับพลาดตอนยิงพร้อมกัน)
+  const card = await prisma.$transaction(async (tx) => {
+    const seq = await tx.$queryRaw<{ cardNoSeq: number }[]>`
+      UPDATE "KanbanBoard" SET "cardNoSeq" = "cardNoSeq" + 1 WHERE id = ${col.boardId} RETURNING "cardNoSeq"
+    `;
+    return tx.kanbanCard.create({
+      data: {
+        tenantId: input.tenantId,
+        systemId: input.systemId,
+        boardId: col.boardId,
+        columnId: col.id,
+        title: input.title,
+        description: input.description ?? null,
+        assigneeUserId: input.assigneeUserId ?? null,
+        dueAt: input.dueAt ?? null,
+        startAt: input.startAt ?? null,
+        labels: input.labels ?? [],
+        sortOrder: count,
+        position,
+        cardNo: seq[0]?.cardNoSeq ?? null,
+        ...(input.sourceType ? { sourceType: input.sourceType } : {}),
+        sourceId: input.sourceId ?? null,
+        createdById: input.createdById ?? null,
+      },
+    });
   });
   // มอบหมายตั้งแต่สร้าง → แจ้งผู้รับ
   if (input.assigneeUserId) {
@@ -278,9 +358,21 @@ export async function moveCard(input: {
       where: { columnId: col.id, tenantId, systemId, status: "ACTIVE" },
       _max: { sortOrder: true },
     });
+    // 🔴 ต้องเขียน `position` ใหม่ด้วย (dual-write · D10): คีย์เดิมเป็นของคอลัมน์เก่า
+    //    ถ้าไม่เขียน การ์ดจะไปโผล่กลางคอลัมน์ปลายทางตามคีย์เก่า (getBoard เรียงด้วย position แล้ว)
+    //    ย้ายแบบเลือกตำแหน่ง (before/after) มาใน K1.4 — ที่นี่คือ "ต่อท้ายคอลัมน์ปลายทาง"
+    const lastInTarget = await tx.kanbanCard.findFirst({
+      where: { columnId: col.id, tenantId, systemId, status: "ACTIVE", position: { not: null } },
+      orderBy: { position: "desc" },
+      select: { position: true },
+    });
     await tx.kanbanCard.update({
       where: { id: card.id },
-      data: { columnId: col.id, sortOrder: (max._max.sortOrder ?? -1) + 1 },
+      data: {
+        columnId: col.id,
+        sortOrder: (max._max.sortOrder ?? -1) + 1,
+        position: keyBetween(lastInTarget?.position ?? null, null),
+      },
     });
     return { ok: true };
   });

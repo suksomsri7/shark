@@ -2,7 +2,9 @@
 // ⚠️ standalone-typesafe: dynamic import + wide cast
 // สัญญา: createCard/updateCard เมื่อ assignee ตั้งใหม่/เปลี่ยน → AppNotification "ได้รับมอบหมายงาน"
 //   + emitOutbox "kanban.card.assigned" · listMyCards(tenantId,systemId,userId) คืนการ์ดของฉัน
-try { process.loadEnvFile(".env"); } catch {}
+// 🔴 ห้ามโหลด `.env` ตรง ๆ (= DB production) — ผ่านด่านกัน prod ตัวกลาง (K1.1)
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-kanban-notify");
 const { prisma } = await import("@/lib/core/db");
 const kanban = (await import("@/lib/modules/kanban/service" as string)) as {
   createBoard: (i: any) => Promise<any>;
@@ -48,11 +50,16 @@ try {
   const c2 = await kanban.createCard({ tenantId: tid, systemId: knSys.id, columnId: col!.id, title: "ออกแบบโปสเตอร์", assigneeUserId: uid });
   chk("KN-2", "createCard มี assignee → แจ้ง +1", (await notif(tid)) === n0 + 1, String(n0 + 1), String(await notif(tid)));
   chk("KN-3", "emitOutbox kanban.card.assigned ≥1", (await outbox(tid)) >= 1);
+  // 🔴 K1.1: แจ้งเตือนต้องยิง "ตรงคน" ไม่ใช่ประกาศทั้งร้าน (recipientUserId = ผู้รับงาน)
+  const nRow1 = await prisma.appNotification.findFirst({ where: { tenantId: tid, title: "ได้รับมอบหมายงาน" }, orderBy: { createdAt: "desc" } });
+  chk("KN-3b", "แจ้งเตือนมี recipientUserId = ผู้รับ (ไม่ใช่ null ทั้งร้าน)", nRow1?.recipientUserId === uid, uid, String(nRow1?.recipientUserId));
 
   // ── updateCard เปลี่ยน assignee เป็นคนใหม่ → แจ้ง ──
   const n1 = await notif(tid);
   await kanban.updateCard({ tenantId: tid, systemId: knSys.id, cardId: c2.id, assigneeUserId: uid2 });
   chk("KN-4", "updateCard เปลี่ยนผู้รับ → แจ้ง +1", (await notif(tid)) === n1 + 1, String(n1 + 1), String(await notif(tid)));
+  const nRow2 = await prisma.appNotification.findFirst({ where: { tenantId: tid, title: "ได้รับมอบหมายงาน" }, orderBy: { createdAt: "desc" } });
+  chk("KN-4b", "เปลี่ยนผู้รับ → recipientUserId เป็นคนใหม่", nRow2?.recipientUserId === uid2, uid2, String(nRow2?.recipientUserId));
 
   // ── updateCard assignee เดิม (ไม่เปลี่ยน) → ไม่แจ้ง ──
   const n2 = await notif(tid);

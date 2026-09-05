@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | K0 (เตรียม run) |
+| WO | K1.2 |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable (ledger + seed + oracle K1.1) · Opus (พิมพ์เขียว v2 ขนาน) |
-| ขั้นที่ถึง | 6 ก.ย. 00:45 น.: worktree `shark-kanban` (branch `session/kanban`) พร้อม · ledger นี้เขียน · ถัดไป seed QC + oracle K1.1 → builder K1.1 |
+| ผู้ทำ | Fable (oracle เขียนแล้ว) → Opus (builder) |
+| ขั้นที่ถึง | 05:19 น.: K1.1 DONE (Opus 22 นาที · Fable ตรวจ: oracle 30/30 · notify · ai-kanban-board · SQL migration ดูตาแล้ว additive · typecheck 0 · fitness) → push main (Vercel migrate) → **Fable รัน backfill บน prod** · สั่ง Opus ทำ K1.2 |
 
 ## การตัดสินใจ (คำถาม §9 ของแบบ — เจ้าของไม่ได้ตอบ Fable ตัดสินแบบปลอดภัย แก้ทีหลังได้)
 | # | เรื่อง | ตัดสิน |
@@ -29,6 +29,7 @@
 | D12 | rich text | `description` เป็น HTML ที่ sanitize ฝั่ง server (allowlist v1 §11.6) · P1 ใช้ textarea+markdown-lite ไม่เพิ่ม dependency |
 | D13 | realtime | Ably channel ต่อบอร์ดผ่าน `src/lib/realtime` + polling fallback |
 | D14 | เลขการ์ด | `cardNo` ต่อบอร์ดจาก `cardNoSeq` (UPDATE…RETURNING ใน tx เดียวกับสร้าง) |
+| D15 | **API + AI ของบอร์ดงาน** (เจ้าของทัก 6 ก.ย. 05:10 "ยังขาดระบบ api") | ทุกฟังก์ชันของบอร์ดงานต้องมี REST + AI tool เหมือนบัญชี: ทะเบียน op เดียว (`src/lib/modules/kanban/api/registry.ts` ใช้ `defineOp` แบบเดียวกับ `account/api/op.ts` — ย้ายแกนกลาง require/dispatch/respond/idempotency/run เป็นของกลาง `src/lib/api/*` ให้ 2 โมดูลใช้ร่วม) → REST `/api/v1/kanban/*` (คีย์ API scope = คีย์สิทธิ์ `kanban.*` · bundle `kanban-read` / `kanban-edit` / `kanban-admin`) · webhook event `kanban.*` · AI tools `kanban_*` generate จากทะเบียน · openapi.json + คู่มือ `/developers/kanban` + สกิล Claude `shark-kanban-api` · ทำเป็น **K1.15** หลัง K1.10 (service ครบ) และทุก WO ของ P2/P3 ต้องเพิ่ม op ของฟีเจอร์ตัวเองในทะเบียน (ข้อสอบ F13 แบบบัญชี) |
 
 ## กติกาของ run นี้ (สืบทอดจาก run บัญชี — ใช้ได้ผล 24/24)
 1. **Fable เขียนข้อสอบ (oracle) ก่อน** ทุก WO ที่ `scripts/qc-kanban-<wo>.mts` · builder ห้ามแก้ · ตกแล้วรายงาน check id + หลักฐาน · ถ้า oracle ผิด Fable แก้เอง
@@ -36,7 +37,7 @@
 3. **Fable ตรวจรับเอง**: รัน oracle ซ้ำ · probe เสริม (ข้ามร้าน · สิทธิ์ · concurrency) · **ภาพจริง**: `bash scripts/acc-v2-serve.sh` (production build บน `.env.qc` :3215) + `scripts/visual-kanban.mts <WO>` ถ่าย desktop 1440×900 + mobile 390×844 → Fable เปิดดูเทียบ mockup ทีละใบ · คลิก/ลากจริงผ่าน puppeteer บน build (dev ไม่ hydrate) · typecheck · fitness 2 โหมด
 4. **เครื่อง 2 คอร์/5G**: งานหนักทีละ 1 (build/typecheck/qc:all) · builder ห้าม `next build`/`qc:all` · ปิด QC server ก่อน typecheck · `NODE_OPTIONS=--max-old-space-size=3584`
 5. **env**: `.env` = prod · ทุกคำสั่ง DB ใช้ `.env.qc` (host `ep-plain-art`) ผ่าน `loadQcEnv()` หรือ export ในบรรทัดเดียว (grep|cut ห้าม source) · migration ลง QC ด้วย `prisma migrate deploy` ก่อน oracle · prod ลงตอน Vercel build
-6. **โค้ด**: ไม่มี `any` ใน src · raw prisma ใน `src/lib/modules/**` ไม่เพิ่ม (F5 ratchet) · ไฟล์ `"use server"` export เฉพาะ action (core อยู่ไฟล์อื่น) · ทุก mutation ตรวจ tenant+system+บทบาทบอร์ด · บอร์ดที่มองไม่เห็น = 404 · เพิ่ม event = ลงทะเบียน consumer พร้อมกัน · เพิ่ม tool AI = ลง SKILLS+KIND_ACCESS
+6. **โค้ด**: ห้าม `prisma format` (Prisma 7 เขียนคอมเมนต์ `/** */` ซ้อนพัง — K1.1) · ไม่มี `any` ใน src · raw prisma ใน `src/lib/modules/**` ไม่เพิ่ม (F5 ratchet) · ไฟล์ `"use server"` export เฉพาะ action (core อยู่ไฟล์อื่น) · ทุก mutation ตรวจ tenant+system+บทบาทบอร์ด · บอร์ดที่มองไม่เห็น = 404 · เพิ่ม event = ลงทะเบียน consumer พร้อมกัน · เพิ่ม tool AI = ลง SKILLS+KIND_ACCESS
 7. **UI ต้องตรงภาพ** (`feedback_ui_must_match_approved_mockups`): ใช้โทเคน/ไอคอนชุดเดียวกับบัญชี V2 (`docs/design/account-v2/mockup.html` · `AccountIcon.tsx` pattern) · คำไทยตามแบบ §5.5 · empty state ตาม §5.7 · ปุ่มลัดตาม §5.6 (ปิดได้ · ไม่ทำงานในช่องพิมพ์)
 8. **ปิดทุก WO**: `wo-notes/kanban-<WO>.md` → Fable ตรวจรับ → commit/push `session/kanban` + `main` (deploy prod) → รายงาน % · ปิดทุกเฟส: `pnpm qc:all` เต็ม (log รายชุดที่ `/tmp/claude-0/qc-all/`)
 9. **ข้อสอบเก่าต้องเขียว**: `qc-kanban-notify.mts` (⚠️ โหลด `.env` ตรง — ต้องย้ายมา qc-env-guard ใน K1.1) · `qc-ai-kanban-board.mts` · fitness 20/20
@@ -47,12 +48,12 @@
 ## ตาราง WO (34) — สถานะสด
 | WO | เรื่อง | model | สถานะ | วันที่ | หมายเหตุ/oracle |
 |---|---|---|---|---|---|
-| K0 | เตรียม run: worktree · ledger · พิมพ์เขียว v2 · seed · harness ภาพ | Fable+Opus | IN_PROGRESS | 6 ก.ย. | |
+| K0 | เตรียม run: worktree · ledger · พิมพ์เขียว v2 · seed · harness ภาพ | Fable+Opus | DONE | 6 ก.ย. | พิมพ์เขียว `docs/modules/13-kanban-v2.md` 1,225 บรรทัด · seed 38 การ์ด · oracle K1.1–K1.4 · `visual-kanban.mts` |
 | **P1 — เทียบชั้น Trello แกนหลัก** |||||
-| K1.1 | ไมเกรชัน A + backfill (`position` `cardNo` `completedAt` `isDoneColumn` `wipLimit` `unitId` `visibility` `color` `createdById` `startAt` `sourceType`) + `ordering.ts` (fractional-indexing) + ย้าย qc-kanban-notify ไป env-guard | Opus | TODO | | `qc-kanban-k1.1.mts` |
-| K1.2 | ป้ายกำกับจริง (`KanbanLabel`/`KanbanCardLabel` 6 สี) + ผู้รับผิดชอบหลายคน (`KanbanCardAssignee`) + backfill + service | Opus | TODO | | `qc-kanban-k1.2.mts` |
-| K1.3 | สมาชิกบอร์ด/ดาว (`KanbanBoardMember`/`KanbanBoardStar`) + สิทธิ์ 2 ชั้น (`boardRole()`) + คีย์สิทธิ์ใหม่ 8 + 404 + AuditLog | Opus | TODO | | `qc-kanban-k1.3.mts` |
-| K1.4 | API ย้ายการ์ด/คอลัมน์ (`moveCard(before/after)` · concurrency · neighbor fallback · rebalance) + done column/`completedAt` + WIP limit + `cardNo` | Opus | TODO | | `qc-kanban-k1.4.mts` (รวม concurrency 20 ตัวพร้อมกัน) |
+| K1.1 | ไมเกรชัน A + backfill (`position` `cardNo` `completedAt` `isDoneColumn` `wipLimit` `unitId` `visibility` `color` `createdById` `startAt` `sourceType`) + `ordering.ts` (fractional-indexing) + ย้าย qc-kanban-notify ไป env-guard | Opus | DONE | 6 ก.ย. | k1.1 30/30 (oracle ผิดเอง 2: regex quote index · อัตราโตคีย์ fractional-indexing ~1 ตัวอักษร/6 แทรก) · migration `20260919000000_kanban_v2_a` additive 9 คำสั่ง · `ordering.ts` · backfill idempotent · notify ตรงคน · `wo-notes/kanban-K1.1.md` |
+| K1.2 | ป้ายกำกับจริง (`KanbanLabel`/`KanbanCardLabel` 6 สี) + ผู้รับผิดชอบหลายคน (`KanbanCardAssignee`) + backfill + service | Opus | IN_PROGRESS | | `qc-kanban-k1.2.mts` (เขียนแล้ว 26 ข้อ) |
+| K1.3 | สมาชิกบอร์ด/ดาว (`KanbanBoardMember`/`KanbanBoardStar`) + สิทธิ์ 2 ชั้น (`boardRole()`) + คีย์สิทธิ์ใหม่ 8 + 404 + AuditLog | Opus | TODO | | `qc-kanban-k1.3.mts` (เขียนแล้ว 29 ข้อ) |
+| K1.4 | API ย้ายการ์ด/คอลัมน์ (`moveCard(before/after)` · concurrency · neighbor fallback · rebalance) + done column/`completedAt` + WIP limit + `cardNo` | Opus | TODO | | `qc-kanban-k1.4.mts` (เขียนแล้ว 30 ข้อ · concurrency 20+30) |
 | K1.5 | ลากวางเดสก์ท็อป (client component ตัวแรก · optimistic · rollback) + หน้าบอร์ดใหม่ตามภาพ 02 (หัวบอร์ด/รางไอคอน/คอลัมน์ 240px/การ์ดมีตรา) | Opus | TODO | | `visual-kanban 1.5` + puppeteer drag |
 | K1.6 | หลังการ์ด (โมดัล 872px / แผ่นเต็มจอ) ตามภาพ 03: ชื่อ/รายละเอียด/ผู้รับผิดชอบ/กำหนดส่ง+วันเริ่ม/ป้าย/ย้าย/ทำสำเนา/เก็บ · URL `?card=` | Sonnet | TODO | | `qc-kanban-k1.6` + visual |
 | K1.7 | เช็คลิสต์ (หลายชุด · มอบหมาย/กำหนดส่งรายรายการ · แถบความคืบหน้า · ซ่อนที่ทำแล้ว) | Sonnet | TODO | | |
@@ -63,6 +64,7 @@
 | K1.12 | เทมเพลต 6 ชุดธุรกิจไทย + หน้ารวมบอร์ดใหม่ (ภาพ 01: ดาว/จัดกลุ่มสาขา/แถวเทมเพลต) + สร้างบอร์ดจากเทมเพลต atomic | Sonnet | TODO | | |
 | K1.13 | มือถือ (ภาพ 07): เลื่อนทีละคอลัมน์ · กดค้างลาก · ปัดขวา=เสร็จ/ซ้าย=เก็บ + undo 5 วิ · หลังการ์ดเต็มจอ · งานของฉันใหม่ (ภาพ 06 ฝั่งขวา) | Sonnet | TODO | | visual mobile |
 | K1.14 | ปุ่มลัด (ปิดได้ · ไม่ชน IME) · empty state ทุกหน้า · realtime Ably + polling · หน้าคลังเก็บ/กู้คืน · เมนู 7 หมวด | Opus | TODO | | 2 browser เห็นกันใน 2 วิ |
+| **K1.15** | **REST API + AI tools ของบอร์ดงาน** (D15): แกนกลาง `src/lib/api/*` ดึงจากบัญชี · ทะเบียน op บอร์ด/คอลัมน์/การ์ด/ป้าย/สมาชิก/เช็คลิสต์/ความเห็น/ไฟล์/กิจกรรม/ค้นหา (~60 op) · scope bundles · webhook · AI tools ~15 · openapi + `/developers/kanban` + สกิล Claude | Opus | TODO | | `qc-kanban-k1.15.mts` + agent ภายนอกใช้สกิลทำ 5 งาน |
 | **P2 — มุมมอง + อัตโนมัติ + รายงาน** |||||
 | K2.1 | มุมมองตาราง (แก้ในช่อง · เลือกหลาย · จัดกลุ่ม · CSV) ภาพ 04 | Sonnet | TODO | | |
 | K2.2 | มุมมองปฏิทิน (ลากเปลี่ยนวัน · ถาดยังไม่กำหนด · ซ้อนจอง/ลา/ประชุม) ภาพ 05 | Sonnet | TODO | | |
@@ -106,21 +108,24 @@
 
 ### K1.2 — ป้ายกำกับจริง + ผู้รับผิดชอบหลายคน (Opus · `qc-kanban-k1.2.mts`)
 - ตาราง `KanbanLabel {id tenantId systemId boardId name color KanbanLabelColor sortOrder createdAt updatedAt @@unique([boardId,name]) @@index([tenantId,systemId,boardId])}` · `KanbanCardLabel {cardId labelId tenantId @@id([cardId,labelId])}` · `KanbanCardAssignee {cardId userId tenantId assignedById assignedAt @@id([cardId,userId]) @@index([tenantId,userId])}`
-- service `labels.ts`: `listLabels(ctx,boardId)` `createLabel` (≤30/บอร์ด · ชื่อซ้ำ → error ไทย) `updateLabel` `deleteLabel` (ปลดจากทุกการ์ด · activity board-level) `setCardLabels(ctx,cardId,labelIds[])` (ตรวจ label ของบอร์ดเดียวกัน)
-- service `cards.ts`: `setCardAssignees(ctx,cardId,userIds[])` (ตรวจ membership accepted ของร้าน · แจ้งเตือนเฉพาะคนใหม่ · เขียน `assigneeUserId` = คนแรกช่วงเปลี่ยนผ่าน) · `listMyCards` อ่านจากตารางใหม่ ∪ ช่องเดิม
+- **ctx ทุก service ใหม่** = `{ tenantId, systemId, actorUserId?: string | null }` (ไฟล์ `src/lib/modules/kanban/types.ts`) · service `labels.ts`: `listLabels(ctx,boardId) → [{id,name,color,sortOrder,cardCount}]` · `createLabel(ctx,boardId,{name,color}) → row` (≤30/บอร์ด · ชื่อซ้ำ/สีนอก enum → throw Error ไทย) · `updateLabel(ctx,labelId,{name?,color?})` · `deleteLabel(ctx,labelId)` (ปลดจากทุกการ์ด + ลบชื่อออกจาก `labels` Json) · `setCardLabels(ctx,cardId,labelIds[])` (แทนที่ทั้งชุด · label ต้องเป็นของบอร์ดเดียวกับการ์ด ไม่งั้น throw · **เขียน `labels` Json = ชื่อป้ายคู่กันช่วงเปลี่ยนผ่าน**)
+- service `cards.ts` (ใหม่ · service.ts re-export ได้): `setCardAssignees(ctx,cardId,userIds[])` (แทนที่ทั้งชุด · ทุก userId ต้องเป็น membership accepted ของร้าน ไม่งั้น throw ไทยและไม่เขียนบางส่วน · แจ้งเตือน `recipientUserId` เฉพาะคนที่เพิ่งเพิ่ม · เขียน `assigneeUserId` = คนแรกของลิสต์ (null เมื่อว่าง) ช่วงเปลี่ยนผ่าน) · `listMyCards(tenantId,systemId,userId)` อ่านจาก `KanbanCardAssignee` ∪ `assigneeUserId`
 - backfill `scripts/backfill-kanban-v2-b.mts`: `labels Json` → สร้าง `KanbanLabel` ต่อบอร์ด (สีวนจาก 6 สี) + แถวเชื่อม · `assigneeUserId` → `KanbanCardAssignee` · idempotent
 - Oracle: CRUD ป้าย · ≤30 · ชื่อซ้ำ · การ์ดข้ามบอร์ดใส่ป้ายไม่ได้ · assignee หลายคน + แจ้งเตือนเฉพาะคนใหม่ · backfill ตรงกับ Json เดิม · งานของฉันเห็นการ์ดที่เป็นผู้รับคนที่ 2
 
 ### K1.3 — สมาชิกบอร์ด + สิทธิ์ 2 ชั้น (Opus · `qc-kanban-k1.3.mts`)
 - ตาราง `KanbanBoardMember {id tenantId boardId userId role KanbanBoardRole invitedById createdAt @@unique([boardId,userId])}` · enum `KanbanBoardRole {VIEWER EDITOR ADMIN}` · `KanbanBoardStar {tenantId boardId userId createdAt @@id([boardId,userId])}`
 - `src/lib/core/permissions.ts` kanban keys เพิ่ม: `kanban.board.read` `kanban.card.comment` `kanban.card.attach` `kanban.board.member.manage` `kanban.label.manage` `kanban.automation.manage` `kanban.report.view` `kanban.template.manage` (ป้ายไทย) · ทุกที่ที่เคยตรวจแค่ module → ตรวจ `kanban.board.read` เป็นขั้นต่ำ
-- `src/lib/modules/kanban/access.ts`: `boardRole(auth, board): "ADMIN"|"EDITOR"|"VIEWER"|null` ตาม D2 · `visibleBoardsWhere(auth)` สำหรับ list/search/my-tasks · `assertBoardRole(ctx, boardId, min)` → บอร์ดมองไม่เห็น = throw 404-class error (`KanbanNotFound`) ไม่ใช่ 403
+- `src/lib/modules/kanban/types.ts`: `KanbanActor = { userId, role: Role, unitAccess: string[], permissions: Record<string,unknown> }` (สร้างจาก membership) · `KanbanCtx = { tenantId, systemId, actorUserId?: string|null }`
+- `src/lib/modules/kanban/access.ts` (pure ไม่แตะ prisma): `boardRole(actor, board, memberships?: {userId,role}[]): "ADMIN"|"EDITOR"|"VIEWER"|null` ตาม D2 (OWNER→ADMIN · สมาชิก→role · MANAGER ที่ unitAccess คลุม board.unitId→EDITOR · TENANT→VIEWER · ไม่มีคีย์ kanban.* ใด ๆ → null · **คีย์ kanban.* ตัวใดตัวหนึ่ง = ได้ board.read โดยนัย** (ผู้ใช้เดิมไม่หลุด)) · `visibleBoardsWhere(actor): Prisma.KanbanBoardWhereInput` (OWNER=ทั้งหมด · อื่น = OR[TENANT, member, unit ที่คุม (MANAGER)] · ไม่มีคีย์ = `{ id: "__none__" }`) · error class `KanbanNotFoundError` (name ตรงนี้ · status 404) และ `KanbanForbiddenError` (403)
+- `src/lib/modules/kanban/members.ts`: `boardRoleOf(ctx, boardId)` (โหลด membership+สมาชิกจาก DB → boardRole) · `assertBoardRole(ctx, boardId, min)` (มองไม่เห็น → KanbanNotFoundError · เห็นแต่ต่ำกว่า → KanbanForbiddenError) · `listMembers(ctx, boardId) → [{userId,name,email,role,tenantRole}]` · `addMember(ctx, boardId, userId, role)` (ผู้ทำต้อง ADMIN · userId ต้องเป็น membership accepted ของร้าน) · `setMemberRole` · `removeMember` (ADMIN ที่ประกาศคนสุดท้ายห้ามถอด/ลดขั้น — OWNER แม้เป็น ADMIN โดยนัยก็ต้องตั้ง ADMIN ใหม่ก่อน) · `leaveBoard` · `starBoard/unstarBoard` (idempotent · บอร์ดที่มองไม่เห็น → NotFound) · `listStarredBoardIds(ctx)` · `setBoardVisibility(ctx, boardId, vis)` (ADMIN) · ทุกตัวเขียน AuditLog กลาง (`writeAudit` ของแพลตฟอร์ม — ย้าย helper ไป `src/lib/core/audit.ts` หรือ import จาก account/access) action `kanban.board.member.add|role|remove` · `kanban.board.visibility` · targetType "KanbanBoard" targetId=boardId
+- `service.ts` เพิ่ม `listBoardsFor(ctx, actor)` (กรองด้วย visibleBoardsWhere + ดาว) · `getBoardFor(ctx, actor, boardId) → BoardWithData & { role }` (มองไม่เห็น → KanbanNotFoundError) · `listMyCards(tenantId, systemId, userId, actor?)` ตัดการ์ดจากบอร์ดที่ actor มองไม่เห็น · `actions.ts`/`ui.tsx` เดิมเปลี่ยนมาใช้ตัว For (หน้าเดิมต้องไม่โชว์บอร์ดที่มองไม่เห็นตั้งแต่ WO นี้)
 - service `members.ts`: `listMembers` `addMember` (ต้องเป็น membership ของร้าน) `setMemberRole` `removeMember` (ADMIN คนสุดท้ายห้าม · OWNER นับโดยนัย) `leaveBoard` `starBoard/unstarBoard` · `setBoardVisibility` · ทุกตัวเขียน AuditLog กลาง (`writeAudit` เดิมของแพลตฟอร์ม) + activity
 - Oracle: STAFF ไม่ใช่สมาชิก → PRIVATE 404 / TENANT VIEWER · VIEWER mutation → ปฏิเสธ · MANAGER สาขา = EDITOR บอร์ดสาขาตัวเอง แต่ 404 บอร์ดสาขาอื่น · ADMIN คนสุดท้าย · ดาว · AuditLog มีแถว · my-tasks ไม่โชว์การ์ดจากบอร์ด PRIVATE ที่ถูกถอด
 
 ### K1.4 — ย้ายการ์ด/คอลัมน์ + done + WIP + cardNo (Opus · `qc-kanban-k1.4.mts`)
-- `moveCard(ctx,{cardId,toColumnId,beforeCardId?,afterCardId?})` ใน tx: อ่าน position เพื่อนบ้านจริง · เพื่อนบ้านหาย → ท้ายคอลัมน์ + `placedAt:"end"` ใน response · การ์ด ARCHIVED → error `CARD_ARCHIVED` · WIP เต็ม → error `WIP_LIMIT` (เว้น `force` โดย ADMIN) · เข้า done column → `completedAt=now` ออก → null · เขียน `sortOrder` ตามลำดับใหม่ด้วย (dual-write) · activity CARD_MOVED · outbox `kanban.card.moved` (+ `kanban.card.completed` เมื่อเข้า done) idempotency `#cardId#updatedAt`
-- `moveColumn(ctx,{columnId,beforeColumnId?,afterColumnId?})` · `setColumnDone` · `setColumnWip` · `renameColumn` action · `archiveColumn` ต้องว่าง + `moveAllCards(from,to)`
+- ไฟล์ `src/lib/modules/kanban/moves.ts` · `moveCard(ctx,{cardId,toColumnId,beforeCardId?,afterCardId?,force?}) → { ok:true, position, placedAt:"between"|"end", card } | { ok:false, code:"CARD_ARCHIVED"|"WIP_LIMIT"|"NOT_FOUND"|"CROSS_BOARD", message }` ใน tx: อ่าน position เพื่อนบ้านจริง · เพื่อนบ้านหาย → ท้ายคอลัมน์ + `placedAt:"end"` ใน response · การ์ด ARCHIVED → error `CARD_ARCHIVED` · WIP เต็ม → error `WIP_LIMIT` (เว้น `force` โดย ADMIN) · เข้า done column → `completedAt=now` ออก → null · เขียน `sortOrder` ตามลำดับใหม่ด้วย (dual-write) · activity CARD_MOVED · outbox `kanban.card.moved` (+ `kanban.card.completed` เมื่อเข้า done) idempotency `#cardId#updatedAt`
+- `moveColumn(ctx,{columnId,beforeColumnId?,afterColumnId?}) → {ok}` (dual-write sortOrder 0..n) · `setColumnDone(ctx,columnId,bool)` (ปลดธง → ล้าง completedAt ของการ์ดในคอลัมน์) · `setColumnWip(ctx,columnId,n|null)` (n ≥ 1 ไม่งั้น throw) · `renameColumn(ctx,columnId,name)` · `archiveColumn(ctx,columnId)` (มีการ์ด ACTIVE → throw ไทย) · `moveAllCards(ctx,{fromColumnId,toColumnId}) → {moved}` (ต่อท้ายตามลำดับเดิม)
 - `cardNo`: สร้างการ์ดใน tx `UPDATE "KanbanBoard" SET "cardNoSeq"="cardNoSeq"+1 WHERE id=$1 RETURNING "cardNoSeq"` · เพิ่ม `@@unique([boardId,cardNo])` migration B (หลัง backfill A)
 - rebalance: เมื่อ key ยาว >50 → `rebalanceColumn` ใน tx เดียว (rewrite ทุกการ์ดในคอลัมน์) ทันที (ไม่ต้อง job queue ใน P1 — ปริมาณเล็ก)
 - Oracle: ย้ายในคอลัมน์เดียว/ข้ามคอลัมน์ ลำดับคงหลังโหลดใหม่ · 20 ย้ายพร้อมกันจุดเดียว → ไม่ล้ม ลำดับ deterministic ไม่มี key ซ้ำ (หรือซ้ำแล้วแตกด้วย createdAt) · เพื่อนบ้านถูก archive ระหว่างลาก → ไปท้าย · WIP · done/completedAt ไป-กลับ · cardNo ไม่ซ้ำเมื่อสร้าง 30 ใบพร้อมกัน · 60 แทรกจุดเดิม → rebalance แล้วลำดับเดิม · outbox event + consumer ลงทะเบียน
@@ -161,4 +166,6 @@ URL `?assignee=me|<id>&label=<id>&due=overdue|today|week|none&status=done|open&q
 ปุ่มลัดตาม §5.6 (`?` แสดงรายการ · ปิดได้ใน `/app/settings` ผู้ใช้ · ไม่ทำงานเมื่อ focus อยู่ใน input/textarea/contenteditable หรือ IME composing) · empty state ทุกหน้าตาม §5.7 · realtime: `publish(kanbanChannel(tenant,board), {type:"card.moved"|...})` จากทุก mutation (หลัง commit) + client subscribe/polling fallback (`realtimeMode()`) · หน้าคลังเก็บ `/kanban/b/{id}/archive` (การ์ด/คอลัมน์ · กู้คืน · ค้นหา) · เมนู 7 หมวด (`childrenFor("KANBAN")` + `kanbanTabs()` ตรงกัน — หน้าที่ยังไม่มาให้ซ่อนหรือ "เร็ว ๆ นี้") · Oracle: 2 หน้า puppeteer เห็นการย้ายกันใน 2 วิ (polling mode ใน QC) · ปุ่มลัดไม่ทำงานในช่องพิมพ์ · empty state ทุกหน้ามีปุ่มขั้นต่อไป · คลังเก็บกู้คืน
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
-- 6 ก.ย. 00:45 น. — เริ่ม run · worktree + ledger · Opus เขียนพิมพ์เขียว v2 ขนาน
+- 05:19 น. — K1.1 ปิด (Opus 22 นาที) · ความคืบหน้า P1 1/15 · เริ่ม K1.2
+- 6 ก.ย. 05:10 น. — เจ้าของทัก "ยังขาดระบบ api" → เพิ่ม D15 + WO K1.15 (REST+AI ของบอร์ดงาน ทะเบียนเดียวแบบบัญชี) · พิมพ์เขียว v2 เสร็จ 1,225 บรรทัด (Opus 26 นาที)
+- 6 ก.ย. 00:25–04:50 น. — เตรียม run (worktree · ledger · seed · oracle K1.1 · พิมพ์เขียว v2 โดย Opus) · 04:55 เริ่ม K1.1 (Opus) · worktree + ledger · Opus เขียนพิมพ์เขียว v2 ขนาน

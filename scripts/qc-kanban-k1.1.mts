@@ -46,7 +46,7 @@ try {
   const en = Object.fromEntries(enums.map((r) => [r.typname, r.labels]));
   chk("K1.1-S1.5", "enum ใหม่ 3 ตัว: Visibility PRIVATE,TENANT · LabelColor 6 สี · SourceType 7 ค่า", en.KanbanBoardVisibility === "PRIVATE,TENANT" && en.KanbanLabelColor === "SLATE,BLUE,GREEN,AMBER,RED,PURPLE" && en.KanbanCardSourceType === "MANUAL,TEMPLATE,CHAT,FORM,EMAIL,AUTOMATION,AI", "ตามสัญญา", JSON.stringify(en));
   const idx = await q<{ indexname: string; indexdef: string }>(`select indexname, indexdef from pg_indexes where tablename in ('KanbanBoard','KanbanCard')`);
-  chk("K1.1-S1.6", "index ใหม่: Board(tenantId,systemId,unitId) · Card(tenantId,systemId,status,dueAt) · Card(boardId,cardNo)", idx.some((i) => /"tenantId", "systemId", "unitId"/.test(i.indexdef)) && idx.some((i) => /"tenantId", "systemId", "status", "dueAt"/.test(i.indexdef)) && idx.some((i) => /"boardId", "cardNo"/.test(i.indexdef)), "3 index", idx.map((i) => i.indexname).join(","), "MAJOR");
+  chk("K1.1-S1.6", "index ใหม่: Board(tenantId,systemId,unitId) · Card(tenantId,systemId,status,dueAt) · Card(boardId,cardNo)", idx.some((i) => /"tenantId", "systemId", "unitId"/.test(i.indexdef)) && idx.some((i) => /"tenantId", "systemId", "?status"?, "dueAt"/.test(i.indexdef)) && idx.some((i) => /"boardId", "cardNo"/.test(i.indexdef)), "3 index", idx.map((i) => i.indexname).join(","), "MAJOR");
   // migration ไฟล์ additive
   const migDirs = readdirSync("prisma/migrations").filter((d) => /kanban_v2_a/i.test(d));
   const migSql = migDirs.map((d) => readFileSync(`prisma/migrations/${d}/migration.sql`, "utf8")).join("\n");
@@ -102,9 +102,10 @@ try {
   chk("K1.1-S3.2", "keyBetween ตรงไลบรารี (null,null)=a0 · เรียง k0<kMid<k1", k0 === lib.generateKeyBetween(null, null) && k0 === "a0" && k0 < kMid && kMid < k1, "a0 <", `${k0} ${kMid} ${k1}`);
   const ks = ord.keysBetween(null, null, 5) as string[];
   chk("K1.1-S3.3", "keysBetween(null,null,5) ได้ 5 คีย์เรียงขึ้น", ks.length === 5 && ks.every((k, i) => i === 0 || ks[i - 1]! < k), "5 เรียง", ks.join(","));
+  // fractional-indexing โต ~1 ตัวอักษร/6 แทรก (base62 แบ่งครึ่ง) ⇒ ต้อง ~250 แทรกจุดเดิมถึงเกิน 50 (Fable แก้: เดิมเขียน 60 ตามสัญชาตญาณ base2)
   let a: string | null = null; let b: string | null = ord.keyBetween(null, null); const grown: string[] = [];
-  for (let i = 0; i < 60; i++) { const k: string = ord.keyBetween(a, b); grown.push(k); a = k; }
-  chk("K1.1-S3.4", "แทรกจุดเดิม 60 ครั้ง → key ยาวขึ้น และ needsRebalance() = true (เกิน 50 ตัวอักษร)", ord.needsRebalance(grown) === true && Math.max(...grown.map((k) => k.length)) > 50, "true", `maxLen=${Math.max(...grown.map((k) => k.length))}`);
+  for (let i = 0; i < 260; i++) { const k: string = ord.keyBetween(a, b); grown.push(k); a = k; }
+  chk("K1.1-S3.4", "แทรกจุดเดิม 260 ครั้ง → key ยาวเกิน 50 และ needsRebalance() = true", ord.needsRebalance(grown) === true && Math.max(...grown.map((k) => k.length)) > 50, "true", `maxLen=${Math.max(...grown.map((k) => k.length))}`);
   const rb = ord.rebalanceKeys(24) as string[];
   chk("K1.1-S3.5", "rebalanceKeys(24) → 24 คีย์สั้น เรียงขึ้น ไม่ซ้ำ", rb.length === 24 && new Set(rb).size === 24 && rb.every((k, i) => i === 0 || rb[i - 1]! < k) && Math.max(...rb.map((k) => k.length)) <= 4, "24 สั้น", `${rb.length} maxLen=${Math.max(...rb.map((k) => k.length))}`);
   chk("K1.1-S3.6", "needsRebalance([]) = false และคีย์สั้น = false", ord.needsRebalance([]) === false && ord.needsRebalance(rb) === false, "false", "true", "MAJOR");
@@ -143,8 +144,9 @@ try {
   const oldQc = readFileSync("scripts/qc-kanban-notify.mts", "utf8");
   chk("K1.1-S6.1", "qc-kanban-notify.mts ไม่ loadEnvFile('.env') ตรง (ใช้ qc-env-guard) + ตรวจ recipientUserId", !/loadEnvFile\(["']\.env["']\)/.test(oldQc) && /qc-env-guard/.test(oldQc) && /recipientUserId/.test(oldQc), "env-guard", "ยังแตะ prod/ไม่ตรวจ", "CRITICAL");
 
-  // cleanup ของที่ข้อสอบสร้าง
+  // cleanup ของที่ข้อสอบสร้าง (คืน cardNoSeq ให้เท่า cardNo สูงสุด — ไม่งั้นรอบถัดไป S2.5 แดงหลอก)
   await prisma.kanbanCard.deleteMany({ where: { id: created.id } });
+  await prisma.$executeRawUnsafe(`UPDATE "KanbanBoard" b SET "cardNoSeq" = COALESCE((SELECT MAX("cardNo") FROM "KanbanCard" c WHERE c."boardId" = b.id), 0) WHERE b.id = '${bPatong.id}'`);
   await prisma.kanbanColumn.deleteMany({ where: { id: newCol.id } });
   await prisma.kanbanBoard.deleteMany({ where: { id: { in: [nb.id, nb2.id] } } });
 } catch (e) {

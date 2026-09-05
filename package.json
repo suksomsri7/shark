@@ -101,6 +101,7 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "ably": "^2.28.0",
+    "fractional-indexing": "^4.0.0",
     "jose": "^6.2.4",
     "next": "16.2.11",
     "next-intl": "^4.13.2",

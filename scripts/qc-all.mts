@@ -22,6 +22,9 @@
 // qc-all จะ seed ให้ **ครั้งเดียวต่อ run** ก่อนเริ่มยิงชุดเทสต์ (ข้ามให้เองถ้า DB มีชุดข้อมูลอยู่แล้ว)
 // seed ล้ม = ชุดพวกนั้นขึ้น ❌ พร้อมเหตุผล แต่ชุดอื่นในส่วนเดียวกัน**ยังรันต่อ** (ไม่ล้มทั้ง run)
 //
+// 🌱 เครื่องหมาย `// requires: kanban-seed` (K1.1) ทำงานแบบเดียวกัน แต่ใช้ชุดข้อมูล "บอร์ดงาน"
+// (`scripts/seed-kanban-qc.mts` + เฉลย `scripts/kanban-expected.json`) — seed ต่อเมื่อ DB ยังไม่มีร้านนั้น
+//
 // 🔴 ด่านกัน production (WO 9.2 ข้อ 18): ชุดข้อสอบเกือบทั้งหมด **สร้างและลบข้อมูลจริง**
 //    ถ้า DATABASE_URL ที่ส่งเข้ามาชี้ Neon branch `production` = หยุดตั้งแต่ยังไม่เริ่ม
 //    (ตั้ง ALLOW_PROD_QC=1 ถึงจะข้ามได้ — ต้องจงใจ)
@@ -120,6 +123,48 @@ if (needsSeed.length) {
   );
 }
 
+// ── 🌱 ชุดข้อมูล QC "บอร์ดงาน" (K1.1) — เครื่องหมาย `// requires: kanban-seed` ──
+// ต่างจากชุดบัญชีตรงที่ seed-kanban-qc.mts ไม่มีโหมด --if-missing (ลบร้างแล้วสร้างใหม่เสมอ)
+// ⇒ ถามฐานข้อมูลก่อน: มีร้าน QC บอร์ดงานอยู่แล้ว (resolveKanbanScope ไม่ null) = ไม่ seed ซ้ำ
+//   (seed ซ้ำ = เฉลย scripts/kanban-expected.json เปลี่ยน id ทั้งไฟล์ทุกครั้งที่รัน qc:all)
+const KANBAN_SEED_MARKER = "// requires: kanban-seed";
+const needsKanbanSeed = picked.filter((f) => {
+  try {
+    return readFileSync(join(ROOT, "scripts", f), "utf8").includes(KANBAN_SEED_MARKER);
+  } catch {
+    return false;
+  }
+});
+let kanbanSeedBlocked: string | null = null;
+
+if (needsKanbanSeed.length) {
+  console.log(`🌱 ${needsKanbanSeed.length} ชุดต้องใช้ชุดข้อมูล QC บอร์ดงาน: ${needsKanbanSeed.map((f) => f.replace(/^qc-|\.mts$/g, "")).join(", ")}`);
+  const t0 = Date.now();
+  let present = false;
+  try {
+    const { prisma } = await import("@/lib/core/db");
+    const kq = (await import("./kanban-qc-env.mts" as string)) as {
+      resolveKanbanScope: (p: unknown) => Promise<{ tenantId: string; systemId: string } | null>;
+    };
+    present = (await kq.resolveKanbanScope(prisma)) !== null;
+    await prisma.$disconnect();
+  } catch (e) {
+    kanbanSeedBlocked = `ตรวจชุดข้อมูล QC บอร์ดงานไม่ได้: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`;
+  }
+  if (!kanbanSeedBlocked && present) {
+    console.log(`   ↩︎ มีชุดข้อมูล QC บอร์ดงานใน DB นี้อยู่แล้ว → ข้าม seed (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  } else if (!kanbanSeedBlocked) {
+    const seed = runStep("seed-kanban-qc.mts");
+    if (seed.code !== 0) {
+      kanbanSeedBlocked = "seed ชุดข้อมูล QC บอร์ดงานล้ม (scripts/seed-kanban-qc.mts) — ดู log ด้านบน";
+      console.log(seed.out.split("\n").slice(-25).join("\n"));
+    }
+  }
+  console.log(
+    `   ${kanbanSeedBlocked ? "❌" : "✅"} เตรียมชุดข้อมูล QC บอร์ดงาน ${((Date.now() - t0) / 1000).toFixed(1)}s${kanbanSeedBlocked ? ` — ${kanbanSeedBlocked}` : ""}\n`,
+  );
+}
+
 type Row = { name: string; code: number; summary: string; ms: number };
 const rows: Row[] = [];
 
@@ -129,6 +174,12 @@ for (const f of picked) {
     const name = f.replace(/^qc-|\.mts$/g, "");
     rows.push({ name, code: 1, summary: seedBlocked, ms: 0 });
     console.log(`  ❌ ${name.padEnd(24)} ${seedBlocked}`);
+    continue;
+  }
+  if (kanbanSeedBlocked && needsKanbanSeed.includes(f)) {
+    const name = f.replace(/^qc-|\.mts$/g, "");
+    rows.push({ name, code: 1, summary: kanbanSeedBlocked, ms: 0 });
+    console.log(`  ❌ ${name.padEnd(24)} ${kanbanSeedBlocked}`);
     continue;
   }
   const r = spawnSync("pnpm", ["exec", "tsx", join("scripts", f)], {
