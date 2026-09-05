@@ -363,6 +363,18 @@ export function inboxEmailAddress(tenantSlug: string): string {
   return `inbox-${slug}@shark.in.th`;
 }
 
+/**
+ * WO B4 additive — ที่อยู่อีเมลของร้านนี้ โดยไม่ต้องมี session (REST มีแต่ tenantId)
+ * `Tenant` เป็น global-scope model ⇒ `tenantDb` ไม่ยัดตัวกรองให้ ต้องระบุ id เอง (ทำแล้วในนี้)
+ */
+export async function inboxEmailAddressOf(ctx: InboxCtx): Promise<string> {
+  const t = await tenantDb(ctx).tenant.findUnique({
+    where: { id: ctx.tenantId },
+    select: { slug: true },
+  });
+  return inboxEmailAddress(t?.slug ?? "");
+}
+
 // ─────────────────── ตัวเลขแผงขวา g15 ───────────────────
 
 export type InboxStats = {

@@ -58,6 +58,8 @@ export type AssetDetail = {
   disposalMethodLabel: string | null;
   disposalAmount: number | null;
   accounts: { asset: LedgerRef | null; accum: LedgerRef | null; expense: LedgerRef | null };
+  /** WO B4 additive — บิลซื้อ/ใบเสร็จที่ทำให้เกิดสินทรัพย์ตัวนี้ (null = ขึ้นทะเบียนเอง) */
+  sourceDocument: { id: string; docNo: string | null; docType: string } | null;
   /** ค่าเสื่อมสะสมทั้งหมด */
   accumDepreciation: number;
   netBookValue: number;
@@ -79,11 +81,17 @@ export async function assetDetail(ctx: AssetCtx, assetId: string): Promise<Asset
 
   const ledgerIds = [a.assetAccountId, a.accumAccountId, a.expenseAccountId];
   const entryIds = a.depreciations.map((d) => d.entryId).filter((x): x is string => !!x);
-  const [ledgers, entries] = await Promise.all([
+  const [ledgers, entries, sourceDocument] = await Promise.all([
     db.accountLedger.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, code: true, name: true } }),
     entryIds.length
       ? db.accountJournalEntry.findMany({ where: { id: { in: entryIds } }, select: { id: true, docNo: true } })
       : Promise.resolve([]),
+    a.sourceDocumentId
+      ? db.accountDocument.findFirst({
+          where: { id: a.sourceDocumentId },
+          select: { id: true, docNo: true, docType: true },
+        })
+      : Promise.resolve(null),
   ]);
   const ledgerById = new Map(ledgers.map((l) => [l.id, l]));
   const docNoById = new Map(entries.map((e) => [e.id, e.docNo]));
@@ -124,6 +132,7 @@ export async function assetDetail(ctx: AssetCtx, assetId: string): Promise<Asset
       accum: ledgerById.get(a.accumAccountId) ?? null,
       expense: ledgerById.get(a.expenseAccountId) ?? null,
     },
+    sourceDocument,
     accumDepreciation: accum,
     netBookValue: a.cost - accum,
     monthsDepreciated: a.depreciations.length,

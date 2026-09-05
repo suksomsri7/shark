@@ -521,6 +521,8 @@ export async function ledgerDetail(ctx: CoaCtx, id: string, opts: { asOf?: Date 
     asOf,
     balanceSatang,
     monthDeltaSatang,
+    monthDebitSatang: monthSum._sum.debit ?? 0,
+    monthCreditSatang: monthSum._sum.credit ?? 0,
     monthKey,
     finance,
     mappingKeys: mappings.map((m) => m.key),
@@ -695,6 +697,9 @@ export type LedgerRunningRow = {
   running: number;
   /** ใบสำคัญนี้ถูกกลับรายการไปแล้ว (ยังต้องนับในยอด — สมุดรายวัน immutable) */
   reversed: boolean;
+  /** WO B4 additive — เอกสารต้นทางของใบสำคัญ (REST ส่ง `ref{type,id}` · null = ลงมือ/ไม่มีต้นทาง) */
+  refType: string | null;
+  refId: string | null;
 };
 
 export type LedgerRunning = {
@@ -730,7 +735,18 @@ export async function ledgerRunning(
         debit: true,
         credit: true,
         note: true,
-        entry: { select: { id: true, date: true, docNo: true, memo: true, status: true, createdAt: true } },
+        entry: {
+          select: {
+            id: true,
+            date: true,
+            docNo: true,
+            memo: true,
+            status: true,
+            createdAt: true,
+            refType: true,
+            refId: true,
+          },
+        },
       },
       orderBy: [{ entry: { date: "asc" } }, { entry: { createdAt: "asc" } }, { id: "asc" }],
     }),
@@ -750,6 +766,8 @@ export async function ledgerRunning(
       credit: l.credit,
       running,
       reversed: l.entry.status === "REVERSED",
+      refType: l.entry.refType,
+      refId: l.entry.refId,
     };
   });
   const movementDebit = rows.reduce((s, r) => s + r.debit, 0);

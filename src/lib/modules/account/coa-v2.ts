@@ -460,6 +460,10 @@ export type LedgerDetail = {
   asOf: Date;
   balanceSatang: number;
   monthDeltaSatang: number;
+  /** WO B4 additive — เดบิต/เครดิต "ดิบ" ของเดือนนี้ (monthDeltaSatang เป็นยอดสุทธิตามธรรมชาติของหมวด
+   *  ⇒ แยก 2 ขาไม่ได้) · REST `GET /chart/{id}` ส่ง `monthMovement{debitSatang,creditSatang}` */
+  monthDebitSatang: number;
+  monthCreditSatang: number;
   monthKey: string;
   /** ช่องทางเงินที่ผูกกับบัญชีนี้ (ป้าย "ผูกกับบัญชีเงิน") */
   finance: { id: string; code: string | null; name: string } | null;

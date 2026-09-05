@@ -95,11 +95,11 @@ try {
 
   // ═══ G3 general ledger + reports ═══
   const a6100 = flat?.find((a) => a.code === "6100");
-  const gl = await call("GET", `/reports/general-ledger?accountId=${a6100?.id}&from=2026-09-01&to=2026-09-30`, R);
+  const gl = await call("GET", `/reports/general-ledger?accountId=${a6100?.id}&from=2026-01-01&to=2026-12-31`, R);
   const g = gl.body?.data;
-  chk("B4-G3.1", "GET /reports/general-ledger?accountId&from&to → account + openingSatang + rows[{date,journalNo,memo,debitSatang,creditSatang,balanceSatang}] + closingSatang · Σdebit ตรง drill เฉลย 6100", gl.status === 200 && g?.account?.code === "6100" && Number.isInteger(g?.openingSatang) && Array.isArray(g?.rows) && g.rows.length === W.drill["6100"].lines && sumBy(g.rows, "debitSatang") === W.drill["6100"].debit && sumBy(g.rows, "creditSatang") === W.drill["6100"].credit, JSON.stringify(W.drill["6100"]), `${gl.status} rows=${g?.rows?.length} dr=${sumBy(g?.rows ?? [], "debitSatang")}`);
+  chk("B4-G3.1", "GET /reports/general-ledger?accountId&from&to (ทั้งปี) → account + openingSatang + rows[…] + closingSatang · Σdebit/จำนวนบรรทัด ตรง drill เฉลย 6100 (fixture ทั้งปี)", gl.status === 200 && g?.account?.code === "6100" && Number.isInteger(g?.openingSatang) && Array.isArray(g?.rows) && g.rows.length === W.drill["6100"].lines && sumBy(g.rows, "debitSatang") === W.drill["6100"].debit && sumBy(g.rows, "creditSatang") === W.drill["6100"].credit, JSON.stringify(W.drill["6100"]), `${gl.status} rows=${g?.rows?.length} dr=${sumBy(g?.rows ?? [], "debitSatang")}`);
   chk("B4-G3.2", "general ledger running balance ต่อเนื่อง + closing = แถวสุดท้าย", (g?.rows ?? []).every((r: Any, i: number) => r.balanceSatang === (i === 0 ? g.openingSatang : g.rows[i - 1].balanceSatang) + r.debitSatang - r.creditSatang) && (g?.rows?.length === 0 || g?.closingSatang === g?.rows?.[g.rows.length - 1]?.balanceSatang), "ต่อเนื่อง", "?");
-  const glCsv = await call("GET", `/reports/general-ledger?accountId=${a6100?.id}&from=2026-09-01&to=2026-09-30`, R, { accept: "text/csv" });
+  const glCsv = await call("GET", `/reports/general-ledger?accountId=${a6100?.id}&from=2026-01-01&to=2026-12-31`, R, { accept: "text/csv" });
   chk("B4-G3.3", "general-ledger CSV (BOM + rows+1 บรรทัด)", /text\/csv/.test(glCsv.headers.get("content-type") ?? "") && glCsv.bom, "csv", `${glCsv.headers.get("content-type")}`, "MAJOR");
   const tb = await call("GET", "/reports/trial-balance?from=2026-09-01&to=2026-09-30", R);
   chk("B4-G3.4", "GET /reports/trial-balance?from&to → rows[{code,name,type,openingDebitSatang,…,closingCreditSatang}] + totals + balanced=true", tb.status === 200 && Array.isArray(tb.body?.data?.rows) && tb.body.data.balanced === true && Number.isInteger(tb.body?.data?.totals?.closingDebitSatang) && tb.body.data.totals.closingDebitSatang === tb.body.data.totals.closingCreditSatang, "balanced", `${tb.status} ${JSON.stringify(tb.body?.data?.totals)}`);

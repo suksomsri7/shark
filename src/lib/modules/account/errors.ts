@@ -41,6 +41,8 @@ export const ERR = {
   PAYMENT_NOT_FOUND: "ไม่พบรายการชำระ",
   FINANCE_ACCOUNT_NOT_FOUND: "ไม่พบบัญชีเงิน",
   LEDGER_NOT_FOUND: "ไม่พบบัญชีในผังบัญชี",
+  JOURNAL_ENTRY_NOT_FOUND: "ไม่พบใบสำคัญ",
+  ASSET_NOT_FOUND: "ไม่พบสินทรัพย์",
   MEMBER_NOT_FOUND: "ไม่พบผู้ใช้งานคนนี้ในกิจการนี้",
   RECURRING_RULE_NOT_FOUND: "ไม่พบเอกสารประจำนี้",
   WHT_CERT_NOT_FOUND: "ไม่พบเอกสารภาษีหัก ณ ที่จ่าย",

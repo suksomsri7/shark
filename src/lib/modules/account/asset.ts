@@ -134,6 +134,8 @@ export type AssetRow = {
   netBookValue: number; // cost − accum
   disposalAmount: number | null;
   disposedAt: Date | null;
+  /** WO B4 additive — บัญชีที่ผูก (สินทรัพย์ · ค่าเสื่อมสะสม · ค่าใช้จ่าย) ชุดเดียวกับ `assetDetail` */
+  accounts: { asset: LedgerOption | null; accum: LedgerOption | null; expense: LedgerOption | null };
 };
 
 export async function listAssets(ctx: AssetCtx): Promise<AssetRow[]> {
@@ -147,6 +149,17 @@ export async function listAssets(ctx: AssetCtx): Promise<AssetRow[]> {
     _sum: { amount: true },
     _count: { _all: true },
   });
+  // บัญชีที่ผูก — ดึงเป็นชุดเดียว (id ซ้ำกันเยอะ ⇒ 1 query ไม่ใช่ 3 ต่อสินทรัพย์)
+  const ledgerIds = [
+    ...new Set(assets.flatMap((a) => [a.assetAccountId, a.accumAccountId, a.expenseAccountId])),
+  ];
+  const ledgers = ledgerIds.length
+    ? await prisma.accountLedger.findMany({
+        where: { systemId: ctx.systemId, id: { in: ledgerIds } },
+        select: { id: true, code: true, name: true },
+      })
+    : [];
+  const ledgerById = new Map(ledgers.map((l) => [l.id, l]));
   const byAsset = new Map(sums.map((s) => [s.assetId, s]));
   return assets.map((a) => {
     const s = byAsset.get(a.id);
@@ -167,6 +180,11 @@ export async function listAssets(ctx: AssetCtx): Promise<AssetRow[]> {
       netBookValue: a.cost - accum,
       disposalAmount: a.disposalAmount,
       disposedAt: a.disposedAt,
+      accounts: {
+        asset: ledgerById.get(a.assetAccountId) ?? null,
+        accum: ledgerById.get(a.accumAccountId) ?? null,
+        expense: ledgerById.get(a.expenseAccountId) ?? null,
+      },
     };
   });
 }

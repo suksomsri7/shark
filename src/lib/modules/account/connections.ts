@@ -156,6 +156,8 @@ export type ConnectionCard = {
   accountCodes: string[];
   /** "30 ก.ย. 2026 14:20" · "" = ยังไม่เคยลงบัญชี */
   lastPostedText: string;
+  /** WO B4 additive — เวลาจริงของการลงบัญชีล่าสุด (REST ส่ง ISO · หน้าจอใช้ lastPostedText) */
+  lastPostedAt: Date | null;
   monthCount: number;
 };
 
@@ -343,6 +345,7 @@ export async function buildConnectionCards(ctx: Ctx, now: Date): Promise<Connect
       toggles: item.toggles.map((t) => ({ key: t, label: TOGGLE_LABELS[t], on: cfg[t] === true })),
       accountCodes,
       lastPostedText: activity.lastPostedAt ? formatPostedAt(activity.lastPostedAt) : "",
+      lastPostedAt: activity.lastPostedAt,
       monthCount: activity.monthCount,
     });
   }

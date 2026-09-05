@@ -265,6 +265,8 @@ export type AttachmentRowView = {
   thumbUrl: string | null;
   mimeType: string;
   sizeBytes: number;
+  /** WO B4 additive — hash เนื้อไฟล์ (ผู้เรียก REST ใช้เช็คว่าอัปซ้ำไหมก่อนส่งไฟล์) */
+  sha256: string | null;
   folder: string | null;
   docTypeHint: string | null;
   status: AttachmentStatus;
@@ -293,7 +295,8 @@ function aiReasonOf(aiStatus: string | null, aiExtract: unknown): string | null 
   return o && typeof o.reason === "string" ? o.reason : null;
 }
 
-export type AttachmentTab = "all" | "unlinked" | "linked";
+/** WO B4 additive — "archived" = ไฟล์ที่ถูกลบนุ่มไว้ (แท็บของ REST · หน้าจอ 7.1 ใช้ 3 ค่าแรก) */
+export type AttachmentTab = "all" | "unlinked" | "linked" | "archived";
 
 export type AttachmentListFilters = {
   tab: AttachmentTab;
@@ -441,9 +444,15 @@ export async function listAttachmentsPaged(
   const base = await attachmentsBaseWhere(tenantId, systemId, f);
   const tabWhere: Prisma.AccountAttachmentWhereInput =
     f.tab === "unlinked" ? { status: "UNLINKED" } : f.tab === "linked" ? { status: "LINKED" } : {};
-  const where: Prisma.AccountAttachmentWhereInput = { AND: [base, tabWhere] };
+  // แท็บ "ถังขยะ": base กรอง `archivedAt: null` เสมอ ⇒ กลับด้านเฉพาะแท็บนี้แท็บเดียว
+  // (3 แท็บเดิมได้ where เท่าเดิมเป๊ะ — ตัวนับแท็บก็ยังนับเฉพาะไฟล์ที่ยังไม่ถูกลบเหมือนเดิม)
+  const archivedTab = f.tab === "archived";
+  const effBase: Prisma.AccountAttachmentWhereInput = archivedTab
+    ? { ...base, archivedAt: { not: null } }
+    : base;
+  const where: Prisma.AccountAttachmentWhereInput = { AND: [effBase, tabWhere] };
 
-  const [rows, grouped] = await Promise.all([
+  const [rows, grouped, archivedTotal] = await Promise.all([
     prisma.accountAttachment.findMany({
       where,
       include: { document: { select: { id: true, docType: true, docNo: true } } },
@@ -452,6 +461,7 @@ export async function listAttachmentsPaged(
       take: pageSize,
     }),
     prisma.accountAttachment.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
+    archivedTab ? prisma.accountAttachment.count({ where }) : Promise.resolve(0),
   ]);
 
   const counts = { all: 0, unlinked: 0, linked: 0 };
@@ -465,7 +475,13 @@ export async function listAttachmentsPaged(
   //    "all" = ไม่กรองสถานะ → ผลรวมทุกกลุ่ม (รวมแถวเก่าที่ status=null ด้วย เหมือน count เดิม) ·
   //    "unlinked"/"linked" = กรอง status ตัวเดียว → ขนาดของกลุ่มนั้นพอดี
   //    (แนวเดียวกับ `computeListTabCounts` ใน service.ts ที่ยุบตัวนับทุกแท็บลงเหลือ groupBy เดียว)
-  const total = f.tab === "unlinked" ? counts.unlinked : f.tab === "linked" ? counts.linked : counts.all;
+  const total = archivedTab
+    ? archivedTotal
+    : f.tab === "unlinked"
+      ? counts.unlinked
+      : f.tab === "linked"
+        ? counts.linked
+        : counts.all;
 
   const names = await resolveUploaderNames(tenantId, rows.map((r) => r.uploadedById ?? "").filter(Boolean));
 
@@ -477,6 +493,7 @@ export async function listAttachmentsPaged(
       thumbUrl: r.thumbUrl,
       mimeType: r.mimeType,
       sizeBytes: r.sizeBytes,
+      sha256: r.sha256,
       folder: r.folder,
       docTypeHint: r.docTypeHint,
       status: (r.status as AttachmentStatus | null) ?? (r.documentId ? "LINKED" : "UNLINKED"),

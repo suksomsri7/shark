@@ -11,6 +11,8 @@ import { DOCUMENTS_READ_OPS } from "./ops/documents-read";
 import { CONTACTS_READ_OPS } from "./ops/contacts-read";
 import { PRODUCTS_READ_OPS } from "./ops/products-read";
 import { FINANCE_READ_OPS } from "./ops/finance-read";
+import { GL_READ_OPS } from "./ops/gl-read";
+import { SETTINGS_READ_OPS } from "./ops/settings-read";
 
 export * from "./op";
 
@@ -21,6 +23,8 @@ export const ACCOUNT_OPS: ApiOp[] = [
   ...CONTACTS_READ_OPS,
   ...PRODUCTS_READ_OPS,
   ...FINANCE_READ_OPS,
+  ...GL_READ_OPS,
+  ...SETTINGS_READ_OPS,
 ];
 
 // ── การจับคู่ path ──────────────────────────────────────────────────────────

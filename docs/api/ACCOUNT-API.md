@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 46 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 72 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -70,6 +70,63 @@ Branch on `error.code`, never on the message text.
 
 Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited.
 
+#### `assets.get`
+
+**GET /assets/{id}** - One fixed asset with every depreciation period already posted and the accounts it posts to. · scope: `account.asset.manage` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/assets/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `assets.depreciation-preview`
+
+**GET /assets/depreciation/preview** - What running depreciation for a period would post, without writing anything. · scope: `account.asset.manage` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `period` | string | no | period (accounting period, `YYYY-MM`). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/assets/depreciation/preview" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `assets.list`
+
+**GET /assets** - Fixed asset register with cost, monthly depreciation, accumulated depreciation and net book value. · scope: `account.asset.manage` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `status` | enum("ACTIVE", "FULLY_DEPRECIATED", "DISPOSED", "WRITTEN_OFF") | no | Filter by asset status. Default: every asset. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/assets" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `audit.list`
+
+**GET /audit** - Audit trail of this shop, newest first, with the before/after values that were recorded. · scope: `account.settings.manage` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `targetId` | string | no | Only entries about this record id. · min length 1 |
+| `action` | string | no | Action prefix, e.g. `account.doc` matches `account.doc.issue`. · max length 120 |
+| `from` | string | no | from (Thai calendar day, YYYY-MM-DD). |
+| `to` | string | no | to (Thai calendar day, YYYY-MM-DD). |
+| `take` | integer | no | 1-200. Default 50. · min 1 |
+| `cursor` | string | no | `nextCursor` from the previous response. · min length 1 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/audit" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `categories.list`
 
 **GET /categories** - Product/document categories of this accounting book. · scope: `account.doc.view` · read
@@ -80,6 +137,36 @@ Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is a
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/categories" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `chart.get`
+
+**GET /chart/{id}** - One account with its balance, this month's movement, the latest journal lines and what uses it. · scope: `account.journal.view` · read
+
+Path parameters: `id` (required).
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `asOf` | string | no | asOf (Thai calendar day, YYYY-MM-DD). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/chart/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `chart.list`
+
+**GET /chart** - The whole chart of accounts: a flat list, the 3-level tree and balances per account type. · scope: `account.journal.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `asOf` | string | no | asOf (Thai calendar day, YYYY-MM-DD). |
+| `q` | string | no | Free text: account code, Thai name or English name. · max length 200 |
+| `includeArchived` | enum("true", "false") | no | "true" = also return deactivated accounts. Default false. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/chart" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -238,6 +325,17 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/dashboard" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `doc-type-accounts.list`
+
+**GET /doc-type-accounts** - The income/expense account used per document type when a document is posted. · scope: `account.mapping.manage` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/doc-type-accounts" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `documents.attachments`
 
 **GET /documents/{id}/attachments** - Files attached to one document. · scope: `account.doc.view` · read
@@ -327,6 +425,24 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/favorites" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `files.list`
+
+**GET /files** - Document vault files with paging, plus the folder list and per-tab counters. · scope: `account.document.manage` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `tab` | enum("all", "unlinked", "linked", "archived") | no | "all" (default), "unlinked", "linked" or "archived" (soft-deleted files). |
+| `folder` | string | no | max length 120 |
+| `q` | string | no | Free text: file name or uploader name. · max length 200 |
+| `type` | string | no | Document type hint stored on the file. · max length 60 |
+| `page` | integer | no | min 1 |
+| `pageSize` | integer | no | 1-100. Default 20. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/files" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `finance-accounts.statement`
 
 **GET /finance-accounts/{id}/statement** - Ledger movements of one finance channel between two dates, with a running balance. Supports CSV. · scope: `account.finance.manage` · read
@@ -395,6 +511,83 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/finance/overview" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `help.glossary`
+
+**GET /help/glossary** - Plain-Thai explanations of the accounting terms used across this API (same text the UI shows in its tooltips). · scope: `account.doc.view` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/help/glossary" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `inbox.get`
+
+**GET /inbox** - Inbox in one call: counters, the files still waiting to become documents (with AI-extracted fields) and the shop inbox email address. · scope: `account.document.manage` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/inbox" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `journal.get`
+
+**GET /journal/{id}** - One journal entry with every line, the account behind each line and its reversal links. · scope: `account.journal.view` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/journal/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `journal.list`
+
+**GET /journal** - Journal entries with paging, plus entry counts per book and debit/credit totals for the filtered range. · scope: `account.journal.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `range` | enum("all", "this_month", "last_month", "this_quarter", "this_year") | no | Preset date range. Default "all" (every entry ever posted). Ignored when from/to are given. |
+| `from` | string | no | from (Thai calendar day, YYYY-MM-DD). |
+| `to` | string | no | to (Thai calendar day, YYYY-MM-DD). |
+| `book` | enum("SALES", "PURCHASES", "RECEIPTS", "PAYMENTS", "GENERAL") | no | Journal book filter. |
+| `needsReview` | enum("true", "false") | no | "true" = only entries flagged for review. |
+| `q` | string | no | Free text: journal number or memo. · max length 200 |
+| `page` | integer | no | min 1 |
+| `pageSize` | integer | no | 1-200. Default 20. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/journal" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `links.list`
+
+**GET /links** - Systems that post into accounting (POS, chat, bookings, ...): link status, options and this month's volume. · scope: `account.settings.manage` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/links" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `mappings.list`
+
+**GET /mappings** - Posting rules: which ledger account each system key (AR, AP, VAT_OUTPUT, ...) posts to. · scope: `account.mapping.manage` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/mappings" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `overview.get`
 
 **GET /overview** - Revenue or expense overview: 12 month bars split by payment status, documents issued, top contacts, top products and top categories. · scope: `account.doc.view` · read
@@ -420,6 +613,30 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/overview?side=revenue" \
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/payment-requests?documentId=example%20documentId" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `periods.checklist`
+
+**GET /periods/{key}/checklist** - The pre-close checklist of one period: suspense account, flagged entries, reconciliation and VAT. · scope: `account.period.close` · read
+
+Path parameters: `key` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/periods/123/checklist" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `periods.list`
+
+**GET /periods** - Accounting periods with their status, entry count, who closed them and whether VAT was filed. · scope: `account.report.view` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/periods" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -565,6 +782,139 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/recurring" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.aging`
+
+**GET /reports/aging** - Receivable (AR) or payable (AP) aging per contact, bucketed by days overdue. Supports CSV. · scope: `account.report.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `direction` | enum("AR", "AP") | yes | - |
+| `asOf` | string | no | asOf (Thai calendar day, YYYY-MM-DD). |
+| `contactId` | string | no | min length 1 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reports/aging?direction=AR" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.balance-sheet`
+
+**GET /reports/balance-sheet** - Balance sheet at the end of one period: assets, liabilities and equity (incl. retained earnings). Supports CSV. · scope: `account.report.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `asOf` | string | yes | asOf. Accepts `YYYY-MM` (whole month) or `YYYY-MM-DD` (the month that day falls in). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reports/balance-sheet?asOf=example%20asOf" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.cash-flow`
+
+**GET /reports/cash-flow** - Cash flow (direct method) split into operating, investing and financing, reconciled to the cash accounts. Supports CSV. · scope: `account.report.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `from` | string | yes | from. Accepts `YYYY-MM` (whole month) or `YYYY-MM-DD` (the month that day falls in). |
+| `to` | string | yes | to. Accepts `YYYY-MM` (whole month) or `YYYY-MM-DD` (the month that day falls in). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reports/cash-flow?from=example%20from&to=example%20to" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.general-ledger`
+
+**GET /reports/general-ledger** - General ledger of one account between two dates: opening balance, every line and a running balance. Supports CSV. · scope: `account.journal.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `accountId` | string | yes | min length 1 |
+| `from` | string | yes | from (Thai calendar day, YYYY-MM-DD). |
+| `to` | string | yes | to (Thai calendar day, YYYY-MM-DD). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reports/general-ledger?accountId=example%20accountId&from=example%20from&to=example%20to" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.profit-loss`
+
+**GET /reports/profit-loss** - Profit and loss: revenue, cost of goods sold and expenses, with gross and net profit. Supports CSV. · scope: `account.report.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `from` | string | yes | from. Accepts `YYYY-MM` (whole month) or `YYYY-MM-DD` (the month that day falls in). |
+| `to` | string | yes | to. Accepts `YYYY-MM` (whole month) or `YYYY-MM-DD` (the month that day falls in). |
+| `compare` | enum("true", "false") | no | "true" = also return the previous period of the same length. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reports/profit-loss?from=example%20from&to=example%20to" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.trial-balance`
+
+**GET /reports/trial-balance** - Trial balance: opening, movement and closing debit/credit per account, with a balanced flag. Supports CSV. · scope: `account.report.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `from` | string | yes | from. Accepts `YYYY-MM` (whole month) or `YYYY-MM-DD` (the month that day falls in). |
+| `to` | string | yes | to. Accepts `YYYY-MM` (whole month) or `YYYY-MM-DD` (the month that day falls in). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reports/trial-balance?from=example%20from&to=example%20to" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.vat-pp30`
+
+**GET /reports/vat-pp30** - Monthly VAT return (PP30): output VAT, input VAT and the net amount payable. Supports CSV (filing layout). · scope: `account.tax.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `period` | string | yes | period (accounting period, `YYYY-MM`). |
+| `carryForwardSatang` | integer | no | VAT credit carried forward from the previous month, in satang. Default 0. · min 0 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reports/vat-pp30?period=example%20period" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `settings.documents`
+
+**GET /settings/documents** - Per document type: number pattern and next number (with a live example), due days, notes, public link and print template. · scope: `account.settings.manage` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/settings/documents" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `settings.policy`
+
+**GET /settings/policy** - Accounting policy: fiscal year, VAT timing, withholding tax defaults, date lock, duplicate rules and report emails. · scope: `account.settings.manage` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/settings/policy" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `settings.get`
+
+**GET /settings** - Company details printed on documents: legal name, tax id, branch, address, VAT registration and fiscal year. · scope: `account.doc.view` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/settings" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 

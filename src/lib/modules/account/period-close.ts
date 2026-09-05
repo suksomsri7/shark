@@ -147,6 +147,8 @@ export type PeriodRow = {
   status: "OPEN" | "CLOSED";
   closedAt: Date | null;
   closedByName: string | null;
+  /** WO B4 additive — id ของผู้ปิดงวด ("system-auto" = cron ปิดให้) · null = ยังไม่ปิด */
+  closedById: string | null;
   reopenedAt: Date | null;
   reopenCount: number;
   /** งวดนี้มีใบสำคัญกี่ใบ (งวดว่าง = ปิดได้ทันที) */
@@ -200,6 +202,7 @@ export async function listPeriods(ctx: PeriodCtx, now: Date = new Date()): Promi
       label: periodLabel(periodKey),
       status: (r?.status ?? "OPEN") as "OPEN" | "CLOSED",
       closedAt: r?.closedAt ?? null,
+      closedById: r?.closedById ?? null,
       // "system-auto" = cron ปิดให้ (period-sweep) — ไม่ใช่ id ของผู้ใช้จริง
       closedByName: r?.closedById
         ? r.closedById === "system-auto"

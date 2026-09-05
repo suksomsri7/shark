@@ -233,6 +233,9 @@ export type AuditLogRow = {
   actorName: string;
   targetType: string | null;
   targetId: string | null;
+  /** WO B4 additive — ค่าก่อน/หลังที่ผู้เขียน audit บันทึกไว้ (null = ไม่ได้บันทึก) */
+  before: unknown;
+  after: unknown;
 };
 
 export type AuditLogPage = { rows: AuditLogRow[]; nextCursor: string | null };
@@ -307,6 +310,8 @@ export async function listAuditLogs(input: ListAuditLogsInput): Promise<AuditLog
         : actorTypeLabelTh(l.actorType),
     targetType: l.targetType,
     targetId: l.targetId,
+    before: l.before ?? null,
+    after: l.after ?? null,
   }));
 
   return { rows, nextCursor: hasMore ? page[page.length - 1]!.id : null };

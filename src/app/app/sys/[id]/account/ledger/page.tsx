@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { assertAccountCan } from "@/lib/modules/account/access";
-import { listLedgers, ledgerRunning } from "@/lib/modules/account/coa";
+import { listLedgers } from "@/lib/modules/account/coa";
+import { generalLedger } from "@/lib/modules/account/journal-v2";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FormField } from "@/components/ui/FormField";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -37,11 +38,11 @@ export default async function LedgerPage({
   const fromDate = new Date(`${from}T00:00:00.000+07:00`);
   const toDate = new Date(`${to}T23:59:59.999+07:00`);
 
-  // WO 6.1 รอบ 2: ย้าย query มาที่ coa.ledgerRunning (รวมทุกสถานะ — เดิมกรอง POSTED ทำให้ใบที่ถูก
-  // กลับรายการเหลือแต่ขากลับ ยอดเพี้ยนคนละทางกับผังบัญชี/งบทดลอง) · ข้อสอบ qc-acc-v2-coa T14 คุมไว้
-  const ledgerData = accountId
-    ? await ledgerRunning({ tenantId, systemId }, accountId, { from: fromDate, to: toDate })
-    : { opening: 0, rows: [], movementDebit: 0, movementCredit: 0, closing: 0 };
+  // WO 6.1 รอบ 2: ย้าย query ออกจากหน้า (รวมทุกสถานะ — เดิมกรอง POSTED ทำให้ใบที่ถูกกลับรายการ
+  // เหลือแต่ขากลับ ยอดเพี้ยนคนละทางกับผังบัญชี/งบทดลอง) · ข้อสอบ qc-acc-v2-coa T15 คุมไว้
+  // WO B4: หน้านี้กับ `GET /reports/general-ledger` เรียก service ตัวเดียวกัน (journal-v2.generalLedger)
+  // ⇒ ตัวเลขบนจอกับใน API มาจากสูตรเดียวกันเสมอ (ไม่เลือกบัญชี = ก้อนว่าง เหมือนเดิม)
+  const ledgerData = await generalLedger({ tenantId, systemId }, { accountId, from: fromDate, to: toDate });
   const opening = ledgerData.opening;
   const rows = ledgerData.rows;
 

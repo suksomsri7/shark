@@ -8,7 +8,8 @@
 // 🔴 ใช้ `tenantDb(ctx)` ไม่ใช่ `prisma` ตรง ๆ — fitness F5.1 นับไฟล์ในโมดูลที่ import prisma (baseline 45 · ratchet ลงอย่างเดียว)
 
 import { tenantDb } from "@/lib/core/db";
-import type { AccountJournalBook, Prisma } from "@prisma/client";
+import type { AccountJournalBook, AccountLedgerType, Prisma } from "@prisma/client";
+import { ledgerRunning, type LedgerRunningRow } from "./coa";
 import { postManualJV, reverseEntry } from "./gl";
 import { checkNotLocked } from "./policy"; // §9.3 ล็อกข้อมูลก่อนวันที่
 import { safeReason } from "./errors";
@@ -66,6 +67,8 @@ export type JournalListRow = {
   id: string;
   docNo: string;
   date: Date;
+  /** WO B4 additive — งวดบัญชีที่ใบนี้ถูกบันทึกจริง ("YYYY-MM") · ไม่ใช่เดือนของ `date` เสมอไป */
+  periodKey: string;
   book: AccountJournalBook;
   bookLabel: string;
   journal: string;
@@ -76,8 +79,16 @@ export type JournalListRow = {
   source: "AUTO" | "MANUAL";
   /** ผู้บันทึก — ชื่อผู้ใช้ · null = ระบบลงให้ (แสดง "ระบบ") */
   postedByName: string | null;
+  /** WO B4 additive — id ของผู้บันทึก (REST ส่ง `createdBy{id,name}`) */
+  postedById: string | null;
   /** อ้างอิงเอกสาร: ป้าย + ลิงก์ (null = ไม่มีปลายทางให้คลิก) */
   ref: JournalRefLink | null;
+  // ── WO B4 (REST) additive: อ้างอิงแบบ "ข้อมูลดิบ" — หน้าจอใช้ `ref` (มี href) · API ใช้ 3 ช่องนี้
+  //    (ห้ามส่ง href ออก API — เป็น path ของหน้าจอเรา ไม่ใช่ทรัพยากรของผู้เรียก)
+  refType: string | null;
+  refId: string | null;
+  /** เลขที่เอกสารต้นทาง (เฉพาะ refType = AccountDocument) */
+  refDocNo: string | null;
   /** ใบนี้ถูกกลับรายการไปแล้ว */
   reversed: boolean;
   /** ใบนี้เป็น "ขากลับ" ของใบอื่น */
@@ -89,6 +100,8 @@ export type JournalListRow = {
 
 export type JournalLineRow = {
   id: string;
+  /** WO B4 additive — REST ส่ง `account{id,code,name}` (หน้าจอใช้แค่ code/name) */
+  accountId: string;
   code: string;
   name: string;
   note: string | null;
@@ -240,6 +253,7 @@ export async function listJournalPaged(ctx: JournalCtx, input: JournalListInput 
         id: true,
         docNo: true,
         date: true,
+        periodKey: true,
         book: true,
         journal: true,
         memo: true,
@@ -259,6 +273,7 @@ export async function listJournalPaged(ctx: JournalCtx, input: JournalListInput 
             credit: true,
             note: true,
             contactId: true,
+            accountId: true,
             account: { select: { code: true, name: true } },
           },
         },
@@ -312,6 +327,7 @@ export async function listJournalPaged(ctx: JournalCtx, input: JournalListInput 
       id: e.id,
       docNo: e.docNo,
       date: e.date,
+      periodKey: e.periodKey,
       book: e.book,
       bookLabel: BOOK_LABEL[e.book],
       journal: e.journal,
@@ -321,13 +337,18 @@ export async function listJournalPaged(ctx: JournalCtx, input: JournalListInput 
       flagNote: e.flagNote,
       source: e.source,
       postedByName: e.postedById ? (userById.get(e.postedById) ?? null) : null,
+      postedById: e.postedById,
       ref,
+      refType: e.refType,
+      refId: e.refId,
+      refDocNo: doc?.docNo ?? null,
       reversed: !!e.reversedBy,
       isReversal: !!e.reversalOfId,
       totalDebit: e.lines.reduce((s, l) => s + l.debit, 0),
       totalCredit: e.lines.reduce((s, l) => s + l.credit, 0),
       lines: e.lines.map((l) => ({
         id: l.id,
+        accountId: l.accountId,
         code: l.account.code,
         name: l.account.name,
         note: l.note,
@@ -555,6 +576,7 @@ export async function journalEntryDetail(ctx: JournalCtx, entryId: string): Prom
           credit: true,
           note: true,
           contactId: true,
+          accountId: true,
           account: { select: { code: true, name: true } },
         },
       },
@@ -594,7 +616,11 @@ export async function journalEntryDetail(ctx: JournalCtx, entryId: string): Prom
     flagNote: e.flagNote,
     source: e.source,
     postedByName: user?.name ?? null,
+    postedById: e.postedById,
     ref: doc ? { label: doc.docNo ?? "(ยังไม่มีเลขที่)", href: `docs/${doc.docType}/${doc.id}` } : null,
+    refType: e.refType,
+    refId: e.refId,
+    refDocNo: doc?.docNo ?? null,
     reversed: !!e.reversedBy,
     isReversal: !!e.reversalOfId,
     reversalOf: e.reversalOf ?? null,
@@ -603,6 +629,7 @@ export async function journalEntryDetail(ctx: JournalCtx, entryId: string): Prom
     totalCredit: e.lines.reduce((s, l) => s + l.credit, 0),
     lines: e.lines.map((l) => ({
       id: l.id,
+      accountId: l.accountId,
       code: l.account.code,
       name: l.account.name,
       note: l.note,
@@ -613,6 +640,57 @@ export async function journalEntryDetail(ctx: JournalCtx, entryId: string): Prom
     })),
     attachments,
   };
+}
+
+// ─────────────────── 6) บัญชีแยกประเภท (General Ledger) ───────────────────
+//
+// WO B4: หน้า `/account/ledger` และ `GET /reports/general-ledger` ต้องได้ตัวเลขชุดเดียวกันเป๊ะ
+// ⇒ มี "ประตูเดียว" คือฟังก์ชันนี้: resolve บัญชี (scope ร้าน) + เรียกคิวรียอดสะสมตัวเดิม
+//   (`coa.ledgerRunning` — เจ้าของคิวรีตั้งแต่ WO 6.1 รอบ 2 · ข้อสอบ qc-acc-v2-coa T15 คุมอยู่)
+//   ห้ามเขียนคิวรียอดสะสมชุดที่ 2 ที่ไหนอีก — สองสูตรวันหนึ่งจะเดินคนละทางแล้วไม่มีใครรู้ว่าอันไหนถูก
+//
+// 🔴 บัญชีถูก resolve ผ่าน `tenantDb` (มี tenantId ใน SQL) ⇒ id ของร้านอื่น = ไม่พบ → ก้อนว่าง
+//    (ผู้เรียก REST แปลง "account = null" เป็น 404 · หน้าจอแปลงเป็น "เลือกบัญชี")
+
+export type GeneralLedgerAccount = { id: string; code: string; name: string; type: AccountLedgerType };
+
+export type GeneralLedger = {
+  /** null = ไม่ได้เลือกบัญชี หรือบัญชีไม่ใช่ของร้านนี้ */
+  account: GeneralLedgerAccount | null;
+  from: Date;
+  to: Date;
+  opening: number;
+  rows: LedgerRunningRow[];
+  movementDebit: number;
+  movementCredit: number;
+  closing: number;
+};
+
+export async function generalLedger(
+  ctx: JournalCtx,
+  input: { accountId: string; from: Date; to: Date },
+): Promise<GeneralLedger> {
+  const empty = {
+    account: null,
+    from: input.from,
+    to: input.to,
+    opening: 0,
+    rows: [],
+    movementDebit: 0,
+    movementCredit: 0,
+    closing: 0,
+  } satisfies GeneralLedger;
+
+  const accountId = (input.accountId ?? "").trim();
+  if (!accountId) return empty;
+  const account = await tenantDb(ctx).accountLedger.findFirst({
+    where: { id: accountId },
+    select: { id: true, code: true, name: true, type: true },
+  });
+  if (!account) return empty;
+
+  const run = await ledgerRunning(ctx, account.id, { from: input.from, to: input.to });
+  return { account, from: input.from, to: input.to, ...run };
 }
 
 /** บัญชีที่เลือกได้ในบรรทัด JV (ไม่รวมบัญชีที่ปิดใช้งาน) */
