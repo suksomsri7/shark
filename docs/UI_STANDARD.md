@@ -9,9 +9,10 @@
 ## 0. กฎเหล็ก (อ่านก่อนเขียน UI ทุกครั้ง)
 
 1. **สีมาจาก token เท่านั้น** — ห้าม `bg-blue-*`, `text-green-*`, `emerald`, `amber`, hex ดิบ ฯลฯ ใช้ได้แค่:
-   `--color-ink`, `--color-ink-soft`, `--color-muted`, `--color-line`, `--color-surface`, `--color-surface-2`, `--color-danger`, `--color-accent`
+   `--color-ink`, `--color-ink-soft`, `--color-muted`, `--color-line`, `--color-surface`, `--color-surface-2`, `--color-danger`, `--color-accent`, `--color-accent-soft`
    (`--color-danger` ใช้เฉพาะ ข้อความ error / สถานะเสีย / ปุ่มทำลายข้อมูล — ห้ามใช้ตกแต่ง)
    (`--color-accent` = น้ำเงิน `#1d4ed8` สำหรับ **จุดเน้น** เท่านั้น: ลิงก์/เมนู active, ไอคอนช่วยเหลือ, แถบเน้นจุดสำคัญ — **ปุ่ม primary ยังเป็น ink** (ดำ) ห้ามเอา accent ไปแทน ink หรือใช้ถมพื้นปุ่มหลัก · ยังใช้ผ่าน arbitrary value `text-[color:var(--color-accent)]` เท่านั้น ห้าม `bg-blue-*` ดิบ)
+   (`--color-accent-soft` = `color-mix(in srgb, var(--color-accent) 8%, white)` — พื้นทินท์อ่อนของ accent **เท่านั้น** ใช้จุดเดียว: แถบ bulk-action bar ตอนมีแถวถูกเลือกใน `DocTable` (WO 5.4) — ห้ามพิมพ์ hex ดิบ `#f0f5ff` ฯลฯ แทน)
    **ห้าม token ผี:** `--color-fg`, `--color-bg`, `--color-success`, `--color-primary`, `--color-hover` **ไม่มีจริง** ใน globals.css — ที่ผ่านมาทำปุ่ม/แท็บล่องหนและเขียว/น้ำเงินหลุดมาแล้ว (QC6 §2.1) · "สำเร็จ" = ink ตัวหนา ไม่ใช่สีเขียว · ก่อน merge: `grep -rn 'color-(fg|bg|success|primary|hover)' src` ต้องว่าง
 2. **ปุ่ม = `.btn .btn-primary` / `.btn .btn-ghost` / `.btn-sm` เท่านั้น** — ห้ามประกอบปุ่มเอง และห้าม `.btn` เดี่ยวๆ (ไม่มีพื้น/ขอบ ดูไม่ออกว่าเป็นปุ่ม — เกิดแล้วใน ReportToolbar)
    เพิ่มใน globals.css: `.btn-sm` = `inline-flex items-center rounded-lg border px-3 py-2 text-sm hover:bg-surface-2` (สูง ≥40px) สำหรับปุ่ม action ในแถวรายการ/หน้า operation — ใช้แทน `px-2.5 py-1 text-xs` ที่เล็กกว่า touch target ทั้งแอป
@@ -259,6 +260,25 @@ export function SubmitButton({ children, pendingText = "กำลังบัน
 }
 ```
 
+### 2.11 🆕 `DocTable` + `RowActions` + `PortalMenu` (V2 บัญชี — `src/components/account-v2/`)
+
+หน้ารายการเอกสาร/ผู้ติดต่อ/สินค้า/WHT/journal ทั้งหมดใช้ pattern เดียวกัน (ตามเฟรม f3-invoice-list.png และเวอร์ชันตีกลับที่ Fable ตรวจภาพจริง):
+
+- **`DocTable`** (server component, ส่วน select/bulk เป็น client ย่อย `DocTableInteractive`): ตารางแท็บ+ตัวนับ+ค้นหา+ตัวกรองช่วงวันที่/ผู้ติดต่อ ด้านบน · **footer อยู่ในกรอบการ์ดเดียวกับตาราง** (ผลรวม/ยอด + pagination ชิดกัน ไม่ลอยแยก — บั๊กที่เคยตีกลับ) ผ่าน prop `footerLeft`/`footerRight` (additive, WO 5.4) · คอลัมน์ระบุ `help` (คีย์ของ `HELP_TEXTS`) แสดงไอคอน "?" ท้ายหัวคอลัมน์เอง (ดู 2.12) · มือถือ: props ชุดเดียวกัน (`mobileTitle/mobileSubtitle/mobileTrailing/mobileStatus/mobileDateLine`) เรนเดอร์เป็นการ์ดแถวอัตโนมัติ ไม่ใช่ตารางเลื่อน
+- **ขนาดหน้า (page size)**: ค่ามาตรฐานหน้ารายการเอกสาร = **8 แถว/หน้า** ตามเฟรม f3 (ปรับจาก 20 เดิมที่ไม่ตรงแบบ — ตีกลับรอบ 10.1) — ใช้ `clampPageSize()` กลาง (`service.ts`) เปลี่ยนเฉพาะค่า default ที่เรียก ห้าม hardcode ต่อไฟล์
+- **Bulk-action bar**: แถบที่โผล่เมื่อเลือก ≥1 แถว ใช้พื้น `--color-accent-soft` (ทินท์อ่อนของ accent) — ห้ามใช้ `--color-surface-2` เทาธรรมดา (แยกไม่ออกจาก hover) และห้าม hex ดิบ
+- **`RowActions`** (client): ปุ่ม trigger **ต้องมีป้ายข้อความ** (เช่น "ทำรายการ ▾") ไม่ใช่ไอคอนสามจุดเดี่ยว ๆ ไร้ label (เข้าถึงยากบนมือถือ + เทสอ่านไม่ออก) เปิด dropdown ผ่าน `PortalMenu` · แต่ละ item รับ `icon` (คีย์ `AccountIcon`) + `sepBefore` (คั่นกลุ่มย่อย) + `disabled/hint` (ปิดพร้อมเหตุผลไทยที่มองเห็น ห้ามซ่อนปุ่มเงียบ ๆ) · รายการทำลาย/ยกเลิกใช้ `RowActionsDangerItem` (บังคับ `ConfirmDialog` เป็นขั้นสุดท้ายเสมอ)
+- **`PortalMenu`**: โครงกลางของทุก dropdown ในตาราง — `createPortal` ไป `document.body` เสมอ (หนีทุก `overflow-x-auto` ของบรรพบุรุษที่ตัดเมนูจนหาย — บั๊กข้ามหน้าที่เคยเจอ) จัดตำแหน่งแบบ absolute สัมพัทธ์เอกสาร (ไม่ใช่ fixed) — component ใหม่ที่ต้องมี dropdown/popover ในตาราง **ต้องใช้ตัวนี้** ห้ามประกอบ `position:absolute` เองใน cell
+
+### 2.12 🆕 `HelpTip` + `DateInput` + `UndoToast` + `AccountIcon` + โหมดง่าย/นักบัญชี
+
+- **`HelpTip`**: ปุ่ม "?" เส้นบาง เปิด popover อธิบายศัพท์บัญชี (≥40 คำ, ภาษาคน ไม่ใช่นิยามพจนานุกรม) — ข้อความมาจาก `HELP_TEXTS` กลาง (`src/lib/modules/account/help-texts.ts`) ผ่าน `helpKey` (แนะนำ) หรือ `text` ตรง ๆ — ไม่พบคีย์ = **ไม่เรนเดอร์อะไรเลย** (กันคำอธิบายว่างโผล่เงียบ ๆ) เปิดได้ทั้ง hover/focus/แตะ (รองรับคีย์บอร์ด+มือถือ) ใช้ `PortalMenu` เป็นฐาน
+- **`DateInput`**: ทุกช่องวันที่ในโมดูลบัญชีต้องใช้ตัวนี้ — ไม่โฟกัส แสดงวันที่ไทย พ.ศ. ("18 ก.ย. 2569") ผ่าน `formatDateTh`, โฟกัส/คลิกสลับเป็น native `type="date"` (`showPicker()`) เพื่อเปิดปฏิทินเครื่อง · ค่าที่ส่งฟอร์มจริงอยู่ใน `<input type="hidden">` เสมอเป็น ISO (`yyyy-mm-dd`) — **ห้ามใช้ `<input type="date">` ดิบ** (โชว์รูปแบบเบราว์เซอร์ `09/30/2026` อ่านไม่รู้เรื่อง — บทเรียนจาก WO 8.2)
+- **`UndoToast`** (provider mount ที่ `account/layout.tsx`): toast "เลิกทำ" หลัง action ที่ไม่กระทบเลขรัน (ลบร่าง/เก็บถาวร/ยกเลิกบางชนิด) — เรียกได้ 2 ทาง: `useUndoToast().show(...)` ทันทีจาก client component (ไม่มีการนำทาง) หรือ query `?undo=<token>` ต่อท้าย redirect ของ server action เดิม · แสดงจนกดหรือครบ 8 วินาที (ต่างจากอายุ token จริงฝั่ง DB ที่ 5 นาที — กดเลิกทำได้จริงแค่ตอน toast ยังอยู่) · action ที่โพสต์ journal แล้ว/กระทบเลขรัน **ไม่มี undo** ต้อง void ทางการเท่านั้น
+- **`AccountIcon`**: ไอคอนเส้นบาง (stroke 1.7, currentColor) คีย์เดียวกันทั้งเมนู/RowActions/filter row — **ห้าม emoji** ในโมดูลนี้แม้แต่ในแถวเมนู/หัว section (ต่างจากกฎทั่วไปข้อ 8 ของ SHARK ที่ยอมให้ emoji ใน nav — บัญชีเข้มกว่าเพราะเคยถูกตีกลับ WO 0.4 รอบ 2)
+- **แถวตัวกรอง (filter row)**: มาตรฐาน 1 บรรทัดเดียว (`AttachmentFilterBar`/`InboxFilterBar` เป็นต้นแบบ) — ทุกช่องกรอง **auto-submit ทันทีที่เลือก** (ไม่มีปุ่ม "แสดง"/"ค้นหา" แยก) นำหน้าด้วย `AccountIcon` ที่สื่อความหมายของตัวกรองนั้น ไม่ล้นบรรทัดที่ 1440px และพับได้บนมือถือ
+- **โหมดง่าย/นักบัญชี** (`EasyModeToggle` + `mode.ts`, cookie `ACC_MODE_COOKIE`): สวิตช์เดียวมีผลทั้งโมดูล — **ค่าเริ่มต้น = โหมดนักบัญชี** (ตรงกับภาพที่เจ้าของอนุมัติ g1/g17 ซึ่งวาดฟอร์มเต็ม) โหมดง่ายซ่อนช่องบัญชี/WHT/ประเภทราคา/สมุดให้ใช้ค่าเริ่มต้นแทน — ฟอร์มใหม่ที่มีช่องขั้นสูงต้องเช็คโหมดนี้ ไม่ใช่เพิ่ม toggle ของตัวเอง
+
 ---
 
 ## 3. กติกาภาษา
@@ -310,7 +330,21 @@ export function findActiveNav(pathname: string, base: string, groups: AccountNav
 
 ---
 
-## 5. Checklist ก่อน merge (agent ทุกตัวต้องไล่ตอบได้)
+## 6. 🆕 มือถือ — บัญชี V2 (อ้างอิง `DESIGN-SPEC-V2.md §13` · เฟรม f11–f14 รอบ 1 + g17–g20 รอบ 2 · WO 9.1)
+
+> กฎทั่วไปข้อ 1.4/1.5 (mobile-first) ยังใช้ ส่วนนี้เพิ่มกติกาเฉพาะโมดูลบัญชีที่มีตาราง/ฟอร์มซับซ้อนกว่าโมดูลอื่น — "ดูได้" ไม่พอ ต้อง **ทำงานจบบนมือถือได้จริง** (สร้างเอกสาร/รับชำระ/ถ่ายบิล/อนุมัติ)
+
+- **ตาราง → การ์ด/accordion เสมอ**: หน้ารายการ (`DocTable`) ไม่เรนเดอร์ `<table>` เลื่อนแนวนอนบนจอ <lg — สลับเป็นการ์ดแถว (แถวหัวข้อมูลสำคัญ + `⋯`/chevron เปิด **bottom sheet** ดูรายละเอียด/ทำรายการที่เหลือ) — อ้างอิง g18/g19
+- **ฟอร์มยาว → accordion**: `DocEditorV2` บนมือถือ (g17) ยุบส่วน B/C/E/F/I (มัดจำ/WHT/แนบไฟล์ ฯลฯ) เป็น accordion เปิดทีละส่วน · บรรทัดรายการสินค้าเป็นการ์ด (ชื่อ · จำนวน×ราคา · ยอด · `⋯`) ไม่ใช่แถวตารางบีบอัด
+- **สรุปยอด sticky**: ฟอร์มเอกสาร/หน้ารายละเอียดที่มียอดรวม — แถบสรุปยอด + ปุ่มหลัก (บันทึกร่าง/ออกเอกสาร/รับชำระ) **sticky ติดล่างจอเสมอ** ไม่ต้องเลื่อนหาปุ่ม
+- **ปุ่มหลัก ≥44px**: ทุกปุ่มที่กดบ่อยบนมือถือ (แถบ sticky, action ในการ์ด, bottom sheet) ความสูงขั้นต่ำ 44px (เข้มกว่ากฎทั่วไปข้อ 5 ที่ตั้ง 44px เป็น baseline — บัญชีห้ามต่ำกว่านี้แม้แถวจะแน่น)
+- **Sticky คอลัมน์แรก**: ตารางบัญชี/รายงานที่ยังต้องเป็นตารางจริงบนมือถือ (งบทดลอง, ภ.พ.30, สมุดรายวัน — คอลัมน์ตัวเลขเยอะ ทำเป็นการ์ดไม่ได้) ให้ sticky คอลัมน์แรก (ชื่อบัญชี/รายการ) ขณะเลื่อนแนวนอน ส่วนที่เหลือ (เช่น `GroupChildrenTable` ของใบวางบิล/ใบรวมจ่าย) ยังเป็นตารางเลื่อนธรรมดา — ทำ sticky เพิ่มเป็นงานถัดไป
+- **bottom sheet ระดับ 2** (dropdown เมนู, ทำรายการแถว): เปิดจากปุ่ม `‹` ย้อนกลับที่หัว ไม่ใช่ปิดสนิทแล้วเปิดใหม่ (g18)
+- **โปรไฟล์ผู้ติดต่อ/สินค้า 360°**: บนมือถือพับเป็นแท็บเลื่อนแนวนอนแทนคอลัมน์คู่ขนาน (g19)
+
+---
+
+## 7. Checklist ก่อน merge (agent ทุกตัวต้องไล่ตอบได้)
 
 - [ ] ไม่มี class สีนอก token / ไม่มี hex ดิบ (ยกเว้นหน้า print)
 - [ ] ปุ่มทั้งหมดเป็น `.btn` variant / ลิงก์ข้อความ underline
@@ -322,3 +356,6 @@ export function findActiveNav(pathname: string, base: string, groups: AccountNav
 - [ ] ทุก list มี `EmptyState` / ทุกปุ่ม submit มี pending state (`useFormStatus` → "กำลังบันทึก…")
 - [ ] action ทำลายข้อมูลผ่าน `ConfirmDialog`
 - [ ] เปิดจอ 360px แล้ว: ไม่มี scroll แนวนอนทั้งหน้า, ปุ่มหลักกดถนัด, grid ยุบถูก
+- [ ] (บัญชี V2) หน้ารายการใช้ `DocTable` + `RowActions`/`PortalMenu` — ไม่ประกอบ dropdown เอง, page size เอกสาร = 8, bulk bar ใช้ `--color-accent-soft`
+- [ ] (บัญชี V2) ช่องวันที่ใช้ `DateInput` (ห้าม `<input type="date">` ดิบ) · ศัพท์บัญชีมี `HelpTip` · แถวตัวกรอง auto-submit บรรทัดเดียวมี `AccountIcon`
+- [ ] (บัญชี V2) มือถือ: ตารางเป็นการ์ด/accordion + sticky สรุปยอด/ปุ่มหลัก (§6) — ไม่ใช่แค่ตาราง overflow-x

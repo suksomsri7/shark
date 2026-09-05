@@ -3,6 +3,8 @@
 > 🔄 **เขียนใหม่ทั้งฉบับ 2026-07-11** ตามเมนูความต้องการละเอียดของเจ้าของ (ระดับ FlowAccount/PEAK) — แทนสเปคเดิม (POS-ledger subset) ทั้งหมด
 > **Scope: system-scoped** ตาม `../BLUEPRINT_SYSTEMS.md` (override `_CONVENTIONS.md` §1 แถว Account เดิม) — Account เป็น **ระบบ feature (AppSystem)** ผู้ใช้สร้างกี่ชุดก็ได้ ทุกตารางผูก `tenantId + systemId` · เชื่อม POS/ระบบ business เป็น **opt-in** ผ่านตาราง link ของโมดูลเอง (§8)
 > อ่านคู่กับ: `../BLUEPRINT_SYSTEMS.md` · `_CONVENTIONS.md` (contract 2.4, กติกา §3-5) · `14-pos.md`
+>
+> 🆕 **อัปเดต 2026-09-05 หลัง run "V2 redesign" (WO 0.1–9.4 ปิดครบ · qc:all 227/227 · 46 suites)** — สเปคด้านล่างยังเป็นสถาปัตยกรรมที่ถูกต้อง (แกน `Document`/double-entry/posting engine ไม่เปลี่ยน) ส่วนที่อัปเดตจริงคือ **หน้าตา/เมนู/ของที่เพิ่มเข้ามา**: เมนูเปลี่ยนจาก sidebar 8 หมวดเป็น **แถบบน 9 หมวด + dropdown 2 ระดับ** (§3.9), เพิ่ม `Party` (ตัวตนเดียวข้ามผู้ติดต่อ/สมาชิก/แชท), `InvItem` canonical (คลังกลาง), เส้น POS→บรรทัดเอกสารจริง (ไม่ใช่แค่ยอดรวม), กระทบยอดธนาคาร, PromptPay auto-reconcile, กล่องขาเข้า+AI อ่านบิล, นโยบายบัญชี (ล็อกก่อนวันที่/ปีบัญชี), สิทธิ์แบบ matrix 36 คีย์ + เพดานอนุมัติ, ⌘K สร้างด่วน + undo 5 นาที + `/account/help`, มือถือทำงานได้จริง — รายละเอียดทั้งหมดต่อ WO อยู่ที่ `ledger/ACCOUNT-V2-RUN.md` (ตาราง WO 0.1–10.3) และ `ledger/wo-notes/<WO>.md` · พิมพ์เขียว V2: `docs/design/account-v2/BLUEPRINT-ACCOUNT-V2.md` · สเปคหน้าจอ: `docs/design/account-v2/DESIGN-SPEC-V2.md` · ผังเมนู: `docs/design/account-v2/SITEMAP.md` · handover เจ้าของ: `ledger/HANDOVER-2026-09-05-ACCOUNT-V2.md`
 
 ---
 
@@ -38,14 +40,18 @@
 
 ### 1.3 ไม่ทำใน v1 (boundary)
 
+> 🕓 **สถานะจริงหลัง V2 (2026-09-05)** — 6 รายการนี้**ยังไม่ทำ**แม้ผ่าน run V2 เต็ม 10 เฟสแล้ว (ยืนยันจาก `SITEMAP.md`/`DESIGN-SPEC-V2.md`/wo-notes): **e-Tax Invoice จริง**, **Bank feed อัตโนมัติ** (มีแต่กระทบยอดจาก statement ที่อัปโหลดเอง — WO 5.3), **FIFO/inventory valuation เต็มรูป** (ยังตัดจำนวนอย่างเดียว), **e-WHT** (ยื่นหัก ณ ที่จ่ายทางอิเล็กทรอนิกส์ — มีแค่ export CSV ภ.ง.ด. ให้เอาไปยื่นเอง), **DBD e-Filing จริง** (ยังไม่มีปุ่มในเมนู มีป้าย "เร็ว ๆ นี้"), **Smart Insight** (สรุปภาษี/คำแนะนำ AI เชิงรุก — settings/policy มีหัวข้อจางไว้เฉย ๆ) — ทั้งหมดไม่มีหน้า ไม่มี route ไม่มี provider ผูกไว้ ไม่ใช่แค่ปิดใน UI
+
 | ไม่ทำ | ทางออก |
 |---|---|
-| Inventory valuation เต็มรูป (FIFO/average, ตัด COGS อัตโนมัติ) | ใบเบิกสินค้า/ส่งคืนตัด **จำนวน** ได้ (P2) — มูลค่า COGS ลงจากบันทึกซื้อ/ปรับปรุงมือ · valuation 🔜 |
-| หลายสกุลเงิน | THB เท่านั้น (`_CONVENTIONS` §3) |
-| Bank feed / กระทบยอด statement อัตโนมัติ | 🔜 — v1 กระทบยอดกับ POS + บันทึกยอดยกมา FinanceAccount |
-| Payroll / ประกันสังคม / ภ.ง.ด.1 | นอก scope โมดูลนี้ — เงินเดือนลงเป็นบันทึกค่าใช้จ่าย |
-| e-Tax Invoice ยิงจริง / DBD ยื่นจริง | P4 วางโครงผ่าน service provider + export ไฟล์ — การสมัคร SP เป็นงาน ops |
-| ภาษีเงินได้นิติบุคคล (ภ.ง.ด.50/51) | ให้งบ + งบทดลอง export ส่งนักบัญชี |
+| Inventory valuation เต็มรูป (FIFO/average, ตัด COGS อัตโนมัติ) 🕓 ยังไม่ทำ | ใบเบิกสินค้า/ส่งคืนตัด **จำนวน** ได้ (P2, V2 ผ่าน `InvItem` canonical WO 4.1) — มูลค่า COGS ลงจากบันทึกซื้อ/ปรับปรุงมือ (ใบปรับต้นทุน CA — WO 4.3) · valuation จริง (FIFO) 🕓 ยังไม่ทำ |
+| หลายสกุลเงิน | THB เท่านั้น (`_CONVENTIONS` §3) — ไม่เปลี่ยนใน V2 |
+| Bank feed / กระทบยอด statement อัตโนมัติ 🕓 bank feed ยังไม่ทำ | V2 (WO 5.3) มี **กระทบยอดธนาคารแบบอัปโหลด statement** (parser KBank/SCB/KTB/BBL/generic CSV) + auto-match ยอด/วันที่ ±3 วัน — ยังไม่ใช่ bank feed API ที่ดึงอัตโนมัติจากธนาคาร |
+| Payroll / ประกันสังคม / ภ.ง.ด.1 | นอก scope โมดูลนี้ — เงินเดือนลงเป็นบันทึกค่าใช้จ่าย (ไม่เปลี่ยนใน V2) |
+| e-Tax Invoice ยิงจริง / DBD ยื่นจริง 🕓 ยังไม่ทำทั้งคู่ | เมนู "การเชื่อมต่อ" และ "บัญชี" มีป้าย "เร็ว ๆ นี้" (จาง กดไม่ได้) รอสมัคร service provider — เป็นงาน ops ไม่ใช่โค้ด |
+| ภาษีเงินได้นิติบุคคล (ภ.ง.ด.50/51) | ให้งบ + งบทดลอง export ส่งนักบัญชี (ไม่เปลี่ยนใน V2) |
+| e-WHT (ยื่นหัก ณ ที่จ่ายอิเล็กทรอนิกส์) 🕓 ยังไม่ทำ | V2 (WO 5.4) มีแค่ "ทำเครื่องหมายยื่นแล้ว" ต่องวด + export CSV ภ.ง.ด.3/53 ให้เอาไปยื่นเว็บสรรพากรเอง |
+| Smart Insight (สรุปภาษี/คำแนะนำเชิงรุกจาก AI) 🕓 ยังไม่ทำ | หัวข้อจางในหน้านโยบายบัญชี (WO 8.2) — ยังไม่มี logic |
 
 ### 1.4 Phasing (ระบบใหญ่ — บังคับตัดเฟส)
 
@@ -238,6 +244,22 @@ CHEQUE (model แยก — P4)  รับ: ON_HAND→DEPOSITED→CLEARED / BOUN
 - **องค์กร**: ชื่อกิจการ (TH/EN), เลขผู้เสียภาษี, สำนักงานใหญ่/สาขา, ที่อยู่, โลโก้, **ตราประทับ+ลายเซ็นอัปโหลด** (แปะบน PDF), จด VAT?/อัตรา, เบอร์/อีเมล/เว็บ — เก็บใน `AppSystem.settings.org`
 - **ผู้ใช้งาน+สิทธิ**: ใช้ระบบสิทธิ์กลาง (`can()`) — role ต่อระบบบัญชีชุดนี้ + custom permission ราย action (§9) + วงเงินอนุมัติ
 - **เอกสาร** (ต่อ docType): **เลขที่เอกสาร** (prefix + pattern `{YYYY}{MM}{####}` + reset ปี/เดือน/ไม่ reset) · **หมายเหตุท้ายเอกสาร** default · **วันครบกำหนด** default (วัน) · **ช่องทางชำระ** ที่พิมพ์บนเอกสาร (บัญชีธนาคาร/PromptPay QR) · **กลุ่มจัดประเภท** (ClassificationGroup — tag เอกสารไว้กรอง/รายงาน) · **การแสดงข้อมูลสาธารณะ** (เปิด/ปิดลิงก์ public ต่อชนิด + ซ่อนราคาทุน/ส่วนลด) · **การออกใบกำกับภาษี** (ออกอัตโนมัติพร้อมใบเสร็จ? / แยกใบ? / ใบเสร็จ-ใบกำกับใบเดียว?) · **รายงานเอกสาร** (คอลัมน์ default ของ export ต่อชนิด) · **บัญชีรายวัน** (override บัญชี default ต่อ docType เช่น รายได้ของ INVOICE ลง 4000 หรือ 4030) · **ลิงก์สำหรับขอใบกำกับภาษี** (เปิดหน้า public ให้ลูกค้ากรอกข้อมูลผู้ซื้อขอใบกำกับจากใบเสร็จ — QR บนใบเสร็จ)
+
+### 3.9 🆕 V2 — สิ่งที่ส่งมอบจริงต่อหมวดเมนู (WO 0.1–9.4, `ledger/ACCOUNT-V2-RUN.md`)
+
+> เมนูเปลี่ยนจาก sidebar 8 หมวดเป็น **แถบบน 9 หมวด + dropdown 2 ระดับ** (`src/lib/modules/account/nav.ts` = แหล่งเดียว, ดู UI_STANDARD §2.9/§4) — หมวด: หน้าหลัก · รายรับ · รายจ่าย · ผู้ติดต่อ · สินค้า · การเงิน · บัญชี · คลังเอกสาร · ตั้งค่า สรุปของใหม่ต่อหมวด:
+
+- **เอกสาร (เลขที่/พิมพ์)** (WO 8.1): ตั้งค่าเลขรันเต็มรูป — pattern ไทย/อังกฤษ, reset none/yearly/monthly, ตัวอย่างเลขถัดไปสด, continuation จากเลขรันเก่า (legacy) · 18 ชนิดเอกสาร มีหน้าตั้งค่าเดียวครบ 9 หัวข้อย่อย (หมายเหตุ/วันครบกำหนด/ช่องทางชำระ/กลุ่มจัดประเภท/แสดงข้อมูลสาธารณะ/ออกใบกำกับอัตโนมัติ/บัญชีรายวัน override/ลิงก์ขอใบกำกับ/รายงานเอกสาร)
+- **ผู้ติดต่อ + Party** (WO 3.1–3.4): ตัวตนกลาง `Party` (แยกจาก `AccountContact`) จับคู่ลำดับ taxId+branchCode → เบอร์ (normalize) → ชื่อ+อีเมล กันผู้ติดต่อซ้ำข้ามโมดูล (สมาชิก/แชท/บัญชี) · modal เพิ่ม/แก้แบบพื้นฐาน-ขั้นสูง + เช็คซ้ำเรียลไทม์ + DBD lookup (ต้อง `DBD_API_KEY`) · โปรไฟล์ 360° (แท็บการเชื่อมต่อ) + หน้ารวมผู้ติดต่อซ้ำ · เลขที่ผู้ติดต่อ `code` (C000xx) persist · นำเข้า CSV (WO 1.8)
+- **สินค้า + inventory link + POS lines** (WO 4.1–4.3): `InvItem` เป็น canonical (sku/หน่วย/ต้นทุน/onHand) ส่วน `AccountProduct` ถือแค่บัญชี/VAT/ราคาขาย — ผูกกันผ่าน `AccountProduct.invItemId` · เบิก/คืนตัดคลังใน tx เดียวกับเอกสาร · **บิล POS ส่งเป็นบรรทัดจริง** (ไม่ใช่ยอดรวมก้อนเดียวแบบเดิม) ผ่าน `pos-lines` service, docType `TAX_INVOICE_ABB` (NO_GL กันรายได้ซ้ำ) · จัดชุดสินค้า (`AccountProductBundleItem`) · หน้าสินค้า V2 มีตาราง+หน่วย+เบิก/คืน/ปรับต้นทุน (CA)
+- **การเงิน** (WO 5.1–5.5): ช่องทางเงิน V2 (code CSH/BSV/EWL/PTY, ยอดยกมาหลายรายการ, โอนระหว่างช่องทาง idempotent) · **ภาพรวมการเงิน** (ปฏิทินเงินเข้า-ออก, การ์ดติดตาม, ค้างรับ/ค้างจ่าย) · **เงินสดย่อย** (petty cash เติม/เบิกชดเชย) · **กระทบยอดธนาคาร** (WO 5.3 — parser statement KBank/SCB/KTB/BBL/generic, auto-match ±3 วัน, ยืนยันเดือนล็อกเมื่อส่วนต่าง 0) · **WHT V2 + เช็ค V2** (WO 5.4 — `AccountWhtFiling` mark ยื่นแล้ว/ยกเลิกต่องวด, เช็ครับ/จ่าย lifecycle เต็ม) · **PromptPay → กระทบยอดอัตโนมัติ** (WO 5.5 — `AccountPaymentRequest`, Beam webhook ถ้ามี key ไม่มี = QR static ยืนยันมือ, หน้าสาธารณะ `/pay/[token]`)
+- **บัญชี** (WO 6.1–6.2): ผังบัญชี V2 (tree 2 คอลัมน์, ยอด ณ วันที่จริง as-of) · สมุดรายวัน V2 (JV มือ + reversal + ⚑ needsReview) · รายงาน drill-down 3 ชั้น (งบ→GL→เอกสาร) + เทียบงวดก่อน + export CSV BOM · ปิดงวด (checklist 4 ข้อ: suspense=0, ไม่มี ⚑ บังคับ, กระทบยอดแล้ว, VAT ยื่นแล้ว/เตือน) + reopen (สิทธิ์เจ้าของ) · สินทรัพย์ V2 + ตารางค่าเสื่อม + preview คิดค่าเสื่อม
+- **คลังเอกสาร** (WO 7.1–7.2): อัปโหลดไฟล์จริงหลายไฟล์ (Bunny) + sha256 dedupe + แท็บ/ตัวกรอง/grid + ผูก/แยก/ย้ายโฟลเดอร์/archive + bulk · **กล่องขาเข้า + AI** (WO 7.2) — AI อ่านบิลจากรูป (vision, ตรวจเลขคณิต, ตัดเครดิต ACCOUNT_INBOX ครั้งเดียว) → prefill บันทึกค่าใช้จ่าย, รับไฟล์จากแชทผ่าน outbox consumer (opt-in `inboxFromChat`)
+- **ตั้งค่า — 3 หน้า** (WO 8.1–8.3): (1) เอกสารและเลขที่ (2) **นโยบายบัญชี** — ล็อกก่อนวันที่ (chokepoint `gl.commitEntry`), ปีบัญชี, VAT timing, WHT default, price mode, ชื่อซ้ำ, บัญชี default 3 ตัว, ออกเอกสารต่อ+คัดลอกหมายเหตุ/แท็ก, ลูกค้าประจำ, ปิดงวดอัตโนมัติ, รายงานอีเมล (3) **สิทธิ์ผู้ใช้งาน** — matrix 36 คีย์ (§9) + เพดานอนุมัติ + **การเชื่อมต่อ** (7 ชนิดระบบ + options) + **API/webhook** (event `account.*`)
+- **มือถือ** (WO 9.1): ทุกงานทำจบบนมือถือจริง (390px) — แถวหัวตาราง+chevron→bottom sheet, การ์ดรายการ+⋯→sheet, accordion ฟอร์มยาว, ยอดรวม+ปุ่มหลัก sticky ล่าง, ปุ่มหลัก ≥44px, sticky คอลัมน์แรกในตารางบัญชี (งบทดลอง/ภ.พ.30)
+- **ความง่าย** (WO 9.4): **⌘K สร้างด่วน** (parser ภาษาไทย/อังกฤษ+ยอดเงิน) · **soft-undo 5 นาที** (`AccountUndoToken`, 11 จุด: void/delete/cancel ฯลฯ) · `HelpTip` อธิบาย ≥40 คำทุกจุดที่มีศัพท์บัญชี · `EmptyState` ทุกหน้ารายการ · หน้า `/account/help` รวมคำถามที่พบบ่อย
+
+**สรุปสถานะรวม** (จาก SITEMAP.md gap matrix): เมนูย่อยทั้งหมด 65 รายการใน 9 หมวด — ✅ ของเดิมใช้ได้ 33 · 🔧 ปรับปรุงแล้ว 17 · ✨ เพิ่มใหม่ 12 · 🕓 เร็ว ๆ นี้ (ยังไม่ทำ) 3 (e-Tax Invoice, DBD e-Filing, แพ็กเกจและการใช้งาน) — หลัง WO ทั้งหมดปิด รายการ 🔧/✨ ทำเสร็จครบทุกตัวยกเว้น 🕓 ที่ประกาศไว้ล่วงหน้า
 
 ---
 
@@ -781,6 +803,33 @@ model AccountSystemLink {                    // เชื่อม POS/business 
 | 6000-6999 | ค่าใช้จ่าย | 6000 เงินเดือน · 6100 ค่าเช่า · 6200 น้ำ/ไฟ/เน็ต · 6300 การตลาด · 6500 ค่าธรรมเนียมชำระเงิน · 6800 ค่าเสื่อมราคา · 6900 ค่าใช้จ่ายอื่น |
 | 9999 | พักรายการ | SUSPENSE — ต้องเป็น 0 ก่อนปิดงวด |
 
+### 4.15 🆕 ตาราง/คอลัมน์ใหม่ที่ V2 เพิ่มจริง (migration `20260902160000`–`20260916000000`, 1 บรรทัด/ตัว)
+
+> ชื่อ model จริงในโค้ดขึ้นต้นด้วย `Account` เสมอ (เช่น สเปค §4 ข้างบนเขียน `Document` แต่ของจริงคือ `AccountDocument`) — ตารางด้านล่างคือของที่**เพิ่มใหม่จริง** ไม่ใช่แค่ rename
+
+| ตาราง/คอลัมน์ใหม่ | WO | migration | คืออะไร |
+|---|---|---|---|
+| `Party` + `PartyMergeCandidate` | 3.1 | `20260904030000_account_v2_party` | ตัวตนกลางข้ามโมดูล จับคู่ taxId+branchCode → phoneNorm → ชื่อ+อีเมล กันผู้ติดต่อซ้ำ (`AccountContact.partyId`, `@@index`) |
+| `InvItem` + `InvItemImage` | 4.1 | `20260904090000_account_v2_invitem_canonical` | คลังสินค้ากลาง (sku/หน่วย/ต้นทุน/onHand) — `AccountProduct.invItemId` ผูกเข้าเมื่อ "ติดตามสต็อก" |
+| `AccountRecurringRule` + `AccountRecurringRun` | 1.9 | `20260903190000_account_v2_recurring` | เอกสารประจำ (สร้างร่างอัตโนมัติตามรอบ) + ประวัติการรัน |
+| `AccountProductBundleItem` | 4.3 | `20260904190000_account_v2_products_v2` | รายการจัดชุดสินค้า (สินค้าชนิด BUNDLE ห้ามผูก `invItemId`) |
+| `AccountProductOpeningLot` | 4.3 | `20260904190000_account_v2_products_v2` | ยอดยกมาต้นทุน/จำนวนต่อสินค้า |
+| `AccountFinanceOpening` | 5.1 | `20260904220000_account_v2_finance_v2` | ยอดยกมาแบบหลายรายการต่อช่องทางเงิน (แทนยอดยกมาก้อนเดียวเดิม) |
+| `AccountFinanceTransfer` | 5.1 | `20260904220000_account_v2_finance_v2` | โอนเงินระหว่างช่องทาง (idempotent) |
+| `AccountBankStatement` + `AccountBankStatementLine` | 5.3 | `20260905000000_account_v2_bank_reconcile` | statement ที่อัปโหลด + บรรทัดรายการ (จับคู่กับ JournalLine ตอนกระทบยอด) |
+| `AccountWhtFiling` + `AccountCheque.depositedAt` + `AccountDocument.whtFiledPeriodKey` | 5.4 | `20260906000000_account_v2_wht_cheque` | มาร์ก "ยื่นแล้ว/ยกเลิก" ของ ภ.ง.ด. ต่องวด (idempotent ต่อ `(form, periodKey)`) |
+| `AccountPaymentRequest` | 5.5 | `20260907000000_account_v2_promptpay` | ลิงก์ชำระเงินสาธารณะ (token 128 บิต + unique `chargeId`) — Beam webhook หรือ QR PromptPay static |
+| `AccountVatFiling` | 6.2 | `20260909000000_account_v2_journal_period_asset` | มาร์ก "ยื่นภ.พ.30 แล้ว" ต่องวด (ใช้ในเช็กลิสต์ปิดงวด) |
+| `AccountDocTag` | 8.1 | `20260912000000_account_v2_doc_settings` | แท็กเอกสาร (คัดลอกต่อได้ตอนแปลงเอกสารตามนโยบาย) |
+| `AccountUndoToken` | 9.4 | `20260916000000_account_v2_undo_token` | soft-undo 5 นาที (void/delete/cancel ฯลฯ 11 จุด) |
+| `AccountAttachment.refType/refId` | 7.1 | `20260909010000_account_v2_attachment_ref` | ผูกไฟล์คลังเอกสารกับ record อื่นนอกเหนือจาก `documentId` เดิม |
+| `AccountAttachment.aiExtract/aiStatus/docTypeHint/sha256/source/thumbUrl/archivedAt` | 7.2 | `20260910000000_account_v2_documents_v2` | กล่องขาเข้า: ผล AI อ่านบิล + dedupe sha256 + thumbnail + archive |
+| `AccountAttachment.aiCostSatang/aiModel/aiReadAt/expenseDocId/senderLabel/sourceRef` | 7.2 | `20260911000000_account_v2_inbox` | ตัดเครดิต AI ต่อไฟล์ + ลิงก์กลับ EXPENSE ที่สร้างจากไฟล์นั้น + รับจากแชท |
+| `AccountSettings.default*/convert*/autoClose*` (นโยบายบัญชี) | 8.2 | `20260913000000_account_v2_policy` (+ 2 migration ตามหลังแก้ default/backfill) | ล็อกก่อนวันที่, บัญชี default 3 ตัว, การแปลงเอกสารต่อ, ปิดงวดอัตโนมัติ |
+| `AppSystem.settings.accountRoles/accountRoleMembers` + `AccountSystemLink.enabled/updatedById` | 8.3 | `20260914000000_account_v2_permissions_links` | บทบาทกำหนดเองระดับระบบบัญชี + สวิตช์เปิด/ปิดการเชื่อมต่อ |
+| ดัชนีประสิทธิภาพเพิ่ม (`AccountContact`/`AccountAttachment` composite) | 9.3 | `20260915000000_account_v2_perf_indexes` | ลด query เกินงบใน 10 หน้า (ดู wo-notes/9.3.md) |
+| `AccountContactGroup` + `AccountContactGroupMember` | 0.3 (เฟส 0) | `20260902160000_account_v2_phase0` | กลุ่มผู้ติดต่อกำหนดเอง (เมนู "กลุ่มกำหนดเอง" ยังเป็น `soon` ใน nav — โมเดลพร้อมแต่ยังไม่มีหน้า UI) |
+
 ---
 
 ## 5. API Endpoints
@@ -918,6 +967,42 @@ Sidebar:  หน้าแรก
 | S31-S36 | (public) หน้าเอกสาร/ตอบรับ/ขอใบกำกับ + PDF templates (A4 เอกสารทุกชนิด, 80mm, 50 ทวิฟอร์มราชการ) | | P1-P2 |
 
 **รวม ~47 หน้าจอ** (dashboard ~40 + public 3 + PDF template ชุด)
+
+### 6.1 🆕 V2 — แม็ปเฟรมออกแบบ → หมวดเมนู → route จริง
+
+> เฟรมรอบ 1 = `f1`–`f14` (เดสก์ท็อป 1440 + มือถือ 390) · เฟรมรอบ 2 = `g1`–`g20` (ราย detail/modal ที่รอบ 1 ไม่ครอบ) — ทั้งหมดอยู่ใน `docs/design/account-v2/mockup.html` และผ่านด่าน parity (ตาต่อตาดูภาพจริงคู่ mockup ทุกใบ ก่อนปิดแต่ละ WO)
+
+| เฟรม | หมวด/หน้า | route จริง (`base` = `/app/sys/[id]/account`) | WO |
+|---|---|---|---|
+| f1 / f11 | หน้าหลัก (desktop/mobile) | `base` (`AccountContent`) | 2.2 |
+| f2 / f3 | รายรับ — dropdown เมนู / รายการใบแจ้งหนี้ (DocTable เต็ม) | `base/docs/INVOICE` | 0.4, 1.1 |
+| f4 / f12 | รายจ่าย — dropdown เมนู (desktop/mobile) | `base/docs/EXPENSE`, `base/po`, `base/purchase` | 0.4, 1.2 |
+| f5 | ผู้ติดต่อ — ตาราง + คอลัมน์กลุ่มซ้าย | `base/contacts` | 3.2 |
+| f6 | สินค้า — ตาราง 9 คอลัมน์ | `base/products` | 4.3 |
+| f7 | การเงิน — ภาพรวม (ปฏิทิน+ไทล์) | `base/finance/overview` | 5.2 |
+| f8 / f8-menu | บัญชี — ผังบัญชี (tree 2 คอลัมน์) + dropdown | `base/accounts` | 6.1 |
+| f9 | คลังเอกสาร | `base/documents` | 7.1 |
+| f10 / f10-settings-menu | ตั้งค่า — เมนูซ้าย 6 หัวข้อ | `base/settings` | 8.1 |
+| f13 / f14 | มือถือ: ฟอร์มเอกสาร accordion / รายละเอียดเอกสาร (ลิสต์ย่อ) | `base/docs/[docType]/[id]` (มือถือ) | 1.3, 1.5, 9.1 |
+| g1 | ฟอร์มสร้างใบแจ้งหนี้เต็ม (stepper) | `base/docs/INVOICE/new` | 1.3 |
+| g2 | รับชำระเงินขั้นสูง (WHT + 2 ครั้ง) | modal ในหน้ารายละเอียดใบแจ้งหนี้ | 1.4 |
+| g3 | wizard ใบลดหนี้/เพิ่มหนี้ | `base/docs/CREDIT_NOTE/new` ฯลฯ | 1.6 |
+| g4 | หน้าเอกสาร IV 1 ใบ (detail+timeline+แท็บชำระ) | `base/docs/INVOICE/[id]` | 1.5 |
+| g5 | modal เพิ่มผู้ติดต่อขั้นสูง | ปุ่ม "+ เพิ่ม" บน `base/contacts` | 3.3 |
+| g6 | โปรไฟล์ผู้ติดต่อ 360° (แท็บการเชื่อมต่อ) | `base/contacts/[id]` | 3.4 |
+| g7 | รวมผู้ติดต่อซ้ำ | `base/contacts/merge` | 3.4 |
+| g8 | modal เพิ่มสินค้าขั้นสูง (แท็บการเชื่อมต่อคลัง+POS) | ปุ่ม "+ เพิ่ม" บน `base/products` | 4.3 |
+| g9 | ช่องทางการเงิน (การ์ดจัดกลุ่ม) | `base/finance` | 5.1 |
+| g10 | กระทบยอดธนาคาร (จับคู่ซ้าย/ขวา) | `base/finance/reconcile` | 5.3 |
+| g11 | ภาษีหัก ณ ที่จ่าย (ตาราง+ผลรวม+export) | `base/wht` | 5.4 |
+| g12 | ใบเบิกสินค้า | `base/goods-issue` | 4.3 |
+| g13 | ตั้งค่า › สิทธิ์ผู้ใช้งาน (matrix) | `base/settings/permissions` | 8.3 |
+| g14 | ตั้งค่า › การเชื่อมต่อระบบ (การ์ดต่อระบบ) | `base/settings/connections` | 8.3 |
+| g15 / g20 | กล่องขาเข้าเอกสาร (desktop/mobile) | `base/documents/inbox` | 7.2 |
+| g16 | บัญชีรายวัน (แท็บสมุด + JV มือ modal) | `base/journal` | 6.2 |
+| g17 | ฟอร์มใบแจ้งหนี้มือถือ (accordion+sticky) | `base/docs/INVOICE/new` (มือถือ) | 9.1 |
+| g18 | bottom sheet ระดับ 2 (มือถือ) | dropdown มือถือของ `AccountTabBar` | 0.4, 9.1 |
+| g19 | โปรไฟล์ผู้ติดต่อมือถือ | `base/contacts/[id]` (มือถือ) | 3.4, 9.1 |
 
 ---
 
@@ -1067,11 +1152,22 @@ cron สิ้นเดือน (หรือกดรันเอง): ทุ�
 | **AuditLog กลาง** | ทุก mutation ที่แตะเอกสารมีผล/เงิน/ผัง/สิทธิ์/ตั้งค่า |
 | **Outbox กลาง** | posting จาก POS, อีเมล, e-Tax queue (P4) |
 
+### 8.4 🆕 V2 — ของที่เพิ่มจริงในการเชื่อมระบบ
+
+- **Party เป็นตัวตนร่วม** (WO 3.1): `AccountContact.partyId` ชี้เข้า `Party` เดียวกับที่ Member/Chat ใช้ — จับคู่ลำดับ taxId+branchCode → phoneNorm → ชื่อ+อีเมล กันข้อมูลลูกค้ารั่วข้ามโมดูลจากการจับคู่ด้วยชื่อเปล่า (ช่องโหว่เดิมที่ BLUEPRINT §0.2 ระบุ) — `ChatContact.partyId` มีคอลัมน์รอแล้ว แต่ `maybeAutoLinkMember` ยังไม่ set (ค้าง — ส่งต่อ session แชท ดู §"ของที่ต้องส่งต่อ" ใน RUN.md)
+- **InvItem canonical** (WO 4.1): ทิศทางเดียว — `InvItem` (คลังกลาง: sku/หน่วย/ต้นทุน/onHand) เป็นเจ้าของสต็อกจริง `AccountProduct` ถือแค่บัญชี/VAT/ราคาขาย ผูกผ่าน `invItemId` — เบิก/คืนตัดคลังใน tx เดียวกับเอกสาร (`acc-issue-<lineId>` idempotency key)
+- **POS → บรรทัดเอกสารจริง** (WO 4.2): เปลี่ยนจากยอดรวมก้อนเดียวเป็นบรรทัดสินค้าจริงต่อบิล ผ่าน `pos-lines.ts` — บิล POS = `AccountDocument(TAX_INVOICE_ABB, NO_GL)` กันโพสต์รายได้ซ้ำกับใบต้นทาง, walk-in (`contactId=null`) แสดง "ไม่ระบุคู่ค้า" · **ค้าง**: บิล POS ยังไม่มี `AccountDocumentPayment` ผูก (มองไม่เห็นว่าเงิน POS ไปช่องทางไหนจากฝั่งบัญชี), ไม่มี unique index กันเอกสาร POS ซ้ำ
+- **กล่องขาเข้าจากแชท** (WO 7.2): consumer สแกน outbox event `chat.message.received` ล่าสุด 10 นาที (ยังไม่มี `messageId` ใน payload — ทำได้แค่สแกนแทนอ้างตรง) → ต้องเปิด `AccountSystemLink.config.inboxFromChat=true` ก่อน (UI เปิดสวิตช์อยู่ที่ WO 8.3 `base/settings/connections`)
+- **Outbox event ที่ Account ยิงออก**: prefix `account.*` (ใช้กับ API key/webhook ของแพลตฟอร์ม — WO 8.3) — เพิ่ม event ใหม่ต้องลงทะเบียน consumer เสมอ (ดู memory `reference_outbox_new_event_needs_consumer`)
+- **PromptPay/Beam** (WO 5.5): มี key (`BEAM_MERCHANT_ID`/`BEAM_API_KEY`/`BEAM_WEBHOOK_SECRET`) → webhook ยืนยันอัตโนมัติ prefix `acc:` (แยกจาก path เติมเครดิต AI) · ไม่มี key → fallback QR PromptPay static ต้องยืนยันมือ/จับจาก statement กระทบยอด — 🔑 รอเจ้าของตั้งค่าเหล่านี้บน prod (ยังไม่ตั้ง ณ วันปิด run)
+
 ---
 
 ## 9. Permissions (`can(user, {tenantId, systemId, module:'ACCOUNT', action})`)
 
 > โมเดลบทบาทเอกสาร 3 ขา: **ผู้จัดทำ** (create/แก้ DRAFT) · **ผู้อนุมัติ** (approve/issue/void — ตั้งวงเงินได้) · **ผู้ชำระ** (record/void payment) — map เข้า role ผ่านตาราง + custom ราย action
+>
+> 🆕 **V2 จริง (WO 8.3, `src/lib/core/permissions.ts:432-471`)**: มี **36 คีย์** (ไม่ใช่ ~15 ตัวของตารางด้านล่างซึ่งเป็นสเปคตั้งต้น) — คีย์ที่เพิ่ม: `account.doc.public_link`, `account.wht.unmark` 🔒 (ระดับเจ้าของ — ยกเลิกมาร์กยื่นแล้ว), `account.cheque.deposit/clear/bounce/void` (แยกจาก `cheque.manage`), `account.contact.merge`, `account.import`, `account.approve.limit` (เพดานยอดอนุมัติ — เก็บที่ `Membership.permissions._maxApproveSatang`, เกิน = บังคับ `submitForApproval` แล้วผลกลับเข้าเอกสารเมื่ออนุมัติ), `account.reconcile`, `account.asset.register/dispose/writeoff` (แยกจาก `asset.manage`) · **ของจริงเป็น matrix ต่อ cell** ไม่ใช่แถว OWNER/MANAGER/STAFF ตายตัว — หน้า `base/settings/permissions` (g13) ให้ติ๊ก 1 เซลล์ต่อคีย์ต่อบทบาทกำหนดเอง (เก็บใน `AppSystem.settings.accountRoles/accountRoleMembers`) · `account.doc.create` ที่มีอยู่เดิม **ได้ `account.doc.view` โดยอัตโนมัติ** (ตาราง IMPLIES ใน `account/access.ts`) · หน้าเอกสารยังมีจุดที่ไม่เช็คสิทธิ์ก่อนโชว์ปุ่ม (ปิดไปแล้วบางส่วนใน WO 9.2 — ที่เหลือดู §11.18)
 
 | action | OWNER | MANAGER | STAFF | หมายเหตุ |
 |---|---|---|---|---|
@@ -1129,6 +1225,16 @@ cron สิ้นเดือน (หรือกดรันเอง): ทุ�
 15. **qtyOnHand ติดลบ** (เบิกเกิน): เตือนแต่ไม่ block ใน v1 (ของจริงหน้างานสำคัญกว่า) — report จำนวนติดลบให้เคลียร์
 16. **Race บันทึกชำระพร้อมกัน**: lock Document row ใน tx — paidTotal เกิน grandTotal → 409 (เงินเกินให้บันทึกเป็นรับล่วงหน้า/มัดจำแยกใบ)
 17. **Timezone**: issueDate/periodKey/overdue คิดจาก `settings.timezone` (default Asia/Bangkok) — ขาย 23:59 อยู่งวดเดียวกับใบเสร็จ
+
+### 🆕 V2 — กติกาเพิ่มจาก WO 8.2/8.3/9.2/9.3/9.4 (chokepoint จริงในโค้ด)
+
+18. **ล็อกก่อนวันที่ (นโยบายบัญชี)**: `AccountSettings.lockBeforeDate` บังคับที่ **chokepoint เดียว** `gl.commitEntry` — ครอบทุกทาง (create/update/void/payment/JV มือ/reopen) ห้ามลงหรือแก้รายการที่ `issueDate`/`paidAt` ก่อนวันล็อก แม้เรียกผ่าน API/service ตรง ๆ ก็โดนกัน
+19. **ปิดงวด (period lock)**: งวดสถานะ `CLOSED` → โพสต์ journal ใหม่ในงวดนั้นไม่ได้ (MANUAL retry → 423) · ปิดงวดอัตโนมัติ (`sweepAutoClosePeriods`, cron) ยังไม่มีสวิตช์แยกต่อระบบ — ปิดทั้งแพลตฟอร์มพร้อมกันเมื่อเปิดใช้ (WO 8.2 ค้าง) · reopen ต้องมีสิทธิ์ `account.period.reopen` + เหตุผล + audit
+20. **เลขที่เอกสาร (numbering reset)**: `AccountDocSequence` ตั้ง pattern ไทย/อังกฤษได้ต่อ docType + `resetBy: NEVER|YEARLY|MONTHLY` — เปลี่ยน pattern มีผลเฉพาะใบใหม่ (ใบเก่าไม่เปลี่ยน) · รองรับ "legacy continuation" (ตั้งเลขเริ่มต้นสูงกว่าเลขรันเดิมได้เมื่อย้ายระบบ) · จองเลขในทรานแซกชันเดียวกับ insert (row lock) กันชนกันตอนยิงพร้อมกัน
+21. **Idempotency keys**: posting จาก POS/PromptPay/JV recurring ทุกเส้นใช้ key ผูกกับ tx ปลายทาง (เช่น `acc-issue-<lineId>`, `(tenantId, idempotencyKey)` ของ facade, `(form, periodKey)` ของ mark-filed WHT/VAT) — เรียกซ้ำด้วย key เดิมต้อง**ไม่สร้างซ้ำ** (WO 9.2/9.3 พบและปิดจุดที่ยังไม่ idempotent เช่น `recordPayment` เดิมไม่ล็อกแถว → รับชำระซ้อนจ่าย 2 เท่า)
+22. **Rate limit**: เพิ่มครบ 6 จุดใน WO 9.2 (ไม่มีมาก่อน) — ครอบ endpoint สาธารณะ/ละเอียดอ่อน (ลิงก์ขอใบกำกับสาธารณะ, ขอใบกำกับผ่าน token, ค้นหา `q` จำกัดความยาว กัน ReDoS/DoS) — ดู `qc-acc-v2-security.mts`
+23. **Undo 5 นาที**: การกระทำที่ไม่กระทบเลขรัน (delete draft/cancel/ยกเลิกบางชนิด — 11 จุด) สร้าง `AccountUndoToken` อายุ 5 นาที กดเลิกทำได้จาก toast — action ที่กระทบเลขรัน/journal ที่โพสต์แล้ว **ไม่มี undo** (ต้อง void+reversal เป็นทางการเท่านั้น)
+24. **As-of balances**: ยอดคงเหลือ "ณ วันที่" (ผังบัญชี f8, ภาพรวมการเงิน, งบทดลอง) คำนวณสดจาก `JournalLine` จริงทุกครั้ง **รวม entry ในอนาคต** ถ้าวันที่เลือกเป็นอนาคต (ตัดสินใจ WO 6.1 หลัง Fable ตรวจ GL เอง) — ไม่ cache/ไม่มีตาราง summary แยก ตรงกับหลักการ A2 (single source of truth)
 
 ---
 
