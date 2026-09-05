@@ -834,78 +834,18 @@ model AccountSystemLink {                    // เชื่อม POS/business 
 
 ## 5. API Endpoints
 
-> ทั้งหมดอยู่ใต้ `/api/sys/[systemId]/account/...` (middleware: systemId ∈ tenant + `can()`) · public อยู่ใต้ `/api/pub/account/...` · เงิน = Int สตางค์
+> **as-built (แทนที่พิมพ์เขียวเดิมทั้งหมด — เดิมไม่เคยสร้างจริง)**: API ครอบทุกฟังก์ชันของโมดูลนี้อยู่ที่ `/api/v1/account/*` ไม่ใช่ `/api/sys/[systemId]/account/...` ตามที่ร่างไว้แต่แรก — ทำจริงใน run "API บัญชีครอบทุกฟังก์ชัน + สกิล AI" (5 ก.ย. 2026, `ledger/ACCOUNT-API-RUN.md`) เป็น **199 operations** (84 อ่าน · 106 เขียน · 15 อันตราย) จากทะเบียนเดียว `src/lib/modules/account/api/registry.ts` ครอบทุกเมนูของโมดูล: เอกสาร/ผู้ติดต่อ/สินค้า/การเงิน/เช็ค/WHT/บัญชี-งบ-งวด/สินทรัพย์/กระทบยอด/นำเข้า/คลังเอกสาร-กล่องขาเข้า/ตั้งค่า/สิทธิ์/webhooks/คีย์ API — ตารางรายตัว (path/scope/input/output/ตัวอย่าง) อยู่ที่ **`docs/api/ACCOUNT-API.md`** (generate จากทะเบียนเดียวกันนี้ ห้ามพิมพ์มือ — แก้ด้วย `pnpm exec tsx scripts/gen-account-api-docs.mts`) และหน้าอ่านง่าย `/developers/account`
+>
+> สรุปสถาปัตยกรรม (รายละเอียดเต็มใน `docs/sds/07_API.md` § Account API):
+> - **Auth**: `Authorization: Bearer <api key>` (สร้าง/หมุน/เพิกถอนที่ **ตั้งค่า › การเชื่อมต่อ › แอปภายนอก / API** — ผูกสมุดบัญชีเล่มเดียวเสมอเมื่อสร้างจากหน้าบัญชี) + `X-Shark-System` เมื่อคีย์ไม่ผูกเล่ม
+> - **Scope = permission key จริง** (ไม่มีคำศัพท์สิทธิ์ชุดที่สอง) รวมเป็น 5 bundle สำเร็จรูป: `read-only` · `issue-and-collect` (ค่าเริ่มต้น) · `accountant` · `danger` · `settings`
+> - **Pipeline ทุกคำขอ**: rate limit ต่อคีย์ (300 อ่าน/60 เขียน/30 รายงาน ต่อนาที) → scope → zod strict → (op อันตราย) `confirm:true`+`reason` → `Idempotency-Key` (เขียนทุกตัวบังคับ) → handler → audit
+> - **Schema เครื่องอ่านได้**: `GET /api/v1/account/openapi.json` (ไม่ต้องใช้คีย์) — OpenAPI 3.1 generate จากทะเบียนเดียวกัน
+> - **Webhooks ขาออก**: 21 event ขึ้นต้น `account.*` (สมัคร/ดูผลส่งได้ที่หน้าเดียวกับคีย์) ลายเซ็น `X-Shark-Signature` (HMAC-SHA256)
+> - **สกิล AI**: `/api/v1/ai/skills/account` เปิด 36 tool (generate จาก op ที่ตั้ง `tool` ในทะเบียน) — อ่านทำทันที เขียน/อันตราย = proposal ให้เจ้าของยืนยันก่อน (ดู `docs/AI_LAYER.md`)
+> - public routes เดิม (`/pub/account/d/:token` ฯลฯ) ยังอยู่แยกจาก REST ชุดนี้ — ไม่ได้ทำใหม่ใน run นี้
 
-### 5.1 เอกสาร (generic ทุก docType — engine เดียว)
-
-| # | Method + Path | ทำอะไร | สิทธิ์ |
-|---|---|---|---|
-| 1 | `GET /docs/:docType` | list — `?tab=` (ชื่อแท็บตาม §3.0.3: awaiting/paid/overdue/all/recent) `&q=&contactId=&category=&from=&to=&page=` | account.doc.view |
-| 2 | `POST /docs/:docType` | สร้าง DRAFT `{contactId?, issueDate, dueDate?, vatMode, vatTiming?, lines[], discountAmount, note, categoryId?, refType?, refId?}` — server คำนวณยอดทุกชั้นเอง (client ส่ง input ดิบ) | account.doc.create |
-| 3 | `GET /docs/:docType/:id` | รายละเอียด + lines + payments + relations + attachments + journal ref | account.doc.view |
-| 4 | `PATCH /docs/:docType/:id` | แก้ — **DRAFT เท่านั้น** (พ้นแล้ว 409) | account.doc.create |
-| 5 | `POST /docs/:docType/:id/issue` | DRAFT → มีผล (ตาม state machine ของชนิด): จองเลข docNo + freeze snapshot + **โพสต์ journal** (§7.10) | account.doc.issue |
-| 6 | `POST /docs/:docType/:id/submit-approval` · `/approve` · `/reject` | workflow อนุมัติ (PO/APO/ชนิดที่เปิด approval) — approve เกินวงเงิน → 403 | account.doc.approve |
-| 7 | `POST /docs/:docType/:id/accept` · `/decline` | ใบเสนอราคา: บันทึกตอบรับ/ปฏิเสธ (มือ — ฝั่ง public ใช้ #30) | account.doc.create |
-| 8 | `POST /docs/:docType/:id/void` | ยกเลิกเอกสารมีผล `{reason}` → reversal journal + คืนสถานะ relation (มัดจำกลับเป็นรอหัก ฯลฯ) | account.doc.void |
-| 9 | `POST /docs/:docType/:id/convert` | แปลงเอกสาร `{toDocType, lines?: subset, deposits?: [{docId, amount}]}` → สร้าง DRAFT ปลายทาง + relation CONVERT/DEPOSIT_APPLY | account.doc.create |
-| 10 | `POST /docs/:docType/:id/payments` | บันทึกรับ/จ่ายเงิน `{paidAt, channel, financeAccountId, amount, whtAmountSatang?, whtRateBp?, whtIncomeType?, feeAmount?, chequeNo…?}` → โพสต์ journal + ปรับสถานะ (PARTIAL/PAID) + auto ออก RECEIPT/WHT_CERT ตามตั้งค่า | account.payment.record |
-| 11 | `POST /docs/:docType/:id/payments/:payId/void` | ยกเลิกการชำระ `{reason}` → reversal + ถอยสถานะ | account.payment.void |
-| 12 | `POST /docs/:docType/:id/tax-invoice` | ออกใบกำกับภาษีจาก RECEIPT/INVOICE `{buyer?}` (default = contactSnapshot) — 1 ต้นทาง 1 ใบ ISSUED | account.doc.issue |
-| 13 | `GET /docs/:docType/:id/pdf` | PDF (A4 / 80mm ตามชนิด, โลโก้+ตราประทับ+ลายเซ็น) | account.doc.view |
-| 14 | `POST /docs/:docType/:id/email` | ส่งอีเมล `{to, message?}` ผ่าน notify() + แนบ PDF | account.doc.view |
-| 15 | `POST /docs/:docType/:id/public-link` · `DELETE` | เปิด/ปิดลิงก์สาธารณะ (คืน URL `/pub/account/d/{token}`) | account.doc.issue |
-| 16 | `POST /docs/billing-note` (ผ่าน #2 พร้อม `invoiceIds[]`) · `POST /docs/combined-payment` (พร้อม `purchaseIds[]`) | สร้างใบวางบิล/ใบรวมจ่ายจากหลายใบ → relation BILL/PAY_GROUP + ตรวจผู้ติดต่อเดียวกัน | account.doc.create |
-| 17 | `POST /docs/:docType/:id/attachments` · `DELETE .../:attId` | แนบ/ลบไฟล์ | account.doc.create |
-| 18 | `POST /docs/purchase-tax-invoice/:id/receive` | ใบกำกับภาษีซื้อ: มาแล้ว → RECEIVED + โอน 1155→1150 | account.payment.record |
-
-### 5.2 ผู้ติดต่อ / สินค้า / หน่วย / กลุ่ม
-
-| # | Path | ทำอะไร |
-|---|---|---|
-| 19 | `GET·POST /contacts` · `GET·PATCH /contacts/:id` · `POST /contacts/:id/archive` | CRUD ผู้ติดต่อ (validate taxId checksum) — `GET /contacts/:id/summary` = ยอดค้างรับ/จ่าย + เอกสารล่าสุด |
-| 20 | `GET·POST /products` · `GET·PATCH /products/:id` · archive | CRUD สินค้า/บริการ |
-| 21 | `GET·POST /units` · `PATCH /units/:id` | หน่วย |
-| 22 | `GET·POST /categories` · `PATCH /categories/:id` | กลุ่มจัดประเภท |
-
-### 5.3 การเงิน
-
-| # | Path | ทำอะไร |
-|---|---|---|
-| 23 | `GET·POST /finance-accounts` · `PATCH /finance-accounts/:id` | บัญชีเงิน + ยอดยกมา (สร้าง GL ลูกอัตโนมัติ) |
-| 24 | `GET /finance-accounts/:id/statement?from=&to=` | ความเคลื่อนไหว + ยอดคงเหลือ |
-| 25 | `POST /finance-transfers` | โอนระหว่างบัญชีเงิน `{fromId, toId, amount, date}` → JV ทั่วไป |
-| 26 | `GET /wht?direction=IN\|OUT&period=` | ทะเบียน WHT สองขา (จาก DocumentPayment) + `GET /wht/pnd?type=3\|53&period=` สรุป ภ.ง.ด. + export |
-| 27 | `GET·POST /cheques` · `POST /cheques/:id/deposit` · `/clear` · `/bounce` · `/void` | เช็ครับ/จ่าย lifecycle (P4) — โพสต์ journal ตามขั้น |
-
-### 5.4 บัญชี / งบ / งวด (P3)
-
-| # | Path | ทำอะไร |
-|---|---|---|
-| 28 | `GET /journal?book=&period=&needsReview=` · `GET /journal/:id` · `POST /journal` (JV มือ) · `POST /journal/:id/reverse` | บัญชีรายวัน 5 เล่ม + JV + กลับรายการ |
-| 29 | `GET·POST /chart` · `PATCH /chart/:id` · `GET·PUT /mappings` | ผังบัญชี + posting mapping |
-| 30 | `GET /reports/general-ledger?accountId=&from=&to=` · `/trial-balance?asOf=` · `/pnl?period=` · `/balance-sheet?asOf=` · `/cashflow?from=&to=` · `/vat?period=` (ภ.พ.30+รายงานภาษีขาย/ซื้อ) · `/ar-aging` · `/ap-aging` · `/doc-report?docType=` | งบ+รายงานทั้งหมด — ทุกตัวรับ `?format=csv` (UTF-8 BOM) |
-| 31 | `GET /periods` · `POST /periods/:key/close` · `/reopen` | ปิดงวด (pre-close checklist) |
-| 32 | `GET·POST /assets` · `PATCH /assets/:id` · `POST /assets/:id/dispose` · `POST /assets/run-depreciation {periodKey}` | ทะเบียนสินทรัพย์ + ค่าเสื่อม (cron เรียก run-depreciation — idempotent) |
-| 33 | `GET /exports/dbd?year=` | DBD e-Filing Excel (P4) |
-
-### 5.5 คลังเอกสาร / ตั้งค่า / เชื่อมระบบ
-
-| # | Path | ทำอะไร |
-|---|---|---|
-| 34 | `GET /library?folder=&q=` · `POST /library/upload` · `DELETE /library/:id` | คลังเอกสารกลาง |
-| 35 | `GET·PUT /settings/org` · `GET·PUT /settings/doc/:docType` · `GET·PUT /settings/approval` | ตั้งค่า (§3.8) — เปลี่ยน prefix มีผลเอกสารใหม่เท่านั้น |
-| 36 | `GET /links` · `POST /links {linkedKind, linkedId, config}` · `PATCH /links/:id` · `DELETE /links/:id` | เชื่อม/ถอด POS + business (§8) |
-
-### 5.6 Public (ไม่ต้อง login — rate limit + token)
-
-| # | Path | ทำอะไร |
-|---|---|---|
-| 37 | `GET /api/pub/account/d/:token` | หน้าเอกสารสาธารณะ (ตาม publicLink settings — ซ่อน field ตามตั้งค่า) + ปุ่ม PDF |
-| 38 | `POST /api/pub/account/d/:token/accept` · `/decline` | ลูกค้าตอบรับใบเสนอราคา (เก็บ IP/UA/เวลาใน audit) |
-| 39 | `GET /api/pub/account/tax-request/:token` · `POST` | **ลิงก์ขอใบกำกับภาษี**: ลูกค้ากรอกชื่อ/เลขภาษี/สาขา/ที่อยู่/อีเมล จากใบเสร็จ (QR) → สร้าง TAX_INVOICE (ตาม autoTaxInvoice policy: auto-issue หรือรอ staff กดยืนยัน) + ส่งอีเมล PDF |
-
-**รวม ~39 กลุ่ม endpoint** (นับแยก method ~70 เส้นทาง) — facade `account.postSale/postRefund/postVoid` เป็น internal service function ไม่ใช่ REST (§8)
+ดู `ledger/HANDOVER-2026-09-06-ACCOUNT-API.md` สำหรับสรุปที่ให้เจ้าของอ่าน (วิธีสร้างคีย์ · ตัวอย่าง curl · ของที่รอเจ้าของ) และ `docs/sds/modules/account.md` § API (as-built) สำหรับสรุปฝั่งสถาปัตยกรรม
 
 ---
 

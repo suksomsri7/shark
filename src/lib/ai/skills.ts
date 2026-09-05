@@ -14,7 +14,7 @@
 //    ตรวจโดย assertSkillRegistryComplete() + ข้อสอบ qc-ai-skills
 //    (ลืมลงทะเบียน tool ใหม่ = AI เรียกไม่ได้เลย ซึ่งจะเงียบมากถ้าไม่มีด่านนี้)
 
-import { accountToolNames } from "./account-ops";
+import { accountToolAllowedForScopes, accountToolNames } from "./account-ops";
 import { toolRegistry } from "./tools";
 
 /** สกิล 1 ชุด — โครงนี้คือสิ่งที่จะกลายเป็น manifest สาธารณะสำหรับ AI ภายนอก */
@@ -247,6 +247,25 @@ export function skillById(id: string): Skill | null {
 export function skillsForTenant(openedSystemTypes: string[]): Skill[] {
   const opened = new Set(openedSystemTypes);
   return SKILLS.filter((s) => !s.systems || s.systems.some((t) => opened.has(t)));
+}
+
+/**
+ * tool ตัวนี้ "คีย์ API ใบนี้" เรียกได้ไหม (WO E2)
+ *
+ * ปัจจุบันมีสกิลเดียวที่ผูก scope รายเครื่องมือคือ `account` — เพราะทะเบียน op ของ REST บัญชี
+ * ประกาศ `action` (= permission key) ไว้ให้ทุกตัวอยู่แล้ว จึง derive ได้โดยไม่ต้องมีตารางที่สอง
+ * สกิลอื่นยังไม่มีแผนที่ tool → permission key ⇒ ยังคงพฤติกรรมเดิม (คีย์ที่ยืนยันตัวตนได้เรียกได้)
+ */
+export function toolAllowedForApiKey(toolName: string, scopes: string[]): boolean {
+  return accountToolAllowedForScopes(toolName, scopes);
+}
+
+/**
+ * เครื่องมือของสกิลนี้ที่คีย์ใบนี้เรียกได้จริง (manifest ต้องไม่โฆษณาสิ่งที่เรียกแล้วโดนปฏิเสธ)
+ * ว่างเปล่า = คีย์ไม่มีสิทธิ์แตะสกิลนี้เลย ⇒ route ตอบ 404 เหมือนสกิลไม่มีอยู่
+ */
+export function skillToolsForApiKey(skill: Skill, scopes: string[]): string[] {
+  return skill.tools.filter((n) => toolAllowedForApiKey(n, scopes));
 }
 
 /**

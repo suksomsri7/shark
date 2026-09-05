@@ -102,3 +102,16 @@
 ## 🆕 V2 — deployment
 - Vercel build ปกติ (`vercel.json`/build command ของ repo) **รัน `prisma migrate deploy` เป็นส่วนหนึ่งของ build step** — migration ทั้ง 24 ตัวของ V2 (`20260902160000`–`20260916000000`) เป็น additive ล้วน (ไม่มี DROP/RENAME ที่ทำลายข้อมูล) จึง deploy ได้โดยไม่ต้อง downtime window
 - ไม่มีขั้นตอน manual migrate แยกสำหรับโมดูลนี้ — สิ่งที่ต้องทำเองหลัง deploy คือ **ตั้ง env vars ด้านบนใน Vercel project settings** (build ไม่ fail ถ้าไม่ตั้ง แต่ฟีเจอร์ที่พึ่งค่านั้น fallback แบบ degrade ไม่ crash) + เพิ่มบรรทัด cron รายงานอีเมลบน VPS เอง (ไม่ผ่าน Vercel)
+
+## 🆕 API (as-built) — run "API บัญชีครอบทุกฟังก์ชัน + สกิล AI" (5 ก.ย. 2026)
+
+> เอกสารสัญญาเต็ม (path/scope/input/output/curl ทุกตัว) generate จากทะเบียนโค้ดที่ `docs/api/ACCOUNT-API.md` + หน้าอ่านง่าย `/developers/account` · ภาพรวมสถาปัตยกรรมที่ `docs/sds/07_API.md` § Account API · สรุปเจ้าของอ่านที่ `ledger/HANDOVER-2026-09-06-ACCOUNT-API.md`
+
+- Base: `https://shark.in.th/api/v1/account/*` (namespace แยกจาก `/api/v1` ของแพลตฟอร์ม เพราะ scope เป็น `AppSystem` ไม่ใช่ tenant) — **199 operations** (84 อ่าน · 106 เขียน · 15 อันตราย) จากทะเบียนเดียว `src/lib/modules/account/api/registry.ts` ครอบทุกเมนูของโมดูลนี้ (เอกสาร ผู้ติดต่อ สินค้า การเงิน เช็ค WHT บัญชี งบ งวด สินทรัพย์ กระทบยอด นำเข้า คลังเอกสาร กล่องขาเข้า ตั้งค่า สิทธิ์ webhooks คีย์ API)
+- **Auth**: `Authorization: Bearer <api key>` สร้าง/หมุน/เพิกถอนที่หน้า **ตั้งค่า › การเชื่อมต่อ › แอปภายนอก / API** (`src/components/account-v2/ConnectionsPanel.tsx`) — scope ของคีย์ = permission key จริงของ `access.ts` (ไม่มีคำศัพท์สิทธิ์ชุดที่สอง) รวมเป็น 5 bundle (`src/lib/api-keys/scopes.ts`): `read-only` · `issue-and-collect` (ค่าเริ่มต้น 365 วัน) · `accountant` · `danger` · `settings`
+- **Pipeline** (`src/lib/modules/account/api/{require,dispatch,run,idempotency,respond}.ts`): rate limit ต่อคีย์ → scope → zod strict → op อันตรายต้อง `confirm:true`+`reason` → `Idempotency-Key` (เขียนทุกตัวบังคับ) → handler เดียวกับที่ปุ่มบนจอเรียก → audit
+- **Schema เครื่องอ่านได้**: `GET /api/v1/account/openapi.json` (ไม่ต้องคีย์) · **Webhooks**: 21 event ขึ้นต้น `account.*` ลายเซ็น `X-Shark-Signature`
+
+### สกิล AI
+
+โมดูลนี้เปิดสกิล `account` ให้ผู้ช่วย AI ของ SHARK (และ agent ภายนอกผ่าน `/api/v1/ai/skills/account`) — **36 tool generate จากทะเบียน op เดียวกันกับ REST** (`src/lib/ai/tools-account.ts`, WO E1): tool อ่าน (14) เรียก handler แล้วตอบทันที · tool เขียน (18) และอันตราย (4) สร้าง **proposal** ให้เจ้าของกดยืนยันในแอปก่อน แล้ว execute ด้วยสิทธิ์ของคนกด (ไม่ใช่สิทธิ์ AI) — สถาปัตยกรรม proposal → confirm → execute เดียวกับ Phase 3.5 ของ `docs/AI_LAYER.md` ที่มีอธิบายหัวข้อสกิลนี้โดยละเอียด (tools จากทะเบียน · REST lane vs AI lane)

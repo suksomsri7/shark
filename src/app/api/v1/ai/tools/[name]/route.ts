@@ -7,8 +7,11 @@
 // - tenantId มาจากคีย์เสมอ (ไม่รับจาก body) — กันข้ามร้าน
 import { apiJson, authenticateApiRequest } from "@/lib/api-keys/route-auth";
 import { runTool, toolRegistry } from "@/lib/ai/tools";
-import { skillOfTool } from "@/lib/ai/skills";
+import { skillOfTool, toolAllowedForApiKey } from "@/lib/ai/skills";
+import { accountToolScope } from "@/lib/ai/account-ops";
 import { prisma } from "@/lib/core/db";
+
+const HEADER_SYSTEM = "x-shark-system";
 
 export async function POST(
   req: Request,
@@ -20,6 +23,27 @@ export async function POST(
   const { name } = await params;
   const tool = toolRegistry().find((t) => t.def.name === name);
   if (!tool) return apiJson({ error: `ไม่รู้จักเครื่องมือ "${name}"` }, 404);
+
+  // ── ขอบเขตสิทธิ์ของคีย์ (WO E2) ────────────────────────────────────────────
+  // คีย์ที่ประกาศ scope ไว้ทำได้ไม่เกิน scope นั้น — เท่ากับ REST /api/v1/account/* เป๊ะ
+  // (403 ไม่ใช่ 404 เพราะเครื่องมือ "มีอยู่จริง" แค่คีย์ใบนี้ไม่มีสิทธิ์ — ผู้เชื่อมต่อจะได้รู้ว่าต้องขอ scope เพิ่ม)
+  if (!toolAllowedForApiKey(name, auth.scopes)) {
+    return apiJson(
+      {
+        error: "คีย์นี้ไม่มีสิทธิ์ใช้เครื่องมือนี้",
+        hint: `ต้องการสิทธิ์ ${accountToolScope(name) ?? "ที่ตรงกับเครื่องมือนี้"}`,
+      },
+      403,
+    );
+  }
+
+  // ── สมุดบัญชีที่จะทำงานด้วย ────────────────────────────────────────────────
+  // คีย์ที่ผูกเล่มไว้ = ผูกตายตัว · ส่งหัวมาต่างจากที่ผูก = ปฏิเสธ (กติกาเดียวกับ REST require.ts)
+  const headerSystem = req.headers.get(HEADER_SYSTEM)?.trim() || null;
+  if (auth.systemId && headerSystem && headerSystem !== auth.systemId) {
+    return apiJson({ error: "สมุดบัญชีที่ระบุใช้กับคีย์นี้ไม่ได้" }, 403);
+  }
+  const systemId = auth.systemId ?? headerSystem;
 
   let body: { args?: unknown; conversationId?: string };
   try {
@@ -39,7 +63,11 @@ export async function POST(
   }
 
   const result = await runTool(
-    { tenantId: auth.tenantId, ...(conversationId ? { conversationId } : {}) },
+    {
+      tenantId: auth.tenantId,
+      ...(conversationId ? { conversationId } : {}),
+      ...(systemId ? { systemId } : {}),
+    },
     name,
     body.args ?? {},
   );

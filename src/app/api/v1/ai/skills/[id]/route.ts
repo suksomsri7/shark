@@ -8,7 +8,7 @@
 // (กติกาความปลอดภัยเดียวกับผู้ช่วยในระบบ — AI ภายนอกไม่ได้สิทธิ์มากกว่า AI ของเราเอง)
 import { prisma } from "@/lib/core/db";
 import { apiJson, authenticateApiRequest } from "@/lib/api-keys/route-auth";
-import { skillById, skillsForTenant } from "@/lib/ai/skills";
+import { skillById, skillToolsForApiKey, skillsForTenant } from "@/lib/ai/skills";
 import { toolRegistry } from "@/lib/ai/tools";
 
 export async function GET(
@@ -27,12 +27,14 @@ export async function GET(
     where: { tenantId: auth.tenantId, active: true },
     select: { type: true },
   });
-  if (!skillsForTenant(systems.map((s) => s.type)).some((s) => s.id === id)) {
+  // สกิลที่คีย์ใบนี้ไม่มีสิทธิ์แตะเลย (scope ไม่ถึง) ก็ตอบ 404 เหมือนกัน — ไม่บอกใบ้ว่ามีอะไรอยู่หลังกำแพง
+  const allowed = skillToolsForApiKey(skill, auth.scopes);
+  if (!skillsForTenant(systems.map((s) => s.type)).some((s) => s.id === id) || allowed.length === 0) {
     return apiJson({ error: "ร้านนี้ยังไม่ได้เปิดระบบที่รองรับสกิลนี้" }, 404);
   }
 
   const reg = toolRegistry();
-  const tools = skill.tools
+  const tools = allowed
     .map((name) => reg.find((t) => t.def.name === name))
     .filter((t): t is NonNullable<typeof t> => Boolean(t))
     .map((t) => ({

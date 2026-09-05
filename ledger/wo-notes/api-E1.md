@@ -230,7 +230,7 @@ DB ทุกคำสั่งชี้ Neon QC `ep-plain-art` (export ต่อ
 - qc:all ที่ Fable สั่งปิดเฟส D จบตอน 15:5x (21m27s · exit 1) — **รันคาบเกี่ยวกับการแก้ของ E1** (suite ที่ spawn หลังผมเริ่มแก้ ใช้โค้ดใหม่) ⇒ ผลรอบนั้นเชื่อไม่ได้ทั้งรอบ ควรรันใหม่ตอนตรวจรับ
 
 
-## ภาคผนวกโดย Fable (ตรวจรับ 6 ก.ย. 00:30 น.)
+## ภาคผนวกโดย Fable (ตรวจรับ 5 ก.ย. 23:05 น.)
 - **K3.11/K3.14**: builder ถูก — oracle สั่งยกเลิกใบที่ PAID ทั้งที่กติกาบัญชีต้องยกเลิกการชำระก่อน ⇒ แก้ oracle เพิ่ม **K3.10a** `account_void_payment` (DESTRUCTIVE: ชั้นแรก needsSecondConfirm → ชั้นสอง ok → ใบพ้น PAID) ก่อน void ใบ · 33/33
 - รับ `api/run.ts` (validateOpInput + runOpAsActor) เป็นประตูร่วม REST/AI — dispatch.ts ใช้ตัวเดียวกัน ไม่ลอกซ้ำ · `ApiActor.kind` 3 แบบ · เอกสารจาก AI ได้ source AI
 - รันซ้ำเอง: ai-skill 33 · qc-ai-skills 23 · qc-ai 17 · core 64 · openapi 26 · write-docs 52 · write-payments 32 · docs --check 199 op · typecheck 0 · fitness 20/20 ×2

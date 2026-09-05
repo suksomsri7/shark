@@ -14,7 +14,7 @@ import { toolRegistry } from "./tools";
 
 export type GoldenCase = { prompt: string; expectTool: string };
 
-// ── ข้อสอบทองคำ (20 เคสจริง) — ครอบทั้งอ่าน (read) และทำแทน (action) หลายโดเมน ──
+// ── ข้อสอบทองคำ (โจทย์จริง) — ครอบทั้งอ่าน (read) และทำแทน (action) หลายโดเมน รวมสกิลบัญชี ──
 // ทุก expectTool = ชื่อ tool จริงใน toolRegistry() (ตรวจได้ด้วย assertGoldenCasesValid)
 export const GOLDEN_CASES: GoldenCase[] = [
   // อ่านข้อมูล (read)
@@ -52,6 +52,24 @@ export const GOLDEN_CASES: GoldenCase[] = [
   { prompt: "เช็คแต้มสะสมของลูกค้าเบอร์นี้หน่อย", expectTool: "customer_points" },
   { prompt: "สัปดาห์นี้มีนัดหรือเข้าพักอะไรบ้าง", expectTool: "upcoming_schedule" },
   { prompt: "มีตารางนัดที่กำลังจะถึงไหม", expectTool: "upcoming_schedule" },
+  // ── สกิลบัญชี (WO E2) — ภาษาที่เจ้าของร้าน/ผู้ทำบัญชีพูดจริง ──
+  { prompt: "ตอนนี้ลูกหนี้ค้างรับรวมเท่าไหร่", expectTool: "account_dashboard" },
+  { prompt: "สรุปภาพรวมบัญชีเดือนนี้ให้หน่อย", expectTool: "account_dashboard" },
+  { prompt: "ขอรายการใบแจ้งหนี้ที่ยังไม่ได้จ่ายทั้งหมด", expectTool: "account_list_documents" },
+  { prompt: "ดูใบเสร็จทั้งหมดของเดือนที่แล้ว", expectTool: "account_list_documents" },
+  { prompt: "ขอดูรายละเอียดเอกสารเลขที่ IV-2026-09-0001", expectTool: "account_get_document" },
+  { prompt: "ของบกำไรขาดทุนเดือนนี้", expectTool: "account_report" },
+  { prompt: "ขอรายงานภาษีขาย ภ.พ.30 ของเดือนสิงหาคม", expectTool: "account_report" },
+  { prompt: "ขอรายงานอายุหนี้ลูกหนี้ที่ค้างชำระเกินกำหนด", expectTool: "account_report" },
+  { prompt: "ออกใบเสนอราคาให้บริษัทสยามไดฟ์ ค่าบริการ 10,000 บาท", expectTool: "account_create_document" },
+  { prompt: "เปิดใบแจ้งหนี้ค่าบริการรายเดือนให้ลูกค้ารายนี้", expectTool: "account_create_document" },
+  { prompt: "ยืนยันออกใบแจ้งหนี้ฉบับร่างให้ลูกค้าเลย", expectTool: "account_issue_document" },
+  { prompt: "บันทึกรับชำระใบแจ้งหนี้ 10,700 บาท เข้าบัญชีธนาคาร", expectTool: "account_record_payment" },
+  { prompt: "ลูกค้าโอนเงินมาแล้ว ตัดชำระใบแจ้งหนี้ให้หน่อย", expectTool: "account_record_payment" },
+  { prompt: "ยกเลิกใบแจ้งหนี้ใบนี้เพราะลูกค้าสั่งผิด", expectTool: "account_void_document" },
+  { prompt: "เพิ่มผู้ติดต่อใหม่ บริษัท สยามไดฟ์ จำกัด เป็นลูกค้า", expectTool: "account_create_contact" },
+  { prompt: "ค้นหาผู้ติดต่อในสมุดบัญชีชื่อสยามไดฟ์", expectTool: "account_search_contacts" },
+  { prompt: "ตอนนี้เงินในบัญชีธนาคารกับเงินสดในมือเหลือเท่าไหร่", expectTool: "account_finance_balances" },
 ];
 
 // ── heuristic keyword rules (เรียงตามลำดับความจำเพาะ — คืน tool ตัวแรกที่ match) ──
@@ -65,6 +83,20 @@ const KEYWORD_RULES: { re: RegExp; tool: string }[] = [
   { re: /จำอะไรไว้บ้าง|ความจำที่จดไว้|ดูความจำ/, tool: "list_memories" },
   // ตั้งเวลา/งานประจำ
   { re: /ทุก ?(วัน|เย็น|เช้า|คืน|สัปดาห์|เดือน)|ทุก ?\d|เป็นประจำ|ประจำทุก|ตั้งเวลา|ตั้งงานประจำ/, tool: "schedule_task" },
+  // ── สกิลบัญชี (WO E2) — วางก่อนกฎเดิมทั้งหมดที่ใช้คำเงิน ๆ ทอง ๆ กว้าง ๆ ──
+  //    ("กำไร"/"รายจ่าย"/"ยอดขาย"/"ยกเลิก...บิล"/"เพิ่มลูกค้าใหม่" ของกฎเดิมจะแย่งประโยคบัญชีไปหมด)
+  //    ภายในบล็อกเรียงจาก "จำเพาะที่สุด" ลงไป: ยกเลิก → ออกตัวจริง → สร้าง → รับชำระ → ดูใบเดียว → รายงาน → รายการ → ภาพรวม
+  { re: /ยกเลิก(ใบ(แจ้งหนี้|เสร็จ|กำกับภาษี|เสนอราคา|วางบิล)|เอกสาร)/, tool: "account_void_document" },
+  { re: /ยืนยันออกใบ|ออกใบ.*ฉบับร่าง|ฉบับร่าง.*เป็นตัวจริง|ออกเอกสารตัวจริง/, tool: "account_issue_document" },
+  { re: /(ออก|เปิด|สร้าง|ทำ)ใบ(เสนอราคา|แจ้งหนี้|กำกับภาษี|วางบิล|ลดหนี้|เพิ่มหนี้|เสร็จรับเงิน)/, tool: "account_create_document" },
+  { re: /(รับ|ตัด)ชำระ|บันทึกการชำระ|ลงรับเงินใบ/, tool: "account_record_payment" },
+  { re: /(เพิ่ม|สร้าง|บันทึก)(ผู้ติดต่อ|ผู้ขาย|ซัพพลายเออร์|คู่ค้า|เจ้าหนี้)/, tool: "account_create_contact" },
+  { re: /(ค้นหา|ค้น|หา)(ผู้ติดต่อ|คู่ค้า|ซัพพลายเออร์|ผู้ขาย)|ผู้ติดต่อ(ชื่อ|ในสมุดบัญชี)/, tool: "account_search_contacts" },
+  { re: /(เอกสาร|ใบแจ้งหนี้|ใบเสร็จ|ใบกำกับภาษี|ใบเสนอราคา)เลขที่|รายละเอียดเอกสาร/, tool: "account_get_document" },
+  { re: /งบกำไรขาดทุน|งบดุล|งบทดลอง|งบกระแสเงินสด|งบการเงิน|ภ\.?พ\.? ?30|ภาษีซื้อภาษีขาย|อายุหนี้|บัญชีแยกประเภท/, tool: "account_report" },
+  { re: /(ใบแจ้งหนี้|ใบเสร็จ|ใบกำกับภาษี|ใบเสนอราคา|ใบวางบิล|เอกสารบัญชี)/, tool: "account_list_documents" },
+  { re: /เงินในบัญชีธนาคาร|เงินสดในมือ|ยอดเงินคงเหลือ|ช่องทางเงิน|บัญชีเงินฝาก/, tool: "account_finance_balances" },
+  { re: /ค้างรับ|ค้างจ่าย|ลูกหนี้|เจ้าหนี้|ภาพรวมบัญชี|สรุปบัญชี|แดชบอร์ดบัญชี/, tool: "account_dashboard" },
   // Wave5-A read tools — วางก่อน action/read เดิม เพราะคีย์เวิร์ดจำเพาะ (กันถูก rule กว้าง เช่น "ยอดขาย"/"รายจ่าย" แย่ง)
   { re: /ร้านอาหาร|ออเดอร์ร้าน|โต๊ะ(ที่เปิด|เปิดอยู่|ว่าง|ไหน)|กี่โต๊ะ/, tool: "restaurant_today" },
   { re: /ขายตั๋ว|ยอดตั๋ว|ตั๋ว.*(ขาย|เหลือ|งาน)|ขายบัตร(งาน|อีเวนต์|คอนเสิร์ต)|อีเวนต์|งานคอนเสิร์ต/, tool: "ticket_event_sales" },

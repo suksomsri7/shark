@@ -28,7 +28,16 @@ import { rememberFact, forgetMemory, listMemories } from "./memory";
 import { openCaseFromAi } from "@/lib/support/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 
-export type ToolCtx = { tenantId: string; conversationId?: string };
+export type ToolCtx = {
+  tenantId: string;
+  conversationId?: string;
+  /**
+   * ระบบ (AppSystem) ที่ผู้เรียกล็อกไว้แล้ว — ปัจจุบันใช้กับสกิลบัญชีเท่านั้น
+   * (คีย์ API ที่ผูกสมุดบัญชี หรือหัว `X-Shark-System` ของ /api/v1/ai/tools/*)
+   * ไม่ส่ง = ให้ tool เลือกระบบของร้านเองตามเดิม
+   */
+  systemId?: string;
+};
 
 export type AiTool = {
   def: { name: string; description: string; parameters: object };

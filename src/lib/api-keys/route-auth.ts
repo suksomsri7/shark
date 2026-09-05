@@ -25,7 +25,11 @@ export type ApiAuth =
     }
   | { ok: false; response: Response };
 
-const RATE_LIMIT = 60; // ครั้ง/นาที ต่อคีย์
+/** เพดานของทางเดิน `/api/v1/*` ทั่วไป (รวม `/api/v1/ai/*`) — ครั้ง/นาที ต่อคีย์
+ *  export ไว้ให้ตัวสร้างคู่มือ (`gen-account-api-docs.mts`) อ้างเลขตัวเดียวกับที่บังคับใช้จริง
+ *  (REST บัญชี `/api/v1/account/*` มีเพดานของตัวเองแยกตามชนิดงาน — ดู `account/api/require.ts`) */
+export const API_V1_RATE_LIMIT = 60;
+const RATE_LIMIT = API_V1_RATE_LIMIT;
 const WINDOW_MS = 60_000;
 
 export async function authenticateApiRequest(req: Request): Promise<ApiAuth> {

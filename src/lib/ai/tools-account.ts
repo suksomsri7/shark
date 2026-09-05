@@ -21,7 +21,9 @@ export function accountTools(): AiTool[] {
     ...(info.write ? { action: true as const } : {}),
     def: { name: info.name, description: info.description, parameters: info.parameters },
     async execute(ctx: ToolCtx, args: unknown): Promise<string> {
-      const outcome = await runAccountTool(ctx.tenantId, info.name, args);
+      const outcome = await runAccountTool(ctx.tenantId, info.name, args, {
+        ...(ctx.systemId ? { systemId: ctx.systemId } : {}),
+      });
       if (outcome.mode === "error") return JSON.stringify({ error: outcome.error });
       if (outcome.mode === "read") return JSON.stringify(outcome.result);
       // ── เขียน: ต้องอยู่ในบทสนทนา (ข้อเสนอผูกกับการ์ดยืนยันใต้แชท) ──

@@ -71,11 +71,24 @@ export function membershipFromScopes(scopes: string[]): MembershipCtx {
   };
 }
 
-/** ตรวจสิทธิ์ action ของโมดูลบัญชีสำหรับ actor ที่เป็นคีย์ — ความหมายเดียวกับ `accountCan` แต่ไม่ต้องมี session */
-export function actorCan(actor: ApiActor, action: string): boolean {
-  if (evaluate(actor.membership, { module: "account", action })) return true;
+/** ตรวจสิทธิ์ action ของโมดูลบัญชีจาก MembershipCtx ล้วน — ความหมายเดียวกับ `accountCan` แต่ไม่ต้องมี session */
+export function membershipCanAccount(membership: MembershipCtx, action: string): boolean {
+  if (evaluate(membership, { module: "account", action })) return true;
   for (const [broad, narrow] of Object.entries(IMPLIES)) {
-    if (narrow.includes(action) && evaluate(actor.membership, { module: "account", action: broad })) return true;
+    if (narrow.includes(action) && evaluate(membership, { module: "account", action: broad })) return true;
   }
   return false;
+}
+
+/** ตรวจสิทธิ์ action ของโมดูลบัญชีสำหรับ actor ที่เป็นคีย์ — ความหมายเดียวกับ `accountCan` แต่ไม่ต้องมี session */
+export function actorCan(actor: ApiActor, action: string): boolean {
+  return membershipCanAccount(actor.membership, action);
+}
+
+/**
+ * scope ของคีย์ทำ action นี้ได้ไหม — ใช้ "ก่อน" จะมี actor (ชั้น route ที่ยังไม่ resolve สมุดบัญชี)
+ * ความหมายเดียวกับ `actorCan` เป๊ะ ๆ เพราะเดินผ่าน `membershipFromScopes` + IMPLIES ชุดเดียวกัน
+ */
+export function scopesCanAccount(scopes: string[], action: string): boolean {
+  return membershipCanAccount(membershipFromScopes(scopes), action);
 }

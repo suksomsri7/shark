@@ -28,6 +28,8 @@ const E = JSON.parse(readFileSync(QC.expectedPath, "utf8")) as Any;
 let tid = "";
 try {
   const ak = (await import("@/lib/api-keys/service" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
+  const scopesMod = (await import("@/lib/api-keys/scopes" as string)) as { expandBundles: (b: string[]) => string[] };
+  const ACCT = scopesMod.expandBundles(["accountant"]); // Fable แก้: คีย์ AI ภายนอกต้องประกาศ scope บัญชี — `[]` (คีย์รุ่นเดิม) = ไม่มีสิทธิ์บัญชี เท่ากับ REST
   const skillsRoute = (await import("@/app/api/v1/ai/skills/route" as string)) as { GET: (r: Request) => Promise<Response> };
   const skillRoute = (await import("@/app/api/v1/ai/skills/[id]/route" as string)) as { GET: (r: Request, c: { params: Promise<{ id: string }> }) => Promise<Response> };
   const toolRoute = (await import("@/app/api/v1/ai/tools/[name]/route" as string)) as { POST: (r: Request, c: { params: Promise<{ name: string }> }) => Promise<Response> };
@@ -36,7 +38,7 @@ try {
   const acc = (await import("@/lib/modules/account/service" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
   const gl = (await import("@/lib/modules/account/gl" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
 
-  const keySeed = await ak.createApiKey({ tenantId: E.tenantId }, "QC E2 ai", { scopes: [] });
+  const keySeed = await ak.createApiKey({ tenantId: E.tenantId }, "QC E2 ai", { scopes: ACCT });
   const req = (path: string, key: string, body?: unknown) => new Request(`http://x${path}`, { method: body ? "POST" : "GET", headers: { authorization: `Bearer ${key}`, ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
   const json = async (r: Response) => { const t = await r.text(); try { return { status: r.status, body: JSON.parse(t) }; } catch { return { status: r.status, body: { _raw: t } }; } };
 
@@ -58,13 +60,17 @@ try {
   await acc.saveSettings(tid, s.id, { orgName: "ร้าน E2", taxId: "0105561000014", vatRegistered: true, vatRateBp: 700, taxPointBasis: "ON_ISSUE" });
   await gl.ensureAccounting({ tenantId: tid, systemId: s.id });
   const customer = await acc.createContact({ tenantId: tid, systemId: s.id, kind: "CUSTOMER", name: "ลูกค้า อีทู" });
-  const keyB = await ak.createApiKey({ tenantId: tid }, "QC E2 ext", { scopes: [] });
+  const keyB = await ak.createApiKey({ tenantId: tid }, "QC E2 ext", { scopes: ACCT });
   const write = await json(await toolRoute.POST(req("/api/v1/ai/tools/account_create_document", keyB.rawKey, { args: { type: "INVOICE", contactId: customer.id, lines: [{ description: "x", qty: 1, unitPriceSatang: 100000, vatRateBp: 700 }] } }), { params: Promise.resolve({ name: "account_create_document" }) }));
   chk("E2-X2.2", "POST tools/account_create_document (AI ภายนอก) → 200 write:true pendingConfirmation:true conversationId · ยังไม่มีเอกสาร", write.status === 200 && write.body?.write === true && write.body?.pendingConfirmation === true && typeof write.body?.conversationId === "string" && (await prisma.accountDocument.count({ where: { systemId: s.id } })) === 0, "pending", `${write.status} ${JSON.stringify(write.body).slice(0, 200)}`);
   const prop = await prisma.aiProposal.findFirst({ where: { tenantId: tid, kind: "account.documents.create" } });
   chk("E2-X2.3", "proposal ผูก conversation 'คำขอจากผู้ช่วยภายนอก' รอเจ้าของยืนยันในแอป", !!prop && prop.status === "PENDING" && prop.conversationId === write.body?.conversationId, "PENDING", JSON.stringify(prop).slice(0, 160));
   const bad = await json(await toolRoute.POST(req("/api/v1/ai/tools/account_report", keyB.rawKey, { args: { kind: "nope" } }), { params: Promise.resolve({ name: "account_report" }) }));
   chk("E2-X2.4", "args ผิด → 200 result มี error ไทย (ไม่ 500)", bad.status === 200 && /error/.test(String(bad.body?.result ?? "")) && /[ก-๙]/.test(String(bad.body?.result ?? "")), "error ไทย", `${bad.status} ${String(bad.body?.result).slice(0, 120)}`, "MAJOR");
+  const keyLegacy = await ak.createApiKey({ tenantId: tid }, "QC E2 legacy", { scopes: [] });
+  const legacyTool = await json(await toolRoute.POST(req("/api/v1/ai/tools/account_dashboard", keyLegacy.rawKey, { args: {} }), { params: Promise.resolve({ name: "account_dashboard" }) }));
+  const legacySkill = await json(await skillRoute.GET(req("/api/v1/ai/skills/account", keyLegacy.rawKey), { params: Promise.resolve({ id: "account" }) }));
+  chk("E2-X2.6", "คีย์รุ่นเดิม scopes:[] → tools/account_dashboard 403 + skills/account ไม่เห็น (404) — เท่ากับ REST ไม่มีช่องอ่านงบผ่าน AI", legacyTool.status === 403 && legacySkill.status === 404, "403/404", `${legacyTool.status}/${legacySkill.status}`);
   const keyPos = await ak.createApiKey({ tenantId: tid }, "QC E2 x", { scopes: [] });
   await prisma.appSystem.updateMany({ where: { id: s.id }, data: { active: false } });
   const hidden = await json(await skillRoute.GET(req("/api/v1/ai/skills/account", keyPos.rawKey), { params: Promise.resolve({ id: "account" }) }));

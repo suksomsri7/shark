@@ -19,6 +19,7 @@ import { docTypeLabel } from "@/lib/modules/account/dashboard";
 import {
   actorCan,
   membershipFromScopes,
+  scopesCanAccount,
   type ApiActor,
 } from "@/lib/modules/account/api/actor";
 import { jsonSchemaOf } from "@/lib/modules/account/api/openapi";
@@ -70,15 +71,29 @@ function userActor(tenantId: string, systemId: string, m: MembershipCtx, userId?
   };
 }
 
-/** สมุดบัญชีของร้าน — `systemName` ใช้เมื่อร้านมีหลายเล่ม (จับคู่แบบไม่สนตัวพิมพ์/บางส่วนของชื่อ) */
-async function findAccountSystem(tenantId: string, systemName?: string): Promise<{ id: string; name: string } | null> {
+/**
+ * สมุดบัญชีของร้าน
+ * - `systemId` = เล่มที่ถูกล็อกมาจากชั้นบน (คีย์ API ที่ผูกเล่มไว้ / หัว `X-Shark-System`)
+ *   🔴 ค้นผ่าน `tenantDb` เสมอ ⇒ id ของร้านอื่นหาไม่เจอ (คืน null) ไม่ใช่ "หาไม่เจอแล้วตกไปเล่มแรก"
+ * - `systemName` ใช้เมื่อร้านมีหลายเล่มและผู้ช่วยระบุชื่อมา (จับคู่แบบไม่สนตัวพิมพ์/บางส่วนของชื่อ)
+ */
+async function findAccountSystem(
+  tenantId: string,
+  opts: { systemName?: string; systemId?: string } = {},
+): Promise<{ id: string; name: string } | null> {
+  if (opts.systemId) {
+    return tenantDb({ tenantId }).appSystem.findFirst({
+      where: { id: opts.systemId, type: "ACCOUNT" },
+      select: { id: true, name: true },
+    });
+  }
   const systems = await tenantDb({ tenantId }).appSystem.findMany({
     where: { type: "ACCOUNT" },
     orderBy: { createdAt: "asc" },
     select: { id: true, name: true },
   });
   if (systems.length === 0) return null;
-  const want = systemName?.trim().toLowerCase();
+  const want = opts.systemName?.trim().toLowerCase();
   if (want) {
     const hit = systems.find((s) => s.name.toLowerCase().includes(want));
     if (hit) return hit;
@@ -367,6 +382,30 @@ export function accountKindAccess(): Record<string, { module: string; action: st
 export function accountDestructiveKinds(): string[] {
   return accountToolOps().filter((o) => o.kind === "danger").map((o) => accountKindOf(o.id));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.1 ขอบเขตสิทธิ์ของ "คีย์ API" ที่เรียกผ่าน /api/v1/ai/* (WO E2)
+//
+// 🔴 กติกา: AI ภายนอกที่ถือคีย์ทำได้ไม่เกิน scope ของคีย์ใบนั้น — เท่ากับ REST `/api/v1/account/*` เป๊ะ
+//    (scope ที่ต้องใช้ = `op.action` ตรงจากทะเบียน ไม่มีตารางสิทธิ์ชุดที่สอง)
+// คีย์ `scopes: []` (คีย์รุ่นเดิมก่อน A1) = **ไม่มีสิทธิ์บัญชี** (Fable E2 ตรวจรับ): สกิลบัญชีเป็นของใหม่
+//    ผู้เชื่อมต่อเดิมไม่เคยได้ข้อมูลบัญชีผ่านทางนี้ จึงไม่มี "พฤติกรรมเดิม" ให้รักษา · และต้องเท่ากับ REST
+//    (`membershipFromScopes([])` = ไม่มี permission → 403) ไม่งั้นคีย์เก่าทุกใบบน prod จะอ่านงบ/ลูกหนี้ได้ผ่าน AI route
+//    tool นอกสกิลบัญชี (63 ตัวเดิม) ยังคงพฤติกรรมเดิมของ `/api/v1/ai/*` ไม่เกี่ยวกับด่านนี้
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** scope ที่ต้องมีเพื่อเรียก tool นี้ (= `op.action`) · null = ไม่ใช่ tool ของสกิลบัญชี */
+export function accountToolScope(toolName: string): string | null {
+  return accountToolOps().find((o) => o.tool?.name === toolName)?.action ?? null;
+}
+
+/** คีย์ที่มี scope ชุดนี้ เรียก tool บัญชีตัวนี้ได้ไหม (tool นอกสกิลบัญชี = ไม่เกี่ยว คืน true) */
+export function accountToolAllowedForScopes(toolName: string, scopes: string[]): boolean {
+  const action = accountToolScope(toolName);
+  if (action === null) return true;
+  return scopesCanAccount(scopes, action);
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. เตรียมคำสั่ง: args ของผู้ช่วย → { op, input, params }
@@ -724,19 +763,27 @@ export type AccountToolOutcome =
 
 const NO_SYSTEM = "ยังไม่ได้เปิดระบบบัญชี — เปิดระบบบัญชีให้ร้านนี้ก่อนแล้วค่อยสั่งอีกครั้ง";
 
+const NO_BOUND_SYSTEM = "สมุดบัญชีที่ระบุใช้กับคีย์นี้ไม่ได้ — ตรวจหัว X-Shark-System หรือเล่มที่ผูกกับคีย์";
+
 /**
  * เรียก tool ของสกิลบัญชี 1 ตัว
  * - read  → รันจริงทันที (actor assistant) แล้วคืนผลไทย
  * - write/danger → **ไม่รัน** คืนข้อมูลสำหรับสร้างข้อเสนอให้เจ้าของกดยืนยัน
+ * `systemId` = เล่มที่ชั้นบนล็อกไว้ (คีย์ API ที่ผูกเล่ม / หัว `X-Shark-System`) — ไม่ส่ง = เล่มแรกของร้าน
  * ไม่โยน error ออกไป (ผู้เรียกเป็น tool ของ LLM) — ทุกทางผิดคืน `{ mode: "error" }` ภาษาไทย
  */
-export async function runAccountTool(tenantId: string, name: string, rawArgs: unknown): Promise<AccountToolOutcome> {
+export async function runAccountTool(
+  tenantId: string,
+  name: string,
+  rawArgs: unknown,
+  opts: { systemId?: string } = {},
+): Promise<AccountToolOutcome> {
   const op = accountToolOps().find((o) => o.tool?.name === name);
   if (!op) return { mode: "error", error: `ไม่รู้จักเครื่องมือ "${name}"` };
 
   const systemName = isRecord(rawArgs) && typeof rawArgs.systemName === "string" ? rawArgs.systemName : undefined;
-  const system = await findAccountSystem(tenantId, systemName);
-  if (!system) return { mode: "error", error: NO_SYSTEM };
+  const system = await findAccountSystem(tenantId, { systemName, systemId: opts.systemId });
+  if (!system) return { mode: "error", error: opts.systemId ? NO_BOUND_SYSTEM : NO_SYSTEM };
 
   const prep = prepareCall(op, rawArgs);
   if (!prep.ok) return { mode: "error", error: prep.error };
@@ -749,7 +796,8 @@ export async function runAccountTool(tenantId: string, name: string, rawArgs: un
       mode: "propose",
       kind: accountKindOf(prepared.op.id),
       summary,
-      payload: { opId: prepared.op.id, input: prepared.input, params: prepared.params },
+      // systemId ติดไปกับข้อเสนอ: ร้านที่มีหลายเล่มต้องลงมือกับ "เล่มที่เสนอ" ไม่ใช่เล่มแรกเสมอ
+      payload: { opId: prepared.op.id, input: prepared.input, params: prepared.params, systemId: system.id },
     };
   }
 
@@ -792,8 +840,9 @@ export async function dispatchAccountKind(
   const op = accountToolOps().find((o) => o.id === opId);
   if (!op || op.kind === "read") throw new Error("ไม่รู้จักคำสั่งบัญชีของข้อเสนอนี้");
 
-  const system = await findAccountSystem(tenantId);
-  if (!system) throw new Error(NO_SYSTEM);
+  const boundSystemId = typeof payload.systemId === "string" ? payload.systemId : undefined;
+  const system = await findAccountSystem(tenantId, { systemId: boundSystemId });
+  if (!system) throw new Error(boundSystemId ? NO_BOUND_SYSTEM : NO_SYSTEM);
 
   const parsed = validateOpInput(op, payload.input);
   if (!parsed.ok) throw new Error(detailsMessageTh(parsed.details));

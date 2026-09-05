@@ -3551,6 +3551,84 @@ Read tools run straight away. Write and danger tools never run by themselves: th
 | `account_void_payment` | `payments.void` | danger | `account.payment.void` |
 | `account_wht_summary` | `wht.list` | read | `account.tax.view` |
 
+## AI agents
+
+Bring your own model. The same tools the SHARK assistant uses are published as a skill manifest, so an outside agent (Claude, GPT, Gemini, an open model, an n8n flow) can drive the accounting book with the shop owner's API key. Nothing here is a second API: every tool call lands on the operation of the same name listed above.
+
+### Manifest
+
+```bash
+curl -sS "https://shark.in.th/api/v1/ai/skills" -H "Authorization: Bearer $SHARK_API_KEY"
+curl -sS "https://shark.in.th/api/v1/ai/skills/account" -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+`GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The accounting skill is listed only when the shop has an active accounting book and the key is allowed to call at least one of its tools: a key created with an explicit scope list needs at least one `account.*` scope, a key created without any scope list (the older, unrestricted kind) sees them all. A shop without accounting, or a key without the scopes, gets 404 from `https://shark.in.th/api/v1/ai/skills/account` - the same answer as a skill that does not exist.
+
+`GET https://shark.in.th/api/v1/ai/skills/account` returns the 36 tools (14 read, 22 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
+
+```text
+{ "id": "account", "label": "บัญชี", "summary": "...", "tools": [
+  { "type": "function",
+    "function": { "name": "account_dashboard", "description": "...", "parameters": { ...JSON Schema... } },
+    "write": false },
+  ...
+] }
+```
+
+`parameters` is the JSON Schema of that operation's input - the very schema the REST endpoint validates against - plus any path id (`documentId`, `contactId`, ...) as a required property and an optional `systemName` string for shops that keep more than one book. Anthropic's shape is one field rename (`function.name` -> `name`, `function.parameters` -> `input_schema`). `write: true` marks a tool that changes data.
+
+### Calling a tool
+
+`POST https://shark.in.th/api/v1/ai/tools/<tool name>` with `{ "args": { ... } }`. Authentication is the same Bearer key as the REST API. Send `X-Shark-System: <book id>` when the key is not bound to one accounting book. A key may only call the tools its scopes allow; anything else answers 403 with the missing scope in `hint`. An unknown tool name answers 404. Bad arguments never crash the call: the answer is still 200 and `result` carries a Thai `error` string the agent can read back to the user.
+
+Rate limit on this lane: 60 calls per minute per key (429 with `retry-after`), independent of the REST limits above.
+
+### Read tools run straight away
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/ai/tools/account_dashboard" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"args":{}}'
+```
+
+```json
+{
+  "tool": "account_dashboard",
+  "skill": "account",
+  "write": false,
+  "result": "{\"ยอดค้างรับบาท\":494300,\"จำนวนใบค้างรับ\":12}"
+}
+```
+
+`result` is a JSON string with Thai keys and money already converted to baht, ready to be quoted to a Thai shop owner (the object above is shortened; the real dashboard answer has more keys).
+
+### Write tools return a proposal, not a document
+
+An outside agent can never change the book on its own, even with a valid key. A write or danger tool creates a **proposal** (`summary` is Thai, written for the owner) that the shop owner confirms in the SHARK app or website. Only then does the operation run, with the confirming person's permissions and their name in the audit log; danger tools ask a second time.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/ai/tools/account_create_document" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"args":{"type":"INVOICE","contactId":"c_123","lines":[{"description":"Dive trip","qty":1,"unitPriceSatang":1000000,"vatRateBp":700}]}}'
+```
+
+```json
+{
+  "tool": "account_create_document",
+  "skill": "account",
+  "write": true,
+  "pendingConfirmation": true,
+  "conversationId": "cnv_8f2a",
+  "result": "{\"proposalId\":\"prp_41c9\",\"summary\":\"สร้างเอกสาร · ใบแจ้งหนี้ · ผู้ติดต่อ ลูกค้าทดสอบ · ยอด 10,700.00 บาท\",\"waiting\":\"user_confirm\"}"
+}
+```
+
+Nothing exists in the book yet. The owner opens the conversation named "คำขอจากผู้ช่วยภายนอก" (or the one whose `conversationId` you passed in the request body), reads the Thai summary and taps confirm; the document is then created with source `AI`. Tell the user the request is waiting for their confirmation - never report the document as issued until a later read tool shows it.
+
+If a document must be created without a human in the loop, use the REST operations above instead: they execute immediately, and the key's scopes are the only gate.
+
 ## Webhooks
 
 Everything above is you calling SHARK. Webhooks are SHARK calling you: the shop owner adds an endpoint URL in the accounting book settings (Connections > External apps / API), ticks the events it wants, and gets a signing secret shown once.

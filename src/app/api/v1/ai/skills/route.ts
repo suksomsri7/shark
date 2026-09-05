@@ -10,7 +10,7 @@
 // สกิลที่คืนกรองตามระบบที่ร้านเปิดใช้จริง (ร้านตัดผมไม่เห็นเครื่องมือโรงแรม)
 import { prisma } from "@/lib/core/db";
 import { apiJson, authenticateApiRequest } from "@/lib/api-keys/route-auth";
-import { CORE_TOOLS, skillsForTenant } from "@/lib/ai/skills";
+import { CORE_TOOLS, skillToolsForApiKey, skillsForTenant } from "@/lib/ai/skills";
 
 export async function GET(req: Request): Promise<Response> {
   const auth = await authenticateApiRequest(req);
@@ -20,7 +20,11 @@ export async function GET(req: Request): Promise<Response> {
     where: { tenantId: auth.tenantId, active: true },
     select: { type: true },
   });
-  const skills = skillsForTenant(systems.map((s) => s.type));
+  // กรอง 2 ชั้น: ระบบที่ร้านเปิดจริง × ขอบเขตสิทธิ์ของคีย์ใบนี้
+  // (คีย์ที่ถูกจำกัด scope ไว้ ไม่ควรเห็นสกิลที่ตัวเองเรียกไม่ได้เลยแม้แต่ตัวเดียว)
+  const skills = skillsForTenant(systems.map((s) => s.type)).filter(
+    (s) => skillToolsForApiKey(s, auth.scopes).length > 0,
+  );
 
   return apiJson(
     {
@@ -30,7 +34,7 @@ export async function GET(req: Request): Promise<Response> {
         id: s.id,
         label: s.label,
         summary: s.summary,
-        toolCount: s.tools.length,
+        toolCount: skillToolsForApiKey(s, auth.scopes).length,
         href: `/api/v1/ai/skills/${s.id}`,
       })),
     },

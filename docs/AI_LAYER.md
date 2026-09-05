@@ -81,3 +81,26 @@ scripts/qc-ai.mts                    ← oracle (MockProvider + neon branch)
 - RULES: dayKey ข้ามเที่ยงคืน BKK ถูก · overBudget ครบ 3 แกน · trimHistory ตัดหัวเก็บท้าย
 - SVC (Mock): ส่งข้อความ → ได้คำตอบ + persist 2 แถว · usage นับสะสม · เกิน budget → error สุภาพ
   · ไม่มี provider → ai_disabled ไม่ throw · conversation เดิมต่อได้ · tenant อื่นมองไม่เห็น (kernel guard)
+
+## สกิล `account` (WO E1–E2 · "API บัญชีครอบทุกฟังก์ชัน + สกิล AI" 5 ก.ย. 2026)
+
+โมดูลบัญชีเป็นสกิลแรกที่ **generate tool จากทะเบียน API แทนการเขียนมือ** — ต้นแบบสำหรับสกิลของโมดูลอื่นในอนาคต (ดู Phase 3.5 ด้านบน)
+
+```
+src/lib/modules/account/api/registry.ts   ← ทะเบียน 199 op (แหล่งความจริงเดียว: REST + OpenAPI + tool ของสกิลนี้)
+        │  op ที่ตั้ง `tool: { name: "account_*" }`
+        ▼
+src/lib/ai/tools-account.ts   ← accountTools(): generate AiTool[] จาก op ที่มี tool (36 ตัว)
+        │
+        ├─ อ่าน  (14 tool) → execute เรียก op.handler ทันที (actor "assistant", scope = read-only+report+journal+tax) → คืน JSON คีย์ไทย เงินเป็นบาท
+        ├─ เขียน (18 tool) → propose(kind:"account.<op.id>", summary ไทย, payload) — ไม่ execute ทันที
+        └─ อันตราย (4 tool) → propose เหมือนกัน + ต้องยืนยัน 2 ชั้น (การ์ดยืนยัน + reason) ก่อน execute
+```
+
+- **`api/run.ts`** = pipeline เดียวที่ทั้ง REST (`/api/v1/account/*`) และ AI (proposal execute + ai-lane อ่านตรง) เดินผ่าน: validate ด้วย zod schema เดียวกับ REST → เรียก `op.handler` เดียวกัน → เขียน audit เดียวกัน — ปุ่มบนจอ, คีย์ API, และ AI agent จึงทำสิ่งเดียวกันเป๊ะ ไม่มีทางลัด
+- **REST lane vs AI lane**: REST lane ที่ actor เป็น `apikey` (คีย์ที่เจ้าของสร้าง) ทำงานได้ทันทีตาม scope ของคีย์ (ไม่ต้องมีคนกดยืนยันเพิ่ม — เจ้าของอนุมัติไว้ล่วงหน้าตอนสร้างคีย์แล้ว) ส่วน AI lane (`assistant` อ่าน / `user` เขียนหลังยืนยัน) ต้องผ่าน**สถาปัตยกรรม proposal → confirm → execute** เดิมของ Phase 3.5 เสมอ แม้ AI จะ "รู้วิธีเรียก" endpoint เดียวกับ REST ก็ตาม — เขียนทุกอย่างเป็นข้อเสนอ ไม่ใช่คำสั่งตรง
+- **Proposal**: `ProposalKind` แบบ `` `account.${string}` `` (มาจากทะเบียนตรง ๆ ห้ามพิมพ์ซ้ำ) · execute ใช้สิทธิ์ของคนที่กดยืนยัน (ไม่ใช่สิทธิ์ AI) · เอกสารที่ AI สร้างสำเร็จตั้ง `source: "AI"` แยกจาก `"API"` (คีย์) และของเดิม (ผู้ใช้กดเอง) · audit เขียน `actorType: USER` เป็นคนกดยืนยัน
+- **ผิวหน้าภายนอก** (WO E2): `GET /api/v1/ai/skills/account` = manifest ของสกิลนี้ (รูปแบบ OpenAI tools) · `POST /api/v1/ai/tools/account_*` = เรียก tool ตรง (อ่านทันที, เขียน→`pendingConfirmation`) — ให้ agent/แอปภายนอกที่ไม่ได้อยู่ในแชท SHARK ก็ต่อเข้าได้ผ่านคีย์เดียวกับ REST
+- **ข้อมูลจริงเท่านั้น**: read tool ทุกตัวดึงจาก `op.handler` เดียวกับ REST — ห้ามให้โมเดลคำนวณ/ประมาณตัวเลขเอง ตัวเลขทุกตัวต้องมาจากเครื่องมือ (persona บัญชี, WO E2)
+- ทะเบียน tool เต็ม (ชื่อ → op → class → scope) อยู่ที่ `docs/api/ACCOUNT-API.md` หัวข้อ "AI tools" · รายละเอียด endpoint ที่ tool แต่ละตัวเรียกอยู่ในเอกสารเดียวกัน
+- oracle: `scripts/qc-account-api-ai-skill.mts` (E1, MockProvider) · `scripts/qc-account-api-ai-external.mts` (E2)

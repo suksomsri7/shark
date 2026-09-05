@@ -13,6 +13,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { API_V1_RATE_LIMIT } from "@/lib/api-keys/route-auth";
 import { API_SCOPE_BUNDLES, DEFAULT_BUNDLE_ID, DEFAULT_KEY_TTL_DAYS } from "@/lib/api-keys/scopes";
 import { buildOpenApi, type JsonSchema, type OpenApiOperation } from "@/lib/modules/account/api/openapi";
 import type { ApiOp, ApiOpKind } from "@/lib/modules/account/api/op";
@@ -23,6 +24,8 @@ import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
 const ROOT = resolve(fileURLToPath(import.meta.url), "..", "..");
 const DOC_PATH = resolve(ROOT, "docs/api/ACCOUNT-API.md");
 const BASE_URL = "https://shark.in.th/api/v1/account";
+/** ทางเดินของ AI ภายนอก (สกิล + tool) — คนละ prefix กับ REST บัญชี */
+const AI_BASE_URL = "https://shark.in.th/api/v1/ai";
 
 // ── ตารางรหัสข้อผิดพลาด ───────────────────────────────────────────────────
 // `Record<ApiErrorCode, ...>` โดยตั้งใจ: เพิ่มรหัสใน respond.ts แล้วลืมอธิบายที่นี่ = typecheck แดง
@@ -383,6 +386,102 @@ function aiToolSection(ops: ApiOp[]): string[] {
   return out;
 }
 
+/**
+ * ทางเดินสำหรับ "ลูกค้าเอา AI ของตัวเองมาเสียบ" (WO E2)
+ * ทุกตัวเลข/ชื่อในหัวข้อนี้ derive จากทะเบียนเดียวกับ REST ⇒ คู่มือโกหกไม่ได้แม้ tool จะเปลี่ยน
+ */
+function aiAgentSection(ops: ApiOp[]): string[] {
+  const withTool = ops.filter((o) => o.tool);
+  if (withTool.length === 0) return [];
+  const readTools = withTool.filter((o) => o.kind === "read");
+  const writeTools = withTool.filter((o) => o.kind !== "read");
+  const sample = withTool.find((o) => o.id === "documents.create") ?? writeTools[0]!;
+  const sampleRead = withTool.find((o) => o.id === "dashboard.get") ?? readTools[0]!;
+  return [
+    "## AI agents",
+    "",
+    "Bring your own model. The same tools the SHARK assistant uses are published as a skill manifest, so an outside agent (Claude, GPT, Gemini, an open model, an n8n flow) can drive the accounting book with the shop owner's API key. Nothing here is a second API: every tool call lands on the operation of the same name listed above.",
+    "",
+    "### Manifest",
+    "",
+    "```bash",
+    `curl -sS "${AI_BASE_URL}/skills" -H "Authorization: Bearer $SHARK_API_KEY"`,
+    `curl -sS "${AI_BASE_URL}/skills/account" -H "Authorization: Bearer $SHARK_API_KEY"`,
+    "```",
+    "",
+    `\`GET ${AI_BASE_URL}/skills\` lists the skills this shop can use. The accounting skill is listed only when the shop has an active accounting book and the key is allowed to call at least one of its tools: a key created with an explicit scope list needs at least one \`account.*\` scope, a key created without any scope list (the older, unrestricted kind) sees them all. A shop without accounting, or a key without the scopes, gets 404 from \`${AI_BASE_URL}/skills/account\` - the same answer as a skill that does not exist.`,
+    "",
+    `\`GET ${AI_BASE_URL}/skills/account\` returns the ${withTool.length} tools (${readTools.length} read, ${writeTools.length} write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:`,
+    "",
+    "```text",
+    "{ \"id\": \"account\", \"label\": \"บัญชี\", \"summary\": \"...\", \"tools\": [",
+    "  { \"type\": \"function\",",
+    `    "function": { "name": "${sampleRead.tool!.name}", "description": "...", "parameters": { ...JSON Schema... } },`,
+    "    \"write\": false },",
+    "  ...",
+    "] }",
+    "```",
+    "",
+    "`parameters` is the JSON Schema of that operation's input - the very schema the REST endpoint validates against - plus any path id (`documentId`, `contactId`, ...) as a required property and an optional `systemName` string for shops that keep more than one book. Anthropic's shape is one field rename (`function.name` -> `name`, `function.parameters` -> `input_schema`). `write: true` marks a tool that changes data.",
+    "",
+    "### Calling a tool",
+    "",
+    `\`POST ${AI_BASE_URL}/tools/<tool name>\` with \`{ "args": { ... } }\`. Authentication is the same Bearer key as the REST API. Send \`X-Shark-System: <book id>\` when the key is not bound to one accounting book. A key may only call the tools its scopes allow; anything else answers 403 with the missing scope in \`hint\`. An unknown tool name answers 404. Bad arguments never crash the call: the answer is still 200 and \`result\` carries a Thai \`error\` string the agent can read back to the user.`,
+    "",
+    `Rate limit on this lane: ${API_V1_RATE_LIMIT} calls per minute per key (429 with \`retry-after\`), independent of the REST limits above.`,
+    "",
+    "### Read tools run straight away",
+    "",
+    "```bash",
+    `curl -sS -X POST "${AI_BASE_URL}/tools/${sampleRead.tool!.name}" \\`,
+    '  -H "Authorization: Bearer $SHARK_API_KEY" \\',
+    '  -H "Content-Type: application/json" \\',
+    '  -d \'{"args":{}}\'',
+    "```",
+    "",
+    "```json",
+    JSON.stringify(
+      { tool: sampleRead.tool!.name, skill: "account", write: false, result: '{"ยอดค้างรับบาท":494300,"จำนวนใบค้างรับ":12}' },
+      null,
+      2,
+    ),
+    "```",
+    "",
+    "`result` is a JSON string with Thai keys and money already converted to baht, ready to be quoted to a Thai shop owner (the object above is shortened; the real dashboard answer has more keys).",
+    "",
+    "### Write tools return a proposal, not a document",
+    "",
+    "An outside agent can never change the book on its own, even with a valid key. A write or danger tool creates a **proposal** (`summary` is Thai, written for the owner) that the shop owner confirms in the SHARK app or website. Only then does the operation run, with the confirming person's permissions and their name in the audit log; danger tools ask a second time.",
+    "",
+    "```bash",
+    `curl -sS -X POST "${AI_BASE_URL}/tools/${sample.tool!.name}" \\`,
+    '  -H "Authorization: Bearer $SHARK_API_KEY" \\',
+    '  -H "Content-Type: application/json" \\',
+    '  -d \'{"args":{"type":"INVOICE","contactId":"c_123","lines":[{"description":"Dive trip","qty":1,"unitPriceSatang":1000000,"vatRateBp":700}]}}\'',
+    "```",
+    "",
+    "```json",
+    JSON.stringify(
+      {
+        tool: sample.tool!.name,
+        skill: "account",
+        write: true,
+        pendingConfirmation: true,
+        conversationId: "cnv_8f2a",
+        result: `{"proposalId":"prp_41c9","summary":"${sample.label} · ใบแจ้งหนี้ · ผู้ติดต่อ ลูกค้าทดสอบ · ยอด 10,700.00 บาท","waiting":"user_confirm"}`,
+      },
+      null,
+      2,
+    ),
+    "```",
+    "",
+    "Nothing exists in the book yet. The owner opens the conversation named \"คำขอจากผู้ช่วยภายนอก\" (or the one whose `conversationId` you passed in the request body), reads the Thai summary and taps confirm; the document is then created with source `AI`. Tell the user the request is waiting for their confirmation - never report the document as issued until a later read tool shows it.",
+    "",
+    "If a document must be created without a human in the loop, use the REST operations above instead: they execute immediately, and the key's scopes are the only gate.",
+    "",
+  ];
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -594,6 +693,9 @@ export function renderDocs(ops: ApiOp[] = ACCOUNT_OPS): string {
 
   // ── AI tools ────────────────────────────────────────────────────────
   push(...aiToolSection(ops));
+
+  // ── AI agents (ทางเดิน /api/v1/ai/*) ────────────────────────────────
+  push(...aiAgentSection(ops));
 
   // ── Webhooks ────────────────────────────────────────────────────────
   push(...webhookSection());
