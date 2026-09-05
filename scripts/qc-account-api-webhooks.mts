@@ -4,6 +4,12 @@
 // ⚠️ standalone-typesafe: dynamic import + wide cast
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-account-api-webhooks");
+// ⏭️ WO ยังไม่สร้าง → ข้ามแบบเห็นชัด (exit 0) ไม่ทำ qc:all/CI แดงค้าง (บทเรียน WO 0.7) — ด่านนี้หายไปเองเมื่อ WO ลงจริง
+if (!((await import("@/lib/webhooks/labels" as string)) as { WEBHOOK_EVENTS: { value: string }[] }).WEBHOOK_EVENTS.some((e) => e.value === "account.document.issued")) {
+  console.log("⚠️  SKIPPED — WO ยังไม่สร้าง (account.document.issued)");
+  console.log(`JSON_SUMMARY ${JSON.stringify({ total: 0, passed: 0, findings: [], skipped: true })}`);
+  process.exit(0);
+}
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const { createHmac } = await import("node:crypto");

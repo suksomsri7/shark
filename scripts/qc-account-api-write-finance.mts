@@ -4,6 +4,12 @@
 // ⚠️ standalone-typesafe: dynamic import + wide cast
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-account-api-write-finance");
+// ⏭️ WO ยังไม่สร้าง → ข้ามแบบเห็นชัด (exit 0) ไม่ทำ qc:all/CI แดงค้าง (บทเรียน WO 0.7) — ด่านนี้หายไปเองเมื่อ WO ลงจริง
+if (!((await import("@/lib/modules/account/api/registry" as string)) as { ACCOUNT_OPS: { id: string }[] }).ACCOUNT_OPS.some((o) => o.id === "finance-accounts.create")) {
+  console.log("⚠️  SKIPPED — WO ยังไม่สร้าง (finance-accounts.create)");
+  console.log(`JSON_SUMMARY ${JSON.stringify({ total: 0, passed: 0, findings: [], skipped: true })}`);
+  process.exit(0);
+}
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

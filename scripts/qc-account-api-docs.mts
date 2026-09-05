@@ -5,6 +5,12 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-account-api-docs");
+// ⏭️ WO ยังไม่สร้าง → ข้ามแบบเห็นชัด (exit 0) ไม่ทำ qc:all/CI แดงค้าง (บทเรียน WO 0.7) — ด่านนี้หายไปเองเมื่อ WO ลงจริง
+if (!(await import("node:fs")).existsSync("src/app/developers/account/page.tsx")) {
+  console.log("⚠️  SKIPPED — WO ยังไม่สร้าง (src/app/developers/account/page.tsx)");
+  console.log(`JSON_SUMMARY ${JSON.stringify({ total: 0, passed: 0, findings: [], skipped: true })}`);
+  process.exit(0);
+}
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

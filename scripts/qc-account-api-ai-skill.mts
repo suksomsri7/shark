@@ -7,6 +7,12 @@ import { readFileSync } from "node:fs";
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string }; QC: { expectedPath: string } };
 const { loadQcEnv, QC } = accEnv;
 loadQcEnv();
+// ⏭️ WO ยังไม่สร้าง → ข้ามแบบเห็นชัด (exit 0) ไม่ทำ qc:all/CI แดงค้าง (บทเรียน WO 0.7) — ด่านนี้หายไปเองเมื่อ WO ลงจริง
+if (!((await import("@/lib/ai/skills" as string)) as { SKILLS: { id: string }[] }).SKILLS.some((x) => x.id === "account")) {
+  console.log("⚠️  SKIPPED — WO ยังไม่สร้าง (account)");
+  console.log(`JSON_SUMMARY ${JSON.stringify({ total: 0, passed: 0, findings: [], skipped: true })}`);
+  process.exit(0);
+}
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
