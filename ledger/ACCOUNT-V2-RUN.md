@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 10.3 ปิดงาน (qc:all สุดท้าย → main → deploy → verify prod → แจ้งเจ้าของ) |
-| สถานะ | IN_PROGRESS |
+| WO | 🏁 **RUN จบ 46/46** |
+| สถานะ | DONE |
 | ผู้ทำ | Fable |
-| ขั้นที่ถึง | 5 ก.ย. ~03:10 UTC: **qc:all สุดท้าย 227/227** (1065s) → ff main + push → Vercel → verify prod → แจ้งเจ้าของ |
+| ขั้นที่ถึง | 5 ก.ย. ~02:55 UTC: **verify prod ผ่าน** — Vercel READY 02:50 (dpl_64oheh… = main 859f6c0) · migration 28/28 finished · ตาราง Account* 36 · https 200 · route บัญชี/คู่มือ 307→login (ไม่มี 500) · public token ไม่รู้จัก = หน้า 'ไม่พบ' · crontab 4 บรรทัด · แจ้งเจ้าของแล้ว |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -63,9 +63,10 @@
 | 9.4 | ความง่าย | Sonnet | DONE | (HEAD) | ตีกลับ 1 รอบ (undo UI 2/11 → 11/11) · Fable รันเอง: simplicity 112 · contacts 49 · products 100 · attachments 66 · inbox 128 · contact-merge 56 · detail 85 · editor 200 · coa 105 · period-assets 121 · components 78 · guard 174 · security 298 · perf 92 · list 159 · nav 326 · seed-check 279 · schema 61 · dashboard/home เขียว · fitness 17 (ไม่มี .env) · CPA 107 · drift clean · typecheck 0 · ใหม่: ⌘K สร้างด่วน (parser TH/EN+ยอด) · soft-undo 5 นาที (AccountUndoToken · 11 จุด) · HelpTip ≥40 คำ · empty state ทุกรายการ · safeReason 62 จุด + label enum ครบ · /account/help · label mapping key · 🐞 ปิด: findActiveNav หน้าไม่ลงทะเบียนติดแท็บหน้าหลัก · cancelDraft path ผิด · ค้าง: gl.ts ยัง throw docType ดิบ (ไฟล์ GL-Core) |
 | 10.1 | QC รอบสุดท้ายทุกเฟรม | Fable + Sonnet แก้ | DONE | 3583fb2 | visual ทุก key บน build สุดท้าย 24/24 เขียวหลังแก้ (แดง 5: 2.2 mobile create-menu · 1.4 mobile payment sheet = regression 9.1/9.4 · 5.1/5.2/6.1 = expectation เก่า/oracle ผูกวันที่) · Fable ดูตา f1 f3 f5 f6 g4 g1 f8 g15 บน build สุดท้าย + 26 เฟรมผ่านการดูในรอบ WO ของตัวเอง · ตีกลับ f3 (footer/size 8/ปุ่มค้นหา/พิมพ์รายงาน) + g4 (ค้างชำระแดง) → แก้แล้ว · harness เพิ่ม expectAbsent · เมนูคู่มือใน ตั้งค่า · nav 329 |
 | 10.2 | เอกสาร/handover | Sonnet | DONE | f356cd0 | 12-account.md (+106 บรรทัด V2) · UI_STANDARD (+37) · sds/modules/account.md (+50) · HANDOVER-2026-09-05-ACCOUNT-V2.md (เจ้าของ 114 บรรทัด) · dev-components ไม่ลบ (visual key 0.5 อ้าง) → 10.3 ตัดสิน · TODO ค้าง: contacts-list.ts:553 (stale) |
-| 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
+| 10.3 | prod verify + แจ้งเจ้าของ | Fable | DONE | 859f6c0 | verify ผ่าน DB/HTTP/Vercel · ภาพจริง prod ให้เจ้าของเปิดดูเองตาม handover · tenant ทดสอบ 3 รายบน prod ให้เจ้าของลบ |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 5 ก.ย. 2026 ~02:55 UTC — 🏁 **RUN จบ 46/46** · prod READY 859f6c0 · แจ้งเจ้าของ
 - 5 ก.ย. 2026 ~03:10 UTC — 🏁 **เฟส 10 qc:all สุดท้าย 227/227** · 45/46 · เหลือ 10.3 verify prod + แจ้งเจ้าของ
 - 5 ก.ย. 2026 ~02:35 UTC — 10.1 DONE (visual 24/24 · f3/g4 parity) · 10.2 DONE → เริ่ม 10.3 ปิดงาน
 - 5 ก.ย. 2026 ~02:20 UTC — 10.1 Fable QC ตา build สุดท้าย: ดูซ้ำ f1 f3 f5 f6 g4 g1 f8 g15 (ตัดสินแล้ว: f3 4 จุด + g4 1 จุด ตีกลับ · ที่เหลือตรง) · เฟรมอื่น 26 เฟรมผ่านการดูตาของ Fable ในรอบ WO ของตัวเองแล้ว + visual --assert เขียวบน build นี้ (2.3 1.3 1.5 1.6 3.3 3.4 4.3 5.3 5.4 6.2 7.1 7.2 8.1 8.2 8.3 9.1 0.4) · แดง 5 key กำลังแก้
