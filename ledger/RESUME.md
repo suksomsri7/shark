@@ -1,5 +1,11 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 📋 5 ก.ย. (บ่าย ~13:30 BKK) — [session บัญชี] **แผน API บัญชีครอบทุกฟังก์ชัน + คู่มือ/สกิลสำหรับ AI agent** — `ledger/PLAN-ACCOUNT-API.md` (แผนอย่างเดียว · ยังไม่ลงมือ · รอเจ้าของเคาะ §8 5 ข้อ)
+- ผลตรวจ: บัญชี ~880 export/97 ไฟล์ **ไม่มี REST API สักเส้น** (พิมพ์เขียว 12-account §5 ~70 เส้นทางไม่เคยสร้าง) · คีย์ API ที่หน้า "แอปภายนอก/API" เรียกได้แค่ API กลาง (`/api/v1/me,customers,sales…`) ไม่มีข้อมูลบัญชี · คีย์ไม่มี scope/ไม่ผูกสมุด/ไม่หมดอายุ · rate limit v1 = Map ในโปรเซส · AI skills 20 ชุด/63 tools **ไม่มีสกิลบัญชี** (มีแค่ record_expense+financial_summary) · webhook บัญชี 4 event (ออก/ยกเลิกเอกสารไม่ยิง)
+- ข้อเสนอ: **ทะเบียนเดียว 3 ผิวหน้า** — `account/api/registry.ts` (~82 op) → REST `/api/v1/account/*` (catch-all route · ทำจริงตาม scope) + สกิล AI `account` 30 tools (อ่านทันที/เขียน=proposal เดิม) + คู่มือ generate (openapi.json · `/developers/account` · `docs/api/ACCOUNT-API.md` · `.claude/skills/shark-account-api`) · ยกระดับคีย์ (scope=permission key เดิม · ผูก systemId · expiresAt · Idempotency-Key · rate limit DB · ActorType.API_KEY)
+- แผน 24 WO / 6 เฟส (A รากฐาน → B อ่าน → C เขียนเส้นเงิน → D นักบัญชี → E AI skill → F คู่มือ/สกิล/verify) ≈ 22–27 วันงาน agent · เริ่มได้ทันทีโดยไม่รอเคาะ: A1→A3→A4→B1–B4
+- 🔑 รอเจ้าของ: เคาะ §8 (REST ทำจริงทันที? · เปิด op อันตรายให้ REST? · default bundle+หมดอายุ 1 ปี? · เปิดสกิลบัญชีใน AI ในแอปตั้งแต่เฟส E? · คู่มืออังกฤษหลัก?) · ของเดิมยังรอ: BEAM_* · DBD_API_KEY · inbox@ · ลบ tenant ทดสอบ prod 3 ราย
+
 ## 🏁 5 ก.ย. (เช้า ~10:00 BKK) — [session บัญชี] **RUN บัญชี V2 จบครบ 10 เฟส 46/46 WO** (main `859f6c0` · qc:all สุดท้าย 227/227) — handover เจ้าของ: `ledger/HANDOVER-2026-09-05-ACCOUNT-V2.md` · สถานะสด `ledger/ACCOUNT-V2-RUN.md`
 - เฟส 10: 10.1 Fable ดูภาพจริงคู่ mockup ครบ 34 เฟรม (แก้ f3 DocListPage + g4 + regression มือถือ 2 จุด + expectation เก่า 3 ชุด) · 10.2 เอกสาร: `docs/modules/12-account.md` V2 · `UI_STANDARD.md` · `docs/sds/modules/account.md` · HANDOVER · 10.3 verify prod (ดูบล็อกถัดไป/RUN)
 - crontab บัญชีบน VPS ครบ 4 บรรทัด (เอกสารประจำ 23:10 UTC · เตือน 01:00 · รายงานอีเมล 01:30 · หมดอายุลิงก์ PromptPay 00:30)
