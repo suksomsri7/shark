@@ -82,7 +82,7 @@ try {
   chk("D4-S2.3", "ตั้งเลขถัดไปถอยหลังต่ำกว่าที่ออกแล้ว → 200 (ยังไม่มีเอกสาร) หรือ 409 ไทย", nextBack.status === 200 || nextBack.status === 409, "200/409", `${nextBack.status}`, "MINOR");
   const badPattern = await call("PATCH", "/settings/documents/INVOICE", S, { pattern: "{nope}" });
   chk("D4-S2.4", "pattern ไม่ถูกต้อง → 422 ไทย", badPattern.status === 422 && /[ก-๙]/.test(badPattern.body?.error?.message_th ?? ""), "422", `${badPattern.status}`, "MAJOR");
-  const tag = await call("POST", "/settings/tags", S, { name: "เร่งด่วน", color: "#ff0000", docTypes: ["INVOICE"] });
+  const tag = await call("POST", "/settings/tags", S, { name: "เร่งด่วน", color: "red", docTypes: ["INVOICE"] });
   chk("D4-S2.5", "POST /settings/tags → 200 {id,name,color,docTypes}", tag.status === 200 && typeof tag.body?.data?.id === "string", "200", `${tag.status} ${JSON.stringify(tag.body).slice(0, 120)}`, "MAJOR");
   const docSettingsGet = await call("GET", "/settings/documents", S);
   chk("D4-S2.6", "GET /settings/documents สะท้อนค่าที่แก้ (INVOICE prefix INV dueDays 15)", docSettingsGet.body?.data?.find((d: Any) => d.docType === "INVOICE")?.prefix === "INV", "INV", JSON.stringify(docSettingsGet.body?.data?.find((d: Any) => d.docType === "INVOICE")).slice(0, 160));

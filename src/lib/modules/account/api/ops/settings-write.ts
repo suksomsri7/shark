@@ -284,7 +284,7 @@ const settingsDocumentsNextNo = defineOp({
 const tagsCreateInput = z
   .object({
     name: z.string().min(1).max(40),
-    color: z.string().min(1).max(20).describe(`One of ${TAG_COLORS.join(", ")}, or a 6-digit hex color such as #ff0000.`),
+    color: z.enum(TAG_COLORS).describe(`Tag swatch. One of ${TAG_COLORS.join(", ")} (the 6 design tokens the app renders; hex colors are not accepted).`),
     docTypes: z.array(z.string()).max(30).describe("Document types this tag applies to. Empty means every type."),
   })
   .strict();

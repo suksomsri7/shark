@@ -303,17 +303,17 @@ export async function tagsForDocType(ctx: SettingsCtx, docType: AccountDocType):
   return all.filter((t) => t.docTypes.length === 0 || t.docTypes.includes(docType));
 }
 
-/** สีสวอตช์ที่ตั้งไว้ให้ (หน้าจอ) หรือรหัสสี HEX 6 หลัก (WO D4 — REST เปิดให้ผู้เชื่อมต่อใส่สีแบรนด์ของตัวเองได้
- *  เพิ่มเติมจากพาเลตเดิม ไม่ตัดของเดิมออก — หน้าจอยังส่งแค่ชื่อสวอตช์เหมือนเดิมทุกประการ) */
+/** สีแท็ก = สวอตช์ 6 สีจากโทเคนดีไซน์เท่านั้น (Fable D4 ตรวจรับ: ถอด HEX ที่ builder เปิดให้ REST ออก —
+ *  ข้อสอบ qc-acc-v2-doc-settings T10b.4 "สีนอกรายการต้องถูกปฏิเสธ" คือสัญญาของหน้าจอ · REST จำกัดที่ zod enum ให้ตรงกัน) */
 function isValidTagColor(color: string): boolean {
-  return (TAG_COLORS as readonly string[]).includes(color) || /^#[0-9a-f]{6}$/i.test(color);
+  return (TAG_COLORS as readonly string[]).includes(color);
 }
 
 function validateTag(input: { name: string; color: string; docTypes: string[] }): string | null {
   const name = input.name.trim();
   if (!name) return "ตั้งชื่อแท็กก่อนบันทึก";
   if (name.length > 40) return "ชื่อแท็กยาวเกินไป (ไม่เกิน 40 ตัวอักษร)";
-  if (!isValidTagColor(input.color)) return "เลือกสีจากรายการที่มีให้ หรือระบุรหัสสี HEX เช่น #ff0000";
+  if (!isValidTagColor(input.color)) return "เลือกสีจากรายการที่มีให้";
   for (const dt of input.docTypes)
     if (!(NUMBERED_DOC_TYPES as readonly string[]).includes(dt)) return `ชนิดเอกสาร ${dt} ไม่มีในระบบ`;
   return null;

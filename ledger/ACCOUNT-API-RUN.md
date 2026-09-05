@@ -370,6 +370,7 @@ event ที่เหลือ (D4): `account.cheque.changed` (ทุก transit
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 5 ก.ย. 23:50 น. — **qc:all ปิดเฟส D 244/246 (21 นาที) → แดง 2 แก้ครบ**: (1) `acc-v2-doc-settings` T10b.4/9/10/11 — D4 เปิดสี HEX ให้แท็กเพื่อเอาใจ oracle REST ทำให้สัญญาหน้าจอ "สีนอกรายการต้องถูกปฏิเสธ" พัง ⇒ ถอด HEX ออก · REST `settings.tags.create.color` = enum 6 สวอตช์ · oracle ส่ง "red" (2) `acc-v2-security` S16 ชี้ไฟล์ `import-actions.ts` แต่ D3 ย้าย core+writeAudit ไป `import-core.ts` ⇒ แก้รายการไฟล์ · รันเดี่ยว: doc-settings 116 · security 298 · write-settings 39
 - 5 ก.ย. 23:15 น. — D4 ปิด (Sonnet 44 นาที · จับบั๊กเอง 2) · **เฟส D ปิด 4/4** · ความคืบหน้า 16/24 = 67% · qc:all ปิดเฟส D + เริ่ม E1
 - 5 ก.ย. 22:05 น. — D3 ปิด (Sonnet 34 นาที · builder จับบั๊ก env-at-load เอง · Fable ปิดช่อง server action ที่ re-export core) · ความคืบหน้า 15/24 = 62% · เริ่ม D4
 - 5 ก.ย. 22:20 น. — D2 ปิด (Opus 19 นาที · oracle ผิดเอง 1 ข้อ G3.6: accountant มี asset.dispose ตามสเปค A1) · ความคืบหน้า 14/24 = 58% · เริ่ม D3

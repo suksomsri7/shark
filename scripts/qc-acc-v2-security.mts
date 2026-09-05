@@ -1213,7 +1213,7 @@ try {
     ["เชื่อมต่อ/API key", "connections-actions.ts", "account.settings"],
     ["คลังเอกสาร (เก็บไฟล์)", "attachment.ts", "account.document.manage"],
     ["ลิงก์ขอใบกำกับ", "actions.ts", "account.doc.public_link"],
-    ["นำเข้าข้อมูล", "import-actions.ts", "account.import"],
+    ["นำเข้าข้อมูล", "import-core.ts", "account.import"], // WO D3: core (และ writeAudit) ย้ายจาก import-actions.ts
   ];
   for (const [label, file, action] of AUDIT_REQUIRED) {
     const src = readFileSync(join(MODULE_DIR, file), "utf8");
