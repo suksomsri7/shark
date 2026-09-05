@@ -208,6 +208,12 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   KanbanBoard: sys(),
   KanbanColumn: sys(),
   KanbanCard: sys(),
+  KanbanLabel: sys(),
+  // ตาราง join ของ Kanban (K1.2) — มีแต่ `tenantId` ไม่มี `systemId` (กรอง systemId ที่การ์ด/ป้ายต้นทาง)
+  // แกนต้องตรงกับฟิลด์จริงใน schema ⇒ ประกาศเป็น tenant ไม่ใช่ sys() ไม่งั้น guard จะ inject
+  // `systemId` ที่ไม่มีอยู่จริงแล้วพังตอนใครสักคนเริ่มใช้ tenantDb กับมันใน Phase 3
+  KanbanCardLabel: tenant,
+  KanbanCardAssignee: tenant,
   // Account — P1 core
   AccountDocument: sys(),
   AccountDocumentLine: sys(),

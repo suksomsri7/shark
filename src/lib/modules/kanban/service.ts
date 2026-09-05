@@ -1,49 +1,38 @@
 import { prisma } from "@/lib/core/db";
 import { Prisma } from "@prisma/client";
 import type { KanbanBoard, KanbanBoardVisibility, KanbanCard, KanbanCardSourceType, KanbanColumn, KanbanLabelColor } from "@prisma/client";
-import { emitOutbox } from "@/lib/core/outbox";
-import { scheduleDrain } from "@/lib/outbox-consumers";
 import { keyBetween, keysBetween } from "./ordering";
+import { applyCardLabelNames } from "./labels";
+import { syncSingleAssignee } from "./cards";
+import { notifyCardAssigned } from "./notify";
 
-// แจ้งเตือนเมื่อมอบหมายงาน (assignee ตั้งใหม่/เปลี่ยน) — ปิด "โมดูลเงียบ"
-// 🔴 K1.1: ต้องยิงตรงคน — `AppNotification.recipientUserId` = ผู้รับงาน
-//    ของเดิมเขียนเป็นประกาศทั้งร้าน (recipientUserId = null) ⇒ ใครก็ตามที่เข้าแอปของร้านได้
-//    เปิด /app/notifications แล้วเห็นชื่องาน+ชื่อบอร์ดของคนอื่นหมด (บั๊กความเป็นส่วนตัว)
-async function notifyAssignment(
-  tenantId: string,
-  systemId: string,
-  card: { id: string; title: string; boardId: string },
-  assigneeUserId: string,
-): Promise<void> {
-  const [board, membership] = await Promise.all([
-    prisma.kanbanBoard.findFirst({ where: { id: card.boardId, tenantId }, select: { name: true } }),
-    prisma.membership.findFirst({ where: { tenantId, userId: assigneeUserId }, include: { user: true } }),
-  ]);
-  const who = membership?.user.name ?? membership?.user.email ?? "พนักงาน";
-  await prisma.$transaction(async (tx) => {
-    await emitOutbox(tx, {
-      tenantId,
-      type: "kanban.card.assigned",
-      idempotencyKey: `kanban.assign.${card.id}.${assigneeUserId}`,
-      payload: { cardId: card.id, boardId: card.boardId, assigneeUserId },
-      systemId,
-    });
-    await tx.appNotification.create({
-      data: {
-        tenantId,
-        recipientUserId: assigneeUserId,
-        title: "ได้รับมอบหมายงาน",
-        body: `${who}: "${card.title}"${board ? ` · บอร์ด ${board.name}` : ""} · ดูงาน /app/sys/${systemId}/kanban/${card.boardId}`,
-      },
-    });
-  });
-  scheduleDrain();
-}
+// ── K1.2: service.ts เป็น facade ของโมดูล (proposals.ts/ai/tools.ts/ข้อสอบเก่า import ที่นี่) ──
+//    ฟังก์ชันใหม่อยู่ไฟล์ของตัวเอง แล้ว re-export ออกจากที่นี่ — ผู้เรียกเดิมไม่ต้องแก้สักบรรทัด
+export { setCardAssignees, listCardAssignees } from "./cards";
+export { listLabels, createLabel, updateLabel, deleteLabel, setCardLabels } from "./labels";
+export type { KanbanCtx, KanbanActor } from "./types";
+
+// แจ้งเตือนเมื่อมอบหมายงาน — ย้ายตรรกะไป `notify.ts` ใน K1.2 (cards.ts ใช้ร่วมโดยไม่เกิด import วงกลม)
+// ชื่อเดิมคงไว้เป็น alias ภายในไฟล์นี้ เพื่อไม่ต้องแก้จุดเรียกเดิม
+const notifyAssignment = notifyCardAssigned;
 
 // งานของฉัน — การ์ด ACTIVE ที่มอบหมายให้ผู้ใช้ปัจจุบัน ข้ามทุกบอร์ด (เรียงตามกำหนดส่ง)
 export async function listMyCards(tenantId: string, systemId: string, userId: string) {
+  // 🔴 K1.2: ผู้รับผิดชอบมีได้หลายคน — "งานของฉัน" ต้องอ่าน `KanbanCardAssignee` ด้วย
+  //    ไม่ใช่แค่ช่องเดิม `assigneeUserId` (คนที่ 2 ของการ์ดจะไม่เห็นงานตัวเองเลย)
+  //    union ทั้งสองทางไว้ตลอด P1 เพราะทั้งคู่ถูกเขียนคู่กัน (แถวเก่าที่ยังไม่ backfill ก็ยังโผล่)
+  const assigned = await prisma.kanbanCardAssignee.findMany({
+    where: { tenantId, userId },
+    select: { cardId: true },
+  });
+  const assignedIds = assigned.map((a) => a.cardId);
   return prisma.kanbanCard.findMany({
-    where: { tenantId, systemId, assigneeUserId: userId, status: "ACTIVE" },
+    where: {
+      tenantId,
+      systemId,
+      status: "ACTIVE",
+      OR: [{ assigneeUserId: userId }, ...(assignedIds.length ? [{ id: { in: assignedIds } }] : [])],
+    },
     include: { board: { select: { name: true } }, column: { select: { name: true } } },
     // กำหนดส่งก่อน (หน้า "งานของฉัน" จัดกลุ่มตามวัน) แล้วค่อยลำดับในคอลัมน์ (position → sortOrder → createdAt)
     orderBy: [
@@ -288,6 +277,15 @@ export async function createCard(input: {
       },
     });
   });
+  // ── K1.2 dual-write: ช่องเดิม + ตารางใหม่ต้องตรงกันเสมอ ──
+  const ctx = { tenantId: input.tenantId, systemId: input.systemId, actorUserId: input.createdById ?? null };
+  if (input.assigneeUserId) {
+    await syncSingleAssignee(ctx, card.id, input.assigneeUserId);
+  }
+  // ผู้เรียกเดิม (seed · AI · actions) ส่งป้ายมาเป็น "ชื่อ" — สร้าง/ผูก KanbanLabel ของบอร์ดให้อัตโนมัติ
+  if (input.labels && input.labels.length > 0) {
+    await applyCardLabelNames(ctx, { id: card.id, boardId: card.boardId }, input.labels);
+  }
   // มอบหมายตั้งแต่สร้าง → แจ้งผู้รับ
   if (input.assigneeUserId) {
     await notifyAssignment(input.tenantId, input.systemId, card, input.assigneeUserId);
@@ -310,18 +308,27 @@ export async function updateCard(input: {
   if (input.description !== undefined) data.description = input.description;
   if (input.assigneeUserId !== undefined) data.assigneeUserId = input.assigneeUserId;
   if (input.dueAt !== undefined) data.dueAt = input.dueAt;
-  if (input.labels !== undefined) data.labels = input.labels;
-  if (Object.keys(data).length === 0) return;
+  // 🔴 `labels` ไม่เขียนตรงที่นี่แล้ว — ผ่าน applyCardLabelNames เพื่อให้แถวเชื่อมกับ Json ตรงกัน (K1.2)
+  if (Object.keys(data).length === 0 && input.labels === undefined) return;
   // อ่าน assignee เดิมก่อน เพื่อแจ้งเฉพาะเมื่อ "เปลี่ยนผู้รับเป็นคนใหม่" (ไม่แจ้งซ้ำถ้าเดิมคนเดียวกัน)
   const before = await prisma.kanbanCard.findFirst({
     where: { id: input.cardId, tenantId: input.tenantId, systemId: input.systemId },
     select: { id: true, title: true, boardId: true, assigneeUserId: true },
   });
   if (!before) return;
-  await prisma.kanbanCard.updateMany({
-    where: { id: input.cardId, tenantId: input.tenantId, systemId: input.systemId },
-    data,
-  });
+  if (Object.keys(data).length > 0) {
+    await prisma.kanbanCard.updateMany({
+      where: { id: input.cardId, tenantId: input.tenantId, systemId: input.systemId },
+      data,
+    });
+  }
+  const ctx = { tenantId: input.tenantId, systemId: input.systemId, actorUserId: null };
+  if (input.labels !== undefined) {
+    await applyCardLabelNames(ctx, { id: before.id, boardId: before.boardId }, input.labels);
+  }
+  if (input.assigneeUserId !== undefined) {
+    await syncSingleAssignee(ctx, before.id, input.assigneeUserId);
+  }
   const newAssignee = input.assigneeUserId;
   if (newAssignee != null && newAssignee !== before.assigneeUserId) {
     const title = input.title ?? before.title;

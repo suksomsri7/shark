@@ -60,6 +60,7 @@ model KanbanBoard {
 
   columns KanbanColumn[]
   cards   KanbanCard[]
+  labels  KanbanLabel[] // ป้ายของบอร์ด (K1.2)
 
   @@index([tenantId, systemId, status])
   @@index([tenantId, systemId, unitId])
@@ -126,9 +127,61 @@ model KanbanCard {
   createdById           String?
   archivedById          String?
 
+  // ── K1.2 ──
+  cardLabels KanbanCardLabel[]
+  assignees  KanbanCardAssignee[]
+
   @@index([tenantId, systemId, boardId, status])
   @@index([columnId, status, sortOrder])
   @@index([tenantId, systemId, assigneeUserId])
   @@index([tenantId, systemId, status, dueAt]) // cron เตือนกำหนดส่ง + รายงานเลยกำหนด
   @@index([boardId, cardNo]) // ค้นด้วยเลขการ์ด (unique เพิ่มหลัง backfill ใน K1.4)
+}
+
+// ───────────────────────── ป้ายกำกับ (K1.2) ─────────────────────────
+// ป้ายเป็น "ของบอร์ด" (ไม่ใช่ของร้าน) — ชื่อซ้ำในบอร์ดเดียวกันไม่ได้ แต่คนละบอร์ดตั้งชื่อเหมือนกันได้
+// ช่วงเปลี่ยนผ่าน P1: `KanbanCard.labels` (Json ชื่อป้าย) ยังถูกเขียนคู่กันไว้อ่านอย่างเดียว (§4.6 ข้อ 4)
+model KanbanLabel {
+  id        String           @id @default(cuid())
+  tenantId  String
+  systemId  String
+  boardId   String
+  board     KanbanBoard      @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  name      String // ≤ 40 ตัวอักษร (ตรวจใน service)
+  color     KanbanLabelColor
+  sortOrder Int              @default(0)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  cards KanbanCardLabel[]
+
+  @@unique([boardId, name])
+  @@index([tenantId, systemId, boardId])
+}
+
+// join การ์ด × ป้าย — hard delete ได้ (ตาราง join · §11 "ไม่มี soft delete ยกเว้น…")
+// tenantId เก็บซ้ำเพื่อกวาด/ตรวจข้ามร้านได้โดยไม่ต้อง join กลับการ์ด
+model KanbanCardLabel {
+  cardId   String
+  card     KanbanCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  labelId  String
+  label    KanbanLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  tenantId String
+
+  @@id([cardId, labelId])
+  @@index([labelId])
+}
+
+// ผู้รับผิดชอบหลายคนต่อการ์ด — `KanbanCard.assigneeUserId` = คนแรกของลิสต์ (เขียนคู่กันตลอด P1 · §4.6 ข้อ 5)
+// index [tenantId, userId] = เส้นทางของหน้า "งานของฉัน" (ยังไม่ต้องมี systemId ในตาราง — กรอง systemId ที่การ์ด)
+model KanbanCardAssignee {
+  cardId       String
+  card         KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  userId       String // ต้องเป็น Membership ที่ accepted ของ tenant — ตรวจใน service (ไม่ทำ FK ไป User)
+  tenantId     String
+  assignedById String? // ใครเป็นคนมอบหมาย
+  assignedAt   DateTime   @default(now())
+
+  @@id([cardId, userId])
+  @@index([tenantId, userId])
 }
