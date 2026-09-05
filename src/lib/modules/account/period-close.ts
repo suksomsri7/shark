@@ -12,11 +12,13 @@
 // 🔴 ข้อ 1–2 ที่นี่เป็นแค่ "กระจกสะท้อน" ของกติกาใน gl.closePeriod — ความจริงตัดสินที่ gl เสมอ
 //    (ถ้าสองที่ไม่ตรงกัน gl ชนะ · ข้อสอบ qc-acc-v2-period-assets ตรวจว่าสองที่ให้คำตอบเดียวกัน)
 
+import type { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { safeReason } from "./errors";
 import { isLockedPeriod, lockBeforeDateOf, lockedMessage } from "./policy"; // §9.3
 import { closePeriod, reopenPeriod } from "./gl";
 import { reconcileBlock, listReconcilableChannels } from "./reconcile";
+import { emitPeriodReopened } from "./events";
 
 export type PeriodCtx = { tenantId: string; systemId: string };
 
@@ -272,12 +274,21 @@ export async function reopenPeriodV2(
   // (เปิดได้ก็แก้อะไรไม่ได้อยู่ดี — บอกตรงนี้ดีกว่าให้ไปเจอตอนกดบันทึก)
   const lock = await lockBeforeDateOf(ctx);
   if (lock && isLockedPeriod(lock, periodKey)) return { ok: false, reason: lockedMessage(lock) };
+  const at = new Date();
   try {
-    await reopenPeriod(ctx, periodKey, reason.trim(), userId);
+    // WO D4: ทั้ง reopenPeriod + reopenedAt + account.period.reopened อยู่ในธุรกรรมเดียวกัน
+    // (`tenantDb(ctx).$transaction` — ไม่มี raw prisma import ในไฟล์นี้ ต้องผ่านตัวห่อ tenantDb)
+    await tenantDb(ctx).$transaction(async (tx) => {
+      // tenantDb().$transaction() ให้ client ที่ทำงานเหมือนกันทุกอย่างกับ Prisma.TransactionClient
+      // แต่เป็นคนละชนิดเพราะเป็น extended client (เหตุผลเดียวกับ contact-merge.ts) — cast ที่นี่ที่เดียว
+      const raw = tx as unknown as Prisma.TransactionClient;
+      await reopenPeriod(ctx, periodKey, reason.trim(), userId, raw);
+      await tx.accountPeriod.updateMany({ where: { periodKey }, data: { reopenedAt: at } });
+      await emitPeriodReopened(raw, ctx, { periodKey, reason: reason.trim(), reopenedById: userId, at });
+    });
   } catch (e) {
     return { ok: false, reason: safeReason(e, "เปิดงวดไม่สำเร็จ") };
   }
-  await tenantDb(ctx).accountPeriod.updateMany({ where: { periodKey }, data: { reopenedAt: new Date() } });
   return { ok: true };
 }
 

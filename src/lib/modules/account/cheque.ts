@@ -3,6 +3,7 @@ import { safeReason } from "./errors";
 import type { AccountChequeDirection, AccountChequeStatus, Prisma } from "@prisma/client";
 // posting engine (owner = GL-Core) — subagent แค่ import + เรียกตามลายเซ็น
 import { ensureAccounting, postChequeEntry, resolveMapping } from "./gl";
+import { emitChequeChanged } from "./events";
 
 // ─────────────────────────────────────────────────────────────
 // cheque.ts — ทะเบียนเช็ครับ/เช็คจ่าย (§3.5)
@@ -465,7 +466,11 @@ export async function depositCheque(
   if (cq.direction !== "IN") return { ok: false, reason: "นำฝากได้เฉพาะเช็ครับ" };
   if (cq.status !== "ON_HAND") return { ok: false, reason: "เช็คนี้ไม่อยู่สถานะรอนำฝาก" };
   // WO 5.4 (§10.4): บันทึกวันที่นำฝากจริง (ของเดิมเปลี่ยนแค่ status ไม่มีวันที่เก็บ)
-  await prisma.accountCheque.update({ where: { id }, data: { status: "DEPOSITED", depositedAt: depositedAt ?? new Date() } });
+  // WO D4: ห่อ $transaction เพิ่ม (ของเดิมเป็น update เดี่ยว) เพื่อยิง account.cheque.changed ในธุรกรรมเดียวกัน
+  await prisma.$transaction(async (tx) => {
+    await tx.accountCheque.update({ where: { id }, data: { status: "DEPOSITED", depositedAt: depositedAt ?? new Date() } });
+    await emitChequeChanged(tx, { tenantId, systemId }, { chequeId: id, direction: cq.direction, chequeNo: cq.chequeNo, status: "DEPOSITED", amountSatang: cq.amount });
+  });
   return { ok: true };
 }
 
@@ -522,6 +527,7 @@ export async function clearCheque(
         );
       }
       await tx.accountCheque.update({ where: { id }, data: { status: "CLEARED", clearedAt: date } });
+      await emitChequeChanged(tx, ctx, { chequeId: cq.id, direction: cq.direction, chequeNo: cq.chequeNo, status: "CLEARED", amountSatang: cq.amount });
     });
     return { ok: true };
   } catch (e) {
@@ -576,6 +582,7 @@ export async function bounceCheque(
         where: { id },
         data: { status: "BOUNCED", note: reason?.trim() || cq.note },
       });
+      await emitChequeChanged(tx, ctx, { chequeId: cq.id, direction: cq.direction, chequeNo: cq.chequeNo, status: "BOUNCED", amountSatang: cq.amount });
     });
     return { ok: true };
   } catch (e) {
@@ -620,6 +627,7 @@ export async function voidCheque(
         where: { id },
         data: { status: "VOIDED", note: reason?.trim() || cq.note },
       });
+      await emitChequeChanged(tx, ctx, { chequeId: cq.id, direction: cq.direction, chequeNo: cq.chequeNo, status: "VOIDED", amountSatang: cq.amount });
     });
     return { ok: true };
   } catch (e) {

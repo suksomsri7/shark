@@ -22,6 +22,8 @@ import { SETTINGS_READ_OPS } from "./ops/settings-read";
 import { RECONCILE_WRITE_OPS } from "./ops/reconcile-write";
 import { FILES_WRITE_OPS } from "./ops/files-write";
 import { IMPORT_OPS } from "./ops/import";
+import { SETTINGS_WRITE_OPS } from "./ops/settings-write";
+import { WEBHOOKS_OPS } from "./ops/webhooks";
 
 export * from "./op";
 
@@ -43,6 +45,8 @@ export const ACCOUNT_OPS: ApiOp[] = [
   ...RECONCILE_WRITE_OPS,
   ...FILES_WRITE_OPS,
   ...IMPORT_OPS,
+  ...SETTINGS_WRITE_OPS,
+  ...WEBHOOKS_OPS,
 ];
 
 // ── การจับคู่ path ──────────────────────────────────────────────────────────

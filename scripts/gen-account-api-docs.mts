@@ -260,6 +260,30 @@ const WEBHOOK_EVENT_DOCS: Record<string, { when: string; payload: Record<string,
     when: "A product or service was edited. Same `updatedAt` rule as `account.contact.updated`.",
     payload: { productId: "cmf1prd0001", code: "P00024", sku: "DIVE-FIN-L", name: "Fins (L)", type: "GOODS", salePriceSatang: 270000 },
   },
+  "account.cheque.changed": {
+    when: "A cheque's status changed: deposited, cleared, bounced or voided. Fires once per transition (the idempotency key ends in the status), so the same cheque can appear several times as it moves through its life.",
+    payload: { chequeId: "cmf1chq0001", direction: "IN", chequeNo: "1234567", status: "CLEARED", amountSatang: 500000 },
+  },
+  "account.reconcile.confirmed": {
+    when: "A month of bank reconciliation for one channel was confirmed.",
+    payload: { financeId: "cmf1fin0001", periodKey: "2026-08", matched: 42, statementBalanceSatang: 1250000 },
+  },
+  "account.period.reopened": {
+    when: "A closed accounting period was reopened.",
+    payload: { periodKey: "2026-08", reason: "correcting a posting error found by the auditor", reopenedById: "cmf1usr0001" },
+  },
+  "account.asset.depreciated": {
+    when: "Monthly depreciation was posted for one fixed asset.",
+    payload: { assetId: "cmf1ast0001", code: "FA-0007", periodKey: "2026-08", amountSatang: 41700 },
+  },
+  "account.asset.disposed": {
+    when: "A fixed asset was sold or written off.",
+    payload: { assetId: "cmf1ast0001", code: "FA-0007", mode: "SELL", proceedsSatang: 300000, gainLossSatang: -50000, disposedAt: "2026-09-05" },
+  },
+  "account.recurring.ran": {
+    when: "A recurring document rule produced its document for the period (draft or auto-issued - check the document itself, or `account.document.issued`, for the outcome).",
+    payload: { ruleId: "cmf1rec0001", documentId: "cmf1doc0005", docType: "INVOICE", runDate: "2026-09-01", issued: true },
+  },
 };
 
 const VERIFY_SAMPLE = [

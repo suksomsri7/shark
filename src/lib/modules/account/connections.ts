@@ -178,6 +178,34 @@ export async function listLinks(ctx: Ctx) {
   });
 }
 
+/** `linkedId` ของ kind นี้ที่เชื่อมอยู่ตอนนี้ (รวมที่ตัดการเชื่อมแล้ว) — REST `PATCH`/`DELETE /links/{kind}`
+ *  ไม่มี linkedId ในเส้นทาง (ตัดสินใจจาก kind เดียว) ⇒ ต้องคลี่ก่อนส่งต่อให้ `disconnect`/`setLinkOptions` */
+export async function linkedIdOfKind(ctx: Ctx, kind: AccountLinkedKind): Promise<string | null> {
+  const row = await dbOf(ctx).accountSystemLink.findFirst({ where: { linkedKind: kind }, select: { linkedId: true } });
+  return row?.linkedId ?? null;
+}
+
+/**
+ * REST WO D4: `connect()` เดิมไม่ตรวจว่า `linkedId` เป็นระบบ/สาขาจริงของร้านนี้ เพราะฝั่งหน้าจอส่ง id
+ * ที่เลือกจาก dropdown ของร้านเองมาเสมอ (เชื่อถือได้อยู่แล้ว) — ผู้เรียก REST พิมพ์ id เองได้ ⇒ ต้องยืนยัน
+ * ก่อนว่า id นั้นตรงชนิดระบบของการ์ด `kind` และเป็นของ tenant นี้จริง (กัน id ปลอม/ข้ามร้าน)
+ */
+export async function isValidLinkTarget(ctx: Ctx, kind: AccountLinkedKind, linkedId: string): Promise<boolean> {
+  if (!linkedId) return false;
+  const item = CONNECTION_CATALOG.find((c) => c.kind === kind);
+  if (!item) return false;
+  const db = dbOf(ctx);
+  if (item.systemType) {
+    const s = await db.appSystem.findFirst({ where: { id: linkedId, type: item.systemType, active: true }, select: { id: true } });
+    return !!s;
+  }
+  if (kind === "BUSINESS") {
+    const u = await db.businessUnit.findFirst({ where: { id: linkedId, type: "BOOKING", status: "ACTIVE" }, select: { id: true } });
+    return !!u;
+  }
+  return false;
+}
+
 /** เชื่อม/เชื่อมกลับ — สร้างแถวถ้ายังไม่มี · มีแล้วตั้ง enabled=true (ตัวเลือกเดิมกลับมาครบ) */
 export async function connect(
   ctx: Ctx,

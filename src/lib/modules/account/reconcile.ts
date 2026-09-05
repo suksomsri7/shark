@@ -23,6 +23,7 @@ import { tenantDb } from "@/lib/core/db";
 import type { Prisma, AccountBankStatementLineStatus, AccountDocType } from "@prisma/client";
 import { postBankReconcileEntry, resolveMapping } from "./gl";
 import { writeAudit } from "./access";
+import { emitReconcileConfirmed } from "./events";
 // WO 5.5 — ตะขอ "คำขอ QR พร้อมเพย์ที่ยังรอชำระ ↔ แถวเงินเข้าใน statement"
 // (payment-request.ts ไม่ import ไฟล์นี้กลับ ⇒ ไม่มีวงจร import)
 import { settleStaticRequestsFromStatement } from "./payment-request";
@@ -1089,9 +1090,25 @@ export async function confirmMonth(
   if (s.pendingCount > 0) return fail(`ยังมีรายการรอจับคู่ ${s.pendingCount} รายการ`);
 
   const now = new Date();
-  const updated = await tenantDb(ctx).accountBankStatement.updateMany({
-    where: { id: s.statementId, tenantId: ctx.tenantId, systemId: ctx.systemId, confirmedAt: null },
-    data: { confirmedAt: now, confirmedById: input.userId ?? null },
+  const statementId = s.statementId; // แยกเป็นตัวแปรของตัวเอง — การจำกัดชนิดของ property บน `s` ไม่ไหลเข้า closure ของ $transaction
+  // WO D4: ห่อ $transaction (ของเดิมเป็น updateMany เดี่ยว) เพื่อยิง account.reconcile.confirmed ในธุรกรรม
+  // เดียวกับการยืนยัน — ผ่าน `tenantDb(ctx).$transaction` (ไม่ใช่ prisma ตรง — ไฟล์นี้ไม่มี raw prisma import)
+  const updated = await tenantDb(ctx).$transaction(async (tx) => {
+    const res = await tx.accountBankStatement.updateMany({
+      where: { id: statementId, tenantId: ctx.tenantId, systemId: ctx.systemId, confirmedAt: null },
+      data: { confirmedAt: now, confirmedById: input.userId ?? null },
+    });
+    if (res.count > 0) {
+      // tenantDb().$transaction() ให้ client ที่ทำงานเหมือน Prisma.TransactionClient ทุกอย่างแต่เป็นคนละ
+      // ชนิด (extended client) — cast ตามแพตเทิร์นเดียวกับ contact-merge.ts
+      await emitReconcileConfirmed(tx as unknown as Prisma.TransactionClient, ctx, {
+        financeId: input.financeId,
+        periodKey: input.periodKey,
+        matched: s.matchedCount,
+        statementBalanceSatang: s.statementBalanceSatang,
+      });
+    }
+    return res;
   });
   if (updated.count === 0) return fail("เดือนนี้เพิ่งถูกยืนยันไปแล้ว — โหลดหน้าใหม่");
 

@@ -101,7 +101,14 @@ const capOf = (permissions: Record<string, unknown>): number | null => {
  */
 // WO 9.3: หน้าตั้งค่าสิทธิ์เรียกทั้ง listAccountUsers และ getPermissionSettings ⇒ อ่านแถว AccountSettings
 // ซ้ำ 2 ครั้ง · รับ settings ที่โหลดไว้แล้วได้ (พารามิเตอร์ optional — ผู้เรียกเดิมทำงานเหมือนเดิมทุกประการ)
-export async function listAccountUsers(ctx: Ctx, preloaded?: PermissionSettings): Promise<AccountUserRow[]> {
+// WO D4: `opts.includeAll` — REST `settings.permissions.get` ต้องเห็น "ใครกำหนดบทบาทได้บ้าง" ทั้งร้าน
+// (รวมคนที่ยังไม่เคยได้สิทธิ์บัญชีเลย) ไม่ใช่แค่คนที่มีสิทธิ์อยู่แล้วแบบหน้าจอ §9.4 ⇒ ไม่กรองด้วย
+// `hasAnyAccountPermission` เมื่อตั้งค่านี้ · ไม่ส่ง = พฤติกรรมเดิมทุกประการ (ผู้เรียกเดิมไม่กระทบ)
+export async function listAccountUsers(
+  ctx: Ctx,
+  preloaded?: PermissionSettings,
+  opts?: { includeAll?: boolean },
+): Promise<AccountUserRow[]> {
   const [rows, settings] = await Promise.all([
     listStaffAccess(ctx.tenantId),
     preloaded ? Promise.resolve(preloaded) : getPermissionSettings(ctx),
@@ -110,7 +117,7 @@ export async function listAccountUsers(ctx: Ctx, preloaded?: PermissionSettings)
   const out: AccountUserRow[] = [];
   for (const r of rows) {
     const isPrivileged = r.role === "OWNER" || r.role === "MANAGER";
-    if (!isPrivileged && !hasAnyAccountPermission(r.permissions)) continue;
+    if (!opts?.includeAll && !isPrivileged && !hasAnyAccountPermission(r.permissions)) continue;
     const assigned = isPrivileged ? r.role : (settings.members[r.membershipId] ?? "");
     const cells = isPrivileged
       ? (roleByKey.get(r.role)?.cells ?? {})

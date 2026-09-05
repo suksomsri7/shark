@@ -8,6 +8,7 @@ import { prisma } from "@/lib/core/db";
 import { safeReason } from "./errors";
 import type { Prisma, AccountAssetStatus } from "@prisma/client";
 import { postDepreciation, postManualJV, resolveMapping, type GlCtx } from "./gl";
+import { emitAssetDepreciated, emitAssetDisposed } from "./events";
 
 type Tx = Prisma.TransactionClient;
 type Db = Tx | typeof prisma;
@@ -419,6 +420,8 @@ export async function runDepreciation(
             data: { status: "FULLY_DEPRECIATED" },
           });
         }
+        // WO D4: account.asset.depreciated ในธุรกรรมเดียวกับการโพสต์ค่าเสื่อม
+        await emitAssetDepreciated(tx, ctx, { assetId: a.id, code: a.code, periodKey, amountSatang: amount });
         return { status: "posted" as const, amount, entryId, fully };
       });
 
@@ -528,6 +531,16 @@ export async function disposeAsset(ctx: AssetCtx, input: DisposeInput): Promise<
           disposalAmount: proceeds,
           note: input.note?.trim() ? input.note.trim() : asset.note,
         },
+      });
+
+      // WO D4: account.asset.disposed ในธุรกรรมเดียวกับการโพสต์ JV จำหน่ายสินทรัพย์
+      await emitAssetDisposed(tx, ctx, {
+        assetId: asset.id,
+        code: asset.code,
+        mode: input.mode,
+        proceedsSatang: proceeds,
+        gainLossSatang: gainLoss,
+        disposedAt: input.date,
       });
 
       return { entryId, gainLoss };

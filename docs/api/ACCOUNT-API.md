@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 178 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 199 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -69,6 +69,17 @@ Branch on `error.code`, never on the message text.
 ### Read operations
 
 Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited.
+
+#### `api-keys.list`
+
+**GET /api-keys** - API keys of this shop (scopes, which book they are bound to, expiry). Never includes the key value or its hash. · scope: `account.settings.manage` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/api-keys" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
 
 #### `assets.get`
 
@@ -949,6 +960,17 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/settings/documents" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `settings.permissions.get`
+
+**GET /settings/permissions** - Roles and the people who have accounting access, with the permission matrix and approval caps. · scope: `account.settings.manage` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/settings/permissions" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `settings.policy`
 
 **GET /settings/policy** - Accounting policy: fiscal year, VAT timing, withholding tax defaults, date lock, duplicate rules and report emails. · scope: `account.settings.manage` · read
@@ -1003,6 +1025,32 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/warehouses" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `webhooks.deliveries`
+
+**GET /webhooks/{id}/deliveries** - Recent delivery attempts to one endpoint, newest first. · scope: `account.settings.manage` · read
+
+Path parameters: `id` (required).
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `take` | integer | no | 1-100. Default 20. · min 1 · max 100 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/webhooks/123/deliveries" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `webhooks.list`
+
+**GET /webhooks** - Webhook endpoints of this shop. Never includes the signing secret. · scope: `account.settings.manage` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/webhooks" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -2116,6 +2164,41 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/journal" \
   -d '{"date":"example date","lines":[]}'
 ```
 
+#### `links.update`
+
+**PATCH /links/{kind}** - Change the automation options of a linked system (auto-create contact, sync prices, auto-post, inbox from chat). · scope: `account.settings.manage` · write
+
+Path parameters: `kind` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `options` | object | yes | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/links/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"options":{}}'
+```
+
+#### `links.connect`
+
+**POST /links** - Link another system in this shop (POS, member system, inventory, ...) to this accounting book. · scope: `account.settings.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `kind` | enum("POS", "BUSINESS", "CRM", "MEMBER", "INVENTORY", "CHAT", "HR") | yes | - |
+| `linkedId` | string | yes | min length 1 · max length 60 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/links" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"POS","linkedId":"example linkedId"}'
+```
+
 #### `mappings.set`
 
 **PUT /mappings/{key}** - Point one posting rule at a different ledger account. The keys are the ones returned by the mappings list, such as AR, VAT_OUTPUT or DEPRECIATION_EXPENSE. Every document posted from now on uses the new account. · scope: `account.mapping.manage` · write
@@ -2735,6 +2818,207 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/reports/email" \
   -d '{"kind":"daily"}'
 ```
 
+#### `settings.documents.next-no`
+
+**POST /settings/documents/{docType}/next-no** - Set the next running number of one document type. Cannot go lower than a number already used this period. · scope: `account.settings.manage` · write
+
+Path parameters: `docType` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `nextNo` | integer | yes | min 1 · max 999999 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/settings/documents/123/next-no" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"nextNo":1}'
+```
+
+#### `settings.documents.update`
+
+**PATCH /settings/documents/{docType}** - Change the numbering pattern, due days, footer note, terms or print settings of one document type. · scope: `account.settings.manage` · write
+
+Path parameters: `docType` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `prefix` | string | no | Code shown before the running number, such as "INV". · max length 12 |
+| `pattern` | string | no | Number pattern. Tokens: {prefix} {yyyy} {yy} {mm} {dd} {br} and a sequence token such as {seq4} (4-digit running number) or {seq}. · max length 60 |
+| `reset` | enum("NONE", "YEARLY", "MONTHLY") | no | When the running number resets to 1. |
+| `dueDays` | integer | no | Payment due days (purchase orders: lead time to receive goods). · min 0 · max 3650 |
+| `validDays` | integer | no | Quotation validity in days. · min 0 · max 3650 |
+| `notes` | string | no | Footer note printed at the bottom of this document type. · max length 1000 |
+| `terms` | string | no | Payment terms line printed on this document type. · max length 500 |
+| `publicLink` | object | no | - |
+| `autoTaxInvoice` | enum("MANUAL", "ON_PAYMENT", "ON_INVOICE") | no | - |
+| `printTemplate` | enum("STANDARD", "COMPACT", "WITH_IMAGES") | no | - |
+| `channels` | array of string | no | Money channel ids, in the order printed on documents. |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/settings/documents/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `settings.permissions.assign`
+
+**POST /settings/permissions/assign** - Assign an accounting role to one staff member. Writes the permissions immediately. · scope: `account.settings.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `membershipId` | string | yes | min length 1 |
+| `roleKey` | string | yes | min length 1 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/settings/permissions/assign" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"membershipId":"example membershipId","roleKey":"example roleKey"}'
+```
+
+#### `settings.permissions.set-cap`
+
+**PUT /settings/permissions/caps/{membershipId}** - Set the approval ceiling of one staff member in satang. null removes the ceiling. · scope: `account.settings.manage` · write
+
+Path parameters: `membershipId` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `capSatang` | one of several shapes | yes | - |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/account/settings/permissions/caps/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"capSatang":"example capSatang"}'
+```
+
+#### `settings.permissions.save-role`
+
+**PUT /settings/permissions/roles/{key}** - Update a custom role's permissions and cap. Everyone currently in the role is re-written immediately. System roles (owner/manager) cannot be changed. · scope: `account.settings.manage` · write
+
+Path parameters: `key` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | min length 1 · max length 60 |
+| `cells` | object | yes | - |
+| `capSatang` | one of several shapes | no | - |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/account/settings/permissions/roles/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"example name","cells":{}}'
+```
+
+#### `settings.permissions.add-role`
+
+**POST /settings/permissions/roles** - Create a custom accounting role with a permission matrix and an optional approval cap. · scope: `account.settings.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | min length 1 · max length 60 |
+| `cells` | object | yes | - |
+| `capSatang` | one of several shapes | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/settings/permissions/roles" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"example name","cells":{}}'
+```
+
+#### `settings.policy.update`
+
+**PATCH /settings/policy** - Change accounting policy: fiscal year, VAT timing, date lock, duplicate rules, conversion defaults and report emails. · scope: `account.settings.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `fiscalYearStartMonth` | integer | no | min 1 · max 12 |
+| `periodCloseDay` | one of several shapes | no | - |
+| `vatRegistered` | boolean | no | - |
+| `vatRateBp` | integer | no | min 0 · max 10000 |
+| `vatTiming` | enum("ON_ISSUE", "ON_PAYMENT") | no | - |
+| `defaultPriceMode` | one of several shapes | no | - |
+| `lockBeforeDate` | one of several shapes | no | - |
+| `dupContactPolicy` | enum("WARN", "BLOCK") | no | - |
+| `dupProductPolicy` | enum("WARN", "BLOCK") | no | - |
+| `defaultSalesAccountCode` | one of several shapes | no | - |
+| `defaultPurchaseAccountCode` | one of several shapes | no | - |
+| `defaultExpenseAccountCode` | one of several shapes | no | - |
+| `convertQtTo` | enum("INVOICE", "DEPOSIT_RECEIPT") | no | - |
+| `convertPoTo` | enum("PURCHASE", "EXPENSE") | no | - |
+| `copyNotesOnConvert` | boolean | no | - |
+| `copyTagsOnConvert` | boolean | no | - |
+| `autoClosePeriods` | boolean | no | - |
+| `autoCloseNotify` | boolean | no | - |
+| `emailReportDaily` | boolean | no | - |
+| `emailReportWeekly` | boolean | no | - |
+| `emailReportRecipients` | array of string | no | - |
+| `whtDefaults` | array of object | no | - |
+| `regularCustomer` | object | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/settings/policy" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `settings.tags.create`
+
+**POST /settings/tags** - Add a document tag (color label used to filter and mark documents). · scope: `account.settings.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | min length 1 · max length 40 |
+| `color` | string | yes | One of slate, blue, green, amber, red, purple, or a 6-digit hex color such as #ff0000. · min length 1 · max length 20 |
+| `docTypes` | array of string | yes | Document types this tag applies to. Empty means every type. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/settings/tags" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"example name","color":"example color","docTypes":[]}'
+```
+
+#### `settings.update`
+
+**PATCH /settings** - Update the company details printed on documents. Only sent fields change. The company stamp, signature and logo images are managed from the app only, never through this API. · scope: `account.settings.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `orgName` | string | no | Legal/trade name printed on documents. · min length 1 · max length 200 |
+| `taxId` | one of several shapes | no | 13-digit Thai tax id, digits only. |
+| `branchCode` | string | no | 5-digit branch code, "00000" for head office. · max length 10 |
+| `branchName` | one of several shapes | no | - |
+| `address` | one of several shapes | no | - |
+| `phone` | one of several shapes | no | - |
+| `email` | one of several shapes | no | - |
+| `website` | one of several shapes | no | - |
+| `vatRegistered` | boolean | no | - |
+| `vatRateBp` | integer | no | Basis points: 700 = 7%. · min 0 · max 10000 |
+| `taxPointBasis` | enum("ON_ISSUE", "ON_PAYMENT") | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/settings" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
 #### `stock-documents.approve`
 
 **POST /stock-documents/{id}/approve** - Approve a draft goods issue/return: it takes the next document number, moves the stock and posts to the ledger. · scope: `account.product.manage` · write
@@ -2834,6 +3118,60 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/units" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"name":"example name"}'
+```
+
+#### `webhooks.test`
+
+**POST /webhooks/{id}/test** - Send one test delivery to this endpoint with a fake payload of the given event type, regardless of its subscription list. · scope: `account.settings.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `event` | string | yes | Event type to simulate. Must be a known event type. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/webhooks/123/test" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"event":"example event"}'
+```
+
+#### `webhooks.update`
+
+**PATCH /webhooks/{id}** - Change which events an endpoint receives, or pause/resume it. The signing secret never changes here. · scope: `account.settings.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `events` | array of string | no | Replace the subscribed events. Empty array means every event. |
+| `active` | boolean | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/webhooks/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `webhooks.create`
+
+**POST /webhooks** - Register a new webhook endpoint and get its signing secret. The secret is only ever shown here - store it now. · scope: `account.settings.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `url` | string | yes | Destination URL. Must start with http:// or https://. · max length 500 |
+| `events` | array of string | no | Event types to receive. Must each be one of the values in GET /help/glossary's webhook list. Empty means every event. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/webhooks" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"example url"}'
 ```
 
 #### `wht.issue-cert`
@@ -3013,6 +3351,25 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/journal/123/reverse" \
   -d '{"reason":"reason for the audit log","confirm":true}'
 ```
 
+#### `links.disconnect`
+
+**DELETE /links/{kind}** - Unlink a system. Nothing already posted is undone, but new activity from it stops posting to this book. · scope: `account.settings.manage` · danger
+
+Path parameters: `kind` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why this system is being unlinked. At least 5 characters. Kept in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/links/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
+```
+
 #### `payments.void`
 
 **POST /payments/{paymentId}/void** - Reverse one recorded payment. A reversing journal entry is written; nothing is deleted and the document goes back to awaiting payment. · scope: `account.payment.void` · danger
@@ -3085,6 +3442,44 @@ Path parameters: `key` (required).
 
 ```bash
 curl -sS -X DELETE "https://shark.in.th/api/v1/account/periods/123/vat-filed" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
+```
+
+#### `settings.permissions.revoke`
+
+**DELETE /settings/permissions/members/{membershipId}** - Remove all accounting permissions from one staff member. The person stays in the shop and keeps access to other systems. · scope: `account.settings.manage` · danger
+
+Path parameters: `membershipId` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why access is being revoked. At least 5 characters. Kept in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/settings/permissions/members/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
+```
+
+#### `webhooks.delete`
+
+**DELETE /webhooks/{id}** - Remove a webhook endpoint. Its delivery history is removed with it. · scope: `account.settings.manage` · danger
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why this endpoint is being removed. At least 5 characters. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/webhooks/123" \
   -H "Authorization: Bearer $SHARK_API_KEY" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
@@ -3182,6 +3577,12 @@ export function handleSharkWebhook(rawBody: Buffer, headers: Record<string, stri
 | `account.contact.merged` | Two duplicate contacts were merged. Stop using `mergedId`: every document now points at `keepId`. |
 | `account.product.created` | A product or service was created. |
 | `account.product.updated` | A product or service was edited. Same `updatedAt` rule as `account.contact.updated`. |
+| `account.cheque.changed` | A cheque's status changed: deposited, cleared, bounced or voided. Fires once per transition (the idempotency key ends in the status), so the same cheque can appear several times as it moves through its life. |
+| `account.reconcile.confirmed` | A month of bank reconciliation for one channel was confirmed. |
+| `account.period.reopened` | A closed accounting period was reopened. |
+| `account.asset.depreciated` | Monthly depreciation was posted for one fixed asset. |
+| `account.asset.disposed` | A fixed asset was sold or written off. |
+| `account.recurring.ran` | A recurring document rule produced its document for the period (draft or auto-issued - check the document itself, or `account.document.issued`, for the outcome). |
 
 #### `account.document.approved`
 
@@ -3449,6 +3850,111 @@ A product or service was edited. Same `updatedAt` rule as `account.contact.updat
     "name": "Fins (L)",
     "type": "GOODS",
     "salePriceSatang": 270000
+  },
+  "sentAt": "2026-09-05T09:15:00.000Z"
+}
+```
+
+#### `account.cheque.changed`
+
+A cheque's status changed: deposited, cleared, bounced or voided. Fires once per transition (the idempotency key ends in the status), so the same cheque can appear several times as it moves through its life.
+
+```json
+{
+  "type": "account.cheque.changed",
+  "payload": {
+    "chequeId": "cmf1chq0001",
+    "direction": "IN",
+    "chequeNo": "1234567",
+    "status": "CLEARED",
+    "amountSatang": 500000
+  },
+  "sentAt": "2026-09-05T09:15:00.000Z"
+}
+```
+
+#### `account.reconcile.confirmed`
+
+A month of bank reconciliation for one channel was confirmed.
+
+```json
+{
+  "type": "account.reconcile.confirmed",
+  "payload": {
+    "financeId": "cmf1fin0001",
+    "periodKey": "2026-08",
+    "matched": 42,
+    "statementBalanceSatang": 1250000
+  },
+  "sentAt": "2026-09-05T09:15:00.000Z"
+}
+```
+
+#### `account.period.reopened`
+
+A closed accounting period was reopened.
+
+```json
+{
+  "type": "account.period.reopened",
+  "payload": {
+    "periodKey": "2026-08",
+    "reason": "correcting a posting error found by the auditor",
+    "reopenedById": "cmf1usr0001"
+  },
+  "sentAt": "2026-09-05T09:15:00.000Z"
+}
+```
+
+#### `account.asset.depreciated`
+
+Monthly depreciation was posted for one fixed asset.
+
+```json
+{
+  "type": "account.asset.depreciated",
+  "payload": {
+    "assetId": "cmf1ast0001",
+    "code": "FA-0007",
+    "periodKey": "2026-08",
+    "amountSatang": 41700
+  },
+  "sentAt": "2026-09-05T09:15:00.000Z"
+}
+```
+
+#### `account.asset.disposed`
+
+A fixed asset was sold or written off.
+
+```json
+{
+  "type": "account.asset.disposed",
+  "payload": {
+    "assetId": "cmf1ast0001",
+    "code": "FA-0007",
+    "mode": "SELL",
+    "proceedsSatang": 300000,
+    "gainLossSatang": -50000,
+    "disposedAt": "2026-09-05"
+  },
+  "sentAt": "2026-09-05T09:15:00.000Z"
+}
+```
+
+#### `account.recurring.ran`
+
+A recurring document rule produced its document for the period (draft or auto-issued - check the document itself, or `account.document.issued`, for the outcome).
+
+```json
+{
+  "type": "account.recurring.ran",
+  "payload": {
+    "ruleId": "cmf1rec0001",
+    "documentId": "cmf1doc0005",
+    "docType": "INVOICE",
+    "runDate": "2026-09-01",
+    "issued": true
   },
   "sentAt": "2026-09-05T09:15:00.000Z"
 }

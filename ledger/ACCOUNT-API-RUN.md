@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | D4 |
+| WO | E1 |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable (oracle เขียนแล้ว) → Sonnet (builder) |
-| ขั้นที่ถึง | 5 ก.ย. 22:05 น. (ไทย · ป้ายเวลาก่อนหน้าคือเวลาไทยเช่นกัน): D3 DONE (Sonnet 34 นาที · Fable ถอด re-export core ออกจากไฟล์ "use server" · write-ops 29 · read-docs 50 · write-docs 52 · core 64 · openapi 26 · import 114 · inbox 128 · coa · probe 7 จุดถูก · typecheck 0 · fitness 20/20 ×2) · **สั่ง Sonnet ทำ D4** · งานฝากขนาน: ออกแบบ kanban→Trello (Opus กำลังทำ) |
+| ผู้ทำ | Fable (oracle เขียนแล้ว) → Opus (builder) |
+| ขั้นที่ถึง | 5 ก.ย. 23:15 น.: D4 DONE → **เฟส D ปิด 4/4 (199 op · 21 event)** · qc:all ปิดเฟส D กำลังรัน (log `/tmp/claude-0/qc-all-phaseD.log`) · **สั่ง Opus ทำ E1 ขนาน** · งานฝาก kanban→Trello ส่ง Telegram แล้ว 22:55 |
 | commit ล่าสุดของงานนี้ | (C2 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
@@ -41,8 +41,8 @@
 | D1 | WRITE finance-accounts/transfers/petty cash/cheques/WHT | Opus | DONE | 5 ก.ย. | write-finance 33/33 · 15 op → รวม 145 · transferId=sha256(keyId+Idempotency-Key) · ถอดกฎ C2 "หัก WHT ต้องส่ง whtIncomeType" (สัญญา C2 ระบุ optional อยู่แล้ว) · `wo-notes/api-D1.md` |
 | D2 | WRITE journal/chart/mappings/periods/assets | Opus | DONE | 5 ก.ย. | write-gl 35/35 (oracle G3.6 สมมติชุดสิทธิ์ผิด แก้ + เพิ่ม G3.6b WRITE_OFF ต้อง asset.writeoff) · 15 op → รวม 160 · ApiError.details · userId=null · `wo-notes/api-D2.md` |
 | D3 | WRITE reconcile/recurring/import/files/inbox/reports-email | Sonnet | DONE | 5 ก.ย. | write-ops 29/29 · 18 op → รวม 178 · core นำเข้าแยกไป `import-core.ts` (ไฟล์ "use server" ห้าม export/re-export core — เคยเปิดเป็น server action ไร้ด่านสิทธิ์) · `wo-notes/api-D3.md` |
-| D4 | WRITE settings/policy/permissions/links/webhooks CRUD + events ที่เหลือ | Sonnet | IN_PROGRESS | — | |
-| E1 | สกิล AI `account` 30 tools จากทะเบียน + proposal kinds + dispatch | Opus | TODO | — | MockProvider E2E |
+| D4 | WRITE settings/policy/permissions/links/webhooks CRUD + events ที่เหลือ | Sonnet | DONE | 5 ก.ย. | write-settings 39/39 · 21 op → รวม 199 · event ครบ 21 · permissions ใช้ OWNER คนแรกเป็น actor (แก้ได้แค่ cell ของ STAFF · ระบบ OWNER/MANAGER แก้ไม่ได้) · `wo-notes/api-D4.md` |
+| E1 | สกิล AI `account` 30 tools จากทะเบียน + proposal kinds + dispatch | Opus | IN_PROGRESS | — | MockProvider E2E |
 | E2 | `/api/v1/ai/skills/account` + tools route + golden cases 12 + persona นักบัญชี | Opus | TODO | — | |
 | F1 | `/developers/account` + `.md` + `/developers` เพิ่มหมวดบัญชี | Sonnet | TODO | — | |
 | F2 | `.claude/skills/shark-account-api/` + ทดสอบ agent อ่านสกิลทำ 5 งานเอง | Sonnet+Fable | TODO | — | |
@@ -370,6 +370,7 @@ event ที่เหลือ (D4): `account.cheque.changed` (ทุก transit
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 5 ก.ย. 23:15 น. — D4 ปิด (Sonnet 44 นาที · จับบั๊กเอง 2) · **เฟส D ปิด 4/4** · ความคืบหน้า 16/24 = 67% · qc:all ปิดเฟส D + เริ่ม E1
 - 5 ก.ย. 22:05 น. — D3 ปิด (Sonnet 34 นาที · builder จับบั๊ก env-at-load เอง · Fable ปิดช่อง server action ที่ re-export core) · ความคืบหน้า 15/24 = 62% · เริ่ม D4
 - 5 ก.ย. 22:20 น. — D2 ปิด (Opus 19 นาที · oracle ผิดเอง 1 ข้อ G3.6: accountant มี asset.dispose ตามสเปค A1) · ความคืบหน้า 14/24 = 58% · เริ่ม D3
 - 5 ก.ย. 21:30 น. — D1 ปิด (Opus 15 นาที · oracle ถูกทั้ง 33 ข้อ · probe Fable: โอน/เช็ค/เงินสดย่อยข้ามร้าน → 404 · โอนซ้ำคีย์เดิม = แถวเดียว ยอดถูก) · ความคืบหน้า 13/24 = 54% · เริ่ม D2

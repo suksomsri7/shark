@@ -17,7 +17,16 @@
 //
 // ไฟล์นี้ **ไม่ import prisma** โดยตั้งใจ (fitness F5): มันคือตัวประกอบ payload + เขียนผ่าน `tx` ที่ผู้เรียกถืออยู่แล้ว
 
-import type { AccountDocSource, AccountDocStatus, AccountDocType, AccountContactKind, AccountProductType, Prisma } from "@prisma/client";
+import type {
+  AccountChequeDirection,
+  AccountChequeStatus,
+  AccountContactKind,
+  AccountDocSource,
+  AccountDocStatus,
+  AccountDocType,
+  AccountProductType,
+  Prisma,
+} from "@prisma/client";
 import { emitOutboxMany } from "@/lib/core/outbox";
 
 type Tx = Prisma.TransactionClient;
@@ -42,6 +51,13 @@ export const ACCOUNT_EVENT_TYPES = [
   "account.product.created",
   "account.product.updated",
   "account.period.closed",
+  // ── ชุดที่ 3 (WO D4 · ledger/ACCOUNT-API-RUN.md §D4 "event ที่เหลือ") ──────
+  "account.cheque.changed",
+  "account.reconcile.confirmed",
+  "account.period.reopened",
+  "account.asset.depreciated",
+  "account.asset.disposed",
+  "account.recurring.ran",
 ] as const;
 
 export type AccountEventType = (typeof ACCOUNT_EVENT_TYPES)[number];
@@ -337,4 +353,131 @@ export async function emitProductUpdated(
 
 function productPayload(p: ProductEventRow): Record<string, unknown> {
   return { productId: p.id, code: p.code, sku: p.sku, name: p.name, type: p.type, salePriceSatang: p.salePrice };
+}
+
+// ─────────────────── เช็ค / กระทบยอด / งวด / สินทรัพย์ / เอกสารประจำ (WO D4) ───────────────────
+
+/**
+ * "สถานะเช็คเปลี่ยน" — ยิงจากทุก transition ใน `cheque.ts` (นำฝาก · เรียกเก็บ · เด้ง · ยกเลิก)
+ * คีย์มี `status` ต่อท้ายโดยตั้งใจ (เหมือน `quotation.responded`): เช็คใบเดียวเปลี่ยนสถานะหลายรอบตลอด
+ * อายุของมัน แต่ละรอบเป็นเหตุการณ์คนละใบที่ปลายทางต้องรู้ทั้งหมด ⇒ คีย์เดียวจะกลืนรอบถัดไป
+ */
+export async function emitChequeChanged(
+  tx: Tx,
+  ctx: AccountEventCtx,
+  c: {
+    chequeId: string;
+    direction: AccountChequeDirection;
+    chequeNo: string;
+    status: AccountChequeStatus;
+    amountSatang: number;
+  },
+): Promise<void> {
+  await emit(tx, ctx, [
+    {
+      type: "account.cheque.changed",
+      idempotencyKey: `account.cheque.changed#${c.chequeId}#${c.status}`,
+      payload: {
+        chequeId: c.chequeId,
+        direction: c.direction,
+        chequeNo: c.chequeNo,
+        status: c.status,
+        amountSatang: c.amountSatang,
+      },
+    },
+  ]);
+}
+
+/** "ยืนยันกระทบยอดธนาคารของเดือนนี้แล้ว" — ยิงจาก `reconcile.confirmMonth` */
+export async function emitReconcileConfirmed(
+  tx: Tx,
+  ctx: AccountEventCtx,
+  input: { financeId: string; periodKey: string; matched: number; statementBalanceSatang: number | null },
+): Promise<void> {
+  await emit(tx, ctx, [
+    {
+      type: "account.reconcile.confirmed",
+      idempotencyKey: `account.reconcile.confirmed#${input.financeId}#${input.periodKey}`,
+      payload: {
+        financeId: input.financeId,
+        periodKey: input.periodKey,
+        matched: input.matched,
+        statementBalanceSatang: input.statementBalanceSatang,
+      },
+    },
+  ]);
+}
+
+/**
+ * "เปิดงวดที่ปิดแล้วกลับมา" — ยิงจาก `period-close.reopenPeriodV2` · คีย์มีเวลาต่อท้ายเพราะงวดเดียวกัน
+ * เปิด-ปิด-เปิดสลับกันได้หลายรอบ (ทุกรอบมี `reopenLog` ของตัวเอง) ⇒ คีย์ตายตัวจะกลืนรอบถัดไป
+ */
+export async function emitPeriodReopened(
+  tx: Tx,
+  ctx: AccountEventCtx,
+  input: { periodKey: string; reason: string; reopenedById: string | null; at: Date },
+): Promise<void> {
+  await emit(tx, ctx, [
+    {
+      type: "account.period.reopened",
+      idempotencyKey: `account.period.reopened#${ctx.systemId}#${input.periodKey}#${input.at.getTime()}`,
+      payload: { periodKey: input.periodKey, reason: input.reason, reopenedById: input.reopenedById },
+    },
+  ]);
+}
+
+/** "คิดค่าเสื่อมของสินทรัพย์ 1 ตัวในงวดนี้แล้ว" — ยิงต่อสินทรัพย์ที่โพสต์สำเร็จใน `asset.runDepreciation` */
+export async function emitAssetDepreciated(
+  tx: Tx,
+  ctx: AccountEventCtx,
+  input: { assetId: string; code: string; periodKey: string; amountSatang: number },
+): Promise<void> {
+  await emit(tx, ctx, [
+    {
+      type: "account.asset.depreciated",
+      idempotencyKey: `account.asset.depreciated#${input.assetId}#${input.periodKey}`,
+      payload: { assetId: input.assetId, code: input.code, periodKey: input.periodKey, amountSatang: input.amountSatang },
+    },
+  ]);
+}
+
+/** "ขาย/ตัดจำหน่ายสินทรัพย์" — ยิงจาก `asset.disposeAsset` */
+export async function emitAssetDisposed(
+  tx: Tx,
+  ctx: AccountEventCtx,
+  input: { assetId: string; code: string; mode: "SELL" | "WRITE_OFF"; proceedsSatang: number; gainLossSatang: number; disposedAt: Date },
+): Promise<void> {
+  await emit(tx, ctx, [
+    {
+      type: "account.asset.disposed",
+      idempotencyKey: `account.asset.disposed#${input.assetId}`,
+      payload: {
+        assetId: input.assetId,
+        code: input.code,
+        mode: input.mode,
+        proceedsSatang: input.proceedsSatang,
+        gainLossSatang: input.gainLossSatang,
+        disposedAt: eventDay(input.disposedAt),
+      },
+    },
+  ]);
+}
+
+/**
+ * "เอกสารประจำทำงานแล้ว" — ยิงจาก `service.generateOneRecurringDocument` ทุกครั้งที่สร้างเอกสารสำเร็จ
+ * (ข้าม "skipped" — งวดนั้นไม่มีอะไรใหม่ให้บอกปลายทาง) · คีย์มี `runDate` ต่อท้ายเพราะกฎเดียวรันได้ทุกงวด
+ */
+export async function emitRecurringRan(
+  tx: Tx,
+  ctx: AccountEventCtx,
+  input: { ruleId: string; documentId: string; docType: AccountDocType; runDate: Date; issued: boolean },
+): Promise<void> {
+  const runDate = eventDay(input.runDate);
+  await emit(tx, ctx, [
+    {
+      type: "account.recurring.ran",
+      idempotencyKey: `account.recurring.ran#${input.ruleId}#${runDate}`,
+      payload: { ruleId: input.ruleId, documentId: input.documentId, docType: input.docType, runDate, issued: input.issued },
+    },
+  ]);
 }

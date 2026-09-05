@@ -12,6 +12,7 @@ import {
   emitPaymentRequestsExpired,
   emitPaymentVoided,
   emitQuotationResponded,
+  emitRecurringRan,
 } from "./events";
 // WO 4.3 (§8.2) — ขาย "รายการจัดชุด" = ตัดสต็อกส่วนประกอบ (ไฟล์แยกกัน import วน service↔product)
 import { consumeBundleComponentsInTx } from "./bundle";
@@ -5213,6 +5214,16 @@ async function generateOneRecurringDocument(
   const link = isRevenue ? `${base}/docs/${rule.docType}/${doc.id}` : `${base}/${rule.docType === "PURCHASE" ? "purchase" : "expense"}/${doc.id}`;
   const recipients = await recurringRecipients(rule);
 
+  // WO D4: account.recurring.ran — "กฎนี้ทำงานแล้ว" (ยิงครั้งเดียวต่องวด ตรงจุดที่รู้ผลสุดท้ายของรอบนี้แล้ว
+  // — ผ่านไปได้ทั้งทาง "สร้างร่าง" และ "ออกอัตโนมัติสำเร็จ") · การออกเลขจริงมี account.document.issued
+  // ของตัวเองอยู่แล้วจาก issueDocument/issueExpenseDoc ⇒ ที่นี่ห่อ tx สั้น ๆ เฉพาะ event นี้
+  const finish = async (result: "created" | "issued"): Promise<"created" | "issued"> => {
+    await prisma.$transaction((tx) =>
+      emitRecurringRan(tx, { tenantId, systemId }, { ruleId: rule.id, documentId: doc.id, docType: rule.docType, runDate: issueDate, issued: result === "issued" }),
+    );
+    return result;
+  };
+
   // ออกให้อัตโนมัติเมื่อสั่งไว้ **และข้อมูลครบเท่านั้น** — ไม่ครบ = ปล่อยเป็นร่างให้คนตรวจ (ไม่ใช่ปล่อยเลยตามใจ)
   if (rule.autoApprove) {
     const block = autoApproveBlockReason({ contactId: rule.contactId, template });
@@ -5224,7 +5235,7 @@ async function generateOneRecurringDocument(
         `${rule.name} — สร้างเป็นร่างแล้วแต่ออกอัตโนมัติไม่ได้: ${block} · ${link}`,
         now,
       );
-      return "created";
+      return finish("created");
     }
     const exp = await import("./expense");
     const res = isRevenue
@@ -5238,7 +5249,7 @@ async function generateOneRecurringDocument(
         `${rule.name} — สร้างเป็นร่างแล้วแต่ออกอัตโนมัติไม่ได้: ${res.reason} · ${link}`,
         now,
       );
-      return "created";
+      return finish("created");
     }
     await notifyUsersOncePerDay(
       tenantId,
@@ -5247,7 +5258,7 @@ async function generateOneRecurringDocument(
       `${rule.name} — ออก${label}เลขที่ ${res.docNo} อัตโนมัติแล้ว · ${link}`,
       now,
     );
-    return "issued";
+    return finish("issued");
   }
 
   await notifyUsersOncePerDay(
@@ -5257,7 +5268,7 @@ async function generateOneRecurringDocument(
     `${rule.name} — สร้าง${label}เป็นร่างแล้ว รอตรวจและอนุมัติ · ${link}`,
     now,
   );
-  return "created";
+  return finish("created");
 }
 
 /** ผู้รับแจ้งเตือนของกฎ: ผู้สร้างกฎมาก่อน (ถ้ายังมีสิทธิ์อยู่) แล้วจึงคนอื่นที่สร้างเอกสารได้ */

@@ -321,6 +321,14 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "account.contact.merged": withAutomation(async () => {}),
   "account.product.created": withAutomation(async () => {}),
   "account.product.updated": withAutomation(async () => {}),
+  // WO D4 — เหตุการณ์บัญชีชุดที่ 3 (เช็ค/กระทบยอด/งวด/สินทรัพย์/เอกสารประจำ — ดู modules/account/events.ts)
+  //   🔴 ทุกตัวต้องมีบรรทัดตรงนี้ **และ** ป้ายไทยใน webhooks/labels.ts (บทเรียน 30 ส.ค. 2026)
+  "account.cheque.changed": withAutomation(async () => {}),
+  "account.reconcile.confirmed": withAutomation(async () => {}),
+  "account.period.reopened": withAutomation(async () => {}),
+  "account.asset.depreciated": withAutomation(async () => {}),
+  "account.asset.disposed": withAutomation(async () => {}),
+  "account.recurring.ran": withAutomation(async () => {}),
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

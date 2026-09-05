@@ -23,6 +23,13 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   { value: "account.contact.merged", label: "เมื่อรวมผู้ติดต่อซ้ำเข้าด้วยกัน" },
   { value: "account.product.created", label: "เมื่อเพิ่มสินค้า/บริการใหม่" },
   { value: "account.product.updated", label: "เมื่อแก้ไขสินค้า/บริการ" },
+  // ── บัญชี ชุดที่ 3 (WO D4 · ledger/ACCOUNT-API-RUN.md §D4) ──────────────────
+  { value: "account.cheque.changed", label: "เมื่อสถานะเช็คเปลี่ยน (นำฝาก/เรียกเก็บ/เด้ง/ยกเลิก)" },
+  { value: "account.reconcile.confirmed", label: "เมื่อยืนยันกระทบยอดธนาคารของเดือน" },
+  { value: "account.period.reopened", label: "เมื่อเปิดงวดบัญชีที่ปิดแล้วกลับมา" },
+  { value: "account.asset.depreciated", label: "เมื่อคิดค่าเสื่อมสินทรัพย์ประจำงวด" },
+  { value: "account.asset.disposed", label: "เมื่อขาย/ตัดจำหน่ายสินทรัพย์" },
+  { value: "account.recurring.ran", label: "เมื่อเอกสารประจำทำงานแล้ว" },
   { value: "approval.request.submitted", label: "เมื่อมีคำขออนุมัติใหม่" },
   { value: "approval.request.approved", label: "เมื่อคำขออนุมัติผ่าน" },
   { value: "approval.request.rejected", label: "เมื่อคำขออนุมัติถูกปฏิเสธ" },

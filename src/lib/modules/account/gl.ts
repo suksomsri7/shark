@@ -1559,6 +1559,9 @@ export async function closePeriod(
 
 /**
  * เปิดงวดที่ปิดแล้ว (OWNER — assert ที่ชั้น action) + บันทึก reopenLog + audit (ที่ชั้น action)
+ *
+ * รับ `tx` เสริมได้ (WO D4 — REST `periods.reopen` ต้องยิง `account.period.reopened` ใน tx เดียวกับ
+ * การเปิดงวด) · ไม่ส่งมา = เปิด transaction ของตัวเองเหมือนเดิมทุกประการ (ผู้เรียกเดิมไม่กระทบ)
  */
 export async function reopenPeriod(
   ctx: GlCtx,
@@ -1566,8 +1569,9 @@ export async function reopenPeriod(
   reason: string,
   /** ผู้เปิดงวด · `null` = คีย์ API (บันทึกลง reopenLog ตามจริง — ผู้ลงมือจริงอยู่ใน AuditLog) */
   userId: string | null,
+  tx?: Tx,
 ): Promise<void> {
-  await prisma.$transaction(async (db) => {
+  const run = async (db: Tx) => {
     const period = await db.accountPeriod.findFirst({
       where: { systemId: ctx.systemId, periodKey },
       select: { id: true, reopenLog: true },
@@ -1579,7 +1583,12 @@ export async function reopenPeriod(
       where: { id: period.id },
       data: { status: "OPEN", closedAt: null, closedById: null, reopenLog: log as never },
     });
-  });
+  };
+  if (tx) {
+    await run(tx);
+    return;
+  }
+  await prisma.$transaction(run);
 }
 
 // ─────────────────── postExternalSale (ขายสดจากระบบภายนอก เช่น POS — WO-0002) ───────────────────

@@ -75,9 +75,15 @@ export async function deleteEndpoint(ctx: Ctx, id: string): Promise<void> {
   await tenantDb(ctx).webhookEndpoint.delete({ where: { id } });
 }
 
-// รายการการส่งล่าสุด (สำหรับตารางในหน้า UI)
-export async function listDeliveries(ctx: Ctx, limit = 20) {
+/** endpoint เดียวของร้านนี้ (ทวนสิทธิ์เจ้าของก่อนแก้/ลบ/ทดสอบ — REST WO D4 ไม่ผ่าน session) */
+export async function getEndpoint(ctx: Ctx, id: string) {
+  return tenantDb(ctx).webhookEndpoint.findFirst({ where: { id } });
+}
+
+// รายการการส่งล่าสุด (สำหรับตารางในหน้า UI) — ระบุ `endpointId` เพื่อจำกัดเฉพาะปลายทางเดียว (REST WO D4)
+export async function listDeliveries(ctx: Ctx, limit = 20, endpointId?: string) {
   return tenantDb(ctx).webhookDelivery.findMany({
+    where: endpointId ? { endpointId } : undefined,
     orderBy: { createdAt: "desc" },
     take: limit,
     include: { endpoint: { select: { url: true } } },
@@ -110,6 +116,38 @@ async function deliver(
   } catch (e) {
     return e instanceof Error ? e.message : String(e);
   }
+}
+
+/**
+ * ทดสอบ endpoint เดียว (ปุ่ม "ทดสอบ" ของหน้าตั้งค่า / REST `webhooks.test`) — ยิงตรงเจาะจงปลายทางนั้น
+ * ด้วย event ที่เลือก โดย**ไม่ผ่านตัวกรอง subscribe** ของ `dispatchWebhooks` (จงใจ: อยากรู้ว่าปลายทาง
+ * รับได้จริงไหม ไม่ใช่ทดสอบว่าสมัคร event นั้นไว้หรือเปล่า) — บันทึก WebhookDelivery เหมือนของจริงทุกอย่าง
+ */
+export async function testEndpoint(
+  ctx: Ctx,
+  id: string,
+  eventType: string,
+  deps?: WebhookDeps,
+): Promise<{ delivered: boolean; error: string | null }> {
+  const fetchFn = deps?.fetchFn ?? fetch;
+  const ep = await tenantDb(ctx).webhookEndpoint.findFirst({ where: { id } });
+  if (!ep) throw new Error("ไม่พบปลายทางนี้");
+  const payload = { test: true, message: "ทดสอบการส่งจากหน้าตั้งค่า Webhooks" };
+  const body = JSON.stringify({ type: eventType, payload, sentAt: new Date().toISOString() });
+  const signature = createHmac("sha256", ep.secret).update(body).digest("hex");
+  const err = await deliver(ep.url, body, signature, eventType, fetchFn);
+  await tenantDb(ctx).webhookDelivery.create({
+    data: {
+      tenantId: ctx.tenantId,
+      endpointId: ep.id,
+      eventType,
+      payloadJson: payload as Prisma.InputJsonValue,
+      status: err === null ? "OK" : "FAILED",
+      attempts: 1,
+      lastError: err ?? null,
+    },
+  });
+  return { delivered: err === null, error: err };
 }
 
 // กระจาย event ไปทุก endpoint ที่ subscribe → บันทึก WebhookDelivery · คืนจำนวนที่สำเร็จ
