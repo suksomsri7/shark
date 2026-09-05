@@ -95,7 +95,7 @@ const url = `${BASE}/app/sys/${SYS}/account/settings/connections?s=api`;
 try {
   const token = await mintSession(QC.ownerEmail);
   const page = await newPageAs(token, 1440);
-  await page.goto(url, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
   assert("S1.1 เปิดแท็บแอปภายนอก/API ได้ (มี connections-api)", await waitFor(page, sel("connections-api")), "ไม่พบ connections-api");
   const bundleIds = (scopesMod.API_SCOPE_BUNDLES as { id: string; scopes: string[] }[]).map((b) => b.id);
   let allRadios = true;
@@ -133,7 +133,7 @@ try {
   assert("S2.5 DB: หมดอายุ ≈ +365 วัน", days1 > 364 && days1 <= 366, `${days1}`);
   assert("S2.6 DB: createdById = เจ้าของที่ล็อกอิน", row1?.createdById === E.ownerUserId, `${row1?.createdById}`);
   assert("S2.7 DB: keyHash = sha256(rawKey ที่โชว์)", !!rawMatch && row1?.keyHash === sha256(rawMatch[0]), "ไม่ตรง");
-  await page.reload({ waitUntil: "networkidle0" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   assert("S2.8 รีโหลดแล้ว rawKey ไม่โชว์อีก (ครั้งเดียว)", !(await exists(page, sel("api-key-new"))), "ยังโชว์");
   assert("S2.9 ตารางมีแถวคีย์ใหม่", await waitFor(page, sel(`api-key-row-${row1?.id}`)), "ไม่พบแถว");
   const bundleTxt = await text(page, sel(`api-key-row-bundle-${row1?.id}`));
@@ -151,7 +151,7 @@ try {
   const rot = await prisma.apiKey.findFirst({ where: { tenantId: TID, rotatedFromId: row1?.id } }) as Any;
   const old = await prisma.apiKey.findUnique({ where: { id: row1?.id } }) as Any;
   assert("S3.3 DB: คีย์เก่าเพิกถอน · คีย์ใหม่ rotatedFromId ชี้เก่า · scopes/systemId เท่าเดิม", !!old?.revokedAt && !!rot && rot.systemId === SYS && JSON.stringify([...(rot.scopesJson as string[])].sort()) === JSON.stringify(scopes1), JSON.stringify({ oldRevoked: !!old?.revokedAt, rot: !!rot }));
-  await page.reload({ waitUntil: "networkidle0" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   const oldRowTxt = await text(page, sel(`api-key-row-${row1?.id}`));
   assert("S3.4 แถวคีย์เก่าขึ้น 'เพิกถอนแล้ว' และไม่มีปุ่มหมุน", /เพิกถอน/.test(oldRowTxt) && !(await exists(page, sel(`api-key-rotate-${row1?.id}`))), oldRowTxt.slice(0, 80));
 
@@ -169,7 +169,7 @@ try {
   const ro = (scopesMod.expandBundles(["read-only"]) as string[]).filter((s) => s !== "account.tax.view").sort();
   assert("S4.2 DB: scopes = read-only ลบ account.tax.view", JSON.stringify([...((row2?.scopesJson as string[]) ?? [])].sort()) === JSON.stringify(ro), JSON.stringify(row2?.scopesJson));
   assert("S4.3 DB: ไม่หมดอายุ (expiresAt null)", row2?.expiresAt === null, `${row2?.expiresAt}`);
-  await page.reload({ waitUntil: "networkidle0" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await waitFor(page, sel(`api-key-row-${row2?.id}`));
   const exp2 = await text(page, sel(`api-key-row-expires-${row2?.id}`));
   assert("S4.4 แถวคีย์ 2 แสดง 'ไม่หมดอายุ'", /ไม่หมดอายุ/.test(exp2), exp2);
@@ -184,7 +184,7 @@ try {
 
   // ── มือถือ 390: ไม่ล้น ──
   const m = await newPageAs(token, 390);
-  await m.goto(url, { waitUntil: "networkidle0", timeout: 60000 });
+  await m.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
   await waitFor(m, sel("connections-api"));
   const sw = await m.evaluate(() => document.documentElement.scrollWidth);
   assert("S6.1 มือถือ 390 ไม่ล้นแนวนอน", sw <= 390, `scrollWidth ${sw}`);
@@ -194,7 +194,7 @@ try {
 
   // ── หน้า /app/settings/api (ระดับร้าน) ──
   const p2 = await newPageAs(token, 1440);
-  await p2.goto(`${BASE}/app/settings/api`, { waitUntil: "networkidle0", timeout: 60000 });
+  await p2.goto(`${BASE}/app/settings/api`, { waitUntil: "domcontentloaded", timeout: 60000 });
   assert("S7.1 หน้า API ระดับร้านมีลิงก์ไปหน้าคีย์บัญชี", await waitFor(p2, sel("platform-api-key-account-link")), "ไม่พบ platform-api-key-account-link");
   assert("S7.2 ตารางระดับร้านแสดง scope ของคีย์บัญชี (คอลัมน์ขอบเขต)", await exists(p2, sel(`api-key-row-scopes-${rot?.id}`)), "ไม่พบ api-key-row-scopes-<id>");
   await p2.close();

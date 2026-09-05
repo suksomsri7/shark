@@ -2733,6 +2733,33 @@ const PAGES: Record<string, PageSpec[]> = {
       onlyDevice: "desktop",
     },
   ],
+
+  // ─────────── WO A2 — หน้าตั้งค่าคีย์ API ของบัญชี (bundle/scope/ttl/หมุน) — สัญญา ledger/ACCOUNT-API-RUN.md §A2 ───────────
+  "api-A2": [
+    {
+      name: "settings-api-keys",
+      path: `/app/sys/${SYS}/account/settings/connections?s=api`,
+      note: "ตั้งค่า › การเชื่อมต่อ › แอปภายนอก/API — ฟอร์มสร้างคีย์ผูกสมุดบัญชี (bundle 5 ชุด · วันหมดอายุ · ลิงก์คู่มือนักพัฒนา) + แถวคีย์ที่ seed ไว้",
+      expect: ["คีย์ API", "สร้างคีย์", "ออกเอกสารและรับเงิน", "ไม่หมดอายุ", "/developers/account"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "settings-api-keys-scopes",
+      path: `/app/sys/${SYS}/account/settings/connections?s=api`,
+      note: "กดปุ่ม 'ดู/แก้สิทธิ์รายตัว' กาง checklist — เห็นสิทธิ์ที่ bundle ออกเอกสารและรับเงิน (ค่าเริ่มต้น) ติ๊กไว้ให้",
+      click: ['[data-testid="api-key-scopes-toggle"]'],
+      waitAfterClick: 400,
+      expect: ["ซ่อนสิทธิ์รายตัว", "ดูเอกสารบัญชี"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "settings-api-keys-mobile",
+      path: `/app/sys/${SYS}/account/settings/connections?s=api`,
+      note: "มือถือ 390: แถวคีย์พับเป็นบรรทัดซ้อน (label:value) แทนตารางกว้าง — ต้องไม่ล้นแนวนอน",
+      expect: ["คีย์ API", "สร้างคีย์"],
+      onlyDevice: "mobile",
+    },
+  ],
 };
 
 // ─────────── ตารางตัวเลขที่อ่านจาก data-testid (ว่างไว้ก่อน — WO ถัดไปเติม) ───────────

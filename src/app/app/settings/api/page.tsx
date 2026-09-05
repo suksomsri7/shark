@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
+import { prisma } from "@/lib/core/db";
 import { listApiKeys } from "@/lib/api-keys/service";
+import { bundleLabelForScopes } from "@/lib/api-keys/scopes";
 import { revokeKeyAction } from "./actions";
 import { ApiKeyForm } from "./ApiKeyForm";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -8,12 +10,19 @@ import { Section } from "@/components/ui/Section";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { formatThaiDateTime } from "@/lib/ui/date";
+import { formatThaiDateTime, formatDateTh } from "@/lib/ui/date";
 
 // ตั้งค่า API สำหรับนักพัฒนา (WO-0061): ออก/เพิกถอนคีย์ให้ระบบอื่นดึงข้อมูลร้านผ่าน REST
+// WO A2: เพิ่มคอลัมน์ขอบเขต/หมดอายุของคีย์ (มาจาก A1) + ลิงก์ไปหน้าคีย์ผูกสมุดบัญชี (เพิ่งมีในหน้าบัญชี)
 export default async function ApiSettingsPage() {
   const auth = await requireTenant();
-  const keys = await listApiKeys({ tenantId: auth.active.tenantId });
+  const tenantId = auth.active.tenantId;
+  const keys = await listApiKeys({ tenantId });
+  const accountSystem = await prisma.appSystem.findFirst({
+    where: { tenantId, type: "ACCOUNT" },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
@@ -29,6 +38,28 @@ export default async function ApiSettingsPage() {
             คู่มือนักพัฒนา
           </Link>
           . แต่ละคีย์เรียกได้สูงสุด 60 ครั้งต่อนาที
+        </p>
+        <p className="mt-2 text-sm text-[color:var(--color-muted)]">
+          {accountSystem ? (
+            <>
+              ต้องการคีย์ที่ผูกกับสมุดบัญชีเล่มใดเล่มหนึ่ง (จำกัดขอบเขต/วันหมดอายุ/หมุนได้) ไปที่{" "}
+              <Link
+                href={`/app/sys/${accountSystem.id}/account/settings/connections?s=api`}
+                className="font-medium underline"
+                data-testid="platform-api-key-account-link"
+              >
+                ตั้งค่า › การเชื่อมต่อ › แอปภายนอก/API ของระบบบัญชี
+              </Link>
+            </>
+          ) : (
+            <>
+              ยังไม่ได้เปิดระบบบัญชีในร้านนี้ —{" "}
+              <Link href="/app" className="font-medium underline" data-testid="platform-api-key-account-link">
+                เปิดระบบบัญชีก่อน
+              </Link>{" "}
+              จึงจะออกคีย์ที่ผูกกับสมุดบัญชีได้
+            </>
+          )}
         </p>
       </Section>
 
@@ -57,6 +88,11 @@ export default async function ApiSettingsPage() {
                       <code>{k.prefix}…</code>
                       {" · "}
                       {k.lastUsedAt ? `ใช้ล่าสุด ${formatThaiDateTime(k.lastUsedAt)}` : "ยังไม่เคยใช้"}
+                    </div>
+                    <div className="text-xs text-[color:var(--color-muted)]" data-testid={`api-key-row-scopes-${k.id}`}>
+                      ขอบเขต: {bundleLabelForScopes(k.scopes)}
+                      {" · "}
+                      {k.expiresAt ? `หมดอายุ ${formatDateTh(k.expiresAt)}` : "ไม่หมดอายุ"}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">

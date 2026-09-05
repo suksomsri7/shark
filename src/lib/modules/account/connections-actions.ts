@@ -10,7 +10,8 @@ import { revalidatePath } from "next/cache";
 import { safeReason } from "./errors";
 import type { AccountLinkedKind } from "@prisma/client";
 import { assertCan } from "@/lib/core/rbac";
-import { createApiKey, revokeApiKey } from "@/lib/api-keys/service";
+import { createApiKey, revokeApiKey, rotateApiKey } from "@/lib/api-keys/service";
+import { DEFAULT_KEY_TTL_DAYS, expandBundles, isApiScope } from "@/lib/api-keys/scopes";
 import { createEndpoint, deleteEndpoint, dispatchWebhooks, setEndpointActive } from "@/lib/webhooks/service";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, mc, writeAudit } from "./access";
@@ -90,7 +91,10 @@ export async function setLinkOptionAction(fd: FormData): Promise<ConnResult> {
 
 // ─────────────────────────── แอปภายนอก / API (ของแพลตฟอร์ม) ───────────────────────────
 
-/** ออกคีย์ API ใหม่ — คืนคีย์ดิบครั้งเดียว (หลังจากนี้ดูไม่ได้อีก เพราะ DB เก็บแต่ hash) */
+/**
+ * ออกคีย์ API ใหม่ — ผูกสมุดบัญชีเล่มนี้เสมอ (WO A2) · คืนคีย์ดิบครั้งเดียว (หลังจากนี้ดูไม่ได้อีก เพราะ DB เก็บแต่ hash)
+ * `scope` (ที่ติ๊กจริงในหน้าจอ) เป็นค่าหลัก — ไม่ได้ติ๊กอะไรเลยแต่ส่ง `bundle` มา ⇒ ใช้ทั้งชุดของ bundle นั้นแทน
+ */
 export async function createApiKeyAction(
   fd: FormData,
 ): Promise<{ ok: true; rawKey: string } | { ok: false; reason: string }> {
@@ -99,9 +103,31 @@ export async function createApiKeyAction(
   assertCan(mc(auth), { module: "api", action: "api.key.create" });
   const name = s(fd, "name");
   if (!name) return { ok: false, reason: "กรุณาตั้งชื่อคีย์ให้จำง่าย เช่น ระบบบัญชีของสำนักงานบัญชี" };
+  const bundle = s(fd, "bundle");
+  let scopes = fd.getAll("scope").map((v) => String(v).trim()).filter(Boolean);
+  if (scopes.length === 0 && bundle) {
+    try {
+      scopes = expandBundles([bundle]);
+    } catch (e) {
+      return { ok: false, reason: safeReason(e, "ชุดสิทธิ์ที่เลือกไม่ถูกต้อง") };
+    }
+  }
+  for (const sc of scopes) {
+    if (!isApiScope(sc)) return { ok: false, reason: `สิทธิ์ "${sc}" ใช้เป็นขอบเขตของคีย์ไม่ได้` };
+  }
+  const ttlRaw = s(fd, "ttlDays");
+  const ttlDays = ttlRaw === "" ? DEFAULT_KEY_TTL_DAYS : Number(ttlRaw);
+  if (!Number.isFinite(ttlDays) || ttlDays < 0) return { ok: false, reason: "จำนวนวันหมดอายุไม่ถูกต้อง" };
+  const expiresAt = ttlDays === 0 ? null : new Date(Date.now() + ttlDays * 86_400_000);
   try {
-    const { rawKey } = await createApiKey({ tenantId }, name);
-    await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "ApiKey", after: { created: name } });
+    const { rawKey } = await createApiKey({ tenantId }, name, { scopes, systemId, expiresAt, createdById: userId });
+    await writeAudit({
+      tenantId,
+      actorId: userId,
+      action: "account.settings.manage",
+      targetType: "ApiKey",
+      after: { created: name, scopes, systemId, expiresAt },
+    });
     revalidatePath(PATH(systemId));
     return { ok: true, rawKey };
   } catch (e) {
@@ -120,6 +146,25 @@ export async function revokeApiKeyAction(fd: FormData): Promise<ConnResult> {
   await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "ApiKey", targetId: id, after: { revoked: true } });
   revalidatePath(PATH(systemId));
   return { ok: true };
+}
+
+/** หมุนคีย์ API — เพิกถอนตัวเก่า + ออกตัวใหม่ที่คัดลอกชื่อ/สิทธิ์/สมุด/วันหมดอายุ (rawKey ใหม่โชว์ครั้งเดียว) */
+export async function rotateApiKeyAction(
+  fd: FormData,
+): Promise<{ ok: true; rawKey: string } | { ok: false; reason: string }> {
+  const systemId = s(fd, "systemId");
+  const { auth, tenantId, userId } = await gate(systemId);
+  assertCan(mc(auth), { module: "api", action: "api.key.create" });
+  const id = s(fd, "id");
+  if (!id) return { ok: false, reason: "ไม่รู้ว่าจะหมุนคีย์ไหน" };
+  try {
+    const { rawKey } = await rotateApiKey({ tenantId }, id, { createdById: userId });
+    await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "ApiKey", targetId: id, after: { rotated: true } });
+    revalidatePath(PATH(systemId));
+    return { ok: true, rawKey };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "หมุนคีย์ไม่สำเร็จ") };
+  }
 }
 
 /** เพิ่มปลายทาง webhook (เลือกเหตุการณ์บัญชีได้) */

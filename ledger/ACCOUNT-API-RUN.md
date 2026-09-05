@@ -7,11 +7,11 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | A2 |
+| WO | B1 |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable (oracle เขียนแล้ว) → Sonnet (builder UI) |
-| ขั้นที่ถึง | 5 ก.ย. ~10:20 UTC: A4 DONE (Fable รันเอง openapi 26/26 · core 64/64 · typecheck 0 · fitness 20/20 รวม F13) · **สั่ง Sonnet ทำ A2** (หน้าตั้งค่าคีย์) · oracle B1–B4 เขียนครบแล้ว รอ A2 จบค่อยเข้าเฟส B |
-| commit ล่าสุดของงานนี้ | (A4 commit ถัดไป) |
+| ผู้ทำ | Fable (oracle เขียนแล้ว) → Opus (builder) |
+| ขั้นที่ถึง | 5 ก.ย. ~11:45 UTC: **เฟส A ปิด 4/4** — A2 DONE (Fable รัน browser oracle เอง 34/34 บน :3215 · ดูภาพจริง 3 เฟรม desktop/scope/mobile ตรง g14 · typecheck 0 · fitness 20/20) · oracle B1–B4 + C1–C4 + D1–D4 เขียนครบแล้ว (12 ชุด) · **สั่ง Opus ทำ B1** |
+| commit ล่าสุดของงานนี้ | (A2 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
 ## กติกาของ run นี้ (สืบทอดจาก ACCOUNT-V2-RUN + เพิ่ม)
@@ -27,10 +27,10 @@
 | WO | ชื่อ | ผู้ทำ | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|---|---|
 | A1 | คีย์ API มี scope/ผูกสมุด/หมดอายุ/หมุน + `ApiIdempotency` + `ActorType.API_KEY` | Opus | DONE | (HEAD) | Fable รันเอง keys 51/51 · public-api 18 · schema 61 · permissions 160 · security 298 (agent) · drift 0 · typecheck 0 · fitness 17 · migration `20260917000000_api_key_scopes` apply QC แล้ว (prod จะ apply ตอน Vercel build) · หมายเหตุ: `account.approve.limit` = ค่าตั้ง ไม่ใช่ scope (`NON_API_SCOPE_KEYS`) · หนี้: คีย์บัญชียังเรียก `/api/v1/*` ของแพลตฟอร์มได้เหมือนคีย์เดิม (ตัดสินใน A3/B) |
-| A2 | หน้าตั้งค่า "แอปภายนอก/API" ในบัญชี: สร้างคีย์ผูกสมุด + bundle/scope + หมดอายุ + หมุน · `/app/settings/api` แสดง scope | Sonnet | IN_PROGRESS | — | oracle `qc-account-api-settings.mts` (เบราว์เซอร์) · ภาพจริงเทียบ g14 |
+| A2 | หน้าตั้งค่า "แอปภายนอก/API" ในบัญชี: สร้างคีย์ผูกสมุด + bundle/scope + หมดอายุ + หมุน · `/app/settings/api` แสดง scope | Sonnet | DONE | (HEAD) | Fable รันเอง: browser oracle 34/34 (:3215 build จริง) · visual api-A2 3 เฟรมดูตาแล้ว · permissions 160 · public-api 18 · keys 51 (agent) · typecheck 0 · fitness 20 · ⚠️ oracle ต้องใช้ `waitUntil: domcontentloaded` (networkidle0 ไม่จบเพราะหน้ามี connection ค้าง) · `bundleLabelForScopes()` ใน scopes.ts ใช้ร่วม 2 หน้า |
 | A3 | `account/api/`: actor · `requireAccountApi` · envelope/error/requestId · idempotency · registry · catch-all route · rate limit DB | Opus | DONE | (HEAD) | Fable รันเอง core 64/64 · keys 51 · public-api 18 · chat-api-v1 89 (agent) · typecheck 0 · fitness 17 · ไฟล์ `api/{actor,respond,op,registry,require,idempotency,dispatch}.ts` + `ops/core.ts` + route catch-all · หนี้: แถว idempotency status null ค้าง (process ตาย) บล็อก key นั้น 24 ชม. → เพิ่ม stale>5 นาที=จองใหม่ ใน B/C · danger op จริงต้องมี `reason` ใน schema |
 | A4 | generator OpenAPI + `/api/v1/account/openapi.json` + `gen-account-api-docs.mts` + fitness F13 (ทุก op มี test id) | Opus | DONE | (HEAD) | Fable รันเอง openapi 26/26 · core 64 · typecheck 0 · fitness 20/20 · zod v4 `z.toJSONSchema` ไม่เพิ่ม package · `API_ERROR_CODES` + `ERROR_CODE_DOCS` ใน respond.ts (เพิ่ม code ใหม่ต้องเติมคำอธิบาย+regenerate docs ไม่งั้น F13.2 แดง) · ⚠️ คู่มือเขียน pagination เป็น cursor — **B1 ต้องแก้ generator ให้ตรงของจริง (page/pageSize + page{page,pageSize,pageCount,total,hasMore})** |
-| B1 | READ เอกสาร: list/get/print/tags/favorites/attachments/parse/recurring/dashboard/overview | Sonnet | TODO | — | เทียบ `acc-v2-expected.json` |
+| B1 | READ เอกสาร: list/get/print/tags/favorites/attachments/parse/recurring/dashboard/overview | Opus | IN_PROGRESS | — | oracle `qc-account-api-read-docs.mts` · เทียบ `acc-v2-expected.json` |
 | B2 | READ ผู้ติดต่อ/สินค้า/หน่วย/กลุ่ม/merge-candidates/DBD/link-suggestions | Sonnet | TODO | — | |
 | B3 | READ การเงิน: finance-accounts/statement/overview/calendar/payment-requests/reconcile/cheques/wht | Sonnet | TODO | — | |
 | B4 | READ บัญชี: chart/journal/general-ledger(ย้ายจาก page → service)/รายงาน 6 ตัว JSON+CSV/periods/assets/audit/settings/policy/links/files/inbox/help | Opus | TODO | — | เทียบ `qc-account-cpa` |
@@ -157,10 +157,203 @@
 | `wht.credits` | `GET /wht/credits` | `year?` · `period?` | `{ rows[…Satang], totalWhtSatang, totalBaseSatang, yearTotalSatang }` · CSV = `whtCreditsCsv` | `listWhtCredits` + `whtCreditYearTotal` | tax.view · report |
 | `wht.filings` | `GET /wht/filings` | — | `[{ id, period, form, filedAt, certCount, whtSatang, note }]` | `listWhtFilings` | tax.view |
 
-### B4 (READ บัญชี) · C1–C4 · D1–D4 (WRITE) — สเปคละเอียดเขียนตอนถึง (อ้าง PLAN §4 แถวต่อแถว) · ทุก op: id/path/scope ตามตาราง §4 · oracle เทียบเฉลย `acc-v2-expected.json` + `qc-account-cpa`
+### B4 — READ บัญชี/งบ/งวด/สินทรัพย์/ตั้งค่า (oracle `scripts/qc-account-api-read-gl.mts` · Fable เขียนแล้ว) — Opus
+ไฟล์ `api/ops/gl-read.ts` + `api/ops/settings-read.ts` · **ย้าย query ของ `ledger/page.tsx` เป็น service `generalLedger(ctx, {accountId, from, to})` ใน `journal-v2.ts` (หน้าเดิมเรียก service ห้ามใช้ prisma ตรงอีก — oracle G8.3 ตรวจ)** · รายงาน 7 ตัว rate=report + CSV (`Accept: text/csv`)
+| op id | REST | input | output `data` | service | scope |
+|---|---|---|---|---|---|
+| `chart.list` | `GET /chart` | `asOf?` `q?` `includeArchived?` | `{ accounts: [{ id, code, name, nameEn, type, parentId, level, isSystem, active, balanceSatang, vatTreatment, whtDefault }], tree: [{…children}], totalsByType }` | `chartTree` | journal.view |
+| `chart.get` | `GET /chart/{id}` | `asOf?` | `{ account{…}, balanceSatang, monthMovement{debitSatang,creditSatang}, recentLines[{date,journalNo,memo,debitSatang,creditSatang}], mappings[key], financeAccounts[{id,code,name}], docLineCount, canArchive, archiveBlockReason }` · 404 | `ledgerDetail` | journal.view |
+| `mappings.list` | `GET /mappings` | — | `[{ key, label, account{id,code,name}|null }]` | `listMappings` + `mappingKeyLabel` | mapping.manage |
+| `doc-type-accounts.list` | `GET /doc-type-accounts` | — | `[{ docType, account{id,code,name}|null }]` | `listDocTypeAccounts` | mapping.manage |
+| `journal.list` | `GET /journal` | `range?` (`all`\|`this_month`\|`last_month`\|`this_quarter`\|`this_year` · **default `all`**) · `from?` `to?` · `book?` · `needsReview?` (bool) · `q?` · `page?` `pageSize?` (≤200) | `data: [{ id, journalNo, date, period, book, memo, status, needsReview, flagNote, source, debitSatang, creditSatang, ref{type,id,docNo}|null }]` · `page` · `byBook{SALES,PURCHASES,RECEIPTS,PAYMENTS,GENERAL}` (นับในช่วงที่กรอง ไม่สน book) · `totals{debitSatang,creditSatang}` | `listJournalPaged` | journal.view |
+| `journal.get` | `GET /journal/{id}` | — | `{ id, journalNo, date, period, book, memo, status, needsReview, flagNote, source, ref, reversal{id,journalNo}|null, reversalOf{…}|null, lines[{ account{id,code,name}, debitSatang, creditSatang, memo }] , createdBy{id,name}|null }` · 404 | `journalEntryDetail` | journal.view |
+| `reports.general-ledger` | `GET /reports/general-ledger` | `accountId` · `from` `to` (YYYY-MM-DD) | `{ account{id,code,name,type}, openingSatang, rows[{ entryId, date, journalNo, memo, ref, debitSatang, creditSatang, balanceSatang }], closingSatang }` · CSV | **ใหม่** `generalLedger` | journal.view |
+| `reports.trial-balance` | `GET /reports/trial-balance` | `from` `to` (รับ YYYY-MM = ทั้งเดือน หรือ YYYY-MM-DD) | `{ from, to, rows[{ code, name, type, openingDebitSatang, openingCreditSatang, movementDebitSatang, movementCreditSatang, closingDebitSatang, closingCreditSatang }], totals{…}, balanced }` · CSV | `trialBalance` | report.view |
+| `reports.profit-loss` | `GET /reports/profit-loss` | `from` `to` · `compare?` (bool) | `{ from, to, revenue{rows[{code,name,amountSatang}],totalSatang}, cogs{…}, expenses{…}, grossProfitSatang, netProfitSatang, compare?{from,to,…เดียวกัน} }` · CSV | `profitLoss` | report.view |
+| `reports.balance-sheet` | `GET /reports/balance-sheet` | `asOf` (YYYY-MM) | `{ asOf, fiscalYearStart, assets{rows,totalSatang}, liabilities{…}, equity{…}, retainedEarningsSatang, currentPeriodProfitSatang, totalEquitySatang, balanced }` · CSV | `balanceSheet` (+ปีบัญชีจาก policy) | report.view |
+| `reports.cash-flow` | `GET /reports/cash-flow` | `from` `to` | `{ from, to, openingCashSatang, operating{rows,totalSatang}, investing{…}, financing{…}, unclassified?, netChangeSatang, closingCashSatang }` · CSV | `cashFlow` | report.view |
+| `reports.vat-pp30` | `GET /reports/vat-pp30` | `period` (YYYY-MM) · `carryForwardSatang?` | `{ period, output{baseSatang,vatSatang,rows}, input{…}, carryForwardSatang, netPayableSatang, creditCarrySatang }` · CSV = `pp30Csv` | `pp30`/`pp30Csv` | tax.view |
+| `reports.aging` | `GET /reports/aging` | `direction` (`AR`\|`AP`) · `asOf?` · `contactId?` | `{ asOf, direction, rows[{ contact{id,name}|null, buckets{current,d1_30,d31_60,d61_90,d90plus}, totalSatang, docs, overdueDocs }], grand{buckets,totalSatang,docs,overdueDocs} }` · CSV | `agingReport` (OUT=AR · IN=AP) | report.view |
+| `periods.list` | `GET /periods` | — | `[{ period, status, entryCount, closedAt, closedBy{id,name}|null, vatFiled, isCurrent }]` | `listPeriods` + `listVatFilings` | report.view |
+| `periods.checklist` | `GET /periods/{key}/checklist` | key YYYY-MM (ผิด=422) | `{ period, items[{ key, label, ok, detail }], canClose, blockReason }` | `periodChecklist` | period.close |
+| `assets.list` | `GET /assets` | `status?` | `[{ id, code, name, category, status, acquiredAt, costSatang, salvageValueSatang, usefulLifeMonths, monthlySatang, periodsPosted, accumDepreciationSatang, netBookValueSatang, accounts{asset,accum,expense} }]` | `listAssets` | asset.manage |
+| `assets.get` | `GET /assets/{id}` | — | แถวเดียวกัน + `depreciations[{ period, amountSatang, journalNo, entryId }]` + `sourceDocument` · 404 | `assetDetail` | asset.manage |
+| `assets.depreciation-preview` | `GET /assets/depreciation/preview` | `period?` (YYYY-MM · default งวดปัจจุบัน) | `{ period, rows[{ assetId, code, name, amountSatang, alreadyPosted }], totalSatang, postableCount, alreadyPostedCount }` | `previewDepreciation` | asset.manage |
+| `audit.list` | `GET /audit` | `targetId?` `action?` `from?` `to?` `take?` (≤200) `cursor?` | `data: [{ id, at, actorType, actor{id,name}|null, action, actionLabel, targetType, targetId, before, after }]` + `nextCursor` (ระดับบน · null=หมด) | `listAuditLogs` | settings.manage |
+| `settings.get` | `GET /settings` | — | `{ orgName, legalName, taxId, branchCode, branchName, address, phone, email, website, vatRegistered, vatRateBp, taxPointBasis, fiscalYearStartMonth, currency: "THB", logoUrl }` (**ไม่มี** stampUrl/signatureUrl/bank secrets) | `getSettings` | doc.view |
+| `settings.policy` | `GET /settings/policy` | — | `AccountPolicy` ทั้งก้อน (`getPolicy`) + `lockBeforeDate` | `getPolicy` | settings.manage |
+| `settings.documents` | `GET /settings/documents` | — | `[{ docType, label, prefix, pattern, reset, nextNo, example, dueDays, validDays, notes, terms, publicLink{enabled,expiryDays}, autoTaxInvoice, printTemplate, channels[] }]` | `getDocSettings` + `docNumberingRows` + `previewExample` | settings.manage |
+| `links.list` | `GET /links` | — | `[{ kind, label, status, linkedSystem{id,name}|null, options{autoCreateContact,syncProductPrices,autoPost,inboxFromChat}, accountCodes[], lastPostedAt, monthCount }]` | `buildConnectionCards` | settings.manage |
+| `files.list` | `GET /files` | `tab?` (`all`\|`unlinked`\|`linked`\|`archived`) · `folder?` · `q?` · `type?` · `page?` `pageSize?` | `data: [{ id, fileName, mime, sizeBytes, url, sha256, status, folder, docTypeHint, document{id,docNo,type}|null, uploadedAt, uploadedBy{id,name}|null }]` · `page` · `folders[{name,count}]` | `listAttachmentsPaged` + `listFolders` | document.manage |
+| `inbox.get` | `GET /inbox` | — | `{ stats{pending, thisMonth, readByAi, …}, items[{ id, fileName, url, receivedAt, source, aiStatus, extracted{vendor,amountSatang,date,vat}|null }], emailAddress }` | `inboxStats` + รายการไฟล์ UNLINKED ในกล่อง | document.manage |
+| `help.glossary` | `GET /help/glossary` | — | `[{ key, text }]` จาก `HELP_TEXTS` | `help-texts.ts` | doc.view |
+เฉลยที่ oracle ใช้: `E.wo62.{byBook,entries,needsReview,septRange,drill,fixtures,assets,depreciationPreviewSept,depreciationRows,periods,vatFiled}` · `E.receivable/payable` (aging) · balanced ทุกงบ
+
+### C1 — WRITE เอกสาร (oracle `scripts/qc-account-api-write-docs.mts` · Fable เขียนแล้ว · tenant ใหม่ของตัวเอง) — Opus
+ไฟล์ `api/ops/documents-write.ts` · **กติกาเพิ่ม**: (1) op `danger` ต้องมี `reason: z.string().min(5)` ใน schema เอง (dispatch ถอด `confirm` ออกก่อน) (2) `approvedById` เมื่อผู้อนุมัติเป็นคีย์ = `keyId` (ไม่มีเพดานวงเงิน — เจ้าของมอบสิทธิ์ผ่าน scope `account.doc.approve` แล้ว · หน้าจอแสดง "แอปภายนอก (API key)") (3) body ทุก op strict · เงิน `…Satang` · วันที่ YYYY-MM-DD (4) เอกสารทุกใบที่สร้างผ่าน API ตั้ง `source: "API"` ถ้า enum มี (ถ้าไม่มีให้เพิ่มค่า enum แบบ additive + migration) และ `createdById = null` (5) `documents.list` (B1) เพิ่ม query `refType?`/`refId?`
+| op id | REST | kind · scope | input | output / พฤติกรรม | service |
+|---|---|---|---|---|---|
+| `documents.create` | `POST /documents` | write · doc.create | `{ type (docType ที่สร้างตรงได้: QUOTATION INVOICE DEPOSIT_RECEIPT CREDIT_NOTE DEBIT_NOTE BILLING_NOTE EXPENSE PURCHASE PURCHASE_ORDER ASSET_PURCHASE_ORDER ASSET_PURCHASE PURCHASE_TAX_INVOICE DEPOSIT_PAYMENT CREDIT_NOTE_RECEIVED DEBIT_NOTE_RECEIVED COMBINED_PAYMENT — อื่น=422), contactId?, issueDate?, dueDate?, validUntil?, vatMode?, vatTiming?, vatPurchaseMode?, discountSatang?, note?, adjustReason?, sourceDocId?, tags?, refType?, refId?, childIds? (BN/CP), lines: [{ description, qty (>0), unitName?, unitPriceSatang (int ≥0), discountSatang?, vatRateBp? (700\|0\|-1), productId?, accountId? }] (≥1 บรรทัด ยกเว้น BN/CP) }` | `DocRow` ของ B1 (+`sourceDocument`) · `refType+refId` ซ้ำ → 409 `duplicate` + `hint` มี id เดิม · contactId ของร้านอื่น → 404 | ฝั่งขาย `createDocument` · ฝั่งจ่าย `createExpenseDoc` · PO/APO `createPurchaseOrder` · BN/CP `createGroupDoc` |
+| `documents.update` | `PATCH /documents/{id}` | write · doc.create | ฟิลด์เดียวกัน (ทุกตัว optional) | DRAFT เท่านั้น (อื่น → 409 state_conflict) · คืน DocRow ใหม่ | `updateDocument`/`updateExpenseDoc` |
+| `documents.delete` | `DELETE /documents/{id}` | write · doc.create | — | DRAFT → CANCELLED (คืน `{id,status}`) · อื่น → 409 | `cancelDraft` |
+| `documents.issue` | `POST /documents/{id}/issue` | write · doc.issue | — | ออกเอกสาร (จองเลข+โพสต์ GL) → `{ id, docNo, status }` · PO/APO = `submitForApproval` (AWAITING_APPROVAL) · ซ้ำ → 409 | `issueDocument`/`issueExpenseDoc`/`submitForApproval` |
+| `documents.convert` | `POST /documents/{id}/convert` | write · doc.create | `{ toType? }` | → DocRow ใหม่ (+`sourceDocument{id,docNo,type}`) · PO ไม่ต้องส่ง toType · ชนิดไม่อนุญาต → 422/409 ไทย | `convertDocument`/`convertPurchaseOrder` |
+| `documents.respond` | `POST /documents/{id}/respond` | write · doc.create | `{ accepted: boolean }` | QT → ACCEPTED/REJECTED | `setQuotationResponse` |
+| `documents.approve` | `POST /documents/{id}/approve` | write · doc.approve | — | AWAITING_APPROVAL → APPROVED (approvedById=keyId) | `approvePurchaseOrder` |
+| `documents.reject` | `POST /documents/{id}/reject` | write · doc.approve | `{ reason }` | → REJECTED | `rejectPurchaseOrder` |
+| `documents.void` | `POST /documents/{id}/void` | **danger** · doc.void | `{ reason ≥5 }` | → VOIDED + reversal JV · ซ้ำ → 409 | `voidDocument`/`voidExpenseDoc` |
+| `documents.receive` | `POST /documents/{id}/receive` | write · payment.record | — | PTX → RECEIVED · ASSET_PURCHASE → รับสินทรัพย์ | `receivePurchaseTaxInvoice`/`markAssetReceived` |
+| `documents.deposits` | `GET /documents/{id}/deposits` | read · doc.view | — | มัดจำที่หักได้ของผู้ติดต่อใบนี้ `[{ id, docNo, availableSatang, appliedSatang }]` | `listDeductibleDeposits`/`listDeductiblePaidDeposits` |
+| `documents.set-deposits` | `PUT /documents/{id}/deposits` | write · doc.create | `{ picks: [{ depositId, amountSatang }] }` | → `{ depositDeductedSatang, grandTotalSatang }` | `setDocDeposits`/`setExpenseDocDeposits` |
+| `documents.public-link` | `POST /documents/{id}/public-link` | write · doc.public_link | — | `{ url }` (ไม่คืน token แยก · url = `${APP_URL}/r/<token>`) · ปิดใช้ → 422 ไทย | `ensurePublicTaxInvoiceLink` |
+| `documents.set-tags` | `PUT /documents/{id}/tags` | write · doc.create | `{ tags: string[] ≤10 }` | แทนที่ทั้งชุด (ทุกสถานะที่ไม่ CANCELLED/VOIDED) | `applyEditorExtras` หรือ update tags ตรงใน service |
+| `documents.add-attachment` | `POST /documents/{id}/attachments` | write · doc.create | `{ fileUrl (https), fileName, mime?, sizeBytes?, sha256? }` | `{ id, fileName, url, duplicate? }` · URL ไม่ใช่ http(s) → 422 | `createAttachment` (URL) — multipart upload = D3 |
+| `documents.delete-attachment` | `DELETE /documents/{id}/attachments/{attId}` | write · doc.create | — | `{ id }` (ไฟล์ของเอกสารอื่น/ร้านอื่น → 404) | `unlinkAttachment`+`archiveAttachment` หรือ `deleteAttachment` |
+| `documents.remind` | `POST /documents/{id}/remind` | write · doc.view | — | ส่งเตือนชำระ → `{ email, link }` · ไม่มีอีเมล → 422 ไทย | `sendPaymentReminder({ origin: APP_URL })` |
+| `favorites.save` | `POST /favorites` | write · doc.create | `{ name, lines[] }` | `{ ok }` | `saveDocFavorite` |
+| `recurring.create` | `POST /recurring` | write · doc.create | `RecurringRuleInput` (JSON: `startDate/endDate` YYYY-MM-DD · template ตาม `recurring-shared.ts` · เงิน Satang) | `{ id, name, active, nextRunAt }` | `createRecurringRule(…, createdByUserId: null)` |
+| `recurring.update` | `PATCH /recurring/{id}` | write · doc.create | partial ของ input (merge กับของเดิมก่อนเรียก service ที่รับเต็มชุด) | rule ใหม่ | `getRecurringRule`+`updateRecurringRule` |
+| `recurring.set-active` | `POST /recurring/{id}/active` | write · doc.create | `{ active }` | `{ id, active }` | `setRecurringRuleActive` |
+| `recurring.delete` | `DELETE /recurring/{id}` | write · doc.create | — | `{ id }` · หลังลบ GET runs → 404 | `deleteRecurringRule` |
+| `recurring.run` | `POST /recurring/{id}/run` | write · doc.create | — | `{ created, skipped, errors[] }` (จาก `RecurringRunSummary`) | `runRecurringRules(now, { tenantId, systemId, ruleId })` |
+
+### C2 — WRITE การชำระ (oracle `scripts/qc-account-api-write-payments.mts` · Fable เขียนแล้ว · tenant ใหม่) — Opus
+ไฟล์ `api/ops/payments-write.ts` · `keyBase`/`clientKey` ของ service = `api:<keyId>:<Idempotency-Key>` (กันซ้ำชั้น service ด้วย) · `userId: null`
+| op id | REST | kind · scope | input | output | service |
+|---|---|---|---|---|---|
+| `payments.record` | `POST /payments` | write · payment.record | `{ documentId, rows: [{ paidAt (YYYY-MM-DD), financeAccountId, amountSatang (>0), whtIncomeType?, whtRateBp?, whtAmountSatang?, feeSatang?, note?, cheque?{chequeNo,bankName,chequeDate} }] (≥1) }` | `{ documentId (target), status, paidSatang, outstandingSatang, payments: [paymentId], whtCertNos[] }` · ใบ PAID/ยอดเกิน → 409/422 ไทย · **row-lock เดิม** (ยิงพร้อมกัน สำเร็จ 1) | `recordPayments` (ฝั่งรับ/จ่ายอัตโนมัติตาม direction) |
+| `payments.list` | `GET /documents/{id}/payments` | read · doc.view | — | `{ panel{ documentId, type, docNo, direction, contactName, grandTotalSatang, paidSatang, outstandingSatang, whtBaseSatang }, rows[{ id, paidAt, channel, financeAccount{id,name}|null, amountSatang, whtSatang, feeSatang, note, chequeNo, certNo, voidedAt }] }` | `paymentPanelData` |
+| `payments.void` | `POST /payments/{paymentId}/void` | **danger** · payment.void | `{ documentId, reason }` | `{ documentId, status }` · ซ้ำ → 409 · คนละร้าน → 404 | `voidPaymentAny` |
+| `documents.refund-deposit` | `POST /documents/{id}/refund-deposit` | **danger** · doc.void | `{ reason }` | `{ refundedSatang, status }` | `refundDeposit` |
+| `payment-requests.create` | `POST /payment-requests` | write · payment.record | `{ documentId, financeAccountId, expiresInDays? }` | `PaymentRequestView` ตัด token (`id,url,qrPayload,providerUrl,amountSatang,method,status,financeAccount,expiresAt`) · ช่องทางไม่มี PromptPay → 422 · ใบ PAID → 409/422 (rate 60/ชม./ระบบ ของเดิม) | `createPaymentRequest` |
+| `payment-requests.confirm` | `POST /payment-requests/{id}/confirm` | write · payment.record | `{ paidAt? }` | `{ paymentId, duplicated }` (ซ้ำ = duplicated:true หรือ 409) | `confirmStaticPaymentRequest` |
+| `payment-requests.cancel` | `POST /payment-requests/{id}/cancel` | write · payment.record | — | `{ id, status }` · จ่ายแล้ว → 409 | `cancelPaymentRequest` |
+| `documents.group-candidates` | `GET /documents/group-candidates` | read · doc.view | `type` (BILLING_NOTE\|COMBINED_PAYMENT) · `contactId` | `[{ id, docNo, type, issueDate, dueDate, grandTotalSatang, outstandingSatang, eligible, blockedReason }]` | `listGroupCandidates` |
+| `payments.record-group` | `POST /payments/group` | write · payment.record | `{ groupId, paidAt, financeAccountId, tieOffSatang, feeSatang?, note?, wht?: [{ childDocId, whtIncomeType, whtRateBp, whtAmountSatang }], cheque? }` | `{ batchKey, recorded, allocations[{ childDocumentId, docNo, tieOffSatang, whtSatang, cashSatang }], status, outstandingSatang, whtCertNos[] }` | `recordGroupPayment` (clientKey = Idempotency-Key) |
+| `payments.void-group` | `POST /payments/group/{batchKey}/void` | **danger** · payment.void | `{ groupId, reason }` | `{ voided }` | `voidGroupPayment` |
+(`documents.create` type BILLING_NOTE/COMBINED_PAYMENT + `childIds` อยู่ใน C1 แล้ว — oracle C2 ทดสอบ)
+
+### C3 — WRITE ผู้ติดต่อ/สินค้า (oracle `scripts/qc-account-api-write-master.mts` · Fable เขียนแล้ว · tenant ใหม่) — Sonnet
+ไฟล์ `api/ops/contacts-write.ts` + `api/ops/products-write.ts` · body strict · เงิน Satang · ที่อยู่รับทั้ง `address` (string) หรือ `address: { addressLine, subdistrict, district, province, postcode, country? }`
+| op id | REST | kind · scope | input | output / พฤติกรรม | service |
+|---|---|---|---|---|---|
+| `contacts.create` | `POST /contacts` | write · contact.manage | `{ kind, legalType?, name, taxId? (13 หลัก · ผิด=422), taxIdCountry?, branchCode?, branchName?, address?, phone?, email?, website?, lineId?, contactPerson?, creditTermDays?, note?, code?, groupIds? }` | แถวแบบ B2 + `warnings: string[]` (จาก `checkContactDuplicates` — ซ้ำเบอร์/ชื่อ = เตือนแต่สร้าง · **เลขภาษี+สาขาซ้ำ = 409 `duplicate`** + `details[{path:"taxId", message:"<id เดิม>"}]`) · phone normalize | `checkContactDuplicates` + `createContact` (+`setContactGroups`) |
+| `contacts.update` | `PATCH /contacts/{id}` | write · contact.manage | partial ของ create (+`groupIds?`) | แถวใหม่ · ร้านอื่น → 404 | `updateContact` |
+| `contacts.archive` | `DELETE /contacts/{id}` | write · contact.manage | — | `{ id, archived: true }` (soft) | `archiveContact` |
+| `contacts.restore` | `POST /contacts/{id}/restore` | write · contact.manage | — | `{ id, archived: false }` (ตั้ง archivedAt null — เพิ่ม service `restoreContact` แบบ additive ถ้ายังไม่มี) | ใหม่ |
+| `contacts.merge` | `POST /contacts/merge` | **danger** · contact.merge | `{ keepId, mergeId, reason, fieldChoices? }` | `MergeResult` (moved counts) · ตัวรอง `mergedIntoId`+archived | `mergeContacts({ primaryId: keepId, secondaryId: mergeId, actorId: null })` |
+| `contacts.dismiss-merge` | `POST /contacts/merge-candidates/dismiss` | write · contact.merge | `{ aId, bId }` | `{ ok }` | `dismissMergeCandidate` |
+| `contacts.link` | `POST /contacts/{id}/links` | write · contact.manage | `{ target: "member"\|"crm", targetId }` | `LinkResult` | `linkContactTo` |
+| `contact-groups.create` | `POST /contact-groups` | write · contact.manage | `{ name, color? }` | `{ id, name, color, count: 0 }` | `createContactGroup` |
+| `contact-groups.add-members` | `POST /contact-groups/{id}/members` | write · contact.manage | `{ contactIds[] }` | `{ added }` (idempotent) | `addContactsToGroup` |
+| `contact-groups.remove-member` | `DELETE /contact-groups/{id}/members/{contactId}` | write · contact.manage | — | `{ ok }` | `removeContactFromGroup` |
+| `products.create` | `POST /products` | write · product.manage | `{ type (GOODS\|SERVICE\|BUNDLE), name, nameEn?, sku?, code?, barcode?, unitId?, category?, description?, salePriceSatang?, buyPriceSatang?, vatRateBp?, purchaseVatRateBp?, incomeAccountId?, expenseAccountId?, cogsAccountCode?, inventoryAccountCode?, trackStock?, imageUrl?, defaultWhtType?, defaultWhtRateBp? }` | แถวแบบ B2 (+unitName) · SKU/ชื่อซ้ำตามนโยบาย → 409 `duplicate` | `checkProductDuplicates` + `createProduct` |
+| `products.update` | `PATCH /products/{id}` | write · product.manage | partial (merge กับของเดิมก่อนส่ง `ProductInput` เต็ม) | แถวใหม่ | `getProduct` + `updateProduct` |
+| `products.archive` | `DELETE /products/{id}` | write · product.manage | — | `{ id, archived: true }` | `archiveProduct` |
+| `products.set-bundle` | `PUT /products/{id}/bundle` | write · product.manage | `{ items: [{ componentProductId, qty, unitId? }] }` | `{ count }` · ไม่ใช่ BUNDLE → 409/422 | `setBundleItems` |
+| `products.add-opening-lot` | `POST /products/{id}/opening-lots` | write · product.manage | `{ date, qty, unitCostSatang, warehouseId? }` | `{ id, seq, amountSatang }` (+รับเข้าคลัง+JV ตาม service) | `addOpeningLot` |
+| `products.link-inventory` | `POST /products/{id}/link-inventory` | write · product.manage | `{ itemId?, createItem? }` | `LinkResult` · ไม่มีระบบคลัง → 422 ไทย | `linkProductToItem` |
+| `products.unlink-inventory` | `DELETE /products/{id}/link-inventory` | write · product.manage | — | `{ changed }` | `unlinkProductFromItem` |
+| `units.create` / `units.update` / `units.archive` | `POST /units` · `PATCH /units/{id}` · `DELETE /units/{id}` | write · product.manage | `{ name, nameEn?, kind?, code? }` | `{ id, code, name, nameEn, kind }` · ชื่อซ้ำ → 409/422 · ใช้อยู่แล้วลบ → 409 ถ้า service กัน | `createUnit`/`renameUnit`/`archiveUnit` |
+| `categories.create` / `.update` / `.archive` | `POST /categories` · `PATCH /categories/{id}` · `DELETE /categories/{id}` | write · product.manage | `{ name, appliesTo?: docType[] }` | `{ id, name, appliesTo }` | `createCategory`/`updateCategory`/`archiveCategory` |
+| `stock-documents.create` | `POST /stock-documents` | write · product.manage | `{ type: GOODS_ISSUE\|GOODS_ISSUE_RETURN\|COST_ADJUSTMENT, issueDate?, reason?, note?, reference?, contactId?, sourceDocId?, allowNegative?, asDraft?, adjustAccountCode?, tags?, lines?: [{ productId, qty, description?, locationId? }] (เบิก/คืน) · productId+newCostSatang (ปรับต้นทุน) }` | `{ id, docNo, type, status }` · ปรับต้นทุน: `{ id, docNo, oldCostSatang, newCostSatang, deltaSatang }` · เบิกเกิน → 409/422 ไทย | `createGoodsMovement`/`createCostAdjustment` |
+| `stock-documents.approve` | `POST /stock-documents/{id}/approve` | write · product.manage | `{ allowNegative? }` | `{ id, docNo, status }` | `approveGoodsMovement` |
+
+### C4 — webhook events ชุดแรก (oracle `scripts/qc-account-api-webhooks.mts` · Fable เขียนแล้ว · ทดสอบผ่าน service ตรง) — Opus
+event ใหม่ 11 ตัว — ทุกตัว: ประกาศใน `webhooks/labels.ts` (ป้ายไทย) + consumer no-op `withAutomation(async () => {})` ใน `outbox-consumers.ts` + ยิงจากจุด service **ใน tx เดียวกับงานหลัก** (`emitOutbox(tx, …)`/`emitOutboxMany`) + `systemId` + idempotencyKey ตามแบบ `<type>#<id>` · payload **ห้ามมี tenantId/systemId** (withWebhooks ส่ง payload ออกนอกร้านตรง ๆ) · เงิน `…Satang` · วันที่ YYYY-MM-DD · เพิ่มหัวข้อ **Webhooks** ในคู่มือ generate (รายชื่อ event ทั้งหมดจาก labels ที่ขึ้นต้น `account.` + วิธีตรวจ `X-Shark-Signature` + ตัวอย่าง body)
+| event | ยิงจาก | idempotencyKey | payload |
+|---|---|---|---|
+| `account.document.issued` | `issueDocument` · `issueExpenseDoc` · `submitForApproval`(PO) · `createGroupDoc` · `approveGoodsMovement` | `account.document.issued#<docId>` | `{ documentId, type, docNo, status, contactId, grandTotalSatang, issueDate, source }` |
+| `account.document.voided` | `voidDocument` · `voidExpenseDoc` | `#<docId>` | `{ documentId, type, docNo, reason }` |
+| `account.quotation.responded` | `setQuotationResponse` (+หน้า public ถ้ามี) | `#<docId>#<accepted>` | `{ documentId, docNo, accepted }` |
+| `account.payment.voided` | `voidPaymentAny`/`voidPayment`/`voidVendorPayment` | `#<paymentId>` | `{ paymentId, documentId, docNo, amountSatang, reason }` |
+| `account.payment_request.paid` | `confirmStaticPaymentRequest` · `handleBeamPaid` | `#<requestId>` | `{ requestId, documentId, docNo, amountSatang, provider: "PROMPTPAY_STATIC"\|"BEAM", paymentId }` |
+| `account.payment_request.expired` | `expirePaymentRequestsAll` | `#<requestId>` | `{ requestId, documentId, docNo, amountSatang }` |
+| `account.contact.created` / `.updated` | `createContact` / `updateContact` | `#<contactId>` / `#<contactId>#<updatedAt ms>` | `{ contactId, code, name, kind, taxId, phone, email }` |
+| `account.contact.merged` | `mergeContacts` | `#<mergedId>` | `{ keepId, mergedId, moved{documents,journalLines,groups,recurringRules} }` |
+| `account.product.created` / `.updated` | `createProduct` / `updateProduct` | `#<productId>` / `#<productId>#<updatedAt ms>` | `{ productId, code, sku, name, type, salePriceSatang }` |
+ของเดิมคง: `account.document.approved` (ขยายให้ยิงจาก `approvePurchaseOrder` ตรง ๆ ไม่ใช่แค่ action) · `account.payment.recorded` · `account.invoice.paid` · `account.period.closed` · ข้อสอบ: drainAll แล้ว PENDING=0 · webhook ปลายทางได้รับเฉพาะ event ที่สมัคร · ลายเซ็นตรง · `WebhookDelivery` OK
+
+### D1 — WRITE การเงิน/เช็ค/WHT (oracle `scripts/qc-account-api-write-finance.mts` · Fable เขียนแล้ว · tenant ใหม่) — Opus
+ไฟล์ `api/ops/finance-write.ts` · `transferId`/`transferId` ของ petty = Idempotency-Key (กันซ้ำชั้น service ด้วย)
+| op id | REST | kind · scope | input | output | service |
+|---|---|---|---|---|---|
+| `finance-accounts.create` | `POST /finance-accounts` | write · finance.manage | `{ type (CASH\|BANK\|E_WALLET\|PETTY_CASH), name, code?, bankSubtype?, bankName?, bankBranch?, accountNo?, accountName?, promptpayId?, note?, useForReceive?, useForPay?, showOnDocuments?, limitSatang?, holderUserId?, openingSatang?, openingDate? }` | แถวแบบ B3 (+balanceSatang) | `createFinanceAccount` |
+| `finance-accounts.update` | `PATCH /finance-accounts/{id}` | write · finance.manage | partial | แถวใหม่ | `updateFinanceAccount` |
+| `finance-accounts.archive` | `DELETE /finance-accounts/{id}` | write · finance.manage | — | `{ id, archived }` · service กัน (มียอด) → 409 | `archiveFinanceAccount` |
+| `finance-accounts.add-opening` | `POST /finance-accounts/{id}/opening` | write · finance.manage | `{ date, amountSatang, note? }` | `{ seq }` (+JV ยอดยกมา) | `addFinanceOpeningEntry` |
+| `finance.transfer` | `POST /finance-transfers` | write · finance.manage | `{ fromId, toId (≠ from → 422), amountSatang (>0), date?, note? }` | `{ transferId }` | `transferBetweenFinance({ transferId: idemKey })` |
+| `petty-cash.top-up` | `POST /petty-cash/top-up` | write · finance.manage | `{ pettyId, sourceFinanceAccountId, amountSatang, date?, note? }` | `{ ok, balanceSatang }` | `topUpPettyCash` |
+| `petty-cash.reimburse` | `POST /petty-cash/reimburse` | write · finance.manage | `{ paymentId, sourceFinanceAccountId, date?, note? }` | `{ ok, balanceSatang }` | `reimbursePettyCash` |
+| `cheques.create` | `POST /cheques` | write · cheque.manage | `{ direction, chequeNo (ไม่ว่าง), bankName, bankBranch?, chequeDate, amountSatang, financeAccountId?, documentId?, note? }` | แถวแบบ B3 (status ON_HAND/ISSUED) | `createCheque` |
+| `cheques.deposit` / `.clear` / `.bounce` | `POST /cheques/{id}/deposit` `{depositedAt?}` · `/clear` `{clearedDate?}` · `/bounce` `{reason?}` | write · cheque.deposit / cheque.clear / cheque.bounce | | แถวใหม่ (status) · ลำดับผิด → 409 state_conflict | `depositCheque`/`clearCheque`/`bounceCheque` |
+| `cheques.void` | `POST /cheques/{id}/void` | **danger** · cheque.void | `{ reason }` | status VOIDED | `voidCheque` |
+| `wht.issue-cert` | `POST /wht/certs` | write · wht.manage | `{ paymentId, whtIncomeType, whtRateBp? }` | `{ certId, docNo }` · ซ้ำ → 409 | `issueWhtCert` |
+| `wht.mark-filed` | `POST /wht/filings` | write · wht.manage | `{ form (3\|53), period (YYYY-MM), note? }` | `{ certCount, totalBaseSatang, totalTaxSatang }` | `markFiled` |
+| `wht.unmark-filed` | `DELETE /wht/filings/{form}/{period}` | **danger** · wht.unmark | `{ reason }` | `{ ok }` | `unmarkFiled` |
+
+### D2 — WRITE บัญชี/งวด/สินทรัพย์ (oracle `scripts/qc-account-api-write-gl.mts` · Fable เขียนแล้ว · tenant ใหม่) — Opus
+ไฟล์ `api/ops/gl-write.ts` · `userId` ที่ service ต้องการ (ปิด/เปิดงวด · mark VAT) = `null`/`keyId` ตามที่คอลัมน์ยอม (ระบุใน wo-notes)
+| op id | REST | kind · scope | input | output | service |
+|---|---|---|---|---|---|
+| `journal.create` | `POST /journal` | write · journal.adjust | `{ date, book?, memo?, lines: [{ accountId, debitSatang, creditSatang, contactId?, memo? }] (≥2 · Σdr=Σcr ไม่งั้น 422 ไทย), attachmentIds? }` | `journal.get` shape (status POSTED) | `createManualEntry` |
+| `journal.reverse` | `POST /journal/{id}/reverse` | **danger** · journal.adjust | `{ reason }` | `{ id (ใบกลับ), journalNo }` · ซ้ำ → 409 | `reverseJournalEntry` |
+| `journal.flag` | `POST /journal/{id}/flag` | write · journal.adjust | `{ note? }` | `{ id, needsReview }` (toggle) | `toggleNeedsReview` |
+| `chart.create` | `POST /chart` | write · chart.manage | `{ code, name, nameEn?, groupPrefix (3 หลัก), description?, defaultWhtRateBp?, defaultWhtType?, vatTreatment? }` | แถวแบบ B4 · `fields` ผิด → 422 `details[{path}]` · รหัสซ้ำ → 409 duplicate (details path=code) | `createLedgerV2` |
+| `chart.update` | `PATCH /chart/{id}` | write · chart.manage | partial (merge กับของเดิม) · บัญชีระบบเปลี่ยนรหัส → 422/409 | แถวใหม่ | `updateLedgerV2` |
+| `chart.set-active` | `POST /chart/{id}/active` | write · chart.manage | `{ active }` | `{ id, active }` · ปิดไม่ได้ (ระบบ/มีรายการ) → 409 ไทย | `setLedgerActive` |
+| `mappings.set` | `PUT /mappings/{key}` | write · mapping.manage | `{ accountId }` | `{ key, label, account{id,code,name} }` · key ไม่รู้จัก → 422/404 | `setMapping` |
+| `doc-type-accounts.set` | `PUT /doc-type-accounts/{docType}` | write · mapping.manage | `{ accountId: string \| null }` | `{ docType, account|null }` | `setDocTypeAccount` |
+| `periods.close` | `POST /periods/{key}/close` | write · period.close | — | `{ period, status: "CLOSED", checklist }` · checklist บล็อก → 409 ไทย | `closePeriodWithChecklist(ctx, key, userId)` |
+| `periods.reopen` | `POST /periods/{key}/reopen` | **danger** · period.reopen | `{ reason }` | `{ period, status: "OPEN" }` | `reopenPeriodV2` |
+| `periods.vat-filed` | `POST /periods/{key}/vat-filed` | write · period.close | `{ salesVatSatang, inputVatSatang, note? }` | `{ period, vatFiled: true }` | `markVatFiled` |
+| `periods.vat-unfiled` | `DELETE /periods/{key}/vat-filed` | **danger** · period.reopen | `{ reason }` | `{ period, vatFiled: false }` | `unmarkVatFiled` |
+| `assets.register` | `POST /assets` | write · asset.register | `{ name, category?, acquiredDate, startDepDate, costSatang, salvageValueSatang (≥100 < cost), usefulLifeMonths, assetAccountId, accumAccountId, expenseAccountId, sourceDocumentId?, note? }` | แถวแบบ B4 | `registerAsset` |
+| `assets.depreciation-run` | `POST /assets/depreciation/run` | write · asset.manage | `{ period? }` | `{ period, posted[{assetId,code,amountSatang,journalNo}], skipped[{assetId,code,reason}], fullyDepreciated[] }` (idempotent ต่องวด) | `runDepreciation` |
+| `assets.dispose` | `POST /assets/{id}/dispose` | **danger** · asset.dispose (WRITE_OFF ใช้ asset.writeoff — ตรวจเพิ่มใน handler) | `{ reason, mode: SELL\|WRITE_OFF, date, proceedsSatang?, financeAccountId?, note? }` | `{ journalNo, gainLossSatang, status }` | `disposeAsset` |
+
+### D3 — WRITE งานปฏิบัติการ (oracle `scripts/qc-account-api-write-ops.mts` · Fable เขียนแล้ว · tenant ใหม่ · `SHARK_AI_MOCK=1`) — Sonnet
+ไฟล์ `api/ops/reconcile-write.ts` + `api/ops/files-write.ts` + `api/ops/import.ts` · statement/CSV รับเป็น `text` ใน JSON (multipart = ขั้นถัดไป) · `userId: null`
+| op id | REST | kind · scope | input | output | service |
+|---|---|---|---|---|---|
+| `reconcile.preview-statement` | `POST /reconcile/statements/preview` | write · reconcile | `{ financeAccountId, period, source (KBANK\|SCB\|KTB\|BBL\|GENERIC), text }` | `{ source, rows[{date,description,amountSatang,ref}], errors[{row,reason}], openingFromFileSatang, closingFromFileSatang }` | `previewStatementImport` |
+| `reconcile.import-statement` | `POST /reconcile/statements` | write · reconcile | `{ financeAccountId, period, source, fileName, text }` | `{ statementId, imported, duplicated }` (ไฟล์เดิม → duplicated หรือ 409) | `importStatement` |
+| `reconcile.auto-match` | `POST /reconcile/statements/{id}/auto-match` | write · reconcile | — | `{ matched, suggested, unmatched }` | `autoMatch` |
+| `reconcile.match` / `.unmatch` / `.skip` / `.create-entry` | `POST /reconcile/lines/{id}/match` `{journalLineId}` · `/unmatch` · `/skip` `{reason?}` · `/create-entry` `{kind: FEE\|INTEREST\|OTHER, accountCode?, note?}` | write · reconcile | | `{ ok }` / `{ entryId }` · เดือนยืนยันแล้ว → 409 | `manualMatch`/`unmatch`/`skipLine`/`createEntryFromLine` |
+| `reconcile.confirm` / `.reopen` | `POST /reconcile/{period}/confirm` `{financeAccountId}` · `/reopen` `{financeAccountId, reason}` | write · reconcile | | `{ matched }` / `{ ok }` | `confirmMonth`/`reopenMonth` |
+| `import.preview` | `POST /import/preview` | write · import | `{ kind (documents_revenue\|documents_expense\|contacts\|products\|chart_of_accounts), text, mapping? }` | `{ mapping, columns[], rows[{...,errors[]}], valid, invalid, warnings[] }` | `previewImportCore` |
+| `import.run` | `POST /import/run` | write · import (rate 20/ชม. เดิม) | `{ kind, text, mapping, skipErrorRows? }` | `{ created, skipped, errors[] }` | `runImportCore` |
+| `import.template` | `GET /import/template` | read · import | `kind` | CSV (BOM) | `buildTemplateCsv` |
+| `files.update` | `PATCH /files/{id}` | write · document.manage | `{ documentId?, folder?, archived?, notAccounting?, docTypeHint? }` (อย่างน้อย 1) | แถวแบบ B4 | `linkAttachment`/`unlinkAttachment`/`moveAttachment`/`archiveAttachment`/`restoreAttachment`/`markNotAccounting`/`setDocTypeHint` |
+| `files.bulk` | `POST /files/bulk` | write · document.manage | `{ ids[], folder?, archived? }` | `{ count }` | `moveAttachmentsBulk`/`archiveAttachmentsBulk` |
+| `inbox.ingest` | `POST /inbox/files` | write · document.manage | `{ source (API\|CHAT\|EMAIL…), senderLabel?, files: [{ sourceRef, fileName, fileUrl (https), mimeType, sizeBytes? }] }` | `{ created, duplicated, rejected, ids[] }` | `ingestInboxFiles` |
+| `inbox.read` | `POST /inbox/{fileId}/read` | write · document.manage (rate aiBill 200/วัน เดิม) | `{ force? }` | `{ extracted{vendor,taxId,invoiceNo,date,totalSatang,vatSatang,vatRateBp,docKind}, cached }` · ไม่มี provider → 503 upstream_unavailable | `readBill` |
+| `inbox.create-expense` | `POST /inbox/{fileId}/create-expense` | write · doc.create | `CreateExpenseOverrides` (…Satang) | `{ documentId, type: "EXPENSE", status: "DRAFT", docNo }` | `createExpenseFromAttachment` |
+| `reports.email` | `POST /reports/email` | write · report.view (rate 20/วัน เดิม) | `{ kind: daily\|weekly }` | `{ sent, skipped, reason? }` (ไม่มี RESEND = skipped ไทย) | `composeAccountReport` + ส่ง |
+
+### D4 — WRITE ตั้งค่า (oracle `scripts/qc-account-api-write-settings.mts` · Fable เขียนแล้ว · tenant ใหม่ + user/membership ทดสอบ) — Sonnet
+ไฟล์ `api/ops/settings-write.ts` + `api/ops/webhooks.ts` · **ห้าม** เปิด `POST /api-keys` (คีย์สร้างคีย์ = ยกระดับสิทธิ์ · GET เท่านั้น) · `actorUserId` ของ permissions-service = `null`/keyId ตามที่ยอม
+| op id | REST | kind · scope | input | output | service |
+|---|---|---|---|---|---|
+| `settings.update` | `PATCH /settings` | write · settings.manage | ฟิลด์ของ `settings.get` (**ไม่รับ** stampUrl/signatureUrl/logoUrl → 422) · taxId 13 หลัก | `settings.get` shape | `saveSettings` |
+| `settings.documents.update` | `PATCH /settings/documents/{docType}` | write · settings.manage | `{ prefix?, pattern?, reset?, dueDays?, validDays?, notes?, terms?, publicLink?, autoTaxInvoice?, printTemplate?, channels? }` · pattern ผิด → 422 ไทย | แถวแบบ `settings.documents` | `saveDocSettings` (sequences/notes/due ต่อชนิด) |
+| `settings.documents.next-no` | `POST /settings/documents/{docType}/next-no` | write · settings.manage | `{ nextNo }` | `{ docType, nextNo, example }` | `setDocNextNo` |
+| `settings.tags.create` | `POST /settings/tags` | write · settings.manage | `{ name, color, docTypes[] }` | `{ id, name, color, docTypes }` | `createDocTag` |
+| `settings.policy.update` | `PATCH /settings/policy` | write · settings.manage | `PolicyPatch` (JSON · `lockBeforeDate` YYYY-MM-DD\|null) | policy ใหม่ | `savePolicy` |
+| `settings.permissions.get` | `GET /settings/permissions` | read · settings.manage | — | `{ roles[{key,name,system,cells,capSatang}], users[{membershipId,userId,name,email,role,accountRole,capSatang}] }` | `getPermissionSettings`+`listAccountUsers` |
+| `settings.permissions.add-role` / `.save-role` | `POST /settings/permissions/roles` `{name,cells,capSatang?}` · `PUT /settings/permissions/roles/{key}` `{name,cells,capSatang}` | write · settings.manage | | role · OWNER/MANAGER → 409/422 | `addRole`/`saveRole` |
+| `settings.permissions.assign` / `.set-cap` | `POST /settings/permissions/assign` `{membershipId, roleKey}` · `PUT /settings/permissions/caps/{membershipId}` `{capSatang|null}` | write · settings.manage | | `{ ok }` (สิทธิ์เขียนลง Membership.permissions จริง) | `assignRole`/`setApprovalCap` |
+| `settings.permissions.revoke` | `DELETE /settings/permissions/members/{membershipId}` | **danger** · settings.manage | `{ reason }` | `{ ok }` | `revokeAccountAccess` |
+| `links.connect` / `.update` / `.disconnect` | `POST /links` `{kind, linkedId}` · `PATCH /links/{kind}` `{options}` · `DELETE /links/{kind}` (**danger** `{reason}`) | write/danger · settings.manage | | การ์ดแบบ B4 | `connect`/`setLinkOptions`/`disconnect` |
+| `webhooks.list` / `.create` / `.update` / `.delete` / `.test` / `.deliveries` | `GET /webhooks` · `POST /webhooks` `{url (http(s)), events[] (ต้องอยู่ใน WEBHOOK_EVENTS)}` → **secret ครั้งเดียว** · `PATCH /webhooks/{id}` `{events?, active?}` · `DELETE /webhooks/{id}` (**danger**) · `POST /webhooks/{id}/test` `{event}` → `{delivered}` · `GET /webhooks/{id}/deliveries` | settings.manage | | list ไม่มี secret | `webhooks/service` (createEndpoint/updateEndpointEvents/setEndpointActive/deleteEndpoint/dispatchWebhooks/listDeliveries) |
+| `api-keys.list` | `GET /api-keys` | read · settings.manage | — | `[{ id, name, prefix, scopes, bundleLabel, systemId, expiresAt, lastUsedAt, revoked }]` (ไม่มี keyHash) | `listApiKeys` + `bundleLabelForScopes` |
+event ที่เหลือ (D4): `account.cheque.changed` (ทุก transition) · `account.reconcile.confirmed` · `account.period.reopened` · `account.asset.depreciated` · `account.asset.disposed` · `account.recurring.ran` — labels + consumer + ยิงจาก service + คู่มือ
+
+### E1–E2 · F1–F4 — ตาม PLAN §3 / §7 (สเปคละเอียดเขียนตอนถึง) (อ้าง PLAN §4 แถวต่อแถว) · ทุก op: id/path/scope ตามตาราง §4 · oracle เทียบเฉลย `acc-v2-expected.json` + `qc-account-cpa`
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 5 ก.ย. ~11:45 UTC — A2 ปิด (Sonnet 19 นาที) · **เฟส A ปิด** · ความคืบหน้า 4/24 = 17% · เริ่ม B1
 - 5 ก.ย. ~10:20 UTC — A4 ปิด (Opus 13 นาที รอบเดียว) · เริ่ม A2 · ความคืบหน้า 3/24 = 12.5%
 - 5 ก.ย. ~09:20 UTC — A3 ปิด (Opus 16 นาที · ผ่านรอบเดียว) · เริ่ม A4 · ความคืบหน้า 2/24
 - 5 ก.ย. ~08:35 UTC — A1 ปิด (Opus 12 นาที · Fable ตรวจ diff+รัน oracle ซ้ำ) · เริ่ม A3

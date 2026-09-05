@@ -6,6 +6,15 @@ import { AccountIcon } from "./AccountIcon";
 import { RowActions } from "./RowActions";
 import { useSetBreadcrumbTail } from "./breadcrumb-tail";
 import type { ConnectionCard } from "@/lib/modules/account/connections";
+import {
+  API_SCOPE_BUNDLES,
+  ACCOUNT_SCOPE_KEYS,
+  DEFAULT_BUNDLE_ID,
+  expandBundles,
+  bundleLabelForScopes,
+  type ApiScopeBundleId,
+} from "@/lib/api-keys/scopes";
+import { permissionLabel } from "@/lib/core/permissions";
 
 // ─────────────────────────────────────────────────────────────
 // หน้า "ตั้งค่า › การเชื่อมต่อ" (SPEC §9.5 · เฟรม g14-settings-connections.png)
@@ -14,7 +23,21 @@ import type { ConnectionCard } from "@/lib/modules/account/connections";
 //   ?s=api   → คีย์ API · webhook · Zapier/Make · bank feed 🕓
 // ─────────────────────────────────────────────────────────────
 
-export type ApiKeyRow = { id: string; name: string; prefix: string; createdAt: string; revoked: boolean };
+export type ApiKeyRow = {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  revoked: boolean;
+  /** [] = คีย์รุ่นเดิมก่อน A1 (อ่าน API กลางแบบเดิม) */
+  scopes: string[];
+  /** ป้ายไทยของสมุดบัญชีที่ผูก · "ทั้งร้าน" เมื่อไม่ผูก */
+  systemLabel: string;
+  /** "ไม่หมดอายุ" หรือวันที่ไทยที่ format แล้ว */
+  expiresLabel: string;
+  /** "ยังไม่เคยใช้" หรือวันที่ไทยที่ format แล้ว */
+  lastUsedLabel: string;
+};
 export type WebhookRow = { id: string; url: string; active: boolean; events: string[]; secret: string };
 export type DeliveryRow = { id: string; url: string; event: string; status: string; at: string };
 
@@ -37,6 +60,7 @@ export type ConnectionsPanelProps = {
   setOption: (fd: FormData) => Promise<{ ok: true } | { ok: false; reason: string }>;
   createKey: (fd: FormData) => Promise<{ ok: true; rawKey: string } | { ok: false; reason: string }>;
   revokeKey: (fd: FormData) => Promise<{ ok: true } | { ok: false; reason: string }>;
+  rotateKey: (fd: FormData) => Promise<{ ok: true; rawKey: string } | { ok: false; reason: string }>;
   createHook: (fd: FormData) => Promise<{ ok: true } | { ok: false; reason: string }>;
   updateHook: (fd: FormData) => Promise<{ ok: true } | { ok: false; reason: string }>;
   testHook: (fd: FormData) => Promise<{ ok: true } | { ok: false; reason: string }>;
@@ -355,16 +379,43 @@ function EtaxSection() {
 
 // ─────────────────────────── แอปภายนอก / API ───────────────────────────
 
+/** สรุปชุดสิทธิ์แบบไทย ประโยคเดียว — แปลจาก `summary` (อังกฤษ) ของ scopes.ts เก็บไว้ที่นี่ที่เดียว */
+const BUNDLE_HELP_TH: Record<ApiScopeBundleId, string> = {
+  "read-only": "อ่านเอกสาร สมุดรายวัน และรายงานภาษี/การเงินได้อย่างเดียว ไม่มีสิทธิ์เขียนใด ๆ",
+  "issue-and-collect": "ทำได้ทุกอย่างในชุดอ่านอย่างเดียว บวกสร้าง/ออกเอกสาร บันทึกรับเงิน และจัดการผู้ติดต่อ/สินค้า",
+  accountant: "ทำได้ทุกอย่างในชุดออกเอกสารและรับเงิน บวกงานปิดงวด ผังบัญชี สินทรัพย์ เช็ค และกระทบยอดธนาคาร",
+  danger: "การกระทำที่ย้อนกลับยาก เช่น ยกเลิกเอกสาร เปิดงวดที่ปิดแล้ว หรือรวมผู้ติดต่อซ้ำ",
+  settings: "แก้ตั้งค่าระบบบัญชีและนำเข้าข้อมูล",
+};
+
 function ApiSection(p: ConnectionsPanelProps) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [rawKey, setRawKey] = useState<string | null>(null);
+  const [bundleId, setBundleId] = useState<ApiScopeBundleId>(DEFAULT_BUNDLE_ID);
+  const [checkedScopes, setCheckedScopes] = useState<Set<string>>(
+    () => new Set(expandBundles([DEFAULT_BUNDLE_ID])),
+  );
+  const [scopesOpen, setScopesOpen] = useState(false);
 
   const run = (fn: () => Promise<{ ok: boolean; reason?: string }>) =>
     start(async () => {
       const res = await fn();
       setMsg(res.ok ? { ok: true, text: "บันทึกแล้ว" } : { ok: false, text: res.reason ?? "ทำรายการไม่สำเร็จ" });
     });
+
+  const selectBundle = (id: ApiScopeBundleId) => {
+    setBundleId(id);
+    setCheckedScopes(new Set(expandBundles([id])));
+  };
+  const toggleScope = (key: string) => {
+    setCheckedScopes((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   return (
     <div className="flex flex-col gap-4" data-testid="connections-api">
@@ -378,7 +429,7 @@ function ApiSection(p: ConnectionsPanelProps) {
         <div>
           <h2 className="text-sm font-medium">คีย์ API</h2>
           <p className={`mt-1 ${helpCls}`}>
-            ให้โปรแกรมภายนอกเรียกข้อมูลของร้านได้ — คีย์นี้ใช้ได้ทั้งร้าน (ทุกระบบ ไม่ใช่เฉพาะสมุดบัญชีเล่มนี้) เก็บให้ดีเหมือนรหัสผ่าน
+            ให้โปรแกรมภายนอกเรียกข้อมูลบัญชีเล่มนี้ได้ผ่าน API — เลือกชุดสิทธิ์และวันหมดอายุที่เหมาะกับงาน แล้วเก็บคีย์ให้ดีเหมือนรหัสผ่าน
           </p>
         </div>
 
@@ -389,25 +440,56 @@ function ApiSection(p: ConnectionsPanelProps) {
           </div>
         )}
 
-        <table className="w-full text-sm" data-testid="api-key-table">
-          <thead>
-            <tr className="border-b text-left text-xs text-[color:var(--color-muted)]">
-              <th className="py-2 pr-3 font-normal">ชื่อคีย์</th>
-              <th className="py-2 pr-3 font-normal">ตัวขึ้นต้น</th>
-              <th className="py-2 pr-3 font-normal">สร้างเมื่อ</th>
-              <th className="py-2 font-normal">สถานะ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {p.apiKeys.map((k) => (
-              <tr key={k.id} className="border-b last:border-b-0">
-                <td className="py-2.5 pr-3 font-medium">{k.name}</td>
-                <td className="py-2.5 pr-3 font-mono text-xs">{k.prefix}…</td>
-                <td className="py-2.5 pr-3">{k.createdAt}</td>
-                <td className="py-2.5">
-                  {k.revoked ? (
-                    <span className={helpCls}>เพิกถอนแล้ว</span>
-                  ) : (
+        <div className="flex flex-col gap-2">
+          {p.apiKeys.map((k) => (
+            <div
+              key={k.id}
+              data-testid={`api-key-row-${k.id}`}
+              className="flex flex-col gap-2 rounded-lg border p-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 sm:rounded-none sm:border-x-0 sm:border-t-0 sm:border-b sm:px-0 sm:py-2.5 last:sm:border-b-0"
+            >
+              <div className="min-w-0 sm:w-40 sm:shrink-0">
+                <div className="truncate font-medium">{k.name}</div>
+                <div className={`truncate font-mono text-xs ${helpCls}`}>ตัวขึ้นต้น {k.prefix}…</div>
+              </div>
+              <div className="sm:w-44 sm:shrink-0">
+                <div className={`sm:hidden ${helpCls}`}>ขอบเขต</div>
+                <div data-testid={`api-key-row-bundle-${k.id}`}>{bundleLabelForScopes(k.scopes)}</div>
+              </div>
+              <div className="sm:w-36 sm:shrink-0">
+                <div className={`sm:hidden ${helpCls}`}>สมุดบัญชี</div>
+                <div data-testid={`api-key-row-system-${k.id}`}>{k.systemLabel}</div>
+              </div>
+              <div className="sm:w-28 sm:shrink-0">
+                <div className={`sm:hidden ${helpCls}`}>หมดอายุ</div>
+                <div data-testid={`api-key-row-expires-${k.id}`}>{k.expiresLabel}</div>
+              </div>
+              <div className="sm:w-32 sm:shrink-0">
+                <div className={`sm:hidden ${helpCls}`}>ใช้ล่าสุด</div>
+                <div>{k.lastUsedLabel}</div>
+              </div>
+              <div className="flex flex-wrap gap-2 sm:ml-auto">
+                {k.revoked ? (
+                  <span className={helpCls}>เพิกถอนแล้ว</span>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      className="btn btn-ghost btn-sm"
+                      data-testid={`api-key-rotate-${k.id}`}
+                      onClick={() =>
+                        run(async () => {
+                          const fd = new FormData();
+                          fd.set("systemId", p.systemId);
+                          fd.set("id", k.id);
+                          const res = await p.rotateKey(fd);
+                          if (res.ok) setRawKey(res.rawKey);
+                          return res;
+                        })
+                      }
+                    >
+                      หมุน
+                    </button>
                     <button
                       type="button"
                       disabled={pending}
@@ -424,22 +506,18 @@ function ApiSection(p: ConnectionsPanelProps) {
                     >
                       เพิกถอน
                     </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {p.apiKeys.length === 0 && (
-              <tr>
-                <td colSpan={4} className="py-5 text-center text-[color:var(--color-muted)]">
-                  ยังไม่มีคีย์ — สร้างคีย์แรกด้านล่าง
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+          {p.apiKeys.length === 0 && (
+            <div className="py-5 text-center text-[color:var(--color-muted)]">ยังไม่มีคีย์ — สร้างคีย์แรกด้านล่าง</div>
+          )}
+        </div>
 
         <form
-          className="flex flex-wrap items-end gap-2"
+          className="flex flex-col gap-3 border-t pt-3"
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
@@ -457,9 +535,86 @@ function ApiSection(p: ConnectionsPanelProps) {
             ชื่อคีย์
             <input name="name" className="input" placeholder="เช่น สำนักงานบัญชี" data-testid="api-key-name" />
           </label>
-          <button type="submit" disabled={pending} className="btn btn-sm bg-[color:var(--color-ink)] text-[color:var(--color-surface)]">
-            สร้างคีย์
-          </button>
+
+          <fieldset className="flex flex-col gap-2">
+            <legend className={`mb-1 ${helpCls}`}>ชุดสิทธิ์ (bundle) — ติ๊กเพิ่ม/ลดรายตัวได้ด้านล่าง</legend>
+            {API_SCOPE_BUNDLES.map((b) => (
+              <label
+                key={b.id}
+                className="flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 text-sm has-[:checked]:border-[color:var(--color-ink)]"
+              >
+                <input
+                  type="radio"
+                  name="bundle"
+                  value={b.id}
+                  checked={bundleId === b.id}
+                  onChange={() => selectBundle(b.id)}
+                  data-testid={`api-key-bundle-${b.id}`}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">{b.label}</span>
+                  <span className={`block ${helpCls}`}>{BUNDLE_HELP_TH[b.id]}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+              วันหมดอายุ
+              <select name="ttlDays" defaultValue="365" className="input" data-testid="api-key-ttl">
+                <option value="30">30 วัน</option>
+                <option value="90">90 วัน</option>
+                <option value="365">365 วัน</option>
+                <option value="0">ไม่หมดอายุ</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              data-testid="api-key-scopes-toggle"
+              onClick={() => setScopesOpen((o) => !o)}
+            >
+              {scopesOpen ? "ซ่อนสิทธิ์รายตัว" : "ดู/แก้สิทธิ์รายตัว"}
+            </button>
+          </div>
+
+          {scopesOpen && (
+            <div className="flex flex-col gap-1.5 rounded-lg border p-3">
+              {ACCOUNT_SCOPE_KEYS.map((key) => (
+                <label key={key} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="scope"
+                    value={key}
+                    checked={checkedScopes.has(key)}
+                    onChange={() => toggleScope(key)}
+                    data-testid={`api-key-scope-${key}`}
+                  />
+                  {permissionLabel(key)}
+                </label>
+              ))}
+            </div>
+          )}
+
+          <div>
+            <button
+              type="submit"
+              disabled={pending}
+              data-testid="api-key-submit"
+              className="btn btn-sm min-h-[40px] bg-[color:var(--color-ink)] text-[color:var(--color-surface)] sm:min-h-0"
+            >
+              สร้างคีย์
+            </button>
+          </div>
+
+          <p className={helpCls}>
+            คีย์ที่สร้างจากที่นี่ผูกกับสมุดบัญชีเล่มนี้เสมอ — ดูวิธีเรียกใช้ในคู่มือนักพัฒนาที่{" "}
+            <Link href="/developers/account" target="_blank" className="text-[color:var(--color-accent)] underline">
+              /developers/account
+            </Link>
+          </p>
         </form>
       </section>
 

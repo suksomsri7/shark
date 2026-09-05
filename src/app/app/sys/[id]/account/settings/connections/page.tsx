@@ -11,6 +11,7 @@ import {
   createWebhookAction,
   disconnectAction,
   revokeApiKeyAction,
+  rotateApiKeyAction,
   setLinkOptionAction,
   testWebhookAction,
   updateWebhookAction,
@@ -21,6 +22,7 @@ import { WEBHOOK_EVENTS, webhookEventLabel } from "@/lib/webhooks/labels";
 import { SettingsNav } from "@/components/account-v2/SettingsNav";
 import { ConnectionsPanel } from "@/components/account-v2/ConnectionsPanel";
 import { formatDateTh } from "@/lib/ui/date";
+import { prisma } from "@/lib/core/db";
 
 // หน้า "ตั้งค่า › การเชื่อมต่อ" (SPEC §9.5 · WO 8.3 · เฟรม g14)
 // หัวข้อย่อย `?s=` : shark (ระบบใน SHARK) · etax (🕓) · api (แอปภายนอก/API)
@@ -54,7 +56,7 @@ export default async function AccountConnectionsSettingsPage({
 }) {
   const { id } = await params;
   const { s: subRaw } = await searchParams;
-  const { tenantId, systemId } = await requireAccountPage(id, "account.settings.manage");
+  const { tenantId, systemId, sys } = await requireAccountPage(id, "account.settings.manage");
   const base = `/app/sys/${id}/account`;
   const ctx = { tenantId, systemId };
 
@@ -67,6 +69,16 @@ export default async function AccountConnectionsSettingsPage({
     sub === "api"
       ? await Promise.all([listApiKeys({ tenantId }), listEndpoints({ tenantId }), listDeliveries({ tenantId }, 10)])
       : [[], [], []];
+
+  // ป้ายชื่อสมุดบัญชีต่อคีย์ (WO A2) — คีย์ของทั้ง tenant อาจผูกสมุดอื่นนอกจากเล่มนี้ด้วย
+  const otherSystemIds = Array.from(
+    new Set(keys.map((k) => k.systemId).filter((x): x is string => !!x && x !== systemId)),
+  );
+  const otherSystems =
+    otherSystemIds.length > 0
+      ? await prisma.appSystem.findMany({ where: { id: { in: otherSystemIds } }, select: { id: true, name: true } })
+      : [];
+  const systemNameById = new Map<string, string>([[systemId, sys.name], ...otherSystems.map((x) => [x.id, x.name] as const)]);
 
   return (
     <ConnectionsPanel
@@ -84,6 +96,10 @@ export default async function AccountConnectionsSettingsPage({
         prefix: k.prefix,
         createdAt: formatDateTh(k.createdAt),
         revoked: !!k.revokedAt,
+        scopes: k.scopes,
+        systemLabel: k.systemId ? (systemNameById.get(k.systemId) ?? "สมุดอื่น") : "ทั้งร้าน",
+        expiresLabel: k.expiresAt ? formatDateTh(k.expiresAt) : "ไม่หมดอายุ",
+        lastUsedLabel: k.lastUsedAt ? formatDateTh(k.lastUsedAt) : "ยังไม่เคยใช้",
       }))}
       webhooks={endpoints.map((e) => ({
         id: e.id,
@@ -107,6 +123,7 @@ export default async function AccountConnectionsSettingsPage({
       setOption={setLinkOptionAction}
       createKey={createApiKeyAction}
       revokeKey={revokeApiKeyAction}
+      rotateKey={rotateApiKeyAction}
       createHook={createWebhookAction}
       updateHook={updateWebhookAction}
       testHook={testWebhookAction}

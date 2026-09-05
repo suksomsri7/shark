@@ -149,3 +149,18 @@ export function bundlesCovering(scopes: string[]): string[] {
     return need.length > 0 && need.every((s) => have.has(s));
   }).map((b) => b.id);
 }
+
+/**
+ * ป้ายไทยของ scope ชุดหนึ่ง — ใช้ในตารางคีย์ทั้งของหน้าบัญชีและหน้าแพลตฟอร์ม (ที่เดียว ห้ามพิมพ์ซ้ำ)
+ * `[]` (คีย์รุ่นเดิมก่อน A1) → "อ่าน API กลาง (คีย์รุ่นเดิม)"
+ * ชุด scope ตรงกับ bundle ใดพอดี (ไม่ขาดไม่เกิน) → ป้ายไทยของ bundle นั้น (เลือกตัวใหญ่สุดถ้าเท่ากันหลายตัว)
+ * ไม่ตรงชุดไหนเป๊ะ → "กำหนดเอง (n สิทธิ์)"
+ */
+export function bundleLabelForScopes(scopes: readonly string[]): string {
+  if (scopes.length === 0) return "อ่าน API กลาง (คีย์รุ่นเดิม)";
+  const exact = bundlesCovering([...scopes])
+    .map((id) => BUNDLE_BY_ID.get(id)!)
+    .filter((b) => b.scopes.length === scopes.length)
+    .sort((a, b) => b.scopes.length - a.scopes.length)[0];
+  return exact ? exact.label : `กำหนดเอง (${scopes.length} สิทธิ์)`;
+}
