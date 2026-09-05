@@ -607,6 +607,9 @@ type PageSpec = {
   path: string;
   note?: string;
   expect?: string[];
+  /** 🔴 10.1 WO 6.1: ข้อความที่ "ต้องไม่มี" บนหน้า — ใช้ยืนยันว่าคีย์ดิบ (เช่น "AR"/"AP"/"VAT_INPUT") ถูกแทนที่
+   *  ด้วยป้ายไทยแล้วจริง ไม่ใช่แค่ป้ายไทยโผล่มาเพิ่มข้าง ๆ คีย์ดิบเดิมที่ยังหลงเหลืออยู่ */
+  expectAbsent?: string[];
   /** selector ที่ต้องคลิกหลังหน้าโหลด/hydrate เสร็จ (ทำตามลำดับ) — ใช้เปิด dropdown/sheet ก่อนถ่ายภาพ */
   click?: string[];
   /** selector ที่ต้อง hover (ไม่คลิก) หลัง click ครบ — ใช้เปิด flyout ระดับ 2 บนเดสก์ท็อปโดยไม่ navigate ออกจากหน้า */
@@ -1520,7 +1523,11 @@ const PAGES: Record<string, PageSpec[]> = {
       name: "chart-mapping",
       path: `/app/sys/${SYS}/account/accounts/mapping`,
       note: "หน้าผูกบัญชีอัตโนมัติ (§7.10) ที่ย้ายออกจากหน้าผังบัญชีเดิม — เข้าจากแผงขวาของบัญชีที่ระบบใช้",
-      expect: ["การผูกบัญชีอัตโนมัติ", "AR", "AP", "VAT_INPUT", "SUSPENSE", "บันทึก"],
+      // 🔴 10.1 WO 6.1: WO 9.4 เปลี่ยนคีย์ดิบ (AR/AP/VAT_INPUT/SUSPENSE) เป็นป้ายไทยผ่าน mappingKeyLabel()
+      // (src/lib/modules/account/coa.ts) — ยืนยันทั้ง "เจอป้ายไทย" และ "ไม่เจอคีย์ดิบเดิม" (verify ตรงกับ
+      // หน้าจริง 5 ก.ย.: /app/sys/.../account/accounts/mapping ไม่มี AR/AP/VAT_INPUT/SUSPENSE หลงเหลือแล้ว)
+      expect: ["การผูกบัญชีอัตโนมัติ", "ลูกหนี้การค้า", "เจ้าหนี้การค้า", "ภาษีซื้อ", "บัญชีพักรายการ", "บันทึก"],
+      expectAbsent: ["AR", "AP", "VAT_INPUT", "SUSPENSE"],
       onlyDevice: "desktop",
     },
     {
@@ -1997,10 +2004,15 @@ const PAGES: Record<string, PageSpec[]> = {
       note: "หน้าช่องทางการเงิน (g9) — หัว 'ทั้งหมด 4 ช่องทาง · ยอดตามบัญชีแยกประเภท ณ … · รวม …' · แถบแท็บย่อย · การ์ดจัดกลุ่ม 4 กลุ่ม",
       // "ย่อ/ขยายทั้งหมด"/"โอนระหว่างช่องทาง" เป็นปุ่ม `hidden md:inline-flex` (เดสก์ท็อปเท่านั้น) —
       // มือถือย้ายเข้าเมนู "เพิ่มเติม" (RowActions overflow ปิดอยู่ ไม่ใช่ข้อความบนหน้า) เหมือน f6/ProductsPanel
+      // 🔴 10.1 WO 5.1 (verify ก่อนแก้ 5 ก.ย.): "รวม ฿1,284,560.00" ไม่ใช่แค่ "seed โต" — ยอดรวมหน้านี้คิด "ณ วันนี้"
+      // จากนาฬิกาเครื่องจริง (financeBalances asOfCutoff, WO 6.1 รอบ 2) ไม่ใช่ยอด "สุดท้าย" ของ finance.total ใน
+      // expected.json (ซึ่งรวม transaction ที่ลงวันที่อนาคตของเดือนนี้ไปแล้วทั้งหมด) — ตรวจบนเครื่องจริง (5 ก.ย.) ได้
+      // "฿1,164,420.00" ซึ่งจะขยับทุกวันจนถึงสิ้นเดือน ⇒ ผูกกับตัวเลขคงที่ตัวไหนก็เน่าเหมือนกัน (เหมือน kpi-cash ของ
+      // 2.2) — ยอดกลุ่ม/ยอดรวม "ณ วันนี้" ที่ถูกต้องมีเฉลยอิสระ pinned-asOf ตรวจอยู่แล้วที่ qc-acc-v2-finance.mts
+      // FN1.3–1.6/FN13 (เรียก financeBalances ตรง ๆ ด้วย asOf ที่ตรึงไว้) — หน้านี้ตรวจแค่ค่าที่ asOf-independent
       expect: [
         "เงินสด/ธนาคาร/e-Wallet",
         "ทั้งหมด 4 ช่องทาง",
-        "รวม ฿1,284,560.00",
         "เพิ่มช่องทาง",
         "เงินสด",
         "ออมทรัพย์",
@@ -2294,7 +2306,10 @@ const PAGES: Record<string, PageSpec[]> = {
         "คาดว่าจะเข้า",
         "คาดว่าจะออก",
         "กระทบยอดธนาคาร",
-        "นำเข้า statement",
+        // 🔴 10.1 WO 5.2: FinanceOverviewPanel.tsx บรรทัด ~297 โชว์ "นำเข้า statement" เฉพาะตอนยังไม่เคยนำเข้า
+        // statement ของช่วงนั้น (statementBalanceSatang == null) — fixture seed ของ QC นำเข้า statement เดือน
+        // ปัจจุบันไว้แล้ว ⇒ ปุ่มจริงบนหน้าคือ "จับคู่รายการ" (verify ตรงกับหน้าจริง 5 ก.ย. — ไม่ใช่การเปลี่ยนป้ายถาวร)
+        "จับคู่รายการ",
         "รายการที่กระทบยอดแล้ว",
         "เงินคุณอยู่ไหน",
       ],
@@ -2320,7 +2335,13 @@ const PAGES: Record<string, PageSpec[]> = {
       name: "petty-cash-list",
       path: `/app/sys/${SYS}/account/finance/petty-cash`,
       note: "หน้าสำรองรับ/จ่าย (§10.3) — ตาราง ชื่อ·ผู้ถือ·วงเงิน·คงเหลือ·เติมล่าสุด",
-      expect: ["เงินสดย่อย", "PTY001", "฿29,700.00"],
+      // 🔴 10.1 WO 5.2 (verify ก่อนแก้ 5 ก.ย.): "฿29,700.00" เดิมคือยอดคงเหลือ "สุดท้าย" ของ pettyCash.balance ใน
+      // expected.json (หลังเติม 10 ก.ย. + เบิกชดเชย 12 ก.ย.) — แต่ financeBalances() คิด "ณ วันนี้" จริงจากนาฬิกาเครื่อง
+      // (asOfCutoff, WO 6.1 รอบ 2) ไม่ใช่ QC.today เสมือน ⇒ ก่อนถึงวันที่ transaction จริง ยอดบนหน้าจะยังเป็นยอดยกมา
+      // (opening) เท่านั้น — ตรวจแล้วบนเครื่องจริง (5 ก.ย.) หน้าโชว์ "฿20,000.00" = pettyCash opening ไม่ใช่ balance
+      // สุดท้าย ⇒ ห้ามผูกกับค่าจาก JSON ตรง ๆ (คีย์ไหนก็ตาม) เพราะจะเป็นข้อสอบเน่าตามเวลาเหมือนที่ 2.2 เคยเจอ
+      // (kpi-cash) — ยอด "ณ วันนี้" ที่ถูกต้องมีเฉลยอิสระ pinned-asOf อยู่แล้วที่ qc-acc-v2-finance-overview.mts FO4.2
+      expect: ["เงินสดย่อย", "PTY001"],
     },
     {
       name: "petty-cash-topup-modal",
@@ -3276,7 +3297,18 @@ try {
         const tailClear = await page.evaluate(() => {
           window.scrollTo(0, document.body.scrollHeight);
           const tail = document.querySelector('[data-testid="sec-attachments"]');
-          const bar = document.querySelector('[data-testid="editor-actions"]');
+          // 🔴 10.1 WO 1.4: มี 2 แถบปุ่มท้ายคนละ testid ซ่อนกันด้วย CSS ตาม breakpoint เดียวกับ DashCreateMenu
+          // (editor-actions = เดสก์ท็อป `hidden md:block` · editor-actions-m = มือถือ `md:hidden`) — querySelector
+          // ตัวที่ถูกซ่อนได้ rect เป็น 0 ทั้งแท่งเสมอ (barTop=0) ⇒ ต้องเลือกตัวที่ "เห็นจริงบนจอ" ไม่ใช่ตัวแรกที่เจอ
+          const bars = [
+            document.querySelector('[data-testid="editor-actions-m"]'),
+            document.querySelector('[data-testid="editor-actions"]'),
+          ];
+          const bar = bars.find((el): el is Element => {
+            if (!el) return false;
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+          });
           const result = tail && bar ? { tailBottom: Math.round(tail.getBoundingClientRect().bottom), barTop: Math.round(bar.getBoundingClientRect().top) } : null;
           window.scrollTo(0, 0); // ต้องรันเสมอ — ห้าม return ก่อนบรรทัดนี้
           return result;
@@ -3608,6 +3640,12 @@ try {
           const ok = status === 200 && probe.all.includes(want);
           if (!ok) failures++;
           console.log(`  ${ok ? "✅" : "❌"} [${spec.name}/${device}] HTTP ${status} · เจอ "${want}" บนหน้า${ok ? "" : ` — title="${probe.title}" h1="${probe.h1}"`}`);
+        }
+        // 🔴 10.1 WO 6.1: ต้อง "ไม่เจอ" คีย์ดิบ — กันป้ายไทยแค่โผล่เพิ่มข้าง ๆ คีย์เดิมที่ยังไม่ถูกแทนที่จริง
+        for (const unwanted of spec.expectAbsent ?? []) {
+          const ok = status === 200 && !probe.all.includes(unwanted);
+          if (!ok) failures++;
+          console.log(`  ${ok ? "✅" : "❌"} [${spec.name}/${device}] HTTP ${status} · ต้องไม่เจอ "${unwanted}" บนหน้า${ok ? "" : ` — title="${probe.title}" h1="${probe.h1}"`}`);
         }
         if (ASSERT) {
           const want = ASSERT_MAP[WO]?.[spec.name] ?? {};

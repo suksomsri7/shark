@@ -1,12 +1,14 @@
 "use client";
 
 // ตัวกรองมาตรฐานหน้ารายการ (DESIGN-SPEC-V2 §1, §5.2) — GET form กรองฝั่ง server
-// เดสก์ท็อป (f3): แถวเดียว [ช่วงวันที่][ผู้ติดต่อ][ค้นหา][ค้นหา ปุ่ม] …… [▽ ตัวกรองเพิ่มเติม][คืนค่าเริ่มต้น]
+// เดสก์ท็อป (f3): แถวเดียว [ช่วงวันที่][ผู้ติดต่อ][ค้นหา] …… [▽ ตัวกรองเพิ่มเติม][คืนค่าเริ่มต้น เมื่อมีตัวกรองใช้อยู่]
 //   (ไอคอนเส้นจาก AccountIcon แทน emoji — ห้ามใช้ 📅👤🔍 ตาม UI_STANDARD)
+//   🔴 10.1 (f3): เอาปุ่ม "ค้นหา" แยกออก — ช่องค้นหาส่งฟอร์มเองตอนกด Enter (native) + debounce auto-submit ตอนพิมพ์
+//   (300ms) ให้ผลกรองไหลลื่นแบบพิมพ์แล้วเห็นผลเลยเหมือนช่องค้นหาสมัยใหม่ ไม่ต้องกดปุ่มเพิ่ม
 // มือถือ (f13): แถวเดียว [ช่องค้นหา][ปุ่มกรวยเปิด sheet] — ช่วงวันที่/ผู้ติดต่อ/ตัวกรองเพิ่มเติมย้ายเข้า bottom sheet
 // "use client" เพราะต้องสลับ layout ตามความกว้างจอ (isMobile) + เปิด/ปิด sheet — ฟอร์มยังเป็น GET ธรรมดา
 // (ค่าที่กรอกในทั้งสอง layout ไม่ชนกัน เพราะ render แค่ชุดเดียวต่อครั้ง ไม่ใช่ซ่อนด้วย CSS — กัน input ชื่อซ้ำส่งค่าซ้อนกัน)
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AccountIcon } from "./AccountIcon";
 import { SlideOver } from "./SlideOver";
 
@@ -50,9 +52,24 @@ export function ListFilters({
 }) {
   const preset = value.preset ?? "this_year";
   const advancedOpen = Boolean(value.tags || value.creator || value.amountMin || value.amountMax);
+  // 🔴 10.1 (f3): "คืนค่าเริ่มต้น" โผล่เฉพาะตอนมีตัวกรองใช้งานอยู่จริง (ไม่ใช่ค่า default this_year เปล่า ๆ)
+  const filtersActive = Boolean(
+    value.contactId || value.q || value.tags || value.creator || value.amountMin || value.amountMax || value.from || value.to || (value.preset && value.preset !== "this_year"),
+  );
 
   const [isMobile, setIsMobile] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  // 🔴 10.1 (f3): เอาปุ่ม "ค้นหา" แยกออก — debounce auto-submit ตอนพิมพ์ในช่องค้นหาเดสก์ท็อป (Enter ยัง submit ได้
+  // ทันทีตามพฤติกรรม native ของฟอร์มอยู่แล้ว) — ไม่แตะช่องค้นหาบนมือถือ (ใช้ปุ่ม "ใช้ตัวกรอง" ใน sheet เป็นหลัก)
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onSearchChange = () => {
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(() => formRef.current?.requestSubmit(), 300);
+  };
+  useEffect(() => () => {
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+  }, []);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
@@ -131,7 +148,7 @@ export function ListFilters({
   );
 
   return (
-    <form action={action} method="GET" className="flex flex-col gap-2" data-testid={testId}>
+    <form ref={formRef} action={action} method="GET" className="flex flex-col gap-2" data-testid={testId}>
       {hiddenFields &&
         Object.entries(hiddenFields).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
 
@@ -182,9 +199,11 @@ export function ListFilters({
                 <summary className="btn-sm w-fit list-none">▽ ตัวกรองเพิ่มเติม</summary>
                 {advancedInner}
               </details>
-              <a href={resetHref} className="text-sm underline text-[color:var(--color-muted)]">
-                คืนค่าเริ่มต้น
-              </a>
+              {filtersActive && (
+                <a href={resetHref} className="text-xs underline text-[color:var(--color-muted)]">
+                  คืนค่าเริ่มต้น
+                </a>
+              )}
             </div>
           </SlideOver>
         </div>
@@ -204,24 +223,23 @@ export function ListFilters({
               type="search"
               name="q"
               defaultValue={value.q}
+              onChange={onSearchChange}
               placeholder="ค้นหาด้วยชื่อ, เลขที่"
               className="input pl-8"
               data-testid="filter-search"
             />
           </div>
 
-          <button type="submit" className="btn-sm">
-            ค้นหา
-          </button>
-
           <details open={advancedOpen} className="ml-auto text-sm [&[open]]:basis-full">
             <summary className="btn-sm w-fit list-none">▽ ตัวกรองเพิ่มเติม</summary>
             {advancedInner}
           </details>
 
-          <a href={resetHref} className="text-sm underline text-[color:var(--color-muted)]">
-            คืนค่าเริ่มต้น
-          </a>
+          {filtersActive && (
+            <a href={resetHref} className="text-xs underline text-[color:var(--color-muted)]">
+              คืนค่าเริ่มต้น
+            </a>
+          )}
         </div>
       )}
     </form>

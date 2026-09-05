@@ -144,7 +144,8 @@ export async function ExpenseListPage(props: {
   const preset = (sp.preset as DateRangePreset | undefined) ?? "this_year";
   const range = preset === "custom" ? { from: sp.from, to: sp.to } : presetRangeBkk(preset);
   const page = Math.max(Number.parseInt(sp.page ?? "1", 10) || 1, 1);
-  const pageSize = Math.min(Math.max(Number.parseInt(sp.size ?? "20", 10) || 20, 1), 100);
+  // 🔴 10.1 (f3): ค่าเริ่มต้นเป็น 8 ตามเฟรม (ตัวเลือก 8/20/50 — DocListPage.tsx ส่ง pageSizeOptions ตรงกัน)
+  const pageSize = Math.min(Math.max(Number.parseInt(sp.size ?? "8", 10) || 8, 1), 100);
   const q = (sp.q ?? "").trim();
 
   const [result, tabCounts, settings, contacts, accountOptions, deposits] = await Promise.all([
@@ -233,6 +234,7 @@ export async function ExpenseListPage(props: {
       page={result.page}
       pageCount={result.pageCount}
       pageSize={result.pageSize}
+      pageSizeOptions={[8, 20, 50]}
       total={result.total}
       emptyText={`ไม่พบ${label}ในช่วงวันที่ที่เลือก`}
       errorText={props.err === "empty" ? "ต้องมีรายการอย่างน้อย 1 รายการ" : props.err}

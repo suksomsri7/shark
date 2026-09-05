@@ -984,8 +984,10 @@ export async function DocDetailPage({
             <HeaderStat label="ยอดสุทธิ" testId="doc-grand">
               <MoneyText satang={data.grandTotal} decimals />
             </HeaderStat>
+            {/* 🔴 10.1 (g4): แดงเมื่อยังมียอดค้าง (remain > 0) เสมอ ไม่ใช่แค่ตอนพ้นกำหนดเท่านั้น — g4 ตัวอย่าง
+                ฿62,250.00 เป็นแดงทั้งที่ยังไม่พ้นกำหนด (ชำระบางส่วน ไม่ใช่ overdue) */}
             {(REVENUE_PAYABLE_TYPES.includes(dt) || EXPENSE_PAYABLE_TYPES.includes(dt)) && (
-              <HeaderStat label="ค้างชำระ" testId="doc-outstanding" danger={data.overdue && data.remain > 0}>
+              <HeaderStat label="ค้างชำระ" testId="doc-outstanding" danger={data.remain > 0}>
                 <MoneyText satang={data.remain} decimals />
               </HeaderStat>
             )}

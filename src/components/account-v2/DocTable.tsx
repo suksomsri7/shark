@@ -49,6 +49,7 @@ export function DocTable<T extends { id: string }>({
   rowTestId,
   bulkBarTint,
   footerOneLine,
+  pageSizeOptions,
 }: {
   cols: DocColumn<T>[];
   rows: T[];
@@ -96,6 +97,8 @@ export function DocTable<T extends { id: string }>({
   /** WO 7.1 round 2 (f9-documents.png) — true = footerLeft + Pagination อยู่ "บรรทัดเดียวกัน" (ซ้าย/ขวา)
    *  แทนที่จะเป็น 2 บรรทัดซ้อนกัน (ค่าเริ่มต้น false = พฤติกรรมเดิมของ WHT/Journal ฯลฯ ไม่กระทบ) */
   footerOneLine?: boolean;
+  /** ตัวเลือกจำนวนแถวต่อหน้าใน Pagination — ไม่ส่ง = ค่าเริ่มต้นของ Pagination ([10,20,50]) */
+  pageSizeOptions?: number[];
 }) {
   if (rows.length === 0) return <EmptyState text={emptyText} action={emptyAction} />;
 
@@ -148,6 +151,7 @@ export function DocTable<T extends { id: string }>({
                 pageCount={pageCount}
                 pageSize={pageSize}
                 total={total}
+                pageSizeOptions={pageSizeOptions}
                 testId={testId ? `${testId}-pagination` : undefined}
               />
             </div>
@@ -167,6 +171,7 @@ export function DocTable<T extends { id: string }>({
               pageCount={pageCount}
               pageSize={pageSize}
               total={total}
+              pageSizeOptions={pageSizeOptions}
               testId={testId ? `${testId}-pagination` : undefined}
             />
           </div>
@@ -189,6 +194,7 @@ export function DocTable<T extends { id: string }>({
               pageCount={pageCount}
               pageSize={pageSize}
               total={total}
+              pageSizeOptions={pageSizeOptions}
               testId={testId ? `${testId}-pagination` : undefined}
             />
           </div>

@@ -53,9 +53,9 @@ export function DashCreateMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         data-testid={testId}
-        // WO 9.4 §0.3 ข้อ 3 — มือถือ: ปุ่มนี้เปิดแผง "สร้างด่วน" (⌘K) ตรง ๆ แทน dropdown เดิม (จอแคบ dropdown
-        // 2 คอลัมน์อ่านยาก + แผงสร้างด่วนพิมพ์คำเดียวก็ถึงฟอร์มได้เลย) · เดสก์ท็อป: ยังเป็น dropdown เดิม
-        onClick={() => (fullWidth ? openQuickCreate() : setOpen((v) => !v))}
+        // WO 9.1/2.2 (f2): ปุ่มนี้ (เดสก์ท็อป + มือถือ) เปิด dropdown/แผงเดิมเสมอ ค้างอยู่จนกว่าจะเลือก/ปิดเอง
+        // ทางเข้า "สร้างด่วน" (⌘K) เป็นทางเข้า**รอง** แยกต่างหาก — ลิงก์ท้าย dropdown ด้านล่าง (ทุกจอ) หรือกด ⌘K/Ctrl+K
+        onClick={() => setOpen((v) => !v)}
       >
         + สร้างเอกสาร <span aria-hidden>▾</span>
       </button>

@@ -589,6 +589,9 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
         page({ label: "สิทธิ์ผู้ใช้งาน", href: `${base}/settings/permissions`, status: "ready", icon: "users", testId: "SETTINGS_PERMISSIONS" }),
         page({ label: "การเชื่อมต่อ", href: `${base}/settings/connections`, status: "ready", icon: "link", testId: "SETTINGS_CONNECTIONS" }),
         soon("แพ็กเกจและการใช้งาน", "tag", "SETTINGS_PLAN"),
+        // 🔴 10.1: หน้า /account/help มีมาตั้งแต่ WO 9.4 แต่วันนี้เข้าได้แค่ทาง ⌘K (สร้างด่วน) กับเช็กลิสต์หน้าหลัก
+        // (ซึ่งซ่อนไปเมื่อทำครบ) — เพิ่มทางเข้าถาวรในเมนู "ตั้งค่า" ให้หาเจอได้เสมอ
+        page({ label: "วิธีใช้งาน / คู่มือ", href: `${base}/help`, status: "ready", icon: "help", testId: "SETTINGS_HELP" }),
       ],
     },
   ];

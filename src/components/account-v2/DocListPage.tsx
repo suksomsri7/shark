@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MoneyText } from "@/components/ui/MoneyText";
 import { StatusTabs, type StatusTabDef, type TabCounts } from "./StatusTabs";
 import { ListFilters, type ListFiltersValue, type ContactOption } from "./ListFilters";
 import { DocTable, type DocColumn } from "./DocTable";
 import { RowActions, type RowActionItem } from "./RowActions";
 import { CreateSection } from "./CreateSection";
+import { PrintButton } from "./PrintButton";
 import type { QueryLike } from "./url";
 import type { DocTableSelectionAction } from "./DocTableInteractive";
 
@@ -118,6 +120,7 @@ export function DocListPage<T extends { id: string }>({
   testId,
   belowTable,
   errorText,
+  pageSizeOptions,
 }: {
   base: string;
   pathname: string;
@@ -165,6 +168,8 @@ export function DocListPage<T extends { id: string }>({
   belowTable?: React.ReactNode;
   /** ข้อความ error จาก action ก่อนหน้า (?err=) — ไม่ส่ง = ไม่แสดง */
   errorText?: string;
+  /** WO 10.1 — ตัวเลือกจำนวนแถวต่อหน้าของ Pagination (ค่าเริ่มต้น [10,20,50]) — ไม่ส่ง = พฤติกรรมเดิม */
+  pageSizeOptions?: number[];
 }) {
   return (
     <div className="flex flex-col gap-5 pb-28">
@@ -174,7 +179,13 @@ export function DocListPage<T extends { id: string }>({
         actions={
           <>
             <HeaderActionButton label="นำเข้า" href={importHref} />
-            <HeaderActionButton label="พิมพ์รายงาน" href={printReportHref} />
+            {/* 🔴 10.1 (f3): "พิมพ์รายงาน" ต้องกดได้เสมอ (ไม่จาง) — ไม่มีหน้ารายงานเฉพาะทางแยกต่างหากเลยสักหน้า
+                (printReportHref ไม่เคยถูกส่งมาจาก route ไหน) ⇒ ถ้าไม่ได้ส่ง href มา ใช้ window.print() ของรายการนี้แทน */}
+            {printReportHref ? (
+              <HeaderActionButton label="พิมพ์รายงาน" href={printReportHref} />
+            ) : (
+              <PrintButton className="btn-sm shrink-0 whitespace-nowrap" testId={`${testId}-print`} />
+            )}
             {extraHeaderActions}
             {createLabel &&
               (createHref ? (
@@ -234,7 +245,24 @@ export function DocListPage<T extends { id: string }>({
           mobileStatus={mobileStatus}
           mobileDateLine={mobileDateLine}
           rowTestId={rowTestId}
-          footerTotalSatang={footerTotalSatang}
+          // 🔴 10.1 (f3): footer "รวมยอดในหน้านี้ + แสดง n ▾ จาก N รายการ ‹ หน้า …" ต้องอยู่ "ในกรอบการ์ดเดียวกับ
+          // ตาราง" (border-t ต่อท้ายแถวสุดท้าย) ไม่ใช่ลอยแยกใต้การ์ด — ใช้ footerLeft/footerOneLine (ลาย WO 5.4/7.1)
+          // แทน footerTotalSatang ตรง ๆ (ซึ่งเข้า branch footerInsideCard=false ของ DocTable) เพื่อบังคับ inside-card
+          // เสมอ แม้หน้าที่ไม่มีผลรวมให้โชว์ (footerLeft ว่างเป็น <span/> ก็ยังได้ layout เดียวกัน)
+          footerLeft={
+            typeof footerTotalSatang === "number" ? (
+              <span className="text-[color:var(--color-muted)]">
+                รวมยอดในหน้านี้{" "}
+                <span data-testid="page-sum">
+                  <MoneyText satang={footerTotalSatang} decimals />
+                </span>
+              </span>
+            ) : (
+              <span />
+            )
+          }
+          footerOneLine
+          pageSizeOptions={pageSizeOptions}
           page={page}
           pageCount={pageCount}
           pageSize={pageSize}

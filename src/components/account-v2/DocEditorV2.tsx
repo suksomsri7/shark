@@ -1198,7 +1198,8 @@ function EditorBody(props: DocEditorV2Props) {
           actions={depositDeducted > 0 ? <span className="text-sm font-medium tabular-nums">−<MoneyText satang={depositDeducted} decimals /></span> : undefined}
           complete={depositDeducted > 0}
           testId="sec-deposit"
-          mobileDefaultOpen={false}
+          // 🔴 WO 9.1 รอบ 2 เคยยุบการ์ดนี้ไว้ก่อนบนมือถือเหมือนหมายเหตุ/แนบไฟล์ — แต่ปุ่ม "+ เลือกเงินมัดจำ"
+          // เป็น action หลักของ §5.2 D (ไม่ใช่แค่ข้อมูลเสริม) ต้องเห็น/กดได้ทันทีโดยไม่ต้องกางการ์ดก่อน (10.1 WO 1.4)
         >
           <DepositSection
             systemId={props.systemId}
