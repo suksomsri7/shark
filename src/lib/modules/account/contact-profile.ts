@@ -85,6 +85,8 @@ export type ContactProfile = {
   };
   info: {
     taxId: string | null;
+    /** รหัสสาขาดิบ ("00000"/"00001"/…) — `branchLabel` คือข้อความแสดงผลที่ปรุงจากช่องนี้ (WO B2: REST ต้องการทั้งคู่) */
+    branchCode: string | null;
     branchLabel: string;
     address: string | null;
     phone: string | null;
@@ -319,6 +321,7 @@ export async function contactProfile(
     },
     info: {
       taxId: c.taxId,
+      branchCode: c.branchCode,
       branchLabel: branchLabelOf(c.officeType, c.branchCode, c.branchName),
       address: c.address,
       phone: c.phone,
@@ -428,6 +431,19 @@ export async function contactProfile(
   }
 
   return profile;
+}
+
+/**
+ * กลุ่มกำหนดเองที่ผู้ติดต่อรายนี้อยู่ (id+name เท่านั้น) — WO B2 (REST): `GET /contacts/{id}`
+ * ต้องคืน `groups[{id,name}]` แยกจากก้อนโปรไฟล์หลัก (ซึ่งพับเป็น `chips` ที่ไม่มี id ให้ผู้เรียกอ้างต่อ)
+ * แบบสอบถามเดียวกับ [3] ใน `contactProfile` เป๊ะ — ไม่ก๊อปสูตร ไม่แก้พฤติกรรมเดิม
+ */
+export async function listContactGroupsOf(ctx: Ctx, contactId: string): Promise<{ id: string; name: string }[]> {
+  return tenantDb(ctx).accountContactGroup.findMany({
+    where: { members: { some: { contactId } } },
+    select: { id: true, name: true },
+    orderBy: { sortOrder: "asc" },
+  });
 }
 
 // ─────────────────────────── ชิ้นส่วน ───────────────────────────

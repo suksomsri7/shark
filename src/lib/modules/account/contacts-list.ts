@@ -237,6 +237,9 @@ export async function loadContactsSidebar(ctx: Ctx, meter?: QueryMeter): Promise
 
 export type ContactGroupKey =
   | "all"
+  // WO B2 (REST): "ใช้งานอยู่" — ตัวกรองภายในที่ API ใช้เป็นค่าเริ่มต้นเมื่อผู้เรียกไม่ระบุ `group`
+  // (ต่างจาก "all" ของหน้าจอที่รวมที่ปิดใช้งานด้วย — REST ต้องมีค่าเริ่มต้นที่ไม่ทำให้นับผิดความคาดหมาย)
+  | "active"
   | "customer"
   | "regular"
   | "vendor"
@@ -291,6 +294,8 @@ function whereForGroup(group: ContactGroupKey | undefined, regularIds: Set<strin
     case undefined:
     case "all":
       return {};
+    case "active":
+      return { archivedAt: null };
     case "customer":
       return { kind: { in: ["CUSTOMER", "BOTH"] } };
     case "vendor":
@@ -364,7 +369,7 @@ export async function listContactsPage(
   ]);
 
   const GROUP_LABEL: Record<string, string> = {
-    all: "ทั้งหมด", customer: "ลูกค้า", regular: "ลูกค้าประจำ", vendor: "ผู้ขาย", archived: "ปิดใช้งาน",
+    all: "ทั้งหมด", active: "ใช้งานอยู่", customer: "ลูกค้า", regular: "ลูกค้าประจำ", vendor: "ผู้ขาย", archived: "ปิดใช้งาน",
     "source:member": "สมาชิก", "source:crm": "CRM", "source:chat": "แชท", "source:pos": "POS", "source:imported": "นำเข้า",
   };
   const customGroup = sidebar.counts.custom.find((g) => input.group === `custom:${g.id}`);

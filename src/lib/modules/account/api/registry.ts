@@ -8,11 +8,13 @@
 import { API_METHODS, type ApiOp } from "./op";
 import { CORE_OPS } from "./ops/core";
 import { DOCUMENTS_READ_OPS } from "./ops/documents-read";
+import { CONTACTS_READ_OPS } from "./ops/contacts-read";
+import { PRODUCTS_READ_OPS } from "./ops/products-read";
 
 export * from "./op";
 
 /** ทุก op ของ API บัญชี — เรียงตามไฟล์ที่มา */
-export const ACCOUNT_OPS: ApiOp[] = [...CORE_OPS, ...DOCUMENTS_READ_OPS];
+export const ACCOUNT_OPS: ApiOp[] = [...CORE_OPS, ...DOCUMENTS_READ_OPS, ...CONTACTS_READ_OPS, ...PRODUCTS_READ_OPS];
 
 // ── การจับคู่ path ──────────────────────────────────────────────────────────
 type Template = { segments: string[]; paramCount: number };

@@ -1375,12 +1375,16 @@ export async function productMovements(
   });
   return lines.map((l) => ({
     id: l.id,
+    // WO B2 (REST): `GET /products/{id}/movements` ต้องคืนรหัสเอกสารต้นทาง + ต้นทุน/หน่วยที่ตัดจริง —
+    // ทั้งคู่เป็นคอลัมน์ของ `AccountDocumentLine` อยู่แล้ว (ไม่ query เพิ่ม) แค่ไม่เคยถูกส่งออกมาก่อน
+    documentId: l.documentId,
     docNo: l.document.docNo,
     docType: l.document.docType,
     issueDate: l.document.issueDate,
     note: l.document.note,
     qty: Number(l.qty),
     delta: (l.document.docType === "GOODS_ISSUE" ? -1 : 1) * Number(l.qty),
+    unitCost: l.unitCost ?? 0,
   }));
 }
 

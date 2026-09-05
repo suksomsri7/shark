@@ -122,6 +122,11 @@ const ERROR_CODE_DOCS: Record<ApiErrorCode, CodeDoc> = {
     meaning: "The request was understood but cannot be completed as asked.",
     action: "Read `message_en` and `message_th`; the Thai message is safe to show to the shop owner.",
   },
+  upstream_unavailable: {
+    status: 503,
+    meaning: "An external service this operation depends on (for example the DBD company registry lookup) is not configured or not reachable right now.",
+    action: "Retry later, or ask the shop owner to finish configuring the integration; this is not caused by the request itself.",
+  },
 };
 
 // ── glossary ไทย ↔ อังกฤษ ─────────────────────────────────────────────────

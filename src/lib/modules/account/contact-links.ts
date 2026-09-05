@@ -109,6 +109,20 @@ export async function suggestLinks(
   };
 }
 
+/**
+ * ข้อมูลเบา ๆ ของผู้ติดต่อ 1 รายที่ `suggestLinks` ต้องใช้ (phone/email/taxId/partyId) — WO B2 (REST):
+ * `GET /contacts/{id}/link-suggestions` ต้องได้ข้อมูลนี้โดยไม่ต้องคำนวณโปรไฟล์เต็ม (8+ query)
+ */
+export async function getContactForLinking(
+  ctx: Ctx,
+  contactId: string,
+): Promise<{ id: string; phone: string | null; email: string | null; taxId: string | null; partyId: string | null } | null> {
+  return tenantDb(ctx).accountContact.findFirst({
+    where: { id: contactId },
+    select: { id: true, phone: true, email: true, taxId: true, partyId: true },
+  });
+}
+
 export type LinkResult = { ok: true; partyId: string } | { ok: false; reason: string };
 
 /**

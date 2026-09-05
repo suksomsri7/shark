@@ -36,6 +36,7 @@ export const API_ERROR_CODES = [
   "duplicate",
   "forbidden",
   "unprocessable",
+  "upstream_unavailable",
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -153,6 +154,24 @@ export type MappedError = {
   message_en: string;
 };
 
+/**
+ * error ที่ handler ต้องการชี้ status/code ตรง ๆ (WO B2 — DBD ไม่มีกุญแจ/ล่ม ⇒ 503 `upstream_unavailable`,
+ * ไม่ใช่ 422 ทั่วไปที่ `mapError` เดาจากคำไทย) · `mapError` มองหาชนิดนี้ก่อนสิ่งอื่นเสมอ
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: ApiErrorCode;
+  readonly message_th: string;
+  readonly message_en: string;
+  constructor(status: number, code: ApiErrorCode, message_th: string, message_en: string) {
+    super(message_en);
+    this.status = status;
+    this.code = code;
+    this.message_th = message_th;
+    this.message_en = message_en;
+  }
+}
+
 /** ข้อความไทยกลางเมื่อ error ไม่ปลอดภัยพอจะโชว์ (กันข้อความเทคนิครั่ว) */
 const GENERIC_TH = ERR.GENERIC_ACTION_FAILED;
 const GENERIC_EN = "The request could not be processed.";
@@ -176,6 +195,9 @@ function isZodError(e: unknown): boolean {
  *   ไม่ใช่ไทย/ไม่รู้จัก         → 422 unprocessable + ข้อความไทยกลาง (ห้ามส่งของดิบออก)
  */
 export function mapError(e: unknown): MappedError {
+  if (e instanceof ApiError) {
+    return { status: e.status, code: e.code, message_th: e.message_th, message_en: e.message_en };
+  }
   if (isZodError(e)) {
     return {
       status: 422,

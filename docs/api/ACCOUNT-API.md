@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 15 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 30 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -62,12 +62,121 @@ Branch on `error.code`, never on the message text.
 | `duplicate` | 409 | A conflicting record already exists (duplicate number, code or link). | Reuse the existing record, or send a different unique value. |
 | `forbidden` | 403 | The operation is refused by a business rule, not by the scope check. | Read `message_en`; this usually needs a settings change by the shop owner. |
 | `unprocessable` | 422 | The request was understood but cannot be completed as asked. | Read `message_en` and `message_th`; the Thai message is safe to show to the shop owner. |
+| `upstream_unavailable` | 503 | An external service this operation depends on (for example the DBD company registry lookup) is not configured or not reachable right now. | Retry later, or ask the shop owner to finish configuring the integration; this is not caused by the request itself. |
 
 ## Operations
 
 ### Read operations
 
 Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited.
+
+#### `categories.list`
+
+**GET /categories** - Product/document categories of this accounting book. · scope: `account.doc.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `includeArchived` | enum("true", "false") | no | "true" or "false". Default false. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/categories" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `contact-groups.list`
+
+**GET /contact-groups** - Custom contact groups of this accounting book, with member counts. · scope: `account.doc.view` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/contact-groups" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `contacts.documents`
+
+**GET /contacts/{id}/documents** - Documents of one contact, any type, newest first. · scope: `account.doc.view` · read
+
+Path parameters: `id` (required).
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `type` | enum("QUOTATION", "INVOICE", "RECEIPT", "TAX_INVOICE", "TAX_INVOICE_ABB", "DEPOSIT_RECEIPT", "CREDIT_NOTE", "DEBIT_NOTE", "BILLING_NOTE", "PURCHASE", "EXPENSE", "PURCHASE_ORDER", "ASSET_PURCHASE_ORDER", "ASSET_PURCHASE", "PURCHASE_TAX_INVOICE", "DEPOSIT_PAYMENT", "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED", "COMBINED_PAYMENT", "GOODS_ISSUE", "GOODS_ISSUE_RETURN", "COST_ADJUSTMENT", "WHT_CERT") | no | - |
+| `page` | integer | no | min 1 |
+| `pageSize` | integer | no | - |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/contacts/123/documents" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `contacts.link-suggestions`
+
+**GET /contacts/{id}/link-suggestions** - Member and CRM records that might be the same person as this contact, guessed from phone/email/tax id. · scope: `account.contact.manage` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/contacts/123/link-suggestions" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `contacts.get`
+
+**GET /contacts/{id}** - One contact profile: header, info, KPI, latest documents, custom groups and links to member/CRM/chat. · scope: `account.doc.view` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/contacts/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `contacts.lookup-tax-id`
+
+**GET /contacts/lookup-tax-id/{taxId}** - Look up a Thai juristic person by 13 digit tax id at the Department of Business Development (DBD). · scope: `account.contact.manage` · read
+
+Path parameters: `taxId` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/contacts/lookup-tax-id/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `contacts.merge-candidates`
+
+**GET /contacts/merge-candidates** - Pairs of contacts that look like duplicates (same tax id, same phone, or a very similar name). · scope: `account.contact.merge` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/contacts/merge-candidates" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `contacts.list`
+
+**GET /contacts** - List contacts (customers and vendors) with the sidebar filters, search and paging. · scope: `account.doc.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `q` | string | no | Free text: name, tax id, phone or email. · max length 200 |
+| `group` | string | no | Sidebar group filter. Default: contacts that are not archived (equivalent to "all" minus "archived"). · max length 80 |
+| `legalType` | enum("COMPANY", "PERSON") | no | - |
+| `page` | integer | no | min 1 |
+| `pageSize` | integer | no | - |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/contacts" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
 
 #### `dashboard.series`
 
@@ -212,6 +321,78 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/ping" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `products.bundle`
+
+**GET /products/{id}/bundle** - Recipe of one bundle product: its components and quantities. · scope: `account.doc.view` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/products/123/bundle" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `products.movements`
+
+**GET /products/{id}/movements** - Stock movements (issue/return) of one product, newest first. · scope: `account.doc.view` · read
+
+Path parameters: `id` (required).
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `take` | integer | no | min 1 · max 500 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/products/123/movements" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `products.opening-lots`
+
+**GET /products/{id}/opening-lots** - Opening balance lots of one product (quantity and unit cost per lot). · scope: `account.doc.view` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/products/123/opening-lots" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `products.get`
+
+**GET /products/{id}** - One product/service/bundle in full: accounts, bundle recipe, opening lots and inventory link. · scope: `account.doc.view` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/products/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `products.list`
+
+**GET /products** - List goods, services and bundles with type/sub-tab filters, search, category and paging. · scope: `account.doc.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `type` | enum("GOODS", "SERVICE", "BUNDLE") | no | Omit to get every type. |
+| `sub` | enum("active", "archived") | no | Default "active". |
+| `q` | string | no | max length 200 |
+| `category` | string | no | max length 120 |
+| `page` | integer | no | min 1 |
+| `pageSize` | integer | no | - |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/products" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `recurring.runs`
 
 **GET /recurring/{id}/runs** - Documents that one recurring rule has already produced, newest first. · scope: `account.doc.view` · read
@@ -244,6 +425,30 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/tags" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `units.list`
+
+**GET /units** - Units of measure for products and services. · scope: `account.doc.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `includeArchived` | enum("true", "false") | no | "true" or "false". Default false. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/units" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `warehouses.list`
+
+**GET /warehouses** - Warehouses (stock locations) of this shop, when the inventory module is enabled. · scope: `account.doc.view` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/warehouses" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 

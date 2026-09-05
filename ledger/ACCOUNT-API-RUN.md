@@ -7,17 +7,17 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | B2 |
+| WO | B3 |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable (oracle เขียนแล้ว) → Sonnet (builder) |
-| ขั้นที่ถึง | 5 ก.ย. ~12:40 UTC: B1 DONE (Fable รันเอง read-docs 50/50 · openapi 26/26 · core 64/64 · typecheck 0 · fitness 20/20 · รอบ 2 เพิ่ม asOf + พ้นกำหนดแยก AR/AP) · **สั่ง Sonnet ทำ B2** |
-| commit ล่าสุดของงานนี้ | (B1 commit ถัดไป) |
+| ขั้นที่ถึง | 5 ก.ย. ~13:30 UTC: B2 DONE (Fable รันเอง read-master 38/38 · read-docs 50 · openapi 26 · typecheck 0 · fitness 20 **แบบไม่มี env** หลังแก้ lazy import contact-profile) · **สั่ง Sonnet ทำ B3** |
+| commit ล่าสุดของงานนี้ | (B2 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
 ## กติกาของ run นี้ (สืบทอดจาก ACCOUNT-V2-RUN + เพิ่ม)
 1. **เครื่อง**: VPS 2 core · cgroup claude-remote MemoryMax 5G · **งานหนัก (tsc / next build / qc:all / agent ที่รัน tsc) ทีละ 1 อย่างทั้งเครื่อง** · sub-agent ขนานสูงสุด 1 ตัว (ตัวที่ 2 เฉพาะงานอ่าน/เอกสารที่ไม่รัน tsc) · ก่อนสั่ง build/tsc: `ps -eo rss,args --sort=-rss | head` ต้องไม่มี tsc/next/tsx หนักค้าง · build ผ่าน `scripts/with-gate-lock.sh` เสมอ · Fable เช็ค `uptime` + `free -m` ก่อนทุก WO
 2. **DB**: ทุกสคริปต์ใหม่ใช้ Neon branch QC `ep-plain-art` ผ่าน `scripts/acc-v2-env.mts loadQcEnv()` (ชุด acc-v2) หรือ `scripts/qc-env-guard.mts loadLegacyQcEnv()` · **ห้าม `pnpm neon:gc`** · ห้าม `source .env` (URL มี `&`) · migration สร้างด้วย `prisma migrate diff --from-config-datasource --to-schema prisma/schema --script` โดย `DIRECT_URL` ชี้ QC แล้ว apply บน QC ก่อน · additive เท่านั้น · push ทันทีที่สร้าง (session แชทอาจสร้าง migration พร้อมกัน)
-3. **ลำดับต่อ WO**: Fable เขียน oracle (ข้อสอบ) ก่อน → spawn builder (model ตามตาราง) พร้อม prompt ที่ชี้ไฟล์/สัญญา/ข้อสอบ → builder ทำ + รัน oracle/typecheck/fitness/ด่านเก่าที่เกี่ยว + เขียน `wo-notes/api-<WO>.md` **ห้าม commit** → Fable ตรวจรับเอง: รัน oracle ซ้ำ + อ่าน diff จุด security + (UI) build+ถ่ายภาพจริงดูตา + `pnpm qc:all` ก่อนปิดเฟส → Fable commit + push (`session/accounting` → ff `main`) → อัปเดตตารางนี้
+3. **ลำดับต่อ WO** (Fable ตรวจรับต้องรัน `pnpm fitness` แบบ `env -u DATABASE_URL -u DIRECT_URL -u SESSION_SECRET` ด้วยเสมอ): Fable เขียน oracle (ข้อสอบ) ก่อน → spawn builder (model ตามตาราง) พร้อม prompt ที่ชี้ไฟล์/สัญญา/ข้อสอบ → builder ทำ + รัน oracle/typecheck/fitness/ด่านเก่าที่เกี่ยว + เขียน `wo-notes/api-<WO>.md` **ห้าม commit** → Fable ตรวจรับเอง: รัน oracle ซ้ำ + อ่าน diff จุด security + (UI) build+ถ่ายภาพจริงดูตา + `pnpm qc:all` ก่อนปิดเฟส → Fable commit + push (`session/accounting` → ff `main`) → อัปเดตตารางนี้
 4. **builder ห้าม**: commit · แตะ `.env` · รัน qc ที่โหลด `.env` · แก้ oracle ของ Fable (ยกเว้น Fable สั่ง) · เพิ่ม `any` · import prisma ตรงในโมดูล (F5) · ล้วง `account/*` จากนอกโมดูล (F2.2) · รัน tsc ซ้อนกับ next build
 5. **หลักฐานที่ Fable ยอมรับ**: ผล oracle ที่ Fable รันเอง · diff ที่อ่านแล้ว · PNG ที่ดูแล้ว · curl จริงต่อ server QC (`acc-v2-serve.sh` พอร์ต 3215) — รายงานของ agent ไม่นับ
 6. **session ตาย**: ledger นี้ + wo-notes อัปเดตทุกขั้น · ไฟล์ dirty สำรอง `git stash`/`/root/backups/` ก่อนงานเสี่ยง · ข้อสอบห้ามผูก "วันที่ N" (oracle เน่าตามเวลา)
@@ -31,8 +31,8 @@
 | A3 | `account/api/`: actor · `requireAccountApi` · envelope/error/requestId · idempotency · registry · catch-all route · rate limit DB | Opus | DONE | (HEAD) | Fable รันเอง core 64/64 · keys 51 · public-api 18 · chat-api-v1 89 (agent) · typecheck 0 · fitness 17 · ไฟล์ `api/{actor,respond,op,registry,require,idempotency,dispatch}.ts` + `ops/core.ts` + route catch-all · หนี้: แถว idempotency status null ค้าง (process ตาย) บล็อก key นั้น 24 ชม. → เพิ่ม stale>5 นาที=จองใหม่ ใน B/C · danger op จริงต้องมี `reason` ใน schema |
 | A4 | generator OpenAPI + `/api/v1/account/openapi.json` + `gen-account-api-docs.mts` + fitness F13 (ทุก op มี test id) | Opus | DONE | (HEAD) | Fable รันเอง openapi 26/26 · core 64 · typecheck 0 · fitness 20/20 · zod v4 `z.toJSONSchema` ไม่เพิ่ม package · `API_ERROR_CODES` + `ERROR_CODE_DOCS` ใน respond.ts (เพิ่ม code ใหม่ต้องเติมคำอธิบาย+regenerate docs ไม่งั้น F13.2 แดง) · ⚠️ คู่มือเขียน pagination เป็น cursor — **B1 ต้องแก้ generator ให้ตรงของจริง (page/pageSize + page{page,pageSize,pageCount,total,hasMore})** |
 | B1 | READ เอกสาร: list/get/print/tags/favorites/attachments/parse/recurring/dashboard/overview | Opus | DONE | (HEAD) | Fable รันเอง read-docs 50/50 · openapi 26 · core 64 · list 159/dashboard 174 (agent) · typecheck 0 · fitness 20 · ตีกลับ 1 รอบ: ผมแก้ oracle A4 (glob) · เพิ่มสัญญา `asOf` + `kpi.overdue{receivable,payable}` · ซอง `paged()` symbol marker · `ListDocumentsInput.refType/refId` additive · **หมายเหตุ: ตัวเลข dashboard ผูกวันจริง ต้องส่ง asOf เมื่อเทียบเฉลย** |
-| B2 | READ ผู้ติดต่อ/สินค้า/หน่วย/กลุ่ม/merge-candidates/DBD/link-suggestions | Sonnet | IN_PROGRESS | — | oracle `qc-account-api-read-master.mts` |
-| B3 | READ การเงิน: finance-accounts/statement/overview/calendar/payment-requests/reconcile/cheques/wht | Sonnet | TODO | — | |
+| B2 | READ ผู้ติดต่อ/สินค้า/หน่วย/กลุ่ม/merge-candidates/DBD/link-suggestions | Sonnet | DONE | (HEAD) | Fable รันเอง read-master 38/38 · read-docs 50 · openapi 26 · contacts 49/products 100 (agent) · typecheck 0 · fitness 20 · 🐞 Fable จับ: `contacts-read.ts` import `contact-profile` static → ลาก ui/session → **fitness พังเมื่อไม่มี .env** (agent รันมี env เลยไม่เห็น) → แก้เป็น lazy import · เพิ่ม `ApiError` class + `upstream_unavailable` · `ContactGroupKey` เพิ่ม `active` (ภายใน) · `products.list` ไม่ส่ง type = รวม 3 ชนิด ≤100/ชนิด (ข้อจำกัดจดไว้) |
+| B3 | READ การเงิน: finance-accounts/statement/overview/calendar/payment-requests/reconcile/cheques/wht | Sonnet | IN_PROGRESS | — | oracle `qc-account-api-read-finance.mts` |
 | B4 | READ บัญชี: chart/journal/general-ledger(ย้ายจาก page → service)/รายงาน 6 ตัว JSON+CSV/periods/assets/audit/settings/policy/links/files/inbox/help | Opus | TODO | — | เทียบ `qc-account-cpa` |
 | C1 | WRITE เอกสาร: create/patch/delete/issue/convert/respond/deposits/public-link/tags/attachments/email/remind/approval/receive | Opus | TODO | — | E2E QT→IV→RE+TX ผ่าน REST |
 | C2 | WRITE payments/void/refund-deposit/payment-requests/group docs | Opus | TODO | — | row-lock ยิงพร้อมกัน |
@@ -370,6 +370,7 @@ event ที่เหลือ (D4): `account.cheque.changed` (ทุก transit
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 5 ก.ย. ~13:30 UTC — B2 ปิด (Sonnet 21 นาที) · บทเรียน: **Fable ต้องรัน fitness แบบ `env -u DATABASE_URL -u DIRECT_URL -u SESSION_SECRET` ทุก WO** (agent มี env เสมอ จับ eager import ไม่ได้) · ความคืบหน้า 6/24 = 25% · เริ่ม B3
 - 5 ก.ย. ~12:40 UTC — B1 ปิด (Opus 20+4 นาที · ตีกลับ 1 รอบ) · ความคืบหน้า 5/24 = 21% · เริ่ม B2
 - 5 ก.ย. ~11:45 UTC — A2 ปิด (Sonnet 19 นาที) · **เฟส A ปิด** · ความคืบหน้า 4/24 = 17% · เริ่ม B1
 - 5 ก.ย. ~10:20 UTC — A4 ปิด (Opus 13 นาที รอบเดียว) · เริ่ม A2 · ความคืบหน้า 3/24 = 12.5%
