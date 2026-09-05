@@ -109,7 +109,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/assets/depreciation/preview"
 
 #### `assets.list`
 
-**GET /assets** - Fixed asset register with cost, monthly depreciation, accumulated depreciation and net book value. · scope: `account.asset.manage` · read
+**GET /assets** - Fixed asset register with cost, monthly depreciation, accumulated depreciation and net book value. · scope: `account.asset.manage` · read · AI tool: `account_assets`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -168,7 +168,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/chart/123" \
 
 #### `chart.list`
 
-**GET /chart** - The whole chart of accounts: a flat list, the 3-level tree and balances per account type. · scope: `account.journal.view` · read
+**GET /chart** - The whole chart of accounts: a flat list, the 3-level tree and balances per account type. · scope: `account.journal.view` · read · AI tool: `account_chart_of_accounts`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -256,7 +256,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/contacts/123/link-suggestion
 
 #### `contacts.get`
 
-**GET /contacts/{id}** - One contact profile: header, info, KPI, latest documents, custom groups and links to member/CRM/chat. · scope: `account.doc.view` · read
+**GET /contacts/{id}** - One contact profile: header, info, KPI, latest documents, custom groups and links to member/CRM/chat. · scope: `account.doc.view` · read · AI tool: `account_get_contact`
 
 Path parameters: `id` (required).
 
@@ -293,7 +293,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/contacts/merge-candidates" \
 
 #### `contacts.list`
 
-**GET /contacts** - List contacts (customers and vendors) with the sidebar filters, search and paging. · scope: `account.doc.view` · read
+**GET /contacts** - List contacts (customers and vendors) with the sidebar filters, search and paging. · scope: `account.doc.view` · read · AI tool: `account_search_contacts`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -323,7 +323,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/dashboard/series" \
 
 #### `dashboard.get`
 
-**GET /dashboard** - Everything the accounting home screen shows in one call: KPI, receivable and payable, cash, categories, pending work and recent documents. · scope: `account.doc.view` · read
+**GET /dashboard** - Everything the accounting home screen shows in one call: KPI, receivable and payable, cash, categories, pending work and recent documents. · scope: `account.doc.view` · read · AI tool: `account_dashboard`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -388,7 +388,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/documents/123/payments" \
 
 #### `documents.get`
 
-**GET /documents/{id}** - One document in full: lines, payments, related documents, timeline, journal entries and attachments. · scope: `account.doc.view` · read
+**GET /documents/{id}** - One document in full: lines, payments, related documents, timeline, journal entries and attachments. · scope: `account.doc.view` · read · AI tool: `account_get_document`
 
 Path parameters: `id` (required).
 
@@ -415,7 +415,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/documents/group-candidates?t
 
 #### `documents.parse`
 
-**POST /documents/parse** - Turn one line of free text into a document draft intent: type, contact candidates and amount. Reads only. · scope: `account.doc.view` · read
+**POST /documents/parse** - Turn one line of free text into a document draft intent: type, contact candidates and amount. Reads only. · scope: `account.doc.view` · read · AI tool: `account_parse_quick_create`
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -430,7 +430,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/documents/parse" \
 
 #### `documents.list`
 
-**GET /documents** - List documents of any type (sales and purchase side) with filters, paging and tab counters. · scope: `account.doc.view` · read
+**GET /documents** - List documents of any type (sales and purchase side) with filters, paging and tab counters. · scope: `account.doc.view` · read · AI tool: `account_list_documents`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -525,7 +525,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/finance-accounts/123" \
 
 #### `finance-accounts.list`
 
-**GET /finance-accounts** - Every cash/bank/e-wallet/petty-cash channel with its balance, grouped by kind. · scope: `account.finance.manage` · read
+**GET /finance-accounts** - Every cash/bank/e-wallet/petty-cash channel with its balance, grouped by kind. · scope: `account.finance.manage` · read · AI tool: `account_finance_balances`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -612,7 +612,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/journal/123" \
 
 #### `journal.list`
 
-**GET /journal** - Journal entries with paging, plus entry counts per book and debit/credit totals for the filtered range. · scope: `account.journal.view` · read
+**GET /journal** - Journal entries with paging, plus entry counts per book and debit/credit totals for the filtered range. · scope: `account.journal.view` · read · AI tool: `account_list_journal`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -784,7 +784,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/products/123" \
 
 #### `products.list`
 
-**GET /products** - List goods, services and bundles with type/sub-tab filters, search, category and paging. · scope: `account.doc.view` · read
+**GET /products** - List goods, services and bundles with type/sub-tab filters, search, category and paging. · scope: `account.doc.view` · read · AI tool: `account_search_products`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -908,7 +908,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/reports/general-ledger?accou
 
 #### `reports.profit-loss`
 
-**GET /reports/profit-loss** - Profit and loss: revenue, cost of goods sold and expenses, with gross and net profit. Supports CSV. · scope: `account.report.view` · read
+**GET /reports/profit-loss** - Profit and loss: revenue, cost of goods sold and expenses, with gross and net profit. Supports CSV. · scope: `account.report.view` · read · AI tool: `account_report`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -984,7 +984,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/settings/policy" \
 
 #### `settings.get`
 
-**GET /settings** - Company details printed on documents: legal name, tax id, branch, address, VAT registration and fiscal year. · scope: `account.doc.view` · read
+**GET /settings** - Company details printed on documents: legal name, tax id, branch, address, VAT registration and fiscal year. · scope: `account.doc.view` · read · AI tool: `account_settings`
 
 No query parameters.
 
@@ -1108,7 +1108,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/wht/pnd?type=-90071992547409
 
 #### `wht.list`
 
-**GET /wht** - Withholding tax certificates (50 Tawi / WTI), either direction, with paging and totals. · scope: `account.tax.view` · read
+**GET /wht** - Withholding tax certificates (50 Tawi / WTI), either direction, with paging and totals. · scope: `account.tax.view` · read · AI tool: `account_wht_summary`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -1131,7 +1131,7 @@ Change data. `Idempotency-Key` is required and every success is written to the a
 
 #### `assets.depreciation-run`
 
-**POST /assets/depreciation/run** - Run monthly depreciation for a period and post the journal entry for it. Safe to call again: an asset that already has the period posted comes back under skipped, so nothing is booked twice. Preview the same period first to see what it will do. · scope: `account.asset.manage` · write
+**POST /assets/depreciation/run** - Run monthly depreciation for a period and post the journal entry for it. Safe to call again: an asset that already has the period posted comes back under skipped, so nothing is booked twice. Preview the same period first to see what it will do. · scope: `account.asset.manage` · write · AI tool: `account_run_depreciation`
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -1464,7 +1464,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/contacts/123" \
 
 #### `contacts.update`
 
-**PATCH /contacts/{id}** - Change a contact. Only the fields that are sent are changed. · scope: `account.contact.manage` · write
+**PATCH /contacts/{id}** - Change a contact. Only the fields that are sent are changed. · scope: `account.contact.manage` · write · AI tool: `account_update_contact`
 
 Path parameters: `id` (required).
 
@@ -1515,7 +1515,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/contacts/merge-candidates/d
 
 #### `contacts.create`
 
-**POST /contacts** - Create a customer or vendor. A matching tax id + branch code returns 409; a matching phone or name still creates the contact but returns warnings. · scope: `account.contact.manage` · write
+**POST /contacts** - Create a customer or vendor. A matching tax id + branch code returns 409; a matching phone or name still creates the contact but returns warnings. · scope: `account.contact.manage` · write · AI tool: `account_create_contact`
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -1565,7 +1565,7 @@ curl -sS -X PUT "https://shark.in.th/api/v1/account/doc-type-accounts/123" \
 
 #### `documents.approve`
 
-**POST /documents/{id}/approve** - Approve a purchase order that is waiting for approval. · scope: `account.doc.approve` · write
+**POST /documents/{id}/approve** - Approve a purchase order that is waiting for approval. · scope: `account.doc.approve` · write · AI tool: `account_approve_document`
 
 Path parameters: `id` (required).
 
@@ -1593,7 +1593,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/documents/123/attachments
 
 #### `documents.add-attachment`
 
-**POST /documents/{id}/attachments** - Attach a file that is already hosted somewhere to a document, by URL. · scope: `account.doc.create` · write
+**POST /documents/{id}/attachments** - Attach a file that is already hosted somewhere to a document, by URL. · scope: `account.doc.create` · write · AI tool: `account_upload_file`
 
 Path parameters: `id` (required).
 
@@ -1615,7 +1615,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/attachments" 
 
 #### `documents.convert`
 
-**POST /documents/{id}/convert** - Create the follow up document of an issued one, for example quotation to invoice or invoice to receipt. The new document starts as a draft. · scope: `account.doc.create` · write
+**POST /documents/{id}/convert** - Create the follow up document of an issued one, for example quotation to invoice or invoice to receipt. The new document starts as a draft. · scope: `account.doc.create` · write · AI tool: `account_convert_document`
 
 Path parameters: `id` (required).
 
@@ -1651,7 +1651,7 @@ curl -sS -X PUT "https://shark.in.th/api/v1/account/documents/123/deposits" \
 
 #### `documents.issue`
 
-**POST /documents/{id}/issue** - Issue a draft: it takes the next document number and posts to the ledger. A purchase order is sent for approval instead. · scope: `account.doc.issue` · write
+**POST /documents/{id}/issue** - Issue a draft: it takes the next document number and posts to the ledger. A purchase order is sent for approval instead. · scope: `account.doc.issue` · write · AI tool: `account_issue_document`
 
 Path parameters: `id` (required).
 
@@ -1665,7 +1665,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/issue" \
 
 #### `documents.public-link`
 
-**POST /documents/{id}/public-link** - Create (or reuse) the public link where the customer can see the document and ask for a tax invoice. · scope: `account.doc.public_link` · write
+**POST /documents/{id}/public-link** - Create (or reuse) the public link where the customer can see the document and ask for a tax invoice. · scope: `account.doc.public_link` · write · AI tool: `account_create_payment_link`
 
 Path parameters: `id` (required).
 
@@ -1711,7 +1711,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/reject" \
 
 #### `documents.remind`
 
-**POST /documents/{id}/remind** - Email the contact a payment reminder for this document, with a link to it. · scope: `account.doc.view` · write
+**POST /documents/{id}/remind** - Email the contact a payment reminder for this document, with a link to it. · scope: `account.doc.view` · write · AI tool: `account_email_document`
 
 Path parameters: `id` (required).
 
@@ -1805,7 +1805,7 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/account/documents/123" \
 
 #### `documents.create`
 
-**POST /documents** - Create a document as a draft: quotation, invoice, deposit, credit or debit note, expense, purchase, purchase order, or a grouped billing note. · scope: `account.doc.create` · write
+**POST /documents** - Create a document as a draft: quotation, invoice, deposit, credit or debit note, expense, purchase, purchase order, or a grouped billing note. · scope: `account.doc.create` · write · AI tool: `account_create_document`
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -2008,7 +2008,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/finance-accounts" \
 
 #### `finance.transfer`
 
-**POST /finance-transfers** - Move money between two of your own channels, such as a cash deposit into the bank. One journal entry is posted. Sending the same Idempotency-Key again returns the first transfer instead of moving the money twice. · scope: `account.finance.manage` · write
+**POST /finance-transfers** - Move money between two of your own channels, such as a cash deposit into the bank. One journal entry is posted. Sending the same Idempotency-Key again returns the first transfer instead of moving the money twice. · scope: `account.finance.manage` · write · AI tool: `account_transfer_funds`
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -2092,7 +2092,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/inbox/123/create-expense" \
 
 #### `inbox.read`
 
-**POST /inbox/{fileId}/read** - Have the AI assistant read one inbox photo and extract vendor, dates and amounts. Cached after the first successful read unless force is sent. · scope: `account.document.manage` · write
+**POST /inbox/{fileId}/read** - Have the AI assistant read one inbox photo and extract vendor, dates and amounts. Cached after the first successful read unless force is sent. · scope: `account.document.manage` · write · AI tool: `account_read_bill_image`
 
 Path parameters: `fileId` (required).
 
@@ -2146,7 +2146,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/journal/123/flag" \
 
 #### `journal.create`
 
-**POST /journal** - Post a manual journal entry. Total debit must equal total credit and the entry must fall in a period that is still open. The entry is posted straight away, it is not a draft. · scope: `account.journal.adjust` · write
+**POST /journal** - Post a manual journal entry. Total debit must equal total credit and the entry must fall in a period that is still open. The entry is posted straight away, it is not a draft. · scope: `account.journal.adjust` · write · AI tool: `account_post_journal`
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -2292,7 +2292,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/payments/group" \
 
 #### `payments.record`
 
-**POST /payments** - Record money received or paid against a document, with optional withholding tax, bank fee and cheque. The ledger, the document status and the finance account balance all move together. · scope: `account.payment.record` · write
+**POST /payments** - Record money received or paid against a document, with optional withholding tax, bank fee and cheque. The ledger, the document status and the finance account balance all move together. · scope: `account.payment.record` · write · AI tool: `account_record_payment`
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -2309,7 +2309,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/payments" \
 
 #### `periods.close`
 
-**POST /periods/{key}/close** - Close one accounting period. The pre-close checklist runs first: the suspense account must be clear and no entry in the period may still be flagged for review. Once closed nothing can be posted into it any more. · scope: `account.period.close` · write
+**POST /periods/{key}/close** - Close one accounting period. The pre-close checklist runs first: the suspense account must be clear and no entry in the period may still be flagged for review. Once closed nothing can be posted into it any more. · scope: `account.period.close` · write · AI tool: `account_close_period`
 
 Path parameters: `key` (required).
 
@@ -2506,7 +2506,7 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/account/products/123" \
 
 #### `products.create`
 
-**POST /products** - Create a good, service or bundle. A matching SKU returns 409. · scope: `account.product.manage` · write
+**POST /products** - Create a good, service or bundle. A matching SKU returns 409. · scope: `account.product.manage` · write · AI tool: `account_create_product`
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -2777,7 +2777,7 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/account/recurring/123" \
 
 #### `recurring.create`
 
-**POST /recurring** - Create a rule that produces the same document every week, month, quarter or year. · scope: `account.doc.create` · write
+**POST /recurring** - Create a rule that produces the same document every week, month, quarter or year. · scope: `account.doc.create` · write · AI tool: `account_create_recurring`
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -2982,7 +2982,7 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/account/settings/policy" \
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
 | `name` | string | yes | min length 1 · max length 40 |
-| `color` | string | yes | One of slate, blue, green, amber, red, purple, or a 6-digit hex color such as #ff0000. · min length 1 · max length 20 |
+| `color` | enum("slate", "blue", "green", "amber", "red", "purple") | yes | Tag swatch. One of slate, blue, green, amber, red, purple (the 6 design tokens the app renders; hex colors are not accepted). |
 | `docTypes` | array of string | yes | Document types this tag applies to. Empty means every type. |
 
 ```bash
@@ -2990,7 +2990,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/settings/tags" \
   -H "Authorization: Bearer $SHARK_API_KEY" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
-  -d '{"name":"example name","color":"example color","docTypes":[]}'
+  -d '{"name":"example name","color":"slate","docTypes":[]}'
 ```
 
 #### `settings.update`
@@ -3039,7 +3039,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/stock-documents/123/approve
 
 #### `stock-documents.create`
 
-**POST /stock-documents** - Create a goods issue, goods issue return, or cost adjustment document. Goods issue/return post immediately unless asDraft is true. · scope: `account.product.manage` · write
+**POST /stock-documents** - Create a goods issue, goods issue return, or cost adjustment document. Goods issue/return post immediately unless asDraft is true. · scope: `account.product.manage` · write · AI tool: `account_issue_goods`
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -3259,7 +3259,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/cheques/123/void" \
 
 #### `contacts.merge`
 
-**POST /contacts/merge** - Merge two contacts into one. Every document, ledger line, group and recurring rule of the second contact moves to the first; the second is archived and points to the first. · scope: `account.contact.merge` · danger
+**POST /contacts/merge** - Merge two contacts into one. Every document, ledger line, group and recurring rule of the second contact moves to the first; the second is archived and points to the first. · scope: `account.contact.merge` · danger · AI tool: `account_merge_contacts`
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -3315,7 +3315,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/refund-deposi
 
 #### `documents.void`
 
-**POST /documents/{id}/void** - Void an issued document. The ledger entry is reversed with a new journal entry; nothing is deleted. · scope: `account.doc.void` · danger
+**POST /documents/{id}/void** - Void an issued document. The ledger entry is reversed with a new journal entry; nothing is deleted. · scope: `account.doc.void` · danger · AI tool: `account_void_document`
 
 Path parameters: `id` (required).
 
@@ -3372,7 +3372,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/links/123" \
 
 #### `payments.void`
 
-**POST /payments/{paymentId}/void** - Reverse one recorded payment. A reversing journal entry is written; nothing is deleted and the document goes back to awaiting payment. · scope: `account.payment.void` · danger
+**POST /payments/{paymentId}/void** - Reverse one recorded payment. A reversing journal entry is written; nothing is deleted and the document goes back to awaiting payment. · scope: `account.payment.void` · danger · AI tool: `account_void_payment`
 
 Path parameters: `paymentId` (required).
 
@@ -3412,7 +3412,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/payments/group/123/void" \
 
 #### `periods.reopen`
 
-**POST /periods/{key}/reopen** - Reopen a closed period so entries can be posted into it again. Every reopen is stamped in the period log with the reason, because auditors ask about periods that were opened after they were closed. · scope: `account.period.reopen` · danger
+**POST /periods/{key}/reopen** - Reopen a closed period so entries can be posted into it again. Every reopen is stamped in the period log with the reason, because auditors ask about periods that were opened after they were closed. · scope: `account.period.reopen` · danger · AI tool: `account_reopen_period`
 
 Path parameters: `key` (required).
 
@@ -3504,6 +3504,52 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/account/wht/filings/123/123" \
   -H "Content-Type: application/json" \
   -d '{"reason":"reason for the audit log","confirm":true}'
 ```
+
+## AI tools
+
+36 of these operations are also exposed to the SHARK assistant as tools of the `account` skill.
+Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
+
+`account_report` covers all seven reporting operations through its `kind` argument (`trial-balance`, `profit-loss`, `balance-sheet`, `cash-flow`, `vat-pp30`, `aging`, `general-ledger`).
+
+| Tool | Operation | Class | Scope |
+| --- | --- | --- | --- |
+| `account_approve_document` | `documents.approve` | write | `account.doc.approve` |
+| `account_assets` | `assets.list` | read | `account.asset.manage` |
+| `account_chart_of_accounts` | `chart.list` | read | `account.journal.view` |
+| `account_close_period` | `periods.close` | write | `account.period.close` |
+| `account_convert_document` | `documents.convert` | write | `account.doc.create` |
+| `account_create_contact` | `contacts.create` | write | `account.contact.manage` |
+| `account_create_document` | `documents.create` | write | `account.doc.create` |
+| `account_create_payment_link` | `documents.public-link` | write | `account.doc.public_link` |
+| `account_create_product` | `products.create` | write | `account.product.manage` |
+| `account_create_recurring` | `recurring.create` | write | `account.doc.create` |
+| `account_dashboard` | `dashboard.get` | read | `account.doc.view` |
+| `account_email_document` | `documents.remind` | write | `account.doc.view` |
+| `account_finance_balances` | `finance-accounts.list` | read | `account.finance.manage` |
+| `account_get_contact` | `contacts.get` | read | `account.doc.view` |
+| `account_get_document` | `documents.get` | read | `account.doc.view` |
+| `account_issue_document` | `documents.issue` | write | `account.doc.issue` |
+| `account_issue_goods` | `stock-documents.create` | write | `account.product.manage` |
+| `account_list_documents` | `documents.list` | read | `account.doc.view` |
+| `account_list_journal` | `journal.list` | read | `account.journal.view` |
+| `account_merge_contacts` | `contacts.merge` | danger | `account.contact.merge` |
+| `account_parse_quick_create` | `documents.parse` | read | `account.doc.view` |
+| `account_post_journal` | `journal.create` | write | `account.journal.adjust` |
+| `account_read_bill_image` | `inbox.read` | write | `account.document.manage` |
+| `account_record_payment` | `payments.record` | write | `account.payment.record` |
+| `account_reopen_period` | `periods.reopen` | danger | `account.period.reopen` |
+| `account_report` | `reports.profit-loss` | read | `account.report.view` |
+| `account_run_depreciation` | `assets.depreciation-run` | write | `account.asset.manage` |
+| `account_search_contacts` | `contacts.list` | read | `account.doc.view` |
+| `account_search_products` | `products.list` | read | `account.doc.view` |
+| `account_settings` | `settings.get` | read | `account.doc.view` |
+| `account_transfer_funds` | `finance.transfer` | write | `account.finance.manage` |
+| `account_update_contact` | `contacts.update` | write | `account.contact.manage` |
+| `account_upload_file` | `documents.add-attachment` | write | `account.doc.create` |
+| `account_void_document` | `documents.void` | danger | `account.doc.void` |
+| `account_void_payment` | `payments.void` | danger | `account.payment.void` |
+| `account_wht_summary` | `wht.list` | read | `account.tax.view` |
 
 ## Webhooks
 

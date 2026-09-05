@@ -34,6 +34,7 @@ import {
   createPaymentRequest,
 } from "../../payment-request";
 import { getDocRef, refundDeposit } from "../../service";
+import { actorRefId } from "../actor";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError } from "../respond";
 import { groupCandidateView, paymentPanelView } from "../serialize";
@@ -187,13 +188,14 @@ const paymentsRecord = defineOp({
   summary:
     "Record money received or paid against a document, with optional withholding tax, bank fee and cheque. The ledger, the document status and the finance account balance all move together.",
   label: "บันทึกรับ/จ่ายชำระ",
+  tool: { name: "account_record_payment", hint: "Use for \"the customer paid\" or \"we paid this bill\". One payment per call; proposed for confirmation." },
   input: recordInput,
   test: "C2-P1.1",
   async handler({ actor, input, idempotencyKey, requestId }) {
-    const { tenantId, systemId, keyId } = actor;
+    const { tenantId, systemId } = actor;
     const res = await recordPayments(tenantId, systemId, input.documentId, input.rows.map(toDraft), {
       userId: null,
-      keyBase: serviceKey(keyId, idempotencyKey, requestId),
+      keyBase: serviceKey(actorRefId(actor), idempotencyKey, requestId),
     });
     if (!res.ok) failPayment(res.reason);
     return {
@@ -248,6 +250,7 @@ const paymentsVoid = defineOp({
   action: "account.payment.void",
   summary: "Reverse one recorded payment. A reversing journal entry is written; nothing is deleted and the document goes back to awaiting payment.",
   label: "ยกเลิกการชำระ",
+  tool: { name: "account_void_payment", hint: "Irreversible: reverses one recorded payment. Needs a reason and a double confirmation." },
   input: voidPaymentInput,
   test: "C2-P4.2",
   async handler({ actor, params, input }) {
@@ -457,7 +460,7 @@ const paymentsRecordGroup = defineOp({
   input: groupPaymentInput,
   test: "C2-P7.3",
   async handler({ actor, input, idempotencyKey, requestId }) {
-    const { tenantId, systemId, keyId } = actor;
+    const { tenantId, systemId } = actor;
     const draft: GroupPaymentDraft = {
       paidAt: input.paidAt,
       financeAccountId: input.financeAccountId ?? null,
@@ -476,7 +479,7 @@ const paymentsRecordGroup = defineOp({
     };
     const res = await recordGroupPayment(tenantId, systemId, input.groupId, draft, {
       userId: null,
-      clientKey: groupClientKey(keyId, idempotencyKey, requestId),
+      clientKey: groupClientKey(actorRefId(actor), idempotencyKey, requestId),
     });
     if (!res.ok) failPayment(res.reason);
     return {

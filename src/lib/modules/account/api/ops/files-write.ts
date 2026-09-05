@@ -221,6 +221,7 @@ const inboxRead = defineOp({
   summary:
     "Have the AI assistant read one inbox photo and extract vendor, dates and amounts. Cached after the first successful read unless force is sent.",
   label: "อ่านบิลด้วย AI",
+  tool: { name: "account_read_bill_image", hint: "Use for a photo of a bill sitting in the document inbox; it extracts vendor, dates and amounts. Proposed for confirmation." },
   input: inboxReadInput,
   test: "D3-R3.8",
   async handler({ actor, params, input }) {

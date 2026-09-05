@@ -60,6 +60,7 @@ const contactsList = defineOp({
   paged: true,
   summary: "List contacts (customers and vendors) with the sidebar filters, search and paging.",
   label: "รายการผู้ติดต่อ",
+  tool: { name: "account_search_contacts", hint: "Use this to turn a customer or vendor name into the contactId other tools need." },
   input: contactsListInput,
   test: "B2-C1.1",
   async handler({ actor, input }) {
@@ -92,6 +93,7 @@ const contactsGet = defineOp({
   action: "account.doc.view",
   summary: "One contact profile: header, info, KPI, latest documents, custom groups and links to member/CRM/chat.",
   label: "โปรไฟล์ผู้ติดต่อ",
+  tool: { name: "account_get_contact", hint: "Use for \"how much does this customer owe\" and for the profile of one contact." },
   input: noQuery,
   test: "B2-C2.1",
   async handler({ actor, params }) {

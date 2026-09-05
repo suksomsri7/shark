@@ -76,6 +76,7 @@ const productsList = defineOp({
   paged: true,
   summary: "List goods, services and bundles with type/sub-tab filters, search, category and paging.",
   label: "รายการสินค้า/บริการ",
+  tool: { name: "account_search_products", hint: "Use to find a productId or a selling price before quoting or invoicing." },
   input: productsListInput,
   test: "B2-C4.1",
   async handler({ actor, input }) {

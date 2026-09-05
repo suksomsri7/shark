@@ -31,7 +31,12 @@ export type ApiOpCtx<TInput> = {
   idempotencyKey: string | null;
 };
 
-export type ApiOpTool = { name: string; risk?: "DESTRUCTIVE" };
+/**
+ * op นี้เปิดเป็น "เครื่องมือ" ของสกิล AI `account` ด้วย (WO E1)
+ * ชื่อต้องขึ้นต้น `account_` และ **คงที่ตลอดไป** (โมเดล/สกิลของลูกค้าอ้างชื่อนี้)
+ * `hint` = ประโยคอังกฤษสั้น ๆ ต่อท้าย summary เพื่อบอกผู้ช่วยว่า "เมื่อไหร่ควรเรียกตัวนี้"
+ */
+export type ApiOpTool = { name: string; hint?: string; risk?: "DESTRUCTIVE" };
 
 export type ApiOp = {
   id: string;

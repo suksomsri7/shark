@@ -108,6 +108,12 @@ try {
   chk("E1-K3.7", "account_record_payment → proposal → ยืนยัน → PAID", execPaid?.ok === true && (await prisma.accountDocument.findUnique({ where: { id: doc?.id }, select: { status: true } }))?.status === "PAID", "PAID", JSON.stringify(execPaid));
   const execAgain = await proposals.executeProposal(owner, { tenantId: tid }, paid.proposalId);
   chk("E1-K3.8", "ยืนยัน proposal ซ้ำ → ok:false (ทำไปแล้ว) ไม่จ่ายซ้ำ", execAgain?.ok === false && (await prisma.accountDocumentPayment.count({ where: { documentId: doc?.id } })) === 1, "ok:false", JSON.stringify(execAgain));
+  // Fable แก้ (E1 ตรวจรับ): กติกาบัญชี = ใบที่ชำระแล้วต้อง "ยกเลิกการชำระ" ก่อนจึงยกเลิกใบได้ (service.ts) ⇒ ทดสอบ tool อันตรายตัวที่ 2 ด้วย
+  const payRow = await prisma.accountDocumentPayment.findFirst({ where: { documentId: doc?.id }, select: { id: true } });
+  const voidPay = parse(await tools.runTool(ctx, "account_void_payment", { documentId: doc?.id, paymentId: payRow?.id, reason: "บันทึกผิดใบ" }));
+  const vp1 = await proposals.executeProposal(owner, { tenantId: tid }, voidPay.proposalId);
+  const vp2 = await proposals.executeProposal(owner, { tenantId: tid }, voidPay.proposalId, { confirm2x: true });
+  chk("E1-K3.10a", "account_void_payment (DESTRUCTIVE) → ชั้นแรก needsSecondConfirm → ชั้นสอง ok → ใบกลับเป็นค้างชำระ", vp1?.ok === false && vp1?.needsSecondConfirm === true && vp2?.ok === true && (await prisma.accountDocument.findUnique({ where: { id: doc?.id }, select: { status: true } }))?.status !== "PAID", "ok + ไม่ PAID", `${JSON.stringify(vp1).slice(0, 80)} / ${JSON.stringify(vp2).slice(0, 80)}`);
   const voidP = parse(await tools.runTool(ctx, "account_void_document", { documentId: doc?.id, reason: "ลูกค้าขอยกเลิก" }));
   const voidRow = await prisma.aiProposal.findUnique({ where: { id: voidP.proposalId } });
   chk("E1-K3.9", "account_void_document → proposal risk DESTRUCTIVE", voidRow?.risk === "DESTRUCTIVE" && voidRow?.kind === "account.documents.void", "DESTRUCTIVE", `${voidRow?.risk} ${voidRow?.kind}`);

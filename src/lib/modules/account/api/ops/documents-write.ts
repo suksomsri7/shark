@@ -74,6 +74,7 @@ import {
   voidDocument,
   type RecurringRuleInput,
 } from "../../service";
+import { actorDocSource, actorRefId } from "../actor";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError } from "../respond";
 import { docRow, ymd } from "../serialize";
@@ -323,6 +324,7 @@ const documentsCreate = defineOp({
   action: "account.doc.create",
   summary: "Create a document as a draft: quotation, invoice, deposit, credit or debit note, expense, purchase, purchase order, or a grouped billing note.",
   label: "สร้างเอกสาร",
+  tool: { name: "account_create_document", hint: "Proposes the document; it is created only after the owner confirms." },
   input: createInput,
   test: "C1-W1.1",
   async handler({ actor, input }) {
@@ -366,7 +368,8 @@ const documentsCreate = defineOp({
       adjustReason: input.adjustReason ?? null,
       sourceDocId: input.sourceDocId ?? null,
       // 🔴 ทุกใบที่เกิดจาก REST: มาจากแอปภายนอก ไม่มี "คนสร้าง" ในร้าน
-      source: "API" as const,
+      //    WO E1: ใบที่มาจากสกิล AI (คนในร้านกดยืนยัน) ต้องแยกเป็น `AI` — บัญชีต้องรู้เสมอว่าใครก่อ
+      source: actorDocSource(actor),
       tags: input.tags ?? [],
       refType: input.refType ?? null,
       refId: input.refId ?? null,
@@ -384,7 +387,7 @@ const documentsCreate = defineOp({
         note: input.note ?? null,
         childIds: input.childIds ?? [],
         createdById: null,
-        source: "API",
+        source: actorDocSource(actor),
         tags: input.tags ?? [],
       });
       if (!res.ok) failWith(res.reason);
@@ -500,6 +503,7 @@ const documentsIssue = defineOp({
   action: "account.doc.issue",
   summary: "Issue a draft: it takes the next document number and posts to the ledger. A purchase order is sent for approval instead.",
   label: "ออกเอกสาร",
+  tool: { name: "account_issue_document", hint: "Issuing takes the next document number and posts to the ledger, so it is proposed for the owner to confirm." },
   input: noBody,
   test: "C1-W1.8",
   async handler({ actor, params }) {
@@ -538,6 +542,7 @@ const documentsConvert = defineOp({
   action: "account.doc.create",
   summary: "Create the follow up document of an issued one, for example quotation to invoice or invoice to receipt. The new document starts as a draft.",
   label: "แปลงเอกสาร",
+  tool: { name: "account_convert_document", hint: "Use for \"turn this quotation into an invoice\" or \"issue the receipt for this invoice\". Proposed for confirmation." },
   input: convertInput,
   test: "C1-W1.12",
   async handler({ actor, params, input }) {
@@ -608,6 +613,7 @@ const documentsApprove = defineOp({
   action: "account.doc.approve",
   summary: "Approve a purchase order that is waiting for approval.",
   label: "อนุมัติใบสั่งซื้อ",
+  tool: { name: "account_approve_document", hint: "Use for a purchase order that is waiting for approval. Proposed for confirmation." },
   input: noBody,
   test: "C1-W5.4",
   async handler({ actor, params }) {
@@ -617,7 +623,7 @@ const documentsApprove = defineOp({
     if (!current) throw notFound();
     // ผู้อนุมัติ = คีย์ (หน้าจอแสดง "แอปภายนอก (API key)") · ไม่มีเพดานวงเงิน:
     // เจ้าของร้านมอบสิทธิ์ไปแล้วตอนติ๊ก scope `account.doc.approve` ให้คีย์นี้
-    const res = await approvePurchaseOrder(tenantId, systemId, id, actor.keyId);
+    const res = await approvePurchaseOrder(tenantId, systemId, id, actorRefId(actor));
     if (!res.ok) failWith(res.reason);
     return docStateRow(tenantId, systemId, id);
   },
@@ -695,6 +701,7 @@ const documentsVoid = defineOp({
   action: "account.doc.void",
   summary: "Void an issued document. The ledger entry is reversed with a new journal entry; nothing is deleted.",
   label: "ยกเลิกเอกสาร",
+  tool: { name: "account_void_document", hint: "Irreversible: the ledger entry is reversed. Needs a reason and a double confirmation from the owner." },
   input: voidInput,
   test: "C1-W3.3",
   async handler({ actor, params, input }) {
@@ -798,6 +805,7 @@ const documentsPublicLink = defineOp({
   action: "account.doc.public_link",
   summary: "Create (or reuse) the public link where the customer can see the document and ask for a tax invoice.",
   label: "ลิงก์สาธารณะของเอกสาร",
+  tool: { name: "account_create_payment_link", hint: "Use to give the customer a link to view the document and pay. Proposed for confirmation." },
   input: noBody,
   test: "C1-W2.2",
   async handler({ actor, params }) {
@@ -859,6 +867,7 @@ const documentsAddAttachment = defineOp({
   action: "account.doc.create",
   summary: "Attach a file that is already hosted somewhere to a document, by URL.",
   label: "แนบไฟล์เข้าเอกสาร",
+  tool: { name: "account_upload_file", hint: "The file must already be hosted somewhere reachable by URL. Proposed for confirmation." },
   input: addAttachmentInput,
   test: "C1-W2.4",
   async handler({ actor, params, input }) {
@@ -925,6 +934,7 @@ const documentsRemind = defineOp({
   action: "account.doc.view",
   summary: "Email the contact a payment reminder for this document, with a link to it.",
   label: "ส่งเตือนชำระเงิน",
+  tool: { name: "account_email_document", hint: "Emails the contact a reminder with a link to the document. Proposed for confirmation." },
   input: noBody,
   test: "C1-W2.8",
   async handler({ actor, params }) {
@@ -1114,6 +1124,7 @@ const recurringCreate = defineOp({
   action: "account.doc.create",
   summary: "Create a rule that produces the same document every week, month, quarter or year.",
   label: "สร้างเอกสารประจำ",
+  tool: { name: "account_create_recurring", hint: "Use for \"bill this customer every month\". Proposed for confirmation." },
   input: recurringCreateInput,
   test: "C1-W8.1",
   async handler({ actor, input }) {

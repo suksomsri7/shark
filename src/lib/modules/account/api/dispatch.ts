@@ -6,21 +6,15 @@
 //
 // ลำดับ: จับคู่ path → ด่านหน้า (คีย์/สมุด/เพดาน/สิทธิ์) → แปลง input → กันซ้ำ → handler → audit → ตอบ
 
-import { writeAudit } from "../access";
 import { withIdempotency, type RunResult } from "./idempotency";
 import type { ApiMethod, ApiOp } from "./op";
 import { allowedMethods, matchOp } from "./registry";
-import { csvResponse, fail, failBody, mapError, newRequestId, ok, okBody, unwrapEnvelope, wantsCsv, type ApiErrorDetail } from "./respond";
+import { csvResponse, fail, failBody, mapError, newRequestId, ok, okBody, unwrapEnvelope, wantsCsv } from "./respond";
 import { requireAccountApi } from "./require";
+import { runOpAsActor, validateOpInput } from "./run";
 
 /** เหตุผลขั้นต่ำของคำสั่งอันตราย — สั้นกว่านี้ไม่มีความหมายตอนย้อนอ่าน audit */
 const MIN_REASON = 5;
-
-type ZodIssueLike = { path: readonly PropertyKey[]; message: string };
-
-function detailsOf(issues: readonly ZodIssueLike[]): ApiErrorDetail[] {
-  return issues.map((i) => ({ path: i.path.map(String).join("."), message: i.message }));
-}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -125,21 +119,19 @@ export async function dispatch(
       payload = rest;
     }
 
-    let input: unknown;
-    if (op.input) {
-      const parsed = op.input.safeParse(payload);
-      if (!parsed.success) {
-        return fail(
-          422,
-          "validation",
-          "ข้อมูลที่ส่งมาไม่ถูกต้องตามรูปแบบที่กำหนด",
-          "Request payload failed validation.",
-          requestId,
-          { headers: okHeaders, details: detailsOf(parsed.error.issues) },
-        );
-      }
-      input = parsed.data;
+    // ตรวจ input ด้วยประตูเดียวกับสกิล AI (run.ts) — schema เดียว กติกาเดียว
+    const parsed = validateOpInput(op, payload);
+    if (!parsed.ok) {
+      return fail(
+        422,
+        "validation",
+        "ข้อมูลที่ส่งมาไม่ถูกต้องตามรูปแบบที่กำหนด",
+        "Request payload failed validation.",
+        requestId,
+        { headers: okHeaders, details: parsed.details },
+      );
     }
+    const input = parsed.input;
 
     const ctx = {
       actor,
@@ -164,22 +156,15 @@ export async function dispatch(
     }
 
     // ── เขียน/อันตราย: กันซ้ำ → handler → audit ─────────────────────────────
+    // (audit อยู่ใน runOpAsActor — เขียนหลังงานสำเร็จเท่านั้น · การตอบซ้ำไม่ผ่านทางนี้ ⇒ ไม่มี audit ซ้ำ)
     const run = async (): Promise<RunResult> => {
-      const env = unwrapEnvelope(await op.handler(ctx));
-      // audit เขียนหลังงานสำเร็จเท่านั้น · การตอบซ้ำไม่ผ่านทางนี้ ⇒ ไม่มี audit ซ้ำ
-      await writeAudit({
-        tenantId: actor.tenantId,
-        actorType: "API_KEY",
-        actorId: actor.keyId,
-        action: op.action,
-        targetType: "ApiOp",
-        targetId: op.id,
-        after: {
-          keyName: actor.keyName,
-          opId: op.id,
-          requestId,
-          ...(dangerReason ? { reason: dangerReason } : {}),
-        },
+      const env = await runOpAsActor(op, actor, {
+        input,
+        params: matched.params,
+        requestId,
+        idempotencyKey: ctx.idempotencyKey,
+        reason: dangerReason,
+        audit: { keyName: actor.keyName },
       });
       return { status: 200, body: okBody(env.data, requestId, { page: env.page, extra: env.extra }) };
     };

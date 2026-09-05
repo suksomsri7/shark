@@ -36,10 +36,20 @@ import * as accountFacade from "@/lib/modules/account";
 import * as automationSvc from "@/lib/automation/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 import { createSystemAutoLink } from "@/lib/modules/system/service";
+import {
+  accountDestructiveKinds,
+  accountKindAccess,
+  dispatchAccountKind,
+  isAccountKind,
+} from "./account-ops";
 import * as scheduledSvc from "./scheduled";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 
-export type ProposalKind =
+/**
+ * ประเภทข้อเสนอที่เขียนไว้ทีละตัว (โมดูลเดิม 63 tool)
+ * บัญชี (WO E1) ไม่อยู่ในนี้ — สร้างจากทะเบียน op อัตโนมัติเป็น `account.<op id>` ดู `./account-ops`
+ */
+type StaticProposalKind =
   | "inventory_receive"
   | "hr_decide_leave"
   | "marketing_create_campaign"
@@ -83,6 +93,12 @@ export type ProposalKind =
   | "shop_refund_order"
   | "restaurant_close_bill";
 
+/**
+ * kind ทั้งหมด — รวมของโมดูลบัญชีที่ derive จากทะเบียน op (`account.documents.create` ฯลฯ)
+ * ไม่พิมพ์รายชื่อบัญชีซ้ำที่นี่: op เปลี่ยน/เพิ่มเมื่อไร ข้อเสนอเปลี่ยนตามทันที
+ */
+export type ProposalKind = StaticProposalKind | `account.${string}`;
+
 type Ctx = { tenantId: string };
 
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 ชม.
@@ -90,6 +106,8 @@ const TTL_MS = 24 * 60 * 60 * 1000; // 24 ชม.
 // kind ที่ "ลบข้อมูล/ยกเลิกถาวร" → risk=DESTRUCTIVE (ยืนยัน 2 ชั้นก่อนทำจริง)
 // export เพื่อให้ AI Plan (plans.ts) ใช้คำนวณ hasDestructive ระดับแผน (ใช้ค่าเดียวกัน ไม่ซ้ำ logic)
 export const DESTRUCTIVE_KINDS = new Set<ProposalKind>([
+  // บัญชี: ทุก op ชนิด `danger` ที่เปิดเป็นเครื่องมือ (ยกเลิกเอกสาร/ยกเลิกการชำระ/เปิดงวด/รวมผู้ติดต่อ)
+  ...(accountDestructiveKinds() as ProposalKind[]),
   "void_sale",
   "cancel_appointment",
   "cancel_reservation",
@@ -100,7 +118,7 @@ export const DESTRUCTIVE_KINDS = new Set<ProposalKind>([
 ]);
 
 // action string ต่อ kind — ต้องตรงกับ assertCan ของปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
-const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
+const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; action: string }> = {
   inventory_receive: { module: "inventory", action: "inventory.movement.receive" },
   hr_decide_leave: { module: "hr", action: "hr.leave.decide" },
   marketing_create_campaign: { module: "marketing", action: "marketing.campaign.create" },
@@ -144,6 +162,15 @@ const KIND_ACCESS: Record<ProposalKind, { module: string; action: string }> = {
   cancel_reservation: { module: "hotel", action: "hotel.reservation.cancel" },
   kanban_archive_card: { module: "kanban", action: "kanban.card.delete" },
   shop_refund_order: { module: "shop", action: "shop.order.refund" },
+};
+
+/**
+ * ตารางสิทธิ์จริงที่ใช้ตอนกดยืนยัน = ของเดิม + ของบัญชีที่ derive จาก `op.action` ของทะเบียน API
+ * (บัญชีมี 30+ คำสั่ง และ action ของมันเปลี่ยนได้ตามสัญญา REST — พิมพ์ซ้ำที่นี่คือแหล่งที่สองที่จะเพี้ยน)
+ */
+const KIND_ACCESS: Record<string, { module: string; action: string }> = {
+  ...STATIC_KIND_ACCESS,
+  ...accountKindAccess(),
 };
 
 // ── payload ต่อ kind (server-side เท่านั้น) ──
@@ -395,6 +422,14 @@ async function dispatch(
   m?: MembershipCtx,
 ): Promise<string> {
   const payload = (rawPayload ?? {}) as Record<string, unknown>;
+
+  // ── บัญชี (WO E1) ──────────────────────────────────────────────────────────
+  // kind `account.*` ไม่มีสาขา if ของตัวเอง: เดินผ่านทะเบียน op เดียวกับ REST
+  // (ตรวจ schema ซ้ำ → handler เดิม → audit actorType USER ของคนกด) ดู ./account-ops
+  if (isAccountKind(kind)) {
+    if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการบัญชีได้");
+    return dispatchAccountKind(m, tenantId, proposalId, kind, payload);
+  }
 
   if (kind === "inventory_receive") {
     const p = payload as ReceivePayload;

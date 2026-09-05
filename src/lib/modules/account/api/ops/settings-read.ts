@@ -96,6 +96,7 @@ const settingsGet = defineOp({
   action: "account.doc.view",
   summary: "Company details printed on documents: legal name, tax id, branch, address, VAT registration and fiscal year.",
   label: "ข้อมูลกิจการ",
+  tool: { name: "account_settings", hint: "Use to check the legal name, tax id, branch and VAT registration of this business." },
   test: "B4-G6.4",
   async handler({ actor }) {
     const s = await getSettings(actor.tenantId, actor.systemId);

@@ -358,6 +358,31 @@ function webhookSection(): string[] {
 }
 
 // ── helper ────────────────────────────────────────────────────────────────
+/**
+ * ผิวหน้าสำหรับผู้ช่วย AI — op ที่ประกาศ `tool` ในทะเบียนจะกลายเป็นเครื่องมือของสกิล `account`
+ * (ตารางนี้ generate จากทะเบียนตัวเดียวกับ REST ⇒ เพิ่ม/ถอด tool แล้วคู่มือเปลี่ยนตามเสมอ)
+ */
+function aiToolSection(ops: ApiOp[]): string[] {
+  const withTool = ops.filter((o) => o.tool);
+  if (withTool.length === 0) return [];
+  const out: string[] = [
+    "## AI tools",
+    "",
+    `${withTool.length} of these operations are also exposed to the SHARK assistant as tools of the \`account\` skill.`,
+    "Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.",
+    "",
+    "`account_report` covers all seven reporting operations through its `kind` argument (`trial-balance`, `profit-loss`, `balance-sheet`, `cash-flow`, `vat-pp30`, `aging`, `general-ledger`).",
+    "",
+    "| Tool | Operation | Class | Scope |",
+    "| --- | --- | --- | --- |",
+  ];
+  for (const op of [...withTool].sort((a, b) => a.tool!.name.localeCompare(b.tool!.name))) {
+    out.push(`| \`${op.tool!.name}\` | \`${op.id}\` | ${op.kind} | \`${op.action}\` |`);
+  }
+  out.push("");
+  return out;
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -554,7 +579,8 @@ export function renderDocs(ops: ApiOp[] = ACCOUNT_OPS): string {
       const operation = spec.paths[op.path]?.[op.method.toLowerCase()];
       if (!operation) continue;
       push(`#### \`${op.id}\``, "");
-      push(`**${op.method} ${op.path}** - ${op.summary} · scope: \`${op.action}\` · ${op.kind}`, "");
+      const toolNote = op.tool ? ` · AI tool: \`${op.tool.name}\`` : "";
+      push(`**${op.method} ${op.path}** - ${op.summary} · scope: \`${op.action}\` · ${op.kind}${toolNote}`, "");
       const pathParams = operation.parameters.filter((p) => p.in === "path");
       if (pathParams.length > 0) {
         push(`Path parameters: ${pathParams.map((p) => `\`${p.name}\``).join(", ")} (required).`, "");
@@ -565,6 +591,9 @@ export function renderDocs(ops: ApiOp[] = ACCOUNT_OPS): string {
       push("```bash", ...curlExample(op, operation), "```", "");
     }
   }
+
+  // ── AI tools ────────────────────────────────────────────────────────
+  push(...aiToolSection(ops));
 
   // ── Webhooks ────────────────────────────────────────────────────────
   push(...webhookSection());

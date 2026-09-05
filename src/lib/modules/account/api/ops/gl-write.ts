@@ -223,6 +223,7 @@ const journalCreate = defineOp({
   summary:
     "Post a manual journal entry. Total debit must equal total credit and the entry must fall in a period that is still open. The entry is posted straight away, it is not a draft.",
   label: "บันทึกใบสำคัญด้วยมือ",
+  tool: { name: "account_post_journal", hint: "Debit must equal credit; get account ids from account_chart_of_accounts first. Proposed for confirmation." },
   input: journalCreateInput,
   test: "D2-G1.1",
   async handler({ actor, input }) {
@@ -498,6 +499,7 @@ const periodsClose = defineOp({
   summary:
     "Close one accounting period. The pre-close checklist runs first: the suspense account must be clear and no entry in the period may still be flagged for review. Once closed nothing can be posted into it any more.",
   label: "ปิดงวดบัญชี",
+  tool: { name: "account_close_period", hint: "Closing a period blocks further postings into it. Proposed for confirmation." },
   input: noBody,
   test: "D2-G4.4",
   async handler({ actor, params }) {
@@ -518,6 +520,7 @@ const periodsReopen = defineOp({
   summary:
     "Reopen a closed period so entries can be posted into it again. Every reopen is stamped in the period log with the reason, because auditors ask about periods that were opened after they were closed.",
   label: "เปิดงวดบัญชีใหม่",
+  tool: { name: "account_reopen_period", hint: "Irreversible in the audit trail: every reopen is stamped with its reason. Needs a double confirmation." },
   input: z.object({ reason: reasonField("Why the period has to be reopened.") }).strict(),
   test: "D2-G4.7",
   async handler({ actor, params, input }) {
@@ -663,6 +666,7 @@ const assetsDepreciationRun = defineOp({
   summary:
     "Run monthly depreciation for a period and post the journal entry for it. Safe to call again: an asset that already has the period posted comes back under skipped, so nothing is booked twice. Preview the same period first to see what it will do.",
   label: "รันค่าเสื่อมของงวด",
+  tool: { name: "account_run_depreciation", hint: "Posts the monthly depreciation entry for one period. Proposed for confirmation." },
   input: z
     .object({
       period: z

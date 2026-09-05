@@ -48,7 +48,7 @@ import {
 } from "../../finance";
 import { reimbursePettyCash, topUpPettyCash } from "../../finance-overview";
 import { issueWhtCert, markFiled, unmarkFiled } from "../../wht";
-import type { ApiActor } from "../actor";
+import { actorRefId, type ApiActor } from "../actor";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError } from "../respond";
 import { chequeRowView, financeAccountWriteView } from "../serialize-finance";
@@ -334,11 +334,12 @@ const financeTransfer = defineOp({
   summary:
     "Move money between two of your own channels, such as a cash deposit into the bank. One journal entry is posted. Sending the same Idempotency-Key again returns the first transfer instead of moving the money twice.",
   label: "โอนเงินระหว่างช่องทาง",
+  tool: { name: "account_transfer_funds", hint: "Use for \"move cash into the bank\". Proposed for confirmation." },
   input: transferInput,
   test: "D1-F1.8",
   async handler({ actor, input, idempotencyKey, requestId }) {
     await assertSourceHasFunds(actor, input.fromId, input.amountSatang);
-    const transferId = transferIdOf(actor.keyId, idempotencyKey, requestId);
+    const transferId = transferIdOf(actorRefId(actor), idempotencyKey, requestId);
     const res = await transferBetweenFinance(actor.tenantId, actor.systemId, {
       transferId,
       fromId: input.fromId,
@@ -389,7 +390,7 @@ const pettyCashTopUp = defineOp({
       amount: input.amountSatang,
       date: dayOf(input.date),
       note: input.note ?? null,
-      transferId: transferIdOf(actor.keyId, idempotencyKey, requestId),
+      transferId: transferIdOf(actorRefId(actor), idempotencyKey, requestId),
     });
     if (!res.ok) failWith(res.reason);
     return { ok: true, balanceSatang: await balanceOf(actor, input.pettyId) };

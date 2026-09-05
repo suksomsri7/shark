@@ -20,6 +20,7 @@ import { listMyCards as kanbanListMyCards } from "@/lib/modules/kanban/service";
 import { searchKb as kbSearchArticles, createArticle as kbCreateArticleSvc } from "@/lib/modules/kb/service";
 import { channelSentenceLabel } from "@/lib/modules/chat/channel-icon";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
+import { accountTools } from "./tools-account";
 import { createProposal, type ProposalKind } from "./proposals";
 import { createPlan } from "./plans";
 import { dayKeyBangkok } from "./rules";
@@ -2524,6 +2525,9 @@ export function toolRegistry(): AiTool[] {
     pointAdjust,
     ticketMarkPaid,
     restaurantCloseBill,
+    // สกิลบัญชี (WO E1) — สร้างจากทะเบียน op ของ REST บัญชี ไม่ได้เขียนมือทีละตัว
+    // อ่าน = ทำทันที · เขียน/อันตราย = ข้อเสนอให้เจ้าของกดยืนยัน (kind `account.*`)
+    ...accountTools(),
   ];
 }
 

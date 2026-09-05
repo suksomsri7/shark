@@ -125,6 +125,7 @@ const chartList = defineOp({
   action: "account.journal.view",
   summary: "The whole chart of accounts: a flat list, the 3-level tree and balances per account type.",
   label: "ผังบัญชีทั้งผัง",
+  tool: { name: "account_chart_of_accounts", hint: "Use to find the accountId of a ledger account before posting a manual journal entry." },
   input: chartListInput,
   test: "B4-G1.1",
   async handler({ actor, input }) {
@@ -223,6 +224,7 @@ const journalList = defineOp({
   paged: true,
   summary: "Journal entries with paging, plus entry counts per book and debit/credit totals for the filtered range.",
   label: "สมุดรายวัน",
+  tool: { name: "account_list_journal", hint: "Use for bookkeeping questions about journal entries and which book they were posted to." },
   input: journalListInput,
   test: "B4-G2.1",
   async handler({ actor, input }) {
@@ -351,6 +353,7 @@ const reportsProfitLoss = defineOp({
   rate: "report",
   summary: "Profit and loss: revenue, cost of goods sold and expenses, with gross and net profit. Supports CSV.",
   label: "งบกำไรขาดทุน",
+  tool: { name: "account_report", hint: "One tool for every financial statement: set `kind` to trial-balance, profit-loss, balance-sheet, cash-flow, vat-pp30, aging or general-ledger." },
   input: profitLossInput,
   test: "B4-G3.6",
   async handler({ actor, input }) {
@@ -579,6 +582,7 @@ const assetsList = defineOp({
   action: "account.asset.manage",
   summary: "Fixed asset register with cost, monthly depreciation, accumulated depreciation and net book value.",
   label: "ทะเบียนสินทรัพย์",
+  tool: { name: "account_assets", hint: "Use for fixed assets: cost, monthly depreciation and net book value." },
   input: assetsListInput,
   test: "B4-G5.1",
   async handler({ actor, input }) {

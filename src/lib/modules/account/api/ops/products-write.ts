@@ -223,6 +223,7 @@ const productsCreate = defineOp({
   action: "account.product.manage",
   summary: "Create a good, service or bundle. A matching SKU returns 409.",
   label: "สร้างสินค้า/บริการ",
+  tool: { name: "account_create_product", hint: "Use to add a good or service to the catalogue. Proposed for confirmation." },
   input: productCreateInput,
   test: "C3-M3.1",
   async handler({ actor, input }) {
@@ -634,6 +635,7 @@ const stockDocumentsCreate = defineOp({
   action: "account.product.manage",
   summary: "Create a goods issue, goods issue return, or cost adjustment document. Goods issue/return post immediately unless asDraft is true.",
   label: "สร้างเอกสารสต็อก",
+  tool: { name: "account_issue_goods", hint: "Use to take goods out of stock (goods issue) or return them. Proposed for confirmation." },
   input: stockDocCreateInput,
   test: "C3-M4.1",
   async handler({ actor, input }) {

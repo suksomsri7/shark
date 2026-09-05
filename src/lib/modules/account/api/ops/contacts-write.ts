@@ -144,6 +144,7 @@ const contactsCreate = defineOp({
   action: "account.contact.manage",
   summary: "Create a customer or vendor. A matching tax id + branch code returns 409; a matching phone or name still creates the contact but returns warnings.",
   label: "สร้างผู้ติดต่อ",
+  tool: { name: "account_create_contact", hint: "Use when the customer or vendor is not in the book yet. Proposed for confirmation." },
   input: contactsCreateInput,
   test: "C3-M1.1",
   async handler({ actor, input }) {
@@ -196,6 +197,7 @@ const contactsUpdate = defineOp({
   action: "account.contact.manage",
   summary: "Change a contact. Only the fields that are sent are changed.",
   label: "แก้ไขผู้ติดต่อ",
+  tool: { name: "account_update_contact", hint: "Only the fields sent are changed. Proposed for confirmation." },
   input: contactsUpdateInput,
   test: "C3-M1.5",
   async handler({ actor, params, input }) {
@@ -318,6 +320,7 @@ const contactsMerge = defineOp({
   action: "account.contact.merge",
   summary: "Merge two contacts into one. Every document, ledger line, group and recurring rule of the second contact moves to the first; the second is archived and points to the first.",
   label: "รวมผู้ติดต่อซ้ำ",
+  tool: { name: "account_merge_contacts", hint: "Irreversible: everything of the merged contact moves to the kept one. Needs a reason and a double confirmation." },
   input: mergeInput,
   test: "C3-M1.15",
   async handler({ actor, input }) {

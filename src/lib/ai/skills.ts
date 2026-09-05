@@ -14,6 +14,7 @@
 //    ตรวจโดย assertSkillRegistryComplete() + ข้อสอบ qc-ai-skills
 //    (ลืมลงทะเบียน tool ใหม่ = AI เรียกไม่ได้เลย ซึ่งจะเงียบมากถ้าไม่มีด่านนี้)
 
+import { accountToolNames } from "./account-ops";
 import { toolRegistry } from "./tools";
 
 /** สกิล 1 ชุด — โครงนี้คือสิ่งที่จะกลายเป็น manifest สาธารณะสำหรับ AI ภายนอก */
@@ -50,6 +51,33 @@ export const SKILLS: Skill[] = [
     summary: "Point of sale: open bills, void sales, sales figures by day, expenses, financial summary.",
     tools: ["sales_summary", "sales_by_day", "pos_create_sale", "void_sale", "record_expense", "financial_summary"],
     systems: ["POS", "ACCOUNT"],
+  },
+  {
+    id: "account",
+    label: "บัญชี",
+    summary:
+      "Full Thai accounting: quotations, invoices, receipts and tax invoices, expenses and purchase orders, contacts, products, cash/bank accounts, payments and payment links, withholding tax, journal entries, financial statements (P&L, balance sheet, trial balance, cash flow, VAT PP30, aging), period close and fixed assets. Use for any question about money owed or paid, revenue, expenses, taxes, or to create accounting documents.",
+    // 🔴 รายชื่อนี้ต้องตรงกับ op ที่ประกาศ `tool` ในทะเบียน API บัญชีเป๊ะ ๆ
+    //    เขียนไว้เป็นตัวหนังสือด้วยเหตุผลเดียว: ด่าน fitness F13.3 อ่าน "ไฟล์นี้" เพื่อยืนยันว่า tool ใหม่
+    //    มีบ้านจริง (ทะเบียนที่ generate มาไม่มีอะไรให้ด่านอ่าน) · ความตรงกันบังคับด้วย
+    //    assertSkillRegistryComplete() ซึ่งเทียบกับ accountToolNames() ทุกครั้งที่ boot/รันข้อสอบ
+    tools: [
+      // อ่าน
+      "account_dashboard", "account_list_documents", "account_get_document", "account_report",
+      "account_search_contacts", "account_get_contact", "account_search_products",
+      "account_finance_balances", "account_wht_summary", "account_list_journal", "account_assets",
+      "account_chart_of_accounts", "account_settings", "account_parse_quick_create",
+      // เขียน (ผ่านการยืนยันของเจ้าของ)
+      "account_create_document", "account_issue_document", "account_convert_document",
+      "account_approve_document", "account_record_payment", "account_create_payment_link",
+      "account_create_contact", "account_update_contact", "account_create_product",
+      "account_issue_goods", "account_post_journal", "account_close_period",
+      "account_run_depreciation", "account_transfer_funds", "account_email_document",
+      "account_create_recurring", "account_upload_file", "account_read_bill_image",
+      // อันตราย (ยืนยัน 2 ชั้น)
+      "account_void_document", "account_void_payment", "account_merge_contacts", "account_reopen_period",
+    ],
+    systems: ["ACCOUNT"],
   },
   {
     id: "inventory",
@@ -262,6 +290,15 @@ export function assertSkillRegistryComplete(): void {
   const known = new Set(all);
   for (const s of SKILLS) for (const n of s.tools) if (!known.has(n)) problems.push(`สกิล ${s.id} อ้าง tool ที่ไม่มีจริง: ${n}`);
   for (const n of core) if (!known.has(n)) problems.push(`แกนกลางอ้าง tool ที่ไม่มีจริง: ${n}`);
+
+  // สกิลบัญชี generate มาจากทะเบียน op — รายชื่อในไฟล์นี้ต้องตรงกับทะเบียน "ไม่ขาดไม่เกิน"
+  // (ใส่ tool ให้ op แล้วลืมเติมชื่อที่นี่ = ผู้ช่วยเรียกไม่ได้และเงียบสนิท — บทเรียนเดียวกับ F10)
+  const declared = new Set(SKILLS.find((s) => s.id === "account")?.tools ?? []);
+  const fromRegistry = accountToolNames();
+  const missing = fromRegistry.filter((n) => !declared.has(n));
+  const extra = [...declared].filter((n) => !fromRegistry.includes(n));
+  if (missing.length > 0) problems.push(`สกิล account ขาด tool ของทะเบียน: ${missing.join(", ")}`);
+  if (extra.length > 0) problems.push(`สกิล account มี tool ที่ทะเบียนไม่มีแล้ว: ${extra.join(", ")}`);
 
   if (problems.length > 0) {
     throw new Error(`ทะเบียนสกิลไม่ครบ/ขัดกัน:\n  - ${problems.join("\n  - ")}`);

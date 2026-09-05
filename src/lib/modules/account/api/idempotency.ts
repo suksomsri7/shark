@@ -75,6 +75,11 @@ export async function withIdempotency(
     );
   }
 
+  // กันซ้ำผูกกับ "คีย์ API" (unique = keyId + idemKey) ⇒ ทางนี้มีได้เฉพาะคำขอ REST
+  // (ผู้ช่วย AI ไม่ผ่านที่นี่ — ข้อเสนอกันทำซ้ำด้วยสถานะ PENDING→EXECUTED ของตัวเอง)
+  const keyId = actor.keyId;
+  if (!keyId) throw new Error("withIdempotency ใช้ได้เฉพาะคำขอที่มาจากคีย์ API");
+
   const db = tenantDb({ tenantId: actor.tenantId });
   const path = new URL(req.url).pathname;
   const hash = requestHashOf(op.method, path, bodyText);
@@ -96,7 +101,7 @@ export async function withIdempotency(
       await db.apiIdempotency.create({
         data: {
           tenantId: actor.tenantId,
-          keyId: actor.keyId,
+          keyId,
           idemKey,
           requestHash: hash,
           expiresAt: new Date(Date.now() + TTL_MS),
@@ -112,7 +117,7 @@ export async function withIdempotency(
   let mine = await claim();
   if (!mine) {
     const row = (await db.apiIdempotency.findFirst({
-      where: { keyId: actor.keyId, idemKey },
+      where: { keyId, idemKey },
       select: { id: true, requestHash: true, status: true, responseJson: true, expiresAt: true },
     })) as IdemRow | null;
 
@@ -168,7 +173,7 @@ export async function withIdempotency(
   }
   // เก็บผลไว้ตอบซ้ำ — เก็บทั้งสำเร็จและล้มเหลว (retry ของคำสั่งที่ล้มเหลวต้องได้คำตอบเดิม ไม่ใช่ลองใหม่เงียบ ๆ)
   await db.apiIdempotency.updateMany({
-    where: { keyId: actor.keyId, idemKey },
+    where: { keyId, idemKey },
     data: { status: result.status, responseJson: result.body as never },
   });
   return respond(result.status, result.body);

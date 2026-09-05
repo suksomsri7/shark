@@ -92,6 +92,7 @@ const financeAccountsList = defineOp({
   action: "account.finance.manage",
   summary: "Every cash/bank/e-wallet/petty-cash channel with its balance, grouped by kind.",
   label: "ช่องทางการเงินทั้งหมด",
+  tool: { name: "account_finance_balances", hint: "Use for \"how much money do we have\" per cash box, bank account, wallet or petty cash." },
   input: financeAccountsListInput,
   test: "B3-F1.1",
   async handler({ actor, input }) {
@@ -376,6 +377,7 @@ const whtList = defineOp({
   paged: true,
   summary: "Withholding tax certificates (50 Tawi / WTI), either direction, with paging and totals.",
   label: "ทะเบียนภาษีหัก ณ ที่จ่าย",
+  tool: { name: "account_wht_summary", hint: "Use for withholding tax questions (50 Tawi certificates), either direction." },
   input: whtListInput,
   test: "B3-F6.1",
   async handler({ actor, input }) {

@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | E1 |
+| WO | E2 |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable (oracle เขียนแล้ว) → Opus (builder) |
-| ขั้นที่ถึง | 5 ก.ย. 23:15 น.: D4 DONE → **เฟส D ปิด 4/4 (199 op · 21 event)** · qc:all ปิดเฟส D กำลังรัน (log `/tmp/claude-0/qc-all-phaseD.log`) · **สั่ง Opus ทำ E1 ขนาน** · งานฝาก kanban→Trello ส่ง Telegram แล้ว 22:55 |
+| ขั้นที่ถึง | 6 ก.ย. 00:30 น.: E1 DONE (Opus 35 นาที · Fable แก้ oracle K3.11 · ai-skill 33 · qc-ai-skills 23 · qc-ai 17 · core 64 · openapi 26 · write-docs 52 · write-payments 32 · typecheck 0 · fitness 20/20 ×2) · **สั่ง Opus ทำ E2** · qc:all เต็มรอบถัดไป = ปิดเฟส E (รอบเฟส D คาบเกี่ยว E1 แก้ไฟล์ — ต้องรันใหม่) |
 | commit ล่าสุดของงานนี้ | (C2 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
@@ -42,8 +42,8 @@
 | D2 | WRITE journal/chart/mappings/periods/assets | Opus | DONE | 5 ก.ย. | write-gl 35/35 (oracle G3.6 สมมติชุดสิทธิ์ผิด แก้ + เพิ่ม G3.6b WRITE_OFF ต้อง asset.writeoff) · 15 op → รวม 160 · ApiError.details · userId=null · `wo-notes/api-D2.md` |
 | D3 | WRITE reconcile/recurring/import/files/inbox/reports-email | Sonnet | DONE | 5 ก.ย. | write-ops 29/29 · 18 op → รวม 178 · core นำเข้าแยกไป `import-core.ts` (ไฟล์ "use server" ห้าม export/re-export core — เคยเปิดเป็น server action ไร้ด่านสิทธิ์) · `wo-notes/api-D3.md` |
 | D4 | WRITE settings/policy/permissions/links/webhooks CRUD + events ที่เหลือ | Sonnet | DONE | 5 ก.ย. | write-settings 39/39 · 21 op → รวม 199 · event ครบ 21 · permissions ใช้ OWNER คนแรกเป็น actor (แก้ได้แค่ cell ของ STAFF · ระบบ OWNER/MANAGER แก้ไม่ได้) · `wo-notes/api-D4.md` |
-| E1 | สกิล AI `account` 30 tools จากทะเบียน + proposal kinds + dispatch | Opus | IN_PROGRESS | — | MockProvider E2E |
-| E2 | `/api/v1/ai/skills/account` + tools route + golden cases 12 + persona นักบัญชี | Opus | TODO | — | |
+| E1 | สกิล AI `account` 30 tools จากทะเบียน + proposal kinds + dispatch | Opus | DONE | 6 ก.ย. | ai-skill 33/33 (oracle ผิดเอง K3.11: ต้องยกเลิกการชำระก่อนยกเลิกใบ → เพิ่ม K3.10a ทดสอบ account_void_payment) · 36 tool (อ่าน 14 เขียน 18 อันตราย 4) · `api/run.ts` = pipeline ร่วม REST/AI · `wo-notes/api-E1.md` |
+| E2 | `/api/v1/ai/skills/account` + tools route + golden cases 12 + persona นักบัญชี | Opus | IN_PROGRESS | — | |
 | F1 | `/developers/account` + `.md` + `/developers` เพิ่มหมวดบัญชี | Sonnet | TODO | — | |
 | F2 | `.claude/skills/shark-account-api/` + ทดสอบ agent อ่านสกิลทำ 5 งานเอง | Sonnet+Fable | TODO | — | |
 | F3 | อัปเดต docs (07_API · 12-account §5 · sds/account · AI_LAYER) + HANDOVER | Sonnet | TODO | — | |
@@ -370,6 +370,7 @@ event ที่เหลือ (D4): `account.cheque.changed` (ทุก transit
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 6 ก.ย. 00:30 น. — E1 ปิด (Opus 35 นาที · oracle ผิดเอง 1 จุด) · REST/AI ใช้ validation+audit เส้นเดียวกันผ่าน `api/run.ts` · ความคืบหน้า 17/24 = 71% · เริ่ม E2
 - 5 ก.ย. 23:50 น. — **qc:all ปิดเฟส D 244/246 (21 นาที) → แดง 2 แก้ครบ**: (1) `acc-v2-doc-settings` T10b.4/9/10/11 — D4 เปิดสี HEX ให้แท็กเพื่อเอาใจ oracle REST ทำให้สัญญาหน้าจอ "สีนอกรายการต้องถูกปฏิเสธ" พัง ⇒ ถอด HEX ออก · REST `settings.tags.create.color` = enum 6 สวอตช์ · oracle ส่ง "red" (2) `acc-v2-security` S16 ชี้ไฟล์ `import-actions.ts` แต่ D3 ย้าย core+writeAudit ไป `import-core.ts` ⇒ แก้รายการไฟล์ · รันเดี่ยว: doc-settings 116 · security 298 · write-settings 39
 - 5 ก.ย. 23:15 น. — D4 ปิด (Sonnet 44 นาที · จับบั๊กเอง 2) · **เฟส D ปิด 4/4** · ความคืบหน้า 16/24 = 67% · qc:all ปิดเฟส D + เริ่ม E1
 - 5 ก.ย. 22:05 น. — D3 ปิด (Sonnet 34 นาที · builder จับบั๊ก env-at-load เอง · Fable ปิดช่อง server action ที่ re-export core) · ความคืบหน้า 15/24 = 62% · เริ่ม D4

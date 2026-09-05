@@ -123,6 +123,7 @@ const documentsList = defineOp({
   paged: true,
   summary: "List documents of any type (sales and purchase side) with filters, paging and tab counters.",
   label: "รายการเอกสาร",
+  tool: { name: "account_list_documents", hint: "Use for \"which invoices are unpaid or overdue\", \"quotations of this customer\", \"expenses this month\"." },
   input: listInput,
   test: "B1-D2.1",
   async handler({ actor, input }) {
@@ -178,6 +179,7 @@ const documentsGet = defineOp({
   action: "account.doc.view",
   summary: "One document in full: lines, payments, related documents, timeline, journal entries and attachments.",
   label: "เอกสาร 1 ใบ (รายละเอียดเต็ม)",
+  tool: { name: "account_get_document", hint: "Read one document in full before answering about it or acting on it." },
   input: noQuery,
   test: "B1-D3.1",
   async handler({ actor, params }) {
@@ -221,6 +223,7 @@ const documentsParse = defineOp({
   action: "account.doc.view",
   summary: "Turn one line of free text into a document draft intent: type, contact candidates and amount. Reads only.",
   label: "แปลข้อความเป็นคำสั่งสร้างเอกสาร",
+  tool: { name: "account_parse_quick_create", hint: "Use to turn free text such as \"invoice John 24900\" into a draft intent, then call account_create_document with the ids it returns." },
   input: parseInput,
   test: "B1-D5.1",
   async handler({ actor, input }) {
@@ -382,6 +385,7 @@ const dashboardGet = defineOp({
   rate: "report",
   summary: "Everything the accounting home screen shows in one call: KPI, receivable and payable, cash, categories, pending work and recent documents.",
   label: "แดชบอร์ดหน้าหลัก",
+  tool: { name: "account_dashboard", hint: "Start here for open questions like \"how is the shop doing\" or \"how much do customers still owe me\"." },
   input: dashboardInput,
   test: "B1-D1.1",
   async handler({ actor, input }) {
