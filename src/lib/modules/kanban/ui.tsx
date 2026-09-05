@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
-import { getBoard, listBoards, listMyCards, listTenantUsers } from "./service";
+import { getBoardFor, listBoardsFor, listMyCards, listTenantUsers } from "./service";
+import { toActor, KanbanNotFoundError } from "./access";
+import type { KanbanActor, KanbanCtx } from "./types";
 import {
   archiveBoardAction,
   archiveCardAction,
@@ -19,6 +21,17 @@ import { ModuleTabs } from "@/components/module-tabs";
 
 const muted = "text-[color:var(--color-muted)]";
 
+// ── K1.3: ทุกหน้าอ่านผ่าน "ตัวที่ผ่านสิทธิ์" (listBoardsFor/getBoardFor) ──
+//    บอร์ดที่ผู้ใช้มองไม่เห็น (PRIVATE ของสาขาอื่น / ไม่ได้ถูกเชิญ) ต้องไม่โผล่ในรายการ
+//    และเปิดตรง ๆ ด้วย URL ต้องได้ "ไม่พบบอร์ดนี้" (404 ไม่ใช่ 403 · §6.3)
+async function authScope(systemId: string): Promise<{ ctx: KanbanCtx; actor: KanbanActor }> {
+  const auth = await requireTenant();
+  return {
+    ctx: { tenantId: auth.active.tenantId, systemId, actorUserId: auth.user.id },
+    actor: toActor(auth.user.id, auth.active),
+  };
+}
+
 const fmtDue = (d: Date) =>
   d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "Asia/Bangkok" });
 
@@ -35,8 +48,8 @@ export function kanbanTabs(systemId: string): { href: string; label: string }[] 
 
 // ───────────── งานของฉัน (my-tasks) — การ์ดที่มอบหมายให้ฉันข้ามทุกบอร์ด ─────────────
 export async function KanbanMyTasksSection({ systemId, tenantId }: { systemId: string; tenantId: string }) {
-  const auth = await requireTenant();
-  const myCards = await listMyCards(tenantId, systemId, auth.user.id);
+  const { actor } = await authScope(systemId);
+  const myCards = await listMyCards(tenantId, systemId, actor.userId, actor);
 
   return (
     <Section title={`งานของฉัน (${myCards.length})`}>
@@ -58,7 +71,9 @@ export async function KanbanMyTasksSection({ systemId, tenantId }: { systemId: s
 
 // ───────────── บอร์ดงาน (boards) — รายการบอร์ด + สร้างบอร์ด ─────────────
 export async function KanbanBoardsSection({ systemId, tenantId }: { systemId: string; tenantId: string }) {
-  const boards = await listBoards(tenantId, systemId);
+  void tenantId; // tenantId ของ session ใช้ผ่าน ctx แล้ว (พารามิเตอร์คงไว้ให้หน้าเดิมไม่ต้องแก้)
+  const { ctx, actor } = await authScope(systemId);
+  const boards = await listBoardsFor(ctx, actor);
 
   return (
     <Section title={`บอร์ดงาน (${boards.length})`}>
@@ -66,7 +81,7 @@ export async function KanbanBoardsSection({ systemId, tenantId }: { systemId: st
         items={boards.map((b) => ({
           key: b.id,
           href: `/app/sys/${systemId}/kanban/${b.id}`,
-          primary: b.name,
+          primary: b.starred ? `★ ${b.name}` : b.name,
           secondary: b.description || undefined,
           trailing: (
             <span className={`text-xs ${muted}`}>
@@ -93,10 +108,10 @@ export async function KanbanBoardsSection({ systemId, tenantId }: { systemId: st
 // ───────────── KanbanHub (หน้าภาพรวม ฝังใน /app/sys/[id]) ─────────────
 // การ์ดสรุปสั้น + ลิงก์เข้าแต่ละฟังก์ชัน (แตกเป็นหน้าย่อยจริง)
 export async function KanbanHub({ systemId, tenantId }: { systemId: string; tenantId: string }) {
-  const auth = await requireTenant();
+  const { ctx, actor } = await authScope(systemId);
   const [boards, myCards] = await Promise.all([
-    listBoards(tenantId, systemId),
-    listMyCards(tenantId, systemId, auth.user.id),
+    listBoardsFor(ctx, actor),
+    listMyCards(tenantId, systemId, actor.userId, actor),
   ]);
 
   const cards = [
@@ -136,8 +151,12 @@ export async function KanbanBoardView({
   tenantId: string;
   boardId: string;
 }) {
+  const { ctx, actor } = await authScope(systemId);
   const [board, users] = await Promise.all([
-    getBoard(tenantId, systemId, boardId),
+    getBoardFor(ctx, actor, boardId).catch((e: unknown) => {
+      if (e instanceof KanbanNotFoundError) return null;
+      throw e;
+    }),
     listTenantUsers(tenantId),
   ]);
 
@@ -156,6 +175,9 @@ export async function KanbanBoardView({
     id ? users.find((u) => u.userId === id)?.name ?? "—" : null;
   const columns = board.columns;
   const lastIdx = columns.length - 1;
+  // ผู้ชม (VIEWER) เห็นบอร์ดได้แต่แก้ไม่ได้ ⇒ ซ่อนปุ่มไปเลย (§6.3: ห้ามโชว์ปุ่มที่กดแล้วเด้ง 403)
+  const canEdit = board.role === "EDITOR" || board.role === "ADMIN";
+  const isAdmin = board.role === "ADMIN";
 
   return (
     <div className="flex flex-col gap-4">
@@ -164,6 +186,7 @@ export async function KanbanBoardView({
         back={{ href: `/app/sys/${systemId}`, label: "ระบบบอร์ดงาน" }}
         desc={board.description || undefined}
         actions={
+          isAdmin ? (
           <ConfirmDialog
             triggerLabel="เก็บบอร์ด"
             triggerClassName={`text-xs underline ${muted}`}
@@ -173,6 +196,7 @@ export async function KanbanBoardView({
             action={archiveBoardAction}
             fields={{ systemId, boardId }}
           />
+          ) : undefined
         }
       />
 
@@ -184,7 +208,7 @@ export async function KanbanBoardView({
               <div className="text-sm font-medium">
                 {col.name} <span className={muted}>({col.cards.length})</span>
               </div>
-              {col.cards.length === 0 && (
+              {canEdit && col.cards.length === 0 && (
                 <form action={archiveColumnAction}>
                   <input type="hidden" name="systemId" value={systemId} />
                   <input type="hidden" name="boardId" value={boardId} />
@@ -216,6 +240,7 @@ export async function KanbanBoardView({
                       <span>{assignee ? `ผู้รับผิดชอบ: ${assignee}` : "ไม่มีผู้รับผิดชอบ"}</span>
                       {card.dueAt && <span>กำหนดส่ง {fmtDue(card.dueAt)}</span>}
                     </div>
+                    {canEdit && (
                     <div className="flex items-center gap-1">
                       <form action={moveCardAction}>
                         <input type="hidden" name="systemId" value={systemId} />
@@ -255,12 +280,14 @@ export async function KanbanBoardView({
                         fields={{ systemId, boardId, cardId: card.id }}
                       />
                     </div>
+                    )}
                   </div>
                 );
               })}
             </div>
 
             {/* เพิ่มการ์ด */}
+            {canEdit && (
             <form action={createCardAction} className="flex flex-col gap-1.5 rounded-xl border p-2">
               <input type="hidden" name="systemId" value={systemId} />
               <input type="hidden" name="boardId" value={boardId} />
@@ -293,10 +320,12 @@ export async function KanbanBoardView({
               </div>
               <button className="btn btn-ghost text-xs">เพิ่ม</button>
             </form>
+            )}
           </div>
         ))}
 
         {/* เพิ่มคอลัมน์ */}
+        {canEdit && (
         <div className="w-64 shrink-0">
           <form action={createColumnAction} className="flex gap-2">
             <input type="hidden" name="systemId" value={systemId} />
@@ -310,6 +339,7 @@ export async function KanbanBoardView({
             <button className="btn btn-ghost text-sm">เพิ่ม</button>
           </form>
         </div>
+        )}
       </div>
     </div>
   );

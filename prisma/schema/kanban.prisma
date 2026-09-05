@@ -16,6 +16,14 @@ enum KanbanBoardVisibility {
   TENANT
 }
 
+// บทบาทของคนในบอร์ด (ชั้นที่ 2 ของสิทธิ์ · K1.3 · D2) — ชั้นที่ 1 คือ RBAC ของ SHARK (core/rbac.ts)
+// เรียงจากอำนาจน้อยไปมาก: VIEWER (อ่าน) < EDITOR (การ์ด/เช็คลิสต์/ความเห็น) < ADMIN (ตั้งค่าบอร์ด+สมาชิก)
+enum KanbanBoardRole {
+  VIEWER
+  EDITOR
+  ADMIN
+}
+
 // สีป้าย/บอร์ด 6 สี ตรงกับโทเคน `--color-tag-*` ของดีไซน์ (D9)
 enum KanbanLabelColor {
   SLATE
@@ -61,6 +69,8 @@ model KanbanBoard {
   columns KanbanColumn[]
   cards   KanbanCard[]
   labels  KanbanLabel[] // ป้ายของบอร์ด (K1.2)
+  members KanbanBoardMember[] // คนที่ถูกเชิญเข้าบอร์ด (K1.3)
+  stars   KanbanBoardStar[] // ดาวรายคน (K1.3)
 
   @@index([tenantId, systemId, status])
   @@index([tenantId, systemId, unitId])
@@ -183,5 +193,39 @@ model KanbanCardAssignee {
   assignedAt   DateTime   @default(now())
 
   @@id([cardId, userId])
+  @@index([tenantId, userId])
+}
+
+// ───────────────────────── สมาชิกบอร์ด + ดาว (K1.3) ─────────────────────────
+// สมาชิกบอร์ด = "คำเชิญที่ประกาศไว้ชัด" — คนละเรื่องกับสิทธิ์โดยนัย (OWNER ทุกบอร์ด · MANAGER สาขาตัวเอง
+// · บอร์ด TENANT ทุกคนอ่านได้) ที่คิดในโค้ด `access.ts` ไม่เก็บเป็นแถว ⇒ เปลี่ยนบทบาทในร้าน/ย้ายสาขา
+// แล้วสิทธิ์บอร์ดตามทันทีโดยไม่ต้อง backfill
+//
+// ไม่มี `systemId`: บอร์ดรู้ระบบของตัวเองอยู่แล้ว (กรอง systemId ที่บอร์ดต้นทาง) — แกนใน scope.ts
+// จึงเป็น tenant ให้ตรงกับคอลัมน์จริง (บทเรียนเดียวกับ KanbanCardLabel/KanbanCardAssignee ใน K1.2)
+model KanbanBoardMember {
+  id          String          @id @default(cuid())
+  tenantId    String
+  boardId     String
+  board       KanbanBoard     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  userId      String // ต้องเป็น Membership ที่ accepted ของ tenant — ตรวจใน service (ไม่ทำ FK ไป User)
+  role        KanbanBoardRole @default(EDITOR)
+  invitedById String? // User.id ของคนที่เชิญ
+  createdAt   DateTime        @default(now())
+
+  @@unique([boardId, userId])
+  @@index([tenantId, userId])
+}
+
+// ติดดาว = ของส่วนตัวรายคน (บอร์ดที่ปักไว้บนสุดของหน้ารวมบอร์ด) — ไม่ให้สิทธิ์อะไรทั้งสิ้น
+// คีย์รวม [boardId,userId] ⇒ ติดดาวซ้ำเป็น no-op โดยธรรมชาติ (upsert)
+model KanbanBoardStar {
+  boardId   String
+  board     KanbanBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  userId    String
+  tenantId  String
+  createdAt DateTime    @default(now())
+
+  @@id([boardId, userId])
   @@index([tenantId, userId])
 }

@@ -5,19 +5,42 @@ import { keyBetween, keysBetween } from "./ordering";
 import { applyCardLabelNames } from "./labels";
 import { syncSingleAssignee } from "./cards";
 import { notifyCardAssigned } from "./notify";
+import { boardRole, KanbanNotFoundError, visibleBoardsWhere, type BoardRole } from "./access";
+import type { KanbanActor, KanbanCtx } from "./types";
 
 // ── K1.2: service.ts เป็น facade ของโมดูล (proposals.ts/ai/tools.ts/ข้อสอบเก่า import ที่นี่) ──
 //    ฟังก์ชันใหม่อยู่ไฟล์ของตัวเอง แล้ว re-export ออกจากที่นี่ — ผู้เรียกเดิมไม่ต้องแก้สักบรรทัด
 export { setCardAssignees, listCardAssignees } from "./cards";
 export { listLabels, createLabel, updateLabel, deleteLabel, setCardLabels } from "./labels";
 export type { KanbanCtx, KanbanActor } from "./types";
+// K1.3: สิทธิ์ 2 ชั้น — ผู้เรียกนอกโมดูล (หน้า/action/AI) ใช้ผ่าน facade เดียวกัน
+export { boardRole, canReadKanban, toActor, visibleBoardsWhere, KanbanNotFoundError, KanbanForbiddenError } from "./access";
+export type { BoardRole } from "./access";
+export {
+  addMember,
+  assertBoardRole,
+  boardRoleOf,
+  leaveBoard,
+  listMembers,
+  listStarredBoardIds,
+  removeMember,
+  setBoardVisibility,
+  setMemberRole,
+  starBoard,
+  unstarBoard,
+} from "./members";
 
 // แจ้งเตือนเมื่อมอบหมายงาน — ย้ายตรรกะไป `notify.ts` ใน K1.2 (cards.ts ใช้ร่วมโดยไม่เกิด import วงกลม)
 // ชื่อเดิมคงไว้เป็น alias ภายในไฟล์นี้ เพื่อไม่ต้องแก้จุดเรียกเดิม
 const notifyAssignment = notifyCardAssigned;
 
 // งานของฉัน — การ์ด ACTIVE ที่มอบหมายให้ผู้ใช้ปัจจุบัน ข้ามทุกบอร์ด (เรียงตามกำหนดส่ง)
-export async function listMyCards(tenantId: string, systemId: string, userId: string) {
+//
+// 🔴 K1.3: ส่ง `actor` มาด้วยเมื่อรู้ว่าใครกำลังดู — การ์ดจากบอร์ดที่คนนั้น "มองไม่เห็นแล้ว"
+//    (ถูกถอดออกจากบอร์ด PRIVATE / บอร์ดเปลี่ยนเป็น PRIVATE) ต้องหายจากหน้า "งานของฉัน" ทันที
+//    ไม่งั้นชื่อการ์ด+ชื่อบอร์ดลับจะรั่วผ่านหน้ารวมทั้งที่ปิดประตูหน้าบอร์ดไปแล้ว
+//    (พารามิเตอร์เป็น optional เพื่อไม่หักผู้เรียกเดิม — cron/AI ที่ไม่มี actor ยังเรียกได้เหมือนเดิม)
+export async function listMyCards(tenantId: string, systemId: string, userId: string, actor?: KanbanActor | null) {
   // 🔴 K1.2: ผู้รับผิดชอบมีได้หลายคน — "งานของฉัน" ต้องอ่าน `KanbanCardAssignee` ด้วย
   //    ไม่ใช่แค่ช่องเดิม `assigneeUserId` (คนที่ 2 ของการ์ดจะไม่เห็นงานตัวเองเลย)
   //    union ทั้งสองทางไว้ตลอด P1 เพราะทั้งคู่ถูกเขียนคู่กัน (แถวเก่าที่ยังไม่ backfill ก็ยังโผล่)
@@ -32,6 +55,7 @@ export async function listMyCards(tenantId: string, systemId: string, userId: st
       systemId,
       status: "ACTIVE",
       OR: [{ assigneeUserId: userId }, ...(assignedIds.length ? [{ id: { in: assignedIds } }] : [])],
+      ...(actor ? { board: visibleBoardsWhere(actor) } : {}),
     },
     include: { board: { select: { name: true } }, column: { select: { name: true } } },
     // กำหนดส่งก่อน (หน้า "งานของฉัน" จัดกลุ่มตามวัน) แล้วค่อยลำดับในคอลัมน์ (position → sortOrder → createdAt)
@@ -90,6 +114,54 @@ export async function getBoard(
     },
   });
   return board as BoardWithData | null;
+}
+
+// ───────────────── K1.3: ตัวที่ "ผ่านสิทธิ์" แล้ว — หน้าเว็บ/action ต้องเรียกตัวนี้เท่านั้น ─────────────────
+// `listBoards`/`getBoard` เดิมยังอยู่ (seed · AI · ข้อสอบเก่าเรียกอยู่) แต่ **ไม่กรองสิทธิ์**
+// ⇒ ทุกจุดที่มี "คนกด" ต้องใช้ตัว `…For` ที่รับ `actor` ไม่งั้นบอร์ดลับโผล่ในรายการ
+
+export type BoardListItem = KanbanBoard & { starred: boolean };
+
+/** บอร์ดที่ actor มองเห็น — ติดดาวขึ้นก่อน แล้วเรียงตามลำดับเดิม */
+export async function listBoardsFor(
+  ctx: KanbanCtx,
+  actor: KanbanActor,
+  includeArchived = false,
+): Promise<BoardListItem[]> {
+  const boards = await prisma.kanbanBoard.findMany({
+    where: {
+      AND: [
+        { tenantId: ctx.tenantId, systemId: ctx.systemId, ...(includeArchived ? {} : { status: "ACTIVE" as const }) },
+        visibleBoardsWhere(actor),
+      ],
+    },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    include: {
+      _count: { select: { cards: { where: { status: "ACTIVE" } } } },
+      stars: { where: { userId: actor.userId }, select: { boardId: true } },
+    },
+  });
+  // เรียงใหม่แบบคงลำดับเดิมภายในกลุ่ม (stable sort ของ JS) — ดาวขึ้นบน ที่เหลือเรียงเหมือนเดิม
+  return boards
+    .map((b) => ({ ...b, starred: b.stars.length > 0 }))
+    .sort((a, b) => Number(b.starred) - Number(a.starred));
+}
+
+/** เปิดบอร์ดพร้อมบทบาทของผู้เปิด — มองไม่เห็น = `KanbanNotFoundError` (404 ไม่ใช่ 403) */
+export async function getBoardFor(
+  ctx: KanbanCtx,
+  actor: KanbanActor,
+  boardId: string,
+): Promise<BoardWithData & { role: Exclude<BoardRole, null> }> {
+  const board = await getBoard(ctx.tenantId, ctx.systemId, boardId);
+  if (!board) throw new KanbanNotFoundError();
+  const members = await prisma.kanbanBoardMember.findMany({
+    where: { boardId: board.id, tenantId: ctx.tenantId },
+    select: { userId: true, role: true },
+  });
+  const role = boardRole(actor, board, members);
+  if (role === null) throw new KanbanNotFoundError();
+  return { ...board, role };
 }
 
 export async function createBoard(input: {

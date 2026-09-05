@@ -59,35 +59,10 @@ export function assertAccountCan(auth: ActiveAuth, action: string): void {
   assertCan(mc(auth), { module: "account", action });
 }
 
-/** เขียน AuditLog (fire-and-forget ปลอดภัย — ไม่ throw ล้ม action หลัก) */
-export async function writeAudit(input: {
-  tenantId: string;
-  actorId?: string | null;
-  /** ใครเป็นคนทำ — ค่าปริยาย USER · REST ผ่าน API key ส่ง "API_KEY" (actorId = ApiKey.id) */
-  actorType?: ActorType;
-  action: string; // "account.doc.issue" | "account.payment.record" | ...
-  targetType?: string; // "AccountDocument" | ...
-  targetId?: string;
-  before?: unknown;
-  after?: unknown;
-}): Promise<void> {
-  try {
-    await prisma.auditLog.create({
-      data: {
-        tenantId: input.tenantId,
-        actorType: input.actorType ?? "USER",
-        actorId: input.actorId ?? null,
-        action: input.action,
-        targetType: input.targetType ?? null,
-        targetId: input.targetId ?? null,
-        before: (input.before ?? undefined) as never,
-        after: (input.after ?? undefined) as never,
-      },
-    });
-  } catch {
-    // audit ล้มเหลวห้ามทำ action หลักพัง
-  }
-}
+// 🔴 `writeAudit` ย้ายไป `src/lib/core/audit.ts` (K1.3) — ของกลางของแพลตฟอร์ม ไม่ใช่ของโมดูลบัญชี
+//    (โมดูลอื่นต้องเขียน audit ด้วย · import ข้ามโมดูลผิดกติกา F2 · ก๊อปตรรกะซ้ำก็ผิดหลักเดียวกัน)
+//    re-export ไว้ที่ชื่อเดิม ⇒ ทุกไฟล์ที่ `import { writeAudit } from "@/lib/modules/account/access"` ใช้ต่อได้
+export { writeAudit } from "@/lib/core/audit";
 
 // ─────────────────── ประวัติการแก้ไข (Audit trail UI — WO Wave6-B) ───────────────────
 // อ่าน AuditLog ของ "ร้านนี้เท่านั้น" (scope tenantId เสมอ — ห้ามรั่วข้ามร้าน) มาแสดงให้เจ้าของดู

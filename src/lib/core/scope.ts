@@ -214,6 +214,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // `systemId` ที่ไม่มีอยู่จริงแล้วพังตอนใครสักคนเริ่มใช้ tenantDb กับมันใน Phase 3
   KanbanCardLabel: tenant,
   KanbanCardAssignee: tenant,
+  // สมาชิกบอร์ด + ดาว (K1.3) — เหตุผลเดียวกัน: มีแต่ `tenantId` (systemId อยู่ที่บอร์ดต้นทาง)
+  KanbanBoardMember: tenant,
+  KanbanBoardStar: tenant,
   // Account — P1 core
   AccountDocument: sys(),
   AccountDocumentLine: sys(),

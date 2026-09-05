@@ -75,6 +75,7 @@ try {
   chk("K1.3-S2.6", "visibleBoardsWhere: owner 3 · manager 2 (ป่าตอง+ซ่อม) · thana 1 (ซ่อม) · noPerm 0", visOwner.length === 3 && visManager.length === 2 && !visManager.some((b) => b.id === bKata.id) && visThana.length === 1 && visThana[0]!.id === bMaint.id && visNo.length === 0, "3/2/1/0", `${visOwner.length}/${visManager.length}/${visThana.length}/${visNo.length}`);
 
   // ═══ S3 สมาชิก ═══
+  await prisma.auditLog.deleteMany({ where: { tenantId: tid } }); // Fable แก้: เคยลบต้น S4 ทำให้แถว member หายก่อนเช็ค S4.6
   const added = await members.addMember(ctxOf(owner), bPatong.id, thana.userId, "EDITOR");
   chk("K1.3-S3.1", "OWNER เพิ่ม thana เป็น EDITOR → แถวสมาชิก + boardRole = EDITOR", !!added && access.boardRole(thana, await fresh(bPatong.id), [{ userId: thana.userId, role: "EDITOR" }]) === "EDITOR" || (await P.kanbanBoardMember.count({ where: { boardId: bPatong.id, userId: thana.userId, role: "EDITOR" } })) === 1, "EDITOR", "ไม่ใช่");
   const roleAsync = await members.boardRoleOf(ctxOf(thana), bPatong.id).catch(() => "ERR");
@@ -99,7 +100,6 @@ try {
   chk("K1.3-S3.10", "listMyCards(…, actor) ของ thana หลังถูกถอด: ไม่มีการ์ดจากบอร์ดป่าตอง (PRIVATE) เหลือแต่บอร์ด TENANT", myThana.every((c) => c.boardId !== bPatong.id) && myThana.some((c) => c.boardId === bMaint.id), "เฉพาะ TENANT", `${myThana.filter((c) => c.boardId === bPatong.id).length} ใบจากป่าตอง / ${myThana.length} รวม`);
 
   // ═══ S4 ดาว + visibility + AuditLog ═══
-  await prisma.auditLog.deleteMany({ where: { tenantId: tid } });
   await members.starBoard(ctxOf(thana), bMaint.id);
   const starred = await members.listStarredBoardIds(ctxOf(thana));
   chk("K1.3-S4.1", "starBoard/listStarredBoardIds", Array.isArray(starred) && starred.includes(bMaint.id), "มีดาว", JSON.stringify(starred));

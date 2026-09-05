@@ -486,15 +486,26 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     label: "บอร์ดงาน",
     group: "work",
     actions: {
+      // 🔴 K1.3: `kanban.board.read` เป็นคีย์ใหม่ — ก่อนหน้านี้ "มีสิทธิ์โมดูล = เห็นทุกบอร์ด"
+      //    (รวมบอร์ดเงินเดือน/เรื่องร้องเรียน) · ชั้นที่ 2 (`kanban/access.ts`) ตรวจคีย์นี้เป็นขั้นต่ำ
+      //    ผู้ใช้เดิมไม่หลุดสิทธิ์: มีคีย์ `kanban.*` ตัวใดตัวหนึ่งอยู่แล้ว = ได้ read โดยนัย (IMPLIES ในโค้ด ไม่ backfill DB)
+      "kanban.board.read": "เห็นบอร์ดงาน",
       "kanban.board.create": "สร้างบอร์ด",
       "kanban.board.rename": "เปลี่ยนชื่อบอร์ด",
       "kanban.board.delete": "ลบบอร์ด",
+      "kanban.board.member.manage": "จัดการสมาชิกบอร์ด",
       "kanban.column.create": "เพิ่มคอลัมน์",
       "kanban.column.delete": "ลบคอลัมน์",
       "kanban.card.create": "สร้างการ์ดงาน",
       "kanban.card.update": "แก้ไขการ์ดงาน",
       "kanban.card.move": "ย้ายการ์ดงาน",
       "kanban.card.delete": "ลบการ์ดงาน",
+      "kanban.card.comment": "เขียนความเห็นในการ์ด",
+      "kanban.card.attach": "แนบไฟล์ในการ์ด",
+      "kanban.label.manage": "จัดการป้ายกำกับ",
+      "kanban.automation.manage": "ตั้งกฎอัตโนมัติของบอร์ด",
+      "kanban.report.view": "ดูรายงานบอร์ดงาน",
+      "kanban.template.manage": "จัดการเทมเพลตบอร์ด",
     },
   },
   {
