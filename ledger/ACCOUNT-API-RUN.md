@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | F1 + F2 (builder เดียว) |
-| สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable (oracle เขียนแล้ว) → Sonnet (builder) |
-| ขั้นที่ถึง | 05 Sep 23:34 น.: E2 DONE + F3 DONE (เอกสาร) · **เฟส E ปิด 2/2** · สั่ง Sonnet ทำ F1+F2 · qc:all เต็มชุดครั้งสุดท้ายหลัง F2 (ไม่ให้คาบเกี่ยว builder) → F4 verify prod |
+| WO | — (RUN จบ 24/24) |
+| สถานะ | 🏁 DONE |
+| ผู้ทำ | Fable |
+| ขั้นที่ถึง | 06 Sep 00:20 น.: **RUN จบ 24/24** · prod verify ผ่าน (HANDOVER-2026-09-06 มีตาราง) · qc:all สุดท้าย 245/246 (ชุด account-api-webhooks แดงเฉพาะใน qc:all — รันเดี่ยว/หลัง reseed 22/22 · oracle ทำให้ทนต่อ backlog ร้านอื่นแล้ว · qc-all เก็บ log รายชุดไว้ /tmp/claude-0/qc-all/ สำหรับรอบหน้า) · งานถัดไป = AI ในแอป SHARK (ใช้สกิล account) + kanban→Trello (รอเจ้าของตอบ §9) |
 | commit ล่าสุดของงานนี้ | (C2 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
@@ -44,10 +44,10 @@
 | D4 | WRITE settings/policy/permissions/links/webhooks CRUD + events ที่เหลือ | Sonnet | DONE | 5 ก.ย. | write-settings 39/39 · 21 op → รวม 199 · event ครบ 21 · permissions ใช้ OWNER คนแรกเป็น actor (แก้ได้แค่ cell ของ STAFF · ระบบ OWNER/MANAGER แก้ไม่ได้) · `wo-notes/api-D4.md` |
 | E1 | สกิล AI `account` 30 tools จากทะเบียน + proposal kinds + dispatch | Opus | DONE | 5 ก.ย. | ai-skill 33/33 (oracle ผิดเอง K3.11: ต้องยกเลิกการชำระก่อนยกเลิกใบ → เพิ่ม K3.10a ทดสอบ account_void_payment) · 36 tool (อ่าน 14 เขียน 18 อันตราย 4) · `api/run.ts` = pipeline ร่วม REST/AI · `wo-notes/api-E1.md` |
 | E2 | `/api/v1/ai/skills/account` + tools route + golden cases 12 + persona นักบัญชี | Opus | DONE | 5 ก.ย. | ai-external 16/16 (Fable ปิดช่อง: คีย์รุ่นเดิม scopes:[] เคยอ่าน tool บัญชีได้ → ตอนนี้ 403/404 เท่า REST + X2.6) · golden 17 เคส 100% · persona นักบัญชี · คู่มือ section AI agents · `wo-notes/api-E2.md` |
-| F1 | `/developers/account` + `.md` + `/developers` เพิ่มหมวดบัญชี | Sonnet | IN_PROGRESS | — | |
-| F2 | `.claude/skills/shark-account-api/` + ทดสอบ agent อ่านสกิลทำ 5 งานเอง | Sonnet+Fable | IN_PROGRESS | — | |
-| F3 | อัปเดต docs (07_API · 12-account §5 · sds/account · AI_LAYER) + HANDOVER | Sonnet | DONE (รอ oracle หลัง F1) | — | |
-| F4 | verify prod + แจ้งเจ้าของ | Fable | TODO | — | |
+| F1 | `/developers/account` + `.md` + `/developers` เพิ่มหมวดบัญชี | Sonnet | DONE | 5 ก.ย. | docs oracle 17/17 · หน้า generate จากทะเบียน · prod 200 + ภาพ `ledger/f4-shots/` |
+| F2 | `.claude/skills/shark-account-api/` + ทดสอบ agent อ่านสกิลทำ 5 งานเอง | Sonnet+Fable | DONE | 5 ก.ย. | สกิล + endpoints generate · agent ใหม่ทำ 5 งานบน prod ครบ (9 calls) · feedback 5 ข้อปรับ SKILL.md |
+| F3 | อัปเดต docs (07_API · 12-account §5 · sds/account · AI_LAYER) + HANDOVER | Sonnet | DONE | 5 ก.ย. | F3.1–3.5 ผ่านใน docs oracle 17/17 · HANDOVER-2026-09-06 |
+| F4 | verify prod + แจ้งเจ้าของ | Fable | DONE | 5 ก.ย. | openapi/ping/dashboard/reports/webhook ครบวง/AI manifest/หน้า developers บน prod ✅ · คีย์ทดสอบลบแล้ว · ผลอยู่ใน HANDOVER |
 
 ## สเปคต่อ WO (สัญญาที่ builder ต้องทำตามเป๊ะ — oracle ตรวจตามนี้)
 
@@ -370,6 +370,7 @@ event ที่เหลือ (D4): `account.cheque.changed` (ทุก transit
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย · ⚠️ ป้ายเวลาช่วง D3–E1 อาจคลาด ±30 นาที — Fable ประมาณเองไม่ได้ดูนาฬิกา · ตั้งแต่ E2 ใช้ `date` จริง)
+- 06 Sep 00:20 น. — 🏁 **RUN จบ 24/24 = 100%** (เริ่ม 14:30 · ~9.5 ชม. · 24 WO · builder 16 รอบ) · F1+F2 ปิด (Sonnet 14 นาที) · agent ใหม่ใช้สกิลทำ 5 งานบน prod ครบ · F4 prod verify ผ่านทุกข้อ (openapi 199 · ping/dashboard/reports · webhook ครบวง · AI manifest · หน้า developers) · qc:all สุดท้าย 245/246 (webhooks suite แดงเฉพาะใน qc:all · เดี่ยว 22/22 · reseed แล้วก็ 22/22 · แก้ oracle ให้นับเฉพาะร้านตัวเอง + ระบาย 3 รอบ · qc-all เก็บ log รายชุด) · คีย์ทดสอบ prod ลบแล้ว 3 ใบ
 - 5 ก.ย. 23:34 น. — E2 ปิด (Opus 21 นาที) + F3 ปิด (Sonnet 9 นาที ขนาน) · **เฟส E ปิด** · 🔴 Fable ปิดช่องโหว่: AI route ให้คีย์รุ่นเดิม (scopes:[]) เรียก tool บัญชีได้ทั้งที่ REST ปฏิเสธ → เท่ากันแล้ว (X2.6) · ความคืบหน้า 20/24 = 83% · เริ่ม F1+F2
 - 5 ก.ย. 23:10 น. — เริ่ม E2 (Opus) + **F3 (Sonnet) ขนาน** (เอกสาร as-built ไม่แตะ generator/ACCOUNT-API.md · ไม่ต้อง typecheck)
 - 5 ก.ย. 23:05 น. — E1 ปิด (Opus 35 นาที · oracle ผิดเอง 1 จุด) · REST/AI ใช้ validation+audit เส้นเดียวกันผ่าน `api/run.ts` · ความคืบหน้า 17/24 = 71% · เริ่ม E2

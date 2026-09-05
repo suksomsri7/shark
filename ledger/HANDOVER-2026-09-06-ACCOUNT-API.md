@@ -103,4 +103,19 @@ curl -sS -X POST https://shark.in.th/api/v1/account/documents \
 
 **AI ในแอป SHARK** ใช้สกิล `account` ที่เพิ่งสร้างนี้เป็นฐาน — ให้เจ้าของ/พนักงานคุยกับผู้ช่วย AI ในแอปแล้วสั่งงานบัญชีได้ตรง ๆ (เช่น "ออกใบแจ้งหนี้ให้ลูกค้า A 5,000 บาท") โดย AI เรียกเครื่องมือ 36 ตัวเดียวกับที่เอกสารนี้อธิบาย — ของที่ทำไว้แล้วจาก run นี้ (WO E1/E2): tool ครบ, persona "นักบัญชี", golden test cases 12 ข้อ — เหลืองาน UI/UX ในแอปแชท (การ์ดยืนยัน, ปุ่มเลือกทางเลือก) และเปิดใช้จริงกับผู้ใช้
 
-<!-- F4: ผล verify prod (Fable เติม) -->
+## ผลตรวจบน prod จริง (F4 · Fable · 5 ก.ย. 23:35–23:58 น.)
+
+ตรวจกับ shark.in.th หลัง deploy `f1d86ae` (Vercel READY) ด้วยคีย์ทดสอบชั่วคราวบนร้าน "QC7 บัญชี" (ลบคีย์ทิ้งแล้วทั้ง 3 ใบ):
+
+| รายการ | ผล |
+|---|---|
+| `GET /api/v1/account/openapi.json` (ไม่ต้องมีคีย์) | 200 · 199 operations |
+| `/ping` `/dashboard` `/documents` `/contacts` `/reports/trial-balance?from=2026-01&to=2026-09` | 200 ทุกตัว (0.15–0.4 วิ · ครั้งแรกหลัง deploy 2.3 วิ) · CSV มี BOM |
+| คีย์อ่านอย่างเดียวลองสร้างผู้ติดต่อ | 403 `scope_missing` ✅ · ไม่มีคีย์ → 401 ✅ |
+| Webhook ครบวง (คีย์ settings) | สร้าง endpoint → secret ครั้งเดียว ✅ → `POST /webhooks/{id}/test` delivered 1 → deliveries สถานะ OK → ลบ endpoint (confirm+reason) ✅ |
+| AI manifest `GET /api/v1/ai/skills/account` | 200 · เห็นเฉพาะ tool ที่คีย์มี scope (คีย์อ่านอย่างเดียวเห็น 13 ตัว) |
+| หน้า `/developers/account` + `/developers/account.md` | 200 · เนื้อ .md ตรงกับ `docs/api/ACCOUNT-API.md` ไบต์ต่อไบต์ · ภาพจริง `ledger/f4-shots/` |
+| **agent ภายนอกที่ไม่รู้จักโค้ด** ใช้สกิล `shark-account-api` ทำ 5 งานบน prod | ครบทั้ง 5 (dashboard · รายการรอชำระ · สร้างผู้ติดต่อ+เจอ 409 duplicate · ใบเสนอราคาร่าง 29,318 บาท · งบทดลอง CSV สมดุล) ยิง 9 ครั้ง retry 1 · รายงาน `ledger/wo-notes/api-F2-agent-test.md` · feedback 5 ข้อปรับลง SKILL.md แล้ว |
+
+หมายเหตุ: การทดสอบทิ้งผู้ติดต่อ 1 ราย (C00002 "บริษัท ทดสอบสกิล เอไอ จำกัด") + ใบเสนอราคาร่าง 1 ใบ ไว้ในร้าน QC7 บัญชี (ร้านทดสอบที่รอเจ้าของลบอยู่แล้ว)
+

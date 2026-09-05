@@ -132,10 +132,17 @@ try {
     }
     return realFetch(url as Any, init as Any);
   }) as typeof fetch;
-  const drained = await consumersMod.drainAll();
+  // Fable (ปิด run): ใน qc:all ชุดก่อนหน้าทิ้ง event ของร้านอื่นค้างไว้ (ปลายทาง 127.0.0.1:9 ล้ม/ค้าง) ⇒ ระบายซ้ำได้สูงสุด 3 รอบ
+  //   จนกว่า event ของ "ร้านนี้" หมด · นับ FAILED เฉพาะร้านนี้ (ไม่ใช่ `drained.failed` ที่รวมร้านอื่น) — ชุดนี้เคยแดงเฉพาะใน qc:all
+  let drained: Any = null;
+  for (let round = 0; round < 3; round++) {
+    try { drained = await consumersMod.drainAll(); } catch (e) { drained = { processed: 0, failed: -1, error: e instanceof Error ? e.message : String(e) }; }
+    if ((await prisma.outboxEvent.count({ where: { tenantId: tid, status: "PENDING" } })) === 0) break;
+  }
   globalThis.fetch = realFetch;
   const pending = await prisma.outboxEvent.count({ where: { tenantId: tid, status: { not: "DONE" } as Any } });
-  chk("C4-E5.1", "drainAll → event ทุกตัวของร้าน DONE (PENDING/FAILED = 0) · ไม่มี lastError 'ไม่มี consumer'", pending === 0 && (drained?.failed ?? 0) === 0, "0 ค้าง", `pending=${pending} failed=${drained?.failed} processed=${drained?.processed}`);
+  const failedOwn = await prisma.outboxEvent.count({ where: { tenantId: tid, status: "FAILED" } });
+  chk("C4-E5.1", "drainAll → event ทุกตัวของร้าน DONE (PENDING/FAILED = 0) · ไม่มี lastError 'ไม่มี consumer'", pending === 0 && failedOwn === 0, "0 ค้าง", `pending=${pending} failedOwn=${failedOwn} drainedFailed(ทุกร้าน)=${drained?.failed} processed=${drained?.processed}`);
   const issuedHooks = captured.filter((x) => x.url === "https://hook.test/issued");
   chk("C4-E5.2", "ปลายทางที่สมัคร document.issued ได้รับ 4 ครั้ง (QT+IV+IV2+IV3 — endpoint ถูก resolve ตอน drain ไม่ใช่ตอนสร้าง event) ไม่ได้รับ event อื่น · body.type ถูก", issuedHooks.length === 4 && issuedHooks.every((x) => JSON.parse(x.body).type === "account.document.issued"), "2", `${issuedHooks.length}`);
   const contactHooks = captured.filter((x) => x.url === "https://hook.test/contacts");

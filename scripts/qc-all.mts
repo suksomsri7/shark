@@ -28,6 +28,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { isProdDbUrl, PROD_HOST_MARK } from "./qc-env-guard.mjs";
 
 if (
@@ -136,6 +137,8 @@ for (const f of picked) {
     maxBuffer: 32 * 1024 * 1024,
   });
   const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
+  // Fable: เก็บ output เต็มของทุกชุดไว้ให้ไล่ย้อนได้ (ชุดที่แดงเฉพาะใน qc:all เคยไล่ไม่ได้เพราะไม่มี log)
+  try { mkdirSync("/tmp/claude-0/qc-all", { recursive: true }); writeFileSync(`/tmp/claude-0/qc-all/${f.replace(/\.mts$/, "")}.log`, out); } catch { /* ไม่ให้การเก็บ log ทำ qc:all พัง */ }
   // ข้อสอบแต่ละยุคพิมพ์สรุปคนละแบบ — เก็บบรรทัดสรุปแบบไหนก็ได้ที่เจอท้ายสุด
   const m = out.match(/(?:ผ่าน|pass)[^\n·|]*\d+\/\d+|ผ่าน \d+ ข้อ|ผ่านทั้งหมด/g);
   const code = r.status ?? 1;
