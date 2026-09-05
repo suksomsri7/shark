@@ -10,12 +10,16 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { SlideOver } from "./SlideOver";
 import { AccountIcon } from "./AccountIcon";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { formatDateTh } from "@/lib/ui/date";
-import { loadContactProfileAction, archiveContactAction } from "@/lib/modules/account/actions";
+import { loadContactProfileAction } from "@/lib/modules/account/actions";
+// WO 9.4 §0.3 ข้อ 8 — เก็บถาวรผู้ติดต่อไม่กินเลขที่/ไม่ลงเงิน ⇒ เลิกทำได้ภายใน 5 นาที
+import { archiveContactWithUndoAction } from "@/lib/modules/account/undo-stack";
+import { useUndoToast } from "./UndoToast";
 import { useSetBreadcrumbTail } from "./breadcrumb-tail";
 import type { ContactProfile, ProfileTab, ProfileDocRow } from "@/lib/modules/account/contact-profile";
 
@@ -735,6 +739,8 @@ export function ContactProfileFull({ systemId, initial }: { systemId: string; in
     page: 1,
   });
   const [pending, start] = useTransition();
+  const router = useRouter();
+  const undoToast = useUndoToast();
   // breadcrumb "บัญชี › ผู้ติดต่อ › <ชื่อ>" ตาม g6
   useSetBreadcrumbTail(profile.header.name);
 
@@ -747,6 +753,17 @@ export function ContactProfileFull({ systemId, initial }: { systemId: string; in
         page: f.page,
       });
       if (p) setProfile(p);
+    });
+  };
+
+  const archiveNow = () => {
+    start(async () => {
+      const res = await archiveContactWithUndoAction(systemId, profile.header.id);
+      if (res.ok) {
+        undoToast.show({ tokenId: res.undoToken, systemId, message: `ปิดใช้งาน "${profile.header.name}" แล้ว` });
+        load(tab, filters);
+        router.refresh();
+      }
     });
   };
 
@@ -786,18 +803,16 @@ export function ContactProfileFull({ systemId, initial }: { systemId: string; in
             <AccountIcon name="edit" /> แก้ไข
           </Link>
           {!profile.header.archived && (
-            <form action={archiveContactAction}>
-              <input type="hidden" name="systemId" value={systemId} />
-              <input type="hidden" name="id" value={profile.header.id} />
-              <button
-                type="submit"
-                className="btn-sm inline-flex items-center gap-1.5"
-                style={{ color: "var(--color-danger)" }}
-                data-testid="profile-archive"
-              >
-                <AccountIcon name="x" /> ปิดใช้งาน
-              </button>
-            </form>
+            <button
+              type="button"
+              onClick={archiveNow}
+              disabled={pending}
+              className="btn-sm inline-flex items-center gap-1.5"
+              style={{ color: "var(--color-danger)" }}
+              data-testid="profile-archive"
+            >
+              <AccountIcon name="x" /> ปิดใช้งาน
+            </button>
           )}
           <Link href={profile.links.newInvoiceHref} className="btn btn-primary">
             สร้างใบแจ้งหนี้

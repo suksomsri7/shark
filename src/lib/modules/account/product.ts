@@ -9,6 +9,7 @@
 //     ใบส่งคืนกลับด้าน · ใบปรับต้นทุน (CA) ลง JV กำไร/ขาดทุนจากการปรับมูลค่า
 // เจ้าของไฟล์นี้ = subagent Products
 import { prisma } from "@/lib/core/db";
+import { safeReason } from "./errors";
 import type {
   AccountDocType,
   AccountProductType,
@@ -525,7 +526,7 @@ export async function createProduct(
       }
       const err = e as { code?: string };
       if (err?.code === "P2002") return { ok: false, reason: "รหัสสินค้า (SKU) ซ้ำกับที่มีอยู่" };
-      return { ok: false, reason: e instanceof Error ? e.message : "บันทึกสินค้าไม่สำเร็จ" };
+      return { ok: false, reason: safeReason(e, "บันทึกสินค้าไม่สำเร็จ") };
     }
   }
   // ชนติดกัน 6 รอบ = ผิดปกติจริง — สร้างโดยไม่มีเลขที่ ดีกว่าทำงานผู้ใช้หาย (หน้ารายการถอยไปใช้ sku/เลขคำนวณสด)
@@ -538,7 +539,7 @@ export async function createProduct(
     //    `{ok:false,reason}` เสมอ ⇒ ห้ามปล่อย error ดิบของ Prisma หลุดไปถึงผู้ใช้
     const err = e as { code?: string };
     if (err?.code === "P2002") return { ok: false, reason: "รหัสสินค้า (SKU) ซ้ำกับที่มีอยู่" };
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกสินค้าไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกสินค้าไม่สำเร็จ") };
   }
 }
 
@@ -579,7 +580,7 @@ export async function updateProduct(
     if (isProductCodeConflict(e)) return { ok: false, reason: "เลขที่สินค้าซ้ำกับรายการที่ใช้งานอยู่" };
     const err = e as { code?: string };
     if (err?.code === "P2002") return { ok: false, reason: "รหัสสินค้า (SKU) ซ้ำกับที่มีอยู่" };
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกสินค้าไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกสินค้าไม่สำเร็จ") };
   }
   // WO 4.1: ผูกคลังอยู่ → ดัน ชื่อ/sku/หน่วย ไปที่ item กลาง (ไม่ดันราคา/VAT/ผังบัญชี — เป็นฟิลด์บัญชี)
   //   ไม่ผูก / ไม่มีระบบคลัง = no-op เงียบ ๆ (§F.15)
@@ -1082,7 +1083,7 @@ export async function createGoodsMovement(input: {
     });
     return { ok: true, ...res };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกเอกสารเบิกไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกเอกสารเบิกไม่สำเร็จ") };
   }
 }
 
@@ -1128,7 +1129,7 @@ export async function approveGoodsMovement(
     });
     return { ok: true, docNo };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "อนุมัติใบเบิกไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "อนุมัติใบเบิกไม่สำเร็จ") };
   }
 }
 
@@ -1256,7 +1257,7 @@ export async function createCostAdjustment(input: {
     });
     return { ok: true, ...out };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกใบปรับต้นทุนไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกใบปรับต้นทุนไม่สำเร็จ") };
   }
 }
 
@@ -1572,7 +1573,7 @@ export async function setBundleItems(
     });
     return { ok: true, count };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกส่วนประกอบไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกส่วนประกอบไม่สำเร็จ") };
   }
 }
 
@@ -1679,7 +1680,7 @@ export async function addOpeningLot(
     });
     return { ok: true, ...out };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกยอดยกมาไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกยอดยกมาไม่สำเร็จ") };
   }
 }
 

@@ -290,7 +290,8 @@ export default async function DocumentsPage({
           pageCount={pageCount}
           pageSize={pageSize}
           total={total}
-          emptyText={`ยังไม่มีไฟล์ในคลังเอกสาร — ลากไฟล์มาวางด้านบน หรือกด "อัปโหลดไฟล์"`}
+          emptyText={`ยังไม่มีไฟล์ในคลังเอกสาร — ลากไฟล์มาวางด้านบน หรือกดปุ่มด้านล่างเพื่ออัปโหลด`}
+          emptyAction={{ href: buildHref(pathname, spForHref, { upload: "1" }), label: "อัปโหลดไฟล์" }}
         />
       )}
 

@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 9.4 ความง่าย (ปิดเฟส 9) |
+| WO | 🏁 ปิดเฟส 9 (qc:all → main → deploy → verify) → เฟส 10 |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Sonnet (sub-agent) |
-| ขั้นที่ถึง | 5 ก.ย. ~01:10 UTC: 9.4 รอบ 1 ส่งมา (simplicity 99/99 · ⌘K · HelpTip ≥40 · empty state · errors safeReason 62 จุด · /help · undo backend ครบ 11 แต่ UI ต่อสายแค่ 2) → Fable **ตีกลับ**: ต่อสาย undo อีก 9 จุด + แก้ 3 บั๊กเล็กที่เจอ (label mapping key · คอลัมน์ /periods · แท็บ /help) — agent เดิมทำรอบ 2 |
+| ผู้ทำ | Fable (ปิดเฟส) |
+| ขั้นที่ถึง | 5 ก.ย. ~02:00 UTC: 9.4 DONE รอบ 2 (undo UI 11/11 · label mapping key · /periods · /help tab) · Fable รันด่าน 24 ชุดเอง · commit แล้ว · qc:all เฟส 9 กำลังรัน |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -60,12 +60,13 @@
 | 9.1 | มือถือทำงานได้จริง | Sonnet | DONE | (HEAD) | ตรง g17 (รอบ 2: แถวหัว+chevron→sheet · การ์ดรายการ+⋯→sheet · accordion · sticky ยอด+ปุ่ม) · f11–f14/g18–g20 ผ่าน · 4 งานจบบนมือถือ (qc-acc-v2-mobile 55/55 — browser suite ต้องมี server · Fable รับผลจาก agent + ดู PNG เอง) · Fable รันเอง: editor 200 · recurring 163 · detail 85 · payments 161 · list 159 · contacts 49 · inbox 128 · permissions 160 · components 78 · nav 326 · guard 170 · adjust 96 · groups 174 · seed-check 279 · schema 61 · dashboard/home เขียว · fitness 17 (ไม่มี .env) · CPA 107 · drift clean · typecheck 0 · แก้: doc detail f14 ลิสต์ย่อ · ปุ่มหลัก ≥44px · sticky คอลัมน์แรก งบทดลอง/ภ.พ.30 · 🐞 ข้อสอบ cleanup ทิ้ง JV กำพร้า (แก้+ล้าง) · แอป WebView เปิด route V2 ได้ไม่ต้องแก้ native · ค้าง: งบดุล/กำไรขาดทุน/กระแสเงินสด ยังไม่ sticky คอลัมน์แรก · GroupChildrenTable มือถือยังเป็นตารางเลื่อน |
 | 9.2 | audit ความปลอดภัย | Fable นำ · Opus | DONE | (HEAD) | 20 ข้อ (ตาราง wo-notes/9.2.md) · FAIL→แก้ 11: 🔴 `recordPayment` ไม่ล็อกแถว (รับชำระซ้อน = จ่าย 2 เท่า+JV 2 ชุด) · 🔴 `issuePublicTaxInvoice` ไม่เช็ค enabled/expiry ฝั่ง action · CSV injection 4 จุด (ภ.ง.ด./ภ.พ.30/ปุ่ม Excel ทุกรายงาน) · อัปโหลดเชื่อ File.type (เพิ่ม magic bytes) · q ไม่จำกัดความยาว · ไม่มี rate limit เลย (เพิ่ม 6 จุด) · double-submit issue/void/approve PO · P2002 handler อ่าน 'code' จากบรรทัด source (SKU ซ้ำ = 500) · legacy suites ไม่เคารพ QC env (qc-env-guard + กัน prod ใน qc-all) · payment.entryId null · Fable รันเอง: security 298 · guard 173 · 24 ชุดเก่าเขียว · CPA 107 ชี้ ep-plain-art แบบไม่มี .env · fitness 17 ×2 · drift clean · typecheck 0 · color-fg/bg = 0 · ค้าง: hex ดิบ 23 บรรทัดใน chart/status (allowlist กันลาม) · pnpm audit 32 (transitive next/prisma) · 🔴 **next 16.2.10 → 16.2.11 ปิด 4 high (Server Actions SSRF/DoS · middleware bypass) → ทำใน 9.3** · contact-merge reseed ล้มเงียบทำ expected เน่า → 9.3 |
 | 9.3 | ประสิทธิภาพ | Opus | DONE | (HEAD) | next 16.2.10→16.2.11 (audit 32→21 · advisory ของ next 9→0) · harness qc-acc-v2-perf 29 หน้า (query count จาก prisma log + wall time 27 หน้า <1.5s สูงสุด 748ms) · เกินงบ 14→0 (doc detail 22→19 · reconcile 16→10 · products 13→7 …) · 10 หน้ายังเกินงบตั้งต้น = ratchet ปักตัวเลขจริง+เหตุผล (schema ไม่มี relation ให้ join) · doc detail ควร rewrite → WO แยก · index เพิ่ม 2 (AccountContact/AccountAttachment (systemId,archivedAt,createdAt) — อีก 6 มีอยู่แล้ว) · pagination: listWhtCertsV2/listChequesV2 ไม่มี take (แก้) · CDN ใช้อยู่แล้ว +lazy · 🐞 ปิด: payments 'flaky' จริงคือ ORDER BY paidAt ไม่มี tie-breaker · seed พังเงียบเพราะ drainAll 50 event (8.3 ดัน event เพิ่ม) · WHERE id IN (NULL) 4 จุด · recordPayment 2 event → 1 createMany · contact-merge reseed ดังแล้ว (exit 2) · visual 2.2 ปักตัวเลข seed เก่า → อ่าน expected.json · ค้าง: visual 0.1 --assert 307 4 ข้อ (path เก่า) → 10.1 |
-| 9.4 | ความง่าย | Sonnet | TODO | | |
+| 9.4 | ความง่าย | Sonnet | DONE | (HEAD) | ตีกลับ 1 รอบ (undo UI 2/11 → 11/11) · Fable รันเอง: simplicity 112 · contacts 49 · products 100 · attachments 66 · inbox 128 · contact-merge 56 · detail 85 · editor 200 · coa 105 · period-assets 121 · components 78 · guard 174 · security 298 · perf 92 · list 159 · nav 326 · seed-check 279 · schema 61 · dashboard/home เขียว · fitness 17 (ไม่มี .env) · CPA 107 · drift clean · typecheck 0 · ใหม่: ⌘K สร้างด่วน (parser TH/EN+ยอด) · soft-undo 5 นาที (AccountUndoToken · 11 จุด) · HelpTip ≥40 คำ · empty state ทุกรายการ · safeReason 62 จุด + label enum ครบ · /account/help · label mapping key · 🐞 ปิด: findActiveNav หน้าไม่ลงทะเบียนติดแท็บหน้าหลัก · cancelDraft path ผิด · ค้าง: gl.ts ยัง throw docType ดิบ (ไฟล์ GL-Core) |
 | 10.1 | QC รอบสุดท้ายทุกเฟรม | Fable | TODO | | |
 | 10.2 | เอกสาร/handover | Sonnet | TODO | | |
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 5 ก.ย. 2026 ~02:00 UTC — 9.4 DONE → เฟส 9 ครบ 4 WO · เริ่มปิดเฟส
 - 4 ก.ย. 2026 ~23:20 UTC — 9.3 perf + next 16.2.11 DONE · ต้นเหตุ payments flaky = ORDER BY ไม่มี tie-breaker · seed พังเงียบจาก drainAll 50
 - 4 ก.ย. 2026 ~21:45 UTC — 9.2 security audit DONE · ช่องโหว่ร้ายแรงที่ปิด: รับชำระซ้อนไม่ล็อกแถว · ขอใบกำกับผ่านลิงก์สาธารณะข้ามการปิด/หมดอายุ · CSV injection · ไม่มี rate limit
 - 4 ก.ย. 2026 ~20:20 UTC — 9.1 มือถือ DONE (ตีกลับ 1 รอบ) · บทเรียน: Sonnet หยุดเทิร์นรอ build เบื้องหลังซ้ำ ๆ → ใบสั่งงานต้องสั่ง 'รอในเชลล์ ห้ามจบเทิร์นเพื่อรอ'

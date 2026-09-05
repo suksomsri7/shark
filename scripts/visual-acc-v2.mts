@@ -519,6 +519,50 @@ if (WO === "3.3") {
 let fx91Po = "";
 let fx91Draft = "";
 let fx91AwaitingPay = "";
+// ─────────── fixture ของ WO 9.4: ความง่าย — 1 ไฟล์แนบทิ้งไว้ยิง unlink (พิสูจน์ undo toast จริง)
+// + 1 ระบบบัญชีว่างเปล่า (พิสูจน์ empty state จริง) — คนละของกับ SYS ที่ทุกชุดทดสอบอื่นพึ่งพา
+let fx94 = { emptySystemId: "", attachmentId: "", documentId: "" };
+if (WO === "9.4") {
+  const { prisma: db } = await import("@/lib/core/db");
+  const system = await import("@/lib/modules/system/service");
+  const attachment = await import("@/lib/modules/account/attachment");
+  const REF_94 = "QC-VISUAL-9.4";
+  cleanupFixture = async () => {
+    const staleDocs = await db.accountDocument.findMany({ where: { systemId: SYS, reference: REF_94 }, select: { id: true } });
+    const ids = staleDocs.map((d) => d.id);
+    // 🔴 บั๊กที่เจอจริง: flow ของหน้า documents กด "แยกออกจากเอกสาร" (unlink) ระหว่างถ่ายภาพ ⇒ พอถึงตรงนี้
+    //    ไฟล์แนบ documentId เป็น null ไปแล้ว — where:{documentId:{in:ids}} จะหาไม่เจอ ทิ้งไฟล์ลอยค้างไว้ในร้าน QC
+    //    จริงทุกรอบที่รัน (นับได้ 2 ไฟล์ค้างจากการรันซ้อมก่อนแก้จุดนี้ — ลบมือแล้ว) ⇒ ลบด้วยชื่อไฟล์ตรง ๆ แทน
+    const staleAttByDoc = ids.length ? await db.accountAttachment.findMany({ where: { documentId: { in: ids } }, select: { id: true } }) : [];
+    const staleAttByName = await db.accountAttachment.findMany({ where: { systemId: SYS, fileName: "qc-undo-demo.pdf" }, select: { id: true } });
+    const attIds = [...new Set([...staleAttByDoc, ...staleAttByName].map((a) => a.id))];
+    if (attIds.length) await db.accountAttachment.deleteMany({ where: { id: { in: attIds } } });
+    if (ids.length) {
+      await db.accountDocumentLine.deleteMany({ where: { documentId: { in: ids } } });
+      await db.accountDocument.deleteMany({ where: { id: { in: ids } } });
+    }
+    const staleSys = await db.appSystem.findMany({ where: { tenantId: E.tenantId, name: { contains: REF_94 } }, select: { id: true } });
+    if (staleSys.length) await db.appSystem.deleteMany({ where: { id: { in: staleSys.map((s) => s.id) } } });
+    console.log(`ลบ fixture ของ WO 9.4 (${ids.length} เอกสาร · ${attIds.length} ไฟล์แนบ · ${staleSys.length} ระบบว่างเปล่า)`);
+  };
+  await cleanupFixture(); // กันซากจากรอบที่ล้มกลางคัน
+  const doc = await db.accountDocument.create({
+    data: { tenantId: E.tenantId, systemId: SYS, docType: "EXPENSE", status: "DRAFT", grandTotal: 0, reference: REF_94 },
+  });
+  const att = await attachment.createAttachment({
+    tenantId: E.tenantId,
+    systemId: SYS,
+    documentId: doc.id,
+    fileName: "qc-undo-demo.pdf",
+    fileUrl: "https://example.com/qc-undo-demo.pdf",
+  });
+  if (!att.ok) throw new Error("fixture 9.4: สร้างไฟล์แนบไม่สำเร็จ — " + att.reason);
+  fx94.documentId = doc.id;
+  fx94.attachmentId = att.id;
+  const emptySys = await system.createSystem(E.tenantId, "ACCOUNT", `ว่างเปล่า ${REF_94}`);
+  fx94.emptySystemId = emptySys.id;
+  console.log(`[fixture 9.4] ไฟล์แนบสาธิต unlink = ${fx94.attachmentId} · ระบบว่างเปล่า = ${fx94.emptySystemId}\n`);
+}
 if (WO === "9.1") {
   const { prisma: db } = await import("@/lib/core/db");
   const expense = await import("@/lib/modules/account/expense");
@@ -2497,6 +2541,175 @@ const PAGES: Record<string, PageSpec[]> = {
       onlyDevice: "mobile",
       click: ['[data-testid="reject-po-trigger"]'],
       waitAfterClick: 400,
+    },
+  ],
+  // WO 9.4 — ความง่าย (BLUEPRINT §3 แถว 9.4): 20 หน้าที่ใช้บ่อยที่สุด · เดสก์ท็อปเท่านั้น (eye-check ตา ไม่ใช่
+  // parity กับเฟรมเก่า) — 4 หน้าโชว์สถานะพิเศษแทนหน้าเปล่า: หน้าหลัก (แผงสร้างด่วน ⌘K เปิดอยู่) · คลังเอกสาร
+  // (toast "เลิกทำ" หลังแยกไฟล์ทิ้ง — ใช้ fx94 ไม่แตะไฟล์ที่ชุดทดสอบอื่นพึ่งพา) · WHT (tooltip (?) เปิดอยู่) ·
+  // ผู้ติดต่อ (ชี้ไประบบว่างเปล่า fx94.emptySystemId แทน SYS จริง → เห็น EmptyState จริง)
+  "9.4": [
+    {
+      name: "home",
+      path: `/app/sys/${SYS}/account`,
+      note: "หน้าหลัก — เปิดแผง \"สร้างด่วน\" (⌘K) ทับอยู่ (คลิกผ่านปุ่ม + สร้างเอกสาร → ลิงก์ท้าย dropdown)",
+      expect: ["บัญชี"],
+      onlyDevice: "desktop",
+      click: ['[data-testid="btn-create-doc"]', '[data-testid="create-doc-menu-quickcreate-link"]'],
+      waitAfterClick: 400,
+    },
+    {
+      name: "invoice-list",
+      path: `/app/sys/${SYS}/account/docs/INVOICE`,
+      note: "หน้ารายการใบแจ้งหนี้",
+      expect: ["ใบแจ้งหนี้"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "doc-detail",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/${E.fixtures.invNattapholId}`,
+      note: "หน้าเอกสารใบแจ้งหนี้ 1 ใบ",
+      expect: ["ใบแจ้งหนี้"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "editor",
+      path: `/app/sys/${SYS}/account/docs/INVOICE/new`,
+      note: "ฟอร์มสร้างใบแจ้งหนี้ใหม่",
+      expect: ["สร้างใบแจ้งหนี้"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "contacts",
+      path: `/app/sys/${fx94.emptySystemId}/account/contacts`,
+      note: "empty state จริง — ระบบว่างเปล่าที่สร้างทิ้งไว้เฉพาะ WO 9.4 (ยังไม่มีผู้ติดต่อเลย)",
+      expect: ["ผู้ติดต่อ"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "contact-profile",
+      path: `/app/sys/${SYS}/account/contacts/${E.fixtures.contactNattapholId}`,
+      note: "โปรไฟล์ผู้ติดต่อ 360°",
+      expect: ["อายุหนี้ของรายนี้"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "products",
+      path: `/app/sys/${SYS}/account/products`,
+      note: "หน้ารายการสินค้า/บริการ",
+      expect: ["สินค้า"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "finance",
+      path: `/app/sys/${SYS}/account/finance`,
+      note: "หน้าช่องทางการเงิน",
+      expect: ["การเงิน"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "finance-overview",
+      path: `/app/sys/${SYS}/account/finance/overview`,
+      note: "ภาพรวมการเงิน",
+      expect: ["ภาพรวม"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "reconcile",
+      path: `/app/sys/${SYS}/account/finance/reconcile`,
+      note: "กระทบยอดธนาคาร",
+      expect: ["กระทบยอด"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "wht",
+      path: `/app/sys/${SYS}/account/wht`,
+      note: "หน้าหัก ณ ที่จ่าย — เปิด tooltip (?) หัวคอลัมน์ \"ประเภทเงินได้\"",
+      expect: ["หัก ณ ที่จ่าย"],
+      onlyDevice: "desktop",
+      click: ['[data-testid="col-help-income"]'],
+      waitAfterClick: 300,
+    },
+    {
+      name: "journal",
+      path: `/app/sys/${SYS}/account/journal`,
+      note: "สมุดรายวัน",
+      expect: ["สมุดรายวัน"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "coa",
+      path: `/app/sys/${SYS}/account/accounts`,
+      note: "ผังบัญชี",
+      expect: ["ผังบัญชี"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "reports",
+      path: `/app/sys/${SYS}/account/reports`,
+      note: "งบและรายงาน (หน้ารวม)",
+      expect: ["งบและรายงาน"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "periods",
+      path: `/app/sys/${SYS}/account/periods`,
+      note: "ปิดงวด",
+      expect: ["ปิดงวด"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "assets",
+      path: `/app/sys/${SYS}/account/assets`,
+      note: "ทะเบียนสินทรัพย์",
+      expect: ["สินทรัพย์"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "documents",
+      path: `/app/sys/${SYS}/account/documents`,
+      note: 'คลังเอกสาร — คลิก "ทำรายการ" ของไฟล์สาธิต (fx94) → "แยกออกจากเอกสาร" → toast "เลิกทำ" ล่างจอ',
+      expect: ["คลังเอกสาร"],
+      onlyDevice: "desktop",
+      click: [
+        `[data-testid="attachment-row-menu-${fx94.attachmentId}"] button`,
+        `[data-testid="attachment-row-menu-${fx94.attachmentId}-item-1"]`,
+      ],
+      waitAfterClick: 600,
+    },
+    {
+      // ตีกลับรอบ 2 — อีกตัวอย่างจริงของ toast "เลิกทำ" (นอกเหนือจากปักหมุด/แยกไฟล์): ยกเลิกร่างที่หน้าเอกสาร 1 ใบ
+      name: "expense-cancel-draft-toast",
+      path: `/app/sys/${SYS}/account/expense/${fx94.documentId}`,
+      note: 'หน้าเอกสารร่าง (fx94) — คลิก "⋯" → "ยกเลิกร่าง" → ยืนยัน → toast "เลิกทำ" ล่างจอ',
+      expect: ["บันทึกค่าใช้จ่าย"],
+      onlyDevice: "desktop",
+      click: [
+        `[data-testid="doc-more-actions"] button`,
+        `[data-testid="doc-more-actions-danger-trigger"]`,
+        `[data-testid="doc-more-actions-danger-sheet"] button[type="submit"]`,
+      ],
+      waitAfterClick: 800,
+    },
+    {
+      name: "inbox",
+      path: `/app/sys/${SYS}/account/documents/inbox`,
+      note: "กล่องขาเข้า",
+      expect: ["กล่องขาเข้า"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "settings-numbering",
+      path: `/app/sys/${SYS}/account/settings/documents`,
+      note: "ตั้งค่าเอกสารและเลขที่",
+      expect: ["เลขที่"],
+      onlyDevice: "desktop",
+    },
+    {
+      name: "help",
+      path: `/app/sys/${SYS}/account/help`,
+      note: "คู่มือเริ่มต้นในแอป 1 หน้า (deliverable F)",
+      expect: ["เริ่มใช้บัญชี SHARK"],
+      onlyDevice: "desktop",
     },
   ],
 };

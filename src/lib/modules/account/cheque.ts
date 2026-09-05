@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/db";
+import { safeReason } from "./errors";
 import type { AccountChequeDirection, AccountChequeStatus, Prisma } from "@prisma/client";
 // posting engine (owner = GL-Core) — subagent แค่ import + เรียกตามลายเซ็น
 import { ensureAccounting, postChequeEntry, resolveMapping } from "./gl";
@@ -401,7 +402,7 @@ export async function createCheque(input: {
     });
     return { ok: true, id };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกเช็คไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกเช็คไม่สำเร็จ") };
   }
 }
 
@@ -496,7 +497,7 @@ export async function clearCheque(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "เคลียร์เช็คไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "เคลียร์เช็คไม่สำเร็จ") };
   }
 }
 
@@ -550,7 +551,7 @@ export async function bounceCheque(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกเช็คเด้งไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกเช็คเด้งไม่สำเร็จ") };
   }
 }
 
@@ -594,6 +595,6 @@ export async function voidCheque(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ยกเลิกเช็คไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ยกเลิกเช็คไม่สำเร็จ") };
   }
 }

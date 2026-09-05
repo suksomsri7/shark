@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { safeReason } from "./errors";
 import { revalidatePath } from "next/cache";
 import type { AccountDocType, AccountRecurringFrequency } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
@@ -132,7 +133,7 @@ export async function saveRecurringRuleAction(payload: RecurringRulePayload): Pr
     revalidatePath(`/app/sys/${systemId}/account/recurring`);
     return { ok: true, id: res.id };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกเอกสารประจำไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกเอกสารประจำไม่สำเร็จ") };
   }
 }
 

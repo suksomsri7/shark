@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { HelpTip } from "./HelpTip";
 
 export type DocTableHeaderCell = {
   key: string;
@@ -9,6 +10,8 @@ export type DocTableHeaderCell = {
   href?: string; // มี = คอลัมน์นี้ sort ได้
   active?: boolean;
   dir?: "asc" | "desc";
+  /** WO 9.4 §0.3 ข้อ 9 — คีย์ของ HELP_TEXTS (help-texts.ts) แสดงเป็นไอคอน "?" ท้ายหัวคอลัมน์ */
+  help?: string;
 };
 
 export type DocTableBodyCell = { key: string; align?: "left" | "right"; node: React.ReactNode };
@@ -182,6 +185,7 @@ export function DocTableInteractive({
                   ) : (
                     c.header
                   )}
+                  {c.help && <HelpTip helpKey={c.help} testId={`col-help-${c.key}`} />}
                 </th>
               ))}
               <th className="border-b px-3 py-3" />

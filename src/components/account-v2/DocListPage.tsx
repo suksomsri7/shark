@@ -212,7 +212,10 @@ export function DocListPage<T extends { id: string }>({
       />
 
       {rows.length === 0 ? (
-        <EmptyState text={emptyText} />
+        <EmptyState
+          text={emptyText}
+          action={createLabel ? { href: createHref ?? "#new", label: `+ สร้าง${createLabel}` } : undefined}
+        />
       ) : (
         <DocTable
           testId={testId}

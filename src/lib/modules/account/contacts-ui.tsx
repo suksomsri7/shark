@@ -35,11 +35,13 @@ import { getContact, nextContactCode, listTenantMembers } from "./service";
 import { countOpenMergeCandidates } from "./contact-merge";
 import { isDbdConfigured, DBD_REASON } from "./dbd";
 import {
-  archiveContactAction,
   createContactGroupAction,
   addContactsToGroupAction,
   insertPopularVendorsAction,
 } from "./actions";
+// WO 9.4 §0.3 ข้อ 8 — เก็บถาวรผู้ติดต่อไม่กินเลขที่/ไม่ลงเงิน ⇒ เลิกทำได้ภายใน 5 นาที (redirect+`?undo=` เพราะไฟล์นี้
+// เป็น server component — ส่ง client closure ลงไปให้ RowActions ใช้ตรง ๆ ไม่ได้)
+import { archiveContactFormAction } from "./undo-stack";
 
 const KIND_LABEL: Record<string, string> = { CUSTOMER: "ลูกค้า", VENDOR: "ผู้ขาย", BOTH: "ทั้งคู่" };
 
@@ -169,7 +171,7 @@ export async function ContactsPage({
       danger: true,
       icon: "x",
       sepBefore: true,
-      submit: { action: archiveContactAction, fields: { systemId, id: r.id } },
+      submit: { action: archiveContactFormAction, fields: { systemId, id: r.id } },
     },
   ];
 

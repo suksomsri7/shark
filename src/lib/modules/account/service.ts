@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { safeReason } from "./errors";
 import { prisma } from "@/lib/core/db";
 import { emitOutbox, emitOutboxMany } from "@/lib/core/outbox";
 // WO 4.3 (§8.2) — ขาย "รายการจัดชุด" = ตัดสต็อกส่วนประกอบ (ไฟล์แยกกัน import วน service↔product)
@@ -1815,7 +1816,7 @@ export async function setDocDeposits(
     });
     return { ok: true, ...res };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกการหักมัดจำไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกการหักมัดจำไม่สำเร็จ") };
   }
 }
 
@@ -2065,7 +2066,7 @@ export async function updateDocument(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "แก้ไขไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "แก้ไขไม่สำเร็จ") };
   }
 }
 
@@ -2191,7 +2192,7 @@ export async function issueDocument(
     });
     return { ok: true, docNo };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ออกเอกสารไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ออกเอกสารไม่สำเร็จ") };
   }
 }
 
@@ -2310,7 +2311,7 @@ export async function convertDocument(
     });
     return { ok: true, newId: created.id };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "แปลงเอกสารไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "แปลงเอกสารไม่สำเร็จ") };
   }
 }
 
@@ -2521,7 +2522,7 @@ export async function recordPayment(
     });
     return { ok: true, status, paymentId, whtCertNo };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกชำระไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกชำระไม่สำเร็จ") };
   }
 }
 
@@ -2699,7 +2700,7 @@ export async function voidPayment(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ยกเลิกการชำระไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ยกเลิกการชำระไม่สำเร็จ") };
   }
 }
 
@@ -2749,7 +2750,7 @@ export async function refundDeposit(
     });
     return { ok: true, refunded };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "คืนมัดจำไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "คืนมัดจำไม่สำเร็จ") };
   }
 }
 
@@ -2985,7 +2986,7 @@ export async function attachDraftReceiptPayments(
     });
     return { ok: true, paymentIds };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ผูกรายการรับเงินไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ผูกรายการรับเงินไม่สำเร็จ") };
   }
 }
 
@@ -3030,7 +3031,7 @@ export async function voidDocument(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ยกเลิกเอกสารไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ยกเลิกเอกสารไม่สำเร็จ") };
   }
 }
 
@@ -3651,7 +3652,7 @@ export async function upsertExternalSaleDocument(input: {
     });
     return { ok: true, docId: doc.id, created: doc.created };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "สร้างเอกสารบิลขายหน้าร้านไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "สร้างเอกสารบิลขายหน้าร้านไม่สำเร็จ") };
   }
 }
 
@@ -4235,7 +4236,7 @@ export async function createGroupDocument(input: {
     });
     return { ok: true, id };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "สร้างเอกสารกลุ่มไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "สร้างเอกสารกลุ่มไม่สำเร็จ") };
   }
 }
 
@@ -4896,7 +4897,8 @@ export async function runRecurringRules(
       }
     } catch (e) {
       summary.failed += 1;
-      await notifyRecurringFailure(rule, e instanceof Error ? e.message : "สร้างเอกสารไม่สำเร็จ", now);
+      // WO 9.4 — ข้อความนี้ไปโผล่เป็นแจ้งเตือนในแอปจริง ๆ ⇒ กันข้อความดิบจาก error ที่ไม่คาดคิด
+      await notifyRecurringFailure(rule, safeReason(e, "สร้างเอกสารไม่สำเร็จ"), now);
     }
 
     // เลื่อนงวด — ทำเสมอ ไม่ว่ารอบนี้จะสร้างสำเร็จหรือถูกข้าม (ไม่งั้น cron ติดอยู่ที่งวดเดิมตลอดกาล)

@@ -246,7 +246,8 @@ export default async function ChequePage({
         pageCount={Math.max(1, Math.ceil(total / pageSize))}
         pageSize={pageSize}
         total={total}
-        emptyText={`ยังไม่มี${heading} — เพิ่มด้านล่าง`}
+        emptyText={`ยังไม่มี${heading} — บันทึกเช็คใบแรกด้วยปุ่มด้านล่าง`}
+        emptyAction={{ href: "#new", label: "+ บันทึกเช็ค" }}
         rowTestId={(r) => `cheque-row-${r.id}`}
       />
 

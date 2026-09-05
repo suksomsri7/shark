@@ -5,6 +5,7 @@
 // double-entry ยืนยันฝั่ง gl (Σdebit == Σcredit)
 
 import { prisma } from "@/lib/core/db";
+import { safeReason } from "./errors";
 import type { Prisma, AccountAssetStatus } from "@prisma/client";
 import { postDepreciation, postManualJV, resolveMapping, type GlCtx } from "./gl";
 
@@ -270,7 +271,7 @@ export async function registerAsset(ctx: AssetCtx, input: RegisterInput): Promis
     });
     return { ok: true, id: res.id, code: res.code };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ขึ้นทะเบียนไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ขึ้นทะเบียนไม่สำเร็จ") };
   }
 }
 
@@ -416,7 +417,7 @@ export async function runDepreciation(
       out.skipped.push({
         assetId: a.id,
         code: a.code,
-        reason: e instanceof Error ? e.message : "โพสต์ค่าเสื่อมไม่สำเร็จ",
+        reason: safeReason(e, "โพสต์ค่าเสื่อมไม่สำเร็จ"),
       });
     }
   }
@@ -515,6 +516,6 @@ export async function disposeAsset(ctx: AssetCtx, input: DisposeInput): Promise<
     });
     return { ok: true, entryId: result.entryId, gainLoss: result.gainLoss };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "จำหน่ายสินทรัพย์ไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "จำหน่ายสินทรัพย์ไม่สำเร็จ") };
   }
 }

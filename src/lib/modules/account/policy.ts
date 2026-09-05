@@ -11,6 +11,7 @@
 //      ห้ามเขียนกลับลง docConfig อีก ไม่งั้นจะมี 2 แหล่งความจริงแล้ววันหนึ่งไม่ตรงกัน
 
 import type { Prisma, AccountPriceMode, AccountVatTiming, AccountWhtIncomeType } from "@prisma/client";
+import { safeReason } from "./errors";
 import { tenantDb } from "@/lib/core/db";
 import { formatDateTh, THAI_MONTH_SHORT } from "@/lib/ui/date";
 // ป้ายไทย + ชนิดข้อมูลที่ฝั่ง client ต้องใช้ อยู่แยกไฟล์ (ห้ามลาก prisma เข้าบันเดิลเบราว์เซอร์)
@@ -595,7 +596,7 @@ export async function savePolicy(ctx: Ctx, patch: PolicyPatch): Promise<PolicySa
       });
     }
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกนโยบายบัญชีไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกนโยบายบัญชีไม่สำเร็จ") };
   }
   return { ok: true };
 }

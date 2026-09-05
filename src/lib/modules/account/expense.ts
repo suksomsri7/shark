@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/db";
+import { safeReason } from "./errors";
 import type {
   AccountDocType,
   AccountDocStatus,
@@ -636,7 +637,7 @@ export async function setExpenseDocDeposits(
     });
     return { ok: true, ...res };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกการหักมัดจำไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกการหักมัดจำไม่สำเร็จ") };
   }
 }
 
@@ -888,7 +889,7 @@ export async function updateExpenseDoc(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "แก้ไขไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "แก้ไขไม่สำเร็จ") };
   }
 }
 
@@ -998,7 +999,7 @@ export async function issueExpenseDoc(
     });
     return { ok: true, docNo };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ออกเอกสารไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ออกเอกสารไม่สำเร็จ") };
   }
 }
 
@@ -1078,7 +1079,7 @@ export async function receivePurchaseTaxInvoice(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "รับใบกำกับไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "รับใบกำกับไม่สำเร็จ") };
   }
 }
 
@@ -1194,7 +1195,7 @@ export async function recordVendorPayment(
     });
     return { ok: true, status, paymentId };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกจ่ายไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกจ่ายไม่สำเร็จ") };
   }
 }
 
@@ -1310,7 +1311,7 @@ export async function voidVendorPayment(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ยกเลิกการจ่ายไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ยกเลิกการจ่ายไม่สำเร็จ") };
   }
 }
 
@@ -1355,7 +1356,7 @@ export async function voidExpenseDoc(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ยกเลิกเอกสารไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ยกเลิกเอกสารไม่สำเร็จ") };
   }
 }
 
@@ -1410,7 +1411,7 @@ export async function submitForApproval(
     });
     return { ok: true, docNo };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ส่งอนุมัติไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ส่งอนุมัติไม่สำเร็จ") };
   }
 }
 
@@ -1547,7 +1548,7 @@ export async function convertPurchaseOrder(
     });
     return { ok: true, newId: created.id, toDocType };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "แปลงเอกสารไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "แปลงเอกสารไม่สำเร็จ") };
   }
 }
 

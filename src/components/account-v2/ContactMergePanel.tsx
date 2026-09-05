@@ -6,8 +6,12 @@
 //              แถบฟ้าสรุป "หลังรวม: …" · ปุ่ม "ข้าม" + ดำ "⇄ รวมผู้ติดต่อ" · modal ยืนยันก่อนทำจริง
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "./Modal";
-import { mergeContactsAction, dismissMergeCandidateAction } from "@/lib/modules/account/actions";
+import { mergeContactsAction } from "@/lib/modules/account/actions";
+// WO 9.4 §0.3 ข้อ 8 — ข้ามคู่ซ้ำ (dismiss) ไม่กินเลขที่/ไม่ลงเงิน ⇒ เลิกทำได้ภายใน 5 นาที
+import { dismissMergeCandidateWithUndoAction } from "@/lib/modules/account/undo-stack";
+import { useUndoToast } from "./UndoToast";
 import type { MergeCandidate, MergeCandidateContact, MergeFieldKey, MergeSide } from "@/lib/modules/account/contact-merge";
 
 type FieldDef = { key: MergeFieldKey; label: string };
@@ -80,6 +84,8 @@ export function ContactMergePanel({
   const [toast, setToast] = useState<{ text: string; tone?: "danger" } | null>(null);
   const [done, setDone] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
+  const router = useRouter();
+  const undoToast = useUndoToast();
 
   const visible = candidates.filter((c) => !done.has(c.key));
   const active = useMemo(() => visible.find((c) => c.key === activeKey) ?? visible[0] ?? null, [visible, activeKey]);
@@ -134,11 +140,12 @@ export function ContactMergePanel({
 
   const doDismiss = () => {
     start(async () => {
-      const res = await dismissMergeCandidateAction(systemId, { aId: primary.id, bId: secondary.id });
+      const res = await dismissMergeCandidateWithUndoAction(systemId, primary.id, secondary.id);
       if (res.ok) {
         setDone((p) => new Set(p).add(active.key));
         setActiveKey(null);
-        setToast({ text: "บันทึกแล้วว่าไม่ใช่คนเดียวกัน — คู่นี้จะไม่ขึ้นมาอีก" });
+        undoToast.show({ tokenId: res.undoToken, systemId, message: "บันทึกแล้วว่าไม่ใช่คนเดียวกัน — คู่นี้จะไม่ขึ้นมาอีก" });
+        router.refresh();
       } else {
         setToast({ text: res.reason, tone: "danger" });
       }

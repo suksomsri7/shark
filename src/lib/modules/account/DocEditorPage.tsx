@@ -73,12 +73,16 @@ export async function DocEditorPage({
   docType,
   docId,
   refId,
+  prefill,
 }: {
   systemId: string;
   docType: AccountDocType;
   docId?: string;
   /** WO 1.6 §5.2 J — เอกสารอ้างอิงที่เลือกจากขั้น ① ของ wizard (เฉพาะตอนสร้างใหม่ `?ref=<id>`) */
   refId?: string;
+  /** WO 9.4 §0.3 ข้อ 3 — เติมค่าเริ่มต้นจากแผง "สร้างด่วน" (⌘K) ผ่าน query `?contactId=&amount=` — เฉพาะตอน
+   * สร้างใหม่จริง ๆ (ไม่ใช่แก้ร่างเดิม/ไม่ใช่ wizard ปรับปรุงหนี้ที่มี refDoc ของตัวเองอยู่แล้ว) */
+  prefill?: { contactId?: string; amountSatang?: number };
 }) {
   const def = editorDefOf(docType);
   if (!def) notFound();
@@ -176,7 +180,10 @@ export async function DocEditorPage({
   // ── ค่าเริ่มต้นของฟอร์ม ──
   // WO 1.6: สร้างใหม่จาก wizard (ไม่มี doc ของตัวเองแต่มี refDoc) → ผู้ติดต่อ/รายการ ดึงมาจากเอกสารอ้างอิงให้แก้ไข
   const seededContact = adjustSeedContact(doc, refDoc);
-  const contactId = seededContact.contactId;
+  // WO 9.4 — prefill จาก ⌘K "สร้างด่วน" ใช้ได้เฉพาะตอนสร้างใหม่จริง ๆ (ไม่มีร่างเดิม/ไม่ใช่ wizard ปรับปรุงหนี้
+  // ที่มีเอกสารอ้างอิงของตัวเองอยู่แล้ว — ไม่งั้นจะไปทับผู้ติดต่อ/ยอดของร่าง/เอกสารอ้างอิงที่ถูกต้องอยู่แล้ว)
+  const prefillActive = !doc && !refDoc && !!prefill;
+  const contactId = seededContact.contactId || (prefillActive ? (prefill?.contactId ?? null) : null);
   const contactRow = contactRows.find((c) => c.id === contactId);
   // WO 8.1 (§9.2 "วันที่ครบกำหนด"): ค่าเริ่มต้นต่อชนิดมาจากหน้าตั้งค่า · เครดิตเทอมของลูกค้ารายนั้นชนะเสมอ
   // (ตั้งไว้ที่ผู้ติดต่อ = ข้อตกลงเฉพาะราย ย่อมเจาะจงกว่าค่ากลางของกิจการ)
@@ -207,13 +214,18 @@ export async function DocEditorPage({
       })
     : [newLineDraft(settings.vatRateBp)];
 
+  // WO 9.4 — เติมยอดเงินจาก ⌘K ลงบรรทัดว่างบรรทัดแรก (เฉพาะตอนสร้างใหม่ไม่มีรายการมาก่อนเลย — กันไปทับรายการจริง)
+  if (prefillActive && prefill?.amountSatang != null && lines.length === 1 && !lineSourceDoc?.lines.length) {
+    lines[0] = { ...lines[0]!, qty: 1, unitPriceSatang: prefill.amountSatang };
+  }
+
   const lineBaseSum = lines.reduce((s, l) => s + Math.max(0, Math.round(l.qty * l.unitPriceSatang) - l.discount.satang * l.qty), 0);
   const docDiscountAmount = doc?.discountAmount ?? 0;
   const reasonSeed = unpackAdjustReason(doc?.adjustReason);
   const initial: DocDraftValue = {
     docNo: docNoPreview,
     contactId,
-    contactLabel: seededContact.contactLabel,
+    contactLabel: seededContact.contactLabel || (prefillActive ? (contactRow?.name ?? "") : ""),
     issueDate,
     dueDate:
       isoOf(docType === "QUOTATION" ? doc?.validUntil : doc?.dueDate) ||

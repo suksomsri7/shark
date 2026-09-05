@@ -104,6 +104,7 @@ export function DocMoreMenu({ items, danger, testId }: { items: RowActionItem[];
               title={danger.title}
               detail={danger.detail}
               confirmLabel={danger.confirmLabel}
+              testId={testId ? `${testId}-danger` : undefined}
               danger
             />
           </div>

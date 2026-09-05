@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { AccountIcon } from "./AccountIcon";
 import type { CreateDocMenu } from "@/lib/modules/account/dashboard-home";
+import { openQuickCreate } from "./QuickCreate";
 
 // ปุ่มดำ "+ สร้างเอกสาร ▾" บนหัวหน้าหลัก (§4 ข้อ 1) เปิด dropdown 2 คอลัมน์ (รายรับ | รายจ่าย) ตาม f2
 // เดสก์ท็อป = แผงลอยใต้ปุ่ม · มือถือ (<lg) = แผงเต็มความกว้างใต้ปุ่ม (แทนที่ bottom sheet เต็มจอ — เรียบง่ายกว่า
@@ -52,7 +53,9 @@ export function DashCreateMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         data-testid={testId}
-        onClick={() => setOpen((v) => !v)}
+        // WO 9.4 §0.3 ข้อ 3 — มือถือ: ปุ่มนี้เปิดแผง "สร้างด่วน" (⌘K) ตรง ๆ แทน dropdown เดิม (จอแคบ dropdown
+        // 2 คอลัมน์อ่านยาก + แผงสร้างด่วนพิมพ์คำเดียวก็ถึงฟอร์มได้เลย) · เดสก์ท็อป: ยังเป็น dropdown เดิม
+        onClick={() => (fullWidth ? openQuickCreate() : setOpen((v) => !v))}
       >
         + สร้างเอกสาร <span aria-hidden>▾</span>
       </button>
@@ -64,6 +67,19 @@ export function DashCreateMenu({
         >
           <CreateCol title="รายรับ" items={menu.revenue} onPick={() => setOpen(false)} />
           <CreateCol title="รายจ่าย" items={menu.expense} onPick={() => setOpen(false)} />
+          {/* WO 9.4 — ทางเข้ารองสู่แผง "สร้างด่วน" (⌘K): พิมพ์ชนิด+ผู้ติดต่อ+จำนวนเงินรวดเดียวแทนไล่เมนู */}
+          <button
+            type="button"
+            className="col-span-full mt-1 flex items-center gap-2 rounded-lg border-t px-2 pt-2 text-left text-xs text-[color:var(--color-muted)] hover:text-[color:var(--color-ink)]"
+            style={{ borderColor: "var(--color-line)" }}
+            data-testid="create-doc-menu-quickcreate-link"
+            onClick={() => {
+              setOpen(false);
+              openQuickCreate();
+            }}
+          >
+            <AccountIcon name="spark" className="h-3.5 w-3.5" /> หรือพิมพ์คำสั่งสร้างด่วน (⌘K) — เช่น &quot;ใบแจ้งหนี้ ณัฐพล 24900&quot;
+          </button>
         </div>
       )}
     </div>

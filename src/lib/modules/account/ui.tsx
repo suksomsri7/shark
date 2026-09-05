@@ -7,7 +7,7 @@ import { formatDateTh } from "@/lib/ui/date";
 import { STATUS_LABEL, isOverdue } from "./service";
 import { EXP_ROUTE } from "./expense";
 import { loadDashboardHome, issuableDocTypes } from "./dashboard-home";
-import { pinFinanceAccountsAction, pinLedgerAccountsAction } from "./dashboard-actions";
+import { pinFinanceWithUndoAction, pinLedgerWithUndoAction } from "./undo-stack";
 import { monthsToChartPoints, monthsToQuarters, prevPeriodKey, THAI_MONTH_SHORT, type ChartPoint } from "./dashboard-format";
 import { categoryBreakdownFromRows } from "./dashboard";
 import { getDashCollapsed } from "@/components/account-v2/dash-collapse";
@@ -162,7 +162,7 @@ export async function AccountContent({
       </div>
 
       {/* ── เช็กลิสต์เริ่มต้น 5 ขั้น (§0.3 ข้อ 2) ── */}
-      {showChecklist && <DashChecklist checklist={home.checklist} />}
+      {showChecklist && <DashChecklist checklist={home.checklist} helpHref={`${base}/help`} />}
 
       {/* ── KPI 4 การ์ด (§4 ข้อ 2) ── */}
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
@@ -539,7 +539,7 @@ export async function AccountContent({
               title="เลือกบัญชีเงินที่ติดตาม"
               systemId={systemId}
               max={4}
-              action={pinFinanceAccountsAction}
+              action={pinFinanceWithUndoAction}
               testId="pin-finance"
               items={s.cash.accounts.map((a) => ({ id: a.id, name: a.name, sub: formatBaht(a.balance, { decimals: true }), pinned: a.pinned }))}
             />
@@ -580,7 +580,7 @@ export async function AccountContent({
               title="เลือกบัญชีที่ติดตาม"
               systemId={systemId}
               max={4}
-              action={pinLedgerAccountsAction}
+              action={pinLedgerWithUndoAction}
               testId="pin-ledger"
               items={home.ledgerAccounts.map((l) => ({ id: l.id, name: `${l.code} ${l.name}`, pinned: l.pinned }))}
             />

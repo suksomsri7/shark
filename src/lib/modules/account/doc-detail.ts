@@ -264,6 +264,8 @@ export type DocDetailData = {
   paidTotal: number;
   note: string | null;
   internalNote: string | null;
+  /** WO 9.4 §0.3 ข้อ 8/9 — แท็กอิสระของเอกสาร (ลบทีละแท็กได้ที่หน้านี้ — เลิกทำได้ภายใน 5 นาที) */
+  tags: string[];
   publicToken: string | null;
   overdue: boolean;
   remain: number;
@@ -347,6 +349,7 @@ export async function getDocDetailData(
     paidTotal: doc.paidTotal,
     note: doc.note,
     internalNote: doc.internalNote,
+    tags: doc.tags,
     publicToken: doc.publicToken,
     overdue: isOverdue(doc),
     remain: Math.max(0, doc.grandTotal - doc.paidTotal),

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { AccountDocType } from "@prisma/client";
 import { getDocDetailData, type DocDetailData, type RelatedSlot, type JvEntryView } from "@/lib/modules/account/doc-detail";
 import { getSettings, DOC_LABEL, visibleConvertTargets } from "@/lib/modules/account/service";
+import { payChannelLabel } from "@/lib/modules/account/pay-channel-label";
 import { editorListPath, editorDetailPath, editorEditPath, editorNewPath, sideOf } from "@/lib/modules/account/doc-editor-config";
 import { EXP_DOC_LABEL } from "@/lib/modules/account/expense";
 import { accountTone, StatusBadge } from "@/lib/modules/account/ui";
@@ -14,6 +15,9 @@ import {
   quotationResponseAction,
   voidDocumentAction,
 } from "@/lib/modules/account/actions";
+// WO 9.4 §0.3 ข้อ 8 — ยกเลิกร่าง (ไม่กินเลขที่/ไม่ลงเงิน) ⇒ เลิกทำได้ภายใน 5 นาที
+import { cancelDraftFormAction } from "@/lib/modules/account/undo-stack";
+import { DocTagsBlock } from "./DocTagsBlock";
 import {
   issueExpenseDocAction,
   voidExpenseDocAction,
@@ -46,7 +50,6 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { formatThaiDateLong as fmtDateLong, formatDateTh as fmtDate } from "@/lib/ui/date";
-import { PAY_CHANNEL_LABEL } from "@/lib/ui/status-labels";
 
 // ─────────────────────────────────────────────────────────────
 // DocDetailPage — WO 1.5 · หน้าเอกสาร 1 ใบ ใช้ร่วมกันทั้งฝั่งรายรับ+รายจ่าย (DESIGN-SPEC-V2 §5.3)
@@ -265,11 +268,13 @@ function dangerMenuItemFor(data: DocDetailData, systemId: string, side: "revenue
   const voidAction = side === "expense" ? voidExpenseDocAction : voidDocumentAction;
   if (data.status === "DRAFT") {
     return {
-      action: voidAction,
-      fields: { systemId, docType: dt, id: data.id, reason: "ยกเลิกร่าง" },
+      // WO 9.4 §0.3 ข้อ 8 — ร่างไม่เคยลง GL ⇒ ยกเลิกแล้ว "เลิกทำ" คืนสภาพเดิมได้สะอาด 100% ภายใน 5 นาที
+      // (redirect+`?undo=` เพราะ DocDetailPage เป็น server component — ส่ง client closure ลง DocMoreMenu ตรง ๆ ไม่ได้)
+      action: cancelDraftFormAction,
+      fields: { systemId, docType: dt, id: data.id },
       triggerLabel: "ยกเลิกร่าง",
       title: "ยกเลิกร่างนี้?",
-      detail: "ร่างเอกสารจะถูกยกเลิกและแก้ไขไม่ได้อีก",
+      detail: "ร่างเอกสารจะถูกยกเลิก — เลิกทำได้ภายใน 5 นาทีหลังกด",
       confirmLabel: "ยืนยันยกเลิก",
     };
   }
@@ -766,7 +771,7 @@ function PaymentsTab({
                 <td className="py-2">{i + 1}</td>
                 <td className="py-2">{fmtDate(p.paidAt)}</td>
                 <td className="truncate py-2">
-                  {p.financeName ?? PAY_CHANNEL_LABEL[p.channel as keyof typeof PAY_CHANNEL_LABEL] ?? p.channel}
+                  {p.financeName ?? payChannelLabel(p.channel)}
                   {p.chequeNo ? ` · เช็ค ${p.chequeNo}` : ""}
                 </td>
                 <td className="py-2 text-right tabular-nums"><MoneyText satang={p.amount} decimals /></td>
@@ -1013,6 +1018,9 @@ export async function DocDetailPage({
             />
           </div>
         </div>
+
+        {/* WO 9.4 §0.3 ข้อ 8/9 — แท็กเอกสาร: ลบทีละแท็กได้ (เลิกทำได้ภายใน 5 นาที) — ไม่มีแท็ก = ไม่แสดงอะไร */}
+        {data.tags.length > 0 && <DocTagsBlock systemId={systemId} docId={data.id} tags={data.tags} />}
 
         <ActionRow data={data} systemId={systemId} side={side} base={base} editPath={editPath} vatRegistered={settings.vatRegistered} targets={targets} perm={perm} />
       </div>

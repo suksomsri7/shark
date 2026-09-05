@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { AccountContactKind, AccountProductType, AccountDocType } from "@prisma/client";
+import { safeReason } from "./errors";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, writeAudit } from "./access";
 import { accountRateGuard } from "./rate-limit";
@@ -105,7 +106,7 @@ export async function previewImportAction(
     assertAccountCan(auth, "account.import");
     return await previewImportCore(tenantId, systemId, kindRaw, csvText, mappingOverride);
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "อ่านไฟล์ไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "อ่านไฟล์ไม่สำเร็จ") };
   }
 }
 
@@ -260,7 +261,7 @@ export async function previewImportCore(
       fileHash: fileHashOf(csvText),
     };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "อ่านไฟล์ไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "อ่านไฟล์ไม่สำเร็จ") };
   }
 }
 
@@ -288,7 +289,7 @@ export async function runImportAction(
     if (!rate.ok) return { ok: false, reason: rate.reason };
     return await runImportCore(tenantId, systemId, userId, kindRaw, csvText, mapping, skipErrorRows);
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "นำเข้าไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "นำเข้าไม่สำเร็จ") };
   }
 }
 
@@ -570,7 +571,7 @@ export async function runImportCore(
 
     return { ok: true, created, skipped, errors, tag };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "นำเข้าไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "นำเข้าไม่สำเร็จ") };
   }
 }
 

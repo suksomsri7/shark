@@ -130,6 +130,8 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "cost-adjustment/new/page.tsx": "account.product.manage",
   // WO 1.6: RPR wizard — เรียก requireAccountPage(id, "account.product.manage") ตรงกับ goods-issue/page.tsx (สิทธิ์เดียวกัน)
   "goods-issue/return/new/page.tsx": "account.product.manage",
+  // WO 9.4 §0.3 ข้อ 9 — คู่มือเริ่มต้นในแอป (1 หน้า อ่านอย่างเดียว) สิทธิ์เดียวกับหน้าหลัก/หน้ารายการ
+  "help/page.tsx": "account.doc.view",
   // WO 1.8: นำเข้า CSV (§8.5) — action เดียว account.import ครอบทั้งเอกสาร/ผู้ติดต่อ/สินค้า
   "import/chart-of-accounts/page.tsx": "account.import", // WO 6.1 §11.1 — นำเข้าผังบัญชี
   "import/contacts/page.tsx": "account.import",

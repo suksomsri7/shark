@@ -11,6 +11,8 @@ export type DocColumn<T> = {
   render: (row: T) => React.ReactNode;
   /** ระบุ = คอลัมน์นี้ sort ได้ (ค่าคือ sort key ที่ตรงกับ DocSort ของ service.ts) */
   sort?: string;
+  /** WO 9.4 §0.3 ข้อ 9 — คีย์ของ HELP_TEXTS (help-texts.ts) แสดงไอคอน "?" ท้ายหัวคอลัมน์นี้ */
+  help?: string;
 };
 
 // ตารางเอกสารมาตรฐาน (DESIGN-SPEC-V2 §1) — server component: คำนวณเซลล์ทั้งหมดฝั่ง server
@@ -41,6 +43,7 @@ export function DocTable<T extends { id: string }>({
   pageSize,
   total,
   emptyText,
+  emptyAction,
   testId,
   initialSelectedIds,
   rowTestId,
@@ -82,6 +85,8 @@ export function DocTable<T extends { id: string }>({
   /** จำนวนรายการทั้งหมดที่ตรงตัวกรอง — ส่งต่อให้ Pagination แสดง "จาก N รายการ" + data-testid="list-total" */
   total?: number;
   emptyText: string;
+  /** WO 9.4 §0.3 ข้อ 9 — ปุ่มหลักของ empty state (สอน 1 ประโยค + ปุ่มเดียว) — ไม่ส่ง = ไม่มีปุ่ม (พฤติกรรมเดิม) */
+  emptyAction?: { href: string; label: string };
   testId?: string;
   initialSelectedIds?: string[];
   /** testid ต่อแถว เช่น `row-${docNo}` (WO 1.1 §C) — ไม่ส่ง = ไม่ติด testid ต่อแถว */
@@ -92,7 +97,7 @@ export function DocTable<T extends { id: string }>({
    *  แทนที่จะเป็น 2 บรรทัดซ้อนกัน (ค่าเริ่มต้น false = พฤติกรรมเดิมของ WHT/Journal ฯลฯ ไม่กระทบ) */
   footerOneLine?: boolean;
 }) {
-  if (rows.length === 0) return <EmptyState text={emptyText} />;
+  if (rows.length === 0) return <EmptyState text={emptyText} action={emptyAction} />;
 
   const headerCells = cols.map((c) => ({
     key: c.key,
@@ -101,6 +106,7 @@ export function DocTable<T extends { id: string }>({
     href: c.sort ? buildSortHref(pathname, searchParams, c.sort, { currentSort: sort, currentDir: sortDir }) : undefined,
     active: c.sort === sort,
     dir: c.sort === sort ? sortDir : undefined,
+    help: c.help,
   }));
 
   const bodyRows: DocTableBodyRow[] = rows.map((r) => ({

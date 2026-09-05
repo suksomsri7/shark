@@ -116,7 +116,7 @@ export function RowActions({
             return (
               <div key={i}>
                 {sep}
-                <div className={`${itemCls} cursor-not-allowed opacity-60`} title={it.hint} role="menuitem">
+                <div className={`${itemCls} cursor-not-allowed opacity-60`} title={it.hint} role="menuitem" data-testid={testId ? `${testId}-item-${i}` : undefined}>
                   {iconNode}
                   <div>
                     <div>{it.label}</div>
@@ -135,7 +135,7 @@ export function RowActions({
                   {Object.entries(it.submit.fields ?? {}).map(([k, v]) => (
                     <input key={k} type="hidden" name={k} value={v} />
                   ))}
-                  <button type="submit" role="menuitem" className={cls} onClick={() => setOpen(false)}>
+                  <button type="submit" role="menuitem" className={cls} onClick={() => setOpen(false)} data-testid={testId ? `${testId}-item-${i}` : undefined}>
                     {iconNode}
                     {it.label}
                   </button>
@@ -147,7 +147,7 @@ export function RowActions({
             return (
               <div key={i}>
                 {sep}
-                <Link href={it.href} role="menuitem" className={cls} onClick={() => setOpen(false)}>
+                <Link href={it.href} role="menuitem" className={cls} onClick={() => setOpen(false)} data-testid={testId ? `${testId}-item-${i}` : undefined}>
                   {iconNode}
                   {it.label}
                 </Link>
@@ -161,6 +161,7 @@ export function RowActions({
                 type="button"
                 role="menuitem"
                 className={cls}
+                data-testid={testId ? `${testId}-item-${i}` : undefined}
                 onClick={() => {
                   setOpen(false);
                   it.onClick?.();

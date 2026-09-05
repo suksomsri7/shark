@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/core/db";
-import type { Prisma, AccountLedgerType, AccountCashflowActivity } from "@prisma/client";
+import type { Prisma, AccountLedgerType, AccountCashflowActivity, AccountDocType } from "@prisma/client";
+import { docTypeLabel } from "./dashboard";
 
 // ─────────────────────────────────────────────────────────────
 // coa.ts — ผังบัญชี (Chart of Accounts) + posting mapping seed
@@ -164,6 +165,52 @@ export async function seedChartOfAccounts(ctx: CoaCtx, tx?: Tx): Promise<void> {
 
 export const CHART_CODES = CHART.map((c) => c[0]);
 export const MAPPING_KEYS = MAPPINGS.map((m) => m[0]);
+
+// WO 9.4 §0.3 ข้อ 9 (ภาษาคนทั่วไป) — เจอจริงตอน eye-check: หน้า /accounts/mapping และแผงรายละเอียดผังบัญชี
+// (coa-ui.tsx "ใช้ลงบัญชีอัตโนมัติ") โชว์ `AccountMapping.key` ดิบ ๆ เช่น "CASH"/"AR"/"VAT_OUTPUT" — ไม่มี label
+// ไทยมาก่อนเลย ⇒ เพิ่มที่นี่ (แหล่งเดียวกับ MAPPINGS ด้านบน กัน key ใหม่ในอนาคตหลุดไม่มี label ทั้งคู่แยกกัน)
+export const MAPPING_KEY_LABEL: Record<string, string> = {
+  AR: "ลูกหนี้การค้า",
+  AP: "เจ้าหนี้การค้า",
+  VAT_OUTPUT: "ภาษีขาย",
+  VAT_OUTPUT_UNDUE: "ภาษีขายยังไม่ถึงกำหนด (บริการรอรับเงิน)",
+  VAT_OUTPUT_PENDING_INVOICE: "ภาษีขายรอออกใบกำกับ",
+  VAT_INPUT: "ภาษีซื้อ",
+  VAT_INPUT_UNDUE: "ภาษีซื้อยังไม่ถึงกำหนด (รอใบกำกับ)",
+  WHT_ASSET: "ภาษีถูกหัก ณ ที่จ่าย (สินทรัพย์)",
+  WHT_PAYABLE: "ภาษีหัก ณ ที่จ่ายค้างนำส่ง",
+  DEPOSIT_RECEIVED: "เงินมัดจำรับ/เงินรับล่วงหน้า",
+  DEPOSIT_PAID: "เงินมัดจำจ่าย",
+  INCOME_DEFAULT: "รายได้ (บัญชีเริ่มต้น)",
+  INCOME_GOODS: "รายได้จากการขายสินค้า",
+  INCOME_SERVICE: "รายได้ค่าบริการ",
+  PURCHASE_DEFAULT: "ซื้อสินค้า/ต้นทุนขาย (บัญชีเริ่มต้น)",
+  INVENTORY: "สินค้าคงเหลือ",
+  GOODS_ISSUE_EXPENSE: "ค่าใช้จ่ายที่ปรับปรุงจากใบเบิกสินค้า",
+  INVENTORY_ADJUST_GAINLOSS: "กำไร/ขาดทุนจากปรับต้นทุนสินค้า",
+  EXPENSE_DEFAULT: "ค่าใช้จ่าย (บัญชีเริ่มต้น)",
+  ASSET_DEFAULT: "สินทรัพย์ถาวร (บัญชีเริ่มต้น)",
+  OPENING_BALANCE: "ยอดยกมา/บัญชีคู่เปิดบัญชี",
+  DISCOUNT_GIVEN: "ส่วนลดจ่าย",
+  DISCOUNT_RECEIVED: "ส่วนลดรับ",
+  PAYMENT_FEE: "ค่าธรรมเนียมการชำระเงิน",
+  BANK_FEE: "ค่าธรรมเนียมธนาคาร",
+  INTEREST_INCOME: "ดอกเบี้ยรับ",
+  CHEQUE_IN_TRANSIT: "เช็ครับรอนำฝาก",
+  CHEQUE_PAYABLE: "เช็คจ่ายรอเรียกเก็บ",
+  DEPRECIATION_EXPENSE: "ค่าเสื่อมราคา",
+  ASSET_DISPOSAL_GAIN: "กำไร/ขาดทุนจากการจำหน่ายสินทรัพย์",
+  CASH: "เงินสด (บัญชีเริ่มต้น)",
+  BANK: "เงินฝากธนาคาร (บัญชีเริ่มต้น)",
+  SUSPENSE: "บัญชีพักรายการ (9999)",
+};
+
+/** ป้ายไทยของ mapping key — คีย์ "DOC:<docType>" (override ใบกำกับภาษีอัตโนมัติต่อชนิดเอกสาร) แปลด้วย docTypeLabel
+ * ไม่พบใน MAPPING_KEY_LABEL และไม่ใช่ "DOC:" = คืน key ดิบ (ไม่ควรเกิด — เตือนให้เติม label ใหม่แทนที่จะซ่อนเงียบ ๆ) */
+export function mappingKeyLabel(key: string): string {
+  if (key.startsWith("DOC:")) return `เอกสาร: ${docTypeLabel(key.slice(4) as AccountDocType)}`;
+  return MAPPING_KEY_LABEL[key] ?? key;
+}
 
 // ─────────────────── ผังบัญชี — จัดการ (P3 UI) ───────────────────
 

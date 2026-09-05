@@ -13,7 +13,7 @@ import { ChartPanel } from "@/components/account-v2/ChartPanel";
 import { LedgerActiveToggle } from "@/components/account-v2/LedgerActiveToggle";
 import { LedgerModal } from "@/components/account-v2/LedgerModal";
 import { AccountIcon } from "@/components/account-v2/AccountIcon";
-import { chartTree, ledgerDetail, usedLedgerCodes } from "./coa";
+import { chartTree, ledgerDetail, usedLedgerCodes, mappingKeyLabel } from "./coa";
 import { subGroupOptions, vatTreatmentLabel, whtLabel, prefixOf, type LedgerDetail, type ChartTree } from "./coa-v2";
 
 type SP = { a?: string; new?: string; edit?: string; q?: string; err?: string };
@@ -225,7 +225,7 @@ export function LedgerDetailCards({
             {detail.mappingKeys.length > 0 && (
               <Field label="ใช้ลงบัญชีอัตโนมัติ" testId="coa-field-mapping">
                 <Link href={`${accountsPath}/mapping`} className="text-[color:var(--color-accent)] hover:underline">
-                  {detail.mappingKeys.join(" · ")} ›
+                  {detail.mappingKeys.map(mappingKeyLabel).join(" · ")} ›
                 </Link>
               </Field>
             )}

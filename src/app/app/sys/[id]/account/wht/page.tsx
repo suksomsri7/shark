@@ -127,10 +127,10 @@ export default async function WhtPage({
     { key: "paidAt", header: "วันที่ชำระ", render: (r) => <span className="whitespace-nowrap">{formatThaiDate(r.paidAt)}</span> },
     // g11: ป้ายสั้น ๆ อยู่บรรทัดเดียว — ให้กว้างพอด้วย min-w (ห้าม nowrap เด็ดขาด เผื่อป้ายยาวเช่น
     // "40(3) ค่าแห่งลิขสิทธิ์/goodwill" ที่ยังต้องขึ้นบรรทัดใหม่ได้แทนดันตารางล้นแนวนอน)
-    { key: "income", header: "ประเภทเงินได้", render: (r) => <span className="inline-block min-w-[110px]">{r.incomeLabel}</span> },
+    { key: "income", header: "ประเภทเงินได้", help: "whtIncomeType", render: (r) => <span className="inline-block min-w-[110px]">{r.incomeLabel}</span> },
     { key: "rate", header: "อัตรา", align: "right", render: (r) => pct(r.whtRateBp) },
     { key: "base", header: "จำนวนเงิน", align: "right", render: (r) => formatBaht(r.base, { decimals: true }) },
-    { key: "wht", header: "มูลค่าภาษี", align: "right", render: (r) => formatBaht(r.whtAmount, { decimals: true }) },
+    { key: "wht", header: "มูลค่าภาษี", help: "wht", align: "right", render: (r) => formatBaht(r.whtAmount, { decimals: true }) },
   ];
   if (direction === "IN") {
     cols.push({
@@ -287,7 +287,8 @@ export default async function WhtPage({
         pageCount={Math.max(1, Math.ceil(total / pageSize))}
         pageSize={pageSize}
         total={total}
-        emptyText={`ไม่มีรายการในช่วงที่เลือก`}
+        emptyText={`ยังไม่มีรายการหัก ณ ที่จ่ายในช่วงที่เลือก — รายการจะขึ้นที่นี่เองเมื่อคุณรับ/จ่ายเงินที่มีการหัก ณ ที่จ่าย`}
+        emptyAction={{ href: `${base}/finance`, label: "ไปที่หน้าการเงิน" }}
         rowTestId={(r) => `wht-row-${r.certId}`}
       />
 

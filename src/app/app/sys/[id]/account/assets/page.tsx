@@ -165,7 +165,10 @@ export default async function AssetsPage({
 
       {/* ───── ทะเบียน ───── */}
       {assets.length === 0 ? (
-        <EmptyState text="ยังไม่มีสินทรัพย์ในทะเบียน — กด “ขึ้นทะเบียนสินทรัพย์” เพื่อเริ่ม" />
+        <EmptyState
+          text="ยังไม่มีสินทรัพย์ในทะเบียน — ขึ้นทะเบียนสินทรัพย์ใบแรก ระบบจะคิดค่าเสื่อมและลงบัญชีให้อัตโนมัติทุกงวด"
+          action={{ href: `${path}?add=1`, label: "+ ขึ้นทะเบียนสินทรัพย์" }}
+        />
       ) : (
         <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "var(--color-line)" }} data-testid="asset-table">
           <table className="w-full min-w-[900px] border-collapse text-sm">

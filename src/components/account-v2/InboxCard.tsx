@@ -16,8 +16,10 @@ import { formatBaht } from "@/lib/ui/money";
 import { AccountIcon } from "./AccountIcon";
 import { AttachDocumentModal, AttachmentPreviewModal } from "./AttachmentModals";
 import { InboxCreateExpenseSheet } from "./InboxCreateExpenseSheet";
-import { markNotAccountingAction } from "@/app/app/sys/[id]/account/documents/actions";
 import { archiveInboxFileAction, readAllPendingAction, readBillAction } from "@/app/app/sys/[id]/account/documents/inbox/actions";
+// WO 9.4 §0.3 ข้อ 8 — ทำเครื่องหมายไม่ใช่เอกสารบัญชี ไม่กินเลขที่/ไม่ลงเงิน ⇒ เลิกทำได้ภายใน 5 นาที
+import { markNotAccountingWithUndoAction } from "@/lib/modules/account/undo-stack";
+import { useUndoToast } from "./UndoToast";
 import type { AttachmentRowView } from "@/lib/modules/account/attachment";
 
 /**
@@ -116,6 +118,7 @@ export function InboxCard({
   const [create, setCreate] = useState(!!openCreate);
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  const undoToast = useUndoToast();
 
   const [thumbBroken, setThumbBroken] = useState(false);
 
@@ -135,8 +138,9 @@ export function InboxCard({
 
   const markNotAccounting = () =>
     start(async () => {
-      const r = await markNotAccountingAction(systemId, row.id);
-      if (!r.ok) setMsg(r.reason);
+      const r = await markNotAccountingWithUndoAction(systemId, row.id);
+      if (r.ok) undoToast.show({ tokenId: r.undoToken, systemId, message: "ทำเครื่องหมายว่าไม่ใช่เอกสารบัญชีแล้ว" });
+      else setMsg(r.reason);
       router.refresh();
     });
 

@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { safeReason } from "./errors";
 import { revalidatePath } from "next/cache";
 import type { AccountDocType, AccountVatTiming, AccountWhtIncomeType } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
@@ -284,7 +285,7 @@ export async function saveDraftAction(payload: DocDraftPayload): Promise<SaveDra
       savedAt: Date.now(),
     };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกร่างไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกร่างไม่สำเร็จ") };
   }
 }
 
@@ -495,7 +496,7 @@ export async function uploadDocAttachmentAction(
       sizeBytes: file.size,
     };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "แนบไฟล์ไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "แนบไฟล์ไม่สำเร็จ") };
   }
 }
 
@@ -508,7 +509,7 @@ export async function deleteDocAttachmentAction(
     assertAccountCan(auth, "account.doc.create");
     return await deleteAttachment(tenantId, systemId, trim(attachmentId, 40));
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ลบไฟล์ไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ลบไฟล์ไม่สำเร็จ") };
   }
 }
 
@@ -529,7 +530,7 @@ export async function saveFavoriteLinesAction(
     if (clean.length === 0) return { ok: false, reason: "ไม่มีรายการให้บันทึก" };
     return await saveDocFavorite(tenantId, systemId, { name: label, lines: clean });
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกรายการโปรดไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกรายการโปรดไม่สำเร็จ") };
   }
 }
 

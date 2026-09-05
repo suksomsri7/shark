@@ -6,9 +6,12 @@
 // WO 7.1 round 2 — ใช้ `RowActions` (ปุ่มมีป้าย "ทำรายการ ▾" ตาม f9 จริง) แทน `DocMoreMenu` (ปุ่มกลม "⋯" เปล่า
 // ที่ใช้ในหน้าเอกสาร 1 ใบ §5.3 — คนละบริบทกับหน้ารายการ §1/§3 ที่ f9 อ้างถึง)
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { RowActions, type RowActionItem } from "./RowActions";
 import { AttachmentPreviewModal, AttachDocumentModal, MoveFolderModal, ChangeTypeModal } from "./AttachmentModals";
-import { unlinkAttachmentAction, archiveAttachmentAction } from "@/app/app/sys/[id]/account/documents/actions";
+// WO 9.4 §0.3 ข้อ 8 — เก็บถาวร/แยกออกจากเอกสาร ไม่กินเลขที่/ไม่ลงเงิน ⇒ เลิกทำได้ภายใน 5 นาที
+import { unlinkAttachmentWithUndoAction, archiveAttachmentWithUndoAction } from "@/lib/modules/account/undo-stack";
+import { useUndoToast } from "./UndoToast";
 
 export function AttachmentRowMenu({
   systemId,
@@ -38,6 +41,8 @@ export function AttachmentRowMenu({
   const [folderOpen, setFolderOpen] = useState(false);
   const [typeOpen, setTypeOpen] = useState(false);
   const [, start] = useTransition();
+  const router = useRouter();
+  const undoToast = useUndoToast();
 
   const items: RowActionItem[] = [
     { label: "ดูตัวอย่างไฟล์", icon: "eye", onClick: () => setPreviewOpen(true) },
@@ -46,7 +51,14 @@ export function AttachmentRowMenu({
           {
             label: "แยกออกจากเอกสาร",
             icon: "swap",
-            onClick: () => start(async () => { await unlinkAttachmentAction(systemId, attachmentId); }),
+            onClick: () =>
+              start(async () => {
+                const res = await unlinkAttachmentWithUndoAction(systemId, attachmentId);
+                if (res.ok) {
+                  undoToast.show({ tokenId: res.undoToken, systemId, message: `แยก "${fileName}" ออกจากเอกสารแล้ว` });
+                  router.refresh();
+                }
+              }),
           },
         ]
       : [
@@ -69,7 +81,18 @@ export function AttachmentRowMenu({
           title: `ลบไฟล์ "${fileName}"?`,
           detail: "ลบแล้วไฟล์จะหายจากคลังเอกสาร — กู้คืนได้ภายหลังโดยผู้ดูแลระบบ (ไม่ลบไฟล์จริงจากที่เก็บ)",
           confirmLabel: "ยืนยันลบ",
-          action: archiveAttachmentAction,
+          // AttachmentRowMenu เป็น client component อยู่แล้ว ⇒ ผูก closure ตรงนี้ได้เลย (ไม่ต้องพึ่ง redirect+query
+          // แบบ contacts-ui.tsx/products/page.tsx ที่เป็น server component) — ConfirmDialog แค่ต้องการฟังก์ชัน
+          // รูปร่าง (formData) => void|Promise<void> ไม่จำเป็นต้องเป็น "use server" action โดยตรง
+          action: async (fd: FormData) => {
+            const sid = String(fd.get("systemId") ?? "");
+            const aid = String(fd.get("id") ?? "");
+            const res = await archiveAttachmentWithUndoAction(sid, aid);
+            if (res.ok) {
+              undoToast.show({ tokenId: res.undoToken, systemId: sid, message: `เก็บถาวร "${fileName}" แล้ว` });
+              router.refresh();
+            }
+          },
           fields: { systemId, id: attachmentId },
         }}
       />

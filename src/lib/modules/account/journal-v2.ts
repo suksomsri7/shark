@@ -11,6 +11,7 @@ import { tenantDb } from "@/lib/core/db";
 import type { AccountJournalBook, Prisma } from "@prisma/client";
 import { postManualJV, reverseEntry } from "./gl";
 import { checkNotLocked } from "./policy"; // §9.3 ล็อกข้อมูลก่อนวันที่
+import { safeReason } from "./errors";
 
 export type JournalCtx = { tenantId: string; systemId: string };
 import { clampSearch } from "./search-input";
@@ -450,7 +451,7 @@ export async function createManualEntry(ctx: JournalCtx, input: ManualJvInput): 
     });
     entryId = r.entryId;
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกสมุดรายวันไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกสมุดรายวันไม่สำเร็จ") };
   }
 
   if (input.attachmentIds?.length) {
@@ -489,7 +490,8 @@ export async function reverseJournalEntry(ctx: JournalCtx, entryId: string, reas
     const created = await db.accountJournalEntry.findFirst({ where: { id: r.entryId }, select: { docNo: true } });
     return { ok: true, entryId: r.entryId, docNo: created?.docNo ?? "" };
   } catch (err) {
-    return { ok: false, reason: err instanceof Error ? err.message : "กลับรายการไม่สำเร็จ" };
+    // WO 9.4 — err อาจเป็น Prisma/ระบบภายนอกดิบ ๆ (ไม่ใช่ Error ไทยที่เราโยนเอง) ⇒ กรองก่อนโชว์ผู้ใช้
+    return { ok: false, reason: safeReason(err, "กลับรายการไม่สำเร็จ — ลองใหม่อีกครั้ง") };
   }
 }
 

@@ -252,6 +252,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // Account — เอกสารประจำ (V2 · WO 1.9)
   AccountRecurringRule: sys(),
   AccountRecurringRun: sys(),
+  // Account — soft-undo 5 นาที (V2 · WO 9.4)
+  AccountUndoToken: sys(),
   // Hotel
   HotelRoomType: unit,
   HotelRoom: unit,

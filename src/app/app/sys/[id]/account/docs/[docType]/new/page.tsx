@@ -12,6 +12,7 @@ import {
 } from "@/lib/modules/account/doc-editor-config";
 import { listContacts, DOC_LABEL } from "@/lib/modules/account/service";
 import { buildAdjustCandidatePage } from "@/lib/modules/account/editor-actions";
+import { parseAmountQueryToSatang } from "@/lib/modules/account/quick-create-parse";
 import { presetRangeBkk } from "@/lib/modules/account/list-tabs";
 import { GroupNewPage } from "@/lib/modules/account/group-page";
 import { isGroupDocType } from "@/lib/modules/account/group";
@@ -34,6 +35,8 @@ export default async function Page({
     q?: string;
     page?: string;
     ids?: string;
+    /** WO 9.4 — จาก ⌘K "สร้างด่วน" เท่านั้น (บาท เป็นสตริง) — ไม่ใช้ตอน wizard ปรับปรุงหนี้ (ขั้น ①) */
+    amount?: string;
   }>;
 }) {
   const { id, docType } = await params;
@@ -102,5 +105,7 @@ export default async function Page({
     );
   }
 
-  return <DocEditorPage systemId={id} docType={dt} refId={adjust && sp.ref ? sp.ref : undefined} />;
+  const amountSatang = parseAmountQueryToSatang(sp.amount);
+  const prefill = sp.contactId || amountSatang != null ? { contactId: sp.contactId, amountSatang } : undefined;
+  return <DocEditorPage systemId={id} docType={dt} refId={adjust && sp.ref ? sp.ref : undefined} prefill={prefill} />;
 }

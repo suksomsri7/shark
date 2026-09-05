@@ -8,15 +8,18 @@
 //   - ChangeTypeModal: เปลี่ยนประเภท (ปุ่มดินสอในตาราง + รายการในเมนู "ทำรายการ ▾" เรียกตัวเดียวกัน)
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "./Modal";
 import { DOC_TYPE_HINT_OPTIONS } from "@/lib/modules/account/attachment-shared";
 import {
   linkAttachmentAction,
-  moveAttachmentAction,
   moveAttachmentsBulkAction,
   searchDocumentsForAttachAction,
-  setDocTypeHintAction,
 } from "@/app/app/sys/[id]/account/documents/actions";
+// WO 9.4 §0.3 ข้อ 8 — ย้ายโฟลเดอร์/เปลี่ยนประเภท (ไฟล์เดียว) ไม่กินเลขที่/ไม่ลงเงิน ⇒ เลิกทำได้ภายใน 5 นาที
+// (bulk ย้ายหลายไฟล์พร้อมกันยังใช้ moveAttachmentsBulkAction เดิม — undo-stack.ts รองรับเฉพาะไฟล์เดียวต่อ token)
+import { moveAttachmentWithUndoAction, setDocTypeHintWithUndoAction } from "@/lib/modules/account/undo-stack";
+import { useUndoToast } from "./UndoToast";
 
 export function AttachmentPreviewModal({
   open,
@@ -179,6 +182,8 @@ export function MoveFolderModal({
   const [value, setValue] = useState(currentFolder ?? "");
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
+  const router = useRouter();
+  const undoToast = useUndoToast();
 
   useEffect(() => {
     if (open) setValue(currentFolder ?? "");
@@ -187,12 +192,21 @@ export function MoveFolderModal({
   const confirm = () => {
     start(async () => {
       const folder = value.trim() || null;
-      const r =
-        ids.length > 1
-          ? await moveAttachmentsBulkAction(systemId, ids, folder)
-          : await moveAttachmentAction(systemId, ids[0] ?? "", folder);
-      if (r.ok) onClose();
-      else setError("reason" in r ? r.reason : "ย้ายโฟลเดอร์ไม่สำเร็จ");
+      if (ids.length > 1) {
+        // ย้ายหลายไฟล์พร้อมกัน (moveAttachmentsBulk ไม่มีทาง ok:false) — undo-stack.ts รองรับเฉพาะไฟล์เดียว
+        // ต่อ token วันนี้ ⇒ ไม่มี toast เลิกทำสำหรับ bulk
+        await moveAttachmentsBulkAction(systemId, ids, folder);
+        onClose();
+        return;
+      }
+      const r = await moveAttachmentWithUndoAction(systemId, ids[0] ?? "", folder);
+      if (r.ok) {
+        onClose();
+        undoToast.show({ tokenId: r.undoToken, systemId, message: "ย้ายโฟลเดอร์แล้ว" });
+        router.refresh();
+      } else {
+        setError(r.reason);
+      }
     });
   };
 
@@ -247,6 +261,8 @@ export function ChangeTypeModal({
   const [value, setValue] = useState(initialValue ?? "GENERAL");
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
+  const router = useRouter();
+  const undoToast = useUndoToast();
 
   useEffect(() => {
     if (open) {
@@ -257,9 +273,14 @@ export function ChangeTypeModal({
 
   const confirm = () => {
     start(async () => {
-      const r = await setDocTypeHintAction(systemId, attachmentId, value);
-      if (r.ok) onClose();
-      else setError(r.reason);
+      const r = await setDocTypeHintWithUndoAction(systemId, attachmentId, value);
+      if (r.ok) {
+        onClose();
+        undoToast.show({ tokenId: r.undoToken, systemId, message: "เปลี่ยนประเภทแล้ว" });
+        router.refresh();
+      } else {
+        setError(r.reason);
+      }
     });
   };
 

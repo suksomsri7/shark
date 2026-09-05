@@ -20,6 +20,7 @@ import { resolveProvider, type AiChatMessage, type AiProvider } from "@/lib/ai/p
 import { canSpend, chargeUsageSafe, outOfCreditMessage } from "@/lib/ai/credit";
 import { accountRateGuard } from "./rate-limit";
 import { MICRO_PER_USD } from "@/lib/ai/pricing";
+import { safeReason } from "./errors";
 
 export type InboxAiStatus = "PENDING" | "DONE" | "FAILED" | "UNSUPPORTED" | "SKIPPED";
 
@@ -360,7 +361,8 @@ export async function readBill(
       if (parsed === null) failReason = "AI ตอบกลับมาไม่เป็นข้อมูลที่อ่านได้ — กรอกเอง หรือลองถ่ายรูปให้ชัดขึ้น";
     }
   } catch (e) {
-    failReason = `เรียกผู้ช่วย AI ไม่สำเร็จ — ${e instanceof Error ? e.message.slice(0, 120) : "ไม่ทราบสาเหตุ"}`;
+    // WO 9.4 — e อาจเป็น error ดิบจาก provider AI ภายนอก (ภาษาอังกฤษ/รหัส HTTP) ⇒ กรองก่อนโชว์ผู้ใช้
+    failReason = `เรียกผู้ช่วย AI ไม่สำเร็จ — ${safeReason(e, "ลองใหม่อีกครั้ง หรือกรอกข้อมูลเอง")}`;
   }
 
   // คิดเงินครั้งเดียวต่อการอ่าน 1 ครั้ง (รวมรอบซ่อม) — คำตอบออกมาแล้วต้องจ่าย แม้ตีความไม่ได้

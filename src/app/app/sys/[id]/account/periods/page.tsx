@@ -207,7 +207,7 @@ export default async function PeriodsPage({
                 <th className="px-3 py-3 text-right font-medium">ใบสำคัญ</th>
                 <th className="px-3 py-3 font-medium">ปิดโดย</th>
                 <th className="px-3 py-3 font-medium">เมื่อ</th>
-                <th className="px-3 py-3 text-right font-medium">ทำรายการ</th>
+                <th className="whitespace-nowrap px-3 py-3 text-right font-medium">ทำรายการ</th>
               </tr>
             </thead>
             <tbody>
@@ -256,7 +256,7 @@ export default async function PeriodsPage({
                   <td className="px-3 py-2.5 text-right tabular-nums">{p.entryCount.toLocaleString("th-TH")}</td>
                   <td className="px-3 py-2.5">{p.closedByName ?? "—"}</td>
                   <td className="whitespace-nowrap px-3 py-2.5">{p.closedAt ? formatDateTh(p.closedAt) : "—"}</td>
-                  <td className="px-3 py-2.5 text-right">
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right">
                     {p.status === "CLOSED" ? (
                       canReopen ? (
                         <ConfirmDialog
@@ -264,17 +264,17 @@ export default async function PeriodsPage({
                           fields={{ periodKey: p.periodKey }}
                           reasonField={{ name: "reason", label: "เหตุผลที่ต้องเปิดงวดใหม่", required: true }}
                           triggerLabel="เปิดงวดใหม่"
-                          triggerClassName="text-sm text-[color:var(--color-accent)] hover:underline"
+                          triggerClassName="whitespace-nowrap text-sm text-[color:var(--color-accent)] hover:underline"
                           title={`เปิดงวด ${p.periodKey} ใหม่?`}
                           detail="งวดจะถูกปลดล็อกให้ลงบัญชีได้อีกครั้ง · เหตุผลและผู้ทำจะถูกบันทึกไว้ถาวร"
                           confirmLabel="ยืนยันเปิดงวด"
                           danger
                         />
                       ) : (
-                        <span className="text-xs text-[color:var(--color-muted)]">ต้องมีสิทธิ์เปิดงวด</span>
+                        <span className="whitespace-nowrap text-xs text-[color:var(--color-muted)]">ต้องมีสิทธิ์เปิดงวด</span>
                       )
                     ) : (
-                      <Link href={`${path}?p=${p.periodKey}`} className="text-sm text-[color:var(--color-accent)] hover:underline">
+                      <Link href={`${path}?p=${p.periodKey}`} className="whitespace-nowrap text-sm text-[color:var(--color-accent)] hover:underline">
                         ตรวจเช็กลิสต์
                       </Link>
                     )}

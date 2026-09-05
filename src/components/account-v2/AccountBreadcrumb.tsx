@@ -13,7 +13,11 @@ export function AccountBreadcrumb({ groups, base }: { groups: AccountNavGroup[];
   const tail = useBreadcrumbTail();
 
   const crumbs: { label: string; href?: string }[] = [{ label: "บัญชี", href: base }];
-  if (!active || active.group.key === "home") {
+  // WO 9.4 — /help ไม่ได้ลงทะเบียนใน ACCOUNT_NAV (เข้าถึงผ่าน ⌘K/เช็กลิสต์เท่านั้น ไม่ใช่เมนูหลัก 9 หมวด)
+  // ⇒ findActiveNav หาไม่เจอ ถ้าไม่ตัดเคสนี้ก่อนจะตกไป fallback "หน้าหลัก" ทำให้ดูเหมือนอยู่หน้าอื่น
+  if (pathname === `${base}/help`) {
+    crumbs.push({ label: "วิธีใช้งาน" });
+  } else if (!active || active.group.key === "home") {
     crumbs.push({ label: "หน้าหลัก" });
   } else {
     // WO 6.1: หมวด "บัญชี" ชื่อซ้ำกับรากพอดี ("บัญชี › บัญชี › ผังบัญชี") — f8 เขียน "บัญชี › ผังบัญชี"

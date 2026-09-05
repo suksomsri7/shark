@@ -4,7 +4,7 @@ import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { formatDateTh } from "@/lib/ui/date";
-import { PAY_CHANNEL_LABEL } from "@/lib/ui/status-labels";
+import { payChannelLabel } from "@/lib/modules/account/pay-channel-label";
 import {
   groupPanelDataAction,
   recordGroupPaymentAction,
@@ -494,7 +494,7 @@ export function GroupPaymentPanel({
                     <div className="flex items-center justify-between gap-2">
                       <span className={b.voided ? "line-through opacity-60" : ""}>
                         ครั้งที่ {i + 1} · {formatDateTh(b.paidAt)} ·{" "}
-                        {b.financeName ?? PAY_CHANNEL_LABEL[b.channel as keyof typeof PAY_CHANNEL_LABEL] ?? b.channel} ·
+                        {b.financeName ?? payChannelLabel(b.channel)} ·
                         กระจาย {b.children.length} ใบ
                       </span>
                       <span className="flex items-center gap-2">

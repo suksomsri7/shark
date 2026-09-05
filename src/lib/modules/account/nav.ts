@@ -657,8 +657,12 @@ export function findActiveNav(
   }
   if (best) return { group: best.group, item: best.item };
   // ไม่เจอ item เจาะจง — ลองจับคู่แค่ระดับ group.href (กันหน้าที่ไม่อยู่ใน items แต่ยังอยู่ในหมวด)
+  // WO 9.4 — บั๊กที่เจอจริง (eye-check /account/help): หมวด "หน้าหลัก" มี href = base เดียวกับรากของทุกหมวด
+  // ⇒ `pathname.startsWith(p + "/")` แมตช์ **ทุกหน้าที่ยังไม่ลงทะเบียน** (ไม่ใช่แค่ /help) ว่าเป็น "หน้าหลัก" ผิด ๆ
+  // (แถบเมนูสว่างที่ "หน้าหลัก" ทั้งที่อยู่หน้าอื่น) — หน้าหลักจับคู่ได้แค่ exact เท่านั้น (เช็คไปแล้วด้านบนสุดของฟังก์ชัน)
   for (const g of groups) {
     const p = stripQueryHash(g.href);
+    if (!p || p === base) continue;
     if (pathname === p || pathname.startsWith(p + "/")) return { group: g };
   }
   return null;

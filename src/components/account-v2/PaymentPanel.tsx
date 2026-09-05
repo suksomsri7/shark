@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState, useTransition } from "react";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { formatDateTh } from "@/lib/ui/date";
-import { PAY_CHANNEL_LABEL } from "@/lib/ui/status-labels";
+import { payChannelLabel } from "@/lib/modules/account/pay-channel-label";
 import {
   paymentPanelDataAction,
   recordPaymentsAction,
@@ -181,7 +181,7 @@ export function PaymentPanel({
                    <div className="flex items-center justify-between gap-2">
                     <span className={p.voidedAt ? "line-through opacity-60" : ""}>
                       ครั้งที่ {i + 1} · {formatDateTh(p.paidAt.toString().slice(0, 10))} ·{" "}
-                      {p.financeName ?? PAY_CHANNEL_LABEL[p.channel as keyof typeof PAY_CHANNEL_LABEL] ?? p.channel}
+                      {p.financeName ?? payChannelLabel(p.channel)}
                       {p.chequeNo ? ` · เช็ค ${p.chequeNo}` : ""}
                       {p.certNo ? ` · ${p.certNo}` : ""}
                     </span>

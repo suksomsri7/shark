@@ -3,12 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Modal } from "./Modal";
-import type { PinActionResult } from "@/lib/modules/account/dashboard-actions";
+import type { UndoResult } from "@/lib/modules/account/undo-stack";
+import { useUndoToast } from "./UndoToast";
 
 export type PinCandidate = { id: string; name: string; sub?: string; pinned: boolean };
 
 // "+ เลือกบัญชี" → modal เลือกบัญชีปักหมุด (§4 ข้อ 9) — ใช้ร่วมกันทั้งบัญชีเงิน (AccountFinance)
-// และผังบัญชี (AccountLedger) โดยรับ `action` เป็น server action ต่างกัน (dashboard-actions.ts)
+// และผังบัญชี (AccountLedger) โดยรับ `action` เป็น server action ต่างกัน (undo-stack.ts WO 9.4 — เดิมคือ
+// dashboard-actions.ts, ตอนนี้ทุกจุดปักหมุด "เลิกทำได้" ภายใน 5 นาทีผ่าน UndoToast)
 // บันทึกครั้งเดียว (แทนที่ทั้งชุด pinned) ไม่ toggle ทีละตัว — ง่ายกว่าและ atomic
 export function DashPinModal({
   triggerLabel,
@@ -24,10 +26,11 @@ export function DashPinModal({
   systemId: string;
   items: PinCandidate[];
   max: number;
-  action: (systemId: string, ids: string[]) => Promise<PinActionResult>;
+  action: (systemId: string, ids: string[]) => Promise<UndoResult>;
   testId: string;
 }) {
   const router = useRouter();
+  const undoToast = useUndoToast();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(items.filter((i) => i.pinned).map((i) => i.id)));
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +59,7 @@ export function DashPinModal({
         return;
       }
       setOpen(false);
+      undoToast.show({ tokenId: res.undoToken, systemId, message: "บันทึกบัญชีที่ติดตามแล้ว" });
       router.refresh();
     });
   };

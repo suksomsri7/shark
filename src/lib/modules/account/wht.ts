@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/db";
+import { safeReason } from "./errors";
 import { csvCell } from "@/lib/core/csv";
 import type { AccountWhtIncomeType, AccountLegalType, AccountDocDirection, AccountDocStatus, Prisma } from "@prisma/client";
 
@@ -204,7 +205,7 @@ export async function issueWhtCreditCertStandalone(
     const cert = await prisma.$transaction((tx) => issueWhtCreditCert(tx, ctx, input));
     return { ok: true, docNo: cert.docNo };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ออกเอกสารภาษีถูกหัก ณ ที่จ่ายไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ออกเอกสารภาษีถูกหัก ณ ที่จ่ายไม่สำเร็จ") };
   }
 }
 
@@ -383,7 +384,7 @@ export async function issueWhtCert(
     });
     return { ok: true, ...res };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ออก 50 ทวิ ไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ออก 50 ทวิ ไม่สำเร็จ") };
   }
 }
 
@@ -842,7 +843,7 @@ export async function markFiled(
     });
     return { ok: true, certCount: report.rows.length, totalBaseSatang: report.grandBase, totalTaxSatang: report.grandWht };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ทำเครื่องหมายนำส่งแล้วไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ทำเครื่องหมายนำส่งแล้วไม่สำเร็จ") };
   }
 }
 
@@ -867,7 +868,7 @@ export async function unmarkFiled(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ยกเลิกเครื่องหมายนำส่งไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ยกเลิกเครื่องหมายนำส่งไม่สำเร็จ") };
   }
 }
 

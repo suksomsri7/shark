@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { AccountIcon } from "./AccountIcon";
+import { HelpTip } from "./HelpTip";
 import { formatDateTh } from "@/lib/ui/date";
 
 // ตารางสมุดรายวัน V2 — เฟรม g16-journal.png
@@ -87,8 +88,8 @@ export function JournalTable({
             <th className="px-2 py-3 font-medium">สมุด</th>
             <th className="px-2 py-3 font-medium">คำอธิบาย</th>
             <th className="px-2 py-3 font-medium">อ้างอิงเอกสาร</th>
-            <th className="px-2 py-3 text-right font-medium">เดบิต</th>
-            <th className="px-2 py-3 text-right font-medium">เครดิต</th>
+            <th className="px-2 py-3 text-right font-medium">เดบิต{" "}<HelpTip helpKey="debit" testId="jv-help-debit" /></th>
+            <th className="px-2 py-3 text-right font-medium">เครดิต{" "}<HelpTip helpKey="credit" testId="jv-help-credit" /></th>
             <th className="px-2 py-3 font-medium">ผู้บันทึก</th>
             <th className="w-10 px-2 py-3" aria-label="ต้องตรวจ" />
           </tr>

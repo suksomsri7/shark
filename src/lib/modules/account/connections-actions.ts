@@ -7,6 +7,7 @@
 // ด้วย `assertCan(module "api"/"webhook")` เหมือนหน้า /app/settings/api และ /app/settings/webhooks
 
 import { revalidatePath } from "next/cache";
+import { safeReason } from "./errors";
 import type { AccountLinkedKind } from "@prisma/client";
 import { assertCan } from "@/lib/core/rbac";
 import { createApiKey, revokeApiKey } from "@/lib/api-keys/service";
@@ -104,7 +105,7 @@ export async function createApiKeyAction(
     revalidatePath(PATH(systemId));
     return { ok: true, rawKey };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "สร้างคีย์ไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "สร้างคีย์ไม่สำเร็จ") };
   }
 }
 
@@ -132,7 +133,7 @@ export async function createWebhookAction(fd: FormData): Promise<ConnResult> {
   try {
     await createEndpoint({ tenantId }, { url, events });
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "เพิ่มปลายทางไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "เพิ่มปลายทางไม่สำเร็จ") };
   }
   await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "WebhookEndpoint", after: { created: url } });
   revalidatePath(PATH(systemId));

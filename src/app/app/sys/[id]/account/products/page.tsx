@@ -16,7 +16,8 @@ import {
   baht,
   PRODUCT_TYPE_LABEL,
 } from "@/lib/modules/account/product";
-import { archiveProductAction } from "@/lib/modules/account/product-actions";
+// WO 9.4 §0.3 ข้อ 8 — เก็บถาวรสินค้าไม่กินเลขที่/ไม่ลงเงิน ⇒ เลิกทำได้ภายใน 5 นาที (redirect+`?undo=` — server component)
+import { archiveProductFormAction } from "@/lib/modules/account/undo-stack";
 import { inventorySystemId } from "@/lib/modules/account/inventory-link";
 import { getAccMode } from "@/components/account-v2/mode";
 import { ProductsPanel, type ProductRow, type ProductTypeTab } from "@/components/account-v2/ProductsPanel";
@@ -130,7 +131,7 @@ export default async function ProductsPage({
         danger: !p.archivedAt,
         sepBefore: true,
         submit: {
-          action: archiveProductAction,
+          action: archiveProductFormAction,
           fields: { systemId, id: p.id, archived: p.archivedAt ? "0" : "1" },
         },
       },

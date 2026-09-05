@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AccountIcon } from "./AccountIcon";
+import { HelpTip } from "./HelpTip";
 import { RowActions, type RowActionItem } from "./RowActions";
 import { buildHref, type QueryLike } from "./url";
 // WO 3.4 — คลิกแถว = แผงโปรไฟล์ 360° เลื่อนเข้าขวา (§7.1 · f5-contacts-menu.png)
@@ -35,7 +36,14 @@ export type ContactsPanelRow = {
   mobile: { title: React.ReactNode; subtitle: React.ReactNode; trailing: React.ReactNode; dateLine: React.ReactNode };
 };
 
-const TABLE_HEADERS = ["เลขที่", "ชื่อ", "ประเภท", "เบอร์ / อีเมล", "ยอดค้าง", "เอกสารล่าสุด"];
+const TABLE_HEADERS: { label: string; help?: string }[] = [
+  { label: "เลขที่" },
+  { label: "ชื่อ" },
+  { label: "ประเภท" },
+  { label: "เบอร์ / อีเมล" },
+  { label: "ยอดค้าง", help: "outstanding" },
+  { label: "เอกสารล่าสุด" },
+];
 
 function GroupDot({ tone }: { tone?: "strong" | "muted" }) {
   return (
@@ -311,7 +319,7 @@ export function ContactsPanel({
           </form>
 
           {rows.length === 0 ? (
-            <EmptyState text={emptyText} />
+            <EmptyState text={emptyText} action={{ href: createContactHref, label: "+ เพิ่มผู้ติดต่อ" }} />
           ) : (
             <div className="flex flex-col">
               {/* เดสก์ท็อป: ตารางจริง */}
@@ -323,8 +331,9 @@ export function ContactsPanel({
                         <input type="checkbox" aria-label="เลือกทั้งหมด" className="h-4 w-4" checked={allChecked} onChange={toggleAll} />
                       </th>
                       {TABLE_HEADERS.map((h) => (
-                        <th key={h} className="border-b px-3 pb-3 pt-3 text-left text-xs font-medium text-[color:var(--color-muted)]">
-                          {h}
+                        <th key={h.label} className="border-b px-3 pb-3 pt-3 text-left text-xs font-medium text-[color:var(--color-muted)]">
+                          {h.label}
+                          {h.help && <HelpTip helpKey={h.help} testId={`contacts-help-${h.help}`} />}
                         </th>
                       ))}
                       <th className="border-b px-3 py-3" />

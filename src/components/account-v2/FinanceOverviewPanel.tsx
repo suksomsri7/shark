@@ -15,7 +15,7 @@ import { FinanceSubTabsBar } from "./FinanceSubTabsBar";
 import type { FinanceSubTab } from "./FinancePanel";
 import { formatBaht } from "@/lib/ui/money";
 import { formatDateTh } from "@/lib/ui/date";
-import { pinFinanceAccountsAction } from "@/lib/modules/account/dashboard-actions";
+import { pinFinanceWithUndoAction } from "@/lib/modules/account/undo-stack";
 import { financeDayDetailAction } from "@/app/app/sys/[id]/account/finance/overview/actions";
 import type { FinanceOverview, FinanceDayDetail } from "@/lib/modules/account/finance-overview";
 
@@ -119,7 +119,7 @@ export function FinanceOverviewPanel({
             title="เลือกบัญชีเงินที่ติดตาม"
             systemId={systemId}
             max={4}
-            action={pinFinanceAccountsAction}
+            action={pinFinanceWithUndoAction}
             testId="fov-pin-finance"
             items={data.cash.accounts.map((a) => ({ id: a.id, name: a.name, sub: formatBaht(a.balance, { decimals: true }), pinned: a.pinned }))}
           />

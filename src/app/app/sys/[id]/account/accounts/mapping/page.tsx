@@ -2,7 +2,7 @@
 // (f8 ไม่มีบล็อกนี้บนหน้าผังบัญชี — แต่ยังต้องแก้ได้ ⇒ เข้าถึงจากแผงขวาของบัญชีที่ระบบใช้ลงบัญชีอัตโนมัติ)
 import Link from "next/link";
 import { requireAccountPage } from "@/lib/modules/account/guard";
-import { listLedgers, listMappings } from "@/lib/modules/account/coa";
+import { listLedgers, listMappings, mappingKeyLabel } from "@/lib/modules/account/coa";
 import { setMappingFormAction } from "../actions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
@@ -27,7 +27,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <form key={m.key} action={setMappingFormAction} className="flex items-center gap-2 text-sm">
             <input type="hidden" name="systemId" value={systemId} />
             <input type="hidden" name="key" value={m.key} />
-            <span className="w-48 shrink-0 font-mono text-xs text-[color:var(--color-muted)]">{m.key}</span>
+            <span className="w-48 shrink-0 text-sm" title={m.key}>
+              {mappingKeyLabel(m.key)}
+            </span>
             <select name="accountId" defaultValue={m.accountId} className="input flex-1" aria-label={`บัญชีของ ${m.key}`}>
               {active.map((l) => (
                 <option key={l.id} value={l.id}>

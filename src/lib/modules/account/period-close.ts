@@ -13,6 +13,7 @@
 //    (ถ้าสองที่ไม่ตรงกัน gl ชนะ · ข้อสอบ qc-acc-v2-period-assets ตรวจว่าสองที่ให้คำตอบเดียวกัน)
 
 import { tenantDb } from "@/lib/core/db";
+import { safeReason } from "./errors";
 import { isLockedPeriod, lockBeforeDateOf, lockedMessage } from "./policy"; // §9.3
 import { closePeriod, reopenPeriod } from "./gl";
 import { reconcileBlock, listReconcilableChannels } from "./reconcile";
@@ -269,7 +270,7 @@ export async function reopenPeriodV2(
   try {
     await reopenPeriod(ctx, periodKey, reason.trim(), userId);
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "เปิดงวดไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "เปิดงวดไม่สำเร็จ") };
   }
   await tenantDb(ctx).accountPeriod.updateMany({ where: { periodKey }, data: { reopenedAt: new Date() } });
   return { ok: true };

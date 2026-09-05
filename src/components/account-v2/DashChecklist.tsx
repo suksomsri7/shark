@@ -3,10 +3,18 @@ import type { ChecklistResult } from "@/lib/modules/account/dashboard-home";
 
 // เช็กลิสต์เริ่มต้น 5 ขั้น (BLUEPRINT §0.3 ข้อ 2) — โผล่เฉพาะยังไม่ครบ (หรือถูกบังคับด้วย ?checklist=1
 // สำหรับถ่ายภาพ QC — ดู forceChecklist ใน dashboard-home.ts) · server component ล้วน
-export function DashChecklist({ checklist }: { checklist: ChecklistResult }) {
+export function DashChecklist({ checklist, helpHref }: { checklist: ChecklistResult; helpHref?: string }) {
   return (
     <div className="card flex flex-col gap-3" data-testid="dash-checklist">
-      <h2 className="text-sm font-medium">เริ่มต้นใช้งานบัญชี</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">เริ่มต้นใช้งานบัญชี</h2>
+        {/* WO 9.4 §0.3 ข้อ 9 — ลิงก์ไปคู่มือเริ่มต้นเต็มหน้า (F) */}
+        {helpHref && (
+          <Link href={helpHref} className="text-xs text-[color:var(--color-muted)] hover:underline" data-testid="dash-checklist-help-link">
+            อ่านคู่มือเต็ม →
+          </Link>
+        )}
+      </div>
       <ol className="flex flex-col gap-2">
         {checklist.steps.map((s, i) => (
           <li key={s.key}>

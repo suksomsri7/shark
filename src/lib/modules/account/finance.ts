@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { safeReason } from "./errors";
 import { prisma } from "@/lib/core/db";
 import type { AccountFinanceType, Prisma } from "@prisma/client";
 // posting engine (owner = GL-Core, ไฟล์ gl.ts) — subagent แค่ import + เรียกตามลายเซ็น
@@ -353,7 +354,7 @@ export async function addFinanceOpeningEntry(
     const last = await prisma.accountFinanceOpening.findFirst({ where: { financeId }, orderBy: { seq: "desc" }, select: { seq: true } });
     return { ok: true, seq: last?.seq ?? 1 };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "บันทึกยอดยกมาไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "บันทึกยอดยกมาไม่สำเร็จ") };
   }
 }
 
@@ -402,7 +403,7 @@ export async function updateFinanceOpeningEntry(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "แก้ไขยอดยกมาไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "แก้ไขยอดยกมาไม่สำเร็จ") };
   }
 }
 
@@ -426,7 +427,7 @@ export async function removeFinanceOpeningEntry(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "ลบยอดยกมาไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "ลบยอดยกมาไม่สำเร็จ") };
   }
 }
 
@@ -578,7 +579,7 @@ export async function createFinanceAccount(
     return { ok: false, reason: "ออกรหัสช่องทางไม่สำเร็จ — ลองอีกครั้ง" };
   } catch (e) {
     if (isFinanceCodeConflict(e)) return { ok: false, reason: `รหัส "${explicitCode}" ซ้ำกับช่องทางที่ใช้งานอยู่` };
-    return { ok: false, reason: e instanceof Error ? e.message : "สร้างบัญชีเงินไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "สร้างบัญชีเงินไม่สำเร็จ") };
   }
 }
 
@@ -637,7 +638,7 @@ export async function updateFinanceAccount(
     return { ok: true };
   } catch (e) {
     if (isFinanceCodeConflict(e)) return { ok: false, reason: `รหัส "${code}" ซ้ำกับช่องทางที่ใช้งานอยู่` };
-    return { ok: false, reason: e instanceof Error ? e.message : "แก้ไขบัญชีเงินไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "แก้ไขบัญชีเงินไม่สำเร็จ") };
   }
 }
 
@@ -823,7 +824,7 @@ export async function transferBetweenFinance(
     });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "โอนเงินไม่สำเร็จ" };
+    return { ok: false, reason: safeReason(e, "โอนเงินไม่สำเร็จ") };
   }
 }
 

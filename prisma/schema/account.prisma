@@ -693,3 +693,27 @@ model AccountDocTag {
   @@unique([systemId, name])
   @@index([systemId, archivedAt])
 }
+
+// ───────────── WO 9.4 (§0.3 ข้อ 8) — soft-undo 5 นาที ─────────────
+//
+// เก็บเฉพาะ "การกระทำที่ไม่กินเลขที่เอกสาร/ไม่ลงเงิน" (เก็บถาวร/ลบแท็ก/ข้ามคู่ซ้ำ/ไม่ใช่บัญชี/ย้ายโฟลเดอร์/
+// เปลี่ยนประเภทที่แนะนำ/แยกไฟล์/ยกเลิกร่าง/ปักหมุด) — payload = ข้อมูลย้อนกลับพอให้ `undoAction()` คืนสภาพเดิม
+// ได้เอง (ดู src/lib/modules/account/undo-stack.ts) ไม่ใช่ log เต็มรูป (มี AuditLog แยกอยู่แล้วสำหรับนั้น)
+// one-shot: `usedAt` ไม่ null = ใช้ไปแล้ว · หมดอายุ = `expiresAt` ผ่านมาแล้ว (ปริยาย 5 นาที) · ผูกทั้ง
+// tenant+system+user (คนอื่นเลิกทำแทนไม่ได้ แม้ระบบ/ร้านเดียวกัน)
+model AccountUndoToken {
+  id        String    @id @default(cuid())
+  tenantId  String
+  systemId  String
+  userId    String
+  /// คีย์การกระทำ เช่น "contact.archive" · "attachment.unlink" (ดู UndoKind ใน undo-stack.ts)
+  kind      String
+  /// ข้อมูลย้อนกลับ (รูปร่างต่างกันไปตาม kind) — ดูตัวอย่างที่ undo-stack.ts
+  payload   Json
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  @@index([tenantId, systemId, expiresAt])
+  @@index([userId, expiresAt])
+}
