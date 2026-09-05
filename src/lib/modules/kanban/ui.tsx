@@ -10,7 +10,7 @@ import {
   createBoardAction,
   createCardAction,
   createColumnAction,
-  moveCardAction,
+  moveCardSidewaysAction,
 } from "./actions";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -242,7 +242,7 @@ export async function KanbanBoardView({
                     </div>
                     {canEdit && (
                     <div className="flex items-center gap-1">
-                      <form action={moveCardAction}>
+                      <form action={moveCardSidewaysAction}>
                         <input type="hidden" name="systemId" value={systemId} />
                         <input type="hidden" name="boardId" value={boardId} />
                         <input type="hidden" name="cardId" value={card.id} />
@@ -256,7 +256,7 @@ export async function KanbanBoardView({
                           ◀
                         </button>
                       </form>
-                      <form action={moveCardAction}>
+                      <form action={moveCardSidewaysAction}>
                         <input type="hidden" name="systemId" value={systemId} />
                         <input type="hidden" name="boardId" value={boardId} />
                         <input type="hidden" name="cardId" value={card.id} />

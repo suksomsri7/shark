@@ -145,7 +145,11 @@ model KanbanCard {
   @@index([columnId, status, sortOrder])
   @@index([tenantId, systemId, assigneeUserId])
   @@index([tenantId, systemId, status, dueAt]) // cron เตือนกำหนดส่ง + รายงานเลยกำหนด
-  @@index([boardId, cardNo]) // ค้นด้วยเลขการ์ด (unique เพิ่มหลัง backfill ใน K1.4)
+  // 🔴 K1.4: เลขการ์ดห้ามซ้ำในบอร์ดเดียวกัน — ด่านสุดท้ายของ D14 (`cardNoSeq` UPDATE…RETURNING)
+  //    ถ้าวันหน้ามีใครเขียน "อ่านเลขล่าสุดแล้ว +1" กลับเข้ามา DB จะปฏิเสธให้เห็นทันที ไม่ใช่เงียบ ๆ แล้วเลขซ้ำ
+  //    (NULL ซ้ำได้ตามมาตรฐาน Postgres ⇒ การ์ดเก่าที่ยังไม่ backfill ไม่ติดด่านนี้)
+  @@unique([boardId, cardNo])
+  @@index([boardId, cardNo]) // ค้นด้วยเลขการ์ด (คงไว้จาก K1.1 — unique ข้างบนเพิ่มใน K1.4 ไม่ทับของเดิม)
 }
 
 // ───────────────────────── ป้ายกำกับ (K1.2) ─────────────────────────

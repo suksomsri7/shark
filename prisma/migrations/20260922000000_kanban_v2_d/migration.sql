@@ -1,0 +1,11 @@
+-- K1.4 · ไมเกรชัน D — เลขการ์ดห้ามซ้ำในบอร์ดเดียวกัน (D14 · พิมพ์เขียว 13-kanban-v2 §11.2)
+--
+-- เพิ่มอย่างเดียว (D10): สร้าง unique index ตัวใหม่ ไม่ลบ/ไม่แก้ index เดิมของ K1.1
+-- (`KanbanCard_boardId_cardNo_idx` ยังอยู่ — ค้นด้วยเลขการ์ดใช้ตัวไหนก็ได้)
+--
+-- ปลอดภัยเพราะ: backfill A (K1.1) เติม `cardNo` แบบเรียงต่อบอร์ดไปแล้ว และการสร้างการ์ดทุกทาง
+-- จองเลขด้วย `UPDATE "KanbanBoard" SET "cardNoSeq" = "cardNoSeq" + 1 … RETURNING` คำสั่งเดียวใน tx
+-- ตรวจก่อนลง (QC): select "boardId","cardNo",count(*) from "KanbanCard" where "cardNo" is not null
+--                    group by 1,2 having count(*) > 1  → 0 แถว
+-- แถวที่ `cardNo` เป็น NULL ไม่ติด unique (มาตรฐาน Postgres: NULL ไม่เท่ากับ NULL)
+CREATE UNIQUE INDEX "KanbanCard_boardId_cardNo_key" ON "KanbanCard"("boardId", "cardNo");

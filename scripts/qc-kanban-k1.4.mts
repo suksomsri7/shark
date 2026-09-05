@@ -77,30 +77,46 @@ try {
   const colB = full.columns.find((c: Any) => c.id === cB.id);
   chk("K1.4-S3.3", "getBoard เรียงคอลัมน์ B ตรงกับ position (หลังโหลดใหม่)", colB.cards.map((c: Any) => c.id).join() === afterB.map((c) => c.id).join(), "ตรง", "ต่าง");
 
-  // ═══ S4 rebalance: แทรกหัวคอลัมน์ 260 ครั้ง (ไลบรารีโต ~1 ตัวอักษร/6 แทรก → เกิน 50 ราว ๆ รอบ 245) ═══
-  for (let i = 0; i < 260; i++) {
-    const cur = await orderOf(cA.id);
-    const c = await mk(cA.id, `R${i}`);
-    await moves.moveCard(ctx, { cardId: c.id, toColumnId: cA.id, beforeCardId: cur[0]!.id });
+  // ═══ S4 rebalance — Fable แก้ตามหลักฐาน builder: แทรก "หัวคอลัมน์" ไม่ทำคีย์ยาว (generateKeyBetween(null,head) ลดค่า) ·
+  //     ต้องแทรก "ระหว่างคู่เดิม" (~1 ตัวอักษร/6 ครั้ง → >50 ราว ๆ รอบ 288) · ใช้คอลัมน์ใหม่ D กันปนกับ S1–S3 ═══
+  const cD = await svc.createColumn(tid, SYS, nb.id, "D rebalance");
+  const x1 = await mk(cD.id, "X1"); const x2 = await mk(cD.id, "X2");
+  let prev = x2;
+  for (let i = 0; i < 300; i++) {
+    const c = await mk(cD.id, `R${i}`); // ต่อท้าย
+    await moves.moveCard(ctx, { cardId: c.id, toColumnId: cD.id, afterCardId: x1.id, beforeCardId: prev.id }); // แทรกระหว่าง X1 กับใบก่อนหน้า (คู่แคบลงเรื่อย ๆ)
+    prev = c;
   }
-  const afterA = await orderOf(cA.id);
-  const maxLen = Math.max(...afterA.map((c) => (c.position as string).length));
-  chk("K1.4-S4.1", "แทรกหัวคอลัมน์ 260 ครั้ง → rebalance ทำงาน: key ยาวสุด ≤ 50 และลำดับ R259..R0,A4,A2 (ไม่สลับ)", maxLen <= 50 && afterA[0]!.title === "R259" && afterA[259]!.title === "R0" && afterA.at(-2)!.title === "A4" && afterA.at(-1)!.title === "A2", "≤50 · R259 หัว", `maxLen=${maxLen} หัว=${afterA[0]?.title} ท้าย=${afterA.at(-1)?.title}`);
-  chk("K1.4-S4.2", "needsRebalance(คอลัมน์ A หลัง rebalance) = false", ord.needsRebalance(afterA.map((c) => c.position)) === false, "false", "true", "MAJOR");
+  const afterD = await orderOf(cD.id);
+  const maxLen = Math.max(...afterD.map((c) => (c.position as string).length));
+  chk("K1.4-S4.1", "แทรกระหว่างคู่เดิม 300 ครั้ง → rebalance ทำงาน: key ยาวสุด ≤ 50 · ลำดับ X1,R299..R0,X2 (302 ใบ ไม่สลับ)", maxLen <= 50 && afterD.length === 302 && afterD[0]!.title === "X1" && afterD[1]!.title === "R299" && afterD[300]!.title === "R0" && afterD.at(-1)!.title === "X2", "≤50 · X1,R299..R0,X2", `maxLen=${maxLen} n=${afterD.length} [0]=${afterD[0]?.title} [1]=${afterD[1]?.title} [300]=${afterD[300]?.title} last=${afterD.at(-1)?.title}`);
+  chk("K1.4-S4.2", "needsRebalance(คอลัมน์ D หลัง rebalance) = false และ sortOrder 0..301", ord.needsRebalance(afterD.map((c) => c.position)) === false && afterD.every((c, i) => c.sortOrder === i), "false · 0..301", `sortOrder ok=${afterD.every((c, i) => c.sortOrder === i)}`, "MAJOR");
+  // positive control (ท่าของ builder): ปลูกคีย์ยาว 51 ตัวอักษรตรง ๆ แล้วย้าย 1 ครั้ง → ทั้งคอลัมน์ต้องถูกเขียนใหม่
+  const longKey = "a0" + "V".repeat(49);
+  await prisma.kanbanCard.update({ where: { id: afterD[5]!.id }, data: { position: longKey } });
+  chk("K1.4-S4.3", "positive control: หลังปลูกคีย์ 51 ตัวอักษร needsRebalance = true", ord.needsRebalance((await orderOf(cD.id)).map((c) => c.position)) === true, "true", "false");
+  const before6 = (await orderOf(cD.id)).map((c) => c.id);
+  const mvId = afterD[10]!.id; const aft = afterD[12]!.id; const bef = afterD[13]!.id;
+  await moves.moveCard(ctx, { cardId: mvId, toColumnId: cD.id, afterCardId: aft, beforeCardId: bef });
+  const afterFix = (await orderOf(cD.id)).map((c) => ({ id: c.id, len: (c.position as string).length }));
+  const ids = afterFix.map((c) => c.id);
+  const relOk = ids.filter((id) => id !== mvId).join() === before6.filter((id) => id !== mvId).join(); // ลำดับใบอื่นคงเดิม
+  const placedOk = ids.indexOf(mvId) === ids.indexOf(aft) + 1 && ids.indexOf(bef) === ids.indexOf(mvId) + 1; // อยู่ระหว่างเพื่อนบ้านที่ขอ
+  chk("K1.4-S4.4", "ย้าย 1 ครั้งหลังมีคีย์ยาว → ทั้งคอลัมน์ถูก rebalance (ยาวสุด ≤ 4) · ใบที่ย้ายอยู่ระหว่างเพื่อนบ้านที่ขอ · ลำดับใบอื่นคงเดิม · ไม่มีใบหาย", Math.max(...afterFix.map((c) => c.len)) <= 4 && placedOk && relOk && ids.length === 302, "≤4 · placed · rel", `maxLen=${Math.max(...afterFix.map((c) => c.len))} placed=${placedOk} rel=${relOk} n=${ids.length}`);
 
   // ═══ S5 done column + completedAt · WIP ═══
   await moves.setColumnDone(ctx, cC.id, true);
-  const c0 = (await orderOf(cA.id))[0]!;
+  const c0 = (await orderOf(cD.id))[0]!;
   await moves.moveCard(ctx, { cardId: c0.id, toColumnId: cC.id });
   const done1 = await prisma.kanbanCard.findUnique({ where: { id: c0.id } }) as Any;
   chk("K1.4-S5.1", "ย้ายเข้าคอลัมน์เสร็จ → completedAt ตั้ง", done1.completedAt instanceof Date, "Date", String(done1.completedAt));
-  await moves.moveCard(ctx, { cardId: c0.id, toColumnId: cA.id });
+  await moves.moveCard(ctx, { cardId: c0.id, toColumnId: cD.id });
   chk("K1.4-S5.2", "ย้ายออกจากคอลัมน์เสร็จ → completedAt null", ((await prisma.kanbanCard.findUnique({ where: { id: c0.id } })) as Any).completedAt === null, "null", "ไม่ null");
   await moves.setColumnDone(ctx, cC.id, false);
   const stillDone = await prisma.kanbanCard.findMany({ where: { columnId: cC.id, status: "ACTIVE", completedAt: { not: null } } });
   chk("K1.4-S5.3", "ปลดธง done ออกจากคอลัมน์ → การ์ดในคอลัมน์นั้น completedAt ถูกล้าง", stillDone.length === 0, "0", String(stillDone.length), "MAJOR");
   await moves.setColumnWip(ctx, cC.id, 2);
-  const c1 = (await orderOf(cA.id))[0]!; const c2 = (await orderOf(cA.id))[1]!; const c3 = (await orderOf(cA.id))[2]!;
+  const c1 = (await orderOf(cD.id))[0]!; const c2 = (await orderOf(cD.id))[1]!; const c3 = (await orderOf(cD.id))[2]!;
   await moves.moveCard(ctx, { cardId: c1.id, toColumnId: cC.id }); await moves.moveCard(ctx, { cardId: c2.id, toColumnId: cC.id });
   const wipRes = await moves.moveCard(ctx, { cardId: c3.id, toColumnId: cC.id });
   chk("K1.4-S5.4", "WIP limit 2: ใบที่ 3 → ok:false code WIP_LIMIT · ไม่ย้าย", wipRes?.ok === false && wipRes?.code === "WIP_LIMIT" && (await orderOf(cC.id)).length === 2, "WIP_LIMIT", JSON.stringify(wipRes));
@@ -112,7 +128,7 @@ try {
   // ═══ S6 คอลัมน์: ย้าย / rename / archive ต้องว่าง / moveAllCards ═══
   const rc = await moves.moveColumn(ctx, { columnId: cC.id, beforeColumnId: cA.id });
   const colsNow = await prisma.kanbanColumn.findMany({ where: { boardId: nb.id, status: "ACTIVE" }, orderBy: { position: "asc" } }) as Any[];
-  chk("K1.4-S6.1", "moveColumn C ไปก่อน A → ลำดับ C,A,B · sortOrder 0,1,2", rc?.ok === true && colsNow.map((c) => c.id).join() === [cC.id, cA.id, cB.id].join() && colsNow.map((c) => c.sortOrder).join() === "0,1,2", "C,A,B", colsNow.map((c) => c.name).join());
+  chk("K1.4-S6.1", "moveColumn C ไปก่อน A → ลำดับ C,A,B,D · sortOrder 0,1,2,3", rc?.ok === true && colsNow.map((c) => c.id).join() === [cC.id, cA.id, cB.id, cD.id].join() && colsNow.map((c) => c.sortOrder).join() === "0,1,2,3", "C,A,B,D", colsNow.map((c) => c.name).join());
   await moves.renameColumn(ctx, cC.id, "เสร็จแล้ว ✓");
   chk("K1.4-S6.2", "renameColumn", ((await prisma.kanbanColumn.findUnique({ where: { id: cC.id } })) as Any).name === "เสร็จแล้ว ✓", "ชื่อใหม่", "เดิม", "MAJOR");
   const eArc = await fails(() => moves.archiveColumn(ctx, cC.id));

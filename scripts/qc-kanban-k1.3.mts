@@ -68,9 +68,10 @@ try {
   chk("K1.3-S2.3", "STAFF ไม่ใช่สมาชิก → PRIVATE = null · TENANT = VIEWER", access.boardRole(thana, await fresh(bPatong.id)) === null && access.boardRole(thana, await fresh(bMaint.id)) === "VIEWER", "null/VIEWER", `${access.boardRole(thana, await fresh(bPatong.id))}/${access.boardRole(thana, await fresh(bMaint.id))}`);
   chk("K1.3-S2.4", "STAFF ไม่มีคีย์ kanban.* เลย → null ทุกบอร์ด (แม้ TENANT)", access.boardRole(noPerm, await fresh(bMaint.id)) === null && access.boardRole(noPerm, await fresh(bPatong.id)) === null, "null", `${access.boardRole(noPerm, await fresh(bMaint.id))}`);
   chk("K1.3-S2.5", "STAFF ที่มีคีย์ kanban.* อื่น (ไม่มี board.read ตรง ๆ) ยังอ่านได้ — implied (backward compat ผู้ใช้เดิม)", access.boardRole(thana, await fresh(bMaint.id)) === "VIEWER" && !("kanban.board.read" in thana.permissions), "VIEWER", String(access.boardRole(thana, await fresh(bMaint.id))));
-  const visOwner = await prisma.kanbanBoard.findMany({ where: { AND: [{ tenantId: tid, systemId: SYS, status: "ACTIVE" }, access.visibleBoardsWhere(owner)] } });
-  const visManager = await prisma.kanbanBoard.findMany({ where: { AND: [{ tenantId: tid, systemId: SYS, status: "ACTIVE" }, access.visibleBoardsWhere(manager)] } });
-  const visThana = await prisma.kanbanBoard.findMany({ where: { AND: [{ tenantId: tid, systemId: SYS, status: "ACTIVE" }, access.visibleBoardsWhere(thana)] } });
+  const SEED = { id: { in: [bPatong.id, bMaint.id, bKata.id] } }; // นับเฉพาะ 3 บอร์ด seed — บอร์ดเศษจากข้อสอบอื่นไม่ทำให้แดง
+  const visOwner = await prisma.kanbanBoard.findMany({ where: { AND: [{ tenantId: tid, systemId: SYS, status: "ACTIVE" }, SEED, access.visibleBoardsWhere(owner)] } });
+  const visManager = await prisma.kanbanBoard.findMany({ where: { AND: [{ tenantId: tid, systemId: SYS, status: "ACTIVE" }, SEED, access.visibleBoardsWhere(manager)] } });
+  const visThana = await prisma.kanbanBoard.findMany({ where: { AND: [{ tenantId: tid, systemId: SYS, status: "ACTIVE" }, SEED, access.visibleBoardsWhere(thana)] } });
   const visNo = await prisma.kanbanBoard.findMany({ where: { AND: [{ tenantId: tid, systemId: SYS, status: "ACTIVE" }, access.visibleBoardsWhere(noPerm)] } });
   chk("K1.3-S2.6", "visibleBoardsWhere: owner 3 · manager 2 (ป่าตอง+ซ่อม) · thana 1 (ซ่อม) · noPerm 0", visOwner.length === 3 && visManager.length === 2 && !visManager.some((b) => b.id === bKata.id) && visThana.length === 1 && visThana[0]!.id === bMaint.id && visNo.length === 0, "3/2/1/0", `${visOwner.length}/${visManager.length}/${visThana.length}/${visNo.length}`);
 
@@ -119,7 +120,7 @@ try {
 
   // ═══ S5 listBoards ผ่านสิทธิ์ · getBoard 404 ═══
   const lbThana = await svc.listBoardsFor(ctxOf(thana), thana).catch((e: Any) => e);
-  chk("K1.3-S5.1", "listBoardsFor(ctx, actor) ของ thana = เฉพาะบอร์ดซ่อม (TENANT) — ไม่มี PRIVATE 2 ใบ", Array.isArray(lbThana) && lbThana.length === 1 && lbThana[0].id === bMaint.id, "1 ใบ", Array.isArray(lbThana) ? String(lbThana.length) : String(lbThana?.message));
+  chk("K1.3-S5.1", "listBoardsFor(ctx, actor) ของ thana = มีบอร์ดซ่อม (TENANT) และไม่มี PRIVATE 2 ใบ", Array.isArray(lbThana) && lbThana.some((b: Any) => b.id === bMaint.id) && !lbThana.some((b: Any) => b.id === bPatong.id || b.id === bKata.id), "1 ใบ", Array.isArray(lbThana) ? String(lbThana.length) : String(lbThana?.message));
   const gbHidden = await fails(() => svc.getBoardFor(ctxOf(thana), thana, bKata.id));
   const gbOk = await svc.getBoardFor(ctxOf(thana), thana, bMaint.id).catch(() => null);
   chk("K1.3-S5.2", "getBoardFor: บอร์ดที่มองไม่เห็น → KanbanNotFoundError · บอร์ด TENANT → ได้บอร์ด + role VIEWER", !!gbHidden && (gbHidden?.name === "KanbanNotFoundError" || /ไม่พบ/.test(String(gbHidden?.message))) && !!gbOk && gbOk.role === "VIEWER", "404 / VIEWER", `${gbHidden?.name} / ${gbOk?.role}`);
