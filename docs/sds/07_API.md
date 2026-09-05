@@ -5,3 +5,4 @@
 - กติกา: rate limit ต่อ key · ทุก response มี `requestId` · pagination cursor · เงินเป็นสตางค์ + field `display` · error รูปแบบเดียว `{error: {code, message_th, message_en}}`
 - Webhooks ขาออก (WO-0062): สมัคร URL ต่อ event จาก outbox types · ลายเซ็น HMAC-SHA256 header `X-Shark-Signature` · retry backoff 3 ครั้ง
 - เอกสาร: หน้า `/developers` สร้างจาก spec เดียวกัน (single source)
+- **as-built (WO A4)**: API ของโมดูลบัญชีอยู่ที่ `/api/v1/account/*` — สัญญาเครื่องอ่านได้ที่ `/api/v1/account/openapi.json` (OpenAPI 3.1 · ไม่ต้องใช้คีย์) และคู่มือคนอ่านที่ `docs/api/ACCOUNT-API.md` ทั้งคู่ generate จากทะเบียน op เดียวกัน (`src/lib/modules/account/api/registry.ts`) ⇒ เอกสารเน่าไม่ได้ (fitness F13)

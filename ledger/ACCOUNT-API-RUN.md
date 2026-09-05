@@ -7,11 +7,11 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | A4 |
+| WO | A2 |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable (oracle เขียนแล้ว) → Opus (builder) |
-| ขั้นที่ถึง | 5 ก.ย. ~09:20 UTC: A3 DONE (Fable รันเอง core 64/64 · keys 51/51 · typecheck 0 · fitness 17/17 · อ่านโค้ด require/idempotency/dispatch/actor แล้ว) · **สั่ง Opus ทำ A4** (OpenAPI+docs+F13) · ถัดไป A2 (Sonnet UI) |
-| commit ล่าสุดของงานนี้ | (A3 commit ถัดไป) |
+| ผู้ทำ | Fable (oracle เขียนแล้ว) → Sonnet (builder UI) |
+| ขั้นที่ถึง | 5 ก.ย. ~10:20 UTC: A4 DONE (Fable รันเอง openapi 26/26 · core 64/64 · typecheck 0 · fitness 20/20 รวม F13) · **สั่ง Sonnet ทำ A2** (หน้าตั้งค่าคีย์) · oracle B1–B4 เขียนครบแล้ว รอ A2 จบค่อยเข้าเฟส B |
+| commit ล่าสุดของงานนี้ | (A4 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
 ## กติกาของ run นี้ (สืบทอดจาก ACCOUNT-V2-RUN + เพิ่ม)
@@ -27,9 +27,9 @@
 | WO | ชื่อ | ผู้ทำ | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|---|---|
 | A1 | คีย์ API มี scope/ผูกสมุด/หมดอายุ/หมุน + `ApiIdempotency` + `ActorType.API_KEY` | Opus | DONE | (HEAD) | Fable รันเอง keys 51/51 · public-api 18 · schema 61 · permissions 160 · security 298 (agent) · drift 0 · typecheck 0 · fitness 17 · migration `20260917000000_api_key_scopes` apply QC แล้ว (prod จะ apply ตอน Vercel build) · หมายเหตุ: `account.approve.limit` = ค่าตั้ง ไม่ใช่ scope (`NON_API_SCOPE_KEYS`) · หนี้: คีย์บัญชียังเรียก `/api/v1/*` ของแพลตฟอร์มได้เหมือนคีย์เดิม (ตัดสินใน A3/B) |
-| A2 | หน้าตั้งค่า "แอปภายนอก/API" ในบัญชี: สร้างคีย์ผูกสมุด + bundle/scope + หมดอายุ + หมุน · `/app/settings/api` แสดง scope | Sonnet | TODO | — | ภาพจริงเทียบ g14 |
+| A2 | หน้าตั้งค่า "แอปภายนอก/API" ในบัญชี: สร้างคีย์ผูกสมุด + bundle/scope + หมดอายุ + หมุน · `/app/settings/api` แสดง scope | Sonnet | IN_PROGRESS | — | oracle `qc-account-api-settings.mts` (เบราว์เซอร์) · ภาพจริงเทียบ g14 |
 | A3 | `account/api/`: actor · `requireAccountApi` · envelope/error/requestId · idempotency · registry · catch-all route · rate limit DB | Opus | DONE | (HEAD) | Fable รันเอง core 64/64 · keys 51 · public-api 18 · chat-api-v1 89 (agent) · typecheck 0 · fitness 17 · ไฟล์ `api/{actor,respond,op,registry,require,idempotency,dispatch}.ts` + `ops/core.ts` + route catch-all · หนี้: แถว idempotency status null ค้าง (process ตาย) บล็อก key นั้น 24 ชม. → เพิ่ม stale>5 นาที=จองใหม่ ใน B/C · danger op จริงต้องมี `reason` ใน schema |
-| A4 | generator OpenAPI + `/api/v1/account/openapi.json` + `gen-account-api-docs.mts` + fitness F13 (ทุก op มี test id) | Opus | IN_PROGRESS | — | oracle `qc-account-api-openapi.mts` (เขียนแล้ว) |
+| A4 | generator OpenAPI + `/api/v1/account/openapi.json` + `gen-account-api-docs.mts` + fitness F13 (ทุก op มี test id) | Opus | DONE | (HEAD) | Fable รันเอง openapi 26/26 · core 64 · typecheck 0 · fitness 20/20 · zod v4 `z.toJSONSchema` ไม่เพิ่ม package · `API_ERROR_CODES` + `ERROR_CODE_DOCS` ใน respond.ts (เพิ่ม code ใหม่ต้องเติมคำอธิบาย+regenerate docs ไม่งั้น F13.2 แดง) · ⚠️ คู่มือเขียน pagination เป็น cursor — **B1 ต้องแก้ generator ให้ตรงของจริง (page/pageSize + page{page,pageSize,pageCount,total,hasMore})** |
 | B1 | READ เอกสาร: list/get/print/tags/favorites/attachments/parse/recurring/dashboard/overview | Sonnet | TODO | — | เทียบ `acc-v2-expected.json` |
 | B2 | READ ผู้ติดต่อ/สินค้า/หน่วย/กลุ่ม/merge-candidates/DBD/link-suggestions | Sonnet | TODO | — | |
 | B3 | READ การเงิน: finance-accounts/statement/overview/calendar/payment-requests/reconcile/cheques/wht | Sonnet | TODO | — | |
@@ -97,10 +97,71 @@
 - fitness เพิ่มบล็อก F13 (`chk("F13.1", ...)`): ทุก op มี `test` ที่ปรากฏเป็นสตริง `"<id>"` ใน `scripts/qc-account-api-*.mts` · `F13.2`: docs ตรง generator (`--check`) · `F13.3`: op ที่มี `tool` ต้องมีชื่อใน `src/lib/ai/skills.ts` (ตอนนี้ vacuous)
 - oracle: `qc-account-api-openapi` + `qc-account-api-core` + `fitness`
 
-### B1–B4 (READ) · C1–C4 · D1–D4 (WRITE) — สเปคละเอียดเขียนตอนถึง (อ้าง PLAN §4 แถวต่อแถว) · ทุก op: id/path/scope ตามตาราง §4 · oracle เทียบเฉลย `acc-v2-expected.json` + `qc-account-cpa`
+### B1 — READ เอกสาร/แดชบอร์ด (oracle `scripts/qc-account-api-read-docs.mts` · Fable เขียนแล้ว · ใช้ seed SIAM DIVE QC + เฉลย)
+ไฟล์ `api/ops/documents-read.ts` (+ `api/serialize.ts` สำหรับตัวแปลงที่ใช้ซ้ำ) · **ทุก op kind=read · action `account.doc.view`** · ห้าม pass-through แถว prisma: serializer เลือกฟิลด์ชัดเจน · **ห้ามมี `tenantId`/`systemId`/`publicToken`/`keyHash`/`href`/`base`/`glRows` ในผลลัพธ์** · เงินทุกช่องลงท้าย `Satang` (Int) · วันที่ `YYYY-MM-DD` (วันไทย) · เวลา ISO
+| op id | REST | input (zod strict · GET=query) | output `data` | service |
+|---|---|---|---|---|
+| `documents.list` | `GET /documents` | `type?` (docType เดี่ยว หรือคั่น `,` → array · ไม่รู้จัก=422) · `tab?` (key ของ `LIST_TABS[type]` → `tabToFilter` ให้ status/excludeOverdue · ใช้ได้เมื่อ type เดี่ยว) · `status?` · `q?` · `contactId?` · `from?`/`to?` (YYYY-MM-DD · ผิดรูป=422) · `page?` (≥1) · `pageSize?` (1..100 clamp ไม่ error) · `sort?` | `data: DocRow[]` · `page: { page, pageSize, pageCount, total, hasMore }` · `tabCounts` (จาก `computeListTabCounts` เมื่อ type เดี่ยว · ไม่งั้น `{}`) · DocRow = `{ id, type, docNo, status, issueDate, dueDate, validUntil, contact: {id,name}|null, subTotalSatang, discountSatang, vatSatang, whtSatang, grandTotalSatang, paidSatang, remainSatang, overdue, tags, source, createdAt, updatedAt }` | `listDocumentsPaged` (ทุกชนิดรวมฝั่งจ่าย · ไม่ส่ง type = ทุกชนิด) |
+| `documents.get` | `GET /documents/{id}` | — | `getDocDetailData` แปลง: `{ id, type, docNo, status, label, createdAt, issueDate, dueDate, validUntil, contact {id,name,taxId,email}, lines[{id,description,qty,unitName,unitPriceSatang,discountSatang,vatRateBp,amountSatang,account{code,name}|null}], subTotalSatang, discountSatang, vatSatang, whtSatang, depositDeductedSatang, grandTotalSatang, paidSatang, remainSatang, note, internalNote, tags, overdue, payments[{id,paidAt,channel,financeAccount{id,name}|null,amountSatang,whtSatang,feeSatang,voidedAt}], related[], timeline[], jv[{id,journalNo,date,book,lines[{accountCode,accountName,debitSatang,creditSatang}]}], attachments[{id,fileName,mime,sizeBytes,url}], groupChildren }` · **ไม่มี auditLogs · publicToken** | `getDocDetailData` (null → 404 not_found) |
+| `documents.attachments` | `GET /documents/{id}/attachments` | — | `AttachmentView[]` แบบเดียวกับ detail (id ไม่มี → 404) | `listDocumentAttachmentFiles` (+ตรวจเอกสารมีจริง) |
+| `documents.parse` | `POST /documents/parse` (**kind=read** · ไม่ต้อง Idempotency-Key) | `{ text: string 1..200 }` | `null` ถ้าไม่ตรง docType · ไม่งั้น `{ type, label, contactQuery, amountSatang, contacts: [{id,name}] (≤5 จาก `searchContactPickerRows` เมื่อ contactQuery ไม่ว่าง) }` | `parseQuickCreateQuery(text, issuableDocTypes(...))` |
+| `tags.list` | `GET /tags` | — | `string[]` | `listUsedTags` |
+| `favorites.list` | `GET /favorites` | — | `DocFavorite[]` | `getDocFavorites` |
+| `recurring.list` | `GET /recurring` | — | `[{ id, name, docType, frequency, dayOfMonth/weekday, active, nextRunAt, lastRunAt, contact{id,name}|null, autoApprove, template summary }]` | `listRecurringRules` |
+| `recurring.runs` | `GET /recurring/{id}/runs` | — | `[{ id, ranAt, periodKey, status, document{id,docNo}|null, error }]` (rule ไม่มี → 404) | `listRecurringRuns` |
+| `dashboard.get` | `GET /dashboard` (rate `report`) | `period?` (YYYY-MM) · `year?` | จาก `dashboardSnapshot`: `{ asOf, periodKey, year, kpi: { receivable{count,amountSatang}, payable{…}, overdue{…}, cashTotalSatang }, arap, income, expense, cash, issued, pending, recent[], topCustomers[], topProducts[], topVendors[], topExpenseCategories }` — **ตัด glRows/queryCount/calendar/href/base** | `dashboardSnapshot(ctx, opts)` |
+| `dashboard.series` | `GET /dashboard/series` (rate `report`) | `year` (int 2000..2100 · ผิด=422) | `{ year, months: [{ period: "YYYY-MM", incomeSatang, expenseSatang, profitSatang }] (12), total{…Satang}, prevYear{…}, yoyBp }` | `monthlySeries` |
+| `overview.get` | `GET /overview` (rate `report`) | `side` (`revenue`\|`expense` · อื่น=422) · `year?` · `issuedRange?` | `OverviewData` ตัด `base`/`now`/`queryCount` · ตัวเลขเป็น `…Satang` | `loadOverview(ctx, side, raw, { base: "" })` |
+**ซองแบ่งหน้า**: handler ที่ต้องคืน `page`/ฟิลด์เพิ่มระดับบนสุด (เช่น `tabCounts`) ให้คืน `paged(data, page, extra?)` จาก `respond.ts` (คืนอ็อบเจ็กต์มี marker เช่น `[ENVELOPE]: true`) แล้ว `dispatch` ประกอบเป็น `{ data, page, ...extra, requestId }` — handler ธรรมดาคืน data ตรง ๆ เหมือนเดิม (B1 แก้ `respond.ts`/`dispatch.ts` เพิ่มได้ · oracle A3 ต้องยังเขียว)
+ค่าเฉลยที่ oracle ใช้ตรวจ: `E.receivable/receivableDocs/payable/payableDocs/overdueAmount/overdueDocs/finance.total/invoiceTabs` (จาก `scripts/acc-v2-expected.json`) · ข้ามร้าน = 404/ว่าง · คีย์ไม่มี doc.view = 403
+
+### B2 — READ ผู้ติดต่อ/สินค้า (oracle `scripts/qc-account-api-read-master.mts` · Fable เขียนแล้ว)
+ไฟล์ `api/ops/contacts-read.ts` + `api/ops/products-read.ts` · ทุก op kind=read · เพิ่ม error code `upstream_unavailable` (503) ใน `ApiErrorCode`/OpenAPI/docs · กติกา serializer เหมือน B1 (ห้ามรั่ว tenantId/systemId/href/base)
+| op id | REST | input | output `data` (+ระดับบน) | service | scope |
+|---|---|---|---|---|---|
+| `contacts.list` | `GET /contacts` | `q?` · `group?` (`all`\|`customer`\|`regular`\|`vendor`\|`archived`\|`custom:<groupId>`\|`source:member`\|`source:crm`\|`source:chat`\|`source:pos`\|`source:imported` · อื่น=422 · default = ใช้งานอยู่ตามหน้าจอ) · `legalType?` · `page?` · `pageSize?` | `data: [{ id, code, name, kind, legalType, taxId, phone, email, archived, partyId, receivableSatang, payableSatang, outstandingSatang (VENDOR→payable · อื่น→receivable), lastDocument {id,type,docNo,issueDate}|null, badges{member,crm} }]` · `page` · `summary { all, customer, vendor, archived, active, regular }` (จาก sidebar) | `loadContactsSidebar` + `listContactsPage` | doc.view |
+| `contacts.get` | `GET /contacts/{id}` | — | `contactProfile(ctx,id,{tab:"info",base:""})` ตัด href/base/avatar/labels ที่เป็น UI ล้วน: `{ header{id,code,name,kind,legalType,archived,mergedIntoId}, info{taxId,branchCode,branchLabel,address,phone,email,website,lineId,fax,contactPerson,creditTermDays,note}, kpi{outstandingSatang,outstandingDocs,overdueDocs,paidThisYearSatang,paidDocsThisYear,year}, documents[] (ล่าสุด ≤10 รูปแบบ DocRow ของ B1), groups[{id,name}], links{member,crm,chat} }` · 404 ถ้าไม่มี | `contactProfile` | doc.view |
+| `contacts.documents` | `GET /contacts/{id}/documents` | `type?` · `page?` · `pageSize?` | `DocRow[]` + `page` (= documents.list กรอง contactId) | `listDocumentsPaged` | doc.view |
+| `contact-groups.list` | `GET /contact-groups` | — | `[{ id, name, color, count }]` | sidebar | doc.view |
+| `contacts.merge-candidates` | `GET /contacts/merge-candidates` | — | `[{ pairKey, a{id,name,code}, b{…}, reason, similarity }]` | `listMergeCandidates` | contact.merge |
+| `contacts.link-suggestions` | `GET /contacts/{id}/link-suggestions` | — | `{ member[], crm[], chat, available{member,crm} }` | `suggestLinks` (จาก phone/email/taxId/partyId ของผู้ติดต่อ) | contact.manage |
+| `contacts.lookup-tax-id` | `GET /contacts/lookup-tax-id/{taxId}` | path 13 หลัก (ไม่ครบ=422) | ผล `lookupJuristic`: ok → `{ name, address, … }` · ไม่พบ → 404 · ไม่มี `DBD_API_KEY`/ปลายทางล่ม → **503 `upstream_unavailable`** message_th ไทย | `lookupJuristic` | contact.manage |
+| `products.list` | `GET /products` | `type?` (`GOODS`\|`SERVICE`\|`BUNDLE` · ไม่ส่ง = ทุกชนิด · อื่น=422) · `sub?` (`active`\|`archived`) · `q?` · `category?` · `page?` · `pageSize?` | `data: [{ id, code, sku, name, type, unitName, category, salePriceSatang, buyPriceSatang, onHand, trackStock, archived, invItemId }]` · `page` · `counts{GOODS,SERVICE,BUNDLE,active,archived}` · `stockValueSatang` · `categories[]` | `listProductsPaged` (ไม่ส่ง type: รวม 3 ชนิด — เรียก 3 ครั้งหรือขยาย service แบบ additive) | doc.view |
+| `products.get` | `GET /products/{id}` | — | `{ product{…ฟิลด์เดียวกับแถว + description, vatRateBp, incomeAccount, expenseAccount}, bundleItems[{component{id,name,sku},qty}], openingLots[{seq,qty,unitCostSatang,date}], inventory{linked, item{id,sku,onHand,reorderPoint,costSatang,locationName}|null} }` · 404 | `productModalData` | doc.view |
+| `products.movements` | `GET /products/{id}/movements` | `take?` | `[{ documentId, docNo, type, date, qty, unitCostSatang }]` | `productMovements` | doc.view |
+| `products.bundle` | `GET /products/{id}/bundle` | — | `[{ component{id,name,sku,type}, qty, buyPriceSatang, salePriceSatang }]` | `listBundleItems` | doc.view |
+| `products.opening-lots` | `GET /products/{id}/opening-lots` | — | `[{ id, seq, qty, unitCostSatang, date, note }]` | `listOpeningLots` | doc.view |
+| `units.list` | `GET /units` | `includeArchived?` (bool) | `[{ id, code, name, nameEn, kind, archived }]` | `listUnits` | doc.view |
+| `categories.list` | `GET /categories` | `includeArchived?` | `[{ id, name, appliesTo[], archived }]` | `listCategories` | doc.view |
+| `warehouses.list` | `GET /warehouses` | — | `[{ id, name, isDefault }]` | `listWarehouses` | doc.view |
+เฉลยที่ oracle ใช้: `E.contacts.{all,customer,vendor,archived,active,regular,groups}` · `E.productsByType` · `E.products` · จำนวน DB ของ units/categories/bundle/lots
+
+### B3 — READ การเงิน (oracle `scripts/qc-account-api-read-finance.mts` · Fable เขียนแล้ว)
+ไฟล์ `api/ops/finance-read.ts` · **CSV**: op ที่ประกาศ `csv: (ctx) => string` — เมื่อ `Accept` มี `text/csv` dispatch ตอบ `text/csv; charset=utf-8` + BOM (`\uFEFF`) + `Content-Disposition: attachment; filename=…` ผ่าน `csvRow()` กลางของ `src/lib/core/csv.ts` (กัน CSV injection — บทเรียน 9.2) · read ไม่เขียน audit
+| op id | REST | input | output | service | scope · rate |
+|---|---|---|---|---|---|
+| `finance-accounts.list` | `GET /finance-accounts` | `asOf?` (YYYY-MM-DD) | `data: [{ id, code, name, type, bankSubtype, bankName, accountNo, promptpayId, openingSatang, openingDate, balanceSatang, showOnDocuments, ledgerAccountCode, pinned }]` · `groups: [{ key, label, totalSatang, accountIds[] }]` · `totalSatang` | `financeBalances` + `groupFinanceAccounts` | finance.manage |
+| `finance-accounts.get` | `GET /finance-accounts/{id}` | — | แถวเดียวกัน + `openingEntries[{seq,date,amountSatang,note}]` · 404 | `getFinanceAccountById` + `listFinanceOpeningEntries` + balance | finance.manage |
+| `finance-accounts.statement` | `GET /finance-accounts/{id}/statement` | `from?` `to?` | `{ account{id,name,type}, openingSatang, closingSatang, rows[{ entryId, date, journalNo, memo, refType, refId, inSatang(debit), outSatang(credit), balanceSatang }] }` · CSV ได้ · 404 | `financeStatement` | finance.manage · report |
+| `finance.overview` | `GET /finance/overview` | `month?` (YYYY-MM · ผิด=422) | `financeOverview` ตัด base/href/labels UI (ไทล์ 6 · cash · cheques · monthChanges …Satang) | `financeOverview` | finance.manage · report |
+| `finance.calendar` | `GET /finance/calendar` | `month?` | `{ month, days: [{ date, inSatang, outSatang, items[{type,docNo,contact,amountSatang}] }] }` | `cashCalendar` | finance.manage · report |
+| `petty-cash.list` | `GET /petty-cash` | `asOf?` | `[{ id, code, name, balanceSatang, holder, pendingSatang, lastTopUp }]` | `pettyCashList` | finance.manage |
+| `payment-requests.list` | `GET /payment-requests` | `documentId` (บังคับ) | `PaymentRequestView[]` **ตัด `token`** (คง `url`/`qrPayload`) | `listPaymentRequests` | doc.view |
+| `reconcile.channels` | `GET /reconcile/channels` | — | `[{ id, code, name, bankName, accountNo }]` | `listReconcilableChannels` | reconcile |
+| `reconcile.get` | `GET /reconcile` | `financeAccountId` · `period` (YYYY-MM) | `{ summary: ReconcileSummary(…Satang · ไม่มี channel.ledgerAccountId), lines[{ id, date, description, amountSatang, status, matchedEntryId, suggestion }], systemEntries[{ entryId, date, journalNo, memo, amountSatang, matchedLineId }] }` · channel ไม่มี → 404 · period ผิด → 422 | `reconcilePageData` | reconcile |
+| `cheques.list` | `GET /cheques` | `direction` (IN\|OUT บังคับ) · `status?` · `q?` · `from?` `to?` · `page?` `pageSize?` | `data: [{ id, direction, chequeNo, bankName, branch, chequeDate, amountSatang, status, statusLabel, contact{id,name}|null, document{id,docNo}|null, depositedAt, clearedAt, note }]` · `page` · `totalSatang` · `summary{pendingSatang,dueSoonCount}` · `statusCounts` | `listChequesV2` + `chequeSummaryV2` + `chequeStatusCounts` | cheque.manage |
+| `cheques.get` | `GET /cheques/{id}` | — | แถวเดียวกัน · 404 | `getCheque` | cheque.manage |
+| `wht.list` | `GET /wht` | `direction` (IN=เราหักผู้ขาย · OUT=ถูกหัก) · `from?` `to?` · `status?` · `q?` · `page?` `pageSize?` | `data: [{ id, docNo, date, contact{id,name,taxId}, incomeType, incomeTypeLabel, rateBp, baseSatang, whtSatang, status, filedPeriod, sourceDocument{id,docNo}|null }]` · `page` · `totals{baseSatang,whtSatang}` | `listWhtCertsV2` | tax.view |
+| `wht.cert` | `GET /wht/certs/{id}` | — | `{ id, docNo, date, direction, payer{name,taxId,address}, payee{…}, incomeType, rateBp, baseSatang, whtSatang, sourceDocument, status }` · 404 | `getWhtCert` | tax.view |
+| `wht.pnd` | `GET /wht/pnd` | `type` (3\|53) · `period` (YYYY-MM) | `{ type, period, rows[…Satang], byIncomeType[…Satang], grandBaseSatang, grandWhtSatang }` · CSV = `pndCsv` | `pnd`/`pndCsv` | tax.view · report |
+| `wht.credits` | `GET /wht/credits` | `year?` · `period?` | `{ rows[…Satang], totalWhtSatang, totalBaseSatang, yearTotalSatang }` · CSV = `whtCreditsCsv` | `listWhtCredits` + `whtCreditYearTotal` | tax.view · report |
+| `wht.filings` | `GET /wht/filings` | — | `[{ id, period, form, filedAt, certCount, whtSatang, note }]` | `listWhtFilings` | tax.view |
+
+### B4 (READ บัญชี) · C1–C4 · D1–D4 (WRITE) — สเปคละเอียดเขียนตอนถึง (อ้าง PLAN §4 แถวต่อแถว) · ทุก op: id/path/scope ตามตาราง §4 · oracle เทียบเฉลย `acc-v2-expected.json` + `qc-account-cpa`
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 5 ก.ย. ~10:20 UTC — A4 ปิด (Opus 13 นาที รอบเดียว) · เริ่ม A2 · ความคืบหน้า 3/24 = 12.5%
 - 5 ก.ย. ~09:20 UTC — A3 ปิด (Opus 16 นาที · ผ่านรอบเดียว) · เริ่ม A4 · ความคืบหน้า 2/24
 - 5 ก.ย. ~08:35 UTC — A1 ปิด (Opus 12 นาที · Fable ตรวจ diff+รัน oracle ซ้ำ) · เริ่ม A3
 - 5 ก.ย. ~07:30 UTC — เริ่ม run · เครื่อง: load 1.2 · RAM ว่าง 5.4G · gate ว่าง · Neon QC `ep-plain-art` seed-check 279/279 · เจ้าของเคาะ §8 ครบ · push แผนขึ้น main `43cdb2a`

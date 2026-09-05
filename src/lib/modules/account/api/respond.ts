@@ -11,27 +11,34 @@
 import { randomBytes } from "node:crypto";
 import { ERR, isSafeUserMessage, safeReason } from "../errors";
 
-/** รหัส error ทั้งหมดของ API บัญชี — คู่มือ/OpenAPI/สกิล AI อ้างรายการนี้ */
-export type ApiErrorCode =
-  | "unauthorized"
-  | "key_expired"
-  | "system_required"
-  | "system_mismatch"
-  | "scope_missing"
-  | "invalid_json"
-  | "validation"
-  | "idempotency_required"
-  | "idempotency_conflict"
-  | "idempotency_in_progress"
-  | "confirm_required"
-  | "not_found"
-  | "method_not_allowed"
-  | "rate_limited"
-  | "period_locked"
-  | "state_conflict"
-  | "duplicate"
-  | "forbidden"
-  | "unprocessable";
+/**
+ * รหัส error ทั้งหมดของ API บัญชี — คู่มือ/OpenAPI/สกิล AI อ้างรายการนี้
+ * 🔴 เก็บเป็น "ค่าจริง" ไม่ใช่แค่ type: generator ของ OpenAPI (WO A4) ต้องแจงเป็น enum ได้
+ *    ⇒ เพิ่มรหัสใหม่ที่นี่ที่เดียว แล้วทั้ง type · enum ใน spec · ตารางในคู่มือ ขยับตามทันที
+ */
+export const API_ERROR_CODES = [
+  "unauthorized",
+  "key_expired",
+  "system_required",
+  "system_mismatch",
+  "scope_missing",
+  "invalid_json",
+  "validation",
+  "idempotency_required",
+  "idempotency_conflict",
+  "idempotency_in_progress",
+  "confirm_required",
+  "not_found",
+  "method_not_allowed",
+  "rate_limited",
+  "period_locked",
+  "state_conflict",
+  "duplicate",
+  "forbidden",
+  "unprocessable",
+] as const;
+
+export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 
 export type ApiErrorDetail = { path: string; message: string };
 

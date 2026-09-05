@@ -593,6 +593,61 @@ console.log("\n── F12: cookie ทุกตัวตั้ง secure (ห้�
     bad.length ? `ขาด secure ที่: ${bad.join(" · ")}` : "ครบทุกจุด");
 }
 
+// ─────────────────── F13: ทะเบียน API บัญชี ───────────────────
+// A4 ทำให้ "ทะเบียน op" เป็นแหล่งความจริงเดียวของ REST + OpenAPI + คู่มือ + สกิล AI
+// ด่านนี้กันของ 3 อย่างที่พังเงียบเป็นประจำเวลาเพิ่ม endpoint ใหม่:
+//   (1) เพิ่ม op แล้วไม่มีข้อสอบครอบ → พังบน prod ก่อนที่ CI จะรู้
+//   (2) เพิ่ม op แล้วลืม generate คู่มือ → เอกสารโกหก (ผู้เชื่อมต่อยิงตามคู่มือแล้ว 404)
+//   (3) ใส่ `tool` ให้ op แต่ไม่ลงทะเบียนในสกิล → AI มองไม่เห็น เงียบสนิท (บทเรียนเดียวกับ F10)
+console.log("\n── F13: ทะเบียน API บัญชี (op ทุกตัวมีข้อสอบ · คู่มือไม่เก่า · tool มีบ้าน) ──");
+{
+  const { ACCOUNT_OPS } = await import("@/lib/modules/account/api/registry");
+
+  // F13.1 — ทุก op มี test id ที่ปรากฏจริงในข้อสอบชุด qc-account-api-*
+  const qcSrc = walk(join(ROOT, "scripts"), (f) => /qc-account-api-.*\.mts$/.test(f))
+    .map((f) => readFileSync(f, "utf8"))
+    .join("\n");
+  const untested = ACCOUNT_OPS.filter((o) => !o.test || !qcSrc.includes(`"${o.test}"`));
+  chk(
+    "F13.1",
+    `ทุก op (${ACCOUNT_OPS.length}) มี test id ที่อ้างถึงจริงใน scripts/qc-account-api-*.mts`,
+    untested.length === 0,
+    untested.length
+      ? `${untested.length} op ไม่มีข้อสอบครอบ: ${untested.map((o) => `${o.id}(test=${o.test || "-"})`).join(", ")}`
+      : "ครบ",
+  );
+
+  // F13.2 — คู่มือตรงกับ generator (import ฟังก์ชันบริสุทธิ์ ไม่ spawn — เร็วกว่าและไม่เขียนไฟล์)
+  let docsOk = true;
+  let docsDetail = "ตรง";
+  try {
+    const { renderDocs } = await import("./gen-account-api-docs.mjs");
+    const docPath = join(ROOT, "docs", "api", "ACCOUNT-API.md");
+    const onDisk = existsSync(docPath) ? readFileSync(docPath, "utf8") : "";
+    docsOk = onDisk === renderDocs();
+    if (!docsOk) docsDetail = "docs/api/ACCOUNT-API.md ไม่ตรงกับทะเบียน — รัน: pnpm exec tsx scripts/gen-account-api-docs.mts";
+  } catch (e) {
+    docsOk = false;
+    docsDetail = e instanceof Error ? e.message.slice(0, 300) : String(e);
+  }
+  chk("F13.2", "docs/api/ACCOUNT-API.md ตรงกับ generator (ไม่ stale)", docsOk, docsDetail);
+
+  // F13.3 — op ที่ประกาศ tool ต้องมีชื่อนั้นในทะเบียนสกิล (ยังไม่มี op ไหนประกาศ = ผ่านแบบว่างเปล่า)
+  const withTool = ACCOUNT_OPS.filter((o) => o.tool);
+  const skillsSrc = readFileSync(join(ROOT, "src", "lib", "ai", "skills.ts"), "utf8");
+  const orphanTools = withTool.filter((o) => !skillsSrc.includes(`"${o.tool!.name}"`));
+  chk(
+    "F13.3",
+    `tool ของ op บัญชี (${withTool.length} ตัว) ลงทะเบียนในสกิล AI แล้ว`,
+    orphanTools.length === 0,
+    orphanTools.length
+      ? `${orphanTools.length} tool ไม่มีในสกิล → AI เรียกไม่ได้: ${orphanTools.map((o) => o.tool!.name).join(", ")}`
+      : withTool.length === 0
+        ? "ยังไม่มี op ไหนประกาศ tool (E1 จะเป็นตัวเติม)"
+        : "ครบ",
+  );
+}
+
 // ─────────────────── สรุป ───────────────────
 const failed = checks.filter((c) => !c.ok);
 const bySev = (s: Sev) => failed.filter((c) => c.sev === s).length;
