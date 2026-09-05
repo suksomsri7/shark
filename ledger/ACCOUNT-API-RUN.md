@@ -45,7 +45,7 @@
 | E1 | สกิล AI `account` 30 tools จากทะเบียน + proposal kinds + dispatch | Opus | DONE | 5 ก.ย. | ai-skill 33/33 (oracle ผิดเอง K3.11: ต้องยกเลิกการชำระก่อนยกเลิกใบ → เพิ่ม K3.10a ทดสอบ account_void_payment) · 36 tool (อ่าน 14 เขียน 18 อันตราย 4) · `api/run.ts` = pipeline ร่วม REST/AI · `wo-notes/api-E1.md` |
 | E2 | `/api/v1/ai/skills/account` + tools route + golden cases 12 + persona นักบัญชี | Opus | DONE | 5 ก.ย. | ai-external 16/16 (Fable ปิดช่อง: คีย์รุ่นเดิม scopes:[] เคยอ่าน tool บัญชีได้ → ตอนนี้ 403/404 เท่า REST + X2.6) · golden 17 เคส 100% · persona นักบัญชี · คู่มือ section AI agents · `wo-notes/api-E2.md` |
 | F1 | `/developers/account` + `.md` + `/developers` เพิ่มหมวดบัญชี | Sonnet | IN_PROGRESS | — | |
-| F2 | `.claude/skills/shark-account-api/` + ทดสอบ agent อ่านสกิลทำ 5 งานเอง | Sonnet+Fable | TODO | — | |
+| F2 | `.claude/skills/shark-account-api/` + ทดสอบ agent อ่านสกิลทำ 5 งานเอง | Sonnet+Fable | IN_PROGRESS | — | |
 | F3 | อัปเดต docs (07_API · 12-account §5 · sds/account · AI_LAYER) + HANDOVER | Sonnet | DONE (รอ oracle หลัง F1) | — | |
 | F4 | verify prod + แจ้งเจ้าของ | Fable | TODO | — | |
 
@@ -370,6 +370,7 @@ event ที่เหลือ (D4): `account.cheque.changed` (ทุก transit
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย · ⚠️ ป้ายเวลาช่วง D3–E1 อาจคลาด ±30 นาที — Fable ประมาณเองไม่ได้ดูนาฬิกา · ตั้งแต่ E2 ใช้ `date` จริง)
+- 5 ก.ย. 23:34 น. — E2 ปิด (Opus 21 นาที) + F3 ปิด (Sonnet 9 นาที ขนาน) · **เฟส E ปิด** · 🔴 Fable ปิดช่องโหว่: AI route ให้คีย์รุ่นเดิม (scopes:[]) เรียก tool บัญชีได้ทั้งที่ REST ปฏิเสธ → เท่ากันแล้ว (X2.6) · ความคืบหน้า 20/24 = 83% · เริ่ม F1+F2
 - 5 ก.ย. 23:10 น. — เริ่ม E2 (Opus) + **F3 (Sonnet) ขนาน** (เอกสาร as-built ไม่แตะ generator/ACCOUNT-API.md · ไม่ต้อง typecheck)
 - 5 ก.ย. 23:05 น. — E1 ปิด (Opus 35 นาที · oracle ผิดเอง 1 จุด) · REST/AI ใช้ validation+audit เส้นเดียวกันผ่าน `api/run.ts` · ความคืบหน้า 17/24 = 71% · เริ่ม E2
 - 5 ก.ย. 23:50 น. — **qc:all ปิดเฟส D 244/246 (21 นาที) → แดง 2 แก้ครบ**: (1) `acc-v2-doc-settings` T10b.4/9/10/11 — D4 เปิดสี HEX ให้แท็กเพื่อเอาใจ oracle REST ทำให้สัญญาหน้าจอ "สีนอกรายการต้องถูกปฏิเสธ" พัง ⇒ ถอด HEX ออก · REST `settings.tags.create.color` = enum 6 สวอตช์ · oracle ส่ง "red" (2) `acc-v2-security` S16 ชี้ไฟล์ `import-actions.ts` แต่ D3 ย้าย core+writeAudit ไป `import-core.ts` ⇒ แก้รายการไฟล์ · รันเดี่ยว: doc-settings 116 · security 298 · write-settings 39

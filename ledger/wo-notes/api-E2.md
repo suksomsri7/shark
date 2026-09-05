@@ -188,6 +188,6 @@ fitness (env -u …)          JSON_SUMMARY {"total":20,"passed":20,"findings":[]
 
 
 ## ภาคผนวกโดย Fable (ตรวจรับ 05 Sep 23:34 น.)
-- 🔴 **ไม่รับข้อ 1 ของ builder** ("scopes:[] = ไม่จำกัด"): สกิลบัญชีเป็นของใหม่ ไม่มีพฤติกรรมเดิมให้รักษา และ REST ตีความ  = ไม่มี permission (403) ⇒ ถ้าปล่อยไว้ คีย์เก่าทุกใบบน prod อ่านงบ/ลูกหนี้ผ่าน  ได้ · แก้  ถอดบรรทัด  · oracle เปลี่ยนคีย์เป็น bundle accountant + เพิ่ม **X2.6** (คีย์รุ่นเดิม → 403/404) · 16/16
+- 🔴 **ไม่รับข้อ 1 ของ builder** ("scopes:[] = ไม่จำกัด"): สกิลบัญชีเป็นของใหม่ ไม่มีพฤติกรรมเดิมให้รักษา และ REST ตีความ `[]` = ไม่มี permission (403) ⇒ ถ้าปล่อยไว้ คีย์เก่าทุกใบบน prod อ่านงบ/ลูกหนี้ผ่าน `/api/v1/ai/tools/account_*` ได้ · แก้ `accountToolAllowedForScopes` ถอดบรรทัด `scopes.length === 0 → true` · oracle เปลี่ยนคีย์เป็น bundle accountant + เพิ่ม **X2.6** (คีย์รุ่นเดิม → 403/404) · 16/16
 - รับข้อ 2–3 (persona ผ่านโดยบังเอิญ → บล็อกจริงทำแล้ว · SK-5.2 grep ชื่อ) — ไม่แก้ oracle เดิม
 - รันซ้ำเอง: ai-external 16 · ai-skill 33 · qc-ai-skills 23 · qc-ai 17 · keys 51 · core 64 · openapi 26 · docs --check 199 · typecheck 0 · fitness 20/20 ×2
