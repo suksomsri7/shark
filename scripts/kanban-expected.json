@@ -1,0 +1,139 @@
+{
+  "_readme": "เฉลยของชุดข้อมูล QC บอร์ดงาน — เขียนโดย scripts/seed-kanban-qc.mts ทุกครั้งที่ seed",
+  "generatedAt": "2026-09-05T21:50:01.081Z",
+  "today": "2026-09-30",
+  "oracleValidUntil": "2026-10-31",
+  "tenantId": "cmtox1s7z0000hzkzko1yaoj0",
+  "systemId": "cmtox1s9x0003hzkzdigny18p",
+  "units": {
+    "patong": "cmtox1s8u0001hzkz8rm7qdn1",
+    "kata": "cmtox1s9m0002hzkzienpmjdd"
+  },
+  "users": {
+    "owner": {
+      "userId": "cmtox1san0004hzkzsnr3aht9",
+      "membershipId": "cmtox1sb10005hzkzdpbryg4f",
+      "name": "เจ้าของร้าน (KB QC)",
+      "email": "kb-owner@shark.local"
+    },
+    "manager": {
+      "userId": "cmtox1sbg0006hzkz6h4a4zhj",
+      "membershipId": "cmtox1sbr0007hzkz68aqjjp5",
+      "name": "ผู้จัดการป่าตอง",
+      "email": "kb-manager-patong@shark.local"
+    },
+    "staff": {
+      "thana": {
+        "userId": "cmtox1sc20008hzkzaqwdzoco",
+        "membershipId": "cmtox1scd0009hzkzl7qhnmde",
+        "name": "ธนา ศรีสมบัติ",
+        "email": "kb-thana@shark.local"
+      },
+      "pook": {
+        "userId": "cmtox1sco000ahzkzy6ov3b8h",
+        "membershipId": "cmtox1scz000bhzkzpj4em7i0",
+        "name": "ปุ๊ก มณีรัตน์",
+        "email": "kb-pook@shark.local"
+      },
+      "kitti": {
+        "userId": "cmtox1sda000chzkzrorbtbuy",
+        "membershipId": "cmtox1sdk000dhzkza2nm8tpu",
+        "name": "กิตติ ช่างอุปกรณ์",
+        "email": "kb-kitti@shark.local"
+      }
+    },
+    "noPerm": {
+      "userId": "cmtox1sdv000ehzkz3rwwgyuf",
+      "membershipId": "cmtox1se6000fhzkzepysia92",
+      "name": "พนักงานไม่มีสิทธิ์บอร์ด",
+      "email": "kb-noperm@shark.local"
+    }
+  },
+  "boards": {
+    "patong": {
+      "id": "cmtox1sgq000ghzkz6rtkcugr",
+      "columns": {
+        "กล่องงานเข้า": "cmtox1sle000khzkzbzztecdg",
+        "รอทำ": "cmtox1smb000lhzkz6pdzpzm1",
+        "กำลังทำ": "cmtox1sn5000mhzkzp99lm94x",
+        "รอตรวจ": "cmtox1snz000nhzkzvmacof2o",
+        "เสร็จแล้ว": "cmtox1sov000ohzkzwup3wxas"
+      },
+      "cardIds": [
+        "cmtox1spw000phzkztebg4wk4",
+        "cmtox1sy2000shzkzd7qlvcsr",
+        "cmtox1syz000thzkzr4rp9i0c",
+        "cmtox1szx000uhzkzknxd8j4k",
+        "cmtox1t4d000xhzkzp9mufg9s",
+        "cmtox1t58000yhzkz3vo163vt",
+        "cmtox1t7t0011hzkz6typ2bxs",
+        "cmtox1tam0014hzkz4nbsr7eb",
+        "cmtox1tde0017hzkzto2x0rax",
+        "cmtox1tfx001ahzkzxvc0uj7y",
+        "cmtox1tjc001dhzkzs7ck04mq",
+        "cmtox1tkf001ehzkz5qrhpozb",
+        "cmtox1tnc001hhzkzhculhziv",
+        "cmtox1tq4001khzkzcuyrme6d",
+        "cmtox1tt4001nhzkzejufxds2",
+        "cmtox1twl001qhzkzzbrf0yz0",
+        "cmtox1tz6001thzkz1d2o2zy6",
+        "cmtox1u01001uhzkzlfltymbc",
+        "cmtox1u2t001xhzkzlwx2yw5a",
+        "cmtox1u5f0020hzkzb5x99zl4",
+        "cmtox1u860023hzkzbw4f1z6x",
+        "cmtox1ubl0026hzkz8evhpqts",
+        "cmtox1ue40029hzkzj0dxk6mx",
+        "cmtox1ugr002chzkzu9az3s2l"
+      ],
+      "unitKey": "patong",
+      "visibility": "PRIVATE",
+      "cardCount": 24
+    },
+    "maint": {
+      "id": "cmtox1ujq002fhzkzpzia3o5l",
+      "columns": {
+        "แจ้งเข้า": "cmtox1un3002jhzkzmfo2ilhy",
+        "กำลังซ่อม": "cmtox1unx002khzkzr9qjekmr",
+        "รออะไหล่": "cmtox1uor002lhzkzaksy6dkk",
+        "เสร็จ": "cmtox1upl002mhzkz296qwhn7"
+      },
+      "cardIds": [
+        "cmtox1uqf002nhzkzrgdredeq",
+        "cmtox1ut9002qhzkzx5nowrg2",
+        "cmtox1uu4002rhzkz61tfccx8",
+        "cmtox1ux1002uhzkznimqe0i1",
+        "cmtox1uzp002xhzkz36ltlls9",
+        "cmtox1v2k0030hzkza7csds9o",
+        "cmtox1v5a0033hzkzesfmjr9l",
+        "cmtox1v650034hzkz1e6rst0e",
+        "cmtox1v8l0037hzkzertjdvad",
+        "cmtox1vbd003ahzkzfw8gc9zg",
+        "cmtox1ve5003dhzkz9ajsrucf"
+      ],
+      "unitKey": null,
+      "visibility": "TENANT",
+      "cardCount": 11
+    },
+    "kata": {
+      "id": "cmtox1vgq003ghzkzqv540dmm",
+      "columns": {
+        "รอทำ": "cmtox1vjl003khzkzcnqssd4q",
+        "เสร็จ": "cmtox1vkg003lhzkz5rmpzfbo"
+      },
+      "cardIds": [
+        "cmtox1vla003mhzkzxx9ey1eh",
+        "cmtox1vm5003nhzkzmlb2wb6n",
+        "cmtox1vn1003ohzkz9vhk00h2"
+      ],
+      "unitKey": "kata",
+      "visibility": "PRIVATE",
+      "cardCount": 3
+    }
+  },
+  "counts": {
+    "boards": 3,
+    "cards": 38,
+    "overduePatong": 1,
+    "dueTodayPatong": 2
+  }
+}
