@@ -51,6 +51,13 @@ export type RecordPaymentsResult =
       outstanding: number;
       certNos: string[];
       recorded: number;
+      /**
+       * WO API-C2 (additive): id ของรายการชำระที่เพิ่งบันทึก เรียงตามลำดับ `drafts`
+       * REST คืนค่านี้ให้ผู้เรียกเก็บไว้ยิง `POST /payments/{paymentId}/void` ได้ตรง ๆ
+       * (เดิมต้องไปไล่หาเองจากรายการชำระของเอกสาร ซึ่งแยกไม่ออกว่าแถวไหนของคำขอนี้)
+       * ยิงคีย์กันซ้ำเดิมซ้ำ → คืน id ชุดเดิม (ไม่ใช่ค่าว่าง) เพื่อให้ผลลัพธ์ของการ retry เท่ากัน
+       */
+      paymentIds: string[];
     }
   | { ok: false; reason: string };
 
@@ -99,6 +106,8 @@ export type PaymentRowView = {
   id: string;
   paidAt: Date;
   channel: string;
+  /** WO API-C2 (additive): id ของช่องทางเงิน — REST คืน `financeAccount { id, name }` ให้ผู้เรียกอ้างต่อได้ */
+  financeAccountId: string | null;
   financeName: string | null;
   amount: number;
   whtAmount: number;
@@ -227,6 +236,8 @@ export async function recordPayments(
     const done = await findPaymentsByKeys(tenantId, systemId, keys);
     if (done.length === keys.length) {
       const after = (await paymentTargetOf(tenantId, systemId, target.id))?.target;
+      // เรียง id ตามลำดับคีย์ (ลำดับของ drafts) ไม่ใช่ตามที่ฐานข้อมูลคืนมา — ผู้เรียกยึดตำแหน่งได้
+      const idByKey = new Map(done.map((d) => [d.idempotencyKey, d.id]));
       return {
         ok: true,
         targetDocId: target.id,
@@ -235,6 +246,7 @@ export async function recordPayments(
         outstanding: Math.max(0, (after?.grandTotal ?? 0) - (after?.paidTotal ?? 0)),
         certNos: [],
         recorded: 0,
+        paymentIds: keys.map((k) => idByKey.get(k)).filter((v): v is string => !!v),
       };
     }
   }
@@ -249,6 +261,7 @@ export async function recordPayments(
   );
   const isPayable = target.direction === "IN";
   const certNos: string[] = [];
+  const paymentIds: string[] = [];
   let recorded = 0;
 
   for (let i = 0; i < rows.length; i++) {
@@ -277,6 +290,7 @@ export async function recordPayments(
       : await recordPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: r.whtIncomeType });
     if (!res.ok) return { ok: false, reason: `ครั้งที่ ${i + 1}: ${res.reason}` };
     recorded++;
+    if (res.paymentId) paymentIds.push(res.paymentId);
     // ฝั่งขายคืนเลขใบภาษีถูกหัก (WTI) มาด้วย · ฝั่งจ่ายออก 50 ทวิ เองภายใน recordVendorPayment
     const certNo = (res as { whtCertNo?: string }).whtCertNo;
     if (certNo) certNos.push(certNo);
@@ -307,6 +321,7 @@ export async function recordPayments(
     outstanding: Math.max(0, (after?.grandTotal ?? 0) - (after?.paidTotal ?? 0)),
     certNos,
     recorded,
+    paymentIds,
   };
 }
 

@@ -31,9 +31,10 @@ import type {
 } from "../dashboard";
 import { dayKeyBkk } from "../dashboard";
 import type { DocDetailData, JvEntryView, RelatedSlot, TimelineStep } from "../doc-detail";
-import type { GroupChildView } from "../group";
+import type { GroupCandidate, GroupChildView } from "../group";
+import type { PaymentPanelData } from "../payment";
 import type { OverviewData } from "../overview";
-import type { DocPaymentRow, ListDocumentsPage } from "../service";
+import type { ListDocumentsPage } from "../service";
 import { isOverdue } from "../service";
 
 // ── วันที่/เวลา ────────────────────────────────────────────────────────────
@@ -109,7 +110,27 @@ export function attachmentView(a: AttachmentView) {
   return { id: a.id, fileName: a.fileName, mime: a.mimeType, sizeBytes: a.sizeBytes, url: a.fileUrl };
 }
 
-function paymentView(p: DocPaymentRow) {
+/**
+ * แถวการชำระ 1 ครั้ง — รับได้ทั้ง `DocPaymentRow` (หน้ารายละเอียดเอกสาร) และแถวของแผงการชำระ
+ * (`PaymentPanelData.payments`) ⇒ `GET /documents/{id}` กับ `GET /documents/{id}/payments`
+ * คืนรูปเดียวกันเป๊ะ ผู้เรียกเขียนตัวอ่านชุดเดียวพอ
+ */
+type PaymentRowLike = {
+  id: string;
+  paidAt: Date;
+  channel: string;
+  financeAccountId: string | null;
+  financeName: string | null;
+  amount: number;
+  whtAmount: number;
+  feeAmount: number;
+  note: string | null;
+  chequeNo: string | null;
+  certNo: string | null;
+  voidedAt: Date | null;
+};
+
+function paymentView(p: PaymentRowLike) {
   return {
     id: p.id,
     paidAt: iso(p.paidAt),
@@ -122,6 +143,43 @@ function paymentView(p: DocPaymentRow) {
     chequeNo: p.chequeNo,
     certNo: p.certNo,
     voidedAt: iso(p.voidedAt),
+  };
+}
+
+/**
+ * แผง "การชำระเงิน" ของเอกสาร 1 ใบ (WO C2)
+ * 🔴 ตัด `channels` (รายการช่องทางของทั้งร้าน — มี endpoint ของตัวเองที่ `/finance-accounts`)
+ *    และ `targetDocId`/`canRecord` ซึ่งเป็นเรื่องของปุ่มบนหน้าจอ ไม่ใช่ข้อมูลของผู้เรียก
+ */
+export function paymentPanelView(p: PaymentPanelData) {
+  return {
+    panel: {
+      documentId: p.docId,
+      type: p.docType,
+      docNo: p.docNo,
+      direction: p.direction,
+      contactName: p.contactName,
+      grandTotalSatang: p.grandTotal,
+      paidSatang: p.paidTotal,
+      outstandingSatang: p.outstanding,
+      whtBaseSatang: p.whtBaseSatang,
+    },
+    rows: p.payments.map(paymentView),
+  };
+}
+
+/** เอกสารที่หยิบเข้าใบวางบิล/ใบรวมจ่ายได้ (WO C2) — ใบที่หยิบไม่ได้ยังคืนมาพร้อมเหตุผล */
+export function groupCandidateView(c: GroupCandidate) {
+  return {
+    id: c.id,
+    docNo: c.docNo,
+    type: c.docType,
+    issueDate: ymd(c.issueDate),
+    dueDate: ymd(c.dueDate),
+    grandTotalSatang: c.grandTotal,
+    outstandingSatang: c.outstanding,
+    eligible: c.eligible,
+    blockedReason: c.blockedReason,
   };
 }
 

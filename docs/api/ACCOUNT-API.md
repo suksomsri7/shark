@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 95 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 105 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -362,6 +362,19 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/documents/123/deposits" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `payments.list`
+
+**GET /documents/{id}/payments** - Every payment recorded against this document, including the voided ones, with the totals of the document. · scope: `account.doc.view` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/documents/123/payments" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `documents.get`
 
 **GET /documents/{id}** - One document in full: lines, payments, related documents, timeline, journal entries and attachments. · scope: `account.doc.view` · read
@@ -372,6 +385,20 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/documents/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `documents.group-candidates`
+
+**GET /documents/group-candidates** - Documents of this contact that can go into a billing note or combined payment. Documents that are already in another open group are returned too, with eligible false and the reason. · scope: `account.doc.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `type` | enum("BILLING_NOTE", "COMBINED_PAYMENT") | yes | BILLING_NOTE groups what customers owe you; COMBINED_PAYMENT groups what you owe vendors. |
+| `contactId` | string | yes | Id of the customer or vendor. Only documents of one contact can be grouped. · min length 1 · max length 40 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/documents/group-candidates?type=BILLING_NOTE&contactId=example%20contactId" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -1347,6 +1374,96 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/favorites" \
   -d '{"name":"example name","lines":[]}'
 ```
 
+#### `payment-requests.cancel`
+
+**POST /payment-requests/{id}/cancel** - Cancel a pending payment request. The link stops working immediately. A request that was already paid cannot be cancelled. · scope: `account.payment.record` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/payment-requests/123/cancel" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `payment-requests.confirm`
+
+**POST /payment-requests/{id}/confirm** - Confirm by hand that the money for a static PromptPay request has arrived. The payment is recorded once; confirming again returns the same payment with duplicated true. · scope: `account.payment.record` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `paidAt` | string | no | paidAt (Thai calendar day, YYYY-MM-DD). |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/payment-requests/123/confirm" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `payment-requests.create`
+
+**POST /payment-requests** - Create the link and PromptPay QR the customer pays with. Asking again while an identical request is still pending returns the same one instead of a second link. · scope: `account.payment.record` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `documentId` | string | yes | Id of the invoice, deposit receipt or debit note to collect. The amount is always the outstanding balance at this moment; it is never taken from the request. · min length 1 · max length 40 |
+| `financeAccountId` | string | yes | Id of the bank account or wallet the money should land in. It must have a PromptPay id set. · min length 1 · max length 40 |
+| `expiresInDays` | integer | no | How long the link stays usable. Default 7 days. · min 1 · max 90 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/payment-requests" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"documentId":"example documentId","financeAccountId":"example financeAccountId"}'
+```
+
+#### `payments.record-group`
+
+**POST /payments/group** - Record one transfer against a billing note or combined payment. The amount is spread over the child documents oldest due date first, and each child gets its own payment and ledger entry. · scope: `account.payment.record` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `groupId` | string | yes | Id of the billing note or combined payment. · min length 1 · max length 40 |
+| `paidAt` | string | yes | paidAt (Thai calendar day, YYYY-MM-DD). |
+| `financeAccountId` | one of several shapes | no | - |
+| `tieOffSatang` | integer | yes | Total debt settled by this transfer in satang, cash plus withholding tax. It is spread over the child documents oldest due date first. |
+| `feeSatang` | integer | no | Bank fee of this transfer in satang, booked once on the first child document. Default 0. · min 0 |
+| `note` | one of several shapes | no | Short note kept on each payment row, at most 20 characters. |
+| `wht` | array of object | no | Withholding tax per child document, when the payer deducted it. |
+| `cheque` | one of several shapes | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/payments/group" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"groupId":"example groupId","paidAt":"example paidAt","tieOffSatang":10000}'
+```
+
+#### `payments.record`
+
+**POST /payments** - Record money received or paid against a document, with optional withholding tax, bank fee and cheque. The ledger, the document status and the finance account balance all move together. · scope: `account.payment.record` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `documentId` | string | yes | Id of the invoice, deposit, purchase or expense being settled. A receipt issued from an invoice settles the invoice. · min length 1 · max length 40 |
+| `rows` | array of object | yes | One entry per time money moved. Several entries are recorded as one batch, in order. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/payments" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"documentId":"example documentId","rows":[]}'
+```
+
 #### `recurring.set-active`
 
 **POST /recurring/{id}/active** - Pause or resume a recurring rule without touching its history. · scope: `account.doc.create` · write
@@ -1470,6 +1587,25 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/danger-echo" \
   -d '{"reason":"reason for the audit log","confirm":true}'
 ```
 
+#### `documents.refund-deposit`
+
+**POST /documents/{id}/refund-deposit** - Give a paid deposit back to the customer or get it back from the vendor. The deposit document is voided and its ledger entry reversed. · scope: `account.doc.void` · danger
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why the deposit is being returned, at least 5 characters. Stored on the document and in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/refund-deposit" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
+```
+
 #### `documents.void`
 
 **POST /documents/{id}/void** - Void an issued document. The ledger entry is reversed with a new journal entry; nothing is deleted. · scope: `account.doc.void` · danger
@@ -1487,6 +1623,46 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/void" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"reason":"reason for the audit log","confirm":true}'
+```
+
+#### `payments.void`
+
+**POST /payments/{paymentId}/void** - Reverse one recorded payment. A reversing journal entry is written; nothing is deleted and the document goes back to awaiting payment. · scope: `account.payment.void` · danger
+
+Path parameters: `paymentId` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `documentId` | string | yes | Id of the document this payment belongs to. · min length 1 · max length 40 |
+| `reason` | string | yes | Why the payment is being reversed, at least 5 characters. Stored on the reversing journal entry and in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/payments/123/void" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"documentId":"example documentId","reason":"reason for the audit log","confirm":true}'
+```
+
+#### `payments.void-group`
+
+**POST /payments/group/{batchKey}/void** - Reverse every payment created by one group transfer. Each child document gets a reversing journal entry and goes back to awaiting payment. · scope: `account.payment.void` · danger
+
+Path parameters: `batchKey` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `groupId` | string | yes | Id of the billing note or combined payment the batch belongs to. · min length 1 · max length 40 |
+| `reason` | string | yes | Why the whole transfer is being reversed, at least 5 characters. Stored on every reversing journal entry. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/payments/group/123/void" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"groupId":"example groupId","reason":"reason for the audit log","confirm":true}'
 ```
 
 ## Glossary (Thai <-> English accounting terms)

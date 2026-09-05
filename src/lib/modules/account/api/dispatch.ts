@@ -141,7 +141,14 @@ export async function dispatch(
       input = parsed.data;
     }
 
-    const ctx = { actor, params: matched.params, input, requestId };
+    const ctx = {
+      actor,
+      params: matched.params,
+      input,
+      requestId,
+      // ส่งต่อให้ handler ใช้เป็นคีย์กันซ้ำของชั้นบริการ (WO C2) — read ไม่มี header นี้อยู่แล้ว
+      idempotencyKey: req.headers.get("idempotency-key")?.trim() || null,
+    };
 
     // ── อ่านอย่างเดียว: ไม่กันซ้ำ ไม่เขียน audit (อ่านไม่เปลี่ยนอะไร) ─────────────
     if (op.kind === "read") {

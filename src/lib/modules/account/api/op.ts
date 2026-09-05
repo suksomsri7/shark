@@ -21,6 +21,14 @@ export type ApiOpCtx<TInput> = {
   params: Record<string, string>;
   input: TInput;
   requestId: string;
+  /**
+   * ค่าใน header `Idempotency-Key` ของคำขอนี้ (write/danger เท่านั้น · read = null)
+   * WO C2: บริการฝั่งการเงินมี "คีย์กันซ้ำ" ของตัวเองอีกชั้น (`recordPayments.keyBase`,
+   * `recordGroupPayment.clientKey`) ซึ่งกันการบันทึกเงินซ้ำ **ในระดับรายการชำระ** ไม่ใช่ระดับคำขอ
+   * ⇒ handler ต้องส่งค่าเดียวกันนี้ต่อลงไป ไม่งั้นการ retry ที่ผ่านด่านกันซ้ำของ API ไปแล้ว
+   * (เช่นแถวกันซ้ำหมดอายุ 24 ชม.) จะสร้าง payment ใบที่สองเงียบ ๆ
+   */
+  idempotencyKey: string | null;
 };
 
 export type ApiOpTool = { name: string; risk?: "DESTRUCTIVE" };
