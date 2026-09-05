@@ -12,7 +12,7 @@
 | WO | 9.4 ความง่าย (ปิดเฟส 9) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Sonnet (sub-agent) |
-| ขั้นที่ถึง | 4 ก.ย. ~23:20 UTC: 9.3 DONE (next 16.2.11 · perf 92/92 · หน้าเกินงบ 14→0 ตาม ratchet) · Fable รันด่าน 25 ชุดเอง (payments 162 ×2 · audit 21) · commit แล้ว · กำลังออก 9.4 |
+| ขั้นที่ถึง | 5 ก.ย. ~01:10 UTC: 9.4 รอบ 1 ส่งมา (simplicity 99/99 · ⌘K · HelpTip ≥40 · empty state · errors safeReason 62 จุด · /help · undo backend ครบ 11 แต่ UI ต่อสายแค่ 2) → Fable **ตีกลับ**: ต่อสาย undo อีก 9 จุด + แก้ 3 บั๊กเล็กที่เจอ (label mapping key · คอลัมน์ /periods · แท็บ /help) — agent เดิมทำรอบ 2 |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
