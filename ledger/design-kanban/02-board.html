@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<title>SHARK · มุมมองบอร์ด</title>
+<style>
+/* ══ โทเคนสี — จานเดียวทั้งไฟล์ (WO §1) ═══════════════════════════════════
+   ขาว #fff · พื้นรอง #fafafa · พื้นเวที #f4f5f7
+   ตัวอักษร #0a0a0a / #404040 / #737373 / #a3a3a3
+   เส้น #e5e5e5 · เส้นอ่อน/แท่งกราฟจาง #d4d4d4
+   accent #1d4ed8 (+พื้นจาง #e9eefc) · danger #b91c1c
+   ห้ามเพิ่มสีอื่น                                                        */
+:root{
+  --ink:#0a0a0a; --ink2:#404040; --mut:#737373; --mut2:#a3a3a3;
+  --line:#e5e5e5; --line2:#d4d4d4; --sf:#fff; --sf2:#fafafa; --stage:#f4f5f7;
+  --acc:#1d4ed8; --acc-bg:#e9eefc; --dg:#b91c1c;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+body{font-family:'Noto Sans Thai','Sarabun',system-ui,sans-serif;color:var(--ink);
+  background:var(--stage);font-size:14px;line-height:1.45}
+.wrap{padding:26px;display:flex;flex-direction:column;gap:30px;align-items:flex-start}
+.cap{font-size:12.5px;font-weight:700;color:var(--ink2);margin:0 0 9px 3px}
+.cap span{font-weight:400;color:var(--mut)}
+
+/* ── กรอบจอ ───────────────────────────────────────────────────────────── */
+.frame{width:1440px;background:var(--sf);border:1px solid var(--line);border-radius:14px;
+  overflow:hidden;display:flex;flex-direction:column;position:relative}
+.frame.m{width:390px}
+
+/* ── ไอคอน ────────────────────────────────────────────────────────────── */
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.i.sm{width:14px;height:14px;stroke-width:1.9}
+svg.i.xs{width:12px;height:12px;stroke-width:2}
+svg.i.lg{width:22px;height:22px}
+
+/* ── โครงแอปเดิม (topbar + drawer) — จงใจให้จาง ────────────────────────── */
+.top{height:56px;display:flex;align-items:center;gap:11px;padding:0 18px;
+  border-bottom:1px solid var(--line);color:var(--mut);flex:none}
+.top .brand{font-size:14.5px;font-weight:700;color:var(--ink2)}
+.top .sp{flex:1}
+.appbody{display:flex;align-items:stretch;min-height:0}
+.drawer{width:288px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:14px 12px;color:var(--mut2);font-size:13px}
+.dsec{font-size:11px;font-weight:700;color:var(--mut2);padding:10px 8px 5px;letter-spacing:.02em}
+.ditem{display:flex;align-items:center;gap:9px;height:34px;padding:0 9px;border-radius:8px;color:var(--mut2)}
+.ditem.on{background:var(--sf);color:var(--ink);font-weight:700;border:1px solid var(--line)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--sf)}
+
+/* ── แถบเมนูบัญชี 9 หมวด ──────────────────────────────────────────────── */
+.amenu{display:flex;gap:0;padding:0 18px;border-bottom:1px solid var(--line);position:relative;flex:none}
+.am{position:relative;display:flex;align-items:center;gap:7px;padding:13px 13px 11px;font-size:13.5px;
+  color:var(--ink2);border-bottom:2px solid transparent;white-space:nowrap}
+.am.on{color:var(--ink);font-weight:700;border-bottom-color:var(--acc)}
+.am.opened{background:var(--sf2);border-radius:8px 8px 0 0}
+.am .cv{width:11px;height:11px;stroke-width:2.2;opacity:.55}
+
+/* ── dropdown เมนูย่อย ────────────────────────────────────────────────── */
+.dd{position:absolute;top:calc(100% - 1px);left:0;width:264px;background:var(--sf);
+  border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px rgba(10,10,10,.12);
+  padding:6px;z-index:30}
+.dd.w2{width:520px;display:flex;gap:6px}
+.dd.w2 .col{flex:1;min-width:0}
+.ddh{font-size:11px;font-weight:700;color:var(--mut);padding:7px 10px 4px}
+.ddi{display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:8px;
+  font-size:13.5px;color:var(--ink)}
+.ddi .i{color:var(--mut)}
+.ddi.on{background:var(--sf2);font-weight:700}
+.ddi.soon{color:var(--mut2)}
+.ddi.soon .i{color:var(--mut2)}
+.ddi .ar{margin-left:auto;color:var(--mut2)}
+.tagsoon{margin-left:auto;font-size:10.5px;color:var(--mut2);border:1px solid var(--line);
+  border-radius:5px;padding:1px 6px}
+.ddsep{height:1px;background:var(--line);margin:5px 9px}
+
+/* ── หัวหน้า ──────────────────────────────────────────────────────────── */
+.crumb{padding:13px 24px 0;font-size:12px;color:var(--mut);display:flex;align-items:center;gap:6px}
+.ph{display:flex;align-items:center;gap:10px;padding:9px 24px 15px}
+.ph h1{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+.ph .sp{flex:1}
+.pg{padding:0 24px 24px;display:flex;flex-direction:column;gap:15px}
+
+/* ── ปุ่ม ─────────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;
+  padding:0 14px;border-radius:8px;font-size:13.5px;font-weight:500;border:1px solid transparent;
+  white-space:nowrap;background:var(--sf);color:var(--ink)}
+.btn.pri{background:var(--ink);color:var(--sf)}
+.btn.gh{border-color:var(--line)}
+.btn.sm{height:31px;padding:0 10px;font-size:12.5px;border-radius:7px}
+.btn.blk{width:100%}
+.btn[disabled],.btn.off{color:var(--mut2);border-color:var(--line)}
+
+/* ── การ์ด ────────────────────────────────────────────────────────────── */
+.card{border:1px solid var(--line);border-radius:12px;background:var(--sf);padding:16px;min-width:0}
+.card.p0{padding:0}
+.ch{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.ch h2{font-size:13.5px;font-weight:700}
+.ch .sp{flex:1}
+.sub{font-size:11.5px;color:var(--mut)}
+.row{display:flex;gap:15px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}
+
+/* ── KPI ──────────────────────────────────────────────────────────────── */
+.kpi .lbl{font-size:12px;color:var(--mut);display:flex;align-items:center;gap:6px}
+.kpi .val{font-size:23px;font-weight:700;letter-spacing:-.025em;margin-top:7px;
+  font-variant-numeric:tabular-nums}
+.kpi .val.dg{color:var(--dg)}
+.kpi .fo{font-size:11.5px;color:var(--mut);margin-top:5px}
+
+/* ── chip สถานะ (3 โทนตาม StatusChip) ─────────────────────────────────── */
+.chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;
+  border-radius:6px;border:1px solid var(--line);font-size:11.5px;color:var(--mut);
+  background:var(--sf);white-space:nowrap}
+.chip.ink{border-color:var(--ink);color:var(--ink);font-weight:700}
+.chip.dg{border-color:var(--dg);color:var(--dg);font-weight:700}
+.chip.acc{border-color:var(--acc);color:var(--acc);font-weight:700;background:var(--acc-bg)}
+
+/* ── แท็บ ─────────────────────────────────────────────────────────────── */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow:hidden}
+.tab{display:flex;align-items:center;gap:6px;padding:9px 12px;font-size:13px;color:var(--mut);
+  border-bottom:2px solid transparent;white-space:nowrap}
+.tab.on{color:var(--ink);font-weight:700;border-bottom-color:var(--acc)}
+.tab .n{font-size:12px;color:var(--mut2);font-variant-numeric:tabular-nums}
+.tab.on .n{color:var(--ink2)}
+.tab.dg,.tab.dg .n{color:var(--dg)}
+.tab .bdg{min-width:18px;height:18px;border-radius:6px;background:var(--ink);color:var(--sf);
+  font-size:10.5px;font-weight:700;display:grid;place-items:center;padding:0 5px}
+
+/* ── ตาราง ────────────────────────────────────────────────────────────── */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:11.5px;font-weight:700;color:var(--mut);padding:9px 10px;
+  border-bottom:1px solid var(--line);white-space:nowrap;background:var(--sf2)}
+.tbl td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl td.nw{white-space:nowrap}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tr.hov td{background:var(--sf2)}
+.tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl .rt{text-align:right}
+.lnk{color:var(--acc);font-weight:700}
+.dgt{color:var(--dg);font-weight:700}
+.mu{color:var(--mut)}
+.cbx{width:14px;height:14px;border:1.5px solid var(--line2);border-radius:4px;display:inline-block;
+  vertical-align:-2px}
+.cbx.on{background:var(--ink);border-color:var(--ink);position:relative}
+.cbx.on::after{content:"";position:absolute;left:3.5px;top:.5px;width:4px;height:8px;
+  border:solid var(--sf);border-width:0 1.7px 1.7px 0;transform:rotate(42deg)}
+
+/* ── ช่องกรอก / ตัวกรอง ───────────────────────────────────────────────── */
+.inp{height:34px;border:1px solid var(--line);border-radius:8px;display:inline-flex;
+  align-items:center;gap:7px;padding:0 10px;font-size:12.5px;color:var(--mut);background:var(--sf)}
+.inp b{color:var(--ink);font-weight:600}
+.inp .cv{margin-left:auto;color:var(--mut2)}
+.inp.gro{flex:1}
+.sw{width:34px;height:19px;border-radius:10px;background:var(--ink);position:relative;flex:none}
+.sw::after{content:"";position:absolute;right:2.5px;top:2.5px;width:14px;height:14px;
+  border-radius:50%;background:var(--sf)}
+.sw.off{background:var(--line2)}
+.sw.off::after{left:2.5px;right:auto}
+
+/* ── แถบ bulk ─────────────────────────────────────────────────────────── */
+.bulk{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--acc-bg);
+  border:1px solid var(--acc);border-radius:9px;font-size:12.5px;color:var(--acc);font-weight:600}
+.bulk .sp{flex:1}
+
+/* ── เมนู "ทำรายการ" ในแถว ────────────────────────────────────────────── */
+.rowmenu{position:absolute;right:0;top:calc(100% + 4px);width:210px;background:var(--sf);
+  border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px rgba(10,10,10,.13);
+  padding:5px;z-index:25;text-align:left}
+.rowmenu .ddi{height:34px;font-size:13px}
+.anch{position:relative;display:inline-block}
+
+/* ── กราฟ ─────────────────────────────────────────────────────────────── */
+.lgd{display:flex;align-items:center;gap:14px;font-size:11.5px;color:var(--ink2)}
+.lgd i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:6px;
+  vertical-align:0px}
+.lgd .ln{width:14px;height:2px;border-radius:2px;vertical-align:3px}
+.sw-acc{background:var(--acc)} .sw-ink{background:var(--ink)}
+.sw-m2{background:var(--mut2)} .sw-l2{background:var(--line2)} .sw-dg{background:var(--dg)}
+.sw-mu{background:var(--mut)}
+.stat{display:flex;gap:26px;flex-wrap:wrap}
+.stat .b .k{font-size:11.5px;color:var(--mut)}
+.stat .b .v{font-size:19px;font-weight:700;letter-spacing:-.02em;margin-top:3px;
+  font-variant-numeric:tabular-nums}
+.stat .b .v.dg{color:var(--dg)}
+.stat .b .d{font-size:11px;color:var(--mut);margin-top:2px}
+
+/* ── แถบสัดส่วน / อายุหนี้ ────────────────────────────────────────────── */
+.mtr{height:8px;border-radius:4px;background:var(--sf2);overflow:hidden;display:flex;gap:2px}
+.mtr i{display:block;height:100%}
+.agerow{display:flex;align-items:center;gap:10px;font-size:12px}
+.agerow .nm{width:98px;color:var(--mut);flex:none}
+.agerow .bar{flex:1;height:9px;background:var(--sf2);border-radius:5px;overflow:hidden}
+.agerow .bar i{display:block;height:100%;border-radius:3px;min-width:5px}
+.agerow .amt{width:88px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.agerow.dgv .amt{color:var(--dg)}
+
+/* ── รายการงาน / ลิสต์ ────────────────────────────────────────────────── */
+.lst .li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);
+  font-size:13px}
+.lst .li:first-child{border-top:0}
+.lst .li .sp{flex:1;min-width:0}
+.lst .li .n{font-variant-numeric:tabular-nums;font-weight:700}
+.pill{min-width:20px;height:20px;border-radius:6px;background:var(--ink);color:var(--sf);
+  font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 6px}
+.pill.dg{background:var(--dg)}
+.pill.gh{background:var(--sf2);color:var(--ink2);border:1px solid var(--line)}
+
+/* ── footer ตาราง ─────────────────────────────────────────────────────── */
+.tfoot{display:flex;align-items:center;gap:12px;padding:11px 12px;font-size:12.5px;color:var(--mut);
+  border-top:1px solid var(--line)}
+.tfoot .sp{flex:1}
+.pgr{display:flex;align-items:center;gap:4px}
+.pgr .pb{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;display:grid;
+  place-items:center;color:var(--ink2)}
+
+/* ── โหมดถ่ายรูป "ไม่มีเมนู" — render.mjs เติม/ถอดคลาสนี้ที่ .frame ก่อน screenshot
+   เพื่อให้ได้ 2 ใบต่อเฟรม: ใบเปล่าไว้ดูเนื้อหา + ใบมีเมนูไว้ดูโครงเมนู
+   🔴 ห้ามก๊อป markup เฟรมซ้ำ — เฟรมเดียวถ่าย 2 สถานะ */
+.frame.no-menu .dd,
+.frame.no-menu .rowmenu,
+.frame.no-menu .bulk,
+.frame.no-menu .scrim,
+.frame.no-menu .over,
+.frame.no-menu .menu-space{display:none}
+.frame.no-menu .am.opened{background:transparent}
+.frame.no-menu .cbx.on{background:var(--sf);border-color:var(--line2)}
+.frame.no-menu .cbx.on::after{display:none}
+
+/* ── slide-over ───────────────────────────────────────────────────────── */
+.scrim{position:absolute;inset:0;background:rgba(10,10,10,.28);z-index:40}
+.over{position:absolute;top:0;right:0;bottom:0;width:400px;background:var(--sf);z-index:41;
+  border-left:1px solid var(--line);box-shadow:-10px 0 34px rgba(10,10,10,.13);
+  display:flex;flex-direction:column}
+
+/* ── มือถือ ───────────────────────────────────────────────────────────── */
+.frame.m .top{height:52px;padding:0 14px}
+.mnav{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--line);overflow:hidden;flex:none}
+.mn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 9px 7px;
+  font-size:11px;color:var(--mut);border-bottom:2px solid transparent;white-space:nowrap}
+.mn.on{color:var(--ink);font-weight:700;border-bottom-color:var(--acc)}
+.mpg{padding:13px 14px 22px;display:flex;flex-direction:column;gap:13px}
+.mcard{border:1px solid var(--line);border-radius:12px;padding:13px}
+.mrow{display:flex;align-items:center;gap:9px;padding:11px 0;border-top:1px solid var(--line)}
+.mrow:first-child{border-top:0}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--sf);border-radius:16px 16px 0 0;
+  box-shadow:0 -8px 30px rgba(10,10,10,.2);z-index:41;padding:8px 0 14px}
+.grab{width:38px;height:4px;border-radius:2px;background:var(--line2);margin:2px auto 10px}
+.sh-i{display:flex;align-items:center;gap:12px;height:48px;padding:0 16px;font-size:14px}
+.sh-i .ar{margin-left:auto;color:var(--mut2)}
+.fab{position:absolute;right:14px;width:52px;height:52px;border-radius:50%;background:var(--ink);
+  color:var(--sf);display:grid;place-items:center;box-shadow:0 6px 18px rgba(10,10,10,.24);z-index:20}
+.orb{position:absolute;right:14px;bottom:14px;width:52px;height:52px;border-radius:50%;
+  border:2px solid var(--acc);background:var(--sf);color:var(--acc);display:grid;place-items:center;z-index:20}
+.mtabs{display:flex;gap:6px;overflow:hidden;padding:1px}
+.mtab{display:flex;align-items:center;gap:5px;height:30px;padding:0 11px;border-radius:8px;
+  border:1px solid var(--line);font-size:12.5px;color:var(--mut);white-space:nowrap;background:var(--sf)}
+.mtab.on{background:var(--ink);color:var(--sf);border-color:var(--ink);font-weight:700}
+.mtab.dg{border-color:var(--dg);color:var(--dg)}
+
+/* ── เบ็ดเตล็ด ────────────────────────────────────────────────────────── */
+.hr{height:1px;background:var(--line)}
+.av{width:24px;height:24px;border-radius:7px;background:var(--sf2);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--ink2);flex:none}
+.thumb{width:44px;height:44px;border-radius:8px;border:1px solid var(--line);background:var(--sf2);
+  display:grid;place-items:center;color:var(--mut);flex:none;overflow:hidden}
+.aitag{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--acc);
+  background:var(--acc-bg);border-radius:6px;padding:2px 7px;margin-top:3px}
+.dashed{border:1.5px dashed var(--line2);border-radius:11px;padding:14px;display:flex;
+  align-items:center;gap:11px;color:var(--mut);font-size:12.5px;background:var(--sf2)}
+.tree{font-size:13px}
+.tr-i{display:flex;align-items:center;gap:7px;height:31px;padding:0 8px;border-radius:7px;color:var(--ink2)}
+.tr-i.on{background:var(--sf2);color:var(--ink);font-weight:700}
+.tr-i .tg{width:13px;height:13px;border:1px solid var(--line2);border-radius:3px;display:grid;
+  place-items:center;font-size:11px;line-height:1;color:var(--mut);flex:none;background:var(--sf)}
+.kv{display:flex;gap:12px;padding:7px 0;font-size:13px;border-top:1px solid var(--line)}
+.kv:first-child{border-top:0}
+.kv .k{width:180px;color:var(--mut);flex:none}
+.kv .v{flex:1;min-width:0}
+.acc-i{display:flex;align-items:center;gap:8px;height:38px;padding:0 11px;font-size:13px;color:var(--ink2)}
+.acc-i.on{background:var(--sf2);font-weight:700;color:var(--ink);border-left:2px solid var(--acc)}
+.acc-h{display:flex;align-items:center;gap:8px;height:42px;padding:0 11px;font-size:13.5px;
+  font-weight:700;border-top:1px solid var(--line)}
+.cal{width:100%;border-collapse:collapse;font-size:11px}
+.cal th{font-size:11px;color:var(--mut);font-weight:600;padding:5px 0;text-align:center;
+  border-bottom:1px solid var(--line);background:var(--sf)}
+.cal td{border:1px solid var(--line);height:60px;vertical-align:top;padding:4px 5px;width:14.28%}
+.cal .d{font-size:11px;color:var(--mut)}
+.cal .d.now{background:var(--acc);color:var(--sf);border-radius:50%;width:18px;height:18px;
+  display:grid;place-items:center;font-weight:700}
+.cal .in{font-size:10.5px;color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.cal .out{font-size:10.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+.cal td.off{background:var(--sf2)}
+.tl{display:flex;align-items:center;gap:0;font-size:11.5px}
+.tl .n{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;text-align:center}
+.tl .dot{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line2);display:grid;
+  place-items:center;color:var(--mut2);background:var(--sf)}
+.tl .n.done .dot{border-color:var(--ink);color:var(--ink)}
+.tl .n.cur .dot{background:var(--acc);border-color:var(--acc);color:var(--sf)}
+.tl .n.cur{font-weight:700;color:var(--acc)}
+.tl .bar{height:1.5px;background:var(--line);flex:0 0 26px;margin-bottom:16px}
+</style></head>
+<body>
+<svg style="display:none" aria-hidden="true">
+ <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+ <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
+ <symbol id="i-cv" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></symbol>
+ <symbol id="i-ar" viewBox="0 0 24 24"><path d="m9.5 5 7 7-7 7"/></symbol>
+ <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+ <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+ <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+ <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
+ <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/><path d="M9.5 21v-6h5v6"/></symbol>
+ <symbol id="i-in" viewBox="0 0 24 24"><path d="M12 4v13"/><path d="m6.5 11.5 5.5 5.5 5.5-5.5"/><path d="M4 21h16"/></symbol>
+ <symbol id="i-out" viewBox="0 0 24 24"><path d="M12 20V7"/><path d="m6.5 12.5 5.5-5.5 5.5 5.5"/><path d="M4 3h16"/></symbol>
+ <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-5.5 6.5-5.5s6.5 1.9 6.5 5.5M16 5.4a3.4 3.4 0 0 1 0 6.4M18 14.8c2.2.6 3.5 2.3 3.5 5.2"/></symbol>
+ <symbol id="i-box" viewBox="0 0 24 24"><path d="M12 3 4 7v10l8 4 8-4V7Z"/><path d="m4 7 8 4 8-4M12 11v10"/></symbol>
+ <symbol id="i-wallet" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.2" fill="currentColor" stroke="none"/></symbol>
+ <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4h13a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5Z"/><path d="M8.5 4v17M11.5 9h4M11.5 13h4"/></symbol>
+ <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.5A1 1 0 0 1 4.5 5.5h4.2l1.8 2.2h9a1 1 0 0 1 1 1v9.8a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1Z"/></symbol>
+ <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 14a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V20a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H4a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H10a1.6 1.6 0 0 0 1-1.5V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V10a1.6 1.6 0 0 0 1.5 1H20a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></symbol>
+ <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4M9 12h6M9 16h4"/></symbol>
+ <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4"/></symbol>
+ <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 3v11"/><path d="m7.5 9.5 4.5 4.5 4.5-4.5"/><path d="M4 17v3h16v-3"/></symbol>
+ <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6"/><rect x="3.5" y="9" width="17" height="8" rx="2"/><path d="M7 14h10v7H7Z"/></symbol>
+ <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path d="M14 14h3v3h-3ZM20.5 14v3M14 20.5h6.5"/></symbol>
+ <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.2"/></symbol>
+ <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5 13.7 9 19 10.5 13.7 12 12 17.5 10.3 12 5 10.5 10.3 9 12 3.5ZM18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></symbol>
+ <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4h11l-1.5 3.5L16 11H5"/></symbol>
+ <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+ <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+ <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></symbol>
+ <symbol id="i-bank" viewBox="0 0 24 24"><path d="M3.5 9.5 12 4l8.5 5.5"/><path d="M5.5 9.5v9M10 9.5v9M14 9.5v9M18.5 9.5v9M3 20h18"/></symbol>
+ <symbol id="i-cash" viewBox="0 0 24 24"><rect x="3" y="6.5" width="18" height="11" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 12h.01M17.5 12h.01"/></symbol>
+ <symbol id="i-pig" viewBox="0 0 24 24"><path d="M3.5 12.5A6.5 6.5 0 0 1 10 8h4a6 6 0 0 1 5.4 3.4l1.6.6v3l-1.8.4A6.2 6.2 0 0 1 16 18.5V20h-3v-1.2h-2V20H8v-1.9a6.4 6.4 0 0 1-4.5-5.6Z"/><path d="M8.5 5.5 10 8M15.5 11.5h.01"/></symbol>
+ <symbol id="i-cheque" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10.5h6M6 14h3.5M15 13.5l1.6 1.6L20 11.5"/></symbol>
+ <symbol id="i-pct" viewBox="0 0 24 24"><circle cx="7.5" cy="7.5" r="2.6"/><circle cx="16.5" cy="16.5" r="2.6"/><path d="m5 19 14-14"/></symbol>
+ <symbol id="i-tree" viewBox="0 0 24 24"><path d="M5 4v15h5M5 11h5"/><rect x="10" y="2.5" width="9" height="4" rx="1.2"/><rect x="10" y="9" width="9" height="4" rx="1.2"/><rect x="10" y="16" width="9" height="4" rx="1.2"/></symbol>
+ <symbol id="i-list" viewBox="0 0 24 24"><path d="M4.5 6.5h.01M9 6.5h10.5M4.5 12h.01M9 12h10.5M4.5 17.5h.01M9 17.5h10.5"/></symbol>
+ <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+ <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+ <symbol id="i-report" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+ <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2.2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+ <symbol id="i-asset" viewBox="0 0 24 24"><path d="M3.5 20V9l8.5-5 8.5 5v11"/><rect x="8" y="12" width="8" height="8" rx="1"/></symbol>
+ <symbol id="i-shop" viewBox="0 0 24 24"><path d="M4 9V4h16v5"/><path d="M3 9h18l-1.4 11a1 1 0 0 1-1 .9H5.4a1 1 0 0 1-1-.9Z"/><path d="M9.5 13h5"/></symbol>
+ <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13.5a3.6 3.6 0 0 0 5.2.3l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.5 1.5"/><path d="M14 10.5a3.6 3.6 0 0 0-5.2-.3l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.5-1.5"/></symbol>
+ <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="2.2"/><path d="m3.6 7 8.4 6 8.4-6"/></symbol>
+ <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 8.5v-3a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/></symbol>
+ <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17Z"/><path d="m14.5 7.5 2 2"/></symbol>
+ <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3.2"/></symbol>
+ <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
+ <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16l-6 7v6l-4-2v-4L4 6Z"/></symbol>
+ <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 17V5"/><path d="m7.5 9.5 4.5-4.5 4.5 4.5"/><path d="M4 17v3h16v-3"/></symbol>
+ <symbol id="i-truck" viewBox="0 0 24 24"><rect x="2.5" y="7" width="11" height="9" rx="1.4"/><path d="M13.5 10h4l3 3.2V16h-7Z"/><circle cx="7" cy="18.5" r="1.8"/><circle cx="17" cy="18.5" r="1.8"/></symbol>
+ <symbol id="i-tag" viewBox="0 0 24 24"><path d="M4 11V5a1 1 0 0 1 1-1h6l9 9-7 7-9-9Z"/><circle cx="8" cy="8" r="1.3"/></symbol>
+ <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19Z"/><path d="M12 10v4M12 17h.01"/></symbol>
+ <symbol id="i-drag" viewBox="0 0 24 24"><path d="M12 16V6"/><path d="m7.5 10.5 4.5-4.5 4.5 4.5"/><rect x="3.5" y="16" width="17" height="4.5" rx="1.5"/></symbol>
+</svg>
+<style>
+/* ══ ส่วนขยายสำหรับโมดูลบอร์ดงาน (Kanban) — ต่อยอดจากจานสีเดิม ห้ามเพิ่มสีนอกโทเคน ══ */
+body{font-family:'IBM Plex Sans Thai','Noto Sans Thai','Sarabun',system-ui,sans-serif}
+
+/* สีป้ายกำกับ 6 สี = โทเคน --color-tag-* ใน globals.css (ไม่คิดใหม่) */
+:root{--t-slate:#737373;--t-blue:#1d4ed8;--t-green:#15803d;--t-amber:#b45309;--t-red:#b91c1c;--t-purple:#6d28d9}
+
+/* ── เวทีบอร์ด ─────────────────────────────────────────────────────────── */
+.kbar{display:flex;align-items:center;gap:9px;padding:10px 20px;border-bottom:1px solid var(--line);flex:none;background:var(--sf)}
+.kbar .sp{flex:1}
+.kbar h1{font-size:17px;font-weight:700;letter-spacing:-.02em}
+.star{color:var(--t-amber)}
+.vsw{display:flex;gap:2px;border:1px solid var(--line);border-radius:8px;padding:2px;background:var(--sf)}
+.vsw .v{display:flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:6px;font-size:12.5px;color:var(--mut)}
+.vsw .v.on{background:var(--ink);color:var(--sf);font-weight:700}
+.avs{display:flex}
+.avs .av{width:26px;height:26px;border-radius:50%;margin-left:-6px;box-shadow:0 0 0 2px var(--sf);font-size:11px}
+.avs .av:first-child{margin-left:0}
+.av.acc{background:var(--acc-bg);border-color:var(--acc);color:var(--acc)}
+.av.add{background:var(--sf);border-style:dashed;color:var(--mut2)}
+
+.stage{background:var(--stage);flex:1;min-height:0;display:flex;flex-direction:column}
+.fbar{display:flex;align-items:center;gap:7px;padding:9px 20px;font-size:12px;color:var(--mut);flex:none}
+.fchip{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:7px;
+  border:1px solid var(--acc);background:var(--acc-bg);color:var(--acc);font-size:12px;font-weight:600}
+.fchip .x{opacity:.6}
+
+.kb{display:flex;gap:12px;padding:4px 20px 18px;align-items:flex-start;overflow:hidden;flex:1;min-height:0}
+.kl{width:240px;flex:none;background:#eceef1;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:7px;max-height:100%}
+.kl.ghost{background:rgba(236,238,241,.55);border:1.5px dashed var(--line2)}
+.klh{display:flex;align-items:center;gap:7px;padding:2px 4px 0}
+.klh .nm{font-size:13px;font-weight:700}
+.klh .n{font-size:11.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+.klh .sp{flex:1}
+.klh .i{color:var(--mut)}
+.wip{font-size:10.5px;border:1px solid var(--line2);border-radius:5px;padding:0 5px;color:var(--mut);background:var(--sf)}
+.wip.full{border-color:var(--dg);color:var(--dg);font-weight:700}
+.kcs{display:flex;flex-direction:column;gap:7px;min-height:0}
+.kc{background:var(--sf);border:1px solid var(--line);border-radius:10px;padding:8px 9px 7px;
+  display:flex;flex-direction:column;gap:6px;box-shadow:0 1px 1px rgba(10,10,10,.05)}
+.kc.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-bg)}
+.kc.drag{transform:rotate(2.4deg);box-shadow:0 10px 24px rgba(10,10,10,.18);border-color:var(--line2)}
+.kc .ti{font-size:12.8px;line-height:1.4;font-weight:500}
+.kc .cover{height:64px;border-radius:7px;background:var(--sf2);border:1px solid var(--line);
+  display:grid;place-items:center;color:var(--mut2);margin:-2px 0 1px}
+.lbs{display:flex;flex-wrap:wrap;gap:4px}
+.lb{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:5px;font-size:10.5px;
+  font-weight:600;border:1px solid currentColor;background:var(--sf)}
+.lb.slate{color:var(--t-slate)} .lb.blue{color:var(--t-blue)} .lb.green{color:var(--t-green)}
+.lb.amber{color:var(--t-amber)} .lb.red{color:var(--t-red)} .lb.purple{color:var(--t-purple)}
+.kf{display:flex;align-items:center;gap:9px;font-size:11px;color:var(--mut)}
+.kf .sp{flex:1}
+.kf .b{display:inline-flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums}
+.due{white-space:nowrap;display:inline-flex;align-items:center;gap:4px;height:19px;padding:0 6px;border-radius:5px;
+  font-size:10.5px;font-weight:600;border:1px solid var(--line2);color:var(--mut);background:var(--sf)}
+.due.soon{border-color:var(--t-amber);color:var(--t-amber);background:#fdf6ec}
+.due.late{border-color:var(--dg);color:var(--dg);background:#fdeeee}
+.due.done{border-color:var(--t-green);color:var(--t-green);background:#eef7f0}
+.kadd{display:flex;align-items:center;gap:7px;height:32px;padding:0 6px;border-radius:8px;
+  font-size:12.5px;color:var(--mut)}
+.src{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--acc);
+  background:var(--acc-bg);border-radius:5px;padding:1px 6px;align-self:flex-start}
+
+/* ── หลังการ์ด (card back) ─────────────────────────────────────────────── */
+.modal{position:absolute;left:50%;top:26px;transform:translateX(-50%);width:872px;background:var(--sf);
+  border:1px solid var(--line);border-radius:14px;box-shadow:0 22px 60px rgba(10,10,10,.26);z-index:45;
+  display:flex;flex-direction:column;overflow:hidden}
+.mh{display:flex;align-items:flex-start;gap:10px;padding:15px 18px 12px;border-bottom:1px solid var(--line)}
+.mb{display:flex;min-height:0}
+.mmain{flex:1;min-width:0;padding:15px 18px 18px;display:flex;flex-direction:column;gap:15px}
+.mside{width:228px;flex:none;border-left:1px solid var(--line);background:var(--sf2);padding:14px 13px;
+  display:flex;flex-direction:column;gap:13px}
+.sh{font-size:11px;font-weight:700;color:var(--mut);letter-spacing:.02em;margin-bottom:6px}
+.sbtn{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;background:var(--sf);font-size:12.5px;color:var(--ink2)}
+.blk{display:flex;flex-direction:column;gap:7px}
+.bh{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700}
+.bh .i{color:var(--mut)}
+.bh .sp{flex:1}
+.prose{font-size:13px;line-height:1.6;color:var(--ink2)}
+.prose ul{margin:4px 0 0 18px}
+.pbar{height:7px;border-radius:4px;background:var(--sf2);overflow:hidden;border:1px solid var(--line)}
+.pbar i{display:block;height:100%;background:var(--t-green)}
+.cki{display:flex;align-items:flex-start;gap:9px;padding:5px 0;font-size:12.8px}
+.cki.done{color:var(--mut2);text-decoration:line-through}
+.cmt{display:flex;gap:9px;padding:9px 0;border-top:1px solid var(--line)}
+.cmt .bd{flex:1;min-width:0}
+.cmt .who{font-size:12.5px;font-weight:700}
+.cmt .who span{font-weight:400;color:var(--mut);font-size:11.5px;margin-left:6px}
+.cmt .tx{font-size:12.8px;color:var(--ink2);margin-top:3px;line-height:1.55}
+.men{color:var(--acc);font-weight:600}
+.att{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:12.5px}
+.linkrow{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:9px;
+  padding:8px 10px;font-size:12.5px;background:var(--sf)}
+.linkrow .i{color:var(--acc)}
+.linkrow .sp{flex:1}
+
+/* ── ปฏิทิน (ใหญ่กว่าของบัญชี) ─────────────────────────────────────────── */
+.cal2{width:100%;border-collapse:collapse;font-size:11.5px;background:var(--sf)}
+.cal2 th{font-size:11.5px;color:var(--mut);font-weight:700;padding:7px 0;text-align:center;border:1px solid var(--line);background:var(--sf2)}
+.cal2 td{border:1px solid var(--line);height:96px;vertical-align:top;padding:5px;width:14.28%}
+.cal2 td.off{background:var(--sf2)}
+.cal2 .dn{font-size:11px;color:var(--mut);font-weight:600;margin-bottom:4px}
+.cal2 .dn.now{background:var(--acc);color:var(--sf);border-radius:50%;width:19px;height:19px;
+  display:grid;place-items:center}
+.evt{display:flex;align-items:center;gap:4px;font-size:10.5px;padding:2px 5px;border-radius:5px;
+  background:var(--sf2);border:1px solid var(--line);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evt i{width:6px;height:6px;border-radius:50%;flex:none;background:var(--mut2)}
+.evt.red i{background:var(--t-red)} .evt.blue i{background:var(--t-blue)}
+.evt.green i{background:var(--t-green)} .evt.amber i{background:var(--t-amber)}
+.evt.purple i{background:var(--t-purple)}
+
+/* ── ตัวสร้างกฎอัตโนมัติ ───────────────────────────────────────────────── */
+.rule{border:1px solid var(--line);border-radius:11px;background:var(--sf);overflow:hidden}
+.rrow{display:flex;align-items:center;gap:9px;padding:11px 13px;border-top:1px solid var(--line);font-size:13px}
+.rrow:first-child{border-top:0}
+.rtag{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:6px;
+  font-size:11.5px;font-weight:700;flex:none}
+.rtag.when{background:var(--ink);color:var(--sf)}
+.rtag.then{background:var(--acc-bg);color:var(--acc);border:1px solid var(--acc)}
+.rtag.and{background:var(--sf2);color:var(--mut);border:1px solid var(--line)}
+.slot{display:inline-flex;align-items:center;gap:6px;height:29px;padding:0 9px;border-radius:7px;
+  border:1px solid var(--line2);background:var(--sf2);font-size:12.5px;font-weight:600;color:var(--ink)}
+.slot.acc{border-color:var(--acc);color:var(--acc);background:var(--acc-bg)}
+
+/* ── การ์ดบอร์ดในหน้ารวม ───────────────────────────────────────────────── */
+.bcard{border:1px solid var(--line);border-radius:12px;background:var(--sf);padding:0;overflow:hidden;
+  display:flex;flex-direction:column}
+.bcard .hd{height:52px;background:var(--sf2);border-bottom:1px solid var(--line);display:flex;
+  align-items:flex-end;padding:8px 11px;gap:7px;position:relative}
+.bcard .hd::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--mut2)}
+.bcard .hd.blue::before{background:var(--t-blue)} .bcard .hd.green::before{background:var(--t-green)}
+.bcard .hd.amber::before{background:var(--t-amber)} .bcard .hd.purple::before{background:var(--t-purple)}
+.bcard .hd.red::before{background:var(--t-red)}
+.bcard .bd{padding:10px 12px 11px;display:flex;flex-direction:column;gap:8px}
+.bcard .nm{font-size:13.5px;font-weight:700}
+.bcard .meta{font-size:11.5px;color:var(--mut)}
+.newb{border:1.5px dashed var(--line2);border-radius:12px;background:var(--sf2);display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--mut);font-size:12.5px;min-height:132px}
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:13px}
+
+/* ── รางไอคอน (ย่อ drawer เมื่ออยู่ในบอร์ด) ─────────────────────────────── */
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+
+/* ── มือถือ ────────────────────────────────────────────────────────────── */
+.frame.m .kb{padding:8px 12px 12px;gap:9px}
+.frame.m .kl{width:270px;max-height:none}
+.mkbar{display:flex;align-items:center;gap:8px;padding:9px 13px;border-bottom:1px solid var(--line);flex:none}
+.mkbar .sp{flex:1}
+.mkbar h1{font-size:15px;font-weight:700}
+.pgd{display:flex;gap:5px;justify-content:center;padding:8px 0 2px}
+.pgd i{width:5px;height:5px;border-radius:50%;background:var(--line2)}
+.pgd i.on{background:var(--ink);width:16px;border-radius:3px}
+.kbdlg{font-size:11px;color:var(--mut);text-align:center;padding:2px 0 6px}
+</style>
+<svg style="display:none" aria-hidden="true">
+ <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.6 2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9L3.5 9.8l5.9-.8Z"/></symbol>
+ <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5.5h16v11H9.5L5.5 20v-3.5H4Z"/></symbol>
+ <symbol id="i-clip" viewBox="0 0 24 24"><path d="M17.5 8.5 10 16a3 3 0 0 1-4.2-4.2l7.8-7.8a4.6 4.6 0 0 1 6.5 6.5l-7.7 7.7a6.2 6.2 0 0 1-8.8-8.8l6.6-6.6"/></symbol>
+ <symbol id="i-cklist" viewBox="0 0 24 24"><path d="m3.5 7 2 2 3-3.5M3.5 15l2 2 3-3.5M11.5 7.5h9M11.5 16h9"/></symbol>
+ <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.5 3 5 13.5h6L10.5 21 19 10.5h-6Z"/></symbol>
+ <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 15.5V10a6 6 0 1 0-12 0v5.5L4 18h16Z"/><path d="M10 21h4"/></symbol>
+ <symbol id="i-line" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="4"/><path d="M9.5 17 8 20.5 12.5 17"/><path d="M7.5 8v5M7.5 8h2.5M7.5 10.5h2M7.5 13h2.5M13 13V8l3 5V8"/></symbol>
+</svg>
+<div class="wrap">
+<div>
+<p class="cap">02 · มุมมองบอร์ด (เดสก์ท็อป 1440×900) <span>— รางไอคอนแทนเมนูซ้าย · สลับมุมมอง 5 แบบ · แถบตัวกรอง · 5 คอลัมน์ · WIP limit · การ์ดกำลังลาก</span></p>
+<div class="frame" id="f2" style="height:900px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+  <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-bell"/></svg><div class="av">ธ</div></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-mail"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <span class="sp" style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-ar"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <!-- แถบหัวบอร์ด -->
+   <div class="kbar">
+    <svg class="i sm mu"><use href="#i-back"/></svg>
+    <h1>งานร้าน — สาขาป่าตอง</h1>
+    <svg class="i sm star"><use href="#i-star"/></svg>
+    <span class="chip">สาขาป่าตอง</span>
+    <span class="chip"><svg class="i xs"><use href="#i-lock"/></svg>เฉพาะสมาชิก</span>
+    <div class="vsw" style="margin-left:10px">
+     <div class="v on"><svg class="i xs"><use href="#i-grid"/></svg>บอร์ด</div>
+     <div class="v"><svg class="i xs"><use href="#i-list"/></svg>ตาราง</div>
+     <div class="v"><svg class="i xs"><use href="#i-cal"/></svg>ปฏิทิน</div>
+     <div class="v"><svg class="i xs"><use href="#i-chart"/></svg>ไทม์ไลน์</div>
+     <div class="v"><svg class="i xs"><use href="#i-pct"/></svg>สรุป</div>
+    </div>
+    <span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-filter"/></svg>ตัวกรอง<span class="pill" style="margin-left:1px">2</span></div>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-spark"/></svg>อัตโนมัติ</div>
+    <div class="avs" style="margin:0 4px"><div class="av">ธ</div><div class="av">ป</div><div class="av">ก</div><div class="av">น</div><div class="av add"><svg class="i xs"><use href="#i-plus"/></svg></div></div>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-more"/></svg></div>
+   </div>
+
+   <div class="stage">
+    <!-- แถบตัวกรองที่เปิดอยู่ -->
+    <div class="fbar">
+     <svg class="i sm"><use href="#i-filter"/></svg>กรองอยู่:
+     <span class="fchip">ผู้รับผิดชอบ: ธนา<svg class="i xs x"><use href="#i-x"/></svg></span>
+     <span class="fchip">ป้าย: ด่วน<svg class="i xs x"><use href="#i-x"/></svg></span>
+     <span class="mu">แสดง 18 จาก 24 การ์ด</span>
+     <span class="lnk" style="font-size:12px">ล้างตัวกรอง</span>
+     <span class="sp"></span>
+     <span class="mu">ลิงก์นี้แชร์ตัวกรองให้ทีมได้ (เก็บไว้ใน URL)</span>
+    </div>
+
+    <div class="kb">
+
+     <!-- คอลัมน์ 1 -->
+     <div class="kl">
+      <div class="klh"><span class="nm">กล่องงานเข้า</span><span class="n">5</span><span class="sp"></span>
+       <svg class="i xs"><use href="#i-plus"/></svg><svg class="i xs"><use href="#i-more"/></svg></div>
+      <div class="kcs">
+       <div class="kc">
+        <div class="src"><svg class="i xs"><use href="#i-line"/></svg>จากแชท LINE · คุณสมชาย</div>
+        <div class="ti">ลูกค้าถามคอร์ส Open Water รอบเสาร์นี้ — ยังไม่ตอบ</div>
+        <div class="lbs"><span class="lb blue">ลูกค้า</span><span class="lb red">ด่วน</span></div>
+        <div class="kf"><span class="due late"><svg class="i xs"><use href="#i-clock"/></svg>เลย 2 ชม.</span><span class="sp"></span>
+         <span class="b"><svg class="i xs"><use href="#i-chat"/></svg>3</span><div class="av">ป</div></div>
+       </div>
+       <div class="kc">
+        <div class="src"><svg class="i xs"><use href="#i-mail"/></svg>จากฟอร์มติดต่อบนเว็บ</div>
+        <div class="ti">ขอใบเสนอราคา ทริปกลุ่มบริษัท ABC 12 คน</div>
+        <div class="lbs"><span class="lb green">งานขาย</span></div>
+        <div class="kf"><span class="due">อ. 9 ก.ย.</span><span class="sp"></span><div class="av add">?</div></div>
+       </div>
+       <div class="kc">
+        <div class="ti">แจ้งซ่อม: ไฟใต้น้ำห้องล้างอุปกรณ์ดับ 2 ดวง</div>
+        <div class="lbs"><span class="lb amber">ซ่อมบำรุง</span></div>
+        <div class="kf"><span class="sp"></span><span class="b"><svg class="i xs"><use href="#i-clip"/></svg>2</span></div>
+       </div>
+       <div class="kc">
+        <div class="src"><svg class="i xs"><use href="#i-users"/></svg>จากใบลา · HR</div>
+        <div class="ti">หาครูสอนแทน พี่ก้อง ลาป่วย 8–9 ก.ย.</div>
+        <div class="lbs"><span class="lb purple">ทีมงาน</span><span class="lb red">ด่วน</span></div>
+        <div class="kf"><span class="due soon">พรุ่งนี้</span><span class="sp"></span><div class="av">ธ</div></div>
+       </div>
+      </div>
+      <div class="kadd"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มการ์ด</div>
+     </div>
+
+     <!-- คอลัมน์ 2 -->
+     <div class="kl">
+      <div class="klh"><span class="nm">รอทำ</span><span class="n">6</span><span class="sp"></span>
+       <svg class="i xs"><use href="#i-plus"/></svg><svg class="i xs"><use href="#i-more"/></svg></div>
+      <div class="kcs">
+       <div class="kc">
+        <div class="ti">เติมถังอากาศ 12 ใบ ก่อนทริปพรุ่งนี้เช้า</div>
+        <div class="lbs"><span class="lb red">ด่วน</span><span class="lb amber">อุปกรณ์</span></div>
+        <div class="kf"><span class="due soon"><svg class="i xs"><use href="#i-clock"/></svg>วันนี้ 18:00</span><span class="sp"></span>
+         <span class="b"><svg class="i xs"><use href="#i-cklist"/></svg>2/5</span><div class="av">ก</div></div>
+       </div>
+       <div class="kc">
+        <div class="ti">ทำใบเสนอราคาทริปเรือ Sea Fox — 3 วัน 2 คืน</div>
+        <div class="lbs"><span class="lb green">งานขาย</span></div>
+        <div class="kf"><span class="due">พฤ. 11 ก.ย.</span><span class="sp"></span>
+         <span class="b"><svg class="i xs"><use href="#i-link"/></svg>1</span><span class="b"><svg class="i xs"><use href="#i-chat"/></svg>2</span><div class="av">ธ</div></div>
+       </div>
+       <div class="kc">
+        <div class="ti">เช็คสต็อกตะกั่ว + ชุดเว็ทไซซ์ M ก่อนสั่งเพิ่ม</div>
+        <div class="lbs"><span class="lb slate">คลัง</span></div>
+        <div class="kf"><span class="sp"></span><span class="b"><svg class="i xs"><use href="#i-cklist"/></svg>0/8</span><div class="av">น</div></div>
+       </div>
+       <div class="kc">
+        <div class="ti">ต่อทะเบียนเรือ Sea Fox (หมดอายุ 30 ก.ย.)</div>
+        <div class="lbs"><span class="lb slate">เอกสาร</span></div>
+        <div class="kf"><span class="due">30 ก.ย.</span><span class="sp"></span>
+         <span class="b"><svg class="i xs"><use href="#i-clip"/></svg>3</span><div class="av">ธ</div></div>
+       </div>
+       <div class="kc">
+        <div class="ti">อบรมพนักงานใหม่ 2 คน — ระบบ SHARK POS</div>
+        <div class="lbs"><span class="lb purple">ทีมงาน</span></div>
+        <div class="kf"><span class="sp"></span><span class="b"><svg class="i xs"><use href="#i-cklist"/></svg>1/6</span><div class="av">ป</div></div>
+       </div>
+      </div>
+      <div class="kadd"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มการ์ด</div>
+     </div>
+
+     <!-- คอลัมน์ 3 -->
+     <div class="kl">
+      <div class="klh"><span class="nm">กำลังทำ</span><span class="n">3</span><span class="wip full">3/3 เต็ม</span><span class="sp"></span>
+       <svg class="i xs"><use href="#i-more"/></svg></div>
+      <div class="kcs">
+       <div class="kc drag">
+        <div class="ti">ซ่อมเรกกูเลเตอร์ Scubapro MK25 (2 ตัว)</div>
+        <div class="lbs"><span class="lb amber">ซ่อมบำรุง</span></div>
+        <div class="kf"><span class="due soon">พรุ่งนี้</span><span class="sp"></span>
+         <span class="b"><svg class="i xs"><use href="#i-cklist"/></svg>3/4</span><div class="av">ก</div></div>
+       </div>
+       <div class="kc">
+        <div class="cover"><svg class="i lg"><use href="#i-cam"/></svg></div>
+        <div class="ti">ตัดคลิปทริปสิมิลัน ลง Facebook + TikTok</div>
+        <div class="lbs"><span class="lb purple">การตลาด</span></div>
+        <div class="kf"><span class="due">ศ. 12 ก.ย.</span><span class="sp"></span>
+         <span class="b"><svg class="i xs"><use href="#i-clip"/></svg>8</span><div class="av">ม</div></div>
+       </div>
+       <div class="kc">
+        <div class="ti">เคลมประกันอุปกรณ์ที่หายทริปสิมิลัน 28 ส.ค.</div>
+        <div class="lbs"><span class="lb slate">เอกสาร</span><span class="lb blue">การเงิน</span></div>
+        <div class="kf"><span class="due late">เลย 4 วัน</span><span class="sp"></span>
+         <span class="b"><svg class="i xs"><use href="#i-link"/></svg>2</span><div class="av">ธ</div></div>
+       </div>
+      </div>
+      <div class="kadd mu" style="color:var(--mut2)"><svg class="i sm"><use href="#i-lock"/></svg>คอลัมน์เต็ม — ปิดงานก่อน</div>
+     </div>
+
+     <!-- คอลัมน์ 4 -->
+     <div class="kl">
+      <div class="klh"><span class="nm">รอตรวจ</span><span class="n">2</span><span class="sp"></span>
+       <svg class="i xs"><use href="#i-plus"/></svg><svg class="i xs"><use href="#i-more"/></svg></div>
+      <div class="kcs">
+       <div class="kc ghostdrop" style="border:1.5px dashed var(--acc);background:var(--acc-bg);height:58px;border-radius:10px"></div>
+       <div class="kc">
+        <div class="ti">ตรวจรับชุดเว็ท 10 ตัว จากผู้ขาย Aqua Thai</div>
+        <div class="lbs"><span class="lb slate">คลัง</span><span class="lb blue">การเงิน</span></div>
+        <div class="kf"><span class="due">จ. 8 ก.ย.</span><span class="sp"></span>
+         <span class="b"><svg class="i xs"><use href="#i-link"/></svg>ใบซื้อ</span><div class="av">น</div></div>
+       </div>
+       <div class="kc">
+        <div class="ti">รอผู้จัดการอนุมัติซื้อคอมเพรสเซอร์ตัวใหม่</div>
+        <div class="lbs"><span class="lb blue">การเงิน</span></div>
+        <div class="kf"><span class="chip acc" style="height:19px;font-size:10.5px">รออนุมัติ</span><span class="sp"></span><div class="av">ธ</div></div>
+       </div>
+      </div>
+      <div class="kadd"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มการ์ด</div>
+     </div>
+
+     <!-- คอลัมน์ 5 -->
+     <div class="kl">
+      <div class="klh"><svg class="i xs" style="color:var(--t-green)"><use href="#i-check"/></svg><span class="nm">เสร็จแล้ว</span><span class="n">4</span><span class="sp"></span>
+       <svg class="i xs"><use href="#i-more"/></svg></div>
+      <div class="kcs">
+       <div class="kc">
+        <div class="ti">ล้างและอบชุดดำน้ำหลังทริป 3 ก.ย.</div>
+        <div class="kf"><span class="due done"><svg class="i xs"><use href="#i-check"/></svg>เสร็จ 4 ก.ย.</span><span class="sp"></span><div class="av">ก</div></div>
+       </div>
+       <div class="kc">
+        <div class="ti">จ่ายค่าน้ำมันเรือ งวด ส.ค.</div>
+        <div class="lbs"><span class="lb blue">การเงิน</span></div>
+        <div class="kf"><span class="due done">เสร็จ 3 ก.ย.</span><span class="sp"></span>
+         <span class="b"><svg class="i xs"><use href="#i-link"/></svg>ใบจ่าย</span><div class="av">ธ</div></div>
+       </div>
+       <div class="kc">
+        <div class="ti">อัปเดตตารางทริปเดือน ก.ย. บนหน้าเว็บ</div>
+        <div class="kf"><span class="due done">เสร็จ 2 ก.ย.</span><span class="sp"></span><div class="av">ม</div></div>
+       </div>
+      </div>
+      <div class="kadd"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มการ์ด</div>
+     </div>
+
+     <!-- เพิ่มคอลัมน์ -->
+     <div class="kl ghost" style="width:76px;align-items:center">
+      <div class="kadd" title="เพิ่มคอลัมน์"><svg class="i sm"><use href="#i-plus"/></svg></div>
+     </div>
+
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>
+
+</body></html>

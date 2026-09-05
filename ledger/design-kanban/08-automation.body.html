@@ -1,0 +1,148 @@
+<div class="wrap">
+<div>
+<p class="cap">08 · ตัวสร้างกฎอัตโนมัติ (Automation) <span>— ต่อยอด outbox + Automation ที่ระบบมีอยู่แล้ว · เมื่อ (trigger) → ถ้า (condition) → ทำ (action) · ปุ่มบนการ์ด · ตั้งเวลา · รายงานอีเมล · บันทึกการทำงาน</span></p>
+<div class="frame" id="f8" style="height:1050px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+  <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-bell"/></svg><div class="av">ธ</div></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-mail"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="kbar"><svg class="i sm mu"><use href="#i-back"/></svg><h1>อัตโนมัติ — บอร์ด งานร้าน สาขาป่าตอง</h1>
+    <span class="sp"></span>
+    <span class="chip">ใช้ไป 128 / 1,000 ครั้งเดือนนี้</span>
+    <div class="btn pri sm"><svg class="i sm"><use href="#i-plus"/></svg>สร้างกฎใหม่</div></div>
+
+   <div class="stage" style="background:var(--sf)">
+    <div style="display:flex;min-height:0;flex:1">
+
+     <!-- เมนูซ้าย -->
+     <div style="width:216px;flex:none;border-right:1px solid var(--line);padding:13px 11px;background:var(--sf2)">
+      <div class="dsec" style="color:var(--mut)">ประเภทอัตโนมัติ</div>
+      <div class="acc-i on"><svg class="i sm"><use href="#i-bolt"/></svg>กฎ (Rule)<span class="sp" style="flex:1"></span><span class="pill gh">6</span></div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-doc"/></svg>ปุ่มบนการ์ด<span class="sp" style="flex:1"></span><span class="pill gh">3</span></div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-grid"/></svg>ปุ่มบนบอร์ด<span class="sp" style="flex:1"></span><span class="pill gh">1</span></div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-clock"/></svg>ตั้งเวลา<span class="sp" style="flex:1"></span><span class="pill gh">2</span></div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-cal"/></svg>ตามวันครบกำหนด<span class="sp" style="flex:1"></span><span class="pill gh">2</span></div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-mail"/></svg>รายงานอีเมล<span class="sp" style="flex:1"></span><span class="pill gh">1</span></div>
+      <div class="ddsep"></div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-spark"/></svg>คำแนะนำจาก AI<span class="sp" style="flex:1"></span><span class="pill">4</span></div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-report"/></svg>บันทึกการทำงาน</div>
+     </div>
+
+     <div class="pg" style="flex:1;min-width:0;padding:15px 20px 20px;gap:13px">
+
+      <!-- ตัวสร้างกฎ -->
+      <div class="card p0">
+       <div style="padding:14px 16px 0"><div class="ch"><svg class="i sm"><use href="#i-bolt"/></svg><h2>กฎใหม่ — ยังไม่บันทึก</h2>
+        <span class="sub">อ่านเป็นประโยคไทยได้ตรง ๆ · เลือกจากรายการ ไม่ต้องเขียนโค้ด</span><span class="sp"></span>
+        <span class="chip acc">ทดลองรันย้อนหลังได้</span></div></div>
+
+       <div style="padding:0 16px 15px">
+        <div class="rule">
+         <div class="rrow"><span class="rtag when">เมื่อ</span>
+          <span class="slot"><svg class="i xs"><use href="#i-swap"/></svg>การ์ดถูกย้ายเข้าคอลัมน์<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="slot acc">รอตรวจ<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="mu">ในบอร์ดนี้</span></div>
+
+         <div class="rrow"><span class="rtag and">และถ้า</span>
+          <span class="slot">การ์ดมีป้ายกำกับ<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="slot acc">การเงิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <svg class="i xs mu"><use href="#i-x"/></svg></div>
+
+         <div class="rrow"><span class="rtag then">ให้ทำ</span>
+          <span class="slot"><svg class="i xs"><use href="#i-check"/></svg>เปิดคำขออนุมัติ<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="slot acc">สายอนุมัติ: จัดซื้อเกิน ฿10,000<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="mu">แล้วผูกกลับมาที่การ์ด</span></div>
+
+         <div class="rrow"><span class="rtag then">และ</span>
+          <span class="slot"><svg class="i xs"><use href="#i-users"/></svg>มอบหมายให้<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="slot acc">ผู้จัดการสาขา<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <svg class="i xs mu"><use href="#i-x"/></svg></div>
+
+         <div class="rrow"><span class="rtag then">และ</span>
+          <span class="slot"><svg class="i xs"><use href="#i-bell"/></svg>แจ้งเตือน<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="slot acc">ในแอป + แจ้งบนมือถือ<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="mu">ข้อความ: “การ์ด {ชื่อการ์ด} รออนุมัติ”</span></div>
+
+         <div class="rrow" style="background:var(--sf2)"><span class="rtag and" style="background:transparent;border:0;color:var(--mut)">+</span>
+          <span class="mu">เพิ่มเงื่อนไข หรือ เพิ่มการกระทำ (สูงสุด 20 การกระทำต่อ 1 กฎ)</span></div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:9px;margin-top:12px">
+         <div class="inp gro" style="height:34px">ชื่อกฎ: <b>ย้ายเข้ารอตรวจ + ป้ายการเงิน → ส่งอนุมัติ</b></div>
+         <div class="btn gh sm">ทดลองรัน</div>
+         <div class="btn gh sm">ยกเลิก</div>
+         <div class="btn pri sm">บันทึกกฎ</div></div>
+       </div>
+      </div>
+
+      <div class="row" style="gap:13px;align-items:flex-start">
+       <!-- กฎที่เปิดใช้อยู่ -->
+       <div class="card p0" style="flex:1;min-width:0">
+        <div style="padding:13px 15px 0"><div class="ch"><h2>กฎที่เปิดใช้อยู่</h2><span class="sub">6 กฎ</span></div></div>
+        <table class="tbl">
+         <thead><tr><th>กฎ</th><th style="width:96px">รันเดือนนี้</th><th style="width:70px">สถานะ</th></tr></thead>
+         <tbody>
+          <tr><td><b>มีข้อความ LINE ใหม่ที่ยังไม่ตอบเกิน 30 นาที → สร้างการ์ดใน “กล่องงานเข้า”</b>
+            <div class="sub">เมื่อ chat.message.received · และ ยังไม่มีผู้รับผิดชอบ</div></td>
+           <td class="num">42</td><td><span class="sw" style="display:inline-block"></span></td></tr>
+          <tr><td><b>ใบเสนอราคาถูกอนุมัติ → ย้ายการ์ดที่ผูกไว้ไป “เสร็จแล้ว”</b>
+            <div class="sub">เมื่อ account.document.approved</div></td>
+           <td class="num">18</td><td><span class="sw" style="display:inline-block"></span></td></tr>
+          <tr><td><b>พนักงานยื่นใบลา → สร้างการ์ด “หาคนแทน” ในบอร์ดสาขา</b>
+            <div class="sub">เมื่อ hr.leave.submitted · มอบหมายให้หัวหน้าสาขา</div></td>
+           <td class="num">6</td><td><span class="sw" style="display:inline-block"></span></td></tr>
+          <tr><td><b>ทุกวันจันทร์ 08:00 → สร้างการ์ดงานประจำสัปดาห์ 5 ใบ</b>
+            <div class="sub">ตั้งเวลา · จากเทมเพลตการ์ด</div></td>
+           <td class="num">4</td><td><span class="sw" style="display:inline-block"></span></td></tr>
+          <tr><td><b>2 วันก่อนครบกำหนด → เตือนผู้รับผิดชอบ + ติดป้าย “ใกล้ครบ”</b>
+            <div class="sub">ตามวันครบกำหนด</div></td>
+           <td class="num">51</td><td><span class="sw" style="display:inline-block"></span></td></tr>
+          <tr><td class="mu"><b>การ์ดค้างเกิน 14 วันไม่ขยับ → เตือนผู้จัดการ</b>
+            <div class="sub">ตั้งเวลา · ปิดใช้อยู่</div></td>
+           <td class="num mu">0</td><td><span class="sw off" style="display:inline-block"></span></td></tr>
+         </tbody>
+        </table>
+       </div>
+
+       <!-- คำแนะนำ + บันทึก -->
+       <div style="width:340px;flex:none;display:flex;flex-direction:column;gap:13px">
+        <div class="card">
+         <div class="ch"><svg class="i sm"><use href="#i-spark"/></svg><h2>คำแนะนำจาก AI</h2></div>
+         <div class="lst">
+          <div class="li"><span class="sp">คุณย้ายการ์ดจาก “รอตรวจ” ไป “เสร็จแล้ว” เองซ้ำ ๆ 14 ครั้ง<div class="sub">สร้างกฎอัตโนมัติให้ไหม?</div></span>
+           <span class="btn gh sm">สร้าง</span></div>
+          <div class="li"><span class="sp">การ์ดป้าย “ด่วน” ไม่เคยมีผู้รับผิดชอบใน 1 ชม.แรก<div class="sub">ให้มอบหมายหัวหน้ากะอัตโนมัติ</div></span>
+           <span class="btn gh sm">สร้าง</span></div>
+         </div>
+        </div>
+        <div class="card">
+         <div class="ch"><svg class="i sm"><use href="#i-report"/></svg><h2>บันทึกการทำงานล่าสุด</h2><span class="sp"></span><span class="lnk" style="font-size:12px">ดูทั้งหมด</span></div>
+         <div class="lst">
+          <div class="li"><span class="pill gh">OK</span><span class="sp">สร้างการ์ด “ลูกค้าถามคอร์ส Open Water”<div class="sub">09:41 · จากแชท LINE</div></span></div>
+          <div class="li"><span class="pill gh">OK</span><span class="sp">เตือนกำหนดส่ง 3 การ์ด<div class="sub">08:00 · ส่งเข้าแอป 3 คน</div></span></div>
+          <div class="li"><span class="pill dg">ล้ม</span><span class="sp">ส่งเว็บฮุคไป n8n ไม่สำเร็จ<div class="sub">เมื่อวาน 22:10 · จะลองใหม่อัตโนมัติ</div></span></div>
+         </div>
+        </div>
+       </div>
+      </div>
+
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>
