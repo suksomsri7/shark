@@ -84,6 +84,21 @@ export default function DevelopersPage() {
         </p>
       </header>
 
+      <section className="flex flex-col gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <h2 className="text-lg font-semibold">Accounting API — เชื่อมโมดูลบัญชี (อ่าน+เขียนได้)</h2>
+        <p className="text-sm text-neutral-700">
+          ถ้าร้านของคุณเปิดใช้โมดูลบัญชี มี API แยกต่างหากที่ทำได้มากกว่าอ่านอย่างเดียว: สร้าง/ออกเอกสาร
+          บันทึกรับ-จ่ายเงิน จัดการผู้ติดต่อ/สินค้า อ่านผังบัญชี/งบการเงิน กระทบยอดธนาคาร ไปจนถึงรับ
+          webhook เมื่อมีการเปลี่ยนแปลง คีย์ของโมดูลนี้มี <strong>scope</strong> ของตัวเอง (ทำได้ไม่เกิน
+          สิทธิ์ที่ติ๊กไว้ตอนสร้างคีย์ที่หน้าตั้งค่าบัญชี) — คนละชุดจากคีย์แพลตฟอร์มด้านล่างนี้
+        </p>
+        <p className="text-sm">
+          <a className="font-medium text-emerald-700 underline" href="/developers/account">
+            อ่านคู่มือ Accounting API ฉบับเต็ม (/developers/account)
+          </a>
+        </p>
+      </section>
+
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">1. การยืนยันตัวตน (Authentication)</h2>
         <p className="text-sm text-neutral-700">

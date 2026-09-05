@@ -23,6 +23,8 @@ import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
 
 const ROOT = resolve(fileURLToPath(import.meta.url), "..", "..");
 const DOC_PATH = resolve(ROOT, "docs/api/ACCOUNT-API.md");
+/** Reference table for the Claude skill (WO F2) — same registry, short form, no prose. */
+const SKILL_ENDPOINTS_PATH = resolve(ROOT, ".claude/skills/shark-account-api/references/endpoints.md");
 const BASE_URL = "https://shark.in.th/api/v1/account";
 /** ทางเดินของ AI ภายนอก (สกิล + tool) — คนละ prefix กับ REST บัญชี */
 const AI_BASE_URL = "https://shark.in.th/api/v1/ai";
@@ -592,6 +594,31 @@ const KIND_SECTIONS: { kind: ApiOpKind; title: string; blurb: string }[] = [
   { kind: "danger", title: "Danger operations", blurb: "Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these." },
 ];
 
+// ── ตัวเรนเดอร์ endpoints.md ของสกิล Claude (WO F2) ─────────────────────────
+// ตารางล้วน ไม่มีร้อยแก้ว: ให้ agent ที่อ่าน SKILL.md ไล่หา "METHOD path + scope" ของงานหนึ่ง ๆ ได้เร็ว
+// สร้างจากทะเบียนเดียวกับ renderDocs() ⇒ เพิ่ม/ลบ op แล้วไฟล์นี้ตามเอง (F2.8 ยึดไว้)
+export function renderEndpointsReference(ops: ApiOp[] = ACCOUNT_OPS): string {
+  const out: string[] = [];
+  out.push(
+    "# SHARK Accounting API — endpoint reference",
+    "",
+    "Generated from the operation registry by `scripts/gen-account-api-docs.mts` (`--check` covers this file too). Do not edit by hand.",
+    "",
+    `Base URL: \`${BASE_URL}\`. ${ops.length} operations. Full prose, field tables and curl examples: \`docs/api/ACCOUNT-API.md\` (also served at \`https://shark.in.th/developers/account.md\`). Machine readable contract: \`/api/v1/account/openapi.json\`.`,
+    "",
+  );
+  for (const section of KIND_SECTIONS) {
+    const group = ops.filter((o) => o.kind === section.kind).sort((a, b) => (a.path + a.method).localeCompare(b.path + b.method));
+    if (group.length === 0) continue;
+    out.push(`## ${section.title}`, "", section.blurb, "", "| Operation id | Method + path | Scope | AI tool |", "| --- | --- | --- | --- |");
+    for (const op of group) {
+      out.push(`| \`${op.id}\` | \`${op.method} ${op.path}\` | \`${op.action}\` | ${op.tool ? `\`${op.tool.name}\`` : "-"} |`);
+    }
+    out.push("");
+  }
+  return out.join("\n");
+}
+
 // ── ตัวเรนเดอร์ (บริสุทธิ์) ─────────────────────────────────────────────────
 export function renderDocs(ops: ApiOp[] = ACCOUNT_OPS): string {
   const spec = buildOpenApi(ops);
@@ -721,19 +748,33 @@ const invokedDirectly =
 
 if (invokedDirectly) {
   const markdown = renderDocs();
+  const endpointsRef = renderEndpointsReference();
   if (process.argv.includes("--check")) {
     const current = existsSync(DOC_PATH) ? readFileSync(DOC_PATH, "utf8") : "";
-    if (current === markdown) {
-      console.log(`✅ docs/api/ACCOUNT-API.md ตรงกับทะเบียน (${ACCOUNT_OPS.length} op)`);
+    const currentRef = existsSync(SKILL_ENDPOINTS_PATH) ? readFileSync(SKILL_ENDPOINTS_PATH, "utf8") : "";
+    const docOk = current === markdown;
+    const refOk = currentRef === endpointsRef;
+    if (docOk && refOk) {
+      console.log(`✅ docs/api/ACCOUNT-API.md + skill endpoints.md ตรงกับทะเบียน (${ACCOUNT_OPS.length} op)`);
       process.exit(0);
     }
-    console.error(
-      `❌ docs/api/ACCOUNT-API.md ไม่ตรงกับทะเบียน (${current.length} ไบต์บนดิสก์ vs ${markdown.length} ไบต์ที่ควรเป็น)\n` +
-        "   แก้ด้วย: pnpm exec tsx scripts/gen-account-api-docs.mts",
-    );
+    if (!docOk) {
+      console.error(
+        `❌ docs/api/ACCOUNT-API.md ไม่ตรงกับทะเบียน (${current.length} ไบต์บนดิสก์ vs ${markdown.length} ไบต์ที่ควรเป็น)\n` +
+          "   แก้ด้วย: pnpm exec tsx scripts/gen-account-api-docs.mts",
+      );
+    }
+    if (!refOk) {
+      console.error(
+        `❌ .claude/skills/shark-account-api/references/endpoints.md ไม่ตรงกับทะเบียน (${currentRef.length} ไบต์บนดิสก์ vs ${endpointsRef.length} ไบต์ที่ควรเป็น)\n` +
+          "   แก้ด้วย: pnpm exec tsx scripts/gen-account-api-docs.mts",
+      );
+    }
     process.exit(1);
   }
   mkdirSync(dirname(DOC_PATH), { recursive: true });
   writeFileSync(DOC_PATH, markdown, "utf8");
-  console.log(`✅ เขียน docs/api/ACCOUNT-API.md (${ACCOUNT_OPS.length} op · ${markdown.length} ไบต์)`);
+  mkdirSync(dirname(SKILL_ENDPOINTS_PATH), { recursive: true });
+  writeFileSync(SKILL_ENDPOINTS_PATH, endpointsRef, "utf8");
+  console.log(`✅ เขียน docs/api/ACCOUNT-API.md + skill endpoints.md (${ACCOUNT_OPS.length} op · ${markdown.length} ไบต์ / ${endpointsRef.length} ไบต์)`);
 }
