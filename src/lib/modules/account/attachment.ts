@@ -743,3 +743,41 @@ export async function restoreAttachment(
   });
   return { ok: true };
 }
+
+/**
+ * WO D3 additive — แถวเดียวหลังแก้ (REST `files.update`/`inbox.create-expense` ตอบกลับไม่ต้องโหลดทั้งหน้า)
+ * ใช้ mapping เดียวกับ `listAttachmentsPaged` เป๊ะ (เพื่อให้ `fileRowView`/`inboxItemView` ได้ผลลัพธ์เหมือนกัน)
+ */
+export async function getAttachmentRow(tenantId: string, systemId: string, id: string): Promise<AttachmentRowView | null> {
+  const r = await prisma.accountAttachment.findFirst({
+    where: { id, tenantId, systemId },
+    include: { document: { select: { id: true, docType: true, docNo: true } } },
+  });
+  if (!r) return null;
+  const names = r.uploadedById ? await resolveUploaderNames(tenantId, [r.uploadedById]) : new Map<string, string>();
+  return {
+    id: r.id,
+    fileName: r.fileName,
+    fileUrl: r.fileUrl,
+    thumbUrl: r.thumbUrl,
+    mimeType: r.mimeType,
+    sizeBytes: r.sizeBytes,
+    sha256: r.sha256,
+    folder: r.folder,
+    docTypeHint: r.docTypeHint,
+    status: (r.status as AttachmentStatus | null) ?? (r.documentId ? "LINKED" : "UNLINKED"),
+    source: r.source as AttachmentSource | null,
+    note: r.note,
+    createdAt: r.createdAt,
+    uploadedById: r.uploadedById,
+    uploaderName: r.uploadedById ? (names.get(r.uploadedById) ?? "ไม่ทราบชื่อ") : null,
+    document: r.document ? { id: r.document.id, docType: r.document.docType, docNo: r.document.docNo } : null,
+    typeLabel: attachmentTypeLabel({ docTypeHint: r.docTypeHint, document: r.document }),
+    aiStatus: (r.aiStatus as InboxAiStatus | null) ?? null,
+    aiExtract: r.aiStatus === "DONE" ? normalizeExtract(r.aiExtract) : null,
+    aiReason: aiReasonOf(r.aiStatus, r.aiExtract),
+    aiReadAt: r.aiReadAt,
+    senderLabel: r.senderLabel,
+    expenseDocId: r.expenseDocId,
+  };
+}

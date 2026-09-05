@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 160 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 178 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -559,6 +559,19 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/help/glossary" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `import.template`
+
+**GET /import/template** - Download an empty CSV template with example rows for one import kind. Supports CSV. · scope: `account.import` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `kind` | enum("documents_revenue", "documents_expense", "contacts", "products", "chart_of_accounts") | yes | - |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/import/template?kind=documents_revenue" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -1808,6 +1821,46 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/favorites" \
   -d '{"name":"example name","lines":[]}'
 ```
 
+#### `files.update`
+
+**PATCH /files/{id}** - Change one document-vault file: link/unlink it to a document, move it to a folder, archive/restore it, flag it as not accounting, or set its document-type hint. At least one field is required. · scope: `account.document.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `documentId` | one of several shapes | no | Link the file to this document. Send null to unlink it. |
+| `folder` | one of several shapes | no | Move the file into this folder. Send null to clear the folder. |
+| `archived` | boolean | no | true archives (soft-deletes) the file, false restores it. |
+| `notAccounting` | boolean | no | true flags the file as not an accounting document. |
+| `docTypeHint` | one of several shapes | no | Document-type hint, only when the file is not linked to a document yet. |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/files/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `files.bulk`
+
+**POST /files/bulk** - Move or archive several document-vault files in one call. · scope: `account.document.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `ids` | array of string | yes | - |
+| `folder` | one of several shapes | no | Move every file to this folder. |
+| `archived` | boolean | no | true archives every file in the list. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/files/bulk" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"ids":[]}'
+```
+
 #### `finance-accounts.add-opening`
 
 **POST /finance-accounts/{id}/opening** - Add one opening balance line to a money channel. Each line becomes its own journal entry, so a channel taken over from several old books keeps them apart. · scope: `account.finance.manage` · write
@@ -1923,6 +1976,106 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/finance-transfers" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"fromId":"example fromId","toId":"example toId","amountSatang":10000}'
+```
+
+#### `import.preview`
+
+**POST /import/preview** - Check a CSV file before importing it: column mapping, per-row validation and a count of rows that would be created. · scope: `account.import` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `kind` | enum("documents_revenue", "documents_expense", "contacts", "products", "chart_of_accounts") | yes | - |
+| `text` | string | yes | Raw CSV content, UTF-8 (a leading BOM is fine). · min length 1 · max length 6000000 |
+| `mapping` | object | no | Column index per field key. Omit to auto-match from the header row. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/import/preview" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"documents_revenue","text":"example text"}'
+```
+
+#### `import.run`
+
+**POST /import/run** - Import a CSV file for real, using a mapping already checked with import.preview. Rate-limited to 20 imports per hour per accounting book. · scope: `account.import` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `kind` | enum("documents_revenue", "documents_expense", "contacts", "products", "chart_of_accounts") | yes | - |
+| `text` | string | yes | min length 1 · max length 6000000 |
+| `mapping` | object | yes | - |
+| `skipErrorRows` | boolean | no | true creates the valid rows of a file that also has bad rows, instead of refusing the whole file. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/import/run" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"documents_revenue","text":"example text","mapping":{}}'
+```
+
+#### `inbox.create-expense`
+
+**POST /inbox/{fileId}/create-expense** - Confirm the AI proposal (or your own numbers) and issue a draft expense document from one inbox file. The file is linked to the document it creates and cannot be used to create a second one. · scope: `account.doc.create` · write
+
+Path parameters: `fileId` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `vendorName` | string | no | max length 200 |
+| `vendorTaxId` | one of several shapes | no | - |
+| `vendorPhone` | one of several shapes | no | - |
+| `invoiceNo` | one of several shapes | no | - |
+| `issueDate` | one of several shapes | no | - |
+| `totalSatang` | integer | no | min 0 |
+| `vatSatang` | integer | no | min 0 |
+| `vatRateBp` | integer | no | min 0 · max 10000 |
+| `docKind` | enum("RECEIPT", "TAX_INVOICE", "INVOICE", "SLIP", "OTHER") | no | - |
+| `note` | one of several shapes | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/inbox/123/create-expense" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `inbox.read`
+
+**POST /inbox/{fileId}/read** - Have the AI assistant read one inbox photo and extract vendor, dates and amounts. Cached after the first successful read unless force is sent. · scope: `account.document.manage` · write
+
+Path parameters: `fileId` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `force` | boolean | no | Read again even if this file was already read successfully. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/inbox/123/read" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `inbox.ingest`
+
+**POST /inbox/files** - Bring files from an external channel into the inbox. Safe to retry: a file whose sourceRef was already ingested is counted as duplicated instead of created again. · scope: `account.document.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `source` | enum("UPLOAD", "EMAIL", "CHAT", "APP", "API") | yes | - |
+| `senderLabel` | one of several shapes | no | Who/what sent this, shown on the inbox card. |
+| `files` | array of object | yes | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/inbox/files" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"source":"UPLOAD","files":[]}'
 ```
 
 #### `journal.flag`
@@ -2304,6 +2457,166 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/products" \
   -d '{"type":"GOODS","name":"example name"}'
 ```
 
+#### `reconcile.confirm`
+
+**POST /reconcile/{period}/confirm** - Confirm bank reconciliation for one channel and month. Only possible when the difference is zero and nothing is left pending. · scope: `account.reconcile` · write
+
+Path parameters: `period` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `financeAccountId` | string | yes | min length 1 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/reconcile/123/confirm" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"financeAccountId":"example financeAccountId"}'
+```
+
+#### `reconcile.reopen`
+
+**POST /reconcile/{period}/reopen** - Reopen a month that was already confirmed, so its lines can be matched or fixed again. · scope: `account.reconcile` · write
+
+Path parameters: `period` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `financeAccountId` | string | yes | min length 1 |
+| `reason` | string | yes | Why this confirmed month is being reopened. Kept in the audit log. · min length 1 · max length 300 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/reconcile/123/reopen" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"financeAccountId":"example financeAccountId","reason":"reason for the audit log"}'
+```
+
+#### `reconcile.create-entry`
+
+**POST /reconcile/lines/{id}/create-entry** - Post a journal entry straight from a bank statement line that has no matching document in the books, such as a bank fee or interest income. · scope: `account.reconcile` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `kind` | enum("FEE", "INTEREST", "OTHER") | yes | FEE posts to the bank fee account, INTEREST to interest income, OTHER lets you pick the ledger account. |
+| `accountCode` | one of several shapes | no | Ledger account code. Required when kind is OTHER. |
+| `note` | one of several shapes | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/reconcile/lines/123/create-entry" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"FEE"}'
+```
+
+#### `reconcile.match`
+
+**POST /reconcile/lines/{id}/match** - Manually match one bank statement line to a system journal line. The amounts must be exactly equal. · scope: `account.reconcile` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `journalLineId` | string | yes | Id of the system journal line, taken from `systemEntries` of `reconcile.get`. · min length 1 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/reconcile/lines/123/match" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"journalLineId":"example journalLineId"}'
+```
+
+#### `reconcile.skip`
+
+**POST /reconcile/lines/{id}/skip** - Skip one bank statement line, for example a duplicate the bank recorded that has nothing to do with the business. · scope: `account.reconcile` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | one of several shapes | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/reconcile/lines/123/skip" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `reconcile.unmatch`
+
+**POST /reconcile/lines/{id}/unmatch** - Undo a match on one bank statement line. Both sides go back to unmatched. · scope: `account.reconcile` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/reconcile/lines/123/unmatch" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `reconcile.auto-match`
+
+**POST /reconcile/statements/{id}/auto-match** - Re-run automatic matching on one imported statement. Lines already matched, created or skipped by a person are left untouched. · scope: `account.reconcile` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/reconcile/statements/123/auto-match" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `reconcile.preview-statement`
+
+**POST /reconcile/statements/preview** - Parse a bank statement CSV without saving anything, so the caller can show what would be imported. · scope: `account.reconcile` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `financeAccountId` | string | yes | Id of the bank/e-wallet channel this statement belongs to. · min length 1 |
+| `period` | string | yes | Month the statement covers, `YYYY-MM`. |
+| `source` | enum("KBANK", "SCB", "KTB", "BBL", "GENERIC") | yes | Bank statement column layout to parse the file with. |
+| `text` | string | yes | Raw CSV content of the statement file, UTF-8 (a leading BOM is fine). · min length 1 · max length 6000000 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/reconcile/statements/preview" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"financeAccountId":"example financeAccountId","period":"example period","source":"KBANK","text":"example text"}'
+```
+
+#### `reconcile.import-statement`
+
+**POST /reconcile/statements** - Import a bank statement CSV for one channel and month. Safe to send the same file again: rows already imported are counted as duplicated instead of imported a second time. · scope: `account.reconcile` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `financeAccountId` | string | yes | min length 1 |
+| `period` | string | yes | - |
+| `source` | enum("KBANK", "SCB", "KTB", "BBL", "GENERIC") | yes | Bank statement column layout to parse the file with. |
+| `fileName` | string | yes | min length 1 · max length 200 |
+| `text` | string | yes | min length 1 · max length 6000000 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/reconcile/statements" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"financeAccountId":"example financeAccountId","period":"example period","source":"KBANK","fileName":"example fileName","text":"example text"}'
+```
+
 #### `recurring.set-active`
 
 **POST /recurring/{id}/active** - Pause or resume a recurring rule without touching its history. · scope: `account.doc.create` · write
@@ -2404,6 +2717,22 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/recurring" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"name":"example name","docType":"INVOICE","frequency":"WEEKLY","startDate":"example startDate","leadDays":0,"autoApprove":true,"active":true,"template":{}}'
+```
+
+#### `reports.email`
+
+**POST /reports/email** - Send the daily or weekly summary report by email right now, to the recipients configured in accounting policy. Skipped (not an error) when no recipients are configured yet or outbound email is not set up on this server. · scope: `account.report.view` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `kind` | enum("daily", "weekly") | yes | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/reports/email" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"daily"}'
 ```
 
 #### `stock-documents.approve`

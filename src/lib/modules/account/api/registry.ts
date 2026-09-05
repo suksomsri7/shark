@@ -19,6 +19,9 @@ import { FINANCE_WRITE_OPS } from "./ops/finance-write";
 import { GL_READ_OPS } from "./ops/gl-read";
 import { GL_WRITE_OPS } from "./ops/gl-write";
 import { SETTINGS_READ_OPS } from "./ops/settings-read";
+import { RECONCILE_WRITE_OPS } from "./ops/reconcile-write";
+import { FILES_WRITE_OPS } from "./ops/files-write";
+import { IMPORT_OPS } from "./ops/import";
 
 export * from "./op";
 
@@ -37,6 +40,9 @@ export const ACCOUNT_OPS: ApiOp[] = [
   ...GL_READ_OPS,
   ...GL_WRITE_OPS,
   ...SETTINGS_READ_OPS,
+  ...RECONCILE_WRITE_OPS,
+  ...FILES_WRITE_OPS,
+  ...IMPORT_OPS,
 ];
 
 // ── การจับคู่ path ──────────────────────────────────────────────────────────

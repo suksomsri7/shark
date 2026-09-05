@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | D3 |
+| WO | D4 |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable (oracle เขียนแล้ว) → Sonnet (builder) |
-| ขั้นที่ถึง | 5 ก.ย. ~22:20 UTC: D2 DONE (Opus 19 นาที · Fable แก้ oracle G3.6 + เพิ่ม G3.6b · write-gl 35 · read-gl 55 · write-finance 33 · core 64 · openapi 26 · cpa 107 · probe ข้ามร้าน/งวดปิด/ไม่สมดุล 8 จุดถูกหมด · typecheck 0 · fitness 20/20 ×2) · **สั่ง Sonnet ทำ D3** |
+| ขั้นที่ถึง | 5 ก.ย. 22:05 น. (ไทย · ป้ายเวลาก่อนหน้าคือเวลาไทยเช่นกัน): D3 DONE (Sonnet 34 นาที · Fable ถอด re-export core ออกจากไฟล์ "use server" · write-ops 29 · read-docs 50 · write-docs 52 · core 64 · openapi 26 · import 114 · inbox 128 · coa · probe 7 จุดถูก · typecheck 0 · fitness 20/20 ×2) · **สั่ง Sonnet ทำ D4** · งานฝากขนาน: ออกแบบ kanban→Trello (Opus กำลังทำ) |
 | commit ล่าสุดของงานนี้ | (C2 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
@@ -40,8 +40,8 @@
 | C4 | webhook events ชุดแรก (issued/voided/quotation/payment.voided/payment_request/contact/product) | Opus | DONE | 5 ก.ย. | webhooks 22/22 (oracle E5.2/E5.6 นับผิดเอง แก้แล้ว: endpoint resolve ตอน drain) · 11 event ใหม่ · `events.ts` · `wo-notes/api-C4.md` |
 | D1 | WRITE finance-accounts/transfers/petty cash/cheques/WHT | Opus | DONE | 5 ก.ย. | write-finance 33/33 · 15 op → รวม 145 · transferId=sha256(keyId+Idempotency-Key) · ถอดกฎ C2 "หัก WHT ต้องส่ง whtIncomeType" (สัญญา C2 ระบุ optional อยู่แล้ว) · `wo-notes/api-D1.md` |
 | D2 | WRITE journal/chart/mappings/periods/assets | Opus | DONE | 5 ก.ย. | write-gl 35/35 (oracle G3.6 สมมติชุดสิทธิ์ผิด แก้ + เพิ่ม G3.6b WRITE_OFF ต้อง asset.writeoff) · 15 op → รวม 160 · ApiError.details · userId=null · `wo-notes/api-D2.md` |
-| D3 | WRITE reconcile/recurring/import/files/inbox/reports-email | Sonnet | IN_PROGRESS | — | |
-| D4 | WRITE settings/policy/permissions/links/webhooks CRUD + events ที่เหลือ | Sonnet | TODO | — | |
+| D3 | WRITE reconcile/recurring/import/files/inbox/reports-email | Sonnet | DONE | 5 ก.ย. | write-ops 29/29 · 18 op → รวม 178 · core นำเข้าแยกไป `import-core.ts` (ไฟล์ "use server" ห้าม export/re-export core — เคยเปิดเป็น server action ไร้ด่านสิทธิ์) · `wo-notes/api-D3.md` |
+| D4 | WRITE settings/policy/permissions/links/webhooks CRUD + events ที่เหลือ | Sonnet | IN_PROGRESS | — | |
 | E1 | สกิล AI `account` 30 tools จากทะเบียน + proposal kinds + dispatch | Opus | TODO | — | MockProvider E2E |
 | E2 | `/api/v1/ai/skills/account` + tools route + golden cases 12 + persona นักบัญชี | Opus | TODO | — | |
 | F1 | `/developers/account` + `.md` + `/developers` เพิ่มหมวดบัญชี | Sonnet | TODO | — | |
@@ -369,15 +369,16 @@ event ที่เหลือ (D4): `account.cheque.changed` (ทุก transit
 ### F4 — verify prod (Fable): deploy → Vercel READY → `GET /api/v1/account/openapi.json` บน prod = 200 · สร้างคีย์จริงบนร้านทดสอบ → ยิง `/ping` `/documents` `/dashboard` ด้วย curl จาก VPS → webhook test → ลบร้านทดสอบ/คีย์ → แจ้งเจ้าของ (อ้าง PLAN §4 แถวต่อแถว) · ทุก op: id/path/scope ตามตาราง §4 · oracle เทียบเฉลย `acc-v2-expected.json` + `qc-account-cpa`
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
-## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
-- 5 ก.ย. ~22:20 UTC — D2 ปิด (Opus 19 นาที · oracle ผิดเอง 1 ข้อ G3.6: accountant มี asset.dispose ตามสเปค A1) · ความคืบหน้า 14/24 = 58% · เริ่ม D3
-- 5 ก.ย. ~21:30 UTC — D1 ปิด (Opus 15 นาที · oracle ถูกทั้ง 33 ข้อ · probe Fable: โอน/เช็ค/เงินสดย่อยข้ามร้าน → 404 · โอนซ้ำคีย์เดิม = แถวเดียว ยอดถูก) · ความคืบหน้า 13/24 = 54% · เริ่ม D2
-- 5 ก.ย. ~20:55 UTC — **เฟส C ปิด 4/4 · qc:all 242/246 (20 นาที) → แดง 4 ชุด แก้ครบ รันเดี่ยวเขียวหมด** · ความคืบหน้า 12/24 = 50% · เริ่ม D1
+## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 5 ก.ย. 22:05 น. — D3 ปิด (Sonnet 34 นาที · builder จับบั๊ก env-at-load เอง · Fable ปิดช่อง server action ที่ re-export core) · ความคืบหน้า 15/24 = 62% · เริ่ม D4
+- 5 ก.ย. 22:20 น. — D2 ปิด (Opus 19 นาที · oracle ผิดเอง 1 ข้อ G3.6: accountant มี asset.dispose ตามสเปค A1) · ความคืบหน้า 14/24 = 58% · เริ่ม D3
+- 5 ก.ย. 21:30 น. — D1 ปิด (Opus 15 นาที · oracle ถูกทั้ง 33 ข้อ · probe Fable: โอน/เช็ค/เงินสดย่อยข้ามร้าน → 404 · โอนซ้ำคีย์เดิม = แถวเดียว ยอดถูก) · ความคืบหน้า 13/24 = 54% · เริ่ม D2
+- 5 ก.ย. 20:55 น. — **เฟส C ปิด 4/4 · qc:all 242/246 (20 นาที) → แดง 4 ชุด แก้ครบ รันเดี่ยวเขียวหมด** · ความคืบหน้า 12/24 = 50% · เริ่ม D1
   - 🔴 บั๊กจริงที่ qc:all จับได้ (approval-wiring 5/7 · account-api-webhooks 15/19 แดงเฉพาะใน qc:all): `drainOutbox` ระบาย **50 ตัวต่อการเรียก 1 ครั้งแล้วเลิก** · หลัง C4 seed สร้าง 183 event ในนาทีเดียว → ชุดถัดไป drainAll แล้ว event ตัวเองไม่ถูกหยิบ · บน prod = นำเข้า CSV 200 ราย จะทำให้แชท/invoice.paid/ฮุคร้านอื่นต่อคิวรอ cron รายชั่วโมง (50 ตัว/ชม.) ⇒ แก้ `core/outbox.ts` ให้ `drainUntilQuiet` วนจนคิวเงียบ (เพดาน 10 รอบ×50 · งบเวลา 20 วิ) · positive control: 130 event → drainAll ครั้งเดียว DONE 130 ใน 8.7 วิ
   - ข้อสอบเก่าที่สัญญาเปลี่ยน: `qc-acc-v2-schema` enum AccountDocSource 7→8 (C1 เพิ่ม API) · `qc-acc-v2-permissions` R4.3 event บัญชี 4→15 (C4) — แก้ให้ตรวจ "4 ตัวเดิมยังอยู่ + ทุกตัวมีป้ายไทย"
   - ไม่รัน qc:all ซ้ำทั้งชุด (20 นาที) — รันเดี่ยว 6 ชุดที่เกี่ยว (schema 61 · permissions 160 · webhooks 22 · approval-wiring 7 · qc-webhook 15) + typecheck 0 + fitness 20/20 ×2 · qc:all เต็มรอบถัดไป = ปิดเฟส D
-- 5 ก.ย. ~19:35 UTC — C3 ปิด (Sonnet 26 นาที · oracle ผิดเอง 1 ข้อ M3.8 · probe Fable เจอ 2 จุดแก้เอง) · ความคืบหน้า 11/24 = 46% · เริ่ม C4
-- 5 ก.ย. ~17:45 UTC — C2 ปิด (Opus 19 นาที รอบเดียว) · ความคืบหน้า 10/24 = 42% · เริ่ม C3
+- 5 ก.ย. 19:35 น. — C3 ปิด (Sonnet 26 นาที · oracle ผิดเอง 1 ข้อ M3.8 · probe Fable เจอ 2 จุดแก้เอง) · ความคืบหน้า 11/24 = 46% · เริ่ม C4
+- 5 ก.ย. 17:45 น. — C2 ปิด (Opus 19 นาที รอบเดียว) · ความคืบหน้า 10/24 = 42% · เริ่ม C3
 - 5 ก.ย. ~17:05 UTC — C1 ปิด (Opus 26 นาที) · ความคืบหน้า 9/24 = 38% · เริ่ม C2
 - 5 ก.ย. ~16:00 UTC — qc:all ปิดเฟส B ผ่าน (235 ชุดเดิม) · oracle อนาคตใส่ SKIP guard (กัน CI แดง) · เริ่ม C1
 - 5 ก.ย. ~15:15 UTC — B4 ปิด (Opus 24 นาที) · **เฟส B ครบ 4/4 (READ 72 endpoint)** · ความคืบหน้า 8/24 = 33% · รัน qc:all ปิดเฟส

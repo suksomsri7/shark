@@ -105,7 +105,7 @@ console.log("P0 สายไฟ/ทะเบียน (อ่านจากซ�
 
 // ═══════════════════════════ imports (pure — โหลดครั้งเดียวใช้ทุกส่วนถัดไป) ═══════════════════════════
 const IS = await import("@/lib/modules/account/import-shared");
-const IA = await import("@/lib/modules/account/import-actions");
+const IA = await import("@/lib/modules/account/import-core"); // Fable D3: core ย้ายออกจากไฟล์ "use server" (ไม่ re-export กันโดนเปิดเป็น server action)
 
 // ═══════════════════════════ P1 — เทมเพลต CSV ═══════════════════════════
 console.log("\nP1 เทมเพลต CSV (BOM + หัวคอลัมน์):");

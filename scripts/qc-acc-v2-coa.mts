@@ -42,7 +42,7 @@ const coa = await import("@/lib/modules/account/coa");
 const coaV2 = await import("@/lib/modules/account/coa-v2");
 const reports = await import("@/lib/modules/account/reports");
 const dash = await import("@/lib/modules/account/dashboard-home");
-const importActions = await import("@/lib/modules/account/import-actions");
+const importActions = await import("@/lib/modules/account/import-core"); // Fable D3: core ย้ายออกจากไฟล์ "use server" (ไม่ re-export กันโดนเปิดเป็น server action)
 const { assertAccountCan } = await import("@/lib/modules/account/access");
 
 let passed = 0;
