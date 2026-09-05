@@ -4,7 +4,8 @@
 // attachment.ts ลาก @/lib/core/db (prisma) เข้าฝั่งเบราว์เซอร์ทันที → build พัง module-not-found
 
 export type AttachmentStatus = "UNLINKED" | "LINKED" | "NOT_ACCOUNTING" | "ARCHIVED";
-export type AttachmentSource = "UPLOAD" | "EMAIL" | "CHAT" | "APP";
+/** ไฟล์เข้ามาทางไหน — `API` = แอปภายนอกแนบผ่าน REST `/api/v1/account/*` (WO C1) */
+export type AttachmentSource = "UPLOAD" | "EMAIL" | "CHAT" | "APP" | "API";
 
 /** เพดานไฟล์คลังเอกสาร — ใหญ่กว่าค่าเริ่มต้นระบบ (5MB) เพราะไฟล์บิล/ใบกำกับสแกนมาหนักกว่ารูปทั่วไป */
 export const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;

@@ -7,11 +7,11 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | C1 |
+| WO | C2 |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable (oracle เขียนแล้ว) → Opus (builder) |
-| ขั้นที่ถึง | 5 ก.ย. ~16:00 UTC: qc:all ปิดเฟส B = ชุดเดิม 235/235 เขียว · oracle ของ WO ที่ยังไม่สร้าง 11 ชุดใส่ด่าน SKIP (exit 0) แล้วกัน CI แดง · **สั่ง Opus ทำ C1** (เขียนเอกสาร) |
-| commit ล่าสุดของงานนี้ | 5c19b6c (B4) |
+| ขั้นที่ถึง | 5 ก.ย. ~17:05 UTC: C1 DONE (Fable รันเอง write-docs 52/52 หลังแก้ oracle 2 จุด · read-docs 50 · read-gl 55 · core 64 · openapi 26 · cpa 107 · drift 0 · typecheck 0 · fitness 20 ไม่มี env) · migration `20260918000000_account_doc_source_api` (ADD VALUE 'API') apply QC แล้ว · **สั่ง Opus ทำ C2** |
+| commit ล่าสุดของงานนี้ | (C1 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
 ## กติกาของ run นี้ (สืบทอดจาก ACCOUNT-V2-RUN + เพิ่ม)
@@ -34,8 +34,8 @@
 | B2 | READ ผู้ติดต่อ/สินค้า/หน่วย/กลุ่ม/merge-candidates/DBD/link-suggestions | Sonnet | DONE | (HEAD) | Fable รันเอง read-master 38/38 · read-docs 50 · openapi 26 · contacts 49/products 100 (agent) · typecheck 0 · fitness 20 · 🐞 Fable จับ: `contacts-read.ts` import `contact-profile` static → ลาก ui/session → **fitness พังเมื่อไม่มี .env** (agent รันมี env เลยไม่เห็น) → แก้เป็น lazy import · เพิ่ม `ApiError` class + `upstream_unavailable` · `ContactGroupKey` เพิ่ม `active` (ภายใน) · `products.list` ไม่ส่ง type = รวม 3 ชนิด ≤100/ชนิด (ข้อจำกัดจดไว้) |
 | B3 | READ การเงิน: finance-accounts/statement/overview/calendar/payment-requests/reconcile/cheques/wht | Sonnet | DONE | (HEAD) | Fable รันเอง read-finance 38/38 · core 64 · read-docs 50 · read-master 38 · openapi 26 · finance 59/reconcile 109/wht-cheque 69/dashboard 174/finance-overview 45 (agent) · typecheck 0 · fitness 20 (ไม่มี env) · ตีกลับ 0 (oracle ผมผิด 2 จุด: ไม่ส่ง asOf เทียบเฉลยวันตรึง · `res.text()` ลอก BOM → ตรวจไบต์) · CSV branch ใน dispatch (`op.csv` + `Accept: text/csv`) · agent จับ regression เอง 2 (em-dash ใน summary · raw SQL ทำ dashboard query-count แดง) |
 | B4 | READ บัญชี: chart/journal/general-ledger/รายงาน 6 ตัว JSON+CSV/periods/assets/audit/settings/policy/links/files/inbox/help | Opus | DONE | (HEAD) | Fable รันเอง read-gl 55/55 · read-docs 50 · master 38 · finance 38 · core 64 · openapi 26 · journal 94/coa 105/period-assets 121/reports-drill 57/cpa 107 (agent) · typecheck 0 · fitness 20 (ไม่มี env) · ตีกลับ 0 (oracle ผมผิด: drill 6100 เป็นทั้งปี) · `generalLedger()` ใหม่เป็นประตูเดียว (หน้า ledger ย้ายไปแล้วตั้งแต่ 6.1) · ⚠️ กับดัก: `reports.ts` เทียบ periodKey แบบสตริง — ส่ง YYYY-MM-DD ตรง ๆ = ศูนย์เงียบ ๆ (API normalize แล้ว) |
-| C1 | WRITE เอกสาร: create/patch/delete/issue/convert/respond/deposits/public-link/tags/attachments/email/remind/approval/receive | Opus | IN_PROGRESS | — | oracle `qc-account-api-write-docs.mts` |
-| C2 | WRITE payments/void/refund-deposit/payment-requests/group docs | Opus | TODO | — | row-lock ยิงพร้อมกัน |
+| C1 | WRITE เอกสาร: create/patch/delete/issue/convert/respond/deposits/public-link/tags/attachments/remind/approval/receive/recurring | Opus | DONE | (HEAD) | Fable รันเอง write-docs 52/52 · read ทั้ง 4 ชุด · core 64 · openapi 26 · cpa 107 · editor 200/payments 162/groups 174/recurring 163/attachments 66 (agent) · drift 0 · typecheck 0 · fitness 20 (ไม่มี env) · ตีกลับ 0 (oracle ผมผิด 2: lockBeforeDate ต้องเป็น Date · กฎประจำ leadDays) · migration `AccountDocSource.API` · `ApiError` รับ hint (409 duplicate บอก id เดิม) · `setDocumentTags` ใหม่ · state_conflict ถูกโยนชัดใน 3 op (ข้อความ service ไม่มี keyword) |
+| C2 | WRITE payments/void/refund-deposit/payment-requests/group docs | Opus | IN_PROGRESS | — | oracle `qc-account-api-write-payments.mts` |
 | C3 | WRITE contacts/products/units/categories/bundle/opening-lots/stock-documents/link-inventory/contact-groups | Sonnet | TODO | — | |
 | C4 | webhook events ชุดแรก (issued/voided/quotation/payment.voided/payment_request/contact/product) | Opus | TODO | — | event PENDING = 0 |
 | D1 | WRITE finance-accounts/transfers/petty cash/cheques/WHT | Opus | TODO | — | |
@@ -370,6 +370,7 @@ event ที่เหลือ (D4): `account.cheque.changed` (ทุก transit
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 5 ก.ย. ~17:05 UTC — C1 ปิด (Opus 26 นาที) · ความคืบหน้า 9/24 = 38% · เริ่ม C2
 - 5 ก.ย. ~16:00 UTC — qc:all ปิดเฟส B ผ่าน (235 ชุดเดิม) · oracle อนาคตใส่ SKIP guard (กัน CI แดง) · เริ่ม C1
 - 5 ก.ย. ~15:15 UTC — B4 ปิด (Opus 24 นาที) · **เฟส B ครบ 4/4 (READ 72 endpoint)** · ความคืบหน้า 8/24 = 33% · รัน qc:all ปิดเฟส
 - 5 ก.ย. ~14:30 UTC — B3 ปิด (Sonnet 38 นาที) · ความคืบหน้า 7/24 = 29% · เริ่ม B4

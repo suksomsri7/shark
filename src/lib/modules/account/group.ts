@@ -1,4 +1,4 @@
-import type { AccountDocType, AccountPayChannel, AccountWhtIncomeType } from "@prisma/client";
+import type { AccountDocSource, AccountDocType, AccountPayChannel, AccountWhtIncomeType } from "@prisma/client";
 import {
   DOC_LABEL,
   STATUS_LABEL,
@@ -189,6 +189,9 @@ export type CreateGroupInput = {
   note: string | null;
   childIds: string[];
   createdById: string | null;
+  /** WO C1 · additive — ที่มาของเอกสาร (REST = "API") · ไม่ส่ง = MANUAL เหมือนเดิม */
+  source?: AccountDocSource;
+  tags?: string[];
 };
 
 const dateOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
@@ -238,6 +241,8 @@ export async function createGroupDoc(
     note: input.note?.trim() ? input.note.trim().slice(0, 500) : null,
     createdById: input.createdById,
     children,
+    ...(input.source ? { source: input.source } : {}),
+    ...(input.tags ? { tags: input.tags } : {}),
   });
   if (!created.ok) return created;
 

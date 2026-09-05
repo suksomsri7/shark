@@ -179,7 +179,7 @@ export async function dispatch(
     return await withIdempotency(actor, req, op, bodyText, requestId, okHeaders, run);
   } catch (e) {
     const m = mapError(e);
-    return new Response(JSON.stringify(failBody(m.code, m.message_th, m.message_en, requestId)), {
+    return new Response(JSON.stringify(failBody(m.code, m.message_th, m.message_en, requestId, { hint: m.hint })), {
       status: m.status,
       headers: { "content-type": "application/json; charset=utf-8", "X-Request-Id": requestId },
     });

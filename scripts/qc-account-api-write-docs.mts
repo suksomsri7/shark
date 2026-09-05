@@ -189,20 +189,21 @@ try {
   chk("C1-W6.3", "Idempotency-Key เดิม body เดิม → id เดียวกัน (สร้างใบเดียว)", r1.status === 200 && r2.status === 200 && r1.body?.data?.id === r2.body?.data?.id && r2.headers.get("idempotent-replayed") === "true", "id เดียว", `${r1.body?.data?.id}/${r2.body?.data?.id}`);
 
   // ═══ W7 ล็อกงวด/วันที่ ═══
-  const tomorrow = ymd(new Date(Date.now() + 86_400_000));
+  // lockBeforeDate ต้องเป็น Date (PolicyPatch) — ตั้ง "พรุ่งนี้ เที่ยงวันไทย" ⇒ วันนี้ถูกล็อก
+  const tomorrow = new Date(`${ymd(new Date(Date.now() + 86_400_000))}T12:00:00+07:00`);
   const pol = await policy.savePolicy(ctx, { lockBeforeDate: tomorrow });
   const locked = await call("POST", "/documents", W, qtBody);
   await policy.savePolicy(ctx, { lockBeforeDate: null });
   chk("C1-W7.1", "นโยบายล็อกก่อนวันที่ → สร้างเอกสารวันนี้ → 409 period_locked (ข้อความไทย)", pol?.ok !== false && locked.status === 409 && code(locked) === "period_locked" && /[ก-๙]/.test(locked.body?.error?.message_th ?? ""), "409 period_locked", `${locked.status} ${code(locked)} ${locked.body?.error?.message_th}`);
 
   // ═══ W8 เอกสารประจำ ═══
-  const rule = await call("POST", "/recurring", W, { name: "ค่าบริการรายเดือน", docType: "INVOICE", contactId: customer.id, frequency: "MONTHLY", dayOfMonth: 1, startDate: today, endDate: null, leadDays: 0, autoApprove: false, active: true, template: { priceMode: "EXCL_VAT", lines: [{ name: "บริการ", description: "ค่าบริการรายเดือน", qty: 1, unitName: null, unitPriceSatang: 100000, vatRateBp: 700, discountSatang: 0, productId: null, accountId: null }], note: "", tags: ["ประจำ"], dueDays: null } });
+  const rule = await call("POST", "/recurring", W, { name: "ค่าบริการรายเดือน", docType: "INVOICE", contactId: customer.id, frequency: "MONTHLY", dayOfMonth: 1, startDate: today, endDate: null, leadDays: 60, autoApprove: false, active: true, template: { priceMode: "EXCL_VAT", lines: [{ name: "บริการ", description: "ค่าบริการรายเดือน", qty: 1, unitName: null, unitPriceSatang: 100000, vatRateBp: 700, discountSatang: 0, productId: null, accountId: null }], note: "", tags: ["ประจำ"], dueDays: null } });
   const ruleId = rule.body?.data?.id as string;
   chk("C1-W8.1", "POST /recurring → 200 data{id,name,active}", rule.status === 200 && typeof ruleId === "string" && rule.body?.data?.active === true, "200", `${rule.status} ${JSON.stringify(rule.body).slice(0, 200)}`);
   const ruleUpd = await call("PATCH", `/recurring/${ruleId}`, W, { name: "ค่าบริการรายเดือน (แก้)" });
   chk("C1-W8.2", "PATCH /recurring/{id} (partial) → 200 ชื่อใหม่", ruleUpd.status === 200 && ruleUpd.body?.data?.name === "ค่าบริการรายเดือน (แก้)", "ชื่อใหม่", `${ruleUpd.status} ${ruleUpd.body?.data?.name}`);
   const run = await call("POST", `/recurring/${ruleId}/run`, W);
-  chk("C1-W8.3", "POST /recurring/{id}/run → 200 summary{created,skipped,errors[]} และมีร่างเอกสารเกิด ≥1", run.status === 200 && Number.isInteger(run.body?.data?.created) && (await prisma.accountDocument.count({ where: { systemId: SYS, source: "RECURRING" as Any } })) >= 1, "created ≥1", `${run.status} ${JSON.stringify(run.body?.data)}`);
+  chk("C1-W8.3", "POST /recurring/{id}/run (leadDays 60 ⇒ ถึงรอบแล้ว ไม่ผูกวันจริง) → 200 summary{created,skipped,errors[]} และมีร่างเอกสารเกิด ≥1", run.status === 200 && Number.isInteger(run.body?.data?.created) && (await prisma.accountDocument.count({ where: { systemId: SYS, source: "RECURRING" as Any } })) >= 1, "created ≥1", `${run.status} ${JSON.stringify(run.body?.data)}`);
   const ruleOff = await call("POST", `/recurring/${ruleId}/active`, W, { active: false });
   chk("C1-W8.4", "POST /recurring/{id}/active {active:false} → 200 active=false", ruleOff.status === 200 && ruleOff.body?.data?.active === false, "false", `${ruleOff.status} ${ruleOff.body?.data?.active}`);
   const ruleDel = await call("DELETE", `/recurring/${ruleId}`, W);

@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 72 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 95 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -346,6 +346,19 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/documents/123/attachments" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `documents.deposits`
+
+**GET /documents/{id}/deposits** - Deposits of this contact that can still be deducted from this document, with the amount already applied here. · scope: `account.doc.view` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/documents/123/deposits" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -1028,6 +1041,278 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/wht?direction=IN" \
 
 Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name.
 
+#### `documents.approve`
+
+**POST /documents/{id}/approve** - Approve a purchase order that is waiting for approval. · scope: `account.doc.approve` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/approve" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `documents.delete-attachment`
+
+**DELETE /documents/{id}/attachments/{attId}** - Remove a file from a document. The file is unlinked and archived, never destroyed. · scope: `account.doc.create` · write
+
+Path parameters: `id`, `attId` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/documents/123/attachments/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `documents.add-attachment`
+
+**POST /documents/{id}/attachments** - Attach a file that is already hosted somewhere to a document, by URL. · scope: `account.doc.create` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `fileUrl` | string | yes | Public URL of the file. Must start with http:// or https://. · max length 2000 |
+| `fileName` | string | yes | File name to show, for example `slip-001.jpg`. · min length 1 · max length 200 |
+| `mime` | one of several shapes | no | Content type. Guessed from the file name when omitted. |
+| `sizeBytes` | one of several shapes | no | File size in bytes, when known. |
+| `sha256` | one of several shapes | no | Hex sha256 of the file. When it matches a file already in this book, that file is reused and `duplicate` is true. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/attachments" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"fileUrl":"example fileUrl","fileName":"example fileName"}'
+```
+
+#### `documents.convert`
+
+**POST /documents/{id}/convert** - Create the follow up document of an issued one, for example quotation to invoice or invoice to receipt. The new document starts as a draft. · scope: `account.doc.create` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `toType` | one of several shapes | no | Target document type. Not needed for a purchase order, which always converts to its own follow up document. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/convert" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `documents.set-deposits`
+
+**PUT /documents/{id}/deposits** - Replace the deposits deducted from this draft with the given set and return the new grand total. · scope: `account.doc.create` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `picks` | array of object | yes | The complete set of deductions for this document. Sending an empty array clears them all. |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/account/documents/123/deposits" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"picks":[]}'
+```
+
+#### `documents.issue`
+
+**POST /documents/{id}/issue** - Issue a draft: it takes the next document number and posts to the ledger. A purchase order is sent for approval instead. · scope: `account.doc.issue` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/issue" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `documents.public-link`
+
+**POST /documents/{id}/public-link** - Create (or reuse) the public link where the customer can see the document and ask for a tax invoice. · scope: `account.doc.public_link` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/public-link" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `documents.receive`
+
+**POST /documents/{id}/receive** - Mark the paper as received: a purchase tax invoice becomes RECEIVED and posts input VAT, an asset purchase becomes RECEIVED. · scope: `account.payment.record` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/receive" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `documents.reject`
+
+**POST /documents/{id}/reject** - Turn down a purchase order that is waiting for approval, with a reason. · scope: `account.doc.approve` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why the purchase order is turned down. Stored on the document and in the audit log. · min length 1 · max length 500 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/reject" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log"}'
+```
+
+#### `documents.remind`
+
+**POST /documents/{id}/remind** - Email the contact a payment reminder for this document, with a link to it. · scope: `account.doc.view` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/remind" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `documents.respond`
+
+**POST /documents/{id}/respond** - Record the customer answer to a quotation: accepted or rejected. · scope: `account.doc.create` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `accepted` | boolean | yes | True when the customer accepted the quotation, false when they turned it down. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/respond" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"accepted":true}'
+```
+
+#### `documents.set-tags`
+
+**PUT /documents/{id}/tags** - Replace every tag of one document with the given list. Works on any document that is not cancelled or voided. · scope: `account.doc.create` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `tags` | array of string | yes | Labels for grouping documents. At most 10 tags, each at most 30 characters. |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/account/documents/123/tags" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"tags":[]}'
+```
+
+#### `documents.delete`
+
+**DELETE /documents/{id}** - Cancel a draft document. The row is kept with status CANCELLED; issued documents must be voided instead. · scope: `account.doc.create` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/documents/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `documents.update`
+
+**PATCH /documents/{id}** - Change a draft document. Only fields that are sent are changed; sending `lines` replaces every line. Issued documents cannot be edited. · scope: `account.doc.create` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `contactId` | one of several shapes | no | Id of the customer or vendor in this book. |
+| `issueDate` | string | no | issueDate (Thai calendar day, YYYY-MM-DD). |
+| `dueDate` | one of several shapes | no | - |
+| `validUntil` | one of several shapes | no | - |
+| `vatMode` | enum("EXCLUDE", "INCLUDE", "NONE") | no | How the unit prices relate to VAT: `EXCLUDE` (price before VAT), `INCLUDE` (price already contains VAT) or `NONE`. |
+| `vatTiming` | enum("ON_ISSUE", "ON_PAYMENT") | no | Tax point: `ON_ISSUE` for goods, `ON_PAYMENT` for services. Default: the setting of the book. |
+| `vatPurchaseMode` | enum("CLAIM", "AWAITING", "NO_CLAIM") | no | Purchase VAT handling: `CLAIM` (claimable now), `AWAITING` (waiting for the tax invoice) or `NO_CLAIM`. |
+| `discountSatang` | integer | no | Discount on the whole document in satang (integer). · min 0 |
+| `note` | one of several shapes | no | Note printed on the document. |
+| `adjustReason` | one of several shapes | no | Reason required by the Revenue Department on credit and debit notes. |
+| `sourceDocId` | one of several shapes | no | Id of the document this one refers to (credit and debit notes). |
+| `tags` | array of string | no | Labels for grouping documents. At most 10 tags, each at most 30 characters. |
+| `lines` | array of object | no | Replaces every line of the draft when sent. Omit to keep the current lines. |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/documents/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `documents.create`
+
+**POST /documents** - Create a document as a draft: quotation, invoice, deposit, credit or debit note, expense, purchase, purchase order, or a grouped billing note. · scope: `account.doc.create` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `type` | enum("QUOTATION", "INVOICE", "DEPOSIT_RECEIPT", "CREDIT_NOTE", "DEBIT_NOTE", "BILLING_NOTE", "EXPENSE", "PURCHASE", "PURCHASE_ORDER", "ASSET_PURCHASE_ORDER", "ASSET_PURCHASE", "PURCHASE_TAX_INVOICE", "DEPOSIT_PAYMENT", "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED", "COMBINED_PAYMENT") | yes | Document type to create. Types that only come from a conversion (RECEIPT, TAX_INVOICE) are rejected with 422. |
+| `contactId` | one of several shapes | no | Id of the customer or vendor in this book. |
+| `issueDate` | string | no | issueDate (Thai calendar day, YYYY-MM-DD). |
+| `dueDate` | one of several shapes | no | - |
+| `validUntil` | one of several shapes | no | - |
+| `vatMode` | enum("EXCLUDE", "INCLUDE", "NONE") | no | How the unit prices relate to VAT: `EXCLUDE` (price before VAT), `INCLUDE` (price already contains VAT) or `NONE`. |
+| `vatTiming` | enum("ON_ISSUE", "ON_PAYMENT") | no | Tax point: `ON_ISSUE` for goods, `ON_PAYMENT` for services. Default: the setting of the book. |
+| `vatPurchaseMode` | enum("CLAIM", "AWAITING", "NO_CLAIM") | no | Purchase VAT handling: `CLAIM` (claimable now), `AWAITING` (waiting for the tax invoice) or `NO_CLAIM`. |
+| `discountSatang` | integer | no | Discount on the whole document in satang (integer). · min 0 |
+| `note` | one of several shapes | no | Note printed on the document. |
+| `adjustReason` | one of several shapes | no | Reason required by the Revenue Department on credit and debit notes. |
+| `sourceDocId` | one of several shapes | no | Id of the document this one refers to (credit and debit notes). |
+| `tags` | array of string | no | Labels for grouping documents. At most 10 tags, each at most 30 characters. |
+| `refType` | string | no | Name of the record in your own system this document belongs to, for example `Booking`. · min length 1 · max length 60 |
+| `refId` | string | no | Id of that record. Sending the same pair twice returns 409 `duplicate` with the existing id in `hint`. · min length 1 · max length 60 |
+| `childIds` | array of string | no | Documents to group, for BILLING_NOTE and COMBINED_PAYMENT only. At least 2 ids. |
+| `lines` | array of object | no | Lines of the document. At least one, except for BILLING_NOTE and COMBINED_PAYMENT which take `childIds` instead. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"QUOTATION"}'
+```
+
 #### `echo`
 
 **POST /echo** - Echo back the request body plus a random nonce (used to verify idempotency). · scope: `account.doc.create` · write
@@ -1045,6 +1330,125 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/echo" \
   -d '{"text":"example text"}'
 ```
 
+#### `favorites.save`
+
+**POST /favorites** - Save a set of document lines under a name so it can be reused later. At most 20 sets are kept. · scope: `account.doc.create` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | Name of the saved set of lines. Saving with an existing name replaces it. · min length 1 · max length 80 |
+| `lines` | array of object | yes | Lines of the template. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/favorites" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"example name","lines":[]}'
+```
+
+#### `recurring.set-active`
+
+**POST /recurring/{id}/active** - Pause or resume a recurring rule without touching its history. · scope: `account.doc.create` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `active` | boolean | yes | True resumes the rule, false pauses it. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/recurring/123/active" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"active":true}'
+```
+
+#### `recurring.run`
+
+**POST /recurring/{id}/run** - Run one recurring rule now. Producing a period twice is impossible, so calling this repeatedly is safe. · scope: `account.doc.create` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/recurring/123/run" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `recurring.delete`
+
+**DELETE /recurring/{id}** - Delete a recurring rule. Documents it already produced are kept; only the schedule stops. · scope: `account.doc.create` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/recurring/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `recurring.update`
+
+**PATCH /recurring/{id}** - Change a recurring rule. Only the fields that are sent change; sending `template` replaces the whole template. · scope: `account.doc.create` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | no | Name of the rule, shown in the recurring documents list. · min length 1 · max length 120 |
+| `docType` | enum("INVOICE", "QUOTATION", "EXPENSE", "PURCHASE") | no | Type of document this rule produces. |
+| `contactId` | one of several shapes | no | Contact of every document produced. Required when `autoApprove` is true. |
+| `frequency` | enum("WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY") | no | How often a document is produced. |
+| `dayOfMonth` | one of several shapes | no | Day of the month for MONTHLY, QUARTERLY and YEARLY. 31 is clamped to the last day of short months. |
+| `weekday` | one of several shapes | no | Day of the week for WEEKLY: 0 is Sunday. |
+| `startDate` | string | no | startDate (Thai calendar day, YYYY-MM-DD). |
+| `endDate` | one of several shapes | no | - |
+| `leadDays` | integer | no | Produce the document this many days before its date. · min 0 · max 60 |
+| `autoApprove` | boolean | no | True issues each document automatically; false leaves it as a draft to check. |
+| `active` | boolean | no | False pauses the rule without deleting its history. |
+| `template` | object | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/recurring/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `recurring.create`
+
+**POST /recurring** - Create a rule that produces the same document every week, month, quarter or year. · scope: `account.doc.create` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | Name of the rule, shown in the recurring documents list. · min length 1 · max length 120 |
+| `docType` | enum("INVOICE", "QUOTATION", "EXPENSE", "PURCHASE") | yes | Type of document this rule produces. |
+| `contactId` | one of several shapes | no | Contact of every document produced. Required when `autoApprove` is true. |
+| `frequency` | enum("WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY") | yes | How often a document is produced. |
+| `dayOfMonth` | one of several shapes | no | Day of the month for MONTHLY, QUARTERLY and YEARLY. 31 is clamped to the last day of short months. |
+| `weekday` | one of several shapes | no | Day of the week for WEEKLY: 0 is Sunday. |
+| `startDate` | string | yes | startDate (Thai calendar day, YYYY-MM-DD). |
+| `endDate` | one of several shapes | no | - |
+| `leadDays` | integer | yes | Produce the document this many days before its date. · min 0 · max 60 |
+| `autoApprove` | boolean | yes | True issues each document automatically; false leaves it as a draft to check. |
+| `active` | boolean | yes | False pauses the rule without deleting its history. |
+| `template` | object | yes | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/recurring" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"example name","docType":"INVOICE","frequency":"WEEKLY","startDate":"example startDate","leadDays":0,"autoApprove":true,"active":true,"template":{}}'
+```
+
 ### Danger operations
 
 Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these.
@@ -1060,6 +1464,25 @@ Hard to undo. On top of the write rules they need `confirm: true` and a `reason`
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/danger-echo" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
+```
+
+#### `documents.void`
+
+**POST /documents/{id}/void** - Void an issued document. The ledger entry is reversed with a new journal entry; nothing is deleted. · scope: `account.doc.void` · danger
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why this document is being voided, at least 5 characters. Stored on the document and in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/123/void" \
   -H "Authorization: Bearer $SHARK_API_KEY" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \

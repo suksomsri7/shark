@@ -105,6 +105,7 @@ enum AccountDocSource {
   CRM // ไหลมาจาก CRM (ใบเสนอราคาจากดีล)
   POS // ไหลมาจากขายหน้าร้าน
   RECURRING // เอกสารประจำงวด (สร้างอัตโนมัติ)
+  API // สร้างผ่าน REST /api/v1/account (คีย์ API ของแอปภายนอก — WO C1 · createdById = null)
 }
 
 // โหมดราคาที่ผู้ใช้ "คิด" ตอนกรอก — คนละชั้นกับ AccountVatMode ที่เป็นผลลัพธ์ในเอกสาร

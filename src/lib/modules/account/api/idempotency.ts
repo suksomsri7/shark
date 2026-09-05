@@ -164,7 +164,7 @@ export async function withIdempotency(
     result = await run();
   } catch (e) {
     const m = mapError(e);
-    result = { status: m.status, body: failBody(m.code, m.message_th, m.message_en, requestId) };
+    result = { status: m.status, body: failBody(m.code, m.message_th, m.message_en, requestId, { hint: m.hint }) };
   }
   // เก็บผลไว้ตอบซ้ำ — เก็บทั้งสำเร็จและล้มเหลว (retry ของคำสั่งที่ล้มเหลวต้องได้คำตอบเดิม ไม่ใช่ลองใหม่เงียบ ๆ)
   await db.apiIdempotency.updateMany({

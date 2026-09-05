@@ -3931,6 +3931,28 @@ export async function applyEditorExtras(
   });
 }
 
+/**
+ * WO C1 (REST) — แทนที่ "แท็ก" ของเอกสารทั้งชุด
+ *
+ * ทำไมไม่ใช้ `applyEditorExtras`: ตัวนั้นเขียน 8 ฟิลด์ของฟอร์ม V2 พร้อมกัน (reference/priceMode/
+ * discountMode/salesUserId/internalNote/autoTaxInvoice/whtAmount + WHT รายบรรทัด) ⇒ ผู้เรียกที่
+ * อยากแก้แค่แท็กจะล้างของที่ตัวเองไม่รู้จักทิ้งเงียบ ๆ · ตัวนี้แตะคอลัมน์เดียวจริง ๆ
+ *
+ * เอกสารที่ยกเลิก/void แล้วห้ามแก้ (ของที่จบแล้วต้องนิ่ง) — คืน false เมื่อไม่พบ/สถานะไม่ให้แก้
+ */
+export async function setDocumentTags(
+  tenantId: string,
+  systemId: string,
+  id: string,
+  tags: string[],
+): Promise<boolean> {
+  const res = await prisma.accountDocument.updateMany({
+    where: { id, tenantId, systemId, status: { notIn: ["CANCELLED", "VOIDED"] } },
+    data: { tags },
+  });
+  return res.count > 0;
+}
+
 /** ยกเลิกร่าง (ไม่ลบ — กติกา "ยกเลิกได้ปลอดภัย" BLUEPRINT §0.3-8) */
 export async function cancelDraft(tenantId: string, systemId: string, id: string): Promise<boolean> {
   const res = await prisma.accountDocument.updateMany({
@@ -4177,6 +4199,9 @@ export async function createGroupDocument(input: {
   note: string | null;
   createdById: string | null;
   children: { id: string; description: string; amount: number }[];
+  /** WO C1 · additive — ไม่ส่ง = พฤติกรรมเดิม (source MANUAL, tags []) */
+  source?: AccountDocSource;
+  tags?: string[];
 }): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
   if (input.children.length === 0) return { ok: false, reason: "ต้องเลือกเอกสารอย่างน้อย 1 ใบ" };
   const total = input.children.reduce((s, c) => s + c.amount, 0);
@@ -4216,6 +4241,8 @@ export async function createGroupDocument(input: {
           grandTotal: total,
           note: input.note,
           createdById: input.createdById,
+          source: input.source ?? "MANUAL",
+          tags: input.tags ?? [],
           lines: {
             create: input.children.map((c, i) => ({
               tenantId: input.tenantId,

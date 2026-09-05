@@ -8,6 +8,7 @@
 import { API_METHODS, type ApiOp } from "./op";
 import { CORE_OPS } from "./ops/core";
 import { DOCUMENTS_READ_OPS } from "./ops/documents-read";
+import { DOCUMENTS_WRITE_OPS } from "./ops/documents-write";
 import { CONTACTS_READ_OPS } from "./ops/contacts-read";
 import { PRODUCTS_READ_OPS } from "./ops/products-read";
 import { FINANCE_READ_OPS } from "./ops/finance-read";
@@ -20,6 +21,7 @@ export * from "./op";
 export const ACCOUNT_OPS: ApiOp[] = [
   ...CORE_OPS,
   ...DOCUMENTS_READ_OPS,
+  ...DOCUMENTS_WRITE_OPS,
   ...CONTACTS_READ_OPS,
   ...PRODUCTS_READ_OPS,
   ...FINANCE_READ_OPS,

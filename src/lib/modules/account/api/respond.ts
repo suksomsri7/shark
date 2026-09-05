@@ -184,6 +184,8 @@ export type MappedError = {
   code: ApiErrorCode;
   message_th: string;
   message_en: string;
+  /** มีเฉพาะเมื่อ handler โยน `ApiError` ที่ระบุมาเอง — ผู้เรียกเห็นเป็น `error.hint` */
+  hint?: string;
 };
 
 /**
@@ -195,12 +197,18 @@ export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly message_th: string;
   readonly message_en: string;
-  constructor(status: number, code: ApiErrorCode, message_th: string, message_en: string) {
+  /**
+   * ทางออกที่ทำได้ทันทีเมื่อมีทางเดียวชัด ๆ (WO C1 — เช่น 409 `duplicate` บอก id ของใบเดิม
+   * ที่ `refType`/`refId` ชุดนี้สร้างไว้แล้ว ⇒ ผู้เรียกไปอ่านใบนั้นต่อได้โดยไม่ต้องค้นเอง)
+   */
+  readonly hint?: string;
+  constructor(status: number, code: ApiErrorCode, message_th: string, message_en: string, hint?: string) {
     super(message_en);
     this.status = status;
     this.code = code;
     this.message_th = message_th;
     this.message_en = message_en;
+    this.hint = hint;
   }
 }
 
@@ -228,7 +236,13 @@ function isZodError(e: unknown): boolean {
  */
 export function mapError(e: unknown): MappedError {
   if (e instanceof ApiError) {
-    return { status: e.status, code: e.code, message_th: e.message_th, message_en: e.message_en };
+    return {
+      status: e.status,
+      code: e.code,
+      message_th: e.message_th,
+      message_en: e.message_en,
+      ...(e.hint ? { hint: e.hint } : {}),
+    };
   }
   if (isZodError(e)) {
     return {

@@ -1368,11 +1368,18 @@ export async function createPurchaseOrder(input: {
   docType: "PURCHASE_ORDER" | "ASSET_PURCHASE_ORDER";
   contactId?: string | null;
   issueDate?: Date;
+  dueDate?: Date | null;
   vatMode?: AccountVatMode;
   discountAmount?: number;
   note?: string | null;
   lines: ExpLineInput[];
   createdById?: string | null;
+  // ── WO C1 (REST) · additive · optional — ไม่ส่ง = พฤติกรรมเดิมเป๊ะ (source MANUAL, tags []) ──
+  // ส่งต่อให้ `createExpenseDoc` ตรง ๆ ผ่าน spread ด้านล่าง (ที่นี่ทำแค่บังคับ vatPurchaseMode)
+  source?: AccountDocSource;
+  tags?: string[];
+  refType?: string | null;
+  refId?: string | null;
 }) {
   // PO/APO ไม่โพสต์บัญชี — ใช้ VAT CLAIM เป็น default (มีผลตอนแปลงเป็นบันทึกซื้อ)
   return createExpenseDoc({
