@@ -1210,6 +1210,9 @@ export async function recentDocuments(ctx: DashCtx, n = 6, meter?: QueryMeter): 
 
 export type CalendarTile = { count: number; amount: number };
 
+/** รายการเงินเข้า-ออก 1 นัดของวันนั้น (WO B3 — API เท่านั้น หน้าจอเดิมไม่ได้ขอ) */
+export type CashCalendarItem = { type: string; docNo: string | null; contact: string | null; amountSatang: number };
+
 export type CashCalendar = {
   monthKey: string;
   tiles: {
@@ -1220,20 +1223,31 @@ export type CashCalendar = {
     expectedIn: CalendarTile;
     expectedOut: CalendarTile;
   };
-  days: Array<{ date: string; inflow: number; outflow: number; expectedIn: number; expectedOut: number }>;
+  days: Array<{
+    date: string;
+    inflow: number;
+    outflow: number;
+    expectedIn: number;
+    expectedOut: number;
+    /** WO B3: รายละเอียดต่อนัดของวันนั้น (เงินเข้า-ออกจริงเท่านั้น ไม่รวมคาดการณ์) — ว่างเสมอเมื่อไม่ได้ขอ `withItems` */
+    items: CashCalendarItem[];
+  }>;
 };
 
 const zeroTile = (): CalendarTile => ({ count: 0, amount: 0 });
 
 /**
- * ตารางเงินเข้า-ออกของเดือน + คาดการณ์จากวันครบกำหนด — 3 query
+ * ตารางเงินเข้า-ออกของเดือน + คาดการณ์จากวันครบกำหนด — 3 query (4 เมื่อ `withItems`)
  * เงินเข้า/ออกจริง = AccountDocumentPayment.paidAt (เฉพาะที่มีช่องทางเงินจริง — DEPOSIT_APPLY/CREDIT_APPLY
  * ไม่ใช่เงินสดเข้าออก) · คาดการณ์ = เอกสารเปิดที่ dueDate อยู่ในเดือนนี้ (ยอดคงค้าง)
+ *
+ * `withItems` (WO B3, default false — หน้าจอเดิม/`financeOverview` ไม่ตั้งค่านี้จึงไม่มีคำสิ่งเพิ่ม):
+ *   ดึงรายแถวของ payment ในเดือนนี้ (ไม่ aggregate) มาแจกใส่ `days[].items` — ใช้โดย `GET /finance/calendar`
  */
 export async function cashCalendar(
   ctx: DashCtx,
   monthKey: string,
-  opts: { now?: Date } = {},
+  opts: { now?: Date; withItems?: boolean } = {},
   meter?: QueryMeter,
 ): Promise<CashCalendar> {
   const db = dbOf(ctx, meter);
@@ -1292,6 +1306,7 @@ export async function cashCalendar(
     outflow: 0,
     expectedIn: 0,
     expectedOut: 0,
+    items: [] as CashCalendarItem[],
   }));
   const byDate = new Map(days.map((d) => [d.date, d]));
   const tiles = {
@@ -1329,6 +1344,40 @@ export async function cashCalendar(
     const tile = r.dir === "IN" ? tiles.overduePayable : tiles.overdueReceivable;
     tile.count += Number(r.c);
     tile.amount += Number(r.amt);
+  }
+
+  // WO B3 — รายละเอียดต่อนัด (ไม่ aggregate) เฉพาะเมื่อผู้เรียกขอจริง ๆ (หน้าจอเดิม/financeOverview
+  // ไม่ผ่าน withItems ⇒ ไม่มี query เพิ่มให้หน้าเดิมช้าลง)
+  // 🔴 ตั้งใจใช้ query ปกติของ Prisma (นับอัตโนมัติผ่าน extension) ไม่ใช่ raw SQL — ตัวนี้ไม่ต้อง
+  //    GROUP BY วันไทยข้าม SQL (ต่างจาก 3 ก้อนด้านบน) กลุ่มเป็นวันฝั่ง JS ด้วย `dayKeyBkk` ตัวเดียวกัน
+  //    ก็พอ ⇒ ไม่ไปเพิ่มจำนวนคำสั่ง raw SQL ที่ P0.3 (qc-acc-v2-dashboard.mts) ตรึงไว้ที่ 4 ก้อนพอดี
+  if (opts.withItems) {
+    const payments = await db.accountDocumentPayment.findMany({
+      where: {
+        tenantId: ctx.tenantId,
+        systemId: ctx.systemId,
+        voidedAt: null,
+        financeAccountId: { not: null },
+        paidAt: { gte: from, lt: to },
+      },
+      select: {
+        paidAt: true,
+        amount: true,
+        document: { select: { docType: true, docNo: true, contactSnapshot: true } },
+      },
+      orderBy: { paidAt: "asc" },
+    });
+    for (const p of payments) {
+      const day = byDate.get(dayKeyBkk(p.paidAt));
+      if (!day) continue;
+      const snap = (p.document.contactSnapshot as Record<string, unknown> | null) ?? null;
+      day.items.push({
+        type: p.document.docType,
+        docNo: p.document.docNo,
+        contact: (snap?.name as string | undefined) ?? null,
+        amountSatang: p.amount,
+      });
+    }
   }
 
   return { monthKey, tiles, days };

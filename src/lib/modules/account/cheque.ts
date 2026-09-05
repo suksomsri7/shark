@@ -102,6 +102,8 @@ export type ChequeRowV2 = {
   clearedAt: Date | null;
   note: string | null;
   contactName: string | null;
+  /** WO B3: id ของผู้ติดต่อจริง (มีเมื่อเช็คผูกเอกสารที่มี contactId — null เมื่อรู้แค่ชื่อจาก snapshot) */
+  contactId: string | null;
   documentId: string | null;
   documentNo: string | null;
 };
@@ -119,7 +121,15 @@ function toChequeRowV2(c: {
   depositedAt: Date | null;
   clearedAt: Date | null;
   note: string | null;
-  payment: { document: { id: string; docNo: string | null; contactSnapshot: unknown; contact: { name: string } | null } | null } | null;
+  payment: {
+    document: {
+      id: string;
+      docNo: string | null;
+      contactId: string | null;
+      contactSnapshot: unknown;
+      contact: { name: string } | null;
+    } | null;
+  } | null;
 }): ChequeRowV2 {
   const doc = c.payment?.document ?? null;
   const snap = (doc?.contactSnapshot as Record<string, unknown> | null) ?? null;
@@ -136,9 +146,25 @@ function toChequeRowV2(c: {
     clearedAt: c.clearedAt,
     note: c.note,
     contactName: (snap?.name as string) ?? doc?.contact?.name ?? null,
+    contactId: doc?.contactId ?? null,
     documentId: doc?.id ?? null,
     documentNo: doc?.docNo ?? null,
   };
+}
+
+/** เช็คเดียว รูปแบบเดียวกับแถวในหน้ารายการ (WO B3 — `GET /cheques/{id}` ของ API) · null = ไม่พบ */
+export async function getChequeRowV2(tenantId: string, systemId: string, id: string): Promise<ChequeRowV2 | null> {
+  const c = await prisma.accountCheque.findFirst({
+    where: { id, tenantId, systemId },
+    include: {
+      payment: {
+        select: {
+          document: { select: { id: true, docNo: true, contactId: true, contactSnapshot: true, contact: { select: { name: true } } } },
+        },
+      },
+    },
+  });
+  return c ? toChequeRowV2(c) : null;
 }
 
 export async function listChequesV2(
@@ -170,7 +196,9 @@ export async function listChequesV2(
   const docInclude = {
     payment: {
       select: {
-        document: { select: { id: true, docNo: true, contactSnapshot: true, contact: { select: { name: true } } } },
+        document: {
+          select: { id: true, docNo: true, contactId: true, contactSnapshot: true, contact: { select: { name: true } } },
+        },
       },
     },
   };

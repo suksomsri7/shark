@@ -131,6 +131,7 @@ const INFO_DESCRIPTION = [
   "7. Success is `{ data, page?, requestId }`. Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }` - see the `Error` schema for every code. `requestId` is also returned in the `X-Request-Id` header; quote it when reporting a problem.",
   "8. Lists are paginated by page number: send `page` (1 based) and `pageSize` (1 to 100, values above 100 are clamped) as query parameters. The reply carries `page: { page, pageSize, pageCount, total, hasMore }`; keep asking while `hasMore` is true.",
   "9. Rate limits are per key and per class: 300 reads, 60 writes and 30 reports per minute. A 429 response carries `Retry-After`; successful responses carry `X-RateLimit-Remaining`.",
+  "10. Some read operations can also render CSV: send `Accept: text/csv` and, when the operation lists `text/csv` under its 200 response, you get `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment` instead of the JSON envelope. Every cell is safe against spreadsheet formula injection.",
 ].join("\n");
 
 const ERROR_SCHEMA: JsonSchema = {
@@ -310,7 +311,9 @@ function buildOperation(op: ApiOp): OpenApiOperation {
   if (op.paged) okProperties.page = PAGE_SCHEMA;
   const responses: Record<string, OpenApiResponse> = {
     "200": {
-      description: "Success.",
+      description: op.csv
+        ? "Success. Send `Accept: text/csv` to get a CSV file instead of the JSON envelope."
+        : "Success.",
       content: {
         "application/json": {
           schema: {
@@ -320,6 +323,9 @@ function buildOperation(op: ApiOp): OpenApiOperation {
             ...(op.paged ? { additionalProperties: true } : {}),
           },
         },
+        ...(op.csv
+          ? { "text/csv": { schema: { type: "string", description: "CSV file, UTF-8 with a BOM, comma separated." } } }
+          : {}),
       },
     },
   };

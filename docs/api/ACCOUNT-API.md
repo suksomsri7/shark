@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 30 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 46 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -80,6 +80,38 @@ Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is a
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/categories" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `cheques.get`
+
+**GET /cheques/{id}** - One cheque in the same shape as the list row. · scope: `account.cheque.manage` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/cheques/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `cheques.list`
+
+**GET /cheques** - Cheques received or issued, with paging, plus a pending-amount summary and status counters. · scope: `account.cheque.manage` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `direction` | enum("IN", "OUT") | yes | - |
+| `status` | enum("ON_HAND", "DEPOSITED", "CLEARED", "BOUNCED", "ISSUED", "VOIDED") | no | - |
+| `q` | string | no | max length 200 |
+| `from` | string | no | from (Thai calendar day, YYYY-MM-DD). |
+| `to` | string | no | to (Thai calendar day, YYYY-MM-DD). |
+| `page` | integer | no | min 1 |
+| `pageSize` | integer | no | - |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/cheques?direction=IN" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -295,6 +327,74 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/favorites" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `finance-accounts.statement`
+
+**GET /finance-accounts/{id}/statement** - Ledger movements of one finance channel between two dates, with a running balance. Supports CSV. · scope: `account.finance.manage` · read
+
+Path parameters: `id` (required).
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `from` | string | no | from (Thai calendar day, YYYY-MM-DD). |
+| `to` | string | no | to (Thai calendar day, YYYY-MM-DD). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/finance-accounts/123/statement" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `finance-accounts.get`
+
+**GET /finance-accounts/{id}** - One finance channel with its opening balance entries. · scope: `account.finance.manage` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/finance-accounts/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `finance-accounts.list`
+
+**GET /finance-accounts** - Every cash/bank/e-wallet/petty-cash channel with its balance, grouped by kind. · scope: `account.finance.manage` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `asOf` | string | no | asOf (Thai calendar day, YYYY-MM-DD). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/finance-accounts" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `finance.calendar`
+
+**GET /finance/calendar** - Cash in/out per day of one month, with the documents behind each amount. · scope: `account.finance.manage` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `month` | string | no | Month `YYYY-MM`. Default: the current month in Thailand. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/finance/calendar" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `finance.overview`
+
+**GET /finance/overview** - The finance overview screen in one call: tracked accounts, cash calendar, cash position, reconcile block and cheque badges. · scope: `account.finance.manage` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `month` | string | no | Month `YYYY-MM`. Default: the current month in Thailand. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/finance/overview" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `overview.get`
 
 **GET /overview** - Revenue or expense overview: 12 month bars split by payment status, documents issued, top contacts, top products and top categories. · scope: `account.doc.view` · read
@@ -307,6 +407,32 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/favorites" \
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/overview?side=revenue" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `payment-requests.list`
+
+**GET /payment-requests** - Payment (PromptPay) links created for one document, newest first. The capability token is never returned. · scope: `account.doc.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `documentId` | string | yes | min length 1 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/payment-requests?documentId=example%20documentId" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `petty-cash.list`
+
+**GET /petty-cash** - Petty cash boxes with their balance and the amount currently awaiting reimbursement. · scope: `account.finance.manage` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `asOf` | string | no | asOf (Thai calendar day, YYYY-MM-DD). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/petty-cash" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -393,6 +519,31 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/products" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `reconcile.channels`
+
+**GET /reconcile/channels** - Bank/e-wallet channels that can be reconciled (linked to the chart of accounts). · scope: `account.reconcile` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reconcile/channels" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reconcile.get`
+
+**GET /reconcile** - Bank reconciliation of one channel and month: summary, bank statement lines and system entries. · scope: `account.reconcile` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `financeAccountId` | string | yes | min length 1 |
+| `period` | string | yes | - |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/reconcile?financeAccountId=example%20financeAccountId&period=example%20period" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `recurring.runs`
 
 **GET /recurring/{id}/runs** - Documents that one recurring rule has already produced, newest first. · scope: `account.doc.view` · read
@@ -449,6 +600,77 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/warehouses" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `wht.cert`
+
+**GET /wht/certs/{id}** - One withholding tax certificate in full (payer, payee, amounts) - ready to print. · scope: `account.tax.view` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/wht/certs/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `wht.credits`
+
+**GET /wht/credits** - Withholding tax credits (tax our customers withheld from us), accumulated by year or month. Supports CSV. · scope: `account.tax.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `year` | string | no | - |
+| `period` | string | no | - |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/wht/credits" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `wht.filings`
+
+**GET /wht/filings** - Periods already marked as filed with the Revenue Department (PND 3/53). · scope: `account.tax.view` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/wht/filings" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `wht.pnd`
+
+**GET /wht/pnd** - Monthly withholding tax filing summary (PND 3 for individuals, PND 53 for companies). Supports CSV. · scope: `account.tax.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `type` | integer | yes | - |
+| `period` | string | yes | - |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/wht/pnd?type=-9007199254740991&period=example%20period" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `wht.list`
+
+**GET /wht** - Withholding tax certificates (50 Tawi / WTI), either direction, with paging and totals. · scope: `account.tax.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `direction` | enum("IN", "OUT") | yes | - |
+| `from` | string | no | from (Thai calendar day, YYYY-MM-DD). |
+| `to` | string | no | to (Thai calendar day, YYYY-MM-DD). |
+| `status` | enum("ALL", "NORMAL", "CANCELLED") | no | - |
+| `q` | string | no | max length 200 |
+| `page` | integer | no | min 1 |
+| `pageSize` | integer | no | - |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/wht?direction=IN" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 

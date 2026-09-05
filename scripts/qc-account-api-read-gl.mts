@@ -44,9 +44,12 @@ try {
     const req = new Request(`http://x/api/v1/account${path}`, { method, headers: { authorization: `Bearer ${key}`, ...headers } });
     const segs = path.split("?")[0]!.split("/").filter(Boolean);
     const res = await route[method]!(req, { params: Promise.resolve({ path: segs }) });
-    const text = await res.text();
+    // 🔴 res.text() ลอก BOM ออกตาม WHATWG — ต้องอ่านไบต์ดิบเพื่อตรวจ BOM ของ CSV
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const text = new TextDecoder("utf-8").decode(bytes);
+    const bom = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
     let body: Any = null; try { body = JSON.parse(text); } catch { body = { _raw: text }; }
-    return { status: res.status, headers: res.headers, body, text };
+    return { status: res.status, headers: res.headers, body, text, bom };
   };
   const K = kAcct.rawKey;
   const R = kRead.rawKey;
@@ -97,7 +100,7 @@ try {
   chk("B4-G3.1", "GET /reports/general-ledger?accountId&from&to → account + openingSatang + rows[{date,journalNo,memo,debitSatang,creditSatang,balanceSatang}] + closingSatang · Σdebit ตรง drill เฉลย 6100", gl.status === 200 && g?.account?.code === "6100" && Number.isInteger(g?.openingSatang) && Array.isArray(g?.rows) && g.rows.length === W.drill["6100"].lines && sumBy(g.rows, "debitSatang") === W.drill["6100"].debit && sumBy(g.rows, "creditSatang") === W.drill["6100"].credit, JSON.stringify(W.drill["6100"]), `${gl.status} rows=${g?.rows?.length} dr=${sumBy(g?.rows ?? [], "debitSatang")}`);
   chk("B4-G3.2", "general ledger running balance ต่อเนื่อง + closing = แถวสุดท้าย", (g?.rows ?? []).every((r: Any, i: number) => r.balanceSatang === (i === 0 ? g.openingSatang : g.rows[i - 1].balanceSatang) + r.debitSatang - r.creditSatang) && (g?.rows?.length === 0 || g?.closingSatang === g?.rows?.[g.rows.length - 1]?.balanceSatang), "ต่อเนื่อง", "?");
   const glCsv = await call("GET", `/reports/general-ledger?accountId=${a6100?.id}&from=2026-09-01&to=2026-09-30`, R, { accept: "text/csv" });
-  chk("B4-G3.3", "general-ledger CSV (BOM + rows+1 บรรทัด)", /text\/csv/.test(glCsv.headers.get("content-type") ?? "") && glCsv.text.charCodeAt(0) === 0xfeff, "csv", `${glCsv.headers.get("content-type")}`, "MAJOR");
+  chk("B4-G3.3", "general-ledger CSV (BOM + rows+1 บรรทัด)", /text\/csv/.test(glCsv.headers.get("content-type") ?? "") && glCsv.bom, "csv", `${glCsv.headers.get("content-type")}`, "MAJOR");
   const tb = await call("GET", "/reports/trial-balance?from=2026-09-01&to=2026-09-30", R);
   chk("B4-G3.4", "GET /reports/trial-balance?from&to → rows[{code,name,type,openingDebitSatang,…,closingCreditSatang}] + totals + balanced=true", tb.status === 200 && Array.isArray(tb.body?.data?.rows) && tb.body.data.balanced === true && Number.isInteger(tb.body?.data?.totals?.closingDebitSatang) && tb.body.data.totals.closingDebitSatang === tb.body.data.totals.closingCreditSatang, "balanced", `${tb.status} ${JSON.stringify(tb.body?.data?.totals)}`);
   const tbMonth = await call("GET", "/reports/trial-balance?from=2026-09&to=2026-09", R);
@@ -115,7 +118,7 @@ try {
   const vat = await call("GET", "/reports/vat-pp30?period=2026-09", R);
   chk("B4-G3.10", "GET /reports/vat-pp30?period → output/input{baseSatang,vatSatang,rows} + carryForwardSatang + netPayableSatang + creditCarrySatang", vat.status === 200 && Number.isInteger(vat.body?.data?.output?.vatSatang) && Number.isInteger(vat.body?.data?.input?.vatSatang) && Number.isInteger(vat.body?.data?.netPayableSatang), "ครบ", `${vat.status} ${JSON.stringify(Object.keys(vat.body?.data ?? {}))}`);
   const vatCsv = await call("GET", "/reports/vat-pp30?period=2026-09", R, { accept: "text/csv" });
-  chk("B4-G3.11", "vat-pp30 CSV (ไฟล์ยื่น) BOM", /text\/csv/.test(vatCsv.headers.get("content-type") ?? "") && vatCsv.text.charCodeAt(0) === 0xfeff, "csv", `${vatCsv.headers.get("content-type")}`, "MAJOR");
+  chk("B4-G3.11", "vat-pp30 CSV (ไฟล์ยื่น) BOM", /text\/csv/.test(vatCsv.headers.get("content-type") ?? "") && vatCsv.bom, "csv", `${vatCsv.headers.get("content-type")}`, "MAJOR");
   const ar = await call("GET", "/reports/aging?direction=AR", R);
   const ard = ar.body?.data;
   chk("B4-G3.12", "GET /reports/aging?direction=AR → rows[{contact{id,name},buckets{current,d1_30,d31_60,d61_90,d90plus},totalSatang,docs,overdueDocs}] + grand · grand.totalSatang = เฉลย receivable", ar.status === 200 && Array.isArray(ard?.rows) && ard?.grand?.totalSatang === E.receivable && ard.rows.every((r: Any) => Number.isInteger(r.totalSatang) && r.buckets && Number.isInteger(r.buckets.current)), `${E.receivable}`, `${ar.status} ${ard?.grand?.totalSatang}`);
@@ -124,7 +127,7 @@ try {
   const agingBad = await call("GET", "/reports/aging?direction=XX", R);
   chk("B4-G3.14", "direction ไม่ถูกต้อง → 422", agingBad.status === 422, "422", `${agingBad.status}`, "MAJOR");
   const tbCsv = await call("GET", "/reports/trial-balance?from=2026-09&to=2026-09", R, { accept: "text/csv" });
-  chk("B4-G3.15", "trial-balance CSV BOM + จำนวนบรรทัด = rows+หัว+รวม", /text\/csv/.test(tbCsv.headers.get("content-type") ?? "") && tbCsv.text.charCodeAt(0) === 0xfeff && tbCsv.text.trim().split("\n").length >= (tb.body?.data?.rows?.length ?? 0) + 1, "csv", `${tbCsv.headers.get("content-type")}`, "MAJOR");
+  chk("B4-G3.15", "trial-balance CSV BOM + จำนวนบรรทัด = rows+หัว+รวม", /text\/csv/.test(tbCsv.headers.get("content-type") ?? "") && tbCsv.bom && tbCsv.text.trim().split("\n").length >= (tb.body?.data?.rows?.length ?? 0) + 1, "csv", `${tbCsv.headers.get("content-type")}`, "MAJOR");
 
   // ═══ G4 periods ═══
   const periods = await call("GET", "/periods", K);

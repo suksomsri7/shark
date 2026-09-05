@@ -47,6 +47,13 @@ export type ApiOp = {
    */
   paged?: boolean;
   tool?: ApiOpTool;
+  /**
+   * ตัวเรนเดอร์ CSV (WO B3) — มีเฉพาะ op ที่ประกาศไว้ · dispatch เรียกก้อนนี้แทน JSON เมื่อ
+   * `Accept` มี `text/csv` และ handler สำเร็จแล้ว (`data` = สิ่งที่ handler คืน หลังแกะซอง `paged()` ออก)
+   * ทุกแถวต้องผ่าน `csvRow()` ของ `src/lib/core/csv.ts` (กัน CSV injection — บทเรียน 9.2) ·
+   * คืนสตริงดิบ **ไม่ใส่ BOM เอง** — `dispatch.ts` เติม BOM + header ให้ที่เดียว
+   */
+  csv?: (ctx: ApiOpCtx<unknown>, data: unknown) => string | Promise<string>;
   /** id ข้อสอบที่ครอบ op นี้ เช่น "CORE-2.1" */
   test: string;
   handler: (ctx: ApiOpCtx<unknown>) => Promise<unknown>;

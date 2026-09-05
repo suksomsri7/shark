@@ -253,7 +253,8 @@ function categoryTotalView(t: { total: number; rows: CategorySlice[] }) {
   return { totalSatang: t.total, rows: t.rows.map(categorySliceView) };
 }
 
-function cashView(c: CashPosition) {
+/** ใช้ซ้ำจาก B3 (`serialize-finance.ts` — `finance.overview` embeds the same cash block) */
+export function cashView(c: CashPosition) {
   return {
     totalSatang: c.total,
     periodKey: c.periodKey,

@@ -383,6 +383,8 @@ export type SystemEntryRow = {
   /** ลิงก์ไปหน้าเอกสาร (คำนวณจาก base ที่ผู้เรียกส่งมา — null เมื่อบรรทัดนี้ไม่ได้มาจากเอกสาร) */
   documentHref: string | null;
   reconciled: boolean;
+  /** WO B3: id ของแถว statement ที่บรรทัดนี้กระทบยอดด้วยแล้ว (null = ยังไม่กระทบยอด) */
+  matchedLineId: string | null;
 };
 
 /** ป้ายกำกับฝั่งระบบ (g10 คอลัมน์ "รายละเอียด") — อิงเอกสาร/ใบสำคัญที่มา */
@@ -417,6 +419,7 @@ export async function listSystemEntries(
       credit: true,
       note: true,
       reconciledAt: true,
+      reconciledStatementLineId: true,
       entry: { select: { id: true, docNo: true, date: true, memo: true, refType: true, refId: true } },
     },
     orderBy: [{ entry: { date: "asc" } }, { id: "asc" }],
@@ -472,6 +475,7 @@ export async function listSystemEntries(
       documentNo,
       documentHref: o.base && documentId && documentType ? editorDetailPath(o.base, documentType, documentId) : null,
       reconciled: l.reconciledAt != null,
+      matchedLineId: l.reconciledStatementLineId,
     };
   });
 }

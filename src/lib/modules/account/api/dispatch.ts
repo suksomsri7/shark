@@ -10,7 +10,7 @@ import { writeAudit } from "../access";
 import { withIdempotency, type RunResult } from "./idempotency";
 import type { ApiMethod, ApiOp } from "./op";
 import { allowedMethods, matchOp } from "./registry";
-import { fail, failBody, mapError, newRequestId, ok, okBody, unwrapEnvelope, type ApiErrorDetail } from "./respond";
+import { csvResponse, fail, failBody, mapError, newRequestId, ok, okBody, unwrapEnvelope, wantsCsv, type ApiErrorDetail } from "./respond";
 import { requireAccountApi } from "./require";
 
 /** เหตุผลขั้นต่ำของคำสั่งอันตราย — สั้นกว่านี้ไม่มีความหมายตอนย้อนอ่าน audit */
@@ -147,6 +147,12 @@ export async function dispatch(
     if (op.kind === "read") {
       // handler คืน `paged(...)` ได้ (รายการที่แบ่งหน้า) — แกะเป็น { data, page, ...extra } ที่นี่ที่เดียว
       const env = unwrapEnvelope(await op.handler(ctx));
+      // WO B3: op ที่ประกาศ `csv` + ผู้เรียกขอ `Accept: text/csv` → ตอบไฟล์ CSV แทน JSON
+      // (เฉพาะ data ที่ handler คืน — ไม่ใช่ทั้งซอง page/extra ซึ่งไม่มีความหมายในไฟล์แบน)
+      if (op.csv && wantsCsv(req)) {
+        const body = await op.csv(ctx, env.data);
+        return csvResponse(body, `${op.id}.csv`, requestId);
+      }
       return ok(env.data, requestId, { page: env.page, extra: env.extra, headers: okHeaders });
     }
 

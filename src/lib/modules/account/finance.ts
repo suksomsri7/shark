@@ -172,6 +172,9 @@ export type FinanceAccountBalance = {
   limitSatang: number | null;
   ledgerAccountId: string | null;
   balance: number;
+  /** WO B3: ยอดยกมารวม (ผลรวมทุกรายการของ AccountFinanceOpening) + วันที่เร็วสุด — column backward-compat เดิม */
+  openingBalance: number;
+  openingDate: Date | null;
   /** ปักหมุด (V2 WO 0.3) — หน้าหลักใช้เลือกการ์ด "ช่องทางที่ติดตาม" โดยไม่ต้อง query ซ้ำ */
   pinned: boolean;
 };
@@ -221,8 +224,22 @@ export async function financeBalances(
     limitSatang: a.limitSatang,
     ledgerAccountId: a.ledgerAccountId,
     balance: a.ledgerAccountId ? balByLedger.get(a.ledgerAccountId) ?? 0 : 0,
+    openingBalance: a.openingBalance,
+    openingDate: a.openingDate,
     pinned: a.pinned,
   }));
+}
+
+/**
+ * โค้ดผังบัญชีของบัญชีลูก GL ที่ช่องทางการเงินผูกไว้ (WO B3 — `GET /finance-accounts` ต้องการ
+ * `ledgerAccountCode` แต่หน้าจอ/dashboard เดิมไม่ใช้ค่านี้เลย ⇒ แยกเป็น query ต่างหาก ไม่ยัดลง
+ * `financeBalances` ที่งบ query ของหน้าหลักตรึงไว้แน่นอยู่แล้ว (`FINANCE_BALANCES_QUERIES` ใน dashboard.ts))
+ */
+export async function financeLedgerCodes(systemId: string, ledgerAccountIds: (string | null)[]): Promise<Map<string, string>> {
+  const ids = [...new Set(ledgerAccountIds.filter((x): x is string => !!x))];
+  if (ids.length === 0) return new Map();
+  const rows = await prisma.accountLedger.findMany({ where: { systemId, id: { in: ids } }, select: { id: true, code: true } });
+  return new Map(rows.map((r) => [r.id, r.code]));
 }
 
 /** เปลี่ยนแปลงเดือนนี้ต่อบัญชี (Σdr−cr ของบรรทัดที่ entry.date อยู่ในเดือนนี้ตามเวลาไทย)
@@ -289,6 +306,54 @@ export function groupFinanceAccounts(rows: FinanceAccountBalance[]): FinanceGrou
 
 export function getFinanceAccountById(tenantId: string, systemId: string, id: string) {
   return prisma.accountFinance.findFirst({ where: { id, tenantId, systemId } });
+}
+
+/**
+ * บัญชีเงินเดียว + ยอด ณ วันที่ asOf (WO B3 — `GET /finance-accounts/{id}` ของ API)
+ * ต่างจาก `financeBalances` ตรงที่ไม่กรอง `archivedAt` (get-by-id ต้องเห็นบัญชีที่ปิดใช้งานแล้วด้วย —
+ * ผู้เรียกที่มี id อยู่แล้วไม่ควรได้ 404 เพราะบัญชีถูกเก็บเข้ากรุ) และคิดเฉพาะบัญชีเดียว (2 query คงที่
+ * ไม่ผูกกับจำนวนช่องทางทั้งหมดเหมือน financeBalances ⇒ ไม่แตะงบ query ของหน้าหลัก)
+ */
+export async function getFinanceAccountBalance(
+  tenantId: string,
+  systemId: string,
+  id: string,
+  asOf: Date = new Date(),
+): Promise<FinanceAccountBalance | null> {
+  const a = await prisma.accountFinance.findFirst({ where: { id, tenantId, systemId } });
+  if (!a) return null;
+  let balance = 0;
+  if (a.ledgerAccountId) {
+    const cutoff = asOfCutoff(asOf);
+    const agg = await prisma.accountJournalLine.aggregate({
+      where: { systemId, accountId: a.ledgerAccountId, entry: { date: { lt: cutoff } } },
+      _sum: { debit: true, credit: true },
+    });
+    balance = (agg._sum.debit ?? 0) - (agg._sum.credit ?? 0);
+  }
+  return {
+    id: a.id,
+    code: a.code,
+    name: a.name,
+    type: a.type,
+    bankSubtype: a.bankSubtype,
+    bankName: a.bankName,
+    accountNo: a.accountNo,
+    accountName: a.accountName,
+    bankBranch: a.bankBranch,
+    promptpayId: a.promptpayId,
+    note: a.note,
+    useForReceive: a.useForReceive,
+    useForPay: a.useForPay,
+    showOnDocuments: a.showOnDocuments,
+    holderUserId: a.holderUserId,
+    limitSatang: a.limitSatang,
+    ledgerAccountId: a.ledgerAccountId,
+    balance,
+    openingBalance: a.openingBalance,
+    openingDate: a.openingDate,
+    pinned: a.pinned,
+  };
 }
 
 // ─────────────────── ยอดยกมา (หลายรายการ) ───────────────────

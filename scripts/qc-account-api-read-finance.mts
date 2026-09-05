@@ -42,14 +42,17 @@ try {
     const req = new Request(`http://x/api/v1/account${path}`, { method, headers: { authorization: `Bearer ${key}`, ...headers } });
     const segs = path.split("?")[0]!.split("/").filter(Boolean);
     const res = await route[method]!(req, { params: Promise.resolve({ path: segs }) });
-    const text = await res.text();
+    // 🔴 res.text() ลอก BOM ออกตาม WHATWG — ต้องอ่านไบต์ดิบเพื่อตรวจ BOM ของ CSV
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const text = new TextDecoder("utf-8").decode(bytes);
+    const bom = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
     let body: Any = null; try { body = JSON.parse(text); } catch { body = { _raw: text }; }
-    return { status: res.status, headers: res.headers, body, text };
+    return { status: res.status, headers: res.headers, body, text, bom };
   };
   const K = kFin.rawKey;
 
   // ═══ F1 finance accounts ═══
-  const fa = await call("GET", "/finance-accounts", K);
+  const fa = await call("GET", `/finance-accounts?asOf=${E.today}`, K);
   const rows = fa.body?.data as Any[];
   const byCode = new Map((rows ?? []).map((r) => [r.code, r]));
   chk("B3-F1.1", "GET /finance-accounts → 200 data[] ทุกช่องทาง balanceSatang/openingSatang ตรงเฉลย", fa.status === 200 && (E.financeAccounts as Any[]).every((e) => byCode.get(e.code)?.balanceSatang === e.balance && byCode.get(e.code)?.openingSatang === e.opening), JSON.stringify(E.finance), JSON.stringify((rows ?? []).map((r) => [r.code, r.balanceSatang])));
@@ -66,7 +69,7 @@ try {
   const sd = stmt.body?.data;
   chk("B3-F1.8", "GET /finance-accounts/{id}/statement?from&to → account + openingSatang + closingSatang + rows[{date,journalNo,memo,inSatang,outSatang,balanceSatang}] · running balance ต่อเนื่อง", stmt.status === 200 && Number.isInteger(sd?.openingSatang) && Number.isInteger(sd?.closingSatang) && Array.isArray(sd?.rows) && sd.rows.every((r: Any, i: number) => ymd.test(r.date) && Number.isInteger(r.inSatang) && Number.isInteger(r.outSatang) && r.balanceSatang === (i === 0 ? sd.openingSatang : sd.rows[i - 1].balanceSatang) + r.inSatang - r.outSatang) && (sd.rows.length === 0 || sd.rows[sd.rows.length - 1].balanceSatang === sd.closingSatang), "ต่อเนื่อง", `${stmt.status} rows=${sd?.rows?.length} ${JSON.stringify(sd?.rows?.[0]).slice(0, 160)}`);
   const stmtCsv = await call("GET", `/finance-accounts/${byCode.get("BSV001")?.id}/statement?from=2026-09-01&to=2026-09-30`, K, { accept: "text/csv" });
-  chk("B3-F1.9", "statement + Accept: text/csv → text/csv UTF-8 BOM + หัวคอลัมน์ + จำนวนบรรทัด = rows+1", /text\/csv/.test(stmtCsv.headers.get("content-type") ?? "") && stmtCsv.text.charCodeAt(0) === 0xfeff && stmtCsv.text.trim().split("\n").length === (sd?.rows?.length ?? 0) + 1, "csv", `${stmtCsv.headers.get("content-type")} lines=${stmtCsv.text.trim().split("\n").length}`, "MAJOR");
+  chk("B3-F1.9", "statement + Accept: text/csv → text/csv UTF-8 BOM + หัวคอลัมน์ + จำนวนบรรทัด = rows+1", /text\/csv/.test(stmtCsv.headers.get("content-type") ?? "") && stmtCsv.bom && stmtCsv.text.trim().split("\n").length === (sd?.rows?.length ?? 0) + 1, "csv", `${stmtCsv.headers.get("content-type")} lines=${stmtCsv.text.trim().split("\n").length}`, "MAJOR");
   const stmtNf = await call("GET", "/finance-accounts/does-not-exist/statement", K);
   chk("B3-F1.10", "statement ของ id ไม่มี → 404", stmtNf.status === 404, "404", `${stmtNf.status}`);
   const cross = await call("GET", `/finance-accounts/${byCode.get("BSV001")?.id}`, kB.rawKey);
@@ -79,7 +82,7 @@ try {
   chk("B3-F2.2", "month ผิดรูป → 422", badMonth.status === 422, "422", `${badMonth.status}`, "MAJOR");
   const cal = await call("GET", "/finance/calendar?month=2026-09", K);
   chk("B3-F2.3", "GET /finance/calendar?month= → days[] (date, inSatang, outSatang, items[])", cal.status === 200 && Array.isArray(cal.body?.data?.days) && cal.body.data.days.every((d: Any) => ymd.test(d.date) && Number.isInteger(d.inSatang) && Number.isInteger(d.outSatang)), "days[]", `${cal.status} ${JSON.stringify(cal.body?.data?.days?.[0]).slice(0, 160)}`);
-  const petty = await call("GET", "/petty-cash", K);
+  const petty = await call("GET", `/petty-cash?asOf=${E.today}`, K);
   chk("B3-F2.4", "GET /petty-cash → data[{id,code,name,balanceSatang,holder,pendingSatang}] · PTY001 balance ตรงเฉลย", petty.status === 200 && (petty.body?.data ?? []).find((p: Any) => p.code === "PTY001")?.balanceSatang === E.pettyCash.balance, `${E.pettyCash.balance}`, `${petty.status} ${JSON.stringify(petty.body?.data).slice(0, 200)}`);
 
   // ═══ F3 payment requests ═══
@@ -130,7 +133,7 @@ try {
   const pnd = await call("GET", `/wht/pnd?type=53&period=${period}`, K);
   chk("B3-F6.4", "GET /wht/pnd?type=53&period= → rows[] + byIncomeType[] + grandBaseSatang + grandWhtSatang", pnd.status === 200 && Array.isArray(pnd.body?.data?.rows) && Array.isArray(pnd.body?.data?.byIncomeType) && Number.isInteger(pnd.body?.data?.grandWhtSatang), "ครบ", `${pnd.status} ${JSON.stringify(Object.keys(pnd.body?.data ?? {}))}`);
   const pndCsv = await call("GET", `/wht/pnd?type=53&period=${period}`, K, { accept: "text/csv" });
-  chk("B3-F6.5", "pnd + Accept: text/csv → CSV BOM (ไฟล์ยื่น ภ.ง.ด.53)", /text\/csv/.test(pndCsv.headers.get("content-type") ?? "") && pndCsv.text.charCodeAt(0) === 0xfeff, "csv", `${pndCsv.headers.get("content-type")}`, "MAJOR");
+  chk("B3-F6.5", "pnd + Accept: text/csv → CSV BOM (ไฟล์ยื่น ภ.ง.ด.53)", /text\/csv/.test(pndCsv.headers.get("content-type") ?? "") && pndCsv.bom, "csv", `${pndCsv.headers.get("content-type")}`, "MAJOR");
   const pndBad = await call("GET", "/wht/pnd?type=7&period=2026-09", K);
   chk("B3-F6.6", "type ไม่ใช่ 3/53 → 422", pndBad.status === 422, "422", `${pndBad.status}`, "MAJOR");
   const credits = await call("GET", "/wht/credits?year=2026", K);

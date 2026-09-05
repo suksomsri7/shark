@@ -43,6 +43,7 @@ export const ERR = {
   LEDGER_NOT_FOUND: "ไม่พบบัญชีในผังบัญชี",
   MEMBER_NOT_FOUND: "ไม่พบผู้ใช้งานคนนี้ในกิจการนี้",
   RECURRING_RULE_NOT_FOUND: "ไม่พบเอกสารประจำนี้",
+  WHT_CERT_NOT_FOUND: "ไม่พบเอกสารภาษีหัก ณ ที่จ่าย",
   NEED_AT_LEAST_ONE_LINE: "ต้องมีรายการอย่างน้อย 1 รายการ",
   ALREADY_ISSUED_CANNOT_EDIT: "เอกสารที่ออกแล้วแก้ไขไม่ได้ — ใช้ยกเลิก/ออกใบใหม่",
   ALREADY_CANCELLED: "เอกสารถูกยกเลิกแล้ว",

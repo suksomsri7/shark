@@ -599,6 +599,8 @@ export type WhtCertRow = {
   certNo: string | null;
   cancelled: boolean; // VOIDED หรือ CANCELLED
   paidAt: Date; // = issueDate ของ WHT_CERT (= payment.paidAt ตอนออก)
+  /** WO B3: id ของผู้ติดต่อจริง (คู่กับ contactName/contactTaxId ที่แช่แข็งไว้ตอนออกใบ) */
+  contactId: string | null;
   contactName: string;
   contactTaxId: string | null;
   legalType: AccountLegalType;
@@ -626,6 +628,7 @@ function toWhtCertRow(
     docNo: string | null;
     status: string;
     issueDate: Date;
+    contactId: string | null;
     contactSnapshot: unknown;
     contact: { name: string; taxId: string | null; legalType: AccountLegalType; branchCode: string | null } | null;
     sourceDocId: string | null;
@@ -646,6 +649,7 @@ function toWhtCertRow(
     certNo: c.docNo,
     cancelled: c.status === "VOIDED" || c.status === "CANCELLED",
     paidAt: c.issueDate,
+    contactId: c.contactId,
     contactName: (snap?.name as string) ?? c.contact?.name ?? "—",
     contactTaxId: (snap?.taxId as string) ?? c.contact?.taxId ?? null,
     legalType,

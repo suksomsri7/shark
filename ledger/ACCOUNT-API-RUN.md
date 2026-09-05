@@ -7,11 +7,11 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | B3 |
+| WO | B4 |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable (oracle เขียนแล้ว) → Sonnet (builder) |
-| ขั้นที่ถึง | 5 ก.ย. ~13:30 UTC: B2 DONE (Fable รันเอง read-master 38/38 · read-docs 50 · openapi 26 · typecheck 0 · fitness 20 **แบบไม่มี env** หลังแก้ lazy import contact-profile) · **สั่ง Sonnet ทำ B3** |
-| commit ล่าสุดของงานนี้ | (B2 commit ถัดไป) |
+| ผู้ทำ | Fable (oracle เขียนแล้ว) → Opus (builder) |
+| ขั้นที่ถึง | 5 ก.ย. ~14:30 UTC: B3 DONE (Fable รันเอง read-finance 38/38 หลังแก้ oracle asOf+BOM · core 64 · read-docs 50 · read-master 38 · openapi 26 · typecheck 0 · fitness 20 ไม่มี env) · **สั่ง Opus ทำ B4** (ตัวสุดท้ายของเฟส B) |
+| commit ล่าสุดของงานนี้ | (B3 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
 ## กติกาของ run นี้ (สืบทอดจาก ACCOUNT-V2-RUN + เพิ่ม)
@@ -32,8 +32,8 @@
 | A4 | generator OpenAPI + `/api/v1/account/openapi.json` + `gen-account-api-docs.mts` + fitness F13 (ทุก op มี test id) | Opus | DONE | (HEAD) | Fable รันเอง openapi 26/26 · core 64 · typecheck 0 · fitness 20/20 · zod v4 `z.toJSONSchema` ไม่เพิ่ม package · `API_ERROR_CODES` + `ERROR_CODE_DOCS` ใน respond.ts (เพิ่ม code ใหม่ต้องเติมคำอธิบาย+regenerate docs ไม่งั้น F13.2 แดง) · ⚠️ คู่มือเขียน pagination เป็น cursor — **B1 ต้องแก้ generator ให้ตรงของจริง (page/pageSize + page{page,pageSize,pageCount,total,hasMore})** |
 | B1 | READ เอกสาร: list/get/print/tags/favorites/attachments/parse/recurring/dashboard/overview | Opus | DONE | (HEAD) | Fable รันเอง read-docs 50/50 · openapi 26 · core 64 · list 159/dashboard 174 (agent) · typecheck 0 · fitness 20 · ตีกลับ 1 รอบ: ผมแก้ oracle A4 (glob) · เพิ่มสัญญา `asOf` + `kpi.overdue{receivable,payable}` · ซอง `paged()` symbol marker · `ListDocumentsInput.refType/refId` additive · **หมายเหตุ: ตัวเลข dashboard ผูกวันจริง ต้องส่ง asOf เมื่อเทียบเฉลย** |
 | B2 | READ ผู้ติดต่อ/สินค้า/หน่วย/กลุ่ม/merge-candidates/DBD/link-suggestions | Sonnet | DONE | (HEAD) | Fable รันเอง read-master 38/38 · read-docs 50 · openapi 26 · contacts 49/products 100 (agent) · typecheck 0 · fitness 20 · 🐞 Fable จับ: `contacts-read.ts` import `contact-profile` static → ลาก ui/session → **fitness พังเมื่อไม่มี .env** (agent รันมี env เลยไม่เห็น) → แก้เป็น lazy import · เพิ่ม `ApiError` class + `upstream_unavailable` · `ContactGroupKey` เพิ่ม `active` (ภายใน) · `products.list` ไม่ส่ง type = รวม 3 ชนิด ≤100/ชนิด (ข้อจำกัดจดไว้) |
-| B3 | READ การเงิน: finance-accounts/statement/overview/calendar/payment-requests/reconcile/cheques/wht | Sonnet | IN_PROGRESS | — | oracle `qc-account-api-read-finance.mts` |
-| B4 | READ บัญชี: chart/journal/general-ledger(ย้ายจาก page → service)/รายงาน 6 ตัว JSON+CSV/periods/assets/audit/settings/policy/links/files/inbox/help | Opus | TODO | — | เทียบ `qc-account-cpa` |
+| B3 | READ การเงิน: finance-accounts/statement/overview/calendar/payment-requests/reconcile/cheques/wht | Sonnet | DONE | (HEAD) | Fable รันเอง read-finance 38/38 · core 64 · read-docs 50 · read-master 38 · openapi 26 · finance 59/reconcile 109/wht-cheque 69/dashboard 174/finance-overview 45 (agent) · typecheck 0 · fitness 20 (ไม่มี env) · ตีกลับ 0 (oracle ผมผิด 2 จุด: ไม่ส่ง asOf เทียบเฉลยวันตรึง · `res.text()` ลอก BOM → ตรวจไบต์) · CSV branch ใน dispatch (`op.csv` + `Accept: text/csv`) · agent จับ regression เอง 2 (em-dash ใน summary · raw SQL ทำ dashboard query-count แดง) |
+| B4 | READ บัญชี: chart/journal/general-ledger(ย้ายจาก page → service)/รายงาน 6 ตัว JSON+CSV/periods/assets/audit/settings/policy/links/files/inbox/help | Opus | IN_PROGRESS | — | oracle `qc-account-api-read-gl.mts` |
 | C1 | WRITE เอกสาร: create/patch/delete/issue/convert/respond/deposits/public-link/tags/attachments/email/remind/approval/receive | Opus | TODO | — | E2E QT→IV→RE+TX ผ่าน REST |
 | C2 | WRITE payments/void/refund-deposit/payment-requests/group docs | Opus | TODO | — | row-lock ยิงพร้อมกัน |
 | C3 | WRITE contacts/products/units/categories/bundle/opening-lots/stock-documents/link-inventory/contact-groups | Sonnet | TODO | — | |
@@ -370,6 +370,7 @@ event ที่เหลือ (D4): `account.cheque.changed` (ทุก transit
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 5 ก.ย. ~14:30 UTC — B3 ปิด (Sonnet 38 นาที) · ความคืบหน้า 7/24 = 29% · เริ่ม B4
 - 5 ก.ย. ~13:30 UTC — B2 ปิด (Sonnet 21 นาที) · บทเรียน: **Fable ต้องรัน fitness แบบ `env -u DATABASE_URL -u DIRECT_URL -u SESSION_SECRET` ทุก WO** (agent มี env เสมอ จับ eager import ไม่ได้) · ความคืบหน้า 6/24 = 25% · เริ่ม B3
 - 5 ก.ย. ~12:40 UTC — B1 ปิด (Opus 20+4 นาที · ตีกลับ 1 รอบ) · ความคืบหน้า 5/24 = 21% · เริ่ม B2
 - 5 ก.ย. ~11:45 UTC — A2 ปิด (Sonnet 19 นาที) · **เฟส A ปิด** · ความคืบหน้า 4/24 = 17% · เริ่ม B1

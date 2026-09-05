@@ -77,13 +77,21 @@ export type PagedInfo = {
 export type ApiEnvelope = {
   [ENVELOPE]: true;
   data: unknown;
-  page: PagedInfo;
+  page?: PagedInfo;
   extra?: Record<string, unknown>;
 };
 
 /** ให้ handler คืนแบบนี้เมื่อต้องส่ง `page` (และฟิลด์ระดับบนสุดอื่น ๆ) — dispatch จะแกะเอง */
 export function paged(data: unknown, page: PagedInfo, extra?: Record<string, unknown>): ApiEnvelope {
   return { [ENVELOPE]: true, data, page, ...(extra ? { extra } : {}) };
+}
+
+/**
+ * ซองที่มีฟิลด์ระดับบนสุดเสริม แต่ **ไม่ใช่รายการแบ่งหน้า** (WO B3 — เช่น `groups`/`totalSatang`
+ * ของ `finance-accounts.list`) ⇒ ไม่มี `page` ในคำตอบเลย (ต่างจาก `paged()` ที่มี `page` เสมอ)
+ */
+export function withExtra(data: unknown, extra: Record<string, unknown>): ApiEnvelope {
+  return { [ENVELOPE]: true, data, extra };
 }
 
 function isEnvelope(v: unknown): v is ApiEnvelope {
@@ -133,6 +141,30 @@ export function failBody(
   if (extra.hint) error.hint = extra.hint;
   if (extra.details) error.details = extra.details;
   return { error, requestId };
+}
+
+// ── CSV (WO B3) ────────────────────────────────────────────────────────────
+//
+// op ที่ประกาศ `csv` ใน registry ตอบ CSV แทน JSON เมื่อ `Accept` มี `text/csv` — ใช้ที่เดียว (dispatch.ts)
+// BOM `﻿` นำหน้าเสมอ (Excel เปิดไฟล์ UTF-8 ที่มีอักษรไทยได้ถูกต้อง) · แนบเป็นไฟล์ดาวน์โหลด
+const CSV_BOM = "﻿";
+
+/** ซอง CSV — `body` มาจาก `op.csv(ctx, data)` แล้ว (ไม่ใส่ BOM ซ้ำถ้ามีอยู่แล้ว) */
+export function csvResponse(body: string, filename: string, requestId: string): Response {
+  const withBom = body.startsWith(CSV_BOM) ? body : CSV_BOM + body;
+  return new Response(withBom, {
+    status: 200,
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": `attachment; filename="${filename.replace(/["\r\n]/g, "")}"`,
+      "X-Request-Id": requestId,
+    },
+  });
+}
+
+/** header `Accept` บอกว่าอยากได้ CSV ไหม — เทียบแบบหลวม (คนอาจส่ง "text/csv" ปนกับตัวรับอื่น) */
+export function wantsCsv(req: Request): boolean {
+  return /text\/csv/i.test(req.headers.get("accept") ?? "");
 }
 
 /** ซองผิดพลาด */
