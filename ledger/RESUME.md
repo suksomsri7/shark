@@ -1,5 +1,12 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🏁 5 ก.ย. (เช้า ~09:35 BKK) — [session บัญชี] **เฟส 9 ปิด** (มือถือ+ความปลอดภัย+ประสิทธิภาพ+ความง่าย ขึ้น main `a4611ba` · qc:all 227/227) · 41/46 WO ≈ 89% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
+- ขึ้น prod: ฟอร์มเอกสารมือถือตรง g17 (แถวหัว→sheet · การ์ดรายการ · sticky ยอด) + 4 งานจบบนมือถือ · **audit ความปลอดภัย 20 ข้อ ปิดช่องโหว่ 11** (รับชำระซ้อนไม่ล็อกแถว · ลิงก์สาธารณะขอใบกำกับข้ามการปิด/หมดอายุ · CSV injection · อัปโหลดเชื่อ MIME ฝั่ง client · ไม่มี rate limit · double-submit · legacy suites แตะ prod) · **next 16.2.11** (ปิด advisory 9) · perf harness 29 หน้า (เกินงบ 14→0 · <1.5s ทุกหน้า) · ⌘K สร้างด่วน · เลิกทำ 5 นาที 11 จุด · tooltip ≥40 คำ · empty state · error ภาษาคน · คู่มือในแอป /account/help
+- migration 3 ตัว additive (perf_indexes · undo_token · —) · Vercel build รัน migrate เอง
+- ต้นเหตุที่หาเจอ: ข้อสอบ payments 'แกว่ง' = ORDER BY paidAt ไม่มี tie-breaker · seed พังเงียบเพราะ drainAll 50 event · P2002 handler อ่านคำว่า code จาก source line
+- 🔑 รอเจ้าของ: crontab `email-reports` · RESEND_API_KEY · BEAM_* · DBD_API_KEY · inbox@ email · ลบ tenant ทดสอบบน prod
+- ถัดไป: เฟส 10 — 10.1 Fable ดูภาพจริงคู่ mockup 34 เฟรม (กำลังทำ) → 10.2 เอกสาร/handover → 10.3 verify prod 9 หมวด + แจ้งเจ้าของ
+
 ## 🏁 5 ก.ย. (เช้ามืด ~05:35 BKK) — [session บัญชี] **เฟส 8 ปิด** (ตั้งค่า ขึ้น main `0826064` · qc:all 222/222) · 37/46 WO ≈ 80% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
 - ขึ้น prod: ตั้งค่าเอกสาร f10 (เลขรัน pattern/reset/เลขถัดไป+ตัวอย่างสด · หมายเหตุ/เงื่อนไข · วันครบกำหนด · ช่องทางบนเอกสาร · แท็ก · ลิงก์สาธารณะ · ใบกำกับอัตโนมัติ · เทมเพลตพิมพ์ 3 แบบ · mapping ต่อชนิด) · นโยบายบัญชี (ปีบัญชี · VAT timing · WHT/ราคา default · **ล็อกข้อมูลก่อนวันที่** · ชื่อซ้ำ · บัญชี default · ออกเอกสารต่อ · ลูกค้าประจำ · ปิดงวดอัตโนมัติ · รายงานอีเมล) · สิทธิ์ผู้ใช้งาน matrix g13 + เพดานอนุมัติ → สายอนุมัติ · หน้าเชื่อมระบบ g14 (7 ระบบ · options · เปิด/ปิด) · API key/webhook event account.*
 - migration 5 ตัว additive (doc_settings · policy ×3 · permissions_links) · Vercel build รัน migrate เอง
