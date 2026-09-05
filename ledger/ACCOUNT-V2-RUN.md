@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 🏁 ปิดเฟส 9 (qc:all → main → deploy → verify) → เฟส 10 |
+| WO | 10.1 QC รอบสุดท้ายทุกเฟรม (Fable) — เฟส 9 กำลัง ff main + deploy |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable (ปิดเฟส) |
-| ขั้นที่ถึง | 5 ก.ย. ~02:00 UTC: 9.4 DONE รอบ 2 (undo UI 11/11 · label mapping key · /periods · /help tab) · Fable รันด่าน 24 ชุดเอง · commit แล้ว · qc:all เฟส 9 กำลังรัน |
+| ขั้นที่ถึง | 5 ก.ย. ~02:30 UTC: qc:all เฟส 9 = **227/227** (1206s) → ff main + push → Vercel · 10.1 เริ่ม: build QC server แล้ว Fable ดูภาพจริงคู่ mockup ทีละเฟรม (34 เฟรม) |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
@@ -66,6 +66,7 @@
 | 10.3 | prod verify + แจ้งเจ้าของ | Fable | TODO | | |
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 5 ก.ย. 2026 ~02:30 UTC — 🏁 **เฟส 9 ปิด** (9.1–9.4 · qc:all 227/227) · 41/46 ≈ 89% · เหลือเฟส 10
 - 5 ก.ย. 2026 ~02:00 UTC — 9.4 DONE → เฟส 9 ครบ 4 WO · เริ่มปิดเฟส
 - 4 ก.ย. 2026 ~23:20 UTC — 9.3 perf + next 16.2.11 DONE · ต้นเหตุ payments flaky = ORDER BY ไม่มี tie-breaker · seed พังเงียบจาก drainAll 50
 - 4 ก.ย. 2026 ~21:45 UTC — 9.2 security audit DONE · ช่องโหว่ร้ายแรงที่ปิด: รับชำระซ้อนไม่ล็อกแถว · ขอใบกำกับผ่านลิงก์สาธารณะข้ามการปิด/หมดอายุ · CSV injection · ไม่มี rate limit
