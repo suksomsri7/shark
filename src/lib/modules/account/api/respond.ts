@@ -56,16 +56,68 @@ function jsonResponse(body: unknown, status: number, requestId: string, headers?
   });
 }
 
+// ── ซองแบ่งหน้า (WO B1) ────────────────────────────────────────────────────
+//
+// ปัญหา: handler บางตัวต้องคืน "ของระดับบนสุด" นอกจาก `data` (page ของรายการ · tabCounts ของแท็บ)
+// แต่ลายเซ็นของ handler คืน `unknown` ตัวเดียว ⇒ ต้องมีวิธีบอก dispatch ว่า "ก้อนนี้คือซอง ไม่ใช่ data"
+// วิธีที่เลือก: marker เป็น **symbol** ไม่ใช่คีย์สตริง — เพราะ symbol ไม่ถูก `JSON.stringify` เก็บ
+// ⇒ ต่อให้มีบั๊กปล่อยซองดิบออกไป ผู้เรียกก็ไม่เห็นคีย์ประหลาด และ handler ที่คืน object ธรรมดา
+//   (เช่น `{ ok: true }` ของ /ping) ไม่มีทางชนกับ marker โดยบังเอิญ
+export const ENVELOPE = Symbol("shark.account.api.envelope");
+
+export type PagedInfo = {
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  total: number;
+  hasMore: boolean;
+};
+
+export type ApiEnvelope = {
+  [ENVELOPE]: true;
+  data: unknown;
+  page: PagedInfo;
+  extra?: Record<string, unknown>;
+};
+
+/** ให้ handler คืนแบบนี้เมื่อต้องส่ง `page` (และฟิลด์ระดับบนสุดอื่น ๆ) — dispatch จะแกะเอง */
+export function paged(data: unknown, page: PagedInfo, extra?: Record<string, unknown>): ApiEnvelope {
+  return { [ENVELOPE]: true, data, page, ...(extra ? { extra } : {}) };
+}
+
+function isEnvelope(v: unknown): v is ApiEnvelope {
+  return typeof v === "object" && v !== null && (v as Record<symbol, unknown>)[ENVELOPE] === true;
+}
+
+/** ผลลัพธ์จาก handler → ชิ้นส่วนของซอง (ค่าธรรมดา = data ล้วน) */
+export function unwrapEnvelope(v: unknown): { data: unknown; page?: PagedInfo; extra?: Record<string, unknown> } {
+  return isEnvelope(v) ? { data: v.data, page: v.page, extra: v.extra } : { data: v };
+}
+
+/** body ของซองสำเร็จ (แยกออกมาเพราะ idempotency ต้องเก็บลง DB ไว้ตอบซ้ำ) */
+export function okBody(
+  data: unknown,
+  requestId: string,
+  extra: { page?: unknown; extra?: Record<string, unknown> } = {},
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { data };
+  if (extra.page !== undefined) body.page = extra.page;
+  // ฟิลด์เสริมระดับบนสุด (เช่น tabCounts) — ห้ามทับ data/page/requestId
+  for (const [k, v] of Object.entries(extra.extra ?? {})) {
+    if (k === "data" || k === "page" || k === "requestId") continue;
+    body[k] = v;
+  }
+  body.requestId = requestId;
+  return body;
+}
+
 /** ซองสำเร็จ — `page` ใส่เฉพาะ endpoint ที่แบ่งหน้า */
 export function ok(
   data: unknown,
   requestId: string,
-  extra: { page?: unknown; headers?: Record<string, string> } = {},
+  extra: { page?: unknown; extra?: Record<string, unknown>; headers?: Record<string, string> } = {},
 ): Response {
-  const body: Record<string, unknown> = { data };
-  if (extra.page !== undefined) body.page = extra.page;
-  body.requestId = requestId;
-  return jsonResponse(body, 200, requestId, extra.headers);
+  return jsonResponse(okBody(data, requestId, extra), 200, requestId, extra.headers);
 }
 
 /** body ของซองผิดพลาด (แยกออกมาเพราะ idempotency ต้องเก็บลง DB ไว้ตอบซ้ำ) */

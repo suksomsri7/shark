@@ -1252,6 +1252,13 @@ export type ListDocumentsInput = {
   /** ค้นหา: เลขที่เอกสาร หรือ ชื่อผู้ติดต่อ (ไม่สนตัวพิมพ์) */
   q?: string;
   contactId?: string;
+  /**
+   * WO API-B1 (additive) — เอกสารที่ไหลมาจากระบบอื่น: `refType` = ชื่อโมเดลต้นทางตรงตัว ("PosSale")
+   * · `refId` = id ในระบบนั้น ⇒ ผู้เชื่อมต่อภายนอกถามได้ว่า "บิลใบนี้กลายเป็นเอกสารบัญชีใบไหน"
+   * โดยไม่ต้องเก็บ id ฝั่งเราเอง (C1 ใช้กันสร้างซ้ำเวลายิงเข้ามาใหม่)
+   */
+  refType?: string;
+  refId?: string;
   /** ช่วงวันที่ออกเอกสาร (รับ Date หรือ "YYYY-MM-DD") */
   from?: Date | string;
   to?: Date | string;
@@ -1362,6 +1369,8 @@ export async function listDocumentsPaged(
       ? { docType: Array.isArray(input.docType) ? { in: input.docType } : input.docType }
       : {}),
     ...(input.contactId ? { contactId: input.contactId } : {}),
+    ...(input.refType ? { refType: input.refType } : {}),
+    ...(input.refId ? { refId: input.refId } : {}),
     ...(from || to ? { issueDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
     ...(q
       ? {
@@ -2838,6 +2847,8 @@ export type DocPaymentRow = {
   id: string;
   paidAt: Date;
   channel: AccountPayChannel;
+  /** WO API-B1 (additive): id ของช่องทางเงิน — REST คืน `financeAccount { id, name }` ให้ผู้เรียกอ้างต่อได้ */
+  financeAccountId: string | null;
   financeName: string | null;
   amount: number;
   whtAmount: number;
@@ -2923,6 +2934,7 @@ export async function listDocPayments(
     id: p.id,
     paidAt: p.paidAt,
     channel: p.channel,
+    financeAccountId: p.financeAccountId,
     financeName: p.financeAccountId ? (financeName.get(p.financeAccountId) ?? null) : null,
     amount: p.amount,
     whtAmount: p.whtAmountSatang,
@@ -4723,12 +4735,13 @@ export async function listRecurringRuns(
   systemId: string,
   ruleId: string,
   limit = 20,
-): Promise<{ periodKey: string; documentId: string; docNo: string | null; status: AccountDocStatus; createdAt: Date }[]> {
+): Promise<{ id: string; periodKey: string; documentId: string; docNo: string | null; status: AccountDocStatus; createdAt: Date }[]> {
   const runs = await prisma.accountRecurringRun.findMany({
     where: { tenantId, systemId, ruleId },
     orderBy: { createdAt: "desc" },
     take: Math.min(100, Math.max(1, limit)),
-    select: { periodKey: true, documentId: true, createdAt: true },
+    // WO API-B1 (additive): `id` ของรอบ — REST ต้องมีคีย์ให้ผู้เรียกอ้างรอบนั้นซ้ำได้ (documentId ไม่ใช่ id ของรอบ)
+    select: { id: true, periodKey: true, documentId: true, createdAt: true },
   });
   if (runs.length === 0) return [];
   const docs = await prisma.accountDocument.findMany({
@@ -4737,6 +4750,7 @@ export async function listRecurringRuns(
   });
   const byId = new Map(docs.map((d) => [d.id, d]));
   return runs.map((r) => ({
+    id: r.id,
     periodKey: r.periodKey,
     documentId: r.documentId,
     docNo: byId.get(r.documentId)?.docNo ?? null,

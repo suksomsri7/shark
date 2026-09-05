@@ -10,7 +10,7 @@ import { writeAudit } from "../access";
 import { withIdempotency, type RunResult } from "./idempotency";
 import type { ApiMethod, ApiOp } from "./op";
 import { allowedMethods, matchOp } from "./registry";
-import { fail, failBody, mapError, newRequestId, ok, type ApiErrorDetail } from "./respond";
+import { fail, failBody, mapError, newRequestId, ok, okBody, unwrapEnvelope, type ApiErrorDetail } from "./respond";
 import { requireAccountApi } from "./require";
 
 /** เหตุผลขั้นต่ำของคำสั่งอันตราย — สั้นกว่านี้ไม่มีความหมายตอนย้อนอ่าน audit */
@@ -145,13 +145,14 @@ export async function dispatch(
 
     // ── อ่านอย่างเดียว: ไม่กันซ้ำ ไม่เขียน audit (อ่านไม่เปลี่ยนอะไร) ─────────────
     if (op.kind === "read") {
-      const data = await op.handler(ctx);
-      return ok(data, requestId, { headers: okHeaders });
+      // handler คืน `paged(...)` ได้ (รายการที่แบ่งหน้า) — แกะเป็น { data, page, ...extra } ที่นี่ที่เดียว
+      const env = unwrapEnvelope(await op.handler(ctx));
+      return ok(env.data, requestId, { page: env.page, extra: env.extra, headers: okHeaders });
     }
 
     // ── เขียน/อันตราย: กันซ้ำ → handler → audit ─────────────────────────────
     const run = async (): Promise<RunResult> => {
-      const data = await op.handler(ctx);
+      const env = unwrapEnvelope(await op.handler(ctx));
       // audit เขียนหลังงานสำเร็จเท่านั้น · การตอบซ้ำไม่ผ่านทางนี้ ⇒ ไม่มี audit ซ้ำ
       await writeAudit({
         tenantId: actor.tenantId,
@@ -167,7 +168,7 @@ export async function dispatch(
           ...(dangerReason ? { reason: dangerReason } : {}),
         },
       });
-      return { status: 200, body: { data, requestId } };
+      return { status: 200, body: okBody(env.data, requestId, { page: env.page, extra: env.extra }) };
     };
     return await withIdempotency(actor, req, op, bodyText, requestId, okHeaders, run);
   } catch (e) {

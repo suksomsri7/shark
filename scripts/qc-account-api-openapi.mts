@@ -104,7 +104,7 @@ try {
   // ═══ OA-5 fitness F13 ═══
   const fit = readFileSync("scripts/fitness.mts", "utf8");
   chk("OA-5.1", "fitness.mts มีด่าน F13 (ทะเบียน API บัญชี)", /F13\.1/.test(fit) && /ACCOUNT_OPS|api\/registry/.test(fit), "มี", "ไม่มี");
-  const testsSrc = ["scripts/qc-account-api-core.mts", "scripts/qc-account-api-keys.mts", "scripts/qc-account-api-openapi.mts"].filter(existsSync).map((f) => readFileSync(f, "utf8")).join("\n");
+  const testsSrc = (await import("node:fs")).readdirSync("scripts").filter((f) => /^qc-account-api-.*\.mts$/.test(f)).map((f) => readFileSync(`scripts/${f}`, "utf8")).join("\n");
   const noTest = ops.filter((o) => !o.test || !testsSrc.includes(`"${o.test}"`));
   chk("OA-5.2", "ทุก op มี test id ที่ปรากฏจริงในสคริปต์ qc-account-api-*.mts", noTest.length === 0, "ครบ", noTest.map((o) => `${o.id}:${o.test}`).join(","));
 } catch (e) {

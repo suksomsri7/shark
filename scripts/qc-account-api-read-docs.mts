@@ -25,6 +25,7 @@ const E = JSON.parse(readFileSync(QC.expectedPath, "utf8")) as Any;
 const SYS: string = E.systemId;
 const TID: string = E.tenantId;
 const ymd = /^\d{4}-\d{2}-\d{2}$/;
+const ymdNow = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
 const noLeak = (v: unknown) => { const s = JSON.stringify(v); return !/"tenantId"|"systemId"|"publicToken"|"keyHash"/.test(s); };
 
 let tidB = "";
@@ -56,12 +57,14 @@ try {
   const K = kRead.rawKey;
 
   // ═══ D1 dashboard ═══
-  const dash = await call("GET", "/dashboard", { key: K });
+  const dash = await call("GET", `/dashboard?asOf=${E.today}`, { key: K });
   const kpi = dash.body?.data?.kpi;
   chk("B1-D1.1", "GET /dashboard → 200 kpi.receivable = เฉลย (amountSatang/count)", dash.status === 200 && kpi?.receivable?.amountSatang === E.receivable && kpi?.receivable?.count === E.receivableDocs, `${E.receivable}/${E.receivableDocs}`, `${dash.status} ${JSON.stringify(kpi?.receivable)}`);
   chk("B1-D1.2", "kpi.payable = เฉลย", kpi?.payable?.amountSatang === E.payable && kpi?.payable?.count === E.payableDocs, `${E.payable}/${E.payableDocs}`, JSON.stringify(kpi?.payable));
-  chk("B1-D1.3", "kpi.overdue = เฉลย", kpi?.overdue?.amountSatang === E.overdueAmount && kpi?.overdue?.count === E.overdueDocs, `${E.overdueAmount}/${E.overdueDocs}`, JSON.stringify(kpi?.overdue));
-  chk("B1-D1.4", "kpi.cashTotalSatang = ยอดรวมช่องทางการเงินตามเฉลย", kpi?.cashTotalSatang === E.finance.total, `${E.finance.total}`, `${kpi?.cashTotalSatang}`);
+  chk("B1-D1.3", "kpi.overdue รวม AR+AP + แยก receivable/payable — receivable ตรงเฉลย (amount/count) · payable.count ตรงเฉลย · รวม = ผลบวก", kpi?.overdue?.receivable?.amountSatang === E.overdueAmount && kpi?.overdue?.receivable?.count === E.overdueDocs && kpi?.overdue?.payable?.count === E.payableOverdueDocs && kpi?.overdue?.count === E.overdueDocs + E.payableOverdueDocs && kpi?.overdue?.amountSatang === kpi?.overdue?.receivable?.amountSatang + kpi?.overdue?.payable?.amountSatang, `${E.overdueAmount}/${E.overdueDocs} + AP ${E.payableOverdueDocs}`, JSON.stringify(kpi?.overdue));
+  chk("B1-D1.4", "kpi.cashTotalSatang (asOf = วันเฉลย) = ยอดรวมช่องทางการเงินตามเฉลย", kpi?.cashTotalSatang === E.finance.total, `${E.finance.total}`, `${kpi?.cashTotalSatang}`);
+  const dashNow = await call("GET", "/dashboard", { key: K });
+  chk("B1-D1.4b", "GET /dashboard ไม่ส่ง asOf → asOf = วันนี้ (เวลาไทย) และ asOf ผิดรูป → 422", dashNow.status === 200 && dashNow.body?.data?.asOf === ymdNow && (await call("GET", "/dashboard?asOf=x", { key: K })).status === 422, `${ymdNow}`, `${dashNow.status} ${dashNow.body?.data?.asOf}`, "MAJOR");
   chk("B1-D1.5", "dashboard มี asOf/periodKey/year + recent[] + topCustomers[] + topVendors[] + topProducts[] + pending + arap + cash", !!dash.body?.data && ymd.test(dash.body.data.asOf ?? "") && /^\d{4}-\d{2}$/.test(dash.body.data.periodKey ?? "") && Array.isArray(dash.body.data.recent) && Array.isArray(dash.body.data.topCustomers) && Array.isArray(dash.body.data.topVendors) && Array.isArray(dash.body.data.topProducts) && !!dash.body.data.pending && !!dash.body.data.arap && !!dash.body.data.cash, "ครบ", JSON.stringify(Object.keys(dash.body?.data ?? {})));
   chk("B1-D1.6", "dashboard ไม่มี glRows/base/href/tenantId หลุด (ของ UI)", !("glRows" in (dash.body?.data ?? {})) && !/"href"|"base"/.test(JSON.stringify(dash.body?.data ?? {}).slice(0, 5000)) && noLeak(dash.body), "สะอาด", "หลุด", "MAJOR");
   const series = await call("GET", "/dashboard/series?year=2026", { key: K });

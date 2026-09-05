@@ -129,7 +129,7 @@ const INFO_DESCRIPTION = [
   "5. Every write (POST, PATCH, PUT, DELETE) requires an `Idempotency-Key` header. Retrying with the same key and the same body replays the stored response with header `Idempotent-Replayed: true`; the same key with a different body fails with 409 `idempotency_conflict`.",
   "6. Operations marked `x-shark-kind: danger` are hard to undo. They additionally require `confirm: true` (a real boolean) and a `reason` of at least 5 characters in the body; the reason is stored in the audit log.",
   "7. Success is `{ data, page?, requestId }`. Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }` - see the `Error` schema for every code. `requestId` is also returned in the `X-Request-Id` header; quote it when reporting a problem.",
-  "8. Lists are cursor paginated: pass `cursor` from `page.nextCursor` to get the next page. An empty `nextCursor` means the end.",
+  "8. Lists are paginated by page number: send `page` (1 based) and `pageSize` (1 to 100, values above 100 are clamped) as query parameters. The reply carries `page: { page, pageSize, pageCount, total, hasMore }`; keep asking while `hasMore` is true.",
   "9. Rate limits are per key and per class: 300 reads, 60 writes and 30 reports per minute. A 429 response carries `Retry-After`; successful responses carry `X-RateLimit-Remaining`.",
 ].join("\n");
 
@@ -184,6 +184,21 @@ const WRITE_CONFLICT_RESPONSE: [string, string] = [
   "409",
   "Conflict: idempotency key reused with a different body or still running, a danger operation without `confirm: true`, a closed period, or a record whose state does not allow this (`idempotency_conflict`, `idempotency_in_progress`, `confirm_required`, `period_locked`, `state_conflict`, `duplicate`).",
 ];
+
+/** ซองแบ่งหน้าของ op ที่ตั้ง `paged: true` — เลขหน้าจริง ไม่ใช่ cursor (ดู `paged()` ใน respond.ts) */
+const PAGE_SCHEMA: JsonSchema = {
+  type: "object",
+  description: "Pagination state of this reply. Ask for the next page with `page: page + 1` while `hasMore` is true.",
+  properties: {
+    page: { type: "integer", minimum: 1, description: "Page that was returned, 1 based." },
+    pageSize: { type: "integer", minimum: 1, maximum: 100, description: "Rows per page actually used (values above 100 are clamped)." },
+    pageCount: { type: "integer", minimum: 1, description: "Number of pages for the current filter." },
+    total: { type: "integer", minimum: 0, description: "Number of rows that match the filter, across all pages." },
+    hasMore: { type: "boolean", description: "True when another page exists after this one." },
+  },
+  required: ["page", "pageSize", "pageCount", "total", "hasMore"],
+  additionalProperties: false,
+};
 
 function errorResponse(description: string): OpenApiResponse {
   return {
@@ -276,7 +291,9 @@ function buildOperation(op: ApiOp): OpenApiOperation {
   const inputSchema = op.input ? closeObject(jsonSchemaOf(op.input, "input")) : undefined;
   if (op.method === "GET") {
     if (inputSchema) parameters.push(...queryParameters(inputSchema));
-  } else if (isWriteLike) {
+  } else if (isWriteLike || inputSchema) {
+    // read ที่เป็น POST มีจริง (`documents.parse` — ข้อความยาวเกินจะยัดใน query string)
+    // ⇒ ต้องบรรยาย body ของมันด้วย ไม่งั้นคู่มือบอกว่า "ไม่มีช่องให้ส่ง" ทั้งที่ต้องส่ง `text`
     const base = inputSchema ?? { type: "object", properties: {}, required: [], additionalProperties: false };
     const schema = op.kind === "danger" ? withDangerFields(base) : base;
     requestBody = { required: true, content: { "application/json": { schema } } };
@@ -284,6 +301,13 @@ function buildOperation(op: ApiOp): OpenApiOperation {
 
   // ── responses ─────────────────────────────────────────────────────────
   const dataSchema: JsonSchema = op.output ? jsonSchemaOf(op.output, "output") : {};
+  const okProperties: Record<string, JsonSchema> = {
+    data: dataSchema,
+    requestId: { type: "string", description: "Same value as the `X-Request-Id` response header." },
+  };
+  // op ที่แบ่งหน้าคืน `page` เสมอ และอาจมีฟิลด์สรุประดับบนสุดเพิ่ม (เช่น `tabCounts` ของรายการเอกสาร)
+  // ⇒ ไม่ปิดสคีมา (additionalProperties: true) เพราะฟิลด์เสริมต่างกันไปตาม op
+  if (op.paged) okProperties.page = PAGE_SCHEMA;
   const responses: Record<string, OpenApiResponse> = {
     "200": {
       description: "Success.",
@@ -291,11 +315,9 @@ function buildOperation(op: ApiOp): OpenApiOperation {
         "application/json": {
           schema: {
             type: "object",
-            properties: {
-              data: dataSchema,
-              requestId: { type: "string", description: "Same value as the `X-Request-Id` response header." },
-            },
-            required: ["data", "requestId"],
+            properties: okProperties,
+            required: op.paged ? ["data", "page", "requestId"] : ["data", "requestId"],
+            ...(op.paged ? { additionalProperties: true } : {}),
           },
         },
       },

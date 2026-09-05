@@ -41,6 +41,11 @@ export type ApiOp = {
   /** GET = query string · method อื่น = body · ควร `.strict()` เสมอ (กัน tenantId/systemId ปลอมจาก body) */
   input?: ZodType;
   output?: ZodType;
+  /**
+   * op นี้คืนซองแบ่งหน้า (`paged()` ของ respond.ts) ⇒ คำตอบ 200 มี `page` และอาจมีฟิลด์
+   * ระดับบนสุดอื่น (เช่น `tabCounts`) — ธงนี้มีไว้ให้ OpenAPI/คู่มือบอกผู้เรียกได้ตรงความจริง
+   */
+  paged?: boolean;
   tool?: ApiOpTool;
   /** id ข้อสอบที่ครอบ op นี้ เช่น "CORE-2.1" */
   test: string;

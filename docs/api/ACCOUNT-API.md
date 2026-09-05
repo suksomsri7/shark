@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 4 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 15 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -33,7 +33,7 @@ A key is normally bound to one accounting book. If it is not, every call must ca
 - **`X-Shark-System`.** Selects the accounting book when the key is not bound to one. When the key is bound, the header may be sent only if it matches.
 - **Danger operations.** `confirm: true` plus a `reason` of at least 5 characters. The reason is stored in the audit log next to the key name.
 - **Envelope.** Success is `{ data, page?, requestId }`. Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }`. `requestId` is also the `X-Request-Id` header; quote it in support tickets.
-- **Pagination.** Lists return `page.nextCursor`. Pass it back as `cursor` for the next page; an empty or absent `nextCursor` means the end. Do not build page numbers.
+- **Pagination.** Lists take `page` (1 based, default 1) and `pageSize` (default 20, maximum 100; a larger value is clamped to 100, not rejected) as query parameters, and answer with `page: { page, pageSize, pageCount, total, hasMore }` next to `data`. Keep asking for `page + 1` while `hasMore` is true. Some list operations add one more top level field with counters for the filter, for example `tabCounts`.
 - **Rate limits.** Per key, per class, per minute: 300 reads, 60 writes, 30 reports. 429 carries `Retry-After`; successful calls carry `X-RateLimit-Remaining`.
 - **Unknown fields are rejected.** Bodies are closed schemas (`additionalProperties: false`), so a typo fails loudly with 422 `validation` instead of being ignored.
 
@@ -69,6 +69,99 @@ Branch on `error.code`, never on the message text.
 
 Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited.
 
+#### `dashboard.series`
+
+**GET /dashboard/series** - Income, expense and profit for the 12 months of one year, plus the previous year and the year on year change. · scope: `account.doc.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `year` | integer | no | Calendar year between 2000 and 2100. Default: the current year in Thailand. · min 2000 · max 2100 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/dashboard/series" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `dashboard.get`
+
+**GET /dashboard** - Everything the accounting home screen shows in one call: KPI, receivable and payable, cash, categories, pending work and recent documents. · scope: `account.doc.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `asOf` | string | no | Read the numbers as of this Thai calendar day (`YYYY-MM-DD`). Default: today in Thailand. Balances, receivable, payable and overdue are all computed at this date. |
+| `period` | string | no | Month `YYYY-MM` for the monthly blocks. Ignored when `asOf` is sent. Default: the month of `asOf`. |
+| `year` | integer | no | Calendar year between 2000 and 2100. Default: the current year in Thailand. · min 2000 · max 2100 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/dashboard" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `documents.attachments`
+
+**GET /documents/{id}/attachments** - Files attached to one document. · scope: `account.doc.view` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/documents/123/attachments" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `documents.get`
+
+**GET /documents/{id}** - One document in full: lines, payments, related documents, timeline, journal entries and attachments. · scope: `account.doc.view` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/documents/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `documents.parse`
+
+**POST /documents/parse** - Turn one line of free text into a document draft intent: type, contact candidates and amount. Reads only. · scope: `account.doc.view` · read
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `text` | string | yes | Free text in Thai or English, for example `invoice john 24900` or `ใบแจ้งหนี้ ณัฐพล 24900`. · min length 1 · max length 200 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/documents/parse" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"example text"}'
+```
+
+#### `documents.list`
+
+**GET /documents** - List documents of any type (sales and purchase side) with filters, paging and tab counters. · scope: `account.doc.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `type` | string | no | Document type, or several separated by commas, for example `INVOICE,RECEIPT`. Omit for every type. · max length 400 |
+| `tab` | string | no | Status tab of that document type, for example `paid` or `overdue`. Only valid together with exactly one `type`. · max length 40 |
+| `status` | string | no | Filter by status instead of a tab: one status, several separated by commas, or `OVERDUE` / `ALL`. · max length 200 |
+| `q` | string | no | Free text: document number or contact name. · max length 200 |
+| `contactId` | string | no | Only documents of this contact. · max length 40 |
+| `refType` | string | no | Source model name of documents that flowed in from another system, for example `PosSale`. · max length 60 |
+| `refId` | string | no | Id of the source record inside that system. Use together with `refType`. · max length 60 |
+| `from` | string | no | from (Thai calendar day, YYYY-MM-DD). |
+| `to` | string | no | to (Thai calendar day, YYYY-MM-DD). |
+| `page` | integer | no | Page number, 1 based. Default 1. · min 1 |
+| `pageSize` | integer | no | Rows per page. Default 20, maximum 100; a larger value is clamped, not rejected. |
+| `sort` | enum("recent", "issueDate", "docNo", "amount") | no | Sort order. Default `recent` (last updated first). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/documents" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `echo-by-id`
 
 **GET /echo/{id}** - Echo back the id captured from the path (used to verify path parameters). · scope: `account.doc.view` · read
@@ -82,6 +175,32 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/echo/123" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `favorites.list`
+
+**GET /favorites** - Saved document templates (favourites) of this accounting book. · scope: `account.doc.view` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/favorites" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `overview.get`
+
+**GET /overview** - Revenue or expense overview: 12 month bars split by payment status, documents issued, top contacts, top products and top categories. · scope: `account.doc.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `side` | enum("revenue", "expense") | yes | Which side to look at: `revenue` (money in) or `expense` (money out). |
+| `year` | integer | no | Calendar year between 2000 and 2100. Default: the current year in Thailand. · min 2000 · max 2100 |
+| `issuedRange` | enum("this-month", "last-month", "this-year") | no | Period of the `issued` card. Default `this-month`. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/overview?side=revenue" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `ping`
 
 **GET /ping** - Check that the API key works and see which accounting book it is bound to. · scope: `account.doc.view` · read
@@ -90,6 +209,41 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/account/ping" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `recurring.runs`
+
+**GET /recurring/{id}/runs** - Documents that one recurring rule has already produced, newest first. · scope: `account.doc.view` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/recurring/123/runs" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `recurring.list`
+
+**GET /recurring** - Recurring document rules: schedule, next run and template summary. · scope: `account.doc.view` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/recurring" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `tags.list`
+
+**GET /tags** - Tags already used on documents, sorted, for building a picker. · scope: `account.doc.view` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/account/tags" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 

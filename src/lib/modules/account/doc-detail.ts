@@ -204,6 +204,8 @@ export type JvLineView = { id: string; accountCode: string; accountName: string;
 export type JvEntryView = {
   id: string;
   docNo: string;
+  /** WO API-B1 (additive): สมุดที่ลงรายการ (GENERAL/SALES/PURCHASE/…) — REST ส่งต่อให้ผู้ตรวจสอบบัญชี */
+  book: string;
   date: Date;
   memo: string | null;
   needsReview: boolean;
@@ -216,6 +218,7 @@ async function loadJvEntries(systemId: string, docId: string, paymentIds: string
   return entries.map((e) => ({
     id: e.id,
     docNo: e.docNo,
+    book: e.book as string,
     date: e.date,
     memo: e.memo,
     needsReview: e.needsReview,
