@@ -1,5 +1,12 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🏁 5 ก.ย. (เช้า ~10:00 BKK) — [session บัญชี] **RUN บัญชี V2 จบครบ 10 เฟส 46/46 WO** (main `859f6c0` · qc:all สุดท้าย 227/227) — handover เจ้าของ: `ledger/HANDOVER-2026-09-05-ACCOUNT-V2.md` · สถานะสด `ledger/ACCOUNT-V2-RUN.md`
+- เฟส 10: 10.1 Fable ดูภาพจริงคู่ mockup ครบ 34 เฟรม (แก้ f3 DocListPage + g4 + regression มือถือ 2 จุด + expectation เก่า 3 ชุด) · 10.2 เอกสาร: `docs/modules/12-account.md` V2 · `UI_STANDARD.md` · `docs/sds/modules/account.md` · HANDOVER · 10.3 verify prod (ดูบล็อกถัดไป/RUN)
+- crontab บัญชีบน VPS ครบ 4 บรรทัด (เอกสารประจำ 23:10 UTC · เตือน 01:00 · รายงานอีเมล 01:30 · หมดอายุลิงก์ PromptPay 00:30)
+- 🔑 รอเจ้าของ (ไม่บล็อก): `BEAM_MERCHANT_ID/API_KEY/WEBHOOK_SECRET` + webhook URL (PromptPay อัตโนมัติ) · `DBD_API_KEY` · infra รับอีเมล inbox@ · ลบ tenant ทดสอบบน prod 3 ราย · session แชท: ใส่ `messageId` ใน `chat.message.received` + เซ็ต `ChatContact.partyId`
+- 🔴 บทเรียนทั้ง run (สำหรับ run ถัดไป): งานหนักทีละ 1 (cgroup 5G · NODE_OPTIONS ตั้งในสคริปต์แล้ว) · Fable รันด่านเก่าทุกชุดที่เกี่ยว + fitness แบบไม่มี .env ทุก WO · ข้อสอบห้ามผูก "วันที่ N" · agent รายงาน "แก้แล้ว" ต้องยืนยันด้วย PNG/โค้ด · Sonnet ต้องสั่ง "รอ build ในเชลล์ ห้ามจบเทิร์น"
+- งานถัดไปที่เสนอ (ไม่อยู่ใน run นี้): rewrite doc detail ให้ ≤12 query · หน้ารายละเอียด PRR/RPR/CA · sticky คอลัมน์แรกงบดุล/กำไรขาดทุน · dismiss คู่ซ้ำระดับ contact · e-Tax/bank feed/FIFO/e-WHT เมื่อมีผู้ให้บริการ
+
 ## 🏁 5 ก.ย. (เช้า ~09:35 BKK) — [session บัญชี] **เฟส 9 ปิด** (มือถือ+ความปลอดภัย+ประสิทธิภาพ+ความง่าย ขึ้น main `a4611ba` · qc:all 227/227) · 41/46 WO ≈ 89% — สถานะสด `ledger/ACCOUNT-V2-RUN.md`
 - ขึ้น prod: ฟอร์มเอกสารมือถือตรง g17 (แถวหัว→sheet · การ์ดรายการ · sticky ยอด) + 4 งานจบบนมือถือ · **audit ความปลอดภัย 20 ข้อ ปิดช่องโหว่ 11** (รับชำระซ้อนไม่ล็อกแถว · ลิงก์สาธารณะขอใบกำกับข้ามการปิด/หมดอายุ · CSV injection · อัปโหลดเชื่อ MIME ฝั่ง client · ไม่มี rate limit · double-submit · legacy suites แตะ prod) · **next 16.2.11** (ปิด advisory 9) · perf harness 29 หน้า (เกินงบ 14→0 · <1.5s ทุกหน้า) · ⌘K สร้างด่วน · เลิกทำ 5 นาที 11 จุด · tooltip ≥40 คำ · empty state · error ภาษาคน · คู่มือในแอป /account/help
 - migration 3 ตัว additive (perf_indexes · undo_token · —) · Vercel build รัน migrate เอง
