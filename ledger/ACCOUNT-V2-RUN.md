@@ -12,7 +12,7 @@
 | WO | 10.1 QC รอบสุดท้ายทุกเฟรม (Fable) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable (ปิดเฟส) |
-| ขั้นที่ถึง | 5 ก.ย. ~01:35 UTC: **verify prod เฟส 9 ผ่าน** — Vercel READY 01:32 (dpl_7VzYFp…) · migration perf_indexes + undo_token finished · AccountUndoToken อยู่บน prod · next 16.2.11 บน prod · https 200 · 10.1: QC server build แล้ว กำลังถ่ายทุกเฟรม (24 key) ด้วย --assert แล้ว Fable ดูภาพคู่ mockup |
+| ขั้นที่ถึง | 5 ก.ย. ~02:10 UTC: 10.1 กำลังทำ — ถ่ายทุก key บน build สุดท้าย: 19/24 เขียว · แดง 5 (2.2 mobile create-menu · 1.4 mobile payment sheet = regression จาก 9.1/9.4 · 5.1/5.2/6.1 = expectation เก่า) → agent แก้ · Fable ดูภาพเอง: f1 f3 f5 f6 g4 g1 ผ่านยกเว้น **f3 DocListPage 4 จุด** (footer นอกการ์ด · page size 20 · ปุ่มค้นหา · พิมพ์รายงานจาง · วันครบกำหนดไม่แดง) + g4 1 จุด (ค้างชำระไม่แดง) → สั่งแก้ในชุดเดียวกัน |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
