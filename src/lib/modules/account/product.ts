@@ -17,6 +17,8 @@ import type {
 } from "@prisma/client";
 // WO 1.1: reuse (read-only) ตัวช่วยกรอง/แบ่งหน้าเดียวกับฝั่งรายรับ/รายจ่าย — ไม่ก๊อปสูตรวันที่/พ้นกำหนดซ้ำ
 import { overdueWhere, parseDay, clampPageSize, clampPage, type DocStatusFilter, type DocSort } from "./service";
+// WO C4 — เหตุการณ์บัญชีที่ออกทาง webhook (payload/คีย์กันซ้ำอยู่ที่ events.ts ที่เดียว)
+import { emitDocumentIssued, emitProductCreated, emitProductUpdated } from "./events";
 // WO 4.1 — สินค้าที่ผูกคลัง: ความจริงเรื่องสต็อกอยู่ที่ InvItem (อ่าน/เขียนผ่านชั้นนี้เท่านั้น)
 import { inventorySystemId, productStockMap, productStockMapFrom, syncProductToItem } from "./inventory-link";
 // chokepoint account→inventory (fitness F2 · WO 4.1) — ตัด/คืนสต็อกใน tx ของเอกสาร
@@ -523,11 +525,20 @@ export async function createProduct(
   };
 
   // เลขที่: ผู้ใช้กรอกเอง = ใช้ตามนั้น (ชน = บอกตรง ๆ) · ไม่กรอก = ออกให้ + วนขอใหม่เมื่อชนกับคนที่เร็วกว่า
+  // WO C4: สร้างแถว + ยิง webhook "เพิ่มสินค้าใหม่" ในธุรกรรมเดียว
+  //   ห่อเฉพาะครั้งที่สำเร็จ (ไม่ใช่ทั้งลูป) — ชนเลขที่ = tx นั้น abort แล้วลูปเปิด tx ใหม่ให้เอง
+  const createWithEvent = async (createData: Prisma.AccountProductUncheckedCreateInput) =>
+    prisma.$transaction(async (tx) => {
+      const row = await tx.accountProduct.create({ data: createData });
+      await emitProductCreated(tx, { tenantId, systemId }, row);
+      return row;
+    });
+
   const manual = (input.code ?? "").trim();
   for (let attempt = 0; attempt < 6; attempt++) {
     const code = manual || (await nextProductCode(systemId, type));
     try {
-      const p = await prisma.accountProduct.create({ data: { ...base, code } });
+      const p = await createWithEvent({ ...base, code });
       return { ok: true, id: p.id, code };
     } catch (e) {
       if (isProductCodeConflict(e)) {
@@ -542,7 +553,7 @@ export async function createProduct(
   // ชนติดกัน 6 รอบ = ผิดปกติจริง — สร้างโดยไม่มีเลขที่ ดีกว่าทำงานผู้ใช้หาย (หน้ารายการถอยไปใช้ sku/เลขคำนวณสด)
   console.warn(`[account] ออกเลขที่สินค้าไม่สำเร็จหลัง 6 ครั้ง (system=${systemId})`);
   try {
-    const p = await prisma.accountProduct.create({ data: base });
+    const p = await createWithEvent(base);
     return { ok: true, id: p.id, code: null };
   } catch (e) {
     // 🔴 WO 9.2 ข้อ 13 — ทางสำรองสุดท้ายก็ล้มได้ (เช่น SKU ซ้ำ) · ฟังก์ชันนี้ประกาศว่าคืน
@@ -584,7 +595,18 @@ export async function updateProduct(
     // 🔴 WO 9.2 ข้อ 2 — `updateMany` ที่ไม่ตรงสโคปคืน count 0 **โดยไม่ error** ⇒ ของเดิมตอบ ok:true
     //    ทั้งที่ไม่ได้เขียนอะไรเลย (ข้อมูลไม่รั่ว แต่หน้าจอขึ้น "บันทึกแล้ว" ทั้งที่ไม่ได้บันทึก
     //    และข้อสอบ IDOR แยกไม่ออกว่าถูกกันจริงหรือแค่เงียบ) — ต้องรายงานว่าไม่พบ
-    const res = await prisma.accountProduct.updateMany({ where: { id, tenantId, systemId }, data });
+    //    WO C4: เขียน + ยิง webhook "แก้ไขสินค้า" ในธุรกรรมเดียว · คีย์กันซ้ำผูก `updatedAt`
+    //    ⇒ ต้องอ่านค่า **หลังเขียน ใน tx เดียวกัน** (อ่านก่อน = ได้ค่าเก่า → แก้ 2 ครั้งได้ event ใบเดียว)
+    const res = await prisma.$transaction(async (tx) => {
+      const r = await tx.accountProduct.updateMany({ where: { id, tenantId, systemId }, data });
+      if (r.count === 0) return r;
+      const row = await tx.accountProduct.findFirst({
+        where: { id, tenantId, systemId },
+        select: { id: true, code: true, sku: true, name: true, type: true, salePrice: true, updatedAt: true },
+      });
+      if (row) await emitProductUpdated(tx, { tenantId, systemId }, row);
+      return r;
+    });
     if (res.count === 0) return { ok: false, reason: "ไม่พบสินค้า/บริการนี้" };
   } catch (e) {
     if (isProductCodeConflict(e)) return { ok: false, reason: "เลขที่สินค้าซ้ำกับรายการที่ใช้งานอยู่" };
@@ -1108,7 +1130,7 @@ export async function approveGoodsMovement(
     const docNo = await prisma.$transaction(async (tx) => {
       const doc = await tx.accountDocument.findFirst({
         where: { id, tenantId, systemId, docType: { in: ["GOODS_ISSUE", "GOODS_ISSUE_RETURN"] } },
-        select: { id: true, docType: true, status: true, issueDate: true, adjustAccountCode: true, sourceDocId: true },
+        select: { id: true, docType: true, status: true, issueDate: true, adjustAccountCode: true, sourceDocId: true, contactId: true, source: true },
       });
       if (!doc) throw new Error("ไม่พบเอกสาร");
       if (doc.status !== "DRAFT") throw new Error("เอกสารนี้อนุมัติไปแล้ว");
@@ -1134,6 +1156,17 @@ export async function approveGoodsMovement(
         issueDate: doc.issueDate,
         adjustAccountCode: doc.adjustAccountCode,
         costTotal,
+      });
+      // WO C4: ใบเบิก/ใบส่งคืน "ได้เลขที่จริง" ตอนอนุมัติ (ไม่มีขั้น issue แยก) ⇒ นับเป็น document.issued
+      await emitDocumentIssued(tx, { tenantId, systemId }, {
+        id,
+        docType: doc.docType,
+        docNo: no,
+        status: "ISSUED",
+        contactId: doc.contactId,
+        grandTotal: costTotal,
+        issueDate: doc.issueDate,
+        source: doc.source,
       });
       return no;
     });

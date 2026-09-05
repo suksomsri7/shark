@@ -33,6 +33,8 @@ import {
 import { issueDocNo, peekDocNo } from "./doc-numbering";
 // WO 8.2 (§9.3) — ล็อกข้อมูลก่อนวันที่ + ค่าเริ่มต้นหัก ณ ที่จ่าย/การแปลงเอกสาร
 import { assertNotLockedTx, assertNotLockedWith } from "./policy";
+// WO C4 — เหตุการณ์บัญชีที่ออกทาง webhook (ตัวประกอบ payload + คีย์กันซ้ำอยู่ที่ events.ts ที่เดียว)
+import { emitDocumentApproved, emitDocumentIssued, emitDocumentVoided, emitPaymentVoided } from "./events";
 import { EXPENSE_DOC_PREFIX, fallbackPrefixOf } from "./settings-schema";
 import { clampSearch } from "./search-input";
 
@@ -996,6 +998,17 @@ export async function issueExpenseDoc(
       ) {
         await createPendingTaxInvoice(tx, tenantId, systemId, doc, docNo);
       }
+      // WO C4: "ออกเอกสารแล้ว" ฝั่งซื้อ — คีย์เดียวกับฝั่งขาย (ผูก docId) ⇒ `createGroupDoc` ที่เรียกต่อไม่ยิงซ้ำ
+      await emitDocumentIssued(tx, ctx, {
+        id,
+        docType: doc.docType,
+        docNo,
+        status: issueStatusFor(doc.docType),
+        contactId: doc.contactId,
+        grandTotal: doc.grandTotal,
+        issueDate: doc.issueDate,
+        source: doc.source,
+      });
     });
     return { ok: true, docNo };
   } catch (e) {
@@ -1308,6 +1321,14 @@ export async function voidVendorPayment(
         });
         await tx.accountDocumentPayment.update({ where: { id: paymentId }, data: { whtCertDocId: null } });
       }
+      // WO C4: "ยกเลิกการจ่าย" — event เดียวกับฝั่งรับ (`voidPaymentAny` ส่งต่อมาที่นี่ตามทิศทางเอกสาร)
+      await emitPaymentVoided(tx, { tenantId, systemId }, {
+        paymentId,
+        documentId,
+        docNo: doc.docNo,
+        amountSatang: pay.amount,
+        reason,
+      });
     });
     return { ok: true };
   } catch (e) {
@@ -1353,6 +1374,13 @@ export async function voidExpenseDoc(
       if (posted) {
         await reverseFor({ tenantId, systemId }, "AccountDocument", id, reason, tx);
       }
+      // WO C4: "ยกเลิกเอกสาร" ฝั่งซื้อ — event/คีย์ชุดเดียวกับฝั่งขาย (ปลายทางไม่ต้องแยก 2 ชนิด)
+      await emitDocumentVoided(tx, { tenantId, systemId }, {
+        id,
+        docType: doc.docType,
+        docNo: doc.docNo,
+        reason,
+      });
     });
     return { ok: true };
   } catch (e) {
@@ -1415,6 +1443,17 @@ export async function submitForApproval(
           contactSnapshot: contactSnapshot(doc.contact) ?? undefined,
         },
       });
+      // WO C4: ใบสั่งซื้อ "ได้เลขที่จริง" ตอนส่งอนุมัติ (ไม่มีขั้น issue แยก) ⇒ นับเป็น document.issued
+      await emitDocumentIssued(tx, { tenantId, systemId }, {
+        id,
+        docType: doc.docType,
+        docNo,
+        status: "AWAITING_APPROVAL",
+        contactId: doc.contactId,
+        grandTotal: doc.grandTotal,
+        issueDate: doc.issueDate,
+        source: doc.source,
+      });
     });
     return { ok: true, docNo };
   } catch (e) {
@@ -1455,9 +1494,15 @@ export async function approvePurchaseOrder(
   // 🔴 WO 9.2 ข้อ 14 — เปลี่ยนสถานะแบบมีเงื่อนไขในคำสั่งเดียว (ไม่ใช่ read-then-write)
   //    กดอนุมัติรัว/2 คนกดพร้อมกัน: ของเดิมผ่านด่าน `status !== AWAITING_APPROVAL` ทั้งคู่
   //    → เขียน approvedById ทับกัน + ยิง audit/webhook ซ้ำ · แบบนี้มีผู้ชนะคนเดียวเสมอ
-  const res = await prisma.accountDocument.updateMany({
-    where: { id, tenantId, systemId, status: "AWAITING_APPROVAL" },
-    data: { status: "APPROVED", approvedById },
+  //    WO C4: ยิง `account.document.approved` **ที่ service** (ไม่ใช่แค่ที่ server action) ⇒ REST/สกิล AI
+  //    ที่เรียกตรงก็ได้ฮุคเหมือนกัน · action เดิมยังยิงซ้ำได้ไม่เป็นไร (คีย์เดียวกัน = ข้ามเงียบ ๆ)
+  const res = await prisma.$transaction(async (tx) => {
+    const r = await tx.accountDocument.updateMany({
+      where: { id, tenantId, systemId, status: "AWAITING_APPROVAL" },
+      data: { status: "APPROVED", approvedById },
+    });
+    if (r.count > 0) await emitDocumentApproved(tx, { tenantId, systemId }, { id, docType: doc.docType, approvedById });
+    return r;
   });
   if (res.count === 0) return { ok: false, reason: "สถานะไม่ถูกต้อง (ต้องรออนุมัติ)" };
   return { ok: true };

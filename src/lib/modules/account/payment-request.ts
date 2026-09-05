@@ -40,6 +40,7 @@ import {
   findPaymentRequestById,
   findPaymentRequestByToken,
   expirePaymentRequestsAll,
+  markPaymentRequestPaid,
 } from "./service";
 import { listFinanceAccounts } from "./finance";
 import { writeAudit } from "./access";
@@ -493,9 +494,11 @@ export async function handleBeamPaid(input: {
   });
   if (!rec.ok) return fail(rec.reason);
 
-  await tenantDb(ctx).accountPaymentRequest.update({
-    where: { id: req.id },
-    data: {
+  // WO C4 — ปิดคำขอ + ยิง `account.payment_request.paid` ใน tx เดียว (ผ่าน service เพราะไฟล์นี้ห้ามแตะ prisma ดิบ)
+  await markPaymentRequestPaid(
+    ctx,
+    req.id,
+    {
       status: "PAID",
       providerChargeId: chargeId,
       paidAt: new Date(),
@@ -503,7 +506,8 @@ export async function handleBeamPaid(input: {
       paymentId: rec.paymentId ?? null,
       note: overpay > 0 ? `ลูกค้าจ่ายเกิน ฿${baht(overpay)} — ติดต่อคืนเงิน` : req.note,
     },
-  });
+    { documentId: target.id, docNo: target.docNo, amountSatang: amount, provider: "BEAM", paymentId: rec.paymentId ?? null },
+  );
 
   const matchedStatementLineId = rec.paymentId ? await linkPaymentToStatement(ctx, rec.paymentId, req.id) : null;
   await notifyPaid(ctx, { docLabel: DOC_LABEL[target.docType] ?? target.docType, docNo: target.docNo, amount, status: rec.status });
@@ -579,10 +583,13 @@ export async function confirmStaticPaymentRequest(
   });
   if (!rec.ok) return fail(rec.reason);
 
-  await tenantDb(ctx).accountPaymentRequest.update({
-    where: { id: req.id },
-    data: { status: "PAID", paidAt: opts?.paidAt ?? new Date(), paidAmountSatang: amount, paymentId: rec.paymentId ?? null },
-  });
+  // WO C4 — เหตุผลเดียวกับทาง webhook ข้างบน: สถานะคำขอกับ event ต้องเกิด/ไม่เกิดพร้อมกัน
+  await markPaymentRequestPaid(
+    ctx,
+    req.id,
+    { status: "PAID", paidAt: opts?.paidAt ?? new Date(), paidAmountSatang: amount, paymentId: rec.paymentId ?? null },
+    { documentId: target.id, docNo: target.docNo, amountSatang: amount, provider: "PROMPTPAY_STATIC", paymentId: rec.paymentId ?? null },
+  );
   if (rec.paymentId) await linkPaymentToStatement(ctx, rec.paymentId, req.id);
   await writeAudit({
     tenantId: ctx.tenantId,

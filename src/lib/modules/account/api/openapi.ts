@@ -14,6 +14,7 @@
 
 import { z, type ZodType } from "zod";
 import { API_ERROR_CODES } from "./respond";
+import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
 import type { ApiOp, ApiOpKind } from "./op";
 
 /** เหตุผลขั้นต่ำของคำสั่งอันตราย — ต้องตรงกับ MIN_REASON ใน dispatch.ts */
@@ -118,6 +119,10 @@ function sortedRecord<T>(rec: Record<string, T>): Record<string, T> {
 }
 
 // ── ชิ้นส่วนคงที่ของเอกสาร ─────────────────────────────────────────────────
+// WO C4 — รายชื่อ event ที่ร้านสมัครฮุคได้ ดึงจากทะเบียนเดียวกับหน้าตั้งค่า (ห้ามพิมพ์มือ = ตกหล่นแน่)
+//   ใส่เฉพาะ "ค่า" (ASCII) ไม่เอาป้ายไทย — ข้อสอบ OA-1.5 บังคับให้ info.description เป็นอังกฤษล้วน
+const ACCOUNT_WEBHOOK_EVENTS = WEBHOOK_EVENTS.filter((e) => e.value.startsWith("account.")).map((e) => `\`${e.value}\``);
+
 const INFO_DESCRIPTION = [
   "REST API for the SHARK accounting module. One API key works inside one accounting book (AppSystem of type ACCOUNT).",
   "",
@@ -132,6 +137,7 @@ const INFO_DESCRIPTION = [
   "8. Lists are paginated by page number: send `page` (1 based) and `pageSize` (1 to 100, values above 100 are clamped) as query parameters. The reply carries `page: { page, pageSize, pageCount, total, hasMore }`; keep asking while `hasMore` is true.",
   "9. Rate limits are per key and per class: 300 reads, 60 writes and 30 reports per minute. A 429 response carries `Retry-After`; successful responses carry `X-RateLimit-Remaining`.",
   "10. Some read operations can also render CSV: send `Accept: text/csv` and, when the operation lists `text/csv` under its 200 response, you get `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment` instead of the JSON envelope. Every cell is safe against spreadsheet formula injection.",
+  `11. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: ${ACCOUNT_WEBHOOK_EVENTS.join(", ")}. Each delivery is \`POST\` with \`X-Shark-Event\`, a body of \`{ type, payload, sentAt }\` and header \`X-Shark-Signature\` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Payloads follow the same satang and date rules and never carry the shop or book id. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/ACCOUNT-API.md, section Webhooks.`,
 ].join("\n");
 
 const ERROR_SCHEMA: JsonSchema = {

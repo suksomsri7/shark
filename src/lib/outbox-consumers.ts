@@ -307,6 +307,20 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "account.payment.recorded": withAutomation(async () => {}),
   "account.invoice.paid": withAutomation(async () => {}),
   "account.period.closed": withAutomation(async () => {}),
+  // WO C4 — เหตุการณ์บัญชีชุดที่ 2 (ยิงจาก service ใน tx เดียวกับงานหลัก · ดู modules/account/events.ts)
+  //   🔴 ทุกตัวต้องมีบรรทัดตรงนี้ **และ** ป้ายไทยใน webhooks/labels.ts
+  //      ขาดตรงนี้ = event ค้าง PENDING ตลอดกาล และ **คิวทั้งระบบตันตามไปด้วย** (บทเรียน 30 ส.ค. 2026)
+  "account.document.issued": withAutomation(async () => {}),
+  "account.document.voided": withAutomation(async () => {}),
+  "account.quotation.responded": withAutomation(async () => {}),
+  "account.payment.voided": withAutomation(async () => {}),
+  "account.payment_request.paid": withAutomation(async () => {}),
+  "account.payment_request.expired": withAutomation(async () => {}),
+  "account.contact.created": withAutomation(async () => {}),
+  "account.contact.updated": withAutomation(async () => {}),
+  "account.contact.merged": withAutomation(async () => {}),
+  "account.product.created": withAutomation(async () => {}),
+  "account.product.updated": withAutomation(async () => {}),
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

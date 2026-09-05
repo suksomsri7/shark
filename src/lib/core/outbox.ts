@@ -115,11 +115,43 @@ export function drainOutbox(
 ): Promise<{ processed: number; failed: number }> {
   // ต่อคิวหลัง drain ก่อนหน้า (ไม่ว่าสำเร็จหรือ error) แล้วค่อยเริ่ม
   const run = drainChain.then(
-    () => drainOnce(consumers, opts),
-    () => drainOnce(consumers, opts),
+    () => drainUntilQuiet(consumers, opts),
+    () => drainUntilQuiet(consumers, opts),
   );
   drainChain = run.catch(() => {});
   return run;
+}
+
+// รอบต่อการเรียก 1 ครั้ง × 50 event = 500 event · งบเวลา 20 วิ (แลมบ์ดา Vercel ตัดที่ ~60 วิ · cron รายชั่วโมงเก็บตกส่วนที่เหลือ)
+const MAX_ROUNDS = 10;
+const TIME_BUDGET_MS = 20_000;
+
+/**
+ * ระบายคิว **หลายรอบจนเงียบ** (รอบละ `limit`) — ไม่ใช่รอบเดียวแล้วเลิก
+ *
+ * 🔴 ทำไม (5 ก.ย. 2026 · WO C4): พอทุกการสร้าง/แก้ผู้ติดต่อ-สินค้า-ออกเอกสาร ยิง event ด้วย
+ *    การนำเข้า CSV 200 ราย = 200 event ในนาทีเดียว · แบบเดิมหยิบ 50 ตัวเก่าสุดแล้วเลิก
+ *    ⇒ event ที่มาทีหลัง (ข้อความแชท · invoice.paid · ฮุคของร้านอื่น) **ต่อคิวข้างหลัง** รอ cron รายชั่วโมง
+ *    ระบายทีละ 50 = หน่วงเป็นชั่วโมง (ข้อสอบ qc:all จับได้ก่อน: seed สร้าง 183 event → ชุดถัดไป drain แล้ว event ตัวเองไม่ถูกหยิบ)
+ * - เลิกเมื่อรอบล่าสุดหยิบได้น้อยกว่า `limit` (คิวหมดแล้ว) หรือครบ `MAX_ROUNDS` หรือเกินงบเวลา
+ * - ยังปลอดภัยเรื่อง drainer ซ้อน: ทุก event ถูก claim ด้วย lease เหมือนเดิม
+ */
+async function drainUntilQuiet(
+  consumers: Record<string, OutboxHandler>,
+  opts?: { limit?: number },
+): Promise<{ processed: number; failed: number }> {
+  const limit = opts?.limit ?? 50;
+  const started = Date.now();
+  const total = { processed: 0, failed: 0 };
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const r = await drainOnce(consumers, { limit });
+    total.processed += r.processed;
+    total.failed += r.failed;
+    // หยิบได้ไม่เต็มรอบ = ไม่มีอะไรรอแล้ว (นับรวมที่ถูกข้าม/พักไว้ด้วย จึงดูจาก candidates ไม่ใช่ processed)
+    if (r.picked < limit) break;
+    if (Date.now() - started > TIME_BUDGET_MS) break;
+  }
+  return total;
 }
 
 /**
@@ -154,7 +186,7 @@ export async function outboxHealth(
 async function drainOnce(
   consumers: Record<string, OutboxHandler>,
   opts?: { limit?: number },
-): Promise<{ processed: number; failed: number }> {
+): Promise<{ processed: number; failed: number; picked: number }> {
   const limit = opts?.limit ?? 50;
   const now = new Date();
   const candidates = await prisma.outboxEvent.findMany({
@@ -225,5 +257,5 @@ async function drainOnce(
     }
   }
 
-  return { processed, failed };
+  return { processed, failed, picked: candidates.length };
 }

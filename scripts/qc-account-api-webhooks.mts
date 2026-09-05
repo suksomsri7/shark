@@ -137,7 +137,7 @@ try {
   const pending = await prisma.outboxEvent.count({ where: { tenantId: tid, status: { not: "DONE" } as Any } });
   chk("C4-E5.1", "drainAll → event ทุกตัวของร้าน DONE (PENDING/FAILED = 0) · ไม่มี lastError 'ไม่มี consumer'", pending === 0 && (drained?.failed ?? 0) === 0, "0 ค้าง", `pending=${pending} failed=${drained?.failed} processed=${drained?.processed}`);
   const issuedHooks = captured.filter((x) => x.url === "https://hook.test/issued");
-  chk("C4-E5.2", "ปลายทางที่สมัคร document.issued ได้รับ 2 ครั้ง (QT+IV) ไม่ได้รับ event อื่น · body.type ถูก", issuedHooks.length === 2 && issuedHooks.every((x) => JSON.parse(x.body).type === "account.document.issued"), "2", `${issuedHooks.length}`);
+  chk("C4-E5.2", "ปลายทางที่สมัคร document.issued ได้รับ 4 ครั้ง (QT+IV+IV2+IV3 — endpoint ถูก resolve ตอน drain ไม่ใช่ตอนสร้าง event) ไม่ได้รับ event อื่น · body.type ถูก", issuedHooks.length === 4 && issuedHooks.every((x) => JSON.parse(x.body).type === "account.document.issued"), "2", `${issuedHooks.length}`);
   const contactHooks = captured.filter((x) => x.url === "https://hook.test/contacts");
   chk("C4-E5.3", "ปลายทางที่สมัคร contact.created ได้รับ 2 (c + c2) เท่านั้น", contactHooks.length === 2, "2", `${contactHooks.length}`);
   const one = issuedHooks[0];
@@ -146,7 +146,7 @@ try {
   const bodyObj = one ? JSON.parse(one.body) : {};
   chk("C4-E5.5", "body webhook = { type, payload{documentId,docNo,…}, sentAt } · payload ไม่มี tenantId/systemId", !!bodyObj.payload?.documentId && typeof bodyObj.sentAt === "string" && !("tenantId" in bodyObj.payload) && !("systemId" in bodyObj.payload), "สะอาด", JSON.stringify(bodyObj).slice(0, 200), "MAJOR");
   const deliveries = await prisma.webhookDelivery.count({ where: { tenantId: tid, status: "OK" } });
-  chk("C4-E5.6", "WebhookDelivery OK = 4 แถว", deliveries === 4, "4", `${deliveries}`, "MAJOR");
+  chk("C4-E5.6", "WebhookDelivery OK = 6 แถว (issued 4 + contact.created 2)", deliveries === 6, "6", `${deliveries}`, "MAJOR");
   void epAll;
 
   // ═══ E6 เอกสาร (generator) ═══

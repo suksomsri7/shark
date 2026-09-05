@@ -354,11 +354,12 @@ try {
   assert("R4.1 มีคีย์ API 1 อันจาก seed", seedKeys.some((k) => k.prefix === C.apiKeyPrefix), `ได้ ${seedKeys.length} อัน`);
   const seedHooks = await webhooks.listEndpoints({ tenantId: QCTX.tenantId });
   assert("R4.2 มีปลายทาง webhook 1 อันจาก seed", seedHooks.some((h) => h.url === C.webhookUrl));
-  eq(
-    "R4.3 ทะเบียน event บัญชี 4 ตัวมีป้ายไทยครบ",
-    (await import("@/lib/webhooks/labels")).WEBHOOK_EVENTS.filter((e) => e.value.startsWith("account.")).map((e) => e.value),
-    ["account.document.approved", "account.payment.recorded", "account.invoice.paid", "account.period.closed"],
-  );
+  // WO C4 (5 ก.ย. 2026): event บัญชีเพิ่มเป็น 15 ตัว — ตรวจว่า 4 ตัวเดิมยังอยู่ + ทุกตัวที่ขึ้น account. มีป้ายไทย
+  {
+    const accEvents = (await import("@/lib/webhooks/labels")).WEBHOOK_EVENTS.filter((e) => e.value.startsWith("account."));
+    const values = accEvents.map((e) => e.value);
+    assert("R4.3 ทะเบียน event บัญชี 4 ตัวเดิมยังอยู่ (+ ชุด C4) และทุกตัวมีป้ายไทย", ["account.document.approved", "account.payment.recorded", "account.invoice.paid", "account.period.closed"].every((v) => values.includes(v)) && accEvents.every((e) => /[ก-๙]/.test(e.label)), `ได้ ${values.length} ตัว`);
+  }
   const consumers = (await import("@/lib/outbox-consumers")).consumers;
   for (const t of ["account.document.approved", "account.payment.recorded", "account.invoice.paid", "account.period.closed"])
     assert(`R4.4 event "${t}" มี consumer ลงทะเบียน (ไม่ค้าง PENDING)`, typeof consumers[t] === "function");

@@ -21,6 +21,8 @@ import * as memberSvc from "@/lib/modules/member/service";
 import { writeAudit } from "./access";
 import { formatPhoneTh, type Ctx } from "./contacts-list";
 import { findLinkedSystemIds, normalizePhoneTh } from "./service";
+// WO C4 — เหตุการณ์ "รวมผู้ติดต่อซ้ำ" ออกทาง webhook (ปลายทางต้องรู้ว่า id ตัวรองใช้ไม่ได้แล้ว)
+import { emitContactMerged } from "./events";
 
 // ─────────────────────────── ฟิลด์ที่เลือกได้ทีละช่อง (g7) ───────────────────────────
 
@@ -432,6 +434,21 @@ export async function mergeContacts(ctx: Ctx, input: MergeContactsInput): Promis
         primaryPartyId: (patch as { partyId?: string | null }).partyId ?? primary.partyId,
         secondaryPartyId: secondary.partyId,
         keepSecondaryParty: choices.partyId === "secondary",
+      });
+
+      // WO C4 — ยิง webhook ใน tx เดียวกับการย้าย (ล้มกลางทาง = ไม่มีทั้งการย้ายและ event)
+      //   cast เหตุผลเดียวกับ mergeParties ข้างบน (tx ผ่าน $extends ของ tenantDb แล้ว)
+      //   🔴 `emitOutbox*` เขียน tenantId เอง ⇒ ต้องส่ง systemId ที่ ctx ถือมาไปด้วย (ตัวกรองของ tenantDb
+      //      ไม่ได้เติม systemId ให้ OutboxEvent — มันเป็น axis tenant)
+      await emitContactMerged(tx as unknown as Prisma.TransactionClient, ctx, {
+        keepId: primaryId,
+        mergedId: secondaryId,
+        moved: {
+          documents: moved.documents,
+          journalLines: moved.journalLines,
+          groups: moved.groupsMoved + moved.groupsDeduped,
+          recurringRules: moved.recurringRules,
+        },
       });
     });
   } catch (e) {

@@ -18,6 +18,7 @@ import { buildOpenApi, type JsonSchema, type OpenApiOperation } from "@/lib/modu
 import type { ApiOp, ApiOpKind } from "@/lib/modules/account/api/op";
 import { ACCOUNT_OPS } from "@/lib/modules/account/api/registry";
 import { API_ERROR_CODES, type ApiErrorCode } from "@/lib/modules/account/api/respond";
+import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
 
 const ROOT = resolve(fileURLToPath(import.meta.url), "..", "..");
 const DOC_PATH = resolve(ROOT, "docs/api/ACCOUNT-API.md");
@@ -152,6 +153,185 @@ const GLOSSARY: [string, string, string][] = [
   ["สินทรัพย์ถาวร / ค่าเสื่อม", "fixed asset / depreciation", "`asset`"],
   ["สตางค์", "satang (1/100 of a baht)", "every `*Satang` field"],
 ];
+
+// ── Webhooks (WO C4) ──────────────────────────────────────────────────────
+// รายชื่อ event มาจาก `src/lib/webhooks/labels.ts` ตัวเดียวกับที่หน้าตั้งค่าใช้ ⇒ คู่มือโกหกไม่ได้
+// ตัวอย่าง body ต้องตรงกับ payload ที่ `src/lib/modules/account/events.ts` ประกอบจริง
+const WEBHOOK_EVENT_DOCS: Record<string, { when: string; payload: Record<string, unknown> }> = {
+  "account.document.issued": {
+    when: "A document left draft and got its real document number (sales, purchase, purchase order sent for approval, approved stock issue).",
+    payload: {
+      documentId: "cmf1doc0001",
+      type: "INVOICE",
+      docNo: "IV-202609-0007",
+      status: "AWAITING_PAYMENT",
+      contactId: "cmf1con0001",
+      grandTotalSatang: 107000,
+      issueDate: "2026-09-05",
+      source: "API",
+    },
+  },
+  "account.document.approved": {
+    when: "A purchase order was approved.",
+    payload: { documentId: "cmf1doc0002", docType: "PURCHASE_ORDER", approvedById: "cmf1usr0001" },
+  },
+  "account.document.voided": {
+    when: "A document was cancelled (draft) or voided (already posted, journal reversed).",
+    payload: { documentId: "cmf1doc0001", type: "INVOICE", docNo: "IV-202609-0007", reason: "customer cancelled the order" },
+  },
+  "account.quotation.responded": {
+    when: "A quotation was accepted or rejected. The idempotency key carries the answer, so a later change of mind is delivered too.",
+    payload: { documentId: "cmf1doc0003", docNo: "QT-202609-0004", accepted: true },
+  },
+  "account.payment.recorded": {
+    when: "A receipt or a vendor payment was recorded against a document.",
+    payload: { documentId: "cmf1doc0001", paymentId: "cmf1pay0001", amountSatang: 107000, docType: "INVOICE" },
+  },
+  "account.payment.voided": {
+    when: "A recorded payment was voided (journal reversed, document goes back to unpaid or partial).",
+    payload: {
+      paymentId: "cmf1pay0001",
+      documentId: "cmf1doc0001",
+      docNo: "IV-202609-0007",
+      amountSatang: 107000,
+      reason: "wrong bank account",
+    },
+  },
+  "account.invoice.paid": {
+    when: "An invoice reached fully paid.",
+    payload: { documentId: "cmf1doc0001", docNo: "IV-202609-0007", grandTotalSatang: 107000 },
+  },
+  "account.payment_request.paid": {
+    when: "A PromptPay payment link was paid - either confirmed by the provider webhook or by a staff member for a static QR.",
+    payload: {
+      requestId: "cmf1req0001",
+      documentId: "cmf1doc0001",
+      docNo: "IV-202609-0007",
+      amountSatang: 53500,
+      provider: "PROMPTPAY_STATIC",
+      paymentId: "cmf1pay0002",
+    },
+  },
+  "account.payment_request.expired": {
+    when: "A payment link passed its expiry date and was closed by the hourly job.",
+    payload: { requestId: "cmf1req0002", documentId: "cmf1doc0004", docNo: "IV-202609-0008", amountSatang: 53500 },
+  },
+  "account.period.closed": {
+    when: "An accounting period was closed.",
+    payload: { periodKey: "2026-08", closedById: "cmf1usr0001" },
+  },
+  "account.contact.created": {
+    when: "A contact (customer or supplier) was created.",
+    payload: {
+      contactId: "cmf1con0001",
+      code: "C00007",
+      name: "Siam Dive Center Co., Ltd.",
+      kind: "CUSTOMER",
+      taxId: "0105561000007",
+      phone: "0811111111",
+      email: "billing@example.com",
+    },
+  },
+  "account.contact.updated": {
+    when: "A contact was edited. The idempotency key includes the row `updatedAt` in milliseconds, so every edit is its own delivery.",
+    payload: {
+      contactId: "cmf1con0001",
+      code: "C00007",
+      name: "Siam Dive Center Co., Ltd.",
+      kind: "CUSTOMER",
+      taxId: "0105561000007",
+      phone: "0811111111",
+      email: "accounts@example.com",
+    },
+  },
+  "account.contact.merged": {
+    when: "Two duplicate contacts were merged. Stop using `mergedId`: every document now points at `keepId`.",
+    payload: {
+      keepId: "cmf1con0001",
+      mergedId: "cmf1con0002",
+      moved: { documents: 3, journalLines: 6, groups: 1, recurringRules: 0 },
+    },
+  },
+  "account.product.created": {
+    when: "A product or service was created.",
+    payload: { productId: "cmf1prd0001", code: "P00024", sku: "DIVE-FIN-L", name: "Fins (L)", type: "GOODS", salePriceSatang: 250000 },
+  },
+  "account.product.updated": {
+    when: "A product or service was edited. Same `updatedAt` rule as `account.contact.updated`.",
+    payload: { productId: "cmf1prd0001", code: "P00024", sku: "DIVE-FIN-L", name: "Fins (L)", type: "GOODS", salePriceSatang: 270000 },
+  },
+};
+
+const VERIFY_SAMPLE = [
+  "import { createHmac, timingSafeEqual } from \"node:crypto\";",
+  "",
+  "// Express style handler. Read the RAW body: any reformatting breaks the signature.",
+  "export function handleSharkWebhook(rawBody: Buffer, headers: Record<string, string>) {",
+  "  const expected = createHmac(\"sha256\", process.env.SHARK_WEBHOOK_SECRET!).update(rawBody).digest(\"hex\");",
+  "  const got = headers[\"x-shark-signature\"] ?? \"\";",
+  "  if (got.length !== expected.length || !timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {",
+  "    return { status: 401 };",
+  "  }",
+  "  const event = JSON.parse(rawBody.toString(\"utf8\")) as { type: string; payload: unknown; sentAt: string };",
+  "  // Answer 2xx fast, then do the work. Anything else is retried up to 5 times.",
+  "  void enqueue(event);",
+  "  return { status: 200 };",
+  "}",
+];
+
+function webhookSection(): string[] {
+  const accountEvents = WEBHOOK_EVENTS.filter((e) => e.value.startsWith("account."));
+  const out: string[] = [
+    "## Webhooks",
+    "",
+    "Everything above is you calling SHARK. Webhooks are SHARK calling you: the shop owner adds an endpoint URL in the accounting book settings (Connections > External apps / API), ticks the events it wants, and gets a signing secret shown once.",
+    "",
+    "Delivery is at least once and ordered by the moment the change was committed. Events are written inside the same database transaction as the change itself, so an event exists only if the change really happened, and a change never happens without its event. A delivery that does not answer 2xx within 5 seconds is retried up to 5 times with a growing delay, so **make your handler idempotent**: key on the ids in the payload.",
+    "",
+    "### Request format",
+    "",
+    "`POST <your url>` with `Content-Type: application/json` and these headers:",
+    "",
+    "| Header | Value |",
+    "| --- | --- |",
+    "| `X-Shark-Event` | The event type, for example `account.document.issued`. |",
+    "| `X-Shark-Signature` | `HMAC-SHA256(secret, raw request body)` as lowercase hex. |",
+    "",
+    "The body is always the same three fields:",
+    "",
+    "```json",
+    JSON.stringify({ type: "account.document.issued", payload: { documentId: "cmf1doc0001" }, sentAt: "2026-09-05T09:15:00.000Z" }, null, 2),
+    "```",
+    "",
+    "`payload` never contains your shop id or accounting book id: the endpoint already belongs to one shop. Money fields are integers of satang and end in `Satang`, calendar dates are `YYYY-MM-DD` (UTC+7) and instants are ISO-8601 UTC ending in `At` - the same conventions as the REST API.",
+    "",
+    "### Verifying `X-Shark-Signature`",
+    "",
+    "1. Read the **raw** request body as bytes, before any JSON parsing or pretty printing.",
+    "2. Compute `HMAC-SHA256` over those bytes with the endpoint secret; render it as lowercase hex.",
+    "3. Compare with the `X-Shark-Signature` header using a constant time comparison. Reject with 401 when it differs.",
+    "4. Only then parse the JSON, answer 2xx immediately and process asynchronously.",
+    "",
+    "```ts",
+    ...VERIFY_SAMPLE,
+    "```",
+    "",
+    "### Events",
+    "",
+    "| Event | Fires when |",
+    "| --- | --- |",
+  ];
+  for (const e of accountEvents) {
+    out.push(`| \`${e.value}\` | ${WEBHOOK_EVENT_DOCS[e.value]?.when ?? "-"} |`);
+  }
+  out.push("");
+  for (const e of accountEvents) {
+    const doc = WEBHOOK_EVENT_DOCS[e.value];
+    if (!doc) continue;
+    out.push(`#### \`${e.value}\``, "", doc.when, "", "```json", JSON.stringify({ type: e.value, payload: doc.payload, sentAt: "2026-09-05T09:15:00.000Z" }, null, 2), "```", "");
+  }
+  return out;
+}
 
 // ── helper ────────────────────────────────────────────────────────────────
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -361,6 +541,9 @@ export function renderDocs(ops: ApiOp[] = ACCOUNT_OPS): string {
       push("```bash", ...curlExample(op, operation), "```", "");
     }
   }
+
+  // ── Webhooks ────────────────────────────────────────────────────────
+  push(...webhookSection());
 
   // ── Glossary ────────────────────────────────────────────────────────
   push(

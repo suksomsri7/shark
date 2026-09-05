@@ -130,8 +130,8 @@ try {
       JSON.stringify(cols.get("pinned") ?? null));
   }
 
-  eq("enum AccountDocSource ครบ 7 ค่า", (await enumValues("AccountDocSource")).join(","),
-    "MANUAL,AI,IMPORT,INBOX,CRM,POS,RECURRING");
+  eq("enum AccountDocSource ครบ 8 ค่า (WO C1 เพิ่ม API)", (await enumValues("AccountDocSource")).join(","),
+    "MANUAL,AI,IMPORT,INBOX,CRM,POS,RECURRING,API");
   eq("enum AccountPriceMode ครบ 3 ค่า", (await enumValues("AccountPriceMode")).join(","),
     "EXCL_VAT,INCL_VAT,NO_VAT");
   eq("enum AccountDiscountMode ครบ 2 ค่า", (await enumValues("AccountDiscountMode")).join(","), "AMOUNT,PERCENT");

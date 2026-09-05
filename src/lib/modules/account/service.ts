@@ -2,6 +2,17 @@ import { randomBytes } from "node:crypto";
 import { safeReason } from "./errors";
 import { prisma } from "@/lib/core/db";
 import { emitOutbox, emitOutboxMany } from "@/lib/core/outbox";
+// WO C4 — ตัวประกอบ payload + คีย์กันซ้ำของเหตุการณ์บัญชีที่ออกทาง webhook (ที่เดียวทั้งโมดูล)
+import {
+  emitContactCreated,
+  emitContactUpdated,
+  emitDocumentIssued,
+  emitDocumentVoided,
+  emitPaymentRequestPaid,
+  emitPaymentRequestsExpired,
+  emitPaymentVoided,
+  emitQuotationResponded,
+} from "./events";
 // WO 4.3 (§8.2) — ขาย "รายการจัดชุด" = ตัดสต็อกส่วนประกอบ (ไฟล์แยกกัน import วน service↔product)
 import { consumeBundleComponentsInTx } from "./bundle";
 import type {
@@ -947,13 +958,23 @@ export async function createContact(input: {
   // 🔴 เลขที่: ผู้ใช้กรอกเองมา = ใช้ตามนั้น (ซ้ำ = P2002 เด้งให้ผู้ใช้เห็น ไม่ต้องเดาแทน)
   //    ไม่กรอก = ระบบออกให้ + **retry เมื่อชนกัน** เพราะ nextContactCode เป็น SELECT-then-INSERT
   //    (2 คนกดพร้อมกันได้เลขเดียวกันแน่นอน — ตัวกันจริงคือ unique index ไม่ใช่ตรรกะนี้)
+  // WO C4: สร้างแถว + ยิง webhook "เพิ่มผู้ติดต่อใหม่" ในธุรกรรมเดียว
+  //   🔴 ห่อเฉพาะ "ครั้งที่สำเร็จ" ไม่ใช่ทั้งลูป — ชนเลขที่ = tx นั้น abort แล้วลูปเปิด tx ใหม่
+  //      (ถ้าห่อทั้งลูป P2002 ใบแรกจะทำให้ทุกคำสั่งถัดไปใน tx เดิมพังตามกันหมด)
+  const createWithEvent = async (createData: Prisma.AccountContactUncheckedCreateInput) =>
+    prisma.$transaction(async (tx) => {
+      const row = await tx.accountContact.create({ data: createData });
+      await emitContactCreated(tx, { tenantId: input.tenantId, systemId: input.systemId }, row);
+      return row;
+    });
+
   const explicitCode = typeof input.code === "string" ? input.code.trim() : "";
-  if (explicitCode) return prisma.accountContact.create({ data: { ...data, code: explicitCode } });
+  if (explicitCode) return createWithEvent({ ...data, code: explicitCode });
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const code = await nextContactCode(input.systemId);
     try {
-      return await prisma.accountContact.create({ data: { ...data, code } });
+      return await createWithEvent({ ...data, code });
     } catch (e) {
       if (!isContactCodeConflict(e)) throw e;
       // ชนกับคนที่เร็วกว่า → วนไปขอเลขถัดไป (nextContactCode จะเห็นเลขของเขาแล้ว)
@@ -962,7 +983,7 @@ export async function createContact(input: {
   // ชนติดกัน 6 รอบ = ผิดปกติจริง (ไม่ใช่ race ปกติ) — สร้างโดยไม่มีเลข ดีกว่าทำงานผู้ใช้หาย
   // (หน้ารายการถอยไปใช้เลขคำนวณสดของ WO 3.2 อยู่แล้ว · backfill เก็บกวาดทีหลังได้)
   console.warn(`[account] ออกเลขที่ผู้ติดต่อไม่สำเร็จหลัง 6 ครั้ง (system=${input.systemId}) — บันทึกโดยไม่มีเลขที่`);
-  return prisma.accountContact.create({ data });
+  return createWithEvent(data);
 }
 
 /** ชื่อ partial unique index ของ `code` (migration 20260904060000) — ใช้แยกว่าชนกันที่คอลัมน์ไหน */
@@ -1016,7 +1037,18 @@ export async function updateContact(
     const c = typeof input.code === "string" ? input.code.trim() : "";
     data.code = c || null;
   }
-  await prisma.accountContact.updateMany({ where: { id, tenantId, systemId }, data });
+  // WO C4: เขียน + ยิง webhook "แก้ไขผู้ติดต่อ" ในธุรกรรมเดียว
+  //   คีย์กันซ้ำผูกกับ `updatedAt` ⇒ **ต้องอ่านค่าหลังเขียนใน tx เดียวกัน** (อ่านก่อน = ได้ค่าเก่า
+  //   → แก้ 2 ครั้งติดกันจะได้ event ใบเดียว) · ไม่พบแถว (id ของร้านอื่น) = ไม่ยิงอะไรเลย
+  await prisma.$transaction(async (tx) => {
+    const res = await tx.accountContact.updateMany({ where: { id, tenantId, systemId }, data });
+    if (res.count === 0) return;
+    const row = await tx.accountContact.findFirst({
+      where: { id, tenantId, systemId },
+      select: { id: true, code: true, name: true, kind: true, taxId: true, phone: true, email: true, updatedAt: true },
+    });
+    if (row) await emitContactUpdated(tx, { tenantId, systemId }, row);
+  });
 
   // WO 3.3 (ปิดหนี้ที่ wo-notes/3.1.md ข้อ "updateContact ยังไม่เติม partyId"):
   // แก้ชื่อ/เบอร์/อีเมล/เลขภาษีของผู้ติดต่อที่ยังไม่มี Party → เชื่อมให้ตอนนี้
@@ -2206,6 +2238,20 @@ export async function issueDocument(
       if (doc.docType === "INVOICE" || (doc.docType === "RECEIPT" && !doc.sourceDocId)) {
         await consumeBundleComponentsInTx(tx, ctx, id);
       }
+
+      // ── WO C4: "ออกเอกสารแล้ว" ออก webhook — ใน tx เดียวกับการออกเลขที่/โพสต์บัญชี ──
+      //    กดซ้ำ/ยิง REST ซ้ำไม่เพิ่มใบ (คีย์ = docId) · `createGroupDoc` เรียกตัวนี้ต่อ ⇒ ยิงที่นี่ที่เดียว
+      await emitDocumentIssued(tx, ctx, {
+        id,
+        docType: doc.docType,
+        docNo,
+        // `ISSUE_STATUS` เป็นตารางบางส่วน — ชนิดที่ไม่มีในตาราง Prisma จะไม่แตะสถานะ (คงของเดิม)
+        status: ISSUE_STATUS[doc.docType] ?? doc.status,
+        contactId: doc.contactId,
+        grandTotal: doc.grandTotal,
+        issueDate: doc.issueDate,
+        source: doc.source,
+      });
     });
     return { ok: true, docNo };
   } catch (e) {
@@ -2224,12 +2270,17 @@ export async function setQuotationResponse(
   if (!doc) return { ok: false, reason: "ไม่พบเอกสาร" };
   if (doc.docType !== "QUOTATION") return { ok: false, reason: "ไม่ใช่ใบเสนอราคา" };
   if (doc.status !== "AWAITING_ACCEPT") return { ok: false, reason: "สถานะไม่ถูกต้อง" };
-  await prisma.accountDocument.update({
-    where: { id },
-    data: {
-      status: accepted ? "ACCEPTED" : "REJECTED",
-      acceptedAt: accepted ? new Date() : null,
-    },
+  // WO C4: เปลี่ยนสถานะ + ยิง webhook "ลูกค้าตอบใบเสนอราคา" ในธุรกรรมเดียว
+  //   (ปลายทางที่ต่อ CRM ไว้ ห้ามได้ event ของสถานะที่ rollback ไปแล้ว)
+  await prisma.$transaction(async (tx) => {
+    await tx.accountDocument.update({
+      where: { id },
+      data: {
+        status: accepted ? "ACCEPTED" : "REJECTED",
+        acceptedAt: accepted ? new Date() : null,
+      },
+    });
+    await emitQuotationResponded(tx, { tenantId, systemId }, { id, docNo: doc.docNo, accepted });
   });
   return { ok: true };
 }
@@ -2714,6 +2765,14 @@ export async function voidPayment(
         if (ti.status !== "DRAFT")
           await reverseFor({ tenantId, systemId }, "AccountDocument", ti.id, reason, tx);
       }
+      // WO C4: "ยกเลิกการรับชำระ" ออก webhook — ยอดที่รายงานคือยอดเงินของงวดที่ถูกยกเลิก (ไม่รวม WHT)
+      await emitPaymentVoided(tx, { tenantId, systemId }, {
+        paymentId,
+        documentId,
+        docNo: doc.docNo,
+        amountSatang: pay.amount,
+        reason,
+      });
     });
     return { ok: true };
   } catch (e) {
@@ -3048,6 +3107,13 @@ export async function voidDocument(
       if (wasIssued) {
         await reverseFor({ tenantId, systemId }, "AccountDocument", id, reason, tx);
       }
+      // WO C4: "ยกเลิกเอกสาร" ออก webhook — ใน tx เดียวกับ reversal (ยกเลิกล้ม = ไม่มี event หลอก)
+      await emitDocumentVoided(tx, { tenantId, systemId }, {
+        id,
+        docType: doc.docType,
+        docNo: doc.docNo,
+        reason,
+      });
     });
     return { ok: true };
   } catch (e) {
@@ -3135,11 +3201,69 @@ export async function findPaymentRequestByToken(token: string) {
 
 /** ปิดคำขอที่เลยวันหมดอายุทั้งระบบ (cron) — ปลอดภัยต่อการรันซ้ำ (แตะเฉพาะแถวที่ยัง PENDING) */
 export async function expirePaymentRequestsAll(now: Date): Promise<number> {
-  const res = await prisma.accountPaymentRequest.updateMany({
-    where: { status: "PENDING", expiresAt: { lt: now } },
-    data: { status: "EXPIRED" },
+  // WO C4: ต้องบอกปลายทางว่า "ลิงก์ใบไหนหมดอายุ" ⇒ อ่านแถวก่อนปิด (updateMany ไม่คืนแถวที่แตะ)
+  //   ตัวนี้เดินข้ามร้าน (cron ของแพลตฟอร์ม) ⇒ event ผูก tenantId/systemId **ของแต่ละแถว**
+  //   รันพร้อมกัน 2 โปรเซส: อีกตัวอาจปิดแถวไปก่อน → updateMany เห็น count น้อยกว่า rows แต่ event
+  //   ไม่ซ้ำอยู่ดีเพราะคีย์ = requestId (unique(tenantId,idempotencyKey) + skipDuplicates)
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.accountPaymentRequest.findMany({
+      where: { status: "PENDING", expiresAt: { lt: now } },
+      select: {
+        id: true,
+        tenantId: true,
+        systemId: true,
+        documentId: true,
+        amountSatang: true,
+        document: { select: { docNo: true } },
+      },
+      take: 500,
+    });
+    if (rows.length === 0) return 0;
+    const res = await tx.accountPaymentRequest.updateMany({
+      where: { id: { in: rows.map((r) => r.id) }, status: "PENDING" },
+      data: { status: "EXPIRED" },
+    });
+    await emitPaymentRequestsExpired(
+      tx,
+      rows.map((r) => ({
+        ctx: { tenantId: r.tenantId, systemId: r.systemId },
+        requestId: r.id,
+        documentId: r.documentId,
+        docNo: r.document?.docNo ?? null,
+        amountSatang: r.amountSatang,
+      })),
+    );
+    return res.count;
   });
-  return res.count;
+}
+
+/**
+ * WO C4 — ปิดคำขอชำระเงินเป็น "จ่ายแล้ว" + ยิง webhook ในธุรกรรมเดียว
+ *
+ * อยู่ที่นี่ (ไม่ใช่ `payment-request.ts`) เพราะไฟล์นั้น **ห้าม import prisma ดิบ** (fitness F5)
+ * และเราต้องการ `$transaction` จริงเพื่อให้สถานะคำขอกับ event เกิด/ไม่เกิดพร้อมกัน
+ * ทั้ง 2 ทางเข้า (webhook ของผู้ให้บริการ · คนกด "ยืนยันรับเงินแล้ว") เรียกตัวนี้ตัวเดียวกัน
+ */
+export async function markPaymentRequestPaid(
+  ctx: { tenantId: string; systemId: string },
+  requestId: string,
+  data: Prisma.AccountPaymentRequestUncheckedUpdateInput,
+  event: {
+    documentId: string;
+    docNo: string | null;
+    amountSatang: number;
+    provider: "PROMPTPAY_STATIC" | "BEAM";
+    paymentId: string | null;
+  },
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const res = await tx.accountPaymentRequest.updateMany({
+      where: { id: requestId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+      data,
+    });
+    if (res.count === 0) return;
+    await emitPaymentRequestPaid(tx, ctx, { requestId, ...event });
+  });
 }
 
 // ─────────────────── §5.6 ลิงก์สาธารณะขอใบกำกับภาษี ───────────────────

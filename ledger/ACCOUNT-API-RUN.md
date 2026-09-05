@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | C4 |
+| WO | D1 |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable (oracle เขียนแล้ว) → Opus (builder) |
-| ขั้นที่ถึง | 5 ก.ย. ~19:35 UTC: C3 DONE (Sonnet 26 นาที · Fable แก้ oracle M3.8 refId=open-<lotId> · probe เจอ 2 จุด แก้เอง: PATCH taxId ซ้ำ→409 duplicate · ลบสมาชิกกลุ่มข้ามร้าน→404 · write-master 44/44 · typecheck 0 · fitness 20/20 ทั้ง 2 โหมด) · **สั่ง Opus ทำ C4** |
+| ขั้นที่ถึง | 5 ก.ย. ~20:15 UTC: C4 DONE (Opus 20 นาที · Fable แก้ oracle E5.2/E5.6 ที่นับผิดเอง · webhooks 22/22 · regression 8 ชุดเขียว · typecheck 0 · fitness 20/20 ×2) · **เฟส C ปิด (qc:all แดง 4 แก้ครบ · drainOutbox วนจนเงียบ)** · **สั่ง Opus ทำ D1** |
 | commit ล่าสุดของงานนี้ | (C2 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
@@ -37,8 +37,8 @@
 | C1 | WRITE เอกสาร: create/patch/delete/issue/convert/respond/deposits/public-link/tags/attachments/remind/approval/receive/recurring | Opus | DONE | (HEAD) | Fable รันเอง write-docs 52/52 · read ทั้ง 4 ชุด · core 64 · openapi 26 · cpa 107 · editor 200/payments 162/groups 174/recurring 163/attachments 66 (agent) · drift 0 · typecheck 0 · fitness 20 (ไม่มี env) · ตีกลับ 0 (oracle ผมผิด 2: lockBeforeDate ต้องเป็น Date · กฎประจำ leadDays) · migration `AccountDocSource.API` · `ApiError` รับ hint (409 duplicate บอก id เดิม) · `setDocumentTags` ใหม่ · state_conflict ถูกโยนชัดใน 3 op (ข้อความ service ไม่มี keyword) |
 | C2 | WRITE payments/void/refund-deposit/payment-requests/group docs | Opus | DONE | (HEAD) | Fable รันเอง write-payments 32/32 · write-docs 52 · read-docs 50 · core 64 · openapi 26 · cpa 107 · payments 162/promptpay 84/groups 174/security 298 (agent) · typecheck 0 · fitness 20 (ไม่มี env) · ตีกลับ 0 · `recordPayments` คืน `paymentIds` (additive ไม่ query เพิ่ม) · `api/wht-income.ts` แมป income type (D1 ต้อง import ห้ามก็อป) · clientKey กลุ่ม = sha256 ย่อ (batchKey หนีบ 60 ตัว) · 10 op (payment-requests.list มีจาก B3 แล้ว — **WO ถัดไป grep ทะเบียนก่อนเพิ่ม op**) · ทะเบียนรวม 105 |
 | C3 | WRITE contacts/products/units/categories/bundle/opening-lots/stock-documents/link-inventory/contact-groups | Sonnet | DONE | 5 ก.ย. | write-master 44/44 (+M1.5b/M1.11b จาก probe) · 25 op → รวม 130 · `wo-notes/api-C3.md` |
-| C4 | webhook events ชุดแรก (issued/voided/quotation/payment.voided/payment_request/contact/product) | Opus | IN_PROGRESS | — | event PENDING = 0 |
-| D1 | WRITE finance-accounts/transfers/petty cash/cheques/WHT | Opus | TODO | — | |
+| C4 | webhook events ชุดแรก (issued/voided/quotation/payment.voided/payment_request/contact/product) | Opus | DONE | 5 ก.ย. | webhooks 22/22 (oracle E5.2/E5.6 นับผิดเอง แก้แล้ว: endpoint resolve ตอน drain) · 11 event ใหม่ · `events.ts` · `wo-notes/api-C4.md` |
+| D1 | WRITE finance-accounts/transfers/petty cash/cheques/WHT | Opus | IN_PROGRESS | — | |
 | D2 | WRITE journal/chart/mappings/periods/assets | Opus | TODO | — | |
 | D3 | WRITE reconcile/recurring/import/files/inbox/reports-email | Sonnet | TODO | — | |
 | D4 | WRITE settings/policy/permissions/links/webhooks CRUD + events ที่เหลือ | Sonnet | TODO | — | |
@@ -370,6 +370,10 @@ event ที่เหลือ (D4): `account.cheque.changed` (ทุก transit
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 5 ก.ย. ~20:55 UTC — **เฟส C ปิด 4/4 · qc:all 242/246 (20 นาที) → แดง 4 ชุด แก้ครบ รันเดี่ยวเขียวหมด** · ความคืบหน้า 12/24 = 50% · เริ่ม D1
+  - 🔴 บั๊กจริงที่ qc:all จับได้ (approval-wiring 5/7 · account-api-webhooks 15/19 แดงเฉพาะใน qc:all): `drainOutbox` ระบาย **50 ตัวต่อการเรียก 1 ครั้งแล้วเลิก** · หลัง C4 seed สร้าง 183 event ในนาทีเดียว → ชุดถัดไป drainAll แล้ว event ตัวเองไม่ถูกหยิบ · บน prod = นำเข้า CSV 200 ราย จะทำให้แชท/invoice.paid/ฮุคร้านอื่นต่อคิวรอ cron รายชั่วโมง (50 ตัว/ชม.) ⇒ แก้ `core/outbox.ts` ให้ `drainUntilQuiet` วนจนคิวเงียบ (เพดาน 10 รอบ×50 · งบเวลา 20 วิ) · positive control: 130 event → drainAll ครั้งเดียว DONE 130 ใน 8.7 วิ
+  - ข้อสอบเก่าที่สัญญาเปลี่ยน: `qc-acc-v2-schema` enum AccountDocSource 7→8 (C1 เพิ่ม API) · `qc-acc-v2-permissions` R4.3 event บัญชี 4→15 (C4) — แก้ให้ตรวจ "4 ตัวเดิมยังอยู่ + ทุกตัวมีป้ายไทย"
+  - ไม่รัน qc:all ซ้ำทั้งชุด (20 นาที) — รันเดี่ยว 6 ชุดที่เกี่ยว (schema 61 · permissions 160 · webhooks 22 · approval-wiring 7 · qc-webhook 15) + typecheck 0 + fitness 20/20 ×2 · qc:all เต็มรอบถัดไป = ปิดเฟส D
 - 5 ก.ย. ~19:35 UTC — C3 ปิด (Sonnet 26 นาที · oracle ผิดเอง 1 ข้อ M3.8 · probe Fable เจอ 2 จุดแก้เอง) · ความคืบหน้า 11/24 = 46% · เริ่ม C4
 - 5 ก.ย. ~17:45 UTC — C2 ปิด (Opus 19 นาที รอบเดียว) · ความคืบหน้า 10/24 = 42% · เริ่ม C3
 - 5 ก.ย. ~17:05 UTC — C1 ปิด (Opus 26 นาที) · ความคืบหน้า 9/24 = 38% · เริ่ม C2
