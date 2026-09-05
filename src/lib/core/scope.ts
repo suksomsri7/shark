@@ -161,6 +161,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   KbArticle: tenant,
   // Public API (WO-0061) + Webhooks ขาออก (WO-0062)
   ApiKey: tenant,
+  ApiIdempotency: tenant, // กันคำสั่งซ้ำของ REST บัญชี (WO A1) — คิวรีด้วย keyId+idemKey ภายใต้ tenant
   WebhookEndpoint: tenant,
   WebhookDelivery: tenant,
   // Form builder (WO-0054)

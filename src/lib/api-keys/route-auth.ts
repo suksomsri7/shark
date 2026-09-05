@@ -13,7 +13,16 @@ export function apiJson(body: unknown, status: number, headers?: Record<string, 
 }
 
 export type ApiAuth =
-  | { ok: true; tenantId: string; keyId: string }
+  | {
+      ok: true;
+      tenantId: string;
+      keyId: string;
+      /** ขอบเขตสิทธิ์ของคีย์ (WO A1) — [] = คีย์รุ่นเดิม (route เก่าไม่ได้อ่านฟิลด์นี้) */
+      scopes: string[];
+      /** ระบบที่คีย์ผูกไว้ — null = คีย์ระดับร้าน */
+      systemId: string | null;
+      expiresAt: Date | null;
+    }
   | { ok: false; response: Response };
 
 const RATE_LIMIT = 60; // ครั้ง/นาที ต่อคีย์
@@ -26,9 +35,10 @@ export async function authenticateApiRequest(req: Request): Promise<ApiAuth> {
   if (!rawKey) {
     return { ok: false, response: apiJson({ error: "ต้องส่งส่วนหัว Authorization: Bearer <API key>" }, 401) };
   }
+  // verifyApiKey คืน null ทั้งกรณีไม่มีคีย์ / เพิกถอน / **หมดอายุ** → ทางเดิม 401 เส้นเดียว
   const v = await verifyApiKey(rawKey);
   if (!v) {
-    return { ok: false, response: apiJson({ error: "API key ไม่ถูกต้องหรือถูกเพิกถอนแล้ว" }, 401) };
+    return { ok: false, response: apiJson({ error: "API key ไม่ถูกต้อง หมดอายุ หรือถูกเพิกถอนแล้ว" }, 401) };
   }
   const rl = checkRateLimit(`apiv1:${v.keyId}`, { limit: RATE_LIMIT, windowMs: WINDOW_MS });
   if (!rl.ok) {
@@ -41,5 +51,12 @@ export async function authenticateApiRequest(req: Request): Promise<ApiAuth> {
       ),
     };
   }
-  return { ok: true, tenantId: v.tenantId, keyId: v.keyId };
+  return {
+    ok: true,
+    tenantId: v.tenantId,
+    keyId: v.keyId,
+    scopes: v.scopes,
+    systemId: v.systemId,
+    expiresAt: v.expiresAt,
+  };
 }

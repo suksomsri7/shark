@@ -9,5 +9,31 @@ model ApiKey {
   revokedAt  DateTime?
   createdAt  DateTime  @default(now())
 
+  // API บัญชี (WO A1) — คีย์มีขอบเขตสิทธิ์ / ผูกสมุดบัญชี / หมดอายุ / หมุนได้
+  scopesJson    Json      @default("[]") // permission key ที่คีย์นี้ใช้ได้ ([] = คีย์อ่านรุ่นเดิม)
+  systemId      String? // ผูกกับ AppSystem เล่มใดเล่มหนึ่ง (null = ระดับร้าน)
+  expiresAt     DateTime? // null = ไม่หมดอายุ (คีย์รุ่นเดิม)
+  createdById   String? // User.id คนกดสร้าง (ไม่ทำ relation — คีย์อยู่ได้แม้คนออกจากร้าน)
+  rotatedFromId String? // คีย์ก่อนหน้าที่ถูกหมุนมาเป็นตัวนี้
+
+  @@index([tenantId])
+  @@index([tenantId, systemId])
+}
+
+// กันคำสั่งซ้ำของ REST บัญชี (WO A1/A3) — 1 แถวต่อ (คีย์, Idempotency-Key)
+// สร้างแถวก่อนรันงานจริง (status null = กำลังทำ) แล้วอัปเดตผลลัพธ์กลับมาเก็บไว้ตอบซ้ำ · TTL 24 ชม.
+model ApiIdempotency {
+  id           String   @id @default(cuid())
+  tenantId     String
+  keyId        String // ApiKey.id ที่ยิงคำขอ (ไม่ทำ relation — เก็บต่อได้หลังคีย์ถูกลบ)
+  idemKey      String // ค่าที่ผู้เรียกส่งมาในหัว Idempotency-Key
+  requestHash  String // sha256(method + path + body) — ซ้ำแต่ hash ต่าง = 409
+  status       Int? // HTTP status ที่ตอบไป (null = กำลังทำอยู่)
+  responseJson Json?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@unique([keyId, idemKey])
+  @@index([expiresAt])
   @@index([tenantId])
 }

@@ -63,6 +63,8 @@ export function assertAccountCan(auth: ActiveAuth, action: string): void {
 export async function writeAudit(input: {
   tenantId: string;
   actorId?: string | null;
+  /** ใครเป็นคนทำ — ค่าปริยาย USER · REST ผ่าน API key ส่ง "API_KEY" (actorId = ApiKey.id) */
+  actorType?: ActorType;
   action: string; // "account.doc.issue" | "account.payment.record" | ...
   targetType?: string; // "AccountDocument" | ...
   targetId?: string;
@@ -73,7 +75,7 @@ export async function writeAudit(input: {
     await prisma.auditLog.create({
       data: {
         tenantId: input.tenantId,
-        actorType: "USER",
+        actorType: input.actorType ?? "USER",
         actorId: input.actorId ?? null,
         action: input.action,
         targetType: input.targetType ?? null,
@@ -217,6 +219,7 @@ export function auditActionLabelTh(code: string): string {
 function actorTypeLabelTh(t: ActorType): string {
   if (t === "SYSTEM") return "ระบบอัตโนมัติ";
   if (t === "PLATFORM_USER") return "ผู้ดูแลแพลตฟอร์ม";
+  if (t === "API_KEY") return "แอปภายนอก (API key)";
   return "ผู้ใช้ที่ถูกลบ";
 }
 

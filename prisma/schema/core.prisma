@@ -204,6 +204,7 @@ enum ActorType {
   USER
   PLATFORM_USER
   SYSTEM
+  API_KEY // เรียกผ่าน REST ด้วย API key (actorId = ApiKey.id) — WO A1
 }
 
 model AuditLog {
