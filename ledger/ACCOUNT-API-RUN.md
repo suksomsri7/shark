@@ -7,11 +7,11 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | A3 |
+| WO | A4 |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable (oracle เขียนแล้ว) → Opus (builder) |
-| ขั้นที่ถึง | 5 ก.ย. ~08:35 UTC: A1 DONE (Fable รันเอง keys 51/51 · public-api 18/18 · typecheck 0 · fitness 17/17 · แก้ scopes.ts เอาค่าตั้ง approve.limit ออกจาก bundle) · **สั่ง Opus ทำ A3** (แกน REST) · oracle A2/A3 พร้อมแล้ว |
-| commit ล่าสุดของงานนี้ | (A1 commit ถัดไป) |
+| ขั้นที่ถึง | 5 ก.ย. ~09:20 UTC: A3 DONE (Fable รันเอง core 64/64 · keys 51/51 · typecheck 0 · fitness 17/17 · อ่านโค้ด require/idempotency/dispatch/actor แล้ว) · **สั่ง Opus ทำ A4** (OpenAPI+docs+F13) · ถัดไป A2 (Sonnet UI) |
+| commit ล่าสุดของงานนี้ | (A3 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
 ## กติกาของ run นี้ (สืบทอดจาก ACCOUNT-V2-RUN + เพิ่ม)
@@ -28,8 +28,8 @@
 |---|---|---|---|---|---|
 | A1 | คีย์ API มี scope/ผูกสมุด/หมดอายุ/หมุน + `ApiIdempotency` + `ActorType.API_KEY` | Opus | DONE | (HEAD) | Fable รันเอง keys 51/51 · public-api 18 · schema 61 · permissions 160 · security 298 (agent) · drift 0 · typecheck 0 · fitness 17 · migration `20260917000000_api_key_scopes` apply QC แล้ว (prod จะ apply ตอน Vercel build) · หมายเหตุ: `account.approve.limit` = ค่าตั้ง ไม่ใช่ scope (`NON_API_SCOPE_KEYS`) · หนี้: คีย์บัญชียังเรียก `/api/v1/*` ของแพลตฟอร์มได้เหมือนคีย์เดิม (ตัดสินใน A3/B) |
 | A2 | หน้าตั้งค่า "แอปภายนอก/API" ในบัญชี: สร้างคีย์ผูกสมุด + bundle/scope + หมดอายุ + หมุน · `/app/settings/api` แสดง scope | Sonnet | TODO | — | ภาพจริงเทียบ g14 |
-| A3 | `account/api/`: actor · `requireAccountApi` · envelope/error/requestId · idempotency · registry · catch-all route · rate limit DB | Opus | IN_PROGRESS | — | oracle `qc-account-api-core.mts` (เขียนแล้ว) |
-| A4 | generator OpenAPI + `/api/v1/account/openapi.json` + `gen-account-api-docs.mts` + fitness F13 (ทุก op มี test id) | Opus | TODO | — | |
+| A3 | `account/api/`: actor · `requireAccountApi` · envelope/error/requestId · idempotency · registry · catch-all route · rate limit DB | Opus | DONE | (HEAD) | Fable รันเอง core 64/64 · keys 51 · public-api 18 · chat-api-v1 89 (agent) · typecheck 0 · fitness 17 · ไฟล์ `api/{actor,respond,op,registry,require,idempotency,dispatch}.ts` + `ops/core.ts` + route catch-all · หนี้: แถว idempotency status null ค้าง (process ตาย) บล็อก key นั้น 24 ชม. → เพิ่ม stale>5 นาที=จองใหม่ ใน B/C · danger op จริงต้องมี `reason` ใน schema |
+| A4 | generator OpenAPI + `/api/v1/account/openapi.json` + `gen-account-api-docs.mts` + fitness F13 (ทุก op มี test id) | Opus | IN_PROGRESS | — | oracle `qc-account-api-openapi.mts` (เขียนแล้ว) |
 | B1 | READ เอกสาร: list/get/print/tags/favorites/attachments/parse/recurring/dashboard/overview | Sonnet | TODO | — | เทียบ `acc-v2-expected.json` |
 | B2 | READ ผู้ติดต่อ/สินค้า/หน่วย/กลุ่ม/merge-candidates/DBD/link-suggestions | Sonnet | TODO | — | |
 | B3 | READ การเงิน: finance-accounts/statement/overview/calendar/payment-requests/reconcile/cheques/wht | Sonnet | TODO | — | |
@@ -91,12 +91,17 @@
 - `api/openapi.ts`: `buildOpenApi(ops) → OpenAPI 3.1` (zod → JSON Schema ด้วย `zod-to-json-schema` หรือ `z.toJSONSchema` ถ้า zod 4 · เช็ก version ใน package.json) · security scheme bearer · `x-shark-kind` · `x-shark-scope` · `x-shark-tool` ต่อ op · error schema กลาง · servers `https://shark.in.th/api/v1/account`
 - route `GET /api/v1/account/openapi.json` (ไม่ต้องใช้คีย์ · cache 5 นาที)
 - `scripts/gen-account-api-docs.mts` → `docs/api/ACCOUNT-API.md` (EN · หมวดตาม §4 · ต่อ op: method+path · scope · kind · input/output fields · example) · idempotent · fitness **F13**: (1) ทุก op มี `test` และ id นั้นปรากฏในสคริปต์ `scripts/qc-account-api-*.mts` (2) `docs/api/ACCOUNT-API.md` ตรงกับ generate (diff = 0) (3) ทุก op ที่มี `tool` อยู่ในสกิล `account` (เมื่อ E1 มาถึง)
-- oracle: ต่อท้าย `qc-account-api-core` + `fitness`
+- **สัญญาที่ oracle ยึด** (`scripts/qc-account-api-openapi.mts` · Fable เขียนแล้ว): `buildOpenApi(ops)` → `openapi: "3.1.x"` · `info.title/version/description` (EN · ต้องพูดถึง satang · `Idempotency-Key` · `X-Shark-System`) · `servers[0].url = https://shark.in.th/api/v1/account` · `components.securitySchemes.bearer {type:http, scheme:bearer}` + `security: [{bearer:[]}]` · `components.schemas.Error` (error.code enum ครบ 19 code · message_th · message_en · hint · details · requestId) · ต่อ op: `paths[path][method]` = `{ operationId: id, summary(EN), description(label TH ได้), "x-shark-kind", "x-shark-scope", "x-shark-tool"?, security: [{bearer:[]}], parameters: [path params required · header X-Shark-System optional (ทุก op) · header Idempotency-Key required (write/danger)], requestBody (write/danger: zod→JSON Schema · `additionalProperties:false` · danger เพิ่ม `confirm` (boolean enum [true]) + `reason` (string minLength 5) ใน required), responses: 200 {data schema} · 401 · 403 · 404 · 422 · 429 (+409 สำหรับ danger/write) อ้าง `#/components/schemas/Error` }` · spec ต้อง serializable ไม่มี handler/cuid
+- route `src/app/api/v1/account/openapi.json/route.ts` (GET · ไม่ต้องใช้คีย์ · `Cache-Control: public, max-age=300` · body = buildOpenApi เดียวกัน)
+- `scripts/gen-account-api-docs.mts` → เขียน `docs/api/ACCOUNT-API.md` (EN หลัก · 5 บรรทัดแรกไม่มีไทย · มีส่วน Glossary ไทย · ทุก op มีบรรทัด `METHOD path` + scope + kind · มีหัวข้อ Error codes ครบ) · รองรับ `--check` (exit 0 = ไฟล์ตรง · 1 = stale)
+- fitness เพิ่มบล็อก F13 (`chk("F13.1", ...)`): ทุก op มี `test` ที่ปรากฏเป็นสตริง `"<id>"` ใน `scripts/qc-account-api-*.mts` · `F13.2`: docs ตรง generator (`--check`) · `F13.3`: op ที่มี `tool` ต้องมีชื่อใน `src/lib/ai/skills.ts` (ตอนนี้ vacuous)
+- oracle: `qc-account-api-openapi` + `qc-account-api-core` + `fitness`
 
 ### B1–B4 (READ) · C1–C4 · D1–D4 (WRITE) — สเปคละเอียดเขียนตอนถึง (อ้าง PLAN §4 แถวต่อแถว) · ทุก op: id/path/scope ตามตาราง §4 · oracle เทียบเฉลย `acc-v2-expected.json` + `qc-account-cpa`
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 5 ก.ย. ~09:20 UTC — A3 ปิด (Opus 16 นาที · ผ่านรอบเดียว) · เริ่ม A4 · ความคืบหน้า 2/24
 - 5 ก.ย. ~08:35 UTC — A1 ปิด (Opus 12 นาที · Fable ตรวจ diff+รัน oracle ซ้ำ) · เริ่ม A3
 - 5 ก.ย. ~07:30 UTC — เริ่ม run · เครื่อง: load 1.2 · RAM ว่าง 5.4G · gate ว่าง · Neon QC `ep-plain-art` seed-check 279/279 · เจ้าของเคาะ §8 ครบ · push แผนขึ้น main `43cdb2a`
 

@@ -17,7 +17,15 @@
 import { prisma } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
 
-export type RateVerdict = { ok: boolean; retryAfterSec?: number };
+export type RateVerdict = {
+  ok: boolean;
+  retryAfterSec?: number;
+  /**
+   * จำนวนครั้งที่นับไปแล้วในหน้าต่างนี้ (รวมครั้งนี้) — undefined เมื่อตัวจำกัดล่ม (fail-open)
+   * ผู้เรียกที่อยากตอบหัว `X-RateLimit-Remaining` คำนวณเอง = limit − count
+   */
+  count?: number;
+};
 
 /**
  * นับ 1 ครั้งเมื่อผ่าน · ถึงเพดานในหน้าต่างเวลา → `{ ok:false, retryAfterSec }`
@@ -61,11 +69,11 @@ export async function checkRateLimitDb(
 
     const row = rows[0];
     if (!row) return { ok: true }; // ไม่ควรเกิด (RETURNING เสมอ) — ปล่อยผ่านดีกว่าปิดแชท
-    if (row.count <= limit) return { ok: true };
+    if (row.count <= limit) return { ok: true, count: row.count };
 
     // เต็มเพดาน — บอกเวลาที่หน้าต่างจะหมดจริงจากแถวใน DB
     const resetAt = row.windowStart.getTime() + windowMs;
-    return { ok: false, retryAfterSec: Math.max(1, Math.ceil((resetAt - now) / 1000)) };
+    return { ok: false, count: row.count, retryAfterSec: Math.max(1, Math.ceil((resetAt - now) / 1000)) };
   } catch (e) {
     // DB ล่ม/ช้า → ปล่อยผ่าน แต่ **ไม่เงียบต่อเรา** (ปิดเงียบเคยทำให้ไล่หาสาเหตุนาน — storage/service.ts:129)
     void logOps("WARN", "rate-limit-db", "ตัวจำกัดอัตราบน DB ทำงานไม่ได้ — ปล่อยผ่านชั่วคราว", {

@@ -109,25 +109,53 @@ export type VerifiedApiKey = {
 // และผู้เรียกต้องรอ UPDATE จบก่อนได้คำตอบ (บวกรอบเดินทางไป Neon SG ให้ทุก API call)
 const LAST_USED_GRANULARITY_MS = 60_000;
 
-// ตรวจ rawKey → คืน tenant/keyId/scope ถ้าใช้ได้ · เพิกถอน/หมดอายุ/ไม่มี → null · แตะ lastUsedAt แบบหยาบ ๆ
-export async function verifyApiKey(rawKey: unknown): Promise<VerifiedApiKey | null> {
-  if (typeof rawKey !== "string" || !rawKey.startsWith("shark_")) return null;
+/** ผลตรวจคีย์แบบละเอียด — แยก "หมดอายุ" ออกจาก "ไม่ถูกต้อง" (REST บัญชีตอบคนละรหัส) */
+export type ApiKeyVerification =
+  | { status: "ok"; key: VerifiedApiKey & { name: string } }
+  | { status: "expired" }
+  | { status: "invalid" };
+
+/**
+ * ตรวจ rawKey แบบละเอียด — ใช้โดย REST บัญชี (WO A3) ที่ต้องตอบ 401 `key_expired`
+ * แยกจาก 401 `unauthorized` เพื่อให้ผู้เชื่อมต่อรู้ว่า "ต้องหมุนคีย์" ไม่ใช่ "พิมพ์คีย์ผิด"
+ *
+ * คืน `name` มาด้วยเพื่อไม่ต้องอ่านแถวเดิมซ้ำตอนเขียน AuditLog (ทุกคำขอ = 1 query ไม่ใช่ 2)
+ */
+export async function verifyApiKeyDetailed(rawKey: unknown): Promise<ApiKeyVerification> {
+  if (typeof rawKey !== "string" || !rawKey.startsWith("shark_")) return { status: "invalid" };
   // hash lookup ก่อนรู้ tenant → prisma ตรงได้เฉพาะจุดนี้ (keyHash @unique · ยังไม่มีบริบท tenant)
   const row = await prisma.apiKey.findUnique({ where: { keyHash: sha256hex(rawKey) } });
-  if (!row || row.revokedAt) return null;
+  if (!row || row.revokedAt) return { status: "invalid" };
   const now = Date.now();
   // หมดอายุ = ใช้ไม่ได้ และ **ไม่แตะ lastUsedAt** (ไม่ให้คีย์ตายแล้วดูเหมือนยังมีคนใช้)
-  if (row.expiresAt && row.expiresAt.getTime() <= now) return null;
+  if (row.expiresAt && row.expiresAt.getTime() <= now) return { status: "expired" };
   if (!row.lastUsedAt || now - row.lastUsedAt.getTime() > LAST_USED_GRANULARITY_MS) {
     // ไม่ await — คำตอบของ API ไม่ควรรอ bookkeeping · พังก็ไม่กระทบการยืนยันคีย์
     void prisma.apiKey.update({ where: { id: row.id }, data: { lastUsedAt: new Date(now) } }).catch(() => {});
   }
   return {
-    tenantId: row.tenantId,
-    keyId: row.id,
-    scopes: parseScopes(row.scopesJson),
-    systemId: row.systemId,
-    expiresAt: row.expiresAt,
+    status: "ok",
+    key: {
+      tenantId: row.tenantId,
+      keyId: row.id,
+      scopes: parseScopes(row.scopesJson),
+      systemId: row.systemId,
+      expiresAt: row.expiresAt,
+      name: row.name,
+    },
+  };
+}
+
+// ตรวจ rawKey → คืน tenant/keyId/scope ถ้าใช้ได้ · เพิกถอน/หมดอายุ/ไม่มี → null · แตะ lastUsedAt แบบหยาบ ๆ
+export async function verifyApiKey(rawKey: unknown): Promise<VerifiedApiKey | null> {
+  const v = await verifyApiKeyDetailed(rawKey);
+  if (v.status !== "ok") return null;
+  return {
+    tenantId: v.key.tenantId,
+    keyId: v.key.keyId,
+    scopes: v.key.scopes,
+    systemId: v.key.systemId,
+    expiresAt: v.key.expiresAt,
   };
 }
 
