@@ -9,10 +9,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | 10.1 QC รอบสุดท้ายทุกเฟรม (Fable) — เฟส 9 กำลัง ff main + deploy |
+| WO | 10.1 QC รอบสุดท้ายทุกเฟรม (Fable) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable (ปิดเฟส) |
-| ขั้นที่ถึง | 5 ก.ย. ~02:30 UTC: qc:all เฟส 9 = **227/227** (1206s) → ff main + push → Vercel · 10.1 เริ่ม: build QC server แล้ว Fable ดูภาพจริงคู่ mockup ทีละเฟรม (34 เฟรม) |
+| ขั้นที่ถึง | 5 ก.ย. ~01:35 UTC: **verify prod เฟส 9 ผ่าน** — Vercel READY 01:32 (dpl_7VzYFp…) · migration perf_indexes + undo_token finished · AccountUndoToken อยู่บน prod · next 16.2.11 บน prod · https 200 · 10.1: QC server build แล้ว กำลังถ่ายทุกเฟรม (24 key) ด้วย --assert แล้ว Fable ดูภาพคู่ mockup |
 | commit ล่าสุดของงานนี้ | 32ba0d9 |
 | บล็อกเกอร์ | — · เจ้าของนอนตั้งแต่ 14:05 UTC 3 ก.ย. สั่ง run ยาวต่อไม่ต้องถาม |
 
