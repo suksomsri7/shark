@@ -118,6 +118,11 @@ const paymentRowInput = z
       .int()
       .positive()
       .describe("Money actually received or paid in satang (integer), excluding any withholding tax. 1,070.00 baht is 107000."),
+    /**
+     * WO D1: **ไม่บังคับแม้จะหักภาษีไว้** — ประเภทเงินได้เป็นของ "ใบ 50 ทวิ" ไม่ใช่ของ "การจ่ายเงิน"
+     * (C2 เคยบังคับไว้ แล้วปิดทางเดินจริงของสำนักงานบัญชี: จ่ายเงินวันนี้ ตกลงประเภทเงินได้กับผู้ขาย
+     * ทีหลัง แล้วค่อยออกใบด้วย `POST /wht/certs`) · ส่งมาที่นี่ = ออกใบให้เลยตอนบันทึกจ่าย
+     */
     whtIncomeType: whtIncomeTypeField.nullish(),
     whtRateBp: z
       .number()
@@ -140,9 +145,6 @@ const paymentRowInput = z
   .superRefine((v, ctx) => {
     if (!v.financeAccountId && !v.cheque) {
       ctx.addIssue({ code: "custom", path: ["financeAccountId"], message: "ต้องระบุช่องทางการเงิน (ยกเว้นการชำระด้วยเช็ค)" });
-    }
-    if ((v.whtAmountSatang ?? 0) > 0 && !v.whtIncomeType) {
-      ctx.addIssue({ code: "custom", path: ["whtIncomeType"], message: "หักภาษี ณ ที่จ่ายต้องระบุประเภทเงินได้ (whtIncomeType)" });
     }
   });
 

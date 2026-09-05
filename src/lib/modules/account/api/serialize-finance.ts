@@ -50,6 +50,29 @@ export function financeAccountDetail(
   return { ...financeAccountRow(a, ledgerCodeById), openingEntries: openingEntries.map(financeOpeningEntryView) };
 }
 
+/**
+ * แถวช่องทางการเงินของฝั่ง **เขียน** (WO D1) — ของ B3 บวกช่องที่ `POST`/`PATCH` ตั้งค่าได้
+ * (ชื่อบัญชี · สาขา · หมายเหตุ · ธงใช้รับ/จ่าย · วงเงิน · ผู้ถือ) ⇒ ผู้เรียกเห็นผลของสิ่งที่เพิ่งส่งไป
+ * ไม่ต้องยิง GET ตาม · แยกจาก `financeAccountRow` โดยตั้งใจเพื่อ **ไม่ขยายคำตอบของ B3**
+ * (รายการช่องทางถูกดึงบ่อยจากหน้าจอ — ช่องเพิ่มที่ไม่มีใครใช้ = ข้อมูลอ่อนไหวรั่วฟรี)
+ */
+export function financeAccountWriteView(
+  a: FinanceAccountBalance,
+  openingEntries: FinanceOpeningRow[],
+  ledgerCodeById: Map<string, string>,
+) {
+  return {
+    ...financeAccountDetail(a, openingEntries, ledgerCodeById),
+    bankBranch: a.bankBranch,
+    accountName: a.accountName,
+    note: a.note,
+    useForReceive: a.useForReceive,
+    useForPay: a.useForPay,
+    limitSatang: a.limitSatang,
+    holderUserId: a.holderUserId,
+  };
+}
+
 export function financeGroupView(g: FinanceGroup) {
   return { key: g.key, label: g.label, totalSatang: g.total, accountIds: g.accounts.map((a) => a.id) };
 }

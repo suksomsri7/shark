@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 130 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 145 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -1118,6 +1118,84 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/categories" \
   -d '{"name":"example name"}'
 ```
 
+#### `cheques.bounce`
+
+**POST /cheques/{id}/bounce** - Record that a received cheque was returned unpaid. The ledger effect is reversed and the customer owes the money again. · scope: `account.cheque.bounce` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | one of several shapes | no | What the bank gave as the reason, kept on the cheque. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/cheques/123/bounce" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `cheques.clear`
+
+**POST /cheques/{id}/clear** - Mark a cheque as cleared. This is the moment the money really moves: a received cheque credits the bank account, an issued cheque debits it. · scope: `account.cheque.clear` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `clearedDate` | string | no | Day the bank cleared it. Default today. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/cheques/123/clear" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `cheques.deposit`
+
+**POST /cheques/{id}/deposit** - Bank a received cheque. Nothing is posted to the ledger yet because the money has not arrived; only the cheque status moves. · scope: `account.cheque.deposit` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `depositedAt` | string | no | Day the cheque was handed to the bank. Default today. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/cheques/123/deposit" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `cheques.create`
+
+**POST /cheques** - Register a cheque in the cheque book. A received cheque starts on hand, an issued cheque starts as issued, and the money only reaches the bank account when the cheque clears. · scope: `account.cheque.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `direction` | enum("IN", "OUT") | yes | IN is a cheque you received from a customer, OUT is a cheque you wrote to a vendor. |
+| `chequeNo` | string | yes | Cheque number as printed on the cheque. · min length 1 · max length 40 |
+| `bankName` | string | yes | Bank that the cheque is drawn on. · min length 1 · max length 80 |
+| `bankBranch` | one of several shapes | no | Branch printed on the cheque. |
+| `chequeDate` | string | yes | Date written on the cheque, which is when it can be banked. |
+| `amountSatang` | integer | yes | Face value of the cheque in satang. |
+| `financeAccountId` | one of several shapes | no | - |
+| `documentId` | one of several shapes | no | - |
+| `note` | one of several shapes | no | Note kept with the cheque. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/cheques" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"direction":"IN","chequeNo":"example chequeNo","bankName":"example bankName","chequeDate":"example chequeDate","amountSatang":10000}'
+```
+
 #### `contact-groups.remove-member`
 
 **DELETE /contact-groups/{id}/members/{contactId}** - Remove one contact from a group. · scope: `account.contact.manage` · write
@@ -1603,6 +1681,123 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/favorites" \
   -d '{"name":"example name","lines":[]}'
 ```
 
+#### `finance-accounts.add-opening`
+
+**POST /finance-accounts/{id}/opening** - Add one opening balance line to a money channel. Each line becomes its own journal entry, so a channel taken over from several old books keeps them apart. · scope: `account.finance.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `date` | string | yes | date (Thai calendar day, YYYY-MM-DD). |
+| `amountSatang` | integer | yes | Opening amount in satang. Negative means the channel was overdrawn when the books were taken over. |
+| `note` | one of several shapes | no | What this opening line is, such as which old book it came from. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/finance-accounts/123/opening" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"date":"example date","amountSatang":10000}'
+```
+
+#### `finance-accounts.archive`
+
+**DELETE /finance-accounts/{id}** - Retire a money channel. Nothing is deleted: past entries stay in the books. A channel with a balance left, or one used for a payment this month, is refused. · scope: `account.finance.manage` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/finance-accounts/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `finance-accounts.update`
+
+**PATCH /finance-accounts/{id}** - Change the details of one money channel. Fields that are not sent keep their current value. Opening balances are not touched here. · scope: `account.finance.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | no | min length 1 · max length 120 |
+| `code` | one of several shapes | no | Channel code. Leave it out and the system issues the next free one, such as BSV001. |
+| `bankSubtype` | one of several shapes | no | - |
+| `bankName` | one of several shapes | no | Bank name as printed on documents, such as KBANK. |
+| `bankBranch` | one of several shapes | no | Branch of the account. |
+| `accountNo` | one of several shapes | no | Bank account number. |
+| `accountName` | one of several shapes | no | Account holder name as registered with the bank. |
+| `promptpayId` | one of several shapes | no | PromptPay id used to build payment QR codes for this channel. |
+| `note` | one of several shapes | no | Free note kept with the channel. |
+| `useForReceive` | boolean | no | Offer this channel when money comes in. Default true. |
+| `useForPay` | boolean | no | Offer this channel when money goes out. Default true. |
+| `showOnDocuments` | boolean | no | Print the account details on invoices so the customer can transfer. Default false. |
+| `limitSatang` | one of several shapes | no | Ceiling of the float or the card limit in satang. Informational. |
+| `holderUserId` | one of several shapes | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/finance-accounts/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `finance-accounts.create`
+
+**POST /finance-accounts** - Add a cash box, bank account, wallet or petty cash float. A child ledger account is created with it, and the opening balance is posted as a journal entry. · scope: `account.finance.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `type` | enum("CASH", "BANK", "E_WALLET", "PETTY_CASH") | yes | Kind of money channel. CASH is a cash box, BANK is a bank account, E_WALLET is a wallet such as TrueMoney, PETTY_CASH is a small float handed to staff. The channel code and the matching ledger account are created from this. |
+| `name` | string | yes | Name shown everywhere, such as Kasikorn savings. · min length 1 · max length 120 |
+| `code` | one of several shapes | no | Channel code. Leave it out and the system issues the next free one, such as BSV001. |
+| `bankSubtype` | one of several shapes | no | - |
+| `bankName` | one of several shapes | no | Bank name as printed on documents, such as KBANK. |
+| `bankBranch` | one of several shapes | no | Branch of the account. |
+| `accountNo` | one of several shapes | no | Bank account number. |
+| `accountName` | one of several shapes | no | Account holder name as registered with the bank. |
+| `promptpayId` | one of several shapes | no | PromptPay id used to build payment QR codes for this channel. |
+| `note` | one of several shapes | no | Free note kept with the channel. |
+| `useForReceive` | boolean | no | Offer this channel when money comes in. Default true. |
+| `useForPay` | boolean | no | Offer this channel when money goes out. Default true. |
+| `showOnDocuments` | boolean | no | Print the account details on invoices so the customer can transfer. Default false. |
+| `limitSatang` | one of several shapes | no | Ceiling of the float or the card limit in satang. Informational. |
+| `holderUserId` | one of several shapes | no | - |
+| `openingSatang` | integer | no | Opening balance in satang carried over from the old books. A journal entry is posted for it. |
+| `openingDate` | string | no | Date of the opening balance. Default today. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/finance-accounts" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"CASH","name":"example name"}'
+```
+
+#### `finance.transfer`
+
+**POST /finance-transfers** - Move money between two of your own channels, such as a cash deposit into the bank. One journal entry is posted. Sending the same Idempotency-Key again returns the first transfer instead of moving the money twice. · scope: `account.finance.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `fromId` | string | yes | Id of the channel the money leaves. · min length 1 · max length 40 |
+| `toId` | string | yes | Id of the channel the money lands in. · min length 1 · max length 40 |
+| `amountSatang` | integer | yes | Amount moved in satang. 5,000.00 baht is 500000. |
+| `date` | string | no | Date of the transfer. Default today. |
+| `note` | one of several shapes | no | Why the money was moved. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/finance-transfers" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"fromId":"example fromId","toId":"example toId","amountSatang":10000}'
+```
+
 #### `payment-requests.cancel`
 
 **POST /payment-requests/{id}/cancel** - Cancel a pending payment request. The link stops working immediately. A request that was already paid cannot be cancelled. · scope: `account.payment.record` · write
@@ -1691,6 +1886,45 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/payments" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"documentId":"example documentId","rows":[]}'
+```
+
+#### `petty-cash.reimburse`
+
+**POST /petty-cash/reimburse** - Refill a petty cash box by exactly one expense that was paid out of it, so the float returns to its ceiling. The same expense cannot be claimed twice. · scope: `account.finance.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `paymentId` | string | yes | Id of the expense payment that was paid out of the petty cash box. Take it from the payments of the expense document. · min length 1 · max length 40 |
+| `sourceFinanceAccountId` | string | yes | Id of the bank account or cash box that refills the box. · min length 1 · max length 40 |
+| `date` | string | no | Date of the refill. Default today. |
+| `note` | one of several shapes | no | Note kept on the transfer. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/petty-cash/reimburse" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"paymentId":"example paymentId","sourceFinanceAccountId":"example sourceFinanceAccountId"}'
+```
+
+#### `petty-cash.top-up`
+
+**POST /petty-cash/top-up** - Put money into a petty cash box from a bank account or cash box. Booked as a transfer between the two channels. · scope: `account.finance.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `pettyId` | string | yes | Id of the petty cash box being filled. It must be a PETTY_CASH channel. · min length 1 · max length 40 |
+| `sourceFinanceAccountId` | string | yes | Id of the bank account or cash box the money comes from. · min length 1 · max length 40 |
+| `amountSatang` | integer | yes | Amount put into the box, in satang. |
+| `date` | string | no | Date of the top up. Default today. |
+| `note` | one of several shapes | no | Note kept on the transfer. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/petty-cash/top-up" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"pettyId":"example pettyId","sourceFinanceAccountId":"example sourceFinanceAccountId","amountSatang":10000}'
 ```
 
 #### `products.set-bundle`
@@ -2056,9 +2290,64 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/units" \
   -d '{"name":"example name"}'
 ```
 
+#### `wht.issue-cert`
+
+**POST /wht/certs** - Issue the withholding tax certificate (form 50 tawi) for one payment that had tax deducted. The tax was already booked when the payment was recorded, so this only produces the certificate. One payment can only have one. · scope: `account.wht.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `paymentId` | string | yes | Id of the payment to a vendor that had withholding tax deducted. Take it from the payments of the expense document. · min length 1 · max length 40 |
+| `whtIncomeType` | enum("SALARY", "COMMISSION", "ROYALTY", "INTEREST", "DIVIDEND", "RENT", "PROFESSIONAL", "CONTRACTOR", "SERVICE", "M40_1", "M40_2", "M40_3", "M40_4", "M40_5", "M40_6", "M40_7", "M40_8") | yes | Type of income under section 40 of the Thai Revenue Code, used on the withholding tax certificate. Readable names: SALARY 40(1), COMMISSION 40(2), ROYALTY 40(3), INTEREST or DIVIDEND 40(4), RENT 40(5), PROFESSIONAL 40(6), CONTRACTOR 40(7), SERVICE 40(8). The raw codes M40_1 to M40_8 are accepted too. |
+| `whtRateBp` | one of several shapes | no | Rate in basis points: 300 = 3%. Only needed when the payment itself did not record a rate. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/wht/certs" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"paymentId":"example paymentId","whtIncomeType":"SALARY"}'
+```
+
+#### `wht.mark-filed`
+
+**POST /wht/filings** - Mark one month of withholding tax certificates as filed with the Revenue Department, and stamp every certificate in it. The totals are recomputed from the certificates each time, so sending it twice is safe. · scope: `account.wht.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `form` | one of several shapes | yes | Which return the certificates go on: 3 for payments to individuals, 53 for payments to companies. |
+| `period` | string | yes | Month being filed, `YYYY-MM`. Certificates are grouped by the day the money was paid. |
+| `note` | one of several shapes | no | How it was filed, for example through the e-filing site. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/wht/filings" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"form":"example form","period":"example period"}'
+```
+
 ### Danger operations
 
 Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these.
+
+#### `cheques.void`
+
+**POST /cheques/{id}/void** - Cancel an issued cheque that has not been presented, for example one written with the wrong amount. The ledger effect is reversed and the vendor is owed again. · scope: `account.cheque.void` · danger
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why the cheque is being cancelled, at least 5 characters. Kept on the cheque and in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/cheques/123/void" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
+```
 
 #### `contacts.merge`
 
@@ -2173,6 +2462,25 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/payments/group/123/void" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"groupId":"example groupId","reason":"reason for the audit log","confirm":true}'
+```
+
+#### `wht.unmark-filed`
+
+**DELETE /wht/filings/{form}/{period}** - Undo the filed mark of one month, for example when the wrong month was filed. The certificates in it go back to unfiled. · scope: `account.wht.unmark` · danger
+
+Path parameters: `form`, `period` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why the filed mark is being removed, at least 5 characters. Kept in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/wht/filings/123/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
 ```
 
 ## Webhooks

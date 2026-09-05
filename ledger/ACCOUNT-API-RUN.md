@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | D1 |
+| WO | D2 |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable (oracle เขียนแล้ว) → Opus (builder) |
-| ขั้นที่ถึง | 5 ก.ย. ~20:15 UTC: C4 DONE (Opus 20 นาที · Fable แก้ oracle E5.2/E5.6 ที่นับผิดเอง · webhooks 22/22 · regression 8 ชุดเขียว · typecheck 0 · fitness 20/20 ×2) · **เฟส C ปิด (qc:all แดง 4 แก้ครบ · drainOutbox วนจนเงียบ)** · **สั่ง Opus ทำ D1** |
+| ขั้นที่ถึง | 5 ก.ย. ~21:30 UTC: D1 DONE (Opus 15 นาที รอบเดียว · Fable รันซ้ำ write-finance 33 · read-finance 38 · write-payments 32 · core 64 · openapi 26 · wht-cheque 69 · probe ข้ามร้าน 6 จุดถูกหมด · typecheck 0 · fitness 20/20 ×2) · **สั่ง Opus ทำ D2** |
 | commit ล่าสุดของงานนี้ | (C2 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
@@ -38,8 +38,8 @@
 | C2 | WRITE payments/void/refund-deposit/payment-requests/group docs | Opus | DONE | (HEAD) | Fable รันเอง write-payments 32/32 · write-docs 52 · read-docs 50 · core 64 · openapi 26 · cpa 107 · payments 162/promptpay 84/groups 174/security 298 (agent) · typecheck 0 · fitness 20 (ไม่มี env) · ตีกลับ 0 · `recordPayments` คืน `paymentIds` (additive ไม่ query เพิ่ม) · `api/wht-income.ts` แมป income type (D1 ต้อง import ห้ามก็อป) · clientKey กลุ่ม = sha256 ย่อ (batchKey หนีบ 60 ตัว) · 10 op (payment-requests.list มีจาก B3 แล้ว — **WO ถัดไป grep ทะเบียนก่อนเพิ่ม op**) · ทะเบียนรวม 105 |
 | C3 | WRITE contacts/products/units/categories/bundle/opening-lots/stock-documents/link-inventory/contact-groups | Sonnet | DONE | 5 ก.ย. | write-master 44/44 (+M1.5b/M1.11b จาก probe) · 25 op → รวม 130 · `wo-notes/api-C3.md` |
 | C4 | webhook events ชุดแรก (issued/voided/quotation/payment.voided/payment_request/contact/product) | Opus | DONE | 5 ก.ย. | webhooks 22/22 (oracle E5.2/E5.6 นับผิดเอง แก้แล้ว: endpoint resolve ตอน drain) · 11 event ใหม่ · `events.ts` · `wo-notes/api-C4.md` |
-| D1 | WRITE finance-accounts/transfers/petty cash/cheques/WHT | Opus | IN_PROGRESS | — | |
-| D2 | WRITE journal/chart/mappings/periods/assets | Opus | TODO | — | |
+| D1 | WRITE finance-accounts/transfers/petty cash/cheques/WHT | Opus | DONE | 5 ก.ย. | write-finance 33/33 · 15 op → รวม 145 · transferId=sha256(keyId+Idempotency-Key) · ถอดกฎ C2 "หัก WHT ต้องส่ง whtIncomeType" (สัญญา C2 ระบุ optional อยู่แล้ว) · `wo-notes/api-D1.md` |
+| D2 | WRITE journal/chart/mappings/periods/assets | Opus | IN_PROGRESS | — | |
 | D3 | WRITE reconcile/recurring/import/files/inbox/reports-email | Sonnet | TODO | — | |
 | D4 | WRITE settings/policy/permissions/links/webhooks CRUD + events ที่เหลือ | Sonnet | TODO | — | |
 | E1 | สกิล AI `account` 30 tools จากทะเบียน + proposal kinds + dispatch | Opus | TODO | — | MockProvider E2E |
@@ -370,6 +370,7 @@ event ที่เหลือ (D4): `account.cheque.changed` (ทุก transit
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 5 ก.ย. ~21:30 UTC — D1 ปิด (Opus 15 นาที · oracle ถูกทั้ง 33 ข้อ · probe Fable: โอน/เช็ค/เงินสดย่อยข้ามร้าน → 404 · โอนซ้ำคีย์เดิม = แถวเดียว ยอดถูก) · ความคืบหน้า 13/24 = 54% · เริ่ม D2
 - 5 ก.ย. ~20:55 UTC — **เฟส C ปิด 4/4 · qc:all 242/246 (20 นาที) → แดง 4 ชุด แก้ครบ รันเดี่ยวเขียวหมด** · ความคืบหน้า 12/24 = 50% · เริ่ม D1
   - 🔴 บั๊กจริงที่ qc:all จับได้ (approval-wiring 5/7 · account-api-webhooks 15/19 แดงเฉพาะใน qc:all): `drainOutbox` ระบาย **50 ตัวต่อการเรียก 1 ครั้งแล้วเลิก** · หลัง C4 seed สร้าง 183 event ในนาทีเดียว → ชุดถัดไป drainAll แล้ว event ตัวเองไม่ถูกหยิบ · บน prod = นำเข้า CSV 200 ราย จะทำให้แชท/invoice.paid/ฮุคร้านอื่นต่อคิวรอ cron รายชั่วโมง (50 ตัว/ชม.) ⇒ แก้ `core/outbox.ts` ให้ `drainUntilQuiet` วนจนคิวเงียบ (เพดาน 10 รอบ×50 · งบเวลา 20 วิ) · positive control: 130 event → drainAll ครั้งเดียว DONE 130 ใน 8.7 วิ
   - ข้อสอบเก่าที่สัญญาเปลี่ยน: `qc-acc-v2-schema` enum AccountDocSource 7→8 (C1 เพิ่ม API) · `qc-acc-v2-permissions` R4.3 event บัญชี 4→15 (C4) — แก้ให้ตรวจ "4 ตัวเดิมยังอยู่ + ทุกตัวมีป้ายไทย"

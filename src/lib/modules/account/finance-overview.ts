@@ -358,7 +358,7 @@ export async function reimbursePettyCash(
   tenantId: string,
   systemId: string,
   input: { paymentId: string; sourceFinanceId: string; date?: Date; note?: string | null },
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+): Promise<{ ok: true; pettyId: string } | { ok: false; reason: string }> {
   const db = tenantDb({ tenantId, systemId });
   const payment = await db.accountDocumentPayment.findFirst({
     where: { id: input.paymentId, tenantId, systemId },
@@ -394,7 +394,10 @@ export async function reimbursePettyCash(
     data: { reimbursedAt: new Date(), reimbursedTransferId: transferId },
   });
   if (updated.count === 0) return { ok: false, reason: "รายการนี้เบิกชดเชยไปแล้ว (มีคนกดพร้อมกัน)" };
-  return { ok: true };
+  // WO D1: คืน id ของกล่องที่ถูกเบิกชดเชยด้วย — ผู้เรียก (REST `POST /petty-cash/reimburse`) ต้องรายงาน
+  // ยอดคงเหลือของกล่องกลับไป แต่รู้จักแค่ `paymentId` ⇒ ถ้าไม่คืนค่านี้ต้องไปไล่หา payment เอง
+  // (ค่านี้อ่านมาแล้วในฟังก์ชันนี้ — ไม่มี query เพิ่ม · ผู้เรียกเดิมที่ดูแค่ `ok` ไม่กระทบ)
+  return { ok: true, pettyId: payment.financeAccountId };
 }
 
 // เก็บ type ไว้ให้ import ใช้ต่อ (finance-ui/actions) โดยไม่ต้องคุ้ยไฟล์อื่น
