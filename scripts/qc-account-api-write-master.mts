@@ -74,6 +74,8 @@ try {
   chk("C3-M1.4", "สร้างผู้ขายบุคคล → 200", c2.status === 200 && c2.body?.data?.kind === "VENDOR", "200", `${c2.status}`);
   const upd = await call("PATCH", `/contacts/${c1Id}`, W, { creditTermDays: 45, email: "ar@talaysai.test" });
   chk("C3-M1.5", "PATCH /contacts/{id} (partial) → 200 creditTermDays 45 + email ใหม่ ชื่อเดิมคง", upd.status === 200 && upd.body?.data?.creditTermDays === 45 && upd.body?.data?.email === "ar@talaysai.test" && upd.body?.data?.name === "บริษัท ทะเลใส จำกัด", "45", `${upd.status} ${JSON.stringify(upd.body?.data).slice(0, 160)}`);
+  const updDupTax = await call("PATCH", `/contacts/${c2Id}`, W, { taxId: "0105561000006", branchCode: "00000" });
+  chk("C3-M1.5b", "PATCH taxId+สาขาให้ชนผู้ติดต่ออื่น → 409 duplicate ชี้ตัวเดิม (ไม่ใช่ 422 'ลองใหม่') + DB ไม่เปลี่ยน", updDupTax.status === 409 && code(updDupTax) === "duplicate" && JSON.stringify(updDupTax.body?.error).includes(c1Id) && (await prisma.accountContact.findUnique({ where: { id: c2Id }, select: { taxId: true } }))?.taxId !== "0105561000006", "409 duplicate", `${updDupTax.status} ${JSON.stringify(updDupTax.body?.error).slice(0, 160)}`);
   const updCross = await call("PATCH", `/contacts/${c1Id}`, kB.rawKey, { name: "hack" });
   chk("C3-M1.6", "คีย์ร้านอื่น PATCH → 404 และชื่อไม่เปลี่ยน", updCross.status === 404 && (await prisma.accountContact.findUnique({ where: { id: c1Id }, select: { name: true } }))?.name === "บริษัท ทะเลใส จำกัด", "404", `${updCross.status}`);
   const readDenied = await call("POST", "/contacts", kR.rawKey, { kind: "CUSTOMER", name: "x" });
@@ -87,6 +89,8 @@ try {
   chk("C3-M1.10", "GET /contact-groups → count 2", (grpList.body?.data ?? []).find((g: Any) => g.id === grpId)?.count === 2, "2", JSON.stringify(grpList.body?.data));
   const rmM = await call("DELETE", `/contact-groups/${grpId}/members/${c2Id}`, W);
   chk("C3-M1.11", "DELETE member → 200 count 1", rmM.status === 200 && (await call("GET", "/contact-groups", W)).body?.data?.find((g: Any) => g.id === grpId)?.count === 1, "1", `${rmM.status}`);
+  const rmX = await call("DELETE", `/contact-groups/${grpId}/members/${c1Id}`, kB.rawKey);
+  chk("C3-M1.11b", "key ร้านอื่นลบสมาชิกกลุ่มของเรา → 404 not_found (ไม่ใช่ 200 ok หลอก) + แถวยังอยู่", rmX.status === 404 && (await prisma.accountContactGroupMember.count({ where: { groupId: grpId, contactId: c1Id } })) === 1, "404 + คงอยู่", `${rmX.status} ${code(rmX)}`);
   const c3 = await call("POST", "/contacts", W, { kind: "CUSTOMER", name: "บริษัท ทะเลใส จำกัด (ซ้ำ)", phone: "0812345678" });
   const c3Id = c3.body?.data?.id as string;
   chk("C3-M1.12", "สร้างผู้ติดต่อเบอร์ซ้ำ (ชื่อต่าง) → 200 แต่ data.warnings[] มีคำเตือนซ้ำ", c3.status === 200 && Array.isArray(c3.body?.data?.warnings) && c3.body.data.warnings.length >= 1, "200 + warnings", `${c3.status} ${JSON.stringify(c3.body?.data?.warnings)}`, "MAJOR");
@@ -138,7 +142,7 @@ try {
   const setBadB = await call("PUT", `/products/${p1Id}/bundle`, W, { items: [{ componentProductId: p2Id, qty: 1 }] });
   chk("C3-M3.7", "ตั้ง bundle ให้สินค้าธรรมดา → 409/422 ไทย", (setBadB.status === 409 || setBadB.status === 422) && /[ก-๙]/.test(setBadB.body?.error?.message_th ?? ""), "409/422", `${setBadB.status}`, "MAJOR");
   const lot = await call("POST", `/products/${p1Id}/opening-lots`, W, { date: ymd(), qty: 10, unitCostSatang: 90000 });
-  const lotEntries = await prisma.accountJournalEntry.count({ where: { systemId: SYS, refId: p1Id } });
+  const lotEntries = await prisma.accountJournalEntry.count({ where: { systemId: SYS, refId: `open-${lot.body?.data?.id}` } }); // refId ของ JV ยอดยกมา = "open-<lotId>" (postStockDocument docId) ไม่ใช่ productId
   const p1Stock = await prisma.accountProduct.findUnique({ where: { id: p1Id }, select: { qtyOnHand: true } });
   chk("C3-M3.8", "POST /products/{id}/opening-lots → 200 {id,seq,amountSatang 900,000} + โพสต์ JV ยอดยกมา + qtyOnHand 10", lot.status === 200 && lot.body?.data?.amountSatang === 900000 && lotEntries >= 1 && Number(p1Stock?.qtyOnHand) === 10, "900000 + JV", `${lot.status} ${JSON.stringify(lot.body?.data)} entries=${lotEntries} onHand=${p1Stock?.qtyOnHand}`);
 

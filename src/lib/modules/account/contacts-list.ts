@@ -473,6 +473,11 @@ export async function removeContactFromGroup(ctx: Ctx, groupId: string, contactI
   await dbOf(ctx).accountContactGroupMember.deleteMany({ where: { groupId, contactId } });
 }
 
+/** WO C3 (REST) — กลุ่มกำหนดเอง 1 กลุ่ม (ไม่มี = null) — ใช้ตรวจก่อน add-members/ตอบ 404 ที่ชัดเจน */
+export async function getContactGroup(ctx: Ctx, id: string): Promise<{ id: string; name: string; color: string | null } | null> {
+  return dbOf(ctx).accountContactGroup.findFirst({ where: { id }, select: { id: true, name: true, color: true } });
+}
+
 /** WO 3.3 — กลุ่มกำหนดเองที่ผู้ติดต่อรายนี้อยู่ (ติ๊กไว้ตอนเปิด modal §7.2) */
 export async function listGroupIdsOfContact(ctx: Ctx, contactId: string): Promise<string[]> {
   const rows = await dbOf(ctx).accountContactGroupMember.findMany({ where: { contactId }, select: { groupId: true } });

@@ -223,6 +223,11 @@ export async function archiveUnit(tenantId: string, systemId: string, id: string
   });
 }
 
+/** WO C3 (REST) — หน่วยนับ 1 แถว (ใช้ตรวจก่อน update/archive ให้ตอบ 404 ที่ชัดเจน แทนการเงียบของ updateMany) */
+export function getUnit(tenantId: string, systemId: string, id: string) {
+  return prisma.accountUnit.findFirst({ where: { id, tenantId, systemId } });
+}
+
 // ─────────────────── กลุ่มจัดประเภท (AccountCategory) ───────────────────
 
 export function listCategories(
@@ -280,6 +285,11 @@ export async function archiveCategory(tenantId: string, systemId: string, id: st
     where: { id, tenantId, systemId },
     data: { archivedAt: new Date() },
   });
+}
+
+/** WO C3 (REST) — หมวดหมู่ 1 แถว (ใช้ตรวจก่อน update/archive ให้ตอบ 404 ที่ชัดเจน แทนการเงียบของ updateMany) */
+export function getCategory(tenantId: string, systemId: string, id: string) {
+  return prisma.accountCategory.findFirst({ where: { id, tenantId, systemId } });
 }
 
 // ─────────────────── สินค้า/บริการ (AccountProduct) ───────────────────

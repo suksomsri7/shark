@@ -1,7 +1,7 @@
 # SHARK Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 105 operations.
+Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 130 operations.
 Generated from the operation registry by `scripts/gen-account-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -1068,6 +1068,235 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/wht?direction=IN" \
 
 Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name.
 
+#### `categories.archive`
+
+**DELETE /categories/{id}** - Deactivate a category. · scope: `account.product.manage` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/categories/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `categories.update`
+
+**PATCH /categories/{id}** - Rename a category or change which document types it applies to. · scope: `account.product.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | no | min length 1 · max length 60 |
+| `appliesTo` | array of enum("QUOTATION", "INVOICE", "RECEIPT", "TAX_INVOICE", "TAX_INVOICE_ABB", "DEPOSIT_RECEIPT", "CREDIT_NOTE", "DEBIT_NOTE", "BILLING_NOTE", "PURCHASE", "EXPENSE", "PURCHASE_ORDER", "ASSET_PURCHASE_ORDER", "ASSET_PURCHASE", "PURCHASE_TAX_INVOICE", "DEPOSIT_PAYMENT", "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED", "COMBINED_PAYMENT", "GOODS_ISSUE", "GOODS_ISSUE_RETURN", "COST_ADJUSTMENT", "WHT_CERT") | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/categories/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `categories.create`
+
+**POST /categories** - Create a product/document category. · scope: `account.product.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | min length 1 · max length 60 |
+| `appliesTo` | array of enum("QUOTATION", "INVOICE", "RECEIPT", "TAX_INVOICE", "TAX_INVOICE_ABB", "DEPOSIT_RECEIPT", "CREDIT_NOTE", "DEBIT_NOTE", "BILLING_NOTE", "PURCHASE", "EXPENSE", "PURCHASE_ORDER", "ASSET_PURCHASE_ORDER", "ASSET_PURCHASE", "PURCHASE_TAX_INVOICE", "DEPOSIT_PAYMENT", "CREDIT_NOTE_RECEIVED", "DEBIT_NOTE_RECEIVED", "COMBINED_PAYMENT", "GOODS_ISSUE", "GOODS_ISSUE_RETURN", "COST_ADJUSTMENT", "WHT_CERT") | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/categories" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"example name"}'
+```
+
+#### `contact-groups.remove-member`
+
+**DELETE /contact-groups/{id}/members/{contactId}** - Remove one contact from a group. · scope: `account.contact.manage` · write
+
+Path parameters: `id`, `contactId` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/contact-groups/123/members/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `contact-groups.add-members`
+
+**POST /contact-groups/{id}/members** - Add contacts to a group. Contacts already in the group are skipped; adding the same set twice adds 0. · scope: `account.contact.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `contactIds` | array of string | yes | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/contact-groups/123/members" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"contactIds":[]}'
+```
+
+#### `contact-groups.create`
+
+**POST /contact-groups** - Create a custom contact group. · scope: `account.contact.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | min length 1 · max length 80 |
+| `color` | one of several shapes | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/contact-groups" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"example name"}'
+```
+
+#### `contacts.link`
+
+**POST /contacts/{id}/links** - Link this contact to a member or CRM record: both start pointing at the same underlying identity. · scope: `account.contact.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `target` | enum("member", "crm") | yes | Which system to link to. |
+| `targetId` | string | yes | Id of the member or CRM contact record in that system. · min length 1 · max length 60 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/contacts/123/links" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"target":"member","targetId":"example targetId"}'
+```
+
+#### `contacts.restore`
+
+**POST /contacts/{id}/restore** - Reactivate a contact that was deactivated. · scope: `account.contact.manage` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/contacts/123/restore" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `contacts.archive`
+
+**DELETE /contacts/{id}** - Deactivate a contact (soft delete). Its documents and history are kept untouched. · scope: `account.contact.manage` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/contacts/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `contacts.update`
+
+**PATCH /contacts/{id}** - Change a contact. Only the fields that are sent are changed. · scope: `account.contact.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `kind` | enum("CUSTOMER", "VENDOR", "BOTH") | no | CUSTOMER, VENDOR or BOTH. |
+| `legalType` | enum("PERSON", "COMPANY") | no | COMPANY or PERSON. Default COMPANY. |
+| `name` | string | no | min length 1 · max length 200 |
+| `taxId` | one of several shapes | no | Thai juristic/person tax id, 13 digits. Any other length or shape returns 422. |
+| `taxIdCountry` | one of several shapes | no | ISO country code of the tax id. "TH" (default) requires 13 digits; anything else skips that check. |
+| `branchCode` | one of several shapes | no | Branch code, e.g. "00000" for head office. Default "00000". |
+| `branchName` | one of several shapes | no | - |
+| `address` | one of several shapes | no | Either a single printable address string, or a breakdown object (addressLine/subdistrict/district/province/postcode/country). The breakdown is joined into a single printable address automatically. |
+| `phone` | one of several shapes | no | Any Thai phone format; it is normalized for duplicate matching, e.g. `08-1234-5678` becomes `0812345678`. |
+| `email` | one of several shapes | no | - |
+| `website` | one of several shapes | no | - |
+| `lineId` | one of several shapes | no | - |
+| `contactPerson` | one of several shapes | no | - |
+| `creditTermDays` | integer | no | min 0 · max 365 |
+| `note` | one of several shapes | no | - |
+| `code` | one of several shapes | no | Contact number, e.g. "C00019". Omit to let the book assign the next one. |
+| `groupIds` | array of string | no | Custom contact groups this contact belongs to. Replaces the whole set. |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/contacts/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `contacts.dismiss-merge`
+
+**POST /contacts/merge-candidates/dismiss** - Mark a suggested pair as not the same contact, so it stops showing up as a merge candidate. · scope: `account.contact.merge` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `aId` | string | yes | min length 1 · max length 40 |
+| `bId` | string | yes | min length 1 · max length 40 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/contacts/merge-candidates/dismiss" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"aId":"example aId","bId":"example bId"}'
+```
+
+#### `contacts.create`
+
+**POST /contacts** - Create a customer or vendor. A matching tax id + branch code returns 409; a matching phone or name still creates the contact but returns warnings. · scope: `account.contact.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `kind` | enum("CUSTOMER", "VENDOR", "BOTH") | yes | CUSTOMER, VENDOR or BOTH. |
+| `legalType` | enum("PERSON", "COMPANY") | no | COMPANY or PERSON. Default COMPANY. |
+| `name` | string | yes | min length 1 · max length 200 |
+| `taxId` | one of several shapes | no | Thai juristic/person tax id, 13 digits. Any other length or shape returns 422. |
+| `taxIdCountry` | one of several shapes | no | ISO country code of the tax id. "TH" (default) requires 13 digits; anything else skips that check. |
+| `branchCode` | one of several shapes | no | Branch code, e.g. "00000" for head office. Default "00000". |
+| `branchName` | one of several shapes | no | - |
+| `address` | one of several shapes | no | Either a single printable address string, or a breakdown object (addressLine/subdistrict/district/province/postcode/country). The breakdown is joined into a single printable address automatically. |
+| `phone` | one of several shapes | no | Any Thai phone format; it is normalized for duplicate matching, e.g. `08-1234-5678` becomes `0812345678`. |
+| `email` | one of several shapes | no | - |
+| `website` | one of several shapes | no | - |
+| `lineId` | one of several shapes | no | - |
+| `contactPerson` | one of several shapes | no | - |
+| `creditTermDays` | integer | no | min 0 · max 365 |
+| `note` | one of several shapes | no | - |
+| `code` | one of several shapes | no | Contact number, e.g. "C00019". Omit to let the book assign the next one. |
+| `groupIds` | array of string | no | Custom contact groups this contact belongs to. Replaces the whole set. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/contacts" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"CUSTOMER","name":"example name"}'
+```
+
 #### `documents.approve`
 
 **POST /documents/{id}/approve** - Approve a purchase order that is waiting for approval. · scope: `account.doc.approve` · write
@@ -1464,6 +1693,166 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/payments" \
   -d '{"documentId":"example documentId","rows":[]}'
 ```
 
+#### `products.set-bundle`
+
+**PUT /products/{id}/bundle** - Replace the recipe of a bundle product with the given components and quantities. · scope: `account.product.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `items` | array of object | yes | - |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/account/products/123/bundle" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"items":[]}'
+```
+
+#### `products.unlink-inventory`
+
+**DELETE /products/{id}/link-inventory** - Unlink this product from its warehouse item. The last known quantity is frozen onto the product itself. · scope: `account.product.manage` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/products/123/link-inventory" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `products.link-inventory`
+
+**POST /products/{id}/link-inventory** - Link this product to a warehouse item (existing or newly created) so its stock is tracked there. · scope: `account.product.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `itemId` | string | no | Id of an existing item in the warehouse module to link to. · max length 40 |
+| `createItem` | object | no | Create a new warehouse item from this product's data instead of linking an existing one. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/products/123/link-inventory" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `products.add-opening-lot`
+
+**POST /products/{id}/opening-lots** - Add an opening balance lot: receives the quantity into stock at the given unit cost and posts the opening journal entry. · scope: `account.product.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `date` | string | yes | date (Thai calendar day, YYYY-MM-DD). |
+| `qty` | number | yes | max 1000000000 |
+| `unitCostSatang` | integer | yes | min 0 |
+| `warehouseId` | one of several shapes | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/products/123/opening-lots" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"date":"example date","qty":0,"unitCostSatang":10000}'
+```
+
+#### `products.archive`
+
+**DELETE /products/{id}** - Deactivate a product/service/bundle (soft delete). Past documents keep referencing it. · scope: `account.product.manage` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/products/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `products.update`
+
+**PATCH /products/{id}** - Change a product. Only the fields that are sent are changed; the rest keep their current value. · scope: `account.product.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `type` | enum("GOODS", "SERVICE", "BUNDLE") | no | - |
+| `name` | string | no | min length 1 · max length 100 |
+| `nameEn` | one of several shapes | no | - |
+| `sku` | one of several shapes | no | - |
+| `code` | one of several shapes | no | - |
+| `barcode` | one of several shapes | no | - |
+| `unitId` | one of several shapes | no | - |
+| `category` | one of several shapes | no | - |
+| `description` | one of several shapes | no | - |
+| `salePriceSatang` | one of several shapes | no | Sale price in satang (integer). 1,500.00 baht is 150000. |
+| `buyPriceSatang` | one of several shapes | no | Cost/buy price in satang (integer). |
+| `vatRateBp` | integer | no | VAT rate in basis points: 700 = 7%, 0 = zero rated, -1 = exempt. Default 700. · min -1 · max 10000 |
+| `purchaseVatRateBp` | one of several shapes | no | Purchase VAT rate. Null uses vatRateBp. |
+| `incomeAccountId` | one of several shapes | no | - |
+| `expenseAccountId` | one of several shapes | no | - |
+| `cogsAccountCode` | one of several shapes | no | - |
+| `inventoryAccountCode` | one of several shapes | no | - |
+| `trackStock` | boolean | no | Accepted for forward compatibility; use POST /products/{id}/link-inventory to actually track stock in a warehouse. |
+| `imageUrl` | one of several shapes | no | - |
+| `defaultWhtType` | one of several shapes | no | - |
+| `defaultWhtRateBp` | one of several shapes | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/products/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `products.create`
+
+**POST /products** - Create a good, service or bundle. A matching SKU returns 409. · scope: `account.product.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `type` | enum("GOODS", "SERVICE", "BUNDLE") | yes | - |
+| `name` | string | yes | min length 1 · max length 100 |
+| `nameEn` | one of several shapes | no | - |
+| `sku` | one of several shapes | no | - |
+| `code` | one of several shapes | no | - |
+| `barcode` | one of several shapes | no | - |
+| `unitId` | one of several shapes | no | - |
+| `category` | one of several shapes | no | - |
+| `description` | one of several shapes | no | - |
+| `salePriceSatang` | one of several shapes | no | Sale price in satang (integer). 1,500.00 baht is 150000. |
+| `buyPriceSatang` | one of several shapes | no | Cost/buy price in satang (integer). |
+| `vatRateBp` | integer | no | VAT rate in basis points: 700 = 7%, 0 = zero rated, -1 = exempt. Default 700. · min -1 · max 10000 |
+| `purchaseVatRateBp` | one of several shapes | no | Purchase VAT rate. Null uses vatRateBp. |
+| `incomeAccountId` | one of several shapes | no | - |
+| `expenseAccountId` | one of several shapes | no | - |
+| `cogsAccountCode` | one of several shapes | no | - |
+| `inventoryAccountCode` | one of several shapes | no | - |
+| `trackStock` | boolean | no | Accepted for forward compatibility; use POST /products/{id}/link-inventory to actually track stock in a warehouse. |
+| `imageUrl` | one of several shapes | no | - |
+| `defaultWhtType` | one of several shapes | no | - |
+| `defaultWhtRateBp` | one of several shapes | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/products" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"GOODS","name":"example name"}'
+```
+
 #### `recurring.set-active`
 
 **POST /recurring/{id}/active** - Pause or resume a recurring rule without touching its history. · scope: `account.doc.create` · write
@@ -1566,9 +1955,130 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/recurring" \
   -d '{"name":"example name","docType":"INVOICE","frequency":"WEEKLY","startDate":"example startDate","leadDays":0,"autoApprove":true,"active":true,"template":{}}'
 ```
 
+#### `stock-documents.approve`
+
+**POST /stock-documents/{id}/approve** - Approve a draft goods issue/return: it takes the next document number, moves the stock and posts to the ledger. · scope: `account.product.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `allowNegative` | boolean | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/stock-documents/123/approve" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `stock-documents.create`
+
+**POST /stock-documents** - Create a goods issue, goods issue return, or cost adjustment document. Goods issue/return post immediately unless asDraft is true. · scope: `account.product.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `type` | enum("GOODS_ISSUE", "GOODS_ISSUE_RETURN", "COST_ADJUSTMENT") | yes | - |
+| `issueDate` | string | no | issueDate (Thai calendar day, YYYY-MM-DD). |
+| `reason` | one of several shapes | no | - |
+| `note` | one of several shapes | no | - |
+| `reference` | one of several shapes | no | - |
+| `contactId` | one of several shapes | no | - |
+| `sourceDocId` | one of several shapes | no | - |
+| `allowNegative` | boolean | no | - |
+| `asDraft` | boolean | no | - |
+| `adjustAccountCode` | one of several shapes | no | - |
+| `tags` | array of string | no | - |
+| `lines` | array of object | no | Required for GOODS_ISSUE / GOODS_ISSUE_RETURN. |
+| `productId` | string | no | Required for COST_ADJUSTMENT. · max length 40 |
+| `newCostSatang` | integer | no | Required for COST_ADJUSTMENT. · min 0 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/stock-documents" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"GOODS_ISSUE"}'
+```
+
+#### `units.archive`
+
+**DELETE /units/{id}** - Deactivate a unit of measure. Units still used by an active product cannot be deactivated. · scope: `account.product.manage` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/account/units/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `units.update`
+
+**PATCH /units/{id}** - Rename a unit of measure or change its code/kind. · scope: `account.product.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | min length 1 · max length 20 |
+| `nameEn` | one of several shapes | no | - |
+| `kind` | enum("PRODUCT", "SERVICE") | no | - |
+| `code` | one of several shapes | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/account/units/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"example name"}'
+```
+
+#### `units.create`
+
+**POST /units** - Create a unit of measure. A matching name or code returns 409/422. · scope: `account.product.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | min length 1 · max length 20 |
+| `nameEn` | one of several shapes | no | - |
+| `kind` | enum("PRODUCT", "SERVICE") | no | - |
+| `code` | one of several shapes | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/units" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"example name"}'
+```
+
 ### Danger operations
 
 Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these.
+
+#### `contacts.merge`
+
+**POST /contacts/merge** - Merge two contacts into one. Every document, ledger line, group and recurring rule of the second contact moves to the first; the second is archived and points to the first. · scope: `account.contact.merge` · danger
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `keepId` | string | yes | Id of the contact to keep. · min length 1 · max length 40 |
+| `mergeId` | string | yes | Id of the contact to merge into the one to keep. It is archived and its documents move over. · min length 1 · max length 40 |
+| `reason` | string | yes | Why these two are the same contact, at least 5 characters. · min length 5 · max length 500 |
+| `fieldChoices` | object | no | Per field, pick whose value wins: "primary" (default, the one to keep) or "secondary". |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/account/contacts/merge" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"keepId":"example keepId","mergeId":"example mergeId","reason":"reason for the audit log","confirm":true}'
+```
 
 #### `danger-echo`
 

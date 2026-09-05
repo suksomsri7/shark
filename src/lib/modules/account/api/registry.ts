@@ -11,7 +11,9 @@ import { DOCUMENTS_READ_OPS } from "./ops/documents-read";
 import { DOCUMENTS_WRITE_OPS } from "./ops/documents-write";
 import { PAYMENTS_WRITE_OPS } from "./ops/payments-write";
 import { CONTACTS_READ_OPS } from "./ops/contacts-read";
+import { CONTACTS_WRITE_OPS } from "./ops/contacts-write";
 import { PRODUCTS_READ_OPS } from "./ops/products-read";
+import { PRODUCTS_WRITE_OPS } from "./ops/products-write";
 import { FINANCE_READ_OPS } from "./ops/finance-read";
 import { GL_READ_OPS } from "./ops/gl-read";
 import { SETTINGS_READ_OPS } from "./ops/settings-read";
@@ -25,7 +27,9 @@ export const ACCOUNT_OPS: ApiOp[] = [
   ...DOCUMENTS_WRITE_OPS,
   ...PAYMENTS_WRITE_OPS,
   ...CONTACTS_READ_OPS,
+  ...CONTACTS_WRITE_OPS,
   ...PRODUCTS_READ_OPS,
+  ...PRODUCTS_WRITE_OPS,
   ...FINANCE_READ_OPS,
   ...GL_READ_OPS,
   ...SETTINGS_READ_OPS,

@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | C3 |
+| WO | C4 |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable (oracle เขียนแล้ว) → Sonnet (builder) |
-| ขั้นที่ถึง | 5 ก.ย. ~17:45 UTC: C2 DONE (Fable รันเอง write-payments 32/32 · write-docs 52 · read-docs 50 · core 64 · openapi 26 · cpa 107 · typecheck 0 · fitness 20 ไม่มี env) · **สั่ง Sonnet ทำ C3** |
+| ผู้ทำ | Fable (oracle เขียนแล้ว) → Opus (builder) |
+| ขั้นที่ถึง | 5 ก.ย. ~19:35 UTC: C3 DONE (Sonnet 26 นาที · Fable แก้ oracle M3.8 refId=open-<lotId> · probe เจอ 2 จุด แก้เอง: PATCH taxId ซ้ำ→409 duplicate · ลบสมาชิกกลุ่มข้ามร้าน→404 · write-master 44/44 · typecheck 0 · fitness 20/20 ทั้ง 2 โหมด) · **สั่ง Opus ทำ C4** |
 | commit ล่าสุดของงานนี้ | (C2 commit ถัดไป) |
 | บล็อกเกอร์ | — |
 
@@ -36,8 +36,8 @@
 | B4 | READ บัญชี: chart/journal/general-ledger/รายงาน 6 ตัว JSON+CSV/periods/assets/audit/settings/policy/links/files/inbox/help | Opus | DONE | (HEAD) | Fable รันเอง read-gl 55/55 · read-docs 50 · master 38 · finance 38 · core 64 · openapi 26 · journal 94/coa 105/period-assets 121/reports-drill 57/cpa 107 (agent) · typecheck 0 · fitness 20 (ไม่มี env) · ตีกลับ 0 (oracle ผมผิด: drill 6100 เป็นทั้งปี) · `generalLedger()` ใหม่เป็นประตูเดียว (หน้า ledger ย้ายไปแล้วตั้งแต่ 6.1) · ⚠️ กับดัก: `reports.ts` เทียบ periodKey แบบสตริง — ส่ง YYYY-MM-DD ตรง ๆ = ศูนย์เงียบ ๆ (API normalize แล้ว) |
 | C1 | WRITE เอกสาร: create/patch/delete/issue/convert/respond/deposits/public-link/tags/attachments/remind/approval/receive/recurring | Opus | DONE | (HEAD) | Fable รันเอง write-docs 52/52 · read ทั้ง 4 ชุด · core 64 · openapi 26 · cpa 107 · editor 200/payments 162/groups 174/recurring 163/attachments 66 (agent) · drift 0 · typecheck 0 · fitness 20 (ไม่มี env) · ตีกลับ 0 (oracle ผมผิด 2: lockBeforeDate ต้องเป็น Date · กฎประจำ leadDays) · migration `AccountDocSource.API` · `ApiError` รับ hint (409 duplicate บอก id เดิม) · `setDocumentTags` ใหม่ · state_conflict ถูกโยนชัดใน 3 op (ข้อความ service ไม่มี keyword) |
 | C2 | WRITE payments/void/refund-deposit/payment-requests/group docs | Opus | DONE | (HEAD) | Fable รันเอง write-payments 32/32 · write-docs 52 · read-docs 50 · core 64 · openapi 26 · cpa 107 · payments 162/promptpay 84/groups 174/security 298 (agent) · typecheck 0 · fitness 20 (ไม่มี env) · ตีกลับ 0 · `recordPayments` คืน `paymentIds` (additive ไม่ query เพิ่ม) · `api/wht-income.ts` แมป income type (D1 ต้อง import ห้ามก็อป) · clientKey กลุ่ม = sha256 ย่อ (batchKey หนีบ 60 ตัว) · 10 op (payment-requests.list มีจาก B3 แล้ว — **WO ถัดไป grep ทะเบียนก่อนเพิ่ม op**) · ทะเบียนรวม 105 |
-| C3 | WRITE contacts/products/units/categories/bundle/opening-lots/stock-documents/link-inventory/contact-groups | Sonnet | IN_PROGRESS | — | oracle `qc-account-api-write-master.mts` |
-| C4 | webhook events ชุดแรก (issued/voided/quotation/payment.voided/payment_request/contact/product) | Opus | TODO | — | event PENDING = 0 |
+| C3 | WRITE contacts/products/units/categories/bundle/opening-lots/stock-documents/link-inventory/contact-groups | Sonnet | DONE | 5 ก.ย. | write-master 44/44 (+M1.5b/M1.11b จาก probe) · 25 op → รวม 130 · `wo-notes/api-C3.md` |
+| C4 | webhook events ชุดแรก (issued/voided/quotation/payment.voided/payment_request/contact/product) | Opus | IN_PROGRESS | — | event PENDING = 0 |
 | D1 | WRITE finance-accounts/transfers/petty cash/cheques/WHT | Opus | TODO | — | |
 | D2 | WRITE journal/chart/mappings/periods/assets | Opus | TODO | — | |
 | D3 | WRITE reconcile/recurring/import/files/inbox/reports-email | Sonnet | TODO | — | |
@@ -370,6 +370,7 @@ event ที่เหลือ (D4): `account.cheque.changed` (ทุก transit
 ### E1–E2 · F1–F4 — ตาม PLAN §3 / §7
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด)
+- 5 ก.ย. ~19:35 UTC — C3 ปิด (Sonnet 26 นาที · oracle ผิดเอง 1 ข้อ M3.8 · probe Fable เจอ 2 จุดแก้เอง) · ความคืบหน้า 11/24 = 46% · เริ่ม C4
 - 5 ก.ย. ~17:45 UTC — C2 ปิด (Opus 19 นาที รอบเดียว) · ความคืบหน้า 10/24 = 42% · เริ่ม C3
 - 5 ก.ย. ~17:05 UTC — C1 ปิด (Opus 26 นาที) · ความคืบหน้า 9/24 = 38% · เริ่ม C2
 - 5 ก.ย. ~16:00 UTC — qc:all ปิดเฟส B ผ่าน (235 ชุดเดิม) · oracle อนาคตใส่ SKIP guard (กัน CI แดง) · เริ่ม C1

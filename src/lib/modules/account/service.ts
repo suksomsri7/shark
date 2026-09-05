@@ -1046,6 +1046,14 @@ export async function archiveContact(tenantId: string, systemId: string, id: str
   });
 }
 
+/** WO C3 (REST `POST /contacts/{id}/restore`) — เปิดใช้งานผู้ติดต่อที่ถูกปิดใช้งานกลับคืน (ตรงข้าม archiveContact) */
+export async function restoreContact(tenantId: string, systemId: string, id: string) {
+  await prisma.accountContact.updateMany({
+    where: { id, tenantId, systemId },
+    data: { archivedAt: null },
+  });
+}
+
 // ─────────────────── WO 1.8 — นำเข้า CSV: ตัวช่วยผู้ติดต่อ/idempotency ───────────────────
 
 /**
