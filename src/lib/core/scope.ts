@@ -150,8 +150,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // Dashboard builder (WO-0056) + Marketplace (WO-0063)
   TenantDashboard: tenant,
   TenantInstall: tenant,
-  // White label (WO-0064)
+  // White label (WO-0064) + ธีมกิจการ (B1)
   TenantBranding: tenant,
+  // "แจ้งปัญหาการใช้งาน" (B1 · T8) — เรื่องที่ผู้ใช้ของร้านแจ้งเข้ามา
+  IssueReport: tenant,
   // Rental (WO-0050)
   RentalAsset: unit,
   RentalBooking: unit,

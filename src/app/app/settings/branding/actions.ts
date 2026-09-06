@@ -37,7 +37,8 @@ export async function saveBrandingAction(
   try {
     await setBranding(
       { tenantId: auth.active.tenantId },
-      { displayName, logoUrl, brandColor },
+      // updatedById มาจาก session เท่านั้น (ห้ามรับจาก client) — AuditLog branding.updated ต้องรู้ว่าใครกด
+      { displayName, logoUrl, brandColor, updatedById: auth.user.id },
     );
     revalidatePath(SETTINGS_PATH);
     return { status: "ok" };

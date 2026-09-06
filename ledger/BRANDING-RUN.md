@@ -20,8 +20,8 @@
 ## ตาราง WO — สถานะสด
 | WO | งาน | โมเดล | สถานะ | ปิด | QC |
 |---|---|---|---|---|---|
-| B1 | schema+migration (NavTone, brandFg, navTone, applyStorefront, applyMobile, IssueReport) · `color.ts` contrast · `getBrandingTokens` (default+cache+invalidate) · `setBranding` ขยาย · AuditLog+outbox `tenant.branding.updated` · `/api/mobile/me` ส่ง branding · `IssueReport` service | Opus | IN_PROGRESS | | `qc-branding-b1.mts` 16 ข้อ |
-| B2 | หน้าตั้งค่า `/app/settings/branding` ใหม่ตามภาพ 01 (โลโก้อัปโหลด+พรีวิว · ชื่อที่แสดง · 8 สี+hex+picker · กล่อง contrast · โทนแถบ 3 แบบ · สวิตช์ 3 · ตัวอย่างสด · บันทึก/คืนค่า) + `uploadLogoAction` ตรวจ magic bytes ≤2MB | Sonnet | TODO | | `qc-branding-b2.mts` |
+| B1 | schema+migration (NavTone, brandFg, navTone, applyStorefront, applyMobile, IssueReport) · `color.ts` contrast · `getBrandingTokens` (default+cache+invalidate) · `setBranding` ขยาย · AuditLog+outbox `tenant.branding.updated` · `/api/mobile/me` ส่ง branding · `IssueReport` service | Opus | DONE | 6 ก.ย. | b1 21/21 (แก้ oracle S2.1: 5.9 → 5.36 WCAG จริง — builder พิสูจน์ Fable คำนวณซ้ำ) · mobile-app 38 · mobile-auth 31 · branding(old) 5 · typecheck/fitness 23 · หนี้: แคช 60 วิ ต่อ instance (ข้าม instance ช้าสุด 60 วิ) · issues.ts ยังไม่มี assertCan (B3 ใส่) |
+| B2 | (IN_PROGRESS → Sonnet) หน้าตั้งค่า `/app/settings/branding` ใหม่ตามภาพ 01 (โลโก้อัปโหลด+พรีวิว · ชื่อที่แสดง · 8 สี+hex+picker · กล่อง contrast · โทนแถบ 3 แบบ · สวิตช์ 3 · ตัวอย่างสด · บันทึก/คืนค่า) + `uploadLogoAction` ตรวจ magic bytes ≤2MB | Sonnet | TODO | | `qc-branding-b2.mts` |
 | B3 | โครงแอป: token ที่ราก (`<html style>` จาก layout) · Topbar ใหม่ (โลโก้+ชื่อ · 2 ปุ่มขวา · ไม่มี ☰ ≥lg) · NavDrawer/NavRail รับโทน · รางไอคอนทุกหน้า + ย่อ/ขยาย จำต่อผู้ใช้ (`preferences.navCollapsed` ใช้ store ของ K1.14) · ตัด children ทุกระบบ · มือถือปัดขวาเปิดเมนู · ปุ่ม "แจ้งปัญหาการใช้งาน" (แผ่น + ส่ง) | Opus | TODO (รอ K1.14) | | `qc-branding-b3.mts` + visual |
 | B4 | หน้าร้าน/ใบเสนอราคา/อีเมล อ่านจาก `getBrandingTokens` ที่เดียว (ตาม applyStorefront) | Sonnet | TODO | | `qc-branding-b4.mts` |
 | B5 | แอป SHARK HUB: รับ branding จาก `/api/mobile/me` → จอล็อกอิน/แชท/ปุ่ม + ปัดขวาเปิดเมนูเว็บ (แอปเปิด swipe คืน แต่ยิงสัญญาณให้เว็บเปิดเมนู) · OTA | Sonnet | TODO | | `qc-mobile-app` + เรนเดอร์ iPad |
@@ -48,4 +48,5 @@
 - `scripts/visual-branding.mts` (คัดลอกโครงจาก `/root/projects/shark-kanban/scripts/visual-kanban.mts`: mint session ให้ `kb-owner@shark.local` ของ tenant QC บอร์ดงาน · desktop 1440×900 + mobile 390×844 · `KQC_VIEWPORTS`) spec `"b2"`: หน้าตั้งค่าค่าปริยาย → เลือกเทียล+BRAND (ดูตัวอย่างสดเปลี่ยน) → DARK → บันทึก → รีโหลด · **finally คืนค่า branding ของ tenant QC เป็น null** · ภาพลง `.qc-shots/branding/b2/`
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 18:02 น. — B1 ปิด (Opus 15 นาที) · builder แย้ง oracle S2.1 ถูก: contrast #0E7490/ขาว = 5.36 (WCAG piecewise) ไม่ใช่ 5.9 (สูตรลัด) → แก้ oracle + ตัวเลขในภาพแบบ 01 · migration ลง QC แล้ว รอ Vercel ลง prod · ต่อ B2
 - 6 ก.ย. 08:20 น. — เจ้าของสั่งเริ่ม · สร้าง worktree + ledger + oracle B1 · สั่ง Opus B1

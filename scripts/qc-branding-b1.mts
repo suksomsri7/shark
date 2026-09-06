@@ -35,7 +35,7 @@ try {
 
   // ═══ S2 color (pure) ═══
   const color = (await import("@/lib/branding/color" as string)) as Record<string, (...a: Any[]) => Any>;
-  chk("B1-S2.1", "contrastRatio(#ffffff,#0E7490) ≈ 5.9 · (#0a0a0a,#FDE047) ≈ 16", Math.abs(color.contrastRatio("#ffffff", "#0E7490") - 5.9) < 0.3 && color.contrastRatio("#0a0a0a", "#FDE047") > 14, "5.9/16", `${color.contrastRatio("#ffffff", "#0E7490").toFixed(2)}/${color.contrastRatio("#0a0a0a", "#FDE047").toFixed(2)}`);
+  chk("B1-S2.1", "contrastRatio(#ffffff,#0E7490) = 5.36 (WCAG 2.x piecewise · oracle เดิมใส่ 5.9 จากสูตรลัด ^2.4 — builder พิสูจน์ด้วย WebAIM · Fable คำนวณซ้ำได้ 5.36) · (#0a0a0a,#FDE047) > 14", Math.abs(color.contrastRatio("#ffffff", "#0E7490") - 5.36) < 0.05 && color.contrastRatio("#0a0a0a", "#FDE047") > 14, "5.9/16", `${color.contrastRatio("#ffffff", "#0E7490").toFixed(2)}/${color.contrastRatio("#0a0a0a", "#FDE047").toFixed(2)}`);
   chk("B1-S2.2", "pickReadableFg: เทียล → ขาว · เหลืองอ่อน → เข้ม · ดำ → ขาว · ขาว → เข้ม", color.pickReadableFg("#0E7490") === "#ffffff" && color.pickReadableFg("#FDE047") === "#0a0a0a" && color.pickReadableFg("#000000") === "#ffffff" && color.pickReadableFg("#ffffff") === "#0a0a0a", "ขาว/เข้ม/ขาว/เข้ม", [color.pickReadableFg("#0E7490"), color.pickReadableFg("#FDE047"), color.pickReadableFg("#000000"), color.pickReadableFg("#ffffff")].join(","));
   chk("B1-S2.3", "isHex: #0E7490 ✓ · #0e7490 ✓ · 0E7490 ✗ · #0E74 ✗ · #GGGGGG ✗", color.isHex("#0E7490") && color.isHex("#0e7490") && !color.isHex("0E7490") && !color.isHex("#0E74") && !color.isHex("#GGGGGG"), "ตรง", "ผิด");
 

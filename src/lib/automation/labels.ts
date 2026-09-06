@@ -20,6 +20,11 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "kanban.checklist.completed", label: "เมื่อเช็คลิสต์ครบทุกข้อ" },
   // K1.8 — ความเห็นใหม่ในการ์ด (`kanban/comments.ts#addComment`)
   { value: "kanban.comment.added", label: "เมื่อมีความเห็นใหม่ในการ์ด" },
+  // ── ธีมกิจการ (B1 · ledger/BRANDING-RUN.md) ────────────────────────────────
+  // ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับการบันทึกแถว
+  // 🔴 ต้องมี consumer ใน `outbox-consumers.ts` ด้วย (ตัวนั้นล้างแคชธีมของอินสแตนซ์ที่ระบายคิว)
+  //    ปลายทางที่สนใจ = แอป/ระบบภายนอกที่แคชโลโก้-สีไว้ในเครื่อง แล้วต้องรู้ว่าต้องดึงใหม่
+  { value: "tenant.branding.updated", label: "เมื่อเปลี่ยนตราสินค้า/ธีมของกิจการ" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

@@ -1,10 +1,61 @@
 // White label v1 (WO-0064) — โลโก้/สี/ชื่อแบรนด์ ต่อ tenant ใช้บน storefront สาธารณะ
+// ธีมกิจการ B1 (ledger/BRANDING-RUN.md §B1) — ขยายเป็น "ธีมของกิจการ" ที่ใช้ทั้งโครงแอป/หน้าร้าน/แอปมือถือ
+
+// โทนของแถบเมนู/รางไอคอน — ธีมเป็นของร้าน (T2) ไม่ใช่ของผู้ใช้
+enum NavTone {
+  LIGHT // สว่าง (ปริยาย — เหมือนหน้าตาปัจจุบัน)
+  BRAND // ใช้สีหลักของกิจการเป็นพื้นแถบ
+  DARK // เข้ม (#111827)
+}
+
 model TenantBranding {
   id          String   @id @default(cuid())
   tenantId    String   @unique
   displayName String? // ชื่อที่โชว์แทนชื่อ tenant (null = ใช้ชื่อ tenant)
   logoUrl     String?
   brandColor  String? // hex "#RRGGBB"
+  // 🔴 คำนวณตอนบันทึกทุกครั้งที่สีเปลี่ยน (pickReadableFg) — ไม่ให้ UI คำนวณเอง
+  //    เพื่อให้ทุกทาง (เว็บ/หน้าร้าน/เอกสาร/แอป) ได้สีตัวอักษรชุดเดียวกันเป๊ะ
+  brandFg     String? // "#ffffff" | "#0a0a0a"
+  navTone     NavTone  @default(LIGHT)
+  // สวิตช์ขอบเขตการใช้ธีม (ภาพ 01) — ปิด = หน้าร้าน/แอปกลับไปใช้ค่าปริยายของแพลตฟอร์ม
+  applyStorefront Boolean @default(true)
+  applyMobile     Boolean @default(true)
+  updatedById String? // User.id คนที่บันทึกล่าสุด (คู่กับ AuditLog branding.updated)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// ── "แจ้งปัญหาการใช้งาน" (T8 · DESIGN-BRANDING §7b) ──────────────────────────
+// ปุ่มมุมขวาบนทุกหน้า → ผู้ใช้พิมพ์ปัญหา + ระบบแนบหน้า/เบราว์เซอร์/เวอร์ชันให้เอง
+// v1 เก็บเป็นตารางของร้าน + แจ้ง ops (OpsEvent) · การ์ดในบอร์ดงานของ SHARK = ทีหลัง
+// (ต้องเขียนข้ามร้าน ซึ่ง kernel guard ห้าม — ทำเป็นงานแยกที่มีทางเขียนฝั่ง platform)
+enum IssueKind {
+  BUG // ใช้งานไม่ได้
+  DISPLAY // แสดงผลผิด
+  IDEA // ข้อเสนอแนะ
+}
+
+enum IssueStatus {
+  OPEN // ยังไม่มีใครดู
+  ACK // รับเรื่องแล้ว
+  DONE // แก้แล้ว
+}
+
+model IssueReport {
+  id            String      @id @default(cuid())
+  tenantId      String
+  userId        String? // ผู้แจ้ง (null = ยังไม่ล็อกอิน/แจ้งจากหน้าสาธารณะ)
+  kind          IssueKind
+  message       String
+  pageUrl       String // หน้าที่อยู่ตอนแจ้ง
+  userAgent     String // เบราว์เซอร์/แอป
+  appVersion    String? // เวอร์ชันแอปมือถือ เช่น "1.0.0 (24)"
+  screenshotUrl String?
+  status        IssueStatus @default(OPEN)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
 }

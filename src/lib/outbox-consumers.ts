@@ -14,6 +14,7 @@ import { dispatchWebhooks } from "@/lib/webhooks/service";
 import { entityLabel } from "@/lib/modules/approval/labels";
 import { applyApprovalEffect } from "@/lib/approval-effects";
 import { logOps } from "@/lib/core/ops";
+import { invalidateBrandingCache } from "@/lib/branding/service";
 
 const saleIdOf = (payload: unknown): string | null => {
   const p = payload as { saleId?: unknown } | null;
@@ -354,6 +355,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "account.asset.depreciated": withAutomation(async () => {}),
   "account.asset.disposed": withAutomation(async () => {}),
   "account.recurring.ran": withAutomation(async () => {}),
+  // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
+  //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
+  //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่
+  //   🔴 ต้องมีบรรทัดนี้เสมอ ไม่งั้น event ค้าง PENDING แล้วคิวทั้งระบบตันตามไปด้วย (บทเรียน 30 ส.ค. 2026)
+  "tenant.branding.updated": withAutomation(async (evt) => {
+    invalidateBrandingCache(evt.tenantId);
+  }),
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ
