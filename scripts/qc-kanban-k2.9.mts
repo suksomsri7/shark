@@ -15,8 +15,8 @@ const { prisma } = await import("@/lib/core/db");
 const kq = (await import("./kanban-qc-env.mts" as string)) as { KQC: Any; resolveKanbanScope: (p: Any) => Promise<{ tenantId: string; systemId: string } | null>; dayFromToday: (n: number, h?: number) => Date };
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; sev: Sev }[] = [];
-const chk = (id: string, n: string, ok: boolean, e: string, a: string, s: Sev = "CRITICAL") => {
-  cks.push({ id, ok, sev: s });
+const chk = (id: string, n: string, ok: unknown, e: string, a: string, s: Sev = "CRITICAL") => {
+  cks.push({ id, ok: !!ok, sev: s });
   console.log(`  ${ok ? "✅" : "❌"} [${id}] ${n}${ok ? "" : ` — exp ${e} | act ${a}`}`);
 };
 const fails = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error; } };
@@ -92,11 +92,11 @@ try {
   const a1 = await prisma.kanbanCard.findUnique({ where: { id: cardA.id }, include: { cardLabels: true, assignees: true, comments: true } });
   const run1 = await prisma.automationRun.findFirst({ where: { tenantId: tid, ruleId: rule.id }, orderBy: { createdAt: "desc" } }) as Any;
   const nP = await prisma.appNotification.count({ where: { tenantId: tid, recipientUserId: U.pook, body: { contains: cardA.title } } });
-  chk("K2.9-S4.1", "🔴 runForKanbanEvent({tenantId,type,payload}) → 1 · การ์ด A: ติดป้ายด่วน · มอบหมาย pook · ความเห็นจากกฎ · pook ได้แจ้งเตือน (template {ชื่อการ์ด} แทนค่า) · AutomationRun OK {boardId, cardId} · activity ระบุว่าเป็นอัตโนมัติ (actorUserId null + data.automation ruleId)", fired === 1 && a1!.cardLabels.some((l) => l.labelId === lblUrgent.id) && a1!.assignees.some((x) => x.userId === U.pook) && a1!.comments.some((c) => /กฎอัตโนมัติ/.test(c.body)) && nP === 1 && run1?.status === "OK" && run1.cardId === cardA.id && run1.boardId === board && !!(await prisma.kanbanActivity.findFirst({ where: { cardId: cardA.id, type: "CARD_LABEL_ADDED", actorUserId: null } })), "ครบ", JSON.stringify({ fired, lbl: a1?.cardLabels.length, asg: a1?.assignees.map((x) => x.userId), cm: a1?.comments.length, nP, run: run1?.status }));
+  chk("K2.9-S4.1", "🔴 runForKanbanEvent({tenantId,type,payload}) → 1 · การ์ด A: ติดป้ายด่วน · มอบหมาย pook · ความเห็นจากกฎ · pook ได้แจ้งเตือน (template {ชื่อการ์ด} แทนค่า) · AutomationRun OK {boardId, cardId} · activity ระบุว่าเป็นอัตโนมัติ (actorUserId null + data.automation ruleId)", fired === 1 && a1!.cardLabels.some((l) => l.labelId === lblUrgent.id) && a1!.assignees.some((x) => x.userId === U.pook) && a1!.comments.some((c) => /กฎอัตโนมัติ/.test(c.body)) && nP === 1 && run1?.status === "OK" && run1.cardId === cardA.id && run1.boardId === board && !!(await prisma.kanbanActivity.findFirst({ where: { cardId: cardA.id, type: "CARD_LABELED", actorUserId: null } })), "ครบ", JSON.stringify({ fired, lbl: a1?.cardLabels.length, asg: a1?.assignees.map((x) => x.userId), cm: a1?.comments.length, nP, run: run1?.status }));
   const fired2 = await au.runForKanbanEvent(evt);
   chk("K2.9-S4.2", "กันวน: กฎเดียวกัน+การ์ดเดียวกันภายใน 60 วิ → ไม่รันซ้ำ (0 · ไม่มี AutomationRun ใหม่)", fired2 === 0 && (await prisma.automationRun.count({ where: { tenantId: tid, ruleId: rule.id } })) === 1, "0", String(fired2));
   const firedB = await au.runForKanbanEvent({ ...evt, payload: { ...evt.payload, cardId: cardB.id } });
-  chk("K2.9-S4.3", "การ์ด B ไม่ตรงเงื่อนไข (ไม่มีป้าย) → 0 · ไม่มี AutomationRun (ไม่ตรง = ไม่บันทึก)", firedB === 0 && (await prisma.automationRun.count({ where: { tenantId: tid, cardId: cardB.id } })) === 0, "0", String(firedB));
+  chk("K2.9-S4.3", "การ์ด B ไม่ตรงเงื่อนไข (ไม่มีป้าย) → 0 · ไม่มี AutomationRun (ไม่ตรง = ไม่บันทึก)", firedB === 0 && (await P.automationRun.count({ where: { tenantId: tid, cardId: cardB.id } })) === 0, "0", String(firedB));
   await au.toggleRule(ctxO, owner, rule.id, false);
   const firedOff = await au.runForKanbanEvent({ ...evt, payload: { ...evt.payload, cardId: cardB.id } });
   chk("K2.9-S4.4", "toggleRule(off) → กฎไม่รัน · กฎของบอร์ดอื่น (payload.boardId ต่างกัน) ไม่รัน · legacy runForEvent ข้ามกฎที่มี boardId (โค้ด: where boardId null)", firedOff === 0 && (await au.runForKanbanEvent({ ...evt, payload: { ...evt.payload, boardId: E.boards.patong.id } })) === 0 && /boardId:\s*null/.test(read("src/lib/automation/engine.ts")) && /runForKanbanEvent/.test(read("src/lib/automation/engine.ts")), "0 · engine เชื่อม", `${firedOff}`);

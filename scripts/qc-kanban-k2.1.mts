@@ -15,8 +15,8 @@ const { prisma } = await import("@/lib/core/db");
 const kq = (await import("./kanban-qc-env.mts" as string)) as { KQC: Any; resolveKanbanScope: (p: Any) => Promise<{ tenantId: string; systemId: string } | null>; dayFromToday: (n: number, h?: number) => Date };
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; sev: Sev }[] = [];
-const chk = (id: string, n: string, ok: boolean, e: string, a: string, s: Sev = "CRITICAL") => {
-  cks.push({ id, ok, sev: s });
+const chk = (id: string, n: string, ok: unknown, e: string, a: string, s: Sev = "CRITICAL") => {
+  cks.push({ id, ok: !!ok, sev: s });
   console.log(`  ${ok ? "✅" : "❌"} [${id}] ${n}${ok ? "" : ` — exp ${e} | act ${a}`}`);
 };
 const fails = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error; } };
@@ -86,7 +86,7 @@ try {
   const csv = await reports.exportCardsCsv(ctxO, owner, board, { now: NOW });
   const lines = csv.replace(/^﻿/, "").split(/\r?\n/).filter(Boolean);
   chk("K2.1-S3.1", "exportCardsCsv → ขึ้นต้น BOM · หัวตารางไทย (#, การ์ด, คอลัมน์, ผู้รับผิดชอบ, กำหนดส่ง, เช็คลิสต์, ป้ายกำกับ, แก้ไขล่าสุด) · แถวข้อมูล = การ์ด active หลัง bulk (23)", csv.charCodeAt(0) === 0xfeff && /การ์ด/.test(lines[0]!) && /กำหนดส่ง/.test(lines[0]!) && /ป้ายกำกับ/.test(lines[0]!) && lines.length - 1 === 23, "BOM+หัว+23", `${csv.charCodeAt(0).toString(16)} ${lines[0]?.slice(0, 80)} rows=${lines.length - 1}`);
-  chk("K2.1-S3.2", "CSV ใช้ csvRow/csvCell จาก @/lib/core/csv (escape , \" \\n) · ชื่อการ์ดที่มี , อยู่ในเครื่องหมายคำพูด", /@\/lib\/core\/csv/.test(read("src/lib/modules/kanban/reports.ts")) && lines.slice(1).every((l) => l.split(",").length >= 8), "ใช้ core/csv", "ไม่ใช้", "MAJOR");
+  chk("K2.1-S3.2", "CSV ใช้ csvRow/csvCell จาก @/lib/core/csv (escape , \" \\n) · ชื่อการ์ดที่มี , อยู่ในเครื่องหมายคำพูด", /@\/lib\/core\/csv/.test(read("src/lib/modules/kanban/reports.ts")) && lines.slice(1).every((l: Any) => l.split(",").length >= 8), "ใช้ core/csv", "ไม่ใช้", "MAJOR");
   const eCsvT = await fails(() => reports.exportCardsCsv(ctxT, thana, board, { now: NOW }));
   chk("K2.1-S3.3", "ส่งออกของบอร์ดที่มองไม่เห็น → ไม่พบ", !!eCsvT, "throw", "ไม่ throw");
 

@@ -15,8 +15,8 @@ const { prisma } = await import("@/lib/core/db");
 const kq = (await import("./kanban-qc-env.mts" as string)) as { KQC: Any; resolveKanbanScope: (p: Any) => Promise<{ tenantId: string; systemId: string } | null>; dayFromToday: (n: number, h?: number) => Date };
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; sev: Sev }[] = [];
-const chk = (id: string, n: string, ok: boolean, e: string, a: string, s: Sev = "CRITICAL") => {
-  cks.push({ id, ok, sev: s });
+const chk = (id: string, n: string, ok: unknown, e: string, a: string, s: Sev = "CRITICAL") => {
+  cks.push({ id, ok: !!ok, sev: s });
   console.log(`  ${ok ? "✅" : "❌"} [${id}] ${n}${ok ? "" : ` — exp ${e} | act ${a}`}`);
 };
 const fails = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error; } };
@@ -67,7 +67,7 @@ try {
   const l3 = await lk.addLink(ctxO, card.id, { linkType: "APPROVAL_REQUEST", linkId: reqId, role: "RESULT" });
   const l4 = await lk.addLink(ctxO, card.id, { linkType: "URL", linkId: "https://example.com/spec.pdf", label: "สเปกอุปกรณ์" });
   const dup = await lk.addLink(ctxO, card.id, { linkType: "PARTY", linkId: partyId });
-  chk("K3.1-S2.1", "addLink(ctx, cardId, {linkType, linkId, role?, label?}) (EDITOR) → แถว · ซ้ำ (cardId,linkType,linkId) → คืนแถวเดิม ไม่สร้างซ้ำ · activity LINK_ADDED", [l1, l2, l3, l4].every((l) => l?.id) && dup?.id === l1.id && (await P.kanbanCardLink.count({ where: { cardId: card.id, removedAt: null } })) === 4 && (await prisma.kanbanActivity.count({ where: { cardId: card.id, type: "LINK_ADDED" } })) === 4, "4 แถว · dup เดิม", `${await P.kanbanCardLink.count({ where: { cardId: card.id } })} · dup=${dup?.id === l1?.id}`);
+  chk("K3.1-S2.1", "addLink(ctx, cardId, {linkType, linkId, role?, label?}) (EDITOR) → แถว · ซ้ำ (cardId,linkType,linkId) → คืนแถวเดิม ไม่สร้างซ้ำ · activity LINK_ADDED", [l1, l2, l3, l4].every((l) => l?.id) && dup?.id === l1.id && (await P.kanbanCardLink.count({ where: { cardId: card.id, removedAt: null } })) === 4 && (await prisma.kanbanActivity.count({ where: { cardId: card.id, type: "LINK_ADDED" as Any } })) === 4, "4 แถว · dup เดิม", `${await P.kanbanCardLink.count({ where: { cardId: card.id } })} · dup=${dup?.id === l1?.id}`);
   const eUrl = await fails(() => lk.addLink(ctxO, card.id, { linkType: "URL", linkId: "javascript:alert(1)" }));
   const eGhost = await fails(() => lk.addLink(ctxO, card.id, { linkType: "PARTY", linkId: "ไม่มีจริง" }));
   const eLabel = await fails(() => lk.addLink(ctxO, card.id, { linkType: "URL", linkId: "https://x.test", label: "ย".repeat(121) }));
@@ -99,7 +99,7 @@ try {
   chk("K3.1-S3.1", "listCardsForTarget(ctx, actor, {linkType, linkId}) → [{cardId, cardNo, title, boardId, boardName, columnName, status}] · owner เห็น 2 (ซ่อม + บอร์ดลับกะตะ) · thana เห็นเฉพาะบอร์ดที่มองเห็น (1 = ซ่อม) — ขาย้อนก็กรอง visibleBoardsWhere", back.length === 1 && back[0].cardId === card.id && typeof back[0].boardName === "string" && backT.length === 1 && back2.length === 2 && back2T.length === 1 && !back2T.some((c: Any) => c.cardId === kata.id), "2 / 1", `${back2.length} / ${back2T.length}`);
   await lk.removeLink(ctxO, card.id, l4.id);
   const afterRm = await lk.listCardLinks(ctxO, owner, card.id);
-  chk("K3.1-S3.2", "removeLink(ctx, cardId, linkRowId) (EDITOR) → soft delete (removedAt) · หายจากรายการ · activity LINK_REMOVED · เพิ่มซ้ำหลังลบ = คืนชีพแถวเดิม (removedAt null)", afterRm.length === 3 && ((await P.kanbanCardLink.findUnique({ where: { id: l4.id } }))).removedAt !== null && (await prisma.kanbanActivity.count({ where: { cardId: card.id, type: "LINK_REMOVED" } })) === 1 && (await lk.addLink(ctxO, card.id, { linkType: "URL", linkId: "https://example.com/spec.pdf" }))?.id === l4.id && ((await P.kanbanCardLink.findUnique({ where: { id: l4.id } }))).removedAt === null, "soft delete + คืนชีพ", String(afterRm.length));
+  chk("K3.1-S3.2", "removeLink(ctx, cardId, linkRowId) (EDITOR) → soft delete (removedAt) · หายจากรายการ · activity LINK_REMOVED · เพิ่มซ้ำหลังลบ = คืนชีพแถวเดิม (removedAt null)", afterRm.length === 3 && ((await P.kanbanCardLink.findUnique({ where: { id: l4.id } }))).removedAt !== null && (await prisma.kanbanActivity.count({ where: { cardId: card.id, type: "LINK_REMOVED" as Any } })) === 1 && (await lk.addLink(ctxO, card.id, { linkType: "URL", linkId: "https://example.com/spec.pdf" }))?.id === l4.id && ((await P.kanbanCardLink.findUnique({ where: { id: l4.id } }))).removedAt === null, "soft delete + คืนชีพ", String(afterRm.length));
   const lim = read("src/lib/modules/kanban/limits.ts");
   chk("K3.1-S3.3", "KANBAN_LIMITS.linksPerCard = 30 · เกิน → throw ไทย LIMIT_REACHED (โค้ด)", /linksPerCard:\s*30/.test(lim) && /linksPerCard/.test(read("src/lib/modules/kanban/links.ts")) && /LIMIT_REACHED/.test(read("src/lib/modules/kanban/links.ts")), "มี", "ขาด", "MAJOR");
 

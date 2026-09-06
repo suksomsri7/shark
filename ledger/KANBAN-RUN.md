@@ -43,6 +43,7 @@
 6. **โค้ด**: ไฟล์ใหม่ในโมดูล kanban import prisma จาก `./db` เท่านั้น (chokepoint · F5) · oracle: identifier ตัวพิมพ์เล็กใน pg_indexes ไม่มี quote → regex `"?x"?` · ห้าม `prisma format` (Prisma 7 เขียนคอมเมนต์ `/** */` ซ้อนพัง — K1.1) · ไม่มี `any` ใน src · raw prisma ใน `src/lib/modules/**` ไม่เพิ่ม (F5 ratchet) · ไฟล์ `"use server"` export เฉพาะ action (core อยู่ไฟล์อื่น) · ทุก mutation ตรวจ tenant+system+บทบาทบอร์ด · บอร์ดที่มองไม่เห็น = 404 · เพิ่ม event = ลงทะเบียน consumer พร้อมกัน · เพิ่ม tool AI = ลง SKILLS+KIND_ACCESS
 7. **UI ต้องตรงภาพ** (`feedback_ui_must_match_approved_mockups`): ใช้โทเคน/ไอคอนชุดเดียวกับบัญชี V2 (`docs/design/account-v2/mockup.html` · `AccountIcon.tsx` pattern) · คำไทยตามแบบ §5.5 · empty state ตาม §5.7 · ปุ่มลัดตาม §5.6 (ปิดได้ · ไม่ทำงานในช่องพิมพ์)
 8. **ปิดทุก WO**: `wo-notes/kanban-<WO>.md` → Fable ตรวจรับ → commit/push `session/kanban` + `main` (deploy prod) → รายงาน % · ปิดทุกเฟส: `pnpm qc:all` เต็ม (log รายชุดที่ `/tmp/claude-0/qc-all/`)
+10. 🔴 **oracle ต้องผ่าน `tsc` ทั้งโปรเจกต์** (`scripts/**/*.mts` อยู่ใน tsconfig include ⇒ `next build` ของ QC server พังทั้งเครื่องถ้า oracle มี type error — บทเรียน K2.1 6 ก.ย.) · ฟิลด์/enum/โมเดลของ WO ที่ยังไม่สร้างต้องเรียกผ่าน `P = prisma as Any` หรือ `as Any` · Fable รัน tsc หลังเขียน oracle ทุกครั้ง (เมื่อเครื่องว่าง) · `git add` ระบุไฟล์ ห้าม `-A` ระหว่าง builder ทำงาน
 9. **ข้อสอบเก่าต้องเขียว**: `qc-kanban-notify.mts` (⚠️ โหลด `.env` ตรง — ต้องย้ายมา qc-env-guard ใน K1.1) · `qc-ai-kanban-board.mts` · fitness 20/20
 
 ## ชุดข้อมูล QC (Fable · `scripts/seed-kanban-qc.mts` → `scripts/kanban-expected.json`)
@@ -85,8 +86,8 @@
 | K3.1 | `KanbanCardLink` + UI "เชื่อมข้อมูล SHARK" ในหลังการ์ด + resolver รายโมดูล + เช็คสิทธิ์รายคน | Opus | TODO (oracle พร้อม 20) | | |
 | K3.2 | สร้างงานจากแชท (ปุ่มในโมดูลแชท + แผงเตรียมการ์ด ภาพ 09 + สวิตช์รายร้าน) | Opus | TODO (oracle พร้อม 19) | | |
 | K3.3 | การ์ดจากฟอร์ม/ใบลา/อนุมัติ/คิว (outbox consumers) | Opus | TODO (oracle พร้อม 15) | | |
-| K3.4 | ย้อนกลับ: การ์ดปิดแล้วแปะบันทึกในแชท/อัปเดตเอกสาร | Opus | TODO | | |
-| K3.5 | เครื่องมือ AI 8 ตัว + ปุ่ม AI ในหลังการ์ด | Opus | TODO | | |
+| K3.4 | ย้อนกลับ: การ์ดปิดแล้วแปะบันทึกในแชท/อัปเดตเอกสาร | Opus | TODO (oracle พร้อม 8) | | |
+| K3.5 | เครื่องมือ AI 8 ตัว + ปุ่ม AI ในหลังการ์ด | Opus | TODO (oracle พร้อม 20) | | |
 | K3.6 | คำแนะนำกฎอัตโนมัติจากพฤติกรรมจริง | Opus | TODO | | |
 | K3.7 | การ์ดสะท้อน (mirror) | Sonnet | TODO | | |
 | K3.8 | มุมมองข้ามบอร์ดระดับองค์กร | Sonnet | TODO | | |
@@ -347,6 +348,28 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - UI: `IntegrationsSettings.tsx` (K3.2) เปิดครบ 6 สวิตช์ (คำอธิบายภาษาคน · เลือกบอร์ด/คอลัมน์ · ช่อง "นาทีที่ค้าง" · "ยอดขั้นต่ำ (บาท)") · การ์ดบนบอร์ดแสดงชิปที่มา (ฟอร์ม/แชท/อนุมัติ/ใบลา/บิล) จาก sourceType (ต่อยอดชิปเดิม K1.13)
 - ภาพ spec `"3.3"` ≥ 2 ใบ
 - ⚠️ oracle สร้างระบบ HR/POS/CHAT ชั่วคราว + พนักงาน/ใบลา/ฟอร์ม/นโยบาย/บิล/ห้องแชท แล้วลบทั้งหมด · เรียก `consumers[type](evt)` ตรง 3 ครั้ง (ผ่าน withWebhooks/withAutomation จริง) · แก้ settings ของระบบ KANBAN แล้วคืน
+
+### K3.4 — ย้อนกลับ outbound (Opus · `qc-kanban-k3.4.mts` 8 ข้อ · ไม่มี mockup · เกณฑ์ §9.3/§13 K3.4 · ต้องมี K3.1 ก่อน)
+- ที่อยู่: **composition root** `src/lib/platform/kanban-outbound.ts` (ไม่มี `any` · import facade แชท `@/lib/modules/chat/service#sendReply` ได้ · **ห้าม import account** · ห้ามเขียน `prisma.account*`) · ลงทะเบียน `outbox-consumers.ts`: `"kanban.card.completed": withAutomation(compose(เดิม, kanbanOutbound.cardCompleted))` · outbound พัง = try/catch + logOps WARN ห้ามล้ม consumer
+- `moves.ts`: payload `kanban.card.completed` เพิ่ม `actorUserId: string | null` (คนปิด · null = อัตโนมัติ/cron)
+- `cardCompleted(evt)`: อ่านลิงก์ของการ์ด (removedAt null) →
+  - `CHAT_CONVERSATION` → บันทึกภายใน 1 ข้อความต่อ key `kanban.card.completed#{cardId}#{completedAt}` (เก็บใน `ChatMessage.meta.kanbanKey` · มีแล้ว = ข้าม) ผ่าน `sendReply({ isInternal: true, senderUserId, body })` · body = `งาน #{cardNo} "{ชื่อ}" ปิดแล้วโดย {ชื่อคน|ระบบอัตโนมัติ} · ดูงาน {cardLink}` · senderUserId = actorUserId ?? card.createdById ?? OWNER คนแรกของร้าน · ห้อง/ระบบแชทหาไม่เจอ = ข้ามเงียบ
+  - `ACCOUNT_DOC` → activity `CARD_UPDATED` data `{ outbound: "ACCOUNT_DOC", linkId, label }` 1 ครั้งต่อ key (มีแล้วข้าม) · **ไม่แตะสถานะเอกสาร**
+  - `kanban.card.archived` → ไม่ทำอะไรกับปลายทาง
+- UI: `CardLinks.tsx` แถว CHAT_CONVERSATION มีบรรทัดเล็ก "เมื่อปิดงาน ระบบจะแปะบันทึกในบทสนทนานี้ให้"
+- ⚠️ oracle เรียก `consumers["kanban.card.completed"](evt)` ตรง 3 ครั้ง + ครั้งที่ actorUserId null
+
+### K3.5 — เครื่องมือ AI ครบ 8 + ปุ่ม AI ในหลังการ์ด (Opus · `qc-kanban-k3.5.mts` 20 ข้อ · ภาพ 03 แถบขวา · เกณฑ์ §8.2/§8.3/§13 K3.5 · ต้องมี K3.2 ก่อน)
+- ทะเบียน (ไม่มีรายชื่อชุดที่สอง — tool มาจาก op ที่ประกาศ `tool` ใน `api/ops/*`): เพิ่ม op `cards.detail` (GET /cards/{id}/detail · read · tool `kanban_card_detail` "Read one card in full: description as plain text, column/board, assignees, due, labels, checklists with items, comments (author/body/time), links") · `cards.setDue` (POST · write · tool `kanban_set_due` · input {cardId | cardNo+boardName, dueAt ISO, startAt?, reminderMinutesBefore?} · action `kanban.card.update` · executor → `updateCardFields`) · `cards.fromChat` (POST · write · tool `kanban_card_from_chat` · input {conversationId, boardName?, columnName?} · action `kanban.card.create` · **prepare**: เรียก `chat/task-from-chat.draftTaskFromChat` (fallback ถ้าไม่มี AI) → summary ไทย `สร้างการ์ด "{ชื่อ}" จากแชทของ {ผู้ติดต่อ} ลงบอร์ด {บอร์ด}` + payload {conversationId, title, description, boardId, columnId, dueAt?, checklist?} · สวิตช์ `openTaskFromChat` ปิด → `{ mode: "error" }` ไทยชี้ไป ตั้งค่า › การเชื่อมต่อ · **executor** → `createTaskFromChat` (ทางเดียวกับปุ่มในแชท · ลิงก์+บันทึกภายใน) · `src/lib/ai/kanban-ops.ts` import chat/task-from-chat ได้ (ชั้น AI ไม่ใช่โมดูล)) · ทุก op ใหม่ผูก `test: "K3.5-S…"` + docs/skill/endpoints (F13) · ชื่อ 8 ตัวใน `SKILLS.tasks` + summary อังกฤษเพิ่ม "card detail, set due, create a card from a chat thread" · `assertSkillRegistryComplete()` ผ่าน · `qc-ai-skills.mts` เขียว
+- กติกา §8.3: เขียน = ข้อเสนอเสมอ (runKanbanTool → mode propose ไม่แตะ DB) · `dispatchKanbanKind` ตรวจสิทธิ์ **คนกดยืนยัน** (MembershipCtx ที่ส่งมา) ไม่มีสิทธิ์ → throw ไทย · executor เรียก service (ห้าม prisma.kanban*.create/update ใน kanban-ops.ts) · activity ของการยืนยันมี actorUserId = คนกด + data `{ viaAi: true, proposalId }`
+- Prisma (additive `kanban_v2_s`): `KanbanComment.aiGenerated Boolean @default(false)`
+- `src/lib/modules/kanban/ai.ts` (EDITOR+ ของบอร์ด · ทุกฟังก์ชันรับ `{ deps?: { complete?: (prompt: string) => Promise<string> } }` · ของจริงใช้ provider ใน `src/lib/ai/provider.ts` + คีย์ AI ของร้าน (BYOK เดิม) · ไม่มีคีย์และไม่มี deps → throw ไทย "ยังไม่ได้ตั้งค่าผู้ช่วย AI — ตั้งค่าที่ …" · **prompt อังกฤษ** (บรรทัดแรกไม่มีไทย · เนื้อหาการ์ดไทยแนบเป็น data) · ผลลัพธ์ที่ผู้ใช้เห็นเป็นไทย):
+  - `summarizeCard(ctx, actor, cardId, opts) → { commentId, text }` — อ่าน title/description(ข้อความล้วน)/เช็คลิสต์/ความเห็นล่าสุด ≤ 20 → เขียนความเห็น `aiGenerated: true` `authorUserId = คนกด` body ขึ้นต้น "สรุปโดยผู้ช่วย AI:" + activity `AI_SUGGESTED` data {kind:"summary"}
+  - `suggestChecklist(ctx, actor, cardId, opts) → { title, items[] ≤ 10 }` — **ข้อเสนอ ไม่เขียน DB** · `acceptChecklistSuggestion(ctx, actor, cardId, { title, items }) → { checklistId }` ผ่าน `checklists.createChecklist/addItem` + activity `AI_SUGGESTED` {kind:"checklist", accepted:true}
+  - `draftReply(ctx, actor, cardId, opts) → { text }` — ร่างข้อความตอบลูกค้าจากบริบทการ์ด (+ลิงก์แชทถ้ามี K3.1) · ไม่บันทึก
+- UI: หลังการ์ด แถบขวา `CardAi.tsx` 3 ปุ่ม testid `card-ai-summarize` "สรุปการ์ด" · `card-ai-checklist` "แตกเป็นเช็คลิสต์" · `card-ai-reply` "ร่างคำตอบลูกค้า" · เช็คลิสต์แสดงเป็นข้อเสนอ (รายการ + ปุ่ม "เพิ่มเช็คลิสต์นี้" / "ไม่เอา") · ร่างคำตอบ = กล่อง + ปุ่ม "คัดลอก" · ไม่มีคีย์ AI → ปุ่ม disabled + "ตั้งค่าผู้ช่วย AI ก่อน" ลิงก์ · ความเห็น aiGenerated แสดงป้าย **"ผู้ช่วย AI"** ใน Timeline/Comments (ห้ามปลอมเป็นคน) · activity AI_SUGGESTED ประโยคไทยใน activity-text.ts
+- actions `summarizeCardAction suggestChecklistAction acceptChecklistSuggestionAction draftReplyAction` · ภาพ spec `"3.5"` ≥ 2 ใบ
+- ⚠️ oracle ฉีด `deps.complete` ปลอม · ใช้ `dispatchKanbanKind` ตรง (proposalId ปลอม) — executor ห้ามพึ่งแถว AiProposal จริง
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
 - 17:41 น. — **P1 ปิด** · qc:all 253/261 (20 นาที) → ทั้ง 8 ชุดแดงแก้แล้ว (2 ชุดเป็นผลจาก run นี้จริง: inbox import app-shell · kanban_my_tasks เปลี่ยนสัญญา — คืนแบบเดิม) · prod verify ผ่าน · handover เขียนแล้ว · Telegram ส่ง
