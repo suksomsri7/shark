@@ -90,11 +90,12 @@ const accCase = cases.find((c) => c.type === "ACCOUNT");
 if (accCase) {
   const navSrc = readFileSync(join(ROOT, "src/lib/modules/account/nav.ts"), "utf8");
   const navHrefs = [...navSrc.matchAll(/href:\s*`\$\{base\}([^`]*)`/g)].map((m) => m[1]);
-  chk("S0.1", `ตามลิงก์บัญชีไปที่ account/nav.ts ได้ (${navHrefs.length} รายการ)`,
-    navHrefs.length >= 20 && /accountNavChildren/.test(featureBody),
+  // เจ้าของสั่ง 6 ก.ย. 2569: แถบเมนูไม่มีเมนูย่อยของบัญชีแล้ว (หมวดอยู่ในหน้าหลักของระบบบัญชี)
+  // ⇒ layout ต้อง "ไม่" อ้าง accountNavChildren · ทะเบียน account/nav.ts ยังต้องมีครบ (หน้าบัญชีใช้เอง)
+  chk("S0.1", `ทะเบียนบัญชี account/nav.ts ครบ (${navHrefs.length} รายการ) และ layout ไม่กางเมนูย่อยบัญชี (คำสั่งเจ้าของ 6 ก.ย.)`,
+    navHrefs.length >= 20 && !/accountNavChildren/.test(featureBody),
     `เจอ ${navHrefs.length} href · layout อ้าง accountNavChildren = ${/accountNavChildren/.test(featureBody)}`,
     "CRITICAL");
-  accCase.hrefs.push(...navHrefs.map((h) => `\`\${s}/account${h}\``));
 }
 
 // 🔴 K1.14 — เมนูบอร์ดงานก็ย้ายไปทะเบียนกลาง (`kanban/nav.ts`) แล้วเหมือนบัญชี ⇒ ต้องตามไปอ่านที่นั่น
