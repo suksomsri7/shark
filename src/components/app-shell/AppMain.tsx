@@ -36,8 +36,9 @@ export function AppMain({
     return <main className={`px-0 pb-0 pt-14 ${inApp ? "" : "lg:pl-14"}`}>{children}</main>;
   }
   const pad = chatFullscreen
-    ? `px-0 pb-2 pt-2 sm:px-6 lg:pb-24 lg:pr-6 lg:pt-[calc(3.5rem+1rem)] ${
-        inApp ? "lg:pl-6" : "lg:pl-[calc(18rem+1.5rem)]"
+    ? `px-0 pb-2 pt-2 sm:px-6 lg:pr-6 lg:pt-[calc(3.5rem+1rem)] ${
+        // ในแอปไม่มีปุ่มผู้ช่วย AI (AiDock) ⇒ ไม่ต้องเว้นล่าง 6rem — iPad แนวนอนเคยเหลือช่องว่างล่าง ~100px
+        inApp ? "lg:pb-2 lg:pl-6" : "lg:pb-24 lg:pl-[calc(18rem+1.5rem)]"
       }`
     : `px-4 pb-24 pt-[calc(3.5rem+1rem)] sm:px-6 ${inApp ? "" : "lg:pl-[calc(18rem+1.5rem)]"}`;
   return <main className={pad}>{children}</main>;

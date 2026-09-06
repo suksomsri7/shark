@@ -1,5 +1,7 @@
 "use client";
 
+import { useInApp } from "@/components/app-shell/use-in-app";
+
 // inbox-client.tsx — กล่องแชทลูกค้าแบบ WhatsApp (WO-CW4 · PLAN-CHAT-WHATSAPP §6)
 //
 // ═══ สิ่งที่ไฟล์นี้ต้องไม่ทำพัง (ของเดิมทำได้อยู่แล้ว — ถอยหลังไม่ได้) ═══
@@ -180,6 +182,7 @@ export type ChatInboxClientProps = {
 };
 
 export function ChatInboxClient(props: ChatInboxClientProps) {
+  const inApp = useInApp(); // เปิดจากแอป (WebView UA SharkApp) — ใช้ปรับความสูงการ์ดที่ ≥lg
   const {
     systemId,
     baseHref,
@@ -889,6 +892,9 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
 
   const closed = thread?.status === "RESOLVED";
 
+  // 🔴 ความสูงการ์ดที่ ≥lg: เว็บเผื่อแถบบน 3.5rem + pt 1rem + pb-24 (6rem) = 10.5rem
+  //    ในแอป (iPad) ไม่มีปุ่ม AI ⇒ AppMain ให้ pb-2 ⇒ 3.5 + 1 + 0.5 = 5rem (เจ้าของเจอช่องว่างล่าง 6 ก.ย.)
+  const lgHeight = inApp ? "lg:h-[calc(100vh-5rem)]" : "lg:h-[calc(100vh-10.5rem)]";
   return (
     <section className="flex min-h-0 flex-col gap-2">
       {/* 🔴 เดสก์ท็อป = 3 คอลัมน์ตามแบบร่าง (`ref-desktop.png`): รายการ | ห้องแชท | บริบทลูกค้า
@@ -901,7 +907,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
             ⇒ 100vh − 10.5rem · ตัวเลขเดิม 13rem/19rem เผื่อชื่อหน้า+แท็บที่ถูกตัดทิ้งไปแล้ว
             จอแคบ: ไม่มีมุมโค้ง/ขอบซ้ายขวา เพื่อให้ชิดขอบจอตามแบบร่าง */}
         <aside
-          className={`card relative h-[calc(100dvh-1rem)] min-h-0 min-w-0 flex-col gap-0 rounded-none border-x-0 p-0 sm:rounded-xl sm:border-x lg:h-[calc(100vh-10.5rem)] ${activeId ? "hidden sm:flex" : "flex"}`}
+          className={`card relative h-[calc(100dvh-1rem)] min-h-0 min-w-0 flex-col gap-0 rounded-none border-x-0 p-0 sm:rounded-xl sm:border-x ${lgHeight} ${activeId ? "hidden sm:flex" : "flex"}`}
         >
           {/* ── หัวรายการ (แบบร่าง `.hdr`) ── */}
           <div className="flex items-center gap-1 border-b border-[color:var(--color-line)] px-2 py-1.5">
@@ -1411,7 +1417,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
             ⇒ ล็อกความสูงเท่าคอลัมน์ซ้าย แล้วให้ **พื้นที่ข้อความ** เลื่อนข้างในตัวเอง (บรรทัด overflow-y-auto)
             ใช้ dvh บนจอแคบ เพราะแถบเบราว์เซอร์มือถือยืดหดทำให้ vh โกหก */}
         <div
-          className={`card h-[calc(100dvh-1rem)] min-h-0 min-w-0 flex-col overflow-hidden rounded-none border-x-0 p-0 sm:rounded-xl sm:border-x lg:h-[calc(100vh-10.5rem)] ${activeId ? "flex" : "hidden sm:flex"}`}
+          className={`card h-[calc(100dvh-1rem)] min-h-0 min-w-0 flex-col overflow-hidden rounded-none border-x-0 p-0 sm:rounded-xl sm:border-x ${lgHeight} ${activeId ? "flex" : "hidden sm:flex"}`}
         >
           {!thread ? (
             <div className="flex flex-1 items-center justify-center p-8">
@@ -1998,7 +2004,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
         {/* ══════════ คอลัมน์ขวา: บริบทลูกค้า (WO-CV7 — ข้างในเป็นของสาย F) ══════════ */}
         {/* ซ่อนต่ำกว่า `lg` ตามแบบร่าง — จอแคบไม่มีที่พอ และของในนั้นไม่ใช่ของที่ต้องเห็นตลอดเวลา */}
         {thread && (
-          <aside className="hidden min-h-0 min-w-0 flex-col overflow-y-auto border-l border-[color:var(--color-line)] bg-[#fbfbfc] p-4 lg:flex lg:h-[calc(100vh-10.5rem)]">
+          <aside className={`hidden min-h-0 min-w-0 flex-col overflow-y-auto border-l border-[color:var(--color-line)] bg-[#fbfbfc] p-4 lg:flex ${lgHeight}`}>
             <ContextPanel
               systemId={systemId}
               conversationId={thread.conversationId}

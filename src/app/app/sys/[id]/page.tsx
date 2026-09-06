@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
@@ -50,6 +51,9 @@ export default async function SystemPage({
   if (sys.type === "ACCOUNT") redirect(`/app/sys/${id}/account`);
   const def = systemDef(sys.type);
   const isChat = sys.type === "CHAT";
+  // 🔴 iPad ในแอป (เจ้าของเจอ 6 ก.ย. build #24): จอกว้าง 1366 แต่กล่องแชทถูก max-w-6xl (1152) ตัด + ความสูงเผื่อปุ่ม AI ที่แอปไม่มี
+  //    ⇒ เปิดจากแอป (UA "SharkApp") ไม่จำกัดความกว้าง (ฝั่งความสูงดูที่ AppMain + inbox-client `lgHeight`)
+  const inApp = ((await headers()).get("user-agent") ?? "").includes("SharkApp");
   // ซ่อนกล่องแชทให้คนที่ไม่มีสิทธิ์อ่าน แล้วบอกตรง ๆ ว่าต้องทำอะไรต่อ
   // (ด่านจริงยังอยู่ที่ `requireChatRead()` ใน ChatInboxSection — ตรงนี้แค่ทำให้ข้อความเป็นภาษาคน)
   const mayReadChat = isChat && canReadChat(auth);
@@ -63,7 +67,7 @@ export default async function SystemPage({
   return (
     // 🔴 WO-CV12: ระบบแชท = "แบบตัด" — ไม่มีชื่อหน้า/คำอธิบาย/แท็บ ทั้งมือถือและเดสก์ท็อป
     //    ⇒ ไม่มีอะไรมาคั่นเหนือกล่องแชท จึงไม่ต้องมี gap ของ stack ด้วย (ระบบอื่นคงเดิม)
-    <div className={`flex flex-col ${isChat ? "max-w-6xl gap-0" : "max-w-2xl gap-6"}`}>
+    <div className={`flex flex-col ${isChat ? (inApp ? "max-w-none gap-0" : "max-w-6xl gap-0") : "max-w-2xl gap-6"}`}>
       {!isChat && (
         <PageHeader
           title={`${def?.icon ?? ""} ${sys.name}`.trim()}
