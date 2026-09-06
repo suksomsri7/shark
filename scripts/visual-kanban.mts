@@ -326,6 +326,58 @@ const SPECS: Record<string, Spec[]> = {
       ],
     },
   ],
+  // K2.1 — มุมมองตาราง (เทียบภาพ 04-table.png) — แก้ชื่อการ์ดแรกของบอร์ดป่าตองในช่องแล้วคืนค่าใน finally
+  "2.1": [
+    {
+      name: "table-view",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=table`,
+      onlyDevice: "desktop",
+      note: "มุมมองตาราง 8 คอลัมน์ (เทียบ 04-table.png)",
+      expect: ["[data-testid=table-view]", "[data-testid=table-row]"],
+      steps: [{ waitFor: "[data-testid=table-row]" }],
+    },
+    {
+      name: "table-bulk-selected",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=table`,
+      onlyDevice: "desktop",
+      note: "ติ๊ก 2 แถวแรก — แถบเลือกหลายรายการต้องเด้ง",
+      expect: ["[data-testid=bulk-bar]"],
+      steps: [
+        { waitFor: "[data-testid=table-row]" },
+        { click: "[data-testid=table-row]:nth-of-type(1) [data-testid=row-select]" },
+        { click: "[data-testid=table-row]:nth-of-type(2) [data-testid=row-select]" },
+        { wait: 300 },
+      ],
+    },
+    {
+      name: "table-grouped-column",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=table&group=column`,
+      onlyDevice: "desktop",
+      note: "จัดกลุ่มตามคอลัมน์ — หัวกลุ่มต่อคอลัมน์ + จำนวน",
+      expect: ["[data-testid=table-group]"],
+      steps: [{ waitFor: "[data-testid=table-group]" }],
+    },
+    {
+      name: "table-edit-title",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=table`,
+      onlyDevice: "desktop",
+      note: "แก้ชื่อการ์ดแรกในช่อง (คลิก → พิมพ์ → Enter) — คืนชื่อเดิมใน finally",
+      steps: [
+        { waitFor: "[data-testid=table-row]" },
+        { click: "[data-testid=table-row]:nth-of-type(1) [data-testid=table-title-cell]" },
+        { fill: "[data-testid=table-title-input]", value: "แก้ชื่อผ่านตาราง (ทดสอบ QC ภาพ)" },
+        { press: "Enter" },
+        { wait: 700 },
+      ],
+    },
+    {
+      name: "table-view",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=table`,
+      onlyDevice: "mobile",
+      note: "มือถือ — รายการ 2 บรรทัด ไม่มีแก้ในช่อง",
+      expect: ["[data-testid=table-view]"],
+    },
+  ],
 };
 const specs: Spec[] = WO === "path" ? [{ name: "custom", path: argv[1]! }] : (SPECS[WO] ?? []);
 if (specs.length === 0) { console.error(`❌ ไม่มี spec ของ WO ${WO}`); process.exit(2); }
@@ -443,6 +495,28 @@ if (WO === "1.14") {
   console.log(`🧪 เตรียม K1.14: การ์ด 1 ใบ + คอลัมน์ 1 คอลัมน์เข้าคลัง · ติดดาวบอร์ดป่าตอง · ใส่สมาชิกบอร์ด ${KB114.memberRows.length} แถว (คืนสภาพหลังถ่ายเสร็จ)`);
 }
 
+// ── K2.1: จำชื่อการ์ดแรกของบอร์ดป่าตอง (คือใบที่สเปค `table-edit-title` จะแก้) ไว้คืนหลังถ่ายเสร็จ ──
+const KB21 = { cardId: "", title: "" };
+if (WO === "2.1") {
+  const firstCol = await prisma.kanbanColumn.findFirst({
+    where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" },
+    orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true },
+  });
+  const firstCard = firstCol
+    ? await prisma.kanbanCard.findFirst({
+        where: { columnId: firstCol.id, tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" },
+        orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }, { createdAt: "asc" }],
+        select: { id: true, title: true },
+      })
+    : null;
+  if (firstCard) {
+    KB21.cardId = firstCard.id;
+    KB21.title = firstCard.title;
+  }
+  console.log(`🧪 เตรียม K2.1: จำชื่อการ์ดแรกของบอร์ดป่าตอง ${KB21.cardId || "(ไม่พบ)"} ไว้คืน`);
+}
+
 async function restoreSeed(): Promise<void> {
   // K1.9 — คืนสภาพ seed: ลบไฟล์แนบ/FileAsset ที่สร้างระหว่างถ่ายภาพ + ล้าง coverFileId ของการ์ดที่ใช้ทดสอบ
   if (WO === "1.9") {
@@ -540,6 +614,12 @@ async function restoreSeed(): Promise<void> {
       `UPDATE "KanbanBoard" b SET "cardNoSeq" = COALESCE((SELECT MAX("cardNo") FROM "KanbanCard" c WHERE c."boardId" = b.id), 0) WHERE b.id = '${B("patong")}'`,
     );
     console.log("🧹 คืนสภาพ K1.14: ลบการ์ด/คอลัมน์ที่ใช้ถ่ายคลังเก็บ · เอาดาวออก · คืนตัวนับเลขการ์ด");
+  }
+
+  // K2.1 — คืนสภาพ seed: สเปค `table-edit-title` แก้ชื่อการ์ดแรกผ่านช่องของตาราง (ทริปจริงลง DB) — คืนชื่อเดิม
+  if (WO === "2.1" && KB21.cardId) {
+    await prisma.kanbanCard.updateMany({ where: { id: KB21.cardId }, data: { title: KB21.title } });
+    console.log(`🧹 คืนสภาพ K2.1: คืนชื่อการ์ด ${KB21.cardId} เป็น "${KB21.title}"`);
   }
 }
 

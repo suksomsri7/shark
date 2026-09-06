@@ -631,7 +631,7 @@ src/lib/modules/kanban/
 | `setDue(ctx, cardId, {dueAt, startAt?, reminderMinutesBefore?})` | EDITOR | เหมือนบน | — |
 | `moveCardToColumn(ctx, cardId, toColumnId)` | EDITOR | เรียก `ordering.moveCard` | — |
 | `archiveCard/unarchiveCard(ctx, cardId)` | EDITOR | `CARD_ARCHIVED/UNARCHIVED` · unarchive แล้วคอลัมน์เดิมถูกเก็บ → ลงท้ายคอลัมน์แรก | — |
-| `bulkUpdate(ctx, cardIds[], patch)` | EDITOR | กิจกรรมรายใบ · **จำกัด 100 ใบ/ครั้ง** | `LIMIT_REACHED` "เลือกได้ครั้งละไม่เกิน 100 การ์ด" |
+| `bulkUpdate(ctx, cardIds[], patch)` | EDITOR | กิจกรรมรายใบ · **จำกัด 200 ใบ/ครั้ง** (`KANBAN_LIMITS.bulkMax` · ปรับจาก 100 ใน K2.1 ให้ตรงสัญญา `ledger/KANBAN-RUN.md` §K2.1) | ข้อความไทย "เลือกได้ครั้งละไม่เกิน 200 การ์ด" |
 | `copyCard(ctx, cardId, {toColumnId})` | EDITOR | `CARD_CREATED` · ก๊อป ชื่อ/รายละเอียด/เช็คลิสต์/ป้าย/ฟิลด์/ไฟล์แนบ · **ไม่ก๊อปวันที่และผู้รับผิดชอบ** | — |
 | `saveAsCardTemplate(ctx, cardId)` (K2.7) | ADMIN | — | — |
 

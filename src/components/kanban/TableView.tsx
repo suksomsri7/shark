@@ -4,7 +4,7 @@
 // เลือกหลายรายการแล้วทำทีเดียว (`cards.bulkUpdate`) · จัดกลุ่ม · ส่งออก CSV
 //
 // ⚠️ ห้ามใช้อีโมจิ — ไอคอนทุกตัวมาจาก <KanbanIcon> · ห้าม toLocaleDateString/Intl (บทเรียน K1.5: hydration)
-// ⚠️ ห้ามใช้ `window.confirm()` — "เก็บเข้าคลัง" ยืนยันแบบ inline สองขั้น (แบบเดียวกับทั้งโมดูล)
+// ⚠️ ห้ามใช้กล่องเตือนของเบราว์เซอร์ — "เก็บเข้าคลัง" ยืนยันแบบ inline สองขั้น (แบบเดียวกับทั้งโมดูล)
 "use client";
 
 import { useEffect, useState, useSyncExternalStore, useTransition } from "react";

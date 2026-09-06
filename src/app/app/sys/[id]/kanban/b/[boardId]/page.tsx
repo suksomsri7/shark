@@ -63,7 +63,8 @@ export default async function KanbanBoardPage({
     const group = GROUP_VALUES.includes(query.group as TableGroupBy) ? (query.group as TableGroupBy) : undefined;
     const sort = SORT_VALUES.includes(query.sort as TableSort) ? (query.sort as TableSort) : "position";
     const page = Math.max(1, parseInt(query.page ?? "1", 10) || 1);
-    const table = await listBoardTable(ctx, actor, boardId, { now: new Date(board.now), filters, group, sort, page });
+    // จัดกลุ่มแล้วโชว์ครบทุกใบต่อกลุ่ม ไม่ตัดหน้า (แบ่งหน้าไม่มีความหมายเมื่อดูเป็นกลุ่ม) — ยกเว้นบอร์ดใหญ่ผิดปกติ
+    const table = await listBoardTable(ctx, actor, boardId, { now: new Date(board.now), filters, group, sort, page, ...(group ? { pageSize: 2000 } : {}) });
     return <TableView board={board} table={table} filters={filters} group={group} sort={sort} page={page} />;
   }
 

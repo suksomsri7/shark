@@ -1,0 +1,12 @@
+import { readFileSync } from "node:fs";
+const accEnv = (await import("../acc-v2-env.mts" as string)) as { loadQcEnv: () => unknown };
+accEnv.loadQcEnv();
+const { prisma } = await import("@/lib/core/db");
+const E = JSON.parse(readFileSync("scripts/kanban-expected.json", "utf8"));
+const board = E.boards.patong.id;
+const lbl = await prisma.kanbanLabel.findFirst({ where: { boardId: board, name: "ด่วน" } });
+console.log("label", lbl);
+const links = await (prisma as any).kanbanCardLabel.findMany({ where: { labelId: lbl!.id }, include: { card: { select: { id: true, title: true, status: true, boardId: true } } } });
+console.log("links", links.length);
+for (const l of links) console.log(l.cardId, l.card.status, l.card.boardId === board, l.card.title);
+await prisma.$disconnect();

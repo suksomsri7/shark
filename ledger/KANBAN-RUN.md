@@ -82,7 +82,7 @@
 | K2.11 | อีเมลสรุป + watch + ตั้งค่าความถี่แจ้งเตือน + cron เตือนกำหนดส่ง | Opus | TODO (oracle พร้อม 30) | | |
 | K2.3 | มุมมองไทม์ไลน์ (เลื่อนได้ตาม D7) | Sonnet | TODO (oracle พร้อม 17) | | |
 | **P3 — เชื่อมทุกโมดูล + AI** |||||
-| K3.1 | `KanbanCardLink` + UI "เชื่อมข้อมูล SHARK" ในหลังการ์ด + resolver รายโมดูล + เช็คสิทธิ์รายคน | Opus | TODO | | |
+| K3.1 | `KanbanCardLink` + UI "เชื่อมข้อมูล SHARK" ในหลังการ์ด + resolver รายโมดูล + เช็คสิทธิ์รายคน | Opus | TODO (oracle พร้อม 20) | | |
 | K3.2 | สร้างงานจากแชท (ปุ่มในโมดูลแชท + แผงเตรียมการ์ด ภาพ 09 + สวิตช์รายร้าน) | Opus | TODO | | |
 | K3.3 | การ์ดจากฟอร์ม/ใบลา/อนุมัติ/คิว (outbox consumers) | Opus | TODO | | |
 | K3.4 | ย้อนกลับ: การ์ดปิดแล้วแปะบันทึกในแชท/อัปเดตเอกสาร | Opus | TODO | | |
@@ -304,6 +304,22 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - หน้าบอร์ด: `?view=timeline&zoom=week|month|quarter&group=&from=YYYY-MM-DD` → server เรียก `listBoardTimeline` · แท็บ "ไทม์ไลน์" เปิดใช้ · `views.ts` (K2.5) ViewConfig รับ `view=timeline` + `zoom`
 - ภาพ spec `"2.3"` ≥ 4 ใบ (เดือน · ไตรมาส · จัดกลุ่มตามคน · หลังลากขอบ (drag step แล้วคืนค่า) · มือถือ)
 - ⚠️ oracle ตั้ง startAt/dueAt ของการ์ด 2 ใบบนบอร์ดป่าตองชั่วคราวแล้วคืนใน finally
+
+## สัญญารายละเอียด P3
+
+### K3.1 — `KanbanCardLink` เชื่อมข้อมูล SHARK (Opus · `qc-kanban-k3.1.mts` 20 ข้อ · ไม่มี mockup — บล็อกในภาพ 03 "เชื่อมข้อมูล SHARK" · เกณฑ์ §9.1/§13 K3.1)
+- Prisma (additive `kanban_v2_r`): `enum KanbanLinkType` 20 ค่าตาม §4.2 · `KanbanCardLink` ตาม §4.3 + `removedAt DateTime?` (soft delete — ไม่อยู่ในรายการ hard delete §11.6) · `KanbanCard.sourceKey String?` + unique partial `(tenantId, sourceKey) where sourceKey is not null` (idempotency ของการ์ดจากภายนอก — `sourceId` เดิมคงไว้) · scope.ts `KanbanCardLink: sys()`
+- `src/lib/modules/kanban/links.ts` (+ `link-resolvers.ts` ถ้าแยก): ทะเบียน `LINK_TYPES: Record<KanbanLinkType, { label (ชนิด ไทย เช่น "ผู้ติดต่อ (CRM / Party)" "เอกสารในระบบบัญชี" "แชทลูกค้า" "คำขออนุมัติ"), module, canView(actor, target?), href(target), resolve(ctx, ids[]) → Map<id, { title, subtitle?, status?, unitId? }> }>` — resolver `select` เฉพาะฟิลด์ปลอดภัย (ห้าม phone/email/taxId ของ Party · ห้ามข้อมูล payroll) · **สิทธิ์**: `canView` = `evaluate(actor, { module, action: <คีย์อ่านของโมดูล>, unitId })` โดย OWNER/MANAGER ผ่านตาม rbac เดิม · STAFF ต้องมีคีย์อ่านตาราง §9.1 (`chat.conversation.read` · `inventory.item.read` · `hr.leave.read` · `approval.request.decide` หรือเป็นผู้ยื่น · `account.doc.view`) · โมดูลที่ไม่มีคีย์ read (party/crm/forms/kb/pos/queue/ticket/hotel/rental/school/shop/restaurant/booking/meeting) = "มีคีย์ `{module}.*` ตัวใดตัวหนึ่ง" (แบบ canReadKanban) · PARTY = มีคีย์ crm.* หรือ account.* หรือ party.* · URL = ทุกคน · **คำนวณต่อ actor ทุกครั้งที่เรียก ไม่มี cache ระดับโมดูล**
+  - `addLink(ctx, cardId, { linkType, linkId, role?: "SOURCE"|"RELATED"|"RESULT", label? ≤120 }) → row` (EDITOR · URL ต้อง `https?://` ไม่งั้น throw ไทย · ชนิดอื่นต้อง resolve เจอในร้านนี้ ไม่งั้น throw ไทย · ซ้ำ = คืนแถวเดิม (ถ้า removedAt → คืนชีพ) · `KANBAN_LIMITS.linksPerCard = 30` เกิน → throw LIMIT_REACHED · activity `LINK_ADDED` data {linkType, label}) · `removeLink(ctx, cardId, linkRowId)` (EDITOR · soft delete removedAt · activity `LINK_REMOVED`)
+  - `listCardLinks(ctx, actor, cardId) → LinkDto[] = { id, linkType, typeLabel, linkId, role, canView, title, subtitle, status, href }` (VIEWER+ ของบอร์ด) — canView false → `title = "{typeLabel} (ไม่มีสิทธิ์เข้าถึง)"` · subtitle/status/href = null · **ห้ามหลุดชื่อลูกค้า/ตัวอย่างข้อความ/ยอดเงิน** · แถวไม่ซ่อน
+  - `listCardsForTarget(ctx, actor, { linkType, linkId }) → [{ cardId, cardNo, title, boardId, boardName, columnName, status }]` กรอง `visibleBoardsWhere(actor)` + board ACTIVE + removedAt null
+  - `createCardFromExternal(ctx, { boardId, columnId?, title, description?, assigneeUserIds?, dueAt?, labelIds?, sourceType, sourceKey, links?: [{linkType, linkId, role?, label?}] }) → { cardId, created }` — facade เดียวที่โมดูลอื่น/consumer เรียก (K3.2/K3.3/K3.9/K2.8): findFirst โดย (tenantId, sourceKey) → มี = `{ created:false }` · ไม่มี → สร้างใน tx ผ่าน `service.createCard` (คอลัมน์ปริยาย = แรกสุด · description ผ่าน sanitize · sourceType/sourceKey) + ลิงก์ + activity + outbox `kanban.card.created` · ชนกัน unique (ยิงพร้อมกัน) → อ่านซ้ำแล้วคืน created:false · บอร์ดไม่มี/ARCHIVED → throw ไทย · **links.ts ห้าม import จาก chat/forms/approval/hr/pos/account** (ทิศทางเดียว)
+- DTO: `getCardDetail.links: LinkDto[]` · `TableRowDto.links` (K2.1 เว้นว่าง) เติม `[{type, label}]` เฉพาะ canView · `BoardCardDto.linkCount`
+- UI: หลังการ์ดบล็อก "เชื่อมข้อมูล SHARK" `CardLinks.tsx` testid `card-links` (แถว = ไอคอนชนิด + title/subtitle + ชิปสถานะ + ลิงก์เปิดปลายทาง · ไม่มีสิทธิ์ = เทา ไม่มีลิงก์ · × ลบ (EDITOR · ยืนยัน inline)) · "เพิ่มการเชื่อม" testid `card-link-add` popover: **URL** (กรอก + ป้าย) · **ผู้ติดต่อ** (ค้นชื่อผ่าน `searchPartyForLinkAction` → facade party) — ชนิดอื่นเกิดจาก integration/automation (K3.2/K3.3/K2.9) · การ์ดบนบอร์ดชิป 🔗 n testid `card-link-count` · ตาราง K2.1 คอลัมน์ "เชื่อม" แสดง label
+- actions `addCardLinkAction removeCardLinkAction searchPartyForLinkAction` · REST ops `cards.links.list` (GET /cards/{id}/links) · `cards.links.add` · `cards.links.remove` ใน `api/ops/links.ts` ผูก `test: "K3.1-S…"` + endpoints.md/skill/docs อัปเดต (K1.15 ด่าน "ทุก op มี test")
+- K2.9 automation: เพิ่ม action `add_link {linkType: "URL", url, label}` (ทางเลือก — ไม่บังคับใน oracle)
+- ภาพ spec `"3.1"` ≥ 3 ใบ (บล็อกของ owner · ของคนไม่มีสิทธิ์ (thana) · popover เพิ่ม)
+- ⚠️ oracle สร้าง Party (facade) · AppSystem CHAT + ChatContact + ChatConversation (prisma ตรง) · นโยบาย/คำขออนุมัติ · การ์ด 3 ใบ แล้วลบทั้งหมดใน finally · ใช้ actor ที่ override permissions ในหน่วยความจำ
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
 - 17:41 น. — **P1 ปิด** · qc:all 253/261 (20 นาที) → ทั้ง 8 ชุดแดงแก้แล้ว (2 ชุดเป็นผลจาก run นี้จริง: inbox import app-shell · kanban_my_tasks เปลี่ยนสัญญา — คืนแบบเดิม) · prod verify ผ่าน · handover เขียนแล้ว · Telegram ส่ง
