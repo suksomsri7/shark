@@ -13,6 +13,7 @@ import { ProposalCard, type ProposalView } from "@/src/components/chat/ProposalC
 import { TypingIndicator } from "@/src/components/chat/TypingIndicator";
 import { C, R, S } from "@/src/theme";
 import { PageColumn } from "@/src/components/ui/page";
+import { useBrand } from "@/src/lib/brand";
 
 type Message = { key: string; role: "USER" | "ASSISTANT"; content: string; images?: string[] };
 type ServerMessage = { id?: string; role: "USER" | "ASSISTANT"; content: string; images?: string[] };
@@ -29,6 +30,7 @@ type Item =
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const brand = useBrand();
   const params = useLocalSearchParams<{ id: string; title?: string; chips?: string }>();
   const conversationId = params.id;
   const headerTitle = params.title && params.title.trim() ? params.title : "แชท";
@@ -297,7 +299,7 @@ export default function ChatScreen() {
       >
         {loading ? (
           <View style={styles.center}>
-            <ActivityIndicator color={C.blue} />
+            <ActivityIndicator color={brand.accent} />
           </View>
         ) : (
           <FlatList
@@ -353,7 +355,11 @@ export default function ChatScreen() {
             style={styles.input}
             multiline
           />
-          <Pressable onPress={send} disabled={!canSend} style={[styles.sendBtn, !canSend && styles.disabled]}>
+          <Pressable
+            onPress={send}
+            disabled={!canSend}
+            style={[styles.sendBtn, { backgroundColor: brand.accent }, !canSend && styles.disabled]}
+          >
             {sending ? <ActivityIndicator color="#ffffff" size="small" /> : <FontAwesome6 name="paper-plane" size={16} color="#ffffff" solid />}
           </Pressable>
         </View>
@@ -448,7 +454,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: R.full,
-    backgroundColor: C.blue,
     alignItems: "center",
     justifyContent: "center",
   },

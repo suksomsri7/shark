@@ -2,6 +2,7 @@
 import { Image, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { C, R, S } from "@/src/theme";
+import { useBrand } from "@/src/lib/brand";
 
 export function ChatBubble({
   role,
@@ -12,10 +13,11 @@ export function ChatBubble({
   content: string;
   images?: string[];
 }) {
+  const brand = useBrand();
   const mine = role === "USER";
   return (
     <View style={[styles.row, mine ? styles.rowMine : styles.rowTheirs]}>
-      <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
+      <View style={[styles.bubble, mine ? [styles.mine, { backgroundColor: brand.accent }] : styles.theirs]}>
         {images && images.length > 0 && (
           <View style={styles.thumbs}>
             {images.map((src, i) => (
@@ -24,7 +26,9 @@ export function ChatBubble({
           </View>
         )}
         {content.length > 0 && (
-          <Text style={[styles.text, mine ? styles.textMine : styles.textTheirs]}>{content}</Text>
+          <Text style={[styles.text, mine ? [styles.textMine, { color: brand.accentFg }] : styles.textTheirs]}>
+            {content}
+          </Text>
         )}
       </View>
     </View>
@@ -36,7 +40,7 @@ const styles = StyleSheet.create({
   rowMine: { justifyContent: "flex-end", paddingLeft: 40 },
   rowTheirs: { justifyContent: "flex-start", paddingRight: 40 },
   bubble: { maxWidth: "100%", borderRadius: R.lg, paddingHorizontal: S.md, paddingVertical: S.sm },
-  mine: { backgroundColor: C.blue, borderBottomRightRadius: R.sm },
+  mine: { borderBottomRightRadius: R.sm },
   theirs: { backgroundColor: C.surface, borderBottomLeftRadius: R.sm },
   text: { fontSize: 15, lineHeight: 21 },
   textMine: { color: "#ffffff" },

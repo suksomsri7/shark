@@ -32,24 +32,31 @@ export function SpinningOrb({ size = 84 }: { size?: number }) {
   );
 }
 
-// ปุ่มหลักสีน้ำเงิน + loading
+// ปุ่มหลัก + loading — ปริยายน้ำเงิน (จอ login ก่อนรู้จักร้าน) · จอที่รู้ธีมแล้ว (DNA) ส่ง bg มาทับได้
 export function PrimaryButton({
   label,
   onPress,
   loading = false,
   disabled = false,
+  bg,
 }: {
   label: string;
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
+  bg?: string; // สีแบรนด์ของกิจการ active (จาก useBrand()) — ไม่ใส่ = น้ำเงินปริยายเดิม
 }) {
   const off = disabled || loading;
   return (
     <Pressable
       onPress={onPress}
       disabled={off}
-      style={({ pressed }) => [styles.btn, off && styles.btnOff, pressed && !off && styles.btnPressed]}
+      style={({ pressed }) => [
+        styles.btn,
+        bg ? { backgroundColor: bg } : null,
+        off && styles.btnOff,
+        pressed && !off && (bg ? { opacity: 0.85 } : styles.btnPressed),
+      ]}
     >
       {loading ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.btnText}>{label}</Text>}
     </Pressable>

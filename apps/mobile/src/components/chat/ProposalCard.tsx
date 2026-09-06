@@ -3,6 +3,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { C, R, S } from "@/src/theme";
+import { useBrand } from "@/src/lib/brand";
 
 export type ProposalView = {
   id: string;
@@ -25,6 +26,7 @@ export function ProposalCard({
   onConfirm: () => void;
   onReject: () => void;
 }) {
+  const brand = useBrand();
   const destructive = proposal.risk === "DESTRUCTIVE";
 
   if (proposal.resolved) {
@@ -45,7 +47,7 @@ export function ProposalCard({
       : "ยืนยัน";
 
   return (
-    <View style={[styles.card, { borderColor: destructive ? C.danger : C.blue }]}>
+    <View style={[styles.card, { borderColor: destructive ? C.danger : brand.accent }]}>
       <Text style={[styles.head, { color: destructive ? C.danger : C.textDim }]}>
         {destructive ? "ผู้ช่วยขอยืนยันการลบ/ยกเลิกถาวร" : "ผู้ช่วยขอยืนยันก่อนทำ"}
       </Text>
@@ -57,7 +59,7 @@ export function ProposalCard({
           style={[
             styles.btn,
             styles.confirm,
-            destructive ? (armed ? styles.dangerFill : styles.dangerOutline) : styles.blueFill,
+            destructive ? (armed ? styles.dangerFill : styles.dangerOutline) : { backgroundColor: brand.accent },
             busy && styles.disabled,
           ]}
         >
@@ -67,7 +69,7 @@ export function ProposalCard({
             <Text
               style={[
                 styles.btnText,
-                destructive && !armed ? { color: C.danger } : { color: "#ffffff" },
+                destructive && !armed ? { color: C.danger } : { color: destructive ? "#ffffff" : brand.accentFg },
               ]}
             >
               {confirmLabel}
@@ -97,7 +99,6 @@ const styles = StyleSheet.create({
   btn: { minHeight: 44, borderRadius: R.md, alignItems: "center", justifyContent: "center", paddingHorizontal: S.md },
   confirm: { flex: 1 },
   reject: { backgroundColor: C.surfaceHi, paddingHorizontal: S.lg },
-  blueFill: { backgroundColor: C.blue },
   dangerFill: { backgroundColor: C.danger },
   dangerOutline: { backgroundColor: "transparent", borderWidth: 1, borderColor: C.danger },
   btnText: { fontSize: 15, fontWeight: "600" },

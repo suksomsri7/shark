@@ -11,6 +11,7 @@ import { pageColumn } from "@/src/components/ui/page";
 import { useRouter } from "expo-router";
 import { api, apiErrorText } from "@/src/api/client";
 import { useAuth } from "@/src/lib/auth-context";
+import { useBrand } from "@/src/lib/brand";
 import {
   InlineError,
   LinkButton,
@@ -65,6 +66,7 @@ function headline(step: PlanStep): string {
 export default function DnaScreen() {
   const router = useRouter();
   const { tenants, switchTenant, refreshMe } = useAuth();
+  const brand = useBrand();
   const isAdding = useRef(tenants.length > 0); // เพิ่มกิจการ (มีอยู่แล้ว) → โชว์ปุ่มยกเลิก
 
   const [phase, setPhase] = useState<"name" | "interview" | "summary">("name");
@@ -248,7 +250,7 @@ export default function DnaScreen() {
               />
               <InlineError text={err} />
               <View style={styles.gap} />
-              <PrimaryButton label="เริ่มตั้งค่า" onPress={createTenant} loading={creating} />
+              <PrimaryButton label="เริ่มตั้งค่า" onPress={createTenant} loading={creating} bg={brand.accent} />
             </View>
           )}
 
@@ -270,7 +272,11 @@ export default function DnaScreen() {
                         <Pressable
                           key={c.value}
                           onPress={() => answer(current.id, c.value)}
-                          style={({ pressed }) => [styles.choiceBtn, pressed && styles.pressed]}
+                          style={({ pressed }) => [
+                            styles.choiceBtn,
+                            pressed && styles.pressed,
+                            pressed && { backgroundColor: brand.soft, borderColor: brand.accent },
+                          ]}
                         >
                           <Text style={styles.choiceText}>{c.label}</Text>
                         </Pressable>
@@ -282,13 +288,21 @@ export default function DnaScreen() {
                     <View style={styles.boolRow}>
                       <Pressable
                         onPress={() => answer(current.id, true)}
-                        style={({ pressed }) => [styles.boolBtn, pressed && styles.pressed]}
+                        style={({ pressed }) => [
+                          styles.boolBtn,
+                          pressed && styles.pressed,
+                          pressed && { backgroundColor: brand.soft, borderColor: brand.accent },
+                        ]}
                       >
                         <Text style={styles.boolText}>ใช่</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => answer(current.id, false)}
-                        style={({ pressed }) => [styles.boolBtn, pressed && styles.pressed]}
+                        style={({ pressed }) => [
+                          styles.boolBtn,
+                          pressed && styles.pressed,
+                          pressed && { backgroundColor: brand.soft, borderColor: brand.accent },
+                        ]}
                       >
                         <Text style={styles.boolText}>ไม่ใช่</Text>
                       </Pressable>
@@ -315,6 +329,7 @@ export default function DnaScreen() {
                         label="ต่อไป"
                         onPress={() => submitNumber(current)}
                         disabled={numDraft === ""}
+                        bg={brand.accent}
                       />
                     </View>
                   )}
@@ -330,7 +345,7 @@ export default function DnaScreen() {
                   <Text style={styles.ask}>ส่งคำตอบไม่สำเร็จ</Text>
                   <InlineError text={err} />
                   <View style={styles.gap} />
-                  <PrimaryButton label="ลองอีกครั้ง" onPress={() => void submitAnswers(answers)} />
+                  <PrimaryButton label="ลองอีกครั้ง" onPress={() => void submitAnswers(answers)} bg={brand.accent} />
                   <LinkButton label="ย้อนกลับ" onPress={back} tone="dim" />
                 </View>
               )}
@@ -352,8 +367,8 @@ export default function DnaScreen() {
               ) : (
                 plan.steps.map((step, i) => (
                   <View key={i} style={styles.stepCard}>
-                    <View style={styles.stepNum}>
-                      <Text style={styles.stepNumText}>{i + 1}</Text>
+                    <View style={[styles.stepNum, { borderColor: brand.accent }]}>
+                      <Text style={[styles.stepNumText, { color: brand.accent }]}>{i + 1}</Text>
                     </View>
                     <View style={styles.stepBody}>
                       <Text style={styles.stepHead}>{headline(step)}</Text>
@@ -369,6 +384,7 @@ export default function DnaScreen() {
                 label={plan.steps.length === 0 ? "เริ่มใช้งาน" : "ประกอบระบบให้เลย"}
                 onPress={apply}
                 loading={applying}
+                bg={brand.accent}
               />
               <LinkButton
                 label="ย้อนกลับแก้คำตอบ"
@@ -436,7 +452,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   boolText: { color: C.text, fontSize: 18, fontFamily: "IBMPlexSansThai_700Bold" },
-  pressed: { backgroundColor: C.blueSoft, borderColor: C.blue },
+  pressed: { borderWidth: 1 }, // สี background/border จริงมาจาก brand.soft/brand.accent (inline ที่จุดใช้งาน)
   numInput: { fontSize: 22, fontWeight: "700" },
 
   thinking: { alignItems: "center", gap: S.lg, paddingVertical: S.xl },
@@ -457,11 +473,10 @@ const styles = StyleSheet.create({
     height: 26,
     borderRadius: 13,
     borderWidth: 1,
-    borderColor: C.blue,
     alignItems: "center",
     justifyContent: "center",
   },
-  stepNumText: { color: C.blueHi, fontSize: 13, fontWeight: "700" },
+  stepNumText: { fontSize: 13, fontWeight: "700" },
   stepBody: { flex: 1, gap: S.xs },
   stepHead: { color: C.text, fontSize: 15, fontFamily: "IBMPlexSansThai_700Bold" },
   stepWhy: { color: C.textDim, fontSize: 13, lineHeight: 19 },

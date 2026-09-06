@@ -2,7 +2,7 @@
 // header: ‹ กลับ dashboard (ซ้าย) + ＋ สร้างห้อง (ขวา) เท่านั้น · การ์ดต่อ session (unread สีต่าง+จุดน้ำเงิน)
 // สไลด์ซ้าย = แก้ชื่อ (modal inline) / ลบ (2 จังหวะ) · pull-to-refresh + refresh เมื่อ focus
 import { useCallback, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, Modal, Pressable, RefreshControl, StyleSheet, View } from "react-native";
 import { Text, TextInput } from "@/src/components/ui/text";
 import { Swipeable } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,6 +12,7 @@ import { Orb } from "@/src/components/chat/Orb";
 import { QuotaBar } from "@/src/components/chat/QuotaBar";
 import { C, R, S } from "@/src/theme";
 import { PageColumn } from "@/src/components/ui/page";
+import { useBrand } from "@/src/lib/brand";
 
 type Conversation = { id: string; title: string | null; updatedAt: string; unread: boolean };
 
@@ -31,6 +32,7 @@ function thaiTime(iso: string): string {
 export default function SessionsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const brand = useBrand();
 
   const [items, setItems] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,7 +144,7 @@ export default function SessionsScreen() {
     const deleteArmed = confirmDeleteId === c.id;
     return (
       <View style={styles.swipeActions}>
-        <Pressable style={[styles.swipeBtn, styles.renameBtn]} onPress={() => startRename(c)}>
+        <Pressable style={[styles.swipeBtn, { backgroundColor: brand.accent }]} onPress={() => startRename(c)}>
           <Text style={styles.swipeText}>แก้ชื่อ</Text>
         </Pressable>
         <Pressable style={[styles.swipeBtn, styles.deleteBtn]} onPress={() => onDelete(c)}>
@@ -165,7 +167,7 @@ export default function SessionsScreen() {
       >
         <Pressable
           onPress={() => openRoom(item)}
-          style={[styles.card, unread && styles.cardUnread]}
+          style={[styles.card, unread && styles.cardUnread, unread && { borderLeftColor: brand.accent }]}
         >
           <View style={styles.cardBody}>
             <Text style={[styles.cardTitle, unread && styles.cardTitleUnread]} numberOfLines={1}>
@@ -173,7 +175,7 @@ export default function SessionsScreen() {
             </Text>
             <Text style={styles.cardTime}>{thaiTime(item.updatedAt)}</Text>
           </View>
-          {unread && <View style={styles.unreadDot} />}
+          {unread && <View style={[styles.unreadDot, { backgroundColor: brand.accent }]} />}
         </Pressable>
       </Swipeable>
     );
@@ -186,8 +188,18 @@ export default function SessionsScreen() {
         <Pressable onPress={() => router.back()} hitSlop={10} style={styles.iconBtn}>
           <Text style={styles.back}>‹</Text>
         </Pressable>
-        <View style={styles.headerSpacer} />
-        <Pressable onPress={createRoom} disabled={creating} style={styles.addBtn} hitSlop={8}>
+        <View style={styles.headerTitleWrap}>
+          {brand.logoUrl && <Image source={{ uri: brand.logoUrl }} style={styles.headerLogo} resizeMode="contain" />}
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {brand.displayName ?? "ผู้ช่วย AI"}
+          </Text>
+        </View>
+        <Pressable
+          onPress={createRoom}
+          disabled={creating}
+          style={[styles.addBtn, { backgroundColor: brand.accent }]}
+          hitSlop={8}
+        >
           {creating ? <ActivityIndicator color="#ffffff" size="small" /> : <Text style={styles.addPlus}>＋</Text>}
         </Pressable>
       </View>
@@ -198,13 +210,13 @@ export default function SessionsScreen() {
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={C.blue} />
+          <ActivityIndicator color={brand.accent} />
         </View>
       ) : items.length === 0 ? (
         <View style={styles.center}>
           <Orb size={80} />
           <Text style={styles.emptyText}>เริ่มคุยกับผู้ช่วย AI ของคุณ</Text>
-          <Pressable onPress={createRoom} disabled={creating} style={styles.emptyBtn}>
+          <Pressable onPress={createRoom} disabled={creating} style={[styles.emptyBtn, { backgroundColor: brand.accent }]}>
             {creating ? (
               <ActivityIndicator color="#ffffff" size="small" />
             ) : (
@@ -243,7 +255,12 @@ export default function SessionsScreen() {
                 <Text style={styles.modalCancelText}>ยกเลิก</Text>
               </Pressable>
               <Pressable
-                style={[styles.modalBtn, styles.modalSave, (!renameText.trim() || renameBusy) && styles.disabled]}
+                style={[
+                  styles.modalBtn,
+                  styles.modalSave,
+                  { backgroundColor: brand.accent },
+                  (!renameText.trim() || renameBusy) && styles.disabled,
+                ]}
                 onPress={saveRename}
                 disabled={!renameText.trim() || renameBusy}
               >
@@ -274,12 +291,13 @@ const styles = StyleSheet.create({
   },
   iconBtn: { padding: S.xs },
   back: { color: C.text, fontSize: 30, lineHeight: 30 },
-  headerSpacer: { flex: 1 },
+  headerTitleWrap: { flex: 1, flexDirection: "row", alignItems: "center", gap: S.xs, paddingHorizontal: S.xs },
+  headerLogo: { width: 24, height: 24, borderRadius: R.sm },
+  headerTitle: { color: C.text, fontSize: 16, fontFamily: "IBMPlexSansThai_700Bold", flexShrink: 1 },
   addBtn: {
     width: 34,
     height: 34,
     borderRadius: R.full,
-    backgroundColor: C.blue,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -287,7 +305,7 @@ const styles = StyleSheet.create({
   errorBar: { color: C.danger, fontSize: 13, paddingHorizontal: S.md, paddingVertical: S.sm },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: S.md, padding: S.xl },
   emptyText: { color: C.textDim, fontSize: 15 },
-  emptyBtn: { backgroundColor: C.blue, borderRadius: R.md, paddingHorizontal: S.xl, paddingVertical: S.md, minHeight: 44, justifyContent: "center" },
+  emptyBtn: { borderRadius: R.md, paddingHorizontal: S.xl, paddingVertical: S.md, minHeight: 44, justifyContent: "center" },
   emptyBtnText: { color: "#ffffff", fontSize: 15, fontFamily: "IBMPlexSansThai_700Bold" },
   listContent: { padding: S.md },
   sep: { height: S.sm },
@@ -299,15 +317,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: S.md,
     paddingVertical: S.md,
   },
-  cardUnread: { backgroundColor: C.surfaceHi, borderLeftWidth: 3, borderLeftColor: C.blue },
+  cardUnread: { backgroundColor: C.surfaceHi, borderLeftWidth: 3 },
   cardBody: { flex: 1 },
   cardTitle: { color: C.text, fontSize: 15, fontWeight: "500" },
   cardTitleUnread: { fontFamily: "IBMPlexSansThai_700Bold" },
   cardTime: { color: C.textFaint, fontSize: 12, marginTop: 2 },
-  unreadDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.blueHi, marginLeft: S.sm },
+  unreadDot: { width: 10, height: 10, borderRadius: 5, marginLeft: S.sm },
   swipeActions: { flexDirection: "row", alignItems: "center", gap: S.sm, paddingLeft: S.sm },
   swipeBtn: { minWidth: 76, height: "100%", borderRadius: R.lg, alignItems: "center", justifyContent: "center", paddingHorizontal: S.sm },
-  renameBtn: { backgroundColor: C.blue },
   deleteBtn: { backgroundColor: C.danger },
   swipeText: { color: "#ffffff", fontSize: 14, fontWeight: "600" },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: S.xl },
@@ -327,7 +344,7 @@ const styles = StyleSheet.create({
   modalBtn: { minHeight: 44, borderRadius: R.md, alignItems: "center", justifyContent: "center", paddingHorizontal: S.lg },
   modalCancel: { backgroundColor: C.surfaceHi },
   modalCancelText: { color: C.text, fontSize: 15 },
-  modalSave: { backgroundColor: C.blue },
+  modalSave: {},
   modalSaveText: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
   disabled: { opacity: 0.5 },
 });

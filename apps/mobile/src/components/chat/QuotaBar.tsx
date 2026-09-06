@@ -6,6 +6,7 @@ import { useFocusEffect } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { api } from "@/src/api/client";
 import { C, R, S } from "@/src/theme";
+import { useBrand } from "@/src/lib/brand";
 
 type Usage = {
   scope: "session" | "week";
@@ -31,6 +32,7 @@ function backAt(iso: string): string {
 }
 
 export function QuotaBar() {
+  const brand = useBrand();
   const [usage, setUsage] = useState<Usage | null>(null);
 
   // ยิงถี่ไม่มีประโยชน์ — โควตาขยับเฉพาะตอนคุย · cache 30 วิ ลดคำขอตอนสลับหน้าไป-มา
@@ -60,7 +62,7 @@ export function QuotaBar() {
         <View
           style={[
             styles.fill,
-            { width: `${Math.min(100, usage.pct)}%` },
+            { width: `${Math.min(100, usage.pct)}%`, backgroundColor: brand.accent },
             usage.warn && styles.fillWarn,
           ]}
         />
@@ -91,7 +93,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.border,
     overflow: "hidden",
   },
-  fill: { height: "100%", borderRadius: R.full, backgroundColor: C.blue },
+  fill: { height: "100%", borderRadius: R.full },
   fillWarn: { backgroundColor: "#f59e0b" },
   note: { marginTop: S.sm, fontSize: 11, color: C.textFaint },
 });
