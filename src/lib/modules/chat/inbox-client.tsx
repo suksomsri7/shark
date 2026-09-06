@@ -1,6 +1,6 @@
 "use client";
 
-import { useInApp } from "@/components/app-shell/use-in-app";
+import { useInApp } from "@/lib/ui/use-in-app";
 
 // inbox-client.tsx — กล่องแชทลูกค้าแบบ WhatsApp (WO-CW4 · PLAN-CHAT-WHATSAPP §6)
 //

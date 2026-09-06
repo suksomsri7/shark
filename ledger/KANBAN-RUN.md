@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | P1 ปิด |
+| WO | P2 (รอ — สลับไปธีมกิจการก่อน) |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable |
-| ขั้นที่ถึง | 17:09 น.: K1.15 DONE (Opus 63 นาที) → **P1 ครบ 15/15** → push main · ปิดเฟส: qc:all เต็ม · verify prod · handover · Telegram · แล้วสลับไปเริ่มธีมกิจการ B1 (worktree shark-branding) ก่อน P2 |
+| ขั้นที่ถึง | 17:41 น.: **P1 ปิดครบ** (15/15 + qc:all เขียวหลังแก้ 8 ชุด) · ถัดไป = ธีมกิจการ B1 (worktree shark-branding) แล้วกลับมา P2 |
 
 ## การตัดสินใจ (คำถาม §9 ของแบบ — เจ้าของไม่ได้ตอบ Fable ตัดสินแบบปลอดภัย แก้ทีหลังได้)
 | # | เรื่อง | ตัดสิน |
@@ -68,7 +68,7 @@
 | K1.13 | มือถือ (ภาพ 07): เลื่อนทีละคอลัมน์ · กดค้างลาก · ปัดขวา=เสร็จ/ซ้าย=เก็บ + undo 5 วิ · หลังการ์ดเต็มจอ · งานของฉันใหม่ (ภาพ 06 ฝั่งขวา) | Sonnet | DONE | 6 ก.ย. | k1.13 16/16 หลัง Fable แก้ oracle 2 ข้อที่ builder แย้งถูก (สัปดาห์ Mon–Sun ของ 30 ก.ย. 2569=พุธ → โอริง 6 ต.ค. อยู่นอกสัปดาห์ · บอร์ดซ่อมต้องตั้งคอลัมน์เสร็จด้วย) · visual 1.13 (7 ใบ) + 1.5/1.6 เดสก์ท็อปยังเขียว · Fable ดูภาพ: คอลัมน์ snap+จุด · ปัดเสร็จ→toast เลิกทำ · หลังการ์ดเต็มจอ · งานของฉัน 4 ตัวเลข · หนี้ K1.14: date chip ไทย (ยังเป็น datetime-local) · mobile ยังไม่มีลากข้ามคอลัมน์ (มีปัดเสร็จ/เก็บ) · harness: ห่อ cleanup ใน finally |
 | K1.14 | ปุ่มลัด (ปิดได้ · ไม่ชน IME) · empty state ทุกหน้า · realtime Ably + polling · หน้าคลังเก็บ/กู้คืน · เมนู 7 หมวด | Opus | DONE | 6 ก.ย. | k1.14 15/15 (oracle จริง 15) · visual 1.14 (11 ใบ) + 1.5/1.6/1.12 เขียว · Fable ดูภาพ: ปุ่มลัด 14 แถว · คลังเก็บ · ปฏิทินไทย พ.ศ. · หน้ารวมบอร์ดครบ mockup 01 (แถบซ้าย/avatar/การ์ดเส้นประ/กรองหน่วย) · realtime = polling 5 วิ จนกว่าจะมี ABLY_API_KEY · builder เจอ+แก้: seed เสียหายสะสมจาก spec 1.5 (กล่องงานเข้า 0/5 → คืน 5/6/3/3/7) · toLocaleString ใน ArchivePage · spec 1.5 มือถือ |
 | **K1.15** | **REST API + AI tools ของบอร์ดงาน** (D15): แกนกลาง `src/lib/api/*` ดึงจากบัญชี · ทะเบียน op บอร์ด/คอลัมน์/การ์ด/ป้าย/สมาชิก/เช็คลิสต์/ความเห็น/ไฟล์/กิจกรรม/ค้นหา (~60 op) · scope bundles · webhook · AI tools ~15 · openapi + `/developers/kanban` + สกิล Claude | Opus | DONE | 6 ก.ย. | k1.15 30/30 (หลัง Fable แก้ oracle S2.16: Response.text() ลอก BOM → อ่าน arrayBuffer) · account API 18 ชุดเขียว 16 (read-master แดงมาก่อน: expected.json ขาดคีย์ · settings skipped) · ทะเบียน 56 op · AI 16 tool · docs/skill/developers · Fable ดูภาพ /developers/kanban · ปรับ oracle บัญชี AK-7.x ให้กรองเฉพาะ bundle account (ทะเบียน bundle ใช้ร่วมโมดูล) |
-| **P1 ปิด** | qc:all เต็มชุด · verify prod (ภาพจริง) · handover P1 · Telegram | Fable | TODO | | |
+| **P1 ปิด** | qc:all เต็มชุด · verify prod (ภาพจริง) · handover P1 · Telegram | Fable | DONE | 6 ก.ย. | qc:all 253/261 → แก้ 8 ชุดแดง: chat-v2-shell (inbox import app-shell → ย้าย useInApp ไป lib/ui) · ai-wave5b (kanban_my_tasks ต้องรับชื่อพนักงานแบบเดิม → override ใน tools-kanban) · acc-v2 ×5 + read-master (เฉลย expected.json ค้าง → รัน acc-v2-expected-contact-profile/contacts) · acc-v2-security S16 (writeAudit ย้ายไป core/audit → ข้อสอบตามไปอ่าน) · prod: /developers/kanban 200 · openapi 56 op · ping 401 · handover `HANDOVER-2026-09-06-KANBAN-P1.md` |
 | **P2 — มุมมอง + อัตโนมัติ + รายงาน** |||||
 | K2.1 | มุมมองตาราง (แก้ในช่อง · เลือกหลาย · จัดกลุ่ม · CSV) ภาพ 04 | Sonnet | TODO | | |
 | K2.2 | มุมมองปฏิทิน (ลากเปลี่ยนวัน · ถาดยังไม่กำหนด · ซ้อนจอง/ลา/ประชุม) ภาพ 05 | Sonnet | TODO | | |
@@ -180,6 +180,7 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 **Oracle** (`qc-kanban-k1.15.mts`): แกนกลางไม่ซ้ำ (account import จาก `@/lib/api/`) · ทะเบียน ≥ 50 op id/path ไม่ซ้ำ ทุก op มี test · bundles 3 · ยิงจริงผ่าน route handler ด้วยคีย์ที่สร้างบน seed: ping · boards.list = 3 (คีย์เห็นทุกบอร์ด D18) · boards.get กะตะ 200 · cards.create + Idempotency-Key replay · cards.move ok · คีย์ read-only เขียน → 403 scope_missing · คีย์ร้านอื่น → 404 · danger ไม่ confirm → 409 · openapi.json = ทะเบียน · docs --check · AI tools ≥ 15 ในสกิล tasks · developers page มีจริง · WEBHOOK_EVENTS มี kanban.* ≥ 9
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 17:41 น. — **P1 ปิด** · qc:all 253/261 (20 นาที) → ทั้ง 8 ชุดแดงแก้แล้ว (2 ชุดเป็นผลจาก run นี้จริง: inbox import app-shell · kanban_my_tasks เปลี่ยนสัญญา — คืนแบบเดิม) · prod verify ผ่าน · handover เขียนแล้ว · Telegram ส่ง
 - 17:09 น. — **K1.15 ปิด → P1 ครบ 15/15** (Opus 63 นาที) · Fable ตรวจเอง: oracle 30/30 · regressions k1.1–k1.14/notify/ai เขียว · account API suites 16/18 เขียว (read-master แดงมาก่อน · settings skipped) · typecheck/fitness 23/23 · ภาพ /developers/kanban (56 op · bundle 3 · recipes · webhooks 9) · builder แย้ง 3 เรื่อง ถูกทั้ง 3: S2.16 (BOM) แก้ oracle · AK-7.1/7.2 แก้ oracle บัญชีให้กรอง bundle account · read-master = หนี้เก่า · builder เจอ+แก้: webhooks/labels ประกาศ event kanban ซ้ำ · หนี้จด: op test ส่วนใหญ่ชี้ข้อสอบระดับทะเบียน (P2/P3 ที่เพิ่ม op ต้องผูก test ของตัวเอง) · หน้าตั้งค่าบอร์ดเปิดเฉพาะส่วน API (K2.5 ทำที่เหลือ) · `.claude/` ถูก gitignore → สกิลต้องคัดลอกจาก /root/.claude/skills เมื่อ worktree ใหม่
 - 16:02 น. — prod: Vercel READY `614654b` (K1.14 + ตัดเมนูย่อยแชท/บัญชี) · migration kanban_v2_k ลง prod · Telegram msg 2886 (P1 14/15) · Opus เริ่ม K1.15
 - 15:53 น. — K1.14 ปิด · Fable ตรวจเอง: oracle 15/15 · regressions k1.1–k1.13/notify/ai เขียว · typecheck/fitness ผ่าน · ภาพ 11 ใบ + 1.5/1.6/1.12 · **เหตุการณ์**: ~08:30 container restart (OOM — Fable รัน typecheck ใน worktree ที่ 3 ซ้อนกับ builder → บทเรียนลง memory) builder รอบแรกตาย งานค้าง 42 ไฟล์ · รอบสองรับช่วง ผ่านหมด · builder เจอเอง: seed กล่องงานเข้าถูก spec 1.5 ลากจนเหลือ 0 (คืนแล้ว + harness snapshot/restore ครอบ 1.5) · QC seed ไม่มี KanbanBoardMember (harness ใส่ชั่วคราว) · **ค้าง**: ABLY_API_KEY ยังไม่มี → realtime เป็น polling 5 วิ (เจ้าของต้องให้กุญแจ) · k1.1 เคยแดง 1 ครั้งหาไม่เจอ (flaky? จับตา) · ความคืบหน้า P1 14/15

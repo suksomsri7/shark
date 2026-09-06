@@ -1272,7 +1272,11 @@ try {
   eq("S16 🔴 ร้าน B อ่านประวัติของเอกสารร้าน A ไม่ได้", crossAudit.rows.length, 0);
   // writeAudit ห้ามทำ action หลักพัง (fire-and-forget)
   const accessSrc = readFileSync(join(MODULE_DIR, "access.ts"), "utf8");
-  assert("S16 writeAudit ถูกครอบ try/catch (audit ล้มห้ามทำงานหลักพัง)", /export async function writeAudit[\s\S]*?try \{[\s\S]*?\} catch \{/.test(accessSrc));
+  // K1.3 ย้าย writeAudit ไป src/lib/core/audit.ts (access.ts เหลือ re-export) → ตามไปอ่านไฟล์จริง
+  const auditSrc = /export \{ writeAudit \} from "@\/lib\/core\/audit"/.test(accessSrc)
+    ? readFileSync(join(MODULE_DIR, "../../core/audit.ts"), "utf8")
+    : accessSrc;
+  assert("S16 writeAudit ถูกครอบ try/catch (audit ล้มห้ามทำงานหลักพัง)", /export async function writeAudit[\s\S]*?try \{[\s\S]*?\} catch \{/.test(auditSrc));
   assert("S16 listAuditLogs ผูก tenantId ทุกครั้ง", /tenantId: input\.tenantId, \/\/ ← scope ร้าน/.test(accessSrc));
 
   // ═══════════════════════════════════════════════════════════
