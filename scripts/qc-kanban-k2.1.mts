@@ -114,6 +114,11 @@ try {
       for (const a of asgSnap) await P.kanbanCardAssignee.create({ data: { tenantId: (await prisma.kanbanCard.findUnique({ where: { id: a.cardId }, select: { tenantId: true } }))!.tenantId, cardId: a.cardId, userId: a.userId } }).catch(() => {});
       await P.kanbanCardLabel.deleteMany({ where: { cardId: { in: bulkIds } } });
       for (const l of lblSnap) await P.kanbanCardLabel.create({ data: { tenantId: (await prisma.kanbanCard.findUnique({ where: { id: l.cardId }, select: { tenantId: true } }))!.tenantId, cardId: l.cardId, labelId: l.labelId } }).catch(() => {});
+      // K2.1 builder พบ: KanbanCard.labels (Json denormalized ที่ filters.ts ใช้กรอง) ต้อง resync จาก join table หลังคืนสภาพ ไม่งั้นชื่อป้ายค้าง
+      for (const id of bulkIds) {
+        const names = (await P.kanbanCardLabel.findMany({ where: { cardId: id }, include: { label: { select: { name: true } } } })).map((r: Any) => r.label.name);
+        await prisma.kanbanCard.update({ where: { id }, data: { labels: names } }).catch(() => {});
+      }
     }
     await P.kanbanActivity.deleteMany({ where: { boardId, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } });
   } catch { /* */ }

@@ -402,11 +402,11 @@ export function TableView({
         )}
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div data-testid="table-view" className="flex-1 overflow-auto">
         {rows.length === 0 ? (
           <EmptyState hasFilters={Boolean(filters.q || filters.assignee || filters.label || filters.due || filters.status)} onClear={() => router.push(pathname)} />
         ) : (
-          <table data-testid="table-view" className="w-full border-collapse" style={{ fontSize: 12.5 }}>
+          <table className="w-full border-collapse" style={{ fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: "var(--color-surface-2)", textAlign: "left" }}>
                 <th style={{ ...cellStyle, width: 32 }} />
