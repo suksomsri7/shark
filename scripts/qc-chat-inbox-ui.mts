@@ -135,11 +135,12 @@ try {
     chk("IU-1.2", "หา chatTabs() ใน chat/ui.tsx ได้", uiTabsBlock.length > 0, "พบฟังก์ชัน", "ไม่พบ");
     const menu = hrefsFromBlock(layoutChatBlock);
     const tabs = hrefsFromBlock(uiTabsBlock);
-    chk("IU-1.3", "🔴 แท็บในหน้ากับเมนูซ้ายตรงกันเป๊ะ (ลำดับด้วย) — แก้ที่เดียวแล้วอีกที่ค้าง = คนละเมนูสองที่",
-      menu.length > 0 && j(menu) === j(tabs), `เมนู ${j(menu)}`, `แท็บ ${j(tabs)}`);
-    const dead = menu.filter((h) => !existsSync(pageFileFor(h)));
-    chk("IU-1.4", "ทุก href ของระบบแชทมี page.tsx จริง (dead link = 0)",
-      menu.length > 0 && dead.length === 0, "0 dead link", j(dead));
+    // เจ้าของสั่ง 6 ก.ย. 2569: เมนูซ้ายไม่มีเมนูย่อยของแชทอีกต่อไป (แท็บอยู่ในหน้า) ⇒ เมนู = [] ถือว่าถูก
+    const noSubmenu = menu.length === 0;
+    chk("IU-1.3", "🔴 เมนูซ้ายไม่มีเมนูย่อยแชท (คำสั่งเจ้าของ 6 ก.ย.) หรือถ้ามีต้องตรงกับแท็บในหน้าเป๊ะ", noSubmenu || JSON.stringify(menu) === JSON.stringify(tabs), "[] หรือตรงแท็บ", `เมนู ${JSON.stringify(menu)} | แท็บ ${JSON.stringify(tabs)}`);
+    const dead = tabs.filter((h) => !existsSync(pageFileFor(h)));
+    chk("IU-1.4", "ทุก href ของแท็บในหน้าแชทมี page.tsx จริง (dead link = 0)",
+      tabs.length > 0 && dead.length === 0, "0 dead link", j(dead));
     chk("IU-1.5", "จำนวนแท็บเหลือ 2 ตามแผน §6.1 (ภาพรวม=แชท + เชื่อมช่องทาง)",
       tabs.length === 2, "2 แท็บ", `${tabs.length} แท็บ: ${j(tabs)}`, "MAJOR");
   });

@@ -5,7 +5,6 @@ import { AppShell } from "@/components/app-shell/AppShell";
 import { AppMain } from "@/components/app-shell/AppMain";
 import { NavProgress } from "@/components/app-shell/NavProgress";
 import type { NavItem, SoonItem } from "@/components/app-shell/NavDrawer";
-import { accountNavChildren } from "@/lib/modules/account/nav";
 // เมนูบอร์ดงาน 7 หมวด (§5.2) มาจากทะเบียนเดียวกับแถบแท็บในโมดูล — ห้ามพิมพ์ลิสต์ซ้ำที่นี่
 import { kanbanNavChildren } from "@/lib/modules/kanban/nav";
 // เมนูของระบบแชทซ่อนตามสิทธิ์จริง — ใช้ทะเบียน/ตัวช่วยชุดเดียวกับด่านของโมดูล (ไม่พิมพ์คีย์ซ้ำ)
@@ -34,16 +33,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const tenantId = auth.active.tenantId;
   // perf A: badge (help/AI) ย้ายไปโหลดฝั่ง client หลังหน้าโผล่ — ไม่บล็อกการเปลี่ยนหน้า
   // layout เหลือแค่ query ที่จำเป็นต้องมีตอน render เมนู (units + appSystems)
-  const [units, appSystems, accountSettings] = await Promise.all([
+  const [units, appSystems] = await Promise.all([
     prisma.businessUnit.findMany({
       where: { tenantId, status: { not: "ARCHIVED" } },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
     prisma.appSystem.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: "asc" } }),
-    // ต้องรู้ว่าระบบบัญชีแต่ละชุดจด VAT ไหม — เมนูใบกำกับภาษีขายโผล่เฉพาะร้านที่จด
-    prisma.accountSettings.findMany({ where: { tenantId }, select: { systemId: true, vatRegistered: true } }),
   ]);
-  const vatOf = new Map(accountSettings.map((a) => [a.systemId, a.vatRegistered]));
 
   // "แตกฟังก์ชันย่อยในเมนู" — ทุกระบบที่มี sub-route จริงจะกาง submenu (accordion) ใต้ชื่อระบบ
   // business = ต่อด้วย slug (/app/u/<slug>/...) · feature = ต่อด้วย id (/app/sys/<id>/...)
@@ -110,12 +106,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/pos/close`, label: "ปิดวัน" },
         ];
       case "ACCOUNT":
-        // เมนูบัญชีทั้งชุด (8 หมวด ~30 รายการ) มาจากทะเบียนเดียวกับ sidebar ในโมดูล
-        // → เปิด ☰ แล้วไปได้ทุกฟังก์ชันจากทุกหน้า ไม่ต้องกลับไปเลื่อนหน้าแรกของระบบบัญชี
-        return [
-          { href: s, label: "ภาพรวม" },
-          ...accountNavChildren(`${s}/account`, vatOf.get(slugOrId) ?? true),
-        ];
+        // เจ้าของสั่ง 6 ก.ย. 2569: ไม่เอาเมนูย่อยของบัญชีในแถบเมนู — หมวดทั้ง 9 อยู่ในหน้าหลักของระบบบัญชีแล้ว
+        return undefined;
       case "HR":
         return [
           { href: s, label: "ภาพรวม" },
@@ -181,21 +173,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/reward/redeem`, label: "แลกรางวัล" },
           { href: `${s}/reward/history`, label: "ประวัติการแลก" },
         ];
-      case "CHAT": {
-        // ระบบแชทลูกค้า: ภาพรวม = กล่องแชทเต็มจอ (WO-CW4) · /chat = ลิงก์เก่าที่ redirect เข้ามาที่เดียวกัน
-        //   (ไฟล์ /chat/page.tsx ต้องคงอยู่ — push ที่ส่งออกไปแล้วชี้มาที่ `?c=` ของ path นั้น)
-        // 🔴 ไม่มีสิทธิ์อ่านแชท = เมนู 2 ตัวแรกพาไปหน้าที่เปิดไม่ได้ ⇒ ซ่อนทิ้ง เหลือแค่ "เชื่อมช่องทาง"
-        //    ซึ่งใช้สิทธิ์คนละชุด (chat.setting.*) · ด่านจริงอยู่ที่ requireChatRead() ในตัวกล่องแชท
-        const mayReadChat = evaluate(membershipOf(auth), {
-          module: "chat",
-          action: CHAT_READ_ACTION,
-        });
-        return [
-          // "ภาพรวม" = กล่องแชทเต็มจอ · ไม่มีแท็บ "สนทนา" แยกอีกแล้ว (ชี้ที่เดิมซ้ำ — §6.1)
-          ...(mayReadChat ? [{ href: s, label: "ภาพรวม" }] : []),
-          { href: `${s}/chat/channels`, label: "เชื่อมช่องทาง" },
-        ];
-      }
+      case "CHAT":
+        // เจ้าของสั่ง 6 ก.ย. 2569: ไม่เอาเมนูย่อยของแชท (ภาพรวม/เชื่อมช่องทาง) — แท็บอยู่ในหน้าแชทแล้ว
+        // (ลิงก์ "เชื่อมช่องทาง" ยังเข้าได้จากเมนู ⋮ ในหัวรายการแชท · สิทธิ์อ่านแชทตรวจที่ requireChatRead())
+        return undefined;
       case "MEETING":
         // ระบบแชทภายในมีฟังก์ชันจริงเดียว (ห้องแชท) — ไม่ฝืนแตกเกินจริง
         return [
@@ -227,9 +208,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     }),
     ...appSystems.map((s) => {
       const children = childrenFor(s.type, s.id, "feature");
+      // ระบบแชท: คนไม่มีสิทธิ์อ่านแชท → ลิงก์ระบบพาไปหน้าเชื่อมช่องทางแทนกล่องแชท (ด่านจริง requireChatRead())
+      const chatHref = s.type === "CHAT" && !evaluate(membershipOf(auth), { module: "chat", action: CHAT_READ_ACTION })
+        ? `/app/sys/${s.id}/chat/channels`
+        : `/app/sys/${s.id}`;
       return {
         key: `s-${s.id}`,
-        href: `/app/sys/${s.id}`,
+        href: chatHref,
         icon: systemDef(s.type)?.icon ?? "•",
         label: s.name,
         ...(children ? { children } : {}),
