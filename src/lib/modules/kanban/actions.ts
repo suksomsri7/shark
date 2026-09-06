@@ -63,7 +63,10 @@ import {
   listComments,
   listMentionTargets,
 } from "./comments";
-import type { BoardCardDto, BoardLabelDto, CardDetailDto, KanbanChecklistDto, KanbanCommentDto, KanbanCtx } from "./types";
+// K1.9 — ไฟล์แนบ + ปก (บริการอยู่ `attachments.ts` · เก็บผ่าน storage กลาง)
+import { addAttachment, attachmentBadgeOfCard, listAttachments, removeAttachment, setCover } from "./attachments";
+import { normalizeUploadType } from "@/lib/storage/service";
+import type { BoardCardDto, BoardLabelDto, CardDetailDto, KanbanAttachmentDto, KanbanChecklistDto, KanbanCommentDto, KanbanCtx } from "./types";
 
 // ทุก action: requireTenant → เอา tenantId จาก session (ไม่เชื่อ client) + scope ด้วย systemId
 
@@ -514,8 +517,10 @@ export async function restoreCardAction(input: {
     ]);
     const restored = await restoreCard(ctxOf(auth, input.systemId), input.cardId);
     const checklist = await checklistProgressOfCard(ctxOf(auth, input.systemId), restored.id);
+    // K1.9: การ์ดที่กู้คืนอาจมีไฟล์แนบ/ปกอยู่แล้วก่อนถูกเก็บเข้าคลัง — โหลดของจริงแทนค่าเริ่มต้น 0/null
+    const attachment = await attachmentBadgeOfCard(ctxOf(auth, input.systemId), restored.id);
     revalidatePath(boardPath(input.systemId, input.boardId));
-    return { ok: true, card: toBoardCardDto(restored, labelRows, assigneeRows, checklist), columnId: restored.columnId };
+    return { ok: true, card: toBoardCardDto(restored, labelRows, assigneeRows, checklist, undefined, attachment), columnId: restored.columnId };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "กู้คืนการ์ดไม่สำเร็จ" };
   }
@@ -841,5 +846,91 @@ export async function listMentionTargetsAction(input: {
     return { ok: true, people };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "โหลดรายชื่อไม่สำเร็จ" };
+  }
+}
+
+// ───────────────────────── K1.9: ไฟล์แนบ + ปก ─────────────────────────
+// แพตเทิร์นเดียวกับความเห็น (K1.8): ทุกตัวคืน "ไฟล์แนบทั้งชุด" ของการ์ด (ไม่ใช่ patch ย่อย)
+// สิทธิ์ชั้นที่ 1 เหมือน K1.8: คีย์ `kanban.card.attach` หรือ `kanban.card.update` — ร้านที่ตั้งสิทธิ์
+// ไว้ก่อนมีคีย์ attach (K1.3) ยังแนบไฟล์ได้ต่อเนื่องหลัง deploy · ชั้นที่ 2 (EDITOR+ ของบอร์ด) ตรวจใน service เสมอ
+
+export type AttachmentActionResult =
+  | { ok: true; attachments: KanbanAttachmentDto[] }
+  | { ok: false; message: string; attachments?: KanbanAttachmentDto[] };
+
+async function attachmentsResult(ctx: KanbanCtx, cardId: string): Promise<AttachmentActionResult> {
+  const attachments = await listAttachments(ctx, cardId);
+  return { ok: true, attachments };
+}
+
+/**
+ * รับไฟล์จากฟอร์ม (`files` — หลายไฟล์ได้) → แนบเข้าการ์ดทีละไฟล์
+ * ไฟล์ไหนติดด่าน (ชนิด/ขนาด/ไบต์ไม่ตรง/เกินโควตา) หยุดที่ไฟล์นั้นทันที — ไฟล์ก่อนหน้าที่แนบสำเร็จแล้วยังอยู่
+ * (คืน `attachments` ปัจจุบันมาด้วยแม้ตอบ `ok:false` เพื่อให้จอวาดรายการที่แนบสำเร็จไปแล้วได้ทันที)
+ */
+export async function uploadAttachmentAction(formData: FormData): Promise<AttachmentActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCanAny(auth, ["kanban.card.attach", "kanban.card.update"]);
+  const systemId = String(formData.get("systemId") ?? "");
+  const boardId = String(formData.get("boardId") ?? "");
+  const cardId = String(formData.get("cardId") ?? "");
+  if (!systemId || !cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  const ctx = ctxOf(auth, systemId);
+
+  const files = formData
+    .getAll("files")
+    .filter((f): f is File => typeof f === "object" && f !== null && "arrayBuffer" in f)
+    .filter((f) => f.size > 0);
+  if (files.length === 0) return { ok: false, message: "กรุณาเลือกไฟล์ก่อนอัปโหลด" };
+
+  for (const f of files) {
+    try {
+      const mime = normalizeUploadType(f.type) || "application/octet-stream";
+      await addAttachment(ctx, cardId, { filename: f.name, contentType: mime, data: new Uint8Array(await f.arrayBuffer()) });
+    } catch (e) {
+      const attachments = await listAttachments(ctx, cardId).catch(() => undefined);
+      return { ok: false, message: e instanceof Error ? e.message : `แนบไฟล์ "${f.name}" ไม่สำเร็จ`, attachments };
+    }
+  }
+  revalidatePath(boardPath(systemId, boardId));
+  return await attachmentsResult(ctx, cardId);
+}
+
+export async function removeAttachmentAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  attachmentId: string;
+}): Promise<AttachmentActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCanAny(auth, ["kanban.card.attach", "kanban.card.update"]);
+  if (!input.systemId || !input.attachmentId) return { ok: false, message: "ไม่พบไฟล์แนบนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await removeAttachment(ctx, input.attachmentId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return await attachmentsResult(ctx, input.cardId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ลบไฟล์แนบไม่สำเร็จ" };
+  }
+}
+
+export async function setCoverAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  attachmentId: string | null;
+}): Promise<{ ok: true; coverUrl: string | null } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCanAny(auth, ["kanban.card.attach", "kanban.card.update"]);
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await setCover(ctx, input.cardId, input.attachmentId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    const badge = await attachmentBadgeOfCard(ctx, input.cardId);
+    return { ok: true, coverUrl: badge.coverUrl };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ตั้งปกไม่สำเร็จ" };
   }
 }

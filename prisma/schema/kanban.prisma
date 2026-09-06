@@ -147,6 +147,9 @@ model KanbanCard {
   // ── K1.8 ──
   comments KanbanComment[]
 
+  // ── K1.9 ──
+  attachments KanbanAttachment[]
+
   @@index([tenantId, systemId, boardId, status])
   @@index([columnId, status, sortOrder])
   @@index([tenantId, systemId, assigneeUserId])
@@ -300,5 +303,31 @@ model KanbanComment {
 
   // เส้นอ่านหลัก = ความเห็นของการ์ดใบเดียว เรียงเก่า→ใหม่
   @@index([cardId, createdAt])
+  @@index([tenantId])
+}
+
+// ───────────────────────── ไฟล์แนบ + ปกการ์ด (K1.9 · KANBAN-RUN §K1.9) ─────────────────────────
+// ไฟล์จริงอยู่บน storage กลาง (`FileAsset` · src/lib/storage/service.ts) — ตารางนี้แค่ผูกไฟล์เข้ากับการ์ด
+// `fileId` → FileAsset.id (ไม่ทำ FK ข้ามโมดูล — FileAsset อยู่คนละ schema file/domain) · `name/contentType/bytes`
+// copy มาจาก FileAsset ตอนอัปโหลด (แสดงรายการไม่ต้อง join ทุกครั้ง) · `KanbanCard.coverFileId` (K1.1)
+// ชี้กลับมาที่ `fileId` ของแถวนี้เมื่อถูกตั้งเป็นปก (ไม่ใช่ FK ไปตารางนี้ตรง ๆ — ปกอ้าง FileAsset เดียวกับ
+// ที่ทุกที่อื่นในระบบใช้ display)
+//
+// ไม่มี `systemId`: การ์ดต้นทางรู้ระบบของตัวเองอยู่แล้ว (เหตุผลเดียวกับ KanbanComment/KanbanChecklist)
+// ลบแบบ soft (`deletedAt`) เสมอ — ลบไฟล์ที่เป็นปกอยู่ ต้องเคลียร์ `KanbanCard.coverFileId` คู่กันเสมอ (service ตรวจ)
+model KanbanAttachment {
+  id           String     @id @default(cuid())
+  tenantId     String
+  cardId       String
+  card         KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  fileId       String // → FileAsset.id
+  name         String // ชื่อไฟล์ตอนอัป (ไม่ใช่ path จริงบน storage — ผู้ใช้เห็นชื่อนี้ในรายการ)
+  contentType  String // ชนิดที่ผ่านด่านตรวจไบต์จริงแล้ว (ไม่ใช่ที่เบราว์เซอร์ประกาศดิบ ๆ)
+  bytes        Int
+  uploadedById String?
+  createdAt    DateTime   @default(now())
+  deletedAt    DateTime?
+
+  @@index([cardId])
   @@index([tenantId])
 }

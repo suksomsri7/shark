@@ -222,6 +222,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   KanbanChecklistItem: tenant,
   // ความเห็นในการ์ด (K1.8) — เหตุผลเดียวกัน: มีแต่ `tenantId` (systemId อยู่ที่การ์ดต้นทาง)
   KanbanComment: tenant,
+  // ไฟล์แนบ (K1.9) — เหตุผลเดียวกัน: มีแต่ `tenantId` (systemId อยู่ที่การ์ดต้นทาง)
+  KanbanAttachment: tenant,
   // Account — P1 core
   AccountDocument: sys(),
   AccountDocumentLine: sys(),

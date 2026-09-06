@@ -12,7 +12,7 @@
 // 🔴 ชื่อคุกกี้ผูกกับ APP_ENV: http = `shark_session` · https = `__Host-shark_session`
 // ขั้น "ลาก/คลิก/พิมพ์" ทำผ่าน puppeteer บน production build (dev ไม่ hydrate ใน headless — บทเรียน 13 ส.ค.)
 
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
@@ -40,8 +40,21 @@ type Step =
   | { waitFor: string; timeoutMs?: number }
   | { drag: { from: string; to: string; steps?: number } }
   | { wait: number }
-  | { swipe: { on: string; dx: number } };
+  | { swipe: { on: string; dx: number } }
+  | { upload: { on: string; filePath: string } };
 type Spec = { name: string; path: string; note?: string; steps?: Step[]; onlyDevice?: "desktop" | "mobile"; expect?: string[] };
+
+// K1.9 — PNG เล็ก ๆ (1×1 พิกเซล) เขียนลงดิสก์ให้ puppeteer `uploadFile()` เลือกได้จริง (input[type=file]
+// ต้อง "เลือกไฟล์จริง" — DataTransfer/File ที่สร้างจาก JS ล้วนใช้กับ input ของเบราว์เซอร์จริงไม่ได้)
+// 🔴 ต้องอยู่ใต้ /root/ ไม่ใช่ /tmp/ — chromium ตัวนี้คือ snap (strict confinement) มี /tmp ส่วนตัวของมันเอง
+//    uploadFile("/tmp/...") จะเห็นไฟล์ "มีอยู่" ฝั่ง input.files แต่อ่านเนื้อไฟล์จริงไม่ได้ (เงียบ ๆ) —
+//    ดู `reference_snap_chromium_headless.md` / บทเรียนเดียวกับ `visual-acc-v2.mts` WO 1.8
+const KB_PNG_PATH = `${OUT}/kb-cover-fixture.png`;
+if (WO === "1.9") {
+  const KB_PNG_BASE64 =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  writeFileSync(KB_PNG_PATH, Buffer.from(KB_PNG_BASE64, "base64"));
+}
 
 const SPECS: Record<string, Spec[]> = {
   // K1.5 — หน้าบอร์ดใหม่ + ลากวาง (เทียบภาพ 02)
@@ -62,6 +75,54 @@ const SPECS: Record<string, Spec[]> = {
   "1.8": [
     { name: "comment-mention-menu", path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`, onlyDevice: "desktop", note: "พิมพ์ @ แล้วเมนูรายชื่อต้องเด้ง (autocomplete)", expect: ["[data-testid=mention-menu]"], steps: [{ waitFor: "[data-testid=card-back]" }, { fill: "[data-testid=comment-input]", value: "เช็คกับกัปตันแล้ว เรือ Sea Fox ว่าง 24–26 ต.ค. @ธ" }, { wait: 600 }] },
     { name: "comment-posted", path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`, note: "เขียนความเห็นพร้อม @กล่าวถึง แล้วกดส่ง — ต้องเห็นความเห็นในสาย + ชิป @", expect: ["[data-testid=comments]"], steps: [{ waitFor: "[data-testid=card-back]" }, { fill: "[data-testid=comment-input]", value: "เช็คกับกัปตันแล้ว เรือ Sea Fox ว่าง 24–26 ต.ค. @ธ" }, { wait: 600 }, { press: "Enter" }, { wait: 200 }, { click: "[data-testid=comment-send]" }, { wait: 1200 }] },
+  ],
+  // K1.9 — ไฟล์แนบ + ปก (บล็อก "ไฟล์แนบ" ของภาพ 03 + ปกบนตัวการ์ดของภาพ 02)
+  "1.9": [
+    {
+      name: "card-back-attachment-uploaded",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`,
+      onlyDevice: "desktop",
+      note: "อัปโหลด PNG ผ่านช่องไฟล์แนบ — ต้องขึ้นในรายการทันที (thumbnail + ชื่อ + ขนาด)",
+      expect: ["[data-testid=attachment-list]", "[data-testid=attachment-item]"],
+      steps: [
+        { waitFor: "[data-testid=card-back]" },
+        { waitFor: "[data-testid=attachment-upload]" },
+        { upload: { on: "[data-testid=attachment-upload]", filePath: KB_PNG_PATH } },
+        { wait: 1500 },
+        { waitFor: "[data-testid=attachment-item]" },
+      ],
+    },
+    {
+      // 🔴 คลิกครั้งเดียว (desktop เท่านั้น) — ถ้าให้สเปคเดียววนถ่ายทั้ง 2 device การกดครั้งที่ 2 (มือถือ)
+      //    จะ "ปลดปก" ที่เพิ่งตั้งไว้กลับไปเป็น null (toggle) ⇒ ภาพบอร์ดถัดไปจะไม่มีปกให้เห็นเลย
+      name: "card-back-cover-set",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`,
+      onlyDevice: "desktop",
+      note: "ไฟล์จากสเปคก่อนหน้ายังอยู่ (persist จริงในฐานข้อมูล) — กด 'ตั้งเป็นปก' แถวต้องเปลี่ยนเป็น 'เอาออกจากปก'",
+      expect: ["[data-testid=attachment-item]"],
+      steps: [
+        { waitFor: "[data-testid=card-back]" },
+        { waitFor: "[data-testid=attachment-cover-toggle]" },
+        { click: "[data-testid=attachment-cover-toggle]" },
+        { wait: 1000 },
+      ],
+    },
+    {
+      // มือถือ: แค่เปิดดู (ปกตั้งไว้แล้วจากสเปคก่อนหน้า) — ไม่กดปุ่มซ้ำ กัน toggle ปลดปกโดยไม่ตั้งใจ
+      name: "card-back-with-cover",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`,
+      onlyDevice: "mobile",
+      note: "หลังตั้งปกแล้ว (จากขั้น desktop ก่อนหน้า) — แถวไฟล์แนบต้องขึ้น 'เอาออกจากปก'",
+      expect: ["[data-testid=attachment-item]"],
+      steps: [{ waitFor: "[data-testid=card-back]" }, { waitFor: "[data-testid=attachment-cover-toggle]" }],
+    },
+    {
+      name: "board-patong-with-cover",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      note: "การ์ด #7 (ป่าตอง) ต้องมีรูปปกด้านบน + ตราคลิปไฟล์แนบ",
+      expect: ["[data-testid=card]"],
+      steps: [{ waitFor: "[data-testid=card]" }, { wait: 500 }],
+    },
   ],
   "1.12": [
     { name: "boards-home-new", path: `/app/sys/${SYS}/kanban/boards`, note: "เทียบ mockup 01: ดาว · จัดกลุ่มสาขา · แถวเทมเพลต", expect: ["[data-testid=boards-starred]", "[data-testid=templates-row]"] },
@@ -126,6 +187,10 @@ try {
               const n = step.drag.steps ?? 12;
               for (let i = 1; i <= n; i++) { await page.mouse.move(sx + ((tx - sx) * i) / n, sy + ((ty - sy) * i) / n); await new Promise((r) => setTimeout(r, 30)); }
               await page.mouse.up();
+            } else if ("upload" in step) {
+              const input = await page.$(step.upload.on);
+              if (!input) throw new Error(`ไม่พบ input สำหรับอัปโหลด ${step.upload.on}`);
+              await input.uploadFile(step.upload.filePath);
             } else if ("swipe" in step) {
               const el = await page.$(step.swipe.on); const bb = (await el!.boundingBox())!;
               const y = bb.y + bb.height / 2; const x0 = bb.x + bb.width / 2;
@@ -148,6 +213,16 @@ try {
       }
     }
   } finally { await browser.close(); }
+  // K1.9 — คืนสภาพ seed: ลบไฟล์แนบ/FileAsset ที่สร้างระหว่างถ่ายภาพ + ล้าง coverFileId ของการ์ดที่ใช้ทดสอบ
+  if (WO === "1.9") {
+    const P = prisma as Any;
+    const cardId = E.boards.patong.cardIds[6];
+    const rows = await P.kanbanAttachment.findMany({ where: { cardId }, select: { id: true, fileId: true } });
+    await P.kanbanAttachment.deleteMany({ where: { cardId } });
+    if (rows.length) await prisma.fileAsset.deleteMany({ where: { id: { in: rows.map((r: Any) => r.fileId) } } });
+    await prisma.kanbanCard.updateMany({ where: { id: cardId }, data: { coverFileId: null } });
+    console.log(`🧹 คืนสภาพ K1.9: ลบไฟล์แนบ ${rows.length} รายการ + ล้าง coverFileId ของการ์ด ${cardId}`);
+  }
 } finally {
   const { count } = await prisma.session.deleteMany({ where: { userAgent: UA } });
   await prisma.$disconnect();

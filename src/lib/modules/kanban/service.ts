@@ -528,7 +528,7 @@ export async function getBoardView(
   const board = await getBoardFor(ctx, actor, boardId);
   const cardIds = board.columns.flatMap((c) => c.cards.map((k) => k.id));
 
-  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows, commentCountRows] = await Promise.all([
+  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows, commentCountRows, attachmentCountRows] = await Promise.all([
     prisma.kanbanLabel.findMany({
       where: { boardId: board.id, tenantId: ctx.tenantId, systemId: ctx.systemId },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -585,11 +585,30 @@ export async function getBoardView(
           GROUP BY c."cardId"
         `
       : Promise.resolve([] as { cardId: string; total: bigint }[]),
+    // K1.9: ตราจำนวนไฟล์แนบของทุกการ์ด — คิวรีเดียว (group by cardId) ไม่ใช่ต่อการ์ด (กัน N+1)
+    cardIds.length
+      ? prisma.$queryRaw<{ cardId: string; total: bigint }[]>`
+          SELECT a."cardId" as "cardId", COUNT(a.id) as total
+          FROM "KanbanAttachment" a
+          WHERE a."cardId" IN (${Prisma.join(cardIds)}) AND a."deletedAt" IS NULL
+          GROUP BY a."cardId"
+        `
+      : Promise.resolve([] as { cardId: string; total: bigint }[]),
   ]);
   const checklistOfCard = new Map(
     checklistCountRows.map((r) => [r.cardId, { done: Number(r.done), total: Number(r.total) }]),
   );
   const commentsOfCard = new Map(commentCountRows.map((r) => [r.cardId, Number(r.total)]));
+  const attachmentsOfCard = new Map(attachmentCountRows.map((r) => [r.cardId, Number(r.total)]));
+
+  // K1.9: ปกการ์ด — โหลด FileAsset.cdnUrl ของทุก coverFileId ที่ใช้อยู่ในบอร์ดนี้ (คิวรีเดียว)
+  const coverFileIds = Array.from(
+    new Set(board.columns.flatMap((c) => c.cards.map((k) => k.coverFileId)).filter((v): v is string => !!v)),
+  );
+  const coverFiles = coverFileIds.length
+    ? await prisma.fileAsset.findMany({ where: { id: { in: coverFileIds } }, select: { id: true, cdnUrl: true } })
+    : [];
+  const coverUrlOfFile = new Map(coverFiles.map((f) => [f.id, f.cdnUrl]));
 
   // ชื่อคน: สมาชิกบอร์ด + ผู้รับผิดชอบการ์ด (แถวรูปคนหัวบอร์ดใช้ชุดเดียวกับ avatar บนการ์ด)
   const peopleIds = Array.from(
@@ -644,6 +663,10 @@ export async function getBoardView(
           peopleOfCard.get(card.id) ?? [],
           checklistOfCard.get(card.id),
           commentsOfCard.get(card.id),
+          {
+            count: attachmentsOfCard.get(card.id) ?? 0,
+            coverUrl: card.coverFileId ? (coverUrlOfFile.get(card.coverFileId) ?? null) : null,
+          },
         ),
       ),
     })),
@@ -657,6 +680,7 @@ export function toBoardCardDto(
   assignees: BoardPersonDto[],
   checklist?: { done: number; total: number },
   commentCount?: number,
+  attachment?: { count: number; coverUrl: string | null },
 ): BoardCardDto {
   return {
     id: card.id,
@@ -670,11 +694,12 @@ export function toBoardCardDto(
     // K1.7: ตราเช็คลิสต์ n/m ของจริง (ค่าเริ่มต้น 0/0 สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่มีเช็คลิสต์)
     checklistDone: checklist?.done ?? 0,
     checklistTotal: checklist?.total ?? 0,
-    // K1.9 ยังไม่มีตาราง — ส่ง 0 ไว้ก่อน (การ์ดไม่เรนเดอร์ตราที่เป็น 0 ⇒ ไม่มีตราหลอกตา)
-    attachmentCount: 0,
+    // K1.9: ตราจำนวนไฟล์แนบของจริง (ค่าเริ่มต้น 0 สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่มีไฟล์แนบ)
+    attachmentCount: attachment?.count ?? 0,
     // K1.8: ตราจำนวนความเห็นของจริง (ค่าเริ่มต้น 0 สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่มีความเห็น)
     commentCount: commentCount ?? 0,
-    coverUrl: null,
+    // K1.9: ปกการ์ดของจริง (ค่าเริ่มต้น null สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่ตั้งปก)
+    coverUrl: attachment?.coverUrl ?? null,
     sourceType: card.sourceType,
   };
 }

@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KanbanIcon } from "./KanbanIcon";
 import { Avatar, formatCardDate, formatCardDateTime, tagColorVar } from "./Card";
+import { Attachments } from "./Attachments";
 import { Checklist, checklistBadgeOf } from "./Checklist";
 import { Comments } from "./Comments";
 import {
@@ -29,6 +30,7 @@ import type {
   BoardCardDto,
   BoardLabelDto,
   BoardPersonDto,
+  KanbanAttachmentDto,
   KanbanChecklistDto,
   KanbanCommentDto,
   KanbanTagColor,
@@ -84,6 +86,7 @@ type Fields = {
   status: "ACTIVE" | "ARCHIVED";
   checklists: KanbanChecklistDto[];
   comments: KanbanCommentDto[];
+  attachments: KanbanAttachmentDto[];
 };
 
 export type CardBackHandlers = {
@@ -176,6 +179,7 @@ export function CardBack({
         status: res.detail.status,
         checklists: res.detail.checklists,
         comments: res.detail.comments,
+        attachments: res.detail.attachments,
       });
     });
     return () => {
@@ -395,6 +399,23 @@ export function CardBack({
     [card.id, handlers],
   );
 
+  // ───────────────────────── ไฟล์แนบ + ปก (K1.9) ─────────────────────────
+
+  const onAttachmentsChange = useCallback(
+    (attachments: KanbanAttachmentDto[]) => {
+      setFields((f) => (f ? { ...f, attachments } : f));
+      const cover = attachments.find((a) => a.isCover);
+      handlers.onPatch(card.id, { attachmentCount: attachments.length, coverUrl: cover?.url ?? null });
+    },
+    [card.id, handlers],
+  );
+
+  // ปุ่ม "ไฟล์แนบ" ในเมนู "เพิ่ม:" เปิดกล่องเลือกไฟล์ของ <Attachments> ที่อยู่ใต้เช็คลิสต์ (ตัวเดียวในหน้านี้)
+  const openAttachmentPicker = useCallback(() => {
+    if (typeof document === "undefined") return;
+    document.querySelector<HTMLInputElement>('[data-testid="attachment-upload"]')?.click();
+  }, []);
+
   // ───────────────────────── ย้าย / ทำสำเนา / เก็บ / กู้คืน ─────────────────────────
 
   const otherColumns = useMemo(() => columns.filter((c) => c.id !== columnId), [columns, columnId]);
@@ -509,7 +530,7 @@ export function CardBack({
                 <AddChip icon="tag" label="ป้ายกำกับ" onClick={() => setLabelsOpen(true)} />
                 <AddChip icon="clock" label="กำหนดวัน" onClick={() => dueInputRef.current?.focus()} />
                 <AddChip icon="cklist" label="เช็คลิสต์" onClick={addChecklist} />
-                <AddChip icon="clip" label="ไฟล์แนบ" disabled />
+                <AddChip icon="clip" label="ไฟล์แนบ" onClick={openAttachmentPicker} />
                 <AddChip icon="link" label="เชื่อมข้อมูล SHARK" disabled accent />
               </div>
             )}
@@ -757,6 +778,17 @@ export function CardBack({
                 members={members}
                 nowMs={nowMs}
                 onChange={onChecklistsChange}
+                onToast={toast}
+              />
+
+              {/* ไฟล์แนบ + ปก (K1.9) */}
+              <Attachments
+                systemId={systemId}
+                boardId={boardId}
+                cardId={card.id}
+                editable={editable}
+                attachments={fields.attachments}
+                onChange={onAttachmentsChange}
                 onToast={toast}
               />
 

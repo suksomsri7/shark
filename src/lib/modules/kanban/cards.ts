@@ -6,6 +6,7 @@
 
 import type { KanbanCard, Prisma } from "@prisma/client";
 import { KanbanNotFoundError } from "./access";
+import { listAttachments } from "./attachments";
 import { getCardChecklists } from "./checklists";
 import { prisma } from "./db";
 import { assertBoardRole, assertCardRole } from "./members";
@@ -156,9 +157,13 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     },
   });
   if (!card) throw new KanbanNotFoundError("ไม่พบการ์ดนี้");
-  // K1.7/K1.8: หลังการ์ดโหลดเช็คลิสต์ + ความเห็นพร้อมกับส่วนที่เหลือของการ์ดในเที่ยวเดียว
-  // (ทั้งคู่ตรวจสิทธิ์ซ้ำในตัวเอง — เปิดหลังการ์ด 1 ครั้ง = ไม่ต้องยิง action เพิ่มอีก 2 รอบ)
-  const [checklists, comments] = await Promise.all([getCardChecklists(ctx, cardId), listComments(ctx, cardId)]);
+  // K1.7/K1.8/K1.9: หลังการ์ดโหลดเช็คลิสต์ + ความเห็น + ไฟล์แนบ พร้อมกับส่วนที่เหลือของการ์ดในเที่ยวเดียว
+  // (ทุกตัวตรวจสิทธิ์ซ้ำในตัวเอง — เปิดหลังการ์ด 1 ครั้ง = ไม่ต้องยิง action เพิ่มอีกหลายรอบ)
+  const [checklists, comments, attachments] = await Promise.all([
+    getCardChecklists(ctx, cardId),
+    listComments(ctx, cardId),
+    listAttachments(ctx, cardId),
+  ]);
   return {
     id: card.id,
     description: card.description,
@@ -170,6 +175,7 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     status: card.status as CardDetailDto["status"],
     checklists,
     comments,
+    attachments,
   };
 }
 

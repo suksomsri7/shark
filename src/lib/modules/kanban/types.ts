@@ -47,12 +47,13 @@ export type BoardCardDto = {
   completedAt: string | null;
   labels: BoardLabelDto[];
   assignees: BoardPersonDto[];
-  /** ตราท้ายการ์ด — K1.7/K1.8/K1.9 จะเติมของจริง วันนี้เป็น 0 ทั้งชุด (การ์ดไม่โชว์ตราที่เป็น 0) */
+  /** ตราท้ายการ์ด (การ์ดไม่โชว์ตราที่เป็น 0) */
   checklistDone: number;
   checklistTotal: number;
+  /** K1.9: จำนวนไฟล์แนบที่ยังไม่ถูกลบ */
   attachmentCount: number;
   commentCount: number;
-  /** ปกการ์ด (K1.9) — วันนี้ null เสมอ */
+  /** K1.9: ปกการ์ด — URL ของไฟล์แนบที่ถูกตั้งเป็นปก (`null` = ไม่มีปก) */
   coverUrl: string | null;
   /** ที่มาของการ์ด (ชิปเล็กหัวการ์ด) — MANUAL = ไม่โชว์ชิป */
   sourceType: "MANUAL" | "TEMPLATE" | "CHAT" | "FORM" | "EMAIL" | "AUTOMATION" | "AI";
@@ -85,7 +86,30 @@ export type CardDetailDto = {
   checklists: KanbanChecklistDto[];
   /** K1.8: ความเห็นทั้งหมดของการ์ด (ไม่รวมที่ถูกลบ) — เรียงเก่า→ใหม่ */
   comments: KanbanCommentDto[];
+  /** K1.9: ไฟล์แนบทั้งหมดของการ์ด (ไม่รวมที่ถูกลบ) — เรียงเก่า→ใหม่ */
+  attachments: KanbanAttachmentDto[];
 };
+
+// ───────────────────────── K1.9: ไฟล์แนบ + ปกการ์ด ─────────────────────────
+
+export type KanbanAttachmentDto = {
+  id: string;
+  name: string;
+  contentType: string;
+  bytes: number;
+  /** URL สาธารณะบน CDN (จาก FileAsset.cdnUrl) */
+  url: string;
+  /** ไฟล์นี้ถูกตั้งเป็นปกการ์ดอยู่ไหม (เทียบกับ `KanbanCard.coverFileId`) */
+  isCover: boolean;
+  uploadedBy: { name: string };
+  createdAt: string;
+};
+
+/**
+ * ผลลัพธ์ของ `addAttachment` (§K1.9) — ต่างจาก `KanbanAttachmentDto` ตรงมี `fileId`
+ * (ผู้เรียกใน tx เดียวกันบางที่ต้องอ้าง `FileAsset.id` ตรง ๆ เช่นตอนตั้งเป็นปกทันทีหลังอัป)
+ */
+export type KanbanNewAttachmentDto = KanbanAttachmentDto & { fileId: string };
 
 // ───────────────────────── K1.8: ความเห็น + @mention ─────────────────────────
 // `body` เก็บ markup `@[ชื่อ](userId)` ตรง ๆ — ฝั่งจอแปลงเป็นชิปตอนเรนเดอร์ (ไม่ใช่ HTML ที่ server ประกอบ)
