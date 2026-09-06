@@ -98,6 +98,11 @@ export async function createApiKey(
 export type VerifiedApiKey = {
   tenantId: string;
   keyId: string;
+  /**
+   * User.id ของคนที่กดสร้างคีย์ (K1.15) — บอร์ดงานใช้เป็น "ผู้เขียน" ของความเห็นที่มาทาง API
+   * เพราะ `KanbanComment.authorUserId` เป็น NOT NULL และคีย์ไม่ใช่คน · null = คีย์รุ่นเก่าที่ไม่รู้ว่าใครสร้าง
+   */
+  createdById?: string | null;
   /** [] = คีย์รุ่นเดิม (ผู้เรียกเดิมไม่เคยอ่านฟิลด์นี้ → พฤติกรรมเดิมไม่เปลี่ยน) */
   scopes: string[];
   systemId: string | null;
@@ -141,6 +146,7 @@ export async function verifyApiKeyDetailed(rawKey: unknown): Promise<ApiKeyVerif
       scopes: parseScopes(row.scopesJson),
       systemId: row.systemId,
       expiresAt: row.expiresAt,
+      createdById: row.createdById,
       name: row.name,
     },
   };
@@ -156,6 +162,7 @@ export async function verifyApiKey(rawKey: unknown): Promise<VerifiedApiKey | nu
     scopes: v.key.scopes,
     systemId: v.key.systemId,
     expiresAt: v.key.expiresAt,
+    createdById: v.key.createdById,
   };
 }
 

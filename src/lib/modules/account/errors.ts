@@ -11,23 +11,10 @@
 //
 // ฮิวริสติกของ `safeReason`: ข้อความที่เราเขียนเอง **ทุกจุดในระบบนี้เป็นภาษาไทย** (กติกาโปรเจกต์) ⇒ ถ้า
 // ข้อความของ error ไม่มีอักษรไทยเลย แปลว่าเป็นข้อความดิบจากภายนอกเกือบแน่นอน → ใช้ fallback แทน
-const THAI_RE = /[฀-๿]/;
-
-/** ข้อความจาก error นี้ปลอดภัยพอจะโชว์ผู้ใช้ไหม (มีอักษรไทยอย่างน้อย 1 ตัว + ไม่ยาวเกินไป) */
-export function isSafeUserMessage(message: string | undefined | null): boolean {
-  if (!message) return false;
-  if (message.length > 300) return false;
-  return THAI_RE.test(message);
-}
-
-/**
- * ดึงข้อความจาก error ให้ปลอดภัยเสมอ — ใช้แทน `e instanceof Error ? e.message : fallback` ทุกจุดที่ error
- * อาจมาจากภายนอกระบบ (Prisma/HTTP/SDK) ข้อความของเราเอง (ไทย) ผ่านได้ตรง ๆ · ข้อความดิบอื่น ๆ → fallback
- */
-export function safeReason(err: unknown, fallback: string): string {
-  if (err instanceof Error && isSafeUserMessage(err.message)) return err.message;
-  return fallback;
-}
+// 🔴 K1.15: ตัวช่วย 2 ตัวนี้ (`isSafeUserMessage` / `safeReason`) ย้ายไป `src/lib/core/errors.ts`
+//    เพราะแกน REST ของกลาง (`src/lib/api/respond.ts`) ใช้ตัวเดียวกัน และไม่ใช่ความรู้เรื่องบัญชี
+//    re-export ไว้ที่ชื่อเดิม ⇒ ทุกไฟล์ที่ import จาก "@/lib/modules/account/errors" ใช้ต่อได้เหมือนเดิม
+export { isSafeUserMessage, safeReason } from "@/lib/core/errors";
 
 // ─────────────────── ข้อความที่ใช้ซ้ำบ่อยที่สุดในโมดูลนี้ (สำรวจจริงด้วย grep ความถี่) ───────────────────
 // ใช้ค่าคงที่เหล่านี้แทนพิมพ์ข้อความตรง ๆ ซ้ำในไฟล์ใหม่ — กันสะกด/คำไม่ตรงกันข้ามไฟล์ไปตามกาลเวลา

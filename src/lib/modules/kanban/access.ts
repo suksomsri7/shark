@@ -57,6 +57,8 @@ export function toActor(userId: string, membership: { role: Role; unitAccess: un
  *    (คนที่ไม่มีคีย์ kanban เลย ยังคงไม่เห็นอะไรเลย — ด่านนี้ยัง fail-closed)
  */
 export function canReadKanban(actor: KanbanActor): boolean {
+  // คีย์ API (D18): ผ่านด่านสิทธิ์ระดับ scope มาแล้วที่ชั้น REST ⇒ ถือว่าเข้าโมดูลได้
+  if (actor.apiRole) return true;
   if (evaluate(mc(actor), { module: "kanban", action: "kanban.board.read" })) return true;
   return Object.entries(actor.permissions).some(([k, v]) => k.startsWith("kanban.") && v === true);
 }
@@ -73,6 +75,11 @@ export function boardRole(
 ): BoardRole {
   // 0) ไม่ผ่านชั้นที่ 1 = มองไม่เห็นอะไรเลย (แม้บอร์ด TENANT)
   if (!canReadKanban(actor)) return null;
+
+  // 0.5) คีย์ API (D18): บทบาทเดียวกันทุกบอร์ดของระบบที่ผูก — ไม่มี membership ให้ดู
+  //      🔴 ตั้งใจให้คีย์เห็นบอร์ด PRIVATE ด้วย: integration เป็นเครื่องมือของ "ร้าน" ไม่ใช่ของพนักงานคนหนึ่ง
+  //         (เจ้าของร้านเป็นคนออกคีย์และเลือกชุดสิทธิ์เอง — ดูหน้า ตั้งค่า › API ของบอร์ดงาน)
+  if (actor.apiRole) return actor.apiRole;
 
   // 1) OWNER = ADMIN ทุกบอร์ด ไม่ต้องเชิญ (D2)
   if (actor.role === "OWNER") return "ADMIN";
@@ -103,6 +110,8 @@ export function hasBoardRole(role: BoardRole, need: "VIEWER" | "EDITOR" | "ADMIN
 export function visibleBoardsWhere(actor: KanbanActor): Prisma.KanbanBoardWhereInput {
   // ไม่มีสิทธิ์โมดูลเลย → ไม่เห็นอะไรเลย (where ที่จริงไม่ได้ ปลอดภัยกว่าคืน {} = เห็นหมด)
   if (!canReadKanban(actor)) return { id: "__none__" };
+  // คีย์ API (D18) เห็นทุกบอร์ดของระบบที่ผูก (ผู้เรียกกรอง tenantId+systemId อยู่แล้วทุกจุด)
+  if (actor.apiRole) return {};
   if (actor.role === "OWNER") return {};
 
   const or: Prisma.KanbanBoardWhereInput[] = [

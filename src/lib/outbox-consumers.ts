@@ -306,6 +306,15 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //      — บทเรียน 30 ส.ค. 2026) + เป็นจุดให้ Automation rules (§7.3) และ `withWebhooks` ยิงต่อ
   //      ตัวปิดงานที่ผูกไว้ (closeLinkedTargets · K3.4) จะมาเสียบตรง `kanban.card.completed` ทีหลัง
   "kanban.card.moved": withAutomation(async () => {}),
+  // K1.15 — การ์ดใบใหม่ / การ์ดถูกเก็บเข้าคลัง (ยิงจาก `kanban/service.ts#createCard` และ
+  // `kanban/cards.ts#archiveCard` ใน tx เดียวกับการเขียนแถว) · ยังไม่มีผลข้างเคียงภายใน
+  // (ฮุคขาออก + กฎอัตโนมัติของร้านเป็นผู้บริโภคจริง) — แต่ต้องลงทะเบียนไว้ ไม่งั้นคิวตันเงียบ ๆ
+  "kanban.card.created": withAutomation(async () => {}),
+  "kanban.card.archived": withAutomation(async () => {}),
+  // K1.15 — เตือนกำหนดส่ง: ตัวยิงจริงมาใน P2 (K2.x) · ลงทะเบียนไว้ก่อนเพื่อให้ event ที่ประกาศใน
+  // `webhooks/labels.ts` มีบ้านครบตั้งแต่วันแรก (บทเรียน: event ที่ไม่มี consumer = คิวตันทั้งระบบ)
+  "kanban.card.due_soon": withAutomation(async () => {}),
+  "kanban.card.overdue": withAutomation(async () => {}),
   "kanban.card.completed": withAutomation(async () => {}),
   // K1.7 — เช็คลิสต์ครบทุกข้อ (ยิงจาก `kanban/checklists.ts#toggleItem` ใน tx เดียวกับการติ๊ก)
   //   🔴 ผลข้างเคียง (done/doneAt/doneById) เกิดในโมดูลไปแล้ว — consumer เป็น no-op เพื่อ

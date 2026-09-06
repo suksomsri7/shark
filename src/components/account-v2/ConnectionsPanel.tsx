@@ -386,7 +386,18 @@ const BUNDLE_HELP_TH: Record<ApiScopeBundleId, string> = {
   accountant: "ทำได้ทุกอย่างในชุดออกเอกสารและรับเงิน บวกงานปิดงวด ผังบัญชี สินทรัพย์ เช็ค และกระทบยอดธนาคาร",
   danger: "การกระทำที่ย้อนกลับยาก เช่น ยกเลิกเอกสาร เปิดงวดที่ปิดแล้ว หรือรวมผู้ติดต่อซ้ำ",
   settings: "แก้ตั้งค่าระบบบัญชีและนำเข้าข้อมูล",
+  // ชุดของ "บอร์ดงาน" (K1.15) — ไม่โผล่ในหน้านี้ (หน้านี้กรองเฉพาะชุดของบัญชี) แต่ทะเบียนเป็นตัวเดียวกัน
+  // ⇒ ต้องมีคำแปลไทยครบทุกชุด ไม่งั้น TypeScript เตือนตั้งแต่ตอนคอมไพล์ (ตั้งใจให้เตือน)
+  "kanban-read": "อ่านบอร์ดงานทุกบอร์ดของระบบที่ผูกไว้ ไม่มีสิทธิ์เขียนใด ๆ",
+  "kanban-edit": "ทำได้ทุกอย่างในชุดอ่านอย่างเดียว บวกสร้าง/แก้/ย้ายการ์ด คอลัมน์ ป้าย ความเห็น และไฟล์แนบ",
+  "kanban-admin": "ทำได้ทุกอย่างในชุดทำงานกับการ์ด บวกจัดการสมาชิกบอร์ด เก็บบอร์ด/คอลัมน์ เทมเพลต และกฎอัตโนมัติ",
 };
+
+/**
+ * ชุดสิทธิ์ที่หน้านี้ให้เลือก = เฉพาะของบัญชี (K1.15 — ทะเบียนเดียวกันมีชุดของบอร์ดงานอยู่ด้วยแล้ว
+ * และหน้านั้นมีที่ออกคีย์ของตัวเองที่ "บอร์ดงาน › ตั้งค่า › API")
+ */
+const ACCOUNT_BUNDLES = API_SCOPE_BUNDLES.filter((b) => b.scopes.some((s) => s.startsWith("account.")));
 
 function ApiSection(p: ConnectionsPanelProps) {
   const [pending, start] = useTransition();
@@ -538,7 +549,7 @@ function ApiSection(p: ConnectionsPanelProps) {
 
           <fieldset className="flex flex-col gap-2">
             <legend className={`mb-1 ${helpCls}`}>ชุดสิทธิ์ (bundle) — ติ๊กเพิ่ม/ลดรายตัวได้ด้านล่าง</legend>
-            {API_SCOPE_BUNDLES.map((b) => (
+            {ACCOUNT_BUNDLES.map((b) => (
               <label
                 key={b.id}
                 className="flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 text-sm has-[:checked]:border-[color:var(--color-ink)]"

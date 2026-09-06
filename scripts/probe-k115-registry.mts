@@ -1,0 +1,12 @@
+const { KANBAN_OPS } = await import("@/lib/modules/kanban/api/registry");
+console.log("ops:", KANBAN_OPS.length);
+const ids = KANBAN_OPS.map((o) => o.id);
+console.log("dup ids:", ids.length - new Set(ids).size);
+const paths = KANBAN_OPS.map((o) => `${o.method} ${o.path}`);
+console.log("dup paths:", paths.length - new Set(paths).size);
+console.log("tools:", KANBAN_OPS.filter((o) => o.tool).map((o) => o.tool!.name).join(","));
+console.log("danger:", KANBAN_OPS.filter((o) => o.kind === "danger").map((o) => o.id).join(","));
+const must = ["ping","boards.list","boards.get","boards.create","boards.update","boards.archive","boards.members.add","columns.create","columns.move","cards.list","cards.get","cards.create","cards.update","cards.move","cards.archive","cards.assignees.set","cards.labels.set","labels.create","checklists.create","checklist-items.update","comments.create","attachments.create","search","my-tasks","templates.list"];
+console.log("missing must:", must.filter((m) => !ids.includes(m)).join(",") || "none");
+console.log("bad action:", KANBAN_OPS.filter((o) => !/^kanban\./.test(o.action)).map((o) => o.id).join(",") || "none");
+console.log("no test:", KANBAN_OPS.filter((o) => typeof o.test !== "string").map((o) => o.id).join(",") || "none");

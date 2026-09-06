@@ -15,6 +15,7 @@
 //    (ลืมลงทะเบียน tool ใหม่ = AI เรียกไม่ได้เลย ซึ่งจะเงียบมากถ้าไม่มีด่านนี้)
 
 import { accountToolAllowedForScopes, accountToolNames } from "./account-ops";
+import { kanbanToolAllowedForScopes, kanbanToolNames } from "./kanban-ops";
 import { toolRegistry } from "./tools";
 
 /** สกิล 1 ชุด — โครงนี้คือสิ่งที่จะกลายเป็น manifest สาธารณะสำหรับ AI ภายนอก */
@@ -169,8 +170,23 @@ export const SKILLS: Skill[] = [
   {
     id: "tasks",
     label: "งานและบอร์ด",
-    summary: "Task boards: my assigned tasks, create a board, create a card.",
-    tools: ["kanban_my_tasks", "kanban_create_board", "kanban_create_card"],
+    summary:
+      "Task boards (Kanban): list boards and what is on them, board summaries, search cards across boards, one person's task inbox, create boards and cards, move cards between columns, edit or complete a card, assign people, set labels, add checklists and comments, archive a card.",
+    // 🔴 K1.15: รายชื่อนี้ต้องตรงกับ op ที่ประกาศ `tool` ในทะเบียน API บอร์ดงานเป๊ะ ๆ
+    //    เขียนเป็นตัวหนังสือด้วยเหตุผลเดียวกับสกิลบัญชี: ด่าน fitness F13.3 อ่าน "ไฟล์นี้"
+    //    ความตรงกันบังคับด้วย assertSkillRegistryComplete() ที่เทียบกับ kanbanToolNames() ทุกครั้ง
+    //    ⚠️ 3 ชื่อแรกเป็นชื่อเดิมตั้งแต่ WO-0045/W5B-R1 — ห้ามเปลี่ยน (ลูกค้า/ข้อสอบเก่าอ้างอยู่)
+    tools: [
+      // อ่าน
+      "kanban_my_tasks", "kanban_list_boards", "kanban_get_board", "kanban_board_summary",
+      "kanban_list_cards", "kanban_search_cards",
+      // เขียน (ผ่านการยืนยันของเจ้าของ)
+      "kanban_create_board", "kanban_create_card", "kanban_update_card", "kanban_move_card",
+      "kanban_complete_card", "kanban_assign_card", "kanban_set_labels", "kanban_add_checklist",
+      "kanban_add_comment",
+      // อันตราย (ยืนยัน 2 ชั้น)
+      "kanban_archive_card",
+    ],
     systems: ["KANBAN"],
   },
   {
@@ -257,7 +273,9 @@ export function skillsForTenant(openedSystemTypes: string[]): Skill[] {
  * สกิลอื่นยังไม่มีแผนที่ tool → permission key ⇒ ยังคงพฤติกรรมเดิม (คีย์ที่ยืนยันตัวตนได้เรียกได้)
  */
 export function toolAllowedForApiKey(toolName: string, scopes: string[]): boolean {
-  return accountToolAllowedForScopes(toolName, scopes);
+  // สกิลที่ผูก scope รายเครื่องมือแล้วมี 2 สกิล: `account` (WO E2) และ `tasks` (K1.15)
+  // ทั้งคู่ derive จาก `op.action` ของทะเบียน API ของตัวเอง · tool นอกสองสกิลนี้คืน true ทั้งคู่
+  return accountToolAllowedForScopes(toolName, scopes) && kanbanToolAllowedForScopes(toolName, scopes);
 }
 
 /**
@@ -318,6 +336,14 @@ export function assertSkillRegistryComplete(): void {
   const extra = [...declared].filter((n) => !fromRegistry.includes(n));
   if (missing.length > 0) problems.push(`สกิล account ขาด tool ของทะเบียน: ${missing.join(", ")}`);
   if (extra.length > 0) problems.push(`สกิล account มี tool ที่ทะเบียนไม่มีแล้ว: ${extra.join(", ")}`);
+
+  // สกิลบอร์ดงาน (K1.15) — เงื่อนไขเดียวกับบัญชี: รายชื่อในไฟล์นี้ต้องตรงกับทะเบียน op "ไม่ขาดไม่เกิน"
+  const declaredKanban = new Set(SKILLS.find((s) => s.id === "tasks")?.tools ?? []);
+  const fromKanbanRegistry = kanbanToolNames();
+  const missingKanban = fromKanbanRegistry.filter((n) => !declaredKanban.has(n));
+  const extraKanban = [...declaredKanban].filter((n) => !fromKanbanRegistry.includes(n));
+  if (missingKanban.length > 0) problems.push(`สกิล tasks ขาด tool ของทะเบียน: ${missingKanban.join(", ")}`);
+  if (extraKanban.length > 0) problems.push(`สกิล tasks มี tool ที่ทะเบียนไม่มีแล้ว: ${extraKanban.join(", ")}`);
 
   if (problems.length > 0) {
     throw new Error(`ทะเบียนสกิลไม่ครบ/ขัดกัน:\n  - ${problems.join("\n  - ")}`);

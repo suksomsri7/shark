@@ -156,7 +156,8 @@ try {
   // ═══ AK-7 scopes.ts ═══
   if (!scopesMod) chk("AK-7.0", "มี src/lib/api-keys/scopes.ts", false, "มี", "ยังไม่สร้าง");
   else {
-    const bundles = scopesMod.API_SCOPE_BUNDLES as { id: string; label: string; summary: string; scopes: string[] }[];
+    // K1.15 (บอร์ดงาน): ทะเบียน bundle ใช้ร่วมทุกโมดูล — ข้อสอบนี้วัดเฉพาะชุดของบัญชี (scope ขึ้นต้น account.)
+    const bundles = (scopesMod.API_SCOPE_BUNDLES as { id: string; label: string; summary: string; scopes: string[] }[]).filter((b) => b.scopes.every((sc) => sc.startsWith("account.")));
     const ids = bundles.map((b) => b.id);
     chk("AK-7.1", "bundle 5 ชุด id ตามสัญญา", JSON.stringify(ids) === JSON.stringify(["read-only", "issue-and-collect", "accountant", "danger", "settings"]), "5 ชุด", JSON.stringify(ids));
     const allBundleScopes = bundles.flatMap((b) => b.scopes);

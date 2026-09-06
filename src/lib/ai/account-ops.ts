@@ -17,7 +17,9 @@ import { tenantDb } from "@/lib/core/db";
 import type { MembershipCtx } from "@/lib/core/rbac";
 import { docTypeLabel } from "@/lib/modules/account/dashboard";
 import {
+  ACCOUNT_DENY_TH,
   actorCan,
+  membershipCanAccount,
   membershipFromScopes,
   scopesCanAccount,
   type ApiActor,
@@ -48,13 +50,17 @@ const ASSISTANT_READ_SCOPES = [
 ] as const;
 
 function assistantActor(tenantId: string, systemId: string): ApiActor {
+  const membership = membershipFromScopes([...ASSISTANT_READ_SCOPES]);
   return {
     kind: "assistant",
+    module: "account",
     tenantId,
     systemId,
     keyName: "ผู้ช่วย AI",
     scopes: [...ASSISTANT_READ_SCOPES],
-    membership: membershipFromScopes([...ASSISTANT_READ_SCOPES]),
+    membership,
+    can: (action) => membershipCanAccount(membership, action),
+    denyMessageTh: ACCOUNT_DENY_TH,
   };
 }
 
@@ -62,12 +68,15 @@ function assistantActor(tenantId: string, systemId: string): ApiActor {
 function userActor(tenantId: string, systemId: string, m: MembershipCtx, userId?: string | null): ApiActor {
   return {
     kind: "user",
+    module: "account",
     tenantId,
     systemId,
     userId: userId ?? null,
     keyName: "ผู้ช่วย AI (ผู้ใช้ยืนยัน)",
     scopes: [],
     membership: m,
+    can: (action) => membershipCanAccount(m, action),
+    denyMessageTh: ACCOUNT_DENY_TH,
   };
 }
 

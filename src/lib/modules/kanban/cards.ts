@@ -6,6 +6,7 @@
 
 import type { KanbanCard, Prisma } from "@prisma/client";
 import { KanbanNotFoundError } from "./access";
+import { emitOutbox } from "@/lib/core/outbox";
 import { logActivity } from "./activity-log";
 import { listAttachments } from "./attachments";
 import { getCardChecklists } from "./checklists";
@@ -413,7 +414,17 @@ export async function archiveCard(ctx: KanbanCtx, cardId: string): Promise<Kanba
       actorUserId: ctx.actorUserId ?? null,
       type: "CARD_ARCHIVED",
     });
-    return tx.kanbanCard.findFirstOrThrow({ where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
+    const row = await tx.kanbanCard.findFirstOrThrow({ where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
+    // K1.15 — เหตุการณ์ `kanban.card.archived` ใน tx เดียวกับการเก็บ · คีย์กันซ้ำผูกเวลาที่เก็บ
+    // (เก็บ→กู้คืน→เก็บอีก = คนละใบ ตามความจริง)
+    await emitOutbox(tx, {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      type: "kanban.card.archived",
+      idempotencyKey: `kanban.card.archived#${cardId}#${(row.archivedAt ?? row.updatedAt).getTime()}`,
+      payload: { cardId, boardId, cardNo: row.cardNo, title: row.title },
+    });
+    return row;
   });
   await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.archived", boardId, cardId }));
   return archived;

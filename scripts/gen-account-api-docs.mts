@@ -655,7 +655,9 @@ export function renderDocs(ops: ApiOp[] = ACCOUNT_OPS): string {
     "| Bundle | What it can do | Scopes |",
     "| --- | --- | --- |",
   );
-  for (const b of API_SCOPE_BUNDLES) {
+  // 🔴 K1.15: ทะเบียน bundle เป็นของกลางทั้งแพลตฟอร์มแล้ว (มีชุดของบอร์ดงานด้วย) —
+  //    คู่มือบัญชีต้องโชว์เฉพาะชุดที่เป็นสิทธิ์ของบัญชี ไม่งั้นเอกสารจะพูดถึงสิ่งที่ API นี้ทำไม่ได้
+  for (const b of API_SCOPE_BUNDLES.filter((x) => x.scopes.some((s) => s.startsWith("account.")))) {
     push(`| \`${b.id}\` | ${b.summary} | ${b.scopes.map((s) => `\`${s}\``).join(" ")} |`);
   }
   push(

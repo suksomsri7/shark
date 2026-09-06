@@ -23,7 +23,22 @@ export const ACCOUNT_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter(
   (p) => p.module === "account" && isApiScope(p.key),
 ).map((p) => p.key);
 
-export type ApiScopeBundleId = "read-only" | "issue-and-collect" | "accountant" | "danger" | "settings";
+/** permission key ของโมดูลบอร์ดงานที่ใช้เป็น scope ได้ (K1.15) — ที่มาเดียวคือทะเบียน PERMISSIONS เช่นกัน */
+export const KANBAN_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter(
+  (p) => p.module === "kanban" && isApiScope(p.key),
+).map((p) => p.key);
+
+export type ApiScopeBundleId =
+  // บัญชี (WO A1)
+  | "read-only"
+  | "issue-and-collect"
+  | "accountant"
+  | "danger"
+  | "settings"
+  // บอร์ดงาน (K1.15 · D18 — บทบาทบนบอร์ดของคีย์มาจากชุดเหล่านี้)
+  | "kanban-read"
+  | "kanban-edit"
+  | "kanban-admin";
 
 export type ApiScopeBundle = {
   id: ApiScopeBundleId;
@@ -70,6 +85,38 @@ const ACCOUNTANT_SCOPES = [
   "account.reconcile",
 ] as const;
 
+// ── บอร์ดงาน (K1.15 · D18) ────────────────────────────────────────────────
+// 3 ชุดซ้อนกันเป็นชั้น: read ⊂ edit ⊂ admin — ตรงกับ "บทบาทบนบอร์ด" ที่คีย์จะได้พอดี
+//   read  → VIEWER ทุกบอร์ดของระบบที่ผูก
+//   edit  → EDITOR (สร้าง/แก้/ย้าย/เก็บการ์ด · คอลัมน์ · ป้าย · ความเห็น · ไฟล์แนบ · สร้างบอร์ด)
+//   admin → ADMIN (เพิ่มด้วยการจัดการสมาชิกบอร์ด/เทมเพลต/กฎอัตโนมัติ/รายงาน)
+// 🔴 `kanban.board.member.manage` **มีเฉพาะในชุด admin** — นี่คือตัวชี้ขาดบทบาท ADMIN ตาม D18
+const KANBAN_READ_SCOPES = ["kanban.board.read"] as const;
+
+const KANBAN_EDIT_SCOPES = [
+  ...KANBAN_READ_SCOPES,
+  "kanban.board.create",
+  "kanban.board.rename",
+  "kanban.column.create",
+  "kanban.card.create",
+  "kanban.card.update",
+  "kanban.card.move",
+  "kanban.card.delete",
+  "kanban.card.comment",
+  "kanban.card.attach",
+  "kanban.label.manage",
+] as const;
+
+const KANBAN_ADMIN_SCOPES = [
+  ...KANBAN_EDIT_SCOPES,
+  "kanban.board.delete",
+  "kanban.board.member.manage",
+  "kanban.column.delete",
+  "kanban.template.manage",
+  "kanban.automation.manage",
+  "kanban.report.view",
+] as const;
+
 /**
  * ชุดสำเร็จรูป 5 ชุด — ซ้อนกันเป็นชั้น: read-only ⊂ issue-and-collect ⊂ accountant
  * `danger` แยกออกจาก accountant เสมอ (ยกเลิก/เปิดงวด/รวมผู้ติดต่อ = กู้คืนยาก ต้องตั้งใจติ๊กเอง)
@@ -114,6 +161,24 @@ export const API_SCOPE_BUNDLES: readonly ApiScopeBundle[] = [
     summary: "Change accounting settings, approval ceilings and import data into the books.",
     // `account.approve.limit` (เพดานยอดอนุมัติ) เป็นค่าตั้ง ไม่ใช่การกระทำ — ไม่อยู่ในชุดใด (ดู NON_API_SCOPE_KEYS)
     scopes: ["account.settings.manage", "account.import"],
+  },
+  {
+    id: "kanban-read",
+    label: "บอร์ดงาน — อ่านอย่างเดียว",
+    summary: "Read every board of the bound task board system: boards, columns, cards, comments and attachments. No writes at all.",
+    scopes: KANBAN_READ_SCOPES,
+  },
+  {
+    id: "kanban-edit",
+    label: "บอร์ดงาน — ทำงานกับการ์ด",
+    summary: "Everything in kanban-read plus creating and editing boards, columns, cards, labels, comments and attachments. Acts as EDITOR on every board.",
+    scopes: KANBAN_EDIT_SCOPES,
+  },
+  {
+    id: "kanban-admin",
+    label: "บอร์ดงาน — ผู้ดูแล",
+    summary: "Everything in kanban-edit plus board members, archiving boards and columns, templates and automation. Acts as ADMIN on every board.",
+    scopes: KANBAN_ADMIN_SCOPES,
   },
 ];
 

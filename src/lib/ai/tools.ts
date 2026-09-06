@@ -21,6 +21,7 @@ import { searchKb as kbSearchArticles, createArticle as kbCreateArticleSvc } fro
 import { channelSentenceLabel } from "@/lib/modules/chat/channel-icon";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { accountTools } from "./tools-account";
+import { kanbanTools } from "./tools-kanban";
 import { createProposal, type ProposalKind } from "./proposals";
 import { createPlan } from "./plans";
 import { dayKeyBangkok } from "./rules";
@@ -771,65 +772,12 @@ const couponCreate: AiTool = {
   },
 };
 
-// ── 15b) kanban_create_board — เสนอสร้างบอร์ดงานใหม่ (feedback เจ้าของ 2026-07-17) ──
-const kanbanCreateBoard: AiTool = {
-  action: true,
-  def: {
-    name: "kanban_create_board",
-    description:
-      "เสนอการสร้างบอร์ดงานใหม่ในระบบบอร์ดงาน (Kanban) — ยังไม่ทำทันที สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน ระบุ name (ชื่อบอร์ด) และ description ถ้ามี · บอร์ดจะมีคอลัมน์เริ่มต้นให้พร้อมใช้ · ใช้เมื่อผู้ใช้ขอ 'สร้างบอร์ด/เปิดบอร์ดงานใหม่'",
-    parameters: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "ชื่อบอร์ดงาน" },
-        description: { type: "string", description: "คำอธิบายบอร์ด (ถ้ามี)" },
-      },
-      required: ["name"],
-      additionalProperties: false,
-    },
-  },
-  async execute(ctx, args) {
-    const a = asRecord(args);
-    const name = String(a.name ?? "").trim();
-    if (!name) return JSON.stringify({ error: "ต้องระบุชื่อบอร์ด" });
-    const description = String(a.description ?? "").trim();
-    const payload: Record<string, unknown> = { name };
-    if (description) payload.description = description;
-    return propose(ctx, "kanban_create_board", `สร้างบอร์ดงาน "${name}"`, payload);
-  },
-};
-
-// ── 15) kanban_create_card — เสนอเพิ่มการ์ดงานลงบอร์ด (WO-0045) ──
-const kanbanCreateCard: AiTool = {
-  action: true,
-  def: {
-    name: "kanban_create_card",
-    description:
-      "เสนอการเพิ่มการ์ดงานลงบอร์ดงาน (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) ระบุ title, รายละเอียด (detail) ถ้ามี และ boardName ถ้าต้องการเจาะจงบอร์ด (ไม่ระบุ = บอร์ดแรก) — การ์ดจะถูกวางในคอลัมน์แรกของบอร์ด",
-    parameters: {
-      type: "object",
-      properties: {
-        title: { type: "string", description: "หัวข้อการ์ด/งาน" },
-        detail: { type: "string", description: "รายละเอียดงาน (ถ้ามี)" },
-        boardName: { type: "string", description: "ชื่อบอร์ดที่ต้องการ (ถ้าไม่ระบุจะใช้บอร์ดแรก)" },
-      },
-      required: ["title"],
-      additionalProperties: false,
-    },
-  },
-  async execute(ctx, args) {
-    const a = asRecord(args);
-    const title = String(a.title ?? "").trim();
-    if (!title) return JSON.stringify({ error: "ต้องระบุหัวข้อการ์ด" });
-    const detail = String(a.detail ?? "").trim();
-    const boardName = String(a.boardName ?? "").trim();
-    const payload: Record<string, unknown> = { title };
-    if (detail) payload.detail = detail;
-    if (boardName) payload.boardName = boardName;
-    const summary = `เพิ่มการ์ด "${title}" ลงบอร์ด${boardName ? ` "${boardName}"` : "แรก"}`;
-    return propose(ctx, "kanban_create_card", summary, payload);
-  },
-};
+// ── kanban_* — เครื่องมือบอร์ดงานทั้งชุด (K1.15) ──
+// ย้ายไป `tools-kanban.ts` แล้ว: generate จากทะเบียน op ของ REST (`KANBAN_OPS`) ทั้ง 16 ตัว
+// (เดิมมี 3 ตัวเขียนมือที่นี่: kanban_create_board · kanban_create_card · kanban_my_tasks —
+//  ชื่อเดิมยังอยู่ครบ แต่สคีมา/ตรรกะมาจากทะเบียนเดียวกับ REST แล้ว ไม่ใช่โค้ดคู่ขนาน)
+// 🔴 ข้อเสนอ kind รุ่นเก่า `kanban_create_board`/`kanban_create_card` ยังทำงานได้ใน proposals.ts
+//    (ของที่ค้างอยู่ก่อน K1.15 ต้องกดยืนยันได้ต่อ)
 
 // ── 16) record_expense — เสนอบันทึกค่าใช้จ่าย/ใบเสร็จเข้าบัญชี (feedback เจ้าของ #4) ──
 // ใช้หลัง AI อ่านใบเสร็จจากรูป → เสนอบันทึกเป็นค่าใช้จ่าย (DRAFT) ให้ user ยืนยันก่อน
@@ -2206,92 +2154,6 @@ const restaurantCloseBill: AiTool = {
   },
 };
 
-// ── W5B-R1) kanban_my_tasks — งานที่มอบหมายให้ผู้ใช้ (READ) ──
-// ⚠️ ข้อจำกัด: ToolCtx มีแค่ tenantId + conversationId (ไม่มี userId · AiConversation ไม่ผูก user)
-//   → resolve "ผู้ใช้ปัจจุบัน" ไม่ได้จาก ctx · conservative 2 ทาง:
-//   (ก) ระบุ assignee (ชื่อ/อีเมล) → resolve userId ผ่าน Membership+User → คืนงานของคนนั้น
-//   (ข) ไม่ระบุ → คืน "งานที่ยังไม่มีผู้รับ + งานทั้งหมดของบอร์ด (active)" + แจ้งข้อจำกัด
-const kanbanMyTasks: AiTool = {
-  def: {
-    name: "kanban_my_tasks",
-    description:
-      "ดูงาน (การ์ด) บนบอร์ดงาน (Kanban) — ระบุ assignee (ชื่อหรืออีเมลของพนักงาน) เพื่อดูงานที่มอบหมายให้คนนั้นข้ามทุกบอร์ด · ไม่ระบุ = คืนงานที่ยังไม่มีผู้รับ + งานทั้งหมดที่กำลังทำอยู่ (ระบบผู้ช่วยยังไม่ทราบว่าใครกำลังคุยอยู่ จึงระบุชื่อจะแม่นกว่า)",
-    parameters: {
-      type: "object",
-      properties: {
-        assignee: { type: "string", description: "ชื่อหรืออีเมลของพนักงานผู้รับงาน (ถ้าไม่ระบุจะคืนงานที่ยังไม่มีผู้รับ + งานทั้งหมดของบอร์ด)" },
-      },
-      additionalProperties: false,
-    },
-  },
-  async execute(ctx, args) {
-    const kanban = await findSystem(ctx.tenantId, "KANBAN");
-    if (!kanban) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบบอร์ดงาน (Kanban)" });
-    const assignee = String(asRecord(args).assignee ?? "").trim();
-    const cardOut = (c: {
-      title: string;
-      dueAt: Date | null;
-      board: { name: string } | null;
-      column: { name: string } | null;
-    }) => ({ งาน: c.title, บอร์ด: c.board?.name ?? null, สถานะ: c.column?.name ?? null, กำหนดส่ง: safeDate(c.dueAt) });
-
-    if (assignee) {
-      // resolve พนักงานจากชื่อ/อีเมล ผ่าน membership ของ tenant นี้ (contains, case-insensitive)
-      const members = await prisma.membership.findMany({
-        where: {
-          tenantId: ctx.tenantId,
-          OR: [
-            { user: { name: { contains: assignee, mode: "insensitive" } } },
-            { user: { email: { contains: assignee, mode: "insensitive" } } },
-          ],
-        },
-        select: { userId: true, user: { select: { name: true, email: true } } },
-      });
-      if (members.length === 0) {
-        return JSON.stringify({ error: `ไม่พบพนักงานชื่อ/อีเมล "${assignee}" ในร้านนี้` });
-      }
-      if (members.length > 1) {
-        const who = members.map((m) => m.user.name ?? m.user.email).join(", ");
-        return JSON.stringify({ error: `มีพนักงานหลายคนที่ตรง กรุณาระบุให้ชัด — ${who}` });
-      }
-      const target = members[0];
-      const cards = await kanbanListMyCards(ctx.tenantId, kanban.id, target.userId);
-      return JSON.stringify({
-        ผู้รับงาน: target.user.name ?? target.user.email,
-        จำนวนงาน: cards.length,
-        งานของฉัน: cards.map(cardOut),
-      });
-    }
-
-    // ไม่ระบุผู้รับ → conservative: งานที่ยังไม่มีผู้รับ + งาน active ทั้งหมด (ข้ามบอร์ด)
-    const [unassigned, all] = await Promise.all([
-      prisma.kanbanCard.findMany({
-        where: { tenantId: ctx.tenantId, systemId: kanban.id, status: "ACTIVE", assigneeUserId: null },
-        include: { board: { select: { name: true } }, column: { select: { name: true } } },
-        orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
-        take: 50,
-      }),
-      prisma.kanbanCard.findMany({
-        where: { tenantId: ctx.tenantId, systemId: kanban.id, status: "ACTIVE" },
-        include: { board: { select: { name: true } }, column: { select: { name: true } } },
-        orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
-        take: 50,
-      }),
-    ]);
-    return JSON.stringify({
-      หมายเหตุ: "ยังไม่ทราบว่าใครกำลังคุยอยู่ — ระบุชื่อพนักงาน (assignee) เพื่อดูงานเฉพาะคนนั้น",
-      งานที่ยังไม่มีผู้รับ: unassigned.map(cardOut),
-      งานทั้งหมดที่กำลังทำ: all.map(cardOut),
-    });
-  },
-};
-
-// ══════════════════════════════════════════════════════════════════
-// AI Memory (agentic-1) — ความจำถาวรต่อร้าน
-// remember_fact/forget_fact เขียนทันทีใน execute (ไม่ผ่าน proposal) เพราะเป็นการ "จดโน้ต"
-// ของ AI เอง ไม่ใช่ mutation ธุรกิจ — จึง action=false (ไม่มีการ์ดยืนยัน)
-// ══════════════════════════════════════════════════════════════════
-
 // ── MEM-1) remember_fact — จดข้อเท็จจริงถาวรของร้าน (เขียนทันที) ──
 const rememberFactTool: AiTool = {
   def: {
@@ -2487,8 +2349,6 @@ export function toolRegistry(): AiTool[] {
     recentLeads,
     customerPoints,
     upcomingSchedule,
-    // Wave5-B read — งานของฉัน (kanban)
-    kanbanMyTasks,
     // AI Memory (agentic-1) — จด/ลบ/ดู ความจำถาวร (remember เขียนทันที ไม่ผ่าน proposal)
     rememberFactTool,
     forgetFactTool,
@@ -2507,8 +2367,6 @@ export function toolRegistry(): AiTool[] {
     inventoryAdjust,
     hrCreateEmployee,
     couponCreate,
-    kanbanCreateBoard,
-    kanbanCreateCard,
     recordExpense,
     scheduleTask,
     automationCreateRule,
@@ -2537,6 +2395,8 @@ export function toolRegistry(): AiTool[] {
     // สกิลบัญชี (WO E1) — สร้างจากทะเบียน op ของ REST บัญชี ไม่ได้เขียนมือทีละตัว
     // อ่าน = ทำทันที · เขียน/อันตราย = ข้อเสนอให้เจ้าของกดยืนยัน (kind `account.*`)
     ...accountTools(),
+    // สกิลบอร์ดงาน (K1.15) — สร้างจากทะเบียน op ของ REST บอร์ดงาน ด้วยกติกาเดียวกัน (kind `kanban.*`)
+    ...kanbanTools(),
   ];
 }
 

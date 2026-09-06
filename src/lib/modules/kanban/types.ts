@@ -12,6 +12,12 @@ export type KanbanCtx = {
   tenantId: string;
   systemId: string;
   actorUserId?: string | null;
+  /**
+   * K1.15/D18 — actor สำเร็จรูปสำหรับผู้เรียกที่ **ไม่ใช่คนที่ล็อกอิน** (คีย์ API)
+   * ปกติ `members.loadActor(ctx)` จะไปอ่าน Membership ของ `actorUserId` เอง แต่คีย์ API ไม่มี
+   * Membership (มีแต่ scope) ⇒ ชั้น REST ประกอบ actor มาให้ตรงนี้แล้วทุก service ใช้ต่อได้เหมือนเดิม
+   */
+  actor?: KanbanActor;
 };
 
 /**
@@ -24,6 +30,12 @@ export type KanbanActor = {
   /** BusinessUnit.id ที่ผู้ใช้ดูแล ([] = ทุกสาขา สำหรับ OWNER) */
   unitAccess: string[];
   permissions: Record<string, unknown>;
+  /**
+   * K1.15/D18 — actor นี้คือ "คีย์ API" ไม่ใช่คน: บทบาทบน **ทุกบอร์ดของระบบที่คีย์ผูก** เท่ากับค่านี้
+   * (มาจาก scope ของคีย์: `kanban.board.member.manage` → ADMIN · มี scope เขียน → EDITOR · อ่านล้วน → VIEWER)
+   * คีย์ = การเชื่อมต่อระดับร้าน เหมือน automation ของเจ้าของ ⇒ ไม่มีเรื่อง "ถูกเชิญเข้าบอร์ด"
+   */
+  apiRole?: "ADMIN" | "EDITOR" | "VIEWER";
 };
 
 // ───────────────────────── K1.5: DTO ของหน้าบอร์ด (ฝั่ง client อ่านอย่างเดียว) ─────────────────────────

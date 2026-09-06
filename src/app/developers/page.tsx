@@ -99,6 +99,22 @@ export default function DevelopersPage() {
         </p>
       </section>
 
+      <section className="flex flex-col gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <h2 className="text-lg font-semibold">Task Board API — เชื่อมโมดูลบอร์ดงาน (อ่าน+เขียนได้)</h2>
+        <p className="text-sm text-neutral-700">
+          ถ้าร้านของคุณเปิดใช้โมดูลบอร์ดงาน (Kanban) มี API แยกต่างหากที่ทำได้มากกว่าอ่านอย่างเดียว: สร้างบอร์ด/คอลัมน์
+          สร้าง-แก้-ย้าย-ปิดการ์ดงาน มอบหมายงาน ติดป้าย เช็คลิสต์ ความเห็น ไฟล์แนบ ค้นหาการ์ดข้ามบอร์ด เปิดกล่อง
+          “งานของฉัน” ไปจนถึงรับ webhook เมื่อการ์ดถูกย้ายหรือเลยกำหนดส่ง คีย์ของโมดูลนี้มี <strong>scope</strong>{" "}
+          ของตัวเอง (เลือกได้ 3 ชุด: อ่านอย่างเดียว / ทำงานกับการ์ด / ผู้ดูแล ที่หน้าบอร์ดงาน › ตั้งค่า › API) —
+          คนละชุดจากคีย์แพลตฟอร์มด้านล่างนี้
+        </p>
+        <p className="text-sm">
+          <a className="font-medium text-emerald-700 underline" href="/developers/kanban">
+            อ่านคู่มือ Task Board API ฉบับเต็ม (/developers/kanban)
+          </a>
+        </p>
+      </section>
+
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">1. การยืนยันตัวตน (Authentication)</h2>
         <p className="text-sm text-neutral-700">

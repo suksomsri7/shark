@@ -51,7 +51,9 @@ try {
     const headers: Record<string, string> = { authorization: `Bearer ${key}`, ...(method === "GET" ? {} : { "idempotency-key": `k115-${Date.now()}-${Math.random().toString(16).slice(2)}` }), ...extra };
     let b: string | undefined; if (body !== undefined) { b = JSON.stringify(body); headers["content-type"] = "application/json"; }
     const res = await route[method]!(new Request(`http://x/api/v1/kanban${path}`, { method, headers, body: b }), { params: Promise.resolve({ path: path.split("?")[0]!.split("/").filter(Boolean) }) });
-    const text = await res.text(); let parsed: Any = null; try { parsed = JSON.parse(text); } catch { parsed = { _raw: text }; }
+    // อ่านไบต์ดิบ — Response.text() ลอก BOM ทิ้งตาม WHATWG (builder K1.15 ชี้ · ข้อสอบบัญชี read-gl ใช้ arrayBuffer เหมือนกัน)
+    const buf = new Uint8Array(await res.arrayBuffer()); const hasBom = buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf;
+    const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(buf); let parsed: Any = null; try { parsed = JSON.parse(text); } catch { parsed = { _raw: text, _bom: hasBom }; }
     return { status: res.status, body: parsed, headers: res.headers };
   };
   const ping = await call("GET", "/ping", kEdit);
@@ -96,7 +98,7 @@ try {
   chk("K1.15-S2.15", "members.add ด้วยคีย์ edit → 403 (ต้อง member.manage) · คีย์ admin → 200", memAdd.status === 403 && memAdd2.status === 200, "403/200", `${memAdd.status}/${memAdd2.status}`);
   await P.kanbanBoardMember.deleteMany({ where: { boardId: E.boards.maint.id, userId: E.users.staff.thana.userId } });
   const csv = await call("GET", `/boards/${E.boards.patong.id}/cards`, kRead, undefined, { accept: "text/csv" });
-  chk("K1.15-S2.16", "cards.list รองรับ Accept: text/csv (BOM + header)", csv.status === 200 && typeof csv.body?._raw === "string" && csv.body._raw.charCodeAt(0) === 0xfeff, "csv", `${csv.status} ${String(csv.body?._raw ?? JSON.stringify(csv.body)).slice(0, 40)}`, "MAJOR");
+  chk("K1.15-S2.16", "cards.list รองรับ Accept: text/csv (BOM + header)", csv.status === 200 && typeof csv.body?._raw === "string" && csv.body._bom === true, "csv", `${csv.status} ${String(csv.body?._raw ?? JSON.stringify(csv.body)).slice(0, 40)}`, "MAJOR");
 
   // ═══ S3 openapi + docs + developers + skill ═══
   const oa = (await import("@/app/api/v1/kanban/openapi.json/route" as string)) as { GET: (r: Request) => Promise<Response> };

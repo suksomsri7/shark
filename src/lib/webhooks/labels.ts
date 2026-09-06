@@ -30,6 +30,18 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   { value: "account.asset.depreciated", label: "เมื่อคิดค่าเสื่อมสินทรัพย์ประจำงวด" },
   { value: "account.asset.disposed", label: "เมื่อขาย/ตัดจำหน่ายสินทรัพย์" },
   { value: "account.recurring.ran", label: "เมื่อเอกสารประจำทำงานแล้ว" },
+  // ── บอร์ดงาน (K1.15 · D15 · ledger/KANBAN-RUN.md §K1.15) ───────────────────
+  // 🔴 5 ตัวเดิม (`card.moved` `card.assigned` `card.completed` `checklist.completed` `comment.added`)
+  //    มาจาก `AUTOMATION_EVENTS` ที่ spread ไว้ข้างบนแล้ว — **ห้ามประกาศซ้ำที่นี่** ไม่งั้นหน้าตั้งค่า
+  //    ฮุคจะมีช่องติ๊กซ้ำ 2 แถวต่อ event และคู่มือ/OpenAPI จะลิสต์ซ้ำ (เจอตอน K1.15 generate คู่มือ)
+  // 🔴 ทุกตัวที่เพิ่มที่นี่ต้องมี consumer ใน outbox-consumers.ts ด้วย ไม่งั้น event ค้าง PENDING + ฮุคไม่เคยยิง
+  //    ยิงจาก service ⇒ เข้าทางไหนก็ได้เหมือนกัน (ปุ่มบนจอ · REST `/api/v1/kanban/*` · สกิล AI)
+  { value: "kanban.card.created", label: "เมื่อมีการ์ดงานใบใหม่" },
+  { value: "kanban.card.archived", label: "เมื่อเก็บการ์ดเข้าคลัง" },
+  // ⚠️ 2 ตัวนี้ยิงจากงานเตือนกำหนดส่ง ซึ่งมาใน P2 (K2.x) — ประกาศไว้ก่อนเพื่อให้ผู้เชื่อมต่อ
+  //    ออกแบบปลายทางได้ตั้งแต่ตอนนี้ · ก่อนถึง K2.x จะยังไม่มีใบไหนถูกส่งจริง
+  { value: "kanban.card.due_soon", label: "เมื่อใกล้ถึงกำหนดส่งของการ์ด" },
+  { value: "kanban.card.overdue", label: "เมื่อการ์ดเลยกำหนดส่ง" },
   { value: "approval.request.submitted", label: "เมื่อมีคำขออนุมัติใหม่" },
   { value: "approval.request.approved", label: "เมื่อคำขออนุมัติผ่าน" },
   { value: "approval.request.rejected", label: "เมื่อคำขออนุมัติถูกปฏิเสธ" },

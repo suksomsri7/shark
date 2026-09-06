@@ -42,6 +42,12 @@ import {
   dispatchAccountKind,
   isAccountKind,
 } from "./account-ops";
+import {
+  dispatchKanbanKind,
+  isKanbanKind,
+  kanbanDestructiveKinds,
+  kanbanKindAccess,
+} from "./kanban-ops";
 import * as scheduledSvc from "./scheduled";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 
@@ -97,7 +103,7 @@ type StaticProposalKind =
  * kind ทั้งหมด — รวมของโมดูลบัญชีที่ derive จากทะเบียน op (`account.documents.create` ฯลฯ)
  * ไม่พิมพ์รายชื่อบัญชีซ้ำที่นี่: op เปลี่ยน/เพิ่มเมื่อไร ข้อเสนอเปลี่ยนตามทันที
  */
-export type ProposalKind = StaticProposalKind | `account.${string}`;
+export type ProposalKind = StaticProposalKind | `account.${string}` | `kanban.${string}`;
 
 type Ctx = { tenantId: string };
 
@@ -108,6 +114,8 @@ const TTL_MS = 24 * 60 * 60 * 1000; // 24 ชม.
 export const DESTRUCTIVE_KINDS = new Set<ProposalKind>([
   // บัญชี: ทุก op ชนิด `danger` ที่เปิดเป็นเครื่องมือ (ยกเลิกเอกสาร/ยกเลิกการชำระ/เปิดงวด/รวมผู้ติดต่อ)
   ...(accountDestructiveKinds() as ProposalKind[]),
+  // บอร์ดงาน (K1.15): ทุก op ชนิด `danger` ที่เปิดเป็นเครื่องมือ (เก็บการ์ด/บอร์ด/คอลัมน์ · ถอดสมาชิก)
+  ...(kanbanDestructiveKinds() as ProposalKind[]),
   "void_sale",
   "cancel_appointment",
   "cancel_reservation",
@@ -171,6 +179,8 @@ const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; action: s
 const KIND_ACCESS: Record<string, { module: string; action: string }> = {
   ...STATIC_KIND_ACCESS,
   ...accountKindAccess(),
+  // บอร์ดงาน (K1.15) — derive จาก `op.action` ของทะเบียน API เหมือนบัญชี
+  ...kanbanKindAccess(),
 };
 
 // ── payload ต่อ kind (server-side เท่านั้น) ──
@@ -429,6 +439,15 @@ async function dispatch(
   if (isAccountKind(kind)) {
     if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการบัญชีได้");
     return dispatchAccountKind(m, tenantId, proposalId, kind, payload);
+  }
+
+  // ── บอร์ดงาน (K1.15) ──────────────────────────────────────────────────────
+  // kind `kanban.*` เดินผ่านทะเบียน op เดียวกับ REST เช่นกัน (ไม่มีสาขา if ต่อคำสั่ง)
+  // 🔴 kind รุ่นเก่า `kanban_create_board` / `kanban_create_card` (ขีดล่าง) ยังอยู่ข้างล่าง —
+  //    ข้อเสนอที่ค้างอยู่ในระบบก่อน K1.15 ต้องกดยืนยันได้ต่อ ห้ามลบทิ้ง
+  if (isKanbanKind(kind)) {
+    if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการบอร์ดงานได้");
+    return dispatchKanbanKind(m, tenantId, proposalId, kind, payload);
   }
 
   if (kind === "inventory_receive") {

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/core/db";
+import { emitOutbox } from "@/lib/core/outbox";
 import { Prisma } from "@prisma/client";
 import type { KanbanBoard, KanbanBoardVisibility, KanbanCard, KanbanCardSourceType, KanbanColumn, KanbanLabelColor } from "@prisma/client";
 import { logActivity } from "./activity-log";
@@ -255,6 +256,45 @@ export async function renameBoard(tenantId: string, systemId: string, boardId: s
   });
 }
 
+/**
+ * แก้ฟิลด์ของบอร์ดที่ไม่ใช่ "ชื่อ" และไม่ใช่ "การมองเห็น" (คำอธิบาย/สี/สาขา) — K1.15
+ *
+ * ทำไมต้องมี: หน้าจอ K1.5–K1.14 แก้ได้แค่ชื่อ (renameBoard) กับ visibility (members.setBoardVisibility)
+ * แต่ REST ต้องรับ `PATCH /boards/{id}` ครบชุดตามสัญญา §K1.15 ⇒ ตัวเขียนอยู่ที่นี่ที่เดียว
+ * (จุดเดียวที่แตะฟิลด์เหล่านี้ · ผู้เรียกต้องตรวจบทบาท ADMIN มาก่อนเหมือน `renameBoard`)
+ * ไม่มีฟิลด์ให้เปลี่ยนเลย = ไม่เขียนอะไร (ไม่มีแถวประวัติเปล่า ๆ)
+ */
+export async function updateBoardFields(
+  ctx: KanbanCtx,
+  boardId: string,
+  patch: { description?: string | null; color?: KanbanLabelColor; unitId?: string | null },
+): Promise<void> {
+  const fields = Object.keys(patch).filter((k) => patch[k as keyof typeof patch] !== undefined);
+  if (fields.length === 0) return;
+  await prisma.$transaction(async (tx) => {
+    const before = await tx.kanbanBoard.findFirst({
+      where: { id: boardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+      select: { description: true, color: true, unitId: true },
+    });
+    if (!before) return;
+    await tx.kanbanBoard.updateMany({
+      where: { id: boardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+      data: {
+        ...(patch.description !== undefined ? { description: patch.description } : {}),
+        ...(patch.color !== undefined ? { color: patch.color } : {}),
+        ...(patch.unitId !== undefined ? { unitId: patch.unitId } : {}),
+      },
+    });
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId,
+      actorUserId: ctx.actorUserId ?? null,
+      type: "BOARD_UPDATED",
+      data: { fields, from: { description: before.description, color: before.color, unitId: before.unitId } },
+    });
+  });
+}
+
 export async function archiveBoard(tenantId: string, systemId: string, boardId: string, actorUserId?: string | null) {
   await prisma.$transaction(async (tx) => {
     const { count } = await tx.kanbanBoard.updateMany({
@@ -447,6 +487,22 @@ export async function createCard(input: {
       actorUserId: input.createdById ?? null,
       type: "CARD_CREATED",
       data: { title: created.title, columnId: col.id, sourceType: created.sourceType },
+    });
+    // K1.15 — เหตุการณ์ `kanban.card.created` ใน tx เดียวกับการสร้างการ์ด (ฮุคขาออก/กฎอัตโนมัติของร้าน)
+    // idempotencyKey ผูกกับ id ของการ์ด ⇒ การ์ด 1 ใบ = event 1 ใบตลอดกาล
+    await emitOutbox(tx, {
+      tenantId: input.tenantId,
+      systemId: input.systemId,
+      type: "kanban.card.created",
+      idempotencyKey: `kanban.card.created#${created.id}`,
+      payload: {
+        cardId: created.id,
+        boardId: col.boardId,
+        columnId: col.id,
+        cardNo: created.cardNo,
+        title: created.title,
+        sourceType: created.sourceType,
+      },
     });
     return created;
   });

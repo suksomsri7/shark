@@ -47,6 +47,8 @@ type BoardRow = {
  *    `{ ...ctx, actorUserId: userId }` แล้วเรียกตัวนี้
  */
 export async function loadActor(ctx: KanbanCtx): Promise<KanbanActor | null> {
+  // K1.15/D18: ผู้เรียกที่ไม่ใช่คน (คีย์ API) ประกอบ actor มาให้แล้ว — ห้ามไปอ่าน Membership ทับ
+  if (ctx.actor) return ctx.actor;
   if (!ctx.actorUserId) return null;
   const m = await prisma.membership.findFirst({
     where: { tenantId: ctx.tenantId, userId: ctx.actorUserId },
@@ -119,6 +121,24 @@ export async function assertColumnRole(
   if (!col) throw new KanbanNotFoundError("ไม่พบคอลัมน์นี้");
   await assertBoardRole(ctx, col.boardId, need);
   return { boardId: col.boardId };
+}
+
+/**
+ * ด่านของ mutation ที่ผู้ใช้ส่ง "ป้ายกำกับ" มา (K1.15 — REST มี `/labels/{id}` ที่ไม่มี boardId ใน path)
+ * หาบอร์ดจากตัวป้ายเอง ไม่เชื่อค่าที่ผู้เรียกส่งมา — เหตุผลเดียวกับ `assertColumnRole`/`assertCardRole`
+ */
+export async function assertLabelRole(
+  ctx: KanbanCtx,
+  labelId: string,
+  need: "VIEWER" | "EDITOR" | "ADMIN",
+): Promise<{ boardId: string }> {
+  const label = await prisma.kanbanLabel.findFirst({
+    where: { id: labelId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+    select: { boardId: true },
+  });
+  if (!label) throw new KanbanNotFoundError("ไม่พบป้ายกำกับนี้");
+  await assertBoardRole(ctx, label.boardId, need);
+  return { boardId: label.boardId };
 }
 
 export async function assertCardRole(

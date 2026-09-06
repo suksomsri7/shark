@@ -593,13 +593,13 @@ console.log("\n── F12: cookie ทุกตัวตั้ง secure (ห้�
     bad.length ? `ขาด secure ที่: ${bad.join(" · ")}` : "ครบทุกจุด");
 }
 
-// ─────────────────── F13: ทะเบียน API บัญชี ───────────────────
+// ─────────────────── F13: ทะเบียน API (บัญชี + บอร์ดงาน) ───────────────────
 // A4 ทำให้ "ทะเบียน op" เป็นแหล่งความจริงเดียวของ REST + OpenAPI + คู่มือ + สกิล AI
 // ด่านนี้กันของ 3 อย่างที่พังเงียบเป็นประจำเวลาเพิ่ม endpoint ใหม่:
 //   (1) เพิ่ม op แล้วไม่มีข้อสอบครอบ → พังบน prod ก่อนที่ CI จะรู้
 //   (2) เพิ่ม op แล้วลืม generate คู่มือ → เอกสารโกหก (ผู้เชื่อมต่อยิงตามคู่มือแล้ว 404)
 //   (3) ใส่ `tool` ให้ op แต่ไม่ลงทะเบียนในสกิล → AI มองไม่เห็น เงียบสนิท (บทเรียนเดียวกับ F10)
-console.log("\n── F13: ทะเบียน API บัญชี (op ทุกตัวมีข้อสอบ · คู่มือไม่เก่า · tool มีบ้าน) ──");
+console.log("\n── F13: ทะเบียน API (op ทุกตัวมีข้อสอบ · คู่มือไม่เก่า · tool มีบ้าน) ──");
 {
   const { ACCOUNT_OPS } = await import("@/lib/modules/account/api/registry");
 
@@ -645,6 +645,53 @@ console.log("\n── F13: ทะเบียน API บัญชี (op ทุ�
       : withTool.length === 0
         ? "ยังไม่มี op ไหนประกาศ tool (E1 จะเป็นตัวเติม)"
         : "ครบ",
+  );
+}
+
+// ─────────────────── F13 (ต่อ): ทะเบียน API บอร์ดงาน (K1.15 · D15) ───────────────────
+// เงื่อนไขเดียวกับบัญชีเป๊ะ ๆ — ทุก WO ของ P2/P3 ที่เพิ่มฟีเจอร์ให้บอร์ดงานต้องเพิ่ม op ของตัวเองในทะเบียน
+// แล้ว 3 ด่านนี้จะบังคับให้ "มีข้อสอบครอบ · คู่มือไม่เก่า · tool มีบ้านในสกิล" ตามมาเอง
+{
+  const { KANBAN_OPS } = await import("@/lib/modules/kanban/api/registry");
+
+  // F13.4 — ทุก op มี test id ที่ปรากฏจริงในข้อสอบชุด qc-kanban-*
+  const kbQcSrc = walk(join(ROOT, "scripts"), (f) => /qc-kanban-.*\.mts$/.test(f))
+    .map((f) => readFileSync(f, "utf8"))
+    .join("\n");
+  const untestedKb = KANBAN_OPS.filter((o) => !o.test || !kbQcSrc.includes(`"${o.test}"`));
+  chk(
+    "F13.4",
+    `ทุก op ของบอร์ดงาน (${KANBAN_OPS.length}) มี test id ที่อ้างถึงจริงใน scripts/qc-kanban-*.mts`,
+    untestedKb.length === 0,
+    untestedKb.length
+      ? `${untestedKb.length} op ไม่มีข้อสอบครอบ: ${untestedKb.map((o) => `${o.id}(test=${o.test || "-"})`).join(", ")}`
+      : "ครบ",
+  );
+
+  // F13.5 — คู่มือตรงกับ generator (import ฟังก์ชันบริสุทธิ์ ไม่ spawn)
+  let kbDocsOk = true;
+  let kbDocsDetail = "ตรง";
+  try {
+    const { renderDocs } = await import("./gen-kanban-api-docs.mjs");
+    const docPath = join(ROOT, "docs", "api", "KANBAN-API.md");
+    const onDisk = existsSync(docPath) ? readFileSync(docPath, "utf8") : "";
+    kbDocsOk = onDisk === renderDocs();
+    if (!kbDocsOk) kbDocsDetail = "docs/api/KANBAN-API.md ไม่ตรงกับทะเบียน — รัน: pnpm exec tsx scripts/gen-kanban-api-docs.mts";
+  } catch (e) {
+    kbDocsOk = false;
+    kbDocsDetail = e instanceof Error ? e.message.slice(0, 300) : String(e);
+  }
+  chk("F13.5", "docs/api/KANBAN-API.md ตรงกับ generator (ไม่ stale)", kbDocsOk, kbDocsDetail);
+
+  // F13.6 — op ที่ประกาศ tool ต้องมีชื่อนั้นในทะเบียนสกิล (สกิล `tasks`)
+  const kbWithTool = KANBAN_OPS.filter((o) => o.tool);
+  const skillsSrc2 = readFileSync(join(ROOT, "src", "lib", "ai", "skills.ts"), "utf8");
+  const kbOrphans = kbWithTool.filter((o) => !skillsSrc2.includes(`"${o.tool!.name}"`));
+  chk(
+    "F13.6",
+    `tool ของ op บอร์ดงาน (${kbWithTool.length} ตัว) ลงทะเบียนในสกิล AI แล้ว`,
+    kbOrphans.length === 0,
+    kbOrphans.length ? `${kbOrphans.length} tool ไม่มีในสกิล → AI เรียกไม่ได้: ${kbOrphans.map((o) => o.tool!.name).join(", ")}` : "ครบ",
   );
 }
 
