@@ -11,6 +11,8 @@ export const KANBAN_LIMITS = Object.freeze({
   attachmentMaxBytes: 10 * 1024 * 1024,
   /** รายการเช็คลิสต์ต่อการ์ด (K1.7) */
   checklistItemsPerCard: 50,
+  /** ความยาวความเห็น 1 ใบ (K1.8) — กันวางข้อความยาวผิดปกติลงกล่องความเห็น */
+  commentMaxChars: 5000,
   /** สมาชิกต่อบอร์ด (K1.3) */
   membersPerBoard: 50,
   /** คอลัมน์ต่อบอร์ด */

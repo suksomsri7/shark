@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { assertCan } from "@/lib/core/rbac";
+import { assertCan, evaluate as can } from "@/lib/core/rbac";
 import {
   archiveBoard,
   archiveCard,
@@ -55,7 +55,15 @@ import {
   renameChecklist,
   toggleItem as toggleChecklistItem,
 } from "./checklists";
-import type { BoardCardDto, BoardLabelDto, CardDetailDto, KanbanChecklistDto, KanbanCtx } from "./types";
+// K1.8 — ความเห็น + @mention (บริการอยู่ `comments.ts` · แจ้งเตือนยิงตรงคนใน `notify.ts`)
+import {
+  addComment,
+  deleteComment,
+  editComment,
+  listComments,
+  listMentionTargets,
+} from "./comments";
+import type { BoardCardDto, BoardLabelDto, CardDetailDto, KanbanChecklistDto, KanbanCommentDto, KanbanCtx } from "./types";
 
 // ทุก action: requireTenant → เอา tenantId จาก session (ไม่เชื่อ client) + scope ด้วย systemId
 
@@ -70,6 +78,22 @@ function assertKanbanCan(auth: Awaited<ReturnType<typeof requireTenant>>, action
     },
     { module: "kanban", action },
   );
+}
+
+/**
+ * ผ่านได้ถ้ามีคีย์ใดคีย์หนึ่งในรายการ (K1.8) — ใช้กับ "เขียนความเห็น" ที่มีคีย์เฉพาะของตัวเอง
+ * (`kanban.card.comment`) แต่ร้านที่ตั้งสิทธิ์ไว้ก่อนมีคีย์นี้ ติ๊กแค่ `kanban.card.update` ⇒ ถ้าตรวจ
+ * ตรงตัวคีย์เดียว พนักงานที่เคยคอมเมนต์ได้จะคอมเมนต์ไม่ได้ทันทีที่ deploy (แพตเทิร์นเดียวกับ
+ * backward compat ของ `canReadKanban` ใน K1.3) · ชั้นที่ 2 (บทบาทบอร์ด EDITOR+) ยังตรวจใน service เสมอ
+ */
+function assertKanbanCanAny(auth: Awaited<ReturnType<typeof requireTenant>>, actions: string[]) {
+  const ctx = {
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  };
+  if (actions.some((action) => can(ctx, { module: "kanban", action }))) return;
+  assertKanbanCan(auth, actions[0]!); // ไม่ผ่านสักคีย์ → ให้ตัวเดิมโยน ForbiddenError รูปแบบเดียวกับที่อื่น
 }
 
 // บริบทของโมดูล — tenantId มาจาก session เสมอ (ไม่เชื่อ client) · systemId มาจากฟอร์ม แล้วถูกกรองซ้ำใน service
@@ -730,5 +754,92 @@ export async function moveChecklistItemAction(input: {
     return { ok: true, checklists: await getCardChecklists(ctx, input.cardId) };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "จัดลำดับรายการไม่สำเร็จ" };
+  }
+}
+
+// ───────────────────────── K1.8: ความเห็น + @mention ─────────────────────────
+// ทุกตัวคืน "ความเห็นทั้งชุด" ของการ์ด (ไม่ใช่ patch ย่อย) — ชุดข้อมูลเล็กและต้องเรียงเก่า→ใหม่เสมอ
+// แพตเทิร์นเดียวกับเช็คลิสต์ (K1.7): ฝั่งจอแปะ optimistic ก่อน แล้วรับของจริงจาก action มาทับ
+
+export type CommentActionResult =
+  | { ok: true; comments: KanbanCommentDto[]; commentCount: number }
+  | { ok: false; message: string };
+
+async function commentsResult(ctx: KanbanCtx, cardId: string): Promise<CommentActionResult> {
+  const comments = await listComments(ctx, cardId);
+  return { ok: true, comments, commentCount: comments.length };
+}
+
+export async function addCommentAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  body: string;
+}): Promise<CommentActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCanAny(auth, ["kanban.card.comment", "kanban.card.update"]);
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await addComment(ctx, input.cardId, input.body);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return await commentsResult(ctx, input.cardId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ส่งความเห็นไม่สำเร็จ" };
+  }
+}
+
+export async function editCommentAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  commentId: string;
+  body: string;
+}): Promise<CommentActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCanAny(auth, ["kanban.card.comment", "kanban.card.update"]);
+  if (!input.systemId || !input.commentId) return { ok: false, message: "ไม่พบความเห็นนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await editComment(ctx, input.commentId, input.body);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return await commentsResult(ctx, input.cardId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "แก้ความเห็นไม่สำเร็จ" };
+  }
+}
+
+export async function deleteCommentAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  commentId: string;
+}): Promise<CommentActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCanAny(auth, ["kanban.card.comment", "kanban.card.update"]);
+  if (!input.systemId || !input.commentId) return { ok: false, message: "ไม่พบความเห็นนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await deleteComment(ctx, input.commentId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return await commentsResult(ctx, input.cardId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ลบความเห็นไม่สำเร็จ" };
+  }
+}
+
+/** รายชื่อพนักงานสำหรับเมนู `@` — ต้องมองเห็นบอร์ดใบนั้นก่อน (ไม่ใช่ช่องดูดรายชื่อทั้งร้าน) */
+export async function listMentionTargetsAction(input: {
+  systemId: string;
+  boardId: string;
+}): Promise<{ ok: true; people: { userId: string; name: string }[] } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.boardId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
+  try {
+    const people = await listMentionTargets(ctxOf(auth, input.systemId), input.boardId);
+    return { ok: true, people };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "โหลดรายชื่อไม่สำเร็จ" };
   }
 }

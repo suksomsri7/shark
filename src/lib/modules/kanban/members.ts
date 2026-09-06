@@ -12,6 +12,7 @@ import { prisma } from "./db";
 import { KANBAN_LIMITS } from "./limits";
 import {
   boardRole,
+  canReadKanban,
   hasBoardRole,
   KanbanForbiddenError,
   KanbanNotFoundError,
@@ -223,6 +224,54 @@ export async function addMember(
     after: { userId, role, boardName: board.name },
   });
   return row;
+}
+
+/**
+ * K1.8 — คนที่ถูก `@mention` แต่ยัง "มองไม่เห็น" บอร์ดใบนั้น ⇒ เพิ่มเป็น VIEWER ให้อัตโนมัติ
+ *
+ * 🔴 ทำไมไม่เรียก `addMember`: คนที่พิมพ์ความเห็นเป็นแค่ EDITOR ก็ mention ได้ (ตามสัญญา §K1.8)
+ *    แต่ `addMember` บังคับว่าผู้เรียกต้องเป็น ADMIN ของบอร์ด ⇒ ต้องมีทางของ "ระบบเป็นคนทำ" แยกออกมา
+ *    ยังคงเขียนแถวสมาชิกที่ไฟล์นี้ไฟล์เดียวเหมือนเดิม (จุดเดียวที่แตะ `KanbanBoardMember`)
+ * 🔴 ให้แค่ VIEWER เสมอ (สิทธิ์ต่ำสุด) และไม่แตะบทบาทของคนที่เป็นสมาชิกอยู่แล้ว — mention
+ *    ต้องไม่กลายเป็นช่องลดขั้น/เพิ่มขั้นคนอื่น
+ * 🔴 เขียน AuditLog ทุกครั้ง: เจ้าของร้านต้องเห็นว่า "บอร์ดลับถูกเปิดให้ใครเพราะการ mention ครั้งไหน"
+ *
+ * @returns true = เพิ่งได้สิทธิ์ดูจากการ mention ครั้งนี้ (ผู้เรียกเอาไปเขียนในข้อความแจ้งเตือน)
+ */
+export async function grantViewerForMention(
+  ctx: KanbanCtx,
+  boardId: string,
+  userId: string,
+): Promise<boolean> {
+  const board = await loadBoard(ctx, boardId);
+  if (!board) return false;
+  const actor = await loadActor({ ...ctx, actorUserId: userId });
+  if (!actor) return false; // ไม่ใช่พนักงานของร้านนี้ — ไม่ให้สิทธิ์อะไรทั้งนั้น
+  if (!canReadKanban(actor)) return false; // ไม่มีสิทธิ์โมดูล → เชิญเข้าบอร์ดไปก็เปิดไม่ได้
+  const members = await loadMembers(board.id, ctx.tenantId);
+  if (boardRole(actor, board, members) !== null) return false; // มองเห็นอยู่แล้ว → ไม่ต้องทำอะไร
+
+  const count = await prisma.kanbanBoardMember.count({ where: { boardId: board.id } });
+  if (count >= KANBAN_LIMITS.membersPerBoard) return false; // บอร์ดเต็ม → แจ้งเตือนอย่างเดียว ไม่ให้สิทธิ์
+  await prisma.kanbanBoardMember.create({
+    data: {
+      tenantId: ctx.tenantId,
+      boardId: board.id,
+      userId,
+      role: "VIEWER",
+      invitedById: ctx.actorUserId ?? null,
+    },
+  });
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: "USER",
+    actorId: ctx.actorUserId ?? null,
+    action: "kanban.board.member.add",
+    targetType: "KanbanBoard",
+    targetId: board.id,
+    after: { userId, role: "VIEWER", boardName: board.name, reason: "mention" },
+  });
+  return true;
 }
 
 /** เปลี่ยนบทบาทของสมาชิก (ADMIN เท่านั้น · ลดขั้น ADMIN คนสุดท้ายไม่ได้) */

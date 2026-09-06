@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KanbanIcon } from "./KanbanIcon";
 import { Avatar, formatCardDate, formatCardDateTime, tagColorVar } from "./Card";
 import { Checklist, checklistBadgeOf } from "./Checklist";
+import { Comments } from "./Comments";
 import {
   archiveCardAction,
   createChecklistAction,
@@ -24,7 +25,14 @@ import {
   updateCardFieldsAction,
 } from "@/lib/modules/kanban/actions";
 import { renderDescription } from "@/lib/modules/kanban/sanitize";
-import type { BoardCardDto, BoardLabelDto, BoardPersonDto, KanbanChecklistDto, KanbanTagColor } from "@/lib/modules/kanban/types";
+import type {
+  BoardCardDto,
+  BoardLabelDto,
+  BoardPersonDto,
+  KanbanChecklistDto,
+  KanbanCommentDto,
+  KanbanTagColor,
+} from "@/lib/modules/kanban/types";
 
 const TAG_COLORS: { value: KanbanTagColor; name: string }[] = [
   { value: "SLATE", name: "เทา" },
@@ -75,6 +83,7 @@ type Fields = {
   assignees: BoardPersonDto[];
   status: "ACTIVE" | "ARCHIVED";
   checklists: KanbanChecklistDto[];
+  comments: KanbanCommentDto[];
 };
 
 export type CardBackHandlers = {
@@ -101,6 +110,8 @@ export function CardBack({
   boardName,
   systemId,
   canEdit,
+  boardRole,
+  currentUserId,
   labels,
   members,
   columns,
@@ -114,6 +125,10 @@ export function CardBack({
   boardName: string;
   systemId: string;
   canEdit: boolean;
+  /** บทบาทของผู้ที่กำลังดูในบอร์ดใบนี้ — ADMIN ลบความเห็นของคนอื่นได้ (K1.8) */
+  boardRole: "VIEWER" | "EDITOR" | "ADMIN";
+  /** ผู้ใช้ที่กำลังดู — ใช้ตัดสินว่าแก้/ลบความเห็นใบไหนได้ + เน้นชิป @ ของตัวเอง */
+  currentUserId: string;
   labels: BoardLabelDto[];
   members: BoardPersonDto[];
   columns: { id: string; name: string }[];
@@ -160,6 +175,7 @@ export function CardBack({
         assignees: card.assignees,
         status: res.detail.status,
         checklists: res.detail.checklists,
+        comments: res.detail.comments,
       });
     });
     return () => {
@@ -368,6 +384,16 @@ export function CardBack({
       onChecklistsChange(res.checklists);
     });
   }, [boardId, card.id, systemId, onChecklistsChange, toast]);
+
+  // ───────────────────────── ความเห็น (K1.8) ─────────────────────────
+
+  const onCommentsChange = useCallback(
+    (comments: KanbanCommentDto[]) => {
+      setFields((f) => (f ? { ...f, comments } : f));
+      handlers.onPatch(card.id, { commentCount: comments.length });
+    },
+    [card.id, handlers],
+  );
 
   // ───────────────────────── ย้าย / ทำสำเนา / เก็บ / กู้คืน ─────────────────────────
 
@@ -731,6 +757,19 @@ export function CardBack({
                 members={members}
                 nowMs={nowMs}
                 onChange={onChecklistsChange}
+                onToast={toast}
+              />
+
+              {/* ความเห็น + @กล่าวถึง (K1.8) */}
+              <Comments
+                systemId={systemId}
+                boardId={boardId}
+                cardId={card.id}
+                editable={editable}
+                isBoardAdmin={boardRole === "ADMIN"}
+                currentUserId={currentUserId}
+                comments={fields.comments}
+                onChange={onCommentsChange}
                 onToast={toast}
               />
             </div>

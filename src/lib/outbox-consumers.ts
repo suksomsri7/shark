@@ -312,6 +312,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //      **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล — บทเรียน 30 ส.ค. 2026)
   //      + เป็นจุดให้ Automation rules (§7.3) และ `withWebhooks` ยิงต่อ
   "kanban.checklist.completed": withAutomation(async () => {}),
+  // K1.8 — มีความเห็นใหม่ในการ์ด (ยิงจาก `kanban/comments.ts#addComment` ใน tx เดียวกับการสร้างแถว)
+  //   🔴 แจ้งเตือนคนที่ถูก @mention ถูกส่งไปแล้วในโมดูล (ยิงตรงคน ไม่ผ่านคิว — ต้องถึงทันทีแม้คิวยาว)
+  //      consumer เป็น no-op เพื่อ **ปิด event เป็น DONE** + เป็นจุดให้ Automation rules/Webhooks ยิงต่อ
+  "kanban.comment.added": withAutomation(async () => {}),
   // WO 8.3 (§9.5 แอปภายนอก/API): เหตุการณ์บัญชี — ผลข้างเคียงเกิดในโมดูลบัญชีไปแล้ว
   //   consumer เป็น no-op เพื่อ **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล)
   //   + เป็นจุดให้ `withWebhooks` ยิงฮุคไปยังปลายทางที่ร้านสมัครไว้ (หน้า "แอปภายนอก/API")

@@ -83,6 +83,21 @@ export type CardDetailDto = {
   status: "ACTIVE" | "ARCHIVED";
   /** K1.7: เช็คลิสต์ทั้งหมดของการ์ด (หลายชุด) — เรียงตาม position */
   checklists: KanbanChecklistDto[];
+  /** K1.8: ความเห็นทั้งหมดของการ์ด (ไม่รวมที่ถูกลบ) — เรียงเก่า→ใหม่ */
+  comments: KanbanCommentDto[];
+};
+
+// ───────────────────────── K1.8: ความเห็น + @mention ─────────────────────────
+// `body` เก็บ markup `@[ชื่อ](userId)` ตรง ๆ — ฝั่งจอแปลงเป็นชิปตอนเรนเดอร์ (ไม่ใช่ HTML ที่ server ประกอบ)
+
+export type KanbanCommentDto = {
+  id: string;
+  body: string;
+  author: { userId: string; name: string };
+  /** userId ที่ถูกพูดถึง (กรองแล้วว่าเป็นพนักงานของร้านนี้) */
+  mentions: string[];
+  createdAt: string;
+  editedAt: string | null;
 };
 
 // ───────────────────────── K1.7: เช็คลิสต์ ─────────────────────────
@@ -122,6 +137,8 @@ export type BoardViewDto = {
   name: string;
   /** บทบาทของคนที่กำลังดู (VIEWER = ซ่อนปุ่มแก้ทั้งหมด) */
   role: "VIEWER" | "EDITOR" | "ADMIN";
+  /** ผู้ใช้ที่กำลังดู (K1.8) — จอใช้ตัดสินว่าแก้/ลบความเห็นใบไหนได้ + เน้นชิป @ ของตัวเอง */
+  viewerUserId: string;
   visibility: "PRIVATE" | "TENANT";
   unitName: string | null;
   starred: boolean;

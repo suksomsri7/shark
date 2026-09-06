@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | K1.8 |
+| WO | K1.9 |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable (oracle เขียนแล้ว 19 ข้อ) → Opus (builder) |
-| ขั้นที่ถึง | 08:44 น.: K1.7 DONE (Sonnet 36 นาที · Fable ดูภาพ + oracle 21 + regressions + race fix) → push main · สั่ง Opus ทำ K1.8 (ความเห็น + mention) · P1 7/15 |
+| ผู้ทำ | Fable (oracle เขียนแล้ว 19 ข้อ) → Sonnet (builder) |
+| ขั้นที่ถึง | 09:19 น.: K1.8 DONE (Opus 29 นาที · Fable ดูภาพ 3 ใบ + oracle 18 + regressions + probe 6) → push main · สั่ง Sonnet ทำ K1.9 (ไฟล์แนบ+ปก) · P1 8/15 |
 
 ## การตัดสินใจ (คำถาม §9 ของแบบ — เจ้าของไม่ได้ตอบ Fable ตัดสินแบบปลอดภัย แก้ทีหลังได้)
 | # | เรื่อง | ตัดสิน |
@@ -180,6 +180,8 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 **Oracle** (`qc-kanban-k1.15.mts`): แกนกลางไม่ซ้ำ (account import จาก `@/lib/api/`) · ทะเบียน ≥ 50 op id/path ไม่ซ้ำ ทุก op มี test · bundles 3 · ยิงจริงผ่าน route handler ด้วยคีย์ที่สร้างบน seed: ping · boards.list = 3 (คีย์เห็นทุกบอร์ด D18) · boards.get กะตะ 200 · cards.create + Idempotency-Key replay · cards.move ok · คีย์ read-only เขียน → 403 scope_missing · คีย์ร้านอื่น → 404 · danger ไม่ confirm → 409 · openapi.json = ทะเบียน · docs --check · AI tools ≥ 15 ในสกิล tasks · developers page มีจริง · WEBHOOK_EVENTS มี kanban.* ≥ 9
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 09:19 น. — K1.8 ปิด (Opus 29 นาที) · Fable ตรวจเอง: oracle 18/18 · regressions k1.1–k1.7/notify/ai เขียว · ภาพ 3 ใบตรงบล็อกล่าง mockup 03 (แท็บ ทั้งหมด/ความเห็น/กิจกรรม = K1.10) · probe `scripts/pending/probe-k18-fable.mts` ผ่าน 6/6 · ยอมรับ deviation 6 ข้อของ builder (authorUserId NOT NULL → คีย์ API คอมเมนต์ไม่ได้ **รอ K1.15 ตัดสิน: ให้ op comments.create ใช้ authorUserId ของ "ผู้สร้างคีย์" หรือเพิ่มคอลัมน์ apiKeyId nullable**) · action รับสิทธิ์ `kanban.card.comment` หรือ `kanban.card.update` · **Fable แก้เพิ่ม**: `notify.ts` import `@/lib/env`/`core/email` static → pre-commit F10.1 ตก (โหลด tool ต้องมี env) → เปลี่ยนเป็น lazy import · ความคืบหน้า P1 8/15
+- 08:48 น. — prod: Vercel READY `4f4ddad` · migration kanban_v2_e (เช็คลิสต์) ลง prod แล้ว (ตาราง 0 แถว ตามคาด) · Telegram msg 2860 (P1 7/15) · Opus เริ่ม K1.8
 - 08:44 น. — K1.7 ปิด (Sonnet 36 นาที) · Fable ตรวจเอง: oracle 21/21 · regressions k1.1–k1.6/notify/ai เขียว · ดูภาพ card-back desktop/mobile (เช็คลิสต์ 3/5 · แถบความคืบหน้า · ชิปวัน · avatar ผู้รับมอบ ตรง mockup) · **บัคที่ Fable หาเจอเอง**: `toggleItem` นับความครบใน tx โดยไม่ล็อก → ติ๊ก 2 รายการสุดท้ายพร้อมกัน event `kanban.checklist.completed` หาย (probe ยืนยัน 0/3 ครั้ง) → แก้ `SELECT … FOR UPDATE` แถวเช็คลิสต์ (probe 1/1 ×3 · `scripts/pending/probe-k17-race.mts`) · ยอมรับ deviation: `listMyChecklistItems` กรองตามบอร์ดที่ผู้เรียกเห็น (เคสเจ้าของดูงานลูกน้อง) · ความคืบหน้า P1 7/15
 - 08:08 น. — เตรียม K1.15 ระหว่างรอ K1.7: เพิ่ม D18 (บทบาทคีย์ API มาจาก scope · คีย์เห็นทุกบอร์ดของ system) + สัญญา §K1.15 (~52 op · แกนกลาง `src/lib/api/*` · bundle 3 · AI tools 15+ · docs/skill) + oracle `qc-kanban-k1.15.mts` (28 ข้อ · typecheck ผ่าน · SKIP จนกว่าจะมี registry)
 - 08:00 น. — K1.6 ปิด (Sonnet 36 นาที) · หนี้ UI จด: date picker ชิปไทย · ย้ายข้ามบอร์ดยังไม่มี (K2/K3) · ความคืบหน้า P1 6/15 · เริ่ม K1.7

@@ -1,0 +1,501 @@
+// Comments.tsx — ความเห็น + @กล่าวถึง ในหลังการ์ด (K1.8) · แบบ: `ledger/design-kanban/03-card-back.png`
+// บล็อกล่างสุดของหลังการ์ด: หัวข้อ "ความเห็น" → สายความเห็นเรียงเก่า→ใหม่ → ช่องเขียนติดท้าย
+//
+// markup ที่เก็บใน DB = `@[ชื่อ](userId)` — ไฟล์นี้แปลงเป็น "ชิป @ชื่อ" ตอนเรนเดอร์เท่านั้น
+// (ไม่ให้ server ประกอบ HTML ส่งมา — เนื้อความของผู้ใช้ห้ามกลายเป็น HTML ที่ browser เชื่อ)
+//
+// ทุกการแก้ไขเป็น optimistic เหมือน `Checklist.tsx` (K1.7): แปะ state ก่อน → ยิง action → ผิด → revert + toast
+// แท็บ "ทั้งหมด / ความเห็น / กิจกรรม" ตามภาพ 03 มาพร้อมประวัติกิจกรรมใน K1.10 (`Timeline.tsx`)
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Avatar, formatCardDateTime } from "./Card";
+import { KanbanIcon } from "./KanbanIcon";
+import {
+  addCommentAction,
+  deleteCommentAction,
+  editCommentAction,
+  listMentionTargetsAction,
+} from "@/lib/modules/kanban/actions";
+import type { KanbanCommentDto } from "@/lib/modules/kanban/types";
+
+/** ต้องตรงกับ `MENTION_RE` ใน `src/lib/modules/kanban/comments.ts` (ฝั่ง server เป็นตัวตัดสิน) */
+const MENTION_RE = /@\[([^\]\n]{1,80})\]\(([A-Za-z0-9_-]{1,64})\)/g;
+/** ข้อความก่อนเคอร์เซอร์ที่กำลัง "พิมพ์ @ ค้างอยู่" — จับคำหลัง @ ตัวสุดท้ายที่ยังไม่จบด้วยช่องว่าง */
+const TYPING_MENTION_RE = /(?:^|\s)@([^\s@[\]()]{0,30})$/;
+
+export type MentionPerson = { userId: string; name: string };
+
+export type CommentsProps = {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  /** เขียน/แก้ความเห็นได้ไหม (EDITOR+ ของบอร์ด) */
+  editable: boolean;
+  /** ผู้ดูแลบอร์ด — ลบความเห็นของคนอื่นได้ */
+  isBoardAdmin: boolean;
+  currentUserId: string;
+  comments: KanbanCommentDto[];
+  onChange: (comments: KanbanCommentDto[]) => void;
+  onToast: (message: string) => void;
+};
+
+type ActionResult =
+  | { ok: true; comments: KanbanCommentDto[]; commentCount: number }
+  | { ok: false; message: string };
+
+export function Comments({
+  systemId,
+  boardId,
+  cardId,
+  editable,
+  isBoardAdmin,
+  currentUserId,
+  comments,
+  onChange,
+  onToast,
+}: CommentsProps) {
+  const [people, setPeople] = useState<MentionPerson[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  // รายชื่อสำหรับเมนู `@` — โหลดครั้งเดียวต่อการเปิดหลังการ์ด (เล็กมาก · ไม่ต้องรอผู้ใช้พิมพ์ @ ก่อน
+  // ไม่งั้นเมนูจะกะพริบตอนพิมพ์ตัวแรก)
+  useEffect(() => {
+    let alive = true;
+    listMentionTargetsAction({ systemId, boardId }).then((res) => {
+      if (alive && res.ok) setPeople(res.people);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [systemId, boardId]);
+
+  const run = useCallback(
+    (before: KanbanCommentDto[], optimistic: KanbanCommentDto[], task: () => Promise<ActionResult>, fallback: string) => {
+      onChange(optimistic);
+      task().then((res) => {
+        if (res.ok) {
+          onChange(res.comments);
+          return;
+        }
+        onChange(before);
+        onToast(res.message || fallback);
+      });
+    },
+    [onChange, onToast],
+  );
+
+  const submit = useCallback(
+    async (body: string): Promise<boolean> => {
+      const res = await addCommentAction({ systemId, boardId, cardId, body });
+      if (!res.ok) {
+        onToast(res.message || "ส่งความเห็นไม่สำเร็จ");
+        return false;
+      }
+      onChange(res.comments);
+      return true;
+    },
+    [systemId, boardId, cardId, onChange, onToast],
+  );
+
+  const saveEdit = useCallback(
+    (comment: KanbanCommentDto, body: string) => {
+      setEditingId(null);
+      if (body.trim() === comment.body.trim()) return;
+      run(
+        comments,
+        comments.map((c) => (c.id === comment.id ? { ...c, body, editedAt: new Date().toISOString() } : c)),
+        () => editCommentAction({ systemId, boardId, cardId, commentId: comment.id, body }),
+        "แก้ความเห็นไม่สำเร็จ",
+      );
+    },
+    [comments, run, systemId, boardId, cardId],
+  );
+
+  const remove = useCallback(
+    (comment: KanbanCommentDto) => {
+      if (typeof window !== "undefined" && !window.confirm("ลบความเห็นนี้?")) return;
+      run(
+        comments,
+        comments.filter((c) => c.id !== comment.id),
+        () => deleteCommentAction({ systemId, boardId, cardId, commentId: comment.id }),
+        "ลบความเห็นไม่สำเร็จ",
+      );
+    },
+    [comments, run, systemId, boardId, cardId],
+  );
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="comments">
+      <div className="flex items-center gap-2">
+        <KanbanIcon name="chat" size="sm" className="text-[color:var(--color-muted)]" />
+        <span style={{ fontSize: 13, fontWeight: 700 }}>ความเห็น</span>
+        {comments.length > 0 && (
+          <span style={{ fontSize: 12, color: "var(--color-muted)" }}>{comments.length}</span>
+        )}
+      </div>
+
+      {comments.length === 0 ? (
+        <div
+          className="rounded-lg border border-dashed px-3 py-2"
+          style={{ fontSize: 12.5, color: "var(--color-muted)", borderColor: "var(--color-line)" }}
+        >
+          ยังไม่มีความเห็นในการ์ดนี้{editable ? " — เขียนความเห็นแรกได้เลย" : ""}
+        </div>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {comments.map((comment) => (
+            <CommentRow
+              key={comment.id}
+              comment={comment}
+              people={people}
+              currentUserId={currentUserId}
+              canEdit={editable && comment.author.userId === currentUserId}
+              canDelete={(editable && comment.author.userId === currentUserId) || isBoardAdmin}
+              editing={editingId === comment.id}
+              onStartEdit={() => setEditingId(comment.id)}
+              onCancelEdit={() => setEditingId(null)}
+              onSaveEdit={(body) => saveEdit(comment, body)}
+              onDelete={() => remove(comment)}
+            />
+          ))}
+        </ul>
+      )}
+
+      {editable && <Composer people={people} onSubmit={submit} />}
+    </div>
+  );
+}
+
+// ───────────────────────── ความเห็น 1 ใบ ─────────────────────────
+
+function CommentRow({
+  comment,
+  people,
+  currentUserId,
+  canEdit,
+  canDelete,
+  editing,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
+}: {
+  comment: KanbanCommentDto;
+  people: MentionPerson[];
+  currentUserId: string;
+  canEdit: boolean;
+  canDelete: boolean;
+  editing: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (body: string) => void;
+  onDelete: () => void;
+}) {
+  const [draft, setDraft] = useState(comment.body);
+  useEffect(() => {
+    if (editing) setDraft(comment.body);
+  }, [editing, comment.body]);
+
+  return (
+    <li className="flex items-start gap-2" data-testid="comment">
+      <Avatar name={comment.author.name} size={26} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span style={{ fontSize: 12.5, fontWeight: 700 }}>{comment.author.name}</span>
+          <span style={{ fontSize: 11.5, color: "var(--color-muted)" }}>{formatCardDateTime(comment.createdAt)}</span>
+          {comment.editedAt && (
+            <span style={{ fontSize: 11.5, color: "var(--color-muted)" }}>· แก้ไขแล้ว</span>
+          )}
+          <span className="flex-1" />
+          {canEdit && !editing && (
+            <button
+              type="button"
+              onClick={onStartEdit}
+              aria-label="แก้ความเห็น"
+              className="rounded-md px-1"
+              style={{ fontSize: 11.5, color: "var(--color-muted)" }}
+            >
+              แก้ไข
+            </button>
+          )}
+          {canDelete && !editing && (
+            <button
+              type="button"
+              onClick={onDelete}
+              aria-label="ลบความเห็น"
+              className="rounded-md px-1"
+              style={{ fontSize: 11.5, color: "var(--color-muted)" }}
+            >
+              ลบ
+            </button>
+          )}
+        </div>
+
+        {editing ? (
+          <div className="mt-1 flex flex-col gap-1.5">
+            <MentionTextarea
+              value={draft}
+              onChange={setDraft}
+              people={people}
+              placeholder="แก้ความเห็น…"
+              testId="comment-edit-input"
+              onSubmit={() => onSaveEdit(draft)}
+              rows={3}
+            />
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => onSaveEdit(draft)}
+                className="rounded-lg"
+                style={{ height: 27, padding: "0 12px", fontSize: 12, background: "var(--color-ink)", color: "var(--color-surface)" }}
+              >
+                บันทึก
+              </button>
+              <button
+                type="button"
+                onClick={onCancelEdit}
+                className="rounded-lg border"
+                style={{ height: 27, padding: "0 10px", fontSize: 12, borderColor: "var(--color-line)", color: "var(--color-ink-soft)" }}
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, lineHeight: 1.6, color: "var(--color-ink-soft)", whiteSpace: "pre-wrap" }}>
+            <CommentBody body={comment.body} currentUserId={currentUserId} />
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** เนื้อความ → ข้อความธรรมดา + ชิป `@ชื่อ` (ของตัวเอง = เน้นสีเข้ม) */
+function CommentBody({ body, currentUserId }: { body: string; currentUserId: string }) {
+  const parts = useMemo(() => {
+    const out: { key: string; text: string; userId?: string }[] = [];
+    let last = 0;
+    let i = 0;
+    for (const m of body.matchAll(MENTION_RE)) {
+      const at = m.index ?? 0;
+      if (at > last) out.push({ key: `t${i}`, text: body.slice(last, at) });
+      out.push({ key: `m${i}`, text: `@${m[1]}`, userId: m[2] });
+      last = at + m[0].length;
+      i += 1;
+    }
+    if (last < body.length) out.push({ key: `t${i}`, text: body.slice(last) });
+    return out;
+  }, [body]);
+
+  return (
+    <>
+      {parts.map((p) =>
+        p.userId ? (
+          <span
+            key={p.key}
+            data-testid="mention-chip"
+            className="rounded px-1"
+            style={{
+              color: "var(--color-accent)",
+              background: p.userId === currentUserId ? "color-mix(in srgb, var(--color-accent) 12%, transparent)" : "transparent",
+              fontWeight: 600,
+            }}
+          >
+            {p.text}
+          </span>
+        ) : (
+          <span key={p.key}>{p.text}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+// ───────────────────────── ช่องเขียน ─────────────────────────
+
+function Composer({ people, onSubmit }: { people: MentionPerson[]; onSubmit: (body: string) => Promise<boolean> }) {
+  const [value, setValue] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const send = useCallback(async () => {
+    const body = value.trim();
+    if (!body || sending) return;
+    setSending(true);
+    const ok = await onSubmit(body);
+    setSending(false);
+    if (ok) setValue("");
+  }, [value, sending, onSubmit]);
+
+  return (
+    <div className="flex items-start gap-2">
+      <div className="min-w-0 flex-1">
+        <MentionTextarea
+          value={value}
+          onChange={setValue}
+          people={people}
+          placeholder="เขียนความเห็น… พิมพ์ @ เพื่อกล่าวถึงเพื่อนร่วมทีม"
+          testId="comment-input"
+          onSubmit={send}
+          rows={2}
+        />
+      </div>
+      <button
+        type="button"
+        data-testid="comment-send"
+        onClick={send}
+        disabled={sending || value.trim().length === 0}
+        className="rounded-lg disabled:opacity-45"
+        style={{ height: 32, padding: "0 14px", fontSize: 12.5, background: "var(--color-ink)", color: "var(--color-surface)" }}
+      >
+        ส่ง
+      </button>
+    </div>
+  );
+}
+
+/**
+ * textarea + เมนู `@` (autocomplete)
+ * Enter = ส่ง · Shift+Enter = ขึ้นบรรทัดใหม่ (พิมพ์เขียว §5.6) — ตอนเมนูเปิดอยู่ Enter = เลือกคน
+ */
+function MentionTextarea({
+  value,
+  onChange,
+  people,
+  placeholder,
+  testId,
+  onSubmit,
+  rows,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  people: MentionPerson[];
+  placeholder: string;
+  testId: string;
+  onSubmit: () => void;
+  rows: number;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+  const [query, setQuery] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState(0);
+
+  const matches = useMemo(() => {
+    if (query === null) return [];
+    const q = query.trim().toLowerCase();
+    return people.filter((p) => (q ? p.name.toLowerCase().includes(q) : true)).slice(0, 8);
+  }, [query, people]);
+  const menuOpen = query !== null && matches.length > 0;
+
+  /** อ่าน "กำลังพิมพ์ @อะไรอยู่" จากข้อความก่อนเคอร์เซอร์ */
+  const refreshQuery = useCallback((el: HTMLTextAreaElement) => {
+    const before = el.value.slice(0, el.selectionStart ?? el.value.length);
+    const m = before.match(TYPING_MENTION_RE);
+    setQuery(m ? (m[1] ?? "") : null);
+    setHighlight(0);
+  }, []);
+
+  const pick = useCallback(
+    (person: MentionPerson) => {
+      const el = ref.current;
+      if (!el) return;
+      const caret = el.selectionStart ?? value.length;
+      const before = value.slice(0, caret);
+      const m = before.match(TYPING_MENTION_RE);
+      if (!m) return;
+      const start = caret - m[0].length + (m[0].startsWith("@") ? 0 : 1); // เว้นช่องว่างนำหน้าไว้
+      const token = `@[${person.name}](${person.userId}) `;
+      const next = value.slice(0, start) + token + value.slice(caret);
+      onChange(next);
+      setQuery(null);
+      requestAnimationFrame(() => {
+        el.focus();
+        const pos = start + token.length;
+        el.setSelectionRange(pos, pos);
+      });
+    },
+    [value, onChange],
+  );
+
+  return (
+    <div className="relative">
+      <textarea
+        ref={ref}
+        data-testid={testId}
+        rows={rows}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => {
+          onChange(e.target.value);
+          refreshQuery(e.target);
+        }}
+        onClick={(e) => refreshQuery(e.currentTarget)}
+        onKeyUp={(e) => {
+          if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) refreshQuery(e.currentTarget);
+        }}
+        onBlur={() => setTimeout(() => setQuery(null), 120)}
+        onKeyDown={(e) => {
+          if (menuOpen) {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setHighlight((h) => (h + 1) % matches.length);
+              return;
+            }
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setHighlight((h) => (h - 1 + matches.length) % matches.length);
+              return;
+            }
+            if (e.key === "Enter" || e.key === "Tab") {
+              e.preventDefault();
+              const person = matches[highlight];
+              if (person) pick(person);
+              return;
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setQuery(null);
+              return;
+            }
+          }
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            onSubmit();
+          }
+        }}
+        className="w-full rounded-lg border px-2.5 py-2"
+        style={{ fontSize: 13, lineHeight: 1.6, borderColor: "var(--color-line)", background: "var(--color-surface)" }}
+      />
+      {menuOpen && (
+        <div
+          data-testid="mention-menu"
+          role="listbox"
+          className="absolute left-2 z-30 w-56 overflow-hidden rounded-xl border shadow-lg"
+          style={{ bottom: "calc(100% + 4px)", borderColor: "var(--color-line)", background: "var(--color-surface)" }}
+        >
+          {matches.map((p, i) => (
+            <button
+              key={p.userId}
+              type="button"
+              role="option"
+              aria-selected={i === highlight}
+              data-testid="mention-option"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                pick(p);
+              }}
+              onMouseEnter={() => setHighlight(i)}
+              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
+              style={{ fontSize: 12.5, background: i === highlight ? "var(--color-surface-2)" : "transparent" }}
+            >
+              <Avatar name={p.name} size={22} />
+              <span className="truncate">{p.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default Comments;

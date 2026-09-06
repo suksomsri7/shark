@@ -58,6 +58,11 @@ const SPECS: Record<string, Spec[]> = {
     { name: "card-back", path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`, note: "เปิดหลังการ์ดตรงจาก URL", expect: ["[data-testid=card-back]"] },
     { name: "card-back-edit-title", path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`, onlyDevice: "desktop", steps: [{ waitFor: "[data-testid=card-back]" }, { click: "[data-testid=card-title]" }, { fill: "[data-testid=card-title-input]", value: "ทำใบเสนอราคาทริปเรือ Sea Fox — แก้ชื่อผ่าน QC" }, { press: "Enter" }, { wait: 800 }] },
   ],
+  // K1.8 — ความเห็น + @กล่าวถึง (บล็อกล่างของภาพ 03)
+  "1.8": [
+    { name: "comment-mention-menu", path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`, onlyDevice: "desktop", note: "พิมพ์ @ แล้วเมนูรายชื่อต้องเด้ง (autocomplete)", expect: ["[data-testid=mention-menu]"], steps: [{ waitFor: "[data-testid=card-back]" }, { fill: "[data-testid=comment-input]", value: "เช็คกับกัปตันแล้ว เรือ Sea Fox ว่าง 24–26 ต.ค. @ธ" }, { wait: 600 }] },
+    { name: "comment-posted", path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`, note: "เขียนความเห็นพร้อม @กล่าวถึง แล้วกดส่ง — ต้องเห็นความเห็นในสาย + ชิป @", expect: ["[data-testid=comments]"], steps: [{ waitFor: "[data-testid=card-back]" }, { fill: "[data-testid=comment-input]", value: "เช็คกับกัปตันแล้ว เรือ Sea Fox ว่าง 24–26 ต.ค. @ธ" }, { wait: 600 }, { press: "Enter" }, { wait: 200 }, { click: "[data-testid=comment-send]" }, { wait: 1200 }] },
+  ],
   "1.12": [
     { name: "boards-home-new", path: `/app/sys/${SYS}/kanban/boards`, note: "เทียบ mockup 01: ดาว · จัดกลุ่มสาขา · แถวเทมเพลต", expect: ["[data-testid=boards-starred]", "[data-testid=templates-row]"] },
   ],

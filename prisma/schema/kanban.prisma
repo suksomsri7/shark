@@ -144,6 +144,9 @@ model KanbanCard {
   // ── K1.7 ──
   checklists KanbanChecklist[]
 
+  // ── K1.8 ──
+  comments KanbanComment[]
+
   @@index([tenantId, systemId, boardId, status])
   @@index([columnId, status, sortOrder])
   @@index([tenantId, systemId, assigneeUserId])
@@ -274,4 +277,28 @@ model KanbanChecklistItem {
   // เส้นทางของ "งานของฉัน" (listMyChecklistItems) — เฉพาะ done=false ต่อคนต่อร้าน
   @@index([checklistId])
   @@index([tenantId, assigneeUserId, done])
+}
+
+// ───────────────────────── ความเห็นในการ์ด (K1.8 · KANBAN-RUN §K1.8) ─────────────────────────
+// เนื้อความเก็บ markup ของ mention ไว้ตรง ๆ: `@[ชื่อ](userId)` — ชื่อที่โชว์เป็นค่า ณ เวลาที่พิมพ์
+// (คนเปลี่ยนชื่อทีหลัง ข้อความเก่ายังอ่านรู้เรื่อง) ส่วน `mentions` = userId ที่ถอดจาก markup แล้ว
+// กรองเหลือเฉพาะพนักงานจริงของร้าน — ใช้เป็นรายชื่อผู้รับแจ้งเตือน/ค้นหาในอนาคต ไม่ต้อง parse ซ้ำ
+//
+// ไม่มี `systemId`: การ์ดต้นทางรู้ระบบของตัวเองอยู่แล้ว (เหตุผลเดียวกับ KanbanChecklist ใน K1.7)
+// ลบแบบ soft (`deletedAt`) เสมอ — ประวัติกิจกรรม (K1.10) ต้องยังอ้างถึงความเห็นที่ถูกลบได้
+model KanbanComment {
+  id           String     @id @default(cuid())
+  tenantId     String
+  cardId       String
+  card         KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  authorUserId String // User.id — ไม่ทำ FK (เหมือน KanbanCardAssignee) ตรวจ Membership ใน service
+  body         String
+  mentions     Json       @default("[]") // string[] ของ User.id ที่ถูกพูดถึง (กรองแล้วว่าเป็นคนในร้าน)
+  editedAt     DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime   @default(now())
+
+  // เส้นอ่านหลัก = ความเห็นของการ์ดใบเดียว เรียงเก่า→ใหม่
+  @@index([cardId, createdAt])
+  @@index([tenantId])
 }

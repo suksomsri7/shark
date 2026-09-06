@@ -9,6 +9,7 @@ import { KanbanNotFoundError } from "./access";
 import { getCardChecklists } from "./checklists";
 import { prisma } from "./db";
 import { assertBoardRole, assertCardRole } from "./members";
+import { listComments } from "./comments";
 import { notifyCardAssigned } from "./notify";
 import { keyBetween } from "./ordering";
 import { sanitizeDescription } from "./sanitize";
@@ -155,8 +156,9 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     },
   });
   if (!card) throw new KanbanNotFoundError("ไม่พบการ์ดนี้");
-  // K1.7: หลังการ์ดโหลดเช็คลิสต์พร้อมกับส่วนที่เหลือของการ์ดในเที่ยวเดียว (ไม่ต้องยิง action แยก)
-  const checklists = await getCardChecklists(ctx, cardId);
+  // K1.7/K1.8: หลังการ์ดโหลดเช็คลิสต์ + ความเห็นพร้อมกับส่วนที่เหลือของการ์ดในเที่ยวเดียว
+  // (ทั้งคู่ตรวจสิทธิ์ซ้ำในตัวเอง — เปิดหลังการ์ด 1 ครั้ง = ไม่ต้องยิง action เพิ่มอีก 2 รอบ)
+  const [checklists, comments] = await Promise.all([getCardChecklists(ctx, cardId), listComments(ctx, cardId)]);
   return {
     id: card.id,
     description: card.description,
@@ -167,6 +169,7 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     archivedById: card.archivedById,
     status: card.status as CardDetailDto["status"],
     checklists,
+    comments,
   };
 }
 

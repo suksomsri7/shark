@@ -18,6 +18,8 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "kanban.card.completed", label: "เมื่องานเสร็จ" },
   // K1.7 — ติ๊กเช็คลิสต์ครบทุกข้อ (`kanban/checklists.ts#toggleItem`)
   { value: "kanban.checklist.completed", label: "เมื่อเช็คลิสต์ครบทุกข้อ" },
+  // K1.8 — ความเห็นใหม่ในการ์ด (`kanban/comments.ts#addComment`)
+  { value: "kanban.comment.added", label: "เมื่อมีความเห็นใหม่ในการ์ด" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

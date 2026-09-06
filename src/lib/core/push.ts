@@ -127,6 +127,58 @@ export async function sendPushToTenant(
 }
 
 /**
+ * ส่ง push เข้าเครื่องของ **คนเดียว** (K1.8) — best-effort ห้าม throw
+ *
+ * 🔴 ทำไมต้องมีตัวนี้: แจ้งเตือนของบอร์ดงาน (มอบหมายงาน / ถูก @mention) เป็นเรื่อง "ของคนคนนั้น"
+ *    ยิงทั้งร้านแบบตัวข้างบน = ทุกคนที่ลงแอปเห็นชื่องาน+ชื่อบอร์ดของคนอื่นบนจอล็อก (บั๊กความเป็นส่วนตัว
+ *    ตัวเดียวกับ G9 ฝั่งแชท และ G11 ฝั่ง AppNotification ที่ปิดไปแล้วใน K1.1)
+ *
+ * 🔴 `tenantId` ควรส่งเสมอเมื่อผู้เรียกรู้: ผู้ใช้ 1 คนเป็นพนักงานได้หลายร้าน ⇒ ไม่กรองร้าน
+ *    = เรื่องของร้าน ก. ไปโผล่บนเครื่องที่เขาลงทะเบียนไว้กับร้าน ข.
+ *
+ * ตัวเลข `sent` นับเฉพาะใบที่ Expo ตอบ `status:"ok"` (กติกาเดียวกับทั้งไฟล์ — ห้ามโกหก)
+ * ⚠️ ต้องเรียกจาก **นอกทรานแซกชัน** เสมอ (network call ขัง Neon pool)
+ */
+export async function sendPushToUser(
+  userId: string,
+  msg: PushMsg,
+  opts?: { tenantId?: string; post?: PushDeps["post"] },
+): Promise<{ sent: number }> {
+  const post = opts?.post ?? expoPost;
+  const tenantId = opts?.tenantId;
+  let sent = 0;
+  try {
+    const devices = await prisma.pushDevice.findMany({
+      where: { userId, ...(tenantId ? { tenantId } : {}) },
+    });
+    if (devices.length === 0) return { sent: 0 };
+
+    for (let i = 0; i < devices.length; i += CHUNK) {
+      const batch = devices.slice(i, i + CHUNK);
+      try {
+        const r = await deliverBatch(batch, msg, post);
+        sent += r.sent;
+        if (r.failures.length > 0) {
+          await logPushError(
+            `Expo ปฏิเสธ ${r.failures.length} ใบ (ผู้ใช้ ${userId})`,
+            r.failures.slice(0, 5).join(" · "),
+            tenantId ?? "",
+          );
+        }
+        if (r.dead.length > 0) {
+          await prisma.pushDevice.deleteMany({ where: { expoToken: { in: r.dead } } });
+        }
+      } catch (e) {
+        await logPushError(`ส่ง push รายคนล้มเหลว (ผู้ใช้ ${userId})`, String(e), tenantId ?? "");
+      }
+    }
+  } catch (e) {
+    await logPushError(`push รายคนพัง (ผู้ใช้ ${userId})`, String(e), tenantId ?? "");
+  }
+  return { sent };
+}
+
+/**
  * ส่ง push ของ **กล่องแชทลูกค้า** เข้าเฉพาะเครื่องของคนที่ควรได้รับ (WO-CW5 · ปิด G9)
  *
  * 🔴 ต่างจาก `sendPushToTenant` ตรงที่ **ไม่ยิงทุกเครื่องในร้าน**:

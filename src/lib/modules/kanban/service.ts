@@ -528,7 +528,7 @@ export async function getBoardView(
   const board = await getBoardFor(ctx, actor, boardId);
   const cardIds = board.columns.flatMap((c) => c.cards.map((k) => k.id));
 
-  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows] = await Promise.all([
+  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows, commentCountRows] = await Promise.all([
     prisma.kanbanLabel.findMany({
       where: { boardId: board.id, tenantId: ctx.tenantId, systemId: ctx.systemId },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -576,10 +576,20 @@ export async function getBoardView(
           GROUP BY ch."cardId"
         `
       : Promise.resolve([] as { cardId: string; total: bigint; done: bigint }[]),
+    // K1.8: ตราจำนวนความเห็นของทุกการ์ด — คิวรีเดียว (group by cardId) ไม่ใช่ต่อการ์ด (กัน N+1)
+    cardIds.length
+      ? prisma.$queryRaw<{ cardId: string; total: bigint }[]>`
+          SELECT c."cardId" as "cardId", COUNT(c.id) as total
+          FROM "KanbanComment" c
+          WHERE c."cardId" IN (${Prisma.join(cardIds)}) AND c."deletedAt" IS NULL
+          GROUP BY c."cardId"
+        `
+      : Promise.resolve([] as { cardId: string; total: bigint }[]),
   ]);
   const checklistOfCard = new Map(
     checklistCountRows.map((r) => [r.cardId, { done: Number(r.done), total: Number(r.total) }]),
   );
+  const commentsOfCard = new Map(commentCountRows.map((r) => [r.cardId, Number(r.total)]));
 
   // ชื่อคน: สมาชิกบอร์ด + ผู้รับผิดชอบการ์ด (แถวรูปคนหัวบอร์ดใช้ชุดเดียวกับ avatar บนการ์ด)
   const peopleIds = Array.from(
@@ -614,6 +624,7 @@ export async function getBoardView(
     systemId: ctx.systemId,
     name: board.name,
     role: board.role,
+    viewerUserId: ctx.actorUserId ?? "",
     visibility: board.visibility,
     unitName: unit?.name ?? null,
     starred: star !== null,
@@ -627,7 +638,13 @@ export async function getBoardView(
       wipLimit: col.wipLimit,
       isDoneColumn: col.isDoneColumn,
       cards: col.cards.map((card) =>
-        toBoardCardDto(card, labelsOfCard.get(card.id) ?? [], peopleOfCard.get(card.id) ?? [], checklistOfCard.get(card.id)),
+        toBoardCardDto(
+          card,
+          labelsOfCard.get(card.id) ?? [],
+          peopleOfCard.get(card.id) ?? [],
+          checklistOfCard.get(card.id),
+          commentsOfCard.get(card.id),
+        ),
       ),
     })),
   };
@@ -639,6 +656,7 @@ export function toBoardCardDto(
   labels: BoardLabelDto[],
   assignees: BoardPersonDto[],
   checklist?: { done: number; total: number },
+  commentCount?: number,
 ): BoardCardDto {
   return {
     id: card.id,
@@ -652,9 +670,10 @@ export function toBoardCardDto(
     // K1.7: ตราเช็คลิสต์ n/m ของจริง (ค่าเริ่มต้น 0/0 สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่มีเช็คลิสต์)
     checklistDone: checklist?.done ?? 0,
     checklistTotal: checklist?.total ?? 0,
-    // K1.8/K1.9 ยังไม่มีตาราง — ส่ง 0 ไว้ก่อน (การ์ดไม่เรนเดอร์ตราที่เป็น 0 ⇒ ไม่มีตราหลอกตา)
+    // K1.9 ยังไม่มีตาราง — ส่ง 0 ไว้ก่อน (การ์ดไม่เรนเดอร์ตราที่เป็น 0 ⇒ ไม่มีตราหลอกตา)
     attachmentCount: 0,
-    commentCount: 0,
+    // K1.8: ตราจำนวนความเห็นของจริง (ค่าเริ่มต้น 0 สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่มีความเห็น)
+    commentCount: commentCount ?? 0,
     coverUrl: null,
     sourceType: card.sourceType,
   };
