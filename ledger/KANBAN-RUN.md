@@ -72,7 +72,7 @@
 | **P2 — มุมมอง + อัตโนมัติ + รายงาน** |||||
 | K2.1 | มุมมองตาราง (แก้ในช่อง · เลือกหลาย · จัดกลุ่ม · CSV) ภาพ 04 | Sonnet | TODO (oracle พร้อม 22 ข้อ) | | |
 | K2.2 | มุมมองปฏิทิน (ลากเปลี่ยนวัน · ถาดยังไม่กำหนด · ซ้อนจอง/ลา/ประชุม) ภาพ 05 | Sonnet | TODO (oracle พร้อม 17 ข้อ) | | |
-| K2.4 | มุมมองสรุป (4 ไทล์ เจาะลงการ์ดได้) | Sonnet | TODO | | |
+| K2.4 | มุมมองสรุป (4 ไทล์ เจาะลงการ์ดได้) | Sonnet | TODO (oracle พร้อม 13 ข้อ) | | |
 | K2.5 | มุมมองที่บันทึกไว้ (`KanbanBoardView` ส่วนตัว/ทั้งทีม) | Sonnet | TODO | | |
 | K2.6 | ฟิลด์กำหนดเอง 5 ชนิด (≤20) | Sonnet | TODO | | |
 | K2.7 | เทมเพลตการ์ด + กำหนดส่งซ้ำ (cron) | Sonnet | TODO | | |
@@ -197,6 +197,13 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - หน้าบอร์ด: `?view=calendar&month=YYYY-MM&mode=week|month&ext=1` → server เรียก `listBoardCalendar` (ช่วง = เดือนที่เลือก ±6 วัน) · แท็บ "ปฏิทิน" เปิดใช้
 - ภาพ `visual-kanban.mts` spec `"2.2"`: เดือน (desktop) · สัปดาห์ · ลากการ์ดจากถาดลงวัน (drag step) แล้วคืนค่า · มือถือ · finally คืน dueAt
 - ⚠️ oracle ตั้ง/เปลี่ยน dueAt ของการ์ด 2 ใบแล้วคืน · สร้างใบลา HR 1 รายการ (ถ้าร้าน QC มีระบบ HR) แล้วลบ
+
+### K2.4 — มุมมองสรุป `?view=summary` (Sonnet · `qc-kanban-k2.4.mts` 13 ข้อ · ไม่มี mockup — เกณฑ์ §3.7)
+- `src/lib/modules/kanban/summary.ts`: `boardSummary(ctx, actor, boardId, { now, filters? }) → { totals{ open, overdue, dueToday, dueWeek, done }, byColumn[{ key: columnId, label, count, href }], byAssignee[{ key: userId|"none", label, count, href }], byDue[{ key: overdue|today|week|later|none, label, count, href }], byLabel[{ key: labelId|"none", label, color, count, href }], throughput[{ weekStart:"YYYY-MM-DD" (จันทร์ไทย), created, completed }] (8 สัปดาห์ล่าสุด สัปดาห์นี้ท้าย) }` · นับจากการ์ด active ของบอร์ด (ผ่าน filters เดียวกับตาราง) · **href ทุกไทล์ = `?view=table&<ตัวกรอง>`** ที่เจาะลงแล้วได้จำนวนเท่ากันเป๊ะ (ข้อสอบ S1.5 เทียบกับ `listBoardTable`) · สิทธิ์ VIEWER+
+- `filters.ts`: เพิ่ม `column?: columnId` ใน `BoardFilters` (กรอง `columnId`) · `FilterBar` แสดงชิป "คอลัมน์: X" และอ่าน/เขียน `&column=` ใน URL
+- UI `src/components/kanban/SummaryView.tsx` (client): ตัวเลขใหญ่ 5 ค่า (ค้าง · เลยกำหนด (แดง) · ถึงกำหนดวันนี้ · สัปดาห์นี้ · เสร็จแล้ว) · 4 ไทล์ (การ์ดต่อคอลัมน์ / ต่อคน / ต่อกำหนดส่ง / ต่อป้าย) แต่ละแถวเป็น `<Link href>` ไปตารางที่กรองแล้ว testid `summary-tile` · กราฟ throughput รายสัปดาห์ (สร้าง vs เสร็จ) วาดด้วย SVG ล้วน testid `summary-chart` (ไม่เพิ่ม lib) · โทนสีตาม token (ไม่ hard-code) · มือถือ: ไทล์เรียง 1 คอลัมน์
+- หน้าบอร์ด: `?view=summary` → server เรียก `boardSummary` · แท็บ "สรุป" เปิดใช้
+- ภาพ spec `"2.4"`: สรุป desktop · กดไทล์ "ด่วน" → ตารางกรอง (ยืนยันจำนวนเท่ากัน) · มือถือ
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
 - 17:41 น. — **P1 ปิด** · qc:all 253/261 (20 นาที) → ทั้ง 8 ชุดแดงแก้แล้ว (2 ชุดเป็นผลจาก run นี้จริง: inbox import app-shell · kanban_my_tasks เปลี่ยนสัญญา — คืนแบบเดิม) · prod verify ผ่าน · handover เขียนแล้ว · Telegram ส่ง
