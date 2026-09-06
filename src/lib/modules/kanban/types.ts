@@ -400,6 +400,11 @@ export type ArchiveListDto = {
 // ───────────────────────── K2.1 — มุมมองตาราง (table.ts) ─────────────────────────
 // DTO บริสุทธิ์ (วันที่เป็น ISO string) — `TableView.tsx` (client) เป็นคนเรนเดอร์เท่านั้น
 // 🔴 `links` ว่างเสมอจนกว่า K3.1 ("เชื่อมข้อมูล SHARK") จะเติมของจริงเข้ามา (สัญญา K2.1)
+// 🔴 `TableSort`/`TableGroupBy` อยู่ในไฟล์บริสุทธิ์นี้ (ไม่ใช่ `table.ts` ที่แตะ prisma) ด้วยเหตุผลเดียวกับ
+//    K1.11/K1.12/K1.13: `TableView.tsx` (client) ต้อง `import type` ได้โดยไม่ลาก `db.ts` → `pg` เข้าบันเดิล
+
+export type TableSort = "due" | "created" | "updated" | "position";
+export type TableGroupBy = "column" | "assignee" | "label";
 
 /** ลิงก์ไปข้อมูลของโมดูลอื่น (K3.1) — คอลัมน์ "เชื่อมระบบ" ของตาราง */
 export type TableCardLinkDto = { type: string; label: string };

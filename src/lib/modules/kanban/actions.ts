@@ -36,11 +36,13 @@ import { assertBoardRole, assertCardRole, assertColumnRole, starBoard, unstarBoa
 // service.ts ที่ actions.ts ใช้อยู่แล้ว → ตั้งชื่อ import ให้ชัดว่าเป็นคนละตัว เหมือนแพตเทิร์นของ moves.ts ข้างบน)
 import {
   archiveCard as archiveCardV2,
+  bulkUpdate,
   duplicateCard,
   getCardDetail,
   restoreCard,
   setCardAssignees,
   updateCardFields,
+  type BulkUpdatePatch,
 } from "./cards";
 import { createLabel, setCardLabels } from "./labels";
 import type { ArchiveListDto } from "./types";
@@ -81,9 +83,7 @@ import { createBoardFromTemplate, deleteTenantTemplate, saveBoardAsTemplate } fr
 // K1.13 — งานของฉันใหม่ + ปัดเสร็จ/เก็บมือถือ + undo (บริการอยู่ `my-tasks.ts`)
 import { archiveWithUndo, completeCard, undo } from "./my-tasks";
 import { normalizeUploadType } from "@/lib/storage/service";
-// K2.1 — มุมมองตาราง: อ่าน (`table.ts`) · เลือกหลายรายการ (`cards.bulkUpdate`) · ส่งออก CSV (`reports.ts`)
-import { listBoardTable } from "./table";
-import { bulkUpdate, type BulkUpdatePatch } from "./cards";
+// K2.1 — มุมมองตาราง: เลือกหลายรายการ (`cards.bulkUpdate` — import ไว้กับ cards.ts ข้างบน) · ส่งออก CSV (`reports.ts`)
 import { exportCardsCsv } from "./reports";
 import type { BoardFilters } from "./filters";
 import type {
@@ -97,8 +97,6 @@ import type {
   KanbanCtx,
   KanbanTimelineFilter,
   KanbanTimelineItemDto,
-  TableGroupBy as TableGroupByType,
-  TableRowDto,
 } from "./types";
 
 // ทุก action: requireTenant → เอา tenantId จาก session (ไม่เชื่อ client) + scope ด้วย systemId
@@ -1248,6 +1246,83 @@ export async function restoreColumnAction(input: {
     return { ok: true };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "กู้คืนคอลัมน์ไม่สำเร็จ" };
+  }
+}
+
+// ───────────────────────── K2.1 — มุมมองตาราง: เลือกหลายรายการ + ส่งออก CSV ─────────────────────────
+
+export type BulkUpdateActionResult =
+  | { ok: true; updated: number; skipped: { id: string; reason: string }[] }
+  | { ok: false; message: string };
+
+/**
+ * รูป patch ที่หน้าจอ (client) ส่งมา — เหมือน `BulkUpdatePatch` ของ `cards.ts` ทุกอย่างยกเว้น `dueAt`
+ * เป็น ISO string (ไม่ใช่ `Date`) แบบเดียวกับ `updateCardFieldsAction` — TableView.tsx ไม่ import ชนิด
+ * จาก `cards.ts`/`table.ts` (ไฟล์แตะ prisma) ตามกติกา K1.11/K1.12/K1.13
+ */
+export type BulkUpdateActionPatch = {
+  toColumnId?: string;
+  addAssigneeUserIds?: string[];
+  removeAssigneeUserIds?: string[];
+  addLabelIds?: string[];
+  removeLabelIds?: string[];
+  dueAt?: string | null;
+  archive?: true;
+};
+
+/**
+ * แถบ "เลือกหลายรายการ" ของมุมมองตาราง — ย้าย/มอบหมาย/ติดป้าย/ตั้งกำหนดส่ง/เก็บเข้าคลังหลายใบพร้อมกัน
+ * 🔴 ตรวจสิทธิ์ระดับโมดูลที่นี่ (เหมือน action อื่นของการ์ด) · ชั้นบทบาทบอร์ด (EDITOR+) ตรวจซ้ำใน `cards.bulkUpdate`
+ *    เอง (ที่นั่นคำนวณบอร์ดจาก cardIds ก่อน ไม่ใช่จาก `boardId` ที่ฟอร์มส่งมา)
+ */
+export async function bulkUpdateAction(input: {
+  systemId: string;
+  boardId: string;
+  cardIds: string[];
+  patch: BulkUpdateActionPatch;
+}): Promise<BulkUpdateActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || input.cardIds.length === 0) {
+    return { ok: false, message: "ยังไม่ได้เลือกการ์ด" };
+  }
+  const patch: BulkUpdatePatch = {
+    ...(input.patch.toColumnId !== undefined ? { toColumnId: input.patch.toColumnId } : {}),
+    ...(input.patch.addAssigneeUserIds !== undefined ? { addAssigneeUserIds: input.patch.addAssigneeUserIds } : {}),
+    ...(input.patch.removeAssigneeUserIds !== undefined ? { removeAssigneeUserIds: input.patch.removeAssigneeUserIds } : {}),
+    ...(input.patch.addLabelIds !== undefined ? { addLabelIds: input.patch.addLabelIds } : {}),
+    ...(input.patch.removeLabelIds !== undefined ? { removeLabelIds: input.patch.removeLabelIds } : {}),
+    ...(input.patch.dueAt !== undefined ? { dueAt: input.patch.dueAt ? new Date(input.patch.dueAt) : null } : {}),
+    ...(input.patch.archive ? { archive: true as const } : {}),
+  };
+  try {
+    const { updated, skipped } = await bulkUpdate(ctxOf(auth, input.systemId), input.cardIds, patch);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, updated, skipped };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ทำรายการไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/**
+ * ส่งออกการ์ดของบอร์ด (ตามตัวกรองที่กำลังเปิดอยู่) เป็นข้อความ CSV — ฝั่ง client แปลงเป็นไฟล์ดาวน์โหลดเอง
+ * ผ่าน Blob (ไม่เปิด route สาธารณะตามสัญญา §K2.1)
+ */
+export async function exportBoardCsvAction(input: {
+  systemId: string;
+  boardId: string;
+  filters?: BoardFilters;
+}): Promise<{ ok: true; csv: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.boardId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const csv = await exportCardsCsv(ctx, actor, input.boardId, { now: new Date(), filters: input.filters ?? {} });
+    return { ok: true, csv };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ส่งออกไม่สำเร็จ ลองใหม่อีกครั้ง" };
   }
 }
 

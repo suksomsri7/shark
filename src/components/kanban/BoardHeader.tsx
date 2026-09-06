@@ -21,9 +21,10 @@ const DUE_OPTIONS: { value: DueBucket; label: string }[] = [
   { value: "none", label: "ไม่กำหนด" },
 ];
 
-const VIEWS: { key: string; icon: string; label: string }[] = [
-  { key: "board", icon: "grid", label: "บอร์ด" },
-  { key: "table", icon: "list", label: "ตาราง" },
+const VIEWS: { key: string; icon: string; label: string; ready?: boolean }[] = [
+  { key: "board", icon: "grid", label: "บอร์ด", ready: true },
+  // K2.1 — เปิดใช้จริงแล้ว (เดิม "เร็ว ๆ นี้")
+  { key: "table", icon: "list", label: "ตาราง", ready: true },
   { key: "calendar", icon: "cal", label: "ปฏิทิน" },
   { key: "timeline", icon: "chart", label: "ไทม์ไลน์" },
   { key: "summary", icon: "pct", label: "สรุป" },
@@ -87,6 +88,22 @@ export function BoardHeader({
     else next.set(key, value);
     const qs = next.toString();
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+  };
+
+  // K2.1 — สลับมุมมอง (บอร์ด/ตาราง) คงตัวกรองไว้ (assignee/label/due/status/q) · ล้างพารามิเตอร์
+  // เฉพาะของตาราง (group/sort/page) เมื่อออกจากมุมมองตาราง — ไม่งั้นกลับมาบอร์ดแล้วลิงก์ค้าง ?page=3
+  const currentView = searchParams.get("view") === "table" ? "table" : "board";
+  const hrefForView = (viewKey: string): string => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (viewKey === "board") next.delete("view");
+    else next.set("view", viewKey);
+    if (viewKey !== "table") {
+      next.delete("group");
+      next.delete("sort");
+      next.delete("page");
+    }
+    const qs = next.toString();
+    return `${pathname}${qs ? `?${qs}` : ""}`;
   };
 
   return (
@@ -163,18 +180,32 @@ export function BoardHeader({
         {board.visibility === "PRIVATE" ? "เฉพาะสมาชิก" : "ทั้งร้านเห็น"}
       </span>
 
-      {/* ตัวสลับมุมมอง — P1 มีแค่ "บอร์ด" ตัวอื่นเป็น P2 (ปิดไว้พร้อมป้าย "เร็ว ๆ นี้") */}
+      {/* ตัวสลับมุมมอง (K2.1 เปิด "ตาราง") — ตัวที่ยังไม่มา (P2 ที่เหลือ) ปิดไว้พร้อมป้าย "เร็ว ๆ นี้" */}
       <div
         className="hidden lg:flex"
         style={{ gap: 2, border: "1px solid var(--color-line)", borderRadius: 8, padding: 2, marginLeft: 10 }}
       >
         {VIEWS.map((v) => {
-          const active = v.key === "board";
+          const active = v.key === currentView;
+          if (!v.ready) {
+            return (
+              <span
+                key={v.key}
+                title="เร็ว ๆ นี้"
+                aria-disabled="true"
+                className="flex items-center"
+                style={{ gap: 5, height: 26, padding: "0 9px", borderRadius: 6, fontSize: 12.5, color: "var(--color-muted)" }}
+              >
+                <KanbanIcon name={v.icon} size="xs" />
+                {v.label}
+              </span>
+            );
+          }
           return (
-            <span
+            <Link
               key={v.key}
-              title={active ? undefined : "เร็ว ๆ นี้"}
-              aria-disabled={!active}
+              href={hrefForView(v.key)}
+              data-testid={`board-view-${v.key}`}
               className="flex items-center"
               style={{
                 gap: 5,
@@ -189,7 +220,7 @@ export function BoardHeader({
             >
               <KanbanIcon name={v.icon} size="xs" />
               {v.label}
-            </span>
+            </Link>
           );
         })}
       </div>

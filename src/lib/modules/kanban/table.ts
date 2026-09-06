@@ -12,10 +12,19 @@ import { prisma } from "./db";
 import { assertBoardRole } from "./members";
 import { filterBoardCards, type BoardFilters, type FilterableCard } from "./filters";
 import { KANBAN_LIMITS } from "./limits";
-import type { BoardLabelDto, BoardPersonDto, KanbanActor, KanbanCtx, KanbanTagColor, TableGroupDto, TableRowDto } from "./types";
-
-export type TableSort = "due" | "created" | "updated" | "position";
-export type TableGroupBy = "column" | "assignee" | "label";
+import type {
+  BoardLabelDto,
+  BoardPersonDto,
+  KanbanActor,
+  KanbanCtx,
+  KanbanTagColor,
+  TableGroupBy,
+  TableGroupDto,
+  TableRowDto,
+  TableSort,
+} from "./types";
+// re-export ให้ผู้เรียกนอกโมดูล (service.ts/page.tsx) ใช้ชื่อเดิมได้จากที่นี่เหมือนเดิม
+export type { TableGroupBy, TableSort } from "./types";
 
 export type ListBoardTableInput = {
   /** เวลาอ้างอิง (จาก server เดียวกับที่ใช้เรนเดอร์ทั้งหน้า — ให้ `filterBoardCards`/ป้ายกำหนดส่งตรงกันเป๊ะ) */
