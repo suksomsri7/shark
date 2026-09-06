@@ -78,7 +78,7 @@
 | K2.7 | เทมเพลตการ์ด + กำหนดส่งซ้ำ (cron) | Sonnet | TODO (oracle พร้อม 25) | | |
 | K2.8 | กล่องงานเข้าส่วนตัว (`KanbanInboxItem` · จดเร็ว · ส่งเข้าบอร์ด) ภาพ 06 ฝั่งซ้าย | Sonnet | TODO (oracle พร้อม 17 ข้อ) | | |
 | K2.9 | ตัวสร้างกฎอัตโนมัติ (5 ชนิด · ทดลองรัน · บันทึกการทำงาน) ภาพ 08 + ลงทะเบียน 8 event | Opus | TODO | | |
-| K2.10 | รายงานในแอป (ค้าง/เลยกำหนด/ภาระงาน/throughput/aging) + ส่งออก | Sonnet | TODO (oracle พร้อม 20) | | |
+| K2.10 | รายงานในแอป (ค้าง/เลยกำหนด/ภาระงาน/throughput/aging) + ส่งออก | Sonnet | TODO (oracle พร้อม 22) | | |
 | K2.11 | อีเมลสรุป + watch + ตั้งค่าความถี่แจ้งเตือน + cron เตือนกำหนดส่ง | Opus | TODO | | |
 | K2.3 | มุมมองไทม์ไลน์ (เลื่อนได้ตาม D7) | Sonnet | TODO | | |
 | **P3 — เชื่อมทุกโมดูล + AI** |||||
@@ -237,7 +237,7 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - ⚠️ oracle สร้างการ์ด/เทมเพลต/ฟิลด์บนบอร์ด "ซ่อมบำรุงอุปกรณ์" แล้วลบใน finally · เติมเทมเพลต filler จนถึง 30 ชั่วคราว · รัน `sweepRecurringCards` ด้วย now หลายค่า (30 ก.ย. · 1 ต.ค. · 23 ก.ย. · 7 ต.ค.) — builder ห้ามผูก sweep กับ `new Date()` ภายใน
 - 🔴 การตัดสินใจ D19: การ์ดลูกจากงานประจำ **ก๊อปผู้รับผิดชอบ** (งานประจำของคนเดิม ต้องโผล่ใน "งานของฉัน" เอง) · การ์ดจากเทมเพลต **ไม่ก๊อป** (คนสร้างเลือกเอง) · ลูกไม่มีกฎซ้ำ (แม่ใบเดียวเป็นต้นทาง — ลบ/เก็บแม่ = หยุดซ้ำ)
 
-### K2.10 — รายงานในแอป `/kanban/reports` (Sonnet · `qc-kanban-k2.10.mts` 20 ข้อ · ไม่มี mockup — เกณฑ์ §3.7/§13 K2.10 · ภาพ 07 แถบล่างมี "รายงาน")
+### K2.10 — รายงานในแอป `/kanban/reports` (Sonnet · `qc-kanban-k2.10.mts` 22 ข้อ · ไม่มี mockup — เกณฑ์ §3.7/§13 K2.10 · ภาพ 07 แถบล่างมี "รายงาน")
 - ไม่มี migration · **รายงานคิวรีสด** จากตารางหลัก (§11.10 ห้ามตาราง summary) · นับเฉพาะบอร์ด ACTIVE + การ์ด ACTIVE · timezone ไทย (+07:00 คำนวณเอง — ห้าม getDay()/toLocale*) · นิยาม **ค้าง = completedAt null** · **เลยกำหนด = ค้าง + dueAt < now** · **เสร็จ = completedAt ไม่ null** (ไม่ดูชื่อคอลัมน์)
 - สิทธิ์ `assertReportAccess(actor)`: OWNER ผ่านเสมอ · อื่น ๆ ต้องมีคีย์ `kanban.report.view` (+ canReadKanban) ไม่งั้น Forbidden ไทย · ขอบเขต = บอร์ดที่ actor มองเห็น (`visibleBoardsWhere(actor)` ของ access.ts — ห้ามเขียนตรรกะสิทธิ์ซ้ำ) · `boardId` ที่มองไม่เห็น → ไม่พบ (throw)
 - `src/lib/modules/kanban/reports.ts` (ต่อจากไฟล์ K2.1 ที่มี exportCardsCsv): ทุกฟังก์ชัน `(ctx, actor, { now, boardId? })`
