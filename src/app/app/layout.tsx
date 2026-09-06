@@ -4,6 +4,10 @@ import { systemDef, SYSTEM_DEFS, FIXED_PAGE_SYSTEMS, isFixedPageSystem } from "@
 import { AppShell } from "@/components/app-shell/AppShell";
 import { AppMain } from "@/components/app-shell/AppMain";
 import { NavProgress } from "@/components/app-shell/NavProgress";
+import { ThemeRoot } from "@/components/app-shell/ThemeRoot";
+// ธีมของร้าน (B3) + ค่าส่วนตัวของผู้ใช้ — โหลดที่ layout ที่เดียว แล้วส่งลงเป็น props
+import { getBrandingTokens } from "@/lib/branding/service";
+import { getUserPreferences } from "@/lib/core/user-preferences";
 import type { NavItem, SoonItem } from "@/components/app-shell/NavDrawer";
 // เมนูบอร์ดงาน 7 หมวด (§5.2) มาจากทะเบียนเดียวกับแถบแท็บในโมดูล — ห้ามพิมพ์ลิสต์ซ้ำที่นี่
 import { kanbanNavChildren } from "@/lib/modules/kanban/nav";
@@ -33,12 +37,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const tenantId = auth.active.tenantId;
   // perf A: badge (help/AI) ย้ายไปโหลดฝั่ง client หลังหน้าโผล่ — ไม่บล็อกการเปลี่ยนหน้า
   // layout เหลือแค่ query ที่จำเป็นต้องมีตอน render เมนู (units + appSystems)
-  const [units, appSystems] = await Promise.all([
+  // 🔴 3 query ขนานกัน — ธีม (แคช 60 วิ ต่อ instance) และ prefs เบา ๆ ไม่เพิ่ม round-trip ที่รอเรียงกัน
+  const [units, appSystems, tokens, prefs] = await Promise.all([
     prisma.businessUnit.findMany({
       where: { tenantId, status: { not: "ARCHIVED" } },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
     prisma.appSystem.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: "asc" } }),
+    getBrandingTokens(tenantId),
+    getUserPreferences(auth.user.id),
   ]);
 
   // "แตกฟังก์ชันย่อยในเมนู" — ทุกระบบที่มี sub-route จริงจะกาง submenu (accordion) ใต้ชื่อระบบ
@@ -254,9 +261,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-full">
+      {/* โทเคนธีมที่ราก — ทุกหน้าใต้ /app อ่านสีผ่าน CSS var ชุดนี้ (ไม่มีใครรับสีเป็น prop) */}
+      <ThemeRoot
+        tokens={{
+          accent: tokens.accent,
+          accentFg: tokens.accentFg,
+          accentSoft: tokens.accentSoft,
+          navBg: tokens.navBg,
+          navFg: tokens.navFg,
+          navFg2: tokens.navFg2,
+          navOn: tokens.navOn,
+        }}
+      />
       <NavProgress />
       <AppShell
         tenantName={auth.active.tenant.name}
+        branding={{ displayName: tokens.displayName, logoUrl: tokens.logoUrl }}
+        navTone={tokens.navTone}
+        navCollapsed={prefs.navCollapsed}
         userEmail={auth.user.email}
         items={items}
         soon={soon}
@@ -267,7 +289,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         activeTenantId={auth.active.tenantId}
       />
       {/* ระยะขอบ (รวมการเว้นที่ให้แถบเมนูปักซ้ายบนจอใหญ่) อยู่ใน AppMain */}
-      <AppMain chatSystemIds={chatSystemIds}>{children}</AppMain>
+      <AppMain chatSystemIds={chatSystemIds} navCollapsed={prefs.navCollapsed}>
+        {children}
+      </AppMain>
     </div>
   );
 }

@@ -2,13 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Topbar } from "./Topbar";
+import { Topbar, type TopbarBranding } from "./Topbar";
 import { NavDrawer, type NavItem, type SoonItem, type TenantOption } from "./NavDrawer";
 import { AiDock } from "./AiDock";
 import { AddSystemModal } from "./AddSystemModal";
 import { NavRail, isRailPath } from "./NavRail";
+import { SwipeEdge } from "./SwipeEdge";
+import { IssueReportSheet } from "./IssueReportSheet";
 import { useInApp } from "./use-in-app";
 import { loadNavBadgesAction } from "@/lib/support/actions";
+import { setNavCollapsedAction } from "@/lib/core/preferences-actions";
 
 // โครงแอปฝั่ง client: จัดการสถานะเปิด/ปิด drawer
 // help-v2: เอาศูนย์ช่วยเหลือออก — แจ้งปัญหาผ่านแชท AI แทน (ทีมงานตอบกลับในห้องเดิม)
@@ -21,6 +24,9 @@ export function AppShell({
   openedCodes,
   memberships,
   activeTenantId,
+  branding,
+  navTone,
+  navCollapsed = false,
   chatSystemIds = [],
 }: {
   tenantName: string;
@@ -30,10 +36,21 @@ export function AppShell({
   openedCodes: string[];
   memberships: TenantOption[];
   activeTenantId: string;
+  /** ตราสัญลักษณ์ + ชื่อที่แสดงของร้าน (จาก getBrandingTokens ใน layout) */
+  branding: TopbarBranding;
+  /** โทนแถบเมนูของร้าน (LIGHT/BRAND/DARK) — สีจริงมาจาก CSS var ที่ ThemeRoot ตั้งไว้ */
+  navTone: "LIGHT" | "BRAND" | "DARK";
+  /** สถานะย่อ/ขยายแถบเมนูที่ผู้ใช้จำไว้ (User.prefs.navCollapsed) */
+  navCollapsed?: boolean;
   /** id ของระบบแชทที่ร้านเปิดใช้ (มาจาก layout — ว่าง = ไม่ถามตัวเลขข้อความค้างเลย) */
   chatSystemIds?: string[];
 }) {
   const [drawer, setDrawer] = useState(false);
+  // แผ่นแจ้งปัญหาที่เปิดจาก "ท้ายเมนู" (จอเล็ก/แอป) — ตัวที่เปิดจากปุ่มบนแถบบนอยู่ใน Topbar เอง
+  const [issueOpen, setIssueOpen] = useState(false);
+  // ย่อ/ขยายแถบเมนู — เริ่มจากค่าที่ผู้ใช้จำไว้ (server) แล้ว optimistic ทันทีที่กด
+  const [collapsed, setCollapsed] = useState(navCollapsed);
+  useEffect(() => setCollapsed(navCollapsed), [navCollapsed]);
   // Modal เพิ่มระบบ (กลางจอ) — เปิดจากปุ่มใน drawer หรือ deep-link ?add-system=1 (จากเช็กลิสต์ "ทำต่อ")
   const [addSystemOpen, setAddSystemOpen] = useState(false);
   // ?add-system=<CODE> จาก checklist → เปิด modal พร้อมเลือกระบบนั้นให้เลย (เข้าจังหวะตั้งชื่อทันที)
@@ -85,7 +102,15 @@ export function AppShell({
   // K1.5: หน้าบอร์ดงาน (`/app/sys/<id>/kanban/b/<boardId>`) ยุบแถบเมนูปักซ้าย 288px เป็นรางไอคอน 56px
   //   (พิมพ์เขียว 13-kanban-v2 §3.2 + ภาพ 02) — โมดูลอื่นไม่กระทบ เพราะตัดสินจาก pathname ที่นี่ที่เดียว
   //   ระยะขอบซ้ายของเนื้อหาคิดคู่กันใน AppMain
-  const railMode = isRailPath(pathname);
+  // B3: รางไอคอนใช้ได้ทุกหน้าแล้ว — ผู้ใช้เป็นคนเลือก (จำต่อบัญชี) · หน้าบอร์ดงานยัง "บังคับ" ราง (K1.5)
+  const boardRail = isRailPath(pathname);
+  const railMode = collapsed || boardRail;
+  // เปลี่ยนสถานะ = optimistic ทันที + บอก AppMain (พี่น้องกันใน layout) + จำลง prefs ของผู้ใช้เบื้องหลัง
+  const applyCollapsed = useCallback((next: boolean) => {
+    setCollapsed(next);
+    window.dispatchEvent(new CustomEvent("app:nav-collapsed", { detail: { collapsed: next } }));
+    setNavCollapsedAction(next).catch(() => {});
+  }, []);
   // 🔴 บอก "แอป SHARK" ด้วย — orb ที่ทับหน้าแชทบนมือถือแอปคือปุ่ม native ของแอป ไม่ใช่ของเว็บ
   //    (เจ้าของเจอ 2 ก.ย. ล้างแคช Safari แล้วก็ไม่หายเพราะคนละตัวกัน) · สัญญา: {ev:"chat-fullscreen", on}
   //    ฝั่งรับอยู่ apps/mobile/app/(app)/index.tsx · บนเบราว์เซอร์ปกติ ReactNativeWebView ไม่มี = no-op
@@ -109,23 +134,36 @@ export function AppShell({
   return (
     <>
       <Topbar
-        tenantName={tenantName}
+        branding={branding}
+        aiUnread={aiUnread}
+        inApp={inApp}
         onMenu={() => {
           setDrawer(true);
           refreshBadges(); // เปิดเมนู = จังหวะที่คนกำลังจะมอง ตัวเลขต้องสด
         }}
-        pinnedNav={!inApp}
         hideOnMobile={chatFullscreen}
+      />
+      {/* ปัดจากขอบซ้ายไปขวา = เปิดเมนู (จอเล็ก/แอป) — ในแอปไม่มี ☰ แล้ว ท่านี้คือทางเดียว */}
+      <SwipeEdge
+        alwaysOn={inApp}
+        onOpen={() => {
+          setDrawer(true);
+          refreshBadges();
+        }}
       />
       <NavDrawer
         open={drawer}
-        alwaysOverlay={inApp}
+        // ในแอป หรือหน้าที่ใช้ราง (ไม่มีแถบปักซ้ายให้ชน) → overlay ต้องโผล่ทุกความกว้าง
+        alwaysOverlay={inApp || railMode}
         onClose={() => setDrawer(false)}
         tenantName={tenantName}
         userEmail={userEmail}
         items={items}
         soon={soon}
         badges={navBadges}
+        branding={branding}
+        navTone={navTone}
+        onReportIssue={() => setIssueOpen(true)}
         onAddSystem={() => {
           setDrawer(false);
           setAddSystemOpen(true);
@@ -133,9 +171,24 @@ export function AppShell({
         memberships={memberships}
         activeTenantId={activeTenantId}
       />
-      {/* เว็บบนจอใหญ่ (≥ lg): กางเมนูปักซ้ายให้เลย ไม่ต้องกดแฮมเบอร์เกอร์ · ในแอปไม่ปัก
-          · หน้าที่ขอพื้นที่เต็ม (บอร์ดงาน) ได้รางไอคอนแทน — ปุ่ม ☰ บน topbar ยังเปิด drawer เต็มได้เหมือนเดิม */}
-      {!inApp && railMode && <NavRail items={items} />}
+      {/* เว็บบนจอใหญ่ (≥ lg): แถบเมนูปักซ้าย 288px หรือรางไอคอน 56px ตามที่ผู้ใช้เลือก · ในแอปไม่ปักทั้งคู่
+          🔴 หน้าบอร์ดงานบังคับราง ⇒ ปุ่ม › ที่นั่นเปิด "เมนูเต็มแบบ overlay" แทนการคลายค่า
+             (คลายไปก็ยังเป็นรางอยู่ดี = ปุ่มที่กดแล้วไม่มีอะไรเกิดขึ้น) */}
+      {!inApp && railMode && (
+        <NavRail
+          items={items}
+          navTone={navTone}
+          badges={navBadges}
+          onExpand={() => {
+            if (boardRail) {
+              setDrawer(true);
+              refreshBadges();
+              return;
+            }
+            applyCollapsed(false);
+          }}
+        />
+      )}
       {!inApp && !railMode && (
         <NavDrawer
           variant="pinned"
@@ -146,6 +199,9 @@ export function AppShell({
           items={items}
           soon={soon}
           badges={navBadges}
+          branding={branding}
+          navTone={navTone}
+          onCollapse={() => applyCollapsed(true)}
           onAddSystem={() => setAddSystemOpen(true)}
           memberships={memberships}
           activeTenantId={activeTenantId}
@@ -160,7 +216,10 @@ export function AppShell({
         }}
         openedCodes={openedCodes}
       />
-      {!inApp && <AiDock aiUnread={aiUnread} hideOnMobile={chatFullscreen} />}
+      {/* แผ่นแจ้งปัญหาที่เปิดจากท้ายเมนู (จอเล็ก/แอป) — ปุ่มบนแถบบนมีแผ่นของตัวเองใน Topbar */}
+      {issueOpen && <IssueReportSheet onClose={() => setIssueOpen(false)} />}
+      {/* แผงผู้ช่วย AI — เปิดจาก orb บนแถบบนผ่าน event `app:ai-open` (ไม่มีปุ่มลอยมุมล่างขวาแล้ว) */}
+      {!inApp && <AiDock />}
     </>
   );
 }

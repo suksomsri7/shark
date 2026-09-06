@@ -13,6 +13,16 @@
   --color-accent: #1d4ed8; /* จุดเน้น: ลิงก์ active, ไอคอน/แถบเน้น (contrast ~6.3:1 บนพื้นขาว) — ไม่ใช่แทน ink */
   --color-accent-soft: color-mix(in srgb, var(--color-accent) 8%, white); /* พื้นทินท์อ่อนของ accent — แถบ bulk bar ที่เลือกไว้ ฯลฯ (WO 5.4) ห้ามพิมพ์ hex ดิบแทน */
 
+  /* ── โทเคนธีมกิจการ (B3 · ledger/BRANDING-RUN.md §B3) — **ค่าปริยายของแพลตฟอร์ม** ──
+     🔴 ค่าที่นี่ต้องเท่ากับ DEFAULT_ACCENT + LIGHT_NAV ใน src/lib/branding/service.ts เป๊ะ ๆ
+        ⇒ ร้านที่ยังไม่เคยตั้งธีม (และหน้าที่อยู่นอก /app ซึ่งไม่มี ThemeRoot) เห็นหน้าตาเดิมทุกประการ
+     🔴 ตอนอยู่ในแอปจริง `ThemeRoot` เขียนทับชุดนี้ที่ `:root` แบบไม่มี @layer (unlayered ชนะ layered) */
+  --color-accent-fg: #ffffff; /* ตัวอักษรบนพื้นสีหลัก — service คำนวณจาก WCAG contrast ไม่ใช่เดา */
+  --nav-bg: #fafafa; /* พื้นแถบเมนู/รางไอคอน (โทน LIGHT = เท่าเดิม) */
+  --nav-fg: #0a0a0a; /* ตัวอักษรหลักบนแถบเมนู */
+  --nav-fg2: #737373; /* ตัวอักษรรอง/ไอคอนจางบนแถบเมนู */
+  --nav-on: #ffffff; /* พื้นของรายการที่ถูกเลือกบนแถบเมนู */
+
   /* ── โทเคนกล่องแชท V2 (ยกจาก docs/design/chat-v2/mockup.html §2 — ห้ามคิดใหม่) ──
      🔴 อยู่ที่นี่เพราะเป็น "สี" ที่ 3 ไฟล์ต้องใช้ร่วมกัน (bubble · composer · inbox-client)
         ถ้าปล่อยให้แต่ละไฟล์พิมพ์ #e9eefc เอง วันที่แบบร่างเปลี่ยนสีจะแก้ไม่ครบและไม่มีอะไรฟ้อง
@@ -114,6 +124,26 @@ body {
   .card {
     @apply rounded-xl border p-5;
     background: var(--color-surface);
+  }
+
+  /* ── แถวของแถบเมนูซ้าย/รางไอคอน (B3) ──
+     🔴 ต้องอยู่ที่นี่ (ไม่ใช่ inline style ในคอมโพเนนต์) เพราะ `:hover` เขียนเป็น inline style ไม่ได้
+        และสีทุกตัวมาจากโทเคนโทนแถบ ⇒ เปลี่ยนโทนของร้าน = แถบเปลี่ยนทั้งชุดโดยไม่ต้องแก้ JSX
+     🔴 โทน LIGHT: พื้นที่เลือก (#ffffff) แทบไม่ต่างจากพื้นแถบ (#fafafa) ⇒ ต้องมีเส้นขอบ + ตัวอักษร
+        สีเน้น ไม่งั้น "รายการที่กำลังเปิดอยู่" หายไปเลยในโทนสว่าง (แบบ §5: กรอบขาวสำหรับโทนสว่าง) */
+  .nav-row {
+    color: var(--nav-fg);
+  }
+  .nav-row:hover {
+    background: var(--nav-on);
+  }
+  .nav-row-on {
+    background: var(--nav-on);
+    font-weight: 600;
+  }
+  [data-nav-tone="LIGHT"] .nav-row-on {
+    box-shadow: inset 0 0 0 1px var(--color-line);
+    color: var(--color-accent);
   }
 }
 

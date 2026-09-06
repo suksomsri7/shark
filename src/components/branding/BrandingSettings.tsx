@@ -15,7 +15,8 @@ import {
   resetBrandingAction,
   uploadLogoAction,
 } from "@/app/app/settings/branding/actions";
-import { contrastRatio, fgAlpha, meetsAA, pickReadableFg, type ReadableFg } from "@/lib/branding/color";
+import { contrastRatio, fgAlpha, meetsAA, pickReadableFg, softOf, type ReadableFg } from "@/lib/branding/color";
+import { BRANDING_PREVIEW_KEY } from "@/components/app-shell/ThemeRoot";
 import type { NavToneValue } from "@/lib/branding/form";
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
@@ -111,6 +112,33 @@ export function BrandingSettings({ tenantName, canWrite, initial }: BrandingSett
     fd.set("applyMobile", applyMobile ? "on" : "off");
     fd.set("rememberCollapse", rememberCollapse ? "on" : "off");
     return fd;
+  }
+
+  /**
+   * "ดูตัวอย่างเต็มจอ" (B3) — เขียนโทเคนที่ **ยังไม่บันทึก** ลง sessionStorage แล้วเปิดแอปจริงในแท็บใหม่
+   * 🔴 ห้ามใส่ rel="noopener": เบราว์เซอร์ก๊อป sessionStorage ให้แท็บใหม่เฉพาะเมื่อยังอยู่ใน
+   *    browsing context group เดียวกัน — ใส่ noopener แล้ว ThemeRoot จะอ่านไม่เจอและได้ธีมที่บันทึกไว้แทน
+   *    (origin เดียวกันทั้งคู่ ⇒ ไม่ใช่ช่องโหว่ tabnabbing)
+   * 🔴 ไม่แตะ DB เลย — คนอื่นในร้านไม่เห็นอะไรจนกว่าจะกด "บันทึกและใช้กับทั้งร้าน"
+   */
+  function openFullPreview() {
+    try {
+      window.sessionStorage.setItem(
+        BRANDING_PREVIEW_KEY,
+        JSON.stringify({
+          accent,
+          accentFg,
+          accentSoft: softOf(accent),
+          navBg: nav.bg,
+          navFg: nav.fg,
+          navFg2: nav.fg2,
+          navOn: nav.on,
+        }),
+      );
+    } catch {
+      // เบราว์เซอร์ปิด storage (โหมดส่วนตัวบางตัว) — เปิดต่อได้ แค่จะเห็นธีมที่บันทึกไว้แทนของที่กำลังลอง
+    }
+    window.open("/app?theme=preview", "_blank");
   }
 
   function handleSave() {
@@ -383,7 +411,7 @@ export function BrandingSettings({ tenantName, canWrite, initial }: BrandingSett
             <ToggleRow
               testId="branding-toggle-collapse"
               title="จำสถานะย่อ/ขยายแถบเมนูของแต่ละคน"
-              desc="ผู้ใช้กด ‹ ย่อเป็นรางไอคอน 56px — ระบบจำต่อบัญชี ไม่บังคับทั้งร้าน"
+              desc="ผู้ใช้กด ‹ ย่อเป็นรางไอคอน 56px — ระบบจำต่อบัญชีอยู่แล้วเสมอ (ค่านี้บอกให้ทราบ ไม่ได้ปิดการจำ)"
               checked={rememberCollapse}
               onChange={setRememberCollapse}
             />
@@ -436,14 +464,9 @@ export function BrandingSettings({ tenantName, canWrite, initial }: BrandingSett
         <div className="card flex flex-col gap-3 p-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">ตัวอย่างสด</h3>
-            <a
-              href="/app?theme=preview"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-sm text-xs"
-            >
+            <button type="button" onClick={openFullPreview} className="btn-sm text-xs">
               ดูตัวอย่างเต็มจอ
-            </a>
+            </button>
           </div>
           <div
             data-testid="branding-preview"

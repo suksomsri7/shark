@@ -9,7 +9,7 @@
 //    (throttle 60 นาที/source) — เรื่องผู้ใช้แจ้งเข้ามาไม่ใช่เหตุระบบล่ม
 
 import type { IssueKind, IssueReport, IssueStatus } from "@prisma/client";
-import { tenantDb } from "@/lib/core/db";
+import { prisma, tenantDb } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
 
 type Ctx = { tenantId: string };
@@ -46,6 +46,28 @@ export type CreateIssueInput = {
   appVersion?: string | null;
   screenshotUrl?: string | null;
 };
+
+/**
+ * ด่านสิทธิ์ของ "แจ้งปัญหาการใช้งาน" (B3) — ผู้แจ้งต้องเป็น **สมาชิกที่รับคำเชิญแล้ว** ของร้านนี้จริง
+ *
+ * 🔴 ทำไมไม่พอที่จะเชื่อ requireTenant() ฝั่ง action: requireTenant คืน membership ที่ผูกกับคุกกี้
+ *    `shark_tenant` ซึ่งเป็นค่าที่ผู้ใช้แก้เองได้ · ตัว getAuth กรอง acceptedAt ให้แล้วก็จริง แต่ด่าน
+ *    ของ "เรื่องที่จะถูกเขียนลงตารางของร้าน" ต้องยืนยันกับ DB ตรง ๆ ที่ชั้นบริการ ไม่ใช่ฝากชั้นบน
+ *    (แพตเทิร์นเดียวกับ requireMembership ของ core — ตรวจสมาชิกภาพจริงก่อนลงมือเสมอ)
+ * 🔴 ใช้ prisma ตรง (ไม่ผ่าน tenantDb) โดยตั้งใจ: Membership เป็นตารางระดับบัญชี ไม่ใช่ของร้าน
+ *    และ where ผูก tenantId + userId + acceptedAt ลงไปใน SQL ทุกตัวอยู่แล้ว
+ */
+export async function assertCanReport(ctx: Ctx, userId: string | null | undefined): Promise<void> {
+  const uid = (userId ?? "").trim();
+  if (!uid) throw new Error("ต้องเข้าสู่ระบบก่อนจึงจะแจ้งปัญหาได้");
+  const member = await prisma.membership.findFirst({
+    where: { tenantId: ctx.tenantId, userId: uid, acceptedAt: { not: null } },
+    select: { id: true },
+  });
+  if (!member) {
+    throw new Error("แจ้งปัญหาไม่ได้ — บัญชีนี้ไม่ได้เป็นสมาชิกของกิจการนี้");
+  }
+}
 
 /**
  * รับเรื่องจากผู้ใช้ 1 รายการ — ข้อความว่าง/ยาวเกิน/ประเภทเพี้ยน → throw ข้อความไทย

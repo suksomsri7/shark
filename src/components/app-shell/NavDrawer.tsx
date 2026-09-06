@@ -8,9 +8,19 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { NavIcon } from "./NavIcon";
 
-// drawer เมนูระบบ — เลื่อนออกจากซ้าย เปิดจากปุ่มแฮมเบอร์เกอร์บน topbar
-// รวม "ระบบทั้งหมด" (grid เดิมที่ย้ายมาจากหน้า /app) + ระบบที่กำลังจะมา + เพิ่มระบบ + ออกจากระบบ
+// drawer เมนูระบบ — เลื่อนออกจากซ้าย (จอเล็ก/แอป) หรือปักซ้ายถาวร (เว็บจอใหญ่)
+// รวม "ระบบทั้งหมด" + ตั้งค่า + ระบบที่กำลังจะมา + เพิ่มระบบ + ออกจากระบบ
 // nav item data ยังมาจาก layout (DB-driven) เหมือนเดิม — เปลี่ยนแค่การนำเสนอ
+//
+// B3 (T6/T7 · แบบ ledger/DESIGN-BRANDING.md §5, §7a):
+//   · สีทั้งแถบมาจากโทเคนโทนแถบ `--nav-bg/--nav-fg/--nav-fg2/--nav-on` (โทน LIGHT = หน้าตาเดิม)
+//   · หัวแถบ = โลโก้กิจการ + ชื่อกิจการ + ▾ (สลับ/แก้ชื่อ/เพิ่มกิจการ เหมือนเดิม)
+//   · **รายการเมนู = 1 บรรทัดต่อระบบ** — ไม่มี accordion เมนูย่อยอีกแล้ว (เจ้าของ 6 ก.ย. รอบ 3:
+//     แท็บย่อยอยู่ในหน้าหลักของระบบนั้นแล้ว · ทางลัดลึกใช้ค้นหา)
+//     🔴 `NavItem.children` ยังถูกส่งมาจาก layout ต่อไปโดยตั้งใจ — มันคือ "ทะเบียนเส้นทางของระบบ"
+//        ที่ `scripts/qc-nav-functions.mts` ใช้กันลิงก์ตาย (dead link) ทั้งแอป · ตัดทะเบียนทิ้ง =
+//        ปิดตาข้อสอบตัวนั้นทันที ⇒ ตัดที่ "การนำเสนอ" ที่นี่ที่เดียว
+//   · ปุ่ม ‹ ย่อแถบเป็นรางไอคอน (เฉพาะโหมดปักซ้าย) · ท้ายเมนูมี "แจ้งปัญหาการใช้งาน"
 
 // group = หัวข้อคั่นก่อนรายการนี้ (ระบบที่เมนูยาวอย่างบัญชี จะได้ไม่เป็นลิสต์ยาวพืด)
 export type NavChild = { href: string; label: string; group?: string };
@@ -18,6 +28,14 @@ export type NavItem = { key: string; href: string; icon: string; label: string; 
 export type SoonItem = { code: string; icon: string; label: string };
 // กิจการ 1 แห่งใน account (สำหรับ dropdown สลับกิจการ)
 export type TenantOption = { tenantId: string; name: string; role: string };
+
+/** ตัวย่อ 2 ตัวอักษรจากชื่อกิจการ — ใช้เมื่อร้านยังไม่อัปตราสัญลักษณ์ (เหมือน Topbar) */
+function initialsOf(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "??";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
 
 // ป้ายตัวเลข "ยังไม่ได้อ่าน" ข้างชื่อระบบในเมนู — สีเดียวกับ badge ของปุ่มผู้ช่วย AI (AiDock)
 // เจ้าของแจ้ง 29 ส.ค.: เดิมต้องเปิดเข้าหน้าแชทถึงจะรู้ว่ามีกี่ห้องค้าง (B9)
@@ -33,53 +51,6 @@ function NavBadge({ n }: { n: number }) {
   );
 }
 
-// ระบบที่แตกฟังก์ชันย่อย — หัวข้อกดพับ/กาง (accordion) + ลิงก์ฟังก์ชันย่อยใต้ระบบ
-// auto-กาง เมื่ออยู่ในฟังก์ชันย่อยของระบบนั้น · ฟังก์ชัน active = เทียบ path ตรงตัว
-function NavGroup({ item, onNavigate, badge = 0 }: { item: NavItem; onNavigate: () => void; badge?: number }) {
-  const pathname = usePathname();
-  const children = item.children ?? [];
-  const anyActive = children.some((c) => pathname === c.href || pathname.startsWith(c.href + "/"));
-  const [open, setOpen] = useState(anyActive);
-  return (
-    <div className="flex flex-col">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`flex items-center gap-2 rounded-lg px-2 py-2.5 hover:bg-[color:var(--color-surface-2)] ${
-          anyActive ? "font-medium" : ""
-        }`}
-      >
-        <NavIcon emoji={item.icon} />
-        <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
-        <NavBadge n={badge} />
-        <span className="shrink-0 text-xs text-[color:var(--color-muted)]">{open ? "▾" : "▸"}</span>
-      </button>
-      {open && (
-        <div className="ml-3.5 flex flex-col gap-0.5 border-l pl-2">
-          {children.map((c) => (
-            <div key={c.href} className="flex flex-col">
-              {c.group && (
-                <span className="mt-1.5 px-2 py-1 text-[11px] font-medium text-[color:var(--color-muted)]">
-                  {c.group}
-                </span>
-              )}
-              <Link
-                href={c.href}
-                onClick={onNavigate}
-                className={`rounded-lg px-2 py-2 text-sm hover:bg-[color:var(--color-surface-2)] ${
-                  pathname === c.href ? "font-medium text-[color:var(--color-accent)]" : ""
-                }`}
-              >
-                {c.label}
-              </Link>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function NavDrawer({
   open,
   onClose,
@@ -91,6 +62,10 @@ export function NavDrawer({
   memberships,
   activeTenantId,
   badges,
+  branding,
+  navTone,
+  onCollapse,
+  onReportIssue,
   variant = "overlay",
   alwaysOverlay = false,
 }: {
@@ -109,6 +84,14 @@ export function NavDrawer({
   activeTenantId: string;
   /** ตัวเลขยังไม่ได้อ่านของแต่ละรายการเมนู — คีย์ = NavItem.key (เช่น `s-<systemId>` ของระบบแชท) */
   badges?: Record<string, number>;
+  /** ตราสัญลักษณ์ + ชื่อที่แสดงของร้าน (จาก getBrandingTokens ผ่าน layout → AppShell) */
+  branding: { displayName: string; logoUrl: string | null };
+  /** โทนแถบเมนูที่ร้านเลือก — สีมาจาก CSS var ทั้งหมด · ใช้ตัดสินเฉพาะรูปแบบของ "รายการที่เลือก"/เส้นคั่น */
+  navTone: "LIGHT" | "BRAND" | "DARK";
+  /** ย่อแถบเต็มเป็นรางไอคอน (เฉพาะโหมดปักซ้าย — จำต่อผู้ใช้ที่ AppShell) */
+  onCollapse?: () => void;
+  /** เปิดแผ่น "แจ้งปัญหาการใช้งาน" — บนจอเล็กแถบบนไม่มีที่พอ จึงมาอยู่ท้ายเมนู (แบบ §5 ภาพ 04) */
+  onReportIssue?: () => void;
   /**
    * overlay = เลื่อนออกมาทับจอ (มือถือ/แอป — เปิดจากปุ่มแฮมเบอร์เกอร์)
    * pinned  = ปักไว้ซ้ายจอถาวร ไม่มีฉากหลัง ไม่ปิดเมื่อกดลิงก์ (เว็บบนจอใหญ่ ≥ lg)
@@ -134,6 +117,9 @@ export function NavDrawer({
   // ⇒ ต้องมีทางไป "ผู้ช่วย AI" (จอ native ของแอป) จากตรงนี้: ส่งสัญญาณ {ev:"open-ai"} ให้แอป
   const inApp = useInApp();
   const pinned = variant === "pinned";
+  // แถวเมนู 1 ชุด — สีทั้งหมดมาจาก .nav-row/.nav-row-on ใน globals.css (โทนเปลี่ยน = แถวเปลี่ยนตาม)
+  const row = (active: boolean) =>
+    `nav-row flex items-center gap-2 rounded-lg px-2 py-2.5 ${active ? "nav-row-on" : ""}`;
   if (!pinned && !open) return null;
 
   return (
@@ -141,7 +127,7 @@ export function NavDrawer({
       className={
         pinned
           ? // ปักซ้ายใต้ topbar — โผล่เฉพาะจอ ≥ lg (จอเล็กใช้ overlay เหมือนเดิม)
-            "fixed bottom-0 left-0 top-14 z-30 hidden w-72 border-r border-[color:var(--color-border)] lg:block"
+            "fixed bottom-0 left-0 top-14 z-30 hidden w-72 lg:block"
           : // overlay: จอใหญ่ไม่ต้องใช้แล้ว (มีแถบปักซ้ายอยู่) — กันเมนูซ้อนกัน 2 ชั้นตอนย่อ/ขยายจอ
             // ยกเว้นในแอป (alwaysOverlay) ที่ไม่มีแถบปักซ้าย → ต้องโผล่แม้จอกว้าง (iPad แนวนอน)
             alwaysOverlay ? "fixed inset-0 z-50" : "fixed inset-0 z-50 lg:hidden"
@@ -156,30 +142,68 @@ export function NavDrawer({
               **ไม่อยู่ในต้นไม้เลยเมื่อปิด** (`if (!pinned && !open) return null`)
               ⇒ ที่จอ < lg: ปิดอยู่ = เจอเฉพาะตัวปักซ้ายซึ่ง `hidden` · เปิดแล้ว = เจอ overlay เป็นตัวแรก */
         data-qc="app-drawer"
+        data-nav-tone={navTone}
         className={
           pinned
-            ? "flex h-full w-full flex-col overflow-y-auto bg-[color:var(--color-surface)]"
-            : "absolute left-0 top-0 flex h-full w-72 max-w-[85%] flex-col overflow-y-auto bg-[color:var(--color-surface)] shadow-[2px_0_12px_rgba(0,0,0,0.08)]"
+            ? "flex h-full w-full flex-col overflow-y-auto"
+            : "absolute left-0 top-0 flex h-full w-72 max-w-[85%] flex-col overflow-y-auto shadow-[2px_0_12px_rgba(0,0,0,0.08)]"
         }
+        style={{
+          background: "var(--nav-bg)",
+          color: "var(--nav-fg)",
+          // เส้นคั่นเฉพาะโทนสว่าง — โทนสี/เข้มแยกตัวเองจากเนื้อหาด้วยสีอยู่แล้ว
+          borderRight: navTone === "LIGHT" ? "1px solid var(--color-line)" : "none",
+        }}
       >
         {/* หัว drawer — ชื่อกิจการ active + ปุ่ม ▾ เปิด dropdown สลับ/เพิ่มกิจการ (คำสั่งเจ้าของ) */}
         <div className="relative px-2 py-2">
           <button
             type="button"
             onClick={() => setTenantOpen((o) => !o)}
-            className="flex w-full items-center gap-2 rounded-xl border border-[color:var(--color-border)] bg-[color:var(--color-surface-2)] px-3 py-3"
+            className="nav-row flex w-full items-center gap-2.5 rounded-xl px-3 py-3"
           >
+            {branding.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- โลโก้อยู่บน CDN ของร้าน (โดเมนไม่คงที่)
+              <img
+                src={branding.logoUrl}
+                alt=""
+                width={34}
+                height={34}
+                className="h-[34px] w-[34px] shrink-0 rounded-lg object-contain"
+              />
+            ) : (
+              <span
+                aria-hidden
+                className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-lg text-[12px] font-bold"
+                // 🔴 โทน BRAND: พื้นแถบ = สีแบรนด์อยู่แล้ว ⇒ กล่องตัวย่อสีแบรนด์จะ "หายไปในพื้น"
+                //    ใช้พื้นโปร่งของแถบ (--nav-on) แทน เพื่อให้เห็นกล่องทุกโทน
+                style={
+                  navTone === "BRAND"
+                    ? { background: "var(--nav-on)", color: "var(--nav-fg)" }
+                    : { background: "var(--color-accent)", color: "var(--color-accent-fg)" }
+                }
+              >
+                {initialsOf(branding.displayName)}
+              </span>
+            )}
             <span className="min-w-0 flex-1 text-left">
-              <span className="block text-[11px] text-[color:var(--color-muted)]">กิจการ</span>
-              <span className="block truncate text-xl font-extrabold">{localNames[activeTenantId] ?? tenantName}</span>
+              <span className="block text-[11px]" style={{ color: "var(--nav-fg2)" }}>
+                กิจการ
+              </span>
+              <span className="block truncate text-base font-extrabold">
+                {localNames[activeTenantId] ?? tenantName}
+              </span>
             </span>
-            <span className="shrink-0 text-lg font-bold text-[color:var(--color-accent)]">{tenantOpen ? "▴" : "▾"}</span>
+            <span className="shrink-0 text-lg font-bold">{tenantOpen ? "▴" : "▾"}</span>
           </button>
           {tenantOpen && (
             <>
               {/* คลุมหลัง dropdown แตะเพื่อปิด (ไม่ปิดทั้ง drawer) */}
               <div className="fixed inset-0 z-0" onClick={() => setTenantOpen(false)} />
-              <div className="absolute left-2 right-2 z-10 mt-1 flex flex-col rounded-lg border bg-[color:var(--color-surface)] py-1 shadow-lg">
+              <div
+                className="absolute left-2 right-2 z-10 mt-1 flex flex-col rounded-lg border bg-[color:var(--color-surface)] py-1 shadow-lg"
+                style={{ color: "var(--color-ink)" }}
+              >
                 {memberships.map((m) => {
                   const isCurrent = m.tenantId === activeTenantId;
                   // แถว active = โชว์ ✓ น้ำเงิน · กิจการอื่น = submit สลับกิจการ
@@ -269,39 +293,24 @@ export function NavDrawer({
         </div>
 
         <nav className="flex flex-col gap-0.5 px-2 text-sm">
-          <Link
-            href="/app"
-            onClick={onClose}
-            className={`flex items-center gap-2 rounded-lg px-2 py-2.5 hover:bg-[color:var(--color-surface-2)] ${
-              pathname === "/app" ? "font-medium text-[color:var(--color-accent)]" : ""
-            }`}
-          >
+          <Link href="/app" onClick={onClose} className={row(pathname === "/app")}>
             <NavIcon emoji="🏠" />
             <span className="truncate">หน้าหลัก</span>
           </Link>
 
-
           {items.length > 0 && (
-            <div className="px-2 pb-1 pt-3 text-xs text-[color:var(--color-muted)]">ระบบทั้งหมด</div>
+            <div className="px-2 pb-1 pt-3 text-xs" style={{ color: "var(--nav-fg2)" }}>
+              ระบบทั้งหมด
+            </div>
           )}
-          {items.map((it) =>
-            it.children && it.children.length > 0 ? (
-              <NavGroup key={it.key} item={it} onNavigate={onClose} badge={badges?.[it.key] ?? 0} />
-            ) : (
-              <Link
-                key={it.key}
-                href={it.href}
-                onClick={onClose}
-                className={`flex items-center gap-2 rounded-lg px-2 py-2.5 hover:bg-[color:var(--color-surface-2)] ${
-                  isActive(it.href) ? "font-medium text-[color:var(--color-accent)]" : ""
-                }`}
-              >
-                <NavIcon emoji={it.icon} />
-                <span className="min-w-0 truncate">{it.label}</span>
-                <NavBadge n={badges?.[it.key] ?? 0} />
-              </Link>
-            ),
-          )}
+          {/* 1 บรรทัดต่อระบบ — `it.children` (ทะเบียนเส้นทางของ qc-nav-functions) ไม่ถูกนำมาแสดงอีกแล้ว */}
+          {items.map((it) => (
+            <Link key={it.key} href={it.href} onClick={onClose} className={row(isActive(it.href))}>
+              <NavIcon emoji={it.icon} />
+              <span className="min-w-0 truncate">{it.label}</span>
+              <NavBadge n={badges?.[it.key] ?? 0} />
+            </Link>
+          ))}
 
           {inApp && (
             <button
@@ -312,18 +321,19 @@ export function NavDrawer({
                   JSON.stringify({ ev: "open-ai" }),
                 );
               }}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-left hover:bg-[color:var(--color-surface-2)]"
+              className={`${row(false)} w-full text-left`}
             >
               <span className="grid h-6 w-6 place-items-center text-base leading-none">✨</span>
               <span className="min-w-0 truncate">ผู้ช่วย AI</span>
             </button>
           )}
 
-          <div className="my-2 border-t" />
+          <div className="my-2 h-px" style={{ background: "var(--nav-fg2)", opacity: 0.25 }} />
           <button
             type="button"
             onClick={() => setSettingsOpen((o) => !o)}
-            className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-xs text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)]"
+            className="nav-row flex w-full items-center justify-between rounded-lg px-2 py-2 text-xs"
+            style={{ color: "var(--nav-fg2)" }}
           >
             <span>ตั้งค่า</span>
             <span>{settingsOpen ? "▴" : "▾"}</span>
@@ -357,14 +367,7 @@ export function NavDrawer({
             // K1.14 — ค่าที่เป็นของ "คน" ไม่ใช่ของ "ร้าน" (ปุ่มลัดคีย์บอร์ดของบอร์ดงาน)
             { href: "/app/settings/preferences", icon: "🎛️", label: "การตั้งค่าส่วนตัว" },
           ].map((s) => (
-            <Link
-              key={s.href}
-              href={s.href}
-              onClick={onClose}
-              className={`flex items-center gap-2 rounded-lg px-2 py-2.5 hover:bg-[color:var(--color-surface-2)] ${
-                isActive(s.href) ? "font-medium text-[color:var(--color-accent)]" : ""
-              }`}
-            >
+            <Link key={s.href} href={s.href} onClick={onClose} className={row(isActive(s.href))}>
               <NavIcon emoji={s.icon} />
               <span className="truncate">{s.label}</span>
             </Link>
@@ -372,8 +375,10 @@ export function NavDrawer({
 
           {soon.length > 0 && (
             <>
-              <div className="my-2 border-t" />
-              <div className="px-2 pb-1 text-xs text-[color:var(--color-muted)]">กำลังจะมา</div>
+              <div className="my-2 h-px" style={{ background: "var(--nav-fg2)", opacity: 0.25 }} />
+              <div className="px-2 pb-1 text-xs" style={{ color: "var(--nav-fg2)" }}>
+                กำลังจะมา
+              </div>
               {soon.map((s) => (
                 <div
                   key={s.code}
@@ -390,22 +395,63 @@ export function NavDrawer({
         </nav>
 
         <div className="mt-auto flex flex-col gap-2 px-4 pb-4 pt-3">
-          <div className="border-t pt-3">
-            {/* เปิด Modal เพิ่มระบบกลางจอ (ไม่ navigate ไปหน้า settings — คง flow อยู่ในหน้าเดิม) */}
+          {/* แจ้งปัญหาการใช้งาน — บนจอเล็ก/ในแอปไม่มีที่บนแถบบน (T7) ⇒ อยู่ท้ายเมนู (แบบ ภาพ 04) */}
+          {onReportIssue && !pinned && (
+            <button
+              type="button"
+              data-testid="nav-report-issue"
+              onClick={() => {
+                onClose();
+                onReportIssue();
+              }}
+              className="nav-row -mx-2 flex w-[calc(100%+1rem)] items-center gap-2 rounded-lg px-2 py-2.5 text-left text-sm"
+            >
+              <span className="grid h-6 w-6 place-items-center text-base leading-none">🛠️</span>
+              <span className="min-w-0 truncate">แจ้งปัญหาการใช้งาน</span>
+            </button>
+          )}
+          <div className="mb-1 h-px" style={{ background: "var(--nav-fg2)", opacity: 0.25 }} />
+          <div className="pt-1">
+            {/* เปิด Modal เพิ่มระบบกลางจอ (ไม่ navigate ไปหน้า settings — คง flow อยู่ในหน้าเดิม)
+                🔴 ปุ่ม "กลับสี" ตามแบบ §5: โทนสี/เข้ม = พื้นเป็นสีตัวอักษรของแถบ (ขาว) ตัวอักษรเป็นสีแถบ ·
+                   โทนสว่าง = สีแบรนด์บนพื้นสว่างเหมือนเดิม (ปุ่มขาวบนพื้นขาวจะหายไป) */}
             <button
               type="button"
               onClick={onAddSystem}
-              className="flex w-full items-center justify-center gap-1 rounded-lg bg-[color:var(--color-accent)] px-3 py-2.5 text-sm font-medium text-white hover:opacity-90"
+              className="flex w-full items-center justify-center gap-1 rounded-lg px-3 py-2.5 text-sm font-medium hover:opacity-90"
+              style={
+                navTone === "LIGHT"
+                  ? { background: "var(--color-accent)", color: "var(--color-accent-fg)" }
+                  : { background: "var(--nav-fg)", color: "var(--nav-bg)" }
+              }
             >
               + เพิ่มระบบ
             </button>
           </div>
           {/* อีเมล + ออกจากระบบ — โชว์เสมอ (ฝั่งแอป native intercept logout เอง) */}
-          <div className="flex items-center justify-between px-1">
-            <span className="truncate text-xs text-[color:var(--color-muted)]">{userEmail}</span>
-            <a href="/logout" className="text-xs underline">
+          <div className="flex items-center justify-between gap-2 px-1">
+            <span className="min-w-0 truncate text-xs" style={{ color: "var(--nav-fg2)" }}>
+              {userEmail}
+            </span>
+            <a href="/logout" className="shrink-0 text-xs underline" style={{ color: "var(--nav-fg2)" }}>
               ออกจากระบบ
             </a>
+            {/* ‹ ย่อแถบเต็มเป็นรางไอคอน 56px — จำต่อผู้ใช้ (preferences.navCollapsed) */}
+            {pinned && onCollapse && (
+              <button
+                type="button"
+                data-testid="nav-collapse"
+                onClick={onCollapse}
+                title="ย่อแถบเมนู"
+                aria-label="ย่อแถบเมนู"
+                className="nav-row grid h-7 w-7 shrink-0 place-items-center rounded-lg"
+                style={{ color: "var(--nav-fg2)" }}
+              >
+                <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m14.5 5-7 7 7 7" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
       </aside>

@@ -3,6 +3,7 @@
 // ใช้:
 //   bash scripts/acc-v2-serve.sh                    # production build บน .env.qc :3215 (ต้องมีก่อน)
 //   pnpm exec tsx scripts/visual-branding.mts b2     # ถ่ายชุดของ WO B2
+//   pnpm exec tsx scripts/visual-branding.mts b3     # ถ่ายชุดของ WO B3 (โครงแอป 3 โทน · ราง · ปัดขวา · แจ้งปัญหา)
 //   bash scripts/acc-v2-serve.sh stop
 //
 // ยืมร้าน QC ของบอร์ดงาน (siam-dive-kanban-qc · kb-owner@shark.local) แทนการสร้างร้านใหม่ —
@@ -22,6 +23,7 @@ const { KQC, resolveKanbanScope } = kq;
 const { prisma } = await import("@/lib/core/db");
 const { sha256 } = await import("@/lib/core/hash");
 const { setBranding, invalidateBrandingCache } = (await import("@/lib/branding/service" as string)) as Any;
+const { setUserPreferences } = (await import("@/lib/core/user-preferences" as string)) as Any;
 
 const argv = process.argv.slice(2);
 const WO = argv[0] ?? "b2";
@@ -41,14 +43,27 @@ type Step =
   | { click: string }
   | { fill: string; value: string }
   | { waitFor: string; timeoutMs?: number }
-  | { wait: number };
-type Spec = { name: string; steps?: Step[]; note?: string };
+  | { wait: number }
+  /** ปัดนิ้วจากขอบซ้ายไปทางขวา (ท่าเปิดเมนูของ B3) — ใช้ touchscreen จริงผ่าน CDP ไม่ใช่ event ปลอม */
+  | { swipeFromLeftEdge: true };
+type Spec = {
+  name: string;
+  /** หน้าที่จะถ่าย (ปริยาย = หน้าตั้งค่าธีมของ B2) */
+  path?: string;
+  /** ถ่ายเฉพาะจอเดียว (ปริยาย = ทุก viewport) */
+  onlyDevice?: "desktop" | "mobile";
+  /** ตั้งธีมของร้าน QC ก่อนถ่าย — เปลี่ยนเมื่อไหร่ต้องรอแคชโทเคน 60 วิของเซิร์ฟเวอร์หมดอายุก่อน */
+  branding?: { navTone: "LIGHT" | "BRAND" | "DARK"; brandColor: string };
+  steps?: Step[];
+  note?: string;
+};
 
 const TEAL = "#0E7490";
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const SPECS: Record<string, Spec[]> = {
   // B2 — หน้าตั้งค่าค่าปริยาย → เลือกเทียล+BRAND (ดูตัวอย่างสดเปลี่ยน) → DARK → บันทึก → รีโหลด
-  b2: [
+  "b2": [
     { name: "settings-default", note: "ค่าปริยายของร้าน QC (ยังไม่ตั้งธีม) — เทียบ mockup 01" },
     {
       name: "preview-teal-brand",
@@ -86,11 +101,87 @@ const SPECS: Record<string, Spec[]> = {
       note: "โหลดหน้าใหม่ (ไม่มี step) — ค่าที่บันทึกไว้ (เทียล + DARK) ต้องเป็นค่าเริ่มต้นที่เห็นทันที",
     },
   ],
+
+  // B3 — โครงแอปจริงใน 3 โทน + ราง + ปัดขวาเปิดเมนู + แผ่นแจ้งปัญหา (เทียบ mockup 02/03/04)
+  // 🔴 เรียงตามโทน: เปลี่ยนธีม 1 ครั้ง = ต้องรอแคชโทเคน 60 วิของเซิร์ฟเวอร์ QC หมดอายุ (คนละโปรเซสกับสคริปต์นี้)
+  "b3": [
+    {
+      name: "light-shell",
+      path: "/app",
+      branding: { navTone: "LIGHT", brandColor: "" },
+      note: "โทนสว่าง (ค่าปริยาย) = ต้องเหมือนระบบเดิมทุกประการ · แถบบน: ตัวย่อ+ชื่อร้าน ซ้าย · ขวา 2 ปุ่ม (แจ้งปัญหา + orb)",
+    },
+    {
+      name: "brand-shell",
+      path: "/app",
+      onlyDevice: "desktop",
+      branding: { navTone: "BRAND", brandColor: TEAL },
+      note: "เทียบ mockup 02: แถบเมนูเทียลเต็ม 288px · หัวแถบมีตราสัญลักษณ์+ชื่อ+▾ · ปุ่ม + เพิ่มระบบ กลับสี · ไม่มี ☰ บนแถบบน",
+    },
+    {
+      name: "brand-rail",
+      path: "/app",
+      onlyDevice: "desktop",
+      note: "กด ‹ (nav-collapse) → ยุบเป็นรางไอคอน 56px โทนเดียวกับแถบ · ไม่มีตราสัญลักษณ์บนราง (mockup 03)",
+      steps: [{ waitFor: '[data-testid="nav-collapse"]' }, { click: '[data-testid="nav-collapse"]' }, { wait: 700 }],
+    },
+    {
+      name: "brand-board-rail",
+      path: "__BOARD__",
+      onlyDevice: "desktop",
+      note: "หน้าบอร์ดงานยังบังคับรางเหมือนเดิม (K1.5) — โทนรางตามธีมร้าน ไม่ใช่ดำ",
+    },
+    {
+      name: "brand-issue-sheet",
+      path: "/app",
+      onlyDevice: "desktop",
+      note: "กดปุ่ม 'แจ้งปัญหาการใช้งาน' → แผ่นเล็ก: 3 ประเภท · ช่องข้อความ · แนบรูป · บอกว่าแนบบริบทให้เอง",
+      steps: [{ waitFor: '[data-testid="report-issue"]' }, { click: '[data-testid="report-issue"]' }, { wait: 500 }],
+    },
+    {
+      name: "brand-mobile-swiped",
+      path: "/app",
+      onlyDevice: "mobile",
+      note: "มือถือ: ไม่มี ☰ ในแอป · ปัดจากขอบซ้ายไปขวา ≥60px แล้วเมนูต้องเลื่อนเข้ามา (ท้ายเมนูมี 'แจ้งปัญหาการใช้งาน')",
+      steps: [{ wait: 400 }, { swipeFromLeftEdge: true }, { wait: 700 }],
+    },
+    {
+      name: "dark-shell",
+      path: "/app",
+      branding: { navTone: "DARK", brandColor: TEAL },
+      note: "โทนเข้ม #111827 — ตัวอักษร/ไอคอนต้องอ่านออกทั้งแถบ · จุดเน้น (accent) ยังเป็นเทียล",
+    },
+    {
+      name: "dark-rail",
+      path: "/app",
+      onlyDevice: "desktop",
+      note: "โทนเข้ม + ราง — ปุ่ม › (nav-expand) ท้ายรางต้องเห็นได้",
+      steps: [{ waitFor: '[data-testid="nav-collapse"]' }, { click: '[data-testid="nav-collapse"]' }, { wait: 700 }],
+    },
+  ],
 };
 const specs: Spec[] = SPECS[WO] ?? [];
 if (specs.length === 0) {
   console.error(`❌ ไม่มี spec ของ WO ${WO}`);
   process.exit(2);
+}
+
+// ── ตัวช่วยของ B3: ตั้งธีมร้าน / คืนค่าสถานะแถบเมนูของผู้ใช้ / หาบอร์ดตัวอย่าง ──
+// 🔴 getBrandingTokens แคช 60 วิ **ในโปรเซสของเซิร์ฟเวอร์ QC** ซึ่งเป็นคนละโปรเซสกับสคริปต์นี้
+//    ⇒ invalidateBrandingCache() ที่นี่ล้างของเซิร์ฟเวอร์ไม่ได้ · ถ้าเคยโหลดหน้าไปแล้วหลังตั้งธีมครั้งก่อน
+//    ต้อง "รอให้หมดอายุ" จริง ๆ ไม่งั้นภาพโทนใหม่จะได้สีเก่าแบบเงียบ ๆ (ผลลบปลอมที่หลอกตาที่สุด)
+let pageLoadedSinceBranding = false;
+async function applyBranding(navTone: string, brandColor: string): Promise<void> {
+  if (pageLoadedSinceBranding) {
+    console.log("  ⏳ รอแคชโทเคนธีม 60 วิของเซิร์ฟเวอร์ QC หมดอายุก่อนเปลี่ยนโทน…");
+    await sleep(62_000);
+  }
+  await setBranding(
+    { tenantId },
+    { displayName: "", logoUrl: "", brandColor, navTone, applyStorefront: true, applyMobile: true, updatedById: null },
+  );
+  invalidateBrandingCache(tenantId);
+  pageLoadedSinceBranding = false;
 }
 
 // ── mint session ของเจ้าของร้าน QC บอร์ดงาน ──
@@ -99,6 +190,13 @@ if (!user) {
   console.error(`❌ ไม่พบผู้ใช้ ${KQC.ownerEmail}`);
   process.exit(2);
 }
+// หน้าบอร์ดตัวอย่างของร้าน QC (ใช้กับ spec ที่ path = "__BOARD__") — บอร์ดสาขาป่าตองตามชุดข้อมูล K1
+const qcBoard = await prisma.kanbanBoard.findFirst({
+  where: { tenantId, name: KQC.boards.patong },
+  select: { id: true },
+});
+const BOARD_PATH = qcBoard ? `/app/sys/${scope.systemId}/kanban/b/${qcBoard.id}` : "/app";
+
 const UA = "qc-visual-branding";
 const token = "br" + Math.random().toString(36).slice(2) + Date.now().toString(36);
 const ttl = new Date(Date.now() + 60 * 60 * 1000);
@@ -125,14 +223,22 @@ try {
       : ([["desktop", 1440, 900], ["mobile", 390, 844]] as const);
 
     for (const spec of specs) {
+      // ตั้งธีมของร้านก่อนถ่าย (เฉพาะ spec ที่ประกาศ) — รอแคชของเซิร์ฟเวอร์หมดอายุให้เรียบร้อย
+      if (spec.branding) await applyBranding(spec.branding.navTone, spec.branding.brandColor);
+      // 🔴 คืนสถานะแถบเมนูของผู้ใช้เป็น "กางเต็ม" ก่อนทุก spec — spec ก่อนหน้าที่กด ‹ ได้บันทึกค่าจริงลง
+      //    User.prefs ไปแล้ว ถ้าไม่คืน ภาพถัดไปจะเป็นรางทั้งที่ไม่ได้ตั้งใจ (และไล่หาสาเหตุยากมาก)
+      await setUserPreferences(user.id, { navCollapsed: false });
       for (const [device, w, h] of viewports) {
+        if (spec.onlyDevice && spec.onlyDevice !== device) continue;
         const page = await browser.newPage();
         await page.setViewport({ width: w, height: h, deviceScaleFactor: 2, isMobile: device === "mobile", hasTouch: device === "mobile" });
         await page.setCookie(...cookies);
         const errors: string[] = [];
         page.on("pageerror", (e: Error) => errors.push(e.message.slice(0, 120)));
         page.on("console", (m: Any) => { if (m.type() === "error") errors.push(String(m.text()).slice(0, 120)); });
-        const resp = await page.goto(`${BASE}${SETTINGS_PATH}`, { waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => null);
+        const path = spec.path === "__BOARD__" ? BOARD_PATH : (spec.path ?? SETTINGS_PATH);
+        const resp = await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => null);
+        pageLoadedSinceBranding = true;
         await new Promise((r) => setTimeout(r, 1200)); // ให้ hydrate
 
         for (const step of spec.steps ?? []) {
@@ -141,6 +247,16 @@ try {
             else if ("click" in step) await page.click(step.click);
             else if ("fill" in step) { await page.click(step.fill, { clickCount: 3 }); await page.keyboard.type(step.value, { delay: 15 }); }
             else if ("wait" in step) await new Promise((r) => setTimeout(r, step.wait));
+            else if ("swipeFromLeftEdge" in step) {
+              // นิ้วจริงผ่าน CDP: แตะที่ x=6 (อยู่ในเขตขอบ ≤24px) แล้วลากไปขวาเกิน 60px
+              const y = Math.round(h / 2);
+              await page.touchscreen.touchStart(6, y);
+              for (const x of [24, 48, 80, 120]) {
+                await page.touchscreen.touchMove(x, y);
+                await new Promise((r) => setTimeout(r, 60));
+              }
+              await page.touchscreen.touchEnd();
+            }
           } catch (e) {
             failures++;
             console.log(`  ❌ step ${JSON.stringify(step).slice(0, 80)} — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
@@ -171,7 +287,9 @@ try {
       { displayName: "", logoUrl: "", brandColor: "", navTone: "LIGHT", applyStorefront: true, applyMobile: true, updatedById: null },
     );
     invalidateBrandingCache(tenantId);
-    console.log(`🧹 คืนธีมของร้าน QC (${tenantId}) เป็นค่าเริ่มต้น (ว่าง/LIGHT) แล้ว`);
+    // ค่าย่อ/ขยายแถบเมนูของเจ้าของร้าน QC เป็นของ "คน" — spec ที่กด ‹ เขียนลง DB จริง ต้องคืนเสมอ
+    await setUserPreferences(user.id, { navCollapsed: false });
+    console.log(`🧹 คืนธีมของร้าน QC (${tenantId}) เป็นค่าเริ่มต้น (ว่าง/LIGHT) + navCollapsed=false แล้ว`);
   } catch (e) {
     failures++;
     console.log(`  ❌ คืนธีมของร้าน QC ไม่สำเร็จ — ${e instanceof Error ? e.message.slice(0, 200) : e}`);
