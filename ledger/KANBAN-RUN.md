@@ -73,8 +73,8 @@
 | K2.1 | มุมมองตาราง (แก้ในช่อง · เลือกหลาย · จัดกลุ่ม · CSV) ภาพ 04 | Sonnet | TODO (oracle พร้อม 22 ข้อ) | | |
 | K2.2 | มุมมองปฏิทิน (ลากเปลี่ยนวัน · ถาดยังไม่กำหนด · ซ้อนจอง/ลา/ประชุม) ภาพ 05 | Sonnet | TODO (oracle พร้อม 17 ข้อ) | | |
 | K2.4 | มุมมองสรุป (4 ไทล์ เจาะลงการ์ดได้) | Sonnet | TODO (oracle พร้อม 13 ข้อ) | | |
-| K2.5 | มุมมองที่บันทึกไว้ (`KanbanBoardView` ส่วนตัว/ทั้งทีม) | Sonnet | TODO | | |
-| K2.6 | ฟิลด์กำหนดเอง 5 ชนิด (≤20) | Sonnet | TODO | | |
+| K2.5 | มุมมองที่บันทึกไว้ (`KanbanBoardView` ส่วนตัว/ทั้งทีม) | Sonnet | TODO (oracle พร้อม 15 ข้อ) | | |
+| K2.6 | ฟิลด์กำหนดเอง 5 ชนิด (≤20) | Sonnet | TODO (oracle พร้อม 18 ข้อ) | | |
 | K2.7 | เทมเพลตการ์ด + กำหนดส่งซ้ำ (cron) | Sonnet | TODO | | |
 | K2.8 | กล่องงานเข้าส่วนตัว (`KanbanInboxItem` · จดเร็ว · ส่งเข้าบอร์ด) ภาพ 06 ฝั่งซ้าย | Sonnet | TODO | | |
 | K2.9 | ตัวสร้างกฎอัตโนมัติ (5 ชนิด · ทดลองรัน · บันทึกการทำงาน) ภาพ 08 + ลงทะเบียน 8 event | Opus | TODO | | |
@@ -204,6 +204,19 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - UI `src/components/kanban/SummaryView.tsx` (client): ตัวเลขใหญ่ 5 ค่า (ค้าง · เลยกำหนด (แดง) · ถึงกำหนดวันนี้ · สัปดาห์นี้ · เสร็จแล้ว) · 4 ไทล์ (การ์ดต่อคอลัมน์ / ต่อคน / ต่อกำหนดส่ง / ต่อป้าย) แต่ละแถวเป็น `<Link href>` ไปตารางที่กรองแล้ว testid `summary-tile` · กราฟ throughput รายสัปดาห์ (สร้าง vs เสร็จ) วาดด้วย SVG ล้วน testid `summary-chart` (ไม่เพิ่ม lib) · โทนสีตาม token (ไม่ hard-code) · มือถือ: ไทล์เรียง 1 คอลัมน์
 - หน้าบอร์ด: `?view=summary` → server เรียก `boardSummary` · แท็บ "สรุป" เปิดใช้
 - ภาพ spec `"2.4"`: สรุป desktop · กดไทล์ "ด่วน" → ตารางกรอง (ยืนยันจำนวนเท่ากัน) · มือถือ
+
+### K2.5 — มุมมองที่บันทึกไว้ (Sonnet · `qc-kanban-k2.5.mts` 15 ข้อ · ภาพ 10 แท็บมุมมอง)
+- Prisma (additive `kanban_v2_l`): `enum KanbanViewScope { PRIVATE BOARD }` · `model KanbanBoardView { id tenantId systemId boardId? ownerUserId? name scope @default(PRIVATE) config Json sortOrder createdAt updatedAt @@index([boardId, scope]) @@index([tenantId, systemId, ownerUserId]) }` · scope.ts tenant
+- `src/lib/modules/kanban/views.ts`: `ViewConfig` (zod: `view ∈ board|table|calendar|summary|timeline` · `filters { assignee?, label?, due?, status?, q?, column? }` · `sort?` · `group?` — คีย์แปลกตัดทิ้ง) · `listViews(ctx, actor, boardId) → BOARD ก่อน แล้ว PRIVATE ของตัวเอง` · `saveView(ctx, actor, { boardId, name, scope, config })` (PRIVATE = สมาชิกที่เห็นบอร์ด · BOARD = ADMIN · ชื่อว่าง/ซ้ำ/ config ผิด → throw ไทย · เพดาน `KANBAN_LIMITS.viewsPerBoard = 20` ต่อคนต่อบอร์ด) · `updateView` (เจ้าของ หรือ ADMIN สำหรับ BOARD) · `deleteView` (เดียวกัน) · `applyView(ctx, actor, viewId) → { view, filters, sort, group, href }` href ตาม §2.3 พร้อม `savedView=<id>` · activity BOARD_UPDATED สำหรับ scope BOARD
+- URL: หน้าบอร์ดรับ `?savedView=` → โหลด config → ใช้เป็นพารามิเตอร์ (merge: พารามิเตอร์ที่ผู้ใช้ส่งมาทับ config) · หัวบอร์ด: dropdown "มุมมองที่บันทึกไว้" testid `saved-views` (แยกหมวด ทั้งทีม/ส่วนตัว) + "บันทึกมุมมองนี้" (ชื่อ + scope ถ้า ADMIN) · ตั้งค่าบอร์ด › มุมมองที่บันทึกไว้ (`settings/views`) testid `saved-views-settings`: รายการ + ป้าย + คำบรรยายเงื่อนไขไทย + แก้ชื่อ/ลบ/ลาก
+- actions `saveViewAction updateViewAction deleteViewAction` · ภาพ spec `"2.5"` ≥ 3 ใบ
+
+### K2.6 — ฟิลด์กำหนดเอง 5 ชนิด ≤20/บอร์ด (Sonnet · `qc-kanban-k2.6.mts` 18 ข้อ · ภาพ 10 แท็บฟิลด์)
+- Prisma (additive `kanban_v2_m`): `enum KanbanCustomFieldType { TEXT NUMBER DATE CHECKBOX SELECT }` · `KanbanCustomField { id tenantId boardId name type options Json @default("{}") (NUMBER: {unit?, decimals?} · SELECT: {choices: string[]}) showOnCard Boolean @default(false) sortOrder Int createdAt updatedAt @@unique([boardId, name]) @@index([boardId, sortOrder]) }` · `KanbanCustomFieldValue { id tenantId cardId fieldId valueText? valueNumber Decimal? valueDate? valueBool? valueOption? updatedAt @@unique([cardId, fieldId]) @@index([fieldId]) }` (FK cascade จาก field) · scope.ts tenant
+- `src/lib/modules/kanban/fields.ts`: `createField(ctx, actor, boardId, { name, type, options?, showOnCard? })` (ADMIN · ชื่อซ้ำ/ว่าง/SELECT ไม่มี choices → throw ไทย · ใบที่ 21 → throw ไทย code LIMIT_REACHED · `KANBAN_LIMITS.customFieldsPerBoard = 20`) · `updateField` · `deleteField` (ADMIN · cascade ค่า) · `reorderFields(ctx, actor, boardId, ids[])` · `listFields(ctx, actor, boardId)` · `setCardFieldValue(ctx, actor, cardId, fieldId, value|null)` (EDITOR · ตรวจชนิด: NUMBER=number · DATE=Date · CHECKBOX=boolean · SELECT ∈ choices · TEXT ≤ 500 · null = ลบแถว · activity CARD_UPDATED {fields:[name]}) · `getCardFieldValues(ctx, actor, cardId) → [{ fieldId, name, type, value, display }]` display ไทย (ตัวเลขคั่นหลัก + หน่วย · วันที่ไทย พ.ศ. · ✓/—)
+- DTO: `getCardDetail.customFields[]` (ทุกฟิลด์ของบอร์ด + ค่า) · การ์ดใน `getBoardView` / `listBoardTable` มี `fieldsOnCard[{name, display}]` เฉพาะ `showOnCard` ที่มีค่า
+- UI: หลังการ์ดบล็อก "ฟิลด์กำหนดเอง" testid `custom-fields` (`CustomFields.tsx` แก้ในที่ทุกชนิด · DATE ใช้ ThaiDatePicker) · การ์ดบนบอร์ดชิป testid `card-field` · ตั้งค่าบอร์ด › ฟิลด์กำหนดเอง (`settings/fields`) testid `custom-fields-settings` "n / 20" + เพิ่ม/แก้/ลบ/ลาก/สลับแสดงบนการ์ด · ตาราง K2.1: เพิ่มคอลัมน์ฟิลด์ที่ showOnCard
+- actions `createFieldAction updateFieldAction deleteFieldAction reorderFieldsAction setCardFieldValueAction` · ภาพ spec `"2.6"` ≥ 3 ใบ
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
 - 17:41 น. — **P1 ปิด** · qc:all 253/261 (20 นาที) → ทั้ง 8 ชุดแดงแก้แล้ว (2 ชุดเป็นผลจาก run นี้จริง: inbox import app-shell · kanban_my_tasks เปลี่ยนสัญญา — คืนแบบเดิม) · prod verify ผ่าน · handover เขียนแล้ว · Telegram ส่ง
