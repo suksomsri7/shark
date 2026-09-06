@@ -84,7 +84,7 @@
 | **P3 — เชื่อมทุกโมดูล + AI** |||||
 | K3.1 | `KanbanCardLink` + UI "เชื่อมข้อมูล SHARK" ในหลังการ์ด + resolver รายโมดูล + เช็คสิทธิ์รายคน | Opus | TODO (oracle พร้อม 20) | | |
 | K3.2 | สร้างงานจากแชท (ปุ่มในโมดูลแชท + แผงเตรียมการ์ด ภาพ 09 + สวิตช์รายร้าน) | Opus | TODO (oracle พร้อม 19) | | |
-| K3.3 | การ์ดจากฟอร์ม/ใบลา/อนุมัติ/คิว (outbox consumers) | Opus | TODO | | |
+| K3.3 | การ์ดจากฟอร์ม/ใบลา/อนุมัติ/คิว (outbox consumers) | Opus | TODO (oracle พร้อม 15) | | |
 | K3.4 | ย้อนกลับ: การ์ดปิดแล้วแปะบันทึกในแชท/อัปเดตเอกสาร | Opus | TODO | | |
 | K3.5 | เครื่องมือ AI 8 ตัว + ปุ่ม AI ในหลังการ์ด | Opus | TODO | | |
 | K3.6 | คำแนะนำกฎอัตโนมัติจากพฤติกรรมจริง | Opus | TODO | | |
@@ -333,6 +333,20 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - ⚠️ oracle สร้างระบบ CHAT + ผู้ติดต่อ + ห้อง + ข้อความ 3 + ไฟล์แนบ 1 · แก้ `AppSystem.settings` ของระบบ KANBAN แล้วคืนค่าเดิม · ใช้ `deps.complete` ปลอมแทน AI
 
 > 🔴 **เส้น import ข้ามโมดูลที่ Fable อนุมัติล่วงหน้าสำหรับ RUN นี้** (builder เพิ่มใน `ALLOWED_EDGES` ของ `scripts/fitness.mts` พร้อมคอมเมนต์อ้าง WO · ห้ามเพิ่มเส้นอื่น): `kanban→calendar` (K2.2 อ่านงานระบบอื่นแบบ read-only) · `kanban→approval` (K2.9 open_approval · K3.1 resolver) · `kanban→party` (K3.1 resolver/PARTY ผ่าน facade party/index เท่านั้น) · `chat→kanban` (K3.2 ผ่าน `kanban/links` เท่านั้น) · consumer/cron ที่ต้องอ่านหลายโมดูลอยู่ที่ composition root (`src/lib/outbox-consumers.ts` / `src/lib/platform/*`) ไม่ใช่ในโมดูล
+
+### K3.3 — การ์ดเกิดจากที่อื่น (Opus · `qc-kanban-k3.3.mts` 15 ข้อ · ไม่มี mockup · เกณฑ์ §9.2/§13 K3.3 · ต้องมี K3.1 + K3.2 (integrations) ก่อน)
+- ที่อยู่: **composition root** `src/lib/platform/kanban-bridges.ts` (อ่านข้อมูลดิบของโมดูลต้นทางด้วย prisma ได้ · เขียนบอร์ดงานผ่าน facade `kanban/links.createCardFromExternal` + `kanban/integrations.getIntegrations` เท่านั้น · ห้าม import `kanban/service` ตรง · ไม่มี `any`) · ลงทะเบียนใน `outbox-consumers.ts` โดย **ต่อท้าย** handler เดิม (`compose(existing, bridge)` — notify/effect เดิมต้องทำงานเหมือนเดิม · bridge พังห้ามพา consumer หลักล้ม → try/catch + logOps WARN)
+- 🔴 ทุก bridge: บรรทัดแรก = `getIntegrations()` ของระบบ KANBAN ทุกระบบของร้าน (ร้านหนึ่งมีบอร์ดงานได้หลายระบบ — ใช้ระบบที่เปิดสวิตช์นั้น · ไม่มี = return **ก่อน query อื่นใด**) · ทุกใบ idempotent ด้วย `sourceKey` (ยิงซ้ำ 3 ครั้ง = 1 ใบ)
+- bridges:
+  - `forms.submission.received` → สวิตช์ `cardFromForm {boardId, columnId}`: อ่าน FormSubmission + FormDef → การ์ด "ฟอร์ม: {ชื่อฟอร์ม} — {ชื่อผู้กรอก|ไม่ระบุชื่อ}" · description = ทุกคำตอบ `<ul><li>label: ค่า</li>…</ul>` (escape/sanitize) · sourceType FORM · sourceKey `form:{submissionId}` · ลิงก์ FORM_SUBMISSION (SOURCE)
+  - `approval.request.submitted` → `cardFromApproval {boardId}`: การ์ด "คำขออนุมัติ: {entityType ป้ายไทยถ้ารู้จัก} ฿{ยอด}" · sourceType AUTOMATION · sourceKey `approval:{requestId}` · ลิงก์ APPROVAL_REQUEST · ผู้รับผิดชอบ = ผู้ยื่น (requestedById) · `approval.request.approved/rejected` → หาการ์ด sourceKey นั้น (ไม่มี = ไม่ทำ) → ความเห็นระบบ "ผลอนุมัติ: อนุมัติแล้ว/ถูกปฏิเสธ" **1 ครั้งต่อ requestId+status** (มีความเห็นนั้นแล้ว = ข้าม) · approved → ย้ายเข้าคอลัมน์ `isDoneColumn` แรกของบอร์ด (ไม่มี = คงที่)
+  - `account.document.approved` · `account.invoice.paid` → `closeCardOnDocApproved`: การ์ด ACTIVE ที่ผูก ACCOUNT_DOC linkId = documentId (removedAt null · completedAt null) → ย้ายเข้าคอลัมน์เสร็จแรก (ผ่าน `moves.moveCard` ctx actor null → activity CARD_MOVED) + ความเห็นระบบ "เอกสาร {docNo|id} อนุมัติ/จ่ายแล้ว — ปิดงานอัตโนมัติ" 1 ครั้ง · บอร์ดไม่มีคอลัมน์เสร็จ → ความเห็นอย่างเดียว · **ห้ามแตะตาราง Account\*** (§9.3)
+  - `hr.leave.submitted` (**event ใหม่**: `hr/service.ts#requestLeave` emit หลังสร้างแถว · key `hr.leave.submitted#{leaveId}` · payload `{ leaveId, employeeId, fromDate, toDate, type }` · systemId ของ HR · ลง AUTOMATION_EVENTS "เมื่อพนักงานยื่นใบลา" + WEBHOOK_EVENTS + consumer `withAutomation(bridge)`) → `cardOnLeave {boardId}`: การ์ด "หาคนแทน: {ชื่อพนักงาน} ลา{ป่วย/กิจ/พักร้อน/อื่น} {d1}–{d2} (วันไทย)" · dueAt = วันก่อนเริ่มลา 09:00 ไทย · ลิงก์ HR_LEAVE · มอบหมาย MANAGER ที่ `unitAccess` ครอบ unit ของระบบ HR (AppSystemUnit) คนแรก (ไม่มี = ไม่มอบ) · sourceType AUTOMATION · sourceKey `hrleave:{leaveId}`
+  - `pos.sale.voided` → `cardOnVoidedSale {boardId, minSatang}`: PosSale.grandTotalSatang ≥ minSatang → การ์ด "ตรวจสอบบิลยกเลิก {receiptNo} ฿{ยอด}" · ลิงก์ POS_SALE · sourceKey `possale:{saleId}` · ต่ำกว่า = ไม่สร้าง
+  - `sweepUnattendedChats(now) → number` (เกาะ hourly best-effort): ทุกร้านที่ `openTaskFromChat.enabled && unassignedMinutes > 0` → ห้อง `status OPEN · assigneeUserId null · lastMessageDirection IN · lastMessageAt ≤ now − N นาที` → ข้อความ IN ล่าสุด → การ์ด "ลูกค้ารอคำตอบ: {ชื่อผู้ติดต่อ}" (description = ข้อความล่าสุด ≤ 200 ตัวอักษร) · sourceType CHAT · sourceKey `chat:{messageId}` · ลิงก์ CHAT_CONVERSATION · batch 200 ห้อง/รอบ
+- UI: `IntegrationsSettings.tsx` (K3.2) เปิดครบ 6 สวิตช์ (คำอธิบายภาษาคน · เลือกบอร์ด/คอลัมน์ · ช่อง "นาทีที่ค้าง" · "ยอดขั้นต่ำ (บาท)") · การ์ดบนบอร์ดแสดงชิปที่มา (ฟอร์ม/แชท/อนุมัติ/ใบลา/บิล) จาก sourceType (ต่อยอดชิปเดิม K1.13)
+- ภาพ spec `"3.3"` ≥ 2 ใบ
+- ⚠️ oracle สร้างระบบ HR/POS/CHAT ชั่วคราว + พนักงาน/ใบลา/ฟอร์ม/นโยบาย/บิล/ห้องแชท แล้วลบทั้งหมด · เรียก `consumers[type](evt)` ตรง 3 ครั้ง (ผ่าน withWebhooks/withAutomation จริง) · แก้ settings ของระบบ KANBAN แล้วคืน
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
 - 17:41 น. — **P1 ปิด** · qc:all 253/261 (20 นาที) → ทั้ง 8 ชุดแดงแก้แล้ว (2 ชุดเป็นผลจาก run นี้จริง: inbox import app-shell · kanban_my_tasks เปลี่ยนสัญญา — คืนแบบเดิม) · prod verify ผ่าน · handover เขียนแล้ว · Telegram ส่ง
