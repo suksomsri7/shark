@@ -4,6 +4,7 @@
 //   bash scripts/acc-v2-serve.sh                    # production build บน .env.qc :3215 (ต้องมีก่อน)
 //   pnpm exec tsx scripts/visual-branding.mts b2     # ถ่ายชุดของ WO B2
 //   pnpm exec tsx scripts/visual-branding.mts b3     # ถ่ายชุดของ WO B3 (โครงแอป 3 โทน · ราง · ปัดขวา · แจ้งปัญหา)
+//   pnpm exec tsx scripts/visual-branding.mts b4     # ถ่ายชุดของ WO B4 (หน้าร้านสาธารณะ เทียล+โลโก้ → applyStorefront=false)
 //   bash scripts/acc-v2-serve.sh stop
 //
 // ยืมร้าน QC ของบอร์ดงาน (siam-dive-kanban-qc · kb-owner@shark.local) แทนการสร้างร้านใหม่ —
@@ -53,7 +54,14 @@ type Spec = {
   /** ถ่ายเฉพาะจอเดียว (ปริยาย = ทุก viewport) */
   onlyDevice?: "desktop" | "mobile";
   /** ตั้งธีมของร้าน QC ก่อนถ่าย — เปลี่ยนเมื่อไหร่ต้องรอแคชโทเคน 60 วิของเซิร์ฟเวอร์หมดอายุก่อน */
-  branding?: { navTone: "LIGHT" | "BRAND" | "DARK"; brandColor: string };
+  branding?: {
+    navTone: "LIGHT" | "BRAND" | "DARK";
+    brandColor: string;
+    /** B4: โลโก้ของร้าน (ปริยาย = ไม่แตะ — ค่าว่างล้างโลโก้) */
+    logoUrl?: string;
+    /** B4: false = หน้าร้านสาธารณะกลับไปหน้าตาปริยาย (ปริยาย = true) */
+    applyStorefront?: boolean;
+  };
   steps?: Step[];
   note?: string;
 };
@@ -159,6 +167,25 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: '[data-testid="nav-collapse"]' }, { click: '[data-testid="nav-collapse"]' }, { wait: 700 }],
     },
   ],
+
+  // B4 — หน้าร้านสาธารณะ (SHOP) ของร้าน QC (siam-dive-kanban-qc/patong) เทียล+โลโก้ → applyStorefront=false กลับปริยาย
+  // 🔴 ร้าน QC บอร์ดงานมี BusinessUnit type SHOP อยู่แล้ว (patong/kata) — ไม่ต้องสร้างเอง (ดู kanban-qc-env.mts)
+  // 🔴 ไม่มีโลโก้จริงของร้าน QC ในฐานข้อมูล/Bunny CDN ที่หยิบมาใช้ได้ตรง ๆ → ใช้ asset คงที่ของแอปเอง
+  //    (`${BASE}/apple-touch-icon.png`) แทน — ยังพิสูจน์ path โลโก้ทำงานจริง แค่ไม่ใช่โลโก้ QC ของจริง
+  "b4": [
+    {
+      name: "shop-teal-logo",
+      path: `/s/${KQC.tenantSlug}/${KQC.units[0]!.slug}/shop`,
+      branding: { navTone: "LIGHT", brandColor: TEAL, logoUrl: `${BASE}/apple-touch-icon.png`, applyStorefront: true },
+      note: "หน้าร้านสาธารณะตั้งธีมเทียล+โลโก้ — หัวหน้าต้องเห็นโลโก้+ชื่อร้าน · accent เทียล ไม่ใช่น้ำเงินเดิม",
+    },
+    {
+      name: "shop-storefront-off",
+      path: `/s/${KQC.tenantSlug}/${KQC.units[0]!.slug}/shop`,
+      branding: { navTone: "LIGHT", brandColor: TEAL, logoUrl: `${BASE}/apple-touch-icon.png`, applyStorefront: false },
+      note: "applyStorefront=false — สี/โลโก้ของร้านหาย กลับไปหน้าตาปริยาย (ชื่อร้านยังอยู่)",
+    },
+  ],
 };
 const specs: Spec[] = SPECS[WO] ?? [];
 if (specs.length === 0) {
@@ -171,14 +198,26 @@ if (specs.length === 0) {
 //    ⇒ invalidateBrandingCache() ที่นี่ล้างของเซิร์ฟเวอร์ไม่ได้ · ถ้าเคยโหลดหน้าไปแล้วหลังตั้งธีมครั้งก่อน
 //    ต้อง "รอให้หมดอายุ" จริง ๆ ไม่งั้นภาพโทนใหม่จะได้สีเก่าแบบเงียบ ๆ (ผลลบปลอมที่หลอกตาที่สุด)
 let pageLoadedSinceBranding = false;
-async function applyBranding(navTone: string, brandColor: string): Promise<void> {
+async function applyBranding(
+  navTone: string,
+  brandColor: string,
+  opts?: { logoUrl?: string; applyStorefront?: boolean },
+): Promise<void> {
   if (pageLoadedSinceBranding) {
     console.log("  ⏳ รอแคชโทเคนธีม 60 วิของเซิร์ฟเวอร์ QC หมดอายุก่อนเปลี่ยนโทน…");
     await sleep(62_000);
   }
   await setBranding(
     { tenantId },
-    { displayName: "", logoUrl: "", brandColor, navTone, applyStorefront: true, applyMobile: true, updatedById: null },
+    {
+      displayName: "",
+      logoUrl: opts?.logoUrl ?? "",
+      brandColor,
+      navTone,
+      applyStorefront: opts?.applyStorefront ?? true,
+      applyMobile: true,
+      updatedById: null,
+    },
   );
   invalidateBrandingCache(tenantId);
   pageLoadedSinceBranding = false;
@@ -224,7 +263,12 @@ try {
 
     for (const spec of specs) {
       // ตั้งธีมของร้านก่อนถ่าย (เฉพาะ spec ที่ประกาศ) — รอแคชของเซิร์ฟเวอร์หมดอายุให้เรียบร้อย
-      if (spec.branding) await applyBranding(spec.branding.navTone, spec.branding.brandColor);
+      if (spec.branding) {
+        await applyBranding(spec.branding.navTone, spec.branding.brandColor, {
+          logoUrl: spec.branding.logoUrl,
+          applyStorefront: spec.branding.applyStorefront,
+        });
+      }
       // 🔴 คืนสถานะแถบเมนูของผู้ใช้เป็น "กางเต็ม" ก่อนทุก spec — spec ก่อนหน้าที่กด ‹ ได้บันทึกค่าจริงลง
       //    User.prefs ไปแล้ว ถ้าไม่คืน ภาพถัดไปจะเป็นรางทั้งที่ไม่ได้ตั้งใจ (และไล่หาสาเหตุยากมาก)
       await setUserPreferences(user.id, { navCollapsed: false });

@@ -67,11 +67,18 @@ export async function notifyKanbanUser(input: KanbanNotifyInput): Promise<void> 
       const { emailEnabled } = await import("@/lib/env");
       if (!emailEnabled) return;
       const { sendEmail } = await import("@/lib/core/email");
-      const user = await prisma.user.findUnique({
-        where: { id: input.recipientUserId },
-        select: { email: true },
-      });
-      if (user?.email) await sendEmail(user.email, input.title, input.body);
+      // B4: หัวเรื่องขึ้นต้นด้วยชื่อกิจการ — ผู้ใช้หลายร้านแยกอีเมลออกจากกันได้ในกล่องจดหมายเดียว
+      const { getBrandingTokens } = await import("@/lib/branding/service");
+      const [user, tokens] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: input.recipientUserId },
+          select: { email: true },
+        }),
+        getBrandingTokens(input.tenantId),
+      ]);
+      if (user?.email) {
+        await sendEmail(user.email, `[${tokens.displayName}] ${input.title}`, input.body);
+      }
     } catch {
       // อีเมลเป็นช่องทางเสริม — ล้มแล้วเงียบ (sendEmail ลง OpsEvent ให้เองเมื่อ Resend ตอบไม่ ok)
     }

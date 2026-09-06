@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import { getDocument, getSettings, DOC_LABEL, baht, orgDisplayName } from "@/lib/modules/account/service";
+import { getPublicBranding } from "@/lib/branding/service";
 import { EXP_DOC_LABEL } from "@/lib/modules/account/expense";
 import { isGroupDocType } from "@/lib/modules/account/group";
 import { formatThaiDateLong as fmtDate } from "@/lib/ui/date";
@@ -23,11 +24,14 @@ export default async function PrintPage({
   const { id, docId } = await params;
   const { copy } = await searchParams;
   const { tenantId, systemId } = await loadAccountSystem(id, { can: "account.doc.view" });
-  const [doc, s] = await Promise.all([
+  const [doc, s, branding] = await Promise.all([
     getDocument(tenantId, systemId, docId),
     getSettings(tenantId, systemId),
+    getPublicBranding(tenantId),
   ]);
   if (!doc) notFound();
+  // T3: โลโก้ของระบบบัญชีมาก่อน (ตั้งไว้เฉพาะระบบนี้) · ไม่มี → ใช้โลโก้กิจการ (แถบบน) แทน
+  const tenantLogo = s.logoUrl ?? branding.logoUrl;
 
   // ตัวเลือกการพิมพ์ตามตั้งค่าเอกสาร (§9.2) — เทมเพลต · ฟิลด์ที่แสดง · ภาษา · หมายเหตุ/เงื่อนไขของชนิดนี้
   const po = buildPrintOptions(s.doc, doc.docType, s.footerNote);
@@ -72,9 +76,9 @@ export default async function PrintPage({
     <div className={`mx-auto ${po.style.page}`} data-testid="print-page" data-template={po.template} data-lang={po.language}>
       <div className="flex items-start justify-between border-b pb-4">
         <div className="flex items-start gap-3">
-          {po.show.logo && s.logoUrl && (
+          {po.show.logo && tenantLogo && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={s.logoUrl} alt="logo" className="h-14 w-14 object-contain" />
+            <img src={tenantLogo} alt="logo" className="h-14 w-14 object-contain" />
           )}
           <div>
             <div className="text-lg font-bold">{orgDisplayName(s) || "กิจการของคุณ"}</div>

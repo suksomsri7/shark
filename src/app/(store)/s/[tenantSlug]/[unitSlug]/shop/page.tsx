@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
-import type { CSSProperties } from "react";
 import { resolveUnit, listProducts } from "@/lib/modules/shop/service";
 import { getPublicBranding } from "@/lib/branding/service";
+import { publicThemeStyle } from "@/lib/branding/public";
 import { ShopStorefront } from "@/components/shop-storefront";
 import { getLocaleFromCookie, makeT } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -20,9 +20,7 @@ export default async function StoreShopPage({
     listProducts({ tenantId: resolved.tenant.id, unitId: resolved.unit.id }, { activeOnly: true }),
     getPublicBranding(resolved.tenant.id),
   ]);
-  const accentStyle = branding.brandColor
-    ? ({ ["--color-accent"]: branding.brandColor } as CSSProperties)
-    : undefined;
+  const accentStyle = publicThemeStyle(branding);
 
   const locale = getLocaleFromCookie((await cookies()).get("lang")?.value);
   const t = makeT(locale);
@@ -46,7 +44,7 @@ export default async function StoreShopPage({
         </div>
         <h1
           className="text-2xl font-semibold"
-          style={branding.brandColor ? { color: branding.brandColor } : undefined}
+          style={branding.brandColor ? { color: "var(--color-accent)" } : undefined}
         >
           {resolved.unit.name}
         </h1>

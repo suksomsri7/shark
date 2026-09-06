@@ -1,6 +1,6 @@
-import type { CSSProperties } from "react";
 import { getPublicForm } from "@/lib/modules/forms/service";
 import { getPublicBranding } from "@/lib/branding/service";
+import { publicThemeStyle } from "@/lib/branding/public";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { submitFormAction } from "./actions";
 
@@ -52,9 +52,7 @@ export default async function PublicFormPage({
 
   const { form } = pub;
   const branding = await getPublicBranding(pub.tenantId);
-  const accentStyle = branding.brandColor
-    ? ({ ["--color-accent"]: branding.brandColor } as CSSProperties)
-    : undefined;
+  const accentStyle = publicThemeStyle(branding);
   return shell(
     <>
       <header className="flex flex-col items-center text-center" style={accentStyle}>
@@ -71,7 +69,7 @@ export default async function PublicFormPage({
         </div>
         <h1
           className="mt-1 text-xl font-bold"
-          style={branding.brandColor ? { color: branding.brandColor } : undefined}
+          style={branding.brandColor ? { color: "var(--color-accent)" } : undefined}
         >
           {form.name}
         </h1>

@@ -31,6 +31,8 @@ export type PublicBranding = {
   displayName: string;
   logoUrl: string | null;
   brandColor: string | null;
+  /** สีตัวอักษรที่อ่านออกบน brandColor — null เมื่อไม่มีสี (B4) */
+  brandFg: string | null;
 };
 
 /** โทเคนธีมสำเร็จรูป — ผู้ใช้ทุกฝั่ง (เว็บ/หน้าร้าน/เอกสาร/แอป) รับชุดนี้ชุดเดียว */
@@ -324,12 +326,14 @@ export async function setBranding(ctx: Ctx, input: BrandingInput): Promise<{ ok:
 export async function getPublicBranding(tenantId: string): Promise<PublicBranding> {
   const t = await getBrandingTokens(tenantId);
   if (!t.applyStorefront) {
-    return { displayName: t.displayName, logoUrl: null, brandColor: null };
+    return { displayName: t.displayName, logoUrl: null, brandColor: null, brandFg: null };
   }
+  // ยังไม่เลือกสี = null เหมือนเดิม (หน้าร้านมีค่าปริยายของตัวเอง — ห้ามยัด #1d4ed8 ให้)
+  const brandColor = t.isDefault ? null : t.accent;
   return {
     displayName: t.displayName,
     logoUrl: t.logoUrl,
-    // ยังไม่เลือกสี = null เหมือนเดิม (หน้าร้านมีค่าปริยายของตัวเอง — ห้ามยัด #1d4ed8 ให้)
-    brandColor: t.isDefault ? null : t.accent,
+    brandColor,
+    brandFg: brandColor ? t.accentFg : null,
   };
 }
