@@ -6,13 +6,30 @@ import { applyCardLabelNames } from "./labels";
 import { syncSingleAssignee } from "./cards";
 import { notifyCardAssigned } from "./notify";
 import { boardRole, KanbanNotFoundError, visibleBoardsWhere, type BoardRole } from "./access";
-import type { KanbanActor, KanbanCtx } from "./types";
+import type {
+  BoardCardDto,
+  BoardLabelDto,
+  BoardPersonDto,
+  BoardViewDto,
+  KanbanActor,
+  KanbanCtx,
+  KanbanTagColor,
+} from "./types";
 
 // ── K1.2: service.ts เป็น facade ของโมดูล (proposals.ts/ai/tools.ts/ข้อสอบเก่า import ที่นี่) ──
 //    ฟังก์ชันใหม่อยู่ไฟล์ของตัวเอง แล้ว re-export ออกจากที่นี่ — ผู้เรียกเดิมไม่ต้องแก้สักบรรทัด
 export { setCardAssignees, listCardAssignees } from "./cards";
 export { listLabels, createLabel, updateLabel, deleteLabel, setCardLabels } from "./labels";
 export type { KanbanCtx, KanbanActor } from "./types";
+// K1.5: ชนิดของ DTO หน้าบอร์ด (หน้า/คอมโพเนนต์ฝั่ง client import จาก facade เดียวกัน)
+export type {
+  BoardCardDto,
+  BoardColumnDto,
+  BoardLabelDto,
+  BoardPersonDto,
+  BoardViewDto,
+  KanbanTagColor,
+} from "./types";
 // K1.3: สิทธิ์ 2 ชั้น — ผู้เรียกนอกโมดูล (หน้า/action/AI) ใช้ผ่าน facade เดียวกัน
 export { boardRole, canReadKanban, toActor, visibleBoardsWhere, KanbanNotFoundError, KanbanForbiddenError } from "./access";
 export type { BoardRole } from "./access";
@@ -493,4 +510,138 @@ export async function listTenantUsers(tenantId: string) {
     name: m.user.name ?? m.user.email,
     email: m.user.email,
   }));
+}
+
+// ───────────────── K1.5: ข้อมูลของ "หน้าบอร์ดใหม่" (DTO ที่ส่งข้าม RSC ได้) ─────────────────
+//
+// รวมทุกอย่างที่หน้า `/app/sys/{id}/kanban/b/{boardId}` ต้องใช้ไว้ที่เดียว (บอร์ด+คอลัมน์+การ์ด+ป้าย+
+// ผู้รับผิดชอบ+สาขา+ดาว) แล้วแปลงเป็นชนิดที่ไม่มี Date/Prisma model ติดไปฝั่ง client
+// 🔴 ผ่าน `getBoardFor` เสมอ ⇒ บอร์ดที่มองไม่เห็น = `KanbanNotFoundError` (หน้าแปลงเป็น notFound())
+
+const TAG_COLORS: readonly KanbanLabelColor[] = ["SLATE", "BLUE", "GREEN", "AMBER", "RED", "PURPLE"];
+
+export async function getBoardView(
+  ctx: KanbanCtx,
+  actor: KanbanActor,
+  boardId: string,
+): Promise<BoardViewDto> {
+  const board = await getBoardFor(ctx, actor, boardId);
+  const cardIds = board.columns.flatMap((c) => c.cards.map((k) => k.id));
+
+  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows] = await Promise.all([
+    prisma.kanbanLabel.findMany({
+      where: { boardId: board.id, tenantId: ctx.tenantId, systemId: ctx.systemId },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select: { id: true, name: true, color: true },
+    }),
+    cardIds.length
+      ? prisma.kanbanCardLabel.findMany({
+          where: { cardId: { in: cardIds }, tenantId: ctx.tenantId },
+          select: { cardId: true, labelId: true },
+        })
+      : Promise.resolve([] as { cardId: string; labelId: string }[]),
+    cardIds.length
+      ? prisma.kanbanCardAssignee.findMany({
+          where: { cardId: { in: cardIds }, tenantId: ctx.tenantId },
+          orderBy: { assignedAt: "asc" },
+          select: { cardId: true, userId: true },
+        })
+      : Promise.resolve([] as { cardId: string; userId: string }[]),
+    board.unitId
+      ? prisma.businessUnit.findFirst({
+          where: { id: board.unitId, tenantId: ctx.tenantId },
+          select: { name: true },
+        })
+      : Promise.resolve(null),
+    ctx.actorUserId
+      ? prisma.kanbanBoardStar.findFirst({
+          where: { boardId: board.id, userId: ctx.actorUserId, tenantId: ctx.tenantId },
+          select: { boardId: true },
+        })
+      : Promise.resolve(null),
+    prisma.kanbanBoardMember.findMany({
+      where: { boardId: board.id, tenantId: ctx.tenantId },
+      orderBy: { createdAt: "asc" },
+      select: { userId: true },
+    }),
+  ]);
+
+  // ชื่อคน: สมาชิกบอร์ด + ผู้รับผิดชอบการ์ด (แถวรูปคนหัวบอร์ดใช้ชุดเดียวกับ avatar บนการ์ด)
+  const peopleIds = Array.from(
+    new Set<string>([...memberRows.map((m) => m.userId), ...assigneeRows.map((a) => a.userId)]),
+  );
+  const users = peopleIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: peopleIds } },
+        select: { id: true, name: true, email: true },
+      })
+    : [];
+  const nameOf = new Map(users.map((u) => [u.id, u.name ?? u.email ?? u.id]));
+
+  const labelById = new Map(labelRows.map((l) => [l.id, { id: l.id, name: l.name, color: l.color as KanbanTagColor }]));
+  const labelsOfCard = new Map<string, BoardLabelDto[]>();
+  for (const cl of cardLabels) {
+    const label = labelById.get(cl.labelId);
+    if (!label) continue;
+    const list = labelsOfCard.get(cl.cardId) ?? [];
+    list.push(label);
+    labelsOfCard.set(cl.cardId, list);
+  }
+  const peopleOfCard = new Map<string, BoardPersonDto[]>();
+  for (const a of assigneeRows) {
+    const list = peopleOfCard.get(a.cardId) ?? [];
+    list.push({ userId: a.userId, name: nameOf.get(a.userId) ?? a.userId });
+    peopleOfCard.set(a.cardId, list);
+  }
+
+  return {
+    id: board.id,
+    systemId: ctx.systemId,
+    name: board.name,
+    role: board.role,
+    visibility: board.visibility,
+    unitName: unit?.name ?? null,
+    starred: star !== null,
+    labels: labelRows.map((l) => ({ id: l.id, name: l.name, color: l.color as KanbanTagColor })),
+    members: peopleIds.map((id) => ({ userId: id, name: nameOf.get(id) ?? id })),
+    now: new Date().toISOString(),
+    columns: board.columns.map((col) => ({
+      id: col.id,
+      name: col.name,
+      position: col.position,
+      wipLimit: col.wipLimit,
+      isDoneColumn: col.isDoneColumn,
+      cards: col.cards.map((card) => toBoardCardDto(card, labelsOfCard.get(card.id) ?? [], peopleOfCard.get(card.id) ?? [])),
+    })),
+  };
+}
+
+/** การ์ด 1 ใบ → DTO (ใช้ทั้งตอนโหลดหน้าและตอนเพิ่งสร้างการ์ดใหม่จาก action) */
+export function toBoardCardDto(
+  card: KanbanCard,
+  labels: BoardLabelDto[],
+  assignees: BoardPersonDto[],
+): BoardCardDto {
+  return {
+    id: card.id,
+    cardNo: card.cardNo,
+    title: card.title,
+    position: card.position,
+    dueAt: card.dueAt ? card.dueAt.toISOString() : null,
+    completedAt: card.completedAt ? card.completedAt.toISOString() : null,
+    labels,
+    assignees,
+    // K1.7/K1.8/K1.9 ยังไม่มีตาราง — ส่ง 0 ไว้ก่อน (การ์ดไม่เรนเดอร์ตราที่เป็น 0 ⇒ ไม่มีตราหลอกตา)
+    checklistDone: 0,
+    checklistTotal: 0,
+    attachmentCount: 0,
+    commentCount: 0,
+    coverUrl: null,
+    sourceType: card.sourceType,
+  };
+}
+
+/** ป้ายสี 6 สีตามลำดับ (D9) — ใช้ตอนสร้างป้ายใหม่จากหน้าบอร์ด */
+export function tagColorAt(i: number): KanbanLabelColor {
+  return TAG_COLORS[i % TAG_COLORS.length]!;
 }

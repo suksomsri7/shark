@@ -25,3 +25,62 @@ export type KanbanActor = {
   unitAccess: string[];
   permissions: Record<string, unknown>;
 };
+
+// ───────────────────────── K1.5: DTO ของหน้าบอร์ด (ฝั่ง client อ่านอย่างเดียว) ─────────────────────────
+// 🔴 ทุกฟิลด์ต้อง serialize ข้าม RSC ได้ (ไม่มี Date/Decimal/Prisma model) — วันที่เป็น ISO string
+//    ประกอบที่ service.getBoardView() แล้วส่งลง <BoardView> ตรง ๆ · client ไม่รู้จัก prisma เลย
+
+/** สีป้าย 6 สี (D9) ↔ โทเคน `--color-tag-*` */
+export type KanbanTagColor = "SLATE" | "BLUE" | "GREEN" | "AMBER" | "RED" | "PURPLE";
+
+export type BoardLabelDto = { id: string; name: string; color: KanbanTagColor };
+
+export type BoardPersonDto = { userId: string; name: string };
+
+export type BoardCardDto = {
+  id: string;
+  cardNo: number | null;
+  title: string;
+  position: string | null;
+  /** ISO 8601 (UTC) — หน้าจอแปลงเป็นเวลาไทยเอง */
+  dueAt: string | null;
+  completedAt: string | null;
+  labels: BoardLabelDto[];
+  assignees: BoardPersonDto[];
+  /** ตราท้ายการ์ด — K1.7/K1.8/K1.9 จะเติมของจริง วันนี้เป็น 0 ทั้งชุด (การ์ดไม่โชว์ตราที่เป็น 0) */
+  checklistDone: number;
+  checklistTotal: number;
+  attachmentCount: number;
+  commentCount: number;
+  /** ปกการ์ด (K1.9) — วันนี้ null เสมอ */
+  coverUrl: string | null;
+  /** ที่มาของการ์ด (ชิปเล็กหัวการ์ด) — MANUAL = ไม่โชว์ชิป */
+  sourceType: "MANUAL" | "TEMPLATE" | "CHAT" | "FORM" | "EMAIL" | "AUTOMATION" | "AI";
+};
+
+export type BoardColumnDto = {
+  id: string;
+  name: string;
+  position: string | null;
+  wipLimit: number | null;
+  isDoneColumn: boolean;
+  cards: BoardCardDto[];
+};
+
+export type BoardViewDto = {
+  id: string;
+  systemId: string;
+  name: string;
+  /** บทบาทของคนที่กำลังดู (VIEWER = ซ่อนปุ่มแก้ทั้งหมด) */
+  role: "VIEWER" | "EDITOR" | "ADMIN";
+  visibility: "PRIVATE" | "TENANT";
+  unitName: string | null;
+  starred: boolean;
+  columns: BoardColumnDto[];
+  /** ป้ายทั้งหมดของบอร์ด (แผงป้ายใน K1.6 ใช้ต่อ) */
+  labels: BoardLabelDto[];
+  /** คนที่เกี่ยวข้องกับบอร์ด (สมาชิกที่ถูกเชิญ + ผู้รับผิดชอบการ์ด) — แถวรูปคนบนหัวบอร์ด */
+  members: BoardPersonDto[];
+  /** เวลาอ้างอิงตอนเรนเดอร์ (ISO) — ส่งมาจาก server เพื่อให้ป้ายกำหนดส่งของ server/client ตรงกันเป๊ะ */
+  now: string;
+};

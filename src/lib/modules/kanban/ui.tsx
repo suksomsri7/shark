@@ -6,9 +6,11 @@ import type { KanbanActor, KanbanCtx } from "./types";
 import {
   archiveBoardAction,
   archiveCardAction,
-  archiveColumnAction,
+  // K1.5: action หลักของคอลัมน์/การ์ดเปลี่ยนไปรับ object (หน้าบอร์ดใหม่เรียกจาก client)
+  // → หน้าเดิมที่ยังใช้ `<form action={…}>` ใช้ตัวห่อที่คืน void แทน (ตัวเดียวกันข้างใน)
+  archiveColumnFormAction,
   createBoardAction,
-  createCardAction,
+  createCardFormAction,
   createColumnAction,
   moveCardSidewaysAction,
 } from "./actions";
@@ -56,7 +58,7 @@ export async function KanbanMyTasksSection({ systemId, tenantId }: { systemId: s
       <DataList
         items={myCards.map((c) => ({
           key: c.id,
-          href: `/app/sys/${systemId}/kanban/${c.boardId}`,
+          href: `/app/sys/${systemId}/kanban/b/${c.boardId}`,
           primary: c.title,
           secondary: `${c.board?.name ?? ""}${c.column?.name ? ` · ${c.column.name}` : ""}`,
           trailing: c.dueAt ? (
@@ -80,7 +82,7 @@ export async function KanbanBoardsSection({ systemId, tenantId }: { systemId: st
       <DataList
         items={boards.map((b) => ({
           key: b.id,
-          href: `/app/sys/${systemId}/kanban/${b.id}`,
+          href: `/app/sys/${systemId}/kanban/b/${b.id}`,
           primary: b.starred ? `★ ${b.name}` : b.name,
           secondary: b.description || undefined,
           trailing: (
@@ -209,7 +211,7 @@ export async function KanbanBoardView({
                 {col.name} <span className={muted}>({col.cards.length})</span>
               </div>
               {canEdit && col.cards.length === 0 && (
-                <form action={archiveColumnAction}>
+                <form action={archiveColumnFormAction}>
                   <input type="hidden" name="systemId" value={systemId} />
                   <input type="hidden" name="boardId" value={boardId} />
                   <input type="hidden" name="columnId" value={col.id} />
@@ -288,7 +290,7 @@ export async function KanbanBoardView({
 
             {/* เพิ่มการ์ด */}
             {canEdit && (
-            <form action={createCardAction} className="flex flex-col gap-1.5 rounded-xl border p-2">
+            <form action={createCardFormAction} className="flex flex-col gap-1.5 rounded-xl border p-2">
               <input type="hidden" name="systemId" value={systemId} />
               <input type="hidden" name="boardId" value={boardId} />
               <input type="hidden" name="columnId" value={col.id} />

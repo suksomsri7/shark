@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useInApp } from "./use-in-app";
+import { isRailPath } from "./NavRail";
 
 // พื้นที่เนื้อหาของแอป — เว้นที่ให้ topbar (สูง 56px) + ปุ่มผู้ช่วย AI มุมขวาล่าง
 // เว็บบนจอใหญ่ (≥ lg) มีแถบเมนูปักซ้ายกว้าง 18rem → เว้นซ้ายเพิ่มไม่ให้เมนูทับเนื้อหา
@@ -27,8 +28,13 @@ export function AppMain({
   const inApp = useInApp();
   const pathname = usePathname();
   const chatFullscreen = chatSystemIds.some((id) => pathname === `/app/sys/${id}`);
+  // K1.5 — หน้าบอร์ดงาน: เต็มจอจริง (ไม่มีขอบ) + เว้นซ้ายเท่ารางไอคอน 56px (3.5rem) แทนเมนู 288px
+  const boardFullscreen = isRailPath(pathname);
   // 🔴 เขียนคลาสแยกเป็น 2 ชุดเต็ม ๆ โดยตั้งใจ — ไม่ผสม `px-*` กับ `pl-*` ในเบรกพอยต์เดียวกัน
   //    (ลำดับที่ Tailwind สร้างให้เป็นตัวตัดสิน ไม่ใช่ลำดับตัวอักษรในสตริง = อ่านแล้วเดาผิดง่าย)
+  if (boardFullscreen) {
+    return <main className={`px-0 pb-0 pt-14 ${inApp ? "" : "lg:pl-14"}`}>{children}</main>;
+  }
   const pad = chatFullscreen
     ? `px-0 pb-2 pt-2 sm:px-6 lg:pb-24 lg:pr-6 lg:pt-[calc(3.5rem+1rem)] ${
         inApp ? "lg:pl-6" : "lg:pl-[calc(18rem+1.5rem)]"

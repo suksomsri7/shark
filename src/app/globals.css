@@ -33,6 +33,15 @@
   --color-tag-red: #b91c1c;
   --color-tag-purple: #6d28d9;
 
+  /* ── โทเคนของโมดูล "บอร์ดงาน" (K1.5 · ยกจาก ledger/design-kanban/_base.part + _kb.part §เวทีบอร์ด) ──
+     🔴 อยู่ที่นี่ที่เดียวเพราะ 4 คอมโพเนนต์ (BoardView/Column/Card/BoardHeader) ต้องใช้ค่าเดียวกัน
+        ถ้าปล่อยให้แต่ละไฟล์พิมพ์ #eceef1 เอง วันที่แบบเปลี่ยนสีจะแก้ไม่ครบและไม่มีอะไรฟ้อง */
+  --color-stage: #f4f5f7; /* พื้นเวทีบอร์ด */
+  --color-kb-column: #eceef1; /* พื้นคอลัมน์ 240px */
+  --color-due-soon-bg: #fdf6ec; /* ป้ายกำหนดส่งใน 24 ชม. (อำพัน) */
+  --color-due-late-bg: #fdeeee; /* เลยกำหนด (แดง) */
+  --color-due-done-bg: #eef7f0; /* ทำเสร็จแล้ว (เขียว) */
+
   --font-sans: var(--font-app-sans), ui-sans-serif, system-ui, sans-serif;
   --radius: 0.5rem;
 }

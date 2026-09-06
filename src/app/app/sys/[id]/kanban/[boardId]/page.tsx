@@ -1,24 +1,16 @@
-import { notFound } from "next/navigation";
-import { requireTenant } from "@/lib/core/context";
-import { prisma } from "@/lib/core/db";
-import { KanbanBoardView } from "@/lib/modules/kanban/ui";
+import { redirect } from "next/navigation";
 
-// หน้าบอร์ด Kanban เต็มจอ — คอลัมน์แนวนอน + การ์ด + ย้าย/ผู้รับผิดชอบ/กำหนดส่ง
-export default async function KanbanBoardPage({
+// เส้นทางเดิมของหน้าบอร์ด (ก่อน K1.5) — ย้ายไป `/kanban/b/{boardId}` แล้ว
+// 🔴 คงไฟล์นี้ไว้ตลอด: ลิงก์ในแจ้งเตือน/บุ๊กมาร์ก/ประวัติแชทของพนักงานชี้มาที่นี่ ถ้าลบทิ้ง = 404 เงียบ ๆ
+//    (หน้าบอร์ดเดิมยังอยู่ที่ `KanbanBoardView` ใน `src/lib/modules/kanban/ui.tsx` เผื่ออ้างอิง แต่ไม่มี route ชี้แล้ว)
+export default async function KanbanBoardLegacyRedirect({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; boardId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { id, boardId } = await params;
-  const auth = await requireTenant();
-  const tenantId = auth.active.tenantId;
-
-  const sys = await prisma.appSystem.findFirst({ where: { id, tenantId } });
-  if (!sys || sys.type !== "KANBAN") notFound();
-
-  return (
-    <div className="flex flex-col gap-6">
-      <KanbanBoardView systemId={id} tenantId={tenantId} boardId={boardId} />
-    </div>
-  );
+  const [{ id, boardId }, query] = await Promise.all([params, searchParams]);
+  const card = typeof query.card === "string" ? `?card=${encodeURIComponent(query.card)}` : "";
+  redirect(`/app/sys/${id}/kanban/b/${boardId}${card}`);
 }

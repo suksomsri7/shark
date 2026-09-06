@@ -6,6 +6,7 @@ import { Topbar } from "./Topbar";
 import { NavDrawer, type NavItem, type SoonItem, type TenantOption } from "./NavDrawer";
 import { AiDock } from "./AiDock";
 import { AddSystemModal } from "./AddSystemModal";
+import { NavRail, isRailPath } from "./NavRail";
 import { useInApp } from "./use-in-app";
 import { loadNavBadgesAction } from "@/lib/support/actions";
 
@@ -81,6 +82,10 @@ export function AppShell({
   // WO-CV12: หน้ากล่องแชทเต็มจอ = `/app/sys/<id>` ของระบบที่เป็นแชท (หน้าย่อยอย่าง /chat/channels ไม่นับ)
   // 🔴 ตัดสินจากทะเบียนที่ layout ส่งมา + pathname — ไม่ฮาร์ดโค้ด id และไม่ให้หน้าไปแตะ DOM ของ shell
   const chatFullscreen = chatSystemIds.some((id) => pathname === `/app/sys/${id}`);
+  // K1.5: หน้าบอร์ดงาน (`/app/sys/<id>/kanban/b/<boardId>`) ยุบแถบเมนูปักซ้าย 288px เป็นรางไอคอน 56px
+  //   (พิมพ์เขียว 13-kanban-v2 §3.2 + ภาพ 02) — โมดูลอื่นไม่กระทบ เพราะตัดสินจาก pathname ที่นี่ที่เดียว
+  //   ระยะขอบซ้ายของเนื้อหาคิดคู่กันใน AppMain
+  const railMode = isRailPath(pathname);
   // 🔴 บอก "แอป SHARK" ด้วย — orb ที่ทับหน้าแชทบนมือถือแอปคือปุ่ม native ของแอป ไม่ใช่ของเว็บ
   //    (เจ้าของเจอ 2 ก.ย. ล้างแคช Safari แล้วก็ไม่หายเพราะคนละตัวกัน) · สัญญา: {ev:"chat-fullscreen", on}
   //    ฝั่งรับอยู่ apps/mobile/app/(app)/index.tsx · บนเบราว์เซอร์ปกติ ReactNativeWebView ไม่มี = no-op
@@ -127,8 +132,10 @@ export function AppShell({
         memberships={memberships}
         activeTenantId={activeTenantId}
       />
-      {/* เว็บบนจอใหญ่ (≥ lg): กางเมนูปักซ้ายให้เลย ไม่ต้องกดแฮมเบอร์เกอร์ · ในแอปไม่ปัก */}
-      {!inApp && (
+      {/* เว็บบนจอใหญ่ (≥ lg): กางเมนูปักซ้ายให้เลย ไม่ต้องกดแฮมเบอร์เกอร์ · ในแอปไม่ปัก
+          · หน้าที่ขอพื้นที่เต็ม (บอร์ดงาน) ได้รางไอคอนแทน — ปุ่ม ☰ บน topbar ยังเปิด drawer เต็มได้เหมือนเดิม */}
+      {!inApp && railMode && <NavRail items={items} />}
+      {!inApp && !railMode && (
         <NavDrawer
           variant="pinned"
           open

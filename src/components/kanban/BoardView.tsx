@@ -1,0 +1,670 @@
+// BoardView.tsx — เวทีบอร์ด + ลากวางด้วย pointer events (K1.5 · client component ตัวแรกของโมดูล)
+//
+// หน้าที่: ถือ state ของบอร์ดทั้งใบ · ลากการ์ด/คอลัมน์ · ย้ายแบบ optimistic แล้ว rollback + toast เมื่อ
+// server ปฏิเสธ · เพิ่มการ์ดท้ายคอลัมน์ · เปิด "หลังการ์ด" ผ่าน `?card=` (ตัวจริงอยู่ K1.6)
+//
+// ⚠️ ทำไม pointer events ไม่ใช่ HTML5 drag-and-drop: มือถือไม่ยิง dragstart เลย (K1.13 ใช้ท่าเดียวกันนี้ต่อ)
+// ⚠️ หน้านี้อยู่ที่ `/app/sys/{systemId}/kanban/b/{boardId}` และเป็นหน้าเดียวที่เมนูซ้ายยุบเป็น
+//    "รางไอคอน" 56px (ดู `src/components/app-shell/NavRail.tsx` — ตัดสินจาก pathname ที่ขึ้นต้น `/kanban/b/`)
+// ⚠️ ห้ามคิดเลขตำแหน่งเอง — ส่งแค่ id ของเพื่อนบ้าน (beforeCardId/afterCardId) ให้ `moves.ts` เป็นคนคิด
+"use client";
+
+import { useCallback, useRef, useState, useTransition } from "react";
+import { BoardHeader } from "./BoardHeader";
+import { Card } from "./Card";
+import { Column, type ColumnHandlers } from "./Column";
+import { KanbanIcon } from "./KanbanIcon";
+import {
+  archiveColumnAction,
+  createCardAction,
+  moveAllCardsAction,
+  moveCardAction,
+  moveColumnAction,
+  renameBoardAction,
+  renameColumnAction,
+  setColumnDoneAction,
+  setColumnWipAction,
+  starBoardAction,
+} from "@/lib/modules/kanban/actions";
+import type { BoardCardDto, BoardColumnDto, BoardViewDto } from "@/lib/modules/kanban/types";
+
+/** ระยะหว่างการ์ดในคอลัมน์ (ต้องตรงกับ `gap` ของกองการ์ดใน Column.tsx — ใช้คิดเรขาคณิตตอนลาก) */
+const CARD_GAP = 7;
+/** เมาส์: ขยับเกินนี้ = เริ่มลาก (กันคลิกเปิดการ์ดกลายเป็นลาก) */
+const DRAG_THRESHOLD_PX = 4;
+/** นิ้ว/ปากกา: กดค้างเท่านี้ก่อนถึงจะยกการ์ด (ไม่งั้นเลื่อนจอไม่ได้) */
+const HOLD_MS = 300;
+
+type CardDrag = {
+  card: BoardCardDto;
+  fromColumnId: string;
+  width: number;
+  height: number;
+  offsetX: number;
+  offsetY: number;
+  x: number;
+  y: number;
+  over: { columnId: string; index: number } | null;
+};
+
+type Pending =
+  | { kind: "card"; card: BoardCardDto; columnId: string; startX: number; startY: number; rect: DOMRect; touch: boolean }
+  | { kind: "column"; columnId: string; startX: number; startY: number; touch: boolean };
+
+const TOAST_MS = 4200;
+
+export function BoardView({ board, initialCardId = null }: { board: BoardViewDto; initialCardId?: string | null }) {
+  const nowMs = Date.parse(board.now);
+  const [columns, setColumns] = useState<BoardColumnDto[]>(board.columns);
+  const [boardName, setBoardName] = useState(board.name);
+  const [starred, setStarred] = useState(board.starred);
+  const [drag, setDrag] = useState<CardDrag | null>(null);
+  const [colDragId, setColDragId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [openCardId, setOpenCardId] = useState<string | null>(initialCardId);
+  const [, startTransition] = useTransition();
+
+  const columnsRef = useRef<BoardColumnDto[]>(board.columns);
+  const setCols = useCallback((next: BoardColumnDto[]) => {
+    columnsRef.current = next;
+    setColumns(next);
+  }, []);
+
+  const columnEls = useRef(new Map<string, HTMLElement>());
+  const cardEls = useRef(new Map<string, HTMLElement>());
+  const indicatorEl = useRef<HTMLElement | null>(null);
+  const pending = useRef<Pending | null>(null);
+  const dragRef = useRef<CardDrag | null>(null);
+  const colDragRef = useRef<{ columnId: string; order: string[] } | null>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cleanup = useRef<(() => void) | null>(null);
+  /** เวลาที่เพิ่งวางการ์ดเสร็จ — กัน `click` ที่ตามหลัง pointerup ไปเปิดหลังการ์ดโดยไม่ได้ตั้งใจ */
+  const draggedAt = useRef(0);
+
+  const canEdit = board.role === "EDITOR" || board.role === "ADMIN";
+  const isAdmin = board.role === "ADMIN";
+  const systemId = board.systemId;
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
+  }, []);
+
+  /** คืนบอร์ดกลับสภาพก่อนหน้า (rollback) — ใช้ทุกครั้งที่ server ปฏิเสธหรือเน็ตล่ม */
+  const rollback = useCallback(
+    (snapshot: BoardColumnDto[], message: string) => {
+      setCols(snapshot);
+      showToast(message);
+    },
+    [setCols, showToast],
+  );
+
+  // ───────────────────────── ตัวช่วยกับ state ─────────────────────────
+
+  const cloneWithCardMoved = (
+    prev: BoardColumnDto[],
+    cardId: string,
+    toColumnId: string,
+    index: number,
+  ): BoardColumnDto[] => {
+    let moving: BoardCardDto | null = null;
+    const stripped = prev.map((col) => {
+      const found = col.cards.find((c) => c.id === cardId);
+      if (!found) return col;
+      moving = found;
+      return { ...col, cards: col.cards.filter((c) => c.id !== cardId) };
+    });
+    if (!moving) return prev;
+    return stripped.map((col) => {
+      if (col.id !== toColumnId) return col;
+      const cards = [...col.cards];
+      cards.splice(Math.min(index, cards.length), 0, moving!);
+      return { ...col, cards };
+    });
+  };
+
+  const patchCard = (cardId: string, patch: Partial<BoardCardDto>) => {
+    setCols(
+      columnsRef.current.map((col) => ({
+        ...col,
+        cards: col.cards.map((c) => (c.id === cardId ? { ...c, ...patch } : c)),
+      })),
+    );
+  };
+
+  const messageOf = (code: string, message: string, toColumnId: string): string => {
+    if (code === "WIP_LIMIT") {
+      const limit = columnsRef.current.find((c) => c.id === toColumnId)?.wipLimit;
+      return `คอลัมน์นี้เต็มแล้ว${limit ? ` (จำกัด ${limit} งาน)` : ""} — ย้ายงานอื่นออกก่อน`;
+    }
+    if (code === "CARD_ARCHIVED") return "การ์ดนี้ถูกเก็บเข้าคลังไปแล้ว";
+    return message || "ย้ายการ์ดไม่สำเร็จ ลองใหม่อีกครั้ง";
+  };
+
+  /** ยิงคำสั่งย้ายจริง — optimistic ไปแล้วจากผู้เรียก · ไม่ผ่าน = คืนค่ากลับ snapshot + toast */
+  const commitMove = useCallback(
+    (input: {
+      cardId: string;
+      toColumnId: string;
+      beforeCardId: string | null;
+      afterCardId: string | null;
+      snapshot: BoardColumnDto[];
+    }) => {
+      startTransition(async () => {
+        try {
+          const res = await moveCardAction({
+            systemId,
+            boardId: board.id,
+            cardId: input.cardId,
+            toColumnId: input.toColumnId,
+            beforeCardId: input.beforeCardId,
+            afterCardId: input.afterCardId,
+          });
+          if (!res.ok) {
+            rollback(input.snapshot, messageOf(res.code, res.message, input.toColumnId));
+            return;
+          }
+          // สำเร็จ: รับ position จริงที่ server คิดให้ (rebalance อาจเปลี่ยนคีย์) กลับมาเก็บไว้
+          patchCard(input.cardId, { position: res.position });
+        } catch {
+          rollback(input.snapshot, "ย้ายการ์ดไม่สำเร็จ ลองใหม่อีกครั้ง");
+        }
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- patchCard/rollback อ่านจาก ref ที่คงที่ตลอดอายุคอมโพเนนต์
+    [board.id, systemId, rollback],
+  );
+
+  /** ย้ายการ์ดไปคอลัมน์ปลายทางที่ตำแหน่ง index (ใช้ทั้งตอนวางเมาส์และปุ่มลัด Shift+←/→) */
+  const moveCardTo = useCallback(
+    (card: BoardCardDto, fromColumnId: string, toColumnId: string, index: number) => {
+      const snapshot = columnsRef.current;
+      const target = snapshot.find((c) => c.id === toColumnId);
+      if (!target) return;
+      const list = target.cards.filter((c) => c.id !== card.id);
+      const bounded = Math.max(0, Math.min(index, list.length));
+      const currentIndex = snapshot.find((c) => c.id === fromColumnId)?.cards.findIndex((c) => c.id === card.id) ?? -1;
+      if (fromColumnId === toColumnId && currentIndex === bounded) return; // วางที่เดิม = ไม่ต้องยิงอะไร
+      const afterCardId = bounded > 0 ? list[bounded - 1]!.id : null;
+      const beforeCardId = bounded < list.length ? list[bounded]!.id : null;
+      setCols(cloneWithCardMoved(snapshot, card.id, toColumnId, bounded));
+      commitMove({ cardId: card.id, toColumnId, beforeCardId, afterCardId, snapshot });
+    },
+    [commitMove, setCols],
+  );
+
+  // ───────────────────────── เรขาคณิตของการลาก ─────────────────────────
+
+  /**
+   * หา "คอลัมน์ + ช่องที่จะตกลง" จากตำแหน่งเมาส์
+   * ⚠️ ชดเชยความสูงของเส้นวางที่แทรกอยู่ในกองแล้ว (ไม่งั้นการ์ดใต้เส้นถูกดันลง → index กระพริบสลับไปมา)
+   */
+  const targetAt = useCallback((x: number, y: number, cardId: string, current: CardDrag["over"]): CardDrag["over"] => {
+    let columnId: string | null = null;
+    for (const [id, el] of columnEls.current) {
+      const r = el.getBoundingClientRect();
+      if (x >= r.left - 8 && x <= r.right + 8) {
+        columnId = id;
+        break;
+      }
+    }
+    if (!columnId) return current; // ลากออกนอกแถวคอลัมน์ = คงตำแหน่งเดิมไว้
+    const col = columnsRef.current.find((c) => c.id === columnId);
+    if (!col) return current;
+    const list = col.cards.filter((c) => c.id !== cardId);
+    const shift =
+      current && current.columnId === columnId && indicatorEl.current
+        ? indicatorEl.current.getBoundingClientRect().height + CARD_GAP
+        : 0;
+    const shiftFrom = current && current.columnId === columnId ? current.index : Number.POSITIVE_INFINITY;
+    let index = list.length;
+    for (let i = 0; i < list.length; i++) {
+      const el = cardEls.current.get(list[i]!.id);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      const top = i >= shiftFrom ? r.top - shift : r.top;
+      if (y < top + r.height / 2) {
+        index = i;
+        break;
+      }
+    }
+    return { columnId, index };
+  }, []);
+
+  const endPointer = useCallback(() => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+    cleanup.current?.();
+    cleanup.current = null;
+    pending.current = null;
+  }, []);
+
+  const beginCardDrag = useCallback((p: Extract<Pending, { kind: "card" }>, x: number, y: number) => {
+    const next: CardDrag = {
+      card: p.card,
+      fromColumnId: p.columnId,
+      width: p.rect.width,
+      height: p.rect.height,
+      offsetX: p.startX - p.rect.left,
+      offsetY: p.startY - p.rect.top,
+      x,
+      y,
+      over: {
+        columnId: p.columnId,
+        index: (columnsRef.current.find((c) => c.id === p.columnId)?.cards.findIndex((c) => c.id === p.card.id) ?? 0),
+      },
+    };
+    dragRef.current = next;
+    setDrag(next);
+  }, []);
+
+  const onCardPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLElement>, card: BoardCardDto, columnId: string) => {
+      if (!canEdit || e.button !== 0) return;
+      const el = e.target as HTMLElement;
+      if (el.closest("button, a, input, textarea, select")) return; // ปุ่มบนการ์ดยังกดได้ตามปกติ
+      const rect = e.currentTarget.getBoundingClientRect();
+      const touch = e.pointerType !== "mouse";
+      pending.current = { kind: "card", card, columnId, startX: e.clientX, startY: e.clientY, rect, touch };
+      if (touch) {
+        holdTimer.current = setTimeout(() => {
+          const p = pending.current;
+          if (p?.kind === "card") beginCardDrag(p, p.startX, p.startY);
+        }, HOLD_MS);
+      }
+
+      const onMove = (ev: PointerEvent) => {
+        const p = pending.current;
+        const active = dragRef.current;
+        if (active) {
+          ev.preventDefault();
+          const over = targetAt(ev.clientX, ev.clientY, active.card.id, active.over);
+          const next = { ...active, x: ev.clientX, y: ev.clientY, over };
+          dragRef.current = next;
+          setDrag(next);
+          return;
+        }
+        if (!p || p.kind !== "card") return;
+        const moved = Math.hypot(ev.clientX - p.startX, ev.clientY - p.startY);
+        if (p.touch) {
+          if (moved > 12 && holdTimer.current) {
+            clearTimeout(holdTimer.current); // นิ้วเลื่อนก่อนครบ 0.3 วิ = คนกำลังเลื่อนจอ ไม่ใช่จะลาก
+            holdTimer.current = null;
+            pending.current = null;
+          }
+          return;
+        }
+        if (moved > DRAG_THRESHOLD_PX) beginCardDrag(p, ev.clientX, ev.clientY);
+      };
+
+      const onUp = (ev: PointerEvent) => {
+        const active = dragRef.current;
+        endPointer();
+        if (!active) return; // ไม่ได้ลาก = ปล่อยให้ onClick เปิดหลังการ์ดตามปกติ
+        draggedAt.current = Date.now();
+        dragRef.current = null;
+        setDrag(null);
+        const over = targetAt(ev.clientX, ev.clientY, active.card.id, active.over) ?? active.over;
+        if (over) moveCardTo(active.card, active.fromColumnId, over.columnId, over.index);
+      };
+
+      window.addEventListener("pointermove", onMove, { passive: false });
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+      cleanup.current = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+    },
+    [beginCardDrag, canEdit, endPointer, moveCardTo, targetAt],
+  );
+
+  // ── ลากคอลัมน์ (จับที่หัวคอลัมน์) — สลับลำดับสด ๆ แล้วยิง moveColumnAction ตอนปล่อย ──
+  const onHeaderPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLElement>, columnId: string) => {
+      if (!canEdit || e.button !== 0) return;
+      const el = e.target as HTMLElement;
+      if (el.closest("button, a, input, textarea, select")) return;
+      const startX = e.clientX;
+      const snapshot = columnsRef.current;
+
+      const onMove = (ev: PointerEvent) => {
+        if (!colDragRef.current) {
+          if (Math.abs(ev.clientX - startX) <= DRAG_THRESHOLD_PX) return;
+          colDragRef.current = { columnId, order: snapshot.map((c) => c.id) };
+          setColDragId(columnId);
+        }
+        // หาว่าตอนนี้ลอยอยู่เหนือคอลัมน์ไหน แล้วสลับที่ทันที (คอลัมน์มีไม่กี่ช่อง — สลับสดอ่านง่ายกว่าเส้นวาง)
+        const cur = columnsRef.current;
+        const fromIdx = cur.findIndex((c) => c.id === columnId);
+        let overIdx = fromIdx;
+        cur.forEach((c, i) => {
+          const node = columnEls.current.get(c.id);
+          if (!node) return;
+          const r = node.getBoundingClientRect();
+          if (ev.clientX >= r.left && ev.clientX <= r.right) overIdx = i;
+        });
+        if (overIdx !== fromIdx) {
+          const next = [...cur];
+          const [moved] = next.splice(fromIdx, 1);
+          next.splice(overIdx, 0, moved!);
+          setCols(next);
+        }
+      };
+
+      const onUp = () => {
+        endPointer();
+        const dragging = colDragRef.current;
+        colDragRef.current = null;
+        setColDragId(null);
+        if (!dragging) return;
+        const order = columnsRef.current;
+        const idx = order.findIndex((c) => c.id === columnId);
+        if (idx < 0 || order.map((c) => c.id).join() === dragging.order.join()) return;
+        const beforeColumnId = idx + 1 < order.length ? order[idx + 1]!.id : null;
+        const afterColumnId = idx > 0 ? order[idx - 1]!.id : null;
+        startTransition(async () => {
+          try {
+            const res = await moveColumnAction({ systemId, boardId: board.id, columnId, beforeColumnId, afterColumnId });
+            if (!res.ok) rollback(snapshot, "ย้ายคอลัมน์ไม่สำเร็จ ลองใหม่อีกครั้ง");
+          } catch {
+            rollback(snapshot, "ย้ายคอลัมน์ไม่สำเร็จ ลองใหม่อีกครั้ง");
+          }
+        });
+      };
+
+      window.addEventListener("pointermove", onMove, { passive: false });
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+      cleanup.current = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+    },
+    [board.id, canEdit, endPointer, rollback, setCols, systemId],
+  );
+
+  // ───────────────────────── ปุ่มลัด/คลิก ─────────────────────────
+
+  const openCard = useCallback((card: BoardCardDto) => {
+    if (Date.now() - draggedAt.current < 250) return; // เพิ่งลากเสร็จ ไม่ใช่การคลิกเปิดการ์ด
+    setOpenCardId(card.id);
+    // K1.6 จะอ่าน `?card=` แล้วเปิดหลังการ์ดจริง — วันนี้แค่ปักไว้ใน URL (ไม่ navigate ⇒ ไม่ยิง RSC ซ้ำ)
+    const url = new URL(window.location.href);
+    url.searchParams.set("card", card.id);
+    window.history.replaceState({}, "", url.toString());
+  }, []);
+
+  const closeCard = useCallback(() => {
+    setOpenCardId(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("card");
+    window.history.replaceState({}, "", url.toString());
+  }, []);
+
+  const onCardKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLElement>, card: BoardCardDto, columnId: string) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openCard(card);
+        return;
+      }
+      // ปุ่มลัดของเรา (§5.6): Shift+←/→ ย้ายการ์ดข้ามคอลัมน์ด้วยคีย์บอร์ด (สำหรับคนที่ลากไม่ถนัด)
+      if (!canEdit || !e.shiftKey) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const idx = columnsRef.current.findIndex((c) => c.id === columnId);
+      const targetIdx = e.key === "ArrowLeft" ? idx - 1 : idx + 1;
+      const target = columnsRef.current[targetIdx];
+      if (!target) return;
+      moveCardTo(card, columnId, target.id, target.cards.length);
+    },
+    [canEdit, moveCardTo, openCard],
+  );
+
+  // ───────────────────────── คำสั่งอื่น (การ์ด/คอลัมน์/บอร์ด) ─────────────────────────
+
+  const handlers: ColumnHandlers = {
+    onCardPointerDown,
+    onCardKeyDown,
+    onCardOpen: openCard,
+    onHeaderPointerDown,
+    registerColumnRef: (id, el) => {
+      if (el) columnEls.current.set(id, el);
+      else columnEls.current.delete(id);
+    },
+    registerCardRef: (id, el) => {
+      if (el) cardEls.current.set(id, el);
+      else cardEls.current.delete(id);
+    },
+    registerIndicatorRef: (el) => {
+      indicatorEl.current = el;
+    },
+    onCreateCard: (columnId, title) => {
+      const snapshot = columnsRef.current;
+      startTransition(async () => {
+        try {
+          const res = await createCardAction({ systemId, boardId: board.id, columnId, title });
+          if (!res.ok) {
+            rollback(snapshot, res.message);
+            return;
+          }
+          const created = res.card;
+          setCols(
+            columnsRef.current.map((col) =>
+              col.id === columnId ? { ...col, cards: [...col.cards, created] } : col,
+            ),
+          );
+        } catch {
+          showToast("เพิ่มการ์ดไม่สำเร็จ ลองใหม่อีกครั้ง");
+        }
+      });
+    },
+    onRenameColumn: (columnId, name) => {
+      const snapshot = columnsRef.current;
+      setCols(columnsRef.current.map((c) => (c.id === columnId ? { ...c, name } : c)));
+      startTransition(async () => {
+        try {
+          await renameColumnAction({ systemId, boardId: board.id, columnId, name });
+        } catch {
+          rollback(snapshot, "เปลี่ยนชื่อคอลัมน์ไม่สำเร็จ ลองใหม่อีกครั้ง");
+        }
+      });
+    },
+    onSetWip: (columnId, wipLimit) => {
+      const snapshot = columnsRef.current;
+      setCols(columnsRef.current.map((c) => (c.id === columnId ? { ...c, wipLimit } : c)));
+      startTransition(async () => {
+        try {
+          await setColumnWipAction({ systemId, boardId: board.id, columnId, wipLimit });
+        } catch {
+          rollback(snapshot, "ตั้งจำนวนงานพร้อมกันไม่สำเร็จ ลองใหม่อีกครั้ง");
+        }
+      });
+    },
+    onSetDone: (columnId, isDone) => {
+      const snapshot = columnsRef.current;
+      setCols(columnsRef.current.map((c) => (c.id === columnId ? { ...c, isDoneColumn: isDone } : c)));
+      startTransition(async () => {
+        try {
+          await setColumnDoneAction({ systemId, boardId: board.id, columnId, isDone });
+        } catch {
+          rollback(snapshot, "ตั้งคอลัมน์เสร็จไม่สำเร็จ ลองใหม่อีกครั้ง");
+        }
+      });
+    },
+    onMoveAllCards: (fromColumnId, toColumnId) => {
+      const snapshot = columnsRef.current;
+      const moving = snapshot.find((c) => c.id === fromColumnId)?.cards ?? [];
+      setCols(
+        snapshot.map((col) =>
+          col.id === fromColumnId
+            ? { ...col, cards: [] }
+            : col.id === toColumnId
+              ? { ...col, cards: [...col.cards, ...moving] }
+              : col,
+        ),
+      );
+      startTransition(async () => {
+        try {
+          await moveAllCardsAction({ systemId, boardId: board.id, fromColumnId, toColumnId });
+        } catch {
+          rollback(snapshot, "ย้ายการ์ดทั้งคอลัมน์ไม่สำเร็จ ลองใหม่อีกครั้ง");
+        }
+      });
+    },
+    onArchiveColumn: (columnId) => {
+      const snapshot = columnsRef.current;
+      setCols(columnsRef.current.filter((c) => c.id !== columnId));
+      startTransition(async () => {
+        try {
+          await archiveColumnAction({ systemId, boardId: board.id, columnId });
+        } catch {
+          rollback(snapshot, "เก็บคอลัมน์เข้าคลังไม่สำเร็จ ลองใหม่อีกครั้ง");
+        }
+      });
+    },
+  };
+
+  const openCardData = openCardId
+    ? columns.flatMap((c) => c.cards).find((c) => c.id === openCardId) ?? null
+    : null;
+
+  return (
+    <div
+      className="flex flex-col"
+      style={{
+        height: "calc(100dvh - 3.5rem)",
+        background: "var(--color-stage)",
+        userSelect: drag || colDragId ? "none" : undefined,
+        touchAction: drag ? "none" : undefined,
+      }}
+    >
+      <BoardHeader
+        board={{ ...board, name: boardName }}
+        starred={starred}
+        onToggleStar={() => {
+          const next = !starred;
+          setStarred(next);
+          startTransition(async () => {
+            try {
+              await starBoardAction({ systemId, boardId: board.id, starred: next });
+            } catch {
+              setStarred(!next); // คืนค่าดาวกลับเมื่อบันทึกไม่ผ่าน
+              showToast("บันทึกดาวไม่สำเร็จ ลองใหม่อีกครั้ง");
+            }
+          });
+        }}
+        onRename={(name) => {
+          const before = boardName;
+          setBoardName(name);
+          startTransition(async () => {
+            try {
+              await renameBoardAction({ systemId, boardId: board.id, name });
+            } catch {
+              setBoardName(before);
+              showToast("เปลี่ยนชื่อบอร์ดไม่สำเร็จ ลองใหม่อีกครั้ง");
+            }
+          });
+        }}
+      />
+
+      {/* ── เวทีบอร์ด ── */}
+      <div className="flex min-h-0 flex-1 items-start overflow-x-auto" style={{ gap: 12, padding: "12px 20px 18px" }}>
+        {columns.map((col, i) => (
+          <Column
+            key={col.id}
+            column={col}
+            cards={drag ? col.cards.filter((c) => c.id !== drag.card.id) : col.cards}
+            siblings={columns.filter((c) => c.id !== col.id).map((c) => ({ id: c.id, name: c.name }))}
+            nowMs={nowMs}
+            canEdit={canEdit}
+            isAdmin={isAdmin}
+            draggingCardId={drag?.card.id ?? null}
+            indicatorIndex={drag?.over && drag.over.columnId === col.id ? drag.over.index : null}
+            indicatorHeight={drag?.height ?? 58}
+            columnDragging={colDragId === col.id}
+            handlers={handlers}
+          />
+        ))}
+        {columns.length === 0 && (
+          <p style={{ fontSize: 13, color: "var(--color-muted)" }}>
+            บอร์ดนี้ยังว่าง ลองเพิ่มงานแรกในคอลัมน์ &ldquo;รอทำ&rdquo;
+          </p>
+        )}
+        {canEdit && columns.length > 0 && (
+          <button
+            type="button"
+            title="เพิ่มคอลัมน์ (เร็ว ๆ นี้)"
+            aria-label="เพิ่มคอลัมน์"
+            disabled
+            className="grid flex-none place-items-center"
+            style={{
+              width: 76,
+              height: 44,
+              borderRadius: 12,
+              border: "1.5px dashed var(--color-line)",
+              background: "rgba(236,238,241,.55)",
+              color: "var(--color-muted)",
+            }}
+          >
+            <KanbanIcon name="plus" size="sm" />
+          </button>
+        )}
+      </div>
+
+      {/* ── การ์ดที่กำลังยก (ลอยตามเมาส์ · เอียง 2.4° ตามแบบ) ── */}
+      {drag && (
+        <div
+          className="pointer-events-none fixed z-[60]"
+          style={{ left: drag.x - drag.offsetX, top: drag.y - drag.offsetY, width: drag.width }}
+          aria-hidden
+        >
+          <Card card={drag.card} nowMs={nowMs} ghost />
+        </div>
+      )}
+
+      {/* ── หลังการ์ด (ตัวจริง = K1.6) ── */}
+      {openCardData && (
+        <aside
+          data-testid="card-back-placeholder"
+          className="fixed right-0 top-14 z-50 flex h-[calc(100dvh-3.5rem)] w-[360px] max-w-[92vw] flex-col gap-3 p-4"
+          style={{ background: "var(--color-surface)", borderLeft: "1px solid var(--color-line)", boxShadow: "-14px 0 34px rgba(10,10,10,.10)" }}
+        >
+          <div className="flex items-start gap-2">
+            <span className="min-w-0 flex-1" style={{ fontSize: 14, fontWeight: 700 }}>
+              {openCardData.title}
+            </span>
+            <button type="button" aria-label="ปิด" onClick={closeCard} style={{ color: "var(--color-muted)" }}>
+              <KanbanIcon name="x" size="sm" />
+            </button>
+          </div>
+          <p style={{ fontSize: 12.5, color: "var(--color-muted)" }}>
+            หลังการ์ด — เร็ว ๆ นี้ {openCardData.cardNo ? `(การ์ด #${openCardData.cardNo})` : ""}
+          </p>
+        </aside>
+      )}
+
+      {/* ── toast: ข้อความไทย บอกสิ่งที่เกิดขึ้นกับงาน ไม่โทษคนกด ── */}
+      {toast && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[70] flex justify-center px-4">
+          <div
+            role="status"
+            data-testid="board-toast"
+            className="pointer-events-auto flex items-center gap-2 rounded-full px-4 py-3"
+            style={{ background: "var(--color-ink)", color: "var(--color-surface)", fontSize: 13, boxShadow: "0 8px 24px rgba(10,10,10,.24)" }}
+          >
+            <KanbanIcon name="warn" size="sm" />
+            {toast}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default BoardView;
