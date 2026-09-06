@@ -41,7 +41,21 @@ import {
   updateCardFields,
 } from "./cards";
 import { createLabel, setCardLabels } from "./labels";
-import type { BoardCardDto, BoardLabelDto, CardDetailDto, KanbanCtx } from "./types";
+// K1.7 — เช็คลิสต์: `checklistProgressOfCard` ใช้ตอนคืนการ์ดเดี่ยวจาก action (ทำสำเนา/กู้คืน)
+// เพื่อให้ตรา n/m บนการ์ดที่เพิ่งแทรกกลับเข้าบอร์ดถูกต้องทันที ไม่ต้องรอโหลดบอร์ดใหม่ทั้งใบ
+import {
+  addItem as addChecklistItem,
+  checklistProgressOfCard,
+  createChecklist,
+  deleteChecklist,
+  deleteItem as deleteChecklistItem,
+  editItem as editChecklistItem,
+  getCardChecklists,
+  moveItem as moveChecklistItem,
+  renameChecklist,
+  toggleItem as toggleChecklistItem,
+} from "./checklists";
+import type { BoardCardDto, BoardLabelDto, CardDetailDto, KanbanChecklistDto, KanbanCtx } from "./types";
 
 // ทุก action: requireTenant → เอา tenantId จาก session (ไม่เชื่อ client) + scope ด้วย systemId
 
@@ -436,8 +450,9 @@ export async function duplicateCardAction(input: {
       listCardAssigneeDtos(ctxOf(auth, input.systemId), input.cardId),
     ]);
     const created = await duplicateCard(ctxOf(auth, input.systemId), input.cardId);
+    const checklist = await checklistProgressOfCard(ctxOf(auth, input.systemId), created.id);
     revalidatePath(boardPath(input.systemId, input.boardId));
-    return { ok: true, card: toBoardCardDto(created, labelRows, assigneeRows), columnId: created.columnId };
+    return { ok: true, card: toBoardCardDto(created, labelRows, assigneeRows, checklist), columnId: created.columnId };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ทำสำเนาการ์ดไม่สำเร็จ" };
   }
@@ -474,8 +489,9 @@ export async function restoreCardAction(input: {
       listCardAssigneeDtos(ctxOf(auth, input.systemId), input.cardId),
     ]);
     const restored = await restoreCard(ctxOf(auth, input.systemId), input.cardId);
+    const checklist = await checklistProgressOfCard(ctxOf(auth, input.systemId), restored.id);
     revalidatePath(boardPath(input.systemId, input.boardId));
-    return { ok: true, card: toBoardCardDto(restored, labelRows, assigneeRows), columnId: restored.columnId };
+    return { ok: true, card: toBoardCardDto(restored, labelRows, assigneeRows, checklist), columnId: restored.columnId };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "กู้คืนการ์ดไม่สำเร็จ" };
   }
@@ -538,5 +554,181 @@ export async function createLabelAction(input: {
     return { ok: true, label: { id: label.id, name: label.name, color: label.color as BoardLabelDto["color"] } };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "สร้างป้ายกำกับไม่สำเร็จ" };
+  }
+}
+
+// ═══════════════════════════ K1.7: เช็คลิสต์ ═══════════════════════════
+// ทุก action คืนเช็คลิสต์ทั้งชุดของการ์ดกลับไป (ไม่ใช่แค่ส่วนที่เปลี่ยน) — ชุดข้อมูลเล็ก
+// (≤50 รายการ/การ์ด) การอ่านใหม่ทั้งหมดหลังทุกแก้ไขปลอดภัยกว่าประกอบ patch เองฝั่ง client
+// `Checklist.tsx` ทำ optimistic เองก่อนเรียก แล้วค่อยเอาผลจริงจาก server มาทับ/ย้อนกลับ
+
+type ChecklistActionResult = { ok: true; checklists: KanbanChecklistDto[] } | { ok: false; message: string };
+
+export async function createChecklistAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  title: string;
+}): Promise<ChecklistActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await createChecklist(ctx, input.cardId, input.title);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, checklists: await getCardChecklists(ctx, input.cardId) };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "สร้างเช็คลิสต์ไม่สำเร็จ" };
+  }
+}
+
+export async function renameChecklistAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  checklistId: string;
+  title: string;
+}): Promise<ChecklistActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.checklistId) return { ok: false, message: "ไม่พบเช็คลิสต์นี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await renameChecklist(ctx, input.checklistId, input.title);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, checklists: await getCardChecklists(ctx, input.cardId) };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "เปลี่ยนชื่อเช็คลิสต์ไม่สำเร็จ" };
+  }
+}
+
+export async function deleteChecklistAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  checklistId: string;
+}): Promise<ChecklistActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.checklistId) return { ok: false, message: "ไม่พบเช็คลิสต์นี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await deleteChecklist(ctx, input.checklistId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, checklists: await getCardChecklists(ctx, input.cardId) };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ลบเช็คลิสต์ไม่สำเร็จ" };
+  }
+}
+
+export async function addChecklistItemAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  checklistId: string;
+  text: string;
+  assigneeUserId?: string | null;
+  dueAt?: string | null;
+}): Promise<ChecklistActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.checklistId) return { ok: false, message: "ไม่พบเช็คลิสต์นี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await addChecklistItem(ctx, input.checklistId, input.text, {
+      assigneeUserId: input.assigneeUserId ?? null,
+      dueAt: input.dueAt ? new Date(input.dueAt) : null,
+    });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, checklists: await getCardChecklists(ctx, input.cardId) };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "เพิ่มรายการไม่สำเร็จ" };
+  }
+}
+
+export async function toggleChecklistItemAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  itemId: string;
+  done: boolean;
+}): Promise<ChecklistActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.itemId) return { ok: false, message: "ไม่พบรายการนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await toggleChecklistItem(ctx, input.itemId, input.done);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, checklists: await getCardChecklists(ctx, input.cardId) };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ติ๊กรายการไม่สำเร็จ" };
+  }
+}
+
+export async function editChecklistItemAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  itemId: string;
+  text?: string;
+  assigneeUserId?: string | null;
+  dueAt?: string | null;
+}): Promise<ChecklistActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.itemId) return { ok: false, message: "ไม่พบรายการนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await editChecklistItem(ctx, input.itemId, {
+      ...(input.text !== undefined ? { text: input.text } : {}),
+      ...(input.assigneeUserId !== undefined ? { assigneeUserId: input.assigneeUserId } : {}),
+      ...(input.dueAt !== undefined ? { dueAt: input.dueAt ? new Date(input.dueAt) : null } : {}),
+    });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, checklists: await getCardChecklists(ctx, input.cardId) };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "แก้รายการไม่สำเร็จ" };
+  }
+}
+
+export async function deleteChecklistItemAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  itemId: string;
+}): Promise<ChecklistActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.itemId) return { ok: false, message: "ไม่พบรายการนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await deleteChecklistItem(ctx, input.itemId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, checklists: await getCardChecklists(ctx, input.cardId) };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ลบรายการไม่สำเร็จ" };
+  }
+}
+
+export async function moveChecklistItemAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  itemId: string;
+  beforeItemId?: string;
+  afterItemId?: string;
+}): Promise<ChecklistActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.itemId) return { ok: false, message: "ไม่พบรายการนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await moveChecklistItem(ctx, input.itemId, { beforeItemId: input.beforeItemId, afterItemId: input.afterItemId });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, checklists: await getCardChecklists(ctx, input.cardId) };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "จัดลำดับรายการไม่สำเร็จ" };
   }
 }

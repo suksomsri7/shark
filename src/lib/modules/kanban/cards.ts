@@ -6,6 +6,7 @@
 
 import type { KanbanCard, Prisma } from "@prisma/client";
 import { KanbanNotFoundError } from "./access";
+import { getCardChecklists } from "./checklists";
 import { prisma } from "./db";
 import { assertBoardRole, assertCardRole } from "./members";
 import { notifyCardAssigned } from "./notify";
@@ -154,6 +155,8 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     },
   });
   if (!card) throw new KanbanNotFoundError("ไม่พบการ์ดนี้");
+  // K1.7: หลังการ์ดโหลดเช็คลิสต์พร้อมกับส่วนที่เหลือของการ์ดในเที่ยวเดียว (ไม่ต้องยิง action แยก)
+  const checklists = await getCardChecklists(ctx, cardId);
   return {
     id: card.id,
     description: card.description,
@@ -163,6 +166,7 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     archivedAt: card.archivedAt ? card.archivedAt.toISOString() : null,
     archivedById: card.archivedById,
     status: card.status as CardDetailDto["status"],
+    checklists,
   };
 }
 
@@ -236,13 +240,19 @@ export async function duplicateCard(ctx: KanbanCtx, cardId: string): Promise<Kan
   });
   if (!original) throw new KanbanNotFoundError("ไม่พบการ์ดนี้");
 
-  const [labelIds, assigneeIds, siblings] = await Promise.all([
+  const [labelIds, assigneeIds, siblings, checklists] = await Promise.all([
     prisma.kanbanCardLabel.findMany({ where: { cardId: original.id }, select: { labelId: true } }).then((r) => r.map((x) => x.labelId)),
     prisma.kanbanCardAssignee.findMany({ where: { cardId: original.id }, select: { userId: true } }).then((r) => r.map((x) => x.userId)),
     prisma.kanbanCard.findMany({
       where: { columnId: original.columnId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ACTIVE" },
       orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }, { createdAt: "asc" }],
       select: { id: true, position: true },
+    }),
+    // K1.7: เช็คลิสต์ก็อปไปด้วย — รายการเป็น "ยังไม่ทำ" ทั้งหมด ไม่มีผู้รับมอบหมาย (งานใหม่ ยังไม่เคยมอบใคร)
+    prisma.kanbanChecklist.findMany({
+      where: { cardId: original.id },
+      orderBy: { position: "asc" },
+      include: { items: { orderBy: { position: "asc" } } },
     }),
   ]);
   const idx = siblings.findIndex((s) => s.id === original.id);
@@ -283,6 +293,28 @@ export async function duplicateCard(ctx: KanbanCtx, cardId: string): Promise<Kan
         data: assigneeIds.map((userId) => ({ cardId: row.id, userId, tenantId: ctx.tenantId, assignedById: ctx.actorUserId ?? null })),
         skipDuplicates: true,
       });
+    }
+    // K1.7: คัดลอกเช็คลิสต์ — ตำแหน่งเดิมใช้ซ้ำได้ตรง ๆ (position เทียบกันเฉพาะภายในชุด/การ์ดเดียวกัน
+    // ไม่ใช่ค่าที่ต้อง unique ข้ามทั้งตาราง) · เก็บกำหนดวันไว้ แต่ล้างสถานะเสร็จ/ผู้รับมอบหมาย
+    for (const checklist of checklists) {
+      const newChecklist = await tx.kanbanChecklist.create({
+        data: { tenantId: ctx.tenantId, cardId: row.id, title: checklist.title, position: checklist.position },
+      });
+      if (checklist.items.length > 0) {
+        await tx.kanbanChecklistItem.createMany({
+          data: checklist.items.map((item) => ({
+            tenantId: ctx.tenantId,
+            checklistId: newChecklist.id,
+            text: item.text,
+            position: item.position,
+            done: false,
+            assigneeUserId: null,
+            dueAt: item.dueAt,
+            doneAt: null,
+            doneById: null,
+          })),
+        });
+      }
     }
     return row;
   });

@@ -217,6 +217,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // สมาชิกบอร์ด + ดาว (K1.3) — เหตุผลเดียวกัน: มีแต่ `tenantId` (systemId อยู่ที่บอร์ดต้นทาง)
   KanbanBoardMember: tenant,
   KanbanBoardStar: tenant,
+  // เช็คลิสต์ (K1.7) — เหตุผลเดียวกัน: มีแต่ `tenantId` (systemId อยู่ที่การ์ดต้นทาง)
+  KanbanChecklist: tenant,
+  KanbanChecklistItem: tenant,
   // Account — P1 core
   AccountDocument: sys(),
   AccountDocumentLine: sys(),

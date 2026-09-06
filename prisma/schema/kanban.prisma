@@ -141,6 +141,9 @@ model KanbanCard {
   cardLabels KanbanCardLabel[]
   assignees  KanbanCardAssignee[]
 
+  // ── K1.7 ──
+  checklists KanbanChecklist[]
+
   @@index([tenantId, systemId, boardId, status])
   @@index([columnId, status, sortOrder])
   @@index([tenantId, systemId, assigneeUserId])
@@ -232,4 +235,43 @@ model KanbanBoardStar {
 
   @@id([boardId, userId])
   @@index([tenantId, userId])
+}
+
+// ───────────────────────── เช็คลิสต์ (K1.7 · KANBAN-RUN §K1.7) ─────────────────────────
+// หลายชุดต่อการ์ด (KanbanChecklist) · แต่ละชุดมีหลายรายการ มอบหมาย/กำหนดส่งได้รายรายการ (KanbanChecklistItem)
+// ไม่มี `systemId`: การ์ดต้นทางรู้ระบบของตัวเองอยู่แล้ว (เหตุผลเดียวกับ KanbanCardLabel/KanbanBoardMember ใน K1.2/K1.3)
+// position = fractional index — ตารางใหม่จึงไม่ต้อง nullable แบบ K1.1 (ไม่มีข้อมูลเก่าให้เปลี่ยนผ่าน)
+model KanbanChecklist {
+  id        String     @id @default(cuid())
+  tenantId  String
+  cardId    String
+  card      KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  title     String
+  position  String
+  createdAt DateTime   @default(now())
+
+  items KanbanChecklistItem[]
+
+  @@index([cardId])
+}
+
+// รายการในเช็คลิสต์ — มอบหมาย/กำหนดวันได้รายตัว (ต่างจากการ์ดที่มีผู้รับผิดชอบ/กำหนดส่งระดับใบเดียว)
+// assigneeUserId ไม่ทำ FK ไป User (เหมือน KanbanCardAssignee) — ตรวจ Membership accepted ใน service
+model KanbanChecklistItem {
+  id             String          @id @default(cuid())
+  tenantId       String
+  checklistId    String
+  checklist      KanbanChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  text           String
+  done           Boolean         @default(false)
+  position       String
+  assigneeUserId String?
+  dueAt          DateTime?
+  doneAt         DateTime?
+  doneById       String?
+  createdAt      DateTime        @default(now())
+
+  // เส้นทางของ "งานของฉัน" (listMyChecklistItems) — เฉพาะ done=false ต่อคนต่อร้าน
+  @@index([checklistId])
+  @@index([tenantId, assigneeUserId, done])
 }

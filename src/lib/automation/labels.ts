@@ -16,6 +16,8 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "kanban.card.moved", label: "เมื่อการ์ดถูกย้ายคอลัมน์" },
   { value: "kanban.card.assigned", label: "เมื่อมอบหมายงาน" },
   { value: "kanban.card.completed", label: "เมื่องานเสร็จ" },
+  // K1.7 — ติ๊กเช็คลิสต์ครบทุกข้อ (`kanban/checklists.ts#toggleItem`)
+  { value: "kanban.checklist.completed", label: "เมื่อเช็คลิสต์ครบทุกข้อ" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

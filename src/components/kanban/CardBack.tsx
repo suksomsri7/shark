@@ -11,8 +11,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KanbanIcon } from "./KanbanIcon";
 import { Avatar, formatCardDate, formatCardDateTime, tagColorVar } from "./Card";
+import { Checklist, checklistBadgeOf } from "./Checklist";
 import {
   archiveCardAction,
+  createChecklistAction,
   createLabelAction,
   duplicateCardAction,
   getCardDetailAction,
@@ -22,7 +24,7 @@ import {
   updateCardFieldsAction,
 } from "@/lib/modules/kanban/actions";
 import { renderDescription } from "@/lib/modules/kanban/sanitize";
-import type { BoardCardDto, BoardLabelDto, BoardPersonDto, KanbanTagColor } from "@/lib/modules/kanban/types";
+import type { BoardCardDto, BoardLabelDto, BoardPersonDto, KanbanChecklistDto, KanbanTagColor } from "@/lib/modules/kanban/types";
 
 const TAG_COLORS: { value: KanbanTagColor; name: string }[] = [
   { value: "SLATE", name: "เทา" },
@@ -72,6 +74,7 @@ type Fields = {
   labels: BoardLabelDto[];
   assignees: BoardPersonDto[];
   status: "ACTIVE" | "ARCHIVED";
+  checklists: KanbanChecklistDto[];
 };
 
 export type CardBackHandlers = {
@@ -156,6 +159,7 @@ export function CardBack({
         labels: card.labels,
         assignees: card.assignees,
         status: res.detail.status,
+        checklists: res.detail.checklists,
       });
     });
     return () => {
@@ -341,6 +345,30 @@ export function CardBack({
     [boardId, card.id, fields, systemId, handlers, toast],
   );
 
+  // ───────────────────────── เช็คลิสต์ (K1.7) ─────────────────────────
+
+  const onChecklistsChange = useCallback(
+    (checklists: KanbanChecklistDto[]) => {
+      setFields((f) => (f ? { ...f, checklists } : f));
+      const { done, total } = checklistBadgeOf(checklists);
+      handlers.onPatch(card.id, { checklistDone: done, checklistTotal: total });
+    },
+    [card.id, handlers],
+  );
+
+  const addChecklist = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const title = window.prompt("ชื่อเช็คลิสต์", "ขั้นตอนงาน");
+    if (title === null) return;
+    createChecklistAction({ systemId, boardId, cardId: card.id, title }).then((res) => {
+      if (!res.ok) {
+        toast(res.message || "สร้างเช็คลิสต์ไม่สำเร็จ");
+        return;
+      }
+      onChecklistsChange(res.checklists);
+    });
+  }, [boardId, card.id, systemId, onChecklistsChange, toast]);
+
   // ───────────────────────── ย้าย / ทำสำเนา / เก็บ / กู้คืน ─────────────────────────
 
   const otherColumns = useMemo(() => columns.filter((c) => c.id !== columnId), [columns, columnId]);
@@ -454,7 +482,7 @@ export function CardBack({
                 <AddChip icon="users" label="สมาชิก" onClick={() => setMembersOpen(true)} />
                 <AddChip icon="tag" label="ป้ายกำกับ" onClick={() => setLabelsOpen(true)} />
                 <AddChip icon="clock" label="กำหนดวัน" onClick={() => dueInputRef.current?.focus()} />
-                <AddChip icon="cklist" label="เช็คลิสต์" disabled />
+                <AddChip icon="cklist" label="เช็คลิสต์" onClick={addChecklist} />
                 <AddChip icon="clip" label="ไฟล์แนบ" disabled />
                 <AddChip icon="link" label="เชื่อมข้อมูล SHARK" disabled accent />
               </div>
@@ -692,6 +720,19 @@ export function CardBack({
                   </button>
                 )}
               </div>
+
+              {/* เช็คลิสต์ (K1.7) */}
+              <Checklist
+                systemId={systemId}
+                boardId={boardId}
+                cardId={card.id}
+                editable={editable}
+                checklists={fields.checklists}
+                members={members}
+                nowMs={nowMs}
+                onChange={onChecklistsChange}
+                onToast={toast}
+              />
             </div>
 
             {/* ── แถบขวา ── */}

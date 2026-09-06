@@ -81,6 +81,39 @@ export type CardDetailDto = {
   archivedAt: string | null;
   archivedById: string | null;
   status: "ACTIVE" | "ARCHIVED";
+  /** K1.7: เช็คลิสต์ทั้งหมดของการ์ด (หลายชุด) — เรียงตาม position */
+  checklists: KanbanChecklistDto[];
+};
+
+// ───────────────────────── K1.7: เช็คลิสต์ ─────────────────────────
+// ทุกวันที่ serialize เป็น ISO string เสมอ (ข้าม RSC boundary / server action ได้โดยไม่มี Date ดิบ)
+
+export type KanbanChecklistItemDto = {
+  id: string;
+  text: string;
+  done: boolean;
+  position: string;
+  assigneeUserId: string | null;
+  dueAt: string | null;
+  doneAt: string | null;
+  doneById: string | null;
+};
+
+export type KanbanChecklistDto = {
+  id: string;
+  title: string;
+  position: string;
+  items: KanbanChecklistItemDto[];
+  progress: { done: number; total: number };
+};
+
+/** แถวของหน้า "งานของฉัน" — รายการเช็คลิสต์ที่มอบหมายให้ผู้ใช้คนนั้น (เฉพาะ done=false) */
+export type MyChecklistItemDto = {
+  id: string;
+  text: string;
+  dueAt: string | null;
+  done: boolean;
+  card: { id: string; title: string; cardNo: number | null; boardId: string };
 };
 
 export type BoardViewDto = {

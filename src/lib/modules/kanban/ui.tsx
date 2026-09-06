@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
 import { getBoardFor, listBoardsFor, listMyCards, listTenantUsers } from "./service";
+import { listMyChecklistItems } from "./checklists";
 import { toActor, KanbanNotFoundError } from "./access";
 import type { KanbanActor, KanbanCtx } from "./types";
 import {
@@ -50,24 +51,45 @@ export function kanbanTabs(systemId: string): { href: string; label: string }[] 
 
 // ───────────── งานของฉัน (my-tasks) — การ์ดที่มอบหมายให้ฉันข้ามทุกบอร์ด ─────────────
 export async function KanbanMyTasksSection({ systemId, tenantId }: { systemId: string; tenantId: string }) {
-  const { actor } = await authScope(systemId);
-  const myCards = await listMyCards(tenantId, systemId, actor.userId, actor);
+  const { ctx, actor } = await authScope(systemId);
+  const [myCards, myChecklistItems] = await Promise.all([
+    listMyCards(tenantId, systemId, actor.userId, actor),
+    listMyChecklistItems(ctx, actor.userId),
+  ]);
 
   return (
-    <Section title={`งานของฉัน (${myCards.length})`}>
-      <DataList
-        items={myCards.map((c) => ({
-          key: c.id,
-          href: `/app/sys/${systemId}/kanban/b/${c.boardId}`,
-          primary: c.title,
-          secondary: `${c.board?.name ?? ""}${c.column?.name ? ` · ${c.column.name}` : ""}`,
-          trailing: c.dueAt ? (
-            <span className={`text-xs ${muted}`}>ครบกำหนด {fmtDue(c.dueAt)}</span>
-          ) : undefined,
-        }))}
-        empty="ยังไม่มีงานที่มอบหมายให้คุณ — งานที่หัวหน้ามอบหมายจะมาแสดงที่นี่"
-      />
-    </Section>
+    <div className="flex flex-col gap-5">
+      <Section title={`งานของฉัน (${myCards.length})`}>
+        <DataList
+          items={myCards.map((c) => ({
+            key: c.id,
+            href: `/app/sys/${systemId}/kanban/b/${c.boardId}`,
+            primary: c.title,
+            secondary: `${c.board?.name ?? ""}${c.column?.name ? ` · ${c.column.name}` : ""}`,
+            trailing: c.dueAt ? (
+              <span className={`text-xs ${muted}`}>ครบกำหนด {fmtDue(c.dueAt)}</span>
+            ) : undefined,
+          }))}
+          empty="ยังไม่มีงานที่มอบหมายให้คุณ — งานที่หัวหน้ามอบหมายจะมาแสดงที่นี่"
+        />
+      </Section>
+
+      {/* K1.7: รายการเช็คลิสต์ที่มอบหมายให้ฉัน (ข้ามทุกการ์ด/ทุกบอร์ด) */}
+      <Section title={`รายการเช็คลิสต์ที่มอบหมายให้ฉัน (${myChecklistItems.length})`}>
+        <DataList
+          items={myChecklistItems.map((i) => ({
+            key: i.id,
+            href: `/app/sys/${systemId}/kanban/b/${i.card.boardId}?card=${i.card.id}`,
+            primary: i.text,
+            secondary: `${i.card.title}${i.card.cardNo ? ` · #${i.card.cardNo}` : ""}`,
+            trailing: i.dueAt ? (
+              <span className={`text-xs ${muted}`}>ครบกำหนด {fmtDue(new Date(i.dueAt))}</span>
+            ) : undefined,
+          }))}
+          empty="ยังไม่มีรายการเช็คลิสต์ที่มอบหมายให้คุณ"
+        />
+      </Section>
+    </div>
   );
 }
 

@@ -307,6 +307,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //      ตัวปิดงานที่ผูกไว้ (closeLinkedTargets · K3.4) จะมาเสียบตรง `kanban.card.completed` ทีหลัง
   "kanban.card.moved": withAutomation(async () => {}),
   "kanban.card.completed": withAutomation(async () => {}),
+  // K1.7 — เช็คลิสต์ครบทุกข้อ (ยิงจาก `kanban/checklists.ts#toggleItem` ใน tx เดียวกับการติ๊ก)
+  //   🔴 ผลข้างเคียง (done/doneAt/doneById) เกิดในโมดูลไปแล้ว — consumer เป็น no-op เพื่อ
+  //      **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล — บทเรียน 30 ส.ค. 2026)
+  //      + เป็นจุดให้ Automation rules (§7.3) และ `withWebhooks` ยิงต่อ
+  "kanban.checklist.completed": withAutomation(async () => {}),
   // WO 8.3 (§9.5 แอปภายนอก/API): เหตุการณ์บัญชี — ผลข้างเคียงเกิดในโมดูลบัญชีไปแล้ว
   //   consumer เป็น no-op เพื่อ **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล)
   //   + เป็นจุดให้ `withWebhooks` ยิงฮุคไปยังปลายทางที่ร้านสมัครไว้ (หน้า "แอปภายนอก/API")

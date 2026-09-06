@@ -38,8 +38,13 @@ type BoardRow = {
 
 // ───────────────────────── ตัวช่วยภายใน ─────────────────────────
 
-/** actor จาก `ctx.actorUserId` — ไม่มี membership ในร้านนี้ = ไม่มีตัวตนสำหรับโมดูลนี้ */
-async function loadActor(ctx: KanbanCtx): Promise<KanbanActor | null> {
+/**
+ * actor จาก `ctx.actorUserId` — ไม่มี membership ในร้านนี้ = ไม่มีตัวตนสำหรับโมดูลนี้
+ * 🔴 export ไว้ตั้งแต่ K1.7: `checklists.ts` ใช้คำนวณ "บอร์ดที่มองเห็น" ของ **เจ้าของงาน**
+ *    (ไม่ใช่ของคนเรียก) ตอนอ่านรายการเช็คลิสต์ที่มอบหมายให้ userId อื่น — ประกอบ ctx ปลอมด้วย
+ *    `{ ...ctx, actorUserId: userId }` แล้วเรียกตัวนี้
+ */
+export async function loadActor(ctx: KanbanCtx): Promise<KanbanActor | null> {
   if (!ctx.actorUserId) return null;
   const m = await prisma.membership.findFirst({
     where: { tenantId: ctx.tenantId, userId: ctx.actorUserId },

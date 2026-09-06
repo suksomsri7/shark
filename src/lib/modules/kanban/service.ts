@@ -528,7 +528,7 @@ export async function getBoardView(
   const board = await getBoardFor(ctx, actor, boardId);
   const cardIds = board.columns.flatMap((c) => c.cards.map((k) => k.id));
 
-  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows] = await Promise.all([
+  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows] = await Promise.all([
     prisma.kanbanLabel.findMany({
       where: { boardId: board.id, tenantId: ctx.tenantId, systemId: ctx.systemId },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -564,7 +564,22 @@ export async function getBoardView(
       orderBy: { createdAt: "asc" },
       select: { userId: true },
     }),
+    // K1.7: ตราเช็คลิสต์ n/m ของทุกการ์ด — คิวรีเดียว (join + group by cardId) ไม่ใช่ต่อการ์ด (กัน N+1)
+    cardIds.length
+      ? prisma.$queryRaw<{ cardId: string; total: bigint; done: bigint }[]>`
+          SELECT ch."cardId" as "cardId",
+                 COUNT(i.id) as total,
+                 COUNT(i.id) FILTER (WHERE i.done) as done
+          FROM "KanbanChecklist" ch
+          JOIN "KanbanChecklistItem" i ON i."checklistId" = ch.id
+          WHERE ch."cardId" IN (${Prisma.join(cardIds)})
+          GROUP BY ch."cardId"
+        `
+      : Promise.resolve([] as { cardId: string; total: bigint; done: bigint }[]),
   ]);
+  const checklistOfCard = new Map(
+    checklistCountRows.map((r) => [r.cardId, { done: Number(r.done), total: Number(r.total) }]),
+  );
 
   // ชื่อคน: สมาชิกบอร์ด + ผู้รับผิดชอบการ์ด (แถวรูปคนหัวบอร์ดใช้ชุดเดียวกับ avatar บนการ์ด)
   const peopleIds = Array.from(
@@ -611,7 +626,9 @@ export async function getBoardView(
       position: col.position,
       wipLimit: col.wipLimit,
       isDoneColumn: col.isDoneColumn,
-      cards: col.cards.map((card) => toBoardCardDto(card, labelsOfCard.get(card.id) ?? [], peopleOfCard.get(card.id) ?? [])),
+      cards: col.cards.map((card) =>
+        toBoardCardDto(card, labelsOfCard.get(card.id) ?? [], peopleOfCard.get(card.id) ?? [], checklistOfCard.get(card.id)),
+      ),
     })),
   };
 }
@@ -621,6 +638,7 @@ export function toBoardCardDto(
   card: KanbanCard,
   labels: BoardLabelDto[],
   assignees: BoardPersonDto[],
+  checklist?: { done: number; total: number },
 ): BoardCardDto {
   return {
     id: card.id,
@@ -631,9 +649,10 @@ export function toBoardCardDto(
     completedAt: card.completedAt ? card.completedAt.toISOString() : null,
     labels,
     assignees,
-    // K1.7/K1.8/K1.9 ยังไม่มีตาราง — ส่ง 0 ไว้ก่อน (การ์ดไม่เรนเดอร์ตราที่เป็น 0 ⇒ ไม่มีตราหลอกตา)
-    checklistDone: 0,
-    checklistTotal: 0,
+    // K1.7: ตราเช็คลิสต์ n/m ของจริง (ค่าเริ่มต้น 0/0 สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่มีเช็คลิสต์)
+    checklistDone: checklist?.done ?? 0,
+    checklistTotal: checklist?.total ?? 0,
+    // K1.8/K1.9 ยังไม่มีตาราง — ส่ง 0 ไว้ก่อน (การ์ดไม่เรนเดอร์ตราที่เป็น 0 ⇒ ไม่มีตราหลอกตา)
     attachmentCount: 0,
     commentCount: 0,
     coverUrl: null,
