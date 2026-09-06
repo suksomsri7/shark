@@ -22,7 +22,7 @@ const chk = (id: string, n: string, ok: boolean, e: string, a: string, s: Sev = 
 const fails = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error; } };
 const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const P = prisma as Any;
-let created: string[] = []; let snapshot: { id: string; columnId: string; position: string; status: string }[] = [];
+let bulkIds: string[] = []; let snapshot: { id: string; columnId: string; position: string; status: string; dueAt: Date | null }[] = []; let asgSnap: { cardId: string; userId: string }[] = []; let lblSnap: { cardId: string; labelId: string }[] = [];
 try {
   const scope = await kq.resolveKanbanScope(prisma);
   if (!scope) throw new Error("ยังไม่ได้ seed");
@@ -36,7 +36,7 @@ try {
   const ctxO = { tenantId: tid, systemId: SYS, actorUserId: owner.userId }; const ctxT = { tenantId: tid, systemId: SYS, actorUserId: thana.userId };
   const board = E.boards.patong.id as string; const NOW = kq.dayFromToday(0, 10);
   const cols = await prisma.kanbanColumn.findMany({ where: { boardId: board, status: "ACTIVE" }, orderBy: { position: "asc" } });
-  snapshot = (await prisma.kanbanCard.findMany({ where: { boardId: board }, select: { id: true, columnId: true, position: true, status: true } })).map((c) => ({ id: c.id, columnId: c.columnId, position: c.position ?? "", status: c.status }));
+  snapshot = (await prisma.kanbanCard.findMany({ where: { boardId: board }, select: { id: true, columnId: true, position: true, status: true, dueAt: true } })).map((c) => ({ id: c.id, columnId: c.columnId, position: c.position ?? "", status: c.status, dueAt: c.dueAt }));
 
   // ═══ S1 listBoardTable ═══
   const t0 = await tbl.listBoardTable(ctxO, owner, board, { now: NOW });
@@ -59,7 +59,9 @@ try {
   // ═══ S2 bulkUpdate ═══
   const src = cols[1]!; const dst = cols[2]!;
   const two = await prisma.kanbanCard.findMany({ where: { columnId: src.id, status: "ACTIVE" }, orderBy: { position: "asc" }, take: 2 });
-  const ids2 = two.map((c) => c.id);
+  const ids2 = two.map((c) => c.id); bulkIds = ids2;
+  asgSnap = await P.kanbanCardAssignee.findMany({ where: { cardId: { in: ids2 } }, select: { cardId: true, userId: true } });
+  lblSnap = await P.kanbanCardLabel.findMany({ where: { cardId: { in: ids2 } }, select: { cardId: true, labelId: true } });
   const before = await prisma.kanbanActivity.count({ where: { boardId: board } });
   const r1 = await cards.bulkUpdate(ctxO, ids2, { toColumnId: dst.id });
   const moved = await prisma.kanbanCard.findMany({ where: { id: { in: ids2 } } });
@@ -101,22 +103,19 @@ try {
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.name}: ${e.message.slice(0, 240)}` : String(e));
 } finally {
-  // คืนสภาพ: การ์ดที่ถูก bulk (คอลัมน์/สถานะ/position) · ผู้รับผิดชอบ/ป้าย/กำหนดส่งที่เพิ่ม
+  // คืนสภาพ: การ์ดทุกใบของบอร์ด (คอลัมน์/สถานะ/position/dueAt) จาก snapshot · ผู้รับผิดชอบ/ป้ายของ 2 ใบที่ bulk จาก snapshot
   try {
-    const E = JSON.parse(readFileSync(kq.KQC.expectedPath, "utf8"));
-    const pookId = E.users.staff.pook.userId as string; const boardId = E.boards.patong.id as string;
-    const lbl = await prisma.kanbanLabel.findFirst({ where: { boardId, name: "ด่วน" } });
+    const E = JSON.parse(readFileSync(kq.KQC.expectedPath, "utf8")); const boardId = E.boards.patong.id as string;
     for (const s of snapshot) {
-      const cur = await prisma.kanbanCard.findUnique({ where: { id: s.id }, select: { columnId: true, status: true, position: true } });
-      if (!cur) continue;
-      if (cur.columnId !== s.columnId || cur.status !== s.status || cur.position !== s.position) {
-        await prisma.kanbanCard.update({ where: { id: s.id }, data: { columnId: s.columnId, status: s.status as Any, position: s.position || cur.position, archivedAt: null, completedAt: null, dueAt: undefined } });
-        await P.kanbanCardAssignee.deleteMany({ where: { cardId: s.id, userId: pookId, card: { boardId }, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } }).catch(() => {});
-        if (lbl) await P.kanbanCardLabel.deleteMany({ where: { cardId: s.id, labelId: lbl.id, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } }).catch(() => {});
-      }
+      await prisma.kanbanCard.update({ where: { id: s.id }, data: { columnId: s.columnId, status: s.status as Any, position: s.position || undefined, archivedAt: s.status === "ARCHIVED" ? undefined : null, dueAt: s.dueAt } }).catch(() => {});
+    }
+    if (bulkIds.length) {
+      await P.kanbanCardAssignee.deleteMany({ where: { cardId: { in: bulkIds } } });
+      for (const a of asgSnap) await P.kanbanCardAssignee.create({ data: { tenantId: (await prisma.kanbanCard.findUnique({ where: { id: a.cardId }, select: { tenantId: true } }))!.tenantId, cardId: a.cardId, userId: a.userId } }).catch(() => {});
+      await P.kanbanCardLabel.deleteMany({ where: { cardId: { in: bulkIds } } });
+      for (const l of lblSnap) await P.kanbanCardLabel.create({ data: { tenantId: (await prisma.kanbanCard.findUnique({ where: { id: l.cardId }, select: { tenantId: true } }))!.tenantId, cardId: l.cardId, labelId: l.labelId } }).catch(() => {});
     }
     await P.kanbanActivity.deleteMany({ where: { boardId, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } });
-    void created;
   } catch { /* */ }
   await prisma.$disconnect();
 }
