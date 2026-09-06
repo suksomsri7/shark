@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | K1.11 |
+| WO | K1.12 |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable (oracle เขียนแล้ว 21 ข้อ) → Sonnet (builder) |
-| ขั้นที่ถึง | 11:05 น.: K1.10 DONE (Opus 42 นาที · Fable ดูภาพ 6 ใบ + oracle 16 + regressions + typecheck/fitness) → push main · สั่ง Sonnet ทำ K1.11 (ตัวกรอง+ค้นหา) · P1 10/15 |
+| ผู้ทำ | Fable (oracle เขียนแล้ว 19 ข้อ) → Sonnet (builder) |
+| ขั้นที่ถึง | 12:04 น.: K1.11 DONE (Sonnet 51 นาที · Fable ดูภาพ 4 ใบ + oracle 21 + regressions + probe wildcard fix) → push main · สั่ง Sonnet ทำ K1.12 (เทมเพลต+หน้ารวมบอร์ด) · P1 11/15 |
 
 ## การตัดสินใจ (คำถาม §9 ของแบบ — เจ้าของไม่ได้ตอบ Fable ตัดสินแบบปลอดภัย แก้ทีหลังได้)
 | # | เรื่อง | ตัดสิน |
@@ -63,7 +63,7 @@
 | K1.8 | ความเห็น + @mention + แจ้งเตือนยิงตรงคน (`recipientUserId`) + push รายคน + auto-VIEWER | Opus | TODO | | |
 | K1.9 | ไฟล์แนบ + ปก (FileAsset ผ่าน `src/lib/storage` · magic bytes · 10 MB · signed/CDN) | Sonnet | DONE | 6 ก.ย. | k1.9 18/18 · visual 1.9 (5 ใบ) Fable ดูภาพ: ปกบนการ์ด+ตรา 📎1 บนบอร์ด · รายการไฟล์+ตั้ง/เอาออกจากปก · มือถือ · Fable แก้เพิ่ม: next.config serverActions.bodySizeLimit 12mb (ปริยาย 1MB → ไฟล์ >1MB ล้มบน prod ทั้ง kanban และแชท) |
 | K1.10 | ประวัติกิจกรรม (`KanbanActivity` append-only 28 ชนิด) + สายรวมความเห็น/กิจกรรม + AuditLog เรื่องสิทธิ์ | Opus | DONE | 6 ก.ย. | k1.10 16/16 · visual 1.10 (6 ใบ) Fable ดูภาพ: แท็บ ทั้งหมด/ความเห็น/กิจกรรม + ประโยคไทย + แผงกิจกรรมบอร์ด · ทุก logActivity ใช้ tx (0 จุดใช้ prisma ตรง) · Fable แก้ oracle ให้ล้างแถวระดับบอร์ดที่ตัวเองสร้าง |
-| K1.11 | ตัวกรอง (สมาชิก/ป้าย/กำหนด/สถานะ · URL) + ค้นหาข้ามบอร์ด `Ctrl K` + ไวยากรณ์ | Sonnet | TODO | | |
+| K1.11 | ตัวกรอง (สมาชิก/ป้าย/กำหนด/สถานะ · URL) + ค้นหาข้ามบอร์ด `Ctrl K` + ไวยากรณ์ | Sonnet | DONE | 6 ก.ย. | k1.11 21/21 (oracle S2.4 แก้ 6→7 หลัง builder พิสูจน์+Fable ยืนยันจาก DB) · visual 1.11 (4 ใบ) Fable ดูภาพ: แถบกรอง+นับ · palette ⌘K จัดกลุ่มตามบอร์ด · มือถือ · Fable probe: q อักขระพิเศษ 9 แบบ → เจอ % และ _ เป็น wildcard (เห็นทุกใบ) → escape แล้ว |
 | K1.12 | เทมเพลต 6 ชุดธุรกิจไทย + หน้ารวมบอร์ดใหม่ (ภาพ 01: ดาว/จัดกลุ่มสาขา/แถวเทมเพลต) + สร้างบอร์ดจากเทมเพลต atomic | Sonnet | TODO | | |
 | K1.13 | มือถือ (ภาพ 07): เลื่อนทีละคอลัมน์ · กดค้างลาก · ปัดขวา=เสร็จ/ซ้าย=เก็บ + undo 5 วิ · หลังการ์ดเต็มจอ · งานของฉันใหม่ (ภาพ 06 ฝั่งขวา) | Sonnet | TODO | | visual mobile |
 | K1.14 | ปุ่มลัด (ปิดได้ · ไม่ชน IME) · empty state ทุกหน้า · realtime Ably + polling · หน้าคลังเก็บ/กู้คืน · เมนู 7 หมวด | Opus | TODO | | 2 browser เห็นกันใน 2 วิ |
@@ -180,6 +180,9 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 **Oracle** (`qc-kanban-k1.15.mts`): แกนกลางไม่ซ้ำ (account import จาก `@/lib/api/`) · ทะเบียน ≥ 50 op id/path ไม่ซ้ำ ทุก op มี test · bundles 3 · ยิงจริงผ่าน route handler ด้วยคีย์ที่สร้างบน seed: ping · boards.list = 3 (คีย์เห็นทุกบอร์ด D18) · boards.get กะตะ 200 · cards.create + Idempotency-Key replay · cards.move ok · คีย์ read-only เขียน → 403 scope_missing · คีย์ร้านอื่น → 404 · danger ไม่ confirm → 409 · openapi.json = ทะเบียน · docs --check · AI tools ≥ 15 ในสกิล tasks · developers page มีจริง · WEBHOOK_EVENTS มี kanban.* ≥ 9
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 12:04 น. — K1.11 ปิด (Sonnet 51 นาที) · builder แย้ง oracle S2.4 (due=none 6 → จริง 7) Fable ยืนยันจาก DB แล้วแก้ oracle · deviation ยอมรับ: แยก `filters.ts` (pure · client) ออกจาก `search.ts` (server) เพราะ Turbopack ลาก pg เข้า client bundle · **Fable probe เจอบั๊ก**: Prisma `contains` ไม่ escape `%`/`_` → พิมพ์ % เห็นทุกใบ → เพิ่ม `likeSafe` (probe 38→0) · ภาพ 4 ใบตรง mockup 02 · ความคืบหน้า P1 11/15
+- (แทรก) 12:04 น. — งานเจ้าของ: iPad build #24 บน TestFlight · เจ้าของรายงาน 2 ข้อ → (1) ☰ ไม่เปิดในแนวนอน = บั๊กเว็บ `NavDrawer lg:hidden` ทั้งที่ในแอปไม่มีแถบปักซ้าย → แก้ `alwaysOverlay` (main `57b7650` deploy แล้ว) · (2) เมนูแอป (สไลด์) ≠ เมนูเว็บ (☰) → เสนอรวมเป็นเมนูเว็บ + ปิดสไลด์ในแดชบอร์ด รอเจ้าของเคาะ
+- 11:08 น. — prod: Vercel READY `a6d41e0` · migration kanban_v2_h (KanbanActivity) ลง prod แล้ว · Telegram msg 2867 (P1 10/15) · Sonnet เริ่ม K1.11
 - 11:05 น. — K1.10 ปิด (Opus 42 นาที) · Fable ตรวจเอง: oracle 16/16 · regressions k1.1–k1.9/notify/ai เขียว · typecheck/fitness ผ่าน · ภาพ 6 ใบ (ไทม์ไลน์ 3 แท็บ desktop/mobile + แผงกิจกรรมบอร์ด) ตรงบล็อกล่าง mockup 03 · ยอมรับ deviation 5 ข้อ (activity-log.ts กันวน import · describeActivity แยกไฟล์ pure · all ตัด COMMENT_ADDED · stamp() ต่อโปรเซส · testid comments ย้าย) · **Fable แก้ oracle**: ล้างแถวกิจกรรมระดับบอร์ดที่ตัวเองสร้าง (ค้าง 30 แถวใน QC → ลบแล้ว) · หนี้ MINOR: stamp() ต่อโปรเซส (หลาย instance เวลาอาจชน → เรียงสลับได้เล็กน้อย) · harness visual เพิ่ม `KQC_VIEWPORTS`/`KQC_UA` (ใช้ถ่าย iPad ให้แอป) · ความคืบหน้า P1 10/15
 - (แทรก) 11:05 น. — งานเจ้าของ: แอป SHARK HUB บน iPad → แก้ใน shark-in-th main `e916fef` (supportsTablet + orientation iPad + PageColumn) · ภาพ QC 4 จอ×4 ขนาด + แดชบอร์ด WebView ขนาด iPad จาก QC server · รอเจ้าของสั่งบิลด์ #24
 - 10:14 น. — prod: Vercel READY `07d5d18` · migration kanban_v2_g (KanbanAttachment) ลง prod แล้ว · bodySizeLimit 12mb มีผลบน prod · Telegram msg 2863 (P1 9/15) · Opus เริ่ม K1.10

@@ -5,10 +5,20 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { KanbanIcon } from "./KanbanIcon";
 import { Avatar } from "./Card";
+import { SearchPalette } from "./SearchPalette";
 import { BoardActivityPanel } from "./Timeline";
+import type { BoardFilters, DueBucket } from "@/lib/modules/kanban/filters";
 import type { BoardViewDto } from "@/lib/modules/kanban/types";
+
+const DUE_OPTIONS: { value: DueBucket; label: string }[] = [
+  { value: "overdue", label: "เลยกำหนด" },
+  { value: "today", label: "วันนี้" },
+  { value: "week", label: "สัปดาห์นี้" },
+  { value: "none", label: "ไม่กำหนด" },
+];
 
 const VIEWS: { key: string; icon: string; label: string }[] = [
   { key: "board", icon: "grid", label: "บอร์ด" },
@@ -44,17 +54,37 @@ export function BoardHeader({
   starred,
   onToggleStar,
   onRename,
+  filters,
 }: {
   board: BoardViewDto;
   starred: boolean;
   onToggleStar: () => void;
   onRename: (name: string) => void;
+  /** K1.11 — ตัวกรองปัจจุบันของบอร์ด (มาจาก URL) ใช้แค่นับ pill ของปุ่ม "ตัวกรอง" + ทำ toggle ในเมนูเร็ว */
+  filters: BoardFilters;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   // K1.10 — แผงประวัติกิจกรรมของบอร์ด (เปิดจากเมนู ⋯) · เวลาอ้างอิงมาจาก server เหมือนที่อื่นทั้งหน้า
   const [activityOpen, setActivityOpen] = useState(false);
   const isAdmin = board.role === "ADMIN";
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const activeFilterCount = ["assignee", "label", "due", "status", "q"].filter(
+    (k) => Boolean((filters as Record<string, string | undefined>)[k]),
+  ).length;
+
+  /** ตั้ง/สลับพารามิเตอร์ตัวกรองตัวเดียว — กดค่าเดิมซ้ำ = ปลดออก (toggle) */
+  const toggleParam = (key: "assignee" | "label" | "due" | "status", value: string) => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (next.get(key) === value) next.delete(key);
+    else next.set(key, value);
+    const qs = next.toString();
+    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+  };
 
   return (
     <header
@@ -163,10 +193,74 @@ export function BoardHeader({
 
       <span className="flex-1" />
 
-      <button type="button" disabled title="เร็ว ๆ นี้ (ตัวกรองอยู่ใน K1.11)" className="hidden items-center lg:flex" style={{ ...ghostBtn, gap: 7, color: "var(--color-muted)" }}>
-        <KanbanIcon name="filter" size="sm" />
-        ตัวกรอง
-      </button>
+      {/* ค้นหา (Ctrl/⌘ K) — เว้นไว้เห็นได้ทุกขนาดจอ (มือถือก็ค้นหาข้ามบอร์ดได้ ไม่ผูกกับ lg: เหมือนปุ่มอื่น) */}
+      <SearchPalette systemId={board.systemId} />
+
+      <span className="relative">
+        <button
+          type="button"
+          data-testid="filter-button"
+          onClick={() => setFilterOpen((o) => !o)}
+          title="ตัวกรอง"
+          className="hidden items-center lg:flex"
+          style={{ ...ghostBtn, gap: 7, color: activeFilterCount > 0 ? "var(--color-ink)" : "var(--color-muted)" }}
+        >
+          <KanbanIcon name="filter" size="sm" />
+          ตัวกรอง
+          {activeFilterCount > 0 && (
+            <span
+              className="grid place-items-center font-bold"
+              style={{ minWidth: 16, height: 16, borderRadius: 999, padding: "0 4px", fontSize: 10, background: "var(--color-ink)", color: "var(--color-surface)" }}
+            >
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+        {filterOpen && (
+          <>
+            <span className="fixed inset-0 z-10" onClick={() => setFilterOpen(false)} />
+            <div
+              className="absolute right-0 z-20 mt-1 flex w-64 flex-col gap-3 rounded-xl p-3"
+              style={{ background: "var(--color-surface)", border: "1px solid var(--color-line)", boxShadow: "0 14px 34px rgba(10,10,10,.12)", fontSize: 12.5 }}
+            >
+              <div className="flex flex-col gap-1.5">
+                <span style={{ color: "var(--color-muted)", fontSize: 11 }}>ผู้รับผิดชอบ</span>
+                <div className="flex flex-wrap" style={{ gap: 5 }}>
+                  <FilterChip active={filters.assignee === "me"} label="ฉัน" onClick={() => toggleParam("assignee", "me")} />
+                  {board.members.map((m) => (
+                    <FilterChip key={m.userId} active={filters.assignee === m.userId} label={m.name} onClick={() => toggleParam("assignee", m.userId)} />
+                  ))}
+                </div>
+              </div>
+              {board.labels.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <span style={{ color: "var(--color-muted)", fontSize: 11 }}>ป้ายกำกับ</span>
+                  <div className="flex flex-wrap" style={{ gap: 5 }}>
+                    {board.labels.map((l) => (
+                      <FilterChip key={l.id} active={filters.label === l.name} label={l.name} onClick={() => toggleParam("label", l.name)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <span style={{ color: "var(--color-muted)", fontSize: 11 }}>กำหนดส่ง</span>
+                <div className="flex flex-wrap" style={{ gap: 5 }}>
+                  {DUE_OPTIONS.map((d) => (
+                    <FilterChip key={d.value} active={filters.due === d.value} label={d.label} onClick={() => toggleParam("due", d.value)} />
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span style={{ color: "var(--color-muted)", fontSize: 11 }}>สถานะ</span>
+                <div className="flex flex-wrap" style={{ gap: 5 }}>
+                  <FilterChip active={filters.status === "done"} label="เสร็จ" onClick={() => toggleParam("status", "done")} />
+                  <FilterChip active={filters.status === "open"} label="ยังไม่เสร็จ" onClick={() => toggleParam("status", "open")} />
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </span>
       <button type="button" disabled title="เร็ว ๆ นี้" className="hidden items-center lg:flex" style={{ ...ghostBtn, gap: 7, color: "var(--color-muted)" }}>
         <KanbanIcon name="spark" size="sm" />
         อัตโนมัติ
@@ -254,6 +348,29 @@ export function BoardHeader({
         />
       )}
     </header>
+  );
+}
+
+/** ชิปเลือก/ยกเลิกตัวกรองแกนเดียวในแผง "ตัวกรอง" — กดซ้ำที่ค่าเดิม = ปลด (`toggleParam`) */
+function FilterChip({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center"
+      style={{
+        height: 24,
+        padding: "0 9px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: active ? 700 : 400,
+        border: `1px solid ${active ? "var(--color-accent)" : "var(--color-line)"}`,
+        background: active ? "var(--color-out)" : "var(--color-surface)",
+        color: active ? "var(--color-accent)" : "var(--color-ink-soft)",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 

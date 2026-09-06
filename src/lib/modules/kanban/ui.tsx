@@ -21,6 +21,8 @@ import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ModuleTabs } from "@/components/module-tabs";
+// K1.11 — ปุ่มค้นหาข้ามบอร์ด (Ctrl/⌘ K) ของ "หน้ารวมบอร์ด" (client component ฝังในหน้า server นี้ได้ตรง ๆ)
+import { SearchPalette } from "@/components/kanban/SearchPalette";
 
 const muted = "text-[color:var(--color-muted)]";
 
@@ -100,7 +102,7 @@ export async function KanbanBoardsSection({ systemId, tenantId }: { systemId: st
   const boards = await listBoardsFor(ctx, actor);
 
   return (
-    <Section title={`บอร์ดงาน (${boards.length})`}>
+    <Section title={`บอร์ดงาน (${boards.length})`} actions={<SearchPalette systemId={systemId} />}>
       <DataList
         items={boards.map((b) => ({
           key: b.id,

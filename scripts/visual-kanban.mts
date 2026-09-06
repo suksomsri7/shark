@@ -187,6 +187,30 @@ const SPECS: Record<string, Spec[]> = {
     { name: "mobile-card-back", path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`, onlyDevice: "mobile", note: "เทียบภาพ 07(ข)" },
     { name: "mobile-my-tasks", path: `/app/sys/${SYS}/kanban/my-tasks`, onlyDevice: "mobile", note: "เทียบภาพ 07(ค)/06" },
   ],
+  // K1.11 — ตัวกรอง (URL) + ค้นหาข้ามบอร์ด (เทียบบล็อกแถบตัวกรองใต้หัวบอร์ดของ mockup 02)
+  "1.11": [
+    {
+      name: "board-filtered",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?label=ด่วน&status=open`,
+      note: "ตัวกรอง label=ด่วน&status=open จาก URL — แถบ 'กรองอยู่:' + ชิป + 'แสดง N จาก M การ์ด' ต้องขึ้นใต้หัวบอร์ด",
+      expect: ["[data-testid=filter-bar]", "[data-testid=filter-count]"],
+      steps: [{ waitFor: "[data-testid=board-header]" }, { waitFor: "[data-testid=filter-bar]" }, { wait: 300 }],
+    },
+    {
+      name: "search-palette-sea-fox",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      note: "เปิดค้นหา (ปุ่มค้นหาที่หัวบอร์ด) พิมพ์ 'Sea Fox' — ผลลัพธ์ข้ามบอร์ดจัดกลุ่มตามชื่อบอร์ด",
+      expect: ["[data-testid=search-palette]", "[data-testid=search-result]"],
+      steps: [
+        { waitFor: "[data-testid=board-header]" },
+        { click: "[data-testid=search-open]" },
+        { waitFor: "[data-testid=search-input]" },
+        { fill: "[data-testid=search-input]", value: "Sea Fox" },
+        { wait: 900 },
+        { waitFor: "[data-testid=search-result]" },
+      ],
+    },
+  ],
 };
 const specs: Spec[] = WO === "path" ? [{ name: "custom", path: argv[1]! }] : (SPECS[WO] ?? []);
 if (specs.length === 0) { console.error(`❌ ไม่มี spec ของ WO ${WO}`); process.exit(2); }

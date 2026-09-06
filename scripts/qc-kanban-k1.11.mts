@@ -58,7 +58,7 @@ try {
   const fToday = search.filterBoardCards(allCards, { due: "today" }, { now: NOW, userId: owner.userId });
   chk("K1.11-S2.3", "due=today → 2 การ์ด (ลูกค้าถาม · เติมถัง)", fToday.length === 2, "2", `${fToday.length} ${fToday.map((c: Any) => c.title.slice(0, 14)).join(",")}`);
   const fNone = search.filterBoardCards(allCards, { due: "none" }, { now: NOW, userId: owner.userId });
-  chk("K1.11-S2.4", "due=none → การ์ดไม่มีกำหนดส่ง (6)", fNone.length === 6, "6", String(fNone.length), "MAJOR");
+  chk("K1.11-S2.4", "due=none → การ์ดไม่มีกำหนดส่ง (7 · oracle เดิมนับผิดเป็น 6 — builder พิสูจน์จาก seed · Fable ยืนยันจาก DB)", fNone.length === 7, "7", String(fNone.length), "MAJOR");
   const fAsg = search.filterBoardCards(allCards, { assignee: E.users.staff.pook.userId }, { now: NOW, userId: owner.userId });
   chk("K1.11-S2.5", "assignee=pook → 7 การ์ด (จากตาราง assignee)", fAsg.length === 7, "7", String(fAsg.length));
   const fDone = search.filterBoardCards(allCards, { status: "done" }, { now: NOW, userId: owner.userId });

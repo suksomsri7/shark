@@ -10,10 +10,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { BoardHeader } from "./BoardHeader";
 import { Card } from "./Card";
 import { CardBack, type CardBackHandlers } from "./CardBack";
 import { Column, type ColumnHandlers } from "./Column";
+import { FilterBar } from "./FilterBar";
 import { KanbanIcon } from "./KanbanIcon";
 import {
   archiveColumnAction,
@@ -27,6 +29,7 @@ import {
   setColumnWipAction,
   starBoardAction,
 } from "@/lib/modules/kanban/actions";
+import { filterBoardCards, hasAnyFilter, type BoardFilters } from "@/lib/modules/kanban/filters";
 import type { BoardCardDto, BoardColumnDto, BoardLabelDto, BoardViewDto } from "@/lib/modules/kanban/types";
 
 /** ระยะหว่างการ์ดในคอลัมน์ (ต้องตรงกับ `gap` ของกองการ์ดใน Column.tsx — ใช้คิดเรขาคณิตตอนลาก) */
@@ -54,8 +57,19 @@ type Pending =
 
 const TOAST_MS = 4200;
 
-export function BoardView({ board, initialCardId = null }: { board: BoardViewDto; initialCardId?: string | null }) {
+export function BoardView({
+  board,
+  initialCardId = null,
+  filters = {},
+}: {
+  board: BoardViewDto;
+  initialCardId?: string | null;
+  /** K1.11 — ตัวกรองที่มาจาก URL (`page.tsx` parse `searchParams` แล้วส่งลงมา) */
+  filters?: BoardFilters;
+}) {
   const nowMs = Date.parse(board.now);
+  const router = useRouter();
+  const pathname = usePathname();
   const [columns, setColumns] = useState<BoardColumnDto[]>(board.columns);
   const [boardName, setBoardName] = useState(board.name);
   const [starred, setStarred] = useState(board.starred);
@@ -610,6 +624,20 @@ export function BoardView({ board, initialCardId = null }: { board: BoardViewDto
 
   const boardColumnsMeta = columns.map((c) => ({ id: c.id, name: c.name }));
 
+  // ───────────────────────── K1.11: ตัวกรอง (URL → filterBoardCards) ─────────────────────────
+  // กรองที่นี่ (client) ต่อยอด state ที่โหลดมาแล้ว — ไม่ยิง DB ซ้ำทุกครั้งที่เปลี่ยนตัวกรอง เพราะ
+  // `filterBoardCards` เป็นฟังก์ชันบริสุทธิ์ตัวเดียวกับที่ oracle/service ฝั่ง server ใช้ (§11.8)
+  const activeFilters = hasAnyFilter(filters);
+  const totalCardCount = columns.reduce((n, c) => n + c.cards.length, 0);
+  const filterCtx = { now: new Date(nowMs), userId: board.viewerUserId || null };
+  const filteredColumns = activeFilters
+    ? columns.map((col) => ({ ...col, cards: filterBoardCards(col.cards, filters, filterCtx) }))
+    : columns;
+  const visibleCardCount = activeFilters
+    ? filteredColumns.reduce((n, c) => n + c.cards.length, 0)
+    : totalCardCount;
+  const clearFilters = () => router.replace(pathname, { scroll: false });
+
   return (
     <div
       className="flex flex-col"
@@ -623,6 +651,7 @@ export function BoardView({ board, initialCardId = null }: { board: BoardViewDto
       <BoardHeader
         board={{ ...board, name: boardName }}
         starred={starred}
+        filters={filters}
         onToggleStar={() => {
           const next = !starred;
           setStarred(next);
@@ -649,9 +678,27 @@ export function BoardView({ board, initialCardId = null }: { board: BoardViewDto
         }}
       />
 
-      {/* ── เวทีบอร์ด ── */}
+      {/* ── แถบตัวกรองที่เปิดอยู่ (K1.11) — ซ่อนเองเมื่อไม่มีตัวกรองทำงาน ── */}
+      <FilterBar filters={filters} totalCount={totalCardCount} visibleCount={visibleCardCount} members={board.members} />
+
+      {/* ── กรองแล้วไม่เจอสักใบ — แทนที่กองคอลัมน์ด้วย empty state (§5.7) ── */}
+      {activeFilters && visibleCardCount === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3" style={{ color: "var(--color-muted)" }}>
+          <KanbanIcon name="filter" size="lg" />
+          <p style={{ fontSize: 13 }}>ไม่มีการ์ดตรงกับตัวกรอง</p>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="underline"
+            style={{ fontSize: 13, color: "var(--color-accent)" }}
+          >
+            ล้างตัวกรอง
+          </button>
+        </div>
+      ) : (
+      /* ── เวทีบอร์ด ── */
       <div className="flex min-h-0 flex-1 items-start overflow-x-auto" style={{ gap: 12, padding: "12px 20px 18px" }}>
-        {columns.map((col, i) => (
+        {filteredColumns.map((col, i) => (
           <Column
             key={col.id}
             column={col}
@@ -692,6 +739,7 @@ export function BoardView({ board, initialCardId = null }: { board: BoardViewDto
           </button>
         )}
       </div>
+      )}
 
       {/* ── การ์ดที่กำลังยก (ลอยตามเมาส์ · เอียง 2.4° ตามแบบ) ── */}
       {drag && (

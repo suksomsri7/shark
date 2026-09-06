@@ -7,12 +7,14 @@ import { assertCan, evaluate as can } from "@/lib/core/rbac";
 import {
   archiveBoard,
   archiveCard,
+  canReadKanban,
   createBoard,
   createCard,
   createColumn,
   listCardAssigneeDtos,
   listCardLabelDtos,
   renameBoard,
+  toActor,
   toBoardCardDto,
   updateCard,
 } from "./service";
@@ -67,6 +69,9 @@ import {
 import { addAttachment, attachmentBadgeOfCard, listAttachments, removeAttachment, setCover } from "./attachments";
 // K1.10 — ประวัติกิจกรรม (อ่านอย่างเดียวจากฝั่ง action · การเขียนเกิดใน tx ของงานจริงเสมอ)
 import { listBoardActivity, listCardTimeline } from "./activity";
+// K1.11 — ตัวกรอง + ค้นหาข้ามบอร์ด (บริการอยู่ `search.ts` · SearchPalette ส่ง "ข้อความดิบ" มาที่นี่
+// แล้วให้ `parseSearchQuery` แปลงไวยากรณ์ไทยครั้งเดียวที่ server กันไม่ให้ตรรกะซ้ำสองที่)
+import { parseSearchQuery, searchCards, type SearchCardDto } from "./search";
 import { normalizeUploadType } from "@/lib/storage/service";
 import type {
   BoardCardDto,
@@ -1002,5 +1007,41 @@ export async function listBoardActivityAction(input: {
     return { ok: true, items: page.items, nextCursor: page.nextCursor };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "โหลดประวัติกิจกรรมของบอร์ดไม่สำเร็จ" };
+  }
+}
+
+// ───────────────────────── K1.11: ตัวกรอง + ค้นหาข้ามบอร์ด ─────────────────────────
+// 🔴 ใช้ `canReadKanban` (ผ่านคีย์ kanban.* ตัวใดก็ได้ — เข้ากันได้ย้อนหลังแบบ K1.3) แทน
+//    `assertKanbanCan(auth,"kanban.board.read")` ตรง ๆ: พนักงานที่เจ้าของติ๊กแค่ `kanban.card.create`
+//    ต้องค้นหาได้เหมือนเข้าหน้าบอร์ดได้ ไม่งั้นปุ่มค้นหาจะเงียบใส่คนกลุ่มนี้ทั้งที่กดเข้าบอร์ดได้ปกติ
+
+export type SearchCardsActionResult =
+  | { ok: true; items: SearchCardDto[]; nextCursor?: string; total: number }
+  | { ok: false; message: string };
+
+/**
+ * ค้นหาการ์ดข้ามบอร์ด (`SearchPalette.tsx`) — รับ "ข้อความดิบ" แล้วแปลงไวยากรณ์ที่นี่ทีเดียว
+ * (ไม่ใช่ REST `/api/v1/kanban/search` ของ K1.15 — เส้นทางคนละเส้น คนละ auth)
+ */
+export async function searchCardsAction(input: {
+  systemId: string;
+  text?: string;
+  take?: number;
+  cursor?: string | null;
+}): Promise<SearchCardsActionResult> {
+  const auth = await requireTenant();
+  if (!input.systemId) return { ok: false, message: "ไม่พบระบบนี้" };
+  const actor = toActor(auth.user.id, auth.active);
+  if (!canReadKanban(actor)) return { ok: false, message: "คุณไม่มีสิทธิ์ใช้งานบอร์ดงาน" };
+  try {
+    const filters = parseSearchQuery(input.text ?? "");
+    const result = await searchCards(ctxOf(auth, input.systemId), actor, {
+      ...filters,
+      take: input.take,
+      cursor: input.cursor ?? null,
+    });
+    return { ok: true, items: result.items, ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}), total: result.total };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ค้นหาไม่สำเร็จ ลองใหม่อีกครั้ง" };
   }
 }
