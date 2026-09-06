@@ -216,7 +216,8 @@ export function ContextPanel({ systemId, conversationId, onInsertText }: Context
     });
   };
 
-  const shell = "w-full shrink-0 border-l border-[#e8e9ed] bg-[#fbfbfc] p-[15px] lg:w-[280px]";
+  // 🔴 เดิม lg:w-[280px] ตายตัว → พอเจ้าของลากขยายคอลัมน์ 3 (6 ก.ย.) เนื้อหาไม่ยืดตาม → ให้กว้างเต็มคอลัมน์ (ความกว้างคุมที่ grid ของ inbox-client)
+  const shell = "w-full shrink-0 border-l border-[#e8e9ed] bg-[#fbfbfc] p-[15px]";
 
   if (state === "loading") {
     return (
