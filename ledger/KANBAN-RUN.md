@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | K1.13 |
+| WO | K1.14 |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable (oracle เขียนแล้ว 16 ข้อ) → Sonnet (builder) |
-| ขั้นที่ถึง | 12:49 น.: K1.12 DONE (Sonnet 40 นาที · Fable ดูภาพ 5 ใบ + oracle 18 + regressions) → push main → รอ Vercel แล้ว seed เทมเพลต 6 ชุดบน prod · สั่ง Sonnet ทำ K1.13 (มือถือ+งานของฉัน) · P1 12/15 |
+| ผู้ทำ | Fable (oracle เขียนแล้ว 16 ข้อ) → Opus (builder) |
+| ขั้นที่ถึง | 14:32 น.: K1.13 DONE (Sonnet 96 นาที · Fable ดูภาพ 7 ใบ + oracle 16 หลังแก้ 2 ข้อ + regressions) → push main · สั่ง Opus ทำ K1.14 (ปุ่มลัด/empty/realtime/เก็บกวาด+หนี้ UI) · P1 13/15 |
 
 ## การตัดสินใจ (คำถาม §9 ของแบบ — เจ้าของไม่ได้ตอบ Fable ตัดสินแบบปลอดภัย แก้ทีหลังได้)
 | # | เรื่อง | ตัดสิน |
@@ -65,7 +65,7 @@
 | K1.10 | ประวัติกิจกรรม (`KanbanActivity` append-only 28 ชนิด) + สายรวมความเห็น/กิจกรรม + AuditLog เรื่องสิทธิ์ | Opus | DONE | 6 ก.ย. | k1.10 16/16 · visual 1.10 (6 ใบ) Fable ดูภาพ: แท็บ ทั้งหมด/ความเห็น/กิจกรรม + ประโยคไทย + แผงกิจกรรมบอร์ด · ทุก logActivity ใช้ tx (0 จุดใช้ prisma ตรง) · Fable แก้ oracle ให้ล้างแถวระดับบอร์ดที่ตัวเองสร้าง |
 | K1.11 | ตัวกรอง (สมาชิก/ป้าย/กำหนด/สถานะ · URL) + ค้นหาข้ามบอร์ด `Ctrl K` + ไวยากรณ์ | Sonnet | DONE | 6 ก.ย. | k1.11 21/21 (oracle S2.4 แก้ 6→7 หลัง builder พิสูจน์+Fable ยืนยันจาก DB) · visual 1.11 (4 ใบ) Fable ดูภาพ: แถบกรอง+นับ · palette ⌘K จัดกลุ่มตามบอร์ด · มือถือ · Fable probe: q อักขระพิเศษ 9 แบบ → เจอ % และ _ เป็น wildcard (เห็นทุกใบ) → escape แล้ว |
 | K1.12 | เทมเพลต 6 ชุดธุรกิจไทย + หน้ารวมบอร์ดใหม่ (ภาพ 01: ดาว/จัดกลุ่มสาขา/แถวเทมเพลต) + สร้างบอร์ดจากเทมเพลต atomic | Sonnet | DONE | 6 ก.ย. | k1.12 18/18 (oracle จริง 18) · visual 1.12 (5 ใบ) Fable เทียบ mockup 01: ลำดับหมวด/เทมเพลต/ปุ่มสร้างตรง · **หนี้ UI → K1.14**: avatar สมาชิกบนการ์ดบอร์ด · การ์ดเส้นประ "สร้างบอร์ดใหม่" ในแถวติดดาว · dropdown กรองหน่วยธุรกิจ · แถบสีซ้าย (ตอนนี้แถบบน) |
-| K1.13 | มือถือ (ภาพ 07): เลื่อนทีละคอลัมน์ · กดค้างลาก · ปัดขวา=เสร็จ/ซ้าย=เก็บ + undo 5 วิ · หลังการ์ดเต็มจอ · งานของฉันใหม่ (ภาพ 06 ฝั่งขวา) | Sonnet | TODO | | visual mobile |
+| K1.13 | มือถือ (ภาพ 07): เลื่อนทีละคอลัมน์ · กดค้างลาก · ปัดขวา=เสร็จ/ซ้าย=เก็บ + undo 5 วิ · หลังการ์ดเต็มจอ · งานของฉันใหม่ (ภาพ 06 ฝั่งขวา) | Sonnet | DONE | 6 ก.ย. | k1.13 16/16 หลัง Fable แก้ oracle 2 ข้อที่ builder แย้งถูก (สัปดาห์ Mon–Sun ของ 30 ก.ย. 2569=พุธ → โอริง 6 ต.ค. อยู่นอกสัปดาห์ · บอร์ดซ่อมต้องตั้งคอลัมน์เสร็จด้วย) · visual 1.13 (7 ใบ) + 1.5/1.6 เดสก์ท็อปยังเขียว · Fable ดูภาพ: คอลัมน์ snap+จุด · ปัดเสร็จ→toast เลิกทำ · หลังการ์ดเต็มจอ · งานของฉัน 4 ตัวเลข · หนี้ K1.14: date chip ไทย (ยังเป็น datetime-local) · mobile ยังไม่มีลากข้ามคอลัมน์ (มีปัดเสร็จ/เก็บ) · harness: ห่อ cleanup ใน finally |
 | K1.14 | ปุ่มลัด (ปิดได้ · ไม่ชน IME) · empty state ทุกหน้า · realtime Ably + polling · หน้าคลังเก็บ/กู้คืน · เมนู 7 หมวด | Opus | TODO | | 2 browser เห็นกันใน 2 วิ |
 | **K1.15** | **REST API + AI tools ของบอร์ดงาน** (D15): แกนกลาง `src/lib/api/*` ดึงจากบัญชี · ทะเบียน op บอร์ด/คอลัมน์/การ์ด/ป้าย/สมาชิก/เช็คลิสต์/ความเห็น/ไฟล์/กิจกรรม/ค้นหา (~60 op) · scope bundles · webhook · AI tools ~15 · openapi + `/developers/kanban` + สกิล Claude | Opus | TODO | | `qc-kanban-k1.15.mts` + agent ภายนอกใช้สกิลทำ 5 งาน |
 | **P1 ปิด** | qc:all เต็มชุด · verify prod (ภาพจริง) · handover P1 · Telegram | Fable | TODO | | |
@@ -180,6 +180,8 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 **Oracle** (`qc-kanban-k1.15.mts`): แกนกลางไม่ซ้ำ (account import จาก `@/lib/api/`) · ทะเบียน ≥ 50 op id/path ไม่ซ้ำ ทุก op มี test · bundles 3 · ยิงจริงผ่าน route handler ด้วยคีย์ที่สร้างบน seed: ping · boards.list = 3 (คีย์เห็นทุกบอร์ด D18) · boards.get กะตะ 200 · cards.create + Idempotency-Key replay · cards.move ok · คีย์ read-only เขียน → 403 scope_missing · คีย์ร้านอื่น → 404 · danger ไม่ confirm → 409 · openapi.json = ทะเบียน · docs --check · AI tools ≥ 15 ในสกิล tasks · developers page มีจริง · WEBHOOK_EVENTS มี kanban.* ≥ 9
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 14:32 น. — K1.13 ปิด (Sonnet 96 นาที — WO ใหญ่สุด) · builder แย้ง oracle S1.2/S1.4 ถูก: Fable ตรวจปฏิทินจริง (30 ก.ย. 2569 = พุธ) + DB (คอลัมน์ "เสร็จ" ของบอร์ดซ่อมไม่ได้ตั้ง isDoneColumn — seed ไม่เคยตั้ง) → แก้ oracle week 4→3, 3→2 + ตั้ง done ทั้ง 2 บอร์ดใน oracle · builder เจอบั๊กเอง 2: ปัดชนกับ scroll แนวนอน (touch-action pan-y) · การ์ดค้างผิดคอลัมน์จาก harness crash → กู้ผ่าน service · regressions ทั้งชุดเขียว · **หมายเหตุ seed**: isDoneColumn ไม่ถูกตั้งในชุดข้อมูล QC — ควรเพิ่มใน seed ตอนเปิด P2 (K2.x ตาราง/ปฏิทินพึ่ง done column) · ความคืบหน้า P1 13/15
+- 12:52 น. — prod: Vercel READY `6cdd05a` · migration kanban_v2_i ลง prod · Fable รัน seed เทมเพลตบน prod: สร้างใหม่ 6 (clinic/dive-shop/hotel/restaurant/retail/weekly) ตรวจจากตารางแล้ว · Telegram msg 2873 (P1 12/15) · Sonnet เริ่ม K1.13
 - 12:49 น. — K1.12 ปิด (Sonnet 40 นาที) · Fable ตรวจเอง: oracle 18/18 · regressions k1.1–k1.11/notify/ai เขียว · typecheck/fitness ผ่าน · ภาพ 5 ใบ เทียบ mockup 01 ผ่านโครง (หนี้ UI 4 ข้อจดไว้ให้ K1.14) · deviation ยอมรับ: template scope axis `global` · createBoardFromTemplateAction ทำบอร์ดเปล่าด้วย · DTO อยู่ types.ts · **prod ต้องรัน `ALLOW_PROD_SEED=1 pnpm exec tsx scripts/seed-kanban-templates.mts` หลัง Vercel READY** · ความคืบหน้า P1 12/15
 - 12:08 น. — prod: Vercel READY `e3db684` (K1.11 ไม่มี migration) · Telegram msg 2871 (P1 11/15) · Sonnet เริ่ม K1.12
 - 12:04 น. — K1.11 ปิด (Sonnet 51 นาที) · builder แย้ง oracle S2.4 (due=none 6 → จริง 7) Fable ยืนยันจาก DB แล้วแก้ oracle · deviation ยอมรับ: แยก `filters.ts` (pure · client) ออกจาก `search.ts` (server) เพราะ Turbopack ลาก pg เข้า client bundle · **Fable probe เจอบั๊ก**: Prisma `contains` ไม่ escape `%`/`_` → พิมพ์ % เห็นทุกใบ → เพิ่ม `likeSafe` (probe 38→0) · ภาพ 4 ใบตรง mockup 02 · ความคืบหน้า P1 11/15

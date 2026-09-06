@@ -41,17 +41,20 @@ try {
   await prisma.kanbanBoard.update({ where: { id: E.boards.patong.id }, data: { visibility: "PRIVATE" } });
   const doneCol = (await prisma.kanbanColumn.findFirst({ where: { boardId: E.boards.patong.id, name: "เสร็จแล้ว" } }))!;
   await moves.setColumnDone(ctxO, doneCol.id, true);
+  // บอร์ดซ่อมก็ต้องมีคอลัมน์เสร็จ — ไม่งั้นการ์ดเก่าใน "เสร็จ" (ล้างถัง -12 · แบต -3) นับเป็นเลยกำหนด (builder K1.13 ชี้ · Fable ยืนยันจาก DB)
+  const doneColM = (await prisma.kanbanColumn.findFirst({ where: { boardId: E.boards.maint.id, name: "เสร็จ" } }))!;
+  await moves.setColumnDone(ctxO, doneColM.id, true);
 
   // ═══ S1 myTasksOverview ═══
   const ov = await mt.myTasksOverview(ctxK, kitti, { now: NOW });
   // kitti (seed): ป่าตอง เติมถัง(due 0) · ซ่อมเรกกูเลเตอร์(1) · ล้างชุด(-26 done) · เปลี่ยนโอริง(-15 done) · ซ่อม: BCD(2) · คอมเพรสเซอร์(0) · Apeks(1) · โอริง(6) · แบต(-3 done) · ล้างถัง(-12 done)
   chk("K1.13-S1.1", "myTasksOverview(ctx, actor, {now}) → {counts{overdue,today,week,none,doneThisWeek}, groups{overdue[],today[],week[],later[],none[]}, checklistItems[], watching[]}", ov && ov.counts && ov.groups && Array.isArray(ov.groups.today) && Array.isArray(ov.checklistItems) && Array.isArray(ov.watching), "โครงครบ", JSON.stringify(Object.keys(ov ?? {})));
-  chk("K1.13-S1.2", "kitti: today = 2 (เติมถัง · คอมเพรสเซอร์) · week = 4 (ซ่อมเรกฯ 1 · BCD 2 · Apeks 1 · โอริง 6) · overdue = 0 · งานเสร็จ (คอลัมน์ done) ไม่โผล่ในกลุ่ม", ov.counts.today === 2 && ov.counts.week === 4 && ov.counts.overdue === 0 && ![...ov.groups.today, ...ov.groups.week, ...ov.groups.later, ...ov.groups.none].some((c: Any) => c.completedAt), "2/4/0", JSON.stringify(ov.counts));
+  chk("K1.13-S1.2", "kitti: today = 2 (เติมถัง · คอมเพรสเซอร์) · week = 3 (ซ่อมเรกฯ 1 · Apeks 1 · BCD 2 — โอริง 6 ต.ค. อยู่นอกสัปดาห์: 30 ก.ย. 2569 = พุธ สัปดาห์จบ อา. 4 ต.ค. · oracle เดิมนับผิด) · overdue = 0 · งานเสร็จ (คอลัมน์ done) ไม่โผล่ในกลุ่ม", ov.counts.today === 2 && ov.counts.week === 3 && ov.counts.overdue === 0 && ![...ov.groups.today, ...ov.groups.week, ...ov.groups.later, ...ov.groups.none].some((c: Any) => c.completedAt), "2/4/0", JSON.stringify(ov.counts));
   chk("K1.13-S1.3", "รายการงานมี {id,cardNo,title,boardId,boardName,columnName,dueAt,labels[],checklistProgress?} เรียงตามกำหนดส่ง", ov.groups.today.every((c: Any) => typeof c.boardName === "string" && typeof c.columnName === "string" && typeof c.cardNo === "number" && Array.isArray(c.labels)), "ฟิลด์ครบ", JSON.stringify(ov.groups.today[0]).slice(0, 140), "MAJOR");
   // งานที่ตัวเองไม่ได้รับผิดชอบแต่บอร์ดมองไม่เห็น ต้องไม่โผล่: ถอด kitti ออกจากป่าตอง → today เหลือ 1
   await members.removeMember(ctxO, E.boards.patong.id, kitti.userId);
   const ov2 = await mt.myTasksOverview(ctxK, kitti, { now: NOW });
-  chk("K1.13-S1.4", "ถูกถอดจากบอร์ด PRIVATE → งานในบอร์ดนั้นหายจากงานของฉัน (today 1 · week 3)", ov2.counts.today === 1 && ov2.counts.week === 3, "1/3", JSON.stringify(ov2.counts));
+  chk("K1.13-S1.4", "ถูกถอดจากบอร์ด PRIVATE → งานในบอร์ดนั้นหายจากงานของฉัน (today 1 · week 2)", ov2.counts.today === 1 && ov2.counts.week === 2, "1/2", JSON.stringify(ov2.counts));
   await members.addMember(ctxO, E.boards.patong.id, kitti.userId, "EDITOR");
 
   // ═══ S2 ปัด: เสร็จ / เก็บ + undo ═══

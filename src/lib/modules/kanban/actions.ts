@@ -74,6 +74,8 @@ import { listBoardActivity, listCardTimeline } from "./activity";
 import { parseSearchQuery, searchCards, type SearchCardDto } from "./search";
 // K1.12 — เทมเพลตบอร์ด + หน้ารวมบอร์ดใหม่ (บริการอยู่ `templates.ts`/`boardsHome.ts`)
 import { createBoardFromTemplate, deleteTenantTemplate, saveBoardAsTemplate } from "./templates";
+// K1.13 — งานของฉันใหม่ + ปัดเสร็จ/เก็บมือถือ + undo (บริการอยู่ `my-tasks.ts`)
+import { archiveWithUndo, completeCard, undo } from "./my-tasks";
 import { normalizeUploadType } from "@/lib/storage/service";
 import type {
   BoardCardDto,
@@ -1131,4 +1133,72 @@ export async function deleteTenantTemplateAction(input: {
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ลบเทมเพลตไม่สำเร็จ" };
   }
+}
+
+// ───────────────────────── K1.13: มือถือ (ปัดขวา=เสร็จ/ปัดซ้าย=เก็บ) + งานของฉัน ─────────────────────────
+// 🔴 ตรรกะจริงอยู่ใน `my-tasks.ts` (`completeCard`/`archiveWithUndo`/`undo`) — ที่นี่แค่ห่อ requireTenant +
+//    revalidatePath (`my-tasks` + หน้าบอร์ด) ตามแพตเทิร์นเดิมของไฟล์นี้ทั้งไฟล์
+
+function myTasksPath(systemId: string) {
+  return `/app/sys/${systemId}/kanban/my-tasks`;
+}
+
+/** ปัดขวาบนมือถือ / ติ๊กในหน้า "งานของฉัน" — ย้ายเข้าคอลัมน์เสร็จของบอร์ดใบนั้น + คืน undo token */
+export async function completeCardAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+}): Promise<
+  | { ok: true; fromColumnId: string; undoToken: string }
+  | { ok: false; code?: string; message: string }
+> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.move");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  try {
+    const res = await completeCard(ctxOf(auth, input.systemId), input.cardId);
+    if (res.ok) {
+      revalidatePath(boardPath(input.systemId, input.boardId));
+      revalidatePath(myTasksPath(input.systemId));
+      return { ok: true, fromColumnId: res.fromColumnId, undoToken: res.undoToken };
+    }
+    return { ok: false, code: res.code, message: res.message };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ปัดเสร็จไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** ปัดซ้ายบนมือถือ — เก็บการ์ดเข้าคลัง + คืน undo token (ใช้ตัวเดียวกับ "เก็บ" ของหลังการ์ด แต่มี undo ให้) */
+export async function archiveWithUndoAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+}): Promise<{ ok: true; undoToken: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.delete");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  try {
+    const res = await archiveWithUndo(ctxOf(auth, input.systemId), input.cardId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    revalidatePath(myTasksPath(input.systemId));
+    return { ok: true, undoToken: res.undoToken };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "เก็บการ์ดเข้าคลังไม่สำเร็จ" };
+  }
+}
+
+/** ปุ่ม "เลิกทำ" ของ toast — one-shot ภายใน 5 นาที ผูก tenant+system+user จาก session ปัจจุบันเสมอ */
+export async function undoAction(input: {
+  systemId: string;
+  boardId?: string | null;
+  token: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.token) return { ok: false, message: "ไม่พบรายการที่จะเลิกทำ" };
+  const res = await undo(ctxOf(auth, input.systemId), input.token);
+  if (!res.ok) return { ok: false, message: "เลิกทำไม่ได้แล้ว (อาจใช้ไปแล้วหรือหมดเวลา)" };
+  if (input.boardId) revalidatePath(boardPath(input.systemId, input.boardId));
+  revalidatePath(myTasksPath(input.systemId));
+  return { ok: true };
 }

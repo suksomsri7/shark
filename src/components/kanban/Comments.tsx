@@ -220,8 +220,15 @@ export function CommentComposer({
     if (ok) setValue("");
   }, [value, sending, onSubmit]);
 
+  // K1.13: ติดขอบล่าง (`position: sticky`) — CardBack.tsx เป็น scroll container เดียวของทั้งแผง
+  // (ไม่มี overflow ซ้อนระหว่างที่นี่กับ panel นอกสุด) ⇒ sticky ใช้ได้ทั้งมือถือ (แผ่นเต็มจอ) และ
+  // เดสก์ท็อป (โมดัล 872px) โดยไม่ต้องแยกโค้ดสองชุด
   return (
-    <div className="flex items-start gap-2">
+    <div
+      data-testid="comment-composer"
+      className="sticky bottom-0 flex items-start gap-2 border-t px-0.5 pt-2.5"
+      style={{ background: "var(--color-surface)", borderColor: "var(--color-line)" }}
+    >
       <div className="min-w-0 flex-1">
         <MentionTextarea
           value={value}

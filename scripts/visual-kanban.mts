@@ -41,7 +41,10 @@ type Step =
   | { drag: { from: string; to: string; steps?: number } }
   | { wait: number }
   | { swipe: { on: string; dx: number } }
-  | { upload: { on: string; filePath: string } };
+  | { upload: { on: string; filePath: string } }
+  // K1.13: กดค้างแล้ว "ไม่ปล่อยนิ้ว" ก่อนถ่ายภาพ (ต่างจาก `drag` ที่ปล่อยตอนจบ) — ใช้โชว์ท่า "ยก" การ์ด
+  // บนมือถือ (`MobileBoard.tsx` state `lifted` หลังกดค้างครบ 300ms) touchEnd จะถูกยิงตอนปิดหน้าเอง
+  | { longPress: { on: string; ms?: number } };
 type Spec = { name: string; path: string; note?: string; steps?: Step[]; onlyDevice?: "desktop" | "mobile"; expect?: string[] };
 
 // K1.9 — PNG เล็ก ๆ (1×1 พิกเซล) เขียนลงดิสก์ให้ puppeteer `uploadFile()` เลือกได้จริง (input[type=file]
@@ -207,8 +210,30 @@ const SPECS: Record<string, Spec[]> = {
     },
   ],
   "1.13": [
-    { name: "mobile-board", path: `/app/sys/${SYS}/kanban/b/${B("patong")}`, onlyDevice: "mobile", note: "เทียบภาพ 07(ก)" },
+    { name: "mobile-board", path: `/app/sys/${SYS}/kanban/b/${B("patong")}`, onlyDevice: "mobile", note: "เทียบภาพ 07(ก)", expect: ["[data-testid=mobile-board]", "[data-testid=column-dots]"] },
+    {
+      name: "mobile-board-lifted",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      onlyDevice: "mobile",
+      note: "กดค้างการ์ดใบแรก 450ms (ไม่ปล่อยนิ้ว) — ต้องเห็นการ์ดยกขึ้น (เอียง/เงา) ก่อนถ่าย",
+      steps: [{ waitFor: "[data-testid=mobile-board]" }, { waitFor: "[data-testid=card]" }, { longPress: { on: "[data-testid=mobile-board] [data-testid=card]:nth-of-type(1)", ms: 450 } }],
+    },
+    {
+      name: "mobile-swipe-undo-toast",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      onlyDevice: "mobile",
+      note: "ปัดขวาการ์ดใบแรก (=เสร็จ) — toast 'เลิกทำ' ต้องขึ้น (คืนสภาพการ์ดที่ถูกปัดหลังถ่ายเสร็จทั้งชุด)",
+      expect: ["[data-testid=undo-toast]"],
+      steps: [
+        { waitFor: "[data-testid=mobile-board]" },
+        { waitFor: "[data-testid=card]" },
+        { swipe: { on: "[data-testid=mobile-board] [data-testid=card]:nth-of-type(1)", dx: 160 } },
+        // completeCardAction เป็นทริปไป DB จริง (tx + undo token) — รอ toast ขึ้นจริงแทนที่จะเดา ms ตายตัว
+        { waitFor: "[data-testid=undo-toast]", timeoutMs: 4000 },
+      ],
+    },
     { name: "mobile-card-back", path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`, onlyDevice: "mobile", note: "เทียบภาพ 07(ข)" },
+    { name: "my-tasks", path: `/app/sys/${SYS}/kanban/my-tasks`, note: "เทียบภาพ 06 ฝั่งขวา — desktop + mobile", expect: ["[data-testid=my-tasks]"] },
     { name: "mobile-my-tasks", path: `/app/sys/${SYS}/kanban/my-tasks`, onlyDevice: "mobile", note: "เทียบภาพ 07(ค)/06" },
   ],
   // K1.11 — ตัวกรอง (URL) + ค้นหาข้ามบอร์ด (เทียบบล็อกแถบตัวกรองใต้หัวบอร์ดของ mockup 02)
@@ -279,6 +304,30 @@ if (WO === "1.12") {
   console.log(`🧪 เตรียม K1.12: ติดดาวบอร์ดป่าตอง (คืนสภาพหลังถ่ายเสร็จ)`);
 }
 
+// ── K1.13: สเปค "mobile-swipe-undo-toast" ปัดจริงผ่าน completeCardAction (server action จริง) —
+//    ไม่รู้ล่วงหน้าว่าปัดใบไหน (ขึ้นกับลำดับ DOM ของคอลัมน์แรกตอนนั้น) ⇒ จับภาพ "ก่อน" ทุกใบของบอร์ด
+//    ป่าตองไว้ แล้ว diff กับ "หลัง" ถ่ายเสร็จทั้งชุด คืนสภาพใบที่เปลี่ยนกลับ (คอลัมน์/completedAt/status เดิม)
+type KB113Snap = { id: string; columnId: string; status: string; completedAt: string | null };
+let KB113_BEFORE: KB113Snap[] = [];
+let KB113_DONE_COL: string | null = null;
+if (WO === "1.13") {
+  const rows = await prisma.kanbanCard.findMany({
+    where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS },
+    select: { id: true, columnId: true, status: true, completedAt: true },
+  });
+  KB113_BEFORE = rows.map((r) => ({ id: r.id, columnId: r.columnId, status: r.status, completedAt: r.completedAt?.toISOString() ?? null }));
+  // ชุดข้อมูล QC ปกติไม่มีคอลัมน์ไหนตั้งธง isDoneColumn เลย (ตั้งชั่วคราวเฉพาะใน qc-kanban-k1.13.mts
+  // แล้วปลดคืนตอนจบ) ⇒ ปัดขวา (=เสร็จ) บนบอร์ดป่าตองจะได้ NO_DONE_COLUMN เสมอถ้าไม่ตั้งเองก่อนถ่ายภาพ
+  const moves = (await import("@/lib/modules/kanban/moves" as string)) as Any;
+  const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  const doneCol = await prisma.kanbanColumn.findFirst({ where: { boardId: B("patong"), name: "เสร็จแล้ว" }, select: { id: true } });
+  if (doneCol) {
+    await moves.setColumnDone(ctx, doneCol.id, true);
+    KB113_DONE_COL = doneCol.id;
+  }
+  console.log(`🧪 เตรียม K1.13: จับภาพก่อนของบอร์ดป่าตอง ${KB113_BEFORE.length} การ์ด · ตั้งคอลัมน์ 'เสร็จแล้ว' เป็น isDoneColumn ชั่วคราว (เผื่อคืนสภาพหลังปัดจริงระหว่างถ่าย)`);
+}
+
 let failures = 0;
 const shots: string[] = [];
 try {
@@ -334,6 +383,13 @@ try {
               const el = await page.$(step.swipe.on); const bb = (await el!.boundingBox())!;
               const y = bb.y + bb.height / 2; const x0 = bb.x + bb.width / 2;
               await page.touchscreen.touchStart(x0, y); for (let i = 1; i <= 8; i++) await page.touchscreen.touchMove(x0 + (step.swipe.dx * i) / 8, y); await page.touchscreen.touchEnd();
+            } else if ("longPress" in step) {
+              // 🔴 จงใจไม่ touchEnd — ต้องถ่ายภาพตอนนิ้วยังกดอยู่เพื่อให้เห็นสถานะ "ยก" (MobileBoard.tsx)
+              const el = await page.$(step.longPress.on);
+              if (!el) throw new Error(`ไม่พบ element สำหรับกดค้าง ${step.longPress.on}`);
+              const bb = (await el.boundingBox())!;
+              await page.touchscreen.touchStart(bb.x + bb.width / 2, bb.y + bb.height / 2);
+              await new Promise((r) => setTimeout(r, step.longPress.ms ?? 400));
             }
           } catch (e) { failures++; console.log(`  ❌ step ${JSON.stringify(step).slice(0, 80)} — ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
         }
@@ -382,6 +438,42 @@ try {
     const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
     await members.unstarBoard(ctx, B("patong"));
     console.log("🧹 คืนสภาพ K1.12: เอาดาวบอร์ดป่าตองออกแล้ว");
+  }
+  // K1.13 — คืนสภาพ seed: สเปค "mobile-swipe-undo-toast" ปัดจริงผ่าน completeCardAction ระหว่างถ่าย
+  // (undo token ที่ได้ไม่ได้ถูกกด "เลิกทำ" จริงในหน้าเว็บ — คืนสภาพตรงด้วย diff ก่อน/หลังแทน)
+  if (WO === "1.13" && KB113_BEFORE.length > 0) {
+    const P = prisma as Any;
+    const after = await prisma.kanbanCard.findMany({
+      where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS },
+      select: { id: true, columnId: true, status: true, completedAt: true },
+    });
+    const beforeById = new Map(KB113_BEFORE.map((r) => [r.id, r]));
+    let restored = 0;
+    for (const row of after) {
+      const before = beforeById.get(row.id);
+      if (!before) continue;
+      const completedAtIso = row.completedAt?.toISOString() ?? null;
+      if (row.columnId !== before.columnId || row.status !== before.status || completedAtIso !== before.completedAt) {
+        await P.kanbanCard.update({
+          where: { id: row.id },
+          data: {
+            columnId: before.columnId,
+            status: before.status,
+            completedAt: before.completedAt ? new Date(before.completedAt) : null,
+            archivedAt: before.status === "ARCHIVED" ? undefined : null,
+            archivedById: before.status === "ARCHIVED" ? undefined : null,
+          },
+        });
+        restored++;
+      }
+    }
+    const activeCount = await prisma.kanbanCard.count({ where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" } });
+    if (KB113_DONE_COL) {
+      const moves = (await import("@/lib/modules/kanban/moves" as string)) as Any;
+      const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+      await moves.setColumnDone(ctx, KB113_DONE_COL, false);
+    }
+    console.log(`🧹 คืนสภาพ K1.13: คืนการ์ดที่เปลี่ยนระหว่างถ่าย ${restored} ใบ · ปลดธง isDoneColumn คืน · การ์ด ACTIVE บนบอร์ดป่าตองตอนนี้ = ${activeCount}`);
   }
 } finally {
   const { count } = await prisma.session.deleteMany({ where: { userAgent: UA } });

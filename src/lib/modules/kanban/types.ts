@@ -307,3 +307,53 @@ export type BoardsHomeDto = {
   templates: BoardTemplateDto[];
   totals: { boards: number; openCards: number };
 };
+
+// ───────────────────────── K1.13: งานของฉันใหม่ + มือถือ (my-tasks.ts) ─────────────────────────
+// 🔴 ชนิดของ DTO อยู่ในไฟล์บริสุทธิ์นี้ (ไม่ใช่ `my-tasks.ts` ที่แตะ prisma) ด้วยเหตุผลเดียวกับ K1.11/K1.12:
+//    `MyTasks.tsx` (client) ต้อง `import type` ได้โดยไม่ลาก `db.ts` → `pg` เข้าบันเดิลฝั่ง browser
+
+/** การ์ด 1 ใบในหน้า "งานของฉัน" — ย่อกว่า `BoardCardDto`/`SearchCardDto` (พอสำหรับรายการ ไม่ใช่หน้าบอร์ด) */
+export type MyTaskCardDto = {
+  id: string;
+  cardNo: number | null;
+  title: string;
+  boardId: string;
+  boardName: string;
+  columnName: string;
+  /** ISO 8601 (UTC) — หน้าจอแปลงเป็นเวลาไทยเอง */
+  dueAt: string | null;
+  labels: BoardLabelDto[];
+  /** มีเฉพาะการ์ดที่มีเช็คลิสต์อย่างน้อย 1 ชุด (ไม่มี = ไม่โชว์ตราความคืบหน้า) */
+  checklistProgress?: { done: number; total: number };
+};
+
+export type MyTasksCounts = {
+  overdue: number;
+  today: number;
+  week: number;
+  none: number;
+  /** ปิดไปสัปดาห์นี้ — completedAt อยู่ในสัปดาห์ปัจจุบัน (จันทร์–อาทิตย์ เวลาไทย) */
+  doneThisWeek: number;
+};
+
+export type MyTasksGroups = {
+  overdue: MyTaskCardDto[];
+  today: MyTaskCardDto[];
+  week: MyTaskCardDto[];
+  /** เลยสัปดาห์นี้ไปแล้ว (มีกำหนดส่งแต่ไกลกว่า "สัปดาห์นี้") — ไม่มีตัวนับคู่กันใน `counts` ตามสัญญา */
+  later: MyTaskCardDto[];
+  /** ไม่มีกำหนดส่งเลย */
+  none: MyTaskCardDto[];
+};
+
+/** งานที่ฉันติดตาม (ไม่ได้รับผิดชอบ) — ฟีเจอร์ "ติดตาม" ยังไม่มีจนกว่าจะถึง K2.11 → คืน `[]` เสมอไปก่อน */
+export type MyWatchingCardDto = { id: string; cardNo: number | null; title: string; boardId: string; boardName: string };
+
+export type MyTasksOverviewDto = {
+  counts: MyTasksCounts;
+  groups: MyTasksGroups;
+  /** K1.7: รายการเช็คลิสต์ที่มอบหมายให้ฉัน (ข้ามทุกบอร์ด) — มาจาก `listMyChecklistItems` เดิม */
+  checklistItems: MyChecklistItemDto[];
+  /** K2.11 ยังไม่ทำฟีเจอร์ "ติดตามการ์ด" — คงไว้ `[]` เสมอ (ดูหมายเหตุที่ `my-tasks.ts`) */
+  watching: MyWatchingCardDto[];
+};

@@ -431,3 +431,25 @@ model KanbanBoardTemplate {
 
   @@index([tenantId])
 }
+
+// ───────────────────────── undo token (K1.13 · KANBAN-RUN §K1.13) ─────────────────────────
+// ปัด "เสร็จ"/"เก็บ" บนมือถือ ต้องกด "เลิกทำ" ได้ — รูปแบบเดียวกับ `AccountUndoToken` ของบัญชี
+// (prisma/schema/account.prisma) เก็บ "ข้อมูลย้อนกลับ" พอให้ `undo()` คืนสภาพเดิมได้เอง ไม่ใช่ log เต็มรูป
+// (มี KanbanActivity/AuditLog แยกอยู่แล้วสำหรับนั้น) · one-shot (`usedAt`) · หมดอายุ 5 นาที (`expiresAt`)
+// · ผูก tenant+system+**user เดียวกันเท่านั้นที่เลิกทำได้** (เหมือนกติกาของบัญชี)
+model KanbanUndoToken {
+  id        String    @id @default(cuid())
+  tenantId  String
+  systemId  String
+  userId    String
+  /// คีย์การกระทำ: "card.complete" (ปัดขวา) | "card.archive" (ปัดซ้าย) — ดู my-tasks.ts
+  kind      String
+  /// ข้อมูลย้อนกลับ — { cardId, fromColumnId? } (รูปร่างต่างกันไปตาม kind)
+  payload   Json
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  @@index([tenantId, systemId, expiresAt])
+  @@index([userId, expiresAt])
+}

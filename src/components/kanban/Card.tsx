@@ -50,13 +50,16 @@ export type DueBadge = { text: string; tone: "gray" | "amber" | "red" | "green";
  * ป้ายกำหนดส่งตามความหมายแบบ Trello (พิมพ์เขียว §3.2):
  *   เสร็จแล้ว = เขียว · เลยกำหนด = แดง · ภายใน 24 ชม. = อำพัน · ไกลกว่านั้น = เทา
  * `nowMs` มาจาก server (DTO.now) เพื่อให้ HTML ของ server กับ client ตรงกันเป๊ะ
+ *
+ * ⚠️ K1.13: รับ primitive (`dueAt`/`completedAt`) แยกจากทั้งการ์ด — `MyTasks.tsx` มี `MyTaskCardDto`
+ *    ที่ไม่ใช่ `BoardCardDto` เต็มรูป (ไม่มี `completedAt`/`assignees`/ฯลฯ) แต่อยากได้ชิปกำหนดส่งแบบเดียวกัน
  */
-export function dueBadgeOf(card: BoardCardDto, nowMs: number): DueBadge | null {
-  if (card.completedAt) {
-    return { text: `เสร็จ ${fmtDay(bkk(Date.parse(card.completedAt)))}`, tone: "green", icon: "check" };
+export function dueBadgeFrom(dueAt: string | null, completedAt: string | null, nowMs: number): DueBadge | null {
+  if (completedAt) {
+    return { text: `เสร็จ ${fmtDay(bkk(Date.parse(completedAt)))}`, tone: "green", icon: "check" };
   }
-  if (!card.dueAt) return null;
-  const dueMs = Date.parse(card.dueAt);
+  if (!dueAt) return null;
+  const dueMs = Date.parse(dueAt);
   const diff = dueMs - nowMs;
   const due = bkk(dueMs);
   const now = bkk(nowMs);
@@ -80,7 +83,11 @@ export function dueBadgeOf(card: BoardCardDto, nowMs: number): DueBadge | null {
   return { text: daysAway <= 6 ? `${TH_WDAY[due.weekday]} ${fmtDay(due)}` : fmtDay(due), tone: "gray" };
 }
 
-const DUE_STYLE: Record<DueBadge["tone"], { color: string; border: string; background: string }> = {
+export function dueBadgeOf(card: BoardCardDto, nowMs: number): DueBadge | null {
+  return dueBadgeFrom(card.dueAt, card.completedAt, nowMs);
+}
+
+export const DUE_STYLE: Record<DueBadge["tone"], { color: string; border: string; background: string }> = {
   gray: { color: "var(--color-muted)", border: "var(--color-line)", background: "var(--color-surface)" },
   amber: { color: "var(--color-tag-amber)", border: "var(--color-tag-amber)", background: "var(--color-due-soon-bg)" },
   red: { color: "var(--color-tag-red)", border: "var(--color-tag-red)", background: "var(--color-due-late-bg)" },

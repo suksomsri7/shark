@@ -9,7 +9,7 @@
 // ⚠️ ห้ามคิดเลขตำแหน่งเอง — ส่งแค่ id ของเพื่อนบ้าน (beforeCardId/afterCardId) ให้ `moves.ts` เป็นคนคิด
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { BoardHeader } from "./BoardHeader";
 import { Card } from "./Card";
@@ -17,8 +17,11 @@ import { CardBack, type CardBackHandlers } from "./CardBack";
 import { Column, type ColumnHandlers } from "./Column";
 import { FilterBar } from "./FilterBar";
 import { KanbanIcon } from "./KanbanIcon";
+import { MobileBoard } from "./MobileBoard";
 import {
   archiveColumnAction,
+  archiveWithUndoAction,
+  completeCardAction,
   createCardAction,
   moveAllCardsAction,
   moveCardAction,
@@ -28,6 +31,7 @@ import {
   setColumnDoneAction,
   setColumnWipAction,
   starBoardAction,
+  undoAction,
 } from "@/lib/modules/kanban/actions";
 import { filterBoardCards, hasAnyFilter, type BoardFilters } from "@/lib/modules/kanban/filters";
 import type { BoardCardDto, BoardColumnDto, BoardLabelDto, BoardViewDto } from "@/lib/modules/kanban/types";
@@ -56,6 +60,22 @@ type Pending =
   | { kind: "column"; columnId: string; startX: number; startY: number; touch: boolean };
 
 const TOAST_MS = 4200;
+/** toast ปัดเสร็จ/เก็บ (K1.13) — โชว์ปุ่ม "เลิกทำ" 5 วิ ตามสัญญา (token จริงอยู่ได้ 5 นาที — `my-tasks.ts`) */
+const UNDO_TOAST_MS = 5000;
+
+// ── K1.13: จอ < 640px = มือถือ (MobileBoard.tsx) — `useSyncExternalStore` กัน hydration mismatch
+// (SSR/ครั้งแรกที่ hydrate ใช้ snapshot ปลอม `false` เสมอ แล้วค่อยอ่านค่าจริงหลัง mount) ──
+const MOBILE_QUERY = "(max-width: 639px)";
+function subscribeMobileQuery(onChange: () => void): () => void {
+  const mql = window.matchMedia(MOBILE_QUERY);
+  mql.addEventListener("change", onChange);
+  return () => mql.removeEventListener("change", onChange);
+}
+const getMobileSnapshot = () => window.matchMedia(MOBILE_QUERY).matches;
+const getMobileServerSnapshot = () => false;
+function useIsMobileBoard(): boolean {
+  return useSyncExternalStore(subscribeMobileQuery, getMobileSnapshot, getMobileServerSnapshot);
+}
 
 export function BoardView({
   board,
@@ -82,6 +102,10 @@ export function BoardView({
   const [openCardSnapshot, setOpenCardSnapshot] = useState<BoardCardDto | null>(null);
   const [openColumnMeta, setOpenColumnMeta] = useState<{ id: string; name: string } | null>(null);
   const [labels, setLabels] = useState<BoardLabelDto[]>(board.labels);
+  // K1.13: toast "เลิกทำ" ของปัดขวา/ซ้ายบนมือถือ — คนละอันจาก `toast` ทั่วไป (มีปุ่มกดของตัวเอง)
+  const [undoToast, setUndoToast] = useState<{ message: string; token: string; snapshot: BoardColumnDto[] } | null>(null);
+  const undoToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMobile = useIsMobileBoard();
   const [, startTransition] = useTransition();
 
   const columnsRef = useRef<BoardColumnDto[]>(board.columns);
@@ -134,6 +158,72 @@ export function BoardView({
     },
     [setCols, showToast],
   );
+
+  // ───────────────────────── K1.13: ปัดขวา=เสร็จ / ปัดซ้าย=เก็บ (มือถือ) + undo 5 วิ ─────────────────────────
+  // เอาการ์ดออกจาก state ทันที (optimistic) แล้วยิง action จริง — เก็บ "ภาพก่อนปัด" (snapshot) ไว้ในตัว
+  // undo toast เอง ⇒ กด "เลิกทำ" = คืนอาเรย์เดิมตรง ๆ (ตำแหน่ง/ลำดับเป๊ะ) ไม่ต้องคำนวณ index ใหม่
+  const showUndoToast = useCallback((message: string, token: string, snapshot: BoardColumnDto[]) => {
+    setUndoToast({ message, token, snapshot });
+    if (undoToastTimer.current) clearTimeout(undoToastTimer.current);
+    undoToastTimer.current = setTimeout(() => setUndoToast(null), UNDO_TOAST_MS);
+  }, []);
+
+  const swipeComplete = useCallback(
+    (card: BoardCardDto, columnId: string) => {
+      const snapshot = columnsRef.current;
+      setCols(snapshot.map((c) => (c.id === columnId ? { ...c, cards: c.cards.filter((x) => x.id !== card.id) } : c)));
+      startTransition(async () => {
+        try {
+          const res = await completeCardAction({ systemId, boardId: board.id, cardId: card.id });
+          if (!res.ok) {
+            rollback(snapshot, res.message || "ปัดเสร็จไม่สำเร็จ ลองใหม่อีกครั้ง");
+            return;
+          }
+          showUndoToast(`ทำเครื่องหมาย "${card.title}" เสร็จแล้ว`, res.undoToken, snapshot);
+        } catch {
+          rollback(snapshot, "ปัดเสร็จไม่สำเร็จ ลองใหม่อีกครั้ง");
+        }
+      });
+    },
+    [board.id, rollback, setCols, showUndoToast, systemId],
+  );
+
+  const swipeArchive = useCallback(
+    (card: BoardCardDto, columnId: string) => {
+      const snapshot = columnsRef.current;
+      setCols(snapshot.map((c) => (c.id === columnId ? { ...c, cards: c.cards.filter((x) => x.id !== card.id) } : c)));
+      startTransition(async () => {
+        try {
+          const res = await archiveWithUndoAction({ systemId, boardId: board.id, cardId: card.id });
+          if (!res.ok) {
+            rollback(snapshot, res.message || "เก็บการ์ดไม่สำเร็จ ลองใหม่อีกครั้ง");
+            return;
+          }
+          showUndoToast(`เก็บ "${card.title}" เข้าคลังแล้ว`, res.undoToken, snapshot);
+        } catch {
+          rollback(snapshot, "เก็บการ์ดไม่สำเร็จ ลองใหม่อีกครั้ง");
+        }
+      });
+    },
+    [board.id, rollback, setCols, showUndoToast, systemId],
+  );
+
+  /** ปุ่ม "เลิกทำ" ของ toast — คืนอาเรย์คอลัมน์ตามภาพก่อนปัด (`snapshot`) เมื่อ server ยืนยันเลิกทำสำเร็จ */
+  const undoSwipe = useCallback(() => {
+    const current = undoToast;
+    if (!current) return;
+    if (undoToastTimer.current) clearTimeout(undoToastTimer.current);
+    setUndoToast(null);
+    startTransition(async () => {
+      try {
+        const res = await undoAction({ systemId, boardId: board.id, token: current.token });
+        if (res.ok) setCols(current.snapshot);
+        else showToast("เลิกทำไม่ได้แล้ว (อาจใช้ไปแล้วหรือหมดเวลา)");
+      } catch {
+        showToast("เลิกทำไม่สำเร็จ ลองใหม่อีกครั้ง");
+      }
+    });
+  }, [board.id, setCols, showToast, systemId, undoToast]);
 
   // ───────────────────────── ตัวช่วยกับ state ─────────────────────────
 
@@ -695,8 +785,19 @@ export function BoardView({
             ล้างตัวกรอง
           </button>
         </div>
+      ) : isMobile ? (
+        /* ── K1.13: มือถือ — เลื่อนทีละคอลัมน์ + ปัดขวา/ซ้าย + FAB (ดู MobileBoard.tsx) ── */
+        <MobileBoard
+          columns={filteredColumns}
+          nowMs={nowMs}
+          canEdit={canEdit}
+          onOpenCard={openCard}
+          onCreateCard={handlers.onCreateCard}
+          onSwipeComplete={swipeComplete}
+          onSwipeArchive={swipeArchive}
+        />
       ) : (
-      /* ── เวทีบอร์ด ── */
+      /* ── เวทีบอร์ด (เดสก์ท็อป) ── */
       <div className="flex min-h-0 flex-1 items-start overflow-x-auto" style={{ gap: 12, padding: "12px 20px 18px" }}>
         {filteredColumns.map((col, i) => (
           <Column
@@ -784,6 +885,24 @@ export function BoardView({
           >
             <KanbanIcon name="warn" size="sm" />
             {toast}
+          </div>
+        </div>
+      )}
+
+      {/* ── K1.13: toast ปัดเสร็จ/เก็บ — ปุ่ม "เลิกทำ" ใช้ได้ 5 วิ (token จริงยังไม่หมดอายุ 5 นาที) ── */}
+      {undoToast && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[70] flex justify-center px-4">
+          <div
+            role="status"
+            data-testid="undo-toast"
+            className="pointer-events-auto flex items-center gap-3 rounded-full px-4 py-3"
+            style={{ background: "var(--color-ink)", color: "var(--color-surface)", fontSize: 13, boxShadow: "0 8px 24px rgba(10,10,10,.24)" }}
+          >
+            <KanbanIcon name="check" size="sm" />
+            <span>{undoToast.message}</span>
+            <button type="button" data-testid="undo-toast-action" onClick={undoSwipe} className="font-semibold underline">
+              เลิกทำ
+            </button>
           </div>
         </div>
       )}

@@ -1,11 +1,15 @@
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { KanbanMyTasksSection, kanbanTabs } from "@/lib/modules/kanban/ui";
+import { toActor } from "@/lib/modules/kanban/access";
+import { myTasksOverview } from "@/lib/modules/kanban/my-tasks";
+import { kanbanTabs } from "@/lib/modules/kanban/ui";
+import { MyTasks } from "@/components/kanban/MyTasks";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 
-// หน้าย่อย "งานของฉัน" ของระบบบอร์ดงาน — การ์ดที่มอบหมายให้ฉันข้ามทุกบอร์ด
+// หน้าย่อย "งานของฉัน" ของระบบบอร์ดงาน (K1.13 — เขียนใหม่ทั้งหน้า: เดิมเป็น `KanbanMyTasksSection`
+// แบบ list เดียวไม่จัดกลุ่ม ใน `ui.tsx` — ตอนนี้เรียก `myTasksOverview` + จัดกลุ่มตามกำหนดส่ง)
 export default async function KanbanMyTasksPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const auth = await requireTenant();
@@ -14,11 +18,16 @@ export default async function KanbanMyTasksPage({ params }: { params: Promise<{ 
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "KANBAN" } });
   if (!sys) notFound();
 
+  const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
+  const actor = toActor(auth.user.id, auth.active);
+  const now = new Date();
+  const overview = await myTasksOverview(ctx, actor, { now });
+
   return (
-    <div className="flex max-w-2xl flex-col gap-5">
-      <PageHeader title={sys.name} back={{ href: `/app/sys/${id}`, label: sys.name }} desc="งานของฉัน — การ์ดที่มอบหมายให้ฉัน" />
+    <div className="flex max-w-3xl flex-col gap-5">
+      <PageHeader title={sys.name} back={{ href: `/app/sys/${id}`, label: sys.name }} desc="งานของฉัน — การ์ดที่มอบหมายให้ฉันข้ามทุกบอร์ด" />
       <ModuleTabs items={kanbanTabs(id)} />
-      <KanbanMyTasksSection systemId={id} tenantId={tenantId} />
+      <MyTasks systemId={id} overview={overview} nowMs={now.getTime()} />
     </div>
   );
 }
