@@ -54,6 +54,14 @@ export { createBoardFromTemplate, deleteTenantTemplate, listTemplates, saveBoard
 export type { BoardTemplateDto, TemplateCardSpec, TemplateColumnSpec, TemplateLabelSpec, TemplateStructure } from "./templates";
 export { boardsHome } from "./boardsHome";
 export type { BoardsHomeCardDto, BoardsHomeDto } from "./boardsHome";
+// K2.1: มุมมองตาราง + เลือกหลายรายการ + ส่งออก CSV — ผู้เรียกนอกโมดูล (หน้า/action/K2.10) ใช้ผ่าน facade เดียวกัน
+export { listBoardTable } from "./table";
+export type { BoardTableResult, ListBoardTableInput, TableGroupBy, TableSort } from "./table";
+export { bulkUpdate } from "./cards";
+export type { BulkUpdatePatch, BulkUpdateResult } from "./cards";
+export { exportCardsCsv } from "./reports";
+export type { ExportCardsCsvInput } from "./reports";
+export type { TableCardLinkDto, TableGroupDto, TableRowDto } from "./types";
 
 // แจ้งเตือนเมื่อมอบหมายงาน — ย้ายตรรกะไป `notify.ts` ใน K1.2 (cards.ts ใช้ร่วมโดยไม่เกิด import วงกลม)
 // ชื่อเดิมคงไว้เป็น alias ภายในไฟล์นี้ เพื่อไม่ต้องแก้จุดเรียกเดิม

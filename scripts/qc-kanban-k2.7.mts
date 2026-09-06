@@ -52,7 +52,7 @@ try {
 
   // ═══ S2 เทมเพลตการ์ด ═══
   // การ์ดต้นแบบ: ชื่อ/รายละเอียด/ป้าย/เช็คลิสต์/กำหนดส่ง/ผู้รับผิดชอบ
-  const src = await svc.createCard({ tenantId: tid, systemId: SYS, columnId: col0.id, title: "ตรวจถังอากาศประจำสัปดาห์", description: "<p>ไล่เช็คทุกถังตามรายการ</p>", dueAt: kq.dayFromToday(3, 18), assigneeUserId: pook.userId, actorUserId: owner.userId });
+  const src = await svc.createCard({ tenantId: tid, systemId: SYS, columnId: col0.id, title: "ตรวจถังอากาศประจำสัปดาห์", description: "<p>ไล่เช็คทุกถังตามรายการ</p>", dueAt: kq.dayFromToday(3, 18), assigneeUserId: pook.userId, createdById: owner.userId });
   madeCards.push(src.id);
   if (lbl) await prisma.kanbanCardLabel.create({ data: { cardId: src.id, labelId: lbl.id, tenantId: tid } });
   const cl = await prisma.kanbanChecklist.create({ data: { tenantId: tid, cardId: src.id, title: "ขั้นตอน", position: "a0" } });
@@ -121,12 +121,12 @@ try {
   const n1 = rc.nextOccurrence("FREQ=WEEKLY;BYDAY=MO", base); const n2 = rc.nextOccurrence("FREQ=MONTHLY;BYMONTHDAY=15", base); const n3 = rc.nextOccurrence("FREQ=DAILY;INTERVAL=2", base); const n4 = rc.nextOccurrence("FREQ=WEEKLY;BYDAY=WE", base);
   chk("K2.7-S3.3", "nextOccurrence(rule, after) คิดวันแบบไทย (+07:00) · คงเวลาเดิม 18:00: จันทร์ถัดไป = 5 ต.ค. · วันที่ 15 ถัดไป = 15 ต.ค. · ทุก 2 วัน = 2 ต.ค. · BYDAY=WE จากพุธ = พุธหน้า 7 ต.ค. (ไม่ใช่วันเดียวกัน)", bkkDay(n1) === "2026-10-05" && bkkDay(n2) === "2026-10-15" && bkkDay(n3) === "2026-10-02" && bkkDay(n4) === "2026-10-07" && [n1, n2, n3, n4].every((d) => d.getUTCHours() === 11), "5 ต.ค./15 ต.ค./2 ต.ค./7 ต.ค. 18:00", [n1, n2, n3, n4].map((d) => d?.toISOString?.()).join(" | "));
   // การ์ดแม่: กำหนดส่ง พุธ 23 ก.ย. 18:00 (สัปดาห์ก่อน) ทุกวันพุธ
-  const parent = await svc.createCard({ tenantId: tid, systemId: SYS, columnId: col0.id, title: "ล้างคอมเพรสเซอร์ทุกพุธ", dueAt: kq.dayFromToday(-7, 18), assigneeUserId: pook.userId, actorUserId: owner.userId });
+  const parent = await svc.createCard({ tenantId: tid, systemId: SYS, columnId: col0.id, title: "ล้างคอมเพรสเซอร์ทุกพุธ", dueAt: kq.dayFromToday(-7, 18), assigneeUserId: pook.userId, createdById: owner.userId });
   madeCards.push(parent.id);
   if (lbl) await prisma.kanbanCardLabel.create({ data: { cardId: parent.id, labelId: lbl.id, tenantId: tid } });
   const pcl = await prisma.kanbanChecklist.create({ data: { tenantId: tid, cardId: parent.id, title: "ขั้นตอน", position: "a0" } });
   await prisma.kanbanChecklistItem.create({ data: { tenantId: tid, checklistId: pcl.id, text: "ถ่ายน้ำมัน", position: "a0", done: true, doneAt: new Date() } });
-  const noDue = await svc.createCard({ tenantId: tid, systemId: SYS, columnId: col0.id, title: "ไม่มีกำหนดส่ง", actorUserId: owner.userId });
+  const noDue = await svc.createCard({ tenantId: tid, systemId: SYS, columnId: col0.id, title: "ไม่มีกำหนดส่ง", createdById: owner.userId });
   madeCards.push(noDue.id);
   const eNoDue = await fails(() => rc.setCardRecurrence(ctxO, owner, noDue.id, "FREQ=DAILY"));
   const eBad = await fails(() => rc.setCardRecurrence(ctxO, owner, parent.id, "FREQ=YEARLY"));

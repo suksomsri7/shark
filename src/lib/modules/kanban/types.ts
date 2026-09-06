@@ -396,3 +396,38 @@ export type ArchiveListDto = {
   cards: ArchivedCardDto[];
   columns: ArchivedColumnDto[];
 };
+
+// ───────────────────────── K2.1 — มุมมองตาราง (table.ts) ─────────────────────────
+// DTO บริสุทธิ์ (วันที่เป็น ISO string) — `TableView.tsx` (client) เป็นคนเรนเดอร์เท่านั้น
+// 🔴 `links` ว่างเสมอจนกว่า K3.1 ("เชื่อมข้อมูล SHARK") จะเติมของจริงเข้ามา (สัญญา K2.1)
+
+/** ลิงก์ไปข้อมูลของโมดูลอื่น (K3.1) — คอลัมน์ "เชื่อมระบบ" ของตาราง */
+export type TableCardLinkDto = { type: string; label: string };
+
+export type TableRowDto = {
+  id: string;
+  cardNo: number | null;
+  title: string;
+  columnId: string;
+  columnName: string;
+  assignees: BoardPersonDto[];
+  dueAt: string | null;
+  completedAt: string | null;
+  checklistDone: number;
+  checklistTotal: number;
+  labels: BoardLabelDto[];
+  links: TableCardLinkDto[];
+  /** ISO 8601 (UTC) — ใช้ทั้ง sort=updated และคอลัมน์ "แก้ไขล่าสุด" ของ CSV */
+  updatedAt: string;
+};
+
+/** กลุ่มของ `group=column|assignee|label` — `rowIds` อ้าง `TableRowDto.id` (การ์ดหลายผู้รับผิดชอบ/หลายป้าย อยู่ได้หลายกลุ่ม) */
+export type TableGroupDto = { key: string; label: string; rowIds: string[] };
+
+export type BoardTableDto = {
+  rows: TableRowDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+  groups?: TableGroupDto[];
+};

@@ -11,8 +11,11 @@ import { logActivity } from "./activity-log";
 import { listAttachments } from "./attachments";
 import { getCardChecklists } from "./checklists";
 import { prisma } from "./db";
+import { setCardLabels } from "./labels";
+import { KANBAN_LIMITS } from "./limits";
 import { assertBoardRole, assertCardRole } from "./members";
 import { listComments } from "./comments";
+import { moveCard } from "./moves";
 import { notifyCardAssigned } from "./notify";
 import { keyBetween } from "./ordering";
 import { publishBoardSignal, boardSignal } from "./realtime";
@@ -519,4 +522,115 @@ export async function listArchivedCards(
     archivedById: r.archivedById,
     columnName: r.column?.name ?? null,
   }));
+}
+
+// ═══════════════════════════ K2.1: bulkUpdate — แถบ "เลือกหลายรายการ" ของมุมมองตาราง ═══════════════════════════
+// สัญญา ledger/KANBAN-RUN.md §K2.1: ต่อใบในทรานแซกชันของตัวเอง (ใบหนึ่งพังไม่ล้มทั้งชุด) · id ต่างบอร์ด/
+// ไม่มี → skipped ไม่ throw · EDITOR+ ของบอร์ด (ไม่งั้น throw) · เกิน `KANBAN_LIMITS.bulkMax` → throw ไทย ·
+// ย้ายผ่าน `moveCard` (ต่อท้ายคอลัมน์) · กิจกรรมรายใบ (เกิดเองจากฟังก์ชันย่อยที่เรียก) · `publishBoardSignal`
+// ครั้งเดียวท้ายชุด
+//
+// 🔴 "บอร์ดของชุดนี้" คำนวณจาก **การ์ดใบแรกที่มีอยู่จริง** ใน `cardIds` (ฟังก์ชันนี้ไม่รับ `boardId` แยก) —
+//    ใบไหนอยู่บอร์ดอื่นถือว่า "ไม่ใช่ชุดนี้" แล้ว skip แม้ actor จะมีสิทธิ์เห็นบอร์ดนั้นด้วยก็ตาม (เช่น OWNER
+//    เป็น ADMIN ทุกบอร์ด) — ผู้ใช้เลือกแถวจากตารางของบอร์ดเดียวเสมอ ข้าม id ก็ไม่ควรเผลอไปแตะบอร์ดอื่น
+
+export type BulkUpdatePatch = {
+  toColumnId?: string;
+  addAssigneeUserIds?: string[];
+  removeAssigneeUserIds?: string[];
+  addLabelIds?: string[];
+  removeLabelIds?: string[];
+  /** ไม่ส่งคีย์นี้เลย = ไม่แตะกำหนดส่ง · ส่ง `null` = ล้างกำหนดส่ง */
+  dueAt?: Date | null;
+  archive?: true;
+};
+
+export type BulkUpdateResult = { updated: number; skipped: { id: string; reason: string }[] };
+
+/** งานย่อยของการ์ด 1 ใบ — เก็บเข้าคลังแล้วไม่ทำอย่างอื่นต่อ (จะแก้ป้าย/กำหนดส่งของการ์ดที่เก็บไปแล้วก็ไม่มีความหมาย) */
+async function applyBulkPatch(ctx: KanbanCtx, cardId: string, patch: BulkUpdatePatch): Promise<void> {
+  if (patch.archive) {
+    await archiveCard(ctx, cardId);
+    return;
+  }
+  if (patch.toColumnId) {
+    const res = await moveCard(ctx, { cardId, toColumnId: patch.toColumnId });
+    if (!res.ok) throw new Error(res.message);
+  }
+  if ((patch.addAssigneeUserIds?.length ?? 0) > 0 || (patch.removeAssigneeUserIds?.length ?? 0) > 0) {
+    const current = await prisma.kanbanCardAssignee.findMany({ where: { cardId }, select: { userId: true } });
+    const next = new Set(current.map((r) => r.userId));
+    for (const u of patch.addAssigneeUserIds ?? []) next.add(u);
+    for (const u of patch.removeAssigneeUserIds ?? []) next.delete(u);
+    await setCardAssignees(ctx, cardId, [...next]);
+  }
+  if ((patch.addLabelIds?.length ?? 0) > 0 || (patch.removeLabelIds?.length ?? 0) > 0) {
+    const current = await prisma.kanbanCardLabel.findMany({ where: { cardId }, select: { labelId: true } });
+    const next = new Set(current.map((r) => r.labelId));
+    for (const l of patch.addLabelIds ?? []) next.add(l);
+    for (const l of patch.removeLabelIds ?? []) next.delete(l);
+    await setCardLabels(ctx, cardId, [...next]);
+  }
+  if ("dueAt" in patch) {
+    await updateCardFields(ctx, cardId, { dueAt: patch.dueAt ?? null });
+  }
+}
+
+/**
+ * แก้หลายการ์ดพร้อมกันจากแถบ "เลือกหลายรายการ" ของมุมมองตาราง (K2.1)
+ * ผ่านฟังก์ชันย่อยที่มีอยู่แล้ว (`moveCard`/`setCardAssignees`/`setCardLabels`/`updateCardFields`/
+ * `archiveCard`) ทั้งหมด — ไม่เขียน query ตรงในนี้ นอกจากอ่านค่าปัจจุบันก่อนรวม add/remove
+ */
+export async function bulkUpdate(
+  ctx: KanbanCtx,
+  cardIds: string[],
+  patch: BulkUpdatePatch,
+): Promise<BulkUpdateResult> {
+  if (cardIds.length > KANBAN_LIMITS.bulkMax) {
+    throw new Error(`เลือกได้ครั้งละไม่เกิน ${KANBAN_LIMITS.bulkMax} การ์ด`);
+  }
+  if (cardIds.length === 0) return { updated: 0, skipped: [] };
+
+  const found = await prisma.kanbanCard.findMany({
+    where: { id: { in: [...new Set(cardIds)] }, tenantId: ctx.tenantId, systemId: ctx.systemId },
+    select: { id: true, boardId: true },
+  });
+  const byId = new Map(found.map((c) => [c.id, c]));
+
+  let boardId: string | null = null;
+  for (const id of cardIds) {
+    const c = byId.get(id);
+    if (c) {
+      boardId = c.boardId;
+      break;
+    }
+  }
+  if (!boardId) return { updated: 0, skipped: cardIds.map((id) => ({ id, reason: "ไม่พบการ์ดนี้" })) };
+
+  // ด่านสิทธิ์เดียวของทั้งชุด (มองไม่เห็น = 404 · ยศไม่ถึง = 403) — ผ่านแล้วทุกใบที่อยู่บอร์ดนี้ทำได้หมด
+  await assertBoardRole(ctx, boardId, "EDITOR");
+
+  const skipped: { id: string; reason: string }[] = [];
+  let updated = 0;
+  for (const id of cardIds) {
+    const card = byId.get(id);
+    if (!card) {
+      skipped.push({ id, reason: "ไม่พบการ์ดนี้" });
+      continue;
+    }
+    if (card.boardId !== boardId) {
+      skipped.push({ id, reason: "การ์ดนี้อยู่คนละบอร์ดกับชุดที่เลือก" });
+      continue;
+    }
+    try {
+      await applyBulkPatch(ctx, id, patch);
+      updated++;
+    } catch (e) {
+      skipped.push({ id, reason: e instanceof Error ? e.message : "ทำรายการไม่สำเร็จ" });
+    }
+  }
+
+  // K2.1 — สัญญาณเดียวท้ายชุด (ไม่ใช่ต่อใบ) กันช่องของบอร์ดถูกยิงถี่เกินตอนเลือกทีเดียวหลายสิบใบ
+  await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.updated", boardId }));
+  return { updated, skipped };
 }

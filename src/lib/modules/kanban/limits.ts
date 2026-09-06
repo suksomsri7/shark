@@ -21,6 +21,10 @@ export const KANBAN_LIMITS = Object.freeze({
   positionRebalanceLength: 50,
   /** จำนวนรายการสูงสุดที่หน้า "คลังเก็บ" ดึงมาต่อครั้ง (K1.14) — หน้าคลังคือที่หาของที่เผลอเก็บ ไม่ใช่รายงาน */
   archivePageSize: 200,
+  /** จำนวนการ์ดสูงสุดต่อครั้งของ "เลือกหลายรายการ" ในมุมมองตาราง (K2.1 · สัญญา KANBAN-RUN §K2.1) */
+  bulkMax: 200,
+  /** แถวต่อหน้าปริยายของมุมมองตาราง (K2.1) */
+  tablePageSize: 50,
 } as const);
 
 export type KanbanLimits = typeof KANBAN_LIMITS;
