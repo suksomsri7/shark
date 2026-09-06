@@ -22,7 +22,7 @@ const chk = (id: string, n: string, ok: boolean, e: string, a: string, s: Sev = 
 const fails = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error; } };
 const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const bkk = (d: Date) => new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 10); // YYYY-MM-DD ตามเวลาไทย
-let restore: { id: string; dueAt: Date | null }[] = []; let leaveId = "";
+let restore: { id: string; dueAt: Date | null }[] = [];
 try {
   const scope = await kq.resolveKanbanScope(prisma);
   if (!scope) throw new Error("ยังไม่ได้ seed");
@@ -69,11 +69,8 @@ try {
   chk("K2.2-S2.3", "thana (ไม่มีสิทธิ์) ลากไม่ได้ → throw", !!eV, "throw", "ไม่ throw");
 
   // ═══ S3 งานจากระบบอื่น (อ่านอย่างเดียว) ═══
-  const hrSys = await prisma.appSystem.findFirst({ where: { tenantId: tid, type: "HR" }, select: { id: true } });
-  if (hrSys) {
-    const lv = await (prisma as Any).hrLeave.create({ data: { tenantId: tid, systemId: hrSys.id, userId: E.users.staff.thana.userId, type: "SICK", startAt: kq.dayFromToday(2, 0), endAt: kq.dayFromToday(3, 0), status: "APPROVED", reason: "QC K2.2" } }).catch(() => null);
-    leaveId = lv?.id ?? "";
-  }
+  // ร้าน QC บอร์ดงานไม่มีระบบ HR/นัดหมาย → external ว่างได้ · ถ้ามี (ร้านจริง) ต้องมีโครงครบ (HrLeave ผูก employeeId/fromDate — ไม่ seed ที่นี่)
+  const hrSys = await prisma.appSystem.findFirst({ where: { tenantId: tid, type: { in: ["HR", "APPOINTMENT", "HOTEL"] as Any } }, select: { id: true } }).catch(() => null);
   const cX2 = await cal.listBoardCalendar(ctxO, owner, board, { from, to, now: NOW, includeExternal: true });
   const ext = Object.values(cX2.days).flatMap((d: Any) => d.external);
   chk("K2.2-S3.1", "external มีรายการจริง (ลา/นัด/เข้าพัก) เมื่อร้านมีข้อมูล · แต่ละรายการมี kind + title ไทย + href ไปหน้าต้นทาง (ไม่มี HR = ข้อนี้ถือว่าผ่านเมื่อ external ว่างและไม่ error)", hrSys ? ext.length >= 1 && ext.every((e: Any) => typeof e.kind === "string" && typeof e.href === "string" && /[ก-๙]/.test(e.title)) : true, "มี external", `hr=${!!hrSys} ext=${ext.length}`, "MAJOR");
@@ -93,7 +90,6 @@ try {
 } finally {
   try {
     for (const r of restore) await prisma.kanbanCard.update({ where: { id: r.id }, data: { dueAt: r.dueAt } });
-    if (leaveId) await (prisma as Any).hrLeave.delete({ where: { id: leaveId } }).catch(() => {});
     const E = JSON.parse(readFileSync(kq.KQC.expectedPath, "utf8"));
     await (prisma as Any).kanbanActivity.deleteMany({ where: { boardId: E.boards.patong.id, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } });
   } catch { /* */ }
