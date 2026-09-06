@@ -49,6 +49,7 @@ try {
   // ═══ S2 ทุกการกระทำหลักมี activity ═══
   const board = E.boards.patong.id as string;
   await P.kanbanActivity.deleteMany({ where: { boardId: board } });
+  const t0 = new Date(); // ล้างแถวระดับบอร์ด (คอลัมน์/สมาชิก) ที่ oracle สร้างเองตอนจบ — ไม่งั้นค้างสะสมทุกรอบ
   const col1 = (await prisma.kanbanColumn.findMany({ where: { boardId: board, status: "ACTIVE" }, orderBy: { position: "asc" } }))!;
   const card = await svc.createCard({ tenantId: tid, systemId: SYS, columnId: col1[0]!.id, title: "QC K1.10 กิจกรรม", createdById: E.users.owner.userId });
   await cards.updateCardFields(owner, card.id, { title: "QC K1.10 กิจกรรม (แก้)", dueAt: kq.dayFromToday(2, 17) });
@@ -111,7 +112,7 @@ try {
 
   // cleanup
   await P.kanbanComment.deleteMany({ where: { cardId: card.id } });
-  await P.kanbanActivity.deleteMany({ where: { cardId: card.id } });
+  await P.kanbanActivity.deleteMany({ where: { OR: [{ cardId: card.id }, { boardId: board, createdAt: { gte: t0 } }] } });
   await prisma.kanbanCard.deleteMany({ where: { id: card.id } });
   await prisma.kanbanColumn.deleteMany({ where: { id: tmpCol.id } });
   await prisma.$executeRawUnsafe(`UPDATE "KanbanBoard" b SET "cardNoSeq" = COALESCE((SELECT MAX("cardNo") FROM "KanbanCard" c WHERE c."boardId" = b.id), 0) WHERE b.id = '${board}'`);

@@ -20,6 +20,7 @@
 import { Prisma } from "@prisma/client";
 import type { KanbanCard } from "@prisma/client";
 import { emitOutbox } from "@/lib/core/outbox";
+import { logActivity } from "./activity-log";
 import { prisma } from "./db";
 import { KANBAN_LIMITS } from "./limits";
 import { assertBoardRole, assertColumnRole } from "./members";
@@ -293,6 +294,29 @@ export async function moveCard(ctx: KanbanCtx, input: MoveCardInput): Promise<Mo
     await renumberCardSortOrder(tx, ctx, col.id);
     if (crossColumn) await renumberCardSortOrder(tx, ctx, fresh.columnId);
 
+    // K1.10 — ประวัติกิจกรรมใน tx เดียวกับการย้าย (เกณฑ์เดียวกับ event: ข้ามคอลัมน์เท่านั้น
+    // ขยับลำดับในคอลัมน์เดิมไม่ใช่เรื่องที่ทีมย้อนดู และจะทำให้สายกิจกรรมท่วมเวลาจัดคิวงาน)
+    if (crossColumn) {
+      await logActivity(tx, {
+        tenantId: ctx.tenantId,
+        boardId: fresh.boardId,
+        cardId: fresh.id,
+        actorUserId: ctx.actorUserId ?? null,
+        type: "CARD_MOVED",
+        data: { fromColumnId: fresh.columnId, toColumnId: col.id },
+      });
+    }
+    if (justCompleted && completedAt) {
+      await logActivity(tx, {
+        tenantId: ctx.tenantId,
+        boardId: fresh.boardId,
+        cardId: fresh.id,
+        actorUserId: ctx.actorUserId ?? null,
+        type: "CARD_COMPLETED",
+        data: { toColumnId: col.id, completedAt: completedAt.toISOString() },
+      });
+    }
+
     // เหตุการณ์ (§7.1) — ยิงเฉพาะการย้าย "ข้ามคอลัมน์" (ขยับในคอลัมน์เดิมไม่ยิง กันคิว/ประวัติท่วม)
     if (crossColumn) {
       await emitOutbox(tx, {
@@ -411,6 +435,13 @@ export async function moveColumn(ctx: KanbanCtx, input: MoveColumnInput): Promis
     const position = keyBetween(prev, next);
     await tx.kanbanColumn.update({ where: { id: input.columnId }, data: { position } });
     await renumberColumnSortOrder(tx, ctx, boardId);
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId,
+      actorUserId: ctx.actorUserId ?? null,
+      type: "COLUMN_MOVED",
+      data: { columnId: input.columnId, placedAt },
+    });
     return { ok: true as const, position, placedAt };
   }, TX_OPTS);
 }
@@ -424,7 +455,7 @@ export async function moveColumn(ctx: KanbanCtx, input: MoveColumnInput): Promis
  *   — ยึดสัญญา WO เพราะ "คอลัมน์นี้ไม่ใช่คอลัมน์เสร็จอีกต่อไป" แล้วการ์ดยังมีเวลาปิดงานค้างอยู่ = รายงานเพี้ยนกว่า)
  */
 export async function setColumnDone(ctx: KanbanCtx, columnId: string, isDone: boolean): Promise<{ ok: true }> {
-  await assertColumnRole(ctx, columnId, "ADMIN");
+  const { boardId } = await assertColumnRole(ctx, columnId, "ADMIN");
   await prisma.$transaction(async (tx) => {
     await tx.kanbanColumn.updateMany({
       where: { id: columnId, tenantId: ctx.tenantId, systemId: ctx.systemId },
@@ -440,32 +471,61 @@ export async function setColumnDone(ctx: KanbanCtx, columnId: string, isDone: bo
       },
       data: { completedAt: isDone ? new Date() : null },
     });
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId,
+      actorUserId: ctx.actorUserId ?? null,
+      type: "COLUMN_UPDATED",
+      data: { columnId, fields: ["isDoneColumn"], isDoneColumn: isDone },
+    });
   }, TX_OPTS);
   return { ok: true };
 }
 
 /** เพดานงานพร้อมกันของคอลัมน์ (ADMIN) — `null` = ไม่จำกัด · ต้องเป็นจำนวนเต็ม ≥ 1 */
 export async function setColumnWip(ctx: KanbanCtx, columnId: string, wipLimit: number | null): Promise<{ ok: true }> {
-  await assertColumnRole(ctx, columnId, "ADMIN");
+  const { boardId } = await assertColumnRole(ctx, columnId, "ADMIN");
   if (wipLimit !== null && (!Number.isInteger(wipLimit) || wipLimit < 1)) {
     throw new Error("จำนวนงานพร้อมกันต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป (เว้นว่าง = ไม่จำกัด)");
   }
-  await prisma.kanbanColumn.updateMany({
-    where: { id: columnId, tenantId: ctx.tenantId, systemId: ctx.systemId },
-    data: { wipLimit },
+  await prisma.$transaction(async (tx) => {
+    await tx.kanbanColumn.updateMany({
+      where: { id: columnId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+      data: { wipLimit },
+    });
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId,
+      actorUserId: ctx.actorUserId ?? null,
+      type: "COLUMN_UPDATED",
+      data: { columnId, fields: ["wipLimit"], wipLimit },
+    });
   });
   return { ok: true };
 }
 
 /** เปลี่ยนชื่อคอลัมน์ (EDITOR ตาม D16) */
 export async function renameColumn(ctx: KanbanCtx, columnId: string, name: string): Promise<{ ok: true }> {
-  await assertColumnRole(ctx, columnId, "EDITOR");
+  const { boardId } = await assertColumnRole(ctx, columnId, "EDITOR");
   const clean = name.trim();
   if (clean.length < 1) throw new Error("ตั้งชื่อคอลัมน์ก่อนจึงบันทึกได้");
   if (clean.length > 60) throw new Error("ชื่อคอลัมน์ยาวได้ไม่เกิน 60 ตัวอักษร");
-  await prisma.kanbanColumn.updateMany({
-    where: { id: columnId, tenantId: ctx.tenantId, systemId: ctx.systemId },
-    data: { name: clean },
+  await prisma.$transaction(async (tx) => {
+    const before = await tx.kanbanColumn.findFirst({
+      where: { id: columnId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+      select: { name: true },
+    });
+    await tx.kanbanColumn.updateMany({
+      where: { id: columnId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+      data: { name: clean },
+    });
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId,
+      actorUserId: ctx.actorUserId ?? null,
+      type: "COLUMN_UPDATED",
+      data: { columnId, fields: ["name"], from: before?.name ?? null, name: clean },
+    });
   });
   return { ok: true };
 }
@@ -487,11 +547,22 @@ export async function archiveColumn(ctx: KanbanCtx, columnId: string): Promise<{
       where: { boardId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ACTIVE" },
     });
     if (active <= 1) throw new Error("เก็บคอลัมน์สุดท้ายของบอร์ดไม่ได้ — บอร์ดต้องมีอย่างน้อย 1 คอลัมน์");
+    const before = await tx.kanbanColumn.findFirst({
+      where: { id: columnId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+      select: { name: true },
+    });
     await tx.kanbanColumn.updateMany({
       where: { id: columnId, tenantId: ctx.tenantId, systemId: ctx.systemId },
       data: { status: "ARCHIVED", archivedAt: new Date() },
     });
     await renumberColumnSortOrder(tx, ctx, boardId);
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId,
+      actorUserId: ctx.actorUserId ?? null,
+      type: "COLUMN_ARCHIVED",
+      data: { columnId, name: before?.name ?? null },
+    });
   }, TX_OPTS);
   return { ok: true };
 }
@@ -544,6 +615,18 @@ export async function moveAllCards(
     }
     await renumberCardSortOrder(tx, ctx, target.id);
     await renumberCardSortOrder(tx, ctx, input.fromColumnId);
+    // K1.10 — ย้ายทั้งคอลัมน์ = การ์ดใบละแถว (ประวัติของ "การ์ดใบนั้น" ต้องบอกได้ว่าเคยย้ายจากไหนไปไหน
+    // แม้จะเกิดจากคำสั่งเดียวของผู้ดูแล) · ใบละ ≤1 แถว ไม่ใช่ต่อรายการย่อย จึงไม่ทำให้สายท่วม
+    for (const card of cards) {
+      await logActivity(tx, {
+        tenantId: ctx.tenantId,
+        boardId,
+        cardId: card.id,
+        actorUserId: ctx.actorUserId ?? null,
+        type: "CARD_MOVED",
+        data: { fromColumnId: input.fromColumnId, toColumnId: target.id, bulk: true },
+      });
+    }
     return { moved: cards.length };
   }, TX_OPTS);
 }

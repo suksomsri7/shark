@@ -124,6 +124,61 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: "[data-testid=card]" }, { wait: 500 }],
     },
   ],
+  // K1.10 — ความเห็นและกิจกรรม (บล็อกล่างของภาพ 03) + แผงประวัติกิจกรรมของบอร์ด
+  // 🔴 ลำดับสเปคมีความหมาย: ใบแรกโพสต์ความเห็นจริงลงฐานข้อมูล ใบถัด ๆ ไปจึงเห็นทั้งความเห็นและกิจกรรม
+  //    (การย้าย/มอบหมายถูกทำไว้ก่อนเปิดเบราว์เซอร์ด้านล่าง แล้วคืนสภาพทั้งหมดหลังถ่ายเสร็จ)
+  "1.10": [
+    {
+      name: "timeline-all",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`,
+      note: "แท็บ 'ทั้งหมด' — ความเห็นที่เพิ่งเขียน + กิจกรรม (ย้ายคอลัมน์ · มอบหมาย) เรียงล่าสุดบน",
+      expect: ["[data-testid=timeline]", "[data-testid=timeline-filter]", "[data-testid=activity]"],
+      steps: [
+        { waitFor: "[data-testid=card-back]" },
+        { waitFor: "[data-testid=timeline]" },
+        { fill: "[data-testid=comment-input]", value: "ยืนยันกับลูกค้าแล้ว เริ่มงานพรุ่งนี้เช้า" },
+        { press: "Enter" },
+        { wait: 1500 },
+      ],
+    },
+    {
+      name: "timeline-comments",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`,
+      onlyDevice: "desktop",
+      note: "แท็บ 'ความเห็น' — เหลือเฉพาะความเห็น (ไม่มีแถวกิจกรรม)",
+      expect: ["[data-testid=comment]"],
+      steps: [
+        { waitFor: "[data-testid=timeline-filter]" },
+        { click: "[data-testid=timeline-filter] button:nth-child(2)" },
+        { wait: 1200 },
+      ],
+    },
+    {
+      name: "timeline-activity",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`,
+      onlyDevice: "desktop",
+      note: "แท็บ 'กิจกรรม' — เหลือเฉพาะประโยคไทย (ย้ายจาก… ไป… · มอบหมายให้… · เขียนความเห็น)",
+      expect: ["[data-testid=activity]"],
+      steps: [
+        { waitFor: "[data-testid=timeline-filter]" },
+        { click: "[data-testid=timeline-filter] button:nth-child(3)" },
+        { wait: 1200 },
+      ],
+    },
+    {
+      name: "board-activity-panel",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      note: "เมนู ⋯ › ประวัติกิจกรรมของบอร์ด — แผงขวา (ทุกการ์ด + ระดับบอร์ด)",
+      expect: ["[data-testid=board-activity]", "[data-testid=activity]"],
+      steps: [
+        { waitFor: "[data-testid=board-header]" },
+        { click: '[aria-label="เมนูบอร์ด"]' },
+        { wait: 300 },
+        { click: "[data-testid=board-activity-open]" },
+        { wait: 1500 },
+      ],
+    },
+  ],
   "1.12": [
     { name: "boards-home-new", path: `/app/sys/${SYS}/kanban/boards`, note: "เทียบ mockup 01: ดาว · จัดกลุ่มสาขา · แถวเทมเพลต", expect: ["[data-testid=boards-starred]", "[data-testid=templates-row]"] },
   ],
@@ -145,6 +200,28 @@ const token = "kb" + Math.random().toString(36).slice(2) + Date.now().toString(3
 const ttl = new Date(Date.now() + 60 * 60 * 1000);
 await prisma.session.create({ data: { userId: user.id, tokenHash: sha256(token), userAgent: UA, idleExpiresAt: ttl, expiresAt: ttl } });
 
+// ── K1.10: เตรียมของจริงให้มีกิจกรรมให้ถ่าย (ย้ายคอลัมน์ + มอบหมาย) แล้วจำสภาพเดิมไว้คืนทีหลัง ──
+// 🔴 ทุกอย่างผ่าน service จริง ไม่ใช่ยัดแถวเอง — ประวัติที่ถ่ายจึงเป็นของที่ระบบเขียนเองทั้งหมด
+const KB110 = { at: new Date(), cardId: "", fromColumnId: "", assignees: [] as string[] };
+if (WO === "1.10") {
+  const moves = (await import("@/lib/modules/kanban/moves" as string)) as Any;
+  const cardsSvc = (await import("@/lib/modules/kanban/cards" as string)) as Any;
+  const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  KB110.cardId = E.boards.patong.cardIds[6];
+  const before = await prisma.kanbanCard.findUnique({ where: { id: KB110.cardId }, select: { columnId: true } });
+  KB110.fromColumnId = before?.columnId ?? "";
+  KB110.assignees = await cardsSvc.listCardAssignees(ctx, KB110.cardId);
+  const cols = await prisma.kanbanColumn.findMany({
+    where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" },
+    orderBy: [{ position: "asc" }, { sortOrder: "asc" }],
+    select: { id: true },
+  });
+  const target = cols.find((c) => c.id !== KB110.fromColumnId);
+  if (target) await moves.moveCard(ctx, { cardId: KB110.cardId, toColumnId: target.id, force: true });
+  await cardsSvc.setCardAssignees(ctx, KB110.cardId, [E.users.staff.pook.userId]);
+  console.log(`🧪 เตรียม K1.10: ย้ายการ์ด + มอบหมาย (คืนสภาพหลังถ่ายเสร็จ)`);
+}
+
 let failures = 0;
 const shots: string[] = [];
 try {
@@ -160,9 +237,14 @@ try {
       ? [{ name: "__Host-shark_session", value: token, url: BASE, path: "/", secure: true }, { name: "shark_tenant", value: E.tenantId, url: BASE, path: "/", secure: true }]
       : [{ name: "shark_session", value: token, domain: host, path: "/" }, { name: "shark_tenant", value: E.tenantId, domain: host, path: "/" }];
     for (const spec of specs) {
-      for (const [device, w, h] of [["desktop", 1440, 900], ["mobile", 390, 844]] as const) {
+      // KQC_VIEWPORTS="ipad-portrait:820x1180,ipad-landscape:1180x820" ใช้แทนชุดปริยาย (เช่น ถ่ายจอ iPad ของ WebView แอป) · KQC_UA ต่อท้าย user agent
+      const viewports: readonly (readonly [string, number, number])[] = process.env.KQC_VIEWPORTS
+        ? process.env.KQC_VIEWPORTS.split(",").map((v) => { const [name, wh] = v.split(":"); const [w, h] = wh!.split("x").map(Number); return [name!, w!, h!] as const; })
+        : ([["desktop", 1440, 900], ["mobile", 390, 844]] as const);
+      for (const [device, w, h] of viewports) {
         if (spec.onlyDevice && spec.onlyDevice !== device) continue;
         const page = await browser.newPage();
+        if (process.env.KQC_UA) await page.setUserAgent(`${await browser.userAgent()} ${process.env.KQC_UA}`);
         await page.setViewport({ width: w, height: h, deviceScaleFactor: 2, isMobile: device === "mobile", hasTouch: device === "mobile" });
         await page.setCookie(...cookies);
         const errors: string[] = [];
@@ -222,6 +304,19 @@ try {
     if (rows.length) await prisma.fileAsset.deleteMany({ where: { id: { in: rows.map((r: Any) => r.fileId) } } });
     await prisma.kanbanCard.updateMany({ where: { id: cardId }, data: { coverFileId: null } });
     console.log(`🧹 คืนสภาพ K1.9: ลบไฟล์แนบ ${rows.length} รายการ + ล้าง coverFileId ของการ์ด ${cardId}`);
+  }
+  // K1.10 — คืนสภาพ seed: ย้ายการ์ดกลับคอลัมน์เดิม · คืนผู้รับผิดชอบเดิม · ลบความเห็นที่เขียนระหว่างถ่าย
+  // · แล้วค่อยลบแถวกิจกรรมทุกใบที่เกิดขึ้นในรอบนี้ (ทั้งของงานจริงและของขั้นคืนสภาพเอง)
+  if (WO === "1.10" && KB110.cardId) {
+    const P = prisma as Any;
+    const moves = (await import("@/lib/modules/kanban/moves" as string)) as Any;
+    const cardsSvc = (await import("@/lib/modules/kanban/cards" as string)) as Any;
+    const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+    if (KB110.fromColumnId) await moves.moveCard(ctx, { cardId: KB110.cardId, toColumnId: KB110.fromColumnId, force: true });
+    await cardsSvc.setCardAssignees(ctx, KB110.cardId, KB110.assignees);
+    const cm = await P.kanbanComment.deleteMany({ where: { cardId: KB110.cardId, createdAt: { gte: KB110.at } } });
+    const ac = await P.kanbanActivity.deleteMany({ where: { boardId: B("patong"), createdAt: { gte: KB110.at } } });
+    console.log(`🧹 คืนสภาพ K1.10: การ์ดกลับคอลัมน์เดิม · ผู้รับผิดชอบ ${KB110.assignees.length} คน · ลบความเห็น ${cm.count} · ลบกิจกรรม ${ac.count}`);
   }
 } finally {
   const { count } = await prisma.session.deleteMany({ where: { userAgent: UA } });

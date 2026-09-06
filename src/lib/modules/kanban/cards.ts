@@ -6,6 +6,7 @@
 
 import type { KanbanCard, Prisma } from "@prisma/client";
 import { KanbanNotFoundError } from "./access";
+import { logActivity } from "./activity-log";
 import { listAttachments } from "./attachments";
 import { getCardChecklists } from "./checklists";
 import { prisma } from "./db";
@@ -55,13 +56,14 @@ async function writeAssignees(
   ctx: KanbanCtx,
   cardId: string,
   userIds: string[],
-): Promise<{ added: string[] }> {
+): Promise<{ added: string[]; removed: string[] }> {
   const before = await tx.kanbanCardAssignee.findMany({ where: { cardId }, select: { userId: true } });
   const had = new Set(before.map((r) => r.userId));
   await tx.kanbanCardAssignee.deleteMany({
     where: { cardId, userId: { notIn: userIds.length ? userIds : ["__none__"] } },
   });
   const added = userIds.filter((u) => !had.has(u));
+  const removed = [...had].filter((u) => !userIds.includes(u));
   if (added.length > 0) {
     await tx.kanbanCardAssignee.createMany({
       data: added.map((userId) => ({
@@ -74,7 +76,7 @@ async function writeAssignees(
     });
   }
   await tx.kanbanCard.update({ where: { id: cardId }, data: { assigneeUserId: userIds[0] ?? null } });
-  return { added };
+  return { added, removed };
 }
 
 /**
@@ -91,7 +93,12 @@ export async function setCardAssignees(
   const ids = [...new Set(userIds)];
   await assertMembers(ctx.tenantId, ids);
 
-  const { added } = await prisma.$transaction((tx) => writeAssignees(tx, ctx, card.id, ids));
+  // K1.10: กิจกรรมเขียนใน tx เดียวกับการมอบหมาย — มอบหมายสำเร็จแต่ประวัติหายเกิดไม่ได้
+  const { added } = await prisma.$transaction(async (tx) => {
+    const result = await writeAssignees(tx, ctx, card.id, ids);
+    await logAssigneeChange(tx, ctx, card, result);
+    return result;
+  });
   for (const userId of added) {
     await notifyCardAssigned(ctx.tenantId, ctx.systemId, card, userId);
   }
@@ -118,7 +125,14 @@ export async function syncSingleAssignee(
   cardId: string,
   assigneeUserId: string | null,
 ): Promise<void> {
+  const card = await prisma.kanbanCard.findFirst({
+    where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+    select: { id: true, boardId: true },
+  });
+  if (!card) return;
   await prisma.$transaction(async (tx) => {
+    const before = await tx.kanbanCardAssignee.findMany({ where: { cardId }, select: { userId: true } });
+    const had = before.map((r) => r.userId);
     await tx.kanbanCardAssignee.deleteMany({
       where: { cardId, userId: { notIn: assigneeUserId ? [assigneeUserId] : ["__none__"] } },
     });
@@ -128,14 +142,38 @@ export async function syncSingleAssignee(
         skipDuplicates: true,
       });
     }
+    // K1.10: เส้นทางเก่า (createCard/updateCard/AI) ก็ต้องมีประวัติ — เขียนใน tx เดียวกันเหมือนเส้นทางใหม่
+    await logAssigneeChange(tx, ctx, card, {
+      added: assigneeUserId && !had.includes(assigneeUserId) ? [assigneeUserId] : [],
+      removed: had.filter((u) => u !== assigneeUserId),
+    });
   });
+}
+
+/**
+ * K1.10 — CARD_ASSIGNED/CARD_UNASSIGNED ของการเปลี่ยนผู้รับผิดชอบ 1 ครั้ง (เขียนใน tx ที่ส่งเข้ามา)
+ * มอบเพิ่ม 1 คน + ปลด 1 คนในคราวเดียว = 2 แถว (คนละความหมาย ไม่ยุบรวม)
+ */
+async function logAssigneeChange(
+  tx: Tx,
+  ctx: KanbanCtx,
+  card: { id: string; boardId: string },
+  change: { added: string[]; removed: string[] },
+): Promise<void> {
+  const base = { tenantId: ctx.tenantId, boardId: card.boardId, cardId: card.id, actorUserId: ctx.actorUserId ?? null };
+  if (change.added.length > 0) {
+    await logActivity(tx, { ...base, type: "CARD_ASSIGNED", data: { userIds: change.added } });
+  }
+  if (change.removed.length > 0) {
+    await logActivity(tx, { ...base, type: "CARD_UNASSIGNED", data: { userIds: change.removed } });
+  }
 }
 
 // ═══════════════════════════ K1.6: หลังการ์ด ═══════════════════════════
 // แก้ฟิลด์ · ทำสำเนา · เก็บ/กู้คืน (พิมพ์เขียว §5.3 · KANBAN-RUN §K1.6)
 // 🔴 ทุกตัวผ่าน `assertCardRole`/`assertBoardRole` ก่อนเสมอ (404 มองไม่เห็น · 403 ต่ำกว่า EDITOR)
-// 🔴 TODO(K1.10): เมื่อ `KanbanActivity` มาแล้ว ทุกฟังก์ชันในบล็อกนี้ต้อง `logActivity` ในทรานแซกชันเดียวกัน
-//    (UPDATED/DUE_SET/ARCHIVED/RESTORED) — ยังไม่มีตารางนี้ในโมดูลตอนนี้ จึงยังไม่เขียน
+// 🔴 K1.10: ทุกฟังก์ชันที่เขียนในบล็อกนี้ `logActivity` ใน **ทรานแซกชันเดียวกับงาน**
+//    (UPDATED/DUE_SET/CREATED/ARCHIVED/RESTORED) — ของเดิมเป็น update เดี่ยว ๆ จึงถูกห่อ tx เพิ่มให้
 
 /**
  * ส่วนของการ์ดที่หน้าบอร์ดไม่ดึงมา (description/startAt/reminder/สถานะคลัง) — `CardBack` เรียกตอนเปิด
@@ -199,7 +237,7 @@ export async function updateCardFields(
   cardId: string,
   input: UpdateCardFieldsInput,
 ): Promise<KanbanCard> {
-  await assertCardRole(ctx, cardId, "EDITOR");
+  const { boardId } = await assertCardRole(ctx, cardId, "EDITOR");
   const before = await prisma.kanbanCard.findFirst({
     where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
     select: { id: true, dueAt: true, startAt: true },
@@ -234,7 +272,22 @@ export async function updateCardFields(
     }
   }
 
-  return prisma.kanbanCard.update({ where: { id: before.id }, data });
+  // K1.10 — 2 แถวจากการกดบันทึกครั้งเดียวได้ (เช่นแก้ชื่อ + ตั้งกำหนดส่ง): CARD_UPDATED บอกว่า
+  // "แตะฟิลด์ไหนบ้าง" ส่วน CARD_DUE_SET เป็นชนิดของตัวเองเพราะกำหนดส่งคือสิ่งที่ทีมตามหาในประวัติบ่อยที่สุด
+  const fields = Object.keys(input).filter((k) => input[k as keyof UpdateCardFieldsInput] !== undefined);
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.kanbanCard.update({ where: { id: before.id }, data });
+    const base = { tenantId: ctx.tenantId, boardId, cardId: before.id, actorUserId: ctx.actorUserId ?? null };
+    if (fields.length > 0) await logActivity(tx, { ...base, type: "CARD_UPDATED", data: { fields } });
+    if (input.dueAt !== undefined) {
+      await logActivity(tx, {
+        ...base,
+        type: "CARD_DUE_SET",
+        data: { dueAt: input.dueAt ? input.dueAt.toISOString() : null },
+      });
+    }
+    return row;
+  });
 }
 
 /**
@@ -325,6 +378,14 @@ export async function duplicateCard(ctx: KanbanCtx, cardId: string): Promise<Kan
         });
       }
     }
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId: original.boardId,
+      cardId: row.id,
+      actorUserId: ctx.actorUserId ?? null,
+      type: "CARD_CREATED",
+      data: { title: row.title, columnId: row.columnId, duplicatedFromCardId: original.id },
+    });
     return row;
   });
 
@@ -333,12 +394,21 @@ export async function duplicateCard(ctx: KanbanCtx, cardId: string): Promise<Kan
 
 /** เก็บการ์ดเข้าคลัง (ห้ามใช้คำว่า "ลบ" — §12.3) */
 export async function archiveCard(ctx: KanbanCtx, cardId: string): Promise<KanbanCard> {
-  await assertCardRole(ctx, cardId, "EDITOR");
-  await prisma.kanbanCard.updateMany({
-    where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ACTIVE" },
-    data: { status: "ARCHIVED", archivedAt: new Date(), archivedById: ctx.actorUserId ?? null },
+  const { boardId } = await assertCardRole(ctx, cardId, "EDITOR");
+  return prisma.$transaction(async (tx) => {
+    await tx.kanbanCard.updateMany({
+      where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ACTIVE" },
+      data: { status: "ARCHIVED", archivedAt: new Date(), archivedById: ctx.actorUserId ?? null },
+    });
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId,
+      cardId,
+      actorUserId: ctx.actorUserId ?? null,
+      type: "CARD_ARCHIVED",
+    });
+    return tx.kanbanCard.findFirstOrThrow({ where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
   });
-  return prisma.kanbanCard.findFirstOrThrow({ where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
 }
 
 /**
@@ -375,11 +445,21 @@ export async function restoreCard(ctx: KanbanCtx, cardId: string): Promise<Kanba
   });
   const position = keyBetween(last?.position ?? null, null);
 
-  await prisma.kanbanCard.updateMany({
-    where: { id: card.id, tenantId: ctx.tenantId, systemId: ctx.systemId },
-    data: { status: "ACTIVE", archivedAt: null, archivedById: null, columnId: targetColumnId, position },
+  return prisma.$transaction(async (tx) => {
+    await tx.kanbanCard.updateMany({
+      where: { id: card.id, tenantId: ctx.tenantId, systemId: ctx.systemId },
+      data: { status: "ACTIVE", archivedAt: null, archivedById: null, columnId: targetColumnId, position },
+    });
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId: card.boardId,
+      cardId: card.id,
+      actorUserId: ctx.actorUserId ?? null,
+      type: "CARD_RESTORED",
+      data: { columnId: targetColumnId },
+    });
+    return tx.kanbanCard.findFirstOrThrow({ where: { id: card.id, tenantId: ctx.tenantId, systemId: ctx.systemId } });
   });
-  return prisma.kanbanCard.findFirstOrThrow({ where: { id: card.id, tenantId: ctx.tenantId, systemId: ctx.systemId } });
 }
 
 export type ArchivedCardRow = {

@@ -174,3 +174,69 @@ export type BoardViewDto = {
   /** เวลาอ้างอิงตอนเรนเดอร์ (ISO) — ส่งมาจาก server เพื่อให้ป้ายกำหนดส่งของ server/client ตรงกันเป๊ะ */
   now: string;
 };
+
+// ───────────────────────── K1.10: ประวัติกิจกรรม + สายรวม ─────────────────────────
+// 🔴 DTO ชุดนี้ต้อง serialize ข้าม RSC/server action ได้ (ไม่มี Date/Prisma model) — วันที่เป็น ISO string
+// 🔴 `data` เก็บ **id** (คอลัมน์/ป้าย/คน) ส่วน `names` คือชื่อที่ service resolve มาให้แล้วแบบ batch
+//    ⇒ จอเรนเดอร์ประโยคไทยได้ทันทีโดยไม่ยิงคำขอเพิ่มรายแถว (กัน N+1 ที่หน้าจอ)
+
+/** ชนิดกิจกรรม — ตรงกับ enum `KanbanActivityType` ใน Prisma (เขียนซ้ำที่นี่ให้ฝั่ง client ไม่ต้องรู้จัก prisma) */
+export type KanbanActivityKind =
+  | "BOARD_CREATED"
+  | "BOARD_UPDATED"
+  | "BOARD_ARCHIVED"
+  | "MEMBER_ADDED"
+  | "MEMBER_ROLE_CHANGED"
+  | "MEMBER_REMOVED"
+  | "COLUMN_CREATED"
+  | "COLUMN_UPDATED"
+  | "COLUMN_MOVED"
+  | "COLUMN_ARCHIVED"
+  | "CARD_CREATED"
+  | "CARD_UPDATED"
+  | "CARD_MOVED"
+  | "CARD_ASSIGNED"
+  | "CARD_UNASSIGNED"
+  | "CARD_DUE_SET"
+  | "CARD_LABELED"
+  | "CARD_UNLABELED"
+  | "CARD_ARCHIVED"
+  | "CARD_RESTORED"
+  | "CARD_COMPLETED"
+  | "CHECKLIST_ITEM_DONE"
+  | "COMMENT_ADDED"
+  | "ATTACHMENT_ADDED";
+
+/** ชื่อที่ resolve มาแล้วสำหรับเรนเดอร์ประโยคไทย (ไม่มี = อ้างของที่ถูกลบไปแล้ว → ประโยคจะเลี่ยงชื่อเอง) */
+export type KanbanActivityNames = {
+  fromColumn?: string;
+  toColumn?: string;
+  column?: string;
+  users?: string[];
+  labels?: string[];
+  card?: string;
+};
+
+export type KanbanActivityDto = {
+  id: string;
+  type: KanbanActivityKind;
+  boardId: string;
+  /** null = กิจกรรมระดับบอร์ด (คอลัมน์/สมาชิก/บอร์ดเอง) */
+  cardId: string | null;
+  /** null = ระบบเป็นคนทำ (cron/automation/นำเข้า) */
+  actor: { userId: string; name: string } | null;
+  data: Record<string, unknown>;
+  names: KanbanActivityNames;
+  createdAt: string;
+};
+
+/** 1 แถวของ "สายรวม" ในหลังการ์ด — ความเห็น 1 ใบ หรือกิจกรรม 1 รายการ (เรียงล่าสุดก่อนเสมอ) */
+export type KanbanTimelineItemDto =
+  | { kind: "comment"; id: string; createdAt: string; comment: KanbanCommentDto }
+  | { kind: "activity"; id: string; createdAt: string; activity: KanbanActivityDto };
+
+/** ตัวกรองแท็บของสายรวม (ทั้งหมด / ความเห็น / กิจกรรม) */
+export type KanbanTimelineFilter = "all" | "comments" | "activity";
+
+/** ผลลัพธ์แบบแบ่งหน้าของทุกฟังก์ชันอ่านใน `activity.ts` — `nextCursor` = null คือหมดแล้ว */
+export type KanbanPage<T> = { items: T[]; nextCursor: string | null };

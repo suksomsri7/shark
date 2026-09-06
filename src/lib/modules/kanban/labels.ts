@@ -9,6 +9,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { KanbanLabelColor } from "@prisma/client";
+import { logActivity } from "./activity-log";
 import { prisma } from "./db";
 import { KANBAN_LIMITS } from "./limits";
 import type { KanbanCtx } from "./types";
@@ -222,6 +223,10 @@ export async function setCardLabels(ctx: KanbanCtx, cardId: string, labelIds: st
   }
 
   return prisma.$transaction(async (tx) => {
+    // K1.10: อ่าน "ป้ายเดิม" ในทรานแซกชันเดียวกันก่อนเขียน แล้วบันทึกส่วนต่างเป็นกิจกรรม
+    const had = (await tx.kanbanCardLabel.findMany({ where: { cardId: card.id }, select: { labelId: true } })).map(
+      (r) => r.labelId,
+    );
     await tx.kanbanCardLabel.deleteMany({ where: { cardId: card.id, labelId: { notIn: ids.length ? ids : ["__none__"] } } });
     if (ids.length > 0) {
       await tx.kanbanCardLabel.createMany({
@@ -229,8 +234,27 @@ export async function setCardLabels(ctx: KanbanCtx, cardId: string, labelIds: st
         skipDuplicates: true,
       });
     }
+    await logLabelChange(tx, ctx, card, had, ids);
     return syncCardLabelJson(tx, card.id);
   });
+}
+
+/**
+ * K1.10 — CARD_LABELED / CARD_UNLABELED ของการเปลี่ยนป้าย 1 ครั้ง (เขียนใน tx ที่ส่งเข้ามา)
+ * เก็บ **labelIds** ไม่ใช่ชื่อ: ป้ายถูกเปลี่ยนชื่อทีหลัง ประวัติต้องขึ้นชื่อใหม่ ไม่ใช่ค้างชื่อเก่า
+ */
+async function logLabelChange(
+  tx: Tx,
+  ctx: KanbanCtx,
+  card: { id: string; boardId: string },
+  before: string[],
+  after: string[],
+): Promise<void> {
+  const added = after.filter((id) => !before.includes(id));
+  const removed = before.filter((id) => !after.includes(id));
+  const base = { tenantId: ctx.tenantId, boardId: card.boardId, cardId: card.id, actorUserId: ctx.actorUserId ?? null };
+  if (added.length > 0) await logActivity(tx, { ...base, type: "CARD_LABELED", data: { labelIds: added } });
+  if (removed.length > 0) await logActivity(tx, { ...base, type: "CARD_UNLABELED", data: { labelIds: removed } });
 }
 
 /**
@@ -246,8 +270,12 @@ export async function applyCardLabelNames(
   const wanted = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
   if (wanted.length === 0) {
     await prisma.$transaction(async (tx) => {
+      const had = (await tx.kanbanCardLabel.findMany({ where: { cardId: card.id }, select: { labelId: true } })).map(
+        (r) => r.labelId,
+      );
       await tx.kanbanCardLabel.deleteMany({ where: { cardId: card.id } });
       await tx.kanbanCard.update({ where: { id: card.id }, data: { labels: [] } });
+      await logLabelChange(tx, ctx, card, had, []);
     });
     return;
   }
@@ -280,6 +308,9 @@ export async function applyCardLabelNames(
   }
   const ids = wanted.map((n) => byName.get(n)).filter((v): v is string => typeof v === "string");
   await prisma.$transaction(async (tx) => {
+    const had = (await tx.kanbanCardLabel.findMany({ where: { cardId: card.id }, select: { labelId: true } })).map(
+      (r) => r.labelId,
+    );
     await tx.kanbanCardLabel.deleteMany({ where: { cardId: card.id, labelId: { notIn: ids.length ? ids : ["__none__"] } } });
     if (ids.length > 0) {
       await tx.kanbanCardLabel.createMany({
@@ -287,6 +318,7 @@ export async function applyCardLabelNames(
         skipDuplicates: true,
       });
     }
+    await logLabelChange(tx, ctx, card, had, ids);
     // 🔴 Json = ชื่อที่ผู้เรียกส่งมา (ไม่ใช่ชื่อจากแถวเชื่อม) — ชื่อที่สร้างไม่ได้เพราะชนเพดานต้องไม่หายไปเงียบ ๆ
     await tx.kanbanCard.update({ where: { id: card.id }, data: { labels: wanted } });
   });

@@ -8,6 +8,7 @@
 
 import type { KanbanBoardRole, KanbanBoardVisibility } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
+import { logActivity } from "./activity-log";
 import { prisma } from "./db";
 import { KANBAN_LIMITS } from "./limits";
 import {
@@ -207,12 +208,23 @@ export async function addMember(
       throw new Error(`บอร์ดนี้มีสมาชิกครบ ${KANBAN_LIMITS.membersPerBoard} คนแล้ว — ถอดคนที่ไม่ได้ใช้ก่อน`);
     }
   }
-  const row = existing
-    ? await prisma.kanbanBoardMember.update({ where: { id: existing.id }, data: { role }, select: { userId: true, role: true } })
-    : await prisma.kanbanBoardMember.create({
-        data: { tenantId: ctx.tenantId, boardId: board.id, userId, role, invitedById: ctx.actorUserId ?? null },
-        select: { userId: true, role: true },
-      });
+  // K1.10: แถวสมาชิก + ประวัติกิจกรรมใน tx เดียวกัน · เชิญคนที่อยู่แล้ว = "เปลี่ยนบทบาท" ไม่ใช่ "เพิ่มคน"
+  const row = await prisma.$transaction(async (tx) => {
+    const written = existing
+      ? await tx.kanbanBoardMember.update({ where: { id: existing.id }, data: { role }, select: { userId: true, role: true } })
+      : await tx.kanbanBoardMember.create({
+          data: { tenantId: ctx.tenantId, boardId: board.id, userId, role, invitedById: ctx.actorUserId ?? null },
+          select: { userId: true, role: true },
+        });
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId: board.id,
+      actorUserId: ctx.actorUserId ?? null,
+      type: existing ? "MEMBER_ROLE_CHANGED" : "MEMBER_ADDED",
+      data: existing ? { userId, from: existing.role, to: role } : { userId, role },
+    });
+    return written;
+  });
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: "USER",
@@ -253,14 +265,23 @@ export async function grantViewerForMention(
 
   const count = await prisma.kanbanBoardMember.count({ where: { boardId: board.id } });
   if (count >= KANBAN_LIMITS.membersPerBoard) return false; // บอร์ดเต็ม → แจ้งเตือนอย่างเดียว ไม่ให้สิทธิ์
-  await prisma.kanbanBoardMember.create({
-    data: {
+  await prisma.$transaction(async (tx) => {
+    await tx.kanbanBoardMember.create({
+      data: {
+        tenantId: ctx.tenantId,
+        boardId: board.id,
+        userId,
+        role: "VIEWER",
+        invitedById: ctx.actorUserId ?? null,
+      },
+    });
+    await logActivity(tx, {
       tenantId: ctx.tenantId,
       boardId: board.id,
-      userId,
-      role: "VIEWER",
-      invitedById: ctx.actorUserId ?? null,
-    },
+      actorUserId: ctx.actorUserId ?? null,
+      type: "MEMBER_ADDED",
+      data: { userId, role: "VIEWER", reason: "mention" },
+    });
   });
   await writeAudit({
     tenantId: ctx.tenantId,
@@ -287,9 +308,18 @@ export async function setMemberRole(
   if (!current) throw new Error("ไม่พบคนนี้ในรายชื่อสมาชิกบอร์ด");
   if (current.role === role) return;
   if (role !== "ADMIN") assertNotLastAdmin(members, userId);
-  await prisma.kanbanBoardMember.updateMany({
-    where: { boardId: board.id, tenantId: ctx.tenantId, userId },
-    data: { role },
+  await prisma.$transaction(async (tx) => {
+    await tx.kanbanBoardMember.updateMany({
+      where: { boardId: board.id, tenantId: ctx.tenantId, userId },
+      data: { role },
+    });
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId: board.id,
+      actorUserId: ctx.actorUserId ?? null,
+      type: "MEMBER_ROLE_CHANGED",
+      data: { userId, from: current.role, to: role },
+    });
   });
   await writeAudit({
     tenantId: ctx.tenantId,
@@ -310,7 +340,16 @@ export async function removeMember(ctx: KanbanCtx, boardId: string, userId: stri
   const current = members.find((m) => m.userId === userId);
   if (!current) return; // ถอดคนที่ไม่ได้อยู่ในบอร์ด = ไม่มีอะไรให้ทำ (idempotent)
   assertNotLastAdmin(members, userId);
-  await prisma.kanbanBoardMember.deleteMany({ where: { boardId: board.id, tenantId: ctx.tenantId, userId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.kanbanBoardMember.deleteMany({ where: { boardId: board.id, tenantId: ctx.tenantId, userId } });
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId: board.id,
+      actorUserId: ctx.actorUserId ?? null,
+      type: "MEMBER_REMOVED",
+      data: { userId, role: current.role },
+    });
+  });
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: "USER",
@@ -332,7 +371,16 @@ export async function leaveBoard(ctx: KanbanCtx, boardId: string): Promise<void>
   const current = members.find((m) => m.userId === userId);
   if (!current) return;
   assertNotLastAdmin(members, userId);
-  await prisma.kanbanBoardMember.deleteMany({ where: { boardId: board.id, tenantId: ctx.tenantId, userId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.kanbanBoardMember.deleteMany({ where: { boardId: board.id, tenantId: ctx.tenantId, userId } });
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId: board.id,
+      actorUserId: userId,
+      type: "MEMBER_REMOVED",
+      data: { userId, role: current.role, self: true },
+    });
+  });
   await writeAudit({
     tenantId: ctx.tenantId,
     actorType: "USER",
@@ -387,9 +435,18 @@ export async function setBoardVisibility(
 ): Promise<void> {
   const { board } = await assertBoardRole(ctx, boardId, "ADMIN");
   if (board.visibility === visibility) return;
-  await prisma.kanbanBoard.updateMany({
-    where: { id: board.id, tenantId: ctx.tenantId, systemId: ctx.systemId },
-    data: { visibility },
+  await prisma.$transaction(async (tx) => {
+    await tx.kanbanBoard.updateMany({
+      where: { id: board.id, tenantId: ctx.tenantId, systemId: ctx.systemId },
+      data: { visibility },
+    });
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId: board.id,
+      actorUserId: ctx.actorUserId ?? null,
+      type: "BOARD_UPDATED",
+      data: { fields: ["visibility"], from: board.visibility, visibility },
+    });
   });
   await writeAudit({
     tenantId: ctx.tenantId,

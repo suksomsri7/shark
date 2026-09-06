@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/core/db";
 import { Prisma } from "@prisma/client";
 import type { KanbanBoard, KanbanBoardVisibility, KanbanCard, KanbanCardSourceType, KanbanColumn, KanbanLabelColor } from "@prisma/client";
+import { logActivity } from "./activity-log";
 import { keyBetween, keysBetween } from "./ordering";
 import { applyCardLabelNames } from "./labels";
 import { syncSingleAssignee } from "./cards";
@@ -198,7 +199,9 @@ export async function createBoard(input: {
   });
   // คอลัมน์เริ่มต้นได้ position ตั้งแต่แรก ⇒ บอร์ดที่โค้ดใหม่สร้างจะไม่ถูก backfill แตะ (เครื่องหมายใน K1.1)
   const colKeys = keysBetween(null, null, DEFAULT_COLUMNS.length);
-  return prisma.kanbanBoard.create({
+  // K1.10: บอร์ด + คอลัมน์เริ่มต้น + ประวัติ "สร้างบอร์ด" อยู่ทรานแซกชันเดียวกัน
+  return prisma.$transaction(async (tx) => {
+    const board = await tx.kanbanBoard.create({
     data: {
       tenantId: input.tenantId,
       systemId: input.systemId,
@@ -218,28 +221,60 @@ export async function createBoard(input: {
           position: colKeys[i]!,
         })),
       },
-    },
+      },
+    });
+    await logActivity(tx, {
+      tenantId: input.tenantId,
+      boardId: board.id,
+      actorUserId: input.createdById ?? null,
+      type: "BOARD_CREATED",
+      data: { name: board.name, visibility: board.visibility, unitId: board.unitId },
+    });
+    return board;
   });
 }
 
-export async function renameBoard(tenantId: string, systemId: string, boardId: string, name: string) {
-  await prisma.kanbanBoard.updateMany({
-    where: { id: boardId, tenantId, systemId },
-    data: { name },
+export async function renameBoard(tenantId: string, systemId: string, boardId: string, name: string, actorUserId?: string | null) {
+  await prisma.$transaction(async (tx) => {
+    const before = await tx.kanbanBoard.findFirst({ where: { id: boardId, tenantId, systemId }, select: { name: true } });
+    if (!before) return;
+    await tx.kanbanBoard.updateMany({ where: { id: boardId, tenantId, systemId }, data: { name } });
+    await logActivity(tx, {
+      tenantId,
+      boardId,
+      actorUserId: actorUserId ?? null,
+      type: "BOARD_UPDATED",
+      data: { fields: ["name"], from: before.name, name },
+    });
   });
 }
 
-export async function archiveBoard(tenantId: string, systemId: string, boardId: string) {
-  await prisma.kanbanBoard.updateMany({
-    where: { id: boardId, tenantId, systemId },
-    data: { status: "ARCHIVED", archivedAt: new Date() },
+export async function archiveBoard(tenantId: string, systemId: string, boardId: string, actorUserId?: string | null) {
+  await prisma.$transaction(async (tx) => {
+    const { count } = await tx.kanbanBoard.updateMany({
+      where: { id: boardId, tenantId, systemId },
+      data: { status: "ARCHIVED", archivedAt: new Date() },
+    });
+    if (count === 0) return;
+    await logActivity(tx, { tenantId, boardId, actorUserId: actorUserId ?? null, type: "BOARD_ARCHIVED" });
   });
 }
 
-export async function unarchiveBoard(tenantId: string, systemId: string, boardId: string) {
-  await prisma.kanbanBoard.updateMany({
-    where: { id: boardId, tenantId, systemId },
-    data: { status: "ACTIVE", archivedAt: null },
+export async function unarchiveBoard(tenantId: string, systemId: string, boardId: string, actorUserId?: string | null) {
+  await prisma.$transaction(async (tx) => {
+    const { count } = await tx.kanbanBoard.updateMany({
+      where: { id: boardId, tenantId, systemId },
+      data: { status: "ACTIVE", archivedAt: null },
+    });
+    if (count === 0) return;
+    // ไม่มีชนิด BOARD_RESTORED ในสัญญา — ใช้ BOARD_UPDATED + `status` แล้วให้ `describeActivity` พูดว่า "กู้บอร์ดคืน"
+    await logActivity(tx, {
+      tenantId,
+      boardId,
+      actorUserId: actorUserId ?? null,
+      type: "BOARD_UPDATED",
+      data: { fields: ["status"], status: "ACTIVE" },
+    });
   });
 }
 
@@ -279,35 +314,69 @@ export async function createColumn(
   systemId: string,
   boardId: string,
   name: string,
+  actorUserId?: string | null,
 ): Promise<KanbanColumn | null> {
   const board = await prisma.kanbanBoard.findFirst({ where: { id: boardId, tenantId, systemId } });
   if (!board) return null;
   const count = await prisma.kanbanColumn.count({ where: { tenantId, systemId, boardId, status: "ACTIVE" } });
   const position = await nextPosition("column", { tenantId, systemId, scopeId: boardId });
-  return prisma.kanbanColumn.create({
-    data: { tenantId, systemId, boardId, name, sortOrder: count, position },
+  return prisma.$transaction(async (tx) => {
+    const column = await tx.kanbanColumn.create({
+      data: { tenantId, systemId, boardId, name, sortOrder: count, position },
+    });
+    await logActivity(tx, {
+      tenantId,
+      boardId,
+      actorUserId: actorUserId ?? null,
+      type: "COLUMN_CREATED",
+      data: { columnId: column.id, name: column.name },
+    });
+    return column;
   });
 }
 
-export async function renameColumn(tenantId: string, systemId: string, columnId: string, name: string) {
-  await prisma.kanbanColumn.updateMany({
-    where: { id: columnId, tenantId, systemId },
-    data: { name },
+export async function renameColumn(tenantId: string, systemId: string, columnId: string, name: string, actorUserId?: string | null) {
+  await prisma.$transaction(async (tx) => {
+    const before = await tx.kanbanColumn.findFirst({
+      where: { id: columnId, tenantId, systemId },
+      select: { boardId: true, name: true },
+    });
+    if (!before) return;
+    await tx.kanbanColumn.updateMany({ where: { id: columnId, tenantId, systemId }, data: { name } });
+    await logActivity(tx, {
+      tenantId,
+      boardId: before.boardId,
+      actorUserId: actorUserId ?? null,
+      type: "COLUMN_UPDATED",
+      data: { columnId, fields: ["name"], from: before.name, name },
+    });
   });
 }
 
 // archive คอลัมน์ + การ์ดในคอลัมน์ (atomic)
-export async function archiveColumn(tenantId: string, systemId: string, columnId: string) {
-  await prisma.$transaction([
-    prisma.kanbanCard.updateMany({
+export async function archiveColumn(tenantId: string, systemId: string, columnId: string, actorUserId?: string | null) {
+  await prisma.$transaction(async (tx) => {
+    const before = await tx.kanbanColumn.findFirst({
+      where: { id: columnId, tenantId, systemId },
+      select: { boardId: true, name: true },
+    });
+    if (!before) return;
+    await tx.kanbanCard.updateMany({
       where: { columnId, tenantId, systemId, status: "ACTIVE" },
       data: { status: "ARCHIVED", archivedAt: new Date() },
-    }),
-    prisma.kanbanColumn.updateMany({
+    });
+    await tx.kanbanColumn.updateMany({
       where: { id: columnId, tenantId, systemId },
       data: { status: "ARCHIVED", archivedAt: new Date() },
-    }),
-  ]);
+    });
+    await logActivity(tx, {
+      tenantId,
+      boardId: before.boardId,
+      actorUserId: actorUserId ?? null,
+      type: "COLUMN_ARCHIVED",
+      data: { columnId, name: before.name, withCards: true },
+    });
+  });
 }
 
 // ───────────────────────── Card ─────────────────────────
@@ -345,7 +414,7 @@ export async function createCard(input: {
     const seq = await tx.$queryRaw<{ cardNoSeq: number }[]>`
       UPDATE "KanbanBoard" SET "cardNoSeq" = "cardNoSeq" + 1 WHERE id = ${col.boardId} RETURNING "cardNoSeq"
     `;
-    return tx.kanbanCard.create({
+    const created = await tx.kanbanCard.create({
       data: {
         tenantId: input.tenantId,
         systemId: input.systemId,
@@ -365,6 +434,15 @@ export async function createCard(input: {
         createdById: input.createdById ?? null,
       },
     });
+    await logActivity(tx, {
+      tenantId: input.tenantId,
+      boardId: col.boardId,
+      cardId: created.id,
+      actorUserId: input.createdById ?? null,
+      type: "CARD_CREATED",
+      data: { title: created.title, columnId: col.id, sourceType: created.sourceType },
+    });
+    return created;
   });
   // ── K1.2 dual-write: ช่องเดิม + ตารางใหม่ต้องตรงกันเสมอ ──
   const ctx = { tenantId: input.tenantId, systemId: input.systemId, actorUserId: input.createdById ?? null };
@@ -406,9 +484,32 @@ export async function updateCard(input: {
   });
   if (!before) return;
   if (Object.keys(data).length > 0) {
-    await prisma.kanbanCard.updateMany({
-      where: { id: input.cardId, tenantId: input.tenantId, systemId: input.systemId },
-      data,
+    // K1.10: การแก้ + ประวัติอยู่ tx เดียวกัน (`labels`/`assigneeUserId` มีชนิดของตัวเองอยู่แล้ว
+    // จาก `applyCardLabelNames`/`syncSingleAssignee` ด้านล่าง — ที่นี่บันทึกเฉพาะฟิลด์ที่เขียนตรง ๆ)
+    const fields = Object.keys(data);
+    await prisma.$transaction(async (tx) => {
+      await tx.kanbanCard.updateMany({
+        where: { id: input.cardId, tenantId: input.tenantId, systemId: input.systemId },
+        data,
+      });
+      await logActivity(tx, {
+        tenantId: input.tenantId,
+        boardId: before.boardId,
+        cardId: before.id,
+        actorUserId: null,
+        type: "CARD_UPDATED",
+        data: { fields },
+      });
+      if (input.dueAt !== undefined) {
+        await logActivity(tx, {
+          tenantId: input.tenantId,
+          boardId: before.boardId,
+          cardId: before.id,
+          actorUserId: null,
+          type: "CARD_DUE_SET",
+          data: { dueAt: input.dueAt ? input.dueAt.toISOString() : null },
+        });
+      }
     });
   }
   const ctx = { tenantId: input.tenantId, systemId: input.systemId, actorUserId: null };
@@ -425,10 +526,21 @@ export async function updateCard(input: {
   }
 }
 
-export async function archiveCard(tenantId: string, systemId: string, cardId: string) {
-  await prisma.kanbanCard.updateMany({
-    where: { id: cardId, tenantId, systemId },
-    data: { status: "ARCHIVED", archivedAt: new Date() },
+export async function archiveCard(tenantId: string, systemId: string, cardId: string, actorUserId?: string | null) {
+  await prisma.$transaction(async (tx) => {
+    const before = await tx.kanbanCard.findFirst({ where: { id: cardId, tenantId, systemId }, select: { boardId: true } });
+    if (!before) return;
+    await tx.kanbanCard.updateMany({
+      where: { id: cardId, tenantId, systemId },
+      data: { status: "ARCHIVED", archivedAt: new Date() },
+    });
+    await logActivity(tx, {
+      tenantId,
+      boardId: before.boardId,
+      cardId,
+      actorUserId: actorUserId ?? null,
+      type: "CARD_ARCHIVED",
+    });
   });
 }
 
@@ -469,6 +581,14 @@ export async function moveCard(input: {
         sortOrder: (max._max.sortOrder ?? -1) + 1,
         position: keyBetween(lastInTarget?.position ?? null, null),
       },
+    });
+    await logActivity(tx, {
+      tenantId,
+      boardId: card.boardId,
+      cardId: card.id,
+      actorUserId: null,
+      type: "CARD_MOVED",
+      data: { fromColumnId: card.columnId, toColumnId: col.id },
     });
     return { ok: true };
   });

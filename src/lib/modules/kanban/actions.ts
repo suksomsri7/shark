@@ -65,8 +65,21 @@ import {
 } from "./comments";
 // K1.9 — ไฟล์แนบ + ปก (บริการอยู่ `attachments.ts` · เก็บผ่าน storage กลาง)
 import { addAttachment, attachmentBadgeOfCard, listAttachments, removeAttachment, setCover } from "./attachments";
+// K1.10 — ประวัติกิจกรรม (อ่านอย่างเดียวจากฝั่ง action · การเขียนเกิดใน tx ของงานจริงเสมอ)
+import { listBoardActivity, listCardTimeline } from "./activity";
 import { normalizeUploadType } from "@/lib/storage/service";
-import type { BoardCardDto, BoardLabelDto, CardDetailDto, KanbanAttachmentDto, KanbanChecklistDto, KanbanCommentDto, KanbanCtx } from "./types";
+import type {
+  BoardCardDto,
+  BoardLabelDto,
+  CardDetailDto,
+  KanbanActivityDto,
+  KanbanAttachmentDto,
+  KanbanChecklistDto,
+  KanbanCommentDto,
+  KanbanCtx,
+  KanbanTimelineFilter,
+  KanbanTimelineItemDto,
+} from "./types";
 
 // ทุก action: requireTenant → เอา tenantId จาก session (ไม่เชื่อ client) + scope ด้วย systemId
 
@@ -136,7 +149,7 @@ export async function renameBoardAction(input: { systemId: string; boardId: stri
   if (!input.systemId || !input.boardId || name.length < 1) return { ok: false as const, message: "ต้องมีชื่อบอร์ด" };
   // ชั้นที่ 2 (K1.3): ตั้งค่าบอร์ด = ADMIN ของบอร์ดใบนั้น · มองไม่เห็น = 404
   await assertBoardRole(ctxOf(auth, input.systemId), input.boardId, "ADMIN");
-  await renameBoard(auth.active.tenantId, input.systemId, input.boardId, name);
+  await renameBoard(auth.active.tenantId, input.systemId, input.boardId, name, auth.user.id);
   revalidatePath(boardPath(input.systemId, input.boardId));
   return { ok: true as const };
 }
@@ -160,7 +173,7 @@ export async function archiveBoardAction(formData: FormData) {
   const boardId = String(formData.get("boardId") ?? "");
   if (!systemId || !boardId) return;
   await assertBoardRole(ctxOf(auth, systemId), boardId, "ADMIN");
-  await archiveBoard(auth.active.tenantId, systemId, boardId);
+  await archiveBoard(auth.active.tenantId, systemId, boardId, auth.user.id);
   revalidatePath(`/app/sys/${systemId}`);
   redirect(`/app/sys/${systemId}`);
 }
@@ -176,7 +189,7 @@ export async function createColumnAction(formData: FormData) {
   if (!systemId || !boardId || name.length < 1) return;
   // คอลัมน์/การ์ด = EDITOR ขึ้นไป (ผู้ชมกดไม่ได้ · คนที่มองไม่เห็นบอร์ดได้ 404)
   await assertBoardRole(ctxOf(auth, systemId), boardId, "EDITOR");
-  await createColumn(auth.active.tenantId, systemId, boardId, name);
+  await createColumn(auth.active.tenantId, systemId, boardId, name, auth.user.id);
   revalidatePath(boardPath(systemId, boardId));
 }
 
@@ -402,7 +415,7 @@ export async function archiveCardFormAction(formData: FormData) {
   const cardId = String(formData.get("cardId") ?? "");
   if (!systemId || !cardId) return;
   await assertCardRole(ctxOf(auth, systemId), cardId, "EDITOR");
-  await archiveCard(auth.active.tenantId, systemId, cardId);
+  await archiveCard(auth.active.tenantId, systemId, cardId, auth.user.id);
   revalidatePath(boardPath(systemId, boardId));
 }
 
@@ -932,5 +945,62 @@ export async function setCoverAction(input: {
     return { ok: true, coverUrl: badge.coverUrl };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ตั้งปกไม่สำเร็จ" };
+  }
+}
+
+// ───────────────────────── K1.10: ประวัติกิจกรรม ─────────────────────────
+// 🔴 อ่านอย่างเดียว: ไม่มี action ที่ "เขียน/ลบกิจกรรม" — กิจกรรมเกิดจากงานจริงเท่านั้น (append-only)
+// 🔴 สิทธิ์ชั้นที่ 1 = `kanban.board.read` (คนที่เข้าโมดูลได้) · ชั้นที่ 2 (VIEWER+ ของบอร์ดใบนั้น)
+//    ตรวจใน service เสมอ ⇒ บอร์ดที่มองไม่เห็น = 404 ไม่ใช่รายการว่าง
+
+export type TimelineActionResult =
+  | { ok: true; items: KanbanTimelineItemDto[]; nextCursor: string | null }
+  | { ok: false; message: string };
+
+/** สายรวม (ความเห็น + กิจกรรม) ของการ์ด 1 ใบ — แท็บ/โหลดเพิ่มของ `Timeline.tsx` */
+export async function listCardTimelineAction(input: {
+  systemId: string;
+  cardId: string;
+  filter?: KanbanTimelineFilter;
+  take?: number;
+  cursor?: string | null;
+}): Promise<TimelineActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  try {
+    const page = await listCardTimeline(ctxOf(auth, input.systemId), input.cardId, {
+      filter: input.filter ?? "all",
+      take: input.take,
+      cursor: input.cursor ?? null,
+    });
+    return { ok: true, items: page.items, nextCursor: page.nextCursor };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "โหลดประวัติกิจกรรมไม่สำเร็จ" };
+  }
+}
+
+export type BoardActivityActionResult =
+  | { ok: true; items: KanbanActivityDto[]; nextCursor: string | null }
+  | { ok: false; message: string };
+
+/** ประวัติกิจกรรมของทั้งบอร์ด — แผงขวาที่เปิดจากเมนู ⋯ ของหัวบอร์ด */
+export async function listBoardActivityAction(input: {
+  systemId: string;
+  boardId: string;
+  take?: number;
+  cursor?: string | null;
+}): Promise<BoardActivityActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.boardId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
+  try {
+    const page = await listBoardActivity(ctxOf(auth, input.systemId), input.boardId, {
+      take: input.take,
+      cursor: input.cursor ?? null,
+    });
+    return { ok: true, items: page.items, nextCursor: page.nextCursor };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "โหลดประวัติกิจกรรมของบอร์ดไม่สำเร็จ" };
   }
 }

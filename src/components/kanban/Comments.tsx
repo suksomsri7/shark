@@ -1,22 +1,20 @@
-// Comments.tsx — ความเห็น + @กล่าวถึง ในหลังการ์ด (K1.8) · แบบ: `ledger/design-kanban/03-card-back.png`
-// บล็อกล่างสุดของหลังการ์ด: หัวข้อ "ความเห็น" → สายความเห็นเรียงเก่า→ใหม่ → ช่องเขียนติดท้าย
+// Comments.tsx — ชิ้นส่วนของ "ความเห็น" ในหลังการ์ด (K1.8 · จัดใหม่ใน K1.10)
+// แบบ: `ledger/design-kanban/03-card-back.png` บล็อกล่างสุด
+//
+// 🔴 K1.10: บล็อกล่างของหลังการ์ดกลายเป็น "ความเห็นและกิจกรรม" (`Timeline.tsx`) — ตัวคุมสาย/แท็บ/
+//    การโหลดเพิ่มย้ายไปอยู่ที่นั่น ส่วนไฟล์นี้เหลือ **ชิ้นส่วนที่ใช้ซ้ำ**: แถวความเห็น 1 ใบ (`CommentRow`)
+//    ช่องเขียน (`CommentComposer`) และ hook รายชื่อสำหรับเมนู `@` — ไม่ทำสำเนาช่องเขียนไว้ 2 ที่
+//    (ช่องเขียนยังอยู่ล่างสุดของบล็อกเหมือนภาพ 03 เป๊ะ)
 //
 // markup ที่เก็บใน DB = `@[ชื่อ](userId)` — ไฟล์นี้แปลงเป็น "ชิป @ชื่อ" ตอนเรนเดอร์เท่านั้น
 // (ไม่ให้ server ประกอบ HTML ส่งมา — เนื้อความของผู้ใช้ห้ามกลายเป็น HTML ที่ browser เชื่อ)
-//
-// ทุกการแก้ไขเป็น optimistic เหมือน `Checklist.tsx` (K1.7): แปะ state ก่อน → ยิง action → ผิด → revert + toast
-// แท็บ "ทั้งหมด / ความเห็น / กิจกรรม" ตามภาพ 03 มาพร้อมประวัติกิจกรรมใน K1.10 (`Timeline.tsx`)
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Avatar, formatCardDateTime } from "./Card";
 import { KanbanIcon } from "./KanbanIcon";
-import {
-  addCommentAction,
-  deleteCommentAction,
-  editCommentAction,
-  listMentionTargetsAction,
-} from "@/lib/modules/kanban/actions";
+import { listMentionTargetsAction } from "@/lib/modules/kanban/actions";
+import { relativeThaiTime } from "@/lib/modules/kanban/activity-text";
 import type { KanbanCommentDto } from "@/lib/modules/kanban/types";
 
 /** ต้องตรงกับ `MENTION_RE` ใน `src/lib/modules/kanban/comments.ts` (ฝั่ง server เป็นตัวตัดสิน) */
@@ -26,40 +24,12 @@ const TYPING_MENTION_RE = /(?:^|\s)@([^\s@[\]()]{0,30})$/;
 
 export type MentionPerson = { userId: string; name: string };
 
-export type CommentsProps = {
-  systemId: string;
-  boardId: string;
-  cardId: string;
-  /** เขียน/แก้ความเห็นได้ไหม (EDITOR+ ของบอร์ด) */
-  editable: boolean;
-  /** ผู้ดูแลบอร์ด — ลบความเห็นของคนอื่นได้ */
-  isBoardAdmin: boolean;
-  currentUserId: string;
-  comments: KanbanCommentDto[];
-  onChange: (comments: KanbanCommentDto[]) => void;
-  onToast: (message: string) => void;
-};
-
-type ActionResult =
-  | { ok: true; comments: KanbanCommentDto[]; commentCount: number }
-  | { ok: false; message: string };
-
-export function Comments({
-  systemId,
-  boardId,
-  cardId,
-  editable,
-  isBoardAdmin,
-  currentUserId,
-  comments,
-  onChange,
-  onToast,
-}: CommentsProps) {
+/**
+ * รายชื่อ "คนที่ mention ได้" ของบอร์ดนี้ — โหลดครั้งเดียวต่อการเปิดหลังการ์ด (เล็กมาก)
+ * ไม่รอให้ผู้ใช้พิมพ์ `@` ก่อน ไม่งั้นเมนูจะกะพริบตอนพิมพ์ตัวแรก
+ */
+export function useMentionPeople(systemId: string, boardId: string): MentionPerson[] {
   const [people, setPeople] = useState<MentionPerson[]>([]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-
-  // รายชื่อสำหรับเมนู `@` — โหลดครั้งเดียวต่อการเปิดหลังการ์ด (เล็กมาก · ไม่ต้องรอผู้ใช้พิมพ์ @ ก่อน
-  // ไม่งั้นเมนูจะกะพริบตอนพิมพ์ตัวแรก)
   useEffect(() => {
     let alive = true;
     listMentionTargetsAction({ systemId, boardId }).then((res) => {
@@ -69,113 +39,19 @@ export function Comments({
       alive = false;
     };
   }, [systemId, boardId]);
-
-  const run = useCallback(
-    (before: KanbanCommentDto[], optimistic: KanbanCommentDto[], task: () => Promise<ActionResult>, fallback: string) => {
-      onChange(optimistic);
-      task().then((res) => {
-        if (res.ok) {
-          onChange(res.comments);
-          return;
-        }
-        onChange(before);
-        onToast(res.message || fallback);
-      });
-    },
-    [onChange, onToast],
-  );
-
-  const submit = useCallback(
-    async (body: string): Promise<boolean> => {
-      const res = await addCommentAction({ systemId, boardId, cardId, body });
-      if (!res.ok) {
-        onToast(res.message || "ส่งความเห็นไม่สำเร็จ");
-        return false;
-      }
-      onChange(res.comments);
-      return true;
-    },
-    [systemId, boardId, cardId, onChange, onToast],
-  );
-
-  const saveEdit = useCallback(
-    (comment: KanbanCommentDto, body: string) => {
-      setEditingId(null);
-      if (body.trim() === comment.body.trim()) return;
-      run(
-        comments,
-        comments.map((c) => (c.id === comment.id ? { ...c, body, editedAt: new Date().toISOString() } : c)),
-        () => editCommentAction({ systemId, boardId, cardId, commentId: comment.id, body }),
-        "แก้ความเห็นไม่สำเร็จ",
-      );
-    },
-    [comments, run, systemId, boardId, cardId],
-  );
-
-  const remove = useCallback(
-    (comment: KanbanCommentDto) => {
-      if (typeof window !== "undefined" && !window.confirm("ลบความเห็นนี้?")) return;
-      run(
-        comments,
-        comments.filter((c) => c.id !== comment.id),
-        () => deleteCommentAction({ systemId, boardId, cardId, commentId: comment.id }),
-        "ลบความเห็นไม่สำเร็จ",
-      );
-    },
-    [comments, run, systemId, boardId, cardId],
-  );
-
-  return (
-    <div className="flex flex-col gap-3" data-testid="comments">
-      <div className="flex items-center gap-2">
-        <KanbanIcon name="chat" size="sm" className="text-[color:var(--color-muted)]" />
-        <span style={{ fontSize: 13, fontWeight: 700 }}>ความเห็น</span>
-        {comments.length > 0 && (
-          <span style={{ fontSize: 12, color: "var(--color-muted)" }}>{comments.length}</span>
-        )}
-      </div>
-
-      {comments.length === 0 ? (
-        <div
-          className="rounded-lg border border-dashed px-3 py-2"
-          style={{ fontSize: 12.5, color: "var(--color-muted)", borderColor: "var(--color-line)" }}
-        >
-          ยังไม่มีความเห็นในการ์ดนี้{editable ? " — เขียนความเห็นแรกได้เลย" : ""}
-        </div>
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {comments.map((comment) => (
-            <CommentRow
-              key={comment.id}
-              comment={comment}
-              people={people}
-              currentUserId={currentUserId}
-              canEdit={editable && comment.author.userId === currentUserId}
-              canDelete={(editable && comment.author.userId === currentUserId) || isBoardAdmin}
-              editing={editingId === comment.id}
-              onStartEdit={() => setEditingId(comment.id)}
-              onCancelEdit={() => setEditingId(null)}
-              onSaveEdit={(body) => saveEdit(comment, body)}
-              onDelete={() => remove(comment)}
-            />
-          ))}
-        </ul>
-      )}
-
-      {editable && <Composer people={people} onSubmit={submit} />}
-    </div>
-  );
+  return people;
 }
 
 // ───────────────────────── ความเห็น 1 ใบ ─────────────────────────
 
-function CommentRow({
+export function CommentRow({
   comment,
   people,
   currentUserId,
   canEdit,
   canDelete,
   editing,
+  nowMs,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -187,6 +63,11 @@ function CommentRow({
   canEdit: boolean;
   canDelete: boolean;
   editing: boolean;
+  /**
+   * K1.10 — เวลาอ้างอิงจาก server: มีค่า = แสดงเวลาแบบสัมพัทธ์ ("5 นาทีที่แล้ว") ให้เข้าชุดกับแถว
+   * กิจกรรมในสายเดียวกันตามภาพ 03 · ไม่ส่ง = วันเวลาเต็มแบบเดิม (K1.8) · เวลาเต็มยังอยู่ใน title เสมอ
+   */
+  nowMs?: number;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: (body: string) => void;
@@ -203,7 +84,12 @@ function CommentRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span style={{ fontSize: 12.5, fontWeight: 700 }}>{comment.author.name}</span>
-          <span style={{ fontSize: 11.5, color: "var(--color-muted)" }}>{formatCardDateTime(comment.createdAt)}</span>
+          <span
+            title={formatCardDateTime(comment.createdAt)}
+            style={{ fontSize: 11.5, color: "var(--color-muted)" }}
+          >
+            {nowMs === undefined ? formatCardDateTime(comment.createdAt) : relativeThaiTime(comment.createdAt, nowMs)}
+          </span>
           {comment.editedAt && (
             <span style={{ fontSize: 11.5, color: "var(--color-muted)" }}>· แก้ไขแล้ว</span>
           )}
@@ -315,7 +201,13 @@ function CommentBody({ body, currentUserId }: { body: string; currentUserId: str
 
 // ───────────────────────── ช่องเขียน ─────────────────────────
 
-function Composer({ people, onSubmit }: { people: MentionPerson[]; onSubmit: (body: string) => Promise<boolean> }) {
+export function CommentComposer({
+  people,
+  onSubmit,
+}: {
+  people: MentionPerson[];
+  onSubmit: (body: string) => Promise<boolean>;
+}) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -497,5 +389,3 @@ function MentionTextarea({
     </div>
   );
 }
-
-export default Comments;

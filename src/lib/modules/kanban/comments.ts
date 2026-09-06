@@ -15,6 +15,7 @@ import type { KanbanComment } from "@prisma/client";
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 import { KanbanForbiddenError, KanbanNotFoundError } from "./access";
+import { logActivity } from "./activity-log";
 import { prisma } from "./db";
 import { KANBAN_LIMITS } from "./limits";
 import { assertBoardRole, assertCardRole, grantViewerForMention } from "./members";
@@ -135,6 +136,15 @@ export async function addComment(ctx: KanbanCtx, cardId: string, rawBody: string
       idempotencyKey: `kanban.comment.added#${row.id}`,
       payload: { commentId: row.id, cardId, boardId, authorUserId, mentions },
       systemId: ctx.systemId,
+    });
+    // K1.10: ประวัติกิจกรรมใน tx เดียวกับความเห็น (แท็บ "กิจกรรม" ซ่อนตัวความเห็น จึงต้องมีบรรทัดนี้บอกว่าเคยมี)
+    await logActivity(tx, {
+      tenantId: ctx.tenantId,
+      boardId,
+      cardId,
+      actorUserId: authorUserId,
+      type: "COMMENT_ADDED",
+      data: { commentId: row.id },
     });
     return row;
   });

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { KanbanIcon } from "./KanbanIcon";
 import { Avatar } from "./Card";
+import { BoardActivityPanel } from "./Timeline";
 import type { BoardViewDto } from "@/lib/modules/kanban/types";
 
 const VIEWS: { key: string; icon: string; label: string }[] = [
@@ -51,6 +52,8 @@ export function BoardHeader({
 }) {
   const [renaming, setRenaming] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // K1.10 — แผงประวัติกิจกรรมของบอร์ด (เปิดจากเมนู ⋯) · เวลาอ้างอิงมาจาก server เหมือนที่อื่นทั้งหน้า
+  const [activityOpen, setActivityOpen] = useState(false);
   const isAdmin = board.role === "ADMIN";
 
   return (
@@ -222,6 +225,18 @@ export function BoardHeader({
               <Link href={`/app/sys/${board.systemId}/kanban/boards`} className="rounded-lg px-2 py-2" onClick={() => setMenuOpen(false)}>
                 หน้ารวมบอร์ด
               </Link>
+              <button
+                type="button"
+                data-testid="board-activity-open"
+                className="flex items-center gap-2 rounded-lg px-2 py-2 text-left"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setActivityOpen(true);
+                }}
+              >
+                <KanbanIcon name="clock" size="xs" />
+                ประวัติกิจกรรมของบอร์ด
+              </button>
               <span className="px-2 py-2" style={{ color: "var(--color-muted)" }}>
                 ตั้งค่าบอร์ด · ป้ายกำกับ · คลังเก็บ — เร็ว ๆ นี้
               </span>
@@ -229,6 +244,15 @@ export function BoardHeader({
           </>
         )}
       </span>
+
+      {activityOpen && (
+        <BoardActivityPanel
+          systemId={board.systemId}
+          boardId={board.id}
+          nowMs={Date.parse(board.now)}
+          onClose={() => setActivityOpen(false)}
+        />
+      )}
     </header>
   );
 }

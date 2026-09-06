@@ -14,6 +14,7 @@ import type { KanbanChecklist, KanbanChecklistItem, Prisma } from "@prisma/clien
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 import { KanbanNotFoundError, visibleBoardsWhere } from "./access";
+import { logActivity } from "./activity-log";
 import { prisma } from "./db";
 import { KANBAN_LIMITS } from "./limits";
 import { assertCardRole, loadActor } from "./members";
@@ -180,7 +181,7 @@ export async function deleteItem(ctx: KanbanCtx, itemId: string): Promise<void> 
  */
 export async function toggleItem(ctx: KanbanCtx, itemId: string, done: boolean): Promise<KanbanChecklistItem> {
   const item = await requireItem(ctx, itemId);
-  await assertCardRole(ctx, item.cardId, "EDITOR");
+  const { boardId } = await assertCardRole(ctx, item.cardId, "EDITOR");
 
   const updated = await prisma.$transaction(async (tx) => {
     // 🔴 ล็อกแถวเช็คลิสต์ก่อนนับ — สองคนติ๊ก 2 รายการสุดท้ายพร้อมกัน ต่างคนต่างเห็น "ยังไม่ครบ" แล้ว event ครบหาย
@@ -201,6 +202,20 @@ export async function toggleItem(ctx: KanbanCtx, itemId: string, done: boolean):
         ? { done: true, doneAt: new Date(), doneById: ctx.actorUserId ?? null }
         : { done: false, doneAt: null, doneById: null },
     });
+
+    // K1.10: บันทึกเฉพาะ "ติ๊กว่าเสร็จ" และเฉพาะตอนที่เปลี่ยนสถานะจริง (ติ๊กซ้ำ/ปลดติ๊กไม่ใช่เหตุการณ์
+    // ที่ทีมตามหาในประวัติ และจะทำให้สายกิจกรรมท่วมด้วยเสียงรบกวน) · เก็บสำเนาข้อความไว้ในแถวเลย
+    // เพราะรายการเช็คลิสต์ถูกลบได้จริง (hard delete) — ประวัติต้องยังอ่านรู้เรื่องหลังรายการหายไป
+    if (done && !wasDone) {
+      await logActivity(tx, {
+        tenantId: ctx.tenantId,
+        boardId,
+        cardId: item.cardId,
+        actorUserId: ctx.actorUserId ?? null,
+        type: "CHECKLIST_ITEM_DONE",
+        data: { checklistId: item.checklistId, itemId: item.id, text: row.text },
+      });
+    }
 
     const doneCountAfter = doneCountBefore - (wasDone ? 1 : 0) + (done ? 1 : 0);
     const postComplete = total > 0 && doneCountAfter === total;

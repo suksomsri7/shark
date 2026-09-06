@@ -16,6 +16,7 @@
 
 import { normalizeUploadType, uploadFile, ALLOWED_UPLOAD_TYPES, type UploadDeps } from "@/lib/storage/service";
 import { KanbanNotFoundError } from "./access";
+import { logActivity } from "./activity-log";
 import { prisma } from "./db";
 import { KANBAN_LIMITS } from "./limits";
 import { assertCardRole } from "./members";
@@ -107,7 +108,7 @@ export async function addAttachment(
   input: AddAttachmentInput,
   deps?: UploadDeps,
 ): Promise<KanbanNewAttachmentDto> {
-  await assertCardRole(ctx, cardId, "EDITOR");
+  const { boardId } = await assertCardRole(ctx, cardId, "EDITOR");
 
   const count = await prisma.kanbanAttachment.count({ where: { cardId, tenantId: ctx.tenantId, deletedAt: null } });
   if (count >= KANBAN_LIMITS.attachmentsPerCard) {
@@ -131,16 +132,29 @@ export async function addAttachment(
   );
   if (!uploaded.ok) throw new Error(uploaded.error);
 
-  const row = await prisma.kanbanAttachment.create({
-    data: {
+  // K1.10: แถวไฟล์แนบ + ประวัติกิจกรรมอยู่ทรานแซกชันเดียวกัน (ไฟล์บน storage อัปไปแล้วก่อนหน้านี้ —
+  // ตัวไฟล์ย้อนกลับไม่ได้อยู่แล้ว แต่ "แถวในฐานข้อมูล 2 ใบ" ต้องเกิด/ไม่เกิดพร้อมกันเสมอ)
+  const row = await prisma.$transaction(async (tx) => {
+    const created = await tx.kanbanAttachment.create({
+      data: {
+        tenantId: ctx.tenantId,
+        cardId,
+        fileId: uploaded.assetId,
+        name: input.filename,
+        contentType: declared,
+        bytes: input.data.length,
+        uploadedById: ctx.actorUserId ?? null,
+      },
+    });
+    await logActivity(tx, {
       tenantId: ctx.tenantId,
+      boardId,
       cardId,
-      fileId: uploaded.assetId,
-      name: input.filename,
-      contentType: declared,
-      bytes: input.data.length,
-      uploadedById: ctx.actorUserId ?? null,
-    },
+      actorUserId: ctx.actorUserId ?? null,
+      type: "ATTACHMENT_ADDED",
+      data: { attachmentId: created.id, name: created.name, contentType: created.contentType, bytes: created.bytes },
+    });
+    return created;
   });
 
   const uploader = ctx.actorUserId

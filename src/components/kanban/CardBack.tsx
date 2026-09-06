@@ -13,7 +13,7 @@ import { KanbanIcon } from "./KanbanIcon";
 import { Avatar, formatCardDate, formatCardDateTime, tagColorVar } from "./Card";
 import { Attachments } from "./Attachments";
 import { Checklist, checklistBadgeOf } from "./Checklist";
-import { Comments } from "./Comments";
+import { Timeline } from "./Timeline";
 import {
   archiveCardAction,
   createChecklistAction,
@@ -792,8 +792,9 @@ export function CardBack({
                 onToast={toast}
               />
 
-              {/* ความเห็น + @กล่าวถึง (K1.8) */}
-              <Comments
+              {/* ความเห็น + กิจกรรม (K1.8 + K1.10) — แท็บ ทั้งหมด/ความเห็น/กิจกรรม ตามภาพ 03
+                  ชิ้นส่วนแถวความเห็น/ช่องเขียนยังเป็นของ `Comments.tsx` เดิม (Timeline แค่คุมสาย) */}
+              <Timeline
                 systemId={systemId}
                 boardId={boardId}
                 cardId={card.id}
@@ -801,7 +802,8 @@ export function CardBack({
                 isBoardAdmin={boardRole === "ADMIN"}
                 currentUserId={currentUserId}
                 comments={fields.comments}
-                onChange={onCommentsChange}
+                nowMs={nowMs}
+                onCommentsChange={onCommentsChange}
                 onToast={toast}
               />
             </div>

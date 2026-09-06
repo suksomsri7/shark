@@ -71,6 +71,7 @@ model KanbanBoard {
   labels  KanbanLabel[] // ป้ายของบอร์ด (K1.2)
   members KanbanBoardMember[] // คนที่ถูกเชิญเข้าบอร์ด (K1.3)
   stars   KanbanBoardStar[] // ดาวรายคน (K1.3)
+  activities KanbanActivity[] // ประวัติกิจกรรม (K1.10)
 
   @@index([tenantId, systemId, status])
   @@index([tenantId, systemId, unitId])
@@ -149,6 +150,9 @@ model KanbanCard {
 
   // ── K1.9 ──
   attachments KanbanAttachment[]
+
+  // ── K1.10 ──
+  activities KanbanActivity[]
 
   @@index([tenantId, systemId, boardId, status])
   @@index([columnId, status, sortOrder])
@@ -329,5 +333,63 @@ model KanbanAttachment {
   deletedAt    DateTime?
 
   @@index([cardId])
+  @@index([tenantId])
+}
+
+// ───────────────────────── ประวัติกิจกรรม (K1.10 · KANBAN-RUN §K1.10) ─────────────────────────
+// "ใครทำอะไรกับบอร์ด/การ์ดใบนี้เมื่อไหร่" — append-only: เขียนอย่างเดียว ไม่มี update/delete ใน service
+// (ลบได้ทางเดียวคือการ์ด/บอร์ดถูกลบจริง ซึ่ง cascade ตามไป — ปกติของระบบคือ "เก็บเข้าคลัง" ไม่ใช่ลบ)
+//
+// 🔴 ทุกแถวถูกเขียน **ในทรานแซกชันเดียวกับงานจริง** (`logActivity(tx, …)`) — งานสำเร็จแต่ประวัติหาย
+//    (หรือกลับกัน) แปลว่าประวัติเชื่อไม่ได้ ซึ่งแย่กว่าไม่มีประวัติเลย
+// 🔴 ไม่ใช่ของแทน `AuditLog` กลาง (§6.5): เรื่องสิทธิ์/ความปลอดภัยยังเขียน AuditLog เหมือนเดิม
+//    ตารางนี้คือ "สายกิจกรรมที่ทีมอ่าน" ในหลังการ์ด/หน้าบอร์ด (Trello activity feed)
+// 🔴 ไม่มี `systemId`: บอร์ดต้นทางรู้ระบบของตัวเองอยู่แล้ว (เหตุผลเดียวกับ KanbanComment/Checklist/Attachment)
+// `data` = รายละเอียดต่อชนิด (MOVED {fromColumnId,toColumnId} · DUE_SET {dueAt} · ASSIGNED/UNASSIGNED
+// {userIds} · LABELED/UNLABELED {labelIds} · UPDATED {fields}) — เก็บ **id** ไม่ใช่ชื่อ แล้ว resolve
+// ชื่อสด ๆ ตอนอ่าน (คนเปลี่ยนชื่อ/ป้ายเปลี่ยนชื่อ ประวัติต้องไม่ค้างชื่อเก่า) ยกเว้นของที่หายไปได้
+// อย่างชื่อไฟล์แนบ/ข้อความเช็คลิสต์ ที่เก็บสำเนาไว้ในนี้เลย
+enum KanbanActivityType {
+  BOARD_CREATED
+  BOARD_UPDATED
+  BOARD_ARCHIVED
+  MEMBER_ADDED
+  MEMBER_ROLE_CHANGED
+  MEMBER_REMOVED
+  COLUMN_CREATED
+  COLUMN_UPDATED
+  COLUMN_MOVED
+  COLUMN_ARCHIVED
+  CARD_CREATED
+  CARD_UPDATED
+  CARD_MOVED
+  CARD_ASSIGNED
+  CARD_UNASSIGNED
+  CARD_DUE_SET
+  CARD_LABELED
+  CARD_UNLABELED
+  CARD_ARCHIVED
+  CARD_RESTORED
+  CARD_COMPLETED
+  CHECKLIST_ITEM_DONE
+  COMMENT_ADDED
+  ATTACHMENT_ADDED
+}
+
+model KanbanActivity {
+  id           String             @id @default(cuid())
+  tenantId     String
+  boardId      String
+  board        KanbanBoard        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cardId       String? // null = กิจกรรมระดับบอร์ด (คอลัมน์/สมาชิก/บอร์ดเอง)
+  card         KanbanCard?        @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  actorUserId  String? // User.id — null = ระบบเป็นคนทำ (cron/automation/นำเข้า) ไม่ทำ FK เหมือนช่องคนอื่นในโมดูล
+  type         KanbanActivityType
+  data         Json               @default("{}")
+  createdAt    DateTime           @default(now())
+
+  // เส้นอ่านหลัก 2 เส้น — "สายของการ์ดใบนี้" กับ "สายของทั้งบอร์ด" ทั้งคู่เรียงล่าสุดก่อนเสมอ
+  @@index([cardId, createdAt(sort: Desc)])
+  @@index([boardId, createdAt(sort: Desc)])
   @@index([tenantId])
 }
