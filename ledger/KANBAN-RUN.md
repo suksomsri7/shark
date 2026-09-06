@@ -80,7 +80,7 @@
 | K2.9 | ตัวสร้างกฎอัตโนมัติ (5 ชนิด · ทดลองรัน · บันทึกการทำงาน) ภาพ 08 + ลงทะเบียน 8 event | Opus | TODO (oracle พร้อม 26) | | |
 | K2.10 | รายงานในแอป (ค้าง/เลยกำหนด/ภาระงาน/throughput/aging) + ส่งออก | Sonnet | TODO (oracle พร้อม 22) | | |
 | K2.11 | อีเมลสรุป + watch + ตั้งค่าความถี่แจ้งเตือน + cron เตือนกำหนดส่ง | Opus | TODO (oracle พร้อม 30) | | |
-| K2.3 | มุมมองไทม์ไลน์ (เลื่อนได้ตาม D7) | Sonnet | TODO | | |
+| K2.3 | มุมมองไทม์ไลน์ (เลื่อนได้ตาม D7) | Sonnet | TODO (oracle พร้อม 17) | | |
 | **P3 — เชื่อมทุกโมดูล + AI** |||||
 | K3.1 | `KanbanCardLink` + UI "เชื่อมข้อมูล SHARK" ในหลังการ์ด + resolver รายโมดูล + เช็คสิทธิ์รายคน | Opus | TODO | | |
 | K3.2 | สร้างงานจากแชท (ปุ่มในโมดูลแชท + แผงเตรียมการ์ด ภาพ 09 + สวิตช์รายร้าน) | Opus | TODO | | |
@@ -296,6 +296,14 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - ภาพ spec `"2.9"` ≥ 4 ใบ (หน้าเต็มเทียบภาพ 08 · หลังกดทดลองรัน · ตารางกฎ+บันทึก · มือถือ) · seed ภาพ: สร้างกฎตัวอย่าง 3 ใบให้ตารางไม่ว่างแล้วลบ
 - ⚠️ oracle สร้างป้าย/กฎ/การ์ด/นโยบายอนุมัติบนบอร์ดซ่อมบำรุงแล้วลบใน finally · เรียก `runForKanbanEvent`/sweep ตรง ๆ (ไม่ผ่าน drain) พร้อม `now` — ห้ามผูก `new Date()` ภายใน sweep · กันวน 60 วิ ตรวจด้วยการยิงซ้ำทันที
 - 🔴 D21: การกระทำล้ม = หยุดกฎนั้น + FAILED · ไม่ retry อัตโนมัติ (retry = ทำซ้ำการกระทำก่อนหน้า) · ผู้ใช้กดรันใหม่เองผ่านปุ่ม/แก้ URL
+
+### K2.3 — มุมมองไทม์ไลน์ `?view=timeline` (Sonnet · `qc-kanban-k2.3.mts` 17 ข้อ · ไม่มี mockup — เกณฑ์ §3.6/§13 K2.3 · ใบสุดท้ายของ P2 ตาม D7)
+- ไม่มี migration · `src/lib/modules/kanban/timeline.ts`: `listBoardTimeline(ctx, actor, boardId, { from, to, now, filters?: BoardFilters, group?: "column"|"assignee"|"label" (ปริยาย column) }) → { range:{from,to}, zoomDays, rows:[{ key, label, bars:[{ cardId, cardNo, title, startAt, dueAt, startDay, endDay (YYYY-MM-DD ไทย +07:00 คำนวณเอง), isOverdue (dueAt<now && !completedAt), isDone, color (สีป้ายแรก|null), columnName, assignees[{userId,name}] }] }], unscheduled: n }` · แถบ = การ์ด ACTIVE ที่มี dueAt ในช่วง [from,to] (ผ่าน `filterBoardCards` เดิม) · ไม่มี startAt → แถบ 1 วัน (startDay=endDay=วันครบกำหนด) · startAt < from → ตัดแสดงจาก from แต่ startDay ยังเป็นวันจริง · group=column รวมคอลัมน์ว่างตามลำดับ · assignee: หลายคนอยู่หลายแถว + `none` "ไม่มีผู้รับผิดชอบ" · label: + `none` "ไม่มีป้าย" · แถบในแถวเรียง startDay · `unscheduled` = การ์ด active ไม่มี dueAt (ผ่าน filters) · ช่วง > 366 วัน → throw ไทย · VIEWER+ · มองไม่เห็น = ไม่พบ
+- `setCardRange(ctx, cardId, { startAt: Date|null, dueAt: Date }) → { ok, startAt, dueAt }` (EDITOR · startAt > dueAt → throw ไทย · ผ่าน `updateCardFields` เดิม → activity CARD_DUE_SET · reminderSentAt reset · แจ้ง/realtime เหมือนแก้ในหลังการ์ด) · `shiftCardRange(ctx, cardId, { days }) → { ok }` เลื่อนทั้ง startAt และ dueAt (คงเวลาเดิม) · actions `setCardRangeAction shiftCardRangeAction`
+- UI `src/components/kanban/TimelineView.tsx` (client): แถบเครื่องมือ ‹ › + "วันนี้" + ซูม testid `timeline-zoom` (สัปดาห์ = 2 สัปดาห์ · เดือน = 6 สัปดาห์ · ไตรมาส = 13 สัปดาห์ → ความกว้างวันต่างกัน) + จัดกลุ่ม testid `timeline-group` (คอลัมน์/คน/ป้าย) + ตัวกรอง (FilterBar เดิม) · หัวตาราง: เดือนไทย + พ.ศ. คำนวณเอง (ห้าม toLocale*) · แถวซ้าย = ชื่อกลุ่ม + จำนวน · แถบ testid `timeline-bar` (สีป้ายแรก · เลยกำหนด = ขอบแดง · เสร็จ = จาง · คลิก → `?card=`) · เส้นวันนี้ testid `timeline-today` · ลากขอบซ้าย/ขวา (testid `timeline-handle` · pointer events เอง ไม่เพิ่ม lib) → `setCardRangeAction` · ลากตัวแถบ → `shiftCardRangeAction` · optimistic + rollback · แถวท้าย "ยังไม่กำหนดวัน (n) — ตั้งกำหนดส่งจากมุมมองปฏิทิน" ลิงก์ `?view=calendar` · **มือถือ <md**: ไม่วาดตาราง — ข้อความ testid `timeline-mobile-hint` "ไทม์ไลน์ใช้บนจอกว้าง — บนมือถือลองมุมมองตาราง" + ลิงก์ `?view=table`
+- หน้าบอร์ด: `?view=timeline&zoom=week|month|quarter&group=&from=YYYY-MM-DD` → server เรียก `listBoardTimeline` · แท็บ "ไทม์ไลน์" เปิดใช้ · `views.ts` (K2.5) ViewConfig รับ `view=timeline` + `zoom`
+- ภาพ spec `"2.3"` ≥ 4 ใบ (เดือน · ไตรมาส · จัดกลุ่มตามคน · หลังลากขอบ (drag step แล้วคืนค่า) · มือถือ)
+- ⚠️ oracle ตั้ง startAt/dueAt ของการ์ด 2 ใบบนบอร์ดป่าตองชั่วคราวแล้วคืนใน finally
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
 - 17:41 น. — **P1 ปิด** · qc:all 253/261 (20 นาที) → ทั้ง 8 ชุดแดงแก้แล้ว (2 ชุดเป็นผลจาก run นี้จริง: inbox import app-shell · kanban_my_tasks เปลี่ยนสัญญา — คืนแบบเดิม) · prod verify ผ่าน · handover เขียนแล้ว · Telegram ส่ง
