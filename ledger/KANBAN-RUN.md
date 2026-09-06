@@ -76,7 +76,7 @@
 | K2.5 | มุมมองที่บันทึกไว้ (`KanbanBoardView` ส่วนตัว/ทั้งทีม) | Sonnet | TODO (oracle พร้อม 15 ข้อ) | | |
 | K2.6 | ฟิลด์กำหนดเอง 5 ชนิด (≤20) | Sonnet | TODO (oracle พร้อม 18 ข้อ) | | |
 | K2.7 | เทมเพลตการ์ด + กำหนดส่งซ้ำ (cron) | Sonnet | TODO | | |
-| K2.8 | กล่องงานเข้าส่วนตัว (`KanbanInboxItem` · จดเร็ว · ส่งเข้าบอร์ด) ภาพ 06 ฝั่งซ้าย | Sonnet | TODO | | |
+| K2.8 | กล่องงานเข้าส่วนตัว (`KanbanInboxItem` · จดเร็ว · ส่งเข้าบอร์ด) ภาพ 06 ฝั่งซ้าย | Sonnet | TODO (oracle พร้อม 17 ข้อ) | | |
 | K2.9 | ตัวสร้างกฎอัตโนมัติ (5 ชนิด · ทดลองรัน · บันทึกการทำงาน) ภาพ 08 + ลงทะเบียน 8 event | Opus | TODO | | |
 | K2.10 | รายงานในแอป (ค้าง/เลยกำหนด/ภาระงาน/throughput/aging) + ส่งออก | Sonnet | TODO | | |
 | K2.11 | อีเมลสรุป + watch + ตั้งค่าความถี่แจ้งเตือน + cron เตือนกำหนดส่ง | Opus | TODO | | |
@@ -217,6 +217,13 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - DTO: `getCardDetail.customFields[]` (ทุกฟิลด์ของบอร์ด + ค่า) · การ์ดใน `getBoardView` / `listBoardTable` มี `fieldsOnCard[{name, display}]` เฉพาะ `showOnCard` ที่มีค่า
 - UI: หลังการ์ดบล็อก "ฟิลด์กำหนดเอง" testid `custom-fields` (`CustomFields.tsx` แก้ในที่ทุกชนิด · DATE ใช้ ThaiDatePicker) · การ์ดบนบอร์ดชิป testid `card-field` · ตั้งค่าบอร์ด › ฟิลด์กำหนดเอง (`settings/fields`) testid `custom-fields-settings` "n / 20" + เพิ่ม/แก้/ลบ/ลาก/สลับแสดงบนการ์ด · ตาราง K2.1: เพิ่มคอลัมน์ฟิลด์ที่ showOnCard
 - actions `createFieldAction updateFieldAction deleteFieldAction reorderFieldsAction setCardFieldValueAction` · ภาพ spec `"2.6"` ≥ 3 ใบ
+
+### K2.8 — กล่องงานเข้าส่วนตัว (Sonnet · `qc-kanban-k2.8.mts` 17 ข้อ · ภาพ 06 ฝั่งซ้าย + 07)
+- Prisma (additive `kanban_v2_n`): `enum KanbanInboxStatus { OPEN MOVED DISMISSED }` · `KanbanInboxItem` ตามพิมพ์เขียว §4.3 (`@@unique([tenantId, sourceKey])` แบบ partial where sourceKey not null · index `[tenantId, systemId, ownerUserId, status, createdAt]`) · scope.ts tenant
+- `src/lib/modules/kanban/inbox.ts`: `listInbox(ctx, userId) → InboxItemDto[]` (OPEN เท่านั้น ใหม่ก่อน · userId ต้อง = ctx.actorUserId ไม่งั้น Forbidden แม้ OWNER · `sourceLabel` ไทย: MANUAL="จดไว้เอง" CHAT="จากแชท" EMAIL="ส่งต่อทางอีเมล" FORM="จากฟอร์ม" AI="ผู้ช่วย AI") · `quickAdd(ctx, { title })` (trim · ว่าง throw ไทย · เพดาน `KANBAN_LIMITS.inboxOpenMax = 200` OPEN ต่อคน) · `addFromSource(ctx, { ownerUserId, source, sourceKey, title, note?, fileIds? })` idempotent ด้วย sourceKey (คืนแถวเดิม) · `moveToBoard(ctx, { itemId, boardId, columnId, dueAt?, assigneeUserIds? }) → { ok, cardId }` (ของตัวเอง + EDITOR ของบอร์ด · สร้างการ์ดผ่าน `service.createCard` ด้วย sourceType/sourceKey/description=note · ผู้ส่ง = assignee ปริยาย · ไฟล์ใน fileIds ผูกเป็นไฟล์แนบ · item → MOVED+movedCardId ใน tx เดียว · MOVED ซ้ำ → throw ไทย) · `dismiss(ctx, itemId)`
+- consumer §9.2: event `kanban.inbox.requested` (payload `{ ownerUserId, source, sourceKey, title, note?, fileIds? }`) ลงทะเบียนใน outbox-consumers → `addFromSource` · label ไทย · (ตัวยิงจริงจากแชท/อีเมล = K3.3 ใช้ event นี้)
+- UI: `InboxPanel.tsx` (client · testid `inbox-panel` `inbox-quick-add` `inbox-item`) ตามภาพ 06 ฝั่งซ้าย: หัวข้อ+จำนวน+คำอธิบาย · ช่อง Enter จด · รายการ = ชื่อ + ชิปที่มา + เวลา + ป้าย "AI ตั้งชื่อ + สรุปให้แล้ว" (เมื่อมี note) + ปุ่ม "ส่งเข้าบอร์ด" (popover เลือกบอร์ดที่มองเห็น → คอลัมน์ → กำหนดส่ง ไม่บังคับ) + "ไม่เอาแล้ว" · ว่าง = "กล่องงานเข้าว่างแล้ว — จดงานใหม่ได้ที่ช่องด้านบน" · หน้า my-tasks จัด 2 คอลัมน์ (ซ้ายกล่อง · ขวางานของฉัน K1.13) หัว "สวัสดีตอน{เช้า/บ่าย/เย็น} {ชื่อ}" + วันที่ไทย + สรุป + dropdown บอร์ด + ปุ่ม "จดงานเร็ว" · มือถือ: งานของฉันบนสุด กล่องถัดลงมา
+- actions `quickAddInboxAction moveInboxToBoardAction dismissInboxAction` · ภาพ spec `"2.8"` ≥ 3 ใบ
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
 - 17:41 น. — **P1 ปิด** · qc:all 253/261 (20 นาที) → ทั้ง 8 ชุดแดงแก้แล้ว (2 ชุดเป็นผลจาก run นี้จริง: inbox import app-shell · kanban_my_tasks เปลี่ยนสัญญา — คืนแบบเดิม) · prod verify ผ่าน · handover เขียนแล้ว · Telegram ส่ง
