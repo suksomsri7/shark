@@ -23,6 +23,8 @@ const ALLOWED_TYPES: Record<string, string> = {
   "image/png": "png",
   "image/webp": "webp",
   "image/gif": "gif",
+  // โลโก้กิจการ (ธีม B2) รับ SVG ได้ — validateLogoFile กรอง <script>/onXXX=/javascript: ไปแล้วก่อนถึงนี่
+  "image/svg+xml": "svg",
   "image/heic": "heic", // รูปจาก iPhone (ค่าเริ่มต้นของกล้อง iOS)
   "image/heif": "heif",
   "application/pdf": "pdf",

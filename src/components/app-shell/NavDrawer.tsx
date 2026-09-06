@@ -329,6 +329,8 @@ export function NavDrawer({
             <span>{settingsOpen ? "▴" : "▾"}</span>
           </button>
           {settingsOpen && [
+            // B2 (ledger/BRANDING-RUN.md) — เดิมเป็นหน้ากำพร้าไม่มีลิงก์ในเมนูเลย (แพตเทิร์นเดียวกับ webhooks/staff ที่เคยพลาด)
+            { href: "/app/settings/branding", icon: "🎨", label: "ตราสินค้าและธีม" },
             { href: "/app/settings/credit", icon: "⚡", label: "เครดิต AI" },
             { href: "/app/marketplace", icon: "🧩", label: "ตลาดเทมเพลต" },
             { href: "/app/reports", icon: "📊", label: "รายงาน" },

@@ -1,0 +1,184 @@
+// ถ่ายภาพหน้าจอจริงของ "ตราสินค้าและธีมกิจการ" (ledger/BRANDING-RUN.md §สัญญา B2) — เดสก์ท็อป 1440×900 + มือถือ 390×844
+//
+// ใช้:
+//   bash scripts/acc-v2-serve.sh                    # production build บน .env.qc :3215 (ต้องมีก่อน)
+//   pnpm exec tsx scripts/visual-branding.mts b2     # ถ่ายชุดของ WO B2
+//   bash scripts/acc-v2-serve.sh stop
+//
+// ยืมร้าน QC ของบอร์ดงาน (siam-dive-kanban-qc · kb-owner@shark.local) แทนการสร้างร้านใหม่ —
+// ไม่ชนกันเพราะ B2 แค่แก้ TenantBranding ของร้านนั้น แล้ว**คืนเป็นค่าเริ่มต้นใน finally เสมอ**
+//
+// 🔴 session ที่ mint ต้องถูกลบเสมอ — ปักธง userAgent = "qc-visual-branding" (ลบใน finally)
+// 🔴 ชื่อคุกกี้ผูกกับ APP_ENV: http = `shark_session` · https = `__Host-shark_session`
+// ขั้น "คลิก/พิมพ์" ทำผ่าน puppeteer บน production build (dev ไม่ hydrate ใน headless — บทเรียน 13 ส.ค.)
+
+import { existsSync, mkdirSync } from "node:fs";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
+const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
+accEnv.loadQcEnv();
+const kq = (await import("./kanban-qc-env.mts" as string)) as { KQC: Any; resolveKanbanScope: (p: Any) => Promise<{ tenantId: string; systemId: string } | null> };
+const { KQC, resolveKanbanScope } = kq;
+const { prisma } = await import("@/lib/core/db");
+const { sha256 } = await import("@/lib/core/hash");
+const { setBranding, invalidateBrandingCache } = (await import("@/lib/branding/service" as string)) as Any;
+
+const argv = process.argv.slice(2);
+const WO = argv[0] ?? "b2";
+const BASE = process.env.QC_BASE ?? "http://127.0.0.1:3215";
+const OUT = `.qc-shots/branding/${WO}`;
+mkdirSync(OUT, { recursive: true });
+
+const scope = await resolveKanbanScope(prisma);
+if (!scope) {
+  console.error("❌ ไม่พบร้าน QC บอร์ดงาน (siam-dive-kanban-qc) — seed ก่อน (ดู kanban-qc-env.mts)");
+  process.exit(2);
+}
+const { tenantId } = scope;
+const SETTINGS_PATH = "/app/settings/branding";
+
+type Step =
+  | { click: string }
+  | { fill: string; value: string }
+  | { waitFor: string; timeoutMs?: number }
+  | { wait: number };
+type Spec = { name: string; steps?: Step[]; note?: string };
+
+const TEAL = "#0E7490";
+
+const SPECS: Record<string, Spec[]> = {
+  // B2 — หน้าตั้งค่าค่าปริยาย → เลือกเทียล+BRAND (ดูตัวอย่างสดเปลี่ยน) → DARK → บันทึก → รีโหลด
+  b2: [
+    { name: "settings-default", note: "ค่าปริยายของร้าน QC (ยังไม่ตั้งธีม) — เทียบ mockup 01" },
+    {
+      name: "preview-teal-brand",
+      note: "เลือกสวอตช์เทียล + โทน BRAND — ตัวอย่างสด (ขวา) ต้องเปลี่ยนทันทีโดยยังไม่บันทึก",
+      steps: [
+        { waitFor: `[data-testid="branding-swatch-${TEAL}"]` },
+        { click: `[data-testid="branding-swatch-${TEAL}"]` },
+        { click: '[data-testid="branding-tone-BRAND"]' },
+        { wait: 300 },
+      ],
+    },
+    {
+      name: "preview-dark",
+      note: "สลับโทนเป็น DARK ต่อ (สียังเป็นเทียล) — ตัวอย่างสดต้องเปลี่ยนอีกครั้งโดยยังไม่บันทึก",
+      steps: [
+        { waitFor: `[data-testid="branding-swatch-${TEAL}"]` },
+        { click: `[data-testid="branding-swatch-${TEAL}"]` },
+        { click: '[data-testid="branding-tone-DARK"]' },
+        { wait: 300 },
+      ],
+    },
+    {
+      name: "after-save",
+      note: "กด 'บันทึกและใช้กับทั้งร้าน' — ต้องเห็นข้อความยืนยันสีเขียว",
+      steps: [
+        { waitFor: `[data-testid="branding-swatch-${TEAL}"]` },
+        { click: `[data-testid="branding-swatch-${TEAL}"]` },
+        { click: '[data-testid="branding-tone-DARK"]' },
+        { click: '[data-testid="branding-save"]' },
+        { wait: 1500 },
+      ],
+    },
+    {
+      name: "after-reload",
+      note: "โหลดหน้าใหม่ (ไม่มี step) — ค่าที่บันทึกไว้ (เทียล + DARK) ต้องเป็นค่าเริ่มต้นที่เห็นทันที",
+    },
+  ],
+};
+const specs: Spec[] = SPECS[WO] ?? [];
+if (specs.length === 0) {
+  console.error(`❌ ไม่มี spec ของ WO ${WO}`);
+  process.exit(2);
+}
+
+// ── mint session ของเจ้าของร้าน QC บอร์ดงาน ──
+const user = await prisma.user.findUnique({ where: { email: KQC.ownerEmail }, select: { id: true } });
+if (!user) {
+  console.error(`❌ ไม่พบผู้ใช้ ${KQC.ownerEmail}`);
+  process.exit(2);
+}
+const UA = "qc-visual-branding";
+const token = "br" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+const ttl = new Date(Date.now() + 60 * 60 * 1000);
+await prisma.session.create({ data: { userId: user.id, tokenHash: sha256(token), userAgent: UA, idleExpiresAt: ttl, expiresAt: ttl } });
+
+let failures = 0;
+const shots: string[] = [];
+try {
+  const pptr = await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string);
+  const browser = await pptr.default.launch({
+    executablePath: "/usr/bin/chromium-browser",
+    args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=/tmp/chr-branding-${process.pid}`],
+  });
+  try {
+    const https = BASE.startsWith("https:");
+    const host = new URL(BASE).hostname;
+    const cookies = https
+      ? [{ name: "__Host-shark_session", value: token, url: BASE, path: "/", secure: true }, { name: "shark_tenant", value: tenantId, url: BASE, path: "/", secure: true }]
+      : [{ name: "shark_session", value: token, domain: host, path: "/" }, { name: "shark_tenant", value: tenantId, domain: host, path: "/" }];
+
+    // KQC_VIEWPORTS="ipad-portrait:820x1180" ใช้แทนชุดปริยายได้เหมือนกันกับ visual-kanban.mts
+    const viewports: readonly (readonly [string, number, number])[] = process.env.KQC_VIEWPORTS
+      ? process.env.KQC_VIEWPORTS.split(",").map((v) => { const [name, wh] = v.split(":"); const [w, h] = wh!.split("x").map(Number); return [name!, w!, h!] as const; })
+      : ([["desktop", 1440, 900], ["mobile", 390, 844]] as const);
+
+    for (const spec of specs) {
+      for (const [device, w, h] of viewports) {
+        const page = await browser.newPage();
+        await page.setViewport({ width: w, height: h, deviceScaleFactor: 2, isMobile: device === "mobile", hasTouch: device === "mobile" });
+        await page.setCookie(...cookies);
+        const errors: string[] = [];
+        page.on("pageerror", (e: Error) => errors.push(e.message.slice(0, 120)));
+        page.on("console", (m: Any) => { if (m.type() === "error") errors.push(String(m.text()).slice(0, 120)); });
+        const resp = await page.goto(`${BASE}${SETTINGS_PATH}`, { waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => null);
+        await new Promise((r) => setTimeout(r, 1200)); // ให้ hydrate
+
+        for (const step of spec.steps ?? []) {
+          try {
+            if ("waitFor" in step) await page.waitForSelector(step.waitFor, { timeout: step.timeoutMs ?? 10_000 });
+            else if ("click" in step) await page.click(step.click);
+            else if ("fill" in step) { await page.click(step.fill, { clickCount: 3 }); await page.keyboard.type(step.value, { delay: 15 }); }
+            else if ("wait" in step) await new Promise((r) => setTimeout(r, step.wait));
+          } catch (e) {
+            failures++;
+            console.log(`  ❌ step ${JSON.stringify(step).slice(0, 80)} — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+          }
+        }
+
+        await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+        await new Promise((r) => setTimeout(r, 250));
+        const file = `${OUT}/${spec.name}-${device}.png`;
+        await page.screenshot({ path: file, fullPage: true });
+        shots.push(file);
+        const status = resp?.status() ?? 0;
+        const ok = status < 400 && errors.length === 0;
+        if (!ok) failures++;
+        console.log(`  ${ok ? "✅" : "❌"} ${spec.name} [${device}] HTTP ${status} → ${file}${errors.length ? ` · console error ${errors.length}: ${errors[0]}` : ""}${spec.note ? `\n       ↳ ${spec.note}` : ""}`);
+        await page.close();
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+} finally {
+  // 🔴 คืนธีมของร้าน QC เป็นค่าเริ่มต้นเสมอ ไม่ว่าถ่ายภาพจะสำเร็จหรือพังกลางทาง (ห้ามให้ QC บอร์ดงาน
+  //    เจอร้านตัวเองมีธีมเทียล/เข้มติดค้างอยู่โดยไม่มีใครรู้ว่าเพราะ harness ตัวนี้)
+  try {
+    await setBranding(
+      { tenantId },
+      { displayName: "", logoUrl: "", brandColor: "", navTone: "LIGHT", applyStorefront: true, applyMobile: true, updatedById: null },
+    );
+    invalidateBrandingCache(tenantId);
+    console.log(`🧹 คืนธีมของร้าน QC (${tenantId}) เป็นค่าเริ่มต้น (ว่าง/LIGHT) แล้ว`);
+  } catch (e) {
+    failures++;
+    console.log(`  ❌ คืนธีมของร้าน QC ไม่สำเร็จ — ${e instanceof Error ? e.message.slice(0, 200) : e}`);
+  }
+  const { count } = await prisma.session.deleteMany({ where: { userAgent: UA } });
+  await prisma.$disconnect();
+  console.log(`\n🧹 ลบ session QC ${count} · ภาพ ${shots.length} ใบใน ${OUT}`);
+}
+console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, shots, failures })}`);
+process.exit(failures > 0 ? 1 : 0);
