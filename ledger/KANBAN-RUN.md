@@ -71,7 +71,7 @@
 | **P1 ปิด** | qc:all เต็มชุด · verify prod (ภาพจริง) · handover P1 · Telegram | Fable | DONE | 6 ก.ย. | qc:all 253/261 → แก้ 8 ชุดแดง: chat-v2-shell (inbox import app-shell → ย้าย useInApp ไป lib/ui) · ai-wave5b (kanban_my_tasks ต้องรับชื่อพนักงานแบบเดิม → override ใน tools-kanban) · acc-v2 ×5 + read-master (เฉลย expected.json ค้าง → รัน acc-v2-expected-contact-profile/contacts) · acc-v2-security S16 (writeAudit ย้ายไป core/audit → ข้อสอบตามไปอ่าน) · prod: /developers/kanban 200 · openapi 56 op · ping 401 · handover `HANDOVER-2026-09-06-KANBAN-P1.md` |
 | **P2 — มุมมอง + อัตโนมัติ + รายงาน** |||||
 | K2.1 | มุมมองตาราง (แก้ในช่อง · เลือกหลาย · จัดกลุ่ม · CSV) ภาพ 04 | Sonnet | TODO (oracle พร้อม 22 ข้อ) | | |
-| K2.2 | มุมมองปฏิทิน (ลากเปลี่ยนวัน · ถาดยังไม่กำหนด · ซ้อนจอง/ลา/ประชุม) ภาพ 05 | Sonnet | TODO | | |
+| K2.2 | มุมมองปฏิทิน (ลากเปลี่ยนวัน · ถาดยังไม่กำหนด · ซ้อนจอง/ลา/ประชุม) ภาพ 05 | Sonnet | TODO (oracle พร้อม 17 ข้อ) | | |
 | K2.4 | มุมมองสรุป (4 ไทล์ เจาะลงการ์ดได้) | Sonnet | TODO | | |
 | K2.5 | มุมมองที่บันทึกไว้ (`KanbanBoardView` ส่วนตัว/ทั้งทีม) | Sonnet | TODO | | |
 | K2.6 | ฟิลด์กำหนดเอง 5 ชนิด (≤20) | Sonnet | TODO | | |
@@ -189,6 +189,14 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - หน้าบอร์ด: `?view=table&group=&sort=&page=` → server เรียก `listBoardTable` ส่ง props · แท็บ "ตาราง" ใน BoardHeader เปิดใช้ (เลิก "เร็ว ๆ นี้")
 - ภาพ `visual-kanban.mts` spec `"2.1"`: ตาราง (desktop) · ติ๊ก 2 แถว → bulk-bar · จัดกลุ่มตามคอลัมน์ · แก้ชื่อในช่อง 1 ใบแล้วคืนค่า · มือถือ · finally คืนค่าทุกอย่าง (snapshot/restore เดิม)
 - ⚠️ oracle ทำ bulk จริงบนบอร์ดป่าตอง (ย้าย 2 ใบ · มอบหมาย pook · ติดป้ายด่วน · เก็บ 1 ใบ) แล้วคืนสภาพใน finally จาก snapshot — builder ต้องไม่พึ่งลำดับการ์ดใน "รอทำ" ระหว่างรัน
+
+### K2.2 — มุมมองปฏิทิน `?view=calendar` (Sonnet · `qc-kanban-k2.2.mts` 17 ข้อ · ภาพ 05)
+- `src/lib/modules/kanban/calendar.ts`: `listBoardCalendar(ctx, actor, boardId, { from, to, now, filters?, includeExternal? }) → { range:{from,to}, days: Record<"YYYY-MM-DD", { cards: CalCardDto[], external: CalExternalDto[] }>, unscheduled: CalCardDto[] }` · คีย์วัน = วันที่ไทย (Asia/Bangkok = UTC+7 คำนวณเอง) · `CalCardDto = { id, cardNo, title, dueAt, columnName, labels[{name,color}], assignees[{userId,name}], isOverdue (dueAt<now && !completedAt), isDone }` · ถาด = การ์ด active ที่ไม่มี dueAt (ผ่าน filters เดียวกัน) · `includeExternal` → เรียก `getCalendarEvents({ tenantId, membership }, {from,to})` ของ `src/lib/modules/calendar/service.ts` (ต้องประกอบ `membership` ของ actor · อ่านอย่างเดียว · `CalExternalDto = { id, kind, title, startAt, endAt, href }` href = หน้าต้นทาง `/app/calendar?d=…` หรือหน้าระบบ) · สิทธิ์ VIEWER+ · มองไม่เห็น = ไม่พบ
+- `setCardDueFromCalendar(ctx, cardId, date, { keepTime? }) → { ok:true, dueAt }` — จากถาด: ตั้งเวลา 18:00 ไทยของวันนั้น · keepTime: เปลี่ยนเฉพาะวัน คงเวลาเดิม · ผ่าน `updateCardFields` เดิม (activity CARD_DUE_SET · แจ้งเตือน/realtime เหมือนแก้ในหลังการ์ด) · action `setCardDueFromCalendarAction`
+- UI `src/components/kanban/CalendarView.tsx` (client) ตามภาพ 05: สลับ สัปดาห์/เดือน · `‹ กันยายน 2569 ›` (ชื่อเดือนไทย + พ.ศ. คำนวณเอง — ห้าม toLocale*) · ปุ่ม "วันนี้" · ตัวกรอง (FilterBar เดิม) · ถาดซ้าย "ยังไม่กำหนดวัน (n)" testid `calendar-unscheduled` + บรรทัดสอน · สวิตช์ "แสดงงานจากระบบอื่นด้วย" testid `calendar-external-toggle` (URL `ext=1`) + คำอธิบายสัญลักษณ์ 3 แบบ · ตารางเดือน 7 คอลัมน์ (จ.–อา.) testid `calendar-day` วันนี้ไฮไลต์ testid `calendar-today` · ชิปการ์ด: สีป้ายแรก · เลยกำหนด = แดง · เสร็จ = เขียว · งานระบบอื่น = เทา อ่านอย่างเดียว คลิกไปหน้าต้นทาง · ลากการ์ด (จากถาดหรือระหว่างวัน) → `setCardDueFromCalendarAction` optimistic+rollback · คลิกการ์ด → `?card=` · มือถือ <sm: โหมดสัปดาห์เป็นรายการวันต่อวัน ไม่มีลาก
+- หน้าบอร์ด: `?view=calendar&month=YYYY-MM&mode=week|month&ext=1` → server เรียก `listBoardCalendar` (ช่วง = เดือนที่เลือก ±6 วัน) · แท็บ "ปฏิทิน" เปิดใช้
+- ภาพ `visual-kanban.mts` spec `"2.2"`: เดือน (desktop) · สัปดาห์ · ลากการ์ดจากถาดลงวัน (drag step) แล้วคืนค่า · มือถือ · finally คืน dueAt
+- ⚠️ oracle ตั้ง/เปลี่ยน dueAt ของการ์ด 2 ใบแล้วคืน · สร้างใบลา HR 1 รายการ (ถ้าร้าน QC มีระบบ HR) แล้วลบ
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
 - 17:41 น. — **P1 ปิด** · qc:all 253/261 (20 นาที) → ทั้ง 8 ชุดแดงแก้แล้ว (2 ชุดเป็นผลจาก run นี้จริง: inbox import app-shell · kanban_my_tasks เปลี่ยนสัญญา — คืนแบบเดิม) · prod verify ผ่าน · handover เขียนแล้ว · Telegram ส่ง
