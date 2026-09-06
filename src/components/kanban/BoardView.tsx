@@ -9,9 +9,10 @@
 // ⚠️ ห้ามคิดเลขตำแหน่งเอง — ส่งแค่ id ของเพื่อนบ้าน (beforeCardId/afterCardId) ให้ `moves.ts` เป็นคนคิด
 "use client";
 
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { BoardHeader } from "./BoardHeader";
 import { Card } from "./Card";
+import { CardBack, type CardBackHandlers } from "./CardBack";
 import { Column, type ColumnHandlers } from "./Column";
 import { KanbanIcon } from "./KanbanIcon";
 import {
@@ -26,7 +27,7 @@ import {
   setColumnWipAction,
   starBoardAction,
 } from "@/lib/modules/kanban/actions";
-import type { BoardCardDto, BoardColumnDto, BoardViewDto } from "@/lib/modules/kanban/types";
+import type { BoardCardDto, BoardColumnDto, BoardLabelDto, BoardViewDto } from "@/lib/modules/kanban/types";
 
 /** ระยะหว่างการ์ดในคอลัมน์ (ต้องตรงกับ `gap` ของกองการ์ดใน Column.tsx — ใช้คิดเรขาคณิตตอนลาก) */
 const CARD_GAP = 7;
@@ -62,6 +63,11 @@ export function BoardView({ board, initialCardId = null }: { board: BoardViewDto
   const [colDragId, setColDragId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [openCardId, setOpenCardId] = useState<string | null>(initialCardId);
+  // K1.6: `getBoardView` ไม่ส่งการ์ดที่ ARCHIVED มาด้วย — เก็บ "ภาพตอนเปิด" ไว้ต่างหากจาก `columns`
+  // เพื่อให้หลังการ์ดยังโชว์ต่อได้ (แถบ "อยู่ในคลัง" + ปุ่มกู้คืน) แม้การ์ดใบนั้นเพิ่งถูกเก็บออกจากกองบนบอร์ด
+  const [openCardSnapshot, setOpenCardSnapshot] = useState<BoardCardDto | null>(null);
+  const [openColumnMeta, setOpenColumnMeta] = useState<{ id: string; name: string } | null>(null);
+  const [labels, setLabels] = useState<BoardLabelDto[]>(board.labels);
   const [, startTransition] = useTransition();
 
   const columnsRef = useRef<BoardColumnDto[]>(board.columns);
@@ -81,6 +87,20 @@ export function BoardView({ board, initialCardId = null }: { board: BoardViewDto
   const cleanup = useRef<(() => void) | null>(null);
   /** เวลาที่เพิ่งวางการ์ดเสร็จ — กัน `click` ที่ตามหลัง pointerup ไปเปิดหลังการ์ดโดยไม่ได้ตั้งใจ */
   const draggedAt = useRef(0);
+
+  // เปิดตรงจาก URL (`?card=`) ตอนโหลดหน้าครั้งแรก — หา snapshot + คอลัมน์ปัจจุบันจากข้อมูลที่ได้มาตอนโหลด
+  useEffect(() => {
+    if (!initialCardId) return;
+    for (const col of board.columns) {
+      const found = col.cards.find((c) => c.id === initialCardId);
+      if (found) {
+        setOpenCardSnapshot(found);
+        setOpenColumnMeta({ id: col.id, name: col.name });
+        break;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ใช้ค่าตอน mount ครั้งแรกเท่านั้น (deep link)
+  }, []);
 
   const canEdit = board.role === "EDITOR" || board.role === "ADMIN";
   const isAdmin = board.role === "ADMIN";
@@ -393,18 +413,76 @@ export function BoardView({ board, initialCardId = null }: { board: BoardViewDto
   const openCard = useCallback((card: BoardCardDto) => {
     if (Date.now() - draggedAt.current < 250) return; // เพิ่งลากเสร็จ ไม่ใช่การคลิกเปิดการ์ด
     setOpenCardId(card.id);
-    // K1.6 จะอ่าน `?card=` แล้วเปิดหลังการ์ดจริง — วันนี้แค่ปักไว้ใน URL (ไม่ navigate ⇒ ไม่ยิง RSC ซ้ำ)
+    setOpenCardSnapshot(card);
+    const col = columnsRef.current.find((c) => c.cards.some((cc) => cc.id === card.id));
+    setOpenColumnMeta(col ? { id: col.id, name: col.name } : null);
+    // K1.6: ปักไว้ใน URL ผ่าน history (ไม่ navigate ⇒ ไม่ยิง RSC ซ้ำ) — `CardBack` อ่านสถานะจาก React state นี้
     const url = new URL(window.location.href);
     url.searchParams.set("card", card.id);
     window.history.replaceState({}, "", url.toString());
   }, []);
 
   const closeCard = useCallback(() => {
+    const id = openCardId;
     setOpenCardId(null);
+    setOpenCardSnapshot(null);
+    setOpenColumnMeta(null);
     const url = new URL(window.location.href);
     url.searchParams.delete("card");
     window.history.replaceState({}, "", url.toString());
-  }, []);
+    // §12.2: ปิดหลังการ์ด → คืนโฟกัสให้การ์ดใบเดิมบนบอร์ด
+    if (id) cardEls.current.get(id)?.focus();
+  }, [openCardId]);
+
+  /** เอาการ์ดออกจากกองบนบอร์ด (เก็บเข้าคลังจากหลังการ์ด) — โมดัลยังเปิดต่อได้ผ่าน `openCardSnapshot` */
+  const removeCardFromBoard = useCallback(
+    (cardId: string) => {
+      setCols(columnsRef.current.map((col) => ({ ...col, cards: col.cards.filter((c) => c.id !== cardId) })));
+    },
+    [setCols],
+  );
+
+  /** แทรกการ์ด "สำเนา" ใหม่ ท้ายคอลัมน์ที่ระบุ (ไม่แตะหัวโมดัล — เป็นคนละใบกับการ์ดที่เปิดอยู่) */
+  const insertDuplicatedCard = useCallback(
+    (card: BoardCardDto, columnId: string) => {
+      setCols(columnsRef.current.map((c) => (c.id === columnId ? { ...c, cards: [...c.cards, card] } : c)));
+    },
+    [setCols],
+  );
+
+  /** การ์ดที่เปิดอยู่ถูกกู้คืน — ใส่กลับบนบอร์ด + ปรับหัวโมดัลให้ตรงคอลัมน์ปลายทาง */
+  const insertRestoredCard = useCallback(
+    (card: BoardCardDto, columnId: string) => {
+      const col = columnsRef.current.find((c) => c.id === columnId);
+      setCols(columnsRef.current.map((c) => (c.id === columnId ? { ...c, cards: [...c.cards, card] } : c)));
+      if (col) setOpenColumnMeta({ id: col.id, name: col.name });
+    },
+    [setCols],
+  );
+
+  /** ย้ายการ์ดจากหลังการ์ด (แถบขวา "ย้ายไปคอลัมน์") — เดินท่อ optimistic เดียวกับการลาก (K1.5) */
+  const moveOpenCardToColumn = useCallback(
+    (card: BoardCardDto, toColumnId: string) => {
+      const fromColumnId = columnsRef.current.find((c) => c.cards.some((cc) => cc.id === card.id))?.id;
+      if (!fromColumnId || fromColumnId === toColumnId) return;
+      const target = columnsRef.current.find((c) => c.id === toColumnId);
+      if (!target) return;
+      setOpenColumnMeta({ id: target.id, name: target.name });
+      moveCardTo(card, fromColumnId, toColumnId, target.cards.length);
+    },
+    [moveCardTo],
+  );
+
+  const cardBackHandlers: CardBackHandlers = {
+    onClose: closeCard,
+    onPatch: patchCard,
+    onRemove: removeCardFromBoard,
+    onDuplicated: insertDuplicatedCard,
+    onRestored: insertRestoredCard,
+    onMoveToColumn: moveOpenCardToColumn,
+    onLabelCreated: (label) => setLabels((prev) => [...prev, label]),
+    onToast: showToast,
+  };
 
   const onCardKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLElement>, card: BoardCardDto, columnId: string) => {
@@ -530,9 +608,7 @@ export function BoardView({ board, initialCardId = null }: { board: BoardViewDto
     },
   };
 
-  const openCardData = openCardId
-    ? columns.flatMap((c) => c.cards).find((c) => c.id === openCardId) ?? null
-    : null;
+  const boardColumnsMeta = columns.map((c) => ({ id: c.id, name: c.name }));
 
   return (
     <div
@@ -628,25 +704,23 @@ export function BoardView({ board, initialCardId = null }: { board: BoardViewDto
         </div>
       )}
 
-      {/* ── หลังการ์ด (ตัวจริง = K1.6) ── */}
-      {openCardData && (
-        <aside
-          data-testid="card-back-placeholder"
-          className="fixed right-0 top-14 z-50 flex h-[calc(100dvh-3.5rem)] w-[360px] max-w-[92vw] flex-col gap-3 p-4"
-          style={{ background: "var(--color-surface)", borderLeft: "1px solid var(--color-line)", boxShadow: "-14px 0 34px rgba(10,10,10,.10)" }}
-        >
-          <div className="flex items-start gap-2">
-            <span className="min-w-0 flex-1" style={{ fontSize: 14, fontWeight: 700 }}>
-              {openCardData.title}
-            </span>
-            <button type="button" aria-label="ปิด" onClick={closeCard} style={{ color: "var(--color-muted)" }}>
-              <KanbanIcon name="x" size="sm" />
-            </button>
-          </div>
-          <p style={{ fontSize: 12.5, color: "var(--color-muted)" }}>
-            หลังการ์ด — เร็ว ๆ นี้ {openCardData.cardNo ? `(การ์ด #${openCardData.cardNo})` : ""}
-          </p>
-        </aside>
+      {/* ── หลังการ์ด (K1.6) — key={id} กันไม่ให้ state ภายในเลอะข้ามการ์ดเวลาสลับใบเร็ว ๆ ── */}
+      {openCardId && openCardSnapshot && (
+        <CardBack
+          key={openCardSnapshot.id}
+          card={openCardSnapshot}
+          columnId={openColumnMeta?.id ?? ""}
+          columnName={openColumnMeta?.name ?? ""}
+          boardId={board.id}
+          boardName={boardName}
+          systemId={systemId}
+          canEdit={canEdit}
+          labels={labels}
+          members={board.members}
+          columns={boardColumnsMeta}
+          nowMs={nowMs}
+          handlers={cardBackHandlers}
+        />
       )}
 
       {/* ── toast: ข้อความไทย บอกสิ่งที่เกิดขึ้นกับงาน ไม่โทษคนกด ── */}

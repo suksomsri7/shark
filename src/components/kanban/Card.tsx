@@ -14,13 +14,14 @@ const TH_MONTH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค
 const TH_WDAY = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const BKK_OFFSET_MS = 7 * 60 * 60 * 1000; // Asia/Bangkok = UTC+7 ตายตัว (ไม่มี DST)
 
-type BkkParts = { day: number; month: number; hour: number; minute: number; weekday: number; dayIndex: number };
+type BkkParts = { day: number; month: number; year: number; hour: number; minute: number; weekday: number; dayIndex: number };
 
 function bkk(ms: number): BkkParts {
   const d = new Date(ms + BKK_OFFSET_MS);
   return {
     day: d.getUTCDate(),
     month: d.getUTCMonth(),
+    year: d.getUTCFullYear(),
     hour: d.getUTCHours(),
     minute: d.getUTCMinutes(),
     weekday: d.getUTCDay(),
@@ -30,6 +31,18 @@ function bkk(ms: number): BkkParts {
 
 const pad2 = (n: number) => (n < 10 ? `0${n}` : String(n));
 const fmtDay = (p: BkkParts) => `${p.day} ${TH_MONTH[p.month]}`;
+
+/** "พฤ. 11 ก.ย. 2569 · 17:00" (ปี พ.ศ. — K1.6 หลังการ์ด) */
+export function formatCardDateTime(iso: string): string {
+  const p = bkk(Date.parse(iso));
+  return `${TH_WDAY[p.weekday]} ${p.day} ${TH_MONTH[p.month]} ${p.year + 543} · ${pad2(p.hour)}:${pad2(p.minute)}`;
+}
+
+/** "11 ก.ย. 2569" (ไม่มีเวลา — ใช้กับวันเริ่ม) */
+export function formatCardDate(iso: string): string {
+  const p = bkk(Date.parse(iso));
+  return `${p.day} ${TH_MONTH[p.month]} ${p.year + 543}`;
+}
 
 export type DueBadge = { text: string; tone: "gray" | "amber" | "red" | "green"; icon?: string };
 

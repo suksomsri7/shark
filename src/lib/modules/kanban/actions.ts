@@ -10,6 +10,8 @@ import {
   createBoard,
   createCard,
   createColumn,
+  listCardAssigneeDtos,
+  listCardLabelDtos,
   renameBoard,
   toBoardCardDto,
   updateCard,
@@ -28,7 +30,18 @@ import {
   setColumnWip,
 } from "./moves";
 import { assertBoardRole, assertCardRole, assertColumnRole, starBoard, unstarBoard } from "./members";
-import type { BoardCardDto, KanbanCtx } from "./types";
+// K1.6 — หลังการ์ด: แก้ฟิลด์/ทำสำเนา/เก็บ-กู้คืน อยู่ที่ cards.ts (ชื่อ `archiveCard` ชนกับตัวเดิมของ
+// service.ts ที่ actions.ts ใช้อยู่แล้ว → ตั้งชื่อ import ให้ชัดว่าเป็นคนละตัว เหมือนแพตเทิร์นของ moves.ts ข้างบน)
+import {
+  archiveCard as archiveCardV2,
+  duplicateCard,
+  getCardDetail,
+  restoreCard,
+  setCardAssignees,
+  updateCardFields,
+} from "./cards";
+import { createLabel, setCardLabels } from "./labels";
+import type { BoardCardDto, BoardLabelDto, CardDetailDto, KanbanCtx } from "./types";
 
 // ทุก action: requireTenant → เอา tenantId จาก session (ไม่เชื่อ client) + scope ด้วย systemId
 
@@ -339,7 +352,8 @@ export async function moveCardSidewaysAction(formData: FormData) {
   revalidatePath(boardPath(systemId, boardId));
 }
 
-export async function archiveCardAction(formData: FormData) {
+/** ตัวเดิม (ก่อน K1.6) — หน้าเดิม `ui.tsx` เรียกผ่าน `<ConfirmDialog action={…}>` ที่คืน void */
+export async function archiveCardFormAction(formData: FormData) {
   const auth = await requireTenant();
   assertKanbanCan(auth, "kanban.card.delete");
   const systemId = String(formData.get("systemId") ?? "");
@@ -349,4 +363,180 @@ export async function archiveCardAction(formData: FormData) {
   await assertCardRole(ctxOf(auth, systemId), cardId, "EDITOR");
   await archiveCard(auth.active.tenantId, systemId, cardId);
   revalidatePath(boardPath(systemId, boardId));
+}
+
+// ───────────────────────── K1.6: หลังการ์ด ─────────────────────────
+// ทุกตัวรับ object (หน้าใหม่เรียกจาก client component) · คืน DTO ให้ optimistic UI เอาไปแปะ state ต่อได้
+// 🔴 สิทธิ์ EDITOR+ ทั้งชุด (D16 style) — ตรวจซ้ำในนี้ก่อนเรียก service เผื่อวันหน้ามีคนเรียกข้ามชั้น
+
+export async function getCardDetailAction(input: {
+  systemId: string;
+  cardId: string;
+}): Promise<{ ok: true; detail: CardDetailDto } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  try {
+    const detail = await getCardDetail(ctxOf(auth, input.systemId), input.cardId);
+    return { ok: true, detail };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "โหลดรายละเอียดการ์ดไม่สำเร็จ" };
+  }
+}
+
+export async function updateCardFieldsAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  title?: string;
+  description?: string | null;
+  dueAt?: string | null;
+  startAt?: string | null;
+  reminderMinutesBefore?: number | null;
+}): Promise<
+  | { ok: true; title: string; description: string | null; dueAt: string | null; startAt: string | null; reminderMinutesBefore: number | null }
+  | { ok: false; message: string }
+> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  try {
+    const card = await updateCardFields(ctxOf(auth, input.systemId), input.cardId, {
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.dueAt !== undefined ? { dueAt: input.dueAt ? new Date(input.dueAt) : null } : {}),
+      ...(input.startAt !== undefined ? { startAt: input.startAt ? new Date(input.startAt) : null } : {}),
+      ...(input.reminderMinutesBefore !== undefined ? { reminderMinutesBefore: input.reminderMinutesBefore } : {}),
+    });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return {
+      ok: true,
+      title: card.title,
+      description: card.description,
+      dueAt: card.dueAt ? card.dueAt.toISOString() : null,
+      startAt: card.startAt ? card.startAt.toISOString() : null,
+      reminderMinutesBefore: card.reminderMinutesBefore,
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "แก้การ์ดไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+export async function duplicateCardAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+}): Promise<{ ok: true; card: BoardCardDto; columnId: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.create");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  try {
+    const [labelRows, assigneeRows] = await Promise.all([
+      listCardLabelDtos(ctxOf(auth, input.systemId), input.cardId),
+      listCardAssigneeDtos(ctxOf(auth, input.systemId), input.cardId),
+    ]);
+    const created = await duplicateCard(ctxOf(auth, input.systemId), input.cardId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, card: toBoardCardDto(created, labelRows, assigneeRows), columnId: created.columnId };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ทำสำเนาการ์ดไม่สำเร็จ" };
+  }
+}
+
+export async function archiveCardAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.delete");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  try {
+    await archiveCardV2(ctxOf(auth, input.systemId), input.cardId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "เก็บการ์ดเข้าคลังไม่สำเร็จ" };
+  }
+}
+
+export async function restoreCardAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+}): Promise<{ ok: true; card: BoardCardDto; columnId: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  try {
+    const [labelRows, assigneeRows] = await Promise.all([
+      listCardLabelDtos(ctxOf(auth, input.systemId), input.cardId),
+      listCardAssigneeDtos(ctxOf(auth, input.systemId), input.cardId),
+    ]);
+    const restored = await restoreCard(ctxOf(auth, input.systemId), input.cardId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, card: toBoardCardDto(restored, labelRows, assigneeRows), columnId: restored.columnId };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "กู้คืนการ์ดไม่สำเร็จ" };
+  }
+}
+
+export async function setCardLabelsAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  labelIds: string[];
+}): Promise<{ ok: true; labelIds: string[] } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.label.manage");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await assertCardRole(ctx, input.cardId, "EDITOR");
+    const labelIds = await setCardLabels(ctx, input.cardId, input.labelIds);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, labelIds };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ตั้งป้ายกำกับไม่สำเร็จ" };
+  }
+}
+
+export async function setCardAssigneesAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  userIds: string[];
+}): Promise<{ ok: true; userIds: string[] } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await assertCardRole(ctx, input.cardId, "EDITOR");
+    const { assigneeUserIds } = await setCardAssignees(ctx, input.cardId, input.userIds);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, userIds: assigneeUserIds };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ตั้งผู้รับผิดชอบไม่สำเร็จ" };
+  }
+}
+
+export async function createLabelAction(input: {
+  systemId: string;
+  boardId: string;
+  name: string;
+  color: string;
+}): Promise<{ ok: true; label: BoardLabelDto } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.label.manage");
+  if (!input.systemId || !input.boardId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await assertBoardRole(ctx, input.boardId, "EDITOR");
+    const label = await createLabel(ctx, input.boardId, { name: input.name, color: input.color });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, label: { id: label.id, name: label.name, color: label.color as BoardLabelDto["color"] } };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "สร้างป้ายกำกับไม่สำเร็จ" };
+  }
 }

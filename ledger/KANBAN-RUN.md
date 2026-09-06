@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | K1.6 |
+| WO | K1.7 |
 | สถานะ | IN_PROGRESS |
 | ผู้ทำ | Fable (oracle เขียนแล้ว) → Sonnet (builder) |
-| ขั้นที่ถึง | 07:21 น.: K1.5 DONE (Opus 43 นาที · builder build+ถ่ายภาพ+ลากจริงเอง แก้ header มือถือหลังดูภาพ · Fable ดูภาพซ้ำ 4 ใบ + oracle 17 + regressions + typecheck + fitness) → push main · สั่ง Sonnet ทำ K1.6 หลังการ์ด |
+| ขั้นที่ถึง | 08:00 น.: K1.6 DONE (Sonnet 36 นาที · Fable ดูภาพ desktop/mobile + oracle 20 + regressions + typecheck + fitness) → push main · สั่ง Sonnet ทำ K1.7 เช็คลิสต์ |
 
 ## การตัดสินใจ (คำถาม §9 ของแบบ — เจ้าของไม่ได้ตอบ Fable ตัดสินแบบปลอดภัย แก้ทีหลังได้)
 | # | เรื่อง | ตัดสิน |
@@ -57,8 +57,8 @@
 | K1.3 | สมาชิกบอร์ด/ดาว (`KanbanBoardMember`/`KanbanBoardStar`) + สิทธิ์ 2 ชั้น (`boardRole()`) + คีย์สิทธิ์ใหม่ 8 + 404 + AuditLog | Opus | DONE | 6 ก.ย. | k1.3 29/29 (oracle ลำดับ deleteMany ผิดเอง) · migration `20260921000000_kanban_v2_c` 8 คำสั่ง · `access.ts`/`members.ts` · `writeAudit` ย้ายไป `core/audit.ts` · UI เดิมผ่าน For · `wo-notes/kanban-K1.3.md` |
 | K1.4 | API ย้ายการ์ด/คอลัมน์ (`moveCard(before/after)` · concurrency · neighbor fallback · rebalance) + done column/`completedAt` + WIP limit + `cardNo` | Opus | DONE | 6 ก.ย. | k1.4 30/30 (oracle S4 ผิดเอง 2 จุด — builder พิสูจน์ · เขียนใหม่: แทรกคู่เดิม 300 + ปลูกคีย์ 51) · `moves.ts` FOR UPDATE เรียง id กัน deadlock · rebalance ใน tx · migration D unique(boardId,cardNo) · event moved/completed · `wo-notes/kanban-K1.4.md` |
 | K1.5 | ลากวางเดสก์ท็อป (client component ตัวแรก · optimistic · rollback) + หน้าบอร์ดใหม่ตามภาพ 02 (หัวบอร์ด/รางไอคอน/คอลัมน์ 240px/การ์ดมีตรา) | Opus | DONE | 6 ก.ย. | k1.5 17/17 · visual 1.5 ลากจริง+โหลดใหม่คง · Fable ดูภาพ desktop/mobile/WIP-reject เทียบ mockup 02 ผ่าน · NavRail 56px · `wo-notes/kanban-K1.5.md` |
-| K1.6 | หลังการ์ด (โมดัล 872px / แผ่นเต็มจอ) ตามภาพ 03: ชื่อ/รายละเอียด/ผู้รับผิดชอบ/กำหนดส่ง+วันเริ่ม/ป้าย/ย้าย/ทำสำเนา/เก็บ · URL `?card=` | Sonnet | IN_PROGRESS | | `qc-kanban-k1.6.mts` (เขียนแล้ว 20 ข้อ) + `visual-kanban 1.6` |
-| K1.7 | เช็คลิสต์ (หลายชุด · มอบหมาย/กำหนดส่งรายรายการ · แถบความคืบหน้า · ซ่อนที่ทำแล้ว) | Sonnet | TODO | | |
+| K1.6 | หลังการ์ด (โมดัล 872px / แผ่นเต็มจอ) ตามภาพ 03: ชื่อ/รายละเอียด/ผู้รับผิดชอบ/กำหนดส่ง+วันเริ่ม/ป้าย/ย้าย/ทำสำเนา/เก็บ · URL `?card=` | Sonnet | DONE | 6 ก.ย. | k1.6 20/20 · visual 1.6 (desktop/mobile/แก้ชื่อ) Fable ดูภาพเทียบ 03 ผ่านโครง · หนี้ UI: ช่องวันที่เป็น native input → ชิปไทย (K1.14) · `wo-notes/kanban-K1.6.md` |
+| K1.7 | เช็คลิสต์ (หลายชุด · มอบหมาย/กำหนดส่งรายรายการ · แถบความคืบหน้า · ซ่อนที่ทำแล้ว) | Sonnet | IN_PROGRESS | | |
 | K1.8 | ความเห็น + @mention + แจ้งเตือนยิงตรงคน (`recipientUserId`) + push รายคน + auto-VIEWER | Opus | TODO | | |
 | K1.9 | ไฟล์แนบ + ปก (FileAsset ผ่าน `src/lib/storage` · magic bytes · 10 MB · signed/CDN) | Sonnet | TODO | | |
 | K1.10 | ประวัติกิจกรรม (`KanbanActivity` append-only 28 ชนิด) + สายรวมความเห็น/กิจกรรม + AuditLog เรื่องสิทธิ์ | Opus | TODO | | |
@@ -170,6 +170,8 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 `Shortcuts.tsx` (client): `? b f x n t d l c j k z Esc` + `Shift+←/→` (ย้ายการ์ดที่เลือก) + `Ctrl/⌘K` + `g` แล้ว `i/t/b` · guard: ไม่ทำงานเมื่อ target เป็น INPUT/TEXTAREA/contenteditable หรือ `isComposing`/keyCode 229 · ปิดได้ด้วย user preference `kanbanShortcuts` (`preferences.ts` + สวิตช์ใน `/app/settings`) · `?` เปิดรายการ testid `shortcuts-help` · empty state 6 ข้อความตาม §5.7 (ยังไม่มีบอร์ด · บอร์ดนี้ยังว่าง · ลากการ์ดมาวางที่นี่ · ไม่มีการ์ดตรงกับตัวกรอง · วันนี้ไม่มีงานค้าง · ยังไม่มีการ์ดที่เก็บเข้าคลัง) · realtime `src/lib/modules/kanban/realtime.ts`: `kanbanChannel(tenantId, boardId) = "kanban:<t>:<b>"` · `boardSignal({type,…ids}) → {type, ids…, at}` ไม่มีชื่อ/เนื้อหา · `publishBoardSignal(ctx, boardId, signal)` (หลัง commit · try/catch · ไม่บล็อก) เรียกจาก moves/cards/labels/comments/checklists · client `useBoardLive(boardId)` โหมด realtime subscribe / polling ≤5 วิ (`router.refresh`) หยุดเมื่อแท็บซ่อน · คลังเก็บ `archive.ts`: `listArchived(ctx, boardId, { q? }) → { cards[{id,cardNo,title,archivedAt,archivedBy,columnName}], columns[{id,name,archivedAt,cardCount}] }` · `restoreColumn(ctx, columnId)` (ท้ายบอร์ด) · หน้า `/kanban/b/{id}/archive` (`ArchivePage.tsx` testid `archive-page` แท็บ การ์ด/คอลัมน์ · ค้นหา · กู้คืน) ลิงก์จากเมนู ⋯ · เมนู 7 หมวดตาม §5.2 จากทะเบียนเดียว `src/lib/modules/kanban/nav.ts` (layout `childrenFor` + `kanbanTabs` ใช้ร่วม · หน้าที่ยังไม่มา = "เร็ว ๆ นี้")
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 08:00 น. — K1.6 ปิด (Sonnet 36 นาที) · หนี้ UI จด: date picker ชิปไทย · ย้ายข้ามบอร์ดยังไม่มี (K2/K3) · ความคืบหน้า P1 6/15 · เริ่ม K1.7
+- 07:25 น. — prod READY `f230b86` (migration A–D ครบ) · Fable ถ่ายภาพ prod ในสายตาเจ้าของ (ร้าน A Barber บอร์ด "จัน" 3 คอลัมน์ว่าง): หน้าบอร์ดใหม่ + รางไอคอน 200 ไม่มี console error · หน้าบัญชียัง drawer 288px ปกติ · ภาพ `ledger/prod-shots/k15-*.png` · ส่ง Telegram ความคืบหน้า 5/15 + ภาพ 2 ใบ
 - 07:21 น. — K1.5 ปิด (Opus 43 นาที · UI ตัวแรก ตรง mockup 02) · กับดักที่จด: อีโมจิในไฟล์ component · toLocaleDateString th-TH ทำ hydration พัง (คิดวันที่เอง+รับ now จาก server) · server action ที่คืนค่าใช้กับ <form action> ไม่ได้ · ความคืบหน้า P1 5/15 · เริ่ม K1.6
 - 06:33 น. — K1.4 ปิด (Opus 25 นาที) · บทเรียน oracle: fractional-indexing "แทรกหัว" ไม่ทำคีย์ยาว ต้องแทรกระหว่างคู่เดิม · D17 · ความคืบหน้า P1 4/15 · เริ่ม K1.5
 - 05:59 น. — K1.3 ปิด (Opus 18 นาที) · D16 สิทธิ์คอลัมน์ EDITOR · ความคืบหน้า P1 3/15 · เริ่ม K1.4

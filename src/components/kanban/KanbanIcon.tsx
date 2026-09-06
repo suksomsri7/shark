@@ -49,6 +49,8 @@ const ICONS: Record<string, string> = {
   upload: "<path d=\"M12 17V5\"/><path d=\"m7.5 9.5 4.5-4.5 4.5 4.5\"/><path d=\"M4 17v3h16v-3\"/>",
   in: "<path d=\"M12 4v13\"/><path d=\"m6.5 11.5 5.5 5.5 5.5-5.5\"/><path d=\"M4 21h16\"/>",
   out: "<path d=\"M12 20V7\"/><path d=\"m6.5 12.5 5.5-5.5 5.5 5.5\"/><path d=\"M4 3h16\"/>",
+  swap: "<path d=\"M4 8h13l-3.5-3.5M20 16H7l3.5 3.5\"/>",
+  bolt: "<path d=\"M13.5 3 5 13.5h6L10.5 21 19 10.5h-6Z\"/>",
 };
 
 const FALLBACK = '<rect x="5" y="5" width="14" height="14" rx="2"/>';

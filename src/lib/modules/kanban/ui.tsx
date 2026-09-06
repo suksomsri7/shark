@@ -5,7 +5,7 @@ import { toActor, KanbanNotFoundError } from "./access";
 import type { KanbanActor, KanbanCtx } from "./types";
 import {
   archiveBoardAction,
-  archiveCardAction,
+  archiveCardFormAction,
   // K1.5: action หลักของคอลัมน์/การ์ดเปลี่ยนไปรับ object (หน้าบอร์ดใหม่เรียกจาก client)
   // → หน้าเดิมที่ยังใช้ `<form action={…}>` ใช้ตัวห่อที่คืน void แทน (ตัวเดียวกันข้างใน)
   archiveColumnFormAction,
@@ -278,7 +278,7 @@ export async function KanbanBoardView({
                         title="เก็บการ์ดนี้?"
                         detail="การ์ดจะถูกเก็บออกจากบอร์ด"
                         confirmLabel="ยืนยันเก็บการ์ด"
-                        action={archiveCardAction}
+                        action={archiveCardFormAction}
                         fields={{ systemId, boardId, cardId: card.id }}
                       />
                     </div>

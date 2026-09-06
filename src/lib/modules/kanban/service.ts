@@ -645,3 +645,28 @@ export function toBoardCardDto(
 export function tagColorAt(i: number): KanbanLabelColor {
   return TAG_COLORS[i % TAG_COLORS.length]!;
 }
+
+// ───────────────── K1.6: DTO ของป้าย/ผู้รับผิดชอบของ "การ์ดใบเดียว" ─────────────────
+// ใช้ตอนตอบกลับ action ที่คืนการ์ดทั้งใบ (ทำสำเนา/กู้คืน) ให้ BoardView แปะลง state ได้ทันที
+// โดยไม่ต้องโหลดทั้งบอร์ดใหม่ — เหมือน `getBoardView` แต่ย่อขนาดลงมาเหลือการ์ดเดียว
+
+export async function listCardLabelDtos(ctx: KanbanCtx, cardId: string): Promise<BoardLabelDto[]> {
+  const rows = await prisma.kanbanCardLabel.findMany({
+    where: { cardId, tenantId: ctx.tenantId },
+    include: { label: { select: { id: true, name: true, color: true } } },
+  });
+  return rows.map((r) => ({ id: r.label.id, name: r.label.name, color: r.label.color as KanbanTagColor }));
+}
+
+export async function listCardAssigneeDtos(ctx: KanbanCtx, cardId: string): Promise<BoardPersonDto[]> {
+  const rows = await prisma.kanbanCardAssignee.findMany({
+    where: { cardId, tenantId: ctx.tenantId },
+    orderBy: { assignedAt: "asc" },
+    select: { userId: true },
+  });
+  if (rows.length === 0) return [];
+  const userIds = rows.map((r) => r.userId);
+  const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, email: true } });
+  const nameOf = new Map(users.map((u) => [u.id, u.name ?? u.email ?? u.id]));
+  return userIds.map((userId) => ({ userId, name: nameOf.get(userId) ?? userId }));
+}

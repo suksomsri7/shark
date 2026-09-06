@@ -67,6 +67,22 @@ export type BoardColumnDto = {
   cards: BoardCardDto[];
 };
 
+// ───────────────────────── K1.6: หลังการ์ด — รายละเอียดที่ไม่ส่งมากับหน้าบอร์ด ─────────────────────────
+// `getBoardView` (K1.5) จงใจไม่ดึง description/comment เพื่องบประมาณประสิทธิภาพ (§12.1)
+// ⇒ `CardBack.tsx` เปิดแล้วค่อยขอ "ส่วนที่เหลือ" ของการ์ดเพิ่มด้วย action ตัวนี้
+
+export type CardDetailDto = {
+  id: string;
+  /** HTML ที่ผ่าน sanitizeDescription แล้ว (renderDescription ทำตอนบันทึกฝั่ง client ก่อนส่งมา) */
+  description: string | null;
+  dueAt: string | null;
+  startAt: string | null;
+  reminderMinutesBefore: number | null;
+  archivedAt: string | null;
+  archivedById: string | null;
+  status: "ACTIVE" | "ARCHIVED";
+};
+
 export type BoardViewDto = {
   id: string;
   systemId: string;
