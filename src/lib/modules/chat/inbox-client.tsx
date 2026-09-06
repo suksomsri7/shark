@@ -181,8 +181,79 @@ export type ChatInboxClientProps = {
   manageLinksHref?: string | null;
 };
 
+// ความกว้างคอลัมน์ของกล่องแชท 3 คอลัมน์ (≥lg) — ปริยายตามแบบร่าง 320 | 1fr | 280 · ผู้ใช้ลากปรับได้
+const CHAT_COLS_KEY = "shark:chat:cols";
+const CHAT_COLS_DEFAULT = { left: 320, right: 280 };
+const CHAT_COLS_MIN = { left: 240, right: 220, middle: 360 };
+const CHAT_COLS_MAX = { left: 560, right: 520 };
+
 export function ChatInboxClient(props: ChatInboxClientProps) {
   const inApp = useInApp(); // เปิดจากแอป (WebView UA SharkApp) — ใช้ปรับความสูงการ์ดที่ ≥lg
+  // ── ปรับความกว้างคอลัมน์ได้ (เจ้าของสั่ง 6 ก.ย. 2026 จาก iPad): ลากเส้นแบ่งระหว่างคอลัมน์ที่ ≥lg ·
+  //    จำต่อเครื่องใน localStorage · ดับเบิลคลิกเส้นแบ่ง = คืนค่า 320/280 ตามแบบร่าง
+  //    inline style ใช้เฉพาะตอนจอ ≥lg (`wide`) ไม่งั้นจะทับ grid ของจอเล็กที่ Tailwind กำหนด
+  const [cols, setCols] = useState<{ left: number; right: number }>(CHAT_COLS_DEFAULT);
+  const [wide, setWide] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CHAT_COLS_KEY);
+      if (raw) {
+        const p = JSON.parse(raw) as { left?: unknown; right?: unknown };
+        if (typeof p.left === "number" && typeof p.right === "number") setCols({ left: p.left, right: p.right });
+      }
+    } catch {
+      // localStorage ใช้ไม่ได้ (โหมดส่วนตัว) — ใช้ค่าปริยาย
+    }
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setWide(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  const startResize = (side: "left" | "right") => (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const start = cols;
+    const total = gridRef.current?.clientWidth ?? 1200;
+    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+    const move = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      setCols((c) =>
+        side === "left"
+          ? { ...c, left: clamp(start.left + dx, CHAT_COLS_MIN.left, Math.min(CHAT_COLS_MAX.left, total - c.right - CHAT_COLS_MIN.middle - 32)) }
+          : { ...c, right: clamp(start.right - dx, CHAT_COLS_MIN.right, Math.min(CHAT_COLS_MAX.right, total - c.left - CHAT_COLS_MIN.middle - 32)) },
+      );
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setCols((c) => {
+        try { localStorage.setItem(CHAT_COLS_KEY, JSON.stringify(c)); } catch { /* เงียบ */ }
+        return c;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const resetCols = () => {
+    setCols(CHAT_COLS_DEFAULT);
+    try { localStorage.removeItem(CHAT_COLS_KEY); } catch { /* เงียบ */ }
+  };
+  const resizeHandle = (side: "left" | "right") => (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={side === "left" ? "ปรับความกว้างรายการแชท" : "ปรับความกว้างแผงบริบทลูกค้า"}
+      data-testid={`chat-col-resize-${side}`}
+      title="ลากเพื่อปรับความกว้าง · ดับเบิลคลิกคืนค่าเดิม"
+      onPointerDown={startResize(side)}
+      onDoubleClick={resetCols}
+      className={`absolute top-0 z-10 hidden h-full w-4 cursor-col-resize lg:block ${side === "left" ? "-right-3" : "-left-3"}`}
+    >
+      <div className="mx-auto h-full w-px bg-transparent transition-colors hover:bg-[color:var(--color-accent)]" />
+    </div>
+  );
   const {
     systemId,
     baseHref,
@@ -899,7 +970,11 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
     <section className="flex min-h-0 flex-col gap-2">
       {/* 🔴 เดสก์ท็อป = 3 คอลัมน์ตามแบบร่าง (`ref-desktop.png`): รายการ | ห้องแชท | บริบทลูกค้า
           คอลัมน์ 3 หายไปต่ำกว่า `lg` เพราะจอแคบไม่มีที่พอ และของในนั้นไม่ใช่ของที่ต้องเห็นตลอดเวลา */}
-      <div className="grid min-h-0 gap-0 sm:grid-cols-[minmax(0,320px)_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)_280px]">
+      <div
+        ref={gridRef}
+        className="grid min-h-0 gap-0 sm:grid-cols-[minmax(0,320px)_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)_280px]"
+        style={wide ? { gridTemplateColumns: thread ? `${cols.left}px minmax(0,1fr) ${cols.right}px` : `${cols.left}px minmax(0,1fr)` } : undefined}
+      >
         {/* ══════════ คอลัมน์ซ้าย: รายการแชท (WO-CV3 · แบบร่างจอ 1 + `.dcol1`) ══════════ */}
         {/* 🔴 WO-CV12: ต่ำกว่า lg ไม่มีแถบบนของแอปแล้ว (Topbar ซ่อน) และ AppMain เว้นแค่ pt-2/pb-2
             ⇒ พื้นที่ที่การ์ดได้ = 100dvh − 4.5rem (pt-2 + pb-16 ที่เว้นให้ปุ่มผู้ช่วย AI ไม่ทับปุ่มส่ง)
@@ -909,6 +984,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
         <aside
           className={`card relative h-[calc(100dvh-1rem)] min-h-0 min-w-0 flex-col gap-0 rounded-none border-x-0 p-0 sm:rounded-xl sm:border-x ${lgHeight} ${activeId ? "hidden sm:flex" : "flex"}`}
         >
+          {resizeHandle("left")}
           {/* ── หัวรายการ (แบบร่าง `.hdr`) ── */}
           <div className="flex items-center gap-1 border-b border-[color:var(--color-line)] px-2 py-1.5">
             {/* 🔴 WO-CV12: จอที่ไม่มีแถบเมนูปักซ้าย (< lg) ตัดแถบบนของแอปทิ้ง ⇒ หัวรายการนี้คือหัวจอ
@@ -2004,7 +2080,8 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
         {/* ══════════ คอลัมน์ขวา: บริบทลูกค้า (WO-CV7 — ข้างในเป็นของสาย F) ══════════ */}
         {/* ซ่อนต่ำกว่า `lg` ตามแบบร่าง — จอแคบไม่มีที่พอ และของในนั้นไม่ใช่ของที่ต้องเห็นตลอดเวลา */}
         {thread && (
-          <aside className={`hidden min-h-0 min-w-0 flex-col overflow-y-auto border-l border-[color:var(--color-line)] bg-[#fbfbfc] p-4 lg:flex ${lgHeight}`}>
+          <aside className={`relative hidden min-h-0 min-w-0 flex-col overflow-y-auto border-l border-[color:var(--color-line)] bg-[#fbfbfc] p-4 lg:flex ${lgHeight}`}>
+            {resizeHandle("right")}
             <ContextPanel
               systemId={systemId}
               conversationId={thread.conversationId}

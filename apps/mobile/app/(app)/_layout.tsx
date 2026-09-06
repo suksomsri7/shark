@@ -141,6 +141,9 @@ export default function AppLayout() {
         drawerStyle: { backgroundColor: C.surface, width: 300 },
         overlayColor: "rgba(0,0,0,0.6)",
         swipeEdgeWidth: 60,
+        // 🔴 เจ้าของสั่ง 6 ก.ย. 2026 (iPad build #24): เมนูสไลด์ของแอปซ้ำกับเมนู ☰ ของเว็บ → ใช้เมนูเว็บเป็นเมนูเดียว
+        //    ปิดท่าสไลด์ (เมนูนี้ยังอยู่ในโค้ด เผื่อเปิดคืน) · "ผู้ช่วย AI" ไปอยู่ในเมนูเว็บ → เว็บส่ง {ev:"open-ai"} มาที่ index.tsx
+        swipeEnabled: false,
       }}
     />
   );

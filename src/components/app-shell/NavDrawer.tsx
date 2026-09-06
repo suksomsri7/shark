@@ -1,5 +1,7 @@
 "use client";
 
+import { useInApp } from "./use-in-app";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -128,6 +130,9 @@ export function NavDrawer({
   const isActive = (href: string) =>
     pathname === href || (href !== "/app" && pathname.startsWith(href + "/")) || pathname.startsWith(href);
 
+  // ในแอปมือถือ: เมนูนี้เป็นเมนูเดียว (แอปปิดท่าสไลด์ของตัวเองแล้ว — เจ้าของสั่งรวมเมนู 6 ก.ย.)
+  // ⇒ ต้องมีทางไป "ผู้ช่วย AI" (จอ native ของแอป) จากตรงนี้: ส่งสัญญาณ {ev:"open-ai"} ให้แอป
+  const inApp = useInApp();
   const pinned = variant === "pinned";
   if (!pinned && !open) return null;
 
@@ -296,6 +301,22 @@ export function NavDrawer({
                 <NavBadge n={badges?.[it.key] ?? 0} />
               </Link>
             ),
+          )}
+
+          {inApp && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                (window as { ReactNativeWebView?: { postMessage: (s: string) => void } }).ReactNativeWebView?.postMessage(
+                  JSON.stringify({ ev: "open-ai" }),
+                );
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-left hover:bg-[color:var(--color-surface-2)]"
+            >
+              <span className="grid h-6 w-6 place-items-center text-base leading-none">✨</span>
+              <span className="min-w-0 truncate">ผู้ช่วย AI</span>
+            </button>
           )}
 
           <div className="my-2 border-t" />

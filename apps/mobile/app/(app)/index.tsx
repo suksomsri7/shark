@@ -126,10 +126,11 @@ export default function DashboardScreen() {
             onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
             style={styles.webview}
             onMessage={(ev) => {
-              // สัญญาจากเว็บ (AppShell): {ev:"chat-fullscreen", on:boolean}
+              // สัญญาจากเว็บ (AppShell): {ev:"chat-fullscreen", on:boolean} · (NavDrawer): {ev:"open-ai"}
               try {
                 const d = JSON.parse(ev.nativeEvent.data) as { ev?: string; on?: boolean };
                 if (d.ev === "chat-fullscreen") setHideOrb(d.on === true);
+                if (d.ev === "open-ai") void openAssistant(); // เมนูเว็บ "ผู้ช่วย AI" (แอปปิดเมนูสไลด์แล้ว 6 ก.ย.)
               } catch {
                 // ข้อความอื่นที่ไม่ใช่ของเรา — เงียบ
               }
