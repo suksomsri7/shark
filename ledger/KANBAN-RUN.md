@@ -78,7 +78,7 @@
 | K2.7 | เทมเพลตการ์ด + กำหนดส่งซ้ำ (cron) | Sonnet | TODO (oracle พร้อม 25) | | |
 | K2.8 | กล่องงานเข้าส่วนตัว (`KanbanInboxItem` · จดเร็ว · ส่งเข้าบอร์ด) ภาพ 06 ฝั่งซ้าย | Sonnet | TODO (oracle พร้อม 17 ข้อ) | | |
 | K2.9 | ตัวสร้างกฎอัตโนมัติ (5 ชนิด · ทดลองรัน · บันทึกการทำงาน) ภาพ 08 + ลงทะเบียน 8 event | Opus | TODO | | |
-| K2.10 | รายงานในแอป (ค้าง/เลยกำหนด/ภาระงาน/throughput/aging) + ส่งออก | Sonnet | TODO | | |
+| K2.10 | รายงานในแอป (ค้าง/เลยกำหนด/ภาระงาน/throughput/aging) + ส่งออก | Sonnet | TODO (oracle พร้อม 20) | | |
 | K2.11 | อีเมลสรุป + watch + ตั้งค่าความถี่แจ้งเตือน + cron เตือนกำหนดส่ง | Opus | TODO | | |
 | K2.3 | มุมมองไทม์ไลน์ (เลื่อนได้ตาม D7) | Sonnet | TODO | | |
 | **P3 — เชื่อมทุกโมดูล + AI** |||||
@@ -236,6 +236,24 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - actions: `saveCardTemplateAction createCardFromTemplateAction updateCardTemplateAction deleteCardTemplateAction reorderCardTemplatesAction setCardRecurrenceAction` · ภาพ spec `"2.7"` ≥ 3 ใบ (เลือกเทมเพลตในคอลัมน์ · หลังการ์ดตั้งกำหนดส่งซ้ำ · ตั้งค่าเทมเพลต)
 - ⚠️ oracle สร้างการ์ด/เทมเพลต/ฟิลด์บนบอร์ด "ซ่อมบำรุงอุปกรณ์" แล้วลบใน finally · เติมเทมเพลต filler จนถึง 30 ชั่วคราว · รัน `sweepRecurringCards` ด้วย now หลายค่า (30 ก.ย. · 1 ต.ค. · 23 ก.ย. · 7 ต.ค.) — builder ห้ามผูก sweep กับ `new Date()` ภายใน
 - 🔴 การตัดสินใจ D19: การ์ดลูกจากงานประจำ **ก๊อปผู้รับผิดชอบ** (งานประจำของคนเดิม ต้องโผล่ใน "งานของฉัน" เอง) · การ์ดจากเทมเพลต **ไม่ก๊อป** (คนสร้างเลือกเอง) · ลูกไม่มีกฎซ้ำ (แม่ใบเดียวเป็นต้นทาง — ลบ/เก็บแม่ = หยุดซ้ำ)
+
+### K2.10 — รายงานในแอป `/kanban/reports` (Sonnet · `qc-kanban-k2.10.mts` 20 ข้อ · ไม่มี mockup — เกณฑ์ §3.7/§13 K2.10 · ภาพ 07 แถบล่างมี "รายงาน")
+- ไม่มี migration · **รายงานคิวรีสด** จากตารางหลัก (§11.10 ห้ามตาราง summary) · นับเฉพาะบอร์ด ACTIVE + การ์ด ACTIVE · timezone ไทย (+07:00 คำนวณเอง — ห้าม getDay()/toLocale*) · นิยาม **ค้าง = completedAt null** · **เลยกำหนด = ค้าง + dueAt < now** · **เสร็จ = completedAt ไม่ null** (ไม่ดูชื่อคอลัมน์)
+- สิทธิ์ `assertReportAccess(actor)`: OWNER ผ่านเสมอ · อื่น ๆ ต้องมีคีย์ `kanban.report.view` (+ canReadKanban) ไม่งั้น Forbidden ไทย · ขอบเขต = บอร์ดที่ actor มองเห็น (`visibleBoardsWhere(actor)` ของ access.ts — ห้ามเขียนตรรกะสิทธิ์ซ้ำ) · `boardId` ที่มองไม่เห็น → ไม่พบ (throw)
+- `src/lib/modules/kanban/reports.ts` (ต่อจากไฟล์ K2.1 ที่มี exportCardsCsv): ทุกฟังก์ชัน `(ctx, actor, { now, boardId? })`
+  - `openCards → { total, overdue, byBoard: [{ boardId, boardName, open, overdue, dueToday, dueWeek }] }` (dueToday/dueWeek = วันไทย/สัปดาห์ไทย จ.–อา. ของ now)
+  - `overdue → { total, rows: [{ cardId, cardNo, title, boardId, boardName, columnName, dueAt, daysOverdue (วันไทยที่เลย ≥0), assignees: [{ userId, name }] }] }` เรียงเลยนานสุดก่อน · `take: 500`
+  - `workload → { rows: [{ userId | "none", name, open, overdue, dueWeek, done30d }] }` การ์ดหลายคนนับให้ทุกคน · "none" = ไม่มีผู้รับผิดชอบ · เรียง open มากก่อน · done30d = completedAt ใน 30 วันล่าสุดที่คนนั้นรับผิดชอบ
+  - `throughput({ weeks = 12 }) → [{ weekStart: "YYYY-MM-DD" (จันทร์ไทย), created, completed }]` สัปดาห์นี้อยู่ท้าย · weeks ตัดที่ 52
+  - `aging → { buckets: [{ key: "0-7"|"8-14"|"15-30"|"31+", label ไทย, count }], byColumn: [{ boardId, boardName, columnName, open, avgDays (ทศนิยม 1), maxDays }] }` อายุ = วันเต็มจาก createdAt ถึง now (การ์ดค้าง) · byColumn เรียง avgDays มากก่อน
+  - `exportReportCsv(ctx, actor, kind: "overdue"|"workload"|"throughput"|"aging", opts) → string` BOM + หัวไทย ผ่าน `csvRow`/`csvCell` ของ `@/lib/core/csv` · kind แปลก → throw ไทย · แถวข้อมูล = rows ของรายงานนั้น (throughput = 12 แถว · aging = byColumn)
+  - ประสิทธิภาพ: ทุกคิวรี KanbanCard มี where tenantId+systemId+status (ใช้ดัชนี `[tenantId, systemId, status, dueAt]` / `[boardId, status, completedAt]`) + `select` เฉพาะที่ใช้ · ไม่มี raw SQL ใหม่ · รวมค่าใน JS ได้ (ระดับ SME)
+- UI: หน้า `src/app/app/sys/[id]/kanban/reports/page.tsx` (server: ตรวจสิทธิ์ → ไม่มีสิทธิ์ = 404 · เรียก 5 รายงาน → props · รับ `?board=&tab=`) + `src/components/kanban/ReportsPage.tsx` (client) testid `reports-page` · 5 แท็บ testid `reports-tab`: **ค้าง / เลยกำหนด / ภาระงาน / ผลงานรายสัปดาห์ / อายุงาน** · `reports-board-filter` (dropdown "ทุกบอร์ด" + รายบอร์ดที่มองเห็น → `?board=`) · `reports-export` (ดาวน์โหลด CSV ของแท็บนั้นผ่าน `exportReportCsvAction` + Blob) · ตัวเลขใหญ่ (ค้าง/เลยกำหนด(แดง)/ถึงกำหนดวันนี้/สัปดาห์นี้) · กราฟ **SVG ล้วน** (throughput แท่งคู่ สร้าง/เสร็จ · aging แท่ง 4 ช่วง · ภาระงาน แถบต่อคน) ไม่เพิ่ม lib · โทเคนสี ไม่ hard-code น้ำเงิน · แถวเลยกำหนดคลิก → `/kanban/b/{boardId}?card={cardId}` · ตารางภาระงานคลิกชื่อคน → งานของฉัน? **ไม่** (แค่แสดง) · empty state ตาม §5.7 ("ยังไม่มีการ์ดค้าง 🎉") · มือถือ <sm: ตัวเลขเป็นชิปเลื่อนแนวนอน · แท็บเลื่อนแนวนอน · ตารางเป็นรายการ 2 บรรทัด
+- nav: `nav.ts` reports → `status: "ready"` · เมนู "รายงาน" ซ่อนสำหรับผู้ไม่มีสิทธิ์ (nav/KanbanTabs กรองด้วย `kanban.report.view` หรือ OWNER) · แถบล่างมือถือ (ภาพ 07) รายการ "รายงาน" ชี้หน้านี้
+- actions: `exportReportCsvAction(kind, boardId?)` ใน actions.ts · ห้ามเปิด route `/api/kanban/reports` สาธารณะ (REST ของ K1.15 มี op ของตัวเองแล้ว — ถ้าเพิ่ม op ใหม่ให้ผูก test ของตัวเอง)
+- ภาพ spec `"2.10"` ≥ 4 ใบ (ค้าง · เลยกำหนด · ภาระงาน · throughput/aging · มือถือ)
+- ⚠️ oracle คำนวณตัวเลขคาดหวังสดจาก DB (ไม่ตรึงเลข) · ใช้ actor ที่ override permissions ในหน่วยความจำ (ไม่แก้ membership ใน DB) — service ต้องอ่านสิทธิ์จาก `actor.permissions` ที่ส่งเข้ามา ไม่ใช่ไปอ่าน DB ซ้ำ
+- 🔴 หนี้ seed ที่รู้อยู่: บอร์ดป่าตอง คอลัมน์ "เสร็จแล้ว" ยังไม่ `isDoneColumn` และ 7 ใบไม่มี completedAt (บอร์ดซ่อมตั้งแล้ว) → รายงานจะนับ 7 ใบนั้นเป็น "ค้าง" ตามนิยาม — ถูกต้องตามข้อมูล ไม่ใช่บั๊กของ WO นี้ · Fable จะแก้ seed ตอนปิด P2 (กระทบ oracle K2.4 S1.2 = 24 → ต้องปรับพร้อมกัน)
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
 - 17:41 น. — **P1 ปิด** · qc:all 253/261 (20 นาที) → ทั้ง 8 ชุดแดงแก้แล้ว (2 ชุดเป็นผลจาก run นี้จริง: inbox import app-shell · kanban_my_tasks เปลี่ยนสัญญา — คืนแบบเดิม) · prod verify ผ่าน · handover เขียนแล้ว · Telegram ส่ง
