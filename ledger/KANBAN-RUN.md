@@ -7,10 +7,10 @@
 ## WO ปัจจุบัน
 | ช่อง | ค่า |
 |---|---|
-| WO | K1.7 |
+| WO | K1.8 |
 | สถานะ | IN_PROGRESS |
-| ผู้ทำ | Fable (oracle เขียนแล้ว) → Sonnet (builder) |
-| ขั้นที่ถึง | 08:00 น.: K1.6 DONE (Sonnet 36 นาที · Fable ดูภาพ desktop/mobile + oracle 20 + regressions + typecheck + fitness) → push main · สั่ง Sonnet ทำ K1.7 เช็คลิสต์ |
+| ผู้ทำ | Fable (oracle เขียนแล้ว 19 ข้อ) → Opus (builder) |
+| ขั้นที่ถึง | 08:44 น.: K1.7 DONE (Sonnet 36 นาที · Fable ดูภาพ + oracle 21 + regressions + race fix) → push main · สั่ง Opus ทำ K1.8 (ความเห็น + mention) · P1 7/15 |
 
 ## การตัดสินใจ (คำถาม §9 ของแบบ — เจ้าของไม่ได้ตอบ Fable ตัดสินแบบปลอดภัย แก้ทีหลังได้)
 | # | เรื่อง | ตัดสิน |
@@ -59,7 +59,7 @@
 | K1.4 | API ย้ายการ์ด/คอลัมน์ (`moveCard(before/after)` · concurrency · neighbor fallback · rebalance) + done column/`completedAt` + WIP limit + `cardNo` | Opus | DONE | 6 ก.ย. | k1.4 30/30 (oracle S4 ผิดเอง 2 จุด — builder พิสูจน์ · เขียนใหม่: แทรกคู่เดิม 300 + ปลูกคีย์ 51) · `moves.ts` FOR UPDATE เรียง id กัน deadlock · rebalance ใน tx · migration D unique(boardId,cardNo) · event moved/completed · `wo-notes/kanban-K1.4.md` |
 | K1.5 | ลากวางเดสก์ท็อป (client component ตัวแรก · optimistic · rollback) + หน้าบอร์ดใหม่ตามภาพ 02 (หัวบอร์ด/รางไอคอน/คอลัมน์ 240px/การ์ดมีตรา) | Opus | DONE | 6 ก.ย. | k1.5 17/17 · visual 1.5 ลากจริง+โหลดใหม่คง · Fable ดูภาพ desktop/mobile/WIP-reject เทียบ mockup 02 ผ่าน · NavRail 56px · `wo-notes/kanban-K1.5.md` |
 | K1.6 | หลังการ์ด (โมดัล 872px / แผ่นเต็มจอ) ตามภาพ 03: ชื่อ/รายละเอียด/ผู้รับผิดชอบ/กำหนดส่ง+วันเริ่ม/ป้าย/ย้าย/ทำสำเนา/เก็บ · URL `?card=` | Sonnet | DONE | 6 ก.ย. | k1.6 20/20 · visual 1.6 (desktop/mobile/แก้ชื่อ) Fable ดูภาพเทียบ 03 ผ่านโครง · หนี้ UI: ช่องวันที่เป็น native input → ชิปไทย (K1.14) · `wo-notes/kanban-K1.6.md` |
-| K1.7 | เช็คลิสต์ (หลายชุด · มอบหมาย/กำหนดส่งรายรายการ · แถบความคืบหน้า · ซ่อนที่ทำแล้ว) | Sonnet | IN_PROGRESS | | |
+| K1.7 | เช็คลิสต์ (หลายชุด · มอบหมาย/กำหนดส่งรายรายการ · แถบความคืบหน้า · ซ่อนที่ทำแล้ว) | Sonnet | DONE | 6 ก.ย. | k1.7 21/21 · visual 1.6 (card-back desktop/mobile) Fable ดูภาพ เช็คลิสต์ 3/5+ชิปวัน+avatar ตรง mockup 03 · Fable เจอ race toggleItem → ล็อก FOR UPDATE (probe 0/3→1/1×3) |
 | K1.8 | ความเห็น + @mention + แจ้งเตือนยิงตรงคน (`recipientUserId`) + push รายคน + auto-VIEWER | Opus | TODO | | |
 | K1.9 | ไฟล์แนบ + ปก (FileAsset ผ่าน `src/lib/storage` · magic bytes · 10 MB · signed/CDN) | Sonnet | TODO | | |
 | K1.10 | ประวัติกิจกรรม (`KanbanActivity` append-only 28 ชนิด) + สายรวมความเห็น/กิจกรรม + AuditLog เรื่องสิทธิ์ | Opus | TODO | | |
