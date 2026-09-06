@@ -373,7 +373,10 @@ for (const b of BIZ_COMPLETE) {
 //  · หมายเหตุ: routesUnder ข้ามโฟลเดอร์ [param] อยู่แล้ว → kanban/[boardId] ไม่ถูกนับเป็น nav)
 {
   const sysRoot = existsSync(join(POS_BASE, "page.tsx")) ? [""] : [];
-  requiredByType.set("CHAT", [...sysRoot, ...routesUnder(join(POS_BASE, "chat"), POS_BASE)]);
+  // เจ้าของสั่ง 6 ก.ย. 2569: แชทลูกค้าและบัญชี "ไม่มีเมนูย่อย" ในแถบเมนู (แท็บอยู่ในหน้าของระบบแล้ว)
+  // ⇒ ไม่บังคับให้ accordion กางหน้าย่อยของ 2 ระบบนี้อีก
+  requiredByType.delete("CHAT");
+  requiredByType.delete("ACCOUNT");
   requiredByType.set("MEETING", [...sysRoot, ...routesUnder(join(POS_BASE, "meeting"), POS_BASE)]);
   requiredByType.set("KANBAN", [...sysRoot, ...routesUnder(join(POS_BASE, "kanban"), POS_BASE)]);
 }
