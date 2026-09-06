@@ -25,6 +25,7 @@ import { prisma } from "./db";
 import { KANBAN_LIMITS } from "./limits";
 import { assertBoardRole, assertColumnRole } from "./members";
 import { keyBetween, keysBetween, rebalanceKeys } from "./ordering";
+import { publishBoardSignal, boardSignal } from "./realtime";
 import type { KanbanCtx } from "./types";
 
 type Tx = Prisma.TransactionClient;
@@ -358,6 +359,10 @@ export async function moveCard(ctx: KanbanCtx, input: MoveCardInput): Promise<Mo
     return { ok: true as const, position: finalCard.position ?? position, placedAt: nb.placedAt, card: finalCard };
   }, TX_OPTS);
 
+  // K1.14 — สัญญาณ "บอร์ดนี้มีของใหม่" ยิง **หลัง commit** เท่านั้น และไม่บล็อกผลลัพธ์ที่ผู้ใช้รอ
+  // (ถ้ายิงใน tx แล้ว tx ถูก rollback = จอทุกเครื่องรีเฟรชไปเห็นของที่ไม่มีจริง — ดูหัวไฟล์ realtime.ts)
+  await publishBoardSignal(ctx, card.boardId, boardSignal({ type: "card.moved", boardId: card.boardId, cardId: card.id, columnId: target.id }));
+
   return result;
 }
 
@@ -396,7 +401,7 @@ export type MoveColumnResult = { ok: true; position: string; placedAt: "between"
 export async function moveColumn(ctx: KanbanCtx, input: MoveColumnInput): Promise<MoveColumnResult> {
   const { boardId } = await assertColumnRole(ctx, input.columnId, "EDITOR");
 
-  return prisma.$transaction(async (tx) => {
+  const moved = await prisma.$transaction(async (tx) => {
     await lockBoard(tx, ctx, boardId);
     const cols = await tx.kanbanColumn.findMany({
       where: { boardId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ACTIVE" },
@@ -444,6 +449,9 @@ export async function moveColumn(ctx: KanbanCtx, input: MoveColumnInput): Promis
     });
     return { ok: true as const, position, placedAt };
   }, TX_OPTS);
+
+  await publishBoardSignal(ctx, boardId, boardSignal({ type: "column.changed", boardId, columnId: input.columnId }));
+  return moved;
 }
 
 // ───────────────────────── ตั้งค่าคอลัมน์ ─────────────────────────
@@ -564,6 +572,7 @@ export async function archiveColumn(ctx: KanbanCtx, columnId: string): Promise<{
       data: { columnId, name: before?.name ?? null },
     });
   }, TX_OPTS);
+  await publishBoardSignal(ctx, boardId, boardSignal({ type: "column.changed", boardId, columnId }));
   return { ok: true };
 }
 
@@ -580,7 +589,7 @@ export async function moveAllCards(
   const { boardId } = await assertColumnRole(ctx, input.fromColumnId, "EDITOR");
   if (input.fromColumnId === input.toColumnId) return { moved: 0 };
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     await lockColumns(tx, ctx, [input.fromColumnId, input.toColumnId]);
     const target = await tx.kanbanColumn.findFirst({
       where: { id: input.toColumnId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ACTIVE" },
@@ -629,4 +638,7 @@ export async function moveAllCards(
     }
     return { moved: cards.length };
   }, TX_OPTS);
+
+  await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.moved", boardId, columnId: input.toColumnId }));
+  return result;
 }

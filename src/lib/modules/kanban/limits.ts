@@ -19,6 +19,8 @@ export const KANBAN_LIMITS = Object.freeze({
   columnsPerBoard: 20,
   /** ความยาวคีย์ position ก่อน rebalance (ordering.ts) */
   positionRebalanceLength: 50,
+  /** จำนวนรายการสูงสุดที่หน้า "คลังเก็บ" ดึงมาต่อครั้ง (K1.14) — หน้าคลังคือที่หาของที่เผลอเก็บ ไม่ใช่รายงาน */
+  archivePageSize: 200,
 } as const);
 
 export type KanbanLimits = typeof KANBAN_LIMITS;

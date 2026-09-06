@@ -11,6 +11,7 @@ import type { Prisma } from "@prisma/client";
 import { KanbanLabelColor } from "@prisma/client";
 import { logActivity } from "./activity-log";
 import { prisma } from "./db";
+import { publishBoardSignal, boardSignal } from "./realtime";
 import { KANBAN_LIMITS } from "./limits";
 import type { KanbanCtx } from "./types";
 
@@ -222,7 +223,7 @@ export async function setCardLabels(ctx: KanbanCtx, cardId: string, labelIds: st
     if (foreign.length > 0) throw new Error("ป้ายกำกับที่เลือกไม่ได้อยู่ในบอร์ดเดียวกับการ์ด");
   }
 
-  return prisma.$transaction(async (tx) => {
+  const next = await prisma.$transaction(async (tx) => {
     // K1.10: อ่าน "ป้ายเดิม" ในทรานแซกชันเดียวกันก่อนเขียน แล้วบันทึกส่วนต่างเป็นกิจกรรม
     const had = (await tx.kanbanCardLabel.findMany({ where: { cardId: card.id }, select: { labelId: true } })).map(
       (r) => r.labelId,
@@ -237,6 +238,10 @@ export async function setCardLabels(ctx: KanbanCtx, cardId: string, labelIds: st
     await logLabelChange(tx, ctx, card, had, ids);
     return syncCardLabelJson(tx, card.id);
   });
+
+  // K1.14 — หลัง commit เท่านั้น (ดูหัวไฟล์ realtime.ts) · ส่งแค่ id ไม่ส่งชื่อป้าย
+  await publishBoardSignal(ctx, card.boardId, boardSignal({ type: "card.labels", boardId: card.boardId, cardId: card.id }));
+  return next;
 }
 
 /**

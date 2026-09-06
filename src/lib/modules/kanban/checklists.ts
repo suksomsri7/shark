@@ -16,6 +16,7 @@ import { scheduleDrain } from "@/lib/outbox-consumers";
 import { KanbanNotFoundError, visibleBoardsWhere } from "./access";
 import { logActivity } from "./activity-log";
 import { prisma } from "./db";
+import { publishBoardSignal, boardSignal } from "./realtime";
 import { KANBAN_LIMITS } from "./limits";
 import { assertCardRole, loadActor } from "./members";
 import { keyBetween } from "./ordering";
@@ -234,6 +235,8 @@ export async function toggleItem(ctx: KanbanCtx, itemId: string, done: boolean):
   });
 
   scheduleDrain();
+  // K1.14 — ตรา n/m บนการ์ดของทุกคนเปลี่ยนไปแล้ว → สัญญาณหลัง commit (ส่งแค่ cardId)
+  await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.checklist", boardId, cardId: item.cardId }));
   return updated;
 }
 

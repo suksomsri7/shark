@@ -3,10 +3,9 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { toActor } from "@/lib/modules/kanban/access";
 import { myTasksOverview } from "@/lib/modules/kanban/my-tasks";
-import { kanbanTabs } from "@/lib/modules/kanban/ui";
+import { KanbanTabs } from "@/components/kanban/KanbanTabs";
 import { MyTasks } from "@/components/kanban/MyTasks";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { ModuleTabs } from "@/components/module-tabs";
 
 // หน้าย่อย "งานของฉัน" ของระบบบอร์ดงาน (K1.13 — เขียนใหม่ทั้งหน้า: เดิมเป็น `KanbanMyTasksSection`
 // แบบ list เดียวไม่จัดกลุ่ม ใน `ui.tsx` — ตอนนี้เรียก `myTasksOverview` + จัดกลุ่มตามกำหนดส่ง)
@@ -26,7 +25,7 @@ export default async function KanbanMyTasksPage({ params }: { params: Promise<{ 
   return (
     <div className="flex max-w-3xl flex-col gap-5">
       <PageHeader title={sys.name} back={{ href: `/app/sys/${id}`, label: sys.name }} desc="งานของฉัน — การ์ดที่มอบหมายให้ฉันข้ามทุกบอร์ด" />
-      <ModuleTabs items={kanbanTabs(id)} />
+      <KanbanTabs systemId={id} />
       <MyTasks systemId={id} overview={overview} nowMs={now.getTime()} />
     </div>
   );

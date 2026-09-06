@@ -63,7 +63,11 @@ const SPECS: Record<string, Spec[]> = {
   // K1.5 — หน้าบอร์ดใหม่ + ลากวาง (เทียบภาพ 02)
   "1.5": [
     { name: "boards-home", path: `/app/sys/${SYS}/kanban/boards`, note: "หน้ารวมบอร์ดปัจจุบัน (ยังไม่ใช่แบบใหม่จนกว่า K1.12)" },
-    { name: "board-patong", path: `/app/sys/${SYS}/kanban/b/${B("patong")}`, note: "เทียบ mockup 02: หัวบอร์ด · รางไอคอน · คอลัมน์ 240px · การ์ดมีตรา", expect: ["[data-testid=board-header]", "[data-testid=column]", "[data-testid=card]"] },
+    // 🔴 K1.14 แก้หนี้ harness: ตั้งแต่ K1.13 มือถือเรนเดอร์ `MobileBoard.tsx` (testid `mobile-column`)
+    //    ไม่ใช่คอลัมน์เดสก์ท็อป (`column`) ⇒ expect เดิมทำให้ชุดนี้แดงบนมือถือทั้งที่จอถูกต้อง
+    //    (แดงปลอมแบบนี้อันตรายกว่าไม่ตรวจ — คนอ่านจะเริ่มมองข้ามสีแดงของชุดนี้)
+    { name: "board-patong", path: `/app/sys/${SYS}/kanban/b/${B("patong")}`, onlyDevice: "desktop", note: "เทียบ mockup 02: หัวบอร์ด · รางไอคอน · คอลัมน์ 240px · การ์ดมีตรา", expect: ["[data-testid=board-header]", "[data-testid=column]", "[data-testid=card]"] },
+    { name: "board-patong", path: `/app/sys/${SYS}/kanban/b/${B("patong")}`, onlyDevice: "mobile", note: "มือถือ = MobileBoard (เลื่อนทีละคอลัมน์ · K1.13)", expect: ["[data-testid=board-header]", "[data-testid=mobile-column]", "[data-testid=card]"] },
     { name: "board-patong-dragged", path: `/app/sys/${SYS}/kanban/b/${B("patong")}`, onlyDevice: "desktop", note: "ลากการ์ดใบแรกของคอลัมน์ 1 ไปวางระหว่างใบ 1-2 ของคอลัมน์ 3 แล้วถ่ายทันที (optimistic) → โหลดใหม่ต้องคง", steps: [{ waitFor: "[data-testid=card]" }, { drag: { from: "[data-testid=column]:nth-of-type(1) [data-testid=card]:nth-of-type(1)", to: "[data-testid=column]:nth-of-type(3) [data-testid=card]:nth-of-type(2)" } }, { wait: 800 }] },
     { name: "board-patong-after-reload", path: `/app/sys/${SYS}/kanban/b/${B("patong")}`, onlyDevice: "desktop", note: "โหลดใหม่หลังลาก — การ์ดต้องอยู่ที่วางไว้" },
     { name: "board-maint", path: `/app/sys/${SYS}/kanban/b/${B("maint")}`, note: "บอร์ด TENANT 4 คอลัมน์" },
@@ -236,6 +240,68 @@ const SPECS: Record<string, Spec[]> = {
     { name: "my-tasks", path: `/app/sys/${SYS}/kanban/my-tasks`, note: "เทียบภาพ 06 ฝั่งขวา — desktop + mobile", expect: ["[data-testid=my-tasks]"] },
     { name: "mobile-my-tasks", path: `/app/sys/${SYS}/kanban/my-tasks`, onlyDevice: "mobile", note: "เทียบภาพ 07(ค)/06" },
   ],
+  // K1.14 — ปุ่มลัด · คลังเก็บ · empty state · หน้ารวมบอร์ดหลังเคลียร์หนี้ UI · ชิปวันที่ไทย
+  "1.14": [
+    {
+      name: "shortcuts-help",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      onlyDevice: "desktop",
+      note: "กด ? บนบอร์ด → หน้ารายการปุ่มลัดต้องเด้ง (14 แถว ตามแบบ §5.6)",
+      expect: ["[data-testid=shortcuts-help]"],
+      steps: [{ waitFor: "[data-testid=board-header]" }, { waitFor: "[data-testid=card]" }, { press: "?" }, { waitFor: "[data-testid=shortcuts-help]", timeoutMs: 4000 }],
+    },
+    {
+      name: "archive-cards",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}/archive`,
+      note: "หน้าคลังเก็บ แท็บ 'การ์ด' — มีการ์ดที่เตรียมไว้ + ปุ่มกู้คืน (desktop + mobile)",
+      expect: ["[data-testid=archive-page]", "[data-testid=archive-card-row]", "[data-testid=archive-search]"],
+      steps: [{ waitFor: "[data-testid=archive-page]" }, { waitFor: "[data-testid=archive-card-row]", timeoutMs: 6000 }],
+    },
+    {
+      name: "archive-columns",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}/archive`,
+      onlyDevice: "desktop",
+      note: "แท็บ 'คอลัมน์' — คอลัมน์ที่ถูกเก็บ + จำนวนการ์ดที่ผูกอยู่",
+      expect: ["[data-testid=archive-column-row]"],
+      steps: [{ waitFor: "[data-testid=archive-page]" }, { click: "[data-testid=archive-tab-columns]" }, { waitFor: "[data-testid=archive-column-row]", timeoutMs: 6000 }],
+    },
+    {
+      name: "archive-after-restore",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}/archive`,
+      onlyDevice: "desktop",
+      note: "กด 'กู้คืน' การ์ดใบแรก แล้วกู้คืนคอลัมน์ — ทั้งคู่ต้องหายจากคลังทันที (คืนสภาพใน finally)",
+      steps: [
+        { waitFor: "[data-testid=archive-restore-card]" },
+        { click: "[data-testid=archive-restore-card]" },
+        { wait: 1200 },
+        { click: "[data-testid=archive-tab-columns]" },
+        { waitFor: "[data-testid=archive-restore-column]", timeoutMs: 6000 },
+        { click: "[data-testid=archive-restore-column]" },
+        { wait: 1200 },
+      ],
+    },
+    {
+      name: "board-filter-empty",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?q=ไม่มีทางเจอคำนี้ในบอร์ด`,
+      note: "กรองแล้วไม่เจอสักใบ — empty state §5.7 'ไม่มีการ์ดตรงกับตัวกรอง' + ปุ่มล้างตัวกรอง",
+      expect: ["[data-testid=filter-bar]"],
+      steps: [{ waitFor: "[data-testid=board-header]" }, { wait: 500 }],
+    },
+    {
+      name: "boards-home",
+      path: `/app/sys/${SYS}/kanban/boards`,
+      note: "หน้ารวมบอร์ดหลังเคลียร์หนี้ UI (แถบสีซ้าย · avatar · การ์ดเส้นประสร้างบอร์ด · ตัวกรองหน่วยธุรกิจ) — เทียบ mockup 01",
+      expect: ["[data-testid=boards-starred]", "[data-testid=create-board-tile]", "[data-testid=boards-unit-filter]"],
+      steps: [{ waitFor: "[data-testid=boards-starred]" }],
+    },
+    {
+      name: "card-back-due-picker",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`,
+      note: "ชิปกำหนดส่งแบบไทย (พ.ศ.) + popover ปฏิทินไทย — แทนที่ native datetime-local เดิม (หนี้ K1.6)",
+      expect: ["[data-testid=card-back]", "[data-testid=due-chip]", "[data-testid=due-picker]"],
+      steps: [{ waitFor: "[data-testid=card-back]" }, { waitFor: "[data-testid=due-chip]", timeoutMs: 8000 }, { click: "[data-testid=due-chip]" }, { waitFor: "[data-testid=due-picker]", timeoutMs: 4000 }],
+    },
+  ],
   // K1.11 — ตัวกรอง (URL) + ค้นหาข้ามบอร์ด (เทียบบล็อกแถบตัวกรองใต้หัวบอร์ดของ mockup 02)
   "1.11": [
     {
@@ -304,28 +370,177 @@ if (WO === "1.12") {
   console.log(`🧪 เตรียม K1.12: ติดดาวบอร์ดป่าตอง (คืนสภาพหลังถ่ายเสร็จ)`);
 }
 
-// ── K1.13: สเปค "mobile-swipe-undo-toast" ปัดจริงผ่าน completeCardAction (server action จริง) —
-//    ไม่รู้ล่วงหน้าว่าปัดใบไหน (ขึ้นกับลำดับ DOM ของคอลัมน์แรกตอนนั้น) ⇒ จับภาพ "ก่อน" ทุกใบของบอร์ด
-//    ป่าตองไว้ แล้ว diff กับ "หลัง" ถ่ายเสร็จทั้งชุด คืนสภาพใบที่เปลี่ยนกลับ (คอลัมน์/completedAt/status เดิม)
-type KB113Snap = { id: string; columnId: string; status: string; completedAt: string | null };
+// ── K1.13 + K1.5: สเปคที่ "ขยับการ์ดจริง" บนบอร์ดป่าตอง ⇒ จับภาพ "ก่อน" ทุกใบ แล้ว diff คืนตอนจบ
+//    K1.13 `mobile-swipe-undo-toast` ปัดจริงผ่าน completeCardAction (ไม่รู้ล่วงหน้าว่าปัดใบไหน)
+//    K1.5  `board-patong-dragged` ลากใบแรกของคอลัมน์ 1 ไปคอลัมน์ 3 จริง
+// 🔴 K1.14 เพิ่ม WO 1.5 เข้ามาที่นี่ (เดิมไม่มีตัวคืนสภาพเลย): ถ่ายชุด 1.5 หนึ่งครั้ง = การ์ดหาย
+//    จากคอลัมน์แรกถาวร 1 ใบ · สะสมจนวันที่ 6 ก.ย. คอลัมน์ "กล่องงานเข้า" เหลือ 0 จาก 5 ใบ
+//    (ล้างหนี้ที่ค้างด้วย `scripts/pending/restore-kanban-seed-inbox.mts` แล้ว)
+//    ⚠️ คืนสภาพอยู่ใน finally และอยู่ **หลัง** ถ่ายครบทุกสเปค ⇒ สเปค `board-patong-after-reload`
+//       ที่ต้องเห็นผลการลาก "หลังโหลดใหม่" ยังทำงานถูกต้องเหมือนเดิม
+//    ⚠️ คืน `position` ด้วย ไม่ใช่แค่ columnId — ลากแล้วลำดับในคอลัมน์เปลี่ยน ถ้าไม่คืนจะเพี้ยนสะสมเงียบ ๆ
+type KB113Snap = { id: string; columnId: string; status: string; completedAt: string | null; position: string | null };
 let KB113_BEFORE: KB113Snap[] = [];
 let KB113_DONE_COL: string | null = null;
-if (WO === "1.13") {
+if (WO === "1.13" || WO === "1.5") {
   const rows = await prisma.kanbanCard.findMany({
     where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS },
-    select: { id: true, columnId: true, status: true, completedAt: true },
+    select: { id: true, columnId: true, status: true, completedAt: true, position: true },
   });
-  KB113_BEFORE = rows.map((r) => ({ id: r.id, columnId: r.columnId, status: r.status, completedAt: r.completedAt?.toISOString() ?? null }));
+  KB113_BEFORE = rows.map((r) => ({ id: r.id, columnId: r.columnId, status: r.status, completedAt: r.completedAt?.toISOString() ?? null, position: r.position }));
   // ชุดข้อมูล QC ปกติไม่มีคอลัมน์ไหนตั้งธง isDoneColumn เลย (ตั้งชั่วคราวเฉพาะใน qc-kanban-k1.13.mts
   // แล้วปลดคืนตอนจบ) ⇒ ปัดขวา (=เสร็จ) บนบอร์ดป่าตองจะได้ NO_DONE_COLUMN เสมอถ้าไม่ตั้งเองก่อนถ่ายภาพ
   const moves = (await import("@/lib/modules/kanban/moves" as string)) as Any;
   const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
-  const doneCol = await prisma.kanbanColumn.findFirst({ where: { boardId: B("patong"), name: "เสร็จแล้ว" }, select: { id: true } });
+  const doneCol = WO === "1.13" ? await prisma.kanbanColumn.findFirst({ where: { boardId: B("patong"), name: "เสร็จแล้ว" }, select: { id: true } }) : null;
   if (doneCol) {
     await moves.setColumnDone(ctx, doneCol.id, true);
     KB113_DONE_COL = doneCol.id;
   }
-  console.log(`🧪 เตรียม K1.13: จับภาพก่อนของบอร์ดป่าตอง ${KB113_BEFORE.length} การ์ด · ตั้งคอลัมน์ 'เสร็จแล้ว' เป็น isDoneColumn ชั่วคราว (เผื่อคืนสภาพหลังปัดจริงระหว่างถ่าย)`);
+  console.log(`🧪 เตรียม K${WO}: จับภาพก่อนของบอร์ดป่าตอง ${KB113_BEFORE.length} การ์ด${KB113_DONE_COL ? " · ตั้งคอลัมน์ 'เสร็จแล้ว' เป็น isDoneColumn ชั่วคราว" : ""} (คืนสภาพหลังถ่ายเสร็จ)`);
+}
+
+// ── K1.14: เตรียมของให้ "คลังเก็บ" มีของให้ถ่ายจริง (การ์ด 1 ใบ + คอลัมน์ 1 คอลัมน์) + ติดดาวบอร์ด
+//    เพื่อให้แถว "บอร์ดติดดาว" (ที่มีการ์ดเส้นประ 'สร้างบอร์ดใหม่' อยู่ในนั้น) ปรากฏใน DOM
+// 🔴 ทุกอย่างผ่าน service จริง — ของที่ถ่ายจึงเป็นของที่ระบบเขียนเอง · คืนสภาพใน finally ด้านล่าง
+const KB114 = { cardId: "", columnId: "", starred: false, memberRows: [] as { boardId: string; userId: string }[] };
+if (WO === "1.14") {
+  const svc = (await import("@/lib/modules/kanban/service" as string)) as Any;
+  const cardsSvc = (await import("@/lib/modules/kanban/cards" as string)) as Any;
+  const moves = (await import("@/lib/modules/kanban/moves" as string)) as Any;
+  const members = (await import("@/lib/modules/kanban/members" as string)) as Any;
+  const tid = E.tenantId as string;
+  const ctx = { tenantId: tid, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  const col = await prisma.kanbanColumn.findFirst({
+    where: { boardId: B("patong"), tenantId: tid, systemId: SYS, status: "ACTIVE" },
+    orderBy: { position: "asc" },
+    select: { id: true },
+  });
+  if (col) {
+    const card = await svc.createCard({ tenantId: tid, systemId: SYS, columnId: col.id, title: "เคลมประกันอุปกรณ์ที่หายจากทริป (QC ภาพ)" });
+    KB114.cardId = card.id;
+    await cardsSvc.archiveCard(ctx, card.id);
+  }
+  const tmp = await svc.createColumn(tid, SYS, B("patong"), "รอตรวจสอบ (QC ภาพ)");
+  KB114.columnId = tmp.id;
+  await moves.archiveColumn(ctx, tmp.id);
+  await members.starBoard(ctx, B("patong"));
+  KB114.starred = true;
+
+  // 🔴 ชุดข้อมูล QC ไม่มีแถว `KanbanBoardMember` เลยสักบอร์ด (เจ้าของ/ผู้จัดการเห็นบอร์ดจาก "บทบาทในร้าน"
+  //    ไม่ใช่จากการเป็นสมาชิกบอร์ด) ⇒ avatar สมาชิกบนการ์ดบอร์ด (หนี้ UI K1.12 · mockup 01) จะไม่มีอะไร
+  //    ให้เรนเดอร์เลย และ "ภาพว่าง" จะถูกอ่านผิดว่า "ยังไม่ได้ทำ" · ใส่สมาชิกจริงผ่าน service แล้วถอดคืนใน finally
+  //    (หมายเหตุถึง Fable: ควรใส่สมาชิกลงใน `seed-kanban-qc.mts` ตอนเปิด P2 — เหมือนหนี้ isDoneColumn ของ K1.13)
+  for (const [boardKey, uids] of [
+    ["patong", [E.users.manager.userId, E.users.staff.thana.userId, E.users.staff.pook.userId, E.users.staff.kitti.userId]],
+    ["maint", [E.users.staff.kitti.userId, E.users.staff.thana.userId]],
+  ] as const) {
+    for (const uid of uids) {
+      await members.addMember(ctx, B(boardKey as "patong" | "maint"), uid, "EDITOR").catch(() => null);
+      KB114.memberRows.push({ boardId: B(boardKey as "patong" | "maint"), userId: uid as string });
+    }
+  }
+  console.log(`🧪 เตรียม K1.14: การ์ด 1 ใบ + คอลัมน์ 1 คอลัมน์เข้าคลัง · ติดดาวบอร์ดป่าตอง · ใส่สมาชิกบอร์ด ${KB114.memberRows.length} แถว (คืนสภาพหลังถ่ายเสร็จ)`);
+}
+
+async function restoreSeed(): Promise<void> {
+  // K1.9 — คืนสภาพ seed: ลบไฟล์แนบ/FileAsset ที่สร้างระหว่างถ่ายภาพ + ล้าง coverFileId ของการ์ดที่ใช้ทดสอบ
+  if (WO === "1.9") {
+    const P = prisma as Any;
+    const cardId = E.boards.patong.cardIds[6];
+    const rows = await P.kanbanAttachment.findMany({ where: { cardId }, select: { id: true, fileId: true } });
+    await P.kanbanAttachment.deleteMany({ where: { cardId } });
+    if (rows.length) await prisma.fileAsset.deleteMany({ where: { id: { in: rows.map((r: Any) => r.fileId) } } });
+    await prisma.kanbanCard.updateMany({ where: { id: cardId }, data: { coverFileId: null } });
+    console.log(`🧹 คืนสภาพ K1.9: ลบไฟล์แนบ ${rows.length} รายการ + ล้าง coverFileId ของการ์ด ${cardId}`);
+  }
+  // K1.10 — คืนสภาพ seed: ย้ายการ์ดกลับคอลัมน์เดิม · คืนผู้รับผิดชอบเดิม · ลบความเห็นที่เขียนระหว่างถ่าย
+  // · แล้วค่อยลบแถวกิจกรรมทุกใบที่เกิดขึ้นในรอบนี้ (ทั้งของงานจริงและของขั้นคืนสภาพเอง)
+  if (WO === "1.10" && KB110.cardId) {
+    const P = prisma as Any;
+    const moves = (await import("@/lib/modules/kanban/moves" as string)) as Any;
+    const cardsSvc = (await import("@/lib/modules/kanban/cards" as string)) as Any;
+    const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+    if (KB110.fromColumnId) await moves.moveCard(ctx, { cardId: KB110.cardId, toColumnId: KB110.fromColumnId, force: true });
+    await cardsSvc.setCardAssignees(ctx, KB110.cardId, KB110.assignees);
+    const cm = await P.kanbanComment.deleteMany({ where: { cardId: KB110.cardId, createdAt: { gte: KB110.at } } });
+    const ac = await P.kanbanActivity.deleteMany({ where: { boardId: B("patong"), createdAt: { gte: KB110.at } } });
+    console.log(`🧹 คืนสภาพ K1.10: การ์ดกลับคอลัมน์เดิม · ผู้รับผิดชอบ ${KB110.assignees.length} คน · ลบความเห็น ${cm.count} · ลบกิจกรรม ${ac.count}`);
+  }
+  // K1.12 — คืนสภาพ seed: เอาดาวออก (ไม่มีการสร้างบอร์ด/เทมเพลตจริงระหว่างถ่าย — สเปค create-board-modal-filled
+  // ตั้งใจไม่กดยืนยันฟอร์ม จึงไม่มีบอร์ดเศษให้ลบ)
+  if (WO === "1.12") {
+    const members = (await import("@/lib/modules/kanban/members" as string)) as Any;
+    const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+    await members.unstarBoard(ctx, B("patong"));
+    console.log("🧹 คืนสภาพ K1.12: เอาดาวบอร์ดป่าตองออกแล้ว");
+  }
+  // K1.13 — คืนสภาพ seed: สเปค "mobile-swipe-undo-toast" ปัดจริงผ่าน completeCardAction ระหว่างถ่าย
+  // (undo token ที่ได้ไม่ได้ถูกกด "เลิกทำ" จริงในหน้าเว็บ — คืนสภาพตรงด้วย diff ก่อน/หลังแทน)
+  if ((WO === "1.13" || WO === "1.5") && KB113_BEFORE.length > 0) {
+    const P = prisma as Any;
+    const after = await prisma.kanbanCard.findMany({
+      where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS },
+      select: { id: true, columnId: true, status: true, completedAt: true, position: true },
+    });
+    const beforeById = new Map(KB113_BEFORE.map((r) => [r.id, r]));
+    let restored = 0;
+    for (const row of after) {
+      const before = beforeById.get(row.id);
+      if (!before) continue;
+      const completedAtIso = row.completedAt?.toISOString() ?? null;
+      if (row.columnId !== before.columnId || row.status !== before.status || completedAtIso !== before.completedAt || row.position !== before.position) {
+        await P.kanbanCard.update({
+          where: { id: row.id },
+          data: {
+            columnId: before.columnId,
+            position: before.position,
+            status: before.status,
+            completedAt: before.completedAt ? new Date(before.completedAt) : null,
+            archivedAt: before.status === "ARCHIVED" ? undefined : null,
+            archivedById: before.status === "ARCHIVED" ? undefined : null,
+          },
+        });
+        restored++;
+      }
+    }
+    const activeCount = await prisma.kanbanCard.count({ where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" } });
+    if (KB113_DONE_COL) {
+      const moves = (await import("@/lib/modules/kanban/moves" as string)) as Any;
+      const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+      await moves.setColumnDone(ctx, KB113_DONE_COL, false);
+    }
+    console.log(`🧹 คืนสภาพ K${WO}: คืนการ์ดที่เปลี่ยนระหว่างถ่าย ${restored} ใบ${KB113_DONE_COL ? " · ปลดธง isDoneColumn คืน" : ""} · การ์ด ACTIVE บนบอร์ดป่าตองตอนนี้ = ${activeCount}`);
+  }
+
+  // K1.14 — คืนสภาพ seed: ลบการ์ด/คอลัมน์ที่สร้างขึ้นเพื่อถ่ายคลังเก็บ (สเปค archive-after-restore
+  // กู้คืนของทั้งคู่กลับมาบนบอร์ดจริง ⇒ ต้องลบทิ้ง ไม่ใช่แค่เก็บกลับเข้าคลัง) + เอาดาวออก + คืนตัวนับเลขการ์ด
+  if (WO === "1.14") {
+    const P = prisma as Any;
+    if (KB114.cardId) await P.kanbanCard.deleteMany({ where: { id: KB114.cardId } });
+    if (KB114.columnId) {
+      await P.kanbanCard.deleteMany({ where: { columnId: KB114.columnId } });
+      await P.kanbanColumn.deleteMany({ where: { id: KB114.columnId } });
+    }
+    if (KB114.starred) {
+      const members = (await import("@/lib/modules/kanban/members" as string)) as Any;
+      await members.unstarBoard({ tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId }, B("patong")).catch(() => null);
+    }
+    // ถอดสมาชิกที่ใส่เข้าไปเพื่อถ่าย avatar — ลบตรงจากตาราง (ไม่ผ่าน `removeMember` เพราะไม่ต้องการ
+    // แถวประวัติกิจกรรม "ถอดสมาชิก" ค้างในชุดข้อมูล QC ให้ข้อสอบ K1.10 นับเกิน)
+    if (KB114.memberRows.length > 0) {
+      await P.kanbanBoardMember.deleteMany({
+        where: { OR: KB114.memberRows.map((m) => ({ boardId: m.boardId, userId: m.userId })) },
+      });
+      await P.kanbanActivity.deleteMany({
+        where: { boardId: { in: [...new Set(KB114.memberRows.map((m) => m.boardId))] }, type: "MEMBER_ADDED" },
+      });
+    }
+    await prisma.$executeRawUnsafe(
+      `UPDATE "KanbanBoard" b SET "cardNoSeq" = COALESCE((SELECT MAX("cardNo") FROM "KanbanCard" c WHERE c."boardId" = b.id), 0) WHERE b.id = '${B("patong")}'`,
+    );
+    console.log("🧹 คืนสภาพ K1.14: ลบการ์ด/คอลัมน์ที่ใช้ถ่ายคลังเก็บ · เอาดาวออก · คืนตัวนับเลขการ์ด");
+  }
 }
 
 let failures = 0;
@@ -408,74 +623,17 @@ try {
       }
     }
   } finally { await browser.close(); }
-  // K1.9 — คืนสภาพ seed: ลบไฟล์แนบ/FileAsset ที่สร้างระหว่างถ่ายภาพ + ล้าง coverFileId ของการ์ดที่ใช้ทดสอบ
-  if (WO === "1.9") {
-    const P = prisma as Any;
-    const cardId = E.boards.patong.cardIds[6];
-    const rows = await P.kanbanAttachment.findMany({ where: { cardId }, select: { id: true, fileId: true } });
-    await P.kanbanAttachment.deleteMany({ where: { cardId } });
-    if (rows.length) await prisma.fileAsset.deleteMany({ where: { id: { in: rows.map((r: Any) => r.fileId) } } });
-    await prisma.kanbanCard.updateMany({ where: { id: cardId }, data: { coverFileId: null } });
-    console.log(`🧹 คืนสภาพ K1.9: ลบไฟล์แนบ ${rows.length} รายการ + ล้าง coverFileId ของการ์ด ${cardId}`);
-  }
-  // K1.10 — คืนสภาพ seed: ย้ายการ์ดกลับคอลัมน์เดิม · คืนผู้รับผิดชอบเดิม · ลบความเห็นที่เขียนระหว่างถ่าย
-  // · แล้วค่อยลบแถวกิจกรรมทุกใบที่เกิดขึ้นในรอบนี้ (ทั้งของงานจริงและของขั้นคืนสภาพเอง)
-  if (WO === "1.10" && KB110.cardId) {
-    const P = prisma as Any;
-    const moves = (await import("@/lib/modules/kanban/moves" as string)) as Any;
-    const cardsSvc = (await import("@/lib/modules/kanban/cards" as string)) as Any;
-    const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
-    if (KB110.fromColumnId) await moves.moveCard(ctx, { cardId: KB110.cardId, toColumnId: KB110.fromColumnId, force: true });
-    await cardsSvc.setCardAssignees(ctx, KB110.cardId, KB110.assignees);
-    const cm = await P.kanbanComment.deleteMany({ where: { cardId: KB110.cardId, createdAt: { gte: KB110.at } } });
-    const ac = await P.kanbanActivity.deleteMany({ where: { boardId: B("patong"), createdAt: { gte: KB110.at } } });
-    console.log(`🧹 คืนสภาพ K1.10: การ์ดกลับคอลัมน์เดิม · ผู้รับผิดชอบ ${KB110.assignees.length} คน · ลบความเห็น ${cm.count} · ลบกิจกรรม ${ac.count}`);
-  }
-  // K1.12 — คืนสภาพ seed: เอาดาวออก (ไม่มีการสร้างบอร์ด/เทมเพลตจริงระหว่างถ่าย — สเปค create-board-modal-filled
-  // ตั้งใจไม่กดยืนยันฟอร์ม จึงไม่มีบอร์ดเศษให้ลบ)
-  if (WO === "1.12") {
-    const members = (await import("@/lib/modules/kanban/members" as string)) as Any;
-    const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
-    await members.unstarBoard(ctx, B("patong"));
-    console.log("🧹 คืนสภาพ K1.12: เอาดาวบอร์ดป่าตองออกแล้ว");
-  }
-  // K1.13 — คืนสภาพ seed: สเปค "mobile-swipe-undo-toast" ปัดจริงผ่าน completeCardAction ระหว่างถ่าย
-  // (undo token ที่ได้ไม่ได้ถูกกด "เลิกทำ" จริงในหน้าเว็บ — คืนสภาพตรงด้วย diff ก่อน/หลังแทน)
-  if (WO === "1.13" && KB113_BEFORE.length > 0) {
-    const P = prisma as Any;
-    const after = await prisma.kanbanCard.findMany({
-      where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS },
-      select: { id: true, columnId: true, status: true, completedAt: true },
-    });
-    const beforeById = new Map(KB113_BEFORE.map((r) => [r.id, r]));
-    let restored = 0;
-    for (const row of after) {
-      const before = beforeById.get(row.id);
-      if (!before) continue;
-      const completedAtIso = row.completedAt?.toISOString() ?? null;
-      if (row.columnId !== before.columnId || row.status !== before.status || completedAtIso !== before.completedAt) {
-        await P.kanbanCard.update({
-          where: { id: row.id },
-          data: {
-            columnId: before.columnId,
-            status: before.status,
-            completedAt: before.completedAt ? new Date(before.completedAt) : null,
-            archivedAt: before.status === "ARCHIVED" ? undefined : null,
-            archivedById: before.status === "ARCHIVED" ? undefined : null,
-          },
-        });
-        restored++;
-      }
-    }
-    const activeCount = await prisma.kanbanCard.count({ where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" } });
-    if (KB113_DONE_COL) {
-      const moves = (await import("@/lib/modules/kanban/moves" as string)) as Any;
-      const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
-      await moves.setColumnDone(ctx, KB113_DONE_COL, false);
-    }
-    console.log(`🧹 คืนสภาพ K1.13: คืนการ์ดที่เปลี่ยนระหว่างถ่าย ${restored} ใบ · ปลดธง isDoneColumn คืน · การ์ด ACTIVE บนบอร์ดป่าตองตอนนี้ = ${activeCount}`);
-  }
 } finally {
+  // 🔴 K1.14 — ทุกบล็อก "คืนสภาพ seed" ย้ายมาอยู่ใน finally (ข้อเสนอของผู้ทำ K1.13)
+  //    เดิมอยู่ท้าย try ⇒ puppeteer พังกลางทาง/สเปคใดสเปคหนึ่ง throw = ชุดข้อมูล QC ค้างสภาพที่ถูกแก้ไป
+  //    แล้วข้อสอบชุดถัดไปตกโดยไม่มีใครรู้ว่าเพราะภาพชุดก่อน · การคืนสภาพเองก็ต้องไม่ล้มทั้งกระบวน
+  //    ⇒ ห่อ try/catch ของตัวเองไว้อีกชั้น (คืนไม่ได้ต้องรายงาน ไม่ใช่กลืนเงียบ)
+  try {
+    await restoreSeed();
+  } catch (e) {
+    failures++;
+    console.log(`  ❌ คืนสภาพ seed ไม่สำเร็จ — ${e instanceof Error ? e.message.slice(0, 200) : e}`);
+  }
   const { count } = await prisma.session.deleteMany({ where: { userAgent: UA } });
   await prisma.$disconnect();
   console.log(`\n🧹 ลบ session QC ${count} · ภาพ ${shots.length} ใบใน ${OUT}`);

@@ -348,8 +348,18 @@ export function BoardHeader({
                   บันทึกเป็นเทมเพลต
                 </button>
               )}
+              {/* K1.14 — คลังเก็บ: ที่หาของที่เผลอเก็บ (การ์ด + คอลัมน์) แล้วกู้คืน */}
+              <Link
+                href={`/app/sys/${board.systemId}/kanban/b/${board.id}/archive`}
+                data-testid="board-archive-link"
+                className="flex items-center gap-2 rounded-lg px-2 py-2"
+                onClick={() => setMenuOpen(false)}
+              >
+                <KanbanIcon name="box" size="xs" />
+                คลังเก็บ
+              </Link>
               <span className="px-2 py-2" style={{ color: "var(--color-muted)" }}>
-                ตั้งค่าบอร์ด · ป้ายกำกับ · คลังเก็บ — เร็ว ๆ นี้
+                ตั้งค่าบอร์ด · ป้ายกำกับ — เร็ว ๆ นี้
               </span>
             </div>
           </>

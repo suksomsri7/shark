@@ -14,7 +14,7 @@
 //     (ไม่มีกุญแจ = ผู้ใช้ไม่ต้องดาวน์โหลด JS ที่ไม่มีวันได้ใช้)
 
 import type { Realtime as AblyRealtime } from "ably";
-import { EV_CHAT_NEW, EV_CHAT_READ, EV_CHAT_TYPING } from "./events";
+import { EV_CHAT_NEW, EV_CHAT_READ, EV_CHAT_TYPING, EV_KANBAN_BOARD } from "./events";
 
 /** สัญญาณที่ส่งต่อให้หน้าจอ — มีแต่ "ตัวชี้" ไม่มีเนื้อความ (ดู events.ts) */
 export type ChatSignal = {
@@ -31,11 +31,9 @@ type TokenAnswer = { mode?: string; channel?: string; token?: unknown };
 const RETRY_MS = 15_000;
 const SUSPENDED_RETRY_MS = 60_000;
 
-async function askToken(systemId: string): Promise<TokenAnswer | null> {
+async function askToken(url: string): Promise<TokenAnswer | null> {
   try {
-    const res = await fetch(`/api/realtime/token?systemId=${encodeURIComponent(systemId)}`, {
-      cache: "no-store",
-    });
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return null;
     return (await res.json()) as TokenAnswer;
   } catch {
@@ -44,21 +42,29 @@ async function askToken(systemId: string): Promise<TokenAnswer | null> {
 }
 
 /**
- * ฟังสัญญาณของระบบแชทหนึ่ง ๆ · คืนฟังก์ชันสำหรับเลิกฟัง
+ * แกนกลางของการ "ฟังช่องหนึ่งช่อง" — ใช้ร่วมกันทุกโมดูล (แชท K1.x · บอร์ดงาน K1.14)
  *
- * เรียกได้เสมอโดยไม่ต้องเช็คโหมดก่อน — โหมด polling จะจบเงียบ ๆ ตั้งแต่คำขอแรก
+ * 🔴 เหตุผลที่แยกออกมาแทนที่จะก๊อปทั้งก้อน: ข้อ 1–4 ที่หัวไฟล์ (เงียบเมื่อต่อไม่ติด · ไม่มีกุญแจในไฟล์นี้ ·
+ *    ชื่อช่องมาจากเซิร์ฟเวอร์ · dynamic import) เป็นกติกาที่ต้องถือ **ทุกโมดูล** เท่ากัน
+ *    ก๊อปโค้ดไป 2 ชุด = วันหนึ่งชุดหนึ่งถูกแก้แล้วอีกชุดค้างกติกาเก่าโดยไม่มีใครรู้
+ *
+ * @param tokenUrl เส้นทางขอ token (ต้องมีด่านสิทธิ์ของโมดูลนั้นอยู่ปลายทาง)
+ * @param events   ชื่อ event ที่จะฟังบนช่อง
+ * @param map      แปลงข้อความดิบเป็นสัญญาณของโมดูล (คัดเฉพาะสนามที่โมดูลนั้นรู้จัก)
  */
-export function subscribeChat(
-  systemId: string,
-  onSignal: (signal: ChatSignal) => void,
+function subscribeVia<T>(
+  tokenUrl: string,
+  events: string[],
+  map: (name: string, data: Record<string, unknown>) => T,
+  onSignal: (signal: T) => void,
 ): () => void {
   let stopped = false;
   let cleanup: (() => void) | null = null;
 
   void (async () => {
-    if (!systemId || typeof window === "undefined") return;
+    if (!tokenUrl || typeof window === "undefined") return;
 
-    const first = await askToken(systemId);
+    const first = await askToken(tokenUrl);
     if (stopped || !first || first.mode !== "realtime" || !first.channel || !first.token) return;
     // เก็บชื่อช่องเป็นตัวแปรของตัวเอง — ชื่อช่องมาจากเซิร์ฟเวอร์เสมอ ไม่ประกอบเองบนจอ
     const channelName = first.channel;
@@ -73,9 +79,8 @@ export function subscribeChat(
           // 🔴 ใช้ authCallback ไม่ใช่ authUrl เพราะเส้นทางของเราตอบ 2 แบบ
           //    (`{mode:"polling"}` ตอนเจ้าของยังไม่ตั้งกุญแจ · token ตอนพร้อมใช้)
           //    ซึ่ง authUrl รับไม่ได้ — มันบังคับให้ body ของคำตอบเป็น token ล้วน ๆ เท่านั้น
-          //    ผลลัพธ์เหมือนกันทุกอย่าง: ต่ออายุเองผ่านเส้นทางเดิมที่มีด่านสิทธิ์ครบ
           authCallback: (_params, cb) => {
-            void askToken(systemId).then((ans) => {
+            void askToken(tokenUrl).then((ans) => {
               if (ans?.mode === "realtime" && ans.token) cb(null, ans.token as never);
               else cb("realtime ยังไม่พร้อมใช้งาน", null);
             });
@@ -109,16 +114,10 @@ export function subscribeChat(
     const channel = realtime.channels.get(channelName);
     const handler = (msg: { name?: string | null; data?: unknown }) => {
       const d = (msg.data ?? {}) as Record<string, unknown>;
-      onSignal({
-        event: msg.name ?? "",
-        conversationId: typeof d.conversationId === "string" ? d.conversationId : undefined,
-        userId: typeof d.userId === "string" ? d.userId : undefined,
-        until: typeof d.until === "number" ? d.until : undefined,
-        at: typeof d.at === "number" ? d.at : undefined,
-      });
+      onSignal(map(msg.name ?? "", d));
     };
     // attach ไม่สำเร็จ = เงียบ (จอยังได้ของจากรอบ poll ครบอยู่แล้ว)
-    void channel.subscribe([EV_CHAT_NEW, EV_CHAT_TYPING, EV_CHAT_READ], handler).catch(() => null);
+    void channel.subscribe(events, handler).catch(() => null);
 
     cleanup = () => {
       try {
@@ -136,4 +135,63 @@ export function subscribeChat(
     cleanup?.();
     cleanup = null;
   };
+}
+
+/**
+ * ฟังสัญญาณของระบบแชทหนึ่ง ๆ · คืนฟังก์ชันสำหรับเลิกฟัง
+ *
+ * เรียกได้เสมอโดยไม่ต้องเช็คโหมดก่อน — โหมด polling จะจบเงียบ ๆ ตั้งแต่คำขอแรก
+ */
+export function subscribeChat(
+  systemId: string,
+  onSignal: (signal: ChatSignal) => void,
+): () => void {
+  if (!systemId) return () => {};
+  return subscribeVia(
+    `/api/realtime/token?systemId=${encodeURIComponent(systemId)}`,
+    [EV_CHAT_NEW, EV_CHAT_TYPING, EV_CHAT_READ],
+    (name, d): ChatSignal => ({
+      event: name,
+      conversationId: typeof d.conversationId === "string" ? d.conversationId : undefined,
+      userId: typeof d.userId === "string" ? d.userId : undefined,
+      until: typeof d.until === "number" ? d.until : undefined,
+      at: typeof d.at === "number" ? d.at : undefined,
+    }),
+    onSignal,
+  );
+}
+
+/** สัญญาณของบอร์ดงาน (K1.14) — "ตัวชี้" ล้วน ๆ ไม่มีชื่อ/เนื้อหาการ์ด (ดู modules/kanban/realtime.ts) */
+export type BoardLiveSignal = {
+  event: string;
+  type?: string;
+  boardId?: string;
+  columnId?: string;
+  cardId?: string;
+  at?: number;
+};
+
+/**
+ * ฟังสัญญาณของบอร์ดงาน 1 ใบ · คืนฟังก์ชันสำหรับเลิกฟัง
+ * 🔴 เบราว์เซอร์ไม่รู้จัก tenantId — ส่งไปแค่ `boardId` แล้วเซิร์ฟเวอร์ (ที่ผ่านด่านสิทธิ์บอร์ดแล้ว)
+ *    เป็นคนประกอบชื่อช่องกลับมาให้ (บอร์ดที่ผู้ใช้มองไม่เห็น = ไม่ได้ token)
+ */
+export function subscribeBoard(
+  boardId: string,
+  onSignal: (signal: BoardLiveSignal) => void,
+): () => void {
+  if (!boardId) return () => {};
+  return subscribeVia(
+    `/api/realtime/kanban-token?boardId=${encodeURIComponent(boardId)}`,
+    [EV_KANBAN_BOARD],
+    (name, d): BoardLiveSignal => ({
+      event: name,
+      type: typeof d.type === "string" ? d.type : undefined,
+      boardId: typeof d.boardId === "string" ? d.boardId : undefined,
+      columnId: typeof d.columnId === "string" ? d.columnId : undefined,
+      cardId: typeof d.cardId === "string" ? d.cardId : undefined,
+      at: typeof d.at === "number" ? d.at : undefined,
+    }),
+    onSignal,
+  );
 }

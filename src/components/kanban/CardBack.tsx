@@ -10,10 +10,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KanbanIcon } from "./KanbanIcon";
-import { Avatar, formatCardDate, formatCardDateTime, tagColorVar } from "./Card";
+import { Avatar, dueBadgeFrom, tagColorVar } from "./Card";
 import { Attachments } from "./Attachments";
 import { Checklist, checklistBadgeOf } from "./Checklist";
 import { Timeline } from "./Timeline";
+import { ThaiDatePicker } from "./ThaiDatePicker";
 import {
   archiveCardAction,
   createChecklistAction,
@@ -54,27 +55,6 @@ const REMINDER_OPTIONS: { value: string; label: string }[] = [
   { value: "10080", label: "1 สัปดาห์ก่อน" },
 ];
 
-const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
-const pad2 = (n: number) => (n < 10 ? `0${n}` : String(n));
-
-/** ISO (UTC) → ค่าให้ `<input type="datetime-local">` แสดงเป็นเวลากรุงเทพฯ */
-function isoToDateTimeLocal(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(Date.parse(iso) + BKK_OFFSET_MS);
-  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
-}
-function isoToDateLocal(iso: string | null): string {
-  return isoToDateTimeLocal(iso).slice(0, 10);
-}
-/** ค่าจาก input (ตีความเป็นเวลากรุงเทพฯ) → ISO (UTC) — คืน `null` เมื่อเคลียร์ช่อง */
-function localToIso(value: string): string | null {
-  if (!value) return null;
-  const [datePart, timePart] = value.split("T");
-  const [y, m, d] = datePart!.split("-").map(Number);
-  const [hh, mm] = (timePart ?? "00:00").split(":").map(Number);
-  return new Date(Date.UTC(y!, m! - 1, d!, hh ?? 0, mm ?? 0) - BKK_OFFSET_MS).toISOString();
-}
-
 type Fields = {
   title: string;
   description: string | null;
@@ -107,6 +87,7 @@ export type CardBackHandlers = {
 
 export function CardBack({
   card,
+  initialPanel = null,
   columnId,
   columnName,
   boardId,
@@ -122,6 +103,8 @@ export function CardBack({
   handlers,
 }: {
   card: BoardCardDto;
+  /** K1.14 — ปุ่มลัด t/d/l เปิดหลังการ์ดพร้อมแผงที่ต้องการเลย (null = เปิดเปล่า ๆ เหมือนคลิกเมาส์) */
+  initialPanel?: "title" | "due" | "labels" | null;
   columnId: string;
   columnName: string;
   boardId: string;
@@ -141,19 +124,20 @@ export function CardBack({
   const [fields, setFields] = useState<Fields | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(initialPanel === "title");
   const [titleDraft, setTitleDraft] = useState(card.title);
   const [editingDesc, setEditingDesc] = useState(false);
   const [descDraft, setDescDraft] = useState("");
-  const [labelsOpen, setLabelsOpen] = useState(false);
+  const [labelsOpen, setLabelsOpen] = useState(initialPanel === "labels");
   const [membersOpen, setMembersOpen] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState<KanbanTagColor>("BLUE");
   const [moveTarget, setMoveTarget] = useState("");
+  const [dueOpen, setDueOpen] = useState(initialPanel === "due");
+  const [startOpen, setStartOpen] = useState(false);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
-  const dueInputRef = useRef<HTMLInputElement | null>(null);
   const descTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const returnFocus = useRef(true);
 
@@ -528,7 +512,7 @@ export function CardBack({
                 <span style={{ fontSize: 12, color: "var(--color-muted)" }}>เพิ่ม:</span>
                 <AddChip icon="users" label="สมาชิก" onClick={() => setMembersOpen(true)} />
                 <AddChip icon="tag" label="ป้ายกำกับ" onClick={() => setLabelsOpen(true)} />
-                <AddChip icon="clock" label="กำหนดวัน" onClick={() => dueInputRef.current?.focus()} />
+                <AddChip icon="clock" label="กำหนดวัน" onClick={() => setDueOpen(true)} />
                 <AddChip icon="cklist" label="เช็คลิสต์" onClick={addChecklist} />
                 <AddChip icon="clip" label="ไฟล์แนบ" onClick={openAttachmentPicker} />
                 <AddChip icon="link" label="เชื่อมข้อมูล SHARK" disabled accent />
@@ -673,21 +657,19 @@ export function CardBack({
                       title="ทำเครื่องหมายเสร็จโดยย้ายการ์ดเข้าคอลัมน์เสร็จ"
                       style={{ width: 14, height: 14, borderRadius: 4, border: "1.5px solid var(--color-line)", display: "inline-block" }}
                     />
-                    {editable ? (
-                      <input
-                        ref={dueInputRef}
-                        type="datetime-local"
-                        aria-label="กำหนดส่ง"
-                        value={isoToDateTimeLocal(fields.dueAt)}
-                        onChange={(e) => patchDates({ dueAt: localToIso(e.target.value) })}
-                        className="rounded border px-1.5 py-0.5"
-                        style={{ fontSize: 12.5, borderColor: "var(--color-line)" }}
-                      />
-                    ) : fields.dueAt ? (
-                      <span style={{ fontSize: 12.5 }}>{formatCardDateTime(fields.dueAt)}</span>
-                    ) : (
-                      <span style={{ fontSize: 12.5, color: "var(--color-muted)" }}>ยังไม่กำหนด</span>
-                    )}
+                    <ThaiDatePicker
+                      value={fields.dueAt}
+                      onChange={(dueAt) => patchDates({ dueAt })}
+                      editable={editable}
+                      withTime
+                      open={dueOpen}
+                      onOpenChange={setDueOpen}
+                      nowMs={nowMs}
+                      ariaLabel="กำหนดส่ง"
+                      chipTestId="due-chip"
+                      pickerTestId="due-picker"
+                      tone={fields.dueAt ? (dueBadgeFrom(fields.dueAt, null, nowMs)?.tone ?? "gray") : undefined}
+                    />
                     {editable && fields.dueAt && (
                       <select
                         aria-label="เตือนล่วงหน้า"
@@ -706,20 +688,17 @@ export function CardBack({
                   </div>
                   <div className="mt-2">
                     <SectionLabel>วันเริ่ม</SectionLabel>
-                    {editable ? (
-                      <input
-                        type="date"
-                        aria-label="วันเริ่ม"
-                        value={isoToDateLocal(fields.startAt)}
-                        onChange={(e) => patchDates({ startAt: e.target.value ? localToIso(e.target.value) : null })}
-                        className="rounded border px-1.5 py-0.5"
-                        style={{ fontSize: 12.5, borderColor: "var(--color-line)" }}
-                      />
-                    ) : fields.startAt ? (
-                      <span style={{ fontSize: 12.5 }}>{formatCardDate(fields.startAt)}</span>
-                    ) : (
-                      <span style={{ fontSize: 12.5, color: "var(--color-muted)" }}>ยังไม่กำหนด</span>
-                    )}
+                    <ThaiDatePicker
+                      value={fields.startAt}
+                      onChange={(startAt) => patchDates({ startAt })}
+                      editable={editable}
+                      open={startOpen}
+                      onOpenChange={setStartOpen}
+                      nowMs={nowMs}
+                      ariaLabel="วันเริ่ม"
+                      chipTestId="start-chip"
+                      pickerTestId="start-picker"
+                    />
                   </div>
                 </div>
               </div>

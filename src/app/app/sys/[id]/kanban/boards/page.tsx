@@ -2,9 +2,8 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { boardsHome, canReadKanban, toActor } from "@/lib/modules/kanban/service";
-import { kanbanTabs } from "@/lib/modules/kanban/ui";
+import { KanbanTabs } from "@/components/kanban/KanbanTabs";
 import { BoardsHome } from "@/components/kanban/BoardsHome";
-import { ModuleTabs } from "@/components/module-tabs";
 
 // หน้ารวมบอร์ดใหม่ (K1.12) — แทนที่ `KanbanBoardsSection` เดิม · เทียบ `ledger/design-kanban/01-boards-home.png`
 // ดาว/จัดกลุ่มสาขา/บอร์ดกลางองค์กร/แถวเทมเพลต — ข้อมูลมาจาก `service.boardsHome` ตัวเดียว (ผ่านสิทธิ์แล้ว)
@@ -31,7 +30,7 @@ export default async function KanbanBoardsPage({ params }: { params: Promise<{ i
 
   return (
     <div className="flex flex-col gap-5">
-      <ModuleTabs items={kanbanTabs(id)} />
+      <KanbanTabs systemId={id} />
       <BoardsHome systemId={id} home={home} units={units} nowMs={Date.now()} />
     </div>
   );

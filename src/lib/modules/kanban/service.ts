@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import type { KanbanBoard, KanbanBoardVisibility, KanbanCard, KanbanCardSourceType, KanbanColumn, KanbanLabelColor } from "@prisma/client";
 import { logActivity } from "./activity-log";
 import { keyBetween, keysBetween } from "./ordering";
+import { publishBoardSignal, boardSignal } from "./realtime";
 import { applyCardLabelNames } from "./labels";
 import { syncSingleAssignee } from "./cards";
 import { notifyCardAssigned } from "./notify";
@@ -462,6 +463,8 @@ export async function createCard(input: {
   if (input.assigneeUserId) {
     await notifyAssignment(input.tenantId, input.systemId, card, input.assigneeUserId);
   }
+  // K1.14 — สัญญาณหลัง commit: จออื่นที่เปิดบอร์ดเดียวกันอยู่จะ refresh มาเห็นการ์ดใบใหม่ภายใน ~2 วิ
+  await publishBoardSignal(ctx, card.boardId, boardSignal({ type: "card.created", boardId: card.boardId, cardId: card.id, columnId: col.id }));
   return card;
 }
 

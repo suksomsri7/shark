@@ -138,7 +138,15 @@ export function MyTasks({
         </div>
 
         {nothingAtAll ? (
-          <p style={{ fontSize: 13, color: "var(--color-muted)", padding: "10px 2px" }}>วันนี้ไม่มีงานค้าง</p>
+          /* empty state §5.7 — ทุกอันต้องบอก "ขั้นต่อไป" 1 อย่าง */
+          <div className="flex flex-col items-start gap-2" style={{ padding: "10px 2px" }}>
+            <p style={{ fontSize: 13, color: "var(--color-muted)" }}>
+              วันนี้ไม่มีงานค้าง 🎉 งานที่หัวหน้ามอบหมายจะมาอยู่ที่นี่
+            </p>
+            <Link href={`/app/sys/${systemId}/kanban/boards`} className="btn btn-ghost text-sm" data-testid="my-tasks-see-boards">
+              ดูบอร์ดทั้งหมด
+            </Link>
+          </div>
         ) : (
           <>
             {order.map((key) => {

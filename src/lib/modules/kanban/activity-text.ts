@@ -117,6 +117,8 @@ export function describeActivity(item: Pick<KanbanActivityDto, "type" | "data" |
       return `เพิ่มคอลัมน์ ${names.column ?? str(data.name) ?? "ใหม่"}`;
     case "COLUMN_UPDATED": {
       const col = names.column ?? str(data.name);
+      // K1.14 — กู้คืนคอลัมน์จากคลังใช้ชนิดเดียวกับ "แก้ไขคอลัมน์" + ธง `restored` (ไม่เพิ่มค่าเอนัม)
+      if (data.restored === true) return col ? `กู้คืนคอลัมน์ ${col} จากคลัง` : "กู้คืนคอลัมน์จากคลัง";
       const from = str(data.from);
       if (from && col && from !== col) return `เปลี่ยนชื่อคอลัมน์ ${from} เป็น ${col}`;
       const f = fieldsTh(data);

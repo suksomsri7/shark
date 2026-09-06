@@ -352,6 +352,8 @@ export function NavDrawer({
             { href: "/app/settings/billing", icon: "🧾", label: "บิลจากแพลตฟอร์ม" },
             { href: "/app/audit", icon: "🕓", label: "ประวัติการแก้ไข" },
             { href: "/app/settings/privacy", icon: "🔒", label: "ความเป็นส่วนตัว (PDPA)" },
+            // K1.14 — ค่าที่เป็นของ "คน" ไม่ใช่ของ "ร้าน" (ปุ่มลัดคีย์บอร์ดของบอร์ดงาน)
+            { href: "/app/settings/preferences", icon: "🎛️", label: "การตั้งค่าส่วนตัว" },
           ].map((s) => (
             <Link
               key={s.href}

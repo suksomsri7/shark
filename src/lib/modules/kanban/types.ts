@@ -357,3 +357,30 @@ export type MyTasksOverviewDto = {
   /** K2.11 ยังไม่ทำฟีเจอร์ "ติดตามการ์ด" — คงไว้ `[]` เสมอ (ดูหมายเหตุที่ `my-tasks.ts`) */
   watching: MyWatchingCardDto[];
 };
+
+// ───────────────────────── K1.14 — คลังเก็บ (archive.ts) ─────────────────────────
+// DTO บริสุทธิ์: วันที่เป็น ISO string ไม่ใช่ `Date` — หน้าคลังเป็น client component
+// (ส่ง `Date` ข้ามเส้น server→client ได้ก็จริง แต่จะโดน serialize เป็นสตริงอยู่ดี แล้วชนิดที่ประกาศจะโกหก)
+
+export type ArchivedCardDto = {
+  id: string;
+  cardNo: number | null;
+  title: string;
+  /** ISO · null = แถวเก่าที่ถูกเก็บก่อนมีคอลัมน์ `archivedAt` */
+  archivedAt: string | null;
+  archivedBy: { userId: string; name: string } | null;
+  columnName: string | null;
+};
+
+export type ArchivedColumnDto = {
+  id: string;
+  name: string;
+  archivedAt: string | null;
+  /** จำนวนการ์ดที่ยังผูกกับคอลัมน์นี้ (กลับมาพร้อมกันตอนกู้คืน) */
+  cardCount: number;
+};
+
+export type ArchiveListDto = {
+  cards: ArchivedCardDto[];
+  columns: ArchivedColumnDto[];
+};

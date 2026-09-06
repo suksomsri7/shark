@@ -43,6 +43,10 @@ import {
   updateCardFields,
 } from "./cards";
 import { createLabel, setCardLabels } from "./labels";
+import type { ArchiveListDto } from "./types";
+// K1.14 — คลังเก็บ + การตั้งค่าส่วนตัว (ปุ่มลัด)
+import { listArchived, restoreColumn } from "./archive";
+import { setUserPreferences } from "./preferences";
 // K1.7 — เช็คลิสต์: `checklistProgressOfCard` ใช้ตอนคืนการ์ดเดี่ยวจาก action (ทำสำเนา/กู้คืน)
 // เพื่อให้ตรา n/m บนการ์ดที่เพิ่งแทรกกลับเข้าบอร์ดถูกต้องทันที ไม่ต้องรอโหลดบอร์ดใหม่ทั้งใบ
 import {
@@ -1201,4 +1205,57 @@ export async function undoAction(input: {
   if (input.boardId) revalidatePath(boardPath(input.systemId, input.boardId));
   revalidatePath(myTasksPath(input.systemId));
   return { ok: true };
+}
+
+// ───────────────────────── K1.14 — คลังเก็บ (หน้า /kanban/b/{id}/archive) ─────────────────────────
+
+/** ค้นในคลังของบอร์ด (ช่องค้นหาบนหน้าคลังเรียกตัวนี้ทุกครั้งที่พิมพ์ — ผ่านด่านสิทธิ์ทุกครั้งเหมือนกัน) */
+export async function listArchivedAction(input: {
+  systemId: string;
+  boardId: string;
+  q?: string;
+}): Promise<{ ok: true; data: ArchiveListDto } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.boardId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
+  try {
+    const data = await listArchived(ctxOf(auth, input.systemId), input.boardId, { q: input.q });
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "เปิดคลังเก็บไม่สำเร็จ" };
+  }
+}
+
+/** กู้คืนคอลัมน์จากคลัง → กลับมาท้ายบอร์ดพร้อมการ์ดที่ยังผูกอยู่ (ADMIN ของบอร์ดตาม D16) */
+export async function restoreColumnAction(input: {
+  systemId: string;
+  boardId: string;
+  columnId: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.column.create");
+  if (!input.systemId || !input.columnId) return { ok: false, message: "ไม่พบคอลัมน์นี้" };
+  try {
+    await restoreColumn(ctxOf(auth, input.systemId), input.columnId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "กู้คืนคอลัมน์ไม่สำเร็จ" };
+  }
+}
+
+// ───────────────────────── K1.14 — การตั้งค่าส่วนตัว (ปุ่มลัด) ─────────────────────────
+
+/**
+ * เปิด/ปิดปุ่มลัดคีย์บอร์ดของ "ผู้ใช้คนที่ล็อกอินอยู่" เท่านั้น
+ * 🔴 ไม่รับ userId จากฟอร์ม — ถ้ารับ ใครก็ปิดปุ่มลัดให้คนอื่นได้ (ค่านี้ผูกกับ session เสมอ)
+ * 🔴 ไม่ต้องมีคีย์สิทธิ์โมดูล: เป็นการตั้งค่าหน้าจอของตัวเอง ไม่ใช่ข้อมูลของร้าน
+ */
+export async function setKanbanShortcutsAction(input: {
+  enabled: boolean;
+}): Promise<{ ok: true; kanbanShortcuts: boolean }> {
+  const auth = await requireTenant();
+  const next = await setUserPreferences(auth.user.id, { kanbanShortcuts: !!input.enabled });
+  revalidatePath("/app/settings/preferences");
+  return { ok: true, kanbanShortcuts: next.kanbanShortcuts };
 }

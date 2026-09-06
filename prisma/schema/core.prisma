@@ -108,6 +108,11 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // K1.14 — การตั้งค่าส่วนตัว (ของ "คน" ไม่ใช่ของร้าน · ข้าม tenant เหมือนตัว User เอง)
+  // วันนี้: { kanbanShortcuts: boolean } — อ่าน/เขียนผ่าน src/lib/modules/kanban/preferences.ts เท่านั้น
+  // 🔴 ห้ามเก็บความลับ/ข้อมูลส่วนบุคคลในนี้ — เป็นค่าปรับแต่งหน้าจอล้วน ๆ
+  prefs Json @default("{}")
+
   memberships Membership[]
   sessions    Session[]
 }

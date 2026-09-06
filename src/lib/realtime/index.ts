@@ -27,6 +27,7 @@ export {
   EV_CHAT_NEW,
   EV_CHAT_TYPING,
   EV_CHAT_READ,
+  EV_KANBAN_BOARD,
   TYPING_TTL_MS,
   TYPING_PING_MS,
   type Signal,

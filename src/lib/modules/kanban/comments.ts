@@ -17,6 +17,7 @@ import { scheduleDrain } from "@/lib/outbox-consumers";
 import { KanbanForbiddenError, KanbanNotFoundError } from "./access";
 import { logActivity } from "./activity-log";
 import { prisma } from "./db";
+import { publishBoardSignal, boardSignal } from "./realtime";
 import { KANBAN_LIMITS } from "./limits";
 import { assertBoardRole, assertCardRole, grantViewerForMention } from "./members";
 import { cardLink, notifyKanbanUser } from "./notify";
@@ -151,6 +152,8 @@ export async function addComment(ctx: KanbanCtx, cardId: string, rawBody: string
   scheduleDrain();
 
   await notifyMentions(ctx, { cardId, boardId, authorUserId, targets: mentions });
+  // K1.14 — สัญญาณหลัง commit · ไม่มีเนื้อความในนี้ (จอที่ได้รับไปดึงความเห็นจากเซิร์ฟเวอร์เราเอง)
+  await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.comment", boardId, cardId }));
   return comment;
 }
 

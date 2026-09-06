@@ -3,6 +3,8 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { canReadKanban, getBoardView, KanbanNotFoundError, toActor } from "@/lib/modules/kanban/service";
 import { boardFiltersFromParams } from "@/lib/modules/kanban/search";
+// K1.14 — ปุ่มลัดปิดได้รายคน (แบบ §5.6) → อ่านค่าที่นี่แล้วส่งลงเป็น prop (client ไม่ต้องยิงถามเอง)
+import { getUserPreferences } from "@/lib/modules/kanban/preferences";
 import { BoardView } from "@/components/kanban/BoardView";
 
 // หน้าบอร์ดใหม่ (K1.5) — `/app/sys/{id}/kanban/b/{boardId}` ตามภาพ `ledger/design-kanban/02-board.png`
@@ -39,5 +41,13 @@ export default async function KanbanBoardPage({
   if (!board) notFound();
 
   const filters = boardFiltersFromParams(query);
-  return <BoardView board={board} initialCardId={query.card ?? null} filters={filters} />;
+  const prefs = await getUserPreferences(auth.user.id);
+  return (
+    <BoardView
+      board={board}
+      initialCardId={query.card ?? null}
+      filters={filters}
+      shortcutsEnabled={prefs.kanbanShortcuts}
+    />
+  );
 }

@@ -6,6 +6,8 @@ import { AppMain } from "@/components/app-shell/AppMain";
 import { NavProgress } from "@/components/app-shell/NavProgress";
 import type { NavItem, SoonItem } from "@/components/app-shell/NavDrawer";
 import { accountNavChildren } from "@/lib/modules/account/nav";
+// เมนูบอร์ดงาน 7 หมวด (§5.2) มาจากทะเบียนเดียวกับแถบแท็บในโมดูล — ห้ามพิมพ์ลิสต์ซ้ำที่นี่
+import { kanbanNavChildren } from "@/lib/modules/kanban/nav";
 // เมนูของระบบแชทซ่อนตามสิทธิ์จริง — ใช้ทะเบียน/ตัวช่วยชุดเดียวกับด่านของโมดูล (ไม่พิมพ์คีย์ซ้ำ)
 import { evaluate } from "@/lib/core/rbac";
 import { membershipOf, CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
@@ -201,12 +203,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/meeting`, label: "ห้องแชท" },
         ];
       case "KANBAN":
-        // ระบบบอร์ดงาน: งานของฉัน (การ์ดที่มอบหมาย) + บอร์ดงาน (รายการบอร์ด + สร้าง)
-        return [
-          { href: s, label: "ภาพรวม" },
-          { href: `${s}/kanban/my-tasks`, label: "งานของฉัน" },
-          { href: `${s}/kanban/boards`, label: "บอร์ดงาน" },
-        ];
+        // ระบบบอร์ดงาน (K1.14 · แบบ §5.2 "เมนูโมดูล 7 หมวด") — ทะเบียนเดียวที่ `kanban/nav.ts`
+        // ใช้ร่วมกับแถบแท็บในโมดูล · drawer ใส่เฉพาะหมวดที่มี `page.tsx` จริง
+        // (หมวดที่ยังไม่มา เช่น กล่องงานเข้า/ปฏิทินงาน/ระบบอัตโนมัติ/รายงาน/ตั้งค่า โชว์ป้าย
+        //  "เร็ว ๆ นี้" ในแถบแท็บแทน — ลิงก์ที่กดแล้ว 404 คือ dead link ที่ qc-nav-functions.mts ห้าม)
+        return kanbanNavChildren(s);
       default:
         return undefined; // ที่เหลือ (COMING SOON ฯลฯ) = render inline หน้าเดียว ไม่มี sub-route
     }

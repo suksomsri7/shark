@@ -20,9 +20,11 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { ModuleTabs } from "@/components/module-tabs";
+import { KanbanTabs } from "@/components/kanban/KanbanTabs";
 // K1.11 — ปุ่มค้นหาข้ามบอร์ด (Ctrl/⌘ K) ของ "หน้ารวมบอร์ด" (client component ฝังในหน้า server นี้ได้ตรง ๆ)
 import { SearchPalette } from "@/components/kanban/SearchPalette";
+// K1.14 — ทะเบียนเมนู 7 หมวด (§5.2) ใช้ร่วมกับ layout ☰
+import { kanbanNavChildren } from "./nav";
 
 const muted = "text-[color:var(--color-muted)]";
 
@@ -41,14 +43,10 @@ const fmtDue = (d: Date) =>
   d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "Asia/Bangkok" });
 
 // แท็บฟังก์ชันย่อยของระบบ Kanban (ใช้ทั้งหน้า hub + ทุกหน้าย่อย ให้ตรงกันเสมอ)
-// ⚠️ ต้องตรงกับ childrenFor("KANBAN") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions.mts)
+// 🔴 K1.14 — มาจากทะเบียนเดียว `./nav` ตัวเดียวกับ `childrenFor("KANBAN")` ใน `src/app/app/layout.tsx`
+//    (ตรวจโดย qc-nav-functions.mts) · ที่นี่คืนเฉพาะหมวดที่กดเข้าได้จริง ⇒ ใช้กับ `ModuleTabs` ได้ตรง ๆ
 export function kanbanTabs(systemId: string): { href: string; label: string }[] {
-  const s = `/app/sys/${systemId}`;
-  return [
-    { href: s, label: "ภาพรวม" },
-    { href: `${s}/kanban/my-tasks`, label: "งานของฉัน" },
-    { href: `${s}/kanban/boards`, label: "บอร์ดงาน" },
-  ];
+  return kanbanNavChildren(`/app/sys/${systemId}`);
 }
 
 // ───────────── งานของฉัน (my-tasks) — การ์ดที่มอบหมายให้ฉันข้ามทุกบอร์ด ─────────────
@@ -147,7 +145,7 @@ export async function KanbanHub({ systemId, tenantId }: { systemId: string; tena
 
   return (
     <div className="flex flex-col gap-5">
-      <ModuleTabs items={kanbanTabs(systemId)} />
+      <KanbanTabs systemId={systemId} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {cards.map((c) => (
           <Link

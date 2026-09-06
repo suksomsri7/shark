@@ -18,6 +18,9 @@ import { Column, type ColumnHandlers } from "./Column";
 import { FilterBar } from "./FilterBar";
 import { KanbanIcon } from "./KanbanIcon";
 import { MobileBoard } from "./MobileBoard";
+// K1.14 — ปุ่มลัดคีย์บอร์ด (§5.6) + "บอร์ดนี้มีของใหม่" (realtime/polling · D13)
+import { Shortcuts, type ShortcutCommand } from "./Shortcuts";
+import { useBoardLive } from "./useBoardLive";
 import {
   archiveColumnAction,
   archiveWithUndoAction,
@@ -81,11 +84,14 @@ export function BoardView({
   board,
   initialCardId = null,
   filters = {},
+  shortcutsEnabled = true,
 }: {
   board: BoardViewDto;
   initialCardId?: string | null;
   /** K1.11 — ตัวกรองที่มาจาก URL (`page.tsx` parse `searchParams` แล้วส่งลงมา) */
   filters?: BoardFilters;
+  /** K1.14 — user preference `kanbanShortcuts` (server อ่านให้แล้วส่งลงมา) · false = ไม่ผูกตัวฟังคีย์เลย */
+  shortcutsEnabled?: boolean;
 }) {
   const nowMs = Date.parse(board.now);
   const router = useRouter();
@@ -104,6 +110,10 @@ export function BoardView({
   const [labels, setLabels] = useState<BoardLabelDto[]>(board.labels);
   // K1.13: toast "เลิกทำ" ของปัดขวา/ซ้ายบนมือถือ — คนละอันจาก `toast` ทั่วไป (มีปุ่มกดของตัวเอง)
   const [undoToast, setUndoToast] = useState<{ message: string; token: string; snapshot: BoardColumnDto[] } | null>(null);
+  // K1.14 — "การ์ดที่ชี้อยู่" ของปุ่มลัด (j/k เลื่อน · t/d/l/c/n ทำงานกับใบนี้) · ผูกกับโฟกัสจริงของ DOM
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  /** แผงที่ต้องเปิดทันทีเมื่อหลังการ์ดโผล่ (มาจากปุ่มลัด t/d/l) */
+  const [cardBackPanel, setCardBackPanel] = useState<"title" | "due" | "labels" | null>(null);
   const undoToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMobile = useIsMobileBoard();
   const [, startTransition] = useTransition();
@@ -528,6 +538,7 @@ export function BoardView({
 
   const closeCard = useCallback(() => {
     const id = openCardId;
+    setCardBackPanel(null); // ปุ่มลัด t/d/l สั่งเปิดแผงไว้ — ปิดการ์ดแล้วต้องลืม ไม่งั้นเปิดใบถัดไปแผงเด้งเอง
     setOpenCardId(null);
     setOpenCardSnapshot(null);
     setOpenColumnMeta(null);
@@ -728,6 +739,137 @@ export function BoardView({
     : totalCardCount;
   const clearFilters = () => router.replace(pathname, { scroll: false });
 
+  // ═════════ K1.14 — realtime/polling: บอร์ดนี้มีของใหม่ ═════════
+  // ⚠️ พักไว้ระหว่างลาก/เปิดหลังการ์ด — `router.refresh()` กลางการลากจะสลับ state ใต้มือผู้ใช้
+  useBoardLive(board.id, { paused: !!drag || !!colDragId || !!openCardId });
+
+  // ═════════ K1.14 — ปุ่มลัดคีย์บอร์ด (§5.6) ═════════
+  // การ์ดทุกใบเป็น element ที่โฟกัสได้อยู่แล้ว (K1.5) ⇒ "การ์ดที่ชี้อยู่" = การ์ดที่โฟกัส
+  // ⇒ j/k แค่ย้ายโฟกัส แล้วปุ่มอื่นทำงานกับใบที่โฟกัสอยู่ (คนใช้คีย์บอร์ดล้วนได้ผลเหมือนเมาส์)
+  const flatVisible = filteredColumns.flatMap((col) => col.cards.map((card) => ({ card, columnId: col.id })));
+  const selectCard = (id: string | null) => {
+    setSelectedCardId(id);
+    if (id) cardEls.current.get(id)?.focus();
+  };
+  const currentPick = () => {
+    const id = selectedCardId ?? openCardId;
+    const found = id ? flatVisible.find((x) => x.card.id === id) : undefined;
+    return found ?? flatVisible[0] ?? null;
+  };
+  const openWithPanel = (panel: "title" | "due" | "labels") => {
+    const pick = currentPick();
+    if (!pick) return;
+    setCardBackPanel(panel);
+    openCard(pick.card);
+  };
+  const stepSelection = (delta: 1 | -1) => {
+    if (flatVisible.length === 0) return;
+    const id = selectedCardId;
+    const idx = id ? flatVisible.findIndex((x) => x.card.id === id) : -1;
+    const next = idx < 0 ? (delta === 1 ? 0 : flatVisible.length - 1) : (idx + delta + flatVisible.length) % flatVisible.length;
+    selectCard(flatVisible[next]!.card.id);
+  };
+  const moveSelectedSideways = (dir: -1 | 1) => {
+    if (!canEdit) {
+      showToast("คุณดูบอร์ดนี้ได้อย่างเดียว");
+      return;
+    }
+    const pick = currentPick();
+    if (!pick) return;
+    const idx = columnsRef.current.findIndex((c) => c.id === pick.columnId);
+    const target = columnsRef.current[idx + dir];
+    if (!target) return;
+    moveCardTo(pick.card, pick.columnId, target.id, target.cards.length);
+  };
+  /**
+   * ปุ่มที่ "เปิดแผงที่มีอยู่แล้วบนหน้าจอ" (ตัวกรอง/ค้นหา/เพิ่มการ์ด) สั่งผ่านการกดปุ่มจริงใน DOM
+   * ⚠️ ตั้งใจ: แผงพวกนี้ถือ state ของตัวเองอยู่ใน `BoardHeader`/`Column` ⇒ ยกขึ้นมาไว้ที่นี่เพื่อให้
+   *    ปุ่มลัดสั่งได้ = ต้องรื้อ 3 คอมโพเนนต์ · การกดปุ่มเดียวกับที่ผู้ใช้กดเองให้ผลเหมือนกันเป๊ะ
+   *    และไม่มีทางที่ปุ่มลัดจะทำงานได้ในขณะที่ปุ่มจริงหายไป (ซึ่งจะเป็นบั๊กที่มองไม่เห็น)
+   */
+  const clickTestId = (testId: string): boolean => {
+    const el = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+    if (!el) return false;
+    el.click();
+    return true;
+  };
+
+  const onShortcut = (command: ShortcutCommand) => {
+    const sysBase = `/app/sys/${systemId}/kanban`;
+    switch (command) {
+      case "boards":
+      case "go-boards":
+        router.push(`${sysBase}/boards`);
+        return;
+      case "go-my-tasks":
+        router.push(`${sysBase}/my-tasks`);
+        return;
+      case "go-inbox":
+        showToast("กล่องงานเข้ากำลังจะมา (เร็ว ๆ นี้)");
+        return;
+      case "search":
+        clickTestId("search-open");
+        return;
+      case "filter":
+        if (!clickTestId("filter-button")) showToast("ตัวกรองอยู่ที่หัวบอร์ด");
+        return;
+      case "filter-clear":
+        if (activeFilters) clearFilters();
+        return;
+      case "new-card": {
+        const pick = currentPick();
+        const columnId = pick?.columnId ?? filteredColumns[0]?.id;
+        if (!columnId) return;
+        const btn = document.querySelector<HTMLElement>(`[data-column-id="${columnId}"] [data-testid="add-card"]`);
+        if (btn) btn.click();
+        else clickTestId("add-card");
+        return;
+      }
+      case "rename-card":
+        openWithPanel("title");
+        return;
+      case "due":
+        openWithPanel("due");
+        return;
+      case "labels":
+        openWithPanel("labels");
+        return;
+      case "archive-card": {
+        const pick = currentPick();
+        if (!pick) return;
+        if (!canEdit) {
+          showToast("คุณดูบอร์ดนี้ได้อย่างเดียว");
+          return;
+        }
+        setSelectedCardId(null);
+        swipeArchive(pick.card, pick.columnId);
+        return;
+      }
+      case "card-next":
+        stepSelection(1);
+        return;
+      case "card-prev":
+        stepSelection(-1);
+        return;
+      case "move-left":
+        moveSelectedSideways(-1);
+        return;
+      case "move-right":
+        moveSelectedSideways(1);
+        return;
+      case "undo":
+        if (undoToast) undoSwipe();
+        else showToast("ไม่มีรายการให้เลิกทำ");
+        return;
+      case "escape":
+        if (openCardId) closeCard();
+        else setSelectedCardId(null);
+        return;
+      default:
+        return;
+    }
+  };
+
   return (
     <div
       className="flex flex-col"
@@ -816,9 +958,20 @@ export function BoardView({
           />
         ))}
         {columns.length === 0 && (
-          <p style={{ fontSize: 13, color: "var(--color-muted)" }}>
-            บอร์ดนี้ยังว่าง ลองเพิ่มงานแรกในคอลัมน์ &ldquo;รอทำ&rdquo;
-          </p>
+          <div className="flex flex-col items-start gap-2" style={{ color: "var(--color-muted)" }}>
+            <p style={{ fontSize: 13 }}>บอร์ดนี้ยังว่าง ลองเพิ่มงานแรกในคอลัมน์ &ldquo;รอทำ&rdquo;</p>
+            {canEdit && (
+              <button
+                type="button"
+                data-testid="empty-board-add-card"
+                className="btn btn-primary text-sm"
+                onClick={() => onShortcut("new-card")}
+              >
+                <KanbanIcon name="plus" size="sm" />
+                เพิ่มการ์ด
+              </button>
+            )}
+          </div>
         )}
         {canEdit && columns.length > 0 && (
           <button
@@ -857,6 +1010,7 @@ export function BoardView({
       {openCardId && openCardSnapshot && (
         <CardBack
           key={openCardSnapshot.id}
+          initialPanel={cardBackPanel}
           card={openCardSnapshot}
           columnId={openColumnMeta?.id ?? ""}
           columnName={openColumnMeta?.name ?? ""}
@@ -888,6 +1042,9 @@ export function BoardView({
           </div>
         </div>
       )}
+
+      {/* ── K1.14: ปุ่มลัดคีย์บอร์ด (ปิดได้จากตั้งค่าส่วนตัว) + หน้ารายการปุ่มลัด (`?`) ── */}
+      <Shortcuts enabled={shortcutsEnabled} onCommand={onShortcut} />
 
       {/* ── K1.13: toast ปัดเสร็จ/เก็บ — ปุ่ม "เลิกทำ" ใช้ได้ 5 วิ (token จริงยังไม่หมดอายุ 5 นาที) ── */}
       {undoToast && (

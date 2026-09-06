@@ -97,6 +97,21 @@ if (accCase) {
   accCase.hrefs.push(...navHrefs.map((h) => `\`\${s}/account${h}\``));
 }
 
+// 🔴 K1.14 — เมนูบอร์ดงานก็ย้ายไปทะเบียนกลาง (`kanban/nav.ts`) แล้วเหมือนบัญชี ⇒ ต้องตามไปอ่านที่นั่น
+//    ไม่งั้นด่าน "dead link" จะไม่เห็นลิงก์ของบอร์ดงานเลยสักเส้น = ข้อสอบวัดอะไรไม่ได้
+//    (รายการที่ status "soon" ประกาศ href เป็น "#" ไม่ใช่ template literal ⇒ regex ไม่หยิบมาโดยธรรมชาติ)
+const kbCase = cases.find((c) => c.type === "KANBAN");
+if (kbCase) {
+  const kbSrc = readFileSync(join(ROOT, "src/lib/modules/kanban/nav.ts"), "utf8");
+  const kbPaths = [...kbSrc.matchAll(/status:\s*"ready"/g)].length;
+  const readyPaths = [...kbSrc.matchAll(/path:\s*"([^"]*)",\s*status:\s*"ready"/g)].map((m) => m[1]);
+  chk("S0.2", `ตามลิงก์บอร์ดงานไปที่ kanban/nav.ts ได้ (${readyPaths.length} รายการพร้อมใช้)`,
+    readyPaths.length >= 2 && readyPaths.length === kbPaths && /kanbanNavChildren/.test(featureBody),
+    `เจอ ready ${readyPaths.length} · layout อ้าง kanbanNavChildren = ${/kanbanNavChildren/.test(featureBody)}`,
+    "CRITICAL");
+  kbCase.hrefs.push("`${s}`", ...readyPaths.map((h) => `\`\${s}${h}\``));
+}
+
 // ตัด ?query และ #hash ออกจาก href ก่อนแมปเป็นไฟล์ page.tsx — เหมือน stripQueryHash() ใน account/nav.ts
 // 🔴 WO 1.1: ไม่ตัดแล้วพลาด — href ของ flyout เมนูบัญชี V2 มี `?tab=…`/`#new` ต่อท้าย (เช่น `/po?tab=awaiting_approval`,
 // `/purchase#new`) พาธไฟล์จริงคือ `.../po/page.tsx` ไม่ใช่โฟลเดอร์ชื่อ "po?tab=awaiting_approval" — ไม่ตัดก่อนเทียบ
