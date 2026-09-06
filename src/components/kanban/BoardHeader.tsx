@@ -10,6 +10,7 @@ import { KanbanIcon } from "./KanbanIcon";
 import { Avatar } from "./Card";
 import { SearchPalette } from "./SearchPalette";
 import { BoardActivityPanel } from "./Timeline";
+import { saveBoardAsTemplateAction } from "@/lib/modules/kanban/actions";
 import type { BoardFilters, DueBucket } from "@/lib/modules/kanban/filters";
 import type { BoardViewDto } from "@/lib/modules/kanban/types";
 
@@ -68,6 +69,8 @@ export function BoardHeader({
   const [filterOpen, setFilterOpen] = useState(false);
   // K1.10 — แผงประวัติกิจกรรมของบอร์ด (เปิดจากเมนู ⋯) · เวลาอ้างอิงมาจาก server เหมือนที่อื่นทั้งหน้า
   const [activityOpen, setActivityOpen] = useState(false);
+  // K1.12: "บันทึกเป็นเทมเพลต" — โมดัลเล็กในเมนู ⋯ (ADMIN เท่านั้น)
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const isAdmin = board.role === "ADMIN";
   const router = useRouter();
   const pathname = usePathname();
@@ -331,6 +334,20 @@ export function BoardHeader({
                 <KanbanIcon name="clock" size="xs" />
                 ประวัติกิจกรรมของบอร์ด
               </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  data-testid="board-save-as-template-open"
+                  className="flex items-center gap-2 rounded-lg px-2 py-2 text-left"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setSaveTemplateOpen(true);
+                  }}
+                >
+                  <KanbanIcon name="copy" size="xs" />
+                  บันทึกเป็นเทมเพลต
+                </button>
+              )}
               <span className="px-2 py-2" style={{ color: "var(--color-muted)" }}>
                 ตั้งค่าบอร์ด · ป้ายกำกับ · คลังเก็บ — เร็ว ๆ นี้
               </span>
@@ -347,7 +364,115 @@ export function BoardHeader({
           onClose={() => setActivityOpen(false)}
         />
       )}
+
+      {saveTemplateOpen && (
+        <SaveAsTemplateModal
+          systemId={board.systemId}
+          boardId={board.id}
+          defaultName={`${board.name} (เทมเพลต)`}
+          onClose={() => setSaveTemplateOpen(false)}
+        />
+      )}
     </header>
+  );
+}
+
+/**
+ * K1.12 — โมดัลเล็ก "บันทึกเป็นเทมเพลต" (ชื่อ + คำอธิบาย) — validation อยู่ในตัว ไม่ใช้ `alert()`
+ * (feedback: ตรวจสอบข้อมูลต้องแจ้งในหน้า ไม่ใช่กล่องเตือนของเบราว์เซอร์)
+ */
+function SaveAsTemplateModal({
+  systemId,
+  boardId,
+  defaultName,
+  onClose,
+}: {
+  systemId: string;
+  boardId: string;
+  defaultName: string;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(defaultName);
+  const [description, setDescription] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const submit = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("ต้องตั้งชื่อเทมเพลตก่อนจึงบันทึกได้");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const res = await saveBoardAsTemplateAction({ systemId, boardId, name: trimmed, description: description.trim() || undefined });
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.message);
+      return;
+    }
+    setDone(true);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center" style={{ background: "rgba(10,10,10,.35)" }}>
+      <span className="fixed inset-0" onClick={onClose} aria-hidden />
+      <div
+        data-testid="save-as-template-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="บันทึกเป็นเทมเพลต"
+        className="relative flex w-full max-w-[420px] flex-col gap-3 rounded-xl p-5"
+        style={{ background: "var(--color-surface)", border: "1px solid var(--color-line)", boxShadow: "0 24px 60px rgba(10,10,10,.28)" }}
+      >
+        {done ? (
+          <>
+            <h2 style={{ fontSize: 15, fontWeight: 700 }}>บันทึกเทมเพลตแล้ว</h2>
+            <p style={{ fontSize: 12.5, color: "var(--color-muted)" }}>
+              เทมเพลต &ldquo;{name.trim()}&rdquo; พร้อมใช้สร้างบอร์ดใหม่จากหน้ารวมบอร์ดแล้ว
+            </p>
+            <button type="button" className="btn btn-primary self-end text-sm" onClick={onClose}>
+              ปิด
+            </button>
+          </>
+        ) : (
+          <>
+            <h2 style={{ fontSize: 15, fontWeight: 700 }}>บันทึกบอร์ดนี้เป็นเทมเพลต</h2>
+            <p style={{ fontSize: 12, color: "var(--color-muted)" }}>
+              คัดลอกคอลัมน์ + ป้ายกำกับ + การ์ดที่ยังไม่เก็บเข้าคลัง (ไม่คัดลอกผู้รับผิดชอบ/กำหนดส่ง) ไว้ให้ร้านใช้สร้างบอร์ดใหม่ได้ทันที
+            </p>
+            <label className="flex flex-col gap-1" style={{ fontSize: 12.5 }}>
+              ชื่อเทมเพลต
+              <input
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="input"
+                aria-invalid={error ? "true" : undefined}
+              />
+            </label>
+            <label className="flex flex-col gap-1" style={{ fontSize: 12.5 }}>
+              คำอธิบาย (ไม่บังคับ)
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="input" rows={2} />
+            </label>
+            {error && (
+              <p data-testid="save-as-template-error" style={{ fontSize: 12, color: "var(--color-danger)" }}>
+                {error}
+              </p>
+            )}
+            <div className="mt-1 flex justify-end gap-2">
+              <button type="button" className="btn btn-ghost text-sm" onClick={onClose} disabled={busy}>
+                ยกเลิก
+              </button>
+              <button type="button" className="btn btn-primary text-sm" onClick={submit} disabled={busy}>
+                {busy ? "กำลังบันทึก…" : "บันทึกเป็นเทมเพลต"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

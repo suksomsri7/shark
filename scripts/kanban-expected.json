@@ -1,129 +1,129 @@
 {
   "_readme": "เฉลยของชุดข้อมูล QC บอร์ดงาน — เขียนโดย scripts/seed-kanban-qc.mts ทุกครั้งที่ seed",
-  "generatedAt": "2026-09-06T04:36:16.763Z",
+  "generatedAt": "2026-09-06T05:31:20.347Z",
   "today": "2026-09-30",
   "oracleValidUntil": "2026-10-31",
-  "tenantId": "cmtpbk26w0000wckzjkxl63hp",
-  "systemId": "cmtpbk28h0003wckzmc4om6oq",
+  "tenantId": "cmtpdivbs0000cmkzj0fy9evr",
+  "systemId": "cmtpdivdc0003cmkzy21f34lz",
   "units": {
-    "patong": "cmtpbk27n0001wckznz1zgh6g",
-    "kata": "cmtpbk2840002wckze0htlf1r"
+    "patong": "cmtpdivcg0001cmkzvfk5ef8p",
+    "kata": "cmtpdivcy0002cmkzdri2d00j"
   },
   "users": {
     "owner": {
-      "userId": "cmtpbk28y0004wckzckl1eiai",
-      "membershipId": "cmtpbk29i0005wckzt2f49x1h",
+      "userId": "cmtpdivdu0004cmkziuvz4hf6",
+      "membershipId": "cmtpdived0005cmkzd0s562l4",
       "name": "เจ้าของร้าน (KB QC)",
       "email": "kb-owner@shark.local"
     },
     "manager": {
-      "userId": "cmtpbk2a00006wckz64syajah",
-      "membershipId": "cmtpbk2ad0007wckzdkpx4idr",
+      "userId": "cmtpdiveu0006cmkz5rafubpk",
+      "membershipId": "cmtpdivf70007cmkzikf8zshj",
       "name": "ผู้จัดการป่าตอง",
       "email": "kb-manager-patong@shark.local"
     },
     "staff": {
       "thana": {
-        "userId": "cmtpbk2ao0008wckzxcc8tfvm",
-        "membershipId": "cmtpbk2b00009wckzfa8qqvhy",
+        "userId": "cmtpdivfj0008cmkz0k2u182j",
+        "membershipId": "cmtpdivfw0009cmkzfrt9lnmm",
         "name": "ธนา ศรีสมบัติ",
         "email": "kb-thana@shark.local"
       },
       "pook": {
-        "userId": "cmtpbk2bb000awckzddwzzryf",
-        "membershipId": "cmtpbk2bl000bwckz5jo8d7b4",
+        "userId": "cmtpdivg7000acmkzoefmwfz3",
+        "membershipId": "cmtpdivgi000bcmkzs5uqz1b2",
         "name": "ปุ๊ก มณีรัตน์",
         "email": "kb-pook@shark.local"
       },
       "kitti": {
-        "userId": "cmtpbk2bw000cwckzzdcz05th",
-        "membershipId": "cmtpbk2c7000dwckzwb4xuywj",
+        "userId": "cmtpdivgt000ccmkz94tfv2uy",
+        "membershipId": "cmtpdivh4000dcmkzzy0qkuyu",
         "name": "กิตติ ช่างอุปกรณ์",
         "email": "kb-kitti@shark.local"
       }
     },
     "noPerm": {
-      "userId": "cmtpbk2ci000ewckzbvjdb32c",
-      "membershipId": "cmtpbk2ct000fwckz3v0ktt5m",
+      "userId": "cmtpdivhg000ecmkz1cx7c82l",
+      "membershipId": "cmtpdivhr000fcmkzx7g5kvmq",
       "name": "พนักงานไม่มีสิทธิ์บอร์ด",
       "email": "kb-noperm@shark.local"
     }
   },
   "boards": {
     "patong": {
-      "id": "cmtpbk2ew000gwckzt4rzb1ue",
+      "id": "cmtpdivjk000gcmkz5vg4we5d",
       "columns": {
-        "กล่องงานเข้า": "cmtpbk2k7000lwckzo2luox6s",
-        "รอทำ": "cmtpbk2ma000nwckzco1x9fvz",
-        "กำลังทำ": "cmtpbk2ob000pwckz7mzc18ax",
-        "รอตรวจ": "cmtpbk2qb000rwckzxiy21q4o",
-        "เสร็จแล้ว": "cmtpbk2sb000twckz2yentnqm"
+        "กล่องงานเข้า": "cmtpdivom000lcmkzumuz4cy5",
+        "รอทำ": "cmtpdivqr000ncmkzjqf9l3st",
+        "กำลังทำ": "cmtpdivtg000pcmkzhbgiq1b1",
+        "รอตรวจ": "cmtpdivvj000rcmkzgba3brow",
+        "เสร็จแล้ว": "cmtpdivxk000tcmkzjuhuk7do"
       },
       "cardIds": [
-        "cmtpbk2v4000vwckzwmrubzah",
-        "cmtpbk3b10013wckzcehqbmls",
-        "cmtpbk3h30017wckzjiq7a9yf",
-        "cmtpbk3m3001bwckz78x94ha1",
-        "cmtpbk3vr001iwckzdl7crzqq",
-        "cmtpbk40d001lwckzhbvylc82",
-        "cmtpbk49q001swckz32tso0vm",
-        "cmtpbk4in001ywckzvs8ldoam",
-        "cmtpbk4sj0025wckz3bp31ruv",
-        "cmtpbk520002cwckzmdjnxa65",
-        "cmtpbk5at002iwckzm7l0nne8",
-        "cmtpbk5fv002mwckzkevjpq50",
-        "cmtpbk5or002swckzss9kbtu6",
-        "cmtpbk5xm002ywckzxfqqs59z",
-        "cmtpbk66v0035wckzawim00bz",
-        "cmtpbk6fx003bwckzd31j89lk",
-        "cmtpbk6os003hwckzwnjyyghq",
-        "cmtpbk6t9003kwckzj6r1q6p2",
-        "cmtpbk72g003qwckzplxsdcgi",
-        "cmtpbk7b2003wwckzw459s2e0",
-        "cmtpbk7lk0042wckzcpvhg2ps",
-        "cmtpbk7yy0048wckzfa7j5lgf",
-        "cmtpbk895004ewckzexm9peeb",
-        "cmtpbk8ib004kwckz24808a2y"
+        "cmtpdiw05000vcmkzi6tx8p48",
+        "cmtpdiwf90013cmkzfv4bid95",
+        "cmtpdiwki0017cmkz1hy60myi",
+        "cmtpdiwpn001bcmkzk3aa9t16",
+        "cmtpdiwz6001icmkz9s1lbt7b",
+        "cmtpdix3r001lcmkzl1t8tg8i",
+        "cmtpdixd6001scmkz06am5w5m",
+        "cmtpdixlx001ycmkzvy2alqkg",
+        "cmtpdixvy0025cmkz6lv1w0i5",
+        "cmtpdiy54002ccmkzt8297r06",
+        "cmtpdiydt002icmkzzhs8qwy0",
+        "cmtpdiyiy002mcmkzc97kaq50",
+        "cmtpdiys7002scmkzbttoprbw",
+        "cmtpdiz14002ycmkz29736cw2",
+        "cmtpdizap0035cmkz1drqwuti",
+        "cmtpdizji003bcmkzrxpm0zbj",
+        "cmtpdizs6003hcmkzpm1zjb96",
+        "cmtpdizwk003kcmkzviopa3n8",
+        "cmtpdj056003qcmkz7jcervsn",
+        "cmtpdj0eg003wcmkz5q2291rz",
+        "cmtpdj0nf0042cmkz4c33jw6b",
+        "cmtpdj0wd0048cmkzm9w4iw5s",
+        "cmtpdj15k004ecmkzl1hy6ylg",
+        "cmtpdj1ea004kcmkzlcm5gpbw"
       ],
       "unitKey": "patong",
       "visibility": "PRIVATE",
       "cardCount": 24
     },
     "maint": {
-      "id": "cmtpbk8qb004qwckz0hjr4ovt",
+      "id": "cmtpdj1n0004qcmkz56e8wwjk",
       "columns": {
-        "แจ้งเข้า": "cmtpbk8u4004vwckzolpim4fx",
-        "กำลังซ่อม": "cmtpbk8w1004xwckz9t4krzl3",
-        "รออะไหล่": "cmtpbk8y0004zwckz9qkv85u9",
-        "เสร็จ": "cmtpbk8zz0051wckzgvlp0bet"
+        "แจ้งเข้า": "cmtpdj1qt004vcmkz7dibrzlo",
+        "กำลังซ่อม": "cmtpdj1su004xcmkz5nxjbrrn",
+        "รออะไหล่": "cmtpdj1uw004zcmkzn7gxs0hc",
+        "เสร็จ": "cmtpdj1ww0051cmkzrbigww6f"
       },
       "cardIds": [
-        "cmtpbk9260053wckz6gcir6nt",
-        "cmtpbk9bq005awckzw787umq8",
-        "cmtpbk9g7005dwckz0huainod",
-        "cmtpbk9pi005kwckzpjj0v0mk",
-        "cmtpbk9yi005qwckzn29im4d4",
-        "cmtpbka7j005xwckzn178g3e4",
-        "cmtpbkag60063wckz921aupei",
-        "cmtpbkakm0066wckz5pw7t1k5",
-        "cmtpbkate006cwckzcahua0pj",
-        "cmtpbkb24006iwckz9oiyhte5",
-        "cmtpbkbas006owckz8ivp8843"
+        "cmtpdj1z50053cmkzm4viwdeh",
+        "cmtpdj28k005acmkzhdafmsmi",
+        "cmtpdj2d8005dcmkzcps746af",
+        "cmtpdj2nn005kcmkz2z9kgtz7",
+        "cmtpdj2xt005qcmkzscji21yv",
+        "cmtpdj379005xcmkz4uvjkgv8",
+        "cmtpdj3ga0063cmkzb22faw41",
+        "cmtpdj3kw0066cmkzjkqcv8ig",
+        "cmtpdj3tk006ccmkzmbqnbzae",
+        "cmtpdj43g006icmkz210f3f3k",
+        "cmtpdj4d3006ocmkzl9z3pv84"
       ],
       "unitKey": null,
       "visibility": "TENANT",
       "cardCount": 11
     },
     "kata": {
-      "id": "cmtpbkbil006uwckz8o5dxipi",
+      "id": "cmtpdj4l7006ucmkzhpwvjyzn",
       "columns": {
-        "รอทำ": "cmtpbkbmd006zwckz6wp14vf5",
-        "เสร็จ": "cmtpbkbob0071wckze3q45ef3"
+        "รอทำ": "cmtpdj4ov006zcmkz7zlmvxip",
+        "เสร็จ": "cmtpdj4qs0071cmkzijq6l3ti"
       },
       "cardIds": [
-        "cmtpbkbqk0073wckzxru7veul",
-        "cmtpbkbvl0077wckzg6sdnj84",
-        "cmtpbkc0p007bwckzabypausd"
+        "cmtpdj4t00073cmkzv38ac3oi",
+        "cmtpdj4y20077cmkzrze3g49d",
+        "cmtpdj530007bcmkzpn3pi4vp"
       ],
       "unitKey": "kata",
       "visibility": "PRIVATE",

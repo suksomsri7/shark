@@ -181,6 +181,30 @@ const SPECS: Record<string, Spec[]> = {
   ],
   "1.12": [
     { name: "boards-home-new", path: `/app/sys/${SYS}/kanban/boards`, note: "เทียบ mockup 01: ดาว · จัดกลุ่มสาขา · แถวเทมเพลต", expect: ["[data-testid=boards-starred]", "[data-testid=templates-row]"] },
+    {
+      name: "template-picker-open",
+      path: `/app/sys/${SYS}/kanban/boards`,
+      onlyDevice: "desktop",
+      note: "คลิกการ์ดเทมเพลตใบแรก — ต้องเปิดพรีวิวคอลัมน์ + ปุ่ม 'ใช้เทมเพลตนี้'",
+      expect: ["[data-testid=template-preview]", "[data-testid=template-use]"],
+      steps: [
+        { waitFor: "[data-testid=templates-row]" },
+        { click: "[data-testid=template-card]:nth-of-type(1)" },
+        { wait: 400 },
+      ],
+    },
+    {
+      name: "create-board-modal-filled",
+      path: `/app/sys/${SYS}/kanban/boards`,
+      note: "กด 'สร้างบอร์ด' แล้วกรอกชื่อ — โมดัลต้องขึ้นครบ (ชื่อ/หน่วยธุรกิจ/การมองเห็น/เทมเพลต) — ไม่กดยืนยัน (ไม่สร้างบอร์ดจริง)",
+      expect: ["[data-testid=create-board-modal]"],
+      steps: [
+        { click: "[data-testid=create-board]" },
+        { waitFor: "[data-testid=create-board-modal]" },
+        { fill: "[data-testid=create-board-name]", value: "งานเปิดสาขาภูเก็ต (ทดสอบ QC ภาพ — ไม่บันทึก)" },
+        { wait: 300 },
+      ],
+    },
   ],
   "1.13": [
     { name: "mobile-board", path: `/app/sys/${SYS}/kanban/b/${B("patong")}`, onlyDevice: "mobile", note: "เทียบภาพ 07(ก)" },
@@ -244,6 +268,15 @@ if (WO === "1.10") {
   if (target) await moves.moveCard(ctx, { cardId: KB110.cardId, toColumnId: target.id, force: true });
   await cardsSvc.setCardAssignees(ctx, KB110.cardId, [E.users.staff.pook.userId]);
   console.log(`🧪 เตรียม K1.10: ย้ายการ์ด + มอบหมาย (คืนสภาพหลังถ่ายเสร็จ)`);
+}
+
+// ── K1.12: ติดดาวบอร์ดป่าตองไว้ก่อนถ่าย (ชุดข้อมูล QC ปกติไม่มีบอร์ดติดดาวเลย ⇒ แถบ "บอร์ดติดดาว"
+//    จะไม่ปรากฏใน DOM ให้ selector หาเจอ) — เอาดาวออกคืนหลังถ่ายเสร็จ (finally ด้านล่าง)
+if (WO === "1.12") {
+  const members = (await import("@/lib/modules/kanban/members" as string)) as Any;
+  const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  await members.starBoard(ctx, B("patong"));
+  console.log(`🧪 เตรียม K1.12: ติดดาวบอร์ดป่าตอง (คืนสภาพหลังถ่ายเสร็จ)`);
 }
 
 let failures = 0;
@@ -341,6 +374,14 @@ try {
     const cm = await P.kanbanComment.deleteMany({ where: { cardId: KB110.cardId, createdAt: { gte: KB110.at } } });
     const ac = await P.kanbanActivity.deleteMany({ where: { boardId: B("patong"), createdAt: { gte: KB110.at } } });
     console.log(`🧹 คืนสภาพ K1.10: การ์ดกลับคอลัมน์เดิม · ผู้รับผิดชอบ ${KB110.assignees.length} คน · ลบความเห็น ${cm.count} · ลบกิจกรรม ${ac.count}`);
+  }
+  // K1.12 — คืนสภาพ seed: เอาดาวออก (ไม่มีการสร้างบอร์ด/เทมเพลตจริงระหว่างถ่าย — สเปค create-board-modal-filled
+  // ตั้งใจไม่กดยืนยันฟอร์ม จึงไม่มีบอร์ดเศษให้ลบ)
+  if (WO === "1.12") {
+    const members = (await import("@/lib/modules/kanban/members" as string)) as Any;
+    const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+    await members.unstarBoard(ctx, B("patong"));
+    console.log("🧹 คืนสภาพ K1.12: เอาดาวบอร์ดป่าตองออกแล้ว");
   }
 } finally {
   const { count } = await prisma.session.deleteMany({ where: { userAgent: UA } });

@@ -240,3 +240,70 @@ export type KanbanTimelineFilter = "all" | "comments" | "activity";
 
 /** ผลลัพธ์แบบแบ่งหน้าของทุกฟังก์ชันอ่านใน `activity.ts` — `nextCursor` = null คือหมดแล้ว */
 export type KanbanPage<T> = { items: T[]; nextCursor: string | null };
+
+// ───────────────────────── K1.12: เทมเพลตบอร์ด + หน้ารวมบอร์ดใหม่ ─────────────────────────
+// 🔴 ชนิดของ DTO เหล่านี้อยู่ในไฟล์ **บริสุทธิ์** นี้ (ไม่ใช่ใน `templates.ts`/`boardsHome.ts` ที่แตะ prisma)
+//    โดยตั้งใจ — client component (`BoardsHome.tsx`/`TemplatePicker.tsx`/`CreateBoardModal.tsx`)ต้อง
+//    `import type` DTO พวกนี้ได้โดยไม่ลาก `db.ts`→`pg` เข้าบันเดิลฝั่ง browser (บทเรียนเดียวกับ K1.11
+//    deviation #1 — Turbopack เดินตามทั้งไฟล์ตอนสร้าง client chunk แม้จะ import แค่ type ก็ตาม)
+
+/** สี/ธงคอลัมน์ + ป้าย + การ์ดของโครงเทมเพลต (โครง JSON ที่เก็บใน `KanbanBoardTemplate.structure`) */
+export type TemplateColumnSpec = {
+  name: string;
+  isDone?: boolean;
+  wipLimit?: number | null;
+  color?: KanbanTagColor;
+};
+
+export type TemplateLabelSpec = { name: string; color: KanbanTagColor };
+
+export type TemplateCardSpec = {
+  title: string;
+  /** ชื่อคอลัมน์ (ต้องตรงกับชื่อใน `columns` ของ structure เดียวกัน) */
+  column: string;
+  description?: string;
+  /** ชื่อป้าย (ต้องอยู่ใน `labels` ของ structure เดียวกัน) */
+  labels?: string[];
+  /** รายการเช็คลิสต์ 1 ชุด (ไม่มี = การ์ดนี้ไม่มีเช็คลิสต์) */
+  checklist?: string[];
+};
+
+export type TemplateStructure = {
+  columns: TemplateColumnSpec[];
+  labels: TemplateLabelSpec[];
+  cards: TemplateCardSpec[];
+};
+
+export type BoardTemplateDto = {
+  id: string;
+  tenantId: string | null;
+  scope: "PLATFORM" | "TENANT";
+  key: string | null;
+  name: string;
+  description: string | null;
+  icon: string;
+  structure: TemplateStructure;
+  createdById: string | null;
+  createdAt: string;
+};
+
+/** การ์ดบอร์ด 1 ใบในหน้ารวมบอร์ด (ย่อกว่า `BoardCardDto` — แค่พอสรุปเป็นการ์ดบนหน้ารวม) */
+export type BoardsHomeCardDto = {
+  id: string;
+  name: string;
+  color: KanbanTagColor;
+  unitId: string | null;
+  visibility: "PRIVATE" | "TENANT";
+  cardCount: number;
+  overdueCount: number;
+  members: { userId: string; name: string }[];
+  updatedAt: string;
+};
+
+export type BoardsHomeDto = {
+  starred: BoardsHomeCardDto[];
+  byUnit: { unit: { id: string; name: string }; boards: BoardsHomeCardDto[] }[];
+  tenantWide: BoardsHomeCardDto[];
+  templates: BoardTemplateDto[];
+  totals: { boards: number; openCards: number };
+};

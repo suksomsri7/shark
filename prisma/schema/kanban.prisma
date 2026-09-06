@@ -393,3 +393,41 @@ model KanbanActivity {
   @@index([boardId, createdAt(sort: Desc)])
   @@index([tenantId])
 }
+
+// ───────────────────────── เทมเพลตบอร์ด (K1.12 · KANBAN-RUN §K1.12) ─────────────────────────
+// แพลตฟอร์ม (tenantId=null · scope=PLATFORM · key คงที่ dive-shop/hotel/…) หรือของร้าน
+// (tenantId=ร้าน · scope=TENANT · key=null) — ใช้สร้างบอร์ดใหม่ทั้งชุด (คอลัมน์+ป้าย+การ์ด+เช็คลิสต์) ใน tx เดียว
+//
+// 🔴 tenantId เป็น null ได้ (เทมเพลตแพลตฟอร์ม) ⇒ ลงทะเบียนใน src/lib/core/scope.ts เป็นแกน "global"
+//    (ไม่ใช่ "tenant") ตามคำแนะนำ docs/modules/13-kanban-v2.md §6.1 — โมดูลนี้ไม่ผ่าน tenantDb() อยู่แล้ว
+//    (raw prisma + where กรองเอง ทุกไฟล์) จึงไม่กระทบการ query จริง แต่ทำให้ทะเบียน scope พูดความจริง
+//    (ถ้าลงเป็น "tenant" แล้ววันหน้ามีใครเผลอเรียก tenantDb() กับตารางนี้ จะกรอง tenantId=ปัจจุบัน
+//    ทับ WHERE เดิม ⇒ แถวแพลตฟอร์ม tenantId=null หายไปทันทีอย่างเงียบ ๆ)
+//
+// 🔴 unique จริง (scope,key) อยู่ที่ migration SQL เป็น **partial unique index** `WHERE "key" IS NOT NULL`
+//    (ดู prisma/migrations/20260927000000_kanban_v2_i/migration.sql) ไม่ใช้ `@@unique` ในสคีมานี้ตรง ๆ
+//    เพราะ Prisma schema language ไม่รองรับเงื่อนไข WHERE ของ partial index — ผลลัพธ์เดียวกับ Postgres
+//    unique constraint ปกติบนคอลัมน์ nullable อยู่แล้ว (NULL ไม่ชนกัน) แต่เขียนให้ชัดเจนตามสัญญา §K1.12
+//    ⇒ seed/ตัวสร้างเทมเพลตของร้านใช้ find-then-write เอง ไม่ใช้ `.upsert()` ของ Prisma (ต้องมี @@unique
+//    ในสคีมาให้ Prisma รู้จักก่อน `.upsert()` จึงจะใช้ได้)
+enum KanbanTemplateScope {
+  PLATFORM
+  TENANT
+}
+
+model KanbanBoardTemplate {
+  id          String              @id @default(cuid())
+  tenantId    String? // null = เทมเพลตของแพลตฟอร์ม
+  scope       KanbanTemplateScope
+  key         String? // คีย์คงที่ของเทมเพลตแพลตฟอร์ม (dive-shop/hotel/restaurant/clinic/retail/weekly) — เทมเพลตร้านไม่มีคีย์
+  name        String
+  description String?
+  icon        String // ชื่อไอคอนจาก KanbanIcon.tsx (สไปรต์เดิม — ไม่วาดไอคอนใหม่)
+  // { columns:[{name,isDone?,wipLimit?,color?}], labels:[{name,color}],
+  //   cards:[{title,column,description?,labels?:string[],checklist?:string[]}] } — ดู templates.ts
+  structure   Json
+  createdById String?
+  createdAt   DateTime            @default(now())
+
+  @@index([tenantId])
+}

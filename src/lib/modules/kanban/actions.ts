@@ -72,6 +72,8 @@ import { listBoardActivity, listCardTimeline } from "./activity";
 // K1.11 — ตัวกรอง + ค้นหาข้ามบอร์ด (บริการอยู่ `search.ts` · SearchPalette ส่ง "ข้อความดิบ" มาที่นี่
 // แล้วให้ `parseSearchQuery` แปลงไวยากรณ์ไทยครั้งเดียวที่ server กันไม่ให้ตรรกะซ้ำสองที่)
 import { parseSearchQuery, searchCards, type SearchCardDto } from "./search";
+// K1.12 — เทมเพลตบอร์ด + หน้ารวมบอร์ดใหม่ (บริการอยู่ `templates.ts`/`boardsHome.ts`)
+import { createBoardFromTemplate, deleteTenantTemplate, saveBoardAsTemplate } from "./templates";
 import { normalizeUploadType } from "@/lib/storage/service";
 import type {
   BoardCardDto,
@@ -1043,5 +1045,90 @@ export async function searchCardsAction(input: {
     return { ok: true, items: result.items, ...(result.nextCursor ? { nextCursor: result.nextCursor } : {}), total: result.total };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ค้นหาไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+// ───────────────────────── K1.12: เทมเพลต + สร้างบอร์ด ─────────────────────────
+// 🔴 `createBoardFromTemplateAction` ทำหน้าที่คู่ (deviation จดใน wo-notes): `templateId` มี = สร้างจาก
+//    เทมเพลต (ต้อง `kanban.board.create` ตรวจอยู่แล้วใน `templates.ts`) · `templateId` ไม่มี = สร้างบอร์ดเปล่า
+//    ผ่าน `createBoard()` เดิม (ตรวจ `kanban.board.create` ที่นี่) — `CreateBoardModal.tsx` เรียกตัวเดียวจบ
+//    ทั้งสองทาง ไม่ต้องมี action แยกสำหรับบอร์ดเปล่า
+
+export async function createBoardFromTemplateAction(input: {
+  systemId: string;
+  templateId?: string | null;
+  name: string;
+  unitId?: string | null;
+  visibility?: "PRIVATE" | "TENANT";
+}): Promise<{ ok: true; boardId: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  if (!input.systemId) return { ok: false, message: "ไม่พบระบบนี้" };
+  const name = input.name.trim();
+  if (!name) return { ok: false, message: "ต้องตั้งชื่อบอร์ดก่อนจึงสร้างได้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const board = input.templateId
+      ? await createBoardFromTemplate(ctx, actor, input.templateId, {
+          name,
+          unitId: input.unitId ?? null,
+          visibility: input.visibility,
+        })
+      : await (async () => {
+          assertKanbanCan(auth, "kanban.board.create");
+          return createBoard({
+            tenantId: auth.active.tenantId,
+            systemId: input.systemId,
+            name,
+            unitId: input.unitId ?? null,
+            visibility: input.visibility,
+            createdById: auth.user.id,
+          });
+        })();
+    revalidatePath(`/app/sys/${input.systemId}/kanban/boards`);
+    return { ok: true, boardId: board.id };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "สร้างบอร์ดไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** บันทึกบอร์ดปัจจุบันเป็นเทมเพลตของร้าน (เมนู ⋯ ของหัวบอร์ด · ADMIN เท่านั้น — ตรวจใน `saveBoardAsTemplate`) */
+export async function saveBoardAsTemplateAction(input: {
+  systemId: string;
+  boardId: string;
+  name: string;
+  description?: string;
+}): Promise<{ ok: true; templateId: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  if (!input.systemId || !input.boardId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const template = await saveBoardAsTemplate(ctx, actor, input.boardId, {
+      name: input.name,
+      description: input.description,
+    });
+    revalidatePath(`/app/sys/${input.systemId}/kanban/boards`);
+    return { ok: true, templateId: template.id };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "บันทึกเป็นเทมเพลตไม่สำเร็จ" };
+  }
+}
+
+/** ลบเทมเพลตของร้าน (ของแพลตฟอร์มลบไม่ได้ — ตรวจใน `deleteTenantTemplate`) */
+export async function deleteTenantTemplateAction(input: {
+  systemId: string;
+  templateId: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  if (!input.systemId || !input.templateId) return { ok: false, message: "ไม่พบเทมเพลตนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    await deleteTenantTemplate(ctx, actor, input.templateId);
+    revalidatePath(`/app/sys/${input.systemId}/kanban/boards`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ลบเทมเพลตไม่สำเร็จ" };
   }
 }

@@ -47,6 +47,11 @@ export {
   starBoard,
   unstarBoard,
 } from "./members";
+// K1.12: เทมเพลตบอร์ด + หน้ารวมบอร์ดใหม่ — ผู้เรียกนอกโมดูล (หน้า/action) ใช้ผ่าน facade เดียวกัน
+export { createBoardFromTemplate, deleteTenantTemplate, listTemplates, saveBoardAsTemplate } from "./templates";
+export type { BoardTemplateDto, TemplateCardSpec, TemplateColumnSpec, TemplateLabelSpec, TemplateStructure } from "./templates";
+export { boardsHome } from "./boardsHome";
+export type { BoardsHomeCardDto, BoardsHomeDto } from "./boardsHome";
 
 // แจ้งเตือนเมื่อมอบหมายงาน — ย้ายตรรกะไป `notify.ts` ใน K1.2 (cards.ts ใช้ร่วมโดยไม่เกิด import วงกลม)
 // ชื่อเดิมคงไว้เป็น alias ภายในไฟล์นี้ เพื่อไม่ต้องแก้จุดเรียกเดิม

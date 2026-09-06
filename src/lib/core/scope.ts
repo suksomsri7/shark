@@ -226,6 +226,12 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   KanbanAttachment: tenant,
   // ประวัติกิจกรรม (K1.10) — เหตุผลเดียวกัน: มีแต่ `tenantId` (systemId อยู่ที่บอร์ด/การ์ดต้นทาง)
   KanbanActivity: tenant,
+  // เทมเพลตบอร์ด (K1.12) — tenantId เป็น null ได้ (แพลตฟอร์ม) ⇒ แกน global ไม่ใช่ tenant
+  // (ผิดจาก join table อื่นข้างบน: ตารางนี้มีทั้งแถวไม่ผูก tenant และแถวผูก tenant ปนกัน
+  // ถ้าลงเป็น tenant แล้ว tenantDb() ถูกเรียกวันหน้า จะกรอง tenantId=ปัจจุบันทับ WHERE เดิม
+  // ⇒ แถวแพลตฟอร์ม tenantId=null หายไปเงียบ ๆ — โมดูลนี้ query ตรงผ่าน raw prisma อยู่แล้วเสมอ
+  // และกรอง tenantId เอง (`templates.ts`) ไม่ผ่าน tenantDb() จึงไม่กระทบพฤติกรรมจริงวันนี้)
+  KanbanBoardTemplate: g("เทมเพลตบอร์ด — tenantId null (แพลตฟอร์ม) หรือของร้าน (TENANT) ปนกัน · service กรอง tenantId เองทุกจุด ไม่ผ่าน tenantDb()"),
   // Account — P1 core
   AccountDocument: sys(),
   AccountDocumentLine: sys(),
