@@ -56,6 +56,19 @@
 - **แจ้งปัญหาการใช้งาน (T8)**: `IssueReportSheet.tsx` (client แผ่นเล็กใต้ปุ่ม): ประเภท BUG/DISPLAY/IDEA (ไทย: ใช้งานไม่ได้/แสดงผลผิด/ข้อเสนอแนะ) · ข้อความ ≤2000 · แนบรูป (ไม่บังคับ · รูปจริง ≤2MB ผ่านตัวตรวจแบบ `validateLogoFile`) · แนบอัตโนมัติ pageUrl/userAgent/appVersion (UA `SharkApp/…` = แอป) · `reportIssueAction` (`src/lib/branding/issue-actions.ts`): `requireTenant()` → `assertCanReport` (membership accepted) → `createIssueReport` → `{ok}`/`{ok:false,error}` · หลังส่ง: ข้อความ "รับเรื่องแล้ว" + จุดสีที่ปุ่มจนกว่าปิดแผ่น · เมนู overlay ท้ายเมนูมีรายการเดียวกัน
 - **ภาพ** `scripts/visual-branding.mts` spec `"b3"`: ตั้งธีม QC tenant เป็น LIGHT/BRAND(#0E7490)/DARK ทีละแบบ → ถ่าย /app desktop (แถบเต็ม) · กด nav-collapse → ราง · หน้าบอร์ดงาน (ราง) · มือถือ 390: หน้าแรก → ปัดขวา (swipe step) → เมนูเปิด · คลิก report-issue → แผ่น · finally คืนธีม + navCollapsed=false · ≥ 8 ใบ
 
+## สัญญา B4 (Sonnet · oracle `qc-branding-b4.mts` 7 ข้อ · T3)
+- `src/lib/branding/public.ts` (pure): `publicThemeStyle(branding: PublicBranding & { brandFg?: string|null }) → CSSProperties` = `{ "--color-accent", "--color-accent-fg", "--color-accent-soft" }` เมื่อมี `brandColor` · ว่าง `{}` เมื่อไม่มี (ห้ามใส่ null) · `getPublicBranding` เพิ่ม `brandFg` ในผลลัพธ์ (คงฟิลด์เดิม)
+- หน้าร้าน `src/app/(store)/s/[tenantSlug]/[unitSlug]/shop/page.tsx` + ฟอร์มสาธารณะ `src/app/(store)/f/[token]/page.tsx`: ใช้ `publicThemeStyle` แทนประกอบ style เอง · หัวหน้า = โลโก้ (ถ้ามี) + displayName · ปุ่มหลัก/ลิงก์ใช้ `--color-accent`/`--color-accent-fg` (ไล่แก้ class ที่ hard-code น้ำเงินในหน้าเหล่านี้)
+- พิมพ์เอกสารบัญชี `src/app/app/sys/[id]/account/print/[docId]/page.tsx`: โลโก้ = `settings.logoUrl ?? branding.logoUrl` (T3: โลโก้กิจการเป็น fallback) · ชื่อบนหัวเอกสารไม่เปลี่ยน (ใช้ข้อมูลองค์กรของบัญชี)
+- อีเมลแจ้งเตือนของบอร์ดงาน (`src/lib/modules/kanban/notify.ts`): หัวเรื่องขึ้นต้นด้วย `[${displayName}]` จาก `getBrandingTokens(tenantId)` (แคช 60 วิ) · ไม่แตะ `core/email.ts` (ส่ง text ล้วนเหมือนเดิม)
+- ภาพ: `scripts/visual-branding.mts` spec `"b4"`: หน้าร้าน `/s/<slug>/<unit>/shop` ของ tenant QC ที่ตั้งธีมเทียล+โลโก้ (desktop+mobile) · หลัง `applyStorefront=false` → กลับปริยาย · finally คืนค่า
+
+## สัญญา B5 (Sonnet · oracle `qc-branding-b5.mts` 6 ข้อ static · ส่ง OTA ไม่บิลด์)
+- `apps/mobile/src/lib/auth-context.tsx`: `TenantRow.branding?: { displayName: string; logoUrl: string|null; accent: string; accentFg: string; navTone: "LIGHT"|"BRAND"|"DARK" } | null` (ตรง `/api/mobile/me` ของ B1) · context เพิ่ม `activeBranding` (ของ tenant active)
+- `apps/mobile/src/lib/brand.tsx`: `useBrand() → { accent, accentFg, soft, logoUrl, displayName }` — ปริยาย `C.blue`/`#ffffff` · แคชค่าล่าสุดของ tenant active ใน SecureStore (`shark_brand`) เพื่อไม่กะพริบตอนเปิดแอปก่อน `/me` กลับ
+- จอ native ใช้ `useBrand()` แทน `C.blue`/`C.blueHi`: `sessions.tsx` (ปุ่ม + · ปุ่มแชทแรก · จุด unread · หัวรายการ = โลโก้+displayName) · `chat/[id].tsx` (ปุ่มส่ง · ฟองข้อความขาออก) · `dna.tsx` (ปุ่มหลัก) · `ProposalCard`/`QuotaBar`/`TypingIndicator` (accent) — ห้ามแตะ `login.tsx` (ก่อนล็อกอินยังไม่รู้ร้าน) และ `index.tsx`/`_layout.tsx` (WebView ใช้ธีมเว็บ · swipe ของเว็บ)
+- ไม่แก้ `app.json`/native → Fable ส่ง OTA `eas update --branch production --environment production` หลังตรวจรับ · ถ่ายภาพยืนยันด้วย harness `apps/mobile/qc/shoot-ipad.mjs` (mock `/api/mobile/me` ให้มี branding เทียล) ≥ 4 ใบ
+
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
 - 18:32 น. — B2 ปิด (Sonnet 48 นาที — หยุดรอ build 1 ครั้ง Fable ปลุกต่อ) · Fable ตรวจเอง: oracle 16/16 · regressions เขียว · ภาพ 10 ใบตรงแบบ 01 · ต่อ B3 (Opus)
 - 18:02 น. — B1 ปิด (Opus 15 นาที) · builder แย้ง oracle S2.1 ถูก: contrast #0E7490/ขาว = 5.36 (WCAG piecewise) ไม่ใช่ 5.9 (สูตรลัด) → แก้ oracle + ตัวเลขในภาพแบบ 01 · migration ลง QC แล้ว รอ Vercel ลง prod · ต่อ B2
