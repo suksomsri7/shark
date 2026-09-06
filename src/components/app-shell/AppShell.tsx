@@ -119,6 +119,7 @@ export function AppShell({
       />
       <NavDrawer
         open={drawer}
+        alwaysOverlay={inApp}
         onClose={() => setDrawer(false)}
         tenantName={tenantName}
         userEmail={userEmail}

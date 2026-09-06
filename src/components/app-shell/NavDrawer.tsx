@@ -90,8 +90,13 @@ export function NavDrawer({
   activeTenantId,
   badges,
   variant = "overlay",
+  alwaysOverlay = false,
 }: {
   open: boolean;
+  /** ในแอปมือถือ (WebView UA SharkApp) ไม่มีแถบปักซ้ายให้ใช้ — overlay ต้องโผล่ทุกความกว้าง
+   *  🔴 บั๊ก iPad แนวนอน (เจ้าของเจอ 6 ก.ย. build #24): จอกว้าง 1180 ≥ lg → `lg:hidden` ซ่อน overlay ทั้งที่ open=true
+   *  กด ☰ แล้วไม่มีอะไรขึ้น */
+  alwaysOverlay?: boolean;
   onClose: () => void;
   tenantName: string;
   userEmail: string;
@@ -133,7 +138,8 @@ export function NavDrawer({
           ? // ปักซ้ายใต้ topbar — โผล่เฉพาะจอ ≥ lg (จอเล็กใช้ overlay เหมือนเดิม)
             "fixed bottom-0 left-0 top-14 z-30 hidden w-72 border-r border-[color:var(--color-border)] lg:block"
           : // overlay: จอใหญ่ไม่ต้องใช้แล้ว (มีแถบปักซ้ายอยู่) — กันเมนูซ้อนกัน 2 ชั้นตอนย่อ/ขยายจอ
-            "fixed inset-0 z-50 lg:hidden"
+            // ยกเว้นในแอป (alwaysOverlay) ที่ไม่มีแถบปักซ้าย → ต้องโผล่แม้จอกว้าง (iPad แนวนอน)
+            alwaysOverlay ? "fixed inset-0 z-50" : "fixed inset-0 z-50 lg:hidden"
       }
     >
       {/* ฉากหลังคลุมจอ แตะเพื่อปิด — โหมดปักซ้ายไม่มี */}
