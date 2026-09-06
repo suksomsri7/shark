@@ -11,6 +11,7 @@ import { api, apiErrorText } from "@/src/api/client";
 import { Orb } from "@/src/components/chat/Orb";
 import { QuotaBar } from "@/src/components/chat/QuotaBar";
 import { C, R, S } from "@/src/theme";
+import { PageColumn } from "@/src/components/ui/page";
 
 type Conversation = { id: string; title: string | null; updatedAt: string; unread: boolean };
 
@@ -180,6 +181,7 @@ export default function SessionsScreen() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <PageColumn>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={10} style={styles.iconBtn}>
           <Text style={styles.back}>‹</Text>
@@ -223,6 +225,7 @@ export default function SessionsScreen() {
         />
       )}
 
+      </PageColumn>
       <Modal visible={renameId !== null} transparent animationType="fade" onRequestClose={() => setRenameId(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setRenameId(null)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>

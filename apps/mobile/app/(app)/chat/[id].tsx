@@ -12,6 +12,7 @@ import { ChatBubble } from "@/src/components/chat/ChatBubble";
 import { ProposalCard, type ProposalView } from "@/src/components/chat/ProposalCard";
 import { TypingIndicator } from "@/src/components/chat/TypingIndicator";
 import { C, R, S } from "@/src/theme";
+import { PageColumn } from "@/src/components/ui/page";
 
 type Message = { key: string; role: "USER" | "ASSISTANT"; content: string; images?: string[] };
 type ServerMessage = { id?: string; role: "USER" | "ASSISTANT"; content: string; images?: string[] };
@@ -278,6 +279,7 @@ export default function ChatScreen() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <PageColumn>
       <View style={styles.header}>
         <Pressable onPress={() => router.replace("/sessions")} hitSlop={10} style={styles.backBtn}>
           <Text style={styles.backText}>‹</Text>
@@ -356,6 +358,7 @@ export default function ChatScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+      </PageColumn>
     </View>
   );
 }

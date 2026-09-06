@@ -7,6 +7,7 @@ import { useMemo, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text, TextInput } from "@/src/components/ui/text";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { pageColumn } from "@/src/components/ui/page";
 import { useRouter } from "expo-router";
 import { api, apiErrorText } from "@/src/api/client";
 import { useAuth } from "@/src/lib/auth-context";
@@ -209,7 +210,7 @@ export default function DnaScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={[styles.flex, pageColumn]} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         {/* หัวข้อ + ยกเลิก (เฉพาะตอนเพิ่มกิจการ) */}
         <View style={styles.top}>
           {isAdding.current ? (

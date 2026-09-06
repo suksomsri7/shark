@@ -18,6 +18,7 @@ import {
   inputStyle,
 } from "@/src/components/auth/ui";
 import { AnimatedOrb } from "@/src/components/ui/orb";
+import { pageColumn } from "@/src/components/ui/page";
 import { C, R, S } from "@/src/theme";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -227,7 +228,7 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
-        style={styles.flex}
+        style={[styles.flex, pageColumn]}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.center}>
