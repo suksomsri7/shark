@@ -81,6 +81,11 @@ import { createBoardFromTemplate, deleteTenantTemplate, saveBoardAsTemplate } fr
 // K1.13 — งานของฉันใหม่ + ปัดเสร็จ/เก็บมือถือ + undo (บริการอยู่ `my-tasks.ts`)
 import { archiveWithUndo, completeCard, undo } from "./my-tasks";
 import { normalizeUploadType } from "@/lib/storage/service";
+// K2.1 — มุมมองตาราง: อ่าน (`table.ts`) · เลือกหลายรายการ (`cards.bulkUpdate`) · ส่งออก CSV (`reports.ts`)
+import { listBoardTable } from "./table";
+import { bulkUpdate, type BulkUpdatePatch } from "./cards";
+import { exportCardsCsv } from "./reports";
+import type { BoardFilters } from "./filters";
 import type {
   BoardCardDto,
   BoardLabelDto,
@@ -92,6 +97,8 @@ import type {
   KanbanCtx,
   KanbanTimelineFilter,
   KanbanTimelineItemDto,
+  TableGroupBy as TableGroupByType,
+  TableRowDto,
 } from "./types";
 
 // ทุก action: requireTenant → เอา tenantId จาก session (ไม่เชื่อ client) + scope ด้วย systemId

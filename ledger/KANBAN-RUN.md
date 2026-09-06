@@ -79,7 +79,7 @@
 | K2.8 | กล่องงานเข้าส่วนตัว (`KanbanInboxItem` · จดเร็ว · ส่งเข้าบอร์ด) ภาพ 06 ฝั่งซ้าย | Sonnet | TODO (oracle พร้อม 17 ข้อ) | | |
 | K2.9 | ตัวสร้างกฎอัตโนมัติ (5 ชนิด · ทดลองรัน · บันทึกการทำงาน) ภาพ 08 + ลงทะเบียน 8 event | Opus | TODO | | |
 | K2.10 | รายงานในแอป (ค้าง/เลยกำหนด/ภาระงาน/throughput/aging) + ส่งออก | Sonnet | TODO (oracle พร้อม 22) | | |
-| K2.11 | อีเมลสรุป + watch + ตั้งค่าความถี่แจ้งเตือน + cron เตือนกำหนดส่ง | Opus | TODO (oracle พร้อม 27) | | |
+| K2.11 | อีเมลสรุป + watch + ตั้งค่าความถี่แจ้งเตือน + cron เตือนกำหนดส่ง | Opus | TODO (oracle พร้อม 30) | | |
 | K2.3 | มุมมองไทม์ไลน์ (เลื่อนได้ตาม D7) | Sonnet | TODO | | |
 | **P3 — เชื่อมทุกโมดูล + AI** |||||
 | K3.1 | `KanbanCardLink` + UI "เชื่อมข้อมูล SHARK" ในหลังการ์ด + resolver รายโมดูล + เช็คสิทธิ์รายคน | Opus | TODO | | |
@@ -255,7 +255,7 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - ⚠️ oracle คำนวณตัวเลขคาดหวังสดจาก DB (ไม่ตรึงเลข) · ใช้ actor ที่ override permissions ในหน่วยความจำ (ไม่แก้ membership ใน DB) — service ต้องอ่านสิทธิ์จาก `actor.permissions` ที่ส่งเข้ามา ไม่ใช่ไปอ่าน DB ซ้ำ
 - 🔴 หนี้ seed ที่รู้อยู่: บอร์ดป่าตอง คอลัมน์ "เสร็จแล้ว" ยังไม่ `isDoneColumn` และ 7 ใบไม่มี completedAt (บอร์ดซ่อมตั้งแล้ว) → รายงานจะนับ 7 ใบนั้นเป็น "ค้าง" ตามนิยาม — ถูกต้องตามข้อมูล ไม่ใช่บั๊กของ WO นี้ · Fable จะแก้ seed ตอนปิด P2 (กระทบ oracle K2.4 S1.2 = 24 → ต้องปรับพร้อมกัน)
 
-### K2.11 — ติดตาม + แจ้งเตือนตาม §7.4 + ความถี่อีเมล + cron เตือน/เลยกำหนด + อีเมลสรุป (Opus · `qc-kanban-k2.11.mts` 27 ข้อ · ไม่มี mockup — เกณฑ์ §7.4/§7.6/§13 K2.11)
+### K2.11 — ติดตาม + แจ้งเตือนตาม §7.4 + ความถี่อีเมล + cron เตือน/เลยกำหนด + อีเมลสรุป (Opus · `qc-kanban-k2.11.mts` 30 ข้อ · ไม่มี mockup — เกณฑ์ §7.4/§7.6/§13 K2.11)
 - Prisma (additive `kanban_v2_p`): `enum KanbanWatchTargetType { CARD COLUMN BOARD }` · `KanbanWatcher { id tenantId systemId targetType targetId userId createdAt @@unique([targetType, targetId, userId]) @@index([tenantId, systemId, userId]) }` (hard delete ได้ §11.6) · `KanbanDigestSent { id tenantId userId periodKey sentAt @@unique([tenantId, userId, periodKey]) }` (หลักฐาน 1 ฉบับ/คน/รอบ — แทนข้อสมมติ "ใช้ AppNotification เป็นหลักฐาน" ของพิมพ์เขียว §7.6 เพราะ digest ไม่ใช่แจ้งเตือนในแอป) · `AppNotification.emailedAt DateTime?` (additive nullable · ตารางแพลตฟอร์ม — แถวเก่าไม่กระทบ) · scope.ts tenant
 - ค่าตั้งของคน (`src/lib/core/user-preferences.ts` — ที่เดียว): เพิ่ม `kanbanEmailMode: "OFF"|"HOURLY"|"INSTANT"` (ปริยาย **HOURLY**) · `kanbanDigest: "OFF"|"DAILY"|"WEEKLY"` (ปริยาย **DAILY**) · parse ค่าแปลก → ปริยาย · patch ไม่ทับคีย์อื่น
 - `src/lib/modules/kanban/watch.ts`: `watch(ctx, actor, { targetType, targetId }) → { watching: true }` (VIEWER+ ของบอร์ดของเป้าหมาย · มองไม่เห็น = ไม่พบ · idempotent) · `unwatch → { watching: false }` (ซ้ำไม่ throw) · `isWatching` · `listWatchers(ctx, { targetType, targetId }) → userId[]` · `resolveWatchersForCard(ctx, cardId) → Set<userId>` = ผู้ติดตามการ์ด ∪ ผู้ติดตามคอลัมน์ปัจจุบันของการ์ด ∪ ผู้ติดตามบอร์ด ∪ ผู้รับผิดชอบ (ตัดคนที่มองบอร์ดไม่เห็นแล้ว) · `myWatched(ctx, actor) → [{ id, title, boardId, boardName, columnName, dueAt, cardNo }]` = การ์ด ACTIVE ที่ฉันติดตาม (ตรง/ผ่านคอลัมน์/บอร์ด) และ **ไม่ได้** รับผิดชอบ (บล็อก "ที่ฉันติดตาม" ในงานของฉัน ≤ 100)
