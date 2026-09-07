@@ -242,6 +242,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   KanbanInboxItem: sys(),
   // K2.11 — ติดตามการ์ด/คอลัมน์/บอร์ด · มีทั้ง tenantId+systemId ⇒ แกน sys()
   KanbanWatcher: sys(),
+  // K3.1 — เชื่อมการ์ดกับวัตถุของโมดูลอื่น · มีทั้ง tenantId+systemId เหมือน KanbanCard ⇒ แกน sys()
+  KanbanCardLink: sys(),
   // K2.11 — หลักฐานอีเมลสรุปที่ส่งไปแล้ว (1 ฉบับ/คน/รอบ) · มีแต่ tenantId (ไม่ผูกระบบใดระบบหนึ่ง
   // เพราะสรุปคือ "งานของฉันในร้านนี้" ข้ามทุกบอร์ดของร้าน) ⇒ แกน tenant เหมือน join table อื่น
   KanbanDigestSent: tenant,

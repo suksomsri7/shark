@@ -7,9 +7,9 @@
 // 🔴 ความเป็นส่วนตัว: กล่องของใคร เห็น/แก้ได้เฉพาะเจ้าของ (`ownerUserId === ctx.actorUserId`) เท่านั้น
 //    แม้ OWNER ของร้านก็ดูของคนอื่นไม่ได้ (สัญญา K2.8 — ต่างจากบอร์ด/การ์ดทั่วไปที่ OWNER เห็นหมด)
 // 🔴 K2.8 override (ledger/KANBAN-RUN.md §K2.8 หมายเหตุจาก Fable): `service.createCard` ยังไม่มี
-//    พารามิเตอร์ `sourceKey` (K3.1 จะเพิ่มคอลัมน์ `KanbanCard.sourceKey`) — `moveToBoard` จึงสร้างการ์ด
-//    ด้วยฟิลด์ที่มีอยู่แล้ววันนี้: `sourceType` ตามที่มาของรายการ + `sourceId = item.sourceKey ?? item.id`
-//    แล้วเก็บ `movedCardId` ไว้ที่ตัวรายการเอง (oracle ตรวจ `movedCardId` ไม่ตรวจ `sourceKey` ของการ์ด)
+//    พารามิเตอร์ `sourceKey` — ตั้งแต่ K3.1 `KanbanCard.sourceKey` มีจริงแล้ว ⇒ `moveToBoard` ส่งกุญแจ
+//    ของต้นทางต่อไปที่การ์ดด้วย (`sourceType` + `sourceId` + `sourceKey`) แล้วเก็บ `movedCardId`
+//    ไว้ที่ตัวรายการเอง — ต้นทางเดียวกันจึงกลายเป็นการ์ดได้ใบเดียวทั้งระบบ
 //
 // 🔴 ไฟล์นี้แตะ prisma โดยตรง ⇒ **server-only** — ห้าม client component import จากที่นี่เด็ดขาด
 //    (บทเรียนจาก K1.11/K1.12/K1.13: Turbopack ลากทั้งไฟล์เข้าบันเดิลฝั่ง browser ถ้า client component
@@ -217,6 +217,17 @@ export async function moveToBoard(ctx: KanbanCtx, input: MoveInboxToBoardInput):
   const sourceType = CARD_SOURCE_TYPE_OF[item.source] ?? "MANUAL";
   const fileIds = fileIdsOf(item.fileIds);
 
+  // K3.1 — การ์ดที่เกิดจากรายการภายนอกพก `sourceKey` เดียวกับต้นทางไปด้วย (unique(tenantId, sourceKey))
+  // 🔴 ตรวจก่อนเข้า tx: ถ้าต้นทางชิ้นนี้เคยกลายเป็นการ์ดไปแล้วทางอื่น (consumer/แชท) การชน unique
+  //    ระหว่าง tx จะโผล่เป็น error ดิบให้ผู้ใช้เห็น ⇒ บอกตรง ๆ ว่ามีการ์ดอยู่แล้วดีกว่า
+  if (item.sourceKey) {
+    const dup = await prisma.kanbanCard.findFirst({
+      where: { tenantId: ctx.tenantId, sourceKey: item.sourceKey },
+      select: { cardNo: true },
+    });
+    if (dup) throw new Error(`เรื่องนี้ถูกสร้างเป็นการ์ด${dup.cardNo ? ` #${dup.cardNo}` : ""} ไปแล้ว`);
+  }
+
   const created = await prisma.$transaction(async (tx) => {
     // claim อะตอมมิก — กันกดส่งเข้าบอร์ดพร้อมกัน 2 แท็บสร้างการ์ดซ้ำ (เช็คสถานะนอก tx อาจเพี้ยนได้)
     const claim = await tx.kanbanInboxItem.updateMany({
@@ -252,6 +263,7 @@ export async function moveToBoard(ctx: KanbanCtx, input: MoveInboxToBoardInput):
         cardNo: seq[0]?.cardNoSeq ?? null,
         sourceType,
         sourceId: item.sourceKey ?? item.id,
+        sourceKey: item.sourceKey,
         createdById: actorUserId,
       },
     });

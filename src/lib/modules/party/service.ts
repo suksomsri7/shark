@@ -177,6 +177,47 @@ export async function resolveCanonical(
   return current;
 }
 
+// ─────────────────────── อ่านแบบย่อ (ชื่ออย่างเดียว) — WO K3.1 ───────────────────────
+// 🔴 คืน **ชื่อเท่านั้น**: โมดูลที่มาขอ (บอร์ดงาน) แสดงแค่ "ผูกกับผู้ติดต่อคนนี้" ไม่ใช่หน้าผู้ติดต่อ
+//    ⇒ ไม่ส่ง phone/email/taxId/address ออกไปเลย (ข้อมูลติดต่อของลูกค้าอยู่ในโมดูลที่มีสิทธิ์ของมันเอง)
+
+export type PartyBrief = { id: string; name: string };
+
+/** ชื่อของ Party หลายรายในร้านเดียว (id ที่ไม่ใช่ของร้านนี้จะไม่ถูกคืน) */
+export async function listBriefsByIds(
+  tenantId: string,
+  ids: readonly string[],
+  client?: Prisma.TransactionClient,
+): Promise<PartyBrief[]> {
+  const uniq = [...new Set(ids.filter(Boolean))];
+  if (uniq.length === 0) return [];
+  const db = dbFor(tenantId, client);
+  const rows = await db.party.findMany({
+    where: { tenantId, id: { in: uniq } },
+    select: { id: true, name: true },
+  });
+  return rows;
+}
+
+/** ค้นผู้ติดต่อจาก "ชื่อ" อย่างเดียว (ช่องค้นหาในหน้าอื่น) — ไม่ค้นด้วยเบอร์/อีเมล/เลขภาษี */
+export async function searchByName(
+  tenantId: string,
+  query: string,
+  limit = 10,
+  client?: Prisma.TransactionClient,
+): Promise<PartyBrief[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const db = dbFor(tenantId, client);
+  const rows = await db.party.findMany({
+    where: { tenantId, mergedIntoId: null, name: { contains: q, mode: "insensitive" } },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+    take: Math.min(Math.max(1, limit), 25),
+  });
+  return rows;
+}
+
 // ─────────────────────── หาคู่ซ้ำ + บันทึกลง PartyMergeCandidate (สำหรับหน้า 3.4) ───────────────────────
 
 export type DuplicatePair = { partyAId: string; partyBId: string; reason: PartyMergeReason };

@@ -295,6 +295,19 @@ export function Card({
             {b.text}
           </span>
         ))}
+        {/* K3.1 — ตราจำนวน "เชื่อมข้อมูล SHARK": การ์ดใบนี้ผูกกับของในระบบอื่นกี่ชิ้น
+            (0 = ไม่โชว์ · รายละเอียดอยู่หลังการ์ด) — ไอคอนลิงก์จากสไปรต์ ไม่ใช่อีโมจิ (K1.5-S4.4) */}
+        {card.linkCount > 0 && (
+          <span
+            data-testid="card-link-count"
+            title="เชื่อมข้อมูล SHARK"
+            className="inline-flex items-center tabular-nums"
+            style={{ gap: 3 }}
+          >
+            <KanbanIcon name="link" size="xs" />
+            {card.linkCount}
+          </span>
+        )}
         {card.assignees.slice(0, 3).map((a) => (
           <Avatar key={a.userId} name={a.name} />
         ))}

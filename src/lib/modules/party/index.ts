@@ -4,6 +4,9 @@
 import type { Prisma } from "@prisma/client";
 import {
   findOrCreate as findOrCreateInner,
+  listBriefsByIds as listBriefsByIdsInner,
+  searchByName as searchByNameInner,
+  type PartyBrief,
   resolveCanonical as resolveCanonicalInner,
   findDuplicateCandidates as findDuplicateCandidatesInner,
   recordMergeCandidates as recordMergeCandidatesInner,
@@ -15,7 +18,7 @@ import {
 } from "./service";
 
 export { normalizePartyTaxId, normalizePartyPhone, nameSimilarity };
-export type { PartyFindOrCreateInput, DuplicatePair };
+export type { PartyFindOrCreateInput, DuplicatePair, PartyBrief };
 
 /** หา/สร้าง Party ตามลำดับ taxId → phoneNorm → name+email (ดู service.ts) — อาจ throw ถ้า DB ผิดพลาดจริง */
 export async function findOrCreate(
@@ -71,4 +74,27 @@ export async function recordMergeCandidates(
   client?: Prisma.TransactionClient,
 ): Promise<{ scanned: number; recorded: number }> {
   return recordMergeCandidatesInner(tenantId, client);
+}
+
+/**
+ * ชื่อของผู้ติดต่อหลายรายในร้านเดียว (K3.1 — บอร์ดงานแสดงชื่อของการ์ดที่ผูกกับผู้ติดต่อ)
+ * 🔴 คืนแค่ `{ id, name }` — ห้ามเพิ่ม phone/email/taxId เข้ามาในผลลัพธ์ของ facade ตัวนี้
+ *    (โมดูลที่เรียกไม่ได้ผ่านด่านสิทธิ์ของโมดูลผู้ติดต่อ — ให้ชื่อพอสำหรับ "รู้ว่าผูกกับใคร" เท่านั้น)
+ */
+export async function listBriefsByIds(
+  tenantId: string,
+  ids: readonly string[],
+  client?: Prisma.TransactionClient,
+): Promise<PartyBrief[]> {
+  return listBriefsByIdsInner(tenantId, ids, client);
+}
+
+/** ค้นผู้ติดต่อจากชื่อ (K3.1 — ช่อง "ผู้ติดต่อ" ของป๊อปอัป "เพิ่มการเชื่อม") */
+export async function searchByName(
+  tenantId: string,
+  query: string,
+  limit?: number,
+  client?: Prisma.TransactionClient,
+): Promise<PartyBrief[]> {
+  return searchByNameInner(tenantId, query, limit, client);
 }

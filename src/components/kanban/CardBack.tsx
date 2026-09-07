@@ -15,6 +15,7 @@ import { Avatar, dueBadgeFrom, tagColorVar } from "./Card";
 import { Attachments } from "./Attachments";
 import { Checklist, checklistBadgeOf } from "./Checklist";
 import { CustomFields } from "./CustomFields";
+import { CardLinks } from "./CardLinks";
 import { Timeline } from "./Timeline";
 import { ThaiDatePicker } from "./ThaiDatePicker";
 import {
@@ -40,6 +41,7 @@ import type {
   BoardLabelDto,
   BoardPersonDto,
   CardFieldValueDto,
+  CardLinkDto,
   KanbanAttachmentDto,
   KanbanChecklistDto,
   KanbanCommentDto,
@@ -91,6 +93,8 @@ type Fields = {
   /** K2.11: ฉันติดตามการ์ดใบนี้อยู่ไหม + มีผู้ติดตามกี่คน */
   watching: boolean;
   watcherCount: number;
+  /** K3.1: "เชื่อมข้อมูล SHARK" — server ตัดสินสิทธิ์รายแถวมาแล้ว (แถวที่ไม่มีสิทธิ์ = ไม่มีรายละเอียดติดมา) */
+  links: CardLinkDto[];
 };
 
 export type CardBackHandlers = {
@@ -163,6 +167,8 @@ export function CardBack({
   const [runningButton, setRunningButton] = useState<string | null>(null);
   // K2.11 — ปุ่มติดตาม (กันกดรัวระหว่างรอเซิร์ฟเวอร์ตอบ)
   const [watchBusy, setWatchBusy] = useState(false);
+  // K3.1 — กดชิป "เชื่อมข้อมูล SHARK" ในเมนู "เพิ่ม:" → กางป๊อปอัปเพิ่มการเชื่อมในบล็อกด้านล่าง
+  const [linkAddNonce, setLinkAddNonce] = useState(0);
   const router = useRouter();
 
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -239,6 +245,7 @@ export function CardBack({
         cardButtons: res.detail.cardButtons,
         watching: res.detail.watching,
         watcherCount: res.detail.watcherCount,
+        links: res.detail.links,
       });
     });
     return () => {
@@ -469,6 +476,17 @@ export function CardBack({
     [card.id, handlers],
   );
 
+  // ───────────────────────── เชื่อมข้อมูล SHARK (K3.1) ─────────────────────────
+
+  const onLinksChange = useCallback(
+    (links: CardLinkDto[]) => {
+      setFields((f) => (f ? { ...f, links } : f));
+      // ชิป 🔗 n บนตัวการ์ดบนบอร์ดต้องขยับตามทันที (ไม่ต้องโหลดบอร์ดใหม่)
+      handlers.onPatch(card.id, { linkCount: links.length });
+    },
+    [card.id, handlers],
+  );
+
   // ───────────────────────── ฟิลด์กำหนดเอง (K2.6) ─────────────────────────
 
   const onCustomFieldsChange = useCallback(
@@ -674,7 +692,7 @@ export function CardBack({
                 <AddChip icon="clock" label="กำหนดวัน" onClick={() => setDueOpen(true)} />
                 <AddChip icon="cklist" label="เช็คลิสต์" onClick={addChecklist} />
                 <AddChip icon="clip" label="ไฟล์แนบ" onClick={openAttachmentPicker} />
-                <AddChip icon="link" label="เชื่อมข้อมูล SHARK" disabled accent />
+                <AddChip icon="link" label="เชื่อมข้อมูล SHARK" onClick={() => setLinkAddNonce((n) => n + 1)} accent />
               </div>
             )}
           </div>
@@ -897,6 +915,17 @@ export function CardBack({
                   </div>
                 </div>
               </div>
+
+              {/* เชื่อมข้อมูล SHARK (K3.1) — อยู่เหนือ "รายละเอียด" ตามภาพ 03 */}
+              <CardLinks
+                systemId={systemId}
+                cardId={card.id}
+                editable={editable}
+                links={fields.links}
+                openAddNonce={linkAddNonce}
+                onChange={onLinksChange}
+                onToast={toast}
+              />
 
               {/* รายละเอียด */}
               <div data-testid="card-description" className="flex flex-col gap-1.5">

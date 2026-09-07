@@ -79,6 +79,8 @@ export type BoardCardDto = {
   fieldsOnCard: FieldOnCardDto[];
   /** K2.7: การ์ดนี้เป็น "แม่" ของงานประจำ (มี recurrenceRule) — ชิป 🔁 บนการ์ด/แถวตาราง */
   isRecurring: boolean;
+  /** K3.1: จำนวน "เชื่อมข้อมูล SHARK" ที่ยังไม่ถูกถอด — ชิป 🔗 n บนการ์ด (0 = ไม่โชว์ชิป) */
+  linkCount: number;
 };
 
 export type BoardColumnDto = {
@@ -126,6 +128,68 @@ export type CardDetailDto = {
   watching: boolean;
   /** K2.11: จำนวนผู้ติดตาม "ตรงตัว" ของการ์ดใบนี้ (ไม่นับคนที่ติดตามคอลัมน์/บอร์ด) */
   watcherCount: number;
+  /** K3.1: "เชื่อมข้อมูล SHARK" ของการ์ดนี้ — คำนวณสิทธิ์รายคนแล้ว (ดู CardLinkDto) */
+  links: CardLinkDto[];
+};
+
+// ───────────────────────── K3.1: เชื่อมข้อมูล SHARK ─────────────────────────
+// 🔴 DTO ชุดนี้เป็น "ผลของการตัดสินสิทธิ์" ไม่ใช่ข้อมูลดิบ: แถวที่ `canView = false` ต้อง**ไม่มี**
+//    ชื่อลูกค้า / ตัวอย่างข้อความ / ยอดเงิน / ลิงก์ ติดมาเลย (§9.1 · เกณฑ์ §13 K3.1)
+//    ⇒ `title` ของแถวนั้นคือ "{ชนิด} (ไม่มีสิทธิ์เข้าถึง)" และ subtitle/status/href = null
+
+/** ชนิดของสิ่งที่การ์ดผูกอยู่ — ตรงกับ enum `KanbanLinkType` ใน Prisma (client ไม่ต้องรู้จัก prisma) */
+export type KanbanLinkKind =
+  | "PARTY"
+  | "CRM_CONTACT"
+  | "CHAT_CONVERSATION"
+  | "ACCOUNT_DOC"
+  | "APPROVAL_REQUEST"
+  | "HR_LEAVE"
+  | "HR_EMPLOYEE"
+  | "APPOINTMENT"
+  | "HOTEL_RESERVATION"
+  | "RENTAL_BOOKING"
+  | "SCHOOL_CLASS"
+  | "INV_ITEM"
+  | "QUEUE_TICKET"
+  | "TICKET_EVENT"
+  | "FORM_SUBMISSION"
+  | "KB_ARTICLE"
+  | "POS_SALE"
+  | "SHOP_ORDER"
+  | "RESTAURANT_ORDER"
+  | "URL";
+
+/** ความสัมพันธ์ของการเชื่อม: การ์ดเกิดจากของชิ้นนี้ / อ้างถึง / เป็นผลลัพธ์ของงานนี้ */
+export type KanbanLinkRole = "SOURCE" | "RELATED" | "RESULT";
+
+export type CardLinkDto = {
+  /** id ของ **แถวเชื่อม** (ไม่ใช่ id ของปลายทาง) — ใช้กับปุ่มถอด */
+  id: string;
+  linkType: KanbanLinkKind;
+  /** ป้ายชนิดภาษาไทย เช่น "ผู้ติดต่อ (CRM / Party)" */
+  typeLabel: string;
+  /** ไอคอนในสไปรต์ `KanbanIcon` */
+  icon: string;
+  linkId: string;
+  role: KanbanLinkRole | null;
+  /** ผู้ดูคนนี้เปิดของปลายทางได้ไหม — คิดใหม่ทุกครั้งที่เรียก (ไม่มีการจำข้ามผู้ใช้) */
+  canView: boolean;
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+  href: string | null;
+};
+
+/** ขาย้อน: "ของชิ้นนี้ถูกอ้างในการ์ดใบไหนบ้าง" (เฉพาะบอร์ดที่ผู้ดูมองเห็น) */
+export type CardForTargetDto = {
+  cardId: string;
+  cardNo: number | null;
+  title: string;
+  boardId: string;
+  boardName: string;
+  columnName: string;
+  status: "ACTIVE" | "ARCHIVED";
 };
 
 /** K2.9 — ปุ่มอัตโนมัติที่โผล่บนจอ (หลังการ์ด / หัวบอร์ด) */
@@ -254,7 +318,10 @@ export type KanbanActivityKind =
   | "CARD_COMPLETED"
   | "CHECKLIST_ITEM_DONE"
   | "COMMENT_ADDED"
-  | "ATTACHMENT_ADDED";
+  | "ATTACHMENT_ADDED"
+  // K3.1 — ผูก/ถอด "เชื่อมข้อมูล SHARK"
+  | "LINK_ADDED"
+  | "LINK_REMOVED";
 
 /** ชื่อที่ resolve มาแล้วสำหรับเรนเดอร์ประโยคไทย (ไม่มี = อ้างของที่ถูกลบไปแล้ว → ประโยคจะเลี่ยงชื่อเอง) */
 export type KanbanActivityNames = {

@@ -1,7 +1,7 @@
 # SHARK Task Board API
 
 Machine readable contract: `/api/v1/kanban/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/kanban` - contract version 1.0.0 - 82 operations.
+Base URL: `https://shark.in.th/api/v1/kanban` - contract version 1.0.0 - 85 operations.
 Generated from the operation registry by `scripts/gen-kanban-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -96,7 +96,7 @@ Branch on `error.code`, never on the message text. The list is shared by every S
 
 ### Read operations
 
-Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited. 29 of the 82 operations.
+Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited. 30 of the 85 operations.
 
 #### `boards.activity`
 
@@ -391,6 +391,19 @@ curl -sS -X GET "https://shark.in.th/api/v1/kanban/cards/123/comments" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `cards.links.list`
+
+**GET /cards/{id}/links** - List everything this card is linked to (contact, chat, accounting document, approval request, external URL and so on). Rows the caller may not open are still returned, but without any detail: canView is false, title says the Thai equivalent of 'no access', and href is null. · scope: `kanban.board.read` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/cards/123/links" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `cards.get`
 
 **GET /cards/{id}** - Read one card with its description, checklists, comments and attachments. · scope: `kanban.board.read` · read
@@ -525,7 +538,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/kanban/templates" \
 
 ### Write operations
 
-Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 49 of the 82 operations.
+Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 51 of the 85 operations.
 
 #### `attachments.delete`
 
@@ -971,6 +984,45 @@ curl -sS -X PUT "https://shark.in.th/api/v1/kanban/cards/123/labels" \
   -d '{"labelIds":["lbl_123"]}'
 ```
 
+#### `cards.links.remove`
+
+**DELETE /cards/{id}/links** - Unlink one object from this card. The link is kept in the card history and linking the same object again revives the same row. Removing a link twice is a no-op. · scope: `kanban.card.update` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `linkRowId` | string | yes | Id of the link row itself, as returned by the list endpoint. · min length 1 · max length 40 |
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/kanban/cards/123/links" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"linkRowId":"example linkRowId"}'
+```
+
+#### `cards.links.add`
+
+**POST /cards/{id}/links** - Link this card to an object elsewhere in SHARK, or to an external URL. Linking the same object twice returns the existing link instead of creating a second one. The target must exist in this shop. · scope: `kanban.card.update` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `linkType` | enum("PARTY", "CRM_CONTACT", "CHAT_CONVERSATION", "ACCOUNT_DOC", "APPROVAL_REQUEST", "HR_LEAVE", "HR_EMPLOYEE", "APPOINTMENT", "HOTEL_RESERVATION", "RENTAL_BOOKING", "SCHOOL_CLASS", "INV_ITEM", "QUEUE_TICKET", "TICKET_EVENT", "FORM_SUBMISSION", "KB_ARTICLE", "POS_SALE", "SHOP_ORDER", "RESTAURANT_ORDER", "URL") | yes | What kind of SHARK object the card points at. Use URL for a plain web link. |
+| `linkId` | string | yes | Id of the target object in this shop. For linkType URL this is the URL itself and must start with http:// or https://. · min length 1 · max length 2000 |
+| `role` | enum("SOURCE", "RELATED", "RESULT") | no | SOURCE = the card was created out of this, RELATED = it refers to it, RESULT = it is the outcome of the work. |
+| `label` | string | no | Short caption typed by a person. Mostly used with URL links. · max length 120 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/kanban/cards/123/links" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"linkType":"PARTY","linkId":"example linkId"}'
+```
+
 #### `cards.move`
 
 **POST /cards/{id}/move** - Move a card to another column and/or another position, by naming its new neighbours. · scope: `kanban.card.move` · write · AI tool: `kanban_move_card`
@@ -1403,7 +1455,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/kanban/views/123" \
 
 ### Danger operations
 
-Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 4 of the 82 operations.
+Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 4 of the 85 operations.
 
 #### `boards.members.remove`
 

@@ -11,6 +11,9 @@ import { notifyCardAssigned } from "./notify";
 import { fieldsOnCardForCards } from "./fields";
 // K2.11 — สถานะ "ติดตาม" ของคนที่กำลังดู (ส่งลงหัวบอร์ด/เมนูคอลัมน์)
 import { boardWatchState } from "./watch";
+// K3.1 — จำนวน "เชื่อมข้อมูล SHARK" ต่อการ์ด (ชิป 🔗 n) · อ่านจากฝั่ง resolver ที่ไม่รู้จัก service.ts
+// (ฝั่งเขียน `links.ts` เป็นตัวที่ import service.ts — ถ้าดึงจากที่นั่นจะเป็น import วนกลับ)
+import { linkCountsOfCards } from "./link-resolvers";
 import { boardRole, KanbanNotFoundError, visibleBoardsWhere, type BoardRole } from "./access";
 import type {
   BoardCardDto,
@@ -481,6 +484,12 @@ export async function createCard(input: {
   labels?: string[];
   sourceType?: KanbanCardSourceType;
   sourceId?: string | null;
+  /**
+   * K3.1 — กุญแจกันสร้างซ้ำของการ์ดที่เกิดจากภายนอก (`unique(tenantId, sourceKey)` แบบ partial ที่ DB)
+   * 🔴 ผู้เรียกที่ส่งค่านี้ต้องพร้อมรับ error จากการชน unique (ยิงพร้อมกัน) — `links.createCardFromExternal`
+   *    จับไว้แล้วอ่านการ์ดใบเดิมคืนเป็น `created: false` (ประตูเดียวของทางเข้าภายนอกทั้งหมด)
+   */
+  sourceKey?: string | null;
   createdById?: string | null;
 }): Promise<KanbanCard | null> {
   const col = await prisma.kanbanColumn.findFirst({
@@ -519,6 +528,7 @@ export async function createCard(input: {
         cardNo: seq[0]?.cardNoSeq ?? null,
         ...(input.sourceType ? { sourceType: input.sourceType } : {}),
         sourceId: input.sourceId ?? null,
+        sourceKey: input.sourceKey ?? null,
         createdById: input.createdById ?? null,
       },
     });
@@ -754,7 +764,7 @@ export async function getBoardView(
   const board = await getBoardFor(ctx, actor, boardId);
   const cardIds = board.columns.flatMap((c) => c.cards.map((k) => k.id));
 
-  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows, commentCountRows, attachmentCountRows, fieldsOnCardByCard, automationButtons] = await Promise.all([
+  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows, commentCountRows, attachmentCountRows, fieldsOnCardByCard, automationButtons, linksOfCard] = await Promise.all([
     prisma.kanbanLabel.findMany({
       where: { boardId: board.id, tenantId: ctx.tenantId, systemId: ctx.systemId },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -829,6 +839,10 @@ export async function getBoardView(
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true },
     }),
+    // K3.1: ชิป 🔗 n ของทุกการ์ด — คิวรีเดียว (groupBy cardId) ไม่ใช่ต่อการ์ด (กัน N+1)
+    // 🔴 เป็นแค่ "จำนวนของที่ผูกอยู่" ไม่ใช่รายละเอียด ⇒ ไม่ตัดสินสิทธิ์รายชิ้นที่นี่
+    //    (รายละเอียด + ด่านสิทธิ์อยู่ที่ `listCardLinks` ตอนเปิดหลังการ์ด)
+    linkCountsOfCards(ctx, cardIds),
   ]);
   const checklistOfCard = new Map(
     checklistCountRows.map((r) => [r.cardId, { done: Number(r.done), total: Number(r.total) }]),
@@ -910,6 +924,7 @@ export async function getBoardView(
             coverUrl: card.coverFileId ? (coverUrlOfFile.get(card.coverFileId) ?? null) : null,
           },
           fieldsOnCardByCard.get(card.id) ?? [],
+          linksOfCard.get(card.id) ?? 0,
         ),
       ),
     })),
@@ -925,6 +940,7 @@ export function toBoardCardDto(
   commentCount?: number,
   attachment?: { count: number; coverUrl: string | null },
   fieldsOnCard?: FieldOnCardDto[],
+  linkCount?: number,
 ): BoardCardDto {
   return {
     // K2.7: ชิป 🔁 — "แม่" ของงานประจำเท่านั้น (ลูกไม่มี recurrenceRule ของตัวเอง — ดู recurrence.ts)
@@ -949,6 +965,8 @@ export function toBoardCardDto(
     sourceType: card.sourceType,
     // K2.6: ชิปฟิลด์กำหนดเอง (ค่าเริ่มต้น [] สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่มีฟิลด์ที่ตั้ง showOnCard)
     fieldsOnCard: fieldsOnCard ?? [],
+    // K3.1: ชิป 🔗 n (ค่าเริ่มต้น 0 สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่ผูกอะไร)
+    linkCount: linkCount ?? 0,
   };
 }
 

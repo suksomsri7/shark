@@ -20,6 +20,7 @@ import { CORE_OPS } from "./ops/core";
 import { FIELDS_OPS } from "./ops/fields";
 import { INBOX_OPS } from "./ops/inbox";
 import { LABELS_OPS } from "./ops/labels";
+import { LINKS_OPS } from "./ops/links";
 import { MISC_OPS } from "./ops/misc";
 import { REPORTS_OPS } from "./ops/reports";
 import { TEMPLATES_CARDS_OPS } from "./ops/templates";
@@ -48,6 +49,8 @@ export const KANBAN_OPS: ApiOp[] = [
   ...AUTOMATION_OPS,
   ...REPORTS_OPS,
   ...WATCH_OPS,
+  // K3.1 — เชื่อมข้อมูล SHARK (ผูกการ์ดกับวัตถุของโมดูลอื่น)
+  ...LINKS_OPS,
 ];
 
 /** หา op ที่ตรงทั้ง method และ path · เจอหลายตัว → เลือกตัวที่ "คงที่มากที่สุด" (param น้อยสุด) */

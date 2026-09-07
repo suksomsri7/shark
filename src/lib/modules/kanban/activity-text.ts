@@ -8,6 +8,8 @@
 //    "use client" จึง import ข้ามมาที่นี่ไม่ได้ — ตัวเลข offset/ชื่อเดือนจึงซ้ำกัน 2 ที่โดยตั้งใจ)
 
 import type { KanbanActivityDto } from "./types";
+// K3.1 — ป้ายชนิดของการเชื่อม (ไฟล์บริสุทธิ์ ไม่แตะ prisma — ฝั่ง client เรียกไฟล์นี้ได้)
+import { linkTypeTh } from "./link-labels";
 
 const TH_MONTH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 const BKK_OFFSET_MS = 7 * 60 * 60 * 1000; // Asia/Bangkok = UTC+7 ตายตัว (ไม่มี DST)
@@ -167,6 +169,11 @@ export function describeActivity(item: Pick<KanbanActivityDto, "type" | "data" |
       return "เขียนความเห็น";
     case "ATTACHMENT_ADDED":
       return `แนบไฟล์ ${str(data.name) ?? ""}`.trim();
+    // K3.1 — ประวัติพูดถึง "ชนิด" ของสิ่งที่ผูก ไม่ใช่ชื่อของมัน (ชื่ออาจเป็นข้อมูลที่คนอ่านประวัติไม่มีสิทธิ์เห็น)
+    case "LINK_ADDED":
+      return `เชื่อมการ์ดกับ${linkTypeTh(data.linkType)}`;
+    case "LINK_REMOVED":
+      return `ถอดการเชื่อมกับ${linkTypeTh(data.linkType)}`;
     default:
       return "มีการเปลี่ยนแปลง";
   }
@@ -185,5 +192,6 @@ export function activityIconName(type: KanbanActivityDto["type"]): string {
   if (type === "COMMENT_ADDED") return "chat";
   if (type === "ATTACHMENT_ADDED") return "clip";
   if (type === "CARD_ARCHIVED" || type === "BOARD_ARCHIVED") return "box";
+  if (type === "LINK_ADDED" || type === "LINK_REMOVED") return "link";
   return "spark";
 }

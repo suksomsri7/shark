@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { assertCan, evaluate as can } from "@/lib/core/rbac";
+import { assertCan, evaluate as can, ForbiddenError } from "@/lib/core/rbac";
 import {
   archiveBoard,
   archiveCard,
@@ -51,6 +51,11 @@ import { listArchived, restoreColumn } from "./archive";
 import { parsePreferences, setUserPreferences } from "./preferences";
 // K2.11 — ติดตาม (watch) + ความถี่อีเมลของแต่ละคน
 import { requireActor, unwatch, watch } from "./watch";
+// K3.1 — เชื่อมข้อมูล SHARK (ด่านบทบาทบอร์ด EDITOR/VIEWER ตรวจใน `links.ts`/`link-resolvers.ts` เอง
+// ที่นี่ตรวจแค่ชั้นสิทธิ์โมดูล เหมือน action อื่นของไฟล์นี้)
+import { addLink, removeLink, searchPartiesForLink } from "./links";
+import { listCardLinks } from "./link-resolvers";
+import type { CardLinkDto, KanbanLinkKind, KanbanLinkRole } from "./types";
 import type { KanbanDigestMode, KanbanEmailMode } from "@/lib/core/user-preferences";
 // K1.7 — เช็คลิสต์: `checklistProgressOfCard` ใช้ตอนคืนการ์ดเดี่ยวจาก action (ทำสำเนา/กู้คืน)
 // เพื่อให้ตรา n/m บนการ์ดที่เพิ่งแทรกกลับเข้าบอร์ดถูกต้องทันที ไม่ต้องรอโหลดบอร์ดใหม่ทั้งใบ
@@ -134,6 +139,13 @@ import type { CardTemplateDto, InboxItemDto } from "./types";
 // ตรวจสิทธิ์โมดูล (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
 // หมายเหตุ: scope ระดับ systemId รอ kernel Phase ถัดไป (ตอนนี้ตรวจ module+action)
 function assertKanbanCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
+  // 🔴 K3.1 (บั๊กที่ builder จับได้): ชั้นที่ 1 "เข้าโมดูลได้" ต้องใช้กติกา read-โดยนัยของ K1.3
+  //    (`canReadKanban` — มีคีย์ kanban.* ตัวใดตัวหนึ่ง = อ่านได้) ไม่ใช่ตรวจคีย์ `kanban.board.read` ตรงตัว
+  //    ไม่งั้นพนักงานที่เจ้าของติ๊กแค่ `kanban.card.*` เปิดบอร์ดได้แต่เปิดหลังการ์ด/ประวัติ/ลิงก์แล้วได้ 403/500
+  if (action === "kanban.board.read") {
+    if (canReadKanban(toActor(auth.user.id, auth.active))) return;
+    throw new ForbiddenError({ module: "kanban", action });
+  }
   assertCan(
     {
       role: auth.active.role,
@@ -1983,5 +1995,72 @@ export async function dismissInboxAction(input: {
     return { ok: true };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ลบรายการไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+// ───────────────────────── K3.1: เชื่อมข้อมูล SHARK ─────────────────────────
+// 🔴 ทุกตัวคืนรายการใหม่ทั้งชุด (`links`) ให้หน้าจอวาดทับ ไม่ใช่ให้ client ประกอบเอง —
+//    สิทธิ์ของแต่ละแถวคิดจากฝั่ง server เท่านั้น (client ประกอบเอง = ช่องหลุดข้อมูล)
+
+export async function addCardLinkAction(input: {
+  systemId: string;
+  cardId: string;
+  linkType: KanbanLinkKind;
+  linkId: string;
+  role?: KanbanLinkRole;
+  label?: string;
+}): Promise<{ ok: true; links: CardLinkDto[] } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    const actor = await requireActor(ctx);
+    await addLink(ctx, input.cardId, {
+      linkType: input.linkType,
+      linkId: input.linkId,
+      role: input.role ?? null,
+      label: input.label ?? null,
+    });
+    return { ok: true as const, links: await listCardLinks(ctx, actor, input.cardId) };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "เชื่อมข้อมูลไม่สำเร็จ" };
+  }
+}
+
+export async function removeCardLinkAction(input: {
+  systemId: string;
+  cardId: string;
+  linkRowId: string;
+}): Promise<{ ok: true; links: CardLinkDto[] } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId || !input.linkRowId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    const actor = await requireActor(ctx);
+    await removeLink(ctx, input.cardId, input.linkRowId);
+    return { ok: true as const, links: await listCardLinks(ctx, actor, input.cardId) };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "ถอดการเชื่อมไม่สำเร็จ" };
+  }
+}
+
+/**
+ * ค้นผู้ติดต่อสำหรับป๊อปอัป "เพิ่มการเชื่อม"
+ * 🔴 คืนแค่ `{ id, name }` (ผ่าน facade ของโมดูลผู้ติดต่อ) — ช่องค้นหานี้ไม่ใช่สมุดที่อยู่ลูกค้า
+ */
+export async function searchPartyForLinkAction(input: {
+  systemId: string;
+  q: string;
+}): Promise<{ ok: true; results: { id: string; name: string }[] } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    return { ok: true as const, results: await searchPartiesForLink(ctx, input.q ?? "") };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "ค้นหาไม่สำเร็จ" };
   }
 }

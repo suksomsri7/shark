@@ -91,7 +91,7 @@ try {
   // ═══ S3 ขาย้อน + ลบ ═══
   const back = await lk.listCardsForTarget(ctxO, owner, { linkType: "PARTY", linkId: partyId });
   const backT = await lk.listCardsForTarget(ctxT, thana, { linkType: "PARTY", linkId: partyId });
-  const kata = await svc.createCard({ tenantId: tid, systemId: SYS, columnId: (await prisma.kanbanColumn.findFirst({ where: { boardId: E.boards.kataSecret.id, status: "ACTIVE" } }))!.id, title: "QC K3.1 บอร์ดลับ", createdById: U.owner });
+  const kata = await svc.createCard({ tenantId: tid, systemId: SYS, columnId: (await prisma.kanbanColumn.findFirst({ where: { boardId: E.boards.kata.id, status: "ACTIVE" } }))!.id, title: "QC K3.1 บอร์ดลับ", createdById: U.owner });
   madeCards.push(kata.id);
   await lk.addLink(ctxO, kata.id, { linkType: "PARTY", linkId: partyId });
   const back2 = await lk.listCardsForTarget(ctxO, owner, { linkType: "PARTY", linkId: partyId });

@@ -14,7 +14,10 @@ import { prisma } from "./db";
 import { getCardFieldValues } from "./fields";
 import { setCardLabels } from "./labels";
 import { KANBAN_LIMITS } from "./limits";
-import { assertBoardRole, assertCardRole } from "./members";
+// K3.1 — "เชื่อมข้อมูล SHARK" ของหลังการ์ด · อ่านจาก `link-resolvers.ts` โดยตรง (ไม่ผ่าน `links.ts`
+// ที่เป็นฝั่งเขียนและ import `service.ts` → `cards.ts` อยู่แล้ว = import วนกลับ)
+import { listCardLinks } from "./link-resolvers";
+import { assertBoardRole, assertCardRole, loadActor } from "./members";
 import { listComments } from "./comments";
 import { moveCard } from "./moves";
 import { cardLink, notifyCardAssigned, notifyWatchers } from "./notify";
@@ -214,7 +217,10 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
   if (!card) throw new KanbanNotFoundError("ไม่พบการ์ดนี้");
   // K1.7/K1.8/K1.9/K2.6: หลังการ์ดโหลดเช็คลิสต์ + ความเห็น + ไฟล์แนบ + ค่าฟิลด์กำหนดเอง พร้อมกับส่วนที่
   // เหลือของการ์ดในเที่ยวเดียว (ทุกตัวตรวจสิทธิ์ซ้ำในตัวเอง — เปิดหลังการ์ด 1 ครั้ง = ไม่ต้องยิง action เพิ่มอีกหลายรอบ)
-  const [checklists, comments, attachments, customFields, parentCard, cardButtons, watchState] = await Promise.all([
+  // K3.1 — ผู้ดูของบล็อก "เชื่อมข้อมูล SHARK" คือคนที่กำลังเปิดการ์ดนี้ (ctx.actorUserId / คีย์ API)
+  //         สิทธิ์รายชิ้นถูกคิดใหม่ทุกครั้งใน `listCardLinks` ⇒ ไม่มีการจำผลข้ามผู้ใช้
+  const viewer = await loadActor(ctx);
+  const [checklists, comments, attachments, customFields, parentCard, cardButtons, watchState, links] = await Promise.all([
     getCardChecklists(ctx, cardId),
     listComments(ctx, cardId),
     listAttachments(ctx, cardId),
@@ -232,6 +238,7 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     }),
     // K2.11 — ฉันติดตามใบนี้ไหม + มีคนติดตามกี่คน (โหลดมาพร้อมกันในเที่ยวเดียว)
     cardWatchState(ctx, cardId),
+    viewer ? listCardLinks(ctx, viewer, cardId) : Promise.resolve([]),
   ]);
   return {
     id: card.id,
@@ -253,6 +260,7 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     cardButtons,
     watching: watchState.watching,
     watcherCount: watchState.count,
+    links,
   };
 }
 

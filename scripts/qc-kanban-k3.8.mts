@@ -39,14 +39,14 @@ try {
   const boards = await prisma.kanbanBoard.findMany({ where: { tenantId: tid, systemId: SYS, status: "ACTIVE" }, select: { id: true, name: true, visibility: true } });
   const activeAll = await prisma.kanbanCard.count({ where: { tenantId: tid, systemId: SYS, status: "ACTIVE", boardId: { in: boards.map((b) => b.id) }, completedAt: null } });
   const maintActive = await prisma.kanbanCard.count({ where: { boardId: E.boards.maint.id, status: "ACTIVE", completedAt: null } });
-  const kataActive = await prisma.kanbanCard.count({ where: { boardId: E.boards.kataSecret.id, status: "ACTIVE", completedAt: null } });
+  const kataActive = await prisma.kanbanCard.count({ where: { boardId: E.boards.kata.id, status: "ACTIVE", completedAt: null } });
 
   // ═══ S1 listCrossBoard ═══
   const o1 = await ov.listCrossBoard(ctxOf(U.owner), owner, { now: NOW, pageSize: 200 });
   chk("K3.8-S1.1", `listCrossBoard(ctx, actor, {now, filters?, group?, sort?, page?, pageSize?}) → { rows: (TableRowDto + boardId, boardName, boardColor), total, page, pageSize, boards:[{id,name,count}], groups? } · owner เห็นทุกบอร์ด ACTIVE (${boards.length}) · การ์ดค้าง (ไม่นับเสร็จ · ไม่นับบอร์ด/การ์ด ARCHIVED) = ${activeAll}`, o1?.total === activeAll && o1.rows.every((r: Any) => typeof r.boardName === "string" && r.boardId) && o1.boards?.length === boards.length, String(activeAll), JSON.stringify({ total: o1?.total, boards: o1?.boards?.length }));
   const oT = await ov.listCrossBoard(ctxOf(U.thana), thana, { now: NOW, pageSize: 200 });
   const oM = await ov.listCrossBoard(ctxOf(U.manager), manager, { now: NOW, pageSize: 200 });
-  chk("K3.8-S1.2", `🔴 เห็นเฉพาะบอร์ดที่มีสิทธิ์ (visibleBoardsWhere): thana = เฉพาะซ่อมบำรุง (TENANT) → ${maintActive} · ผู้จัดการป่าตอง = ป่าตอง + ซ่อม (ไม่เห็นบอร์ดลับกะตะ) → ${activeAll - kataActive} · boards[] ก็กรองด้วย`, oT?.total === maintActive && oT.boards.length === 1 && oM?.total === activeAll - kataActive && !oM.boards.some((b: Any) => b.id === E.boards.kataSecret.id), `${maintActive} / ${activeAll - kataActive}`, `${oT?.total} / ${oM?.total}`);
+  chk("K3.8-S1.2", `🔴 เห็นเฉพาะบอร์ดที่มีสิทธิ์ (visibleBoardsWhere): thana = เฉพาะซ่อมบำรุง (TENANT) → ${maintActive} · ผู้จัดการป่าตอง = ป่าตอง + ซ่อม (ไม่เห็นบอร์ดลับกะตะ) → ${activeAll - kataActive} · boards[] ก็กรองด้วย`, oT?.total === maintActive && oT.boards.length === 1 && oM?.total === activeAll - kataActive && !oM.boards.some((b: Any) => b.id === E.boards.kata.id), `${maintActive} / ${activeAll - kataActive}`, `${oT?.total} / ${oM?.total}`);
   const oF = await ov.listCrossBoard(ctxOf(U.owner), owner, { now: NOW, filters: { label: "ด่วน" }, pageSize: 200 });
   const urgent = await prisma.kanbanCard.count({ where: { tenantId: tid, systemId: SYS, status: "ACTIVE", completedAt: null, boardId: { in: boards.map((b) => b.id) }, cardLabels: { some: { label: { name: "ด่วน" } } } } });
   const oB = await ov.listCrossBoard(ctxOf(U.owner), owner, { now: NOW, filters: { board: [E.boards.maint.id] }, pageSize: 200 });

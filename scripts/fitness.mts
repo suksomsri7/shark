@@ -330,6 +330,11 @@ const ALLOWED_EDGES = new Set([
   //   เปิดอยู่ · ทิศเดียว kanban→calendar (อ่านอย่างเดียว ไม่มี write path กลับ)
   //   — Fable อนุมัติล่วงหน้า (ledger/KANBAN-RUN.md §K2.2 กล่อง "เส้น import ข้ามโมดูลที่ Fable อนุมัติ")
   "kanban→calendar",
+  // chokepoint (K3.1 — เชื่อมข้อมูล SHARK): ตัวแปลผลชนิด `PARTY` ของ `KanbanCardLink` อ่าน/ค้นชื่อ
+  //   ผู้ติดต่อผ่าน facade `party/index.ts` เท่านั้น (`listBriefsByIds` / `searchByName` — คืนแค่ id+ชื่อ)
+  //   ⇒ ห้ามแตะตาราง `Party` ตรงตามพิมพ์เขียว §9.1 · ทิศเดียว kanban→party (party ไม่รู้จัก kanban)
+  //   — Fable อนุมัติล่วงหน้า (ledger/KANBAN-RUN.md ท้าย §K3.2 กล่อง "เส้น import ข้ามโมดูลที่ Fable อนุมัติ")
+  "kanban→party",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

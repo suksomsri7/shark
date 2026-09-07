@@ -13,6 +13,9 @@ import { assertBoardRole } from "./members";
 import { filterBoardCards, type BoardFilters, type FilterableCard } from "./filters";
 import { fieldsOnCardForCards, listShowOnCardFieldNames } from "./fields";
 import { KANBAN_LIMITS } from "./limits";
+// K3.1 — คอลัมน์ "เชื่อม": ป้ายของสิ่งที่การ์ดผูกอยู่ · อ่านจาก `link-resolvers.ts` ตรง ๆ ด้วยเหตุผล
+// เดียวกับที่ไฟล์นี้ไม่เรียก `service.ts` (ฝั่งเขียน `links.ts` import service.ts = วนกลับ)
+import { linkChipsOfCards } from "./link-resolvers";
 import type {
   BoardLabelDto,
   BoardPersonDto,
@@ -173,7 +176,7 @@ export async function listBoardTable(
       checklistDone: checklist?.done ?? 0,
       checklistTotal: checklist?.total ?? 0,
       labels: labelsOfCard.get(raw.id) ?? [],
-      links: [], // K3.1 ยังไม่มี — คอลัมน์ "เชื่อมระบบ" ว่างจนกว่าจะถึง WO นั้น (สัญญา K2.1)
+      links: [], // K3.1 เติมหลังแบ่งหน้า (ดูด้านล่าง) — resolve เฉพาะแถวที่แสดงจริง ไม่ใช่ทุกการ์ดของบอร์ด
       updatedAt: raw.updatedAt.toISOString(),
       fieldsOnCard: fieldsOnCardByCard.get(raw.id) ?? [],
       isRecurring: raw.recurrenceRule != null,
@@ -186,6 +189,11 @@ export async function listBoardTable(
   const pageSize = Math.max(1, Math.floor(opts.pageSize ?? KANBAN_LIMITS.tablePageSize));
   const start = (page - 1) * pageSize;
   const rows = sorted.slice(start, start + pageSize);
+
+  // K3.1 — คอลัมน์ "เชื่อม": เติม **หลังแบ่งหน้า** เพราะการแปลผลต้องยิงโมดูลปลายทางจริง
+  // (บอร์ด 500 การ์ดแต่แสดง 50 แถว ⇒ resolve 50 แถวพอ) · แสดงเฉพาะรายการที่ผู้ดูมีสิทธิ์เห็น
+  const chips = await linkChipsOfCards(ctx, actor, rows.map((r) => r.id));
+  for (const row of rows) row.links = chips.get(row.id) ?? [];
 
   const result: BoardTableResult = { rows, total: sorted.length, page, pageSize, customFieldColumns };
   if (opts.group) result.groups = groupRows(sorted, opts.group, columns);

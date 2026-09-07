@@ -62,7 +62,71 @@ if (WO === "1.9") {
   writeFileSync(KB_PNG_PATH, Buffer.from(KB_PNG_BASE64, "base64"));
 }
 
+/** K3.1 — การ์ดตัวอย่างของบล็อก "เชื่อมข้อมูล SHARK" (บอร์ดซ่อมบำรุง = TENANT ⇒ ธนาเห็นแบบ VIEWER) */
+const KB31_CARD: string = (E.boards.maint.cardIds as string[])[0]!;
+
 const SPECS: Record<string, Spec[]> = {
+  // K3.1 — บล็อก "เชื่อมข้อมูล SHARK" ในหลังการ์ด (ไม่มี mockup เดี่ยว — เทียบบล็อกในภาพ 03)
+  // 🔴 ถ่าย 2 รอบ: `--user owner` (เห็นครบ + เปิดป๊อปอัปเพิ่มได้) และ `--user thana`
+  //    (VIEWER ของบอร์ด + ไม่มีสิทธิ์โมดูลปลายทาง ⇒ ต้องเห็นแถวครบแต่เป็น "(ไม่มีสิทธิ์เข้าถึง)")
+  //    ชื่อไฟล์ผูกกับผู้ใช้ ไม่งั้นรอบที่สองจะทับภาพของรอบแรก
+  "3.1": [
+    {
+      name: `card-links-${userKey}`,
+      path: `/app/sys/${SYS}/kanban/b/${B("maint")}?card=${KB31_CARD}`,
+      onlyDevice: "desktop",
+      note: `หลังการ์ด — บล็อก "เชื่อมข้อมูล SHARK" ของ ${userKey} (owner เห็นชื่อลูกค้า+ลิงก์ · thana ต้องเห็น "(ไม่มีสิทธิ์เข้าถึง)")`,
+      expect: ["[data-testid=card-back]", "[data-testid=card-links]"],
+      steps: [{ waitFor: "[data-testid=card-links]" }, { wait: 600 }],
+    },
+    ...(userKey === "owner"
+      ? [
+          {
+            name: "card-link-added",
+            path: `/app/sys/${SYS}/kanban/b/${B("maint")}?card=${KB31_CARD}`,
+            onlyDevice: "desktop" as const,
+            note: 'กด "เพิ่มการเชื่อม" → กรอก URL → กด "เชื่อมลิงก์" จริงบน production build (พิสูจน์เส้น action → service → DB ครบทอด)',
+            expect: ["[data-testid=card-links]"],
+            steps: [
+              { waitFor: "[data-testid=card-link-add]" },
+              { click: "[data-testid=card-link-add]" },
+              { waitFor: "[data-testid=card-link-url]" },
+              { fill: "[data-testid=card-link-url]", value: "https://example.com/qc/k3-1-ui.pdf" },
+              { fill: "[data-testid=card-link-label]", value: "ใบเสนอราคาอะไหล่ (เพิ่มจากหน้าจอจริง)" },
+              { click: "[data-testid=card-link-submit]" },
+              { wait: 1500 },
+            ],
+          },
+          {
+            name: "card-link-removed",
+            path: `/app/sys/${SYS}/kanban/b/${B("maint")}?card=${KB31_CARD}`,
+            onlyDevice: "desktop" as const,
+            note: "กด × ของแถวล่างสุด → ยืนยัน 'ถอดออก' — แถวต้องหายจริง (soft delete) เหลือ 2 แถว",
+            expect: ["[data-testid=card-links]"],
+            steps: [
+              { waitFor: "[data-testid=card-link-row]" },
+              { click: "[data-testid=card-link-row]:last-of-type [data-testid=card-link-remove]" },
+              { waitFor: "[data-testid=card-link-remove-confirm]" },
+              { click: "[data-testid=card-link-remove-confirm]" },
+              { wait: 1500 },
+            ],
+          },
+          {
+            name: "card-link-add",
+            path: `/app/sys/${SYS}/kanban/b/${B("maint")}?card=${KB31_CARD}`,
+            onlyDevice: "desktop" as const,
+            note: 'ป๊อปอัป "เพิ่มการเชื่อม" — 2 แท็บ: ลิงก์ภายนอก (กรอก URL + ป้าย) · ผู้ติดต่อ (ค้นชื่อ)',
+            expect: ["[data-testid=card-link-add-panel]"],
+            steps: [
+              { waitFor: "[data-testid=card-link-add]" },
+              { click: "[data-testid=card-link-add]" },
+              { waitFor: "[data-testid=card-link-add-panel]" },
+              { wait: 400 },
+            ],
+          },
+        ]
+      : []),
+  ],
   // Fable 7 ก.ย. — หัวบอร์ด: dropdown ต้องไม่ถูก overflow ของ <header> ครอบตัด (บั๊กที่ K2.5 พบ · แก้ด้วย lg:overflow-visible)
   "hdr": [
     {
@@ -1270,7 +1334,39 @@ if (WO === "2.11") {
   console.log(`🧪 เตรียม K2.11: เจ้าของร้านติดตามการ์ด ${(E.boards.patong.cardIds as string[])[2]} + คอลัมน์ '${col?.name ?? "-"}' (ลบคืนหลังถ่ายเสร็จ)`);
 }
 
+// ── K3.1: ผูก "เชื่อมข้อมูล SHARK" ตัวอย่างให้การ์ดใบแรกของบอร์ดซ่อมบำรุง (ผู้ติดต่อ + ลิงก์ภายนอก)
+//    เขียนผ่าน `links.addLink()` จริง (ผ่านด่านสิทธิ์ทุกชั้น) แล้วลบคืนใน `restoreSeed()`
+const KB31 = { partyId: "" };
+if (WO === "3.1") {
+  const lk = (await import("@/lib/modules/kanban/links" as string)) as Any;
+  const party = (await import("@/lib/modules/party" as string)) as Any;
+  const ctx31 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  const partyId: string | null = await party.safeFindOrCreate(E.tenantId, { name: "คุณสมชาย ใจดี (ลูกค้า)", phone: "0812345678" });
+  if (partyId) {
+    KB31.partyId = partyId;
+    await lk.addLink(ctx31, KB31_CARD, { linkType: "PARTY", linkId: partyId, role: "RELATED" });
+  }
+  await lk.addLink(ctx31, KB31_CARD, {
+    linkType: "URL",
+    linkId: "https://example.com/manual/regulator-service.pdf",
+    label: "คู่มือส่งซ่อมเรกูเลเตอร์",
+  });
+  // K3.1: ธนา (มีแค่คีย์ kanban.card.*) ต้องเปิดหลังการ์ดได้จริงหลังแก้ assertKanbanCan → canReadKanban (ไม่เติมคีย์ชั่วคราวแล้ว)
+  console.log(`🧪 เตรียม K3.1: ผูกผู้ติดต่อ + ลิงก์ภายนอกกับการ์ด ${KB31_CARD} (ลบคืนหลังถ่ายเสร็จ)`);
+}
+
 async function restoreSeed(): Promise<void> {
+  // K3.1 — ลบแถวเชื่อม + ประวัติ LINK_* ที่สร้างไว้ถ่ายภาพ แล้วลบผู้ติดต่อตัวอย่าง
+  if (WO === "3.1") {
+    const P = prisma as Any;
+    const links = await P.kanbanCardLink.deleteMany({ where: { cardId: KB31_CARD } });
+    const acts = await prisma.kanbanActivity.deleteMany({
+      where: { cardId: KB31_CARD, type: { in: ["LINK_ADDED", "LINK_REMOVED"] as Any } },
+    });
+    if (KB31.partyId) await prisma.party.deleteMany({ where: { id: KB31.partyId } }).catch(() => null);
+    console.log(`🧹 คืนสภาพ K3.1: ลบแถวเชื่อม ${links.count} · ประวัติ ${acts.count} · ผู้ติดต่อตัวอย่าง`);
+  }
+
   // K2.11 — ลบแถวติดตามที่สร้างไว้ถ่ายภาพ (รวมที่กดผ่านหน้าเว็บระหว่างถ่าย)
   if (WO === "2.11" && KB211.watcherUserId) {
     const del = await (prisma as Any).kanbanWatcher.deleteMany({ where: { tenantId: E.tenantId, userId: KB211.watcherUserId } });

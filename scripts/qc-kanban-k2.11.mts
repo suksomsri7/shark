@@ -73,7 +73,7 @@ try {
   const w2 = await w.watch(ctxOf(U.pook), A.pook, { targetType: "CARD", targetId: card.id });
   chk("K2.11-S2.1", "watch(ctx, actor, {targetType, targetId}) → {watching:true} · ซ้ำ = idempotent (แถวเดียว) · VIEWER ก็ติดตามได้", w1?.watching === true && w2?.watching === true && (await P.kanbanWatcher.count({ where: { targetType: "CARD", targetId: card.id, userId: U.pook } })) === 1 && (await w.watch(ctxOf(U.thana), A.thana, { targetType: "CARD", targetId: card.id }))?.watching === true, "1 แถว", String(await P.kanbanWatcher.count({ where: { targetType: "CARD", targetId: card.id } })));
   const eK = await fails(() => w.watch(ctxOf(U.kitti), A.kitti, { targetType: "CARD", targetId: card.id }));
-  const eKata = await fails(() => w.watch(ctxOf(U.thana), A.thana, { targetType: "BOARD", targetId: E.boards.kataSecret.id }));
+  const eKata = await fails(() => w.watch(ctxOf(U.thana), A.thana, { targetType: "BOARD", targetId: E.boards.kata.id }));
   chk("K2.11-S2.2", "kitti (ไม่ใช่สมาชิกบอร์ด PRIVATE) ติดตามการ์ด → ไม่พบ · thana ติดตามบอร์ดลับกะตะ → ไม่พบ", !!eK && !!eKata, "throw ทั้งคู่", `${eK ? "throw" : "ไม่"}/${eKata ? "throw" : "ไม่"}`);
   await w.watch(ctxOf(U.kitti), A.kitti, { targetType: "BOARD", targetId: E.boards.maint.id }); // maint TENANT: kitti เห็น
   await w.watch(ctxOf(U.thana), A.thana, { targetType: "COLUMN", targetId: c1.id });
