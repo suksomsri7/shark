@@ -49,6 +49,9 @@ export function CustomFieldsSettings({ systemId, boardId, fields }: { systemId: 
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // K2.12 (หนี้ K2.6): แก้ตัวเลือก SELECT / หน่วย NUMBER ได้หลังสร้างฟิลด์แล้ว (ก่อนหน้านี้แก้ได้แค่ตอนสร้าง)
+  const [editingOptionsId, setEditingOptionsId] = useState<string | null>(null);
+  const [optionsDraft, setOptionsDraft] = useState("");
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<KanbanCustomFieldType>("TEXT");
@@ -109,6 +112,28 @@ export function CustomFieldsSettings({ systemId, boardId, fields }: { systemId: 
       setRows(rows); // revert
       setError(res.message);
     }
+  };
+
+  const startEditOptions = (field: CustomFieldDto) => {
+    setEditingOptionsId(field.id);
+    setOptionsDraft(field.type === "SELECT" ? (field.options.choices ?? []).join(", ") : (field.options.unit ?? ""));
+  };
+
+  const saveOptions = async (field: CustomFieldDto) => {
+    setEditingOptionsId(null);
+    setError(null);
+    const options =
+      field.type === "SELECT"
+        ? { choices: optionsDraft.split(",").map((c) => c.trim()).filter(Boolean) }
+        : { unit: optionsDraft.trim() || undefined };
+    setBusyId(field.id);
+    const res = await updateFieldAction({ systemId, boardId, fieldId: field.id, options });
+    setBusyId(null);
+    if (!res.ok) {
+      setError(res.message);
+      return;
+    }
+    setRows((prev) => prev.map((r) => (r.id === field.id ? res.field : r)));
   };
 
   const submitNew = async () => {
@@ -189,9 +214,37 @@ export function CustomFieldsSettings({ systemId, boardId, fields }: { systemId: 
                     {f.name}
                   </button>
                 )}
-                <span className="truncate" style={{ fontSize: 12, color: "var(--color-muted)" }}>
-                  {describeField(f)}
-                </span>
+                {editingOptionsId === f.id ? (
+                  <input
+                    autoFocus
+                    value={optionsDraft}
+                    data-testid="field-edit-options-input"
+                    className="input"
+                    style={{ fontSize: 12, maxWidth: 280 }}
+                    placeholder={f.type === "SELECT" ? "ตัวเลือก คั่นด้วยจุลภาค" : "หน่วย เช่น บาท"}
+                    onChange={(e) => setOptionsDraft(e.target.value)}
+                    onBlur={() => saveOptions(f)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                      if (e.key === "Escape") setEditingOptionsId(null);
+                    }}
+                  />
+                ) : (
+                  <span className="flex items-center gap-1.5 truncate" style={{ fontSize: 12, color: "var(--color-muted)" }}>
+                    {describeField(f)}
+                    {(f.type === "SELECT" || f.type === "NUMBER") && (
+                      <button
+                        type="button"
+                        data-testid="field-edit-options"
+                        aria-label={`แก้ตัวเลือกของฟิลด์ ${f.name}`}
+                        onClick={() => startEditOptions(f)}
+                        style={{ color: "var(--color-accent)" }}
+                      >
+                        <KanbanIcon name="edit" size="xs" />
+                      </button>
+                    )}
+                  </span>
+                )}
               </div>
               <label className="flex items-center gap-1.5" style={{ fontSize: 11.5, color: "var(--color-muted)" }}>
                 <Toggle checked={f.showOnCard} disabled={busyId === f.id} onChange={() => toggleShowOnCard(f)} label={`แสดงบนการ์ด — ${f.name}`} />

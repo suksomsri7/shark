@@ -1,7 +1,7 @@
 # SHARK Task Board API
 
 Machine readable contract: `/api/v1/kanban/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/kanban` - contract version 1.0.0 - 56 operations.
+Base URL: `https://shark.in.th/api/v1/kanban` - contract version 1.0.0 - 82 operations.
 Generated from the operation registry by `scripts/gen-kanban-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -96,7 +96,7 @@ Branch on `error.code`, never on the message text. The list is shared by every S
 
 ### Read operations
 
-Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited. 17 of the 56 operations.
+Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited. 29 of the 82 operations.
 
 #### `boards.activity`
 
@@ -129,6 +129,79 @@ curl -sS -X GET "https://shark.in.th/api/v1/kanban/boards/123/archive" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `automation.rules.dryRun`
+
+**POST /boards/{id}/automation/rules/dry-run** - Preview which existing cards a not-yet-saved rule would match, and what it would do to them. Nothing is written. · scope: `kanban.automation.manage` · read
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | Rule name. · min length 1 · max length 120 |
+| `kind` | enum("RULE", "CARD_BUTTON", "BOARD_BUTTON", "SCHEDULED", "DUE_DATE") | yes | RULE (fires on an event) · CARD_BUTTON · BOARD_BUTTON · SCHEDULED (Thai-time cron subset) · DUE_DATE (N days before/after a card's due date). |
+| `event` | string | no | Required when kind is RULE — one of the task board events (GET /boards/{id} does not list them; see the app's rule builder or the docs). · max length 80 |
+| `scheduleCron` | string | no | Required when kind is SCHEDULED — subset of cron: 'minute hour * * weekdays', for example '0 8 * * 3' (every Wednesday 08:00 Thai time). · max length 80 |
+| `dueOffsetDays` | integer | no | Required when kind is DUE_DATE — negative = before the due date, positive = after. · min -30 · max 30 |
+| `conditions` | array of object | no | Extra AND conditions on top of the trigger, for example { field: 'label', op: 'has', value: '<labelId>' }. · max 20 items |
+| `actions` | array of object | yes | What the rule does, for example [{ type: 'move_column', params: { columnId: '<columnId>' } }]. At least one action. |
+| `days` | integer | no | How many days back (RULE) or forward (DUE_DATE) to look for matching cards. Default 30. · min 1 · max 365 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/kanban/boards/123/automation/rules/dry-run" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Rental gear","kind":"RULE","actions":[]}'
+```
+
+#### `automation.rules.list`
+
+**GET /boards/{id}/automation/rules** - List the automation rules of a board with their plain-language sentence, whether they are enabled, and how many times each ran this month. · scope: `kanban.board.read` · read · AI tool: `kanban_list_rules`
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/boards/123/automation/rules" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `boards.calendar`
+
+**GET /boards/{id}/calendar** - Cards of a board grouped by due day inside a window, plus the tray of cards with no due date — the same data as the Calendar view of the app. · scope: `kanban.board.read` · read
+
+Path parameters: `id` (required).
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `q` | string | no | Free text on the card title. · max length 200 |
+| `assignee` | string | no | User id, `me` (the key's owning user) or `none` (unassigned cards). · max length 40 |
+| `label` | string | no | Label name, or `none` for cards without a label. · max length 60 |
+| `due` | enum("overdue", "today", "week", "none") | no | Due bucket. |
+| `status` | enum("open", "done") | no | open = not completed, done = completed. |
+| `column` | string | no | Column id — only cards currently in that column. · max length 40 |
+| `from` | string | yes | Start of the window (inclusive). · format date-time |
+| `to` | string | yes | End of the window (exclusive). · format date-time |
+| `includeExternal` | enum("true", "false") | no | Mix in read-only events from the shop's other calendars (leave, bookings, meetings). Default false. |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/boards/123/calendar?from=example%20from&to=example%20to" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `templates.cards.list`
+
+**GET /boards/{id}/card-templates** - List the card templates saved on a board (name, label count, checklist item count), in display order. · scope: `kanban.board.read` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/boards/123/card-templates" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `cards.list`
 
 **GET /boards/{id}/cards** - List the cards of one board, with column, assignee, status and text filters. · scope: `kanban.board.read` · read · AI tool: `kanban_list_cards` · `Accept: text/csv` supported
@@ -158,6 +231,19 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/kanban/boards/123/columns" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `fields.list`
+
+**GET /boards/{id}/fields** - List the custom fields defined on a board, in display order. · scope: `kanban.board.read` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/boards/123/fields" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -197,6 +283,43 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/kanban/boards/123/summary" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `boards.table`
+
+**GET /boards/{id}/table** - Spreadsheet-shaped view of a board's cards: one row per card, with filters, grouping, sorting and paging — the same data as the Table view of the app. · scope: `kanban.board.read` · read
+
+Path parameters: `id` (required).
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `q` | string | no | Free text on the card title. · max length 200 |
+| `assignee` | string | no | User id, `me` (the key's owning user) or `none` (unassigned cards). · max length 40 |
+| `label` | string | no | Label name, or `none` for cards without a label. · max length 60 |
+| `due` | enum("overdue", "today", "week", "none") | no | Due bucket. |
+| `status` | enum("open", "done") | no | open = not completed, done = completed. |
+| `column` | string | no | Column id — only cards currently in that column. · max length 40 |
+| `group` | enum("column", "assignee", "label") | no | Group rows by column, assignee or label. |
+| `sort` | enum("position", "due", "created", "updated") | no | Sort order. Default position (the board's own order). |
+| `page` | integer | no | Page number. Default 1. · min 1 |
+| `pageSize` | integer | no | Rows per page. Default the shop's table page size. · min 1 · max 500 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/boards/123/table" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `views.list`
+
+**GET /boards/{id}/views** - Saved views of a board: the whole team's first, then this key's own private ones. · scope: `kanban.board.read` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/boards/123/views" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -281,6 +404,17 @@ curl -sS -X GET "https://shark.in.th/api/v1/kanban/cards/123" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `inbox.list`
+
+**GET /inbox** - Open items of the task inbox belonging to the user this key was created by, newest first. · scope: `kanban.board.read` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/inbox" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `my-tasks`
 
 **GET /my-tasks** - The task inbox of one user: cards grouped by due date, checklist items assigned to them and the weekly counters. · scope: `kanban.board.read` · read · AI tool: `kanban_my_tasks`
@@ -302,6 +436,59 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/kanban/ping" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.aging`
+
+**GET /reports/aging** - How long open cards have been sitting, bucketed (0-7 / 8-14 / 15-30 / 31+ days), plus average and max age per column, across every board this key can see (or one board). · scope: `kanban.report.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `boardId` | string | no | Limit to one board. Omit for every board this key can see. · max length 40 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/reports/aging" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.overdue`
+
+**GET /reports/overdue** - Cards that are past their due date and not yet completed, across every board this key can see (or one board), oldest overdue first. · scope: `kanban.report.view` · read · AI tool: `kanban_overdue_report`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `boardId` | string | no | Limit to one board. Omit for every board this key can see. · max length 40 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/reports/overdue" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.throughput`
+
+**GET /reports/throughput** - Cards created vs. completed per week (Thai calendar Monday-Sunday), across every board this key can see (or one board). · scope: `kanban.report.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `boardId` | string | no | Limit to one board. Omit for every board this key can see. · max length 40 |
+| `weeks` | integer | no | How many Monday-to-Sunday (Thai time) weeks to return, most recent last. Default 12. · min 1 · max 52 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/reports/throughput" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.workload`
+
+**GET /reports/workload** - Per-person load across every board this key can see (or one board): open cards, overdue, due this week, and completed in the last 30 days. · scope: `kanban.report.view` · read · AI tool: `kanban_workload_report`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `boardId` | string | no | Limit to one board. Omit for every board this key can see. · max length 40 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/reports/workload" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -338,7 +525,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/kanban/templates" \
 
 ### Write operations
 
-Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 35 of the 56 operations.
+Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 49 of the 82 operations.
 
 #### `attachments.delete`
 
@@ -352,6 +539,48 @@ No body fields.
 curl -sS -X DELETE "https://shark.in.th/api/v1/kanban/attachments/123" \
   -H "Authorization: Bearer $SHARK_API_KEY" \
   -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `automation.rules.toggle`
+
+**PUT /automation/rules/{id}/toggle** - Turn an automation rule on or off. · scope: `kanban.automation.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `enabled` | boolean | yes | true = turn the rule on, false = turn it off without deleting it. |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/kanban/automation/rules/123/toggle" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled":true}'
+```
+
+#### `automation.rules.create`
+
+**POST /boards/{id}/automation/rules** - Create an automation rule on a board. Requires the ADMIN role on that board and the automation.manage permission. · scope: `kanban.automation.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | Rule name. · min length 1 · max length 120 |
+| `kind` | enum("RULE", "CARD_BUTTON", "BOARD_BUTTON", "SCHEDULED", "DUE_DATE") | yes | RULE (fires on an event) · CARD_BUTTON · BOARD_BUTTON · SCHEDULED (Thai-time cron subset) · DUE_DATE (N days before/after a card's due date). |
+| `event` | string | no | Required when kind is RULE — one of the task board events (GET /boards/{id} does not list them; see the app's rule builder or the docs). · max length 80 |
+| `scheduleCron` | string | no | Required when kind is SCHEDULED — subset of cron: 'minute hour * * weekdays', for example '0 8 * * 3' (every Wednesday 08:00 Thai time). · max length 80 |
+| `dueOffsetDays` | integer | no | Required when kind is DUE_DATE — negative = before the due date, positive = after. · min -30 · max 30 |
+| `conditions` | array of object | no | Extra AND conditions on top of the trigger, for example { field: 'label', op: 'has', value: '<labelId>' }. · max 20 items |
+| `actions` | array of object | yes | What the rule does, for example [{ type: 'move_column', params: { columnId: '<columnId>' } }]. At least one action. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/kanban/boards/123/automation/rules" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Rental gear","kind":"RULE","actions":[]}'
 ```
 
 #### `cards.create`
@@ -394,6 +623,27 @@ curl -sS -X POST "https://shark.in.th/api/v1/kanban/boards/123/columns" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"name":"In progress"}'
+```
+
+#### `fields.create`
+
+**POST /boards/{id}/fields** - Create a custom field on a board (up to 20 per board). Requires the ADMIN role on that board. · scope: `kanban.board.read` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | Field name. Must be unique inside the board. · min length 1 · max length 60 |
+| `type` | enum("TEXT", "NUMBER", "DATE", "CHECKBOX", "SELECT") | yes | TEXT, NUMBER, DATE, CHECKBOX or SELECT. Cannot be changed after creation. |
+| `options` | object | no | - |
+| `showOnCard` | boolean | no | Show this field as a chip on the card face and as a table column. Default false. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/kanban/boards/123/fields" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Rental gear","type":"TEXT"}'
 ```
 
 #### `labels.create`
@@ -484,6 +734,26 @@ curl -sS -X PUT "https://shark.in.th/api/v1/kanban/boards/123/star" \
   -d '{"starred":true}'
 ```
 
+#### `views.create`
+
+**POST /boards/{id}/views** - Save the current filters/sort/grouping of a board as a named view. · scope: `kanban.board.read` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | Name of the saved view. · min length 1 · max length 60 |
+| `scope` | enum("PRIVATE", "BOARD") | no | PRIVATE (default, only this key's owning user) or BOARD (the whole team — requires the ADMIN role). |
+| `config` | object | yes | View configuration: { view: 'board'|'table'|'calendar'|'summary'|'timeline', filters?, sort?, group?, zoom? } — same shape the app writes into the URL. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/kanban/boards/123/views" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Rental gear","config":{}}'
+```
+
 #### `boards.update`
 
 **PATCH /boards/{id}** - Change the name, description, colour, branch or visibility of a board. Requires the ADMIN role on that board. · scope: `kanban.board.rename` · write
@@ -563,6 +833,24 @@ curl -sS -X POST "https://shark.in.th/api/v1/kanban/cards/123/attachments" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"filename":"receipt.pdf","contentType":"application/pdf","dataBase64":"SGVsbG8gU0hBUksK"}'
+```
+
+#### `templates.cards.create`
+
+**POST /cards/{id}/card-templates** - Save the given card as a new template of its board: title, description, labels, checklists (text only) and custom field values. Due date, assignees, attachments and ticked state are never copied. Requires the ADMIN role on the board. · scope: `kanban.template.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | Name of the new template. · min length 1 · max length 60 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/kanban/cards/123/card-templates" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Rental gear"}'
 ```
 
 #### `checklists.create`
@@ -647,6 +935,24 @@ curl -sS -X POST "https://shark.in.th/api/v1/kanban/cards/123/duplicate" \
   -H "Idempotency-Key: $(uuidgen)"
 ```
 
+#### `cards.fields.set`
+
+**PUT /cards/{id}/fields/{fieldId}** - Set (or clear with null) the value of one custom field on a card. · scope: `kanban.card.update` · write
+
+Path parameters: `id`, `fieldId` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `value` | one of several shapes or null | yes | Value matching the field's type (text/number/checkbox/select option/ISO date string). null clears the value. |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/kanban/cards/123/fields/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"value":"example value"}'
+```
+
 #### `cards.labels.set`
 
 **PUT /cards/{id}/labels** - Replace the labels on a card. · scope: `kanban.card.update` · write · AI tool: `kanban_set_labels`
@@ -686,6 +992,24 @@ curl -sS -X POST "https://shark.in.th/api/v1/kanban/cards/123/move" \
   -d '{"toColumnId":"col_456"}'
 ```
 
+#### `cards.recurrence.set`
+
+**PUT /cards/{id}/recurrence** - Set (or clear with null) the recurrence rule of a card. The card must already have a due date. · scope: `kanban.card.update` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `rule` | string or null | yes | RRULE subset: FREQ=DAILY[;INTERVAL=n] | FREQ=WEEKLY;BYDAY=MO,TH[;INTERVAL=n] | FREQ=MONTHLY;BYMONTHDAY=d[;INTERVAL=n]. null clears the recurrence. · max length 120 |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/kanban/cards/123/recurrence" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"rule":"example rule"}'
+```
+
 #### `cards.restore`
 
 **POST /cards/{id}/restore** - Bring an archived card back onto the board. · scope: `kanban.card.delete` · write
@@ -696,6 +1020,34 @@ No body fields.
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/kanban/cards/123/restore" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `cards.unwatch`
+
+**DELETE /cards/{id}/watch** - Stop watching a card. Unwatching a card that was not watched is a no-op. · scope: `kanban.board.read` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/kanban/cards/123/watch" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `cards.watch`
+
+**PUT /cards/{id}/watch** - Start watching a card: get notified of its activity even when not assigned to it. Watching again is a no-op. · scope: `kanban.board.read` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/kanban/cards/123/watch" \
   -H "Authorization: Bearer $SHARK_API_KEY" \
   -H "Idempotency-Key: $(uuidgen)"
 ```
@@ -931,6 +1283,77 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/kanban/comments/123" \
   -d '{"body":"Called the supplier, they answer tomorrow."}'
 ```
 
+#### `fields.delete`
+
+**DELETE /fields/{id}** - Delete a custom field. The value stored on every card is removed too; no card is deleted. Requires the ADMIN role. · scope: `kanban.board.read` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/kanban/fields/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `fields.update`
+
+**PATCH /fields/{id}** - Rename a field, change its SELECT choices / NUMBER unit, or toggle whether it shows on the card face. The field type itself cannot change. Requires the ADMIN role. · scope: `kanban.board.read` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | no | New field name. Must stay unique inside the board. · min length 1 · max length 60 |
+| `options` | object | no | SELECT choices / NUMBER unit and decimals. Replaces the previous options object. |
+| `showOnCard` | boolean | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/kanban/fields/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `inbox.move`
+
+**POST /inbox/{id}/move** - Turn an inbox item into a real card on a board and close the inbox item. · scope: `kanban.card.create` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `boardId` | string | yes | Board the inbox item becomes a card on. · min length 1 · max length 40 |
+| `columnId` | string | yes | Column of that board the card starts in. · min length 1 · max length 40 |
+| `dueAt` | string or null | no | Due date and time, ISO-8601 UTC. · format date-time |
+| `assigneeUserIds` | array of string | no | Extra people to assign, on top of the user this key was created by (who owns the inbox item). · max 20 items |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/kanban/inbox/123/move" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"boardId":"example boardId","columnId":"col_123"}'
+```
+
+#### `inbox.quickAdd`
+
+**POST /inbox** - Jot a task into the personal inbox of the user this key was created by, to be sorted onto a board later. · scope: `kanban.card.create` · write · AI tool: `kanban_inbox_add`
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `title` | string | yes | What has to be done. Jotted down for later, not yet placed on any board. · min length 1 · max length 300 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/kanban/inbox" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Service the rental regulators"}'
+```
+
 #### `labels.delete`
 
 **DELETE /labels/{id}** - Delete a label. The label is removed from every card that carried it; no card is deleted. · scope: `kanban.label.manage` · write
@@ -964,9 +1387,23 @@ curl -sS -X PATCH "https://shark.in.th/api/v1/kanban/labels/123" \
   -d '{}'
 ```
 
+#### `views.delete`
+
+**DELETE /views/{id}** - Delete a saved view. A private view may only be deleted by the key it belongs to; a team view needs the ADMIN role on that board. · scope: `kanban.board.read` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/kanban/views/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
 ### Danger operations
 
-Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 4 of the 56 operations.
+Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 4 of the 82 operations.
 
 #### `boards.members.remove`
 
@@ -1046,7 +1483,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/kanban/columns/123" \
 
 ## AI tools
 
-16 of these operations are also exposed to the SHARK assistant as tools of the `tasks` skill.
+20 of these operations are also exposed to the SHARK assistant as tools of the `tasks` skill.
 Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
 
 Tools carrying the destructive flag: `kanban_archive_card`.
@@ -1062,13 +1499,17 @@ Tools carrying the destructive flag: `kanban_archive_card`.
 | `kanban_create_board` | `boards.create` | write | `kanban.board.create` |
 | `kanban_create_card` | `cards.create` | write | `kanban.card.create` |
 | `kanban_get_board` | `boards.get` | read | `kanban.board.read` |
+| `kanban_inbox_add` | `inbox.quickAdd` | write | `kanban.card.create` |
 | `kanban_list_boards` | `boards.list` | read | `kanban.board.read` |
 | `kanban_list_cards` | `cards.list` | read | `kanban.board.read` |
+| `kanban_list_rules` | `automation.rules.list` | read | `kanban.board.read` |
 | `kanban_move_card` | `cards.move` | write | `kanban.card.move` |
 | `kanban_my_tasks` | `my-tasks` | read | `kanban.board.read` |
+| `kanban_overdue_report` | `reports.overdue` | read | `kanban.report.view` |
 | `kanban_search_cards` | `search` | read | `kanban.board.read` |
 | `kanban_set_labels` | `cards.labels.set` | write | `kanban.card.update` |
 | `kanban_update_card` | `cards.update` | write | `kanban.card.update` |
+| `kanban_workload_report` | `reports.workload` | read | `kanban.report.view` |
 
 ## AI agents
 
@@ -1083,7 +1524,7 @@ curl -sS "https://shark.in.th/api/v1/ai/skills/tasks" -H "Authorization: Bearer 
 
 `GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The task board skill is listed only when the shop has an active task board system and the key is allowed to call at least one of its tools. A shop without task boards, or a key whose scopes reach none of the tools, gets 404 from `https://shark.in.th/api/v1/ai/skills/tasks` - the same answer as a skill that does not exist, so nothing leaks about what is behind the wall.
 
-`GET https://shark.in.th/api/v1/ai/skills/tasks` returns the 16 tools (6 read, 10 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
+`GET https://shark.in.th/api/v1/ai/skills/tasks` returns the 20 tools (9 read, 11 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
 
 ```text
 { "id": "tasks", "label": "งานและบอร์ด", "summary": "...", "tools": [

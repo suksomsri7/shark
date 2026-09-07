@@ -10,6 +10,7 @@
 import { z } from "zod";
 import { listArchived } from "../../archive";
 import { listBoardActivity } from "../../activity";
+import { listBoardCalendar } from "../../calendar";
 import {
   addMember,
   assertBoardRole,
@@ -29,10 +30,24 @@ import {
   unarchiveBoard,
   updateBoardFields,
 } from "../../service";
+import { listBoardTable } from "../../table";
 import { createBoardFromTemplate } from "../../templates";
 import { kanbanActorOf, kanbanCtxOf } from "../actor";
 import { defineKanbanOp, type ApiOp } from "../op";
 import { boardRow, cardRow, columnRow } from "../serialize";
+
+/**
+ * ตัวกรองการ์ด — ใช้ร่วมกันระหว่าง `boards.table`/`boards.calendar` (ทะเบียนเดียวกับ `filters.ts`
+ * `BoardFilters` ที่หน้าจอใช้ — ห้ามเขียนตรรกะกรองซ้ำที่นี่ ผ่านให้ `listBoardTable`/`listBoardCalendar` ทั้งหมด)
+ */
+const boardFiltersInput = {
+  q: z.string().max(200).optional().describe("Free text on the card title."),
+  assignee: z.string().max(40).optional().describe("User id, `me` (the key's owning user) or `none` (unassigned cards)."),
+  label: z.string().max(60).optional().describe("Label name, or `none` for cards without a label."),
+  due: z.enum(["overdue", "today", "week", "none"]).optional().describe("Due bucket."),
+  status: z.enum(["open", "done"]).optional().describe("open = not completed, done = completed."),
+  column: z.string().max(40).optional().describe("Column id — only cards currently in that column."),
+};
 
 const BOARD_COLORS = ["SLATE", "BLUE", "GREEN", "AMBER", "RED", "PURPLE"] as const;
 const VISIBILITY = ["PRIVATE", "TENANT"] as const;
@@ -400,6 +415,90 @@ const boardsArchived = defineKanbanOp({
   },
 });
 
+// ───────────────────────── K2.12: มุมมองตาราง/ปฏิทินของบอร์ดผ่าน API ─────────────────────────
+
+const boardsTableInput = z
+  .object({
+    ...boardFiltersInput,
+    group: z.enum(["column", "assignee", "label"]).optional().describe("Group rows by column, assignee or label."),
+    sort: z.enum(["position", "due", "created", "updated"]).optional().describe("Sort order. Default position (the board's own order)."),
+    page: z.coerce.number().int().min(1).optional().describe("Page number. Default 1."),
+    pageSize: z.coerce.number().int().min(1).max(500).optional().describe("Rows per page. Default the shop's table page size."),
+  })
+  .strict();
+
+const boardsTable = defineKanbanOp({
+  id: "boards.table",
+  method: "GET",
+  path: "/boards/{id}/table",
+  kind: "read",
+  action: "kanban.board.read",
+  summary: "Spreadsheet-shaped view of a board's cards: one row per card, with filters, grouping, sorting and paging — the same data as the Table view of the app.",
+  label: "มุมมองตารางของบอร์ด",
+  input: boardsTableInput,
+  test: "K2.12-S3.1",
+  async handler({ actor, params, input }) {
+    const ctx = kanbanCtxOf(actor);
+    const filters = {
+      ...(input.q ? { q: input.q } : {}),
+      ...(input.assignee ? { assignee: input.assignee } : {}),
+      ...(input.label ? { label: input.label } : {}),
+      ...(input.due ? { due: input.due } : {}),
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.column ? { column: input.column } : {}),
+    };
+    return listBoardTable(ctx, kanbanActorOf(actor), params.id!, {
+      now: new Date(),
+      filters,
+      ...(input.group ? { group: input.group } : {}),
+      ...(input.sort ? { sort: input.sort } : {}),
+      ...(input.page ? { page: input.page } : {}),
+      ...(input.pageSize ? { pageSize: input.pageSize } : {}),
+    });
+  },
+});
+
+const isoDateTime = z.iso.datetime({ offset: true }).describe("ISO-8601 timestamp in UTC, for example 2026-10-05T00:00:00.000Z");
+
+const boardsCalendarInput = z
+  .object({
+    ...boardFiltersInput,
+    from: isoDateTime.describe("Start of the window (inclusive)."),
+    to: isoDateTime.describe("End of the window (exclusive)."),
+    includeExternal: z.enum(["true", "false"]).transform((v) => v === "true").optional().describe("Mix in read-only events from the shop's other calendars (leave, bookings, meetings). Default false."),
+  })
+  .strict();
+
+const boardsCalendar = defineKanbanOp({
+  id: "boards.calendar",
+  method: "GET",
+  path: "/boards/{id}/calendar",
+  kind: "read",
+  action: "kanban.board.read",
+  summary: "Cards of a board grouped by due day inside a window, plus the tray of cards with no due date — the same data as the Calendar view of the app.",
+  label: "มุมมองปฏิทินของบอร์ด",
+  input: boardsCalendarInput,
+  test: "K2.12-S3.1",
+  async handler({ actor, params, input }) {
+    const ctx = kanbanCtxOf(actor);
+    const filters = {
+      ...(input.q ? { q: input.q } : {}),
+      ...(input.assignee ? { assignee: input.assignee } : {}),
+      ...(input.label ? { label: input.label } : {}),
+      ...(input.due ? { due: input.due } : {}),
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.column ? { column: input.column } : {}),
+    };
+    return listBoardCalendar(ctx, kanbanActorOf(actor), params.id!, {
+      from: new Date(input.from),
+      to: new Date(input.to),
+      now: new Date(),
+      filters,
+      includeExternal: input.includeExternal === true,
+    });
+  },
+});
+
 export const BOARDS_OPS: ApiOp[] = [
   boardsList,
   boardsGet,
@@ -415,4 +514,6 @@ export const BOARDS_OPS: ApiOp[] = [
   boardsMembersRemove,
   boardsActivity,
   boardsArchived,
+  boardsTable,
+  boardsCalendar,
 ];

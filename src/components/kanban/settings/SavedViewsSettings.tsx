@@ -6,7 +6,7 @@
 "use client";
 
 import { useState } from "react";
-import { deleteViewAction, updateViewAction } from "@/lib/modules/kanban/actions";
+import { deleteViewAction, reorderViewsAction, updateViewAction } from "@/lib/modules/kanban/actions";
 import { describeSavedViewConfig } from "@/lib/modules/kanban/filters";
 import type { SavedViewDto } from "@/lib/modules/kanban/types";
 
@@ -46,6 +46,23 @@ export function SavedViewsSettings({
     setRows((prev) => prev.map((r) => (r.id === view.id ? res.view : r)));
   };
 
+  // K2.12 (หนี้ K2.5): ปุ่ม ↑↓ จัดลำดับมุมมอง (แพตเทิร์นเดียวกับ CustomFieldsSettings.tsx/CardTemplatesSettings.tsx
+  // — ไม่ใช้ HTML5 drag) — เรียก `reorderViewsAction` → `views.ts#reorderViews`
+  const move = async (view: SavedViewDto, direction: -1 | 1) => {
+    const idx = rows.findIndex((r) => r.id === view.id);
+    const targetIdx = idx + direction;
+    if (idx < 0 || targetIdx < 0 || targetIdx >= rows.length) return;
+    const next = [...rows];
+    [next[idx], next[targetIdx]] = [next[targetIdx]!, next[idx]!];
+    setRows(next);
+    setError(null);
+    const res = await reorderViewsAction({ systemId, boardId, ids: next.map((r) => r.id) });
+    if (!res.ok) {
+      setRows(rows); // revert
+      setError(res.message);
+    }
+  };
+
   const remove = async (view: SavedViewDto) => {
     setBusyId(view.id);
     setError(null);
@@ -76,8 +93,30 @@ export function SavedViewsSettings({
         <p style={{ fontSize: 12.5, color: "var(--color-muted)" }}>ยังไม่มีมุมมองที่บันทึกไว้ในบอร์ดนี้</p>
       ) : (
         <ul className="flex flex-col divide-y" style={{ borderTop: "1px solid var(--color-line)" }}>
-          {rows.map((v) => (
+          {rows.map((v, i) => (
             <li key={v.id} data-testid="saved-view-settings-row" className="flex items-center gap-3 py-2.5">
+              <div className="flex shrink-0 items-center gap-0.5">
+                <button
+                  type="button"
+                  data-testid="view-reorder"
+                  disabled={i === 0}
+                  onClick={() => move(v, -1)}
+                  aria-label={`เลื่อนมุมมอง ${v.name} ขึ้น`}
+                  style={{ color: "var(--color-muted)", width: 16 }}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  data-testid="view-reorder"
+                  disabled={i === rows.length - 1}
+                  onClick={() => move(v, 1)}
+                  aria-label={`เลื่อนมุมมอง ${v.name} ลง`}
+                  style={{ color: "var(--color-muted)", width: 16 }}
+                >
+                  ↓
+                </button>
+              </div>
               <div className="flex min-w-0 flex-1 flex-col">
                 {editingId === v.id ? (
                   <input

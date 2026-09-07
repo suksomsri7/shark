@@ -29,10 +29,14 @@ import { KANBAN_OPS } from "@/lib/modules/kanban/api/registry";
 
 /**
  * สิทธิ์ของ actor `assistant` — **อ่านอย่างเดียวเท่านั้น**
- * ครอบ scope ของ op read ทุกตัวที่เปิดเป็น tool (ทุกตัวใช้ `kanban.board.read`)
+ * ครอบ scope ของ op read ทุกตัวที่เปิดเป็น tool
  * ด่านจริงที่กันการเขียนคือ `runKanbanTool` ที่ยอมรันทันทีเฉพาะ `op.kind === "read"`
+ * 🔴 K2.12: เพิ่ม `kanban.report.view` — tool `kanban_overdue_report`/`kanban_workload_report`
+ *    (op `reports.overdue`/`reports.workload`) ผ่าน `reports.ts#assertReportAccess` ที่ต้องมีคีย์นี้
+ *    ชัด ๆ เสมอ (ไม่ได้มาฟรีจาก `kanban.board.read` เหมือนคีย์อื่นของโมดูล — ดูหัวไฟล์ reports.ts/access.ts)
+ *    ผู้ช่วย AI ในแอปอ่านรายงานแทนเจ้าของร้านได้เสมอ (ผู้เรียก AI คือคนที่ล็อกอินอยู่แล้วในร้านตัวเอง)
  */
-const ASSISTANT_READ_SCOPES = ["kanban.board.read"] as const;
+const ASSISTANT_READ_SCOPES = ["kanban.board.read", "kanban.report.view"] as const;
 
 function assistantActor(tenantId: string, systemId: string): ApiActor {
   const scopes = [...ASSISTANT_READ_SCOPES];

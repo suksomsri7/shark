@@ -21,10 +21,12 @@ import {
   setCardAssignees,
   updateCardFields,
 } from "../../cards";
+import { getCardFieldValues, setCardFieldValue } from "../../fields";
 import { setCardLabels } from "../../labels";
 import { assertBoardRole } from "../../members";
 import { moveCard } from "../../moves";
 import { completeCard } from "../../my-tasks";
+import { describeRecurrence, setCardRecurrence } from "../../recurrence";
 import { createCard, getBoardFor } from "../../service";
 import { kanbanActorOf, kanbanCtxOf } from "../actor";
 import { defineKanbanOp, type ApiOp } from "../op";
@@ -385,6 +387,78 @@ const cardsActivity = defineKanbanOp({
   },
 });
 
+// ───────────────────────── K2.12: ค่าฟิลด์กำหนดเอง + กำหนดส่งซ้ำ ─────────────────────────
+
+const cardsFieldsSetInput = z
+  .object({
+    value: z
+      .union([z.string().max(500), z.number(), z.boolean()])
+      .nullable()
+      .describe("Value matching the field's type (text/number/checkbox/select option/ISO date string). null clears the value."),
+  })
+  .strict();
+
+const cardsFieldsSet = defineKanbanOp({
+  id: "cards.fields.set",
+  method: "PUT",
+  path: "/cards/{id}/fields/{fieldId}",
+  kind: "write",
+  action: "kanban.card.update",
+  summary: "Set (or clear with null) the value of one custom field on a card.",
+  label: "ตั้งค่าฟิลด์กำหนดเองของการ์ด",
+  input: cardsFieldsSetInput,
+  test: "K2.12-S3.1",
+  async handler({ actor, params, input }) {
+    const ctx = kanbanCtxOf(actor);
+    const cardId = params.id!;
+    const fieldId = params.fieldId!;
+    let value: unknown = input.value ?? null;
+    if (value !== null) {
+      // ต้องรู้ชนิดฟิลด์ก่อนแปลงสตริงวันที่ให้เป็น Date จริง (`fields.ts#coerceValue` รับ Date instance
+      // ของชนิด DATE เท่านั้น) — เรียกผ่าน service เดิม ไม่ query prisma ตรง ๆ (กติกาข้อ 1 ของโมดูล ops/*)
+      const existing = await getCardFieldValues(ctx, kanbanActorOf(actor), cardId);
+      const field = existing.find((f) => f.fieldId === fieldId);
+      if (field?.type === "DATE" && typeof value === "string") {
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) {
+          throw new ApiError(422, "validation", "รูปแบบวันที่ไม่ถูกต้อง", "value must be a valid ISO-8601 date for this field.", undefined, [
+            { path: "value", message: "must be a valid date" },
+          ]);
+        }
+        value = d;
+      }
+    }
+    return setCardFieldValue(ctx, kanbanActorOf(actor), cardId, fieldId, value);
+  },
+});
+
+const cardsRecurrenceSetInput = z
+  .object({
+    rule: z
+      .string()
+      .max(120)
+      .nullable()
+      .describe("RRULE subset: FREQ=DAILY[;INTERVAL=n] | FREQ=WEEKLY;BYDAY=MO,TH[;INTERVAL=n] | FREQ=MONTHLY;BYMONTHDAY=d[;INTERVAL=n]. null clears the recurrence."),
+  })
+  .strict();
+
+const cardsRecurrenceSet = defineKanbanOp({
+  id: "cards.recurrence.set",
+  method: "PUT",
+  path: "/cards/{id}/recurrence",
+  kind: "write",
+  action: "kanban.card.update",
+  summary: "Set (or clear with null) the recurrence rule of a card. The card must already have a due date.",
+  label: "ตั้งกำหนดส่งซ้ำของการ์ด",
+  input: cardsRecurrenceSetInput,
+  test: "K2.12-S3.1",
+  async handler({ actor, params, input }) {
+    const ctx = kanbanCtxOf(actor);
+    await setCardRecurrence(ctx, kanbanActorOf(actor), params.id!, input.rule ?? null);
+    return { ok: true, cardId: params.id!, rule: input.rule ?? null, label: input.rule ? describeRecurrence(input.rule) : null };
+  },
+});
+
 export const CARDS_OPS: ApiOp[] = [
   cardsList,
   cardsGet,
@@ -398,4 +472,6 @@ export const CARDS_OPS: ApiOp[] = [
   cardsAssignees,
   cardsLabels,
   cardsActivity,
+  cardsFieldsSet,
+  cardsRecurrenceSet,
 ];

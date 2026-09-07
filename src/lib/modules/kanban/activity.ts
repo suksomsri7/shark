@@ -318,6 +318,7 @@ export async function listCardTimeline(
         mentions: toIdList(row.mentions),
         createdAt: row.createdAt.toISOString(),
         editedAt: row.editedAt ? row.editedAt.toISOString() : null,
+        automationRuleId: row.automationRuleId,
       };
       return {
         kind: "comment" as const,

@@ -624,8 +624,12 @@ function TimelineBar({
   const width = Math.max(dayWidth - 4, (clippedEnd - clippedStart + 1) * dayWidth - 4);
   const top = ROW_PAD_Y + laneIndex * (BAR_H + BAR_GAP);
   const color = bar.color ? tagColorVar(bar.color) : "var(--color-ink)";
+  // K2.12 (หนี้ K2.3): แถบแคบ (การ์ด 1 วันที่ dayWidth เล็ก) ตัวหนังสือในแถบถูก `truncate` เหลือแทบไม่เห็น
+  // — ตัวหนังสือเต็มชื่อวางไว้ "ข้างแถบ" แทน (ไม่ตัด) เมื่อแถบแคบกว่า 80px
+  const showLabelBeside = width < 80;
 
   return (
+    <>
     <div
       data-testid="timeline-bar"
       data-card-id={bar.cardId}
@@ -672,6 +676,16 @@ function TimelineBar({
         />
       )}
     </div>
+    {showLabelBeside && (
+      <span
+        data-testid="timeline-bar-label"
+        className="absolute truncate"
+        style={{ left: left + width + 6, top, width: 140, height: BAR_H, lineHeight: `${BAR_H}px`, fontSize: 11, color: "var(--color-ink)", pointerEvents: "none" }}
+      >
+        {bar.title}
+      </span>
+    )}
+    </>
   );
 }
 

@@ -70,7 +70,7 @@ try {
   const REQ_TOOLS = ["kanban_inbox_add", "kanban_overdue_report", "kanban_workload_report", "kanban_list_rules"];
   let regErr: string | null = null; try { skills.assertSkillRegistryComplete(); } catch (e) { regErr = (e as Error).message; }
   chk("K2.12-S3.2", "AI tool ใหม่ 4 ตัว (จาก op ที่ประกาศ tool): kanban_inbox_add (เขียน→ข้อเสนอ) · kanban_overdue_report · kanban_workload_report · kanban_list_rules (อ่าน) · อยู่ในสกิล tasks · assertSkillRegistryComplete ผ่าน · คำอธิบายอังกฤษ", REQ_TOOLS.every((n) => names.includes(n)) && regErr === null && REQ_TOOLS.every((n) => skills.SKILLS.find((s: Any) => s.id === "tasks")?.tools?.includes(n)), "4/4", REQ_TOOLS.filter((n) => !names.includes(n)).join(",") || (regErr ?? ""));
-  const od = await rp.overdue(ctxO, owner, { now: NOW });
+  const od = await rp.overdue(ctxO, owner, { now: new Date() }); // REST/AI tool ใช้เวลาจริงเสมอ (builder แย้งถูก) — เทียบด้วย now จริง
   const tOd = await kops.runKanbanTool(tid, "kanban_overdue_report", {}, { systemId: SYS });
   const tInbox = await kops.runKanbanTool(tid, "kanban_inbox_add", { title: "QC K2.12 จดจาก AI" }, { systemId: SYS });
   chk("K2.12-S3.3", "runKanbanTool(kanban_overdue_report) → read · total = reports.overdue().total · kanban_inbox_add → propose (ไม่สร้างแถว KanbanInboxItem)", tOd?.mode === "read" && tOd.result?.total === od.total && tInbox?.mode === "propose" && (await P.kanbanInboxItem.count({ where: { tenantId: tid, title: "QC K2.12 จดจาก AI" } })) === 0, "read/propose", JSON.stringify({ tOd: tOd?.mode, total: tOd?.result?.total, exp: od?.total, tInbox: tInbox?.mode }));

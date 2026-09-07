@@ -111,7 +111,7 @@ import type {
   SavedViewDto,
 } from "./types";
 // K2.5 — มุมมองที่บันทึกไว้ (บริการอยู่ `views.ts` — สิทธิ์ 2 ชั้นตรวจในนั้นเอง ที่นี่แค่ตรวจสิทธิ์โมดูล)
-import { deleteView, saveView, updateView } from "./views";
+import { deleteView, reorderViews, saveView, updateView } from "./views";
 // K2.6 — ฟิลด์กำหนดเอง (บริการอยู่ `fields.ts` — บทบาทบอร์ด 2 ชั้นตรวจในนั้นเอง ที่นี่แค่ตรวจสิทธิ์โมดูล)
 import { createField, deleteField, reorderFields, setCardFieldValue, updateField } from "./fields";
 // K2.7 — เทมเพลตการ์ด (บริการอยู่ `card-templates.ts`) + กำหนดส่งซ้ำ (บริการอยู่ `recurrence.ts`)
@@ -1619,6 +1619,26 @@ export async function deleteViewAction(input: {
     return { ok: true };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ลบมุมมองไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** K2.12 (หนี้ K2.5): ลากเรียง/ปุ่ม ↑↓ มุมมองที่บันทึกไว้ในหน้าตั้งค่า — แพตเทิร์นเดียวกับ reorderFieldsAction */
+export async function reorderViewsAction(input: {
+  systemId: string;
+  boardId: string;
+  ids: string[];
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.boardId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    await reorderViews(ctx, actor, input.ids);
+    revalidatePath(`${boardPath(input.systemId, input.boardId)}/settings/views`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "จัดลำดับมุมมองไม่สำเร็จ ลองใหม่อีกครั้ง" };
   }
 }
 

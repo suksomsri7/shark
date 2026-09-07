@@ -12,8 +12,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Card } from "./Card";
+import { CardTemplatePicker } from "./CardTemplatePicker";
 import { KanbanIcon } from "./KanbanIcon";
-import type { BoardCardDto, BoardColumnDto } from "@/lib/modules/kanban/types";
+import type { BoardCardDto, BoardColumnDto, CardTemplateDto } from "@/lib/modules/kanban/types";
 
 const LIFT_MS = 300;
 const SWIPE_THRESHOLD_PX = 90;
@@ -30,6 +31,8 @@ export function MobileBoard({
   onCreateCard,
   onSwipeComplete,
   onSwipeArchive,
+  cardTemplates = [],
+  onCreateFromTemplate,
 }: {
   columns: BoardColumnDto[];
   nowMs: number;
@@ -38,6 +41,9 @@ export function MobileBoard({
   onCreateCard: (columnId: string, title: string) => void;
   onSwipeComplete: (card: BoardCardDto, columnId: string) => void;
   onSwipeArchive: (card: BoardCardDto, columnId: string) => void;
+  /** K2.12 (หนี้ K2.7): เทมเพลตการ์ดของบอร์ด — ปุ่ม "จากเทมเพลต ▾" ในแผ่นเพิ่มการ์ดเร็ว (ว่าง = ไม่มีเทมเพลต ไม่โชว์ปุ่ม) */
+  cardTemplates?: CardTemplateDto[];
+  onCreateFromTemplate?: (columnId: string, templateId: string, title: string) => void;
 }) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -295,6 +301,16 @@ export function MobileBoard({
           >
             <div style={{ width: 38, height: 4, borderRadius: 2, background: "var(--color-line)", margin: "0 auto 6px" }} />
             <p style={{ fontSize: 12.5, color: "var(--color-muted)" }}>เพิ่มการ์ดใหม่ใน &ldquo;{activeColumn.name}&rdquo;</p>
+            {/* K2.12 (หนี้ K2.7): "จากเทมเพลต ▾" — เหมือนปุ่มบนเดสก์ท็อป (Column.tsx) ใช้ CardTemplatePicker ตัวเดียวกัน */}
+            {cardTemplates.length > 0 && onCreateFromTemplate && (
+              <CardTemplatePicker
+                templates={cardTemplates}
+                onCreate={(templateId, title) => {
+                  onCreateFromTemplate(activeColumn.id, templateId, title);
+                  setQuickAddOpen(false);
+                }}
+              />
+            )}
             <input
               autoFocus
               value={quickAddTitle}

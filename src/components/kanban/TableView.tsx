@@ -3,7 +3,7 @@
 // หน้าที่: แก้งานหลายใบเร็ว ๆ แบบสเปรดชีต — แก้ในช่อง (คอลัมน์/ผู้รับผิดชอบ/กำหนดส่ง/ป้าย/ชื่อ) ·
 // เลือกหลายรายการแล้วทำทีเดียว (`cards.bulkUpdate`) · จัดกลุ่ม · ส่งออก CSV
 //
-// ⚠️ ห้ามใช้อีโมจิ — ไอคอนทุกตัวมาจาก <KanbanIcon> · ห้าม toLocaleDateString/Intl (บทเรียน K1.5: hydration)
+// ⚠️ ห้ามใช้อีโมจิ — ไอคอนทุกตัวมาจาก <KanbanIcon> · ห้ามใช้ตัวแปลงวันที่ของเบราว์เซอร์/Intl (บทเรียน K1.5: hydration)
 // ⚠️ ห้ามใช้กล่องเตือนของเบราว์เซอร์ — "เก็บเข้าคลัง" ยืนยันแบบ inline สองขั้น (แบบเดียวกับทั้งโมดูล)
 "use client";
 
@@ -12,8 +12,9 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { BoardHeader } from "./BoardHeader";
 import { FilterBar } from "./FilterBar";
 import { KanbanIcon } from "./KanbanIcon";
-import { Avatar, dueBadgeFrom, DUE_STYLE, tagColorVar } from "./Card";
+import { Avatar, dueBadgeFrom, DUE_STYLE, formatCardDateTime, tagColorVar } from "./Card";
 import { ThaiDatePicker } from "./ThaiDatePicker";
+import { relativeThaiTime } from "@/lib/modules/kanban/activity-text";
 import {
   bulkUpdateAction,
   createCardAction,
@@ -304,7 +305,7 @@ export function TableView({
           onRename={(name) => renameBoard(name, boardName, setBoardName, systemId, board.id, showToast)}
         />
         <FilterBar filters={filters} totalCount={totalCardCount} visibleCount={table.total} members={board.members} columns={board.columns} />
-        <div data-testid="table-view" className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto">
           {rows.length === 0 ? (
             <EmptyState hasFilters={Boolean(filters.q || filters.assignee || filters.label || filters.due || filters.status || filters.column)} onClear={() => router.push(pathname)} />
           ) : (
@@ -411,6 +412,117 @@ export function TableView({
           </button>
         )}
       </div>
+
+      {/* ── แถบเลือกหลายรายการ — แถบฟ้าบนตาราง (ledger/design-kanban/04-table.png) ไม่ใช่ pill ลอยล่างจอ ── */}
+      {selected.size > 0 && (
+        <div
+          data-testid="bulk-bar"
+          className="flex flex-none flex-wrap items-center justify-between gap-2"
+          style={{
+            padding: "8px 20px",
+            background: "color-mix(in srgb, var(--color-accent) 12%, var(--color-surface))",
+            borderBottom: "1px solid var(--color-accent)",
+            color: "var(--color-accent)",
+            fontSize: 12.5,
+          }}
+        >
+          <span className="flex items-center gap-2 font-semibold">
+            <KanbanIcon name="check" size="sm" />
+            เลือก {selected.size} การ์ด
+          </span>
+
+          <span className="flex flex-wrap items-center gap-3">
+            <span className="relative">
+              <button type="button" onClick={() => setBulkOpen((o) => (o === "column" ? null : "column"))} className="underline-offset-2 hover:underline">
+                ย้ายไปคอลัมน์
+              </button>
+              {bulkOpen === "column" && (
+                <MiniPopover onClose={() => setBulkOpen(null)}>
+                  {columns.map((c) => (
+                    <MiniPopoverRow key={c.id} onClick={() => runBulk({ toColumnId: c.id }, `ย้าย ${selected.size} การ์ดไปคอลัมน์ "${c.name}" แล้ว`)}>
+                      {c.name}
+                    </MiniPopoverRow>
+                  ))}
+                </MiniPopover>
+              )}
+            </span>
+
+            <span className="relative">
+              <button type="button" onClick={() => setBulkOpen((o) => (o === "assignee" ? null : "assignee"))} className="underline-offset-2 hover:underline">
+                มอบหมาย
+              </button>
+              {bulkOpen === "assignee" && (
+                <MiniPopover onClose={() => setBulkOpen(null)}>
+                  {board.members.length === 0 && <span className="px-2 py-1" style={{ opacity: 0.7 }}>บอร์ดนี้ยังไม่มีสมาชิก</span>}
+                  {board.members.map((m) => (
+                    <MiniPopoverRow key={m.userId} onClick={() => runBulk({ addAssigneeUserIds: [m.userId] }, `มอบหมาย ${selected.size} การ์ดให้ ${m.name} แล้ว`)}>
+                      <Avatar name={m.name} size={18} /> {m.name}
+                    </MiniPopoverRow>
+                  ))}
+                </MiniPopover>
+              )}
+            </span>
+
+            <span className="relative">
+              <button type="button" onClick={() => setBulkOpen((o) => (o === "label" ? null : "label"))} className="underline-offset-2 hover:underline">
+                ติดป้าย
+              </button>
+              {bulkOpen === "label" && (
+                <MiniPopover onClose={() => setBulkOpen(null)}>
+                  {board.labels.length === 0 && <span className="px-2 py-1" style={{ opacity: 0.7 }}>บอร์ดนี้ยังไม่มีป้ายกำกับ</span>}
+                  {board.labels.map((l) => (
+                    <MiniPopoverRow key={l.id} onClick={() => runBulk({ addLabelIds: [l.id] }, `ติดป้าย "${l.name}" ให้ ${selected.size} การ์ดแล้ว`)}>
+                      <span style={{ width: 10, height: 10, borderRadius: 3, background: tagColorVar(l.color), display: "inline-block" }} /> {l.name}
+                    </MiniPopoverRow>
+                  ))}
+                </MiniPopover>
+              )}
+            </span>
+
+            <span className="relative">
+              <button type="button" onClick={() => setBulkOpen((o) => (o === "due" ? null : "due"))} className="underline-offset-2 hover:underline">
+                ตั้งกำหนดส่ง
+              </button>
+              {bulkOpen === "due" && (
+                <div className="absolute left-0 top-full z-50 mt-1 rounded-xl p-2" style={{ background: "var(--color-surface)", border: "1px solid var(--color-line)", boxShadow: "0 14px 34px rgba(10,10,10,.14)", color: "var(--color-ink)" }}>
+                  <ThaiDatePicker
+                    value={null}
+                    onChange={(dueAt) => runBulk({ dueAt }, `ตั้งกำหนดส่ง ${selected.size} การ์ดแล้ว`)}
+                    editable
+                    withTime
+                    open
+                    onOpenChange={(o) => !o && setBulkOpen(null)}
+                    nowMs={nowMs}
+                    ariaLabel="ตั้งกำหนดส่งหลายการ์ด"
+                    chipTestId="bulk-due-chip"
+                    pickerTestId="bulk-due-picker"
+                  />
+                </div>
+              )}
+            </span>
+
+            {archiveConfirm ? (
+              <span className="flex items-center gap-1.5">
+                ยืนยันเก็บ {selected.size} การ์ดเข้าคลัง?
+                <button type="button" onClick={confirmArchiveSelected} className="font-semibold underline">
+                  ยืนยัน
+                </button>
+                <button type="button" onClick={() => setArchiveConfirm(false)} className="underline" style={{ opacity: 0.8 }}>
+                  ยกเลิก
+                </button>
+              </span>
+            ) : (
+              <button type="button" onClick={() => setArchiveConfirm(true)} className="flex items-center gap-1 underline-offset-2 hover:underline">
+                <KanbanIcon name="box" size="xs" /> เก็บเข้าคลัง
+              </button>
+            )}
+
+            <button type="button" aria-label="ล้างการเลือก" onClick={() => setSelected(new Set())} style={{ opacity: 0.75 }}>
+              <KanbanIcon name="x" size="xs" />
+            </button>
+          </span>
+        </div>
+      )}
 
       <div data-testid="table-view" className="flex-1 overflow-auto">
         {rows.length === 0 ? (
@@ -520,110 +632,6 @@ export function TableView({
           </span>
         )}
       </div>
-
-      {/* ── แถบเลือกหลายรายการ ── */}
-      {selected.size > 0 && (
-        <div
-          data-testid="bulk-bar"
-          className="fixed inset-x-0 bottom-4 z-[60] flex flex-wrap items-center justify-center gap-2 px-4"
-        >
-          <div
-            className="flex flex-wrap items-center gap-2 rounded-full px-4 py-2.5"
-            style={{ background: "var(--color-ink)", color: "var(--color-surface)", boxShadow: "0 12px 30px rgba(10,10,10,.28)", fontSize: 12.5 }}
-          >
-            <span className="font-semibold">เลือก {selected.size} การ์ด</span>
-
-            <span className="relative">
-              <button type="button" onClick={() => setBulkOpen((o) => (o === "column" ? null : "column"))} className="rounded-full px-2.5 py-1" style={{ background: "rgba(255,255,255,.12)" }}>
-                ย้ายไปคอลัมน์
-              </button>
-              {bulkOpen === "column" && (
-                <MiniPopover onClose={() => setBulkOpen(null)}>
-                  {columns.map((c) => (
-                    <MiniPopoverRow key={c.id} onClick={() => runBulk({ toColumnId: c.id }, `ย้าย ${selected.size} การ์ดไปคอลัมน์ "${c.name}" แล้ว`)}>
-                      {c.name}
-                    </MiniPopoverRow>
-                  ))}
-                </MiniPopover>
-              )}
-            </span>
-
-            <span className="relative">
-              <button type="button" onClick={() => setBulkOpen((o) => (o === "assignee" ? null : "assignee"))} className="rounded-full px-2.5 py-1" style={{ background: "rgba(255,255,255,.12)" }}>
-                มอบหมาย
-              </button>
-              {bulkOpen === "assignee" && (
-                <MiniPopover onClose={() => setBulkOpen(null)}>
-                  {board.members.length === 0 && <span className="px-2 py-1" style={{ opacity: 0.7 }}>บอร์ดนี้ยังไม่มีสมาชิก</span>}
-                  {board.members.map((m) => (
-                    <MiniPopoverRow key={m.userId} onClick={() => runBulk({ addAssigneeUserIds: [m.userId] }, `มอบหมาย ${selected.size} การ์ดให้ ${m.name} แล้ว`)}>
-                      <Avatar name={m.name} size={18} /> {m.name}
-                    </MiniPopoverRow>
-                  ))}
-                </MiniPopover>
-              )}
-            </span>
-
-            <span className="relative">
-              <button type="button" onClick={() => setBulkOpen((o) => (o === "label" ? null : "label"))} className="rounded-full px-2.5 py-1" style={{ background: "rgba(255,255,255,.12)" }}>
-                ติดป้าย
-              </button>
-              {bulkOpen === "label" && (
-                <MiniPopover onClose={() => setBulkOpen(null)}>
-                  {board.labels.length === 0 && <span className="px-2 py-1" style={{ opacity: 0.7 }}>บอร์ดนี้ยังไม่มีป้ายกำกับ</span>}
-                  {board.labels.map((l) => (
-                    <MiniPopoverRow key={l.id} onClick={() => runBulk({ addLabelIds: [l.id] }, `ติดป้าย "${l.name}" ให้ ${selected.size} การ์ดแล้ว`)}>
-                      <span style={{ width: 10, height: 10, borderRadius: 3, background: tagColorVar(l.color), display: "inline-block" }} /> {l.name}
-                    </MiniPopoverRow>
-                  ))}
-                </MiniPopover>
-              )}
-            </span>
-
-            <span className="relative">
-              <button type="button" onClick={() => setBulkOpen((o) => (o === "due" ? null : "due"))} className="rounded-full px-2.5 py-1" style={{ background: "rgba(255,255,255,.12)" }}>
-                ตั้งกำหนดส่ง
-              </button>
-              {bulkOpen === "due" && (
-                <div className="absolute bottom-full left-0 z-50 mb-1 rounded-xl p-2" style={{ background: "var(--color-surface)", border: "1px solid var(--color-line)", boxShadow: "0 14px 34px rgba(10,10,10,.14)" }}>
-                  <ThaiDatePicker
-                    value={null}
-                    onChange={(dueAt) => runBulk({ dueAt }, `ตั้งกำหนดส่ง ${selected.size} การ์ดแล้ว`)}
-                    editable
-                    withTime
-                    open
-                    onOpenChange={(o) => !o && setBulkOpen(null)}
-                    nowMs={nowMs}
-                    ariaLabel="ตั้งกำหนดส่งหลายการ์ด"
-                    chipTestId="bulk-due-chip"
-                    pickerTestId="bulk-due-picker"
-                  />
-                </div>
-              )}
-            </span>
-
-            {archiveConfirm ? (
-              <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1" style={{ background: "rgba(255,255,255,.12)" }}>
-                ยืนยันเก็บ {selected.size} การ์ดเข้าคลัง?
-                <button type="button" onClick={confirmArchiveSelected} className="font-semibold underline">
-                  ยืนยัน
-                </button>
-                <button type="button" onClick={() => setArchiveConfirm(false)} className="underline" style={{ opacity: 0.8 }}>
-                  ยกเลิก
-                </button>
-              </span>
-            ) : (
-              <button type="button" onClick={() => setArchiveConfirm(true)} className="rounded-full px-2.5 py-1" style={{ background: "rgba(255,255,255,.12)" }}>
-                <KanbanIcon name="box" size="xs" /> เก็บเข้าคลัง
-              </button>
-            )}
-
-            <button type="button" aria-label="ล้างการเลือก" onClick={() => setSelected(new Set())} className="ml-1" style={{ opacity: 0.75 }}>
-              <KanbanIcon name="x" size="xs" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {toast && (
         <div className="pointer-events-none fixed inset-x-0 bottom-20 z-[70] flex justify-center px-4">
@@ -989,6 +997,7 @@ function TableRowView({
             chipTestId="table-due-chip"
             pickerTestId="table-due-picker"
             tone={due?.tone}
+            chipText={due?.text}
           />
         </span>
       </td>
@@ -1058,16 +1067,12 @@ function TableRowView({
   );
 }
 
-/** "5 ก.ย. 2569" — ใช้เดือนไทยล้วน (ห้าม toLocaleDateString ตามกติกาของโมดูล) */
+/** K2.12: คอลัมน์ "แก้ไขล่าสุด" แบบสัมพัทธ์ ("2 ชม." · "เมื่อวาน") — ใช้ `relativeThaiTime` ตัวเดียวกับ
+ * Comments.tsx/Timeline.tsx/BoardsHome.tsx (ห้ามคำนวณเวลาสัมพัทธ์ซ้ำหลายที่) วันเต็มยังอยู่ใน title */
 function TimeAgo({ iso, nowMs }: { iso: string; nowMs: number }) {
-  const TH_MONTH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
-  const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
-  const ms = Date.parse(iso) + BKK_OFFSET_MS;
-  const d = new Date(ms);
-  void nowMs;
   return (
-    <span style={{ color: "var(--color-muted)" }}>
-      {d.getUTCDate()} {TH_MONTH[d.getUTCMonth()]} {d.getUTCFullYear() + 543}
+    <span title={formatCardDateTime(iso)} style={{ color: "var(--color-muted)" }}>
+      {relativeThaiTime(iso, nowMs)}
     </span>
   );
 }

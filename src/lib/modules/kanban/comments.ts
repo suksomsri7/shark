@@ -238,6 +238,7 @@ export async function listComments(ctx: KanbanCtx, cardId: string): Promise<Kanb
     mentions: toIdList(r.mentions),
     createdAt: r.createdAt.toISOString(),
     editedAt: r.editedAt ? r.editedAt.toISOString() : null,
+    automationRuleId: r.automationRuleId,
   }));
 }
 

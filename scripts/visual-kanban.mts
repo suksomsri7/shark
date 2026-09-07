@@ -732,6 +732,44 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: "[data-testid=my-watched]" }, { wait: 400 }],
     },
   ],
+  // K2.12 — ปิดหนี้ P2: ตาราง (แถบเลือกหลายรายการ = แถบฟ้าบนตาราง เทียบ 04) · ปฏิทินรวมระบบ · มือถือจากเทมเพลต
+  "2.12": [
+    {
+      name: "table-bulk-selected",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=table`,
+      onlyDevice: "desktop",
+      note: "ติ๊ก 2 แถวแรก — แถบฟ้าต้องอยู่บนหัวตาราง (ไม่ใช่ pill ลอยล่างจอ) เทียบ 04-table.png",
+      expect: ["[data-testid=bulk-bar]"],
+      steps: [
+        { waitFor: "[data-testid=table-row]" },
+        { click: "[data-testid=table-row]:nth-of-type(1) [data-testid=row-select]" },
+        { click: "[data-testid=table-row]:nth-of-type(2) [data-testid=row-select]" },
+        { wait: 300 },
+      ],
+    },
+    {
+      name: "system-calendar",
+      path: `/app/sys/${SYS}/kanban/calendar`,
+      onlyDevice: "desktop",
+      note: "ปฏิทินรวมทุกบอร์ดที่มองเห็น — ชิปการ์ดมีสีตามบอร์ด + ชื่อบอร์ดกำกับ",
+      expect: ["[data-testid=system-calendar]"],
+      steps: [{ waitFor: "[data-testid=system-calendar]" }, { wait: 400 }],
+    },
+    {
+      name: "mobile-template-create",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      onlyDevice: "mobile",
+      note: "มือถือ: FAB → แผ่นเพิ่มการ์ดเร็ว → 'จากเทมเพลต ▾' เปิดรายการ",
+      expect: ["[data-testid=mobile-quick-add]", "[data-testid=card-template-picker]"],
+      steps: [
+        { waitFor: "[data-testid=fab-add]" },
+        { click: "[data-testid=fab-add]" },
+        { waitFor: "[data-testid=mobile-quick-add]" },
+        { click: "[data-testid=card-template-picker] button" },
+        { wait: 400 },
+      ],
+    },
+  ],
   // K2.10 — รายงานในแอป (ไม่มี mockup — เกณฑ์ §3.7/§13 K2.10) · อ่านอย่างเดียวล้วนเหมือน 2.4 — ไม่มีขั้น
   // เตรียม/คืนสภาพ seed (สลับแท็บฝั่ง client ล้วน ไม่ยิง server ซ้ำ นอกจากโหลดหน้าแรก)
   "2.10": [
@@ -1066,7 +1104,8 @@ if (WO === "2.6") {
 //    `card-templates.ts`/`recurrence.ts` ตรง ๆ ก่อนถ่าย (เหตุผลเดียวกับ KB25/KB26 — revalidatePath ของ
 //    server action ชนจังหวะ puppeteer) — คืนสภาพทั้งคู่ใน restoreSeed()
 const KB27 = { templateId: "", recurCardId: "", recurBefore: null as string | null, dueBefore: null as string | null };
-if (WO === "2.7") {
+// K2.12 ใช้เทมเพลตเดียวกัน (ปุ่ม "จากเทมเพลต ▾" บนมือถือ — หนี้ K2.7) ⇒ เตรียมของก้อนเดียวกัน
+if (WO === "2.7" || WO === "2.12") {
   const ctSvc = (await import("@/lib/modules/kanban/card-templates" as string)) as Any;
   const recurSvc = (await import("@/lib/modules/kanban/recurrence" as string)) as Any;
   const membership = await prisma.membership.findFirst({
@@ -1392,8 +1431,8 @@ async function restoreSeed(): Promise<void> {
     console.log(`🧹 คืนสภาพ K2.6: ลบฟิลด์กำหนดเอง ${del.count} ตัว (ค่าการ์ด cascade) · ลบกิจกรรม ${ac.count}`);
   }
 
-  // K2.7 — คืนสภาพ seed: ลบเทมเพลตที่บันทึกไว้ก่อนถ่าย · คืน dueAt/recurrenceRule เดิมของการ์ดที่ใช้ตั้งกำหนดส่งซ้ำ
-  if (WO === "2.7" && (KB27.templateId || KB27.recurCardId)) {
+  // K2.7/K2.12 — คืนสภาพ seed: ลบเทมเพลตที่บันทึกไว้ก่อนถ่าย · คืน dueAt/recurrenceRule เดิมของการ์ดที่ใช้ตั้งกำหนดส่งซ้ำ
+  if ((WO === "2.7" || WO === "2.12") && (KB27.templateId || KB27.recurCardId)) {
     const P = prisma as Any;
     if (KB27.templateId) {
       const del = await P.kanbanCardTemplate.deleteMany({ where: { id: KB27.templateId } });

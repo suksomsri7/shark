@@ -84,6 +84,16 @@ export function CommentRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span style={{ fontSize: 12.5, fontWeight: 700 }}>{comment.author.name}</span>
+          {/* K2.12: ความเห็นที่กฎอัตโนมัติเขียน (ไม่ใช่คน) — ชิปบอกที่มา ห้ามให้ดูเหมือนคนพิมพ์เอง */}
+          {comment.automationRuleId && (
+            <span
+              data-testid="comment-automation-chip"
+              className="inline-flex items-center rounded-full"
+              style={{ height: 17, padding: "0 7px", fontSize: 10.5, fontWeight: 600, color: "var(--color-accent)", border: "1px solid var(--color-accent)", background: "color-mix(in srgb, var(--color-accent) 10%, transparent)" }}
+            >
+              โดยกฎอัตโนมัติ
+            </span>
+          )}
           <span
             title={formatCardDateTime(comment.createdAt)}
             style={{ fontSize: 11.5, color: "var(--color-muted)" }}

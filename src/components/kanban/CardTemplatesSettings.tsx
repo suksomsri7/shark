@@ -15,6 +15,11 @@ export function CardTemplatesSettings({ systemId, boardId, templates }: { system
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // K2.12 (หนี้ K2.7): แก้ "ชื่อการ์ด/รายละเอียด" ของเทมเพลต (สิ่งที่การ์ดใหม่จะได้ไปตอนสร้างจากเทมเพลตนี้)
+  // — ต่างจาก `name` (แค่ชื่อเทมเพลตในลิสต์นี้) ก่อนหน้านี้แก้ได้แค่ตอนบันทึกครั้งแรกจากการ์ด
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [descDraft, setDescDraft] = useState("");
 
   // เพดาน 30 ต่อบอร์ด (KANBAN_LIMITS.cardTemplatesPerBoard) — เขียนเลข 30 ตรง ๆ ในป้าย "n / 30" ด้านล่าง
   // (แบบเดียวกับ CustomFieldsSettings.tsx §4 ข้อ 2 ของ K2.6 — เปลี่ยนเพดานต้องแก้ 2 จุดนี้คู่กัน)
@@ -27,6 +32,27 @@ export function CardTemplatesSettings({ systemId, boardId, templates }: { system
     setBusyId(t.id);
     setError(null);
     const res = await updateCardTemplateAction({ systemId, boardId, templateId: t.id, name: trimmed });
+    setBusyId(null);
+    if (!res.ok) {
+      setError(res.message);
+      return;
+    }
+    setRows((prev) => prev.map((r) => (r.id === t.id ? res.template : r)));
+  };
+
+  const startEditTitle = (t: CardTemplateDto) => {
+    setEditingTitleId(t.id);
+    setTitleDraft(t.title);
+    setDescDraft("");
+  };
+
+  const saveTitle = async (t: CardTemplateDto) => {
+    const title = titleDraft.trim();
+    setEditingTitleId(null);
+    if (!title) return;
+    setBusyId(t.id);
+    setError(null);
+    const res = await updateCardTemplateAction({ systemId, boardId, templateId: t.id, title, description: descDraft });
     setBusyId(null);
     if (!res.ok) {
       setError(res.message);
@@ -111,9 +137,50 @@ export function CardTemplatesSettings({ systemId, boardId, templates }: { system
                     {t.name}
                   </button>
                 )}
-                <span className="truncate" style={{ fontSize: 12, color: "var(--color-muted)" }}>
-                  {t.title} · {t.labelCount} ป้าย · {t.checklistItemCount} รายการเช็คลิสต์
-                </span>
+                {editingTitleId === t.id ? (
+                  <div className="flex flex-col gap-1.5" style={{ maxWidth: 320 }}>
+                    <input
+                      autoFocus
+                      value={titleDraft}
+                      data-testid="template-edit-title-input"
+                      className="input"
+                      placeholder="ชื่อการ์ด"
+                      style={{ fontSize: 12.5 }}
+                      onChange={(e) => setTitleDraft(e.target.value)}
+                      onKeyDown={(e) => e.key === "Escape" && setEditingTitleId(null)}
+                    />
+                    <textarea
+                      value={descDraft}
+                      data-testid="template-edit-description-input"
+                      className="input"
+                      placeholder="รายละเอียด (ไม่บังคับ)"
+                      rows={2}
+                      style={{ fontSize: 12.5 }}
+                      onChange={(e) => setDescDraft(e.target.value)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => saveTitle(t)} className="btn btn-primary text-xs">
+                        บันทึก
+                      </button>
+                      <button type="button" onClick={() => setEditingTitleId(null)} className="btn btn-ghost text-xs">
+                        ยกเลิก
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <span className="flex items-center gap-1.5 truncate" style={{ fontSize: 12, color: "var(--color-muted)" }}>
+                    {t.title} · {t.labelCount} ป้าย · {t.checklistItemCount} รายการเช็คลิสต์
+                    <button
+                      type="button"
+                      data-testid="template-edit-title"
+                      aria-label={`แก้ชื่อการ์ด/รายละเอียดของเทมเพลต ${t.name}`}
+                      onClick={() => startEditTitle(t)}
+                      style={{ color: "var(--color-accent)" }}
+                    >
+                      <KanbanIcon name="edit" size="xs" />
+                    </button>
+                  </span>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-0.5">
                 <button type="button" disabled={i === 0} onClick={() => move(t, -1)} aria-label="เลื่อนขึ้น" style={{ color: "var(--color-muted)", width: 16 }}>

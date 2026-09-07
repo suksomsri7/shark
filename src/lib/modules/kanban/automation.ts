@@ -900,8 +900,10 @@ async function writeAutomationComment(scope: RunScope, card: RuleCard, body: str
   const authorUserId = scope.actorUserId ?? card.createdById ?? (await fallbackOwnerId(scope.tenantId));
   if (!authorUserId) throw new Error("ร้านนี้ยังไม่มีเจ้าของที่จะลงชื่อความเห็นอัตโนมัติได้");
   await prisma.$transaction(async (tx) => {
+    // K2.12: ลงชื่อว่ากฎเขียนความเห็นนี้ (ไม่ใช่คน) — `authorUserId` ยังเก็บไว้เป็นผู้รับผิดชอบ audit เดิม
+    // (ผู้สร้างการ์ด/เจ้าของร้าน) แต่จอต้องแสดงชิป "โดยกฎอัตโนมัติ" แทนชื่อคนเมื่อฟิลด์นี้ไม่ null
     const row = await tx.kanbanComment.create({
-      data: { tenantId: scope.tenantId, cardId: card.id, authorUserId, body, mentions: [] },
+      data: { tenantId: scope.tenantId, cardId: card.id, authorUserId, body, mentions: [], automationRuleId: scope.ruleId },
     });
     await logActivity(tx, {
       tenantId: scope.tenantId,

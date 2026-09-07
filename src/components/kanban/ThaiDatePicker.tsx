@@ -57,6 +57,7 @@ export function ThaiDatePicker({
   chipTestId,
   pickerTestId,
   tone,
+  chipText,
 }: {
   /** ค่าปัจจุบัน — ISO UTC หรือ null (ไม่กำหนด) */
   value: string | null;
@@ -75,6 +76,12 @@ export function ThaiDatePicker({
   pickerTestId: string;
   /** โทนสีชิปตามความหมายกำหนดส่งแบบเดียวกับตัวการ์ด (`dueBadgeFrom`/`DUE_STYLE` ใน Card.tsx) — ไม่ใส่ = ชิปกลาง ๆ (วันเริ่ม) */
   tone?: ThaiDatePickerTone;
+  /**
+   * K2.12 (หนี้ parity ภาพ 04): ข้อความชิปแบบสัมพัทธ์แทนวันที่เต็ม เช่น `dueBadgeFrom(...).text`
+   * ("วันนี้ 18:00" · "เลย 4 วัน" · "พรุ่งนี้") — ไม่ใส่ = ใช้วันที่เต็มแบบเดิม (`formatChip`) เหมือนหลังการ์ด
+   * มีผลเฉพาะตอนปิด popover เท่านั้น — เปิดปฏิทินยังกางเป็นเดือน/วันเต็มตามปกติ
+   */
+  chipText?: string;
 }) {
   const today = toBkk(nowMs);
   const selected = value ? toBkk(Date.parse(value)) : null;
@@ -170,6 +177,7 @@ export function ThaiDatePicker({
         aria-label={ariaLabel}
         aria-haspopup="dialog"
         aria-expanded={open}
+        title={chipText && value ? formatChip(value, withTime) : undefined}
         onClick={() => editable && onOpenChange(!open)}
         disabled={!editable}
         className="inline-flex items-center rounded-md border"
@@ -185,7 +193,7 @@ export function ThaiDatePicker({
           background: toneStyle ? toneStyle.background : value ? "var(--color-surface-2)" : "transparent",
         }}
       >
-        {value ? formatChip(value, withTime) : "ไม่กำหนด"}
+        {value ? (chipText ?? formatChip(value, withTime)) : "ไม่กำหนด"}
       </button>
 
       {open && (

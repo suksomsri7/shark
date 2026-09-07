@@ -171,7 +171,7 @@ export const SKILLS: Skill[] = [
     id: "tasks",
     label: "งานและบอร์ด",
     summary:
-      "Task boards (Kanban): list boards and what is on them, board summaries, search cards across boards, one person's task inbox, create boards and cards, move cards between columns, edit or complete a card, assign people, set labels, add checklists and comments, archive a card.",
+      "Task boards (Kanban): list boards and what is on them, board summaries, search cards across boards, one person's task inbox, jot a task into the inbox, overdue and workload reports, list a board's automation rules, create boards and cards, move cards between columns, edit or complete a card, assign people, set labels, add checklists and comments, archive a card.",
     // 🔴 K1.15: รายชื่อนี้ต้องตรงกับ op ที่ประกาศ `tool` ในทะเบียน API บอร์ดงานเป๊ะ ๆ
     //    เขียนเป็นตัวหนังสือด้วยเหตุผลเดียวกับสกิลบัญชี: ด่าน fitness F13.3 อ่าน "ไฟล์นี้"
     //    ความตรงกันบังคับด้วย assertSkillRegistryComplete() ที่เทียบกับ kanbanToolNames() ทุกครั้ง
@@ -180,10 +180,14 @@ export const SKILLS: Skill[] = [
       // อ่าน
       "kanban_my_tasks", "kanban_list_boards", "kanban_get_board", "kanban_board_summary",
       "kanban_list_cards", "kanban_search_cards",
+      // K2.12: อ่าน — รายงาน + รายการกฎอัตโนมัติ
+      "kanban_overdue_report", "kanban_workload_report", "kanban_list_rules",
       // เขียน (ผ่านการยืนยันของเจ้าของ)
       "kanban_create_board", "kanban_create_card", "kanban_update_card", "kanban_move_card",
       "kanban_complete_card", "kanban_assign_card", "kanban_set_labels", "kanban_add_checklist",
       "kanban_add_comment",
+      // K2.12: เขียน — จดงานเข้ากล่องงานเข้า (ข้อเสนอเสมอ ไม่เคยเขียนตรง)
+      "kanban_inbox_add",
       // อันตราย (ยืนยัน 2 ชั้น)
       "kanban_archive_card",
     ],

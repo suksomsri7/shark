@@ -989,6 +989,8 @@ export function BoardView({
           onCreateCard={handlers.onCreateCard}
           onSwipeComplete={swipeComplete}
           onSwipeArchive={swipeArchive}
+          cardTemplates={cardTemplates}
+          onCreateFromTemplate={handlers.onCreateFromTemplate}
         />
       ) : (
       /* ── เวทีบอร์ด (เดสก์ท็อป) ── */

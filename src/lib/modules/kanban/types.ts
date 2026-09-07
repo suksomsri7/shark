@@ -163,6 +163,8 @@ export type KanbanCommentDto = {
   mentions: string[];
   createdAt: string;
   editedAt: string | null;
+  /** K2.12: ไม่ null = กฎอัตโนมัติใบนี้เขียน (ไม่ใช่คน) — จอแสดงชิป "โดยกฎอัตโนมัติ" แทนชื่อคน */
+  automationRuleId: string | null;
 };
 
 // ───────────────────────── K1.7: เช็คลิสต์ ─────────────────────────
@@ -527,6 +529,26 @@ export type BoardCalendarDto = {
   days: Record<string, CalDayDto>;
   /** การ์ด active ที่ไม่มี dueAt (ผ่านตัวกรองเดียวกับวันในปฏิทิน) */
   unscheduled: CalCardDto[];
+};
+
+// ───────────────────────── K2.12 — ปฏิทินรวมทุกบอร์ดของระบบ (system-calendar.ts) ─────────────────────────
+// DTO บริสุทธิ์ (วันที่เป็น ISO string) — `SystemCalendar.tsx` (client) เป็นคนเรนเดอร์เท่านั้น
+// 🔴 อยู่ในไฟล์นี้ (ไม่ใช่ `system-calendar.ts` ที่แตะ prisma) ด้วยเหตุผลเดียวกับ K2.2: client component
+//    ต้อง `import type` ได้โดยไม่ลาก `db.ts` → `pg` เข้าบันเดิลฝั่ง browser
+
+/** การ์ดของปฏิทินรวม — เหมือน `CalCardDto` + ป้ายบอกว่าเป็นของบอร์ดไหน (สีตามบอร์ด ไม่ใช่ตามป้ายกำกับ) */
+export type SystemCalCardDto = CalCardDto & { boardId: string; boardName: string; boardColor: KanbanTagColor };
+
+export type SystemCalDayDto = { cards: SystemCalCardDto[] };
+
+export type SystemCalendarBoardDto = { id: string; name: string; color: KanbanTagColor; count: number };
+
+export type SystemCalendarDto = {
+  range: { from: string; to: string };
+  /** คีย์ = วันที่ไทย "YYYY-MM-DD" — วันที่ไม่มีการ์ดเลยจะไม่มีคีย์นี้ในอ็อบเจกต์ */
+  days: Record<string, SystemCalDayDto>;
+  /** บอร์ดทุกใบที่ actor มองเห็น (ACTIVE) พร้อมจำนวนการ์ดในช่วงที่ขอ — ใช้ทำตัวกรอง `calendar-boards` */
+  boards: SystemCalendarBoardDto[];
 };
 
 // ───────────────────────── K2.3 — มุมมองไทม์ไลน์ (timeline.ts) ─────────────────────────

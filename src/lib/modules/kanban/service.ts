@@ -93,6 +93,10 @@ export {
 export { describeRecurrence, nextOccurrence, parseRecurrenceRule, setCardRecurrence, sweepRecurringCards } from "./recurrence";
 export type { CardTemplateDto } from "./types";
 
+export { listSystemCalendar } from "./system-calendar";
+export type { ListSystemCalendarInput } from "./system-calendar";
+export type { SystemCalCardDto, SystemCalDayDto, SystemCalendarBoardDto, SystemCalendarDto } from "./types";
+
 // แจ้งเตือนเมื่อมอบหมายงาน — ย้ายตรรกะไป `notify.ts` ใน K1.2 (cards.ts ใช้ร่วมโดยไม่เกิด import วงกลม)
 // ชื่อเดิมคงไว้เป็น alias ภายในไฟล์นี้ เพื่อไม่ต้องแก้จุดเรียกเดิม
 const notifyAssignment = notifyCardAssigned;

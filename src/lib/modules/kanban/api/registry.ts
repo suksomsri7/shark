@@ -10,14 +10,21 @@
 import { allowedMethodsIn, matchOpIn } from "@/lib/api/dispatch";
 import type { ApiOp } from "@/lib/api/op";
 import { ATTACHMENTS_OPS } from "./ops/attachments";
+import { AUTOMATION_OPS } from "./ops/automation";
 import { BOARDS_OPS } from "./ops/boards";
 import { CARDS_OPS } from "./ops/cards";
 import { CHECKLISTS_OPS } from "./ops/checklists";
 import { COLUMNS_OPS } from "./ops/columns";
 import { COMMENTS_OPS } from "./ops/comments";
 import { CORE_OPS } from "./ops/core";
+import { FIELDS_OPS } from "./ops/fields";
+import { INBOX_OPS } from "./ops/inbox";
 import { LABELS_OPS } from "./ops/labels";
 import { MISC_OPS } from "./ops/misc";
+import { REPORTS_OPS } from "./ops/reports";
+import { TEMPLATES_CARDS_OPS } from "./ops/templates";
+import { VIEWS_OPS } from "./ops/views";
+import { WATCH_OPS } from "./ops/watch";
 
 export * from "./op";
 
@@ -32,6 +39,15 @@ export const KANBAN_OPS: ApiOp[] = [
   ...COMMENTS_OPS,
   ...ATTACHMENTS_OPS,
   ...MISC_OPS,
+  // K2.12 — หนี้ P2: มุมมองตาราง/ปฏิทินผ่าน API, มุมมองที่บันทึกไว้, ฟิลด์กำหนดเอง, เทมเพลตการ์ด,
+  // กล่องงานเข้า, กฎอัตโนมัติ, รายงาน, ติดตามการ์ด
+  ...VIEWS_OPS,
+  ...FIELDS_OPS,
+  ...TEMPLATES_CARDS_OPS,
+  ...INBOX_OPS,
+  ...AUTOMATION_OPS,
+  ...REPORTS_OPS,
+  ...WATCH_OPS,
 ];
 
 /** หา op ที่ตรงทั้ง method และ path · เจอหลายตัว → เลือกตัวที่ "คงที่มากที่สุด" (param น้อยสุด) */

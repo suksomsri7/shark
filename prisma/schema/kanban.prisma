@@ -319,6 +319,9 @@ model KanbanComment {
   editedAt     DateTime?
   deletedAt    DateTime?
   createdAt    DateTime   @default(now())
+  // K2.12: ความเห็นที่กฎอัตโนมัติเขียน (`automation.ts#writeAutomationComment`) — id ของ AutomationRule
+  // (ไม่ทำ FK เหมือน authorUserId — กฎถูกลบไปแล้วยังต้องอ่านความเห็นเก่าได้) · null = คนเขียนเอง
+  automationRuleId String?
 
   // เส้นอ่านหลัก = ความเห็นของการ์ดใบเดียว เรียงเก่า→ใหม่
   @@index([cardId, createdAt])
