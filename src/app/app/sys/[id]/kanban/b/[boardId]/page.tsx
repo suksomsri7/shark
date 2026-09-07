@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { canReadKanban, getBoardView, KanbanNotFoundError, listBoardTable, toActor } from "@/lib/modules/kanban/service";
+import { canReadKanban, getBoardView, KanbanNotFoundError, listBoardCalendar, listBoardTable, toActor } from "@/lib/modules/kanban/service";
 import type { TableGroupBy, TableSort } from "@/lib/modules/kanban/service";
 import { boardFiltersFromParams } from "@/lib/modules/kanban/search";
 // K1.14 — ปุ่มลัดปิดได้รายคน (แบบ §5.6) → อ่านค่าที่นี่แล้วส่งลงเป็น prop (client ไม่ต้องยิงถามเอง)
@@ -9,9 +9,20 @@ import { getUserPreferences } from "@/lib/modules/kanban/preferences";
 import { BoardView } from "@/components/kanban/BoardView";
 // K2.1 — มุมมองตาราง `?view=table` (แท็บใน BoardHeader)
 import { TableView } from "@/components/kanban/TableView";
+// K2.2 — มุมมองปฏิทิน `?view=calendar` (แท็บใน BoardHeader)
+import { CalendarView } from "@/components/kanban/CalendarView";
 
 const GROUP_VALUES: readonly TableGroupBy[] = ["column", "assignee", "label"];
 const SORT_VALUES: readonly TableSort[] = ["due", "created", "updated", "position"];
+/** Asia/Bangkok = UTC+7 ตายตัว (ไม่มี DST) — คำนวณเอง ห้าม toLocale* ตามกติกาทั้งโมดูล */
+const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
+const DAY_MS = 86_400_000;
+
+/** ปี/เดือน(0-11) ตามเวลาไทยของ `ms` — ใช้ตั้งค่าปริยายของ `?month=` เมื่อไม่ได้ระบุ/ระบุผิดรูปแบบ */
+function bkkYearMonth(ms: number): { year: number; month: number } {
+  const d = new Date(ms + BKK_OFFSET_MS);
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() };
+}
 
 // หน้าบอร์ดใหม่ (K1.5) — `/app/sys/{id}/kanban/b/{boardId}` ตามภาพ `ledger/design-kanban/02-board.png`
 // 🔴 เส้นทางเดิม `/kanban/{boardId}` redirect มาที่นี่ (ลิงก์เก่า/บุ๊กมาร์กของพนักงานต้องไม่ตาย)
@@ -37,6 +48,9 @@ export default async function KanbanBoardPage({
     group?: string;
     sort?: string;
     page?: string;
+    month?: string;
+    mode?: string;
+    ext?: string;
   }>;
 }) {
   const [{ id, boardId }, query] = await Promise.all([params, searchParams]);
@@ -57,7 +71,25 @@ export default async function KanbanBoardPage({
   if (!board) notFound();
 
   const filters = boardFiltersFromParams(query);
-  const view = query.view === "table" ? "table" : "board";
+  const view = query.view === "table" ? "table" : query.view === "calendar" ? "calendar" : "board";
+
+  if (view === "calendar") {
+    const nowMs = Date.parse(board.now);
+    const monthMatch = /^(\d{4})-(\d{2})$/.exec(query.month ?? "");
+    const fallback = bkkYearMonth(nowMs);
+    const year = monthMatch ? Number(monthMatch[1]) : fallback.year;
+    const month = monthMatch ? Number(monthMatch[2]) - 1 : fallback.month; // 0-11 ภายใน
+    const mode = query.mode === "week" ? "week" : "month";
+    const ext = query.ext === "1";
+    // ช่วง = เดือนที่เลือก ±6 วัน (สัญญา K2.2) — พอครอบตารางเดือน 6 สัปดาห์เต็มเสมอไม่ว่าเดือนเริ่มวันไหน
+    const monthStartMs = Date.UTC(year, month, 1) - BKK_OFFSET_MS;
+    const monthEndMs = Date.UTC(year, month + 1, 1) - BKK_OFFSET_MS;
+    const from = new Date(monthStartMs - 6 * DAY_MS);
+    const to = new Date(monthEndMs + 6 * DAY_MS);
+    const data = await listBoardCalendar(ctx, actor, boardId, { from, to, now: new Date(board.now), filters, includeExternal: ext });
+    const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+    return <CalendarView board={board} data={data} filters={filters} month={monthKey} mode={mode} ext={ext} />;
+  }
 
   if (view === "table") {
     const group = GROUP_VALUES.includes(query.group as TableGroupBy) ? (query.group as TableGroupBy) : undefined;

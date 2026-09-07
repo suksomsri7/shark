@@ -85,6 +85,8 @@ import { archiveWithUndo, completeCard, undo } from "./my-tasks";
 import { normalizeUploadType } from "@/lib/storage/service";
 // K2.1 — มุมมองตาราง: เลือกหลายรายการ (`cards.bulkUpdate` — import ไว้กับ cards.ts ข้างบน) · ส่งออก CSV (`reports.ts`)
 import { exportCardsCsv } from "./reports";
+// K2.2 — มุมมองปฏิทิน: ลากตั้ง/เปลี่ยนกำหนดส่ง (บริการอยู่ `calendar.ts` — `listBoardCalendar` เรียกตรงจาก page.tsx)
+import { setCardDueFromCalendar } from "./calendar";
 import type { BoardFilters } from "./filters";
 import type {
   BoardCardDto,
@@ -1323,6 +1325,35 @@ export async function exportBoardCsvAction(input: {
     return { ok: true, csv };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ส่งออกไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+// ───────────────────────── K2.2 — มุมมองปฏิทิน: ลากตั้ง/เปลี่ยนกำหนดส่ง ─────────────────────────
+// 🔴 ตรวจสิทธิ์ระดับโมดูลที่นี่ (เหมือน `updateCardFieldsAction`) · ชั้นบทบาทบอร์ด (EDITOR+) ตรวจซ้ำใน
+//    `calendar.setCardDueFromCalendar` เอง (หาบอร์ดจาก cardId จริง ไม่เชื่อ boardId ที่ฟอร์มส่งมา)
+
+export async function setCardDueFromCalendarAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  /** ISO 8601 — จอคำนวณเวลาก่อนส่งมา (เช่น 18:00 ไทยของวันที่ถูกลาก) */
+  date: string;
+  /** true = ลากระหว่างวันในปฏิทิน (เปลี่ยนเฉพาะวัน คงเวลาเดิม) · false/ไม่ส่ง = ตั้งจากถาด */
+  keepTime?: boolean;
+}): Promise<{ ok: true; dueAt: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId || !input.date) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  const date = new Date(input.date);
+  if (isNaN(date.getTime())) return { ok: false, message: "วันที่ไม่ถูกต้อง" };
+  try {
+    const res = await setCardDueFromCalendar(ctxOf(auth, input.systemId), input.cardId, date, {
+      keepTime: input.keepTime,
+    });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, dueAt: res.dueAt };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ตั้งกำหนดส่งไม่สำเร็จ ลองใหม่อีกครั้ง" };
   }
 }
 

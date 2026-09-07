@@ -25,7 +25,8 @@ const VIEWS: { key: string; icon: string; label: string; ready?: boolean }[] = [
   { key: "board", icon: "grid", label: "บอร์ด", ready: true },
   // K2.1 — เปิดใช้จริงแล้ว (เดิม "เร็ว ๆ นี้")
   { key: "table", icon: "list", label: "ตาราง", ready: true },
-  { key: "calendar", icon: "cal", label: "ปฏิทิน" },
+  // K2.2 — เปิดใช้จริงแล้ว (เดิม "เร็ว ๆ นี้")
+  { key: "calendar", icon: "cal", label: "ปฏิทิน", ready: true },
   { key: "timeline", icon: "chart", label: "ไทม์ไลน์" },
   { key: "summary", icon: "pct", label: "สรุป" },
 ];
@@ -90,9 +91,10 @@ export function BoardHeader({
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
   };
 
-  // K2.1 — สลับมุมมอง (บอร์ด/ตาราง) คงตัวกรองไว้ (assignee/label/due/status/q) · ล้างพารามิเตอร์
-  // เฉพาะของตาราง (group/sort/page) เมื่อออกจากมุมมองตาราง — ไม่งั้นกลับมาบอร์ดแล้วลิงก์ค้าง ?page=3
-  const currentView = searchParams.get("view") === "table" ? "table" : "board";
+  // K2.1/K2.2 — สลับมุมมอง (บอร์ด/ตาราง/ปฏิทิน) คงตัวกรองไว้ (assignee/label/due/status/q) · ล้างพารามิเตอร์
+  // เฉพาะของมุมมองที่ไม่ได้ไป (table: group/sort/page · calendar: month/mode/ext) — ไม่งั้นสลับกลับมาแล้วลิงก์ค้าง
+  const rawView = searchParams.get("view");
+  const currentView = rawView === "table" ? "table" : rawView === "calendar" ? "calendar" : "board";
   const hrefForView = (viewKey: string): string => {
     const next = new URLSearchParams(searchParams.toString());
     if (viewKey === "board") next.delete("view");
@@ -101,6 +103,11 @@ export function BoardHeader({
       next.delete("group");
       next.delete("sort");
       next.delete("page");
+    }
+    if (viewKey !== "calendar") {
+      next.delete("month");
+      next.delete("mode");
+      next.delete("ext");
     }
     const qs = next.toString();
     return `${pathname}${qs ? `?${qs}` : ""}`;

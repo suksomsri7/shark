@@ -378,6 +378,43 @@ const SPECS: Record<string, Spec[]> = {
       expect: ["[data-testid=table-view]"],
     },
   ],
+  // K2.2 — มุมมองปฏิทิน (เทียบภาพ 05-calendar.png) — ลากการ์ดจากถาดลงวันจริง แล้วคืน dueAt เดิมใน finally
+  "2.2": [
+    {
+      name: "calendar-month",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=calendar`,
+      onlyDevice: "desktop",
+      note: "โหมดเดือน (เทียบ 05-calendar.png): ถาดยังไม่กำหนดวัน · ตารางเดือน 7 คอลัมน์ · วันนี้ไฮไลต์",
+      expect: ["[data-testid=calendar-view]", "[data-testid=calendar-unscheduled]", "[data-testid=calendar-day]"],
+      steps: [{ waitFor: "[data-testid=calendar-day]" }],
+    },
+    {
+      name: "calendar-week",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=calendar&mode=week`,
+      onlyDevice: "desktop",
+      note: "โหมดสัปดาห์ — สลับปุ่ม 'สัปดาห์' แล้วเห็น 7 วันแถวเดียว",
+      expect: ["[data-testid=calendar-day]"],
+      steps: [{ waitFor: "[data-testid=calendar-day]" }],
+    },
+    {
+      name: "calendar-drag-from-tray",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=calendar`,
+      onlyDevice: "desktop",
+      note: "ลากการ์ดใบแรกจากถาด 'ยังไม่กำหนดวัน' ไปวางบนช่องวันที่ 3 ของกริด — ต้องเห็นการ์ดย้ายไปอยู่ในวันนั้น (optimistic)",
+      steps: [
+        { waitFor: "[data-testid=calendar-unscheduled-card]" },
+        { drag: { from: "[data-testid=calendar-unscheduled-card]:nth-of-type(1)", to: "[data-testid=calendar-day]:nth-of-type(3)" } },
+        { wait: 1000 },
+      ],
+    },
+    {
+      name: "calendar-month",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=calendar`,
+      onlyDevice: "mobile",
+      note: "มือถือ — รายการวันต่อวัน ไม่มีลาก",
+      expect: ["[data-testid=calendar-view]", "[data-testid=calendar-unscheduled]"],
+    },
+  ],
 };
 const specs: Spec[] = WO === "path" ? [{ name: "custom", path: argv[1]! }] : (SPECS[WO] ?? []);
 if (specs.length === 0) { console.error(`❌ ไม่มี spec ของ WO ${WO}`); process.exit(2); }
@@ -517,6 +554,22 @@ if (WO === "2.1") {
   console.log(`🧪 เตรียม K2.1: จำชื่อการ์ดแรกของบอร์ดป่าตอง ${KB21.cardId || "(ไม่พบ)"} ไว้คืน`);
 }
 
+// ── K2.2: จำการ์ดแรกในถาด "ยังไม่กำหนดวัน" ของบอร์ดป่าตอง (คือใบที่สเปค `calendar-drag-from-tray`
+//    จะลากจริงลง DB ผ่าน `setCardDueFromCalendarAction`) ไว้คืนหลังถ่ายเสร็จ ──
+const KB22 = { cardId: "", dueAt: null as string | null };
+if (WO === "2.2") {
+  const firstUnscheduled = await prisma.kanbanCard.findFirst({
+    where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE", dueAt: null },
+    orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true, dueAt: true },
+  });
+  if (firstUnscheduled) {
+    KB22.cardId = firstUnscheduled.id;
+    KB22.dueAt = firstUnscheduled.dueAt ? firstUnscheduled.dueAt.toISOString() : null;
+  }
+  console.log(`🧪 เตรียม K2.2: จำการ์ดแรกในถาด 'ยังไม่กำหนดวัน' ของบอร์ดป่าตอง ${KB22.cardId || "(ไม่พบ)"} ไว้คืน`);
+}
+
 async function restoreSeed(): Promise<void> {
   // K1.9 — คืนสภาพ seed: ลบไฟล์แนบ/FileAsset ที่สร้างระหว่างถ่ายภาพ + ล้าง coverFileId ของการ์ดที่ใช้ทดสอบ
   if (WO === "1.9") {
@@ -620,6 +673,14 @@ async function restoreSeed(): Promise<void> {
   if (WO === "2.1" && KB21.cardId) {
     await prisma.kanbanCard.updateMany({ where: { id: KB21.cardId }, data: { title: KB21.title } });
     console.log(`🧹 คืนสภาพ K2.1: คืนชื่อการ์ด ${KB21.cardId} เป็น "${KB21.title}"`);
+  }
+
+  // K2.2 — คืนสภาพ seed: สเปค `calendar-drag-from-tray` ลากการ์ดจากถาดลงวันจริงผ่าน server action — คืน dueAt เดิม
+  if (WO === "2.2" && KB22.cardId) {
+    await prisma.kanbanCard.updateMany({ where: { id: KB22.cardId }, data: { dueAt: KB22.dueAt ? new Date(KB22.dueAt) : null } });
+    const P = prisma as Any;
+    const ac = await P.kanbanActivity.deleteMany({ where: { cardId: KB22.cardId, type: "CARD_DUE_SET", createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } });
+    console.log(`🧹 คืนสภาพ K2.2: คืน dueAt ของการ์ด ${KB22.cardId} เป็น ${KB22.dueAt ?? "null (ยังไม่กำหนดวัน)"} · ลบกิจกรรม CARD_DUE_SET ที่เพิ่งเกิด ${ac.count}`);
   }
 }
 

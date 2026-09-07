@@ -62,6 +62,10 @@ export type { BulkUpdatePatch, BulkUpdateResult } from "./cards";
 export { exportCardsCsv } from "./reports";
 export type { ExportCardsCsvInput } from "./reports";
 export type { TableCardLinkDto, TableGroupDto, TableRowDto } from "./types";
+// K2.2: มุมมองปฏิทิน + ลากตั้ง/เปลี่ยนกำหนดส่ง — ผู้เรียกนอกโมดูล (หน้า/action) ใช้ผ่าน facade เดียวกัน
+export { listBoardCalendar, setCardDueFromCalendar } from "./calendar";
+export type { ListBoardCalendarInput, SetCardDueFromCalendarResult } from "./calendar";
+export type { BoardCalendarDto, CalCardDto, CalDayDto, CalExternalDto } from "./types";
 
 // แจ้งเตือนเมื่อมอบหมายงาน — ย้ายตรรกะไป `notify.ts` ใน K1.2 (cards.ts ใช้ร่วมโดยไม่เกิด import วงกลม)
 // ชื่อเดิมคงไว้เป็น alias ภายในไฟล์นี้ เพื่อไม่ต้องแก้จุดเรียกเดิม

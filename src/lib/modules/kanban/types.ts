@@ -436,3 +436,44 @@ export type BoardTableDto = {
   pageSize: number;
   groups?: TableGroupDto[];
 };
+
+// ───────────────────────── K2.2 — มุมมองปฏิทิน (calendar.ts) ─────────────────────────
+// DTO บริสุทธิ์ (วันที่เป็น ISO string) — `CalendarView.tsx` (client) เป็นคนเรนเดอร์เท่านั้น
+// 🔴 อยู่ในไฟล์นี้ (ไม่ใช่ `calendar.ts` ที่แตะ prisma) ด้วยเหตุผลเดียวกับ K1.11/K1.12/K1.13/K2.1:
+//    `CalendarView.tsx` (client) ต้อง `import type` ได้โดยไม่ลาก `db.ts` → `pg` เข้าบันเดิลฝั่ง browser
+
+/** การ์ดของบอร์ดนี้ที่ปรากฏในปฏิทิน (ทั้งในวันและถาด "ยังไม่กำหนดวัน") */
+export type CalCardDto = {
+  id: string;
+  cardNo: number | null;
+  title: string;
+  /** ISO 8601 (UTC) — null = อยู่ในถาด "ยังไม่กำหนดวัน" */
+  dueAt: string | null;
+  columnName: string;
+  labels: { name: string; color: KanbanTagColor }[];
+  assignees: BoardPersonDto[];
+  /** dueAt < now && ยังไม่เสร็จ (completedAt null) */
+  isOverdue: boolean;
+  isDone: boolean;
+};
+
+/** งานจากระบบอื่น (อ่านอย่างเดียว) — มาจาก `src/lib/modules/calendar/service.ts` (`getCalendarEvents`) */
+export type CalExternalDto = {
+  id: string;
+  kind: string;
+  title: string;
+  startAt: string;
+  endAt: string;
+  /** หน้าต้นทาง — `/app/calendar?d=YYYY-MM-DD` (คลิกแล้วไปหน้านั้น ไม่เปิดหลังการ์ด) */
+  href: string;
+};
+
+export type CalDayDto = { cards: CalCardDto[]; external: CalExternalDto[] };
+
+export type BoardCalendarDto = {
+  range: { from: string; to: string };
+  /** คีย์ = วันที่ไทย "YYYY-MM-DD" — วันที่ไม่มีการ์ด/งานเลยจะไม่มีคีย์นี้ในอ็อบเจกต์ (client เติมช่องว่างเอง) */
+  days: Record<string, CalDayDto>;
+  /** การ์ด active ที่ไม่มี dueAt (ผ่านตัวกรองเดียวกับวันในปฏิทิน) */
+  unscheduled: CalCardDto[];
+};

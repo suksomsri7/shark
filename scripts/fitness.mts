@@ -321,6 +321,11 @@ const ALLOWED_EDGES = new Set([
   //   (approval/service.submitForApproval) แทนการปฏิเสธเฉย ๆ ⇒ คนที่มีเพดานสูงกว่ามากดต่อได้
   //   ทิศเดียว account→approval · ผลกลับเข้าเอกสารเกิดที่ composition root (approval-effects.ts)
   "account→approval",
+  // chokepoint (K2.2 — มุมมองปฏิทินของบอร์ดงาน): `listBoardCalendar` ผสมงานอ่านอย่างเดียวจากปฏิทินกลาง
+  //   ของร้าน (`calendar/service.getCalendarEvents` — ใบลา/นัดหมาย/เข้าพัก) เมื่อสวิตช์ "แสดงงานจากระบบอื่น"
+  //   เปิดอยู่ · ทิศเดียว kanban→calendar (อ่านอย่างเดียว ไม่มี write path กลับ)
+  //   — Fable อนุมัติล่วงหน้า (ledger/KANBAN-RUN.md §K2.2 กล่อง "เส้น import ข้ามโมดูลที่ Fable อนุมัติ")
+  "kanban→calendar",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

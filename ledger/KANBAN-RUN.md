@@ -72,7 +72,7 @@
 | **P1 ปิด** | qc:all เต็มชุด · verify prod (ภาพจริง) · handover P1 · Telegram | Fable | DONE | 6 ก.ย. | qc:all 253/261 → แก้ 8 ชุดแดง: chat-v2-shell (inbox import app-shell → ย้าย useInApp ไป lib/ui) · ai-wave5b (kanban_my_tasks ต้องรับชื่อพนักงานแบบเดิม → override ใน tools-kanban) · acc-v2 ×5 + read-master (เฉลย expected.json ค้าง → รัน acc-v2-expected-contact-profile/contacts) · acc-v2-security S16 (writeAudit ย้ายไป core/audit → ข้อสอบตามไปอ่าน) · prod: /developers/kanban 200 · openapi 56 op · ping 401 · handover `HANDOVER-2026-09-06-KANBAN-P1.md` |
 | **P2 — มุมมอง + อัตโนมัติ + รายงาน** |||||
 | K2.1 | มุมมองตาราง (แก้ในช่อง · เลือกหลาย · จัดกลุ่ม · CSV) ภาพ 04 | Sonnet | DONE | 6 ก.ย. 21:20 | k2.1 22/22 · regressions k1.1–k1.15/notify/ai เขียว (k1.11/k1.2 แดงชั่วคราวจากข้อมูลป้ายค้าง — ซ่อมแล้ว) · tsc 0 · fitness 23/23 · ภาพ 5 ใบ Fable เทียบ 04: คอลัมน์/คำไทย/ลำดับตรง · **หนี้ UI parity**: bulk-bar ลอยดำล่างจอ (แบบ = แถบฟ้าบนตาราง) · ชิปกำหนดส่งเป็นวันที่เต็มสีเทา (แบบ = สัมพัทธ์+สีตามความเร่ง) · deviation ยอมรับ 8 ข้อ (`wo-notes/kanban-K2.1.md` §4) · builder จับ oracle type error 12 จุด (→ กติกา 10) + ข้อมูลป้ายค้าง (→ finally resync) · เศษข้อมูลจากทดสอบมือ (#7 ชื่อ/ป้าย) Fable ซ่อม |
-| K2.2 | มุมมองปฏิทิน (ลากเปลี่ยนวัน · ถาดยังไม่กำหนด · ซ้อนจอง/ลา/ประชุม) ภาพ 05 | Sonnet | TODO (oracle พร้อม 17 ข้อ) | | |
+| K2.2 | มุมมองปฏิทิน (ลากเปลี่ยนวัน · ถาดยังไม่กำหนด · ซ้อนจอง/ลา/ประชุม) ภาพ 05 | Sonnet | DONE | 7 ก.ย. 08:10 | k2.2 16/16 · regressions k1.x/k2.1 เขียว (k1.1-S2.3 flake เดิม) · tsc 0 · fitness 23/23 (F2.1 เพิ่ม kanban→calendar) · ภาพ 4 ใบ Fable เทียบ 05: ถาด/สวิตช์/สัญลักษณ์/เดือน 7 คอลัมน์ตรง · **Fable แก้เอง**: grid `repeat(7,1fr)`→`minmax(0,1fr)` (คอลัมน์ อา. ล้นขอบขวา) ถ่ายซ้ำยืนยัน · builder เจอ+แก้ 3 บั๊ก (CSS grid auto-row ไม่ relayout ตอน patch → key ผูกจำนวนการ์ด · text-select ตอนลาก · ถาดมือถือ 230px) · deviation 4 ข้อยอมรับ (สัปดาห์เลื่อนทีละเดือน · จุดสี 3 แบบ · href งานระบบอื่น=/app/calendar?d= · ไม่ refresh) · ⚠️ ผู้ช่วยถูกตัดกลางคัน 22:00–07:00 (API 403 ฝั่งผู้ให้บริการ) |
 | K2.4 | มุมมองสรุป (4 ไทล์ เจาะลงการ์ดได้) | Sonnet | TODO (oracle พร้อม 13 ข้อ) | | |
 | K2.5 | มุมมองที่บันทึกไว้ (`KanbanBoardView` ส่วนตัว/ทั้งทีม) | Sonnet | TODO (oracle พร้อม 15 ข้อ) | | |
 | K2.6 | ฟิลด์กำหนดเอง 5 ชนิด (≤20) | Sonnet | TODO (oracle พร้อม 18 ข้อ) | | |
@@ -399,6 +399,7 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - ภาพ spec `"3.9"` ≥ 1 ใบ · ⚠️ oracle ฉีด deps.upload/post ปลอม · สร้าง PushDevice ชั่วคราวแล้วลบ · คืน emailKey เดิม
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 08:10 น. (7 ก.ย.) — **K2.2 ปิด** (Sonnet · งานจริง ~50 นาที แต่ถูก API 403 ตัดกลางคัน 22:00 → resume 07:00) · ความคืบหน้า P2 2/11 · เริ่ม K2.4
 - 21:20 น. — **K2.1 ปิด** (Sonnet 58 นาที · ระหว่างนั้น Fable เขียน oracle+สัญญาครบทั้ง 34 WO: K2.2–K2.11 + K3.1–K3.9 ทั้งชุด) · ความคืบหน้า P2 1/11 · เริ่ม K2.2
 - 20:10 น. — branding B5 ปิด (OTA ส่งแล้ว) → กลับมาบอร์ดงาน P2
 - 17:41 น. — **P1 ปิด** · qc:all 253/261 (20 นาที) → ทั้ง 8 ชุดแดงแก้แล้ว (2 ชุดเป็นผลจาก run นี้จริง: inbox import app-shell · kanban_my_tasks เปลี่ยนสัญญา — คืนแบบเดิม) · prod verify ผ่าน · handover เขียนแล้ว · Telegram ส่ง
