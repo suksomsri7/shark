@@ -633,6 +633,64 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: "[data-testid=rules-table]" }, { wait: 400 }],
     },
   ],
+  // K2.10 — รายงานในแอป (ไม่มี mockup — เกณฑ์ §3.7/§13 K2.10) · อ่านอย่างเดียวล้วนเหมือน 2.4 — ไม่มีขั้น
+  // เตรียม/คืนสภาพ seed (สลับแท็บฝั่ง client ล้วน ไม่ยิง server ซ้ำ นอกจากโหลดหน้าแรก)
+  "2.10": [
+    {
+      name: "reports-open",
+      path: `/app/sys/${SYS}/kanban/reports`,
+      onlyDevice: "desktop",
+      note: "แท็บเริ่มต้น 'ค้าง': ตัวเลขใหญ่ 4 ค่า + รายการค้างต่อบอร์ด",
+      expect: ["[data-testid=reports-page]", "[data-testid=reports-tab]", "[data-testid=reports-board-filter]"],
+      steps: [{ waitFor: "[data-testid=reports-page]" }, { wait: 400 }],
+    },
+    {
+      name: "reports-overdue",
+      path: `/app/sys/${SYS}/kanban/reports`,
+      onlyDevice: "desktop",
+      note: "กดแท็บ 'เลยกำหนด' — รายการเรียงเลยนานสุดก่อน คลิกแถวไปที่การ์ดจริงได้",
+      expect: ["[data-testid=reports-page]"],
+      steps: [
+        { waitFor: '[data-testid=reports-tab][data-tab-key="overdue"]' },
+        { click: '[data-testid=reports-tab][data-tab-key="overdue"]' },
+        { wait: 400 },
+      ],
+    },
+    {
+      name: "reports-workload",
+      path: `/app/sys/${SYS}/kanban/reports`,
+      onlyDevice: "desktop",
+      note: "กดแท็บ 'ภาระงาน' — กราฟ SVG แถบต่อคน (ค้าง/เลยกำหนด) + ตารางตัวเลข",
+      expect: ["[data-testid=reports-workload-chart]"],
+      steps: [
+        { waitFor: '[data-testid=reports-tab][data-tab-key="workload"]' },
+        { click: '[data-testid=reports-tab][data-tab-key="workload"]' },
+        { waitFor: "[data-testid=reports-workload-chart]" },
+        { wait: 400 },
+      ],
+    },
+    {
+      name: "reports-throughput-aging",
+      path: `/app/sys/${SYS}/kanban/reports`,
+      onlyDevice: "desktop",
+      note: "กดแท็บ 'อายุงาน' — กราฟแท่ง 4 ช่วงอายุ + ตารางต่อคอลัมน์ (throughput ดูซ้ำแบบเดียวกันที่แท็บ 'ผลงานรายสัปดาห์')",
+      expect: ["[data-testid=reports-aging-chart]"],
+      steps: [
+        { waitFor: '[data-testid=reports-tab][data-tab-key="aging"]' },
+        { click: '[data-testid=reports-tab][data-tab-key="aging"]' },
+        { waitFor: "[data-testid=reports-aging-chart]" },
+        { wait: 400 },
+      ],
+    },
+    {
+      name: "reports-mobile",
+      path: `/app/sys/${SYS}/kanban/reports`,
+      onlyDevice: "mobile",
+      note: "มือถือ: ตัวเลขเป็นชิปเลื่อนแนวนอน · แท็บเลื่อนแนวนอน",
+      expect: ["[data-testid=reports-page]"],
+      steps: [{ waitFor: "[data-testid=reports-page]" }, { wait: 400 }],
+    },
+  ],
   "2.8": [
     {
       name: "my-tasks-inbox",

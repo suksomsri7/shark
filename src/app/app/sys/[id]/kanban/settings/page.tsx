@@ -27,8 +27,9 @@ export default async function KanbanSettingsPage({ params }: { params: Promise<{
 
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "KANBAN" } });
   if (!sys) notFound();
+  const actor = toActor(auth.user.id, auth.active);
   // ชั้นที่ 1 ของโมดูล — คนที่ไม่มีสิทธิ์บอร์ดงานเลยไม่ควรเห็นแม้แต่หน้าตั้งค่า
-  if (!canReadKanban(toActor(auth.user.id, auth.active))) notFound();
+  if (!canReadKanban(actor)) notFound();
 
   const rows = await prisma.apiKey.findMany({
     where: { tenantId, systemId: id, revokedAt: null },
@@ -51,7 +52,7 @@ export default async function KanbanSettingsPage({ params }: { params: Promise<{
         back={{ href: `/app/sys/${id}`, label: sys.name }}
         desc="ตั้งค่า — คีย์ API สำหรับให้ระบบภายนอกและผู้ช่วย AI ทำงานกับบอร์ดของคุณ"
       />
-      <KanbanTabs systemId={id} />
+      <KanbanTabs systemId={id} actor={actor} />
       <ApiKeysPanel
         systemId={id}
         keys={keys}

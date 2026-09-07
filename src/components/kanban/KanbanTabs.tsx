@@ -8,13 +8,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { kanbanNavItems } from "@/lib/modules/kanban/nav";
+import type { KanbanActor } from "@/lib/modules/kanban/types";
 
-export function KanbanTabs({ systemId }: { systemId: string }) {
+/**
+ * K2.10: `actor` (ถ้าส่งมา) ใช้กรองแท็บ "รายงาน" ออกทั้งชุดสำหรับคนที่ไม่มีคีย์ `kanban.report.view`
+ * (OWNER ผ่านเสมอ) — page.tsx แต่ละหน้าที่เรียก `<KanbanTabs>` ส่ง actor ของ session มาให้ (คำนวณสิทธิ์
+ * server-side ผ่าน `canViewReports()` ของ access.ts ซึ่งไม่แตะ prisma จึง import ที่นี่ได้ปลอดภัย)
+ * ไม่ส่ง actor มา = ไม่กรอง (เผื่อจุดเรียกเดิมที่ยังไม่ผ่านการแก้ในรอบนี้)
+ */
+export function KanbanTabs({ systemId, actor }: { systemId: string; actor?: KanbanActor }) {
   const pathname = usePathname();
   const overview = `/app/sys/${systemId}`;
   const items = [
     { key: "overview", href: overview, label: "ภาพรวม", status: "ready" as const, wo: undefined },
-    ...kanbanNavItems(systemId),
+    ...kanbanNavItems(systemId, actor),
   ];
 
   return (

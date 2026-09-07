@@ -30,7 +30,7 @@ export default async function KanbanBoardsPage({ params }: { params: Promise<{ i
 
   return (
     <div className="flex flex-col gap-5">
-      <KanbanTabs systemId={id} />
+      <KanbanTabs systemId={id} actor={actor} />
       <BoardsHome systemId={id} home={home} units={units} nowMs={Date.now()} />
     </div>
   );

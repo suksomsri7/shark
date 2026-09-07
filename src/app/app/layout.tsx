@@ -10,7 +10,9 @@ import { getBrandingTokens } from "@/lib/branding/service";
 import { getUserPreferences } from "@/lib/core/user-preferences";
 import type { NavItem, SoonItem } from "@/components/app-shell/NavDrawer";
 // เมนูบอร์ดงาน 7 หมวด (§5.2) มาจากทะเบียนเดียวกับแถบแท็บในโมดูล — ห้ามพิมพ์ลิสต์ซ้ำที่นี่
+// K2.10: ส่ง actor เข้าไปด้วยให้ `kanbanNavChildren` ซ่อน "รายงาน" สำหรับคนที่ไม่มีคีย์ kanban.report.view
 import { kanbanNavChildren } from "@/lib/modules/kanban/nav";
+import { toActor } from "@/lib/modules/kanban/access";
 // เมนูของระบบแชทซ่อนตามสิทธิ์จริง — ใช้ทะเบียน/ตัวช่วยชุดเดียวกับด่านของโมดูล (ไม่พิมพ์คีย์ซ้ำ)
 import { evaluate } from "@/lib/core/rbac";
 import { membershipOf, CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
@@ -195,7 +197,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         // ใช้ร่วมกับแถบแท็บในโมดูล · drawer ใส่เฉพาะหมวดที่มี `page.tsx` จริง
         // (หมวดที่ยังไม่มา เช่น กล่องงานเข้า/ปฏิทินงาน/ระบบอัตโนมัติ/รายงาน/ตั้งค่า โชว์ป้าย
         //  "เร็ว ๆ นี้" ในแถบแท็บแทน — ลิงก์ที่กดแล้ว 404 คือ dead link ที่ qc-nav-functions.mts ห้าม)
-        return kanbanNavChildren(s);
+        return kanbanNavChildren(s, toActor(auth.user.id, auth.active));
       default:
         return undefined; // ที่เหลือ (COMING SOON ฯลฯ) = render inline หน้าเดียว ไม่มี sub-route
     }

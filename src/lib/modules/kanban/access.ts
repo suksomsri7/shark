@@ -64,6 +64,19 @@ export function canReadKanban(actor: KanbanActor): boolean {
 }
 
 /**
+ * K2.10 — สิทธิ์ดูหน้า "รายงาน" (`/kanban/reports`): OWNER ผ่านเสมอ (โดยนัย) · อื่น ๆ ต้องเข้าโมดูลได้
+ * (`canReadKanban`) **และ** มีคีย์ `kanban.report.view` ชัด ๆ — ไม่ผูกกับ `evaluate()` ของ RBAC ทั่วไป
+ * (MANAGER ไม่ได้รายงานฟรีจากการเป็น MANAGER เหมือนสิทธิ์อื่น ๆ ของโมดูล — รายงานเห็นภาพรวมทั้งองค์กร
+ * รวมบอร์ดที่ MANAGER ไม่ได้คุมโดยตรงด้วย จึงต้องเปิดให้ทีละคนจากเจ้าของ)
+ * export ไว้ให้ `reports.ts` (server) ใช้เป็นด่านจริง และ `KanbanTabs.tsx`/`nav.ts` (client-safe เพราะไฟล์
+ * นี้ไม่แตะ prisma) ใช้ซ่อนเมนู "รายงาน" ของคนที่ไม่มีคีย์ — ไม่ต้อง import `reports.ts` ที่ลาก `./db` ไปด้วย
+ */
+export function canViewReports(actor: KanbanActor): boolean {
+  if (actor.role === "OWNER") return true;
+  return canReadKanban(actor) && actor.permissions["kanban.report.view"] === true;
+}
+
+/**
  * ชั้นที่ 2 — บทบาทของ actor ในบอร์ดใบนี้ (§6.2)
  *
  * @param memberships แถวสมาชิกของบอร์ดใบนี้ (ส่งเฉพาะแถวของ actor ก็พอ) — ไม่ส่ง = ถือว่าไม่ได้ถูกเชิญ

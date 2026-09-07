@@ -31,7 +31,7 @@ export default async function KanbanMyTasksPage({ params }: { params: Promise<{ 
   return (
     <div className="flex max-w-5xl flex-col gap-5">
       <PageHeader title={sys.name} back={{ href: `/app/sys/${id}`, label: sys.name }} desc="งานของฉัน — การ์ดที่มอบหมายให้ฉันข้ามทุกบอร์ด" />
-      <KanbanTabs systemId={id} />
+      <KanbanTabs systemId={id} actor={actor} />
       <MyTasks
         systemId={id}
         overview={overview}

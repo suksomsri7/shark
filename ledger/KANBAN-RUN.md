@@ -79,7 +79,7 @@
 | K2.7 | เทมเพลตการ์ด + กำหนดส่งซ้ำ (cron) | Sonnet | DONE | 7 ก.ย. 12:00 | k2.7 31/31 (oracle จริง 31) · migration kanban_v2_o (additive · อ่าน SQL) · regressions k1.x/k2.x/notify/ai/cron เขียว · tsc 0 (builder จับ type error ของตัวเองผ่าน next build) · fitness 23/23 · ภาพ 3 ใบ Fable ดู: บล็อกกำหนดส่งซ้ำ + เมนูบันทึกเป็นเทมเพลต + จากเทมเพลต ▾ · deviation ยอมรับ: createCardFromTemplate คืนการ์ดเต็ม · CardTemplatesSettings อยู่ระดับบน · ไม่มีปุ่มเทมเพลตบนมือถือ (หนี้) · ไม่มี REST op (หนี้รวม P2) |
 | K2.8 | กล่องงานเข้าส่วนตัว (`KanbanInboxItem` · จดเร็ว · ส่งเข้าบอร์ด) ภาพ 06 ฝั่งซ้าย | Sonnet | DONE | 7 ก.ย. 12:40 | k2.8 17/17 หลัง Fable แก้ oracle ตาม builder แย้งถูก (pook = VIEWER บนบอร์ด TENANT → เชิญ EDITOR ชั่วคราว — บั๊กชั้นเดียวกับ K2.6) · migration kanban_v2_n (additive · partial unique เขียนมือ) · regressions k1.x/k2.x/notify/nav เขียว · tsc 0 · fitness 23/23 · ภาพ 4 ใบ Fable เทียบ 06: หัวทักทาย+วันที่+ปุ่มจดงานเร็ว · 2 คอลัมน์ · ชิปที่มา + ป้าย AI · ส่งเข้าบอร์ด popover ทำงานจริง · consumer kanban.inbox.requested ลงทะเบียน · หนี้: แถบล่างมือถือ 5 เมนู (ภาพ 07 ค) ยังไม่มีทั้งแอป |
 | K2.9 | ตัวสร้างกฎอัตโนมัติ (5 ชนิด · ทดลองรัน · บันทึกการทำงาน) ภาพ 08 + ลงทะเบียน 8 event | Opus | DONE | 7 ก.ย. 13:40 | k2.9 26/26 (Fable แก้ S1.1 ตาม builder แย้งถูก — regex quote identifier ตัวเล็ก) · migration kanban_v2_q (additive · ไม่แตะคอลัมน์เดิม) · regressions k1.x/k2.x + qc-automation 13/13 + qc-webhook-ui 11/11 เขียว · tsc 0 · fitness 23/23 (F2.1 + kanban→approval) · ภาพ 5 ใบ Fable เทียบ 08: หัว/ชิปโควตา/ซ้าย 6 ชนิด/ประโยคกฎ/ตารางกฎ/บันทึก OK+ล้ม ตรงแบบดีมาก · Fable รันซ้ำเจอ S8.1 แดงชั่วคราวจากเศษกฎภาพ (builder ล้างทันหลังจากนั้น → 26/26) · หนี้: describeRule ยกเงื่อนไขคอลัมน์เฉพาะ card.moved · ชิป "โดยกฎอัตโนมัติ" ในความเห็น · dryRun DUE_DATE ไม่จำลอง offset ย้อนหลัง |
-| K2.10 | รายงานในแอป (ค้าง/เลยกำหนด/ภาระงาน/throughput/aging) + ส่งออก | Sonnet | TODO (oracle พร้อม 22) | | |
+| K2.10 | รายงานในแอป (ค้าง/เลยกำหนด/ภาระงาน/throughput/aging) + ส่งออก | Sonnet | DONE | 7 ก.ย. 14:20 | k2.10 22/22 · ไม่มี migration · regressions k1.x/k2.x/notify/nav/automation/webhook เขียว · tsc 0 · fitness 23/23 · ภาพ 5 ใบ Fable ดู: ตัวเลข 4 ค่า + 5 แท็บ + กราฟภาระงาน/อายุงาน SVG + ตาราง · deviation ยอมรับ: aging ใช้ระยะเวลาจริง (ตาม oracle) · ไม่มี CSV แท็บค้าง · กรองเมนูรายงานถึง drawer ☰ ด้วย · หนี้: REST op รายงาน (รวบ P2) · เมนูระบบ "ปฏิทินงาน" ระดับระบบยังเป็นเร็ว ๆ นี้ (ปฏิทินมีแค่ระดับบอร์ด — ตัดสินตอนปิด P2: ชี้ไปบอร์ดแรกหรือรวมทุกบอร์ดใน K3.8) |
 | K2.11 | อีเมลสรุป + watch + ตั้งค่าความถี่แจ้งเตือน + cron เตือนกำหนดส่ง | Opus | TODO (oracle พร้อม 30) | | |
 | K2.3 | มุมมองไทม์ไลน์ (เลื่อนได้ตาม D7) | Sonnet | TODO (oracle พร้อม 17) | | |
 | **P3 — เชื่อมทุกโมดูล + AI** |||||
@@ -399,6 +399,7 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - ภาพ spec `"3.9"` ≥ 1 ใบ · ⚠️ oracle ฉีด deps.upload/post ปลอม · สร้าง PushDevice ชั่วคราวแล้วลบ · คืน emailKey เดิม
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 14:20 น. — **K2.10 ปิด** (Sonnet 43 นาที) · ความคืบหน้า P2 9/11 · เริ่ม K2.11 (Opus)
 - 13:40 น. — **K2.9 ปิด** (Opus 55 นาที) · ความคืบหน้า P2 8/11 · เริ่ม K2.10
 - 12:40 น. — **K2.8 ปิด** (Sonnet 38 นาที) · ความคืบหน้า P2 7/11 · เริ่ม K2.9 (Opus)
 - 12:00 น. — **K2.7 ปิด** (Sonnet 64 นาที) · ความคืบหน้า P2 6/11 · เริ่ม K2.8

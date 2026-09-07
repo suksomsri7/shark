@@ -84,7 +84,9 @@ import { createBoardFromTemplate, deleteTenantTemplate, saveBoardAsTemplate } fr
 import { archiveWithUndo, completeCard, undo } from "./my-tasks";
 import { normalizeUploadType } from "@/lib/storage/service";
 // K2.1 — มุมมองตาราง: เลือกหลายรายการ (`cards.bulkUpdate` — import ไว้กับ cards.ts ข้างบน) · ส่งออก CSV (`reports.ts`)
-import { exportCardsCsv } from "./reports";
+// K2.10 — รายงาน (5 รายงานเรียกตรงจาก page.tsx เหมือน K2.9/automation — ที่นี่มีแค่ action ส่งออก CSV ของแท็บที่เปิดอยู่)
+import { exportCardsCsv, exportReportCsv } from "./reports";
+import type { ReportKind } from "./types";
 // K2.2 — มุมมองปฏิทิน: ลากตั้ง/เปลี่ยนกำหนดส่ง (บริการอยู่ `calendar.ts` — `listBoardCalendar` เรียกตรงจาก page.tsx)
 import { setCardDueFromCalendar } from "./calendar";
 import type { BoardFilters } from "./filters";
@@ -1343,6 +1345,31 @@ export async function exportBoardCsvAction(input: {
   const actor = toActor(auth.user.id, auth.active);
   try {
     const csv = await exportCardsCsv(ctx, actor, input.boardId, { now: new Date(), filters: input.filters ?? {} });
+    return { ok: true, csv };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ส่งออกไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/**
+ * K2.10 — ส่งออก CSV ของแท็บรายงานที่กำลังเปิดอยู่ (เลยกำหนด/ภาระงาน/ผลงานรายสัปดาห์/อายุงาน)
+ * `assertKanbanCan` ที่นี่เป็นแค่ด่าน "เข้าโมดูลได้ไหม" (เหมือนแพตเทิร์นของ `exportBoardCsvAction`)
+ * — ด่านจริง (`kanban.report.view` + OWNER) อยู่ใน `reports.assertReportAccess()` ซึ่งเป็นผู้ตัดสินสุดท้าย
+ * (MANAGER ผ่าน `assertKanbanCan` ได้เสมอผ่าน `evaluate()` แต่ยังโดน `assertReportAccess` ปฏิเสธถ้าไม่มีคีย์จริง)
+ * ไม่มี route `/api/kanban/reports` สาธารณะ — ฝั่งจอแปลงข้อความนี้เป็นไฟล์ดาวน์โหลดผ่าน Blob เอง
+ */
+export async function exportReportCsvAction(input: {
+  systemId: string;
+  kind: ReportKind;
+  boardId?: string;
+}): Promise<{ ok: true; csv: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.report.view");
+  if (!input.systemId) return { ok: false, message: "ไม่พบระบบนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const csv = await exportReportCsv(ctx, actor, input.kind, { now: new Date(), boardId: input.boardId });
     return { ok: true, csv };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ส่งออกไม่สำเร็จ ลองใหม่อีกครั้ง" };

@@ -656,3 +656,45 @@ export type InboxItemDto = {
   /** ISO 8601 (UTC) — หน้าจอแปลงเป็นเวลาไทยเอง */
   createdAt: string;
 };
+
+// ───────────────────────── K2.10 — รายงาน (reports.ts) ─────────────────────────
+// DTO บริสุทธิ์ (ไม่มี Date/Prisma model) — `ReportsPage.tsx` (client) ต้อง `import type` ได้โดยไม่ลาก
+// `db.ts` → `pg` เข้าบันเดิลฝั่ง browser ด้วยเหตุผลเดียวกับ K1.11/K1.12/K1.13/K2.1/K2.2/K2.4/K2.5
+
+/** ตัวเลขค้างของบอร์ดเดียว — `dueToday`/`dueWeek` คำนวณจากปฏิทินไทย (จ.–อา.) ของ `now` ที่ส่งเข้า `openCards` */
+export type ReportOpenBoardDto = { boardId: string; boardName: string; open: number; overdue: number; dueToday: number; dueWeek: number };
+
+export type ReportOpenCardsDto = { total: number; overdue: number; byBoard: ReportOpenBoardDto[] };
+
+export type ReportOverdueRowDto = {
+  cardId: string;
+  cardNo: number | null;
+  title: string;
+  boardId: string;
+  boardName: string;
+  columnName: string;
+  /** ISO 8601 (UTC) */
+  dueAt: string;
+  /** จำนวนวันไทยเต็มที่เลยมาแล้ว (≥ 0) */
+  daysOverdue: number;
+  assignees: BoardPersonDto[];
+};
+
+/** เรียงเลยกำหนดนานสุดก่อน · `take: 500` (§12.1) */
+export type ReportOverdueDto = { total: number; rows: ReportOverdueRowDto[] };
+
+export type ReportWorkloadRowDto = { userId: string; name: string; open: number; overdue: number; dueWeek: number; done30d: number };
+
+/** เรียง `open` มากก่อน — `userId: "none"` = ยังไม่มอบหมาย */
+export type ReportWorkloadDto = { rows: ReportWorkloadRowDto[] };
+
+export type ReportThroughputWeekDto = { weekStart: string; created: number; completed: number };
+
+export type ReportAgingBucketKey = "0-7" | "8-14" | "15-30" | "31+";
+export type ReportAgingBucketDto = { key: ReportAgingBucketKey; label: string; count: number };
+export type ReportAgingColumnDto = { boardId: string; boardName: string; columnName: string; open: number; avgDays: number; maxDays: number };
+
+/** `byColumn` เรียง `avgDays` มากก่อน */
+export type ReportAgingDto = { buckets: ReportAgingBucketDto[]; byColumn: ReportAgingColumnDto[] };
+
+export type ReportKind = "overdue" | "workload" | "throughput" | "aging";
