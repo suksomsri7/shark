@@ -731,8 +731,17 @@ export function BoardView({
   const activeFilters = hasAnyFilter(filters);
   const totalCardCount = columns.reduce((n, c) => n + c.cards.length, 0);
   const filterCtx = { now: new Date(nowMs), userId: board.viewerUserId || null };
+  // K2.4: ผูก `columnId` ให้การ์ดแต่ละใบก่อนกรอง (`BoardCardDto` เดิมไม่มีฟิลด์นี้ — คอลัมน์คือ context
+  // ของ `col` เอง) เพื่อให้ `?column=` (จากไทล์ "การ์ดต่อคอลัมน์" ของมุมมองสรุป K2.4) ซ่อนคอลัมน์อื่นได้จริง
   const filteredColumns = activeFilters
-    ? columns.map((col) => ({ ...col, cards: filterBoardCards(col.cards, filters, filterCtx) }))
+    ? columns.map((col) => ({
+        ...col,
+        cards: filterBoardCards(
+          col.cards.map((c) => ({ ...c, columnId: col.id })),
+          filters,
+          filterCtx,
+        ),
+      }))
     : columns;
   const visibleCardCount = activeFilters
     ? filteredColumns.reduce((n, c) => n + c.cards.length, 0)
@@ -911,7 +920,7 @@ export function BoardView({
       />
 
       {/* ── แถบตัวกรองที่เปิดอยู่ (K1.11) — ซ่อนเองเมื่อไม่มีตัวกรองทำงาน ── */}
-      <FilterBar filters={filters} totalCount={totalCardCount} visibleCount={visibleCardCount} members={board.members} />
+      <FilterBar filters={filters} totalCount={totalCardCount} visibleCount={visibleCardCount} members={board.members} columns={board.columns} />
 
       {/* ── กรองแล้วไม่เจอสักใบ — แทนที่กองคอลัมน์ด้วย empty state (§5.7) ── */}
       {activeFilters && visibleCardCount === 0 ? (

@@ -296,7 +296,7 @@ export function CalendarView({
           });
         }}
       />
-      <FilterBar filters={filters} totalCount={totalCardCount} visibleCount={visibleCount} members={board.members} />
+      <FilterBar filters={filters} totalCount={totalCardCount} visibleCount={visibleCount} members={board.members} columns={board.columns} />
       {/* ── แถบปฏิทิน: สัปดาห์/เดือน · ‹ เดือน ปีพ.ศ. › · วันนี้ ── */}
       <div className="flex flex-none flex-wrap items-center" style={{ gap: 8, padding: "9px 20px", borderBottom: "1px solid var(--color-line)" }}>
         <div className="flex" style={{ gap: 2, border: "1px solid var(--color-line)", borderRadius: 8, padding: 2 }}>

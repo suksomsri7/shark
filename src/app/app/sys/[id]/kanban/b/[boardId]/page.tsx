@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { canReadKanban, getBoardView, KanbanNotFoundError, listBoardCalendar, listBoardTable, toActor } from "@/lib/modules/kanban/service";
+import { boardSummary, canReadKanban, getBoardView, KanbanNotFoundError, listBoardCalendar, listBoardTable, toActor } from "@/lib/modules/kanban/service";
 import type { TableGroupBy, TableSort } from "@/lib/modules/kanban/service";
 import { boardFiltersFromParams } from "@/lib/modules/kanban/search";
 // K1.14 — ปุ่มลัดปิดได้รายคน (แบบ §5.6) → อ่านค่าที่นี่แล้วส่งลงเป็น prop (client ไม่ต้องยิงถามเอง)
@@ -11,6 +11,8 @@ import { BoardView } from "@/components/kanban/BoardView";
 import { TableView } from "@/components/kanban/TableView";
 // K2.2 — มุมมองปฏิทิน `?view=calendar` (แท็บใน BoardHeader)
 import { CalendarView } from "@/components/kanban/CalendarView";
+// K2.4 — มุมมองสรุป `?view=summary` (แท็บใน BoardHeader)
+import { SummaryView } from "@/components/kanban/SummaryView";
 
 const GROUP_VALUES: readonly TableGroupBy[] = ["column", "assignee", "label"];
 const SORT_VALUES: readonly TableSort[] = ["due", "created", "updated", "position"];
@@ -44,6 +46,7 @@ export default async function KanbanBoardPage({
     due?: string;
     status?: string;
     q?: string;
+    column?: string;
     view?: string;
     group?: string;
     sort?: string;
@@ -71,7 +74,8 @@ export default async function KanbanBoardPage({
   if (!board) notFound();
 
   const filters = boardFiltersFromParams(query);
-  const view = query.view === "table" ? "table" : query.view === "calendar" ? "calendar" : "board";
+  const view =
+    query.view === "table" ? "table" : query.view === "calendar" ? "calendar" : query.view === "summary" ? "summary" : "board";
 
   if (view === "calendar") {
     const nowMs = Date.parse(board.now);
@@ -89,6 +93,11 @@ export default async function KanbanBoardPage({
     const data = await listBoardCalendar(ctx, actor, boardId, { from, to, now: new Date(board.now), filters, includeExternal: ext });
     const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
     return <CalendarView board={board} data={data} filters={filters} month={monthKey} mode={mode} ext={ext} />;
+  }
+
+  if (view === "summary") {
+    const data = await boardSummary(ctx, actor, boardId, { now: new Date(board.now), filters });
+    return <SummaryView board={board} data={data} filters={filters} />;
   }
 
   if (view === "table") {

@@ -415,6 +415,37 @@ const SPECS: Record<string, Spec[]> = {
       expect: ["[data-testid=calendar-view]", "[data-testid=calendar-unscheduled]"],
     },
   ],
+  // K2.4 — มุมมองสรุป (ไม่มี mockup — เกณฑ์ §3.7) — อ่านอย่างเดียวล้วน (ไม่มีการลาก/แก้ค่า) ⇒ ไม่ต้องมี
+  // ขั้นเตรียม/คืนสภาพ seed เหมือน 2.1/2.2 (คลิกไทล์แค่ navigate ไป `?view=table&...` ไม่เขียน DB)
+  "2.4": [
+    {
+      name: "summary-view",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=summary`,
+      onlyDevice: "desktop",
+      note: "มุมมองสรุป (เกณฑ์ §3.7): ตัวเลขใหญ่ 5 ค่า + 4 ไทล์ (คอลัมน์/คน/กำหนดส่ง/ป้าย) + กราฟ throughput",
+      expect: ["[data-testid=summary-view]", "[data-testid=summary-tile]", "[data-testid=summary-chart]"],
+      steps: [{ waitFor: "[data-testid=summary-tile]" }],
+    },
+    {
+      name: "summary-tile-clicked-table",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=summary`,
+      onlyDevice: "desktop",
+      note: "กดไทล์ป้าย 'ด่วน' → ต้องไปมุมมองตารางที่กรองแล้ว จำนวนแถวต้องเท่ากับตัวเลขในไทล์ (ยืนยันด้วยตา)",
+      expect: ["[data-testid=table-view]", "[data-testid=table-row]"],
+      steps: [
+        { waitFor: '[data-testid=summary-tile][data-tile-group="label"][data-tile-label="ด่วน"]' },
+        { click: '[data-testid=summary-tile][data-tile-group="label"][data-tile-label="ด่วน"]' },
+        { waitFor: "[data-testid=table-view]", timeoutMs: 6000 },
+      ],
+    },
+    {
+      name: "summary-view",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=summary`,
+      onlyDevice: "mobile",
+      note: "มือถือ — ไทล์เรียง 1 คอลัมน์",
+      expect: ["[data-testid=summary-view]"],
+    },
+  ],
 };
 const specs: Spec[] = WO === "path" ? [{ name: "custom", path: argv[1]! }] : (SPECS[WO] ?? []);
 if (specs.length === 0) { console.error(`❌ ไม่มี spec ของ WO ${WO}`); process.exit(2); }

@@ -66,6 +66,10 @@ export type { TableCardLinkDto, TableGroupDto, TableRowDto } from "./types";
 export { listBoardCalendar, setCardDueFromCalendar } from "./calendar";
 export type { ListBoardCalendarInput, SetCardDueFromCalendarResult } from "./calendar";
 export type { BoardCalendarDto, CalCardDto, CalDayDto, CalExternalDto } from "./types";
+// K2.4: มุมมองสรุป (4 ไทล์ เจาะลงการ์ดได้) — ผู้เรียกนอกโมดูล (หน้า) ใช้ผ่าน facade เดียวกัน
+export { boardSummary } from "./summary";
+export type { BoardSummaryInput } from "./summary";
+export type { BoardSummaryDto, SummaryLabelTileDto, SummaryThroughputWeekDto, SummaryTileDto } from "./types";
 
 // แจ้งเตือนเมื่อมอบหมายงาน — ย้ายตรรกะไป `notify.ts` ใน K1.2 (cards.ts ใช้ร่วมโดยไม่เกิด import วงกลม)
 // ชื่อเดิมคงไว้เป็น alias ภายในไฟล์นี้ เพื่อไม่ต้องแก้จุดเรียกเดิม

@@ -28,7 +28,8 @@ const VIEWS: { key: string; icon: string; label: string; ready?: boolean }[] = [
   // K2.2 — เปิดใช้จริงแล้ว (เดิม "เร็ว ๆ นี้")
   { key: "calendar", icon: "cal", label: "ปฏิทิน", ready: true },
   { key: "timeline", icon: "chart", label: "ไทม์ไลน์" },
-  { key: "summary", icon: "pct", label: "สรุป" },
+  // K2.4 — เปิดใช้จริงแล้ว (เดิม "เร็ว ๆ นี้")
+  { key: "summary", icon: "pct", label: "สรุป", ready: true },
 ];
 
 const chipStyle: React.CSSProperties = {
@@ -78,7 +79,7 @@ export function BoardHeader({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const activeFilterCount = ["assignee", "label", "due", "status", "q"].filter(
+  const activeFilterCount = ["assignee", "label", "due", "status", "q", "column"].filter(
     (k) => Boolean((filters as Record<string, string | undefined>)[k]),
   ).length;
 
@@ -94,7 +95,8 @@ export function BoardHeader({
   // K2.1/K2.2 — สลับมุมมอง (บอร์ด/ตาราง/ปฏิทิน) คงตัวกรองไว้ (assignee/label/due/status/q) · ล้างพารามิเตอร์
   // เฉพาะของมุมมองที่ไม่ได้ไป (table: group/sort/page · calendar: month/mode/ext) — ไม่งั้นสลับกลับมาแล้วลิงก์ค้าง
   const rawView = searchParams.get("view");
-  const currentView = rawView === "table" ? "table" : rawView === "calendar" ? "calendar" : "board";
+  const currentView =
+    rawView === "table" ? "table" : rawView === "calendar" ? "calendar" : rawView === "summary" ? "summary" : "board";
   const hrefForView = (viewKey: string): string => {
     const next = new URLSearchParams(searchParams.toString());
     if (viewKey === "board") next.delete("view");

@@ -18,7 +18,7 @@ const DUE_LABEL: Record<DueBucket, string> = {
   none: "ไม่กำหนด",
 };
 
-type FilterKey = "assignee" | "label" | "due" | "status" | "q";
+type FilterKey = "assignee" | "label" | "due" | "status" | "q" | "column";
 
 function removeParam(current: URLSearchParams, key: string): string {
   const next = new URLSearchParams(current.toString());
@@ -32,11 +32,14 @@ export function FilterBar({
   totalCount,
   visibleCount,
   members,
+  columns = [],
 }: {
   filters: BoardFilters;
   totalCount: number;
   visibleCount: number;
   members: BoardPersonDto[];
+  /** K2.4 — เอาไว้แปล `filters.column` (columnId) เป็นชื่อคอลัมน์ในชิป "คอลัมน์: X" */
+  columns?: readonly { id: string; name: string }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -44,15 +47,18 @@ export function FilterBar({
 
   const nameOfAssignee = (id: string): string => {
     if (id === "me") return "ฉัน";
+    if (id === "none") return "ไม่มีผู้รับผิดชอบ";
     return members.find((m) => m.userId === id)?.name ?? id;
   };
+  const nameOfColumn = (id: string): string => columns.find((c) => c.id === id)?.name ?? id;
 
   const chips: { key: FilterKey; text: string }[] = [];
   if (filters.assignee) chips.push({ key: "assignee", text: `ผู้รับผิดชอบ: ${nameOfAssignee(filters.assignee)}` });
-  if (filters.label) chips.push({ key: "label", text: `ป้าย: ${filters.label}` });
+  if (filters.label) chips.push({ key: "label", text: `ป้าย: ${filters.label === "none" ? "ไม่มีป้ายกำกับ" : filters.label}` });
   if (filters.due) chips.push({ key: "due", text: `กำหนดส่ง: ${DUE_LABEL[filters.due]}` });
   if (filters.status) chips.push({ key: "status", text: `สถานะ: ${filters.status === "done" ? "เสร็จ" : "ยังไม่เสร็จ"}` });
   if (filters.q) chips.push({ key: "q", text: `ค้นหา: "${filters.q}"` });
+  if (filters.column) chips.push({ key: "column", text: `คอลัมน์: ${nameOfColumn(filters.column)}` });
 
   if (chips.length === 0) return null;
 

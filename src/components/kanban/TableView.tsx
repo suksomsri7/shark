@@ -294,10 +294,10 @@ export function TableView({
           onToggleStar={() => toggleStar(starred, setStarred, systemId, board.id, showToast)}
           onRename={(name) => renameBoard(name, boardName, setBoardName, systemId, board.id, showToast)}
         />
-        <FilterBar filters={filters} totalCount={totalCardCount} visibleCount={table.total} members={board.members} />
+        <FilterBar filters={filters} totalCount={totalCardCount} visibleCount={table.total} members={board.members} columns={board.columns} />
         <div data-testid="table-view" className="flex-1 overflow-y-auto">
           {rows.length === 0 ? (
-            <EmptyState hasFilters={Boolean(filters.q || filters.assignee || filters.label || filters.due || filters.status)} onClear={() => router.push(pathname)} />
+            <EmptyState hasFilters={Boolean(filters.q || filters.assignee || filters.label || filters.due || filters.status || filters.column)} onClear={() => router.push(pathname)} />
           ) : (
             rows.map((r) => (
               <button
@@ -342,7 +342,7 @@ export function TableView({
         onToggleStar={() => toggleStar(starred, setStarred, systemId, board.id, showToast)}
         onRename={(name) => renameBoard(name, boardName, setBoardName, systemId, board.id, showToast)}
       />
-      <FilterBar filters={filters} totalCount={totalCardCount} visibleCount={table.total} members={board.members} />
+      <FilterBar filters={filters} totalCount={totalCardCount} visibleCount={table.total} members={board.members} columns={board.columns} />
 
       {/* ── แถบเครื่องมือ: ค้นในบอร์ดนี้ · จัดกลุ่ม · เรียง · ส่งออก CSV · เพิ่มการ์ด ── */}
       <div className="flex flex-none flex-wrap items-center" style={{ gap: 8, padding: "9px 20px", borderBottom: "1px solid var(--color-line)" }}>
@@ -404,7 +404,7 @@ export function TableView({
 
       <div data-testid="table-view" className="flex-1 overflow-auto">
         {rows.length === 0 ? (
-          <EmptyState hasFilters={Boolean(filters.q || filters.assignee || filters.label || filters.due || filters.status)} onClear={() => router.push(pathname)} />
+          <EmptyState hasFilters={Boolean(filters.q || filters.assignee || filters.label || filters.due || filters.status || filters.column)} onClear={() => router.push(pathname)} />
         ) : (
           <table className="w-full border-collapse" style={{ fontSize: 12.5 }}>
             <thead>

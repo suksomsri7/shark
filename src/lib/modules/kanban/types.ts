@@ -477,3 +477,29 @@ export type BoardCalendarDto = {
   /** การ์ด active ที่ไม่มี dueAt (ผ่านตัวกรองเดียวกับวันในปฏิทิน) */
   unscheduled: CalCardDto[];
 };
+
+// ───────────────────────── K2.4 — มุมมองสรุป (summary.ts) ─────────────────────────
+// DTO บริสุทธิ์ (ไม่มี Date/Prisma model) — `SummaryView.tsx` (client) เป็นคนเรนเดอร์เท่านั้น
+// 🔴 `href` ของทุกไทล์ชี้ไป `?view=table&...` พร้อมตัวกรองที่กดจริง — เจาะลงแล้วต้องได้จำนวนเท่ากับ `count`
+//    เป๊ะ (สัญญา ledger/KANBAN-RUN.md §K2.4 · ข้อสอบ S1.5) — ห้ามเปลี่ยนวิธีนับที่ `summary.ts` โดยไม่เปลี่ยน
+//    `href`/`listBoardTable` (K2.1) คู่กัน
+// 🔴 อยู่ในไฟล์บริสุทธิ์นี้ (ไม่ใช่ `summary.ts` ที่แตะ prisma) ด้วยเหตุผลเดียวกับ K1.11/K1.12/K1.13/K2.1/K2.2:
+//    `SummaryView.tsx` (client) ต้อง `import type` ได้โดยไม่ลาก `db.ts` → `pg` เข้าบันเดิลฝั่ง browser
+
+/** ไทล์ 1 แถวของแต่ละมิติ (คอลัมน์/คน/กำหนดส่ง/ป้าย) — `href` พาไปตารางที่กรองแล้ว (`?view=table&...`) */
+export type SummaryTileDto = { key: string; label: string; count: number; href: string };
+
+/** ไทล์ของมิติ "ป้ายกำกับ" — มีสีเพิ่มจาก `SummaryTileDto` (จุดสีหน้าชื่อป้าย) */
+export type SummaryLabelTileDto = SummaryTileDto & { color: KanbanTagColor };
+
+export type SummaryThroughputWeekDto = { weekStart: string; created: number; completed: number };
+
+export type BoardSummaryDto = {
+  totals: { open: number; overdue: number; dueToday: number; dueWeek: number; done: number };
+  byColumn: SummaryTileDto[];
+  byAssignee: SummaryTileDto[];
+  byDue: SummaryTileDto[];
+  byLabel: SummaryLabelTileDto[];
+  /** 8 สัปดาห์ล่าสุด (จันทร์ไทยของแต่ละสัปดาห์) — สัปดาห์นี้อยู่ท้ายสุด */
+  throughput: SummaryThroughputWeekDto[];
+};

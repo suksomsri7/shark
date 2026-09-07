@@ -26,16 +26,20 @@ export type CardStatus = "done" | "open";
  */
 export type BoardFilters = {
   q?: string;
-  assignee?: "me" | (string & {});
-  label?: string;
+  /** `"none"` = ไม่มีผู้รับผิดชอบเลย (K2.4 — ไทล์ "ไม่มีผู้รับผิดชอบ" ของมุมมองสรุป) */
+  assignee?: "me" | "none" | (string & {});
+  /** `"none"` = ไม่มีป้ายกำกับเลย (K2.4 — ไทล์ "ไม่มีป้ายกำกับ") */
+  label?: "none" | (string & {});
   due?: DueBucket;
   status?: CardStatus;
   board?: string;
+  /** K2.4 — คอลัมน์ (columnId) กรองเฉพาะการ์ดของคอลัมน์นั้น ใช้เจาะลงจากไทล์ "การ์ดต่อคอลัมน์" ของมุมมองสรุป */
+  column?: string;
 };
 
 /** มีตัวกรองแกนไหนทำงานอยู่ไหม (ใช้ตัดสินว่าจะโชว์ `FilterBar`/ข้อความ "ไม่มีการ์ดตรงกับตัวกรอง" ไหม) */
 export function hasAnyFilter(filters: BoardFilters): boolean {
-  return Boolean(filters.q || filters.assignee || filters.label || filters.due || filters.status);
+  return Boolean(filters.q || filters.assignee || filters.label || filters.due || filters.status || filters.column);
 }
 
 const DUE_VALUES: readonly DueBucket[] = ["overdue", "today", "week", "none"];
@@ -53,6 +57,7 @@ export function boardFiltersFromParams(params: Record<string, string | undefined
   if (params.due && (DUE_VALUES as readonly string[]).includes(params.due)) filters.due = params.due as DueBucket;
   if (params.status && (STATUS_VALUES as readonly string[]).includes(params.status)) filters.status = params.status as CardStatus;
   if (params.q) filters.q = params.q;
+  if (params.column) filters.column = params.column;
   return filters;
 }
 
@@ -149,6 +154,9 @@ export type FilterableCard = {
   assignees?: readonly { userId: string }[];
   /** ชื่อป้าย — string[] ดิบ (Json ของ Prisma) หรือ `{name}[]` (BoardLabelDto[]) */
   labels?: unknown;
+  /** K2.4 — คอลัมน์ที่การ์ดอยู่ (ใช้กับ `filters.column`) · ไม่มีค่า = ผู้เรียกไม่ได้ผูกคอลัมน์มาให้ (เช่น
+   *  `BoardView.tsx` ที่กรองทีละคอลัมน์อยู่แล้วก่อนเรียกฟังก์ชันนี้) ⇒ ไม่ตัดออกเงียบ ๆ */
+  columnId?: string;
 };
 
 const BKK_OFFSET_MS = 7 * 60 * 60 * 1000; // Asia/Bangkok = UTC+7 ตายตัว (ไม่มี DST)
@@ -235,12 +243,24 @@ export function filterBoardCards<T extends FilterableCard>(
   const q = filters.q?.trim().toLowerCase();
 
   return cards.filter((card) => {
-    if (filters.label && !labelNamesOf(card).includes(filters.label)) return false;
+    if (filters.label) {
+      if (filters.label === "none") {
+        if (labelNamesOf(card).length > 0) return false;
+      } else if (!labelNamesOf(card).includes(filters.label)) return false;
+    }
 
     if (filters.assignee) {
-      const target = filters.assignee === "me" ? (ctx.userId ?? null) : filters.assignee;
-      if (!target || !assigneeIdsOf(card).includes(target)) return false;
+      if (filters.assignee === "none") {
+        if (assigneeIdsOf(card).length > 0) return false;
+      } else {
+        const target = filters.assignee === "me" ? (ctx.userId ?? null) : filters.assignee;
+        if (!target || !assigneeIdsOf(card).includes(target)) return false;
+      }
     }
+
+    // K2.4 — เฉพาะผู้เรียกที่ผูก `columnId` มากับการ์ด (table.ts/calendar.ts/summary.ts) ไม่มีค่า = ข้าม
+    // (BoardView.tsx กรองทีละคอลัมน์อยู่แล้วก่อนเรียกที่นี่ จึงไม่ต้องผูก columnId ให้)
+    if (filters.column && card.columnId !== undefined && card.columnId !== filters.column) return false;
 
     if (filters.due && dueBucketOf(card, nowMs) !== filters.due) return false;
 
