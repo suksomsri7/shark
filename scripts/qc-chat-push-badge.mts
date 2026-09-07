@@ -456,10 +456,10 @@ try {
         /appSystems\.filter\(\(s\) => s\.type === "CHAT"\)/.test(LAYOUT) && /chatSystemIds=\{chatSystemIds\}/.test(LAYOUT) && !/unreadCount/.test(LAYOUT),
         "filter จาก appSystems + ส่งเป็น prop + ไม่เรียก unreadCount ใน layout", j({ filter: /appSystems\.filter/.test(LAYOUT), prop: /chatSystemIds=/.test(LAYOUT), unread: /unreadCount/.test(LAYOUT) }));
       chk("CP-2.8", "AppShell ส่ง badges ให้ NavDrawer **ทั้ง 2 โหมด** (overlay บนมือถือ + pinned บนจอใหญ่)",
-        (SHELL.match(/badges=\{navBadges\}/g) ?? []).length === 2 && /loadNavBadgesAction\(ids\)/.test(SHELL),
-        "badges= 2 แห่ง", String((SHELL.match(/badges=\{navBadges\}/g) ?? []).length));
+        (SHELL.match(/badges=\{navBadges\}/g) ?? []).length >= 2 && /loadNavBadgesAction\(ids\)/.test(SHELL), // B3 (6 ก.ย.): + NavRail = 3 แห่ง
+        "badges= ≥2 แห่ง", String((SHELL.match(/badges=\{navBadges\}/g) ?? []).length));
       chk("CP-2.9", "🔴 ระบบแชทในเมนูเป็น accordion → badge ต้องอยู่ที่หัว NavGroup ด้วย ไม่งั้นมองไม่เห็นเลย",
-        /function NavGroup\(\{ item, onNavigate, badge/.test(DRAWER) && /<NavBadge n=\{badge\}/.test(DRAWER) && /<NavBadge n=\{badges\?\.\[it\.key\] \?\? 0\}/.test(DRAWER),
+        (/function NavGroup\(/.test(DRAWER) ? (/function NavGroup\(\{ item, onNavigate, badge/.test(DRAWER) && /<NavBadge n=\{badge\}/.test(DRAWER)) : true) && /<NavBadge n=\{badges\?\.\[it\.key\] \?\? 0\}/.test(DRAWER), // B3 (6 ก.ย.): เจ้าของสั่งเลิกเมนูย่อยแชท/บัญชี ⇒ ไม่มี NavGroup แล้ว badge อยู่ที่รายการแบนโดยตรง
         "NavGroup รับ badge + เรนเดอร์ · รายการแบนก็เรนเดอร์", j({ group: /<NavBadge n=\{badge\}/.test(DRAWER), flat: /<NavBadge n=\{badges/.test(DRAWER) }));
       chk("CP-2.10", "แบดจ์ไม่โผล่ตอนเลข 0 (เมนูสะอาดเวลาไม่มีอะไรค้าง)",
         /if \(!n \|\| n <= 0\) return null;/.test(DRAWER), "return null เมื่อ n <= 0", "ไม่พบ", "MINOR");

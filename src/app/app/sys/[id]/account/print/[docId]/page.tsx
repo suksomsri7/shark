@@ -78,7 +78,7 @@ export default async function PrintPage({
         <div className="flex items-start gap-3">
           {po.show.logo && tenantLogo && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={tenantLogo} alt="logo" className="h-14 w-14 object-contain" />
+            <img src={tenantLogo} alt="logo" loading="lazy" className="h-14 w-14 object-contain" />
           )}
           <div>
             <div className="text-lg font-bold">{orgDisplayName(s) || "กิจการของคุณ"}</div>

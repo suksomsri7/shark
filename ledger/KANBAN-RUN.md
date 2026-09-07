@@ -410,6 +410,7 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - ภาพ spec `"3.9"` ≥ 1 ใบ · ⚠️ oracle ฉีด deps.upload/post ปลอม · สร้าง PushDevice ชั่วคราวแล้วลบ · คืน emailKey เดิม
 
 ## บันทึกเหตุการณ์ (ล่าสุดบนสุด · เวลาไทย)
+- 18:35 น. — **K2.F ปิด P2**: qc:all เต็ม 284/287 (23 นาที) → แก้ 2 ชุด: acc-v2-perf P5.4 (img โลโก้หน้าพิมพ์ของ B4 ขาด loading=lazy) · chat-push-badge CP-2.8/2.9 (ข้อสอบยึดโครง nav เก่า — B3 เพิ่ม NavRail + เลิกเมนูย่อยตามคำสั่งเจ้าของ → ปรับข้อสอบ) → 48/48 · 92/92 · kanban-k1.1 flake cardNoSeq รันเดี่ยว 30/30 (หนี้เดิม) · handover `HANDOVER-2026-09-07-KANBAN-P2.md` · seed done column · เข้า P3: K3.1 (Opus)
 - 17:30 น. — **K2.12 (หนี้ P2) ปิด** (Sonnet 65 นาที) · oracle 13/13 (Fable แก้ S3.3 ตาม builder แย้งถูก — REST/AI ใช้ now จริง) · migration kanban_v2_p2 · REST op รวม 82 · AI tool 20 · ภาพ 3 ใบ: แถบเลือกหลายรายการฟ้าบนตาราง + ชิปกำหนดส่งย่อ (ตรง 04) · ปฏิทินรวมระบบ · เทมเพลตบนมือถือ · ต่อไป K2.F: seed คอลัมน์เสร็จ → qc:all → prod verify → handover
 - 16:40 น. — **K2.3 ปิด → P2 ครบ 11/11 ใบหลัก** (Sonnet 32 นาที) · เหลือ K2.12 (หนี้ P2) + K2.F ปิดเฟส · เริ่ม K2.12
 - 16:05 น. — **K2.11 ปิด** (Opus ~70 นาที + Fable เก็บงาน 20 นาที) · ความคืบหน้า P2 10/11 · เริ่ม K2.3 (ใบสุดท้าย P2)
