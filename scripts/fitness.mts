@@ -234,6 +234,10 @@ const moduleFiles = walk(moduleDir, (p) => p.endsWith(".ts") || p.endsWith(".tsx
 // F2: import ข้ามโมดูล — allowlist รายเส้น (แข็งกว่านับจำนวน: เส้นใหม่สลับแทนเส้นเก่าไม่ได้)
 // เส้นที่อนุญาต = 10 เส้นเดิม (หนี้จะหมดตอน port Phase 3) + chokepoint ที่สถาปนิกอนุมัติ
 const ALLOWED_EDGES = new Set([
+  // chokepoint (K2.9 · ledger/KANBAN-RUN.md ท้าย §K3.2 "เส้น import ข้ามโมดูลที่ Fable อนุมัติ"):
+  // การกระทำ `open_approval` ของกฎอัตโนมัติบอร์ดงาน ยื่นคำขอผ่าน `approval.submitForApproval`
+  // แล้วเขียนความเห็นผูกกลับมาที่การ์ด · ทิศทางเดียว (approval ไม่รู้จัก kanban)
+  "kanban→approval",
   // หนี้เดิม (วัด 2026-07-15) — ratchet: ลบได้ ห้ามเพิ่มกลับ
   "booking→member", "booking→system", "chat→member",
   "booking→pos", // chokepoint (WO-Wave3-A): มัดจำ booking ปิดเงินผ่าน pos.createSale DEPOSIT (C-2)

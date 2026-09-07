@@ -3,23 +3,36 @@
 
 export type AutomationEventDef = { value: string; label: string };
 
+/**
+ * K2.9 — event ของ "บอร์ดงาน" ครบ 8 ตัวตามพิมพ์เขียว 13-kanban-v2 §7.2
+ *
+ * 🔴 แยก export ไว้ต่างหากเพราะ dropdown ของ **ตัวสร้างกฎบอร์ด** (`/kanban/automation`) ต้องเห็นแค่ 8 ตัวนี้
+ *    ไม่ใช่ทั้งทะเบียนของร้าน (กฎ POS/คลัง/ธีมกิจการไม่เกี่ยวกับบอร์ดงาน — เลือกไปก็ไม่มีวันวิ่ง)
+ *    `automation.ts` ของโมดูลบอร์ดงานใช้ชุดนี้เป็น allowlist ตอนตรวจ input ด้วย (ไม่ใช่แค่ตอนวาดจอ)
+ * 🔴 ทุกตัวในลิสต์นี้ **ต้องมี consumer ใน `src/lib/outbox-consumers.ts`** ไม่งั้นคิวตันทั้งระบบเงียบ ๆ
+ *    (`reference_outbox_new_event_needs_consumer`) — ตรวจแล้ว ณ K2.9: ครบทั้ง 8
+ */
+export const KANBAN_AUTOMATION_EVENTS: AutomationEventDef[] = [
+  { value: "kanban.card.created", label: "เมื่อมีการ์ดใหม่" },
+  { value: "kanban.card.moved", label: "เมื่อการ์ดถูกย้ายคอลัมน์" },
+  { value: "kanban.card.assigned", label: "เมื่อมอบหมายงาน" },
+  { value: "kanban.card.completed", label: "เมื่องานเสร็จ" },
+  { value: "kanban.card.due_soon", label: "เมื่อใกล้ถึงกำหนดส่ง" },
+  { value: "kanban.card.overdue", label: "เมื่อเลยกำหนดส่ง" },
+  { value: "kanban.checklist.completed", label: "เมื่อเช็คลิสต์ครบทุกข้อ" },
+  { value: "kanban.comment.added", label: "เมื่อมีความเห็นใหม่ในการ์ด" },
+];
+
 // ตัวเลือก trigger ในฟอร์มสร้างกติกา (dropdown) — ป้ายไทยล้วน ไม่โชว์ event code ให้ user
 export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "pos.sale.paid", label: "เมื่อขายสำเร็จ (POS)" },
   { value: "pos.sale.voided", label: "เมื่อยกเลิกบิล" },
   { value: "inventory.lot.expiring", label: "เมื่อสินค้าใกล้หมดอายุ" },
-  // ── บอร์ดงาน (K1.4 · พิมพ์เขียว 13-kanban-v2 §7.2) ────────────────────────
-  // 🔴 ทุกตัวต้องมี consumer ใน `outbox-consumers.ts` ด้วย (ไม่งั้นคิวตันทั้งระบบเงียบ ๆ)
-  //    `kanban.card.assigned` มี consumer มาตั้งแต่ Wave4-C แต่ไม่เคยอยู่ในเมนูนี้ ⇒ ร้านตั้งกฎ/ต่อเว็บฮุคกับมันไม่ได้
-  //    (รายการนี้ถูก spread ต่อเข้า `WEBHOOK_EVENTS` ⇒ เพิ่มที่เดียวได้ทั้งกฎอัตโนมัติและเว็บฮุคขาออก)
-  //    ที่เหลือของ §7.2 (created/due_soon/overdue/checklist/comment) จะเพิ่มพร้อม WO ที่ยิง event นั้นจริง
-  { value: "kanban.card.moved", label: "เมื่อการ์ดถูกย้ายคอลัมน์" },
-  { value: "kanban.card.assigned", label: "เมื่อมอบหมายงาน" },
-  { value: "kanban.card.completed", label: "เมื่องานเสร็จ" },
-  // K1.7 — ติ๊กเช็คลิสต์ครบทุกข้อ (`kanban/checklists.ts#toggleItem`)
-  { value: "kanban.checklist.completed", label: "เมื่อเช็คลิสต์ครบทุกข้อ" },
-  // K1.8 — ความเห็นใหม่ในการ์ด (`kanban/comments.ts#addComment`)
-  { value: "kanban.comment.added", label: "เมื่อมีความเห็นใหม่ในการ์ด" },
+  // ── บอร์ดงาน (K1.4 → ครบ 8 ตัวใน K2.9 · พิมพ์เขียว 13-kanban-v2 §7.2) ─────
+  // 🔴 ประกาศที่ `KANBAN_AUTOMATION_EVENTS` ข้างบนที่เดียว แล้ว spread เข้ามาที่นี่
+  //    (รายการนี้ถูก spread ต่อเข้า `WEBHOOK_EVENTS` ⇒ เพิ่มที่เดียวได้ทั้งกฎอัตโนมัติและเว็บฮุคขาออก
+  //     — `webhooks/labels.ts` จึงต้อง **ไม่** ประกาศ 8 ตัวนี้ซ้ำ ไม่งั้นหน้าตั้งค่าฮุคมีช่องติ๊กซ้ำ)
+  ...KANBAN_AUTOMATION_EVENTS,
   // ── ธีมกิจการ (B1 · ledger/BRANDING-RUN.md) ────────────────────────────────
   // ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับการบันทึกแถว
   // 🔴 ต้องมี consumer ใน `outbox-consumers.ts` ด้วย (ตัวนั้นล้างแคชธีมของอินสแตนซ์ที่ระบายคิว)

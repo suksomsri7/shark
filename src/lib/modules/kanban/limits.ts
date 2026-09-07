@@ -31,6 +31,14 @@ export const KANBAN_LIMITS = Object.freeze({
   cardTemplatesPerBoard: 30,
   /** รายการ OPEN สูงสุดในกล่องงานเข้าต่อคน ต่อระบบ (K2.8) */
   inboxOpenMax: 200,
+  /** การกระทำต่อกฎอัตโนมัติ 1 ข้อ (K2.9) — ตัวเลขเดียวกับที่ UI บอกผู้ใช้ "สูงสุด 20 การกระทำต่อ 1 กฎ" */
+  actionsPerRule: 20,
+  /**
+   * ครั้งที่กฎอัตโนมัติทำงานได้ต่อบอร์ดต่อเดือนไทย (K2.9)
+   * 🔴 เพดานนี้คือกันลูปวิ่งฟรี ไม่ใช่การขายของ: กฎที่ตั้งพลาด (ย้ายเข้า→ย้ายออก→ย้ายเข้า)
+   *    วิ่งได้ไม่จำกัดคือใบเรียกเก็บเงิน Neon + คิว outbox ตันทั้งร้าน
+   */
+  automationRunsPerMonth: 1000,
 } as const);
 
 export type KanbanLimits = typeof KANBAN_LIMITS;

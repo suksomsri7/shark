@@ -13,6 +13,8 @@ import { BoardActivityPanel } from "./Timeline";
 // K2.5 — dropdown "มุมมองที่บันทึกไว้" + "บันทึกมุมมองนี้" (testid `saved-views`)
 import { SavedViewsMenu } from "./SavedViewsMenu";
 import { saveBoardAsTemplateAction } from "@/lib/modules/kanban/actions";
+// K2.9 — ปุ่มอัตโนมัติของหัวบอร์ด (BOARD_BUTTON)
+import { runButtonAction } from "@/lib/modules/kanban/automation-actions";
 import type { BoardFilters, DueBucket } from "@/lib/modules/kanban/filters";
 import type { BoardViewDto, SavedViewDto } from "@/lib/modules/kanban/types";
 
@@ -79,8 +81,25 @@ export function BoardHeader({
   const [activityOpen, setActivityOpen] = useState(false);
   // K1.12: "บันทึกเป็นเทมเพลต" — โมดัลเล็กในเมนู ⋯ (ADMIN เท่านั้น)
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  // K2.9 — ปุ่มอัตโนมัติของบอร์ดที่กำลังทำงาน (กันกดรัว — กฎ 1 ใบทำได้หลายอย่างจริง ๆ)
+  const [runningButton, setRunningButton] = useState<string | null>(null);
+  const [buttonError, setButtonError] = useState<string | null>(null);
   const isAdmin = board.role === "ADMIN";
   const router = useRouter();
+
+  /** กดปุ่มอัตโนมัติของบอร์ด → กฎวิ่งฝั่งเซิร์ฟเวอร์ แล้วโหลดบอร์ดใหม่ (ไม่เดาผลลัพธ์บนจอ) */
+  const runBoardButton = async (ruleId: string, name: string) => {
+    setRunningButton(ruleId);
+    setButtonError(null);
+    const res = await runButtonAction({ systemId: board.systemId, boardId: board.id, ruleId });
+    setRunningButton(null);
+    // ผิดพลาด = บอกตรงจุดที่กด ไม่ใช่ alert เด้ง (feedback_validation_inline_not_alert)
+    if (!res.ok) {
+      setButtonError(`${name}: ${res.message}`);
+      return;
+    }
+    router.refresh();
+  };
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -312,10 +331,47 @@ export function BoardHeader({
       {/* K2.5 — dropdown "มุมมองที่บันทึกไว้" + "บันทึกมุมมองนี้" */}
       <SavedViewsMenu systemId={board.systemId} boardId={board.id} isAdmin={isAdmin} viewerUserId={board.viewerUserId} views={savedViews} />
 
-      <button type="button" disabled title="เร็ว ๆ นี้" className="hidden items-center lg:flex" style={{ ...ghostBtn, gap: 7, color: "var(--color-muted)" }}>
-        <KanbanIcon name="spark" size="sm" />
-        อัตโนมัติ
-      </button>
+      {/* K2.9 — ปุ่มอัตโนมัติของบอร์ด (kind BOARD_BUTTON) · โผล่เฉพาะคนที่กดได้ (server ส่ง [] ให้ VIEWER) */}
+      {board.automationButtons.map((b) => (
+        <button
+          key={b.id}
+          type="button"
+          data-testid="board-button"
+          disabled={runningButton !== null}
+          onClick={() => runBoardButton(b.id, b.name)}
+          title={`ปุ่มอัตโนมัติ: ${b.name}`}
+          className="hidden items-center lg:flex"
+          style={{ ...ghostBtn, gap: 7 }}
+        >
+          <KanbanIcon name="bolt" size="sm" />
+          {runningButton === b.id ? "กำลังทำ…" : b.name}
+        </button>
+      ))}
+
+      {buttonError && (
+        <span data-testid="board-button-error" className="hidden lg:inline" style={{ fontSize: 11.5, color: "var(--color-danger)" }}>
+          {buttonError}
+        </span>
+      )}
+
+      {/* K2.9 — ตัวสร้างกฎอัตโนมัติของบอร์ดใบนี้ (ผู้ดูแลบอร์ดเท่านั้น — หน้านั้นก็ 404 ให้คนอื่น) */}
+      {isAdmin ? (
+        <Link
+          href={`/app/sys/${board.systemId}/kanban/automation?board=${board.id}`}
+          data-testid="board-automation-link"
+          title="ตั้งกฎอัตโนมัติของบอร์ดนี้"
+          className="hidden items-center lg:flex"
+          style={{ ...ghostBtn, gap: 7, color: "var(--color-muted)" }}
+        >
+          <KanbanIcon name="spark" size="sm" />
+          อัตโนมัติ
+        </Link>
+      ) : (
+        <button type="button" disabled title="ตั้งกฎอัตโนมัติได้เฉพาะผู้ดูแลบอร์ด" className="hidden items-center lg:flex" style={{ ...ghostBtn, gap: 7, color: "var(--color-muted)" }}>
+          <KanbanIcon name="spark" size="sm" />
+          อัตโนมัติ
+        </button>
+      )}
 
       <div className="hidden lg:flex" style={{ margin: "0 4px" }}>
         {board.members.slice(0, 4).map((m, i) => (

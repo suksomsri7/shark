@@ -257,7 +257,7 @@ async function logLabelChange(
 ): Promise<void> {
   const added = after.filter((id) => !before.includes(id));
   const removed = before.filter((id) => !after.includes(id));
-  const base = { tenantId: ctx.tenantId, boardId: card.boardId, cardId: card.id, actorUserId: ctx.actorUserId ?? null };
+  const base = { tenantId: ctx.tenantId, boardId: card.boardId, cardId: card.id, actorUserId: ctx.actorUserId ?? null, automation: ctx.automation };
   if (added.length > 0) await logActivity(tx, { ...base, type: "CARD_LABELED", data: { labelIds: added } });
   if (removed.length > 0) await logActivity(tx, { ...base, type: "CARD_UNLABELED", data: { labelIds: removed } });
 }

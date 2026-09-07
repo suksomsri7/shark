@@ -31,7 +31,7 @@ export const KANBAN_NAV: readonly KanbanNavEntry[] = Object.freeze([
   // K2.8 — กล่องงานเข้าเป็นคอลัมน์ซ้ายของหน้า "งานของฉัน" (ไม่ใช่หน้าแยก) ⇒ ชี้ไป `#inbox` ของหน้านั้น
   { key: "inbox", label: "กล่องงานเข้า", path: "/kanban/my-tasks#inbox", status: "ready" },
   { key: "calendar", label: "ปฏิทินงาน", path: "/kanban/calendar", status: "soon", wo: "K2.2" },
-  { key: "automation", label: "ระบบอัตโนมัติ", path: "/kanban/automation", status: "soon", wo: "K2.9" },
+  { key: "automation", label: "ระบบอัตโนมัติ", path: "/kanban/automation", status: "ready" },
   { key: "reports", label: "รายงาน", path: "/kanban/reports", status: "soon", wo: "K2.10" },
   // K1.15 เปิดหมวดนี้แล้ว (ส่วน "API" — ออกคีย์ให้ระบบภายนอก/ผู้ช่วย AI) · ส่วนที่เหลือมาใน K2.5
   { key: "settings", label: "ตั้งค่า", path: "/kanban/settings", status: "ready" },

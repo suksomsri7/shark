@@ -19,6 +19,7 @@ import { purgeExpiredChatMessages } from "@/lib/modules/chat/retention";
 import { deliverPendingVoice } from "@/lib/modules/chat/service";
 import { sweepRateBuckets } from "@/lib/core/rate-limit-db";
 import { sweepRecurringCards } from "@/lib/modules/kanban/recurrence";
+import { sweepDueDateRules } from "@/lib/modules/kanban/automation";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -79,6 +80,7 @@ export async function runDailyCron(
   chatPurged: number;
   rateBucketsSwept: number;
   recurringCards: number;
+  kanbanDueRules: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -94,6 +96,7 @@ export async function runDailyCron(
   let chatPurged = -1;
   let rateBucketsSwept = -1;
   let recurringCards = -1;
+  let kanbanDueRules = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -196,6 +199,12 @@ export async function runDailyCron(
   } catch {
     // sweep งานประจำพัง → -1 ไปต่อ (ห้ามพา cron ทั้งรอบล้ม)
   }
+  try {
+    // K2.9: กฎอัตโนมัติชนิด "ตามวันครบกำหนด" (idempotent ต่อ กฎ+การ์ด+วันไทย ผ่าน AutomationRun.detail)
+    kanbanDueRules = await sweepDueDateRules(now);
+  } catch {
+    // sweep กฎวันครบกำหนดพัง → -1 ไปต่อ (try/catch แยกของตัวเองตามสัญญา K2.9)
+  }
 
   return {
     subsExpired,
@@ -212,5 +221,6 @@ export async function runDailyCron(
     chatPurged,
     rateBucketsSwept,
     recurringCards,
+    kanbanDueRules,
   };
 }

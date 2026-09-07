@@ -18,6 +18,12 @@ export type KanbanCtx = {
    * Membership (มีแต่ scope) ⇒ ชั้น REST ประกอบ actor มาให้ตรงนี้แล้วทุก service ใช้ต่อได้เหมือนเดิม
    */
   actor?: KanbanActor;
+  /**
+   * K2.9 — งานนี้เกิดจาก "กฎอัตโนมัติ" ใบไหน (ไม่มี = คนกดเอง)
+   * ประวัติกิจกรรมที่เขียนระหว่างกฎทำงานจะได้ `data.automation = { ruleId }` ติดไปด้วย ⇒ แท็บกิจกรรม
+   * แยกออกได้ว่า "ระบบทำให้" (actorUserId = null) เพราะกฎใบไหน ไม่ใช่แค่ "ไม่รู้ว่าใครทำ"
+   */
+  automation?: { ruleId: string };
 };
 
 /**
@@ -114,7 +120,12 @@ export type CardDetailDto = {
   recurrenceParentId: string | null;
   /** K2.7: ชื่อการ์ดแม่ (มีเมื่อ `recurrenceParentId` ไม่ null) — ใช้ทำลิงก์ "เกิดจากงานประจำ: …" */
   recurrenceParentTitle: string | null;
+  /** K2.9: ปุ่มอัตโนมัติของบอร์ด (kind CARD_BUTTON ที่เปิดอยู่) — VIEWER ได้ [] เพราะกดไม่ได้ */
+  cardButtons: KanbanAutomationButtonDto[];
 };
+
+/** K2.9 — ปุ่มอัตโนมัติที่โผล่บนจอ (หลังการ์ด / หัวบอร์ด) */
+export type KanbanAutomationButtonDto = { id: string; name: string };
 
 // ───────────────────────── K1.9: ไฟล์แนบ + ปกการ์ด ─────────────────────────
 
@@ -199,6 +210,8 @@ export type BoardViewDto = {
   members: BoardPersonDto[];
   /** เวลาอ้างอิงตอนเรนเดอร์ (ISO) — ส่งมาจาก server เพื่อให้ป้ายกำหนดส่งของ server/client ตรงกันเป๊ะ */
   now: string;
+  /** K2.9: ปุ่มอัตโนมัติของบอร์ด (kind BOARD_BUTTON ที่เปิดอยู่) — VIEWER ได้ [] เพราะกดไม่ได้ */
+  automationButtons: KanbanAutomationButtonDto[];
 };
 
 // ───────────────────────── K1.10: ประวัติกิจกรรม + สายรวม ─────────────────────────

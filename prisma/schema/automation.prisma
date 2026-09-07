@@ -14,7 +14,7 @@ model AutomationRule {
   id              String               @id @default(cuid())
   tenantId        String
   name            String
-  event           String // "pos.sale.paid" | "pos.sale.voided" | ...
+  event           String // "pos.sale.paid" | "pos.sale.voided" | ... · "" = กฎที่ไม่ผูก event (SCHEDULED/DUE_DATE/ปุ่ม)
   enabled         Boolean              @default(true)
   minAmountSatang Int? // เงื่อนไข v1: ยอด ≥ (เฉพาะ event ที่มี amountSatang ใน payload)
   actionType      AutomationActionType
@@ -22,7 +22,22 @@ model AutomationRule {
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
+  // ── K2.9 (บอร์ดงาน · พิมพ์เขียว 13-kanban-v2 §4.5) — เพิ่มคอลัมน์ล้วน ──
+  // 🔴 `minAmountSatang` / `actionType` / `actionConfig` ข้างบน **ห้ามลบ**: กฎเดิมของ POS/คลัง
+  //    ยังอ่านช่องเหล่านั้นอยู่ · กฎของบอร์ดตั้ง actionType = NOTIFY, actionConfig = {} เป็น placeholder
+  //    แล้วเอนจินใหม่อ่าน `actions` แทน (เอนจินเดิมถูกจำกัดให้เห็นเฉพาะแถวที่ boardId = null)
+  systemId      String? // ระบบไหน (null = กฎเดิมระดับร้าน — พฤติกรรมเดิมไม่เปลี่ยน)
+  boardId       String? // null = กฎระดับร้าน · มีค่า = กฎของบอร์ดนั้น
+  kind          String    @default("RULE") // RULE | CARD_BUTTON | BOARD_BUTTON | SCHEDULED | DUE_DATE
+  conditions    Json      @default("[]") // [{field, op, value}] — AND ทั้งชุด
+  actions       Json      @default("[]") // [{type, params}] — สูงสุด KANBAN_LIMITS.actionsPerRule (20)
+  scheduleCron  String? // เฉพาะ kind = SCHEDULED — subset "นาที ชั่วโมง * * วัน" (เวลาไทย)
+  dueOffsetDays Int? // เฉพาะ kind = DUE_DATE — ลบ = ก่อนครบกำหนด (-30..30)
+  lastRunAt     DateTime? // กันรันซ้ำในชั่วโมงไทยเดียวกัน (SCHEDULED)
+
   @@index([tenantId, event, enabled])
+  // เส้นอ่านของเอนจินบอร์ดงาน: กฎที่เปิดอยู่ของบอร์ดใบเดียว (runForKanbanEvent/sweep/หน้าตั้งกฎ)
+  @@index([tenantId, boardId, enabled])
 }
 
 model AutomationRun {
@@ -33,7 +48,13 @@ model AutomationRun {
   detail    String?
   createdAt DateTime            @default(now())
 
+  // ── K2.9 — บันทึกการทำงานของกฎบอร์ดงาน (null ทั้งคู่ = กฎระดับร้านแบบเดิม) ──
+  boardId String?
+  cardId  String? // การ์ดที่ถูกกระทำ (SCHEDULED/ปุ่มบนบอร์ด = null)
+
   @@index([tenantId, createdAt])
+  // หน้า "บันทึกการทำงาน" + ตัวกันวน 60 วิ + โควตารายเดือน อ่านตามกฎแล้วเรียงเวลา
+  @@index([tenantId, ruleId, createdAt])
 }
 
 // ศูนย์แจ้งเตือนในแอป (v1 — ปลายทางของ action NOTIFY)

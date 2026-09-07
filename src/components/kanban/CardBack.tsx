@@ -9,6 +9,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { KanbanIcon } from "./KanbanIcon";
 import { Avatar, dueBadgeFrom, tagColorVar } from "./Card";
 import { Attachments } from "./Attachments";
@@ -29,6 +30,8 @@ import {
   setCardRecurrenceAction,
   updateCardFieldsAction,
 } from "@/lib/modules/kanban/actions";
+// K2.9 — ปุ่มอัตโนมัติของบอร์ด (แยกไฟล์ action ของตัวเอง)
+import { runButtonAction } from "@/lib/modules/kanban/automation-actions";
 import { renderDescription } from "@/lib/modules/kanban/sanitize";
 import type {
   BoardCardDto,
@@ -81,6 +84,8 @@ type Fields = {
   recurrenceLabel: string | null;
   recurrenceParentId: string | null;
   recurrenceParentTitle: string | null;
+  /** K2.9: ปุ่มอัตโนมัติของบอร์ด (CARD_BUTTON ที่เปิดอยู่) — server ส่ง [] ให้ VIEWER อยู่แล้ว */
+  cardButtons: { id: string; name: string }[];
 };
 
 export type CardBackHandlers = {
@@ -149,6 +154,9 @@ export function CardBack({
   const [moveTarget, setMoveTarget] = useState("");
   const [dueOpen, setDueOpen] = useState(initialPanel === "due");
   const [startOpen, setStartOpen] = useState(false);
+  // K2.9 — ปุ่มอัตโนมัติที่กำลังทำงานอยู่ (กันกดรัว: กฎ 1 ใบทำหลายอย่าง กดซ้ำ = ทำซ้ำจริง ๆ)
+  const [runningButton, setRunningButton] = useState<string | null>(null);
+  const router = useRouter();
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
@@ -156,6 +164,23 @@ export function CardBack({
   const returnFocus = useRef(true);
 
   const editable = canEdit && fields?.status === "ACTIVE";
+
+  /**
+   * K2.9 — กดปุ่มอัตโนมัติ: กฎวิ่งฝั่งเซิร์ฟเวอร์แล้วค่อย `router.refresh()`
+   * 🔴 ไม่ทำ optimistic: กฎ 1 ใบทำได้หลายอย่าง (ย้าย/ติดป้าย/สร้างการ์ดอีกบอร์ด) — เดาผลลัพธ์บนจอ
+   *    แล้วเดาผิดคือจอโกหก · รอผลจริงแล้วโหลดใหม่ตรงไปตรงมากว่า
+   */
+  const runCardButton = async (ruleId: string, name: string) => {
+    setRunningButton(ruleId);
+    const res = await runButtonAction({ systemId, boardId, ruleId, cardId: card.id });
+    setRunningButton(null);
+    if (!res.ok) {
+      handlers.onToast(res.message);
+      return;
+    }
+    handlers.onToast(`ทำรายการ “${name}” แล้ว`);
+    router.refresh();
+  };
 
   // ── โหลดส่วนที่หน้าบอร์ดไม่ได้ส่งมา (รายละเอียด/วันเริ่ม/เตือนล่วงหน้า/สถานะคลัง) ──
   useEffect(() => {
@@ -183,6 +208,7 @@ export function CardBack({
         recurrenceLabel: res.detail.recurrenceLabel,
         recurrenceParentId: res.detail.recurrenceParentId,
         recurrenceParentTitle: res.detail.recurrenceParentTitle,
+        cardButtons: res.detail.cardButtons,
       });
     });
     return () => {
@@ -1002,8 +1028,31 @@ export function CardBack({
                 </RailGroup>
               )}
 
+              {/* K2.9 — ปุ่มอัตโนมัติของบอร์ด (kind CARD_BUTTON) · กดแล้วกฎทำงานกับการ์ดใบนี้ทันที
+                  server ส่ง [] ให้ VIEWER อยู่แล้ว (ปุ่มที่กดไม่ได้ไม่ต้องโผล่) */}
               <RailGroup title="ทำต่ออัตโนมัติ">
-                <p style={{ fontSize: 11.5, color: "var(--color-muted)" }}>ยังไม่มีปุ่มอัตโนมัติที่ตั้งไว้ — ตั้งได้ในเมนูอัตโนมัติของบอร์ด (เร็ว ๆ นี้)</p>
+                <span data-testid="card-button" className="flex flex-col gap-1.5">
+                  {fields.cardButtons.length === 0 ? (
+                    <p style={{ fontSize: 11.5, color: "var(--color-muted)" }}>
+                      ยังไม่มีปุ่มอัตโนมัติที่ตั้งไว้ — ตั้งได้ที่ ตั้งค่าบอร์ด › อัตโนมัติ
+                    </p>
+                  ) : (
+                    fields.cardButtons.map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        data-testid="card-button-run"
+                        disabled={!editable || runningButton !== null}
+                        onClick={() => runCardButton(b.id, b.name)}
+                        className="flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left"
+                        style={{ fontSize: 12.5, borderColor: "var(--color-line)", background: "var(--color-surface)" }}
+                      >
+                        <KanbanIcon name="bolt" size="sm" />
+                        {runningButton === b.id ? "กำลังทำ…" : b.name}
+                      </button>
+                    ))
+                  )}
+                </span>
               </RailGroup>
 
               <RailGroup title="ผู้ช่วย AI">

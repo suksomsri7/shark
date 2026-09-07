@@ -582,6 +582,57 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: "[data-testid=card-templates-settings]" }, { wait: 300 }],
     },
   ],
+  // K2.9 — ตัวสร้างกฎอัตโนมัติ (เทียบภาพ 08) · ข้อมูลตัวอย่าง (กฎ 4 ใบ + บันทึกการทำงาน 3 แถว)
+  // ถูกสร้างผ่าน service จริงในบล็อกเตรียมด้านล่าง แล้วลบคืนใน `restoreSeed()`
+  "2.9": [
+    {
+      name: "automation-full",
+      path: `/app/sys/${SYS}/kanban/automation?board=${B("maint")}`,
+      onlyDevice: "desktop",
+      note: "เทียบภาพ 08: หัว 'อัตโนมัติ — บอร์ด …' + ชิปโควตา + ปุ่มสร้างกฎใหม่ · ซ้าย ประเภทอัตโนมัติ 6 รายการ · กลาง ตัวสร้างกฎ (เมื่อ/และถ้า/ให้ทำ) · ล่าง ตารางกฎ + คำแนะนำจาก AI + บันทึกการทำงาน",
+      expect: ["[data-testid=automation-usage]", "[data-testid=automation-kinds]", "[data-testid=rule-when]", "[data-testid=rule-then]", "[data-testid=rules-table]", "[data-testid=runs-log]"],
+      steps: [{ waitFor: "[data-testid=rules-table]" }, { wait: 400 }],
+    },
+    {
+      name: "automation-dry-run",
+      path: `/app/sys/${SYS}/kanban/automation?board=${B("maint")}`,
+      onlyDevice: "desktop",
+      note: "กด 'แก้' กฎใบแรก (โหลดเข้าฟอร์ม) แล้วกด 'ทดลองรัน' — ต้องขึ้นรายการ 'จะทำอะไรกับใบไหน' โดยไม่เขียน DB",
+      expect: ["[data-testid=rule-dry-run-result]"],
+      steps: [
+        { waitFor: "[data-testid=rule-edit]" },
+        { click: "[data-testid=rule-edit]" },
+        { wait: 400 },
+        { click: "[data-testid=rule-dry-run]" },
+        { wait: 1800 },
+        { waitFor: "[data-testid=rule-dry-run-result]" },
+      ],
+    },
+    {
+      name: "automation-tables",
+      path: `/app/sys/${SYS}/kanban/automation?board=${B("maint")}`,
+      onlyDevice: "desktop",
+      note: "ปิดตัวสร้างกฎ (ยกเลิก) — เห็นตาราง 'กฎที่เปิดใช้อยู่' + 'บันทึกการทำงานล่าสุด' เต็ม ๆ",
+      expect: ["[data-testid=rules-table]", "[data-testid=runs-log]", "[data-testid=run-row]"],
+      steps: [{ waitFor: "[data-testid=rule-cancel]" }, { click: "[data-testid=rule-cancel]" }, { wait: 500 }],
+    },
+    {
+      name: "automation-card-button",
+      path: `/app/sys/${SYS}/kanban/b/${B("maint")}?card=${E.boards.maint.cardIds[0]}`,
+      onlyDevice: "desktop",
+      note: "หลังการ์ด: บล็อก 'ปุ่มอัตโนมัติ' (กฎ CARD_BUTTON ของบอร์ด)",
+      expect: ["[data-testid=card-back]", "[data-testid=card-button]"],
+      steps: [{ waitFor: "[data-testid=card-back]" }, { wait: 600 }],
+    },
+    {
+      name: "automation-mobile",
+      path: `/app/sys/${SYS}/kanban/automation?board=${B("maint")}`,
+      onlyDevice: "mobile",
+      note: "มือถือ: ซ้าย/ขวาเรียงลง · ประโยคกฎเป็นบรรทัดละส่วน",
+      expect: ["[data-testid=automation-kinds]", "[data-testid=rules-table]"],
+      steps: [{ waitFor: "[data-testid=rules-table]" }, { wait: 400 }],
+    },
+  ],
   "2.8": [
     {
       name: "my-tasks-inbox",
@@ -900,7 +951,96 @@ if (WO === "2.8") {
   console.log(`🧪 เตรียม K2.8: กล่องงานเข้าของเจ้าของร้าน — จดเร็ว ${quick.id} · จากอีเมล (มีป้าย AI) ${fromEmail.id}`);
 }
 
+// ── K2.9: กฎตัวอย่าง 4 ใบ + บันทึกการทำงาน 3 แถวบนบอร์ดซ่อมบำรุง (ตารางในภาพ 08 ต้องไม่ว่าง)
+//    สร้างผ่าน `automation.createRule` จริง (ผ่านด่านตรวจทุกชั้น) แล้วลบคืนใน `restoreSeed()`
+const KB29 = { ruleIds: [] as string[] };
+if (WO === "2.9") {
+  const au = (await import("@/lib/modules/kanban/automation" as string)) as Any;
+  const membership = await prisma.membership.findFirst({
+    where: { tenantId: E.tenantId, userId: E.users.owner.userId },
+    select: { role: true, unitAccess: true, permissions: true },
+  });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: membership!.role,
+    unitAccess: (membership!.unitAccess as string[] | null) ?? [],
+    permissions: (membership!.permissions as Record<string, unknown> | null) ?? {},
+  };
+  const ctx29 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  const board = B("maint");
+  // เศษของรอบก่อน (สคริปต์ล่ม/Ctrl-C ก่อนถึง finally) — ลบทิ้งก่อน กันกฎซ้ำสะสมทุกรอบ
+  const stale = await (prisma as Any).automationRule.findMany({ where: { boardId: board, name: { startsWith: "QC ภาพ:" } }, select: { id: true } });
+  if (stale.length) {
+    await (prisma as Any).automationRun.deleteMany({ where: { ruleId: { in: stale.map((r: Any) => r.id) } } });
+    await (prisma as Any).automationRule.deleteMany({ where: { id: { in: stale.map((r: Any) => r.id) } } });
+  }
+  const cols = await prisma.kanbanColumn.findMany({
+    where: { boardId: board, tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" },
+    orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
+    select: { id: true, name: true },
+  });
+  const label = await prisma.kanbanLabel.findFirst({ where: { boardId: board, tenantId: E.tenantId }, select: { id: true } });
+  const specs: Any[] = [
+    {
+      boardId: board,
+      name: "QC ภาพ: ย้ายเข้ากำลังซ่อม → ติดป้าย + แจ้งช่าง",
+      kind: "RULE",
+      event: "kanban.card.moved",
+      conditions: [{ field: "column", op: "is", value: cols[1]?.id ?? cols[0]!.id }],
+      actions: [
+        ...(label ? [{ type: "add_label", params: { labelId: label.id } }] : []),
+        { type: "notify", params: { to: "assignees", message: "การ์ด {ชื่อการ์ด} เข้าคิวซ่อมแล้ว" } },
+      ],
+    },
+    {
+      boardId: board,
+      name: "QC ภาพ: ทุกวันจันทร์ 08:00 เปิดงานตรวจอุปกรณ์",
+      kind: "SCHEDULED",
+      scheduleCron: "0 8 * * 1",
+      conditions: [],
+      actions: [{ type: "create_card", params: { boardId: board, columnId: cols[0]!.id, title: "ตรวจอุปกรณ์ประจำสัปดาห์" } }],
+    },
+    {
+      boardId: board,
+      name: "QC ภาพ: 2 วันก่อนครบกำหนด → เตือนผู้รับผิดชอบ",
+      kind: "DUE_DATE",
+      dueOffsetDays: -2,
+      conditions: [],
+      actions: [{ type: "notify", params: { to: "assignees", message: "การ์ด {ชื่อการ์ด} ใกล้ครบกำหนดแล้ว" } }],
+    },
+    {
+      boardId: board,
+      name: "QC ภาพ: ส่งให้ช่างกิตติ",
+      kind: "CARD_BUTTON",
+      conditions: [],
+      actions: [{ type: "assign", params: { userId: E.users.staff.kitti.userId } }],
+    },
+  ];
+  for (const spec of specs) {
+    const row = await au.createRule(ctx29, ownerActor, spec);
+    KB29.ruleIds.push(row.id as string);
+  }
+  // บันทึกการทำงานตัวอย่าง (แผงขวาในภาพ 08 มีทั้ง OK และ "ล้ม") — เขียนตรงเพราะเป็น "ประวัติ" ไม่ใช่การลงมือจริง
+  const P29 = prisma as Any;
+  await P29.automationRun.createMany({
+    data: [
+      { tenantId: E.tenantId, ruleId: KB29.ruleIds[0], boardId: board, cardId: E.boards.maint.cardIds[0], status: "OK", detail: null },
+      { tenantId: E.tenantId, ruleId: KB29.ruleIds[2], boardId: board, cardId: E.boards.maint.cardIds[1], status: "OK", detail: "due:2026-09-29" },
+      { tenantId: E.tenantId, ruleId: KB29.ruleIds[1], boardId: board, cardId: null, status: "FAILED", detail: "การกระทำที่ 1 (ยิงเว็บฮุค): ปลายทางตอบรหัส 500" },
+    ],
+  });
+  console.log(`🧪 เตรียม K2.9: กฎตัวอย่าง ${KB29.ruleIds.length} ใบ + บันทึกการทำงาน 3 แถวบนบอร์ดซ่อมบำรุง (ลบคืนหลังถ่ายเสร็จ)`);
+}
+
 async function restoreSeed(): Promise<void> {
+  // K2.9 — ลบกฎตัวอย่าง + บันทึกการทำงานที่สร้างไว้ถ่ายภาพ (รวมแถวที่กฎอาจเขียนเพิ่มระหว่างถ่าย)
+  if (WO === "2.9" && KB29.ruleIds.length > 0) {
+    const P = prisma as Any;
+    const runs = await P.automationRun.deleteMany({ where: { ruleId: { in: KB29.ruleIds } } });
+    const rules = await P.automationRule.deleteMany({ where: { id: { in: KB29.ruleIds } } });
+    console.log(`🧹 คืนสภาพ K2.9: ลบกฎ ${rules.count} ใบ + บันทึกการทำงาน ${runs.count} แถว`);
+  }
+
   // K1.9 — คืนสภาพ seed: ลบไฟล์แนบ/FileAsset ที่สร้างระหว่างถ่ายภาพ + ล้าง coverFileId ของการ์ดที่ใช้ทดสอบ
   if (WO === "1.9") {
     const P = prisma as Any;

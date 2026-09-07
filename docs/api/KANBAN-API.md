@@ -55,7 +55,7 @@ Conventions that apply to every operation:
 9. A board the key cannot see answers 404 `not_found`, never 403 - the API never confirms that a private board exists.
 10. Rate limits are per key and per class: 300 reads and 60 writes per minute. A 429 response carries `Retry-After`; successful responses carry `X-RateLimit-Remaining`.
 11. Some list operations can also render CSV: send `Accept: text/csv` and, when the operation lists `text/csv` under its 200 response, you get `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment` instead of the JSON envelope. Every cell is safe against spreadsheet formula injection.
-12. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: `kanban.card.moved`, `kanban.card.assigned`, `kanban.card.completed`, `kanban.checklist.completed`, `kanban.comment.added`, `kanban.card.created`, `kanban.card.archived`, `kanban.card.due_soon`, `kanban.card.overdue`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/KANBAN-API.md, section Webhooks.
+12. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: `kanban.card.created`, `kanban.card.moved`, `kanban.card.assigned`, `kanban.card.completed`, `kanban.card.due_soon`, `kanban.card.overdue`, `kanban.checklist.completed`, `kanban.comment.added`, `kanban.card.archived`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/KANBAN-API.md, section Webhooks.
 
 ### Shapes of a reply
 
@@ -1208,15 +1208,34 @@ export function handleSharkWebhook(rawBody: Buffer, headers: Record<string, stri
 
 | Event | Fires when |
 | --- | --- |
+| `kanban.card.created` | A card was created, whichever way it was created (a person on the board, this REST API, an automation rule). |
 | `kanban.card.moved` | A card moved to another column. Reordering inside the same column does not fire, on purpose: it would flood the queue. |
 | `kanban.card.assigned` | Somebody became responsible for a card. One delivery per person added, so a card given to two people fires twice. |
 | `kanban.card.completed` | A card entered the column flagged as the done column and got its `completedAt`. Fires next to `kanban.card.moved`, not instead of it. |
-| `kanban.checklist.completed` | The last open item of one checklist was ticked off. Fires on the transition only; ticking an already complete checklist again does nothing. |
-| `kanban.comment.added` | A new comment was written on a card. `mentions` holds the user ids mentioned with the @[Name](userId) markup. |
-| `kanban.card.created` | A card was created, whichever way it was created (a person on the board, this REST API, an automation rule). |
-| `kanban.card.archived` | A card was archived. Archiving, restoring and archiving again produces one delivery each time. |
 | `kanban.card.due_soon` | A card is approaching its due date. Declared so integrators can build their side now; the job that scans due dates ships with the reminders work, so nothing is delivered yet. |
 | `kanban.card.overdue` | A card passed its due date. Same as above: declared now, delivered once the reminder job ships. |
+| `kanban.checklist.completed` | The last open item of one checklist was ticked off. Fires on the transition only; ticking an already complete checklist again does nothing. |
+| `kanban.comment.added` | A new comment was written on a card. `mentions` holds the user ids mentioned with the @[Name](userId) markup. |
+| `kanban.card.archived` | A card was archived. Archiving, restoring and archiving again produces one delivery each time. |
+
+#### `kanban.card.created`
+
+A card was created, whichever way it was created (a person on the board, this REST API, an automation rule).
+
+```json
+{
+  "type": "kanban.card.created",
+  "payload": {
+    "cardId": "cmf1crd0001",
+    "boardId": "cmf1brd0001",
+    "columnId": "cmf1col0001",
+    "cardNo": 42,
+    "title": "Service the rental regulators",
+    "sourceType": "AUTOMATION"
+  },
+  "sentAt": "2026-09-06T09:15:00.000Z"
+}
+```
 
 #### `kanban.card.moved`
 
@@ -1271,77 +1290,6 @@ A card entered the column flagged as the done column and got its `completedAt`. 
 }
 ```
 
-#### `kanban.checklist.completed`
-
-The last open item of one checklist was ticked off. Fires on the transition only; ticking an already complete checklist again does nothing.
-
-```json
-{
-  "type": "kanban.checklist.completed",
-  "payload": {
-    "checklistId": "cmf1chk0001",
-    "cardId": "cmf1crd0001"
-  },
-  "sentAt": "2026-09-06T09:15:00.000Z"
-}
-```
-
-#### `kanban.comment.added`
-
-A new comment was written on a card. `mentions` holds the user ids mentioned with the @[Name](userId) markup.
-
-```json
-{
-  "type": "kanban.comment.added",
-  "payload": {
-    "commentId": "cmf1cmt0001",
-    "cardId": "cmf1crd0001",
-    "boardId": "cmf1brd0001",
-    "authorUserId": "cmf1usr0001",
-    "mentions": [
-      "cmf1usr0002"
-    ]
-  },
-  "sentAt": "2026-09-06T09:15:00.000Z"
-}
-```
-
-#### `kanban.card.created`
-
-A card was created, whichever way it was created (a person on the board, this REST API, an automation rule).
-
-```json
-{
-  "type": "kanban.card.created",
-  "payload": {
-    "cardId": "cmf1crd0001",
-    "boardId": "cmf1brd0001",
-    "columnId": "cmf1col0001",
-    "cardNo": 42,
-    "title": "Service the rental regulators",
-    "sourceType": "AUTOMATION"
-  },
-  "sentAt": "2026-09-06T09:15:00.000Z"
-}
-```
-
-#### `kanban.card.archived`
-
-A card was archived. Archiving, restoring and archiving again produces one delivery each time.
-
-```json
-{
-  "type": "kanban.card.archived",
-  "payload": {
-    "cardId": "cmf1crd0001",
-    "boardId": "cmf1brd0001",
-    "cardNo": 42,
-    "title": "Service the rental regulators"
-  },
-  "sentAt": "2026-09-06T09:15:00.000Z"
-}
-```
-
 #### `kanban.card.due_soon`
 
 > **Not delivered yet.** The event type is registered so you can subscribe and build your handler, but no code path emits it in this release.
@@ -1377,6 +1325,58 @@ A card passed its due date. Same as above: declared now, delivered once the remi
     "boardId": "cmf1brd0001",
     "dueAt": "2026-09-05T10:00:00.000Z",
     "overdueDays": 1
+  },
+  "sentAt": "2026-09-06T09:15:00.000Z"
+}
+```
+
+#### `kanban.checklist.completed`
+
+The last open item of one checklist was ticked off. Fires on the transition only; ticking an already complete checklist again does nothing.
+
+```json
+{
+  "type": "kanban.checklist.completed",
+  "payload": {
+    "checklistId": "cmf1chk0001",
+    "cardId": "cmf1crd0001"
+  },
+  "sentAt": "2026-09-06T09:15:00.000Z"
+}
+```
+
+#### `kanban.comment.added`
+
+A new comment was written on a card. `mentions` holds the user ids mentioned with the @[Name](userId) markup.
+
+```json
+{
+  "type": "kanban.comment.added",
+  "payload": {
+    "commentId": "cmf1cmt0001",
+    "cardId": "cmf1crd0001",
+    "boardId": "cmf1brd0001",
+    "authorUserId": "cmf1usr0001",
+    "mentions": [
+      "cmf1usr0002"
+    ]
+  },
+  "sentAt": "2026-09-06T09:15:00.000Z"
+}
+```
+
+#### `kanban.card.archived`
+
+A card was archived. Archiving, restoring and archiving again produces one delivery each time.
+
+```json
+{
+  "type": "kanban.card.archived",
+  "payload": {
+    "cardId": "cmf1crd0001",
+    "boardId": "cmf1brd0001",
+    "cardNo": 42,
+    "title": "Service the rental regulators"
   },
   "sentAt": "2026-09-06T09:15:00.000Z"
 }

@@ -744,7 +744,7 @@ export async function getBoardView(
   const board = await getBoardFor(ctx, actor, boardId);
   const cardIds = board.columns.flatMap((c) => c.cards.map((k) => k.id));
 
-  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows, commentCountRows, attachmentCountRows, fieldsOnCardByCard] = await Promise.all([
+  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows, commentCountRows, attachmentCountRows, fieldsOnCardByCard, automationButtons] = await Promise.all([
     prisma.kanbanLabel.findMany({
       where: { boardId: board.id, tenantId: ctx.tenantId, systemId: ctx.systemId },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -812,6 +812,13 @@ export async function getBoardView(
       : Promise.resolve([] as { cardId: string; total: bigint }[]),
     // K2.6: ชิปฟิลด์กำหนดเองของทุกการ์ด (เฉพาะ showOnCard=true ที่มีค่าแล้ว) — คิวรีเดียว (กัน N+1)
     fieldsOnCardForCards(ctx.tenantId, board.id, cardIds),
+    // K2.9: ปุ่มอัตโนมัติของหัวบอร์ด (kind BOARD_BUTTON ที่เปิดอยู่) · อ่าน prisma ตรงที่นี่
+    // ไม่ import `automation.ts` (ไฟล์นั้น import `service.ts` อยู่แล้ว — เรียกกลับ = import วงกลม)
+    prisma.automationRule.findMany({
+      where: { tenantId: ctx.tenantId, boardId: board.id, kind: "BOARD_BUTTON", enabled: true },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
   const checklistOfCard = new Map(
     checklistCountRows.map((r) => [r.cardId, { done: Number(r.done), total: Number(r.total) }]),
@@ -868,6 +875,8 @@ export async function getBoardView(
     labels: labelRows.map((l) => ({ id: l.id, name: l.name, color: l.color as KanbanTagColor })),
     members: peopleIds.map((id) => ({ userId: id, name: nameOf.get(id) ?? id })),
     now: new Date().toISOString(),
+    // VIEWER กดปุ่มอัตโนมัติไม่ได้ (ต้อง EDITOR) ⇒ ไม่ต้องเห็นปุ่มที่กดแล้วเด้ง error
+    automationButtons: board.role === "VIEWER" ? [] : automationButtons,
     columns: board.columns.map((col) => ({
       id: col.id,
       name: col.name,

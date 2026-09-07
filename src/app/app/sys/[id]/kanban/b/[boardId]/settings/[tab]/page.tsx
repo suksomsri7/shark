@@ -6,7 +6,6 @@ import { getBoardView, KanbanNotFoundError, listCardTemplates, listFields, listL
 import type { KanbanActor } from "@/lib/modules/kanban/service";
 import { listViews } from "@/lib/modules/kanban/views";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { KanbanIcon } from "@/components/kanban/KanbanIcon";
 import { tagColorVar } from "@/components/kanban/Card";
 import { BOARD_SETTINGS_TABS, BoardSettingsNav, type BoardSettingsTab } from "@/components/kanban/settings/BoardSettingsNav";
 import { CardTemplatesSettings } from "@/components/kanban/CardTemplatesSettings";
@@ -66,7 +65,7 @@ export default async function BoardSettingsTabPage({
           {tab === "fields" && <FieldsTab ctx={ctx} actor={actor} boardId={boardId} systemId={id} />}
           {tab === "card-templates" && <CardTemplatesTab ctx={ctx} actor={actor} boardId={boardId} systemId={id} />}
           {tab === "views" && <ViewsTab ctx={ctx} actor={actor} boardId={boardId} systemId={id} viewerUserId={auth.user.id} />}
-          {tab === "automation" && <SoonTab wo="K2.9" title="อัตโนมัติ" />}
+          {tab === "automation" && <AutomationTab href={`/app/sys/${id}/kanban/automation?board=${boardId}`} />}
           {tab === "archive" && <ArchiveTab href={`${boardHref}/archive`} />}
         </div>
       </div>
@@ -202,12 +201,19 @@ async function ViewsTab({
   return <SavedViewsSettings systemId={systemId} boardId={boardId} isAdmin viewerUserId={viewerUserId} views={views} />;
 }
 
-function SoonTab({ wo, title }: { wo: string; title: string }) {
+// K2.9 — ตัวสร้างกฎอยู่หน้าเต็มของตัวเอง (`/kanban/automation`) เพราะกว้างกว่าคอลัมน์ตั้งค่า
+// แท็บนี้จึงเป็น "ทางเข้า" ไม่ใช่ที่ตั้งกฎซ้ำอีกที่ (กติกาเดิมของโมดูล: หน้าเดียวต่อเรื่อง)
+function AutomationTab({ href }: { href: string }) {
   return (
-    <div data-testid="board-settings-soon" className="card flex flex-col items-center gap-2 p-10 text-center">
-      <KanbanIcon name="clock" size="lg" />
-      <h2 className="text-sm font-medium">{title}</h2>
-      <p style={{ fontSize: 12.5, color: "var(--color-muted)" }}>เร็ว ๆ นี้ ({wo})</p>
+    <div data-testid="board-settings-automation" className="card flex flex-col gap-3 p-4">
+      <h2 className="text-sm font-medium">อัตโนมัติ</h2>
+      <p style={{ fontSize: 12.5, color: "var(--color-muted)" }}>
+        ตั้งกฎให้บอร์ดทำงานเองได้ — เมื่อการ์ดถูกย้าย/ถูกมอบหมาย/ถึงกำหนดส่ง ให้ติดป้าย มอบหมาย แจ้งเตือน
+        เปิดคำขออนุมัติ หรือสร้างการ์ดในบอร์ดอื่น · มีปุ่มบนการ์ด/บนบอร์ดสำหรับงานที่ทำซ้ำ ๆ ด้วย
+      </p>
+      <Link href={href} className="btn btn-primary self-start text-sm" data-testid="board-settings-automation-link">
+        เปิดตัวสร้างกฎอัตโนมัติ
+      </Link>
     </div>
   );
 }

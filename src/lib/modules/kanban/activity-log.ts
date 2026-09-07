@@ -27,6 +27,11 @@ export type LogActivityInput = {
   data?: Prisma.InputJsonValue;
   /** ตั้งเวลาเอง (ใช้ตอน backfill/นำเข้า) — ปกติไม่ต้องส่ง */
   createdAt?: Date;
+  /**
+   * K2.9 — กฎอัตโนมัติที่เป็นต้นเหตุ (ผู้เรียกส่ง `ctx.automation` ต่อมา) → ผสมเข้า `data.automation`
+   * แยกเป็นพารามิเตอร์ของตัวเองเพราะแต่ละจุดเรียกมี `data` ของตัวเองอยู่แล้ว (labelIds/userIds/fields)
+   */
+  automation?: { ruleId: string };
 };
 
 // ── นาฬิกาที่ "ไม่ย้อนและไม่ซ้ำ" ภายในโปรเซสเดียว ──
@@ -51,6 +56,19 @@ function stamp(): Date {
  * });
  * ```
  */
+/** ผสม `automation` เข้า data โดยไม่ทับคีย์เดิม (data ปกติเป็น object; ถ้าไม่ใช่ก็ปล่อยผ่าน) */
+function mergeAutomation(
+  data: Prisma.InputJsonValue | undefined,
+  automation: { ruleId: string } | undefined,
+): Prisma.InputJsonValue {
+  const base = data ?? {};
+  if (!automation) return base;
+  if (base && typeof base === "object" && !Array.isArray(base)) {
+    return { ...(base as Record<string, Prisma.InputJsonValue>), automation };
+  }
+  return base;
+}
+
 export async function logActivity(db: ActivityDb, input: LogActivityInput): Promise<void> {
   await db.kanbanActivity.create({
     data: {
@@ -59,7 +77,7 @@ export async function logActivity(db: ActivityDb, input: LogActivityInput): Prom
       cardId: input.cardId ?? null,
       actorUserId: input.actorUserId ?? null,
       type: input.type,
-      data: input.data ?? {},
+      data: mergeAutomation(input.data, input.automation),
       createdAt: input.createdAt ?? stamp(),
     },
   });

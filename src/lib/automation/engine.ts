@@ -44,8 +44,11 @@ async function postWebhook(url: string, body: unknown): Promise<void> {
 export async function runForEvent(evt: AutomationEvent, deps?: AutomationDeps): Promise<number> {
   const db = tenantDb({ tenantId: evt.tenantId });
   // เฉพาะกติกาที่เปิดอยู่ + event ตรง (index [tenantId, event, enabled])
+  // 🔴 K2.9: `boardId: null` = **กฎระดับร้านเท่านั้น** (POS/คลัง/ธีม) — กฎของบอร์ดงานมีรูปคนละแบบ
+  //    (เงื่อนไข/การกระทำอยู่ใน `conditions`/`actions` ส่วน `actionType` เป็นแค่ placeholder NOTIFY)
+  //    ถ้าไม่กรอง เอนจินเดิมจะเห็นกฎบอร์ดแล้วยิงแจ้งเตือนทั้งร้านมั่ว ๆ ทุกครั้งที่การ์ดขยับ
   const rules = await db.automationRule.findMany({
-    where: { event: evt.type, enabled: true },
+    where: { event: evt.type, enabled: true, boardId: null },
     orderBy: { createdAt: "asc" },
   });
 
@@ -85,6 +88,14 @@ export async function runForEvent(evt: AutomationEvent, deps?: AutomationDeps): 
         .create({ data: { tenantId: evt.tenantId, ruleId: rule.id, status: "FAILED", detail } })
         .catch(() => {});
     }
+  }
+
+  // 🔴 K2.9 — กฎของ "บอร์ดงาน" มีเอนจินของตัวเองในโมดูล (เงื่อนไข AND + การกระทำเป็นลำดับ + กันวน + โควตา)
+  //    lazy import กัน import วงกลม (kanban/automation.ts → notify/service → outbox-consumers → engine)
+  //    `runForKanbanEvent` **ห้าม throw** ตามสัญญาของมันเอง ⇒ ที่นี่บวกค่าที่คืนมาตรง ๆ ได้
+  if (evt.type.startsWith("kanban.")) {
+    const { runForKanbanEvent } = await import("@/lib/modules/kanban/automation");
+    fired += await runForKanbanEvent(evt, deps);
   }
 
   return fired;

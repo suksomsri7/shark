@@ -95,6 +95,7 @@ export async function setCardAssignees(
   ctx: KanbanCtx,
   cardId: string,
   userIds: string[],
+  opts?: { notify?: boolean },
 ): Promise<{ assigneeUserIds: string[]; added: string[] }> {
   const card = await requireCard(ctx, cardId);
   const ids = [...new Set(userIds)];
@@ -106,8 +107,13 @@ export async function setCardAssignees(
     await logAssigneeChange(tx, ctx, card, result);
     return result;
   });
-  for (const userId of added) {
-    await notifyCardAssigned(ctx.tenantId, ctx.systemId, card, userId);
+  // K2.9 — กฎอัตโนมัติปิดการแจ้ง "ได้รับมอบหมายงาน" ของขั้นนี้ (`notify: false`)
+  // 🔴 ไม่ใช่การกลืนแจ้งเตือน แต่เพราะกฎมีการกระทำ `notify` ของตัวเองให้ผู้ตั้งกฎเลือกข้อความเอง
+  //    ปล่อยให้ยิงทั้งคู่ = ผู้รับได้ 2 ใบเรื่องเดียวกันทุกครั้งที่กฎวิ่ง (เรื่องที่ผู้ใช้ปิดเองไม่ได้)
+  if (opts?.notify !== false) {
+    for (const userId of added) {
+      await notifyCardAssigned(ctx.tenantId, ctx.systemId, card, userId);
+    }
   }
   await publishBoardSignal(ctx, card.boardId, boardSignal({ type: "card.assignees", boardId: card.boardId, cardId: card.id }));
   return { assigneeUserIds: ids, added };
@@ -168,7 +174,7 @@ async function logAssigneeChange(
   card: { id: string; boardId: string },
   change: { added: string[]; removed: string[] },
 ): Promise<void> {
-  const base = { tenantId: ctx.tenantId, boardId: card.boardId, cardId: card.id, actorUserId: ctx.actorUserId ?? null };
+  const base = { tenantId: ctx.tenantId, boardId: card.boardId, cardId: card.id, actorUserId: ctx.actorUserId ?? null, automation: ctx.automation };
   if (change.added.length > 0) {
     await logActivity(tx, { ...base, type: "CARD_ASSIGNED", data: { userIds: change.added } });
   }
@@ -188,7 +194,7 @@ async function logAssigneeChange(
  * VIEWER อ่านได้ (แค่ดู ไม่ใช่แก้)
  */
 export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<CardDetailDto> {
-  await assertCardRole(ctx, cardId, "VIEWER");
+  const { boardId } = await assertCardRole(ctx, cardId, "VIEWER");
   const card = await prisma.kanbanCard.findFirst({
     where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
     select: {
@@ -207,7 +213,7 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
   if (!card) throw new KanbanNotFoundError("ไม่พบการ์ดนี้");
   // K1.7/K1.8/K1.9/K2.6: หลังการ์ดโหลดเช็คลิสต์ + ความเห็น + ไฟล์แนบ + ค่าฟิลด์กำหนดเอง พร้อมกับส่วนที่
   // เหลือของการ์ดในเที่ยวเดียว (ทุกตัวตรวจสิทธิ์ซ้ำในตัวเอง — เปิดหลังการ์ด 1 ครั้ง = ไม่ต้องยิง action เพิ่มอีกหลายรอบ)
-  const [checklists, comments, attachments, customFields, parentCard] = await Promise.all([
+  const [checklists, comments, attachments, customFields, parentCard, cardButtons] = await Promise.all([
     getCardChecklists(ctx, cardId),
     listComments(ctx, cardId),
     listAttachments(ctx, cardId),
@@ -216,6 +222,13 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     card.recurrenceParentId
       ? prisma.kanbanCard.findFirst({ where: { id: card.recurrenceParentId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { title: true } })
       : Promise.resolve(null),
+    // K2.9 — ปุ่มอัตโนมัติของบอร์ด (kind CARD_BUTTON) · อ่าน prisma ตรงที่นี่ ไม่ import `automation.ts`
+    // (ไฟล์นั้น import `cards.ts` อยู่แล้ว — เรียกกลับจะเป็น import วงกลม)
+    prisma.automationRule.findMany({
+      where: { tenantId: ctx.tenantId, boardId, kind: "CARD_BUTTON", enabled: true },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
   return {
     id: card.id,
@@ -234,6 +247,7 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     recurrenceLabel: card.recurrenceRule ? describeRecurrence(card.recurrenceRule) : null,
     recurrenceParentId: card.recurrenceParentId,
     recurrenceParentTitle: parentCard?.title ?? null,
+    cardButtons,
   };
 }
 
