@@ -117,7 +117,10 @@ import {
   updateCardTemplate,
 } from "./card-templates";
 import { describeRecurrence, setCardRecurrence } from "./recurrence";
-import type { CardTemplateDto } from "./types";
+// K2.8 — กล่องงานเข้าส่วนตัว (บริการอยู่ `inbox.ts` — ความเป็นเจ้าของ/บทบาทบอร์ด 2 ชั้นตรวจในนั้นเอง
+// ที่นี่แค่ตรวจสิทธิ์โมดูล เหมือน K2.7)
+import { dismiss as dismissInbox, moveToBoard as moveInboxToBoard, quickAdd as quickAddInbox } from "./inbox";
+import type { CardTemplateDto, InboxItemDto } from "./types";
 
 // ทุก action: requireTenant → เอา tenantId จาก session (ไม่เชื่อ client) + scope ด้วย systemId
 
@@ -1744,5 +1747,71 @@ export async function setCardRecurrenceAction(input: {
     return { ok: true, recurrenceLabel: input.rule ? describeRecurrence(input.rule) : null };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ตั้งกำหนดส่งซ้ำไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+// ───────────────────────── K2.8 — กล่องงานเข้าส่วนตัว ─────────────────────────
+
+/** ช่อง "พิมพ์แล้วกด Enter" บนหน้า "งานของฉัน" — จดเร็ว (source MANUAL เสมอ) ให้ตัวเอง */
+export async function quickAddInboxAction(input: {
+  systemId: string;
+  title: string;
+}): Promise<{ ok: true; item: InboxItemDto } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId) return { ok: false, message: "ไม่พบระบบนี้" };
+  try {
+    const item = await quickAddInbox(ctxOf(auth, input.systemId), { title: input.title });
+    revalidatePath(myTasksPath(input.systemId));
+    return { ok: true, item };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "จดงานไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** ปุ่ม "ส่งเข้าบอร์ด" ของแต่ละรายการในกล่องงานเข้า — เลือกบอร์ด/คอลัมน์/กำหนดส่ง (ไม่บังคับ) แล้วกลายเป็นการ์ดจริง */
+export async function moveInboxToBoardAction(input: {
+  systemId: string;
+  itemId: string;
+  boardId: string;
+  columnId: string;
+  dueAt?: string;
+  assigneeUserIds?: string[];
+}): Promise<{ ok: true; cardId: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.create");
+  if (!input.systemId || !input.itemId || !input.boardId || !input.columnId) {
+    return { ok: false, message: "ไม่พบรายการหรือบอร์ดปลายทาง" };
+  }
+  try {
+    const res = await moveInboxToBoard(ctxOf(auth, input.systemId), {
+      itemId: input.itemId,
+      boardId: input.boardId,
+      columnId: input.columnId,
+      dueAt: input.dueAt ? parseDue(input.dueAt) : null,
+      assigneeUserIds: input.assigneeUserIds,
+    });
+    revalidatePath(myTasksPath(input.systemId));
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, cardId: res.cardId };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ส่งเข้าบอร์ดไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** ปุ่ม "ไม่เอาแล้ว" ของแต่ละรายการในกล่องงานเข้า — ปิดรายการโดยไม่สร้างการ์ด */
+export async function dismissInboxAction(input: {
+  systemId: string;
+  itemId: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.itemId) return { ok: false, message: "ไม่พบรายการนี้" };
+  try {
+    await dismissInbox(ctxOf(auth, input.systemId), input.itemId);
+    revalidatePath(myTasksPath(input.systemId));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ลบรายการไม่สำเร็จ ลองใหม่อีกครั้ง" };
   }
 }

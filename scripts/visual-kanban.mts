@@ -582,6 +582,45 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: "[data-testid=card-templates-settings]" }, { wait: 300 }],
     },
   ],
+  "2.8": [
+    {
+      name: "my-tasks-inbox",
+      path: `/app/sys/${SYS}/kanban/my-tasks`,
+      onlyDevice: "desktop",
+      note: "เทียบภาพ 06: หัว 'สวัสดีตอน…' + วันที่ไทย + จดงานเร็ว · ซ้าย=กล่องงานเข้า (2 รายการเตรียมไว้ ใบหนึ่งมีป้าย AI) · ขวา=งานของฉัน",
+      expect: ["[data-testid=my-tasks]", "[data-testid=inbox-panel]", "[data-testid=inbox-item]"],
+      steps: [{ waitFor: "[data-testid=inbox-item]" }, { wait: 300 }],
+    },
+    {
+      name: "inbox-quick-add",
+      path: `/app/sys/${SYS}/kanban/my-tasks`,
+      onlyDevice: "desktop",
+      note: "พิมพ์ในช่อง 'พิมพ์แล้วกด Enter…' แล้วกด Enter จริง — รายการใหม่ต้องโผล่ในกล่องทันที (แถวบนสุด)",
+      expect: ["[data-testid=inbox-panel]"],
+      steps: [
+        { waitFor: "[data-testid=inbox-quick-add]" },
+        { fill: "[data-testid=inbox-quick-add]", value: "ทดสอบจดงานเร็ว QC" },
+        { press: "Enter" },
+        { wait: 700 },
+      ],
+    },
+    {
+      name: "inbox-move-popover",
+      path: `/app/sys/${SYS}/kanban/my-tasks`,
+      onlyDevice: "desktop",
+      note: "กดปุ่ม 'ส่งเข้าบอร์ด' ของรายการแรก — popover เลือกบอร์ด → คอลัมน์ → กำหนดส่ง (ไม่บังคับ)",
+      expect: ["[data-testid=inbox-move-popover]", "[data-testid=inbox-move-board]", "[data-testid=inbox-move-column]"],
+      steps: [{ waitFor: "[data-testid=inbox-move-to-board]" }, { click: "[data-testid=inbox-move-to-board]" }, { wait: 400 }],
+    },
+    {
+      name: "mobile-my-tasks-inbox",
+      path: `/app/sys/${SYS}/kanban/my-tasks`,
+      onlyDevice: "mobile",
+      note: "เทียบภาพ 07(ค)/06 มือถือ: งานของฉันบนสุด กล่องงานเข้าถัดลงมา",
+      expect: ["[data-testid=my-tasks]", "[data-testid=inbox-panel]"],
+      steps: [{ waitFor: "[data-testid=inbox-item]" }, { wait: 300 }],
+    },
+  ],
 };
 const specs: Spec[] = WO === "path" ? [{ name: "custom", path: argv[1]! }] : (SPECS[WO] ?? []);
 if (specs.length === 0) { console.error(`❌ ไม่มี spec ของ WO ${WO}`); process.exit(2); }
@@ -841,6 +880,26 @@ if (WO === "2.7") {
   console.log(`🧪 เตรียม K2.7: สร้างเทมเพลต '${tpl.name}' ${KB27.templateId} · ตั้งกำหนดส่งซ้ำการ์ด ${recurCardId} เป็น 'ทุกสัปดาห์ BYDAY=${weekdayCode}' (ตรงวันของ dueAt) บนบอร์ดป่าตอง`);
 }
 
+const KB28 = { itemIds: [] as string[] };
+if (WO === "2.8") {
+  const inboxSvc = (await import("@/lib/modules/kanban/inbox" as string)) as Any;
+  const ctx28 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  // ลบเศษของรอบก่อนที่อาจค้าง (สคริปต์ล่ม/Ctrl-C ก่อนถึง finally)
+  await (prisma as Any).kanbanInboxItem.deleteMany({
+    where: { tenantId: E.tenantId, OR: [{ sourceKey: { startsWith: "qc-visual-kanban:" } }, { title: "ทดสอบจดงานเร็ว QC" }] },
+  });
+  const quick = await inboxSvc.quickAdd(ctx28, { title: "โทรยืนยันคิวซ่อมพรุ่งนี้" });
+  const fromEmail = await inboxSvc.addFromSource(ctx28, {
+    ownerUserId: E.users.owner.userId,
+    source: "EMAIL",
+    sourceKey: `qc-visual-kanban:${Date.now()}`,
+    title: "ใบแจ้งหนี้ค่าอากาศอัดเดือนนี้",
+    note: "AI สรุป: ยอด 4,200 บาท ครบกำหนด 15 นี้ — ตรวจแล้วส่งบัญชี",
+  });
+  KB28.itemIds = [quick.id as string, fromEmail.id as string];
+  console.log(`🧪 เตรียม K2.8: กล่องงานเข้าของเจ้าของร้าน — จดเร็ว ${quick.id} · จากอีเมล (มีป้าย AI) ${fromEmail.id}`);
+}
+
 async function restoreSeed(): Promise<void> {
   // K1.9 — คืนสภาพ seed: ลบไฟล์แนบ/FileAsset ที่สร้างระหว่างถ่ายภาพ + ล้าง coverFileId ของการ์ดที่ใช้ทดสอบ
   if (WO === "1.9") {
@@ -988,6 +1047,16 @@ async function restoreSeed(): Promise<void> {
       where: { boardId: B("patong"), createdAt: { gte: new Date(Date.now() - 10 * 60_000) }, type: { in: ["BOARD_UPDATED", "CARD_UPDATED"] } },
     });
     console.log(`🧹 คืนสภาพ K2.7: ลบกิจกรรมที่เพิ่งเกิด ${ac.count}`);
+  }
+
+  // K2.8 — คืนสภาพ seed: ลบรายการกล่องงานเข้าที่เตรียมไว้ก่อนถ่าย + รายการที่สเปค "inbox-quick-add" จดจริงผ่านหน้าเว็บ
+  if (WO === "2.8") {
+    const P = prisma as Any;
+    const where = KB28.itemIds.length
+      ? { OR: [{ id: { in: KB28.itemIds } }, { tenantId: E.tenantId, title: "ทดสอบจดงานเร็ว QC" }] }
+      : { tenantId: E.tenantId, title: "ทดสอบจดงานเร็ว QC" };
+    const del = await P.kanbanInboxItem.deleteMany({ where });
+    console.log(`🧹 คืนสภาพ K2.8: ลบรายการกล่องงานเข้าที่ใช้ถ่ายภาพ ${del.count} แถว`);
   }
 }
 

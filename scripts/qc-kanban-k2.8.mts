@@ -23,7 +23,7 @@ const fails = async (fn: () => Promise<unknown>) => { try { await fn(); return n
 const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const q = async <T = Any,>(sql: string): Promise<T[]> => (await prisma.$queryRawUnsafe(sql)) as T[];
 const P = prisma as Any;
-let tid = ""; let SYS = ""; const madeCards: string[] = [];
+let tid = ""; let SYS = ""; const madeCards: string[] = []; let pookMemberBoard = "";
 try {
   const scope = await kq.resolveKanbanScope(prisma);
   if (!scope) throw new Error("ยังไม่ได้ seed");
@@ -33,7 +33,11 @@ try {
   const actorOf = async (userId: string) => { const m = (await prisma.membership.findFirst({ where: { tenantId: tid, userId } }))!; return { userId, role: m.role, unitAccess: m.unitAccess as string[], permissions: m.permissions as Record<string, unknown> }; };
   const pook = await actorOf(E.users.staff.pook.userId); const thana = await actorOf(E.users.staff.thana.userId); const owner = await actorOf(E.users.owner.userId);
   const ctxP = { tenantId: tid, systemId: SYS, actorUserId: pook.userId }; const ctxT = { tenantId: tid, systemId: SYS, actorUserId: thana.userId }; const ctxO = { tenantId: tid, systemId: SYS, actorUserId: owner.userId };
-  const board = E.boards.maint.id as string; // TENANT: pook/thana เห็น
+  const board = E.boards.maint.id as string; // TENANT: pook/thana เห็นเป็น VIEWER — moveToBoard ต้อง EDITOR ⇒ เชิญ pook ชั่วคราว (K2.8 builder แย้งถูก · ลบใน finally)
+  const members = (await import("@/lib/modules/kanban/members" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
+  await P.kanbanBoardMember.deleteMany({ where: { boardId: board, userId: pook.userId } });
+  await members.addMember(ctxO, board, pook.userId, "EDITOR");
+  pookMemberBoard = board;
   const col = (await prisma.kanbanColumn.findFirst({ where: { boardId: board, status: "ACTIVE" }, orderBy: { position: "asc" } }))!;
 
   // ═══ S1 schema ═══
@@ -87,6 +91,7 @@ try {
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.name}: ${e.message.slice(0, 240)}` : String(e));
 } finally {
+  try { if (pookMemberBoard) { const E2 = JSON.parse(readFileSync(kq.KQC.expectedPath, "utf8")); await P.kanbanBoardMember.deleteMany({ where: { boardId: pookMemberBoard, userId: E2.users.staff.pook.userId } }); } } catch { /* */ }
   try {
     if (madeCards.length) { await P.kanbanActivity.deleteMany({ where: { cardId: { in: madeCards } } }); await prisma.kanbanCard.deleteMany({ where: { id: { in: madeCards } } }); }
     if (tid) { await P.kanbanInboxItem.deleteMany({ where: { tenantId: tid, OR: [{ sourceKey: { startsWith: "chat:qc-k28-" } }, { title: { in: ["โทรหา supplier ถังอากาศ"] } }] } }); await P.kanbanActivity.deleteMany({ where: { tenantId: tid, createdAt: { gte: new Date(Date.now() - 10 * 60_000) }, type: "CARD_CREATED" } }); }

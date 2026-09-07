@@ -326,6 +326,42 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   🔴 แจ้งเตือนคนที่ถูก @mention ถูกส่งไปแล้วในโมดูล (ยิงตรงคน ไม่ผ่านคิว — ต้องถึงทันทีแม้คิวยาว)
   //      consumer เป็น no-op เพื่อ **ปิด event เป็น DONE** + เป็นจุดให้ Automation rules/Webhooks ยิงต่อ
   "kanban.comment.added": withAutomation(async () => {}),
+  // K2.8 (§9.2 "การ์ดเกิดจากที่อื่น"): แชท/อีเมล/ฟอร์ม/ผู้ช่วย AI ยิง `kanban.inbox.requested` มาขอ
+  // "จดงานไว้ให้คนคนหนึ่ง" ก่อน (ยังไม่ใช่การ์ด) — composition root เป็นคนอ่าน payload ดิบแล้วส่งต่อให้
+  // facade `kanban/inbox.ts#addFromSource` (โมดูล kanban ไม่รู้จักแชท/ฟอร์ม/อีเมลตรง ๆ — ทิศทางเดียว)
+  // idempotent ด้วย `sourceKey` (ยิงซ้ำ/retry ของ consumer = ไม่มีรายการที่สอง) · ตัวยิงจริงมาใน K3.3
+  // (`sourceKey = "chat:{messageId}"` ตาม §9.2) — ลงทะเบียนไว้ก่อนกันคิวตันเงียบ ๆ (บทเรียน 30 ส.ค. 2026)
+  "kanban.inbox.requested": withAutomation(async (evt) => {
+    if (!evt.systemId) return;
+    const p = evt.payload as {
+      ownerUserId?: unknown;
+      source?: unknown;
+      sourceKey?: unknown;
+      title?: unknown;
+      note?: unknown;
+      fileIds?: unknown;
+    };
+    if (typeof p.ownerUserId !== "string" || typeof p.sourceKey !== "string" || typeof p.title !== "string") return;
+    try {
+      const { addFromSource } = await import("@/lib/modules/kanban/inbox");
+      await addFromSource(
+        { tenantId: evt.tenantId, systemId: evt.systemId, actorUserId: null },
+        {
+          ownerUserId: p.ownerUserId,
+          source: typeof p.source === "string" ? p.source : "MANUAL",
+          sourceKey: p.sourceKey,
+          title: p.title,
+          note: typeof p.note === "string" ? p.note : undefined,
+          fileIds: Array.isArray(p.fileIds) ? p.fileIds.filter((f): f is string => typeof f === "string") : [],
+        },
+      );
+    } catch (e) {
+      await logOps("WARN", "outbox", "เพิ่มรายการกล่องงานเข้าจาก event ไม่สำเร็จ", {
+        tenantId: evt.tenantId,
+        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+      });
+    }
+  }),
   // WO 8.3 (§9.5 แอปภายนอก/API): เหตุการณ์บัญชี — ผลข้างเคียงเกิดในโมดูลบัญชีไปแล้ว
   //   consumer เป็น no-op เพื่อ **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล)
   //   + เป็นจุดให้ `withWebhooks` ยิงฮุคไปยังปลายทางที่ร้านสมัครไว้ (หน้า "แอปภายนอก/API")

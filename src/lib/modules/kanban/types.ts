@@ -619,3 +619,27 @@ export type CardTemplateDto = {
   checklistItemCount: number;
   sortOrder: number;
 };
+
+// ───────────────────────── K2.8 — กล่องงานเข้าส่วนตัว (inbox.ts) ─────────────────────────
+// DTO บริสุทธิ์ (ไม่มี Date/Prisma model) — `InboxPanel.tsx` (client) ต้อง `import type` ได้โดยไม่ลาก
+// `db.ts` → `pg` เข้าบันเดิลฝั่ง browser ด้วยเหตุผลเดียวกับ K1.11/…/K2.7
+
+/** ที่มาของรายการกล่องงานเข้า — ตรงกับ `KanbanInboxItem.source` (เก็บเป็น String ไม่ใช่ enum ใน DB) */
+export type KanbanInboxSource = "MANUAL" | "CHAT" | "EMAIL" | "FORM" | "AI";
+
+/** รายการ 1 ใบในกล่องงานเข้า (ปกติเห็นเฉพาะ status OPEN — เห็นเฉพาะเจ้าของ) */
+export type InboxItemDto = {
+  id: string;
+  ownerUserId: string;
+  title: string;
+  /** สรุปจาก AI / เนื้อหาจากต้นทาง — มีค่า = โชว์ป้าย "AI ตั้งชื่อ + สรุปให้แล้ว" */
+  note: string | null;
+  source: KanbanInboxSource;
+  /** ป้ายไทยพร้อมโชว์ — "จดไว้เอง" / "จากแชท" / "ส่งต่อทางอีเมล" / "จากฟอร์ม" / "ผู้ช่วย AI" */
+  sourceLabel: string;
+  fileIds: string[];
+  status: "OPEN" | "MOVED" | "DISMISSED";
+  movedCardId: string | null;
+  /** ISO 8601 (UTC) — หน้าจอแปลงเป็นเวลาไทยเอง */
+  createdAt: string;
+};

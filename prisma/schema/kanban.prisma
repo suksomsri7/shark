@@ -570,3 +570,33 @@ model KanbanCardTemplate {
 
   @@index([boardId, sortOrder])
 }
+
+// ───────────────────────── กล่องงานเข้าส่วนตัว (K2.8) ─────────────────────────
+// "ที่พักงานส่วนตัว" ก่อนจัดลงบอร์ด (ภาพ 06 ฝั่งซ้าย) — จดเร็ว (source MANUAL) หรือมาจากภายนอก
+// (CHAT/EMAIL/FORM/AI ผ่าน `sourceKey` กันสร้างซ้ำ — event ขาเข้ายิงซ้ำ = ไม่มีรายการที่สอง)
+// 🔴 unique(tenantId, sourceKey) เป็น **partial index** (`WHERE "sourceKey" IS NOT NULL`) — ประกาศ
+//    เฉพาะใน migration.sql เท่านั้น (Prisma schema ไม่รองรับ WHERE บน @@unique) แบบเดียวกับ
+//    `KanbanBoardTemplate_scope_key_key` (K1.12 · migration kanban_v2_i) — MANUAL ไม่มี sourceKey จึงไม่ชนกัน
+enum KanbanInboxStatus {
+  OPEN
+  MOVED
+  DISMISSED
+}
+
+model KanbanInboxItem {
+  id          String            @id @default(cuid())
+  tenantId    String
+  systemId    String
+  ownerUserId String // เจ้าของกล่อง — เห็น/จัดการเฉพาะของตัวเอง (ผู้ดูแลก็ดูของคนอื่นไม่ได้ — สัญญา K2.8)
+  title       String
+  note        String? // สรุปจาก AI / เนื้อหาจากต้นทาง — กลายเป็น description ของการ์ดตอน moveToBoard
+  source      String            @default("MANUAL") // MANUAL | CHAT | EMAIL | FORM | AI (เก็บ String ไม่ใช่ enum — ขยายป้ายที่มาได้โดยไม่ต้องไมเกรชัน)
+  sourceKey   String? // idempotency ของรายการที่มาจากภายนอก เช่น "chat:<messageId>" — MANUAL ไม่มีค่านี้
+  fileIds     Json              @default("[]") // string[] (FileAsset.id) — ผูกเป็นไฟล์แนบตอน moveToBoard
+  status      KanbanInboxStatus @default(OPEN)
+  movedCardId String? // การ์ดที่เกิดจาก "ส่งเข้าบอร์ด" — มีค่าเฉพาะ status MOVED
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([tenantId, systemId, ownerUserId, status, createdAt])
+}

@@ -29,6 +29,8 @@ export const KANBAN_LIMITS = Object.freeze({
   viewsPerBoard: 20,
   /** เทมเพลตการ์ดต่อบอร์ด (K2.7) */
   cardTemplatesPerBoard: 30,
+  /** รายการ OPEN สูงสุดในกล่องงานเข้าต่อคน ต่อระบบ (K2.8) */
+  inboxOpenMax: 200,
 } as const);
 
 export type KanbanLimits = typeof KANBAN_LIMITS;

@@ -1,19 +1,47 @@
-// MyTasks.tsx — "งานของฉัน" ใหม่ (K1.13 · แบบที่เคาะ: `ledger/design-kanban/06-my-tasks.png` ฝั่งขวา)
+// MyTasks.tsx — "งานของฉัน" + กล่องงานเข้า (K1.13 ฝั่งขวา + K2.8 หัวจอ/ฝั่งซ้าย ·
+// แบบที่เคาะ: `ledger/design-kanban/06-my-tasks.png`)
 // เดิม (ก่อน K1.13) = `KanbanMyTasksSection` ใน `ui.tsx` (list เดียวไม่จัดกลุ่ม) — ตัวนี้แทนที่บนหน้า
 // `/app/sys/{id}/kanban/my-tasks` (ui.tsx ยังคง `KanbanMyTasksSection` ไว้เผื่อมีที่อื่นอ้างถึง — ไม่ถูก
 // เรียกจากหน้านี้อีกแล้ว เหมือนแพตเทิร์นเดียวกับ K1.12 ที่ทำกับ `KanbanBoardsSection`)
 //
-// กล่องงานเข้าส่วนตัว (ฝั่งซ้ายของภาพ 06) เป็นขอบเขตของ K2.8 — WO นี้ทำเฉพาะฝั่งขวาตามสัญญา §K1.13
+// K2.8: หัวจอ "สวัสดีตอน{เช้า/บ่าย/เย็น} {ชื่อ}" + วันที่ไทย + สรุป + ปุ่ม "จดงานเร็ว" (เลื่อน/โฟกัสช่องจด
+// ของ `<InboxPanel>`) ตอนนี้อยู่ในไฟล์นี้ทั้งคู่ (คอลัมน์ซ้าย=กล่องงานเข้า · ขวา=งานของฉันเดิม) เพราะ
+// oracle K2.8 อ่านสตริง "สวัสดี"/"จดงานเร็ว"/`InboxPanel` จากไฟล์นี้ + `InboxPanel.tsx` รวมกัน
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { DUE_STYLE, dueBadgeFrom, tagColorVar } from "./Card";
+import { InboxPanel, type InboxBoardOption } from "./InboxPanel";
 import { KanbanIcon } from "./KanbanIcon";
 import { completeCardAction, toggleChecklistItemAction, undoAction } from "@/lib/modules/kanban/actions";
-import type { MyChecklistItemDto, MyTaskCardDto, MyTasksOverviewDto } from "@/lib/modules/kanban/types";
+import type { InboxItemDto, MyChecklistItemDto, MyTaskCardDto, MyTasksOverviewDto } from "@/lib/modules/kanban/types";
 
 const UNDO_TOAST_MS = 5000;
+const BKK_OFFSET_MS = 7 * 60 * 60 * 1000; // Asia/Bangkok = UTC+7 ตายตัว ไม่มี DST — คำนวณเองล้วน (ห้าม toLocale*/getDay ตรง ๆ)
+const TH_MONTH_FULL = [
+  "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+  "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม",
+];
+const TH_WDAY_FULL = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+
+function bkkOf(nowMs: number) {
+  const d = new Date(nowMs + BKK_OFFSET_MS);
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth(), day: d.getUTCDate(), hour: d.getUTCHours(), weekday: d.getUTCDay() };
+}
+
+/** "สวัสดีตอนเช้า/บ่าย/เย็น" ตามเวลาไทย — เช้า < 11:00 · บ่าย < 17:00 · เย็นหลังจากนั้น */
+function greetingWord(hour: number): string {
+  if (hour < 11) return "เช้า";
+  if (hour < 17) return "บ่าย";
+  return "เย็น";
+}
+
+/** "ศุกร์ 5 กันยายน 2569" — วันไทย + วันที่ + เดือนไทยเต็ม + ปี พ.ศ. */
+function thaiDateLong(nowMs: number): string {
+  const b = bkkOf(nowMs);
+  return `${TH_WDAY_FULL[b.weekday]} ${b.day} ${TH_MONTH_FULL[b.month]} ${b.year + 543}`;
+}
 
 function KpiTile({ icon, label, value, tone }: { icon: string; label: string; value: number; tone?: "danger" }) {
   return (
@@ -46,16 +74,35 @@ export function MyTasks({
   systemId,
   overview,
   nowMs,
+  userName,
+  inboxItems,
+  inboxBoards,
 }: {
   systemId: string;
   overview: MyTasksOverviewDto;
   nowMs: number;
+  /** K2.8 — หัวจอ "สวัสดีตอน…{ชื่อ}" */
+  userName: string;
+  /** K2.8 — รายการกล่องงานเข้าของฉัน (OPEN เท่านั้น) ให้ `<InboxPanel>` */
+  inboxItems: InboxItemDto[];
+  /** K2.8 — บอร์ดที่แก้ได้ (EDITOR+) พร้อมคอลัมน์ ให้ popover "ส่งเข้าบอร์ด" ของ `<InboxPanel>` */
+  inboxBoards: InboxBoardOption[];
 }) {
   const [groups, setGroups] = useState(overview.groups);
   const [counts, setCounts] = useState(overview.counts);
   const [checklistItems, setChecklistItems] = useState<MyChecklistItemDto[]>(overview.checklistItems);
   const [undoToast, setUndoToast] = useState<{ message: string; token: string; boardId: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [boardFilter, setBoardFilter] = useState<string>("all");
+
+  // K2.8 — dropdown "ทุกบอร์ด" ของหัวจอ: รายชื่อบอร์ดที่มีงานของฉันอยู่จริงวันนี้ (ไม่ต้องยิงคิวรีเพิ่ม)
+  const boardFilterOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const key of ["overdue", "today", "week", "later", "none"] as const) {
+      for (const c of overview.groups[key]) map.set(c.boardId, c.boardName);
+    }
+    return [...map.entries()].map(([id, name]) => ({ id, name }));
+  }, [overview.groups]);
 
   const showUndoToast = useCallback((message: string, token: string, boardId: string) => {
     setUndoToast({ message, token, boardId });
@@ -119,39 +166,95 @@ export function MyTasks({
   const order: GroupKey[] = ["overdue", "today", "week", "later", "none"];
   const totalOpen = order.reduce((n, k) => n + groups[k].length, 0);
   const nothingAtAll = totalOpen === 0 && checklistItems.length === 0;
+  const visibleGroups: Record<GroupKey, MyTaskCardDto[]> =
+    boardFilter === "all"
+      ? groups
+      : {
+          overdue: groups.overdue.filter((c) => c.boardId === boardFilter),
+          today: groups.today.filter((c) => c.boardId === boardFilter),
+          week: groups.week.filter((c) => c.boardId === boardFilter),
+          later: groups.later.filter((c) => c.boardId === boardFilter),
+          none: groups.none.filter((c) => c.boardId === boardFilter),
+        };
 
   return (
-    <div data-testid="my-tasks" className="flex flex-col gap-3">
-      {/* ── 4 ตัวเลข ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KpiTile icon="warn" label="เลยกำหนด" value={counts.overdue} tone="danger" />
-        <KpiTile icon="clock" label="ถึงกำหนดวันนี้" value={counts.today} />
-        <KpiTile icon="cal" label="สัปดาห์นี้" value={counts.week} />
-        <KpiTile icon="check" label="ปิดไปสัปดาห์นี้" value={counts.doneThisWeek} />
+    <div data-testid="my-tasks" className="flex flex-col gap-4">
+      {/* ── K2.8: หัวจอ "สวัสดีตอน…{ชื่อ}" + วันที่ไทย + สรุป + dropdown บอร์ด + ปุ่ม "จดงานเร็ว" ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 style={{ fontSize: 19, fontWeight: 700 }}>
+            สวัสดีตอน{greetingWord(bkkOf(nowMs).hour)} {userName}
+          </h1>
+          <p style={{ fontSize: 12.5, color: "var(--color-muted)" }}>
+            {thaiDateLong(nowMs)} · มีงานถึงกำหนดวันนี้ {counts.today} งาน · เลยกำหนด {counts.overdue} งาน
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            data-testid="my-tasks-board-filter"
+            value={boardFilter}
+            onChange={(e) => setBoardFilter(e.target.value)}
+            className="rounded-lg border px-2.5 py-2 text-sm"
+            style={{ borderColor: "var(--color-line)" }}
+          >
+            <option value="all">ทุกบอร์ด</option>
+            {boardFilterOptions.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+          <a
+            href="#inbox-quick-add-input"
+            data-testid="my-tasks-quick-add-link"
+            className="btn btn-primary text-sm"
+            onClick={() => {
+              // เลื่อนไปช่องจดของกล่องงานเข้าแล้วโฟกัสให้พิมพ์ต่อได้ทันที (a[href=#…] เลื่อนให้อยู่แล้ว)
+              window.setTimeout(() => document.getElementById("inbox-quick-add-input")?.focus(), 260);
+            }}
+          >
+            + จดงานเร็ว
+          </a>
+        </div>
       </div>
 
-      <div className="card flex flex-col gap-3" style={{ padding: 15 }}>
-        <div className="flex items-center gap-2">
-          <KanbanIcon name="check" size="sm" />
-          <h2 style={{ fontSize: 13.5, fontWeight: 700 }}>งานที่มอบหมายให้ฉัน</h2>
-          <span style={{ fontSize: 11.5, color: "var(--color-muted)" }}>รวมทุกบอร์ดที่ฉันเข้าถึง</span>
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[340px_1fr] lg:items-start">
+        {/* ── K2.8 คอลัมน์ซ้าย (desktop) / บนสุดรองจากงานของฉัน (มือถือ) — กล่องงานเข้า ── */}
+        <div className="order-2 lg:order-1">
+          <InboxPanel systemId={systemId} items={inboxItems} boards={inboxBoards} nowMs={nowMs} />
         </div>
 
-        {nothingAtAll ? (
-          /* empty state §5.7 — ทุกอันต้องบอก "ขั้นต่อไป" 1 อย่าง */
-          <div className="flex flex-col items-start gap-2" style={{ padding: "10px 2px" }}>
-            <p style={{ fontSize: 13, color: "var(--color-muted)" }}>
-              วันนี้ไม่มีงานค้าง 🎉 งานที่หัวหน้ามอบหมายจะมาอยู่ที่นี่
-            </p>
-            <Link href={`/app/sys/${systemId}/kanban/boards`} className="btn btn-ghost text-sm" data-testid="my-tasks-see-boards">
-              ดูบอร์ดทั้งหมด
-            </Link>
+        <div className="order-1 flex flex-col gap-3 lg:order-2">
+          {/* ── 4 ตัวเลข ── */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <KpiTile icon="warn" label="เลยกำหนด" value={counts.overdue} tone="danger" />
+            <KpiTile icon="clock" label="ถึงกำหนดวันนี้" value={counts.today} />
+            <KpiTile icon="cal" label="สัปดาห์นี้" value={counts.week} />
+            <KpiTile icon="check" label="ปิดไปสัปดาห์นี้" value={counts.doneThisWeek} />
           </div>
-        ) : (
-          <>
-            {order.map((key) => {
-              const items = groups[key];
-              if (items.length === 0) {
+
+          <div className="card flex flex-col gap-3" style={{ padding: 15 }}>
+            <div className="flex items-center gap-2">
+              <KanbanIcon name="check" size="sm" />
+              <h2 style={{ fontSize: 13.5, fontWeight: 700 }}>งานที่มอบหมายให้ฉัน</h2>
+              <span style={{ fontSize: 11.5, color: "var(--color-muted)" }}>รวมทุกบอร์ดที่ฉันเข้าถึง</span>
+            </div>
+
+            {nothingAtAll ? (
+              /* empty state §5.7 — ทุกอันต้องบอก "ขั้นต่อไป" 1 อย่าง */
+              <div className="flex flex-col items-start gap-2" style={{ padding: "10px 2px" }}>
+                <p style={{ fontSize: 13, color: "var(--color-muted)" }}>
+                  วันนี้ไม่มีงานค้าง 🎉 งานที่หัวหน้ามอบหมายจะมาอยู่ที่นี่
+                </p>
+                <Link href={`/app/sys/${systemId}/kanban/boards`} className="btn btn-ghost text-sm" data-testid="my-tasks-see-boards">
+                  ดูบอร์ดทั้งหมด
+                </Link>
+              </div>
+            ) : (
+              <>
+                {order.map((key) => {
+                  const items = visibleGroups[key];
+                  if (items.length === 0) {
                 // ยังคงข้อความ "วันนี้ไม่มีงานค้าง" ไว้ให้เห็นเฉพาะกลุ่มวันนี้ที่ว่าง (empty state ของกลุ่มนี้โดยเฉพาะ)
                 if (key === "today") {
                   return (
@@ -326,6 +429,8 @@ export function MyTasks({
             </ul>
           </div>
         )}
+          </div>
+        </div>
       </div>
 
       {/* ── toast "เลิกทำ" (ปัดขวาบนมือถือ = ตัวเดียวกับ BoardView.tsx — ที่นี่ tick-to-complete จากรายการ) ── */}

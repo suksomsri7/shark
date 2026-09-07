@@ -28,7 +28,8 @@ export type KanbanNavEntry = {
 export const KANBAN_NAV: readonly KanbanNavEntry[] = Object.freeze([
   { key: "boards", label: "บอร์ด", path: "/kanban/boards", status: "ready" },
   { key: "my-tasks", label: "งานของฉัน", path: "/kanban/my-tasks", status: "ready" },
-  { key: "inbox", label: "กล่องงานเข้า", path: "/kanban/inbox", status: "soon", wo: "K2.8" },
+  // K2.8 — กล่องงานเข้าเป็นคอลัมน์ซ้ายของหน้า "งานของฉัน" (ไม่ใช่หน้าแยก) ⇒ ชี้ไป `#inbox` ของหน้านั้น
+  { key: "inbox", label: "กล่องงานเข้า", path: "/kanban/my-tasks#inbox", status: "ready" },
   { key: "calendar", label: "ปฏิทินงาน", path: "/kanban/calendar", status: "soon", wo: "K2.2" },
   { key: "automation", label: "ระบบอัตโนมัติ", path: "/kanban/automation", status: "soon", wo: "K2.9" },
   { key: "reports", label: "รายงาน", path: "/kanban/reports", status: "soon", wo: "K2.10" },
