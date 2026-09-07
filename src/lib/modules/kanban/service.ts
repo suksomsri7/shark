@@ -70,6 +70,10 @@ export type { TableCardLinkDto, TableGroupDto, TableRowDto } from "./types";
 export { listBoardCalendar, setCardDueFromCalendar } from "./calendar";
 export type { ListBoardCalendarInput, SetCardDueFromCalendarResult } from "./calendar";
 export type { BoardCalendarDto, CalCardDto, CalDayDto, CalExternalDto } from "./types";
+// K2.3: มุมมองไทม์ไลน์ + ลากขอบ/ลากตัวแถบ — ผู้เรียกนอกโมดูล (หน้า/action) ใช้ผ่าน facade เดียวกัน
+export { listBoardTimeline, setCardRange, shiftCardRange } from "./timeline";
+export type { ListBoardTimelineInput, SetCardRangeResult, ShiftCardRangeResult } from "./timeline";
+export type { BoardTimelineDto, TimelineBarDto, TimelineGroupBy, TimelineRowDto } from "./types";
 // K2.4: มุมมองสรุป (4 ไทล์ เจาะลงการ์ดได้) — ผู้เรียกนอกโมดูล (หน้า) ใช้ผ่าน facade เดียวกัน
 export { boardSummary } from "./summary";
 export type { BoardSummaryInput } from "./summary";

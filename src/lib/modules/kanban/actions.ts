@@ -92,6 +92,8 @@ import { exportCardsCsv, exportReportCsv } from "./reports";
 import type { ReportKind } from "./types";
 // K2.2 — มุมมองปฏิทิน: ลากตั้ง/เปลี่ยนกำหนดส่ง (บริการอยู่ `calendar.ts` — `listBoardCalendar` เรียกตรงจาก page.tsx)
 import { setCardDueFromCalendar } from "./calendar";
+// K2.3 — มุมมองไทม์ไลน์: ลากขอบ/ลากตัวแถบ (บริการอยู่ `timeline.ts` — `listBoardTimeline` เรียกตรงจาก page.tsx)
+import { setCardRange, shiftCardRange } from "./timeline";
 import type { BoardFilters } from "./filters";
 import type {
   BoardCardDto,
@@ -1405,6 +1407,60 @@ export async function setCardDueFromCalendarAction(input: {
     return { ok: true, dueAt: res.dueAt };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ตั้งกำหนดส่งไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+// ───────────────────────── K2.3 — มุมมองไทม์ไลน์: ลากขอบ/ลากตัวแถบ ─────────────────────────
+// 🔴 ตรวจสิทธิ์ระดับโมดูลที่นี่ (เหมือน `setCardDueFromCalendarAction`) · ชั้นบทบาทบอร์ด (EDITOR+) ตรวจซ้ำใน
+//    `timeline.setCardRange`/`shiftCardRange` เอง (หาบอร์ดจาก cardId จริง ไม่เชื่อ boardId ที่ฟอร์มส่งมา)
+
+/** ลากขอบซ้าย/ขวาของแถบ — `startAt`(ว่าง = ล้างวันเริ่ม)/`dueAt` ใหม่คำนวณฝั่งจอตามตำแหน่งที่ลากแล้วส่งมาตรง ๆ */
+export async function setCardRangeAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  /** ISO 8601 — null/"" = ล้างวันเริ่ม */
+  startAt: string | null;
+  /** ISO 8601 */
+  dueAt: string;
+}): Promise<{ ok: true; startAt: string | null; dueAt: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId || !input.dueAt) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  const dueAt = new Date(input.dueAt);
+  if (isNaN(dueAt.getTime())) return { ok: false, message: "วันที่ไม่ถูกต้อง" };
+  let startAt: Date | null = null;
+  if (input.startAt) {
+    startAt = new Date(input.startAt);
+    if (isNaN(startAt.getTime())) return { ok: false, message: "วันที่ไม่ถูกต้อง" };
+  }
+  try {
+    const res = await setCardRange(ctxOf(auth, input.systemId), input.cardId, { startAt, dueAt });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, startAt: res.startAt, dueAt: res.dueAt };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ตั้งช่วงวันไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** ลากตัวแถบ (ไม่ใช่ขอบ) — เลื่อนทั้งวันเริ่ม+กำหนดส่งไปพร้อมกันเป็นจำนวนวันเท่ากัน คงเวลาเดิมของทั้งคู่ */
+export async function shiftCardRangeAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  days: number;
+}): Promise<{ ok: true; startAt: string | null; dueAt: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId || !Number.isFinite(input.days) || input.days === 0) {
+    return { ok: false, message: "ไม่พบการ์ดนี้" };
+  }
+  try {
+    const res = await shiftCardRange(ctxOf(auth, input.systemId), input.cardId, { days: Math.round(input.days) });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, startAt: res.startAt, dueAt: res.dueAt };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "เลื่อนวันไม่สำเร็จ ลองใหม่อีกครั้ง" };
   }
 }
 

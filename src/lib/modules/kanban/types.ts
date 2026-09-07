@@ -529,6 +529,46 @@ export type BoardCalendarDto = {
   unscheduled: CalCardDto[];
 };
 
+// ───────────────────────── K2.3 — มุมมองไทม์ไลน์ (timeline.ts) ─────────────────────────
+// DTO บริสุทธิ์ (วันที่เป็น ISO string) — `TimelineView.tsx` (client) เป็นคนเรนเดอร์เท่านั้น
+// 🔴 อยู่ในไฟล์นี้ (ไม่ใช่ `timeline.ts` ที่แตะ prisma) ด้วยเหตุผลเดียวกับ K1.11/K1.12/K1.13/K2.1/K2.2:
+//    `TimelineView.tsx` (client) ต้อง `import type` ได้โดยไม่ลาก `db.ts` → `pg` เข้าบันเดิลฝั่ง browser
+//    `TableGroupBy` (K2.1) มีค่าเดียวกันเป๊ะ ("column"|"assignee"|"label") แต่ตั้งชื่อแยกเป็นของตัวเองที่นี่
+//    ตามธรรมเนียมที่ทุกมุมมองเป็นเจ้าของ enum การจัดกลุ่ม/เรียงของตัวเอง (K2.1 ก็แยกจาก K2.4 เหมือนกัน)
+export type TimelineGroupBy = "column" | "assignee" | "label";
+
+/** แถบงาน 1 ใบในไทม์ไลน์ — 1 การ์ดอาจปรากฏหลายแถบถ้า group=assignee/label แล้วมีหลายคน/หลายป้าย */
+export type TimelineBarDto = {
+  cardId: string;
+  cardNo: number | null;
+  title: string;
+  /** ISO 8601 (UTC) — null = การ์ดไม่มีวันเริ่ม (แถบยาว 1 วัน ดู `startDay`/`endDay`) */
+  startAt: string | null;
+  /** ISO 8601 (UTC) — ทุกแถบมี dueAt เสมอ (แถบคัดจากการ์ดที่มี dueAt ในช่วงที่ขอเท่านั้น) */
+  dueAt: string;
+  /** "YYYY-MM-DD" ตามวันที่ไทย — วันจริง **ไม่ถูกตัดตามช่วงที่แสดง** (จอเป็นคนตัดแสดงจาก `range.from` เอง) */
+  startDay: string;
+  endDay: string;
+  isOverdue: boolean;
+  isDone: boolean;
+  /** สีป้ายแรกของการ์ด (เรียงตาม sortOrder ของป้ายเหมือน `KanbanCard.labels` json) — ไม่มีป้าย = null */
+  color: KanbanTagColor | null;
+  columnName: string;
+  assignees: BoardPersonDto[];
+};
+
+/** แถวหนึ่งของไทม์ไลน์ — `key` คือ columnId/userId/labelId แล้วแต่ `group` ("none" = ไม่มีผู้รับผิดชอบ/ป้าย) */
+export type TimelineRowDto = { key: string; label: string; bars: TimelineBarDto[] };
+
+export type BoardTimelineDto = {
+  range: { from: string; to: string };
+  /** จำนวนวันของช่วงที่ขอ (`to`-`from`) — จอใช้คำนวณความกว้างคอลัมน์วัน (ซูมต่างกัน = ความกว้างต่างกัน) */
+  zoomDays: number;
+  rows: TimelineRowDto[];
+  /** การ์ด active ไม่มี dueAt (ผ่านตัวกรองเดียวกับแถบ) — แถวท้าย "ยังไม่กำหนดวัน" ชวนไปมุมมองปฏิทิน */
+  unscheduled: number;
+};
+
 // ───────────────────────── K2.4 — มุมมองสรุป (summary.ts) ─────────────────────────
 // DTO บริสุทธิ์ (ไม่มี Date/Prisma model) — `SummaryView.tsx` (client) เป็นคนเรนเดอร์เท่านั้น
 // 🔴 `href` ของทุกไทล์ชี้ไป `?view=table&...` พร้อมตัวกรองที่กดจริง — เจาะลงแล้วต้องได้จำนวนเท่ากับ `count`
@@ -580,6 +620,8 @@ export type ViewConfig = {
   filters?: ViewFilters;
   sort?: string;
   group?: string;
+  /** K2.3: ระดับซูมของมุมมองไทม์ไลน์ ("week"|"month"|"quarter") — เก็บเป็น string กว้าง ๆ เหมือน sort/group เดิม */
+  zoom?: string;
 };
 
 export type SavedViewDto = {

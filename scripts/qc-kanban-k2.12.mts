@@ -47,6 +47,9 @@ try {
   chk("K2.12-S1.1", "TableView: แถบเลือกหลายรายการ (bulk-bar) อยู่ **บนตาราง** ในซอร์ส (ก่อน table-view) · ไม่ใช่ fixed/bottom ลอยล่างจอ · พื้นโทนฟ้าอ่อน (var(--color-accent-soft)/accent) ตามภาพ 04 · ข้อความ 'เลือก n การ์ด' + 5 การกระทำเดิม", bulkIdx >= 0 && tableIdx >= 0 && bulkIdx < tableIdx && !/fixed|bottom-4|bottom:\s*\d/.test(bulkBlock) && /accent/.test(bulkBlock), "บนตาราง · ไม่ fixed", `bulk=${bulkIdx} table=${tableIdx}`);
   chk("K2.12-S1.2", "ชิปกำหนดส่งในตารางใช้ dueBadgeFrom (สัมพัทธ์ 'วันนี้ 18:00' · 'เลย 4 วัน' · 'พรุ่งนี้' + สีตามความเร่ง) · คอลัมน์ 'แก้ไขล่าสุด' ใช้ relativeThaiTime ('2 ชม.' · 'เมื่อวาน') · ไม่มี toLocale*", /dueBadgeFrom/.test(tv) && /relativeThaiTime/.test(tv) && !/toLocale/.test(tv), "ครบ", "ขาด");
 
+  const tl = read("src/components/kanban/TimelineView.tsx");
+  chk("K2.12-S1.3", "ไทม์ไลน์ (K2.3 หนี้ UI): แถบแคบ (< 80px เช่นการ์ด 1 วัน) แสดงชื่อการ์ดเต็มข้างแถบ (testid timeline-bar-label ไม่ตัดเหลือ 1 ตัวอักษร) · ช่วงปริยาย (ไม่มี ?from=) เริ่มจากสัปดาห์ที่มีวันนี้ (เส้นวันนี้อยู่ในจอ)", tl.includes("timeline-bar-label") && /วันนี้|today/i.test(tl), "มี", "ขาด");
+
   // ═══ S2 ปฏิทินรวมระบบ ═══
   const cal = await sc.listSystemCalendar(ctxO, owner, { from: FROM, to: TO, now: NOW });
   const calT = await sc.listSystemCalendar(ctxT, thana, { from: FROM, to: TO, now: NOW });

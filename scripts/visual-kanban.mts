@@ -39,6 +39,9 @@ type Step =
   | { press: string }
   | { waitFor: string; timeoutMs?: number }
   | { drag: { from: string; to: string; steps?: number } }
+  // K2.3 — ลากตามระยะพิกเซล (ไม่ใช่ไปหา element ปลายทาง) ใช้กับแฮนเดิลลากขอบ/ตัวแถบไทม์ไลน์ที่ตำแหน่ง
+  // ปลายทางไม่ผูกกับ element ใดเป็นพิเศษ (แค่ขยับ dx พิกเซลตามความกว้างวัน)
+  | { dragBy: { on: string; dx: number; dy?: number; steps?: number } }
   | { wait: number }
   | { swipe: { on: string; dx: number } }
   | { upload: { on: string; filePath: string } }
@@ -430,6 +433,54 @@ const SPECS: Record<string, Spec[]> = {
       onlyDevice: "mobile",
       note: "มือถือ — รายการวันต่อวัน ไม่มีลาก",
       expect: ["[data-testid=calendar-view]", "[data-testid=calendar-unscheduled]"],
+    },
+  ],
+  // K2.3 — มุมมองไทม์ไลน์ (ไม่มี mockup — เกณฑ์ §3.6/§13 K2.3) — ทุกช็อตปักหมุด `from=2026-09-16` (ใกล้วัน
+  // อ้างอิงของ seed `KQC.today = 2026-09-30` — ไม่ใช้ `?view=timeline` เฉย ๆ เพราะ `board.now` ของหน้าจริง
+  // คือเวลาปัจจุบันจริง (server clock) ไม่ใช่วันอ้างอิงของ seed ⇒ ช่วงปริยายที่ยึดวันนี้จริงจะไม่ครอบวันที่
+  // การ์ด QC ถูกตั้งไว้ (รอบ ๆ 30 ก.ย. 69) แล้วจะไม่เห็นแถบเลย — ลากขวาให้ยาวขึ้นแล้วคืนค่าใน finally
+  "2.3": [
+    {
+      name: "timeline-month",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=timeline&from=2026-09-16`,
+      onlyDevice: "desktop",
+      note: "ซูมเดือน (ปริยาย) — แถบตรงคอลัมน์ · เส้นวันนี้ (ถ้าอยู่ในช่วง) · ‹ วันนี้ ›",
+      expect: ["[data-testid=timeline-view]", "[data-testid=timeline-zoom]", "[data-testid=timeline-bar]"],
+      steps: [{ waitFor: "[data-testid=timeline-bar]" }],
+    },
+    {
+      name: "timeline-quarter",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=timeline&zoom=quarter&from=2026-09-16`,
+      onlyDevice: "desktop",
+      note: "ซูมไตรมาส — คอลัมน์วันแคบลงเห็น 13 สัปดาห์เต็ม",
+      expect: ["[data-testid=timeline-bar]"],
+      steps: [{ waitFor: "[data-testid=timeline-bar]" }],
+    },
+    {
+      name: "timeline-group-assignee",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=timeline&group=assignee&from=2026-09-16`,
+      onlyDevice: "desktop",
+      note: "จัดกลุ่มตามคน — แถวซ้ายเป็นชื่อคนแทนคอลัมน์ + แถว 'ไม่มีผู้รับผิดชอบ'",
+      expect: ["[data-testid=timeline-group]", "[data-testid=timeline-bar]"],
+      steps: [{ waitFor: "[data-testid=timeline-bar]" }],
+    },
+    {
+      name: "timeline-resize-after",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=timeline&from=2026-09-16`,
+      onlyDevice: "desktop",
+      note: "ลากแฮนเดิลขวาของแถบแรกยืดออก 3 วัน (81px ที่ dayWidth 27px) — ต้องเห็นแถบยาวขึ้น (คืนค่าใน finally)",
+      steps: [
+        { waitFor: "[data-testid=timeline-bar]" },
+        { dragBy: { on: "[data-testid=timeline-bar]:nth-of-type(1) [data-testid=timeline-handle][data-side=end]", dx: 81 } },
+        { wait: 900 },
+      ],
+    },
+    {
+      name: "timeline-mobile",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=timeline`,
+      onlyDevice: "mobile",
+      note: "มือถือ — ข้อความชวนไปมุมมองตาราง ไม่วาดไทม์ไลน์",
+      expect: ["[data-testid=timeline-view]", "[data-testid=timeline-mobile-hint]"],
     },
   ],
   // K2.4 — มุมมองสรุป (ไม่มี mockup — เกณฑ์ §3.7) — อ่านอย่างเดียวล้วน (ไม่มีการลาก/แก้ค่า) ⇒ ไม่ต้องมี
@@ -933,6 +984,21 @@ if (WO === "2.2") {
   console.log(`🧪 เตรียม K2.2: จำการ์ดแรกในถาด 'ยังไม่กำหนดวัน' ของบอร์ดป่าตอง ${KB22.cardId || "(ไม่พบ)"} ไว้คืน`);
 }
 
+// ── K2.3: จำ startAt/dueAt ของ "ทุก" การ์ดบนบอร์ดป่าตอง (ไม่ใช่แค่ใบเดียว) ไว้คืนหลังถ่ายเสร็จ — สเปค
+//    `timeline-resize-after` ลากแฮนเดิลของแถบ "แรกที่เรนเดอร์" ซึ่งขึ้นกับลำดับคอลัมน์/การ์ดจริงบนจอ
+//    (ไม่รู้ล่วงหน้าแน่ชัดว่าเป็นใบไหน) — คืนค่าทุกใบให้ตรงเดิมปลอดภัยกว่าเดาใบเดียว ──
+const KB23: { cardId: string; startAt: string | null; dueAt: string | null }[] = [];
+if (WO === "2.3") {
+  const patongCards = await prisma.kanbanCard.findMany({
+    where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" },
+    select: { id: true, startAt: true, dueAt: true },
+  });
+  for (const c of patongCards) {
+    KB23.push({ cardId: c.id, startAt: c.startAt ? c.startAt.toISOString() : null, dueAt: c.dueAt ? c.dueAt.toISOString() : null });
+  }
+  console.log(`🧪 เตรียม K2.3: จำ startAt/dueAt ของการ์ดบอร์ดป่าตองทั้ง ${KB23.length} ใบไว้คืน (ลากแฮนเดิลจะแก้ใบใดใบหนึ่ง)`);
+}
+
 // ── K2.5: สร้างมุมมอง "ทั้งทีม" จริงผ่าน `views.saveView` ตรง ๆ ก่อนเริ่มถ่าย (ไม่ใช่ผ่านฟอร์มในหน้าเว็บ)
 //    เหตุผล: `saveViewAction` เรียก `revalidatePath` ⇒ เบราว์เซอร์รีเฟรชหน้าเดิมหลังบันทึกไม่กี่ร้อย ms
 //    ซึ่งชนกับจังหวะที่ puppeteer กด "มุมมอง" ซ้ำเพื่อเปิดดรอปดาวน์อีกครั้ง (state `open` ของ
@@ -1292,6 +1358,24 @@ async function restoreSeed(): Promise<void> {
     console.log(`🧹 คืนสภาพ K2.2: คืน dueAt ของการ์ด ${KB22.cardId} เป็น ${KB22.dueAt ?? "null (ยังไม่กำหนดวัน)"} · ลบกิจกรรม CARD_DUE_SET ที่เพิ่งเกิด ${ac.count}`);
   }
 
+  // K2.3 — คืนสภาพ seed: สเปค `timeline-resize-after` ลากแฮนเดิลของแถบแรกผ่าน server action จริง (ทริป dueAt
+  // ลง DB จริง) — ไม่รู้ล่วงหน้าว่าโดนใบไหน จึงคืน startAt/dueAt ของ "ทุกใบ" บนบอร์ดป่าตองให้ตรงกับที่จำไว้
+  if (WO === "2.3" && KB23.length > 0) {
+    let restored = 0;
+    for (const c of KB23) {
+      await prisma.kanbanCard.updateMany({
+        where: { id: c.cardId },
+        data: { startAt: c.startAt ? new Date(c.startAt) : null, dueAt: c.dueAt ? new Date(c.dueAt) : null, reminderSentAt: null },
+      });
+      restored += 1;
+    }
+    const P = prisma as Any;
+    const ac = await P.kanbanActivity.deleteMany({
+      where: { cardId: { in: KB23.map((c) => c.cardId) }, type: "CARD_DUE_SET", createdAt: { gte: new Date(Date.now() - 10 * 60_000) } },
+    });
+    console.log(`🧹 คืนสภาพ K2.3: คืน startAt/dueAt ของการ์ดบอร์ดป่าตอง ${restored} ใบ · ลบกิจกรรม CARD_DUE_SET ที่เพิ่งเกิด ${ac.count}`);
+  }
+
   // K2.5 — คืนสภาพ seed: ลบมุมมอง "ทั้งทีม" ที่สร้างไว้ก่อนถ่าย (ผ่าน `views.saveView` ตรง ๆ — ดู KB25 ด้านบน)
   if (WO === "2.5" && KB25.viewId) {
     const P = prisma as Any;
@@ -1385,6 +1469,18 @@ try {
               await new Promise((r) => setTimeout(r, 350)); // กดค้าง (มือถือ 300ms)
               const n = step.drag.steps ?? 12;
               for (let i = 1; i <= n; i++) { await page.mouse.move(sx + ((tx - sx) * i) / n, sy + ((ty - sy) * i) / n); await new Promise((r) => setTimeout(r, 30)); }
+              await page.mouse.up();
+            } else if ("dragBy" in step) {
+              // K2.3 — ลากตามระยะพิกเซล dx/dy จากกึ่งกลาง element (แฮนเดิลลากขอบ/ตัวแถบไทม์ไลน์)
+              const el = await page.$(step.dragBy.on);
+              if (!el) throw new Error(`ไม่พบ element สำหรับลาก ${step.dragBy.on}`);
+              const bb = (await el.boundingBox())!;
+              const sx = bb.x + bb.width / 2, sy = bb.y + bb.height / 2;
+              const dx = step.dragBy.dx, dy = step.dragBy.dy ?? 0;
+              await page.mouse.move(sx, sy); await page.mouse.down();
+              await new Promise((r) => setTimeout(r, 250));
+              const n = step.dragBy.steps ?? 10;
+              for (let i = 1; i <= n; i++) { await page.mouse.move(sx + (dx * i) / n, sy + (dy * i) / n); await new Promise((r) => setTimeout(r, 30)); }
               await page.mouse.up();
             } else if ("upload" in step) {
               const input = await page.$(step.upload.on);

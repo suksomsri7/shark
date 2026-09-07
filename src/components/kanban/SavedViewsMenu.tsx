@@ -36,11 +36,13 @@ function currentConfigFromParams(searchParams: URLSearchParams): ViewConfig {
   };
   const sort = raw.sort;
   const group = raw.group;
+  const zoom = raw.zoom;
   return {
     view,
     ...(Object.keys(filters).length > 0 ? { filters } : {}),
     ...(sort ? { sort } : {}),
     ...(group ? { group } : {}),
+    ...(zoom ? { zoom } : {}),
   };
 }
 

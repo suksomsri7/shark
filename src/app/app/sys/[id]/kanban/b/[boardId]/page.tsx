@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { boardSummary, canReadKanban, getBoardView, KanbanNotFoundError, listBoardCalendar, listBoardTable, listCardTemplates, toActor } from "@/lib/modules/kanban/service";
-import type { TableGroupBy, TableSort } from "@/lib/modules/kanban/service";
+import { boardSummary, canReadKanban, getBoardView, KanbanNotFoundError, listBoardCalendar, listBoardTable, listBoardTimeline, listCardTemplates, toActor } from "@/lib/modules/kanban/service";
+import type { TableGroupBy, TableSort, TimelineGroupBy } from "@/lib/modules/kanban/service";
 import { boardFiltersFromParams } from "@/lib/modules/kanban/search";
 // K1.14 — ปุ่มลัดปิดได้รายคน (แบบ §5.6) → อ่านค่าที่นี่แล้วส่งลงเป็น prop (client ไม่ต้องยิงถามเอง)
 import { getUserPreferences } from "@/lib/modules/kanban/preferences";
@@ -15,9 +15,15 @@ import { TableView } from "@/components/kanban/TableView";
 import { CalendarView } from "@/components/kanban/CalendarView";
 // K2.4 — มุมมองสรุป `?view=summary` (แท็บใน BoardHeader)
 import { SummaryView } from "@/components/kanban/SummaryView";
+// K2.3 — มุมมองไทม์ไลน์ `?view=timeline` (แท็บใน BoardHeader)
+import { TimelineView } from "@/components/kanban/TimelineView";
 
 const GROUP_VALUES: readonly TableGroupBy[] = ["column", "assignee", "label"];
 const SORT_VALUES: readonly TableSort[] = ["due", "created", "updated", "position"];
+const TIMELINE_ZOOM_VALUES = ["week", "month", "quarter"] as const;
+type TimelineZoom = (typeof TIMELINE_ZOOM_VALUES)[number];
+/** จำนวนวันของแต่ละระดับซูม (สัญญา K2.3): สัปดาห์ = 2 สัปดาห์ · เดือน = 6 สัปดาห์ · ไตรมาส = 13 สัปดาห์ */
+const TIMELINE_SPAN_DAYS: Record<TimelineZoom, number> = { week: 14, month: 42, quarter: 91 };
 /** Asia/Bangkok = UTC+7 ตายตัว (ไม่มี DST) — คำนวณเอง ห้าม toLocale* ตามกติกาทั้งโมดูล */
 const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
 const DAY_MS = 86_400_000;
@@ -26,6 +32,20 @@ const DAY_MS = 86_400_000;
 function bkkYearMonth(ms: number): { year: number; month: number } {
   const d = new Date(ms + BKK_OFFSET_MS);
   return { year: d.getUTCFullYear(), month: d.getUTCMonth() };
+}
+
+/** เลขวันไทยนับจาก epoch ของ `ms` — ใช้จัดวันเริ่มของไทม์ไลน์ให้ตกวันจันทร์เสมอ (แบบเดียวกับ `CalendarView`) */
+function bkkDayIndexOf(ms: number): number {
+  return Math.floor((ms + BKK_OFFSET_MS) / DAY_MS);
+}
+
+/** "YYYY-MM-DD" ตามวันที่ไทยของ `ms` — ใช้สร้าง `?from=` ที่ `TimelineView` อ่านกลับ */
+function bkkDayKeyOf(ms: number): string {
+  const d = new Date(ms + BKK_OFFSET_MS);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 // หน้าบอร์ดใหม่ (K1.5) — `/app/sys/{id}/kanban/b/{boardId}` ตามภาพ `ledger/design-kanban/02-board.png`
@@ -56,6 +76,9 @@ export default async function KanbanBoardPage({
     month?: string;
     mode?: string;
     ext?: string;
+    // K2.3 — มุมมองไทม์ไลน์: ระดับซูม + วันเริ่มต้นแสดง (Thai "YYYY-MM-DD")
+    zoom?: string;
+    from?: string;
     // K2.5 — โหลดมุมมองที่บันทึกไว้ (§2.3) · merge ด้านล่าง: พารามิเตอร์ที่ผู้ใช้ส่งมาเอง "ทับ" ค่าจาก config
     savedView?: string;
   }>;
@@ -95,6 +118,7 @@ export default async function KanbanBoardPage({
         column: rawQuery.column ?? applied.filters.column,
         sort: rawQuery.sort ?? applied.sort,
         group: rawQuery.group ?? applied.group,
+        zoom: rawQuery.zoom ?? applied.zoom,
       };
     }
   }
@@ -102,7 +126,15 @@ export default async function KanbanBoardPage({
 
   const filters = boardFiltersFromParams(query);
   const view =
-    query.view === "table" ? "table" : query.view === "calendar" ? "calendar" : query.view === "summary" ? "summary" : "board";
+    query.view === "table"
+      ? "table"
+      : query.view === "calendar"
+        ? "calendar"
+        : query.view === "summary"
+          ? "summary"
+          : query.view === "timeline"
+            ? "timeline"
+            : "board";
 
   if (view === "calendar") {
     const nowMs = Date.parse(board.now);
@@ -125,6 +157,27 @@ export default async function KanbanBoardPage({
   if (view === "summary") {
     const data = await boardSummary(ctx, actor, boardId, { now: new Date(board.now), filters });
     return <SummaryView board={board} data={data} filters={filters} savedViews={savedViews} />;
+  }
+
+  if (view === "timeline") {
+    const nowMs = Date.parse(board.now);
+    const zoom: TimelineZoom = TIMELINE_ZOOM_VALUES.includes(query.zoom as TimelineZoom) ? (query.zoom as TimelineZoom) : "month";
+    const spanDays = TIMELINE_SPAN_DAYS[zoom];
+    const group = GROUP_VALUES.includes(query.group as TableGroupBy) ? (query.group as TimelineGroupBy) : undefined;
+    // จุดเริ่มแสดง (?from=YYYY-MM-DD ไทย หรือ "วันนี้") ปัดถอยไปวันจันทร์ของสัปดาห์นั้นเสมอ (แบบเดียวกับ
+    // ตารางเดือนของ `CalendarView`) — ให้กริดเริ่มต้นสัปดาห์เต็มเสมอไม่ว่า anchor ตกวันไหน
+    const fromMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(query.from ?? "");
+    const anchorMs = fromMatch
+      ? Date.UTC(Number(fromMatch[1]), Number(fromMatch[2]) - 1, Number(fromMatch[3])) - BKK_OFFSET_MS
+      : nowMs;
+    const anchorDayIndex = bkkDayIndexOf(anchorMs);
+    const anchorWeekday = new Date(anchorDayIndex * DAY_MS).getUTCDay(); // 0=อา..6=ส (ms นี้เป็น "วันไทยที่เท่าไหร่" อยู่แล้ว ไม่ต้อง +offset ซ้ำ)
+    const mondayIndex = anchorDayIndex - ((anchorWeekday + 6) % 7);
+    const from = new Date(mondayIndex * DAY_MS - BKK_OFFSET_MS);
+    const to = new Date(from.getTime() + spanDays * DAY_MS - 1);
+    const data = await listBoardTimeline(ctx, actor, boardId, { from, to, now: new Date(board.now), filters, group });
+    const fromKey = bkkDayKeyOf(from.getTime());
+    return <TimelineView board={board} data={data} filters={filters} zoom={zoom} group={group} from={fromKey} savedViews={savedViews} />;
   }
 
   if (view === "table") {

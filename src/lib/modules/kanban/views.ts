@@ -49,6 +49,8 @@ const ViewConfigSchema = z.object({
   filters: ViewFiltersSchema.optional(),
   sort: z.string().min(1).max(40).optional(),
   group: z.string().min(1).max(40).optional(),
+  // K2.3 — ระดับซูมของมุมมองไทม์ไลน์ (week/month/quarter) เก็บกว้าง ๆ เหมือน sort/group เดิม
+  zoom: z.string().min(1).max(40).optional(),
 });
 
 /** ตรวจรูป config ด้วย zod — ผิดรูป/`view` ไม่รู้จัก → throw ข้อความไทย (ไม่มีวันปล่อย ZodError ดิบออกไป)
@@ -258,7 +260,7 @@ export async function reorderViews(ctx: KanbanCtx, actor: KanbanActor, ids: stri
 
 // ───────────────────────── applyView (โหลดมุมมอง → พารามิเตอร์จริง §2.3) ─────────────────────────
 
-export type AppliedView = { view: ViewConfig["view"]; filters: ViewFilters; sort?: string; group?: string; href: string };
+export type AppliedView = { view: ViewConfig["view"]; filters: ViewFilters; sort?: string; group?: string; zoom?: string; href: string };
 
 /** href ตาม §2.3 — เขียนตัวกรองลง URL จริง + คง `savedView=<id>` ท้ายสุด (ตามสัญญา S2.8) */
 function buildHref(systemId: string, row: Pick<ViewRow, "boardId" | "id">, config: ViewConfig): string {
@@ -276,6 +278,7 @@ export async function applyView(ctx: KanbanCtx, actor: KanbanActor, viewId: stri
     filters: config.filters ?? {},
     sort: config.sort,
     group: config.group,
+    zoom: config.zoom,
     href: buildHref(ctx.systemId, row, config),
   };
 }

@@ -31,7 +31,8 @@ const VIEWS: { key: string; icon: string; label: string; ready?: boolean }[] = [
   { key: "table", icon: "list", label: "ตาราง", ready: true },
   // K2.2 — เปิดใช้จริงแล้ว (เดิม "เร็ว ๆ นี้")
   { key: "calendar", icon: "cal", label: "ปฏิทิน", ready: true },
-  { key: "timeline", icon: "chart", label: "ไทม์ไลน์" },
+  // K2.3 — เปิดใช้จริงแล้ว (เดิม "เร็ว ๆ นี้")
+  { key: "timeline", icon: "chart", label: "ไทม์ไลน์", ready: true },
   // K2.4 — เปิดใช้จริงแล้ว (เดิม "เร็ว ๆ นี้")
   { key: "summary", icon: "pct", label: "สรุป", ready: true },
 ];
@@ -134,24 +135,39 @@ export function BoardHeader({
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
   };
 
-  // K2.1/K2.2 — สลับมุมมอง (บอร์ด/ตาราง/ปฏิทิน) คงตัวกรองไว้ (assignee/label/due/status/q) · ล้างพารามิเตอร์
-  // เฉพาะของมุมมองที่ไม่ได้ไป (table: group/sort/page · calendar: month/mode/ext) — ไม่งั้นสลับกลับมาแล้วลิงก์ค้าง
+  // K2.1/K2.2/K2.3 — สลับมุมมอง (บอร์ด/ตาราง/ปฏิทิน/ไทม์ไลน์) คงตัวกรองไว้ (assignee/label/due/status/q) ·
+  // ล้างพารามิเตอร์เฉพาะของมุมมองที่ไม่ได้ไป (table: sort/page · table+timeline: group · calendar: month/
+  // mode/ext · timeline: zoom/from) — ไม่งั้นสลับกลับมาแล้วลิงก์ค้าง
   const rawView = searchParams.get("view");
   const currentView =
-    rawView === "table" ? "table" : rawView === "calendar" ? "calendar" : rawView === "summary" ? "summary" : "board";
+    rawView === "table"
+      ? "table"
+      : rawView === "calendar"
+        ? "calendar"
+        : rawView === "summary"
+          ? "summary"
+          : rawView === "timeline"
+            ? "timeline"
+            : "board";
   const hrefForView = (viewKey: string): string => {
     const next = new URLSearchParams(searchParams.toString());
     if (viewKey === "board") next.delete("view");
     else next.set("view", viewKey);
     if (viewKey !== "table") {
-      next.delete("group");
       next.delete("sort");
       next.delete("page");
+    }
+    if (viewKey !== "table" && viewKey !== "timeline") {
+      next.delete("group");
     }
     if (viewKey !== "calendar") {
       next.delete("month");
       next.delete("mode");
       next.delete("ext");
+    }
+    if (viewKey !== "timeline") {
+      next.delete("zoom");
+      next.delete("from");
     }
     const qs = next.toString();
     return `${pathname}${qs ? `?${qs}` : ""}`;

@@ -356,6 +356,7 @@ export function hrefForSavedView(pathname: string, viewId: string, config: ViewC
   if (f.column) params.set("column", f.column);
   if (config.sort) params.set("sort", config.sort);
   if (config.group) params.set("group", config.group);
+  if (config.zoom) params.set("zoom", config.zoom);
   params.set("savedView", viewId);
   return `${pathname}?${params.toString()}`;
 }
