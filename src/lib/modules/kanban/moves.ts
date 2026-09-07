@@ -351,6 +351,10 @@ export async function moveCard(ctx: KanbanCtx, input: MoveCardInput): Promise<Mo
           columnId: col.id,
           cardNo: updated.cardNo,
           completedAt: completedAt.toISOString(),
+          // K3.4 — "ใครเป็นคนปิด" ต้องเดินทางไปกับ event ไม่ใช่ให้ผู้บริโภคเดาจากประวัติทีหลัง
+          //   `null` = ไม่มีคนกด (กฎอัตโนมัติ/cron/สะพานจากโมดูลอื่น) ⇒ บันทึกภายในที่แปะกลับ
+          //   ในห้องแชทจะเขียนว่า "ปิดแล้วโดยระบบอัตโนมัติ" ไม่ใช่สวมชื่อใครสักคน
+          actorUserId: ctx.actorUserId ?? null,
         },
       });
     }

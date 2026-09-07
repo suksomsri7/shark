@@ -259,7 +259,78 @@ async function wipeK33Cards(): Promise<void> {
   await prisma.kanbanCard.deleteMany({ where: { id: { in: ids } } }).catch(() => null);
 }
 
+// ── K3.4 (D23): หน้าโปรไฟล์ผู้ติดต่อ `/app/party/{id}` ต้องมี "ผู้ติดต่อจริง + งานที่ผูกจริง" ให้ถ่าย
+//    ผูก 3 การ์ด: 2 ใบบนบอร์ดซ่อมบำรุง (TENANT ⇒ ธนาเห็น) + 1 ใบบนบอร์ดลับสาขากะตะ (PRIVATE ⇒ ธนาไม่เห็น)
+//    ⇒ ภาพคู่ owner/thana พิสูจน์ 2 เรื่องพร้อมกัน: ธนาไม่เห็นข้อมูลติดต่อ **และ** ไม่เห็นการ์ดบอร์ดลับ
+//    ทุกอย่างเขียนผ่านประตูจริง (`party.findOrCreate` + `links.addLink`) แล้วลบคืนใน `restoreSeed()`
+const KB34 = { partyId: "", cardIds: [] as string[] };
+const KB34_PARTY_NAME = "บริษัท อันดามันไดฟ์ จำกัด (ภาพ K3.4)";
+if (WO === "3.4") {
+  const lk = (await import("@/lib/modules/kanban/links" as string)) as Any;
+  const party = (await import("@/lib/modules/party" as string)) as Any;
+  const ctx34 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+
+  // เศษของรอบก่อน (Ctrl-C กลางทาง / รอบ --user thana ที่ตามมา) — ลบก่อนเสมอ
+  await wipeK34();
+
+  const res = await party.findOrCreate(E.tenantId, {
+    name: KB34_PARTY_NAME,
+    kind: "COMPANY",
+    phone: "076-123456",
+    email: "booking@andaman-dive.example.com",
+    taxId: "0835563001234",
+  });
+  KB34.partyId = String(res.id);
+  await prisma.party.update({
+    where: { id: KB34.partyId },
+    data: { address: "199/4 หมู่ 5 ถ.ป่าตอง ต.ป่าตอง อ.กะทู้ จ.ภูเก็ต 83150" },
+  });
+  KB34.cardIds = [
+    (E.boards.maint.cardIds as string[])[1]!,
+    (E.boards.maint.cardIds as string[])[2]!,
+    (E.boards.kata.cardIds as string[])[0]!,
+  ];
+  for (const cardId of KB34.cardIds) {
+    await lk.addLink(ctx34, cardId, { linkType: "PARTY", linkId: KB34.partyId, role: "RELATED" });
+  }
+  console.log(`🧪 เตรียม K3.4: ผู้ติดต่อ ${KB34.partyId} ผูกกับการ์ด ${KB34.cardIds.length} ใบ (ซ่อมบำรุง 2 · บอร์ดลับกะตะ 1)`);
+}
+
+/** ลบผู้ติดต่อตัวอย่างของภาพ K3.4 + แถวเชื่อม/ประวัติที่เกิดจากมัน (คิดจากชื่อ ไม่พึ่ง id ที่อาจหาย) */
+async function wipeK34(): Promise<void> {
+  const P = prisma as Any;
+  const parties = await prisma.party.findMany({ where: { tenantId: E.tenantId, name: KB34_PARTY_NAME }, select: { id: true } });
+  if (parties.length === 0) return;
+  const ids = parties.map((x) => x.id);
+  const rows = await P.kanbanCardLink.findMany({ where: { tenantId: E.tenantId, linkType: "PARTY" as Any, linkId: { in: ids } }, select: { cardId: true } });
+  const cardIds = [...new Set(rows.map((r: Any) => String(r.cardId)))] as string[];
+  await P.kanbanCardLink.deleteMany({ where: { tenantId: E.tenantId, linkType: "PARTY" as Any, linkId: { in: ids } } }).catch(() => null);
+  if (cardIds.length) {
+    await prisma.kanbanActivity.deleteMany({
+      where: { cardId: { in: cardIds }, type: { in: ["LINK_ADDED", "LINK_REMOVED"] as Any } },
+    }).catch(() => null);
+  }
+  await prisma.party.deleteMany({ where: { id: { in: ids } } }).catch(() => null);
+}
+
 const SPECS: Record<string, Spec[]> = {
+  // K3.4 — หน้าโปรไฟล์ผู้ติดต่อ `/app/party/{id}` (D23 · ไม่มี mockup — โครงเดียวกับหน้า "ศูนย์แจ้งเตือน")
+  // 🔴 ถ่าย 2 สายตา: `--user owner` (เห็นข้อมูลติดต่อครบ + งานทั้ง 3 ใบ รวมบอร์ดลับกะตะ + ปุ่ม "ดูใน CRM")
+  //    และ `--user thana` (STAFF มีแต่คีย์ kanban.* ⇒ **ต้องไม่เห็นโทร/อีเมล/เลขผู้เสียภาษี/ที่อยู่**
+  //    และเห็นงานแค่ 2 ใบของบอร์ดที่ตัวเองมองเห็น) · ชื่อไฟล์ผูกกับผู้ใช้ ไม่งั้นรอบสองทับภาพรอบแรก
+  "3.4": [
+    {
+      name: `party-profile-${userKey}`,
+      path: `/app/party/${KB34.partyId}`,
+      ...(userKey === "owner" ? {} : { onlyDevice: "desktop" as const }),
+      note:
+        userKey === "owner"
+          ? 'โปรไฟล์ผู้ติดต่อในสายตาเจ้าของ — ข้อมูลติดต่อครบ (โทร/อีเมล/เลขผู้เสียภาษี/ที่อยู่) + "งานที่เชื่อมกับผู้ติดต่อนี้ (3)" รวมการ์ดบอร์ดลับกะตะ + ปุ่ม "ดูใน CRM"'
+          : 'โปรไฟล์ผู้ติดต่อในสายตาธนา (STAFF · มีแต่คีย์ kanban.*) — ต้องเห็นแค่ชื่อ + งานที่เชื่อม 2 ใบ · ไม่มีโทร/อีเมล/เลขผู้เสียภาษี/ที่อยู่ · ไม่มีปุ่ม "ดูใน CRM"',
+      expect: ["[data-testid=party-profile]", "[data-testid=party-contact]", "[data-testid=party-cards]"],
+      steps: [{ waitFor: "[data-testid=party-cards]" }, { wait: 500 }],
+    },
+  ],
   // K3.3 — "การ์ดเกิดจากที่อื่น" (ไม่มี mockup — เทียบโครงบล็อกตั้งค่าของ K3.2 + ชิปที่มาในภาพ 02)
   //   1) หน้าตั้งค่า › การเชื่อมต่อ: สวิตช์ 6 ตัวเปิดได้จริง (+ ช่อง "นาทีที่ค้าง" และ "ยอดขั้นต่ำ (บาท)")
   //   2) บอร์ดจริงที่มีการ์ดจากฟอร์ม/อนุมัติ/ใบลา/บิลยกเลิก/แชท — ชิปที่มาต้องบอกได้ว่ามาจากไหน
@@ -1674,6 +1745,12 @@ async function restoreSeed(): Promise<void> {
     await prisma.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) }, type: { startsWith: "kanban.card" } } }).catch(() => null);
     await prisma.appNotification.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) } } }).catch(() => null);
     console.log("🧹 คืนสภาพ K3.3: ลบการ์ดตัวอย่าง/ฟอร์มชั่วคราว · คืนค่าสวิตช์การเชื่อมต่อ");
+  }
+
+  // K3.4 — ลบผู้ติดต่อตัวอย่าง + แถวเชื่อม/ประวัติ LINK_* ของการ์ด 3 ใบที่ผูกไว้ถ่ายภาพ
+  if (WO === "3.4") {
+    await wipeK34();
+    console.log("🧹 คืนสภาพ K3.4: ลบผู้ติดต่อตัวอย่าง + แถวเชื่อมของการ์ด 3 ใบ + ประวัติ LINK_*");
   }
 
   // K3.1 — ลบแถวเชื่อม + ประวัติ LINK_* ที่สร้างไว้ถ่ายภาพ แล้วลบผู้ติดต่อตัวอย่าง

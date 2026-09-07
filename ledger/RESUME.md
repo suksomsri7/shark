@@ -1,5 +1,20 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## ⏸️ 7 ก.ย. 21:25 BKK — [session บอร์ดงาน] **พักงานชั่วคราว (เจ้าของใกล้ weekly limit) — RUN บอร์ดงาน→Trello อยู่ที่ 30/34 ≈ 88% · K3.4 ค้างครึ่งทาง**
+- worktree `/root/projects/shark-kanban` branch `session/kanban` · main ล่าสุด `cf8c12f` (K3.3 · Vercel READY 20:36 · prod มี migration ถึง kanban_v2_r) · ledger สด `ledger/KANBAN-RUN.md` (ตาราง WO + สัญญา P3 + บันทึกเหตุการณ์) · handover P2 `ledger/HANDOVER-2026-09-07-KANBAN-P2.md`
+- **สถานะ P3**: K3.1 ✅ · K3.2 ✅ · K3.3 ✅ · **K3.4 = WIP commit บน session/kanban (ไม่อยู่บน main)** · K3.5–K3.9 TODO (oracle พร้อมทุกใบ) · K3.F ปิดเฟส
+- **วิธีต่อหลังพัก (ทำตามลำดับ · งานหนักทีละ 1)**:
+  1. `git status && git log --oneline -3` — ต้องเห็น commit "WIP K3.4" บนสุด · `git fetch origin && git log --oneline origin/main -1` ต้องเป็น `cf8c12f` (ถ้า main ขยับ = มี session อื่นแตะ → rebase ก่อน)
+  2. ตั้ง env QC (one-liner ใน KANBAN-RUN กติกา) → `pnpm exec tsx scripts/qc-kanban-k3.4.mts` คาด 11/11 (ผ่านแล้วตอนพัก)
+  3. `NODE_OPTIONS=--max-old-space-size=3584 pnpm exec tsc --noEmit -p tsconfig.json` → 0 · `pnpm exec tsx scripts/fitness.mts` → 23/23
+  4. regressions: k3.3 k3.2 k3.1 k1.7 k2.9 k2.11 + `qc-chat-v2-room` (เปิดหัวไฟล์ดูว่าไม่แตะ prod)
+  5. Fable เปิดดูภาพ `.qc-shots/kanban/3.4/*.png` 3 ใบ (ธนาต้องไม่เห็นโทร/อีเมล) · ถ้าอยากถ่ายใหม่: `bash scripts/acc-v2-serve.sh` (build ~6 นาที) → `visual-kanban.mts 3.4` และ `--user thana` → `acc-v2-serve.sh stop`
+  6. เขียน `ledger/wo-notes/kanban-K3.4.md` สั้น ๆ (builder ถูกหยุดก่อนเขียน) · แถว K3.4 ในตาราง + บันทึกเหตุการณ์ → `git commit --amend` หรือ commit ใหม่ → `git push origin HEAD:main` + `--force-with-lease HEAD:session/kanban` → poll Vercel (สคริปต์ `/tmp/claude-0/vercel-poll-k31.sh` อาจหายหลัง reboot — เขียนใหม่จาก memory) → Telegram %
+  7. spawn K3.5 (Opus · สัญญาใน KANBAN-RUN §K3.5 · prompt แบบเดียวกับ K3.3/K3.4: อ่านก่อน/env/ลำดับงานหนัก/ห้าม add-commit/ส่งมอบ wo-notes) → K3.6 → K3.7 (Sonnet) → K3.8 (Sonnet) → K3.9 → K3.F (qc:all เต็ม · prod verify · HANDOVER-P3 · Telegram · memory)
+  8. หลัง 100%: ออกแบบ Member System (memory `project_shark_member_system_design`) — design only ส่ง Telegram
+- 🔴 กันลืม: ข้อสอบเคยใช้กุญแจผิด `E.boards.kataSecret` → ของจริง `kata` (แก้แล้ว) · builder ห้ามซ้อน build+tsc+regressions (เครื่อง 2 คอร์) · ข้อสอบ 19 ชุดของ hr/approval/forms/pos `loadEnvFile(".env")` = แตะ prod ห้ามรัน · หนี้ P3 รวมที่ KANBAN-RUN §K3.F
+- 🔑 รอเจ้าของ (ไม่บล็อก): ABLY_API_KEY · RESEND_API_KEY · เทส iPad build #24 · ดูหน้าใหม่บน prod ด้วยตา
+
 ## 📋 5 ก.ย. (บ่าย ~13:30 BKK) — [session บัญชี] **แผน API บัญชีครอบทุกฟังก์ชัน + คู่มือ/สกิลสำหรับ AI agent** — `ledger/PLAN-ACCOUNT-API.md` (แผนอย่างเดียว · ยังไม่ลงมือ · รอเจ้าของเคาะ §8 5 ข้อ)
 - ผลตรวจ: บัญชี ~880 export/97 ไฟล์ **ไม่มี REST API สักเส้น** (พิมพ์เขียว 12-account §5 ~70 เส้นทางไม่เคยสร้าง) · คีย์ API ที่หน้า "แอปภายนอก/API" เรียกได้แค่ API กลาง (`/api/v1/me,customers,sales…`) ไม่มีข้อมูลบัญชี · คีย์ไม่มี scope/ไม่ผูกสมุด/ไม่หมดอายุ · rate limit v1 = Map ในโปรเซส · AI skills 20 ชุด/63 tools **ไม่มีสกิลบัญชี** (มีแค่ record_expense+financial_summary) · webhook บัญชี 4 event (ออก/ยกเลิกเอกสารไม่ยิง)
 - ข้อเสนอ: **ทะเบียนเดียว 3 ผิวหน้า** — `account/api/registry.ts` (~82 op) → REST `/api/v1/account/*` (catch-all route · ทำจริงตาม scope) + สกิล AI `account` 30 tools (อ่านทันที/เขียน=proposal เดิม) + คู่มือ generate (openapi.json · `/developers/account` · `docs/api/ACCOUNT-API.md` · `.claude/skills/shark-account-api`) · ยกระดับคีย์ (scope=permission key เดิม · ผูก systemId · expiresAt · Idempotency-Key · rate limit DB · ActorType.API_KEY)

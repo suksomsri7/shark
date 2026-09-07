@@ -1471,6 +1471,12 @@ export async function sendReply(args: {
   senderName?: string;
   originalBody?: string;
   unitAccess?: string[];
+  /**
+   * K3.4 — ป้ายกำกับของ "ระบบที่แปะบันทึกให้" ที่ต้องถูกเขียนลง `ChatMessage.meta` **พร้อมแถว**
+   * (ไม่ใช่ update ตามหลัง) เพราะมันคือกุญแจกันข้อความซ้ำของผู้เรียก — เขียนทีหลัง = มีหน้าต่าง
+   * ที่ยิงซ้ำแล้วเกิดบันทึกใบที่สอง · ค่าที่ผู้เรียกส่งมาถูกผสมเข้า meta เดิม ไม่ทับคีย์ของระบบแชท
+   */
+  meta?: Record<string, string>;
 }): Promise<{ ok: boolean; reason?: string; messageId?: string }> {
   // 🔴 เงื่อนไขเดิมคือ `if (!body) return` ⇒ ทีมส่ง "รูปอย่างเดียว" ไม่ได้เลย (G3)
   //    กติกาใหม่: ต้องมีอย่างน้อย body **หรือ** ไฟล์แนบ (ตรงกับขาเข้า receiveExternalInbound)
@@ -1555,6 +1561,8 @@ export async function sendReply(args: {
   const previewText = preview(body, msgType);
   // ต้นฉบับที่ทีมพิมพ์ก่อนกด "แปลก่อนส่ง" — เก็บไว้ให้ทีมย้อนดูว่าตัวเองพิมพ์อะไร (§5.2)
   const originalBody = args.originalBody?.trim() || null;
+  // K3.4 — ป้ายของผู้เรียก (เช่น `kanbanKey` กันบันทึกซ้ำ) · ว่าง = ไม่ต้องมีคีย์ meta เพิ่ม
+  const extraMeta = args.meta && Object.keys(args.meta).length > 0 ? args.meta : null;
 
   // ชื่อที่ลูกค้าควรเห็น (M5) — นามแฝงของร้าน ไม่ใช่ชื่อพนักงานจริง
   // เก็บบนแถวเฉพาะที่ระบุมาเจาะจง · null = ให้ publicThread ตกไปใช้ senderAlias ตอนอ่าน
@@ -1586,9 +1594,11 @@ export async function sendReply(args: {
         senderName: rowSenderName,
         body: body || null,
         isInternal,
-        ...(originalBody || pendingTranscode
+        ...(originalBody || pendingTranscode || extraMeta
           ? {
               meta: {
+                // คีย์ของผู้เรียกมาก่อน — คีย์ของระบบแชทเขียนทับได้เสมอ (ห้ามให้ผู้เรียกปลอม pendingReason)
+                ...(extraMeta ?? {}),
                 ...(originalBody ? { originalBody } : {}),
                 ...(pendingTranscode ? { pendingReason: "TRANSCODE" } : {}),
               } as Prisma.InputJsonValue,

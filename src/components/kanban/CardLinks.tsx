@@ -111,6 +111,12 @@ export function CardLinks({
               {l.typeLabel}
               {l.subtitle ? ` · ${l.subtitle}` : ""}
             </span>
+            {/* K3.4 — บอกล่วงหน้าว่าปิดงานแล้วจะมีอะไรไปโผล่ในห้องแชท (ไม่ใช่ให้ทีมเซอร์ไพรส์ทีหลัง) */}
+            {l.linkType === "CHAT_CONVERSATION" && (
+              <span style={{ fontSize: 10.5, color: "var(--color-muted)" }}>
+                เมื่อปิดงาน ระบบจะแปะบันทึกในบทสนทนานี้ให้
+              </span>
+            )}
           </div>
           {l.status && (
             <span

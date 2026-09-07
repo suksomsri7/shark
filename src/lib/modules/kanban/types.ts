@@ -198,6 +198,8 @@ export type CardForTargetDto = {
   boardName: string;
   columnName: string;
   status: "ACTIVE" | "ARCHIVED";
+  /** K3.4 — กำหนดส่ง (หน้าโปรไฟล์ผู้ติดต่อแสดง "เลยกำหนด/ครบกำหนด" ได้โดยไม่ต้องยิงถามการ์ดทีละใบ) */
+  dueAt: Date | null;
 };
 
 /** K2.9 — ปุ่มอัตโนมัติที่โผล่บนจอ (หลังการ์ด / หัวบอร์ด) */

@@ -5,8 +5,10 @@ import type { Prisma } from "@prisma/client";
 import {
   findOrCreate as findOrCreateInner,
   listBriefsByIds as listBriefsByIdsInner,
+  getProfile as getProfileInner,
   searchByName as searchByNameInner,
   type PartyBrief,
+  type PartyProfile,
   resolveCanonical as resolveCanonicalInner,
   findDuplicateCandidates as findDuplicateCandidatesInner,
   recordMergeCandidates as recordMergeCandidatesInner,
@@ -18,7 +20,7 @@ import {
 } from "./service";
 
 export { normalizePartyTaxId, normalizePartyPhone, nameSimilarity };
-export type { PartyFindOrCreateInput, DuplicatePair, PartyBrief };
+export type { PartyFindOrCreateInput, DuplicatePair, PartyBrief, PartyProfile };
 
 /** หา/สร้าง Party ตามลำดับ taxId → phoneNorm → name+email (ดู service.ts) — อาจ throw ถ้า DB ผิดพลาดจริง */
 export async function findOrCreate(
@@ -87,6 +89,20 @@ export async function listBriefsByIds(
   client?: Prisma.TransactionClient,
 ): Promise<PartyBrief[]> {
   return listBriefsByIdsInner(tenantId, ids, client);
+}
+
+/**
+ * โปรไฟล์เต็มของผู้ติดต่อ 1 ราย รวม**ข้อมูลติดต่อ** (K3.4 · D23 — หน้า `/app/party/{id}`)
+ * 🔴 ผู้เรียกต้องผ่านด่านสิทธิ์ของตัวเองมาก่อน แล้วเลือกเองว่าจะโชว์ฟิลด์ไหนให้ใคร
+ *    (คนที่มีแค่คีย์ `kanban.*` เห็นได้แค่ชื่อ — ดู `src/app/app/party/[partyId]/page.tsx`)
+ * ไม่พบ / เป็นของร้านอื่น → `null` (หน้าเรียกต้องแปลงเป็น notFound เสมอ ห้ามบอกว่า "มีแต่ห้ามดู")
+ */
+export async function getProfile(
+  tenantId: string,
+  partyId: string,
+  client?: Prisma.TransactionClient,
+): Promise<PartyProfile | null> {
+  return getProfileInner(tenantId, partyId, client);
 }
 
 /** ค้นผู้ติดต่อจากชื่อ (K3.1 — ช่อง "ผู้ติดต่อ" ของป๊อปอัป "เพิ่มการเชื่อม") */

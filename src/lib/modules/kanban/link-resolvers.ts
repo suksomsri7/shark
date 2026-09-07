@@ -863,6 +863,7 @@ export async function listCardsForTarget(
           cardNo: true,
           title: true,
           status: true,
+          dueAt: true,
           boardId: true,
           board: { select: { name: true } },
           column: { select: { name: true } },
@@ -878,6 +879,7 @@ export async function listCardsForTarget(
     boardName: r.card.board.name,
     columnName: r.card.column.name,
     status: r.card.status as "ACTIVE" | "ARCHIVED",
+    dueAt: r.card.dueAt,
   }));
 }
 

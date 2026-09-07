@@ -199,6 +199,53 @@ export async function listBriefsByIds(
   return rows;
 }
 
+/**
+ * โปรไฟล์เต็มของผู้ติดต่อ 1 ราย (K3.4 · D23 — หน้า `/app/party/{id}`)
+ *
+ * 🔴 ต่างจาก `listBriefsByIds` โดยตั้งใจ: ตัวนี้คืน **ข้อมูลติดต่อ** ด้วย ⇒ ผู้เรียกต้องเป็นหน้าจอ/เส้นทาง
+ *    ที่ผ่านด่านสิทธิ์ของตัวเองมาแล้ว และเป็นคนตัดสินใจว่าจะโชว์ฟิลด์ไหนให้ใคร (โมดูลนี้ไม่รู้จัก RBAC)
+ *    ห้ามเอาไปเสียบใน resolver ของโมดูลอื่นแทน `listBriefsByIds` เด็ดขาด
+ * 🔴 `id` ที่ไม่ใช่ของร้านนี้ → `null` เสมอ (where ผูก tenantId ตรง ไม่พึ่งแค่ tenantDb)
+ */
+export type PartyProfile = {
+  id: string;
+  kind: PartyKind;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  taxId: string | null;
+  branchCode: string | null;
+  address: string | null;
+  mergedIntoId: string | null;
+  createdAt: Date;
+};
+
+export async function getProfile(
+  tenantId: string,
+  partyId: string,
+  client?: Prisma.TransactionClient,
+): Promise<PartyProfile | null> {
+  const id = (partyId ?? "").trim();
+  if (!id) return null;
+  const db = dbFor(tenantId, client);
+  const row = await db.party.findFirst({
+    where: { tenantId, id },
+    select: {
+      id: true,
+      kind: true,
+      name: true,
+      phone: true,
+      email: true,
+      taxId: true,
+      branchCode: true,
+      address: true,
+      mergedIntoId: true,
+      createdAt: true,
+    },
+  });
+  return row ?? null;
+}
+
 /** ค้นผู้ติดต่อจาก "ชื่อ" อย่างเดียว (ช่องค้นหาในหน้าอื่น) — ไม่ค้นด้วยเบอร์/อีเมล/เลขภาษี */
 export async function searchByName(
   tenantId: string,

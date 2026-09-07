@@ -287,6 +287,17 @@ const kanbanBridge =
     await bridges[name](evt);
   };
 
+/**
+ * K3.4 — ขาออกของบอร์ดงาน ("การ์ดปิดแล้ว → บอกปลายทางที่ผูกไว้") · dynamic import ด้วยเหตุผลเดียวกับ
+ * `kanbanBridge` ข้างบน (`kanban-outbound` → `chat/service` → … → `scheduleDrain` กลับมาที่ไฟล์นี้)
+ */
+const kanbanOutbound =
+  (name: "cardCompleted"): OutboxHandler =>
+  async (evt) => {
+    const outbound = await import("@/lib/platform/kanban-outbound");
+    await outbound[name](evt);
+  };
+
 const baseConsumers: Record<string, OutboxHandler> = {
   "pos.sale.paid": withAutomation(posSalePaid),
   // K3.3: + การ์ด "ตรวจสอบบิลยกเลิก" เมื่อยอดถึงเกณฑ์ที่ร้านตั้งไว้ (สวิตช์ปิดอยู่ = ไม่มีอะไรเกิด)
@@ -341,18 +352,22 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   🔴 ผลข้างเคียงเกิดในโมดูลไปแล้ว (position/sortOrder/completedAt) — consumer เป็น no-op เพื่อ
   //      **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาลแล้วคิวทั้งระบบตันตามไปด้วย
   //      — บทเรียน 30 ส.ค. 2026) + เป็นจุดให้ Automation rules (§7.3) และ `withWebhooks` ยิงต่อ
-  //      ตัวปิดงานที่ผูกไว้ (closeLinkedTargets · K3.4) จะมาเสียบตรง `kanban.card.completed` ทีหลัง
+  //      ตัวปิดงานที่ผูกไว้ (ขาออก K3.4) เสียบอยู่ที่ `kanban.card.completed` ด้านล่างแล้ว
   "kanban.card.moved": withAutomation(async () => {}),
   // K1.15 — การ์ดใบใหม่ / การ์ดถูกเก็บเข้าคลัง (ยิงจาก `kanban/service.ts#createCard` และ
   // `kanban/cards.ts#archiveCard` ใน tx เดียวกับการเขียนแถว) · ยังไม่มีผลข้างเคียงภายใน
   // (ฮุคขาออก + กฎอัตโนมัติของร้านเป็นผู้บริโภคจริง) — แต่ต้องลงทะเบียนไว้ ไม่งั้นคิวตันเงียบ ๆ
   "kanban.card.created": withAutomation(async () => {}),
+  // 🔴 K3.4 §9.3: "เก็บเข้าคลัง" **ไม่ใช่** "ปิดงาน" ⇒ ห้ามต่อขาออกที่นี่ — เก็บการ์ดเพื่อจัดบ้าน
+  //    แล้วลูกค้าได้ข้อความ "งานปิดแล้ว" ในห้องแชท คือผลข้างเคียงที่ไม่มีใครสั่ง (no-op โดยตั้งใจ)
   "kanban.card.archived": withAutomation(async () => {}),
   // K1.15 — เตือนกำหนดส่ง: ตัวยิงจริงมาใน P2 (K2.x) · ลงทะเบียนไว้ก่อนเพื่อให้ event ที่ประกาศใน
   // `webhooks/labels.ts` มีบ้านครบตั้งแต่วันแรก (บทเรียน: event ที่ไม่มี consumer = คิวตันทั้งระบบ)
   "kanban.card.due_soon": withAutomation(async () => {}),
   "kanban.card.overdue": withAutomation(async () => {}),
-  "kanban.card.completed": withAutomation(async () => {}),
+  // K3.4 (§9.3 "ย้อนกลับ"): + แปะบันทึกภายในในห้องแชทที่การ์ดผูกไว้ / รอยประวัติของเอกสารบัญชี
+  //   🔴 ต่อท้ายด้วย `compose` เหมือนสะพานขาเข้า — ขาออกพังห้ามพา consumer หลักล้ม (WARN แล้วไปต่อ)
+  "kanban.card.completed": withAutomation(compose(async () => {}, kanbanOutbound("cardCompleted"))),
   // K1.7 — เช็คลิสต์ครบทุกข้อ (ยิงจาก `kanban/checklists.ts#toggleItem` ใน tx เดียวกับการติ๊ก)
   //   🔴 ผลข้างเคียง (done/doneAt/doneById) เกิดในโมดูลไปแล้ว — consumer เป็น no-op เพื่อ
   //      **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล — บทเรียน 30 ส.ค. 2026)
