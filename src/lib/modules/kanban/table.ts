@@ -62,6 +62,8 @@ type RawTableCard = FilterableCard & {
   dueAt: Date | null;
   completedAt: Date | null;
   updatedAt: Date;
+  /** K2.7: ไม่ null = การ์ดนี้เป็น "แม่" ของงานประจำ — ชิป 🔁 */
+  recurrenceRule: string | null;
 };
 
 export async function listBoardTable(
@@ -174,6 +176,7 @@ export async function listBoardTable(
       links: [], // K3.1 ยังไม่มี — คอลัมน์ "เชื่อมระบบ" ว่างจนกว่าจะถึง WO นั้น (สัญญา K2.1)
       updatedAt: raw.updatedAt.toISOString(),
       fieldsOnCard: fieldsOnCardByCard.get(raw.id) ?? [],
+      isRecurring: raw.recurrenceRule != null,
     };
   });
 

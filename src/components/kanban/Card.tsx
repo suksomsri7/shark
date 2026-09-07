@@ -194,20 +194,36 @@ export function Card({
           style={{ height: 64, borderRadius: 7, objectFit: "cover", margin: "-2px 0 1px" }}
         />
       )}
-      {source && (
-        <span
-          className="inline-flex items-center gap-1 self-start"
-          style={{
-            fontSize: 10.5,
-            color: "var(--color-accent)",
-            background: "var(--color-out)",
-            borderRadius: 5,
-            padding: "1px 6px",
-          }}
-        >
-          <KanbanIcon name={source.icon} size="xs" />
-          {source.text}
-        </span>
+      {(source || card.isRecurring) && (
+        <div className="flex flex-wrap items-center gap-1">
+          {source && (
+            <span
+              className="inline-flex items-center gap-1"
+              style={{
+                fontSize: 10.5,
+                color: "var(--color-accent)",
+                background: "var(--color-out)",
+                borderRadius: 5,
+                padding: "1px 6px",
+              }}
+            >
+              <KanbanIcon name={source.icon} size="xs" />
+              {source.text}
+            </span>
+          )}
+          {/* K2.7 — การ์ดแม่ของงานประจำ (มี recurrenceRule) */}
+          {card.isRecurring && (
+            <span
+              data-testid="card-recurring"
+              title="งานประจำ — เกิดซ้ำตามกำหนด"
+              className="inline-flex items-center gap-1"
+              style={{ fontSize: 10.5, color: "var(--color-muted)", background: "var(--color-surface-2)", borderRadius: 5, padding: "1px 6px" }}
+            >
+              <KanbanIcon name="repeat" size="xs" />
+              ประจำ
+            </span>
+          )}
+        </div>
       )}
       <div style={{ fontSize: 12.8, lineHeight: 1.4, fontWeight: 500 }}>{card.title}</div>
       {card.labels.length > 0 && (

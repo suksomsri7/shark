@@ -75,6 +75,17 @@ export type { BoardSummaryDto, SummaryLabelTileDto, SummaryThroughputWeekDto, Su
 // K2.6: ฟิลด์กำหนดเอง — ผู้เรียกนอกโมดูล (หน้า/action) ใช้ผ่าน facade เดียวกัน
 export { createField, deleteField, getCardFieldValues, listFields, reorderFields, setCardFieldValue, updateField } from "./fields";
 export type { CardFieldValueDto, CustomFieldDto, CustomFieldOptions, FieldOnCardDto, KanbanCustomFieldType } from "./types";
+// K2.7: เทมเพลตการ์ด + กำหนดส่งซ้ำ — ผู้เรียกนอกโมดูล (หน้า/action) ใช้ผ่าน facade เดียวกัน
+export {
+  createCardFromTemplate,
+  deleteCardTemplate,
+  listCardTemplates,
+  reorderCardTemplates,
+  saveAsCardTemplate,
+  updateCardTemplate,
+} from "./card-templates";
+export { describeRecurrence, nextOccurrence, parseRecurrenceRule, setCardRecurrence, sweepRecurringCards } from "./recurrence";
+export type { CardTemplateDto } from "./types";
 
 // แจ้งเตือนเมื่อมอบหมายงาน — ย้ายตรรกะไป `notify.ts` ใน K1.2 (cards.ts ใช้ร่วมโดยไม่เกิด import วงกลม)
 // ชื่อเดิมคงไว้เป็น alias ภายในไฟล์นี้ เพื่อไม่ต้องแก้จุดเรียกเดิม
@@ -892,6 +903,8 @@ export function toBoardCardDto(
   fieldsOnCard?: FieldOnCardDto[],
 ): BoardCardDto {
   return {
+    // K2.7: ชิป 🔁 — "แม่" ของงานประจำเท่านั้น (ลูกไม่มี recurrenceRule ของตัวเอง — ดู recurrence.ts)
+    isRecurring: card.recurrenceRule != null,
     id: card.id,
     cardNo: card.cardNo,
     title: card.title,

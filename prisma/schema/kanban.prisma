@@ -74,6 +74,7 @@ model KanbanBoard {
   activities KanbanActivity[] // ประวัติกิจกรรม (K1.10)
   views   KanbanBoardView[] // มุมมองที่บันทึกไว้ (K2.5)
   customFields KanbanCustomField[] // ฟิลด์กำหนดเอง (K2.6)
+  cardTemplates KanbanCardTemplate[] // เทมเพลตการ์ด (K2.7)
 
   @@index([tenantId, systemId, status])
   @@index([tenantId, systemId, unitId])
@@ -140,6 +141,11 @@ model KanbanCard {
   createdById           String?
   archivedById          String?
 
+  // ── K2.7 — กำหนดส่งซ้ำ (ตั้งบนการ์ดแม่เท่านั้น · ลูกไม่มีกฎของตัวเอง) ──
+  recurrenceRule     String? // subset ของ RRULE เช่น "FREQ=WEEKLY;BYDAY=MO" — null = ไม่ซ้ำ
+  recurrenceParentId String? // ลูกชี้กลับไปการ์ดแม่ (ไม่ใช่ Prisma relation ตรง ๆ — เหมือน sourceId/mirrorOfId)
+  recurrenceKey      String? // กันcron ซ้อนสร้างซ้ำ: "kanban.recur.{parentId}.{yyyy-mm-dd ไทย}"
+
   // ── K1.2 ──
   cardLabels KanbanCardLabel[]
   assignees  KanbanCardAssignee[]
@@ -168,6 +174,10 @@ model KanbanCard {
   //    (NULL ซ้ำได้ตามมาตรฐาน Postgres ⇒ การ์ดเก่าที่ยังไม่ backfill ไม่ติดด่านนี้)
   @@unique([boardId, cardNo])
   @@index([boardId, cardNo]) // ค้นด้วยเลขการ์ด (คงไว้จาก K1.1 — unique ข้างบนเพิ่มใน K1.4 ไม่ทับของเดิม)
+  // 🔴 K2.7: ด่าน DB กัน cron sweepRecurringCards ซ้อนสร้างการ์ดลูกซ้ำ (rerun ในวันเดียวกัน)
+  //    (NULL ซ้ำได้ตามมาตรฐาน Postgres ⇒ การ์ดที่ไม่ใช่ลูกของงานประจำไม่ติดด่านนี้)
+  @@unique([recurrenceParentId, recurrenceKey])
+  @@index([tenantId, systemId, status, recurrenceRule]) // sweepRecurringCards หาการ์ดแม่ทุกร้าน
 }
 
 // ───────────────────────── ป้ายกำกับ (K1.2) ─────────────────────────
@@ -535,4 +545,28 @@ model KanbanCustomFieldValue {
 
   @@unique([cardId, fieldId])
   @@index([fieldId])
+}
+
+// ───────────────────────── เทมเพลตการ์ด (K2.7) ─────────────────────────
+// "การ์ดต้นแบบ" ของบอร์ด — เก็บ ชื่อ/รายละเอียด/ป้าย/เช็คลิสต์(ข้อความอย่างเดียว)/ค่าฟิลด์กำหนดเอง
+// 🔴 ไม่เก็บ dueAt/startAt/ผู้รับผิดชอบ/ไฟล์แนบ/สถานะติ๊ก (สัญญา K2.7 — คนสร้างการ์ดใหม่เลือกเอง)
+model KanbanCardTemplate {
+  id          String      @id @default(cuid())
+  tenantId    String
+  systemId    String
+  boardId     String
+  board       KanbanBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  name        String // ชื่อเทมเพลต (โชว์ในตั้งค่า + เมนู "จากเทมเพลต")
+  title       String // ชื่อการ์ดที่จะตั้งให้ (prefill — แก้ได้ก่อนสร้าง)
+  description String?
+  labelIds    Json        @default("[]") // string[] (KanbanLabel.id) — ที่ยังมีอยู่จริงตอนสร้างการ์ด
+  checklists  Json        @default("[]") // [{ title: string, items: string[] }] — ข้อความอย่างเดียว
+  fieldValues Json        @default("{}") // { [fieldId]: value } (K2.6) — เฉพาะฟิลด์ที่มีค่าตอนบันทึก
+  reminderMinutesBefore Int?
+  sortOrder   Int         @default(0)
+  createdById String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([boardId, sortOrder])
 }

@@ -71,6 +71,8 @@ export type BoardCardDto = {
   sourceType: "MANUAL" | "TEMPLATE" | "CHAT" | "FORM" | "EMAIL" | "AUTOMATION" | "AI";
   /** K2.6: ฟิลด์กำหนดเองที่ `showOnCard=true` และการ์ดใบนี้มีค่าแล้ว (เรียงตาม sortOrder ของฟิลด์) */
   fieldsOnCard: FieldOnCardDto[];
+  /** K2.7: การ์ดนี้เป็น "แม่" ของงานประจำ (มี recurrenceRule) — ชิป 🔁 บนการ์ด/แถวตาราง */
+  isRecurring: boolean;
 };
 
 export type BoardColumnDto = {
@@ -104,6 +106,14 @@ export type CardDetailDto = {
   attachments: KanbanAttachmentDto[];
   /** K2.6: ค่าฟิลด์กำหนดเอง — ทุกฟิลด์ของบอร์ด (ไม่ใช่แค่ที่กรอกแล้ว) เรียงตาม sortOrder */
   customFields: CardFieldValueDto[];
+  /** K2.7: กำหนดส่งซ้ำของการ์ดนี้ (null = ไม่ซ้ำ) — ตั้งได้เฉพาะการ์ดที่ไม่ใช่ลูกของงานประจำ */
+  recurrenceRule: string | null;
+  /** K2.7: ประโยคไทยของ `recurrenceRule` (null เมื่อไม่มีกฎ) */
+  recurrenceLabel: string | null;
+  /** K2.7: การ์ดนี้เป็น "ลูก" ที่เกิดจากงานประจำใบไหน (null = ไม่ใช่ลูก) */
+  recurrenceParentId: string | null;
+  /** K2.7: ชื่อการ์ดแม่ (มีเมื่อ `recurrenceParentId` ไม่ null) — ใช้ทำลิงก์ "เกิดจากงานประจำ: …" */
+  recurrenceParentTitle: string | null;
 };
 
 // ───────────────────────── K1.9: ไฟล์แนบ + ปกการ์ด ─────────────────────────
@@ -430,6 +440,8 @@ export type TableRowDto = {
   updatedAt: string;
   /** K2.6: ฟิลด์กำหนดเองที่ `showOnCard=true` และการ์ดแถวนี้มีค่าแล้ว — คู่กับ `BoardTableDto.customFieldColumns` */
   fieldsOnCard: FieldOnCardDto[];
+  /** K2.7: การ์ดนี้เป็น "แม่" ของงานประจำ (มี recurrenceRule) */
+  isRecurring: boolean;
 };
 
 /** กลุ่มของ `group=column|assignee|label` — `rowIds` อ้าง `TableRowDto.id` (การ์ดหลายผู้รับผิดชอบ/หลายป้าย อยู่ได้หลายกลุ่ม) */
@@ -591,3 +603,19 @@ export type CardFieldValueDto = {
 
 /** ชิปฟิลด์บนตัวการ์ด/แถวตาราง — เฉพาะฟิลด์ `showOnCard=true` ที่การ์ดมีค่าแล้ว */
 export type FieldOnCardDto = { name: string; display: string };
+
+// ───────────────────────── K2.7 — เทมเพลตการ์ด + กำหนดส่งซ้ำ ─────────────────────────
+// DTO บริสุทธิ์ (ไม่มี Date/Prisma model) — `CardTemplatePicker.tsx`/`CardTemplatesSettings.tsx` (client)
+// ต้อง `import type` ได้โดยไม่ลาก `db.ts` → `pg` เข้าบันเดิลฝั่ง browser ด้วยเหตุผลเดียวกับ K1.11/…/K2.6
+
+/** เทมเพลตการ์ด 1 ใบของบอร์ด (ตั้งค่าบอร์ด › "เทมเพลตการ์ด" + เมนู "จากเทมเพลต ▾" ในคอลัมน์) */
+export type CardTemplateDto = {
+  id: string;
+  name: string;
+  title: string;
+  /** จำนวนป้ายที่ยังมีอยู่จริง (ป้ายที่ถูกลบไปแล้วนับไม่รวม) */
+  labelCount: number;
+  /** ผลรวมจำนวนรายการเช็คลิสต์ทุกชุดในเทมเพลตนี้ */
+  checklistItemCount: number;
+  sortOrder: number;
+};

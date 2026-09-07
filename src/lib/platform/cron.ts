@@ -18,6 +18,7 @@ import { sweepProactiveNudges } from "@/lib/ai/proactive";
 import { purgeExpiredChatMessages } from "@/lib/modules/chat/retention";
 import { deliverPendingVoice } from "@/lib/modules/chat/service";
 import { sweepRateBuckets } from "@/lib/core/rate-limit-db";
+import { sweepRecurringCards } from "@/lib/modules/kanban/recurrence";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -77,6 +78,7 @@ export async function runDailyCron(
   proactiveNudges: number;
   chatPurged: number;
   rateBucketsSwept: number;
+  recurringCards: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -91,6 +93,7 @@ export async function runDailyCron(
   let proactiveNudges = -1;
   let chatPurged = -1;
   let rateBucketsSwept = -1;
+  let recurringCards = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -187,6 +190,12 @@ export async function runDailyCron(
   } catch {
     // กวาดถัง rate limit พัง → -1 ไปต่อ
   }
+  try {
+    // K2.7: การ์ดเกิดซ้ำ — สร้างการ์ดลูกของงานประจำที่ถึงรอบวันนี้ (idempotent ผ่าน recurrenceKey)
+    recurringCards = await sweepRecurringCards(now);
+  } catch {
+    // sweep งานประจำพัง → -1 ไปต่อ (ห้ามพา cron ทั้งรอบล้ม)
+  }
 
   return {
     subsExpired,
@@ -202,5 +211,6 @@ export async function runDailyCron(
     proactiveNudges,
     chatPurged,
     rateBucketsSwept,
+    recurringCards,
   };
 }

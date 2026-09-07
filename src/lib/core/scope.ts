@@ -236,6 +236,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // (systemId อยู่ที่บอร์ด/การ์ดต้นทาง) ⇒ แกน tenant ไม่ใช่ sys() ให้ตรงกับฟิลด์จริงใน schema
   KanbanCustomField: tenant,
   KanbanCustomFieldValue: tenant,
+  // K2.7 — เทมเพลตการ์ด · มีทั้ง tenantId+systemId เหมือน KanbanBoard/Card ⇒ แกน sys()
+  KanbanCardTemplate: sys(),
   // เทมเพลตบอร์ด (K1.12) — tenantId เป็น null ได้ (แพลตฟอร์ม) ⇒ แกน global ไม่ใช่ tenant
   // (ผิดจาก join table อื่นข้างบน: ตารางนี้มีทั้งแถวไม่ผูก tenant และแถวผูก tenant ปนกัน
   // ถ้าลงเป็น tenant แล้ว tenantDb() ถูกเรียกวันหน้า จะกรอง tenantId=ปัจจุบันทับ WHERE เดิม

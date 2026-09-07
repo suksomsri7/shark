@@ -107,6 +107,17 @@ import type {
 import { deleteView, saveView, updateView } from "./views";
 // K2.6 — ฟิลด์กำหนดเอง (บริการอยู่ `fields.ts` — บทบาทบอร์ด 2 ชั้นตรวจในนั้นเอง ที่นี่แค่ตรวจสิทธิ์โมดูล)
 import { createField, deleteField, reorderFields, setCardFieldValue, updateField } from "./fields";
+// K2.7 — เทมเพลตการ์ด (บริการอยู่ `card-templates.ts`) + กำหนดส่งซ้ำ (บริการอยู่ `recurrence.ts`)
+// บทบาทบอร์ด 2 ชั้นตรวจในไฟล์บริการเองเสมอ — ที่นี่แค่ตรวจสิทธิ์โมดูล
+import {
+  createCardFromTemplate,
+  deleteCardTemplate,
+  reorderCardTemplates,
+  saveAsCardTemplate,
+  updateCardTemplate,
+} from "./card-templates";
+import { describeRecurrence, setCardRecurrence } from "./recurrence";
+import type { CardTemplateDto } from "./types";
 
 // ทุก action: requireTenant → เอา tenantId จาก session (ไม่เชื่อ client) + scope ด้วย systemId
 
@@ -1581,5 +1592,157 @@ export async function setCardFieldValueAction(input: {
     return { ok: true, field };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "บันทึกฟิลด์ไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+// ═══════════════════════════ K2.7: เทมเพลตการ์ด + กำหนดส่งซ้ำ ═══════════════════════════
+// บันทึก/แก้/ลบ/ลากเรียงเทมเพลต = ตั้งค่าบอร์ด (ADMIN) · สร้างการ์ดจากเทมเพลต = EDITOR
+// ตั้ง/ล้างกำหนดส่งซ้ำ = หลังการ์ด (EDITOR) — บทบาทบอร์ดจริงตรวจใน `card-templates.ts`/`recurrence.ts` เสมอ
+
+function cardTemplatesSettingsPath(systemId: string, boardId: string) {
+  return `${boardPath(systemId, boardId)}/settings/card-templates`;
+}
+
+/** บันทึกการ์ดที่เปิดอยู่เป็นเทมเพลตใหม่ (เมนู ⋯ ของการ์ด "บันทึกเป็นเทมเพลตการ์ด" — ADMIN) */
+export async function saveCardTemplateAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  name: string;
+}): Promise<{ ok: true; template: CardTemplateDto } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const template = await saveAsCardTemplate(ctx, actor, input.cardId, { name: input.name });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    revalidatePath(cardTemplatesSettingsPath(input.systemId, input.boardId));
+    return { ok: true, template };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "บันทึกเทมเพลตไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** สร้างการ์ดใหม่จากเทมเพลต (ปุ่ม "จากเทมเพลต ▾" ในคอลัมน์ — `CardTemplatePicker.tsx`) */
+export async function createCardFromTemplateAction(input: {
+  systemId: string;
+  boardId: string;
+  templateId: string;
+  columnId: string;
+  title?: string;
+  dueAt?: string | null;
+  assigneeUserIds?: string[];
+}): Promise<{ ok: true; card: BoardCardDto; columnId: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.create");
+  if (!input.systemId || !input.templateId || !input.columnId) return { ok: false, message: "ไม่พบเทมเพลตหรือคอลัมน์นี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const created = await createCardFromTemplate(ctx, actor, {
+      templateId: input.templateId,
+      columnId: input.columnId,
+      title: input.title,
+      dueAt: input.dueAt ? new Date(input.dueAt) : undefined,
+      assigneeUserIds: input.assigneeUserIds,
+    });
+    const [labelRows, assigneeRows] = await Promise.all([
+      listCardLabelDtos(ctx, created.id),
+      listCardAssigneeDtos(ctx, created.id),
+    ]);
+    const checklist = await checklistProgressOfCard(ctx, created.id);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, card: toBoardCardDto(created, labelRows, assigneeRows, checklist), columnId: created.columnId };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "สร้างการ์ดจากเทมเพลตไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** แก้ชื่อเทมเพลต/ชื่อการ์ด/รายละเอียดในเทมเพลต (ตั้งค่าบอร์ด › เทมเพลตการ์ด) */
+export async function updateCardTemplateAction(input: {
+  systemId: string;
+  boardId: string;
+  templateId: string;
+  name?: string;
+  title?: string;
+  description?: string | null;
+}): Promise<{ ok: true; template: CardTemplateDto } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.templateId) return { ok: false, message: "ไม่พบเทมเพลตนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const template = await updateCardTemplate(ctx, actor, input.templateId, {
+      name: input.name,
+      title: input.title,
+      description: input.description,
+    });
+    revalidatePath(cardTemplatesSettingsPath(input.systemId, input.boardId));
+    return { ok: true, template };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "แก้ไขเทมเพลตไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+export async function deleteCardTemplateAction(input: {
+  systemId: string;
+  boardId: string;
+  templateId: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.templateId) return { ok: false, message: "ไม่พบเทมเพลตนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    await deleteCardTemplate(ctx, actor, input.templateId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    revalidatePath(cardTemplatesSettingsPath(input.systemId, input.boardId));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ลบเทมเพลตไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+export async function reorderCardTemplatesAction(input: {
+  systemId: string;
+  boardId: string;
+  ids: string[];
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.boardId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    await reorderCardTemplates(ctx, actor, input.boardId, input.ids);
+    revalidatePath(cardTemplatesSettingsPath(input.systemId, input.boardId));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "จัดลำดับเทมเพลตไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** ตั้ง/ล้างกำหนดส่งซ้ำของการ์ด (บล็อก "กำหนดส่งซ้ำ" ในหลังการ์ด — `rule: null` = เลือก "ไม่ซ้ำ") */
+export async function setCardRecurrenceAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  rule: string | null;
+}): Promise<{ ok: true; recurrenceLabel: string | null } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    await setCardRecurrence(ctx, actor, input.cardId, input.rule);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, recurrenceLabel: input.rule ? describeRecurrence(input.rule) : null };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ตั้งกำหนดส่งซ้ำไม่สำเร็จ ลองใหม่อีกครั้ง" };
   }
 }

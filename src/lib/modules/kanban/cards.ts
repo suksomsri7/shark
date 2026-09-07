@@ -19,6 +19,7 @@ import { listComments } from "./comments";
 import { moveCard } from "./moves";
 import { notifyCardAssigned } from "./notify";
 import { keyBetween } from "./ordering";
+import { describeRecurrence } from "./recurrence";
 import { publishBoardSignal, boardSignal } from "./realtime";
 import { sanitizeDescription } from "./sanitize";
 import type { CardDetailDto, KanbanCtx } from "./types";
@@ -199,16 +200,22 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
       archivedAt: true,
       archivedById: true,
       status: true,
+      recurrenceRule: true,
+      recurrenceParentId: true,
     },
   });
   if (!card) throw new KanbanNotFoundError("ไม่พบการ์ดนี้");
   // K1.7/K1.8/K1.9/K2.6: หลังการ์ดโหลดเช็คลิสต์ + ความเห็น + ไฟล์แนบ + ค่าฟิลด์กำหนดเอง พร้อมกับส่วนที่
   // เหลือของการ์ดในเที่ยวเดียว (ทุกตัวตรวจสิทธิ์ซ้ำในตัวเอง — เปิดหลังการ์ด 1 ครั้ง = ไม่ต้องยิง action เพิ่มอีกหลายรอบ)
-  const [checklists, comments, attachments, customFields] = await Promise.all([
+  const [checklists, comments, attachments, customFields, parentCard] = await Promise.all([
     getCardChecklists(ctx, cardId),
     listComments(ctx, cardId),
     listAttachments(ctx, cardId),
     getCardFieldValues(ctx, undefined, cardId),
+    // K2.7: ลูกของงานประจำ — ดึงชื่อการ์ดแม่ให้ "เกิดจากงานประจำ: {ชื่อแม่}" เรนเดอร์ได้โดยไม่ต้องยิงซ้ำ
+    card.recurrenceParentId
+      ? prisma.kanbanCard.findFirst({ where: { id: card.recurrenceParentId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { title: true } })
+      : Promise.resolve(null),
   ]);
   return {
     id: card.id,
@@ -223,6 +230,10 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     comments,
     attachments,
     customFields,
+    recurrenceRule: card.recurrenceRule,
+    recurrenceLabel: card.recurrenceRule ? describeRecurrence(card.recurrenceRule) : null,
+    recurrenceParentId: card.recurrenceParentId,
+    recurrenceParentTitle: parentCard?.title ?? null,
   };
 }
 

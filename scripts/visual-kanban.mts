@@ -554,6 +554,34 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: "[data-testid=custom-fields]" }],
     },
   ],
+  // K2.7 — เทมเพลตการ์ด + กำหนดส่งซ้ำ (ไม่มี mockup เฉพาะ) — เทมเพลต 1 ใบ + กำหนดส่งซ้ำของการ์ด
+  // cardIds[7] ถูกเตรียมไว้แล้วผ่าน `card-templates.ts`/`recurrence.ts` ตรง ๆ ก่อนถ่าย (ดู KB27 ด้านล่าง)
+  "2.7": [
+    {
+      name: "column-template-picker",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      onlyDevice: "desktop",
+      note: "คอลัมน์แรกของบอร์ด: เปิดปุ่ม 'จากเทมเพลต ▾' ข้าง '+ เพิ่มการ์ด' — เห็นรายการเทมเพลตที่เตรียมไว้",
+      expect: ["[data-testid=card-template-picker]"],
+      steps: [{ waitFor: "[data-testid=card-template-picker]" }, { click: "[data-testid=card-template-picker] button" }, { wait: 300 }],
+    },
+    {
+      name: "card-back-recurrence",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[7]}`,
+      onlyDevice: "desktop",
+      note: "หลังการ์ด: บล็อก 'กำหนดส่งซ้ำ' ตั้งเป็น 'ทุกสัปดาห์ (วันจันทร์)' แล้ว + คำอธิบายไทย",
+      expect: ["[data-testid=card-back]", "[data-testid=card-recurrence]"],
+      steps: [{ waitFor: "[data-testid=card-recurrence]" }, { wait: 300 }],
+    },
+    {
+      name: "board-settings-card-templates",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}/settings/card-templates`,
+      onlyDevice: "desktop",
+      note: "ตั้งค่าบอร์ด › เทมเพลตการ์ด: 'n / 30' + รายการเทมเพลตที่เตรียมไว้",
+      expect: ["[data-testid=board-settings-nav]", "[data-testid=card-templates-settings]"],
+      steps: [{ waitFor: "[data-testid=card-templates-settings]" }, { wait: 300 }],
+    },
+  ],
 };
 const specs: Spec[] = WO === "path" ? [{ name: "custom", path: argv[1]! }] : (SPECS[WO] ?? []);
 if (specs.length === 0) { console.error(`❌ ไม่มี spec ของ WO ${WO}`); process.exit(2); }
@@ -772,6 +800,47 @@ if (WO === "2.6") {
   console.log(`🧪 เตรียม K2.6: สร้างฟิลด์ 'งบประมาณ'/'ความสำคัญ' + ตั้งค่าการ์ด ${cardId} บนบอร์ดป่าตอง (คืนสภาพหลังถ่ายเสร็จ)`);
 }
 
+// ── K2.7: บันทึกการ์ด #7 (cardIds[6]) เป็นเทมเพลต + ตั้งกำหนดส่งซ้ำของการ์ด #8 (cardIds[7]) ผ่าน
+//    `card-templates.ts`/`recurrence.ts` ตรง ๆ ก่อนถ่าย (เหตุผลเดียวกับ KB25/KB26 — revalidatePath ของ
+//    server action ชนจังหวะ puppeteer) — คืนสภาพทั้งคู่ใน restoreSeed()
+const KB27 = { templateId: "", recurCardId: "", recurBefore: null as string | null, dueBefore: null as string | null };
+if (WO === "2.7") {
+  const ctSvc = (await import("@/lib/modules/kanban/card-templates" as string)) as Any;
+  const recurSvc = (await import("@/lib/modules/kanban/recurrence" as string)) as Any;
+  const membership = await prisma.membership.findFirst({
+    where: { tenantId: E.tenantId, userId: E.users.owner.userId },
+    select: { role: true, unitAccess: true, permissions: true },
+  });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: membership!.role,
+    unitAccess: (membership!.unitAccess as string[] | null) ?? [],
+    permissions: (membership!.permissions as Record<string, unknown> | null) ?? {},
+  };
+  const ctx27 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  // ลบเศษของรอบก่อนที่อาจค้าง (สคริปต์ล่ม/Ctrl-C ก่อนถึง finally)
+  await (prisma as Any).kanbanCardTemplate.deleteMany({ where: { boardId: B("patong"), name: "ตรวจถังอากาศ (ภาพ)" } });
+  const tpl = await ctSvc.saveAsCardTemplate(ctx27, ownerActor, E.boards.patong.cardIds[6], { name: "ตรวจถังอากาศ (ภาพ)" });
+  KB27.templateId = tpl.id as string;
+
+  const recurCardId = E.boards.patong.cardIds[7] as string;
+  const before = await prisma.kanbanCard.findUnique({ where: { id: recurCardId }, select: { dueAt: true, recurrenceRule: true } });
+  KB27.recurCardId = recurCardId;
+  KB27.recurBefore = before?.recurrenceRule ?? null;
+  KB27.dueBefore = before?.dueAt ? before.dueAt.toISOString() : null;
+  let dueAtMs = before?.dueAt?.getTime();
+  if (!dueAtMs) {
+    dueAtMs = Date.now() + 3 * 86_400_000;
+    await prisma.kanbanCard.update({ where: { id: recurCardId }, data: { dueAt: new Date(dueAtMs) } });
+  }
+  // BYDAY ต้องตรงกับวันของ dueAt จริง (แบบเดียวกับที่ CardBack.tsx คำนวณฝั่ง client) ไม่งั้นป้ายในดรอปดาวน์
+  // (คำนวณจาก dueAt) กับคำอธิบายที่เก็บไว้ (คำนวณจาก rule) จะเป็นคนละวันกันในภาพ
+  const WEEK_CODES = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"] as const;
+  const weekdayCode = WEEK_CODES[new Date(dueAtMs + 7 * 3_600_000).getUTCDay()]!;
+  await recurSvc.setCardRecurrence(ctx27, ownerActor, recurCardId, `FREQ=WEEKLY;BYDAY=${weekdayCode}`);
+  console.log(`🧪 เตรียม K2.7: สร้างเทมเพลต '${tpl.name}' ${KB27.templateId} · ตั้งกำหนดส่งซ้ำการ์ด ${recurCardId} เป็น 'ทุกสัปดาห์ BYDAY=${weekdayCode}' (ตรงวันของ dueAt) บนบอร์ดป่าตอง`);
+}
+
 async function restoreSeed(): Promise<void> {
   // K1.9 — คืนสภาพ seed: ลบไฟล์แนบ/FileAsset ที่สร้างระหว่างถ่ายภาพ + ล้าง coverFileId ของการ์ดที่ใช้ทดสอบ
   if (WO === "1.9") {
@@ -899,6 +968,26 @@ async function restoreSeed(): Promise<void> {
     const del = await P.kanbanCustomField.deleteMany({ where: { id: { in: [KB26.budgetFieldId, KB26.importanceFieldId].filter(Boolean) } } });
     const ac = await P.kanbanActivity.deleteMany({ where: { boardId: B("patong"), createdAt: { gte: new Date(Date.now() - 10 * 60_000) }, type: { in: ["BOARD_UPDATED", "CARD_UPDATED"] } } });
     console.log(`🧹 คืนสภาพ K2.6: ลบฟิลด์กำหนดเอง ${del.count} ตัว (ค่าการ์ด cascade) · ลบกิจกรรม ${ac.count}`);
+  }
+
+  // K2.7 — คืนสภาพ seed: ลบเทมเพลตที่บันทึกไว้ก่อนถ่าย · คืน dueAt/recurrenceRule เดิมของการ์ดที่ใช้ตั้งกำหนดส่งซ้ำ
+  if (WO === "2.7" && (KB27.templateId || KB27.recurCardId)) {
+    const P = prisma as Any;
+    if (KB27.templateId) {
+      const del = await P.kanbanCardTemplate.deleteMany({ where: { id: KB27.templateId } });
+      console.log(`🧹 คืนสภาพ K2.7: ลบเทมเพลต ${KB27.templateId} (${del.count} แถว)`);
+    }
+    if (KB27.recurCardId) {
+      await P.kanbanCard.updateMany({
+        where: { id: KB27.recurCardId },
+        data: { recurrenceRule: KB27.recurBefore, dueAt: KB27.dueBefore ? new Date(KB27.dueBefore) : null },
+      });
+      console.log(`🧹 คืนสภาพ K2.7: คืน dueAt/recurrenceRule ของการ์ด ${KB27.recurCardId} เป็นค่าเดิม`);
+    }
+    const ac = await P.kanbanActivity.deleteMany({
+      where: { boardId: B("patong"), createdAt: { gte: new Date(Date.now() - 10 * 60_000) }, type: { in: ["BOARD_UPDATED", "CARD_UPDATED"] } },
+    });
+    console.log(`🧹 คืนสภาพ K2.7: ลบกิจกรรมที่เพิ่งเกิด ${ac.count}`);
   }
 }
 

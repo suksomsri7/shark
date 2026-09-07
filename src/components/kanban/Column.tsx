@@ -8,7 +8,8 @@
 import { useEffect, useRef, useState } from "react";
 import { KanbanIcon } from "./KanbanIcon";
 import { Card } from "./Card";
-import type { BoardCardDto, BoardColumnDto } from "@/lib/modules/kanban/types";
+import { CardTemplatePicker } from "./CardTemplatePicker";
+import type { BoardCardDto, BoardColumnDto, CardTemplateDto } from "@/lib/modules/kanban/types";
 
 export type ColumnHandlers = {
   onCardPointerDown: (e: React.PointerEvent<HTMLElement>, card: BoardCardDto, columnId: string) => void;
@@ -19,6 +20,8 @@ export type ColumnHandlers = {
   registerCardRef: (cardId: string, el: HTMLElement | null) => void;
   registerIndicatorRef: (el: HTMLElement | null) => void;
   onCreateCard: (columnId: string, title: string) => void;
+  /** K2.7 — สร้างการ์ดจากเทมเพลต (`CardTemplatePicker.tsx`) */
+  onCreateFromTemplate: (columnId: string, templateId: string, title: string) => void;
   onRenameColumn: (columnId: string, name: string) => void;
   onSetWip: (columnId: string, wipLimit: number | null) => void;
   onSetDone: (columnId: string, isDone: boolean) => void;
@@ -30,6 +33,7 @@ export function Column({
   column,
   cards,
   siblings,
+  cardTemplates,
   nowMs,
   canEdit,
   isAdmin,
@@ -44,6 +48,8 @@ export function Column({
   cards: BoardCardDto[];
   /** คอลัมน์อื่นในบอร์ด (เมนู "ย้ายการ์ดทั้งหมดไป…") */
   siblings: { id: string; name: string }[];
+  /** K2.7 — เทมเพลตการ์ดของบอร์ด (ปุ่ม "จากเทมเพลต ▾" ข้าง "+ เพิ่มการ์ด" — ว่าง = ไม่แสดงปุ่ม) */
+  cardTemplates: CardTemplateDto[];
   nowMs: number;
   canEdit: boolean;
   isAdmin: boolean;
@@ -373,16 +379,22 @@ export function Column({
         </div>
       ) : (
         canEdit && (
-          <button
-            type="button"
-            data-testid="add-card"
-            onClick={() => setComposing(true)}
-            className="flex items-center"
-            style={{ gap: 7, height: 32, padding: "0 6px", borderRadius: 8, fontSize: 12.5, color: "var(--color-muted)" }}
-          >
-            <KanbanIcon name="plus" size="sm" />
-            เพิ่มการ์ด
-          </button>
+          <div className="flex items-center gap-1" style={{ flexWrap: "wrap" }}>
+            <button
+              type="button"
+              data-testid="add-card"
+              onClick={() => setComposing(true)}
+              className="flex items-center"
+              style={{ gap: 7, height: 32, padding: "0 6px", borderRadius: 8, fontSize: 12.5, color: "var(--color-muted)" }}
+            >
+              <KanbanIcon name="plus" size="sm" />
+              เพิ่มการ์ด
+            </button>
+            {/* K2.7 — "จากเทมเพลต ▾" ข้าง "+ เพิ่มการ์ด" (ซ่อนเมื่อบอร์ดไม่มีเทมเพลต — ซ่อนอยู่ในตัว CardTemplatePicker เอง) */}
+            {cardTemplates.length > 0 && (
+              <CardTemplatePicker templates={cardTemplates} onCreate={(templateId, title) => handlers.onCreateFromTemplate(column.id, templateId, title)} />
+            )}
+          </div>
         )
       )}
     </section>

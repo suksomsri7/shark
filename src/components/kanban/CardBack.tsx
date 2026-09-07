@@ -23,8 +23,10 @@ import {
   duplicateCardAction,
   getCardDetailAction,
   restoreCardAction,
+  saveCardTemplateAction,
   setCardAssigneesAction,
   setCardLabelsAction,
+  setCardRecurrenceAction,
   updateCardFieldsAction,
 } from "@/lib/modules/kanban/actions";
 import { renderDescription } from "@/lib/modules/kanban/sanitize";
@@ -57,6 +59,10 @@ const REMINDER_OPTIONS: { value: string; label: string }[] = [
   { value: "10080", label: "1 สัปดาห์ก่อน" },
 ];
 
+// K2.7 — กำหนดส่งซ้ำ (ไม่มี mockup) — ตัวเลือกคงที่ 5 แบบแปลงเป็น RRULE subset ตามวันของ dueAt ฝั่ง client
+type RecurOption = "none" | "daily" | "weekly" | "biweekly" | "monthly";
+const WDAY_TH_FULL = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+
 type Fields = {
   title: string;
   description: string | null;
@@ -70,6 +76,11 @@ type Fields = {
   comments: KanbanCommentDto[];
   attachments: KanbanAttachmentDto[];
   customFields: CardFieldValueDto[];
+  /** K2.7: null = ไม่ซ้ำ (ตั้งได้เฉพาะการ์ดที่ไม่ใช่ลูกของงานประจำ) */
+  recurrenceRule: string | null;
+  recurrenceLabel: string | null;
+  recurrenceParentId: string | null;
+  recurrenceParentTitle: string | null;
 };
 
 export type CardBackHandlers = {
@@ -168,6 +179,10 @@ export function CardBack({
         comments: res.detail.comments,
         attachments: res.detail.attachments,
         customFields: res.detail.customFields,
+        recurrenceRule: res.detail.recurrenceRule,
+        recurrenceLabel: res.detail.recurrenceLabel,
+        recurrenceParentId: res.detail.recurrenceParentId,
+        recurrenceParentTitle: res.detail.recurrenceParentTitle,
       });
     });
     return () => {
@@ -412,6 +427,75 @@ export function CardBack({
     },
     [card.id, handlers],
   );
+
+  // ───────────────────────── กำหนดส่งซ้ำ (K2.7) ─────────────────────────
+  // ตัวเลือกคงที่ 5 แบบ (ไม่มี mockup — เกณฑ์ §13 K2.7) แปลงเป็น RRULE subset ตาม "วันของ dueAt" ฝั่ง client
+  // (คิดวันไทย +07:00 เอง — ห้าม toLocale*/getDay ตรง ๆ ตามกติกาทั้งโมดูล)
+  const BKK_MS = 7 * 3_600_000;
+  const WEEK_CODES = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"] as const;
+
+  const dueAtParts = useMemo(() => {
+    if (!fields?.dueAt) return null;
+    const d = new Date(Date.parse(fields.dueAt) + BKK_MS);
+    return { weekdayCode: WEEK_CODES[d.getUTCDay()]!, weekdayLabel: WDAY_TH_FULL[d.getUTCDay()]!, day: d.getUTCDate() };
+  }, [fields?.dueAt, BKK_MS]);
+
+  const recurOptionOf = (rule: string | null): RecurOption => {
+    if (!rule) return "none";
+    if (/^FREQ=DAILY$/.test(rule)) return "daily";
+    if (/^FREQ=WEEKLY;BYDAY=[A-Z]{2}$/.test(rule)) return "weekly";
+    if (/^FREQ=WEEKLY;INTERVAL=2;BYDAY=[A-Z]{2}$/.test(rule)) return "biweekly";
+    if (/^FREQ=MONTHLY;BYMONTHDAY=\d+$/.test(rule)) return "monthly";
+    return "none";
+  };
+
+  const setRecurrence = useCallback(
+    (option: RecurOption) => {
+      if (!fields || !dueAtParts) return;
+      const rule =
+        option === "none"
+          ? null
+          : option === "daily"
+            ? "FREQ=DAILY"
+            : option === "weekly"
+              ? `FREQ=WEEKLY;BYDAY=${dueAtParts.weekdayCode}`
+              : option === "biweekly"
+                ? `FREQ=WEEKLY;INTERVAL=2;BYDAY=${dueAtParts.weekdayCode}`
+                : `FREQ=MONTHLY;BYMONTHDAY=${dueAtParts.day}`;
+      const before = fields.recurrenceRule;
+      setFields((f) => (f ? { ...f, recurrenceRule: rule } : f));
+      handlers.onPatch(card.id, { isRecurring: rule !== null });
+      setCardRecurrenceAction({ systemId, boardId, cardId: card.id, rule }).then((res) => {
+        if (!res.ok) {
+          setFields((f) => (f ? { ...f, recurrenceRule: before } : f));
+          handlers.onPatch(card.id, { isRecurring: before !== null });
+          toast(res.message || "ตั้งกำหนดส่งซ้ำไม่สำเร็จ ลองใหม่อีกครั้ง");
+          return;
+        }
+        setFields((f) => (f ? { ...f, recurrenceLabel: res.recurrenceLabel } : f));
+      });
+    },
+    [boardId, card.id, dueAtParts, fields, systemId, handlers, toast],
+  );
+
+  // ───────────────────────── บันทึกเป็นเทมเพลตการ์ด (K2.7) ─────────────────────────
+
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+
+  const submitSaveTemplate = useCallback(() => {
+    const name = templateName.trim();
+    if (!name) return;
+    saveCardTemplateAction({ systemId, boardId, cardId: card.id, name }).then((res) => {
+      if (!res.ok) {
+        toast(res.message || "บันทึกเทมเพลตไม่สำเร็จ");
+        return;
+      }
+      toast(`บันทึกเทมเพลต "${res.template.name}" แล้ว`);
+      setSavingTemplate(false);
+      setTemplateName("");
+    });
+  }, [boardId, card.id, systemId, templateName, toast]);
 
   // ปุ่ม "ไฟล์แนบ" ในเมนู "เพิ่ม:" เปิดกล่องเลือกไฟล์ของ <Attachments> ที่อยู่ใต้เช็คลิสต์ (ตัวเดียวในหน้านี้)
   const openAttachmentPicker = useCallback(() => {
@@ -719,6 +803,42 @@ export function CardBack({
                       pickerTestId="start-picker"
                     />
                   </div>
+
+                  {/* K2.7 — กำหนดส่งซ้ำ: ลูกของงานประจำไม่มีกฎของตัวเอง (แสดงลิงก์กลับหาแม่แทน) */}
+                  <div data-testid="card-recurrence" className="mt-2">
+                    <SectionLabel>กำหนดส่งซ้ำ</SectionLabel>
+                    {fields.recurrenceParentId ? (
+                      <p style={{ fontSize: 12.5, color: "var(--color-ink-soft)" }}>
+                        เกิดจากงานประจำ:{" "}
+                        <a href={`?card=${fields.recurrenceParentId}`} style={{ color: "var(--color-accent)", fontWeight: 600 }}>
+                          {fields.recurrenceParentTitle ?? "การ์ดแม่"}
+                        </a>
+                      </p>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <select
+                          aria-label="กำหนดส่งซ้ำ"
+                          disabled={!editable || !fields.dueAt}
+                          value={recurOptionOf(fields.recurrenceRule)}
+                          onChange={(e) => setRecurrence(e.target.value as RecurOption)}
+                          className="rounded border px-1.5 py-1"
+                          style={{ fontSize: 12.5, borderColor: "var(--color-line)" }}
+                        >
+                          <option value="none">ไม่ซ้ำ</option>
+                          <option value="daily">ทุกวัน</option>
+                          <option value="weekly">ทุกสัปดาห์{dueAtParts ? ` (วัน${dueAtParts.weekdayLabel})` : ""}</option>
+                          <option value="biweekly">ทุก 2 สัปดาห์</option>
+                          <option value="monthly">ทุกเดือน{dueAtParts ? ` (วันที่ ${dueAtParts.day})` : ""}</option>
+                        </select>
+                        {fields.recurrenceRule && (
+                          <span style={{ fontSize: 12, color: "var(--color-muted)" }}>{fields.recurrenceLabel}</span>
+                        )}
+                      </div>
+                    )}
+                    {!fields.recurrenceParentId && !fields.dueAt && (
+                      <p style={{ fontSize: 11.5, color: "var(--color-muted)" }}>ตั้งกำหนดส่งก่อน จึงตั้งกำหนดส่งซ้ำได้</p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -832,7 +952,52 @@ export function CardBack({
                   </div>
                   <RailButton icon="copy" label="ทำสำเนา" onClick={doDuplicate} />
                   <RailButton icon="grid" label="สะท้อนการ์ด (Mirror)" disabled />
-                  <RailButton icon="doc" label="บันทึกเป็นเทมเพลตการ์ด" disabled />
+                  {/* K2.7 — บันทึกเป็นเทมเพลตการ์ด: ADMIN ของบอร์ดเท่านั้น (สัญญา K2.7) */}
+                  {boardRole === "ADMIN" &&
+                    (savingTemplate ? (
+                      <div className="flex items-center gap-1.5 rounded-lg border p-1.5" style={{ borderColor: "var(--color-line)" }}>
+                        <input
+                          autoFocus
+                          value={templateName}
+                          onChange={(e) => setTemplateName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") submitSaveTemplate();
+                            if (e.key === "Escape") {
+                              setSavingTemplate(false);
+                              setTemplateName("");
+                            }
+                          }}
+                          placeholder="ชื่อเทมเพลต"
+                          data-testid="save-card-template-name"
+                          className="input min-w-0 flex-1"
+                          style={{ fontSize: 12.5 }}
+                        />
+                        <button type="button" onClick={submitSaveTemplate} style={{ fontSize: 12, color: "var(--color-accent)", fontWeight: 600 }}>
+                          บันทึก
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="ยกเลิก"
+                          onClick={() => {
+                            setSavingTemplate(false);
+                            setTemplateName("");
+                          }}
+                          style={{ color: "var(--color-muted)" }}
+                        >
+                          <KanbanIcon name="x" size="xs" />
+                        </button>
+                      </div>
+                    ) : (
+                      <RailButton
+                        icon="doc"
+                        label="บันทึกเป็นเทมเพลตการ์ด"
+                        testid="save-card-template"
+                        onClick={() => {
+                          setTemplateName(card.title);
+                          setSavingTemplate(true);
+                        }}
+                      />
+                    ))}
                   <RailButton icon="eye" label="ติดตามการ์ด" disabled />
                 </RailGroup>
               )}

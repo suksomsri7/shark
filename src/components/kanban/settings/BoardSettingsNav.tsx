@@ -5,7 +5,7 @@ import Link from "next/link";
 import { KanbanIcon } from "../KanbanIcon";
 import { ArchiveBoardButton } from "./ArchiveBoardButton";
 
-export const BOARD_SETTINGS_TABS = ["general", "members", "labels", "fields", "views", "automation", "archive"] as const;
+export const BOARD_SETTINGS_TABS = ["general", "members", "labels", "fields", "card-templates", "views", "automation", "archive"] as const;
 export type BoardSettingsTab = (typeof BOARD_SETTINGS_TABS)[number];
 
 const TAB_META: { key: BoardSettingsTab; label: string; icon: string; soon?: string }[] = [
@@ -13,6 +13,7 @@ const TAB_META: { key: BoardSettingsTab; label: string; icon: string; soon?: str
   { key: "members", label: "สมาชิกและสิทธิ์", icon: "users" },
   { key: "labels", label: "ป้ายกำกับ", icon: "tag" },
   { key: "fields", label: "ฟิลด์กำหนดเอง", icon: "list" },
+  { key: "card-templates", label: "เทมเพลตการ์ด", icon: "doc" },
   { key: "views", label: "มุมมองที่บันทึกไว้", icon: "grid" },
   { key: "automation", label: "อัตโนมัติ", icon: "spark", soon: "K2.9" },
   { key: "archive", label: "คลังเก็บ", icon: "box" },

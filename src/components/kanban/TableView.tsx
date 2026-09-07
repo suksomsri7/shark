@@ -914,6 +914,12 @@ function TableRowView({
             <button type="button" data-testid="table-title-cell" onClick={() => setEditingTitle(true)} className="text-left">
               {row.cardNo && <span className="tabular-nums" style={{ color: "var(--color-muted)" }}>#{row.cardNo}</span>} {row.title}
             </button>
+            {/* K2.7 — การ์ดแม่ของงานประจำ (มี recurrenceRule) */}
+            {row.isRecurring && (
+              <span data-testid="card-recurring" title="งานประจำ — เกิดซ้ำตามกำหนด" style={{ color: "var(--color-muted)" }}>
+                <KanbanIcon name="repeat" size="xs" />
+              </span>
+            )}
             <button
               type="button"
               aria-label="เปิดการ์ดเต็มจอ"

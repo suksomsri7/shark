@@ -26,6 +26,7 @@ import {
   archiveWithUndoAction,
   completeCardAction,
   createCardAction,
+  createCardFromTemplateAction,
   moveAllCardsAction,
   moveCardAction,
   moveColumnAction,
@@ -37,7 +38,7 @@ import {
   undoAction,
 } from "@/lib/modules/kanban/actions";
 import { filterBoardCards, hasAnyFilter, type BoardFilters } from "@/lib/modules/kanban/filters";
-import type { BoardCardDto, BoardColumnDto, BoardLabelDto, BoardViewDto, SavedViewDto } from "@/lib/modules/kanban/types";
+import type { BoardCardDto, BoardColumnDto, BoardLabelDto, BoardViewDto, CardTemplateDto, SavedViewDto } from "@/lib/modules/kanban/types";
 
 /** ระยะหว่างการ์ดในคอลัมน์ (ต้องตรงกับ `gap` ของกองการ์ดใน Column.tsx — ใช้คิดเรขาคณิตตอนลาก) */
 const CARD_GAP = 7;
@@ -86,6 +87,7 @@ export function BoardView({
   filters = {},
   shortcutsEnabled = true,
   savedViews = [],
+  cardTemplates = [],
 }: {
   board: BoardViewDto;
   initialCardId?: string | null;
@@ -95,6 +97,8 @@ export function BoardView({
   shortcutsEnabled?: boolean;
   /** K2.5 — มุมมองที่บันทึกไว้ของบอร์ดนี้ (ทั้งทีม + ของตัวเอง) ส่งลง `BoardHeader` */
   savedViews?: SavedViewDto[];
+  /** K2.7 — เทมเพลตการ์ดของบอร์ด (ปุ่ม "จากเทมเพลต ▾" ในทุกคอลัมน์) */
+  cardTemplates?: CardTemplateDto[];
 }) {
   const nowMs = Date.parse(board.now);
   const router = useRouter();
@@ -660,6 +664,22 @@ export function BoardView({
         }
       });
     },
+    // K2.7 — สร้างการ์ดจากเทมเพลต (`CardTemplatePicker.tsx`) — แทรกท้ายคอลัมน์เหมือน onCreateCard
+    onCreateFromTemplate: (columnId, templateId, title) => {
+      startTransition(async () => {
+        try {
+          const res = await createCardFromTemplateAction({ systemId, boardId: board.id, templateId, columnId, title });
+          if (!res.ok) {
+            showToast(res.message);
+            return;
+          }
+          const created = res.card;
+          setCols(columnsRef.current.map((col) => (col.id === columnId ? { ...col, cards: [...col.cards, created] } : col)));
+        } catch {
+          showToast("สร้างการ์ดจากเทมเพลตไม่สำเร็จ ลองใหม่อีกครั้ง");
+        }
+      });
+    },
     onRenameColumn: (columnId, name) => {
       const snapshot = columnsRef.current;
       setCols(columnsRef.current.map((c) => (c.id === columnId ? { ...c, name } : c)));
@@ -960,6 +980,7 @@ export function BoardView({
             column={col}
             cards={drag ? col.cards.filter((c) => c.id !== drag.card.id) : col.cards}
             siblings={columns.filter((c) => c.id !== col.id).map((c) => ({ id: c.id, name: c.name }))}
+            cardTemplates={cardTemplates}
             nowMs={nowMs}
             canEdit={canEdit}
             isAdmin={isAdmin}

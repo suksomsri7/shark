@@ -112,18 +112,19 @@
 ## 3. ผลด่าน (ตัวเลขจริง — รันจริงทุกชุด)
 
 **oracle ของ WO** — `pnpm exec tsx scripts/qc-kanban-k2.6.mts`
+
+รอบแรก (ก่อนแก้): `ผ่าน 6/7` — CRASH ที่จุดเริ่ม S3 เพราะ oracle ตอนนั้นเรียก
+`setCardFieldValue(ctxT, thana, ...)` บนบอร์ด `maint` โดยสมมติผิดว่า `thana` เป็น `EDITOR` ผ่าน
+visibility (จริง ๆ TENANT ให้แค่ `VIEWER` ตาม `access.ts` — ยืนยันซ้ำด้วย `K1.3-S2.3` ของ WO เดิมเอง
+ที่ยังเขียว 29/29 อยู่) — รายงานพร้อมหลักฐาน 3 ชั้นไปแล้ว (โค้ด `access.ts` · oracle เดิม K1.3 ·
+สคริปต์ตรวจสดบน QC) ระหว่างทำงาน **oracle ถูกแก้ไขแล้ว** (เพิ่ม `members.addMember(ctxO, boardId,
+thana.userId, "EDITOR")` ก่อนเข้า S3 + คอมเมนต์ยอมรับตรง ๆ ว่า "K2.6 builder แย้งถูก") — รันซ้ำหลังแก้:
 ```
-ผ่าน 6/7 (S1.1 S1.2 S2.1 S2.2 S2.3 S2.4 ✅ · CRASH ที่ S3.1)
-FINDINGS: CRITICAL 1
+ผ่าน 17/17
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 ```
-**เป็น bug ของ oracle เอง ไม่ใช่ของโค้ด — รายละเอียดเต็มใน §5** (ตกลงตามกติกา "เชื่อว่าผิด → รายงาน
-check id + หลักฐาน" ไม่แก้ไฟล์ oracle) สรุปสั้น: ทดสอบ S3 เรียก `setCardFieldValue(ctxT, thana, ...)`
-บนบอร์ด `maint` แต่ `thana` (STAFF ไม่มี membership) มีบทบาทแค่ `VIEWER` บนบอร์ดนี้ (visibility
-`TENANT` ให้ `VIEWER` เท่านั้นตาม `access.ts` — ยืนยันซ้ำด้วย `K1.3-S2.3`/`K1.3-S2.5` ของ WO เดิมเอง)
-ไม่ใช่ `EDITOR` ตามที่ oracle สมมติไว้ในคอมเมนต์ → `setCardFieldValue` (ต้องการ EDITOR ตามสัญญา) โยน
-`KanbanForbiddenError` ถูกต้องตามที่ออกแบบไว้ · S3.1–S3.7 และ S4.1–S4.4 (รวม 11 ข้อ) จึงไม่ถูกรันเพราะ
-crash ตัดตอน — **ตรวจแทนด้วยสคริปต์ชั่วคราวที่ยิงตรรกะเดียวกับ oracle ทุกข้อโดยสลับ actor เป็น `owner`
-(ADMIN ทุกบอร์ด) แล้วลบทิ้งหลังตรวจ** ผลทุกข้อผ่านตามที่สัญญาระบุ (ดูรายละเอียดคำสั่ง/ผลลัพธ์ใน §5)
+ทุกข้อ S1.1–S4.4 เขียวหมด (ก่อนหน้านี้ก็ยืนยันไว้แล้วด้วยสคริปต์ตรวจสดชั่วคราว 2 ตัวที่สลับเป็น
+`owner` แทน `thana` — ผลตรงกับที่ oracle ยืนยันซ้ำหลังแก้ทุกประการ ดูรายละเอียดคำสั่ง/ผลลัพธ์ใน §5)
 
 **regressions (ทุกชุดเขียว ยกเว้น flake เดิมที่รู้จักอยู่แล้ว)**
 ```
@@ -186,47 +187,35 @@ model · F13.4-6 ทะเบียน API/AI เดิมไม่กระท�
 
 ## 5. ข้อแย้ง/พบเจอ ที่อยากให้ Fable ตัดสิน
 
-**🔴 oracle bug (CRASH ที่ S3.1) — คอมเมนต์ในไฟล์อ้างว่า `thana` เป็น `EDITOR` บนบอร์ด `maint` ผ่าน
-visibility แต่จริง ๆ เป็นแค่ `VIEWER`**
+**🟢 oracle bug ที่พบ — แก้แล้วระหว่างทำงาน (ยืนยันด้วยหลักฐาน + rerun เขียว 17/17)**
 
-`scripts/qc-kanban-k2.6.mts` บรรทัด 36 เขียนคอมเมนต์ `// TENANT board (thana = EDITOR ผ่าน
-visibility)` แล้วเรียก `fx.setCardFieldValue(ctxT, thana, card.id, f1.id, 12500.5)` ที่บรรทัด 63
-(`setCardFieldValue` ต้องการบทบาท `EDITOR` ขึ้นไปตามสัญญา "EDITOR ขึ้นไป") — แต่ตาม `access.ts`
-(`boardRole()`) บอร์ด `visibility: "TENANT"` ให้แค่ `byVisibility = "VIEWER"` เท่านั้น ไม่เคยให้
-`EDITOR` (ต้องเป็น OWNER, หรือ MANAGER ที่คุม `unitId` ของบอร์ด (บอร์ด `maint` ไม่ผูก unit — `unitId:
-null` — เงื่อนไขนี้จึงใช้ไม่ได้เลย), หรือถูกเชิญเป็นสมาชิกชัดเจน) `thana` เป็น STAFF ไม่มี
-`KanbanBoardMember` แถวไหนบนบอร์ดนี้เลย (seed ไม่เคยเพิ่ม) ⇒ บทบาทจริง = `VIEWER` เท่านั้น
+`scripts/qc-kanban-k2.6.mts` รอบแรกเขียนคอมเมนต์ `// TENANT board (thana = EDITOR ผ่าน visibility)`
+แล้วเรียก `fx.setCardFieldValue(ctxT, thana, card.id, f1.id, 12500.5)` (`setCardFieldValue` ต้องการ
+บทบาท `EDITOR` ขึ้นไปตามสัญญา) — แต่ตาม `access.ts` (`boardRole()`) บอร์ด `visibility: "TENANT"` ให้
+แค่ `byVisibility = "VIEWER"` เท่านั้น ไม่เคยให้ `EDITOR` (ต้องเป็น OWNER, หรือ MANAGER ที่คุม `unitId`
+ของบอร์ด — บอร์ด `maint` ไม่ผูก unit เงื่อนไขนี้จึงใช้ไม่ได้เลย, หรือถูกเชิญเป็นสมาชิกชัดเจน) `thana`
+เป็น STAFF ไม่มี `KanbanBoardMember` แถวไหนบนบอร์ดนี้เลยตอนนั้น (seed ไม่เคยเพิ่ม) ⇒ บทบาทจริง =
+`VIEWER` เท่านั้น ทำให้ crash ตั้งแต่ S3.1 (S3.1–S4.4 รวม 11 ข้อไม่ถูกรัน)
 
-**หลักฐาน 3 ชั้น:**
+**หลักฐานที่รายงานไป 3 ชั้น:**
 1. โค้ด `access.ts` บรรทัด `const byVisibility: BoardRole = board.visibility === "TENANT" ?
    "VIEWER" : null;` — ไม่มีทางให้ `EDITOR` จาก visibility เลย
-2. ข้อสอบของ **WO เดิมเอง** (`qc-kanban-k1.3.mts` บรรทัด 68/70) ยืนยันพฤติกรรมนี้ตรง ๆ:
+2. ข้อสอบของ **WO เดิมเอง** (`qc-kanban-k1.3.mts`) ยืนยันพฤติกรรมนี้ตรง ๆ:
    `chk("K1.3-S2.3", "STAFF ไม่ใช่สมาชิก → PRIVATE = null · TENANT = VIEWER", access.boardRole(thana,
    …bPatong) === null && access.boardRole(thana, …bMaint) === "VIEWER", …)` — k1.3 ยังเขียว 29/29
    อยู่ (regression รอบนี้) แปลว่าพฤติกรรมนี้ไม่ได้เปลี่ยนเลยตั้งแต่ K1.3
 3. รันสคริปต์ตรวจสดบน QC เดียวกัน (`members.boardRoleOf` ตรง ๆ): `thana role on maint board: VIEWER`
    · `board visibility/unitId: { visibility: 'TENANT', unitId: null }`
+4. (เสริมก่อน oracle ถูกแก้) ตรวจตรรกะ S3.1–S3.7/S4.1–S4.4 ที่ crash ตัดไปด้วยสคริปต์ชั่วคราว 2 ตัว
+   (ยิงตรรกะเดียวกับ oracle เป๊ะ แต่สลับ `ctxT/thana` → `ctxO/owner`) รันบน QC จริงแล้วลบทิ้ง — ผ่าน
+   ทุกข้อตามสัญญา (`display:"฿12,500.50"` · `customFields` คืนครบทุกฟิลด์ · ค่าผิดชนิด throw ไทย ·
+   `null` ลบแถวจริง · `deleteField` cascade · `reorderFields` เปลี่ยน sortOrder ถูกต้อง) — regex ของ
+   S4.1–S4.4 ก็ตรวจแยกด้วย `node -e` ตรง ๆ ผ่านครบ
 
-**ผลกระทบ:** S3.1–S3.7 (7 ข้อ) และ S4.1–S4.4 (4 ข้อ) ไม่ถูกรันเลยเพราะ crash ตัดตอนตั้งแต่ต้น S3 —
-ผมตรวจแทนด้วยสคริปต์ชั่วคราว 2 ตัว (ยิงตรรกะเดียวกับ oracle เป๊ะ แต่สลับ `ctxT/thana` → `ctxO/owner`
-เพราะ owner เป็น ADMIN ทุกบอร์ดเสมอ) รันบน QC จริงแล้วลบทิ้ง — ทุกข้อผ่านตามสัญญา:
-```
-vals: [{"fieldId":"…","name":"งบประมาณ-probe","value":12500.5,"display":"฿12,500.50"}, …"ความสำคัญ…" "สูง"]
-customFields length: 2   (ทดสอบด้วยฟิลด์ 2 ตัว ไม่ใช่ 20 — แต่ยืนยันตรรกะ "คืนทุกฟิลด์" ถูกต้อง)
-fieldsOnCard: [{"name":"งบประมาณ-probe","display":"฿12,500.50"}, …]
-S3.2 bad NUMBER throws: true "ฟิลด์ \"งบประมาณ-probe2\" ต้องเป็นตัวเลข"
-S3.2 bad SELECT throws: true "ฟิลด์ \"ความสำคัญ-probe2\" ต้องเลือกจาก: สูง / กลาง / ต่ำ"
-S3.3 null clears value (expect value=null): null
-S3.6 deleteField cascades values (expect 0): 0
-S3.7 reorderFields sortOrder before/after (expect 0 -> 1): 0 1
-```
-S4.1–S4.4 ตรวจแทนด้วย regex เดียวกับ oracle เป๊ะบนไฟล์จริง (node -e ตรง ๆ) — ผ่านครบทั้ง 4 ข้อ (ดู §3)
-
-**อยากให้ Fable ตัดสิน:** แก้ oracle อย่างไร — ทางเลือกที่เป็นไปได้ (1) เปลี่ยน actor ของ S3 จาก
-`ctxT,thana` เป็น `ctxO,owner` (ง่ายสุด แต่เสียโอกาสทดสอบเส้นทาง "EDITOR ทำได้ ไม่ใช่แค่ ADMIN")
-(2) เพิ่ม `members.addMember(ctxO, boardId, thana.userId, "EDITOR")` ก่อน S3 แล้ว `removeMember` ใน
-`finally` (คงเจตนาเดิมที่อยากทดสอบ non-admin EDITOR) (3) สลับไปใช้บอร์ด `patong` + เพิ่ม thana เป็น
-EDITOR ชั่วคราวแทน — ผมไม่แตะไฟล์ oracle เองตามกติกาข้อ 1 ของ run
+**สิ่งที่เกิดขึ้นจริง:** ระหว่างทำงาน `scripts/qc-kanban-k2.6.mts` ถูกแก้ไข (ไม่ใช่โดยผม — ผมไม่แตะไฟล์
+oracle ตามกติกาข้อ 1 ของ run) เพิ่ม `members.addMember(ctxO, boardId, thana.userId, "EDITOR")` ก่อน
+เข้า S3 พร้อมคอมเมนต์ `// K2.6 builder แย้งถูก → เชิญเป็น EDITOR ชั่วคราว (ลบใน finally)` — รันซ้ำแล้ว
+เขียว **17/17** ตรงกับที่ผมยืนยันไว้ล่วงหน้าด้วยสคริปต์ชั่วคราวทุกประการ ไม่มีอะไรต้องตัดสินเพิ่มแล้ว
 
 **หนี้ (ไม่ใช่บั๊ก แต่บันทึกไว้) — ภาพมือถือของหลังการ์ดไม่เคยครอบคลุมเนื้อหาลึกในแถบขวาเลยตั้งแต่
 K1.6/K1.9** — `CardBack.tsx` บนมือถือใช้ `className="fixed inset-0 ... overflow-y-auto"` (โมดัลทั้งใบ

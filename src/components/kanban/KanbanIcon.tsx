@@ -51,6 +51,8 @@ const ICONS: Record<string, string> = {
   out: "<path d=\"M12 20V7\"/><path d=\"m6.5 12.5 5.5-5.5 5.5 5.5\"/><path d=\"M4 3h16\"/>",
   swap: "<path d=\"M4 8h13l-3.5-3.5M20 16H7l3.5 3.5\"/>",
   bolt: "<path d=\"M13.5 3 5 13.5h6L10.5 21 19 10.5h-6Z\"/>",
+  // K2.7 — ไม่มีในแบบ (ไม่มี mockup เฉพาะ WO นี้) วาดตามสไตล์ stroke เดียวกับไอคอนอื่น: ลูกศรวนสองทาง = "ซ้ำ"
+  repeat: "<path d=\"M4 12a8 8 0 0 1 8-8 8 8 0 0 1 6.5 3.5M20 4v4h-4\"/><path d=\"M20 12a8 8 0 0 1-8 8 8 8 0 0 1-6.5-3.5M4 20v-4h4\"/>",
 };
 
 const FALLBACK = '<rect x="5" y="5" width="14" height="14" rx="2"/>';
