@@ -9,11 +9,12 @@
 //    ไฟล์นี้ **ห้าม** import โมดูลอื่นนอกจาก facade ของผู้ติดต่อ (`@/lib/modules/party`) — ด่าน fitness F2
 //    เฝ้าอยู่ · ของที่ต้องอ่านจากโมดูลอื่นทำผ่านตัวแปลผลใน `link-resolvers.ts` (prisma ตรง อ่านอย่างเดียว)
 
-import { searchByName } from "@/lib/modules/party";
+import { safeFindOrCreate, searchByName } from "@/lib/modules/party";
 import { logActivity } from "./activity-log";
 import { prisma } from "./db";
 import { KANBAN_LIMITS } from "./limits";
-import { assertCardRole } from "./members";
+import { assertBoardRole, assertCardRole } from "./members";
+import { keysBetween } from "./ordering";
 import { setCardAssignees } from "./cards";
 import { setCardLabels } from "./labels";
 import { sanitizeDescription } from "./sanitize";
@@ -214,9 +215,25 @@ export type CreateCardFromExternalInput = {
   /** กุญแจกันซ้ำ เช่น `chat:conv:{id}:{messageId}` — ยิงซ้ำกี่ครั้งก็ได้การ์ดใบเดิม */
   sourceKey: string;
   links?: AddLinkInput[];
+  /**
+   * K3.2 — ผู้ติดต่อของงานนี้ (ชื่อ/เบอร์/อีเมลจากต้นทาง เช่น ผู้ติดต่อในแชท)
+   * ประตูนี้เป็นผู้แปลงเป็น `Party` ผ่าน facade `party.safeFindOrCreate` แล้วผูกเป็นลิงก์ `PARTY` ให้เอง
+   * ⇒ โมดูลต้นทาง (แชท/ฟอร์ม/อีเมล) **ไม่ต้องรู้จักโมดูลผู้ติดต่อ** และไม่มีทางสร้าง Party ซ้ำคนละแบบ
+   * 🔴 หา/สร้างไม่สำเร็จ = ข้ามไปเงียบ ๆ (การ์ดยังต้องเกิด — "ไม่เชื่อม ≠ ไม่ทำงาน")
+   */
+  party?: { name: string; phone?: string | null; email?: string | null } | null;
+  /**
+   * K3.2 — ไฟล์ที่ต้นทางมีอยู่แล้วบน CDN (ไฟล์แนบในแชท) — **ไม่อัปโหลดซ้ำ**: บันทึก `FileAsset`
+   * ที่ชี้ `cdnUrl` เดิม แล้วผูกเป็น `KanbanAttachment` ของการ์ด (ไฟล์ชิ้นเดียวกัน 2 ที่ ไม่ใช่ 2 ชิ้น)
+   */
+  attachments?: { storageKey?: string | null; url: string; fileName?: string | null; mimeType?: string | null; sizeBytes?: number | null }[];
+  /** K3.2 — เช็คลิสต์ตั้งต้น (ข้อความล้วน) — ว่าง/ไม่ส่ง = ไม่สร้างชุดเช็คลิสต์ */
+  checklist?: string[];
+  /** ชื่อชุดเช็คลิสต์ (ไม่ระบุ = "ขั้นตอนงาน" เหมือนที่หลังการ์ดใช้) */
+  checklistTitle?: string;
 };
 
-export type CreateCardFromExternalResult = { cardId: string; created: boolean };
+export type CreateCardFromExternalResult = { cardId: string; created: boolean; cardNo: number | null; partyId?: string | null };
 
 /**
  * 🔴 **ประตูเดียว** ที่โมดูลอื่น/consumer ใช้สร้างการ์ด (K3.2 แชท · K3.3 ฟอร์ม/อนุมัติ/บิล · K3.9 อีเมล)
@@ -238,8 +255,16 @@ export async function createCardFromExternal(
   const title = (input.title ?? "").trim();
   if (!title) throw new Error("ต้องมีชื่อการ์ด");
 
+  // 🔴 ผู้เรียกที่ "เป็นคน" (ctx.actor มาแล้ว — K3.2 ปุ่มสร้างงานจากแชท) ต้องผ่านด่านบทบาทบอร์ดจริง:
+  //    คนกดปุ่มเลือกบอร์ดปลายทางเองได้ ⇒ ถ้าไม่ตรวจ จะยิง boardId ของบอร์ดที่ตัวเองไม่มีสิทธิ์เขียนได้
+  //    (ผู้เรียกที่เป็นระบบ/cron ไม่มี actor — ด่านของเส้นนั้นคือสวิตช์รายร้านใน `integrations.ts`)
+  if (ctx.actor) await assertBoardRole(ctx, input.boardId, "EDITOR");
+
   const found = await findBySourceKey(ctx.tenantId, sourceKey);
-  if (found) return { cardId: found, created: false };
+  if (found) {
+    const existing = await prisma.kanbanCard.findUnique({ where: { id: found }, select: { cardNo: true } });
+    return { cardId: found, created: false, cardNo: existing?.cardNo ?? null };
+  }
 
   const board = await prisma.kanbanBoard.findFirst({
     where: { id: input.boardId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ACTIVE" },
@@ -261,7 +286,7 @@ export async function createCardFromExternal(
 
   const description = input.description ? sanitizeDescription(input.description) : null;
 
-  let card: { id: string; boardId: string } | null = null;
+  let card: { id: string; boardId: string; cardNo: number | null } | null = null;
   try {
     const created = await createCard({
       tenantId: ctx.tenantId,
@@ -274,11 +299,14 @@ export async function createCardFromExternal(
       sourceKey,
       createdById: ctx.actorUserId ?? null,
     });
-    card = created ? { id: created.id, boardId: created.boardId } : null;
+    card = created ? { id: created.id, boardId: created.boardId, cardNo: created.cardNo } : null;
   } catch (e) {
     // ชนกัน unique(tenantId, sourceKey) เพราะยิงพร้อมกัน (retry/consumer สองตัว) — อ่านซ้ำแล้วคืนของเดิม
     const again = await findBySourceKey(ctx.tenantId, sourceKey);
-    if (again) return { cardId: again, created: false };
+    if (again) {
+      const row = await prisma.kanbanCard.findUnique({ where: { id: again }, select: { cardNo: true } });
+      return { cardId: again, created: false, cardNo: row?.cardNo ?? null };
+    }
     throw e;
   }
   if (!card) throw new Error("สร้างการ์ดไม่สำเร็จ — คอลัมน์ปลายทางอาจถูกเก็บเข้าคลังระหว่างทาง");
@@ -287,7 +315,20 @@ export async function createCardFromExternal(
   if (input.assigneeUserIds && input.assigneeUserIds.length > 0) {
     await setCardAssignees(ctx, card.id, input.assigneeUserIds);
   }
-  for (const link of input.links ?? []) {
+
+  // ── ผู้ติดต่อ (K3.2) — แปลงเป็น Party ผ่าน facade แล้วต่อท้ายรายการลิงก์ที่ต้องผูก ──
+  const links: AddLinkInput[] = [...(input.links ?? [])];
+  let partyId: string | null = null;
+  if (input.party && input.party.name.trim()) {
+    partyId = await safeFindOrCreate(ctx.tenantId, {
+      name: input.party.name.trim().slice(0, 200),
+      phone: input.party.phone ?? null,
+      email: input.party.email ?? null,
+    });
+    if (partyId) links.push({ linkType: "PARTY", linkId: partyId, role: "RELATED" });
+  }
+
+  for (const link of links) {
     // ปลายทางที่หาไม่เจอไม่ควรทำให้ "สร้างการ์ดจากแชทไม่ได้" — ข้ามแถวนั้นแล้วสร้างการ์ดต่อ
     const v = (() => {
       try {
@@ -300,7 +341,84 @@ export async function createCardFromExternal(
     if (v.linkType !== "URL" && !(await targetExists(ctx, v.linkType, v.linkId))) continue;
     await writeLink(ctx, { cardId: card.id, boardId: card.boardId }, v);
   }
-  return { cardId: card.id, created: true };
+
+  await copyExternalAttachments(ctx, card.id, input.attachments ?? []);
+  await seedChecklist(ctx, card.id, input.checklist ?? [], input.checklistTitle);
+
+  return { cardId: card.id, created: true, cardNo: card.cardNo, partyId };
+}
+
+/**
+ * คัดลอกไฟล์ที่อยู่บน CDN อยู่แล้วมาเป็นไฟล์แนบของการ์ด — **ไม่อัปโหลดใหม่**
+ *
+ * 🔴 ทำไมไม่ใช้ `attachments.addAttachment`: ตัวนั้นรับ "ไบต์" แล้วอัปขึ้น storage ใหม่ ⇒ ไฟล์เดียวกัน
+ *    จะถูกเก็บสองก๊อป (จ่ายค่าที่เก็บสองรอบ) และการดาวน์โหลดไฟล์ลูกค้ากลับมาที่เซิร์ฟเวอร์เพื่ออัปขึ้นใหม่
+ *    เป็น network call ที่ล้มได้ทุกครั้ง — ล้มแล้วจะกลายเป็น "กดสร้างงานแล้วพัง" ทั้งที่งานสำคัญกว่าคือการ์ด
+ * ⇒ ที่นี่บันทึกแค่ "ทะเบียนไฟล์" ที่ชี้ `cdnUrl` เดิม · ล้มเหลว = ข้ามไฟล์นั้น ไม่พาการ์ดล้ม
+ */
+async function copyExternalAttachments(
+  ctx: KanbanCtx,
+  cardId: string,
+  files: NonNullable<CreateCardFromExternalInput["attachments"]>,
+): Promise<number> {
+  if (files.length === 0) return 0;
+  let copied = 0;
+  for (const f of files.slice(0, KANBAN_LIMITS.attachmentsPerCard)) {
+    const url = (f.url ?? "").trim();
+    if (!/^https?:\/\/\S+$/i.test(url)) continue;
+    try {
+      const asset = await prisma.fileAsset.create({
+        data: {
+          tenantId: ctx.tenantId,
+          kind: "ATTACHMENT",
+          path: (f.storageKey ?? "").trim() || url,
+          cdnUrl: url,
+          contentType: (f.mimeType ?? "").trim() || "application/octet-stream",
+          bytes: Math.max(0, Math.trunc(f.sizeBytes ?? 0)),
+        },
+        select: { id: true, contentType: true, bytes: true },
+      });
+      await prisma.kanbanAttachment.create({
+        data: {
+          tenantId: ctx.tenantId,
+          cardId,
+          fileId: asset.id,
+          name: (f.fileName ?? "").trim() || "ไฟล์แนบจากแชท",
+          contentType: asset.contentType,
+          bytes: asset.bytes,
+          uploadedById: ctx.actorUserId ?? null,
+        },
+      });
+      copied++;
+    } catch {
+      // ไฟล์ชิ้นเดียวคัดลอกไม่ผ่าน ไม่ใช่เหตุให้ทั้งการ์ดหาย — ข้ามไปชิ้นถัดไป
+    }
+  }
+  return copied;
+}
+
+/** เช็คลิสต์ตั้งต้นของการ์ดที่เกิดจากภายนอก (เขียนตรง — ผู้เรียกอาจเป็นระบบที่ไม่มีบทบาทบอร์ด) */
+async function seedChecklist(ctx: KanbanCtx, cardId: string, items: string[], title?: string): Promise<void> {
+  const texts = items.map((t) => String(t ?? "").trim()).filter(Boolean).slice(0, KANBAN_LIMITS.checklistItemsPerCard);
+  if (texts.length === 0) return;
+  const checklist = await prisma.kanbanChecklist.create({
+    data: {
+      tenantId: ctx.tenantId,
+      cardId,
+      title: (title ?? "").trim() || "ขั้นตอนงาน",
+      position: keysBetween(null, null, 1)[0]!,
+    },
+    select: { id: true },
+  });
+  const positions = keysBetween(null, null, texts.length);
+  await prisma.kanbanChecklistItem.createMany({
+    data: texts.map((text, i) => ({
+      tenantId: ctx.tenantId,
+      checklistId: checklist.id,
+      text: text.slice(0, 500),
+      position: positions[i]!,
+    })),
+  });
 }
 
 /** การ์ดที่เคยสร้างด้วยกุญแจนี้ (ขอบเขต = ร้าน ตรงกับ unique partial index ของ DB) */

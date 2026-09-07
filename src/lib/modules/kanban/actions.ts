@@ -54,6 +54,15 @@ import { requireActor, unwatch, watch } from "./watch";
 // K3.1 — เชื่อมข้อมูล SHARK (ด่านบทบาทบอร์ด EDITOR/VIEWER ตรวจใน `links.ts`/`link-resolvers.ts` เอง
 // ที่นี่ตรวจแค่ชั้นสิทธิ์โมดูล เหมือน action อื่นของไฟล์นี้)
 import { addLink, removeLink, searchPartiesForLink } from "./links";
+// K3.2 — สวิตช์ "การเชื่อมต่อ" รายร้าน (เก็บใน AppSystem.settings.integrations)
+import {
+  getIntegrations,
+  listTaskTargetBoards,
+  setIntegrations,
+  type IntegrationBoardOption,
+  type IntegrationsPatch,
+  type KanbanIntegrations,
+} from "./integrations";
 import { listCardLinks } from "./link-resolvers";
 import type { CardLinkDto, KanbanLinkKind, KanbanLinkRole } from "./types";
 import type { KanbanDigestMode, KanbanEmailMode } from "@/lib/core/user-preferences";
@@ -2063,4 +2072,37 @@ export async function searchPartyForLinkAction(input: {
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : "ค้นหาไม่สำเร็จ" };
   }
+}
+
+// ───────────────────────── K3.2: การเชื่อมต่อ (สวิตช์รายร้าน) ─────────────────────────
+// 🔴 ด่านจริงอยู่ใน `integrations.setIntegrations` (OWNER หรือคีย์ `kanban.automation.manage`
+//    + ต้องเป็น ADMIN ของบอร์ดปลายทาง) — ที่นี่ตรวจแค่ชั้นสิทธิ์โมดูลเหมือน action อื่นของไฟล์นี้
+
+export async function setIntegrationsAction(input: {
+  systemId: string;
+  patch: IntegrationsPatch;
+}): Promise<{ ok: true; integrations: KanbanIntegrations; boards: IntegrationBoardOption[] } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.automation.manage");
+  if (!input.systemId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const integrations = await setIntegrations(ctx, actor, input.patch ?? {});
+    const boards = await listTaskTargetBoards(ctx, actor, "ADMIN");
+    revalidatePath(`/app/sys/${input.systemId}/kanban/settings`);
+    return { ok: true as const, integrations, boards };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "บันทึกการเชื่อมต่อไม่สำเร็จ" };
+  }
+}
+
+/** อ่านค่าปัจจุบัน (หน้าตั้งค่าโหลดครั้งแรกจาก server component — ตัวนี้ไว้ให้จอรีเฟรชหลังบันทึก) */
+export async function loadIntegrationsAction(input: {
+  systemId: string;
+}): Promise<{ ok: true; integrations: KanbanIntegrations } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  return { ok: true as const, integrations: await getIntegrations(auth.active.tenantId, input.systemId) };
 }

@@ -5,6 +5,9 @@ import { bundleLabelForScopes } from "@/lib/api-keys/scopes";
 import { canReadKanban, toActor } from "@/lib/modules/kanban/access";
 import { createKanbanApiKeyAction, revokeKanbanApiKeyAction } from "@/lib/modules/kanban/settings-actions";
 import { ApiKeysPanel, type KanbanApiKeyRow } from "@/components/kanban/ApiKeysPanel";
+// K3.2 — บล็อก "การเชื่อมต่อ" (สวิตช์รายร้าน · สร้างงานจากแชท)
+import { IntegrationsSettings } from "@/components/kanban/IntegrationsSettings";
+import { getIntegrations, listTaskTargetBoards } from "@/lib/modules/kanban/integrations";
 // K2.11 — บล็อก "การแจ้งเตือนของฉัน" (ค่าของคน ไม่ใช่ของร้าน)
 import { NotifyPrefs } from "@/components/kanban/NotifyPrefs";
 import { getUserPreferences } from "@/lib/core/user-preferences";
@@ -37,6 +40,13 @@ export default async function KanbanSettingsPage({ params }: { params: Promise<{
   // ค่าแจ้งเตือนของ "คนที่กำลังดู" (ของส่วนตัว — ไม่ใช่ค่าของร้าน)
   const prefs = await getUserPreferences(auth.user.id);
 
+  // "การเชื่อมต่อ" — ค่าปัจจุบัน + บอร์ดที่คนกำลังดูเป็นผู้ดูแล (ตั้งปลายทางได้เฉพาะบอร์ดของตัวเอง)
+  const [integrations, integrationBoards] = await Promise.all([
+    getIntegrations(tenantId, id),
+    listTaskTargetBoards({ tenantId, systemId: id, actorUserId: auth.user.id }, actor, "ADMIN"),
+  ]);
+  const canManageIntegrations = actor.role === "OWNER" || actor.permissions["kanban.automation.manage"] === true;
+
   const rows = await prisma.apiKey.findMany({
     where: { tenantId, systemId: id, revokedAt: null },
     orderBy: { createdAt: "desc" },
@@ -60,6 +70,12 @@ export default async function KanbanSettingsPage({ params }: { params: Promise<{
       />
       <KanbanTabs systemId={id} actor={actor} />
       <NotifyPrefs emailMode={prefs.kanbanEmailMode} digest={prefs.kanbanDigest} />
+      <IntegrationsSettings
+        systemId={id}
+        initial={integrations}
+        boards={integrationBoards}
+        canManage={canManageIntegrations}
+      />
       <ApiKeysPanel
         systemId={id}
         keys={keys}

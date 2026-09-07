@@ -48,7 +48,19 @@ type Step =
   // K1.13: กดค้างแล้ว "ไม่ปล่อยนิ้ว" ก่อนถ่ายภาพ (ต่างจาก `drag` ที่ปล่อยตอนจบ) — ใช้โชว์ท่า "ยก" การ์ด
   // บนมือถือ (`MobileBoard.tsx` state `lifted` หลังกดค้างครบ 300ms) touchEnd จะถูกยิงตอนปิดหน้าเอง
   | { longPress: { on: string; ms?: number } };
-type Spec = { name: string; path: string; note?: string; steps?: Step[]; onlyDevice?: "desktop" | "mobile"; expect?: string[] };
+type Spec = {
+  name: string;
+  path: string;
+  note?: string;
+  steps?: Step[];
+  onlyDevice?: "desktop" | "mobile";
+  expect?: string[];
+  /**
+   * K3.2 — งานที่ต้องทำ "ฝั่งข้อมูล" ก่อนสเปคนี้ (เช่น ปิดสวิตช์รายร้านเพื่อพิสูจน์ว่าปุ่มหายจริง)
+   * รันครั้งเดียวต่อสเปค (ไม่ใช่ต่ออุปกรณ์) — ผลของมันต้องถูกคืนสภาพใน `restoreSeed()` เสมอ
+   */
+  before?: () => Promise<void>;
+};
 
 // K1.9 — PNG เล็ก ๆ (1×1 พิกเซล) เขียนลงดิสก์ให้ puppeteer `uploadFile()` เลือกได้จริง (input[type=file]
 // ต้อง "เลือกไฟล์จริง" — DataTransfer/File ที่สร้างจาก JS ล้วนใช้กับ input ของเบราว์เซอร์จริงไม่ได้)
@@ -65,7 +77,144 @@ if (WO === "1.9") {
 /** K3.1 — การ์ดตัวอย่างของบล็อก "เชื่อมข้อมูล SHARK" (บอร์ดซ่อมบำรุง = TENANT ⇒ ธนาเห็นแบบ VIEWER) */
 const KB31_CARD: string = (E.boards.maint.cardIds as string[])[0]!;
 
+// ── K3.2: หน้าแชทต้องมี "ห้องจริง" ให้กดปุ่มสร้างงาน ⇒ สร้างระบบ CHAT + ผู้ติดต่อ + ห้อง + ข้อความ 3 ใบ
+//    (+ ไฟล์แนบ 1) แบบชั่วคราว แล้วเปิดสวิตช์ "สร้างงานจากแชท" ชี้บอร์ดซ่อมบำรุง — ลบคืนทั้งชุดใน restoreSeed()
+//    🔴 ค่า `AppSystem.settings` เดิมของระบบ KANBAN ถูกจำไว้แล้วเขียนกลับ (ห้ามทิ้งสวิตช์เปิดค้างไว้ให้ชุดถัดไป)
+const KB32 = {
+  chatSystemId: "",
+  conversationId: "",
+  partyIds: [] as string[],
+  settingsBefore: null as unknown,
+};
+if (WO === "3.2") {
+  const integ = (await import("@/lib/modules/kanban/integrations" as string)) as Any;
+  const membership = await prisma.membership.findFirst({
+    where: { tenantId: E.tenantId, userId: E.users.owner.userId },
+    select: { role: true, unitAccess: true, permissions: true },
+  });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: membership!.role,
+    unitAccess: (membership!.unitAccess as string[] | null) ?? [],
+    permissions: (membership!.permissions as Record<string, unknown> | null) ?? {},
+  };
+  const ctx32 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+
+  // เศษของรอบก่อน (Ctrl-C กลางทาง) — ลบก่อนเสมอ ไม่งั้นห้องซ้อนกันทุกครั้งที่รัน
+  const stale = await prisma.appSystem.findMany({ where: { tenantId: E.tenantId, type: "CHAT" as Any, name: "แชทลูกค้า (ภาพ K3.2)" }, select: { id: true } });
+  for (const s of stale) await wipeChatSystem(s.id);
+
+  const chatSys = await prisma.appSystem.create({ data: { tenantId: E.tenantId, type: "CHAT" as Any, name: "แชทลูกค้า (ภาพ K3.2)" } });
+  KB32.chatSystemId = chatSys.id;
+  const contact = await prisma.chatContact.create({
+    data: { tenantId: E.tenantId, systemId: chatSys.id, channel: "LINE" as Any, externalUserId: `kb32-${Date.now()}`, displayName: "คุณสมชาย (บริษัท เอบีซี)", phone: "0812345678" },
+  });
+  const conv = await prisma.chatConversation.create({
+    data: { tenantId: E.tenantId, systemId: chatSys.id, channel: "LINE" as Any, contactId: contact.id, status: "OPEN" as Any },
+  });
+  KB32.conversationId = conv.id;
+  const t0 = Date.now();
+  const m1 = await prisma.chatMessage.create({
+    data: { tenantId: E.tenantId, systemId: chatSys.id, conversationId: conv.id, direction: "IN" as Any, type: "TEXT" as Any, body: "สวัสดีครับ พอดีบริษัทอยากจัดทริปดำน้ำให้พนักงาน 12 คน ช่วง 24–26 ต.ค. ครับ มีใบรับรอง 9 คน มือใหม่ 3 คน", createdAt: new Date(t0 - 3 * 60_000) },
+  });
+  await prisma.chatMessage.create({
+    data: { tenantId: E.tenantId, systemId: chatSys.id, conversationId: conv.id, direction: "IN" as Any, type: "TEXT" as Any, body: "งบประมาณราว ๆ 15,000 ต่อคน ขอใบเสนอราคาในนามบริษัทด้วยครับ ต้องการคำตอบภายในศุกร์นี้", createdAt: new Date(t0 - 2 * 60_000) },
+  });
+  await prisma.chatMessage.create({
+    data: { tenantId: E.tenantId, systemId: chatSys.id, conversationId: conv.id, direction: "OUT" as Any, type: "TEXT" as Any, body: "รับทราบครับ เดี๋ยวทีมขายทำใบเสนอราคาส่งกลับภายในพรุ่งนี้นะครับ", senderUserId: E.users.staff.pook.userId, createdAt: new Date(t0 - 60_000) },
+  });
+  await prisma.chatAttachment.create({
+    data: { tenantId: E.tenantId, systemId: chatSys.id, messageId: m1.id, kind: "FILE" as Any, storageKey: `t/${E.tenantId}/chat/kb32.pdf`, url: "https://cdn.example.test/kb32-visual.pdf", fileName: "รายชื่อพนักงาน.pdf", mimeType: "application/pdf", sizeBytes: 12345 },
+  });
+
+  KB32.settingsBefore = (await prisma.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } }))?.settings ?? {};
+  const col0 = await prisma.kanbanColumn.findFirst({
+    where: { boardId: B("maint"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" },
+    orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
+    select: { id: true },
+  });
+  await integ.setIntegrations(ctx32, ownerActor, { openTaskFromChat: { enabled: true, boardId: B("maint"), columnId: col0?.id ?? null } });
+  console.log(`🧪 เตรียม K3.2: ระบบแชทชั่วคราว ${chatSys.id} · ห้อง ${conv.id} (3 ข้อความ + 1 ไฟล์แนบ) · เปิดสวิตช์ "สร้างงานจากแชท" → บอร์ดซ่อมบำรุง`);
+}
+
+/** ลบระบบแชทชั่วคราวของ K3.2 ทั้งชุด (ข้อความ/ไฟล์แนบ/ห้อง/ผู้ติดต่อ/ตั้งค่า/ช่องทาง) */
+async function wipeChatSystem(systemId: string): Promise<void> {
+  const P = prisma as Any;
+  await P.chatAttachment.deleteMany({ where: { systemId } }).catch(() => null);
+  await P.chatConversationEvent.deleteMany({ where: { systemId } }).catch(() => null);
+  await P.chatConversationPref.deleteMany({ where: { systemId } }).catch(() => null);
+  await P.chatReadState.deleteMany({ where: { systemId } }).catch(() => null);
+  await P.chatMessage.deleteMany({ where: { systemId } }).catch(() => null);
+  await P.chatConversation.deleteMany({ where: { systemId } }).catch(() => null);
+  await P.chatContact.deleteMany({ where: { systemId } }).catch(() => null);
+  await P.chatQuickReply.deleteMany({ where: { systemId } }).catch(() => null);
+  await P.chatSetting.deleteMany({ where: { systemId } }).catch(() => null);
+  await P.chatChannelConnection.deleteMany({ where: { systemId } }).catch(() => null);
+  await P.appSystem.deleteMany({ where: { id: systemId } }).catch(() => null);
+}
+
 const SPECS: Record<string, Spec[]> = {
+  // K3.2 — "สร้างงานจากแชท" · เทียบภาพ `ledger/design-kanban/09-from-chat.png`
+  //   1) แผงซ้อนบนหน้าแชทจริง (เดสก์ท็อป = แผงขวา 380px · มือถือ = เต็มจอ)
+  //   2) กด "สร้างการ์ด" จริง → toast "สร้างการ์ด #n แล้ว" + บันทึกภายในโผล่ในห้อง
+  //   3) ปิดสวิตช์รายร้าน → ปุ่ม "สร้างงาน" ต้องหายจากหัวห้อง (ไม่ใช่แค่กดไม่ได้)
+  "3.2": [
+    {
+      name: "task-from-chat-panel",
+      path: `/app/sys/${KB32.chatSystemId}?c=${KB32.conversationId}`,
+      note: 'กด "สร้างงาน" ในหัวห้อง → แผงเตรียมการ์ด (หัวข้อ · กล่องฟ้าผู้ช่วย AI · ชื่อการ์ด/บอร์ด/คอลัมน์/ผู้รับผิดชอบ/กำหนดส่ง/ป้าย/รายละเอียด · เชื่อมอัตโนมัติ 4 ติ๊ก · ท้ายแผง)',
+      expect: ["[data-testid=task-from-chat-panel]", "[data-testid=task-from-chat-submit]"],
+      steps: [
+        { waitFor: "[data-testid=chat-create-task]" },
+        { click: "[data-testid=chat-create-task]" },
+        { waitFor: "[data-testid=task-from-chat-panel]" },
+        { waitFor: "[data-testid=task-from-chat-title]", timeoutMs: 20_000 },
+        { wait: 900 },
+      ],
+    },
+    {
+      name: "task-from-chat-created",
+      path: `/app/sys/${KB32.chatSystemId}?c=${KB32.conversationId}`,
+      onlyDevice: "desktop",
+      note: 'กด "สร้างการ์ด" จริงบน production build → toast "สร้างการ์ด #n แล้ว" + บันทึกภายในถูกแปะกลับในห้อง (พิสูจน์เส้น action → chat → facade บอร์ดงาน → DB ครบทอด)',
+      expect: ["[data-testid=task-from-chat-toast]"],
+      steps: [
+        { waitFor: "[data-testid=chat-create-task]" },
+        { click: "[data-testid=chat-create-task]" },
+        { waitFor: "[data-testid=task-from-chat-title]", timeoutMs: 20_000 },
+        { wait: 500 },
+        { click: "[data-testid=task-from-chat-submit]" },
+        { waitFor: "[data-testid=task-from-chat-toast]", timeoutMs: 25_000 },
+        { wait: 2000 },
+      ],
+    },
+    {
+      name: "task-from-chat-switch-off",
+      path: `/app/sys/${KB32.chatSystemId}?c=${KB32.conversationId}`,
+      onlyDevice: "desktop",
+      note: 'ปิดสวิตช์ "สร้างงานจากแชท" ในตั้งค่าบอร์ดงาน → หัวห้องต้อง **ไม่มี** ปุ่มสร้างงานอีกเลย',
+      expect: ["[data-qc=room-header]"],
+      steps: [{ waitFor: "[data-qc=room-header]" }, { wait: 600 }],
+      before: async () => {
+        const integ = (await import("@/lib/modules/kanban/integrations" as string)) as Any;
+        const membership = await prisma.membership.findFirst({
+          where: { tenantId: E.tenantId, userId: E.users.owner.userId },
+          select: { role: true, unitAccess: true, permissions: true },
+        });
+        await integ.setIntegrations(
+          { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string },
+          {
+            userId: E.users.owner.userId as string,
+            role: membership!.role,
+            unitAccess: (membership!.unitAccess as string[] | null) ?? [],
+            permissions: (membership!.permissions as Record<string, unknown> | null) ?? {},
+          },
+          { openTaskFromChat: { enabled: false } },
+        );
+        console.log('  🔧 ปิดสวิตช์ "สร้างงานจากแชท" ก่อนถ่ายภาพสุดท้าย');
+      },
+    },
+  ],
   // K3.1 — บล็อก "เชื่อมข้อมูล SHARK" ในหลังการ์ด (ไม่มี mockup เดี่ยว — เทียบบล็อกในภาพ 03)
   // 🔴 ถ่าย 2 รอบ: `--user owner` (เห็นครบ + เปิดป๊อปอัปเพิ่มได้) และ `--user thana`
   //    (VIEWER ของบอร์ด + ไม่มีสิทธิ์โมดูลปลายทาง ⇒ ต้องเห็นแถวครบแต่เป็น "(ไม่มีสิทธิ์เข้าถึง)")
@@ -1356,6 +1505,37 @@ if (WO === "3.1") {
 }
 
 async function restoreSeed(): Promise<void> {
+  // K3.2 — ลบการ์ด/ผู้ติดต่อ/ไฟล์ที่เกิดจากการกด "สร้างการ์ด" จริงระหว่างถ่าย · ลบระบบแชทชั่วคราว ·
+  //        คืนค่า `AppSystem.settings` ของระบบ KANBAN (สวิตช์ต้องกลับไปปิดเหมือนก่อนถ่าย)
+  if (WO === "3.2") {
+    const P = prisma as Any;
+    const cards = await prisma.kanbanCard.findMany({
+      where: { tenantId: E.tenantId, sourceType: "CHAT" as Any, sourceKey: { startsWith: `chat:conv:${KB32.conversationId}` } } as Any,
+      select: { id: true },
+    });
+    const ids = cards.map((c) => c.id);
+    if (ids.length) {
+      const partyLinks = await P.kanbanCardLink.findMany({ where: { cardId: { in: ids }, linkType: "PARTY" as Any }, select: { linkId: true } });
+      KB32.partyIds = partyLinks.map((l: Any) => String(l.linkId));
+      const atts = await P.kanbanAttachment.findMany({ where: { cardId: { in: ids } }, select: { fileId: true } });
+      await P.kanbanCardLink.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null);
+      await P.kanbanAttachment.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null);
+      if (atts.length) await prisma.fileAsset.deleteMany({ where: { id: { in: atts.map((a: Any) => String(a.fileId)) } } }).catch(() => null);
+      await P.kanbanChecklistItem.deleteMany({ where: { checklist: { cardId: { in: ids } } } }).catch(() => null);
+      await P.kanbanChecklist.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null);
+      await prisma.kanbanActivity.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null);
+      await prisma.kanbanCard.deleteMany({ where: { id: { in: ids } } });
+      if (KB32.partyIds.length) await prisma.party.deleteMany({ where: { id: { in: KB32.partyIds } } }).catch(() => null);
+    }
+    if (KB32.chatSystemId) await wipeChatSystem(KB32.chatSystemId);
+    if (KB32.settingsBefore !== null) {
+      await prisma.appSystem.update({ where: { id: SYS }, data: { settings: KB32.settingsBefore as Any } }).catch(() => null);
+    }
+    await prisma.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) }, type: { startsWith: "kanban.card" } } }).catch(() => null);
+    await prisma.appNotification.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) } } }).catch(() => null);
+    console.log(`🧹 คืนสภาพ K3.2: ลบการ์ดที่สร้างจากแชท ${ids.length} ใบ · ผู้ติดต่อ ${KB32.partyIds.length} · ลบระบบแชทชั่วคราว · คืนค่าสวิตช์การเชื่อมต่อ`);
+  }
+
   // K3.1 — ลบแถวเชื่อม + ประวัติ LINK_* ที่สร้างไว้ถ่ายภาพ แล้วลบผู้ติดต่อตัวอย่าง
   if (WO === "3.1") {
     const P = prisma as Any;
@@ -1573,6 +1753,7 @@ try {
       ? [{ name: "__Host-shark_session", value: token, url: BASE, path: "/", secure: true }, { name: "shark_tenant", value: E.tenantId, url: BASE, path: "/", secure: true }]
       : [{ name: "shark_session", value: token, domain: host, path: "/" }, { name: "shark_tenant", value: E.tenantId, domain: host, path: "/" }];
     for (const spec of specs) {
+      if (spec.before) await spec.before();
       // KQC_VIEWPORTS="ipad-portrait:820x1180,ipad-landscape:1180x820" ใช้แทนชุดปริยาย (เช่น ถ่ายจอ iPad ของ WebView แอป) · KQC_UA ต่อท้าย user agent
       const viewports: readonly (readonly [string, number, number])[] = process.env.KQC_VIEWPORTS
         ? process.env.KQC_VIEWPORTS.split(",").map((v) => { const [name, wh] = v.split(":"); const [w, h] = wh!.split("x").map(Number); return [name!, w!, h!] as const; })

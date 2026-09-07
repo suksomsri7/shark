@@ -40,6 +40,8 @@ import { Icon } from "./icons";
 import { DateDivider, MessageBubble, TypingBubble, dayKey, dayLabel } from "./bubble";
 import { ChatComposer } from "./composer";
 import { ContextPanel } from "./context-panel";
+// K3.2 — แผงเตรียมการ์ด (ภาพ 09) · เปิดจากปุ่ม "สร้างงาน" ในหัวห้อง
+import { TaskFromChatPanel } from "./task-from-chat-panel";
 import { pageLabelFromPath } from "./page-label";
 import { setConversationTagAction } from "./quick-reply-actions";
 import {
@@ -179,6 +181,12 @@ export type ChatInboxClientProps = {
    * ชื่อหน้าถูกตัดทิ้งแล้ว ⇒ ลิงก์ย้ายเข้าเมนู ⋮ ของหัวรายการ · `null` = ร้านสาขาเดียว ไม่ต้องมี
    */
   manageLinksHref?: string | null;
+  /**
+   * K3.2 — ปุ่ม "สร้างงาน" ในหัวห้อง: `null` = สวิตช์ "สร้างงานจากแชท" ของร้านนี้ปิดอยู่ (ไม่ต้อง render)
+   * 🔴 ค่านี้มาจาก `kanban/integrations.chatTaskButtonConfig()` ฝั่ง server — หน้าจอไม่ตัดสินเอง
+   *    และการซ่อนปุ่มไม่ใช่ด่าน: server action ปฏิเสธด้วยเงื่อนไขเดียวกันอีกชั้นเสมอ
+   */
+  taskButton?: { kanbanSystemId: string; boardId: string } | null;
 };
 
 // ความกว้างคอลัมน์ของกล่องแชท 3 คอลัมน์ (≥lg) — ปริยายตามแบบร่าง 320 | 1fr | 280 · ผู้ใช้ลากปรับได้
@@ -273,6 +281,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
     maxAttachmentBytes,
     uploadTypes,
     manageLinksHref = null,
+    taskButton = null,
   } = props;
 
   const [rows, setRows] = useState<InboxRow[]>(initialRows);
@@ -703,6 +712,9 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
   // shape ท้องถิ่น (ปิด D16): ค่าจริงมากับ ThreadSnapshot · setRoomCtx ใช้อัปเดตหลัง toggle ระหว่างรอ poll
   const [roomCtx, setRoomCtx] = useState<{ pageUrl: string | null; tags: string[]; autoTranslate: boolean } | null>(null);
   const [roomMenu, setRoomMenu] = useState(false);
+  // K3.2 — แผง "สร้างงานจากบทสนทนานี้" + ป้ายผลลัพธ์หลังสร้างเสร็จ (toast พร้อมลิงก์เปิดการ์ด)
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [taskDone, setTaskDone] = useState<{ cardNo: number | null; cardHref: string } | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
@@ -966,8 +978,10 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
   // 🔴 ความสูงการ์ดที่ ≥lg: เว็บเผื่อแถบบน 3.5rem + pt 1rem + pb-24 (6rem) = 10.5rem
   //    ในแอป (iPad) ไม่มีปุ่ม AI ⇒ AppMain ให้ pb-2 ⇒ 3.5 + 1 + 0.5 = 5rem (เจ้าของเจอช่องว่างล่าง 6 ก.ย.)
   const lgHeight = inApp ? "lg:h-[calc(100vh-5rem)]" : "lg:h-[calc(100vh-10.5rem)]";
+  // 🔴 `relative` = สมอของแผง "สร้างงานจากบทสนทนานี้" (K3.2) — แผงต้องกางอยู่ในกรอบกล่องแชท
+  //    ไม่ใช่ลอยทับแถบบนของทั้งแอป (เทียบภาพ `ledger/design-kanban/09-from-chat.png`)
   return (
-    <section className="flex min-h-0 flex-col gap-2">
+    <section className="relative flex min-h-0 flex-col gap-2">
       {/* 🔴 เดสก์ท็อป = 3 คอลัมน์ตามแบบร่าง (`ref-desktop.png`): รายการ | ห้องแชท | บริบทลูกค้า
           คอลัมน์ 3 หายไปต่ำกว่า `lg` เพราะจอแคบไม่มีที่พอ และของในนั้นไม่ใช่ของที่ต้องเห็นตลอดเวลา */}
       <div
@@ -1562,6 +1576,26 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
                     </form>
                   )}
 
+                  {/* K3.2 — "สร้างงาน": โผล่เฉพาะร้านที่เปิดสวิตช์ไว้ (prop จาก server · null = ไม่ render) */}
+                  {taskButton && (
+                    <button
+                      type="button"
+                      data-testid="chat-create-task"
+                      onClick={() => {
+                        closeRoomPopovers();
+                        setSearchOpen(false);
+                        setTaskDone(null);
+                        setTaskOpen(true);
+                      }}
+                      aria-haspopup="dialog"
+                      aria-expanded={taskOpen}
+                      className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[color:var(--color-surface-2)] px-2.5 py-1 text-[12.5px] font-semibold text-[#3f4652]"
+                    >
+                      <Icon name="bookmark" size="sm" />
+                      สร้างงาน
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => {
@@ -2090,6 +2124,35 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
           </aside>
         )}
       </div>
+
+      {/* ══════════ K3.2 · แผง "สร้างงานจากบทสนทนานี้" (ภาพ 09) + ผลลัพธ์หลังสร้าง ══════════ */}
+      {taskOpen && thread && taskButton && (
+        <TaskFromChatPanel
+          conversationId={thread.conversationId}
+          onClose={() => setTaskOpen(false)}
+          onCreated={(res) => {
+            setTaskOpen(false);
+            setTaskDone({ cardNo: res.cardNo, cardHref: res.cardHref });
+            // บันทึกภายในที่ระบบแปะให้ต้องโผล่ในห้องทันที ไม่ต้องรอรอบ poll ถัดไป
+            void refreshNow();
+          }}
+        />
+      )}
+      {taskDone && (
+        <div
+          data-testid="task-from-chat-toast"
+          role="status"
+          className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl bg-[#111827] px-4 py-2.5 text-[13px] text-white shadow-[0_10px_30px_rgba(15,23,42,0.3)]"
+        >
+          <span>สร้างการ์ด #{taskDone.cardNo ?? "-"} แล้ว</span>
+          <Link href={taskDone.cardHref} className="font-semibold underline underline-offset-2">
+            เปิดการ์ด
+          </Link>
+          <button type="button" onClick={() => setTaskDone(null)} aria-label="ปิดข้อความแจ้งผล">
+            <Icon name="x" size="sm" />
+          </button>
+        </div>
+      )}
     </section>
   );
 }

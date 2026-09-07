@@ -238,6 +238,10 @@ const ALLOWED_EDGES = new Set([
   // การกระทำ `open_approval` ของกฎอัตโนมัติบอร์ดงาน ยื่นคำขอผ่าน `approval.submitForApproval`
   // แล้วเขียนความเห็นผูกกลับมาที่การ์ด · ทิศทางเดียว (approval ไม่รู้จัก kanban)
   "kanban→approval",
+  // chokepoint (K3.2 · ledger/KANBAN-RUN.md ท้าย §K3.2 "เส้น import ข้ามโมดูลที่ Fable อนุมัติ"):
+  // ปุ่ม "สร้างงาน" ในหัวห้องแชท → บอร์ดงาน ผ่าน facade `kanban/links.createCardFromExternal`
+  // + ทะเบียนสวิตช์ `kanban/integrations` เท่านั้น · ทิศทางเดียว (บอร์ดงานไม่รู้จักแชท — F2 ยังเฝ้าอยู่)
+  "chat→kanban",
   // หนี้เดิม (วัด 2026-07-15) — ratchet: ลบได้ ห้ามเพิ่มกลับ
   "booking→member", "booking→system", "chat→member",
   "booking→pos", // chokepoint (WO-Wave3-A): มัดจำ booking ปิดเงินผ่าน pos.createSale DEPOSIT (C-2)

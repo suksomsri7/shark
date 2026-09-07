@@ -23,6 +23,8 @@ import {
 } from "./actions";
 import { loadInboxAction, loadThreadAction, setChatAiSettingsAction } from "./inbox-actions";
 import { requireChatRead, canReadChat, membershipOf } from "./guard";
+// K3.2 — สวิตช์ "สร้างงานจากแชท" ของร้าน (ทะเบียนอยู่ฝั่งบอร์ดงาน · เส้น chat→kanban ที่ Fable อนุมัติ)
+import { chatTaskButtonConfig } from "@/lib/modules/kanban/integrations";
 import { evaluate } from "@/lib/core/rbac";
 import { listAnswerExamples } from "./learning";
 import { ChatInboxClient } from "./inbox-client";
@@ -93,11 +95,13 @@ export async function ChatInboxSection({
   const can = (action: string) => evaluate(ctx, { module: "chat", action });
 
   await ensureWebchatConnection(tenantId, systemId);
-  const [rows, thread, staff, setting] = await Promise.all([
+  const [rows, thread, staff, setting, taskButton] = await Promise.all([
     loadInboxAction(systemId),
     conversationId ? loadThreadAction(systemId, conversationId) : Promise.resolve(null),
     listStaff(tenantId),
     getSetting(tenantId, systemId),
+    // 🔴 อ่านสดทุกครั้งที่เรนเดอร์ — ปิดสวิตช์แล้วรีเฟรชหน้าเดียว ปุ่มต้องหายทันที (ไม่มี cache)
+    chatTaskButtonConfig(tenantId),
   ]);
 
   // ปุ่มที่ "กินเงินของร้าน" ต้องเปิดใช้ **และ** มีสิทธิ์ทั้งคู่ ไม่งั้นไม่ต้องโชว์เลย
@@ -138,6 +142,7 @@ export async function ChatInboxSection({
         maxAttachmentBytes={CHAT_ATTACHMENT_MAX_BYTES}
         uploadTypes={ALLOWED_UPLOAD_TYPES}
         manageLinksHref={multiUnit ? "/app/settings/connections" : null}
+        taskButton={taskButton ? { kanbanSystemId: taskButton.kanbanSystemId, boardId: taskButton.boardId } : null}
       />
     </>
   );

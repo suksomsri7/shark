@@ -21,7 +21,7 @@ const chk = (id: string, n: string, ok: unknown, e: string, a: string, s: Sev = 
 };
 const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const P = prisma as Any;
-let tid = ""; let SYS = ""; let chatSysId: string | null = null; let convId: string | null = null; let contactId: string | null = null;
+let tid = ""; let SYS = ""; let chatSysId: string | null = null; let convId: string | null = null; let contactId: string | null = null; let partyId: string | null = null;
 const madeCards: string[] = [];
 const evt = (type: string, payload: Any) => ({ id: `qc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, tenantId: tid, type, payload, systemId: SYS, unitId: null });
 try {
@@ -78,6 +78,22 @@ try {
   const cons = read("src/lib/outbox-consumers.ts");
   chk("K3.4-S5.1", "consumer kanban.card.completed = withAutomation(compose(เดิม, kanbanOutbound.cardCompleted)) · outbound พังห้ามล้ม consumer (try/catch + logOps WARN) · ห้องแชทถูกลบ/ไม่พบ → ข้ามเงียบ · kanban-outbound.ts อยู่ composition root ไม่มี any · โมดูล kanban ยังไม่ import chat", /kanbanOutbound|kanban-outbound/.test(cons) && /logOps\(\s*"WARN"/.test(src) && !/:\s*any\b/.test(src) && !/@\/lib\/modules\/chat/.test(readFileSync("src/lib/modules/kanban/service.ts", "utf8") + read("src/lib/modules/kanban/moves.ts") + read("src/lib/modules/kanban/cards.ts")), "ครบ", "ขาด");
   chk("K3.4-S5.2", "UI: ในหลังการ์ด บล็อกเชื่อมข้อมูล SHARK แถว CHAT_CONVERSATION มีบรรทัด 'เมื่อปิดงาน ระบบจะแปะบันทึกในบทสนทนานี้ให้' (CardLinks.tsx)", /แปะบันทึก/.test(read("src/components/kanban/CardLinks.tsx")), "มี", "ขาด", "MAJOR");
+
+  // ═══ S6 (D23 — หนี้ K3.1): หน้าโปรไฟล์ผู้ติดต่อ /app/party/{id} + ขาย้อน "งานที่เชื่อมกับผู้ติดต่อนี้" ═══
+  const pagePath = "src/app/app/party/[partyId]/page.tsx";
+  const pageSrc = existsSync(pagePath) ? readFileSync(pagePath, "utf8") : "";
+  chk("K3.4-S6.1", "มีหน้า src/app/app/party/[partyId]/page.tsx: อ่านผู้ติดต่อผ่าน facade @/lib/modules/party (ห้าม prisma.party ตรง) · ไม่พบ/ข้ามร้าน = notFound() · ใช้ listCardsForTarget จาก facade kanban/links · ด่านสิทธิ์ fail-closed (มีคีย์ crm.*/member.*/kanban.* ตัวใดตัวหนึ่ง)", !!pageSrc && /@\/lib\/modules\/party/.test(pageSrc) && !/prisma\.party\b/.test(pageSrc) && /notFound\(/.test(pageSrc) && /listCardsForTarget/.test(pageSrc) && /@\/lib\/modules\/kanban\/links/.test(pageSrc), "ครบ", pageSrc ? "ขาดบางเงื่อนไข" : "ไม่มีไฟล์", "MAJOR");
+  const partyMod = (await import("@/lib/modules/party" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
+  const lk = (await import("@/lib/modules/kanban/links" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
+  const party = await partyMod.findOrCreate(tid, { name: `QC K3.4 ผู้ติดต่อ ${Date.now()}`, phone: "0899990034" }); partyId = party.id;
+  await P.kanbanCardLink.create({ data: { tenantId: tid, systemId: SYS, cardId: card.id, linkType: "PARTY", linkId: party.id, role: "RELATED" } });
+  const actorOwner = { userId: U.owner, role: "OWNER", unitAccess: [], permissions: {} };
+  const backOwner = await lk.listCardsForTarget(ctxO, actorOwner, { linkType: "PARTY", linkId: party.id });
+  chk("K3.4-S6.2", "listCardsForTarget(ctx, actor, {linkType:'PARTY', linkId}) → เจ้าของเห็นการ์ดที่ผูก (cardId · cardNo · title · boardName · columnName) · การ์ดเพิ่งปิด → status สะท้อนจริง", backOwner.length === 1 && backOwner[0].cardId === card.id && typeof backOwner[0].cardNo === "number" && !!backOwner[0].boardName && !!backOwner[0].columnName, "1 ใบ", `${backOwner.length}`);
+  const actorNone = { userId: U.pook, role: "STAFF", unitAccess: [], permissions: {} };
+  const backNone = await lk.listCardsForTarget(ctxO, actorNone, { linkType: "PARTY", linkId: party.id });
+  const backOther = await lk.listCardsForTarget({ ...ctxO, tenantId: "qc-other-tenant" }, actorOwner, { linkType: "PARTY", linkId: party.id });
+  chk("K3.4-S6.3", "🔴 ขาย้อนผ่าน visibleBoardsWhere: คนไม่มีคีย์ kanban.* เลย → [] · ctx คนละร้าน (รู้ partyId) → [] (กันอ่านชื่อการ์ดข้ามร้าน/บอร์ดลับ §9.1)", backNone.length === 0 && backOther.length === 0, "0 · 0", `${backNone.length} · ${backOther.length}`, "CRITICAL");
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.name}: ${e.message.slice(0, 240)}` : String(e));
 } finally {
@@ -87,6 +103,7 @@ try {
       if (ids.length) { await P.kanbanCardLink.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null); await prisma.kanbanComment.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null); await prisma.kanbanActivity.deleteMany({ where: { cardId: { in: ids } } }); await prisma.kanbanCard.deleteMany({ where: { id: { in: ids } } }); }
       if (convId) { await prisma.chatMessage.deleteMany({ where: { conversationId: convId } }).catch(() => null); await prisma.chatConversation.deleteMany({ where: { id: convId } }).catch(() => null); }
       if (contactId) await prisma.chatContact.deleteMany({ where: { id: contactId } }).catch(() => null);
+      if (partyId) await prisma.party.deleteMany({ where: { id: partyId } }).catch(() => null);
       if (chatSysId) await prisma.appSystem.deleteMany({ where: { id: chatSysId } }).catch(() => null);
       await prisma.appNotification.deleteMany({ where: { tenantId: tid, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } });
       await prisma.outboxEvent.deleteMany({ where: { tenantId: tid, createdAt: { gte: new Date(Date.now() - 10 * 60_000) }, type: { startsWith: "kanban." } } }).catch(() => null);
