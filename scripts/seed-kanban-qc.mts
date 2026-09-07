@@ -173,6 +173,10 @@ const expected = {
   },
   counts: { boards: 3, cards: 38, overduePatong: 1, dueTodayPatong: 2 },
 };
+// K2.F (7 ก.ย.): คอลัมน์สุดท้ายของบอร์ดหลักเป็นคอลัมน์ "เสร็จ" (isDoneColumn) — ตามพิมพ์เขียว §10 ทุกเทมเพลตมี done column
+//   🔴 ตั้งแค่ flag ไม่ย้อนตั้ง completedAt ให้การ์ดที่อยู่ในคอลัมน์แล้ว (§3.10: "มีผลกับการ์ดที่ย้ายเข้ามาหลังจากนี้เท่านั้น")
+await prisma.kanbanColumn.updateMany({ where: { boardId: { in: [patong.id, maint.id] }, name: { in: ["เสร็จแล้ว", "เสร็จ"] } }, data: { isDoneColumn: true } });
+
 writeFileSync(KQC.expectedPath, JSON.stringify(expected, null, 2));
 console.log(`✅ seed บอร์ดงาน: ร้าน ${tenantId} ระบบ ${systemId} · บอร์ด 3 · การ์ด ${patong.cardIds.length + maint.cardIds.length + kata.cardIds.length} · เฉลย ${KQC.expectedPath}`);
 await prisma.$disconnect();
