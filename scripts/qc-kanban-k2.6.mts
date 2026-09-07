@@ -22,7 +22,7 @@ const chk = (id: string, n: string, ok: unknown, e: string, a: string, s: Sev = 
 const fails = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error; } };
 const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const q = async <T = Any,>(sql: string): Promise<T[]> => (await prisma.$queryRawUnsafe(sql)) as T[];
-let boardId = "";
+let boardId = ""; let thanaMemberAdded = false;
 try {
   const scope = await kq.resolveKanbanScope(prisma);
   if (!scope) throw new Error("ยังไม่ได้ seed");
@@ -33,7 +33,11 @@ try {
   const actorOf = async (userId: string) => { const m = (await prisma.membership.findFirst({ where: { tenantId: tid, userId } }))!; return { userId, role: m.role, unitAccess: m.unitAccess as string[], permissions: m.permissions as Record<string, unknown> }; };
   const owner = await actorOf(E.users.owner.userId); const thana = await actorOf(E.users.staff.thana.userId);
   const ctxO = { tenantId: tid, systemId: SYS, actorUserId: owner.userId }; const ctxT = { tenantId: tid, systemId: SYS, actorUserId: thana.userId };
-  boardId = E.boards.maint.id; // TENANT board (thana = EDITOR ผ่าน visibility)
+  boardId = E.boards.maint.id; // TENANT board — thana เป็น VIEWER ผ่าน visibility (K2.6 builder แย้งถูก) → เชิญเป็น EDITOR ชั่วคราว (ลบใน finally)
+  const members = (await import("@/lib/modules/kanban/members" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
+  await (prisma as Any).kanbanBoardMember.deleteMany({ where: { boardId, userId: thana.userId } });
+  await members.addMember(ctxO, boardId, thana.userId, "EDITOR");
+  thanaMemberAdded = true;
   const card = (await prisma.kanbanCard.findFirst({ where: { boardId, status: "ACTIVE" }, orderBy: { cardNo: "asc" } }))!;
 
   // ═══ S1 schema ═══
@@ -98,6 +102,7 @@ try {
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.name}: ${e.message.slice(0, 240)}` : String(e));
 } finally {
+  try { if (boardId && thanaMemberAdded) { const E2 = JSON.parse(readFileSync(kq.KQC.expectedPath, "utf8")); await (prisma as Any).kanbanBoardMember.deleteMany({ where: { boardId, userId: E2.users.staff.thana.userId } }); } } catch { /* */ }
   try { if (boardId) { await (prisma as Any).kanbanCustomFieldValue.deleteMany({ where: { field: { boardId } } }); await (prisma as Any).kanbanCustomField.deleteMany({ where: { boardId } }); await (prisma as Any).kanbanActivity.deleteMany({ where: { boardId, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } }); } } catch { /* */ }
   await prisma.$disconnect();
 }

@@ -11,6 +11,7 @@ import { logActivity } from "./activity-log";
 import { listAttachments } from "./attachments";
 import { getCardChecklists } from "./checklists";
 import { prisma } from "./db";
+import { getCardFieldValues } from "./fields";
 import { setCardLabels } from "./labels";
 import { KANBAN_LIMITS } from "./limits";
 import { assertBoardRole, assertCardRole } from "./members";
@@ -201,12 +202,13 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     },
   });
   if (!card) throw new KanbanNotFoundError("ไม่พบการ์ดนี้");
-  // K1.7/K1.8/K1.9: หลังการ์ดโหลดเช็คลิสต์ + ความเห็น + ไฟล์แนบ พร้อมกับส่วนที่เหลือของการ์ดในเที่ยวเดียว
-  // (ทุกตัวตรวจสิทธิ์ซ้ำในตัวเอง — เปิดหลังการ์ด 1 ครั้ง = ไม่ต้องยิง action เพิ่มอีกหลายรอบ)
-  const [checklists, comments, attachments] = await Promise.all([
+  // K1.7/K1.8/K1.9/K2.6: หลังการ์ดโหลดเช็คลิสต์ + ความเห็น + ไฟล์แนบ + ค่าฟิลด์กำหนดเอง พร้อมกับส่วนที่
+  // เหลือของการ์ดในเที่ยวเดียว (ทุกตัวตรวจสิทธิ์ซ้ำในตัวเอง — เปิดหลังการ์ด 1 ครั้ง = ไม่ต้องยิง action เพิ่มอีกหลายรอบ)
+  const [checklists, comments, attachments, customFields] = await Promise.all([
     getCardChecklists(ctx, cardId),
     listComments(ctx, cardId),
     listAttachments(ctx, cardId),
+    getCardFieldValues(ctx, undefined, cardId),
   ]);
   return {
     id: card.id,
@@ -220,6 +222,7 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     checklists,
     comments,
     attachments,
+    customFields,
   };
 }
 

@@ -2,13 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { getBoardView, KanbanNotFoundError, listLabels, listMembers, toActor } from "@/lib/modules/kanban/service";
+import { getBoardView, KanbanNotFoundError, listFields, listLabels, listMembers, toActor } from "@/lib/modules/kanban/service";
 import type { KanbanActor } from "@/lib/modules/kanban/service";
 import { listViews } from "@/lib/modules/kanban/views";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { KanbanIcon } from "@/components/kanban/KanbanIcon";
 import { tagColorVar } from "@/components/kanban/Card";
 import { BOARD_SETTINGS_TABS, BoardSettingsNav, type BoardSettingsTab } from "@/components/kanban/settings/BoardSettingsNav";
+import { CustomFieldsSettings } from "@/components/kanban/settings/CustomFieldsSettings";
 import { SavedViewsSettings } from "@/components/kanban/settings/SavedViewsSettings";
 
 // หน้า "ตั้งค่าบอร์ด" 7 แท็บ (K2.5 · ภาพ `ledger/design-kanban/10-board-settings.png`)
@@ -61,7 +62,7 @@ export default async function BoardSettingsTabPage({
           {tab === "general" && <GeneralTab board={board} />}
           {tab === "members" && <MembersTab ctx={ctx} boardId={boardId} />}
           {tab === "labels" && <LabelsTab ctx={ctx} boardId={boardId} />}
-          {tab === "fields" && <SoonTab wo="K2.6" title="ฟิลด์กำหนดเอง" />}
+          {tab === "fields" && <FieldsTab ctx={ctx} actor={actor} boardId={boardId} systemId={id} />}
           {tab === "views" && <ViewsTab ctx={ctx} actor={actor} boardId={boardId} systemId={id} viewerUserId={auth.user.id} />}
           {tab === "automation" && <SoonTab wo="K2.9" title="อัตโนมัติ" />}
           {tab === "archive" && <ArchiveTab href={`${boardHref}/archive`} />}
@@ -170,6 +171,11 @@ async function LabelsTab({ ctx, boardId }: { ctx: CtxArg; boardId: string }) {
       </p>
     </div>
   );
+}
+
+async function FieldsTab({ ctx, actor, boardId, systemId }: { ctx: CtxArg; actor: KanbanActor; boardId: string; systemId: string }) {
+  const fields = await listFields(ctx, actor, boardId);
+  return <CustomFieldsSettings systemId={systemId} boardId={boardId} fields={fields} />;
 }
 
 async function ViewsTab({

@@ -505,6 +505,55 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: "[data-testid=saved-views-settings]" }, { wait: 300 }],
     },
   ],
+  // K2.6 — ฟิลด์กำหนดเอง (ภาพ 10 บล็อกล่างขวา "ฟิลด์กำหนดเอง 3/20" + ภาพ 03 แถบขวา "ฟิลด์กำหนดเอง")
+  // ฟิลด์ 2 ตัว (งบประมาณ NUMBER showOnCard · ความสำคัญ SELECT showOnCard) ถูกสร้าง+ตั้งค่าไว้ก่อนถ่าย
+  // ผ่าน `fields.ts` ตรง ๆ (เหตุผลเดียวกับ KB25 — revalidatePath ของ action ชนจังหวะ puppeteer) ดู KB26 ด้านล่าง
+  "2.6": [
+    {
+      name: "board-settings-fields",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}/settings/fields`,
+      onlyDevice: "desktop",
+      note: "ตั้งค่าบอร์ด › ฟิลด์กำหนดเอง (ภาพ 10): '2 / 20' + รายการ 2 ฟิลด์ (ชนิด/ตัวเลือก) + สลับแสดงบนการ์ด",
+      expect: ["[data-testid=board-settings-nav]", "[data-testid=custom-fields-settings]", "[data-testid=custom-field-settings-row]"],
+      steps: [{ waitFor: "[data-testid=custom-fields-settings]" }, { wait: 300 }],
+    },
+    {
+      name: "card-back-custom-fields-value",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`,
+      onlyDevice: "desktop",
+      note: "หลังการ์ด แถบขวา 'ฟิลด์กำหนดเอง' (ภาพ 03): งบประมาณ ฿12,500.50 · ความสำคัญ สูง — คลิกค่างบประมาณเปิดช่องแก้",
+      expect: ["[data-testid=card-back]", "[data-testid=custom-fields]", "[data-testid=custom-field-row]", "[data-testid=custom-field-input]"],
+      steps: [
+        { waitFor: "[data-testid=custom-fields]" },
+        { click: "[data-testid=custom-field-value]" },
+        { wait: 200 },
+      ],
+    },
+    {
+      name: "board-card-field-chip",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      onlyDevice: "desktop",
+      note: "การ์ดบนบอร์ด (เทียบ mockup 02 — จุดที่เพิ่ม): ชิปฟิลด์กำหนดเอง 'งบประมาณ: ฿12,500.50' + 'ความสำคัญ: สูง'",
+      expect: ["[data-testid=card-field]"],
+      steps: [{ waitFor: "[data-testid=card-field]" }],
+    },
+    {
+      name: "table-custom-field-columns",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?view=table`,
+      onlyDevice: "desktop",
+      note: "มุมมองตาราง (K2.1) เพิ่มคอลัมน์ฟิลด์ที่ showOnCard — คอลัมน์ 'งบประมาณ'/'ความสำคัญ' โผล่พร้อมค่า",
+      expect: ["[data-testid=table-view]", "[data-testid=table-custom-field-column]"],
+      steps: [{ waitFor: "[data-testid=table-custom-field-column]" }],
+    },
+    {
+      name: "card-back-custom-fields",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${E.boards.patong.cardIds[6]}`,
+      onlyDevice: "mobile",
+      note: "มือถือ — แผ่นเต็มจอ ต้องเห็นบล็อก 'ฟิลด์กำหนดเอง' เหมือนกัน",
+      expect: ["[data-testid=card-back]", "[data-testid=custom-fields]"],
+      steps: [{ waitFor: "[data-testid=custom-fields]" }],
+    },
+  ],
 };
 const specs: Spec[] = WO === "path" ? [{ name: "custom", path: argv[1]! }] : (SPECS[WO] ?? []);
 if (specs.length === 0) { console.error(`❌ ไม่มี spec ของ WO ${WO}`); process.exit(2); }
@@ -692,6 +741,37 @@ if (WO === "2.5") {
   console.log(`🧪 เตรียม K2.5: สร้างมุมมอง 'ทั้งทีม' ${KB25.viewId} (ตาราง · เลยกำหนด · เรียงวันที่) บนบอร์ดป่าตอง`);
 }
 
+// ── K2.6: สร้างฟิลด์กำหนดเอง 2 ตัว (งบประมาณ NUMBER · ความสำคัญ SELECT ทั้งคู่ showOnCard) บนบอร์ดป่าตอง
+//    แล้วตั้งค่าให้การ์ด #7 (cardIds[6] — ใบเดียวกับที่ K1.6/K1.9 ใช้) ผ่าน `fields.ts` ตรง ๆ ก่อนถ่าย
+//    (เหตุผลเดียวกับ KB25: `*Action` เรียก revalidatePath ชนจังหวะ puppeteer ตอนเปิดหลังการ์ดซ้ำ)
+//    ⚠️ ใช้ actor = owner (ADMIN ทุกบอร์ด) ไม่ใช่ thana — บอร์ดป่าตองเป็น PRIVATE ผูกสาขาป่าตอง thana ไม่มี
+//    สิทธิ์ EDITOR ที่นี่โดยนัย (เหมือนที่ K1.3-S2.3 ยืนยันไว้: STAFF ที่ไม่ใช่สมาชิก = มองไม่เห็นบอร์ด PRIVATE เลย)
+const KB26 = { budgetFieldId: "", importanceFieldId: "" };
+if (WO === "2.6") {
+  const fieldsSvc = (await import("@/lib/modules/kanban/fields" as string)) as Any;
+  const membership = await prisma.membership.findFirst({
+    where: { tenantId: E.tenantId, userId: E.users.owner.userId },
+    select: { role: true, unitAccess: true, permissions: true },
+  });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: membership!.role,
+    unitAccess: (membership!.unitAccess as string[] | null) ?? [],
+    permissions: (membership!.permissions as Record<string, unknown> | null) ?? {},
+  };
+  const ctx26 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  const cardId = E.boards.patong.cardIds[6];
+  // ลบเศษของรอบก่อนที่อาจค้าง (สคริปต์ล่ม/Ctrl-C ก่อนถึง finally)
+  await (prisma as Any).kanbanCustomField.deleteMany({ where: { boardId: B("patong"), name: { in: ["งบประมาณ", "ความสำคัญ"] } } });
+  const budget = await fieldsSvc.createField(ctx26, ownerActor, B("patong"), { name: "งบประมาณ", type: "NUMBER", showOnCard: true, options: { unit: "บาท" } });
+  const importance = await fieldsSvc.createField(ctx26, ownerActor, B("patong"), { name: "ความสำคัญ", type: "SELECT", showOnCard: true, options: { choices: ["สูง", "กลาง", "ต่ำ"] } });
+  KB26.budgetFieldId = budget.id as string;
+  KB26.importanceFieldId = importance.id as string;
+  await fieldsSvc.setCardFieldValue(ctx26, ownerActor, cardId, budget.id, 12500.5);
+  await fieldsSvc.setCardFieldValue(ctx26, ownerActor, cardId, importance.id, "สูง");
+  console.log(`🧪 เตรียม K2.6: สร้างฟิลด์ 'งบประมาณ'/'ความสำคัญ' + ตั้งค่าการ์ด ${cardId} บนบอร์ดป่าตอง (คืนสภาพหลังถ่ายเสร็จ)`);
+}
+
 async function restoreSeed(): Promise<void> {
   // K1.9 — คืนสภาพ seed: ลบไฟล์แนบ/FileAsset ที่สร้างระหว่างถ่ายภาพ + ล้าง coverFileId ของการ์ดที่ใช้ทดสอบ
   if (WO === "1.9") {
@@ -810,6 +890,15 @@ async function restoreSeed(): Promise<void> {
     const P = prisma as Any;
     const del = await P.kanbanBoardView.deleteMany({ where: { id: KB25.viewId } });
     console.log(`🧹 คืนสภาพ K2.5: ลบมุมมอง ${KB25.viewId} (${del.count} แถว)`);
+  }
+
+  // K2.6 — คืนสภาพ seed: ลบฟิลด์กำหนดเอง 2 ตัวที่สร้างไว้ก่อนถ่าย (ค่าของการ์ด cascade ไปด้วย FK) +
+  // ลบกิจกรรม BOARD_UPDATED/CARD_UPDATED ที่เพิ่งเกิดจากการเตรียม/คืนสภาพเอง
+  if (WO === "2.6" && (KB26.budgetFieldId || KB26.importanceFieldId)) {
+    const P = prisma as Any;
+    const del = await P.kanbanCustomField.deleteMany({ where: { id: { in: [KB26.budgetFieldId, KB26.importanceFieldId].filter(Boolean) } } });
+    const ac = await P.kanbanActivity.deleteMany({ where: { boardId: B("patong"), createdAt: { gte: new Date(Date.now() - 10 * 60_000) }, type: { in: ["BOARD_UPDATED", "CARD_UPDATED"] } } });
+    console.log(`🧹 คืนสภาพ K2.6: ลบฟิลด์กำหนดเอง ${del.count} ตัว (ค่าการ์ด cascade) · ลบกิจกรรม ${ac.count}`);
   }
 }
 

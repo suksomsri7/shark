@@ -11,6 +11,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { assertBoardRole } from "./members";
 import { filterBoardCards, type BoardFilters, type FilterableCard } from "./filters";
+import { fieldsOnCardForCards, listShowOnCardFieldNames } from "./fields";
 import { KANBAN_LIMITS } from "./limits";
 import type {
   BoardLabelDto,
@@ -45,6 +46,8 @@ export type BoardTableResult = {
   page: number;
   pageSize: number;
   groups?: TableGroupDto[];
+  /** K2.6: ชื่อฟิลด์กำหนดเองที่ `showOnCard=true` ของบอร์ด เรียงตาม sortOrder — 1 คอลัมน์ตารางต่อชื่อ */
+  customFieldColumns: string[];
 };
 
 const NONE_ASSIGNEE_KEY = "none";
@@ -113,7 +116,7 @@ export async function listBoardTable(
   const matched = filterBoardCards<RawTableCard>(ordered, filters, { now: opts.now, userId: actor.userId });
 
   const cardIds = matched.map((c) => c.id);
-  const [labelRows, checklistRows] = await Promise.all([
+  const [labelRows, checklistRows, fieldsOnCardByCard, customFieldColumns] = await Promise.all([
     cardIds.length
       ? prisma.kanbanCardLabel.findMany({
           where: { cardId: { in: cardIds }, tenantId: ctx.tenantId },
@@ -131,6 +134,9 @@ export async function listBoardTable(
           GROUP BY ch."cardId"
         `
       : Promise.resolve([] as { cardId: string; total: bigint; done: bigint }[]),
+    // K2.6: ชิปฟิลด์กำหนดเองต่อการ์ด (คิวรีเดียว กัน N+1) + ชื่อคอลัมน์ฟิลด์ของบอร์ดสำหรับหัวตาราง
+    fieldsOnCardForCards(ctx.tenantId, boardId, cardIds),
+    listShowOnCardFieldNames(ctx.tenantId, boardId),
   ]);
 
   const matchedAssigneeIds = Array.from(new Set(cardIds.flatMap((id) => assigneeIdsOfCard.get(id) ?? [])));
@@ -167,6 +173,7 @@ export async function listBoardTable(
       labels: labelsOfCard.get(raw.id) ?? [],
       links: [], // K3.1 ยังไม่มี — คอลัมน์ "เชื่อมระบบ" ว่างจนกว่าจะถึง WO นั้น (สัญญา K2.1)
       updatedAt: raw.updatedAt.toISOString(),
+      fieldsOnCard: fieldsOnCardByCard.get(raw.id) ?? [],
     };
   });
 
@@ -177,7 +184,7 @@ export async function listBoardTable(
   const start = (page - 1) * pageSize;
   const rows = sorted.slice(start, start + pageSize);
 
-  const result: BoardTableResult = { rows, total: sorted.length, page, pageSize };
+  const result: BoardTableResult = { rows, total: sorted.length, page, pageSize, customFieldColumns };
   if (opts.group) result.groups = groupRows(sorted, opts.group, columns);
   return result;
 }

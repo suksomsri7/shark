@@ -92,6 +92,8 @@ import type {
   BoardCardDto,
   BoardLabelDto,
   CardDetailDto,
+  CardFieldValueDto,
+  CustomFieldDto,
   KanbanActivityDto,
   KanbanAttachmentDto,
   KanbanChecklistDto,
@@ -103,6 +105,8 @@ import type {
 } from "./types";
 // K2.5 — มุมมองที่บันทึกไว้ (บริการอยู่ `views.ts` — สิทธิ์ 2 ชั้นตรวจในนั้นเอง ที่นี่แค่ตรวจสิทธิ์โมดูล)
 import { deleteView, saveView, updateView } from "./views";
+// K2.6 — ฟิลด์กำหนดเอง (บริการอยู่ `fields.ts` — บทบาทบอร์ด 2 ชั้นตรวจในนั้นเอง ที่นี่แค่ตรวจสิทธิ์โมดูล)
+import { createField, deleteField, reorderFields, setCardFieldValue, updateField } from "./fields";
 
 // ทุก action: requireTenant → เอา tenantId จาก session (ไม่เชื่อ client) + scope ด้วย systemId
 
@@ -1451,5 +1455,131 @@ export async function deleteViewAction(input: {
     return { ok: true };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ลบมุมมองไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+// ═══════════════════════════ K2.6: ฟิลด์กำหนดเอง ═══════════════════════════
+// นิยามฟิลด์ (สร้าง/แก้/ลบ/ลากเรียง) = ตั้งค่าบอร์ด (ADMIN — ตรวจจริงใน `fields.ts`)
+// ค่าฟิลด์ต่อการ์ด = หลังการ์ด (EDITOR ขึ้นไป — ตรวจจริงใน `fields.ts`)
+
+function fieldsSettingsPath(systemId: string, boardId: string) {
+  return `${boardPath(systemId, boardId)}/settings/fields`;
+}
+
+export async function createFieldAction(input: {
+  systemId: string;
+  boardId: string;
+  name: string;
+  type: string;
+  options?: unknown;
+  showOnCard?: boolean;
+}): Promise<{ ok: true; field: CustomFieldDto } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.boardId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const field = await createField(ctx, actor, input.boardId, {
+      name: input.name,
+      type: input.type,
+      options: input.options,
+      showOnCard: input.showOnCard,
+    });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    revalidatePath(fieldsSettingsPath(input.systemId, input.boardId));
+    return { ok: true, field };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "สร้างฟิลด์ไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+export async function updateFieldAction(input: {
+  systemId: string;
+  boardId: string;
+  fieldId: string;
+  name?: string;
+  options?: unknown;
+  showOnCard?: boolean;
+}): Promise<{ ok: true; field: CustomFieldDto } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.fieldId) return { ok: false, message: "ไม่พบฟิลด์นี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const field = await updateField(ctx, actor, input.fieldId, {
+      name: input.name,
+      options: input.options,
+      showOnCard: input.showOnCard,
+    });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    revalidatePath(fieldsSettingsPath(input.systemId, input.boardId));
+    return { ok: true, field };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "แก้ไขฟิลด์ไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+export async function deleteFieldAction(input: {
+  systemId: string;
+  boardId: string;
+  fieldId: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.fieldId) return { ok: false, message: "ไม่พบฟิลด์นี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    await deleteField(ctx, actor, input.fieldId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    revalidatePath(fieldsSettingsPath(input.systemId, input.boardId));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ลบฟิลด์ไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+export async function reorderFieldsAction(input: {
+  systemId: string;
+  boardId: string;
+  ids: string[];
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.boardId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    await reorderFields(ctx, actor, input.boardId, input.ids);
+    revalidatePath(fieldsSettingsPath(input.systemId, input.boardId));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "จัดลำดับฟิลด์ไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** ตั้งค่าฟิลด์ของการ์ด 1 ใบ (หลังการ์ด) — `value: null` = ล้างค่า · `type` บอก action ว่าต้องแปลง ISO string เป็นวันที่ไหม */
+export async function setCardFieldValueAction(input: {
+  systemId: string;
+  boardId: string;
+  cardId: string;
+  fieldId: string;
+  type: CustomFieldDto["type"];
+  value: string | number | boolean | null;
+}): Promise<{ ok: true; field: CardFieldValueDto } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId || !input.fieldId) return { ok: false, message: "ไม่พบฟิลด์นี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const value = input.value === null ? null : input.type === "DATE" ? new Date(input.value as string) : input.value;
+    const field = await setCardFieldValue(ctx, actor, input.cardId, input.fieldId, value);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    return { ok: true, field };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "บันทึกฟิลด์ไม่สำเร็จ ลองใหม่อีกครั้ง" };
   }
 }

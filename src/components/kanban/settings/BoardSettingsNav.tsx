@@ -12,7 +12,7 @@ const TAB_META: { key: BoardSettingsTab; label: string; icon: string; soon?: str
   { key: "general", label: "ทั่วไป", icon: "gear" },
   { key: "members", label: "สมาชิกและสิทธิ์", icon: "users" },
   { key: "labels", label: "ป้ายกำกับ", icon: "tag" },
-  { key: "fields", label: "ฟิลด์กำหนดเอง", icon: "list", soon: "K2.6" },
+  { key: "fields", label: "ฟิลด์กำหนดเอง", icon: "list" },
   { key: "views", label: "มุมมองที่บันทึกไว้", icon: "grid" },
   { key: "automation", label: "อัตโนมัติ", icon: "spark", soon: "K2.9" },
   { key: "archive", label: "คลังเก็บ", icon: "box" },

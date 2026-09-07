@@ -73,6 +73,7 @@ model KanbanBoard {
   stars   KanbanBoardStar[] // ดาวรายคน (K1.3)
   activities KanbanActivity[] // ประวัติกิจกรรม (K1.10)
   views   KanbanBoardView[] // มุมมองที่บันทึกไว้ (K2.5)
+  customFields KanbanCustomField[] // ฟิลด์กำหนดเอง (K2.6)
 
   @@index([tenantId, systemId, status])
   @@index([tenantId, systemId, unitId])
@@ -154,6 +155,9 @@ model KanbanCard {
 
   // ── K1.10 ──
   activities KanbanActivity[]
+
+  // ── K2.6 ──
+  customFieldValues KanbanCustomFieldValue[]
 
   @@index([tenantId, systemId, boardId, status])
   @@index([columnId, status, sortOrder])
@@ -481,4 +485,54 @@ model KanbanBoardView {
 
   @@index([boardId, scope])
   @@index([tenantId, systemId, ownerUserId])
+}
+
+// ───────────────────────── ฟิลด์กำหนดเอง (K2.6 · KANBAN-RUN §K2.6) ─────────────────────────
+// นิยามฟิลด์เป็น "ของบอร์ด" (เหมือนป้ายกำกับ) · ค่าเป็น "ของการ์ด" — 1 ฟิลด์เก็บค่าได้ชนิดเดียว
+// (คอลัมน์ value* แยกตาม type · อ่าน/เขียนคอลัมน์ที่ตรงชนิดเท่านั้น ตัวอื่นเป็น null เสมอ — ตรวจใน fields.ts)
+// ไม่มี `systemId`: บอร์ด/การ์ดต้นทางรู้ระบบของตัวเองอยู่แล้ว (เหตุผลเดียวกับ KanbanBoardMember/KanbanChecklist)
+enum KanbanCustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  CHECKBOX
+  SELECT
+}
+
+model KanbanCustomField {
+  id         String                @id @default(cuid())
+  tenantId   String
+  boardId    String
+  board      KanbanBoard           @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  name       String
+  type       KanbanCustomFieldType
+  // NUMBER: { unit?: string, decimals?: number } · SELECT: { choices: string[] } · TEXT/DATE/CHECKBOX: {}
+  options    Json                  @default("{}")
+  showOnCard Boolean               @default(false)
+  sortOrder  Int                   @default(0)
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  values KanbanCustomFieldValue[]
+
+  @@unique([boardId, name])
+  @@index([boardId, sortOrder])
+}
+
+model KanbanCustomFieldValue {
+  id          String            @id @default(cuid())
+  tenantId    String
+  cardId      String
+  card        KanbanCard        @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  fieldId     String
+  field       KanbanCustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  valueText   String?
+  valueNumber Decimal?          @db.Decimal(18, 4)
+  valueDate   DateTime?
+  valueBool   Boolean?
+  valueOption String?
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([cardId, fieldId])
+  @@index([fieldId])
 }

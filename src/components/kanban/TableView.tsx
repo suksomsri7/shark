@@ -44,6 +44,8 @@ export type TableViewData = {
   page: number;
   pageSize: number;
   groups?: TableGroupDto[];
+  /** K2.6: ชื่อฟิลด์กำหนดเองที่ `showOnCard=true` ของบอร์ด เรียงตาม sortOrder — 1 คอลัมน์ตารางต่อชื่อ */
+  customFieldColumns: string[];
 };
 
 // ── < 640px = มือถือ — `useSyncExternalStore` กัน hydration mismatch (แบบเดียวกับ K1.13 `BoardView.tsx`) ──
@@ -147,6 +149,8 @@ export function TableView({
 
   const columns = board.columns.map((c) => ({ id: c.id, name: c.name }));
   const firstColumnId = columns[0]?.id ?? null;
+  const customFieldColumns = table.customFieldColumns;
+  const baseColSpan = 9 + customFieldColumns.length;
 
   const patchRow = (id: string, patch: Partial<TableRowDto>) => {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -422,6 +426,11 @@ export function TableView({
                 <th style={cellStyle}>กำหนดส่ง</th>
                 <th style={cellStyle}>เช็คลิสต์</th>
                 <th style={cellStyle}>ป้ายกำกับ</th>
+                {customFieldColumns.map((name) => (
+                  <th key={name} data-testid="table-custom-field-column" style={cellStyle}>
+                    {name}
+                  </th>
+                ))}
                 <th style={cellStyle}>เชื่อมระบบ</th>
                 <th style={cellStyle}>แก้ไขล่าสุด</th>
               </tr>
@@ -437,6 +446,8 @@ export function TableView({
                       onToggleSelect={toggleSelect}
                       nowMs={nowMs}
                       columns={columns}
+                      customFieldColumns={customFieldColumns}
+                      colSpan={baseColSpan}
                       onEditTitle={editTitle}
                       onEditColumn={editColumn}
                       onEditDue={editDue}
@@ -460,6 +471,7 @@ export function TableView({
                         onToggleSelect={() => toggleSelect(r.id)}
                         nowMs={nowMs}
                         columns={columns}
+                        customFieldColumns={customFieldColumns}
                         onEditTitle={(t) => editTitle(r, t)}
                         onEditColumn={(c) => editColumn(r, c)}
                         onEditDue={(d) => editDue(r, d)}
@@ -474,6 +486,7 @@ export function TableView({
                         adding={addingIn === firstColumnId}
                         title={newTitle}
                         setTitle={setNewTitle}
+                        colSpan={baseColSpan}
                         onOpen={() => setAddingIn(firstColumnId)}
                         onSubmit={() => submitNewCard(firstColumnId)}
                       />
@@ -688,6 +701,8 @@ function TableGroupBlock({
   onToggleSelect,
   nowMs,
   columns,
+  customFieldColumns,
+  colSpan,
   onEditTitle,
   onEditColumn,
   onEditDue,
@@ -705,6 +720,10 @@ function TableGroupBlock({
   onToggleSelect: (id: string) => void;
   nowMs: number;
   columns: { id: string; name: string }[];
+  /** K2.6: ชื่อคอลัมน์ฟิลด์กำหนดเอง (เรียง sortOrder) — ส่งต่อให้ `TableRowView` เรนเดอร์ค่าให้ตรงคอลัมน์ */
+  customFieldColumns: string[];
+  /** K2.6: จำนวนคอลัมน์ทั้งหมดของตาราง (9 คงที่ + ฟิลด์กำหนดเอง) — ใช้กับ `colSpan` ของแถวหัวกลุ่ม/เพิ่มการ์ด */
+  colSpan: number;
   onEditTitle: (row: TableRowDto, title: string) => void;
   onEditColumn: (row: TableRowDto, columnId: string) => void;
   onEditDue: (row: TableRowDto, dueAt: string | null) => void;
@@ -721,7 +740,7 @@ function TableGroupBlock({
   return (
     <>
       <tr data-testid="table-group">
-        <td colSpan={9} style={{ padding: "8px 10px", fontSize: 12, fontWeight: 700, background: "var(--color-surface-2)", borderBottom: "1px solid var(--color-line)" }}>
+        <td colSpan={colSpan} style={{ padding: "8px 10px", fontSize: 12, fontWeight: 700, background: "var(--color-surface-2)", borderBottom: "1px solid var(--color-line)" }}>
           {group.label} <span style={{ fontWeight: 400, color: "var(--color-muted)" }}>({group.items.length})</span>
         </td>
       </tr>
@@ -734,6 +753,7 @@ function TableGroupBlock({
           onToggleSelect={() => onToggleSelect(r.id)}
           nowMs={nowMs}
           columns={columns}
+          customFieldColumns={customFieldColumns}
           onEditTitle={(t) => onEditTitle(r, t)}
           onEditColumn={(c) => onEditColumn(r, c)}
           onEditDue={(d) => onEditDue(r, d)}
@@ -748,6 +768,7 @@ function TableGroupBlock({
           adding={addingIn === addTargetColumnId}
           title={newTitle}
           setTitle={setNewTitle}
+          colSpan={colSpan}
           onOpen={() => onOpenAdd(addTargetColumnId)}
           onSubmit={() => onSubmitNewCard(addTargetColumnId)}
         />
@@ -764,6 +785,7 @@ function AddCardRow({
   adding,
   title,
   setTitle,
+  colSpan,
   onOpen,
   onSubmit,
 }: {
@@ -772,13 +794,15 @@ function AddCardRow({
   adding: boolean;
   title: string;
   setTitle: (v: string) => void;
+  /** K2.6: 9 คงที่ + จำนวนคอลัมน์ฟิลด์กำหนดเอง */
+  colSpan: number;
   onOpen: () => void;
   onSubmit: () => void;
 }) {
   if (adding) {
     return (
       <tr>
-        <td colSpan={9} style={{ ...cellStyle, background: "var(--color-surface)" }}>
+        <td colSpan={colSpan} style={{ ...cellStyle, background: "var(--color-surface)" }}>
           <input
             autoFocus
             value={title}
@@ -798,7 +822,7 @@ function AddCardRow({
   }
   return (
     <tr>
-      <td colSpan={9} style={{ ...cellStyle, color: "var(--color-muted)" }}>
+      <td colSpan={colSpan} style={{ ...cellStyle, color: "var(--color-muted)" }}>
         <button type="button" onClick={onOpen} className="inline-flex items-center gap-1.5">
           <KanbanIcon name="plus" size="xs" />
           เพิ่มการ์ดใหม่ในคอลัมน์ {columnName}
@@ -817,6 +841,7 @@ function TableRowView({
   onToggleSelect,
   nowMs,
   columns,
+  customFieldColumns,
   onEditTitle,
   onEditColumn,
   onEditDue,
@@ -829,6 +854,8 @@ function TableRowView({
   onToggleSelect: () => void;
   nowMs: number;
   columns: { id: string; name: string }[];
+  /** K2.6: ชื่อคอลัมน์ฟิลด์กำหนดเอง (เรียง sortOrder) — จับคู่กับ `row.fieldsOnCard` ด้วยชื่อ */
+  customFieldColumns: string[];
   onEditTitle: (title: string) => void;
   onEditColumn: (columnId: string) => void;
   onEditDue: (dueAt: string | null) => void;
@@ -1003,6 +1030,12 @@ function TableRowView({
           )}
         </span>
       </td>
+
+      {customFieldColumns.map((name) => (
+        <td key={name} data-testid="table-custom-field-cell" style={cellStyle}>
+          {row.fieldsOnCard.find((f) => f.name === name)?.display ?? <span style={{ color: "var(--color-muted)" }}>—</span>}
+        </td>
+      ))}
 
       <td style={cellStyle}>
         {row.links.length > 0 ? (

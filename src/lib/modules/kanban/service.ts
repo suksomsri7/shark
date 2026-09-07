@@ -8,12 +8,14 @@ import { publishBoardSignal, boardSignal } from "./realtime";
 import { applyCardLabelNames } from "./labels";
 import { syncSingleAssignee } from "./cards";
 import { notifyCardAssigned } from "./notify";
+import { fieldsOnCardForCards } from "./fields";
 import { boardRole, KanbanNotFoundError, visibleBoardsWhere, type BoardRole } from "./access";
 import type {
   BoardCardDto,
   BoardLabelDto,
   BoardPersonDto,
   BoardViewDto,
+  FieldOnCardDto,
   KanbanActor,
   KanbanCtx,
   KanbanTagColor,
@@ -70,6 +72,9 @@ export type { BoardCalendarDto, CalCardDto, CalDayDto, CalExternalDto } from "./
 export { boardSummary } from "./summary";
 export type { BoardSummaryInput } from "./summary";
 export type { BoardSummaryDto, SummaryLabelTileDto, SummaryThroughputWeekDto, SummaryTileDto } from "./types";
+// K2.6: ฟิลด์กำหนดเอง — ผู้เรียกนอกโมดูล (หน้า/action) ใช้ผ่าน facade เดียวกัน
+export { createField, deleteField, getCardFieldValues, listFields, reorderFields, setCardFieldValue, updateField } from "./fields";
+export type { CardFieldValueDto, CustomFieldDto, CustomFieldOptions, FieldOnCardDto, KanbanCustomFieldType } from "./types";
 
 // แจ้งเตือนเมื่อมอบหมายงาน — ย้ายตรรกะไป `notify.ts` ใน K1.2 (cards.ts ใช้ร่วมโดยไม่เกิด import วงกลม)
 // ชื่อเดิมคงไว้เป็น alias ภายในไฟล์นี้ เพื่อไม่ต้องแก้จุดเรียกเดิม
@@ -728,7 +733,7 @@ export async function getBoardView(
   const board = await getBoardFor(ctx, actor, boardId);
   const cardIds = board.columns.flatMap((c) => c.cards.map((k) => k.id));
 
-  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows, commentCountRows, attachmentCountRows] = await Promise.all([
+  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows, commentCountRows, attachmentCountRows, fieldsOnCardByCard] = await Promise.all([
     prisma.kanbanLabel.findMany({
       where: { boardId: board.id, tenantId: ctx.tenantId, systemId: ctx.systemId },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -794,6 +799,8 @@ export async function getBoardView(
           GROUP BY a."cardId"
         `
       : Promise.resolve([] as { cardId: string; total: bigint }[]),
+    // K2.6: ชิปฟิลด์กำหนดเองของทุกการ์ด (เฉพาะ showOnCard=true ที่มีค่าแล้ว) — คิวรีเดียว (กัน N+1)
+    fieldsOnCardForCards(ctx.tenantId, board.id, cardIds),
   ]);
   const checklistOfCard = new Map(
     checklistCountRows.map((r) => [r.cardId, { done: Number(r.done), total: Number(r.total) }]),
@@ -867,6 +874,7 @@ export async function getBoardView(
             count: attachmentsOfCard.get(card.id) ?? 0,
             coverUrl: card.coverFileId ? (coverUrlOfFile.get(card.coverFileId) ?? null) : null,
           },
+          fieldsOnCardByCard.get(card.id) ?? [],
         ),
       ),
     })),
@@ -881,6 +889,7 @@ export function toBoardCardDto(
   checklist?: { done: number; total: number },
   commentCount?: number,
   attachment?: { count: number; coverUrl: string | null },
+  fieldsOnCard?: FieldOnCardDto[],
 ): BoardCardDto {
   return {
     id: card.id,
@@ -901,6 +910,8 @@ export function toBoardCardDto(
     // K1.9: ปกการ์ดของจริง (ค่าเริ่มต้น null สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่ตั้งปก)
     coverUrl: attachment?.coverUrl ?? null,
     sourceType: card.sourceType,
+    // K2.6: ชิปฟิลด์กำหนดเอง (ค่าเริ่มต้น [] สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่มีฟิลด์ที่ตั้ง showOnCard)
+    fieldsOnCard: fieldsOnCard ?? [],
   };
 }
 

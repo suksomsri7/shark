@@ -13,6 +13,7 @@ import { KanbanIcon } from "./KanbanIcon";
 import { Avatar, dueBadgeFrom, tagColorVar } from "./Card";
 import { Attachments } from "./Attachments";
 import { Checklist, checklistBadgeOf } from "./Checklist";
+import { CustomFields } from "./CustomFields";
 import { Timeline } from "./Timeline";
 import { ThaiDatePicker } from "./ThaiDatePicker";
 import {
@@ -31,6 +32,7 @@ import type {
   BoardCardDto,
   BoardLabelDto,
   BoardPersonDto,
+  CardFieldValueDto,
   KanbanAttachmentDto,
   KanbanChecklistDto,
   KanbanCommentDto,
@@ -67,6 +69,7 @@ type Fields = {
   checklists: KanbanChecklistDto[];
   comments: KanbanCommentDto[];
   attachments: KanbanAttachmentDto[];
+  customFields: CardFieldValueDto[];
 };
 
 export type CardBackHandlers = {
@@ -164,6 +167,7 @@ export function CardBack({
         checklists: res.detail.checklists,
         comments: res.detail.comments,
         attachments: res.detail.attachments,
+        customFields: res.detail.customFields,
       });
     });
     return () => {
@@ -390,6 +394,21 @@ export function CardBack({
       setFields((f) => (f ? { ...f, attachments } : f));
       const cover = attachments.find((a) => a.isCover);
       handlers.onPatch(card.id, { attachmentCount: attachments.length, coverUrl: cover?.url ?? null });
+    },
+    [card.id, handlers],
+  );
+
+  // ───────────────────────── ฟิลด์กำหนดเอง (K2.6) ─────────────────────────
+
+  const onCustomFieldsChange = useCallback(
+    (customFields: CardFieldValueDto[]) => {
+      setFields((f) => (f ? { ...f, customFields } : f));
+      // ชิปบนตัวการ์ด = เฉพาะ showOnCard ที่มีค่าแล้ว เรียงตาม sortOrder (ตรงกับ service.ts/table.ts)
+      const fieldsOnCard = customFields
+        .filter((cf) => cf.showOnCard && cf.value !== null)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((cf) => ({ name: cf.name, display: cf.display }));
+      handlers.onPatch(card.id, { fieldsOnCard });
     },
     [card.id, handlers],
   );
@@ -829,7 +848,16 @@ export function CardBack({
               </RailGroup>
 
               <RailGroup title="ฟิลด์กำหนดเอง">
-                <p style={{ fontSize: 11.5, color: "var(--color-muted)" }}>เร็ว ๆ นี้</p>
+                <CustomFields
+                  systemId={systemId}
+                  boardId={boardId}
+                  cardId={card.id}
+                  editable={editable}
+                  fields={fields.customFields}
+                  nowMs={nowMs}
+                  onChange={onCustomFieldsChange}
+                  onToast={toast}
+                />
               </RailGroup>
 
               {canEdit && (

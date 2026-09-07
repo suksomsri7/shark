@@ -231,6 +231,27 @@ export function Card({
           ))}
         </div>
       )}
+      {card.fieldsOnCard.length > 0 && (
+        <div className="flex flex-wrap" style={{ gap: 4 }}>
+          {card.fieldsOnCard.map((f) => (
+            <span
+              key={f.name}
+              data-testid="card-field"
+              className="inline-flex items-center"
+              style={{
+                height: 18,
+                padding: "0 6px",
+                borderRadius: 5,
+                fontSize: 10.5,
+                color: "var(--color-ink-soft)",
+                background: "var(--color-surface-2)",
+              }}
+            >
+              {f.name}: {f.display}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex items-center" style={{ gap: 9, fontSize: 11, color: "var(--color-muted)" }}>
         {due && (
           <span

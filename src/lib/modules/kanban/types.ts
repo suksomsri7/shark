@@ -69,6 +69,8 @@ export type BoardCardDto = {
   coverUrl: string | null;
   /** ที่มาของการ์ด (ชิปเล็กหัวการ์ด) — MANUAL = ไม่โชว์ชิป */
   sourceType: "MANUAL" | "TEMPLATE" | "CHAT" | "FORM" | "EMAIL" | "AUTOMATION" | "AI";
+  /** K2.6: ฟิลด์กำหนดเองที่ `showOnCard=true` และการ์ดใบนี้มีค่าแล้ว (เรียงตาม sortOrder ของฟิลด์) */
+  fieldsOnCard: FieldOnCardDto[];
 };
 
 export type BoardColumnDto = {
@@ -100,6 +102,8 @@ export type CardDetailDto = {
   comments: KanbanCommentDto[];
   /** K1.9: ไฟล์แนบทั้งหมดของการ์ด (ไม่รวมที่ถูกลบ) — เรียงเก่า→ใหม่ */
   attachments: KanbanAttachmentDto[];
+  /** K2.6: ค่าฟิลด์กำหนดเอง — ทุกฟิลด์ของบอร์ด (ไม่ใช่แค่ที่กรอกแล้ว) เรียงตาม sortOrder */
+  customFields: CardFieldValueDto[];
 };
 
 // ───────────────────────── K1.9: ไฟล์แนบ + ปกการ์ด ─────────────────────────
@@ -424,6 +428,8 @@ export type TableRowDto = {
   links: TableCardLinkDto[];
   /** ISO 8601 (UTC) — ใช้ทั้ง sort=updated และคอลัมน์ "แก้ไขล่าสุด" ของ CSV */
   updatedAt: string;
+  /** K2.6: ฟิลด์กำหนดเองที่ `showOnCard=true` และการ์ดแถวนี้มีค่าแล้ว — คู่กับ `BoardTableDto.customFieldColumns` */
+  fieldsOnCard: FieldOnCardDto[];
 };
 
 /** กลุ่มของ `group=column|assignee|label` — `rowIds` อ้าง `TableRowDto.id` (การ์ดหลายผู้รับผิดชอบ/หลายป้าย อยู่ได้หลายกลุ่ม) */
@@ -435,6 +441,8 @@ export type BoardTableDto = {
   page: number;
   pageSize: number;
   groups?: TableGroupDto[];
+  /** K2.6: ชื่อฟิลด์กำหนดเองที่ `showOnCard=true` ของบอร์ด เรียงตาม sortOrder — 1 คอลัมน์ตารางต่อชื่อ */
+  customFieldColumns: string[];
 };
 
 // ───────────────────────── K2.2 — มุมมองปฏิทิน (calendar.ts) ─────────────────────────
@@ -544,3 +552,42 @@ export type SavedViewDto = {
   createdAt: string;
   updatedAt: string;
 };
+
+// ───────────────────────── K2.6 — ฟิลด์กำหนดเอง (fields.ts) ─────────────────────────
+// DTO บริสุทธิ์ (ไม่มี Date/Prisma model/Decimal) — `CustomFields.tsx`/`CustomFieldsSettings.tsx`/
+// `Card.tsx`/`TableView.tsx` (client) ต้อง `import type` ได้โดยไม่ลาก `db.ts` → `pg` เข้าบันเดิลฝั่ง browser
+// ด้วยเหตุผลเดียวกับ K1.11/…/K2.5 — `fields.ts` (server-only: แตะ prisma) `export type { ... } from "./types"`
+// ให้ผู้เรียกยัง `import type { CustomFieldDto } from "@/lib/modules/kanban/fields"` ได้เหมือนเดิม
+
+/** ตรงกับ enum `KanbanCustomFieldType` ใน Prisma — เขียนซ้ำที่นี่ให้ฝั่ง client ไม่ต้องรู้จัก prisma */
+export type KanbanCustomFieldType = "TEXT" | "NUMBER" | "DATE" | "CHECKBOX" | "SELECT";
+
+/** `NUMBER`: หน่วย + ทศนิยม (ไม่ระบุ = เดาจากค่า) · `SELECT`: รายการตัวเลือก · `TEXT`/`DATE`/`CHECKBOX`: ว่าง */
+export type CustomFieldOptions = { unit?: string; decimals?: number; choices?: string[] };
+
+/** นิยามฟิลด์ 1 ตัวของบอร์ด (ตั้งค่าบอร์ด › ฟิลด์กำหนดเอง) */
+export type CustomFieldDto = {
+  id: string;
+  boardId: string;
+  name: string;
+  type: KanbanCustomFieldType;
+  options: CustomFieldOptions;
+  showOnCard: boolean;
+  sortOrder: number;
+};
+
+/** ค่าฟิลด์ 1 ตัวของการ์ดใบเดียว (หลังการ์ด) — `value` เป็นชนิด JS ดิบ (number/string/boolean/ISO string/null)
+ * `display` คือข้อความไทยพร้อมใช้ (คั่นหลักพัน/วันที่ พ.ศ./✓ หรือ —) — คำนวณที่ server เสมอ ไม่คำนวณซ้ำฝั่งจอ */
+export type CardFieldValueDto = {
+  fieldId: string;
+  name: string;
+  type: KanbanCustomFieldType;
+  options: CustomFieldOptions;
+  showOnCard: boolean;
+  sortOrder: number;
+  value: string | number | boolean | null;
+  display: string;
+};
+
+/** ชิปฟิลด์บนตัวการ์ด/แถวตาราง — เฉพาะฟิลด์ `showOnCard=true` ที่การ์ดมีค่าแล้ว */
+export type FieldOnCardDto = { name: string; display: string };
