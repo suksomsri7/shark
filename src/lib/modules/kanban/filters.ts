@@ -305,3 +305,57 @@ export type SearchCardsResult = {
   /** จำนวนการ์ดทั้งหมดที่ตรงตัวกรอง (ไม่รวม cursor) — ข้ามบอร์ดที่ actor มองเห็นเท่านั้น */
   total: number;
 };
+
+// ───────────────────────── K2.5 — บรรยายมุมมองที่บันทึกไว้ (บริสุทธิ์) ─────────────────────────
+// ใช้ร่วมกันระหว่าง `SavedViewsMenu.tsx` (dropdown หัวบอร์ด) และ `SavedViewsSettings.tsx` (ตั้งค่าบอร์ด)
+// อยู่ที่นี่ (ไม่ใช่ `views.ts` ที่แตะ prisma) ด้วยเหตุผลเดียวกับฟังก์ชันอื่นในไฟล์นี้ — ทั้งสองไฟล์เป็น
+// client component ต้อง import ได้โดยไม่ลาก `db.ts` → `pg` เข้าบันเดิลฝั่ง browser
+import type { ViewConfig } from "./types";
+
+const VIEW_LABEL_TH: Record<ViewConfig["view"], string> = {
+  board: "บอร์ด",
+  table: "ตาราง",
+  calendar: "ปฏิทิน",
+  summary: "สรุป",
+  timeline: "ไทม์ไลน์",
+};
+
+const DUE_LABEL_TH: Record<DueBucket, string> = { overdue: "เลยกำหนด", today: "วันนี้", week: "สัปดาห์นี้", none: "ไม่กำหนด" };
+
+const SORT_LABEL_TH: Record<string, string> = { due: "วันที่", created: "สร้างล่าสุด", updated: "แก้ไขล่าสุด", position: "ลำดับบนบอร์ด" };
+
+/** คำบรรยายเงื่อนไขของมุมมอง (ภาพ 10) — เช่น "ตาราง · กรอง: เลยกำหนด · เรียงตามวันที่" */
+export function describeSavedViewConfig(config: ViewConfig): string {
+  const parts: string[] = [VIEW_LABEL_TH[config.view] ?? config.view];
+  const f = config.filters ?? {};
+  const filterBits: string[] = [];
+  if (f.due) filterBits.push(DUE_LABEL_TH[f.due] ?? f.due);
+  if (f.label) filterBits.push(`ป้าย=${f.label}`);
+  if (f.assignee === "me") filterBits.push("ผู้รับผิดชอบ=ฉัน");
+  else if (f.assignee) filterBits.push("ผู้รับผิดชอบ=เลือกไว้");
+  if (f.status === "done") filterBits.push("เสร็จแล้ว");
+  else if (f.status === "open") filterBits.push("ยังไม่เสร็จ");
+  if (f.column) filterBits.push("คอลัมน์=เลือกไว้");
+  if (f.q) filterBits.push(`ค้นหา "${f.q}"`);
+  if (filterBits.length > 0) parts.push(`กรอง: ${filterBits.join(", ")}`);
+  if (config.sort) parts.push(`เรียงตาม${SORT_LABEL_TH[config.sort] ?? config.sort}`);
+  return parts.join(" · ");
+}
+
+/** href ของมุมมองที่บันทึกไว้ — ตรงกับ `buildHref` ของ `views.ts` (server) เป๊ะ (คำนวณฝั่ง client จาก
+ * config ที่มีอยู่แล้วในมือ กันไม่ต้องยิง server action ทุกครั้งที่กดแถวในดรอปดาวน์) */
+export function hrefForSavedView(pathname: string, viewId: string, config: ViewConfig): string {
+  const params = new URLSearchParams();
+  if (config.view !== "board") params.set("view", config.view);
+  const f = config.filters ?? {};
+  if (f.assignee) params.set("assignee", f.assignee);
+  if (f.label) params.set("label", f.label);
+  if (f.due) params.set("due", f.due);
+  if (f.status) params.set("status", f.status);
+  if (f.q) params.set("q", f.q);
+  if (f.column) params.set("column", f.column);
+  if (config.sort) params.set("sort", config.sort);
+  if (config.group) params.set("group", config.group);
+  params.set("savedView", viewId);
+  return `${pathname}?${params.toString()}`;
+}

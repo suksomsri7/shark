@@ -10,9 +10,11 @@ import { KanbanIcon } from "./KanbanIcon";
 import { Avatar } from "./Card";
 import { SearchPalette } from "./SearchPalette";
 import { BoardActivityPanel } from "./Timeline";
+// K2.5 — dropdown "มุมมองที่บันทึกไว้" + "บันทึกมุมมองนี้" (testid `saved-views`)
+import { SavedViewsMenu } from "./SavedViewsMenu";
 import { saveBoardAsTemplateAction } from "@/lib/modules/kanban/actions";
 import type { BoardFilters, DueBucket } from "@/lib/modules/kanban/filters";
-import type { BoardViewDto } from "@/lib/modules/kanban/types";
+import type { BoardViewDto, SavedViewDto } from "@/lib/modules/kanban/types";
 
 const DUE_OPTIONS: { value: DueBucket; label: string }[] = [
   { value: "overdue", label: "เลยกำหนด" },
@@ -59,6 +61,7 @@ export function BoardHeader({
   onToggleStar,
   onRename,
   filters,
+  savedViews = [],
 }: {
   board: BoardViewDto;
   starred: boolean;
@@ -66,6 +69,8 @@ export function BoardHeader({
   onRename: (name: string) => void;
   /** K1.11 — ตัวกรองปัจจุบันของบอร์ด (มาจาก URL) ใช้แค่นับ pill ของปุ่ม "ตัวกรอง" + ทำ toggle ในเมนูเร็ว */
   filters: BoardFilters;
+  /** K2.5 — มุมมองที่บันทึกไว้ของบอร์ดนี้ (ทั้งทีม + ของตัวเอง — `page.tsx` โหลดผ่าน `listViews` มาให้แล้ว) */
+  savedViews?: SavedViewDto[];
 }) {
   const [renaming, setRenaming] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -118,7 +123,7 @@ export function BoardHeader({
   return (
     <header
       data-testid="board-header"
-      className="flex flex-none items-center overflow-x-auto"
+      className="flex flex-none items-center overflow-x-auto lg:overflow-visible"
       style={{
         gap: 9,
         padding: "10px 20px",
@@ -304,6 +309,9 @@ export function BoardHeader({
           </>
         )}
       </span>
+      {/* K2.5 — dropdown "มุมมองที่บันทึกไว้" + "บันทึกมุมมองนี้" */}
+      <SavedViewsMenu systemId={board.systemId} boardId={board.id} isAdmin={isAdmin} viewerUserId={board.viewerUserId} views={savedViews} />
+
       <button type="button" disabled title="เร็ว ๆ นี้" className="hidden items-center lg:flex" style={{ ...ghostBtn, gap: 7, color: "var(--color-muted)" }}>
         <KanbanIcon name="spark" size="sm" />
         อัตโนมัติ
@@ -398,9 +406,18 @@ export function BoardHeader({
                 <KanbanIcon name="box" size="xs" />
                 คลังเก็บ
               </Link>
-              <span className="px-2 py-2" style={{ color: "var(--color-muted)" }}>
-                ตั้งค่าบอร์ด · ป้ายกำกับ — เร็ว ๆ นี้
-              </span>
+              {/* K2.5 — โครงหน้าตั้งค่าบอร์ด 7 แท็บ (ภาพ 10) — ADMIN เท่านั้น (หน้าเองก็ 404 ให้คนอื่น) */}
+              {isAdmin && (
+                <Link
+                  href={`/app/sys/${board.systemId}/kanban/b/${board.id}/settings/general`}
+                  data-testid="board-settings-link"
+                  className="flex items-center gap-2 rounded-lg px-2 py-2"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <KanbanIcon name="gear" size="xs" />
+                  ตั้งค่าบอร์ด
+                </Link>
+              )}
             </div>
           </>
         )}

@@ -230,6 +230,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   KanbanActivity: tenant,
   // K1.13 — undo token (ปัดเสร็จ/เก็บบนมือถือ) มี tenantId+systemId เหมือน KanbanBoard/Card
   KanbanUndoToken: sys(),
+  // K2.5 — มุมมองที่บันทึกไว้ · มี tenantId+systemId เสมอ (boardId เป็น null ได้จาก K3.8 แต่ไม่กระทบแกน scope)
+  KanbanBoardView: sys(),
   // เทมเพลตบอร์ด (K1.12) — tenantId เป็น null ได้ (แพลตฟอร์ม) ⇒ แกน global ไม่ใช่ tenant
   // (ผิดจาก join table อื่นข้างบน: ตารางนี้มีทั้งแถวไม่ผูก tenant และแถวผูก tenant ปนกัน
   // ถ้าลงเป็น tenant แล้ว tenantDb() ถูกเรียกวันหน้า จะกรอง tenantId=ปัจจุบันทับ WHERE เดิม

@@ -6,6 +6,8 @@ import type { TableGroupBy, TableSort } from "@/lib/modules/kanban/service";
 import { boardFiltersFromParams } from "@/lib/modules/kanban/search";
 // K1.14 — ปุ่มลัดปิดได้รายคน (แบบ §5.6) → อ่านค่าที่นี่แล้วส่งลงเป็น prop (client ไม่ต้องยิงถามเอง)
 import { getUserPreferences } from "@/lib/modules/kanban/preferences";
+// K2.5 — มุมมองที่บันทึกไว้: รายการ (dropdown ในหัวบอร์ด) + โหลด `?savedView=` เป็นพารามิเตอร์จริง
+import { applyView, listViews } from "@/lib/modules/kanban/views";
 import { BoardView } from "@/components/kanban/BoardView";
 // K2.1 — มุมมองตาราง `?view=table` (แท็บใน BoardHeader)
 import { TableView } from "@/components/kanban/TableView";
@@ -54,9 +56,11 @@ export default async function KanbanBoardPage({
     month?: string;
     mode?: string;
     ext?: string;
+    // K2.5 — โหลดมุมมองที่บันทึกไว้ (§2.3) · merge ด้านล่าง: พารามิเตอร์ที่ผู้ใช้ส่งมาเอง "ทับ" ค่าจาก config
+    savedView?: string;
   }>;
 }) {
-  const [{ id, boardId }, query] = await Promise.all([params, searchParams]);
+  const [{ id, boardId }, rawQuery] = await Promise.all([params, searchParams]);
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
 
@@ -72,6 +76,29 @@ export default async function KanbanBoardPage({
     throw e;
   });
   if (!board) notFound();
+
+  // K2.5 — `?savedView=` โหลด config แล้ว "ใช้เป็นพารามิเตอร์จริง": เฉพาะแกนที่ผู้ใช้ **ไม่ได้** ระบุเอง
+  // ใน URL จึงรับค่าจากมุมมองที่บันทึกไว้ (พารามิเตอร์ที่ผู้ใช้ส่งมาทับ config เสมอ ตามสัญญา §K2.5)
+  // มุมมองถูกลบ/ไม่มีสิทธิ์เห็นแล้ว → เพิกเฉยเงียบ ๆ ใช้ URL ตามปกติ (ไม่ทำทั้งหน้าเด้ง 404 เพราะลิงก์เก่า)
+  let query = rawQuery;
+  if (rawQuery.savedView) {
+    const applied = await applyView(ctx, actor, rawQuery.savedView).catch(() => null);
+    if (applied) {
+      query = {
+        ...rawQuery,
+        view: rawQuery.view ?? (applied.view !== "board" ? applied.view : undefined),
+        assignee: rawQuery.assignee ?? applied.filters.assignee,
+        label: rawQuery.label ?? applied.filters.label,
+        due: rawQuery.due ?? applied.filters.due,
+        status: rawQuery.status ?? applied.filters.status,
+        q: rawQuery.q ?? applied.filters.q,
+        column: rawQuery.column ?? applied.filters.column,
+        sort: rawQuery.sort ?? applied.sort,
+        group: rawQuery.group ?? applied.group,
+      };
+    }
+  }
+  const savedViews = await listViews(ctx, actor, boardId).catch(() => []);
 
   const filters = boardFiltersFromParams(query);
   const view =
@@ -92,12 +119,12 @@ export default async function KanbanBoardPage({
     const to = new Date(monthEndMs + 6 * DAY_MS);
     const data = await listBoardCalendar(ctx, actor, boardId, { from, to, now: new Date(board.now), filters, includeExternal: ext });
     const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-    return <CalendarView board={board} data={data} filters={filters} month={monthKey} mode={mode} ext={ext} />;
+    return <CalendarView board={board} data={data} filters={filters} month={monthKey} mode={mode} ext={ext} savedViews={savedViews} />;
   }
 
   if (view === "summary") {
     const data = await boardSummary(ctx, actor, boardId, { now: new Date(board.now), filters });
-    return <SummaryView board={board} data={data} filters={filters} />;
+    return <SummaryView board={board} data={data} filters={filters} savedViews={savedViews} />;
   }
 
   if (view === "table") {
@@ -106,7 +133,7 @@ export default async function KanbanBoardPage({
     const page = Math.max(1, parseInt(query.page ?? "1", 10) || 1);
     // จัดกลุ่มแล้วโชว์ครบทุกใบต่อกลุ่ม ไม่ตัดหน้า (แบ่งหน้าไม่มีความหมายเมื่อดูเป็นกลุ่ม) — ยกเว้นบอร์ดใหญ่ผิดปกติ
     const table = await listBoardTable(ctx, actor, boardId, { now: new Date(board.now), filters, group, sort, page, ...(group ? { pageSize: 2000 } : {}) });
-    return <TableView board={board} table={table} filters={filters} group={group} sort={sort} page={page} />;
+    return <TableView board={board} table={table} filters={filters} group={group} sort={sort} page={page} savedViews={savedViews} />;
   }
 
   const prefs = await getUserPreferences(auth.user.id);
@@ -116,6 +143,7 @@ export default async function KanbanBoardPage({
       initialCardId={query.card ?? null}
       filters={filters}
       shortcutsEnabled={prefs.kanbanShortcuts}
+      savedViews={savedViews}
     />
   );
 }

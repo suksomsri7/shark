@@ -60,6 +60,23 @@ if (WO === "1.9") {
 }
 
 const SPECS: Record<string, Spec[]> = {
+  // Fable 7 ก.ย. — หัวบอร์ด: dropdown ต้องไม่ถูก overflow ของ <header> ครอบตัด (บั๊กที่ K2.5 พบ · แก้ด้วย lg:overflow-visible)
+  "hdr": [
+    {
+      name: "board-menu-open",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      onlyDevice: "desktop",
+      note: "เปิดเมนู ⋯ ของหัวบอร์ด — ต้องเห็นรายการเมนู",
+      steps: [{ waitFor: "[aria-label=\"เมนูบอร์ด\"]" }, { click: "[aria-label=\"เมนูบอร์ด\"]" }, { wait: 400 }],
+    },
+    {
+      name: "filter-panel-open",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      onlyDevice: "desktop",
+      note: "เปิดแผงตัวกรอง — ต้องเห็นแผง",
+      steps: [{ waitFor: "[data-testid=filter-button]" }, { click: "[data-testid=filter-button]" }, { wait: 400 }],
+    },
+  ],
   // K1.5 — หน้าบอร์ดใหม่ + ลากวาง (เทียบภาพ 02)
   "1.5": [
     { name: "boards-home", path: `/app/sys/${SYS}/kanban/boards`, note: "หน้ารวมบอร์ดปัจจุบัน (ยังไม่ใช่แบบใหม่จนกว่า K1.12)" },
@@ -446,6 +463,48 @@ const SPECS: Record<string, Spec[]> = {
       expect: ["[data-testid=summary-view]"],
     },
   ],
+  // K2.5 — มุมมองที่บันทึกไว้ (ไม่มี mockup เฉพาะ — ใช้ตัวอย่างประโยคจาก 10-board-settings.png:
+  // "ตาราง · กรอง: เลยกำหนด · เรียงตามวันที่") — มุมมอง "ทั้งทีม" ถูกสร้างไว้แล้วก่อนถ่าย (ผ่าน `views.saveView`
+  // ตรง ๆ ไม่ผ่านฟอร์ม — กันปัญหา revalidatePath ของ server action สั่งรีเฟรชหน้าแล้ว state dropdown ปิด
+  // เงียบ ๆ ระหว่างที่ puppeteer กำลังจะกดปุ่มเดิมซ้ำ) ดู KB25 ด้านล่าง · ลบด้วย id ที่จำไว้ใน finally
+  "2.5": [
+    {
+      name: "saved-views-dropdown",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      onlyDevice: "desktop",
+      note: "เปิด ▾มุมมอง — เห็นมุมมอง 'ทั้งทีม' ที่เตรียมไว้ + คำบรรยายเงื่อนไข + ปุ่ม 'บันทึกมุมมองนี้'",
+      expect: ["[data-testid=saved-views-list]", "[data-testid=saved-view-item]"],
+      steps: [
+        { waitFor: "[data-testid=board-header]" },
+        { click: "[data-testid=saved-views]" },
+        { waitFor: "[data-testid=saved-view-item]" },
+        { wait: 300 },
+      ],
+    },
+    {
+      name: "saved-view-selected-changes-url",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      onlyDevice: "desktop",
+      note: "โหลดบอร์ดเปล่า (ไม่มีตัวกรอง) → เปิดดรอปดาวน์ → กดมุมมองที่เตรียมไว้ → ต้องเด้งเป็นมุมมองตาราง+ตัวกรองเลยกำหนดทันที (ตาม §2.3)",
+      expect: ["[data-testid=table-view]"],
+      steps: [
+        { waitFor: "[data-testid=board-header]" },
+        { click: "[data-testid=saved-views]" },
+        { waitFor: "[data-testid=saved-view-item]" },
+        { click: "[data-testid=saved-view-item]" },
+        { waitFor: "[data-testid=table-view]", timeoutMs: 8000 },
+        { wait: 300 },
+      ],
+    },
+    {
+      name: "board-settings-views",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}/settings/views`,
+      onlyDevice: "desktop",
+      note: "ตั้งค่าบอร์ด › มุมมองที่บันทึกไว้ (ภาพ 10): รายการ + ป้ายทั้งทีม/ส่วนตัว + คำบรรยายเงื่อนไข",
+      expect: ["[data-testid=board-settings-nav]", "[data-testid=saved-views-settings]"],
+      steps: [{ waitFor: "[data-testid=saved-views-settings]" }, { wait: 300 }],
+    },
+  ],
 };
 const specs: Spec[] = WO === "path" ? [{ name: "custom", path: argv[1]! }] : (SPECS[WO] ?? []);
 if (specs.length === 0) { console.error(`❌ ไม่มี spec ของ WO ${WO}`); process.exit(2); }
@@ -601,6 +660,38 @@ if (WO === "2.2") {
   console.log(`🧪 เตรียม K2.2: จำการ์ดแรกในถาด 'ยังไม่กำหนดวัน' ของบอร์ดป่าตอง ${KB22.cardId || "(ไม่พบ)"} ไว้คืน`);
 }
 
+// ── K2.5: สร้างมุมมอง "ทั้งทีม" จริงผ่าน `views.saveView` ตรง ๆ ก่อนเริ่มถ่าย (ไม่ใช่ผ่านฟอร์มในหน้าเว็บ)
+//    เหตุผล: `saveViewAction` เรียก `revalidatePath` ⇒ เบราว์เซอร์รีเฟรชหน้าเดิมหลังบันทึกไม่กี่ร้อย ms
+//    ซึ่งชนกับจังหวะที่ puppeteer กด "มุมมอง" ซ้ำเพื่อเปิดดรอปดาวน์อีกครั้ง (state `open` ของ
+//    `SavedViewsMenu` โดน remount กลับเป็น false เงียบ ๆ พอดีตอนจะถ่ายภาพ — เจอจริงตอนรันรอบแรก
+//    ภาพออกมาเป็นบอร์ดเฉย ๆ ไม่มีดรอปดาวน์ค้างอยู่) ⇒ เตรียมข้อมูลผ่าน service แล้วให้ทุกสเปคเป็นแค่
+//    "อ่าน/นำทาง" ล้วน ไม่มีการ mutate ระหว่างสเปคเดียวกันอีกต่อไป
+const KB25 = { viewId: "" };
+if (WO === "2.5") {
+  const viewsSvc = (await import("@/lib/modules/kanban/views" as string)) as Any;
+  const membership = await prisma.membership.findFirst({
+    where: { tenantId: E.tenantId, userId: E.users.owner.userId },
+    select: { role: true, unitAccess: true, permissions: true },
+  });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: membership!.role,
+    unitAccess: (membership!.unitAccess as string[] | null) ?? [],
+    permissions: (membership!.permissions as Record<string, unknown> | null) ?? {},
+  };
+  const ctx25 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  // ลบเศษของรอบก่อนที่อาจค้าง (สคริปต์ล่ม/Ctrl-C ก่อนถึง finally) — กันชื่อซ้ำสะสมทุกรอบที่รัน
+  await (prisma as Any).kanbanBoardView.deleteMany({ where: { boardId: B("patong"), name: "งานเลยกำหนดทั้งบอร์ด" } });
+  const view = await viewsSvc.saveView(ctx25, ownerActor, {
+    boardId: B("patong"),
+    name: "งานเลยกำหนดทั้งบอร์ด",
+    scope: "BOARD",
+    config: { view: "table", filters: { due: "overdue" }, sort: "due" },
+  });
+  KB25.viewId = view.id as string;
+  console.log(`🧪 เตรียม K2.5: สร้างมุมมอง 'ทั้งทีม' ${KB25.viewId} (ตาราง · เลยกำหนด · เรียงวันที่) บนบอร์ดป่าตอง`);
+}
+
 async function restoreSeed(): Promise<void> {
   // K1.9 — คืนสภาพ seed: ลบไฟล์แนบ/FileAsset ที่สร้างระหว่างถ่ายภาพ + ล้าง coverFileId ของการ์ดที่ใช้ทดสอบ
   if (WO === "1.9") {
@@ -712,6 +803,13 @@ async function restoreSeed(): Promise<void> {
     const P = prisma as Any;
     const ac = await P.kanbanActivity.deleteMany({ where: { cardId: KB22.cardId, type: "CARD_DUE_SET", createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } });
     console.log(`🧹 คืนสภาพ K2.2: คืน dueAt ของการ์ด ${KB22.cardId} เป็น ${KB22.dueAt ?? "null (ยังไม่กำหนดวัน)"} · ลบกิจกรรม CARD_DUE_SET ที่เพิ่งเกิด ${ac.count}`);
+  }
+
+  // K2.5 — คืนสภาพ seed: ลบมุมมอง "ทั้งทีม" ที่สร้างไว้ก่อนถ่าย (ผ่าน `views.saveView` ตรง ๆ — ดู KB25 ด้านบน)
+  if (WO === "2.5" && KB25.viewId) {
+    const P = prisma as Any;
+    const del = await P.kanbanBoardView.deleteMany({ where: { id: KB25.viewId } });
+    console.log(`🧹 คืนสภาพ K2.5: ลบมุมมอง ${KB25.viewId} (${del.count} แถว)`);
   }
 }
 

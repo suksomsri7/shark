@@ -31,6 +31,7 @@ import type {
   BoardLabelDto,
   BoardPersonDto,
   BoardViewDto,
+  SavedViewDto,
   TableGroupBy,
   TableGroupDto,
   TableRowDto,
@@ -94,6 +95,7 @@ export function TableView({
   group,
   sort,
   page,
+  savedViews = [],
 }: {
   board: BoardViewDto;
   table: TableViewData;
@@ -101,6 +103,8 @@ export function TableView({
   group?: TableGroupBy;
   sort?: TableSort;
   page: number;
+  /** K2.5 — มุมมองที่บันทึกไว้ของบอร์ดนี้ (ทั้งทีม + ของตัวเอง) ส่งลง `BoardHeader` */
+  savedViews?: SavedViewDto[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -291,6 +295,7 @@ export function TableView({
           board={{ ...board, name: boardName }}
           starred={starred}
           filters={filters}
+          savedViews={savedViews}
           onToggleStar={() => toggleStar(starred, setStarred, systemId, board.id, showToast)}
           onRename={(name) => renameBoard(name, boardName, setBoardName, systemId, board.id, showToast)}
         />
@@ -339,6 +344,7 @@ export function TableView({
         board={{ ...board, name: boardName }}
         starred={starred}
         filters={filters}
+        savedViews={savedViews}
         onToggleStar={() => toggleStar(starred, setStarred, systemId, board.id, showToast)}
         onRename={(name) => renameBoard(name, boardName, setBoardName, systemId, board.id, showToast)}
       />

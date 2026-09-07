@@ -25,6 +25,8 @@ export const KANBAN_LIMITS = Object.freeze({
   bulkMax: 200,
   /** แถวต่อหน้าปริยายของมุมมองตาราง (K2.1) */
   tablePageSize: 50,
+  /** มุมมองที่บันทึกไว้ต่อคนต่อบอร์ด (K2.5) — PRIVATE นับเฉพาะของตัวเอง · BOARD นับรวมเป็นโควตาเดียวของบอร์ด */
+  viewsPerBoard: 20,
 } as const);
 
 export type KanbanLimits = typeof KANBAN_LIMITS;

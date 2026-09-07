@@ -72,6 +72,7 @@ model KanbanBoard {
   members KanbanBoardMember[] // คนที่ถูกเชิญเข้าบอร์ด (K1.3)
   stars   KanbanBoardStar[] // ดาวรายคน (K1.3)
   activities KanbanActivity[] // ประวัติกิจกรรม (K1.10)
+  views   KanbanBoardView[] // มุมมองที่บันทึกไว้ (K2.5)
 
   @@index([tenantId, systemId, status])
   @@index([tenantId, systemId, unitId])
@@ -452,4 +453,32 @@ model KanbanUndoToken {
 
   @@index([tenantId, systemId, expiresAt])
   @@index([userId, expiresAt])
+}
+
+// ───────────────────────── มุมมองที่บันทึกไว้ (K2.5 · KANBAN-RUN §K2.5) ─────────────────────────
+// PRIVATE = ของคนคนเดียว (`ownerUserId` = เจ้าของ) · BOARD = ของทั้งทีม (`ownerUserId` = null · สร้าง/แก้/ลบ
+// ได้เฉพาะ ADMIN ของบอร์ด) — `config` เก็บ `view/filters/sort/group` ตาม §2.3 (ตรวจรูปด้วย zod ใน views.ts
+// ไม่ใช่ที่ชั้น DB) `boardId` เป็น `String?` **ตั้งใจไว้ตั้งแต่วันนี้** ให้ K3.8 (มุมมองข้ามบอร์ดระดับองค์กร)
+// ต่อยอดได้โดยไม่ต้อง migration ใหม่ — null = มุมมองข้ามบอร์ด (ยังไม่มีโค้ดสร้างแถว null ใน K2.5)
+enum KanbanViewScope {
+  PRIVATE
+  BOARD
+}
+
+model KanbanBoardView {
+  id          String          @id @default(cuid())
+  tenantId    String
+  systemId    String
+  boardId     String? // K3.8: null = มุมมองข้ามบอร์ด (ยังไม่ใช้ใน K2.5)
+  board       KanbanBoard?    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  ownerUserId String? // null = scope BOARD (ทั้งทีม) — ไม่ทำ FK ไป User (แบบเดียวกับ KanbanBoardMember.userId)
+  name        String
+  scope       KanbanViewScope @default(PRIVATE)
+  config      Json            @default("{}") // ViewConfig (views.ts) — { view, filters?, sort?, group? }
+  sortOrder   Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([boardId, scope])
+  @@index([tenantId, systemId, ownerUserId])
 }

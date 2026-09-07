@@ -17,7 +17,7 @@ import { FilterBar } from "./FilterBar";
 import { KanbanIcon } from "./KanbanIcon";
 import { renameBoardAction, setCardDueFromCalendarAction, starBoardAction } from "@/lib/modules/kanban/actions";
 import type { BoardFilters } from "@/lib/modules/kanban/filters";
-import type { BoardCalendarDto, BoardViewDto, CalCardDto, CalDayDto, CalExternalDto } from "@/lib/modules/kanban/types";
+import type { BoardCalendarDto, BoardViewDto, CalCardDto, CalDayDto, CalExternalDto, SavedViewDto } from "@/lib/modules/kanban/types";
 
 const BKK_OFFSET_MS = 7 * 60 * 60 * 1000; // Asia/Bangkok = UTC+7 ตายตัว (ไม่มี DST) — คำนวณเองล้วน
 const DAY_MS = 86_400_000;
@@ -84,10 +84,13 @@ export function CalendarView({
   month,
   mode,
   ext,
+  savedViews = [],
 }: {
   board: BoardViewDto;
   data: BoardCalendarDto;
   filters: BoardFilters;
+  /** K2.5 — มุมมองที่บันทึกไว้ของบอร์ดนี้ (ทั้งทีม + ของตัวเอง) ส่งลง `BoardHeader` */
+  savedViews?: SavedViewDto[];
   /** "YYYY-MM" (ตามเวลาไทย) — เดือนที่กำลังดู */
   month: string;
   mode: "week" | "month";
@@ -279,6 +282,7 @@ export function CalendarView({
         board={{ ...board, name: boardName }}
         starred={starred}
         filters={filters}
+        savedViews={savedViews}
         onToggleStar={() => {
           const next = !starred;
           setStarred(next);

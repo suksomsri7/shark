@@ -18,7 +18,7 @@ import { KanbanIcon } from "./KanbanIcon";
 import { tagColorVar } from "./Card";
 import { renameBoardAction, starBoardAction } from "@/lib/modules/kanban/actions";
 import type { BoardFilters } from "@/lib/modules/kanban/filters";
-import type { BoardSummaryDto, BoardViewDto, SummaryLabelTileDto, SummaryTileDto } from "@/lib/modules/kanban/types";
+import type { BoardSummaryDto, BoardViewDto, SavedViewDto, SummaryLabelTileDto, SummaryTileDto } from "@/lib/modules/kanban/types";
 
 const TH_MONTH_SHORT = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 
@@ -155,10 +155,13 @@ export function SummaryView({
   board,
   data,
   filters,
+  savedViews = [],
 }: {
   board: BoardViewDto;
   data: BoardSummaryDto;
   filters: BoardFilters;
+  /** K2.5 — มุมมองที่บันทึกไว้ของบอร์ดนี้ (ทั้งทีม + ของตัวเอง) ส่งลง `BoardHeader` */
+  savedViews?: SavedViewDto[];
 }) {
   const systemId = board.systemId;
   const [boardName, setBoardName] = useState(board.name);
@@ -178,6 +181,7 @@ export function SummaryView({
         board={{ ...board, name: boardName }}
         starred={starred}
         filters={filters}
+        savedViews={savedViews}
         onToggleStar={() => {
           const next = !starred;
           setStarred(next);

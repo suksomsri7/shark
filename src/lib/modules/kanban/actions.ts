@@ -99,7 +99,10 @@ import type {
   KanbanCtx,
   KanbanTimelineFilter,
   KanbanTimelineItemDto,
+  SavedViewDto,
 } from "./types";
+// K2.5 — มุมมองที่บันทึกไว้ (บริการอยู่ `views.ts` — สิทธิ์ 2 ชั้นตรวจในนั้นเอง ที่นี่แค่ตรวจสิทธิ์โมดูล)
+import { deleteView, saveView, updateView } from "./views";
 
 // ทุก action: requireTenant → เอา tenantId จาก session (ไม่เชื่อ client) + scope ด้วย systemId
 
@@ -1371,4 +1374,82 @@ export async function setKanbanShortcutsAction(input: {
   const next = await setUserPreferences(auth.user.id, { kanbanShortcuts: !!input.enabled });
   revalidatePath("/app/settings/preferences");
   return { ok: true, kanbanShortcuts: next.kanbanShortcuts };
+}
+
+// ───────────────────────── K2.5 — มุมมองที่บันทึกไว้ ─────────────────────────
+// 🔴 ตรวจสิทธิ์โมดูลขั้นต่ำที่นี่ (แบบเดียวกับ `searchCardsAction`/`starBoardAction`) — บทบาทบอร์ด
+//    จริง (PRIVATE=VIEWER · BOARD=ADMIN) ตรวจซ้ำใน `views.ts` เอง (`assertBoardRole`)
+
+export type SavedViewActionResult = { ok: true; view: SavedViewDto } | { ok: false; message: string };
+
+/** บันทึกมุมมองปัจจุบันของบอร์ด (ปุ่ม "บันทึกมุมมองนี้" ใน `SavedViewsMenu.tsx`) */
+export async function saveViewAction(input: {
+  systemId: string;
+  boardId: string;
+  name: string;
+  scope?: "PRIVATE" | "BOARD";
+  config: unknown;
+}): Promise<SavedViewActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.boardId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const view = await saveView(ctx, actor, {
+      boardId: input.boardId,
+      name: input.name,
+      scope: input.scope,
+      config: input.config,
+    });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    revalidatePath(`${boardPath(input.systemId, input.boardId)}/settings/views`);
+    return { ok: true, view };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "บันทึกมุมมองไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** แก้ชื่อ/config ของมุมมองที่บันทึกไว้ (หน้าตั้งค่าบอร์ด › มุมมองที่บันทึกไว้) */
+export async function updateViewAction(input: {
+  systemId: string;
+  boardId: string;
+  viewId: string;
+  name?: string;
+  config?: unknown;
+}): Promise<SavedViewActionResult> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.viewId) return { ok: false, message: "ไม่พบมุมมองนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    const view = await updateView(ctx, actor, input.viewId, { name: input.name, config: input.config });
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    revalidatePath(`${boardPath(input.systemId, input.boardId)}/settings/views`);
+    return { ok: true, view };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "แก้ไขมุมมองไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
+}
+
+/** ลบมุมมองที่บันทึกไว้ */
+export async function deleteViewAction(input: {
+  systemId: string;
+  boardId: string;
+  viewId: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.viewId) return { ok: false, message: "ไม่พบมุมมองนี้" };
+  const ctx = ctxOf(auth, input.systemId);
+  const actor = toActor(auth.user.id, auth.active);
+  try {
+    await deleteView(ctx, actor, input.viewId);
+    revalidatePath(boardPath(input.systemId, input.boardId));
+    revalidatePath(`${boardPath(input.systemId, input.boardId)}/settings/views`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "ลบมุมมองไม่สำเร็จ ลองใหม่อีกครั้ง" };
+  }
 }

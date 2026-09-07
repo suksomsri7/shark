@@ -503,3 +503,44 @@ export type BoardSummaryDto = {
   /** 8 สัปดาห์ล่าสุด (จันทร์ไทยของแต่ละสัปดาห์) — สัปดาห์นี้อยู่ท้ายสุด */
   throughput: SummaryThroughputWeekDto[];
 };
+
+// ───────────────────────── K2.5 — มุมมองที่บันทึกไว้ (views.ts) ─────────────────────────
+// DTO บริสุทธิ์ (ไม่มี Date/Prisma model) — `SavedViewsMenu.tsx`/`SavedViewsSettings.tsx` (client) ต้อง
+// `import type` ได้โดยไม่ลาก `db.ts` → `pg` เข้าบันเดิลฝั่ง browser ด้วยเหตุผลเดียวกับ K1.11/K1.12/K1.13/
+// K2.1/K2.2/K2.4 — `views.ts` (server-only: validate ด้วย zod + แตะ prisma) `export type { ... } from "./types"`
+// ให้ผู้เรียกยัง `import type { ViewConfig } from "@/lib/modules/kanban/views"` ได้เหมือนเดิม
+
+/** `BOARD` = ของทั้งทีม (`ownerUserId` = null · ADMIN เท่านั้นที่สร้าง/แก้/ลบ) · `PRIVATE` = ของคนคนเดียว */
+export type ViewScope = "PRIVATE" | "BOARD";
+
+/** ตรงกับ `BoardFilters` (filters.ts) แต่ประกาศแยกที่นี่ — `views.ts` ตรวจรูปด้วย zod ก่อนเชื่อค่าที่เก็บใน DB */
+export type ViewFilters = {
+  assignee?: string;
+  label?: string;
+  due?: "overdue" | "today" | "week" | "none";
+  status?: "done" | "open";
+  q?: string;
+  column?: string;
+};
+
+/** โครง config ที่เก็บใน `KanbanBoardView.config` (§2.3) — `view` ไม่รู้จัก/รูปผิด → `views.ts` throw ไทยตอนบันทึก */
+export type ViewConfig = {
+  view: "board" | "table" | "calendar" | "summary" | "timeline";
+  filters?: ViewFilters;
+  sort?: string;
+  group?: string;
+};
+
+export type SavedViewDto = {
+  id: string;
+  /** null = มุมมองข้ามบอร์ด (K3.8 — ยังไม่มีโค้ดสร้างแถวนี้ใน K2.5) */
+  boardId: string | null;
+  /** null = scope BOARD (ทั้งทีม) */
+  ownerUserId: string | null;
+  name: string;
+  scope: ViewScope;
+  config: ViewConfig;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};

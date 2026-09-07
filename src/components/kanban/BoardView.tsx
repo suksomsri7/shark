@@ -37,7 +37,7 @@ import {
   undoAction,
 } from "@/lib/modules/kanban/actions";
 import { filterBoardCards, hasAnyFilter, type BoardFilters } from "@/lib/modules/kanban/filters";
-import type { BoardCardDto, BoardColumnDto, BoardLabelDto, BoardViewDto } from "@/lib/modules/kanban/types";
+import type { BoardCardDto, BoardColumnDto, BoardLabelDto, BoardViewDto, SavedViewDto } from "@/lib/modules/kanban/types";
 
 /** ระยะหว่างการ์ดในคอลัมน์ (ต้องตรงกับ `gap` ของกองการ์ดใน Column.tsx — ใช้คิดเรขาคณิตตอนลาก) */
 const CARD_GAP = 7;
@@ -85,6 +85,7 @@ export function BoardView({
   initialCardId = null,
   filters = {},
   shortcutsEnabled = true,
+  savedViews = [],
 }: {
   board: BoardViewDto;
   initialCardId?: string | null;
@@ -92,6 +93,8 @@ export function BoardView({
   filters?: BoardFilters;
   /** K1.14 — user preference `kanbanShortcuts` (server อ่านให้แล้วส่งลงมา) · false = ไม่ผูกตัวฟังคีย์เลย */
   shortcutsEnabled?: boolean;
+  /** K2.5 — มุมมองที่บันทึกไว้ของบอร์ดนี้ (ทั้งทีม + ของตัวเอง) ส่งลง `BoardHeader` */
+  savedViews?: SavedViewDto[];
 }) {
   const nowMs = Date.parse(board.now);
   const router = useRouter();
@@ -893,6 +896,7 @@ export function BoardView({
         board={{ ...board, name: boardName }}
         starred={starred}
         filters={filters}
+        savedViews={savedViews}
         onToggleStar={() => {
           const next = !starred;
           setStarred(next);
