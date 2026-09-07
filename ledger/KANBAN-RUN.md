@@ -306,6 +306,15 @@ URL `?assignee=me|<userId>&label=<ชื่อป้าย>&due=overdue|today|we
 - ภาพ spec `"2.3"` ≥ 4 ใบ (เดือน · ไตรมาส · จัดกลุ่มตามคน · หลังลากขอบ (drag step แล้วคืนค่า) · มือถือ)
 - ⚠️ oracle ตั้ง startAt/dueAt ของการ์ด 2 ใบบนบอร์ดป่าตองชั่วคราวแล้วคืนใน finally
 
+### K2.F — ปิด P2 (Fable + Sonnet 1 ใบ "K2.12 หนี้ P2") — ทำหลัง K2.3 ปิด ก่อนเข้า P3
+- **K2.12 หนี้ UI/API ของ P2 (Sonnet · oracle `qc-kanban-k2.12.mts` Fable เขียนตอน K2.3 ปิด)**:
+  1. ตาราง K2.1 ให้ตรงแบบ 04: แถบเลือกหลายรายการ = แถบฟ้าบนตาราง (ไม่ใช่ลอยดำล่างจอ) · ชิปกำหนดส่งแบบสัมพัทธ์+สีตามความเร่ง (ใช้ `dueBadgeFrom` เดิม) · "แก้ไขล่าสุด" แบบสัมพัทธ์
+  2. เมนูระบบ "ปฏิทินงาน" (`nav.ts` calendar) → หน้า `/kanban/calendar` = ปฏิทินรวมทุกบอร์ดที่มองเห็น (reuse `listBoardCalendar` ต่อบอร์ด + สีตามบอร์ด) — ปลด "เร็ว ๆ นี้"
+  3. REST op + AI tool ของ P2 ที่ยังไม่มี (ผูก test ของตัวเอง + docs/skill regen): `boards.table` · `boards.calendar` · `boards.summary` (ขยาย) · `views.list/create/delete` · `fields.list/create/update/delete` · `cards.fields.set` · `templates.cards.list/create` · `cards.recurrence.set` · `inbox.list/quickAdd/move` · `automation.rules.list/create/toggle/dryRun` · `reports.*` · `watch/unwatch` — ให้ AI tool เฉพาะที่มีประโยชน์ (inbox quickAdd · reports overdue/workload · automation list)
+  4. ปุ่ม "จากเทมเพลต ▾" บนมือถือ (K2.7 หนี้) · แก้ตัวเลือก SELECT/ชื่อการ์ดเทมเพลตหลังสร้าง (K2.6/K2.7 หนี้) · UI ลากเรียงมุมมอง (K2.5)
+  5. ชิป "โดยกฎอัตโนมัติ" ในความเห็นที่กฎเขียน (K2.9 หนี้)
+- **Fable เอง**: seed ป่าตอง "เสร็จแล้ว" ตั้ง `isDoneColumn` + completedAt 7 ใบ → ปรับ oracle K2.4 S1.2 (open 24→17 · done 7) + K2.10 (คำนวณสดอยู่แล้ว) + รัน regressions ทั้งชุด · `pnpm qc:all` เต็ม (เครื่องว่าง) · verify prod (ภาพ 3 หน้าใหม่ผ่าน session ของเจ้าของ = ขอเจ้าของดู) · handover `HANDOVER-2026-09-07-KANBAN-P2.md` · Telegram
+
 ## สัญญารายละเอียด P3
 
 ### K3.1 — `KanbanCardLink` เชื่อมข้อมูล SHARK (Opus · `qc-kanban-k3.1.mts` 20 ข้อ · ไม่มี mockup — บล็อกในภาพ 03 "เชื่อมข้อมูล SHARK" · เกณฑ์ §9.1/§13 K3.1)
