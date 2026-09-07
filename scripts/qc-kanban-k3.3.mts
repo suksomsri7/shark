@@ -5,7 +5,7 @@
 type Any = any;
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
 accEnv.loadQcEnv();
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 if (!existsSync("src/lib/platform/kanban-bridges.ts")) {
   console.log("⚠️  SKIPPED — WO ยังไม่สร้าง (src/lib/platform/kanban-bridges.ts)");
   console.log(`JSON_SUMMARY ${JSON.stringify({ total: 0, passed: 0, findings: [], skipped: true })}`);
@@ -22,6 +22,7 @@ const chk = (id: string, n: string, ok: unknown, e: string, a: string, s: Sev = 
 const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const P = prisma as Any;
 let tid = ""; let SYS = ""; let settingsBackup: unknown = null;
+let restoreDone: (() => Promise<void>) | null = null;
 const made = { cards: [] as string[], systems: [] as string[], forms: [] as string[], policies: [] as string[], convs: [] as string[], contacts: [] as string[], sales: [] as string[], employees: [] as string[] };
 const evt = (type: string, payload: Any, systemId: string | null = null) => ({ id: `qc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, tenantId: tid, type, payload, systemId, unitId: null });
 try {
@@ -94,12 +95,17 @@ try {
   await fire("account.document.approved", { documentId: docId, docType: "INVOICE", approvedById: U.owner });
   const dc = await prisma.kanbanCard.findUnique({ where: { id: docCard.id } });
   chk("K3.3-S5.1", "account.document.approved ×3 → การ์ดที่ผูก ACCOUNT_DOC นั้นย้ายเข้าคอลัมน์เสร็จแรก + completedAt · activity CARD_MOVED 1 ครั้ง · ความเห็นระบบ 'เอกสาร … อนุมัติแล้ว' 1 ครั้ง · **ไม่แตะเอกสารบัญชี** (bridge ไม่ import account หรือเขียนตาราง Account*)", dc?.columnId === done.id && dc.completedAt !== null && (await prisma.kanbanActivity.count({ where: { cardId: docCard.id, type: "CARD_MOVED" } })) === 1 && (await prisma.kanbanComment.count({ where: { cardId: docCard.id } })) === 1 && !/prisma\.account[A-Z]\w*\.(update|create|delete)/.test(brSrc), "ปิด 1 ครั้ง", JSON.stringify({ col: dc?.columnId === done.id, moved: await prisma.kanbanActivity.count({ where: { cardId: docCard.id, type: "CARD_MOVED" } }) }));
+  // 🔴 seed (K2.F) ติดธง isDoneColumn ให้ป่าตองแล้ว — ปลดชั่วคราวให้เป็น "บอร์ดไม่มีคอลัมน์เสร็จ" แล้วคืนธงหลังตรวจ (builder K3.3 เตือน)
+  const patDoneIds = (await prisma.kanbanColumn.findMany({ where: { boardId: patong, isDoneColumn: true }, select: { id: true } })).map((c) => c.id);
+  if (patDoneIds.length) await prisma.kanbanColumn.updateMany({ where: { id: { in: patDoneIds } }, data: { isDoneColumn: false } });
+  restoreDone = async () => { if (patDoneIds.length) await prisma.kanbanColumn.updateMany({ where: { id: { in: patDoneIds } }, data: { isDoneColumn: true } }); restoreDone = null; };
   const patCol = (await prisma.kanbanColumn.findFirst({ where: { boardId: patong, status: "ACTIVE" }, orderBy: { position: "asc" } }))!;
   const noDoneCard = await svc.createCard({ tenantId: tid, systemId: SYS, columnId: patCol.id, title: "QC K3.3 บอร์ดไม่มีคอลัมน์เสร็จ", createdById: U.owner }); made.cards.push(noDoneCard.id);
   await P.kanbanCardLink.create({ data: { tenantId: tid, systemId: SYS, cardId: noDoneCard.id, linkType: "ACCOUNT_DOC", linkId: `${docId}-b`, role: "RELATED" } });
   await fire("account.invoice.paid", { documentId: `${docId}-b` }, null, 1);
   const nd = await prisma.kanbanCard.findUnique({ where: { id: noDoneCard.id } });
   chk("K3.3-S5.2", "บอร์ดที่ไม่มีคอลัมน์ isDoneColumn → ไม่ย้าย (คงที่) แต่มีความเห็นระบบ · ไม่ throw (consumer หลักไม่ล้ม)", nd?.columnId === patCol.id && (await prisma.kanbanComment.count({ where: { cardId: noDoneCard.id } })) === 1, "คงที่ + ความเห็น", JSON.stringify({ col: nd?.columnId === patCol.id, cm: await prisma.kanbanComment.count({ where: { cardId: noDoneCard.id } }) }), "MAJOR");
+  if (restoreDone) await restoreDone();
 
   // ═══ S6 ใบลา → การ์ดหาคนแทน ═══
   await fire("hr.leave.submitted", ob.payload, hrSys.id);
@@ -116,12 +122,14 @@ try {
 
   // ═══ S8 แชทค้างไม่มีคนรับ (sweep รายชั่วโมง) ═══
   const chatSys = await prisma.appSystem.create({ data: { tenantId: tid, type: "CHAT" as Any, name: "แชท QC K3.3" } }); made.systems.push(chatSys.id);
-  const contact = await prisma.chatContact.create({ data: { tenantId: tid, systemId: chatSys.id, channel: "LINE", externalUserId: `qc-k33-${Date.now()}`, displayName: "ลูกค้ารอคำตอบ" } }); made.contacts.push(contact.id);
+  // 🔴 ห้องละ 1 ผู้ติดต่อ — DB มี partial unique index chat_conv_active (contactId) WHERE status <> 'RESOLVED' (builder K3.3 จับได้)
+  const mkContact = async (suffix: string) => { const c = await prisma.chatContact.create({ data: { tenantId: tid, systemId: chatSys.id, channel: "LINE", externalUserId: `qc-k33-${suffix}-${Date.now()}`, displayName: "ลูกค้ารอคำตอบ" } }); made.contacts.push(c.id); return c; };
+  const contact = await mkContact("stale"); const contactFresh = await mkContact("fresh"); const contactAssigned = await mkContact("assigned");
   const stale = await prisma.chatConversation.create({ data: { tenantId: tid, systemId: chatSys.id, channel: "LINE", contactId: contact.id, status: "OPEN", lastMessageAt: new Date(NOW.getTime() - 45 * 60_000), lastMessageDirection: "IN" } }); made.convs.push(stale.id);
   const staleMsg = await prisma.chatMessage.create({ data: { tenantId: tid, systemId: chatSys.id, conversationId: stale.id, direction: "IN", type: "TEXT", body: "ขอราคาคอร์สหน่อยครับ", createdAt: new Date(NOW.getTime() - 45 * 60_000) } });
-  const fresh = await prisma.chatConversation.create({ data: { tenantId: tid, systemId: chatSys.id, channel: "LINE", contactId: contact.id, status: "OPEN", lastMessageAt: new Date(NOW.getTime() - 5 * 60_000), lastMessageDirection: "IN" } }); made.convs.push(fresh.id);
+  const fresh = await prisma.chatConversation.create({ data: { tenantId: tid, systemId: chatSys.id, channel: "LINE", contactId: contactFresh.id, status: "OPEN", lastMessageAt: new Date(NOW.getTime() - 5 * 60_000), lastMessageDirection: "IN" } }); made.convs.push(fresh.id);
   await prisma.chatMessage.create({ data: { tenantId: tid, systemId: chatSys.id, conversationId: fresh.id, direction: "IN", type: "TEXT", body: "เพิ่งทัก", createdAt: new Date(NOW.getTime() - 5 * 60_000) } });
-  const assigned = await prisma.chatConversation.create({ data: { tenantId: tid, systemId: chatSys.id, channel: "LINE", contactId: contact.id, status: "OPEN", assigneeUserId: U.owner, lastMessageAt: new Date(NOW.getTime() - 90 * 60_000), lastMessageDirection: "IN" } }); made.convs.push(assigned.id);
+  const assigned = await prisma.chatConversation.create({ data: { tenantId: tid, systemId: chatSys.id, channel: "LINE", contactId: contactAssigned.id, status: "OPEN", assigneeUserId: U.owner, lastMessageAt: new Date(NOW.getTime() - 90 * 60_000), lastMessageDirection: "IN" } }); made.convs.push(assigned.id);
   await prisma.chatMessage.create({ data: { tenantId: tid, systemId: chatSys.id, conversationId: assigned.id, direction: "IN", type: "TEXT", body: "มีคนรับแล้ว", createdAt: new Date(NOW.getTime() - 90 * 60_000) } });
   const s1 = await br.sweepUnattendedChats(NOW); const s2 = await br.sweepUnattendedChats(NOW);
   const cc = await cardsBySource(`chat:${staleMsg.id}`); made.cards.push(...cc.map((c) => c.id));
@@ -131,11 +139,12 @@ try {
   // ═══ S9 UI ตั้งค่า (static) ═══
   const st = read("src/components/kanban/IntegrationsSettings.tsx");
   chk("K3.3-S9.1", "ตั้งค่า › การเชื่อมต่อ (kanban-integrations) มีสวิตช์ครบ 6: สร้างงานจากแชท (+นาทีที่ค้าง) · การ์ดจากฟอร์ม · การ์ดติดตามคำขออนุมัติ · ปิดการ์ดเมื่อเอกสารบัญชีอนุมัติ/จ่ายแล้ว · การ์ดหาคนแทนเมื่อมีใบลา · การ์ดตรวจสอบบิลยกเลิก (+ยอดขั้นต่ำ) · แต่ละตัวเลือกบอร์ด/คอลัมน์ · คำอธิบายภาษาคน · ปริยายปิด", /ฟอร์ม/.test(st) && /อนุมัติ/.test(st) && /ใบลา/.test(st) && /บิลยกเลิก/.test(st) && /เอกสาร/.test(st) && /นาที/.test(st) && /ยอดขั้นต่ำ|ขั้นต่ำ/.test(st) && st.includes("kanban-integrations"), "ครบ 6", "ขาด");
-  const shots = existsSync(".qc-shots/kanban/3.3") ? require("node:fs").readdirSync(".qc-shots/kanban/3.3").filter((f: string) => f.endsWith(".png")) : [];
+  const shots = existsSync(".qc-shots/kanban/3.3") ? readdirSync(".qc-shots/kanban/3.3").filter((f: string) => f.endsWith(".png")) : [];
   chk("K3.3-S9.2", "ภาพจริง ≥ 2 ใบใน .qc-shots/kanban/3.3 (หน้าตั้งค่าการเชื่อมต่อ · การ์ดที่เกิดจากฟอร์มบนบอร์ดพร้อมชิปที่มา)", shots.length >= 2, "≥2", String(shots.length), "MAJOR");
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.name}: ${e.message.slice(0, 240)}` : String(e));
 } finally {
+  if (restoreDone) await restoreDone().catch(() => null);
   try {
     if (tid) {
       const ids = [...new Set(made.cards.filter(Boolean))];

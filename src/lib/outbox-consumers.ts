@@ -255,12 +255,47 @@ const withWebhooks =
     }
   };
 
+// ── K3.3 (§9.2 "การ์ดเกิดจากที่อื่น"): ต่อสะพาน "โมดูลอื่น → บอร์ดงาน" ท้าย handler เดิม ──
+//
+// 🔴 `compose` = "ของเดิมก่อนเสมอ แล้วค่อยของใหม่" — notify/effect/bridge บัญชีที่มีอยู่ต้องทำงาน
+//    เหมือนเดิมเป๊ะ (พังก็โยนต่อให้ drain retry เหมือนเดิม) · ส่วนสะพานบอร์ดงานเป็น "ของแถม":
+//    พังแล้วห้ามพา consumer หลักล้ม ไม่งั้นคิวทั้งระบบตันเพราะฟีเจอร์เสริมใบเดียว → try/catch + WARN
+const compose =
+  (base: OutboxHandler, extra: OutboxHandler): OutboxHandler =>
+  async (evt) => {
+    await base(evt); // งานเดิมของ event นี้ — พฤติกรรมห้ามเปลี่ยน
+    try {
+      await extra(evt);
+    } catch (e) {
+      await logOps("WARN", "outbox", `สะพานบอร์ดงานของ "${evt.type}" ล้มเหลว`, {
+        tenantId: evt.tenantId,
+        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+      });
+    }
+  };
+
+/**
+ * เรียกสะพานบอร์ดงานแบบ **dynamic import**
+ * 🔴 ตั้งใจไม่ import ที่หัวไฟล์: `kanban-bridges` → `kanban/links` → … → `kanban/comments` ซึ่ง import
+ *    `scheduleDrain` กลับมาที่ไฟล์นี้ ⇒ วงกลมของโมดูล (ESM รันได้แต่ลำดับ init เสี่ยง TDZ)
+ *    วิธีเดียวกับที่ `kanban.inbox.requested` ใช้กับ `kanban/inbox` อยู่แล้ว
+ */
+const kanbanBridge =
+  (name: "onFormSubmission" | "onApprovalSubmitted" | "onApprovalDecided" | "onAccountDocSettled" | "onLeaveSubmitted" | "onVoidedSale"): OutboxHandler =>
+  async (evt) => {
+    const bridges = await import("@/lib/platform/kanban-bridges");
+    await bridges[name](evt);
+  };
+
 const baseConsumers: Record<string, OutboxHandler> = {
   "pos.sale.paid": withAutomation(posSalePaid),
-  "pos.sale.voided": withAutomation(posSaleVoided),
-  "approval.request.submitted": withAutomation(approvalSubmitted),
-  "approval.request.approved": withAutomation(withApprovalEffect(approvalApproved)),
-  "approval.request.rejected": withAutomation(withApprovalEffect(approvalRejected)),
+  // K3.3: + การ์ด "ตรวจสอบบิลยกเลิก" เมื่อยอดถึงเกณฑ์ที่ร้านตั้งไว้ (สวิตช์ปิดอยู่ = ไม่มีอะไรเกิด)
+  "pos.sale.voided": withAutomation(compose(posSaleVoided, kanbanBridge("onVoidedSale"))),
+  // K3.3: + การ์ดติดตามคำขออนุมัติ (มอบหมายผู้ยื่น) — ต่อท้าย notify เดิม
+  "approval.request.submitted": withAutomation(compose(approvalSubmitted, kanbanBridge("onApprovalSubmitted"))),
+  // K3.3: + ความเห็น "ผลอนุมัติ: …" ที่การ์ดติดตาม + ปิดการ์ดเมื่อผ่าน (ต่อท้าย notify+effect เดิม)
+  "approval.request.approved": withAutomation(compose(withApprovalEffect(approvalApproved), kanbanBridge("onApprovalDecided"))),
+  "approval.request.rejected": withAutomation(compose(withApprovalEffect(approvalRejected), kanbanBridge("onApprovalDecided"))),
   // WO-0038: AppNotification ถูกสร้างแล้วใน sweepExpiringLots — consumer นี้มีไว้ปิด event เป็น DONE
   // (ไม่งั้นค้าง PENDING โดน drain วนตลอด) + เป็นจุดให้ Automation rules ยิงตามกติกาที่ร้านตั้ง
   "inventory.lot.expiring": withAutomation(async () => {}),
@@ -297,7 +332,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "chat.conversation.read": withAutomation(async () => {}),
   // Wave4-B: AppNotification "มีคนกรอกฟอร์ม" ถูกสร้างแล้วใน submitPublicForm —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย lead ใหม่
-  "forms.submission.received": withAutomation(async () => {}),
+  // K3.3: + เปิดการ์ดจากฟอร์ม (คำตอบทุกข้ออยู่ในรายละเอียดการ์ด) เฉพาะร้านที่เปิดสวิตช์
+  "forms.submission.received": withAutomation(compose(async () => {}, kanbanBridge("onFormSubmission"))),
   // Wave4-C: AppNotification "ได้รับมอบหมายงาน" ถูกสร้างแล้วใน kanban.notifyAssignment —
   // consumer ปิด event DONE + จุดให้ Automation/Webhooks ยิงเมื่อมอบหมายการ์ด
   "kanban.card.assigned": withAutomation(async () => {}),
@@ -362,12 +398,18 @@ const baseConsumers: Record<string, OutboxHandler> = {
       });
     }
   }),
+  // K3.3 (§9.2) — พนักงานยื่นใบลา (ยิงจาก `hr/service.ts#requestLeave` หลังเขียนแถว)
+  //   ผลข้างเคียงในโมดูล HR เกิดไปแล้ว — consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation/Webhooks
+  //   ยิงต่อ + ต่อสะพาน "การ์ดหาคนแทน" ของบอร์ดงาน (ร้านที่ไม่ได้เปิดสวิตช์ = ไม่มีอะไรเกิด)
+  //   🔴 ขาดบรรทัดนี้ = event ค้าง PENDING ตลอดกาลแล้วคิวทั้งระบบตันตามไปด้วย (บทเรียน 30 ส.ค. 2026)
+  "hr.leave.submitted": withAutomation(compose(async () => {}, kanbanBridge("onLeaveSubmitted"))),
   // WO 8.3 (§9.5 แอปภายนอก/API): เหตุการณ์บัญชี — ผลข้างเคียงเกิดในโมดูลบัญชีไปแล้ว
   //   consumer เป็น no-op เพื่อ **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล)
   //   + เป็นจุดให้ `withWebhooks` ยิงฮุคไปยังปลายทางที่ร้านสมัครไว้ (หน้า "แอปภายนอก/API")
-  "account.document.approved": withAutomation(async () => {}),
+  // K3.3: + ปิดการ์ดที่ผูกเอกสารใบนี้ไว้ (ขาเข้าอย่างเดียว — ไม่แตะสถานะเอกสารฝั่งบัญชี §9.3)
+  "account.document.approved": withAutomation(compose(async () => {}, kanbanBridge("onAccountDocSettled"))),
   "account.payment.recorded": withAutomation(async () => {}),
-  "account.invoice.paid": withAutomation(async () => {}),
+  "account.invoice.paid": withAutomation(compose(async () => {}, kanbanBridge("onAccountDocSettled"))),
   "account.period.closed": withAutomation(async () => {}),
   // WO C4 — เหตุการณ์บัญชีชุดที่ 2 (ยิงจาก service ใน tx เดียวกับงานหลัก · ดู modules/account/events.ts)
   //   🔴 ทุกตัวต้องมีบรรทัดตรงนี้ **และ** ป้ายไทยใน webhooks/labels.ts

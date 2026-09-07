@@ -931,6 +931,19 @@ export async function getBoardView(
   };
 }
 
+/**
+ * K3.3 — prefix ของ `sourceKey` ที่สะพานขาเข้า (`platform/kanban-bridges`) ตั้งไว้ → ชนิดที่มาบนชิปการ์ด
+ * ตั้งใจอ่านจาก `sourceKey` ไม่ใช่เพิ่มคอลัมน์ใหม่: ค่านี้ถูกเขียนตอนสร้างการ์ดอยู่แล้วและห้ามเปลี่ยน
+ * (เป็นกุญแจกันซ้ำ) ⇒ ไม่มีทางหลุดออกจากกัน และไม่ต้องไมเกรตข้อมูลเก่า
+ */
+function sourceKindOf(sourceKey: string | null): BoardCardDto["sourceKind"] {
+  if (!sourceKey) return null;
+  if (sourceKey.startsWith("approval:")) return "APPROVAL";
+  if (sourceKey.startsWith("hrleave:")) return "HR_LEAVE";
+  if (sourceKey.startsWith("possale:")) return "POS_SALE";
+  return null;
+}
+
 /** การ์ด 1 ใบ → DTO (ใช้ทั้งตอนโหลดหน้าและตอนเพิ่งสร้างการ์ดใหม่จาก action) */
 export function toBoardCardDto(
   card: KanbanCard,
@@ -963,6 +976,8 @@ export function toBoardCardDto(
     // K1.9: ปกการ์ดของจริง (ค่าเริ่มต้น null สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่ตั้งปก)
     coverUrl: attachment?.coverUrl ?? null,
     sourceType: card.sourceType,
+    // K3.3: ที่มาแบบละเอียด (ใบลา/คำขออนุมัติ/บิลยกเลิก ใช้ sourceType AUTOMATION เหมือนกันหมด)
+    sourceKind: sourceKindOf(card.sourceKey),
     // K2.6: ชิปฟิลด์กำหนดเอง (ค่าเริ่มต้น [] สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่มีฟิลด์ที่ตั้ง showOnCard)
     fieldsOnCard: fieldsOnCard ?? [],
     // K3.1: ชิป 🔗 n (ค่าเริ่มต้น 0 สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่ผูกอะไร)

@@ -33,6 +33,12 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   //    (รายการนี้ถูก spread ต่อเข้า `WEBHOOK_EVENTS` ⇒ เพิ่มที่เดียวได้ทั้งกฎอัตโนมัติและเว็บฮุคขาออก
   //     — `webhooks/labels.ts` จึงต้อง **ไม่** ประกาศ 8 ตัวนี้ซ้ำ ไม่งั้นหน้าตั้งค่าฮุคมีช่องติ๊กซ้ำ)
   ...KANBAN_AUTOMATION_EVENTS,
+  // ── บุคคล/HR (K3.3 · ledger/KANBAN-RUN.md §K3.3) ───────────────────────────
+  // ยิงจาก `hr/service.ts#requestLeave` หลังเขียนแถวใบลา
+  // 🔴 ต้องมี consumer ใน `outbox-consumers.ts` ด้วย (ตัวนั้นต่อสะพาน "การ์ดหาคนแทน" ของบอร์ดงาน)
+  //    ขาดไป = event ค้าง PENDING ตลอดกาล แล้วคิวทั้งระบบตันตามไปด้วย (บทเรียน 30 ส.ค. 2026)
+  //    รายการนี้ถูก spread ต่อเข้า `WEBHOOK_EVENTS` ⇒ ประกาศที่นี่ที่เดียวได้ทั้งกฎอัตโนมัติและเว็บฮุค
+  { value: "hr.leave.submitted", label: "เมื่อพนักงานยื่นใบลา" },
   // ── ธีมกิจการ (B1 · ledger/BRANDING-RUN.md) ────────────────────────────────
   // ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับการบันทึกแถว
   // 🔴 ต้องมี consumer ใน `outbox-consumers.ts` ด้วย (ตัวนั้นล้างแคชธีมของอินสแตนซ์ที่ระบายคิว)

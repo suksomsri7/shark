@@ -153,7 +153,132 @@ async function wipeChatSystem(systemId: string): Promise<void> {
   await P.appSystem.deleteMany({ where: { id: systemId } }).catch(() => null);
 }
 
+// ── K3.3: หน้า "การเชื่อมต่อ" ต้องมีสวิตช์ครบ 6 ตัวที่ **เปิดได้จริง** + บอร์ดต้องมีการ์ดที่มาจากหลายทาง
+//    ⇒ เปิดสวิตช์ทุกตัวชี้บอร์ดซ่อมบำรุง · สร้างฟอร์ม+ใบตอบจริงแล้วยิง consumer จริง (พิสูจน์เส้นเต็มทอด)
+//    · แล้วเปิดการ์ดตัวแทนของอีก 4 ที่มา (อนุมัติ/ใบลา/บิลยกเลิก/แชท) ผ่านประตูเดียวกับสะพาน
+//    🔴 ของชั่วคราวทุกชิ้น + ค่า `AppSystem.settings` เดิม ถูกคืนใน `restoreSeed()`
+const KB33 = {
+  settingsBefore: null as unknown,
+  formId: "",
+  cardIds: [] as string[],
+};
+if (WO === "3.3") {
+  const integ = (await import("@/lib/modules/kanban/integrations" as string)) as Any;
+  const links = (await import("@/lib/modules/kanban/links" as string)) as Any;
+  const oc = (await import("@/lib/outbox-consumers" as string)) as { consumers: Record<string, (e: Any) => Promise<void>> };
+  const membership = await prisma.membership.findFirst({
+    where: { tenantId: E.tenantId, userId: E.users.owner.userId },
+    select: { role: true, unitAccess: true, permissions: true },
+  });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: membership!.role,
+    unitAccess: (membership!.unitAccess as string[] | null) ?? [],
+    permissions: (membership!.permissions as Record<string, unknown> | null) ?? {},
+  };
+  const ctx33 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  const sysCtx = { tenantId: E.tenantId, systemId: SYS, actorUserId: null };
+
+  // เศษของรอบก่อน (Ctrl-C กลางทาง)
+  const staleForms = await prisma.formDef.findMany({ where: { tenantId: E.tenantId, name: "ฟอร์มจองทริป (ภาพ K3.3)" }, select: { id: true } });
+  for (const f of staleForms) {
+    await prisma.formSubmission.deleteMany({ where: { formId: f.id } });
+    await prisma.formDef.deleteMany({ where: { id: f.id } });
+  }
+  await wipeK33Cards();
+
+  KB33.settingsBefore = (await prisma.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } }))?.settings ?? {};
+  const col0 = await prisma.kanbanColumn.findFirst({
+    where: { boardId: B("maint"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" },
+    orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
+    select: { id: true },
+  });
+  await integ.setIntegrations(ctx33, ownerActor, {
+    openTaskFromChat: { enabled: true, boardId: B("maint"), columnId: col0?.id ?? null, unassignedMinutes: 30 },
+    cardFromForm: { enabled: true, boardId: B("maint"), columnId: col0?.id ?? null },
+    cardFromApproval: { enabled: true, boardId: B("maint") },
+    closeCardOnDocApproved: { enabled: true },
+    cardOnLeave: { enabled: true, boardId: B("maint") },
+    cardOnVoidedSale: { enabled: true, boardId: B("maint"), minSatang: 100_000 },
+  });
+
+  // ฟอร์มจริง → ยิง consumer จริง (การ์ด "จากฟอร์ม" ต้องเกิดจากเส้นทางเดียวกับของจริง)
+  const form = await prisma.formDef.create({
+    data: {
+      tenantId: E.tenantId,
+      name: "ฟอร์มจองทริป (ภาพ K3.3)",
+      publicToken: `kb33-${Date.now()}`,
+      fieldsJson: [
+        { key: "name", label: "ชื่อ", type: "text" },
+        { key: "phone", label: "โทร", type: "phone" },
+        { key: "note", label: "รายละเอียด", type: "textarea" },
+      ] as Any,
+    },
+  });
+  KB33.formId = form.id;
+  const sub = await prisma.formSubmission.create({
+    data: { tenantId: E.tenantId, formId: form.id, answersJson: { name: "คุณนิดา ทองดี", phone: "0899999999", note: "อยากไปสิมิลัน 5 คน เสาร์หน้า" } as Any },
+  });
+  await oc.consumers["forms.submission.received"]!({
+    id: `kb33-${Date.now()}`,
+    tenantId: E.tenantId,
+    type: "forms.submission.received",
+    payload: { formId: form.id, submissionId: sub.id, crmContactId: null },
+    systemId: null,
+    unitId: null,
+  });
+
+  // อีก 4 ที่มา — ผ่านประตูเดียวกับสะพาน (`createCardFromExternal`) เพื่อให้ชิปที่มาเป็นของจริง
+  const samples = [
+    { title: "คำขออนุมัติ: ใบสั่งซื้อ ฿25,000", sourceType: "AUTOMATION", sourceKey: "approval:kb33-visual" },
+    { title: "หาคนแทน: พี่ก้อง ช่างซ่อม ลาป่วย 3 ต.ค.–4 ต.ค.", sourceType: "AUTOMATION", sourceKey: "hrleave:kb33-visual" },
+    { title: "ตรวจสอบบิลยกเลิก R-1042 ฿2,500", sourceType: "AUTOMATION", sourceKey: "possale:kb33-visual" },
+    { title: "ลูกค้ารอคำตอบ: คุณสมชาย (บริษัท เอบีซี)", sourceType: "CHAT", sourceKey: "chat:kb33-visual" },
+  ];
+  for (const sp of samples) {
+    const r = await links.createCardFromExternal(sysCtx, { boardId: B("maint"), columnId: col0?.id ?? null, ...sp });
+    KB33.cardIds.push(r.cardId as string);
+  }
+  console.log(`🧪 เตรียม K3.3: เปิดสวิตช์ครบ 6 ตัว → บอร์ดซ่อมบำรุง · ฟอร์มชั่วคราว ${form.id} (ยิง consumer จริง) · การ์ดตัวอย่างที่มา ${KB33.cardIds.length + 1} ใบ`);
+}
+
+/** ลบการ์ดที่ภาพ K3.3 สร้างไว้ทั้งหมด (คิดจาก sourceKey — ไม่พึ่ง id ที่อาจหายไปตอน Ctrl-C) */
+async function wipeK33Cards(): Promise<void> {
+  const P = prisma as Any;
+  const cards = await prisma.kanbanCard.findMany({
+    where: { tenantId: E.tenantId, OR: [{ sourceKey: { endsWith: "kb33-visual" } }, { sourceKey: { startsWith: "form:" }, title: { contains: "ภาพ K3.3" } }] } as Any,
+    select: { id: true },
+  });
+  const ids = cards.map((c) => c.id);
+  if (ids.length === 0) return;
+  await P.kanbanCardLink.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null);
+  await P.kanbanComment.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null);
+  await P.kanbanChecklistItem.deleteMany({ where: { checklist: { cardId: { in: ids } } } }).catch(() => null);
+  await P.kanbanChecklist.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null);
+  await prisma.kanbanActivity.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null);
+  await prisma.kanbanCard.deleteMany({ where: { id: { in: ids } } }).catch(() => null);
+}
+
 const SPECS: Record<string, Spec[]> = {
+  // K3.3 — "การ์ดเกิดจากที่อื่น" (ไม่มี mockup — เทียบโครงบล็อกตั้งค่าของ K3.2 + ชิปที่มาในภาพ 02)
+  //   1) หน้าตั้งค่า › การเชื่อมต่อ: สวิตช์ 6 ตัวเปิดได้จริง (+ ช่อง "นาทีที่ค้าง" และ "ยอดขั้นต่ำ (บาท)")
+  //   2) บอร์ดจริงที่มีการ์ดจากฟอร์ม/อนุมัติ/ใบลา/บิลยกเลิก/แชท — ชิปที่มาต้องบอกได้ว่ามาจากไหน
+  "3.3": [
+    {
+      name: "integrations-six-switches",
+      path: `/app/sys/${SYS}/kanban/settings`,
+      note: 'ตั้งค่า › การเชื่อมต่อ — สวิตช์ครบ 6 ตัว (แชท+นาทีที่ค้าง · ฟอร์ม · คำขออนุมัติ · เอกสารบัญชี · ใบลา · บิลยกเลิก+ยอดขั้นต่ำ) ทุกตัวเปิดอยู่และเลือกบอร์ดปลายทางแล้ว · "การ์ดจากอีเมล" ยังเป็น "เร็ว ๆ นี้"',
+      expect: ["[data-testid=kanban-integrations]", "[data-testid=kanban-integration-cardOnVoidedSale]"],
+      steps: [{ waitFor: "[data-testid=kanban-integrations]" }, { wait: 600 }],
+    },
+    {
+      name: "cards-source-chips",
+      path: `/app/sys/${SYS}/kanban/b/${B("maint")}`,
+      note: "บอร์ดซ่อมบำรุง — การ์ดที่ระบบเปิดให้เอง 5 ใบ ชิปที่มาต่างกัน (จากฟอร์ม · จากคำขออนุมัติ · จากใบลา · จากบิลยกเลิก · จากแชท)",
+      expect: ["[data-testid=card-source]"],
+      steps: [{ waitFor: "[data-testid=card-source]" }, { wait: 600 }],
+    },
+  ],
   // K3.2 — "สร้างงานจากแชท" · เทียบภาพ `ledger/design-kanban/09-from-chat.png`
   //   1) แผงซ้อนบนหน้าแชทจริง (เดสก์ท็อป = แผงขวา 380px · มือถือ = เต็มจอ)
   //   2) กด "สร้างการ์ด" จริง → toast "สร้างการ์ด #n แล้ว" + บันทึกภายในโผล่ในห้อง
@@ -1534,6 +1659,21 @@ async function restoreSeed(): Promise<void> {
     await prisma.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) }, type: { startsWith: "kanban.card" } } }).catch(() => null);
     await prisma.appNotification.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) } } }).catch(() => null);
     console.log(`🧹 คืนสภาพ K3.2: ลบการ์ดที่สร้างจากแชท ${ids.length} ใบ · ผู้ติดต่อ ${KB32.partyIds.length} · ลบระบบแชทชั่วคราว · คืนค่าสวิตช์การเชื่อมต่อ`);
+  }
+
+  // K3.3 — ลบการ์ดตัวอย่าง + ฟอร์มชั่วคราว แล้วคืนค่าสวิตช์การเชื่อมต่อของระบบ KANBAN
+  if (WO === "3.3") {
+    await wipeK33Cards();
+    if (KB33.formId) {
+      await prisma.formSubmission.deleteMany({ where: { formId: KB33.formId } }).catch(() => null);
+      await prisma.formDef.deleteMany({ where: { id: KB33.formId } }).catch(() => null);
+    }
+    if (KB33.settingsBefore !== null) {
+      await prisma.appSystem.update({ where: { id: SYS }, data: { settings: KB33.settingsBefore as Any } }).catch(() => null);
+    }
+    await prisma.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) }, type: { startsWith: "kanban.card" } } }).catch(() => null);
+    await prisma.appNotification.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) } } }).catch(() => null);
+    console.log("🧹 คืนสภาพ K3.3: ลบการ์ดตัวอย่าง/ฟอร์มชั่วคราว · คืนค่าสวิตช์การเชื่อมต่อ");
   }
 
   // K3.1 — ลบแถวเชื่อม + ประวัติ LINK_* ที่สร้างไว้ถ่ายภาพ แล้วลบผู้ติดต่อตัวอย่าง

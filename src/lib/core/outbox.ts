@@ -60,6 +60,29 @@ export async function emitOutbox(
 }
 
 /**
+ * K3.3 — emit **นอก transaction** (ใช้ client กลางของโปรเซสเอง)
+ *
+ * 🔴 มีไว้ให้โมดูลที่เขียนงานหลักผ่าน `tenantDb(ctx)` เท่านั้น: client ที่ถูก `$extends` แล้ว
+ *    ส่งเข้า `emitOutbox` ไม่ได้ (ชนิดไม่ตรงกับ `Prisma.TransactionClient`) และการลาก `prisma` ดิบ
+ *    เข้าไปในโมดูลก็ผิดกติกา chokepoint (fitness F5.1 — raw prisma ในโมดูลห้ามเพิ่ม)
+ *
+ * ⚠️ **ไม่ atomic กับงานหลัก** — เรียกได้เฉพาะ event ที่ "ตกหล่นแล้วไม่มีเงินหาย":
+ *    ใช้กับ `hr.leave.submitted` (พลาด = การ์ดหาคนแทนไม่เกิด ซึ่งคนยังเห็นใบลาในระบบ HR ตามปกติ)
+ *    🔴 ห้ามใช้กับ event ที่ผูกกับเงิน/เอกสารบัญชี — พวกนั้นต้อง `emitOutbox(tx, …)` ใน tx เดียวกับงานหลัก
+ *    idempotencyKey ยังกันซ้ำเหมือนเดิม ⇒ เรียกซ้ำไม่เพิ่มแถว
+ */
+export async function emitOutboxOutsideTx(input: {
+  tenantId: string;
+  type: string;
+  idempotencyKey: string;
+  payload?: unknown;
+  systemId?: string | null;
+  unitId?: string | null;
+}): Promise<void> {
+  await emitOutbox(prisma, input);
+}
+
+/**
  * WO 9.3 — emit หลาย event ใน **คำสั่งเดียว**
  *
  * `emitOutbox` ตัวเดียวใช้ 2 คำสั่ง (findUnique + create) ⇒ งานที่ emit 2 event เช่น `recordPayment`

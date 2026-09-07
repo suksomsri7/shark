@@ -75,6 +75,14 @@ export type BoardCardDto = {
   coverUrl: string | null;
   /** ที่มาของการ์ด (ชิปเล็กหัวการ์ด) — MANUAL = ไม่โชว์ชิป */
   sourceType: "MANUAL" | "TEMPLATE" | "CHAT" | "FORM" | "EMAIL" | "AUTOMATION" | "AI";
+  /**
+   * K3.3 — ที่มาแบบละเอียดของการ์ดที่ "ระบบเปิดให้" (§9.2)
+   * 🔴 ทำไมต้องมีช่องนี้: ใบลา/คำขออนุมัติ/บิลยกเลิก ใช้ `sourceType = AUTOMATION` เหมือนกันหมด
+   *    ⇒ ชิปบนการ์ดจะบอกได้แค่ "จากกฎอัตโนมัติ" ซึ่งไม่ช่วยให้ใครรู้ว่าต้องไปดูอะไรต่อ
+   *    คิดจาก prefix ของ `sourceKey` ที่สะพานเป็นคนตั้ง (approval: / hrleave: / possale:)
+   * `null` = ใช้ป้ายตาม `sourceType` ตามเดิม (แชท/ฟอร์ม/เทมเพลต/AI บอกตัวเองได้อยู่แล้ว)
+   */
+  sourceKind: "APPROVAL" | "HR_LEAVE" | "POS_SALE" | null;
   /** K2.6: ฟิลด์กำหนดเองที่ `showOnCard=true` และการ์ดใบนี้มีค่าแล้ว (เรียงตาม sortOrder ของฟิลด์) */
   fieldsOnCard: FieldOnCardDto[];
   /** K2.7: การ์ดนี้เป็น "แม่" ของงานประจำ (มี recurrenceRule) — ชิป 🔁 บนการ์ด/แถวตาราง */

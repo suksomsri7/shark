@@ -4,6 +4,7 @@ import { sweepPendingVoiceDelivery } from "@/lib/platform/cron";
 import { sweepScheduledRules } from "@/lib/modules/kanban/automation";
 import { sweepDueSoonReminders } from "@/lib/modules/kanban/reminders";
 import { sweepKanbanEmailHourly } from "@/lib/modules/kanban/digest";
+import { sweepUnattendedChats } from "@/lib/platform/kanban-bridges";
 import { logOps } from "@/lib/core/ops";
 import { isCronAuthorized } from "@/lib/core/cron-auth";
 
@@ -58,5 +59,16 @@ export async function GET(req: Request) {
       detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
     });
   }
-  return NextResponse.json({ ok: true, ran, voiceSent, kanbanScheduled, kanbanDueSoon, kanbanEmails, at: new Date().toISOString() });
+  // K3.3 — ห้องแชทที่ลูกค้าทักแล้วไม่มีใครรับเกิน N นาที → เปิดการ์ด "ลูกค้ารอคำตอบ" ให้ทีมตาม
+  //   🔴 best-effort เหมือนตัวอื่น: ล้มห้ามทำให้รอบนี้แดง · `now` ส่งจากที่นี่ (sweep ไม่อ่านนาฬิกาเอง)
+  //   ร้านที่ไม่ได้เปิดสวิตช์ = จบตั้งแต่ด่านแรก ไม่มีคิวรีตามมา
+  let kanbanChatCards = -1;
+  try {
+    kanbanChatCards = await sweepUnattendedChats(new Date());
+  } catch (e) {
+    await logOps("WARN", "cron", "sweepUnattendedChats (การ์ดจากแชทที่ไม่มีคนรับ) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  return NextResponse.json({ ok: true, ran, voiceSent, kanbanScheduled, kanbanDueSoon, kanbanEmails, kanbanChatCards, at: new Date().toISOString() });
 }

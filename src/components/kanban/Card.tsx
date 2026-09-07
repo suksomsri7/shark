@@ -110,6 +110,16 @@ const SOURCE_LABEL: Record<BoardCardDto["sourceType"], { text: string; icon: str
   AI: { text: "จากผู้ช่วย AI", icon: "spark" },
 };
 
+/**
+ * K3.3 — ที่มาแบบละเอียดของการ์ดที่ระบบเปิดให้ (ทับป้ายของ sourceType เมื่อรู้ชนิดจริง)
+ * "จากกฎอัตโนมัติ" บอกแค่ว่าไม่ใช่คนพิมพ์ · คนอ่านบอร์ดอยากรู้ว่า "เรื่องอะไร" ต่างหาก
+ */
+const SOURCE_KIND_LABEL: Record<NonNullable<BoardCardDto["sourceKind"]>, { text: string; icon: string }> = {
+  APPROVAL: { text: "จากคำขออนุมัติ", icon: "check" },
+  HR_LEAVE: { text: "จากใบลา", icon: "users" },
+  POS_SALE: { text: "จากบิลยกเลิก", icon: "shop" },
+};
+
 /** ตัวย่อชื่อคน (อักษรแรก) — ใช้ทั้งบนการ์ดและหัวบอร์ด */
 export function initialOf(name: string): string {
   return (name.trim()[0] ?? "?").toUpperCase();
@@ -157,7 +167,7 @@ export function Card({
   registerRef?: (el: HTMLElement | null) => void;
 }) {
   const due = dueBadgeOf(card, nowMs);
-  const source = SOURCE_LABEL[card.sourceType];
+  const source = (card.sourceKind ? SOURCE_KIND_LABEL[card.sourceKind] : null) ?? SOURCE_LABEL[card.sourceType];
   const badges: { icon: string; text: string }[] = [];
   if (card.checklistTotal > 0) badges.push({ icon: "cklist", text: `${card.checklistDone}/${card.checklistTotal}` });
   if (card.attachmentCount > 0) badges.push({ icon: "clip", text: String(card.attachmentCount) });
@@ -198,6 +208,8 @@ export function Card({
         <div className="flex flex-wrap items-center gap-1">
           {source && (
             <span
+              data-testid="card-source"
+              title={source.text}
               className="inline-flex items-center gap-1"
               style={{
                 fontSize: 10.5,

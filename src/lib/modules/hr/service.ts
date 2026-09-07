@@ -1,4 +1,5 @@
 import { tenantDb } from "@/lib/core/db";
+import { emitOutboxOutsideTx } from "@/lib/core/outbox";
 import type { HrAttendanceKind, HrLeaveType } from "@prisma/client";
 import * as approval from "@/lib/modules/approval/service";
 import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
@@ -396,6 +397,30 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
       reason: input.reason?.trim() || null,
       // status = PENDING (default ใน schema)
     },
+  });
+  // K3.3 (§9.2) — บอกทั้งระบบว่า "มีคนยื่นใบลา" หลังแถวถูกเขียนแล้ว
+  //   ปลายทางที่รออยู่ = สะพานบอร์ดงาน (`platform/kanban-bridges#onLeaveSubmitted` เปิดการ์ด "หาคนแทน")
+  //   + กฎอัตโนมัติของร้าน + เว็บฮุคขาออก
+  //   🔴 event ใหม่ต้องลงทะเบียน **3 ที่พร้อมกัน**: consumer (`outbox-consumers.ts`) ·
+  //      `AUTOMATION_EVENTS` · `WEBHOOK_EVENTS` — ขาดที่ใดที่หนึ่ง = event ค้าง PENDING แล้ว
+  //      คิวทั้งระบบตันเงียบ ๆ (`reference_outbox_new_event_needs_consumer`)
+  //   idempotencyKey ผูก leaveId ⇒ ใบลา 1 ใบ = event 1 ใบตลอดกาล (ยิงซ้ำไม่เพิ่มแถว)
+  //   🔴 ใช้ `emitOutboxOutsideTx` (เคอร์เนล) ไม่ใช่ `emitOutbox(tx, …)`: ไฟล์นี้เขียน DB ผ่าน
+  //      `tenantDb(ctx)` ทั้งไฟล์ และห้ามลาก prisma ดิบเข้ามา (chokepoint · fitness F5.1)
+  //      ⇒ event นี้ไม่ atomic กับแถวใบลา — ยอมรับได้เพราะพลาดแล้วแค่ "การ์ดหาคนแทนไม่เกิด"
+  //      (ใบลายังอยู่ในระบบ HR ให้หัวหน้าเห็นตามปกติ) ไม่ใช่เงินหาย
+  await emitOutboxOutsideTx({
+    tenantId: ctx.tenantId,
+    type: "hr.leave.submitted",
+    idempotencyKey: `hr.leave.submitted#${l.id}`,
+    payload: {
+      leaveId: l.id,
+      employeeId: input.employeeId,
+      fromDate: toDbDate(input.fromDate).toISOString(),
+      toDate: toDbDate(input.toDate).toISOString(),
+      type: input.type,
+    },
+    systemId: ctx.systemId,
   });
   // WO-0049b: มีสายอนุมัติใบลา → ยื่นเข้าสาย (ใบลาคง PENDING จน effect ตัดสินหลังอนุมัติ/ปฏิเสธ)
   //   ไม่มีสายอนุมัติ → พฤติกรรมเดิม (ใบลารอ decideLeave ด้วยมือตามเดิม)
