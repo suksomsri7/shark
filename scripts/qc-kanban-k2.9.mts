@@ -189,7 +189,15 @@ try {
       if (policyId) { await prisma.approvalRequest.deleteMany({ where: { tenantId: tid, entityType: "kanban.card" } }).catch(() => null); await prisma.approvalStep.deleteMany({ where: { policyId } }).catch(() => null); await prisma.approvalPolicy.deleteMany({ where: { id: policyId } }).catch(() => null); }
       if (ids.length) { await prisma.kanbanActivity.deleteMany({ where: { cardId: { in: ids } } }); await prisma.kanbanCard.deleteMany({ where: { id: { in: ids } } }); }
       if (madeRules.length) { await prisma.automationRun.deleteMany({ where: { ruleId: { in: madeRules.filter(Boolean) } } }); await prisma.automationRule.deleteMany({ where: { id: { in: madeRules.filter(Boolean) } } }); }
-      if (madeLabels.length) await prisma.kanbanLabel.deleteMany({ where: { id: { in: madeLabels } } });
+      if (madeLabels.length) {
+        // K2.9 builder พบ: กฎ DUE_DATE ติดป้ายให้การ์ด seed (BCD Aqualung due+2) ด้วย → ต้อง resync KanbanCard.labels Json หลังลบป้าย (filters.ts อ่าน Json)
+        const touched = (await prisma.kanbanCardLabel.findMany({ where: { labelId: { in: madeLabels } }, select: { cardId: true } })).map((r) => r.cardId);
+        await prisma.kanbanLabel.deleteMany({ where: { id: { in: madeLabels } } });
+        for (const id of [...new Set(touched)]) {
+          const names = (await prisma.kanbanCardLabel.findMany({ where: { cardId: id }, include: { label: { select: { name: true } } } })).map((r) => r.label.name);
+          await prisma.kanbanCard.update({ where: { id }, data: { labels: names } }).catch(() => null);
+        }
+      }
       await prisma.appNotification.deleteMany({ where: { tenantId: tid, createdAt: { gte: new Date(Date.now() - 10 * 60_000) } } });
       await prisma.outboxEvent.deleteMany({ where: { tenantId: tid, createdAt: { gte: new Date(Date.now() - 10 * 60_000) }, type: { startsWith: "kanban." } } }).catch(() => null);
       await prisma.outboxEvent.deleteMany({ where: { tenantId: tid, createdAt: { gte: new Date(Date.now() - 10 * 60_000) }, type: { startsWith: "approval." } } }).catch(() => null);
