@@ -122,6 +122,10 @@ export type CardDetailDto = {
   recurrenceParentTitle: string | null;
   /** K2.9: ปุ่มอัตโนมัติของบอร์ด (kind CARD_BUTTON ที่เปิดอยู่) — VIEWER ได้ [] เพราะกดไม่ได้ */
   cardButtons: KanbanAutomationButtonDto[];
+  /** K2.11: ฉันติดตามการ์ดใบนี้อยู่ไหม (ปุ่ม 👁 บนราง) */
+  watching: boolean;
+  /** K2.11: จำนวนผู้ติดตาม "ตรงตัว" ของการ์ดใบนี้ (ไม่นับคนที่ติดตามคอลัมน์/บอร์ด) */
+  watcherCount: number;
 };
 
 /** K2.9 — ปุ่มอัตโนมัติที่โผล่บนจอ (หลังการ์ด / หัวบอร์ด) */
@@ -203,6 +207,10 @@ export type BoardViewDto = {
   visibility: "PRIVATE" | "TENANT";
   unitName: string | null;
   starred: boolean;
+  /** K2.11: ฉันติดตามทั้งบอร์ดนี้อยู่ไหม (เมนู ⋯ › ติดตามบอร์ด) */
+  watched: boolean;
+  /** K2.11: คอลัมน์ที่ฉันติดตามอยู่ (เมนูคอลัมน์ › ติดตามคอลัมน์นี้) */
+  watchedColumnIds: string[];
   columns: BoardColumnDto[];
   /** ป้ายทั้งหมดของบอร์ด (แผงป้ายใน K1.6 ใช้ต่อ) */
   labels: BoardLabelDto[];
@@ -385,15 +393,25 @@ export type MyTasksGroups = {
   none: MyTaskCardDto[];
 };
 
-/** งานที่ฉันติดตาม (ไม่ได้รับผิดชอบ) — ฟีเจอร์ "ติดตาม" ยังไม่มีจนกว่าจะถึง K2.11 → คืน `[]` เสมอไปก่อน */
-export type MyWatchingCardDto = { id: string; cardNo: number | null; title: string; boardId: string; boardName: string };
+/** งานที่ฉันติดตาม (ไม่ได้รับผิดชอบ) — K2.11 · มาจาก `watch.myWatched()` */
+export type MyWatchingCardDto = {
+  id: string;
+  cardNo: number | null;
+  title: string;
+  boardId: string;
+  boardName: string;
+  /** คอลัมน์ที่การ์ดอยู่ตอนนี้ (บอกสถานะงานโดยไม่ต้องเปิดการ์ด) */
+  columnName: string;
+  /** ISO · null = ไม่กำหนดส่ง */
+  dueAt: string | null;
+};
 
 export type MyTasksOverviewDto = {
   counts: MyTasksCounts;
   groups: MyTasksGroups;
   /** K1.7: รายการเช็คลิสต์ที่มอบหมายให้ฉัน (ข้ามทุกบอร์ด) — มาจาก `listMyChecklistItems` เดิม */
   checklistItems: MyChecklistItemDto[];
-  /** K2.11 ยังไม่ทำฟีเจอร์ "ติดตามการ์ด" — คงไว้ `[]` เสมอ (ดูหมายเหตุที่ `my-tasks.ts`) */
+  /** K2.11: การ์ดที่ฉันติดตามแต่ไม่ได้รับผิดชอบ (บล็อก "ที่ฉันติดตาม") */
   watching: MyWatchingCardDto[];
 };
 

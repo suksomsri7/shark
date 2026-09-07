@@ -14,16 +14,35 @@
 
 import { prisma } from "./db";
 
+/**
+ * K2.11 — ความถี่ "อีเมลแจ้งเตือน" ของบอร์ดงาน
+ * - `OFF` = ไม่ส่งอีเมลเลย (ยังได้ใบในแอปเหมือนเดิม — ปิดอีเมลไม่ใช่ปิดการแจ้งเตือน)
+ * - `HOURLY` = รวมใบที่ยังไม่อ่านส่งเป็นฉบับเดียวทุกชั่วโมง (ค่าเริ่มต้น — เงียบพอที่จะไม่กวน)
+ * - `INSTANT` = ส่งทันทีทีละใบ
+ */
+export type KanbanEmailMode = "OFF" | "HOURLY" | "INSTANT";
+/** K2.11 — ความถี่ "อีเมลสรุปงาน" (digest) — คนละเรื่องกับอีเมลแจ้งเตือนรายใบข้างบน */
+export type KanbanDigestMode = "OFF" | "DAILY" | "WEEKLY";
+
+const EMAIL_MODES: readonly KanbanEmailMode[] = ["OFF", "HOURLY", "INSTANT"];
+const DIGEST_MODES: readonly KanbanDigestMode[] = ["OFF", "DAILY", "WEEKLY"];
+
 export type UserPreferences = {
   /** true = ปุ่มลัดคีย์บอร์ดของบอร์ดงานทำงาน (ค่าเริ่มต้น · K1.14) */
   kanbanShortcuts: boolean;
   /** true = ย่อแถบเมนูซ้ายเป็นรางไอคอน 56px (ค่าเริ่มต้น false = แถบเต็ม 288px · B3) */
   navCollapsed: boolean;
+  /** K2.11: ความถี่อีเมลแจ้งเตือนของบอร์ดงาน (ค่าเริ่มต้น HOURLY) */
+  kanbanEmailMode: KanbanEmailMode;
+  /** K2.11: ความถี่อีเมลสรุปงานของบอร์ดงาน (ค่าเริ่มต้น DAILY) */
+  kanbanDigest: KanbanDigestMode;
 };
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = Object.freeze({
   kanbanShortcuts: true,
   navCollapsed: false,
+  kanbanEmailMode: "HOURLY" as KanbanEmailMode,
+  kanbanDigest: "DAILY" as KanbanDigestMode,
 });
 
 /**
@@ -36,6 +55,14 @@ export function parsePreferences(raw: unknown): UserPreferences {
     kanbanShortcuts:
       typeof src.kanbanShortcuts === "boolean" ? src.kanbanShortcuts : DEFAULT_USER_PREFERENCES.kanbanShortcuts,
     navCollapsed: typeof src.navCollapsed === "boolean" ? src.navCollapsed : DEFAULT_USER_PREFERENCES.navCollapsed,
+    // K2.11: ค่าที่ไม่รู้จัก (พิมพ์มือ/ของเก่า/สตริงแปลก) → ค่าเริ่มต้น ไม่ใช่ throw —
+    // prefs เพี้ยนต้องไม่ทำให้ cron อีเมลของทั้งระบบล้มเพราะคนเดียว
+    kanbanEmailMode: EMAIL_MODES.includes(src.kanbanEmailMode as KanbanEmailMode)
+      ? (src.kanbanEmailMode as KanbanEmailMode)
+      : DEFAULT_USER_PREFERENCES.kanbanEmailMode,
+    kanbanDigest: DIGEST_MODES.includes(src.kanbanDigest as KanbanDigestMode)
+      ? (src.kanbanDigest as KanbanDigestMode)
+      : DEFAULT_USER_PREFERENCES.kanbanDigest,
   };
 }
 

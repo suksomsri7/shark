@@ -20,6 +20,8 @@ import { deliverPendingVoice } from "@/lib/modules/chat/service";
 import { sweepRateBuckets } from "@/lib/core/rate-limit-db";
 import { sweepRecurringCards } from "@/lib/modules/kanban/recurrence";
 import { sweepDueDateRules } from "@/lib/modules/kanban/automation";
+import { sweepOverdue } from "@/lib/modules/kanban/reminders";
+import { sweepKanbanDigest } from "@/lib/modules/kanban/digest";
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -81,6 +83,8 @@ export async function runDailyCron(
   rateBucketsSwept: number;
   recurringCards: number;
   kanbanDueRules: number;
+  kanbanOverdue: number;
+  kanbanDigests: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -97,6 +101,8 @@ export async function runDailyCron(
   let rateBucketsSwept = -1;
   let recurringCards = -1;
   let kanbanDueRules = -1;
+  let kanbanOverdue = -1;
+  let kanbanDigests = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -205,6 +211,18 @@ export async function runDailyCron(
   } catch {
     // sweep กฎวันครบกำหนดพัง → -1 ไปต่อ (try/catch แยกของตัวเองตามสัญญา K2.9)
   }
+  try {
+    // K2.11: การ์ดที่เลยกำหนดส่ง — แจ้งผู้รับผิดชอบ + ผู้ดูแลบอร์ดที่ถูกเชิญชัด วันละครั้งต่อการ์ด
+    kanbanOverdue = await sweepOverdue(now);
+  } catch {
+    // sweep เลยกำหนดพัง → -1 ไปต่อ (try/catch แยกของตัวเองตามสัญญา K2.11)
+  }
+  try {
+    // K2.11: อีเมลสรุปงานรายวัน/รายสัปดาห์ (WEEKLY ส่งเฉพาะวันจันทร์ไทย · ไม่มีรายการ = ไม่ส่ง)
+    kanbanDigests = await sweepKanbanDigest(now);
+  } catch {
+    // sweep อีเมลสรุปพัง → -1 ไปต่อ (try/catch แยกของตัวเองตามสัญญา K2.11)
+  }
 
   return {
     subsExpired,
@@ -222,5 +240,7 @@ export async function runDailyCron(
     rateBucketsSwept,
     recurringCards,
     kanbanDueRules,
+    kanbanOverdue,
+    kanbanDigests,
   };
 }

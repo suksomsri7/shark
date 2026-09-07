@@ -633,6 +633,54 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: "[data-testid=rules-table]" }, { wait: 400 }],
     },
   ],
+  // K2.11 — ติดตาม + การแจ้งเตือนของฉัน (ไม่มี mockup — เกณฑ์ §7.4/§13 K2.11)
+  //   เตรียมข้อมูล: ให้เจ้าของร้าน "ติดตาม" การ์ด 1 ใบ + คอลัมน์ 1 คอลัมน์ (ลบคืนหลังถ่าย)
+  "2.11": [
+    {
+      name: "card-back-watch",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${(E.boards.patong.cardIds as string[])[2]}`,
+      onlyDevice: "desktop",
+      note: "หลังการ์ด — กลุ่ม 'ติดตาม' + ปุ่ม 👁 (ใบนี้เจ้าของติดตามอยู่แล้ว ⇒ ต้องขึ้น 'เลิกติดตาม')",
+      expect: ["[data-testid=card-back]", "[data-testid=card-watch]"],
+      steps: [{ waitFor: "[data-testid=card-watch]" }, { wait: 400 }],
+    },
+    {
+      name: "column-menu-watch",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      onlyDevice: "desktop",
+      note: "เมนู ⋯ ของคอลัมน์แรก — ต้องมี 'ติดตามคอลัมน์นี้' เป็นรายการบนสุด",
+      expect: ["[data-testid=column-watch]"],
+      steps: [
+        { waitFor: "[data-testid=column]" },
+        { click: "[data-testid=column]:nth-of-type(1) [aria-label=\"เมนูคอลัมน์\"]" },
+        { waitFor: "[data-testid=column-watch]" },
+        { wait: 300 },
+      ],
+    },
+    {
+      name: "board-menu-watch",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}`,
+      onlyDevice: "desktop",
+      note: "เมนู ⋯ ของหัวบอร์ด — ต้องมี 'ติดตามบอร์ด'",
+      expect: ["[data-testid=board-watch]"],
+      steps: [{ waitFor: "[aria-label=\"เมนูบอร์ด\"]" }, { click: "[aria-label=\"เมนูบอร์ด\"]" }, { waitFor: "[data-testid=board-watch]" }, { wait: 300 }],
+    },
+    {
+      name: "notify-prefs",
+      path: `/app/sys/${SYS}/kanban/settings`,
+      note: "ตั้งค่า › การแจ้งเตือนของฉัน — 3 + 3 ตัวเลือก + บรรทัด 'ปิดไม่ได้' (desktop + mobile)",
+      expect: ["[data-testid=notify-prefs]"],
+      steps: [{ waitFor: "[data-testid=notify-prefs]" }, { wait: 300 }],
+    },
+    {
+      name: "my-watched",
+      path: `/app/sys/${SYS}/kanban/my-tasks`,
+      onlyDevice: "desktop",
+      note: "งานของฉัน — บล็อก 'ที่ฉันติดตาม (ไม่ได้รับผิดชอบ)' ท้ายคอลัมน์ขวา (ภาพ 06)",
+      expect: ["[data-testid=my-tasks]", "[data-testid=my-watched]"],
+      steps: [{ waitFor: "[data-testid=my-watched]" }, { wait: 400 }],
+    },
+  ],
   // K2.10 — รายงานในแอป (ไม่มี mockup — เกณฑ์ §3.7/§13 K2.10) · อ่านอย่างเดียวล้วนเหมือน 2.4 — ไม่มีขั้น
   // เตรียม/คืนสภาพ seed (สลับแท็บฝั่ง client ล้วน ไม่ยิง server ซ้ำ นอกจากโหลดหน้าแรก)
   "2.10": [
@@ -1090,7 +1138,40 @@ if (WO === "2.9") {
   console.log(`🧪 เตรียม K2.9: กฎตัวอย่าง ${KB29.ruleIds.length} ใบ + บันทึกการทำงาน 3 แถวบนบอร์ดซ่อมบำรุง (ลบคืนหลังถ่ายเสร็จ)`);
 }
 
+// ── K2.11: ให้เจ้าของร้าน "ติดตาม" การ์ด 1 ใบ + คอลัมน์ 1 คอลัมน์ (บล็อก "ที่ฉันติดตาม" ต้องไม่ว่าง)
+//    เขียนผ่าน `watch.watch()` จริง (ผ่านด่านสิทธิ์ทุกชั้น) แล้วลบคืนใน `restoreSeed()`
+const KB211 = { watcherUserId: "" };
+if (WO === "2.11") {
+  const w = (await import("@/lib/modules/kanban/watch" as string)) as Any;
+  const membership = await prisma.membership.findFirst({
+    where: { tenantId: E.tenantId, userId: E.users.owner.userId },
+    select: { role: true, unitAccess: true, permissions: true },
+  });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: membership!.role,
+    unitAccess: (membership!.unitAccess as string[] | null) ?? [],
+    permissions: (membership!.permissions as Record<string, unknown> | null) ?? {},
+  };
+  const ctx211 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  const col = await prisma.kanbanColumn.findFirst({
+    where: { boardId: B("maint"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" },
+    orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
+    select: { id: true, name: true },
+  });
+  await w.watch(ctx211, ownerActor, { targetType: "CARD", targetId: (E.boards.patong.cardIds as string[])[2] });
+  if (col) await w.watch(ctx211, ownerActor, { targetType: "COLUMN", targetId: col.id });
+  KB211.watcherUserId = ownerActor.userId;
+  console.log(`🧪 เตรียม K2.11: เจ้าของร้านติดตามการ์ด ${(E.boards.patong.cardIds as string[])[2]} + คอลัมน์ '${col?.name ?? "-"}' (ลบคืนหลังถ่ายเสร็จ)`);
+}
+
 async function restoreSeed(): Promise<void> {
+  // K2.11 — ลบแถวติดตามที่สร้างไว้ถ่ายภาพ (รวมที่กดผ่านหน้าเว็บระหว่างถ่าย)
+  if (WO === "2.11" && KB211.watcherUserId) {
+    const del = await (prisma as Any).kanbanWatcher.deleteMany({ where: { tenantId: E.tenantId, userId: KB211.watcherUserId } });
+    console.log(`🧹 คืนสภาพ K2.11: ลบแถวติดตาม ${del.count} แถว`);
+  }
+
   // K2.9 — ลบกฎตัวอย่าง + บันทึกการทำงานที่สร้างไว้ถ่ายภาพ (รวมแถวที่กฎอาจเขียนเพิ่มระหว่างถ่าย)
   if (WO === "2.9" && KB29.ruleIds.length > 0) {
     const P = prisma as Any;

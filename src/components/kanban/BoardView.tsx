@@ -36,6 +36,8 @@ import {
   setColumnWipAction,
   starBoardAction,
   undoAction,
+  unwatchAction,
+  watchAction,
 } from "@/lib/modules/kanban/actions";
 import { filterBoardCards, hasAnyFilter, type BoardFilters } from "@/lib/modules/kanban/filters";
 import type { BoardCardDto, BoardColumnDto, BoardLabelDto, BoardViewDto, CardTemplateDto, SavedViewDto } from "@/lib/modules/kanban/types";
@@ -106,6 +108,8 @@ export function BoardView({
   const [columns, setColumns] = useState<BoardColumnDto[]>(board.columns);
   const [boardName, setBoardName] = useState(board.name);
   const [starred, setStarred] = useState(board.starred);
+  // K2.11 — คอลัมน์ที่ฉันติดตาม (ของส่วนตัว · โหลดมากับบอร์ด แล้วอัปเดตแบบ optimistic)
+  const [watchedColumns, setWatchedColumns] = useState<string[]>(board.watchedColumnIds);
   const [drag, setDrag] = useState<CardDrag | null>(null);
   const [colDragId, setColDragId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -744,6 +748,21 @@ export function BoardView({
         }
       });
     },
+    // K2.11 — ติดตาม/เลิกติดตามคอลัมน์ (ของส่วนตัว · ไม่แตะข้อมูลบอร์ด ⇒ ไม่ต้อง rollback กองการ์ด)
+    onToggleWatchColumn: (columnId, next) => {
+      setWatchedColumns((prev) => (next ? [...new Set([...prev, columnId])] : prev.filter((id) => id !== columnId)));
+      startTransition(async () => {
+        const res = next
+          ? await watchAction({ systemId, targetType: "COLUMN", targetId: columnId })
+          : await unwatchAction({ systemId, targetType: "COLUMN", targetId: columnId });
+        if (!res.ok) {
+          setWatchedColumns((prev) => (next ? prev.filter((id) => id !== columnId) : [...new Set([...prev, columnId])]));
+          showToast(res.message);
+          return;
+        }
+        showToast(next ? "ติดตามคอลัมน์นี้แล้ว" : "เลิกติดตามคอลัมน์นี้แล้ว");
+      });
+    },
   };
 
   const boardColumnsMeta = columns.map((c) => ({ id: c.id, name: c.name }));
@@ -984,6 +1003,7 @@ export function BoardView({
             nowMs={nowMs}
             canEdit={canEdit}
             isAdmin={isAdmin}
+            watched={watchedColumns.includes(col.id)}
             draggingCardId={drag?.card.id ?? null}
             indicatorIndex={drag?.over && drag.over.columnId === col.id ? drag.over.index : null}
             indicatorHeight={drag?.height ?? 58}

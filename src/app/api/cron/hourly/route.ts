@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { runScheduledTasks } from "@/lib/ai/scheduled";
 import { sweepPendingVoiceDelivery } from "@/lib/platform/cron";
 import { sweepScheduledRules } from "@/lib/modules/kanban/automation";
+import { sweepDueSoonReminders } from "@/lib/modules/kanban/reminders";
+import { sweepKanbanEmailHourly } from "@/lib/modules/kanban/digest";
 import { logOps } from "@/lib/core/ops";
 import { isCronAuthorized } from "@/lib/core/cron-auth";
 
@@ -38,5 +40,23 @@ export async function GET(req: Request) {
       detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
     });
   }
-  return NextResponse.json({ ok: true, ran, voiceSent, kanbanScheduled, at: new Date().toISOString() });
+  // K2.11 — เตือน "ใกล้ถึงกำหนดส่ง" + รวมใบแจ้งเตือนเป็นอีเมลฉบับเดียวให้คนที่ตั้ง "สรุปรายชั่วโมง"
+  //   🔴 best-effort เหมือนกัน: ล้มห้ามทำให้รอบนี้แดง · `now` ส่งจากที่นี่ (sweep ไม่อ่านนาฬิกาเอง)
+  let kanbanDueSoon = -1;
+  let kanbanEmails = -1;
+  try {
+    kanbanDueSoon = await sweepDueSoonReminders(new Date());
+  } catch (e) {
+    await logOps("WARN", "cron", "sweepDueSoonReminders (เตือนใกล้ถึงกำหนดส่ง) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  try {
+    kanbanEmails = await sweepKanbanEmailHourly(new Date());
+  } catch (e) {
+    await logOps("WARN", "cron", "sweepKanbanEmailHourly (อีเมลสรุปรายชั่วโมงของบอร์ดงาน) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+  return NextResponse.json({ ok: true, ran, voiceSent, kanbanScheduled, kanbanDueSoon, kanbanEmails, at: new Date().toISOString() });
 }

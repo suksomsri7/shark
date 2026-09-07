@@ -73,6 +73,10 @@ model AppNotification {
   title           String
   body            String
   readAt          DateTime?
+  // K2.11 — "ใบนี้ถูกส่งออกทางอีเมลไปแล้วเมื่อไร" (null = ยังไม่เคยส่ง/รอรอบสรุปรายชั่วโมงเก็บ)
+  // 🔴 additive nullable ล้วน: แถวเก่าทุกแถวเป็น null = พฤติกรรมเดิมเป๊ะ (โมดูลอื่นไม่รู้จักช่องนี้เลย)
+  //    ตัวกวาดของบอร์ดงาน (`kanban/digest.ts`) เป็นคนเดียวที่เขียน และกวาดเฉพาะใบของบอร์ดงานเท่านั้น
+  emailedAt       DateTime?
   createdAt       DateTime  @default(now())
 
   @@index([tenantId, readAt, createdAt])

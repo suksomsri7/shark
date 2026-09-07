@@ -9,6 +9,8 @@ import { applyCardLabelNames } from "./labels";
 import { syncSingleAssignee } from "./cards";
 import { notifyCardAssigned } from "./notify";
 import { fieldsOnCardForCards } from "./fields";
+// K2.11 — สถานะ "ติดตาม" ของคนที่กำลังดู (ส่งลงหัวบอร์ด/เมนูคอลัมน์)
+import { boardWatchState } from "./watch";
 import { boardRole, KanbanNotFoundError, visibleBoardsWhere, type BoardRole } from "./access";
 import type {
   BoardCardDto,
@@ -847,6 +849,9 @@ export async function getBoardView(
     : [];
   const nameOf = new Map(users.map((u) => [u.id, u.name ?? u.email ?? u.id]));
 
+  // K2.11 — "ฉันติดตามบอร์ด/คอลัมน์ไหนบ้าง" (คิวรีเดียวต่อการเปิดบอร์ด — ไม่ยิงต่อคอลัมน์)
+  const watchState = await boardWatchState(ctx, board.id, board.columns.map((c) => c.id));
+
   const labelById = new Map(labelRows.map((l) => [l.id, { id: l.id, name: l.name, color: l.color as KanbanTagColor }]));
   const labelsOfCard = new Map<string, BoardLabelDto[]>();
   for (const cl of cardLabels) {
@@ -872,6 +877,8 @@ export async function getBoardView(
     visibility: board.visibility,
     unitName: unit?.name ?? null,
     starred: star !== null,
+    watched: watchState.board,
+    watchedColumnIds: watchState.columnIds,
     labels: labelRows.map((l) => ({ id: l.id, name: l.name, color: l.color as KanbanTagColor })),
     members: peopleIds.map((id) => ({ userId: id, name: nameOf.get(id) ?? id })),
     now: new Date().toISOString(),

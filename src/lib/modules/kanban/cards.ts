@@ -17,7 +17,8 @@ import { KANBAN_LIMITS } from "./limits";
 import { assertBoardRole, assertCardRole } from "./members";
 import { listComments } from "./comments";
 import { moveCard } from "./moves";
-import { notifyCardAssigned } from "./notify";
+import { cardLink, notifyCardAssigned, notifyWatchers } from "./notify";
+import { cardWatchState } from "./watch";
 import { keyBetween } from "./ordering";
 import { describeRecurrence } from "./recurrence";
 import { publishBoardSignal, boardSignal } from "./realtime";
@@ -213,7 +214,7 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
   if (!card) throw new KanbanNotFoundError("ไม่พบการ์ดนี้");
   // K1.7/K1.8/K1.9/K2.6: หลังการ์ดโหลดเช็คลิสต์ + ความเห็น + ไฟล์แนบ + ค่าฟิลด์กำหนดเอง พร้อมกับส่วนที่
   // เหลือของการ์ดในเที่ยวเดียว (ทุกตัวตรวจสิทธิ์ซ้ำในตัวเอง — เปิดหลังการ์ด 1 ครั้ง = ไม่ต้องยิง action เพิ่มอีกหลายรอบ)
-  const [checklists, comments, attachments, customFields, parentCard, cardButtons] = await Promise.all([
+  const [checklists, comments, attachments, customFields, parentCard, cardButtons, watchState] = await Promise.all([
     getCardChecklists(ctx, cardId),
     listComments(ctx, cardId),
     listAttachments(ctx, cardId),
@@ -229,6 +230,8 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true },
     }),
+    // K2.11 — ฉันติดตามใบนี้ไหม + มีคนติดตามกี่คน (โหลดมาพร้อมกันในเที่ยวเดียว)
+    cardWatchState(ctx, cardId),
   ]);
   return {
     id: card.id,
@@ -248,6 +251,8 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     recurrenceParentId: card.recurrenceParentId,
     recurrenceParentTitle: parentCard?.title ?? null,
     cardButtons,
+    watching: watchState.watching,
+    watcherCount: watchState.count,
   };
 }
 
@@ -302,6 +307,10 @@ export async function updateCardFields(
     // ล้างกำหนดส่ง = ล้างเตือนล่วงหน้าเสมอ ไม่ว่าผู้เรียกจะส่ง reminderMinutesBefore มาด้วยหรือไม่
     if (input.dueAt === null) {
       data.reminderMinutesBefore = null;
+      data.reminderSentAt = null;
+    } else if ((before.dueAt?.getTime() ?? null) !== input.dueAt.getTime()) {
+      // K2.11: **เลื่อนวัน = เริ่มนับใหม่** — `reminderSentAt` คือ "เตือนของรอบเดิมไปแล้ว"
+      // ถ้าไม่ล้าง งานที่เลื่อนไปสัปดาห์หน้าจะไม่มีใครเตือนอีกเลย (เงียบหายทั้งใบ)
       data.reminderSentAt = null;
     }
   }
@@ -458,6 +467,14 @@ export async function archiveCard(ctx: KanbanCtx, cardId: string): Promise<Kanba
     return row;
   });
   await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.archived", boardId, cardId }));
+  // K2.11 — ผู้ติดตามได้ใบ "ถูกเก็บเข้าคลัง" (นอก tx · best-effort · ไม่ push ตาม §7.4)
+  await notifyWatchers(ctx, {
+    cardId,
+    kind: "ARCHIVED",
+    actorUserId: ctx.actorUserId ?? null,
+    title: "การ์ดที่คุณติดตามถูกเก็บเข้าคลัง",
+    body: `"${archived.title}" ถูกเก็บเข้าคลังแล้ว · ${cardLink(ctx.systemId, boardId, cardId)}`,
+  });
   return archived;
 }
 

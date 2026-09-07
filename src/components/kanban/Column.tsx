@@ -27,6 +27,8 @@ export type ColumnHandlers = {
   onSetDone: (columnId: string, isDone: boolean) => void;
   onMoveAllCards: (fromColumnId: string, toColumnId: string) => void;
   onArchiveColumn: (columnId: string) => void;
+  /** K2.11 — ติดตาม/เลิกติดตามคอลัมน์นี้ (ของส่วนตัว) */
+  onToggleWatchColumn: (columnId: string, next: boolean) => void;
 };
 
 export function Column({
@@ -37,6 +39,7 @@ export function Column({
   nowMs,
   canEdit,
   isAdmin,
+  watched,
   draggingCardId,
   indicatorIndex,
   indicatorHeight,
@@ -53,6 +56,8 @@ export function Column({
   nowMs: number;
   canEdit: boolean;
   isAdmin: boolean;
+  /** K2.11 — ฉันติดตามคอลัมน์นี้อยู่ไหม (มาจาก `watch.boardWatchState` ตอนโหลดบอร์ด) */
+  watched: boolean;
   draggingCardId: string | null;
   /** ตำแหน่งเส้นวาง (index ในกองการ์ดของคอลัมน์นี้) — null = ไม่ได้ลากอยู่เหนือคอลัมน์นี้ */
   indicatorIndex: number | null;
@@ -199,8 +204,8 @@ export function Column({
             <KanbanIcon name="plus" size="xs" />
           </button>
         )}
-        {canEdit && (
-          <span className="relative">
+        {/* K2.11 — เมนู ⋯ เปิดให้ทุกบทบาท: VIEWER ต้อง "ติดตามคอลัมน์" ได้ (รายการที่ต้องแก้งานยังกันด้วย canEdit/isAdmin เหมือนเดิม) */}
+        <span className="relative">
             <button
               type="button"
               aria-label="เมนูคอลัมน์"
@@ -223,9 +228,20 @@ export function Column({
                     fontSize: 12.5,
                   }}
                 >
-                  <button type="button" className="rounded-lg px-2 py-2 text-left" onClick={() => { setMenuOpen(false); setRenaming(true); }}>
-                    เปลี่ยนชื่อคอลัมน์
+                  {/* K2.11 — ติดตามคอลัมน์: การ์ดทุกใบในคอลัมน์นี้ (ใบที่ย้ายเข้ามาทีหลังด้วย) จะแจ้งถึงฉัน */}
+                  <button
+                    type="button"
+                    data-testid="column-watch"
+                    className="rounded-lg px-2 py-2 text-left"
+                    onClick={() => { setMenuOpen(false); handlers.onToggleWatchColumn(column.id, !watched); }}
+                  >
+                    {watched ? "เลิกติดตามคอลัมน์นี้" : "ติดตามคอลัมน์นี้"}
                   </button>
+                  {canEdit && (
+                    <button type="button" className="rounded-lg px-2 py-2 text-left" onClick={() => { setMenuOpen(false); setRenaming(true); }}>
+                      เปลี่ยนชื่อคอลัมน์
+                    </button>
+                  )}
                   {isAdmin && (
                     <button type="button" className="rounded-lg px-2 py-2 text-left" onClick={() => { setMenuOpen(false); setWipOpen(true); }}>
                       จำกัดงานพร้อมกัน…
@@ -240,7 +256,7 @@ export function Column({
                       {column.isDoneColumn ? "เลิกเป็นคอลัมน์เสร็จ" : "ตั้งเป็นคอลัมน์เสร็จ"}
                     </button>
                   )}
-                  {siblings.length > 0 && count > 0 && (
+                  {canEdit && siblings.length > 0 && count > 0 && (
                     <>
                       <span className="px-2 pt-2" style={{ fontSize: 11, color: "var(--color-muted)" }}>
                         ย้ายการ์ดทั้งหมดไป
@@ -257,8 +273,8 @@ export function Column({
                       ))}
                     </>
                   )}
-                  <span style={{ height: 1, background: "var(--color-line)", margin: "5px 9px" }} />
-                  {isAdmin && count === 0 ? (
+                  {canEdit && <span style={{ height: 1, background: "var(--color-line)", margin: "5px 9px" }} />}
+                  {!canEdit ? null : isAdmin && count === 0 ? (
                     <button
                       type="button"
                       className="rounded-lg px-2 py-2 text-left"
@@ -274,8 +290,7 @@ export function Column({
                 </div>
               </>
             )}
-          </span>
-        )}
+        </span>
       </div>
 
       {wipOpen && (

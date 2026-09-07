@@ -28,7 +28,9 @@ import {
   setCardAssigneesAction,
   setCardLabelsAction,
   setCardRecurrenceAction,
+  unwatchAction,
   updateCardFieldsAction,
+  watchAction,
 } from "@/lib/modules/kanban/actions";
 // K2.9 — ปุ่มอัตโนมัติของบอร์ด (แยกไฟล์ action ของตัวเอง)
 import { runButtonAction } from "@/lib/modules/kanban/automation-actions";
@@ -86,6 +88,9 @@ type Fields = {
   recurrenceParentTitle: string | null;
   /** K2.9: ปุ่มอัตโนมัติของบอร์ด (CARD_BUTTON ที่เปิดอยู่) — server ส่ง [] ให้ VIEWER อยู่แล้ว */
   cardButtons: { id: string; name: string }[];
+  /** K2.11: ฉันติดตามการ์ดใบนี้อยู่ไหม + มีผู้ติดตามกี่คน */
+  watching: boolean;
+  watcherCount: number;
 };
 
 export type CardBackHandlers = {
@@ -156,6 +161,8 @@ export function CardBack({
   const [startOpen, setStartOpen] = useState(false);
   // K2.9 — ปุ่มอัตโนมัติที่กำลังทำงานอยู่ (กันกดรัว: กฎ 1 ใบทำหลายอย่าง กดซ้ำ = ทำซ้ำจริง ๆ)
   const [runningButton, setRunningButton] = useState<string | null>(null);
+  // K2.11 — ปุ่มติดตาม (กันกดรัวระหว่างรอเซิร์ฟเวอร์ตอบ)
+  const [watchBusy, setWatchBusy] = useState(false);
   const router = useRouter();
 
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -170,6 +177,27 @@ export function CardBack({
    * 🔴 ไม่ทำ optimistic: กฎ 1 ใบทำได้หลายอย่าง (ย้าย/ติดป้าย/สร้างการ์ดอีกบอร์ด) — เดาผลลัพธ์บนจอ
    *    แล้วเดาผิดคือจอโกหก · รอผลจริงแล้วโหลดใหม่ตรงไปตรงมากว่า
    */
+  /**
+   * K2.11 — สลับ "ติดตาม" การ์ดใบนี้ · optimistic (ค่าเป็นบูลีนของตัวเอง เดาผิดได้แค่ 1 คลิก)
+   * ล้ม → คืนค่าเดิม + toast (ไม่ปล่อยให้จอโกหกว่าติดตามแล้ว)
+   */
+  const toggleWatch = async () => {
+    if (!fields) return;
+    const next = !fields.watching;
+    setWatchBusy(true);
+    setFields((f) => (f ? { ...f, watching: next, watcherCount: Math.max(0, f.watcherCount + (next ? 1 : -1)) } : f));
+    const res = next
+      ? await watchAction({ systemId, targetType: "CARD", targetId: card.id })
+      : await unwatchAction({ systemId, targetType: "CARD", targetId: card.id });
+    setWatchBusy(false);
+    if (!res.ok) {
+      setFields((f) => (f ? { ...f, watching: !next, watcherCount: Math.max(0, f.watcherCount + (next ? -1 : 1)) } : f));
+      handlers.onToast(res.message);
+      return;
+    }
+    handlers.onToast(next ? "ติดตามการ์ดนี้แล้ว" : "เลิกติดตามการ์ดนี้แล้ว");
+  };
+
   const runCardButton = async (ruleId: string, name: string) => {
     setRunningButton(ruleId);
     const res = await runButtonAction({ systemId, boardId, ruleId, cardId: card.id });
@@ -209,6 +237,8 @@ export function CardBack({
         recurrenceParentId: res.detail.recurrenceParentId,
         recurrenceParentTitle: res.detail.recurrenceParentTitle,
         cardButtons: res.detail.cardButtons,
+        watching: res.detail.watching,
+        watcherCount: res.detail.watcherCount,
       });
     });
     return () => {
@@ -957,6 +987,22 @@ export function CardBack({
               className="flex flex-none flex-col gap-4 border-t p-3.5 lg:w-[228px] lg:border-l lg:border-t-0"
               style={{ borderColor: "var(--color-line)", background: "var(--color-surface-2)" }}
             >
+              {/* K2.11 — ติดตาม: ของส่วนตัว ไม่ใช่การแก้ไขงาน ⇒ VIEWER กดได้ และการ์ดในคลังก็ยังติดตามได้
+                  (จึงอยู่นอกกลุ่ม "การ์ดนี้" ที่ล็อกไว้ให้เฉพาะคนแก้ได้) */}
+              <RailGroup title="ติดตาม">
+                <RailButton
+                  icon="eye"
+                  testid="card-watch"
+                  label={
+                    fields.watching
+                      ? `เลิกติดตาม${fields.watcherCount > 1 ? ` (${fields.watcherCount})` : ""}`
+                      : `ติดตามการ์ดนี้${fields.watcherCount > 0 ? ` (${fields.watcherCount})` : ""}`
+                  }
+                  disabled={watchBusy}
+                  onClick={toggleWatch}
+                />
+              </RailGroup>
+
               {editable && (
                 <RailGroup title="การ์ดนี้">
                   <div className="flex items-center gap-1.5">
@@ -1024,7 +1070,6 @@ export function CardBack({
                         }}
                       />
                     ))}
-                  <RailButton icon="eye" label="ติดตามการ์ด" disabled />
                 </RailGroup>
               )}
 

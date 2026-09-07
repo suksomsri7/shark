@@ -24,6 +24,7 @@ import { prisma } from "./db";
 import { BKK_OFFSET_MS, bkkDayStartMs, dayIndexOf, dueBucketOf } from "./filters";
 import { assertCardRole } from "./members";
 import { moveCard, type MoveCardFailCode } from "./moves";
+import { myWatched } from "./watch";
 import type { KanbanActor, KanbanCtx, KanbanTagColor, MyTaskCardDto, MyTasksOverviewDto } from "./types";
 
 const UNDO_TTL_MS = 5 * 60 * 1000; // 5 นาที (เท่า AccountUndoToken) — toast บนจอโชว์แค่ 5 วิ แต่ token อยู่ได้นานกว่านั้น
@@ -43,7 +44,7 @@ function currentWeekRangeMs(nowMs: number): { startMs: number; endMs: number } {
  * งานของฉันข้ามทุกบอร์ดที่ `actor` มองเห็น จัดกลุ่มตามกำหนดส่ง (ปฏิทินไทย) + รายการเช็คลิสต์ที่มอบหมายให้ฉัน
  * — เฉพาะการ์ด ACTIVE ที่ยังไม่เสร็จ (`completedAt === null`) เท่านั้นที่อยู่ในกลุ่ม `groups.*`
  *   (การ์ดที่เสร็จแล้วนับใน `counts.doneThisWeek` อย่างเดียว ไม่โผล่ในกลุ่มไหนเลย — ตามสัญญา §K1.13)
- * `watching` ยังคืน `[]` เสมอ — โมดูล "ติดตามการ์ด" ยังไม่มีจนกว่าจะถึง K2.11 (D7)
+ * `watching` (K2.11) = การ์ดที่ฉัน "ติดตาม" แต่ไม่ได้รับผิดชอบ — บล็อกล่างขวาของภาพ 06
  */
 export async function myTasksOverview(
   ctx: KanbanCtx,
@@ -125,7 +126,11 @@ export async function myTasksOverview(
     else groups.later.push(dto); // null = มีกำหนดส่งแต่เลยสัปดาห์นี้ไปแล้ว
   }
 
-  const checklistItems = await listMyChecklistItems(ctx, actor.userId);
+  const [checklistItems, watching] = await Promise.all([
+    listMyChecklistItems(ctx, actor.userId),
+    // K2.11: ของที่ฉันเฝ้าดูอยู่ (ไม่ได้รับผิดชอบ) — ไม่ซ้ำกับกลุ่มด้านบนของหน้าเดียวกัน
+    myWatched(ctx, actor),
+  ]);
 
   return {
     counts: {
@@ -137,8 +142,7 @@ export async function myTasksOverview(
     },
     groups,
     checklistItems,
-    // K2.11 ยังไม่ทำฟีเจอร์ "ติดตามการ์ด" (watch) — คืน [] เสมอไปก่อน ไม่ throw/ไม่ mock ข้อมูล
-    watching: [],
+    watching,
   };
 }
 

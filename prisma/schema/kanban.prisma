@@ -600,3 +600,44 @@ model KanbanInboxItem {
 
   @@index([tenantId, systemId, ownerUserId, status, createdAt])
 }
+
+// ───────────────────────── ติดตาม + อีเมลสรุป (K2.11) ─────────────────────────
+// "ติดตาม" (watch) = ขอรับแจ้งเตือนของการ์ด/คอลัมน์/บอร์ด โดยไม่ต้องเป็นผู้รับผิดชอบ (§7.4)
+// 🔴 ตารางนี้เป็น **polymorphic** (targetType + targetId) จึงผูก FK ไม่ได้ตามธรรมชาติ ⇒ ไม่มี relation
+//    ในสคีมา · ลบการ์ด/คอลัมน์/บอร์ดแล้วแถวติดตามค้างได้ (ไม่มีใครอ่านเจอเพราะทุกขาอ่านเริ่มจากของจริง
+//    เสมอ — resolveWatchersForCard โหลดการ์ดก่อน · myWatched join กับการ์ด ACTIVE)
+// 🔴 hard delete ได้ (§11.6): "เลิกติดตาม" คือการถอนความสนใจ ไม่ใช่ประวัติที่ต้องเก็บ
+enum KanbanWatchTargetType {
+  CARD
+  COLUMN
+  BOARD
+}
+
+model KanbanWatcher {
+  id         String                @id @default(cuid())
+  tenantId   String
+  systemId   String
+  targetType KanbanWatchTargetType
+  targetId   String // KanbanCard.id | KanbanColumn.id | KanbanBoard.id (ตาม targetType)
+  userId     String
+  createdAt  DateTime              @default(now())
+
+  // ติดตามซ้ำ = แถวเดิม (watch เป็น idempotent) — คีย์นี้คือด่านจริงของความ idempotent
+  @@unique([targetType, targetId, userId])
+  // "ที่ฉันติดตาม" ในหน้างานของฉัน = อ่านด้วยแกนนี้ (คนเดียว ข้ามทุกบอร์ดของระบบ)
+  @@index([tenantId, systemId, userId])
+}
+
+// หลักฐาน "ส่งอีเมลสรุปรอบนี้ไปแล้ว" — 1 ฉบับ/คน/รอบ (periodKey = `daily:YYYY-MM-DD` หรือ `weekly:YYYY-MM-DD`(จันทร์))
+// 🔴 ทำไมไม่ใช้ AppNotification เป็นหลักฐานเหมือนที่พิมพ์เขียว §7.6 เขียนไว้: อีเมลสรุปไม่ใช่แจ้งเตือน
+//    ในแอป (ไม่ควรโผล่ในกระดิ่ง) ⇒ ถ้ายืมตารางนั้นมาทำหลักฐาน จะได้ใบแจ้งเตือนปลอมวันละใบต่อคน
+// 🔴 unique(tenantId, userId, periodKey) = กัน cron ซ้อน/รันซ้ำในวันเดียวกันส่งซ้ำ (ด่านอยู่ที่ DB ไม่ใช่โค้ด)
+model KanbanDigestSent {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  periodKey String
+  sentAt    DateTime @default(now())
+
+  @@unique([tenantId, userId, periodKey])
+}

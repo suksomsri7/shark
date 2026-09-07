@@ -12,7 +12,7 @@ import { SearchPalette } from "./SearchPalette";
 import { BoardActivityPanel } from "./Timeline";
 // K2.5 — dropdown "มุมมองที่บันทึกไว้" + "บันทึกมุมมองนี้" (testid `saved-views`)
 import { SavedViewsMenu } from "./SavedViewsMenu";
-import { saveBoardAsTemplateAction } from "@/lib/modules/kanban/actions";
+import { saveBoardAsTemplateAction, unwatchAction, watchAction } from "@/lib/modules/kanban/actions";
 // K2.9 — ปุ่มอัตโนมัติของหัวบอร์ด (BOARD_BUTTON)
 import { runButtonAction } from "@/lib/modules/kanban/automation-actions";
 import type { BoardFilters, DueBucket } from "@/lib/modules/kanban/filters";
@@ -84,8 +84,26 @@ export function BoardHeader({
   // K2.9 — ปุ่มอัตโนมัติของบอร์ดที่กำลังทำงาน (กันกดรัว — กฎ 1 ใบทำได้หลายอย่างจริง ๆ)
   const [runningButton, setRunningButton] = useState<string | null>(null);
   const [buttonError, setButtonError] = useState<string | null>(null);
+  // K2.11 — "ติดตามบอร์ด" (ของส่วนตัว) · ค่าเริ่มต้นมาจาก server พร้อมบอร์ด
+  const [watching, setWatching] = useState(board.watched);
+  const [watchBusy, setWatchBusy] = useState(false);
   const isAdmin = board.role === "ADMIN";
   const router = useRouter();
+
+  /** สลับติดตามบอร์ด — optimistic · ล้มแล้วคืนค่าเดิม + ข้อความตรงจุด (ไม่ alert) */
+  const toggleWatchBoard = async () => {
+    const next = !watching;
+    setWatchBusy(true);
+    setWatching(next);
+    const res = next
+      ? await watchAction({ systemId: board.systemId, targetType: "BOARD", targetId: board.id })
+      : await unwatchAction({ systemId: board.systemId, targetType: "BOARD", targetId: board.id });
+    setWatchBusy(false);
+    if (!res.ok) {
+      setWatching(!next);
+      setButtonError(res.message);
+    }
+  };
 
   /** กดปุ่มอัตโนมัติของบอร์ด → กฎวิ่งฝั่งเซิร์ฟเวอร์ แล้วโหลดบอร์ดใหม่ (ไม่เดาผลลัพธ์บนจอ) */
   const runBoardButton = async (ruleId: string, name: string) => {
@@ -426,6 +444,20 @@ export function BoardHeader({
               <Link href={`/app/sys/${board.systemId}/kanban/boards`} className="rounded-lg px-2 py-2" onClick={() => setMenuOpen(false)}>
                 หน้ารวมบอร์ด
               </Link>
+              {/* K2.11 — ติดตามทั้งบอร์ด: ได้ใบแจ้งเตือนของทุกการ์ดในบอร์ดนี้ (ของส่วนตัว · ทุกบทบาทกดได้) */}
+              <button
+                type="button"
+                data-testid="board-watch"
+                className="flex items-center gap-2 rounded-lg px-2 py-2 text-left"
+                disabled={watchBusy}
+                onClick={() => {
+                  setMenuOpen(false);
+                  void toggleWatchBoard();
+                }}
+              >
+                <KanbanIcon name="eye" size="xs" />
+                {watching ? "เลิกติดตามบอร์ด" : "ติดตามบอร์ด"}
+              </button>
               <button
                 type="button"
                 data-testid="board-activity-open"

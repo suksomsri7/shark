@@ -5,6 +5,9 @@ import { bundleLabelForScopes } from "@/lib/api-keys/scopes";
 import { canReadKanban, toActor } from "@/lib/modules/kanban/access";
 import { createKanbanApiKeyAction, revokeKanbanApiKeyAction } from "@/lib/modules/kanban/settings-actions";
 import { ApiKeysPanel, type KanbanApiKeyRow } from "@/components/kanban/ApiKeysPanel";
+// K2.11 — บล็อก "การแจ้งเตือนของฉัน" (ค่าของคน ไม่ใช่ของร้าน)
+import { NotifyPrefs } from "@/components/kanban/NotifyPrefs";
+import { getUserPreferences } from "@/lib/core/user-preferences";
 import { KanbanTabs } from "@/components/kanban/KanbanTabs";
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -31,6 +34,9 @@ export default async function KanbanSettingsPage({ params }: { params: Promise<{
   // ชั้นที่ 1 ของโมดูล — คนที่ไม่มีสิทธิ์บอร์ดงานเลยไม่ควรเห็นแม้แต่หน้าตั้งค่า
   if (!canReadKanban(actor)) notFound();
 
+  // ค่าแจ้งเตือนของ "คนที่กำลังดู" (ของส่วนตัว — ไม่ใช่ค่าของร้าน)
+  const prefs = await getUserPreferences(auth.user.id);
+
   const rows = await prisma.apiKey.findMany({
     where: { tenantId, systemId: id, revokedAt: null },
     orderBy: { createdAt: "desc" },
@@ -50,9 +56,10 @@ export default async function KanbanSettingsPage({ params }: { params: Promise<{
       <PageHeader
         title={sys.name}
         back={{ href: `/app/sys/${id}`, label: sys.name }}
-        desc="ตั้งค่า — คีย์ API สำหรับให้ระบบภายนอกและผู้ช่วย AI ทำงานกับบอร์ดของคุณ"
+        desc="ตั้งค่า — การแจ้งเตือนของฉัน และคีย์ API สำหรับให้ระบบภายนอกและผู้ช่วย AI ทำงานกับบอร์ดของคุณ"
       />
       <KanbanTabs systemId={id} actor={actor} />
+      <NotifyPrefs emailMode={prefs.kanbanEmailMode} digest={prefs.kanbanDigest} />
       <ApiKeysPanel
         systemId={id}
         keys={keys}

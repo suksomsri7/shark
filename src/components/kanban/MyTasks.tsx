@@ -37,6 +37,13 @@ function greetingWord(hour: number): string {
   return "เย็น";
 }
 
+/** "5 ก.ย." — เดือนไทยย่อ (ห้าม toLocaleDateString ตามกติกาของโมดูล · K2.11) */
+function thaiShortDate(iso: string): string {
+  const TH_MONTH_SHORT = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+  const d = new Date(Date.parse(iso) + BKK_OFFSET_MS);
+  return `${d.getUTCDate()} ${TH_MONTH_SHORT[d.getUTCMonth()]}`;
+}
+
 /** "ศุกร์ 5 กันยายน 2569" — วันไทย + วันที่ + เดือนไทยเต็ม + ปี พ.ศ. */
 function thaiDateLong(nowMs: number): string {
   const b = bkkOf(nowMs);
@@ -413,17 +420,33 @@ export function MyTasks({
           </div>
         )}
 
-        {/* ── ที่ฉันติดตาม — ยังไม่มีฟีเจอร์ (K2.11) ── */}
+        {/* ── ที่ฉันติดตาม (K2.11 · ภาพ 06 ฝั่งขวาล่าง) — งานที่เฝ้าดูอยู่แต่ไม่ใช่ของฉัน ── */}
         {overview.watching.length > 0 && (
-          <div className="flex flex-col gap-1.5">
+          <div data-testid="my-watched" className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2 border-t pt-2.5" style={{ borderColor: "var(--color-line)" }}>
               <KanbanIcon name="eye" size="sm" />
               <span style={{ fontSize: 12.5, fontWeight: 600 }}>ที่ฉันติดตาม (ไม่ได้รับผิดชอบ)</span>
+              <span style={{ fontSize: 11.5, color: "var(--color-muted)" }}>{overview.watching.length}</span>
             </div>
             <ul className="flex flex-col">
               {overview.watching.map((w) => (
-                <li key={w.id} className="border-t py-2 first:border-t-0" style={{ borderColor: "var(--color-line)", fontSize: 12.5 }}>
-                  <Link href={`/app/sys/${systemId}/kanban/b/${w.boardId}?card=${w.id}`}>{w.title}</Link>
+                <li
+                  key={w.id}
+                  className="flex items-center gap-2 border-t py-2 first:border-t-0"
+                  style={{ borderColor: "var(--color-line)", fontSize: 12.5 }}
+                >
+                  <Link href={`/app/sys/${systemId}/kanban/b/${w.boardId}?card=${w.id}`} className="min-w-0 flex-1 truncate">
+                    {w.cardNo ? `#${w.cardNo} ` : ""}
+                    {w.title}
+                  </Link>
+                  <span className="shrink-0 truncate" style={{ fontSize: 11, color: "var(--color-muted)", maxWidth: 150 }}>
+                    {w.boardName} · {w.columnName}
+                  </span>
+                  {w.dueAt && (
+                    <span className="shrink-0 tabular-nums" style={{ fontSize: 11, color: "var(--color-muted)" }}>
+                      {thaiShortDate(w.dueAt)}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

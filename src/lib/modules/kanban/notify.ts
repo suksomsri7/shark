@@ -33,6 +33,18 @@ export type KanbanNotifyInput = {
   data?: Record<string, string>;
   /** ส่งอีเมลด้วยไหม — ส่งจริงเฉพาะเมื่อ `RESEND_API_KEY` ถูกตั้งค่าแล้วเท่านั้น */
   email?: boolean;
+  /**
+   * K2.11 — ยิง push ด้วยไหม (ค่าเริ่มต้น = ยิง)
+   * ตาราง §7.4 ให้ push เฉพาะเรื่องที่ "ต้องรู้เดี๋ยวนี้" (ความเห็นใหม่ · ถูก mention · ได้รับมอบหมาย)
+   * ส่วนการ์ดที่ติดตามถูกย้าย/เก็บ/เลยกำหนด = ในแอปอย่างเดียว (ไม่ปลุกจอล็อกของทั้งทีมทุกครั้งที่มีคนลากการ์ด)
+   */
+  push?: boolean;
+  /**
+   * K2.11 — ประทับ `emailedAt` ตอนสร้างเลย (ไม่ส่งมา = คิดจาก `email`)
+   * `null` ชัด ๆ = "ยังไม่ส่ง ปล่อยให้รอบสรุปรายชั่วโมงเก็บ" · มีค่า = "จบเรื่องอีเมลของใบนี้แล้ว"
+   * (ทั้งกรณีส่งทันที INSTANT และกรณี OFF ที่ตั้งใจไม่ส่ง — ทั้งคู่ต้องไม่ถูก sweep หยิบไปส่งซ้ำ)
+   */
+  emailedAt?: Date | null;
 };
 
 /**
@@ -48,17 +60,22 @@ export async function notifyKanbanUser(input: KanbanNotifyInput): Promise<void> 
       recipientUserId: input.recipientUserId,
       title: input.title,
       body: input.body,
+      // K2.11: ใบที่ "จัดการเรื่องอีเมลแล้ว" (ส่งทันที หรือเจ้าตัวปิดอีเมลไว้) ต้องไม่ถูกรอบสรุปหยิบซ้ำ
+      emailedAt: input.emailedAt !== undefined ? input.emailedAt : input.email ? new Date() : null,
     },
   });
 
-  try {
-    await sendPushToUser(
-      input.recipientUserId,
-      { title: input.title, body: input.body, data: input.data },
-      { tenantId: input.tenantId },
-    );
-  } catch {
-    // ตัวส่ง push กลืน error ของตัวเองอยู่แล้ว — ด่านนี้กันแค่กรณี import/โค้ดพัง
+  // push = ตาราง §7.4 (ไม่ส่ง = ยังได้ใบในแอปเหมือนเดิม แค่ไม่ปลุกจอล็อก)
+  if (input.push !== false) {
+    try {
+      await sendPushToUser(
+        input.recipientUserId,
+        { title: input.title, body: input.body, data: input.data },
+        { tenantId: input.tenantId },
+      );
+    } catch {
+      // ตัวส่ง push กลืน error ของตัวเองอยู่แล้ว — ด่านนี้กันแค่กรณี import/โค้ดพัง
+    }
   }
 
   if (input.email) {
@@ -124,4 +141,84 @@ export async function notifyCardAssigned(
     data: { cardId: card.id, boardId: card.boardId, systemId },
   });
   scheduleDrain();
+}
+
+// ───────────────────────── K2.11: ผู้ติดตาม (§7.4) ─────────────────────────
+
+/** เรื่องที่ส่งถึงผู้ติดตามได้ — คนละคอลัมน์ในตาราง §7.4 (push เฉพาะ COMMENT) */
+export type WatcherNotifyKind = "COMMENT" | "MOVED" | "ARCHIVED";
+
+/**
+ * ส่งแจ้งเตือน 1 ใบให้ 1 คน โดยเคารพ "ความถี่อีเมล" ที่เจ้าตัวตั้งไว้ (K2.11)
+ * - `INSTANT` → ส่งอีเมลทันที + ประทับ `emailedAt` (จบเรื่องใบนี้)
+ * - `HOURLY`  → ไม่ส่งตอนนี้ · `emailedAt = null` ให้ `digest.sweepKanbanEmailHourly` รวมส่งเป็นฉบับเดียว
+ * - `OFF`     → ไม่ส่ง แต่ประทับ `emailedAt` ไว้ (ไม่งั้นรอบสรุปจะมาเก็บไปส่งทีหลัง = ปิดไม่จริง)
+ * 🔴 อ่าน prefs ต่อคน (ค่าเป็นของ **คน** ข้ามร้าน) — ผู้เรียกวนหลายคนได้ ไม่ต้องรู้เรื่อง prefs เอง
+ */
+export async function notifyKanbanUserByPreference(
+  input: KanbanNotifyInput & { push?: boolean },
+): Promise<void> {
+  const { getUserPreferences } = await import("@/lib/core/user-preferences");
+  const mode = (await getUserPreferences(input.recipientUserId)).kanbanEmailMode;
+  await notifyKanbanUser({
+    ...input,
+    email: mode === "INSTANT",
+    emailedAt: mode === "HOURLY" ? null : new Date(),
+  });
+}
+
+/**
+ * แจ้ง "ผู้ติดตามการ์ด" ทุกคน (ยกเว้นคนทำเอง และคนที่ได้ใบอื่นของเรื่องเดียวกันไปแล้ว)
+ *
+ * 🔴 `excludeUserIds` มีไว้กัน "ใบซ้ำเรื่องเดียว": คนที่ถูก @mention ในความเห็นได้ใบ mention ไปแล้ว
+ *    ⇒ ต้องไม่ได้ใบ "มีความเห็นใหม่ในการ์ดที่คุณติดตาม" อีกใบจากเรื่องเดียวกัน
+ * 🔴 best-effort ทั้งก้อน: ล้มแล้วห้ามพางานหลัก (เขียนความเห็น/ย้ายการ์ด/เก็บการ์ด) ล้มตาม
+ *    และต้องเรียก **นอกทรานแซกชัน** เสมอ (ยิง push/อีเมล/อ่าน prefs = network)
+ */
+export async function notifyWatchers(
+  ctx: { tenantId: string; systemId: string },
+  args: {
+    cardId: string;
+    kind: WatcherNotifyKind;
+    actorUserId?: string | null;
+    excludeUserIds?: string[];
+    title: string;
+    body: string;
+  },
+): Promise<number> {
+  try {
+    const { notifiableWatchersForCard } = await import("./watch");
+    const all = await notifiableWatchersForCard(ctx as { tenantId: string; systemId: string }, args.cardId);
+    const skip = new Set([...(args.excludeUserIds ?? []), ...(args.actorUserId ? [args.actorUserId] : [])]);
+    const targets = all.filter((u) => !skip.has(u));
+    if (targets.length === 0) return 0;
+    const card = await prisma.kanbanCard.findFirst({
+      where: { id: args.cardId, tenantId: ctx.tenantId },
+      select: { boardId: true },
+    });
+    const data: Record<string, string> = { cardId: args.cardId, systemId: ctx.systemId };
+    if (card) data.boardId = card.boardId;
+    for (const userId of targets) {
+      await notifyKanbanUserByPreference({
+        tenantId: ctx.tenantId,
+        systemId: ctx.systemId,
+        recipientUserId: userId,
+        title: args.title,
+        body: args.body,
+        data,
+        // §7.4: push เฉพาะ "ความเห็นใหม่" — การ์ดถูกย้าย/เก็บ = ในแอปพอ
+        push: args.kind === "COMMENT",
+      }).catch(() => {});
+    }
+    return targets.length;
+  } catch {
+    // ผู้ติดตามเป็นช่องทางเสริม — ล้มแล้วเงียบ (งานหลัก commit ไปแล้ว)
+    return 0;
+  }
+}
+
+/** ตัดข้อความยาว (เนื้อความเห็น) ให้เหลือ ≤ n ตัวอักษร — ห้ามยัดความเห็นเต็มลงอีเมล/แจ้งเตือน (§7.4) */
+export function shortenForNotice(text: string, max = 80): string {
+  const one = text.replace(/\s+/g, " ").trim();
+  return one.length <= max ? one : `${one.slice(0, max - 1)}…`;
 }

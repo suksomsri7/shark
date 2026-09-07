@@ -24,6 +24,7 @@ import { logActivity } from "./activity-log";
 import { prisma } from "./db";
 import { KANBAN_LIMITS } from "./limits";
 import { assertBoardRole, assertColumnRole } from "./members";
+import { cardLink, notifyWatchers } from "./notify";
 import { keyBetween, keysBetween, rebalanceKeys } from "./ordering";
 import { publishBoardSignal, boardSignal } from "./realtime";
 import type { KanbanCtx } from "./types";
@@ -229,7 +230,8 @@ export async function moveCard(ctx: KanbanCtx, input: MoveCardInput): Promise<Mo
 
   const target = await prisma.kanbanColumn.findFirst({
     where: { id: input.toColumnId, tenantId: ctx.tenantId, systemId: ctx.systemId },
-    select: { id: true, boardId: true, status: true },
+    // K2.11: ดึงชื่อคอลัมน์ปลายทางมาด้วย — ใช้เขียนใบแจ้งผู้ติดตามหลัง commit (ไม่ต้องยิงคิวรีซ้ำ)
+    select: { id: true, boardId: true, status: true, name: true },
   });
   if (!target) return fail("NOT_FOUND", "ไม่พบคอลัมน์ปลายทาง");
   if (target.boardId !== card.boardId) return fail("CROSS_BOARD", "ย้ายการ์ดข้ามบอร์ดไม่ได้");
@@ -363,6 +365,18 @@ export async function moveCard(ctx: KanbanCtx, input: MoveCardInput): Promise<Mo
   // (ถ้ายิงใน tx แล้ว tx ถูก rollback = จอทุกเครื่องรีเฟรชไปเห็นของที่ไม่มีจริง — ดูหัวไฟล์ realtime.ts)
   await publishBoardSignal(ctx, card.boardId, boardSignal({ type: "card.moved", boardId: card.boardId, cardId: card.id, columnId: target.id }));
 
+  // K2.11 — ผู้ติดตามได้ใบ "การ์ดที่คุณติดตามถูกย้าย…" เฉพาะการย้าย **ข้ามคอลัมน์** ที่สำเร็จจริง
+  // (ขยับลำดับในคอลัมน์เดิมไม่ใช่ข่าว — เกณฑ์เดียวกับ event/ประวัติกิจกรรมข้างบน) · นอก tx · best-effort
+  if (result.ok && card.columnId !== target.id) {
+    await notifyWatchers(ctx, {
+      cardId: card.id,
+      kind: "MOVED",
+      actorUserId: ctx.actorUserId ?? null,
+      title: "การ์ดที่คุณติดตามถูกย้ายคอลัมน์",
+      body: `"${result.card.title}" ถูกย้ายไป "${target.name}" · ${cardLink(ctx.systemId, card.boardId, card.id)}`,
+    });
+  }
+
   return result;
 }
 
@@ -374,6 +388,12 @@ export async function moveCardSideways(
   ctx: KanbanCtx,
   input: { cardId: string; direction: "left" | "right"; force?: boolean },
 ): Promise<MoveCardResult> {
+  // 🔴 K2.11: ทิศทางต้องเป็น "left"/"right" เท่านั้น — ของเดิมตีความค่าอื่น (undefined/สตริงมั่ว) เป็น
+  //    "right" เงียบ ๆ ⇒ ผู้เรียกที่ลืมส่ง/ส่งผิดจะ "ย้ายการ์ดจริง" โดยไม่มีใครสั่ง (ผู้ใช้เห็นการ์ด
+  //    กระโดดคอลัมน์เอง + ผู้ติดตามได้ใบแจ้งเตือนจากคำสั่งที่ไม่มีอยู่จริง)
+  if (input.direction !== "left" && input.direction !== "right") {
+    return fail("NOT_FOUND", "ต้องระบุทิศทางการย้าย (ซ้าย/ขวา)");
+  }
   const card = await prisma.kanbanCard.findFirst({
     where: { id: input.cardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
     select: { id: true, boardId: true, columnId: true },

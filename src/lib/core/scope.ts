@@ -240,6 +240,11 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   KanbanCardTemplate: sys(),
   // K2.8 — กล่องงานเข้าส่วนตัว · มีทั้ง tenantId+systemId เหมือน KanbanBoard/Card ⇒ แกน sys()
   KanbanInboxItem: sys(),
+  // K2.11 — ติดตามการ์ด/คอลัมน์/บอร์ด · มีทั้ง tenantId+systemId ⇒ แกน sys()
+  KanbanWatcher: sys(),
+  // K2.11 — หลักฐานอีเมลสรุปที่ส่งไปแล้ว (1 ฉบับ/คน/รอบ) · มีแต่ tenantId (ไม่ผูกระบบใดระบบหนึ่ง
+  // เพราะสรุปคือ "งานของฉันในร้านนี้" ข้ามทุกบอร์ดของร้าน) ⇒ แกน tenant เหมือน join table อื่น
+  KanbanDigestSent: tenant,
   // เทมเพลตบอร์ด (K1.12) — tenantId เป็น null ได้ (แพลตฟอร์ม) ⇒ แกน global ไม่ใช่ tenant
   // (ผิดจาก join table อื่นข้างบน: ตารางนี้มีทั้งแถวไม่ผูก tenant และแถวผูก tenant ปนกัน
   // ถ้าลงเป็น tenant แล้ว tenantDb() ถูกเรียกวันหน้า จะกรอง tenantId=ปัจจุบันทับ WHERE เดิม

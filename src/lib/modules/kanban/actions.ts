@@ -48,7 +48,10 @@ import { createLabel, setCardLabels } from "./labels";
 import type { ArchiveListDto } from "./types";
 // K1.14 — คลังเก็บ + การตั้งค่าส่วนตัว (ปุ่มลัด)
 import { listArchived, restoreColumn } from "./archive";
-import { setUserPreferences } from "./preferences";
+import { parsePreferences, setUserPreferences } from "./preferences";
+// K2.11 — ติดตาม (watch) + ความถี่อีเมลของแต่ละคน
+import { requireActor, unwatch, watch } from "./watch";
+import type { KanbanDigestMode, KanbanEmailMode } from "@/lib/core/user-preferences";
 // K1.7 — เช็คลิสต์: `checklistProgressOfCard` ใช้ตอนคืนการ์ดเดี่ยวจาก action (ทำสำเนา/กู้คืน)
 // เพื่อให้ตรา n/m บนการ์ดที่เพิ่งแทรกกลับเข้าบอร์ดถูกต้องทันที ไม่ต้องรอโหลดบอร์ดใหม่ทั้งใบ
 import {
@@ -1419,6 +1422,70 @@ export async function setKanbanShortcutsAction(input: {
   const next = await setUserPreferences(auth.user.id, { kanbanShortcuts: !!input.enabled });
   revalidatePath("/app/settings/preferences");
   return { ok: true, kanbanShortcuts: next.kanbanShortcuts };
+}
+
+// ───────────────────────── K2.11 — ติดตาม + ความถี่อีเมล ─────────────────────────
+
+/**
+ * ติดตาม/เลิกติดตาม การ์ด · คอลัมน์ · บอร์ด (ปุ่ม 👁 · เมนูคอลัมน์ · เมนูบอร์ด)
+ * 🔴 คนที่ติดตาม = คนที่ล็อกอินอยู่เสมอ (ไม่รับ userId จากฟอร์ม — ไม่งั้นสมัครแจ้งเตือนแทนคนอื่นได้)
+ * 🔴 ด่านสิทธิ์จริง (VIEWER+ ของบอร์ด · มองไม่เห็น = 404) อยู่ใน `watch.ts` — ที่นี่ตรวจแค่ชั้นโมดูล
+ */
+export async function watchAction(input: {
+  systemId: string;
+  targetType: "CARD" | "COLUMN" | "BOARD";
+  targetId: string;
+}): Promise<{ ok: true; watching: boolean } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.targetId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    const actor = await requireActor(ctx);
+    const res = await watch(ctx, actor, { targetType: input.targetType, targetId: input.targetId });
+    return { ok: true as const, watching: res.watching };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "ติดตามไม่สำเร็จ" };
+  }
+}
+
+export async function unwatchAction(input: {
+  systemId: string;
+  targetType: "CARD" | "COLUMN" | "BOARD";
+  targetId: string;
+}): Promise<{ ok: true; watching: boolean } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  if (!input.systemId || !input.targetId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    const actor = await requireActor(ctx);
+    const res = await unwatch(ctx, actor, { targetType: input.targetType, targetId: input.targetId });
+    return { ok: true as const, watching: res.watching };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "เลิกติดตามไม่สำเร็จ" };
+  }
+}
+
+/**
+ * ตั้งความถี่อีเมลของ "ตัวเอง" (บล็อก "การแจ้งเตือนของฉัน" ในหน้าตั้งค่าบอร์ดงาน)
+ * 🔴 ไม่ต้องมีคีย์สิทธิ์โมดูล เหมือน `setKanbanShortcutsAction` — เป็นค่าของคน ไม่ใช่ของร้าน
+ * 🔴 ค่าที่ส่งมาผ่าน `parsePreferences` อีกชั้นเสมอ (ค่าแปลก → ค่าเริ่มต้น ไม่ใช่เขียนลงตรง ๆ)
+ */
+export async function setKanbanNotifyPrefsAction(input: {
+  emailMode?: string;
+  digest?: string;
+}): Promise<{ ok: true; kanbanEmailMode: KanbanEmailMode; kanbanDigest: KanbanDigestMode }> {
+  const auth = await requireTenant();
+  const patch: { kanbanEmailMode?: KanbanEmailMode; kanbanDigest?: KanbanDigestMode } = {};
+  if (input.emailMode !== undefined) {
+    patch.kanbanEmailMode = parsePreferences({ kanbanEmailMode: input.emailMode }).kanbanEmailMode;
+  }
+  if (input.digest !== undefined) {
+    patch.kanbanDigest = parsePreferences({ kanbanDigest: input.digest }).kanbanDigest;
+  }
+  const next = await setUserPreferences(auth.user.id, patch);
+  return { ok: true as const, kanbanEmailMode: next.kanbanEmailMode, kanbanDigest: next.kanbanDigest };
 }
 
 // ───────────────────────── K2.5 — มุมมองที่บันทึกไว้ ─────────────────────────

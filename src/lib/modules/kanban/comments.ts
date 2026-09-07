@@ -20,7 +20,7 @@ import { prisma } from "./db";
 import { publishBoardSignal, boardSignal } from "./realtime";
 import { KANBAN_LIMITS } from "./limits";
 import { assertBoardRole, assertCardRole, grantViewerForMention } from "./members";
-import { cardLink, notifyKanbanUser } from "./notify";
+import { cardLink, notifyKanbanUser, notifyWatchers, shortenForNotice } from "./notify";
 import type { KanbanCommentDto, KanbanCtx } from "./types";
 
 /** `@[ชื่อ](userId)` — ชื่อห้ามมี `]` และห้ามข้ามบรรทัด · userId เป็น cuid (ตัวอักษร/เลข/-/_) */
@@ -152,6 +152,24 @@ export async function addComment(ctx: KanbanCtx, cardId: string, rawBody: string
   scheduleDrain();
 
   await notifyMentions(ctx, { cardId, boardId, authorUserId, targets: mentions });
+  // K2.11 — ผู้ติดตามการ์ด/คอลัมน์/บอร์ด ได้ใบ "มีความเห็นใหม่" (นอก tx · best-effort)
+  // 🔴 ตัดคนที่ถูก mention ออก: เขาได้ใบ "มีคนพูดถึงคุณ" ไปแล้ว — เรื่องเดียวกันต้องไม่ได้ 2 ใบ
+  {
+    const card = await prisma.kanbanCard.findFirst({
+      where: { id: cardId, tenantId: ctx.tenantId },
+      select: { title: true },
+    });
+    const link = cardLink(ctx.systemId, boardId, cardId);
+    await notifyWatchers(ctx, {
+      cardId,
+      kind: "COMMENT",
+      actorUserId: authorUserId,
+      excludeUserIds: mentions,
+      title: "มีความเห็นใหม่ในการ์ดที่คุณติดตาม",
+      // ไม่ใส่เนื้อความเต็ม (§7.4) — ตัด ≤ 80 ตัวอักษร แล้วให้ไปอ่านต่อที่การ์ด
+      body: `การ์ด "${card?.title ?? "งาน"}" · "${shortenForNotice(body)}" · ${link}`,
+    });
+  }
   // K1.14 — สัญญาณหลัง commit · ไม่มีเนื้อความในนี้ (จอที่ได้รับไปดึงความเห็นจากเซิร์ฟเวอร์เราเอง)
   await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.comment", boardId, cardId }));
   return comment;
