@@ -56,7 +56,7 @@ try {
   chk("K3.2-S1.1", "getIntegrations(tenantId, systemId) → IntegrationsConfig (zod · ปริยาย **ปิดทุกตัว**): openTaskFromChat cardFromForm cardFromApproval closeCardOnDocApproved cardOnLeave cardOnVoidedSale cardFromEmail ทุกตัว {enabled:false}", d0 && ["openTaskFromChat", "cardFromForm", "cardFromApproval", "closeCardOnDocApproved", "cardOnLeave", "cardOnVoidedSale", "cardFromEmail"].every((k) => d0[k] && d0[k].enabled === false), "ปิดทุกตัว", JSON.stringify(d0).slice(0, 200));
   const eT = await fails(() => integ.setIntegrations({ ...ctxO, actorUserId: U.thana }, thana, { openTaskFromChat: { enabled: true, boardId: board } }));
   chk("K3.2-S1.2", "setIntegrations(ctx, actor, patch) — STAFF ไม่มีคีย์ kanban.automation.manage → Forbidden · OWNER ได้", !!eT, "throw", "ไม่ throw");
-  const eBoard = await fails(() => integ.setIntegrations(ctxO, owner, { openTaskFromChat: { enabled: true, boardId: E.boards.kataSecret.id, columnId: c0.id } }));
+  const eBoard = await fails(() => integ.setIntegrations(ctxO, owner, { openTaskFromChat: { enabled: true, boardId: E.boards.kata.id, columnId: c0.id } }));
   await integ.setIntegrations(ctxO, owner, { openTaskFromChat: { enabled: true, boardId: board, columnId: c0.id, unassignedMinutes: 30 } });
   const d1 = await integ.getIntegrations(tid, SYS);
   chk("K3.2-S1.3", "patch ตรวจ boardId/columnId ต้องเป็นบอร์ด ACTIVE ที่ actor เป็น ADMIN + คอลัมน์ของบอร์ดนั้น (คอลัมน์ผิดบอร์ด → throw) · เขียนทับเฉพาะคีย์ที่ส่ง (คีย์อื่นคงเดิม) · อ่านกลับได้", !!eBoard && d1.openTaskFromChat.enabled === true && d1.openTaskFromChat.boardId === board && d1.openTaskFromChat.columnId === c0.id && d1.openTaskFromChat.unassignedMinutes === 30 && d1.cardFromForm.enabled === false, "ตรง", JSON.stringify(d1.openTaskFromChat));

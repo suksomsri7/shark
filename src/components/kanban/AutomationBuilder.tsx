@@ -2,7 +2,7 @@
 //
 // โครงตามภาพ: หัว (ชื่อบอร์ด + ชิปโควตา + ปุ่มสร้างกฎใหม่) · ซ้าย "ประเภทอัตโนมัติ" ·
 // กลาง ตัวสร้างกฎเป็น "ประโยคไทย" (เมื่อ / และถ้า / ให้ทำ / และ) · ล่างซ้าย ตารางกฎ ·
-// ล่างขวา คำแนะนำจาก AI (K3.6 — ยังว่าง) + บันทึกการทำงานล่าสุด
+// ล่างขวา คำแนะนำจาก AI (K3.6 — `AutomationSuggestions`) + บันทึกการทำงานล่าสุด
 //
 // 🔴 client component — import เฉพาะ actions (`"use server"`) + ชนิดล้วน
 //    ห้าม import `automation.ts` ตรง ๆ (ไฟล์นั้นแตะ prisma → ลาก `pg` เข้าบันเดิลฝั่งเบราว์เซอร์)
@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { KanbanIcon } from "./KanbanIcon";
+import { AutomationSuggestions, type AutomationSuggestionRow } from "./AutomationSuggestions";
 import {
   createRuleAction,
   deleteRuleAction,
@@ -65,6 +66,8 @@ export type AutomationPageData = {
   fields: Opt[];
   targetBoards: Opt[];
   targetColumns: { id: string; name: string; boardId: string }[];
+  /** K3.6 — ข้อเสนอจากพฤติกรรมจริงบนบอร์ดนี้ (คำนวณฝั่ง server ทุกครั้งที่เปิดหน้า · ไม่แตะ DB) */
+  suggestions: AutomationSuggestionRow[];
 };
 
 // ───────────────────────── ทะเบียนเงื่อนไข/การกระทำของฟอร์ม ─────────────────────────
@@ -358,6 +361,32 @@ export function AutomationBuilder({ data }: { data: AutomationPageData }) {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
+
+  /**
+   * K3.6 — กด "สร้าง" ที่คำแนะนำ = **โหลดร่างเข้าฟอร์ม** ไม่ใช่บันทึก
+   * `editingId: null` เสมอ ⇒ หัวกล่องขึ้น "กฎใหม่ — ยังไม่บันทึก" และปุ่มบันทึกจะ `createRule`
+   * (ถ้าเผลอใส่ id ของข้อเสนอลงไป ปุ่มบันทึกจะกลายเป็น `updateRule` ของกฎที่ไม่มีอยู่จริง)
+   */
+  const loadSuggestion = (s: AutomationSuggestionRow) => {
+    const row: AutomationRuleRow = {
+      id: s.id,
+      name: s.rule.name,
+      kind: s.rule.kind,
+      event: s.rule.event ?? null,
+      enabled: true,
+      runsThisMonth: 0,
+      sentence: "",
+      conditions: s.rule.conditions,
+      actions: s.rule.actions,
+      scheduleCron: s.rule.scheduleCron ?? null,
+      dueOffsetDays: s.rule.dueOffsetDays ?? null,
+    };
+    setDraft({ ...draftOfRule(row, defaultEvent), editingId: null });
+    setDry(null);
+    setError(null);
+    setOpen(true);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const countOf = (kind: string) => data.rules.filter((r) => r.kind === kind).length;
   const columnsOfBoard = useMemo(
     () => (boardId: string) => data.targetColumns.filter((c) => c.boardId === boardId).map((c) => ({ id: c.id, name: c.name })),
@@ -492,12 +521,26 @@ export function AutomationBuilder({ data }: { data: AutomationPageData }) {
             </span>
           ))}
           <span style={{ borderTop: "1px solid var(--color-line)", margin: "6px 0" }} />
-          <span className="flex items-center rounded-lg" style={{ gap: 8, padding: "7px 9px", fontSize: 12.5, color: "var(--color-muted)" }}>
+          <a
+            href="#ai-suggestions"
+            data-testid="automation-suggestions-nav"
+            className="flex items-center rounded-lg"
+            style={{ gap: 8, padding: "7px 9px", fontSize: 12.5, color: "var(--color-ink)" }}
+          >
             <KanbanIcon name="spark" size="sm" />
             คำแนะนำจาก AI
             <span className="flex-1" />
-            <span style={{ fontSize: 11.5 }}>เร็ว ๆ นี้</span>
-          </span>
+            {data.suggestions.length > 0 ? (
+              <span
+                className="inline-flex items-center justify-center"
+                style={{ minWidth: 20, height: 18, padding: "0 6px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: "var(--color-ink)", color: "var(--color-surface)" }}
+              >
+                {data.suggestions.length}
+              </span>
+            ) : (
+              <span style={{ fontSize: 11.5, color: "var(--color-muted)" }}>0</span>
+            )}
+          </a>
           <a href="#runs-log" className="flex items-center rounded-lg" style={{ gap: 8, padding: "7px 9px", fontSize: 12.5, color: "var(--color-ink)" }}>
             <KanbanIcon name="clock" size="sm" />
             บันทึกการทำงาน
@@ -836,15 +879,7 @@ export function AutomationBuilder({ data }: { data: AutomationPageData }) {
 
             {/* ── คำแนะนำจาก AI + บันทึกการทำงาน ── */}
             <div className="w-full lg:w-[330px] lg:flex-none flex flex-col" style={{ gap: 12 }}>
-              <Card testId="ai-suggestions">
-                <div className="flex items-center" style={{ gap: 8 }}>
-                  <KanbanIcon name="spark" size="sm" />
-                  <strong style={{ fontSize: 13.5 }}>คำแนะนำจาก AI</strong>
-                </div>
-                <p style={{ fontSize: 12.5, color: "var(--color-muted)" }}>
-                  เร็ว ๆ นี้ — ระบบจะดูพฤติกรรมจริงบนบอร์ดนี้ (เช่น ย้ายการ์ดชุดเดิมซ้ำ ๆ) แล้วเสนอกฎให้กดสร้างทีเดียว
-                </p>
-              </Card>
+              <AutomationSuggestions items={data.suggestions} onCreate={loadSuggestion} />
 
               <Card testId="runs-log">
                 <div id="runs-log" className="flex items-center" style={{ gap: 8 }}>

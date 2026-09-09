@@ -3,6 +3,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { boardRole, toActor, visibleBoardsWhere } from "@/lib/modules/kanban/access";
 import { canManageAutomation, listRuns, listRules, usageThisMonth } from "@/lib/modules/kanban/automation";
+import { suggestRules, toSuggestionDto } from "@/lib/modules/kanban/automation-suggest";
 import { KANBAN_AUTOMATION_EVENTS } from "@/lib/automation/labels";
 import { AutomationBuilder, type AutomationPageData } from "@/components/kanban/AutomationBuilder";
 
@@ -54,7 +55,9 @@ export default async function KanbanAutomationPage({
   if (!board) notFound();
 
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
-  const [rules, runs, usage, columns, labels, members, fields, allBoards] = await Promise.all([
+  // K3.6 — คำแนะนำคำนวณสดฝั่ง server ทุกครั้งที่เปิดหน้า (ไม่เก็บ DB · ไม่เรียกโมเดล ⇒ ไม่เผาเครดิต)
+  //   พังยังไงก็ห้ามพาหน้าอัตโนมัติล่ม — แผงว่างดีกว่าหน้าขาว
+  const [rules, runs, usage, columns, labels, members, fields, allBoards, suggestions] = await Promise.all([
     listRules(ctx, actor, board.id),
     listRuns(ctx, actor, board.id, { take: 30 }),
     usageThisMonth(ctx, board.id),
@@ -71,6 +74,7 @@ export default async function KanbanAutomationPage({
       orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
       select: { id: true, name: true, boardId: true, board: { select: { name: true } } },
     }),
+    suggestRules(ctx, actor, board.id).catch(() => []),
   ]);
 
   const data: AutomationPageData = {
@@ -87,6 +91,7 @@ export default async function KanbanAutomationPage({
     fields,
     targetBoards: Array.from(new Map(allBoards.map((c) => [c.boardId, { id: c.boardId, name: c.board.name }])).values()),
     targetColumns: allBoards.map((c) => ({ id: c.id, name: c.name, boardId: c.boardId })),
+    suggestions: suggestions.map(toSuggestionDto),
   };
 
   return <AutomationBuilder data={data} />;

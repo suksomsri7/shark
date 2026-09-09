@@ -368,6 +368,32 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: "[data-testid=party-cards]" }, { wait: 500 }],
     },
   ],
+  // K3.6 — แผง "คำแนะนำจาก AI" ในหน้าอัตโนมัติ · เทียบภาพ `ledger/design-kanban/08-automation.png` ฝั่งขวา
+  //   1) แผงมีข้อเสนอจริง (นับจาก KanbanActivity ที่ seed ไว้ชั่วคราว) + เมนูซ้ายขึ้นจำนวน
+  //   2) กด "สร้าง" ที่ข้อเสนอใบแรก → ตัวสร้างกฎถูกเติมค่า แต่หัวยังเป็น "กฎใหม่ — ยังไม่บันทึก"
+  //      (ใจความของ WO: AI เสนอ · คนกดบันทึกเอง — ยังไม่มีแถว AutomationRule ตอนนี้)
+  "3.6": [
+    {
+      name: "automation-suggestions",
+      path: `/app/sys/${SYS}/kanban/automation?board=${B("maint")}`,
+      onlyDevice: "desktop",
+      note: 'เทียบภาพ 08 ฝั่งขวา: แผง "คำแนะนำจาก AI" มีข้อเสนอจริง (พาดหัวหนา + เหตุผลอ้างตัวเลขที่นับได้ + ปุ่ม "สร้าง") · เมนูซ้าย "คำแนะนำจาก AI" ขึ้นจำนวนแทน "เร็ว ๆ นี้"',
+      expect: ["[data-testid=automation-suggestions]", "[data-testid=suggestion-create]", "[data-testid=automation-suggestions-nav]"],
+      steps: [{ waitFor: "[data-testid=suggestion-create]" }, { wait: 500 }],
+    },
+    {
+      name: "automation-suggestion-loaded",
+      path: `/app/sys/${SYS}/kanban/automation?board=${B("maint")}`,
+      onlyDevice: "desktop",
+      note: 'กด "สร้าง" ที่คำแนะนำใบแรกจริง → ประโยคกฎในตัวสร้างถูกเติม (เมื่อ เช็คลิสต์ครบทุกข้อ · และถ้า การ์ดอยู่ในคอลัมน์ … · ให้ทำ ย้ายไปคอลัมน์ …) + ช่องชื่อกฎมีข้อความ · หัวยังเป็น "กฎใหม่ — ยังไม่บันทึก"',
+      expect: ["[data-testid=rule-builder]", "[data-testid=rule-when]", "[data-testid=rule-if]", "[data-testid=rule-then]"],
+      steps: [
+        { waitFor: "[data-testid=suggestion-create]" },
+        { click: "[data-testid=suggestion-create]" },
+        { wait: 900 },
+      ],
+    },
+  ],
   // K3.3 — "การ์ดเกิดจากที่อื่น" (ไม่มี mockup — เทียบโครงบล็อกตั้งค่าของ K3.2 + ชิปที่มาในภาพ 02)
   //   1) หน้าตั้งค่า › การเชื่อมต่อ: สวิตช์ 6 ตัวเปิดได้จริง (+ ช่อง "นาทีที่ค้าง" และ "ยอดขั้นต่ำ (บาท)")
   //   2) บอร์ดจริงที่มีการ์ดจากฟอร์ม/อนุมัติ/ใบลา/บิลยกเลิก/แชท — ชิปที่มาต้องบอกได้ว่ามาจากไหน
@@ -1738,6 +1764,58 @@ if (WO === "2.9") {
   console.log(`🧪 เตรียม K2.9: กฎตัวอย่าง ${KB29.ruleIds.length} ใบ + บันทึกการทำงาน 3 แถวบนบอร์ดซ่อมบำรุง (ลบคืนหลังถ่ายเสร็จ)`);
 }
 
+// ── K3.6: พฤติกรรมจริงบนบอร์ดซ่อมบำรุงให้ตัวคิดคำแนะนำมีอะไรนับ (แผงขวาในภาพ 08 ต้องไม่ว่าง)
+//    🔴 เขียนแถว `KanbanActivity` ตรง เพราะสิ่งที่ต้องจำลองคือ "ประวัติย้อนหลัง 3 วัน" ไม่ใช่การลงมือตอนนี้
+//       (เรียก moveCard จริงจะได้ createdAt = เดี๋ยวนี้ทั้งกอง และย้ายการ์ดของ seed จริงไปคอลัมน์อื่น)
+//    การ์ด/ป้าย/กิจกรรมทุกชิ้นถูกลบคืนใน `restoreSeed()` · การ์ดสร้างโดยไม่ขอ cardNo ⇒ `cardNoSeq` ไม่ขยับ
+const KB36 = { activityIds: [] as string[], cardIds: [] as string[], labelId: "" };
+if (WO === "3.6") {
+  const P36 = prisma as Any;
+  const board = B("maint");
+  // เศษของรอบก่อน (Ctrl-C ก่อนถึง finally)
+  const staleCards = await prisma.kanbanCard.findMany({ where: { boardId: board, title: { startsWith: "ภาพ K3.6:" } }, select: { id: true } });
+  if (staleCards.length) {
+    await P36.kanbanActivity.deleteMany({ where: { cardId: { in: staleCards.map((c) => c.id) } } });
+    await P36.kanbanCardLabel.deleteMany({ where: { cardId: { in: staleCards.map((c) => c.id) } } });
+    await prisma.kanbanCard.deleteMany({ where: { id: { in: staleCards.map((c) => c.id) } } });
+  }
+  await P36.kanbanLabel.deleteMany({ where: { boardId: board, name: "ด่วนมาก (ภาพ K3.6)" } });
+
+  const cols36 = await prisma.kanbanColumn.findMany({
+    where: { boardId: board, tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" },
+    orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
+    select: { id: true, name: true },
+  });
+  const c0 = cols36[0]!;
+  const c1 = cols36[1] ?? c0;
+  const c2 = cols36[2] ?? c1;
+  const label36 = await P36.kanbanLabel.create({ data: { tenantId: E.tenantId, systemId: SYS, boardId: board, name: "ด่วนมาก (ภาพ K3.6)", color: "RED" } });
+  KB36.labelId = label36.id as string;
+  const anchorCard = (E.boards.maint.cardIds as string[])[0]!;
+  const t0 = Date.now() - 2 * 86_400_000;
+
+  // แบบที่ 1 — ปุ๊กย้ายการ์ดเส้นทางเดิมด้วยมือ 9 ครั้ง
+  for (let i = 0; i < 9; i++) {
+    const a = await P36.kanbanActivity.create({
+      data: { tenantId: E.tenantId, boardId: board, cardId: anchorCard, actorUserId: E.users.staff.pook.userId, type: "CARD_MOVED", data: { fromColumnId: c1.id, toColumnId: c2.id }, createdAt: new Date(t0 - i * 3_600_000) },
+    });
+    KB36.activityIds.push(a.id as string);
+  }
+  // แบบที่ 2 — การ์ดป้าย "ด่วนมาก" 6 ใบ ที่ไม่มีใครรับใน 1 ชม.แรก
+  for (let i = 0; i < 6; i++) {
+    const at = new Date(t0 - i * 7_200_000);
+    const card = await prisma.kanbanCard.create({
+      data: { tenantId: E.tenantId, systemId: SYS, boardId: board, columnId: c0.id, title: `ภาพ K3.6: งานด่วนที่ยังไม่มีคนรับ ${i + 1}`, createdAt: at, sortOrder: 0 },
+    });
+    KB36.cardIds.push(card.id);
+    await P36.kanbanCardLabel.create({ data: { cardId: card.id, labelId: KB36.labelId, tenantId: E.tenantId } });
+    const created = await P36.kanbanActivity.create({ data: { tenantId: E.tenantId, boardId: board, cardId: card.id, actorUserId: E.users.owner.userId, type: "CARD_CREATED", data: { title: card.title }, createdAt: at } });
+    const labeled = await P36.kanbanActivity.create({ data: { tenantId: E.tenantId, boardId: board, cardId: card.id, actorUserId: E.users.owner.userId, type: "CARD_LABELED", data: { labelIds: [KB36.labelId] }, createdAt: new Date(at.getTime() + 60_000) } });
+    KB36.activityIds.push(created.id as string, labeled.id as string);
+  }
+  console.log(`🧪 เตรียม K3.6: ประวัติย้ายด้วยมือ 9 ครั้ง + การ์ดป้ายด่วน ${KB36.cardIds.length} ใบบนบอร์ดซ่อมบำรุง (ลบคืนหลังถ่ายเสร็จ)`);
+}
+
 // ── K2.11: ให้เจ้าของร้าน "ติดตาม" การ์ด 1 ใบ + คอลัมน์ 1 คอลัมน์ (บล็อก "ที่ฉันติดตาม" ต้องไม่ว่าง)
 //    เขียนผ่าน `watch.watch()` จริง (ผ่านด่านสิทธิ์ทุกชั้น) แล้วลบคืนใน `restoreSeed()`
 const KB211 = { watcherUserId: "" };
@@ -1872,6 +1950,22 @@ async function restoreSeed(): Promise<void> {
   if (WO === "2.11" && KB211.watcherUserId) {
     const del = await (prisma as Any).kanbanWatcher.deleteMany({ where: { tenantId: E.tenantId, userId: KB211.watcherUserId } });
     console.log(`🧹 คืนสภาพ K2.11: ลบแถวติดตาม ${del.count} แถว`);
+  }
+
+  // K3.6 — ลบประวัติ/การ์ด/ป้ายที่ยัดไว้ให้ตัวคิดคำแนะนำมีอะไรนับ (รวมกฎที่เผลอบันทึกระหว่างถ่าย = ไม่มี)
+  if (WO === "3.6") {
+    const P = prisma as Any;
+    if (KB36.activityIds.length) await P.kanbanActivity.deleteMany({ where: { id: { in: KB36.activityIds } } });
+    if (KB36.cardIds.length) {
+      await P.kanbanActivity.deleteMany({ where: { cardId: { in: KB36.cardIds } } });
+      await P.kanbanCardLabel.deleteMany({ where: { cardId: { in: KB36.cardIds } } });
+      await prisma.kanbanCard.deleteMany({ where: { id: { in: KB36.cardIds } } });
+    }
+    if (KB36.labelId) {
+      await P.kanbanCardLabel.deleteMany({ where: { labelId: KB36.labelId } });
+      await P.kanbanLabel.deleteMany({ where: { id: KB36.labelId } });
+    }
+    console.log(`🧹 คืนสภาพ K3.6: ลบประวัติ ${KB36.activityIds.length} แถว + การ์ด ${KB36.cardIds.length} ใบ + ป้าย 1 ใบ`);
   }
 
   // K2.9 — ลบกฎตัวอย่าง + บันทึกการทำงานที่สร้างไว้ถ่ายภาพ (รวมแถวที่กฎอาจเขียนเพิ่มระหว่างถ่าย)

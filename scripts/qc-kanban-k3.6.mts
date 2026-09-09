@@ -64,7 +64,7 @@ try {
   const s2 = await sg.suggestRules(ctxO, owner, board, { now: NOW, days: 30 });
   chk("K3.6-S1.4", "id คงที่ข้ามการเรียก (hash จาก pattern+พารามิเตอร์) · days=1 → พฤติกรรมเมื่อ 3 วันก่อนไม่นับ → ไม่มีข้อเสนอ 2 แบบนี้", s2.map((s: Any) => s.id).join() === s1.map((s: Any) => s.id).join() && !(await sg.suggestRules(ctxO, owner, board, { now: NOW, days: 1 })).some((s: Any) => s.pattern === "REPEATED_MANUAL_MOVE" || s.pattern === "LABEL_UNASSIGNED"), "คงที่ · กรองวัน", "ไม่ตรง");
   const eT = await fails(() => sg.suggestRules(ctxT, thana, board, { now: NOW }));
-  chk("K3.6-S1.5", "thana (ไม่มีคีย์ automation.manage / ไม่ใช่ ADMIN) → Forbidden · บอร์ดที่ไม่มีพฤติกรรมพอ (< 5 ครั้ง) → []", !!eT && (await sg.suggestRules(ctxO, owner, E.boards.kataSecret.id, { now: NOW })).length === 0, "throw · []", `${!!eT}`);
+  chk("K3.6-S1.5", "thana (ไม่มีคีย์ automation.manage / ไม่ใช่ ADMIN) → Forbidden · บอร์ดที่ไม่มีพฤติกรรมพอ (< 5 ครั้ง) → []", !!eT && (await sg.suggestRules(ctxO, owner, E.boards.kata.id, { now: NOW })).length === 0, "throw · []", `${!!eT}`);
   // ร่างกฎต้องผ่าน zod ของ K2.9 และไม่เขียน DB จนกว่าจะบันทึก
   const before = await prisma.automationRule.count({ where: { tenantId: tid } });
   const dry = await au.dryRun(ctxO, owner, moveSug.rule, { days: 30, now: NOW });
