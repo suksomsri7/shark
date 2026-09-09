@@ -11,6 +11,8 @@ import { KanbanNotFoundError } from "./access";
 import { prisma } from "./db";
 import { KANBAN_LIMITS } from "./limits";
 import { assertBoardRole, assertCardRole } from "./members";
+// K3.7 — ค่าฟิลด์กำหนดเองเป็น "เนื้อหาการ์ด": อ่าน/เขียนผ่าน cardId ที่ส่งมาต้อง resolve ไปต้นฉบับก่อนเสมอ
+import { MIRROR_SOURCE_ARCHIVED_TH, resolveMirror } from "./mirror";
 import { publishBoardSignal, boardSignal } from "./realtime";
 import type { CardFieldValueDto, CustomFieldDto, CustomFieldOptions, FieldOnCardDto, KanbanActor, KanbanCtx } from "./types";
 
@@ -309,43 +311,48 @@ function coerceValue(field: KanbanCustomField, value: unknown): { valueText: str
   }
 }
 
-/** ตั้งค่าฟิลด์ของการ์ด 1 ใบ — `value: null` = ลบแถวค่า (EDITOR ของบอร์ดขึ้นไป) */
+/** ตั้งค่าฟิลด์ของการ์ด 1 ใบ — `value: null` = ลบแถวค่า (EDITOR ของบอร์ดขึ้นไป) · K3.7: ผ่านตัวสะท้อน = เขียนที่ต้นฉบับ */
 export async function setCardFieldValue(ctx: KanbanCtx, actor: KanbanActor | undefined, cardId: string, fieldId: string, value: unknown): Promise<CardFieldValueDto> {
-  const { boardId } = await assertCardRole(ctx, cardId, "EDITOR");
+  await assertCardRole(ctx, cardId, "EDITOR");
+  const mirror = await resolveMirror(ctx, cardId);
+  if (mirror.isMirror && mirror.sourceArchived) throw new Error(MIRROR_SOURCE_ARCHIVED_TH);
+  const cardIdEff = mirror.effectiveCardId;
+  const boardId = mirror.effectiveBoardId;
   const field = await requireField(ctx, fieldId);
   if (field.boardId !== boardId) throw new KanbanNotFoundError("ไม่พบฟิลด์นี้ในบอร์ดของการ์ดนี้");
 
   if (value === null || value === undefined) {
     await prisma.$transaction(async (tx) => {
-      await tx.kanbanCustomFieldValue.deleteMany({ where: { cardId, fieldId } });
-      await logActivity(tx, { tenantId: ctx.tenantId, boardId, cardId, actorUserId: actorUserIdOf(ctx, actor), type: "CARD_UPDATED", data: { fields: [field.name] } });
+      await tx.kanbanCustomFieldValue.deleteMany({ where: { cardId: cardIdEff, fieldId } });
+      await logActivity(tx, { tenantId: ctx.tenantId, boardId, cardId: cardIdEff, actorUserId: actorUserIdOf(ctx, actor), type: "CARD_UPDATED", data: { fields: [field.name] } });
     });
-    await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.updated", boardId, cardId }));
+    await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.updated", boardId, cardId: cardIdEff }));
     return { fieldId: field.id, name: field.name, type: field.type, options: optionsOf(field), showOnCard: field.showOnCard, sortOrder: field.sortOrder, value: null, display: "—" };
   }
 
   const coerced = coerceValue(field, value);
   await prisma.$transaction(async (tx) => {
     await tx.kanbanCustomFieldValue.upsert({
-      where: { cardId_fieldId: { cardId, fieldId } },
-      create: { tenantId: ctx.tenantId, cardId, fieldId, ...coerced },
+      where: { cardId_fieldId: { cardId: cardIdEff, fieldId } },
+      create: { tenantId: ctx.tenantId, cardId: cardIdEff, fieldId, ...coerced },
       update: coerced,
     });
-    await logActivity(tx, { tenantId: ctx.tenantId, boardId, cardId, actorUserId: actorUserIdOf(ctx, actor), type: "CARD_UPDATED", data: { fields: [field.name] } });
+    await logActivity(tx, { tenantId: ctx.tenantId, boardId, cardId: cardIdEff, actorUserId: actorUserIdOf(ctx, actor), type: "CARD_UPDATED", data: { fields: [field.name] } });
   });
-  await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.updated", boardId, cardId }));
+  await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.updated", boardId, cardId: cardIdEff }));
   const raw = readRawValue(field.type, coerced);
   const options = optionsOf(field);
   return { fieldId: field.id, name: field.name, type: field.type, options, showOnCard: field.showOnCard, sortOrder: field.sortOrder, value: raw, display: formatDisplay(field.type, raw, options) };
 }
 
-/** ค่าฟิลด์ทุกตัวของบอร์ด + ค่าของการ์ดใบนี้ (แถวที่ยังไม่กรอก = value null) — VIEWER ขึ้นไปอ่านได้ */
+/** ค่าฟิลด์ทุกตัวของบอร์ด + ค่าของการ์ดใบนี้ (แถวที่ยังไม่กรอก = value null) — VIEWER ขึ้นไปอ่านได้ · K3.7: ตัวสะท้อนอ่าน/เขียนที่ต้นฉบับ */
 export async function getCardFieldValues(ctx: KanbanCtx, actor: KanbanActor | undefined, cardId: string): Promise<CardFieldValueDto[]> {
   void actor;
-  const { boardId } = await assertCardRole(ctx, cardId, "VIEWER");
+  await assertCardRole(ctx, cardId, "VIEWER");
+  const { effectiveCardId: cardIdEff, effectiveBoardId: boardId } = await resolveMirror(ctx, cardId);
   const [fields, values] = await Promise.all([
     prisma.kanbanCustomField.findMany({ where: { boardId, tenantId: ctx.tenantId }, orderBy: { sortOrder: "asc" } }),
-    prisma.kanbanCustomFieldValue.findMany({ where: { cardId, tenantId: ctx.tenantId } }),
+    prisma.kanbanCustomFieldValue.findMany({ where: { cardId: cardIdEff, tenantId: ctx.tenantId } }),
   ]);
   const valueByField = new Map(values.map((v) => [v.fieldId, v]));
   return fields.map((field) => {

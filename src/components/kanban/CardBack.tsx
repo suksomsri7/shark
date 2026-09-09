@@ -19,6 +19,7 @@ import { CardLinks } from "./CardLinks";
 import { CardAi } from "./CardAi";
 import { Timeline } from "./Timeline";
 import { ThaiDatePicker } from "./ThaiDatePicker";
+import { MirrorPicker, type MirrorPickerResult } from "./MirrorPicker";
 import {
   archiveCardAction,
   createChecklistAction,
@@ -43,6 +44,8 @@ import type {
   BoardPersonDto,
   CardFieldValueDto,
   CardLinkDto,
+  CardMirrorInfoDto,
+  CardMirrorRefDto,
   KanbanAttachmentDto,
   KanbanChecklistDto,
   KanbanCommentDto,
@@ -98,6 +101,10 @@ type Fields = {
   links: CardLinkDto[];
   /** K3.5: ร้านนี้ตั้งค่าผู้ช่วย AI ไว้แล้วไหม (ปุ่มในกลุ่ม "ผู้ช่วย AI" กดได้/เทา) */
   aiAvailable: boolean;
+  /** K3.7: การ์ดนี้เป็นตัวสะท้อนไหม + สถานะต้นฉบับ */
+  mirror: CardMirrorInfoDto;
+  /** K3.7: ตัวสะท้อนของการ์ดนี้บนบอร์ดอื่น (ว่างเมื่อการ์ดนี้เองเป็นตัวสะท้อนอยู่แล้ว) */
+  mirrors: CardMirrorRefDto[];
 };
 
 export type CardBackHandlers = {
@@ -179,7 +186,9 @@ export function CardBack({
   const descTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const returnFocus = useRef(true);
 
-  const editable = canEdit && fields?.status === "ACTIVE";
+  // K3.7 — ต้นฉบับถูกเก็บเข้าคลัง → แก้ผ่านตัวสะท้อนไม่ได้ (อ่านอย่างเดียว) แม้ตัวสะท้อนเองยัง ACTIVE
+  const editable = canEdit && fields?.status === "ACTIVE" && !fields?.mirror.sourceArchived;
+  const [mirrorPickerOpen, setMirrorPickerOpen] = useState(false);
 
   /**
    * K2.9 — กดปุ่มอัตโนมัติ: กฎวิ่งฝั่งเซิร์ฟเวอร์แล้วค่อย `router.refresh()`
@@ -250,6 +259,8 @@ export function CardBack({
         watcherCount: res.detail.watcherCount,
         links: res.detail.links,
         aiAvailable: res.detail.aiAvailable,
+        mirror: res.detail.mirror,
+        mirrors: res.detail.mirrors,
       });
     });
     return () => {
@@ -749,6 +760,50 @@ export function CardBack({
                 </div>
               )}
 
+              {/* K3.7 — แถบบนของ "การ์ดสะท้อน": บอกว่าแก้ที่นี่ = แก้ต้นฉบับ + ลิงก์ไปเปิดต้นฉบับ */}
+              {fields.mirror.isMirror && (
+                <div
+                  data-testid="card-mirror-banner"
+                  className="flex flex-wrap items-center gap-2 rounded-lg px-3 py-2"
+                  style={{ background: "var(--color-surface-2)", color: "var(--color-ink-soft)", fontSize: 13 }}
+                >
+                  <KanbanIcon name="swap" size="sm" />
+                  <span className="flex-1">
+                    นี่คือการ์ดสะท้อน — แก้ที่นี่ = แก้ต้นฉบับ
+                    {fields.mirror.sourceArchived && (
+                      <>
+                        {" · "}
+                        <b style={{ color: "var(--color-danger)" }}>ต้นฉบับถูกเก็บเข้าคลัง — แก้ไม่ได้</b>
+                      </>
+                    )}
+                  </span>
+                  {fields.mirror.sourceBoardId && fields.mirror.sourceCardId && (
+                    <a
+                      href={`/app/sys/${systemId}/kanban/b/${fields.mirror.sourceBoardId}?card=${fields.mirror.sourceCardId}`}
+                      style={{ color: "var(--color-accent)", fontWeight: 600 }}
+                    >
+                      ไปต้นฉบับ{fields.mirror.sourceCardNo ? ` #${fields.mirror.sourceCardNo}` : ""} ({fields.mirror.sourceBoardName})
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {/* K3.7 — ต้นฉบับ: บอกว่าถูกสะท้อนไปบอร์ดไหนบ้าง */}
+              {!fields.mirror.isMirror && fields.mirrors.length > 0 && (
+                <div data-testid="card-mirrors" style={{ fontSize: 12.5, color: "var(--color-muted)" }}>
+                  สะท้อนอยู่ที่{" "}
+                  {fields.mirrors.map((m, i) => (
+                    <span key={m.cardId}>
+                      {i > 0 && " · "}
+                      <a href={`/app/sys/${systemId}/kanban/b/${m.boardId}?card=${m.cardId}`} style={{ color: "var(--color-accent)" }}>
+                        {m.boardName}
+                        {m.cardNo ? ` #${m.cardNo}` : ""}
+                      </a>
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {/* แถวสรุป: ผู้รับผิดชอบ / ป้ายกำกับ / กำหนดส่ง */}
               <div className="flex flex-wrap gap-6">
                 <div data-testid="card-members" className="relative">
@@ -791,7 +846,9 @@ export function CardBack({
                       <LabelChip key={l.id} label={l} />
                     ))}
                     {fields.labels.length === 0 && <span style={{ fontSize: 12.5, color: "var(--color-muted)" }}>ยังไม่มี</span>}
-                    {editable && (
+                    {/* K3.7 — รายการป้ายที่เลือกได้ (`labels` prop) เป็นของบอร์ดที่กำลังดูอยู่ ไม่ใช่ของต้นฉบับ
+                        ⇒ ผ่านตัวสะท้อนแอบซ่อนปุ่มเพิ่มไว้ก่อน (ตั้งป้ายที่ต้นฉบับโดยตรงแทน — หนี้ UI) */}
+                    {editable && !fields.mirror.isMirror && (
                       <button
                         type="button"
                         aria-label="เพิ่มป้ายกำกับ"
@@ -803,7 +860,7 @@ export function CardBack({
                       </button>
                     )}
                   </div>
-                  {labelsOpen && editable && (
+                  {labelsOpen && editable && !fields.mirror.isMirror && (
                     <Popover onClose={() => setLabelsOpen(false)}>
                       {labels.map((l) => (
                         <PopoverRow key={l.id} onClick={() => toggleLabel(l)} checked={fields.labels.some((x) => x.id === l.id)}>
@@ -1069,7 +1126,29 @@ export function CardBack({
                     <RailButton icon="swap" onClick={doMove} disabled={!moveTarget} aria-label="ย้าย" />
                   </div>
                   <RailButton icon="copy" label="ทำสำเนา" onClick={doDuplicate} />
-                  <RailButton icon="grid" label="สะท้อนการ์ด (Mirror)" disabled />
+                  {/* K3.7 — สะท้อนซ้อนไม่ได้ (ถ้ากำลังเปิดตัวสะท้อนอยู่ ปุ่มนี้ไม่ควรมีเลย) */}
+                  {!fields.mirror.isMirror &&
+                    (mirrorPickerOpen ? (
+                      <MirrorPicker
+                        systemId={systemId}
+                        boardId={boardId}
+                        cardId={card.id}
+                        onDone={(res: MirrorPickerResult) => {
+                          setMirrorPickerOpen(false);
+                          toast(`สะท้อนไปบอร์ด "${res.boardName}" แล้ว`);
+                          router.refresh();
+                        }}
+                        onClose={() => setMirrorPickerOpen(false)}
+                        onToast={toast}
+                      />
+                    ) : (
+                      <RailButton
+                        icon="grid"
+                        label="สะท้อนการ์ด (Mirror)"
+                        testid="card-mirror-open"
+                        onClick={() => setMirrorPickerOpen(true)}
+                      />
+                    ))}
                   {/* K2.7 — บันทึกเป็นเทมเพลตการ์ด: ADMIN ของบอร์ดเท่านั้น (สัญญา K2.7) */}
                   {boardRole === "ADMIN" &&
                     (savingTemplate ? (

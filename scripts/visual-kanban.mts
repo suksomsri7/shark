@@ -174,6 +174,47 @@ if (WO === "3.5") {
   console.log(`🧪 เตรียม K3.5: การ์ดตัวอย่าง ${card.id} (รายละเอียด + เช็คลิสต์ 3 รายการ + ความเห็นทีม 1 ใบ) บนบอร์ดซ่อมบำรุง`);
 }
 
+// ── K3.7: การ์ดสะท้อน — สร้างการ์ดต้นฉบับบนป่าตอง แล้วสะท้อนไปบอร์ดซ่อมบำรุงจริง (เรียก mirrorCard ตรง ๆ
+//    ไม่ใช่คลิกผ่านหน้าเว็บ — ภาพ "ตัวเลือกสะท้อน" ค่อยกดปุ่มจริงบนต้นฉบับใบนี้) แล้วลบคืนทั้ง 2 ใบ + cardNoSeq
+//    ของทั้ง 2 บอร์ด ใน restoreSeed()
+const KB37 = { srcCardId: "", mirrorId: "", patongCardNoSeqBefore: null as number | null, maintCardNoSeqBefore: null as number | null };
+if (WO === "3.7") {
+  const svc = (await import("@/lib/modules/kanban/service" as string)) as Any;
+  const mr = (await import("@/lib/modules/kanban/mirror" as string)) as Any;
+  const [patongBoard, maintBoard] = await Promise.all([
+    prisma.kanbanBoard.findFirst({ where: { id: B("patong") }, select: { cardNoSeq: true } }),
+    prisma.kanbanBoard.findFirst({ where: { id: B("maint") }, select: { cardNoSeq: true } }),
+  ]);
+  KB37.patongCardNoSeqBefore = (patongBoard as Any)?.cardNoSeq ?? null;
+  KB37.maintCardNoSeqBefore = (maintBoard as Any)?.cardNoSeq ?? null;
+  const [srcCol, mCol] = await Promise.all([
+    prisma.kanbanColumn.findFirst({
+      where: { boardId: B("patong"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" },
+      orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
+      select: { id: true },
+    }),
+    prisma.kanbanColumn.findFirst({
+      where: { boardId: B("maint"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" },
+      orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
+      select: { id: true },
+    }),
+  ]);
+  const src = await svc.createCard({
+    tenantId: E.tenantId,
+    systemId: SYS,
+    columnId: srcCol!.id,
+    title: "เช็ควันหมดอายุถังออกซิเจน 12 ใบ ก่อนทริปสุดสัปดาห์",
+    description: "<p>ทีมซ่อมบำรุงต้องเช็คร่วมกับหน้าร้านก่อนวันเสาร์ — ถ้าใบไหนหมดอายุให้ส่งเข้าคิวซ่อมทันที</p>",
+    assigneeUserId: E.users.staff.pook.userId,
+    createdById: E.users.owner.userId,
+  });
+  KB37.srcCardId = src.id;
+  const ctx37 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  const m = await mr.mirrorCard(ctx37, { cardId: src.id, toBoardId: B("maint"), toColumnId: mCol!.id });
+  KB37.mirrorId = m.mirrorId;
+  console.log(`🧪 เตรียม K3.7: การ์ดต้นฉบับ ${src.id} บนป่าตอง → สะท้อนไปบอร์ดซ่อมบำรุง ${KB37.mirrorId}`);
+}
+
 /** ลบระบบแชทชั่วคราวของ K3.2 ทั้งชุด (ข้อความ/ไฟล์แนบ/ห้อง/ผู้ติดต่อ/ตั้งค่า/ช่องทาง) */
 async function wipeChatSystem(systemId: string): Promise<void> {
   const P = prisma as Any;
@@ -460,6 +501,40 @@ const SPECS: Record<string, Spec[]> = {
         { scrollTo: "[data-testid=card-ai-checklist-suggestion]" },
         { wait: 600 },
       ],
+    },
+  ],
+  // K3.7 — การ์ดสะท้อน · เทียบภาพ `ledger/design-kanban/03-card-back.png` (แถบขวา "สะท้อนการ์ด (Mirror)")
+  //   1) หลังการ์ดต้นฉบับ กดปุ่ม "สะท้อนการ์ด (Mirror)" จริง → ตัวเลือกบอร์ด/คอลัมน์ปลายทางเปิดขึ้น
+  //   2) บอร์ดซ่อมบำรุง — การ์ดสะท้อนที่เตรียมไว้มีชิป "สะท้อนจาก งานร้าน — สาขาป่าตอง #n"
+  //   3) หลังการ์ดตัวสะท้อน — แถบบน "นี่คือการ์ดสะท้อน — แก้ที่นี่ = แก้ต้นฉบับ" + ลิงก์ไปต้นฉบับ
+  "3.7": [
+    {
+      name: "mirror-picker",
+      path: `/app/sys/${SYS}/kanban/b/${B("patong")}?card=${KB37.srcCardId}`,
+      onlyDevice: "desktop",
+      note: 'หลังการ์ดต้นฉบับ แถบขวา กดปุ่ม "สะท้อนการ์ด (Mirror)" จริง → ตัวเลือกบอร์ดปลายทาง (เลือกบอร์ดที่เป็น EDITOR) + คอลัมน์',
+      expect: ["[data-testid=card-mirror-create]"],
+      steps: [
+        { waitFor: "[data-testid=card-back]" },
+        { waitFor: "[data-testid=card-mirror-open]" },
+        { click: "[data-testid=card-mirror-open]" },
+        { waitFor: "[data-testid=card-mirror-create]" },
+        { wait: 500 },
+      ],
+    },
+    {
+      name: "mirror-chip-on-board",
+      path: `/app/sys/${SYS}/kanban/b/${B("maint")}`,
+      note: 'บอร์ดซ่อมบำรุง — การ์ดสะท้อนแสดงชิป "สะท้อนจาก งานร้าน — สาขาป่าตอง #n"',
+      expect: ["[data-testid=card-mirror]"],
+      steps: [{ waitFor: "[data-testid=card-mirror]" }, { wait: 500 }],
+    },
+    {
+      name: "mirror-card-back-banner",
+      path: `/app/sys/${SYS}/kanban/b/${B("maint")}?card=${KB37.mirrorId}`,
+      note: 'หลังการ์ดตัวสะท้อน — แถบบน "นี่คือการ์ดสะท้อน — แก้ที่นี่ = แก้ต้นฉบับ" + ลิงก์ไปต้นฉบับ · ผู้รับผิดชอบ/รายละเอียดตรงกับต้นฉบับ',
+      expect: ["[data-testid=card-mirror-banner]"],
+      steps: [{ waitFor: "[data-testid=card-back]" }, { waitFor: "[data-testid=card-mirror-banner]" }, { wait: 500 }],
     },
   ],
   // K3.2 — "สร้างงานจากแชท" · เทียบภาพ `ledger/design-kanban/09-from-chat.png`
@@ -1912,6 +1987,26 @@ async function restoreSeed(): Promise<void> {
     await prisma.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) }, type: { startsWith: "kanban." } } }).catch(() => null);
     await prisma.appNotification.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) } } }).catch(() => null);
     console.log("🧹 คืนสภาพ K3.5: ลบการ์ดตัวอย่าง + ความเห็นผู้ช่วย AI + เช็คลิสต์ + ประวัติ · คืน cardNoSeq ของบอร์ดซ่อมบำรุง");
+  }
+
+  // K3.7 — ลบการ์ดต้นฉบับ + ตัวสะท้อนทั้ง 2 ใบ · คืน cardNoSeq ของทั้งบอร์ดป่าตองและบอร์ดซ่อมบำรุง
+  if (WO === "3.7") {
+    const P = prisma as Any;
+    const ids = [KB37.srcCardId, KB37.mirrorId].filter(Boolean);
+    if (ids.length) {
+      await P.kanbanCardAssignee.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null);
+      await prisma.kanbanActivity.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null);
+      await prisma.kanbanCard.deleteMany({ where: { id: { in: ids } } }).catch(() => null);
+    }
+    if (KB37.patongCardNoSeqBefore !== null) {
+      await prisma.kanbanBoard.update({ where: { id: B("patong") }, data: { cardNoSeq: KB37.patongCardNoSeqBefore } as Any }).catch(() => null);
+    }
+    if (KB37.maintCardNoSeqBefore !== null) {
+      await prisma.kanbanBoard.update({ where: { id: B("maint") }, data: { cardNoSeq: KB37.maintCardNoSeqBefore } as Any }).catch(() => null);
+    }
+    await prisma.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) }, type: { startsWith: "kanban." } } }).catch(() => null);
+    await prisma.appNotification.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) } } }).catch(() => null);
+    console.log(`🧹 คืนสภาพ K3.7: ลบการ์ดต้นฉบับ+ตัวสะท้อน ${ids.length} ใบ · คืน cardNoSeq ของบอร์ดป่าตอง+ซ่อมบำรุง`);
   }
 
   // K3.3 — ลบการ์ดตัวอย่าง + ฟอร์มชั่วคราว แล้วคืนค่าสวิตช์การเชื่อมต่อของระบบ KANBAN

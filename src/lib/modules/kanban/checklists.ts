@@ -19,6 +19,8 @@ import { prisma } from "./db";
 import { publishBoardSignal, boardSignal } from "./realtime";
 import { KANBAN_LIMITS } from "./limits";
 import { assertCardRole, loadActor } from "./members";
+// K3.7 — เช็คลิสต์เป็น "เนื้อหาการ์ด": สร้าง/อ่าน ผ่าน cardId ที่ส่งมาต้อง resolve ไปต้นฉบับก่อนเสมอ
+import { MIRROR_SOURCE_ARCHIVED_TH, resolveMirror } from "./mirror";
 import { keyBetween } from "./ordering";
 import type { KanbanChecklistDto, KanbanChecklistItemDto, KanbanCtx, MyChecklistItemDto } from "./types";
 
@@ -73,18 +75,21 @@ function toItemDto(item: KanbanChecklistItem): KanbanChecklistItemDto {
 
 // ───────────────────────── เช็คลิสต์ (ชุด) ─────────────────────────
 
-/** สร้างเช็คลิสต์ชุดใหม่ต่อท้ายการ์ด (ชื่อว่าง → ตกไปใช้ "ขั้นตอนงาน") */
+/** สร้างเช็คลิสต์ชุดใหม่ต่อท้ายการ์ด (ชื่อว่าง → ตกไปใช้ "ขั้นตอนงาน") — K3.7: ผ่านตัวสะท้อน = สร้างที่ต้นฉบับ */
 export async function createChecklist(ctx: KanbanCtx, cardId: string, title: string): Promise<KanbanChecklist> {
   await assertCardRole(ctx, cardId, "EDITOR");
+  const mirror = await resolveMirror(ctx, cardId);
+  if (mirror.isMirror && mirror.sourceArchived) throw new Error(MIRROR_SOURCE_ARCHIVED_TH);
+  const effectiveCardId = mirror.effectiveCardId;
   const value = normalizeTitle(title, "ขั้นตอนงาน");
   const last = await prisma.kanbanChecklist.findFirst({
-    where: { cardId },
+    where: { cardId: effectiveCardId },
     orderBy: { position: "desc" },
     select: { position: true },
   });
   const position = keyBetween(last?.position ?? null, null);
   return prisma.kanbanChecklist.create({
-    data: { tenantId: ctx.tenantId, cardId, title: value, position },
+    data: { tenantId: ctx.tenantId, cardId: effectiveCardId, title: value, position },
   });
 }
 
@@ -276,11 +281,15 @@ export async function moveItem(
 
 // ───────────────────────── อ่าน ─────────────────────────
 
-/** เช็คลิสต์ทั้งหมดของการ์ด + ความคืบหน้าต่อชุด (VIEWER อ่านได้ — แค่ดู ไม่ใช่แก้) */
+/**
+ * เช็คลิสต์ทั้งหมดของการ์ด + ความคืบหน้าต่อชุด (VIEWER อ่านได้ — แค่ดู ไม่ใช่แก้)
+ * K3.7: เปิดผ่านตัวสะท้อน → อ่านเช็คลิสต์ของต้นฉบับ (สิทธิ์ตัดสินจาก `cardId` ที่ส่งมาเอง)
+ */
 export async function getCardChecklists(ctx: KanbanCtx, cardId: string): Promise<KanbanChecklistDto[]> {
   await assertCardRole(ctx, cardId, "VIEWER");
+  const { effectiveCardId } = await resolveMirror(ctx, cardId);
   const checklists = await prisma.kanbanChecklist.findMany({
-    where: { cardId, tenantId: ctx.tenantId },
+    where: { cardId: effectiveCardId, tenantId: ctx.tenantId },
     orderBy: { position: "asc" },
     include: { items: { orderBy: { position: "asc" } } },
   });

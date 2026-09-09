@@ -24,12 +24,15 @@ const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const q = async <T = Any,>(sql: string): Promise<T[]> => (await prisma.$queryRawUnsafe(sql)) as T[];
 const P = prisma as Any;
 let tid = ""; let SYS = ""; let patong = "";
+let seqBefore: { id: string; cardNoSeq: number }[] = [];
 const madeCards: string[] = [];
 try {
   const scope = await kq.resolveKanbanScope(prisma);
   if (!scope) throw new Error("ยังไม่ได้ seed");
   const E = JSON.parse(readFileSync(kq.KQC.expectedPath, "utf8"));
   tid = scope.tenantId; SYS = scope.systemId; patong = E.boards.patong.id;
+  // 🔴 ตัวสะท้อนกิน cardNo ของบอร์ดปลายทาง (D14) — จำ cardNoSeq ทุกบอร์ดไว้คืนใน finally (ข้อสอบ K1.1-S2.5 ตรวจ seq = max cardNo)
+  seqBefore = (await prisma.kanbanBoard.findMany({ where: { tenantId: tid }, select: { id: true, cardNoSeq: true } })) as Any;
   const mr = (await import("@/lib/modules/kanban/mirror" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
   const svc = (await import("@/lib/modules/kanban/service" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
   const cards = (await import("@/lib/modules/kanban/cards" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
@@ -95,6 +98,7 @@ try {
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.name}: ${e.message.slice(0, 240)}` : String(e));
 } finally {
+  for (const b of seqBefore) await prisma.kanbanBoard.update({ where: { id: b.id }, data: { cardNoSeq: b.cardNoSeq } }).catch(() => null);
   try {
     const ids = madeCards.filter(Boolean);
     if (ids.length) { await prisma.kanbanComment.deleteMany({ where: { cardId: { in: ids } } }).catch(() => null); await prisma.kanbanActivity.deleteMany({ where: { cardId: { in: ids } } }); await prisma.kanbanCard.deleteMany({ where: { id: { in: ids } } }); }

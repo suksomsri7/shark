@@ -17,6 +17,7 @@ import { linkCountsOfCards } from "./link-resolvers";
 import { boardRole, KanbanNotFoundError, visibleBoardsWhere, type BoardRole } from "./access";
 import type {
   BoardCardDto,
+  BoardCardMirrorDto,
   BoardLabelDto,
   BoardPersonDto,
   BoardViewDto,
@@ -34,12 +35,15 @@ export type { KanbanCtx, KanbanActor } from "./types";
 // K1.5: ชนิดของ DTO หน้าบอร์ด (หน้า/คอมโพเนนต์ฝั่ง client import จาก facade เดียวกัน)
 export type {
   BoardCardDto,
+  BoardCardMirrorDto,
   BoardColumnDto,
   BoardLabelDto,
   BoardPersonDto,
   BoardViewDto,
   KanbanTagColor,
 } from "./types";
+// K3.7 — การ์ดสะท้อน: mirrorCard/resolveMirror/รายชื่อบอร์ด-คอลัมน์ปลายทาง ผ่าน facade เดียวกัน
+export { listMirrorBoards, listMirrorColumns, mirrorCard } from "./mirror";
 // K1.3: สิทธิ์ 2 ชั้น — ผู้เรียกนอกโมดูล (หน้า/action/AI) ใช้ผ่าน facade เดียวกัน
 export { boardRole, canReadKanban, toActor, visibleBoardsWhere, KanbanNotFoundError, KanbanForbiddenError } from "./access";
 export type { BoardRole } from "./access";
@@ -764,21 +768,32 @@ export async function getBoardView(
   const board = await getBoardFor(ctx, actor, boardId);
   const cardIds = board.columns.flatMap((c) => c.cards.map((k) => k.id));
 
-  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows, commentCountRows, attachmentCountRows, fieldsOnCardByCard, automationButtons, linksOfCard] = await Promise.all([
+  // K3.7 — การ์ดสะท้อนไม่มีเนื้อหาของตัวเอง (ป้าย/ผู้รับผิดชอบ/เช็คลิสต์/ไฟล์แนบ/ปก/กำหนดส่ง) — อ่านของ
+  // ต้นฉบับมาแปะแทนบนหน้าบอร์ด (สัญญา K3.7: "ป้าย/ผู้รับผิดชอบ/เช็คลิสต์/ไฟล์ … แสดงจากต้นฉบับ")
+  // ⇒ ขยายชุด cardId ที่ยิงถามป้าย/ผู้รับผิดชอบ/ตราต่าง ๆ ให้รวมต้นฉบับด้วย แล้วตอนประกอบ DTO สลับไปอ่าน
+  // จาก "รหัสต้นฉบับ" เมื่อการ์ดใบนั้นเป็นตัวสะท้อน
+  const sourceIdOfCard = new Map<string, string>();
+  for (const c of board.columns.flatMap((col) => col.cards)) {
+    if (c.mirrorOfId) sourceIdOfCard.set(c.id, c.mirrorOfId);
+  }
+  const sourceIds = Array.from(new Set(sourceIdOfCard.values()));
+  const dataCardIds = Array.from(new Set([...cardIds, ...sourceIds]));
+
+  const [labelRows, cardLabels, assigneeRows, unit, star, memberRows, checklistCountRows, commentCountRows, attachmentCountRows, fieldsOnCardByCard, automationButtons, linksOfCard, sourceCardRows] = await Promise.all([
     prisma.kanbanLabel.findMany({
       where: { boardId: board.id, tenantId: ctx.tenantId, systemId: ctx.systemId },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       select: { id: true, name: true, color: true },
     }),
-    cardIds.length
+    dataCardIds.length
       ? prisma.kanbanCardLabel.findMany({
-          where: { cardId: { in: cardIds }, tenantId: ctx.tenantId },
+          where: { cardId: { in: dataCardIds }, tenantId: ctx.tenantId },
           select: { cardId: true, labelId: true },
         })
       : Promise.resolve([] as { cardId: string; labelId: string }[]),
-    cardIds.length
+    dataCardIds.length
       ? prisma.kanbanCardAssignee.findMany({
-          where: { cardId: { in: cardIds }, tenantId: ctx.tenantId },
+          where: { cardId: { in: dataCardIds }, tenantId: ctx.tenantId },
           orderBy: { assignedAt: "asc" },
           select: { cardId: true, userId: true },
         })
@@ -801,32 +816,33 @@ export async function getBoardView(
       select: { userId: true },
     }),
     // K1.7: ตราเช็คลิสต์ n/m ของทุกการ์ด — คิวรีเดียว (join + group by cardId) ไม่ใช่ต่อการ์ด (กัน N+1)
-    cardIds.length
+    // K3.7: `dataCardIds` รวมต้นฉบับของตัวสะท้อนด้วย (ไม่ใช่แค่การ์ดของบอร์ดนี้)
+    dataCardIds.length
       ? prisma.$queryRaw<{ cardId: string; total: bigint; done: bigint }[]>`
           SELECT ch."cardId" as "cardId",
                  COUNT(i.id) as total,
                  COUNT(i.id) FILTER (WHERE i.done) as done
           FROM "KanbanChecklist" ch
           JOIN "KanbanChecklistItem" i ON i."checklistId" = ch.id
-          WHERE ch."cardId" IN (${Prisma.join(cardIds)})
+          WHERE ch."cardId" IN (${Prisma.join(dataCardIds)})
           GROUP BY ch."cardId"
         `
       : Promise.resolve([] as { cardId: string; total: bigint; done: bigint }[]),
     // K1.8: ตราจำนวนความเห็นของทุกการ์ด — คิวรีเดียว (group by cardId) ไม่ใช่ต่อการ์ด (กัน N+1)
-    cardIds.length
+    dataCardIds.length
       ? prisma.$queryRaw<{ cardId: string; total: bigint }[]>`
           SELECT c."cardId" as "cardId", COUNT(c.id) as total
           FROM "KanbanComment" c
-          WHERE c."cardId" IN (${Prisma.join(cardIds)}) AND c."deletedAt" IS NULL
+          WHERE c."cardId" IN (${Prisma.join(dataCardIds)}) AND c."deletedAt" IS NULL
           GROUP BY c."cardId"
         `
       : Promise.resolve([] as { cardId: string; total: bigint }[]),
     // K1.9: ตราจำนวนไฟล์แนบของทุกการ์ด — คิวรีเดียว (group by cardId) ไม่ใช่ต่อการ์ด (กัน N+1)
-    cardIds.length
+    dataCardIds.length
       ? prisma.$queryRaw<{ cardId: string; total: bigint }[]>`
           SELECT a."cardId" as "cardId", COUNT(a.id) as total
           FROM "KanbanAttachment" a
-          WHERE a."cardId" IN (${Prisma.join(cardIds)}) AND a."deletedAt" IS NULL
+          WHERE a."cardId" IN (${Prisma.join(dataCardIds)}) AND a."deletedAt" IS NULL
           GROUP BY a."cardId"
         `
       : Promise.resolve([] as { cardId: string; total: bigint }[]),
@@ -843,6 +859,13 @@ export async function getBoardView(
     // 🔴 เป็นแค่ "จำนวนของที่ผูกอยู่" ไม่ใช่รายละเอียด ⇒ ไม่ตัดสินสิทธิ์รายชิ้นที่นี่
     //    (รายละเอียด + ด่านสิทธิ์อยู่ที่ `listCardLinks` ตอนเปิดหลังการ์ด)
     linkCountsOfCards(ctx, cardIds),
+    // K3.7 — แถวต้นฉบับของทุกตัวสะท้อนบนบอร์ดนี้ (กำหนดส่ง/เสร็จ/ปก/บอร์ด/เลขการ์ด/สถานะ) — คิวรีเดียว
+    sourceIds.length
+      ? prisma.kanbanCard.findMany({
+          where: { id: { in: sourceIds }, tenantId: ctx.tenantId, systemId: ctx.systemId },
+          select: { id: true, boardId: true, cardNo: true, dueAt: true, completedAt: true, coverFileId: true, status: true },
+        })
+      : Promise.resolve([] as { id: string; boardId: string; cardNo: number | null; dueAt: Date | null; completedAt: Date | null; coverFileId: string | null; status: string }[]),
   ]);
   const checklistOfCard = new Map(
     checklistCountRows.map((r) => [r.cardId, { done: Number(r.done), total: Number(r.total) }]),
@@ -850,9 +873,26 @@ export async function getBoardView(
   const commentsOfCard = new Map(commentCountRows.map((r) => [r.cardId, Number(r.total)]));
   const attachmentsOfCard = new Map(attachmentCountRows.map((r) => [r.cardId, Number(r.total)]));
 
+  // K3.7 — ต้นฉบับของตัวสะท้อน: id → แถว · boardId ต้นฉบับ → ชื่อบอร์ด (สำหรับชิป "สะท้อนจาก {บอร์ด} #n")
+  const sourceCardById = new Map(sourceCardRows.map((c) => [c.id, c]));
+  const sourceBoardIds = Array.from(new Set(sourceCardRows.map((c) => c.boardId)));
+  const sourceBoardRows = sourceBoardIds.length
+    ? await prisma.kanbanBoard.findMany({ where: { id: { in: sourceBoardIds } }, select: { id: true, name: true } })
+    : [];
+  const sourceBoardNameById = new Map(sourceBoardRows.map((b) => [b.id, b.name]));
+
   // K1.9: ปกการ์ด — โหลด FileAsset.cdnUrl ของทุก coverFileId ที่ใช้อยู่ในบอร์ดนี้ (คิวรีเดียว)
+  // K3.7: ตัวสะท้อนไม่มีปกของตัวเอง — ใช้ปกของต้นฉบับแทน
   const coverFileIds = Array.from(
-    new Set(board.columns.flatMap((c) => c.cards.map((k) => k.coverFileId)).filter((v): v is string => !!v)),
+    new Set(
+      board.columns
+        .flatMap((c) => c.cards)
+        .map((k) => {
+          const srcId = sourceIdOfCard.get(k.id);
+          return srcId ? (sourceCardById.get(srcId)?.coverFileId ?? null) : k.coverFileId;
+        })
+        .filter((v): v is string => !!v),
+    ),
   );
   const coverFiles = coverFileIds.length
     ? await prisma.fileAsset.findMany({ where: { id: { in: coverFileIds } }, select: { id: true, cdnUrl: true } })
@@ -912,21 +952,31 @@ export async function getBoardView(
       position: col.position,
       wipLimit: col.wipLimit,
       isDoneColumn: col.isDoneColumn,
-      cards: col.cards.map((card) =>
-        toBoardCardDto(
-          card,
-          labelsOfCard.get(card.id) ?? [],
-          peopleOfCard.get(card.id) ?? [],
-          checklistOfCard.get(card.id),
-          commentsOfCard.get(card.id),
+      cards: col.cards.map((card) => {
+        // K3.7 — ตัวสะท้อน: อ่านป้าย/ผู้รับผิดชอบ/เช็คลิสต์/ไฟล์/กำหนดส่ง/ปก จากต้นฉบับ (lookupId) แทน
+        // ของตัวเอง (ที่ไม่เคยมีใครเขียนอะไรลงไปเลย) · `id`/`cardNo`/`title`/`position` ยังเป็นของตัวเอง
+        const sourceId = sourceIdOfCard.get(card.id);
+        const sourceCard = sourceId ? sourceCardById.get(sourceId) : undefined;
+        const lookupId = sourceId ?? card.id;
+        const mirror: BoardCardMirrorDto | null = sourceCard
+          ? { sourceBoardName: sourceBoardNameById.get(sourceCard.boardId) ?? "", sourceCardNo: sourceCard.cardNo, sourceArchived: sourceCard.status === "ARCHIVED" }
+          : null;
+        const coverFileId = sourceCard ? sourceCard.coverFileId : card.coverFileId;
+        return toBoardCardDto(
+          sourceCard ? { ...card, dueAt: sourceCard.dueAt, completedAt: sourceCard.completedAt } : card,
+          labelsOfCard.get(lookupId) ?? [],
+          peopleOfCard.get(lookupId) ?? [],
+          checklistOfCard.get(lookupId),
+          commentsOfCard.get(lookupId),
           {
-            count: attachmentsOfCard.get(card.id) ?? 0,
-            coverUrl: card.coverFileId ? (coverUrlOfFile.get(card.coverFileId) ?? null) : null,
+            count: attachmentsOfCard.get(lookupId) ?? 0,
+            coverUrl: coverFileId ? (coverUrlOfFile.get(coverFileId) ?? null) : null,
           },
           fieldsOnCardByCard.get(card.id) ?? [],
           linksOfCard.get(card.id) ?? 0,
-        ),
-      ),
+          mirror,
+        );
+      }),
     })),
   };
 }
@@ -954,6 +1004,8 @@ export function toBoardCardDto(
   attachment?: { count: number; coverUrl: string | null },
   fieldsOnCard?: FieldOnCardDto[],
   linkCount?: number,
+  /** K3.7: ไม่ใช่ตัวสะท้อน = undefined/null */
+  mirror?: BoardCardMirrorDto | null,
 ): BoardCardDto {
   return {
     // K2.7: ชิป 🔁 — "แม่" ของงานประจำเท่านั้น (ลูกไม่มี recurrenceRule ของตัวเอง — ดู recurrence.ts)
@@ -982,6 +1034,8 @@ export function toBoardCardDto(
     fieldsOnCard: fieldsOnCard ?? [],
     // K3.1: ชิป 🔗 n (ค่าเริ่มต้น 0 สำหรับการ์ดที่เพิ่งสร้าง/ยังไม่ผูกอะไร)
     linkCount: linkCount ?? 0,
+    // K3.7: ชิปสะท้อน (null = ไม่ใช่ตัวสะท้อน)
+    mirror: mirror ?? null,
   };
 }
 

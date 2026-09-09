@@ -1,7 +1,7 @@
 # SHARK Task Board API
 
 Machine readable contract: `/api/v1/kanban/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/kanban` - contract version 1.0.0 - 87 operations.
+Base URL: `https://shark.in.th/api/v1/kanban` - contract version 1.0.0 - 88 operations.
 Generated from the operation registry by `scripts/gen-kanban-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -96,7 +96,7 @@ Branch on `error.code`, never on the message text. The list is shared by every S
 
 ### Read operations
 
-Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited. 31 of the 87 operations.
+Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited. 31 of the 88 operations.
 
 #### `boards.activity`
 
@@ -551,7 +551,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/kanban/templates" \
 
 ### Write operations
 
-Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 52 of the 87 operations.
+Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 53 of the 88 operations.
 
 #### `attachments.delete`
 
@@ -1056,6 +1056,25 @@ curl -sS -X POST "https://shark.in.th/api/v1/kanban/cards/123/links" \
   -d '{"linkType":"PARTY","linkId":"example linkId"}'
 ```
 
+#### `cards.mirror`
+
+**POST /cards/{id}/mirror** - Reflect a card onto another board — one shared task, editable from either board. Not for cards that are already a mirror. · scope: `kanban.card.create` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `toBoardId` | string | yes | Board to reflect this card onto (must not be the card's own board). · min length 1 · max length 40 |
+| `toColumnId` | string | no | Column on the target board. Defaults to the board's first column. · max length 40 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/kanban/cards/123/mirror" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"toBoardId":"example toBoardId"}'
+```
+
 #### `cards.move`
 
 **POST /cards/{id}/move** - Move a card to another column and/or another position, by naming its new neighbours. · scope: `kanban.card.move` · write · AI tool: `kanban_move_card`
@@ -1488,7 +1507,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/kanban/views/123" \
 
 ### Danger operations
 
-Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 4 of the 87 operations.
+Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 4 of the 88 operations.
 
 #### `boards.members.remove`
 

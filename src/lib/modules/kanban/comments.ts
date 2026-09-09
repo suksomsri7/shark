@@ -20,6 +20,8 @@ import { prisma } from "./db";
 import { publishBoardSignal, boardSignal } from "./realtime";
 import { KANBAN_LIMITS } from "./limits";
 import { assertBoardRole, assertCardRole, grantViewerForMention } from "./members";
+// K3.7 — ความเห็นเป็น "เนื้อหาการ์ด": เขียน/อ่านผ่าน cardId ที่ส่งมาต้อง resolve ไปต้นฉบับก่อนเสมอ
+import { MIRROR_SOURCE_ARCHIVED_TH, resolveMirror } from "./mirror";
 import { cardLink, notifyKanbanUser, notifyWatchers, shortenForNotice } from "./notify";
 import type { KanbanCommentDto, KanbanCtx } from "./types";
 
@@ -126,7 +128,12 @@ export async function addComment(
   rawBody: string,
   opts: { aiGenerated?: boolean } = {},
 ): Promise<KanbanComment> {
-  const { boardId } = await assertCardRole(ctx, cardId, "EDITOR");
+  // ด่านสิทธิ์อยู่ที่การ์ด **ตามที่ขอมา** (K3.7 — เขียนผ่านตัวสะท้อนใช้สิทธิ์บอร์ดปลายทาง)
+  await assertCardRole(ctx, cardId, "EDITOR");
+  const mirror = await resolveMirror(ctx, cardId);
+  if (mirror.isMirror && mirror.sourceArchived) throw new Error(MIRROR_SOURCE_ARCHIVED_TH);
+  const effectiveCardId = mirror.effectiveCardId;
+  const boardId = mirror.effectiveBoardId;
   const authorUserId = ctx.actorUserId;
   if (!authorUserId) throw new KanbanForbiddenError("ต้องเข้าสู่ระบบก่อนจึงเขียนความเห็นได้");
   const body = normalizeBody(rawBody);
@@ -135,39 +142,39 @@ export async function addComment(
   const comment = await prisma.$transaction(async (tx) => {
     const row = await tx.kanbanComment.create({
       // K3.5: `aiGenerated` = ผู้ช่วย AI เขียนแทนคนที่กดปุ่ม (คนกดยังเป็นเจ้าของแถวเพื่อรู้ว่าใครสั่ง)
-      data: { tenantId: ctx.tenantId, cardId, authorUserId, body, mentions, aiGenerated: opts.aiGenerated === true },
+      data: { tenantId: ctx.tenantId, cardId: effectiveCardId, authorUserId, body, mentions, aiGenerated: opts.aiGenerated === true },
     });
     await emitOutbox(tx, {
       tenantId: ctx.tenantId,
       type: "kanban.comment.added",
       idempotencyKey: `kanban.comment.added#${row.id}`,
-      payload: { commentId: row.id, cardId, boardId, authorUserId, mentions },
+      payload: { commentId: row.id, cardId: effectiveCardId, boardId, authorUserId, mentions },
       systemId: ctx.systemId,
     });
     // K1.10: ประวัติกิจกรรมใน tx เดียวกับความเห็น (แท็บ "กิจกรรม" ซ่อนตัวความเห็น จึงต้องมีบรรทัดนี้บอกว่าเคยมี)
     await logActivity(tx, {
       tenantId: ctx.tenantId,
       boardId,
-      cardId,
+      cardId: effectiveCardId,
       actorUserId: authorUserId,
       type: "COMMENT_ADDED",
-      data: { commentId: row.id },
+      data: { commentId: row.id, ...(mirror.isMirror ? { viaMirror: true } : {}) },
     });
     return row;
   });
   scheduleDrain();
 
-  await notifyMentions(ctx, { cardId, boardId, authorUserId, targets: mentions });
+  await notifyMentions(ctx, { cardId: effectiveCardId, boardId, authorUserId, targets: mentions });
   // K2.11 — ผู้ติดตามการ์ด/คอลัมน์/บอร์ด ได้ใบ "มีความเห็นใหม่" (นอก tx · best-effort)
   // 🔴 ตัดคนที่ถูก mention ออก: เขาได้ใบ "มีคนพูดถึงคุณ" ไปแล้ว — เรื่องเดียวกันต้องไม่ได้ 2 ใบ
   {
     const card = await prisma.kanbanCard.findFirst({
-      where: { id: cardId, tenantId: ctx.tenantId },
+      where: { id: effectiveCardId, tenantId: ctx.tenantId },
       select: { title: true },
     });
-    const link = cardLink(ctx.systemId, boardId, cardId);
+    const link = cardLink(ctx.systemId, boardId, effectiveCardId);
     await notifyWatchers(ctx, {
-      cardId,
+      cardId: effectiveCardId,
       kind: "COMMENT",
       actorUserId: authorUserId,
       excludeUserIds: mentions,
@@ -177,7 +184,12 @@ export async function addComment(
     });
   }
   // K1.14 — สัญญาณหลัง commit · ไม่มีเนื้อความในนี้ (จอที่ได้รับไปดึงความเห็นจากเซิร์ฟเวอร์เราเอง)
-  await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.comment", boardId, cardId }));
+  await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.comment", boardId, cardId: effectiveCardId }));
+  if (mirror.isMirror) {
+    // K3.7 — บอร์ดปลายทาง (ที่กำลังแก้อยู่) ก็ต้อง refresh ด้วย ไม่ใช่แค่บอร์ดต้นฉบับ
+    const viewed = await prisma.kanbanCard.findFirst({ where: { id: cardId, tenantId: ctx.tenantId }, select: { boardId: true } });
+    if (viewed) await publishBoardSignal(ctx, viewed.boardId, boardSignal({ type: "card.comment", boardId: viewed.boardId, cardId }));
+  }
   return comment;
 }
 
@@ -223,11 +235,12 @@ export async function deleteComment(ctx: KanbanCtx, commentId: string): Promise<
 
 // ───────────────────────── อ่าน ─────────────────────────
 
-/** ความเห็นทั้งหมดของการ์ด เรียงเก่า→ใหม่ (ไม่รวมที่ถูกลบ) — VIEWER อ่านได้ */
+/** ความเห็นทั้งหมดของการ์ด เรียงเก่า→ใหม่ (ไม่รวมที่ถูกลบ) — VIEWER อ่านได้ · K3.7: ตัวสะท้อนอ่านของต้นฉบับ */
 export async function listComments(ctx: KanbanCtx, cardId: string): Promise<KanbanCommentDto[]> {
   await assertCardRole(ctx, cardId, "VIEWER");
+  const { effectiveCardId } = await resolveMirror(ctx, cardId);
   const rows = await prisma.kanbanComment.findMany({
-    where: { cardId, tenantId: ctx.tenantId, deletedAt: null },
+    where: { cardId: effectiveCardId, tenantId: ctx.tenantId, deletedAt: null },
     orderBy: { createdAt: "asc" },
   });
   if (rows.length === 0) return [];
@@ -252,7 +265,8 @@ export async function listComments(ctx: KanbanCtx, cardId: string): Promise<Kanb
 /** จำนวนความเห็นของการ์ด 1 ใบ (ตราท้ายการ์ด — ใช้ตอนคืนการ์ดเดี่ยวจาก action) */
 export async function commentCountOfCard(ctx: KanbanCtx, cardId: string): Promise<number> {
   await assertCardRole(ctx, cardId, "VIEWER");
-  return prisma.kanbanComment.count({ where: { cardId, tenantId: ctx.tenantId, deletedAt: null } });
+  const { effectiveCardId } = await resolveMirror(ctx, cardId);
+  return prisma.kanbanComment.count({ where: { cardId: effectiveCardId, tenantId: ctx.tenantId, deletedAt: null } });
 }
 
 /**

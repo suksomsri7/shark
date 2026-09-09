@@ -13,6 +13,9 @@ import { logActivity } from "./activity-log";
 import { prisma } from "./db";
 import { publishBoardSignal, boardSignal } from "./realtime";
 import { KANBAN_LIMITS } from "./limits";
+// K3.7 — ป้ายที่ติดบนการ์ดเป็น "เนื้อหาการ์ด": ตั้งผ่าน cardId ที่ส่งมาต้อง resolve ไปต้นฉบับก่อนเสมอ
+// (ด่านสิทธิ์ยังเป็นหน้าที่ผู้เรียก — `setCardLabels` ไม่เคย assertCardRole เองมาแต่ไหนแต่ไร เหมือน `cards.setCardAssignees`)
+import { MIRROR_SOURCE_ARCHIVED_TH, resolveMirror } from "./mirror";
 import type { KanbanCtx } from "./types";
 
 /** 6 สีตามดีไซน์ (D9) — ลำดับนี้คือลำดับที่ backfill/สร้างอัตโนมัติใช้ไล่สี */
@@ -204,11 +207,14 @@ export async function deleteLabel(ctx: KanbanCtx, labelId: string): Promise<{ ca
  * - เขียน `labels` Json คู่กันในทรานแซกชันเดียว
  */
 export async function setCardLabels(ctx: KanbanCtx, cardId: string, labelIds: string[]): Promise<string[]> {
-  const card = await prisma.kanbanCard.findFirst({
+  const asGiven = await prisma.kanbanCard.findFirst({
     where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
     select: { id: true, boardId: true },
   });
-  if (!card) throw new Error("ไม่พบการ์ดนี้");
+  if (!asGiven) throw new Error("ไม่พบการ์ดนี้");
+  const mirror = await resolveMirror(ctx, cardId);
+  if (mirror.isMirror && mirror.sourceArchived) throw new Error(MIRROR_SOURCE_ARCHIVED_TH);
+  const card = { id: mirror.effectiveCardId, boardId: mirror.effectiveBoardId };
 
   const ids = [...new Set(labelIds)];
   if (ids.length > 0) {
@@ -241,6 +247,9 @@ export async function setCardLabels(ctx: KanbanCtx, cardId: string, labelIds: st
 
   // K1.14 — หลัง commit เท่านั้น (ดูหัวไฟล์ realtime.ts) · ส่งแค่ id ไม่ส่งชื่อป้าย
   await publishBoardSignal(ctx, card.boardId, boardSignal({ type: "card.labels", boardId: card.boardId, cardId: card.id }));
+  if (mirror.isMirror) {
+    await publishBoardSignal(ctx, asGiven.boardId, boardSignal({ type: "card.labels", boardId: asGiven.boardId, cardId: asGiven.id }));
+  }
   return next;
 }
 

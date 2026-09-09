@@ -21,6 +21,8 @@ import { KANBAN_LIMITS } from "./limits";
 import { listCardLinks } from "./link-resolvers";
 import { assertBoardRole, assertCardRole, loadActor } from "./members";
 import { listComments } from "./comments";
+// K3.7 — ประตูเดียวของ "แก้ที่ไหนก็เห็นเหมือนกัน" (mirror.ts ไม่ import ไฟล์นี้กลับ — ไม่มี import วงกลม)
+import { MIRROR_SOURCE_ARCHIVED_TH, resolveMirror } from "./mirror";
 import { moveCard } from "./moves";
 import { cardLink, notifyCardAssigned, notifyWatchers } from "./notify";
 import { cardWatchState } from "./watch";
@@ -28,7 +30,7 @@ import { keyBetween } from "./ordering";
 import { describeRecurrence } from "./recurrence";
 import { publishBoardSignal, boardSignal } from "./realtime";
 import { sanitizeDescription } from "./sanitize";
-import type { CardDetailDto, CardFullDetailDto, KanbanCtx } from "./types";
+import type { CardDetailDto, CardFullDetailDto, CardMirrorRefDto, KanbanCtx } from "./types";
 
 type Tx = Prisma.TransactionClient;
 
@@ -104,13 +106,17 @@ export async function setCardAssignees(
   opts?: { notify?: boolean },
 ): Promise<{ assigneeUserIds: string[]; added: string[] }> {
   const card = await requireCard(ctx, cardId);
+  // K3.7 — ผู้รับผิดชอบเป็น "เนื้อหาการ์ด" (สัญญา §K3.7) → เขียนที่ต้นฉบับเสมอ ถ้า cardId ที่ส่งมาเป็นตัวสะท้อน
+  const mirror = await resolveMirror(ctx, cardId);
+  if (mirror.isMirror && mirror.sourceArchived) throw new Error(MIRROR_SOURCE_ARCHIVED_TH);
+  const effective = { id: mirror.effectiveCardId, title: card.title, boardId: mirror.effectiveBoardId };
   const ids = [...new Set(userIds)];
   await assertMembers(ctx.tenantId, ids);
 
   // K1.10: กิจกรรมเขียนใน tx เดียวกับการมอบหมาย — มอบหมายสำเร็จแต่ประวัติหายเกิดไม่ได้
   const { added } = await prisma.$transaction(async (tx) => {
-    const result = await writeAssignees(tx, ctx, card.id, ids);
-    await logAssigneeChange(tx, ctx, card, result);
+    const result = await writeAssignees(tx, ctx, effective.id, ids);
+    await logAssigneeChange(tx, ctx, effective, result);
     return result;
   });
   // K2.9 — กฎอัตโนมัติปิดการแจ้ง "ได้รับมอบหมายงาน" ของขั้นนี้ (`notify: false`)
@@ -118,10 +124,13 @@ export async function setCardAssignees(
   //    ปล่อยให้ยิงทั้งคู่ = ผู้รับได้ 2 ใบเรื่องเดียวกันทุกครั้งที่กฎวิ่ง (เรื่องที่ผู้ใช้ปิดเองไม่ได้)
   if (opts?.notify !== false) {
     for (const userId of added) {
-      await notifyCardAssigned(ctx.tenantId, ctx.systemId, card, userId);
+      await notifyCardAssigned(ctx.tenantId, ctx.systemId, effective, userId);
     }
   }
-  await publishBoardSignal(ctx, card.boardId, boardSignal({ type: "card.assignees", boardId: card.boardId, cardId: card.id }));
+  await publishBoardSignal(ctx, effective.boardId, boardSignal({ type: "card.assignees", boardId: effective.boardId, cardId: effective.id }));
+  if (mirror.isMirror) {
+    await publishBoardSignal(ctx, card.boardId, boardSignal({ type: "card.assignees", boardId: card.boardId, cardId: card.id }));
+  }
   return { assigneeUserIds: ids, added };
 }
 
@@ -200,11 +209,18 @@ async function logAssigneeChange(
  * VIEWER อ่านได้ (แค่ดู ไม่ใช่แก้)
  */
 export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<CardDetailDto> {
+  // ด่านสิทธิ์อยู่ที่การ์ด **ตามที่ขอมา** เสมอ (บอร์ดปลายทางพอ ไม่ต้องมีสิทธิ์บอร์ดต้นทาง — K3.7 "ที่นั่ง")
   const { boardId } = await assertCardRole(ctx, cardId, "VIEWER");
+  // K3.7 — ตัวสะท้อน: เนื้อหาทั้งหมด (description/dueAt/checklists/comments/attachments/customFields)
+  // มาจากต้นฉบับเสมอ · checklists/comments/attachments/customFields เรียกด้วย `cardId` เดิม (ไม่ resolve
+  // ซ้ำที่นี่) เพราะฟังก์ชันย่อยเหล่านั้น resolve เองข้างใน หลัง assertCardRole ของ id ที่ส่งเข้าไป
+  const mirror = await resolveMirror(ctx, cardId);
   const card = await prisma.kanbanCard.findFirst({
-    where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+    where: { id: mirror.effectiveCardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
     select: {
       id: true,
+      cardNo: true,
+      boardId: true,
       description: true,
       dueAt: true,
       startAt: true,
@@ -214,9 +230,27 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
       status: true,
       recurrenceRule: true,
       recurrenceParentId: true,
+      board: { select: { name: true } },
     },
   });
   if (!card) throw new KanbanNotFoundError("ไม่พบการ์ดนี้");
+  const [mirrorRows, ownStatusRow] = await Promise.all([
+    // K3.7 — ตัวสะท้อนของการ์ดนี้บนบอร์ดอื่น (เฉพาะ ACTIVE) — ว่างเสมอเมื่อการ์ดที่เปิดเป็นตัวสะท้อนอยู่แล้ว
+    prisma.kanbanCard.findMany({
+      where: { mirrorOfId: card.id, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "ACTIVE" },
+      select: { id: true, boardId: true, cardNo: true, board: { select: { name: true } } },
+    }),
+    // K3.7 — สถานะคลัง "ของใบที่เปิดอยู่จริง" (ที่นั่งบนบอร์ดนี้) ต้องแยกจากสถานะคลังของต้นฉบับเสมอ
+    // (ตัวสะท้อนยัง ACTIVE ได้แม้ต้นฉบับถูกเก็บไปแล้ว — D22 · sourceArchived บอกอีกเรื่องแยกกัน)
+    mirror.isMirror
+      ? prisma.kanbanCard.findFirst({
+          where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+          select: { status: true, archivedAt: true, archivedById: true },
+        })
+      : Promise.resolve(null),
+  ]);
+  const mirrors: CardMirrorRefDto[] = mirrorRows.map((m) => ({ cardId: m.id, boardId: m.boardId, boardName: m.board.name, cardNo: m.cardNo }));
+  const own = ownStatusRow ?? { status: card.status, archivedAt: card.archivedAt, archivedById: card.archivedById };
   // K1.7/K1.8/K1.9/K2.6: หลังการ์ดโหลดเช็คลิสต์ + ความเห็น + ไฟล์แนบ + ค่าฟิลด์กำหนดเอง พร้อมกับส่วนที่
   // เหลือของการ์ดในเที่ยวเดียว (ทุกตัวตรวจสิทธิ์ซ้ำในตัวเอง — เปิดหลังการ์ด 1 ครั้ง = ไม่ต้องยิง action เพิ่มอีกหลายรอบ)
   // K3.1 — ผู้ดูของบล็อก "เชื่อมข้อมูล SHARK" คือคนที่กำลังเปิดการ์ดนี้ (ctx.actorUserId / คีย์ API)
@@ -248,9 +282,10 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     dueAt: card.dueAt ? card.dueAt.toISOString() : null,
     startAt: card.startAt ? card.startAt.toISOString() : null,
     reminderMinutesBefore: card.reminderMinutesBefore,
-    archivedAt: card.archivedAt ? card.archivedAt.toISOString() : null,
-    archivedById: card.archivedById,
-    status: card.status as CardDetailDto["status"],
+    // K3.7 — สถานะคลัง/เก็บ เป็นของ "ที่นั่งที่กำลังเปิดอยู่" (own) ไม่ใช่ของต้นฉบับ (card อาจถูก resolve แล้ว)
+    archivedAt: own.archivedAt ? own.archivedAt.toISOString() : null,
+    archivedById: own.archivedById,
+    status: own.status as CardDetailDto["status"],
     checklists,
     comments,
     attachments,
@@ -265,6 +300,16 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     links,
     // K3.5 — ไม่แตะ DB (อ่านจาก env ของแพลตฟอร์ม) ⇒ พ่วงมากับหลังการ์ดได้ฟรี ไม่ต้องยิง action เพิ่ม
     aiAvailable: resolveProvider("smart") !== null,
+    // K3.7 — การ์ดสะท้อน: `card` ข้างบน (ถ้า isMirror) คือแถวของ**ต้นฉบับ**อยู่แล้ว (resolveMirror แปลงให้)
+    mirror: {
+      isMirror: mirror.isMirror,
+      sourceCardId: mirror.isMirror ? card.id : null,
+      sourceBoardId: mirror.isMirror ? card.boardId : null,
+      sourceBoardName: mirror.isMirror ? card.board.name : null,
+      sourceCardNo: mirror.isMirror ? card.cardNo : null,
+      sourceArchived: mirror.sourceArchived,
+    },
+    mirrors,
   };
 }
 
@@ -373,9 +418,13 @@ export async function updateCardFields(
   cardId: string,
   input: UpdateCardFieldsInput,
 ): Promise<KanbanCard> {
-  const { boardId } = await assertCardRole(ctx, cardId, "EDITOR");
+  // ด่านสิทธิ์อยู่ที่การ์ด **ตามที่ขอมา** (K3.7 — แก้ผ่านตัวสะท้อนใช้สิทธิ์บอร์ดปลายทาง ไม่ใช่บอร์ดต้นทาง)
+  await assertCardRole(ctx, cardId, "EDITOR");
+  const mirror = await resolveMirror(ctx, cardId);
+  if (mirror.isMirror && mirror.sourceArchived) throw new Error(MIRROR_SOURCE_ARCHIVED_TH);
+  const boardId = mirror.effectiveBoardId;
   const before = await prisma.kanbanCard.findFirst({
-    where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+    where: { id: mirror.effectiveCardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
     select: { id: true, dueAt: true, startAt: true },
   });
   if (!before) throw new KanbanNotFoundError("ไม่พบการ์ดนี้");
@@ -417,20 +466,31 @@ export async function updateCardFields(
   const fields = Object.keys(input).filter((k) => input[k as keyof UpdateCardFieldsInput] !== undefined);
   const updated = await prisma.$transaction(async (tx) => {
     const row = await tx.kanbanCard.update({ where: { id: before.id }, data });
+    // K3.7 — แก้ชื่อที่ต้นฉบับ (ไม่ว่าจะแก้ตรง ๆ หรือแก้ผ่านตัวสะท้อนก็ตกมาที่นี่เพราะ `before.id` = ต้นฉบับ
+    // เสมอ) → ก๊อปชื่อลงตัวสะท้อนทุกใบให้ค้นหา/ตารางของบอร์ดปลายทางเห็นชื่อล่าสุด
+    if (data.title !== undefined) {
+      await tx.kanbanCard.updateMany({ where: { mirrorOfId: before.id }, data: { title: data.title as string } });
+    }
     const base = { tenantId: ctx.tenantId, boardId, cardId: before.id, actorUserId: ctx.actorUserId ?? null };
-    if (fields.length > 0) await logActivity(tx, { ...base, type: "CARD_UPDATED", data: { fields } });
+    if (fields.length > 0) {
+      await logActivity(tx, { ...base, type: "CARD_UPDATED", data: { fields, ...(mirror.isMirror ? { viaMirror: true } : {}) } });
+    }
     if (input.dueAt !== undefined) {
       await logActivity(tx, {
         ...base,
         type: "CARD_DUE_SET",
-        data: { dueAt: input.dueAt ? input.dueAt.toISOString() : null },
+        data: { dueAt: input.dueAt ? input.dueAt.toISOString() : null, ...(mirror.isMirror ? { viaMirror: true } : {}) },
       });
     }
     return row;
   });
 
-  // หลัง commit (ดูหัวไฟล์ realtime.ts) — จออื่นของบอร์ดนี้จะ refresh มาเห็นชื่อ/กำหนดส่งใหม่
+  // หลัง commit (ดูหัวไฟล์ realtime.ts) — จอของทั้งบอร์ดต้นฉบับและบอร์ดที่กำลังแก้อยู่ต้อง refresh
   await publishBoardSignal(ctx, boardId, boardSignal({ type: "card.updated", boardId, cardId: before.id }));
+  if (mirror.isMirror) {
+    const { boardId: viewedBoardId } = await assertCardRole(ctx, cardId, "VIEWER").catch(() => ({ boardId: null }));
+    if (viewedBoardId) await publishBoardSignal(ctx, viewedBoardId, boardSignal({ type: "card.updated", boardId: viewedBoardId, cardId }));
+  }
   return updated;
 }
 

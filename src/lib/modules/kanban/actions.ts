@@ -45,6 +45,8 @@ import {
   type BulkUpdatePatch,
 } from "./cards";
 import { createLabel, setCardLabels } from "./labels";
+// K3.7 — การ์ดสะท้อน (mirror)
+import { listMirrorBoards, listMirrorColumns, mirrorCard } from "./mirror";
 import type { ArchiveListDto } from "./types";
 // K1.14 — คลังเก็บ + การตั้งค่าส่วนตัว (ปุ่มลัด)
 import { listArchived, restoreColumn } from "./archive";
@@ -653,6 +655,59 @@ export async function setCardAssigneesAction(input: {
     return { ok: true, userIds: assigneeUserIds };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ตั้งผู้รับผิดชอบไม่สำเร็จ" };
+  }
+}
+
+// ═══════════════════════════ K3.7: การ์ดสะท้อน (mirror) ═══════════════════════════
+
+/** บอร์ดอื่นที่กดสะท้อนไปได้ (EDITOR ขึ้นไป) — ตัวเลือกแรกของ `MirrorPicker.tsx` */
+export async function listMirrorBoardsAction(input: {
+  systemId: string;
+  boardId: string;
+}): Promise<{ ok: true; boards: { id: string; name: string }[] } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  try {
+    const boards = await listMirrorBoards(ctxOf(auth, input.systemId), input.boardId);
+    return { ok: true, boards };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "โหลดรายชื่อบอร์ดไม่สำเร็จ" };
+  }
+}
+
+/** คอลัมน์ ACTIVE ของบอร์ดปลายทางที่เลือกไว้ — ตัวเลือกที่ 2 ของ `MirrorPicker.tsx` */
+export async function listMirrorColumnsAction(input: {
+  systemId: string;
+  boardId: string;
+}): Promise<{ ok: true; columns: { id: string; name: string }[] } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.read");
+  try {
+    const columns = await listMirrorColumns(ctxOf(auth, input.systemId), input.boardId);
+    return { ok: true, columns };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "โหลดคอลัมน์ไม่สำเร็จ" };
+  }
+}
+
+export async function mirrorCardAction(input: {
+  systemId: string;
+  cardId: string;
+  toBoardId: string;
+  toColumnId?: string;
+}): Promise<{ ok: true; mirrorId: string; boardId: string; boardName: string; cardNo: number | null } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.create");
+  if (!input.systemId || !input.cardId || !input.toBoardId) return { ok: false, message: "ไม่พบการ์ดนี้" };
+  try {
+    const res = await mirrorCard(ctxOf(auth, input.systemId), {
+      cardId: input.cardId,
+      toBoardId: input.toBoardId,
+      toColumnId: input.toColumnId ?? null,
+    });
+    return { ok: true, ...res };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "สะท้อนการ์ดไม่สำเร็จ" };
   }
 }
 

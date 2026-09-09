@@ -89,7 +89,29 @@ export type BoardCardDto = {
   isRecurring: boolean;
   /** K3.1: จำนวน "เชื่อมข้อมูล SHARK" ที่ยังไม่ถูกถอด — ชิป 🔗 n บนการ์ด (0 = ไม่โชว์ชิป) */
   linkCount: number;
+  /** K3.7: การ์ดใบนี้เป็นตัวสะท้อนของการ์ดอีกบอร์ด — `null` = ไม่ใช่ตัวสะท้อน */
+  mirror?: BoardCardMirrorDto | null;
 };
+
+// ───────────────────────── K3.7: การ์ดสะท้อน (mirror) ─────────────────────────
+// 🔴 ไฟล์บริสุทธิ์นี้เก็บชนิดของ DTO (ไม่ใช่ `mirror.ts` ที่แตะ prisma) ด้วยเหตุผลเดียวกับ K1.11/…/K2.8:
+//    `Card.tsx`/`CardBack.tsx`/`MirrorPicker.tsx` (client) ต้อง `import type` ได้โดยไม่ลาก `db.ts` → `pg`
+
+/** ชิปสะท้อนบนการ์ดบอร์ด/แถวตาราง (K1.5/K2.1) — เฉพาะข้อมูลพอแสดงชิป ไม่ใช่รายละเอียดเต็ม */
+export type BoardCardMirrorDto = { sourceBoardName: string; sourceCardNo: number | null; sourceArchived: boolean };
+
+/** รายละเอียดการเป็น "ตัวสะท้อน" ของการ์ดที่กำลังเปิด (หลังการ์ด) */
+export type CardMirrorInfoDto = {
+  isMirror: boolean;
+  sourceCardId: string | null;
+  sourceBoardId: string | null;
+  sourceBoardName: string | null;
+  sourceCardNo: number | null;
+  sourceArchived: boolean;
+};
+
+/** 1 แถวของ "สะท้อนอยู่ที่ …" (แสดงบนหลังการ์ดต้นฉบับ) */
+export type CardMirrorRefDto = { cardId: string; boardId: string; boardName: string; cardNo: number | null };
 
 export type BoardColumnDto = {
   id: string;
@@ -143,6 +165,10 @@ export type CardDetailDto = {
    * 🔴 เป็นแค่ป้ายบอกสถานะ ไม่ใช่ด่าน: ด่านจริงอยู่ที่ `ai.ts` (ยิง action ตรงก็ยังโดนปฏิเสธ)
    */
   aiAvailable: boolean;
+  /** K3.7: การ์ดนี้เป็นตัวสะท้อนไหม + สถานะต้นฉบับ (isMirror:false เมื่อการ์ดนี้เองไม่ใช่ตัวสะท้อน) */
+  mirror: CardMirrorInfoDto;
+  /** K3.7: ตัวสะท้อนของการ์ดนี้บนบอร์ดอื่น (เฉพาะที่ยัง ACTIVE) — ว่างเมื่อการ์ดนี้เองเป็นตัวสะท้อนอยู่แล้ว */
+  mirrors: CardMirrorRefDto[];
 };
 
 // ───────────────────────── K3.1: เชื่อมข้อมูล SHARK ─────────────────────────
@@ -564,6 +590,8 @@ export type TableRowDto = {
   fieldsOnCard: FieldOnCardDto[];
   /** K2.7: การ์ดนี้เป็น "แม่" ของงานประจำ (มี recurrenceRule) */
   isRecurring: boolean;
+  /** K3.7: การ์ดใบนี้เป็นตัวสะท้อนของการ์ดอีกบอร์ด — `null` = ไม่ใช่ตัวสะท้อน */
+  mirror?: BoardCardMirrorDto | null;
 };
 
 /** กลุ่มของ `group=column|assignee|label` — `rowIds` อ้าง `TableRowDto.id` (การ์ดหลายผู้รับผิดชอบ/หลายป้าย อยู่ได้หลายกลุ่ม) */

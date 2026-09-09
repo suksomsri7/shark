@@ -20,6 +20,8 @@ import { logActivity } from "./activity-log";
 import { prisma } from "./db";
 import { KANBAN_LIMITS } from "./limits";
 import { assertCardRole } from "./members";
+// K3.7 — ไฟล์แนบเป็น "เนื้อหาการ์ด": เขียน/อ่านผ่าน cardId ที่ส่งมาต้อง resolve ไปต้นฉบับก่อนเสมอ
+import { MIRROR_SOURCE_ARCHIVED_TH, resolveMirror } from "./mirror";
 import type { KanbanAttachmentDto, KanbanCtx, KanbanNewAttachmentDto } from "./types";
 
 export type AddAttachmentInput = {
@@ -108,9 +110,13 @@ export async function addAttachment(
   input: AddAttachmentInput,
   deps?: UploadDeps,
 ): Promise<KanbanNewAttachmentDto> {
-  const { boardId } = await assertCardRole(ctx, cardId, "EDITOR");
+  await assertCardRole(ctx, cardId, "EDITOR");
+  const mirror = await resolveMirror(ctx, cardId);
+  if (mirror.isMirror && mirror.sourceArchived) throw new Error(MIRROR_SOURCE_ARCHIVED_TH);
+  const effectiveCardId = mirror.effectiveCardId;
+  const boardId = mirror.effectiveBoardId;
 
-  const count = await prisma.kanbanAttachment.count({ where: { cardId, tenantId: ctx.tenantId, deletedAt: null } });
+  const count = await prisma.kanbanAttachment.count({ where: { cardId: effectiveCardId, tenantId: ctx.tenantId, deletedAt: null } });
   if (count >= KANBAN_LIMITS.attachmentsPerCard) {
     throw new Error(`แนบไฟล์ได้สูงสุด ${KANBAN_LIMITS.attachmentsPerCard} ไฟล์ต่อการ์ด — ลบไฟล์เก่าก่อนจึงแนบใหม่ได้`);
   }
@@ -138,7 +144,7 @@ export async function addAttachment(
     const created = await tx.kanbanAttachment.create({
       data: {
         tenantId: ctx.tenantId,
-        cardId,
+        cardId: effectiveCardId,
         fileId: uploaded.assetId,
         name: input.filename,
         contentType: declared,
@@ -149,10 +155,10 @@ export async function addAttachment(
     await logActivity(tx, {
       tenantId: ctx.tenantId,
       boardId,
-      cardId,
+      cardId: effectiveCardId,
       actorUserId: ctx.actorUserId ?? null,
       type: "ATTACHMENT_ADDED",
-      data: { attachmentId: created.id, name: created.name, contentType: created.contentType, bytes: created.bytes },
+      data: { attachmentId: created.id, name: created.name, contentType: created.contentType, bytes: created.bytes, ...(mirror.isMirror ? { viaMirror: true } : {}) },
     });
     return created;
   });
@@ -180,14 +186,16 @@ export async function addAttachment(
  */
 export async function setCover(ctx: KanbanCtx, cardId: string, attachmentId: string | null): Promise<void> {
   await assertCardRole(ctx, cardId, "EDITOR");
+  const { effectiveCardId, isMirror, sourceArchived } = await resolveMirror(ctx, cardId);
+  if (isMirror && sourceArchived) throw new Error(MIRROR_SOURCE_ARCHIVED_TH);
 
   if (attachmentId === null) {
-    await prisma.kanbanCard.updateMany({ where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { coverFileId: null } });
+    await prisma.kanbanCard.updateMany({ where: { id: effectiveCardId, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { coverFileId: null } });
     return;
   }
 
   const att = await prisma.kanbanAttachment.findFirst({
-    where: { id: attachmentId, cardId, tenantId: ctx.tenantId, deletedAt: null },
+    where: { id: attachmentId, cardId: effectiveCardId, tenantId: ctx.tenantId, deletedAt: null },
     select: { fileId: true, contentType: true },
   });
   if (!att) throw new KanbanNotFoundError("ไม่พบไฟล์แนบนี้");
@@ -195,7 +203,7 @@ export async function setCover(ctx: KanbanCtx, cardId: string, attachmentId: str
     throw new Error("ตั้งเป็นปกได้เฉพาะไฟล์รูปภาพเท่านั้น");
   }
   await prisma.kanbanCard.updateMany({
-    where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+    where: { id: effectiveCardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
     data: { coverFileId: att.fileId },
   });
 }
@@ -224,17 +232,18 @@ export async function removeAttachment(ctx: KanbanCtx, attachmentId: string): Pr
 
 // ───────────────────────── อ่าน ─────────────────────────
 
-/** ไฟล์แนบทั้งหมดของการ์ด (ไม่รวมที่ถูกลบ) — เรียงเก่า→ใหม่ · VIEWER อ่านได้ */
+/** ไฟล์แนบทั้งหมดของการ์ด (ไม่รวมที่ถูกลบ) — เรียงเก่า→ใหม่ · VIEWER อ่านได้ · K3.7: ตัวสะท้อนอ่านของต้นฉบับ */
 export async function listAttachments(ctx: KanbanCtx, cardId: string): Promise<KanbanAttachmentDto[]> {
   await assertCardRole(ctx, cardId, "VIEWER");
+  const { effectiveCardId } = await resolveMirror(ctx, cardId);
 
   const [card, rows] = await Promise.all([
     prisma.kanbanCard.findFirst({
-      where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+      where: { id: effectiveCardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
       select: { coverFileId: true },
     }),
     prisma.kanbanAttachment.findMany({
-      where: { cardId, tenantId: ctx.tenantId, deletedAt: null },
+      where: { cardId: effectiveCardId, tenantId: ctx.tenantId, deletedAt: null },
       orderBy: { createdAt: "asc" },
     }),
   ]);

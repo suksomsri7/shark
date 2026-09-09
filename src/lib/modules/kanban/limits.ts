@@ -45,6 +45,12 @@ export const KANBAN_LIMITS = Object.freeze({
    *    วิ่งได้ไม่จำกัดคือใบเรียกเก็บเงิน Neon + คิว outbox ตันทั้งร้าน
    */
   automationRunsPerMonth: 1000,
+  /**
+   * บอร์ดปลายทางที่การ์ด 1 ใบสะท้อนไปได้พร้อมกัน (K3.7)
+   * 🔴 กันการ์ดต้นฉบับถูกสะท้อนกระจายจนตามแก้ไม่ไหว (แก้ที่ต้นฉบับ = sync title ทุกตัวสะท้อน —
+   *    ยิ่งเยอะยิ่งมี fan-out เขียนต่อการแก้ 1 ครั้ง) 5 บอร์ดคือ "เกินพอ" สำหรับงานจริง (ข้ามทีม 2-3 ทีม)
+   */
+  mirrorsPerCard: 5,
 } as const);
 
 export type KanbanLimits = typeof KANBAN_LIMITS;

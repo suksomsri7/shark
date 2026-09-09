@@ -25,6 +25,8 @@ import {
 import { getCardFieldValues, setCardFieldValue } from "../../fields";
 import { setCardLabels } from "../../labels";
 import { assertBoardRole } from "../../members";
+// K3.7 — การ์ดสะท้อน (mirror)
+import { mirrorCard } from "../../mirror";
 import { moveCard } from "../../moves";
 import { completeCard } from "../../my-tasks";
 import { describeRecurrence, setCardRecurrence } from "../../recurrence";
@@ -294,6 +296,30 @@ const cardsDuplicate = defineKanbanOp({
   },
 });
 
+const cardsMirrorInput = z
+  .object({
+    toBoardId: z.string().min(1).max(40).describe("Board to reflect this card onto (must not be the card's own board)."),
+    toColumnId: z.string().max(40).optional().describe("Column on the target board. Defaults to the board's first column."),
+  })
+  .strict();
+
+// K3.7 — สะท้อนการ์ดไปบอร์ดอื่น: EDITOR ทั้ง 2 บอร์ด (ตรวจใน mirrorCard เอง) · idempotent (มีอยู่แล้ว → คืน id เดิม)
+const cardsMirror = defineKanbanOp({
+  id: "cards.mirror",
+  method: "POST",
+  path: "/cards/{id}/mirror",
+  kind: "write",
+  action: "kanban.card.create",
+  summary: "Reflect a card onto another board — one shared task, editable from either board. Not for cards that are already a mirror.",
+  label: "สะท้อนการ์ด",
+  input: cardsMirrorInput,
+  test: "K3.7-S2.1",
+  async handler({ actor, params, input }) {
+    const res = await mirrorCard(kanbanCtxOf(actor), { cardId: params.id!, toBoardId: input.toBoardId, toColumnId: input.toColumnId ?? null });
+    return { ok: true, mirrorId: res.mirrorId, boardId: res.boardId, boardName: res.boardName, cardNo: res.cardNo };
+  },
+});
+
 const cardsComplete = defineKanbanOp({
   id: "cards.complete",
   method: "POST",
@@ -530,6 +556,7 @@ export const CARDS_OPS: ApiOp[] = [
   cardsArchive,
   cardsRestore,
   cardsDuplicate,
+  cardsMirror,
   cardsComplete,
   cardsAssignees,
   cardsLabels,

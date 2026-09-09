@@ -204,8 +204,28 @@ export function Card({
           style={{ height: 64, borderRadius: 7, objectFit: "cover", margin: "-2px 0 1px" }}
         />
       )}
-      {(source || card.isRecurring) && (
+      {(source || card.isRecurring || card.mirror) && (
         <div className="flex flex-wrap items-center gap-1">
+          {/* K3.7 — ชิปสะท้อน: "สะท้อนจาก {บอร์ด} #n" ปกติ · ถ้าต้นฉบับถูกเก็บ → "ต้นฉบับถูกเก็บ" สีเทา */}
+          {card.mirror && (
+            <span
+              data-testid="card-mirror"
+              title={card.mirror.sourceArchived ? "ต้นฉบับถูกเก็บเข้าคลังแล้ว" : `สะท้อนจาก ${card.mirror.sourceBoardName}`}
+              className="inline-flex items-center gap-1"
+              style={{
+                fontSize: 10.5,
+                color: card.mirror.sourceArchived ? "var(--color-muted)" : "var(--color-accent)",
+                background: "var(--color-surface-2)",
+                borderRadius: 5,
+                padding: "1px 6px",
+              }}
+            >
+              <KanbanIcon name="swap" size="xs" />
+              {card.mirror.sourceArchived
+                ? "ต้นฉบับถูกเก็บ"
+                : `สะท้อนจาก ${card.mirror.sourceBoardName}${card.mirror.sourceCardNo ? ` #${card.mirror.sourceCardNo}` : ""}`}
+            </span>
+          )}
           {source && (
             <span
               data-testid="card-source"
