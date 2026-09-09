@@ -7,6 +7,8 @@
 import type { KanbanCard, Prisma } from "@prisma/client";
 import { KanbanNotFoundError } from "./access";
 import { emitOutbox } from "@/lib/core/outbox";
+// K3.5 — "ร้านนี้ใช้ผู้ช่วย AI ได้ไหม" (อ่าน env ล้วน ไม่แตะ DB) — ดู `ai.ts` สำหรับตัวเรียกจริง
+import { resolveProvider } from "@/lib/ai/provider";
 import { logActivity } from "./activity-log";
 import { listAttachments } from "./attachments";
 import { getCardChecklists } from "./checklists";
@@ -26,7 +28,7 @@ import { keyBetween } from "./ordering";
 import { describeRecurrence } from "./recurrence";
 import { publishBoardSignal, boardSignal } from "./realtime";
 import { sanitizeDescription } from "./sanitize";
-import type { CardDetailDto, KanbanCtx } from "./types";
+import type { CardDetailDto, CardFullDetailDto, KanbanCtx } from "./types";
 
 type Tx = Prisma.TransactionClient;
 
@@ -261,6 +263,93 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
     watching: watchState.watching,
     watcherCount: watchState.count,
     links,
+    // K3.5 — ไม่แตะ DB (อ่านจาก env ของแพลตฟอร์ม) ⇒ พ่วงมากับหลังการ์ดได้ฟรี ไม่ต้องยิง action เพิ่ม
+    aiAvailable: resolveProvider("smart") !== null,
+  };
+}
+
+// ═══════════════════════ K3.5: การ์ดฉบับเต็ม (REST `cards.detail` + ผู้ช่วย AI) ═══════════════════════
+
+/**
+ * HTML ของรายละเอียดการ์ด → **ข้อความล้วน**
+ * ปลายทางคือโมเดลภาษา/ผู้เชื่อมต่อภายนอก ⇒ ส่ง markup ไปมีแต่โทษ (กิน token · โมเดลลอกแท็กออกมาในคำตอบ)
+ * 🔴 แปลงบล็อก (`</p>`, `<br>`, `</li>`) เป็นขึ้นบรรทัดก่อนค่อยลบแท็ก ไม่งั้นทุกย่อหน้าจะติดกันเป็นก้อนเดียว
+ */
+export function descriptionToText(html: string | null | undefined): string {
+  if (!html) return "";
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "- ")
+    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** ความเห็นล่าสุดที่ส่งต่อให้ผู้ช่วย/ผู้เชื่อมต่อ (เก่ากว่านี้ไม่ช่วยให้เข้าใจงานเพิ่ม แต่กิน token) */
+const FULL_DETAIL_COMMENTS = 20;
+
+/**
+ * การ์ด 1 ใบแบบ "อ่านครบในเที่ยวเดียว" — ชื่อ/รายละเอียดข้อความล้วน/บอร์ด/คอลัมน์/ผู้รับผิดชอบ/
+ * ป้าย/เช็คลิสต์/ความเห็น/การเชื่อมข้อมูล SHARK · VIEWER อ่านได้ (สิทธิ์ตรวจใน `getCardDetail`)
+ * ⚠️ ใช้ทั้ง REST op `cards.detail` (tool `kanban_card_detail`) และปุ่มผู้ช่วย AI ใน `ai.ts`
+ *    ⇒ แหล่งความจริงเดียว: แก้รูปร่างที่นี่ที่เดียว ทั้งสองทางออกได้เหมือนกันเสมอ
+ */
+export async function getCardFullDetail(ctx: KanbanCtx, cardId: string): Promise<CardFullDetailDto> {
+  const detail = await getCardDetail(ctx, cardId);
+  const card = await prisma.kanbanCard.findFirst({
+    where: { id: cardId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+    select: {
+      id: true,
+      cardNo: true,
+      title: true,
+      completedAt: true,
+      board: { select: { id: true, name: true } },
+      column: { select: { id: true, name: true } },
+      assignees: { select: { userId: true } },
+      cardLabels: { select: { label: { select: { name: true } } } },
+    },
+  });
+  if (!card) throw new KanbanNotFoundError("ไม่พบการ์ดนี้");
+  const userIds = card.assignees.map((a) => a.userId);
+  const users = userIds.length
+    ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, email: true } })
+    : [];
+  const nameOf = new Map(users.map((u) => [u.id, u.name ?? u.email ?? u.id]));
+  return {
+    cardId: card.id,
+    cardNo: card.cardNo,
+    title: card.title,
+    description: descriptionToText(detail.description),
+    board: { id: card.board.id, name: card.board.name },
+    column: { id: card.column.id, name: card.column.name },
+    status: detail.status,
+    assignees: userIds.map((id) => ({ userId: id, name: nameOf.get(id) ?? id })),
+    dueAt: detail.dueAt,
+    startAt: detail.startAt,
+    reminderMinutesBefore: detail.reminderMinutesBefore,
+    completedAt: card.completedAt ? card.completedAt.toISOString() : null,
+    labels: card.cardLabels.map((l) => l.label.name),
+    checklists: detail.checklists.map((c) => ({
+      title: c.title,
+      items: c.items.map((i) => ({ text: i.text, done: i.done })),
+    })),
+    comments: detail.comments.slice(-FULL_DETAIL_COMMENTS).map((c) => ({
+      author: c.author.name,
+      body: c.body,
+      at: c.createdAt,
+      byAi: c.aiGenerated,
+    })),
+    links: detail.links
+      .filter((l) => l.canView)
+      .map((l) => ({ linkType: l.linkType, title: l.title, subtitle: l.subtitle })),
   };
 }
 

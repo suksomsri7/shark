@@ -17,6 +17,7 @@ import {
   archiveCard,
   duplicateCard,
   getCardDetail,
+  getCardFullDetail,
   restoreCard,
   setCardAssignees,
   updateCardFields,
@@ -459,6 +460,67 @@ const cardsRecurrenceSet = defineKanbanOp({
   },
 });
 
+// ───────────────────── K3.5: อ่านการ์ดฉบับเต็ม + ตั้งกำหนดส่ง (เครื่องมือ AI §8.2) ─────────────────────
+// 🔴 ทำไมต้องมี `cards.detail` ทั้งที่มี `cards.get` อยู่แล้ว: `cards.get` คืน `CardDetailDto` ซึ่งเป็น
+//    "ส่วนที่หน้าบอร์ดยังไม่มี" (ไม่มีชื่อการ์ด/บอร์ด/คอลัมน์/ผู้รับผิดชอบ · รายละเอียดเป็น HTML)
+//    ผู้ช่วย AI กับผู้เชื่อมต่อภายนอกต้องการ "การ์ดทั้งใบเป็นข้อความล้วน" ในคำขอเดียว ⇒ op แยกตัว
+//    (สัญญาของ `cards.get` เป็นของหน้าจอมาตั้งแต่ K1.15 — เปลี่ยนรูปร่างมันคือการหักสัญญาผู้เชื่อมต่อเดิม)
+
+const cardsDetail = defineKanbanOp({
+  id: "cards.detail",
+  method: "GET",
+  path: "/cards/{id}/detail",
+  kind: "read",
+  action: "kanban.board.read",
+  summary:
+    "Read one card in full: description as plain text, board and column, assignees, due date, labels, checklists with their items, recent comments and the SHARK records the card is linked to.",
+  label: "อ่านการ์ดฉบับเต็ม",
+  tool: {
+    name: "kanban_card_detail",
+    hint: "Use this before answering any question about one specific task, or before drafting a reply about it.",
+  },
+  test: "K3.5-S2.1",
+  async handler({ actor, params }) {
+    return getCardFullDetail(kanbanCtxOf(actor), params.id!);
+  },
+});
+
+const cardsSetDueInput = z
+  .object({
+    dueAt: isoDate.nullable().describe("Due date and time. null clears the due date."),
+    startAt: isoDate.nullable().optional().describe("Start date and time."),
+    reminderMinutesBefore: z
+      .number()
+      .int()
+      .min(0)
+      .max(43200)
+      .nullable()
+      .optional()
+      .describe("Remind the people responsible this many minutes before the due time."),
+  })
+  .strict();
+
+const cardsSetDue = defineKanbanOp({
+  id: "cards.setDue",
+  method: "POST",
+  path: "/cards/{id}/due",
+  kind: "write",
+  action: "kanban.card.update",
+  summary: "Set or clear the due date of a card, with an optional start date and reminder.",
+  label: "ตั้งกำหนดส่งของการ์ด",
+  tool: { name: "kanban_set_due", hint: "Use this when someone says when a task has to be finished." },
+  input: cardsSetDueInput,
+  test: "K3.5-S3.1",
+  async handler({ actor, params, input }) {
+    const card = await updateCardFields(kanbanCtxOf(actor), params.id!, {
+      dueAt: toDate(input.dueAt) ?? null,
+      ...(input.startAt !== undefined ? { startAt: toDate(input.startAt) ?? null } : {}),
+      ...(input.reminderMinutesBefore !== undefined ? { reminderMinutesBefore: input.reminderMinutesBefore } : {}),
+    });
+    return cardRow(card);
+  },
+});
+
 export const CARDS_OPS: ApiOp[] = [
   cardsList,
   cardsGet,
@@ -474,4 +536,7 @@ export const CARDS_OPS: ApiOp[] = [
   cardsActivity,
   cardsFieldsSet,
   cardsRecurrenceSet,
+  // K3.5 — เครื่องมือ AI §8.2
+  cardsDetail,
+  cardsSetDue,
 ];

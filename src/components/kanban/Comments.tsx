@@ -78,12 +78,38 @@ export function CommentRow({
     if (editing) setDraft(comment.body);
   }, [editing, comment.body]);
 
+  // K3.5 — ความเห็นที่ผู้ช่วย AI เขียน: ชื่อบนหัวแถวคือ "ผู้ช่วย AI" ตามภาพ 03 (ห้ามขึ้นชื่อคนกด
+  // เป็นคนพูด — §8.3) · ชื่อคนที่สั่งยังบอกไว้ข้าง ๆ เพื่อให้รู้ว่าใครเป็นคนกดปุ่ม
+  const byAi = comment.aiGenerated;
+
   return (
     <li className="flex items-start gap-2" data-testid="comment">
-      <Avatar name={comment.author.name} size={26} />
+      {byAi ? (
+        <span
+          className="flex flex-none items-center justify-center rounded-full"
+          style={{
+            width: 26,
+            height: 26,
+            color: "var(--color-accent)",
+            border: "1px solid var(--color-accent)",
+            background: "color-mix(in srgb, var(--color-accent) 10%, transparent)",
+          }}
+        >
+          <KanbanIcon name="spark" size="sm" />
+        </span>
+      ) : (
+        <Avatar name={comment.author.name} size={26} />
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span style={{ fontSize: 12.5, fontWeight: 700 }}>{comment.author.name}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 700 }} data-testid={byAi ? "comment-ai-author" : undefined}>
+            {byAi ? "ผู้ช่วย AI" : comment.author.name}
+          </span>
+          {byAi && (
+            <span data-testid="comment-ai-chip" style={{ fontSize: 11.5, color: "var(--color-muted)" }}>
+              · สั่งโดย {comment.author.name}
+            </span>
+          )}
           {/* K2.12: ความเห็นที่กฎอัตโนมัติเขียน (ไม่ใช่คน) — ชิปบอกที่มา ห้ามให้ดูเหมือนคนพิมพ์เอง */}
           {comment.automationRuleId && (
             <span

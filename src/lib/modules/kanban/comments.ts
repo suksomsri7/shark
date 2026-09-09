@@ -120,7 +120,12 @@ async function notifyMentions(
  * idempotencyKey = `kanban.comment.added#<commentId>` (ความเห็น 1 ใบ = event 1 ใบตลอดกาล)
  * payload ไม่มี `tenantId` — ร้านอยู่ในตัว OutboxEvent อยู่แล้ว (ซ้ำ = ให้โอกาสหลุดข้ามร้าน)
  */
-export async function addComment(ctx: KanbanCtx, cardId: string, rawBody: string): Promise<KanbanComment> {
+export async function addComment(
+  ctx: KanbanCtx,
+  cardId: string,
+  rawBody: string,
+  opts: { aiGenerated?: boolean } = {},
+): Promise<KanbanComment> {
   const { boardId } = await assertCardRole(ctx, cardId, "EDITOR");
   const authorUserId = ctx.actorUserId;
   if (!authorUserId) throw new KanbanForbiddenError("ต้องเข้าสู่ระบบก่อนจึงเขียนความเห็นได้");
@@ -129,7 +134,8 @@ export async function addComment(ctx: KanbanCtx, cardId: string, rawBody: string
 
   const comment = await prisma.$transaction(async (tx) => {
     const row = await tx.kanbanComment.create({
-      data: { tenantId: ctx.tenantId, cardId, authorUserId, body, mentions },
+      // K3.5: `aiGenerated` = ผู้ช่วย AI เขียนแทนคนที่กดปุ่ม (คนกดยังเป็นเจ้าของแถวเพื่อรู้ว่าใครสั่ง)
+      data: { tenantId: ctx.tenantId, cardId, authorUserId, body, mentions, aiGenerated: opts.aiGenerated === true },
     });
     await emitOutbox(tx, {
       tenantId: ctx.tenantId,
@@ -239,6 +245,7 @@ export async function listComments(ctx: KanbanCtx, cardId: string): Promise<Kanb
     createdAt: r.createdAt.toISOString(),
     editedAt: r.editedAt ? r.editedAt.toISOString() : null,
     automationRuleId: r.automationRuleId,
+    aiGenerated: r.aiGenerated,
   }));
 }
 

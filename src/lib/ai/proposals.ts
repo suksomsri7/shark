@@ -333,7 +333,7 @@ export async function executeProposal(
   m: MembershipCtx,
   ctx: Ctx,
   id: string,
-  opts?: { confirm2x?: boolean },
+  opts?: { confirm2x?: boolean; userId?: string | null },
 ): Promise<{ ok: boolean; note: string; needsSecondConfirm?: boolean }> {
   const row = await tenantDb(ctx).aiProposal.findFirst({ where: { id } });
   if (!row) return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
@@ -383,7 +383,7 @@ export async function executeProposal(
 
   try {
     // ส่ง m (คนกดยืนยัน) ให้ dispatch ด้วย — kind ที่ต้องใช้สิทธิ์ผู้กด (เช่น approval_decide) จะหยิบไปใช้
-    const note = await dispatch(ctx.tenantId, row.id, row.kind as ProposalKind, row.payload, m);
+    const note = await dispatch(ctx.tenantId, row.id, row.kind as ProposalKind, row.payload, m, opts?.userId ?? null);
     await tenantDb(ctx).aiProposal.update({ where: { id }, data: { resultNote: note } });
     return { ok: true, note };
   } catch (e) {
@@ -411,6 +411,8 @@ export async function runKind(
   kind: ProposalKind,
   payload: unknown,
   refId?: string,
+  /** K3.5 — id ของคนที่สั่งแผนนี้ (ประวัติของโมดูลปลายทางต้องชี้ไปที่คนจริง) */
+  userId?: string | null,
 ): Promise<string> {
   const access = KIND_ACCESS[kind];
   if (!access) throw new Error("ไม่รู้จักประเภทงานนี้");
@@ -420,7 +422,7 @@ export async function runKind(
     if (e instanceof ForbiddenError) throw new Error("คุณยังไม่มีสิทธิ์ทำรายการนี้ ให้ผู้มีสิทธิ์เป็นผู้กดยืนยัน");
     throw e;
   }
-  return dispatch(tenantId, refId ?? `run-${kind}-${Date.now()}`, kind, payload, m);
+  return dispatch(tenantId, refId ?? `run-${kind}-${Date.now()}`, kind, payload, m, userId ?? null);
 }
 
 // ── dispatch ตาม kind → service เดิม (คืนข้อความผลลัพธ์ภาษาไทย) ──
@@ -430,6 +432,8 @@ async function dispatch(
   kind: ProposalKind,
   rawPayload: unknown,
   m?: MembershipCtx,
+  /** K3.5 — id ของคนที่กดยืนยัน (MembershipCtx ไม่มีช่องนี้) · null = ไม่รู้ตัวคน */
+  userId?: string | null,
 ): Promise<string> {
   const payload = (rawPayload ?? {}) as Record<string, unknown>;
 
@@ -447,7 +451,9 @@ async function dispatch(
   //    ข้อเสนอที่ค้างอยู่ในระบบก่อน K1.15 ต้องกดยืนยันได้ต่อ ห้ามลบทิ้ง
   if (isKanbanKind(kind)) {
     if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการบอร์ดงานได้");
-    return dispatchKanbanKind(m, tenantId, proposalId, kind, payload);
+    // 🔴 K3.5: ส่ง userId ของคนกดต่อลงไปด้วย — ประวัติของบอร์ด (`actorUserId`) ต้องชี้ไปที่ "คนกด"
+    //    ไม่ใช่ null (= ระบบทำเอง) และบางคำสั่ง (สร้างการ์ดจากแชท) ต้องมีตัวตนของคนจริงถึงจะทำได้
+    return dispatchKanbanKind(m, tenantId, proposalId, kind, payload, userId);
   }
 
   if (kind === "inventory_receive") {

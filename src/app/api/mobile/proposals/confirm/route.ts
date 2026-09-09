@@ -20,6 +20,7 @@ export async function POST(req: Request) {
     unitAccess: g.membership.unitAccess as string[],
     permissions: g.membership.permissions as Record<string, unknown>,
   };
-  const res = await executeProposal(m, g.ctx, id, { confirm2x: body.confirm2x === true });
+  // K3.5 — ส่ง userId ของคนกดต่อไปด้วย (ประวัติของโมดูลปลายทางต้องชี้ไปที่คนจริง ไม่ใช่ "ระบบ")
+  const res = await executeProposal(m, g.ctx, id, { confirm2x: body.confirm2x === true, userId: g.user.id });
   return Response.json(res);
 }

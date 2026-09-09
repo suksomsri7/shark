@@ -1,6 +1,8 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
-## ⏸️ 7 ก.ย. 21:25 BKK — [session บอร์ดงาน] **พักงานชั่วคราว (เจ้าของใกล้ weekly limit) — RUN บอร์ดงาน→Trello อยู่ที่ 30/34 ≈ 88% · K3.4 ค้างครึ่งทาง**
+## ▶️ 10 ก.ย. 04:45 BKK — [session บอร์ดงาน] **กลับมาทำต่อ · K3.4 ปิดแล้ว (main `3038a3a`) · 31/34 ≈ 91% · K3.5 (Opus) กำลังทำ** — ถ้าหยุดอีก ใช้ขั้น 1–8 ด้านล่างโดยเปลี่ยน "K3.4" เป็นใบที่ค้าง (ดูตาราง KANBAN-RUN)
+
+## ⏸️ 7 ก.ย. 21:25 BKK — [session บอร์ดงาน] พักงานชั่วคราว (weekly limit) — 30/34 · K3.4 ค้างครึ่งทาง (ปิดแล้ว 10 ก.ย.)
 - worktree `/root/projects/shark-kanban` branch `session/kanban` · main ล่าสุด `cf8c12f` (K3.3 · Vercel READY 20:36 · prod มี migration ถึง kanban_v2_r) · ledger สด `ledger/KANBAN-RUN.md` (ตาราง WO + สัญญา P3 + บันทึกเหตุการณ์) · handover P2 `ledger/HANDOVER-2026-09-07-KANBAN-P2.md`
 - **สถานะ P3**: K3.1 ✅ · K3.2 ✅ · K3.3 ✅ · **K3.4 = WIP commit บน session/kanban (ไม่อยู่บน main)** · K3.5–K3.9 TODO (oracle พร้อมทุกใบ) · K3.F ปิดเฟส
 - **วิธีต่อหลังพัก (ทำตามลำดับ · งานหนักทีละ 1)**:

@@ -16,6 +16,7 @@ import { Attachments } from "./Attachments";
 import { Checklist, checklistBadgeOf } from "./Checklist";
 import { CustomFields } from "./CustomFields";
 import { CardLinks } from "./CardLinks";
+import { CardAi } from "./CardAi";
 import { Timeline } from "./Timeline";
 import { ThaiDatePicker } from "./ThaiDatePicker";
 import {
@@ -95,6 +96,8 @@ type Fields = {
   watcherCount: number;
   /** K3.1: "เชื่อมข้อมูล SHARK" — server ตัดสินสิทธิ์รายแถวมาแล้ว (แถวที่ไม่มีสิทธิ์ = ไม่มีรายละเอียดติดมา) */
   links: CardLinkDto[];
+  /** K3.5: ร้านนี้ตั้งค่าผู้ช่วย AI ไว้แล้วไหม (ปุ่มในกลุ่ม "ผู้ช่วย AI" กดได้/เทา) */
+  aiAvailable: boolean;
 };
 
 export type CardBackHandlers = {
@@ -246,6 +249,7 @@ export function CardBack({
         watching: res.detail.watching,
         watcherCount: res.detail.watcherCount,
         links: res.detail.links,
+        aiAvailable: res.detail.aiAvailable,
       });
     });
     return () => {
@@ -463,6 +467,18 @@ export function CardBack({
       handlers.onPatch(card.id, { commentCount: comments.length });
     },
     [card.id, handlers],
+  );
+
+  // K3.5 — ความเห็น/กิจกรรมที่เกิดจาก "นอกบล็อกสายรวม" (ปุ่มผู้ช่วย AI) ⇒ สั่ง Timeline โหลดใหม่
+  //  ** `Timeline` เก็บรายการของตัวเองจาก server ไม่ได้เรนเดอร์ตาม prop `comments`
+  //     ⇒ ไม่มีตัวนับนี้ = กดปุ่ม AI แล้วจอเงียบจนกว่าจะสลับแท็บ (บั๊กที่ด่านภาพจับได้จริง)
+  const [timelineReload, setTimelineReload] = useState(0);
+  const onAiCommentsChange = useCallback(
+    (comments: KanbanCommentDto[]) => {
+      onCommentsChange(comments);
+      setTimelineReload((n) => n + 1);
+    },
+    [onCommentsChange],
   );
 
   // ───────────────────────── ไฟล์แนบ + ปก (K1.9) ─────────────────────────
@@ -1006,6 +1022,7 @@ export function CardBack({
                 currentUserId={currentUserId}
                 comments={fields.comments}
                 nowMs={nowMs}
+                reloadKey={timelineReload}
                 onCommentsChange={onCommentsChange}
                 onToast={toast}
               />
@@ -1129,11 +1146,17 @@ export function CardBack({
                 </span>
               </RailGroup>
 
-              <RailGroup title="ผู้ช่วย AI">
-                <RailButton icon="spark" label="สรุปการ์ดนี้" disabled />
-                <RailButton icon="spark" label="แตกเป็นเช็คลิสต์" disabled />
-                <RailButton icon="spark" label="ร่างข้อความตอบลูกค้า" disabled />
-              </RailGroup>
+              {/* K3.5 — ผู้ช่วย AI: สรุปการ์ด · แตกเป็นเช็คลิสต์ (ข้อเสนอ) · ร่างข้อความตอบลูกค้า
+                  กลุ่มนี้มีหัวข้อของตัวเองในไฟล์ CardAi.tsx (ต้องแสดงข้อเสนอ/กล่องร่างใต้ปุ่มด้วย) */}
+              <CardAi
+                systemId={systemId}
+                cardId={card.id}
+                editable={editable}
+                available={fields.aiAvailable}
+                onCommentsChange={onAiCommentsChange}
+                onChecklistsChange={onChecklistsChange}
+                onToast={toast}
+              />
 
               <RailGroup title="ฟิลด์กำหนดเอง">
                 <CustomFields

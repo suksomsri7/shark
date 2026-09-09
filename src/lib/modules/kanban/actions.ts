@@ -54,6 +54,14 @@ import { requireActor, unwatch, watch } from "./watch";
 // K3.1 — เชื่อมข้อมูล SHARK (ด่านบทบาทบอร์ด EDITOR/VIEWER ตรวจใน `links.ts`/`link-resolvers.ts` เอง
 // ที่นี่ตรวจแค่ชั้นสิทธิ์โมดูล เหมือน action อื่นของไฟล์นี้)
 import { addLink, removeLink, searchPartiesForLink } from "./links";
+// K3.5 — ปุ่มผู้ช่วย AI ในหลังการ์ด (ด่าน EDITOR + การเรียกโมเดล/เครดิตอยู่ในไฟล์นั้น)
+import {
+  acceptChecklistSuggestion,
+  draftReply,
+  suggestChecklist,
+  summarizeCard,
+  type ChecklistSuggestion,
+} from "./ai";
 // K3.2 — สวิตช์ "การเชื่อมต่อ" รายร้าน (เก็บใน AppSystem.settings.integrations)
 import {
   getIntegrations,
@@ -2105,4 +2113,74 @@ export async function loadIntegrationsAction(input: {
   assertKanbanCan(auth, "kanban.board.read");
   if (!input.systemId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
   return { ok: true as const, integrations: await getIntegrations(auth.active.tenantId, input.systemId) };
+}
+
+
+// ───────────────────────── K3.5: ปุ่มผู้ช่วย AI ในหลังการ์ด ─────────────────────────
+// 🔴 ด่านจริงอยู่ใน `ai.ts` (EDITOR ของบอร์ด ผ่าน `assertCardRole`) — ที่นี่ตรวจชั้นสิทธิ์โมดูล
+//    เหมือน action อื่นของไฟล์นี้ · ทุกตัวคืน `{ok:false, message}` ไทย ไม่โยน (ปุ่มบนจอต้องบอกเหตุได้)
+// 🔴 `suggestChecklistAction` **ไม่เขียนอะไรลง DB** — เช็คลิสต์เกิดตอน `acceptChecklistSuggestionAction`
+//    ซึ่งรับรายการที่ผู้ใช้เห็น (และแก้ได้) บนจอแล้วเท่านั้น
+
+export async function summarizeCardAction(input: {
+  systemId: string;
+  cardId: string;
+}): Promise<{ ok: true; comments: KanbanCommentDto[]; text: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.comment");
+  if (!input.systemId || !input.cardId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    const res = await summarizeCard(ctx, toActor(auth.user.id, auth.active), input.cardId);
+    return { ok: true as const, comments: await listComments(ctx, input.cardId), text: res.text };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "สรุปการ์ดไม่สำเร็จ" };
+  }
+}
+
+export async function suggestChecklistAction(input: {
+  systemId: string;
+  cardId: string;
+}): Promise<{ ok: true; suggestion: ChecklistSuggestion } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  try {
+    const suggestion = await suggestChecklist(ctxOf(auth, input.systemId), toActor(auth.user.id, auth.active), input.cardId);
+    return { ok: true as const, suggestion };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "ขอข้อเสนอเช็คลิสต์ไม่สำเร็จ" };
+  }
+}
+
+export async function acceptChecklistSuggestionAction(input: {
+  systemId: string;
+  cardId: string;
+  suggestion: ChecklistSuggestion;
+}): Promise<{ ok: true; checklists: KanbanChecklistDto[] } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    await acceptChecklistSuggestion(ctx, toActor(auth.user.id, auth.active), input.cardId, input.suggestion);
+    return { ok: true as const, checklists: await getCardChecklists(ctx, input.cardId) };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "เพิ่มเช็คลิสต์ไม่สำเร็จ" };
+  }
+}
+
+export async function draftReplyAction(input: {
+  systemId: string;
+  cardId: string;
+}): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.card.update");
+  if (!input.systemId || !input.cardId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  try {
+    const res = await draftReply(ctxOf(auth, input.systemId), toActor(auth.user.id, auth.active), input.cardId);
+    return { ok: true as const, text: res.text };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "ร่างข้อความไม่สำเร็จ" };
+  }
 }

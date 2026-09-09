@@ -21,7 +21,12 @@ import type { ApiOp } from "@/lib/api/op";
 import { mapError } from "@/lib/api/respond";
 import { detailsMessageTh, runOpAsActor, validateOpInput, validateWith } from "@/lib/api/run";
 import { KANBAN_DENY_TH, kanbanScopesCan } from "@/lib/modules/kanban/api/actor";
+// ประโยควันเวลาไทย (ไฟล์บริสุทธิ์ของโมดูล ไม่แตะ prisma) — การ์ดยืนยันต้องอ่านออกว่า "วันไหน"
+import { thaiDayTime } from "@/lib/modules/kanban/activity-text";
 import { KANBAN_OPS } from "@/lib/modules/kanban/api/registry";
+import type { KanbanToolAdapter, KanbanToolCall } from "./kanban-adapter";
+// K3.5 — op ที่ "ต่อสองโมดูลเข้าด้วยกัน" อยู่ที่ชั้นนี้ ไม่ใช่ในทะเบียนของโมดูลบอร์ดงาน (ดูหัวไฟล์นั้น)
+import { CARD_FROM_CHAT_ADAPTER, CARD_FROM_CHAT_OP } from "./kanban-op-from-chat";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. ผู้กระทำ (actor) ของฝั่ง AI
@@ -125,15 +130,65 @@ const myTasksArgs = z
   })
   .strict();
 
-type ToolAdapter = {
-  /** สคีมาที่ผู้ช่วยเห็นแทนสคีมาของ op (ไม่ระบุ = ใช้ของ op ตรง ๆ) */
-  args?: z.ZodType;
-  description?: string;
-  /** args (ผ่าน zod แล้ว) → input/params ของ op · async ได้ (บางตัวต้องค้นคนจากชื่อก่อน) */
-  toCall?: (args: Record<string, unknown>, tenantId: string) => Promise<{ input: unknown; params?: Record<string, string> }>;
-};
+/**
+ * K3.5 — "การ์ดใบไหน": ผู้ช่วยคุยกับคนด้วย **เลขการ์ด** ที่คนเห็นบนจอ ("#128 ในบอร์ดงานร้าน")
+ * ไม่ใช่รหัสภายใน ⇒ ทุก tool ที่ทำงานกับการ์ด 1 ใบรับได้ทั้ง `cardId` และ `cardNo + boardName`
+ * (สคีมาของ REST ยังเป็น path param เหมือนเดิม — แปลงให้ที่นี่ที่เดียว ไม่มี op ตัวที่สอง)
+ */
+const CARD_TARGET_ARGS = {
+  cardId: z.string().max(40).optional().describe("Internal id of the card, when a previous tool already returned it."),
+  cardNo: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .describe("Card number as shown on the board, for example 128. Give boardName as well when several boards exist."),
+  boardName: z.string().max(120).optional().describe("Name of the board the card number belongs to."),
+} as const;
 
-const ADAPTERS: Record<string, ToolAdapter> = {
+async function resolveCardTarget(a: Record<string, unknown>, tenantId: string, systemId: string): Promise<string> {
+  const cardId = typeof a.cardId === "string" ? a.cardId.trim() : "";
+  if (cardId) return cardId;
+  const cardNo = typeof a.cardNo === "number" ? a.cardNo : null;
+  if (cardNo === null) throw new Error("ต้องบอกรหัสการ์ด (cardId) หรือเลขการ์ด (cardNo) พร้อมชื่อบอร์ด");
+  const boardName = typeof a.boardName === "string" ? a.boardName.trim() : "";
+  const db = tenantDb({ tenantId, systemId });
+  const boards = await db.kanbanBoard.findMany({ where: { status: "ACTIVE" }, select: { id: true, name: true } });
+  const want = boardName.toLowerCase();
+  const scope = want ? boards.filter((b) => b.name.toLowerCase().includes(want)) : boards;
+  if (scope.length === 0) throw new Error(`ไม่พบบอร์ดชื่อ "${boardName}" ในระบบบอร์ดงานนี้`);
+  const rows = await db.kanbanCard.findMany({
+    where: { cardNo, boardId: { in: scope.map((b) => b.id) } },
+    select: { id: true },
+    take: 2,
+  });
+  if (rows.length === 0) throw new Error(`ไม่พบการ์ด #${cardNo}${boardName ? ` ในบอร์ด "${boardName}"` : ""}`);
+  if (rows.length > 1) throw new Error(`เลขการ์ด #${cardNo} มีอยู่ในหลายบอร์ด — บอกชื่อบอร์ดด้วย`);
+  return rows[0]!.id;
+}
+
+/** ตัวปรับของ op ที่ทำงานกับการ์ด 1 ใบ — สคีมา = input เดิมของ op + วิธีชี้การ์ด (ไม่ลอก input ซ้ำ) */
+function cardTargetAdapter(opId: string): KanbanToolAdapter {
+  const base = KANBAN_OPS.find((o) => o.id === opId)?.input;
+  const args = base instanceof z.ZodObject ? base.extend(CARD_TARGET_ARGS) : z.object(CARD_TARGET_ARGS).strict();
+  return {
+    args,
+    toCall: async (a, tenantId, systemId) => {
+      const input: Record<string, unknown> = { ...a };
+      delete input.cardId;
+      delete input.cardNo;
+      delete input.boardName;
+      return { input, params: { id: await resolveCardTarget(a, tenantId, systemId) } };
+    },
+  };
+}
+
+const ADAPTERS: Record<string, KanbanToolAdapter> = {
+  // K3.5 — "สร้างการ์ดจากแชท": ตัวปรับอ่านบทสนทนาจริงแล้วร่างเนื้อการ์ดให้ครบก่อนเสนอ
+  "cards.fromChat": CARD_FROM_CHAT_ADAPTER,
+  // K3.5 — อ่านการ์ดฉบับเต็ม / ตั้งกำหนดส่ง: ชี้การ์ดด้วยเลขการ์ดที่คนพูดถึงได้
+  "cards.detail": cardTargetAdapter("cards.detail"),
+  "cards.setDue": cardTargetAdapter("cards.setDue"),
   // "งานของใคร": ผู้ช่วยรู้แค่ชื่อ/อีเมลของพนักงาน (ToolCtx ไม่มี userId — AiConversation ไม่ผูกคน)
   // ⇒ แปลงชื่อเป็น userId ให้ก่อน แล้วค่อยเรียก op เดิม (ตรรกะสิทธิ์ยังอยู่ที่ op ตัวเดียว)
   "my-tasks": {
@@ -227,9 +282,16 @@ export type KanbanToolInfo = {
 
 let toolCache: KanbanToolInfo[] | null = null;
 
+/**
+ * op ที่มีเฉพาะฝั่งผู้ช่วย AI (ไม่มี endpoint REST) — ตัวที่ "ต่อสองโมดูลเข้าด้วยกัน"
+ * 🔴 ทะเบียน REST (`KANBAN_OPS`) เป็นของโมดูลบอร์ดงานล้วน ๆ และห้ามรู้จักโมดูลอื่น (ด่าน F2)
+ *    op แบบนี้จึงอยู่ที่ composition root ของ AI แทน — ดูเหตุผลเต็มที่หัว `kanban-op-from-chat.ts`
+ */
+const AI_ONLY_OPS: ApiOp[] = [CARD_FROM_CHAT_OP];
+
 /** op ทุกตัวที่ประกาศ `tool` — แหล่งความจริงเดียวของทั้งสกิล */
 export function kanbanToolOps(): ApiOp[] {
-  return KANBAN_OPS.filter((o) => o.tool);
+  return [...KANBAN_OPS, ...AI_ONLY_OPS].filter((o) => o.tool);
 }
 
 export function kanbanToolInfos(): KanbanToolInfo[] {
@@ -299,10 +361,17 @@ export function kanbanToolAllowedForScopes(toolName: string, scopes: string[]): 
 // 4. เตรียมคำสั่ง: args ของผู้ช่วย → { op, input, params }
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Prepared = { op: ApiOp; input: unknown; params: Record<string, string>; args: Record<string, unknown> };
+type Prepared = {
+  op: ApiOp;
+  input: unknown;
+  params: Record<string, string>;
+  args: Record<string, unknown>;
+  /** สรุปที่ตัวปรับเขียนเอง (รู้เรื่องมากกว่าตัวสรุปกลาง เช่นชื่อผู้ติดต่อของห้องแชท) */
+  summary?: string;
+};
 type PrepareResult = { ok: true; prepared: Prepared } | { ok: false; error: string };
 
-async function prepareCall(op: ApiOp, rawArgs: unknown, tenantId: string): Promise<PrepareResult> {
+async function prepareCall(op: ApiOp, rawArgs: unknown, tenantId: string, systemId: string): Promise<PrepareResult> {
   const args = isRecord(rawArgs) ? { ...rawArgs } : {};
   delete args.systemName;
   const adapter = ADAPTERS[op.id];
@@ -310,15 +379,18 @@ async function prepareCall(op: ApiOp, rawArgs: unknown, tenantId: string): Promi
   if (adapter?.args && adapter.toCall) {
     const parsed = validateWith(adapter.args, args);
     if (!parsed.ok) return { ok: false, error: detailsMessageTh(parsed.details) };
-    let call: { input: unknown; params?: Record<string, string> };
+    let call: KanbanToolCall;
     try {
-      call = await adapter.toCall(isRecord(parsed.input) ? parsed.input : {}, tenantId);
+      call = await adapter.toCall(isRecord(parsed.input) ? parsed.input : {}, tenantId, systemId);
     } catch (e) {
       return { ok: false, error: mapError(e).message_th };
     }
     const checked = validateOpInput(op, call.input);
     if (!checked.ok) return { ok: false, error: detailsMessageTh(checked.details) };
-    return { ok: true, prepared: { op, input: checked.input, params: call.params ?? {}, args } };
+    return {
+      ok: true,
+      prepared: { op, input: checked.input, params: call.params ?? {}, args, ...(call.summary ? { summary: call.summary } : {}) },
+    };
   }
 
   const params: Record<string, string> = {};
@@ -384,6 +456,7 @@ async function nameOfCard(tenantId: string, systemId: string, cardId: unknown): 
 }
 
 async function summarize(prepared: Prepared, tenantId: string, systemId: string): Promise<string> {
+  if (prepared.summary) return prepared.summary;
   const { op, input, params } = prepared;
   const body = isRecord(input) ? input : {};
   const parts: string[] = [op.label];
@@ -404,8 +477,25 @@ async function summarize(prepared: Prepared, tenantId: string, systemId: string)
     if (col) parts.push(`ไปคอลัมน์ "${col.name}"`);
   }
   if (Array.isArray(body.userIds)) parts.push(`ผู้รับผิดชอบ ${body.userIds.length} คน`);
+  if (typeof body.dueAt === "string") parts.push(`กำหนดส่ง ${thaiDayTime(body.dueAt)}`);
   if (typeof body.reason === "string") parts.push(`เหตุผล: ${body.reason}`);
   return parts.join(" · ");
+}
+
+/**
+ * ค่าที่ "อ่านออกโดยไม่ต้องแกะซอง" ของข้อเสนอ — path param (เป็นชื่ออาร์กิวเมนต์ เช่น `cardId`)
+ * บวกฟิลด์ของ input ระดับบนสุด
+ * 🔴 มีไว้ให้จอ/ข้อสอบ/ผู้เรียกภายนอกอ่าน `payload.cardId` ได้ตรง ๆ โดยไม่ต้องรู้โครง `{opId,input,params}`
+ *    ตัวที่ใช้ลงมือจริงยังเป็น `input`/`params` เท่านั้น (`dispatchKanbanKind` ตรวจสคีมาซ้ำจากคู่นั้น)
+ */
+function flatPayload(prepared: Prepared): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const { arg, param } of pathArgsOf(prepared.op)) {
+    const v = prepared.params[param];
+    if (v !== undefined) out[arg] = v;
+  }
+  if (isRecord(prepared.input)) for (const [k, v] of Object.entries(prepared.input)) out[k] = v;
+  return out;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -439,7 +529,7 @@ export async function runKanbanTool(
   const system = await findKanbanSystem(tenantId, { systemName, systemId: opts.systemId });
   if (!system) return { mode: "error", error: opts.systemId ? NO_BOUND_SYSTEM : NO_SYSTEM };
 
-  const prep = await prepareCall(op, rawArgs, tenantId);
+  const prep = await prepareCall(op, rawArgs, tenantId, system.id);
   if (!prep.ok) return { mode: "error", error: prep.error };
   const prepared = prep.prepared;
 
@@ -450,7 +540,13 @@ export async function runKanbanTool(
       mode: "propose",
       kind: kanbanKindOf(prepared.op.id),
       summary,
-      payload: { opId: prepared.op.id, input: prepared.input, params: prepared.params, systemId: system.id },
+      payload: {
+        ...flatPayload(prepared),
+        opId: prepared.op.id,
+        input: prepared.input,
+        params: prepared.params,
+        systemId: system.id,
+      },
     };
   }
 

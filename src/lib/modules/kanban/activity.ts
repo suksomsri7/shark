@@ -319,6 +319,7 @@ export async function listCardTimeline(
         createdAt: row.createdAt.toISOString(),
         editedAt: row.editedAt ? row.editedAt.toISOString() : null,
         automationRuleId: row.automationRuleId,
+        aiGenerated: row.aiGenerated,
       };
       return {
         kind: "comment" as const,

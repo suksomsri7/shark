@@ -145,7 +145,8 @@ export async function confirmProposalAction(
   const auth = await requireTenant();
   const ctx = { tenantId: auth.active.tenantId };
   try {
-    return await executeProposal(membershipOf(auth), ctx, proposalId, opts);
+    // K3.5 — id ของคนกด: ประวัติ/บันทึกของโมดูลปลายทางต้องชี้ไปที่คนจริง (บางคำสั่งต้องมีตัวตนถึงทำได้)
+    return await executeProposal(membershipOf(auth), ctx, proposalId, { ...opts, userId: auth.user.id });
   } catch {
     return { ok: false, note: "ทำรายการไม่สำเร็จชั่วคราว ลองใหม่อีกครั้ง" };
   }

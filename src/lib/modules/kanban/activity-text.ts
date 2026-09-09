@@ -174,6 +174,15 @@ export function describeActivity(item: Pick<KanbanActivityDto, "type" | "data" |
       return `เชื่อมการ์ดกับ${linkTypeTh(data.linkType)}`;
     case "LINK_REMOVED":
       return `ถอดการเชื่อมกับ${linkTypeTh(data.linkType)}`;
+    // K3.5 — ผู้ช่วย AI: ประโยคต้องบอกว่า "คนสั่ง AI ให้ทำ" ไม่ใช่ "คนทำเอง" (§8.3 ห้ามปลอมเป็นคน)
+    case "AI_SUGGESTED": {
+      if (data.kind === "checklist") {
+        const n = typeof data.count === "number" ? data.count : null;
+        return `เพิ่มเช็คลิสต์จากข้อเสนอของผู้ช่วย AI${n ? ` (${n} รายการ)` : ""}`;
+      }
+      if (data.kind === "summary") return "ให้ผู้ช่วย AI สรุปการ์ดนี้";
+      return "ใช้ผู้ช่วย AI กับการ์ดนี้";
+    }
     default:
       return "มีการเปลี่ยนแปลง";
   }
@@ -193,5 +202,6 @@ export function activityIconName(type: KanbanActivityDto["type"]): string {
   if (type === "ATTACHMENT_ADDED") return "clip";
   if (type === "CARD_ARCHIVED" || type === "BOARD_ARCHIVED") return "box";
   if (type === "LINK_ADDED" || type === "LINK_REMOVED") return "link";
+  // K3.5 — "spark" คือไอคอนของผู้ช่วย AI อยู่แล้ว (ตรงกับปุ่มในแถบขวาตามภาพ 03)
   return "spark";
 }

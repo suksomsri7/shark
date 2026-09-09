@@ -106,6 +106,24 @@ export function kanbanApiKeyActor(input: {
  * `actorUserId` = ผู้สร้างคีย์ (ประวัติ/ผู้มอบหมายจะได้ชี้ไปที่คนจริง) · `actor` = actor ของ D18
  */
 export function kanbanCtxOf(actor: ApiActor): KanbanCtx {
+  // 🔴 K3.5: "คนกดยืนยันข้อเสนอของผู้ช่วย AI" (kind `user`) ไม่มี scope ของคีย์ — สิทธิ์ของเขาคือ
+  //    Membership จริง ⇒ ต้องประกอบ actor จาก membership ไม่ใช่จาก `scopes` (ซึ่งเป็น [] เสมอ)
+  //    ของเดิมตกไปทาง `kanbanActorForKey([])` = `apiRole: "VIEWER"` บนทุกบอร์ด ⇒ เจ้าของร้านกดยืนยัน
+  //    "ย้ายการ์ด/ตั้งกำหนดส่ง" แล้วโดนปฏิเสธเพราะไม่ใช่ EDITOR ทั้งที่เป็น OWNER (ไม่มีข้อสอบชุดไหน
+  //    เคยเดินเส้นนี้มาก่อน K3.5 — `dispatchKanbanKind` ถูกเรียกจาก proposals.ts ทางเดียว)
+  if (actor.kind === "user") {
+    return {
+      tenantId: actor.tenantId,
+      systemId: actor.systemId,
+      actorUserId: actor.userId ?? null,
+      actor: {
+        userId: actor.userId ?? "",
+        role: actor.membership.role,
+        unitAccess: actor.membership.unitAccess,
+        permissions: actor.membership.permissions,
+      },
+    };
+  }
   return {
     tenantId: actor.tenantId,
     systemId: actor.systemId,

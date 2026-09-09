@@ -138,6 +138,11 @@ export type CardDetailDto = {
   watcherCount: number;
   /** K3.1: "เชื่อมข้อมูล SHARK" ของการ์ดนี้ — คำนวณสิทธิ์รายคนแล้ว (ดู CardLinkDto) */
   links: CardLinkDto[];
+  /**
+   * K3.5: ร้านนี้ตั้งค่าผู้ช่วย AI ไว้แล้วไหม — จอใช้ตัดสินว่าปุ่มในกลุ่ม "ผู้ช่วย AI" กดได้หรือเทา
+   * 🔴 เป็นแค่ป้ายบอกสถานะ ไม่ใช่ด่าน: ด่านจริงอยู่ที่ `ai.ts` (ยิง action ตรงก็ยังโดนปฏิเสธ)
+   */
+  aiAvailable: boolean;
 };
 
 // ───────────────────────── K3.1: เชื่อมข้อมูล SHARK ─────────────────────────
@@ -239,6 +244,11 @@ export type KanbanCommentDto = {
   editedAt: string | null;
   /** K2.12: ไม่ null = กฎอัตโนมัติใบนี้เขียน (ไม่ใช่คน) — จอแสดงชิป "โดยกฎอัตโนมัติ" แทนชื่อคน */
   automationRuleId: string | null;
+  /**
+   * K3.5: ผู้ช่วย AI เป็นคนเขียนข้อความนี้ (คนกดปุ่มคือ `author`) — จอ **ต้อง** แสดงป้าย "ผู้ช่วย AI"
+   * 🔴 §8.3: ห้ามแสดงเป็นข้อความที่คนพิมพ์เอง และห้ามให้แก้ข้อความ (แก้ได้ = ปลอมคำพูดของ AI ได้)
+   */
+  aiGenerated: boolean;
 };
 
 // ───────────────────────── K1.7: เช็คลิสต์ ─────────────────────────
@@ -331,7 +341,9 @@ export type KanbanActivityKind =
   | "ATTACHMENT_ADDED"
   // K3.1 — ผูก/ถอด "เชื่อมข้อมูล SHARK"
   | "LINK_ADDED"
-  | "LINK_REMOVED";
+  | "LINK_REMOVED"
+  // K3.5 — ผู้ช่วย AI เสนอ/เขียนอะไรบางอย่างให้การ์ดใบนี้ (`data.kind` = summary | checklist)
+  | "AI_SUGGESTED";
 
 /** ชื่อที่ resolve มาแล้วสำหรับเรนเดอร์ประโยคไทย (ไม่มี = อ้างของที่ถูกลบไปแล้ว → ประโยคจะเลี่ยงชื่อเอง) */
 export type KanbanActivityNames = {
@@ -857,3 +869,32 @@ export type ReportAgingColumnDto = { boardId: string; boardName: string; columnN
 export type ReportAgingDto = { buckets: ReportAgingBucketDto[]; byColumn: ReportAgingColumnDto[] };
 
 export type ReportKind = "overdue" | "workload" | "throughput" | "aging";
+
+// ───────────────────────── K3.5: การ์ดฉบับเต็มสำหรับ API/ผู้ช่วย AI ─────────────────────────
+// 🔴 "ข้อความล้วน" คือหัวใจของ DTO ชุดนี้: ปลายทางคือโมเดลภาษาและผู้เชื่อมต่อภายนอก ซึ่งไม่ควรได้ HTML
+//    (โมเดลจะลอก markup ออกไปในคำตอบ · ผู้เชื่อมต่อจะเอาไปโชว์ดิบ ๆ) ⇒ แปลงที่ต้นทางที่เดียว
+
+export type CardFullChecklistDto = { title: string; items: { text: string; done: boolean }[] };
+export type CardFullCommentDto = { author: string; body: string; at: string; byAi: boolean };
+
+export type CardFullDetailDto = {
+  cardId: string;
+  cardNo: number | null;
+  title: string;
+  /** รายละเอียดเป็น **ข้อความล้วน** (แปลงจาก HTML แล้ว) — "" เมื่อยังไม่ได้เขียน */
+  description: string;
+  board: { id: string; name: string };
+  column: { id: string; name: string };
+  status: "ACTIVE" | "ARCHIVED";
+  assignees: { userId: string; name: string }[];
+  dueAt: string | null;
+  startAt: string | null;
+  reminderMinutesBefore: number | null;
+  completedAt: string | null;
+  labels: string[];
+  checklists: CardFullChecklistDto[];
+  /** ความเห็นล่าสุด ≤ 20 ใบ (ไม่รวมที่ลบแล้ว) เรียงเก่า→ใหม่ */
+  comments: CardFullCommentDto[];
+  /** K3.1 — สิ่งที่การ์ดนี้ผูกอยู่ในระบบ SHARK (เฉพาะแถวที่ผู้เรียกมีสิทธิ์เห็น) */
+  links: { linkType: string; title: string; subtitle: string | null }[];
+};

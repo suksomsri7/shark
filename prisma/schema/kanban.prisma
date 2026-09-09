@@ -330,6 +330,9 @@ model KanbanComment {
   // K2.12: ความเห็นที่กฎอัตโนมัติเขียน (`automation.ts#writeAutomationComment`) — id ของ AutomationRule
   // (ไม่ทำ FK เหมือน authorUserId — กฎถูกลบไปแล้วยังต้องอ่านความเห็นเก่าได้) · null = คนเขียนเอง
   automationRuleId String?
+  // K3.5: ผู้ช่วย AI เป็นคนเขียนข้อความนี้ (คนกดปุ่มคือ `authorUserId` — เก็บไว้เพื่อรู้ว่าใครสั่ง)
+  // 🔴 จอต้องติดป้าย "ผู้ช่วย AI" เสมอเมื่อ true ห้ามแสดงเป็นข้อความที่คนพิมพ์เอง (§8.3)
+  aiGenerated      Boolean @default(false)
 
   // เส้นอ่านหลัก = ความเห็นของการ์ดใบเดียว เรียงเก่า→ใหม่
   @@index([cardId, createdAt])
@@ -403,6 +406,8 @@ enum KanbanActivityType {
   // K3.1 — ผูก/ถอดการเชื่อมกับวัตถุของโมดูลอื่น (KanbanCardLink)
   LINK_ADDED
   LINK_REMOVED
+  // K3.5 — ผู้ช่วย AI เสนอ/เขียนอะไรบางอย่างให้การ์ดใบนี้ (data.kind = summary | checklist)
+  AI_SUGGESTED
 }
 
 model KanbanActivity {

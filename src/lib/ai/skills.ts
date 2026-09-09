@@ -171,7 +171,7 @@ export const SKILLS: Skill[] = [
     id: "tasks",
     label: "งานและบอร์ด",
     summary:
-      "Task boards (Kanban): list boards and what is on them, board summaries, search cards across boards, one person's task inbox, jot a task into the inbox, overdue and workload reports, list a board's automation rules, create boards and cards, move cards between columns, edit or complete a card, assign people, set labels, add checklists and comments, archive a card.",
+      "Task boards (Kanban): list boards and what is on them, board summaries, search cards across boards, read one card in full (card detail), one person's task inbox, jot a task into the inbox, overdue and workload reports, list a board's automation rules, create boards and cards, create a card from a chat thread, move cards between columns, edit or complete a card, set due dates, assign people, set labels, add checklists and comments, archive a card.",
     // 🔴 K1.15: รายชื่อนี้ต้องตรงกับ op ที่ประกาศ `tool` ในทะเบียน API บอร์ดงานเป๊ะ ๆ
     //    เขียนเป็นตัวหนังสือด้วยเหตุผลเดียวกับสกิลบัญชี: ด่าน fitness F13.3 อ่าน "ไฟล์นี้"
     //    ความตรงกันบังคับด้วย assertSkillRegistryComplete() ที่เทียบกับ kanbanToolNames() ทุกครั้ง
@@ -182,12 +182,16 @@ export const SKILLS: Skill[] = [
       "kanban_list_cards", "kanban_search_cards",
       // K2.12: อ่าน — รายงาน + รายการกฎอัตโนมัติ
       "kanban_overdue_report", "kanban_workload_report", "kanban_list_rules",
+      // K3.5: อ่าน — การ์ดฉบับเต็ม (ข้อความล้วน + เช็คลิสต์ + ความเห็น + การเชื่อมข้อมูล)
+      "kanban_card_detail",
       // เขียน (ผ่านการยืนยันของเจ้าของ)
       "kanban_create_board", "kanban_create_card", "kanban_update_card", "kanban_move_card",
       "kanban_complete_card", "kanban_assign_card", "kanban_set_labels", "kanban_add_checklist",
       "kanban_add_comment",
       // K2.12: เขียน — จดงานเข้ากล่องงานเข้า (ข้อเสนอเสมอ ไม่เคยเขียนตรง)
       "kanban_inbox_add",
+      // K3.5: เขียน — ตั้งกำหนดส่ง · เปิดงานจากบทสนทนาแชท (ตัวหลังไม่มี endpoint REST — ดู kanban-op-from-chat.ts)
+      "kanban_set_due", "kanban_card_from_chat",
       // อันตราย (ยืนยัน 2 ชั้น)
       "kanban_archive_card",
     ],

@@ -47,7 +47,10 @@ type Step =
   | { upload: { on: string; filePath: string } }
   // K1.13: กดค้างแล้ว "ไม่ปล่อยนิ้ว" ก่อนถ่ายภาพ (ต่างจาก `drag` ที่ปล่อยตอนจบ) — ใช้โชว์ท่า "ยก" การ์ด
   // บนมือถือ (`MobileBoard.tsx` state `lifted` หลังกดค้างครบ 300ms) touchEnd จะถูกยิงตอนปิดหน้าเอง
-  | { longPress: { on: string; ms?: number } };
+  | { longPress: { on: string; ms?: number } }
+  // K3.5 — เลื่อน "กล่องที่เลื่อนได้ข้างใน" (หลังการ์ดเป็นโมดัลที่มีสกอลล์ของตัวเอง ⇒ `window.scrollTo`
+  // ไม่ช่วย) ให้ element ที่ต้องการอยู่กลางจอก่อนถ่าย — ไม่งั้นถ่ายได้แต่ส่วนบนของโมดัลเสมอ
+  | { scrollTo: string };
 type Spec = {
   name: string;
   path: string;
@@ -135,6 +138,40 @@ if (WO === "3.2") {
   });
   await integ.setIntegrations(ctx32, ownerActor, { openTaskFromChat: { enabled: true, boardId: B("maint"), columnId: col0?.id ?? null } });
   console.log(`🧪 เตรียม K3.2: ระบบแชทชั่วคราว ${chatSys.id} · ห้อง ${conv.id} (3 ข้อความ + 1 ไฟล์แนบ) · เปิดสวิตช์ "สร้างงานจากแชท" → บอร์ดซ่อมบำรุง`);
+}
+
+// ── K3.5: การ์ดตัวอย่างที่ "มีเนื้อให้ AI อ่าน" (รายละเอียด + เช็คลิสต์ + ความเห็นของทีม)
+//    สร้างชั่วคราวบนบอร์ดซ่อมบำรุงแล้วลบทิ้งทั้งใบใน restoreSeed() (คืน `cardNoSeq` ของบอร์ดด้วย)
+//    🔴 ภาพชุดนี้ **กดปุ่มผู้ช่วย AI จริงบน production build** ⇒ เรียกโมเดลจริง 2 ครั้ง (สรุป + เช็คลิสต์)
+//       ตั้งใจ: ปุ่มที่ "ดูเหมือนทำงาน" ในภาพแต่ไม่เคยถูกกดจริง คือสิ่งที่ด่านภาพมีไว้จับ
+const KB35 = { cardId: "", cardNoSeqBefore: null as number | null };
+if (WO === "3.5") {
+  const svc = (await import("@/lib/modules/kanban/service" as string)) as Any;
+  const board = await prisma.kanbanBoard.findFirst({ where: { id: B("maint") }, select: { cardNoSeq: true } });
+  KB35.cardNoSeqBefore = (board as Any)?.cardNoSeq ?? null;
+  const col = await prisma.kanbanColumn.findFirst({
+    where: { boardId: B("maint"), tenantId: E.tenantId, systemId: SYS, status: "ACTIVE" },
+    orderBy: [{ position: { sort: "asc", nulls: "first" } }, { sortOrder: "asc" }],
+    select: { id: true },
+  });
+  const card = await svc.createCard({
+    tenantId: E.tenantId,
+    systemId: SYS,
+    columnId: col!.id,
+    title: "ทำใบเสนอราคาทริปเรือ Sea Fox 3 วัน 2 คืน — กลุ่มบริษัท เอบีซี 12 คน",
+    description:
+      "<p>กลุ่มบริษัทติดต่อผ่าน LINE ขอทริป 3 วัน 2 คืน ช่วง 24–26 ต.ค. 12 ท่าน (มีใบรับรอง 9 · ผู้เริ่มต้น 3)</p><ul><li>ต้องรวมค่าอุปกรณ์ครบชุด + ครูสอน 1 ต่อ 3 สำหรับผู้เริ่มต้น</li><li>เช็ควันว่างเรือ Sea Fox กับตารางทริปก่อนยืนยันราคา</li><li>ลูกค้าขอใบเสนอราคาในนามบริษัท (มีเลขผู้เสียภาษี) งบราว 15,000 ต่อคน</li></ul>",
+    createdById: E.users.owner.userId,
+  });
+  KB35.cardId = card.id;
+  const cl = await prisma.kanbanChecklist.create({ data: { tenantId: E.tenantId, cardId: card.id, title: "ขั้นตอนงาน", position: "a0" } });
+  await prisma.kanbanChecklistItem.create({ data: { tenantId: E.tenantId, checklistId: cl.id, text: "เช็ควันว่างเรือ Sea Fox 24–26 ต.ค.", position: "a0", done: true, doneAt: new Date() } });
+  await prisma.kanbanChecklistItem.create({ data: { tenantId: E.tenantId, checklistId: cl.id, text: "ขอเลขผู้เสียภาษี + ที่อยู่ออกบิลจากลูกค้า", position: "a1", done: false } });
+  await prisma.kanbanChecklistItem.create({ data: { tenantId: E.tenantId, checklistId: cl.id, text: "คำนวณต้นทุนอาหาร/น้ำมัน/ครู", position: "a2", done: false } });
+  await prisma.kanbanComment.create({
+    data: { tenantId: E.tenantId, cardId: card.id, authorUserId: E.users.staff.pook.userId, body: "เช็คกับกัปตันแล้ว เรือว่าง 24–26 ต.ค. จริง แต่วันที่ 26 ต้องกลับถึงท่าก่อน 15:00" },
+  });
+  console.log(`🧪 เตรียม K3.5: การ์ดตัวอย่าง ${card.id} (รายละเอียด + เช็คลิสต์ 3 รายการ + ความเห็นทีม 1 ใบ) บนบอร์ดซ่อมบำรุง`);
 }
 
 /** ลบระบบแชทชั่วคราวของ K3.2 ทั้งชุด (ข้อความ/ไฟล์แนบ/ห้อง/ผู้ติดต่อ/ตั้งค่า/ช่องทาง) */
@@ -348,6 +385,55 @@ const SPECS: Record<string, Spec[]> = {
       note: "บอร์ดซ่อมบำรุง — การ์ดที่ระบบเปิดให้เอง 5 ใบ ชิปที่มาต่างกัน (จากฟอร์ม · จากคำขออนุมัติ · จากใบลา · จากบิลยกเลิก · จากแชท)",
       expect: ["[data-testid=card-source]"],
       steps: [{ waitFor: "[data-testid=card-source]" }, { wait: 600 }],
+    },
+  ],
+  // K3.5 — ปุ่มผู้ช่วย AI ในหลังการ์ด · เทียบภาพ `ledger/design-kanban/03-card-back.png` (แถบขวา "ผู้ช่วย AI")
+  //   1) แถบขวา 3 ปุ่มพร้อมใช้ (สรุปการ์ดนี้ · แตกเป็นเช็คลิสต์ · ร่างข้อความตอบลูกค้า)
+  //   2) กด "สรุปการ์ดนี้" จริง → ความเห็นใหม่ในสายกิจกรรมขึ้นหัวว่า "ผู้ช่วย AI" (ไม่ใช่ชื่อคนกด)
+  //   3) กด "แตกเป็นเช็คลิสต์" จริง → กล่อง **ข้อเสนอ** พร้อมปุ่ม "เพิ่มเช็คลิสต์นี้" / "ไม่เอา"
+  //      (ยังไม่มีเช็คลิสต์ใหม่ในการ์ดจนกว่าจะกด — นี่คือใจความของ §8.3 ที่ภาพต้องพิสูจน์)
+  "3.5": [
+    {
+      name: "card-ai-rail",
+      path: `/app/sys/${SYS}/kanban/b/${B("maint")}?card=${KB35.cardId}`,
+      note: 'หลังการ์ด แถบขวา — กลุ่ม "ผู้ช่วย AI" 3 ปุ่มกดได้จริง (ร้าน QC ตั้งค่าคีย์ AI ไว้แล้ว)',
+      expect: ["[data-testid=card-ai]", "[data-testid=card-ai-summarize]", "[data-testid=card-ai-checklist]", "[data-testid=card-ai-reply]"],
+      steps: [
+        { waitFor: "[data-testid=card-back]" },
+        { waitFor: "[data-testid=card-ai]" },
+        { scrollTo: "[data-testid=card-ai]" },
+        { wait: 600 },
+      ],
+    },
+    {
+      name: "card-ai-summary-comment",
+      path: `/app/sys/${SYS}/kanban/b/${B("maint")}?card=${KB35.cardId}`,
+      onlyDevice: "desktop",
+      note: 'กด "สรุปการ์ดนี้" จริง (เรียกโมเดลจริง) → ความเห็นใหม่ในสายกิจกรรมขึ้นหัว "ผู้ช่วย AI" + บอกว่าใครสั่ง — ห้ามขึ้นเป็นชื่อคนกดเฉย ๆ',
+      expect: ["[data-testid=comment-ai-author]"],
+      steps: [
+        { waitFor: "[data-testid=card-ai-summarize]" },
+        { click: "[data-testid=card-ai-summarize]" },
+        { waitFor: "[data-testid=comment-ai-author]", timeoutMs: 150_000 },
+        { click: "[data-testid=timeline-filter] button:nth-child(2)" },
+        { wait: 800 },
+        { scrollTo: "[data-testid=comment-ai-author]" },
+        { wait: 400 },
+      ],
+    },
+    {
+      name: "card-ai-checklist-proposal",
+      path: `/app/sys/${SYS}/kanban/b/${B("maint")}?card=${KB35.cardId}`,
+      onlyDevice: "desktop",
+      note: 'กด "แตกเป็นเช็คลิสต์" จริง → กล่องข้อเสนอ (หัวข้อ + รายการเรียงลำดับ + "ข้อเสนอของผู้ช่วย AI — ยังไม่ได้เพิ่มลงการ์ด" + ปุ่ม "เพิ่มเช็คลิสต์นี้" / "ไม่เอา")',
+      expect: ["[data-testid=card-ai-checklist-suggestion]", "[data-testid=card-ai-checklist-accept]"],
+      steps: [
+        { waitFor: "[data-testid=card-ai-checklist]" },
+        { click: "[data-testid=card-ai-checklist]" },
+        { waitFor: "[data-testid=card-ai-checklist-suggestion]", timeoutMs: 150_000 },
+        { scrollTo: "[data-testid=card-ai-checklist-suggestion]" },
+        { wait: 600 },
+      ],
     },
   ],
   // K3.2 — "สร้างงานจากแชท" · เทียบภาพ `ledger/design-kanban/09-from-chat.png`
@@ -1732,6 +1818,24 @@ async function restoreSeed(): Promise<void> {
     console.log(`🧹 คืนสภาพ K3.2: ลบการ์ดที่สร้างจากแชท ${ids.length} ใบ · ผู้ติดต่อ ${KB32.partyIds.length} · ลบระบบแชทชั่วคราว · คืนค่าสวิตช์การเชื่อมต่อ`);
   }
 
+  // K3.5 — ลบการ์ดตัวอย่างทั้งใบ (ความเห็นของผู้ช่วย AI + เช็คลิสต์ + ประวัติ AI_SUGGESTED ไปด้วย)
+  //         แล้วคืน `cardNoSeq` ของบอร์ดให้เท่าเดิม (เลขการ์ดของชุด QC ต้องไม่ขยับเพราะการถ่ายภาพ)
+  if (WO === "3.5" && KB35.cardId) {
+    const P = prisma as Any;
+    await P.kanbanChecklistItem.deleteMany({ where: { checklist: { cardId: KB35.cardId } } }).catch(() => null);
+    await P.kanbanChecklist.deleteMany({ where: { cardId: KB35.cardId } }).catch(() => null);
+    await prisma.kanbanComment.deleteMany({ where: { cardId: KB35.cardId } }).catch(() => null);
+    await P.kanbanCardLink.deleteMany({ where: { cardId: KB35.cardId } }).catch(() => null);
+    await prisma.kanbanActivity.deleteMany({ where: { cardId: KB35.cardId } }).catch(() => null);
+    await prisma.kanbanCard.deleteMany({ where: { id: KB35.cardId } }).catch(() => null);
+    if (KB35.cardNoSeqBefore !== null) {
+      await prisma.kanbanBoard.update({ where: { id: B("maint") }, data: { cardNoSeq: KB35.cardNoSeqBefore } as Any }).catch(() => null);
+    }
+    await prisma.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) }, type: { startsWith: "kanban." } } }).catch(() => null);
+    await prisma.appNotification.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) } } }).catch(() => null);
+    console.log("🧹 คืนสภาพ K3.5: ลบการ์ดตัวอย่าง + ความเห็นผู้ช่วย AI + เช็คลิสต์ + ประวัติ · คืน cardNoSeq ของบอร์ดซ่อมบำรุง");
+  }
+
   // K3.3 — ลบการ์ดตัวอย่าง + ฟอร์มชั่วคราว แล้วคืนค่าสวิตช์การเชื่อมต่อของระบบ KANBAN
   if (WO === "3.3") {
     await wipeK33Cards();
@@ -2023,6 +2127,11 @@ try {
               const el = await page.$(step.swipe.on); const bb = (await el!.boundingBox())!;
               const y = bb.y + bb.height / 2; const x0 = bb.x + bb.width / 2;
               await page.touchscreen.touchStart(x0, y); for (let i = 1; i <= 8; i++) await page.touchscreen.touchMove(x0 + (step.swipe.dx * i) / 8, y); await page.touchscreen.touchEnd();
+            } else if ("scrollTo" in step) {
+              const sel = step.scrollTo;
+              await page.evaluate((q: string) => {
+                document.querySelector(q)?.scrollIntoView({ block: "center", inline: "nearest" });
+              }, sel);
             } else if ("longPress" in step) {
               // 🔴 จงใจไม่ touchEnd — ต้องถ่ายภาพตอนนิ้วยังกดอยู่เพื่อให้เห็นสถานะ "ยก" (MobileBoard.tsx)
               const el = await page.$(step.longPress.on);

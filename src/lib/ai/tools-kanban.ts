@@ -54,10 +54,15 @@ export function kanbanTools(): AiTool[] {
 }
 
 /**
- * จำนวนเครื่องมือที่ต้องมี = จำนวน op ที่ประกาศ `tool` ในทะเบียน
- * (ตัวเลขนี้อ่านจาก `KANBAN_OPS` ตรง ๆ — ใช้เป็นด่านกันคนเผลอ filter ทิ้งระหว่างทาง)
+ * จำนวนเครื่องมือที่ต้องมี = จำนวน op ที่ประกาศ `tool` (ทะเบียน REST `KANBAN_OPS`
+ * + op เฉพาะฝั่งผู้ช่วยของ K3.5) — ใช้เป็นด่านกันคนเผลอ filter ทิ้งระหว่างทาง
  */
 export function kanbanToolCount(): number {
+  return kanbanToolInfos().length;
+}
+
+/** จำนวน tool ที่มี endpoint REST คู่กัน (ต่างจากตัวบนเมื่อมี op เฉพาะฝั่งผู้ช่วย) */
+export function kanbanRestToolCount(): number {
   return KANBAN_OPS.filter((o) => o.tool).length;
 }
 

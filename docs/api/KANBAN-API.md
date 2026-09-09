@@ -1,7 +1,7 @@
 # SHARK Task Board API
 
 Machine readable contract: `/api/v1/kanban/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/kanban` - contract version 1.0.0 - 85 operations.
+Base URL: `https://shark.in.th/api/v1/kanban` - contract version 1.0.0 - 87 operations.
 Generated from the operation registry by `scripts/gen-kanban-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -96,7 +96,7 @@ Branch on `error.code`, never on the message text. The list is shared by every S
 
 ### Read operations
 
-Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited. 30 of the 85 operations.
+Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited. 31 of the 87 operations.
 
 #### `boards.activity`
 
@@ -391,6 +391,19 @@ curl -sS -X GET "https://shark.in.th/api/v1/kanban/cards/123/comments" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `cards.detail`
+
+**GET /cards/{id}/detail** - Read one card in full: description as plain text, board and column, assignees, due date, labels, checklists with their items, recent comments and the SHARK records the card is linked to. · scope: `kanban.board.read` · read · AI tool: `kanban_card_detail`
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/kanban/cards/123/detail" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `cards.links.list`
 
 **GET /cards/{id}/links** - List everything this card is linked to (contact, chat, accounting document, approval request, external URL and so on). Rows the caller may not open are still returned, but without any detail: canView is false, title says the Thai equivalent of 'no access', and href is null. · scope: `kanban.board.read` · read
@@ -538,7 +551,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/kanban/templates" \
 
 ### Write operations
 
-Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 51 of the 85 operations.
+Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 52 of the 87 operations.
 
 #### `attachments.delete`
 
@@ -932,6 +945,26 @@ curl -sS -X PUT "https://shark.in.th/api/v1/kanban/cards/123/cover" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"attachmentId":"att_123"}'
+```
+
+#### `cards.setDue`
+
+**POST /cards/{id}/due** - Set or clear the due date of a card, with an optional start date and reminder. · scope: `kanban.card.update` · write · AI tool: `kanban_set_due`
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `dueAt` | string or null | yes | Due date and time. null clears the due date. · format date-time |
+| `startAt` | string or null | no | Start date and time. · format date-time |
+| `reminderMinutesBefore` | integer or null | no | Remind the people responsible this many minutes before the due time. · min 0 · max 43200 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/kanban/cards/123/due" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"dueAt":"example dueAt"}'
 ```
 
 #### `cards.duplicate`
@@ -1455,7 +1488,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/kanban/views/123" \
 
 ### Danger operations
 
-Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 4 of the 85 operations.
+Hard to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 4 of the 87 operations.
 
 #### `boards.members.remove`
 
@@ -1535,7 +1568,7 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/kanban/columns/123" \
 
 ## AI tools
 
-20 of these operations are also exposed to the SHARK assistant as tools of the `tasks` skill.
+22 of these operations are also exposed to the SHARK assistant as tools of the `tasks` skill.
 Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
 
 Tools carrying the destructive flag: `kanban_archive_card`.
@@ -1547,6 +1580,7 @@ Tools carrying the destructive flag: `kanban_archive_card`.
 | `kanban_archive_card` | `cards.archive` | danger | `kanban.card.delete` |
 | `kanban_assign_card` | `cards.assignees.set` | write | `kanban.card.update` |
 | `kanban_board_summary` | `boards.summary` | read | `kanban.board.read` |
+| `kanban_card_detail` | `cards.detail` | read | `kanban.board.read` |
 | `kanban_complete_card` | `cards.complete` | write | `kanban.card.move` |
 | `kanban_create_board` | `boards.create` | write | `kanban.board.create` |
 | `kanban_create_card` | `cards.create` | write | `kanban.card.create` |
@@ -1559,6 +1593,7 @@ Tools carrying the destructive flag: `kanban_archive_card`.
 | `kanban_my_tasks` | `my-tasks` | read | `kanban.board.read` |
 | `kanban_overdue_report` | `reports.overdue` | read | `kanban.report.view` |
 | `kanban_search_cards` | `search` | read | `kanban.board.read` |
+| `kanban_set_due` | `cards.setDue` | write | `kanban.card.update` |
 | `kanban_set_labels` | `cards.labels.set` | write | `kanban.card.update` |
 | `kanban_update_card` | `cards.update` | write | `kanban.card.update` |
 | `kanban_workload_report` | `reports.workload` | read | `kanban.report.view` |
@@ -1576,7 +1611,7 @@ curl -sS "https://shark.in.th/api/v1/ai/skills/tasks" -H "Authorization: Bearer 
 
 `GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The task board skill is listed only when the shop has an active task board system and the key is allowed to call at least one of its tools. A shop without task boards, or a key whose scopes reach none of the tools, gets 404 from `https://shark.in.th/api/v1/ai/skills/tasks` - the same answer as a skill that does not exist, so nothing leaks about what is behind the wall.
 
-`GET https://shark.in.th/api/v1/ai/skills/tasks` returns the 20 tools (9 read, 11 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
+`GET https://shark.in.th/api/v1/ai/skills/tasks` returns the 22 tools (10 read, 12 write or danger) in OpenAI function-calling shape, so they can be handed to the model without conversion:
 
 ```text
 { "id": "tasks", "label": "งานและบอร์ด", "summary": "...", "tools": [

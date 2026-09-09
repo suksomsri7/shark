@@ -56,6 +56,13 @@ export type TimelineProps = {
   comments: KanbanCommentDto[];
   /** เวลาอ้างอิงจาก server (`BoardViewDto.now`) — ใช้คิด "x นาทีที่แล้ว" ให้ 2 ฝั่งตรงกัน */
   nowMs: number;
+  /**
+   * K3.5 — ตัวนับที่ "คนอื่นในหลังการ์ด" ขยับเมื่อเขียนความเห็น/กิจกรรมจากนอกบล็อกนี้
+   * (ปุ่มผู้ช่วย AI เขียนความเห็นผ่าน action ของตัวเอง) ⇒ สายรวมต้องโหลดใหม่
+   * ** บล็อกนี้เก็บ `items` ของตัวเองจาก server ไม่ได้อ่านจาก prop `comments` หลังเรนเดอร์แรก
+   *    ⇒ ถ้าไม่มีตัวนับนี้ กดปุ่ม AI แล้ว "ไม่มีอะไรเกิดขึ้นบนจอ" จนกว่าจะสลับแท็บ (บั๊กที่ภาพ K3.5 จับได้)
+   */
+  reloadKey?: number;
   onCommentsChange: (comments: KanbanCommentDto[]) => void;
   onToast: (message: string) => void;
 };
@@ -75,6 +82,7 @@ export function Timeline({
   currentUserId,
   comments,
   nowMs,
+  reloadKey = 0,
   onCommentsChange,
   onToast,
 }: TimelineProps) {
@@ -106,7 +114,7 @@ export function Timeline({
 
   useEffect(() => {
     void load(filter);
-  }, [load, filter]);
+  }, [load, filter, reloadKey]);
 
   const loadMore = useCallback(async () => {
     if (!cursor || loading) return;
@@ -246,7 +254,8 @@ export function Timeline({
                 comment={item.comment}
                 people={people}
                 currentUserId={currentUserId}
-                canEdit={editable && item.comment.author.userId === currentUserId}
+                /* K3.5 — ความเห็นของผู้ช่วย AI แก้ไม่ได้ (แก้ได้ = ปลอมคำพูดของ AI ได้) · ลบได้ตามเดิม */
+                canEdit={editable && item.comment.author.userId === currentUserId && !item.comment.aiGenerated}
                 canDelete={(editable && item.comment.author.userId === currentUserId) || isBoardAdmin}
                 editing={editingId === item.id}
                 nowMs={nowMs}
