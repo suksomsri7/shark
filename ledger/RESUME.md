@@ -1,7 +1,7 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
 ## 🏁 10 ก.ย. 10:05 BKK — [session บอร์ดงาน] **RUN บอร์ดงาน→Trello จบ 36/36** · main `a1d7260` · qc:all 287 · migration a–u บน prod ครบ · handover `ledger/HANDOVER-2026-09-10-KANBAN-P3.md` (รอเจ้าของ §3 · หนี้ §4 · วิธีทำงาน §5)
-- ✅ **ออกแบบ Member System ส่งแล้ว 10 ก.ย. 11:35**: `ledger/DESIGN-MEMBER.md` + `ledger/design-member/` 9 ภาพ (main `a3ae3b7`) → Telegram ครบ · **รอเจ้าของเคาะคำถาม §8** → จากนั้นเขียน `ledger/MEMBER-RUN.md` (สัญญา+ข้อสอบ 34 ใบ M1–M3) แล้ว RUN แบบบอร์ดงาน · ยังไม่ coding
+- ✅ **Member System ชุดเต็มส่งแล้ว 10 ก.ย. 13:45** (main `948f437`): พิมพ์เขียว `docs/modules/06-member-v2.md` · API `docs/api/MEMBER-API.md` · แผน `ledger/MEMBER-RUN.md` (34 ใบ) · ภาพ 30 ใบ `ledger/design-member/` · มติเจ้าของ 9 ข้อใน DESIGN-MEMBER §9 → **รอคำสั่ง "เริ่ม RUN ระบบสมาชิก"** (เริ่ม = seed QC + oracle M1.1 → builder Opus ตาม MEMBER-RUN §2) · ยังไม่ coding
 
 ## ▶️ 10 ก.ย. 08:30 BKK — [session บอร์ดงาน] **K3.8 ปิดแล้ว (main `26d6b94`) · 35/36 ≈ 97% · K3.9 (Opus · ใบสุดท้าย) กำลังทำ → ต่อด้วย K3.F (qc:all เต็ม · prod verify · HANDOVER-P3 · Telegram · memory) → Member System design** — builder ห้าม build เอง Fable build+ภาพเอง — ถ้าหยุดอีก ใช้ขั้น 1–8 ด้านล่างโดยเปลี่ยน "K3.4" เป็นใบที่ค้าง (ดูตาราง KANBAN-RUN)
 
