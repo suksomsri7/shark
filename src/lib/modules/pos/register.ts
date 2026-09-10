@@ -19,6 +19,73 @@ export type PosCatalogItem = {
   barcode: string | null;
 };
 export type PosMember = { id: string; name: string | null; memberCode: string; phone: string | null };
+
+// ── M2.8 · แผงสิทธิ์ที่หน้าขาย (ภาพ 06) ────────────────────────────────────────
+// 🔴 ชนิดข้อมูลของแผงอยู่ที่นี่ (ไม่ใช่ใน `actions/pos.ts`) เพราะไฟล์ `"use server"`
+//    **ห้าม export ชนิดข้อมูลปนกับ server action** (บทเรียน M2.2: Next นับทุก export
+//    ในไฟล์ use-server เป็น action แล้วหน้าจอพังตอนรัน ทั้งที่ tsc เขียว)
+// ตัวเลขทุกตัวเป็น "สตางค์" · ข้อความไทยล้วน (พนักงานอ่านหน้างาน) · ไม่มี PIN/เลขบัตรเต็มในนี้
+
+/** สิทธิ์ที่พนักงานติ๊กเลือกให้บิลนี้ — ส่วนลดระดับไม่ต้องเลือก (ใช้อัตโนมัติทุกบิล) */
+export type PosMemberChoicesInput = {
+  voucherIds?: string[];
+  points?: number;
+  giftCard?: { number: string; pin: string; satang: number };
+};
+
+export type PosMemberVoucher = {
+  id: string;
+  name: string;
+  code: string;
+  valueLabel: string;
+  expiresLabel: string;
+  /** ใช้กับตะกร้าตอนนี้ได้ไหม (false = แสดงจาง + เหตุผล) */
+  applicable: boolean;
+  reason: string | null;
+};
+
+export type PosMemberStamp = { cardId: string; name: string; stamps: number; slots: number };
+
+/** บัตรกำนัลของสมาชิก — เลขปิดบังเท่านั้น (ใช้จริงต้องกรอกเลขเต็ม + PIN ที่หน้าจอ) */
+export type PosMemberGiftCard = { numberMasked: string; balanceSatang: number };
+
+/** กระเป๋าสิทธิ์ของสมาชิกที่เลือก — โหลดครั้งเดียวตอนเลือกคน (ไม่ใช่ทุกครั้งที่ตะกร้าเปลี่ยน) */
+export type PosMemberRights = {
+  memberId: string;
+  name: string;
+  memberCode: string;
+  tierName: string | null;
+  tierDiscountPct: number;
+  tierDiscountFixedSatang: number;
+  /** "สมาชิกมา 2 ปี 3 เดือน" */
+  memberSinceLabel: string;
+  pointBalance: number;
+  burnRateSatang: number;
+  burnMinPoints: number;
+  burnMaxPct: number;
+  vouchers: PosMemberVoucher[];
+  giftCards: PosMemberGiftCard[];
+  stamps: PosMemberStamp[];
+};
+
+export type PosMemberQuoteLine = {
+  kind: string;
+  ref: string | null;
+  label: string;
+  discountSatang: number;
+  note: string | null;
+};
+
+/** ผลของ "ถ้าใช้สิทธิ์ชุดนี้กับตะกร้านี้" — มาจาก `member.quoteApply` ตรง ๆ (ลำดับ/กันซ้อนคิดที่นั่น) */
+export type PosMemberQuote = {
+  order: string[];
+  lines: PosMemberQuoteLine[];
+  conflicts: { kind: string; ref: string | null; message: string }[];
+  totalDiscountSatang: number;
+  netSatang: number;
+  pointsToEarn: number;
+  stampsToAdd: { cardId: string; name: string; count: number }[];
+};
 export type PosLinks = {
   pointSystemId: string | null;
   couponSystemId: string | null;
@@ -89,14 +156,39 @@ export type PosServiceItem = { id: string; name: string; priceSatang: number; du
  *    ต้นฉบับเดียว → ตั้งราคาที่ระบบสินค้า/บริการ แล้วทั้งหน้าขายและหน้าจองเห็นตรงกัน
  * บริการไม่ตัดสต็อก: บรรทัดบิลใส่ serviceId (ไม่ใส่ itemId) — ตรงกับสัญญาเดิมของ PosSaleLine
  */
-export async function posServices(tenantId: string, inventorySystemId: string | null): Promise<PosServiceItem[]> {
-  if (!inventorySystemId) return [];
-  const rows = await inventory.listServices({ tenantId, systemId: inventorySystemId });
+export async function posServices(
+  tenantId: string,
+  inventorySystemId: string | null,
+  unitId?: string | null,
+): Promise<PosServiceItem[]> {
+  if (inventorySystemId) {
+    const rows = await inventory.listServices({ tenantId, systemId: inventorySystemId });
+    if (rows.length > 0) {
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        priceSatang: r.priceSatang,
+        durationMin: r.durationMin ?? 0,
+        bookable: r.bookable,
+      }));
+    }
+  }
+  // ── ทางสำรอง (M2.8): ร้านที่ยังไม่ได้เปิดระบบคลัง/ยังไม่ได้ย้ายบริการเข้าแคตตาล็อกกลาง ──
+  // 🔴 `registerSaleAction` ตรวจ `serviceId` ที่ client ส่งมากับตาราง **BookingService ของสาขานี้** อยู่แล้ว
+  //    ⇒ ถ้าหน้าขายไม่เคยเสนอบริการจากตารางนั้นเลย ร้านบริการที่ยังไม่มีคลังจะ "ขายอะไรไม่ได้เลย"
+  //    (ต้องพิมพ์รายการเองทุกบิล · ยอดไม่เข้ารายงานฝั่งบริการ) — ปิดช่องนี้ตอนที่แตะหน้าขายอยู่แล้ว
+  //    ไม่ระบุสาขา = ไม่ถาม (ผู้เรียกเดิมที่ส่ง 2 พารามิเตอร์ยังได้พฤติกรรมเดิมเป๊ะ)
+  if (!unitId) return [];
+  const rows = await prisma.bookingService.findMany({
+    where: { tenantId, unitId, active: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true, name: true, priceSatang: true, durationMin: true, bookable: true },
+  });
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
     priceSatang: r.priceSatang,
-    durationMin: r.durationMin ?? 0,
+    durationMin: r.durationMin,
     bookable: r.bookable,
   }));
 }

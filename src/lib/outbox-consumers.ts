@@ -407,6 +407,32 @@ const stampVoidForSale: OutboxHandler = async (evt) => {
   await voidStampsForSaleEvent(evt.tenantId, saleId);
 };
 
+/**
+ * M2.8 (§9.1 §11.5) — สะพาน "การขาย × ระบบสมาชิก" หลังบิลปิด/ถูกยกเลิก
+ * (ยอดสะสม · แต้มตามกฎร้าน · สแตมป์ · ที่มาซื้อครั้งแรก · เลื่อนระดับ · ไทม์ไลน์)
+ *
+ * 🔴 **บิล/บัญชีต้องไม่ล้มเพราะฝั่งสมาชิก**: ครอบ try/catch เองที่นี่ (ไม่พึ่ง `compose` ชั้นนอก
+ *    เพื่อให้ข้อความ WARN บอกได้ว่าเป็นสะพานสมาชิก ไม่ใช่บอร์ดงาน) → event ยัง DONE ตามปกติ
+ *    ไม่งั้น event ค้าง PENDING แล้ว drain รอบหน้าจะ post บัญชีซ้ำ
+ * 🔴 dynamic import ด้วยเหตุผลเดียวกับ `kanbanBridge`/`stampFromSale`: `member-bridges` →
+ *    `member/index` → … → `pos/service` → `scheduleDrain` กลับมาที่ไฟล์นี้ = วงกลมของโมดูล
+ */
+const memberSaleBridge =
+  (name: "onPosSalePaid" | "onPosSaleVoided"): OutboxHandler =>
+  async (evt) => {
+    const saleId = saleIdOf(evt.payload);
+    if (!saleId) return;
+    try {
+      const bridges = await import("@/lib/member-bridges");
+      await bridges[name](evt.tenantId, saleId);
+    } catch (e) {
+      await logOps("WARN", "member", `สะพานสมาชิกของ "${evt.type}" ล้มเหลว (บิล ${saleId}) — บิลและบัญชีไม่กระทบ`, {
+        tenantId: evt.tenantId,
+        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+      });
+    }
+  };
+
 /** ลูกค้ามาตามนัดจริง (Appointment → DONE) → สแตมป์ชนิด "จองที่มาจริง" */
 const stampFromVisit: OutboxHandler = async (evt) => {
   const p = evt.payload as { appointmentId?: unknown } | null;
@@ -418,10 +444,14 @@ const stampFromVisit: OutboxHandler = async (evt) => {
 
 const baseConsumers: Record<string, OutboxHandler> = {
   // M2.3: + สแตมป์การ์ดจากบิล (ต่อท้าย post บัญชีเดิม · บิลขายบัตรกำนัลถูกข้ามในตัว handler เอง)
-  "pos.sale.paid": withAutomation(compose(posSalePaid, stampFromSale)),
+  // M2.8: + สะพานสมาชิก (ยอดสะสม/แต้ม/สแตมป์/ที่มา/ระดับ/ไทม์ไลน์) — ย้ายออกจาก tx ของบิลมาที่คิวนี้
+  "pos.sale.paid": withAutomation(compose(compose(posSalePaid, stampFromSale), memberSaleBridge("onPosSalePaid"))),
   // K3.3: + การ์ด "ตรวจสอบบิลยกเลิก" เมื่อยอดถึงเกณฑ์ที่ร้านตั้งไว้ (สวิตช์ปิดอยู่ = ไม่มีอะไรเกิด)
   // M2.3: + ยกเลิกตราของบิลใบนั้น (voidStampsForSale)
-  "pos.sale.voided": withAutomation(compose(compose(posSaleVoided, kanbanBridge("onVoidedSale")), stampVoidForSale)),
+  // M2.8: + คืนสิทธิ์ทุกชนิด + ย้อนแต้ม/ยอดสะสม/ไทม์ไลน์ของบิลที่ถูกยกเลิก
+  "pos.sale.voided": withAutomation(
+    compose(compose(compose(posSaleVoided, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")),
+  ),
   // M2.3 (§9.2) — นัดเปลี่ยนเป็น "มาแล้ว" · ยิงจาก `booking/service.ts#setAppointmentStatus`
   "booking.completed": withAutomation(stampFromVisit),
   // K3.3: + การ์ดติดตามคำขออนุมัติ (มอบหมายผู้ยื่น) — ต่อท้าย notify เดิม

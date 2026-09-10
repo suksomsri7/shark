@@ -55,12 +55,14 @@ export default async function PosRegisterPage({
     links.inventorySystemId ? posCatalog(tenantId, links.inventorySystemId) : Promise.resolve([]),
     links.memberSystemId ? posMembers(tenantId, links.memberSystemId) : Promise.resolve([]),
     // บริการจากแคตตาล็อกกลาง (ระบบสินค้า/บริการ) — ต้นฉบับเดียวกับที่หน้าจองใช้
-    posServices(tenantId, links.inventorySystemId),
+    posServices(tenantId, links.inventorySystemId, active.id),
   ]);
   const hasPromptPay = !!profile?.promptpayId;
 
+  // M2.8: สาขาที่เปิดใช้ระบบสมาชิกมีแผงสิทธิ์ทางขวา → ต้องการความกว้างมากกว่าบิลเปล่า
+  // (ยังไม่เลือกสมาชิก = ฝั่งซ้ายจัดกลางที่ความกว้างเดิม ไม่เปลี่ยนหน้าตาของร้านที่ไม่มีระบบสมาชิก)
   return (
-    <div className="flex max-w-2xl flex-col gap-5">
+    <div className={`flex flex-col gap-5 ${links.memberSystemId ? "max-w-6xl" : "max-w-2xl"}`}>
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="หน้าขาย — เปิดบิลเก็บเงิน" />
       <ModuleTabs items={tabs} />
 

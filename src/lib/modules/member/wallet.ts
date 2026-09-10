@@ -144,10 +144,11 @@ export type ApplyOnSaleInput = {
   unitId?: string | null;
   choices: WalletChoices;
   /**
-   * ตะกร้าของบิล — ผู้เรียกที่ยังไม่ได้เขียนบิลลงตาราง **ควรส่งมาเสมอ**
-   * ไม่ส่ง = หาให้เองตามลำดับ: แถว `PosSale` ของ `saleId` → ตะกร้าของใบเสนอราคาล่าสุดของลูกค้าคนนี้
+   * ตะกร้าของบิล — **บังคับ** (มติ Fable · M2.8)
+   * ส่วนลดระดับคิดจากยอดบิล ⇒ ผู้เรียกต้องบอกยอดมาเสมอ ห้ามให้ที่นี่เดาเอง
+   * ทางสำรองเดียวที่เหลือ: บรรทัดว่าง → อ่านจากแถว `PosSale` ของ `saleId` (POS เขียนบิลก่อนเรียกที่นี่)
    */
-  cart?: WalletCart;
+  cart: WalletCart;
 };
 
 export type ApplyOnSaleResult = {
@@ -159,6 +160,12 @@ export type ApplyOnSaleResult = {
   giftCardSatang: number;
   lines: QuoteLine[];
   totalDiscountSatang: number;
+  /**
+   * สิทธิ์ที่ผู้เรียกสั่งมาแต่ใช้ไม่ได้ **และไม่ถึงขั้นโยน** — วันนี้มีชนิดเดียวคือคูปอง
+   * (คูปองเป็นของ POS ไม่ใช่ของกระเป๋า — ที่นี่ตรวจให้แค่กติกากันซ้อนกับ voucher แล้วส่งเหตุผลกลับไป
+   *  ให้ผู้เรียกตัดสินใจว่าจะล้มบิลหรือขายต่อ)
+   */
+  conflicts: QuoteConflict[];
 };
 
 // ───────────────────────── ตัวช่วยเรื่องเงิน/ตะกร้า ─────────────────────────
@@ -668,47 +675,15 @@ export async function quoteApply(
   await assertVisible(ctx, actor, customer);
   const sys = await resolveSystems(ctx, cart?.unitId ?? customer.homeUnitId);
   const { result } = await computeQuote(ctx, customer, sys, cart ?? { lines: [] }, choices ?? {});
-  rememberCart(ctx, customer.id, sys.unitId, cart ?? { lines: [] });
   return result;
 }
 
-// ───────────────────────── ตะกร้าล่าสุด (สะพานระหว่าง quote → apply) ─────────────────────────
+// ───────────────────────── ตะกร้าของบิล (ทางสำรองทางเดียวที่เหลือ) ─────────────────────────
 //
-// 🔴 ทำไมต้องมี: `applyOnSale` ตามสัญญารับแค่ `{ saleId, customerId, unitId, choices }` — ไม่มีตะกร้า
-//    แต่ส่วนลดระดับต้องคิดจาก **ยอดบิล** ⇒ ต้องหาตะกร้าให้ได้ก่อนเสมอ ลำดับที่ใช้คือ
-//      1) `input.cart` ที่ผู้เรียกส่งมา (ทางที่ถูกต้อง — M2.8 ควรส่งเสมอ)
-//      2) แถว `PosSale` ของ `saleId` (POS ที่เขียนบิลก่อนแล้วค่อยคิดสิทธิ์)
-//      3) ตะกร้าของ `quoteApply` ครั้งล่าสุดของลูกค้าคนนี้ที่สาขานี้ (ทางสำรอง — ในหน่วยความจำ อายุสั้น)
-//    ทาง (3) เป็น **best-effort ต่อโปรเซส** เท่านั้น: คนละอินสแตนซ์ = ไม่เจอ ⇒ ห้ามพึ่งเป็นทางหลัก
-//    (ผลของการไม่เจอคือ "ส่วนลดระดับ 0" ซึ่งจะไปโผล่เป็นยอดที่ไม่ตรงตอน POS ตรวจยอดชำระ ไม่ใช่เงียบ)
-
-type CartMemo = { cart: WalletCart; at: number };
-const CART_MEMO = new Map<string, CartMemo>();
-const CART_MEMO_TTL_MS = 10 * 60_000;
-const CART_MEMO_MAX = 500;
-
-const memoKey = (ctx: MemberCtx, customerId: string, unitId: string | null): string =>
-  `${ctx.tenantId}:${ctx.systemId}:${customerId}:${unitId ?? "-"}`;
-
-function rememberCart(ctx: MemberCtx, customerId: string, unitId: string | null, cart: WalletCart): void {
-  if (cartLines(cart).length === 0) return;
-  if (CART_MEMO.size >= CART_MEMO_MAX) {
-    const oldest = [...CART_MEMO.entries()].sort((a, b) => a[1].at - b[1].at)[0];
-    if (oldest) CART_MEMO.delete(oldest[0]);
-  }
-  CART_MEMO.set(memoKey(ctx, customerId, unitId), { cart, at: Date.now() });
-}
-
-function recallCart(ctx: MemberCtx, customerId: string, unitId: string | null): WalletCart | null {
-  const key = memoKey(ctx, customerId, unitId);
-  const found = CART_MEMO.get(key);
-  if (!found) return null;
-  if (Date.now() - found.at > CART_MEMO_TTL_MS) {
-    CART_MEMO.delete(key);
-    return null;
-  }
-  return found.cart;
-}
+// 🔴 M2.8 ลบ "ตะกร้าล่าสุดในหน่วยความจำ" ทิ้งแล้ว (หนี้จาก M2.7): บน serverless คนละอินสแตนซ์ =
+//    ไม่เจอ ⇒ ส่วนลดระดับกลายเป็น 0 เป็นครั้งคราวโดยไม่มีใครรู้ว่าทำไม
+//    วันนี้เหลือ 2 ทาง: (1) `input.cart` ที่ผู้เรียกส่งมา — **ทางหลัก บังคับ**
+//                       (2) แถว `PosSale` ของ `saleId` — POS เขียนบิลก่อนแล้วค่อยคิดสิทธิ์
 
 /** ตะกร้าจากบิลที่เขียนลงตารางแล้ว (อ่านอย่างเดียว — ดูหมายเหตุหัวไฟล์เรื่องการอ่าน PosSale ตรง) */
 async function cartFromSale(ctx: MemberCtx, saleId: string, tx: Tx): Promise<WalletCart | null> {
@@ -750,9 +725,9 @@ export async function applyOnSale(ctx: MemberCtx, input: ApplyOnSaleInput, tx: T
   const customer = await loadCustomer(ctx, input.customerId);
 
   const cart =
-    input.cart ??
-    (await cartFromSale(ctx, saleId, tx)) ??
-    recallCart(ctx, customer.id, input.unitId ?? customer.homeUnitId ?? null) ?? { unitId: input.unitId ?? null, lines: [] };
+    cartLines(input.cart ?? { lines: [] }).length > 0
+      ? input.cart
+      : ((await cartFromSale(ctx, saleId, tx)) ?? { unitId: input.unitId ?? null, lines: [] });
   const unitId = input.unitId ?? cart.unitId ?? customer.homeUnitId ?? null;
   const sys = await resolveSystems(ctx, unitId);
   const choices = input.choices ?? {};
@@ -828,6 +803,7 @@ export async function applyOnSale(ctx: MemberCtx, input: ApplyOnSaleInput, tx: T
     giftCardSatang,
     lines: result.lines,
     totalDiscountSatang: result.totalDiscountSatang,
+    conflicts: result.conflicts,
   };
 }
 

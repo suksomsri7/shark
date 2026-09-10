@@ -8,9 +8,18 @@ import { requireTenant, type Auth } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { createSale, closeDayCsv } from "@/lib/modules/pos/service";
 import { posUnitIsLinked, resolvePosLinks, setItemSalePrice } from "@/lib/modules/pos/register";
+import type {
+  PosMemberChoicesInput,
+  PosMemberQuote,
+  PosMemberRights,
+  PosMemberVoucher,
+} from "@/lib/modules/pos/register";
 import { getPaymentProfile } from "@/lib/payment/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
 import * as coupon from "@/lib/modules/coupon/service";
+import * as member from "@/lib/modules/member";
+import { toMemberActor } from "@/lib/modules/member";
+import * as point from "@/lib/modules/point";
 
 // ── รูปแบบข้อมูลที่ client ส่งมา ──
 // itemId = InvItem.id จาก catalog (ตัดสต็อก) · undefined = รายการเพิ่มเอง (ไม่ตัดสต็อก)
@@ -24,13 +33,25 @@ type SaleInput = {
   payType: "CASH" | "PROMPTPAY" | "TRANSFER";
   cashReceivedSatang?: number;
   memberId?: string;
+  /** M2.8 — สิทธิ์สมาชิกที่ติ๊กไว้บนแผงขวา (voucher / แต้ม / บัตรกำนัล) */
+  memberChoices?: PosMemberChoicesInput;
   couponCode?: string;
   idempotencyKey: string;
 };
 type QuoteInput = Omit<SaleInput, "payType" | "cashReceivedSatang" | "idempotencyKey">;
 
 export type QuoteState =
-  | { ok: true; subtotalSatang: number; billDiscountSatang: number; couponDiscountSatang: number; grandTotalSatang: number; promptpayPayload: string | null }
+  | {
+      ok: true;
+      subtotalSatang: number;
+      billDiscountSatang: number;
+      couponDiscountSatang: number;
+      /** ส่วนลดจากสิทธิ์สมาชิก (ระดับ + voucher + แต้ม + บัตรกำนัล) — 0 เมื่อไม่ได้เลือกสมาชิก */
+      memberDiscountSatang: number;
+      grandTotalSatang: number;
+      promptpayPayload: string | null;
+      member: PosMemberQuote | null;
+    }
   | { ok: false; message: string };
 
 export type RegisterSaleState =
@@ -112,6 +133,146 @@ async function safeMemberId(tenantId: string, memberIdRaw: string | undefined): 
   return { ok: true, memberId: c.id };
 }
 
+// ═══════════ M2.8 · แผงสิทธิ์สมาชิกที่หน้าขาย (ภาพ 06) ═══════════
+//
+// 🔴 ลำดับส่วนลด (ระดับ → voucher → คูปอง → แต้ม → บัตรกำนัล) และกติกากันซ้อน **คิดที่เดียว**
+//    คือ `member.quoteApply` — ที่นี่แค่แปลงตะกร้าของหน้าขายให้เป็นรูปที่กระเป๋าสิทธิ์เข้าใจ
+//    ห้ามคิดส่วนลดเองซ้ำ ไม่งั้นยอดบนหน้าจอกับยอดที่ตัดจริงจะเพี้ยนกันเงียบ ๆ
+// 🔴 ส่วนลดคูปองยังเป็นของ POS (เส้นเดิม) — บรรทัด COUPON ที่กระเป๋าคืนมาจึงถูกหักออก ไม่นับซ้ำ
+
+const baht = (satang: number): string => (satang / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 });
+const thaiDate = (d: Date): string =>
+  new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Bangkok" }).format(d);
+
+/** "สมาชิกมา 2 ปี 3 เดือน" — บอกความสัมพันธ์เป็นภาษาคน ไม่ใช่วันที่ดิบ */
+function memberSinceLabel(createdAt: Date): string {
+  const months = Math.max(0, Math.round((Date.now() - createdAt.getTime()) / (30 * 24 * 3600_000)));
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  if (years <= 0 && rest <= 0) return "สมาชิกใหม่วันนี้";
+  if (years <= 0) return `สมาชิกมา ${rest} เดือน`;
+  return rest > 0 ? `สมาชิกมา ${years} ปี ${rest} เดือน` : `สมาชิกมา ${years} ปี`;
+}
+
+function voucherValueLabel(v: { kind: string; value: number }): string {
+  if (v.kind === "PERCENT") return `${v.value}%`;
+  if (v.kind === "FREE_ITEM") return "ของฟรี";
+  return `฿${baht(v.value)}`;
+}
+
+/** ตะกร้าของหน้าขาย → ตะกร้าของกระเป๋าสิทธิ์ (ชนิดเดียวกับที่ `createSale` ส่งเข้า `applyOnSale`) */
+function walletCart(unitId: string, lines: CartLine[], couponCode: string | undefined) {
+  return {
+    unitId,
+    couponCode: couponCode?.trim().toUpperCase() || null,
+    lines: lines.map((l) => ({
+      name: l.name,
+      qty: l.qty,
+      unitPriceSatang: l.unitPriceSatang,
+      itemId: l.itemId ?? null,
+      serviceId: l.serviceId ?? null,
+    })),
+  };
+}
+
+/**
+ * กระเป๋าสิทธิ์ของสมาชิกที่พนักงานเพิ่งเลือก — โหลดครั้งเดียวต่อคน (ไม่ใช่ทุกครั้งที่ตะกร้าเปลี่ยน)
+ * คืน null = สาขานี้ไม่ได้เปิดใช้ระบบสมาชิก หรือคนนี้ไม่ได้อยู่ในระบบสมาชิกของสาขานี้
+ */
+export async function posMemberRightsAction(input: {
+  systemId: string;
+  unitId: string;
+  memberId: string;
+}): Promise<PosMemberRights | null> {
+  const auth = await requireTenant();
+  if (!(await posUnitIsLinked(auth.active.tenantId, input.systemId, input.unitId))) return null;
+  assertPosCan(auth, input.unitId);
+  const tenantId = auth.active.tenantId;
+
+  const links = await resolvePosLinks(tenantId, input.unitId);
+  if (!links.memberSystemId) return null;
+  const row = await prisma.customer.findFirst({
+    where: { id: String(input.memberId ?? ""), tenantId, memberSystemId: links.memberSystemId },
+    select: { id: true, name: true, memberCode: true, createdAt: true },
+  });
+  if (!row) return null;
+
+  const ctx = { tenantId, systemId: links.memberSystemId, actorUserId: auth.user.id };
+  const actor = toMemberActor(auth.user.id, auth.active);
+  const [wallet, settings] = await Promise.all([
+    member.getWallet(ctx, actor, row.id, { cart: { unitId: input.unitId, lines: [] } }),
+    point.getPointSettings(tenantId),
+  ]);
+
+  const vouchers: PosMemberVoucher[] = wallet.vouchers.map((v) => ({
+    id: v.id,
+    name: v.name,
+    code: v.code,
+    valueLabel: voucherValueLabel(v),
+    expiresLabel: `ใช้ได้ถึง ${thaiDate(v.expiresAt)}`,
+    applicable: v.status === "ACTIVE",
+    reason: v.status === "ACTIVE" ? null : "ใบนี้ใช้ไม่ได้แล้ว",
+  }));
+
+  return {
+    memberId: row.id,
+    name: row.name ?? "สมาชิก",
+    memberCode: row.memberCode ?? "",
+    tierName: wallet.tierBenefits.tier?.name ?? null,
+    tierDiscountPct: wallet.tierBenefits.discountPct,
+    tierDiscountFixedSatang: wallet.tierBenefits.discountFixedSatang,
+    memberSinceLabel: memberSinceLabel(row.createdAt),
+    pointBalance: wallet.points.balance,
+    burnRateSatang: settings.burnRateSatang,
+    burnMinPoints: settings.burnMinPoints,
+    burnMaxPct: settings.burnMaxPct,
+    vouchers,
+    giftCards: wallet.giftCards
+      .filter((g) => g.status === "ACTIVE" && g.balanceSatang > 0)
+      .map((g) => ({ numberMasked: g.numberMasked, balanceSatang: g.balanceSatang })),
+    stamps: wallet.stamps.map((s) => ({ cardId: s.cardId, name: s.name, stamps: s.stamps, slots: s.slots })),
+  };
+}
+
+/** ใบเสนอราคาสิทธิ์สมาชิกของตะกร้าปัจจุบัน — null = ไม่มีสมาชิก/ระบบสมาชิก หรือคนนี้ไม่อยู่ในระบบ */
+async function memberQuoteOf(
+  auth: Auth & { active: NonNullable<Auth["active"]> },
+  memberSystemId: string,
+  unitId: string,
+  memberId: string,
+  lines: CartLine[],
+  couponCode: string | undefined,
+  choices: PosMemberChoicesInput | undefined,
+): Promise<PosMemberQuote | null> {
+  const actorUserId = auth.user.id;
+  const ctx = { tenantId: auth.active.tenantId, systemId: memberSystemId, actorUserId };
+  const actor = toMemberActor(actorUserId, auth.active);
+  try {
+    const q = await member.quoteApply(ctx, actor, memberId, walletCart(unitId, lines, couponCode), {
+      voucherIds: choices?.voucherIds ?? [],
+      points: choices?.points ?? 0,
+      giftCard: choices?.giftCard ?? null,
+    });
+    return {
+      order: [...q.order],
+      lines: q.lines.map((l) => ({ kind: l.kind, ref: l.ref, label: l.label, discountSatang: l.discountSatang, note: l.note ?? null })),
+      conflicts: q.conflicts.map((c) => ({ kind: c.kind, ref: c.ref ?? null, message: c.message })),
+      totalDiscountSatang: q.totalDiscountSatang,
+      netSatang: q.netSatang,
+      pointsToEarn: q.pointsToEarn,
+      stampsToAdd: q.stampsToAdd,
+    };
+  } catch {
+    return null; // คนนี้ไม่ได้อยู่ในระบบสมาชิกของสาขานี้ → ขายต่อได้ตามปกติ แค่ไม่มีแผงสิทธิ์
+  }
+}
+
+/** ส่วนลดสิทธิ์ที่ POS ต้องหักเพิ่ม = ทุกบรรทัดของกระเป๋า **ยกเว้นคูปอง** (คูปอง POS หักไปแล้ว) */
+function memberDiscountOf(q: PosMemberQuote | null): number {
+  if (!q) return 0;
+  return q.lines.reduce((s, l) => (l.kind === "COUPON" ? s : s + l.discountSatang), 0);
+}
+
 // ── ใบเสนอราคา (quote) — คิดยอดสุทธิ + payload PromptPay ให้ client โชว์ QR/เงินทอนที่ถูกต้อง ──
 export async function posQuoteAction(input: QuoteInput): Promise<QuoteState> {
   const auth = await requireTenant();
@@ -129,12 +290,21 @@ export async function posQuoteAction(input: QuoteInput): Promise<QuoteState> {
   const totals = await computeTotals(tenantId, input.unitId, norm.lines, norm.subtotal, input.billDiscountSatang, mem.memberId, input.couponCode);
   if (!totals.ok) return { ok: false, message: totals.message };
 
+  // ── สิทธิ์สมาชิก (M2.8) — ลำดับ/กันซ้อน/เพดาน คิดที่ `member.quoteApply` ที่เดียว ──
+  const links = await resolvePosLinks(tenantId, input.unitId);
+  const memberQuote =
+    mem.memberId && links.memberSystemId
+      ? await memberQuoteOf(auth, links.memberSystemId, input.unitId, mem.memberId, norm.lines, input.couponCode, input.memberChoices)
+      : null;
+  const memberDiscount = memberDiscountOf(memberQuote);
+  const grandTotal = Math.max(0, totals.grandTotal - memberDiscount);
+
   // payload PromptPay (dynamic — ล็อกยอด) จาก PromptPay ID ของร้าน (ไม่ตั้ง/เพี้ยน → null)
   let payload: string | null = null;
   const profile = await getPaymentProfile({ tenantId });
-  if (profile?.promptpayId && totals.grandTotal > 0) {
+  if (profile?.promptpayId && grandTotal > 0) {
     try {
-      payload = promptpayPayload({ id: profile.promptpayId, amountSatang: totals.grandTotal });
+      payload = promptpayPayload({ id: profile.promptpayId, amountSatang: grandTotal });
     } catch {
       payload = null;
     }
@@ -145,8 +315,10 @@ export async function posQuoteAction(input: QuoteInput): Promise<QuoteState> {
     subtotalSatang: norm.subtotal,
     billDiscountSatang: totals.billDiscount,
     couponDiscountSatang: totals.couponDiscount,
-    grandTotalSatang: totals.grandTotal,
+    memberDiscountSatang: memberDiscount,
+    grandTotalSatang: grandTotal,
     promptpayPayload: payload,
+    member: memberQuote,
   };
 }
 
@@ -200,17 +372,24 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
 
   const payType: PosPayType = input.payType === "PROMPTPAY" ? "PROMPTPAY" : input.payType === "TRANSFER" ? "TRANSFER" : "CASH";
 
+  const links = await resolvePosLinks(tenantId, input.unitId);
+  // ── สิทธิ์สมาชิก (M2.8): คิดยอดที่ต้องเก็บด้วยเส้นเดียวกับที่ `createSale` จะตัดจริง ──
+  // (ยอดต่าง = `createSale` โยน PAYMENT_MISMATCH — ตั้งใจให้ล้มเสียงดัง ไม่ใช่ขายเงียบด้วยยอดผิด)
+  const memberQuote =
+    mem.memberId && links.memberSystemId
+      ? await memberQuoteOf(auth, links.memberSystemId, input.unitId, mem.memberId, norm.lines, input.couponCode, input.memberChoices)
+      : null;
+  const grandTotal = Math.max(0, totals.grandTotal - memberDiscountOf(memberQuote));
+
   // เงินสด: เงินรับต้องพอ (ถ้าส่งมา) → คำนวณเงินทอน (โชว์เฉย ๆ · payMethod = ยอดสุทธิเป๊ะตาม engine)
   let changeSatang = 0;
   if (payType === "CASH") {
-    const received = Math.round(Number(input.cashReceivedSatang ?? totals.grandTotal));
+    const received = Math.round(Number(input.cashReceivedSatang ?? grandTotal));
     if (Number.isFinite(received) && received > 0) {
-      if (received < totals.grandTotal) return { status: "error", message: "เงินรับน้อยกว่ายอดที่ต้องชำระ" };
-      changeSatang = received - totals.grandTotal;
+      if (received < grandTotal) return { status: "error", message: "เงินรับน้อยกว่ายอดที่ต้องชำระ" };
+      changeSatang = received - grandTotal;
     }
   }
-
-  const links = await resolvePosLinks(tenantId, input.unitId);
   // serviceId ที่ client ส่งมา ต้องเป็นบริการของ unit นี้จริง — ไม่งั้นทิ้ง id ทิ้ง (ขายต่อได้ แต่ไม่ผูกผิดตัว)
   // client ส่ง id มั่วแล้วรายงานจะเพี้ยน · ราคายังคิดจากที่ส่งมาเหมือนเดิม (พนักงานแก้ราคาได้อยู่แล้ว)
   const wantSvc = [...new Set(norm.lines.map((l) => l.serviceId).filter((x): x is string => !!x))];
@@ -233,13 +412,15 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
       systemId: input.systemId,
       pointSystemId: links.pointSystemId ?? undefined,
       memberId: mem.memberId,
+      memberSystemId: links.memberSystemId ?? undefined,
+      memberChoices: mem.memberId ? input.memberChoices : undefined,
       sourceModule: "POS",
       idempotencyKey,
       lines: safeLines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, itemId: l.itemId, serviceId: l.serviceId })),
       billDiscountSatang: totals.billDiscount,
       couponSystemId: totals.couponSystemId ?? undefined,
       couponCode: totals.couponSystemId ? input.couponCode?.trim().toUpperCase() : undefined,
-      payMethods: [{ type: payType, amountSatang: totals.grandTotal }],
+      payMethods: [{ type: payType, amountSatang: grandTotal }],
     });
     revalidatePath(`/app/sys/${input.systemId}/pos/register`);
     revalidatePath(`/app/sys/${input.systemId}/pos/sales`);

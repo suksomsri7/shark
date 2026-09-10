@@ -6,7 +6,16 @@
 // 🔴 ห่อบาง ๆ ล้วน: ห้ามมีตรรกะธุรกิจ (ตรรกะอยู่ที่ service.ts)
 //    ผู้เรียก **ภายในโมดูล POS เอง** (หน้า/register/actions) import ไฟล์ย่อยตรงได้ตามเดิม
 
-export type { CreateSaleInput, SaleResult, CloseCtx, PosDaySummary, PosDayBill, PayMethodLine } from "./service";
+export type {
+  CreateSaleInput,
+  /** สิทธิ์สมาชิกที่เลือกใช้กับบิล (M2.8) — voucher / แต้ม / บัตรกำนัล */
+  MemberSaleChoices,
+  SaleResult,
+  CloseCtx,
+  PosDaySummary,
+  PosDayBill,
+  PayMethodLine,
+} from "./service";
 
 export {
   /** สร้างบิลขาย (จุดเดียวที่เงินเข้าระบบ — ยิง `pos.sale.paid` ให้บัญชี/แต้ม/สมาชิกเก็บต่อ) */

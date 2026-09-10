@@ -1,7 +1,5 @@
 import { prisma } from "@/lib/core/db";
 import type { Prisma, PrismaClient, PosPayType } from "@prisma/client";
-import * as point from "@/lib/modules/point/service";
-import * as member from "@/lib/modules/member/service";
 import * as coupon from "@/lib/modules/coupon/service";
 import * as inventory from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
@@ -9,6 +7,14 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
+//
+// ── M2.8: อะไรอยู่ใน tx ของบิล อะไรไปคิว (§9.1) ─────────────────────────────
+// ใน tx (ต้องอะตอมมิกกับการรับเงิน — พลาดแล้วลูกค้าเสียของ/จ่ายเกิน):
+//   คูปอง redeem · `member.applyOnSale` (voucher USED · แต้ม BURN · ตัดยอดบัตรกำนัล) · ยอดที่ต้องจ่าย
+// นอก tx ผ่านคิว `pos.sale.paid` → `src/lib/member-bridges.ts` (ของแถมที่มาช้าได้):
+//   ยอดใช้จ่ายสะสม · แต้มที่ได้ · สแตมป์ · ที่มาซื้อครั้งแรก · เลื่อนระดับ · ไทม์ไลน์
+// 🔴 เหตุผล: กฎแต้ม/สแตมป์/ระดับพัง **ห้ามทำให้ขายของไม่ได้** — เงินเข้าก่อนเสมอ
+//    ⇒ `pointEarned` ตอน commit จึงเป็น 0 เสมอ แล้วสะพานเขียนทับหลังคิวระบาย
 type Client = PrismaClient | Prisma.TransactionClient;
 
 async function withTx<T>(client: Client, fn: (tx: Client) => Promise<T>): Promise<T> {
@@ -23,7 +29,15 @@ function bkkPeriod(): string {
   return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-const NON_EARN: PosPayType[] = ["DEPOSIT", "ROOM_CHARGE"];
+/**
+ * สิทธิ์สมาชิกที่พนักงาน/ลูกค้า "เลือกใช้" กับบิลนี้ (M2.8 · §9.1)
+ * ส่วนลดระดับไม่ต้องเลือก — ใช้อัตโนมัติทุกบิลของสมาชิก · ลำดับ/กันซ้อนอยู่ที่ `member.quoteApply`
+ */
+export type MemberSaleChoices = {
+  voucherIds?: string[];
+  points?: number;
+  giftCard?: { number: string; pin: string; satang: number };
+};
 
 export type CreateSaleInput = {
   tenantId: string;
@@ -31,6 +45,10 @@ export type CreateSaleInput = {
   systemId: string; // ระบบ POS
   pointSystemId?: string; // ระบบแต้ม (สำหรับสะสม) — null = ไม่สะสม
   memberId?: string;
+  /** ระบบสมาชิกของบิลนี้ — ไม่ส่ง = หาจากสาขาเอง (บิลเดิมที่ส่งแค่ memberId ยังทำงานเหมือนเดิม) */
+  memberSystemId?: string;
+  /** สิทธิ์ที่เลือกใช้ — ไม่ส่ง = ได้ส่วนลดระดับอัตโนมัติอย่างเดียว */
+  memberChoices?: MemberSaleChoices;
   sourceModule?: string;
   sourceId?: string;
   idempotencyKey: string;
@@ -50,6 +68,31 @@ export type SaleResult = {
   grandTotalSatang: number;
   pointEarned: number;
 };
+
+type MemberFacade = typeof import("@/lib/modules/member");
+type AppliedRights = Awaited<ReturnType<MemberFacade["applyOnSale"]>>;
+
+/**
+ * ใช้สิทธิ์สมาชิกกับบิล — คืน `null` เมื่อ "แนบชื่อลูกค้าไว้เฉย ๆ แต่คนนี้ไม่ได้อยู่ในระบบสมาชิกของสาขานี้"
+ *
+ * 🔴 ทำไมต้องยอมข้าม: บิลเดิมจำนวนมาก (โรงแรม/ร้านอาหาร/คลินิก) แนบ `memberId` ของลูกค้าที่อยู่คนละ
+ *    ระบบสมาชิก หรือร้านเพิ่งเปิดระบบสมาชิกทีหลัง — ก่อน M2.8 บิลพวกนี้ขายผ่าน ถ้าจู่ ๆ ล้มทั้งใบ
+ *    จะกลายเป็น "เก็บเงินลูกค้าไม่ได้" เพราะเรื่องสะสมแต้ม
+ * 🔴 แต่ถ้าพนักงาน **สั่งใช้สิทธิ์มาจริง** (voucher/แต้ม/บัตรกำนัล) ต้องโยนเสมอ — เงียบ = ลูกค้าจ่ายเต็ม
+ *    ทั้งที่หน้าจอบอกว่าได้ส่วนลด
+ */
+async function applyMemberRights(
+  member: MemberFacade,
+  askedNothing: boolean,
+  run: () => Promise<AppliedRights>,
+): Promise<AppliedRights | null> {
+  try {
+    return await run();
+  } catch (e) {
+    if (askedNothing && e instanceof member.MemberNotFoundError) return null;
+    throw e;
+  }
+}
 
 export async function createSale(input: CreateSaleInput, client: Client = prisma): Promise<SaleResult> {
   // เราเปิด tx เอง (client = prisma) → drain outbox ได้หลัง commit · ถ้าถูกเรียกใน tx ผู้อื่น ปล่อยให้ cron เก็บ
@@ -98,10 +141,18 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
     }
 
     const vat = 0; // MVP
-    const grandTotal = subtotal - billDiscount - couponDiscount + vat;
     const paidSum = input.payMethods.reduce((s, p) => s + p.amountSatang, 0);
-    if (paidSum !== grandTotal) {
-      throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${grandTotal}`);
+    const beforeMember = subtotal - billDiscount - couponDiscount + vat;
+
+    // ── ระบบสมาชิกของบิลนี้ (M2.8) ──
+    // ไม่มี memberId = ไม่ยิง query เพิ่มแม้แต่ครั้งเดียว ⇒ บิล walk-in เดินเส้นทางเดิมทุกประการ
+    const memberSystemId = input.memberId
+      ? (input.memberSystemId ?? (await systemForUnit(input.tenantId, input.unitId, "MEMBER", tx)))
+      : null;
+
+    // ไม่มีสิทธิ์สมาชิกให้หัก → ตัดจบก่อนแตะตัวนับเลขใบเสร็จ (พฤติกรรมเดิมของ PAYMENT_MISMATCH)
+    if (!memberSystemId && paidSum !== beforeMember) {
+      throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${beforeMember}`);
     }
 
     // เลขใบเสร็จรันต่อ unit/เดือน
@@ -127,13 +178,89 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
         subtotalSatang: subtotal,
         discountSatang: billDiscount + couponDiscount,
         vatSatang: vat,
-        grandTotalSatang: grandTotal,
+        grandTotalSatang: beforeMember,
         paidAt: new Date(),
       },
     });
     await tx.posSaleLine.createMany({
       data: lines.map((l) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId ?? null, serviceId: l.serviceId ?? null })),
     });
+
+    // ── ใช้สิทธิ์สมาชิกจริง (M2.8 · §9.1) — ในtx เดียวกับบิล ──
+    // 🔴 บิลถูกเขียนก่อนเพราะ voucher/แต้ม/บัตรกำนัลต้องผูก `saleId` ที่มีอยู่จริง (ร่องรอยย้อนกลับได้)
+    //    ยอดที่ต้องจ่ายจึงถูก "แก้ทีหลัง" ในtx เดียวกัน — ผิดเมื่อไหร่ rollback ทั้งใบ ไม่มีบิลค้าง
+    // 🔴 ส่ง `cart` เข้าไปเสมอ (หนี้จาก M2.7): ส่วนลดระดับคิดจากยอดตะกร้า ห้ามให้ฝั่งสมาชิกไปเดาเอง
+    let memberDiscount = 0;
+    let tierDiscountSatang = 0;
+    let voucherUseIds: string[] = [];
+    let giftCardTxnId: string | null = null;
+    if (input.memberId && memberSystemId) {
+      // dynamic import: `member/index` → wallet → giftcard → `pos/index` = วงกลมของโมดูล
+      // (เรียกตอนใช้งานเท่านั้น ⇒ ลำดับการโหลดไฟล์ไม่มีทางได้ facade ที่ยังประกอบไม่เสร็จ)
+      const member = await import("@/lib/modules/member");
+      const mctx = { tenantId: input.tenantId, systemId: memberSystemId, actorUserId: null };
+      const customerId = input.memberId;
+      const ch = input.memberChoices ?? {};
+      // "ไม่ได้สั่งใช้สิทธิ์อะไรเลย" = แนบชื่อลูกค้าไว้เฉย ๆ (ทางเดิมของ POS ตั้งแต่ก่อน M2.8)
+      const askedNothing = (ch.voucherIds ?? []).length === 0 && !(ch.points && ch.points > 0) && !ch.giftCard;
+      const applied = await applyMemberRights(member, askedNothing, () =>
+        member.applyOnSale(
+          mctx,
+          {
+            saleId: sale.id,
+            customerId,
+            unitId: input.unitId,
+            choices: ch,
+            cart: {
+              unitId: input.unitId,
+              // ส่งโค้ดคูปองไปด้วยเพื่อให้กติกา "ห้ามใช้ voucher ซ้อนคูปอง" ตัดสินได้ (§11.5)
+              // — ตัวส่วนลดคูปองยังเป็นของ POS เหมือนเดิม (หักออกจากยอดสิทธิ์ด้านล่าง ไม่นับซ้ำ)
+              couponCode: hasCoupon ? input.couponCode : null,
+              lines: lines.map((l) => ({
+                name: l.name,
+                qty: l.qty,
+                unitPriceSatang: l.unitPriceSatang,
+                discountSatang: l.discountSatang,
+                itemId: l.itemId ?? null,
+                serviceId: l.serviceId ?? null,
+              })),
+            },
+          },
+          tx as Prisma.TransactionClient,
+        ),
+      );
+      if (applied) {
+        // voucher ที่ใช้อยู่ห้ามซ้อนคูปอง → ล้มทั้งบิลพร้อมเหตุผลไทย (ห้ามตัด voucher แล้วขายต่อเงียบ ๆ)
+        const couponConflict = applied.conflicts.find((c) => c.kind === "COUPON");
+        if (hasCoupon && couponConflict && applied.voucherUseIds.length > 0) {
+          throw new Error(couponConflict.message);
+        }
+        // ส่วนลดคูปองถูกคิดที่ POS ไปแล้ว — หักบรรทัดคูปองออกจากยอดสิทธิ์ ไม่งั้นลดสองรอบ
+        const couponLine = applied.lines.find((l) => l.kind === "COUPON");
+        memberDiscount = applied.totalDiscountSatang - (couponLine?.discountSatang ?? 0);
+        tierDiscountSatang = applied.tierDiscountSatang;
+        voucherUseIds = applied.voucherUseIds;
+        giftCardTxnId = applied.giftCardTxnId;
+      }
+    }
+
+    const grandTotal = beforeMember - memberDiscount;
+    if (paidSum !== grandTotal) {
+      throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${grandTotal}`);
+    }
+    if (memberDiscount > 0 || tierDiscountSatang > 0 || voucherUseIds.length > 0 || giftCardTxnId) {
+      await tx.posSale.update({
+        where: { id: sale.id },
+        data: {
+          discountSatang: billDiscount + couponDiscount + memberDiscount,
+          grandTotalSatang: grandTotal,
+          tierDiscountSatang,
+          voucherUseIds,
+          giftCardTxnId,
+        },
+      });
+    }
+
     await tx.posPayment.createMany({
       data: input.payMethods.map((p) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, type: p.type, amountSatang: p.amountSatang, refSaleId: p.refSaleId })),
     });
@@ -158,7 +285,7 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
       if (!r.ok) throw new Error(`คูปองใช้ไม่ได้: ${coupon.couponReasonText(r.reason)}`);
     }
 
-    // outbox: ยอดขาย → บัญชี (contract 2.4) — เขียน event ใน tx เดียวกับบิล (atomic)
+    // outbox: ยอดขาย → บัญชี (contract 2.4) + สะพานสมาชิก (M2.8) — เขียน event ใน tx เดียวกับบิล (atomic)
     await emitOutbox(tx as Prisma.TransactionClient, {
       tenantId: input.tenantId,
       type: "pos.sale.paid",
@@ -168,49 +295,9 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
       unitId: input.unitId,
     });
 
-    // side effects (แกนกลาง Point + Member) — ใน tx เดียวกัน
-    let pointEarned = 0;
-    if (input.memberId) {
-      const earnable = input.payMethods
-        .filter((p) => !NON_EARN.includes(p.type))
-        .reduce((s, p) => s + p.amountSatang, 0);
-      await member.recordSpend(input.tenantId, input.memberId, grandTotal, tx);
-      if (earnable > 0 && input.pointSystemId) {
-        const res = await point.earn(
-          {
-            tenantId: input.tenantId,
-            systemId: input.pointSystemId,
-            customerId: input.memberId,
-            unitId: input.unitId,
-            amountSatang: earnable,
-            sourceModule: input.sourceModule ?? "POS",
-            refType: "PosSale",
-            refId: sale.id,
-            idempotencyKey: `pos-earn-${sale.id}`,
-          },
-          tx,
-        );
-        pointEarned = res.pointsEarned;
-      }
-      await member.logActivity(
-        {
-          tenantId: input.tenantId,
-          customerId: input.memberId,
-          unitId: input.unitId,
-          module: "pos",
-          type: "PURCHASE",
-          refType: "PosSale",
-          refId: sale.id,
-          summary: `ชำระเงิน ฿${(grandTotal / 100).toLocaleString("th-TH")} (ใบเสร็จ ${receiptNo})`,
-        },
-        tx,
-      );
-    }
-
-    if (pointEarned > 0) {
-      await tx.posSale.update({ where: { id: sale.id }, data: { pointEarned } });
-    }
-    return { saleId: sale.id, receiptNo, grandTotalSatang: grandTotal, pointEarned };
+    // 🔴 แต้ม/ยอดสะสม/ไทม์ไลน์ **ไม่อยู่ที่นี่แล้ว** (M2.8) — ดูหมายเหตุหัวไฟล์
+    //    `pointEarned` = 0 ตอน commit เสมอ · `src/lib/member-bridges.ts` เขียนค่าจริงหลังคิวระบาย
+    return { saleId: sale.id, receiptNo, grandTotalSatang: grandTotal, pointEarned: 0 };
   });
 
   // ── หลัง tx commit: ตัดสต็อก (perpetual) + post บัญชี ──
@@ -284,16 +371,11 @@ export async function voidSale(tenantId: string, unitId: string, saleId: string)
       await coupon.release({ tenantId, systemId, refType: "PosSale", refId: saleId, reason: "void บิล POS" }, tx);
     }
 
-    if (sale.memberId) {
-      const pointSystemId = await systemForUnit(tenantId, unitId, "POINT", tx);
-      if (pointSystemId) {
-        await point.reverse(
-          { tenantId, systemId: pointSystemId, refType: "PosSale", refId: saleId, idempotencyKey: `pos-void-${saleId}` },
-          tx,
-        );
-      }
-      await member.recordSpend(tenantId, sale.memberId, -sale.grandTotalSatang, tx);
-    }
+    // 🔴 M2.8: การคืนของฝั่งสมาชิก (voucher · แต้มที่เผา · แต้มที่ได้ · บัตรกำนัล · สแตมป์ · ยอดสะสม ·
+    //    ไทม์ไลน์) ย้ายไปคิว `pos.sale.voided` → `src/lib/member-bridges.ts#onPosSaleVoided`
+    //    เหตุผลเดียวกับตอนปิดบิล: การยกเลิกบิลต้องสำเร็จเสมอแม้ฝั่งสมาชิกมีปัญหา
+    //    (ของเดิมกลับแต้มด้วยคีย์ `pos-void-<saleId>` — คีย์เดียวกับที่ `member.releaseOnVoid` ใช้
+    //     ⇒ ถ้าปล่อยไว้ทั้งสองที่ ตัวหนึ่งจะกลืนอีกตัวเงียบ ๆ แล้วล็อตแต้มไม่ถูกย้อน)
   });
 
   // best-effort หลัง commit — cron เก็บตกถ้าล้ม
