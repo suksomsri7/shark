@@ -9,11 +9,12 @@
 - Class: **read** (ไม่เขียน ไม่ audit) · **write** (ต้องมี `Idempotency-Key` · audit ทุกครั้ง) · **danger** (write + ยืนยัน 2 ขั้น/approval: ลบ PDPA · รวมคน · ตั้งระดับมือ · ปรับแต้มเกินเพดาน · ออก voucher เกินเพดาน)
 - รูปแบบตอบ `{ ok: true, data }` / `{ ok: false, error: { code, message(ไทย), details? } }` · แบ่งหน้า `take/cursor` · เวลาทั้งหมด ISO-8601 +07:00 · เงินเป็นสตางค์ (`*Satang`) · แต้มเป็นจำนวนเต็ม
 - error code: `UNAUTHORIZED · FORBIDDEN · NOT_FOUND (404-not-403) · VALIDATION · CONFLICT (idempotency/unique) · LIMIT (เพดาน) · APPROVAL_REQUIRED (คืน approvalRequestId) · RATE_LIMITED · PRIVACY_BLOCKED (ฟิลด์อ่อนไหว)`
+- ช่องทาง (D19): ทุกที่ที่รับ `channel` ใช้ key จาก `GET /channels` (ไม่ใช่ enum ตายตัว) · ช่องทางที่ `connected=false` รับ identity/consent ได้แต่ส่งข้อความไม่ได้ (error `CHANNEL_NOT_CONNECTED`)
 - ฟิลด์กำหนดเอง: ส่ง/รับผ่าน `fields: { "<key>": value }` (key ของ MemberField · ชนิดค่าตามฟิลด์ · LOOKUP = id · FILE = fileId) · ฟิลด์อ่อนไหวไม่ออกใน readonly และไม่ออกถ้าคีย์ไม่มีสิทธิ์ตาม policy
 - webhook: ทุก event §5 ส่ง `POST` พร้อม `X-Shark-Signature` (HMAC เดิม) · retry 5 ครั้ง
 - rate limit 600 req/นาที/คีย์ · payload ≤ 1 MB · import/export ผ่าน op เฉพาะ (async job)
 
-## 2. ทะเบียน op (118 op · read 52 · write 58 · danger 8)
+## 2. ทะเบียน op (124 op · read 55 · write 61 · danger 8)
 
 รูปแบบ: `op` — **METHOD path** — scope — class — ป้ายไทย — input หลัก → output หลัก — event
 
@@ -38,6 +39,11 @@
 | `members.export` | POST /members/export | member.customer.export | write | ส่งออก CSV (async) | {filters, columns[]} → {jobId} (ไฟล์ผ่าน storage · audit) |
 | `members.activity` | GET /members/{id}/activity | read | read | ไทม์ไลน์ | type[] · from/to · unit · take/cursor → items[Activity] |
 | `members.brief` | GET /members/brief?ids= | read | read | ชื่อ/ระดับ/แต้ม หลายคน (batch ≤ 100) | → items[MemberBrief] |
+| `members.identities.list` | GET /members/{id}/identities | read | read | ช่องทางที่ผูก (D18) | → items[{channel, externalId(masked), displayName, verified, linkedBy, linkedAt}] |
+| `members.identities.link` | POST /members/{id}/identities | update | write | ผูกช่องทาง | {channel, externalId, displayName?, verified?} → CONFLICT ถ้า id นี้เป็นของคนอื่น · `member.identity.linked` |
+| `members.identities.unlink` | DELETE /members/{id}/identities/{identityId} | update (MANAGER+) | write | ถอด | — |
+| `members.resolve` | POST /members/resolve | operate | read | จับคู่ตัวตนจากช่องทาง (ให้ระบบภายนอก/แชท) | {channel, externalId, phone?, email?, displayName?} → {customerId?, matchedBy, candidates[]} |
+| `channels.list` | GET /channels | read | read | ทะเบียนช่องทางกลาง (D19) | → items[{key, label, kind, canConsent, canNotify, connected}] |
 
 ### 2.2 fields · layout (ฟิลด์กำหนดเอง · 11)
 | op | METHOD path | scope | class | ไทย | input → output |
@@ -60,7 +66,7 @@
 | `consents.get` | GET /members/{id}/consents | read | read | ความยินยอมทุกช่องทาง |
 | `consents.set` | PUT /members/{id}/consents | update | write | {channel, granted, source, policyVersion?} · `member.consent.changed` |
 | `privacy.policies.list/create/publish` | GET/POST /privacy/policies · POST /privacy/policies/{v}/publish | member.privacy.manage | read/write | นโยบาย+เวอร์ชัน |
-| `privacy.sensitive.list/set` | GET/PUT /privacy/sensitive | privacy.manage | read/write | ใครดูอ่อนไหว (D8) {targetType,targetId,roles[],sameUnitOnly,logAccess} |
+| `privacy.sensitive.list/set` | GET/PUT /privacy/sensitive | privacy.manage | read/write | ใครดูอ่อนไหว (D8+D17) {targetType,targetId,roles[],hrPositions[],hrDepartmentIds[],sameUnitOnly,logAccess} · `GET /privacy/hr-positions` รายการตำแหน่ง/แผนกจาก HR + จำนวนพนักงานที่ยังไม่ผูกบัญชี |
 | `privacy.accessLog` | GET /privacy/access-log | privacy.manage | read | บันทึกการดู |
 | `privacy.requests.list` | GET /privacy/requests | privacy.manage | read | คำขอ PDPA |
 | `privacy.export` | POST /members/{id}/privacy/export | privacy.manage (หรือ CUSTOMER ตนเอง) | write | รวมไฟล์ทุกโมดูล → {jobId} |
@@ -216,6 +222,8 @@ Activity      = { id, at, module, type, summary, data, refType, refId, unitId?, 
 | member_create | members.create | write | มีอยู่แล้ว |
 | member_update · member_set_tags · member_set_owner | members.* | write | |
 | member_merge | members.merge | danger | |
+| member_resolve · member_link_identity | members.resolve / identities.link | read/write | ตัวตนหลายช่องทาง |
+| channels_list | channels.list | read | |
 | member_import_preview | members.import.start (dryRun) | read | |
 | field_layout · field_create · field_update | fields.* | read/write | admin bundle |
 | consent_set | consents.set | write | |
@@ -240,8 +248,8 @@ Activity      = { id, at, module, type, summary, data, refType, refId, unitId?, 
 | report_overview · report_points_liability · report_sources · report_promotions | reports.* | read | |
 | notify_member | notifications.send | write | |
 
-## 5. Webhook events (ทั้งหมด 26)
-`member.created` `member.updated` `member.merged` `member.tier.changed` `member.tier.at_risk` `member.consent.changed` `point.earned` `point.burned` `point.expiring` `point.expired` `point.transferred` `stamp.added` `stamp.completed` `reward.redeemed` `reward.fulfilled` `voucher.issued` `voucher.used` `voucher.expiring` `voucher.expired` `giftcard.sold` `giftcard.used` `review.received` `review.replied` `referral.joined` `referral.converted` `campaign.sent`
+## 5. Webhook events (ทั้งหมด 27)
+`member.created` `member.updated` `member.merged` `member.tier.changed` `member.tier.at_risk` `member.consent.changed` `member.identity.linked` `point.earned` `point.burned` `point.expiring` `point.expired` `point.transferred` `stamp.added` `stamp.completed` `reward.redeemed` `reward.fulfilled` `voucher.issued` `voucher.used` `voucher.expiring` `voucher.expired` `giftcard.sold` `giftcard.used` `review.received` `review.replied` `referral.joined` `referral.converted` `campaign.sent`
 payload มาตรฐาน `{ id, event, tenantId, systemId, at, data:{...}, customerId? }` · ไม่มีข้อมูลอ่อนไหว · เบอร์ masked
 
 ## 6. ตัวอย่างการใช้ (สำหรับคู่มือ/AI)

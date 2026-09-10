@@ -12,22 +12,38 @@
 5. ภาพ parity: ทุกใบระบุภาพอ้างอิงจาก `ledger/design-member/NN-*.png` · Fable ดูภาพจริงคู่ mockup ทั้ง owner และ staff (thana = STAFF สาขาป่าตอง ไม่มี crm.*)
 6. เพดาน/สิทธิ์/ข้อความ ตาม §6 §11 ของพิมพ์เขียว · event ใหม่ต้องลง 3 ทะเบียน (consumer/AUTOMATION_EVENTS/WEBHOOK_EVENTS) ในใบเดียวกับที่ emit
 
+## 0.1 บทบาทและขั้นตอนต่อใบ (ใครทำอะไร · ตามลำดับ · ทุกใบเหมือนกัน)
+| ขั้น | ใคร | ทำอะไร | หลักฐานที่ต้องมี |
+|---|---|---|---|
+| 1 | **Fable** | อ่านสัญญาใบนั้นในพิมพ์เขียว/MEMBER-RUN → เขียนข้อสอบ `qc-member-<wo>.mts` (SKIP guard · chk · JSON_SUMMARY · finally คืนสภาพ) + เพิ่ม spec ภาพใน `visual-member.mts` | ข้อสอบรัน = SKIPPED ก่อนมีโค้ด · ผ่าน tsc |
+| 2 | Fable | commit ข้อสอบ · เขียน prompt builder (อ่านก่อน/env QC/ลำดับงานหนัก/ห้าม build/ห้าม commit/ส่งมอบ wo-notes) · spawn builder ตามคอลัมน์ "builder" | prompt เก็บใน transcript · ledger event "เริ่ม Mx.y" |
+| 3 | **builder** (Opus/Sonnet) | ทำโค้ด + migration QC + รันข้อสอบจนผ่าน (ยกเว้นข้อภาพ) → tsc → regressions → fitness มี/ไม่มี env → เขียน `ledger/wo-notes/member-Mx.y.md` (ไฟล์ · ผล · ข้อแย้งพร้อมหลักฐาน · หนี้ · คืนสภาพ QC) | JSON_SUMMARY ทุกชุด · ห้ามแก้ข้อสอบ · ห้าม build · ห้าม commit |
+| 4 | Fable | อ่านโน้ต → ตัดสินข้อแย้ง (แก้ข้อสอบเองถ้า builder ถูก) → รันข้อสอบ+regressions ซ้ำเอง | ผลรันของ Fable ไม่ใช่ของ builder |
+| 5 | Fable | build QC server → ถ่ายภาพ (owner + thana + customer) → **เปิดดูทุกภาพเทียบ mockup** → stop server | ภาพใน `.qc-shots/member/<wo>/` · ระบุจุดต่างใน ledger |
+| 6 | Fable | tsc · fitness (2 แบบ) · commit ระบุไฟล์ · rebase · push main + session branch | commit hash ใน ledger |
+| 7 | Fable | poll Vercel READY · ตรวจ `_prisma_migrations` บน prod (ถ้ามี migration) · backfill prod ถ้าใบนั้นมี (dry-run ก่อน) | ผลใน ledger event |
+| 8 | Fable | อัปเดต KANBAN-RUN-style ledger (แถว WO DONE + event) · memory · Telegram % (ฟีเจอร์ที่ผู้ใช้ได้ + บั๊กที่จับได้) | ข้อความ Telegram |
+| 9 | Fable | ใบถัดไปตามลำดับ §3 · ถ้าเครื่องรีสตาร์ท: โค้ดบนดิสก์ → Fable รับจบเองไม่ spawn ใหม่ | — |
+| ปิดเฟส | Fable | qc:all เต็ม · prod verify ทั้งเฟส · handover · Telegram · memory | HANDOVER-…-MEMBER-Mx.md |
+- **เจ้าของ**: รับรายงาน Telegram · ตอบเมื่อ Fable ถามเรื่องที่เป็นมติธุรกิจเท่านั้น (ไม่ถามเรื่องเทคนิค) · ดูหน้าใหม่บน prod ด้วยตา · ตั้ง env/คีย์ที่ต้องใช้ (LINE OA · Resend · SMS provider)
+- **ห้าม**: builder 2 ตัวพร้อมกัน · งานหนักซ้อน · แตะ `.env` prod · รัน suite ที่ `loadEnvFile(".env")`
+
 ## 1. ตาราง WO
 
 | WO | ชื่อ | builder | ขึ้นกับ | migration | oracle (ข้อ) | ภาพ |
 |---|---|---|---|---|---|---|
-| **M1.1** | schema v2 + enum + backfill 6 สคริปต์ + seed QC | Opus | — | `member_v2_a` | 22 | — |
+| **M1.1** | schema v2 + enum + backfill 6 สคริปต์ + seed QC + **ทะเบียนช่องทางกลาง `channels.ts` (D19) + `MemberChannelIdentity` + `HrEmployee.userId`+backfill (D17/D18)** | Opus | — | `member_v2_a` | 26 | — |
 | **M1.2** | fields engine (sections/fields/values/history · validate · filterWhere · templates apply) | Opus | M1.1 | — | 26 | — |
 | **M1.3** | ตัวออกแบบฟิลด์ UI + เทมเพลต 16 ชุด (ข้อมูล) | Sonnet | M1.2 | — | 14 | 03 |
-| **M1.4** | profile service (create/update/360/duplicates/merge) + policy อ่อนไหว + access log | Opus | M1.2 | — | 28 | — |
+| **M1.4** | profile service (create/update/360/duplicates/merge) + policy อ่อนไหว (บทบาท × **ตำแหน่ง/แผนก HR** D17) + access log + **linkIdentity/identities (D18 กติกาจับคู่ตายตัว)** | Opus | M1.2 | — | 34 | — |
 | **M1.5** | หน้ารวมสมาชิก (กรองทุกฟิลด์ · มุมมองบันทึก · bulk · ส่งออก) + หน้า 360 แท็บโปรไฟล์ + แถบขวา | Sonnet | M1.4 | — | 20 | 01 · 02 |
 | **M1.6** | สมัคร (โมดัล/QR/ลิงก์) · นำเข้า mapping · ตัวซ้ำ/รวมคน UI | Sonnet | M1.4 | — | 18 | 10 · 11 · 12 |
-| **M1.7** | consent/privacy: นโยบายเวอร์ชัน · consent ต่อช่องทาง · sensitive policy (D8) · access log · คำขอ export/erase (+approval) | Opus | M1.4 | `member_v2_b` (ถ้าแยก) | 22 | 14 |
-| **M1.8** | ช่องทางที่มา: AcquisitionLink/QR · attribution first/last · resolveSource ทุกทางเข้า · รายงาน | Opus | M1.4 | — | 16 | 13 |
+| **M1.7** | consent/privacy: นโยบายเวอร์ชัน · consent ต่อช่องทาง (key จากทะเบียน D19) · sensitive policy (D8+D17 UI ชิปตำแหน่ง HR + เตือนพนักงานยังไม่ผูก) · access log (+ตำแหน่ง) · คำขอ export/erase (+approval) | Opus | M1.4 | `member_v2_b` (ถ้าแยก) | 26 | 14 |
+| **M1.8** | ช่องทางที่มา: AcquisitionLink/QR · attribution first/last · resolveSource ทุกทางเข้า (+MARKETPLACE/APP + `sourceChannel`) · รายงาน | Opus | M1.4 | — | 18 | 13 |
 | **M1.9** | tiers engine: TierDef/benefits/rules (AutomationRule scope MEMBER_TIER) · evaluate · runTierReview · history · dry-run · sync legacy enum · welcome voucher (stub → M2.5) | Opus | M1.4 | — | 26 | — |
 | **M1.10** | ระดับ UI: บันได · ตัวสร้างกฎ · benefits editor · ทดลองรัน · ประวัติ · แบบเสียเงิน | Sonnet | M1.9 | — | 16 | 04 · 15 |
 | **M1.11** | REST/AI ชุดแรก: registry `member` + op members/fields/consents/privacy/sources/tiers/me(get/update/card) ~45 · generator docs · skill `members` v2 · webhook events M1 | Opus | M1.5–M1.10 | — | 24 | 27 (ครึ่งขวา) |
-| **M1.12** | มือถือ (responsive ทุกหน้า M1) + แผงข้างห้องแชท (linkContact · สมัครจากแชท · ปุ่มด่วน) + `chat.contact.linked` | Sonnet | M1.5 | — | 14 | 26 · 28(ก,ข) |
+| **M1.12** | มือถือ (responsive ทุกหน้า M1) + แผงข้างห้องแชท (**linkIdentity ทุกช่องทาง** · ช่องทางที่ผูก n · candidates/ผูกรวม · สมัครจากแชท · ปุ่มด่วน) + `chat.contact.linked` | Sonnet | M1.5 | — | 18 | 26 · 28(ก,ข) |
 | **M2.1** | point rules + lots + expiry (computeEarn · earnWithLot · burnFifo · expireDue · expiringSoon · cron · backfill lots) | Opus | M1.1 | `member_v2_c` | 28 | — |
 | **M2.2** | point transfer (OTP) · adjust+approval · settings · หน้าตั้งค่าแต้ม + ledger รวม + ใกล้หมดอายุ | Sonnet | M2.1 | — | 16 | 16 |
 | **M2.3** | stamp: cards/progress/events · addStamp (PIN/QR/auto) · completeCycle → รางวัล · editor UI + การ์ดจริง | Opus | M2.1 | `member_v2_d` | 22 | 17 |
@@ -44,21 +60,21 @@
 | **M3.4** | reviews: request (journey/consumer) · submit (LIFF) · reply · hide · escalate → kanban card · AI summary/draft reply · inbox UI + settings | Opus | M2.9 | `member_v2_h` | 22 | 23 · 08(ขวา) |
 | **M3.5** | referrals: program (D6) · code/link/QR · attach ตอนสมัคร · conversion consumer · reward both · fraud · leaderboard · UI + LIFF | Opus | M2.5 | — | 20 | 24 · 08(ขวา) |
 | **M3.6** | notifications: templates 8×4 · send (consent/quiet hours/รวมรายวัน) · LINE/อีเมล/SMS/push · stats · UI | Sonnet | M3.2 | — | 16 | 30 |
-| **M3.7** | history timeline: consumers ทุกโมดูล → MemberActivity (pos · booking(+event ใหม่ completed/no_show) · chat · account docs · kanban · crm.deal.won · loyalty ทั้งหมด) · แท็บประวัติกรองได้ | Opus | M2.8 | — | 24 | 08 |
+| **M3.7** | history timeline: consumers ทุกโมดูล → MemberActivity (pos · booking(+event ใหม่ completed/no_show) · chat ทุกช่องทาง · **ecommerce `shop.order.paid` (Lazada/Shopee/TikTok → ซื้อ/แต้ม/ที่มา MARKETPLACE + linkIdentity)** · account docs · kanban · crm.deal.won · loyalty ทั้งหมด) · แท็บประวัติกรองได้ | Opus | M2.8 | — | 28 | 08 |
 | **M3.8** | reports: overview/RFM/tiers/points(หนี้สิน)/promotions(ROI+holdout)/sources/cohort · CSV · ตั้งเวลาอีเมล | Sonnet | M3.3 · M3.7 | — | 18 | 25 |
 | **M3.9** | เทมเพลตกิจการ 16 ชุดครบ (ส่วน/ฟิลด์/ระดับ/สแตมป์/journey) + apply/preview UI + ตัวอย่างมือถือ | Sonnet | M3.3 | — | 18 | 03(เทมเพลต) |
 | **M3.10** | REST/AI ชุดสาม: segments/campaigns/journeys/reviews/referrals/notifications/reports/settings/apikeys/webhooks/join ~33 op · tools ครบ ~40 · manifest · OpenAPI · docs generator สมบูรณ์ | Opus | M3.1–M3.9 | — | 22 | 27 |
 | **M3.11** | LIFF onboarding (join 3 ขั้น · OTP · ที่มา `?src=` · ผู้แนะนำ) + แอปพนักงาน (ค้น/สแกน/ประทับ/ใช้สิทธิ์ 3 จอ) + แอปลูกค้า WebView | Sonnet | M2.9 · M3.5 | — | 16 | 29 · 28 |
 | **M3.F** | ปิด RUN: qc:all เต็ม · prod verify migration a–h · backfill prod ทีละร้าน · handover · Telegram · memory | Fable | ทั้งหมด | — | — | — |
 
-รวม oracle ≈ **720 ข้อ** · migration 8 ตัว (a–h · additive) · ประมาณเวลา (จังหวะบอร์ดงาน 45–80 นาที/ใบ + build/ภาพโดย Fable): **M1 ~2 วันทำงานเต็ม · M2 ~1.5 วัน · M3 ~2 วัน ⇒ ~5–6 วันทำงานต่อเนื่อง** (บอร์ดงาน 36 ใบใช้ ~5 วัน)
+รวม oracle ≈ **740 ข้อ** · migration 8 ตัว (a–h · additive) · ประมาณเวลา (จังหวะบอร์ดงาน 45–80 นาที/ใบ + build/ภาพโดย Fable): **M1 ~2 วันทำงานเต็ม · M2 ~1.5 วัน · M3 ~2 วัน ⇒ ~5–6 วันทำงานต่อเนื่อง** (บอร์ดงาน 36 ใบใช้ ~5 วัน)
 
 ## 2. สัญญารายใบ (สรุปที่ QC ใช้ — รายละเอียดเต็มดูพิมพ์เขียว §4–§9)
 
 ### M1.1 — schema + backfill + seed (Opus · 22 ข้อ)
-- Prisma: ทุกตาราง/คอลัมน์/enum ใน 06-member-v2 §4.1–4.3 (ยกเว้นกลุ่ม M2/M3 ที่มี migration ของตัวเอง: PointRule/PointLot/PointTransfer → M2.1 · Stamp* → M2.3 · Voucher* → M2.5 · GiftCard* → M2.6 · CampaignVariantStat/MemberSegment → M3.2 · MemberReview → M3.4) · `AutomationRule.scope` · `AiCreditSource.MEMBER_ASSIST`
+- Prisma: ทุกตาราง/คอลัมน์/enum ใน 06-member-v2 §4.1–4.3 (+ `MemberChannelIdentity` · `HrEmployee.userId` · channel เป็น String) · `channels.ts` (แผน · src/lib/core/) ทะเบียนช่องทาง 15 key + backfill `HrEmployee.userId` จากอีเมล (ยกเว้นกลุ่ม M2/M3 ที่มี migration ของตัวเอง: PointRule/PointLot/PointTransfer → M2.1 · Stamp* → M2.3 · Voucher* → M2.5 · GiftCard* → M2.6 · CampaignVariantStat/MemberSegment → M3.2 · MemberReview → M3.4) · `AutomationRule.scope` · `AiCreditSource.MEMBER_ASSIST`
 - backfill 6 สคริปต์ §4.6 (idempotent · `--tenant` · dry-run) · seed `seed-member-qc.mts` + `member-expected.json`
-- oracle: S1 schema (คอลัมน์/enum/index ครบ 8) · S2 backfill tiers/fields/consent/party/attribution บนร้าน QC (8) · S3 seed ตัวเลขตรงเฉลย + idempotent (4) · S4 scope.ts ประกาศ tenant ครบ + fitness (2)
+- oracle: S1 schema (คอลัมน์/enum/index ครบ 10) · S1b ทะเบียนช่องทาง 15 key + kind/canConsent/canNotify + แชท map ครบ (2) · S2 backfill tiers/fields/consent/party/attribution บนร้าน QC (8) · S3 seed ตัวเลขตรงเฉลย + idempotent (4) · S4 scope.ts ประกาศ tenant ครบ + fitness (2)
 
 ### M1.2 — fields engine (Opus · 26 ข้อ)
 - `fields.ts` (แผน · member/) ตาม §5.3 · zod ต่อชนิด 11 · unique/required/choices/lookup validate · history · `fieldFilterWhere` (TEXT contains/eq · NUMBER range · DATE range · BOOL · SELECT in · MULTI hasAny · LOOKUP eq) · `applyTemplate` ไม่ทับ · เพดาน 60/12/20 filterable
@@ -69,8 +85,8 @@
 - oracle: static (ไม่มีอีโมจิ · testid ครบ · เรียก actions ที่ M1.2) + actions (create/update/reorder/archive/applyTemplate ผ่าน server action + สิทธิ์ settings.manage) + ภาพ ≥ 2
 
 ### M1.4 — profile service + 360 + policy (Opus · 28 ข้อ)
-- `profile.ts` §5.2 · `privacy.canView/logAccess` · `getMember360` ซ่อนส่วนอ่อนไหว **ไม่ส่งลง client** · duplicates ผ่าน party · merge ledger (แต้ม/ประวัติ — voucher/สแตมป์/gift card เพิ่มใน M2.x ผ่าน hook `onMerge`)
-- oracle: S1 create (ซ้ำเบอร์ → duplicate · partyId · memberCode pattern · attribution FIRST/LAST · consent · welcome event) (8) · S2 update + history + customerEditable guard (4) · S3 360: thana ไม่เห็นส่วนสุขภาพ + AccessLog เมื่อ MANAGER ดู (5) · S4 duplicates/merge (5) · S5 unit scope 404 (2) · S6 events member.created/updated/merged ลง 3 ทะเบียน (4)
+- `profile.ts` §5.2 (+ `linkIdentity/listIdentities/unlinkIdentity` D18: เบอร์ → อีเมล → id ช่องทาง → candidates) · `privacy.canView/logAccess` (D17: roles ∪ hrPositions ∪ hrDepartments → sameUnit → log พร้อม hrEmployeeId) · `getMember360` ซ่อนส่วนอ่อนไหว **ไม่ส่งลง client** · duplicates ผ่าน party · merge ledger (แต้ม/ประวัติ — voucher/สแตมป์/gift card เพิ่มใน M2.x ผ่าน hook `onMerge`)
+- oracle: S0 linkIdentity 6 กรณี (เบอร์ตรง · อีเมลตรง · id เคยผูก · ไม่ตรง→candidates · id ซ้ำคนอื่น→CONFLICT · unlink ต้อง MANAGER) (6) · S1 create (ซ้ำเบอร์ → duplicate · partyId · memberCode pattern · attribution FIRST/LAST · consent · welcome event) (8) · S2 update + history + customerEditable guard (4) · S3 360: thana ไม่เห็นส่วนสุขภาพ · พนักงาน HR ตำแหน่ง "พยาบาล" (STAFF) เห็นได้ตาม policy · sameUnitOnly · AccessLog มีตำแหน่ง (7) · S4 duplicates/merge (5) · S5 unit scope 404 (2) · S6 events member.created/updated/merged ลง 3 ทะเบียน (4)
 
 ### M1.5 — หน้ารวม + 360 (Sonnet · 20 ข้อ · ภาพ 01 · 02)
 - `members/page.tsx` (KPI 6 · FilterBar reuse แบบบอร์ดงาน + ฟิลด์ filterable · SavedViews reuse K2.5 pattern · ตาราง 10 คอลัมน์ตั้งได้ · bulk) · `members/[id]/page.tsx` (หัว · ตัวเลข 6 · แท็บ 5 (แท็บอื่น placeholder จนใบที่เกี่ยวเสร็จ) · ส่วนตามเลย์เอาต์ · แถบขวา AI(stub)/การเชื่อมต่อ/PDPA/ระดับถัดไป)
@@ -196,3 +212,4 @@ M1.1 → M1.2 → (M1.3 ∥ M1.4) → (M1.5 ∥ M1.7 ∥ M1.8 ∥ M1.9) → (M1.
 
 ## 4. บันทึกเหตุการณ์
 - 10 ก.ย. 2569 — เขียนแผน 34 ใบ + สัญญาย่อ + จำนวนข้อสอบ · รอเจ้าของสั่งเริ่ม (D9)
+- 10 ก.ย. 2569 14:30 — เจ้าของถาม 4 ข้อ → เพิ่มมติ D17 (สิทธิ์อ่อนไหว × HR) · D18 (ตัวตนหลายช่องทาง) · D19 (ทะเบียนช่องทางเปิดขยาย + marketplace) + §0.1 บทบาท/ขั้นตอนต่อใบ · แก้ M1.1/M1.4/M1.7/M1.8/M1.12/M3.7 · oracle ≈ 740 · ภาพ 02/14/26 แก้

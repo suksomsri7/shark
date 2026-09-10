@@ -28,6 +28,9 @@
 | **D13** | เหตุการณ์ | ผลข้างเคียงทุกอย่างผ่าน outbox (24 event ใหม่ + 2 เดิม) · POS **เลิกเรียก** point/member ใน tx (ย้ายเป็น consumer `pos.sale.paid`) · event ใหม่ต้องลง consumer + AUTOMATION_EVENTS + WEBHOOK_EVENTS พร้อมกัน | §7 |
 | **D14** | ฟิลด์กำหนดเอง | **คอลัมน์แยกชนิด** (`MemberFieldValue.valueText/Number/Date/Bool/Options/Ref/FileId`) แบบ K2.6 · เพดาน 60 ฟิลด์/ร้าน · ฟิลด์ระบบ (`isSystem`) ซ่อน/เปลี่ยนป้าย/เรียงได้ ลบ/เปลี่ยนชนิดไม่ได้ | §4.3 §11.2 |
 | **D15** | กฎอัตโนมัติ | ระดับ (tier rule) และ journey ใช้ **`AutomationRule` เดิม** (`scope MEMBER` · `boardId null`) + trigger `member.*` + action ใหม่ 7 ตัว · dry-run/quota/loop-guard/บันทึกการรัน ใช้ของ K2.9 | §7.3 |
+| **D17** | สิทธิ์ดูอ่อนไหว × HR | `MemberSensitivePolicy` ตั้งได้ 3 มิติ: **บทบาท** (OWNER/MANAGER/STAFF) · **ตำแหน่ง/แผนกจาก HR** (`hrPositions[]` / `hrDepartmentIds[]` อ่านจาก `HrEmployee`) · **สาขาเดียวกัน** · ต้องผูก `HrEmployee.userId` (เพิ่มคอลัมน์ · backfill จากอีเมล) · `MemberAccessLog.hrEmployeeId?` · ใช้ HR position กับ "ผู้ดูแล" และ lookup EMPLOYEE ด้วย | §4.1 §4.3 §6.3 §9.5 |
+| **D18** | ตัวตนหลายช่องทาง | สมาชิก 1 คนมี id ภายนอกได้หลายช่องทางไม่จำกัด → ตาราง `MemberChannelIdentity` (channel · externalId · contactId? · verified · linkedBy) แทน `Customer.lineUserId` เดี่ยว · **กติกาจับคู่ตายตัว**: เบอร์ → อีเมล → id ช่องทาง → เลือกมือ · ไม่ตรง = สร้าง `PartyMergeCandidate` · หน้า 360 แสดง "ช่องทางที่ผูก" · ทุก ChatContact/ShopOrder/อีเมลเข้า ต้องเรียก `member.linkIdentity` | §4.3 §5.2 §9.3 §11.1 |
+| **D19** | ช่องทางเปิดขยาย | **ห้ามฮาร์ดโค้ดช่องทาง** ในระบบสมาชิก — `MemberChannel/MemberConsentChannel` เปลี่ยนจาก enum เป็น `String` ที่ตรวจกับ **ทะเบียนช่องทางกลาง** `channels.ts` (แผน · src/lib/core/) (LINE · WEBCHAT · APP · FACEBOOK · INSTAGRAM · MESSENGER · WHATSAPP · WECHAT · EMAIL · SMS · PHONE · PUSH · SHOPEE · LAZADA · TIKTOK_SHOP) · แต่ละช่องทางประกาศ `{ key, label, kind: CHAT|MESSAGING|MARKETPLACE|DIRECT, canConsent, canNotify, adapter? }` · เพิ่มช่องทางที่ทะเบียน = สมาชิก/ยินยอม/แคมเปญ/แจ้งเตือน/ที่มา/segment รองรับทันที · **การเชื่อมต่อจริง** (adapter รับ-ส่งข้อความ/คำสั่งซื้อ) เป็นงานของโมดูลแชท/อีคอมเมิร์ซ (1 ใบงานต่อช่องทาง · นอก RUN นี้ ยกเว้น LINE/WEBCHAT/EMAIL/SMS/PUSH ที่มีแล้ว) · Lazada/Shopee = แชท (โมดูลแชท) + คำสั่งซื้อ (`ShopOrder` ของโมดูล ecommerce → `pos.sale.paid`/`shop.order.paid` → ซื้อ/แต้ม/ที่มา MARKETPLACE) | §4.2 §7.4 §9.3 §9.7 |
 | **D16** | ไมเกรชัน | เพิ่มอย่างเดียว (nullable/default) · ลง prod ผ่าน Vercel build · backfill สคริปต์ idempotent ทีละร้าน (`scripts/member-backfill-*.mts`) | §4.6 |
 
 ### 0.2 v2 เปลี่ยนอะไรจาก v1 (`06-member.md` + 07/08/09)
@@ -192,13 +195,13 @@ model AppSystem.settings.member (Json) { giftCard: { enabled, accountingLink, ex
 ### 4.2 Enum ใหม่
 ```
 MemberGender        MALE FEMALE OTHER UNSPECIFIED
-MemberChannel       LINE EMAIL SMS PHONE PUSH
+MemberChannel       (ยกเลิก enum — D19 ใช้ String key จาก `channels.ts` (แผน · src/lib/core/))
 MemberStatus        ACTIVE SUSPENDED CLOSED MERGED
-MemberSource        WALK_IN POS BOOKING LINE_OA LIFF WEB_FORM CHAT REFERRAL IMPORT CRM CAMPAIGN API OTHER
-MemberLinkMethod    PHONE EMAIL LINE_USER_ID MANUAL MERGE
+MemberSource        WALK_IN POS BOOKING LINE_OA LIFF WEB_FORM CHAT REFERRAL IMPORT CRM CAMPAIGN API MARKETPLACE APP OTHER  (+ `sourceChannel String?` = key ช่องทางจริง เช่น WHATSAPP/SHOPEE)
+MemberLinkMethod    PHONE EMAIL CHANNEL_ID MANUAL MERGE ORDER
 MemberFieldType     TEXT LONG_TEXT NUMBER MONEY DATE DATETIME SELECT MULTI_SELECT BOOLEAN FILE LOOKUP
 MemberLookupTarget  PRODUCT SERVICE EMPLOYEE UNIT CUSTOMER
-MemberConsentChannel LINE EMAIL SMS PHONE
+MemberConsentChannel (ยกเลิก enum — D19 ใช้ String key · canConsent=true เท่านั้น)
 MemberConsentSource  SIGNUP_FORM LIFF STAFF IMPORT API CUSTOMER_SELF
 TierChangeReason    RULE_UPGRADE RULE_DOWNGRADE RULE_KEEP MANUAL PAID_PLAN PLAN_EXPIRED MERGE INITIAL
 TierBenefitType     DISCOUNT_PCT DISCOUNT_FIXED POINT_MULTIPLIER WELCOME_VOUCHER BIRTHDAY_GIFT FREE_SERVICE PRIORITY_BOOKING NO_POINT_EXPIRY CANCEL_FEE_DISCOUNT EXCLUSIVE_ITEMS
@@ -232,13 +235,17 @@ model MemberField   { systemId; sectionId; key; label; description?; type Member
 model MemberFieldValue { customerId; fieldId; valueText String?; valueNumber Decimal? @db.Decimal(18,4); valueDate DateTime?; valueBool Boolean?; valueOptions String[] @default([]); valueRef String?; valueFileId String?; updatedById?; @@unique([customerId, fieldId]); @@index([fieldId, valueText]) @@index([fieldId, valueNumber]) @@index([fieldId, valueDate]) }
 model MemberFieldValueHistory { customerId; fieldId; oldValue Json?; newValue Json?; changedById?; changedVia MemberConsentSource; @@index([customerId, fieldId, createdAt]) }
 model MemberAddress { customerId; kind String @default("HOME"); line1; line2?; subdistrict?; district?; province?; postcode?; country String @default("TH"); isDefault Boolean; @@index([customerId]) }
-model MemberConsent { customerId; channel MemberConsentChannel; granted Boolean; source MemberConsentSource; policyVersion Int?; grantedAt?; revokedAt?; byUserId?; @@unique([customerId, channel]) }
+model MemberConsent { customerId; channel String /* D19: key จากทะเบียนช่องทางกลาง */; granted Boolean; source MemberConsentSource; policyVersion Int?; grantedAt?; revokedAt?; byUserId?; @@unique([customerId, channel]) }
 model MemberPrivacyPolicy { systemId; version Int; bodyHtml; effectiveAt; @@unique([systemId, version]) }
-model MemberSensitivePolicy { systemId; targetType String /* SECTION|FIELD */; targetId; roles Role[]; sameUnitOnly Boolean @default(false); logAccess Boolean @default(true); @@unique([systemId, targetType, targetId]) }   // D8
-model MemberAccessLog { customerId; userId; targetType; targetId; page String?; @@index([customerId, createdAt]) @@index([userId, createdAt]) }
+model MemberSensitivePolicy { systemId; targetType String /* SECTION|FIELD */; targetId; roles Role[]; hrPositions String[] @default([]); hrDepartmentIds String[] @default([]); sameUnitOnly Boolean @default(false); logAccess Boolean @default(true); @@unique([systemId, targetType, targetId]) }   // D8 + D17 (ผ่านถ้าเข้าเงื่อนไข roles หรือ hrPositions/departments · แล้วตรวจ sameUnitOnly)
+model MemberAccessLog { customerId; userId; hrEmployeeId?; hrPosition?; targetType; targetId; page String?; @@index([customerId, createdAt]) @@index([userId, createdAt]) }   // D17
 model MemberPrivacyRequest { customerId; type PrivacyRequestType; status PrivacyRequestStatus; requestedVia MemberConsentSource; approvalRequestId?; fileId?; doneAt?; @@index([tenantId, status]) }
 model MemberSavedView { systemId; ownerUserId?; scope String /* PRIVATE|TEAM */; name; filters Json; columns Json; sort Json?; sortOrder; @@index([systemId, scope]) }
 model MemberTag { systemId; name; color TagColor?; @@unique([systemId, name]) }   // แท็กแบบมีทะเบียน (Customer.tags Json เดิมคง backward compat + backfill)
+
+// ── ตัวตนหลายช่องทาง (D18) ──
+model MemberChannelIdentity { customerId; channel String /* key ทะเบียนช่องทาง */; externalId String; displayName?; contactId? /* ChatContact */; verified Boolean @default(false); linkedBy MemberLinkMethod; linkedAt; lastSeenAt?; @@unique([tenantId, channel, externalId]) @@index([customerId]) }
+model HrEmployee { + userId String? /* D17 ผูกบัญชีผู้ใช้ · backfill จากอีเมล */ }
 
 // ── ที่มา (D10) ──
 model AcquisitionLink { systemId; code; name; source MemberSource; campaignId?; unitId?; target String /* LIFF_JOIN|WEB_FORM|CHAT */; utm Json?; qrFileId?; hits Int @default(0); signups Int @default(0); firstPurchases Int @default(0); active Boolean; @@unique([tenantId, code]) }
@@ -320,6 +327,8 @@ model MemberApiKey (ใช้ `ApiKey` กลางเดิม + scope bundle `
 | `findDuplicates` · `mergeMembers(ctx, actor, {keepId, mergeId, fieldChoices})` | ใช้ party merge + โอน ledger ทุกชนิด (points/vouchers/stamps/giftcards/history) เป็นรายการ MERGE · ตั้ง mergedIntoId | `member.customer.merge` | `member.merged` |
 | `importMembers(ctx, actor, {rows, mapping, options})` | จับคู่คอลัมน์→ฟิลด์ (รวมกำหนดเอง) · ตรวจแถว · ซ้ำ: update/skip/candidate · source IMPORT | `member.customer.import` | `member.created`×n |
 | `setStatus` · `setOwner` · `setTags` · `exportMembers` | — | update/read | `member.updated` |
+| `linkIdentity(ctx, {channel, externalId, phone?, email?, displayName?, contactId?}) → {customerId?, matchedBy, candidates[]}` (D18) | กติกาตายตัว: เบอร์ → อีเมล → id ช่องทางที่เคยผูก → ไม่ตรง = คืน candidates (ชื่อคล้าย) + สร้าง PartyMergeCandidate · ตรงชัด → เขียน `MemberChannelIdentity` + `ChatContact.partyId/customerId` | (internal · facade) | `member.identity.linked` |
+| `listIdentities(customerId)` · `unlinkIdentity` · `mergeIdentities` (ตอนรวมคน) | — | update | `member.updated` |
 
 ### 5.3 `fields.ts` (แผน · member/) (D14 · แบบ K2.6)
 `listLayout` · `createSection/updateSection/reorderSections/deleteSection(ว่างเท่านั้น)` · `createField/updateField/archiveField/reorderFields` (isSystem: แก้ได้เฉพาะ label/description/sortOrder/required=false/showInList) · `setFieldValue(s)` (validate ต่อชนิด · SELECT ต้องอยู่ใน choices · LOOKUP ตรวจ target มีจริงในร้าน · unique ตรวจ) · `getFieldValues(customerIds[])` batch · `applyTemplate(templateKey)` (เพิ่มส่วน/ฟิลด์ที่ยังไม่มี ไม่ทับของเดิม) · `fieldFilterWhere(filters)` (สร้าง Prisma where จาก f.{key})
@@ -393,7 +402,21 @@ member.report.view · member.settings.manage · member.privacy.manage · member.
 | ประทับสแตมป์ | ✓ (PIN) | ✓ | ✓ | ✗ | operate |
 | รวมคน · ลบ PDPA | ✗ | approval | ✓ (approval สำหรับลบ) | ขอได้ | ✗ |
 
-### 6.3 กติกา 404-not-403 · AuditLog
+### 6.3 อัลกอริทึม "ดูข้อมูลอ่อนไหวได้ไหม" (D8 + D17)
+```
+canViewSensitive(actor, target):
+  policy = MemberSensitivePolicy(target) ?? default{roles:[OWNER,MANAGER]}
+  if actor.role == OWNER → true
+  hr = HrEmployee where userId = actor.userId (ถ้าไม่ผูก = ไม่มีตำแหน่ง)
+  pass = policy.roles.includes(actor.role) || policy.hrPositions.includes(hr?.position) || policy.hrDepartmentIds.includes(hr?.departmentId)
+  if pass && policy.sameUnitOnly → ต้อง actor.unitAccess ครอบ customer.homeUnitId (หรือ "*")
+  if pass && policy.logAccess → MemberAccessLog{userId, hrEmployeeId, hrPosition, target}
+  return pass
+```
+- ตั้งค่าใน `/settings/privacy` (ภาพ 14): ต่อส่วน/ฟิลด์ × บทบาท × ตำแหน่ง/แผนก HR (ชิปเลือกจากทะเบียน HR) × สาขาเดียวกัน · พนักงานที่ยังไม่ผูกบัญชีผู้ใช้กับ HR → หน้าตั้งค่าเตือน "n คนยังไม่ผูก" (ลิงก์ไป HR)
+- ฝั่ง API: bundle readonly/operate ไม่เห็นอ่อนไหวเสมอ · admin เห็นตาม policy ของผู้สร้างคีย์
+
+### 6.4 กติกา 404-not-403 · AuditLog
 - สมาชิกที่มองไม่เห็น (unit scope) = 404 · ส่วนอ่อนไหวที่ไม่มีสิทธิ์ = แสดง "ซ่อน" ไม่ error
 - ทุก mutation เขียน `writeAudit()` แบบบัญชี · การดูอ่อนไหว → `MemberAccessLog`
 - ฝั่งลูกค้า: session ลูกค้า (`platform_auth`) แยกจากพนักงาน · ทุก op `/m/*` ตรวจ `customerId === session.customerId`
@@ -485,6 +508,9 @@ member.report.view · member.settings.manage · member.privacy.manage · member.
 - แผงข้าง: `briefFor` + wallet ย่อ + ปุ่มด่วน (ออก voucher ชดเชย · ให้แต้ม · ประทับ · สร้างงาน K3.2)
 - ส่ง LINE ของแคมเปญ/แจ้งเตือน ผ่าน chat facade (push message ต่อ userId) · บันทึกเป็นข้อความระบบในห้อง (isInternal=false, sender=system) เพื่อให้ประวัติแชทครบ
 
+- **ทุกช่องทาง** (D18/D19): เมื่อโมดูลแชทรับข้อความจากช่องทางใดก็ตาม (LINE/WhatsApp/Messenger/WeChat/Shopee/Lazada/อีเมล/แอป) ให้เรียก `member.linkIdentity` ด้วย (channel, externalId, phone?, email?) → ผูกอัตโนมัติเมื่อตรงชัด · ไม่ตรง → แผงข้างเสนอ candidates/สมัครใหม่ · ห้องแชทหลายช่องทางของคนเดียวกันแสดง "ช่องทางที่ผูก n" และไทม์ไลน์รวม
+- แคมเปญ/แจ้งเตือนส่งไปช่องทางที่ `canNotify` และมี identity + consent ของช่องทางนั้น (ลำดับที่ร้านตั้ง เช่น LINE → WhatsApp → อีเมล)
+
 ### 9.4 บัญชี
 - gift card (`accountingLink` เปิด): ขาย → เอกสารรับเงินล่วงหน้า (บัญชี 2xxx) · ใช้ → รับรู้รายได้ · หมดอายุ → รายได้อื่น · reload/refund ตาม · `GiftCard.accountingDocId`
 - แต้มคงค้าง: รายงาน "หนี้สินแต้ม" = balance รวม × ต้นทุน/แต้ม (ตั้งค่า) → ส่งเป็นรายการปรับปรุงสิ้นงวด (ทางเลือก · ไม่บังคับ)
@@ -496,9 +522,14 @@ member.report.view · member.settings.manage · member.privacy.manage · member.
 - ฟอร์ม: ฟอร์มสมัคร/อัปเดต — mapping ฟิลด์ฟอร์ม → ฟิลด์สมาชิก (รวมกำหนดเอง) ตั้งในตัวออกแบบฟิลด์ · consent จากฟอร์ม
 - อนุมัติ: ปรับแต้มเกิน · ตั้งระดับมือ · voucher เกินเพดาน · ลบ PDPA · รวมคน (MANAGER) · entityType `MEMBER_*`
 - CRM: `crm.deal.won` → สร้าง/ผูกสมาชิก (source CRM) · CRM contact แสดงระดับ/มูลค่า · segment ใช้ lifecycle stage
-- HR: `ownerUserId` = พนักงานผู้ดูแล · รายงานยอดลูกค้าที่ดูแล (อนาคต: คอมมิชชัน)
+- HR (D17): `HrEmployee.userId` ผูกบัญชีผู้ใช้ (backfill จากอีเมล + หน้า HR ให้ผูก) · policy อ่อนไหวอ่าน position/department · `ownerUserId` = พนักงานผู้ดูแล · ครูประจำ/แพทย์ประจำ = lookup EMPLOYEE · รายงานยอดลูกค้าที่ดูแล
 
-### 9.6 REST / webhook / skill (D11)
+### 9.6 ทะเบียนช่องทางกลาง + อีคอมเมิร์ซ (D19)
+- `channels.ts` (แผน · src/lib/core/) = แหล่งเดียวของช่องทาง (key · label ไทย · kind · canConsent · canNotify · icon) · โมดูลแชทใช้ `ChatChannelType` เดิม map เข้า key เดียวกัน (เพิ่ม MESSENGER · WECHAT · EMAIL · APP · TIKTOK_SHOP ใน enum แชทเป็นงานของโมดูลแชท)
+- Lazada/Shopee/TikTok Shop: **คำสั่งซื้อ** เข้าทางโมดูล ecommerce (`ShopOrder` → event `shop.order.paid` ใหม่ · ลง 3 ทะเบียน) → consumer สมาชิก: ซื้อ/แต้ม/สแตมป์/ที่มา MARKETPLACE + `sourceChannel` + linkIdentity(ช่องทาง, buyerId, phone/email) · **แชท** ของ marketplace ผ่าน adapter โมดูลแชท (นอก RUN นี้)
+- ช่องทางที่ยังไม่มี adapter: ยังผูก identity ได้ (พนักงานกรอก/นำเข้า) · ยังเก็บ consent ได้ · แต่ส่งข้อความไม่ได้จนกว่าจะมี adapter — UI แสดง "ยังไม่เชื่อมต่อ" ชัด
+
+### 9.7 REST / webhook / skill (D11)
 - ทะเบียน `registry.ts` (แผน · src/lib/modules/member/api/) (+ ops ของ point/stamp/voucher/giftcard/reward/marketing รวมในทะเบียนเดียว `member`) → REST `/api/v1/member/*` · OpenAPI · `docs/api/MEMBER-API.md` generator · skill `members` manifest · webhook events ทั้ง §7.1
 - คีย์ API: bundle `member.readonly` / `member.operate` / `member.admin` (ภาพ 27) · rate limit เดิม · Idempotency-Key บังคับทุก write
 
@@ -537,6 +568,8 @@ member.report.view · member.settings.manage · member.privacy.manage · member.
 - เบอร์เดียวกันคนละระบบ MEMBER = คนละ Customer แต่ Party เดียว · หน้า 360 รวม · แต้ม/ระดับแยกต่อระบบ (ตัดสิน: ร้านที่ต้องการรวมให้ใช้ระบบเดียว)
 - รวมคน: ไม่ลบแถว · `mergedIntoId` · ledger ทุกชนิดเขียนรายการ MERGE (โอนแต้มคง lot/expiry เดิม · voucher เปลี่ยน customerId · สแตมป์รวมใบที่ยังไม่ครบ (นับรวม ไม่เกิน slots) · gift card เปลี่ยน owner · ประวัติชี้ทั้งสอง id) · ทำได้ครั้งเดียว ย้อนไม่ได้ (ต้องยืนยัน 2 ขั้น)
 - ลูกค้าเปลี่ยนเบอร์: แก้ได้ · Party phoneNorm อัปเดต · แชทที่ผูกด้วยเบอร์เดิมยังผูกอยู่ (ผูกด้วย id ไม่ใช่เบอร์)
+
+- **ตัวตนหลายช่องทาง (D18)**: 1 externalId ผูกได้ 1 สมาชิก/ร้าน · ผูกซ้ำคนละคน → CONFLICT + candidate · ลูกค้าเปลี่ยน id ช่องทาง (บัญชี LINE ใหม่) = identity เพิ่ม ไม่ลบเก่า · unlink ต้อง MANAGER · รวมคน = ย้าย identity ทั้งหมด
 
 ### 11.2 ฟิลด์กำหนดเอง (D14)
 - ฟิลด์ระบบ 26 ตัว (`systemKey`: firstName lastName nickname titleTh birthDate gender nationality phone phone2 email lineUserId facebook address* locale preferredChannel tags note source ownerUserId homeUnitId memberCode) — ค่าจริงอยู่ในคอลัมน์ Customer/MemberAddress · ตัวออกแบบเห็นเป็นฟิลด์ปกติ
@@ -600,7 +633,7 @@ member.report.view · member.settings.manage · member.privacy.manage · member.
 
 | เฟส | ใบ | เกณฑ์ผ่าน (นอกเหนือจาก oracle/tsc/fitness/regressions/ภาพ) |
 |---|---|---|
-| M1 โปรไฟล์ 360 + ฟิลด์ + ระดับ | M1.1 schema+backfill · M1.2 fields engine · M1.3 field designer UI · M1.4 profile service+360 · M1.5 หน้ารวม/กรอง/มุมมอง · M1.6 สมัคร/นำเข้า/ตัวซ้ำ · M1.7 consent/privacy/policy · M1.8 sources/attribution · M1.9 tiers engine · M1.10 tiers UI · M1.11 REST/AI ชุดแรก (~45 op) · M1.12 มือถือ+แชท side panel | US1 US2 US3 ผ่าน · backfill ทุกร้านไม่เสียข้อมูล · ฟิลด์ระบบ 26 ตัวครบ · policy อ่อนไหวไม่ส่งลง client · attribution first/last ถูกต้องทุกทางเข้า |
+| M1 โปรไฟล์ 360 + ฟิลด์ + ระดับ | M1.1 schema+backfill (+ channels.ts · MemberChannelIdentity · HrEmployee.userId) · M1.2 fields engine · M1.3 field designer UI · M1.4 profile service+360 (+ linkIdentity D18) · M1.5 หน้ารวม/กรอง/มุมมอง · M1.6 สมัคร/นำเข้า/ตัวซ้ำ · M1.7 consent/privacy/policy (+ D17 HR positions) · M1.8 sources/attribution (+ MARKETPLACE/sourceChannel) · M1.9 tiers engine · M1.10 tiers UI · M1.11 REST/AI ชุดแรก (~45 op) · M1.12 มือถือ+แชท side panel | US1 US2 US3 ผ่าน · backfill ทุกร้านไม่เสียข้อมูล · ฟิลด์ระบบ 26 ตัวครบ · policy อ่อนไหวไม่ส่งลง client · attribution first/last ถูกต้องทุกทางเข้า |
 | M2 Loyalty + Wallet | M2.1 point rules+lots+expiry · M2.2 point transfer/adjust/approval · M2.3 stamp · M2.4 reward v2+fulfil · M2.5 voucher · M2.6 gift card (+accountingLink) · M2.7 wallet facade + POS integration · M2.8 POS consumer (ย้ายจาก tx) + void · M2.9 LIFF/แอปลูกค้า (บัตร/wallet/โปรไฟล์) · M2.10 REST/AI ชุดสอง | US4 US5 ผ่าน · qc:all POS/บัญชีเดิมเขียว · ลำดับส่วนลดตรง §11.5 ทุกกรณี · หมดอายุล็อตถูกต้องหลัง backfill |
 | M3 Promotion + Journey + History | M3.1 segments · M3.2 campaigns v2 (A/B/holdout/push) · M3.3 journey (trigger/action/WAIT_THEN) · M3.4 reviews+escalation · M3.5 referrals · M3.6 notifications templates · M3.7 history timeline (consumers ทุกโมดูล) · M3.8 reports · M3.9 templates 16 กิจการ · M3.10 REST/AI ชุดสาม + webhook + manifest · M3.11 LIFF onboarding/แอปพนักงาน · M3.12 ปิดเฟส (qc:all · prod verify · handover) | US6–US10 ผ่าน · ทุก event ลง 3 ทะเบียน · ROI/holdout คำนวณตรงสูตร · API doc = registry (F13.5) · manifest โหลดได้ |
 
