@@ -1,5 +1,4 @@
 import { headers } from "next/headers";
-import { env } from "@/lib/env";
 
 /**
  * โดเมนสาธารณะของร้าน สำหรับ "ลิงก์ที่เอาไปแปะให้ลูกค้า" (แชทหน้าเว็บ · ฟอร์ม · หน้าเพจ · จอคิว · พอร์ทัลผู้ขาย)
@@ -14,14 +13,30 @@ import { env } from "@/lib/env";
  * งานเบื้องหลังที่ไม่มี request (อีเมล · cron) ยังต้องใช้ `env.APP_URL` — จึง fallback ไปที่นั่น
  */
 export async function publicOrigin(): Promise<string> {
-  const fallback = env.APP_URL.replace(/\/$/, "");
   try {
     const h = await headers();
     const host = h.get("x-forwarded-host") ?? h.get("host");
-    if (!host) return fallback;
-    const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-    return `${proto}://${host}`;
+    if (host) {
+      const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+      return `${proto}://${host}`;
+    }
   } catch {
-    return fallback; // ไม่ได้อยู่ในบริบท request
+    // ไม่ได้อยู่ในบริบท request — ตกไปใช้ค่าที่ตั้งไว้
   }
+  return (await appUrlFallback()).replace(/\/$/, "");
+}
+
+/**
+ * ค่าสำรองจาก `env.APP_URL` — โหลด **ตอนถูกเรียกจริง** เท่านั้น (M1.11)
+ *
+ * 🔴 ทำไมเป็น dynamic import: `@/lib/env` ตรวจ env ทั้งชุดตอน import (fail fast ตอน boot ของแอป
+ *    ซึ่งถูกต้องสำหรับ runtime) — แต่ไฟล์นี้ถูกลากเข้าไปในสายของ **ทะเบียน op/tool** ผ่าน
+ *    facade ของโมดูล ⇒ สคริปต์ที่ต้องรันโดยไม่มี env เลย (`scripts/fitness.mts` แบบไม่มี
+ *    DATABASE_URL — บทเรียน `reference_shark_precommit_fitness_no_env`) จะตายตั้งแต่ import
+ *    ทั้งที่ไม่ได้จะเรียกฟังก์ชันนี้เลยสักครั้ง
+ *    ⇒ ย้ายการอ่าน env มาไว้ในตัวฟังก์ชัน: พฤติกรรมตอนรันจริงเหมือนเดิมทุกประการ
+ */
+async function appUrlFallback(): Promise<string> {
+  const { env } = await import("@/lib/env");
+  return env.APP_URL;
 }

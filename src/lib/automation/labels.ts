@@ -60,6 +60,9 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // M1.7 (D19 · §7.1) — ยิงจาก `member/privacy.ts#setConsent` ใน tx เดียวกับแถวความยินยอม
   //   payload มี customerId · channel (key จากทะเบียนช่องทางกลาง) · granted (true = ให้ / false = ถอน)
   { value: "member.consent.changed", label: "เมื่อความยินยอมของสมาชิกเปลี่ยน" },
+  // M1.12 (§7.1 §9.3) — ยิงจาก `member/chat-bridge.ts#linkContact` (ทั้งจับคู่อัตโนมัติและเลือกมือ)
+  //   payload มี contactId · partyId · customerId · method (PHONE/EMAIL/CHANNEL_ID/MANUAL)
+  { value: "chat.contact.linked", label: "เมื่อผูกห้องแชทเข้ากับสมาชิก" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

@@ -17,6 +17,9 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { after } from "next/server";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 import * as member from "@/lib/modules/member/service";
+// M1.12 (§9.3 · D18) — ผูกอัตโนมัติผ่าน facade `member.linkContact` (เบอร์→อีเมล→id ช่องทางเดิม)
+// แทนการเรียก `member.findOrCreate` ตรง (ตัวเดิม **สร้างสมาชิกใหม่ทุกครั้ง** ที่มีเบอร์ — ไม่ใช่แค่ผูก)
+import { linkContact } from "@/lib/modules/member";
 import { getAdapter, isSupported, canSendAudio, ChannelDeliveryError } from "./adapter";
 import type { ChannelCreds, InboundMessage, OutboundMessage } from "./adapter";
 import { readBusinessHours } from "./business-hours";
@@ -1309,27 +1312,17 @@ export async function receiveExternalInbound(args: {
   return { ok: true, conversationId: conv.id, messageId: msg.id, createdAt: msg.createdAt.toISOString() };
 }
 
-// hook: ถ้าเชื่อมระบบ Member และ contact มีเบอร์แต่ยังไม่ผูก → findOrCreate + link (opt-in)
+// hook: ถ้าเชื่อมระบบ Member แล้ว → ผูก contact นี้เข้าสมาชิกที่มีอยู่จริงเท่านั้น (M1.12 · D18)
+// 🔴 ต่างจากพฤติกรรมเดิม (findOrCreate เคย "สร้างสมาชิกใหม่" ให้ทุกคนที่มีเบอร์) — ตอนนี้จับคู่อัตโนมัติ
+//    กับสมาชิกที่มีอยู่แล้วเท่านั้น (เบอร์→อีเมล→id ช่องทางเดิม) ไม่ตรง = ปล่อยให้แผงข้างเสนอ candidates/
+//    "สมัครจากแชท" ให้พนักงานตัดสินเอง (ห้ามเดาสร้างสมาชิกซ้ำเงียบ ๆ)
 async function maybeAutoLinkMember(tenantId: string, systemId: string, contactId: string) {
   // ร้านที่มีระบบสมาชิกชุดเดียวและยังไม่เคยตั้งค่า → เชื่อมให้ตรงนี้เลย
-  // (ไม่ต้องรอเจ้าของเปิดหน้า "เชื่อมช่องทาง" — ลูกค้าคนแรกที่ทักเข้ามาก็ถูกผูกเป็นสมาชิกแล้ว)
+  // (ไม่ต้องรอเจ้าของเปิดหน้า "เชื่อมช่องทาง" — ลูกค้าคนแรกที่ทักเข้ามาก็ถูกผูกเป็นสมาชิกแล้วถ้าเจอตัวตนตรง)
   const memberSystemId = await ensureMemberSystemLink(tenantId, systemId);
   if (!memberSystemId) return;
-  const setting = { memberSystemId };
-  const contact = await prisma.chatContact.findFirst({ where: { id: contactId, systemId } });
-  if (!contact || contact.customerId || !contact.phone) return;
   try {
-    const c = await member.findOrCreate({
-      tenantId,
-      memberSystemId: setting.memberSystemId,
-      phone: contact.phone,
-      name: contact.displayName ?? undefined,
-      source: "AUTO",
-    });
-    await prisma.chatContact.update({
-      where: { id: contact.id },
-      data: { customerId: c.id, linkedAt: new Date() },
-    });
+    await linkContact({ tenantId, systemId: memberSystemId, actorUserId: null }, { contactId });
   } catch {
     // ไม่ block flow แชท
   }

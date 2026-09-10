@@ -2120,6 +2120,9 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
               systemId={systemId}
               conversationId={thread.conversationId}
               onInsertText={insertIntoDraft}
+              // M1.12 — ปุ่มด่วน "สร้างงาน" ของแผงสมาชิก เปิดแผงเดียวกับปุ่ม "สร้างงาน" ที่หัวห้อง (K3.2)
+              // ไม่มีสวิตช์เปิดไว้ (taskButton null) = ไม่ส่ง handler ลงไป (ปุ่มในแผงสมาชิกจะไม่ทำงาน)
+              onCreateTask={taskButton ? () => setTaskOpen(true) : undefined}
             />
           </aside>
         )}

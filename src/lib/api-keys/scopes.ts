@@ -28,6 +28,11 @@ export const KANBAN_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter(
   (p) => p.module === "kanban" && isApiScope(p.key),
 ).map((p) => p.key);
 
+/** permission key ของระบบสมาชิกที่ใช้เป็น scope ได้ (M1.11) — ที่มาเดียวคือทะเบียน PERMISSIONS */
+export const MEMBER_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter(
+  (p) => p.module === "member" && isApiScope(p.key),
+).map((p) => p.key);
+
 export type ApiScopeBundleId =
   // บัญชี (WO A1)
   | "read-only"
@@ -38,7 +43,11 @@ export type ApiScopeBundleId =
   // บอร์ดงาน (K1.15 · D18 — บทบาทบนบอร์ดของคีย์มาจากชุดเหล่านี้)
   | "kanban-read"
   | "kanban-edit"
-  | "kanban-admin";
+  | "kanban-admin"
+  // ระบบสมาชิก (M1.11 · §6.3 — read/operate ไม่เห็นข้อมูลอ่อนไหวเสมอ)
+  | "member-read"
+  | "member-operate"
+  | "member-admin";
 
 export type ApiScopeBundle = {
   id: ApiScopeBundleId;
@@ -117,6 +126,45 @@ const KANBAN_ADMIN_SCOPES = [
   "kanban.report.view",
 ] as const;
 
+// ── ระบบสมาชิก (M1.11 · พิมพ์เขียว §6.3) ───────────────────────────────────
+// 3 ชุดซ้อนกันเป็นชั้น: read ⊂ operate ⊂ admin
+//   read    → อ่านอย่างเดียวทุกหมวดของโมดูล (สมาชิก · ระดับ · แต้ม · สแตมป์/รางวัล · โปรโมชัน · รีวิว · รายงาน)
+//   operate → งานที่พนักงานหน้าร้านทำ: สมัคร/แก้สมาชิก · นำเข้า · ประทับสแตมป์ · ออกโปรโมชัน · ปรับแต้ม · ตอบรีวิว
+//   admin   → ทุกคีย์ของโมดูล (ตั้งค่า · ความเป็นส่วนตัว · ระดับ · ลบข้อมูล · คีย์ API · บัตรกำนัล)
+//
+// 🔴 `member.sensitive.read` **ไม่อยู่ในชุด read และ operate** และแม้จะติ๊กเองก็ไม่มีผล:
+//    §6.3 กำหนดว่าคีย์ชุด readonly/operate ไม่เห็นข้อมูลอ่อนไหว **เสมอ** — ตัวบังคับจริงอยู่ที่
+//    `member/api/actor.ts` (แปลงชุดสิทธิ์เป็น `apiRole`) + `member/privacy.ts` ไม่ใช่ที่รายการนี้
+// 🔴 คีย์ `member.settings.manage` / `member.privacy.manage` / `member.api.manage` มีเฉพาะชุด admin —
+//    3 ตัวนี้คือตัวชี้ขาดว่าคีย์เป็น "ผู้ดูแล" (ดู `memberApiRoleForScopes`)
+const MEMBER_READ_SCOPES = [
+  "member.customer.read",
+  "member.tier.read",
+  "member.point.read",
+  "member.loyalty.read",
+  "member.promo.read",
+  "member.review.read",
+  "member.report.view",
+] as const;
+
+const MEMBER_OPERATE_SCOPES = [
+  ...MEMBER_READ_SCOPES,
+  "member.customer.create",
+  "member.customer.update",
+  "member.customer.import",
+  "member.loyalty.stamp",
+  "member.loyalty.fulfil",
+  "member.promo.issue",
+  "member.point.adjust",
+  "member.review.reply",
+] as const;
+
+/** ทุกคีย์ `member.*` ที่ใช้เป็น scope ได้ — เรียงให้ชุด operate มาก่อน แล้วต่อด้วยที่เหลือ */
+const MEMBER_ADMIN_SCOPES: readonly string[] = [
+  ...MEMBER_OPERATE_SCOPES,
+  ...MEMBER_SCOPE_KEYS.filter((k) => !MEMBER_OPERATE_SCOPES.includes(k as (typeof MEMBER_OPERATE_SCOPES)[number])),
+];
+
 /**
  * ชุดสำเร็จรูป 5 ชุด — ซ้อนกันเป็นชั้น: read-only ⊂ issue-and-collect ⊂ accountant
  * `danger` แยกออกจาก accountant เสมอ (ยกเลิก/เปิดงวด/รวมผู้ติดต่อ = กู้คืนยาก ต้องตั้งใจติ๊กเอง)
@@ -179,6 +227,27 @@ export const API_SCOPE_BUNDLES: readonly ApiScopeBundle[] = [
     label: "บอร์ดงาน — ผู้ดูแล",
     summary: "Everything in kanban-edit plus board members, archiving boards and columns, templates and automation. Acts as ADMIN on every board.",
     scopes: KANBAN_ADMIN_SCOPES,
+  },
+  {
+    id: "member-read",
+    label: "สมาชิก — อ่านอย่างเดียว",
+    summary:
+      "Read the member system: members and their custom fields, tiers, points, loyalty cards, promotions, reviews and the acquisition report. Never sees sensitive member data, and writes nothing.",
+    scopes: MEMBER_READ_SCOPES,
+  },
+  {
+    id: "member-operate",
+    label: "สมาชิก — งานหน้าร้าน",
+    summary:
+      "Everything in member-read plus the counter work: register and edit members, import them, stamp loyalty cards, hand out rewards, issue promotions, adjust points and reply to reviews. Still never sees sensitive member data.",
+    scopes: MEMBER_OPERATE_SCOPES,
+  },
+  {
+    id: "member-admin",
+    label: "สมาชิก — ผู้ดูแล",
+    summary:
+      "Every member permission: settings and custom fields, privacy and PDPA, tiers and their rules, gift cards, erasing a member, and managing the member API keys. This is the only bundle that can see sensitive member data, and only as far as the shop's own policy allows.",
+    scopes: MEMBER_ADMIN_SCOPES,
   },
 ];
 

@@ -26,6 +26,7 @@ import { prisma } from "./db";
 import { coversUnit, hasMemberPerm, isUnitScoped, type MemberActor } from "./access";
 import { MemberConflictError, MemberForbiddenError, MemberInputError, MemberNotFoundError } from "./errors";
 import * as fields from "./fields";
+import * as sources from "./sources";
 import * as tiers from "./tiers";
 import { evaluateSensitiveAccess, logAccess, type MemberCtx } from "./privacy";
 import { uniqueMemberCode } from "./service";
@@ -696,6 +697,21 @@ export async function createMember(ctx: MemberCtx, actor: MemberActor, input: Cr
     };
   }
 
+  // ที่มาจากลิงก์/QR (D10 · M1.8) — `sourceDetail.linkCode` คือค่า `?src=` ที่ลูกค้าเปิดเข้ามา
+  // 🔴 ลิงก์เป็นคนบอกช่องทางของตัวเอง (เช่น QR โปสเตอร์ตั้งไว้ว่าเป็น CAMPAIGN) ⇒ ทับค่าที่ฟอร์มเลือกมา
+  //    ลิงก์ที่ถูกปิด/ไม่มีจริง = เหมือนไม่มี `?src=` (ไม่ throw — ลูกค้าไม่ได้ทำอะไรผิด) แต่ยังเก็บ
+  //    `linkCode` ไว้ใน sourceDetail เพื่อสืบย้อนว่าโปสเตอร์ใบไหนยังมีคนสแกนอยู่
+  const linkCode = typeof input.sourceDetail?.linkCode === "string" ? input.sourceDetail.linkCode : null;
+  const fromLink = linkCode
+    ? await sources.resolveSignupSource(ctx, {
+        source,
+        linkCode,
+        unitId: homeUnitId,
+        campaignId: typeof input.sourceDetail?.campaignId === "string" ? input.sourceDetail.campaignId : null,
+      })
+    : null;
+  if (fromLink) source = fromLink.source;
+
   // ผู้แนะนำ (D6) — โค้ดไม่มีจริง = หยุดตั้งแต่ยังไม่สร้างอะไร (สมัครไปแล้วค่อยรู้ว่าโค้ดผิด = แก้ยาก)
   let referrer: CustomerRow | null = null;
   const referralCode = trimOrNull(input.referralCode)?.toUpperCase() ?? null;
@@ -727,6 +743,7 @@ export async function createMember(ctx: MemberCtx, actor: MemberActor, input: Cr
       const sourceDetail: Record<string, unknown> = { ...(input.sourceDetail ?? {}) };
       if (ctx.actorUserId && actor.role !== "CUSTOMER") sourceDetail.staffUserId = ctx.actorUserId;
       if (referrer) sourceDetail.referrerCustomerId = referrer.id;
+      if (fromLink?.linkId) sourceDetail.linkId = fromLink.linkId;
       if (idempotencyKey) sourceDetail.idempotencyKey = idempotencyKey;
 
       const marketingConsent = consents.some((c) => c.granted && LEGACY_CONSENT_CHANNELS.includes(c.channel));
@@ -791,7 +808,8 @@ export async function createMember(ctx: MemberCtx, actor: MemberActor, input: Cr
       }
 
       // ที่มา (D10 · §7.2): สมัครใหม่ = first touch และ last touch เป็นเหตุการณ์เดียวกัน
-      // linkId ยังว่างเสมอในใบนี้ — ตัวแปล `?src=` → AcquisitionLink เป็นงานของ M1.8
+      // ลิงก์/QR ที่พาเข้ามา (M1.8) ผูกไว้ทั้งสองแถว + บวกตัวนับ `signups` ของลิงก์ในทรานแซกชันเดียวกัน
+      // (นับนอกทรานแซกชัน = สมัครล้มเหลวแต่ตัวนับขึ้นแล้ว — รายงานจะเชื่อไม่ได้ทันที)
       for (const touch of ["FIRST", "LAST"]) {
         await tx.memberAttribution.create({
           data: {
@@ -799,15 +817,18 @@ export async function createMember(ctx: MemberCtx, actor: MemberActor, input: Cr
             customerId: customer.id,
             touch,
             source,
-            linkId: null,
-            campaignId: typeof input.sourceDetail?.campaignId === "string" ? input.sourceDetail.campaignId : null,
+            linkId: fromLink?.linkId ?? null,
+            campaignId:
+              fromLink?.campaignId ??
+              (typeof input.sourceDetail?.campaignId === "string" ? input.sourceDetail.campaignId : null),
             staffUserId: actor.role === "CUSTOMER" ? null : ctx.actorUserId,
             referrerCustomerId: referrer?.id ?? null,
-            unitId: homeUnitId,
+            unitId: homeUnitId ?? fromLink?.unitId ?? null,
             occurredAt: now,
           },
         });
       }
+      if (fromLink?.linkId) await sources.countSignup(fromLink.linkId, tx);
 
       if (input.fields && Object.keys(input.fields).length > 0) {
         await fields.setFieldValues(
@@ -1793,35 +1814,10 @@ export async function mergeMembersApproved(
 }
 
 // ───────────────────────── facade ย่อยให้โมดูลอื่น ─────────────────────────
-
-/**
- * "คนนี้เป็นสมาชิกคนไหนของร้าน" จากกุญแจที่โมดูลอื่นมีอยู่ (§5.11)
- * ลำดับเดียวกับ `linkIdentity`: ตัวตนกลาง → เบอร์ → id ไลน์ · ไม่พบ = null (ไม่สร้างใหม่)
- */
-export async function linkContact(
-  ctx: MemberCtx,
-  keys: { partyId?: string | null; phone?: string | null; lineUserId?: string | null },
-): Promise<string | null> {
-  const base = { tenantId: ctx.tenantId, memberSystemId: ctx.systemId, status: { not: "MERGED" as MemberStatus } };
-  if (keys.partyId) {
-    const canonical = await party.resolveCanonical(ctx.tenantId, keys.partyId);
-    const row = await prisma.customer.findFirst({ where: { ...base, partyId: { in: [keys.partyId, canonical] } } });
-    if (row) return row.id;
-  }
-  const phone = normPhone(keys.phone);
-  if (phone) {
-    const row = await prisma.customer.findFirst({ where: { ...base, phone: { in: phoneVariants(phone) } } });
-    if (row) return row.id;
-  }
-  const lineUserId = trimOrNull(keys.lineUserId);
-  if (lineUserId) {
-    const identity = await prisma.memberChannelIdentity.findFirst({
-      where: { tenantId: ctx.tenantId, channel: "LINE", externalId: lineUserId },
-      select: { customerId: true },
-    });
-    if (identity) return identity.customerId;
-    const row = await prisma.customer.findFirst({ where: { ...base, lineUserId } });
-    if (row) return row.id;
-  }
-  return null;
-}
+//
+// 🔴 M1.12 — `linkContact` (ผูกห้องแชท ↔ สมาชิก จาก ChatContact.id) ย้ายไปอยู่ที่ `./chat-bridge.ts`
+//    แล้ว (สัญญาใหม่: contactId/customerId/method · เขียน event `chat.contact.linked`) — ตัวเดิมของ
+//    ที่นี่ (คีย์ partyId/phone/lineUserId ตรง ๆ) ไม่มีผู้เรียกใช้จริงในโค้ด (ตรวจแล้ว 10 ก.ย. 2569)
+//    ลบเพื่อไม่ให้มีสองชื่อเดียวกันทำหน้าที่คาบเกี่ยวกัน — `member/index.ts` ยังคง export ชื่อ
+//    `linkContact` เหมือนเดิม (แค่เปลี่ยนต้นทางมาเป็น chat-bridge.ts) ตัวเลข "phoneVariants" ยังใช้
+//    อยู่ที่ฟังก์ชันอื่นด้านล่างของไฟล์นี้ (ห้ามลบ)

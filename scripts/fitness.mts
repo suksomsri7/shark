@@ -345,6 +345,40 @@ const ALLOWED_EDGES = new Set([
   //                     ผ่าน facade `point/index.ts` เท่านั้น (สร้างที่ใบนี้)
   "member→approval",
   "member→point",
+  // chokepoint (M2.x — ระบบสมาชิก v2 Loyalty · ledger/MEMBER-RUN.md §2 M2.1–M2.5 · Fable อนุมัติล่วงหน้า 10 ก.ย. 2569):
+  //   point→member    : กฎแต้ม (TIER_MULTIPLIER/NO_POINT_EXPIRY) อ่านระดับ+สิทธิ์ผ่าน facade member (benefitsFor)
+  //   point→approval  : ปรับแต้มมือเกินเพดาน → สายอนุมัติกลาง (M2.2) · ผลกลับที่ approval-effects.ts
+  //   stamp→member / stamp→point / stamp→voucher : สแตมป์ตรวจ tier/unit ผ่าน member · ครบ → แต้ม (earnWithLot) / voucher (issue origin STAMP)
+  //   member→stamp    : รวมคน (mergeMembers) โอนใบสแตมป์ผ่าน facade stamp.mergeProgress
+  //   reward→stamp / reward→member : แลกด้วยสแตมป์ (useStamps) · ตรวจระดับ/สาขา · brief สมาชิกในผลสแกน
+  //   voucher→member / voucher→approval : ตรวจระดับ/สาขา/brief · ออกเกินเพดาน → สายอนุมัติกลาง (M2.5)
+  //   ทิศเดียวทุกเส้น · hook ย้อนกลับ (tier→voucher ต้อนรับ) ลงทะเบียนที่ composition root src/lib/member-hooks.ts
+  "point→member",
+  "point→approval",
+  "stamp→member",
+  "stamp→point",
+  "stamp→voucher",
+  "member→stamp",
+  "reward→stamp",
+  "reward→member",
+  "voucher→member",
+  "voucher→approval",
+  //   giftcard→pos / giftcard→account / giftcard→member (M2.6): ขาย/เติมบัตร = PosSale (pos.createSale) · ผูกบัญชี (D3) ผ่าน facade account
+  //   (postGiftCardSale/Use/Expire + reverseFor) · ตรวจสมาชิกผู้รับ/โอนผ่าน member
+  "giftcard→pos",
+  "giftcard→account",
+  "giftcard→member",
+  //   member→voucher / member→giftcard / member→reward / member→coupon (M2.7 wallet facade): getWallet/quoteApply/applyOnSale รวมทุกสิทธิ์
+  //   ผ่าน facade ของแต่ละโมดูล (index.ts) — วงจร voucher↔member ยอมรับได้เพราะทั้งสองฝั่งแตะกันผ่าน facade เท่านั้น
+  "member→voucher",
+  "member→giftcard",
+  "member→reward",
+  "member→coupon",
+  //   marketing→voucher / marketing→coupon / marketing→chat (M3.2 แคมเปญ v2): แนบ voucher/คูปองรายคน · ส่ง LINE ผ่าน chat facade pushToContact
+  //   (marketing→member มีอยู่แล้ว · segments ผ่าน facade member)
+  "marketing→voucher",
+  "marketing→coupon",
+  "marketing→chat",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {
@@ -716,6 +750,53 @@ console.log("\n── F13: ทะเบียน API (op ทุกตัวม�
     `tool ของ op บอร์ดงาน (${kbWithTool.length} ตัว) ลงทะเบียนในสกิล AI แล้ว`,
     kbOrphans.length === 0,
     kbOrphans.length ? `${kbOrphans.length} tool ไม่มีในสกิล → AI เรียกไม่ได้: ${kbOrphans.map((o) => o.tool!.name).join(", ")}` : "ครบ",
+  );
+}
+
+// ─────────────────── F13 (ต่อ): ทะเบียน API ระบบสมาชิก (M1.11) ───────────────────
+// เงื่อนไขเดียวกับบัญชี/บอร์ดงานเป๊ะ ๆ — ทุก WO ของ M2/M3 ที่เพิ่มฟีเจอร์ให้ระบบสมาชิกต้องเพิ่ม op
+// ของตัวเองในทะเบียน แล้ว 3 ด่านนี้จะบังคับให้ "มีข้อสอบครอบ · คู่มือไม่เก่า · tool มีบ้านในสกิล" ตามมาเอง
+{
+  const { MEMBER_OPS } = await import("@/lib/modules/member/api/registry");
+
+  // F13.7 — ทุก op มี test id ที่ปรากฏจริงในข้อสอบชุด qc-member-*
+  const mbQcSrc = walk(join(ROOT, "scripts"), (f) => /qc-member-.*\.mts$/.test(f))
+    .map((f) => readFileSync(f, "utf8"))
+    .join("\n");
+  const untestedMb = MEMBER_OPS.filter((o) => !o.test || !mbQcSrc.includes(`"${o.test}"`));
+  chk(
+    "F13.7",
+    `ทุก op ของระบบสมาชิก (${MEMBER_OPS.length}) มี test id ที่อ้างถึงจริงใน scripts/qc-member-*.mts`,
+    untestedMb.length === 0,
+    untestedMb.length
+      ? `${untestedMb.length} op ไม่มีข้อสอบครอบ: ${untestedMb.map((o) => `${o.id}(test=${o.test || "-"})`).join(", ")}`
+      : "ครบ",
+  );
+
+  // F13.8 — คู่มือตรงกับ generator (import ฟังก์ชันบริสุทธิ์ ไม่ spawn)
+  let mbDocsOk = true;
+  let mbDocsDetail = "ตรง";
+  try {
+    const { renderDocs } = await import("./gen-member-api-docs.mjs");
+    const docPath = join(ROOT, "docs", "api", "MEMBER-API.md");
+    const onDisk = existsSync(docPath) ? readFileSync(docPath, "utf8") : "";
+    mbDocsOk = onDisk === renderDocs();
+    if (!mbDocsOk) mbDocsDetail = "docs/api/MEMBER-API.md ไม่ตรงกับทะเบียน — รัน: pnpm exec tsx scripts/gen-member-api-docs.mts";
+  } catch (e) {
+    mbDocsOk = false;
+    mbDocsDetail = e instanceof Error ? e.message.slice(0, 300) : String(e);
+  }
+  chk("F13.8", "docs/api/MEMBER-API.md ตรงกับ generator (ไม่ stale)", mbDocsOk, mbDocsDetail);
+
+  // F13.9 — op ที่ประกาศ tool ต้องมีชื่อนั้นในทะเบียนสกิล (สกิล `members`)
+  const mbWithTool = MEMBER_OPS.filter((o) => o.tool);
+  const skillsSrc3 = readFileSync(join(ROOT, "src", "lib", "ai", "skills.ts"), "utf8");
+  const mbOrphans = mbWithTool.filter((o) => !skillsSrc3.includes(`"${o.tool!.name}"`));
+  chk(
+    "F13.9",
+    `tool ของ op ระบบสมาชิก (${mbWithTool.length} ตัว) ลงทะเบียนในสกิล AI แล้ว`,
+    mbOrphans.length === 0,
+    mbOrphans.length ? `${mbOrphans.length} tool ไม่มีในสกิล → AI เรียกไม่ได้: ${mbOrphans.map((o) => o.tool!.name).join(", ")}` : "ครบ",
   );
 }
 

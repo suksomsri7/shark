@@ -82,6 +82,7 @@ Branch on `error.code`, never on the message text. The list is shared by every S
 | `idempotency_conflict` | 409 | The same `Idempotency-Key` was reused with a different body. | Use a fresh key for a different request; reuse the old key only to retry the identical one. |
 | `idempotency_in_progress` | 409 | A request with this key is still running. | Wait a moment and retry with the same key; you will get the original response. |
 | `confirm_required` | 409 | A danger operation was called without `confirm: true`. | Ask a human first, then resend with `confirm: true` and a `reason`. |
+| `customer_session_required` | 401 | The operation belongs to the customer themself (the member self-service lane) and needs a customer session, not a shop API key. | Nothing an API key can do here: no scope opens this lane. Use the shop-facing operation instead. |
 | `not_found` | 404 | No such operation, or the board, column, card, label, checklist, comment or attachment does not exist inside this task board system. A board the key may not see answers this too, never 403. | Check the path against this document, and that the id belongs to the same system the key is bound to. |
 | `method_not_allowed` | 405 | The path exists but not with this HTTP method. The `Allow` header lists what works. | Use one of the methods in `Allow`. |
 | `rate_limited` | 429 | Too many calls for this key: 300 reads or 60 writes per minute. | Wait `Retry-After` seconds and retry; watch `X-RateLimit-Remaining` to slow down before you hit it. |

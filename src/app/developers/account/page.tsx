@@ -43,6 +43,7 @@ const ERROR_CODE_SUMMARY: Record<ApiErrorCode, string> = {
   idempotency_conflict: "The same Idempotency-Key was reused with a different body.",
   idempotency_in_progress: "A request with this key is still running.",
   confirm_required: "A danger operation was called without confirm: true.",
+  customer_session_required: "A member self-service operation was called with a shop API key (member module only).",
   not_found: "No such operation, or the record is not in this book.",
   method_not_allowed: "The path exists, but not with this HTTP method.",
   rate_limited: "Too many calls for this key; see Retry-After.",

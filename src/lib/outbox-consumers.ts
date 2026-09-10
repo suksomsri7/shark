@@ -15,10 +15,38 @@ import { entityLabel } from "@/lib/modules/approval/labels";
 import { applyApprovalEffect } from "@/lib/approval-effects";
 import { logOps } from "@/lib/core/ops";
 import { invalidateBrandingCache } from "@/lib/branding/service";
+import { chatChannelToKey, getChannel } from "@/lib/core/channels";
+import { logActivity as memberLogActivity } from "@/lib/modules/member";
 
 const saleIdOf = (payload: unknown): string | null => {
   const p = payload as { saleId?: unknown } | null;
   return p && typeof p.saleId === "string" ? p.saleId : null;
+};
+
+// M1.12 (§7.1 §9.3) — ผูกห้องแชทเข้ากับสมาชิกแล้ว → บันทึกลงไทม์ไลน์สมาชิก (MemberActivity)
+// ของจริง (ChatContact/MemberChannelIdentity) ถูกเขียนครบใน tx ของ `member/chat-bridge.ts#linkContact`
+// แล้ว — handler นี้ทำงานจริง 1 อย่าง (เขียนไทม์ไลน์) + ปิด event เป็น DONE + เป็นจุดให้ Automation/Webhooks ยิงต่อ
+const chatContactLinked: OutboxHandler = async (evt) => {
+  const p = evt.payload as { contactId?: unknown; customerId?: unknown } | null;
+  const customerId = p && typeof p.customerId === "string" ? p.customerId : null;
+  const contactId = p && typeof p.contactId === "string" ? p.contactId : null;
+  if (!customerId) return;
+  // สมาชิกอาจถูกลบ/รวมไปแล้วก่อนคิวจะมาถึง (ปกติของ outbox แบบ eventual) — ไม่มีใครให้บันทึกไทม์ไลน์แล้ว
+  // ถือเป็นงานเสร็จเงียบ ๆ (ไม่ throw ให้ event ค้าง PENDING ตลอดกาล) เหมือน guard `if (!sale) return;` ของ posSalePaid ด้านล่าง
+  const stillExists = await prisma.customer.findFirst({ where: { id: customerId, tenantId: evt.tenantId }, select: { id: true } });
+  if (!stillExists) return;
+  const contact = contactId ? await prisma.chatContact.findFirst({ where: { id: contactId, tenantId: evt.tenantId } }) : null;
+  const channelKey = contact ? chatChannelToKey(contact.channel) : null;
+  const label = channelKey ? (getChannel(channelKey)?.label ?? channelKey) : "แชท";
+  await memberLogActivity({
+    tenantId: evt.tenantId,
+    customerId,
+    module: "chat",
+    type: "CHAT_LINKED",
+    refType: "ChatContact",
+    refId: contactId ?? undefined,
+    summary: `ผูกช่องทาง${label}เข้ากับสมาชิกคนนี้แล้ว`,
+  });
 };
 
 // ขายสด POS → บัญชี
@@ -341,6 +369,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    (ข้อสอบ CP-6 สแกนซอร์สแล้วเทียบกับตารางนี้ ห้ามให้เกิดซ้ำ)
   //    ผลข้างเคียงเกิดใน markRead ไปแล้ว — no-op เพื่อปิด event เป็น DONE + ให้ withWebhooks ยิงต่อ
   "chat.conversation.read": withAutomation(async () => {}),
+  // M1.12 — ผูกห้องแชทเข้ากับสมาชิก (auto/manual) → เขียนไทม์ไลน์สมาชิก (ดู handler ด้านบน)
+  "chat.contact.linked": withAutomation(chatContactLinked),
   // Wave4-B: AppNotification "มีคนกรอกฟอร์ม" ถูกสร้างแล้วใน submitPublicForm —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย lead ใหม่
   // K3.3: + เปิดการ์ดจากฟอร์ม (คำตอบทุกข้ออยู่ในรายละเอียดการ์ด) เฉพาะร้านที่เปิดสวิตช์

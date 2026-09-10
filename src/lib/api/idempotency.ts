@@ -82,7 +82,9 @@ export async function withIdempotency(
 
   const db = tenantDb({ tenantId: actor.tenantId });
   const path = new URL(req.url).pathname;
-  const hash = requestHashOf(op.method, path, bodyText);
+  // op ที่ประกาศ `idempotency: "key"` ให้ **คีย์อย่างเดียว** เป็นตัวระบุความพยายาม (ดูเหตุผลที่ `op.ts`)
+  // ⇒ ไม่เอาเนื้อคำขอมาผสมใน hash ⇒ ยิงซ้ำด้วยคีย์เดิมได้คำตอบเดิมเสมอ ไม่ใช่ 409
+  const hash = requestHashOf(op.method, path, op.idempotency === "key" ? "" : bodyText);
   const respond = (status: number, body: unknown, headers: Record<string, string> = {}) =>
     new Response(JSON.stringify(body), {
       status,

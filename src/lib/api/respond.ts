@@ -28,6 +28,10 @@ export const API_ERROR_CODES = [
   "idempotency_conflict",
   "idempotency_in_progress",
   "confirm_required",
+  // M1.11 — op ที่เป็นของ "ตัวลูกค้าเอง" (`/me/*` ของระบบสมาชิก) ต้องมี session ลูกค้า
+  // ไม่ใช่คีย์ API ของร้าน ⇒ คีย์ที่ยิงมาได้ 401 พร้อมรหัสนี้ (ไม่ใช่ 403 scope_missing
+  // ซึ่งจะทำให้ผู้เชื่อมต่อไล่เติม scope ไปเรื่อย ๆ ทั้งที่ไม่มี scope ไหนเปิดทางนี้ได้เลย)
+  "customer_session_required",
   "not_found",
   "method_not_allowed",
   "rate_limited",

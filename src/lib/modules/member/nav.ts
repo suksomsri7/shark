@@ -15,7 +15,7 @@
 //    ไปหน้าใหม่ `/member/members` (ไม่ทิ้ง 2 หน้ารายชื่อพร้อมกัน — ดู wo-notes/member-M1.5.md)
 
 import type { MemberActor } from "./access";
-import { canManagePrivacy, canManageSettings, canReadMember } from "./access";
+import { canManagePrivacy, canManageSettings, canReadMember, hasMemberPerm } from "./access";
 
 export type MemberNavStatus = "ready" | "soon";
 
@@ -33,7 +33,7 @@ export type MemberNavEntry = {
 /** 9 หมวดตาม §2.2 — ลำดับนี้คือลำดับที่ผู้ใช้เห็น */
 export const MEMBER_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "members", label: "สมาชิก", path: "/member/members", status: "ready" },
-  { key: "tiers", label: "ระดับสมาชิก", path: "/member/tiers", status: "soon", wo: "M1.10" },
+  { key: "tiers", label: "ระดับสมาชิก", path: "/member/tiers", status: "ready" },
   { key: "points", label: "แต้ม", path: "/member/points", status: "soon", wo: "M2.2" },
   { key: "stamps", label: "สแตมป์", path: "/member/stamps", status: "soon", wo: "M2.3" },
   { key: "rewards", label: "รางวัล", path: "/member/rewards", status: "soon", wo: "M2.4" },
@@ -54,14 +54,17 @@ export const MEMBER_SETTINGS_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "fields", label: "ฟิลด์", path: "/member/settings/fields", status: "ready" },
   { key: "privacy", label: "ความเป็นส่วนตัว", path: "/member/settings/privacy", status: "ready" },
   { key: "points", label: "แต้ม", path: "/member/settings/points", status: "soon", wo: "M2.2" },
-  { key: "sources", label: "ช่องทางที่มา", path: "/member/settings/sources", status: "soon", wo: "M1.8" },
+  { key: "sources", label: "ช่องทางที่มา", path: "/member/settings/sources", status: "ready" },
   { key: "notifications", label: "แจ้งเตือน", path: "/member/settings/notifications", status: "soon", wo: "M3.6" },
-  { key: "api", label: "API", path: "/member/settings/api", status: "soon", wo: "M1.11" },
+  { key: "api", label: "API", path: "/member/settings/api", status: "ready" },
 ] as const);
 
 /** สิทธิ์ที่ต้องมีของหน้าย่อยในหมวดตั้งค่า (ไม่มีในตาราง = ใช้ `member.settings.manage`) */
 function canOpenSettingsPage(key: string, actor: MemberActor): boolean {
   if (key === "privacy") return canManagePrivacy(actor);
+  // M1.11 — คีย์ API เป็นอีก 1 ใน 4 คีย์ที่ MANAGER ไม่ได้โดยปริยาย (§6.1) · คนละคีย์กับ settings.manage
+  //   (ผู้จัดการที่ตั้งฟิลด์ได้ ไม่ได้แปลว่าออกคีย์ที่อ่านฐานลูกค้าทั้งร้านได้ด้วย)
+  if (key === "api") return hasMemberPerm(actor, "member.api.manage");
   return canManageSettings(actor);
 }
 

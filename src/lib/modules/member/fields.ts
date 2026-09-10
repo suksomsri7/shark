@@ -412,6 +412,18 @@ function normalizeValue(field: MemberField, raw: unknown): MemberFieldValueInput
   }
 }
 
+/**
+ * ตรวจค่า 1 ฟิลด์แบบ **ไม่เขียน** (M1.6 — ตัวนำเข้า CSV ใช้ก่อนสร้าง/แก้ไขจริง เพื่อไม่ต้องพิมพ์กติกาตรวจซ้ำ)
+ * รับ field จาก `listLayout()` ตรง ๆ (`options` เป็น `MemberFieldOptions` ที่แกะ JSON แล้ว — `normalizeValue`
+ * อ่านผ่าน `optionsOf()` ซึ่งรับอ็อบเจ็กต์ที่แกะแล้วได้อยู่แล้ว) ผิดรูป/ตัวเลือกไม่มี/บังคับว่าง → throw ข้อความไทย
+ * เดียวกับ `setFieldValues` (สองไฟล์ไม่มีวันตรวจไม่ตรงกัน เพราะเรียก `normalizeValue` ตัวเดียวกัน)
+ */
+export function checkFieldValue(field: Pick<FieldDef, "label" | "type" | "options" | "required">, raw: unknown): MemberFieldValueInput {
+  const value = normalizeValue(field as unknown as MemberField, raw);
+  if (field.required && isBlank(value)) throw new Error(`ฟิลด์ "${field.label}" เป็นข้อมูลที่ต้องกรอก — ใส่ค่าก่อนบันทึก`);
+  return value;
+}
+
 /** ค่ามาตรฐาน → คอลัมน์ของ MemberFieldValue (คอลัมน์ที่ไม่ตรงชนิดต้องเป็น null เสมอ) */
 function cellOf(type: MemberFieldType, value: MemberFieldValueInput): ValueCell {
   const cell: ValueCell = { ...EMPTY_CELL, valueOptions: [] };

@@ -79,6 +79,12 @@ export type RequireOk = {
   requestId: string;
   /** โควตาที่เหลือในหน้าต่างนี้ → หัว `X-RateLimit-Remaining` ของคำตอบที่สำเร็จ */
   rateRemaining: number;
+  /**
+   * เพดานของถังที่ op นี้ใช้ → หัว `X-RateLimit-Limit` (M1.11)
+   * มีคู่กับ `Remaining` เสมอ: ผู้เรียกที่เห็นแต่ "เหลือ 57" ไม่รู้ว่าควรชะลอแค่ไหน
+   * ถ้าไม่รู้ว่าเพดานคือ 60 หรือ 600 — และเพดานต่างกันตามชนิดงาน (read/write/report) ต่อโมดูล
+   */
+  rateLimit: number;
 };
 export type RequireResult = RequireOk | { ok: false; response: Response };
 
@@ -208,5 +214,5 @@ export async function requireApi(
     };
   }
 
-  return { ok: true, actor, requestId, rateRemaining };
+  return { ok: true, actor, requestId, rateRemaining, rateLimit: spec.limit };
 }

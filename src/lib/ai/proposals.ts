@@ -48,6 +48,14 @@ import {
   kanbanDestructiveKinds,
   kanbanKindAccess,
 } from "./kanban-ops";
+// M1.11 — ระบบสมาชิก: สะพานอยู่ในโมดูล (`member/api/tools.ts`) ไม่ใช่ที่นี่ เพราะทะเบียน op ของมัน
+// เป็นของโมดูลล้วน ๆ · ไฟล์นี้รู้แค่ "kind `member.*` ส่งต่อไปที่ไหน" เหมือนบัญชี/บอร์ดงาน
+import {
+  dispatchMemberKind,
+  isMemberKind,
+  memberDestructiveKinds,
+  memberKindAccess,
+} from "@/lib/modules/member/api/tools";
 import * as scheduledSvc from "./scheduled";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 
@@ -103,7 +111,7 @@ type StaticProposalKind =
  * kind ทั้งหมด — รวมของโมดูลบัญชีที่ derive จากทะเบียน op (`account.documents.create` ฯลฯ)
  * ไม่พิมพ์รายชื่อบัญชีซ้ำที่นี่: op เปลี่ยน/เพิ่มเมื่อไร ข้อเสนอเปลี่ยนตามทันที
  */
-export type ProposalKind = StaticProposalKind | `account.${string}` | `kanban.${string}`;
+export type ProposalKind = StaticProposalKind | `account.${string}` | `kanban.${string}` | `member.${string}`;
 
 type Ctx = { tenantId: string };
 
@@ -116,6 +124,8 @@ export const DESTRUCTIVE_KINDS = new Set<ProposalKind>([
   ...(accountDestructiveKinds() as ProposalKind[]),
   // บอร์ดงาน (K1.15): ทุก op ชนิด `danger` ที่เปิดเป็นเครื่องมือ (เก็บการ์ด/บอร์ด/คอลัมน์ · ถอดสมาชิก)
   ...(kanbanDestructiveKinds() as ProposalKind[]),
+  // ระบบสมาชิก (M1.11): ทุก op ชนิด `danger` ที่เปิดเป็นเครื่องมือ (รวมคนซ้ำ · ตั้งระดับด้วยมือ)
+  ...(memberDestructiveKinds() as ProposalKind[]),
   "void_sale",
   "cancel_appointment",
   "cancel_reservation",
@@ -181,6 +191,8 @@ const KIND_ACCESS: Record<string, { module: string; action: string }> = {
   ...accountKindAccess(),
   // บอร์ดงาน (K1.15) — derive จาก `op.action` ของทะเบียน API เหมือนบัญชี
   ...kanbanKindAccess(),
+  // ระบบสมาชิก (M1.11) — เงื่อนไขเดียวกัน (kind `member.*` → `op.action` ของทะเบียน)
+  ...memberKindAccess(),
 };
 
 // ── payload ต่อ kind (server-side เท่านั้น) ──
@@ -454,6 +466,15 @@ async function dispatch(
     // 🔴 K3.5: ส่ง userId ของคนกดต่อลงไปด้วย — ประวัติของบอร์ด (`actorUserId`) ต้องชี้ไปที่ "คนกด"
     //    ไม่ใช่ null (= ระบบทำเอง) และบางคำสั่ง (สร้างการ์ดจากแชท) ต้องมีตัวตนของคนจริงถึงจะทำได้
     return dispatchKanbanKind(m, tenantId, proposalId, kind, payload, userId);
+  }
+
+  // ── ระบบสมาชิก (M1.11) ────────────────────────────────────────────────────
+  // kind `member.*` เดินผ่านทะเบียน op เดียวกับ REST เช่นกัน
+  // 🔴 kind รุ่นเก่า `member_create` (ขีดล่าง) ยังอยู่ข้างล่าง — ข้อเสนอที่ค้างอยู่ก่อน M1.11
+  //    ต้องกดยืนยันได้ต่อ ห้ามลบทิ้ง
+  if (isMemberKind(kind)) {
+    if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการของระบบสมาชิกได้");
+    return dispatchMemberKind(m, tenantId, proposalId, kind, payload, userId);
   }
 
   if (kind === "inventory_receive") {

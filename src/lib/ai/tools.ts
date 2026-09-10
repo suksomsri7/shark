@@ -22,6 +22,7 @@ import { channelSentenceLabel } from "@/lib/modules/chat/channel-icon";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { accountTools } from "./tools-account";
 import { kanbanTools } from "./tools-kanban";
+import { memberTools } from "./tools-member";
 import { createProposal, type ProposalKind } from "./proposals";
 import { createPlan } from "./plans";
 import { dayKeyBangkok } from "./rules";
@@ -2397,6 +2398,9 @@ export function toolRegistry(): AiTool[] {
     ...accountTools(),
     // สกิลบอร์ดงาน (K1.15) — สร้างจากทะเบียน op ของ REST บอร์ดงาน ด้วยกติกาเดียวกัน (kind `kanban.*`)
     ...kanbanTools(),
+    // สกิลสมาชิก (M1.11) — สร้างจากทะเบียน op ของ REST ระบบสมาชิก ด้วยกติกาเดียวกัน (kind `member.*`)
+    // 🔴 ต่อท้าย tool รุ่นแรกของสกิล `members` ที่ยังเขียนมืออยู่ข้างบน (ชื่อไม่ชนกัน — ดูหัว tools-member.ts)
+    ...memberTools(),
   ];
 }
 

@@ -115,6 +115,22 @@ export default function DevelopersPage() {
         </p>
       </section>
 
+      <section className="flex flex-col gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+        <h2 className="text-lg font-semibold">Member API — เชื่อมระบบสมาชิก (อ่าน+เขียนได้)</h2>
+        <p className="text-sm text-neutral-700">
+          ถ้าร้านของคุณเปิดใช้ระบบสมาชิก มี API แยกต่างหากที่ทำได้มากกว่าอ่านอย่างเดียว: ค้นหา/สมัคร/แก้ข้อมูลสมาชิก
+          พร้อมฟิลด์ที่ร้านสร้างเอง บันทึกความยินยอมรายช่องทาง ผูกบัญชีไลน์/วอทส์แอปเข้ากับสมาชิก หาและรวมคนซ้ำ
+          ดูรายงานว่าลูกค้ามาจากช่องทางไหน ไปจนถึงระดับสมาชิกและกฎเลื่อนระดับ และรับ webhook เมื่อสมาชิกเปลี่ยนแปลง
+          คีย์ของโมดูลนี้มี <strong>scope</strong> ของตัวเอง (เลือกได้ 3 ชุด: อ่านอย่างเดียว / งานหน้าร้าน / ผู้ดูแล
+          ที่หน้าสมาชิก › ตั้งค่า › API) — และ <strong>ชุดอ่านกับชุดหน้าร้านไม่เห็นข้อมูลอ่อนไหวของลูกค้าเลย</strong>
+        </p>
+        <p className="text-sm">
+          <a className="font-medium text-emerald-700 underline" href="/developers/member">
+            อ่านคู่มือ Member API ฉบับเต็ม (/developers/member)
+          </a>
+        </p>
+      </section>
+
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">1. การยืนยันตัวตน (Authentication)</h2>
         <p className="text-sm text-neutral-700">

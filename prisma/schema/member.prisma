@@ -538,6 +538,8 @@ model AcquisitionLink {
   target         String // LIFF_JOIN | WEB_FORM | CHAT
   utm            Json?
   qrFileId       String?
+  // M1.8 — ค่าใช้จ่ายของช่องทางนี้ (สตางค์) ที่เจ้าของกรอกเอง · ใช้คิด "ต้นทุนต่อสมาชิกใหม่" (§7.2)
+  costSatang     Int          @default(0)
   hits           Int          @default(0)
   signups        Int          @default(0)
   firstPurchases Int          @default(0)

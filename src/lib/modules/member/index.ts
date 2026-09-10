@@ -53,10 +53,32 @@ export {
   onMerge,
   /** การ์ดสมาชิกแบบย่อสำหรับแผงข้างของโมดูลอื่น (กรองตามขอบเขตสาขาของผู้ดู) */
   briefFor,
-  /** "คนนี้คือสมาชิกคนไหน" จาก partyId / เบอร์ / id ไลน์ — ไม่พบ = null (ไม่สร้างใหม่) */
-  linkContact,
   maskPhone,
 } from "./profile";
+
+// ── แชท + สมาชิก (M1.12 · §3.14 §5.11 §9.3) ──
+export type {
+  LinkContactInput,
+  LinkContactResult,
+  ChatPanelResult,
+  ChatMemberInfo,
+  ChatMemberStatsDto,
+  ChatMemberCardFieldDto,
+  ChatMemberIdentityDto,
+  ChatMemberQuickActions,
+  ChatMemberHistoryItem,
+  RegisterFromChatInput,
+  RegisterFromChatResult,
+} from "./chat-bridge";
+
+export {
+  /** ผูกห้องแชท (ChatContact.id) เข้ากับสมาชิก — อัตโนมัติ (เบอร์→อีเมล→id ช่องทางเดิม) หรือเลือกมือ (MANUAL) */
+  linkContact,
+  /** DTO ของแผงข้าง "สมาชิก" ในห้องแชท (ภาพ 26) — ผูกแล้ว/candidates/ผูกรวม */
+  chatPanelFor,
+  /** สมัครสมาชิกใหม่จากห้องแชทโดยตรง แล้วผูกห้องนี้ให้ทันที */
+  registerFromChat,
+} from "./chat-bridge";
 
 export { canViewSensitive, logAccess } from "./privacy";
 
@@ -134,3 +156,31 @@ export {
   /** hook ให้โมดูลที่มีของแจกตอนขึ้นระดับมาต่อท้าย (M2.5 voucher ต้อนรับ) */
   onTierChanged,
 } from "./tiers";
+
+// ── ช่องทางที่มา (M1.8 · D10) ──
+export type {
+  SourceLinkDto,
+  CreateLinkInput,
+  CreateLinkResult,
+  UpdateLinkInput,
+  LinkTarget,
+  ResolveSourceInput,
+  ResolvedSource,
+  SourceVia,
+  TouchInput,
+  TouchDto,
+  SourceReport,
+  SourceReportRow,
+  SourceReportLinkRow,
+} from "./sources";
+
+export {
+  /** แปล "ทางเข้า" (POS/LIFF/ฟอร์ม/แชท/จอง/นำเข้า/CRM/API/แนะนำเพื่อน/ตลาดออนไลน์/แอป) → ที่มาแบบเดียวกันทั้งระบบ */
+  resolveSource,
+  /** บันทึกครั้งที่รู้ที่มา — FIRST เขียนครั้งเดียว · LAST ทับทุกครั้ง (§7.2) */
+  recordTouch,
+  /** ซื้อครั้งแรกของสมาชิก → บวกตัวนับให้ลิงก์ที่พาเข้ามา (consumer `pos.sale.paid` ของ M2.8 เรียกตัวนี้) */
+  recordFirstPurchase,
+  /** ลูกค้ากดลิงก์/สแกน QR ที่มา (สาธารณะ — เส้นทาง `/m/{slug}?src=` เรียกตัวนี้) */
+  hit,
+} from "./sources";

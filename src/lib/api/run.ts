@@ -84,14 +84,17 @@ export async function runOpAsActor(op: ApiOp, actor: ApiActor, args: RunOpArgs):
   );
   // audit เขียนหลังงานสำเร็จเท่านั้น · อ่านอย่างเดียวไม่เขียน (อ่านไม่เปลี่ยนอะไร)
   if (op.kind !== "read") {
+    // เป้าหมายของแถว audit — op ที่ประกาศ `auditTarget` ชี้ไปที่ "ของชิ้นนั้น" (สมาชิก/เอกสาร)
+    // เพื่อให้เปิดประวัติของชิ้นนั้นแล้วเห็นการแก้ที่มาทาง REST ด้วย · ไม่ประกาศ = ApiOp เหมือนเดิม
+    const target = op.auditTarget?.({ params: args.params ?? {}, input: args.input, data: env.data }) ?? null;
     await writeAudit({
       tenantId: actor.tenantId,
       actorType: actorAuditType(actor),
       actorId: actorAuditId(actor),
       // `auditAction` มีไว้ให้โมดูลที่คีย์สิทธิ์ 1 ตัวครอบหลาย op บันทึกได้ว่า "op ไหน" (บอร์ดงาน)
       action: op.auditAction ?? op.action,
-      targetType: "ApiOp",
-      targetId: op.id,
+      targetType: target?.targetType ?? "ApiOp",
+      targetId: target?.targetId ?? op.id,
       after: {
         ...(args.audit ?? {}),
         opId: op.id,

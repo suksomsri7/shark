@@ -266,6 +266,8 @@ for (let k = 0; k < 20; k += 1) {
 
 // ═══════════════════ 9. ห้องแชท 10 ห้อง (6 ห้องมีเบอร์ตรงสมาชิก 1–6) ═══════════════════
 const chatSys = systems.CHAT!;
+// M1.12 — แผงสมาชิกในห้องแชทอ่านระบบสมาชิกจาก ChatSetting.memberSystemId (ของจริงตั้งที่หน้าตั้งค่าแชท) → ชุด QC ผูกให้เลย
+await (prisma as Any).chatSetting.upsert({ where: { systemId: chatSys }, update: { memberSystemId: SYS }, create: { tenantId, systemId: chatSys, memberSystemId: SYS } });
 const convIds: string[] = [];
 for (let n = 1; n <= MQC.chat.contactsWithPhone; n += 1) {
   const m = members[n - 1]!;

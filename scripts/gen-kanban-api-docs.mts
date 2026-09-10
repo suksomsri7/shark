@@ -100,6 +100,11 @@ const ERROR_CODE_DOCS: Record<ApiErrorCode, CodeDoc> = {
     meaning: "A danger operation was called without `confirm: true`.",
     action: "Ask a human first, then resend with `confirm: true` and a `reason`.",
   },
+  customer_session_required: {
+    status: 401,
+    meaning: "The operation belongs to the customer themself (the member self-service lane) and needs a customer session, not a shop API key.",
+    action: "Nothing an API key can do here: no scope opens this lane. Use the shop-facing operation instead.",
+  },
   not_found: {
     status: 404,
     meaning: "No such operation, or the board, column, card, label, checklist, comment or attachment does not exist inside this task board system. A board the key may not see answers this too, never 403.",

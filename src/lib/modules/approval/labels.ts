@@ -8,6 +8,8 @@ export const ENTITY_TYPES = [
   { value: "member.merge", label: "รวมสมาชิกซ้ำ" },
   { value: "member.tier.manual", label: "ตั้งระดับสมาชิกด้วยมือ" },
   { value: "member.erase", label: "ลบข้อมูลสมาชิก (PDPA)" },
+  { value: "member.point.adjust", label: "ปรับแต้มสมาชิกด้วยมือ (เกินเพดาน)" },
+  { value: "member.voucher.issue", label: "ออก voucher เกินเพดาน" },
 ] as const;
 
 export const APPROVER_ROLES = [

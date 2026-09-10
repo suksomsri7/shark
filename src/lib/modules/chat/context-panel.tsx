@@ -26,12 +26,17 @@ import { getConversationContextAction, type ConversationContext } from "./inbox-
 import { linkCustomerAction } from "./actions";
 import { pageLabelFromPath } from "./page-label";
 import { setConversationTagAction } from "./quick-reply-actions";
+// M1.12 (§3.14 §9.3 · ภาพ 26 · 28) — แผงข้าง "สมาชิก" (ระบบสมาชิก v2 · เพิ่มเข้ามาต่อยอดคอลัมน์นี้
+// ไม่ได้แทนที่บล็อกผูกสมาชิก v1 ข้างบน ทั้งสองระบบอยู่คู่กันได้ — ตัดสินใจ: ดู wo-notes/member-M1.12.md)
+import { ChatMemberPanel } from "@/components/member/ChatMemberPanel";
 
 export type ContextPanelProps = {
   systemId: string;
   conversationId: string;
   /** วางข้อความลงกล่องพิมพ์ของห้องนี้ (สาย E ต่อให้) */
   onInsertText?: (text: string) => void;
+  /** M1.12 — ปุ่มด่วน "สร้างงาน" ของแผงสมาชิก เปิดแผง K3.2 เดียวกับปุ่มที่หัวห้อง · undefined = ร้านไม่เปิดสวิตช์บอร์ดงาน */
+  onCreateTask?: () => void;
 };
 
 // ───────────────────────── เวลา (เขตเวลาไทยเสมอ) ─────────────────────────
@@ -76,7 +81,7 @@ function dayWord(ts: number | null): string | null {
 /**
  * เกณฑ์ "ตอบเร็ว" = ขึ้นสีเขียว `#15803d`
  *
- * 🔴 ที่มาของตัวเลข (ไม่ใช่ความรู้สึก): แบบร่างวาด **"4 นาที" เป็นสีเขียว** ⇒ เกณฑ์ต้องกว้างกว่า 4
+ * [หมายเหตุ] ที่มาของตัวเลข (ไม่ใช่ความรู้สึก): แบบร่างวาด **"4 นาที" เป็นสีเขียว** ⇒ เกณฑ์ต้องกว้างกว่า 4
  *    เลือก 5 นาทีเพราะเป็นเลขกลมที่ทีมจำได้ และเป็นช่วงที่ลูกค้าส่วนใหญ่ยังค้างอยู่หน้าจอเดิม
  *    (หน้าแชทฝั่งลูกค้ายัง poll อยู่) ⇒ ตอบภายในนี้ = ลูกค้าได้คำตอบขณะยังสนใจอยู่
  *    ช้ากว่านี้ไม่ได้แปลว่า "แย่" จึงแค่ไม่ย้อมเขียว ไม่ย้อมแดง (ตัวเลขนี้เป็นกำลังใจ ไม่ใช่ใบสั่ง)
@@ -101,7 +106,7 @@ function durationLabel(msDiff: number): string {
 /**
  * ทำค่า referrer/utm ให้อ่านง่ายขึ้นโดย **ไม่แต่งข้อมูล**
  * URL → ชื่อโดเมน (ตัด `www.`) · ไม่ใช่ URL → คืนค่าที่เก็บไว้ตรง ๆ
- * 🔴 ไม่แปลงเป็นชื่อแบรนด์ (`google.com` → "Google") เพราะนั่นคือการเดาแทนข้อมูลจริง
+ * [หมายเหตุ] ไม่แปลงเป็นชื่อแบรนด์ (`google.com` → "Google") เพราะนั่นคือการเดาแทนข้อมูลจริง
  */
 function sourceLabel(raw: string | null): string | null {
   if (raw === null) return null;
@@ -149,7 +154,7 @@ function Kv({
   return (
     <div className="flex items-center justify-between gap-2 py-[3.5px] text-[12.5px] text-[#4b5563]">
       <span className="shrink-0">{label}</span>
-      {/* 🔴 เลือกคลาสสีทั้งก้อน ไม่ต่อท้าย — คลาสสี 2 ตัวในแอตทริบิวต์เดียว ตัวที่ชนะคือ
+      {/* [หมายเหตุ] เลือกคลาสสีทั้งก้อน ไม่ต่อท้าย — คลาสสี 2 ตัวในแอตทริบิวต์เดียว ตัวที่ชนะคือ
           ตัวที่อยู่หลังใน "ไฟล์ CSS" ไม่ใช่ตัวที่อยู่หลังในสตริง ⇒ ต่อท้ายแล้วสีอาจไม่เปลี่ยน */}
       <b
         className={`min-w-0 truncate text-right font-semibold ${
@@ -166,7 +171,7 @@ const initialOf = (name: string) => (name.trim()[0] ?? "?").toUpperCase();
 
 // ───────────────────────── ตัวคอลัมน์ ─────────────────────────
 
-export function ContextPanel({ systemId, conversationId, onInsertText }: ContextPanelProps) {
+export function ContextPanel({ systemId, conversationId, onInsertText, onCreateTask }: ContextPanelProps) {
   const [ctx, setCtx] = useState<ConversationContext | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [showLink, setShowLink] = useState(false);
@@ -282,6 +287,9 @@ export function ContextPanel({ systemId, conversationId, onInsertText }: Context
 
   return (
     <aside className={shell}>
+      {/* ── M1.12 (ภาพ 26 · 28) — แผงข้าง "สมาชิก" ระบบสมาชิก v2 (ผูกอัตโนมัติ/เลือก/สมัครจากแชท/ปุ่มด่วน) ── */}
+      <ChatMemberPanel conversationId={conversationId} onCreateTask={onCreateTask} />
+
       {/* ── โปรไฟล์ + ผูกสมาชิก (แบบร่าง: avatar 60px มุม 18px + แบดจ์ช่องทาง) ── */}
       <div className="flex flex-col items-center gap-2 px-0 pb-[2px] pt-[6px]">
         <span className="relative shrink-0">

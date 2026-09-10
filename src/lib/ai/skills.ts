@@ -16,6 +16,7 @@
 
 import { accountToolAllowedForScopes, accountToolNames } from "./account-ops";
 import { kanbanToolAllowedForScopes, kanbanToolNames } from "./kanban-ops";
+import { memberToolAllowedForScopes, memberToolNames } from "@/lib/modules/member/api/tools";
 import { toolRegistry } from "./tools";
 
 /** สกิล 1 ชุด — โครงนี้คือสิ่งที่จะกลายเป็น manifest สาธารณะสำหรับ AI ภายนอก */
@@ -91,9 +92,25 @@ export const SKILLS: Skill[] = [
     id: "members",
     label: "สมาชิก แต้ม และรางวัล",
     summary: "Customers and loyalty: find customers, member count, add members, points balance and adjustment, redeem rewards, coupons.",
+    // 🔴 สองชุดในสกิลเดียว (M1.11):
+    //   (ก) 8 ตัวแรก = tool รุ่นแรกที่เขียนมือใน `tools.ts` — **คงชื่อไว้ตลอดไป** (โมเดล/สกิลของลูกค้าอ้างอยู่)
+    //   (ข) ที่เหลือ = generate จากทะเบียน op ของ REST ระบบสมาชิก (`MEMBER_OPS`) — เขียนเป็นตัวหนังสือ
+    //       ที่นี่ด้วยเหตุผลเดียวกับบัญชี/บอร์ดงาน: ด่าน fitness F13.9 อ่าน "ไฟล์นี้" เพื่อยืนยันว่า tool ใหม่
+    //       มีบ้านจริง · ความตรงกันบังคับด้วย assertSkillRegistryComplete() ที่เทียบกับ memberToolNames()
     tools: [
+      // (ก) รุ่นแรก — ห้ามเปลี่ยนชื่อ
       "member_count", "member_create", "customer_search", "customer_points",
       "point_adjust", "reward_redeem", "reward_list_redemptions", "coupon_create",
+      // (ข) จากทะเบียน REST — อ่าน
+      "member_channels", "member_list", "member_search", "member_get", "member_activity",
+      "member_duplicates", "member_field_layout", "member_source_report",
+      "member_tier_list", "member_tier_simulate", "member_tier_status", "member_tier_history",
+      "member_import_preview",
+      // (ข) จากทะเบียน REST — เขียน (ผ่านการยืนยันของเจ้าของ)
+      "member_register", "member_update", "member_set_tags", "member_link_identity",
+      "member_resolve", "member_field_create", "member_consent_set",
+      // (ข) จากทะเบียน REST — อันตราย (ยืนยัน 2 ชั้น)
+      "member_merge", "member_tier_set_manual",
     ],
     systems: ["MEMBER", "POINT", "REWARD", "COUPON"],
   },
@@ -281,9 +298,13 @@ export function skillsForTenant(openedSystemTypes: string[]): Skill[] {
  * สกิลอื่นยังไม่มีแผนที่ tool → permission key ⇒ ยังคงพฤติกรรมเดิม (คีย์ที่ยืนยันตัวตนได้เรียกได้)
  */
 export function toolAllowedForApiKey(toolName: string, scopes: string[]): boolean {
-  // สกิลที่ผูก scope รายเครื่องมือแล้วมี 2 สกิล: `account` (WO E2) และ `tasks` (K1.15)
-  // ทั้งคู่ derive จาก `op.action` ของทะเบียน API ของตัวเอง · tool นอกสองสกิลนี้คืน true ทั้งคู่
-  return accountToolAllowedForScopes(toolName, scopes) && kanbanToolAllowedForScopes(toolName, scopes);
+  // สกิลที่ผูก scope รายเครื่องมือแล้วมี 3 สกิล: `account` (WO E2) · `tasks` (K1.15) · `members` (M1.11)
+  // ทุกตัว derive จาก `op.action` ของทะเบียน API ของตัวเอง · tool นอกสามสกิลนี้คืน true ทั้งหมด
+  return (
+    accountToolAllowedForScopes(toolName, scopes) &&
+    kanbanToolAllowedForScopes(toolName, scopes) &&
+    memberToolAllowedForScopes(toolName, scopes)
+  );
 }
 
 /**
@@ -352,6 +373,12 @@ export function assertSkillRegistryComplete(): void {
   const extraKanban = [...declaredKanban].filter((n) => !fromKanbanRegistry.includes(n));
   if (missingKanban.length > 0) problems.push(`สกิล tasks ขาด tool ของทะเบียน: ${missingKanban.join(", ")}`);
   if (extraKanban.length > 0) problems.push(`สกิล tasks มี tool ที่ทะเบียนไม่มีแล้ว: ${extraKanban.join(", ")}`);
+
+  // สกิลสมาชิก (M1.11) — เงื่อนไขเดียวกัน **แต่ทางเดียว**: ทุกชื่อในทะเบียน op ต้องอยู่ในสกิล
+  // (ไม่ตรวจ "เกิน" เพราะสกิลนี้ถือ tool รุ่นแรก 8 ตัวที่เขียนมือไว้ตั้งแต่ก่อนมีทะเบียน — ดู skills `members`)
+  const declaredMember = new Set(SKILLS.find((s) => s.id === "members")?.tools ?? []);
+  const missingMember = memberToolNames().filter((n) => !declaredMember.has(n));
+  if (missingMember.length > 0) problems.push(`สกิล members ขาด tool ของทะเบียน: ${missingMember.join(", ")}`);
 
   if (problems.length > 0) {
     throw new Error(`ทะเบียนสกิลไม่ครบ/ขัดกัน:\n  - ${problems.join("\n  - ")}`);

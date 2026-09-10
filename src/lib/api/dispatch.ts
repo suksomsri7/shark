@@ -112,8 +112,12 @@ export async function dispatch(
     // ── ด่านหน้า ──────────────────────────────────────────────────────────
     const auth = await requireApi(req, op, cfg, requestId);
     if (!auth.ok) return auth.response;
-    const { actor, rateRemaining } = auth;
-    const okHeaders = { "X-RateLimit-Remaining": String(rateRemaining) };
+    const { actor, rateRemaining, rateLimit } = auth;
+    // เพดาน + ที่เหลือ มาคู่กันเสมอ: ผู้เรียกจะได้ชะลอเองก่อนชน 429 (เพดานต่างกันตามโมดูล/ชนิดงาน)
+    const okHeaders = {
+      "X-RateLimit-Limit": String(rateLimit),
+      "X-RateLimit-Remaining": String(rateRemaining),
+    };
 
     // ── input ────────────────────────────────────────────────────────────
     // GET อ่านจาก query string · method อื่นอ่านจาก body (ต้องอ่านเป็น text ก่อน เพราะ
