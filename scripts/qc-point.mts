@@ -4,7 +4,9 @@
 //         adjust แจก(+)/หัก(-) เข้า ledger+balance · หักเกิน balance กัน · idempotency คีย์เดิมไม่เบิ้ล · cross-tenant
 // standalone-typesafe: dynamic import + wide cast
 
-try { process.loadEnvFile(".env"); } catch { /* CI */ }
+// 🔴 M1.1 (10 ก.ย.): ย้ายจาก `.env` (= prod จริง) มาใช้ .env.qc ผ่านด่านเดียวกับชุดบัญชี/บอร์ดงาน
+const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
+accEnv.loadQcEnv();
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

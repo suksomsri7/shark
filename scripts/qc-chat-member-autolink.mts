@@ -10,7 +10,9 @@
 // [6] ลูกค้าทักเข้ามาแล้วผูกเป็นสมาชิกได้เลย โดยไม่ต้องรอเจ้าของเปิดหน้าตั้งค่า
 //
 // รัน: pnpm exec tsx scripts/qc-chat-member-autolink.mts
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ secrets */ }
+// 🔴 M1.1 (10 ก.ย.): ย้ายจาก `.env` (= prod จริง) มาใช้ .env.qc ผ่านด่านเดียวกับชุดบัญชี/บอร์ดงาน
+const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
+accEnv.loadQcEnv();
 
 const { prisma } = await import("@/lib/core/db");
 const { readFileSync, existsSync } = await import("node:fs");

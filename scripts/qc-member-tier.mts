@@ -6,7 +6,9 @@
 //   setTierConfig(ctx, rows) → บันทึก (validate: SILVER < GOLD < PLATINUM · label ห้ามว่าง) + recompute tier ลูกค้าทุกคนของร้าน
 //   computeTierFor(totalSpentSatang, config) → tier ตาม config (pure)
 //   จุดบันทึกยอดใช้จ่าย (recordSpend เดิม) ต้องใช้ config ของร้าน ไม่ใช่ค่า hardcode
-try { process.loadEnvFile(".env"); } catch {}
+// 🔴 M1.1 (10 ก.ย.): ย้ายจาก `.env` (= prod จริง) มาใช้ .env.qc ผ่านด่านเดียวกับชุดบัญชี/บอร์ดงาน
+const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
+accEnv.loadQcEnv();
 import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 const { prisma } = await import("@/lib/core/db");
