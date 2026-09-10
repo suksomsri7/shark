@@ -122,3 +122,13 @@ export function hasMemberPerm(actor: MemberActor, key: string): boolean {
 export function canManageSettings(actor: MemberActor): boolean {
   return hasMemberPerm(actor, "member.settings.manage");
 }
+
+/**
+ * จัดการความเป็นส่วนตัว/PDPA ได้ไหม (M1.7 · §6.1) — ต้องมีคีย์ `member.privacy.manage`
+ * OWNER ผ่านเสมอ · **MANAGER ไม่ผ่านโดยปริยาย** (เป็น 1 ใน 4 คีย์ยกเว้น — ดู MANAGER_EXCLUDED_KEYS)
+ * ครอบคลุม: นโยบายเวอร์ชัน · ใครดูข้อมูลอ่อนไหวได้ · บันทึกการดู · คำขอส่งออกข้อมูล · ลบอัตโนมัติ
+ * 🔴 "ลบข้อมูลสมาชิก" ใช้คีย์แยก `member.customer.delete` (ทำลายข้อมูลถาวร — ดู privacy.requestErase)
+ */
+export function canManagePrivacy(actor: MemberActor): boolean {
+  return hasMemberPerm(actor, "member.privacy.manage");
+}

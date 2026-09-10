@@ -466,6 +466,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    การ**แจ้งเตือนลูกค้า** ("คุณขึ้นเป็น Gold แล้ว" / "อีก 30 วันจะหลุดระดับ") เป็นงานของ M3.6
   "member.tier.changed": withAutomation(async () => {}),
   "member.tier.at_risk": withAutomation(async () => {}),
+  // ── ความยินยอมของสมาชิก (M1.7 · D19 · §7.1) ──
+  // 🔴 no-op เหมือนกลุ่มบน: แถว MemberConsent + คอลัมน์ marketingConsent ถูกเขียนครบใน transaction
+  //    ของ `member/privacy.setConsent` แล้ว · ตัวนี้มีไว้ปิด event เป็น DONE (ไม่ให้คิวตัน) + เป็น
+  //    ทริกเกอร์ของกฎอัตโนมัติ/journey (เช่น "ลูกค้าถอนความยินยอม → หยุดส่งแคมเปญ") + ยิงเว็บฮุค
+  "member.consent.changed": withAutomation(async () => {}),
   // ดูข้อมูลอ่อนไหว: แถว MemberAccessLog ถูกเขียนไปแล้วตอนเปิดดู (privacy.logAccess)
   // ตัวนี้จึงมีไว้ให้ระบบภายนอกที่ทำหน้าที่ "เฝ้าการเข้าถึงข้อมูลส่วนบุคคล" รับต่อผ่านเว็บฮุค
   "member.sensitive.viewed": withAutomation(async () => {}),

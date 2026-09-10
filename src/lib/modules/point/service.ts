@@ -295,6 +295,58 @@ export async function listPointCustomers(
 }
 
 // รวมแต้มของลูกค้า จากระบบแต้มที่ผูกกับ unit เดียวกับระบบสมาชิกของลูกค้า
+export type CustomerLedgerRow = {
+  id: string;
+  systemId: string;
+  unitId: string | null;
+  delta: number;
+  type: string;
+  reason: string | null;
+  refType: string | null;
+  refId: string | null;
+  createdAt: Date;
+};
+
+/**
+ * รายการแต้มทั้งหมดของสมาชิก 1 คน (M1.7 — คำขอ "ขอสำเนาข้อมูลของฉัน" ตาม PDPA)
+ * resolve ระบบแต้มด้วยกติกาเดียวกับ `getCustomerPoints` (ระบบ POINT ที่ผูกสาขาเดียวกับระบบสมาชิก)
+ * ⇒ ไม่มีใครนอกโมดูลแต้มต้องรู้จักตาราง `PointLedger` เอง (fitness F2 · พิมพ์เขียว §5.11)
+ */
+export async function listCustomerLedger(
+  tenantId: string,
+  memberSystemId: string,
+  customerId: string,
+  take = 1000,
+): Promise<CustomerLedgerRow[]> {
+  const memberUnits = await prisma.appSystemUnit.findMany({
+    where: { tenantId, systemId: memberSystemId },
+    select: { unitId: true },
+  });
+  if (memberUnits.length === 0) return [];
+  const pointLinks = await prisma.appSystemUnit.findMany({
+    where: { tenantId, type: "POINT", unitId: { in: memberUnits.map((u) => u.unitId) } },
+    select: { systemId: true },
+  });
+  const pointSystemIds = [...new Set(pointLinks.map((p) => p.systemId))];
+  if (pointSystemIds.length === 0) return [];
+  const rows = await prisma.pointLedger.findMany({
+    where: { tenantId, customerId, systemId: { in: pointSystemIds } },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(take, 1), 5000),
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    systemId: r.systemId,
+    unitId: r.unitId,
+    delta: r.delta,
+    type: r.type,
+    reason: r.reason,
+    refType: r.refType,
+    refId: r.refId,
+    createdAt: r.createdAt,
+  }));
+}
+
 export async function getCustomerPoints(
   tenantId: string,
   memberSystemId: string,

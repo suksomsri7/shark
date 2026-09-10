@@ -1,0 +1,11 @@
+-- M1.7 — ระบบสมาชิก v2 ชุด B2 (`member_v2_b2`) · พิมพ์เขียว docs/modules/06-member-v2.md §4.3 §5.10
+--
+-- 🔴 additive/ผ่อนคลายล้วน — ไม่มี DROP / ALTER TYPE / SET NOT NULL
+--    คำสั่งเดียวคือ **ปลด** NOT NULL ของ `MemberPrivacyPolicy.effectiveAt`
+--    ⇒ แถวเดิมทุกแถวของทุกร้าน (ซึ่งมีค่าอยู่แล้ว) ทำงานเหมือนเดิมเป๊ะ · ย้อนกลับได้ด้วย SET NOT NULL
+--
+-- ทำไมต้องมี: สัญญาของ M1.7 กำหนดให้ "ออกเวอร์ชันใหม่" เขียนเป็น **ร่าง** ได้ก่อน แล้วค่อยกด
+--   "เผยแพร่" ทีหลัง (publishPolicyVersion ตั้ง effectiveAt) — ร่างคือแถวที่ยังไม่มีวันบังคับใช้
+--   ถ้าคอลัมน์ยังบังคับ NOT NULL ต้องแอบใส่วันปลอม (เช่น 2999) ซึ่งจะทำให้คิวรี "เวอร์ชันปัจจุบัน"
+--   ต้องรู้จักค่าเวทมนตร์นั้นตลอดไป
+ALTER TABLE "MemberPrivacyPolicy" ALTER COLUMN "effectiveAt" DROP NOT NULL;

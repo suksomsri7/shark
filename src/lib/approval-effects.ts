@@ -95,6 +95,25 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
     return;
   }
 
+  // ระบบสมาชิก v2 (M1.7 · §11.8): คำขอ "ลบข้อมูลตาม PDPA" — ผ่านแล้วจึงลบจริง
+  //   entityId = MemberPrivacyRequest.id · systemId (ระบบสมาชิก) อ่านจากคำขออนุมัติ ไม่ได้อยู่ใน payload
+  //   ปฏิเสธ = ปิดคำขอเป็น REJECTED ไว้เป็นหลักฐาน (ข้อมูลลูกค้าไม่ถูกแตะเลย)
+  //   idempotent ทั้งสองทาง (guard สถานะใน updateMany + eraseMember เงียบเมื่อคนนั้นถูกลบไปแล้ว)
+  if (entityType === "member.erase") {
+    if (!requestId) return;
+    const req = await prisma.approvalRequest.findFirst({
+      where: { id: requestId, tenantId: evt.tenantId },
+      select: { systemId: true, requestedById: true },
+    });
+    if (!req?.systemId) return;
+    const member = await import("@/lib/modules/member");
+    await member.applyEraseApproved(
+      { tenantId: evt.tenantId, systemId: req.systemId, actorUserId: req.requestedById || null },
+      { requestId: entityId, approved },
+    );
+    return;
+  }
+
   if (entityType === "HrLeave") {
     await prisma.hrLeave.updateMany({
       where: { id: entityId, tenantId: evt.tenantId, status: "PENDING" },

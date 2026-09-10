@@ -73,7 +73,6 @@ const XREF_BASELINE = new Map<string, string>([
   ["PROGRESS.md",                       "RENAME — ของจริงคือ docs/progress/_HANDOFF.md"],
   ["docs/registry.md",                  "DROP — QC3 อ้าง registry ที่ไม่เคยมี"],
   ["lib/core/db/raw.ts",                "BUILD 🔜 — SECURITY.md/QC4 วางไว้ (raw SQL ที่ผูก tenant guard). Phase 1 kernel"],
-  ["lib/core/sanitize.ts",              "BUILD 🔜 — SECURITY.md [B]"],
   ["lib/core/net/safeFetch.ts",         "BUILD 🔜 — SECURITY.md [B] (SSRF guard)"],
   ["test/fixtures/isolation.ts",        "BUILD 🔜 — SECURITY.md tenant-isolation gate → จะมาเป็น qc persona 'attacker'"],
   ["lib/modules/pos/sale-service.ts",   "RENAME — ของจริงคือ lib/modules/pos/service.ts"],

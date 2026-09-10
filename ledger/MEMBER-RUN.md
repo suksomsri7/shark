@@ -217,13 +217,13 @@ M1.1 → M1.2 → (M1.3 ∥ M1.4) → (M1.5 ∥ M1.7 ∥ M1.8 ∥ M1.9) → (M1.
 | M1.2 | ✅ DONE 27/27 | 10 ก.ย. | (ดู §4) | `member/fields.ts` engine · `limits.ts` · templates dive/general · seed ใช้ applyTemplate · โน้ต `wo-notes/member-M1.2.md` |
 | M1.5 | ✅ DONE 20/20 · ภาพ 01/02 ผ่าน (ตีกลับ 2 รอบ) | 10 ก.ย. | (ดู §4) | `member/list.ts` `views.ts` · หน้า members + [memberId] · `wo-notes/member-M1.5.md` |
 | M1.6 | ⏳ oracle พร้อม (18 ข้อ) + สเปคภาพ 10/11/12 | — | — | `scripts/qc-member-m1.6.mts` |
-| M1.7 | ⏳ oracle พร้อม (26 ข้อ) + สเปคภาพ 14 | — | — | `scripts/qc-member-m1.7.mts` |
+| M1.7 | ✅ DONE 26/26 · ภาพ 14 ผ่าน | 10 ก.ย. | (ดู §4) | `member/privacy.ts` เต็ม · settings/privacy · migration `member_v2_b2` (effectiveAt nullable) · `wo-notes/member-M1.7.md` |
 | M1.8 | ⏳ oracle พร้อม (16 ข้อ) + สเปคภาพ 13 | — | — | `scripts/qc-member-m1.8.mts` |
 | M1.10 | ⏳ oracle พร้อม (13 ข้อ) + สเปคภาพ 04/15 | — | — | `scripts/qc-member-m1.10.mts` |
 | M1.9 | ✅ DONE 26/26 | 10 ก.ย. | (ดู §4) | `member/tiers.ts` (evaluate/apply/review/manual/benefits) · cron tierReviews · approval-effects member.tier.manual · เอนจิน automation เดิมกรอง scope KANBAN · `wo-notes/member-M1.9.md` |
 | M1.6 | ⏳ oracle พร้อม (18 ข้อ) + สเปคภาพ 10/11/12 | — | — | `scripts/qc-member-m1.6.mts` |
 | M1.3 | ✅ DONE 14/14 (ภาพ parity ผ่านรอบ 2) | 10 ก.ย. | (ดู §4) | FieldDesigner (dnd-kit) · permissions member.* 30 · access.ts · nav.ts 9 หมวด · MemberTabs/Icon · `wo-notes/member-M1.3.md` |
-| M1.7 | ⏳ oracle พร้อม (26 ข้อ) + สเปคภาพ 14 | — | — | `scripts/qc-member-m1.7.mts` |
+| M1.7 | ✅ DONE 26/26 · ภาพ 14 ผ่าน | 10 ก.ย. | (ดู §4) | `member/privacy.ts` เต็ม · settings/privacy · migration `member_v2_b2` (effectiveAt nullable) · `wo-notes/member-M1.7.md` |
 | M1.8 | ⏳ oracle พร้อม (16 ข้อ) + สเปคภาพ 13 | — | — | `scripts/qc-member-m1.8.mts` |
 | M1.4 | ✅ DONE 37/37 · prod ✓ | 10 ก.ย. | `1e5550c` | migration `member_v2_b` (phone2/facebook/USER) · profile.ts (create/update/360/linkIdentity/duplicates/merge/briefFor) · privacy.ts canViewSensitive · point/index.ts facade · backfill ตัวที่ 7 referral-codes · `wo-notes/member-M1.4.md` |
 | M1.10 | ⏳ oracle พร้อม (13 ข้อ) + สเปคภาพ 04/15 | — | — | `scripts/qc-member-m1.10.mts` |
@@ -242,4 +242,6 @@ M1.1 → M1.2 → (M1.3 ∥ M1.4) → (M1.5 ∥ M1.7 ∥ M1.8 ∥ M1.9) → (M1.
 - 10 ก.ย. 2569 — **M1.9 ปิด 26/26** (builder Opus ~25 นาที · Fable รันซ้ำ 26/26 · tsc ✓ · fitness 23/23 ×2 · 3 ชุดเดิม cron/automation/ai-automation ย้ายออกจาก .env → 4/13/4 เขียว) · **ข้อตัดสิน**: `match` เก็บใน `AutomationRule.actionConfig.match` (backfill เดิมบน prod = ALL) · ไม่มีกฎคง = ใช้กฎเลื่อนของระดับนั้นเป็นเกณฑ์คง · visits12m = วันไม่ซ้ำ (บิล PAID + นัด DONE/CONFIRMED) · คำขอตั้งระดับมือรออนุมัติ = แถว TierHistory MANUAL evidence.pending · **เอนจิน automation v1 รั่ว**: engine.runForEvent/service.listRules ไม่กรอง scope → เพิ่ม `scope: "KANBAN"` · บั๊กที่ข้อสอบจับได้ 2: clamp memberDays กลืนวันอนาคต · กรอง paidAt ≤ now ตัดบิลชุด QC (วันที่อนาคต) · ปิดหนี้ tier.next ของ 360
 - 10 ก.ย. 2569 — **M1.9 prod**: Vercel READY `0de54cf` (09:21Z · ไม่มี migration)
 - 10 ก.ย. 2569 — **M1.5 ปิด 20/20** (builder Sonnet · ตีกลับภาพ 2 รอบ: แถบกรอง/คอลัมน์ซ้ำ/สีชิป/display ไทย/ระดับถัดไป → LOOKUP ชื่อ) · ข้อแย้ง builder ถูก: Next ห้าม `[id]` ซ้ำใน route → หน้า 360 อยู่ที่ `members/[memberId]` (แก้ข้อสอบ) · เทมเพลตดำน้ำ diveCount ต้อง filterable (แก้ template) · **บั๊กที่ oracle จับได้**: listFields รั่วเบอร์เต็ม · unit scope รั่วเมื่อส่ง unit= คู่กับกิจกรรมข้ามสาขา (แก้แล้ว) · profile.ts เพิ่ม resolveLookupNames + displayOf ไทย · `member-source-labels.ts` ใหม่
+- 10 ก.ย. 2569 — **M1.5 prod**: Vercel READY `90127a2` (10:46Z)
+- 10 ก.ย. 2569 — **M1.7 ปิด 26/26** (builder Opus ~37 นาที · ภาพ 14 ผ่านรอบแรก) · ข้อตัดสิน builder รับ 2: (1) `WHATSAPP.canConsent = true` (canNotify คงเดิม — ยินยอมเก็บได้ก่อนมี adapter) (2) migration `member_v2_b2` = ปลด NOT NULL `MemberPrivacyPolicy.effectiveAt` (ร่าง = null · ผ่อนคลายล้วน ตารางบน prod ว่าง) · เพิ่ม `src/lib/core/sanitize.ts` จริง (ถอดจาก XREF_BASELINE) · `MemberSettingsTabs` แท็บย่อยตั้งค่า · point facade +listCustomerLedger · หนี้ 6 ข้อใน wo-notes (ปุ่มดาวน์โหลดสำเนา · ข้อความ consent แก้เองไม่ได้ ฯลฯ)
 

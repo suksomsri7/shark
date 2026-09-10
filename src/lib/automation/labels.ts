@@ -57,6 +57,9 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   //   `member.tier.at_risk` = ยังไม่หลุดระดับ แต่ยอดไม่ถึงเกณฑ์คงระดับแล้ว (payload มี shortfall · reviewAt)
   { value: "member.tier.changed", label: "เมื่อระดับสมาชิกเปลี่ยน" },
   { value: "member.tier.at_risk", label: "เมื่อสมาชิกเสี่ยงหลุดระดับ" },
+  // M1.7 (D19 · §7.1) — ยิงจาก `member/privacy.ts#setConsent` ใน tx เดียวกับแถวความยินยอม
+  //   payload มี customerId · channel (key จากทะเบียนช่องทางกลาง) · granted (true = ให้ / false = ถอน)
+  { value: "member.consent.changed", label: "เมื่อความยินยอมของสมาชิกเปลี่ยน" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

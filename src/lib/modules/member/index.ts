@@ -60,6 +60,38 @@ export {
 
 export { canViewSensitive, logAccess } from "./privacy";
 
+// ── ความเป็นส่วนตัว / PDPA (M1.7 · D8 · D17 · D19) ──
+export type {
+  PolicyVersionDto,
+  ConsentDto,
+  SensitivePolicyDto,
+  SetSensitivePolicyInput,
+  HrPositionsSummary,
+  AccessLogDto,
+  AccessLogFilter,
+  PrivacyRequestDto,
+  ExportBundle,
+} from "./privacy";
+
+export {
+  /** นโยบายความเป็นส่วนตัวที่บังคับใช้อยู่ (LIFF/หน้าเว็บลูกค้าเรียกตัวนี้) */
+  currentPolicy,
+  /** ลูกค้ากดยอมรับนโยบายเวอร์ชันหนึ่ง */
+  acceptPolicy,
+  /** ความยินยอมรายช่องทางของสมาชิก (D19) */
+  getConsents,
+  setConsent,
+  /** สำเนาข้อมูลทั้งหมดของสมาชิก (PDPA) */
+  exportBundle,
+  requestExport,
+  /** คำขอลบข้อมูล — ผ่านสายอนุมัติกลางเสมอ */
+  requestErase,
+  /** ผลของการอนุมัติคำขอลบ — เรียกจาก approval-effects เท่านั้น */
+  applyEraseApproved,
+  /** cron รายวัน: สร้างคำขอลบให้สมาชิกที่ไม่เคลื่อนไหวเกินจำนวนปีที่ร้านตั้งไว้ */
+  sweepAutoErase,
+} from "./privacy";
+
 // ── ทางเข้าเดิม (v1) ที่โมดูลอื่นใช้อยู่แล้ว — คงสัญญาไว้ทุกตัว ──
 export {
   /** หา/สร้างสมาชิกจากเบอร์→อีเมล (แชท/POS/จอง เรียกอยู่) */

@@ -15,7 +15,7 @@
 //    ไปหน้าใหม่ `/member/members` (ไม่ทิ้ง 2 หน้ารายชื่อพร้อมกัน — ดู wo-notes/member-M1.5.md)
 
 import type { MemberActor } from "./access";
-import { canManageSettings, canReadMember } from "./access";
+import { canManagePrivacy, canManageSettings, canReadMember } from "./access";
 
 export type MemberNavStatus = "ready" | "soon";
 
@@ -43,6 +43,43 @@ export const MEMBER_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "settings", label: "ตั้งค่า", path: "/member/settings/fields", status: "ready" },
 ] as const);
 
+/**
+ * หน้าย่อยของหมวด "ตั้งค่า" (M1.7) — แถบแท็บย่อยบนหน้าตั้งค่าทุกหน้า
+ * 🔴 ทะเบียนเดียวกับ drawer ☰: `memberNavChildren` ต่อท้ายหน้าย่อยที่พร้อมใช้ + ผู้ใช้มีสิทธิ์เข้า
+ *    (ไม่งั้นหน้าตั้งค่าความเป็นส่วนตัวจะเป็น "หน้ากำพร้า" ที่เข้าถึงได้ทางเดียวคือพิมพ์ URL เอง)
+ * 🔴 "ฟิลด์" ต้องมี `member.settings.manage` · "ความเป็นส่วนตัว" ต้องมี `member.privacy.manage`
+ *    (คนละคีย์กัน §6.1 — ผู้จัดการที่ได้สิทธิ์ตั้งฟิลด์ ไม่ได้แปลว่าได้ดูบันทึกการเข้าถึงข้อมูลอ่อนไหวด้วย)
+ */
+export const MEMBER_SETTINGS_NAV: readonly MemberNavEntry[] = Object.freeze([
+  { key: "fields", label: "ฟิลด์", path: "/member/settings/fields", status: "ready" },
+  { key: "privacy", label: "ความเป็นส่วนตัว", path: "/member/settings/privacy", status: "ready" },
+  { key: "points", label: "แต้ม", path: "/member/settings/points", status: "soon", wo: "M2.2" },
+  { key: "sources", label: "ช่องทางที่มา", path: "/member/settings/sources", status: "soon", wo: "M1.8" },
+  { key: "notifications", label: "แจ้งเตือน", path: "/member/settings/notifications", status: "soon", wo: "M3.6" },
+  { key: "api", label: "API", path: "/member/settings/api", status: "soon", wo: "M1.11" },
+] as const);
+
+/** สิทธิ์ที่ต้องมีของหน้าย่อยในหมวดตั้งค่า (ไม่มีในตาราง = ใช้ `member.settings.manage`) */
+function canOpenSettingsPage(key: string, actor: MemberActor): boolean {
+  if (key === "privacy") return canManagePrivacy(actor);
+  return canManageSettings(actor);
+}
+
+/** หน้าย่อยของ "ตั้งค่า" ที่ actor เปิดได้จริงวันนี้ (แถบแท็บย่อยใช้ตัวนี้ — `soon` ยังโชว์แต่กดไม่ได้) */
+export function memberSettingsNavItems(
+  systemId: string,
+  actor?: MemberActor,
+): { key: string; href: string; label: string; status: MemberNavStatus; wo?: string }[] {
+  const base = `/app/sys/${systemId}`;
+  return MEMBER_SETTINGS_NAV.filter((e) => e.status !== "ready" || !actor || canOpenSettingsPage(e.key, actor)).map((e) => ({
+    key: e.key,
+    href: e.status === "ready" ? `${base}${e.path}` : "#",
+    label: e.label,
+    status: e.status,
+    ...(e.wo ? { wo: e.wo } : {}),
+  }));
+}
+
 /** ลิงก์ v1 เดิม — เห็นเสมอไม่ว่าสิทธิ์อะไร (หน้าเดิมมีด่านสิทธิ์ของตัวเองอยู่แล้ว) */
 const LEGACY_V1_LINKS: readonly { href: string; label: string }[] = Object.freeze([
   { href: "/member/import", label: "นำเข้า CSV" },
@@ -63,9 +100,14 @@ function visibleNavEntries(actor?: MemberActor): readonly MemberNavEntry[] {
 
 /** หมวดที่กดเข้าได้จริงวันนี้ (นำหน้าด้วย "หน้าหลัก") + ลิงก์ v1 เดิม 4 อัน — `actor` ไม่ส่ง = ไม่กรอง */
 export function memberNavChildren(base: string, actor?: MemberActor): { href: string; label: string }[] {
+  // หน้าย่อยของ "ตั้งค่า" — ตัด `fields` ออกเพราะหมวด "ตั้งค่า" ด้านบนพาไปหน้านั้นอยู่แล้ว
+  const settingsChildren = MEMBER_SETTINGS_NAV.filter(
+    (e) => e.status === "ready" && e.key !== "fields" && (!actor || canOpenSettingsPage(e.key, actor)),
+  ).map((e) => ({ href: `${base}${e.path}`, label: e.label }));
   return [
     { href: base, label: "หน้าหลัก" },
     ...visibleNavEntries(actor).map((e) => ({ href: `${base}${e.path}`, label: e.label })),
+    ...settingsChildren,
     ...LEGACY_V1_LINKS.map((l) => ({ href: `${base}${l.href}`, label: l.label })),
   ];
 }

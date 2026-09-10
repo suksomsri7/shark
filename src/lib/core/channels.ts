@@ -68,7 +68,11 @@ export const CHANNELS: ChannelDef[] = [
   { key: "FACEBOOK", label: "เฟซบุ๊ก", kind: "CHAT", canConsent: false, canNotify: false, icon: "📘" },
   { key: "INSTAGRAM", label: "อินสตาแกรม", kind: "CHAT", canConsent: false, canNotify: false, icon: "📸" },
   { key: "MESSENGER", label: "เมสเซนเจอร์", kind: "CHAT", canConsent: false, canNotify: false, icon: "✉️" },
-  { key: "WHATSAPP", label: "วอทส์แอป", kind: "CHAT", canConsent: false, canNotify: false, icon: "🟢" },
+  // 🔴 M1.7 — WhatsApp Business ส่ง "ข้อความเทมเพลต" หาลูกค้าได้ต่อเมื่อลูกค้า **ยินยอมไว้ล่วงหน้า**
+  //    (opt-in เป็นข้อบังคับของ Meta เอง) ⇒ เป็นช่องทางที่ต้องเก็บความยินยอมจริง `canConsent: true`
+  //    ส่วน `canNotify` ยังเป็น false เพราะ SHARK ยังไม่มี adapter ส่งออกทางวอทส์แอป (เหมือน PHONE:
+  //    เก็บความยินยอมได้ แต่ระบบไม่ได้เป็นคนส่ง) — เปิดเป็น true ในใบที่ต่อ adapter จริง
+  { key: "WHATSAPP", label: "วอทส์แอป", kind: "CHAT", canConsent: true, canNotify: false, icon: "🟢" },
   { key: "WECHAT", label: "วีแชท", kind: "CHAT", canConsent: false, canNotify: false, icon: "🐉" },
   { key: "EMAIL", label: "อีเมล", kind: "DIRECT", canConsent: true, canNotify: true, icon: "📧" },
   { key: "SMS", label: "เอสเอ็มเอส", kind: "DIRECT", canConsent: true, canNotify: true, icon: "📨" },

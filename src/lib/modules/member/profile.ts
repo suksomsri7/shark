@@ -87,9 +87,13 @@ export type UpdateMemberInput = {
 };
 
 export type Member360Field = {
+  /** MemberField.id — หน้าตั้งค่า/นโยบายอ่อนไหวอ้างฟิลด์ด้วย id ไม่ใช่ key */
+  id: string;
   key: string;
   label: string;
   type: string;
+  /** M1.7 — ฟิลด์อ่อนไหวที่ actor คนนี้ดูไม่ได้: `hidden: true` + `value: null` (ค่าไม่เคยถูกส่งออกไป) */
+  hidden: boolean;
   value: fields.MemberFieldValueInput;
   display: string;
 };
@@ -1159,7 +1163,12 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
       // ฟิลด์อ่อนไหวเดี่ยว ๆ ในส่วนที่ไม่อ่อนไหว — ตัดสินทีละฟิลด์ (D8 ตั้งได้ทั้งระดับส่วนและฟิลด์)
       if (f.sensitive && !s.sensitive) {
         const ok = await evaluateSensitiveAccess(ctx, actor, { targetType: "FIELD", targetId: f.id, customerId: customer.id });
-        if (!ok.allowed) continue;
+        // M1.7 — ดูไม่ได้ ≠ ไม่มีฟิลด์: ส่งหัวฟิลด์ไปให้หน้าจอวาดกล่อง "ซ่อน" ได้ (§6.4)
+        //   แต่ **ค่าไม่ถูกใส่ลง DTO เลย** (null) เหมือนกติกาของส่วนอ่อนไหวทั้งกล่อง
+        if (!ok.allowed) {
+          list.push({ id: f.id, key: f.key, label: f.label, type: f.type, hidden: true, value: null, display: "ซ่อน" });
+          continue;
+        }
         if (ok.shouldLog) {
           await logAccess(ctx, actor, {
             customerId: customer.id,
@@ -1171,7 +1180,7 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
         }
       }
       const value = bag[f.key] ?? null;
-      list.push({ key: f.key, label: f.label, type: f.type, value, display: displayOf(f, value, lookupNames) });
+      list.push({ id: f.id, key: f.key, label: f.label, type: f.type, hidden: false, value, display: displayOf(f, value, lookupNames) });
     }
     sections.push({ ...base, visible: true, fields: list });
   }

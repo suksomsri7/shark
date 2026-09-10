@@ -397,12 +397,15 @@ model MemberConsent {
 }
 
 model MemberPrivacyPolicy {
-  id          String   @id @default(cuid())
-  tenantId    String
-  systemId    String
-  version     Int
-  bodyHtml    String
-  effectiveAt DateTime
+  id       String @id @default(cuid())
+  tenantId String
+  systemId String
+  version  Int
+  bodyHtml String
+  // M1.7 — `null` = **ร่าง** (เขียนไว้แล้วแต่ยังไม่บังคับใช้) · มีค่า = วันที่เริ่มบังคับใช้
+  //   เวอร์ชันปัจจุบัน = เวอร์ชันสูงสุดที่ `effectiveAt <= now` ⇒ ตั้งวันในอนาคตล่วงหน้าได้
+  //   (migration `member_v2_b2` ปลด NOT NULL ออก — แถวเดิมทุกแถวมีค่าอยู่แล้วจึงไม่กระทบ)
+  effectiveAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

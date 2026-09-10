@@ -22,7 +22,7 @@ import { sweepRecurringCards } from "@/lib/modules/kanban/recurrence";
 import { sweepDueDateRules } from "@/lib/modules/kanban/automation";
 import { sweepOverdue } from "@/lib/modules/kanban/reminders";
 import { sweepKanbanDigest } from "@/lib/modules/kanban/digest";
-import { runTierReview } from "@/lib/modules/member";
+import { runTierReview, sweepAutoErase } from "@/lib/modules/member";
 
 /**
  * M1.9 (D1 · §7.5) — รอบทบทวนระดับสมาชิกของทุกร้านที่มี "ระบบสมาชิก"
@@ -111,6 +111,7 @@ export async function runDailyCron(
   kanbanOverdue: number;
   kanbanDigests: number;
   tierReviews: number;
+  autoErase: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -130,6 +131,7 @@ export async function runDailyCron(
   let kanbanOverdue = -1;
   let kanbanDigests = -1;
   let tierReviews = -1;
+  let autoErase = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -256,6 +258,13 @@ export async function runDailyCron(
   } catch {
     // sweep รอบทบทวนระดับพัง → -1 ไปต่อ (ห้ามพา cron ทั้งรอบล้ม)
   }
+  try {
+    // M1.7 (§7.5 · §11.8): ร้านที่ตั้ง "ลบข้อมูลลูกค้าที่ไม่เคลื่อนไหวเกิน N ปี"
+    //   → สร้าง **คำขอลบ** เข้าสายอนุมัติ (ไม่ลบเอง) · ข้ามคนที่มีคำขอค้างอยู่แล้ว = รันทุกวันได้
+    autoErase = (await sweepAutoErase(undefined, now)).created;
+  } catch {
+    // sweep ลบอัตโนมัติพัง → -1 ไปต่อ (ห้ามพา cron ทั้งรอบล้ม)
+  }
 
   return {
     subsExpired,
@@ -276,5 +285,6 @@ export async function runDailyCron(
     kanbanOverdue,
     kanbanDigests,
     tierReviews,
+    autoErase,
   };
 }

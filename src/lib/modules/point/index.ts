@@ -21,6 +21,10 @@ export {
   getBalance,
   /** ยอดแต้มรวมของสมาชิก โดย resolve ระบบแต้มที่ผูกสาขาเดียวกับระบบสมาชิก (หน้า 360 ใช้ตัวนี้) */
   getCustomerPoints,
+  /** รายการแต้มทั้งหมดของสมาชิก (M1.7 — สำเนาข้อมูลตาม PDPA) */
+  listCustomerLedger,
 } from "./service";
+
+export type { CustomerLedgerRow } from "./service";
 
 export { adjustPoints as adjust } from "./service";
