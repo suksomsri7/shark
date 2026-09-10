@@ -75,6 +75,11 @@ const posSalePaid: OutboxHandler = async (evt) => {
   });
   if (!sale) return;
   if (sale.status !== "PAID") return; // ถูก void ก่อน drain → ไม่ต้อง post (void handler จัดการ)
+  // M2.6 — บิล "ขาย/เติมบัตรกำนัล" ข้ามทั้งใบ: ไม่ลงบัญชีขาย · ไม่ให้แต้ม · ไม่นับสแตมป์/ที่มา
+  // 🔴 ขายบัตรกำนัลยัง**ไม่ใช่รายได้** (เป็นเงินรับล่วงหน้า หนี้สิน 2110) และยัง**ไม่ใช่การซื้อของ**
+  //    ของลูกค้า ⇒ ถ้าปล่อยผ่านเส้นนี้ รายได้จะถูกบันทึกสองรอบ (ตอนขายบัตร + ตอนลูกค้าเอาบัตรมาใช้)
+  //    และคนซื้อจะได้แต้มสองเด้ง · โมดูล giftcard ลงบัญชีของตัวเองผ่าน facade บัญชีแล้ว (§9.1 §9.4)
+  if (sale.giftCardId) return;
   // ยอดฝั่งบริการ → ลงบัญชี 4030 รายได้ค่าบริการ (ที่เหลือเข้า 4000 ขายสินค้า)
   // ใช้ยอดก่อนหักส่วนลดท้ายบิล — facade ถอด VAT/ปรับสัดส่วนให้เอง
   const serviceGross = sale.lines.reduce((n, l) => n + (l.serviceId ? l.lineTotalSatang : 0), 0);
@@ -326,6 +331,50 @@ const kanbanOutbound =
     await outbound[name](evt);
   };
 
+/**
+ * M2.6 — บัตรกำนัลขายแล้ว/ถูกใช้ → บันทึกลงไทม์ไลน์ของเจ้าของบัตร
+ * เจ้าของอาจเป็น null (บัตรที่พิมพ์แจก/ส่งให้คนนอกระบบ) หรือถูกลบ/รวมไปแล้วก่อนคิวจะมาถึง
+ * ⇒ ถือเป็นงานเสร็จเงียบ ๆ (ห้าม throw ให้ event ค้าง PENDING ตลอดกาล — แบบเดียวกับ chatContactLinked)
+ */
+const giftCardActivity =
+  (kind: "SOLD" | "USED"): OutboxHandler =>
+  async (evt) => {
+    const p = (evt.payload ?? {}) as {
+      giftCardId?: unknown;
+      number?: unknown;
+      satang?: unknown;
+      balanceAfter?: unknown;
+      ownerCustomerId?: unknown;
+    };
+    const giftCardId = typeof p.giftCardId === "string" ? p.giftCardId : null;
+    if (!giftCardId) return;
+    const card = await prisma.giftCard.findFirst({
+      where: { id: giftCardId, tenantId: evt.tenantId },
+      select: { number: true, ownerCustomerId: true, balanceSatang: true },
+    });
+    const customerId = card?.ownerCustomerId ?? (typeof p.ownerCustomerId === "string" ? p.ownerCustomerId : null);
+    if (!card || !customerId) return;
+    const stillExists = await prisma.customer.findFirst({
+      where: { id: customerId, tenantId: evt.tenantId },
+      select: { id: true },
+    });
+    if (!stillExists) return;
+    const satang = typeof p.satang === "number" ? p.satang : 0;
+    const baht = (n: number) => (n / 100).toLocaleString("th-TH");
+    await memberLogActivity({
+      tenantId: evt.tenantId,
+      customerId,
+      module: "giftcard",
+      type: kind === "SOLD" ? "GIFTCARD_SOLD" : "GIFTCARD_USED",
+      refType: "GiftCard",
+      refId: giftCardId,
+      summary:
+        kind === "SOLD"
+          ? `ได้รับบัตรกำนัล ${card.number} มูลค่า ฿${baht(satang)}`
+          : `ใช้บัตรกำนัล ${card.number} ฿${baht(satang)} (เหลือ ฿${baht(card.balanceSatang)})`,
+    });
+  };
+
 const baseConsumers: Record<string, OutboxHandler> = {
   "pos.sale.paid": withAutomation(posSalePaid),
   // K3.3: + การ์ด "ตรวจสอบบิลยกเลิก" เมื่อยอดถึงเกณฑ์ที่ร้านตั้งไว้ (สวิตช์ปิดอยู่ = ไม่มีอะไรเกิด)
@@ -501,6 +550,22 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    ของ `member/privacy.setConsent` แล้ว · ตัวนี้มีไว้ปิด event เป็น DONE (ไม่ให้คิวตัน) + เป็น
   //    ทริกเกอร์ของกฎอัตโนมัติ/journey (เช่น "ลูกค้าถอนความยินยอม → หยุดส่งแคมเปญ") + ยิงเว็บฮุค
   "member.consent.changed": withAutomation(async () => {}),
+  // ── แต้ม v2 (M2.1 · §7.1) ──
+  // 🔴 no-op เหมือนกลุ่มบน: ledger/ล็อต/ยอดคงเหลือถูกเขียนครบใน transaction ของ `point/lots.ts` แล้ว
+  //    ตัวนี้มีไว้ 3 อย่าง (1) ปิด event เป็น DONE ไม่ให้คิวตัน (2) เป็นทริกเกอร์ของกฎอัตโนมัติ/journey
+  //    (3) ยิงเว็บฮุคออกนอกระบบ · การ**แจ้งลูกค้า** ("แต้มจะหมดอายุ 7 วัน") เป็นงานของ M3.6
+  //    `point.transferred` ยังไม่มีใครยิงจนกว่าจะถึง M2.2 — ลงทะเบียนไว้พร้อมกันเพราะเป็นชุดเดียวกัน
+  "point.earned": withAutomation(async () => {}),
+  "point.burned": withAutomation(async () => {}),
+  "point.expiring": withAutomation(async () => {}),
+  "point.expired": withAutomation(async () => {}),
+  "point.transferred": withAutomation(async () => {}),
+  // ── บัตรกำนัล (M2.6 · §7.1) ──
+  // ของจริง (ตัวบัตร/รายการบนบัตร/บิล POS/เอกสารบัญชี) ถูกเขียนครบใน transaction ของ `giftcard/service.ts`
+  // แล้ว — consumer นี้ทำงานจริง 1 อย่าง: **เขียนไทม์ไลน์ของเจ้าของบัตร** (บัตรที่ยังไม่มีเจ้าของในระบบ
+  // = ไม่มีใครให้บันทึก จบเงียบ ๆ) + ปิด event เป็น DONE + เป็นจุดให้กฎอัตโนมัติ/เว็บฮุคยิงต่อ
+  "giftcard.sold": withAutomation(giftCardActivity("SOLD")),
+  "giftcard.used": withAutomation(giftCardActivity("USED")),
   // ดูข้อมูลอ่อนไหว: แถว MemberAccessLog ถูกเขียนไปแล้วตอนเปิดดู (privacy.logAccess)
   // ตัวนี้จึงมีไว้ให้ระบบภายนอกที่ทำหน้าที่ "เฝ้าการเข้าถึงข้อมูลส่วนบุคคล" รับต่อผ่านเว็บฮุค
   "member.sensitive.viewed": withAutomation(async () => {}),

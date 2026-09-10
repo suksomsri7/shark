@@ -209,6 +209,14 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PointSettings: tenant,
   PointLedger: sys(),
   PointBalance: sys(),
+  // แต้ม v2 (M2.1) — กฎ/ล็อตผูกกับ "ระบบแต้ม" · การโอนผูกกับตัวลูกค้า (คู่โอนอยู่ร้านเดียวกันเสมอ)
+  PointRule: sys(),
+  PointLot: sys(),
+  PointTransfer: tenant,
+  // บัตรกำนัล (M2.6) — บัตร/ตั้งค่าผูกกับ "ระบบสมาชิก" · รายการบนบัตรผูกกับตัวบัตร (query ผ่าน giftCardId + tenantId)
+  GiftCard: sys(),
+  GiftCardSettings: sys(),
+  GiftCardTxn: tenant,
   // POS
   PosSale: sys(),
   PosSaleLine: unit,

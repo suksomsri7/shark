@@ -60,6 +60,21 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // M1.7 (D19 · §7.1) — ยิงจาก `member/privacy.ts#setConsent` ใน tx เดียวกับแถวความยินยอม
   //   payload มี customerId · channel (key จากทะเบียนช่องทางกลาง) · granted (true = ให้ / false = ถอน)
   { value: "member.consent.changed", label: "เมื่อความยินยอมของสมาชิกเปลี่ยน" },
+  // M2.1 (D2 · §7.1) — ยิงจาก `point/lots.ts` ใน tx เดียวกับ ledger/ล็อต (earn/burn/expire) และจาก cron
+  //   payload มี customerId · points · lotId เสมอ · `point.expiring` มี daysLeft (30/7 ตาม remindDays)
+  //   🔴 ทุกตัวมี consumer ใน `outbox-consumers.ts` แล้ว (ขาดไป = คิวตันทั้งระบบเงียบ ๆ)
+  //   `point.transferred` ยิงจริงที่ M2.2 (โอนแต้มด้วย OTP) — ลงทะเบียนพร้อมกันเป็นชุดเดียว
+  { value: "point.earned", label: "เมื่อสมาชิกได้แต้ม" },
+  { value: "point.burned", label: "เมื่อสมาชิกใช้แต้ม" },
+  { value: "point.expiring", label: "เมื่อแต้มของสมาชิกใกล้หมดอายุ" },
+  { value: "point.expired", label: "เมื่อแต้มของสมาชิกหมดอายุ" },
+  { value: "point.transferred", label: "เมื่อสมาชิกโอนแต้มให้กัน" },
+  // M2.6 (D3 · §7.1) — ยิงจาก `giftcard/service.ts` ใน tx เดียวกับตัวบัตร/รายการบนบัตร
+  //   `giftcard.sold` payload: giftCardId · number · satang · buyerCustomerId · ownerCustomerId · saleId
+  //   `giftcard.used` payload: giftCardId · number · satang · saleId · balanceAfter
+  //   🔴 ทั้งคู่มี consumer ใน `outbox-consumers.ts` แล้ว (ขาดไป = คิวตันทั้งระบบเงียบ ๆ)
+  { value: "giftcard.sold", label: "เมื่อขายบัตรกำนัล" },
+  { value: "giftcard.used", label: "เมื่อลูกค้าใช้บัตรกำนัล" },
   // M1.12 (§7.1 §9.3) — ยิงจาก `member/chat-bridge.ts#linkContact` (ทั้งจับคู่อัตโนมัติและเลือกมือ)
   //   payload มี contactId · partyId · customerId · method (PHONE/EMAIL/CHANNEL_ID/MANUAL)
   { value: "chat.contact.linked", label: "เมื่อผูกห้องแชทเข้ากับสมาชิก" },

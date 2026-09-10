@@ -1,61 +1,22 @@
-import { prisma } from "@/lib/core/db";
-import type { Prisma, PrismaClient } from "@prisma/client";
-
 // Point (แต้ม) — scope ตาม systemId (ระบบแต้ม). Point คิดแต้มเอง (contract 2.2)
-type Client = PrismaClient | Prisma.TransactionClient;
-
-async function withTx<T>(client: Client, fn: (tx: Client) => Promise<T>): Promise<T> {
-  if ("$transaction" in client && typeof client.$transaction === "function") {
-    return (client as PrismaClient).$transaction((tx) => fn(tx));
-  }
-  return fn(client);
-}
-
-async function getSettings(client: Client, tenantId: string) {
-  const s = await client.pointSettings.findUnique({ where: { tenantId } });
-  if (s) return s;
-  return client.pointSettings.create({ data: { tenantId } });
-}
-
-async function balanceIn(tx: Client, systemId: string, customerId: string): Promise<number> {
-  const b = await tx.pointBalance.findUnique({
-    where: { systemId_customerId: { systemId, customerId } },
-  });
-  return b?.balance ?? 0;
-}
-
-async function applyDelta(
-  tx: Client,
-  input: {
-    tenantId: string;
-    systemId: string;
-    customerId: string;
-    unitId?: string;
-    delta: number;
-    type: "EARN" | "BURN" | "ADJUST" | "REVERSE" | "EXPIRE";
-    reason?: string;
-    refType?: string;
-    refId?: string;
-    idempotencyKey: string;
-  },
-): Promise<number> {
-  const dup = await tx.pointLedger.findUnique({
-    where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } },
-  });
-  if (dup) return balanceIn(tx, input.systemId, input.customerId);
-  await tx.pointLedger.create({ data: input });
-  const updated = await tx.pointBalance.upsert({
-    where: { systemId_customerId: { systemId: input.systemId, customerId: input.customerId } },
-    create: {
-      tenantId: input.tenantId,
-      systemId: input.systemId,
-      customerId: input.customerId,
-      balance: input.delta,
-    },
-    update: { balance: { increment: input.delta } },
-  });
-  return updated.balance;
-}
+//
+// 🔴 M2.1: ตัวช่วยภายใน (withTx / getSettings / balanceIn / applyDelta) ย้ายไป `./internal`
+//    เพราะ `lots.ts` (v2) ต้องใช้ตัวเดียวกัน และ v1 ในไฟล์นี้ก็ต้องเรียก v2 กลับ (สร้างล็อตให้ POS เดิม)
+//    ⇒ วางไว้ตรงกลางกันวงกลม · prisma ดิบเข้าผ่าน `./db` ที่เดียว (fitness F5.1)
+import { z } from "zod";
+import {
+  addMonths,
+  applyDelta,
+  balanceIn,
+  endOfBkkYear,
+  getSettings,
+  pointError,
+  prisma,
+  withTx,
+  writeLedger,
+  type Client,
+} from "./internal";
+import { earnWithLot, usesOf } from "./lots";
 
 export async function earn(
   input: {
@@ -77,19 +38,22 @@ export async function earn(
     if (!settings.active) return { pointsEarned: 0, balance: cur };
     const points = Math.floor(input.amountSatang / settings.satangPerPoint);
     if (points <= 0) return { pointsEarned: 0, balance: cur };
-    const balance = await applyDelta(tx, {
-      tenantId: input.tenantId,
-      systemId: input.systemId,
-      customerId: input.customerId,
-      unitId: input.unitId,
-      delta: points,
-      type: "EARN",
-      reason: `สะสมจาก ${input.sourceModule}`,
-      refType: input.refType,
-      refId: input.refId,
-      idempotencyKey: input.idempotencyKey,
-    });
-    return { pointsEarned: points, balance };
+    // 🔴 M2.1: ทางเข้าเดิม (POS/จอง/ร้านเรียนฯ) ต้อง **สร้างล็อตด้วย** ไม่งั้นแต้มที่ได้หลังวันนี้
+    //    จะไม่มีวันหมดอายุและ burnFifo ตัดไม่ได้ ⇒ ยอดคงเหลือกับผลรวมล็อตจะเพี้ยนกันทันที
+    const r = await earnWithLot(
+      { tenantId: input.tenantId, systemId: input.systemId },
+      {
+        customerId: input.customerId,
+        points,
+        refType: input.refType,
+        refId: input.refId,
+        idempotencyKey: input.idempotencyKey,
+        unitId: input.unitId ?? null,
+        reason: `สะสมจาก ${input.sourceModule}`,
+      },
+      tx,
+    );
+    return { pointsEarned: points, balance: r.balance };
   });
 }
 
@@ -143,7 +107,16 @@ export async function credit(
 ): Promise<{ balance: number }> {
   if (input.points <= 0) throw new Error("points ต้อง > 0");
   return withTx(client, async (tx) => {
-    const balance = await applyDelta(tx, {
+    const dup = await tx.pointLedger.findUnique({
+      where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } },
+    });
+    if (dup) return { balance: await balanceIn(tx, input.systemId, input.customerId) };
+
+    // 🔴 M2.1: แต้มที่คืนเข้ามาก็ต้องมีล็อตของตัวเอง ไม่งั้นยอดคงเหลือจะมากกว่าผลรวมล็อต
+    //    (แล้ว burnFifo จะตัดไม่ครบ และ cron หมดอายุก็มองไม่เห็นแต้มก้อนนี้)
+    const earnedAt = new Date();
+    const expiresAt = await creditExpiry(tx, input.tenantId, earnedAt);
+    const led = await writeLedger(tx, {
       tenantId: input.tenantId,
       systemId: input.systemId,
       customerId: input.customerId,
@@ -153,9 +126,32 @@ export async function credit(
       refType: input.refType,
       refId: input.refId,
       idempotencyKey: input.idempotencyKey,
+      expiresAt,
     });
-    return { balance };
+    if (led.duplicated) return { balance: led.balance };
+    const lot = await tx.pointLot.create({
+      data: {
+        tenantId: input.tenantId,
+        systemId: input.systemId,
+        customerId: input.customerId,
+        ledgerId: led.ledgerId,
+        points: input.points,
+        remaining: input.points,
+        earnedAt,
+        expiresAt,
+      },
+    });
+    await tx.pointLedger.update({ where: { id: led.ledgerId }, data: { lotId: lot.id } });
+    return { balance: led.balance };
   });
+}
+
+/** วันหมดอายุของล็อตที่เกิดจาก `credit()` — ตามการตั้งค่าของร้าน (ไม่ดูสิทธิ์ระดับ: คืนแต้มไม่ใช่การขาย) */
+async function creditExpiry(tx: Client, tenantId: string, at: Date): Promise<Date | null> {
+  const settings = await getSettings(tx, tenantId);
+  if (settings.expiryMode === "NEVER") return null;
+  if (settings.expiryMode === "END_OF_YEAR") return endOfBkkYear(at);
+  return addMonths(at, settings.expiryMonths);
 }
 
 export async function reverse(
@@ -173,6 +169,13 @@ export async function reverse(
       },
     });
     if (entries.length === 0) return;
+    // 🔴 M2.1: กันคืนล็อตซ้ำ — ถ้ารายการกลับรายการใบแรกมีอยู่แล้ว แปลว่ารอบนี้เคยทำไปแล้วทั้งชุด
+    //    (ตัว ledger เองกันซ้ำอยู่แล้วด้วย idempotencyKey · ล็อตต้องมีด่านของตัวเองเพราะไม่มีคีย์)
+    const done = await tx.pointLedger.findUnique({
+      where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: `${input.idempotencyKey}:0` } },
+    });
+    if (done) return;
+
     const byCustomer = new Map<string, number>();
     for (const e of entries) byCustomer.set(e.customerId, (byCustomer.get(e.customerId) ?? 0) - e.delta);
     let i = 0;
@@ -190,7 +193,46 @@ export async function reverse(
         idempotencyKey: `${input.idempotencyKey}:${i++}`,
       });
     }
+    // คืนสภาพล็อตให้ตรงกับยอด (§11.4): EARN ที่ถูกกลับ → หักล็อตนั้นคืน · BURN ที่ถูกกลับ → เติมล็อตเดิม
+    await restoreLots(tx, entries, new Date());
   });
+}
+
+/**
+ * ปรับ `PointLot` ให้ตรงกับการกลับรายการของ `reverse()` (v1)
+ * ล็อตที่หมดอายุไปแล้วไม่ปลุกกลับ — สร้างล็อตใหม่อายุ 30 วันแทน (§11.4 · ตัวเดียวกับ `reverseWithLots`)
+ */
+async function restoreLots(
+  tx: Client,
+  entries: { id: string; customerId: string; tenantId: string; systemId: string; type: string; delta: number; lotId: string | null; data: unknown }[],
+  now: Date,
+): Promise<void> {
+  for (const e of entries) {
+    if (e.type === "EARN") {
+      if (e.lotId) await tx.pointLot.update({ where: { id: e.lotId }, data: { remaining: { decrement: e.delta } } });
+      continue;
+    }
+    for (const use of usesOf(e.data)) {
+      const lot = await tx.pointLot.findUnique({ where: { id: use.lotId } });
+      const dead = !lot || lot.expiredAt !== null || (lot.expiresAt !== null && lot.expiresAt.getTime() <= now.getTime());
+      if (!dead) {
+        await tx.pointLot.update({ where: { id: use.lotId }, data: { remaining: { increment: use.points } } });
+        continue;
+      }
+      await tx.pointLot.create({
+        data: {
+          tenantId: e.tenantId,
+          systemId: e.systemId,
+          customerId: e.customerId,
+          ledgerId: e.id,
+          points: use.points,
+          remaining: use.points,
+          earnedAt: now,
+          expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+  }
 }
 
 export async function getBalance(systemId: string, customerId: string): Promise<number> {
@@ -203,26 +245,59 @@ export async function getPointSettings(tenantId: string) {
   return getSettings(prisma, tenantId);
 }
 
-// บันทึกอัตราสะสม: satangPerPoint = จำนวนสตางค์ที่ใช้จ่าย = 1 แต้ม (25 บาท=1แต้ม → 2500)
-// validate ≥ 1 (จำนวนเต็มสตางค์) · find→update/create (ห้าม upsert ตามกติกา)
+// ── บันทึกการตั้งค่าแต้ม (v2 · M2.1 §4.1) ──
+// ส่งมาเฉพาะช่องที่จะแก้ก็ได้ — ช่องที่ไม่ส่งไม่ถูกแตะ · ช่องที่ไม่รู้จัก (id/createdAt) ถูกตัดทิ้ง
+// 🔴 ตัวแรกรับได้ทั้ง `tenantId` (รูปเดิม WO Wave1-D) และ `{ tenantId }` (รูป ctx ของ v2)
+//    ทั้งสองทางเข้ายังมีจริงในโค้ด (หน้าตั้งค่าเดิม + service ของระบบสมาชิก v2) — ไม่หักสัญญาเดิมทิ้ง
+const SETTINGS_LABEL: Record<string, string> = {
+  satangPerPoint: "อัตราสะสม (สตางค์ต่อแต้ม)",
+  expiryMonths: "อายุแต้ม (เดือน)",
+  remindDays: "วันแจ้งเตือนก่อนแต้มหมดอายุ",
+  burnRateSatang: "มูลค่าแต้ม (สตางค์ต่อแต้ม)",
+  burnMinPoints: "แต้มขั้นต่ำที่ใช้ได้",
+  burnMaxPct: "ใช้แต้มได้ไม่เกินกี่เปอร์เซ็นต์ของบิล",
+  transferMonthlyCap: "เพดานโอนแต้มต่อเดือน",
+  adjustApprovalOver: "ปรับแต้มเกินเท่าไรต้องขออนุมัติ",
+  earnBase: "ฐานคิดแต้ม",
+  dailyCap: "เพดานแต้มต่อวัน",
+};
+
+const SETTINGS_SCHEMA = z.object({
+  satangPerPoint: z.number().int().min(1).optional(),
+  active: z.boolean().optional(),
+  expiryMode: z.enum(["MONTHS", "END_OF_YEAR", "NEVER"]).optional(),
+  expiryMonths: z.number().int().min(1).max(120).optional(),
+  remindDays: z.array(z.number().int().min(0).max(3650)).max(5).optional(),
+  burnRateSatang: z.number().int().min(1).optional(),
+  burnMinPoints: z.number().int().min(0).optional(),
+  burnMaxPct: z.number().int().min(0).max(100).optional(),
+  transferEnabled: z.boolean().optional(),
+  transferMonthlyCap: z.number().int().min(0).nullable().optional(),
+  adjustApprovalOver: z.number().int().min(0).nullable().optional(),
+  earnBase: z.enum(["NET", "GROSS"]).optional(),
+  excludeGiftCard: z.boolean().optional(),
+  excludeVoucher: z.boolean().optional(),
+  dailyCap: z.number().int().min(0).nullable().optional(),
+});
+
+export type SetPointSettingsInput = z.input<typeof SETTINGS_SCHEMA>;
+
 export async function setPointSettings(
-  tenantId: string,
-  input: { satangPerPoint: number; active: boolean },
+  target: string | { tenantId: string },
+  input: SetPointSettingsInput,
 ) {
-  const spp = Math.round(input.satangPerPoint);
-  if (!Number.isFinite(spp) || spp < 1) {
-    throw new Error("อัตราสะสมต้องเป็นจำนวนเต็มสตางค์อย่างน้อย 1");
+  const tenantId = typeof target === "string" ? target : target.tenantId;
+  const parsed = SETTINGS_SCHEMA.safeParse(input);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    const key = String(first?.path?.[0] ?? "");
+    const label = SETTINGS_LABEL[key] ?? "ค่าที่กรอก";
+    throw pointError(`ตั้งค่าแต้มไม่สำเร็จ — ช่อง “${label}” ยังไม่อยู่ในช่วงที่รองรับ ลองตรวจค่าอีกครั้ง`);
   }
+  const data = Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => v !== undefined));
   const existing = await prisma.pointSettings.findUnique({ where: { tenantId } });
-  if (existing) {
-    return prisma.pointSettings.update({
-      where: { tenantId },
-      data: { satangPerPoint: spp, active: input.active },
-    });
-  }
-  return prisma.pointSettings.create({
-    data: { tenantId, satangPerPoint: spp, active: input.active },
-  });
+  if (existing) return prisma.pointSettings.update({ where: { tenantId }, data });
+  return prisma.pointSettings.create({ data: { tenantId, ...data } });
 }
 
 // ── ปรับ/แจกแต้มด้วยมือ (พนักงาน) — type ADJUST ──

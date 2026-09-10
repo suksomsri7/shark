@@ -23,8 +23,60 @@ export {
   getCustomerPoints,
   /** รายการแต้มทั้งหมดของสมาชิก (M1.7 — สำเนาข้อมูลตาม PDPA) */
   listCustomerLedger,
+  /** อ่านการตั้งค่าแต้มของร้าน (v2 · 15 ช่อง — สร้างค่าปริยายให้ถ้ายังไม่เคยตั้ง) */
+  getPointSettings,
+  /** บันทึกการตั้งค่าแต้ม (ส่งเฉพาะช่องที่จะแก้ก็ได้) */
+  setPointSettings,
 } from "./service";
 
-export type { CustomerLedgerRow } from "./service";
+export type { CustomerLedgerRow, SetPointSettingsInput } from "./service";
 
 export { adjustPoints as adjust } from "./service";
+
+// ── แต้ม v2: กฎได้แต้ม + ล็อต/หมดอายุ (M2.1 · พิมพ์เขียว §5.5 §11.4) ──
+export type { PointCtx } from "./internal";
+
+export type {
+  PointRuleDto,
+  UpsertRuleInput,
+  SaleLineInput,
+  SaleForEarn,
+  ComputeEarnInput,
+  ComputeEarnResult,
+} from "./rules";
+
+export {
+  /** กฎได้แต้มทั้งหมดของระบบแต้ม (เรียงตามลำดับที่ใช้คิด) */
+  listRules,
+  /** เพิ่ม/แก้กฎได้แต้ม (ต้องมีสิทธิ์ `member.settings.manage`) */
+  upsertRule,
+  toggleRule,
+  deleteRule,
+  /** คิดแต้มที่จะได้จากบิล/เหตุการณ์ — อ่านอย่างเดียว ไม่เขียนฐานข้อมูล (POS เรียกก่อนปิดบิล) */
+  computeEarn,
+} from "./rules";
+
+export type {
+  EarnBreakdownRow,
+  EarnWithLotInput,
+  EarnWithLotResult,
+  BurnFifoInput,
+  BurnFifoResult,
+  LotUse,
+  ExpiringLot,
+} from "./lots";
+
+export {
+  /** ให้แต้ม 1 ครั้ง = ledger EARN + ล็อตที่มีวันหมดอายุของตัวเอง */
+  earnWithLot,
+  /** ตัดแต้มโดยกินล็อตที่หมดอายุเร็วสุดก่อน */
+  burnFifo,
+  /** กลับรายการแต้มของบิลหนึ่ง โดยคืนเข้าล็อตเดิม (void) */
+  reverseWithLots,
+  /** cron รายวัน: ตัดล็อตที่หมดอายุ (ctx = null คือทุกร้าน) */
+  expireDue,
+  /** ล็อตที่จะหมดอายุภายใน N วัน */
+  expiringSoon,
+  /** cron รายวัน: ยิง event แจ้งเตือนแต้มใกล้หมดอายุตาม remindDays */
+  notifyExpiring,
+} from "./lots";

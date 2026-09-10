@@ -23,6 +23,8 @@ import { sweepDueDateRules } from "@/lib/modules/kanban/automation";
 import { sweepOverdue } from "@/lib/modules/kanban/reminders";
 import { sweepKanbanDigest } from "@/lib/modules/kanban/digest";
 import { runTierReview, sweepAutoErase } from "@/lib/modules/member";
+import { expireDue, notifyExpiring } from "@/lib/modules/point";
+import { expireDue as giftCardExpireDue } from "@/lib/modules/giftcard";
 
 /**
  * M1.9 (D1 · §7.5) — รอบทบทวนระดับสมาชิกของทุกร้านที่มี "ระบบสมาชิก"
@@ -46,6 +48,39 @@ export async function sweepTierReviews(now: Date = new Date()): Promise<number> 
     }
   }
   return evaluated;
+}
+
+/**
+ * M2.1 (D2 · §7.5 · §11.4) — ตัดล็อตแต้มที่หมดอายุของ **ทุกร้าน**
+ *
+ * `expireDue(null, now)` หยิบเฉพาะล็อตที่ `expiresAt ≤ now` และยังไม่ถูกตัด (`expiredAt` ว่าง)
+ * ⇒ รันทุกวันได้โดยไม่ทำงานซ้ำ · ทำเป็นชุดละ 1,000 ใบจนหมด (ร้านใหญ่ต้องไม่ค้างครึ่งทาง)
+ * 🔴 คืนจำนวน **แต้ม** ที่ถูกตัด (ไม่ใช่จำนวนล็อต) — ตัวเลขนี้คือ "หนี้แต้ม" ที่หายไปจากบัญชีร้าน
+ */
+export async function sweepPointExpiry(now: Date = new Date()): Promise<number> {
+  const r = await expireDue(null, now);
+  return r.points;
+}
+
+/**
+ * M2.1 (§7.4 ตาราง "แต้มใกล้หมดอายุ") — ยิง event `point.expiring` ล่วงหน้าตาม `remindDays` ของแต่ละร้าน
+ * dedupe ต่อ (ล็อต, จำนวนวันที่เหลือ) ผ่าน idempotencyKey ของ outbox ⇒ รันซ้ำวันเดียวกันไม่ส่งซ้ำ
+ */
+export async function sweepPointExpiring(now: Date = new Date()): Promise<number> {
+  const r = await notifyExpiring(null, now);
+  return r.notified;
+}
+
+/**
+ * M2.6 (D3 · §11.6) — บัตรกำนัลที่ถึงวันหมดอายุของ **ทุกร้าน** → EXPIRED
+ *
+ * ยอดที่ยังเหลืออยู่บนบัตรกลายเป็น "รายได้อื่น" (Dr 2110 · Cr 4900) เฉพาะร้านที่เปิดสวิตช์ผูกบัญชี
+ * และเฉพาะบัตรที่ **ขายตอนสวิตช์เปิด** เท่านั้น (ไม่งั้นจะปิดหนี้สินที่ไม่เคยถูกบันทึกไว้)
+ * 🔴 idempotent: `updateMany` มีเงื่อนไข `status: ACTIVE` ⇒ รันซ้ำวันเดียวกันไม่ทำรายการซ้ำ
+ */
+export async function giftCardExpire(now: Date = new Date()): Promise<number> {
+  const r = await giftCardExpireDue(now);
+  return r.expired;
 }
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
@@ -112,6 +147,9 @@ export async function runDailyCron(
   kanbanDigests: number;
   tierReviews: number;
   autoErase: number;
+  pointExpired: number;
+  giftCardExpired: number;
+  pointExpiring: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -132,6 +170,9 @@ export async function runDailyCron(
   let kanbanDigests = -1;
   let tierReviews = -1;
   let autoErase = -1;
+  let pointExpired = -1;
+  let giftCardExpired = -1;
+  let pointExpiring = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -265,6 +306,24 @@ export async function runDailyCron(
   } catch {
     // sweep ลบอัตโนมัติพัง → -1 ไปต่อ (ห้ามพา cron ทั้งรอบล้ม)
   }
+  try {
+    // M2.1 (§7.5): ตัดล็อตแต้มที่หมดอายุของทุกร้าน (ledger EXPIRE + ยอดคงเหลือ + event point.expired)
+    pointExpired = await sweepPointExpiry(now);
+  } catch {
+    // sweep แต้มหมดอายุพัง → -1 ไปต่อ (try/catch แยกของตัวเองตามสัญญา M2.1)
+  }
+  try {
+    // M2.1 (§7.4): แจ้งล่วงหน้า "แต้มใกล้หมดอายุ" ตาม remindDays ของแต่ละร้าน (idempotent ต่อ ล็อต+วัน)
+    pointExpiring = await sweepPointExpiring(now);
+  } catch {
+    // sweep แจ้งแต้มใกล้หมดอายุพัง → -1 ไปต่อ
+  }
+  try {
+    // M2.6 (§11.6): บัตรกำนัลที่ถึงวันหมดอายุทุกร้าน → EXPIRED (+ รายได้อื่นเมื่อผูกบัญชีไว้)
+    giftCardExpired = await giftCardExpire(now);
+  } catch {
+    // sweep บัตรกำนัลหมดอายุพัง → -1 ไปต่อ (ห้ามพา cron ทั้งรอบล้ม)
+  }
 
   return {
     subsExpired,
@@ -286,5 +345,8 @@ export async function runDailyCron(
     kanbanDigests,
     tierReviews,
     autoErase,
+    pointExpired,
+    pointExpiring,
+    giftCardExpired,
   };
 }

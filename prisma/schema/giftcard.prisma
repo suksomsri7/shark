@@ -1,0 +1,98 @@
+// Gift Card (M2.6 · ระบบสมาชิก v2 · docs/modules/06-member-v2.md §4.2 §4.3 §5.7 §9.4 §11.6)
+//
+// บัตรกำนัลมูลค่าเงิน = **หนี้สิน** ของร้าน (รับเงินล่วงหน้า) ไม่ใช่รายได้ตอนขาย
+//   ขาย   → เงินเข้า + หนี้สิน 2110 (เมื่อเปิดสวิตช์ `GiftCardSettings.accountingLink` — D3)
+//   ใช้    → ลดหนี้สิน 2110 + รับรู้รายได้ 4030
+//   หมดอายุ → ลดหนี้สิน 2110 + รายได้อื่น 4900
+// ปิดสวิตช์ = บันทึกยอดในระบบสมาชิกอย่างเดียว ไม่แตะบัญชีเลย
+//
+// 🔴 ยอดเงินเป็น **สตางค์ (Int)** ทุกช่อง · PIN เก็บเป็น sha256(`<number>:<pin>`) เท่านั้น (ห้ามเก็บ pin ดิบ)
+
+enum GiftCardStatus {
+  ACTIVE
+  DEPLETED // ใช้จนยอดเป็น 0 (เติมเงินกลับมาเป็น ACTIVE ได้)
+  EXPIRED
+  SUSPENDED // ร้านระงับ (บัตรหาย/สงสัยทุจริต)
+}
+
+enum GiftCardTxnType {
+  SELL
+  USE
+  RELOAD
+  TRANSFER // เปลี่ยนเจ้าของ (satang = 0)
+  EXPIRE
+  REFUND // void บิลที่ใช้บัตร → คืนยอดกลับบัตร
+  ADJUST // ปรับด้วยมือ/ระงับ-ปลดระงับ (satang = 0)
+}
+
+model GiftCard {
+  id       String @id @default(cuid())
+  tenantId String
+  systemId String // AppSystem.id ของ "ระบบสมาชิก" ที่ออกบัตรใบนี้
+
+  number         String // `GC-xxxxxxxx` (8 หลัก) — พิมพ์บนบัตร
+  pinHash        String // sha256(`<number>:<pin>`) — 🔴 ไม่เก็บ PIN ดิบ (§11.6)
+  pinFailedCount Int       @default(0)
+  pinLockedUntil DateTime? // ผิด 5 ครั้ง → ระงับการใช้ 15 นาที
+
+  initialSatang Int
+  balanceSatang Int
+
+  buyerCustomerId  String? // Customer.id ผู้ซื้อ (ไม่ระบุ = ลูกค้าเดินเข้าร้าน)
+  ownerCustomerId  String? // Customer.id เจ้าของปัจจุบัน (โอนได้) · null = บัตรพิมพ์/ส่งให้คนนอกระบบ
+  recipientContact Json? // {name?, line?, email?} เมื่อผู้รับยังไม่ใช่สมาชิก
+  message          String? // ข้อความบนบัตร
+
+  status    GiftCardStatus @default(ACTIVE)
+  expiresAt DateTime?
+
+  saleId          String? // PosSale.id ของบิลขายบัตร
+  accountingDocId String? // AccountJournalEntry.id ตอนขาย — null = ขายตอน accountingLink ปิด (ห้ามลงบัญชีย้อนหลัง §11.6)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  txns GiftCardTxn[]
+
+  @@unique([tenantId, number])
+  @@index([ownerCustomerId])
+  @@index([systemId, status])
+  @@index([systemId, expiresAt])
+}
+
+model GiftCardTxn {
+  id         String   @id @default(cuid())
+  tenantId   String
+  giftCardId String
+  giftCard   GiftCard @relation(fields: [giftCardId], references: [id], onDelete: Cascade)
+
+  type         GiftCardTxnType
+  satang       Int // มูลค่าของรายการ (TRANSFER/ADJUST = 0)
+  balanceAfter Int // ยอดคงเหลือหลังรายการนี้ (ไม่ต้องบวกย้อนทั้งสาย)
+
+  refType        String? // PosSale | Customer | SUSPEND | GiftCardTxn
+  refId          String?
+  byUserId       String?
+  idempotencyKey String
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([giftCardId, createdAt])
+}
+
+model GiftCardSettings {
+  id       String @id @default(cuid())
+  tenantId String
+  systemId String @unique // 1 ชุดต่อระบบสมาชิก
+
+  enabled        Boolean @default(false) // ร้านเปิดขายบัตรกำนัลหรือยัง
+  accountingLink Boolean @default(false) // D3 — พ่วงโมดูลบัญชี
+  expiryMonths   Int     @default(24) // ขั้นต่ำ 12 เดือนตามกฎหมาย (§11.6)
+  denominations  Int[]   @default([100000, 200000, 500000]) // ชิปมูลค่าบนหน้าขาย (สตางค์)
+  transferable   Boolean @default(true)
+  reloadable     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

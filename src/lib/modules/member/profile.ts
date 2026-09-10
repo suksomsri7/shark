@@ -1288,6 +1288,32 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
   };
 }
 
+/** ชื่อ+รหัสสมาชิกแบบสั้นที่สุด (ไม่มีข้อมูลติดต่อเลย) — ผลของ `memberRefs` */
+export type MemberRef = { id: string; memberCode: string; name: string };
+
+/**
+ * M2.6 — "id นี้เป็นสมาชิกของระบบนี้จริงไหม และชื่ออะไร" (คืนเฉพาะคนที่มีจริงในระบบนี้)
+ *
+ * 🔴 ทำไมไม่ใช้ `briefFor`: ตัวนั้นต้องมี `actor` และกรองตามขอบเขตสาขา — เหมาะกับ "แผงข้างที่คนเปิดดู"
+ *    แต่ผู้ถือของมีมูลค่า (บัตรกำนัล/voucher) ต้องรู้ชื่อเจ้าของบัตรเพื่อพิมพ์ลงตาราง/บัตร แม้ในงาน
+ *    เบื้องหลังที่ไม่มีคนกด (cron หมดอายุ · consumer) ⇒ แยกทางเข้าที่ **ไม่คืนข้อมูลติดต่อ**
+ *    (ไม่มีเบอร์/อีเมล/ระดับ/แต้ม) จึงไม่มีอะไรอ่อนไหวให้รั่วแม้ผู้เรียกไม่ได้ตรวจสิทธิ์
+ * 🔴 id ที่ไม่ใช่สมาชิกของระบบนี้ = **ไม่อยู่ในผลลัพธ์** (ผู้เรียกใช้ความยาวที่หายไปเป็นด่านตรวจได้)
+ */
+export async function memberRefs(ctx: MemberCtx, customerIds: string[]): Promise<MemberRef[]> {
+  const ids = [...new Set((customerIds ?? []).filter((x) => typeof x === "string" && x))];
+  if (ids.length === 0) return [];
+  const rows = await prisma.customer.findMany({
+    where: { id: { in: ids }, tenantId: ctx.tenantId, memberSystemId: ctx.systemId },
+    select: { id: true, memberCode: true, name: true, firstName: true, lastName: true },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    memberCode: r.memberCode ?? "",
+    name: r.name ?? ([r.firstName, r.lastName].filter(Boolean).join(" ") || r.memberCode || ""),
+  }));
+}
+
 /** การ์ดย่อของสมาชิกหลายคน (กรองตามขอบเขตสาขาของ actor) — facade ให้แผงข้างของโมดูลอื่น */
 export async function briefFor(ctx: MemberCtx, actor: MemberActor, customerIds: string[]): Promise<MemberBrief[]> {
   const ids = [...new Set((customerIds ?? []).filter((x) => typeof x === "string" && x))];
@@ -1719,6 +1745,13 @@ async function doMerge(
       });
 
       for (const hook of mergeHooks) await hook({ ctx, keepId: keep.id, mergeId: merge.id, tx });
+
+      // M2.6 — บัตรกำนัลของคนที่ถูกรวม (ทั้งฐานะผู้ซื้อและเจ้าของ) ย้ายไปคนที่เก็บไว้ (§11.1)
+      // 🔴 `await import` ไม่ใช่ import ที่หัวไฟล์โดยตั้งใจ: `giftcard/service` อ่านชื่อสมาชิกผ่าน
+      //    facade `member/index` (ซึ่ง re-export ไฟล์นี้) ⇒ ผูกแบบ static จะเป็นวงกลมตั้งแต่ตอนโหลดโมดูล
+      //    วิธีเดียวกับที่ `outbox-consumers.ts` ใช้กับสะพานบอร์ดงาน
+      const { mergeGiftCards } = await import("@/lib/modules/giftcard");
+      await mergeGiftCards(ctx, { keepId: keep.id, mergeId: merge.id }, tx);
 
       await writeActivity(ctx, tx, {
         customerId: keep.id,

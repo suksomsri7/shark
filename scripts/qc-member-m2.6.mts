@@ -299,10 +299,10 @@ try {
     !!rowC1 && rowC1.numberMasked === `GC-****${c1.number.slice(-4)}` && !!rowC1.buyerName && !!rowC1.ownerName && rowC1.balanceSatang === 50_000 && typeof lst.kpi?.soldThisMonthSatang === "number" && lst.kpi.soldThisMonthSatang >= 700_000 && lst.kpi.soldThisMonthCount >= 7 && typeof lst.kpi.outstandingSatang === "number" && lstAct.rows.every((r: Any) => r.status === "ACTIVE") && lstQ?.rows?.length === 1 && lstQ.rows[0].id === c1.giftCardId,
     "รายการ + kpi", `row=${JSON.stringify({ mask: rowC1?.numberMasked, buyer: rowC1?.buyerName, owner: rowC1?.ownerName, bal: rowC1?.balanceSatang })} kpi=${JSON.stringify(lst?.kpi)} act=${lstAct?.rows?.length} q=${lstQ?.rows?.length}`);
 
-  const mkCust = async (nm: string) => { const c = await PR.createMember({ tenantId: tid, systemId: SYS, actorUserId: owner.userId } as Any, owner, { phone: `0896${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "giftcard", source: "STAFF", homeUnitId: E.units.patong }); made.customers.push(c.customerId); return c.customerId as string; };
+  const mkCust = async (nm: string) => { const c = await PR.createMember({ tenantId: tid, systemId: SYS, actorUserId: owner.userId } as Any, owner, { phone: `0896${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "giftcard", source: "WALK_IN", homeUnitId: E.units.patong }); made.customers.push(c.customerId); return c.customerId as string; };
   const X = await mkCust("เก็บ"); const Y = await mkCust("ถูกรวม");
   const cY = await sellOk({ satang: 100_000, buyerCustomerId: Y, recipient: { customerId: Y }, idempotencyKey: key("m1") });
-  await PR.mergeMembers({ tenantId: tid, systemId: SYS, actorUserId: owner.userId } as Any, owner, { keepId: X, mergeId: Y, fieldChoices: {} });
+  await PR.mergeMembers({ tenantId: tid, systemId: SYS, actorUserId: owner.userId } as Any, owner, { keepId: X, mergeId: Y, fieldChoices: {}, confirm: "MERGE" });
   const cYr = await card(cY.giftCardId);
   const fresh = await sellOk({ satang: 100_000, idempotencyKey: key("m2") });
   const ex2 = await G.expireDue();

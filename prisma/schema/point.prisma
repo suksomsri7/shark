@@ -1,6 +1,7 @@
 // Point (แต้ม) — scope=tenant (แต้มใช้ข้ามทุกกิจการของร้าน)
-// ledger append-only + balance cache. MVP: balance = ยอดรวม (lot-based FIFO expiry = 🔜)
+// ledger append-only + balance cache + **ล็อตแต้ม (PointLot)** สำหรับ FIFO/หมดอายุ (M2.1)
 // Point เป็นผู้คำนวณแต้มเสมอ (ผู้เรียกส่ง amountSatang) — contract 2.2
+// พิมพ์เขียว docs/modules/06-member-v2.md §4.1 §4.2 §4.3 §5.5 §11.4
 
 enum PointTxType {
   EARN
@@ -8,6 +9,33 @@ enum PointTxType {
   ADJUST
   REVERSE
   EXPIRE
+}
+
+// วิธีหมดอายุของแต้ม (M2.1 · §4.2)
+enum PointExpiryMode {
+  MONTHS // หมดอายุหลังได้มา N เดือน (ต่อล็อต)
+  END_OF_YEAR // หมดสิ้นปีปฏิทินไทยของปีที่ได้มา
+  NEVER // ไม่หมดอายุ
+}
+
+// ชนิดของ "กฎได้แต้ม" (M2.1 · §4.3) — เรียงลำดับคิดตาม §5.5
+enum PointRuleKind {
+  BASE
+  TIER_MULTIPLIER
+  ITEM_BONUS
+  CATEGORY_BONUS
+  TIME_MULTIPLIER
+  EVENT_BONUS
+}
+
+// เหตุการณ์ที่ให้แต้มโบนัสได้ (M2.1 · §4.2)
+enum PointEventBonus {
+  SIGNUP
+  BIRTHDAY
+  REVIEW
+  REFERRAL
+  PROFILE_COMPLETE
+  CHECKIN
 }
 
 // กติกาสะสมต่อ tenant (default: 25 บาท = 1 แต้ม)
@@ -18,6 +46,21 @@ model PointSettings {
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  // ── v2 (M2.1 · §4.1) — ทุกช่องมีค่าปริยาย ⇒ ร้านเดิมไม่เปลี่ยนพฤติกรรม ──
+  expiryMode         PointExpiryMode @default(MONTHS)
+  expiryMonths       Int             @default(12)
+  remindDays         Int[]           @default([30, 7]) // แจ้งล่วงหน้ากี่วันก่อนแต้มหมดอายุ
+  burnRateSatang     Int             @default(10) // 1 แต้ม = กี่สตางค์ตอนใช้แลกส่วนลด
+  burnMinPoints      Int             @default(100)
+  burnMaxPct         Int             @default(50) // ใช้แต้มได้ไม่เกินกี่ % ของบิล
+  transferEnabled    Boolean         @default(false)
+  transferMonthlyCap Int?
+  adjustApprovalOver Int? // ปรับมือเกินจำนวนนี้ → เข้าสายอนุมัติ (M2.2)
+  earnBase           String          @default("NET") // NET | GROSS
+  excludeGiftCard    Boolean         @default(true)
+  excludeVoucher     Boolean         @default(true)
+  dailyCap           Int? // เพดานแต้มจากการขายต่อวัน (ไทย) ต่อสมาชิก
 }
 
 model PointLedger {
@@ -34,6 +77,13 @@ model PointLedger {
   idempotencyKey String // กันยิงซ้ำ
   createdAt      DateTime    @default(now())
 
+  // ── v2 (M2.1 · §4.1) ──
+  lotId      String? // ล็อตที่รายการนี้สร้าง (EARN) หรือกระทบ (EXPIRE/REVERSE ของ EARN)
+  expiresAt  DateTime? // สำเนาวันหมดอายุของล็อต (ให้หน้าจอ/รายงานอ่านได้โดยไม่ join)
+  multiplier Decimal?  @db.Decimal(4, 2) // ตัวคูณรวมที่ใช้ตอนคิดแต้ม (ระดับ/เวลา)
+  ruleId     String? // กฎ BASE ที่ใช้คิด (ถ้ามี)
+  data       Json? // BURN: { lots: [{lotId, points}], lotIds: [...] } · EARN: { breakdown }
+
   @@unique([tenantId, idempotencyKey])
   @@index([systemId, customerId, createdAt])
 }
@@ -48,4 +98,58 @@ model PointBalance {
   updatedAt  DateTime @updatedAt
 
   @@unique([systemId, customerId])
+}
+
+// ── M2.1 (§4.3) ───────────────────────────────────────────────────────────────
+
+// กฎได้แต้มของระบบแต้ม 1 ระบบ (6 ชนิด · คิดตามลำดับใน point/rules.ts#computeEarn)
+model PointRule {
+  id        String        @id @default(cuid())
+  tenantId  String
+  systemId  String
+  kind      PointRuleKind
+  config    Json // รูปร่างต่อ kind — validate ด้วย zod ใน rules.ts
+  priority  Int           @default(0)
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([systemId, active])
+}
+
+// ล็อตแต้ม — 1 แถวต่อ 1 ครั้งที่ได้แต้ม (FIFO ตามวันหมดอายุ · §11.4)
+model PointLot {
+  id         String    @id @default(cuid())
+  tenantId   String
+  customerId String
+  systemId   String
+  ledgerId   String // รายการ EARN ที่ทำให้เกิดล็อตนี้
+  points     Int // แต้มตอนได้มา
+  remaining  Int // แต้มที่ยังเหลือในล็อต (ติดลบได้เมื่อ void บิลที่ใช้แต้มไปแล้ว)
+  earnedAt   DateTime  @default(now())
+  expiresAt  DateTime? // null = ไม่หมดอายุ
+  expiredAt  DateTime? // ตั้งเมื่อ cron ตัดหมดอายุแล้ว
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([customerId, expiresAt])
+  @@index([systemId, expiresAt])
+}
+
+// โอนแต้มระหว่างสมาชิก (ตัวจริงมาที่ M2.2 — ตารางเกิดที่ migration เดียวกันตามพิมพ์เขียว)
+model PointTransfer {
+  id             String    @id @default(cuid())
+  tenantId       String
+  systemId       String
+  fromCustomerId String
+  toCustomerId   String
+  points         Int
+  feePoints      Int       @default(0)
+  otpVerifiedAt  DateTime?
+  ledgerOutId    String
+  ledgerInId     String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([fromCustomerId, createdAt])
 }

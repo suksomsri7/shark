@@ -45,6 +45,11 @@ model PosSale {
   stampEventIds     String[] @default([]) // StampEvent.id ที่บิลนี้ทำให้เกิด (M2.3)
   attributionId     String? // MemberAttribution.id ที่ยกความดีความชอบให้ช่องทางไหน (M1.8)
 
+  // ── M2.6 — บิลใบนี้คือ "ขาย/เติมบัตรกำนัล" (GiftCard.id) ──────────────────────────────
+  // 🔴 consumer `pos.sale.paid` ต้อง **ข้าม** บิลที่มีค่านี้: ไม่ให้แต้ม · ไม่ลงบัญชีขาย
+  //    (โมดูล giftcard ลงบัญชีเองเป็น "รับเงินล่วงหน้า" 2110 — ขายบัตร ≠ รายได้ · §9.1 §9.4)
+  giftCardId        String?
+
   lines    PosSaleLine[]
   payments PosPayment[]
 

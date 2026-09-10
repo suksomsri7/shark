@@ -26,7 +26,10 @@ export type {
 } from "./profile";
 
 export type { MemberActor } from "./access";
-export { toMemberActor } from "./access";
+// `hasMemberPerm` เปิดผ่าน facade (M2.6) — โมดูลที่ถือของมีมูลค่าของสมาชิก (บัตรกำนัล/voucher)
+// ต้องตัดสินคีย์ `member.*` ด้วยกติกาเดียวกับโมดูลสมาชิก (§6.1 · MANAGER ไม่ได้ 4 คีย์ยกเว้นโดยปริยาย)
+// ⇒ ห้าม copy ตรรกะไปไว้ที่โมดูลตัวเอง (ด่านที่ก๊อปไว้หลายที่ = วันหนึ่งจะไม่ตรงกันเงียบ ๆ)
+export { toMemberActor, hasMemberPerm, canReadMember } from "./access";
 export { MemberNotFoundError, MemberForbiddenError, MemberInputError, MemberConflictError } from "./errors";
 
 // ── ระบบสมาชิก v2 (M1.4) ──
@@ -53,8 +56,12 @@ export {
   onMerge,
   /** การ์ดสมาชิกแบบย่อสำหรับแผงข้างของโมดูลอื่น (กรองตามขอบเขตสาขาของผู้ดู) */
   briefFor,
+  /** M2.6 — "id นี้เป็นสมาชิกของระบบนี้ไหม + ชื่ออะไร" (ไม่มีข้อมูลติดต่อ · ใช้ในงานเบื้องหลัง) */
+  memberRefs,
   maskPhone,
 } from "./profile";
+
+export type { MemberRef } from "./profile";
 
 // ── แชท + สมาชิก (M1.12 · §3.14 §5.11 §9.3) ──
 export type {
@@ -81,6 +88,13 @@ export {
 } from "./chat-bridge";
 
 export { canViewSensitive, logAccess } from "./privacy";
+
+/**
+ * M2.6 — จุดตัดเงิน POS ที่ผูกสาขาเดียวกับ "ระบบสมาชิก" นี้ (+ ระบบแต้มถ้ามี)
+ * โมดูลที่ต้องเก็บเงินผ่าน POS (บัตรกำนัล · แพ็กเกจสมาชิก) ถามที่นี่ที่เดียว — ไม่ต้องรู้จัก `system/service`
+ * null = ร้าน standalone ที่ยังไม่ผูก POS
+ */
+export { resolvePosForMember } from "./subscription";
 
 // ── ความเป็นส่วนตัว / PDPA (M1.7 · D8 · D17 · D19) ──
 export type {

@@ -59,7 +59,7 @@ export async function setPlanActive(ctx: Ctx, planId: string, active: boolean): 
 // MEMBER เป็น feature system → หา unit ที่ระบบนี้ผูกผ่าน appSystemUnit → หา POS/POINT บน unit นั้น
 // (pattern เดียวกับ reward.resolvePointSystemId · ผ่าน system facade = ไม่ใช้ raw prisma ในโมดูล)
 // null = ไม่ผูก POS → ร้าน standalone: สมัครได้ ข้ามการเก็บเงิน (เหมือน school/ticket/hotel)
-async function resolvePosForMember(
+export async function resolvePosForMember(
   ctx: Ctx,
 ): Promise<{ unitId: string; posSystemId: string; pointSystemId: string | null } | null> {
   const unitIds = await unitsForSystem(ctx.tenantId, ctx.systemId);

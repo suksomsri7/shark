@@ -4,6 +4,7 @@
 //
 // 🔴 ห้าม import raw prisma ที่นี่ (F5 baseline freeze) — query ผ่าน service.ts / gl.ts เท่านั้น
 
+import type { Prisma } from "@prisma/client";
 import { handleBeamPaid, handleBeamFailed } from "./payment-request";
 import {
   createDocument,
@@ -44,7 +45,14 @@ export async function posAccountSystemId(
   const link = await findAccountLinkForPos(tenantId, posSystemId);
   return link?.systemId ?? null;
 }
-import { postExternalSale, reverseFor, type GlCtx } from "./gl";
+import {
+  postExternalSale,
+  postGiftCardSale as postGiftCardSaleGl,
+  postGiftCardUse as postGiftCardUseGl,
+  postGiftCardExpire as postGiftCardExpireGl,
+  reverseFor,
+  type GlCtx,
+} from "./gl";
 // WO 4.3 (§8.2) — บิล POS ที่มีรายการจัดชุด: ตัดสต็อกส่วนประกอบหลังสร้างเอกสารบิล
 import { consumeBundleComponentsForDoc } from "./product";
 import { createExpenseDoc as createExpenseDocRaw } from "./expense";
@@ -248,6 +256,110 @@ export async function reverseExternalSale(input: {
   const reversed = await reverseFor(ctx, "PosSale", input.refId, "POS void บิล");
   const voided = await voidExternalSaleDocument(input.tenantId, link.systemId, input.refId, "POS void บิล");
   return { posted: reversed.length > 0, docVoided: voided.voided };
+}
+
+// ─────────────────────────────────────────────────────────────
+// บัตรกำนัล (M2.6 · D3 · §9.4) — โมดูล giftcard เรียกผ่าน 4 ฟังก์ชันนี้เท่านั้น
+//
+// 🔴 ผู้เรียกไม่รู้เลขบัญชี: ส่งแค่ "เงินเท่าไหร่ เข้าทางไหน อ้างอิงอะไร" — mapping 2110/4030/4900 อยู่ที่ gl.ts
+// 🔴 ร้านที่ยังไม่เชื่อมบัญชีกับ POS = ไม่ post (คืน { posted: false, reason: "unlinked" }) **ห้าม throw**
+//    (หลัก standalone เดียวกับ applyExternalSale — ระบบสมาชิกต้องขายบัตรได้แม้ร้านไม่ได้ใช้โมดูลบัญชี)
+// ─────────────────────────────────────────────────────────────
+
+export type GiftCardPayMethod = {
+  channel: "CASH" | "TRANSFER" | "PROMPTPAY" | "DEPOSIT" | "ROOM_CHARGE";
+  amountSatang: number;
+};
+
+export type GiftCardPostResult = { posted: boolean; entryId?: string; reason?: string };
+
+/** ระบบบัญชีที่ผูกกับ POS ของร้าน + ctx ของ GL — null = ยังไม่เชื่อมบัญชี */
+async function giftCardCtx(tenantId: string, posSystemId: string): Promise<GlCtx | null> {
+  const link = await findAccountLinkForPos(tenantId, posSystemId);
+  return link ? { tenantId, systemId: link.systemId } : null;
+}
+
+/** ขายบัตรกำนัล / เติมเงินเข้าบัตร → รับเงินล่วงหน้า (Dr เงินสด-ธนาคาร · Cr 2110) */
+export async function postGiftCardSale(input: {
+  tenantId: string;
+  sourceSystemId: string; // AppSystem.id ของ POS ที่รับเงิน
+  refId: string; // GiftCard.id (ขายใบใหม่) หรือ GiftCardTxn.id (เติมเงิน)
+  refType?: "GiftCard" | "GiftCardTxn";
+  occurredAt: Date;
+  satang: number;
+  payMethods: GiftCardPayMethod[];
+}, tx?: Prisma.TransactionClient): Promise<GiftCardPostResult> {
+  const ctx = await giftCardCtx(input.tenantId, input.sourceSystemId);
+  if (!ctx) return { posted: false, reason: "unlinked" };
+  const res = await postGiftCardSaleGl(ctx, {
+    refType: input.refType ?? "GiftCard",
+    refId: input.refId,
+    date: input.occurredAt,
+    satang: input.satang,
+    drLines: input.payMethods.map((p) => ({ key: giftCardChannelKey(p.channel), amountSatang: p.amountSatang })),
+  }, tx);
+  return "entryId" in res ? { posted: true, entryId: res.entryId } : { posted: false, reason: "posted-before" };
+}
+
+/** ใช้บัตรกำนัลชำระบิล → รับรู้รายได้ (Dr 2110 · Cr 4030) */
+export async function postGiftCardUse(input: {
+  tenantId: string;
+  sourceSystemId: string;
+  refId: string; // GiftCardTxn.id
+  occurredAt: Date;
+  satang: number;
+}, tx?: Prisma.TransactionClient): Promise<GiftCardPostResult> {
+  const ctx = await giftCardCtx(input.tenantId, input.sourceSystemId);
+  if (!ctx) return { posted: false, reason: "unlinked" };
+  const res = await postGiftCardUseGl(ctx, { refId: input.refId, date: input.occurredAt, satang: input.satang }, tx);
+  return "entryId" in res ? { posted: true, entryId: res.entryId } : { posted: false, reason: "posted-before" };
+}
+
+/** บัตรกำนัลหมดอายุทั้งที่มียอดเหลือ → รายได้อื่น (Dr 2110 · Cr 4900) */
+export async function postGiftCardExpire(input: {
+  tenantId: string;
+  sourceSystemId: string;
+  refId: string; // GiftCardTxn.id (รายการ EXPIRE)
+  occurredAt: Date;
+  satang: number;
+}, tx?: Prisma.TransactionClient): Promise<GiftCardPostResult> {
+  const ctx = await giftCardCtx(input.tenantId, input.sourceSystemId);
+  if (!ctx) return { posted: false, reason: "unlinked" };
+  const res = await postGiftCardExpireGl(ctx, { refId: input.refId, date: input.occurredAt, satang: input.satang }, tx);
+  return "entryId" in res ? { posted: true, entryId: res.entryId } : { posted: false, reason: "posted-before" };
+}
+
+/**
+ * กลับรายการบัญชีของบัตรกำนัล (void บิลที่ใช้บัตร) — ใช้ `reverseFor` ตัวเดิมของ GL
+ * idempotent: เรียกซ้ำได้ (reverseFor ข้าม entry ที่ถูกกลับไปแล้ว)
+ */
+export async function reverseGiftCardPosting(input: {
+  tenantId: string;
+  sourceSystemId: string;
+  refType: "GiftCard" | "GiftCardTxn";
+  refId: string;
+  reason: string;
+}): Promise<{ posted: boolean }> {
+  const ctx = await giftCardCtx(input.tenantId, input.sourceSystemId);
+  if (!ctx) return { posted: false };
+  const reversed = await reverseFor(ctx, input.refType, input.refId, input.reason);
+  return { posted: reversed.length > 0 };
+}
+
+/** ช่องทางเงินของ POS → คีย์บัญชีขา Dr (เส้นเดียวกับ applyExternalSale) */
+function giftCardChannelKey(
+  channel: GiftCardPayMethod["channel"],
+): "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR" {
+  switch (channel) {
+    case "CASH":
+      return "CASH";
+    case "DEPOSIT":
+      return "DEPOSIT_RECEIVED";
+    case "ROOM_CHARGE":
+      return "AR";
+    default:
+      return "BANK";
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

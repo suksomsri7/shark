@@ -1649,6 +1649,118 @@ export async function postExternalSale(
   });
 }
 
+// ─────────────────── บัตรกำนัล (M2.6 · D3 · §9.4) ───────────────────
+//
+// 🔴 ทำไมขายบัตรกำนัลไม่ใช่ "รายได้": ร้านรับเงินไปแล้วแต่ยังไม่ได้ส่งมอบสินค้า/บริการ
+//    ⇒ เป็น **หนี้สิน** (2110 เงินรับล่วงหน้า) จนกว่าลูกค้าจะเอาบัตรมาใช้ · ลงเป็นรายได้ตอนขาย
+//    = ปั่นยอดขายและเสียภาษีก่อนเวลา (auditor ตีกลับ)
+//   ขาย/เติมเงิน  → Dr เงินสด/ธนาคาร   · Cr 2110
+//   ใช้บัตร      → Dr 2110            · Cr 4030 รายได้ค่าบริการ (รับรู้รายได้จริงตอนนี้)
+//   หมดอายุ      → Dr 2110            · Cr 4900 รายได้อื่น (หนี้สินหมดภาระ)
+// idempotent ต่อ (refType, refId, event) เหมือนทุกตัวในไฟล์นี้ · ผู้เรียกเดียว = account/index (facade)
+
+/** ขาย/เติมเงินบัตรกำนัล → รับเงินล่วงหน้า (Dr ช่องทางเงิน · Cr 2110) */
+export async function postGiftCardSale(
+  ctx: GlCtx,
+  o: {
+    refType: string; // "GiftCard" (ขายใบใหม่) | "GiftCardTxn" (เติมเงิน)
+    refId: string;
+    date: Date;
+    satang: number;
+    drLines: { key: "CASH" | "BANK" | "DEPOSIT_RECEIVED" | "AR"; amountSatang: number }[];
+    memo?: string;
+  },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const event = "GIFTCARD_SOLD";
+    if (await alreadyPosted(ctx, `${o.refType}#${o.refId}#${event}`, db)) return { skipped: true };
+
+    const b = new Book(ctx, db);
+    for (const l of o.drLines) b.dr(await b.id(l.key), l.amountSatang);
+    b.cr(await b.id("DEPOSIT_RECEIVED"), o.satang);
+
+    const entry = await commitEntry(
+      ctx,
+      {
+        book: "RECEIPTS",
+        journal: "DOC",
+        date: o.date,
+        refType: o.refType,
+        refId: o.refId,
+        event,
+        memo: o.memo ?? "ขายบัตรกำนัล (รับเงินล่วงหน้า)",
+      },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+
+/** ใช้บัตรกำนัลชำระค่าสินค้า/บริการ → รับรู้รายได้ (Dr 2110 · Cr 4030) */
+export async function postGiftCardUse(
+  ctx: GlCtx,
+  o: { refId: string; date: Date; satang: number; memo?: string },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const event = "GIFTCARD_USED";
+    if (await alreadyPosted(ctx, `GiftCardTxn#${o.refId}#${event}`, db)) return { skipped: true };
+
+    const b = new Book(ctx, db);
+    b.dr(await b.id("DEPOSIT_RECEIVED"), o.satang);
+    b.cr(await b.id("INCOME_SERVICE"), o.satang);
+
+    const entry = await commitEntry(
+      ctx,
+      {
+        book: "GENERAL",
+        journal: "DOC",
+        date: o.date,
+        refType: "GiftCardTxn",
+        refId: o.refId,
+        event,
+        memo: o.memo ?? "ใช้บัตรกำนัล (รับรู้รายได้)",
+      },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
+
+/** บัตรกำนัลหมดอายุทั้งที่ยังมียอดเหลือ → หนี้สินหมดภาระ (Dr 2110 · Cr 4900 รายได้อื่น) */
+export async function postGiftCardExpire(
+  ctx: GlCtx,
+  o: { refId: string; date: Date; satang: number; memo?: string },
+  tx?: Tx,
+): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const event = "GIFTCARD_EXPIRED";
+    if (await alreadyPosted(ctx, `GiftCardTxn#${o.refId}#${event}`, db)) return { skipped: true };
+
+    const b = new Book(ctx, db);
+    b.dr(await b.id("DEPOSIT_RECEIVED"), o.satang);
+    b.cr(await b.id("ASSET_DISPOSAL_GAIN"), o.satang); // key กลางของ 4900 รายได้อื่น
+
+    const entry = await commitEntry(
+      ctx,
+      {
+        book: "GENERAL",
+        journal: "DOC",
+        date: o.date,
+        refType: "GiftCardTxn",
+        refId: o.refId,
+        event,
+        memo: o.memo ?? "บัตรกำนัลหมดอายุ (รายได้อื่น)",
+      },
+      b,
+      db,
+    );
+    return { entryId: entry.id };
+  });
+}
 
 // ── Payroll posting (WO-0036) — facade ให้โมดูล hr เรียกผ่าน account/index เท่านั้น ──
 // mapping ผังบัญชี (เหตุผลเพื่อ auditor):

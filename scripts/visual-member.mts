@@ -77,6 +77,71 @@ if (WO === "1.12") {
   TMP12.linkedConv = linked.v.id; TMP12.unlinkedConv = unlinked.v.id;
   console.log(`🧪 เตรียม 1.12: ห้องผูกแล้ว ${linked.v.id} (สมาชิก 11) · ห้องยังไม่ผูก ${unlinked.v.id} (เบอร์ตรงสมาชิก 13 · ชื่อคล้ายสมาชิก 9)`);
 }
+if (WO === "3.7") {
+  const H37 = (await import("@/lib/modules/member/history" as string).catch(() => null)) as Any;
+  if (H37?.recordOnce) {
+    const ctx37 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId };
+    const c1 = E.members[0].id; const day = 86_400_000;
+    const rows = [
+      { module: "pos", type: "PURCHASE", refType: "PosSale", refId: `tmp37-sale`, summary: "ชำระเงิน ฿4,550 (ใบเสร็จ R-1042) · ได้ 45 แต้ม · ใช้ voucher ส่วนลด ฿300", data: { netSatang: 455_000, receiptNo: "R-1042", pointsEarned: 45, voucherUsed: 1 }, at: new Date(Date.now() - 1 * day) },
+      { module: "booking", type: "VISIT", refType: "Appointment", refId: `tmp37-appt`, summary: "มาตามนัด จองเรือ Sea Fox · ครูเอก", data: { serviceName: "จองเรือ Sea Fox", staffName: "ครูเอก" }, at: new Date(Date.now() - 3 * day) },
+      { module: "chat", type: "MESSAGE", refType: "ChatConversation", refId: `tmp37-conv`, summary: "แชท LINE: สนใจคอร์ส Advanced ครับ", data: { channel: "LINE", preview: "สนใจคอร์ส Advanced ครับ", count: 3 }, at: new Date(Date.now() - 4 * day) },
+      { module: "account", type: "DOCUMENT", refType: "AccountDocument", refId: `tmp37-doc`, summary: "ใบเสนอราคา QT-2568-031 ฿12,900", data: { docType: "QUOTATION", docNo: "QT-2568-031", totalSatang: 1_290_000 }, at: new Date(Date.now() - 6 * day) },
+      { module: "member", type: "TIER_CHANGED", refType: "MemberTierHistory", refId: `tmp37-tier`, summary: "เลื่อนระดับ Silver → Gold", data: { from: "Silver", to: "Gold", reason: "ยอดซื้อ 12 เดือน ฿24,500 ≥ ฿20,000" }, at: new Date(Date.now() - 8 * day) },
+      { module: "point", type: "POINTS_EXPIRED", refType: "PointLot", refId: `tmp37-lot`, summary: "แต้มหมดอายุ 200 แต้ม", data: { points: 200 }, at: new Date(Date.now() - 12 * day) },
+      { module: "kanban", type: "CARD_COMPLETED", refType: "KanbanCard", refId: `tmp37-card`, summary: "งานบอร์ด \"เคลมประกันอุปกรณ์\" ปิดแล้ว", data: { cardNo: 57, title: "เคลมประกันอุปกรณ์", boardName: "งานร้าน" }, at: new Date(Date.now() - 15 * day) },
+      { module: "review", type: "REVIEW_RECEIVED", refType: "MemberReview", refId: `tmp37-rv`, summary: "รีวิว 5 ดาว: ครูสอนดีมาก", data: { rating: 5 }, at: new Date(Date.now() - 18 * day) },
+      { module: "referral", type: "REFERRAL_CONVERTED", refType: "Referral", refId: `tmp37-rf`, summary: "แนะนำเพื่อนสำเร็จ · สมหญิง ซื้อครั้งแรก", data: {}, at: new Date(Date.now() - 22 * day) },
+      { module: "booking", type: "NO_SHOW", refType: "Appointment", refId: `tmp37-appt2`, summary: "ไม่มาตามนัด ทริปดำน้ำเกาะพีพี", data: { serviceName: "ทริปดำน้ำเกาะพีพี" }, at: new Date(Date.now() - 30 * day) },
+    ];
+    for (const r of rows) await H37.recordOnce(ctx37, { customerId: c1, unitId: E.units.patong, ...r }).catch(() => null);
+    console.log(`🧪 เตรียม 3.7: ไทม์ไลน์สมาชิก 1 = ${rows.length} รายการ 10 ชนิด`);
+  }
+}
+const TMP35 = { code: "" };
+if (WO === "3.5") {
+  const R35 = (await import("@/lib/modules/member/referrals" as string).catch(() => null)) as Any;
+  const PR35 = (await import("@/lib/modules/member/profile" as string).catch(() => null)) as Any;
+  if (R35?.setProgram && PR35?.createMember) {
+    const memO35 = await prisma.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId } });
+    const ownerActor35 = { userId: E.users.owner.userId, role: memO35!.role, unitAccess: memO35!.unitAccess as string[], permissions: memO35!.permissions as Record<string, unknown> };
+    const ctx35 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId };
+    await R35.setProgram(ctx35, ownerActor35, { enabled: true, convertOn: "SIGNUP", referrerRewardKind: "POINTS", referrerRewardValue: { points: 300 }, refereeRewardKind: "VOUCHER", refereeRewardValue: { kind: "FIXED", value: 100, validDays: 30 } }).catch(() => null);
+    const code1 = (await R35.codeFor(ctx35, E.members[0].id))?.code ?? "";
+    const code2 = (await R35.codeFor(ctx35, E.members[1].id))?.code ?? "";
+    TMP35.code = code1;
+    const names = ["สมหญิง", "วิชัย", "นภา", "ธีรพล", "อรุณ"];
+    for (const [i, nm] of names.entries()) {
+      await PR35.createMember(ctx35, ownerActor35, { phone: `0899${String(300000 + i)}`, firstName: nm, lastName: "ทดสอบ", source: "WALK_IN", homeUnitId: E.units.patong, referralCode: i < 3 ? code1 : code2 }).catch(() => null);
+    }
+    // ใบ REJECTED (แนะนำตัวเอง) + PENDING (ปิดโปรแกรมชั่วคราว)
+    await R35.attach(ctx35, { refereeCustomerId: E.members[0].id, code: code1 }).catch(() => null);
+    await R35.setProgram(ctx35, ownerActor35, { enabled: false }).catch(() => null);
+    await PR35.createMember(ctx35, ownerActor35, { phone: "0899300009", firstName: "รอแปลง", lastName: "ทดสอบ", source: "WALK_IN", homeUnitId: E.units.patong, referralCode: code1 }).catch(() => null);
+    await R35.setProgram(ctx35, ownerActor35, { enabled: true }).catch(() => null);
+    console.log(`🧪 เตรียม 3.5: โปรแกรมเปิด · แนะนำ 6 ใบ (สำเร็จ 5 · รอ 1 · ปฏิเสธ 1) · code สมาชิก 1 = ${code1}`);
+  }
+}
+const TMP34 = { token: "", usedToken: "" };
+if (WO === "3.4") {
+  const R34 = (await import("@/lib/modules/member/reviews" as string).catch(() => null)) as Any;
+  if (R34?.requestReview) {
+    process.env.SHARK_AI_MOCK = "1";
+    const memO34 = await prisma.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId } });
+    const ownerActor34 = { userId: E.users.owner.userId, role: memO34!.role, unitAccess: memO34!.unitAccess as string[], permissions: memO34!.permissions as Record<string, unknown> };
+    const ctx34 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId };
+    const sales = await prisma.posSale.findMany({ where: { tenantId: E.tenantId, status: "PAID" as Any, memberId: { in: E.members.slice(0, 6).map((x: Any) => x.id) } }, orderBy: { createdAt: "asc" }, take: 6 });
+    const ratings = [5, 2, 5, 4, 2, 5]; const bodies = ["ครูสอนดีมาก อุปกรณ์พร้อม แนะนำเลยครับ", "รอคิวรับอุปกรณ์นานเกินไป พนักงานดูวุ่นมาก", "ทริปดีมาก จุดดำน้ำสวย ทีมงานดูแลดี", "โดยรวมดี แต่เวลานัดคลาดเคลื่อนไปหน่อย", "อุปกรณ์เก่าไปหน่อย ชุดยางเริ่มขาด", "ครูใจเย็น สอนละเอียด ประทับใจมากค่ะ"];
+    for (const [i, sl] of sales.entries()) {
+      const rq = await R34.requestReview(ctx34, { customerId: sl.memberId, refType: "PosSale", refId: sl.id, unitId: sl.unitId }, { deps: { line: async () => ({ ok: true }) } }).catch(() => null);
+      if (!rq?.token) continue;
+      if (sl.memberId === E.members[0].id && !TMP34.token) { TMP34.token = rq.token; continue; } // เก็บ token ของสมาชิก 1 ไว้ถ่าย LIFF
+      await R34.submitReview({ token: rq.token, rating: ratings[i] ?? 5, body: bodies[i] ?? "ดีมาก" }).catch(() => null);
+    }
+    await R34.reply(ctx34, ownerActor34, (await (prisma as Any).memberReview.findFirst({ where: { tenantId: E.tenantId, rating: 5, status: "NEW" } }))?.id ?? "-", { body: "ขอบคุณมากค่ะ แล้วพบกันใหม่นะคะ" }, { deps: { line: async () => ({ ok: true }) } }).catch(() => null);
+    console.log(`🧪 เตรียม 3.4: รีวิว ${sales.length - 1} ใบ · token LIFF สมาชิก 1 = ${TMP34.token ? "มี" : "ไม่มี"}`);
+  }
+}
 const TMP33 = { journeyId: "" };
 if (WO === "3.3") {
   const J33 = (await import("@/lib/modules/member/journeys" as string).catch(() => null)) as Any;
@@ -105,6 +170,30 @@ if (WO === "2.8") {
   await PS28.earnWithLot({ tenantId: E.tenantId, systemId: E.systems.POINT, memberSystemId: SYS, actorUserId: E.users.owner.userId }, { customerId: E.members[0].id, points: 2340, refType: "QC", refId: `vis28-${Date.now()}`, idempotencyKey: `vis28-${Date.now()}` }).catch(() => null);
   TMP28.active = true;
   console.log("🧪 เตรียม 2.8: แต้ม 2,340 ให้สมาชิก 1 (แผงสิทธิ์ที่ POS)");
+}
+const TMP26 = { cards: [] as string[], sales: [] as string[], set0: null as Any };
+if (WO === "2.6") {
+  const G26 = (await import("@/lib/modules/giftcard" as string).catch(() => null)) as Any;
+  if (G26?.sell) {
+    const memO26 = await prisma.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId } });
+    const ownerActor26 = { userId: E.users.owner.userId, role: memO26!.role, unitAccess: memO26!.unitAccess as string[], permissions: memO26!.permissions as Record<string, unknown> };
+    const gctx = { tenantId: E.tenantId, systemId: SYS, posSystemId: E.systems.POS, actorUserId: E.users.owner.userId };
+    TMP26.set0 = await G26.getSettings(gctx).catch(() => null);
+    await G26.setSettings(gctx, ownerActor26, { enabled: true }).catch((e: Any) => console.error("settings", e?.message));
+    const spec26 = [
+      { satang: 200_000, buyer: E.members[0].id, recipient: { customerId: E.members[1].id }, message: "สุขสันต์วันเกิดนะ" },
+      { satang: 100_000, buyer: E.members[2].id, recipient: { contact: { name: "คุณนภา", line: "napa.d" } } },
+      { satang: 50_000, buyer: E.members[3].id, recipient: { print: true } },
+      { satang: 300_000, buyer: E.members[4].id, recipient: { customerId: E.members[5].id } },
+    ];
+    for (const [i, sp] of spec26.entries()) {
+      const r = await G26.sell(gctx, ownerActor26, { satang: sp.satang, buyerCustomerId: sp.buyer, recipient: sp.recipient, message: (sp as Any).message, payMethods: [{ type: "CASH", amountSatang: sp.satang }], unitId: E.units.patong, idempotencyKey: `vis26-${Date.now()}-${i}` }).catch((e: Any) => { console.error("sell", e?.message); return null; });
+      if (r?.giftCardId) { TMP26.cards.push(r.giftCardId); if (r.saleId) TMP26.sales.push(r.saleId); }
+    }
+    // ใบที่ 4 ใช้ไปบางส่วน (สถานะ 'ใช้แล้วบางส่วน')
+    if (TMP26.cards[3]) await (prisma as Any).giftCard.update({ where: { id: TMP26.cards[3] }, data: { balanceSatang: 120_000 } }).catch(() => null);
+    console.log(`🧪 เตรียม 2.6: gift card ${TMP26.cards.length} ใบ`);
+  }
 }
 const TMP27 = { active: false };
 if (WO === "2.7") {
@@ -233,6 +322,59 @@ const SPECS: Record<string, Spec[]> = {
       steps: userKey === "owner" ? [{ waitFor: "[data-testid=member-api-page]" }, { wait: 400 }] : [{ wait: 800 }],
     },
   ],
+  // M3.8 — รายงานสมาชิก (ภาพ 25)
+  "3.8": [
+    ...(userKey === "owner" ? [
+      { name: "reports-owner", path: `${MEMBER_BASE}/reports`, note: "เทียบภาพ 25: แท็บ 7 · KPI 6 · กราฟสมาชิกใหม่ 12 แท่ง · RFM 3×3 · การ์ดระดับ/แต้ม/โปรโมชัน · ปุ่ม CSV/ตั้งเวลา", expect: ["[data-testid=reports-page]", "[data-testid=reports-tabs]", "[data-testid=reports-kpi]", "[data-testid=reports-chart-new]", "[data-testid=reports-rfm-grid]", "[data-testid=reports-tiers]", "[data-testid=reports-points]", "[data-testid=reports-promotions]", "[data-testid=reports-export]", "[data-testid=reports-schedule]"], steps: [{ waitFor: "[data-testid=reports-rfm-grid]" }, { wait: 600 }] },
+      { name: "reports-rfm-owner", path: `${MEMBER_BASE}/reports?tab=rfm`, onlyDevice: "desktop" as const, note: "แท็บ RFM: กริด 9 ช่อง + คำอธิบาย", expect: ["[data-testid=reports-rfm-grid]", "[data-testid=reports-rfm-cell-champions]", "[data-testid=reports-rfm-cell-lost]"], steps: [{ waitFor: "[data-testid=reports-rfm-grid]" }, { wait: 400 }] },
+      { name: "reports-cohort-owner", path: `${MEMBER_BASE}/reports?tab=cohort`, onlyDevice: "desktop" as const, note: "แท็บ cohort รายเดือน", expect: ["[data-testid=reports-cohort]"], steps: [{ waitFor: "[data-testid=reports-cohort]" }, { wait: 400 }] },
+      { name: "reports-schedule-owner", path: `${MEMBER_BASE}/reports`, onlyDevice: "desktop" as const, note: "กดตั้งเวลาส่งอีเมล → ฟอร์ม (อีเมล · ชั่วโมง · แท็บ · สวิตช์)", expect: ["[data-testid=reports-schedule-form]"], steps: [{ waitFor: "[data-testid=reports-schedule]" }, { click: "[data-testid=reports-schedule]" }, { waitFor: "[data-testid=reports-schedule-form]" }, { wait: 400 }] },
+    ] : userKey === "noperm" ? [
+      { name: "reports-noperm", path: `${MEMBER_BASE}/reports`, onlyDevice: "desktop" as const, note: "ไม่มีสิทธิ์ → 404", expect: [], steps: [{ wait: 800 }] },
+    ] : []),
+  ],
+  // M3.7 — แท็บประวัติ (ภาพ 08 ซ้าย/กลาง) — TMP37 ไทม์ไลน์สมาชิก 1 10 ชนิด
+  "3.7": [
+    ...(userKey === "owner" ? [
+      { name: "member-history-owner", path: `${MEMBER_BASE}/members/${E.members[0].id}?tab=history`, note: "เทียบภาพ 08: ชิปกรอง 9+ทั้งหมด (นับ) · ช่วงเวลา · สาขา · ไทม์ไลน์ 10 ชนิด ไอคอน+จุดสี · ลิงก์ต้นทาง", expect: ["[data-testid=member-history]", "[data-testid=member-history-filter]", "[data-testid=member-history-list]", "[data-testid=member-history-chip-purchase]"], steps: [{ waitFor: "[data-testid=member-history-list]" }, { wait: 600 }] },
+      { name: "member-history-filter-owner", path: `${MEMBER_BASE}/members/${E.members[0].id}?tab=history`, onlyDevice: "desktop" as const, note: "คลิกชิป 'ซื้อ' → เฉพาะรายการซื้อ", expect: ["[data-testid=member-history-list]"], steps: [{ waitFor: "[data-testid=member-history-chip-purchase]" }, { click: "[data-testid=member-history-chip-purchase]" }, { wait: 1200 }] },
+    ] : userKey === "thana" ? [
+      { name: "member-history-thana", path: `${MEMBER_BASE}/members/${E.members[0].id}?tab=history`, onlyDevice: "desktop" as const, note: "พนักงานป่าตองเห็นประวัติสมาชิกป่าตอง", expect: ["[data-testid=member-history]"], steps: [{ waitFor: "[data-testid=member-history]" }, { wait: 500 }] },
+    ] : []),
+  ],
+  // M3.6 — การแจ้งเตือนสมาชิก (ภาพ 30)
+  "3.6": [
+    ...(userKey === "owner" ? [
+      { name: "notifications-owner", path: `${MEMBER_BASE}/settings/notifications`, note: "เทียบภาพ 30: ตาราง 8 แถว × ชิป 4 ช่อง · ส่งเมื่อ · สถานะ · แถบสรุปเดือนนี้", expect: ["[data-testid=notif-page]", "[data-testid=notif-table]", "[data-testid=notif-row-WELCOME]", "[data-testid=notif-row-REVIEW_REQUEST]", "[data-testid=notif-month-summary]"], steps: [{ waitFor: "[data-testid=notif-table]" }, { wait: 500 }] },
+      { name: "notifications-edit-owner", path: `${MEMBER_BASE}/settings/notifications`, onlyDevice: "desktop" as const, note: "คลิกแถว 'แต้มใกล้หมดอายุ' → แผงขวา: แท็บ 4 ช่อง · ข้อความ+ตัวแปร · ตัวอย่างบับเบิล LINE · 30/7 วันก่อน · quiet/consent · ทดสอบ/บันทึก", expect: ["[data-testid=notif-panel]", "[data-testid=notif-panel-tabs]", "[data-testid=notif-panel-body]", "[data-testid=notif-vars]", "[data-testid=notif-preview]", "[data-testid=notif-lead-days]", "[data-testid=notif-quiet]", "[data-testid=notif-consent]", "[data-testid=notif-test-send]", "[data-testid=notif-save]"], steps: [{ waitFor: "[data-testid=notif-row-POINTS_EXPIRING]" }, { click: "[data-testid=notif-row-POINTS_EXPIRING]" }, { waitFor: "[data-testid=notif-preview]" }, { wait: 600 }] },
+    ] : userKey === "thana" ? [
+      { name: "notifications-thana", path: `${MEMBER_BASE}/settings/notifications`, onlyDevice: "desktop" as const, note: "พนักงานไม่มี settings.manage → 403/redirect", expect: [], steps: [{ wait: 800 }] },
+    ] : []),
+  ],
+  // M3.5 — แนะนำเพื่อน (ภาพ 24 · 08 ขวา · LIFF) — TMP35 โปรแกรม + 6 ใบ
+  "3.5": [
+    ...(userKey === "owner" ? [
+      { name: "referrals-owner", path: `${MEMBER_BASE}/referrals`, note: "เทียบภาพ 24: ซ้าย ตั้งค่า (สวิตช์/รางวัล/ขั้นต่ำ/cap/กันโกง/ข้อความแชร์/ลิงก์) · ขวา KPI 4 · ผู้แนะนำสูงสุด · การแนะนำล่าสุด (รอ/สำเร็จ/ถูกปฏิเสธ)", expect: ["[data-testid=referrals-page]", "[data-testid=referrals-settings]", "[data-testid=referrals-kpi]", "[data-testid=referrals-leaderboard]", "[data-testid=referrals-recent]"], steps: [{ waitFor: "[data-testid=referrals-recent]" }, { wait: 600 }] },
+      { name: "member-referrals-owner", path: `${MEMBER_BASE}/members/${E.members[0].id}?tab=referrals`, onlyDevice: "desktop" as const, note: "เทียบภาพ 08 ขวา: การ์ดแนะนำเพื่อน (โค้ด · ลิงก์ LINE · แนะนำแล้ว/สำเร็จ/แต้มที่ได้ · ต้นไม้)", expect: ["[data-testid=member-referrals-tab]", "[data-testid=member-referral-card]", "[data-testid=member-referral-code]", "[data-testid=member-referral-tree]"], steps: [{ waitFor: "[data-testid=member-referral-card]" }, { wait: 500 }] },
+      ...(TMP35.code ? [{ name: "r-landing", path: `/r/${TMP35.code}`, onlyDevice: "mobile" as const, note: "/r/<code> → LIFF join/login พร้อม ?ref=", expect: [], steps: [{ wait: 1200 }] }] : []),
+    ] : []),
+    ...(isCustomer ? [
+      { name: "m-referral", path: `/m/${MQC.tenantSlug}/referral`, onlyDevice: "mobile" as const, note: "LIFF แชร์: โค้ด · QR · ปุ่มแชร์ LINE · สถิติของฉัน", expect: ["[data-testid=m-referral]", "[data-testid=m-referral-code]", "[data-testid=m-referral-share]", "[data-testid=m-referral-stats]"], steps: [{ waitFor: "[data-testid=m-referral]" }, { wait: 400 }] },
+    ] : []),
+  ],
+  // M3.4 — รีวิว (ภาพ 23 · 08 ขวา · LIFF) — TMP34 รีวิว 5 ใบ + token ของสมาชิก 1
+  "3.4": [
+    ...(userKey === "owner" ? [
+      { name: "reviews-owner", path: `${MEMBER_BASE}/reviews`, note: "เทียบภาพ 23: KPI 4 · ตัวกรอง · รายการรีวิว (ดาว/ชื่อ/บริการ/ข้อความ/ป้ายเปิดการ์ด/กล่องตอบ+AI) · AI สรุป · ตั้งค่า", expect: ["[data-testid=reviews-page]", "[data-testid=reviews-kpi]", "[data-testid=reviews-filter]", "[data-testid=reviews-list]", "[data-testid=reviews-ai-summary]", "[data-testid=reviews-settings]"], steps: [{ waitFor: "[data-testid=reviews-list]" }, { wait: 600 }] },
+      { name: "member-reviews-owner", path: `${MEMBER_BASE}/members/${E.members[1].id}?tab=reviews`, onlyDevice: "desktop" as const, note: "เทียบภาพ 08 ขวา: แท็บรีวิวใน 360 + กล่องรีวิวร้าน (เฉลี่ย/แจกแจง/รีวิวล่าสุด/ป้ายเปิดการ์ด)", expect: ["[data-testid=member-reviews-tab]", "[data-testid=member-reviews-summary]"], steps: [{ waitFor: "[data-testid=member-reviews-tab]" }, { wait: 500 }] },
+      { name: "m-review-invalid", path: `/m/${MQC.tenantSlug}/review/not-a-real-token-00000000000000`, onlyDevice: "mobile" as const, note: "token มั่ว → 404 หรือข้อความไทย", expect: [], steps: [{ wait: 800 }] },
+    ] : []),
+    ...(isCustomer && TMP34.token ? [
+      { name: "m-review", path: `/m/${MQC.tenantSlug}/review/${TMP34.token}`, onlyDevice: "mobile" as const, note: "LIFF เขียนรีวิว: ดาว 5 · ข้อความ · รูป ≤ 3 · ปุ่มส่ง", expect: ["[data-testid=m-review]", "[data-testid=m-review-stars]", "[data-testid=m-review-submit]"], steps: [{ waitFor: "[data-testid=m-review]" }, { wait: 400 }] },
+      { name: "m-review-thanks", path: `/m/${MQC.tenantSlug}/review/${TMP34.token}`, onlyDevice: "mobile" as const, note: "กดดาว 5 + ส่ง → ขอบคุณ + แต้มที่ได้", expect: ["[data-testid=m-review-thanks]"], steps: [{ waitFor: "[data-testid=m-review-stars]" }, { click: "[data-testid=m-review-stars] button:last-child" }, { click: "[data-testid=m-review-submit]" }, { waitFor: "[data-testid=m-review-thanks]", timeoutMs: 15_000 }, { wait: 500 }] },
+      { name: "m-review-done", path: `/m/${MQC.tenantSlug}/review/${TMP34.token}`, onlyDevice: "mobile" as const, note: "token ใช้แล้ว → หน้า 'รีวิวไปแล้ว'", expect: ["[data-testid=m-review-done]"], steps: [{ waitFor: "[data-testid=m-review-done]", timeoutMs: 15_000 }, { wait: 300 }] },
+    ] : []),
+  ],
   // M3.3 — journey (ภาพ 07 บน · 22) — TMP33 journey สำเร็จรูป 6
   "3.3": [
     {
@@ -291,6 +433,18 @@ const SPECS: Record<string, Spec[]> = {
     ...(userKey === "owner" ? [
       { name: "pos-register-owner", path: `/app/sys/${E.systems.POS}/pos/register?unit=${E.units.patong}`, onlyDevice: "desktop" as const, note: "หน้าขายเดิม ไม่เลือกสมาชิก — ไม่มีแผงสิทธิ์", expect: ["[data-testid=pos-register]", "[data-testid=pos-member-select]"], steps: [{ waitFor: "[data-testid=pos-register]" }, { wait: 400 }] },
       { name: "pos-register-member-owner", path: `/app/sys/${E.systems.POS}/pos/register?unit=${E.units.patong}`, note: "เทียบภาพ 06: เลือกสมาชิก 1 + หยิบสินค้า 1 รายการ → แผงขวา สิทธิ์ของ (ระดับ · voucher · แต้ม toggle · gift card · สแตมป์ · ลำดับ · แต้มที่จะได้) + สรุปยอด + ปุ่มใช้สิทธิ์และรับชำระ", expect: ["[data-testid=pos-member-panel]", "[data-testid=pos-panel-tier]", "[data-testid=pos-panel-vouchers]", "[data-testid=pos-panel-points]", "[data-testid=pos-panel-giftcard]", "[data-testid=pos-panel-stamps]", "[data-testid=pos-panel-order]", "[data-testid=pos-panel-earn]", "[data-testid=pos-pay-button]"], steps: [{ waitFor: "[data-testid=pos-member-select]" }, { select: { on: "[data-testid=pos-member-select]", value: E.members[0].id } }, { wait: 300 }, { click: "[data-testid=pos-catalog-item]" }, { waitFor: "[data-testid=pos-member-panel]", timeoutMs: 15_000 }, { wait: 600 }] },
+    ] : []),
+  ],
+  // M2.6 — gift card (ภาพ 20) — TMP26 ขาย 4 ใบ
+  "2.6": [
+    ...(userKey === "owner" ? [
+      { name: "giftcards-owner", path: `${MEMBER_BASE}/promotions/giftcards`, note: "เทียบภาพ 20: KPI 3 · ป้ายผูกบัญชี · ตาราง 7 คอลัมน์ · ปุ่มขาย", expect: ["[data-testid=giftcards-page]", "[data-testid=giftcards-kpi]", "[data-testid=giftcards-table]", "[data-testid=giftcards-sell]"], steps: [{ waitFor: "[data-testid=giftcards-table]" }, { wait: 500 }] },
+      { name: "giftcards-sell-modal-owner", path: `${MEMBER_BASE}/promotions/giftcards`, onlyDevice: "desktop" as const, note: "กดขาย → drawer ขาย (มูลค่า · ผู้ซื้อ · ผู้รับ · ออกบัตร)", expect: ["[data-testid=giftcards-sell-modal]", "[data-testid=giftcards-sell-amount]", "[data-testid=giftcards-sell-recipient]", "[data-testid=giftcards-sell-submit]"], steps: [{ waitFor: "[data-testid=giftcards-sell]" }, { click: "[data-testid=giftcards-sell]" }, { waitFor: "[data-testid=giftcards-sell-modal]" }, { wait: 500 }] },
+      { name: "giftcards-settings-owner", path: `${MEMBER_BASE}/promotions/giftcards/settings`, onlyDevice: "desktop" as const, note: "ตั้งค่า gift card (เปิด/ผูกบัญชี/อายุ)", expect: ["[data-testid=giftcards-settings]", "[data-testid=giftcards-settings-form]"], steps: [{ waitFor: "[data-testid=giftcards-settings-form]" }, { wait: 400 }] },
+    ] : userKey === "thana" ? [
+      { name: "giftcards-thana", path: `${MEMBER_BASE}/promotions/giftcards`, onlyDevice: "desktop" as const, note: "พนักงาน (read โดยนัย) เห็นตาราง ไม่มีปุ่มขาย", expect: ["[data-testid=giftcards-page]", "[data-testid=giftcards-table]"], steps: [{ waitFor: "[data-testid=giftcards-table]" }, { wait: 400 }] },
+    ] : userKey === "noperm" ? [
+      { name: "giftcards-noperm", path: `${MEMBER_BASE}/promotions/giftcards`, onlyDevice: "desktop" as const, note: "ไม่มีสิทธิ์ → 404", expect: [], steps: [{ wait: 800 }] },
     ] : []),
   ],
   // M2.7 — แท็บกระเป๋าสิทธิ์ใน 360 (ภาพ 02) — TMP27 เติมแต้มให้สมาชิก 1
@@ -422,6 +576,11 @@ async function restoreSeed(): Promise<void> {
     await prisma.chatConversation.deleteMany({ where: { id: { in: TMP12.convs } } }).catch(() => null);
     await prisma.chatContact.deleteMany({ where: { id: { in: TMP12.contacts } } }).catch(() => null);
   }
+  if (WO === "2.6" && TMP26.set0) { const G26c = (await import("@/lib/modules/giftcard" as string)) as Any; const memO = await prisma.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId } }); await G26c.setSettings({ tenantId: E.tenantId, systemId: SYS, posSystemId: E.systems.POS, actorUserId: E.users.owner.userId }, { userId: E.users.owner.userId, role: memO!.role, unitAccess: memO!.unitAccess as string[], permissions: memO!.permissions as Record<string, unknown> }, { enabled: TMP26.set0.enabled, accountingLink: TMP26.set0.accountingLink }).catch(() => null); }
+  if (WO === "2.6" && TMP26.cards.length) { await P.giftCardTxn.deleteMany({ where: { giftCardId: { in: TMP26.cards } } }).catch(() => null); await P.giftCard.deleteMany({ where: { id: { in: TMP26.cards } } }).catch(() => null); if (TMP26.sales.length) { for (const mdl of ["posSalePayment", "posSaleLine", "posSaleItem"]) await P[mdl]?.deleteMany?.({ where: { saleId: { in: TMP26.sales } } }).catch(() => null); await prisma.posSale.deleteMany({ where: { id: { in: TMP26.sales } } }).catch(() => null); } }
+  if (WO === "3.7") { await P.memberActivity.deleteMany({ where: { tenantId: E.tenantId, refId: { startsWith: "tmp37-" } } }).catch(() => null); }
+  if (WO === "3.5") { const cs = await prisma.customer.findMany({ where: { tenantId: E.tenantId, phone: { startsWith: "0899300" } }, select: { id: true, partyId: true } }).catch(() => []); const ids = cs.map((c: Any) => c.id); const refs = await P.referral.findMany({ where: { tenantId: E.tenantId, OR: [{ refereeCustomerId: { in: ids } }, { refereeCustomerId: E.members[0].id }] }, select: { id: true } }).catch(() => []); const rids = refs.map((r: Any) => r.id); const leds = await prisma.pointLedger.findMany({ where: { tenantId: E.tenantId, refType: "REFERRAL", refId: { in: rids } }, select: { id: true, customerId: true, delta: true } }).catch(() => [] as Any[]); await P.pointLot.deleteMany({ where: { ledgerId: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); await prisma.pointLedger.deleteMany({ where: { id: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); for (const l of leds) await P.pointBalance.updateMany({ where: { customerId: l.customerId }, data: { balance: { decrement: l.delta } } }).catch(() => null); await P.voucher.deleteMany({ where: { tenantId: E.tenantId, origin: "REFERRAL" } }).catch(() => null); await P.memberActivity.deleteMany({ where: { tenantId: E.tenantId, refId: { in: rids } } }).catch(() => null); await P.referral.deleteMany({ where: { id: { in: rids } } }).catch(() => null); if (ids.length) { for (const mdl of ["pointLot", "pointLedger", "pointBalance", "memberConsent", "memberAttribution", "memberTierHistory", "memberFieldValue", "memberChannelIdentity", "memberAccessLog", "memberActivity"]) await P[mdl].deleteMany({ where: { customerId: { in: ids } } }).catch(() => null); await prisma.auditLog.deleteMany({ where: { tenantId: E.tenantId, targetId: { in: ids } } }).catch(() => null); await prisma.customer.deleteMany({ where: { id: { in: ids } } }).catch(() => null); const parties = cs.map((c: Any) => c.partyId).filter(Boolean); if (parties.length) { await prisma.partyMergeCandidate.deleteMany({ where: { OR: [{ partyAId: { in: parties } }, { partyBId: { in: parties } }] } }).catch(() => null); await prisma.party.deleteMany({ where: { id: { in: parties } } }).catch(() => null); } } }
+  if (WO === "3.4") { const rvs = await P.memberReview.findMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 3600_000) } }, select: { id: true, kanbanCardId: true } }).catch(() => []); const ids = rvs.map((r: Any) => r.id); if (ids.length) { const leds = await prisma.pointLedger.findMany({ where: { tenantId: E.tenantId, refType: "REVIEW", refId: { in: ids } }, select: { id: true, customerId: true, delta: true } }).catch(() => [] as Any[]); await P.pointLot.deleteMany({ where: { ledgerId: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); await prisma.pointLedger.deleteMany({ where: { id: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); for (const l of leds) await P.pointBalance.updateMany({ where: { customerId: l.customerId }, data: { balance: { decrement: l.delta } } }).catch(() => null); await P.memberActivity.deleteMany({ where: { tenantId: E.tenantId, refId: { in: ids } } }).catch(() => null); const cards = rvs.map((r: Any) => r.kanbanCardId).filter(Boolean); if (cards.length) { await P.kanbanCardAssignee?.deleteMany?.({ where: { cardId: { in: cards } } }).catch(() => null); await P.kanbanCard.deleteMany({ where: { id: { in: cards } } }).catch(() => null); } await P.memberReview.deleteMany({ where: { id: { in: ids } } }).catch(() => null); } }
   if (WO === "3.3") { const rs = await P.automationRule.findMany({ where: { tenantId: E.tenantId, scope: "MEMBER_JOURNEY", createdAt: { gte: new Date(Date.now() - 3600_000) } }, select: { id: true } }).catch(() => []); const ids = rs.map((r: Any) => r.id); if (ids.length) { await P.automationRun.deleteMany({ where: { ruleId: { in: ids } } }).catch(() => null); await P.automationRule.deleteMany({ where: { id: { in: ids } } }).catch(() => null); } }
   if (TMP31.segmentId) await P.memberSegment.deleteMany({ where: { id: TMP31.segmentId } }).catch(() => null);
   if (TMP28.active) {
