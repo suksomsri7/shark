@@ -17,6 +17,9 @@ export type {
   AddStampResult,
   ProgressDto,
   AutoStampResult,
+  StampPreviewLine,
+  StampPreviewCart,
+  StampPreviewRow,
   UseStampsInput,
   UseStampsResult,
   RefundStampsInput,
@@ -46,6 +49,8 @@ export {
   cardStats,
   /** ตราของใบจริงที่คืบหน้ามากที่สุด (ตัวอย่างการ์ดในหน้าตั้งค่า) */
   sampleStamps,
+  /** "ตะกร้านี้จะได้ตราอะไรบ้าง" — อ่านอย่างเดียว (M2.7 wallet.quoteApply · แผงสิทธิ์ที่หน้าขาย M2.8) */
+  previewForCart,
   /** ทางอัตโนมัติ: บิลปิดแล้ว / ลูกค้ามาตามนัด */
   autoStampFromSale,
   autoStampFromVisit,

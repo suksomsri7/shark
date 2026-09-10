@@ -92,6 +92,39 @@ export {
 
 export { canViewSensitive, logAccess } from "./privacy";
 
+// ── กระเป๋าสิทธิ์ (M2.7 · §5.8 §9.1) ──
+// 🔴 จุดเดียวที่ POS / จอง / LIFF / REST ถามเรื่อง "สิทธิ์ของลูกค้าคนนี้" ได้ — ห้ามไปเรียก
+//    voucher/giftcard/point/stamp/coupon ตรงเองแล้วประกอบลำดับส่วนลดเอง (ลำดับ = สัญญา §9.1
+//    ถ้าแต่ละที่คิดเอง วันหนึ่งยอดที่หน้าขายกับยอดใน LIFF จะไม่ตรงกันเงียบ ๆ)
+export type {
+  WalletCart,
+  WalletCartLine,
+  WalletChoices,
+  WalletGiftCardChoice,
+  WalletDto,
+  WalletVoucherDto,
+  WalletCouponDto,
+  QuoteKind,
+  QuoteLine,
+  QuoteConflict,
+  QuoteResult,
+  ApplyOnSaleInput,
+  ApplyOnSaleResult,
+} from "./wallet";
+
+export {
+  /** ทุกสิทธิ์ที่สมาชิกคนนี้ถืออยู่ (แต้ม/voucher/คูปอง/บัตรกำนัล/รางวัลรอรับ/สแตมป์/สิทธิ์ระดับ) */
+  getWallet,
+  /** "ใช้สิทธิ์ชุดนี้กับตะกร้านี้แล้วเหลือเท่าไหร่" — อ่านอย่างเดียว ลำดับตายตัว + เหตุผลไทยเมื่อใช้ไม่ได้ */
+  quoteApply,
+  /** ตัดสิทธิ์จริงใน transaction ของบิล (POS เรียกตอนปิดบิล) */
+  applyOnSale,
+  /** บิลถูกยกเลิก → คืนสิทธิ์ทุกชนิด (idempotent) */
+  releaseOnVoid,
+  /** ลำดับการใช้สิทธิ์ที่หน้าจอเอาไปโชว์เป็นชิปได้ตรง ๆ */
+  WALLET_ORDER,
+} from "./wallet";
+
 /**
  * M2.6 — จุดตัดเงิน POS ที่ผูกสาขาเดียวกับ "ระบบสมาชิก" นี้ (+ ระบบแต้มถ้ามี)
  * โมดูลที่ต้องเก็บเงินผ่าน POS (บัตรกำนัล · แพ็กเกจสมาชิก) ถามที่นี่ที่เดียว — ไม่ต้องรู้จัก `system/service`

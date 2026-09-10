@@ -1012,6 +1012,36 @@ export async function release(
   });
 }
 
+/**
+ * คืนใบทุกใบที่ถูกใช้กับบิลใบหนึ่ง (บิลถูก void) — ผู้เรียกรู้แค่ `saleId` ไม่ต้องจำว่าใช้ใบไหนไปบ้าง
+ * (แบบเดียวกับ `stamp.voidStampsForSale` · M2.7 `member.releaseOnVoid` → M2.8 consumer `pos.sale.voided`)
+ * idempotent: ใบที่คืนแล้วสถานะไม่ใช่ USED ⇒ ไม่ถูกหยิบซ้ำ ⇒ เรียกซ้ำได้ผลลัพธ์ 0
+ */
+export async function releaseForSale(
+  ctx: VoucherCtx,
+  input: { saleId: string; reason?: string | null },
+  tx?: Tx,
+): Promise<{ released: number }> {
+  const saleId = String(input?.saleId ?? "").trim();
+  if (!saleId) return { released: 0 };
+  const db: Db = tx ?? prisma;
+  const rows = await db.voucher.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      status: "USED",
+      usedRef: { path: ["saleId"], equals: saleId },
+    },
+    select: { id: true },
+  });
+  let released = 0;
+  for (const row of rows) {
+    const res = await release(ctx, { voucherId: row.id, reason: input.reason ?? null }, tx);
+    if (res.changed) released += 1;
+  }
+  return { released };
+}
+
 /** ยกเลิกใบ (ออกผิดคน/ผิดมูลค่า) — ใบที่ลูกค้าใช้ไปแล้วยกเลิกไม่ได้ (ต้อง void บิลก่อน) */
 export async function cancel(
   ctx: VoucherCtx,

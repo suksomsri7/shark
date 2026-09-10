@@ -1139,6 +1139,62 @@ export async function autoStampFromSale(ctx: StampCtx, input: { saleId: string }
   return res;
 }
 
+// ───────────────────────── ตัวอย่างจากตะกร้า (M2.7 · wallet.quoteApply) ─────────────────────────
+
+export type StampPreviewLine = { itemId?: string | null; serviceId?: string | null; qty: number };
+/** ตะกร้าที่ยังไม่เป็นบิล — `netSatang` = ยอดที่ลูกค้าจะจ่ายจริงหลังหักสิทธิ์ (เทียบกับ `PosSale.grandTotalSatang`) */
+export type StampPreviewCart = { customerId: string; unitId?: string | null; netSatang: number; lines: StampPreviewLine[] };
+export type StampPreviewRow = { cardId: string; name: string; count: number };
+
+/**
+ * "บิลนี้จะได้ตราอะไรบ้าง" — **อ่านอย่างเดียว ไม่เขียนอะไรเลย** (หน้าขาย/กระเป๋าสิทธิ์เรียกซ้ำได้ทุกครั้งที่ตะกร้าเปลี่ยน)
+ *
+ * 🔴 ใช้เกณฑ์ชุดเดียวกับ `autoStampFromSale` (ใบชนิด PER_SALE_MIN/PER_ITEM/PER_DAY ที่เปิด "ให้ตราจากบิล")
+ *    ⇒ ตัวเลขบนหน้าจอกับตราที่ได้จริงตอนปิดบิลตรงกันเสมอ
+ * 🔴 **ไม่หักโควตาต่อวันที่ใช้ไปแล้ว** โดยตั้งใจ: ตัวอย่างนี้ตอบว่า "ใบนี้เข้าเกณฑ์ของบิลนี้ไหม"
+ *    ส่วนโควตาต่อวันเป็นเรื่องของตอนประทับจริง (นับ StampEvent ใน tx) — ถามที่นี่ = ยิง query เพิ่มทุกครั้ง
+ *    ที่ลูกค้าหยิบของใส่ตะกร้า เพื่อความแม่นในกรณีที่พบน้อยมาก
+ */
+export async function previewForCart(ctx: StampCtx, cart: StampPreviewCart): Promise<StampPreviewRow[]> {
+  let customer: CustomerLite;
+  try {
+    customer = await loadCustomer(prisma, ctx, cart.customerId);
+  } catch {
+    return []; // ไม่ใช่สมาชิกของระบบนี้ → ไม่มีตราให้ดู (ไม่ใช่ความผิดพลาด)
+  }
+  const cards = await prisma.stampCard.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, active: true, ruleKind: { in: ["PER_SALE_MIN", "PER_ITEM", "PER_DAY"] } },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+
+  const out: StampPreviewRow[] = [];
+  const lines = Array.isArray(cart.lines) ? cart.lines : [];
+  for (const card of cards) {
+    const cfg = ruleConfigOf(card);
+    if (!cfg.allowAutoFromSale) continue;
+    let count = 0;
+    if (card.ruleKind === "PER_SALE_MIN") {
+      count = (cfg.minSatang ?? 0) <= cart.netSatang ? 1 : 0;
+    } else if (card.ruleKind === "PER_DAY") {
+      count = 1;
+    } else {
+      const qty = lines.reduce((n, l) => {
+        const hit = (!!l.itemId && cfg.itemIds.includes(l.itemId)) || (!!l.serviceId && cfg.serviceIds.includes(l.serviceId));
+        return hit ? n + Math.max(0, l.qty) : n;
+      }, 0);
+      count = Math.min(qty, dailyCapOf(card, cfg));
+    }
+    if (count <= 0) continue;
+    try {
+      assertEligible(card, customer, cart.unitId ?? null);
+    } catch {
+      continue; // ระดับ/สาขาไม่เข้าเกณฑ์ → ใบนี้ไม่ขึ้นในตัวอย่าง
+    }
+    out.push({ cardId: card.id, name: card.name, count });
+  }
+  return out;
+}
+
 /**
  * ลูกค้ามาตามนัดจริง (สถานะ DONE) → ประทับตราให้ใบชนิด "จองที่มาจริง"
  * consumer `booking.completed` เรียก · ใบที่ไม่ระบุบริการ = ทุกบริการนับหมด

@@ -15,6 +15,7 @@ export type {
   UseInput,
   UseResult,
   ReloadInput,
+  CustomerGiftCardDto,
 } from "./service";
 
 export {
@@ -43,6 +44,10 @@ export {
   unsuspend,
   /** คืนยอดกลับบัตรเมื่อบิลที่ใช้บัตรถูกยกเลิก (idempotent) */
   refundUse,
+  /** คืนยอดของทุกรายการใช้บัตรในบิลใบหนึ่ง (M2.7 `member.releaseOnVoid` — ผู้เรียกรู้แค่ saleId) */
+  refundUsesForSale,
+  /** บัตรในมือของสมาชิกคนหนึ่ง — เลขปิดบัง ไม่มี PIN (กระเป๋าสิทธิ์ · LIFF · แผงสิทธิ์หน้าขาย) */
+  listForCustomer,
   /** cron รายวัน — บัตรที่ถึงวันหมดอายุทุกร้าน */
   expireDue,
   /** รายการบัตร + KPI ของหน้าจอ */

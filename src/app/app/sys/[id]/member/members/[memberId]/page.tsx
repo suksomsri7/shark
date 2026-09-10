@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { toMemberActor, canReadMember } from "@/lib/modules/member/access";
-import { getMember360, MemberNotFoundError } from "@/lib/modules/member";
+import { getMember360, getWallet, MemberNotFoundError } from "@/lib/modules/member";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MemberTabs } from "@/components/member/MemberTabs";
 import { Member360View } from "@/components/member/Member360";
@@ -44,11 +44,20 @@ export default async function Member360Page({
   const tab = typeof tabRaw === "string" ? tabRaw : "profile";
   const basePath = `/app/sys/${id}/member/members/${memberId}`;
 
+  // กระเป๋าสิทธิ์ (M2.7) — โหลดเฉพาะตอนเปิดแท็บนี้ (แท็บอื่นไม่ต้องจ่ายค่า query ของทุกโมดูลสิทธิ์)
+  const wallet =
+    tab === "wallet"
+      ? await getWallet(ctx, actor, memberId).catch((e: unknown) => {
+          if (e instanceof MemberNotFoundError) return null;
+          throw e;
+        })
+      : null;
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={member.profile.name || member.profile.memberCode} back={{ href: `/app/sys/${id}/member/members`, label: "สมาชิก" }} />
       <MemberTabs systemId={id} actor={actor} />
-      <Member360View systemId={id} member={member} tab={tab} basePath={basePath} />
+      <Member360View systemId={id} member={member} tab={tab} basePath={basePath} wallet={wallet} />
     </div>
   );
 }

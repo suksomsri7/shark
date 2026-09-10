@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { TierChip } from "./TierChip";
-import type { Member360 } from "@/lib/modules/member";
+import { MemberWallet } from "./MemberWallet";
+import type { Member360, WalletDto } from "@/lib/modules/member";
 
 const TABS: { key: string; label: string }[] = [
   { key: "profile", label: "โปรไฟล์" },
@@ -22,7 +23,20 @@ function thaiDate(d: Date | string | null): string {
   return date.toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
 }
 
-export function Member360View({ systemId, member, tab, basePath }: { systemId: string; member: Member360; tab: string; basePath: string }) {
+export function Member360View({
+  systemId,
+  member,
+  tab,
+  basePath,
+  wallet,
+}: {
+  systemId: string;
+  member: Member360;
+  tab: string;
+  basePath: string;
+  /** กระเป๋าสิทธิ์ — หน้าโหลดมาให้เฉพาะตอนเปิดแท็บนี้ (M2.7) */
+  wallet?: WalletDto | null;
+}) {
   void systemId;
   const activeTab = TABS.some((t) => t.key === tab) ? tab : "profile";
   const tabHref = (key: string) => `${basePath}?tab=${key}`;
@@ -49,7 +63,13 @@ export function Member360View({ systemId, member, tab, basePath }: { systemId: s
             </Link>
           ))}
         </div>
-        {activeTab === "profile" ? <Sections member={member} /> : <ComingSoon tab={activeTab} />}
+        {activeTab === "profile" ? (
+          <Sections member={member} />
+        ) : activeTab === "wallet" ? (
+          wallet ? <MemberWallet wallet={wallet} /> : <WalletUnavailable />
+        ) : (
+          <ComingSoon tab={activeTab} />
+        )}
       </div>
       <Sidebar member={member} />
     </div>
@@ -121,6 +141,15 @@ function Stats({ member }: { member: Member360 }) {
           <span className="text-lg font-semibold">{it.value}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** ร้านที่ยังไม่ได้เปิดใช้ระบบสิทธิ์ (หรืออ่านกระเป๋าไม่ได้ชั่วคราว) — ไม่ใช่ความผิดของคนเปิดหน้า */
+function WalletUnavailable() {
+  return (
+    <div className="card p-8 text-center" style={{ color: "var(--color-muted)" }}>
+      ยังดูสิทธิ์ของสมาชิกคนนี้ไม่ได้ตอนนี้ — ลองเปิดหน้านี้ใหม่อีกครั้ง
     </div>
   );
 }

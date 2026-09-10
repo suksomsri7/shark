@@ -892,6 +892,29 @@ export async function refundUse(
   return { refunded: true, ...res };
 }
 
+/**
+ * คืนยอดของ **ทุกรายการใช้บัตรในบิลใบหนึ่ง** (บิลถูก void) — ผู้เรียกรู้แค่ `saleId`
+ * (M2.7 `member.releaseOnVoid` → M2.8 consumer `pos.sale.voided`) · idempotent ตาม `refundUse`
+ */
+export async function refundUsesForSale(
+  ctx: GiftCardCtx,
+  input: { saleId: string },
+): Promise<{ refunded: number }> {
+  const saleId = String(input?.saleId ?? "").trim();
+  if (!saleId) return { refunded: 0 };
+  const uses = await prisma.giftCardTxn.findMany({
+    where: { tenantId: ctx.tenantId, type: "USE", refType: "PosSale", refId: saleId },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  let refunded = 0;
+  for (const u of uses) {
+    const res = await refundUse(ctx, { txnId: u.id });
+    if (res.refunded) refunded += 1;
+  }
+  return { refunded };
+}
+
 // ───────────────────────── หมดอายุ (cron รายวัน) ─────────────────────────
 
 /**
@@ -1040,6 +1063,39 @@ export async function list(
       usedThisMonthSatang: used._sum.satang ?? 0,
     },
   };
+}
+
+// ───────────────────────── บัตรของสมาชิกคนเดียว (กระเป๋าสิทธิ์ · M2.7) ─────────────────────────
+
+/** บัตรในมือของสมาชิกคนหนึ่ง — **ไม่มีหมายเลขเต็ม/PIN** (กระเป๋าสิทธิ์ · LIFF · แผงสิทธิ์หน้าขาย) */
+export type CustomerGiftCardDto = {
+  id: string;
+  numberMasked: string;
+  balanceSatang: number;
+  expiresAt: Date | null;
+  status: GiftCardStatus;
+};
+
+/**
+ * บัตรที่สมาชิกคนนี้เป็นเจ้าของ (เรียงใบที่ใช้ได้ก่อน · ยอดมากก่อน)
+ * 🔴 คืน `numberMasked` เท่านั้นโดยตั้งใจ — หน้าจอที่แสดง "บัตรของฉัน" ไม่ต้องใช้เลขเต็ม
+ *    (เลขเต็ม + PIN = ตัวบัตร ⇒ ส่งออกจาก service เมื่อไหร่ ก็หลุดเข้า log/แคชหน้าจอเมื่อนั้น)
+ */
+export async function listForCustomer(ctx: GiftCardCtx, customerId: string): Promise<CustomerGiftCardDto[]> {
+  const cards = await prisma.giftCard.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, ownerCustomerId: customerId },
+    orderBy: [{ createdAt: "desc" }],
+  });
+  const rank = (s: GiftCardStatus): number => (s === "ACTIVE" ? 0 : 1);
+  return cards
+    .map((c) => ({
+      id: c.id,
+      numberMasked: maskNumber(c.number),
+      balanceSatang: c.balanceSatang,
+      expiresAt: c.expiresAt,
+      status: c.status,
+    }))
+    .sort((a, b) => rank(a.status) - rank(b.status) || b.balanceSatang - a.balanceSatang || a.id.localeCompare(b.id));
 }
 
 // ───────────────────────── รวมสมาชิกซ้ำ (§11.1) ─────────────────────────

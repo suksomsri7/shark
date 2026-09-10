@@ -725,6 +725,37 @@ export async function listRedemptionsV2(ctx: RewardCtx, filter: ListRedemptionsF
   }));
 }
 
+// ───────────────────────── รางวัลที่รอรับของสมาชิกคนเดียว (กระเป๋าสิทธิ์ · M2.7) ─────────────────────────
+
+export type PendingRedemptionDto = {
+  redemptionId: string;
+  rewardName: string;
+  /** โค้ดที่พนักงานสแกน/พิมพ์เพื่อจ่ายของ (v2 ใช้ `qrCode` · แถวเก่า v1 ไม่มี → ใช้ `code` 6 ตัวแทน) */
+  qrCode: string;
+  expiresAt: Date | null;
+};
+
+/** รายการที่สมาชิกคนนี้แลกแล้วแต่ยังไม่ได้รับของ (เรียงใกล้หมดอายุรับก่อน) */
+export async function pendingForCustomer(ctx: RewardCtx, customerId: string): Promise<PendingRedemptionDto[]> {
+  const rows = await prisma.rewardRedemption.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, customerId, status: "PENDING" },
+    orderBy: [{ expiresAt: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }],
+    take: 50,
+  });
+  if (rows.length === 0) return [];
+  const rewards = await prisma.reward.findMany({
+    where: { id: { in: [...new Set(rows.map((r) => r.rewardId))] } },
+    select: { id: true, name: true },
+  });
+  const nameById = new Map(rewards.map((r) => [r.id, r.name]));
+  return rows.map((r) => ({
+    redemptionId: r.id,
+    rewardName: nameById.get(r.rewardId) ?? "ของรางวัล",
+    qrCode: r.qrCode ?? r.code,
+    expiresAt: r.expiresAt,
+  }));
+}
+
 export type CatalogItem = {
   rewardId: string;
   name: string;

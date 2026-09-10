@@ -20,6 +20,7 @@ export type {
   LookupRedemptionResult,
   ListRedemptionsFilter,
   RedemptionRowV2,
+  PendingRedemptionDto,
   CatalogItem,
 } from "./v2";
 
@@ -43,6 +44,8 @@ export {
   lookupRedemption,
   /** ประวัติการแลก */
   listRedemptionsV2,
+  /** รายการที่สมาชิกคนนี้แลกแล้วยังไม่ได้รับของ (กระเป๋าสิทธิ์ M2.7 · LIFF M2.9) */
+  pendingForCustomer,
   /** แคตตาล็อกสำหรับลูกค้าคนหนึ่ง (LIFF M2.9 ใช้ต่อ) */
   catalogFor,
 } from "./v2";
