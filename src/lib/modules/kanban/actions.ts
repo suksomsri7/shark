@@ -1634,17 +1634,24 @@ export async function setKanbanNotifyPrefsAction(input: {
 
 export type SavedViewActionResult = { ok: true; view: SavedViewDto } | { ok: false; message: string };
 
-/** บันทึกมุมมองปัจจุบันของบอร์ด (ปุ่ม "บันทึกมุมมองนี้" ใน `SavedViewsMenu.tsx`) */
+/** K3.8: มุมมองข้ามบอร์ด (boardId null) revalidate หน้า `/kanban/overview` แทนหน้าบอร์ด */
+function viewRevalidatePaths(systemId: string, boardId: string | null): string[] {
+  if (boardId) return [boardPath(systemId, boardId), `${boardPath(systemId, boardId)}/settings/views`];
+  return [`/app/sys/${systemId}/kanban/overview`];
+}
+
+/** บันทึกมุมมองปัจจุบันของบอร์ด (ปุ่ม "บันทึกมุมมองนี้" ใน `SavedViewsMenu.tsx`/`OverviewSavedViews.tsx`) */
 export async function saveViewAction(input: {
   systemId: string;
-  boardId: string;
+  /** K3.8: null = มุมมองข้ามบอร์ด */
+  boardId: string | null;
   name: string;
   scope?: "PRIVATE" | "BOARD";
   config: unknown;
 }): Promise<SavedViewActionResult> {
   const auth = await requireTenant();
   assertKanbanCan(auth, "kanban.board.read");
-  if (!input.systemId || !input.boardId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
+  if (!input.systemId) return { ok: false, message: "ไม่พบบอร์ดนี้" };
   const ctx = ctxOf(auth, input.systemId);
   const actor = toActor(auth.user.id, auth.active);
   try {
@@ -1654,8 +1661,7 @@ export async function saveViewAction(input: {
       scope: input.scope,
       config: input.config,
     });
-    revalidatePath(boardPath(input.systemId, input.boardId));
-    revalidatePath(`${boardPath(input.systemId, input.boardId)}/settings/views`);
+    for (const p of viewRevalidatePaths(input.systemId, input.boardId)) revalidatePath(p);
     return { ok: true, view };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "บันทึกมุมมองไม่สำเร็จ ลองใหม่อีกครั้ง" };
@@ -1688,7 +1694,8 @@ export async function updateViewAction(input: {
 /** ลบมุมมองที่บันทึกไว้ */
 export async function deleteViewAction(input: {
   systemId: string;
-  boardId: string;
+  /** K3.8: null = มุมมองข้ามบอร์ด */
+  boardId: string | null;
   viewId: string;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   const auth = await requireTenant();
@@ -1698,8 +1705,7 @@ export async function deleteViewAction(input: {
   const actor = toActor(auth.user.id, auth.active);
   try {
     await deleteView(ctx, actor, input.viewId);
-    revalidatePath(boardPath(input.systemId, input.boardId));
-    revalidatePath(`${boardPath(input.systemId, input.boardId)}/settings/views`);
+    for (const p of viewRevalidatePaths(input.systemId, input.boardId)) revalidatePath(p);
     return { ok: true };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "ลบมุมมองไม่สำเร็จ ลองใหม่อีกครั้ง" };

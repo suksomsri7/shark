@@ -18,9 +18,13 @@ import type { KanbanActor } from "@/lib/modules/kanban/types";
  */
 export function KanbanTabs({ systemId, actor }: { systemId: string; actor?: KanbanActor }) {
   const pathname = usePathname();
-  const overview = `/app/sys/${systemId}`;
+  const hub = `/app/sys/${systemId}`;
+  // 🔴 K3.8: key "overview" ย้ายไปเป็นของ `/kanban/overview` (ภาพรวมข้ามบอร์ด — ทะเบียนใน nav.ts) แล้ว —
+  //    แท็บฮับของระบบ (หน้ารวมของ "ระบบ" ไม่ใช่ของ "บอร์ด") เปลี่ยนคีย์/ป้ายเป็น "home"/"หน้าหลัก" กันชนกัน
+  //    (ชื่อเดียวกับที่โมดูลบัญชีใช้ — `src/lib/modules/account/nav.ts` key "home" label "หน้าหลัก" ·
+  //    testid เดิม `kanban-tab-overview` ไม่มีใครอ้างอิง — เช็คแล้วก่อนย้าย)
   const items = [
-    { key: "overview", href: overview, label: "ภาพรวม", status: "ready" as const, wo: undefined },
+    { key: "home", href: hub, label: "หน้าหลัก", status: "ready" as const, wo: undefined },
     ...kanbanNavItems(systemId, actor),
   ];
 

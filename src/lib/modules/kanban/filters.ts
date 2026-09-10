@@ -336,6 +336,8 @@ export function describeSavedViewConfig(config: ViewConfig): string {
   if (f.status === "done") filterBits.push("เสร็จแล้ว");
   else if (f.status === "open") filterBits.push("ยังไม่เสร็จ");
   if (f.column) filterBits.push("คอลัมน์=เลือกไว้");
+  // K3.8 — เฉพาะมุมมองข้ามบอร์ด (boardId null): "board" คือ boardId ที่เลือกไว้ คั่นด้วย ","
+  if (f.board) filterBits.push(`บอร์ด: ${f.board.split(",").length} บอร์ด`);
   if (f.q) filterBits.push(`ค้นหา "${f.q}"`);
   if (filterBits.length > 0) parts.push(`กรอง: ${filterBits.join(", ")}`);
   if (config.sort) parts.push(`เรียงตาม${SORT_LABEL_TH[config.sort] ?? config.sort}`);
@@ -354,6 +356,7 @@ export function hrefForSavedView(pathname: string, viewId: string, config: ViewC
   if (f.status) params.set("status", f.status);
   if (f.q) params.set("q", f.q);
   if (f.column) params.set("column", f.column);
+  if (f.board) params.set("board", f.board); // K3.8 — เฉพาะมุมมองข้ามบอร์ด: boardId ที่เลือกไว้ คั่นด้วย ","
   if (config.sort) params.set("sort", config.sort);
   if (config.group) params.set("group", config.group);
   if (config.zoom) params.set("zoom", config.zoom);

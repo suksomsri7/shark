@@ -196,6 +196,11 @@ export function BoardsHome({
           {home.totals.boards} บอร์ด · การ์ดค้าง {home.totals.openCards} ใบ
         </span>
         <span className="flex-1" />
+        {/* K3.8 — ทางเข้าภาพรวมข้ามบอร์ดระดับองค์กร (`/kanban/overview`) จากหน้ารวมบอร์ด */}
+        <Link href={`/app/sys/${systemId}/kanban/overview`} data-testid="boards-overview-link" className="btn btn-ghost text-sm">
+          <KanbanIcon name="grid" size="sm" />
+          ภาพรวมทุกบอร์ด
+        </Link>
         <SearchPalette systemId={systemId} />
         <div
           className="flex items-center gap-1.5 rounded-lg px-2.5"

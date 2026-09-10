@@ -4,16 +4,17 @@
 // BOARD   = ของทั้งทีม (`ownerUserId` = null) — สร้าง/แก้/ลบได้เฉพาะ ADMIN ของบอร์ดเท่านั้น
 //
 // 🔴 กติกา 404-not-403: มุมมอง PRIVATE ของคนอื่น = "ไม่พบ" เสมอ (ไม่บอกว่ามีอยู่จริงแต่ไม่ให้ดู)
-// 🔴 `boardId` เป็น `String?` ตั้งแต่ schema (K3.8 จะใช้ null = มุมมองข้ามบอร์ด) — ไฟล์นี้ยังรับเฉพาะ
-//    `boardId` ที่ไม่ใช่ null (K2.5 ทำแค่มุมมองต่อบอร์ด) ทุกจุดที่แตะ `row.boardId` จึง narrow เป็น
-//    non-null ก่อนเรียก `assertBoardRole`/สร้าง `href` เสมอ
+// 🔴 `boardId` เป็น `String?` ตั้งแต่ schema — `null` = มุมมองข้ามบอร์ด (K3.8 `/kanban/overview`):
+//    PRIVATE = ใครก็ได้ที่ `canReadKanban` (เห็นบอร์ดงานได้) · scope BOARD (ทั้งทีมข้ามบอร์ด) = OWNER
+//    เท่านั้น (`assertCrossBoardViewAccess`) ทุกจุดที่ `boardId` ไม่ null ยัง `assertBoardRole` เหมือนเดิม
+//    (K2.5) — narrow เป็น non-null ก่อนเรียก `assertBoardRole`/สร้าง `href`
 
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { assertBoardRole } from "./members";
 import { logActivity } from "./activity-log";
-import { KanbanForbiddenError, KanbanNotFoundError } from "./access";
+import { canReadKanban, KanbanForbiddenError, KanbanNotFoundError } from "./access";
 import { KANBAN_LIMITS } from "./limits";
 // `hrefForSavedView` เป็นฟังก์ชันบริสุทธิ์ตัวเดียวกับที่ `SavedViewsMenu.tsx` (client) ใช้คำนวณ href
 // เอง — เรียกจากที่นี่ด้วยเพื่อไม่ให้ตรรกะสร้าง query string ซ้ำสองที่ (filters.ts ไม่แตะ prisma
@@ -41,6 +42,8 @@ const ViewFiltersSchema = z
     status: z.enum(STATUS_KEYS).optional(),
     q: z.string().min(1).max(200).optional(),
     column: z.string().min(1).max(80).optional(),
+    // K3.8 — เฉพาะมุมมองข้ามบอร์ด (`boardId` null): boardId ที่เลือกไว้ คั่นด้วย "," (ตรงกับ `?board=a,b,c`)
+    board: z.string().min(1).max(400).optional(),
   })
   .partial();
 
@@ -106,14 +109,31 @@ function actorUserIdOf(ctx: KanbanCtx, actor: KanbanActor): string {
   return ctx.actorUserId ?? actor.userId;
 }
 
+/**
+ * K3.8 — ด่านสิทธิ์ของมุมมองข้ามบอร์ด (`boardId` null): ไม่มีบอร์ดให้ `assertBoardRole` ตรวจ ⇒ ตรวจตรง ๆ
+ * ที่นี่แทน — PRIVATE = ใครก็ได้ที่เข้าโมดูลได้ (`canReadKanban`) · scope BOARD (ทั้งทีมข้ามบอร์ด) = OWNER
+ * เท่านั้น (สัญญา K3.8 — มุมมองทั้งทีมข้ามบอร์ดเห็นการ์ดของทุกบอร์ด รวมบอร์ดที่ actor ไม่ได้คุมโดยตรง)
+ */
+function assertCrossBoardViewAccess(actor: KanbanActor, scope: ViewScope): void {
+  if (!canReadKanban(actor)) throw new KanbanForbiddenError("ต้องมีสิทธิ์เข้าบอร์ดงานก่อน");
+  if (scope === "BOARD" && actor.role !== "OWNER") {
+    throw new KanbanForbiddenError("มุมมองข้ามบอร์ดแบบทั้งทีมต้องเป็นเจ้าของร้านเท่านั้น");
+  }
+}
+
 // ───────────────────────── อ่าน ─────────────────────────
 
 /**
  * มุมมองที่ actor เห็นของบอร์ดนี้ — ทั้งทีม (BOARD) มาก่อนเสมอ แล้วตามด้วยของตัวเอง (PRIVATE)
  * 🔴 ต้องเห็นบอร์ดก่อน (`assertBoardRole …"VIEWER"`) — บอร์ดที่มองไม่เห็น = 404 เหมือนทุกฟังก์ชันอื่นในโมดูล
+ * 🔴 K3.8: `boardId: null` = มุมมองข้ามบอร์ด — ต้องผ่าน `canReadKanban` แทน (ไม่มีบอร์ดให้ตรวจบทบาท)
  */
-export async function listViews(ctx: KanbanCtx, actor: KanbanActor, boardId: string): Promise<SavedViewDto[]> {
-  await assertBoardRole(ctx, boardId, "VIEWER");
+export async function listViews(ctx: KanbanCtx, actor: KanbanActor, boardId: string | null): Promise<SavedViewDto[]> {
+  if (boardId) {
+    await assertBoardRole(ctx, boardId, "VIEWER");
+  } else if (!canReadKanban(actor)) {
+    throw new KanbanForbiddenError("ต้องมีสิทธิ์เข้าบอร์ดงานก่อน");
+  }
   const userId = actorUserIdOf(ctx, actor);
   const rows = await prisma.kanbanBoardView.findMany({
     where: {
@@ -138,11 +158,15 @@ async function loadVisibleView(ctx: KanbanCtx, actor: KanbanActor, viewId: strin
   if (typed.scope === "PRIVATE" && typed.ownerUserId !== actorUserIdOf(ctx, actor)) {
     throw new KanbanNotFoundError("ไม่พบมุมมองนี้"); // ของคนอื่น — ไม่บอกว่ามีอยู่จริง (§6.3)
   }
-  if (typed.boardId) await assertBoardRole(ctx, typed.boardId, "VIEWER");
+  if (typed.boardId) {
+    await assertBoardRole(ctx, typed.boardId, "VIEWER");
+  } else if (!canReadKanban(actor)) {
+    throw new KanbanNotFoundError("ไม่พบมุมมองนี้"); // K3.8 — ข้ามบอร์ดแต่ไม่มีสิทธิ์เข้าโมดูลเลย
+  }
   return typed;
 }
 
-/** โหลดแถว + ยืนยันว่า actor "แก้/ลบ" ได้ (PRIVATE = เจ้าของ · BOARD = ADMIN ของบอร์ด) */
+/** โหลดแถว + ยืนยันว่า actor "แก้/ลบ" ได้ (PRIVATE = เจ้าของ · BOARD = ADMIN ของบอร์ด · BOARD ข้ามบอร์ด = OWNER) */
 async function loadEditableView(ctx: KanbanCtx, actor: KanbanActor, viewId: string): Promise<ViewRow> {
   const row = await prisma.kanbanBoardView.findFirst({
     where: { id: viewId, tenantId: ctx.tenantId, systemId: ctx.systemId },
@@ -151,32 +175,45 @@ async function loadEditableView(ctx: KanbanCtx, actor: KanbanActor, viewId: stri
   const typed = row as ViewRow;
   if (typed.scope === "PRIVATE") {
     if (typed.ownerUserId !== actorUserIdOf(ctx, actor)) throw new KanbanNotFoundError("ไม่พบมุมมองนี้");
-    if (typed.boardId) await assertBoardRole(ctx, typed.boardId, "VIEWER");
-  } else {
-    if (!typed.boardId) throw new KanbanForbiddenError("มุมมองนี้ยังแก้ไม่ได้");
+    if (typed.boardId) {
+      await assertBoardRole(ctx, typed.boardId, "VIEWER");
+    } else if (!canReadKanban(actor)) {
+      throw new KanbanNotFoundError("ไม่พบมุมมองนี้");
+    }
+  } else if (typed.boardId) {
     await assertBoardRole(ctx, typed.boardId, "ADMIN");
+  } else {
+    // K3.8 — BOARD scope ข้ามบอร์ด: OWNER เท่านั้น (เหมือน assertCrossBoardViewAccess แต่ throw ข้อความแก้ไม่ใช่บันทึก)
+    if (actor.role !== "OWNER") throw new KanbanForbiddenError("มุมมองข้ามบอร์ดแบบทั้งทีมต้องเป็นเจ้าของร้านเท่านั้นถึงจะแก้ได้");
   }
   return typed;
 }
 
 // ───────────────────────── เขียน ─────────────────────────
 
-export type SaveViewInput = { boardId: string; name: string; scope?: ViewScope; config: unknown };
+/** K3.8: `boardId: null` = มุมมองข้ามบอร์ด (บันทึกลง `/kanban/overview`) */
+export type SaveViewInput = { boardId: string | null; name: string; scope?: ViewScope; config: unknown };
 
 /**
  * บันทึกมุมมองปัจจุบันของบอร์ด — PRIVATE ใครที่เห็นบอร์ด (VIEWER+) ก็บันทึกของตัวเองได้
  * BOARD (ทั้งทีม) ต้องเป็น ADMIN เท่านั้น (`assertBoardRole` โยน Forbidden ข้อความ "…ผู้ดูแล…" ให้เอง)
+ * 🔴 K3.8: `boardId: null` (ข้ามบอร์ด) ไม่มีบอร์ดให้ `assertBoardRole` ตรวจ — ใช้ `assertCrossBoardViewAccess`
+ * แทน (PRIVATE = `canReadKanban` · BOARD ทั้งทีมข้ามบอร์ด = OWNER เท่านั้น)
  */
 export async function saveView(ctx: KanbanCtx, actor: KanbanActor, input: SaveViewInput): Promise<SavedViewDto> {
   const scope: ViewScope = input.scope === "BOARD" ? "BOARD" : "PRIVATE";
-  await assertBoardRole(ctx, input.boardId, scope === "BOARD" ? "ADMIN" : "VIEWER");
+  if (input.boardId) {
+    await assertBoardRole(ctx, input.boardId, scope === "BOARD" ? "ADMIN" : "VIEWER");
+  } else {
+    assertCrossBoardViewAccess(actor, scope);
+  }
   const name = normalizeViewName(input.name);
   const config = parseViewConfig(input.config);
   const userId = actorUserIdOf(ctx, actor);
   const ownerUserId = scope === "PRIVATE" ? userId : null;
 
   // เพดาน KANBAN_LIMITS.viewsPerBoard ต่อคนต่อบอร์ด (สัญญา K2.5) — PRIVATE นับเฉพาะของตัวเอง ·
-  // BOARD (ของทั้งทีม ไม่มีเจ้าของรายคน) นับรวมกันเป็นโควตาเดียวของบอร์ด
+  // BOARD (ของทั้งทีม ไม่มีเจ้าของรายคน) นับรวมกันเป็นโควตาเดียวของบอร์ด (K3.8: บอร์ด null นับแยกเป็นโควตาข้ามบอร์ดของตัวเอง)
   const count = await prisma.kanbanBoardView.count({
     where: scope === "PRIVATE" ? { boardId: input.boardId, scope: "PRIVATE", ownerUserId } : { boardId: input.boardId, scope: "BOARD" },
   });
@@ -196,7 +233,7 @@ export async function saveView(ctx: KanbanCtx, actor: KanbanActor, input: SaveVi
     },
   });
 
-  if (scope === "BOARD") {
+  if (scope === "BOARD" && input.boardId) {
     await logActivity(prisma, {
       tenantId: ctx.tenantId,
       boardId: input.boardId,
@@ -264,7 +301,7 @@ export type AppliedView = { view: ViewConfig["view"]; filters: ViewFilters; sort
 
 /** href ตาม §2.3 — เขียนตัวกรองลง URL จริง + คง `savedView=<id>` ท้ายสุด (ตามสัญญา S2.8) */
 function buildHref(systemId: string, row: Pick<ViewRow, "boardId" | "id">, config: ViewConfig): string {
-  // K3.8 (ยังไม่ทำ): boardId null → `/kanban/overview` — วันนี้ K2.5 สร้างได้แต่แถวที่มี boardId เท่านั้น
+  // K3.8: boardId null = มุมมองข้ามบอร์ด → `/kanban/overview`
   const base = row.boardId ? `/app/sys/${systemId}/kanban/b/${row.boardId}` : `/app/sys/${systemId}/kanban/overview`;
   return hrefForSavedView(base, row.id, config);
 }

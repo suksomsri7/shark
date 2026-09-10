@@ -13,6 +13,8 @@ import { assertBoardRole } from "./members";
 import { filterBoardCards, type BoardFilters, type FilterableCard } from "./filters";
 import { fieldsOnCardForCards, listShowOnCardFieldNames } from "./fields";
 import { KANBAN_LIMITS } from "./limits";
+// K3.8 — จัดกลุ่มตามผู้รับผิดชอบใช้ตรรกะเดียวกับภาพรวมข้ามบอร์ด (overview.ts) เป๊ะ — แยกไว้ที่นี่ ห้ามก๊อป
+import { groupRowsByAssignee } from "./table-shared";
 // K3.1 — คอลัมน์ "เชื่อม": ป้ายของสิ่งที่การ์ดผูกอยู่ · อ่านจาก `link-resolvers.ts` ตรง ๆ ด้วยเหตุผล
 // เดียวกับที่ไฟล์นี้ไม่เรียก `service.ts` (ฝั่งเขียน `links.ts` import service.ts = วนกลับ)
 import { linkChipsOfCards } from "./link-resolvers";
@@ -53,8 +55,6 @@ export type BoardTableResult = {
   customFieldColumns: string[];
 };
 
-const NONE_ASSIGNEE_KEY = "none";
-const NONE_ASSIGNEE_LABEL = "ไม่มีผู้รับผิดชอบ";
 const NONE_LABEL_KEY = "none";
 const NONE_LABEL_LABEL = "ไม่มีป้ายกำกับ";
 
@@ -234,24 +234,7 @@ function groupRows(rows: readonly TableRowDto[], group: TableGroupBy, columns: {
     for (const r of rows) byColumn.set(r.columnId, [...(byColumn.get(r.columnId) ?? []), r.id]);
     return columns.map((c) => ({ key: c.id, label: c.name, rowIds: byColumn.get(c.id) ?? [] }));
   }
-  if (group === "assignee") {
-    const byUser = new Map<string, { label: string; ids: string[] }>();
-    const none: string[] = [];
-    for (const r of rows) {
-      if (r.assignees.length === 0) {
-        none.push(r.id);
-        continue;
-      }
-      for (const a of r.assignees) {
-        const entry = byUser.get(a.userId) ?? { label: a.name, ids: [] };
-        entry.ids.push(r.id);
-        byUser.set(a.userId, entry);
-      }
-    }
-    const groups: TableGroupDto[] = Array.from(byUser.entries()).map(([userId, v]) => ({ key: userId, label: v.label, rowIds: v.ids }));
-    groups.push({ key: NONE_ASSIGNEE_KEY, label: NONE_ASSIGNEE_LABEL, rowIds: none });
-    return groups;
-  }
+  if (group === "assignee") return groupRowsByAssignee(rows);
   // group === "label"
   const byLabel = new Map<string, { label: string; ids: string[] }>();
   const none: string[] = [];

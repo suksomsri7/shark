@@ -35,6 +35,8 @@ export type KanbanNavEntry = {
 /** 7 หมวดตามแบบ §5.2 — ลำดับนี้คือลำดับที่ผู้ใช้เห็น (บอร์ดมาก่อน = หน้าเริ่มต้นของหัวหน้า) */
 export const KANBAN_NAV: readonly KanbanNavEntry[] = Object.freeze([
   { key: "boards", label: "บอร์ด", path: "/kanban/boards", status: "ready" },
+  // K3.8: ภาพรวมข้ามบอร์ดระดับองค์กร (`overview.ts#listCrossBoard`) — ถัดจากบอร์ดเสมอ (สัญญา §K3.8)
+  { key: "overview", label: "ภาพรวม", path: "/kanban/overview", status: "ready" },
   { key: "my-tasks", label: "งานของฉัน", path: "/kanban/my-tasks", status: "ready" },
   // K2.8 — กล่องงานเข้าเป็นคอลัมน์ซ้ายของหน้า "งานของฉัน" (ไม่ใช่หน้าแยก) ⇒ ชี้ไป `#inbox` ของหน้านั้น
   { key: "inbox", label: "กล่องงานเข้า", path: "/kanban/my-tasks#inbox", status: "ready" },
@@ -51,10 +53,14 @@ function visibleNavEntries(actor?: KanbanActor): readonly KanbanNavEntry[] {
   return KANBAN_NAV.filter((e) => e.status === "ready" && (e.key !== "reports" || !actor || canViewReports(actor)));
 }
 
-/** หมวดที่กดเข้าได้จริงวันนี้ (นำหน้าด้วย "ภาพรวม" = หน้า hub ของระบบ) — `actor` ไม่ส่ง = ไม่กรองรายงาน (เผื่อผู้เรียกเดิม) */
+/**
+ * หมวดที่กดเข้าได้จริงวันนี้ (นำหน้าด้วย "หน้าหลัก" = หน้า hub ของระบบ) — `actor` ไม่ส่ง = ไม่กรองรายงาน (เผื่อผู้เรียกเดิม)
+ * 🔴 K3.8: ป้าย hub เปลี่ยนจาก "ภาพรวม" → "หน้าหลัก" (ชื่อเดียวกับ `KanbanTabs.tsx`/โมดูลบัญชี) กันชนกับ
+ *    "ภาพรวม" ของ `/kanban/overview` (ภาพรวมข้ามบอร์ด — `KANBAN_NAV` key "overview" ด้านบน)
+ */
 export function kanbanNavChildren(base: string, actor?: KanbanActor): { href: string; label: string }[] {
   return [
-    { href: base, label: "ภาพรวม" },
+    { href: base, label: "หน้าหลัก" },
     ...visibleNavEntries(actor).map((e) => ({ href: `${base}${e.path}`, label: e.label })),
   ];
 }

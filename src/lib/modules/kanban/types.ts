@@ -751,6 +751,8 @@ export type ViewFilters = {
   status?: "done" | "open";
   q?: string;
   column?: string;
+  /** K3.8 — เฉพาะมุมมองข้ามบอร์ด (`boardId` null): boardId ที่เลือกไว้ คั่นด้วย "," (ตรงกับ `?board=a,b,c` ของ `/kanban/overview`) */
+  board?: string;
 };
 
 /** โครง config ที่เก็บใน `KanbanBoardView.config` (§2.3) — `view` ไม่รู้จัก/รูปผิด → `views.ts` throw ไทยตอนบันทึก */
@@ -926,3 +928,49 @@ export type CardFullDetailDto = {
   /** K3.1 — สิ่งที่การ์ดนี้ผูกอยู่ในระบบ SHARK (เฉพาะแถวที่ผู้เรียกมีสิทธิ์เห็น) */
   links: { linkType: string; title: string; subtitle: string | null }[];
 };
+
+// ───────────────────────── K3.8 — มุมมองข้ามบอร์ดระดับองค์กร (overview.ts) ─────────────────────────
+// DTO บริสุทธิ์ (ไม่มี Date/Prisma model) — `OverviewPage.tsx` (client) ต้อง `import type` ได้โดยไม่ลาก
+// `db.ts` → `pg` เข้าบันเดิลฝั่ง browser ด้วยเหตุผลเดียวกับ K1.11/…/K2.5/K2.12 — `overview.ts` (server-only:
+// แตะ prisma) `export type { ... } from "./types"` ให้ผู้เรียก `import type` จาก `@/lib/modules/kanban/overview`
+// ได้เหมือนเดิม
+
+export type CrossBoardGroupBy = "board" | "assignee" | "due";
+export type CrossBoardSort = "due" | "created" | "updated" | "position";
+
+/**
+ * ตรงกับ `BoardFilters` (filters.ts) แต่ `board` เปลี่ยนความหมาย: ไม่ใช่ "ชื่อบอร์ด contains" (ของ
+ * `search.ts` ข้ามบอร์ด) แต่เป็น "boardId ที่เลือกไว้หลายใบ" (ตัวกรอง `overview-boards` — เลือกได้หลายบอร์ด)
+ * ⇒ ประกาศแยกเป็นชนิดของตัวเอง ไม่ extend `BoardFilters` (กันชนกันที่ฟิลด์ `board`)
+ */
+export type CrossBoardFilters = {
+  q?: string;
+  assignee?: "me" | "none" | (string & {});
+  label?: "none" | (string & {});
+  due?: "overdue" | "today" | "week" | "none";
+  status?: "done" | "open";
+  column?: string;
+  /** boardId ที่เลือกไว้ — ว่าง/ไม่ระบุ = ทุกบอร์ดที่มองเห็น */
+  board?: string[];
+};
+
+/** 1 แถวของภาพรวม — เหมือน `TableRowDto` (K2.1) + ป้ายบอกว่าเป็นของบอร์ดไหน (สีตามบอร์ด ไม่ใช่ตามป้ายกำกับ) */
+export type CrossBoardRowDto = TableRowDto & { boardId: string; boardName: string; boardColor: KanbanTagColor };
+
+export type CrossBoardBoardDto = { id: string; name: string; color: KanbanTagColor; count: number };
+
+/** กลุ่มของ `group=board|assignee|due` — รูปเดียวกับ `TableGroupDto` (K2.1) */
+export type CrossBoardGroupDto = TableGroupDto;
+
+export type CrossBoardResult = {
+  rows: CrossBoardRowDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+  /** บอร์ดทุกใบที่ actor มองเห็น (ACTIVE) พร้อมจำนวนการ์ดค้าง — ใช้ทำตัวกรอง `overview-boards` (ไม่หดตาม `filters.board` ที่เลือกไว้) */
+  boards: CrossBoardBoardDto[];
+  groups?: CrossBoardGroupDto[];
+};
+
+/** ตัวเลข 4 ค่าหัวหน้าเพจ (ค้าง/เลยกำหนด/วันนี้/สัปดาห์นี้) — ข้ามบอร์ดทั้งหมดที่ actor มองเห็น ไม่ผูกกับตัวกรอง/แบ่งหน้า */
+export type CrossBoardTotalsDto = { open: number; overdue: number; dueToday: number; dueWeek: number };

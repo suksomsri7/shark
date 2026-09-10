@@ -537,6 +537,35 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: "[data-testid=card-back]" }, { waitFor: "[data-testid=card-mirror-banner]" }, { wait: 500 }],
     },
   ],
+  // K3.8 — ภาพรวมข้ามบอร์ดระดับองค์กร `/kanban/overview` (ไม่มี mockup — โครงเดียวกับตาราง 04 + ตัวเลข
+  // แบบ SummaryView K2.4) 3 ใบ: (1) เดสก์ท็อป ตัวเลข 4 ค่า + ตาราง คอลัมน์ "บอร์ด" (2) จัดกลุ่มตามบอร์ด
+  // (3) มือถือ — ไม่ต้องเตรียมข้อมูลพิเศษ (seed เดิม 38 การ์ด/3 บอร์ดพอแสดงครบ) คืนสภาพ = ไม่มีอะไรต้องคืน
+  "3.8": [
+    {
+      name: "overview-desktop",
+      path: `/app/sys/${SYS}/kanban/overview`,
+      onlyDevice: "desktop",
+      note: "ภาพรวมข้ามบอร์ด (owner): ตัวเลข 4 ค่า (ค้าง/เลยกำหนด/วันนี้/สัปดาห์นี้) + ตาราง คอลัมน์ 'บอร์ด' ครบทุกบอร์ดที่มองเห็น (ป่าตอง/กะตะ/ซ่อมบำรุง)",
+      expect: ["[data-testid=overview-page]", "[data-testid=overview-boards]", "[data-testid=table-view]"],
+      steps: [{ waitFor: "[data-testid=overview-page]" }, { waitFor: "[data-testid=table-view]" }, { wait: 400 }],
+    },
+    {
+      name: "overview-grouped-by-board",
+      path: `/app/sys/${SYS}/kanban/overview?group=board`,
+      onlyDevice: "desktop",
+      note: "จัดกลุ่มตามบอร์ด (?group=board · testid overview-group) — หัวกลุ่มเป็นชื่อบอร์ดพร้อมจำนวนการ์ด",
+      expect: ["[data-testid=overview-group]", "[data-testid=overview-row]"],
+      steps: [{ waitFor: "[data-testid=table-view]" }, { wait: 400 }],
+    },
+    {
+      name: "overview-mobile",
+      path: `/app/sys/${SYS}/kanban/overview`,
+      onlyDevice: "mobile",
+      note: "มือถือ: รายการ 2 บรรทัด + ชื่อบอร์ดกำกับต่อแถว (ตัวเลข 4 ค่า 2 คอลัมน์ด้านบน)",
+      expect: ["[data-testid=overview-page]", "[data-testid=overview-row]"],
+      steps: [{ waitFor: "[data-testid=overview-page]" }, { wait: 400 }],
+    },
+  ],
   // K3.2 — "สร้างงานจากแชท" · เทียบภาพ `ledger/design-kanban/09-from-chat.png`
   //   1) แผงซ้อนบนหน้าแชทจริง (เดสก์ท็อป = แผงขวา 380px · มือถือ = เต็มจอ)
   //   2) กด "สร้างการ์ด" จริง → toast "สร้างการ์ด #n แล้ว" + บันทึกภายในโผล่ในห้อง
