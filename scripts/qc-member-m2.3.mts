@@ -348,8 +348,8 @@ try {
     ok("owner", "stamps-owner", "desktop") && ok("owner", "stamps-owner", "mobile") && ok("owner", "stamps-editor-owner", "desktop") && ok("owner", "stamps-new-owner", "desktop") && ok("thana", "stamps-thana", "desktop") && r("noperm", "stamps-noperm", "desktop")?.status === 404,
     "200/200/200/200/200/404", `${["stamps-owner", "stamps-editor-owner", "stamps-new-owner"].map((n) => r("owner", n, "desktop")?.status).join("/")} mobile=${r("owner", "stamps-owner", "mobile")?.status}/ovf=${r("owner", "stamps-owner", "mobile")?.overflow} thana=${r("thana", "stamps-thana", "desktop")?.status} noperm=${r("noperm", "stamps-noperm", "desktop")?.status}`);
   chk("M2.3-S6.4", "🔴 parity ภาพ 17 — Fable ตรวจด้วยตา · wo-notes/member-M2.3.md มี 'PARITY: ผ่าน' · stamp.added/stamp.completed ลง 3 ทะเบียน · drain แล้ว event stamp.* DONE ทั้งหมด",
-    /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M2.3.md")) && in3("stamp.added") && in3("stamp.completed") && (await P.outboxEvent.count({ where: { tenantId: tid, type: { startsWith: "stamp." }, status: { not: "DONE" } } })) === 0,
-    "PARITY + 3 ทะเบียน", `parity=${/PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M2.3.md"))} reg=${in3("stamp.added")}/${in3("stamp.completed")} stuck=${await P.outboxEvent.count({ where: { tenantId: tid, type: { startsWith: "stamp." }, status: { not: "DONE" } } })}`, "MAJOR");
+    /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M2.3.md")) && in3("stamp.added") && in3("stamp.completed") && (await P.outboxEvent.count({ where: { tenantId: tid, type: { startsWith: "stamp." }, status: { not: "DONE" } } })) === 0,
+    "PARITY + 3 ทะเบียน", `parity=${/^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M2.3.md"))} reg=${in3("stamp.added")}/${in3("stamp.completed")} stuck=${await P.outboxEvent.count({ where: { tenantId: tid, type: { startsWith: "stamp." }, status: { not: "DONE" } } })}`, "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M2.3-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));

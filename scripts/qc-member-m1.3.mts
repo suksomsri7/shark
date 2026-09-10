@@ -85,7 +85,7 @@ try {
   const rT = sumT?.results?.find((r: Any) => r.name === "field-designer-thana" && r.device === "desktop");
   chk("M1.3-S3.2", "ภาพ thana (STAFF ไม่มี settings.manage): HTTP 404 (notFound) ไม่ใช่ 200 หน้าว่าง/500", shots.includes("field-designer-thana-desktop.png") && rT?.status === 404, "404", `status=${rT?.status} shots=${shots.includes("field-designer-thana-desktop.png")}`, "MAJOR");
   chk("M1.3-S3.3", "มือถือ (390): ตัวออกแบบใช้ได้ — palette เป็นแถบเลื่อน/ปุ่ม '+ เพิ่มฟิลด์' · แผงคุณสมบัติเป็น sheet ล่าง (ไม่ซ้อนทับจนกดไม่ได้) · ไม่มี console error", rO("field-designer-owner", "mobile")?.status === 200 && rO("field-designer-owner", "mobile")?.errors?.length === 0 && /sheet|bottom|fixed inset-x-0 bottom-0|md:hidden|lg:hidden/.test(uiAll), "200 · responsive", `mobile=${JSON.stringify(rO("field-designer-owner", "mobile") ?? null)?.slice(0, 120)} responsive=${/sheet|bottom-0|md:hidden|lg:hidden/.test(uiAll)}`, "MAJOR");
-  chk("M1.3-S3.4", "🔴 parity กับภาพ 03 — Fable ตรวจด้วยตา (ledger/wo-notes/member-M1.3.md ต้องมีหัวข้อ 'ตรวจภาพ' ที่ Fable เขียนผล) · ข้อนี้เขียวเมื่อไฟล์โน้ตมีบรรทัด 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M1.3.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M1.3-S3.4", "🔴 parity กับภาพ 03 — Fable ตรวจด้วยตา (ledger/wo-notes/member-M1.3.md ต้องมีหัวข้อ 'ตรวจภาพ' ที่ Fable เขียนผล) · ข้อนี้เขียวเมื่อไฟล์โน้ตมีบรรทัด 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M1.3.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M1.3-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));

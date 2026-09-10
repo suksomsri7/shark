@@ -17,6 +17,13 @@ import { logOps } from "@/lib/core/ops";
 import { invalidateBrandingCache } from "@/lib/branding/service";
 import { chatChannelToKey, getChannel } from "@/lib/core/channels";
 import { logActivity as memberLogActivity } from "@/lib/modules/member";
+// M2.5 — ต่อสาย "ของแจกย้อนกลับ" ของระบบสมาชิก (ขึ้นระดับ → voucher ต้อนรับ)
+//   คิว outbox คือทางเข้าที่ทำให้ระดับเปลี่ยนโดยไม่มีคนกดปุ่ม (ปิดบิล → เลื่อนระดับ)
+// 🔴 เรียก **ตอนใช้งาน** (ต้น handler / drainAll) ไม่ใช่ตอนโหลดไฟล์: ไฟล์นี้อยู่ในวงจร import กับ
+//    โมดูลสมาชิก (member → pos/service → scheduleDrain ที่นี่) ⇒ ถ้าเรียกตอนโหลด บางลำดับการ import
+//    จะได้ `member/index` ที่ยังประกอบไม่เสร็จ แล้วพังด้วย "onTierChanged of undefined"
+//    ตัวฟังก์ชัน idempotent อยู่แล้ว — เรียกทุก event ก็แค่เช็ค boolean
+import { registerMemberHooks } from "@/lib/member-hooks";
 
 const saleIdOf = (payload: unknown): string | null => {
   const p = payload as { saleId?: unknown } | null;
@@ -124,6 +131,8 @@ const posSaleVoided: OutboxHandler = async (evt) => {
 const withAutomation =
   (handler: OutboxHandler): OutboxHandler =>
   async (evt) => {
+    // M2.5 — hook ของแจกย้อนกลับต้องพร้อมก่อน handler ตัวใดจะทำงาน (idempotent · เช็ค boolean เฉย ๆ)
+    registerMemberHooks();
     // งานหลักก่อน — พังต้องโยนต่อเหมือนเดิม (drain จะ retry/backoff) เพียงแต่ log ERROR ก่อน
     try {
       await handler(evt);
@@ -610,6 +619,22 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "stamp.added": withAutomation(async () => {}),
   "stamp.completed": withAutomation(async () => {}),
   "stamp.expired": withAutomation(async () => {}),
+  // ── รางวัล v2 (M2.4 · §7.1) ──
+  // 🔴 no-op เหมือนกลุ่มแต้ม/สแตมป์: รายการแลก/สต็อก/แต้ม-สแตมป์ที่หัก ถูกเขียนครบใน transaction
+  //    ของ `reward/v2.ts` แล้ว · 2 บรรทัดนี้มีไว้ (1) ปิด event เป็น DONE ไม่ให้คิวตัน
+  //    (2) เป็นทริกเกอร์ของกฎอัตโนมัติ/journey ("แลกของรางวัลแล้ว" / "รับของแล้ว") (3) ยิงเว็บฮุคออกนอกระบบ
+  "reward.redeemed": withAutomation(async () => {}),
+  "reward.fulfilled": withAutomation(async () => {}),
+  // ── voucher (M2.5 · §7.1) ──
+  // 🔴 no-op เหมือนกลุ่มแต้ม/สแตมป์: ตัวใบ · ไทม์ไลน์ของสมาชิก · สถานะ USED/EXPIRED ถูกเขียนครบใน
+  //    transaction ของ `voucher/service.ts` (และของ cron รายวัน) แล้ว · 4 บรรทัดนี้มีไว้
+  //    (1) ปิด event เป็น DONE ไม่ให้คิวตัน (2) เป็นทริกเกอร์ของกฎอัตโนมัติ/journey
+  //    (3) ยิงเว็บฮุคออกนอกระบบ · การ **แจ้งลูกค้า** ("voucher ใหม่" / "อีก 7 วันหมดอายุ") = M3.6
+  //    `voucher.used` ยังเป็นตัวที่ M3.2 ใช้นับผลแคมเปญ (trackUse) ต่อไป
+  "voucher.issued": withAutomation(async () => {}),
+  "voucher.used": withAutomation(async () => {}),
+  "voucher.expiring": withAutomation(async () => {}),
+  "voucher.expired": withAutomation(async () => {}),
   // ดูข้อมูลอ่อนไหว: แถว MemberAccessLog ถูกเขียนไปแล้วตอนเปิดดู (privacy.logAccess)
   // ตัวนี้จึงมีไว้ให้ระบบภายนอกที่ทำหน้าที่ "เฝ้าการเข้าถึงข้อมูลส่วนบุคคล" รับต่อผ่านเว็บฮุค
   "member.sensitive.viewed": withAutomation(async () => {}),
@@ -628,6 +653,7 @@ export const consumers: Record<string, OutboxHandler> = Object.fromEntries(
 );
 
 export async function drainAll() {
+  registerMemberHooks();
   return drainOutbox(consumers);
 }
 

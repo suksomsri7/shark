@@ -247,7 +247,7 @@ try {
   const r = (u: string, n: string, d: string) => sum(u)?.results?.find((x: Any) => x.name === n && x.device === d);
   const ok = (u: string, n: string, d: string) => r(u, n, d)?.status === 200 && r(u, n, d)?.missing?.length === 0 && r(u, n, d)?.errors?.length === 0 && !r(u, n, d)?.overflow;
   chk("M3.4-S8.2", "ภาพ 23: reviews-owner desktop+mobile 200 ไม่ล้น (KPI 4 · ตัวกรอง · รายการ ≥ 3 รวมใบ 2 ดาวที่มีป้ายเปิดการ์ด · AI สรุป · ตั้งค่า) · ภาพ 08 ขวา: member-reviews-owner 200 (แท็บรีวิวใน 360 · กล่องรีวิวร้าน)", ok("owner", "reviews-owner", "desktop") && ok("owner", "reviews-owner", "mobile") && ok("owner", "member-reviews-owner", "desktop"), "200 ×3", `${r("owner", "reviews-owner", "desktop")?.status}/${r("owner", "reviews-owner", "mobile")?.status}/${r("owner", "member-reviews-owner", "desktop")?.status} missing=${JSON.stringify(r("owner", "reviews-owner", "desktop")?.missing)}`);
-  chk("M3.4-S8.3", "🔴 parity ภาพ 23 + 08 (ขวา) — Fable ตรวจด้วยตา · wo-notes/member-M3.4.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M3.4.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M3.4-S8.3", "🔴 parity ภาพ 23 + 08 (ขวา) — Fable ตรวจด้วยตา · wo-notes/member-M3.4.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M3.4.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 
   // ═══ S9 LIFF ภาพ ═══
   const custKey = `customer:${m(1).memberCode}`;

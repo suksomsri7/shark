@@ -219,6 +219,11 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   GiftCard: sys(),
   GiftCardSettings: sys(),
   GiftCardTxn: tenant,
+  // voucher (M2.5) — เทมเพลต/ใบ/คำขอออกเป็นชุด ผูกกับ "ระบบสมาชิก" ทั้งหมด
+  //   (ใบผูก systemId ตรง ๆ ไม่ผ่าน templateId เพราะใบ adhoc ไม่มีเทมเพลต)
+  VoucherTemplate: sys(),
+  Voucher: sys(),
+  VoucherIssueBatch: sys(),
   // สแตมป์การ์ด (M2.3) — ตัวใบผูกกับ "ระบบสมาชิก" · ใบของลูกค้า/เหตุการณ์ผูกกับตัวใบ (query ผ่าน cardId/progressId + tenantId)
   StampCard: sys(),
   StampCardProgress: tenant,

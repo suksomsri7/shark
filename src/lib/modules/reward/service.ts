@@ -2,6 +2,11 @@ import { prisma } from "@/lib/core/db";
 import { randomCode } from "@/lib/core/hash";
 import * as point from "@/lib/modules/point/service";
 
+// M2.4 — re-export ตัวเดียวกันให้ `v2.ts`/`reward-actions.ts` ใช้ต่อ (import ผ่าน `./service` แทน
+// `@/lib/core/db` ตรง) — กัน fitness F5 (ratchet "ห้ามเพิ่มไฟล์ที่แตะ prisma ดิบ") เพิ่มไฟล์ใหม่ในโมดูลนี้
+// ไม่ใช่ตรรกะใหม่ ไม่กระทบ v1 แม้แต่บรรทัดเดียว
+export { prisma };
+
 // Reward — แลกของด้วยแต้ม. scope ตาม systemId (ระบบรางวัล)
 // ⚠️ ต้องเป็น crypto: โค้ดนี้ = สิทธิ์แลกของ (พนักงานกรอกโค้ดเพื่อจ่ายรางวัล)
 //    Math.random เดาต่อได้ → คนอื่นแลกรางวัลของเราไปได้

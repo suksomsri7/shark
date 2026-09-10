@@ -19,7 +19,7 @@
 
 **ตรวจภาพ** (Fable · 10 ก.ย. ~19:10 UTC · build #19) — ภาพ 27 ครึ่งขวา ↔ `settings-api-owner-desktop.png`: การ์ดคีย์ API (ชื่อ/ชุดสิทธิ์/ใช้ล่าสุด/หมดอายุ + ปุ่มสร้างคีย์) ✓ · กล่อง curl ดำ 3 ตัวอย่าง + ลิงก์ /developers/member · openapi.json · member.md ✓ · ตาราง tool ในสกิล members (Tool/Method/ชนิด/สิทธิ์ · 8 จาก 22) ✓ · Webhook events 8 ตัว + ลิงก์ตั้งค่า ✓ · thana → 404 ✓ · ครึ่งซ้าย (ผู้ช่วย AI + proposal) = M3.10
 
-PARITY: ผ่าน
+- **PARITY: ผ่าน**
 
 ---
 

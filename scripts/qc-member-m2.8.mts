@@ -79,7 +79,7 @@ try {
   const gs0 = await G.getSettings(gctx);
   restore.push(() => G.setSettings(gctx, owner, gs0));
   await G.setSettings(gctx, owner, { enabled: true, accountingLink: false });
-  const mkCust = async (nm: string) => { const c = await PR.createMember(ctx as Any, owner, { phone: `0898${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "หน้าร้าน", source: "STAFF", homeUnitId: E.units.patong }); made.customers.push(c.customerId); return c.customerId as string; };
+  const mkCust = async (nm: string) => { const c = await PR.createMember(ctx as Any, owner, { phone: `0898${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "หน้าร้าน", source: "WALK_IN", homeUnitId: E.units.patong }); made.customers.push(c.customerId); return c.customerId as string; };
   const X = await mkCust("ทอง");
   await T.applyTierChange(ctx as Any, X, gold.id, "MANUAL", { qc: tag }, { byUserId: owner.userId });
   const give = async (cid: string, pts: number, k: string) => { made.ledgerKeys.push(key(k)); return PS.earnWithLot(pctx, { customerId: cid, points: pts, refType: "QC", refId: key(k), idempotencyKey: key(k) }); };
@@ -286,7 +286,7 @@ try {
   chk("M2.8-S6.1", "ภาพ 06: pos-register-member-owner desktop+mobile 200 ไม่ล้น (เลือกสมาชิก 1 + หยิบสินค้า → แผงสิทธิ์ครบ testid) · pos-register-owner (ไม่เลือกสมาชิก) 200",
     ok("owner", "pos-register-member-owner", "desktop") && ok("owner", "pos-register-member-owner", "mobile") && ok("owner", "pos-register-owner", "desktop"),
     "200 ×3", `${r("owner", "pos-register-member-owner", "desktop")?.status}/${r("owner", "pos-register-member-owner", "mobile")?.status}/ovf=${r("owner", "pos-register-member-owner", "mobile")?.overflow} plain=${r("owner", "pos-register-owner", "desktop")?.status} missing=${JSON.stringify(r("owner", "pos-register-member-owner", "desktop")?.missing)}`);
-  chk("M2.8-S6.2", "🔴 parity ภาพ 06 — Fable ตรวจด้วยตา · wo-notes/member-M2.8.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M2.8.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M2.8-S6.2", "🔴 parity ภาพ 06 — Fable ตรวจด้วยตา · wo-notes/member-M2.8.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M2.8.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 
   // ═══ S7 regressions ═══
   const REG = ["acc-v2-pos-lines", "kanban-k3.3", "point", "reward", "chat-member-autolink", "member-m1.5", "member-m2.1", "member-m2.7"];

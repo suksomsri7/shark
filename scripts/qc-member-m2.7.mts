@@ -83,7 +83,7 @@ try {
   const gs0 = await G.getSettings(gctx);
   restore.push(() => G.setSettings(gctx, owner, gs0));
   await G.setSettings(gctx, owner, { enabled: true, accountingLink: false, reloadable: true, transferable: true });
-  const mkCust = async (nm: string, unit: string) => { const c = await PR.createMember(ctx as Any, owner, { phone: `0897${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "กระเป๋า", source: "STAFF", homeUnitId: unit }); made.customers.push(c.customerId); return c.customerId as string; };
+  const mkCust = async (nm: string, unit: string) => { const c = await PR.createMember(ctx as Any, owner, { phone: `0897${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "กระเป๋า", source: "WALK_IN", homeUnitId: unit }); made.customers.push(c.customerId); return c.customerId as string; };
   const X = await mkCust("ทอง", E.units.patong);
   const K = await mkCust("กะตะ", E.units.kata);
   await T.applyTierChange(ctx as Any, X, gold.id, "MANUAL", { qc: tag }, { byUserId: owner.userId });
@@ -269,7 +269,7 @@ try {
   chk("M2.7-S4.2", "ภาพ 02 แท็บกระเป๋า: member-wallet-owner desktop+mobile 200 ไม่ล้น (สมาชิก 1 มีแต้ม/voucher/สแตมป์จาก TMP27) · member-wallet-thana 200",
     ok("owner", "member-wallet-owner", "desktop") && ok("owner", "member-wallet-owner", "mobile") && ok("thana", "member-wallet-thana", "desktop"),
     "200 ×3", `${r("owner", "member-wallet-owner", "desktop")?.status}/${r("owner", "member-wallet-owner", "mobile")?.status}/ovf=${r("owner", "member-wallet-owner", "mobile")?.overflow} thana=${r("thana", "member-wallet-thana", "desktop")?.status} missing=${JSON.stringify(r("owner", "member-wallet-owner", "desktop")?.missing)}`);
-  chk("M2.7-S4.3", "🔴 parity ภาพ 02 (แท็บกระเป๋า) — Fable ตรวจด้วยตา · wo-notes/member-M2.7.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M2.7.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M2.7-S4.3", "🔴 parity ภาพ 02 (แท็บกระเป๋า) — Fable ตรวจด้วยตา · wo-notes/member-M2.7.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M2.7.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M2.7-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));

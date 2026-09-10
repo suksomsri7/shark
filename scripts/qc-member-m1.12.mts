@@ -113,7 +113,7 @@ try {
   const mobileDirs = ["1.3", "1.5", "1.7", "1.8", "1.10", "1.6"];
   const mob = mobileDirs.map((w) => { const p = `${mq.MQC.shotsDir}/${w}/summary-owner.json`; const s = existsSync(p) ? JSON.parse(read(p)) : null; const rows = (s?.results ?? []).filter((x: Any) => x.device === "mobile"); return { w, n: rows.length, ok: rows.every((x: Any) => x.status === 200 && x.errors.length === 0 && (x.overflow === undefined || x.overflow === false)) }; });
   chk("M1.12-S4.3", "มือถือ (ภาพ 28ก/ข): ทุกหน้า M1 ที่ถ่าย 390 (1.3 1.5 1.7 1.8 1.10 1.6) HTTP 200 ไม่มี console error ไม่ล้นแนวนอน (summary.overflow=false) · chat-member-linked-mobile 200 (แผงเป็น sheet)", mob.every((x) => x.n >= 1 && x.ok) && rs("chat-member-linked", "mobile")?.status === 200 && rs("chat-member-linked", "mobile")?.overflow !== true, "200 ทุกหน้า", JSON.stringify(mob), "MAJOR");
-  chk("M1.12-S4.4", "🔴 parity ภาพ 26 + 28 — Fable ตรวจด้วยตา · wo-notes/member-M1.12.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M1.12.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M1.12-S4.4", "🔴 parity ภาพ 26 + 28 — Fable ตรวจด้วยตา · wo-notes/member-M1.12.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M1.12.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M1.12-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));

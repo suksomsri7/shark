@@ -72,7 +72,7 @@ try {
   const bal = (cid: string) => PS.getBalance(PT, cid);
   const key = (s: string) => `qc24-${tag}-${s}`;
   const gold = await P.memberTierDef.findFirst({ where: { systemId: SYS, key: "gold" } });
-  const mkCust = async (nm: string, unit: string) => { const c = await PR.createMember(sctx as Any, owner, { phone: `0894${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "รางวัล", source: "STAFF", homeUnitId: unit }); made.customers.push(c.customerId); return c.customerId as string; };
+  const mkCust = async (nm: string, unit: string) => { const c = await PR.createMember(sctx as Any, owner, { phone: `0894${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "รางวัล", source: "WALK_IN", homeUnitId: unit }); made.customers.push(c.customerId); return c.customerId as string; };
   const give = async (cid: string, pts: number, k: string) => { made.ledgerKeys.push(key(k)); return PS.earnWithLot(pctx, { customerId: cid, points: pts, refType: "QC", refId: key(k), idempotencyKey: key(k) }); };
   const mk = async (input: Any) => { const r = await RV.createRewardV2(ctx, owner, { kind: "ITEM", pointsCost: 100, stock: 5, tierDefIds: [], unitIds: [], pickupDays: 14, showToCustomer: true, ...input, name: `${input.name} ${tag}` }); made.rewards.push(r.id); return r; };
   const red = (id: string) => P.rewardRedemption.findUnique({ where: { id } });
@@ -135,7 +135,7 @@ try {
     "throw ทุกข้อ", `pts=${eNoPts?.message?.slice(0, 40)} stock=${eStock?.message?.slice(0, 40)} off=${!!eOff} np=${!!eNoPerm} self=${!!eSelfOther} bal=${b2} stock=${sh2?.stock} n=${await P.rewardRedemption.count({ where: { customerId: X } })}`);
 
   const goldOnly = await mk({ name: "ดำน้ำฟรี Gold+", kind: "SERVICE", pointsCost: 50, tierDefIds: [gold.id], stock: null });
-  const goldCust = (await prisma.customer.findFirst({ where: { memberSystemId: SYS, tierDefId: gold.id, homeUnitId: E.units.patong, status: "ACTIVE" as Any } }))!;
+  const goldCust = (await prisma.customer.findFirst({ where: { memberSystemId: SYS, tierDefId: gold.id, status: "ACTIVE" as Any } }))!;
   const gb0 = await bal(goldCust.id);
   await give(goldCust.id, 200, "g1");
   const eTier = await fails(() => RV.redeemV2(ctx, owner, { rewardId: goldOnly.id, customerId: X, idempotencyKey: key("t1") }));
@@ -285,8 +285,8 @@ try {
   await drainOutbox(CONS, { limit: 200 });
   const stuck = await P.outboxEvent.count({ where: { tenantId: tid, type: { startsWith: "reward." }, status: { not: "DONE" } } });
   chk("M2.4-S6.3", "🔴 parity ภาพ 05 + 18 — Fable ตรวจด้วยตา · wo-notes/member-M2.4.md มี 'PARITY: ผ่าน' · reward.redeemed/reward.fulfilled ลง 3 ทะเบียน · drain แล้ว reward.* DONE ทั้งหมด",
-    /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M2.4.md")) && in3("reward.redeemed") && in3("reward.fulfilled") && stuck === 0,
-    "PARITY + 3 ทะเบียน", `parity=${/PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M2.4.md"))} reg=${in3("reward.redeemed")}/${in3("reward.fulfilled")} stuck=${stuck}`, "MAJOR");
+    /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M2.4.md")) && in3("reward.redeemed") && in3("reward.fulfilled") && stuck === 0,
+    "PARITY + 3 ทะเบียน", `parity=${/^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M2.4.md"))} reg=${in3("reward.redeemed")}/${in3("reward.fulfilled")} stuck=${stuck}`, "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M2.4-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));

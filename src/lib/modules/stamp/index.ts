@@ -17,6 +17,9 @@ export type {
   AddStampResult,
   ProgressDto,
   AutoStampResult,
+  UseStampsInput,
+  UseStampsResult,
+  RefundStampsInput,
 } from "./service";
 
 export { StampNotFoundError, StampForbiddenError, StampInputError, StampStateError } from "./errors";
@@ -34,6 +37,9 @@ export {
   /** ยกเลิกตรา 1 รายการ / ยกเลิกตราทั้งหมดของบิลที่ถูก void */
   voidStampEvent,
   voidStampsForSale,
+  /** ใช้ตราบางส่วนแลกของรางวัล / คืนตราที่เคยใช้ (M2.4 — reward module เรียกผ่าน facade นี้) */
+  useStamps,
+  refundStamps,
   /** ใบสะสมของลูกค้า 1 คน (แผงสิทธิ์ที่หน้าขาย · LIFF · โปรไฟล์ 360) */
   progressFor,
   /** สถิติของใบเดียว {active, completed, rewardsPaid} */

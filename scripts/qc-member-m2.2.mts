@@ -144,7 +144,7 @@ try {
   const r = (n: string, d: string) => sumO?.results?.find((x: Any) => x.name === n && x.device === d);
   const ok = (n: string, d: string) => r(n, d)?.status === 200 && r(n, d)?.missing?.length === 0 && r(n, d)?.errors?.length === 0;
   chk("M2.2-S5.1", "ภาพ 16: points-settings-owner desktop+mobile 200 · points-home-owner 200 · points-adjust-owner 200 · points-expiring-owner 200", ok("points-settings-owner", "desktop") && ok("points-settings-owner", "mobile") && ok("points-home-owner", "desktop") && ok("points-adjust-owner", "desktop") && ok("points-expiring-owner", "desktop"), "200 ×5", `${["points-settings-owner", "points-home-owner", "points-adjust-owner", "points-expiring-owner"].map((n) => r(n, "desktop")?.status).join("/")}`, "MAJOR");
-  chk("M2.2-S5.2", "🔴 parity ภาพ 16 — Fable ตรวจด้วยตา · wo-notes/member-M2.2.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M2.2.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M2.2-S5.2", "🔴 parity ภาพ 16 — Fable ตรวจด้วยตา · wo-notes/member-M2.2.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M2.2.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M2.2-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));

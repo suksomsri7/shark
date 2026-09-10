@@ -187,8 +187,8 @@ try {
   const r = (u: string, n: string, d: string) => sum(u)?.results?.find((x: Any) => x.name === n && x.device === d);
   const ok = (u: string, n: string, d: string) => r(u, n, d)?.status === 200 && r(u, n, d)?.missing?.length === 0 && r(u, n, d)?.errors?.length === 0 && !r(u, n, d)?.overflow;
   chk("M3.1-S6.2", "ภาพ 21 ขั้น 1: segments-owner desktop+mobile 200 ไม่ล้น (รายการ + builder มีเงื่อนไข 3 แถว + กล่องนับ) · thana 200 อ่านอย่างเดียว · noperm 404 · 🔴 PARITY: ผ่าน ใน wo-notes/member-M3.1.md",
-    ok("owner", "segments-owner", "desktop") && ok("owner", "segments-owner", "mobile") && ok("owner", "segments-builder-owner", "desktop") && ok("thana", "segments-thana", "desktop") && r("noperm", "segments-noperm", "desktop")?.status === 404 && /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M3.1.md")),
-    "200 + PARITY", `${r("owner", "segments-owner", "desktop")?.status}/${r("owner", "segments-owner", "mobile")?.status}/${r("owner", "segments-builder-owner", "desktop")?.status} thana=${r("thana", "segments-thana", "desktop")?.status} noperm=${r("noperm", "segments-noperm", "desktop")?.status} parity=${/PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M3.1.md"))}`, "MAJOR");
+    ok("owner", "segments-owner", "desktop") && ok("owner", "segments-owner", "mobile") && ok("owner", "segments-builder-owner", "desktop") && ok("thana", "segments-thana", "desktop") && r("noperm", "segments-noperm", "desktop")?.status === 404 && /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M3.1.md")),
+    "200 + PARITY", `${r("owner", "segments-owner", "desktop")?.status}/${r("owner", "segments-owner", "mobile")?.status}/${r("owner", "segments-builder-owner", "desktop")?.status} thana=${r("thana", "segments-thana", "desktop")?.status} noperm=${r("noperm", "segments-noperm", "desktop")?.status} parity=${/^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M3.1.md"))}`, "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M3.1-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));

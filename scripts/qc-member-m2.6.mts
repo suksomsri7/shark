@@ -345,7 +345,7 @@ try {
   chk("M2.6-S7.2", "ภาพ 20: giftcards-owner desktop+mobile 200 ไม่ล้น · giftcards-sell-modal-owner 200 (กดขาย → drawer) · giftcards-settings-owner 200 · thana (read-โดยนัย) 200 ไม่มีปุ่มขาย · noperm 404",
     ok("owner", "giftcards-owner", "desktop") && ok("owner", "giftcards-owner", "mobile") && ok("owner", "giftcards-sell-modal-owner", "desktop") && ok("owner", "giftcards-settings-owner", "desktop") && ok("thana", "giftcards-thana", "desktop") && r("noperm", "giftcards-noperm", "desktop")?.status === 404,
     "200 ×5 · 404", `${["giftcards-owner", "giftcards-sell-modal-owner", "giftcards-settings-owner"].map((n) => r("owner", n, "desktop")?.status).join("/")} mobile=${r("owner", "giftcards-owner", "mobile")?.status}/ovf=${r("owner", "giftcards-owner", "mobile")?.overflow} thana=${r("thana", "giftcards-thana", "desktop")?.status} noperm=${r("noperm", "giftcards-noperm", "desktop")?.status}`);
-  chk("M2.6-S7.3", "🔴 parity ภาพ 20 — Fable ตรวจด้วยตา · wo-notes/member-M2.6.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M2.6.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M2.6-S7.3", "🔴 parity ภาพ 20 — Fable ตรวจด้วยตา · wo-notes/member-M2.6.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M2.6.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M2.6-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));

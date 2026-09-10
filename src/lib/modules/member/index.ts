@@ -31,6 +31,9 @@ export type { MemberActor } from "./access";
 // ⇒ ห้าม copy ตรรกะไปไว้ที่โมดูลตัวเอง (ด่านที่ก๊อปไว้หลายที่ = วันหนึ่งจะไม่ตรงกันเงียบ ๆ)
 export { toMemberActor, hasMemberPerm, canReadMember } from "./access";
 export { MemberNotFoundError, MemberForbiddenError, MemberInputError, MemberConflictError } from "./errors";
+// M2.4 — โมดูลที่บังคับเพดานของตัวเอง (รางวัล/voucher ฯลฯ) อ่านค่า/สร้าง error เพดานผ่านทะเบียนกลางนี้
+// (ทะเบียนเดียว = ข้อความ "ถึงเพดานแพ็กเกจ" คำเดียวกันทั้งระบบ — ห้าม copy ไปประกาศเองที่โมดูลอื่น)
+export { MEMBER_LIMITS, memberLimitError } from "./limits";
 
 // ── ระบบสมาชิก v2 (M1.4) ──
 export {

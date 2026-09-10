@@ -26,6 +26,12 @@ import { runTierReview, sweepAutoErase } from "@/lib/modules/member";
 import { expireDue, notifyExpiring } from "@/lib/modules/point";
 import { expireDue as giftCardExpireDue } from "@/lib/modules/giftcard";
 import { expireDue as stampExpireDue } from "@/lib/modules/stamp";
+import { expireDue as rewardExpireDue } from "@/lib/modules/reward";
+import { expireDue as voucherExpireDue, notifyExpiring as voucherNotifyExpiring } from "@/lib/modules/voucher";
+// M2.5 — ต่อสาย "ของแจกย้อนกลับ" (ขึ้นระดับ → voucher ต้อนรับ) ก่อนงานกวาดรายวันเริ่มทำงาน
+//   cron เป็นหนึ่งใน 2 ทางเข้าที่ทำให้ระดับสมาชิกเปลี่ยนได้โดยไม่มีคนกดปุ่ม (อีกทางคือคิว outbox)
+//   ⇒ ถ้าไม่ลงทะเบียนที่นี่ รอบทบทวนระดับกลางดึกจะเลื่อนระดับให้ แต่ลูกค้าไม่ได้ voucher ต้อนรับ
+import { registerMemberHooks } from "@/lib/member-hooks";
 
 /**
  * M1.9 (D1 · §7.5) — รอบทบทวนระดับสมาชิกของทุกร้านที่มี "ระบบสมาชิก"
@@ -96,6 +102,34 @@ export async function stampExpire(now: Date = new Date()): Promise<number> {
   return r.expired;
 }
 
+/**
+ * M2.4 (§7.5 · §11.9) — รายการแลกของรางวัล PENDING ที่ถึงวันหมดอายุรับของ**ทุกร้าน** → CANCELLED
+ * (คืนแต้ม/สแตมป์/สต็อกให้ครบ + cancelReason "EXPIRED")
+ * 🔴 idempotent: หยิบเฉพาะ `status: PENDING` + `expiresAt ≤ now` ⇒ รันซ้ำวันเดียวกันไม่ทำซ้ำ
+ */
+export async function rewardExpire(now: Date = new Date()): Promise<number> {
+  const r = await rewardExpireDue(now);
+  return r.expired;
+}
+
+/**
+ * M2.5 (§7.5 · §11.6) — voucher ที่ถึงวันหมดอายุของ **ทุกร้าน** → EXPIRED + event `voucher.expired`
+ * 🔴 idempotent: `updateMany` มีเงื่อนไข `status: ACTIVE` ⇒ รันซ้ำวันเดียวกันไม่ทำรายการซ้ำ
+ */
+export async function voucherExpire(now: Date = new Date()): Promise<number> {
+  const r = await voucherExpireDue(now);
+  return r.expired;
+}
+
+/**
+ * M2.5 (§7.4) — แจ้งล่วงหน้า "voucher ใกล้หมดอายุ" (เหลือ 7 วัน และ 1 วัน นับเป็นวันไทย)
+ * dedupe ต่อ (ใบ, วันไทยที่แจ้ง) ผ่าน idempotencyKey ของ outbox ⇒ รันซ้ำวันเดียวกันไม่ส่งซ้ำ
+ */
+export async function voucherExpiring(now: Date = new Date()): Promise<number> {
+  const r = await voucherNotifyExpiring(now);
+  return r.notified;
+}
+
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
 export async function sweepExpiredSubscriptions(now: Date = new Date()): Promise<number> {
@@ -164,6 +198,9 @@ export async function runDailyCron(
   giftCardExpired: number;
   stampExpired: number;
   pointExpiring: number;
+  voucherExpired: number;
+  voucherExpiring: number;
+  rewardExpired: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -188,6 +225,12 @@ export async function runDailyCron(
   let giftCardExpired = -1;
   let stampExpired = -1;
   let pointExpiring = -1;
+  let voucherExpired = -1;
+  let voucherExpiringCount = -1;
+  let rewardExpired = -1;
+
+  // M2.5 — hook ของแจกย้อนกลับต้องพร้อมก่อนรอบทบทวนระดับ (idempotent · เรียกซ้ำได้)
+  registerMemberHooks();
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -345,6 +388,24 @@ export async function runDailyCron(
   } catch {
     // sweep สแตมป์หมดอายุพัง → -1 ไปต่อ (ห้ามพา cron ทั้งรอบล้ม)
   }
+  try {
+    // M2.4 (§7.5): รายการแลกของรางวัลที่ถึงวันหมดอายุรับของทุกร้าน → CANCELLED (คืนแต้ม/สแตมป์/สต็อก)
+    rewardExpired = await rewardExpire(now);
+  } catch {
+    // sweep ของรางวัลหมดอายุพัง → -1 ไปต่อ (ห้ามพา cron ทั้งรอบล้ม)
+  }
+  try {
+    // M2.5 (§7.5): voucher ที่ถึงวันหมดอายุทุกร้าน → EXPIRED + event voucher.expired
+    voucherExpired = await voucherExpire(now);
+  } catch {
+    // sweep voucher หมดอายุพัง → -1 ไปต่อ (ห้ามพา cron ทั้งรอบล้ม)
+  }
+  try {
+    // M2.5 (§7.4): แจ้งล่วงหน้า voucher ใกล้หมดอายุ 7 วัน / 1 วัน (idempotent ต่อ ใบ+วันไทย)
+    voucherExpiringCount = await voucherExpiring(now);
+  } catch {
+    // sweep แจ้ง voucher ใกล้หมดอายุพัง → -1 ไปต่อ
+  }
 
   return {
     subsExpired,
@@ -370,5 +431,8 @@ export async function runDailyCron(
     pointExpiring,
     giftCardExpired,
     stampExpired,
+    voucherExpired,
+    voucherExpiring: voucherExpiringCount,
+    rewardExpired,
   };
 }

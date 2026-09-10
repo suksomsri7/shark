@@ -1753,6 +1753,12 @@ async function doMerge(
       const { mergeGiftCards } = await import("@/lib/modules/giftcard");
       await mergeGiftCards(ctx, { keepId: keep.id, mergeId: merge.id }, tx);
 
+      // M2.5 — voucher ของคนที่ถูกรวม ย้ายไปเป็นของคนที่เก็บไว้ (§11.1 "voucher เปลี่ยน customerId")
+      // 🔴 `await import` ด้วยเหตุผลเดียวกับบัตรกำนัลข้างบน (voucher/service อ่านชื่อ/สิทธิ์ผ่าน facade
+      //    `member/index` ซึ่ง re-export ไฟล์นี้ ⇒ ผูกแบบ static จะเป็นวงกลมตั้งแต่ตอนโหลดโมดูล)
+      const { mergeVouchers } = await import("@/lib/modules/voucher");
+      await mergeVouchers(ctx, { keepId: keep.id, mergeId: merge.id }, tx);
+
       // M2.3 — ใบสะสมตราของคนที่ถูกรวม: บวกเข้าใบที่คนเก็บไว้ถืออยู่ (StampEvent MERGE) หรือย้ายทั้งใบ
       // 🔴 `await import` ด้วยเหตุผลเดียวกับบัตรกำนัลข้างบน (โมดูลสแตมป์อ่านสิทธิ์/ระดับผ่านไฟล์ของสมาชิก)
       const { mergeProgress } = await import("@/lib/modules/stamp");

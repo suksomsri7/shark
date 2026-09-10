@@ -28,6 +28,14 @@ import { StampForbiddenError, StampInputError, StampNotFoundError, StampStateErr
 type Tx = Prisma.TransactionClient;
 type Db = Tx | typeof prisma;
 
+/** ใช้ tx ที่ส่งมาตรง ๆ ถ้ามี (ให้ผู้เรียกคุมอะตอมมิกร่วมกับงานของตัวเอง) ไม่งั้นเปิด tx ใหม่ของตัวเอง */
+async function withTx<T>(db: Db, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  if ("$transaction" in db && typeof db.$transaction === "function") {
+    return (db as typeof prisma).$transaction((tx) => fn(tx), { timeout: 30_000, maxWait: 15_000 });
+  }
+  return fn(db as Tx);
+}
+
 /** ขอบเขตการทำงาน — `systemId` = **ระบบสมาชิก** (ไม่ใช่ระบบแต้ม/ระบบขายของ) */
 export type StampCtx = {
   tenantId: string;
@@ -519,9 +527,12 @@ async function openProgress(tx: Tx, ctx: StampCtx, card: StampCardRow, customerI
 
 /**
  * ครบใบ → ปิดใบ + จ่ายรางวัล + เริ่มใบใหม่ (ถ้าตั้งไว้)
- * รางวัล: POINTS ทำงานจริงผ่าน facade แต้ม (ledger EARN + ล็อตหมดอายุของตัวเอง)
- *         VOUCHER/REWARD/DISCOUNT_NEXT ยังเป็น stub — บันทึกกติกาไว้ใน payload ของ event
- *         ให้ M2.4/M2.5/M2.7 มารับช่วง (ไม่ throw · ลูกค้าต้องไม่โดนบล็อกเพราะฟีเจอร์ยังไม่มา)
+ * รางวัล: POINTS  ทำงานจริงผ่าน facade แต้ม (ledger EARN + ล็อตหมดอายุของตัวเอง)
+ *         VOUCHER ทำงานจริงผ่าน facade voucher ตั้งแต่ M2.5 (ออกใบใน tx เดียวกับตราที่เพิ่งประทับ
+ *                 ⇒ ใบครบแล้วต้องมี voucher เสมอ ไม่มีสภาพ "ครบแต่ไม่ได้ของ")
+ *         REWARD/DISCOUNT_NEXT ยังเป็น stub — บันทึกกติกาไว้ใน payload ของ event ให้ M2.4/M2.7 รับช่วง
+ *         (ไม่ throw · ลูกค้าต้องไม่โดนบล็อกเพราะฟีเจอร์ยังไม่มา)
+ * คืน `rewardVoucherId` ของรอบแรกที่ปิด (รอบถัด ๆ ไปจาก overflow ก็ออกใบของตัวเองครบเหมือนกัน)
  */
 async function completeCycle(
   tx: Tx,
@@ -531,9 +542,10 @@ async function completeCycle(
   stamps: number,
   now: Date,
   unitId: string | null,
-): Promise<void> {
+): Promise<{ rewardVoucherId: string | null }> {
   let current = progress;
   let carry = stamps;
+  let firstVoucherId: string | null = null;
   for (let guard = 0; guard < 50; guard++) {
     await tx.stampCardProgress.update({ where: { id: current.id }, data: { completedAt: now, stamps: carry } });
     await tx.stampEvent.create({
@@ -569,6 +581,35 @@ async function completeCycle(
       }
     }
 
+    // M2.5 — รางวัลเป็น voucher: ออกใบจริงผ่าน facade voucher (เส้น stamp→voucher · fitness F2)
+    // 🔴 `await import` ไม่ใช่ import ที่หัวไฟล์โดยตั้งใจ: `voucher/service` อ่านชื่อ/สิทธิ์ผ่าน facade
+    //    `member/index` และโมดูลสมาชิกก็เรียกสแตมป์ตอนรวมคน — ผูกแบบ static เสี่ยงวงกลมตอนโหลดโมดูล
+    //    (วิธีเดียวกับที่ `member/profile.ts` ใช้กับบัตรกำนัล/สแตมป์)
+    // 🔴 ออกใน `tx` เดียวกับตราที่เพิ่งประทับ ⇒ ใบครบ = มี voucher เสมอ (พังตัวใดตัวหนึ่ง = ไม่ครบเลย)
+    if (card.rewardKind === "VOUCHER") {
+      const templateId = rewardConfigOf(card).templateId;
+      if (typeof templateId === "string" && templateId) {
+        const voucher = await import("@/lib/modules/voucher");
+        const res = await voucher.issue(
+          { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: ctx.actorUserId ?? null },
+          voucher.VOUCHER_SYSTEM_ACTOR,
+          {
+            customerIds: [current.customerId],
+            templateId,
+            origin: "STAMP",
+            originRef: { stampProgressId: current.id },
+            reason: `สะสมครบ ${card.slots} ตรา — ${card.name}`,
+          },
+          tx,
+        );
+        const issuedId = res.pending === true ? null : (res.vouchers[0]?.id ?? null);
+        if (issuedId) {
+          await tx.stampCardProgress.update({ where: { id: current.id }, data: { rewardVoucherId: issuedId } });
+          if (!firstVoucherId) firstVoucherId = issuedId;
+        }
+      }
+    }
+
     await emitOutbox(tx, {
       tenantId: ctx.tenantId,
       type: "stamp.completed",
@@ -586,7 +627,7 @@ async function completeCycle(
       },
     });
 
-    if (!card.autoRestart) return;
+    if (!card.autoRestart) return { rewardVoucherId: firstVoucherId };
     const overflow = Math.max(0, carry - card.slots);
     const next = await tx.stampCardProgress.create({
       data: {
@@ -599,10 +640,11 @@ async function completeCycle(
         expiresAt: card.validMonths ? addMonths(now, card.validMonths) : null,
       },
     });
-    if (overflow < card.slots) return;
+    if (overflow < card.slots) return { rewardVoucherId: firstVoucherId };
     current = next;
     carry = overflow;
   }
+  return { rewardVoucherId: firstVoucherId };
 }
 
 type AddArgs = {
@@ -669,14 +711,15 @@ async function addStampInTx(tx: Tx, ctx: StampCtx, a: AddArgs, now: Date): Promi
   if (stamps < a.card.slots) {
     return { progressId: progress.id, stamps, cycle: progress.cycle, completed: false, rewardVoucherId: null, eventId: ev.id };
   }
-  await completeCycle(tx, ctx, a.card, progress, stamps, now, a.unitId);
+  const done = await completeCycle(tx, ctx, a.card, progress, stamps, now, a.unitId);
   return {
     progressId: progress.id,
     stamps,
     cycle: progress.cycle,
     completed: true,
     rewardKind: a.card.rewardKind,
-    rewardVoucherId: null,
+    // M2.5 — ใบที่รางวัลเป็น voucher จะได้ id ของใบที่เพิ่งออกกลับไปด้วย (หน้าจอเอาไปโชว์ให้ลูกค้าทันที)
+    rewardVoucherId: done.rewardVoucherId,
     eventId: ev.id,
   };
 }
@@ -808,6 +851,144 @@ export async function voidStampsForSale(ctx: StampCtx, input: { saleId: string }
     }
   }
   return { voided };
+}
+
+// ───────────────────────── ใช้ตราบางส่วน / คืนตรา (M2.4 — reward v2) ─────────────────────────
+//
+// 🔴 ต่างจาก `completeCycle` (ใช้ "ทั้งใบ" ตอนครบช่อง): ที่นี่คือ "ใช้บางส่วน" — ลูกค้าแลกของรางวัล
+//    ด้วยสแตมป์ก่อนใบจะครบ (เช่น การ์ด 5 ช่อง แลกของรางวัล 2 ตรา ที่เหลือ 3 ตราไว้ต่อ)
+//    ⇒ ไม่ปิดใบ ไม่จ่ายรางวัลของการ์ด แค่หักยอดคงเหลือ + บันทึก StampEvent USE
+
+export type UseStampsInput = {
+  cardId: string;
+  customerId: string;
+  count: number;
+  /** ที่มาของการใช้ (reward module ส่ง "REWARD") */
+  refType: string;
+  refId: string;
+  idempotencyKey: string;
+};
+
+export type UseStampsResult = { progressId: string; stamps: number; eventId: string };
+
+/**
+ * ใช้ตราบางส่วนแลกของรางวัล (M2.4) — หักจากใบที่ยังเปิดอยู่ (`completedAt: null`) ของลูกค้าคนนี้
+ * ตราไม่พอ → throw ไทย ไม่เขียนอะไร · idempotent ผ่าน `idempotencyKey` (ยิงซ้ำคืนผลเดิม ไม่หักซ้ำ)
+ * `client` ส่ง tx ของผู้เรียกมาได้ (reward v2 ทำให้ redemption+ใช้ตราอะตอมมิกก้อนเดียวกัน) — ไม่ส่ง = เปิด tx เอง
+ */
+export async function useStamps(ctx: StampCtx, input: UseStampsInput, client: Db = prisma): Promise<UseStampsResult> {
+  const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
+  if (!key) throw new StampInputError("รายการนี้ไม่มีรหัสกันซ้ำ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง");
+  const count = Number(input.count);
+  if (!Number.isInteger(count) || count <= 0) {
+    throw new StampInputError("จำนวนตราที่จะใช้ต้องเป็นจำนวนเต็มมากกว่า 0 — ใส่ตัวเลขใหม่แล้วลองอีกครั้ง");
+  }
+  const replay = await client.stampEvent.findUnique({
+    where: { tenantId_idempotencyKey: { tenantId: ctx.tenantId, idempotencyKey: key } },
+  });
+  if (replay) {
+    const p = await client.stampCardProgress.findUnique({ where: { id: replay.progressId } });
+    return { progressId: replay.progressId, stamps: p?.stamps ?? 0, eventId: replay.id };
+  }
+  const card = await loadCard(client, ctx, input.cardId);
+  const customer = await loadCustomer(client, ctx, input.customerId);
+  return withTx(client, async (tx) => {
+    const progress = await tx.stampCardProgress.findFirst({
+      where: { cardId: card.id, customerId: customer.id, completedAt: null },
+      orderBy: { cycle: "desc" },
+    });
+    if (!progress || progress.stamps < count) {
+      throw new StampStateError(
+        `ตราไม่พอสำหรับแลกรางวัลนี้ (มี ${progress?.stamps ?? 0} ตรา ต้องใช้ ${count} ตรา) — สะสมเพิ่มก่อนแล้วลองใหม่`,
+      );
+    }
+    const stamps = progress.stamps - count;
+    await tx.stampCardProgress.update({ where: { id: progress.id }, data: { stamps } });
+    const ev = await tx.stampEvent.create({
+      data: {
+        tenantId: ctx.tenantId,
+        progressId: progress.id,
+        type: "USE",
+        count,
+        refType: input.refType,
+        refId: input.refId,
+        byUserId: ctx.actorUserId ?? null,
+        idempotencyKey: key,
+      },
+    });
+    return { progressId: progress.id, stamps, eventId: ev.id };
+  });
+}
+
+export type RefundStampsInput = {
+  cardId: string;
+  customerId: string;
+  count: number;
+  refType: string;
+  refId: string;
+  idempotencyKey: string;
+};
+
+/**
+ * คืนตราที่เคยถูก `useStamps` หักไป (M2.4 — ยกเลิกการแลกของรางวัล)
+ * 🔴 **ไม่ติดเพดานต่อวัน** (ต่างจาก `addStamp` ปกติ) — นี่คือการคืนของที่ลูกค้ามีอยู่แล้ว ไม่ใช่ตราใหม่
+ *    ถ้ามีใบเปิดอยู่ → คืนเข้าใบนั้น · ไม่มีใบเปิด (ปิด/หมดอายุไปแล้ว) → เปิดใบใหม่ให้ (กันตราลอยหาย)
+ * `client` ส่ง tx ของผู้เรียกมาได้ (เหมือน `useStamps`) — ไม่ส่ง = เปิด tx เอง
+ */
+export async function refundStamps(ctx: StampCtx, input: RefundStampsInput, client: Db = prisma): Promise<UseStampsResult> {
+  const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
+  if (!key) throw new StampInputError("รายการนี้ไม่มีรหัสกันซ้ำ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง");
+  const count = Number(input.count);
+  if (!Number.isInteger(count) || count <= 0) {
+    throw new StampInputError("จำนวนตราที่จะคืนต้องเป็นจำนวนเต็มมากกว่า 0 — ใส่ตัวเลขใหม่แล้วลองอีกครั้ง");
+  }
+  const replay = await client.stampEvent.findUnique({
+    where: { tenantId_idempotencyKey: { tenantId: ctx.tenantId, idempotencyKey: key } },
+  });
+  if (replay) {
+    const p = await client.stampCardProgress.findUnique({ where: { id: replay.progressId } });
+    return { progressId: replay.progressId, stamps: p?.stamps ?? 0, eventId: replay.id };
+  }
+  const card = await loadCard(client, ctx, input.cardId);
+  const now = new Date();
+  return withTx(client, async (tx) => {
+    let progress = await tx.stampCardProgress.findFirst({
+      where: { cardId: card.id, customerId: input.customerId, completedAt: null },
+      orderBy: { cycle: "desc" },
+    });
+    if (!progress) {
+      const last = await tx.stampCardProgress.findFirst({
+        where: { cardId: card.id, customerId: input.customerId },
+        orderBy: { cycle: "desc" },
+      });
+      progress = await tx.stampCardProgress.create({
+        data: {
+          tenantId: ctx.tenantId,
+          cardId: card.id,
+          customerId: input.customerId,
+          cycle: (last?.cycle ?? 0) + 1,
+          stamps: 0,
+          startedAt: now,
+          expiresAt: card.validMonths ? addMonths(now, card.validMonths) : null,
+        },
+      });
+    }
+    const stamps = progress.stamps + count;
+    await tx.stampCardProgress.update({ where: { id: progress.id }, data: { stamps } });
+    const ev = await tx.stampEvent.create({
+      data: {
+        tenantId: ctx.tenantId,
+        progressId: progress.id,
+        type: "ADD",
+        count,
+        refType: input.refType,
+        refId: input.refId,
+        byUserId: ctx.actorUserId ?? null,
+        idempotencyKey: key,
+      },
+    });
+    return { progressId: progress.id, stamps, eventId: ev.id };
+  });
 }
 
 // ───────────────────────── ใบของลูกค้า ─────────────────────────

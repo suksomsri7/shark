@@ -226,7 +226,7 @@ try {
   const sumOf = (u: string) => (existsSync(`${dir}/summary-${u}.json`) ? JSON.parse(read(`${dir}/summary-${u}.json`)) : null);
   const rO = sumOf("owner")?.results?.find((x: Any) => x.name === "settings-privacy-owner" && x.device === "desktop");
   const rT = sumOf("thana")?.results?.find((x: Any) => x.name === "settings-privacy-thana" && x.device === "desktop");
-  chk("M1.7-S7.2", "ภาพ 14: settings-privacy-owner desktop+mobile 200 ไม่มี console error · thana 404 · PARITY: ผ่าน ใน wo-notes/member-M1.7.md", shots.includes("settings-privacy-owner-desktop.png") && shots.includes("settings-privacy-owner-mobile.png") && rO?.status === 200 && rO.missing.length === 0 && rO.errors.length === 0 && rT?.status === 404 && /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M1.7.md")), "200/404/PARITY", `shots=${shots.join(",")} o=${rO?.status} t=${rT?.status}`, "MAJOR");
+  chk("M1.7-S7.2", "ภาพ 14: settings-privacy-owner desktop+mobile 200 ไม่มี console error · thana 404 · PARITY: ผ่าน ใน wo-notes/member-M1.7.md", shots.includes("settings-privacy-owner-desktop.png") && shots.includes("settings-privacy-owner-mobile.png") && rO?.status === 200 && rO.missing.length === 0 && rO.errors.length === 0 && rT?.status === 404 && /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M1.7.md")), "200/404/PARITY", `shots=${shots.join(",")} o=${rO?.status} t=${rT?.status}`, "MAJOR");
 
   // ═══ S8 events / โครง ═══
   const consumers = read("src/lib/outbox-consumers.ts"); const A2 = (await import("@/lib/automation/labels" as string)) as Any; const W2 = (await import("@/lib/webhooks/labels" as string)) as Any;

@@ -126,6 +126,17 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
     return;
   }
 
+  // ระบบสมาชิก v2 (M2.5 · §6.2 §11.6): ผู้จัดการขอ "ออก voucher" ที่มูลค่ารวมเกินเพดาน ฿10,000
+  //   entityId = `VoucherIssueBatch.id` — รายชื่อผู้รับ/แบบ/เงื่อนไข พักไว้ที่แถวนั้น (ApprovalRequest
+  //   ไม่มีช่อง JSON ให้แนบ payload อิสระ · แบบเดียวกับ `PointAdjustRequest` ของ M2.2)
+  //   idempotent 2 ชั้น: guard สถานะ PENDING ของ batch + `idempotencyKey` ต่อใบใน voucher/service
+  //   ⇒ drain ซ้ำ/replay ไม่ออกใบซ้ำ · ปฏิเสธ = batch REJECTED ไม่มีใบถูกออกเลย
+  if (entityType === "member.voucher.issue") {
+    const voucher = await import("@/lib/modules/voucher");
+    await voucher.issueApprovedBatch(evt.tenantId, entityId, approved);
+    return;
+  }
+
   if (entityType === "HrLeave") {
     await prisma.hrLeave.updateMany({
       where: { id: entityId, tenantId: evt.tenantId, status: "PENDING" },

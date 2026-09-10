@@ -126,7 +126,7 @@ try {
   const ok = (u: string, n: string, d: string) => r(u, n, d)?.status === 200 && r(u, n, d)?.missing?.length === 0 && r(u, n, d)?.errors?.length === 0 && !r(u, n, d)?.overflow;
   const custKey = `customer:${m(1).memberCode}`;
   chk("M3.11-S3.2", "ภาพ 29: m-join-welcome (owner · ?src=<TMP311>) mobile 200 (โลโก้ · รับ n แต้ม · มาจาก: … · ปุ่ม 2) · m-join-form (กดสมัครด้วยเบอร์ → ฟอร์ม: เบอร์+OTP · ฟิลด์ · ผู้แนะนำ prefill ?ref= · ยินยอม 4 · นโยบาย · ปุ่ม) · m-join-done (--user customer:สมาชิก 1) 200 (บัตร+QR · กล่องแต้ม · ปุ่มเปิดบัตร)", ok("owner", "m-join-welcome", "mobile") && ok("owner", "m-join-form", "mobile") && ok(custKey, "m-join-done", "mobile"), "200 ×3", `${r("owner", "m-join-welcome", "mobile")?.status}/${r("owner", "m-join-form", "mobile")?.status}/${r(custKey, "m-join-done", "mobile")?.status} missing=${JSON.stringify(r("owner", "m-join-form", "mobile")?.missing)}`);
-  chk("M3.11-S3.3", "🔴 parity ภาพ 29 (3 จอ) + 28 (3 จอแอปพนักงาน) — Fable ตรวจด้วยตา · wo-notes/member-M3.11.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M3.11.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M3.11-S3.3", "🔴 parity ภาพ 29 (3 จอ) + 28 (3 จอแอปพนักงาน) — Fable ตรวจด้วยตา · wo-notes/member-M3.11.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M3.11.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 
   // ═══ S4 แอปพนักงาน ═══
   const BASE = process.env.QC_BASE ?? "http://127.0.0.1:3215";

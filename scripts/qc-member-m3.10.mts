@@ -204,7 +204,7 @@ try {
   const r = (u: string, n: string, d: string) => sum(u)?.results?.find((x: Any) => x.name === n && x.device === d);
   const ok = (u: string, n: string, d: string) => r(u, n, d)?.status === 200 && r(u, n, d)?.missing?.length === 0 && r(u, n, d)?.errors?.length === 0 && !r(u, n, d)?.overflow;
   chk("M3.10-S4.3", "ภาพ 27 ขวา: api-webhooks-owner desktop 200 (คีย์ + webhooks + tools) · ภาพ 27 ซ้าย: assistant-owner desktop+mobile 200 (TMP310: บทสนทนา + ตารางผล + กล่องข้อเสนอ ปุ่ม 3 + บรรทัดเครื่องมือ)", ok("owner", "api-webhooks-owner", "desktop") && ok("owner", "assistant-owner", "desktop") && ok("owner", "assistant-owner", "mobile"), "200 ×3", `${r("owner", "api-webhooks-owner", "desktop")?.status}/${r("owner", "assistant-owner", "desktop")?.status}/${r("owner", "assistant-owner", "mobile")?.status} missing=${JSON.stringify(r("owner", "assistant-owner", "desktop")?.missing)}`);
-  chk("M3.10-S4.4", "🔴 parity ภาพ 27 (ซ้าย+ขวา) — Fable ตรวจด้วยตา · wo-notes/member-M3.10.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M3.10.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M3.10-S4.4", "🔴 parity ภาพ 27 (ซ้าย+ขวา) — Fable ตรวจด้วยตา · wo-notes/member-M3.10.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M3.10.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M3.10-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));

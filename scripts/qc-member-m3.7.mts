@@ -254,7 +254,7 @@ try {
   const r = (u: string, n: string, d: string) => sum(u)?.results?.find((x: Any) => x.name === n && x.device === d);
   const ok = (u: string, n: string, d: string) => r(u, n, d)?.status === 200 && r(u, n, d)?.missing?.length === 0 && r(u, n, d)?.errors?.length === 0 && !r(u, n, d)?.overflow;
   chk("M3.7-S6.2", "ภาพ 08: member-history-owner desktop+mobile 200 ไม่ล้น (TMP37 สมาชิก 1 มีเหตุการณ์ ≥ 8 ชนิด) · member-history-filter-owner desktop (คลิกชิป 'ซื้อ' → เฉพาะซื้อ) · member-history-thana desktop 200", ok("owner", "member-history-owner", "desktop") && ok("owner", "member-history-owner", "mobile") && ok("owner", "member-history-filter-owner", "desktop") && ok("thana", "member-history-thana", "desktop"), "200 ×4", `${r("owner", "member-history-owner", "desktop")?.status}/${r("owner", "member-history-owner", "mobile")?.status}/${r("owner", "member-history-filter-owner", "desktop")?.status}/${r("thana", "member-history-thana", "desktop")?.status} missing=${JSON.stringify(r("owner", "member-history-owner", "desktop")?.missing)}`);
-  chk("M3.7-S6.3", "🔴 parity ภาพ 08 (ซ้าย/กลาง) — Fable ตรวจด้วยตา · wo-notes/member-M3.7.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M3.7.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M3.7-S6.3", "🔴 parity ภาพ 08 (ซ้าย/กลาง) — Fable ตรวจด้วยตา · wo-notes/member-M3.7.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M3.7.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M3.7-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));

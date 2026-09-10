@@ -9,7 +9,8 @@ import { MemberIcon } from "@/components/member/MemberIcon";
 
 // หน้ารวมหมวด "โปรโมชัน" ของระบบสมาชิก v2 — `/app/sys/{id}/member/promotions`
 //
-// หมวดนี้มี 3 เรื่องตามพิมพ์เขียว §2.2: บัตรกำนัล (M2.6 · พร้อมใช้) · voucher/คูปอง (M2.5) · journey (M3.3)
+// หมวดนี้มี 4 เรื่องตามพิมพ์เขียว §2.2: voucher (M2.5 · พร้อมใช้) · คูปอง (M3.2) ·
+// บัตรกำนัล (M2.6 · พร้อมใช้) · journey (M3.3)
 // 🔴 หน้านี้เป็น "ทางแยก" ล้วน — ตัวเลข/ตารางอยู่ในหน้าย่อยของแต่ละเรื่อง
 // 🔴 404-not-403 (§6.4): ระบบไม่ใช่ MEMBER ของร้านนี้ หรือ actor อ่านโมดูลสมาชิกไม่ได้ → notFound()
 
@@ -45,11 +46,18 @@ export default async function MemberPromotionsHubPage({ params }: { params: Prom
     },
     {
       key: "vouchers",
-      title: "Voucher / คูปอง",
-      desc: "ส่วนลดรายใบที่ออกให้ลูกค้าเป็นรายคนหรือเป็นกลุ่ม",
+      title: "Voucher",
+      desc: "ส่วนลดรายใบที่ออกให้ลูกค้าเป็นรายคน — ใช้ได้ครั้งเดียว ออกทีละหลายคนได้",
       icon: "tag",
+      href: `${base}/vouchers`,
+    },
+    {
+      key: "coupons",
+      title: "คูปอง",
+      desc: "รหัสส่วนลดชุดเดียวที่ใครก็ใช้ได้ตามเงื่อนไขที่ตั้งไว้",
+      icon: "megaphone",
       href: null,
-      wo: "M2.5",
+      wo: "M3.2",
     },
     {
       key: "journeys",
@@ -71,7 +79,7 @@ export default async function MemberPromotionsHubPage({ params }: { params: Prom
       <MemberTabs systemId={id} actor={actor} />
 
       <div
-        data-testid="promotions-hub"
+        data-testid="promotions-page"
         className="grid gap-3"
         style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
       >

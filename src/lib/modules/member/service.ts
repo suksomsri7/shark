@@ -309,6 +309,13 @@ export async function recordSpend(
   const c = await client.customer.findFirst({ where: { id: customerId, tenantId } });
   if (!c) return;
   const total = c.totalSpentSatang + amountSatang;
+  // 🔴 M2.x (10 ก.ย. 2569): ถ้าสมาชิกอยู่ในระบบสมาชิก v2 (มี tierDefId) ห้ามเขียน `tier` จากยอดสะสมแบบ v1
+  //    — ระดับ v2 เป็นของ tiers.ts (applyTierChange/runTierReview) เท่านั้น · เขียนทับที่นี่ทำให้
+  //    Customer.tier กับ tierDef.legacyTier ไม่ตรงกันเงียบ ๆ (พบจริงระหว่าง M2.2/M2.4/M2.5 · qc-member-m1.9 S7.3)
+  if (c.tierDefId) {
+    await client.customer.update({ where: { id: customerId }, data: { totalSpentSatang: total } });
+    return;
+  }
   // ใช้เกณฑ์ระดับของร้าน (ไม่ใช่ค่า hardcode) — เจ้าของกำหนดชื่อ+ยอดขั้นต่ำเองได้
   const config = await getTierConfig({ tenantId });
   await client.customer.update({

@@ -112,7 +112,7 @@ try {
   const r = (u: string, n: string, d: string) => sum(u)?.results?.find((x: Any) => x.name === n && x.device === d);
   const ok = (u: string, n: string, d: string) => r(u, n, d)?.status === 200 && r(u, n, d)?.missing?.length === 0 && r(u, n, d)?.errors?.length === 0 && !r(u, n, d)?.overflow;
   chk("M3.9-S4.2", "ภาพ 03 (kbar เทมเพลต): fields-template-owner desktop 200 (เลือก 'คลินิก/ความงาม' → แผงตัวอย่าง นับ + รายการฟิลด์ + ตัวอย่างมือถือ) · fields-template-mobile-owner mobile 200 ไม่ล้น", ok("owner", "fields-template-owner", "desktop") && ok("owner", "fields-template-owner", "mobile"), "200 ×2", `${r("owner", "fields-template-owner", "desktop")?.status}/${r("owner", "fields-template-owner", "mobile")?.status} missing=${JSON.stringify(r("owner", "fields-template-owner", "desktop")?.missing)}`);
-  chk("M3.9-S4.3", "🔴 parity ภาพ 03 (ส่วนเลือกเทมเพลต + ตัวอย่างมือถือ) — Fable ตรวจด้วยตา · wo-notes/member-M3.9.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M3.9.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M3.9-S4.3", "🔴 parity ภาพ 03 (ส่วนเลือกเทมเพลต + ตัวอย่างมือถือ) — Fable ตรวจด้วยตา · wo-notes/member-M3.9.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M3.9.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M3.9-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));

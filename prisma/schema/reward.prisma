@@ -1,10 +1,23 @@
 // Reward (แลกของรางวัลด้วยแต้ม) — scope ตาม systemId (ระบบรางวัล)
 // ลูกค้าใช้แต้ม (จากระบบแต้มที่ผูก unit เดียวกัน) แลกรางวัล
+//
+// M2.4 (member_v2_d2 · ledger/MEMBER-RUN.md §2 M2.4 · พิมพ์เขียว §4.1 §4.2) — รางวัล v2
+//   เพิ่มคอลัมน์ล้วน (additive) ต่อยอด v1 เดิมข้างบน — ห้ามลบ/เปลี่ยนชนิดของคอลัมน์เดิม
+//   `service.ts` (v1: redeem/fulfillRedemption/cancelRedemption) ยังทำงานได้เหมือนเดิม
+//   ตรรกะใหม่ทั้งหมดอยู่ที่ `v2.ts` (createRewardV2/redeemV2/fulfilV2/cancelV2/…)
 
 enum RewardRedemptionStatus {
   PENDING // แลกแล้ว รอรับของ
   FULFILLED // รับของแล้ว
   CANCELLED // ยกเลิก/คืนแต้ม
+}
+
+/** ชนิดของรางวัล (M2.4 · §4.2) */
+enum RewardKind {
+  ITEM // ของจริง (เสื้อ/หมวก ฯลฯ)
+  SERVICE // บริการ (ดำน้ำฟรี 1 ไดฟ์ ฯลฯ)
+  VOUCHER // แลกเป็นคูปองส่วนลด
+  DISCOUNT // ส่วนลดตรง
 }
 
 model Reward {
@@ -20,6 +33,19 @@ model Reward {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // ── M2.4: รางวัล v2 ──
+  kind             RewardKind @default(ITEM)
+  imageFileId      String? // ไฟล์รูปของรางวัล (FileAsset.id)
+  stampCardId      String? // แลกด้วยสแตมป์ของใบนี้ (ไม่ผูก FK ตรง — ข้าม AppSystem)
+  stampsCost       Int? // จำนวนตราที่ต้องใช้ (≥1 เมื่อมี stampCardId)
+  tierDefIds       String[]  @default([]) // ว่าง = ทุกระดับ
+  perMemberMonthly Int? // จำกัดจำนวนชิ้น/คน/เดือนไทย (ไม่นับ CANCELLED)
+  startAt          DateTime? // เริ่มแลกได้ (ว่าง = แลกได้ทันที)
+  endAt            DateTime? // แลกได้ถึงเมื่อไหร่ (ว่าง = ไม่มีกำหนด)
+  unitIds          String[]  @default([]) // ว่าง = ทุกสาขา
+  pickupDays       Int       @default(14) // รับของภายใน n วัน หลังแลก
+  showToCustomer   Boolean   @default(true) // แสดงในแคตตาล็อก LINE/LIFF
+
   redemptions RewardRedemption[]
 
   @@index([tenantId, systemId])
@@ -33,10 +59,20 @@ model RewardRedemption {
   reward     Reward                 @relation(fields: [rewardId], references: [id])
   customerId String
   pointsCost Int // snapshot
-  code       String // โค้ดรับของ
+  code       String // โค้ดรับของ (v1 — 6 ตัว)
   status     RewardRedemptionStatus @default(PENDING)
   createdAt  DateTime               @default(now())
   updatedAt  DateTime               @updatedAt
 
+  // ── M2.4: รางวัล v2 ──
+  qrCode          String? @unique // โค้ดยาว (crypto ≥ 12 ตัว) — ใช้สแกน QR รับของ
+  expiresAt       DateTime? // หมดอายุรับของ (createdAt + reward.pickupDays)
+  fulfilledById   String? // userId พนักงานที่ส่งมอบ
+  fulfilledUnitId String? // สาขาที่ส่งมอบ
+  cancelReason    String? // เหตุผลยกเลิก (รวม "EXPIRED" จาก cron)
+  // กันแลกซ้ำจากคีย์ที่ผู้เรียก redeemV2 ส่งมา (ปุ่มกดรัว/รีเฟรชแล้วกดซ้ำ) — nullable: แถว v1 เดิมไม่มีค่านี้
+  idempotencyKey String?
+
   @@index([tenantId, systemId, customerId])
+  @@unique([tenantId, idempotencyKey])
 }

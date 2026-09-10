@@ -42,8 +42,12 @@ export const MEMBER_LIMITS = Object.freeze({
   campaignsPerMonth: 50,
   /** ข้อความถึงลูกค้าต่อวัน (M3.6) */
   messagesPerDay: 5_000,
-  /** voucher ที่ออกให้ลูกค้า 1 คนต่อวัน (M2.5) */
+  /** voucher ที่ออกให้ลูกค้า 1 คนต่อวัน (M2.5 · §11.6 — นับเฉพาะ origin JOURNEY เพื่อกันกฎอัตโนมัติวนซ้ำ) */
   vouchersPerCustomerPerDay: 3,
+  /** มูลค่ารวมต่อการออก voucher 1 ครั้ง ที่เกินแล้วต้องเข้าสายอนุมัติ (M2.5 · §11.6 · สตางค์ = ฿10,000) */
+  voucherIssueApprovalOverSatang: 1_000_000,
+  /** มูลค่าสูงสุดต่อใบที่ **พนักงาน (STAFF)** ออกเองได้ (M2.5 · §6.2 · สตางค์ = ฿500/ใบ) */
+  voucherStaffMaxSatang: 50_000,
   /** แถวต่อการนำเข้า 1 ครั้ง (M1.6) */
   importRows: 10_000,
   /** แถวต่อการส่งออก 1 ครั้ง (M1.5) */

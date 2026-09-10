@@ -83,6 +83,22 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "stamp.added", label: "เมื่อสมาชิกได้รับตราสะสม" },
   { value: "stamp.completed", label: "เมื่อสมาชิกสะสมตราครบใบ" },
   { value: "stamp.expired", label: "เมื่อใบสะสมตราหมดอายุ" },
+  // M2.4 (§7.1) — ยิงจาก `reward/v2.ts` ใน tx เดียวกับรายการแลก/ส่งมอบ
+  //   `reward.redeemed`  payload: customerId · rewardId · redemptionId
+  //   `reward.fulfilled` payload: customerId · rewardId · redemptionId
+  //   🔴 ทั้ง 2 ตัวมี consumer ใน `outbox-consumers.ts` แล้ว (ขาดไป = คิวตันทั้งระบบเงียบ ๆ)
+  { value: "reward.redeemed", label: "เมื่อสมาชิกแลกของรางวัล" },
+  { value: "reward.fulfilled", label: "เมื่อส่งมอบของรางวัลแล้ว" },
+  // M2.5 (§7.1) — ยิงจาก `voucher/service.ts` ใน tx เดียวกับตัวใบ และจาก cron (หมดอายุ/ใกล้หมดอายุ)
+  //   `voucher.issued`   payload: customerId · voucherId · origin · code · templateId · expiresAt · notify
+  //   `voucher.used`     payload: + saleId / appointmentId · discountSatang (M3.2 ใช้นับผลแคมเปญ)
+  //   `voucher.expiring` payload: + expiresAt · daysLeft (7 หรือ 1 · วันไทย)
+  //   `voucher.expired`  payload: customerId · voucherId · origin · code
+  //   🔴 ทั้ง 4 ตัวมี consumer ใน `outbox-consumers.ts` แล้ว (ขาดไป = คิวตันทั้งระบบเงียบ ๆ)
+  { value: "voucher.issued", label: "เมื่อสมาชิกได้รับ voucher" },
+  { value: "voucher.used", label: "เมื่อลูกค้าใช้ voucher" },
+  { value: "voucher.expiring", label: "เมื่อ voucher ของสมาชิกใกล้หมดอายุ" },
+  { value: "voucher.expired", label: "เมื่อ voucher ของสมาชิกหมดอายุ" },
   // M2.3 (§9.2) — ยิงจาก `booking/service.ts#setAppointmentStatus` เมื่อนัดเปลี่ยนเป็น "มาแล้ว (DONE)"
   //   payload: appointmentId · unitId · customerId · serviceId — สแตมป์ชนิด "จองที่มาจริง" กินทริกเกอร์นี้
   { value: "booking.completed", label: "เมื่อลูกค้ามาตามนัดจริง" },

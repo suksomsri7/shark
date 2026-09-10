@@ -37,7 +37,8 @@ export const MEMBER_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "points", label: "แต้ม", path: "/member/points", status: "ready" },
   // M2.3 — หมวดนี้เปิดแล้ว (ตารางใบทั้งหมด + ตัวออกแบบการ์ด + การ์ดจริง)
   { key: "stamps", label: "สแตมป์", path: "/member/stamps", status: "ready" },
-  { key: "rewards", label: "รางวัล", path: "/member/rewards", status: "soon", wo: "M2.4" },
+  // M2.4 — หมวดนี้เปิดแล้ว (แคตตาล็อก + รอรับ + ตัวออกแบบของรางวัล + แผงรับของหน้าร้าน + ประวัติการแลก)
+  { key: "rewards", label: "รางวัล", path: "/member/rewards", status: "ready" },
   // M2.6 — หมวดนี้เปิดแล้วด้วยหน้า hub ที่มีแท็บ Gift Card (voucher/คูปอง มาที่ M2.5 · journey ที่ M3.3)
   { key: "promotions", label: "โปรโมชัน", path: "/member/promotions", status: "ready" },
   { key: "campaigns", label: "แคมเปญ", path: "/member/campaigns", status: "soon", wo: "M3.2" },

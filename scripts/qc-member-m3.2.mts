@@ -265,7 +265,7 @@ try {
   const ok = (u: string, n: string, d: string) => r(u, n, d)?.status === 200 && r(u, n, d)?.missing?.length === 0 && r(u, n, d)?.errors?.length === 0 && !r(u, n, d)?.overflow;
   chk("M3.2-S9.2", "ภาพ 21: campaign-new-owner desktop+mobile 200 ไม่ล้น (3 ขั้น + แผงขวา) · campaigns-owner 200", ok("owner", "campaign-new-owner", "desktop") && ok("owner", "campaign-new-owner", "mobile") && ok("owner", "campaigns-owner", "desktop"), "200 ×3", `${r("owner", "campaign-new-owner", "desktop")?.status}/${r("owner", "campaign-new-owner", "mobile")?.status}/${r("owner", "campaigns-owner", "desktop")?.status} missing=${JSON.stringify(r("owner", "campaign-new-owner", "desktop")?.missing)}`);
   chk("M3.2-S9.3", "ภาพ 07 ล่าง/รายละเอียด: campaign-detail-owner 200 (สถิติ variant + holdout + uplift + ผู้รับ) · thana 200 อ่านอย่างเดียว · noperm 404", ok("owner", "campaign-detail-owner", "desktop") && ok("thana", "campaigns-thana", "desktop") && r("noperm", "campaigns-noperm", "desktop")?.status === 404, "200/200/404", `${r("owner", "campaign-detail-owner", "desktop")?.status}/${r("thana", "campaigns-thana", "desktop")?.status}/${r("noperm", "campaigns-noperm", "desktop")?.status}`);
-  chk("M3.2-S9.4", "🔴 parity ภาพ 21 + 07 (ล่าง) — Fable ตรวจด้วยตา · wo-notes/member-M3.2.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M3.2.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M3.2-S9.4", "🔴 parity ภาพ 21 + 07 (ล่าง) — Fable ตรวจด้วยตา · wo-notes/member-M3.2.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M3.2.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 
   // ═══ S10 events / consumer / fitness ═══
   const consumers = read("src/lib/outbox-consumers.ts");

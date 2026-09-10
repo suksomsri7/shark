@@ -317,11 +317,11 @@ try {
     "แจ้ง 7 วัน ครั้งเดียว", `nt=${JSON.stringify(nt)} ob=${JSON.stringify(obN?.payload)} ob3=${!!obN3} n=${nN} cron=${/voucherExpire\b/.test(cron)}/${/voucherExpiring/.test(cron)}`);
 
   // ═══ S6 hooks · merge · events ═══
-  const mkCust = async (nm: string) => { const c = await PR.createMember(ctx as Any, owner, { phone: `0895${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "voucher", source: "STAFF", homeUnitId: E.units.patong }); made.customers.push(c.customerId); return c.customerId as string; };
+  const mkCust = async (nm: string) => { const c = await PR.createMember(ctx as Any, owner, { phone: `0895${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "voucher", source: "WALK_IN", homeUnitId: E.units.patong }); made.customers.push(c.customerId); return c.customerId as string; };
   const X = await mkCust("เก็บ"); const Y = await mkCust("ถูกรวม");
   await V.issue(ctx, owner, { customerIds: [Y], templateId: T300.id, origin: "MANUAL" });
   await V.issue(ctx, owner, { customerIds: [X], templateId: T300.id, origin: "MANUAL" });
-  await PR.mergeMembers(ctx as Any, owner, { keepId: X, mergeId: Y, fieldChoices: {} });
+  await PR.mergeMembers(ctx as Any, owner, { keepId: X, mergeId: Y, fieldChoices: {}, confirm: "MERGE" });
   const nX = await P.voucher.count({ where: { customerId: X } }); const nY = await P.voucher.count({ where: { customerId: Y } });
   const gold = await P.memberTierDef.findFirst({ where: { systemId: SYS, key: "gold" } });
   const ben0 = await P.memberTierBenefit.findMany({ where: { tierDefId: gold.id } });
@@ -335,9 +335,9 @@ try {
   await T.applyTierChange(ctx as Any, Z, gold.id, "MANUAL", { qc: `${tag}-2` }, { byUserId: owner.userId }).catch(() => null);
   await drain();
   const welcome2 = await P.voucher.count({ where: { customerId: Z, origin: "TIER" } });
-  const card = await ST.createCard(ctx, owner, { name: `การ์ด voucher ${tag}`, slots: 2, ruleKind: "MANUAL", ruleConfig: { perDayMax: 10 }, rewardKind: "VOUCHER", rewardConfig: { templateId: Tfree.id }, autoRestart: true, tierDefIds: [], unitIds: [] });
+  const card = await ST.createCard(ctx, owner, { name: `การ์ด voucher ${tag}`, slots: 3, ruleKind: "MANUAL", ruleConfig: { perDayMax: 10 }, rewardKind: "VOUCHER", rewardConfig: { templateId: Tfree.id }, autoRestart: true, tierDefIds: [], unitIds: [] });
   made.cards.push(card.id);
-  const sc = await ST.addStamp(ctx, owner, { cardId: card.id, customerId: X, count: 2, idempotencyKey: `qc25-${tag}-stamp` });
+  const sc = await ST.addStamp(ctx, owner, { cardId: card.id, customerId: X, count: 3, idempotencyKey: `qc25-${tag}-stamp` });
   const prog = await P.stampCardProgress.findFirst({ where: { cardId: card.id, customerId: X, cycle: 1 } });
   const stampV = prog?.rewardVoucherId ? await vrow(prog.rewardVoucherId) : null;
   chk("M2.5-S6.1", "merge hook: Y (1 ใบ) รวมเข้า X (1 ใบ) → X 2 ใบ · Y 0 · tier welcome hook (registerMemberHooks): gold มี WELCOME_VOUCHER {templateId} → applyTierChange(Z → gold) → 1 ใบ origin TIER originRef {tierDefId} · เปลี่ยนซ้ำ → ยัง 1 (idempotent) · stamp hook: การ์ด rewardKind VOUCHER ครบ → ใบ origin STAMP originRef {stampProgressId} + progress.rewardVoucherId + ผล addStamp มี rewardVoucherId",
@@ -382,7 +382,7 @@ try {
   chk("M2.5-S7.2", "ภาพ 19: vouchers-owner desktop+mobile 200 ไม่ล้น · vouchers-issue-modal-owner 200 (กดออก voucher → โมดัล · เลือกกลุ่ม → กล่องต้องอนุมัติ) · vouchers-templates-owner 200 · promotions-owner 200 · thana (read-โดยนัย) 200 ไม่มีปุ่มออก · noperm 404",
     ok("owner", "vouchers-owner", "desktop") && ok("owner", "vouchers-owner", "mobile") && ok("owner", "vouchers-issue-modal-owner", "desktop") && ok("owner", "vouchers-templates-owner", "desktop") && ok("owner", "promotions-owner", "desktop") && ok("thana", "vouchers-thana", "desktop") && r("noperm", "vouchers-noperm", "desktop")?.status === 404,
     "200 ×6 · 404", `${["vouchers-owner", "vouchers-issue-modal-owner", "vouchers-templates-owner", "promotions-owner"].map((n) => r("owner", n, "desktop")?.status).join("/")} mobile=${r("owner", "vouchers-owner", "mobile")?.status}/ovf=${r("owner", "vouchers-owner", "mobile")?.overflow} thana=${r("thana", "vouchers-thana", "desktop")?.status} noperm=${r("noperm", "vouchers-noperm", "desktop")?.status}`);
-  chk("M2.5-S7.3", "🔴 parity ภาพ 19 — Fable ตรวจด้วยตา · wo-notes/member-M2.5.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M2.5.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M2.5-S7.3", "🔴 parity ภาพ 19 — Fable ตรวจด้วยตา · wo-notes/member-M2.5.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M2.5.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M2.5-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));

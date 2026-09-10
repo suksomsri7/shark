@@ -238,7 +238,7 @@ try {
   chk("M2.9-S5.2", "ภาพ 09 (--user customer:<รหัสสมาชิก 1> · มือถือ 390): m-card · m-wallet · m-profile · m-history 200 ไม่ล้น · m-login (ไม่มี session) 200 · ไม่มี session เปิด /card → redirect login (302/200 ที่หน้า login)",
     ok(custKey, "m-card", "mobile") && ok(custKey, "m-wallet", "mobile") && ok(custKey, "m-profile", "mobile") && ok(custKey, "m-history", "mobile") && r("owner", "m-login", "mobile")?.status === 200 && r("owner", "m-card-nosession", "mobile")?.status === 200 && (r("owner", "m-card-nosession", "mobile")?.missing?.length ?? 1) === 0,
     "200 ×6", `card=${r(custKey, "m-card", "mobile")?.status} wallet=${r(custKey, "m-wallet", "mobile")?.status} profile=${r(custKey, "m-profile", "mobile")?.status} history=${r(custKey, "m-history", "mobile")?.status} login=${r("owner", "m-login", "mobile")?.status} nosession=${r("owner", "m-card-nosession", "mobile")?.status}/${JSON.stringify(r("owner", "m-card-nosession", "mobile")?.missing)}`);
-  chk("M2.9-S5.3", "🔴 parity ภาพ 09 (3 จอ) — Fable ตรวจด้วยตา · wo-notes/member-M2.9.md มี 'PARITY: ผ่าน'", /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M2.9.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
+  chk("M2.9-S5.3", "🔴 parity ภาพ 09 (3 จอ) — Fable ตรวจด้วยตา · wo-notes/member-M2.9.md มี 'PARITY: ผ่าน'", /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M2.9.md")), "PARITY: ผ่าน", "ยังไม่ได้ตรวจภาพ", "MAJOR");
 
   // ═══ S6 perf ═══
   const t0 = Date.now();

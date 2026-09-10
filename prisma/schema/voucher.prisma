@@ -1,0 +1,137 @@
+// Voucher (M2.5 · ระบบสมาชิก v2 · docs/modules/06-member-v2.md §4.2 §4.3 §5.7 §11.5 §11.6)
+//
+// "ส่วนลดรายใบ" ที่ร้านออกให้ลูกค้าเป็นรายคน — ต่างจากคูปอง (รหัสเดียวใครก็ใช้ได้) ตรงที่
+// voucher 1 แถว = 1 ใบ = ของลูกค้าคนเดียว ใช้ได้ครั้งเดียว และย้อนกลับได้เมื่อบิลถูกยกเลิก
+//
+//   VoucherTemplate   = "แบบ" ที่ร้านตั้งไว้ล่วงหน้า (ส่วนลด ฿300 คอร์ส · ดำน้ำฟรี 1 ไดฟ์)
+//   Voucher           = ใบจริงของลูกค้า 1 คน (snapshot kind/value/config จากเทมเพลต ณ วันที่ออก)
+//   VoucherIssueBatch = คำขอ "ออกทีละหลายคน" ที่มูลค่ารวมเกินเพดาน → พักไว้รอสายอนุมัติกลาง
+//
+// 🔴 ทำไมต้อง snapshot `kind/value/config` ลงใบ ไม่อ่านจากเทมเพลตตอนใช้: เจ้าของร้านแก้เทมเพลตได้
+//    ตลอดเวลา — ใบที่ออกไปแล้วต้องมีเงื่อนไขคงเดิมตามที่บอกลูกค้าไว้ (ไม่งั้นส่วนลดเปลี่ยนย้อนหลัง)
+// 🔴 ทำไมต้องมี `VoucherIssueBatch`: `ApprovalRequest` ไม่มีช่อง JSON ให้แนบ payload อิสระ
+//    (แบบเดียวกับ `PointAdjustRequest` ของ M2.2) ⇒ รายชื่อผู้รับ/แบบ/เงื่อนไขพักไว้ที่ตารางนี้
+//    แล้ว `approval-effects.ts` หยิบไปออกจริงเมื่อผ่าน
+// 🔴 `idempotencyKey` (unique ต่อร้าน) = `<origin>:<hash(originRef)>:<customerId>` — journey/แคมเปญ
+//    ที่ยิงซ้ำ (retry ของคิว) ต้องไม่ออกใบซ้ำให้ลูกค้าคนเดิม
+
+enum VoucherKind {
+  FIXED // ส่วนลดเป็นบาท (value = สตางค์)
+  PERCENT // ส่วนลดเป็นเปอร์เซ็นต์ (value = 1–100 · จำกัดด้วย config.maxDiscountSatang)
+  FREE_SERVICE // บริการฟรี 1 หน่วย (config.serviceId)
+  FREE_ITEM // สินค้าฟรี 1 หน่วย (config.itemId)
+}
+
+enum VoucherOrigin {
+  TIER // ของต้อนรับตอนขึ้นระดับ (M1.9 benefit WELCOME_VOUCHER)
+  BIRTHDAY // วันเกิด (journey)
+  JOURNEY // เส้นทางอัตโนมัติ (M3.3) — เพดาน 3 ใบ/คน/วัน กันวนซ้ำ
+  CAMPAIGN // แคมเปญการตลาด (M3.2)
+  REDEEM // แลกจากแต้ม/ของรางวัล
+  COMPENSATION // ชดเชยความผิดพลาดของร้าน
+  REFERRAL // แนะนำเพื่อน (M3.5)
+  STAMP // สะสมตราครบใบ (M2.3 rewardKind VOUCHER)
+  MANUAL // พนักงานออกให้เอง
+  API // ระบบภายนอก/สกิล AI (M2.10)
+}
+
+enum VoucherStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  CANCELLED
+}
+
+/** คำขอออก voucher เป็นชุดที่รอสายอนุมัติ */
+enum VoucherBatchStatus {
+  PENDING
+  ISSUED
+  REJECTED
+}
+
+model VoucherTemplate {
+  id       String @id @default(cuid())
+  tenantId String
+  systemId String // AppSystem.id ของ "ระบบสมาชิก" ที่เป็นเจ้าของแบบนี้
+
+  name  String
+  kind  VoucherKind
+  value Int // FIXED = สตางค์ · PERCENT = 1–100 · FREE_* = 0
+
+  /** {minSatang?, categoryIds[]?, itemIds[]?, serviceIds[]?, serviceId?, itemId?, stackWithCoupon, maxDiscountSatang?, unitIds[]} */
+  config Json
+
+  validDays Int // อายุของใบ นับจากวันที่ออก
+  origin    VoucherOrigin
+  active    Boolean       @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vouchers Voucher[]
+
+  @@index([systemId])
+}
+
+model Voucher {
+  id       String @id @default(cuid())
+  tenantId String
+  systemId String // AppSystem.id ของระบบสมาชิกที่ออกใบนี้
+
+  templateId String? // null = ออกแบบเฉพาะกิจ (adhoc) ไม่ได้มาจากเทมเพลต
+  template   VoucherTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  customerId String // Customer.id — ใบนี้เป็นของใคร (ย้ายเมื่อรวมสมาชิกซ้ำ §11.1)
+
+  code String // `V-XXXXXX` — พิมพ์/ส่งให้ลูกค้า
+
+  // snapshot ณ วันที่ออก (ห้ามอ่านจากเทมเพลตตอนใช้ — ดูหัวไฟล์)
+  kind   VoucherKind
+  value  Int
+  config Json
+
+  origin    VoucherOrigin
+  originRef Json? // {journeyId|campaignId|tierDefId|reviewId|referralId|stampProgressId|batchId|reason}
+
+  issuedAt  DateTime      @default(now())
+  expiresAt DateTime
+  status    VoucherStatus @default(ACTIVE)
+
+  usedAt      DateTime?
+  usedRef     Json? // {saleId|appointmentId, discountSatang}
+  cancelledAt DateTime?
+
+  approvalRequestId String? // ใบที่ออกหลังผ่านสายอนุมัติ (ย้อนได้ว่าใครอนุมัติ)
+  idempotencyKey    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, idempotencyKey])
+  @@index([customerId, status])
+  @@index([systemId, expiresAt])
+}
+
+model VoucherIssueBatch {
+  id       String @id @default(cuid())
+  tenantId String
+  systemId String
+
+  status VoucherBatchStatus @default(PENDING)
+
+  /** คำขอเต็ม ๆ ที่พักไว้ {customerIds[], templateId?, adhoc?, origin, originRef?, reason?, notify?} */
+  input Json
+
+  requestedById     String
+  approvalRequestId String?
+
+  issuedAt   DateTime?
+  decidedAt  DateTime?
+  totalSatang Int      @default(0) // มูลค่ารวมที่ใช้เทียบเพดาน (ไว้ดูย้อนหลังโดยไม่ต้องคำนวณใหม่)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([systemId, status])
+}

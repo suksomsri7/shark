@@ -40,6 +40,10 @@ const PATH = (systemId: string) => `/app/sys/${systemId}/member/tiers`;
 const DETAIL_PATH = (systemId: string, tierDefId: string) => `/app/sys/${systemId}/member/tiers/${tierDefId}`;
 
 async function gate(systemId: string, key: "member.tier.manage" | "member.tier.setManual"): Promise<{ ctx: MemberCtx; actor: MemberActor }> {
+  // M2.5 — ตั้งระดับจากหน้าจอ ไม่ได้ผ่านคิว outbox ⇒ ต้องต่อ hook "ของแจกตอนขึ้นระดับ" เองที่นี่
+  //   (composition root `src/lib/member-hooks.ts` · idempotent · เรียก dynamic เพื่อไม่ผูกวงจร import
+  //    ระหว่างโมดูลสมาชิกกับโมดูล voucher ตอนโหลดไฟล์)
+  (await import("@/lib/member-hooks")).registerMemberHooks();
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
   const actor = toMemberActor(auth.user.id, auth.active);

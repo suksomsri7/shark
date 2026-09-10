@@ -181,7 +181,7 @@ try {
   const shots = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".png")) : [];
   const sumO = existsSync(`${dir}/summary-owner.json`) ? JSON.parse(read(`${dir}/summary-owner.json`)) : null;
   const rO = sumO?.results?.find((x: Any) => x.name === "settings-api-owner" && x.device === "desktop");
-  chk("M1.11-S5.2", "ภาพ 27 (ครึ่งขวา): settings-api-owner desktop 200 · PARITY: ผ่าน ใน wo-notes/member-M1.11.md", shots.includes("settings-api-owner-desktop.png") && rO?.status === 200 && rO.missing.length === 0 && /PARITY:\s*ผ่าน/.test(read("ledger/wo-notes/member-M1.11.md")), "200 · PARITY", `shots=${shots.join(",")} o=${rO?.status}`, "MAJOR");
+  chk("M1.11-S5.2", "ภาพ 27 (ครึ่งขวา): settings-api-owner desktop 200 · PARITY: ผ่าน ใน wo-notes/member-M1.11.md", shots.includes("settings-api-owner-desktop.png") && rO?.status === 200 && rO.missing.length === 0 && /^\s*-?\s*\*\*PARITY:\s*ผ่าน\*\*/m.test(read("ledger/wo-notes/member-M1.11.md")), "200 · PARITY", `shots=${shots.join(",")} o=${rO?.status}`, "MAJOR");
 } catch (e) {
   console.error("💥", e);
   chk("M1.11-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));
