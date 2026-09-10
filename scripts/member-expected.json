@@ -1,756 +1,756 @@
 {
   "_readme": "เฉลยของชุดข้อมูล QC ระบบสมาชิก v2 — เขียนโดย scripts/seed-member-qc.mts ทุกครั้งที่ seed",
-  "generatedAt": "2026-09-10T07:41:32.800Z",
+  "generatedAt": "2026-09-10T08:41:12.433Z",
   "today": "2026-09-30",
   "oracleValidUntil": "2026-12-31",
-  "tenantId": "cmtv7wnhu0000k7kzpkgbiek8",
-  "systemId": "cmtv7wniw0003k7kzs2b98ypl",
+  "tenantId": "cmtva1al60000jckz4hdlcnc7",
+  "systemId": "cmtva1am90003jckz53kflhpm",
   "systems": {
-    "MEMBER": "cmtv7wniw0003k7kzs2b98ypl",
-    "POINT": "cmtv7wnlw0006k7kzs13yco5z",
-    "REWARD": "cmtv7wnp10009k7kz4oi3pe3h",
-    "COUPON": "cmtv7wnrv000ck7kz6zqct0a4",
-    "POS": "cmtv7wnus000fk7kz7ushqz9g",
-    "BOOKING": "cmtv7wnxl000ik7kzs6m4fgex",
-    "CHAT": "cmtv7wo0e000lk7kzvdxlhrm8",
-    "HR": "cmtv7wo39000ok7kzv4lyk0bx"
+    "MEMBER": "cmtva1am90003jckz53kflhpm",
+    "POINT": "cmtva1apo0006jckzwch2gs74",
+    "REWARD": "cmtva1atr0009jckzs7ddzang",
+    "COUPON": "cmtva1aww000cjckzeg757rjw",
+    "POS": "cmtva1b05000fjckzu78mqt0i",
+    "BOOKING": "cmtva1b3e000ijckzybeu83ve",
+    "CHAT": "cmtva1b7k000ljckz8t938h9d",
+    "HR": "cmtva1bb0000ojckzbi5223ty"
   },
   "units": {
-    "patong": "cmtv7wni60001k7kzvk3wkydk",
-    "kata": "cmtv7wnim0002k7kzpqi1cknv"
+    "patong": "cmtva1alk0001jckzbii3l3hz",
+    "kata": "cmtva1alv0002jckz361r177b"
   },
   "users": {
     "owner": {
-      "userId": "cmtv7wo64000rk7kzahwi4cvq",
-      "membershipId": "cmtv7wo6f000sk7kzxgdxi9g3",
+      "userId": "cmtva1be3000rjckz3s9qj3cu",
+      "membershipId": "cmtva1bee000sjckzaqce7wn0",
       "name": "เจ้าของร้าน (MB QC)",
       "email": "mb-owner@shark.local"
     },
     "manager": {
-      "userId": "cmtv7wo6p000tk7kz30rh3ezw",
-      "membershipId": "cmtv7wo70000uk7kznz9ugxnc",
+      "userId": "cmtva1bep000tjckz90geejxh",
+      "membershipId": "cmtva1bf1000ujckznqavdiev",
       "name": "ผู้จัดการป่าตอง (MB QC)",
       "email": "mb-manager-patong@shark.local"
     },
     "staff": {
       "thana": {
-        "userId": "cmtv7wo7a000vk7kzv7qwzb4b",
-        "membershipId": "cmtv7wo7l000wk7kzbmvmjqhz",
+        "userId": "cmtva1bfe000vjckzpyn5am91",
+        "membershipId": "cmtva1bfp000wjckzmsytxtxn",
         "name": "ธนา ศรีสมบัติ",
         "email": "mb-thana@shark.local"
       },
       "pook": {
-        "userId": "cmtv7wo7u000xk7kzcs4pecoq",
-        "membershipId": "cmtv7wo84000yk7kzqfskc4hc",
+        "userId": "cmtva1bg1000xjckzcopz9ss6",
+        "membershipId": "cmtva1bgd000yjckzamso03ge",
         "name": "ปุ๊ก มณีรัตน์",
         "email": "mb-pook@shark.local"
       },
       "nurse": {
-        "userId": "cmtv7wo8e000zk7kzin2b33sd",
-        "membershipId": "cmtv7wo8p0010k7kz525w3caa",
+        "userId": "cmtva1bgo000zjckzj80btxyw",
+        "membershipId": "cmtva1bgz0010jckztollsjio",
         "name": "นภา พยาบาลประจำ",
         "email": "mb-nurse@shark.local"
       },
       "kata": {
-        "userId": "cmtv7wo8z0011k7kznkndvpyp",
-        "membershipId": "cmtv7wo9a0012k7kzwjx6d0pt",
+        "userId": "cmtva1bha0011jckzcghamfz2",
+        "membershipId": "cmtva1bhk0012jckzr1pj04ee",
         "name": "กมล สาขากะตะ",
         "email": "mb-kata@shark.local"
       }
     },
     "noPerm": {
-      "userId": "cmtv7wo9k0013k7kz6xvfucy2",
-      "membershipId": "cmtv7wo9u0014k7kz72u8iowv",
+      "userId": "cmtva1bhv0013jckz1ackndzw",
+      "membershipId": "cmtva1bi60014jckzo1fwp2sl",
       "name": "พนักงานไม่มีสิทธิ์สมาชิก (MB QC)",
       "email": "mb-noperm@shark.local"
     }
   },
   "hrEmployees": {
-    "nurse": "cmtv7woa80015k7kz3z8ac1my",
-    "thana": "cmtv7woan0016k7kzl9ep4sc6",
-    "noEmail": "cmtv7woay0017k7kzsajthdqj"
+    "nurse": "cmtva1bij0015jckzcloqla75",
+    "thana": "cmtva1biv0016jckza3r183if",
+    "noEmail": "cmtva1bj70017jckzwtuongfc"
   },
   "tierDefs": {
-    "member": "cmtv7xikc00005okzd7e6rczt",
-    "silver": "cmtv7xil800015okzec2fdvtr",
-    "gold": "cmtv7xilt00025okzwz49yipe",
-    "platinum": "cmtv7ximh00035okzy43xgj66"
+    "member": "cmtva27sy0000zjkzhn7z4bhs",
+    "silver": "cmtva27to0001zjkzc1vd9i10",
+    "gold": "cmtva27uf0002zjkztj40993i",
+    "platinum": "cmtva27v30003zjkzvcvx97f3"
   },
   "fields": {
     "dive": {
-      "section": "cmtv7xutm00zik7kzusg024ys",
-      "certLevel": "cmtv7xuv000zjk7kz0l17d29g",
-      "certAgency": "cmtv7xuw900zkk7kzptr6fsz6",
-      "certNo": "cmtv7xuxk00zlk7kzzyjes0at",
-      "diveCount": "cmtv7xuyt00zmk7kz6mf1z9wi",
-      "lastDiveAt": "cmtv7xv0500znk7kz1o628zsj"
+      "section": "cmtva2l0600zijckzul0oixdi",
+      "certLevel": "cmtva2l1s00zjjckzglfn1wox",
+      "certAgency": "cmtva2l3e00zkjckz6ve6byd0",
+      "certNo": "cmtva2l4w00zljckzs96ji3b0",
+      "diveCount": "cmtva2l6e00zmjckz35m0gozk",
+      "lastDiveAt": "cmtva2l7w00znjckzhv0urazm"
     },
     "health": {
-      "section": "cmtv7xv1400zok7kz745dg81l",
-      "conditions": "cmtv7xv2d00zpk7kz2f0euipz",
-      "emergencyContact": "cmtv7xv3m00zqk7kz6ldwdw64"
+      "section": "cmtva2l9500zojckzl3m3yugg",
+      "conditions": "cmtva2lao00zpjckzv4zfi9r8",
+      "emergencyContact": "cmtva2lcc00zqjckz6hqyway6"
     }
   },
   "members": [
     {
       "index": 1,
-      "id": "cmtv7wodh001ck7kzl5usmgt6",
-      "memberCode": "RJ4RDJ",
-      "partyId": "cmtv7wod6001bk7kzktphgswf",
+      "id": "cmtva1bme001cjckzbrdah18e",
+      "memberCode": "CSXDTG",
+      "partyId": "cmtva1blx001bjckzq3d2t5sn",
       "phone": "0810000001",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 2,
-      "id": "cmtv7wofg001ek7kzjbfe4pr9",
-      "memberCode": "7D7SV4",
-      "partyId": "cmtv7wof6001dk7kz4a5z0ssd",
+      "id": "cmtva1bp0001ejckzg27suayx",
+      "memberCode": "4YFKN5",
+      "partyId": "cmtva1boo001djckz19j7b6ga",
       "phone": "0810000002",
       "email": "mb-member-02@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 3,
-      "id": "cmtv7wogs001gk7kzchd0irfg",
-      "memberCode": "WHT4VS",
-      "partyId": "cmtv7wogi001fk7kz0tf2hg9u",
+      "id": "cmtva1bqi001gjckzlhs1on4e",
+      "memberCode": "HE54Y6",
+      "partyId": "cmtva1bq7001fjckz81ta05a9",
       "phone": "0810000003",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 4,
-      "id": "cmtv7woio001ik7kzfs9skmp5",
-      "memberCode": "9PW8VH",
-      "partyId": "cmtv7woic001hk7kzgyl25o46",
+      "id": "cmtva1bsl001ijckzeuaf1nm5",
+      "memberCode": "FSCDGY",
+      "partyId": "cmtva1bsa001hjckzs8027td9",
       "phone": "0810000004",
       "email": "mb-member-04@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 5,
-      "id": "cmtv7wojz001kk7kzk37nr4bb",
-      "memberCode": "GR4RAW",
-      "partyId": "cmtv7wojp001jk7kzlxo9i0dg",
+      "id": "cmtva1bu2001kjckzh3b68nt7",
+      "memberCode": "9PXKFG",
+      "partyId": "cmtva1btr001jjckzia60tbg7",
       "phone": "0810000005",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 6,
-      "id": "cmtv7woly001mk7kzu6s9fzdt",
-      "memberCode": "4LDNE6",
-      "partyId": "cmtv7wolo001lk7kz2fw8bp45",
+      "id": "cmtva1bw3001mjckz0qisfgvq",
+      "memberCode": "PN8FL6",
+      "partyId": "cmtva1bvs001ljckzpd6bk68r",
       "phone": "0810000006",
       "email": "mb-member-06@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 7,
-      "id": "cmtv7won9001ok7kzr410m9fe",
-      "memberCode": "U3KDPQ",
-      "partyId": "cmtv7won0001nk7kz8jzyaxq5",
+      "id": "cmtva1bxj001ojckzjucfa7o8",
+      "memberCode": "CFHEV9",
+      "partyId": "cmtva1bx8001njckz09lkp197",
       "phone": "0810000007",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 8,
-      "id": "cmtv7wop1001qk7kzv7rcvrnn",
-      "memberCode": "6MRYVE",
-      "partyId": "cmtv7woor001pk7kzyrngzqhb",
+      "id": "cmtva1bzz001qjckzzz9oek0h",
+      "memberCode": "MSU394",
+      "partyId": "cmtva1bzn001pjckzux7xyn24",
       "phone": "0810000008",
       "email": "mb-member-08@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 9,
-      "id": "cmtv7woqk001sk7kzz0et4dpu",
-      "memberCode": "X9GCKS",
-      "partyId": "cmtv7woqa001rk7kz167yjsq0",
+      "id": "cmtva1c1m001sjckzhvclbahz",
+      "memberCode": "7XCXUK",
+      "partyId": "cmtva1c19001rjckzyzrxkebc",
       "phone": "0810000009",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 10,
-      "id": "cmtv7wosc001uk7kzyalxg1qw",
-      "memberCode": "P8L8JP",
-      "partyId": "cmtv7wos2001tk7kzi3xnancs",
+      "id": "cmtva1c3u001ujckze4mnrill",
+      "memberCode": "DAQNCR",
+      "partyId": "cmtva1c3b001tjckznwuulwsy",
       "phone": "0810000010",
       "email": "mb-member-10@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 11,
-      "id": "cmtv7woto001wk7kzbxdxiudc",
-      "memberCode": "6X58KV",
-      "partyId": "cmtv7wote001vk7kzw5h66g1e",
+      "id": "cmtva1c5b001wjckzhk7tnf0e",
+      "memberCode": "HDVJWJ",
+      "partyId": "cmtva1c51001vjckzicqbdb5n",
       "phone": "0810000011",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 12,
-      "id": "cmtv7wovp001yk7kz2odglx5w",
-      "memberCode": "57DYP8",
-      "partyId": "cmtv7wove001xk7kzopah2xxr",
+      "id": "cmtva1c7e001yjckzbi78mt9t",
+      "memberCode": "NC5T8S",
+      "partyId": "cmtva1c73001xjckzwljuy1am",
       "phone": "0810000012",
       "email": "mb-member-12@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 13,
-      "id": "cmtv7wox10020k7kznzxmzhs2",
-      "memberCode": "65G7UR",
-      "partyId": "cmtv7wowq001zk7kzu3endw77",
+      "id": "cmtva1c8y0020jckzm2hfdu75",
+      "memberCode": "YY3RGC",
+      "partyId": "cmtva1c8n001zjckza60yfjvv",
       "phone": "0810000013",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 14,
-      "id": "cmtv7woyy0022k7kzaighu2tv",
-      "memberCode": "AUPRR5",
-      "partyId": "cmtv7woyo0021k7kzs7x4oj9s",
+      "id": "cmtva1caz0022jckzau7z6ab0",
+      "memberCode": "JEL95C",
+      "partyId": "cmtva1cao0021jckz6tw65r7l",
       "phone": "0810000014",
       "email": "mb-member-14@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 15,
-      "id": "cmtv7wp090024k7kziq91fikl",
-      "memberCode": "TWXFXE",
-      "partyId": "cmtv7wozz0023k7kzzkll7snv",
+      "id": "cmtva1ccg0024jckz2y7ox9e7",
+      "memberCode": "UXQW7A",
+      "partyId": "cmtva1cc50023jckz668sxw3d",
       "phone": "0810000015",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 16,
-      "id": "cmtv7wp230026k7kzx916ixni",
-      "memberCode": "TJV87F",
-      "partyId": "cmtv7wp1t0025k7kz3mwfts61",
+      "id": "cmtva1cej0026jckzplak05r0",
+      "memberCode": "CCPCRX",
+      "partyId": "cmtva1ce90025jckz1medji74",
       "phone": "0810000016",
       "email": "mb-member-16@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 17,
-      "id": "cmtv7wp3h0028k7kz473658p1",
-      "memberCode": "T6LYCP",
-      "partyId": "cmtv7wp360027k7kzmy6icesf",
+      "id": "cmtva1cfy0028jckzo8jjp3w2",
+      "memberCode": "6U57WY",
+      "partyId": "cmtva1cfn0027jckzffvwo77i",
       "phone": "0810000017",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 18,
-      "id": "cmtv7wp5a002ak7kzrs13qyq5",
-      "memberCode": "DG5X4K",
-      "partyId": "cmtv7wp500029k7kz2reuz82c",
+      "id": "cmtva1chz002ajckzun0albru",
+      "memberCode": "66EHK9",
+      "partyId": "cmtva1chn0029jckza5jdqwj0",
       "phone": "0810000018",
       "email": "mb-member-18@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 19,
-      "id": "cmtv7wp6l002ck7kzjcg26frq",
-      "memberCode": "38L5UD",
-      "partyId": "cmtv7wp6b002bk7kzayhc1zzj",
+      "id": "cmtva1cjg002cjckz8wr87sd3",
+      "memberCode": "UDAPA7",
+      "partyId": "cmtva1cj5002bjckzb1ouxzi9",
       "phone": "0810000019",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 20,
-      "id": "cmtv7wp8d002ek7kzedomihqp",
-      "memberCode": "98F94P",
-      "partyId": "cmtv7wp83002dk7kzjwx7wv2r",
+      "id": "cmtva1clg002ejckz2n8mmc0p",
+      "memberCode": "7XFCAN",
+      "partyId": "cmtva1cl5002djckzunouadrs",
       "phone": "0810000020",
       "email": "mb-member-20@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 21,
-      "id": "cmtv7wp9n002gk7kzxyca1f22",
-      "memberCode": "P6M8N5",
-      "partyId": "cmtv7wp9e002fk7kze8ag17fz",
+      "id": "cmtva1cmw002gjckz6n1wmlpu",
+      "memberCode": "RX5Q5Y",
+      "partyId": "cmtva1cml002fjckzpgh83znb",
       "phone": "0810000021",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 22,
-      "id": "cmtv7wpbg002ik7kzsc2cfax8",
-      "memberCode": "6N54YQ",
-      "partyId": "cmtv7wpb6002hk7kz47zaxytz",
+      "id": "cmtva1cow002ijckztl5r1rz7",
+      "memberCode": "XLGG3H",
+      "partyId": "cmtva1col002hjckzgqr4bm6a",
       "phone": "0810000022",
       "email": "mb-member-22@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 23,
-      "id": "cmtv7wpcr002kk7kzhm99nxw6",
-      "memberCode": "FFL4UG",
-      "partyId": "cmtv7wpch002jk7kzcyuq6bjt",
+      "id": "cmtva1cqo002kjckz0c7cdkad",
+      "memberCode": "6MJMGV",
+      "partyId": "cmtva1cqc002jjckzb4oxvmu8",
       "phone": "0810000023",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 24,
-      "id": "cmtv7wpej002mk7kz971zdnit",
-      "memberCode": "TWNYFM",
-      "partyId": "cmtv7wpe9002lk7kzipypxees",
+      "id": "cmtva1cso002mjckza9b8i4tt",
+      "memberCode": "64WQKC",
+      "partyId": "cmtva1cse002ljckzub4domgm",
       "phone": "0810000024",
       "email": "mb-member-24@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 25,
-      "id": "cmtv7wpfv002ok7kzlry1cqbs",
-      "memberCode": "LNXFYW",
-      "partyId": "cmtv7wpfm002nk7kz61n77yj0",
+      "id": "cmtva1cu4002ojckzyfnqblnw",
+      "memberCode": "5CWLMX",
+      "partyId": "cmtva1ctt002njckzqdy4pg6c",
       "phone": "0810000025",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 26,
-      "id": "cmtv7wpho002qk7kzb643yo79",
-      "memberCode": "FKWCK9",
-      "partyId": "cmtv7wphe002pk7kz8l6r4urt",
+      "id": "cmtva1cw3002qjckzx1hsyzrr",
+      "memberCode": "8NPMSM",
+      "partyId": "cmtva1cvs002pjckzc5f2h4jk",
       "phone": "0810000026",
       "email": "mb-member-26@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 27,
-      "id": "cmtv7wpiz002sk7kzg32xquiq",
-      "memberCode": "HQD35C",
-      "partyId": "cmtv7wpip002rk7kzwy572my5",
+      "id": "cmtva1cxt002sjckzqz7mi7xk",
+      "memberCode": "K5RJYU",
+      "partyId": "cmtva1cxj002rjckz0dhzybib",
       "phone": "0810000027",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 28,
-      "id": "cmtv7wpkv002uk7kzvehikghy",
-      "memberCode": "DQWT3S",
-      "partyId": "cmtv7wpkl002tk7kz0mc9cinw",
+      "id": "cmtva1czv002ujckzuv5gzi07",
+      "memberCode": "5J8NXD",
+      "partyId": "cmtva1czl002tjckzz9zltjub",
       "phone": "0810000028",
       "email": "mb-member-28@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 29,
-      "id": "cmtv7wpm6002wk7kzkzapdkgw",
-      "memberCode": "AHT83C",
-      "partyId": "cmtv7wplw002vk7kzluqa4txo",
+      "id": "cmtva1d1b002wjckzgus38824",
+      "memberCode": "RT34TP",
+      "partyId": "cmtva1d10002vjckz877o1hmf",
       "phone": "0810000029",
       "email": null,
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 30,
-      "id": "cmtv7wpnz002yk7kzd38quty3",
-      "memberCode": "W99CY7",
-      "partyId": "cmtv7wpnq002xk7kzz8rtj84p",
+      "id": "cmtva1d3a002yjckzzalbwtb9",
+      "memberCode": "YF8KGT",
+      "partyId": "cmtva1d30002xjckzsvosfkww",
       "phone": "0810000030",
       "email": "mb-member-30@example.com",
       "tier": "MEMBER",
       "unit": "patong",
-      "tierDefId": "cmtv7xikc00005okzd7e6rczt"
+      "tierDefId": "cmtva27sy0000zjkzhn7z4bhs"
     },
     {
       "index": 31,
-      "id": "cmtv7wppa0030k7kzi8aop4vb",
-      "memberCode": "JVYRG6",
-      "partyId": "cmtv7wpp0002zk7kzqi8xe67q",
+      "id": "cmtva1d4q0030jckzcwkiudl9",
+      "memberCode": "S4SGVS",
+      "partyId": "cmtva1d4f002zjckzlu45rp3k",
       "phone": "0810000031",
       "email": null,
       "tier": "SILVER",
       "unit": "patong",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 32,
-      "id": "cmtv7wpr70032k7kzot4sy2qq",
-      "memberCode": "KXVE9L",
-      "partyId": "cmtv7wpqv0031k7kz1j8dq0gp",
+      "id": "cmtva1d6r0032jckza5656o9r",
+      "memberCode": "KDAV5F",
+      "partyId": "cmtva1d6g0031jckza2zqiavt",
       "phone": "0810000032",
       "email": "mb-member-32@example.com",
       "tier": "SILVER",
       "unit": "patong",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 33,
-      "id": "cmtv7wpsi0034k7kzt5giec3f",
-      "memberCode": "9V5WY6",
-      "partyId": "cmtv7wps80033k7kzo6qjo4j4",
+      "id": "cmtva1d880034jckzrgvkzfqu",
+      "memberCode": "RN7CX8",
+      "partyId": "cmtva1d7x0033jckz5pkjq68g",
       "phone": "0810000033",
       "email": null,
       "tier": "SILVER",
       "unit": "patong",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 34,
-      "id": "cmtv7wpuc0036k7kzbxqwsye5",
-      "memberCode": "5V4HXK",
-      "partyId": "cmtv7wpu20035k7kz8lckmy08",
+      "id": "cmtva1da80036jckzhmvrqo6n",
+      "memberCode": "QWMW7S",
+      "partyId": "cmtva1d9x0035jckzjmohylx2",
       "phone": "0810000034",
       "email": "mb-member-34@example.com",
       "tier": "SILVER",
       "unit": "patong",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 35,
-      "id": "cmtv7wpvr0038k7kzav8zpbg3",
-      "memberCode": "H834RY",
-      "partyId": "cmtv7wpvh0037k7kzvymfei1n",
+      "id": "cmtva1dbp0038jckzc1pyh16a",
+      "memberCode": "5L7LSN",
+      "partyId": "cmtva1dbd0037jckzurub3mmj",
       "phone": "0810000035",
       "email": null,
       "tier": "SILVER",
       "unit": "patong",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 36,
-      "id": "cmtv7wpxo003ak7kzhylasoom",
-      "memberCode": "PGMAQH",
-      "partyId": "cmtv7wpxd0039k7kzgzyg2roz",
+      "id": "cmtva1dds003ajckz04il6qw6",
+      "memberCode": "9NNSLE",
+      "partyId": "cmtva1ddg0039jckzrjdmzatb",
       "phone": "0810000036",
       "email": "mb-member-36@example.com",
       "tier": "SILVER",
       "unit": "patong",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 37,
-      "id": "cmtv7wpz0003ck7kzzmlwsos1",
-      "memberCode": "6CTDMD",
-      "partyId": "cmtv7wpyq003bk7kzm4vgb2ft",
+      "id": "cmtva1df8003cjckzizog37lb",
+      "memberCode": "8MKJN9",
+      "partyId": "cmtva1dey003bjckz5xstv1hz",
       "phone": "0810000037",
       "email": null,
       "tier": "SILVER",
       "unit": "patong",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 38,
-      "id": "cmtv7wq0v003ek7kzn62e0e8j",
-      "memberCode": "DH5WU7",
-      "partyId": "cmtv7wq0l003dk7kzapd8whxn",
+      "id": "cmtva1dh9003ejckzja43zgzh",
+      "memberCode": "V95ATD",
+      "partyId": "cmtva1dgy003djckzr0rt4j9i",
       "phone": "0810000038",
       "email": "mb-member-38@example.com",
       "tier": "SILVER",
       "unit": "patong",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 39,
-      "id": "cmtv7wq26003gk7kzms39qpmy",
-      "memberCode": "CHLRFD",
-      "partyId": "cmtv7wq1w003fk7kzgsyofmta",
+      "id": "cmtva1dis003gjckzsdvwrtky",
+      "memberCode": "XGVL6H",
+      "partyId": "cmtva1dih003fjckzc2aa5os0",
       "phone": "0810000039",
       "email": null,
       "tier": "SILVER",
       "unit": "patong",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 40,
-      "id": "cmtv7wq41003ik7kz23hvvifb",
-      "memberCode": "LKRJRM",
-      "partyId": "cmtv7wq3r003hk7kzmjq5zn5s",
+      "id": "cmtva1dks003ijckzlq38mwhz",
+      "memberCode": "HJJK5P",
+      "partyId": "cmtva1dkh003hjckz0aez4r9i",
       "phone": "0810000040",
       "email": "mb-member-40@example.com",
       "tier": "SILVER",
       "unit": "patong",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 41,
-      "id": "cmtv7wq5e003kk7kzd33xswky",
-      "memberCode": "DCJGJH",
-      "partyId": "cmtv7wq53003jk7kzrsjjc8y7",
+      "id": "cmtva1dm8003kjckzbbqiyox5",
+      "memberCode": "KNURTV",
+      "partyId": "cmtva1dlx003jjckzr9zn2eov",
       "phone": "0810000041",
       "email": null,
       "tier": "SILVER",
       "unit": "kata",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 42,
-      "id": "cmtv7wq77003mk7kznpuakf4o",
-      "memberCode": "GQCP4N",
-      "partyId": "cmtv7wq6w003lk7kzx98jsiug",
+      "id": "cmtva1dov003mjckzqf17icob",
+      "memberCode": "YYYMUJ",
+      "partyId": "cmtva1doh003ljckz8n69dnp3",
       "phone": "0810000042",
       "email": "mb-member-42@example.com",
       "tier": "SILVER",
       "unit": "kata",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 43,
-      "id": "cmtv7wq8h003ok7kz6fidq31n",
-      "memberCode": "CC79S8",
-      "partyId": "cmtv7wq87003nk7kz2s6pv08q",
+      "id": "cmtva1dri003ojckz5okqwcfa",
+      "memberCode": "NAFHFP",
+      "partyId": "cmtva1dr7003njckze1qp97jl",
       "phone": "0810000043",
       "email": null,
       "tier": "SILVER",
       "unit": "kata",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 44,
-      "id": "cmtv7wqa9003qk7kzmh6ws4jf",
-      "memberCode": "WMGHYR",
-      "partyId": "cmtv7wq9z003pk7kzrqa9f5tc",
+      "id": "cmtva1dth003qjckz8i959g7o",
+      "memberCode": "3MLRML",
+      "partyId": "cmtva1dt7003pjckzfnee25nr",
       "phone": "0810000044",
       "email": "mb-member-44@example.com",
       "tier": "SILVER",
       "unit": "kata",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 45,
-      "id": "cmtv7wqbn003sk7kzk1iz3cbu",
-      "memberCode": "UHJVQK",
-      "partyId": "cmtv7wqbd003rk7kze2mjtki8",
+      "id": "cmtva1dux003sjckzsvr5uag1",
+      "memberCode": "TSCWTT",
+      "partyId": "cmtva1dun003rjckzf814wns4",
       "phone": "0810000045",
       "email": null,
       "tier": "SILVER",
       "unit": "kata",
-      "tierDefId": "cmtv7xil800015okzec2fdvtr"
+      "tierDefId": "cmtva27to0001zjkzc1vd9i10"
     },
     {
       "index": 46,
-      "id": "cmtv7wqdi003uk7kz6biim5yc",
-      "memberCode": "A4NV8P",
-      "partyId": "cmtv7wqd8003tk7kzrv42x1ap",
+      "id": "cmtva1dwx003ujckzraxhkjve",
+      "memberCode": "FM9QXR",
+      "partyId": "cmtva1dwm003tjckz002c5pfq",
       "phone": "0810000046",
       "email": "mb-member-46@example.com",
       "tier": "GOLD",
       "unit": "kata",
-      "tierDefId": "cmtv7xilt00025okzwz49yipe"
+      "tierDefId": "cmtva27uf0002zjkztj40993i"
     },
     {
       "index": 47,
-      "id": "cmtv7wqet003wk7kz8e17r94q",
-      "memberCode": "K7PGHG",
-      "partyId": "cmtv7wqej003vk7kz9mip4717",
+      "id": "cmtva1dyf003wjckzcfql7m0p",
+      "memberCode": "LNPCAE",
+      "partyId": "cmtva1dy2003vjckz547aejbg",
       "phone": "0810000047",
       "email": null,
       "tier": "GOLD",
       "unit": "kata",
-      "tierDefId": "cmtv7xilt00025okzwz49yipe"
+      "tierDefId": "cmtva27uf0002zjkztj40993i"
     },
     {
       "index": 48,
-      "id": "cmtv7wqgm003yk7kzt1yvpoke",
-      "memberCode": "R69YNX",
-      "partyId": "cmtv7wqgc003xk7kz64zultn5",
+      "id": "cmtva1e0e003yjckzppimrfyo",
+      "memberCode": "6TLLGA",
+      "partyId": "cmtva1e03003xjckzet29cehu",
       "phone": "0810000048",
       "email": "mb-member-48@example.com",
       "tier": "GOLD",
       "unit": "kata",
-      "tierDefId": "cmtv7xilt00025okzwz49yipe"
+      "tierDefId": "cmtva27uf0002zjkztj40993i"
     },
     {
       "index": 49,
-      "id": "cmtv7wqhy0040k7kzdly7jelj",
-      "memberCode": "WXC5F7",
-      "partyId": "cmtv7wqho003zk7kzkhvuvemn",
+      "id": "cmtva1e1v0040jckztvhku5rh",
+      "memberCode": "HTVM53",
+      "partyId": "cmtva1e1k003zjckz1objlrkd",
       "phone": "0810000049",
       "email": null,
       "tier": "GOLD",
       "unit": "kata",
-      "tierDefId": "cmtv7xilt00025okzwz49yipe"
+      "tierDefId": "cmtva27uf0002zjkztj40993i"
     },
     {
       "index": 50,
-      "id": "cmtv7wqk40042k7kz0paz36ia",
-      "memberCode": "MESN6N",
-      "partyId": "cmtv7wqjp0041k7kziob787wo",
+      "id": "cmtva1e3w0042jckz64wrkn0p",
+      "memberCode": "XXUQYK",
+      "partyId": "cmtva1e3k0041jckzedlloy61",
       "phone": "0810000050",
       "email": "mb-member-50@example.com",
       "tier": "GOLD",
       "unit": "kata",
-      "tierDefId": "cmtv7xilt00025okzwz49yipe"
+      "tierDefId": "cmtva27uf0002zjkztj40993i"
     },
     {
       "index": 51,
-      "id": "cmtv7wqln0044k7kz06tzl8bq",
-      "memberCode": "F5P6DF",
-      "partyId": "cmtv7wqlc0043k7kzk1hh6wzx",
+      "id": "cmtva1e5c0044jckzm3ztcb3x",
+      "memberCode": "LSKKQK",
+      "partyId": "cmtva1e510043jckztj4oc97k",
       "phone": "0810000051",
       "email": null,
       "tier": "GOLD",
       "unit": "kata",
-      "tierDefId": "cmtv7xilt00025okzwz49yipe"
+      "tierDefId": "cmtva27uf0002zjkztj40993i"
     },
     {
       "index": 52,
-      "id": "cmtv7wqni0046k7kzka3ia173",
-      "memberCode": "HS3C36",
-      "partyId": "cmtv7wqn70045k7kzlthqpjxb",
+      "id": "cmtva1e7b0046jckz4vch1v4a",
+      "memberCode": "VYP7J6",
+      "partyId": "cmtva1e710045jckzoiuc6ieb",
       "phone": "0810000052",
       "email": "mb-member-52@example.com",
       "tier": "GOLD",
       "unit": "kata",
-      "tierDefId": "cmtv7xilt00025okzwz49yipe"
+      "tierDefId": "cmtva27uf0002zjkztj40993i"
     },
     {
       "index": 53,
-      "id": "cmtv7wqou0048k7kzwasinvpj",
-      "memberCode": "EUX54P",
-      "partyId": "cmtv7wqok0047k7kz4oo9xdfd",
+      "id": "cmtva1e8s0048jckzmeeeh736",
+      "memberCode": "SVC7PC",
+      "partyId": "cmtva1e8h0047jckzjvzfw994",
       "phone": "0810000053",
       "email": null,
       "tier": "GOLD",
       "unit": "kata",
-      "tierDefId": "cmtv7xilt00025okzwz49yipe"
+      "tierDefId": "cmtva27uf0002zjkztj40993i"
     },
     {
       "index": 54,
-      "id": "cmtv7wqqo004ak7kz2tpg45gt",
-      "memberCode": "Q3UPSG",
-      "partyId": "cmtv7wqqd0049k7kzcxo4rks5",
+      "id": "cmtva1eat004ajckz2o1rnltp",
+      "memberCode": "5NFJ5G",
+      "partyId": "cmtva1eai0049jckzcqj6dihv",
       "phone": "0810000054",
       "email": "mb-member-54@example.com",
       "tier": "GOLD",
       "unit": "kata",
-      "tierDefId": "cmtv7xilt00025okzwz49yipe"
+      "tierDefId": "cmtva27uf0002zjkztj40993i"
     },
     {
       "index": 55,
-      "id": "cmtv7wqs0004ck7kznwtpjtic",
-      "memberCode": "EYUKXX",
-      "partyId": "cmtv7wqrq004bk7kzs4xreudt",
+      "id": "cmtva1ecd004cjckzs40ttxz3",
+      "memberCode": "CUQXD3",
+      "partyId": "cmtva1ec3004bjckzcb6ewsau",
       "phone": "0810000055",
       "email": null,
       "tier": "GOLD",
       "unit": "kata",
-      "tierDefId": "cmtv7xilt00025okzwz49yipe"
+      "tierDefId": "cmtva27uf0002zjkztj40993i"
     },
     {
       "index": 56,
-      "id": "cmtv7wqty004ek7kzsv5ikknr",
-      "memberCode": "P5D3QN",
-      "partyId": "cmtv7wqtn004dk7kzvvoaq11u",
+      "id": "cmtva1eed004ejckz7hezkj8d",
+      "memberCode": "Q4EAFM",
+      "partyId": "cmtva1ee3004djckz8yfrf7s0",
       "phone": "0810000056",
       "email": "mb-member-56@example.com",
       "tier": "PLATINUM",
       "unit": "kata",
-      "tierDefId": "cmtv7ximh00035okzy43xgj66"
+      "tierDefId": "cmtva27v30003zjkzvcvx97f3"
     },
     {
       "index": 57,
-      "id": "cmtv7wqv9004gk7kziynn9miz",
-      "memberCode": "865JSJ",
-      "partyId": "cmtv7wquz004fk7kzhdsrf8le",
+      "id": "cmtva1efu004gjckz8g311bg7",
+      "memberCode": "RNS5YG",
+      "partyId": "cmtva1efj004fjckzbjaym03y",
       "phone": "0810000057",
       "email": null,
       "tier": "PLATINUM",
       "unit": "kata",
-      "tierDefId": "cmtv7ximh00035okzy43xgj66"
+      "tierDefId": "cmtva27v30003zjkzvcvx97f3"
     },
     {
       "index": 58,
-      "id": "cmtv7wqx4004ik7kzw0t2lgbp",
-      "memberCode": "SPC9E5",
-      "partyId": "cmtv7wqwu004hk7kz5qo5ma1d",
+      "id": "cmtva1ehv004ijckzx8krtgnr",
+      "memberCode": "FWQKQL",
+      "partyId": "cmtva1ehl004hjckzr3ap4xje",
       "phone": "0810000058",
       "email": "mb-member-58@example.com",
       "tier": "PLATINUM",
       "unit": "kata",
-      "tierDefId": "cmtv7ximh00035okzy43xgj66"
+      "tierDefId": "cmtva27v30003zjkzvcvx97f3"
     },
     {
       "index": 59,
-      "id": "cmtv7wqyg004kk7kzdxq87v2j",
-      "memberCode": "J6HCWD",
-      "partyId": "cmtv7wqy7004jk7kz4fe2iezg",
+      "id": "cmtva1ejp004kjckzks80izwf",
+      "memberCode": "U3Y6QA",
+      "partyId": "cmtva1eje004jjckzcokhrp41",
       "phone": "0810000059",
       "email": null,
       "tier": "PLATINUM",
       "unit": "kata",
-      "tierDefId": "cmtv7ximh00035okzy43xgj66"
+      "tierDefId": "cmtva27v30003zjkzvcvx97f3"
     },
     {
       "index": 60,
-      "id": "cmtv7wr0a004mk7kzbtw52aqz",
-      "memberCode": "DJX4GX",
-      "partyId": "cmtv7wr00004lk7kzmwhhh06p",
+      "id": "cmtva1ep6004mjckzhl4t1wu5",
+      "memberCode": "F84JNN",
+      "partyId": "cmtva1eob004ljckz2aszjr1c",
       "phone": "0810000060",
       "email": "mb-member-60@example.com",
       "tier": "PLATINUM",
       "unit": "kata",
-      "tierDefId": "cmtv7ximh00035okzy43xgj66"
+      "tierDefId": "cmtva27v30003zjkzvcvx97f3"
     }
   ],
   "counts": {

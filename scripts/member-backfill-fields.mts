@@ -106,11 +106,14 @@ const FIELDS: FieldSeed[] = [
       ],
     },
   },
-  { key: "ownerUserId", label: "ผู้ดูแล", type: "LOOKUP", section: "internal", filterable: true, options: { target: "EMPLOYEE" } },
+  // 🔴 target = USER ไม่ใช่ EMPLOYEE: คอลัมน์ `Customer.ownerUserId` เก็บ **User.id** (บัญชีผู้ใช้ที่มี
+  //    Membership ในร้าน) ไม่ใช่ `HrEmployee.id` — ถ้าตรวจกับทะเบียน HR จะเลือกคนที่ไม่มีบัญชีเข้าระบบได้
+  //    (แก้ที่ M1.4 พร้อม migration `member_v2_b` ที่เพิ่มค่า enum `MemberLookupTarget.USER`)
+  { key: "ownerUserId", label: "ผู้ดูแล", type: "LOOKUP", section: "internal", filterable: true, options: { target: "USER" } },
   { key: "homeUnitId", label: "สาขาหลัก", type: "LOOKUP", section: "internal", filterable: true, showInList: true, options: { target: "UNIT" } },
 ];
 
-const counts = { ร้านที่แก้: 0, ส่วนที่สร้าง: 0, ฟิลด์ที่สร้าง: 0 };
+const counts: Record<string, number> = { ร้านที่แก้: 0, ส่วนที่สร้าง: 0, ฟิลด์ที่สร้าง: 0, ฟิลด์ที่ปรับปลายทาง: 0 };
 
 for (const t of tenants) {
   const systems = await common.memberSystems(prisma, t.id);
@@ -144,7 +147,21 @@ for (const t of tenants) {
         order += 1;
         // idempotent ต่อ (systemId, systemKey) — ร้านเปลี่ยนป้าย/ย้ายส่วนแล้วต้องไม่ถูกเขียนทับ
         const found = await tx.memberField.findFirst({ where: { systemId: sys.id, systemKey: f.key } });
-        if (found) continue;
+        if (found) {
+          // 🔴 ข้อยกเว้นเดียวของกติกา "ไม่ทับของเดิม" (M1.4): ฟิลด์ระบบ `ownerUserId` ที่ backfill รอบก่อน
+          //    สร้างไว้ด้วย target = EMPLOYEE ชี้ผิดตาราง (ค่าที่เก็บคือ User.id) ⇒ ย้ายเป็น USER ให้
+          //    ปรับเฉพาะแถวที่ยังเป็น EMPLOYEE เท่านั้น (รันซ้ำครั้งที่ 2 = 0 แถว) · ไม่แตะป้าย/ส่วน/ลำดับที่ร้านตั้งเอง
+          if (f.key === "ownerUserId" && (found.options as Any)?.target === "EMPLOYEE") {
+            counts["ฟิลด์ที่ปรับปลายทาง"] += 1;
+            touched = true;
+            if (!args.dryRun) {
+              await tx.memberField.update({ where: { id: found.id }, data: { options: { target: "USER" } } });
+            } else {
+              console.log(`  [dry-run] ${t.slug}: จะย้ายปลายทางฟิลด์ "ผู้ดูแล" จาก EMPLOYEE → USER`);
+            }
+          }
+          continue;
+        }
         counts.ฟิลด์ที่สร้าง += 1;
         touched = true;
         if (args.dryRun) continue;

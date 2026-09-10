@@ -44,6 +44,10 @@ model Customer {
   //       (เพิ่มช่องทางใหม่ต้องไม่ต้องทำ migration)
   preferredChannel String?
   lineUserId       String? // ค่าเดี่ยวเดิม — v2 ใช้ MemberChannelIdentity แทน (คงไว้เพื่อความเข้ากันได้)
+  // ── M1.4 (migration `member_v2_b`) — ที่เก็บของ "ฟิลด์ระบบ" 2 ตัวที่ M1.2 ยังไม่มีคอลัมน์รองรับ ──
+  // (ก่อนหน้านี้ `fields.ts` โยนข้อความไทยบอกตรง ๆ ว่าเก็บไม่ได้ · ไม่แอบเก็บลงที่อื่น — ดู wo-notes M1.2)
+  phone2           String? // เบอร์สำรอง
+  facebook         String? // เฟซบุ๊ก (URL หรือชื่อผู้ใช้ — ร้านกรอกอิสระ)
   status           MemberStatus  @default(ACTIVE)
   tierDefId        String? // D1 — ระดับตัวจริงของ v2 (enum `tier` ข้างบน = สะพานให้โค้ดเก่า)
   tierPoints       Int           @default(0)
@@ -199,6 +203,9 @@ enum MemberLookupTarget {
   EMPLOYEE
   UNIT
   CUSTOMER
+  // M1.4 (`member_v2_b`) — ปลายทาง "ผู้ใช้ระบบ" (Customer.ownerUserId เก็บ User.id ไม่ใช่ HrEmployee.id)
+  // ⇒ ฟิลด์ระบบ `ownerUserId` ต้องตรวจกับ Membership ของร้าน ไม่ใช่ทะเบียนพนักงาน HR
+  USER
 }
 
 // ที่มาของการบันทึก (ยินยอม/แก้ฟิลด์/คำขอ PDPA) — "ใครเป็นคนกด" ในเชิงช่องทาง ไม่ใช่ตัวบุคคล

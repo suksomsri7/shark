@@ -448,6 +448,20 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "account.asset.depreciated": withAutomation(async () => {}),
   "account.asset.disposed": withAutomation(async () => {}),
   "account.recurring.ran": withAutomation(async () => {}),
+  // ── ระบบสมาชิก v2 (M1.4 · พิมพ์เขียว 06-member-v2 §7.1) ──────────────────────
+  // 🔴 ทั้ง 5 ตัวเป็น **no-op ที่ห้ามล้ม**: ของจริงถูกเขียนครบใน transaction ของ service แล้ว
+  //    (สมาชิก/ยินยอม/ที่มา/ไทม์ไลน์/บันทึกการดู) — consumer มีไว้ 3 อย่างเท่านั้น
+  //    (1) ปิด event เป็น DONE ไม่ให้ค้าง PENDING แล้วคิวทั้งระบบตัน (บทเรียน 30 ส.ค. 2026)
+  //    (2) เป็นจุดให้กฎอัตโนมัติ/journey ยิง (withAutomation)  (3) ยิงเว็บฮุคออกนอกระบบ (withWebhooks)
+  //    ผลข้างเคียงจริง (แต้มต้อนรับ · แนะนำเพื่อน · sync ชื่อไปแชท/CRM) มาที่ M1.8/M1.9/M3.x
+  //    ผ่าน composition root `member-bridges.ts` — ตอนนั้นค่อยต่อท้ายด้วย compose() เหมือนบอร์ดงาน
+  "member.created": withAutomation(async () => {}),
+  "member.updated": withAutomation(async () => {}),
+  "member.merged": withAutomation(async () => {}),
+  "member.identity.linked": withAutomation(async () => {}),
+  // ดูข้อมูลอ่อนไหว: แถว MemberAccessLog ถูกเขียนไปแล้วตอนเปิดดู (privacy.logAccess)
+  // ตัวนี้จึงมีไว้ให้ระบบภายนอกที่ทำหน้าที่ "เฝ้าการเข้าถึงข้อมูลส่วนบุคคล" รับต่อผ่านเว็บฮุค
+  "member.sensitive.viewed": withAutomation(async () => {}),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

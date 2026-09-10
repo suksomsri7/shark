@@ -79,6 +79,20 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: "[data-testid=member-360]" }, { wait: 500 }],
     }]),
   ],
+  // M1.10 — ระดับสมาชิก (ภาพ 04) + benefits editor (ภาพ 15)
+  "1.10": [
+    {
+      name: `tiers-${userKey}`,
+      path: `${MEMBER_BASE}/tiers`,
+      note: userKey === "owner" ? "เทียบภาพ 04: บันได 4 ขั้น+จำนวนคน · กฎ upgrade/keep · รอบประเมิน · ทดลองรัน · ประวัติ · แบบเสียเงิน · ตัวอย่างบัตร LINE" : userKey === "thana" ? "อ่านอย่างเดียว (ไม่มี tiers-add)" : "404",
+      expect: userKey === "noperm" ? [] : ["[data-testid=tiers-page]", "[data-testid=tiers-ladder]", "[data-testid=tiers-rule-builder]", "[data-testid=tiers-history]", ...(userKey === "owner" ? ["[data-testid=tiers-add]"] : [])],
+      steps: userKey === "noperm" ? [{ wait: 800 }] : [{ waitFor: "[data-testid=tiers-page]" }, { wait: 500 }],
+    },
+    ...(userKey === "owner" ? [
+      { name: "tiers-dryrun-result", path: `${MEMBER_BASE}/tiers`, onlyDevice: "desktop" as const, note: "กดทดลองรัน → ตารางผล (เลื่อน/ลด/คง/ใกล้ลด)", expect: ["[data-testid=tiers-dryrun-result]"], steps: [{ waitFor: "[data-testid=tiers-dryrun-run]" }, { click: "[data-testid=tiers-dryrun-run]" }, { waitFor: "[data-testid=tiers-dryrun-result]", timeoutMs: 30_000 }, { wait: 500 }] },
+      { name: "tiers-benefits-owner", path: `${MEMBER_BASE}/tiers/${E.tierDefs.gold}`, onlyDevice: "desktop" as const, note: "เทียบภาพ 15: benefits editor 9–10 ชนิด + ตั้งค่าระดับ", expect: ["[data-testid=tiers-benefits]", "[data-testid=tiers-benefit-DISCOUNT_PCT]"], steps: [{ waitFor: "[data-testid=tiers-benefits]" }, { wait: 400 }] },
+    ] : []),
+  ],
   // M1.8 — ช่องทางที่มา (ภาพ 13): KPI · แท่งต่อช่องทาง first/last · ตารางลิงก์/QR · โมดัลสร้างลิงก์
   "1.8": [
     {

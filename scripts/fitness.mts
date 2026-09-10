@@ -339,6 +339,13 @@ const ALLOWED_EDGES = new Set([
   //   ⇒ ห้ามแตะตาราง `Party` ตรงตามพิมพ์เขียว §9.1 · ทิศเดียว kanban→party (party ไม่รู้จัก kanban)
   //   — Fable อนุมัติล่วงหน้า (ledger/KANBAN-RUN.md ท้าย §K3.2 กล่อง "เส้น import ข้ามโมดูลที่ Fable อนุมัติ")
   "kanban→party",
+  // chokepoint (M1.4 — ระบบสมาชิก v2 · ledger/MEMBER-RUN.md §2 M1.4):
+  //   member→approval : "รวมสมาชิกซ้ำ" ของผู้จัดการต้องผ่านสายอนุมัติกลาง (submitForApproval)
+  //                     ทิศเดียว · ผลกลับเข้าโมดูลสมาชิกเกิดที่ composition root (approval-effects.ts)
+  //   member→point    : หน้า 360 อ่านแต้มคงเหลือ + ตอนรวมคนต้องโอนแต้มเป็นรายการ MERGE สองฝั่ง
+  //                     ผ่าน facade `point/index.ts` เท่านั้น (สร้างที่ใบนี้)
+  "member→approval",
+  "member→point",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

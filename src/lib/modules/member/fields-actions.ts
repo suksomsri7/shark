@@ -53,7 +53,9 @@ async function gate(systemId: string): Promise<{ tenantId: string; userId: strin
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
   const actor = toMemberActor(auth.user.id, auth.active);
-  const mc = { role: actor.role, unitAccess: actor.unitAccess, permissions: actor.permissions };
+  // actor ของหน้าตั้งค่าคือ "พนักงานที่ล็อกอิน" เสมอ (มี Membership) — บทบาท CUSTOMER ของ MemberActor
+  // มีไว้ให้ฝั่งลูกค้า `/m/*` เท่านั้น จึงแคบชนิดกลับเป็น Role ของ RBAC ตรงนี้ได้
+  const mc = { role: auth.active.role, unitAccess: actor.unitAccess, permissions: actor.permissions };
 
   // ชั้นที่ 1 — เข้าโมดูลสมาชิกได้ไหม (read-โดยนัย แบบเดียวกับ canReadKanban ของบอร์ดงาน)
   if (!canReadMember(actor)) {

@@ -75,6 +75,8 @@ export const LOOKUP_TARGET_LABELS: Record<MemberLookupTarget, string> = {
   EMPLOYEE: "พนักงาน",
   UNIT: "สาขา",
   CUSTOMER: "สมาชิกอื่น",
+  // M1.4 (`member_v2_b`) — ผู้ใช้ระบบของร้าน (ฟิลด์ระบบ "ผู้ดูแล" ชี้มาที่นี่)
+  USER: "ผู้ใช้ระบบ",
 };
 
-export const LOOKUP_TARGET_ORDER: readonly MemberLookupTarget[] = ["PRODUCT", "SERVICE", "EMPLOYEE", "UNIT", "CUSTOMER"];
+export const LOOKUP_TARGET_ORDER: readonly MemberLookupTarget[] = ["PRODUCT", "SERVICE", "EMPLOYEE", "UNIT", "CUSTOMER", "USER"];

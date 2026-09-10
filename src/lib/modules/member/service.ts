@@ -119,7 +119,12 @@ const CODE_ALPHABET = "ACDEFGHJKLMNPQRSTUVWXY3456789";
 function randCode(): string {
   return randomCode(6, CODE_ALPHABET);
 }
-async function uniqueMemberCode(client: Client, memberSystemId: string): Promise<string> {
+/**
+ * รหัสสมาชิกที่ยังไม่มีใครใช้ในระบบสมาชิกนี้ (สุ่ม → ตรวจ → ลองใหม่ ≤ 6 ครั้ง)
+ * 🔴 export ตั้งแต่ M1.4 เพื่อให้ `profile.createMember` ใช้ **ตัวสร้างเดียวกัน** กับทางเข้าเดิม
+ *    (ถ้าต่างคนต่างสุ่ม รูปแบบรหัสของร้านเดียวกันจะไม่เหมือนกันแล้วแต่ว่าสมัครจากทางไหน)
+ */
+export async function uniqueMemberCode(client: Client, memberSystemId: string): Promise<string> {
   for (let i = 0; i < 6; i++) {
     const code = randCode();
     const exists = await client.customer.findFirst({ where: { memberSystemId, memberCode: code } });

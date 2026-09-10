@@ -1,7 +1,7 @@
 // party/index.ts — facade เดียวที่โมดูลอื่นได้รับอนุญาตให้ import (fitness F2.2 บังคับ)
 // WO 3.1 — ดู service.ts สำหรับตรรกะเต็ม + wo-notes/3.1.md สำหรับเหตุผลการออกแบบ
 
-import type { Prisma } from "@prisma/client";
+import type { Prisma, PartyMergeReason } from "@prisma/client";
 import {
   findOrCreate as findOrCreateInner,
   listBriefsByIds as listBriefsByIdsInner,
@@ -12,6 +12,8 @@ import {
   resolveCanonical as resolveCanonicalInner,
   findDuplicateCandidates as findDuplicateCandidatesInner,
   recordMergeCandidates as recordMergeCandidatesInner,
+  recordMergeCandidatePair as recordMergeCandidatePairInner,
+  mergeParties as mergePartiesInner,
   normalizePartyTaxId,
   normalizePartyPhone,
   nameSimilarity,
@@ -113,4 +115,31 @@ export async function searchByName(
   client?: Prisma.TransactionClient,
 ): Promise<PartyBrief[]> {
   return searchByNameInner(tenantId, query, limit, client);
+}
+
+/**
+ * บันทึกคู่ "อาจเป็นคนเดียวกัน" เจาะจง 1 คู่ (M1.4 · D18 — id ช่องทางชนกับเบอร์ของอีกคน)
+ * idempotent · id ที่ไม่ใช่ของร้านนี้ → คืน null เงียบ ๆ
+ */
+export async function recordMergeCandidatePair(
+  tenantId: string,
+  partyAId: string,
+  partyBId: string,
+  reason: PartyMergeReason,
+  client?: Prisma.TransactionClient,
+): Promise<{ id: string; created: boolean } | null> {
+  return recordMergeCandidatePairInner(tenantId, partyAId, partyBId, reason, client);
+}
+
+/**
+ * รวมตัวตนกลางสองราย (`mergeId` → `mergedIntoId` = `keepId`) — ไม่ลบแถว · idempotent
+ * 🔴 ผู้เรียกต้องย้ายข้อมูลของโมดูลตัวเองใน transaction เดียวกัน (member.mergeMembers ทำแบบนี้)
+ */
+export async function mergeParties(
+  tenantId: string,
+  keepId: string,
+  mergeId: string,
+  client?: Prisma.TransactionClient,
+): Promise<boolean> {
+  return mergePartiesInner(tenantId, keepId, mergeId, client);
 }

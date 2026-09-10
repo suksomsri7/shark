@@ -86,7 +86,7 @@ export type SectionDef = {
 const FIELD_TYPES: readonly MemberFieldType[] = [
   "TEXT", "LONG_TEXT", "NUMBER", "MONEY", "DATE", "DATETIME", "SELECT", "MULTI_SELECT", "BOOLEAN", "FILE", "LOOKUP",
 ];
-const LOOKUP_TARGETS: readonly MemberLookupTarget[] = ["PRODUCT", "SERVICE", "EMPLOYEE", "UNIT", "CUSTOMER"];
+const LOOKUP_TARGETS: readonly MemberLookupTarget[] = ["PRODUCT", "SERVICE", "EMPLOYEE", "UNIT", "CUSTOMER", "USER"];
 const CONSENT_SOURCES: readonly MemberConsentSource[] = ["SIGNUP_FORM", "LIFF", "STAFF", "IMPORT", "API", "CUSTOMER_SELF"];
 
 function clientOf(tx?: Client): Client {
@@ -245,7 +245,7 @@ function normalizeVia(raw: unknown): MemberConsentSource {
 // `systemKey` (ตั้งโดย scripts/member-backfill-fields.mts) → คอลัมน์ปลายทาง
 //   • customer: คอลัมน์ของตาราง Customer
 //   • address : คอลัมน์ของ MemberAddress (ที่อยู่หลักของสมาชิก)
-//   • none    : ยังไม่มีคอลัมน์รองรับในสคีมา (phone2 / facebook — หนี้ M1.1 · ดู wo-notes M1.2)
+//   • none    : ยังไม่มีคอลัมน์รองรับในสคีมา (ตอนนี้ไม่เหลือแล้ว — phone2/facebook ได้คอลัมน์จริงที่ M1.4)
 
 type SystemTarget = { store: "customer"; column: keyof Customer } | { store: "address"; column: keyof MemberAddress } | { store: "none" };
 
@@ -274,9 +274,9 @@ const SYSTEM_FIELD_TARGETS: Record<string, SystemTarget> = {
   addressDistrict: { store: "address", column: "district" },
   addressProvince: { store: "address", column: "province" },
   addressPostcode: { store: "address", column: "postcode" },
-  // ยังไม่มีคอลัมน์: เก็บไม่ได้จนกว่า migration ถัดไปจะเพิ่ม (แจ้งผู้ใช้ตรง ๆ ดีกว่าเก็บลงที่อื่นเงียบ ๆ)
-  phone2: { store: "none" },
-  facebook: { store: "none" },
+  // M1.4 (`member_v2_b`) — ได้คอลัมน์จริงแล้ว (หนี้จาก M1.2 ปิดที่ใบนี้)
+  phone2: { store: "customer", column: "phone2" },
+  facebook: { store: "customer", column: "facebook" },
 };
 
 function targetOf(field: MemberField): SystemTarget {
@@ -1052,6 +1052,10 @@ async function lookupExists(ctx: FieldCtx, db: Client, target: MemberLookupTarge
   switch (target) {
     case "EMPLOYEE":
       return (await db.hrEmployee.count({ where })) > 0;
+    // M1.4 — "ผู้ใช้ระบบ" ไม่ใช่ id ของตาราง User เปล่า ๆ แต่ต้อง **มี Membership ในร้านนี้**
+    // (ผู้ใช้ของร้านอื่นจึงถูกตั้งเป็นผู้ดูแลสมาชิกของเราไม่ได้ — กันข้อมูลรั่วข้ามร้าน)
+    case "USER":
+      return (await db.membership.count({ where: { tenantId: ctx.tenantId, userId: id } })) > 0;
     case "UNIT":
       return (await db.businessUnit.count({ where })) > 0;
     case "PRODUCT":
@@ -1066,6 +1070,7 @@ async function lookupExists(ctx: FieldCtx, db: Client, target: MemberLookupTarge
 
 const LOOKUP_LABEL: Record<MemberLookupTarget, string> = {
   EMPLOYEE: "พนักงาน",
+  USER: "ผู้ใช้ระบบ",
   UNIT: "สาขา",
   PRODUCT: "สินค้า",
   SERVICE: "บริการ",

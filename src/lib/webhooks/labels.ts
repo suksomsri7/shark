@@ -43,6 +43,11 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   // 🔴 K3.3 — `hr.leave.submitted` ("เมื่อพนักงานยื่นใบลา") **สมัครฮุคได้แล้ว** แต่ประกาศอยู่ที่
   //    `AUTOMATION_EVENTS` (spread ไว้ข้างบน) — ห้ามประกาศซ้ำที่นี่ ไม่งั้นหน้าตั้งค่าฮุคมีช่องติ๊ก 2 แถว
   //    ต่อ event เดียว (บทเรียนเดียวกับ 5 ตัวของบอร์ดงานด้านบน)
+  // ── ระบบสมาชิก v2 (M1.4) ───────────────────────────────────────────────────
+  // 🔴 อีก 4 ตัว (`member.created` `member.updated` `member.merged` `member.identity.linked`)
+  //    ประกาศอยู่ที่ `AUTOMATION_EVENTS` ซึ่ง spread ไว้ข้างบนแล้ว — **ห้ามประกาศซ้ำที่นี่**
+  //    (บทเรียนเดียวกับ 5 ตัวของบอร์ดงาน: ประกาศ 2 ที่ = หน้าตั้งค่าฮุคมีช่องติ๊กซ้ำ 2 แถว)
+  { value: "member.sensitive.viewed", label: "เมื่อมีคนเปิดดูข้อมูลอ่อนไหวของสมาชิก" },
   { value: "approval.request.submitted", label: "เมื่อมีคำขออนุมัติใหม่" },
   { value: "approval.request.approved", label: "เมื่อคำขออนุมัติผ่าน" },
   { value: "approval.request.rejected", label: "เมื่อคำขออนุมัติถูกปฏิเสธ" },

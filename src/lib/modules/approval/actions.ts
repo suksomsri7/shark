@@ -13,7 +13,7 @@ import { createPolicy, updatePolicy, setPolicyActive, decide, bulkDecide, cancel
 const SETTINGS_PATH = "/app/settings/approval";
 const APPROVALS_PATH = "/app/approvals";
 
-const ENTITY_TYPES = new Set(["PurchaseOrder", "HrLeave"]);
+const ENTITY_TYPES = new Set(["PurchaseOrder", "HrLeave", "member.merge", "member.tier.manual", "member.erase"]);
 const ROLES = new Set(["MANAGER", "OWNER"]);
 
 function ctxOf(auth: Awaited<ReturnType<typeof requireTenant>>) {

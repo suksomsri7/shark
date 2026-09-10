@@ -19,7 +19,9 @@
 //   listPending(ctx, m) → คำขอ PENDING ที่ step ปัจจุบันรอ "คนแบบนี้" ตัดสิน (role/userId)
 //   cancelRequest(ctx, requestId) → PENDING→CANCELLED (อื่น false)
 // outbox: ผูก handler ทั้ง 3 type ใน outbox-consumers → AppNotification (ไทย) ให้ร้าน
-try { process.loadEnvFile(".env"); } catch {}
+// 🔴 M1.4 (10 ก.ย.): ย้ายจาก `.env` (= prod) มาใช้ .env.qc ผ่านด่านเดียวกับชุดบัญชี/บอร์ดงาน
+const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
+accEnv.loadQcEnv();
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

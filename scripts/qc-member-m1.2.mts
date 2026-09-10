@@ -257,6 +257,8 @@ try {
 } finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch { /* ignore */ } };
   for (const r of restore) await d(r);
+  // S3.2 เปิด trackHistory ให้ฟิลด์ระบบ nickname แล้วเขียน history 1 แถว — ต้องลบทิ้ง ไม่งั้นรันซ้ำโดยไม่ reseed จะนับได้ 2 (builder M1.4 แย้งถูก)
+  await d(async () => { const f = await P.memberField.findFirst({ where: { systemId: SYS, systemKey: "nickname" } }); if (f) await P.memberFieldValueHistory.deleteMany({ where: { fieldId: f.id } }); });
   if (made.fields.length) { await d(() => P.memberFieldValueHistory.deleteMany({ where: { fieldId: { in: made.fields } } })); await d(() => P.memberFieldValue.deleteMany({ where: { fieldId: { in: made.fields } } })); await d(() => P.memberField.deleteMany({ where: { id: { in: made.fields } } })); }
   if (made.sections.length) { await d(() => P.memberField.deleteMany({ where: { sectionId: { in: made.sections } } })); await d(() => P.memberSection.deleteMany({ where: { id: { in: made.sections } } })); }
   // ฟิลด์ที่ applyTemplate("dive") เพิ่มนอกเหนือจาก 4 ตัวที่ S5.1 จำไว้ (bootSize/insuranceNo — หนี้ M1.2 ข้อ 3) ลบตาม key ให้ seed กลับสภาพเดิม 7 ฟิลด์

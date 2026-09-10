@@ -14,11 +14,12 @@ export type ApprovalEffectEvent = {
   payload: unknown;
 };
 
-const metaOf = (payload: unknown): { entityType: string; entityId: string } => {
-  const p = (payload ?? {}) as { entityType?: unknown; entityId?: unknown };
+const metaOf = (payload: unknown): { entityType: string; entityId: string; requestId: string } => {
+  const p = (payload ?? {}) as { entityType?: unknown; entityId?: unknown; requestId?: unknown };
   return {
     entityType: typeof p.entityType === "string" ? p.entityType : "",
     entityId: typeof p.entityId === "string" ? p.entityId : "",
+    requestId: typeof p.requestId === "string" ? p.requestId : "",
   };
 };
 
@@ -27,7 +28,7 @@ const metaOf = (payload: unknown): { entityType: string; entityId: string } => {
 //   · approved + HrLeave → PENDING→APPROVED · rejected + HrLeave → PENDING→REJECTED (decidedById "approval-engine")
 //   · entityType อื่น → เงียบ (โมดูลอนาคตค่อยเพิ่ม)
 export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<void> {
-  const { entityType, entityId } = metaOf(evt.payload);
+  const { entityType, entityId, requestId } = metaOf(evt.payload);
   if (!entityId) return;
   const approved = evt.type === "approval.request.approved";
 
@@ -50,6 +51,27 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
       where: { id: entityId, tenantId: evt.tenantId, status: "AWAITING_APPROVAL" },
       data: approved ? { status: "APPROVED" } : { status: "REJECTED", voidReason: "ไม่อนุมัติผ่านสายอนุมัติ" },
     });
+    return;
+  }
+
+  // ระบบสมาชิก v2 (M1.4 · §11.1): ผู้จัดการขอ "รวมสมาชิกซ้ำ" — ผ่านแล้วจึงรวมจริง
+  //   entityId = `${keepId}:${mergeId}` · systemId (ระบบสมาชิก) อ่านจากคำขอ ไม่ได้อยู่ใน payload
+  //   ปฏิเสธ = ไม่ทำอะไร (ทั้งสองคนยังอยู่ครบเหมือนเดิม) · เรียกซ้ำปลอดภัย (mergeMembersApproved
+  //   เช็คสถานะ MERGED แล้วเงียบ) ⇒ drain ซ้ำ/replay ไม่รวมซ้อน
+  if (entityType === "member.merge") {
+    if (!approved) return;
+    const [keepId, mergeId] = entityId.split(":");
+    if (!keepId || !mergeId || !requestId) return;
+    const req = await prisma.approvalRequest.findFirst({
+      where: { id: requestId, tenantId: evt.tenantId },
+      select: { systemId: true, requestedById: true },
+    });
+    if (!req?.systemId) return;
+    const member = await import("@/lib/modules/member");
+    await member.mergeMembersApproved(
+      { tenantId: evt.tenantId, systemId: req.systemId, actorUserId: req.requestedById },
+      { keepId, mergeId, approvedById: req.requestedById },
+    );
     return;
   }
 

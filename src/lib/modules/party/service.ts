@@ -346,3 +346,61 @@ export async function recordMergeCandidates(
   }
   return { scanned: pairs.length, recorded };
 }
+
+// ─────────────────────── บันทึกคู่เจาะจง + รวม Party (WO M1.4 ระบบสมาชิก v2) ───────────────────────
+
+/**
+ * บันทึก "คู่ที่อาจเป็นคนเดียวกัน" **เจาะจง 1 คู่** (ต่างจาก `recordMergeCandidates` ที่สแกนทั้งร้าน)
+ *
+ * 🔴 ทำไมต้องมี: ตัวสแกนหาคู่จาก taxId/เบอร์/ชื่อคล้าย ซึ่ง "ไม่เห็น" หลักฐานที่เกิดนอกตาราง Party
+ *    เช่น D18 — id ช่องทางแชทอันเดียวกันผูกกับสมาชิก A อยู่ แต่เบอร์ที่ส่งมาชี้สมาชิก B
+ *    นั่นเป็นหลักฐานว่าสองคนนี้อาจเป็นคนเดียวกัน แต่ข้อมูลใน Party ไม่มีอะไรตรงกันเลย
+ * idempotent: มีแถวคู่นี้อยู่แล้ว (สถานะใดก็ตาม) → ไม่แตะ คืน id เดิม
+ */
+export async function recordMergeCandidatePair(
+  tenantId: string,
+  partyAId: string,
+  partyBId: string,
+  reason: PartyMergeReason,
+  client?: Prisma.TransactionClient,
+): Promise<{ id: string; created: boolean } | null> {
+  if (!partyAId || !partyBId || partyAId === partyBId) return null;
+  const db = dbFor(tenantId, client);
+  const [x, y] = pairKey(partyAId, partyBId);
+  const both = await db.party.count({ where: { tenantId, id: { in: [x, y] } } });
+  if (both < 2) return null; // id ของร้านอื่น/ถูกลบ — ไม่บันทึก (เงียบ ไม่ throw)
+  const existing = await db.partyMergeCandidate.findFirst({ where: { tenantId, partyAId: x, partyBId: y }, select: { id: true } });
+  if (existing) return { id: existing.id, created: false };
+  const row = await db.partyMergeCandidate.create({
+    data: { tenantId, partyAId: x, partyBId: y, reason, status: "OPEN" },
+  });
+  return { id: row.id, created: true };
+}
+
+/**
+ * รวม Party สองราย: `mergeId` ชี้ไป `keepId` (`mergedIntoId`) — **ไม่ลบแถว**
+ * ทุกจุดที่ตาม chain ด้วย `resolveCanonical` จะได้ปลายทางเดียวกันทันที
+ * 🔴 ไม่ย้ายข้อมูลของโมดูลอื่น (สมาชิก/บัญชี/CRM) — โมดูลเจ้าของข้อมูลย้ายของตัวเองใน tx เดียวกัน
+ * idempotent: รวมซ้ำคู่เดิม = ไม่มีอะไรเปลี่ยน · กันรวมตัวเอง/รวมย้อนกลับเป็นวง
+ */
+export async function mergeParties(
+  tenantId: string,
+  keepId: string,
+  mergeId: string,
+  client?: Prisma.TransactionClient,
+): Promise<boolean> {
+  if (!keepId || !mergeId || keepId === mergeId) return false;
+  const db = dbFor(tenantId, client);
+  const canonicalKeep = await resolveCanonical(tenantId, keepId, db);
+  if (canonicalKeep === mergeId) return false; // ปลายทางวนกลับมาที่ตัวที่จะรวม = ไม่ทำ
+  const res = await db.party.updateMany({
+    where: { tenantId, id: mergeId, mergedIntoId: null },
+    data: { mergedIntoId: canonicalKeep },
+  });
+  const [x, y] = pairKey(canonicalKeep, mergeId);
+  await db.partyMergeCandidate.updateMany({
+    where: { tenantId, partyAId: x, partyBId: y },
+    data: { status: "MERGED" },
+  });
+  return res.count > 0;
+}

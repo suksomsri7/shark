@@ -3,7 +3,9 @@
 //   updatePolicy(ctx, policyId, { name, thresholdSatang?, unitId?, systemId?, steps }) → { id }
 //     · แทนที่ steps ทั้งชุด (เก่าหาย) · steps ว่าง → throw · guard tenant (cross-tenant → ไม่แตะ → throw)
 //   listMyRequests(ctx, userId) → คำขอที่ requestedById=userId (ใหม่สุดก่อน) + policyName + totalSteps
-try { process.loadEnvFile(".env"); } catch {}
+// 🔴 M1.4 (10 ก.ย.): ย้ายจาก `.env` (= prod) มาใช้ .env.qc ผ่านด่านเดียวกับชุดบัญชี/บอร์ดงาน
+const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
+accEnv.loadQcEnv();
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

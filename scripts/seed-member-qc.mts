@@ -340,11 +340,15 @@ for (let i = 1; i <= MQC.members.lineIdentityCount; i += 1) {
   }
 }
 
-// ═══════════════════ 14. รัน backfill ทั้ง 6 ตัวกับร้านนี้ ═══════════════════
-// ⇒ ฐานข้อมูลอยู่ในสภาพ "หลัง backfill" (มี TierDef/ฟิลด์ระบบ/ยินยอม/Party/ที่มา/ผูก HR) ให้ทุกชุดข้อสอบถัดไป
+// ═══════════════════ 14. รัน backfill ทั้ง 7 ตัวกับร้านนี้ ═══════════════════
+// ⇒ ฐานข้อมูลอยู่ในสภาพ "หลัง backfill" (มี TierDef/ฟิลด์ระบบ/ยินยอม/Party/ที่มา/ผูก HR/โค้ดแนะนำเพื่อน)
+//   ให้ทุกชุดข้อสอบถัดไป — เหมือนร้านจริงที่เพิ่งอัปเกรดมาเป็นระบบสมาชิก v2
+// 🔴 ตัวที่ 7 (referral-codes) เพิ่มที่ M1.4: สมาชิกที่มีอยู่ก่อน v2 ต้องมีโค้ดแนะนำเพื่อนด้วย
+//    ไม่งั้นฟีเจอร์ "ชวนเพื่อน" ใช้ได้เฉพาะคนที่สมัครหลังอัปเกรด (ดู wo-notes/member-M1.4.md)
 const BACKFILL = [
   "member-backfill-tiers.mts", "member-backfill-fields.mts", "member-backfill-consent.mts",
   "member-backfill-party-links.mts", "member-backfill-attribution.mts", "member-backfill-hr-users.mts",
+  "member-backfill-referral-codes.mts",
 ];
 for (const script of BACKFILL) {
   const r = spawnSync("pnpm", ["exec", "tsx", `scripts/${script}`, "--tenant", MQC.tenantSlug], { encoding: "utf8", env: process.env, timeout: 600_000 });
