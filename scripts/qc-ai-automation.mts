@@ -7,7 +7,9 @@
 //     — event ต้องอยู่ใน whitelist ของระบบ automation จริง · event เพี้ยน → validate-explain (ไม่สร้าง proposal)
 //   proposals.ts: kind "automation_create_rule" → executeProposal สร้าง AutomationRule (enabled=true, NOTIFY)
 //   persona.ts พูดถึงการตั้งกฎ automation ได้
-try { process.loadEnvFile(".env"); } catch {}
+// 🔴 M1.9 (10 ก.ย.): ย้ายจาก `.env` (= prod) มาใช้ .env.qc ผ่านด่านเดียวกับชุดบัญชี/บอร์ดงาน
+const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
+accEnv.loadQcEnv();
 import { readFileSync } from "node:fs";
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

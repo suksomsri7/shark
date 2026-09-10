@@ -52,6 +52,11 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "member.updated", label: "เมื่อข้อมูลสมาชิกถูกแก้ไข" },
   { value: "member.merged", label: "เมื่อรวมสมาชิกที่ซ้ำกัน" },
   { value: "member.identity.linked", label: "เมื่อผูกช่องทางติดต่อเข้ากับสมาชิก" },
+  // M1.9 (D1 · §7.1/§7.3) — ยิงจาก `member/tiers.ts` ใน tx เดียวกับแถวประวัติระดับ
+  //   `member.tier.changed` = เลื่อน/ลด/ตั้งมือ (payload มี from · to · reason)
+  //   `member.tier.at_risk` = ยังไม่หลุดระดับ แต่ยอดไม่ถึงเกณฑ์คงระดับแล้ว (payload มี shortfall · reviewAt)
+  { value: "member.tier.changed", label: "เมื่อระดับสมาชิกเปลี่ยน" },
+  { value: "member.tier.at_risk", label: "เมื่อสมาชิกเสี่ยงหลุดระดับ" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

@@ -7,7 +7,9 @@
 //     — เรียก 2 sweep + drainAll() จาก src/lib/outbox-consumers (เก็บตก event PENDING) · ห้าม throw (ตัวใดพังให้เก็บเลขเป็น -1 แล้วไปต่อ)
 // route: src/app/api/cron/tick/route.ts — GET · ตรวจ header authorization = `Bearer ${SHARK_CRON_SECRET}` (ไม่ตรง → 401 ไม่บอกรายละเอียด) → runDailyCron → JSON
 // vercel.json: crons เรียก /api/cron/tick ทุกวัน 03:00 BKK (20 UTC)
-try { process.loadEnvFile(".env"); } catch {}
+// 🔴 M1.9 (10 ก.ย.): ย้ายจาก `.env` (= prod) มาใช้ .env.qc ผ่านด่านเดียวกับชุดบัญชี/บอร์ดงาน
+const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
+accEnv.loadQcEnv();
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

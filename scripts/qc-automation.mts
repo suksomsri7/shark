@@ -10,7 +10,9 @@
 //   — rule อื่นต้องยังยิงต่อแม้ตัวหนึ่งพัง
 // src/lib/automation/service.ts: createRule/listRules/setRuleEnabled/deleteRule + listNotifications/markNotificationRead — tenant-scoped
 // hook: src/lib/outbox-consumers.ts — drainAll เรียก engine ทุก event แบบ best-effort (engine พัง = ห้ามล้ม consumer หลัก)
-try { process.loadEnvFile(".env"); } catch {}
+// 🔴 M1.9 (10 ก.ย.): ย้ายจาก `.env` (= prod) มาใช้ .env.qc ผ่านด่านเดียวกับชุดบัญชี/บอร์ดงาน
+const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
+accEnv.loadQcEnv();
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

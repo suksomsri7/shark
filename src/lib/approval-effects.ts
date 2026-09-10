@@ -75,6 +75,26 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
     return;
   }
 
+  // ระบบสมาชิก v2 (M1.9 · §5.4): ผู้จัดการขอ "ตั้งระดับสมาชิกด้วยมือ" — ผ่านแล้วจึงใช้ระดับใหม่จริง
+  //   entityId = Customer.id · คำขอที่รออยู่ถูกพักไว้เป็นแถว MemberTierHistory (evidence.pending = true)
+  //   ที่ผูก approvalRequestId ⇒ effect หยิบแถวนั้นมาใช้ต่อได้โดยไม่ต้องแบก payload ในสายอนุมัติ
+  //   idempotent: แถวถูกปิด (pending = false) ก่อนใช้ระดับ ⇒ drain ซ้ำ/replay ไม่ตั้งซ้ำ
+  //   ปฏิเสธ = ปิดแถวไว้เป็นหลักฐานว่าเคยขอแล้วไม่ผ่าน (ระดับของสมาชิกไม่ถูกแตะ)
+  if (entityType === "member.tier.manual") {
+    if (!requestId) return;
+    const req = await prisma.approvalRequest.findFirst({
+      where: { id: requestId, tenantId: evt.tenantId },
+      select: { systemId: true, requestedById: true },
+    });
+    if (!req?.systemId) return;
+    const member = await import("@/lib/modules/member");
+    await member.applyManualTierApproved(
+      { tenantId: evt.tenantId, systemId: req.systemId, actorUserId: req.requestedById },
+      { customerId: entityId, approvalRequestId: requestId, approved, approvedById: req.requestedById },
+    );
+    return;
+  }
+
   if (entityType === "HrLeave") {
     await prisma.hrLeave.updateMany({
       where: { id: entityId, tenantId: evt.tenantId, status: "PENDING" },

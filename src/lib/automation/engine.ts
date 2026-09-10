@@ -47,8 +47,12 @@ export async function runForEvent(evt: AutomationEvent, deps?: AutomationDeps): 
   // 🔴 K2.9: `boardId: null` = **กฎระดับร้านเท่านั้น** (POS/คลัง/ธีม) — กฎของบอร์ดงานมีรูปคนละแบบ
   //    (เงื่อนไข/การกระทำอยู่ใน `conditions`/`actions` ส่วน `actionType` เป็นแค่ placeholder NOTIFY)
   //    ถ้าไม่กรอง เอนจินเดิมจะเห็นกฎบอร์ดแล้วยิงแจ้งเตือนทั้งร้านมั่ว ๆ ทุกครั้งที่การ์ดขยับ
+  // 🔴 M1.9: `scope: "KANBAN"` = **กฎของร้านแบบเดิมเท่านั้น** — กฎระดับสมาชิก (MEMBER_TIER) และ
+  //    journey (MEMBER_JOURNEY) ใช้ตารางเดียวกันแต่คนละรูป (`event = ""` · เงื่อนไข/การกระทำอยู่ใน
+  //    conditions/actions และถูกประเมินโดย `member/tiers.ts`) ⇒ เอนจินเดิมต้องมองไม่เห็น
+  //    (ตามคอมเมนต์ที่ enum `AutomationScope` ใน automation.prisma: "ทุกขาอ่านของ v1 กรอง scope = KANBAN")
   const rules = await db.automationRule.findMany({
-    where: { event: evt.type, enabled: true, boardId: null },
+    where: { event: evt.type, enabled: true, boardId: null, scope: "KANBAN" },
     orderBy: { createdAt: "asc" },
   });
 

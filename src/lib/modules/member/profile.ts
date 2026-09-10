@@ -25,6 +25,7 @@ import { prisma } from "./db";
 import { coversUnit, hasMemberPerm, isUnitScoped, type MemberActor } from "./access";
 import { MemberConflictError, MemberForbiddenError, MemberInputError, MemberNotFoundError } from "./errors";
 import * as fields from "./fields";
+import * as tiers from "./tiers";
 import { evaluateSensitiveAccess, logAccess, type MemberCtx } from "./privacy";
 import { uniqueMemberCode } from "./service";
 
@@ -966,6 +967,17 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
       : Promise.resolve(null),
   ]);
 
+  // ระดับถัดไปบนบันได (ปิดหนี้ M1.4) — อ่านอย่างเดียว (`noCache`) เพื่อไม่ให้การ "เปิดดูโปรไฟล์"
+  // ไปเขียนแคชยอด 12 เดือนของสมาชิก · เอนจินระดับล้ม = หน้า 360 ต้องยังเปิดได้ (แค่ไม่มีระดับถัดไป)
+  let nextTier: MemberTierBrief | null = null;
+  try {
+    const ev = await tiers.evaluateMember(ctx, customer.id, { noCache: true });
+    const row = ev.next ? await prisma.memberTierDef.findFirst({ where: { id: ev.next.id, tenantId: ctx.tenantId } }) : null;
+    nextTier = tierBriefOf(row);
+  } catch {
+    nextTier = null; // เอนจินระดับล้ม = หน้าโปรไฟล์ยังต้องเปิดได้ (แค่ไม่บอกว่าระดับถัดไปคืออะไร)
+  }
+
   const bag = values[customer.id] ?? {};
   const sections: Member360Section[] = [];
   for (const s of layout.sections) {
@@ -1066,8 +1078,8 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
       visitCount: customer.visitCount,
       lastActivityAt: customer.lastActivityAt,
     },
-    // ระดับถัดไป (`next`) เป็นงานของเอนจินระดับสมาชิก M1.9 — คีย์มีอยู่ตั้งแต่วันนี้เพื่อให้หน้าจอไม่ต้องแก้
-    tier: { current: tierBriefOf(tier), next: null },
+    // M1.9 — `next` = ระดับถัดไปตามบันไดของร้าน (เอนจินระดับเป็นคนตอบ · ไม่เขียนอะไรลง DB ที่นี่)
+    tier: { current: tierBriefOf(tier), next: nextTier },
     identities: identities.map((i) => ({
       id: i.id,
       channel: i.channel,

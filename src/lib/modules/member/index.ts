@@ -71,3 +71,34 @@ export {
   /** นับจำนวนครั้งที่มาใช้บริการ */
   recordVisit,
 } from "./service";
+
+// ── ระดับสมาชิก (M1.9 · D1) ──
+export type {
+  TierRef,
+  TierDefDto,
+  TierBenefitDto,
+  TierRulesDto,
+  RuleInput,
+  RuleCondition,
+  RuleField,
+  RuleOp,
+  TierEvidence,
+  EvaluateResult,
+  ReviewResult,
+  BenefitsDto,
+} from "./tiers";
+
+export {
+  /** สิทธิประโยชน์ที่สมาชิกคนนี้ได้จากระดับของตัวเอง (POS/จอง/แต้ม เรียกตัวนี้ก่อนคิดเงิน) */
+  benefitsFor,
+  /** ประเมิน + เลื่อนขึ้นทันทีถ้าเข้าเกณฑ์ (เรียกหลังปิดบิล) — ไม่ลดระดับ */
+  evaluateAndApply,
+  /** รอบทบทวนระดับประจำเดือน (cron รายวันเรียกทุกระบบสมาชิก) */
+  runTierReview,
+  /** ประเมินอย่างเดียว ไม่เขียนระดับ (หน้า 360 · ทดลองรัน · สกิล AI tier_simulate) */
+  evaluateMember,
+  /** ผลของการอนุมัติ "ตั้งระดับด้วยมือ" — เรียกจาก approval-effects เท่านั้น */
+  applyManualTierApproved,
+  /** hook ให้โมดูลที่มีของแจกตอนขึ้นระดับมาต่อท้าย (M2.5 voucher ต้อนรับ) */
+  onTierChanged,
+} from "./tiers";

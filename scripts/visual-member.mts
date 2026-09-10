@@ -59,7 +59,20 @@ type Spec = {
 };
 
 // ── ของชั่วคราวต่อ WO (จำไว้คืนใน restoreSeed) ──
-const TMP = { fieldIds: [] as string[], sectionIds: [] as string[] };
+const TMP = { fieldIds: [] as string[], sectionIds: [] as string[], customerIds: [] as string[] };
+if (WO === "1.6") {
+  mkdirSync(`${MQC.shotsDir}/1.6`, { recursive: true });
+  writeFileSync(`${MQC.shotsDir}/1.6/fixture.csv`, "\uFEFFชื่อ,นามสกุล,เบอร์โทร,อีเมล,วันเกิด,ระดับใบรับรอง\nวิภา,นำเข้า,0898800001,wipa@example.com,1990-03-03,Open Water\nกิตติ,นำเข้า,0898800002,,1988-07-21,Advanced\nเบอร์ผิด,นำเข้า,12,,,\n");
+  if (userKey === "owner") {
+    const PR = (await import("@/lib/modules/member/profile" as string)) as Any;
+    const mem = await prisma.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId } });
+    const ownerActor = { userId: E.users.owner.userId, role: mem!.role, unitAccess: mem!.unitAccess as string[], permissions: mem!.permissions as Record<string, unknown> };
+    const ctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId };
+    for (const [i, phone] of [["1", "0898811001"], ["2", "0898811002"]] as const) { const r = await PR.createMember(ctx, ownerActor, { phone, firstName: "สมพงษ์", lastName: "ซ้ำเพื่อภาพ", source: "POS", homeUnitId: E.units.patong }); if (r?.customerId) TMP.customerIds.push(r.customerId); void i; }
+    const PRd = PR as Any; await PRd.findDuplicates(ctx, ownerActor, {}).catch(() => null);
+    console.log(`🧪 เตรียม 1.6: สมาชิกชื่อซ้ำ 2 คน ${TMP.customerIds.join(",")} + fixture.csv`);
+  }
+}
 
 const SPECS: Record<string, Spec[]> = {
   // M1.5 — หน้ารวมสมาชิก (ภาพ 01) + สมาชิก 360 (ภาพ 02) · owner / thana (STAFF ป่าตอง — ส่วนสุขภาพต้อง "ซ่อน") / noperm (404)
@@ -78,6 +91,31 @@ const SPECS: Record<string, Spec[]> = {
       expect: ["[data-testid=member-360]", "[data-testid=member-360-header]", "[data-testid=member-360-tabs]", "[data-testid=member-360-stats]", ...(userKey === "thana" ? ["[data-testid=member-360-section-hidden]"] : [])],
       steps: [{ waitFor: "[data-testid=member-360]" }, { wait: 500 }],
     }]),
+  ],
+  // M1.6 — สมัคร (ภาพ 10) · นำเข้า 3 ขั้น (ภาพ 12) · ตัวซ้ำ/รวมคน (ภาพ 11)
+  //   🔴 fixture CSV ต้องอยู่ใต้ /root ไม่ใช่ /tmp (chromium เป็น snap มี /tmp ส่วนตัว — reference_snap_chromium_headless)
+  "1.6": [
+    {
+      name: `members-new-${userKey}`,
+      path: `${MEMBER_BASE}/members/new`,
+      note: userKey === "owner" ? "เทียบภาพ 10: ฟอร์มตามเลย์เอาต์ · ตรวจซ้ำสด · ที่มา · ผู้แนะนำ · ยินยอม · QR/ลิงก์ให้ลูกค้ากรอกเอง" : "ธนา (มี member.customer.create) เห็นฟอร์ม",
+      expect: ["[data-testid=members-new-form]", "[data-testid=members-new-phone]", "[data-testid=members-new-consents]", "[data-testid=members-new-qr]"],
+      steps: [{ waitFor: "[data-testid=members-new-form]" }, { wait: 500 }],
+    },
+    {
+      name: `members-import-${userKey}`,
+      path: `${MEMBER_BASE}/members/import`,
+      onlyDevice: "desktop",
+      note: userKey === "owner" ? "เทียบภาพ 12 ขั้น 1: อัปโหลด CSV" : "ธนา (ไม่มี member.customer.import) → 404",
+      expect: userKey === "owner" ? ["[data-testid=members-import-step-1]", "[data-testid=members-import-upload]"] : [],
+      steps: userKey === "owner" ? [{ waitFor: "[data-testid=members-import-upload]" }, { wait: 300 }] : [{ wait: 800 }],
+    },
+    ...(userKey === "owner" ? [
+      { name: "members-import-mapping", path: `${MEMBER_BASE}/members/import`, onlyDevice: "desktop" as const, note: "อัปโหลด fixture.csv → ขั้น 2 ตาราง mapping (autoMapping + dropdown ฟิลด์)", expect: ["[data-testid=members-import-step-2]", "[data-testid=members-import-mapping]"], steps: [{ waitFor: "[data-testid=members-import-upload]" }, { upload: { on: "[data-testid=members-import-upload] input[type=file], input[type=file]", filePath: `${process.cwd()}/${MQC.shotsDir}/1.6/fixture.csv` } }, { waitFor: "[data-testid=members-import-mapping]", timeoutMs: 15_000 }, { wait: 400 }] },
+      { name: "members-import-preview", path: `${MEMBER_BASE}/members/import`, onlyDevice: "desktop" as const, note: "ขั้น 3 ตรวจแถว ok/warn/err + ตัวเลือกซ้ำ", expect: ["[data-testid=members-import-step-3]", "[data-testid=members-import-preview]", "[data-testid=members-import-dup-option]"], steps: [{ waitFor: "[data-testid=members-import-upload]" }, { upload: { on: "[data-testid=members-import-upload] input[type=file], input[type=file]", filePath: `${process.cwd()}/${MQC.shotsDir}/1.6/fixture.csv` } }, { waitFor: "[data-testid=members-import-mapping]", timeoutMs: 15_000 }, { click: "[data-testid=members-import-next]" }, { waitFor: "[data-testid=members-import-preview]", timeoutMs: 20_000 }, { wait: 400 }] },
+      { name: "members-duplicates-owner", path: `${MEMBER_BASE}/members/duplicates`, onlyDevice: "desktop" as const, note: "เทียบภาพ 11: รายการคู่ที่สงสัย (เหตุผล/คะแนน)", expect: ["[data-testid=members-dup-list]"], steps: [{ waitFor: "[data-testid=members-dup-list]" }, { wait: 400 }] },
+      { name: "members-dup-compare", path: `${MEMBER_BASE}/members/duplicates`, onlyDevice: "desktop" as const, note: "คลิกคู่แรก → เปรียบเทียบข้างกัน เลือกค่าต่อฟิลด์ + ปุ่มรวม 2 ขั้น", expect: ["[data-testid=members-dup-compare]", "[data-testid=members-dup-merge]"], steps: [{ waitFor: "[data-testid=members-dup-list]" }, { click: "[data-testid^=members-dup-pair-]" }, { waitFor: "[data-testid=members-dup-compare]", timeoutMs: 15_000 }, { wait: 400 }] },
+    ] : []),
   ],
   // M1.10 — ระดับสมาชิก (ภาพ 04) + benefits editor (ภาพ 15)
   "1.10": [
@@ -146,6 +184,17 @@ const SPECS: Record<string, Spec[]> = {
 
 async function restoreSeed(): Promise<void> {
   const P = prisma as Any;
+  if (TMP.customerIds.length) {
+    const ids = TMP.customerIds;
+    const parties = (await prisma.customer.findMany({ where: { id: { in: ids } }, select: { partyId: true } })).map((c) => c.partyId).filter(Boolean) as string[];
+    for (const mdl of ["memberConsent", "memberAttribution", "memberTierHistory", "memberFieldValue", "memberActivity", "memberChannelIdentity"]) await P[mdl].deleteMany({ where: { customerId: { in: ids } } }).catch(() => null);
+    await prisma.auditLog.deleteMany({ where: { targetId: { in: ids } } }).catch(() => null);
+    await prisma.customer.deleteMany({ where: { id: { in: ids } } });
+    if (parties.length) { await prisma.partyMergeCandidate.deleteMany({ where: { OR: [{ partyAId: { in: parties } }, { partyBId: { in: parties } }] } }); await prisma.party.deleteMany({ where: { id: { in: parties } } }); }
+    // สมาชิกที่นำเข้าจากภาพขั้น 3 (ถ้ากด run) — ลบด้วยเบอร์ fixture
+    const imported = await prisma.customer.findMany({ where: { tenantId: E.tenantId, phone: { in: ["0898800001", "0898800002"] } }, select: { id: true, partyId: true } });
+    if (imported.length) { const iid = imported.map((c) => c.id); for (const mdl of ["memberConsent", "memberAttribution", "memberTierHistory", "memberFieldValue", "memberActivity"]) await P[mdl].deleteMany({ where: { customerId: { in: iid } } }).catch(() => null); await prisma.customer.deleteMany({ where: { id: { in: iid } } }); await prisma.party.deleteMany({ where: { id: { in: imported.map((c) => c.partyId).filter(Boolean) as string[] } } }).catch(() => null); }
+  }
   if (TMP.fieldIds.length) { await P.memberFieldValue.deleteMany({ where: { fieldId: { in: TMP.fieldIds } } }); await P.memberField.deleteMany({ where: { id: { in: TMP.fieldIds } } }); }
   if (TMP.sectionIds.length) await P.memberSection.deleteMany({ where: { id: { in: TMP.sectionIds } } });
 }

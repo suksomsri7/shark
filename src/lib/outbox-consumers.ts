@@ -459,6 +459,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "member.updated": withAutomation(async () => {}),
   "member.merged": withAutomation(async () => {}),
   "member.identity.linked": withAutomation(async () => {}),
+  // ── ระดับสมาชิก (M1.9 · §7.1) ──
+  // 🔴 no-op เหมือนกลุ่มบน: ประวัติระดับ (MemberTierHistory) + คอลัมน์ของ Customer ถูกเขียนครบใน
+  //    transaction ของ `member/tiers.ts` แล้ว · ตัวนี้มีไว้ปิด event เป็น DONE (ไม่ให้คิวตัน) +
+  //    เป็นทริกเกอร์ให้กฎอัตโนมัติ/journey + ยิงเว็บฮุคออกนอกระบบ
+  //    การ**แจ้งเตือนลูกค้า** ("คุณขึ้นเป็น Gold แล้ว" / "อีก 30 วันจะหลุดระดับ") เป็นงานของ M3.6
+  "member.tier.changed": withAutomation(async () => {}),
+  "member.tier.at_risk": withAutomation(async () => {}),
   // ดูข้อมูลอ่อนไหว: แถว MemberAccessLog ถูกเขียนไปแล้วตอนเปิดดู (privacy.logAccess)
   // ตัวนี้จึงมีไว้ให้ระบบภายนอกที่ทำหน้าที่ "เฝ้าการเข้าถึงข้อมูลส่วนบุคคล" รับต่อผ่านเว็บฮุค
   "member.sensitive.viewed": withAutomation(async () => {}),

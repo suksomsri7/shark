@@ -22,6 +22,31 @@ import { sweepRecurringCards } from "@/lib/modules/kanban/recurrence";
 import { sweepDueDateRules } from "@/lib/modules/kanban/automation";
 import { sweepOverdue } from "@/lib/modules/kanban/reminders";
 import { sweepKanbanDigest } from "@/lib/modules/kanban/digest";
+import { runTierReview } from "@/lib/modules/member";
+
+/**
+ * M1.9 (D1 · §7.5) — รอบทบทวนระดับสมาชิกของทุกร้านที่มี "ระบบสมาชิก"
+ *
+ * `runTierReview` หยิบเฉพาะสมาชิกที่ `tierReviewAt` ถึงกำหนดแล้ว (+ คนที่ใกล้ถึงกำหนดสำหรับ
+ * การแจ้งล่วงหน้า) ⇒ รันทุกวันได้โดยไม่ทำงานซ้ำ · แจ้ง "เสี่ยงหลุดระดับ" 1 ครั้งต่อรอบ
+ * 🔴 ร้านเดียวพังต้องไม่ล้มทั้งรอบ — try/catch รอบร้าน (ตัวเรียกก็มี try/catch ของ step ตัวเองอีกชั้น)
+ */
+export async function sweepTierReviews(now: Date = new Date()): Promise<number> {
+  const systems = await prisma.appSystem.findMany({
+    where: { type: "MEMBER", active: true },
+    select: { id: true, tenantId: true },
+  });
+  let evaluated = 0;
+  for (const s of systems) {
+    try {
+      const r = await runTierReview({ tenantId: s.tenantId, systemId: s.id, actorUserId: null }, s.id, now, {});
+      evaluated += r.evaluated;
+    } catch {
+      // ร้านนี้ทบทวนไม่สำเร็จ → ข้ามไปร้านถัดไป (รอบพรุ่งนี้ได้ใหม่ · tierReviewAt ยังค้างอยู่)
+    }
+  }
+  return evaluated;
+}
 
 // MemberSubscription ACTIVE ที่ครบกำหนด (endAt < now) → EXPIRED ทุกร้าน
 // where จำกัด status=ACTIVE → รันซ้ำได้ (ตัวที่ EXPIRED ไปแล้วไม่ถูกแตะ = idempotent)
@@ -85,6 +110,7 @@ export async function runDailyCron(
   kanbanDueRules: number;
   kanbanOverdue: number;
   kanbanDigests: number;
+  tierReviews: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -103,6 +129,7 @@ export async function runDailyCron(
   let kanbanDueRules = -1;
   let kanbanOverdue = -1;
   let kanbanDigests = -1;
+  let tierReviews = -1;
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -223,6 +250,12 @@ export async function runDailyCron(
   } catch {
     // sweep อีเมลสรุปพัง → -1 ไปต่อ (try/catch แยกของตัวเองตามสัญญา K2.11)
   }
+  try {
+    // M1.9: รอบทบทวนระดับสมาชิกทุกร้านที่มีระบบสมาชิก (คง/เสี่ยงหลุด/ลด + แจ้งล่วงหน้า)
+    tierReviews = await sweepTierReviews(now);
+  } catch {
+    // sweep รอบทบทวนระดับพัง → -1 ไปต่อ (ห้ามพา cron ทั้งรอบล้ม)
+  }
 
   return {
     subsExpired,
@@ -242,5 +275,6 @@ export async function runDailyCron(
     kanbanDueRules,
     kanbanOverdue,
     kanbanDigests,
+    tierReviews,
   };
 }

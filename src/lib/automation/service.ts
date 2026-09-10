@@ -30,8 +30,11 @@ export async function createRule(ctx: Ctx, input: CreateRuleInput): Promise<Auto
 }
 
 // รายการกติกาของร้านนี้ (ใหม่สุดก่อน)
+// 🔴 M1.9: กรอง `scope = KANBAN` — ตารางเดียวกันนี้ยังเก็บกฎระดับสมาชิก (MEMBER_TIER) และ journey
+//    (MEMBER_JOURNEY) ซึ่งมีรูปคนละแบบและมีหน้าจอของตัวเอง · ถ้าไม่กรอง หน้าตั้งกติกาเดิมจะโชว์
+//    "เลื่อนเป็น Gold อัตโนมัติ" ปนมาแล้วเจ้าของกดลบทิ้งได้โดยไม่รู้ว่าเป็นกฎของระบบสมาชิก
 export async function listRules(ctx: Ctx): Promise<AutomationRule[]> {
-  return tenantDb(ctx).automationRule.findMany({ orderBy: { createdAt: "desc" } });
+  return tenantDb(ctx).automationRule.findMany({ where: { scope: "KANBAN" }, orderBy: { createdAt: "desc" } });
 }
 
 // เปิด/ปิดกติกา (ปิดแล้ว engine ข้าม)
