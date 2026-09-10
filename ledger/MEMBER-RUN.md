@@ -1,0 +1,198 @@
+# MEMBER-RUN — แผนงาน RUN "ระบบสมาชิก v2" (34 ใบ · 3 เฟส) — สถานะ: **รอเจ้าของสั่งเริ่ม**
+
+> เขียน 10 ก.ย. 2569 · พิมพ์เขียว `docs/modules/06-member-v2.md` · API `docs/api/MEMBER-API.md` · แบบ `ledger/DESIGN-MEMBER.md` + ภาพ 30 ใบ `ledger/design-member/`
+> ใช้เอกสารนี้ **เทียบ QC**: ทุกใบมี (1) สัญญาไฟล์/ฟังก์ชัน (2) รายการข้อสอบ (oracle) ที่ Fable จะเขียนเป็น `scripts/qc-member-<wo>.mts` ก่อน spawn builder (3) ภาพที่ต้องตรงกับ mockup (4) regressions
+> วิธีทำงาน = สืบทอดจาก `ledger/KANBAN-RUN.md` กติกา 1–10 + `HANDOVER-2026-09-10-KANBAN-P3.md` §5 (oracle ก่อน · builder แย้งพร้อมหลักฐาน · **builder ห้าม build** Fable build+ภาพ · งานหนักทีละ 1 · fitness มี/ไม่มี env · ข้อสอบที่กินตัวนับต้องคืนใน finally · ทุก push ตรวจ Vercel + `_prisma_migrations` · Telegram % ทุกใบ)
+
+## 0. กติกาเพิ่มของ RUN นี้
+1. **ข้อมูล QC**: seed ใหม่ `seed-member-qc.mts` (แผน · scripts/) (ร้าน "SIAM DIVE MEMBER QC" · ระบบ MEMBER/POINT/REWARD/COUPON/POS/BOOKING/CHAT · สมาชิก 60 คน 4 ระดับ · ฟิลด์เทมเพลตดำน้ำ · แต้ม/ล็อต · voucher · สแตมป์ · บิล 120 · นัด 40 · ห้องแชท 10 · เฉลย `member-expected.json` (แผน · scripts/)) · idempotent ลบร้านสร้างใหม่ · ทุก oracle คืนสภาพใน finally
+2. **ห้ามแตะ tx ของ POS** โดยไม่มีข้อสอบ `qc-acc-v2-pos-*` + `qc-kanban-k3.3` เขียว (M2.8 เป็นใบเดียวที่แก้ `pos/service.ts` และต้องรัน regressions POS/บัญชีทั้งชุด)
+3. **ทุก op ใหม่ต้องมี `test: "M<x>-S…"`** (F13.4) · generator `gen-member-api-docs.mts` + F13.5 ตั้งแต่ M1.11
+4. ฝั่งลูกค้า `/m/*` ใช้ session ลูกค้า — visual harness `visual-member.mts` (แผน · scripts/) ต้องมี `--user owner|thana|customer:<memberCode>`
+5. ภาพ parity: ทุกใบระบุภาพอ้างอิงจาก `ledger/design-member/NN-*.png` · Fable ดูภาพจริงคู่ mockup ทั้ง owner และ staff (thana = STAFF สาขาป่าตอง ไม่มี crm.*)
+6. เพดาน/สิทธิ์/ข้อความ ตาม §6 §11 ของพิมพ์เขียว · event ใหม่ต้องลง 3 ทะเบียน (consumer/AUTOMATION_EVENTS/WEBHOOK_EVENTS) ในใบเดียวกับที่ emit
+
+## 1. ตาราง WO
+
+| WO | ชื่อ | builder | ขึ้นกับ | migration | oracle (ข้อ) | ภาพ |
+|---|---|---|---|---|---|---|
+| **M1.1** | schema v2 + enum + backfill 6 สคริปต์ + seed QC | Opus | — | `member_v2_a` | 22 | — |
+| **M1.2** | fields engine (sections/fields/values/history · validate · filterWhere · templates apply) | Opus | M1.1 | — | 26 | — |
+| **M1.3** | ตัวออกแบบฟิลด์ UI + เทมเพลต 16 ชุด (ข้อมูล) | Sonnet | M1.2 | — | 14 | 03 |
+| **M1.4** | profile service (create/update/360/duplicates/merge) + policy อ่อนไหว + access log | Opus | M1.2 | — | 28 | — |
+| **M1.5** | หน้ารวมสมาชิก (กรองทุกฟิลด์ · มุมมองบันทึก · bulk · ส่งออก) + หน้า 360 แท็บโปรไฟล์ + แถบขวา | Sonnet | M1.4 | — | 20 | 01 · 02 |
+| **M1.6** | สมัคร (โมดัล/QR/ลิงก์) · นำเข้า mapping · ตัวซ้ำ/รวมคน UI | Sonnet | M1.4 | — | 18 | 10 · 11 · 12 |
+| **M1.7** | consent/privacy: นโยบายเวอร์ชัน · consent ต่อช่องทาง · sensitive policy (D8) · access log · คำขอ export/erase (+approval) | Opus | M1.4 | `member_v2_b` (ถ้าแยก) | 22 | 14 |
+| **M1.8** | ช่องทางที่มา: AcquisitionLink/QR · attribution first/last · resolveSource ทุกทางเข้า · รายงาน | Opus | M1.4 | — | 16 | 13 |
+| **M1.9** | tiers engine: TierDef/benefits/rules (AutomationRule scope MEMBER_TIER) · evaluate · runTierReview · history · dry-run · sync legacy enum · welcome voucher (stub → M2.5) | Opus | M1.4 | — | 26 | — |
+| **M1.10** | ระดับ UI: บันได · ตัวสร้างกฎ · benefits editor · ทดลองรัน · ประวัติ · แบบเสียเงิน | Sonnet | M1.9 | — | 16 | 04 · 15 |
+| **M1.11** | REST/AI ชุดแรก: registry `member` + op members/fields/consents/privacy/sources/tiers/me(get/update/card) ~45 · generator docs · skill `members` v2 · webhook events M1 | Opus | M1.5–M1.10 | — | 24 | 27 (ครึ่งขวา) |
+| **M1.12** | มือถือ (responsive ทุกหน้า M1) + แผงข้างห้องแชท (linkContact · สมัครจากแชท · ปุ่มด่วน) + `chat.contact.linked` | Sonnet | M1.5 | — | 14 | 26 · 28(ก,ข) |
+| **M2.1** | point rules + lots + expiry (computeEarn · earnWithLot · burnFifo · expireDue · expiringSoon · cron · backfill lots) | Opus | M1.1 | `member_v2_c` | 28 | — |
+| **M2.2** | point transfer (OTP) · adjust+approval · settings · หน้าตั้งค่าแต้ม + ledger รวม + ใกล้หมดอายุ | Sonnet | M2.1 | — | 16 | 16 |
+| **M2.3** | stamp: cards/progress/events · addStamp (PIN/QR/auto) · completeCycle → รางวัล · editor UI + การ์ดจริง | Opus | M2.1 | `member_v2_d` | 22 | 17 |
+| **M2.4** | reward v2: kind/stamp cost/tier/limits/image · QR รับของ · fulfil/cancel · editor + หน้ารับของ | Sonnet | M2.3 | — | 16 | 18 · 05 |
+| **M2.5** | voucher: templates/issue(segment · approval เพดาน)/validate/redeem/release/cancel/expire · หน้า voucher + โมดัลออก | Opus | M1.9 | `member_v2_e` | 26 | 19 |
+| **M2.6** | gift card: sell/use/reload/transfer/suspend/expire · PIN · settings accountingLink (D3) → บัญชี (รับเงินล่วงหน้า/รายได้) · UI | Opus | M2.5 | `member_v2_f` | 24 | 20 |
+| **M2.7** | wallet facade: getWallet · quoteApply (ลำดับ/กันซ้อน) · applyOnSale · หน้า wallet ในโปรไฟล์ 360 | Opus | M2.1–M2.6 | — | 24 | 02(แท็บกระเป๋า) |
+| **M2.8** | POS integration: แผงสิทธิ์ที่หน้าขาย · createSale รับ choices · **ย้าย point/member/coupon จาก tx เป็น consumer `pos.sale.paid`** · void ย้อนครบ · gift card sale line | Opus | M2.7 | — | 30 | 06 |
+| **M2.9** | ฝั่งลูกค้า `/m/*` (LIFF + WebView แอป): บัตร QR token · wallet · โปรไฟล์แก้เอง · consent · PDPA ปุ่ม · session ลูกค้า (platform_auth LINE/OTP) | Opus | M2.7 | — | 22 | 09 |
+| **M2.10** | REST/AI ชุดสอง: points/stamps/rewards/wallet/vouchers/coupons/giftcards/me(wallet/transfer/redeem) ~40 op · tools | Opus | M2.1–M2.9 | — | 20 | — |
+| **M3.1** | segments: evaluateSegment ทุกฟิลด์+loyalty+consent · count/sample/save · หน้า segment builder | Opus | M1.11 | — | 20 | 21(ขั้น 1) |
+| **M3.2** | campaigns v2: channels 4 (LINE ผ่าน chat facade · อีเมล · SMS gateway ถ้ามี · push customer) · variant A/B · holdout · attach voucher/coupon · track open/use · stats | Opus | M3.1 · M2.5 | `member_v2_g` | 26 | 21 · 07(ล่าง) |
+| **M3.3** | journey: AutomationRule scope MEMBER_JOURNEY · trigger member.* 24 + birthday/inactive cron · condition ฟิลด์/ระดับ/consent/segment · action 10 (WAIT_THEN scheduled run) · quota · holdout · builder UI + detail | Opus | M3.2 | — | 30 | 07 · 22 |
+| **M3.4** | reviews: request (journey/consumer) · submit (LIFF) · reply · hide · escalate → kanban card · AI summary/draft reply · inbox UI + settings | Opus | M2.9 | `member_v2_h` | 22 | 23 · 08(ขวา) |
+| **M3.5** | referrals: program (D6) · code/link/QR · attach ตอนสมัคร · conversion consumer · reward both · fraud · leaderboard · UI + LIFF | Opus | M2.5 | — | 20 | 24 · 08(ขวา) |
+| **M3.6** | notifications: templates 8×4 · send (consent/quiet hours/รวมรายวัน) · LINE/อีเมล/SMS/push · stats · UI | Sonnet | M3.2 | — | 16 | 30 |
+| **M3.7** | history timeline: consumers ทุกโมดูล → MemberActivity (pos · booking(+event ใหม่ completed/no_show) · chat · account docs · kanban · crm.deal.won · loyalty ทั้งหมด) · แท็บประวัติกรองได้ | Opus | M2.8 | — | 24 | 08 |
+| **M3.8** | reports: overview/RFM/tiers/points(หนี้สิน)/promotions(ROI+holdout)/sources/cohort · CSV · ตั้งเวลาอีเมล | Sonnet | M3.3 · M3.7 | — | 18 | 25 |
+| **M3.9** | เทมเพลตกิจการ 16 ชุดครบ (ส่วน/ฟิลด์/ระดับ/สแตมป์/journey) + apply/preview UI + ตัวอย่างมือถือ | Sonnet | M3.3 | — | 18 | 03(เทมเพลต) |
+| **M3.10** | REST/AI ชุดสาม: segments/campaigns/journeys/reviews/referrals/notifications/reports/settings/apikeys/webhooks/join ~33 op · tools ครบ ~40 · manifest · OpenAPI · docs generator สมบูรณ์ | Opus | M3.1–M3.9 | — | 22 | 27 |
+| **M3.11** | LIFF onboarding (join 3 ขั้น · OTP · ที่มา `?src=` · ผู้แนะนำ) + แอปพนักงาน (ค้น/สแกน/ประทับ/ใช้สิทธิ์ 3 จอ) + แอปลูกค้า WebView | Sonnet | M2.9 · M3.5 | — | 16 | 29 · 28 |
+| **M3.F** | ปิด RUN: qc:all เต็ม · prod verify migration a–h · backfill prod ทีละร้าน · handover · Telegram · memory | Fable | ทั้งหมด | — | — | — |
+
+รวม oracle ≈ **720 ข้อ** · migration 8 ตัว (a–h · additive) · ประมาณเวลา (จังหวะบอร์ดงาน 45–80 นาที/ใบ + build/ภาพโดย Fable): **M1 ~2 วันทำงานเต็ม · M2 ~1.5 วัน · M3 ~2 วัน ⇒ ~5–6 วันทำงานต่อเนื่อง** (บอร์ดงาน 36 ใบใช้ ~5 วัน)
+
+## 2. สัญญารายใบ (สรุปที่ QC ใช้ — รายละเอียดเต็มดูพิมพ์เขียว §4–§9)
+
+### M1.1 — schema + backfill + seed (Opus · 22 ข้อ)
+- Prisma: ทุกตาราง/คอลัมน์/enum ใน 06-member-v2 §4.1–4.3 (ยกเว้นกลุ่ม M2/M3 ที่มี migration ของตัวเอง: PointRule/PointLot/PointTransfer → M2.1 · Stamp* → M2.3 · Voucher* → M2.5 · GiftCard* → M2.6 · CampaignVariantStat/MemberSegment → M3.2 · MemberReview → M3.4) · `AutomationRule.scope` · `AiCreditSource.MEMBER_ASSIST`
+- backfill 6 สคริปต์ §4.6 (idempotent · `--tenant` · dry-run) · seed `seed-member-qc.mts` + `member-expected.json`
+- oracle: S1 schema (คอลัมน์/enum/index ครบ 8) · S2 backfill tiers/fields/consent/party/attribution บนร้าน QC (8) · S3 seed ตัวเลขตรงเฉลย + idempotent (4) · S4 scope.ts ประกาศ tenant ครบ + fitness (2)
+
+### M1.2 — fields engine (Opus · 26 ข้อ)
+- `fields.ts` (แผน · member/) ตาม §5.3 · zod ต่อชนิด 11 · unique/required/choices/lookup validate · history · `fieldFilterWhere` (TEXT contains/eq · NUMBER range · DATE range · BOOL · SELECT in · MULTI hasAny · LOOKUP eq) · `applyTemplate` ไม่ทับ · เพดาน 60/12/20 filterable
+- oracle: S1 CRUD section/field + isSystem guard (6) · S2 setFieldValue ทุกชนิด + ผิดชนิด/นอก choices/unique ซ้ำ/required ว่าง → throw ไทย (8) · S3 history เมื่อ trackHistory (2) · S4 filterWhere ทุกชนิดคืนผลถูก (6) · S5 applyTemplate ดำน้ำ 2 ครั้ง = idempotent (2) · S6 เพดาน (2)
+
+### M1.3 — ตัวออกแบบฟิลด์ UI (Sonnet · 14 ข้อ · ภาพ 03)
+- `settings/fields/page.tsx` + `components/member/FieldDesigner.tsx` (palette 11 · ลากเรียง dnd-kit เดิม · แผงคุณสมบัติ 10 รายการ · ตัวอย่างมือถือ · เทมเพลต dropdown · ตัวนับ 23/60) · testid `field-designer` `field-palette` `field-props` `field-template-select`
+- oracle: static (ไม่มีอีโมจิ · testid ครบ · เรียก actions ที่ M1.2) + actions (create/update/reorder/archive/applyTemplate ผ่าน server action + สิทธิ์ settings.manage) + ภาพ ≥ 2
+
+### M1.4 — profile service + 360 + policy (Opus · 28 ข้อ)
+- `profile.ts` §5.2 · `privacy.canView/logAccess` · `getMember360` ซ่อนส่วนอ่อนไหว **ไม่ส่งลง client** · duplicates ผ่าน party · merge ledger (แต้ม/ประวัติ — voucher/สแตมป์/gift card เพิ่มใน M2.x ผ่าน hook `onMerge`)
+- oracle: S1 create (ซ้ำเบอร์ → duplicate · partyId · memberCode pattern · attribution FIRST/LAST · consent · welcome event) (8) · S2 update + history + customerEditable guard (4) · S3 360: thana ไม่เห็นส่วนสุขภาพ + AccessLog เมื่อ MANAGER ดู (5) · S4 duplicates/merge (5) · S5 unit scope 404 (2) · S6 events member.created/updated/merged ลง 3 ทะเบียน (4)
+
+### M1.5 — หน้ารวม + 360 (Sonnet · 20 ข้อ · ภาพ 01 · 02)
+- `members/page.tsx` (KPI 6 · FilterBar reuse แบบบอร์ดงาน + ฟิลด์ filterable · SavedViews reuse K2.5 pattern · ตาราง 10 คอลัมน์ตั้งได้ · bulk) · `members/[id]/page.tsx` (หัว · ตัวเลข 6 · แท็บ 5 (แท็บอื่น placeholder จนใบที่เกี่ยวเสร็จ) · ส่วนตามเลย์เอาต์ · แถบขวา AI(stub)/การเชื่อมต่อ/PDPA/ระดับถัดไป)
+- oracle: listMembers filters ทุกชนิด + segment + view (8) · bulk actions (3) · 360 DTO ครบ (4) · static/testid/ภาพ owner+thana (5)
+
+### M1.6 — สมัคร/นำเข้า/ตัวซ้ำ UI (Sonnet · 18 ข้อ · ภาพ 10 · 11 · 12)
+- โมดัลสมัคร (ฟอร์มจาก layout · ที่มา · ผู้แนะนำ(stub) · consent · QR LIFF/ลิงก์) · นำเข้า 3 ขั้น (mapping รวมกำหนดเอง · ตรวจแถว · ตัวเลือกซ้ำ) · ตัวซ้ำ+เปรียบเทียบ+รวม (2 ขั้น)
+- oracle: import mapping/validate/onDuplicate 3 โหมด (8) · สมัครผ่าน action + ตรวจซ้ำสด (4) · merge UI → service (3) · ภาพ 3 (3)
+
+### M1.7 — consent/privacy (Opus · 22 ข้อ · ภาพ 14)
+- policies/versions · consent per channel + source · sensitive policy CRUD (D8) · access log · privacy requests → approval (`MEMBER_ERASE`) · exportBundle (รวม party/chat/account/kanban ผ่าน facade) · eraseMember (anonymize · ledger คง) · auto-erase cron (สร้างคำขอ)
+- oracle: policy publish + ยอมรับ (3) · consent set/revoke + event + legacy sync (4) · sensitive policy: STAFF ✗ MANAGER ✓ sameUnit (5) · export bundle มีทุกโมดูล (3) · erase → approval → anonymize + บิลคง (5) · UI ภาพ (2)
+
+### M1.8 — ช่องทางที่มา (Opus · 16 ข้อ · ภาพ 13)
+- AcquisitionLink CRUD + QR (storage) + hit counter (`/m/{slug}?src=`) · resolveSource ทุกทางเข้า (POS/LIFF/WEB_FORM/CHAT/BOOKING/IMPORT/CRM/API/REFERRAL) · attribution FIRST once / LAST update · report by source · หน้า 13
+- oracle: resolveSource 9 ทาง (9) · first ไม่ทับ/last ทับ (2) · report ตัวเลขตรง seed (3) · ภาพ (2)
+
+### M1.9 — tiers engine (Opus · 26 ข้อ)
+- §5.4 + AutomationRule scope MEMBER_TIER (upgrade/keep) · เงื่อนไข spent{window}/visits/tierPoints/memberDays/paidPlan/referrals · evaluate → applyTierChange (history evidence · legacy enum sync · welcome voucher hook) · runTierReview (grace/notifyBefore/at_risk event) · dry-run · setManual (approval) · benefitsFor facade · paid plan link (MemberPlan/Subscription เดิม)
+- oracle: evaluate 6 กรณีเงื่อนไข (6) · เลื่อนทันทีหลัง sale (2) · review: คง/ลด/ผ่อนผัน/แจ้ง 30 วัน (6) · manual + approval + until (4) · archive tier ย้ายคน (2) · benefitsFor รวม (3) · events (3)
+
+### M1.10 — ระดับ UI (Sonnet · 16 ข้อ · ภาพ 04 · 15)
+- บันได · ตัวสร้างกฎ reuse AutomationBuilder (scope prop) · benefits editor 9 ชนิด · dry-run panel · history table · paid plan card · ตัวอย่างบัตร LINE
+- oracle: actions ครบ + สิทธิ์ (8) · static/testid (4) · ภาพ 2 owner (ธนาไม่มีสิทธิ์ = 404) (4)
+
+### M1.11 — REST/AI ชุดแรก (Opus · 24 ข้อ · ภาพ 27 ขวา)
+- `member/api/registry.ts` + ops ~45 ตาม MEMBER-API §2.1–2.5 + `me.get/update/card` · route `/api/v1/member/[...]` reuse dispatch กลาง · bundle scopes 3 · generator + docs + endpoints.md + skill `members` v2 (tools M1) + webhook events M1 + OpenAPI · หน้า `settings/api`
+- oracle: ทุก op มี test (F13.4) · 404-not-403 · readonly ไม่เห็นอ่อนไหว (3) · idempotency (2) · APPROVAL_REQUIRED shape (1) · tools propose→confirm ใช้ Membership จริง (3) · manifest โหลด (1) · docs = registry (1) · rate limit (1) · ตัวอย่าง curl 3 เส้นทำงานจริงบน QC server (3)
+
+### M1.12 — มือถือ + แชท side panel (Sonnet · 14 ข้อ · ภาพ 26 · 28ก,ข)
+- responsive M1 ทุกหน้า (≤390) · `chat/context-panel.tsx` + `member.linkContact` (เขียน partyId/customerId/linkedBy + event `chat.contact.linked` ลง 3 ทะเบียน) · เลือกจาก 2 คน/สมัครจากแชท · ปุ่มด่วน (stub M2)
+- oracle: linkContact 4 วิธี + ไม่พบ (5) · event (2) · แผง DTO (3) · ภาพมือถือ 3 + แชท 1 (4)
+
+### M2.1 — point rules/lots/expiry (Opus · 28 ข้อ)
+- §5.5 · migration PointRule/PointLot/PointTransfer + PointLedger cols + PointSettings cols · backfill lots (ไม่ตัดย้อนหลัง) · cron expireDue/expiringSoon · events point.* ลง 3 ทะเบียน
+- oracle: computeEarn breakdown 6 กฎ + exclude gift/voucher + เพดานวัน (8) · earnWithLot expiresAt ตาม mode/ระดับยกเว้น (4) · burnFifo ตัดล็อตเก่าก่อน + reverse คืนล็อต (4) · expireDue idempotent + balance + event (4) · expiringSoon (2) · backfill (3) · settings (3)
+
+### M2.2 — transfer/adjust/settings UI (Sonnet · 16 ข้อ · ภาพ 16)
+- transfer (OTP ผ่าน platform_auth · cap/fee) · adjust + approval (`MEMBER_POINT_ADJUST`) · หน้าตั้งค่าแต้ม (ก–จ) + ผลกระทบ · ledger รวม · ใกล้หมดอายุ
+- oracle: transfer สำเร็จ/ไม่พอ/เกิน cap/ไม่มี OTP (5) · adjust ≤/> เพดาน (3) · settings persist (3) · ภาพ (2) · static (3)
+
+### M2.3 — stamp (Opus · 22 ข้อ · ภาพ 17)
+- §5.6 · migration StampCard/Progress/Event · addStamp กฎ 5 ชนิด · PIN/QR/auto · completeCycle → voucher(stub→M2.5)/points/reward · autoRestart · expire · merge hook · editor + การ์ดจริง + สถิติ
+- oracle: addStamp ตามกฎ + perDayMax + tier/unit (7) · complete → reward + restart (4) · void/expire (3) · auto จาก sale/visit (consumer) (3) · idempotency (1) · UI/ภาพ (4)
+
+### M2.4 — reward v2 (Sonnet · 16 ข้อ · ภาพ 18 · 05)
+- Reward cols · redeem ด้วยแต้ม/สแตมป์ · limits ต่อคน/เดือน/ระดับ/สาขา · QR code + expiresAt pickup · fulfil/cancel (คืน) · หน้า editor/รับของ/ประวัติ · LIFF list (M2.9 ใช้)
+- oracle: redeem 5 เงื่อนไข (5) · fulfil/cancel/expire (4) · lookup QR (2) · หน้า 05 catalog (2) · ภาพ (3)
+
+### M2.5 — voucher (Opus · 26 ข้อ · ภาพ 19)
+- §5.7 · migration VoucherTemplate/Voucher · issue (รายคน/segment stub → M3.1 รับ customerIds) · approval เพดาน · validate/redeem/release/cancel/expire · origin/originRef · merge hook · tier welcome hook (M1.9) · stamp reward hook (M2.3) · หน้า voucher + โมดัล
+- oracle: issue idempotent ต่อ (customer, originRef) (3) · เพดาน → approval → issue เมื่ออนุมัติ (4) · validate 6 เงื่อนไข (6) · redeem atomic ACTIVE→USED · ซ้ำ → CONFLICT (3) · release/void (2) · expire + expiring (3) · events (2) · ภาพ (3)
+
+### M2.6 — gift card (Opus · 24 ข้อ · ภาพ 20)
+- §5.7 · migration GiftCard/GiftCardTxn · sell (PosSale line GIFT_CARD_SALE ไม่ให้แต้ม) · PIN hash + lockout · use/reload/transfer/suspend/expire · **accountingLink** (D3): เปิด → เอกสารบัญชี "รับเงินล่วงหน้า" ตอนขาย · รับรู้รายได้ตอนใช้ · รายได้อื่นตอนหมดอายุ ผ่าน facade บัญชี (ตรวจ chart ที่บัญชี V2 มี) · ปิด → ไม่แตะบัญชี · UI ขาย/ตั้งค่า/รายการ
+- oracle: sell/use/balance/reload/transfer (7) · PIN ผิด 5 → lock (2) · accountingLink เปิด/ปิด → เอกสารบัญชีมี/ไม่มี + สลับกลางทาง (5) · expire (2) · idempotency (2) · fitness edge giftcard→account (1) · ภาพ (3) · events (2)
+
+### M2.7 — wallet facade (Opus · 24 ข้อ · ภาพ 02 แท็บกระเป๋า)
+- §5.8 getWallet/quoteApply/applyOnSale · ลำดับตายตัว · กันซ้อน settings · pointsToEarn preview · แท็บกระเป๋าสิทธิ์ใน 360
+- oracle: quote 10 กรณี (ระดับ+voucher+คูปอง+แต้ม+gift · เกินยอด · ซ้อนห้าม · ขั้นต่ำ · หมดอายุ · ต่างสาขา) (10) · applyOnSale ใน tx จำลอง + rollback (4) · getWallet DTO ครบ (4) · perf ≤ 6 query (1) · ภาพ (2) · unit scope (3)
+
+### M2.8 — POS integration + consumer (Opus · 30 ข้อ · ภาพ 06)
+- แผงสิทธิ์ใน `pos/register` (UI) · `createSale` รับ `memberChoices` → `applyOnSale` · **ย้าย** `point.earn/member.recordSpend/logActivity` ออกจาก tx → consumer `pos.sale.paid` ใน `member-bridges.ts` (computeEarn→earnWithLot · สแตมป์ · attribution · review request hook · tier evaluate) · `pos.sale.voided` ย้อนครบ · gift card sale line · ตั้ง `giftCard.excludeFromPoints`
+- oracle: บิลครบทุกสิทธิ์ → ยอด/แต้ม/สแตมป์/voucher USED/gift balance (8) · void → ย้อนทุกอย่าง (6) · consumer idempotent ×3 (2) · บิลไม่ล้มเมื่อ member consumer พัง (try/catch WARN) (2) · POS เดิมไม่มีสมาชิก ยังทำงาน (2) · ภาพ (2) · **regressions**: qc-acc-v2-pos-* ทั้งชุด · kanban-k3.3 · point/coupon/reward เดิม (8 ชุด = ข้อสอบ S7 ตรวจว่ารันแล้วเขียว)
+
+### M2.9 — ฝั่งลูกค้า `/m/*` (Opus · 22 ข้อ · ภาพ 09)
+- session ลูกค้า (platform_auth LINE login/OTP) · `/m/card` (QR token หมุน 24 ชม.) · `/m/wallet` · `/m/profile` (customerEditable · consent · PDPA ปุ่ม) · ใช้ได้ทั้ง LIFF และ WebView แอป (D4 · แอปเปิด URL เดียวกัน) · rate limit OTP
+- oracle: session แยก + ตรวจเจ้าของทุก op (5) · QR token หมุน/หมดอายุ + พนักงาน lookup (4) · me.update เฉพาะ editable (3) · consent/PDPA จากลูกค้า → request (3) · ภาพ 3 จอ (3) · perf (1) · OTP limit (3)
+
+### M2.10 — REST/AI ชุดสอง (Opus · 20 ข้อ)
+- ops MEMBER-API §2.6–2.12 + me.* ~40 · tools · webhook events M2 · docs regen
+- oracle: F13.4/F13.5 · idempotency ทุก write (5) · CUSTOMER session op (3) · tools propose ทุกตัว (6) · curl จริง 5 เส้น (5) · rate (1)
+
+### M3.1 — segments (Opus · 20 ข้อ · ภาพ 21 ขั้น 1)
+- `marketing/segments.ts` evaluateSegment (ฟิลด์ระบบ 26 · f.{key} filterable · tier · points · lastActivity · spent12m · visits · voucherCount · consent · source · unit · tags · lifecycle CRM) · AND groups OR · count/sample/save/scope · UI builder ประโยค + ผล + บันทึก
+- oracle: 12 ชนิดเงื่อนไข (12) · AND/OR (2) · perf ≤ 400 ms บน seed (1) · save/scope (2) · UI/ภาพ (3)
+
+### M3.2 — campaigns v2 (Opus · 26 ข้อ · ภาพ 21 · 07 ล่าง)
+- migration MemberSegment/CampaignVariantStat + MktCampaign/MktRecipient cols · channels: LINE ผ่าน chat facade push message · อีเมล Resend · SMS provider interface (ไม่มี = ช่องปิด) · push `PushDevice` ลูกค้า · variant A/B · holdout hash คงที่ · attach voucher (issue ต่อคน origin CAMPAIGN) / coupon per-member · track open (pixel/LINE read) / use (consumer voucher.used/pos.sale.paid ≤ 30 วัน) · stats · เพดาน/วัน
+- oracle: split variant/holdout deterministic (4) · consent ณ เวลาส่ง (3) · voucher issue ต่อ recipient idempotent (2) · track use (3) · เพดาน (2) · cancel (2) · stats สูตร ROI (3) · UI/ภาพ (4) · events (3)
+
+### M3.3 — journey (Opus · 30 ข้อ · ภาพ 07 · 22)
+- AutomationRule scope MEMBER_JOURNEY · trigger 24 + cron birthday.upcoming/inactive · condition set · action 10 (WAIT_THEN → AutomationRun scheduledAt + hourly cron) · re-entry · quota MEMBER · loop guard · holdout · dry-run · stats ขั้น×คน + holdout เทียบ · builder UI reuse AutomationBuilder (scope prop) · หน้า list + detail
+- oracle: 6 journey สำเร็จรูป (birthday/new/inactive/at_risk/no_show/review) รันครบเส้น (12) · WAIT_THEN ถึงเวลาแล้วทำต่อ/ยกเลิกเมื่อปิด (4) · holdout ไม่ทำ action แต่บันทึก (2) · re-entry (2) · quota (2) · dry-run (2) · stats (2) · UI/ภาพ (4)
+
+### M3.4 — reviews (Opus · 22 ข้อ · ภาพ 23 · 08 ขวา)
+- migration MemberReview · request (journey/consumer หลัง booking.completed/pos) · submit (LIFF token) · reward points · reply · hide · escalate ≤ N → `kanban.createCardFromExternal` (sourceType REVIEW) · AI summary/draft (prompt อังกฤษ · MEMBER_ASSIST) · inbox UI + settings · Google ปิด (D5)
+- oracle: request→token→submit 1 ครั้ง/ref (4) · แต้มรีวิว (2) · escalate → การ์ด + มอบหมาย (3) · reply/hide + คะแนนรวม (4) · summary cache (2) · events (2) · UI/ภาพ (3) · LIFF ภาพ (2)
+
+### M3.5 — referrals (Opus · 20 ข้อ · ภาพ 24 · 08 ขวา)
+- ReferralProgram (D6) · code/link/QR · attach ตอนสมัคร (source REFERRAL) · consumer member.created/pos.sale.paid → convert · reward both (points/voucher ตาม program · idempotent) · fraud (เบอร์/device) · reject · leaderboard · UI + LIFF share
+- oracle: attach/self-refer/ซ้ำ (4) · convert on SIGNUP vs FIRST_PURCHASE ≥ min (4) · reward ทั้งสองแบบ (4) · cap/fraud (3) · leaderboard (1) · UI/ภาพ (4)
+
+### M3.6 — notifications (Sonnet · 16 ข้อ · ภาพ 30)
+- templates 8×4 · send (consent/quiet hours/digest) · ช่องทาง 4 · stats · UI + test send
+- oracle: template render ตัวแปร (3) · consent block/transactional allow (3) · quiet hours เลื่อน (2) · digest รวม (2) · stats (1) · UI/ภาพ (3) · SMS ไม่มี provider = ปิด (2)
+
+### M3.7 — history timeline (Opus · 24 ข้อ · ภาพ 08)
+- consumers → MemberActivity: pos paid/voided · booking (event ใหม่ `booking.completed/no_show` ใน booking/service + ลง 3 ทะเบียน) · chat.contact.linked/message summary · account docs (facade listDocsByParty) · kanban linked cards · crm.deal.won (event ใหม่ + auto-link member) · loyalty ทั้งหมด · แท็บประวัติกรอง type/ช่วง/สาขา · unit scope
+- oracle: แต่ละ consumer เขียน activity ถูก (10) · booking/crm events ลง 3 ทะเบียน (4) · กรอง (4) · unit scope (2) · ภาพ (2) · perf (2)
+
+### M3.8 — reports (Sonnet · 18 ข้อ · ภาพ 25)
+- reports.ts 7 ชุด · RFM สูตร (R/F/M quintile) · หนี้สินแต้ม = balance × costPerPoint(settings) · ROI = ยอด/ต้นทุน · holdout uplift · cohort รายเดือน · CSV · schedule email (cron 06:00)
+- oracle: ตัวเลขตรง seed 7 ชุด (7) · RFM จัดกลุ่มถูก (3) · CSV (2) · schedule (2) · ภาพ (2) · perf (2)
+
+### M3.9 — เทมเพลตกิจการ 16 (Sonnet · 18 ข้อ)
+- `(templates)` (แผน · member/templates/) 16 ชุดตาม §10 (ส่วน/ฟิลด์/ระดับ/สแตมป์/journey) + ทั่วไป · apply ไม่ทับ · preview · UI เลือกตอนเปิดใช้ + ในตัวออกแบบ
+- oracle: ทุกชุด apply ผ่าน validate (16) · idempotent (1) · preview นับถูก (1)
+
+### M3.10 — REST/AI ชุดสาม + manifest (Opus · 22 ข้อ · ภาพ 27)
+- ops §2.13–2.20 ~33 · tools ครบ ~40 · manifest skill · OpenAPI · webhooks CRUD + delivery HMAC + retry · api keys bundle UI · docs สมบูรณ์ (generator ทับ MEMBER-API.md)
+- oracle: F13.4/F13.5 (2) · webhook delivery/sign/retry (4) · manifest schema (2) · tools propose/confirm 6 ตัวอย่าง (6) · curl 5 (5) · หน้า api ภาพ (1) · AI แชทตัวอย่าง proposal flow ภาพ (2)
+
+### M3.11 — LIFF onboarding + แอปพนักงาน/ลูกค้า (Sonnet · 16 ข้อ · ภาพ 29 · 28)
+- `/m/join` 3 ขั้น (src · OTP · fields customerEditable+required · referral · consent · policy) · แอปพนักงาน (Expo): ค้น/สแกน QR (token) / สรุป+ปุ่ม 4 / ประทับ PIN — เรียก REST ของ M2.10 · แอปลูกค้า: WebView `/m/*` + push device register
+- oracle: join สำเร็จ/ซ้ำ/OTP ผิด/ผู้แนะนำ (5) · src attribution (2) · แอปพนักงาน 3 จอ QC render (3) · LIFF 3 จอ (3) · push device (2) · OTA/บิลด์ไม่ต้อง (1)
+
+### M3.F — ปิด RUN (Fable)
+qc:all เต็ม · prod verify migration a–h + backfill 6 สคริปต์ทีละร้าน (dry-run ก่อน) · `HANDOVER-…-MEMBER.md` · Telegram · memory · ขึ้นแผน CRM v2 (§14 พิมพ์เขียว)
+
+## 3. ลำดับ/ขนาน
+M1.1 → M1.2 → (M1.3 ∥ M1.4) → (M1.5 ∥ M1.7 ∥ M1.8 ∥ M1.9) → (M1.6 ∥ M1.10) → M1.11 → M1.12 → M2.1 → (M2.2 ∥ M2.3) → (M2.4 ∥ M2.5) → M2.6 → M2.7 → M2.8 → M2.9 → M2.10 → M3.1 → M3.2 → M3.3 → (M3.4 ∥ M3.5 ∥ M3.6) → M3.7 → (M3.8 ∥ M3.9) → M3.10 → M3.11 → M3.F — **เครื่อง 2 คอร์ = builder ทีละ 1** (ขนานได้เฉพาะ Fable เขียน oracle ล่วงหน้า)
+
+## 4. บันทึกเหตุการณ์
+- 10 ก.ย. 2569 — เขียนแผน 34 ใบ + สัญญาย่อ + จำนวนข้อสอบ · รอเจ้าของสั่งเริ่ม (D9)

@@ -1,0 +1,144 @@
+<div class="wrap">
+<div>
+<p class="cap">12 · นำเข้าสมาชิกจาก CSV — ขั้น 2/3 จับคู่คอลัมน์ <span>— ซ้าย: ตัวอย่างไฟล์ 5 แถวแรก · กลาง: จับคู่คอลัมน์ไฟล์กับฟิลด์สมาชิก (รวมฟิลด์กำหนดเอง) + สถานะตรวจข้อมูล · ขวา: ตั้งค่าที่มา/ทับซ้อน/แต้มต้อนรับ/ระดับตามยอดเก่า</span></p>
+<div class="frame" id="f12" style="height:790px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+  <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-bell"/></svg><div class="av">ธ</div></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-mail"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="kbar"><svg class="i sm mu"><use href="#i-back"/></svg><h1>นำเข้าสมาชิกจาก CSV</h1>
+    <div class="mb3-steps" style="margin-left:12px">1 อัปโหลดไฟล์ <svg class="i xs"><use href="#i-ar"/></svg> <b>2 จับคู่คอลัมน์</b> <svg class="i xs"><use href="#i-ar"/></svg> 3 ยืนยัน</div>
+    <span class="sp"></span><span class="chip">members_2568.csv · 1,200 แถว</span></div>
+
+   <div class="stage" style="background:var(--sf)">
+    <div style="display:flex;min-height:0;flex:1">
+
+     <!-- ซ้าย: ตัวอย่างไฟล์ -->
+     <div style="width:300px;flex:none;border-right:1px solid var(--line);padding:13px 13px;background:var(--sf2);overflow:hidden">
+      <div class="dsec" style="color:var(--mut);padding-left:0">ตัวอย่างไฟล์ — 5 แถวแรก</div>
+      <div class="card p0" style="overflow:hidden">
+       <table class="mb3-samptbl">
+        <thead><tr><th>name</th><th>tel</th><th>email</th></tr></thead>
+        <tbody>
+         <tr><td>Somchai Jaidee</td><td>0812345678</td><td>somchai.j@g…</td></tr>
+         <tr><td>Ananda Thongdee</td><td>062-333-9060</td><td>—</td></tr>
+         <tr><td>Supaporn P.</td><td>0957774321</td><td>supa.p@g…</td></tr>
+         <tr><td>Wichai Rakthale</td><td>08199922 33</td><td>wichai@g…</td></tr>
+         <tr><td>Aruni Tippayanee</td><td>0906665544</td><td>aruni@g…</td></tr>
+        </tbody>
+       </table>
+      </div>
+      <div class="sub" style="margin-top:10px">อีก 4 คอลัมน์: birthday, cert_level, dives, tags</div>
+
+      <div class="hr" style="margin:13px 0"></div>
+      <div class="dsec" style="color:var(--mut);padding-left:0">ตัวอย่างค่า cert_level</div>
+      <div class="mb3-samptbl" style="display:flex;flex-direction:column;gap:5px;font-size:11.5px">
+       <div style="display:flex;justify-content:space-between"><span class="mu">Advanced</span><span class="chip" style="height:17px;border-color:var(--t-green);color:var(--t-green)">ตรงตัวเลือก</span></div>
+       <div style="display:flex;justify-content:space-between"><span class="mu">OW</span><span class="chip" style="height:17px;border-color:var(--t-green);color:var(--t-green)">ตรงตัวเลือก</span></div>
+       <div style="display:flex;justify-content:space-between"><span class="mu">Advance</span><span class="chip" style="height:17px;border-color:var(--t-amber);color:var(--t-amber)">ไม่ตรง</span></div>
+       <div style="display:flex;justify-content:space-between"><span class="mu">Rescue</span><span class="chip" style="height:17px;border-color:var(--t-green);color:var(--t-green)">ตรงตัวเลือก</span></div>
+      </div>
+     </div>
+
+     <!-- กลาง: จับคู่คอลัมน์ -->
+     <div class="pg" style="flex:1;min-width:0;padding:13px 18px;gap:12px;overflow:hidden">
+      <div class="ch" style="margin-bottom:2px"><h2>จับคู่คอลัมน์ไฟล์ → ฟิลด์สมาชิก</h2></div>
+
+      <div class="mb3-maprow" style="padding:10px 0">
+       <div class="col">name</div><svg class="i sm ar"><use href="#i-ar"/></svg>
+       <div class="fld"><div class="inp" style="width:260px">ชื่อ-นามสกุล<svg class="i sm cv"><use href="#i-cv"/></svg></div></div>
+       <span class="sp"></span><span class="chip" style="height:19px;border-color:var(--t-green);color:var(--t-green)">✓ 1,180 แถว</span>
+      </div>
+
+      <div class="mb3-maprow" style="padding:10px 0">
+       <div class="col">tel</div><svg class="i sm ar"><use href="#i-ar"/></svg>
+       <div class="fld"><div class="inp" style="width:260px">มือถือ<svg class="i sm cv"><use href="#i-cv"/></svg></div></div>
+       <span class="sp"></span><span class="chip" style="height:19px;border-color:var(--t-amber);color:var(--t-amber)">⚠ 12 แถว เบอร์ผิดรูป</span>
+      </div>
+
+      <div class="mb3-maprow" style="padding:10px 0">
+       <div class="col">email</div><svg class="i sm ar"><use href="#i-ar"/></svg>
+       <div class="fld"><div class="inp" style="width:260px">อีเมล<svg class="i sm cv"><use href="#i-cv"/></svg></div></div>
+       <span class="sp"></span><span class="chip" style="height:19px;border-color:var(--t-green);color:var(--t-green)">✓ 1,180 แถว</span>
+      </div>
+
+      <div class="mb3-maprow" style="padding:10px 0">
+       <div class="col">birthday</div><svg class="i sm ar"><use href="#i-ar"/></svg>
+       <div class="fld"><div class="inp" style="width:260px">วันเกิด<svg class="i sm cv"><use href="#i-cv"/></svg></div></div>
+       <span class="sp"></span><span class="chip" style="height:19px;border-color:var(--t-green);color:var(--t-green)">✓ 1,180 แถว</span>
+      </div>
+
+      <div class="mb3-maprow" style="padding:10px 0;align-items:flex-start">
+       <div class="col" style="padding-top:6px">cert_level</div><svg class="i sm ar" style="margin-top:6px"><use href="#i-ar"/></svg>
+       <div class="fld">
+        <div class="inp" style="width:260px">ระดับใบรับรอง <span class="chip" style="height:16px;margin-left:5px">กำหนดเอง</span><svg class="i sm cv"><use href="#i-cv"/></svg></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:7px;font-size:11.5px;color:var(--t-amber)">
+         <svg class="i xs"><use href="#i-warn"/></svg>8 แถว ค่าไม่ตรงตัวเลือก (เช่น "Advance")
+         <span class="lnk" style="font-size:11.5px">เพิ่มเป็นตัวเลือกใหม่</span><span class="mu">หรือ</span><span class="lnk" style="font-size:11.5px">ข้าม</span>
+        </div>
+       </div>
+       <span class="sp"></span>
+      </div>
+
+      <div class="mb3-maprow" style="padding:10px 0">
+       <div class="col">dives</div><svg class="i sm ar"><use href="#i-ar"/></svg>
+       <div class="fld"><div class="inp" style="width:260px">จำนวนไดฟ์ <span class="chip" style="height:16px;margin-left:5px">กำหนดเอง</span><svg class="i sm cv"><use href="#i-cv"/></svg></div></div>
+       <span class="sp"></span><span class="chip" style="height:19px;border-color:var(--t-green);color:var(--t-green)">✓ 1,180 แถว</span>
+      </div>
+
+      <div class="mb3-maprow" style="padding:10px 0">
+       <div class="col">tags</div><svg class="i sm ar"><use href="#i-ar"/></svg>
+       <div class="fld"><div class="inp" style="width:260px">แท็ก<svg class="i sm cv"><use href="#i-cv"/></svg></div></div>
+       <span class="sp"></span><span class="chip" style="height:19px;border-color:var(--t-green);color:var(--t-green)">✓ 1,180 แถว</span>
+      </div>
+
+     </div>
+
+     <!-- ขวา: ตั้งค่า -->
+     <div style="width:300px;flex:none;border-left:1px solid var(--line);background:var(--sf2);padding:14px 15px;display:flex;flex-direction:column;gap:13px;overflow:hidden">
+      <div class="dsec" style="color:var(--mut);padding-left:0">ตั้งค่าการนำเข้า</div>
+
+      <div><div class="sh">ช่องทางที่มา</div><div class="inp" style="width:100%">นำเข้า (ระบบเก่า)<svg class="i sm cv"><use href="#i-cv"/></svg></div></div>
+
+      <div><div class="sh">ถ้าเบอร์ซ้ำกับสมาชิกเดิม</div><div class="inp" style="width:100%">สร้างคู่ซ้ำให้ตรวจภายหลัง<svg class="i sm cv"><use href="#i-cv"/></svg></div>
+       <div class="sub" style="margin-top:4px">ทางเลือกอื่น: อัปเดตทับ / ข้ามแถวนี้</div></div>
+
+      <div class="hr"></div>
+
+      <div style="display:flex;align-items:center;gap:9px"><span class="cbx"></span><span style="font-size:12.8px">ให้แต้มต้อนรับตอนนำเข้า</span></div>
+      <div style="display:flex;align-items:center;gap:9px"><span class="cbx"></span><span style="font-size:12.8px">ส่งข้อความ LINE ต้อนรับ</span></div>
+      <div style="display:flex;align-items:center;gap:9px"><span class="cbx on"></span><span style="font-size:12.8px">ตั้งระดับตามยอดเก่า</span></div>
+      <div class="sub" style="margin-left:23px;margin-top:-6px">อ่านจากคอลัมน์ <b style="color:var(--ink2)">total_spent</b></div>
+
+      <div class="hr"></div>
+      <div class="mb3-sumbox" style="border-color:var(--line);background:var(--sf)">
+       <div><b>สรุปก่อนนำเข้า:</b> 1,200 แถว</div>
+       <div style="color:var(--t-green)">✓ พร้อมนำเข้า 1,180 แถว</div>
+       <div style="color:var(--t-amber)">⚠ ต้องแก้ก่อน 20 แถว (จะข้ามอัตโนมัติ)</div>
+      </div>
+     </div>
+
+    </div>
+    <div class="tfoot" style="border-top:1px solid var(--line)">
+     <div class="btn gh sm">ย้อนกลับ</div><span class="sp"></span>
+     <span class="mu">จะนำเข้า 1,180 คน · ข้าม 20 แถวที่มีปัญหา</span>
+     <div class="btn pri sm" style="margin-left:10px"><svg class="i sm"><use href="#i-check"/></svg>นำเข้า 1,180 คน</div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

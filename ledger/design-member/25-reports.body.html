@@ -1,0 +1,152 @@
+<div class="wrap">
+<div>
+<p class="cap">25 · รายงานสมาชิก <span>— แท็บภาพรวม/RFM/ระดับ/แต้ม/โปรโมชัน/ช่องทางที่มา/cohort · กราฟและกริดวาดด้วย div ล้วน (ไม่ใช้ไลบรารีภายนอก) · ตัวเลขอ้างอิงหน้ารวมสมาชิกและหน้า journey เดิม</span></p>
+<div class="frame" id="f25" style="height:1100px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+  <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-bell"/></svg><div class="av">ธ</div></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-mail"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="kbar"><svg class="i sm mu"><use href="#i-back"/></svg><h1>รายงานสมาชิก</h1>
+    <span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-upload"/></svg>ส่งออก CSV</div>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-mail"/></svg>ตั้งเวลาส่งอีเมลรายงาน</div></div>
+
+   <div class="stage" style="background:var(--sf)">
+    <div class="pg" style="padding:13px 20px 20px;gap:13px">
+
+     <div class="tabs">
+      <span class="tab on">ภาพรวม</span>
+      <span class="tab">RFM</span>
+      <span class="tab">ระดับ</span>
+      <span class="tab">แต้ม</span>
+      <span class="tab">โปรโมชัน</span>
+      <span class="tab">ช่องทางที่มา</span>
+      <span class="tab">Cohort</span>
+     </div>
+
+     <!-- KPI 6 -->
+     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:13px">
+      <div class="card kpi"><div class="lbl"><svg class="i sm"><use href="#i-users"/></svg>สมาชิกทั้งหมด</div><div class="val">1,284</div><div class="fo">+62 เดือนนี้</div></div>
+      <div class="card kpi"><div class="lbl"><svg class="i sm"><use href="#i-cash"/></svg>ยอดขายสมาชิก 12 เดือน</div><div class="val">฿4.2M</div><div class="fo">76% ของยอดร้าน</div></div>
+      <div class="card kpi"><div class="lbl"><svg class="i sm"><use href="#i-chart"/></svg>เฉลี่ย/คน</div><div class="val">฿3,270</div><div class="fo">ต่อปี</div></div>
+      <div class="card kpi"><div class="lbl"><svg class="i sm"><use href="#i-swap"/></svg>อัตรารักษาลูกค้า</div><div class="val">68%</div><div class="fo">กลับมาซื้อซ้ำใน 12 เดือน</div></div>
+      <div class="card kpi"><div class="lbl"><svg class="i sm"><use href="#i-spark"/></svg>แต้มคงค้าง</div><div class="val">184,200</div><div class="fo">≈ ฿7,368 หนี้สิน</div></div>
+      <div class="card kpi"><div class="lbl"><svg class="i sm"><use href="#i-tag"/></svg>ต้นทุนโปรโมชันเดือนนี้</div><div class="val">฿42,000</div><div class="fo">voucher + แต้มที่ใช้</div></div>
+     </div>
+
+     <div class="row" style="gap:13px;align-items:stretch">
+
+      <!-- กราฟรายเดือน -->
+      <div class="card" style="flex:1.4;min-width:0">
+       <div class="ch" style="margin-bottom:9px"><h2>สมาชิกใหม่ต่อเดือน</h2><span class="sub">12 เดือนล่าสุด</span></div>
+       <div class="mb5-vbars" style="height:96px">
+        <i class="mut" style="height:59%"></i><i class="mut" style="height:64%"></i><i class="mut" style="height:70%"></i>
+        <i class="mut" style="height:61%"></i><i class="mut" style="height:81%"></i><i class="mut" style="height:75%"></i>
+        <i class="mut" style="height:86%"></i><i class="mut" style="height:94%"></i><i class="mut" style="height:91%"></i>
+        <i class="mut" style="height:100%"></i><i class="mut" style="height:92%"></i><i style="height:97%"></i>
+       </div>
+       <div class="mb5-vlabels" style="margin-top:5px">
+        <span>ต.ค.</span><span>พ.ย.</span><span>ธ.ค.</span><span>ม.ค.</span><span>ก.พ.</span><span>มี.ค.</span>
+        <span>เม.ย.</span><span>พ.ค.</span><span>มิ.ย.</span><span>ก.ค.</span><span>ส.ค.</span><span>ก.ย.</span>
+       </div>
+      </div>
+
+      <!-- RFM -->
+      <div class="card" style="flex:1;min-width:0">
+       <div class="ch" style="margin-bottom:9px"><h2>RFM</h2><span class="sub">Recency × Frequency/Monetary</span></div>
+       <div class="mb5-axis"><span>ซื้อบ่อย/มูลค่าสูง</span><span>ซื้อล่าสุดนาน →</span></div>
+       <div class="mb5-rfmgrid">
+        <div class="mb5-rfmcell"><div class="bg" style="background:var(--ink)"></div>
+         <div class="tx" style="color:var(--sf)"><div class="nm">Champions</div><div class="vv">84</div></div></div>
+        <div class="mb5-rfmcell"><div class="bg" style="background:var(--ink);opacity:.72"></div>
+         <div class="tx" style="color:var(--sf)"><div class="nm">Loyal</div><div class="vv">212</div></div></div>
+        <div class="mb5-rfmcell"><div class="bg" style="background:var(--mut2);opacity:.5"></div>
+         <div class="tx"><div class="nm">Promising</div><div class="vv">98</div></div></div>
+
+        <div class="mb5-rfmcell"><div class="bg" style="background:var(--ink);opacity:.55"></div>
+         <div class="tx" style="color:var(--sf)"><div class="nm">Potential</div><div class="vv">156</div></div></div>
+        <div class="mb5-rfmcell"><div class="bg" style="background:var(--mut2);opacity:.6"></div>
+         <div class="tx"><div class="nm">Need Attention</div><div class="vv">143</div></div></div>
+        <div class="mb5-rfmcell"><div class="bg" style="background:var(--line2)"></div>
+         <div class="tx"><div class="nm">New</div><div class="vv">77</div></div></div>
+
+        <div class="mb5-rfmcell"><div class="bg" style="background:var(--mut2);opacity:.7"></div>
+         <div class="tx"><div class="nm">At risk</div><div class="vv">96</div></div></div>
+        <div class="mb5-rfmcell"><div class="bg" style="background:var(--line2)"></div>
+         <div class="tx"><div class="nm">Hibernating</div><div class="vv">78</div></div></div>
+        <div class="mb5-rfmcell"><div class="bg" style="background:var(--sf2)"></div>
+         <div class="tx" style="color:var(--mut)"><div class="nm">Lost</div><div class="vv">340</div></div></div>
+       </div>
+      </div>
+
+     </div>
+
+     <div class="row" style="gap:13px;align-items:stretch">
+
+      <!-- ระดับ -->
+      <div class="card p0" style="flex:1;min-width:0">
+       <div style="padding:13px 15px 0"><div class="ch"><h2>ระดับ</h2></div></div>
+       <table class="tbl">
+        <thead><tr><th>ระดับ</th><th style="width:56px">จำนวน</th><th style="width:80px">ยอดเฉลี่ย</th><th style="width:76px">แต้มคงค้าง</th></tr></thead>
+        <tbody>
+         <tr><td><span class="lb slate">Member</span></td><td class="num">812</td><td class="num">฿3,800</td><td class="num">42,000</td></tr>
+         <tr><td><span class="lb blue">Silver</span></td><td class="num">301</td><td class="num">฿14,200</td><td class="num">61,000</td></tr>
+         <tr><td><span class="lb amber">Gold</span></td><td class="num">142</td><td class="num">฿32,500</td><td class="num">58,000</td></tr>
+         <tr><td><span class="lb purple">Platinum</span></td><td class="num">29</td><td class="num">฿68,900</td><td class="num">23,200</td></tr>
+        </tbody>
+       </table>
+      </div>
+
+      <!-- แต้ม -->
+      <div class="card" style="flex:1;min-width:0">
+       <div class="ch" style="margin-bottom:8px"><h2>แต้ม</h2><span class="sub">6 เดือนล่าสุด</span></div>
+       <div class="mb5-vbars" style="height:60px">
+        <i class="mut" style="height:52%"></i><i class="mut" style="height:61%"></i><i class="mut" style="height:70%"></i>
+        <i class="mut" style="height:64%"></i><i class="mut" style="height:78%"></i><i style="height:100%"></i>
+       </div>
+       <div class="mb5-vlabels" style="margin-top:5px">
+        <span>เม.ย.</span><span>พ.ค.</span><span>มิ.ย.</span><span>ก.ค.</span><span>ส.ค.</span><span>ก.ย.</span>
+       </div>
+       <div style="display:flex;gap:14px;margin-top:10px;font-size:11.5px;color:var(--mut)">
+        <span>ออก <b style="color:var(--ink)">92,000</b></span>
+        <span>ใช้ <b style="color:var(--ink)">68,000</b></span>
+        <span>หมดอายุ <b style="color:var(--ink)">12,000</b></span>
+       </div>
+      </div>
+
+      <!-- โปรโมชัน -->
+      <div class="card p0" style="flex:1;min-width:0">
+       <div style="padding:13px 15px 0"><div class="ch"><h2>โปรโมชัน</h2><span class="sub">ROI ต่อ journey</span></div></div>
+       <table class="tbl">
+        <thead><tr><th>Journey</th><th style="width:80px">ยอดที่เกิด</th><th style="width:56px">ROI</th></tr></thead>
+        <tbody>
+         <tr><td>ใกล้ลดระดับ</td><td class="num">฿156,800</td><td class="num">31.6×</td></tr>
+         <tr><td>สมาชิกใหม่</td><td class="num">฿142,200</td><td class="num">13.8×</td></tr>
+         <tr><td>วันเกิดสมาชิก</td><td class="num">฿186,400</td><td class="num">9.5×</td></tr>
+         <tr><td>หายไปนาน — ดึงกลับ</td><td class="num">฿98,500</td><td class="num">4.4×</td></tr>
+        </tbody>
+       </table>
+      </div>
+
+     </div>
+
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>
+</div>
