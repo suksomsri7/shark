@@ -4,7 +4,7 @@
 // 🔴 โหลด `.env.qc` เท่านั้น (ผ่าน acc-v2-env.loadQcEnv) — `.env` = production
 // 🔴 ตัวเลข/กติกาทั้งหมดเป็นสัญญาอยู่ที่ `scripts/member-qc-env.mts` (MQC) — แก้ที่นั่นที่เดียว
 // 🔴 ข้อมูลทุกชิ้นเดินผ่าน service จริง เมื่อมี service (สมาชิก/บิล/นัด) — ยัดแถวตรงเฉพาะสิ่งที่ยังไม่มีเอนจิน
-//    (ส่วน/ฟิลด์เทมเพลตดำน้ำ = M1.2 จะเปลี่ยนเป็น applyTemplate · ห้องแชท = ห้ามแตะ chat/**)
+//    (ส่วน/ฟิลด์เทมเพลตดำน้ำ + ค่าฟิลด์ = ผ่าน fields.applyTemplate/setFieldValues ตั้งแต่ M1.2 · ห้องแชท = ห้ามแตะ chat/**)
 // 🔴 ท้ายสคริปต์ **รัน backfill ทั้ง 6 ตัว** กับร้านนี้ ⇒ ฐานข้อมูลอยู่ในสภาพ "หลัง backfill" ให้ทุกชุดข้อสอบถัดไป
 //
 // โครงตาม ledger/MEMBER-RUN.md §0 ข้อ 1 + พิมพ์เขียว docs/modules/06-member-v2.md §4
@@ -329,58 +329,6 @@ for (let i = 1; i <= MQC.members.lineIdentityCount; i += 1) {
   });
 }
 
-// ═══════════════════ 12. ส่วน/ฟิลด์เทมเพลต "ดำน้ำ" + "สุขภาพ" ═══════════════════
-// 🔴 ยัดแถวตรงเพราะเอนจินฟิลด์ยังไม่มี (มติ Fable ข้อ 4) — M1.2 จะเปลี่ยนมาใช้ applyTemplate
-const secDive = await P.memberSection.create({
-  data: { tenantId, systemId: SYS, key: "dive", label: "ข้อมูลดำน้ำ", description: "ใบรับรอง ประสบการณ์", columns: 2, sortOrder: 10, isSystem: false, sensitive: false },
-});
-const secHealth = await P.memberSection.create({
-  data: { tenantId, systemId: SYS, key: "health", label: "สุขภาพ", description: "ข้อมูลอ่อนไหว — เห็นได้เฉพาะผู้มีสิทธิ์", columns: 1, sortOrder: 11, isSystem: false, sensitive: true },
-});
-const mkField = async (sectionId: string, f: Any) =>
-  P.memberField.create({
-    data: {
-      tenantId, systemId: SYS, sectionId,
-      key: f.key, label: f.label, type: f.type,
-      options: f.options ?? null,
-      required: false, unique: false,
-      filterable: f.filterable ?? false, showInList: f.showInList ?? false, showOnCard: false,
-      customerEditable: false, sensitive: f.sensitive ?? false, trackHistory: f.trackHistory ?? false,
-      isSystem: false, systemKey: null, sortOrder: f.sortOrder,
-    },
-  });
-const fCertLevel = await mkField(secDive.id, {
-  key: "certLevel", label: "ระดับใบรับรอง", type: "SELECT", filterable: true, showInList: true, sortOrder: 1,
-  options: { choices: [{ value: "Open Water", label: "Open Water" }, { value: "Advanced", label: "Advanced" }, { value: "Rescue", label: "Rescue" }, { value: "Divemaster", label: "Divemaster" }] },
-});
-const fCertAgency = await mkField(secDive.id, {
-  key: "certAgency", label: "หน่วยงานที่ออกใบรับรอง", type: "SELECT", sortOrder: 2,
-  options: { choices: [{ value: "PADI", label: "PADI" }, { value: "SSI", label: "SSI" }, { value: "NAUI", label: "NAUI" }, { value: "OTHER", label: "อื่น ๆ" }] },
-});
-const fCertNo = await mkField(secDive.id, { key: "certNo", label: "เลขที่ใบรับรอง", type: "TEXT", sortOrder: 3 });
-const fDiveCount = await mkField(secDive.id, { key: "diveCount", label: "จำนวนไดฟ์สะสม", type: "NUMBER", sortOrder: 4, options: { unit: "ไดฟ์", decimals: 0, min: 0 } });
-const fLastDiveAt = await mkField(secDive.id, { key: "lastDiveAt", label: "ไดฟ์ล่าสุด", type: "DATE", filterable: true, sortOrder: 5 });
-const fConditions = await mkField(secHealth.id, { key: "conditions", label: "โรคประจำตัว", type: "LONG_TEXT", sensitive: true, trackHistory: true, sortOrder: 1 });
-const fEmergency = await mkField(secHealth.id, { key: "emergencyContact", label: "ผู้ติดต่อฉุกเฉิน", type: "TEXT", sensitive: true, sortOrder: 2 });
-
-const CERT_LEVELS = ["Open Water", "Advanced", "Rescue", "Divemaster"];
-const CERT_AGENCIES = ["PADI", "SSI", "NAUI", "OTHER"];
-const CONDITIONS = ["หอบหืดเล็กน้อย ควบคุมได้", "ภูมิแพ้อากาศ", "ความดันโลหิตสูง กินยาประจำ", "ไม่มีโรคประจำตัว"];
-for (const m of members) {
-  const i = m.index;
-  if (i <= MQC.members.diveFieldsCount) {
-    await P.memberFieldValue.create({ data: { tenantId, customerId: m.id, fieldId: fCertLevel.id, valueOptions: [CERT_LEVELS[i % 4]!] } });
-    await P.memberFieldValue.create({ data: { tenantId, customerId: m.id, fieldId: fCertAgency.id, valueOptions: [CERT_AGENCIES[i % 4]!] } });
-    await P.memberFieldValue.create({ data: { tenantId, customerId: m.id, fieldId: fCertNo.id, valueText: `MBQC-CERT-${String(i).padStart(3, "0")}` } });
-    await P.memberFieldValue.create({ data: { tenantId, customerId: m.id, fieldId: fDiveCount.id, valueNumber: 5 + i * 3 } });
-    await P.memberFieldValue.create({ data: { tenantId, customerId: m.id, fieldId: fLastDiveAt.id, valueDate: dayFromToday(-(i * 4) - 1, 10) } });
-  }
-  if (i <= MQC.members.healthFieldsCount) {
-    await P.memberFieldValue.create({ data: { tenantId, customerId: m.id, fieldId: fConditions.id, valueText: CONDITIONS[i % 4]! } });
-    await P.memberFieldValue.create({ data: { tenantId, customerId: m.id, fieldId: fEmergency.id, valueText: `${NICK[(i + 3) % NICK.length]} ${MQC.members.phoneOf(((i + 20) % 60) + 1)}` } });
-  }
-}
-
 // ═══════════════════ 13. ระบายคิว outbox จนเงียบ (บทเรียน: หยิบ 50 แล้วเลิก = คิวตันทั้งระบบ) ═══════════════════
 {
   let rounds = 0;
@@ -408,6 +356,49 @@ for (const script of BACKFILL) {
   console.log(`  ↳ ${script} · ${line?.slice("BACKFILL_SUMMARY ".length) ?? "ok"}`);
 }
 
+// ═══════════════════ 14.1 ส่วน/ฟิลด์เทมเพลต "ดำน้ำ" + ค่าของสมาชิก (ผ่านเอนจินฟิลด์จริง — M1.2) ═══════════════════
+// 🔴 ทำ**หลัง** backfill: ส่วนของเทมเพลตจะต่อท้ายส่วนระบบ 4 กล่อง เหมือนร้านจริงที่เพิ่งกดเลือกประเภทกิจการ
+// 🔴 apply แค่ 7 ฟิลด์แรกของเทมเพลต (dive 5 + health 2) = จำลอง "ร้านที่ตั้งค่าไว้ด้วยเทมเพลตรุ่นก่อน"
+//    ⇒ เหลือฟิลด์ใหม่ของเทมเพลตให้ข้อสอบ M1.2-S5.1 พิสูจน์ว่า applyTemplate เพิ่มเฉพาะตัวที่ยังไม่มี
+// 🔴 ค่าของสมาชิกเขียนผ่าน `setFieldValues` (via IMPORT) ไม่ใช่ insert ตรง — ชุด QC จึงเป็นผลลัพธ์ของเอนจินจริง
+const memberFields = await import("@/lib/modules/member/fields");
+const fieldCtx = { tenantId, systemId: SYS, actorUserId: owner.userId };
+const SEEDED_FIELD_KEYS = ["certLevel", "certAgency", "certNo", "diveCount", "lastDiveAt", "conditions", "emergencyContact"];
+await memberFields.applyTemplate(fieldCtx, "dive", { onlyFieldKeys: SEEDED_FIELD_KEYS });
+
+const secDive = (await P.memberSection.findFirst({ where: { systemId: SYS, key: "dive" } })) as Any;
+const secHealth = (await P.memberSection.findFirst({ where: { systemId: SYS, key: "health" } })) as Any;
+const seededFieldRows = (await P.memberField.findMany({ where: { systemId: SYS, key: { in: SEEDED_FIELD_KEYS } } })) as Any[];
+const fieldIdOf: Record<string, string> = {};
+for (const f of seededFieldRows) fieldIdOf[f.key] = f.id;
+if (!secDive || !secHealth || Object.keys(fieldIdOf).length !== SEEDED_FIELD_KEYS.length) {
+  throw new Error(`❌ applyTemplate("dive") ไม่ได้สร้างส่วน/ฟิลด์ครบ (ได้ ${Object.keys(fieldIdOf).join(",")})`);
+}
+
+const CERT_LEVELS = ["Open Water", "Advanced", "Rescue", "Divemaster"];
+const CERT_AGENCIES = ["PADI", "SSI", "NAUI", "OTHER"];
+const CONDITIONS = ["หอบหืดเล็กน้อย ควบคุมได้", "ภูมิแพ้อากาศ", "ความดันโลหิตสูง กินยาประจำ", "ไม่มีโรคประจำตัว"];
+// DATE ของเอนจินรับ "YYYY-MM-DD" — อ่านจากส่วน UTC เสมอ (ค่าที่ dayFromToday คืนคือ 03:00Z ของวันไทยนั้น)
+const ymdOf = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+for (const m of members) {
+  const i = m.index;
+  const values: Record<string, unknown> = {};
+  if (i <= MQC.members.diveFieldsCount) {
+    values.certLevel = CERT_LEVELS[i % 4]!;
+    values.certAgency = CERT_AGENCIES[i % 4]!;
+    values.certNo = `MBQC-CERT-${String(i).padStart(3, "0")}`;
+    values.diveCount = 5 + i * 3;
+    values.lastDiveAt = ymdOf(dayFromToday(-(i * 4) - 1, 10));
+  }
+  if (i <= MQC.members.healthFieldsCount) {
+    values.conditions = CONDITIONS[i % 4]!;
+    values.emergencyContact = `${NICK[(i + 3) % NICK.length]} ${MQC.members.phoneOf(((i + 20) % 60) + 1)}`;
+  }
+  if (Object.keys(values).length > 0) {
+    await memberFields.setFieldValues(fieldCtx, m.id, values, { via: "IMPORT", byUserId: owner.userId });
+  }
+}
+
 // ═══════════════════ 15. เฉลย ═══════════════════
 const tierDefRows = (await P.memberTierDef.findMany({ where: { systemId: SYS }, select: { id: true, key: true } })) as { id: string; key: string }[];
 const tierDefs: Record<string, string> = {};
@@ -433,8 +424,8 @@ const expected = {
   hrEmployees: { nurse: hrNurse.id, thana: hrThana.id, noEmail: hrNoEmail.id },
   tierDefs,
   fields: {
-    dive: { section: secDive.id, certLevel: fCertLevel.id, certAgency: fCertAgency.id, certNo: fCertNo.id, diveCount: fDiveCount.id, lastDiveAt: fLastDiveAt.id },
-    health: { section: secHealth.id, conditions: fConditions.id, emergencyContact: fEmergency.id },
+    dive: { section: secDive.id, certLevel: fieldIdOf.certLevel, certAgency: fieldIdOf.certAgency, certNo: fieldIdOf.certNo, diveCount: fieldIdOf.diveCount, lastDiveAt: fieldIdOf.lastDiveAt },
+    health: { section: secHealth.id, conditions: fieldIdOf.conditions, emergencyContact: fieldIdOf.emergencyContact },
   },
   members: members.map((m) => {
     const c = byId.get(m.id);

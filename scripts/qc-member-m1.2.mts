@@ -68,7 +68,7 @@ try {
   await F.reorderSections(ctx, swapped);
   const after = (await F.listLayout(ctx, {})).sections as Any[];
   const eDupKey = await fails(() => F.createSection(ctx, { key: `${tag}_a`, label: "ซ้ำ" }));
-  chk("M1.2-S1.2", "updateSection(label/collapsed/columns) เขียนจริง · reorderSections(ctx, ids[]) → sortOrder ตามลำดับใหม่ · key ซ้ำในระบบเดียวกัน → throw ไทย · key ต้องเป็น [a-z][a-z0-9_]* (throw ถ้า 'ส่วน-1')", after.find((s) => s.id === sec2.id)?.label === "แก้ชื่อแล้ว" && after.find((s) => s.id === sec2.id)?.collapsed === true && after.findIndex((s) => s.id === sec2.id) === ia && after.findIndex((s) => s.id === sec.id) === ib && thai(eDupKey) && thai(await fails(() => F.createSection(ctx, { key: "ส่วน-1", label: "x" }))), "ครบ", `label=${after.find((s) => s.id === sec2.id)?.label} idx=${after.findIndex((s) => s.id === sec2.id)}/${ia} dup=${!!eDupKey}`);
+  chk("M1.2-S1.2", "updateSection(label/collapsed/columns) เขียนจริง · reorderSections(ctx, ids[]) → sortOrder ตามลำดับใหม่ · key ซ้ำในระบบเดียวกัน → throw ไทย · key ต้องเป็น [a-z][a-zA-Z0-9_]* (camelCase ได้ · throw ถ้า 'ส่วน-1')", after.find((s) => s.id === sec2.id)?.label === "แก้ชื่อแล้ว" && after.find((s) => s.id === sec2.id)?.collapsed === true && after.findIndex((s) => s.id === sec2.id) === ia && after.findIndex((s) => s.id === sec.id) === ib && thai(eDupKey) && thai(await fails(() => F.createSection(ctx, { key: "ส่วน-1", label: "x" }))), "ครบ", `label=${after.find((s) => s.id === sec2.id)?.label} idx=${after.findIndex((s) => s.id === sec2.id)}/${ia} dup=${!!eDupKey}`);
   const fTmp = await mkField(sec2.id, `${tag}_tmp`, "TEXT");
   const eNonEmpty = await fails(() => F.deleteSection(ctx, sec2.id));
   const sysSec = all.find((s) => s.isSystem);
@@ -121,7 +121,7 @@ try {
   const g1 = await F.getFieldValues(ctx, [c1, c2]);
   const eLong = await fails(() => F.setFieldValues(ctx, c1, { [`${tag}_long_text`]: "ก".repeat(4001) }, via));
   const eMax = await fails(() => F.setFieldValues(ctx, c1, { [`${tag}_text`]: "ก".repeat(31) }, via));
-  chk("M1.2-S2.1", "TEXT/LONG_TEXT: set → {changed:[keys]} · getFieldValues(ctx,[ids]) batch คืนทั้ง 2 คน (คนที่ไม่มีค่า = {} หรือ undefined ต่อ key) · LONG_TEXT > 4,000 → throw ไทย · TEXT > options.maxLength → throw", Array.isArray(r1?.changed) && r1.changed.length === 2 && g1?.[c1]?.[`${tag}_text`] === "สวัสดี" && g1[c1][`${tag}_long_text`].length === 200 && g1[c2] !== undefined && g1[c2][`${tag}_text`] == null && thai(eLong) && thai(eMax), "ครบ", JSON.stringify({ r1, v: g1?.[c1]?.[`${tag}_text`], long: !!eLong, max: !!eMax }).slice(0, 200));
+  chk("M1.2-S2.1", "TEXT/LONG_TEXT: set → {changed:[keys]} · getFieldValues(ctx,[ids]) batch คืนทั้ง 2 คน (คนที่ไม่มีค่า = {} หรือ undefined ต่อ key) · LONG_TEXT > 4,000 → throw ไทย · TEXT > options.maxLength → throw", Array.isArray(r1?.changed) && r1.changed.length === 2 && g1?.[c1]?.[`${tag}_text`] === "สวัสดี" && g1[c1][`${tag}_long_text`].length === 300 && g1[c2] !== undefined && g1[c2][`${tag}_text`] == null && thai(eLong) && thai(eMax), "ครบ", JSON.stringify({ r1, v: g1?.[c1]?.[`${tag}_text`], long: !!eLong, max: !!eMax }).slice(0, 200));
   await F.setFieldValues(ctx, c1, { [`${tag}_number`]: 42, [`${tag}_money`]: 1999.5 }, via);
   const g2 = await F.getFieldValues(ctx, [c1]);
   const eStr = await fails(() => F.setFieldValues(ctx, c1, { [`${tag}_number`]: "abc" }, via));
@@ -259,6 +259,8 @@ try {
   for (const r of restore) await d(r);
   if (made.fields.length) { await d(() => P.memberFieldValueHistory.deleteMany({ where: { fieldId: { in: made.fields } } })); await d(() => P.memberFieldValue.deleteMany({ where: { fieldId: { in: made.fields } } })); await d(() => P.memberField.deleteMany({ where: { id: { in: made.fields } } })); }
   if (made.sections.length) { await d(() => P.memberField.deleteMany({ where: { sectionId: { in: made.sections } } })); await d(() => P.memberSection.deleteMany({ where: { id: { in: made.sections } } })); }
+  // ฟิลด์ที่ applyTemplate("dive") เพิ่มนอกเหนือจาก 4 ตัวที่ S5.1 จำไว้ (bootSize/insuranceNo — หนี้ M1.2 ข้อ 3) ลบตาม key ให้ seed กลับสภาพเดิม 7 ฟิลด์
+  await d(async () => { const extra: Any[] = await P.memberField.findMany({ where: { systemId: SYS, key: { in: ["wetsuitSize", "bootSize", "insuranceNo", "insuranceExpiresAt", "instructorId", "medicalCertFile"] } }, select: { id: true } }); const ids = extra.map((f) => f.id); if (ids.length) { await P.memberFieldValueHistory.deleteMany({ where: { fieldId: { in: ids } } }); await P.memberFieldValue.deleteMany({ where: { fieldId: { in: ids } } }); await P.memberField.deleteMany({ where: { id: { in: ids } } }); } });
   await d(() => P.memberFieldValueHistory.deleteMany({ where: { tenantId: tid, fieldId: { in: made.fields } } }));
   await prisma.$disconnect();
 }

@@ -62,6 +62,23 @@ type Spec = {
 const TMP = { fieldIds: [] as string[], sectionIds: [] as string[] };
 
 const SPECS: Record<string, Spec[]> = {
+  // M1.5 — หน้ารวมสมาชิก (ภาพ 01) + สมาชิก 360 (ภาพ 02) · owner / thana (STAFF ป่าตอง — ส่วนสุขภาพต้อง "ซ่อน") / noperm (404)
+  "1.5": [
+    {
+      name: `members-home-${userKey}`,
+      path: `${MEMBER_BASE}/members`,
+      note: userKey === "owner" ? "เทียบภาพ 01: KPI 6 · แถบกรอง (ค้นหา/ระดับ/สาขา/แท็ก/ฟิลด์กำหนดเอง) + มุมมองบันทึก · ตาราง 10 คอลัมน์ · bulk · เพิ่ม/นำเข้า" : userKey === "thana" ? "ธนาเห็นเฉพาะสมาชิกสาขาป่าตอง (KPI total ตาม scope)" : "ไม่มีสิทธิ์ member.* → 404",
+      expect: userKey === "noperm" ? [] : ["[data-testid=members-page]", "[data-testid=members-kpi]", "[data-testid=members-filter]", "[data-testid=members-table]"],
+      steps: userKey === "noperm" ? [{ wait: 800 }] : [{ waitFor: "[data-testid=members-table]" }, { wait: 500 }],
+    },
+    ...(userKey === "noperm" ? [] : [{
+      name: `member-360-${userKey}`,
+      path: `${MEMBER_BASE}/members/${E.members[0].id}`,
+      note: userKey === "owner" ? "เทียบภาพ 02: หัว+ปุ่ม 5 · ตัวเลข 6 · แท็บ 5 · ส่วนตามเลย์เอาต์ (รวมสุขภาพเห็นค่า) · แถบขวา AI/การเชื่อมต่อ/PDPA/ระดับถัดไป" : "ธนา: ส่วนสุขภาพต้องเป็นกล่อง 'ซ่อน' (testid member-360-section-hidden) ไม่มีค่า",
+      expect: ["[data-testid=member-360]", "[data-testid=member-360-header]", "[data-testid=member-360-tabs]", "[data-testid=member-360-stats]", ...(userKey === "thana" ? ["[data-testid=member-360-section-hidden]"] : [])],
+      steps: [{ waitFor: "[data-testid=member-360]" }, { wait: 500 }],
+    }]),
+  ],
   // M1.3 — ตัวออกแบบฟิลด์ · เทียบภาพ ledger/design-member/03-field-designer.png
   //   palette 11 ชนิดซ้าย · ผืนกลางลากเรียงส่วน/ฟิลด์ (dnd-kit) · แผงคุณสมบัติขวา 10 รายการ · ตัวอย่างมือถือ · dropdown เทมเพลต · ตัวนับ n/60
   "1.3": [
