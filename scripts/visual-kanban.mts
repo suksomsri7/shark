@@ -215,6 +215,51 @@ if (WO === "3.7") {
   console.log(`🧪 เตรียม K3.7: การ์ดต้นฉบับ ${src.id} บนป่าตอง → สะท้อนไปบอร์ดซ่อมบำรุง ${KB37.mirrorId}`);
 }
 
+// ── K3.9: อีเมลเข้าบอร์ด — เปิดที่อยู่อีเมลจริงของบอร์ดซ่อมบำรุง + เปิดสวิตช์ "การ์ดจากอีเมล"
+//    แล้วยิงอีเมลเข้ามา 1 ฉบับผ่านประตูจริง (`ingestInboundEmail` · ไม่มีไฟล์แนบ — ที่เก็บไฟล์ปิดอยู่บน QC)
+//    เพื่อให้ภาพที่ 3 เป็นการ์ด "จากอีเมล" ที่เกิดจากเส้นเต็มทอดจริง ไม่ใช่การ์ดที่วางมือ
+//    🔴 emailKey เดิม / settings เดิม / การ์ดที่เกิด ถูกคืนใน `restoreSeed()`
+const KB39 = {
+  emailKeyBefore: null as string | null,
+  settingsBefore: null as unknown,
+  cardNoSeqBefore: null as number | null,
+  cardId: "",
+  address: "",
+};
+if (WO === "3.9") {
+  const svc = (await import("@/lib/modules/kanban/service" as string)) as Any;
+  const integ = (await import("@/lib/modules/kanban/integrations" as string)) as Any;
+  const emailIn = (await import("@/lib/platform/kanban-email-in" as string)) as Any;
+  const membership = await prisma.membership.findFirst({
+    where: { tenantId: E.tenantId, userId: E.users.owner.userId },
+    select: { role: true, unitAccess: true, permissions: true },
+  });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: membership!.role,
+    unitAccess: (membership!.unitAccess as string[] | null) ?? [],
+    permissions: (membership!.permissions as Record<string, unknown> | null) ?? {},
+  };
+  const ctx39 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId as string };
+  const before = await prisma.kanbanBoard.findFirst({ where: { id: B("maint") }, select: { cardNoSeq: true, emailKey: true } as Any });
+  KB39.emailKeyBefore = ((before as Any)?.emailKey ?? null) as string | null;
+  KB39.cardNoSeqBefore = (before as Any)?.cardNoSeq ?? null;
+  KB39.settingsBefore = (await prisma.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } }))?.settings ?? {};
+
+  const key = await svc.ensureEmailKey(ctx39, ownerActor, B("maint"));
+  KB39.address = key.address;
+  await integ.setIntegrations(ctx39, ownerActor, { cardFromEmail: { enabled: true } });
+  const res = await emailIn.ingestInboundEmail({
+    messageId: `<visual-k39-${Date.now()}@mail.test>`,
+    to: [key.address],
+    from: "chaiwat.tour@partner.example",
+    subject: "ขอใบเสนอราคาทริปดำน้ำสิมิลัน 12 คน 24–26 ต.ค.",
+    text: "สวัสดีครับ\nขอใบเสนอราคาทริป 3 วัน 2 คืน สำหรับ 12 คน\nรบกวนแจ้งราคารวมอุปกรณ์ด้วยครับ",
+  });
+  if (res?.cardId) KB39.cardId = res.cardId;
+  console.log(`🧪 เตรียม K3.9: ที่อยู่ ${KB39.address} · เปิดสวิตช์การ์ดจากอีเมล · การ์ดจากอีเมล ${KB39.cardId || "(ไม่เกิด)"}`);
+}
+
 /** ลบระบบแชทชั่วคราวของ K3.2 ทั้งชุด (ข้อความ/ไฟล์แนบ/ห้อง/ผู้ติดต่อ/ตั้งค่า/ช่องทาง) */
 async function wipeChatSystem(systemId: string): Promise<void> {
   const P = prisma as Any;
@@ -564,6 +609,36 @@ const SPECS: Record<string, Spec[]> = {
       note: "มือถือ: รายการ 2 บรรทัด + ชื่อบอร์ดกำกับต่อแถว (ตัวเลข 4 ค่า 2 คอลัมน์ด้านบน)",
       expect: ["[data-testid=overview-page]", "[data-testid=overview-row]"],
       steps: [{ waitFor: "[data-testid=overview-page]" }, { wait: 400 }],
+    },
+  ],
+  // K3.9 — อีเมลเข้าบอร์ด (ไม่มี mockup · เกณฑ์ §K3.9) 3 ใบ:
+  //   1) ตั้งค่าบอร์ด › ทั่วไป — บล็อก "อีเมลเข้าบอร์ด" พร้อมที่อยู่จริง + ปุ่มคัดลอก + ปุ่มสร้างที่อยู่ใหม่
+  //   2) ตั้งค่าบอร์ดงาน › การเชื่อมต่อ — สวิตช์ "การ์ดจากอีเมล" เปิดอยู่จริง (ไม่ใช่ "เร็ว ๆ นี้" แบบ K3.3)
+  //   3) บอร์ดซ่อมบำรุง — การ์ดที่เกิดจากอีเมลจริง พร้อมชิปที่มา "จากอีเมล"
+  "3.9": [
+    {
+      name: "board-email-in",
+      path: `/app/sys/${SYS}/kanban/b/${B("maint")}/settings/general`,
+      onlyDevice: "desktop",
+      note: 'ตั้งค่าบอร์ด › ทั่วไป — บล็อก "อีเมลเข้าบอร์ด" (testid board-email-in): ที่อยู่ งาน+{key}@shark.in.th + ปุ่มคัดลอก + "สร้างที่อยู่ใหม่ (ของเก่าใช้ไม่ได้)" + คำอธิบายหัวข้อ/เนื้อหา/ไฟล์แนบ',
+      expect: ["[data-testid=board-email-in]", "[data-testid=board-email-in-address]", "[data-testid=board-email-in-rotate]"],
+      steps: [{ waitFor: "[data-testid=board-email-in]" }, { wait: 400 }],
+    },
+    {
+      name: "integrations-email-switch",
+      path: `/app/sys/${SYS}/kanban/settings`,
+      onlyDevice: "desktop",
+      note: 'ตั้งค่าบอร์ดงาน › การเชื่อมต่อ — สวิตช์ "การ์ดจากอีเมล" ติ๊กอยู่จริง + คำอธิบายว่าที่อยู่อยู่ที่ตั้งค่าบอร์ด',
+      expect: ["[data-testid=kanban-integrations]", "[data-testid=kanban-integration-cardFromEmail]"],
+      steps: [{ waitFor: "[data-testid=kanban-integration-cardFromEmail]" }, { wait: 400 }],
+    },
+    {
+      name: "email-card-on-board",
+      path: `/app/sys/${SYS}/kanban/b/${B("maint")}`,
+      onlyDevice: "desktop",
+      note: 'บอร์ดซ่อมบำรุง — การ์ด "ขอใบเสนอราคาทริปดำน้ำสิมิลัน…" ที่เกิดจากอีเมลจริง พร้อมชิปที่มา "จากอีเมล"',
+      expect: ["[data-testid=board-header]", "[data-testid=column]", "[data-testid=card-source]"],
+      steps: [{ waitFor: "[data-testid=card]" }, { wait: 400 }],
     },
   ],
   // K3.2 — "สร้างงานจากแชท" · เทียบภาพ `ledger/design-kanban/09-from-chat.png`
@@ -2036,6 +2111,28 @@ async function restoreSeed(): Promise<void> {
     await prisma.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) }, type: { startsWith: "kanban." } } }).catch(() => null);
     await prisma.appNotification.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) } } }).catch(() => null);
     console.log(`🧹 คืนสภาพ K3.7: ลบการ์ดต้นฉบับ+ตัวสะท้อน ${ids.length} ใบ · คืน cardNoSeq ของบอร์ดป่าตอง+ซ่อมบำรุง`);
+  }
+
+  // K3.9 — ลบการ์ดที่เกิดจากอีเมล · คืน emailKey เดิมของบอร์ดซ่อมบำรุง + cardNoSeq + ค่าสวิตช์เดิม
+  if (WO === "3.9") {
+    const P = prisma as Any;
+    if (KB39.cardId) {
+      await P.kanbanCardAssignee.deleteMany({ where: { cardId: KB39.cardId } }).catch(() => null);
+      await P.kanbanAttachment.deleteMany({ where: { cardId: KB39.cardId } }).catch(() => null);
+      await prisma.kanbanActivity.deleteMany({ where: { cardId: KB39.cardId } }).catch(() => null);
+      await prisma.kanbanCard.deleteMany({ where: { id: KB39.cardId } }).catch(() => null);
+    }
+    await prisma.kanbanCard.deleteMany({ where: { tenantId: E.tenantId, sourceType: "EMAIL" } }).catch(() => null);
+    await P.kanbanBoard.update({
+      where: { id: B("maint") },
+      data: { emailKey: KB39.emailKeyBefore, ...(KB39.cardNoSeqBefore !== null ? { cardNoSeq: KB39.cardNoSeqBefore } : {}) },
+    }).catch(() => null);
+    if (KB39.settingsBefore !== null) {
+      await prisma.appSystem.update({ where: { id: SYS }, data: { settings: KB39.settingsBefore as Any } }).catch(() => null);
+    }
+    await prisma.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) }, type: { startsWith: "kanban." } } }).catch(() => null);
+    await prisma.appNotification.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 30 * 60_000) } } }).catch(() => null);
+    console.log("🧹 คืนสภาพ K3.9: ลบการ์ดจากอีเมล · คืน emailKey/cardNoSeq ของบอร์ดซ่อมบำรุง · คืนค่าสวิตช์การเชื่อมต่อ");
   }
 
   // K3.3 — ลบการ์ดตัวอย่าง + ฟอร์มชั่วคราว แล้วคืนค่าสวิตช์การเชื่อมต่อของระบบ KANBAN

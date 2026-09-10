@@ -63,6 +63,8 @@ const FIELD_TH: Record<string, string> = {
   status: "สถานะ",
   color: "สี",
   unitId: "สาขา",
+  // K3.9 — ที่อยู่รับอีเมลของบอร์ด (ตัวกุญแจไม่ถูกจดลงประวัติ — ดู `boards-email.ts`)
+  emailKey: "ที่อยู่อีเมลของบอร์ด",
 };
 
 const ROLE_TH: Record<string, string> = { VIEWER: "ผู้ดู", EDITOR: "ผู้แก้ไข", ADMIN: "ผู้ดูแล" };
@@ -95,6 +97,9 @@ export function describeActivity(item: Pick<KanbanActivityDto, "type" | "data" |
       return "สร้างบอร์ดนี้";
     case "BOARD_UPDATED": {
       if (data.status === "ACTIVE") return "กู้บอร์ดคืนจากคลัง";
+      // K3.9 — พูดผลลัพธ์ที่คนอ่านต้องรู้ ("ของเก่าใช้ไม่ได้แล้ว") ไม่ใช่ชื่อฟิลด์
+      if (data.emailKeyRotated === true) return "สร้างที่อยู่อีเมลของบอร์ดใหม่ (ที่อยู่เดิมใช้ไม่ได้แล้ว)";
+      if (data.emailKeyCreated === true) return "เปิดที่อยู่อีเมลของบอร์ด";
       const f = fieldsTh(data);
       return f ? `แก้ไขบอร์ด — ${f}` : "แก้ไขบอร์ด";
     }

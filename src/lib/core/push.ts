@@ -48,7 +48,7 @@ async function deliverBatch(
   batch: { expoToken: string }[],
   msg: PushMsg,
   post: (payloads: unknown[]) => Promise<unknown[]>,
-): Promise<{ sent: number; dead: string[]; failures: string[] }> {
+): Promise<{ sent: number; dead: string[]; failures: string[]; okIndexes: Set<number> }> {
   const payloads = batch.map((d) => ({
     to: d.expoToken,
     title: msg.title,
@@ -59,6 +59,8 @@ async function deliverBatch(
   const tickets = (await post(payloads)) as Ticket[];
   const dead: string[] = []; // token ที่ตาย → ลบทิ้ง
   const failures: string[] = [];
+  // K3.9 — ผู้เรียกที่ส่งให้ "หลายคน" ต้องรู้ว่าใบไหนถึงจริง (คนหนึ่งมีหลายเครื่อง) ไม่ใช่แค่ยอดรวม
+  const okIndexes = new Set<number>();
   let sent = 0;
   batch.forEach((d, idx) => {
     const t = tickets[idx];
@@ -66,11 +68,12 @@ async function deliverBatch(
       dead.push(d.expoToken);
     } else if (t?.status === "ok") {
       sent += 1;
+      okIndexes.add(idx);
     } else {
       failures.push(`${t?.details?.error ?? t?.status ?? "unknown"}: ${t?.message ?? ""}`.slice(0, 160));
     }
   });
-  return { sent, dead, failures };
+  return { sent, dead, failures, okIndexes };
 }
 
 /** log แบบไม่พาใครพัง — import แบบ dynamic เหมือนเดิมเพื่อไม่ผูก push.ts เข้ากับ ops ตอนโหลด */
@@ -176,6 +179,93 @@ export async function sendPushToUser(
     await logPushError(`push รายคนพัง (ผู้ใช้ ${userId})`, String(e), tenantId ?? "");
   }
   return { sent };
+}
+
+/**
+ * เพดานผู้รับต่อ 1 ครั้ง (K3.9) — ผู้เรียกที่วนคนทั้งร้านต้องแบ่งรอบเอง
+ * 🔴 มีไว้กัน "แจ้งเตือน 1 เรื่อง = อ่านเครื่องของคนพันคนในคิวรีเดียว" ซึ่งเป็นวิธีล่ม Neon pool ที่ถูกที่สุด
+ *    เกินเพดาน = ตัดที่ 500 คนแรก (ไม่ throw — งานหลักของผู้เรียกสำคัญกว่าการแจ้งครบทุกคน)
+ */
+const MAX_PUSH_USERS = 500;
+
+/**
+ * ส่ง push เข้าเครื่องของ **คนกลุ่มหนึ่งในร้านเดียว** (K3.9) — best-effort ห้าม throw
+ *
+ * 🔴 ทำไมต้องมีตัวนี้ทั้งที่มี `sendPushToUser` อยู่แล้ว: ผู้เรียกจริงของบอร์ดงาน (ผู้ติดตามการ์ด ·
+ *    เตือนกำหนดส่ง · กฎอัตโนมัติ "แจ้งผู้ดูแลบอร์ด") มีผู้รับหลายคนเสมอ ⇒ วน `sendPushToUser` ต่อคน
+ *    = 1 คิวรี + 1 รอบ HTTP **ต่อคน** ทั้งที่ Expo รับได้ 100 ใบต่อรอบ · บนคิว/cron ที่ยิงทีละหลายสิบใบ
+ *    นี่คือที่มาของ "งานหลักช้าเพราะแจ้งเตือน" และของ connection ที่ค้างใน pool
+ *
+ * 🔴 `tenantId` **บังคับ** (ไม่ใช่ optional เหมือน `sendPushToUser`): ผู้ใช้ 1 คนเป็นพนักงานได้หลายร้าน
+ *    ⇒ ไม่กรองร้าน = เรื่องของร้าน ก. ไปเด้งบนจอล็อกของเครื่องที่เขาผูกไว้กับร้าน ข.
+ *
+ * ตัวเลขที่คืน — **ห้ามโกหก** (บทเรียน 29 ส.ค. · ดูคอมเมนต์ของ `deliverBatch`):
+ *   `sent`            = จำนวนใบที่ Expo ตอบ `status:"ok"` เท่านั้น
+ *   `users.sent`      = คนที่มีอย่างน้อย 1 ใบถึง Expo จริง
+ *   `users.noDevice`  = คนที่ยังไม่มีเครื่องผูกไว้กับร้านนี้เลย (ไม่ใช่ "ส่งพลาด" — เขาไม่ได้ลงแอป)
+ *   `skipped`         = จำนวน **คน** ที่ไม่ได้รับอะไรเลย (รวมทั้งที่ไม่มีเครื่อง และที่ยิงแล้ว Expo ปฏิเสธ)
+ *   ⇒ `users.sent.length + skipped` = จำนวนคนที่ถูกขอให้แจ้งเสมอ
+ *
+ * ⚠️ ต้องเรียกจาก **นอกทรานแซกชัน** เสมอ (network call ขัง Neon pool)
+ */
+export async function sendPushToUsers(
+  tenantId: string,
+  userIds: string[],
+  msg: PushMsg,
+  opts?: { post?: PushDeps["post"] },
+): Promise<{ sent: number; skipped: number; users: { sent: string[]; noDevice: string[] } }> {
+  const targets = [...new Set((userIds ?? []).filter((u) => typeof u === "string" && u))].slice(0, MAX_PUSH_USERS);
+  // ไม่มีผู้รับ = ไม่ยิง HTTP ทิ้งเปล่า และไม่แตะ DB (ผู้เรียกจำนวนมากเรียกแบบ "เผื่อไว้")
+  if (targets.length === 0) return { sent: 0, skipped: 0, users: { sent: [], noDevice: [] } };
+
+  const post = opts?.post ?? expoPost;
+  const okUsers = new Set<string>();
+  let sent = 0;
+  let devices: { userId: string; expoToken: string }[] = [];
+  try {
+    devices = await prisma.pushDevice.findMany({
+      where: { tenantId, userId: { in: targets } },
+      select: { userId: true, expoToken: true },
+    });
+  } catch (e) {
+    // อ่านเครื่องไม่ได้ = ไม่รู้อะไรเลย ⇒ รายงานว่าไม่มีใครได้รับ (ห้ามเดาว่าสำเร็จ)
+    await logPushError(`อ่านเครื่องของผู้รับไม่ได้ (ร้าน ${tenantId})`, String(e), tenantId);
+    return { sent: 0, skipped: targets.length, users: { sent: [], noDevice: [] } };
+  }
+  const withDevice = new Set(devices.map((d) => d.userId));
+  const noDevice = targets.filter((u) => !withDevice.has(u));
+
+  for (let i = 0; i < devices.length; i += CHUNK) {
+    const batch = devices.slice(i, i + CHUNK);
+    try {
+      const r = await deliverBatch(batch, msg, post);
+      sent += r.sent;
+      // ใครได้จริงบ้าง — ต้องดูทีละใบ (คนหนึ่งมีหลายเครื่อง เครื่องหนึ่งตายไม่ได้แปลว่าเขาไม่ได้รับ)
+      batch.forEach((d, idx) => {
+        if (r.okIndexes.has(idx)) okUsers.add(d.userId);
+      });
+      if (r.failures.length > 0) {
+        await logPushError(
+          `Expo ปฏิเสธ ${r.failures.length} ใบ (ร้าน ${tenantId} · ${targets.length} คน)`,
+          r.failures.slice(0, 5).join(" · "),
+          tenantId,
+        );
+      }
+      if (r.dead.length > 0) {
+        await prisma.pushDevice.deleteMany({ where: { expoToken: { in: r.dead } } }).catch(() => null);
+      }
+    } catch (e) {
+      // chunk นี้ล้ม (เน็ตพัง/Expo ล่ม) → log แล้วไปต่อ · ห้าม throw ออกไปหางานหลักของผู้เรียก
+      await logPushError(`ส่ง push หลายคนล้มเหลว (ร้าน ${tenantId})`, String(e), tenantId);
+    }
+  }
+
+  const sentUsers = targets.filter((u) => okUsers.has(u));
+  return {
+    sent,
+    skipped: targets.length - sentUsers.length,
+    users: { sent: sentUsers, noDevice },
+  };
 }
 
 /**

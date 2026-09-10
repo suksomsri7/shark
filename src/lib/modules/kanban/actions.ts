@@ -56,6 +56,8 @@ import { requireActor, unwatch, watch } from "./watch";
 // K3.1 — เชื่อมข้อมูล SHARK (ด่านบทบาทบอร์ด EDITOR/VIEWER ตรวจใน `links.ts`/`link-resolvers.ts` เอง
 // ที่นี่ตรวจแค่ชั้นสิทธิ์โมดูล เหมือน action อื่นของไฟล์นี้)
 import { addLink, removeLink, searchPartiesForLink } from "./links";
+// K3.9 — ที่อยู่อีเมลของบอร์ด (ด่าน ADMIN ของบอร์ดตรวจใน `boards-email.ts` เอง)
+import { ensureEmailKey, rotateEmailKey } from "./boards-email";
 // K3.5 — ปุ่มผู้ช่วย AI ในหลังการ์ด (ด่าน EDITOR + การเรียกโมเดล/เครดิตอยู่ในไฟล์นั้น)
 import {
   acceptChecklistSuggestion,
@@ -2163,6 +2165,45 @@ export async function setIntegrationsAction(input: {
     return { ok: true as const, integrations, boards };
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : "บันทึกการเชื่อมต่อไม่สำเร็จ" };
+  }
+}
+
+// ───────────────────────── K3.9: อีเมลเข้าบอร์ด ─────────────────────────
+// 🔴 ด่านจริง (ต้องเป็น **ผู้ดูแลบอร์ดใบนั้น**) อยู่ใน `boards-email.ts` — ที่อยู่นี้เท่ากับสิทธิ์เขียนที่ส่งต่อได้
+//    ที่นี่ตรวจแค่ชั้นสิทธิ์โมดูลเหมือน action อื่นของไฟล์นี้ · ใช้คีย์เดียวกับ "จัดการสมาชิกบอร์ด"
+//    (คนที่คุมว่าใครเข้าบอร์ดได้ = คนเดียวกับที่ควรคุมว่าอีเมลไหนเขียนเข้าบอร์ดได้)
+
+export async function ensureEmailKeyAction(input: {
+  systemId: string;
+  boardId: string;
+}): Promise<{ ok: true; key: string; address: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.member.manage");
+  if (!input.systemId || !input.boardId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    const r = await ensureEmailKey(ctx, toActor(auth.user.id, auth.active), input.boardId);
+    revalidatePath(`/app/sys/${input.systemId}/kanban/b/${input.boardId}/settings/general`);
+    return { ok: true as const, ...r };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "เปิดที่อยู่อีเมลของบอร์ดไม่สำเร็จ" };
+  }
+}
+
+export async function rotateEmailKeyAction(input: {
+  systemId: string;
+  boardId: string;
+}): Promise<{ ok: true; key: string; address: string } | { ok: false; message: string }> {
+  const auth = await requireTenant();
+  assertKanbanCan(auth, "kanban.board.member.manage");
+  if (!input.systemId || !input.boardId) return { ok: false as const, message: "ข้อมูลไม่ครบ" };
+  const ctx = ctxOf(auth, input.systemId);
+  try {
+    const r = await rotateEmailKey(ctx, toActor(auth.user.id, auth.active), input.boardId);
+    revalidatePath(`/app/sys/${input.systemId}/kanban/b/${input.boardId}/settings/general`);
+    return { ok: true as const, ...r };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "สร้างที่อยู่อีเมลใหม่ไม่สำเร็จ" };
   }
 }
 

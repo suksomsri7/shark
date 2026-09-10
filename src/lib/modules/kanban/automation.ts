@@ -40,7 +40,7 @@ import { setCardLabels } from "./labels";
 import { KANBAN_LIMITS } from "./limits";
 import { assertBoardRole } from "./members";
 import { moveCard } from "./moves";
-import { cardLink, notifyKanbanUser } from "./notify";
+import { cardLink, notifyKanbanUsers } from "./notify";
 import { createCard } from "./service";
 import type { KanbanActor, KanbanCtx } from "./types";
 
@@ -1031,16 +1031,17 @@ async function runAction(action: KanbanRuleAction, scope: RunScope, card: RuleCa
       if (recipients.length === 0) return;
       const message = await fillTemplate(action.params.message, scope, card);
       const link = card ? cardLink(scope.systemId, scope.boardId, card.id) : "";
-      for (const userId of [...new Set(recipients)]) {
-        await notifyKanbanUser({
-          tenantId: scope.tenantId,
-          systemId: scope.systemId,
-          recipientUserId: userId,
-          title: scope.ruleName,
-          body: link ? `${message} · ดูงาน ${link}` : message,
-          ...(card ? { data: { cardId: card.id, boardId: scope.boardId, systemId: scope.systemId } } : {}),
-        });
-      }
+      // K3.9 — กฎเดียวแจ้งหลายคน (ผู้ดูแลบอร์ด/ผู้รับผิดชอบ) ⇒ push รอบเดียว ไม่ใช่ต่อคน
+      await notifyKanbanUsers({
+        tenantId: scope.tenantId,
+        systemId: scope.systemId,
+        recipientUserIds: recipients,
+        title: scope.ruleName,
+        body: link ? `${message} · ดูงาน ${link}` : message,
+        ...(card ? { data: { cardId: card.id, boardId: scope.boardId, systemId: scope.systemId } } : {}),
+        // คงพฤติกรรมเดิมของกฎ: เขียนใบแจ้งไม่ได้ = การรันกฎรอบนี้ถือว่าล้ม (ผู้ตั้งกฎต้องเห็นในบันทึกการรัน)
+        strict: true,
+      });
       return;
     }
     case "open_approval": {

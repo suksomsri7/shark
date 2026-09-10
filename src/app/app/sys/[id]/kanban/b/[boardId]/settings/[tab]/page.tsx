@@ -2,12 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { getBoardView, KanbanNotFoundError, listCardTemplates, listFields, listLabels, listMembers, toActor } from "@/lib/modules/kanban/service";
+import { getBoardEmailKey, getBoardView, KanbanNotFoundError, listCardTemplates, listFields, listLabels, listMembers, toActor } from "@/lib/modules/kanban/service";
+import { getIntegrations } from "@/lib/modules/kanban/integrations";
 import type { KanbanActor } from "@/lib/modules/kanban/service";
 import { listViews } from "@/lib/modules/kanban/views";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { tagColorVar } from "@/components/kanban/Card";
 import { BOARD_SETTINGS_TABS, BoardSettingsNav, type BoardSettingsTab } from "@/components/kanban/settings/BoardSettingsNav";
+import { BoardEmailIn } from "@/components/kanban/BoardEmailIn";
 import { CardTemplatesSettings } from "@/components/kanban/CardTemplatesSettings";
 import { CustomFieldsSettings } from "@/components/kanban/settings/CustomFieldsSettings";
 import { SavedViewsSettings } from "@/components/kanban/settings/SavedViewsSettings";
@@ -59,7 +61,7 @@ export default async function BoardSettingsTabPage({
       <div className="flex flex-col gap-4 md:flex-row md:items-start">
         <BoardSettingsNav systemId={id} boardId={boardId} active={tab} />
         <div className="min-w-0 flex-1">
-          {tab === "general" && <GeneralTab board={board} />}
+          {tab === "general" && <GeneralTab ctx={ctx} actor={actor} boardId={boardId} systemId={id} board={board} />}
           {tab === "members" && <MembersTab ctx={ctx} boardId={boardId} />}
           {tab === "labels" && <LabelsTab ctx={ctx} boardId={boardId} />}
           {tab === "fields" && <FieldsTab ctx={ctx} actor={actor} boardId={boardId} systemId={id} />}
@@ -75,8 +77,26 @@ export default async function BoardSettingsTabPage({
 
 type CtxArg = { tenantId: string; systemId: string; actorUserId: string };
 
-function GeneralTab({ board }: { board: { name: string; unitName: string | null; visibility: "PRIVATE" | "TENANT" } }) {
+async function GeneralTab({
+  ctx,
+  actor,
+  boardId,
+  systemId,
+  board,
+}: {
+  ctx: CtxArg;
+  actor: KanbanActor;
+  boardId: string;
+  systemId: string;
+  board: { name: string; unitName: string | null; visibility: "PRIVATE" | "TENANT" };
+}) {
+  // K3.9 — ที่อยู่อีเมลของบอร์ด · อ่านอย่างเดียว (ไม่สร้างกุญแจให้เองแค่เพราะมีคนเปิดหน้าตั้งค่าดู)
+  const [emailKey, integrations] = await Promise.all([
+    getBoardEmailKey(ctx, actor, boardId),
+    getIntegrations(ctx.tenantId, systemId),
+  ]);
   return (
+    <div className="flex flex-col gap-4">
     <div data-testid="board-settings-general" className="card flex flex-col gap-3 p-4">
       <h2 className="text-sm font-medium">ทั่วไป</h2>
       <dl className="grid grid-cols-1 gap-2.5 sm:grid-cols-2" style={{ fontSize: 13 }}>
@@ -94,6 +114,13 @@ function GeneralTab({ board }: { board: { name: string; unitName: string | null;
         </div>
       </dl>
       <p style={{ fontSize: 12, color: "var(--color-muted)" }}>แก้ชื่อบอร์ดได้จากหัวบอร์ด (คลิกชื่อบอร์ด) — ตั้งค่าอื่น ๆ ของแท็บนี้เร็ว ๆ นี้</p>
+    </div>
+    <BoardEmailIn
+      systemId={systemId}
+      boardId={boardId}
+      initialAddress={emailKey?.address ?? null}
+      switchOn={integrations.cardFromEmail.enabled}
+    />
     </div>
   );
 }

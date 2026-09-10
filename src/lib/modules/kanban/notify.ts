@@ -13,7 +13,7 @@
 // (service.ts re-export `setCardAssignees` จาก cards.ts · cards.ts จึงห้าม import service.ts)
 
 import { emitOutbox } from "@/lib/core/outbox";
-import { sendPushToUser } from "@/lib/core/push";
+import { sendPushToUsers } from "@/lib/core/push";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 import { prisma } from "./db";
 
@@ -48,12 +48,12 @@ export type KanbanNotifyInput = {
 };
 
 /**
- * แจ้งเตือน "คนเดียว" ครบทุกช่องทางของโมดูล — จุดเดียวที่โมดูลนี้สร้าง `AppNotification`
+ * เขียนใบในแอป + อีเมลของ **คนเดียว** — ไม่ยิง push (ตัวเรียกรวบ push ไว้ยิงครั้งเดียวท้ายรอบ)
  *
  * ในแอป = ต้องสำเร็จ (โยนต่อถ้าเขียนไม่ได้ — ผู้เรียกรู้ว่าแจ้งไม่ถึง)
- * push/อีเมล = best-effort (ล้มแล้วกลืน ไม่พางานหลักล้ม · ตัวส่งเองก็ log ให้แล้ว)
+ * อีเมล = best-effort (ล้มแล้วกลืน ไม่พางานหลักล้ม · ตัวส่งเองก็ log ให้แล้ว)
  */
-export async function notifyKanbanUser(input: KanbanNotifyInput): Promise<void> {
+async function deliverInAppAndEmail(input: KanbanNotifyInput): Promise<void> {
   await prisma.appNotification.create({
     data: {
       tenantId: input.tenantId,
@@ -64,19 +64,6 @@ export async function notifyKanbanUser(input: KanbanNotifyInput): Promise<void> 
       emailedAt: input.emailedAt !== undefined ? input.emailedAt : input.email ? new Date() : null,
     },
   });
-
-  // push = ตาราง §7.4 (ไม่ส่ง = ยังได้ใบในแอปเหมือนเดิม แค่ไม่ปลุกจอล็อก)
-  if (input.push !== false) {
-    try {
-      await sendPushToUser(
-        input.recipientUserId,
-        { title: input.title, body: input.body, data: input.data },
-        { tenantId: input.tenantId },
-      );
-    } catch {
-      // ตัวส่ง push กลืน error ของตัวเองอยู่แล้ว — ด่านนี้กันแค่กรณี import/โค้ดพัง
-    }
-  }
 
   if (input.email) {
     try {
@@ -100,6 +87,85 @@ export async function notifyKanbanUser(input: KanbanNotifyInput): Promise<void> 
       // อีเมลเป็นช่องทางเสริม — ล้มแล้วเงียบ (sendEmail ลง OpsEvent ให้เองเมื่อ Resend ตอบไม่ ok)
     }
   }
+}
+
+export type KanbanNotifyManyInput = Omit<KanbanNotifyInput, "recipientUserId" | "email" | "emailedAt"> & {
+  /** ผู้รับทั้งหมดของเรื่องเดียวกัน (ซ้ำ/ว่างได้ — ตัวนี้จัดการให้) */
+  recipientUserIds: string[];
+  /**
+   * อ่าน "ความถี่อีเมล" ของแต่ละคนเอง (K2.11) แทนการสั่งจากผู้เรียก
+   * `true` = INSTANT ส่งทันที · HOURLY ปล่อยให้รอบสรุปเก็บ · OFF ไม่ส่งแต่ประทับ `emailedAt`
+   */
+  byPreference?: boolean;
+  /** ไม่ใช้ prefs: สั่งตรงว่าส่งอีเมลไหม (ผู้เรียกเดิมของ `notifyKanbanUser`) */
+  email?: boolean;
+  emailedAt?: Date | null;
+};
+
+/**
+ * 🔴 **จุดเดียว** ที่โมดูลนี้แจ้งเตือนคน — ผู้รับ 1 คนหรือ 50 คนก็เดินทางเดียวกัน (K3.9)
+ *
+ * ทำไมต้องรวบ: ก่อน K3.9 ผู้เรียกที่มีผู้รับหลายคน (ผู้ติดตามการ์ด · เตือนกำหนดส่ง · กฎ "แจ้งผู้ดูแลบอร์ด")
+ * วน `notifyKanbanUser` ทีละคน ซึ่งข้างในยิง `sendPushToUser` ⇒ **1 คิวรี + 1 รอบ HTTP ต่อคน**
+ * ทั้งที่ Expo รับได้ 100 ใบต่อรอบ · บน cron ที่กวาดการ์ดทีละ 200 ใบ นี่คือที่มาของ connection ค้างใน pool
+ * ⇒ ที่นี่: เขียนใบในแอป/อีเมลทีละคน (ต้องเคารพ prefs รายคน) แล้ว **ยิง push ครั้งเดียว** ท้ายรอบ
+ *
+ * ⚠️ ต้องเรียกจาก **นอกทรานแซกชัน** เสมอ (อ่าน prefs/ยิงอีเมล/ยิง push = network)
+ * `strict` = โยน error ของใบในแอปต่อ (ผู้เรียกที่มีผู้รับคนเดียวต้องรู้ว่าแจ้งไม่ถึง) ·
+ * ไม่ strict = คนหนึ่งพังไม่ลามไปตัดคนที่เหลือ
+ */
+export async function notifyKanbanUsers(
+  input: KanbanNotifyManyInput & { strict?: boolean },
+): Promise<{ notified: number; pushed: number }> {
+  const targets = [...new Set(input.recipientUserIds.filter(Boolean))];
+  if (targets.length === 0) return { notified: 0, pushed: 0 };
+
+  const { getUserPreferences } = input.byPreference
+    ? await import("@/lib/core/user-preferences")
+    : { getUserPreferences: null };
+
+  let notified = 0;
+  for (const recipientUserId of targets) {
+    // ความถี่อีเมลเป็นค่าของ "คน" (ข้ามร้าน) ⇒ อ่านต่อคน ผู้เรียกไม่ต้องรู้เรื่อง prefs เอง
+    let email = input.email ?? false;
+    let emailedAt = input.emailedAt;
+    if (getUserPreferences) {
+      const mode = (await getUserPreferences(recipientUserId)).kanbanEmailMode;
+      email = mode === "INSTANT";
+      emailedAt = mode === "HOURLY" ? null : new Date();
+    }
+    try {
+      await deliverInAppAndEmail({ ...input, recipientUserId, email, emailedAt });
+      notified++;
+    } catch (e) {
+      if (input.strict) throw e;
+      // ใบในแอปของคนหนึ่งเขียนไม่ได้ ไม่ใช่เหตุให้คนที่เหลือไม่ได้รับ
+    }
+  }
+
+  // push = ตาราง §7.4 (ไม่ส่ง = ยังได้ใบในแอปเหมือนเดิม แค่ไม่ปลุกจอล็อก)
+  let pushed = 0;
+  if (input.push !== false) {
+    try {
+      const res = await sendPushToUsers(
+        input.tenantId,
+        targets,
+        { title: input.title, body: input.body, data: input.data },
+      );
+      pushed = res.sent;
+    } catch {
+      // ตัวส่ง push กลืน error ของตัวเองอยู่แล้ว — ด่านนี้กันแค่กรณี import/โค้ดพัง
+    }
+  }
+  return { notified, pushed };
+}
+
+/**
+ * แจ้งเตือน "คนเดียว" ครบทุกช่องทาง — เปลือกบางของ `notifyKanbanUsers` (ผู้เรียกเดิมไม่ต้องแก้)
+ * ใบในแอปเขียนไม่ได้ = โยนต่อเหมือนเดิม (`strict`)
+ */
+export async function notifyKanbanUser(input: KanbanNotifyInput): Promise<void> {
+  await notifyKanbanUsers({ ...input, recipientUserIds: [input.recipientUserId], strict: true });
 }
 
 /**
@@ -158,13 +224,7 @@ export type WatcherNotifyKind = "COMMENT" | "MOVED" | "ARCHIVED";
 export async function notifyKanbanUserByPreference(
   input: KanbanNotifyInput & { push?: boolean },
 ): Promise<void> {
-  const { getUserPreferences } = await import("@/lib/core/user-preferences");
-  const mode = (await getUserPreferences(input.recipientUserId)).kanbanEmailMode;
-  await notifyKanbanUser({
-    ...input,
-    email: mode === "INSTANT",
-    emailedAt: mode === "HOURLY" ? null : new Date(),
-  });
+  await notifyKanbanUsers({ ...input, recipientUserIds: [input.recipientUserId], byPreference: true });
 }
 
 /**
@@ -198,18 +258,19 @@ export async function notifyWatchers(
     });
     const data: Record<string, string> = { cardId: args.cardId, systemId: ctx.systemId };
     if (card) data.boardId = card.boardId;
-    for (const userId of targets) {
-      await notifyKanbanUserByPreference({
-        tenantId: ctx.tenantId,
-        systemId: ctx.systemId,
-        recipientUserId: userId,
-        title: args.title,
-        body: args.body,
-        data,
-        // §7.4: push เฉพาะ "ความเห็นใหม่" — การ์ดถูกย้าย/เก็บ = ในแอปพอ
-        push: args.kind === "COMMENT",
-      }).catch(() => {});
-    }
+    // K3.9: ผู้ติดตามทั้งกลุ่มเดินทางเดียว — ใบในแอป/อีเมลรายคน (เคารพความถี่ของแต่ละคน)
+    //       แล้ว push **ครั้งเดียว** ให้ทุกคนที่ควรได้ (เดิมวนยิงทีละคน)
+    await notifyKanbanUsers({
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      recipientUserIds: targets,
+      title: args.title,
+      body: args.body,
+      data,
+      byPreference: true,
+      // §7.4: push เฉพาะ "ความเห็นใหม่" — การ์ดถูกย้าย/เก็บ = ในแอปพอ
+      push: args.kind === "COMMENT",
+    }).catch(() => ({ notified: 0, pushed: 0 }));
     return targets.length;
   } catch {
     // ผู้ติดตามเป็นช่องทางเสริม — ล้มแล้วเงียบ (งานหลัก commit ไปแล้ว)

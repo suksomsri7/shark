@@ -66,6 +66,17 @@ model KanbanBoard {
   createdById  String? // User.id ผู้สร้าง
   templateOfId String? // สร้างมาจากเทมเพลตไหน (K1.12)
 
+  // ── K3.9 — อีเมลเข้าบอร์ด ──
+  // กุญแจสุ่ม base32 8 ตัว (`[a-z2-7]`) ที่ประกอบเป็นที่อยู่ `งาน+{emailKey}@shark.in.th`
+  // 🔴 นี่คือ "ความลับที่เป็นสิทธิ์เขียน" — ใครรู้ก็ส่งการ์ดเข้าบอร์ดได้ ⇒ ต้องสุ่มจาก crypto เท่านั้น
+  //    (ห้าม Math.random) และหมุนใหม่ได้ทุกเมื่อ (`rotateEmailKey` — ของเก่าตายทันทีเพราะเป็นคอลัมน์เดียว)
+  // 🔴 unique(tenantId, emailKey) เป็น **partial index** (`WHERE "emailKey" IS NOT NULL`) ประกาศเฉพาะใน
+  //    migration.sql (Prisma schema ไม่รองรับ WHERE บน @@unique) — แบบเดียวกับ `KanbanCard.sourceKey` (K3.1)
+  //    ⇒ บอร์ดที่ยังไม่เคยเปิดที่อยู่อีเมลมีค่า NULL จึงไม่ชนกันเอง
+  //    ตัวหาบอร์ดขาเข้าค้นด้วย emailKey ล้วน (ยังไม่รู้ร้าน) ⇒ มีดัชนีธรรมดา `@@index([emailKey])` คู่กัน
+  //    และ `boards-email.ts` บังคับ "ไม่ซ้ำทั้งระบบ" ตอนสุ่มอีกชั้น (ดูคอมเมนต์ในไฟล์นั้น)
+  emailKey String?
+
   columns KanbanColumn[]
   cards   KanbanCard[]
   labels  KanbanLabel[] // ป้ายของบอร์ด (K1.2)
@@ -78,6 +89,8 @@ model KanbanBoard {
 
   @@index([tenantId, systemId, status])
   @@index([tenantId, systemId, unitId])
+  // K3.9 — อีเมลขาเข้ารู้แค่ "กุญแจ" ยังไม่รู้ร้าน ⇒ ต้องค้นด้วย emailKey ล้วนได้โดยไม่สแกนทั้งตาราง
+  @@index([emailKey])
 }
 
 // ───────────────────────── Column ─────────────────────────

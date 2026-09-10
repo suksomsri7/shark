@@ -24,12 +24,15 @@ const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const q = async <T = Any,>(sql: string): Promise<T[]> => (await prisma.$queryRawUnsafe(sql)) as T[];
 const P = prisma as Any;
 let tid = ""; let SYS = ""; let settingsBackup: unknown = null;
+let seqBefore: { id: string; cardNoSeq: number }[] = [];
 const madeCards: string[] = []; const madeDevices: string[] = []; let keyBackup: string | null | undefined = undefined; let board = "";
 try {
   const scope = await kq.resolveKanbanScope(prisma);
   if (!scope) throw new Error("ยังไม่ได้ seed");
   const E = JSON.parse(readFileSync(kq.KQC.expectedPath, "utf8"));
   tid = scope.tenantId; SYS = scope.systemId; board = E.boards.maint.id;
+  // 🔴 การ์ดจากอีเมลกิน cardNo ของบอร์ด — จำ cardNoSeq ทุกบอร์ดไว้คืนใน finally (K1.1-S2.5 ตรวจ seq = max cardNo)
+  seqBefore = (await prisma.kanbanBoard.findMany({ where: { tenantId: tid }, select: { id: true, cardNoSeq: true } })) as Any;
   const em = (await import("@/lib/platform/kanban-email-in" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
   const bd = (await import("@/lib/modules/kanban/boards" as string).catch(() => import("@/lib/modules/kanban/service" as string))) as Record<string, (...a: Any[]) => Promise<Any>>;
   const push = (await import("@/lib/core/push" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
@@ -97,6 +100,7 @@ try {
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.name}: ${e.message.slice(0, 240)}` : String(e));
 } finally {
+  for (const b of seqBefore) await prisma.kanbanBoard.update({ where: { id: b.id }, data: { cardNoSeq: b.cardNoSeq } }).catch(() => null);
   try {
     if (tid) {
       const ids = madeCards.filter(Boolean);

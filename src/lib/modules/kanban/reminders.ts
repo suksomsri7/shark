@@ -13,7 +13,7 @@
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 import { prisma } from "./db";
-import { cardLink, notifyKanbanUserByPreference } from "./notify";
+import { cardLink, notifyKanbanUsers } from "./notify";
 
 const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
 const DAY_MS = 86_400_000;
@@ -112,16 +112,17 @@ export async function sweepDueSoonReminders(now: Date = new Date()): Promise<num
           },
         });
       });
-      for (const userId of targets) {
-        await notifyKanbanUserByPreference({
-          tenantId: card.tenantId,
-          systemId: card.systemId,
-          recipientUserId: userId,
-          title: "ใกล้ถึงกำหนดส่ง",
-          body: `"${card.title}" ใกล้ถึงกำหนดส่งแล้ว · ${link}`,
-          data: { cardId: card.id, boardId: card.boardId, systemId: card.systemId },
-        }).catch(() => {});
-      }
+      // K3.9 — ผู้รับผิดชอบทั้งใบได้ push รอบเดียว (เดิมวน `sendPushToUser` ทีละคน = 1 HTTP ต่อคน
+      //        คูณจำนวนการ์ดที่ cron กวาดต่อรอบ ⇒ connection ค้างใน pool)
+      await notifyKanbanUsers({
+        tenantId: card.tenantId,
+        systemId: card.systemId,
+        recipientUserIds: targets,
+        title: "ใกล้ถึงกำหนดส่ง",
+        body: `"${card.title}" ใกล้ถึงกำหนดส่งแล้ว · ${link}`,
+        data: { cardId: card.id, boardId: card.boardId, systemId: card.systemId },
+        byPreference: true,
+      }).catch(() => ({ notified: 0, pushed: 0 }));
     } catch {
       // แจ้ง/ยิง event ล้ม = ปล่อยผ่านใบนี้ (claim ไปแล้ว ไม่ย้อน — ยอมพลาด 1 ใบดีกว่ายิงซ้ำวนทุกชั่วโมง)
     }
@@ -199,17 +200,16 @@ export async function sweepOverdue(now: Date = new Date()): Promise<number> {
       });
     });
     const link = cardLink(card.systemId, card.boardId, card.id);
-    for (const userId of targets) {
-      await notifyKanbanUserByPreference({
-        tenantId: card.tenantId,
-        systemId: card.systemId,
-        recipientUserId: userId,
-        title: "เลยกำหนดส่งแล้ว",
-        body: `"${card.title}" เลยกำหนดส่งมา ${overdueDays} วัน · ${link}`,
-        data: { cardId: card.id, boardId: card.boardId, systemId: card.systemId },
-        push: false,
-      }).catch(() => {});
-    }
+    await notifyKanbanUsers({
+      tenantId: card.tenantId,
+      systemId: card.systemId,
+      recipientUserIds: targets,
+      title: "เลยกำหนดส่งแล้ว",
+      body: `"${card.title}" เลยกำหนดส่งมา ${overdueDays} วัน · ${link}`,
+      data: { cardId: card.id, boardId: card.boardId, systemId: card.systemId },
+      byPreference: true,
+      push: false,
+    }).catch(() => ({ notified: 0, pushed: 0 }));
     fired++;
   }
   if (fired > 0) scheduleDrain();

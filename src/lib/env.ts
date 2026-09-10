@@ -11,6 +11,11 @@ const schema = z.object({
   EMAIL_FROM: z.string().default("SHARK <noreply@shark.in.th>"),
   STORAGE_PROVIDER: z.enum(["local", "bunny", "vercel-blob"]).default("local"),
   CRON_SECRET: z.string().default("dev-cron-secret"),
+  // ── K3.9: อีเมลเข้าบอร์ดงาน (`POST /api/email/inbound`) ──
+  // 🔴 ไม่ตั้งค่า = **ปิดบริการสนิท** (503) ไม่ใช่ "เปิดโล่ง" — endpoint นี้เขียนการ์ดลงบอร์ดของร้านได้
+  //    ค่าปริยายที่เดาได้แม้แต่ตัวเดียว = ใครก็ยิงการ์ดเข้าร้านคนอื่นได้ (ต่างจาก CRON_SECRET ที่ของเดิม
+  //    มี default ไว้ให้ dev รันได้ — ตัวนี้ยอมให้ dev เสียความสะดวกดีกว่ายอมให้ prod เสี่ยง)
+  EMAIL_INBOUND_SECRET: z.string().default(""),
   // ── บัญชีสำหรับผู้ตรวจของสโตร์ (App Review) ──
   // แอป login ด้วย OTP อีเมลล้วน → ผู้ตรวจของ Apple/Google ไม่มีอีเมลของเรา = เข้าระบบไม่ได้เลย
   // = ถูกตีกลับข้อ 2.1 แน่นอน · ทางออก: อีเมลเดียวที่ระบุไว้เท่านั้นได้รหัสคงที่
@@ -26,6 +31,8 @@ export const isDev = env.APP_ENV === "development";
 // cookie secure ทุกที่ที่ไม่ใช่ localhost dev (preview/prod เป็น HTTPS)
 export const secureCookies = env.APP_ENV !== "development";
 export const emailEnabled = env.RESEND_API_KEY.length > 0;
+/** ความลับของ webhook อีเมลขาเข้า — ค่าว่าง = ยังไม่ได้เปิดบริการ (route ตอบ 503) */
+export const emailInboundSecret = env.EMAIL_INBOUND_SECRET.trim();
 // โชว์ OTP บนจอทุก env ที่ไม่ใช่ production (แม้ต่อ Resend แล้ว) — กัน login ติดตอน
 // domain ยังไม่ verify (ส่งได้เฉพาะเจ้าของบัญชี). production = ปิด โชว์เฉพาะเมลจริง
 export const previewOtp = env.APP_ENV !== "production";

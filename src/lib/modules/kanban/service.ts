@@ -100,6 +100,18 @@ export {
 export { describeRecurrence, nextOccurrence, parseRecurrenceRule, setCardRecurrence, sweepRecurringCards } from "./recurrence";
 export type { CardTemplateDto } from "./types";
 
+// K3.9 — อีเมลเข้าบอร์ด: กุญแจ/ที่อยู่ของบอร์ด (ฝั่งเขียนอยู่ `boards-email.ts` · หน้า/action เรียกผ่าน facade นี้)
+export {
+  boardEmailAddress,
+  boardEmailKeyFromRecipients,
+  ensureEmailKey,
+  findBoardByEmailKey,
+  getBoardEmailKey,
+  isBoardEmailKey,
+  rotateEmailKey,
+} from "./boards-email";
+export type { BoardByEmailKey, BoardEmailKey } from "./boards-email";
+
 export { listSystemCalendar } from "./system-calendar";
 export type { ListSystemCalendarInput } from "./system-calendar";
 export type { SystemCalCardDto, SystemCalDayDto, SystemCalendarBoardDto, SystemCalendarDto } from "./types";
