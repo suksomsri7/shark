@@ -28,14 +28,57 @@ model Customer {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
+  // ── ระบบสมาชิก v2 (M1.1 · §4.1) — เพิ่มคอลัมน์ล้วน ทุกช่อง nullable/มี default ──
+  // 🔴 คอลัมน์เดิมข้างบน (name/phone/email/tier/totalSpentSatang/tags/marketingConsent) **ห้ามลบ**:
+  //    POS/จอง/แต้ม/การตลาด v1 ยังอ่านอยู่ · v2 เขียนคู่ขนาน (tier ← legacyTier ของ tierDefId)
+  firstName        String?
+  lastName         String?
+  nickname         String?
+  titleTh          String? // คำนำหน้า
+  birthDate        DateTime?     @db.Date
+  gender           MemberGender?
+  nationality      String? // ISO 3166-1 alpha-2
+  avatarFileId     String?
+  locale           String?       @default("th")
+  // D19 — ช่องทางที่ลูกค้าชอบ = **key ข้อความ** จากทะเบียน `src/lib/core/channels.ts` ไม่ใช่ enum
+  //       (เพิ่มช่องทางใหม่ต้องไม่ต้องทำ migration)
+  preferredChannel String?
+  lineUserId       String? // ค่าเดี่ยวเดิม — v2 ใช้ MemberChannelIdentity แทน (คงไว้เพื่อความเข้ากันได้)
+  status           MemberStatus  @default(ACTIVE)
+  tierDefId        String? // D1 — ระดับตัวจริงของ v2 (enum `tier` ข้างบน = สะพานให้โค้ดเก่า)
+  tierPoints       Int           @default(0)
+  tierSince        DateTime?
+  tierReviewAt     DateTime?
+  source           MemberSource? // D10
+  sourceDetail     Json? // { campaignId?, linkId?, staffUserId?, referrerCustomerId?, formId?, note? }
+  sourceChannel    String? // D19 — key ช่องทางจริง เช่น "SHOPEE" / "WHATSAPP"
+  ownerUserId      String?
+  homeUnitId       String?
+  lastActivityAt   DateTime?
+  spent12mSatang   BigInt        @default(0) // cache รายวัน (cron)
+  visits12m        Int           @default(0)
+  reviewAvg        Decimal?      @db.Decimal(3, 2)
+  // 🔴 unique(tenantId, referralCode) เป็น **partial index** (`WHERE "referralCode" IS NOT NULL`)
+  //    เขียนมือใน migration `member_v2_a` — สมาชิกที่ยังไม่มีโค้ดแนะนำเพื่อนเป็น NULL จึงไม่ชนกันเอง
+  //    (แบบเดียวกับ `KanbanBoard_tenantId_emailKey_key` ของ K3.9)
+  referralCode     String?
+  referredById     String?
+  mergedIntoId     String?
+  privacyVersion   Int?
+
   appointments Appointment[]
   activities   MemberActivity[]
 
   @@unique([memberSystemId, phone])
   @@unique([memberSystemId, memberCode])
+  @@unique([tenantId, referralCode])
   @@index([tenantId])
   @@index([memberSystemId])
   @@index([partyId])
+  @@index([tenantId, tierDefId])
+  @@index([tenantId, source])
+  @@index([tenantId, lastActivityAt])
+  @@index([tenantId, birthDate])
 }
 
 // timeline กิจกรรมลูกค้ารวมทุกโมดูล (contract 2.7 activity.log)
@@ -51,8 +94,15 @@ model MemberActivity {
   refId      String?
   summary    String
   createdAt  DateTime @default(now())
+  // ── M1.1 (§4.4) — ไทม์ไลน์ v2 ใช้ตารางนี้ต่อ ไม่สร้าง MemberEvent ใหม่ ──
+  // `data` = payload ย่อของเหตุการณ์ (ยอดเงิน/ระดับ/แต้ม) เพื่อวาดไทม์ไลน์โดยไม่ต้อง join กลับต้นทาง
+  // `actorUserId` = พนักงานที่ทำ (null = ระบบ/ลูกค้าเอง)
+  data        Json?
+  actorUserId String?
 
   @@index([tenantId, customerId, createdAt])
+  // แท็บ "ประวัติ" กรองตามโมดูลแล้วเรียงเวลา — เส้นอ่านหลักของหน้า 360
+  @@index([customerId, module, createdAt])
 }
 
 // เกณฑ์ระดับสมาชิกต่อกิจการ (เจ้าของกำหนดชื่อ+ยอดเอง — ไม่ตั้ง = ใช้ค่า default เดิมใน service)
@@ -65,4 +115,509 @@ model MemberTierConfig {
   updatedAt      DateTime   @updatedAt
 
   @@unique([tenantId, tier])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ระบบสมาชิก v2 (RUN Member System · WO M1.1 · พิมพ์เขียว docs/modules/06-member-v2.md §4)
+// 🔴 additive ล้วน: คอลัมน์ใหม่ทุกตัว nullable หรือมี default · ไม่มี DROP/เปลี่ยนชนิด
+//    แถวเดิมทุกแถวทำงานเหมือนเดิมเป๊ะ (โค้ด v1 ไม่รู้จักคอลัมน์ใหม่เลย)
+// 🔴 ห้ามรัน `prisma format` กับไฟล์นี้ (Prisma 7 ทำคอมเมนต์ซ้อนเพี้ยน) — จัดรูปด้วยมือ
+// ═══════════════════════════════════════════════════════════════════════════
+
+// สีป้าย 6 สี ตรงกับโทเคน `--color-tag-*` ของดีไซน์ (ชุดเดียวกับ KanbanLabelColor
+// แต่แยก enum เพราะเป็นคนละโดเมน — ระดับสมาชิก/แท็กลูกค้า ไม่ใช่ป้ายบนบอร์ดงาน)
+enum TagColor {
+  SLATE
+  BLUE
+  GREEN
+  AMBER
+  RED
+  PURPLE
+}
+
+enum MemberGender {
+  MALE
+  FEMALE
+  OTHER
+  UNSPECIFIED
+}
+
+enum MemberStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+  MERGED
+}
+
+// ที่มาของสมาชิก (D10) — `sourceChannel` เก็บ "ช่องทางจริง" เป็น key ของทะเบียนช่องทางกลาง
+// (D19 · src/lib/core/channels.ts) เช่น source = MARKETPLACE + sourceChannel = "SHOPEE"
+enum MemberSource {
+  WALK_IN
+  POS
+  BOOKING
+  LINE_OA
+  LIFF
+  WEB_FORM
+  CHAT
+  REFERRAL
+  IMPORT
+  CRM
+  CAMPAIGN
+  API
+  MARKETPLACE
+  APP
+  OTHER
+}
+
+// วิธีที่ระบบ "รู้ว่าเป็นคนเดียวกัน" (D18) — ใช้ทั้ง MemberChannelIdentity และ ChatContact
+enum MemberLinkMethod {
+  PHONE
+  EMAIL
+  CHANNEL_ID
+  MANUAL
+  MERGE
+  ORDER
+}
+
+enum MemberFieldType {
+  TEXT
+  LONG_TEXT
+  NUMBER
+  MONEY
+  DATE
+  DATETIME
+  SELECT
+  MULTI_SELECT
+  BOOLEAN
+  FILE
+  LOOKUP
+}
+
+enum MemberLookupTarget {
+  PRODUCT
+  SERVICE
+  EMPLOYEE
+  UNIT
+  CUSTOMER
+}
+
+// ที่มาของการบันทึก (ยินยอม/แก้ฟิลด์/คำขอ PDPA) — "ใครเป็นคนกด" ในเชิงช่องทาง ไม่ใช่ตัวบุคคล
+enum MemberConsentSource {
+  SIGNUP_FORM
+  LIFF
+  STAFF
+  IMPORT
+  API
+  CUSTOMER_SELF
+}
+
+enum TierChangeReason {
+  RULE_UPGRADE
+  RULE_DOWNGRADE
+  RULE_KEEP
+  MANUAL
+  PAID_PLAN
+  PLAN_EXPIRED
+  MERGE
+  INITIAL
+}
+
+enum TierBenefitType {
+  DISCOUNT_PCT
+  DISCOUNT_FIXED
+  POINT_MULTIPLIER
+  WELCOME_VOUCHER
+  BIRTHDAY_GIFT
+  FREE_SERVICE
+  PRIORITY_BOOKING
+  NO_POINT_EXPIRY
+  CANCEL_FEE_DISCOUNT
+  EXCLUSIVE_ITEMS
+}
+
+enum PrivacyRequestType {
+  EXPORT
+  DELETE
+}
+
+enum PrivacyRequestStatus {
+  PENDING
+  APPROVED
+  DONE
+  REJECTED
+}
+
+// ───────────────────────── ส่วน/ฟิลด์กำหนดเอง (D14) ─────────────────────────
+// "ส่วน" = กล่องบนหน้าโปรไฟล์ · ฟิลด์ระบบ (isSystem) = ตัวชี้ไปคอลัมน์ของ Customer
+// (ไม่ย้ายค่า — ตัวออกแบบเห็นเป็นฟิลด์ปกติ แต่ค่าจริงยังอยู่คอลัมน์เดิม)
+model MemberSection {
+  id          String   @id @default(cuid())
+  tenantId    String
+  systemId    String
+  key         String
+  label       String
+  description String?
+  columns     Int      @default(2)
+  sortOrder   Int      @default(0)
+  isSystem    Boolean  @default(false)
+  sensitive   Boolean  @default(false)
+  collapsed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([systemId, key])
+  @@index([tenantId])
+  @@index([systemId, sortOrder])
+}
+
+model MemberField {
+  id               String          @id @default(cuid())
+  tenantId         String
+  systemId         String
+  sectionId        String
+  key              String
+  label            String
+  description      String?
+  type             MemberFieldType
+  // SELECT/MULTI_SELECT: {choices:[{value,label,color?}]} · NUMBER/MONEY: {unit?,decimals?,min?,max?}
+  // TEXT: {pattern?,maxLength?} · LOOKUP: {target: MemberLookupTarget}
+  options          Json?
+  required         Boolean         @default(false)
+  defaultValue     Json?
+  unique           Boolean         @default(false)
+  filterable       Boolean         @default(false)
+  showInList       Boolean         @default(false)
+  showOnCard       Boolean         @default(false)
+  customerEditable Boolean         @default(false)
+  sensitive        Boolean         @default(false)
+  trackHistory     Boolean         @default(false)
+  isSystem         Boolean         @default(false)
+  // ฟิลด์ระบบชี้คอลัมน์ไหนของ Customer (firstName/phone/... — §11.2) · null = ฟิลด์ที่ร้านสร้างเอง
+  systemKey        String?
+  sortOrder        Int             @default(0)
+  archivedAt       DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@unique([systemId, key])
+  @@index([tenantId])
+  @@index([systemId, sectionId, sortOrder])
+}
+
+// ค่าฟิลด์ — คอลัมน์แยกชนิด (D14 · แบบ K2.6) ไม่ใช่ Json ก้อนเดียว
+// เหตุผล: กรอง/เรียง/ทำ segment ด้วย index จริงได้ (Json ก้อนเดียว = scan ทั้งตาราง)
+model MemberFieldValue {
+  id          String    @id @default(cuid())
+  tenantId    String
+  customerId  String
+  fieldId     String
+  valueText   String?
+  valueNumber Decimal?  @db.Decimal(18, 4)
+  valueDate   DateTime?
+  valueBool   Boolean?
+  valueOptions String[] @default([])
+  valueRef    String?
+  valueFileId String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([customerId, fieldId])
+  @@index([tenantId])
+  @@index([fieldId, valueText])
+  @@index([fieldId, valueNumber])
+  @@index([fieldId, valueDate])
+}
+
+// ประวัติการแก้ฟิลด์ (เฉพาะฟิลด์ที่เปิด trackHistory) — append-only
+model MemberFieldValueHistory {
+  id          String              @id @default(cuid())
+  tenantId    String
+  customerId  String
+  fieldId     String
+  oldValue    Json?
+  newValue    Json?
+  changedById String?
+  changedVia  MemberConsentSource
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([tenantId])
+  @@index([customerId, fieldId, createdAt])
+}
+
+model MemberAddress {
+  id          String   @id @default(cuid())
+  tenantId    String
+  customerId  String
+  kind        String   @default("HOME")
+  line1       String
+  line2       String?
+  subdistrict String?
+  district    String?
+  province    String?
+  postcode    String?
+  country     String   @default("TH")
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([customerId])
+}
+
+// ───────────────────────── ยินยอม / ความเป็นส่วนตัว (D8 · D17 · D19) ─────────────────────────
+
+// ยินยอมรับข่าวสาร "ต่อช่องทาง" — `channel` เป็น **ข้อความ** ที่เป็น key ของทะเบียนช่องทางกลาง
+// (D19: เพิ่มช่องทางใหม่ = แก้ทะเบียนไฟล์เดียว ไม่ต้อง migration)
+model MemberConsent {
+  id            String              @id @default(cuid())
+  tenantId      String
+  customerId    String
+  channel       String
+  granted       Boolean             @default(false)
+  source        MemberConsentSource
+  policyVersion Int?
+  grantedAt     DateTime?
+  revokedAt     DateTime?
+  byUserId      String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@unique([customerId, channel])
+  @@index([tenantId])
+  @@index([tenantId, channel, granted])
+}
+
+model MemberPrivacyPolicy {
+  id          String   @id @default(cuid())
+  tenantId    String
+  systemId    String
+  version     Int
+  bodyHtml    String
+  effectiveAt DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([systemId, version])
+  @@index([tenantId])
+}
+
+// ใครดูข้อมูลอ่อนไหวได้ (D8 + D17) — ผ่านถ้าเข้าเงื่อนไข roles **หรือ** ตำแหน่ง/แผนก HR
+// แล้วจึงตรวจ sameUnitOnly ต่อ · `hrDepartments` เป็นข้อความ (HR ไม่มีตารางแผนก — มติ Fable ข้อ 2)
+model MemberSensitivePolicy {
+  id            String   @id @default(cuid())
+  tenantId      String
+  systemId      String
+  targetType    String // SECTION | FIELD
+  targetId      String
+  roles         Role[]   @default([])
+  hrPositions   String[] @default([])
+  hrDepartments String[] @default([])
+  sameUnitOnly  Boolean  @default(false)
+  logAccess     Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([systemId, targetType, targetId])
+  @@index([tenantId])
+}
+
+// บันทึกการเปิดดูข้อมูลอ่อนไหว (D17 — เก็บตำแหน่ง HR ณ เวลาที่ดู ไม่ใช่อ่านสดทีหลัง)
+model MemberAccessLog {
+  id           String   @id @default(cuid())
+  tenantId     String
+  customerId   String
+  userId       String
+  hrEmployeeId String?
+  hrPosition   String?
+  targetType   String
+  targetId     String
+  page         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([customerId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model MemberPrivacyRequest {
+  id                String               @id @default(cuid())
+  tenantId          String
+  customerId        String
+  type              PrivacyRequestType
+  status            PrivacyRequestStatus @default(PENDING)
+  requestedVia      MemberConsentSource
+  approvalRequestId String?
+  fileId            String?
+  doneAt            DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([tenantId, status])
+  @@index([customerId, createdAt])
+}
+
+// มุมมองที่บันทึกไว้ของหน้ารวมสมาชิก (แบบเดียวกับบอร์ดงาน K2.5)
+model MemberSavedView {
+  id          String   @id @default(cuid())
+  tenantId    String
+  systemId    String
+  ownerUserId String?
+  scope       String   @default("PRIVATE") // PRIVATE | TEAM
+  name        String
+  filters     Json     @default("{}")
+  columns     Json     @default("[]")
+  sort        Json?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([systemId, scope])
+}
+
+// แท็กแบบมีทะเบียน (Customer.tags Json เดิมคงไว้เพื่อ backward compat)
+model MemberTag {
+  id        String    @id @default(cuid())
+  tenantId  String
+  systemId  String
+  name      String
+  color     TagColor?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([systemId, name])
+  @@index([tenantId])
+}
+
+// ───────────────────────── ตัวตนหลายช่องทาง (D18) ─────────────────────────
+// 1 externalId ผูกได้ 1 สมาชิกต่อร้าน · ลูกค้าเปลี่ยนบัญชี LINE = เพิ่มแถวใหม่ ไม่ลบของเก่า
+model MemberChannelIdentity {
+  id          String           @id @default(cuid())
+  tenantId    String
+  customerId  String
+  channel     String // key ของทะเบียนช่องทางกลาง (D19)
+  externalId  String
+  displayName String?
+  contactId   String? // ChatContact.id (ถ้ามาจากกล่องแชท)
+  verified    Boolean          @default(false)
+  linkedBy    MemberLinkMethod
+  linkedAt    DateTime         @default(now())
+  lastSeenAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([tenantId, channel, externalId])
+  @@index([customerId])
+  @@index([tenantId, channel])
+}
+
+// ───────────────────────── ช่องทางที่มา (D10) ─────────────────────────
+
+model AcquisitionLink {
+  id             String       @id @default(cuid())
+  tenantId       String
+  systemId       String
+  code           String
+  name           String
+  source         MemberSource
+  campaignId     String?
+  unitId         String?
+  target         String // LIFF_JOIN | WEB_FORM | CHAT
+  utm            Json?
+  qrFileId       String?
+  hits           Int          @default(0)
+  signups        Int          @default(0)
+  firstPurchases Int          @default(0)
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([systemId, active])
+}
+
+// first touch = เขียนครั้งเดียวไม่ทับ · last touch = ทับได้ (§7.2)
+model MemberAttribution {
+  id                 String       @id @default(cuid())
+  tenantId           String
+  customerId         String
+  touch              String // FIRST | LAST
+  source             MemberSource
+  linkId             String?
+  campaignId         String?
+  staffUserId        String?
+  referrerCustomerId String?
+  unitId             String?
+  occurredAt         DateTime
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@unique([customerId, touch])
+  @@index([tenantId, source])
+}
+
+// ───────────────────────── ระดับสมาชิก (D1) ─────────────────────────
+// `MemberTier` (enum เดิม) คงไว้เพื่อ backward compat — โค้ดใหม่อ้าง `tierDefId`
+// `legacyTier` คือสะพาน: เปลี่ยนระดับแล้ว sync `Customer.tier` กลับให้โค้ดเก่าอ่านได้
+model MemberTierDef {
+  id               String      @id @default(cuid())
+  tenantId         String
+  systemId         String
+  key              String
+  name             String
+  color            TagColor    @default(SLATE)
+  icon             String?
+  sortOrder        Int         @default(0)
+  description      String?
+  isDefault        Boolean     @default(false)
+  paidPlanId       String?
+  legacyTier       MemberTier?
+  keepRuleId       String? // AutomationRule scope MEMBER_TIER (กฎคงระดับ)
+  upgradeRuleId    String? // AutomationRule scope MEMBER_TIER (กฎเลื่อนระดับ)
+  reviewCron       String?     @default("0 3 1 * *")
+  graceDays        Int         @default(30)
+  notifyBeforeDays Int         @default(30)
+  archivedAt       DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@unique([systemId, key])
+  @@index([tenantId])
+  @@index([systemId, sortOrder])
+}
+
+model MemberTierBenefit {
+  id        String          @id @default(cuid())
+  tenantId  String
+  tierDefId String
+  type      TierBenefitType
+  config    Json            @default("{}")
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([tierDefId])
+  @@index([tenantId])
+}
+
+model MemberTierHistory {
+  id                String           @id @default(cuid())
+  tenantId          String
+  customerId        String
+  fromTierDefId     String?
+  toTierDefId       String?
+  reason            TierChangeReason
+  ruleId            String?
+  evidence          Json             @default("{}")
+  byUserId          String?
+  approvalRequestId String?
+  notifiedAt        DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([customerId, createdAt])
+  @@index([tenantId, reason])
 }

@@ -17,6 +17,10 @@ enum SystemType {
   INVENTORY
   HR
   MARKETING
+  // M1.1 — ระบบ "จองคิว/นัดหมาย" มีอยู่เป็น BusinessUnit อยู่แล้ว แต่ชุดข้อมูล QC ของระบบสมาชิก
+  // ต้องผูก AppSystem ประเภทนี้ด้วย (สมาชิก/แต้ม/จอง ใช้ร่วมสาขาเดียวกัน) — เพิ่มค่า enum อย่างเดียว
+  // ไม่มีโค้ดเดิมเปลี่ยนพฤติกรรม (ensureUnitSystems ยัง provision แค่ MEMBER/POINT/POS/REWARD)
+  BOOKING
 }
 
 model AppSystem {

@@ -36,6 +36,15 @@ model PosSale {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
+  // ── M1.1 (ระบบสมาชิก v2 · §4.1) — ร่องรอยสิทธิ์สมาชิกที่ใช้กับบิลใบนี้ · เพิ่มคอลัมน์ล้วน ──
+  // 🔴 ยังไม่มีโค้ดเขียนค่าเหล่านี้ในใบ M1.1 (ตาราง Voucher/StampEvent/GiftCard เกิดที่ M2.x)
+  //    ใบนี้เตรียมช่องไว้ก่อนเพื่อให้ migration เป็นก้อนเดียว — บิลเดิมทุกใบได้ค่าว่าง/0 = พฤติกรรมเดิมเป๊ะ
+  voucherUseIds     String[] @default([]) // Voucher.id ที่ใช้กับบิลนี้ (M2.5)
+  giftCardTxnId     String? // GiftCardTxn.id ที่ตัดยอดบัตรของขวัญ (M2.6)
+  tierDiscountSatang Int     @default(0) // ส่วนลดจากสิทธิ์ระดับสมาชิก (M1.9)
+  stampEventIds     String[] @default([]) // StampEvent.id ที่บิลนี้ทำให้เกิด (M2.3)
+  attributionId     String? // MemberAttribution.id ที่ยกความดีความชอบให้ช่องทางไหน (M1.8)
+
   lines    PosSaleLine[]
   payments PosPayment[]
 

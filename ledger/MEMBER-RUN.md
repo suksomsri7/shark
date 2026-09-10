@@ -213,11 +213,15 @@ M1.1 → M1.2 → (M1.3 ∥ M1.4) → (M1.5 ∥ M1.7 ∥ M1.8 ∥ M1.9) → (M1.
 ## 3.1 สถานะสด (Fable อัปเดตทุกใบ)
 | WO | สถานะ | วันที่ | commit | หมายเหตุ |
 |---|---|---|---|---|
-| M1.1 | 🔨 กำลังทำ (builder Opus) | 10 ก.ย. | — | oracle `scripts/qc-member-m1.1.mts` 28 ข้อ · env `scripts/member-qc-env.mts` · qc-all รู้จัก `// requires: member-seed` |
+| M1.1 | ✅ DONE 28/28 | 10 ก.ย. | (ดู §4) | migration `member_v2_a` (18 ตาราง · 13 enum · +29 คอลัมน์ Customer) · `channels.ts` 15 key · backfill 6 สคริปต์ · seed 60 คน/120 บิล/40 นัด/10 แชท · โน้ต `wo-notes/member-M1.1.md` |
+| M1.2 | ⏳ oracle พร้อม (27 ข้อ) | — | — | `scripts/qc-member-m1.2.mts` |
+| M1.3 | ⏳ oracle พร้อม (14 ข้อ) + harness `visual-member.mts` | — | — | `scripts/qc-member-m1.3.mts` |
+| M1.4 | ⏳ oracle พร้อม (36 ข้อ) | — | — | `scripts/qc-member-m1.4.mts` |
 
 ## 4. บันทึกเหตุการณ์
 - 10 ก.ย. 2569 — เขียนแผน 34 ใบ + สัญญาย่อ + จำนวนข้อสอบ · รอเจ้าของสั่งเริ่ม (D9)
 - 10 ก.ย. 2569 14:30 — เจ้าของถาม 4 ข้อ → เพิ่มมติ D17 (สิทธิ์อ่อนไหว × HR) · D18 (ตัวตนหลายช่องทาง) · D19 (ทะเบียนช่องทางเปิดขยาย + marketplace) + §0.1 บทบาท/ขั้นตอนต่อใบ · แก้ M1.1/M1.4/M1.7/M1.8/M1.12/M3.7 · oracle ≈ 740 · ภาพ 02/14/26 แก้
 - 10 ก.ย. 2569 (session สมาชิก) — **เริ่ม RUN**: worktree `/root/projects/shark-member` (branch `session/member` จาก main `91e18e3`) · เขียน `scripts/member-qc-env.mts` (สัญญาชุดข้อมูล: สมาชิก 60 = 30/15/10/5 · ป่าตอง 40/กะตะ 20 · บิล 120 · นัด 40 · แชท 10 · LINE identity 30 · consent 40 · ฟิลด์ดำน้ำ 45 · สุขภาพ 12 · วันเกิด ต.ค. 12) · oracle M1.1 28 ข้อ (S1 schema 12 · S1b ทะเบียนช่องทาง 2 · S2 backfill 8 · S3 seed 4 · S4 scope/fitness 2) · tsc ผ่าน · SKIPPED ก่อนมีโค้ด
 - 10 ก.ย. 2569 — **มติเทคนิคของ Fable (M1.1)**: (1) D17 `HrEmployee.userId` → ใช้คอลัมน์เดิม `linkedUserId` (ความหมายเดียวกัน · `staff/service.ts` เขียนอยู่แล้ว) ไม่เพิ่มคอลัมน์ซ้ำ (2) D17 `hrDepartmentIds[]` → `hrDepartments String[]` เพราะ HR ไม่มีตาราง Department (`HrEmployee.department` เป็นข้อความ) (3) backfill ข้อ 4 (points-lots) ย้ายไป M2.1 (ตาราง PointLot เกิดที่ migration `member_v2_c`) · M1.1 มี 6 สคริปต์ = tiers · fields · consent · party-links · attribution · **hr-users** (ใหม่ · แยกจาก party-links) (4) seed ใส่ส่วน/ฟิลด์เทมเพลตดำน้ำตรง ๆ ในรอบ M1.1 (engine ยังไม่มี) → M1.2 เปลี่ยนเป็น `applyTemplate` (5) enum `MemberConsentSource` ใช้เป็นชนิดของ `MemberFieldValueHistory.changedVia` ตามพิมพ์เขียว
+- 10 ก.ย. 2569 — **M1.1 ปิด 28/28** (builder Opus ~2:40 ชม. · Fable รันซ้ำเอง ผ่านครบ · tsc ✓ · fitness 23/23 ทั้ง 2 โหมด · regressions kanban-k1.1 30/30 · acc-v2-pos-lines 87/87 · migrate diff = empty) · **ข้อแย้งของ builder ถูก 2 เรื่อง → Fable แก้ข้อสอบ**: (1) `hasIdx` เดาว่า pg ใส่คำพูดทุกคอลัมน์ (คอลัมน์ตัวพิมพ์เล็ก key/name/code ไม่มีคำพูด) (2) วันเกิด seed ต้องเป็นปีเกิดจริง ไม่ใช่ 2026 → ข้อสอบนับ "เดือน 10 ปีใดก็ได้" · **ข้อตัดสินเพิ่ม**: `SystemType.BOOKING` ถูกเพิ่ม (additive) เพราะ MQC.systems ระบุ BOOKING ทั้งที่โมดูลจองไม่มี AppSystem — คงไว้ (ลบค่า enum ใน PG ไม่ได้) · `TagColor` enum ใหม่ 6 ค่า · ตารางใหม่ไม่ผูก FK ข้ามโมดูล · **หนี้**: 3 ชุดเดิม (`qc-chat-member-autolink` `qc-point` `qc-member-tier`) ยัง `loadEnvFile(".env")` ต้องย้ายมา loadQcEnv · seed ส่วนเทมเพลตดำน้ำยัง insert ตรง → M1.2 เปลี่ยนเป็น applyTemplate · backfill prod รอทำหลัง Vercel READY (dry-run ก่อน)
 

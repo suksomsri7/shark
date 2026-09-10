@@ -133,6 +133,10 @@ model ChatContact {
   // `maybeAutoLinkMember` เชื่อม customerId แล้ว ให้ตั้ง partyId = ค่าเดียวกับ Customer.partyId ที่เพิ่ง
   // ได้จาก `member.findOrCreate` (ตอนนี้ `member.findOrCreate` เซ็ต Customer.partyId ให้แล้วใน WO นี้)
   partyId             String?
+  // ── M1.1 (D18) — "ผูกเข้าสมาชิกด้วยวิธีไหน" · additive · null = ผูกก่อนมีช่องนี้/ยังไม่ผูก ──
+  // 🔴 คนละความหมายกับ `linkedByUserId` ข้างบน (= ใครเป็นคนกดผูก) — ตัวนี้คือ "หลักฐานการจับคู่"
+  //    (เบอร์ตรง / อีเมลตรง / id ช่องทาง / เลือกมือ / มาจากการรวมคน / มาจากคำสั่งซื้อ)
+  linkedBy            MemberLinkMethod?
 
   conversations ChatConversation[]
 

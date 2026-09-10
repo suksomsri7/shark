@@ -180,6 +180,28 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   Customer: sys("memberSystemId"),
   MemberTierConfig: tenant, // เกณฑ์ระดับสมาชิกของร้าน (เจ้าของกำหนดเอง)
   MemberActivity: tenant,
+  // ── ระบบสมาชิก v2 (M1.1) — 18 ตารางใหม่ ──
+  // กติกาเลือกแกน: ตารางที่มี `systemId` ของระบบ MEMBER (ตั้งค่าต่อระบบ) = sys()
+  //   ตารางที่แขวนกับ "ตัวลูกค้า" (customerId) = tenant — เพราะ 1 ลูกค้าอยู่ระบบเดียวอยู่แล้ว
+  //   (Customer.memberSystemId เป็นตัวคุม) และหน้ารวม/PDPA ต้องกวาดข้ามระบบภายในร้านเดียวกัน
+  MemberSection: sys(),
+  MemberField: sys(),
+  MemberFieldValue: tenant,
+  MemberFieldValueHistory: tenant,
+  MemberAddress: tenant,
+  MemberConsent: tenant,
+  MemberPrivacyPolicy: sys(),
+  MemberSensitivePolicy: sys(),
+  MemberAccessLog: tenant,
+  MemberPrivacyRequest: tenant,
+  MemberSavedView: sys(),
+  MemberTag: sys(),
+  MemberChannelIdentity: tenant, // ค้นด้วย (tenantId, channel, externalId) — ขาเข้ายังไม่รู้ระบบ
+  AcquisitionLink: sys(),
+  MemberAttribution: tenant,
+  MemberTierDef: sys(),
+  MemberTierBenefit: tenant, // ลูกของ TierDef — query ผ่าน tierDefId + tenantId
+  MemberTierHistory: tenant,
   // Reward
   Reward: sys(),
   RewardRedemption: sys(),

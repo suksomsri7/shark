@@ -28,6 +28,17 @@ model MktCampaign {
   audienceCount Int               @default(0)
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
+
+  // ── M1.1 (ระบบสมาชิก v2 · §4.1) — เตรียมช่องให้แคมเปญ v2 (M3.2) · เพิ่มคอลัมน์ล้วน ──
+  // แคมเปญเดิมมี segmentJson ก้อนเดียว → v2 ชี้ MemberSegment ที่บันทึกไว้ (ใช้ซ้ำ/นับล่วงหน้าได้)
+  segmentId               String? // MemberSegment.id (M3.1)
+  journeyId               String? // AutomationRule scope MEMBER_JOURNEY ที่เป็นเจ้าของ (M3.3)
+  holdoutPct              Int     @default(0) // % กลุ่มควบคุมที่ไม่ส่ง (วัด uplift)
+  variantB                Json? // เนื้อหาแบบ B (A/B test)
+  pushEnabled             Boolean @default(false)
+  attachVoucherTemplateId String? // แนบ voucher ให้ผู้รับแต่ละคน (M2.5)
+  stats                   Json? // สรุปผล {sent, opened, used, saleSatang, roi}
+
   recipients    MktRecipient[]
 
   @@index([systemId, status])
@@ -44,6 +55,13 @@ model MktRecipient {
   contact    String // เบอร์/อีเมล ที่ส่งไป (freeze ณ ตอนส่ง)
   sentAt     DateTime?
   createdAt  DateTime    @default(now())
+
+  // ── M1.1 (ระบบสมาชิก v2 · §4.1) — วัดผลรายคน (M3.2) · เพิ่มคอลัมน์ล้วน ──
+  variant    String? // "A" | "B" (null = แคมเปญเดิมที่ไม่มี A/B)
+  holdout    Boolean @default(false) // อยู่กลุ่มควบคุม = ไม่ส่งจริง แต่ยังนับยอดซื้อ
+  openedAt   DateTime?
+  usedAt     DateTime? // ใช้สิทธิ์ที่แนบมากับแคมเปญ
+  saleSatang BigInt? // ยอดซื้อที่ยกความดีให้แคมเปญนี้ (ภายใน 30 วัน)
 
   @@index([campaignId])
 }

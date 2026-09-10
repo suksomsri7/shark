@@ -10,6 +10,17 @@ enum AutomationRunStatus {
   FAILED
 }
 
+// M1.1 (D15 · §4.1) — กฎอัตโนมัติใช้ตารางเดียวกันทั้ง 3 โลก แยกกันด้วย scope
+//   KANBAN         = กฎของบอร์ดงาน/ของร้านแบบเดิม (ค่าปริยาย — แถวเก่าทุกแถวได้ค่านี้)
+//   MEMBER_TIER    = กฎเลื่อน/คงระดับสมาชิก (M1.9)
+//   MEMBER_JOURNEY = เส้นทางลูกค้าอัตโนมัติ (M3.3)
+// 🔴 เอนจินเดิมต้องไม่เห็นกฎของสมาชิก ⇒ ทุกขาอ่านของ v1 กรอง scope = KANBAN
+enum AutomationScope {
+  KANBAN
+  MEMBER_TIER
+  MEMBER_JOURNEY
+}
+
 model AutomationRule {
   id              String               @id @default(cuid())
   tenantId        String
@@ -34,6 +45,14 @@ model AutomationRule {
   scheduleCron  String? // เฉพาะ kind = SCHEDULED — subset "นาที ชั่วโมง * * วัน" (เวลาไทย)
   dueOffsetDays Int? // เฉพาะ kind = DUE_DATE — ลบ = ก่อนครบกำหนด (-30..30)
   lastRunAt     DateTime? // กันรันซ้ำในชั่วโมงไทยเดียวกัน (SCHEDULED)
+
+  // ── M1.1 (ระบบสมาชิก v2 · D15) — เพิ่มคอลัมน์ล้วน · แถวเดิมได้ scope = KANBAN อัตโนมัติ ──
+  // กฎระดับ/journey ตั้ง actionType = NOTIFY, actionConfig = {} เป็น placeholder แบบเดียวกับ K2.9
+  // แล้วอ่านจริงจาก `conditions`/`actions` (เอนจินเดิมถูกจำกัดให้เห็นเฉพาะ scope KANBAN)
+  scope         AutomationScope @default(KANBAN)
+  memberSystemId String? // ระบบ MEMBER ที่กฎนี้สังกัด (null = ไม่ใช่กฎของสมาชิก)
+  tierDefId     String? // กฎนี้เลื่อน/คงระดับไหน (MEMBER_TIER)
+  journeyStats  Json? // สถิติต่อขั้นของ journey (MEMBER_JOURNEY) — {steps:{...}, holdout:{...}}
 
   @@index([tenantId, event, enabled])
   // เส้นอ่านของเอนจินบอร์ดงาน: กฎที่เปิดอยู่ของบอร์ดใบเดียว (runForKanbanEvent/sweep/หน้าตั้งกฎ)

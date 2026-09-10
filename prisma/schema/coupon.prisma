@@ -34,6 +34,13 @@ model Coupon {
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
+  // ── M1.1 (ระบบสมาชิก v2 · §4.1) — คูปองแบบรายบุคคล/กระเป๋าสิทธิ์ · เพิ่มคอลัมน์ล้วน ──
+  // ค่าปริยายเลือกให้ "คูปองเดิมทำงานเหมือนเดิม": โค้ดสาธารณะ (perMemberCode=false)
+  // และซ้อนกับ voucher ไม่ได้ (stackWithVoucher=false — กติกาปลอดภัยที่สุดตาม §11.5)
+  perMemberCode    Boolean @default(false) // true = ออกโค้ดเฉพาะคน (M2.x)
+  saveToWallet     Boolean @default(true) // แสดงในกระเป๋าสิทธิ์ของลูกค้า
+  stackWithVoucher Boolean @default(false) // ใช้ร่วมกับ voucher ในบิลเดียวได้ไหม
+
   redemptions CouponRedemption[]
 
   @@unique([systemId, code])

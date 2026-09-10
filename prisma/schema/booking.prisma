@@ -110,6 +110,8 @@ model Appointment {
   depositPaidAt  DateTime? // เวลาที่ร้านรับมัดจำ (null = ยังไม่จ่าย)
   depositSaleId  String? // PosSale.id ของบิลมัดจำ (null = ไม่ผูก POS / ยังไม่จ่าย)
   idempotencyKey String? // กันสร้างนัดซ้ำจากยิงซ้ำ/ดับเบิลคลิก (null = ไม่ผูก key)
+  // M1.1 (ระบบสมาชิก v2) — สแตมป์ที่ได้จากการมาตามนัดใบนี้ (StampEvent.id · เขียนจริงที่ M2.3)
+  stampEventId   String?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
