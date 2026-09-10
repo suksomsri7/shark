@@ -1,5 +1,9 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## ▶️ 10 ก.ย. 2569 (ค่ำ) — [session สมาชิก] **RUN ระบบสมาชิก v2 เริ่มแล้ว** · worktree `/root/projects/shark-member` branch `session/member` · ledger สด `ledger/MEMBER-RUN.md` §3.1 · M1.1 กำลังทำ (builder Opus · oracle `scripts/qc-member-m1.1.mts`)
+- วิธีทำงาน = MEMBER-RUN §0.1 (oracle ก่อน · builder ห้าม build/commit · Fable build+ภาพ+commit+push+ตรวจ prod) · ถ้าเครื่องรีสตาร์ท: โค้ดบนดิสก์ใน worktree → Fable รับจบเอง (ดู wo-notes/member-M1.1.md ถ้ามี)
+- ⚠️ session บอร์ดงาน (`shark-kanban`) จบแล้ว ห้ามแตะ · main ล่าสุดก่อนเริ่ม = `91e18e3`
+
 ## 🏁 10 ก.ย. 10:05 BKK — [session บอร์ดงาน] **RUN บอร์ดงาน→Trello จบ 36/36** · main `a1d7260` · qc:all 287 · migration a–u บน prod ครบ · handover `ledger/HANDOVER-2026-09-10-KANBAN-P3.md` (รอเจ้าของ §3 · หนี้ §4 · วิธีทำงาน §5)
 - ✅ **Member System ชุดเต็มส่งแล้ว 10 ก.ย. 14:45** (main `25ecbe5` · รวมมติ D17–D19 + §0.1 บทบาท): พิมพ์เขียว `docs/modules/06-member-v2.md` · API `docs/api/MEMBER-API.md` · แผน `ledger/MEMBER-RUN.md` (34 ใบ) · ภาพ 30 ใบ `ledger/design-member/` · มติเจ้าของ 9 ข้อใน DESIGN-MEMBER §9 → **รอคำสั่ง "เริ่ม RUN ระบบสมาชิก"** — เมื่อสั่ง: **เปิด session ใหม่** → `git worktree add /root/projects/shark-member -b session/member origin/main` → อ่าน MEMBER-RUN §0/§0.1/§2 → seed QC + oracle M1.1 → builder Opus · ยังไม่ coding
 

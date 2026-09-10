@@ -268,4 +268,4 @@ curl -sS "https://shark.in.th/api/v1/member/members/cus_042/wallet" -H "Authoriz
 ```
 
 ## 7. สิ่งที่ generator ต้องผลิตตอน RUN (เหมือน KANBAN-API.md)
-Who this is for · Authentication/scopes · Conventions · Error codes · Operations (read/write/danger ครบทุก op พร้อมตาราง field/rules + curl) · AI tools · AI agents (manifest + ตัวอย่าง prompt) · Webhooks · Changelog — และ `endpoints.md` สำหรับสกิล + OpenAPI JSON
+Who this is for · Authentication/scopes · Conventions · Error codes · Operations (read/write/danger ครบทุก op พร้อมตาราง field/rules + curl) · AI tools · AI agents (manifest + ตัวอย่าง prompt) · Webhooks · Changelog — และไฟล์ endpoints.md ของสกิล (generator สร้างใน M1.11) + OpenAPI JSON

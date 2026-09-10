@@ -165,6 +165,46 @@ if (needsKanbanSeed.length) {
   );
 }
 
+// ── 🌱 ชุดข้อมูล QC "ระบบสมาชิก v2" (M1.1) — เครื่องหมาย `// requires: member-seed` ──
+// แบบเดียวกับบอร์ดงาน: seed-member-qc.mts ลบร้านแล้วสร้างใหม่เสมอ ⇒ ถาม DB ก่อน (resolveMemberScope ไม่ null = ข้าม)
+const MEMBER_SEED_MARKER = "// requires: member-seed";
+const needsMemberSeed = picked.filter((f) => {
+  try {
+    return readFileSync(join(ROOT, "scripts", f), "utf8").includes(MEMBER_SEED_MARKER);
+  } catch {
+    return false;
+  }
+});
+let memberSeedBlocked: string | null = null;
+
+if (needsMemberSeed.length) {
+  console.log(`🌱 ${needsMemberSeed.length} ชุดต้องใช้ชุดข้อมูล QC สมาชิก: ${needsMemberSeed.map((f) => f.replace(/^qc-|\.mts$/g, "")).join(", ")}`);
+  const t0 = Date.now();
+  let present = false;
+  try {
+    const { prisma } = await import("@/lib/core/db");
+    const mq = (await import("./member-qc-env.mts" as string)) as {
+      resolveMemberScope: (p: unknown) => Promise<{ tenantId: string; systemId: string } | null>;
+    };
+    present = (await mq.resolveMemberScope(prisma)) !== null;
+    await prisma.$disconnect();
+  } catch (e) {
+    memberSeedBlocked = `ตรวจชุดข้อมูล QC สมาชิกไม่ได้: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`;
+  }
+  if (!memberSeedBlocked && present) {
+    console.log(`   ↩︎ มีชุดข้อมูล QC สมาชิกใน DB นี้อยู่แล้ว → ข้าม seed (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  } else if (!memberSeedBlocked) {
+    const seed = runStep("seed-member-qc.mts");
+    if (seed.code !== 0) {
+      memberSeedBlocked = "seed ชุดข้อมูล QC สมาชิกล้ม (scripts/seed-member-qc.mts) — ดู log ด้านบน";
+      console.log(seed.out.split("\n").slice(-25).join("\n"));
+    }
+  }
+  console.log(
+    `   ${memberSeedBlocked ? "❌" : "✅"} เตรียมชุดข้อมูล QC สมาชิก ${((Date.now() - t0) / 1000).toFixed(1)}s${memberSeedBlocked ? ` — ${memberSeedBlocked}` : ""}\n`,
+  );
+}
+
 type Row = { name: string; code: number; summary: string; ms: number };
 const rows: Row[] = [];
 
@@ -174,6 +214,12 @@ for (const f of picked) {
     const name = f.replace(/^qc-|\.mts$/g, "");
     rows.push({ name, code: 1, summary: seedBlocked, ms: 0 });
     console.log(`  ❌ ${name.padEnd(24)} ${seedBlocked}`);
+    continue;
+  }
+  if (memberSeedBlocked && needsMemberSeed.includes(f)) {
+    const name = f.replace(/^qc-|\.mts$/g, "");
+    rows.push({ name, code: 1, summary: memberSeedBlocked, ms: 0 });
+    console.log(`  ❌ ${name.padEnd(24)} ${memberSeedBlocked}`);
     continue;
   }
   if (kanbanSeedBlocked && needsKanbanSeed.includes(f)) {

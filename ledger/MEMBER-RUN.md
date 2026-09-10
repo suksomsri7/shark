@@ -1,4 +1,4 @@
-# MEMBER-RUN — แผนงาน RUN "ระบบสมาชิก v2" (34 ใบ · 3 เฟส) — สถานะ: **รอเจ้าของสั่งเริ่ม**
+# MEMBER-RUN — แผนงาน RUN "ระบบสมาชิก v2" (34 ใบ · 3 เฟส) — สถานะ: **กำลัง RUN (เริ่ม 10 ก.ย. 2569 · session `session/member` · worktree `/root/projects/shark-member`)**
 
 > เขียน 10 ก.ย. 2569 · พิมพ์เขียว `docs/modules/06-member-v2.md` · API `docs/api/MEMBER-API.md` · แบบ `ledger/DESIGN-MEMBER.md` + ภาพ 30 ใบ `ledger/design-member/`
 > ใช้เอกสารนี้ **เทียบ QC**: ทุกใบมี (1) สัญญาไฟล์/ฟังก์ชัน (2) รายการข้อสอบ (oracle) ที่ Fable จะเขียนเป็น `scripts/qc-member-<wo>.mts` ก่อน spawn builder (3) ภาพที่ต้องตรงกับ mockup (4) regressions
@@ -210,6 +210,14 @@ qc:all เต็ม · prod verify migration a–h + backfill 6 สคริป�
 ## 3. ลำดับ/ขนาน
 M1.1 → M1.2 → (M1.3 ∥ M1.4) → (M1.5 ∥ M1.7 ∥ M1.8 ∥ M1.9) → (M1.6 ∥ M1.10) → M1.11 → M1.12 → M2.1 → (M2.2 ∥ M2.3) → (M2.4 ∥ M2.5) → M2.6 → M2.7 → M2.8 → M2.9 → M2.10 → M3.1 → M3.2 → M3.3 → (M3.4 ∥ M3.5 ∥ M3.6) → M3.7 → (M3.8 ∥ M3.9) → M3.10 → M3.11 → M3.F — **เครื่อง 2 คอร์ = builder ทีละ 1** (ขนานได้เฉพาะ Fable เขียน oracle ล่วงหน้า)
 
+## 3.1 สถานะสด (Fable อัปเดตทุกใบ)
+| WO | สถานะ | วันที่ | commit | หมายเหตุ |
+|---|---|---|---|---|
+| M1.1 | 🔨 กำลังทำ (builder Opus) | 10 ก.ย. | — | oracle `scripts/qc-member-m1.1.mts` 28 ข้อ · env `scripts/member-qc-env.mts` · qc-all รู้จัก `// requires: member-seed` |
+
 ## 4. บันทึกเหตุการณ์
 - 10 ก.ย. 2569 — เขียนแผน 34 ใบ + สัญญาย่อ + จำนวนข้อสอบ · รอเจ้าของสั่งเริ่ม (D9)
 - 10 ก.ย. 2569 14:30 — เจ้าของถาม 4 ข้อ → เพิ่มมติ D17 (สิทธิ์อ่อนไหว × HR) · D18 (ตัวตนหลายช่องทาง) · D19 (ทะเบียนช่องทางเปิดขยาย + marketplace) + §0.1 บทบาท/ขั้นตอนต่อใบ · แก้ M1.1/M1.4/M1.7/M1.8/M1.12/M3.7 · oracle ≈ 740 · ภาพ 02/14/26 แก้
+- 10 ก.ย. 2569 (session สมาชิก) — **เริ่ม RUN**: worktree `/root/projects/shark-member` (branch `session/member` จาก main `91e18e3`) · เขียน `scripts/member-qc-env.mts` (สัญญาชุดข้อมูล: สมาชิก 60 = 30/15/10/5 · ป่าตอง 40/กะตะ 20 · บิล 120 · นัด 40 · แชท 10 · LINE identity 30 · consent 40 · ฟิลด์ดำน้ำ 45 · สุขภาพ 12 · วันเกิด ต.ค. 12) · oracle M1.1 28 ข้อ (S1 schema 12 · S1b ทะเบียนช่องทาง 2 · S2 backfill 8 · S3 seed 4 · S4 scope/fitness 2) · tsc ผ่าน · SKIPPED ก่อนมีโค้ด
+- 10 ก.ย. 2569 — **มติเทคนิคของ Fable (M1.1)**: (1) D17 `HrEmployee.userId` → ใช้คอลัมน์เดิม `linkedUserId` (ความหมายเดียวกัน · `staff/service.ts` เขียนอยู่แล้ว) ไม่เพิ่มคอลัมน์ซ้ำ (2) D17 `hrDepartmentIds[]` → `hrDepartments String[]` เพราะ HR ไม่มีตาราง Department (`HrEmployee.department` เป็นข้อความ) (3) backfill ข้อ 4 (points-lots) ย้ายไป M2.1 (ตาราง PointLot เกิดที่ migration `member_v2_c`) · M1.1 มี 6 สคริปต์ = tiers · fields · consent · party-links · attribution · **hr-users** (ใหม่ · แยกจาก party-links) (4) seed ใส่ส่วน/ฟิลด์เทมเพลตดำน้ำตรง ๆ ในรอบ M1.1 (engine ยังไม่มี) → M1.2 เปลี่ยนเป็น `applyTemplate` (5) enum `MemberConsentSource` ใช้เป็นชนิดของ `MemberFieldValueHistory.changedVia` ตามพิมพ์เขียว
+
