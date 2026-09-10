@@ -77,10 +77,11 @@ try {
     const list = (byBoard.get(b.id) ?? []).map((c) => c.cardNo as number | null);
     const nums = list.filter((n): n is number => typeof n === "number");
     if (nums.length !== list.length || new Set(nums).size !== nums.length || Math.min(...nums) < 1) cardNoOk = false;
-    if (b.cardNoSeq !== Math.max(0, ...nums)) seqOk = false;
+    // 🔴 seq ≥ max เท่านั้น (ลบการ์ด/ข้อสอบชุดอื่นทำให้ seq เดินหน้าได้ — เป็นสภาพจริงบน prod ไม่ใช่บั๊ก) · seq < max = ชนเลขซ้ำแน่นอน
+    if (b.cardNoSeq < Math.max(0, ...nums)) seqOk = false;
   }
   chk("K1.1-S2.4", "cardNo: ทุกการ์ดมี · ไม่ซ้ำต่อบอร์ด · เริ่ม 1", cardNoOk, "ครบ/ไม่ซ้ำ", "มีปัญหา");
-  chk("K1.1-S2.5", "cardNoSeq ของบอร์ด = cardNo สูงสุด", seqOk, "เท่ากัน", boards.map((b) => `${b.name.slice(0, 8)}:${b.cardNoSeq}`).join(","));
+  chk("K1.1-S2.5", "cardNoSeq ของบอร์ด ≥ cardNo สูงสุด (ไม่งั้นเลขซ้ำ)", seqOk, "≥ สูงสุด", boards.map((b) => `${b.name.slice(0, 8)}:${b.cardNoSeq}`).join(","));
   // seed ก่อน K1.1 → บอร์ดเก่าทุกใบต้องกลายเป็น TENANT (backfill) · seed หลัง K1.1 (โค้ดใหม่บันทึก visibility จริง) → ต้องตรงเฉลย
   const expVis: Record<string, string> = { [kq.KQC.boards.patong]: E.boards.patong.visibility, [kq.KQC.boards.maint]: E.boards.maint.visibility, [kq.KQC.boards.kataSecret]: E.boards.kata.visibility };
   const seededBefore = boards.every((b) => b.visibility === "TENANT");
@@ -115,11 +116,13 @@ try {
   const bPatong = boards.find((x) => x.name === kq.KQC.boards.patong)!;
   const firstCol = columns.find((c) => c.boardId === bPatong.id)!;
   const before = cards.filter((c) => c.columnId === firstCol.id);
+  // อ่าน seq สดก่อนสร้าง (ชุดอื่นใน qc:all อาจขยับ seq ไปแล้ว — ข้อสอบต้องเทียบกับค่าตอนนี้ ไม่ใช่ตอนเริ่มไฟล์)
+  const seqNow = ((await prisma.kanbanBoard.findUnique({ where: { id: bPatong.id }, select: { cardNoSeq: true } })) as Any)?.cardNoSeq as number;
   const created = await svc.createCard({ tenantId: tid, systemId: SYS, columnId: firstCol.id, title: "QC K1.1 การ์ดใหม่", labels: [] });
   const lastPos = before.map((c) => c.position).sort().at(-1) ?? "";
-  chk("K1.1-S4.1", "createCard ได้ position ท้ายคอลัมน์ (> ทุกใบเดิม) + sortOrder ต่อท้าย + cardNo ถัดไป", !!created && typeof created.position === "string" && created.position > lastPos && created.sortOrder === before.length && created.cardNo === (bPatong.cardNoSeq as number) + 1, "ท้าย", `pos=${created?.position} sort=${created?.sortOrder} no=${created?.cardNo}`);
+  chk("K1.1-S4.1", "createCard ได้ position ท้ายคอลัมน์ (> ทุกใบเดิม) + sortOrder ต่อท้าย + cardNo ถัดไป", !!created && typeof created.position === "string" && created.position > lastPos && created.sortOrder === before.length && created.cardNo === seqNow + 1, "ท้าย", `pos=${created?.position} sort=${created?.sortOrder} no=${created?.cardNo}`);
   const bNow = await prisma.kanbanBoard.findUnique({ where: { id: bPatong.id } }) as Any;
-  chk("K1.1-S4.2", "cardNoSeq เพิ่มเป็น 25 หลังสร้าง", bNow?.cardNoSeq === (bPatong.cardNoSeq as number) + 1, String((bPatong.cardNoSeq as number) + 1), String(bNow?.cardNoSeq));
+  chk("K1.1-S4.2", "cardNoSeq เพิ่มขึ้น 1 หลังสร้าง (atomic UPDATE … RETURNING)", bNow?.cardNoSeq === seqNow + 1, String(seqNow + 1), String(bNow?.cardNoSeq));
   const newCol = await svc.createColumn(tid, SYS, bPatong.id, "QC คอลัมน์ใหม่");
   const colsNow = await prisma.kanbanColumn.findMany({ where: { boardId: bPatong.id, status: "ACTIVE" } }) as Any[];
   chk("K1.1-S4.3", "createColumn ได้ position ท้ายสุด + sortOrder", !!newCol && typeof newCol.position === "string" && colsNow.filter((c) => c.id !== newCol.id).every((c) => c.position < newCol.position), "ท้าย", `${newCol?.position}`);
