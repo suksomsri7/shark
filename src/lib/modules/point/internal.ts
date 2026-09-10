@@ -165,7 +165,8 @@ export type LedgerWrite = {
   customerId: string;
   unitId?: string | null;
   delta: number;
-  type: "EARN" | "BURN" | "ADJUST" | "REVERSE" | "EXPIRE";
+  // M2.2 — +TRANSFER (โอนแต้มระหว่างสมาชิก · แยกจาก EARN/BURN เพราะไม่นับในเพดานแต้ม/วันของ computeEarn)
+  type: "EARN" | "BURN" | "ADJUST" | "REVERSE" | "EXPIRE" | "TRANSFER";
   reason?: string | null;
   refType?: string | null;
   refId?: string | null;

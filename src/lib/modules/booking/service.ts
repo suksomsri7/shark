@@ -6,6 +6,7 @@ import * as pos from "@/lib/modules/pos/service";
 import * as hr from "@/lib/modules/hr/service";
 import * as inv from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
+import { emitOutboxOutsideTx } from "@/lib/core/outbox";
 
 export type BookingCtx = { tenantId: string; unitId: string };
 import {
@@ -721,7 +722,25 @@ export async function setAppointmentStatus(
   status: AppointmentStatus,
 ) {
   const db = tenantDb({ tenantId, unitId });
-  await db.appointment.update({ where: { id: appointmentId }, data: { status } });
+  const appt = await db.appointment.update({ where: { id: appointmentId }, data: { status } });
+  // M2.3 (§9.2) — "มาแล้ว" คือเหตุการณ์ที่โมดูลอื่นรออยู่: สแตมป์ชนิด "จองที่มาจริง" · ขอรีวิว (M3.4) · journey
+  // 🔴 event ใหม่ต้องมีครบ 3 ทะเบียน (consumer + AUTOMATION_EVENTS + WEBHOOK_EVENTS) ไม่งั้นคิวตันเงียบ ๆ
+  // 🔴 idempotencyKey ผูกกับตัวนัด ⇒ กด "มาแล้ว" ซ้ำ/สลับสถานะไปกลับ ไม่ยิงซ้ำ (ตราไม่เบิ้ล)
+  if (status === "DONE") {
+    await emitOutboxOutsideTx({
+      tenantId,
+      unitId,
+      type: "booking.completed",
+      idempotencyKey: `booking.completed#${appointmentId}`,
+      payload: {
+        appointmentId,
+        tenantId,
+        unitId,
+        customerId: appt.customerId,
+        serviceId: appt.serviceId,
+      },
+    });
+  }
 }
 
 // ── มัดจำ (WO Wave3-A: กัน no-show) ─────────────────────────────

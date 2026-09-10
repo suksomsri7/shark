@@ -1,0 +1,113 @@
+// Stamp Card (M2.3 · ระบบสมาชิก v2 · docs/modules/06-member-v2.md §4.2 §4.3 §5.6 §9.1 §9.2 §11.9)
+//
+// "ซื้อ 10 แถม 1" ในรูปแบบที่ร้านตั้งกติกาเองได้ — 3 ตารางเท่านั้น:
+//   StampCard         = กติกาของ "ใบ" (กี่ช่อง · ได้ตราเมื่อไหร่ · ครบแล้วได้อะไร)
+//   StampCardProgress = ใบจริงของลูกค้า 1 คน 1 รอบ (cycle) — ครบแล้วเริ่มใบใหม่เป็นแถวใหม่
+//   StampEvent        = สมุดบัญชีของตรา (ADD/USE/EXPIRE/VOID/MERGE) — ยอด `stamps` คือยอดสรุป
+//
+// 🔴 ทำไมต้องมี StampEvent ทั้งที่ progress เก็บ `stamps` อยู่แล้ว: ตราคือของมีมูลค่า
+//    ต้องย้อนได้ว่าใครประทับ ที่ไหน จากบิลใบไหน และ **ยกเลิกได้ทีละรายการ** (บิลถูก void)
+// 🔴 ทุกทางเข้ามี `idempotencyKey` (unique ต่อร้าน) — สแกน QR ซ้ำ/คิว outbox ยิงซ้ำ ต้องไม่เบิ้ลตรา
+
+enum StampRuleKind {
+  PER_SALE_MIN // ยอดบิลถึงเกณฑ์ (ruleConfig.minSatang)
+  PER_ITEM // ต่อชิ้นของสินค้า/บริการที่เลือก (ruleConfig.itemIds / serviceIds)
+  PER_VISIT // มาตามนัดจริง (Appointment สถานะ DONE)
+  PER_DAY // มาใช้บริการ — สูงสุด 1 ตราต่อวันไทย ไม่ว่าจะซื้อกี่ครั้ง
+  MANUAL // พนักงานกดประทับเอง / ลูกค้าใส่ PIN
+}
+
+enum StampEventType {
+  ADD // ประทับตรา
+  USE // ใช้ทั้งใบแลกรางวัล (count = slots)
+  EXPIRE // ใบหมดอายุ ตราที่ค้างหายไป
+  VOID // ยกเลิกตราที่ประทับไปแล้ว (บิลถูก void / พนักงานกดผิด)
+  MERGE // ตราที่ย้ายมาจากสมาชิกที่ถูกรวมเข้ามา
+}
+
+enum StampRewardKind {
+  VOUCHER // คูปองส่วนลด/ของแถม (M2.5)
+  REWARD // ของรางวัลในแคตตาล็อก (M2.4)
+  POINTS // แต้มสะสม (M2.1 — ทำงานจริงแล้ว)
+  DISCOUNT_NEXT // ส่วนลดบิลถัดไป (M2.7 wallet)
+}
+
+model StampCard {
+  id       String @id @default(cuid())
+  tenantId String
+  systemId String // AppSystem.id ของ "ระบบสมาชิก" ที่ออกใบนี้
+
+  name        String
+  description String?
+  slots       Int // 3–30 ช่อง (§11.9)
+
+  ruleKind   StampRuleKind
+  ruleConfig Json // {minSatang?, itemIds[]?, serviceIds[]?, perDayMax, allowStaffScan, allowAutoFromSale, staffPin?}
+
+  rewardKind   StampRewardKind
+  rewardConfig Json // POINTS {points} · VOUCHER {templateId?, note?} · REWARD {rewardId?} · DISCOUNT_NEXT {pct|satang}
+
+  autoRestart Boolean  @default(true) // ครบแล้วเริ่มใบใหม่ให้อัตโนมัติ
+  validMonths Int? // อายุใบนับจากตราแรก (null = ไม่หมดอายุ)
+  tierDefIds  String[] @default([]) // ว่าง = ทุกระดับ
+  unitIds     String[] @default([]) // ว่าง = ทุกสาขา
+
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  progresses StampCardProgress[]
+
+  @@index([systemId, active])
+}
+
+model StampCardProgress {
+  id       String @id @default(cuid())
+  tenantId String
+
+  cardId String
+  card   StampCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  customerId String // Customer.id
+
+  cycle       Int       @default(1) // ใบที่เท่าไหร่ของลูกค้าคนนี้บนการ์ดใบนี้
+  stamps      Int       @default(0) // ยอดสรุปจาก StampEvent (ADD − VOID − EXPIRE)
+  startedAt   DateTime  @default(now())
+  completedAt DateTime? // ครบช่องแล้ว (แลกรางวัลไปแล้ว)
+  expiresAt   DateTime? // startedAt + validMonths
+
+  rewardVoucherId String? // Voucher.id ที่ออกให้ตอนครบ (M2.5 — วันนี้ null เสมอ)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events StampEvent[]
+
+  @@unique([cardId, customerId, cycle])
+  @@index([customerId])
+  @@index([tenantId, expiresAt])
+}
+
+model StampEvent {
+  id       String @id @default(cuid())
+  tenantId String
+
+  progressId String
+  progress   StampCardProgress @relation(fields: [progressId], references: [id], onDelete: Cascade)
+
+  type  StampEventType
+  count Int            @default(1)
+
+  refType        String? // MANUAL | QR | SALE | VISIT | MERGE | REWARD | VOID | EXPIRE
+  refId          String? // PosSale.id · Appointment.id · Customer.id (MERGE) · StampEvent.id (VOID)
+  byUserId       String? // พนักงานที่ประทับ (null = ลูกค้าใส่ PIN เอง / ระบบทำให้)
+  unitId         String?
+  idempotencyKey String
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([progressId, createdAt])
+  @@index([tenantId, refType, refId])
+}

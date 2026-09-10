@@ -170,8 +170,13 @@ async function drainUntilQuiet(
     const r = await drainOnce(consumers, { limit });
     total.processed += r.processed;
     total.failed += r.failed;
-    // หยิบได้ไม่เต็มรอบ = ไม่มีอะไรรอแล้ว (นับรวมที่ถูกข้าม/พักไว้ด้วย จึงดูจาก candidates ไม่ใช่ processed)
-    if (r.picked < limit) break;
+    // 🔴 เลิกเมื่อ **รอบหนึ่งไม่มีอะไรให้หยิบเลย** (ไม่ใช่ "หยิบได้ไม่เต็มรอบ" — M2.3 · 10 ก.ย. 2569)
+    //    เหตุ: consumer บางตัว **สร้าง event ใหม่** ระหว่างรอบนั้นเอง (booking.completed → ประทับสแตมป์
+    //    → stamp.added) · แบบเดิมรอบนั้นหยิบได้ 47 จาก 200 แล้วเลิกทันที ⇒ event ที่เพิ่งเกิดค้าง PENDING
+    //    จนกว่า cron รายชั่วโมงจะมาเก็บ ทั้งที่ตัวระบายยังทำงานอยู่ตรงนั้น (คิว "เงียบ" ทั้งที่ยังไม่ว่าง)
+    //    ยังจบแน่นอน: event ที่ไม่มี consumer/ล้มเหลว ถูกเลื่อน availableAt ไปอนาคตแล้ว รอบถัดไปจึงไม่หยิบซ้ำ
+    //    + ยังมีเพดาน MAX_ROUNDS และงบเวลาคุมอยู่เหมือนเดิม
+    if (r.picked === 0) break;
     if (Date.now() - started > TIME_BUDGET_MS) break;
   }
   return total;

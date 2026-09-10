@@ -3,6 +3,7 @@
 // 🔴 M2.1: ตัวช่วยภายใน (withTx / getSettings / balanceIn / applyDelta) ย้ายไป `./internal`
 //    เพราะ `lots.ts` (v2) ต้องใช้ตัวเดียวกัน และ v1 ในไฟล์นี้ก็ต้องเรียก v2 กลับ (สร้างล็อตให้ POS เดิม)
 //    ⇒ วางไว้ตรงกลางกันวงกลม · prisma ดิบเข้าผ่าน `./db` ที่เดียว (fitness F5.1)
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
   addMonths,
@@ -443,4 +444,296 @@ export async function getCustomerPoints(
     select: { balance: true },
   });
   return balances.reduce((s, b) => s + b.balance, 0);
+}
+
+// ═══════════════════════════ M2.2 — ผลกระทบ · settings เพิ่มเติม · หน้าจอ ═══════════════════════════
+// พิมพ์เขียว §5.5 §11.4 — หน้า /member/points/* ทุกหน้ารู้จัก "ระบบสมาชิก" (id ใน URL) ไม่ใช่ "ระบบแต้ม"
+// (คนละ AppSystem — ดู resolvePointSystemIds) ⇒ ทุกฟังก์ชันด้านล่างรับ memberSystemId แล้ว resolve เอง
+
+/** systemId ของ "ระบบแต้ม" ทั้งหมดที่ผูกกับ "ระบบสมาชิก" นี้ (unit เดียวกัน) — ปกติมีระบบเดียว */
+export async function resolvePointSystemIds(tenantId: string, memberSystemId: string): Promise<string[]> {
+  const memberUnits = await prisma.appSystemUnit.findMany({
+    where: { tenantId, systemId: memberSystemId },
+    select: { unitId: true },
+  });
+  if (memberUnits.length === 0) return [];
+  const pointLinks = await prisma.appSystemUnit.findMany({
+    where: { tenantId, type: "POINT", unitId: { in: memberUnits.map((u) => u.unitId) } },
+    select: { systemId: true },
+  });
+  return [...new Set(pointLinks.map((p) => p.systemId))];
+}
+
+export type PointImpactPreview = {
+  monthlyEarn: number;
+  monthlyCostSatang: number;
+  liabilitySatang: number;
+  expiringIn90d: number;
+};
+
+/** การ์ด "ผลกระทบ" ของหน้าตั้งค่าแต้ม (ภาพ 16) — ประมาณจากยอดจริงเดือนนี้ ไม่ใช่สูตรทำนาย */
+export async function previewPointImpact(ctx: { tenantId: string; systemId: string }): Promise<PointImpactPreview> {
+  const settings = await getSettings(prisma, ctx.tenantId);
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const until90 = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+
+  const [earnAgg, balAgg, expAgg] = await Promise.all([
+    prisma.pointLedger.aggregate({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "EARN", createdAt: { gte: since } },
+      _sum: { delta: true },
+    }),
+    prisma.pointBalance.aggregate({ where: { systemId: ctx.systemId }, _sum: { balance: true } }),
+    prisma.pointLot.aggregate({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, expiredAt: null, remaining: { gt: 0 }, expiresAt: { not: null, lte: until90 } },
+      _sum: { remaining: true },
+    }),
+  ]);
+
+  const monthlyEarn = earnAgg._sum.delta ?? 0;
+  return {
+    monthlyEarn,
+    monthlyCostSatang: monthlyEarn * settings.burnRateSatang,
+    liabilitySatang: (balAgg._sum.balance ?? 0) * settings.burnRateSatang,
+    expiringIn90d: expAgg._sum.remaining ?? 0,
+  };
+}
+
+/** ค่าตั้งค่าแต้มที่ไม่มีคอลัมน์ของตัวเอง — เก็บใน `AppSystem.settings.member.points` (ของระบบ "สมาชิก") */
+export type PointExtras = {
+  /** ใช้แต้มได้ที่ระบบไหนบ้าง (§5.5 "(ค) ใช้แต้ม") */
+  burnAllowedAt: ("POS" | "BOOKING" | "LIFF")[];
+  /** ค่าธรรมเนียมโอนแต้ม (แต้ม) — ยังไม่ถูกหักจริงใน `transfer.ts` (M2.2 คงไว้ที่ 0 ตามสัญญา feePoints) */
+  transferFeePoints: number;
+  /** โอนแต้มต้องยืนยัน OTP เสมอ */
+  requireOtp: boolean;
+};
+
+const POINT_EXTRAS_BURN_AT = new Set(["POS", "BOOKING", "LIFF"]);
+
+const DEFAULT_POINT_EXTRAS: PointExtras = { burnAllowedAt: ["POS", "BOOKING", "LIFF"], transferFeePoints: 0, requireOtp: true };
+
+function pointExtrasOf(settings: unknown): PointExtras {
+  const s = settings as { member?: { points?: Partial<PointExtras> } } | null;
+  const raw = s?.member?.points;
+  const burnAllowedAt = Array.isArray(raw?.burnAllowedAt)
+    ? (raw.burnAllowedAt.filter((v): v is PointExtras["burnAllowedAt"][number] => typeof v === "string" && POINT_EXTRAS_BURN_AT.has(v)))
+    : [...DEFAULT_POINT_EXTRAS.burnAllowedAt];
+  return {
+    burnAllowedAt: burnAllowedAt.length > 0 ? burnAllowedAt : [...DEFAULT_POINT_EXTRAS.burnAllowedAt],
+    transferFeePoints: typeof raw?.transferFeePoints === "number" ? raw.transferFeePoints : DEFAULT_POINT_EXTRAS.transferFeePoints,
+    requireOtp: typeof raw?.requireOtp === "boolean" ? raw.requireOtp : DEFAULT_POINT_EXTRAS.requireOtp,
+  };
+}
+
+export async function getPointExtras(target: { tenantId: string; systemId: string }): Promise<PointExtras> {
+  const sys = await prisma.appSystem.findFirst({ where: { id: target.systemId, tenantId: target.tenantId }, select: { settings: true } });
+  return pointExtrasOf(sys?.settings ?? null);
+}
+
+/**
+ * บันทึกค่าที่ไม่มีคอลัมน์ (อ่าน-แก้-เขียน `settings` ทั้งก้อน — เก็บคีย์อื่นของระบบไว้ครบ)
+ * `target.systemId` = **ระบบสมาชิก** (AppSystem ที่มี `settings.member.*`) ไม่ใช่ระบบแต้ม
+ */
+export async function setPointExtras(
+  target: { tenantId: string; systemId: string },
+  input: Partial<PointExtras>,
+): Promise<PointExtras> {
+  const sys = await prisma.appSystem.findFirst({ where: { id: target.systemId, tenantId: target.tenantId }, select: { settings: true } });
+  if (!sys) throw pointError("ไม่พบระบบสมาชิกนี้ในร้านนี้");
+  const current = (sys.settings ?? {}) as Record<string, unknown>;
+  const member = (current.member ?? {}) as Record<string, unknown>;
+  const existing = pointExtrasOf(current);
+  const merged: PointExtras = {
+    burnAllowedAt:
+      Array.isArray(input.burnAllowedAt) && input.burnAllowedAt.length > 0
+        ? input.burnAllowedAt.filter((v) => POINT_EXTRAS_BURN_AT.has(v))
+        : existing.burnAllowedAt,
+    transferFeePoints: typeof input.transferFeePoints === "number" ? Math.max(0, Math.floor(input.transferFeePoints)) : existing.transferFeePoints,
+    requireOtp: typeof input.requireOtp === "boolean" ? input.requireOtp : existing.requireOtp,
+  };
+  const settings = { ...current, member: { ...member, points: merged } } as Prisma.InputJsonValue;
+  await prisma.appSystem.update({ where: { id: target.systemId }, data: { settings } });
+  return merged;
+}
+
+export type PointLedgerFilter = {
+  type?: "EARN" | "BURN" | "ADJUST" | "REVERSE" | "EXPIRE" | "TRANSFER";
+  from?: Date;
+  to?: Date;
+  unitId?: string;
+  /** ค้นชื่อ/รหัสสมาชิก/เบอร์ */
+  q?: string;
+  take?: number;
+};
+
+export type PointLedgerRow = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  memberCode: string;
+  unitId: string | null;
+  delta: number;
+  type: string;
+  reason: string | null;
+  createdAt: Date;
+};
+
+export type PointLedgerKpi = {
+  issuedThisMonth: number;
+  usedThisMonth: number;
+  expiredThisMonth: number;
+  outstanding: number;
+  liabilitySatang: number;
+};
+
+/** ledger รวมของ "ระบบสมาชิก" นี้ (ทุกระบบแต้มที่ผูกอยู่) — หน้า `/member/points` (ภาพ 16) */
+export async function listPointLedgerForMemberSystem(
+  tenantId: string,
+  memberSystemId: string,
+  filter: PointLedgerFilter = {},
+): Promise<{ rows: PointLedgerRow[]; total: number }> {
+  const pointSystemIds = await resolvePointSystemIds(tenantId, memberSystemId);
+  if (pointSystemIds.length === 0) return { rows: [], total: 0 };
+
+  let customerIds: string[] | undefined;
+  const q = (filter.q ?? "").trim();
+  if (q) {
+    const matches = await prisma.customer.findMany({
+      where: {
+        tenantId,
+        memberSystemId,
+        OR: [{ name: { contains: q, mode: "insensitive" } }, { memberCode: { contains: q, mode: "insensitive" } }, { phone: { contains: q } }],
+      },
+      select: { id: true },
+      take: 500,
+    });
+    customerIds = matches.map((m) => m.id);
+    if (customerIds.length === 0) return { rows: [], total: 0 };
+  }
+
+  const where: Prisma.PointLedgerWhereInput = {
+    tenantId,
+    systemId: { in: pointSystemIds },
+    ...(filter.type ? { type: filter.type } : {}),
+    ...(filter.unitId ? { unitId: filter.unitId } : {}),
+    ...(customerIds ? { customerId: { in: customerIds } } : {}),
+    ...(filter.from || filter.to ? { createdAt: { ...(filter.from ? { gte: filter.from } : {}), ...(filter.to ? { lte: filter.to } : {}) } } : {}),
+  };
+
+  const take = Math.min(Math.max(filter.take ?? 50, 1), 200);
+  const [rows, total] = await Promise.all([
+    prisma.pointLedger.findMany({ where, orderBy: { createdAt: "desc" }, take }),
+    prisma.pointLedger.count({ where }),
+  ]);
+  if (rows.length === 0) return { rows: [], total };
+
+  const custRows = await prisma.customer.findMany({
+    where: { id: { in: [...new Set(rows.map((r) => r.customerId))] } },
+    select: { id: true, name: true, firstName: true, lastName: true, memberCode: true },
+  });
+  const custById = new Map(custRows.map((c) => [c.id, c]));
+
+  return {
+    total,
+    rows: rows.map((r) => {
+      const c = custById.get(r.customerId);
+      const name = c ? (c.name ?? [c.firstName, c.lastName].filter(Boolean).join(" ")) : "";
+      return {
+        id: r.id,
+        customerId: r.customerId,
+        customerName: name || "ไม่ระบุชื่อ",
+        memberCode: c?.memberCode ?? "",
+        unitId: r.unitId,
+        delta: r.delta,
+        type: r.type,
+        reason: r.reason,
+        createdAt: r.createdAt,
+      };
+    }),
+  };
+}
+
+/** KPI บนหัวหน้า `/member/points` — ออกเดือนนี้/ใช้เดือนนี้/หมดอายุเดือนนี้/คงค้าง/หนี้สิน */
+export async function pointKpiForMemberSystem(tenantId: string, memberSystemId: string): Promise<PointLedgerKpi> {
+  const pointSystemIds = await resolvePointSystemIds(tenantId, memberSystemId);
+  if (pointSystemIds.length === 0) {
+    return { issuedThisMonth: 0, usedThisMonth: 0, expiredThisMonth: 0, outstanding: 0, liabilitySatang: 0 };
+  }
+  const settings = await getSettings(prisma, tenantId);
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+  const [issuedAgg, usedAgg, expiredAgg, balAgg] = await Promise.all([
+    prisma.pointLedger.aggregate({
+      where: { tenantId, systemId: { in: pointSystemIds }, type: { in: ["EARN", "ADJUST"] }, delta: { gt: 0 }, createdAt: { gte: monthStart } },
+      _sum: { delta: true },
+    }),
+    prisma.pointLedger.aggregate({
+      where: { tenantId, systemId: { in: pointSystemIds }, type: { in: ["BURN", "ADJUST", "TRANSFER"] }, delta: { lt: 0 }, createdAt: { gte: monthStart } },
+      _sum: { delta: true },
+    }),
+    prisma.pointLedger.aggregate({
+      where: { tenantId, systemId: { in: pointSystemIds }, type: "EXPIRE", createdAt: { gte: monthStart } },
+      _sum: { delta: true },
+    }),
+    prisma.pointBalance.aggregate({ where: { systemId: { in: pointSystemIds } }, _sum: { balance: true } }),
+  ]);
+
+  const outstanding = balAgg._sum.balance ?? 0;
+  return {
+    issuedThisMonth: issuedAgg._sum.delta ?? 0,
+    usedThisMonth: Math.abs(usedAgg._sum.delta ?? 0),
+    expiredThisMonth: Math.abs(expiredAgg._sum.delta ?? 0),
+    outstanding,
+    liabilitySatang: outstanding * settings.burnRateSatang,
+  };
+}
+
+export type ExpiringLotRow = {
+  customerId: string;
+  customerName: string;
+  memberCode: string;
+  lotId: string;
+  points: number;
+  expiresAt: Date;
+  daysLeft: number;
+};
+
+/** ล็อตที่จะหมดอายุภายใน `days` วัน ของทุกระบบแต้มที่ผูกกับระบบสมาชิกนี้ — หน้า `/member/points/expiring` */
+export async function expiringForMemberSystem(
+  tenantId: string,
+  memberSystemId: string,
+  days: number,
+): Promise<ExpiringLotRow[]> {
+  const pointSystemIds = await resolvePointSystemIds(tenantId, memberSystemId);
+  if (pointSystemIds.length === 0) return [];
+  const now = new Date();
+  const until = new Date(now.getTime() + Math.max(0, Math.floor(days)) * 24 * 60 * 60 * 1000);
+  const rows = await prisma.pointLot.findMany({
+    where: { tenantId, systemId: { in: pointSystemIds }, expiredAt: null, remaining: { gt: 0 }, expiresAt: { not: null, gte: now, lte: until } },
+    orderBy: { expiresAt: "asc" },
+    take: 300,
+  });
+  if (rows.length === 0) return [];
+  const custRows = await prisma.customer.findMany({
+    where: { id: { in: [...new Set(rows.map((r) => r.customerId))] } },
+    select: { id: true, name: true, firstName: true, lastName: true, memberCode: true },
+  });
+  const custById = new Map(custRows.map((c) => [c.id, c]));
+  return rows.flatMap((lot) => {
+    if (!lot.expiresAt) return [];
+    const c = custById.get(lot.customerId);
+    const name = c ? (c.name ?? [c.firstName, c.lastName].filter(Boolean).join(" ")) : "";
+    return [
+      {
+        customerId: lot.customerId,
+        customerName: name || "ไม่ระบุชื่อ",
+        memberCode: c?.memberCode ?? "",
+        lotId: lot.id,
+        points: lot.remaining,
+        expiresAt: lot.expiresAt,
+        daysLeft: Math.floor((lot.expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)),
+      },
+    ];
+  });
 }

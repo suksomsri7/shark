@@ -25,6 +25,7 @@ import { sweepKanbanDigest } from "@/lib/modules/kanban/digest";
 import { runTierReview, sweepAutoErase } from "@/lib/modules/member";
 import { expireDue, notifyExpiring } from "@/lib/modules/point";
 import { expireDue as giftCardExpireDue } from "@/lib/modules/giftcard";
+import { expireDue as stampExpireDue } from "@/lib/modules/stamp";
 
 /**
  * M1.9 (D1 · §7.5) — รอบทบทวนระดับสมาชิกของทุกร้านที่มี "ระบบสมาชิก"
@@ -80,6 +81,18 @@ export async function sweepPointExpiring(now: Date = new Date()): Promise<number
  */
 export async function giftCardExpire(now: Date = new Date()): Promise<number> {
   const r = await giftCardExpireDue(now);
+  return r.expired;
+}
+
+/**
+ * M2.3 (§7.5 · §11.9) — ใบสะสมตราที่ถึงวันหมดอายุของ **ทุกร้าน**
+ *
+ * ตราที่ค้างอยู่หายไป (StampEvent EXPIRE) แล้ว "เริ่มนับใหม่" จากวันนี้ — ไม่ลบแถวทิ้ง
+ * เพราะลูกค้าต้องเห็นประวัติว่าเคยสะสมไว้เท่าไหร่แล้วหมดอายุเมื่อไหร่
+ * 🔴 idempotent: หยิบเฉพาะใบที่ยังไม่ปิด + `expiresAt ≤ now` + ยังมีตราค้าง ⇒ รันซ้ำวันเดียวกันไม่ทำซ้ำ
+ */
+export async function stampExpire(now: Date = new Date()): Promise<number> {
+  const r = await stampExpireDue(now);
   return r.expired;
 }
 
@@ -149,6 +162,7 @@ export async function runDailyCron(
   autoErase: number;
   pointExpired: number;
   giftCardExpired: number;
+  stampExpired: number;
   pointExpiring: number;
 }> {
   let subsExpired = -1;
@@ -172,6 +186,7 @@ export async function runDailyCron(
   let autoErase = -1;
   let pointExpired = -1;
   let giftCardExpired = -1;
+  let stampExpired = -1;
   let pointExpiring = -1;
 
   try {
@@ -324,6 +339,12 @@ export async function runDailyCron(
   } catch {
     // sweep บัตรกำนัลหมดอายุพัง → -1 ไปต่อ (ห้ามพา cron ทั้งรอบล้ม)
   }
+  try {
+    // M2.3 (§7.5): ใบสะสมตราที่ถึงวันหมดอายุทุกร้าน → ตราค้างหายไป + เริ่มนับใหม่
+    stampExpired = await stampExpire(now);
+  } catch {
+    // sweep สแตมป์หมดอายุพัง → -1 ไปต่อ (ห้ามพา cron ทั้งรอบล้ม)
+  }
 
   return {
     subsExpired,
@@ -348,5 +369,6 @@ export async function runDailyCron(
     pointExpired,
     pointExpiring,
     giftCardExpired,
+    stampExpired,
   };
 }

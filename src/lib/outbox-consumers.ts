@@ -375,10 +375,46 @@ const giftCardActivity =
     });
   };
 
+/**
+ * M2.3 (§9.1 §9.2) — สแตมป์การ์ดจากบิล/จากนัด
+ *
+ * 🔴 dynamic import ด้วยเหตุผลเดียวกับ `kanbanBridge`: `stamp/service` → `member/access` →
+ *    … → `scheduleDrain` กลับมาที่ไฟล์นี้ = วงกลมของโมดูล
+ * 🔴 เป็น "ของแถม" ท้าย handler เดิมเสมอ (ผ่าน `compose`) — สแตมป์พังห้ามพาการลงบัญชีขายล้ม
+ *    ไม่งั้น event ค้าง PENDING แล้ว post บัญชีซ้ำตอน retry
+ */
+const stampFromSale: OutboxHandler = async (evt) => {
+  const saleId = saleIdOf(evt.payload);
+  if (!saleId) return;
+  const { autoStampFromSaleEvent } = await import("@/lib/modules/stamp");
+  await autoStampFromSaleEvent(evt.tenantId, saleId);
+};
+
+/** บิลถูกยกเลิก → ตราที่บิลนั้นให้ไว้ต้องหายไปด้วย (idempotent · ยิงซ้ำได้) */
+const stampVoidForSale: OutboxHandler = async (evt) => {
+  const saleId = saleIdOf(evt.payload);
+  if (!saleId) return;
+  const { voidStampsForSaleEvent } = await import("@/lib/modules/stamp");
+  await voidStampsForSaleEvent(evt.tenantId, saleId);
+};
+
+/** ลูกค้ามาตามนัดจริง (Appointment → DONE) → สแตมป์ชนิด "จองที่มาจริง" */
+const stampFromVisit: OutboxHandler = async (evt) => {
+  const p = evt.payload as { appointmentId?: unknown } | null;
+  const appointmentId = p && typeof p.appointmentId === "string" ? p.appointmentId : null;
+  if (!appointmentId) return;
+  const { autoStampFromVisitEvent } = await import("@/lib/modules/stamp");
+  await autoStampFromVisitEvent(evt.tenantId, appointmentId);
+};
+
 const baseConsumers: Record<string, OutboxHandler> = {
-  "pos.sale.paid": withAutomation(posSalePaid),
+  // M2.3: + สแตมป์การ์ดจากบิล (ต่อท้าย post บัญชีเดิม · บิลขายบัตรกำนัลถูกข้ามในตัว handler เอง)
+  "pos.sale.paid": withAutomation(compose(posSalePaid, stampFromSale)),
   // K3.3: + การ์ด "ตรวจสอบบิลยกเลิก" เมื่อยอดถึงเกณฑ์ที่ร้านตั้งไว้ (สวิตช์ปิดอยู่ = ไม่มีอะไรเกิด)
-  "pos.sale.voided": withAutomation(compose(posSaleVoided, kanbanBridge("onVoidedSale"))),
+  // M2.3: + ยกเลิกตราของบิลใบนั้น (voidStampsForSale)
+  "pos.sale.voided": withAutomation(compose(compose(posSaleVoided, kanbanBridge("onVoidedSale")), stampVoidForSale)),
+  // M2.3 (§9.2) — นัดเปลี่ยนเป็น "มาแล้ว" · ยิงจาก `booking/service.ts#setAppointmentStatus`
+  "booking.completed": withAutomation(stampFromVisit),
   // K3.3: + การ์ดติดตามคำขออนุมัติ (มอบหมายผู้ยื่น) — ต่อท้าย notify เดิม
   "approval.request.submitted": withAutomation(compose(approvalSubmitted, kanbanBridge("onApprovalSubmitted"))),
   // K3.3: + ความเห็น "ผลอนุมัติ: …" ที่การ์ดติดตาม + ปิดการ์ดเมื่อผ่าน (ต่อท้าย notify+effect เดิม)
@@ -566,6 +602,14 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // = ไม่มีใครให้บันทึก จบเงียบ ๆ) + ปิด event เป็น DONE + เป็นจุดให้กฎอัตโนมัติ/เว็บฮุคยิงต่อ
   "giftcard.sold": withAutomation(giftCardActivity("SOLD")),
   "giftcard.used": withAutomation(giftCardActivity("USED")),
+  // ── สแตมป์การ์ด (M2.3 · §7.1) ──
+  // 🔴 no-op เหมือนกลุ่มแต้ม/สมาชิก: ใบสะสม · รายการตรา · รางวัล (แต้ม) ถูกเขียนครบใน transaction
+  //    ของ `stamp/service.ts` แล้ว · 3 บรรทัดนี้มีไว้ (1) ปิด event เป็น DONE ไม่ให้คิวตัน
+  //    (2) เป็นทริกเกอร์ของกฎอัตโนมัติ/journey ("ครบใบแล้วส่ง LINE บอกลูกค้า" = งานของ M3.x)
+  //    (3) ยิงเว็บฮุคออกนอกระบบ
+  "stamp.added": withAutomation(async () => {}),
+  "stamp.completed": withAutomation(async () => {}),
+  "stamp.expired": withAutomation(async () => {}),
   // ดูข้อมูลอ่อนไหว: แถว MemberAccessLog ถูกเขียนไปแล้วตอนเปิดดู (privacy.logAccess)
   // ตัวนี้จึงมีไว้ให้ระบบภายนอกที่ทำหน้าที่ "เฝ้าการเข้าถึงข้อมูลส่วนบุคคล" รับต่อผ่านเว็บฮุค
   "member.sensitive.viewed": withAutomation(async () => {}),

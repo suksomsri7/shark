@@ -27,9 +27,33 @@ export {
   getPointSettings,
   /** บันทึกการตั้งค่าแต้ม (ส่งเฉพาะช่องที่จะแก้ก็ได้) */
   setPointSettings,
+  // ── M2.2 ──
+  /** systemId ของ "ระบบแต้ม" ทั้งหมดที่ผูกกับ "ระบบสมาชิก" นี้ */
+  resolvePointSystemIds,
+  /** การ์ด "ผลกระทบ" ของหน้าตั้งค่าแต้ม (ภาพ 16) */
+  previewPointImpact,
+  /** ค่าตั้งค่าแต้มที่ไม่มีคอลัมน์ของตัวเอง (ใช้ได้ที่ไหน/ค่าธรรมเนียมโอน/ต้อง OTP) */
+  getPointExtras,
+  setPointExtras,
+  /** ledger รวม + KPI ของหน้า `/member/points` */
+  listPointLedgerForMemberSystem,
+  pointKpiForMemberSystem,
+  /** ล็อตที่ใกล้หมดอายุของหน้า `/member/points/expiring` */
+  expiringForMemberSystem,
+  /** สมาชิกที่ปรับแต้มในระบบแต้มที่ระบุได้ (หน้าปรับแต้ม) */
+  listPointCustomers,
 } from "./service";
 
-export type { CustomerLedgerRow, SetPointSettingsInput } from "./service";
+export type {
+  CustomerLedgerRow,
+  SetPointSettingsInput,
+  PointImpactPreview,
+  PointExtras,
+  PointLedgerFilter,
+  PointLedgerRow,
+  PointLedgerKpi,
+  ExpiringLotRow,
+} from "./service";
 
 export { adjustPoints as adjust } from "./service";
 
@@ -80,3 +104,25 @@ export {
   /** cron รายวัน: ยิง event แจ้งเตือนแต้มใกล้หมดอายุตาม remindDays */
   notifyExpiring,
 } from "./lots";
+
+// ── แต้ม v2: โอนระหว่างสมาชิก (M2.2 · พิมพ์เขียว §5.5 §11.4) ──
+export type { RequestTransferOtpResult, TransferPointsInput, TransferPointsResult } from "./transfer";
+
+export {
+  /** ขอรหัส OTP ก่อนโอนแต้ม — เฉพาะลูกค้าที่ล็อกอินด้วยบัญชีตัวเอง */
+  requestTransferOtp,
+  /** โอนแต้มให้สมาชิกอีกคน (ต้องยืนยัน OTP) */
+  transferPoints,
+} from "./transfer";
+
+// ── แต้ม v2: ปรับแต้มมือ + สายอนุมัติ (M2.2 · พิมพ์เขียว §5.5 §6.2 §11.4) ──
+export type { AdjustWithApprovalInput, AdjustWithApprovalResult } from "./adjust";
+
+export {
+  /** เขียนการปรับแต้มจริง (ledger ADJUST + ต่อล็อต) — ใช้ตรง ๆ และจาก approval-effects */
+  applyPointAdjust,
+  /** ปรับแต้มมือ v2 — เกินเพดานเข้าสายอนุมัติ (ไม่มีนโยบาย = autoApproved) */
+  adjustWithApproval,
+  /** ผลของการอนุมัติ "ปรับแต้มมือ" — เรียกจาก src/lib/approval-effects.ts เท่านั้น */
+  applyPointAdjustApproved,
+} from "./adjust";

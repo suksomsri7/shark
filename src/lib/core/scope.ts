@@ -213,10 +213,16 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PointRule: sys(),
   PointLot: sys(),
   PointTransfer: tenant,
+  // M2.2 — คำขอปรับแต้มมือที่รอสายอนุมัติ ผูกกับ "ระบบแต้ม" เหมือน PointRule/PointLot
+  PointAdjustRequest: sys(),
   // บัตรกำนัล (M2.6) — บัตร/ตั้งค่าผูกกับ "ระบบสมาชิก" · รายการบนบัตรผูกกับตัวบัตร (query ผ่าน giftCardId + tenantId)
   GiftCard: sys(),
   GiftCardSettings: sys(),
   GiftCardTxn: tenant,
+  // สแตมป์การ์ด (M2.3) — ตัวใบผูกกับ "ระบบสมาชิก" · ใบของลูกค้า/เหตุการณ์ผูกกับตัวใบ (query ผ่าน cardId/progressId + tenantId)
+  StampCard: sys(),
+  StampCardProgress: tenant,
+  StampEvent: tenant,
   // POS
   PosSale: sys(),
   PosSaleLine: unit,

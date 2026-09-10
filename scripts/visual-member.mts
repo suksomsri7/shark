@@ -77,6 +77,33 @@ if (WO === "1.12") {
   TMP12.linkedConv = linked.v.id; TMP12.unlinkedConv = unlinked.v.id;
   console.log(`🧪 เตรียม 1.12: ห้องผูกแล้ว ${linked.v.id} (สมาชิก 11) · ห้องยังไม่ผูก ${unlinked.v.id} (เบอร์ตรงสมาชิก 13 · ชื่อคล้ายสมาชิก 9)`);
 }
+const TMP311 = { code: "", linkId: "", ref: "" };
+if (WO === "3.11") {
+  const SRC311 = (await import("@/lib/modules/member/sources" as string).catch(() => null)) as Any;
+  if (SRC311?.createLink) {
+    const memO = await prisma.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId } });
+    const ownerActor = { userId: E.users.owner.userId, role: memO!.role, unitAccess: memO!.unitAccess as string[], permissions: memO!.permissions as Record<string, unknown> };
+    const l = await SRC311.createLink({ tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId }, ownerActor, { code: `fbsep${Date.now().toString(36).slice(-3)}`, name: "โพสต์ Facebook ก.ย.", source: "LIFF", target: "LIFF_JOIN" }).catch(() => null);
+    const row = l?.link ?? l; if (row?.id) { TMP311.code = row.code; TMP311.linkId = row.id; }
+    TMP311.ref = (await prisma.customer.findUnique({ where: { id: E.members[0].id }, select: { referralCode: true } }))?.referralCode ?? "";
+    console.log(`🧪 เตรียม 3.11: ลิงก์ที่มา ${TMP311.code} · ผู้แนะนำ ${TMP311.ref}`);
+  }
+}
+const TMP310 = { convId: "" };
+if (WO === "3.10") {
+  const conv = await (prisma as Any).aiConversation.create({ data: { tenantId: E.tenantId, title: "ลูกค้า Gold ที่ไม่มา 60 วัน" } }).catch(() => null);
+  if (conv) {
+    TMP310.convId = conv.id;
+    const golds = E.members.filter((x: Any) => x.tier === "GOLD").slice(0, 5);
+    const table = golds.map((g: Any, i: number) => `| ${i + 1} | ${g.memberCode} | Gold | ฿${(24_000 + i * 1_800).toLocaleString("th-TH")} | ${62 + i * 3} วัน |`).join("\n");
+    await (prisma as Any).aiMessage.createMany({ data: [
+      { tenantId: E.tenantId, conversationId: conv.id, role: "USER", content: "ลูกค้า Gold ที่ไม่มา 60 วันและเคยซื้อ > 20,000 มีใครบ้าง ส่ง voucher 300 ให้เลย" },
+      { tenantId: E.tenantId, conversationId: conv.id, role: "ASSISTANT", content: `พบ 23 คน แสดง 5 คนแรก\n\n| # | รหัส | ระดับ | ยอด 12 เดือน | ไม่มา |\n|---|---|---|---|---|\n${table}\n\n[tools: member_search · voucher_issue (รอยืนยัน)]` },
+    ] }).catch(() => null);
+    await (prisma as Any).aiProposal.create({ data: { tenantId: E.tenantId, conversationId: conv.id, kind: "member_voucher_issue", risk: "NORMAL", summary: "ออก voucher ฿300 อายุ 30 วัน ให้สมาชิก Gold ที่ไม่มา 60 วัน 23 คน · ต้นทุนสูงสุด ฿6,900 · ส่งทาง LINE", payload: { segment: { tier: ["GOLD"], inactiveDays: 60, spent12mMin: 2_000_000 }, voucher: { kind: "FIXED", value: 300, validDays: 30 }, channel: "LINE", count: 23 }, status: "PENDING", expiresAt: new Date(Date.now() + 86_400_000) } }).catch(() => null);
+    console.log(`🧪 เตรียม 3.10: บทสนทนา AI ${conv.id} + proposal PENDING`);
+  }
+}
 if (WO === "3.7") {
   const H37 = (await import("@/lib/modules/member/history" as string).catch(() => null)) as Any;
   if (H37?.recordOnce) {
@@ -321,6 +348,29 @@ const SPECS: Record<string, Spec[]> = {
       expect: userKey === "owner" ? ["[data-testid=member-api-page]", "[data-testid=member-api-keys]", "[data-testid=member-api-curl]", "[data-testid=member-api-webhooks]"] : [],
       steps: userKey === "owner" ? [{ waitFor: "[data-testid=member-api-page]" }, { wait: 400 }] : [{ wait: 800 }],
     },
+  ],
+  // M3.11 — LIFF onboarding (ภาพ 29 · มือถือ) — TMP311 ลิงก์ที่มา + ผู้แนะนำ
+  "3.11": [
+    ...(userKey === "owner" ? [
+      { name: "m-join-welcome", path: `/m/${MQC.tenantSlug}/join?src=${TMP311.code}&ref=${TMP311.ref}`, onlyDevice: "mobile" as const, note: "เทียบภาพ 29 ก: โลโก้ · สมัครรับ n แต้ม · มาจาก: โพสต์ Facebook ก.ย. (src=…) · ปุ่ม LINE / เบอร์โทร", expect: ["[data-testid=m-join]", "[data-testid=m-join-welcome]", "[data-testid=m-join-src]", "[data-testid=m-join-start-line]", "[data-testid=m-join-start-phone]"], steps: [{ waitFor: "[data-testid=m-join-welcome]" }, { wait: 400 }] },
+      { name: "m-join-form", path: `/m/${MQC.tenantSlug}/join?src=${TMP311.code}&ref=${TMP311.ref}`, onlyDevice: "mobile" as const, note: "เทียบภาพ 29 ข: กดสมัครด้วยเบอร์ → ฟอร์ม (เบอร์+OTP · ฟิลด์ที่ร้านตั้ง · ผู้แนะนำ prefill + กล่องรางวัล · ยินยอม 4 · นโยบาย · ปุ่มสมัคร)", expect: ["[data-testid=m-join-form]", "[data-testid=m-join-phone]", "[data-testid=m-join-otp-request]", "[data-testid=m-join-referral]", "[data-testid=m-join-consents]", "[data-testid=m-join-policy]", "[data-testid=m-join-submit]"], steps: [{ waitFor: "[data-testid=m-join-start-phone]" }, { click: "[data-testid=m-join-start-phone]" }, { waitFor: "[data-testid=m-join-form]" }, { fill: "[data-testid=m-join-phone]", value: "0891234567" }, { wait: 600 }] },
+    ] : []),
+    ...(isCustomer ? [
+      { name: "m-join-done", path: `/m/${MQC.tenantSlug}/join/done`, onlyDevice: "mobile" as const, note: "เทียบภาพ 29 ค: บัตรสมาชิก+QR · กล่องแต้มต้อนรับ · ปุ่มเปิดบัตร", expect: ["[data-testid=m-join-done]", "[data-testid=m-join-done-card]", "[data-testid=m-join-done-points]", "[data-testid=m-join-done-open-card]"], steps: [{ waitFor: "[data-testid=m-join-done]" }, { wait: 400 }] },
+    ] : []),
+  ],
+  // M3.10 — REST/AI ชุดสาม (ภาพ 27) — TMP310 บทสนทนา AI + proposal
+  "3.10": [
+    ...(userKey === "owner" ? [
+      { name: "api-webhooks-owner", path: `${MEMBER_BASE}/settings/api`, onlyDevice: "desktop" as const, note: "เทียบภาพ 27 ขวา: คีย์ API · curl · webhooks (ตาราง + ฟอร์มใหม่) · tools/manifest", expect: ["[data-testid=member-api-page]", "[data-testid=member-api-keys]", "[data-testid=member-api-webhooks]", "[data-testid=member-api-webhook-new]", "[data-testid=member-api-tools]"], steps: [{ waitFor: "[data-testid=member-api-webhooks]" }, { wait: 500 }] },
+      { name: "assistant-owner", path: `${MEMBER_BASE}/assistant${TMP310.convId ? `?conversation=${TMP310.convId}` : ""}`, note: "เทียบภาพ 27 ซ้าย: แชทผู้ช่วย → ตารางผล 5 ชื่อ + กล่อง 'ข้อเสนอ (ยังไม่ทำ)' ปุ่ม ยืนยัน/แก้ไข/ยกเลิก + บรรทัดเครื่องมือที่ใช้", expect: ["[data-testid=member-assistant]", "[data-testid=member-assistant-messages]", "[data-testid=member-assistant-result-table]", "[data-testid=member-assistant-proposal]", "[data-testid=member-assistant-confirm]", "[data-testid=member-assistant-tools]", "[data-testid=member-assistant-input]"], steps: [{ waitFor: "[data-testid=member-assistant-proposal]" }, { wait: 600 }] },
+    ] : []),
+  ],
+  // M3.9 — เทมเพลตกิจการ 16 (ภาพ 03 kbar เทมเพลต)
+  "3.9": [
+    ...(userKey === "owner" ? [
+      { name: "fields-template-owner", path: `${MEMBER_BASE}/settings/fields`, note: "เลือกเทมเพลต 'คลินิก/ความงาม' → แผงตัวอย่าง (นับ · รายการฟิลด์ · เช็กบ็อกซ์ 4 ส่วน) + ตัวอย่างมือถือ (ยังไม่ apply)", expect: ["[data-testid=field-designer]", "[data-testid=template-preview]", "[data-testid=template-preview-counts]", "[data-testid=template-part-fields]", "[data-testid=field-apply-template]"], steps: [{ waitFor: "[data-testid=field-template-select]" }, { select: { on: "[data-testid=field-template-select]", value: "clinic" } }, { waitFor: "[data-testid=template-preview]" }, { wait: 600 }] },
+    ] : []),
   ],
   // M3.8 — รายงานสมาชิก (ภาพ 25)
   "3.8": [
@@ -578,6 +628,8 @@ async function restoreSeed(): Promise<void> {
   }
   if (WO === "2.6" && TMP26.set0) { const G26c = (await import("@/lib/modules/giftcard" as string)) as Any; const memO = await prisma.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId } }); await G26c.setSettings({ tenantId: E.tenantId, systemId: SYS, posSystemId: E.systems.POS, actorUserId: E.users.owner.userId }, { userId: E.users.owner.userId, role: memO!.role, unitAccess: memO!.unitAccess as string[], permissions: memO!.permissions as Record<string, unknown> }, { enabled: TMP26.set0.enabled, accountingLink: TMP26.set0.accountingLink }).catch(() => null); }
   if (WO === "2.6" && TMP26.cards.length) { await P.giftCardTxn.deleteMany({ where: { giftCardId: { in: TMP26.cards } } }).catch(() => null); await P.giftCard.deleteMany({ where: { id: { in: TMP26.cards } } }).catch(() => null); if (TMP26.sales.length) { for (const mdl of ["posSalePayment", "posSaleLine", "posSaleItem"]) await P[mdl]?.deleteMany?.({ where: { saleId: { in: TMP26.sales } } }).catch(() => null); await prisma.posSale.deleteMany({ where: { id: { in: TMP26.sales } } }).catch(() => null); } }
+  if (WO === "3.11" && TMP311.linkId) { await P.acquisitionLink.deleteMany({ where: { id: TMP311.linkId } }).catch(() => null); }
+  if (WO === "3.10" && TMP310.convId) { await P.aiProposal.deleteMany({ where: { conversationId: TMP310.convId } }).catch(() => null); await P.aiMessage.deleteMany({ where: { conversationId: TMP310.convId } }).catch(() => null); await P.aiConversation.deleteMany({ where: { id: TMP310.convId } }).catch(() => null); }
   if (WO === "3.7") { await P.memberActivity.deleteMany({ where: { tenantId: E.tenantId, refId: { startsWith: "tmp37-" } } }).catch(() => null); }
   if (WO === "3.5") { const cs = await prisma.customer.findMany({ where: { tenantId: E.tenantId, phone: { startsWith: "0899300" } }, select: { id: true, partyId: true } }).catch(() => []); const ids = cs.map((c: Any) => c.id); const refs = await P.referral.findMany({ where: { tenantId: E.tenantId, OR: [{ refereeCustomerId: { in: ids } }, { refereeCustomerId: E.members[0].id }] }, select: { id: true } }).catch(() => []); const rids = refs.map((r: Any) => r.id); const leds = await prisma.pointLedger.findMany({ where: { tenantId: E.tenantId, refType: "REFERRAL", refId: { in: rids } }, select: { id: true, customerId: true, delta: true } }).catch(() => [] as Any[]); await P.pointLot.deleteMany({ where: { ledgerId: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); await prisma.pointLedger.deleteMany({ where: { id: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); for (const l of leds) await P.pointBalance.updateMany({ where: { customerId: l.customerId }, data: { balance: { decrement: l.delta } } }).catch(() => null); await P.voucher.deleteMany({ where: { tenantId: E.tenantId, origin: "REFERRAL" } }).catch(() => null); await P.memberActivity.deleteMany({ where: { tenantId: E.tenantId, refId: { in: rids } } }).catch(() => null); await P.referral.deleteMany({ where: { id: { in: rids } } }).catch(() => null); if (ids.length) { for (const mdl of ["pointLot", "pointLedger", "pointBalance", "memberConsent", "memberAttribution", "memberTierHistory", "memberFieldValue", "memberChannelIdentity", "memberAccessLog", "memberActivity"]) await P[mdl].deleteMany({ where: { customerId: { in: ids } } }).catch(() => null); await prisma.auditLog.deleteMany({ where: { tenantId: E.tenantId, targetId: { in: ids } } }).catch(() => null); await prisma.customer.deleteMany({ where: { id: { in: ids } } }).catch(() => null); const parties = cs.map((c: Any) => c.partyId).filter(Boolean); if (parties.length) { await prisma.partyMergeCandidate.deleteMany({ where: { OR: [{ partyAId: { in: parties } }, { partyBId: { in: parties } }] } }).catch(() => null); await prisma.party.deleteMany({ where: { id: { in: parties } } }).catch(() => null); } } }
   if (WO === "3.4") { const rvs = await P.memberReview.findMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 3600_000) } }, select: { id: true, kanbanCardId: true } }).catch(() => []); const ids = rvs.map((r: Any) => r.id); if (ids.length) { const leds = await prisma.pointLedger.findMany({ where: { tenantId: E.tenantId, refType: "REVIEW", refId: { in: ids } }, select: { id: true, customerId: true, delta: true } }).catch(() => [] as Any[]); await P.pointLot.deleteMany({ where: { ledgerId: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); await prisma.pointLedger.deleteMany({ where: { id: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); for (const l of leds) await P.pointBalance.updateMany({ where: { customerId: l.customerId }, data: { balance: { decrement: l.delta } } }).catch(() => null); await P.memberActivity.deleteMany({ where: { tenantId: E.tenantId, refId: { in: ids } } }).catch(() => null); const cards = rvs.map((r: Any) => r.kanbanCardId).filter(Boolean); if (cards.length) { await P.kanbanCardAssignee?.deleteMany?.({ where: { cardId: { in: cards } } }).catch(() => null); await P.kanbanCard.deleteMany({ where: { id: { in: cards } } }).catch(() => null); } await P.memberReview.deleteMany({ where: { id: { in: ids } } }).catch(() => null); } }

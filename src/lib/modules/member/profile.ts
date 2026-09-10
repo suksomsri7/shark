@@ -1753,6 +1753,11 @@ async function doMerge(
       const { mergeGiftCards } = await import("@/lib/modules/giftcard");
       await mergeGiftCards(ctx, { keepId: keep.id, mergeId: merge.id }, tx);
 
+      // M2.3 — ใบสะสมตราของคนที่ถูกรวม: บวกเข้าใบที่คนเก็บไว้ถืออยู่ (StampEvent MERGE) หรือย้ายทั้งใบ
+      // 🔴 `await import` ด้วยเหตุผลเดียวกับบัตรกำนัลข้างบน (โมดูลสแตมป์อ่านสิทธิ์/ระดับผ่านไฟล์ของสมาชิก)
+      const { mergeProgress } = await import("@/lib/modules/stamp");
+      await mergeProgress(ctx, { keepId: keep.id, mergeId: merge.id }, tx);
+
       await writeActivity(ctx, tx, {
         customerId: keep.id,
         type: "MERGED_IN",

@@ -9,6 +9,9 @@ enum PointTxType {
   ADJUST
   REVERSE
   EXPIRE
+  // M2.2 · §5.5 §11.4 — โอนแต้มระหว่างสมาชิก: ledger ฝั่งผู้ให้ delta ติดลบ · ฝั่งผู้รับ delta บวก
+  //   (ไม่ใช้ BURN/EARN ตรง ๆ เพราะจะไปปนกับ "ขาย/แลกของ" ในรายงาน/เพดานต่อวันของ computeEarn)
+  TRANSFER
 }
 
 // วิธีหมดอายุของแต้ม (M2.1 · §4.2)
@@ -152,4 +155,28 @@ model PointTransfer {
   updatedAt      DateTime  @updatedAt
 
   @@index([fromCustomerId, createdAt])
+}
+
+// ── M2.2 (§5.5 §6.2) ────────────────────────────────────────────────────────
+
+// คำขอ "ปรับแต้มมือ" ที่เกินเพดาน `PointSettings.adjustApprovalOver` และรอผ่านสายอนุมัติกลาง
+// (`ApprovalRequest` ไม่มีช่อง JSON ให้แนบ delta/reason/expiresAt ⇒ พักไว้ที่นี่แทน — approval-effects.ts
+//  หยิบแถวนี้ไปเรียก `point/adjust.ts#applyPointAdjust` จริงตอนอนุมัติผ่าน) · idempotent ผ่าน idempotencyKey เดิม
+model PointAdjustRequest {
+  id                String    @id @default(cuid())
+  tenantId          String
+  systemId          String
+  customerId        String
+  delta             Int
+  reason            String
+  expiresAt         DateTime?
+  idempotencyKey    String
+  approvalRequestId String
+  actorUserId       String?
+  appliedAt         DateTime?
+  rejectedAt        DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, approvalRequestId])
 }

@@ -114,6 +114,18 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
     return;
   }
 
+  // ระบบสมาชิก v2 (M2.2 · §5.5 §6.2): ผู้จัดการขอ "ปรับแต้มมือ" เกินเพดาน — ผ่านแล้วจึงเขียนแต้มจริง
+  //   entityId = `${customerId}:${idempotencyKey}` แต่รายละเอียด (delta/reason/expiresAt) พักไว้ที่
+  //   `PointAdjustRequest` (ผูกด้วย requestId) เพราะ ApprovalRequest ไม่มีช่อง JSON ให้แนบ payload อิสระ
+  //   idempotent: `point/adjust.ts#applyPointAdjustApproved` เองกันซ้ำผ่าน idempotencyKey ของ ledger
+  //   ปฏิเสธ = ไม่เขียนแต้มเลย (แค่ปิดคำขอไว้เป็นหลักฐาน)
+  if (entityType === "member.point.adjust") {
+    if (!requestId) return;
+    const point = await import("@/lib/modules/point");
+    await point.applyPointAdjustApproved({ approvalRequestId: requestId, tenantId: evt.tenantId, approved });
+    return;
+  }
+
   if (entityType === "HrLeave") {
     await prisma.hrLeave.updateMany({
       where: { id: entityId, tenantId: evt.tenantId, status: "PENDING" },

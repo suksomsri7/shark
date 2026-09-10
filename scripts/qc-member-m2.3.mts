@@ -77,7 +77,7 @@ try {
   const events = (progressId: string) => P.stampEvent.findMany({ where: { progressId }, orderBy: { createdAt: "asc" } });
   const prog = (cardId: string, customerId: string) => P.stampCardProgress.findMany({ where: { cardId, customerId }, orderBy: { cycle: "asc" } });
   const gold = await P.memberTierDef.findFirst({ where: { systemId: SYS, key: "gold" } });
-  const goldPatong = (await prisma.customer.findFirst({ where: { memberSystemId: SYS, tierDefId: gold.id, homeUnitId: E.units.patong, status: "ACTIVE" as Any } }))!;
+  // seed: gold ทุกคนอยู่กะตะ (ป่าตอง 0) — ใช้ gold กะตะเป็นทั้งคนผ่าน (unit ตรง) และคนไม่ผ่าน (unit ผิด)
   const goldKata = (await prisma.customer.findFirst({ where: { memberSystemId: SYS, tierDefId: gold.id, homeUnitId: E.units.kata, status: "ACTIVE" as Any } }))!;
   const mk = async (input: Any) => { const c = await ST.createCard(ctx, owner, { slots: 5, ruleKind: "MANUAL", ruleConfig: {}, rewardKind: "POINTS", rewardConfig: { points: 50 }, autoRestart: true, tierDefIds: [], unitIds: [], ...input, name: `${input.name} ${tag}` }); made.cards.push(c.id); return c; };
   const key = (s: string) => `qc23-${tag}-${s}`;
@@ -136,10 +136,10 @@ try {
     r2again?.stamps === 2 && r2again.eventId === r2?.eventId && evAfter.length === 2 && (await prog(A.id, m(1).id))[0].stamps === 2,
     "ผลเดิม", `again=${JSON.stringify(r2again)} ev=${evAfter.length}`);
 
-  const B = await mk({ name: "การ์ด B gold ป่าตอง", slots: 5, ruleConfig: { perDayMax: 5 }, tierDefIds: [gold.id], unitIds: [E.units.patong] });
+  const B = await mk({ name: "การ์ด B gold กะตะ", slots: 5, ruleConfig: { perDayMax: 5 }, tierDefIds: [gold.id], unitIds: [E.units.kata] });
   const eTier = await fails(() => ST.addStamp(ctx, owner, { cardId: B.id, customerId: m(1).id, unitId: E.units.patong, idempotencyKey: key("t1") }));
-  const rGold = await ST.addStamp(ctx, owner, { cardId: B.id, customerId: goldPatong.id, unitId: E.units.patong, idempotencyKey: key("t2") });
-  const eUnit = await fails(() => ST.addStamp(ctx, owner, { cardId: B.id, customerId: goldKata.id, unitId: E.units.kata, idempotencyKey: key("t3") }));
+  const rGold = await ST.addStamp(ctx, owner, { cardId: B.id, customerId: goldKata.id, unitId: E.units.kata, idempotencyKey: key("t2") });
+  const eUnit = await fails(() => ST.addStamp(ctx, owner, { cardId: B.id, customerId: goldKata.id, unitId: E.units.patong, idempotencyKey: key("t3") }));
   const pf1 = await ST.progressFor(ctx, m(1).id);
   chk("M2.3-S2.4", "tier/unit: การ์ด B tierDefIds [gold] unitIds [ป่าตอง] — สมาชิก 1 (ระดับ member) → throw ไทย · gold ป่าตอง → 1 · gold + unitId กะตะ → throw ไทย · progressFor(สมาชิก 1) ไม่แสดงการ์ด B (ไม่เข้าเกณฑ์) แต่แสดง A stamps 2 slots 5 cycle 1",
     thai(eTier) && rGold?.stamps === 1 && thai(eUnit) && Array.isArray(pf1) && !pf1.some((x: Any) => x.cardId === B.id) && pf1.some((x: Any) => x.cardId === A.id && x.stamps === 2 && x.slots === 5 && x.cycle === 1),
@@ -197,15 +197,15 @@ try {
     rc2?.completed === true && rc2.cycle === 2 && pe2.length === 3 && pe2[2].cycle === 3 && pe2[2].stamps === 1 && bal2 - bal0 === 100 && (await ST.progressFor(ctx, m(8).id)).some((x: Any) => x.cardId === Ecard.id && x.cycle === 3 && x.stamps === 1 && x.completedCycles === 2),
     "cycle 3 stamps 1", `rc2=${JSON.stringify(rc2)} pe=${pe2.map((p: Any) => `${p.cycle}:${p.stamps}`).join(",")} bal=${bal2 - bal0}`);
 
-  const F = await mk({ name: "การ์ด F voucher ไม่ restart", slots: 2, ruleConfig: { perDayMax: 10 }, rewardKind: "VOUCHER", rewardConfig: { templateId: null, note: "ดำน้ำฟรี 1 ไดฟ์" }, autoRestart: false });
-  const rf = await ST.addStamp(ctx, owner, { cardId: F.id, customerId: m(9).id, count: 2, idempotencyKey: key("f1") });
+  const F = await mk({ name: "การ์ด F voucher ไม่ restart", slots: 3, ruleConfig: { perDayMax: 10 }, rewardKind: "VOUCHER", rewardConfig: { templateId: null, note: "ดำน้ำฟรี 1 ไดฟ์" }, autoRestart: false });
+  const rf = await ST.addStamp(ctx, owner, { cardId: F.id, customerId: m(9).id, count: 3, idempotencyKey: key("f1") });
   const pf = await prog(F.id, m(9).id);
   const eFull = await fails(() => ST.addStamp(ctx, owner, { cardId: F.id, customerId: m(9).id, idempotencyKey: key("f2") }));
   const obF = await outbox("stamp.completed", (p) => p.customerId === m(9).id && p.cardId === F.id);
-  const G2 = await mk({ name: "การ์ด G reward stub", slots: 2, ruleConfig: { perDayMax: 10 }, rewardKind: "REWARD", rewardConfig: { rewardId: null }, autoRestart: true });
-  const H2 = await mk({ name: "การ์ด H ส่วนลดครั้งหน้า", slots: 2, ruleConfig: { perDayMax: 10 }, rewardKind: "DISCOUNT_NEXT", rewardConfig: { pct: 10 }, autoRestart: true });
-  const rg = await ST.addStamp(ctx, owner, { cardId: G2.id, customerId: m(10).id, count: 2, idempotencyKey: key("g2") });
-  const rh = await ST.addStamp(ctx, owner, { cardId: H2.id, customerId: m(10).id, count: 2, idempotencyKey: key("h2") });
+  const G2 = await mk({ name: "การ์ด G reward stub", slots: 3, ruleConfig: { perDayMax: 10 }, rewardKind: "REWARD", rewardConfig: { rewardId: null }, autoRestart: true });
+  const H2 = await mk({ name: "การ์ด H ส่วนลดครั้งหน้า", slots: 3, ruleConfig: { perDayMax: 10 }, rewardKind: "DISCOUNT_NEXT", rewardConfig: { pct: 10 }, autoRestart: true });
+  const rg = await ST.addStamp(ctx, owner, { cardId: G2.id, customerId: m(10).id, count: 3, idempotencyKey: key("g2") });
+  const rh = await ST.addStamp(ctx, owner, { cardId: H2.id, customerId: m(10).id, count: 3, idempotencyKey: key("h2") });
   const obG = await outbox("stamp.completed", (p) => p.customerId === m(10).id && p.cardId === G2.id);
   const stF = await ST.cardStats(ctx, F.id); const stE = await ST.cardStats(ctx, Ecard.id);
   chk("M2.3-S3.3", "VOUCHER stub (autoRestart false): ครบ → completedAt · rewardVoucherId null · event payload rewardKind VOUCHER + rewardConfig · ไม่มี cycle 2 · ประทับต่อ → throw ไทย 'ครบแล้ว' · REWARD/DISCOUNT_NEXT stub ครบได้ไม่ throw (payload rewardKind) · cardStats F {active 0, completed 1} · E {active 1, completed 2, rewardsPaid 2}",
@@ -242,13 +242,13 @@ try {
     exp0 >= 27 * 86_400_000 && exp0 <= 32 * 86_400_000 && typeof ex?.expired === "number" && ex.expired >= 1 && evG.some((e: Any) => e.type === "EXPIRE" && e.count === 2) && pg11b?.stamps === 0 && new Date(pg11b.startedAt).getTime() > Date.now() - 600_000 && new Date(pg11b.expiresAt).getTime() > Date.now() && pg12?.stamps === 1 && /stampExpire/.test(cron) && /stampExpired/.test(cron),
     "หมดอายุ → เริ่มใหม่", `span=${Math.round(exp0 / 86_400_000)}d ex=${JSON.stringify(ex)} ev=${evG.map((e: Any) => e.type).join(",")} stamps=${pg11b?.stamps} exp=${pg11b?.expiresAt} m12=${pg12?.stamps} cron=${/stampExpire/.test(cron)}`);
 
-  const mkCust = async (nm: string) => { const c = await PR.createMember(ctx as Any, owner, { phone: `0893${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "สแตมป์", source: "STAFF", homeUnitId: E.units.patong }); made.customers.push(c.customerId); return c.customerId as string; };
+  const mkCust = async (nm: string) => { const c = await PR.createMember(ctx as Any, owner, { phone: `0893${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "สแตมป์", source: "WALK_IN", homeUnitId: E.units.patong }); made.customers.push(c.customerId); return c.customerId as string; };
   const X = await mkCust("เก็บ"); const Y = await mkCust("ถูกรวม");
   await ST.addStamp(ctx, owner, { cardId: A.id, customerId: X, count: 1, idempotencyKey: key("mx") });
   await ST.addStamp(ctx, owner, { cardId: A.id, customerId: Y, count: 2, idempotencyKey: key("my") });
   await ST.addStamp(ctx, owner, { cardId: B.id, customerId: Y, count: 1, idempotencyKey: key("my2"), unitId: E.units.patong }).catch(() => null); // Y ไม่ใช่ gold → ไม่ได้ (ตามเกณฑ์)
   await ST.addStamp(ctx, owner, { cardId: Cpin.id, customerId: Y, count: 1, idempotencyKey: key("my3"), byPin: "1234" }).catch(() => null);
-  const mg = await PR.mergeMembers(ctx as Any, owner, { keepId: X, mergeId: Y, fieldChoices: {} });
+  const mg = await PR.mergeMembers(ctx as Any, owner, { keepId: X, mergeId: Y, fieldChoices: {}, confirm: "MERGE" });
   const pX = await prog(A.id, X); const pY = await P.stampCardProgress.findMany({ where: { customerId: Y } });
   const evX = pX[0] ? await events(pX[0].id) : [];
   chk("M2.3-S4.3", "merge hook: X (A:1) + Y (A:2) → mergeMembers(keep X) → X ใบ A stamps 3 · StampEvent MERGE count 2 refType MERGE refId Y · Y ไม่มี progress เหลือ · ผลรวมตราไม่หาย",

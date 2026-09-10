@@ -75,6 +75,17 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   //   🔴 ทั้งคู่มี consumer ใน `outbox-consumers.ts` แล้ว (ขาดไป = คิวตันทั้งระบบเงียบ ๆ)
   { value: "giftcard.sold", label: "เมื่อขายบัตรกำนัล" },
   { value: "giftcard.used", label: "เมื่อลูกค้าใช้บัตรกำนัล" },
+  // M2.3 (§7.1) — ยิงจาก `stamp/service.ts` ใน tx เดียวกับใบสะสม/รายการตรา และจาก cron (หมดอายุ)
+  //   `stamp.added` payload: customerId · cardId · progressId · stamps · cycle · count · eventId
+  //   `stamp.completed` payload: + rewardKind · rewardConfig (ครบใบแล้วจ่ายรางวัลอะไร)
+  //   `stamp.expired` payload: + stamps ที่หายไปเพราะใบหมดอายุ
+  //   🔴 ทั้ง 3 ตัวมี consumer ใน `outbox-consumers.ts` แล้ว (ขาดไป = คิวตันทั้งระบบเงียบ ๆ)
+  { value: "stamp.added", label: "เมื่อสมาชิกได้รับตราสะสม" },
+  { value: "stamp.completed", label: "เมื่อสมาชิกสะสมตราครบใบ" },
+  { value: "stamp.expired", label: "เมื่อใบสะสมตราหมดอายุ" },
+  // M2.3 (§9.2) — ยิงจาก `booking/service.ts#setAppointmentStatus` เมื่อนัดเปลี่ยนเป็น "มาแล้ว (DONE)"
+  //   payload: appointmentId · unitId · customerId · serviceId — สแตมป์ชนิด "จองที่มาจริง" กินทริกเกอร์นี้
+  { value: "booking.completed", label: "เมื่อลูกค้ามาตามนัดจริง" },
   // M1.12 (§7.1 §9.3) — ยิงจาก `member/chat-bridge.ts#linkContact` (ทั้งจับคู่อัตโนมัติและเลือกมือ)
   //   payload มี contactId · partyId · customerId · method (PHONE/EMAIL/CHANNEL_ID/MANUAL)
   { value: "chat.contact.linked", label: "เมื่อผูกห้องแชทเข้ากับสมาชิก" },

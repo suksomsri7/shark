@@ -34,8 +34,9 @@ export type MemberNavEntry = {
 export const MEMBER_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "members", label: "สมาชิก", path: "/member/members", status: "ready" },
   { key: "tiers", label: "ระดับสมาชิก", path: "/member/tiers", status: "ready" },
-  { key: "points", label: "แต้ม", path: "/member/points", status: "soon", wo: "M2.2" },
-  { key: "stamps", label: "สแตมป์", path: "/member/stamps", status: "soon", wo: "M2.3" },
+  { key: "points", label: "แต้ม", path: "/member/points", status: "ready" },
+  // M2.3 — หมวดนี้เปิดแล้ว (ตารางใบทั้งหมด + ตัวออกแบบการ์ด + การ์ดจริง)
+  { key: "stamps", label: "สแตมป์", path: "/member/stamps", status: "ready" },
   { key: "rewards", label: "รางวัล", path: "/member/rewards", status: "soon", wo: "M2.4" },
   // M2.6 — หมวดนี้เปิดแล้วด้วยหน้า hub ที่มีแท็บ Gift Card (voucher/คูปอง มาที่ M2.5 · journey ที่ M3.3)
   { key: "promotions", label: "โปรโมชัน", path: "/member/promotions", status: "ready" },
@@ -54,7 +55,7 @@ export const MEMBER_NAV: readonly MemberNavEntry[] = Object.freeze([
 export const MEMBER_SETTINGS_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "fields", label: "ฟิลด์", path: "/member/settings/fields", status: "ready" },
   { key: "privacy", label: "ความเป็นส่วนตัว", path: "/member/settings/privacy", status: "ready" },
-  { key: "points", label: "แต้ม", path: "/member/settings/points", status: "soon", wo: "M2.2" },
+  { key: "points", label: "แต้ม", path: "/member/points/settings", status: "ready" },
   { key: "sources", label: "ช่องทางที่มา", path: "/member/settings/sources", status: "ready" },
   { key: "notifications", label: "แจ้งเตือน", path: "/member/settings/notifications", status: "soon", wo: "M3.6" },
   { key: "api", label: "API", path: "/member/settings/api", status: "ready" },
