@@ -130,6 +130,12 @@ export async function MemberHub({ systemId }: { systemId: string }) {
       label: "สมัครสมาชิก",
       desc: "สมัคร/ต่ออายุให้ลูกค้า + รายการล่าสุด",
     },
+    // M1.3 — ตัวออกแบบฟิลด์ (Zoho-style) ของระบบสมาชิก v2 · หน้าเต็มอยู่ใน src/app/app/sys/[id]/member/settings/fields
+    {
+      href: `/app/sys/${systemId}/member/settings/fields`,
+      label: "ตั้งค่าฟิลด์",
+      desc: "ส่วน/ฟิลด์บนหน้าโปรไฟล์สมาชิก — ลากวาง เทมเพลตกิจการ",
+    },
   ];
 
   return (

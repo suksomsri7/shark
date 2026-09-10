@@ -13,6 +13,9 @@ import type { NavItem, SoonItem } from "@/components/app-shell/NavDrawer";
 // K2.10: ส่ง actor เข้าไปด้วยให้ `kanbanNavChildren` ซ่อน "รายงาน" สำหรับคนที่ไม่มีคีย์ kanban.report.view
 import { kanbanNavChildren } from "@/lib/modules/kanban/nav";
 import { toActor } from "@/lib/modules/kanban/access";
+// M1.3: เมนู 9 หมวดของระบบสมาชิก v2 (§2.2) มาจากทะเบียนเดียวกับแถบแท็บในโมดูล — ห้ามพิมพ์ลิสต์ซ้ำที่นี่
+import { memberNavChildren } from "@/lib/modules/member/nav";
+import { toMemberActor } from "@/lib/modules/member/access";
 // เมนูของระบบแชทซ่อนตามสิทธิ์จริง — ใช้ทะเบียน/ตัวช่วยชุดเดียวกับด่านของโมดูล (ไม่พิมพ์คีย์ซ้ำ)
 import { evaluate } from "@/lib/core/rbac";
 import { membershipOf, CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
@@ -157,15 +160,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/coupon/list`, label: "คูปอง" },
         ];
       case "MEMBER":
-        // ระบบสมาชิกแตกจริง 5 ฟังก์ชัน: รายชื่อสมาชิก · นำเข้า CSV · แพ็กเกจสมาชิก · ระดับสมาชิก (เกณฑ์เลื่อนขั้น) · สมัครสมาชิก
-        return [
-          { href: s, label: "ภาพรวม" },
-          { href: `${s}/member/customers`, label: "รายชื่อสมาชิก" },
-          { href: `${s}/member/import`, label: "นำเข้า CSV" },
-          { href: `${s}/member/plans`, label: "แพ็กเกจสมาชิก" },
-          { href: `${s}/member/tiers`, label: "ระดับสมาชิก" },
-          { href: `${s}/member/subscribe`, label: "สมัครสมาชิก" },
-        ];
+        // M1.3: เมนู 9 หมวด (§2.2) ย้ายไปทะเบียนกลาง `member/nav.ts` เหมือนบอร์ดงาน/บัญชี — ห้ามพิมพ์ลิสต์ซ้ำที่นี่
+        // (memberNavChildren ต่อท้ายด้วยลิงก์ v1 เดิม 5 อัน: customers/import/plans/tiers/subscribe จนกว่า
+        //  WO ที่แทนที่ฟังก์ชันเดียวกันจะย้ายผู้ใช้ไปหน้าใหม่แล้วค่อยตัดออก)
+        return memberNavChildren(s, toMemberActor(auth.user.id, auth.active));
       case "POINT":
         // ระบบแต้มแตกจริง 3 ฟังก์ชัน: ตั้งค่าแต้ม (อัตรา) · ปรับแต้ม (ปรับ/แจก) · ประวัติแต้ม (ledger)
         return [

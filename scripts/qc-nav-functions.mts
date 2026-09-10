@@ -113,6 +113,23 @@ if (kbCase) {
   kbCase.hrefs.push("`${s}`", ...readyPaths.map((h) => `\`\${s}${h}\``));
 }
 
+// 🔴 M1.3 — เมนูสมาชิก v2 ก็ย้ายไปทะเบียนกลาง (`member/nav.ts`) แบบเดียวกับบอร์ดงาน/บัญชี ⇒ ต้องตามไปอ่านที่นั่น
+//    ไม่งั้นด่าน "dead link"/"completeness" จะไม่เห็นลิงก์ของระบบสมาชิกเลยสักเส้น = ข้อสอบวัดอะไรไม่ได้
+//    v1 เดิม (customers/import/plans/tiers/subscribe) ยังต่อท้ายด้วยลิงก์ตายตัวใน memberNavChildren (ไม่ได้อยู่
+//    ใน nav.ts เพราะเป็นของเก่าที่รอ WO ถัดไปย้ายแทนที่ — ใส่ตรงนี้ด้วยมือจนกว่าจะถูกตัดออก)
+const memberCase = cases.find((c) => c.type === "MEMBER");
+if (memberCase) {
+  const memberSrc = readFileSync(join(ROOT, "src/lib/modules/member/nav.ts"), "utf8");
+  const memberPaths = [...memberSrc.matchAll(/status:\s*"ready"/g)].length;
+  const readyPaths = [...memberSrc.matchAll(/path:\s*"([^"]*)",\s*status:\s*"ready"/g)].map((m) => m[1]);
+  chk("S0.3", `ตามลิงก์สมาชิกไปที่ member/nav.ts ได้ (${readyPaths.length} รายการพร้อมใช้)`,
+    readyPaths.length >= 1 && readyPaths.length === memberPaths && /memberNavChildren/.test(featureBody),
+    `เจอ ready ${readyPaths.length} · layout อ้าง memberNavChildren = ${/memberNavChildren/.test(featureBody)}`,
+    "CRITICAL");
+  const legacyV1 = ["/member/customers", "/member/import", "/member/plans", "/member/tiers", "/member/subscribe"];
+  memberCase.hrefs.push("`${s}`", ...readyPaths.map((h) => `\`\${s}${h}\``), ...legacyV1.map((h) => `\`\${s}${h}\``));
+}
+
 // ตัด ?query และ #hash ออกจาก href ก่อนแมปเป็นไฟล์ page.tsx — เหมือน stripQueryHash() ใน account/nav.ts
 // 🔴 WO 1.1: ไม่ตัดแล้วพลาด — href ของ flyout เมนูบัญชี V2 มี `?tab=…`/`#new` ต่อท้าย (เช่น `/po?tab=awaiting_approval`,
 // `/purchase#new`) พาธไฟล์จริงคือ `.../po/page.tsx` ไม่ใช่โฟลเดอร์ชื่อ "po?tab=awaiting_approval" — ไม่ตัดก่อนเทียบ

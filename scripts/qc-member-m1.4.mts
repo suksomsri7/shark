@@ -13,13 +13,15 @@
 //     กติกาตายตัว เบอร์ → อีเมล → id เคยผูก → ไม่ตรง = candidates (ชื่อคล้าย) · externalId เป็นของคนอื่นแต่เบอร์ชี้อีกคน → throw CONFLICT + PartyMergeCandidate
 //   listIdentities(ctx, customerId) · unlinkIdentity(ctx, actor, identityId) (MANAGER+)
 //   findDuplicates(ctx, actor, { status? }) → [{ id, a: MemberBrief, b: MemberBrief, reason, score }] · dismissDuplicate(ctx, actor, pairId) · mergeMembers(ctx, actor, { keepId, mergeId, fieldChoices?, confirm: "MERGE" }) → { keptId } | { pending: true, approvalRequestId }
+//     MANAGER → approval.submitForApproval({ entityType: "member.merge", entityId: `${keepId}:${mergeId}`, systemId }) · ไม่มีนโยบาย = autoApproved → รวมทันที · effect เมื่ออนุมัติอยู่ที่ src/lib/approval-effects.ts (composition root) เรียก member facade · fitness เพิ่มเส้น member→approval
 //   briefFor(ctx, actor, customerIds[]) → MemberBrief[] (กรอง unit scope · phoneMasked) · privacy.canViewSensitive(ctx, actor, { targetType, targetId, customerId }) → boolean
+//   migration `member_v2_b` (ใบนี้): Customer.phone2/facebook String? · MemberLookupTarget + USER · backfill-fields ตั้ง ownerUserId target USER (idempotent) · SYSTEM_FIELD_TARGETS ใน fields.ts เพิ่ม phone2/facebook
 //   ข้อผิดพลาด: ไม่มีสิทธิ์ = ForbiddenError/ข้อความไทย · มองไม่เห็น (unit scope) = throw ที่ message มี "ไม่พบ" (404-not-403) · CONFLICT = error.code === "CONFLICT" หรือ message มี "ซ้ำ"
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
 accEnv.loadQcEnv();
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 if (!existsSync("src/lib/modules/member/profile.ts")) {
   console.log("⚠️  SKIPPED — WO ยังไม่สร้าง (src/lib/modules/member/profile.ts)");
   console.log(`JSON_SUMMARY ${JSON.stringify({ total: 0, passed: 0, findings: [], skipped: true })}`);
@@ -41,7 +43,7 @@ const P = prisma as Any;
 let tid = ""; let SYS = "";
 const tag = Date.now().toString(36);
 const num = String(Date.now() % 1_000_000).padStart(6, "0");
-const made = { customers: [] as string[], identities: [] as string[], policies: [] as string[], activities: [] as string[], candidates: [] as string[], contacts: [] as string[] };
+const made = { approvalPolicies: [] as string[], customers: [] as string[], identities: [] as string[], policies: [] as string[], activities: [] as string[], candidates: [] as string[], contacts: [] as string[] };
 const restore: (() => Promise<unknown>)[] = [];
 try {
   const scope = await mq.resolveMemberScope(prisma);
@@ -63,6 +65,18 @@ try {
   // สมาชิกที่มองเห็นได้เฉพาะสาขาตน (ไม่มีกิจกรรมข้ามสาขา) — เลือกจาก DB จริง ไม่เดาจาก index
   const pOnly = (await prisma.customer.findFirst({ where: { memberSystemId: SYS, homeUnitId: units.patong, status: "ACTIVE" as Any, activities: { none: { unitId: units.kata } } } as Any, orderBy: { memberCode: "asc" } }))!;
   const kOnly = (await prisma.customer.findFirst({ where: { memberSystemId: SYS, homeUnitId: units.kata, status: "ACTIVE" as Any, activities: { none: { unitId: units.patong } } } as Any, orderBy: { memberCode: "desc" } }))!;
+
+  // ═══ S0.0 migration member_v2_b (หนี้จาก M1.2): phone2/facebook + MemberLookupTarget.USER ═══
+  const custCols = new Set(((await prisma.$queryRawUnsafe(`select column_name from information_schema.columns where table_name='Customer'`)) as { column_name: string }[]).map((c) => c.column_name));
+  const lookupVals = ((await prisma.$queryRawUnsafe(`select e.enumlabel from pg_enum e join pg_type t on t.oid=e.enumtypid where t.typname='MemberLookupTarget'`)) as { enumlabel: string }[]).map((e) => e.enumlabel);
+  const migB = existsSync("prisma/migrations") ? readdirSync("prisma/migrations").find((d) => /_member_v2_b$/.test(d)) : undefined;
+  const appliedB = migB ? await prisma.$queryRawUnsafe(`select 1 from "_prisma_migrations" where migration_name='${migB}' and finished_at is not null`) as unknown[] : [];
+  const ownerField = await P.memberField.findFirst({ where: { systemId: SYS, systemKey: "ownerUserId" } });
+  const FX = (await import("@/lib/modules/member/fields" as string)) as Any;
+  const okP2 = await fails(() => FX.setFieldValues(ctxO, m(3).id, { phone2: "0866666666", facebook: "fb.com/qc" }, { via: "STAFF" }));
+  const c3p = (await prisma.customer.findUnique({ where: { id: m(3).id } })) as Any;
+  restore.push(() => prisma.customer.update({ where: { id: m(3).id }, data: { phone2: null, facebook: null } as Any }));
+  chk("M1.4-S0.0", "migration `member_v2_b` (additive · applied บน QC): Customer.phone2 + Customer.facebook · enum MemberLookupTarget เพิ่ม USER · ฟิลด์ระบบ ownerUserId เปลี่ยน options.target = USER (backfill-fields idempotent ปรับให้) · setFieldValues(phone2/facebook) เขียนคอลัมน์ได้แล้ว", custCols.has("phone2") && custCols.has("facebook") && lookupVals.includes("USER") && !!migB && appliedB.length === 1 && ownerField?.options?.target === "USER" && okP2 === null && c3p.phone2 === "0866666666" && c3p.facebook === "fb.com/qc", "ครบ", `cols=${custCols.has("phone2")}/${custCols.has("facebook")} enum=${lookupVals.join(",")} mig=${migB}/${appliedB.length} owner=${ownerField?.options?.target} set=${okP2?.message ?? "ok"}`);
 
   // ═══ S0 linkIdentity (D18) ═══
   const l1 = await PR.linkIdentity(ctxO, { channel: "WHATSAPP", externalId: `wa-${tag}-1`, phone: m(7).phone, displayName: "ลูกค้า WA" });
@@ -209,6 +223,10 @@ try {
   const dups: Any[] = await PR.findDuplicates(ctxO, owner, {});
   const pair = dups.find((d) => [d.a?.id, d.b?.id].includes(rA.customerId) && [d.a?.id, d.b?.id].includes(rB.customerId));
   chk("M1.4-S4.1", "findDuplicates(ctx, owner) → คู่ A/B (ชื่อเหมือน · party.findDuplicateCandidates + recordMergeCandidates) [{id, a: MemberBrief, b: MemberBrief, reason NAME_SIMILAR, score}] · STAFF ไม่มี merge → throw", !!pair && pair.reason && typeof pair.score === "number" && pair.a?.memberCode && pair.b?.memberCode && thai(await fails(() => PR.findDuplicates(ctxT, thana, {}))), "มีคู่", JSON.stringify({ n: dups?.length, pair: pair && [pair.reason, pair.score] }));
+  // นโยบายอนุมัติของร้าน QC สำหรับ "รวมคน" (entityType member.merge · OWNER อนุมัติ) — ไม่มีนโยบาย = autoApproved ตามกติกาโมดูลอนุมัติ
+  const approval = (await import("@/lib/modules/approval/service" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
+  const apPol = await approval.createPolicy({ tenantId: tid }, { name: "QC M1.4 รวมคน", entityType: "member.merge", steps: [{ order: 1, approverRole: "OWNER" }] });
+  made.approvalPolicies.push(apPol.id);
   const eMergeStaff = await fails(() => PR.mergeMembers(ctxT, thana, { keepId: rA.customerId, mergeId: rB.customerId, confirm: "MERGE" }));
   const rMgr = await fails(async () => { const r = await PR.mergeMembers(ctxM, manager, { keepId: rA.customerId, mergeId: rB.customerId, confirm: "MERGE" }); if (!r?.pending || !r.approvalRequestId) throw new Error(`no-approval:${JSON.stringify(r)}`); });
   const eNoConfirm = await fails(() => PR.mergeMembers(ctxO, owner, { keepId: rA.customerId, mergeId: rB.customerId }));
@@ -272,6 +290,7 @@ try {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch { /* ignore */ } };
   for (const r of restore) await d(r);
   for (const id of made.policies) await d(() => P.memberSensitivePolicy.delete({ where: { id } }));
+  for (const id of made.approvalPolicies) { await d(() => prisma.approvalRequest.deleteMany({ where: { policyId: id } })); await d(() => P.approvalStep.deleteMany({ where: { policyId: id } })); await d(() => P.approvalPolicy.delete({ where: { id } })); }
   for (const id of made.activities) await d(() => prisma.memberActivity.delete({ where: { id } }));
   for (const id of made.identities) await d(() => P.memberChannelIdentity.delete({ where: { id } }));
   await d(() => P.memberChannelIdentity.deleteMany({ where: { tenantId: tid, externalId: { contains: tag } } }));

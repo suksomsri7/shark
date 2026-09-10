@@ -13,7 +13,7 @@
 //   applyTierChange(ctx, customerId, toTierDefId, reason, evidence, { byUserId?, ruleId?, approvalRequestId?, manualUntil?, tx? }) → history + Customer.tierDefId/tier(legacy sync)/tierSince/tierReviewAt + event member.tier.changed {customerId, from, to, reason} + hook onTierChanged (welcome voucher stub → M2.5)
 //   evaluateAndApply(ctx, customerId) → { changed: boolean, from?, to? } (เลื่อนขึ้นทันทีเท่านั้น — ไม่ลด)
 //   runTierReview(ctx, systemId, now, { dryRun?, customerIds? }) → { evaluated, upgraded[], kept[], atRisk[], downgraded[], notified[], skipped[] } — สมาชิกที่ tierReviewAt ≤ now (หรือ customerIds): keep ผ่าน → kept + tierReviewAt = รอบถัดไป · ไม่ผ่านครั้งแรก → atRisk (tierReviewAt = now + graceDays · event member.tier.at_risk {shortfall}) · ไม่ผ่านหลังผ่อนผัน → downgraded (RULE_DOWNGRADE) · แบบเสียเงินยัง ACTIVE / manualUntil > now → skipped · notifyBeforeDays: คนที่ tierReviewAt อยู่ใน (now, now+notifyBeforeDays] และกฎ keep ไม่ผ่าน → notified (at_risk 1 ครั้งต่อรอบ)
-//   setManualTier(ctx, actor, customerId, { tierDefId, reason, until? }) → OWNER: apply MANUAL (evidence.manualUntil · tierReviewAt = until) · MANAGER: { pending: true, approvalRequestId } · STAFF: throw · reason ว่าง → throw
+//   setManualTier(ctx, actor, customerId, { tierDefId, reason, until? }) → OWNER: apply MANUAL (evidence.manualUntil · tierReviewAt = until) · MANAGER: approval.submitForApproval({ entityType: "member.tier.manual", entityId: customerId }) → { pending: true, approvalRequestId } (ไม่มีนโยบาย = autoApproved ใช้ทันที · effect เมื่ออนุมัติที่ src/lib/approval-effects.ts) · STAFF: throw · reason ว่าง → throw
 //   benefitsFor(ctx, customerId) → { tier{key,name}, discountPct, discountMaxSatang, discountFixedSatang, pointMultiplier, priorityBookingDays, freeServices[], noPointExpiry, cancelFeeDiscountPct, exclusiveItemIds[], welcomeVoucherTemplateId, birthdayGift } (เฉพาะ active)
 //   facade member/index.ts: benefitsFor · evaluateAndApply · cron.ts รายวัน: runTierReview ทุกระบบ MEMBER · events member.tier.changed/at_risk ลง 3 ทะเบียน · เพดาน MEMBER_LIMITS.tiers = 10
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -40,7 +40,7 @@ const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const P = prisma as Any;
 let tid = ""; let SYS = "";
 const tag = Date.now().toString(36);
-const made = { customers: [] as string[], sales: [] as string[], tiers: [] as string[], rules: [] as string[], subs: [] as string[] };
+const made = { customers: [] as string[], sales: [] as string[], tiers: [] as string[], rules: [] as string[], subs: [] as string[], approvalPolicies: [] as string[] };
 const restore: (() => Promise<unknown>)[] = [];
 try {
   const scope = await mq.resolveMemberScope(prisma);
@@ -173,9 +173,12 @@ try {
   const r5 = await T.runTierReview(ctxO, SYS, new Date(now.getTime() + 10 * 86400_000), { customerIds: [X] });
   const r6 = await T.runTierReview(ctxO, SYS, new Date(until.getTime() + 86400_000), { dryRun: true, customerIds: [X] });
   chk("M1.9-S4.2", "ล็อกมือ: รอบประเมินก่อน until → skipped [X] (ยัง platinum แม้กฎไม่ผ่าน) · หลัง until (dryRun) → ประเมินตามกฎ (downgraded หรือ atRisk มี X)", r5?.skipped?.some((k: Any) => (k.customerId ?? k) === X) && ((await prisma.customer.findUnique({ where: { id: X } })) as Any).tierDefId === platinum.id && (r6?.downgraded?.some((k: Any) => (k.customerId ?? k) === X) || r6?.atRisk?.some((k: Any) => (k.customerId ?? k) === X)), "skip → ประเมิน", JSON.stringify({ r5: r5?.skipped?.length, r6: { d: r6?.downgraded?.length, a: r6?.atRisk?.length } }));
+  const approval = (await import("@/lib/modules/approval/service" as string)) as Record<string, (...a: Any[]) => Promise<Any>>;
+  const apPol = await approval.createPolicy({ tenantId: tid }, { name: "QC M1.9 ตั้งระดับมือ", entityType: "member.tier.manual", steps: [{ order: 1, approverRole: "OWNER" }] });
+  made.approvalPolicies.push(apPol.id);
   const manM = await fails(async () => { const r = await T.setManualTier(ctxM, manager, Y, { tierDefId: platinum.id, reason: "ขอเลื่อนให้ลูกค้า" }); if (!r?.pending || !r.approvalRequestId) throw new Error(`no-approval ${JSON.stringify(r)}`); });
   const cY3 = (await prisma.customer.findUnique({ where: { id: Y } })) as Any;
-  chk("M1.9-S4.3", "MANAGER ตั้งระดับมือ → {pending true, approvalRequestId} (approval entityType member.tier) · ยังไม่ใช้ (Y ยัง gold) · หรือ throw ไทยที่มีคำว่า 'อนุมัติ' ถ้าร้านไม่มีนโยบายอนุมัติ", (manM === null || /อนุมัติ/.test(manM.message)) && cY3.tierDefId === gold.id, "pending", `${manM?.message?.slice(0, 80) ?? "pending ok"} tier=${cY3?.tierDefId === gold?.id}`);
+  chk("M1.9-S4.3", "MANAGER ตั้งระดับมือ → {pending true, approvalRequestId} (submitForApproval entityType member.tier.manual · entityId customerId · ApprovalRequest PENDING) · ยังไม่ใช้ (Y ยัง gold) · ไม่มีนโยบาย = autoApproved ใช้ทันที", manM === null && (await prisma.approvalRequest.count({ where: { tenantId: tid, entityType: "member.tier.manual", status: "PENDING" as Any } })) >= 1 && cY3.tierDefId === gold.id, "pending", `${manM?.message?.slice(0, 80) ?? "pending ok"} tier=${cY3?.tierDefId === gold?.id}`);
   const ghost = await fails(() => T.setManualTier(ctxO, owner, X, { tierDefId: "ไม่มี", reason: "x" }));
   const eSame = await fails(() => T.setManualTier(ctxO, owner, X, { tierDefId: platinum.id, reason: "ซ้ำระดับเดิม" }));
   chk("M1.9-S4.4", "tierDefId ไม่มี/ของระบบอื่น → throw ไทย · ตั้งระดับเดิมซ้ำ → throw หรือ {applied false} (ไม่เขียน history เพิ่ม)", thai(ghost) && (eSame !== null || (await P.memberTierHistory.count({ where: { customerId: X, reason: "MANUAL" } })) === 1), "throw", `${!!ghost} same=${eSame?.message?.slice(0, 40) ?? "no-throw"} hist=${await P.memberTierHistory.count({ where: { customerId: X, reason: "MANUAL" } })}`);
@@ -230,6 +233,7 @@ try {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch { /* ignore */ } };
   for (const r of restore) await d(r);
   for (const id of made.subs) await d(() => P.memberSubscription.delete({ where: { id } }));
+  for (const id of made.approvalPolicies) { await d(() => prisma.approvalRequest.deleteMany({ where: { policyId: id } })); await d(() => P.approvalStep.deleteMany({ where: { policyId: id } })); await d(() => P.approvalPolicy.delete({ where: { id } })); }
   if (made.sales.length) { for (const mdl of ["posSaleLine", "posPayment"]) await d(() => P[mdl].deleteMany({ where: { saleId: { in: made.sales } } })); await d(() => prisma.pointLedger.deleteMany({ where: { tenantId: tid, refId: { in: made.sales } } })); await d(() => prisma.posSale.deleteMany({ where: { id: { in: made.sales } } })); }
   if (made.customers.length) {
     const parties = (await prisma.customer.findMany({ where: { id: { in: made.customers } }, select: { partyId: true } })).map((c) => c.partyId).filter(Boolean) as string[];

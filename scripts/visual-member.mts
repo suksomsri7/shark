@@ -79,6 +79,34 @@ const SPECS: Record<string, Spec[]> = {
       steps: [{ waitFor: "[data-testid=member-360]" }, { wait: 500 }],
     }]),
   ],
+  // M1.8 — ช่องทางที่มา (ภาพ 13): KPI · แท่งต่อช่องทาง first/last · ตารางลิงก์/QR · โมดัลสร้างลิงก์
+  "1.8": [
+    {
+      name: `settings-sources-${userKey}`,
+      path: `${MEMBER_BASE}/settings/sources`,
+      note: userKey === "owner" ? "เทียบภาพ 13: KPI · แท่งต่อช่องทาง (first vs last) · ลิงก์/QR ที่มา" : "ธนา → 404",
+      expect: userKey === "owner" ? ["[data-testid=sources-page]", "[data-testid=sources-kpi]", "[data-testid=sources-chart]", "[data-testid=sources-links]"] : [],
+      steps: userKey === "owner" ? [{ waitFor: "[data-testid=sources-page]" }, { wait: 500 }] : [{ wait: 800 }],
+    },
+    ...(userKey === "owner" ? [{
+      name: "sources-link-new-modal",
+      path: `${MEMBER_BASE}/settings/sources`,
+      onlyDevice: "desktop" as const,
+      note: "กด 'สร้างลิงก์/QR' → โมดัล (ชื่อ/ที่มา/สาขา/แคมเปญ/ต้นทุน) — ถ่ายตอนเปิด",
+      expect: ["[data-testid=sources-link-new-modal]"],
+      steps: [{ waitFor: "[data-testid=sources-link-new]" }, { click: "[data-testid=sources-link-new]" }, { waitFor: "[data-testid=sources-link-new-modal]" }, { wait: 400 }],
+    }] : []),
+  ],
+  // M1.7 — ตั้งค่าความเป็นส่วนตัว (ภาพ 14): นโยบายเวอร์ชัน · ช่องทางยินยอม · ใครดูอ่อนไหว (ชิปตำแหน่ง HR + เตือนยังไม่ผูก) · บันทึกการดู · คำขอ PDPA · ลบอัตโนมัติ
+  "1.7": [
+    {
+      name: `settings-privacy-${userKey}`,
+      path: `${MEMBER_BASE}/settings/privacy`,
+      note: userKey === "owner" ? "เทียบภาพ 14 ทั้ง 6 บล็อก · ชิปตำแหน่ง/แผนกจาก HR · คำเตือน 'n คนยังไม่ผูก'" : "ธนา (ไม่มี member.privacy.manage) → 404",
+      expect: userKey === "owner" ? ["[data-testid=privacy-page]", "[data-testid=privacy-policies]", "[data-testid=privacy-consent-channels]", "[data-testid=privacy-sensitive]", "[data-testid=privacy-access-log]", "[data-testid=privacy-requests]", "[data-testid=privacy-auto-erase]"] : [],
+      steps: userKey === "owner" ? [{ waitFor: "[data-testid=privacy-page]" }, { wait: 500 }] : [{ wait: 800 }],
+    },
+  ],
   // M1.3 — ตัวออกแบบฟิลด์ · เทียบภาพ ledger/design-member/03-field-designer.png
   //   palette 11 ชนิดซ้าย · ผืนกลางลากเรียงส่วน/ฟิลด์ (dnd-kit) · แผงคุณสมบัติขวา 10 รายการ · ตัวอย่างมือถือ · dropdown เทมเพลต · ตัวนับ n/60
   "1.3": [
@@ -91,14 +119,14 @@ const SPECS: Record<string, Spec[]> = {
       expect: userKey === "owner" ? ["[data-testid=field-designer]", "[data-testid=field-palette]", "[data-testid=field-props]", "[data-testid=field-template-select]"] : [],
       steps: userKey === "owner" ? [{ waitFor: "[data-testid=field-designer]" }, { wait: 500 }] : [{ wait: 800 }],
     },
-    {
+    ...(userKey !== "owner" ? [] : [{
       name: "field-designer-selected",
       path: `${MEMBER_BASE}/settings/fields`,
-      onlyDevice: "desktop",
+      onlyDevice: "desktop" as const,
       note: "คลิกฟิลด์ 'ระดับใบรับรอง' → แผงขวาแสดงคุณสมบัติ 10 รายการ (ป้าย/ชนิด/ตัวเลือก/บังคับ/ค่าเริ่มต้น/ไม่ซ้ำ/กรองได้/แสดงในตาราง/ลูกค้าแก้เอง/อ่อนไหว/เก็บประวัติ) และตัวอย่างมือถือเลื่อนไปที่ฟิลด์นั้น",
       expect: ["[data-testid=field-props]", "[data-testid=field-props-label]"],
       steps: [{ waitFor: "[data-testid=field-designer]" }, { click: `[data-testid=field-item-certLevel]` }, { waitFor: "[data-testid=field-props-label]" }, { wait: 400 }],
-    },
+    }]),
   ],
 };
 
