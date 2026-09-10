@@ -17,6 +17,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { writeAudit } from "@/lib/core/audit";
 import { getChannel, isChannelKey } from "@/lib/core/channels";
 import { randomCode } from "@/lib/core/hash";
+import { formatThaiDateTime, THAI_MONTH_SHORT } from "@/lib/ui/date";
 import * as party from "@/lib/modules/party";
 import * as point from "@/lib/modules/point";
 import * as approval from "@/lib/modules/approval/service";
@@ -156,7 +157,10 @@ export type Member360 = {
     tags: string[];
     ownerUserId: string | null;
     ownerName: string | null;
+    /** M1.5 — เพิ่มควบคู่ ownerUserId/ownerName เดิม (additive) ให้หน้า 360 ไม่ต้อง join เอง */
+    owner: { name: string } | null;
     homeUnitId: string | null;
+    homeUnit: { id: string; name: string } | null;
     partyId: string | null;
     source: string | null;
     referralCode: string | null;
@@ -172,8 +176,18 @@ export type Member360 = {
     totalSpentSatang: number;
     visitCount: number;
     lastActivityAt: Date | null;
+    /** M1.5 — ยังไม่มีตาราง voucher (M2.5) → คงที่ 0 จนกว่าใบนั้นจะมา */
+    vouchers: number;
+    /** M1.5 — อ่านจาก `Customer.reviewAvg` ตรง ๆ (คอลัมน์มีตั้งแต่ M1.1 · ยังไม่มีใครเขียนจนกว่า M3.4) */
+    reviewAvg: number | null;
   };
-  tier: { current: MemberTierBrief | null; next: MemberTierBrief | null };
+  tier: {
+    current: MemberTierBrief | null;
+    next: MemberTierBrief | null;
+    /** ตีกลับรอบ 1 ข้อ 6 — ความคืบหน้าไปสู่ `next` (เกณฑ์แรกของกฎเลื่อนระดับ) เอามาจาก `tiers.evaluateMember` ตรง ๆ
+     *  หน่วยของ `current`/`target` ตามฟิลด์ของเกณฑ์ (spent12m = สตางค์) — ไม่มี = ไม่มีระดับถัดไป/เอนจินล้ม */
+    progressToNext: tiers.TierProgress | null;
+  };
   identities: MemberIdentityDto[];
   consents: MemberConsentDto[];
   attribution: { first: MemberAttributionDto | null; last: MemberAttributionDto | null };
@@ -277,11 +291,129 @@ function tierBriefOf(row: { id: string; key: string; name: string; color: string
   return row ? { id: row.id, key: row.key, name: row.name, color: row.color } : null;
 }
 
-function displayOf(value: fields.MemberFieldValueInput): string {
-  if (value === null) return "";
+// ตีกลับรอบ 1 ข้อ 5 — display เป็นหน้าที่ของ DTO ไม่ใช่ UI: ต้องคืนป้ายไทย ไม่ใช่ค่าดิบที่เก็บใน DB
+// (SELECT/MULTI_SELECT ใช้ options.choices ของฟิลด์เอง — ครอบคลุมเพศ/ที่มา/ระดับใบรับรอง ฯลฯ ทุกฟิลด์
+//  ที่ผ่านตัวออกแบบฟิลด์ M1.3 โดยอัตโนมัติ เพราะป้ายไทยถูกตั้งไว้ที่ตัวเลือกอยู่แล้ว)
+const COUNTRY_NAMES_TH: Record<string, string> = {
+  TH: "ไทย", US: "สหรัฐอเมริกา", GB: "สหราชอาณาจักร", CN: "จีน", JP: "ญี่ปุ่น", KR: "เกาหลีใต้",
+  DE: "เยอรมนี", FR: "ฝรั่งเศส", AU: "ออสเตรเลีย", RU: "รัสเซีย", IN: "อินเดีย", SG: "สิงคโปร์",
+  MY: "มาเลเซีย", MM: "เมียนมา", LA: "ลาว", KH: "กัมพูชา", VN: "เวียดนาม",
+};
+const LOCALE_NAMES_TH: Record<string, string> = { th: "ไทย", en: "อังกฤษ", zh: "จีน", ja: "ญี่ปุ่น", ko: "เกาหลี" };
+
+/** "YYYY-MM-DD" (DATE เก็บเที่ยงคืน UTC — อ่านจากสตริง ไม่ผ่าน timezone) → "12 ก.พ. 2533" (พ.ศ.) */
+function thaiDateOf(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return ymd;
+  return `${d} ${THAI_MONTH_SHORT[m - 1] ?? ""} ${y + 543}`;
+}
+
+/** อายุปีนี้จากวันเกิด "YYYY-MM-DD" — null ถ้ารูปแบบผิด */
+function ageOf(ymd: string): number | null {
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const now = new Date();
+  let age = now.getUTCFullYear() - y;
+  if (now.getUTCMonth() + 1 < m || (now.getUTCMonth() + 1 === m && now.getUTCDate() < d)) age--;
+  return age;
+}
+
+/**
+ * ค่า display ไทยของฟิลด์ 1 ตัว — export ให้ `list.ts` (ตาราง/ส่งออก) ใช้ตัวเดียวกัน (ไม่พิมพ์ตรรกะซ้ำ)
+ * `lookupNames` (ตีกลับรอบ 2 ข้อ 2) — แผนที่ id→ชื่อของฟิลด์ LOOKUP ที่ resolve มาก่อนแล้ว (แบบ batch — ดู
+ * `resolveLookupNames`) ไม่ส่งมา = ฟิลด์ LOOKUP คืน id ดิบเหมือนเดิม (list.ts ยังไม่ต้อง resolve ทุกจุด)
+ */
+export function displayOf(
+  field: Pick<fields.FieldDef, "key" | "type" | "options">,
+  value: fields.MemberFieldValueInput,
+  lookupNames?: Map<string, string>,
+): string {
+  if (value === null || value === undefined || value === "") return "";
+  if (field.type === "BOOLEAN") return value ? "ใช่" : "ไม่ใช่";
+  if (field.type === "SELECT") {
+    const choice = field.options.choices?.find((c) => c.value === value);
+    return choice?.label ?? String(value);
+  }
+  if (field.type === "MULTI_SELECT" && Array.isArray(value)) {
+    return value.map((v) => field.options.choices?.find((c) => c.value === v)?.label ?? v).join(", ");
+  }
+  if (field.type === "LOOKUP" && typeof value === "string" && lookupNames) {
+    return lookupNames.get(value) ?? "(ถูกลบ)";
+  }
+  if (field.type === "DATE" && typeof value === "string") {
+    const date = thaiDateOf(value);
+    if (field.key === "birthDate") {
+      const age = ageOf(value);
+      return age !== null ? `${date} (${age} ปี)` : date;
+    }
+    return date;
+  }
+  if (field.type === "DATETIME" && typeof value === "string") return formatThaiDateTime(value);
+  // ฟิลด์ระบบบางตัวเป็น TEXT เก็บรหัส (ISO ประเทศ/ภาษา/คีย์ช่องทาง) — จับคู่เป็นชื่อไทยตามทะเบียนที่มี
+  if (field.key === "nationality" && typeof value === "string") return COUNTRY_NAMES_TH[value.toUpperCase()] ?? value;
+  if (field.key === "locale" && typeof value === "string") return LOCALE_NAMES_TH[value.toLowerCase()] ?? value;
+  if (field.key === "preferredChannel" && typeof value === "string") return getChannel(value)?.label ?? value;
   if (Array.isArray(value)) return value.join(", ");
-  if (typeof value === "boolean") return value ? "ใช่" : "ไม่ใช่";
   return String(value);
+}
+
+/**
+ * ตีกลับรอบ 2 ข้อ 2 — resolve id→ชื่อของฟิลด์ LOOKUP แบบ batch (1 query ต่อ target ที่ใช้จริงในหน้านั้น
+ * ไม่ใช่ 1 query ต่อฟิลด์) ใช้ได้ทั้งฟิลด์ระบบ (homeUnitId target UNIT · ownerUserId target USER) และ
+ * ฟิลด์กำหนดเอง (เช่น instructorId target EMPLOYEE) — id ที่หาไม่เจอ (ถูกลบไปแล้ว) ไม่ใส่ลง map
+ * (`displayOf` คืน "(ถูกลบ)" เอง) · อ่านอย่างเดียวข้ามโมดูล (แบบเดียวกับ `connectionsOf`/`privacy.ts` — ดูหมายเหตุหัวไฟล์)
+ */
+async function resolveLookupNames(ctx: MemberCtx, entries: { target: string | undefined; id: string }[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const byTarget = new Map<string, string[]>();
+  for (const e of entries) {
+    if (!e.target || !e.id) continue;
+    const list = byTarget.get(e.target) ?? [];
+    list.push(e.id);
+    byTarget.set(e.target, list);
+  }
+  if (byTarget.size === 0) return out;
+
+  await Promise.all(
+    [...byTarget.entries()].map(async ([target, rawIds]) => {
+      const ids = [...new Set(rawIds)];
+      switch (target) {
+        case "UNIT": {
+          const rows = await prisma.businessUnit.findMany({ where: { tenantId: ctx.tenantId, id: { in: ids } }, select: { id: true, name: true } });
+          for (const r of rows) out.set(r.id, r.name);
+          return;
+        }
+        case "USER": {
+          const rows = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, email: true } });
+          for (const r of rows) out.set(r.id, r.name ?? r.email);
+          return;
+        }
+        case "EMPLOYEE": {
+          const rows = await prisma.hrEmployee.findMany({ where: { tenantId: ctx.tenantId, id: { in: ids } }, select: { id: true, name: true } });
+          for (const r of rows) out.set(r.id, r.name);
+          return;
+        }
+        case "PRODUCT": {
+          const rows = await prisma.invItem.findMany({ where: { tenantId: ctx.tenantId, id: { in: ids } }, select: { id: true, name: true } });
+          for (const r of rows) out.set(r.id, r.name);
+          return;
+        }
+        case "SERVICE": {
+          const rows = await prisma.bookingService.findMany({ where: { tenantId: ctx.tenantId, id: { in: ids } }, select: { id: true, name: true } });
+          for (const r of rows) out.set(r.id, r.name);
+          return;
+        }
+        case "CUSTOMER": {
+          const rows = await prisma.customer.findMany({ where: { tenantId: ctx.tenantId, id: { in: ids } }, select: { id: true, name: true, firstName: true, lastName: true, memberCode: true } });
+          for (const r of rows) out.set(r.id, r.name ?? ([r.firstName, r.lastName].filter(Boolean).join(" ") || r.memberCode || r.id));
+          return;
+        }
+        default:
+          return;
+      }
+    }),
+  );
+  return out;
 }
 
 function tagsOf(row: { tags: Prisma.JsonValue }): string[] {
@@ -360,7 +492,8 @@ async function pointSystemOf(ctx: MemberCtx): Promise<string | null> {
   return null;
 }
 
-async function pointsOfMany(ctx: MemberCtx, customerIds: string[]): Promise<Record<string, number>> {
+/** แต้มคงเหลือของหลายคนพร้อมกัน (§5.5 facade) — M1.5 (`list.ts`) เรียกต่อเพื่อคอลัมน์ "แต้ม" ของตาราง/CSV */
+export async function pointsOfMany(ctx: MemberCtx, customerIds: string[]): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   for (const id of customerIds) out[id] = 0;
   if (customerIds.length === 0) return out;
@@ -953,7 +1086,7 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
   const customer = await loadCustomer(ctx, id);
   await assertVisible(ctx, actor, customer);
 
-  const [layout, values, tier, identities, consents, attributions, connections, points, owner] = await Promise.all([
+  const [layout, values, tier, identities, consents, attributions, connections, points, owner, homeUnitRow] = await Promise.all([
     fields.listLayout(ctx),
     fields.getFieldValues(ctx, [customer.id]),
     customer.tierDefId ? prisma.memberTierDef.findFirst({ where: { tenantId: ctx.tenantId, id: customer.tierDefId } }) : Promise.resolve(null),
@@ -965,20 +1098,35 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
     customer.ownerUserId
       ? prisma.user.findUnique({ where: { id: customer.ownerUserId }, select: { name: true, email: true } })
       : Promise.resolve(null),
+    // M1.5 — สาขาหลักแบบวัตถุ {id,name} ให้หน้า 360 (แถบขวา/หัวโปรไฟล์) ไม่ต้อง join เอง
+    customer.homeUnitId
+      ? prisma.businessUnit.findUnique({ where: { id: customer.homeUnitId }, select: { id: true, name: true } })
+      : Promise.resolve(null),
   ]);
 
   // ระดับถัดไปบนบันได (ปิดหนี้ M1.4) — อ่านอย่างเดียว (`noCache`) เพื่อไม่ให้การ "เปิดดูโปรไฟล์"
   // ไปเขียนแคชยอด 12 เดือนของสมาชิก · เอนจินระดับล้ม = หน้า 360 ต้องยังเปิดได้ (แค่ไม่มีระดับถัดไป)
   let nextTier: MemberTierBrief | null = null;
+  let progressToNext: tiers.TierProgress | null = null;
   try {
     const ev = await tiers.evaluateMember(ctx, customer.id, { noCache: true });
     const row = ev.next ? await prisma.memberTierDef.findFirst({ where: { id: ev.next.id, tenantId: ctx.tenantId } }) : null;
     nextTier = tierBriefOf(row);
+    progressToNext = ev.progressToNext;
   } catch {
     nextTier = null; // เอนจินระดับล้ม = หน้าโปรไฟล์ยังต้องเปิดได้ (แค่ไม่บอกว่าระดับถัดไปคืออะไร)
+    progressToNext = null;
   }
 
   const bag = values[customer.id] ?? {};
+  // ตีกลับรอบ 2 ข้อ 2 — resolve ชื่อของทุกฟิลด์ LOOKUP ในเลย์เอาต์นี้ครั้งเดียว (ไม่ query ต่อฟิลด์ตอนวนลูป)
+  const lookupNames = await resolveLookupNames(
+    ctx,
+    layout.sections
+      .flatMap((s) => s.fields)
+      .filter((f) => f.type === "LOOKUP")
+      .map((f) => ({ target: f.options.target, id: typeof bag[f.key] === "string" ? (bag[f.key] as string) : "" })),
+  );
   const sections: Member360Section[] = [];
   for (const s of layout.sections) {
     const base = {
@@ -1023,7 +1171,7 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
         }
       }
       const value = bag[f.key] ?? null;
-      list.push({ key: f.key, label: f.label, type: f.type, value, display: displayOf(value) });
+      list.push({ key: f.key, label: f.label, type: f.type, value, display: displayOf(f, value, lookupNames) });
     }
     sections.push({ ...base, visible: true, fields: list });
   }
@@ -1061,7 +1209,9 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
       tags: tagsOf(customer),
       ownerUserId: customer.ownerUserId,
       ownerName: owner?.name ?? owner?.email ?? null,
+      owner: owner ? { name: owner.name ?? owner.email ?? "" } : null,
       homeUnitId: customer.homeUnitId,
+      homeUnit: homeUnitRow ? { id: homeUnitRow.id, name: homeUnitRow.name } : null,
       partyId: customer.partyId,
       source: customer.source,
       referralCode: customer.referralCode,
@@ -1077,9 +1227,11 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
       totalSpentSatang: customer.totalSpentSatang,
       visitCount: customer.visitCount,
       lastActivityAt: customer.lastActivityAt,
+      vouchers: 0,
+      reviewAvg: customer.reviewAvg !== null ? Number(customer.reviewAvg) : null,
     },
     // M1.9 — `next` = ระดับถัดไปตามบันไดของร้าน (เอนจินระดับเป็นคนตอบ · ไม่เขียนอะไรลง DB ที่นี่)
-    tier: { current: tierBriefOf(tier), next: nextTier },
+    tier: { current: tierBriefOf(tier), next: nextTier, progressToNext },
     identities: identities.map((i) => ({
       id: i.id,
       channel: i.channel,

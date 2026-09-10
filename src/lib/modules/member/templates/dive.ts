@@ -39,7 +39,9 @@ export const DIVE_TEMPLATE: MemberTemplate = {
           options: { choices: [choice("PADI"), choice("SSI"), choice("NAUI"), choice("OTHER", "อื่น ๆ")] },
         },
         { key: "certNo", label: "เลขที่ใบรับรอง", type: "TEXT", options: { maxLength: 40 } },
-        { key: "diveCount", label: "จำนวนไดฟ์สะสม", type: "NUMBER", options: { unit: "ไดฟ์", decimals: 0, min: 0 } },
+        // M1.5 — เปิด filterable (เดิมปิดอยู่): "กรองสมาชิกตามจำนวนไดฟ์สะสม" เป็นคำถามธุรกิจจริงของร้านดำน้ำ
+        // (ตัวกรองฟิลด์กำหนดเองของหน้ารวมสมาชิกต้องใช้ได้กับฟิลด์ตัวเลขแบบนี้ — ดู wo-notes/member-M1.5.md)
+        { key: "diveCount", label: "จำนวนไดฟ์สะสม", type: "NUMBER", filterable: true, options: { unit: "ไดฟ์", decimals: 0, min: 0 } },
         { key: "lastDiveAt", label: "ไดฟ์ล่าสุด", type: "DATE", filterable: true },
         { key: "wetsuitSize", label: "ไซซ์เว็ทสูท", type: "SELECT", options: { choices: SIZES.map((s) => choice(s)) } },
         { key: "bootSize", label: "ไซซ์รองเท้าบูท", type: "SELECT", options: { choices: BOOT_SIZES.map((s) => choice(s)) } },

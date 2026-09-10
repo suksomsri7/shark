@@ -8,9 +8,11 @@
 //   "ready" = มี `page.tsx` จริงใต้ `src/app/app/sys/[id]/member/**` วันนี้
 //   "soon"  = ยังไม่มาถึงตามแผน RUN (MEMBER-RUN.md §1) → แถบแท็บโชว์จาง + ป้าย "เร็ว ๆ นี้" · ไม่ใส่ลงใน drawer
 //
-// 🔴 v1 เดิม (`customers` / `import` / `plans` / `tiers` / `subscribe` — สร้างก่อน RUN นี้) ยังมีคนใช้งานจริงอยู่
-//    ⇒ `memberNavChildren` ต่อท้ายด้วยลิงก์ 5 อันนี้เสมอ (`LEGACY_V1_LINKS`) จนกว่า WO ที่แทนที่ฟังก์ชันเดียวกัน
-//    (M1.5 = สมาชิก · M1.10 = ระดับ) จะย้ายผู้ใช้ไปหน้าใหม่แล้วค่อยตัดออกเป็นใบแยก — **ห้ามลบตอนนี้**
+// 🔴 v1 เดิม (`import` / `plans` / `tiers` / `subscribe` — สร้างก่อน RUN นี้) ยังมีคนใช้งานจริงอยู่
+//    ⇒ `memberNavChildren` ต่อท้ายด้วยลิงก์ 4 อันนี้เสมอ (`LEGACY_V1_LINKS`) จนกว่า WO ที่แทนที่ฟังก์ชันเดียวกัน
+//    (M1.10 = ระดับ) จะย้ายผู้ใช้ไปหน้าใหม่แล้วค่อยตัดออกเป็นใบแยก — **ห้ามลบตอนนี้**
+// 🔴 M1.5 — `customers` (รายชื่อสมาชิก v1) ตัดออกจากลิสต์นี้แล้ว: `/member/customers` เปลี่ยนเป็น `redirect()`
+//    ไปหน้าใหม่ `/member/members` (ไม่ทิ้ง 2 หน้ารายชื่อพร้อมกัน — ดู wo-notes/member-M1.5.md)
 
 import type { MemberActor } from "./access";
 import { canManageSettings, canReadMember } from "./access";
@@ -30,7 +32,7 @@ export type MemberNavEntry = {
 
 /** 9 หมวดตาม §2.2 — ลำดับนี้คือลำดับที่ผู้ใช้เห็น */
 export const MEMBER_NAV: readonly MemberNavEntry[] = Object.freeze([
-  { key: "members", label: "สมาชิก", path: "/member/members", status: "soon", wo: "M1.5" },
+  { key: "members", label: "สมาชิก", path: "/member/members", status: "ready" },
   { key: "tiers", label: "ระดับสมาชิก", path: "/member/tiers", status: "soon", wo: "M1.10" },
   { key: "points", label: "แต้ม", path: "/member/points", status: "soon", wo: "M2.2" },
   { key: "stamps", label: "สแตมป์", path: "/member/stamps", status: "soon", wo: "M2.3" },
@@ -43,7 +45,6 @@ export const MEMBER_NAV: readonly MemberNavEntry[] = Object.freeze([
 
 /** ลิงก์ v1 เดิม — เห็นเสมอไม่ว่าสิทธิ์อะไร (หน้าเดิมมีด่านสิทธิ์ของตัวเองอยู่แล้ว) */
 const LEGACY_V1_LINKS: readonly { href: string; label: string }[] = Object.freeze([
-  { href: "/member/customers", label: "รายชื่อสมาชิก" },
   { href: "/member/import", label: "นำเข้า CSV" },
   { href: "/member/plans", label: "แพ็กเกจสมาชิก" },
   { href: "/member/tiers", label: "ระดับสมาชิก (เดิม)" },
@@ -60,7 +61,7 @@ function visibleNavEntries(actor?: MemberActor): readonly MemberNavEntry[] {
   });
 }
 
-/** หมวดที่กดเข้าได้จริงวันนี้ (นำหน้าด้วย "หน้าหลัก") + ลิงก์ v1 เดิม 5 อัน — `actor` ไม่ส่ง = ไม่กรอง */
+/** หมวดที่กดเข้าได้จริงวันนี้ (นำหน้าด้วย "หน้าหลัก") + ลิงก์ v1 เดิม 4 อัน — `actor` ไม่ส่ง = ไม่กรอง */
 export function memberNavChildren(base: string, actor?: MemberActor): { href: string; label: string }[] {
   return [
     { href: base, label: "หน้าหลัก" },

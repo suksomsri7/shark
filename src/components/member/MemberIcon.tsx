@@ -6,6 +6,10 @@
 const ICONS: Record<string, string> = {
   // ── ทั่วไป (pattern เดียวกับ KanbanIcon) ──
   drag: "<path d=\"M12 16V6\"/><path d=\"m7.5 10.5 4.5-4.5 4.5 4.5\"/><rect x=\"3.5\" y=\"16\" width=\"17\" height=\"4.5\" rx=\"1.5\"/>",
+  // ตีกลับรอบ 1 ข้อ 1 — แถบกรองหน้ารวมสมาชิก (MembersFilterBar) ต้องมีไอคอนค้นหา/ตัวกรอง (แบบเดียวกับ KanbanIcon)
+  search: "<circle cx=\"11\" cy=\"11\" r=\"6.5\"/><path d=\"m16 16 4 4\"/>",
+  filter: "<path d=\"M4 6h16l-6 7v6l-4-2v-4L4 6Z\"/>",
+  chevronDown: "<path d=\"m6 9 6 6 6-6\"/>",
   plus: "<path d=\"M12 5v14M5 12h14\"/>",
   x: "<path d=\"m6 6 12 12M18 6 6 18\"/>",
   check: "<path d=\"m5 12.5 4.5 4.5L19 7\"/>",
