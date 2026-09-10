@@ -1,5 +1,8 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🏁 10 ก.ย. 10:05 BKK — [session บอร์ดงาน] **RUN บอร์ดงาน→Trello จบ 36/36** · main `a1d7260` · qc:all 287 · migration a–u บน prod ครบ · handover `ledger/HANDOVER-2026-09-10-KANBAN-P3.md` (รอเจ้าของ §3 · หนี้ §4 · วิธีทำงาน §5)
+- **ตอนนี้กำลังทำ: ออกแบบ UX/UI Member System** (design only · memory `project_shark_member_system_design`) → `ledger/DESIGN-MEMBER.md` + `ledger/design-member/*.html/png` → Telegram · ยังไม่ coding จนเจ้าของเคาะ
+
 ## ▶️ 10 ก.ย. 08:30 BKK — [session บอร์ดงาน] **K3.8 ปิดแล้ว (main `26d6b94`) · 35/36 ≈ 97% · K3.9 (Opus · ใบสุดท้าย) กำลังทำ → ต่อด้วย K3.F (qc:all เต็ม · prod verify · HANDOVER-P3 · Telegram · memory) → Member System design** — builder ห้าม build เอง Fable build+ภาพเอง — ถ้าหยุดอีก ใช้ขั้น 1–8 ด้านล่างโดยเปลี่ยน "K3.4" เป็นใบที่ค้าง (ดูตาราง KANBAN-RUN)
 
 ## ⏸️ 7 ก.ย. 21:25 BKK — [session บอร์ดงาน] พักงานชั่วคราว (weekly limit) — 30/34 · K3.4 ค้างครึ่งทาง (ปิดแล้ว 10 ก.ย.)
