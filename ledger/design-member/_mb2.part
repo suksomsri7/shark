@@ -1,0 +1,126 @@
+<style>
+/* ══ CSS เฉพาะภาพ 06–09 (agent คู่ขนาน · ต่อจาก _mb.part) — ห้ามเพิ่มสีนอกจาน ══ */
+
+/* ── 06 POS: รายการบิล ───────────────────────────────────────────────── */
+.mb2-cartrow{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.mb2-cartrow:first-child{border-top:0}
+.mb2-cartrow .qty{width:26px;height:26px;border-radius:7px;background:var(--sf2);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:11.5px;font-weight:700;color:var(--ink2);flex:none}
+.mb2-cartrow .nm{font-size:13px;font-weight:600}
+.mb2-cartrow .sub{font-size:11px;color:var(--mut);margin-top:2px}
+.mb2-cartrow .amt{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ── panel สิทธิ์ที่ POS ──────────────────────────────────────────────── */
+.mb2-panel{width:400px;flex:none;border-left:1px solid var(--line);background:var(--sf2);
+  display:flex;flex-direction:column;overflow:hidden}
+.mb2-panel .ph2{padding:14px 16px;border-bottom:1px solid var(--line);background:var(--sf)}
+.mb2-panel .body2{flex:1;min-height:0;overflow:hidden;padding:13px 16px;display:flex;flex-direction:column;gap:12px}
+.mb2-benefit{border:1px solid var(--line);border-radius:10px;background:var(--sf);padding:10px 12px;
+  display:flex;flex-direction:column;gap:8px}
+.mb2-brow{display:flex;align-items:center;gap:9px;font-size:12.5px}
+.mb2-brow .nm{flex:1;min-width:0}
+.mb2-brow .nm b{font-weight:700}
+.mb2-brow .amt{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mb2-brow .amt.dg{color:var(--dg)}
+
+/* ── สรุปยอด / ลำดับส่วนลด ────────────────────────────────────────────── */
+.mb2-sumrow{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:5px 0}
+.mb2-sumrow .k{color:var(--mut);flex:1}
+.mb2-sumrow .v{font-weight:600;font-variant-numeric:tabular-nums}
+.mb2-sumrow.tot{border-top:1px solid var(--line);margin-top:4px;padding-top:9px;font-size:15px}
+.mb2-sumrow.tot .v{font-weight:700;font-size:17px}
+
+/* ── voucher: การ์ดฉีก ────────────────────────────────────────────────── */
+.mb2-vch{border:1px solid var(--line);border-radius:10px;background:var(--sf);display:flex;overflow:hidden}
+.mb2-vch .lft{flex:1;min-width:0;padding:10px 12px;display:flex;flex-direction:column;gap:3px}
+.mb2-vch .rgt{width:78px;flex:none;border-left:1.5px dashed var(--line2);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;padding:6px}
+.mb2-vch .rgt b{font-size:14px;font-weight:700}
+.mb2-vch .rgt span{font-size:9.5px;color:var(--mut)}
+.mb2-vch.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-bg)}
+.mb2-vch.dis{opacity:.5}
+
+/* ── สแตมป์การ์ด ──────────────────────────────────────────────────────── */
+.mb2-stamps{display:flex;flex-wrap:wrap;gap:6px}
+.mb2-stamp{width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line2);display:grid;
+  place-items:center;color:var(--mut2);flex:none;background:var(--sf)}
+.mb2-stamp.on{background:var(--ink);border-color:var(--ink);color:var(--sf)}
+.mb2-stamp.nx{border-style:dashed;color:var(--acc);border-color:var(--acc)}
+
+/* ── สรุปลำดับส่วนลด ──────────────────────────────────────────────────── */
+.mb2-order{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--mut);flex-wrap:wrap}
+.mb2-order .st{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;
+  background:var(--sf);border:1px solid var(--line);color:var(--ink2);font-weight:600}
+.mb2-order svg{color:var(--mut2)}
+
+/* ── 07 journey: ตารางผล / การ์ดล่าง ─────────────────────────────────── */
+.mb2-jrow{display:flex;align-items:center;gap:9px}
+.mb2-jrow .sw{flex:none}
+
+/* ── voucher/giftcard list rows (07) ─────────────────────────────────── */
+.mb2-gc{display:flex;align-items:center;gap:14px;padding:11px 0;border-top:1px solid var(--line)}
+.mb2-gc:first-child{border-top:0}
+.mb2-gc .k{font-size:12px;color:var(--mut)}
+.mb2-gc .v{font-size:19px;font-weight:700;letter-spacing:-.02em;margin-top:3px;font-variant-numeric:tabular-nums}
+
+/* ── 08 ไทม์ไลน์รวม ──────────────────────────────────────────────────── */
+.mb2-tl{display:flex;gap:11px;padding:10px 0;border-top:1px solid var(--line)}
+.mb2-tl:first-child{border-top:0}
+.mb2-tl .dot{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex:none;
+  border:1.5px solid var(--line2);color:var(--mut);background:var(--sf)}
+.mb2-tl .dot.blue{border-color:var(--t-blue);color:var(--t-blue)}
+.mb2-tl .dot.green{border-color:var(--t-green);color:var(--t-green)}
+.mb2-tl .dot.amber{border-color:var(--t-amber);color:var(--t-amber)}
+.mb2-tl .dot.red{border-color:var(--t-red);color:var(--t-red)}
+.mb2-tl .dot.purple{border-color:var(--t-purple);color:var(--t-purple)}
+.mb2-tl .dot.slate{border-color:var(--t-slate);color:var(--t-slate)}
+.mb2-tl .bd{flex:1;min-width:0}
+.mb2-tl .tt{font-size:12.8px;font-weight:600}
+.mb2-tl .mt{font-size:11.5px;color:var(--mut);margin-top:2px}
+.mb2-tl .tm{font-size:11px;color:var(--mut2);white-space:nowrap}
+
+/* ── รีวิว ────────────────────────────────────────────────────────────── */
+.mb2-stars{display:inline-flex;gap:2px}
+.mb2-stars svg{width:13px;height:13px;color:var(--mut2)}
+.mb2-stars svg.on{color:var(--ink);fill:var(--ink)}
+.mb2-rev{border-top:1px solid var(--line);padding:9px 0;font-size:12.3px}
+.mb2-rev:first-child{border-top:0}
+
+/* ── แนะนำเพื่อน: ต้นไม้ ──────────────────────────────────────────────── */
+.mb2-tree2{display:flex;flex-direction:column;gap:0}
+.mb2-tnode{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px dashed var(--line)}
+.mb2-tnode:first-child{border-top:0}
+.mb2-tnode .st{margin-left:auto}
+
+/* ── 09 มือถือ: บัตรสมาชิก ────────────────────────────────────────────── */
+.mb2-card{margin:0 14px;border-radius:14px;background:var(--ink);color:var(--sf);padding:16px 16px 14px;
+  display:flex;flex-direction:column;gap:12px}
+.mb2-card .brand{font-size:10.5px;letter-spacing:.08em;color:#fff;opacity:.65}
+.mb2-card .nm{font-size:15.5px;font-weight:700}
+.mb2-card .row2{display:flex;align-items:center;gap:8px}
+.mb2-card .id{font-size:11px;opacity:.7;font-variant-numeric:tabular-nums}
+.mb2-qr{width:108px;height:108px;border-radius:8px;background:#fff;display:grid;
+  grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr);gap:2px;padding:7px;margin:0 auto}
+.mb2-qr i{display:block;border-radius:1px}
+.mb2-qr i.on{background:#0a0a0a}
+.mb2-tierbadge{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:6px;
+  font-size:10.5px;font-weight:700;background:rgba(255,255,255,.14);color:#fff}
+.mb2-pbar2{height:6px;border-radius:3px;background:rgba(255,255,255,.18);overflow:hidden}
+.mb2-pbar2 i{display:block;height:100%;background:#fff}
+.mb2-cardmenu{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 14px}
+.mb2-cm{border:1px solid var(--line);border-radius:11px;padding:10px 6px;display:flex;flex-direction:column;
+  align-items:center;gap:6px;font-size:10.5px;color:var(--ink2);text-align:center}
+
+/* ── 09 กระเป๋าสิทธิ์: สแตมป์การ์ดจริง ────────────────────────────────── */
+.mb2-stampcard{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:9px}
+.mb2-stampgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.mb2-warn{display:flex;align-items:center;gap:8px;border:1px solid var(--t-amber);background:#fdf6ec;
+  color:var(--t-amber);border-radius:9px;padding:8px 10px;font-size:11.5px}
+
+/* ── 09 โปรไฟล์: ฟิลด์ล็อก ────────────────────────────────────────────── */
+.mb2-frow{display:flex;align-items:center;gap:9px;padding:10px 0;border-top:1px solid var(--line)}
+.mb2-frow:first-child{border-top:0}
+.mb2-frow .k{width:100px;flex:none;font-size:12px;color:var(--mut)}
+.mb2-frow .v{flex:1;min-width:0;font-size:12.8px;font-weight:600}
+.mb2-frow.lock .v{color:var(--mut)}
+</style>

@@ -1,0 +1,118 @@
+<div class="wrap">
+<div>
+<p class="cap">03 · ตัวออกแบบฟิลด์สมาชิก (Zoho-style) <span>— ซ้าย: ชนิดฟิลด์ 11 ชนิดลากวางได้ · กลาง: ผืนผ้าใบฟอร์มจริง (ส่วนระบบ + ส่วนกำหนดเอง) · ขวา: คุณสมบัติของฟิลด์ที่เลือก</span></p>
+<div class="frame" id="f3" style="height:900px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+  <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-bell"/></svg><div class="av">ธ</div></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-mail"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="kbar"><svg class="i sm mu"><use href="#i-back"/></svg><h1>ตั้งค่าฟิลด์สมาชิก</h1>
+    <div class="btn gh sm" style="margin-left:10px">เทมเพลต: ธุรกิจดำน้ำ<svg class="i xs"><use href="#i-cv"/></svg></div>
+    <span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-cam"/></svg>ตัวอย่างมือถือ</div>
+    <div class="btn pri sm"><svg class="i sm"><use href="#i-check"/></svg>บันทึก</div></div>
+
+   <div class="stage" style="background:var(--sf)">
+    <div style="display:flex;min-height:0;flex:1">
+
+     <!-- ซ้าย: ชนิดฟิลด์ -->
+     <div style="width:220px;flex:none;border-right:1px solid var(--line);padding:13px 11px;background:var(--sf2);overflow:hidden">
+      <div class="dsec" style="color:var(--mut)">ชนิดฟิลด์ — ลากไปวาง</div>
+      <div class="mb-ftype">ข้อความสั้น<svg class="i sm"><use href="#i-drag"/></svg></div>
+      <div class="mb-ftype">ข้อความยาว<svg class="i sm"><use href="#i-drag"/></svg></div>
+      <div class="mb-ftype">ตัวเลข<svg class="i sm"><use href="#i-drag"/></svg></div>
+      <div class="mb-ftype">เงิน<svg class="i sm"><use href="#i-drag"/></svg></div>
+      <div class="mb-ftype">วันที่<svg class="i sm"><use href="#i-drag"/></svg></div>
+      <div class="mb-ftype">วันที่-เวลา<svg class="i sm"><use href="#i-drag"/></svg></div>
+      <div class="mb-ftype">ตัวเลือกเดียว<svg class="i sm"><use href="#i-drag"/></svg></div>
+      <div class="mb-ftype">หลายตัวเลือก<svg class="i sm"><use href="#i-drag"/></svg></div>
+      <div class="mb-ftype">ใช่ / ไม่ใช่<svg class="i sm"><use href="#i-drag"/></svg></div>
+      <div class="mb-ftype">ไฟล์ / รูป<svg class="i sm"><use href="#i-drag"/></svg></div>
+      <div class="mb-ftype">อ้างอิง (lookup)<svg class="i sm"><use href="#i-drag"/></svg></div>
+     </div>
+
+     <!-- กลาง: ผืนผ้าใบฟอร์ม -->
+     <div class="pg" style="flex:1;min-width:0;padding:13px 16px;gap:11px;overflow:hidden">
+
+      <div class="card">
+       <div class="mb-sec"><h2 style="font-size:13px;font-weight:700">ข้อมูลส่วนตัว</h2><span class="chip" style="height:19px">ระบบ</span></div>
+       <div class="g2">
+        <div class="mb-fld"><div class="l">ชื่อ-นามสกุล</div><div class="v">สมชาย ใจดี</div></div>
+        <div class="mb-fld"><div class="l">วันเกิด</div><div class="v">12 ก.พ. 2533</div></div>
+       </div>
+      </div>
+
+      <div class="card">
+       <div class="mb-sec"><h2 style="font-size:13px;font-weight:700">ติดต่อ</h2><span class="chip" style="height:19px">ระบบ</span></div>
+       <div class="g2">
+        <div class="mb-fld"><div class="l">มือถือ</div><div class="v">081-234-5678</div></div>
+        <div class="mb-fld"><div class="l">อีเมล</div><div class="v">somchai.j@gmail.com</div></div>
+       </div>
+      </div>
+
+      <div class="card">
+       <div class="mb-sec"><h2 style="font-size:13px;font-weight:700">ข้อมูลดำน้ำ</h2><span class="chip acc" style="height:19px">กำหนดเอง</span></div>
+       <div class="g2">
+        <div class="mb-fld sel"><div class="l">ระดับใบรับรอง <svg class="i xs" style="color:var(--acc)"><use href="#i-drag"/></svg></div><div class="v">Advanced Open Water</div></div>
+        <div class="mb-fld"><div class="l">หน่วยงาน</div><div class="v">PADI</div></div>
+        <div class="mb-fld"><div class="l">จำนวนไดฟ์</div><div class="v">48</div></div>
+        <div class="mb-fld"><div class="l">ไซซ์เว็ทสูท</div><div class="v">M</div></div>
+        <div class="mb-fld"><div class="l">ประกันดำน้ำ</div><div class="v">DAN — มี.ค. 2570</div></div>
+        <div class="mb-fld"><div class="l">ครูประจำ (อ้างอิง)</div><div class="v">ปุ๊ก มณีรัตน์</div></div>
+       </div>
+      </div>
+
+      <div class="card">
+       <div class="mb-sec"><h2 style="font-size:13px;font-weight:700">สุขภาพ</h2><span class="chip acc" style="height:19px">กำหนดเอง</span><span class="chip dg" style="height:19px">อ่อนไหว</span></div>
+       <div class="g2">
+        <div class="mb-fld"><div class="l">กรุ๊ปเลือด</div><div class="v">O+</div></div>
+        <div class="mb-fld"><div class="l">โรคประจำตัว</div><div class="v">ไม่มี</div></div>
+       </div>
+      </div>
+
+      <div class="dashed" style="justify-content:center"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มส่วน</div>
+
+     </div>
+
+     <!-- ขวา: คุณสมบัติฟิลด์ที่เลือก -->
+     <div style="width:320px;flex:none;border-left:1px solid var(--line);background:var(--sf2);padding:14px 15px;display:flex;flex-direction:column;gap:10px;overflow:hidden">
+      <div class="dsec" style="color:var(--mut);padding-left:0">คุณสมบัติฟิลด์ — ระดับใบรับรอง</div>
+
+      <div class="kv"><div class="k">ชนิด</div><div class="v">ตัวเลือกเดียว</div></div>
+      <div class="kv" style="align-items:flex-start"><div class="k">ตัวเลือก</div><div class="v">Open Water, Advanced, Rescue, Divemaster, Instructor</div></div>
+      <div class="kv"><div class="k">บังคับกรอก</div><div class="v"><span class="sw" style="display:inline-block"></span></div></div>
+      <div class="kv"><div class="k">ค่าเริ่มต้น</div><div class="v mu">—</div></div>
+      <div class="kv"><div class="k">ใช้กรอง/แคมเปญ</div><div class="v"><span class="sw" style="display:inline-block"></span></div></div>
+      <div class="kv"><div class="k">แสดงในรายการ</div><div class="v"><span class="sw" style="display:inline-block"></span></div></div>
+      <div class="kv"><div class="k">แสดงบนบัตรสมาชิก</div><div class="v"><span class="sw" style="display:inline-block"></span></div></div>
+      <div class="kv"><div class="k">ลูกค้าแก้เองบน LINE</div><div class="v"><span class="sw off" style="display:inline-block"></span></div></div>
+      <div class="kv"><div class="k">ข้อมูลอ่อนไหว</div><div class="v"><span class="sw off" style="display:inline-block"></span></div></div>
+      <div class="kv"><div class="k">ประวัติการแก้</div><div class="v"><span class="sw" style="display:inline-block"></span></div></div>
+
+      <div class="hr" style="margin:4px 0"></div>
+      <div style="display:flex;align-items:center;gap:8px;color:var(--mut2);font-size:12px">
+       <svg class="i sm"><use href="#i-trash"/></svg>ลบฟิลด์ — มีค่าใน 812 คน
+      </div>
+     </div>
+
+    </div>
+
+    <div class="tfoot" style="border-top:1px solid var(--line)">ฟิลด์ 23 / 60<span class="sp"></span>ฟิลด์ระบบซ่อนได้ ลบไม่ได้</div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>
