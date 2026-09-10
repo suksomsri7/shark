@@ -1,5 +1,10 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🎨 10 ก.ย. 2569 15:00 BKK — [session CRM] **ออกแบบ CRM v2 ส่งมอบแล้ว (ยังไม่ coding)** · worktree `/root/projects/shark-crm` branch `session/crm` · แบบ `ledger/DESIGN-CRM.md` (ต่อจาก `docs/modules/06-member-v2.md` §14) + ภาพ 14 ใบ `ledger/design-crm/` (README มีตาราง · BRIEF.md = คำสั่งวาด)
+- สาระ: ช่องว่าง 8 ข้อ → 30 WO 3 เฟส (C1 โครง/บริษัท/ดีล v2/custom objects/event 24 ตัว · C2 automation/sequence/โทร/อีเมล/tracking/score · C3 ทีม/โควตา/คอมมิชชัน/รายงาน/portal B2B/มือถือ/AI) · ตารางใหม่ 17+2 (Team เป็นของกลาง core) · engine reuse 3 ตัว (MemberField+objectKey · K2.9 scope CRM · op registry)
+- **รอเจ้าของเคาะคำถาม §8 (10 ข้อ)** ก่อนเขียนชุดเต็ม: `docs/modules/20-crm-v2.md` + `docs/api/CRM-API.md` + `ledger/CRM-RUN.md` (แบบเดียวกับชุดสมาชิก) · ข้อพึ่งพา: C1 เริ่มได้หลังสมาชิกปิด M1.4 · C2 หลัง M3.3
+- ⚠️ session สมาชิก (`shark-member`) กำลัง RUN อยู่ ห้ามแตะ · งานนี้แตะเฉพาะ `ledger/` จึง merge main ได้เลย
+
 ## ▶️ 10 ก.ย. 2569 (ค่ำ) — [session สมาชิก] **RUN ระบบสมาชิก v2 เริ่มแล้ว** · worktree `/root/projects/shark-member` branch `session/member` · ledger สด `ledger/MEMBER-RUN.md` §3.1 · M1.1 กำลังทำ (builder Opus · oracle `scripts/qc-member-m1.1.mts`)
 - วิธีทำงาน = MEMBER-RUN §0.1 (oracle ก่อน · builder ห้าม build/commit · Fable build+ภาพ+commit+push+ตรวจ prod) · ถ้าเครื่องรีสตาร์ท: โค้ดบนดิสก์ใน worktree → Fable รับจบเอง (ดู wo-notes/member-M1.1.md ถ้ามี)
 - ⚠️ session บอร์ดงาน (`shark-kanban`) จบแล้ว ห้ามแตะ · main ล่าสุดก่อนเริ่ม = `91e18e3`

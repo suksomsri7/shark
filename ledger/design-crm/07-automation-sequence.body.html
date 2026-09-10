@@ -1,0 +1,187 @@
+<div class="wrap">
+<div>
+<p class="cap">07 · กฎอัตโนมัติ + Sequence (scope CRM) <span>— ตัวสร้างกฎประโยค + dry-run · รายการกฎ 5 ข้อ+สถิติ · sequence "ติดตามใบเสนอราคา" + รายชื่อลงทะเบียน · กฎมอบหมาย round-robin · ดีลนิ่งต่อขั้น</span></p>
+<div class="frame" style="height:1150px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+  <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-bell"/></svg><div class="av">ธ</div></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-mail"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="kbar"><svg class="i sm mu"><use href="#i-back"/></svg><h1>ตั้งค่า — กฎอัตโนมัติ &amp; Sequence</h1>
+    <span class="chip" style="margin-left:8px">scope: CRM</span>
+    <span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-bolt"/></svg>สร้าง sequence</div>
+    <div class="btn pri sm"><svg class="i sm"><use href="#i-plus"/></svg>สร้างกฎใหม่</div></div>
+
+   <div class="stage" style="background:var(--sf)">
+    <div style="display:flex;min-height:0;flex:1">
+
+     <!-- เมนูซ้ายโมดูล CRM 9 หมวด -->
+     <div style="width:200px;flex:none;border-right:1px solid var(--line);padding:13px 11px;background:var(--sf2)">
+      <div class="dsec" style="color:var(--mut)">โมดูล CRM</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-home"/></svg>หน้าแรก</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-tree"/></svg>ดีล</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-users"/></svg>ผู้ติดต่อ</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-shop"/></svg>บริษัท</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-cklist"/></svg>กิจกรรม</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-cal"/></svg>ปฏิทิน</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-mail"/></svg>อีเมล</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+      <div class="ddsep"></div>
+      <div class="acc-i on"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+     </div>
+
+     <div class="pg" style="flex:1;min-width:0;padding:10px 18px 12px;gap:8px">
+
+      <!-- (ก) ตัวสร้างกฎประโยค -->
+      <div class="card p0">
+       <div style="padding:10px 15px 0"><div class="ch" style="margin-bottom:8px"><svg class="i sm"><use href="#i-bolt"/></svg><h2>กฎใหม่ — ดีลนิ่ง แจ้งหัวหน้าทีม</h2>
+        <span class="sub">ประโยคไทย เลือกจากรายการ ไม่ต้องเขียนโค้ด</span><span class="sp"></span>
+        <span class="chip acc">ทดลองรัน: ตรง 6 ดีล</span></div></div>
+
+       <div style="padding:0 15px 11px">
+        <div class="rule">
+         <div class="rrow" style="padding:8px 13px"><span class="rtag when">เมื่อ</span>
+          <span class="slot acc">ดีลนิ่งเกิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="slot acc">14 วัน<svg class="i xs"><use href="#i-cv"/></svg></span></div>
+
+         <div class="rrow" style="padding:8px 13px"><span class="rtag and">และถ้า</span>
+          <span class="slot">มูลค่าดีล<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="slot acc">≥ ฿50,000<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="mu">และ</span>
+          <span class="slot">pipeline<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="slot acc">ขายองค์กร (B2B)<svg class="i xs"><use href="#i-cv"/></svg></span></div>
+
+         <div class="rrow" style="padding:8px 13px"><span class="rtag then">ให้ทำ</span>
+          <span class="slot"><svg class="i xs"><use href="#i-cklist"/></svg>สร้างงานติดตาม<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="slot acc">ภายใน 1 วัน<svg class="i xs"><use href="#i-cv"/></svg></span></div>
+
+         <div class="rrow" style="padding:8px 13px"><span class="rtag then">และ</span>
+          <span class="slot"><svg class="i xs"><use href="#i-bell"/></svg>แจ้งหัวหน้าทีม<svg class="i xs"><use href="#i-cv"/></svg></span>
+          <span class="slot acc">LINE + แจ้งเตือนในแอป<svg class="i xs"><use href="#i-cv"/></svg></span></div>
+
+         <div class="rrow" style="background:var(--sf2);padding:7px 13px"><span class="rtag and" style="background:transparent;border:0;color:var(--mut)">+</span>
+          <span class="mu">เพิ่มเงื่อนไข หรือ เพิ่มการกระทำ (12 ชนิด)</span></div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:9px;margin-top:9px">
+         <div class="inp gro" style="height:32px">ชื่อกฎ: <b>ดีลนิ่ง 14 วัน — แจ้งหัวหน้าทีม</b></div>
+         <div class="btn gh sm">ทดลองรัน</div>
+         <div class="btn gh sm">ยกเลิก</div>
+         <div class="btn pri sm">บันทึกกฎ</div></div>
+       </div>
+      </div>
+
+      <!-- (ข) รายการกฎ + มอบหมาย + ดีลนิ่ง -->
+      <div class="row" style="gap:13px;align-items:flex-start">
+       <div class="card p0" style="flex:1.6;min-width:0">
+        <div style="padding:11px 15px 0"><div class="ch" style="margin-bottom:8px"><h2>กฎที่เปิดใช้อยู่</h2><span class="sub">5 กฎ</span></div></div>
+        <table class="tbl">
+         <thead><tr><th>กฎ</th><th style="width:78px">รันแล้ว</th><th style="width:90px">ตรงงวดนี้</th><th style="width:60px">สถานะ</th></tr></thead>
+         <tbody>
+          <tr><td><b>ดีลนิ่ง 14 วัน — แจ้งหัวหน้าทีม</b><div class="sub">crm.deal.stale · สร้างงาน + แจ้ง LINE</div></td>
+           <td class="num">42</td><td class="num">6</td><td><span class="sw" style="display:inline-block"></span></td></tr>
+          <tr><td><b>lead ใหม่ — มอบหมาย + ต้อนรับ</b><div class="sub">crm.contact.created · round-robin + LINE ต้อนรับ</div></td>
+           <td class="num">128</td><td class="num">4</td><td><span class="sw" style="display:inline-block"></span></td></tr>
+          <tr><td><b>คะแนน ≥ 70 — แจ้งเซลล์ทันที</b><div class="sub">crm.score.threshold · แจ้งผู้ดูแล</div></td>
+           <td class="num">76</td><td class="num">3</td><td><span class="sw" style="display:inline-block"></span></td></tr>
+          <tr><td><b>ใบเสนอราคาไม่ตอบ 5 วัน</b><div class="sub">account.quotation.responded (timeout) · ENROLL_SEQUENCE</div></td>
+           <td class="num">51</td><td class="num">9</td><td><span class="sw" style="display:inline-block"></span></td></tr>
+          <tr class="mu"><td><b>ดีลแพ้ — ดึงกลับ 90 วัน</b><div class="sub">crm.deal.lost · ENROLL_SEQUENCE (ปิดใช้)</div></td>
+           <td class="num mu">18</td><td class="num mu">1</td><td><span class="sw off" style="display:inline-block"></span></td></tr>
+         </tbody>
+        </table>
+       </div>
+
+       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">
+        <div class="card" style="padding:12px 13px">
+         <div class="ch" style="margin-bottom:6px"><svg class="i sm"><use href="#i-users"/></svg><h2>มอบหมายอัตโนมัติ — Round-robin</h2></div>
+         <div class="sub" style="margin-bottom:7px">ทีมขายองค์กร B2B · นับตามคนที่ว่างสุด · ใช้ทุกทางเข้า lead ใหม่</div>
+         <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span class="chip" style="height:23px">ธนา วงศ์ทอง · คิว 3</span>
+          <span class="chip" style="height:23px">ปุ๊ก มณีรัตน์ · คิว 2</span>
+          <span class="chip" style="height:23px">ก้อง สายชล · คิว 4</span>
+          <span class="chip acc" style="height:23px"><b>นก ศรีวิไล</b> · คิวถัดไป</span>
+         </div>
+        </div>
+
+        <div class="card" style="padding:12px 13px">
+         <div class="ch" style="margin-bottom:6px"><svg class="i sm"><use href="#i-warn"/></svg><h2>ดีลนิ่งต่อขั้น</h2></div>
+         <div class="sub" style="margin-bottom:7px">ถือว่านิ่งเมื่อไม่มีกิจกรรม N วัน · cron 06:00 ไทย</div>
+         <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span class="chip" style="height:23px">ติดต่อเบื้องต้น · 7 วัน</span>
+          <span class="chip" style="height:23px">เสนอราคา · 14 วัน</span>
+          <span class="chip" style="height:23px">เจรจาต่อรอง · 14 วัน</span>
+          <span class="chip" style="height:23px">รอเซ็นสัญญา · 30 วัน</span>
+         </div>
+        </div>
+
+        <div class="mb-callout" style="padding:9px 12px;font-size:11.5px"><svg class="i sm"><use href="#i-spark"/></svg><span>วันนิ่ง<b>ไม่ผ่านเงื่อนไข</b> → การ์ดขึ้นขอบเหลือง/แดงในกระดานดีล + ขึ้นในหน้าแรก "ดีลที่ต้องดู"</span></div>
+       </div>
+      </div>
+
+      <!-- (ค) sequence editor + ลงทะเบียน -->
+      <div class="row" style="gap:13px;align-items:stretch">
+       <div class="card" style="flex:1.6;min-width:0;padding:12px 14px">
+        <div class="ch" style="margin-bottom:8px"><svg class="i sm"><use href="#i-mail"/></svg><h2>Sequence — ติดตามใบเสนอราคา</h2>
+         <span class="sub">หยุดเมื่อ: ตอบอีเมล/แชทกลับ · ดีลชนะ · ยกเลิกรับ · หยุดมือ</span></div>
+        <div class="mb5-flow">
+         <div class="mb5-fstep"><span class="tg"><svg class="i xs"><use href="#i-mail"/></svg>วันที่ 0</span>
+          <div class="ti">ส่งอีเมล — แนบใบเสนอราคา</div><div class="sb">เทมเพลต "ติดตามใบเสนอราคา 1"</div>
+          <div class="mb5-fcnt"><b>34</b><span>ส่งแล้ว</span></div></div>
+         <div class="mb5-farrow"><svg class="i sm"><use href="#i-ar"/></svg></div>
+
+         <div class="mb5-fstep"><span class="tg"><svg class="i xs"><use href="#i-clock"/></svg>รอ 3 วัน</span>
+          <div class="ti">ถ้ายังไม่เปิด/ไม่ตอบ</div><div class="sb">เฉพาะวันทำการ</div>
+          <div class="mb5-fcnt"><b>22</b><span>ยังไม่ตอบ</span></div></div>
+         <div class="mb5-farrow"><svg class="i sm"><use href="#i-ar"/></svg></div>
+
+         <div class="mb5-fstep"><span class="tg"><svg class="i xs"><use href="#i-line"/></svg>LINE</span>
+          <div class="ti">ส่งข้อความ LINE ทวงใบเสนอราคา</div><div class="sb">"รบกวนสอบถามความคืบหน้าค่ะ…"</div>
+          <div class="mb5-fcnt"><b>22</b><span>ส่งแล้ว</span></div></div>
+         <div class="mb5-farrow"><svg class="i sm"><use href="#i-ar"/></svg></div>
+
+         <div class="mb5-fstep"><span class="tg"><svg class="i xs"><use href="#i-clock"/></svg>รอ 4 วัน</span>
+          <div class="ti">ถ้ายังไม่ตอบ</div><div class="sb">เฉพาะวันทำการ</div>
+          <div class="mb5-fcnt"><b>14</b><span>ยังไม่ตอบ</span></div></div>
+         <div class="mb5-farrow"><svg class="i sm"><use href="#i-ar"/></svg></div>
+
+         <div class="mb5-fstep"><span class="tg"><svg class="i xs"><use href="#i-cklist"/></svg>งานโทร</span>
+          <div class="ti">สร้างงาน "โทรติดตามใบเสนอราคา"</div><div class="sb">มอบผู้ดูแลดีล · แล้วจบ sequence</div>
+          <div class="mb5-fcnt"><b>14</b><span>สร้างงาน</span></div></div>
+        </div>
+       </div>
+
+       <div class="card p0" style="flex:1;min-width:0">
+        <div style="padding:11px 15px 0"><div class="ch" style="margin-bottom:8px"><h2>ลงทะเบียนอยู่</h2><span class="sub">4 คน</span></div></div>
+        <table class="tbl">
+         <thead><tr><th>ผู้ติดต่อ</th><th>บริษัท</th><th style="width:96px">ขั้นปัจจุบัน</th><th style="width:58px">เข้าเมื่อ</th></tr></thead>
+         <tbody>
+          <tr><td><b>คุณวรรณา</b></td><td class="mu">ภูเก็ตแซนด์</td><td class="mu">รอ 3 วัน</td><td class="num">2 วัน</td></tr>
+          <tr><td><b>คุณสมพงษ์</b></td><td class="mu">ไทยทัวร์เอเชีย</td><td class="mu">ส่ง LINE</td><td class="num">5 วัน</td></tr>
+          <tr><td><b>คุณอนงค์</b></td><td class="mu">ร.ร.เกาะแก้ว</td><td class="mu">วันที่ 0</td><td class="num">วันนี้</td></tr>
+          <tr><td><b>คุณประยุทธ</b></td><td class="mu">กะตะ คลิฟ</td><td class="mu">รอ 4 วัน</td><td class="num">8 วัน</td></tr>
+         </tbody>
+        </table>
+       </div>
+      </div>
+
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

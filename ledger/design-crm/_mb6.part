@@ -1,0 +1,117 @@
+<style>
+/* ══ CSS เฉพาะภาพ 26–30 (agent คู่ขนาน · ต่อจาก _mb3.part) — ห้ามเพิ่มสีนอกจาน ══ */
+
+/* ── 26 แชท+สมาชิก: รายการห้อง ─────────────────────────────────────────── */
+.mb6-rooms{width:300px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  display:flex;flex-direction:column;overflow:hidden}
+.mb6-rooms .hd{padding:13px 15px 10px;flex:none}
+.mb6-rooms .hd b{font-size:14.5px;font-weight:700}
+.mb6-roomlist{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.mb6-roomrow{display:flex;align-items:center;gap:10px;padding:10px 15px;border-top:1px solid var(--line)}
+.mb6-roomrow:first-child{border-top:0}
+.mb6-roomrow.on{background:var(--sf)}
+.mb6-roomrow .bd{flex:1;min-width:0}
+.mb6-roomrow .nm{font-size:12.6px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mb6-roomrow .snip{font-size:11.3px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mb6-roomrow .tm{font-size:10.3px;color:var(--mut2);flex:none;white-space:nowrap}
+
+/* ── 26 หน้าแชท: บับเบิล ──────────────────────────────────────────────── */
+.mb6-bub{max-width:480px;background:var(--sf);border:1px solid var(--line);border-radius:14px 14px 14px 4px;
+  padding:10px 13px;font-size:13.3px;line-height:1.55}
+.mb6-bub.out{background:var(--out);border-radius:14px 14px 4px 14px}
+
+/* ── 26 แผงขวา "สมาชิก" ───────────────────────────────────────────────── */
+.mb6-mpanel{width:380px;flex:none;border-left:1px solid var(--line);background:var(--sf2);
+  display:flex;flex-direction:column;overflow:hidden}
+.mb6-mpanel .hd{padding:13px 16px;border-bottom:1px solid var(--line);background:var(--sf);
+  display:flex;align-items:center;gap:8px;flex:none}
+.mb6-mpanel .bodyp{flex:1;min-height:0;overflow:hidden;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+
+.mb6-qa{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mb6-qa .b{border:1px solid var(--line);border-radius:9px;padding:9px 6px;display:flex;flex-direction:column;
+  align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--ink2);text-align:center;background:var(--sf)}
+
+.mb6-perk{display:flex;align-items:center;gap:9px;padding:8px 0;border-top:1px solid var(--line);font-size:12px}
+.mb6-perk:first-child{border-top:0}
+
+.mb6-hist{display:flex;gap:9px;padding:8px 0;border-top:1px solid var(--line)}
+.mb6-hist:first-child{border-top:0}
+.mb6-hist .dot{width:21px;height:21px;border-radius:50%;display:grid;place-items:center;flex:none;
+  border:1.5px solid var(--line2);color:var(--mut);background:var(--sf)}
+.mb6-hist .tt{font-size:12.2px;font-weight:600}
+.mb6-hist .mt{font-size:11px;color:var(--mut);margin-top:1px}
+
+.mb6-state2{width:380px;border:1.5px dashed var(--line2);border-radius:12px;padding:14px 15px;
+  background:var(--sf2);display:flex;flex-direction:column;gap:8px}
+.mb6-state2 .lb2{font-size:10.5px;font-weight:700;color:var(--mut);letter-spacing:.03em}
+.mb6-matchrow{display:flex;align-items:center;gap:9px;padding:8px 9px;border:1px solid var(--line);
+  border-radius:9px;background:var(--sf)}
+
+/* ── 27 ผู้ช่วย AI: ข้อเสนอ ───────────────────────────────────────────── */
+.mb6-propose{border:1px solid var(--acc);background:var(--acc-bg);border-radius:11px;padding:13px 15px;
+  display:flex;flex-direction:column;gap:8px}
+.mb6-propose .ttl{display:flex;align-items:center;gap:7px;font-weight:700;color:var(--acc);font-size:12.8px}
+.mb6-propose .row{display:flex;justify-content:space-between;gap:10px;font-size:12.3px;color:var(--ink2)}
+.mb6-propose .row .k{color:var(--mut)}
+.mb6-propose .btns{display:flex;gap:8px;margin-top:5px}
+.mb6-toolline{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--mut)}
+.mb6-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* ── 27 API: โค้ด curl ────────────────────────────────────────────────── */
+.mb6-code{background:var(--ink);color:var(--sf);border-radius:10px;padding:13px 15px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.3px;line-height:1.8;
+  overflow:hidden;white-space:pre}
+.mb6-code .mu3{color:var(--mut2)}
+.mb6-code .ac3{color:#93b4ff}
+
+/* ── 27 ตาราง tool / คีย์ ─────────────────────────────────────────────── */
+.mb6-classb{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:5px;
+  font-size:10px;font-weight:700;border:1px solid currentColor}
+.mb6-classb.read{color:var(--t-green)}
+.mb6-classb.write{color:var(--t-blue)}
+.mb6-classb.danger{color:var(--t-red)}
+
+.mb6-webhookrow{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:12px}
+.mb6-webhookrow:first-child{border-top:0}
+
+/* ── 28 มือถือพนักงาน: ค้นหา/สแกน ─────────────────────────────────────── */
+.mb6-scanbtn{border:1.5px dashed var(--line2);border-radius:14px;padding:22px 14px;display:flex;
+  flex-direction:column;align-items:center;gap:8px;color:var(--ink2);background:var(--sf2)}
+.mb6-scanbtn svg{width:34px;height:34px;stroke-width:1.4}
+.mb6-scanbtn b{font-size:13px}
+
+/* ── 28 ปุ่มใหญ่ 2×2 ──────────────────────────────────────────────────── */
+.mb6-actgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.mb6-actbtn{border:1px solid var(--line);border-radius:12px;padding:13px 8px;display:flex;flex-direction:column;
+  align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--ink);background:var(--sf)}
+
+/* ── 28 PIN ───────────────────────────────────────────────────────────── */
+.mb6-pin{display:flex;gap:11px;justify-content:center;padding:6px 0}
+.mb6-pindot{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--line2);background:var(--sf)}
+.mb6-pindot.on{background:var(--ink);border-color:var(--ink)}
+
+/* ── 29 LIFF onboarding: ต้อนรับ ──────────────────────────────────────── */
+.mb6-wlogo{width:64px;height:64px;border-radius:18px;background:var(--ink);color:var(--sf);display:grid;
+  place-items:center;font-size:20px;font-weight:700;margin:0 auto}
+.mb6-src{font-size:10.5px;color:var(--mut2);text-align:center}
+
+/* ── 29 อ้างอิงโค้ด / consent ─────────────────────────────────────────── */
+.mb6-refbox{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;align-items:center;
+  gap:8px;font-size:12.3px}
+.mb6-conrow{display:flex;align-items:center;gap:9px;padding:8px 0;border-top:1px solid var(--line);font-size:12.3px}
+.mb6-conrow:first-child{border-top:0}
+
+/* ── 30 ตารางเทมเพลต: ช่องทาง ─────────────────────────────────────────── */
+.mb6-chset{display:flex;gap:4px;flex-wrap:wrap}
+
+/* ── 30 แผงแก้เทมเพลต: ตัวแปร / ตัวอย่าง ───────────────────────────────── */
+.mb6-var{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:6px;
+  background:var(--sf);border:1px solid var(--line);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:10.6px;color:var(--ink2)}
+.mb6-ta{border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:12.6px;line-height:1.65;
+  color:var(--ink2);background:var(--sf);min-height:84px}
+.mb6-linepreview{background:var(--wall);border:1px solid var(--line);border-radius:12px;padding:14px;
+  display:flex;flex-direction:column;gap:8px}
+.mb6-timchip{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:7px;
+  font-size:12px;font-weight:600;border:1px solid var(--acc);background:var(--acc-bg);color:var(--acc)}
+</style>

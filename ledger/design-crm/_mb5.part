@@ -1,0 +1,112 @@
+<style>
+/* ══ CSS เฉพาะภาพ 20–25 (agent คู่ขนาน · ต่อจาก _mb2.part) — ห้ามเพิ่มสีนอกจาน ══ */
+
+/* ── โมดัลขวา (drawer) — ใช้แทน .modal ที่ล็อกกึ่งกลางเมื่อบานต้องชิดขวา ───── */
+.mb5-drawer{position:absolute;right:0;top:0;bottom:0;width:500px;background:var(--sf);
+  border-left:1px solid var(--line);box-shadow:-24px 0 60px rgba(10,10,10,.20);z-index:45;
+  display:flex;flex-direction:column;overflow:hidden}
+.mb5-dh{display:flex;align-items:center;gap:9px;padding:15px 18px;border-bottom:1px solid var(--line);flex:none}
+.mb5-dh h2{font-size:14.5px}
+.mb5-db{flex:1;min-height:0;overflow-y:auto;padding:15px 18px 18px;display:flex;flex-direction:column;gap:14px}
+.mb5-df{display:flex;align-items:center;gap:9px;padding:12px 18px;border-top:1px solid var(--line);
+  background:var(--sf2);flex:none}
+.mb5-fld{display:flex;flex-direction:column;gap:6px}
+.mb5-fld .l{font-size:11.5px;font-weight:700;color:var(--ink2)}
+
+/* ── ตัวเลือกแบบชิป (มูลค่า gift card / ผู้รับ ฯลฯ) ────────────────────── */
+.mb5-choices{display:flex;gap:7px;flex-wrap:wrap}
+.mb5-choice{display:inline-flex;align-items:center;height:32px;padding:0 12px;border:1px solid var(--line);
+  border-radius:8px;font-size:12.5px;color:var(--ink2);background:var(--sf)}
+.mb5-choice.on{border-color:var(--ink);background:var(--ink);color:var(--sf);font-weight:700}
+
+/* ── กล่องข้อความหลายบรรทัด (ข้อความบนบัตร / แคมเปญ / แชร์ referral) ──── */
+.mb5-msgbox{border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:12.6px;
+  line-height:1.65;color:var(--ink2);background:var(--sf);min-height:82px}
+.mb5-msgbox b{color:var(--acc);font-weight:700}
+
+/* ── การ์ดตั้งค่าสวิตช์ใหญ่ (พ่วงบัญชี / เปิดใช้แนะนำเพื่อน) ──────────── */
+.mb5-swcard{border:1px solid var(--line);border-radius:10px;padding:12px 13px;background:var(--sf2)}
+.mb5-swtop{display:flex;align-items:flex-start;gap:10px}
+.mb5-swtop b{font-size:13px}
+.mb5-swtop .sp{flex:1}
+.mb5-swtop p{font-size:11.8px;color:var(--mut);margin-top:5px;line-height:1.55}
+.mb5-setrow{display:flex;align-items:center;gap:8px;font-size:12.3px;color:var(--ink2);padding:7px 0;
+  border-top:1px solid var(--line)}
+.mb5-setrow:first-child{border-top:0}
+.mb5-setrow .k{color:var(--mut);width:150px;flex:none}
+.mb5-cks{display:flex;gap:14px;flex-wrap:wrap;font-size:12.3px;color:var(--ink2)}
+.mb5-ck{display:inline-flex;align-items:center;gap:6px}
+
+/* ── แผนภาพขั้นตอน journey แนวนอน ─────────────────────────────────────── */
+.mb5-flow{display:flex;align-items:stretch;gap:0}
+.mb5-fstep{flex:1;min-width:0;border:1px solid var(--line);border-radius:11px;background:var(--sf);
+  padding:12px 13px;display:flex;flex-direction:column;gap:7px}
+.mb5-fstep .tg{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;
+  color:var(--mut);text-transform:none}
+.mb5-fstep .ti{font-size:12.6px;font-weight:700;line-height:1.4}
+.mb5-fstep .sb{font-size:11px;color:var(--mut);line-height:1.5}
+.mb5-fcnt{margin-top:auto;padding-top:8px;border-top:1px dashed var(--line);display:flex;
+  align-items:baseline;gap:5px}
+.mb5-fcnt b{font-size:15px;font-weight:700}
+.mb5-fcnt span{font-size:10.5px;color:var(--mut)}
+.mb5-farrow{width:26px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--mut2)}
+
+/* ── กราฟแท่งแนวตั้ง (วาดด้วย div ล้วน) ───────────────────────────────── */
+.mb5-vbars{display:flex;align-items:flex-end;gap:3px;height:84px}
+.mb5-vbars i{flex:1;display:block;border-radius:2px 2px 0 0;background:var(--ink);min-height:2px}
+.mb5-vbars i.mut{background:var(--line2)}
+.mb5-vlabels{display:flex;gap:3px;font-size:9px;color:var(--mut2);text-align:center}
+.mb5-vlabels span{flex:1;overflow:hidden;white-space:nowrap}
+
+/* ── ตาราง RFM 3×3 เป็นกริดสี (เฉด --ink / --mut / --line2 เท่านั้น) ──── */
+.mb5-rfmgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.mb5-rfmcell{position:relative;border-radius:9px;overflow:hidden;padding:11px 12px;min-height:78px;
+  display:flex;flex-direction:column;justify-content:space-between}
+.mb5-rfmcell .bg{position:absolute;inset:0}
+.mb5-rfmcell .tx{position:relative;z-index:1}
+.mb5-rfmcell .nm{font-size:11.8px;font-weight:700}
+.mb5-rfmcell .vv{font-size:19px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums}
+.mb5-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--mut2);padding:0 2px}
+
+/* ── แก้ดาวไม่ติด (fill ของ i-star ไม่มี currentColor ใน SVG ต้นทาง จึงบังคับ fill เอง เฉพาะสโคปนี้) ── */
+.mb5-revhd .mb2-stars svg{fill:var(--mut2)}
+.mb5-revhd .mb2-stars svg.on{fill:var(--ink)}
+
+/* ── รีวิว: การ์ดเต็ม + กล่องตอบกลับ ──────────────────────────────────── */
+.mb5-revcard{padding:13px 0;border-top:1px solid var(--line);display:flex;gap:11px}
+.mb5-revcard:first-child{border-top:0}
+.mb5-revph{width:52px;height:52px;border-radius:8px;background:var(--sf2);border:1px solid var(--line);
+  flex:none;display:grid;place-items:center;color:var(--mut2)}
+.mb5-revbd{flex:1;min-width:0}
+.mb5-revhd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mb5-revhd b{font-size:12.8px}
+.mb5-revtxt{font-size:12.6px;color:var(--ink2);margin-top:5px;line-height:1.55}
+.mb5-replybox{margin-top:9px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;
+  background:var(--sf2);display:flex;flex-direction:column;gap:8px}
+.mb5-replybox .ta{font-size:12.3px;color:var(--mut);min-height:36px}
+
+/* ── ตัวจัดอันดับ (ผู้แนะนำสูงสุด) ────────────────────────────────────── */
+.mb5-rank{width:22px;height:22px;border-radius:50%;background:var(--sf2);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--ink2);flex:none}
+.mb5-rank.top{background:var(--ink);color:var(--sf);border-color:var(--ink)}
+
+/* ── ตัวอย่างหน้าจอ LINE (bubble ข้อความ + การ์ด voucher) ─────────────── */
+.mb5-linemock{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--sf2)}
+.mb5-linehd{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--sf);
+  border-bottom:1px solid var(--line);font-size:12px;font-weight:700}
+.mb5-linebody{padding:14px 12px;display:flex;flex-direction:column;gap:9px}
+.mb5-bub{align-self:flex-start;max-width:86%;background:var(--sf);border:1px solid var(--line);
+  border-radius:3px 13px 13px 13px;padding:9px 11px;font-size:12px;line-height:1.6;color:var(--ink2)}
+.mb5-vcard{align-self:flex-start;width:86%;border:1px solid var(--line);border-radius:11px;
+  background:var(--sf);overflow:hidden}
+.mb5-vcard .hd{background:var(--ink);color:var(--sf);padding:8px 11px;font-size:11px;font-weight:700}
+.mb5-vcard .bd{padding:9px 11px;display:flex;align-items:center;justify-content:space-between}
+.mb5-vcard .bd b{font-size:16px}
+.mb5-vcard .bd span{font-size:10.5px;color:var(--mut)}
+
+/* ── สรุปตัวเลข inline (segment result / journey ROI) ─────────────────── */
+.mb5-stats{display:flex;gap:8px}
+.mb5-stat{flex:1;text-align:center;border:1px solid var(--line);border-radius:9px;padding:9px 4px}
+.mb5-stat b{display:block;font-size:16px;font-weight:700}
+.mb5-stat span{font-size:10.5px;color:var(--mut)}
+</style>

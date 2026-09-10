@@ -1,0 +1,56 @@
+<style>
+/* ══ CSS เฉพาะภาพ 15–19 (agent คู่ขนาน · ต่อจาก _mb.part/_mb2.part) — ห้ามเพิ่มสีนอกจาน ══ */
+
+/* ── แถวฟอร์ม label + control (ตัวแก้ระดับ/สแตมป์/รางวัล/voucher) ───────── */
+.mb4-frow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.mb4-frow:first-child{border-top:0}
+.mb4-frow.top{align-items:flex-start}
+.mb4-frow .k{width:118px;flex:none;font-size:12px;color:var(--mut);padding-top:2px}
+.mb4-frow .c{flex:1;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ── checkbox + label แนวนอน (ใช้ร่วม .cbx เดิม) ─────────────────────────── */
+.mb4-ck{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink2);white-space:nowrap}
+
+/* ── ตัวเลือกสี 6 สีของระดับ ──────────────────────────────────────────── */
+.mb4-sw6{display:flex;gap:8px}
+.mb4-swc{width:26px;height:26px;border-radius:50%;border:2px solid transparent;position:relative;flex:none}
+.mb4-swc.sel{border-color:var(--ink)}
+.mb4-swc.sel::after{content:"";position:absolute;inset:3px;border-radius:50%;border:2px solid var(--sf)}
+.mb4-swc.slate{background:var(--t-slate)} .mb4-swc.blue{background:var(--t-blue)}
+.mb4-swc.green{background:var(--t-green)} .mb4-swc.amber{background:var(--t-amber)}
+.mb4-swc.red{background:var(--t-red)} .mb4-swc.purple{background:var(--t-purple)}
+
+/* ── ตัวเลือกลำดับ (stepper) ──────────────────────────────────────────── */
+.mb4-step{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:8px;overflow:hidden;height:34px}
+.mb4-step .sb{width:28px;height:100%;display:grid;place-items:center;color:var(--mut);background:var(--sf2)}
+.mb4-step .sv{width:42px;text-align:center;font-size:13px;font-weight:600}
+
+/* ── กล่องสแกน QR ขนาดใหญ่ ───────────────────────────────────────────── */
+.mb4-scan{border:1.5px dashed var(--line2);border-radius:12px;padding:30px 20px;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--mut);
+  font-size:12.5px;background:var(--sf2)}
+.mb4-scan svg{color:var(--mut2)}
+
+/* ── สแตมป์วงใหญ่ (ตัวอย่างการ์ดจริงขนาดใหญ่) ───────────────────────────── */
+.mb4-stampsxl{display:flex;flex-wrap:wrap;gap:10px}
+.mb4-stampsxl .sd{width:46px;height:46px;border-radius:50%;border:2px solid var(--line2);display:grid;
+  place-items:center;color:var(--mut2);background:var(--sf);font-size:13px;font-weight:700;flex:none}
+.mb4-stampsxl .sd.on{background:var(--ink);border-color:var(--ink);color:var(--sf)}
+
+/* ── ตัวเลือกผู้รับ voucher: รายคน / กลุ่ม ───────────────────────────────── */
+.mb4-pick{border:1px solid var(--line);border-radius:10px;padding:10px 12px;flex:1}
+.mb4-pick.sel{border-color:var(--acc);background:var(--acc-bg)}
+.mb4-pick .t{font-size:11.5px;color:var(--mut);font-weight:700}
+.mb4-pick .v{font-size:13px;font-weight:600;margin-top:3px}
+.mb4-pick.sel .t{color:var(--acc)}
+
+/* ── แบนเนอร์เตือนต้องอนุมัติ (โทน dg ที่มีอยู่แล้วในระบบ เช่น .due.late) ──── */
+.mb4-appr{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--dg);background:#fdeeee;
+  border-radius:10px;padding:10px 12px;font-size:12.3px;color:var(--dg)}
+.mb4-appr b{font-weight:700}
+
+/* ── กรอบอัปโหลดรูป ──────────────────────────────────────────────────── */
+.mb4-upl{width:96px;height:96px;border-radius:10px;border:1.5px dashed var(--line2);display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--mut2);
+  font-size:10.5px;text-align:center;background:var(--sf2);flex:none}
+</style>

@@ -1,0 +1,139 @@
+<div class="wrap">
+<div>
+<p class="cap">09 · รายงาน CRM — Forecast <span>— แท็บ 8 (ภาพรวม/Forecast/Funnel/ยอดต่อคน/กิจกรรม/เหตุผลแพ้/ที่มา·ROI/lead score) · ตาราง forecast เดือน×หมวด + แท่งซ้อน · funnel ต่อขั้น · ยอดต่อคน vs โควตา · เหตุผลแพ้ · ROI ต่อที่มา · ส่งออก/ตั้งเวลา</span></p>
+<div class="frame" id="f09" style="height:1100px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+  <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-bell"/></svg><div class="av">ธ</div></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-mail"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="kbar"><svg class="i sm mu"><use href="#i-back"/></svg><h1>รายงาน CRM</h1><span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-upload"/></svg>ส่งออก CSV</div>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-mail"/></svg>ตั้งเวลาส่งอีเมล</div></div>
+
+   <div class="stage" style="background:var(--sf)">
+    <div class="pg" style="padding:13px 20px 20px;gap:13px">
+
+     <div class="tabs">
+      <span class="tab">ภาพรวม</span>
+      <span class="tab on">Forecast</span>
+      <span class="tab">Funnel</span>
+      <span class="tab">ยอดต่อคน/ทีม</span>
+      <span class="tab">กิจกรรม</span>
+      <span class="tab">เหตุผลแพ้</span>
+      <span class="tab">ที่มา/ROI</span>
+      <span class="tab">Lead score</span>
+     </div>
+
+     <div class="card p0" style="padding:9px 14px;display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+      <div class="inp sm">ช่วง: ไตรมาส 4/2569<svg class="i xs"><use href="#i-cv"/></svg></div>
+      <div class="inp sm">ทีม: ทั้งหมด<svg class="i xs"><use href="#i-cv"/></svg></div>
+      <div class="inp sm">Pipeline: ขายองค์กร B2B<svg class="i xs"><use href="#i-cv"/></svg></div>
+      <span class="sp"></span>
+      <span class="sub">คำนวณจาก stage history · activity · commission ledger (ไม่ใช่ตัวนับ cache)</span>
+     </div>
+
+     <div class="row" style="gap:13px;align-items:stretch">
+
+      <!-- forecast ตาราง + แท่งซ้อน -->
+      <div class="card" style="flex:1.5;min-width:0">
+       <div class="ch"><h2>Forecast รายเดือน × หมวด</h2><span class="sp"></span><span class="sub">PIPELINE · BEST CASE · COMMIT · CLOSED</span></div>
+       <table class="tbl">
+        <thead><tr><th>เดือน</th><th class="rt">Pipeline</th><th class="rt">Best case</th><th class="rt">Commit</th><th class="rt">Closed</th><th class="rt">โควตา</th></tr></thead>
+        <tbody>
+         <tr><td>ต.ค. 2569</td><td class="num">฿820,000</td><td class="num">฿540,000</td><td class="num">฿310,000</td><td class="num">฿298,000</td><td class="num mu">฿300,000</td></tr>
+         <tr><td>พ.ย. 2569</td><td class="num">฿960,000</td><td class="num">฿610,000</td><td class="num">฿380,000</td><td class="num mu">—</td><td class="num mu">฿350,000</td></tr>
+         <tr><td>ธ.ค. 2569</td><td class="num">฿1,120,000</td><td class="num">฿700,000</td><td class="num">฿420,000</td><td class="num mu">—</td><td class="num mu">฿400,000</td></tr>
+        </tbody>
+       </table>
+       <div style="margin-top:14px">
+        <div class="mb5-vbars" style="height:90px">
+         <i style="height:60%;background:linear-gradient(to top,var(--ink) 0 21%,var(--t-amber) 21% 43%,var(--line2) 43% 100%)"></i>
+         <i style="height:74%;background:linear-gradient(to top,var(--ink) 0 0%,var(--t-amber) 0% 28%,var(--line2) 28% 100%)"></i>
+         <i style="height:88%;background:linear-gradient(to top,var(--ink) 0 0%,var(--t-amber) 0% 27%,var(--line2) 27% 100%)"></i>
+        </div>
+        <div class="mb5-vlabels" style="margin-top:5px"><span>ต.ค.</span><span>พ.ย.</span><span>ธ.ค.</span></div>
+        <div style="display:flex;gap:12px;margin-top:8px;font-size:11px;color:var(--mut)">
+         <span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--ink);margin-right:4px"></i>Closed</span>
+         <span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--t-amber);margin-right:4px"></i>Commit</span>
+         <span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--line2);margin-right:4px"></i>Pipeline</span>
+        </div>
+       </div>
+      </div>
+
+      <!-- funnel -->
+      <div class="card p0" style="flex:1;min-width:0">
+       <div style="padding:14px 16px 0"><div class="ch"><h2>Funnel ต่อขั้น</h2><span class="sub">อัตรา · วันเฉลี่ย</span></div></div>
+       <table class="tbl">
+        <thead><tr><th>ขั้น</th><th class="rt">จำนวน</th><th class="rt">อัตรา</th><th class="rt">วัน/ขั้น</th></tr></thead>
+        <tbody>
+         <tr><td>ติดต่อครั้งแรก</td><td class="num">184</td><td class="num">100%</td><td class="num">—</td></tr>
+         <tr><td>คุยความต้องการ</td><td class="num">126</td><td class="num">68%</td><td class="num">3.2</td></tr>
+         <tr><td>ส่งใบเสนอราคา</td><td class="num">84</td><td class="num">67%</td><td class="num">4.8</td></tr>
+         <tr><td>เจรจา</td><td class="num">52</td><td class="num">62%</td><td class="num">6.1</td></tr>
+         <tr><td>ปิดชนะ</td><td class="num">31</td><td class="num" style="color:var(--t-green);font-weight:700">60%</td><td class="num">3.4</td></tr>
+        </tbody>
+       </table>
+      </div>
+
+     </div>
+
+     <div class="row" style="gap:13px;align-items:stretch">
+
+      <!-- ยอดต่อคน vs โควตา -->
+      <div class="card p0" style="flex:1.2;min-width:0">
+       <div style="padding:14px 16px 0"><div class="ch"><h2>ยอดต่อคน vs โควตา</h2></div></div>
+       <table class="tbl">
+        <thead><tr><th>พนักงาน</th><th class="rt">ชนะ</th><th class="rt">มูลค่า</th><th class="rt">โควตา</th><th class="rt">%</th></tr></thead>
+        <tbody>
+         <tr><td><div class="av" style="width:20px;height:20px;font-size:9px;display:inline-flex;margin-right:6px">ป</div>ปุ๊ก มณีรัตน์</td><td class="num">14</td><td class="num">฿412,000</td><td class="num mu">฿350,000</td><td class="num" style="color:var(--t-green);font-weight:700">118%</td></tr>
+         <tr><td><div class="av" style="width:20px;height:20px;font-size:9px;display:inline-flex;margin-right:6px">ก</div>กิตติ วงศ์ทอง</td><td class="num">9</td><td class="num">฿286,000</td><td class="num mu">฿350,000</td><td class="num" style="color:var(--t-amber);font-weight:700">82%</td></tr>
+         <tr><td><div class="av" style="width:20px;height:20px;font-size:9px;display:inline-flex;margin-right:6px">น</div>นภา ศรีสุข</td><td class="num">8</td><td class="num">฿198,000</td><td class="num mu">฿300,000</td><td class="num" style="color:var(--t-amber);font-weight:700">66%</td></tr>
+        </tbody>
+       </table>
+      </div>
+
+      <!-- เหตุผลแพ้ -->
+      <div class="card" style="flex:1;min-width:0">
+       <div class="ch"><h2>เหตุผลแพ้</h2><span class="sub">28 ดีล 60 วันล่าสุด</span></div>
+       <div class="mb3-chrow"><div class="nm">ราคาสูงกว่าคู่แข่ง</div><div class="bar"><i style="width:100%"></i></div><div class="cnt">11</div></div>
+       <div class="mb3-chrow"><div class="nm">งบไม่อนุมัติ</div><div class="bar"><i style="width:64%"></i></div><div class="cnt">7</div></div>
+       <div class="mb3-chrow"><div class="nm">เลือกซัพพลายเออร์เดิม</div><div class="bar"><i style="width:45%"></i></div><div class="cnt">5</div></div>
+       <div class="mb3-chrow"><div class="nm">เงียบหาย/ไม่ตอบ</div><div class="bar"><i style="width:36%"></i></div><div class="cnt">4</div></div>
+       <div class="mb3-chrow"><div class="nm">อื่น ๆ</div><div class="bar"><i style="width:9%"></i></div><div class="cnt">1</div></div>
+      </div>
+
+      <!-- ที่มา/ROI -->
+      <div class="card p0" style="flex:1.2;min-width:0">
+       <div style="padding:14px 16px 0"><div class="ch"><h2>ที่มา / ROI</h2></div></div>
+       <table class="tbl">
+        <thead><tr><th>ที่มา</th><th class="rt">Lead</th><th class="rt">ดีล</th><th class="rt">ชนะ</th><th class="rt">ROI</th></tr></thead>
+        <tbody>
+         <tr><td>LINE OA</td><td class="num">62</td><td class="num">38</td><td class="num">14</td><td class="num" style="color:var(--t-green);font-weight:700">18.4×</td></tr>
+         <tr><td>เว็บฟอร์ม</td><td class="num">44</td><td class="num">26</td><td class="num">9</td><td class="num">9.2×</td></tr>
+         <tr><td>งานอีเวนต์</td><td class="num">28</td><td class="num">19</td><td class="num">6</td><td class="num">6.1×</td></tr>
+         <tr><td>แนะนำต่อ</td><td class="num">18</td><td class="num">14</td><td class="num">2</td><td class="num">4.0×</td></tr>
+        </tbody>
+       </table>
+      </div>
+
+     </div>
+
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

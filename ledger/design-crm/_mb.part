@@ -1,0 +1,44 @@
+<style>
+/* ══ CSS เฉพาะระบบสมาชิก (คลาสใหม่ทั้งหมดขึ้นต้น .mb- · ใช้ตัวแปรจานเดิมเท่านั้น) ══ */
+
+/* ป้ายระดับสมาชิกขนาดใหญ่ (หัวโปรไฟล์ 360) — ใช้ร่วมกับ .lb.<สี> เดิม */
+.mb-tier{height:26px;padding:0 11px;border-radius:8px;font-size:13px;font-weight:700}
+
+/* กล่องฟิลด์บนผืนผ้าใบตัวออกแบบฟอร์ม */
+.mb-fld{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--sf)}
+.mb-fld .l{font-size:11px;color:var(--mut)}
+.mb-fld .v{font-size:13px;font-weight:600;margin-top:2px;color:var(--ink)}
+.mb-fld.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-bg)}
+.mb-fld.ph .v{color:var(--mut2);font-weight:400}
+
+/* แถวชนิดฟิลด์ลากได้ (แถบซ้ายของตัวออกแบบฟอร์ม) */
+.mb-ftype{display:flex;align-items:center;gap:8px;height:33px;padding:0 9px;border:1px solid var(--line);
+  border-radius:8px;margin-bottom:6px;font-size:12.5px;color:var(--ink2);background:var(--sf)}
+.mb-ftype .i{color:var(--mut2);margin-left:auto}
+
+/* ป้ายหัวส่วนฟอร์ม: ระบบ / กำหนดเอง / อ่อนไหว — reuse .chip */
+.mb-sec{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+
+/* รูปของรางวัลในแคตตาล็อก */
+.mb-rimg{height:92px;border-radius:10px 10px 0 0;background:var(--sf2);border:1px solid var(--line);
+  border-bottom:0;display:grid;place-items:center;color:var(--mut2)}
+
+/* บันไดระดับสมาชิก */
+.mb-ladder{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:9px}
+.mb-ladder .n{font-size:15px;font-weight:700}
+.mb-ladder .cnt{font-size:11.5px;color:var(--mut)}
+.mb-ladder .bf{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--ink2)}
+.mb-ladder .bf .i{color:var(--mut);flex:none;margin-top:1px}
+
+/* วงกลมสแตมป์ */
+.mb-stamps{display:flex;align-items:center;gap:0}
+.mb-stamps .sdot{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--line2);display:grid;
+  place-items:center;color:var(--mut2);background:var(--sf);flex:none}
+.mb-stamps .sdot.on{background:var(--ink);border-color:var(--ink);color:var(--sf)}
+.mb-stamps .sbar{flex:0 0 14px;height:1.5px;background:var(--line)}
+
+/* กล่องเรียกความสนใจ (ทดลองรัน / คำเตือน) */
+.mb-callout{border:1px solid var(--acc);background:var(--acc-bg);border-radius:10px;padding:11px 14px;
+  display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--acc)}
+.mb-callout b{font-weight:700}
+</style>

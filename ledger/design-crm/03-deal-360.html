@@ -1,0 +1,1237 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<title>SHARK · CRM ดีล 360</title>
+<style>
+/* ══ โทเคนสี — จานเดียวทั้งไฟล์ (WO §1) ═══════════════════════════════════
+   ขาว #fff · พื้นรอง #fafafa · พื้นเวที #f4f5f7
+   ตัวอักษร #0a0a0a / #404040 / #737373 / #a3a3a3
+   เส้น #e5e5e5 · เส้นอ่อน/แท่งกราฟจาง #d4d4d4
+   accent #1d4ed8 (+พื้นจาง #e9eefc) · danger #b91c1c
+   ห้ามเพิ่มสีอื่น                                                        */
+:root{
+  --ink:#0a0a0a; --ink2:#404040; --mut:#737373; --mut2:#a3a3a3;
+  --line:#e5e5e5; --line2:#d4d4d4; --sf:#fff; --sf2:#fafafa; --stage:#f4f5f7;
+  --acc:#1d4ed8; --acc-bg:#e9eefc; --dg:#b91c1c;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+body{font-family:'Noto Sans Thai','Sarabun',system-ui,sans-serif;color:var(--ink);
+  background:var(--stage);font-size:14px;line-height:1.45}
+.wrap{padding:26px;display:flex;flex-direction:column;gap:30px;align-items:flex-start}
+.cap{font-size:12.5px;font-weight:700;color:var(--ink2);margin:0 0 9px 3px}
+.cap span{font-weight:400;color:var(--mut)}
+
+/* ── กรอบจอ ───────────────────────────────────────────────────────────── */
+.frame{width:1440px;background:var(--sf);border:1px solid var(--line);border-radius:14px;
+  overflow:hidden;display:flex;flex-direction:column;position:relative}
+.frame.m{width:390px}
+
+/* ── ไอคอน ────────────────────────────────────────────────────────────── */
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.i.sm{width:14px;height:14px;stroke-width:1.9}
+svg.i.xs{width:12px;height:12px;stroke-width:2}
+svg.i.lg{width:22px;height:22px}
+
+/* ── โครงแอปเดิม (topbar + drawer) — จงใจให้จาง ────────────────────────── */
+.top{height:56px;display:flex;align-items:center;gap:11px;padding:0 18px;
+  border-bottom:1px solid var(--line);color:var(--mut);flex:none}
+.top .brand{font-size:14.5px;font-weight:700;color:var(--ink2)}
+.top .sp{flex:1}
+.appbody{display:flex;align-items:stretch;min-height:0}
+.drawer{width:288px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:14px 12px;color:var(--mut2);font-size:13px}
+.dsec{font-size:11px;font-weight:700;color:var(--mut2);padding:10px 8px 5px;letter-spacing:.02em}
+.ditem{display:flex;align-items:center;gap:9px;height:34px;padding:0 9px;border-radius:8px;color:var(--mut2)}
+.ditem.on{background:var(--sf);color:var(--ink);font-weight:700;border:1px solid var(--line)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--sf)}
+
+/* ── แถบเมนูบัญชี 9 หมวด ──────────────────────────────────────────────── */
+.amenu{display:flex;gap:0;padding:0 18px;border-bottom:1px solid var(--line);position:relative;flex:none}
+.am{position:relative;display:flex;align-items:center;gap:7px;padding:13px 13px 11px;font-size:13.5px;
+  color:var(--ink2);border-bottom:2px solid transparent;white-space:nowrap}
+.am.on{color:var(--ink);font-weight:700;border-bottom-color:var(--acc)}
+.am.opened{background:var(--sf2);border-radius:8px 8px 0 0}
+.am .cv{width:11px;height:11px;stroke-width:2.2;opacity:.55}
+
+/* ── dropdown เมนูย่อย ────────────────────────────────────────────────── */
+.dd{position:absolute;top:calc(100% - 1px);left:0;width:264px;background:var(--sf);
+  border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px rgba(10,10,10,.12);
+  padding:6px;z-index:30}
+.dd.w2{width:520px;display:flex;gap:6px}
+.dd.w2 .col{flex:1;min-width:0}
+.ddh{font-size:11px;font-weight:700;color:var(--mut);padding:7px 10px 4px}
+.ddi{display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:8px;
+  font-size:13.5px;color:var(--ink)}
+.ddi .i{color:var(--mut)}
+.ddi.on{background:var(--sf2);font-weight:700}
+.ddi.soon{color:var(--mut2)}
+.ddi.soon .i{color:var(--mut2)}
+.ddi .ar{margin-left:auto;color:var(--mut2)}
+.tagsoon{margin-left:auto;font-size:10.5px;color:var(--mut2);border:1px solid var(--line);
+  border-radius:5px;padding:1px 6px}
+.ddsep{height:1px;background:var(--line);margin:5px 9px}
+
+/* ── หัวหน้า ──────────────────────────────────────────────────────────── */
+.crumb{padding:13px 24px 0;font-size:12px;color:var(--mut);display:flex;align-items:center;gap:6px}
+.ph{display:flex;align-items:center;gap:10px;padding:9px 24px 15px}
+.ph h1{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+.ph .sp{flex:1}
+.pg{padding:0 24px 24px;display:flex;flex-direction:column;gap:15px}
+
+/* ── ปุ่ม ─────────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;
+  padding:0 14px;border-radius:8px;font-size:13.5px;font-weight:500;border:1px solid transparent;
+  white-space:nowrap;background:var(--sf);color:var(--ink)}
+.btn.pri{background:var(--ink);color:var(--sf)}
+.btn.gh{border-color:var(--line)}
+.btn.sm{height:31px;padding:0 10px;font-size:12.5px;border-radius:7px}
+.btn.blk{width:100%}
+.btn[disabled],.btn.off{color:var(--mut2);border-color:var(--line)}
+
+/* ── การ์ด ────────────────────────────────────────────────────────────── */
+.card{border:1px solid var(--line);border-radius:12px;background:var(--sf);padding:16px;min-width:0}
+.card.p0{padding:0}
+.ch{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.ch h2{font-size:13.5px;font-weight:700}
+.ch .sp{flex:1}
+.sub{font-size:11.5px;color:var(--mut)}
+.row{display:flex;gap:15px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}
+
+/* ── KPI ──────────────────────────────────────────────────────────────── */
+.kpi .lbl{font-size:12px;color:var(--mut);display:flex;align-items:center;gap:6px}
+.kpi .val{font-size:23px;font-weight:700;letter-spacing:-.025em;margin-top:7px;
+  font-variant-numeric:tabular-nums}
+.kpi .val.dg{color:var(--dg)}
+.kpi .fo{font-size:11.5px;color:var(--mut);margin-top:5px}
+
+/* ── chip สถานะ (3 โทนตาม StatusChip) ─────────────────────────────────── */
+.chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;
+  border-radius:6px;border:1px solid var(--line);font-size:11.5px;color:var(--mut);
+  background:var(--sf);white-space:nowrap}
+.chip.ink{border-color:var(--ink);color:var(--ink);font-weight:700}
+.chip.dg{border-color:var(--dg);color:var(--dg);font-weight:700}
+.chip.acc{border-color:var(--acc);color:var(--acc);font-weight:700;background:var(--acc-bg)}
+
+/* ── แท็บ ─────────────────────────────────────────────────────────────── */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow:hidden}
+.tab{display:flex;align-items:center;gap:6px;padding:9px 12px;font-size:13px;color:var(--mut);
+  border-bottom:2px solid transparent;white-space:nowrap}
+.tab.on{color:var(--ink);font-weight:700;border-bottom-color:var(--acc)}
+.tab .n{font-size:12px;color:var(--mut2);font-variant-numeric:tabular-nums}
+.tab.on .n{color:var(--ink2)}
+.tab.dg,.tab.dg .n{color:var(--dg)}
+.tab .bdg{min-width:18px;height:18px;border-radius:6px;background:var(--ink);color:var(--sf);
+  font-size:10.5px;font-weight:700;display:grid;place-items:center;padding:0 5px}
+
+/* ── ตาราง ────────────────────────────────────────────────────────────── */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:11.5px;font-weight:700;color:var(--mut);padding:9px 10px;
+  border-bottom:1px solid var(--line);white-space:nowrap;background:var(--sf2)}
+.tbl td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl td.nw{white-space:nowrap}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tr.hov td{background:var(--sf2)}
+.tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl .rt{text-align:right}
+.lnk{color:var(--acc);font-weight:700}
+.dgt{color:var(--dg);font-weight:700}
+.mu{color:var(--mut)}
+.cbx{width:14px;height:14px;border:1.5px solid var(--line2);border-radius:4px;display:inline-block;
+  vertical-align:-2px}
+.cbx.on{background:var(--ink);border-color:var(--ink);position:relative}
+.cbx.on::after{content:"";position:absolute;left:3.5px;top:.5px;width:4px;height:8px;
+  border:solid var(--sf);border-width:0 1.7px 1.7px 0;transform:rotate(42deg)}
+
+/* ── ช่องกรอก / ตัวกรอง ───────────────────────────────────────────────── */
+.inp{height:34px;border:1px solid var(--line);border-radius:8px;display:inline-flex;
+  align-items:center;gap:7px;padding:0 10px;font-size:12.5px;color:var(--mut);background:var(--sf)}
+.inp b{color:var(--ink);font-weight:600}
+.inp .cv{margin-left:auto;color:var(--mut2)}
+.inp.gro{flex:1}
+.sw{width:34px;height:19px;border-radius:10px;background:var(--ink);position:relative;flex:none}
+.sw::after{content:"";position:absolute;right:2.5px;top:2.5px;width:14px;height:14px;
+  border-radius:50%;background:var(--sf)}
+.sw.off{background:var(--line2)}
+.sw.off::after{left:2.5px;right:auto}
+
+/* ── แถบ bulk ─────────────────────────────────────────────────────────── */
+.bulk{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--acc-bg);
+  border:1px solid var(--acc);border-radius:9px;font-size:12.5px;color:var(--acc);font-weight:600}
+.bulk .sp{flex:1}
+
+/* ── เมนู "ทำรายการ" ในแถว ────────────────────────────────────────────── */
+.rowmenu{position:absolute;right:0;top:calc(100% + 4px);width:210px;background:var(--sf);
+  border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px rgba(10,10,10,.13);
+  padding:5px;z-index:25;text-align:left}
+.rowmenu .ddi{height:34px;font-size:13px}
+.anch{position:relative;display:inline-block}
+
+/* ── กราฟ ─────────────────────────────────────────────────────────────── */
+.lgd{display:flex;align-items:center;gap:14px;font-size:11.5px;color:var(--ink2)}
+.lgd i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:6px;
+  vertical-align:0px}
+.lgd .ln{width:14px;height:2px;border-radius:2px;vertical-align:3px}
+.sw-acc{background:var(--acc)} .sw-ink{background:var(--ink)}
+.sw-m2{background:var(--mut2)} .sw-l2{background:var(--line2)} .sw-dg{background:var(--dg)}
+.sw-mu{background:var(--mut)}
+.stat{display:flex;gap:26px;flex-wrap:wrap}
+.stat .b .k{font-size:11.5px;color:var(--mut)}
+.stat .b .v{font-size:19px;font-weight:700;letter-spacing:-.02em;margin-top:3px;
+  font-variant-numeric:tabular-nums}
+.stat .b .v.dg{color:var(--dg)}
+.stat .b .d{font-size:11px;color:var(--mut);margin-top:2px}
+
+/* ── แถบสัดส่วน / อายุหนี้ ────────────────────────────────────────────── */
+.mtr{height:8px;border-radius:4px;background:var(--sf2);overflow:hidden;display:flex;gap:2px}
+.mtr i{display:block;height:100%}
+.agerow{display:flex;align-items:center;gap:10px;font-size:12px}
+.agerow .nm{width:98px;color:var(--mut);flex:none}
+.agerow .bar{flex:1;height:9px;background:var(--sf2);border-radius:5px;overflow:hidden}
+.agerow .bar i{display:block;height:100%;border-radius:3px;min-width:5px}
+.agerow .amt{width:88px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.agerow.dgv .amt{color:var(--dg)}
+
+/* ── รายการงาน / ลิสต์ ────────────────────────────────────────────────── */
+.lst .li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);
+  font-size:13px}
+.lst .li:first-child{border-top:0}
+.lst .li .sp{flex:1;min-width:0}
+.lst .li .n{font-variant-numeric:tabular-nums;font-weight:700}
+.pill{min-width:20px;height:20px;border-radius:6px;background:var(--ink);color:var(--sf);
+  font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 6px}
+.pill.dg{background:var(--dg)}
+.pill.gh{background:var(--sf2);color:var(--ink2);border:1px solid var(--line)}
+
+/* ── footer ตาราง ─────────────────────────────────────────────────────── */
+.tfoot{display:flex;align-items:center;gap:12px;padding:11px 12px;font-size:12.5px;color:var(--mut);
+  border-top:1px solid var(--line)}
+.tfoot .sp{flex:1}
+.pgr{display:flex;align-items:center;gap:4px}
+.pgr .pb{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;display:grid;
+  place-items:center;color:var(--ink2)}
+
+/* ── โหมดถ่ายรูป "ไม่มีเมนู" — render.mjs เติม/ถอดคลาสนี้ที่ .frame ก่อน screenshot
+   เพื่อให้ได้ 2 ใบต่อเฟรม: ใบเปล่าไว้ดูเนื้อหา + ใบมีเมนูไว้ดูโครงเมนู
+   🔴 ห้ามก๊อป markup เฟรมซ้ำ — เฟรมเดียวถ่าย 2 สถานะ */
+.frame.no-menu .dd,
+.frame.no-menu .rowmenu,
+.frame.no-menu .bulk,
+.frame.no-menu .scrim,
+.frame.no-menu .over,
+.frame.no-menu .menu-space{display:none}
+.frame.no-menu .am.opened{background:transparent}
+.frame.no-menu .cbx.on{background:var(--sf);border-color:var(--line2)}
+.frame.no-menu .cbx.on::after{display:none}
+
+/* ── slide-over ───────────────────────────────────────────────────────── */
+.scrim{position:absolute;inset:0;background:rgba(10,10,10,.28);z-index:40}
+.over{position:absolute;top:0;right:0;bottom:0;width:400px;background:var(--sf);z-index:41;
+  border-left:1px solid var(--line);box-shadow:-10px 0 34px rgba(10,10,10,.13);
+  display:flex;flex-direction:column}
+
+/* ── มือถือ ───────────────────────────────────────────────────────────── */
+.frame.m .top{height:52px;padding:0 14px}
+.mnav{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--line);overflow:hidden;flex:none}
+.mn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 9px 7px;
+  font-size:11px;color:var(--mut);border-bottom:2px solid transparent;white-space:nowrap}
+.mn.on{color:var(--ink);font-weight:700;border-bottom-color:var(--acc)}
+.mpg{padding:13px 14px 22px;display:flex;flex-direction:column;gap:13px}
+.mcard{border:1px solid var(--line);border-radius:12px;padding:13px}
+.mrow{display:flex;align-items:center;gap:9px;padding:11px 0;border-top:1px solid var(--line)}
+.mrow:first-child{border-top:0}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--sf);border-radius:16px 16px 0 0;
+  box-shadow:0 -8px 30px rgba(10,10,10,.2);z-index:41;padding:8px 0 14px}
+.grab{width:38px;height:4px;border-radius:2px;background:var(--line2);margin:2px auto 10px}
+.sh-i{display:flex;align-items:center;gap:12px;height:48px;padding:0 16px;font-size:14px}
+.sh-i .ar{margin-left:auto;color:var(--mut2)}
+.fab{position:absolute;right:14px;width:52px;height:52px;border-radius:50%;background:var(--ink);
+  color:var(--sf);display:grid;place-items:center;box-shadow:0 6px 18px rgba(10,10,10,.24);z-index:20}
+.orb{position:absolute;right:14px;bottom:14px;width:52px;height:52px;border-radius:50%;
+  border:2px solid var(--acc);background:var(--sf);color:var(--acc);display:grid;place-items:center;z-index:20}
+.mtabs{display:flex;gap:6px;overflow:hidden;padding:1px}
+.mtab{display:flex;align-items:center;gap:5px;height:30px;padding:0 11px;border-radius:8px;
+  border:1px solid var(--line);font-size:12.5px;color:var(--mut);white-space:nowrap;background:var(--sf)}
+.mtab.on{background:var(--ink);color:var(--sf);border-color:var(--ink);font-weight:700}
+.mtab.dg{border-color:var(--dg);color:var(--dg)}
+
+/* ── เบ็ดเตล็ด ────────────────────────────────────────────────────────── */
+.hr{height:1px;background:var(--line)}
+.av{width:24px;height:24px;border-radius:7px;background:var(--sf2);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--ink2);flex:none}
+.thumb{width:44px;height:44px;border-radius:8px;border:1px solid var(--line);background:var(--sf2);
+  display:grid;place-items:center;color:var(--mut);flex:none;overflow:hidden}
+.aitag{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--acc);
+  background:var(--acc-bg);border-radius:6px;padding:2px 7px;margin-top:3px}
+.dashed{border:1.5px dashed var(--line2);border-radius:11px;padding:14px;display:flex;
+  align-items:center;gap:11px;color:var(--mut);font-size:12.5px;background:var(--sf2)}
+.tree{font-size:13px}
+.tr-i{display:flex;align-items:center;gap:7px;height:31px;padding:0 8px;border-radius:7px;color:var(--ink2)}
+.tr-i.on{background:var(--sf2);color:var(--ink);font-weight:700}
+.tr-i .tg{width:13px;height:13px;border:1px solid var(--line2);border-radius:3px;display:grid;
+  place-items:center;font-size:11px;line-height:1;color:var(--mut);flex:none;background:var(--sf)}
+.kv{display:flex;gap:12px;padding:7px 0;font-size:13px;border-top:1px solid var(--line)}
+.kv:first-child{border-top:0}
+.kv .k{width:180px;color:var(--mut);flex:none}
+.kv .v{flex:1;min-width:0}
+.acc-i{display:flex;align-items:center;gap:8px;height:38px;padding:0 11px;font-size:13px;color:var(--ink2)}
+.acc-i.on{background:var(--sf2);font-weight:700;color:var(--ink);border-left:2px solid var(--acc)}
+.acc-h{display:flex;align-items:center;gap:8px;height:42px;padding:0 11px;font-size:13.5px;
+  font-weight:700;border-top:1px solid var(--line)}
+.cal{width:100%;border-collapse:collapse;font-size:11px}
+.cal th{font-size:11px;color:var(--mut);font-weight:600;padding:5px 0;text-align:center;
+  border-bottom:1px solid var(--line);background:var(--sf)}
+.cal td{border:1px solid var(--line);height:60px;vertical-align:top;padding:4px 5px;width:14.28%}
+.cal .d{font-size:11px;color:var(--mut)}
+.cal .d.now{background:var(--acc);color:var(--sf);border-radius:50%;width:18px;height:18px;
+  display:grid;place-items:center;font-weight:700}
+.cal .in{font-size:10.5px;color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.cal .out{font-size:10.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+.cal td.off{background:var(--sf2)}
+.tl{display:flex;align-items:center;gap:0;font-size:11.5px}
+.tl .n{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;text-align:center}
+.tl .dot{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line2);display:grid;
+  place-items:center;color:var(--mut2);background:var(--sf)}
+.tl .n.done .dot{border-color:var(--ink);color:var(--ink)}
+.tl .n.cur .dot{background:var(--acc);border-color:var(--acc);color:var(--sf)}
+.tl .n.cur{font-weight:700;color:var(--acc)}
+.tl .bar{height:1.5px;background:var(--line);flex:0 0 26px;margin-bottom:16px}
+</style></head>
+<body>
+<svg style="display:none" aria-hidden="true">
+ <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+ <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
+ <symbol id="i-cv" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></symbol>
+ <symbol id="i-ar" viewBox="0 0 24 24"><path d="m9.5 5 7 7-7 7"/></symbol>
+ <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+ <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+ <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+ <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
+ <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/><path d="M9.5 21v-6h5v6"/></symbol>
+ <symbol id="i-in" viewBox="0 0 24 24"><path d="M12 4v13"/><path d="m6.5 11.5 5.5 5.5 5.5-5.5"/><path d="M4 21h16"/></symbol>
+ <symbol id="i-out" viewBox="0 0 24 24"><path d="M12 20V7"/><path d="m6.5 12.5 5.5-5.5 5.5 5.5"/><path d="M4 3h16"/></symbol>
+ <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-5.5 6.5-5.5s6.5 1.9 6.5 5.5M16 5.4a3.4 3.4 0 0 1 0 6.4M18 14.8c2.2.6 3.5 2.3 3.5 5.2"/></symbol>
+ <symbol id="i-box" viewBox="0 0 24 24"><path d="M12 3 4 7v10l8 4 8-4V7Z"/><path d="m4 7 8 4 8-4M12 11v10"/></symbol>
+ <symbol id="i-wallet" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.2" fill="currentColor" stroke="none"/></symbol>
+ <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4h13a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5Z"/><path d="M8.5 4v17M11.5 9h4M11.5 13h4"/></symbol>
+ <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.5A1 1 0 0 1 4.5 5.5h4.2l1.8 2.2h9a1 1 0 0 1 1 1v9.8a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1Z"/></symbol>
+ <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 14a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V20a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H4a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H10a1.6 1.6 0 0 0 1-1.5V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V10a1.6 1.6 0 0 0 1.5 1H20a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></symbol>
+ <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4M9 12h6M9 16h4"/></symbol>
+ <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4"/></symbol>
+ <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 3v11"/><path d="m7.5 9.5 4.5 4.5 4.5-4.5"/><path d="M4 17v3h16v-3"/></symbol>
+ <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6"/><rect x="3.5" y="9" width="17" height="8" rx="2"/><path d="M7 14h10v7H7Z"/></symbol>
+ <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path d="M14 14h3v3h-3ZM20.5 14v3M14 20.5h6.5"/></symbol>
+ <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.2"/></symbol>
+ <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5 13.7 9 19 10.5 13.7 12 12 17.5 10.3 12 5 10.5 10.3 9 12 3.5ZM18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></symbol>
+ <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4h11l-1.5 3.5L16 11H5"/></symbol>
+ <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+ <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+ <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></symbol>
+ <symbol id="i-bank" viewBox="0 0 24 24"><path d="M3.5 9.5 12 4l8.5 5.5"/><path d="M5.5 9.5v9M10 9.5v9M14 9.5v9M18.5 9.5v9M3 20h18"/></symbol>
+ <symbol id="i-cash" viewBox="0 0 24 24"><rect x="3" y="6.5" width="18" height="11" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 12h.01M17.5 12h.01"/></symbol>
+ <symbol id="i-pig" viewBox="0 0 24 24"><path d="M3.5 12.5A6.5 6.5 0 0 1 10 8h4a6 6 0 0 1 5.4 3.4l1.6.6v3l-1.8.4A6.2 6.2 0 0 1 16 18.5V20h-3v-1.2h-2V20H8v-1.9a6.4 6.4 0 0 1-4.5-5.6Z"/><path d="M8.5 5.5 10 8M15.5 11.5h.01"/></symbol>
+ <symbol id="i-cheque" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10.5h6M6 14h3.5M15 13.5l1.6 1.6L20 11.5"/></symbol>
+ <symbol id="i-pct" viewBox="0 0 24 24"><circle cx="7.5" cy="7.5" r="2.6"/><circle cx="16.5" cy="16.5" r="2.6"/><path d="m5 19 14-14"/></symbol>
+ <symbol id="i-tree" viewBox="0 0 24 24"><path d="M5 4v15h5M5 11h5"/><rect x="10" y="2.5" width="9" height="4" rx="1.2"/><rect x="10" y="9" width="9" height="4" rx="1.2"/><rect x="10" y="16" width="9" height="4" rx="1.2"/></symbol>
+ <symbol id="i-list" viewBox="0 0 24 24"><path d="M4.5 6.5h.01M9 6.5h10.5M4.5 12h.01M9 12h10.5M4.5 17.5h.01M9 17.5h10.5"/></symbol>
+ <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+ <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+ <symbol id="i-report" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+ <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2.2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+ <symbol id="i-asset" viewBox="0 0 24 24"><path d="M3.5 20V9l8.5-5 8.5 5v11"/><rect x="8" y="12" width="8" height="8" rx="1"/></symbol>
+ <symbol id="i-shop" viewBox="0 0 24 24"><path d="M4 9V4h16v5"/><path d="M3 9h18l-1.4 11a1 1 0 0 1-1 .9H5.4a1 1 0 0 1-1-.9Z"/><path d="M9.5 13h5"/></symbol>
+ <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13.5a3.6 3.6 0 0 0 5.2.3l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.5 1.5"/><path d="M14 10.5a3.6 3.6 0 0 0-5.2-.3l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.5-1.5"/></symbol>
+ <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="2.2"/><path d="m3.6 7 8.4 6 8.4-6"/></symbol>
+ <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 8.5v-3a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/></symbol>
+ <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17Z"/><path d="m14.5 7.5 2 2"/></symbol>
+ <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3.2"/></symbol>
+ <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
+ <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16l-6 7v6l-4-2v-4L4 6Z"/></symbol>
+ <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 17V5"/><path d="m7.5 9.5 4.5-4.5 4.5 4.5"/><path d="M4 17v3h16v-3"/></symbol>
+ <symbol id="i-truck" viewBox="0 0 24 24"><rect x="2.5" y="7" width="11" height="9" rx="1.4"/><path d="M13.5 10h4l3 3.2V16h-7Z"/><circle cx="7" cy="18.5" r="1.8"/><circle cx="17" cy="18.5" r="1.8"/></symbol>
+ <symbol id="i-tag" viewBox="0 0 24 24"><path d="M4 11V5a1 1 0 0 1 1-1h6l9 9-7 7-9-9Z"/><circle cx="8" cy="8" r="1.3"/></symbol>
+ <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19Z"/><path d="M12 10v4M12 17h.01"/></symbol>
+ <symbol id="i-drag" viewBox="0 0 24 24"><path d="M12 16V6"/><path d="m7.5 10.5 4.5-4.5 4.5 4.5"/><rect x="3.5" y="16" width="17" height="4.5" rx="1.5"/></symbol>
+</svg>
+<style>
+/* ══ ส่วนขยายสำหรับโมดูลบอร์ดงาน (Kanban) — ต่อยอดจากจานสีเดิม ห้ามเพิ่มสีนอกโทเคน ══ */
+body{font-family:'IBM Plex Sans Thai','Noto Sans Thai','Sarabun',system-ui,sans-serif}
+
+/* สีป้ายกำกับ 6 สี = โทเคน --color-tag-* ใน globals.css (ไม่คิดใหม่) */
+:root{--wall:#f3f4f7;--out:#e9eefc;--note:#fffaed;--note-line:#ecd9a4;--note-ink:#8a6414;--t-slate:#737373;--t-blue:#1d4ed8;--t-green:#15803d;--t-amber:#b45309;--t-red:#b91c1c;--t-purple:#6d28d9}
+
+/* ── เวทีบอร์ด ─────────────────────────────────────────────────────────── */
+.kbar{display:flex;align-items:center;gap:9px;padding:10px 20px;border-bottom:1px solid var(--line);flex:none;background:var(--sf)}
+.kbar .sp{flex:1}
+.kbar h1{font-size:17px;font-weight:700;letter-spacing:-.02em}
+.star{color:var(--t-amber)}
+.vsw{display:flex;gap:2px;border:1px solid var(--line);border-radius:8px;padding:2px;background:var(--sf)}
+.vsw .v{display:flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:6px;font-size:12.5px;color:var(--mut)}
+.vsw .v.on{background:var(--ink);color:var(--sf);font-weight:700}
+.avs{display:flex}
+.avs .av{width:26px;height:26px;border-radius:50%;margin-left:-6px;box-shadow:0 0 0 2px var(--sf);font-size:11px}
+.avs .av:first-child{margin-left:0}
+.av.acc{background:var(--acc-bg);border-color:var(--acc);color:var(--acc)}
+.av.add{background:var(--sf);border-style:dashed;color:var(--mut2)}
+
+.stage{background:var(--stage);flex:1;min-height:0;display:flex;flex-direction:column}
+.fbar{display:flex;align-items:center;gap:7px;padding:9px 20px;font-size:12px;color:var(--mut);flex:none}
+.fchip{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:7px;
+  border:1px solid var(--acc);background:var(--acc-bg);color:var(--acc);font-size:12px;font-weight:600}
+.fchip .x{opacity:.6}
+
+.kb{display:flex;gap:12px;padding:4px 20px 18px;align-items:flex-start;overflow:hidden;flex:1;min-height:0}
+.kl{width:240px;flex:none;background:#eceef1;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:7px;max-height:100%}
+.kl.ghost{background:rgba(236,238,241,.55);border:1.5px dashed var(--line2)}
+.klh{display:flex;align-items:center;gap:7px;padding:2px 4px 0}
+.klh .nm{font-size:13px;font-weight:700}
+.klh .n{font-size:11.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+.klh .sp{flex:1}
+.klh .i{color:var(--mut)}
+.wip{font-size:10.5px;border:1px solid var(--line2);border-radius:5px;padding:0 5px;color:var(--mut);background:var(--sf)}
+.wip.full{border-color:var(--dg);color:var(--dg);font-weight:700}
+.kcs{display:flex;flex-direction:column;gap:7px;min-height:0}
+.kc{background:var(--sf);border:1px solid var(--line);border-radius:10px;padding:8px 9px 7px;
+  display:flex;flex-direction:column;gap:6px;box-shadow:0 1px 1px rgba(10,10,10,.05)}
+.kc.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-bg)}
+.kc.drag{transform:rotate(2.4deg);box-shadow:0 10px 24px rgba(10,10,10,.18);border-color:var(--line2)}
+.kc .ti{font-size:12.8px;line-height:1.4;font-weight:500}
+.kc .cover{height:64px;border-radius:7px;background:var(--sf2);border:1px solid var(--line);
+  display:grid;place-items:center;color:var(--mut2);margin:-2px 0 1px}
+.lbs{display:flex;flex-wrap:wrap;gap:4px}
+.lb{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:5px;font-size:10.5px;
+  font-weight:600;border:1px solid currentColor;background:var(--sf)}
+.lb.slate{color:var(--t-slate)} .lb.blue{color:var(--t-blue)} .lb.green{color:var(--t-green)}
+.lb.amber{color:var(--t-amber)} .lb.red{color:var(--t-red)} .lb.purple{color:var(--t-purple)}
+.kf{display:flex;align-items:center;gap:9px;font-size:11px;color:var(--mut)}
+.kf .sp{flex:1}
+.kf .b{display:inline-flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums}
+.due{white-space:nowrap;display:inline-flex;align-items:center;gap:4px;height:19px;padding:0 6px;border-radius:5px;
+  font-size:10.5px;font-weight:600;border:1px solid var(--line2);color:var(--mut);background:var(--sf)}
+.due.soon{border-color:var(--t-amber);color:var(--t-amber);background:#fdf6ec}
+.due.late{border-color:var(--dg);color:var(--dg);background:#fdeeee}
+.due.done{border-color:var(--t-green);color:var(--t-green);background:#eef7f0}
+.kadd{display:flex;align-items:center;gap:7px;height:32px;padding:0 6px;border-radius:8px;
+  font-size:12.5px;color:var(--mut)}
+.src{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--acc);
+  background:var(--acc-bg);border-radius:5px;padding:1px 6px;align-self:flex-start}
+
+/* ── หลังการ์ด (card back) ─────────────────────────────────────────────── */
+.modal{position:absolute;left:50%;top:26px;transform:translateX(-50%);width:872px;background:var(--sf);
+  border:1px solid var(--line);border-radius:14px;box-shadow:0 22px 60px rgba(10,10,10,.26);z-index:45;
+  display:flex;flex-direction:column;overflow:hidden}
+.mh{display:flex;align-items:flex-start;gap:10px;padding:15px 18px 12px;border-bottom:1px solid var(--line)}
+.mb{display:flex;min-height:0}
+.mmain{flex:1;min-width:0;padding:15px 18px 18px;display:flex;flex-direction:column;gap:15px}
+.mside{width:228px;flex:none;border-left:1px solid var(--line);background:var(--sf2);padding:14px 13px;
+  display:flex;flex-direction:column;gap:13px}
+.sh{font-size:11px;font-weight:700;color:var(--mut);letter-spacing:.02em;margin-bottom:6px}
+.sbtn{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;background:var(--sf);font-size:12.5px;color:var(--ink2)}
+.blk{display:flex;flex-direction:column;gap:7px}
+.bh{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700}
+.bh .i{color:var(--mut)}
+.bh .sp{flex:1}
+.prose{font-size:13px;line-height:1.6;color:var(--ink2)}
+.prose ul{margin:4px 0 0 18px}
+.pbar{height:7px;border-radius:4px;background:var(--sf2);overflow:hidden;border:1px solid var(--line)}
+.pbar i{display:block;height:100%;background:var(--t-green)}
+.cki{display:flex;align-items:flex-start;gap:9px;padding:5px 0;font-size:12.8px}
+.cki.done{color:var(--mut2);text-decoration:line-through}
+.cmt{display:flex;gap:9px;padding:9px 0;border-top:1px solid var(--line)}
+.cmt .bd{flex:1;min-width:0}
+.cmt .who{font-size:12.5px;font-weight:700}
+.cmt .who span{font-weight:400;color:var(--mut);font-size:11.5px;margin-left:6px}
+.cmt .tx{font-size:12.8px;color:var(--ink2);margin-top:3px;line-height:1.55}
+.men{color:var(--acc);font-weight:600}
+.att{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:12.5px}
+.linkrow{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:9px;
+  padding:8px 10px;font-size:12.5px;background:var(--sf)}
+.linkrow .i{color:var(--acc)}
+.linkrow .sp{flex:1}
+
+/* ── ปฏิทิน (ใหญ่กว่าของบัญชี) ─────────────────────────────────────────── */
+.cal2{width:100%;border-collapse:collapse;font-size:11.5px;background:var(--sf)}
+.cal2 th{font-size:11.5px;color:var(--mut);font-weight:700;padding:7px 0;text-align:center;border:1px solid var(--line);background:var(--sf2)}
+.cal2 td{border:1px solid var(--line);height:130px;vertical-align:top;padding:5px;width:14.28%}
+.cal2 td.off{background:var(--sf2)}
+.cal2 .dn{font-size:11px;color:var(--mut);font-weight:600;margin-bottom:4px}
+.cal2 .dn.now{background:var(--acc);color:var(--sf);border-radius:50%;width:19px;height:19px;
+  display:grid;place-items:center}
+.evt{display:flex;align-items:center;gap:4px;font-size:10.5px;padding:2px 5px;border-radius:5px;
+  background:var(--sf2);border:1px solid var(--line);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evt i{width:6px;height:6px;border-radius:50%;flex:none;background:var(--mut2)}
+.evt.red i{background:var(--t-red)} .evt.blue i{background:var(--t-blue)}
+.evt.green i{background:var(--t-green)} .evt.amber i{background:var(--t-amber)}
+.evt.purple i{background:var(--t-purple)}
+
+/* ── ตัวสร้างกฎอัตโนมัติ ───────────────────────────────────────────────── */
+.rule{border:1px solid var(--line);border-radius:11px;background:var(--sf);overflow:hidden}
+.rrow{display:flex;align-items:center;gap:9px;padding:11px 13px;border-top:1px solid var(--line);font-size:13px}
+.rrow:first-child{border-top:0}
+.rtag{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:6px;
+  font-size:11.5px;font-weight:700;flex:none}
+.rtag.when{background:var(--ink);color:var(--sf)}
+.rtag.then{background:var(--acc-bg);color:var(--acc);border:1px solid var(--acc)}
+.rtag.and{background:var(--sf2);color:var(--mut);border:1px solid var(--line)}
+.slot{display:inline-flex;align-items:center;gap:6px;height:29px;padding:0 9px;border-radius:7px;
+  border:1px solid var(--line2);background:var(--sf2);font-size:12.5px;font-weight:600;color:var(--ink)}
+.slot.acc{border-color:var(--acc);color:var(--acc);background:var(--acc-bg)}
+
+/* ── การ์ดบอร์ดในหน้ารวม ───────────────────────────────────────────────── */
+.bcard{border:1px solid var(--line);border-radius:12px;background:var(--sf);padding:0;overflow:hidden;
+  display:flex;flex-direction:column}
+.bcard .hd{height:52px;background:var(--sf2);border-bottom:1px solid var(--line);display:flex;
+  align-items:flex-end;padding:8px 11px;gap:7px;position:relative}
+.bcard .hd::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--mut2)}
+.bcard .hd.blue::before{background:var(--t-blue)} .bcard .hd.green::before{background:var(--t-green)}
+.bcard .hd.amber::before{background:var(--t-amber)} .bcard .hd.purple::before{background:var(--t-purple)}
+.bcard .hd.red::before{background:var(--t-red)}
+.bcard .bd{padding:10px 12px 11px;display:flex;flex-direction:column;gap:8px}
+.bcard .nm{font-size:13.5px;font-weight:700}
+.bcard .meta{font-size:11.5px;color:var(--mut)}
+.newb{border:1.5px dashed var(--line2);border-radius:12px;background:var(--sf2);display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--mut);font-size:12.5px;min-height:132px}
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:13px}
+
+/* ── รางไอคอน (ย่อ drawer เมื่ออยู่ในบอร์ด) ─────────────────────────────── */
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+
+/* ── มือถือ ────────────────────────────────────────────────────────────── */
+.frame.m .kb{padding:8px 12px 12px;gap:9px}
+.frame.m .kl{width:270px;max-height:none}
+.mkbar{display:flex;align-items:center;gap:8px;padding:9px 13px;border-bottom:1px solid var(--line);flex:none}
+.mkbar .sp{flex:1}
+.mkbar h1{font-size:15px;font-weight:700}
+.pgd{display:flex;gap:5px;justify-content:center;padding:8px 0 2px}
+.pgd i{width:5px;height:5px;border-radius:50%;background:var(--line2)}
+.pgd i.on{background:var(--ink);width:16px;border-radius:3px}
+.kbdlg{font-size:11px;color:var(--mut);text-align:center;padding:2px 0 6px}
+</style>
+<svg style="display:none" aria-hidden="true">
+ <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.6 2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9L3.5 9.8l5.9-.8Z"/></symbol>
+ <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5.5h16v11H9.5L5.5 20v-3.5H4Z"/></symbol>
+ <symbol id="i-clip" viewBox="0 0 24 24"><path d="M17.5 8.5 10 16a3 3 0 0 1-4.2-4.2l7.8-7.8a4.6 4.6 0 0 1 6.5 6.5l-7.7 7.7a6.2 6.2 0 0 1-8.8-8.8l6.6-6.6"/></symbol>
+ <symbol id="i-cklist" viewBox="0 0 24 24"><path d="m3.5 7 2 2 3-3.5M3.5 15l2 2 3-3.5M11.5 7.5h9M11.5 16h9"/></symbol>
+ <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.5 3 5 13.5h6L10.5 21 19 10.5h-6Z"/></symbol>
+ <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 15.5V10a6 6 0 1 0-12 0v5.5L4 18h16Z"/><path d="M10 21h4"/></symbol>
+ <symbol id="i-line" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="4"/><path d="M9.5 17 8 20.5 12.5 17"/><path d="M7.5 8v5M7.5 8h2.5M7.5 10.5h2M7.5 13h2.5M13 13V8l3 5V8"/></symbol>
+</svg>
+<style>
+/* ══ CSS เฉพาะระบบสมาชิก (คลาสใหม่ทั้งหมดขึ้นต้น .mb- · ใช้ตัวแปรจานเดิมเท่านั้น) ══ */
+
+/* ป้ายระดับสมาชิกขนาดใหญ่ (หัวโปรไฟล์ 360) — ใช้ร่วมกับ .lb.<สี> เดิม */
+.mb-tier{height:26px;padding:0 11px;border-radius:8px;font-size:13px;font-weight:700}
+
+/* กล่องฟิลด์บนผืนผ้าใบตัวออกแบบฟอร์ม */
+.mb-fld{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--sf)}
+.mb-fld .l{font-size:11px;color:var(--mut)}
+.mb-fld .v{font-size:13px;font-weight:600;margin-top:2px;color:var(--ink)}
+.mb-fld.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-bg)}
+.mb-fld.ph .v{color:var(--mut2);font-weight:400}
+
+/* แถวชนิดฟิลด์ลากได้ (แถบซ้ายของตัวออกแบบฟอร์ม) */
+.mb-ftype{display:flex;align-items:center;gap:8px;height:33px;padding:0 9px;border:1px solid var(--line);
+  border-radius:8px;margin-bottom:6px;font-size:12.5px;color:var(--ink2);background:var(--sf)}
+.mb-ftype .i{color:var(--mut2);margin-left:auto}
+
+/* ป้ายหัวส่วนฟอร์ม: ระบบ / กำหนดเอง / อ่อนไหว — reuse .chip */
+.mb-sec{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+
+/* รูปของรางวัลในแคตตาล็อก */
+.mb-rimg{height:92px;border-radius:10px 10px 0 0;background:var(--sf2);border:1px solid var(--line);
+  border-bottom:0;display:grid;place-items:center;color:var(--mut2)}
+
+/* บันไดระดับสมาชิก */
+.mb-ladder{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:9px}
+.mb-ladder .n{font-size:15px;font-weight:700}
+.mb-ladder .cnt{font-size:11.5px;color:var(--mut)}
+.mb-ladder .bf{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--ink2)}
+.mb-ladder .bf .i{color:var(--mut);flex:none;margin-top:1px}
+
+/* วงกลมสแตมป์ */
+.mb-stamps{display:flex;align-items:center;gap:0}
+.mb-stamps .sdot{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--line2);display:grid;
+  place-items:center;color:var(--mut2);background:var(--sf);flex:none}
+.mb-stamps .sdot.on{background:var(--ink);border-color:var(--ink);color:var(--sf)}
+.mb-stamps .sbar{flex:0 0 14px;height:1.5px;background:var(--line)}
+
+/* กล่องเรียกความสนใจ (ทดลองรัน / คำเตือน) */
+.mb-callout{border:1px solid var(--acc);background:var(--acc-bg);border-radius:10px;padding:11px 14px;
+  display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--acc)}
+.mb-callout b{font-weight:700}
+</style>
+<style>
+/* ══ CSS เฉพาะภาพ 06–09 (agent คู่ขนาน · ต่อจาก _mb.part) — ห้ามเพิ่มสีนอกจาน ══ */
+
+/* ── 06 POS: รายการบิล ───────────────────────────────────────────────── */
+.mb2-cartrow{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.mb2-cartrow:first-child{border-top:0}
+.mb2-cartrow .qty{width:26px;height:26px;border-radius:7px;background:var(--sf2);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:11.5px;font-weight:700;color:var(--ink2);flex:none}
+.mb2-cartrow .nm{font-size:13px;font-weight:600}
+.mb2-cartrow .sub{font-size:11px;color:var(--mut);margin-top:2px}
+.mb2-cartrow .amt{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ── panel สิทธิ์ที่ POS ──────────────────────────────────────────────── */
+.mb2-panel{width:400px;flex:none;border-left:1px solid var(--line);background:var(--sf2);
+  display:flex;flex-direction:column;overflow:hidden}
+.mb2-panel .ph2{padding:14px 16px;border-bottom:1px solid var(--line);background:var(--sf)}
+.mb2-panel .body2{flex:1;min-height:0;overflow:hidden;padding:13px 16px;display:flex;flex-direction:column;gap:12px}
+.mb2-benefit{border:1px solid var(--line);border-radius:10px;background:var(--sf);padding:10px 12px;
+  display:flex;flex-direction:column;gap:8px}
+.mb2-brow{display:flex;align-items:center;gap:9px;font-size:12.5px}
+.mb2-brow .nm{flex:1;min-width:0}
+.mb2-brow .nm b{font-weight:700}
+.mb2-brow .amt{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mb2-brow .amt.dg{color:var(--dg)}
+
+/* ── สรุปยอด / ลำดับส่วนลด ────────────────────────────────────────────── */
+.mb2-sumrow{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:5px 0}
+.mb2-sumrow .k{color:var(--mut);flex:1}
+.mb2-sumrow .v{font-weight:600;font-variant-numeric:tabular-nums}
+.mb2-sumrow.tot{border-top:1px solid var(--line);margin-top:4px;padding-top:9px;font-size:15px}
+.mb2-sumrow.tot .v{font-weight:700;font-size:17px}
+
+/* ── voucher: การ์ดฉีก ────────────────────────────────────────────────── */
+.mb2-vch{border:1px solid var(--line);border-radius:10px;background:var(--sf);display:flex;overflow:hidden}
+.mb2-vch .lft{flex:1;min-width:0;padding:10px 12px;display:flex;flex-direction:column;gap:3px}
+.mb2-vch .rgt{width:78px;flex:none;border-left:1.5px dashed var(--line2);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;padding:6px}
+.mb2-vch .rgt b{font-size:14px;font-weight:700}
+.mb2-vch .rgt span{font-size:9.5px;color:var(--mut)}
+.mb2-vch.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-bg)}
+.mb2-vch.dis{opacity:.5}
+
+/* ── สแตมป์การ์ด ──────────────────────────────────────────────────────── */
+.mb2-stamps{display:flex;flex-wrap:wrap;gap:6px}
+.mb2-stamp{width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line2);display:grid;
+  place-items:center;color:var(--mut2);flex:none;background:var(--sf)}
+.mb2-stamp.on{background:var(--ink);border-color:var(--ink);color:var(--sf)}
+.mb2-stamp.nx{border-style:dashed;color:var(--acc);border-color:var(--acc)}
+
+/* ── สรุปลำดับส่วนลด ──────────────────────────────────────────────────── */
+.mb2-order{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--mut);flex-wrap:wrap}
+.mb2-order .st{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;
+  background:var(--sf);border:1px solid var(--line);color:var(--ink2);font-weight:600}
+.mb2-order svg{color:var(--mut2)}
+
+/* ── 07 journey: ตารางผล / การ์ดล่าง ─────────────────────────────────── */
+.mb2-jrow{display:flex;align-items:center;gap:9px}
+.mb2-jrow .sw{flex:none}
+
+/* ── voucher/giftcard list rows (07) ─────────────────────────────────── */
+.mb2-gc{display:flex;align-items:center;gap:14px;padding:11px 0;border-top:1px solid var(--line)}
+.mb2-gc:first-child{border-top:0}
+.mb2-gc .k{font-size:12px;color:var(--mut)}
+.mb2-gc .v{font-size:19px;font-weight:700;letter-spacing:-.02em;margin-top:3px;font-variant-numeric:tabular-nums}
+
+/* ── 08 ไทม์ไลน์รวม ──────────────────────────────────────────────────── */
+.mb2-tl{display:flex;gap:11px;padding:10px 0;border-top:1px solid var(--line)}
+.mb2-tl:first-child{border-top:0}
+.mb2-tl .dot{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex:none;
+  border:1.5px solid var(--line2);color:var(--mut);background:var(--sf)}
+.mb2-tl .dot.blue{border-color:var(--t-blue);color:var(--t-blue)}
+.mb2-tl .dot.green{border-color:var(--t-green);color:var(--t-green)}
+.mb2-tl .dot.amber{border-color:var(--t-amber);color:var(--t-amber)}
+.mb2-tl .dot.red{border-color:var(--t-red);color:var(--t-red)}
+.mb2-tl .dot.purple{border-color:var(--t-purple);color:var(--t-purple)}
+.mb2-tl .dot.slate{border-color:var(--t-slate);color:var(--t-slate)}
+.mb2-tl .bd{flex:1;min-width:0}
+.mb2-tl .tt{font-size:12.8px;font-weight:600}
+.mb2-tl .mt{font-size:11.5px;color:var(--mut);margin-top:2px}
+.mb2-tl .tm{font-size:11px;color:var(--mut2);white-space:nowrap}
+
+/* ── รีวิว ────────────────────────────────────────────────────────────── */
+.mb2-stars{display:inline-flex;gap:2px}
+.mb2-stars svg{width:13px;height:13px;color:var(--mut2)}
+.mb2-stars svg.on{color:var(--ink);fill:var(--ink)}
+.mb2-rev{border-top:1px solid var(--line);padding:9px 0;font-size:12.3px}
+.mb2-rev:first-child{border-top:0}
+
+/* ── แนะนำเพื่อน: ต้นไม้ ──────────────────────────────────────────────── */
+.mb2-tree2{display:flex;flex-direction:column;gap:0}
+.mb2-tnode{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px dashed var(--line)}
+.mb2-tnode:first-child{border-top:0}
+.mb2-tnode .st{margin-left:auto}
+
+/* ── 09 มือถือ: บัตรสมาชิก ────────────────────────────────────────────── */
+.mb2-card{margin:0 14px;border-radius:14px;background:var(--ink);color:var(--sf);padding:16px 16px 14px;
+  display:flex;flex-direction:column;gap:12px}
+.mb2-card .brand{font-size:10.5px;letter-spacing:.08em;color:#fff;opacity:.65}
+.mb2-card .nm{font-size:15.5px;font-weight:700}
+.mb2-card .row2{display:flex;align-items:center;gap:8px}
+.mb2-card .id{font-size:11px;opacity:.7;font-variant-numeric:tabular-nums}
+.mb2-qr{width:108px;height:108px;border-radius:8px;background:#fff;display:grid;
+  grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr);gap:2px;padding:7px;margin:0 auto}
+.mb2-qr i{display:block;border-radius:1px}
+.mb2-qr i.on{background:#0a0a0a}
+.mb2-tierbadge{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:6px;
+  font-size:10.5px;font-weight:700;background:rgba(255,255,255,.14);color:#fff}
+.mb2-pbar2{height:6px;border-radius:3px;background:rgba(255,255,255,.18);overflow:hidden}
+.mb2-pbar2 i{display:block;height:100%;background:#fff}
+.mb2-cardmenu{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 14px}
+.mb2-cm{border:1px solid var(--line);border-radius:11px;padding:10px 6px;display:flex;flex-direction:column;
+  align-items:center;gap:6px;font-size:10.5px;color:var(--ink2);text-align:center}
+
+/* ── 09 กระเป๋าสิทธิ์: สแตมป์การ์ดจริง ────────────────────────────────── */
+.mb2-stampcard{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:9px}
+.mb2-stampgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.mb2-warn{display:flex;align-items:center;gap:8px;border:1px solid var(--t-amber);background:#fdf6ec;
+  color:var(--t-amber);border-radius:9px;padding:8px 10px;font-size:11.5px}
+
+/* ── 09 โปรไฟล์: ฟิลด์ล็อก ────────────────────────────────────────────── */
+.mb2-frow{display:flex;align-items:center;gap:9px;padding:10px 0;border-top:1px solid var(--line)}
+.mb2-frow:first-child{border-top:0}
+.mb2-frow .k{width:100px;flex:none;font-size:12px;color:var(--mut)}
+.mb2-frow .v{flex:1;min-width:0;font-size:12.8px;font-weight:600}
+.mb2-frow.lock .v{color:var(--mut)}
+</style>
+<style>
+/* ══ CSS เฉพาะภาพ 10–14 (agent คู่ขนาน · ต่อจาก _mb2.part) — ห้ามเพิ่มสีนอกจาน ══ */
+
+/* ── พื้นหลังเบลอหลังโมดัล ────────────────────────────────────────────── */
+.mb3-blurbg{filter:blur(2.5px);opacity:.92}
+
+/* ── 10 สมัครสมาชิกใหม่: โมดัลฟอร์ม ───────────────────────────────────── */
+.mb3-modalfoot{display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid var(--line);
+  background:var(--sf2)}
+.mb3-consent{display:flex;align-items:center;gap:7px;font-size:12.3px;color:var(--ink2)}
+.mb3-g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+
+/* ── 11 ตัวซ้ำ/รวมคน: แผงเปรียบเทียบ ──────────────────────────────────── */
+.mb3-duprow{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line);font-size:12.5px}
+.mb3-duprow:first-child{border-top:0}
+.mb3-duprow .nm{flex:1;min-width:0}
+.mb3-duprow .nm b{font-weight:700;font-size:13px}
+.mb3-duprow .nm .mu2{font-size:11.5px;color:var(--mut);margin-top:2px}
+.mb3-cmphead{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.mb3-cmpname{font-size:13.5px;font-weight:700}
+.mb3-cmpmeta{font-size:11px;color:var(--mut);margin-top:4px;line-height:1.55}
+.mb3-cmprow{display:grid;grid-template-columns:82px 1fr 1fr;gap:8px;align-items:center;padding:7px 0;
+  border-top:1px solid var(--line);font-size:12px}
+.mb3-cmprow:first-child{border-top:0}
+.mb3-cmprow .k{color:var(--mut)}
+.mb3-cmpval{display:flex;align-items:center;gap:6px;min-width:0}
+.mb3-cmpval b{font-weight:600;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mb3-radio{width:15px;height:15px;border-radius:50%;border:1.5px solid var(--line2);display:inline-block;
+  flex:none;position:relative}
+.mb3-radio.on{border-color:var(--ink)}
+.mb3-radio.on::after{content:"";position:absolute;left:3px;top:3px;width:7px;height:7px;border-radius:50%;
+  background:var(--ink)}
+.mb3-sumbox{border:1px solid var(--acc);background:var(--acc-bg);border-radius:10px;padding:11px 13px;
+  font-size:12.3px;color:var(--ink2);display:flex;flex-direction:column;gap:5px}
+.mb3-sumbox b{color:var(--ink)}
+
+/* ── 12 นำเข้า CSV: จับคู่คอลัมน์ ─────────────────────────────────────── */
+.mb3-steps{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut)}
+.mb3-steps b{color:var(--ink)}
+.mb3-maprow{display:flex;align-items:center;gap:9px;padding:8px 0;border-top:1px solid var(--line)}
+.mb3-maprow:first-child{border-top:0}
+.mb3-maprow .col{width:96px;flex:none;font-size:11.8px;font-weight:600;color:var(--ink2);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.mb3-maprow .ar{color:var(--mut2);flex:none}
+.mb3-maprow .fld{flex:1;min-width:0}
+.mb3-samptbl{width:100%;border-collapse:collapse;font-size:10.8px}
+.mb3-samptbl th{text-align:left;font-weight:700;color:var(--mut);padding:5px 7px;border-bottom:1px solid var(--line);
+  white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.mb3-samptbl td{padding:5px 7px;border-bottom:1px solid var(--line);color:var(--ink2);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:90px}
+
+/* ── 13 ช่องทางที่มา: กราฟแท่งแนวนอน ──────────────────────────────────── */
+.mb3-chrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.mb3-chrow:first-child{border-top:0}
+.mb3-chrow .nm{width:118px;flex:none;font-size:12.3px;font-weight:600}
+.mb3-chrow .bar{flex:1;height:16px;background:var(--sf2);border-radius:4px;overflow:hidden}
+.mb3-chrow .bar i{display:block;height:100%;background:var(--ink);border-radius:4px 0 0 4px}
+.mb3-chrow .m{width:64px;flex:none;text-align:right;font-size:10.8px;color:var(--mut);
+  font-variant-numeric:tabular-nums}
+.mb3-chrow .cnt{width:46px;flex:none;text-align:right;font-size:12.5px;font-weight:700;
+  font-variant-numeric:tabular-nums}
+
+/* ── 14 PDPA: เมทริกซ์สิทธิ์เห็นข้อมูลอ่อนไหว ─────────────────────────── */
+.mb3-mtbl{width:100%;border-collapse:collapse;font-size:12px}
+.mb3-mtbl th{text-align:center;font-weight:700;color:var(--mut);padding:7px 6px;border-bottom:1px solid var(--line);
+  font-size:11px}
+.mb3-mtbl th:first-child{text-align:left}
+.mb3-mtbl td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:center}
+.mb3-mtbl td:first-child{text-align:left;font-weight:600;color:var(--ink2)}
+</style>
+<style>
+/* ══ CSS เฉพาะภาพ 15–19 (agent คู่ขนาน · ต่อจาก _mb.part/_mb2.part) — ห้ามเพิ่มสีนอกจาน ══ */
+
+/* ── แถวฟอร์ม label + control (ตัวแก้ระดับ/สแตมป์/รางวัล/voucher) ───────── */
+.mb4-frow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.mb4-frow:first-child{border-top:0}
+.mb4-frow.top{align-items:flex-start}
+.mb4-frow .k{width:118px;flex:none;font-size:12px;color:var(--mut);padding-top:2px}
+.mb4-frow .c{flex:1;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ── checkbox + label แนวนอน (ใช้ร่วม .cbx เดิม) ─────────────────────────── */
+.mb4-ck{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink2);white-space:nowrap}
+
+/* ── ตัวเลือกสี 6 สีของระดับ ──────────────────────────────────────────── */
+.mb4-sw6{display:flex;gap:8px}
+.mb4-swc{width:26px;height:26px;border-radius:50%;border:2px solid transparent;position:relative;flex:none}
+.mb4-swc.sel{border-color:var(--ink)}
+.mb4-swc.sel::after{content:"";position:absolute;inset:3px;border-radius:50%;border:2px solid var(--sf)}
+.mb4-swc.slate{background:var(--t-slate)} .mb4-swc.blue{background:var(--t-blue)}
+.mb4-swc.green{background:var(--t-green)} .mb4-swc.amber{background:var(--t-amber)}
+.mb4-swc.red{background:var(--t-red)} .mb4-swc.purple{background:var(--t-purple)}
+
+/* ── ตัวเลือกลำดับ (stepper) ──────────────────────────────────────────── */
+.mb4-step{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:8px;overflow:hidden;height:34px}
+.mb4-step .sb{width:28px;height:100%;display:grid;place-items:center;color:var(--mut);background:var(--sf2)}
+.mb4-step .sv{width:42px;text-align:center;font-size:13px;font-weight:600}
+
+/* ── กล่องสแกน QR ขนาดใหญ่ ───────────────────────────────────────────── */
+.mb4-scan{border:1.5px dashed var(--line2);border-radius:12px;padding:30px 20px;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--mut);
+  font-size:12.5px;background:var(--sf2)}
+.mb4-scan svg{color:var(--mut2)}
+
+/* ── สแตมป์วงใหญ่ (ตัวอย่างการ์ดจริงขนาดใหญ่) ───────────────────────────── */
+.mb4-stampsxl{display:flex;flex-wrap:wrap;gap:10px}
+.mb4-stampsxl .sd{width:46px;height:46px;border-radius:50%;border:2px solid var(--line2);display:grid;
+  place-items:center;color:var(--mut2);background:var(--sf);font-size:13px;font-weight:700;flex:none}
+.mb4-stampsxl .sd.on{background:var(--ink);border-color:var(--ink);color:var(--sf)}
+
+/* ── ตัวเลือกผู้รับ voucher: รายคน / กลุ่ม ───────────────────────────────── */
+.mb4-pick{border:1px solid var(--line);border-radius:10px;padding:10px 12px;flex:1}
+.mb4-pick.sel{border-color:var(--acc);background:var(--acc-bg)}
+.mb4-pick .t{font-size:11.5px;color:var(--mut);font-weight:700}
+.mb4-pick .v{font-size:13px;font-weight:600;margin-top:3px}
+.mb4-pick.sel .t{color:var(--acc)}
+
+/* ── แบนเนอร์เตือนต้องอนุมัติ (โทน dg ที่มีอยู่แล้วในระบบ เช่น .due.late) ──── */
+.mb4-appr{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--dg);background:#fdeeee;
+  border-radius:10px;padding:10px 12px;font-size:12.3px;color:var(--dg)}
+.mb4-appr b{font-weight:700}
+
+/* ── กรอบอัปโหลดรูป ──────────────────────────────────────────────────── */
+.mb4-upl{width:96px;height:96px;border-radius:10px;border:1.5px dashed var(--line2);display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--mut2);
+  font-size:10.5px;text-align:center;background:var(--sf2);flex:none}
+</style>
+<style>
+/* ══ CSS เฉพาะภาพ 20–25 (agent คู่ขนาน · ต่อจาก _mb2.part) — ห้ามเพิ่มสีนอกจาน ══ */
+
+/* ── โมดัลขวา (drawer) — ใช้แทน .modal ที่ล็อกกึ่งกลางเมื่อบานต้องชิดขวา ───── */
+.mb5-drawer{position:absolute;right:0;top:0;bottom:0;width:500px;background:var(--sf);
+  border-left:1px solid var(--line);box-shadow:-24px 0 60px rgba(10,10,10,.20);z-index:45;
+  display:flex;flex-direction:column;overflow:hidden}
+.mb5-dh{display:flex;align-items:center;gap:9px;padding:15px 18px;border-bottom:1px solid var(--line);flex:none}
+.mb5-dh h2{font-size:14.5px}
+.mb5-db{flex:1;min-height:0;overflow-y:auto;padding:15px 18px 18px;display:flex;flex-direction:column;gap:14px}
+.mb5-df{display:flex;align-items:center;gap:9px;padding:12px 18px;border-top:1px solid var(--line);
+  background:var(--sf2);flex:none}
+.mb5-fld{display:flex;flex-direction:column;gap:6px}
+.mb5-fld .l{font-size:11.5px;font-weight:700;color:var(--ink2)}
+
+/* ── ตัวเลือกแบบชิป (มูลค่า gift card / ผู้รับ ฯลฯ) ────────────────────── */
+.mb5-choices{display:flex;gap:7px;flex-wrap:wrap}
+.mb5-choice{display:inline-flex;align-items:center;height:32px;padding:0 12px;border:1px solid var(--line);
+  border-radius:8px;font-size:12.5px;color:var(--ink2);background:var(--sf)}
+.mb5-choice.on{border-color:var(--ink);background:var(--ink);color:var(--sf);font-weight:700}
+
+/* ── กล่องข้อความหลายบรรทัด (ข้อความบนบัตร / แคมเปญ / แชร์ referral) ──── */
+.mb5-msgbox{border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:12.6px;
+  line-height:1.65;color:var(--ink2);background:var(--sf);min-height:82px}
+.mb5-msgbox b{color:var(--acc);font-weight:700}
+
+/* ── การ์ดตั้งค่าสวิตช์ใหญ่ (พ่วงบัญชี / เปิดใช้แนะนำเพื่อน) ──────────── */
+.mb5-swcard{border:1px solid var(--line);border-radius:10px;padding:12px 13px;background:var(--sf2)}
+.mb5-swtop{display:flex;align-items:flex-start;gap:10px}
+.mb5-swtop b{font-size:13px}
+.mb5-swtop .sp{flex:1}
+.mb5-swtop p{font-size:11.8px;color:var(--mut);margin-top:5px;line-height:1.55}
+.mb5-setrow{display:flex;align-items:center;gap:8px;font-size:12.3px;color:var(--ink2);padding:7px 0;
+  border-top:1px solid var(--line)}
+.mb5-setrow:first-child{border-top:0}
+.mb5-setrow .k{color:var(--mut);width:150px;flex:none}
+.mb5-cks{display:flex;gap:14px;flex-wrap:wrap;font-size:12.3px;color:var(--ink2)}
+.mb5-ck{display:inline-flex;align-items:center;gap:6px}
+
+/* ── แผนภาพขั้นตอน journey แนวนอน ─────────────────────────────────────── */
+.mb5-flow{display:flex;align-items:stretch;gap:0}
+.mb5-fstep{flex:1;min-width:0;border:1px solid var(--line);border-radius:11px;background:var(--sf);
+  padding:12px 13px;display:flex;flex-direction:column;gap:7px}
+.mb5-fstep .tg{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;
+  color:var(--mut);text-transform:none}
+.mb5-fstep .ti{font-size:12.6px;font-weight:700;line-height:1.4}
+.mb5-fstep .sb{font-size:11px;color:var(--mut);line-height:1.5}
+.mb5-fcnt{margin-top:auto;padding-top:8px;border-top:1px dashed var(--line);display:flex;
+  align-items:baseline;gap:5px}
+.mb5-fcnt b{font-size:15px;font-weight:700}
+.mb5-fcnt span{font-size:10.5px;color:var(--mut)}
+.mb5-farrow{width:26px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--mut2)}
+
+/* ── กราฟแท่งแนวตั้ง (วาดด้วย div ล้วน) ───────────────────────────────── */
+.mb5-vbars{display:flex;align-items:flex-end;gap:3px;height:84px}
+.mb5-vbars i{flex:1;display:block;border-radius:2px 2px 0 0;background:var(--ink);min-height:2px}
+.mb5-vbars i.mut{background:var(--line2)}
+.mb5-vlabels{display:flex;gap:3px;font-size:9px;color:var(--mut2);text-align:center}
+.mb5-vlabels span{flex:1;overflow:hidden;white-space:nowrap}
+
+/* ── ตาราง RFM 3×3 เป็นกริดสี (เฉด --ink / --mut / --line2 เท่านั้น) ──── */
+.mb5-rfmgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.mb5-rfmcell{position:relative;border-radius:9px;overflow:hidden;padding:11px 12px;min-height:78px;
+  display:flex;flex-direction:column;justify-content:space-between}
+.mb5-rfmcell .bg{position:absolute;inset:0}
+.mb5-rfmcell .tx{position:relative;z-index:1}
+.mb5-rfmcell .nm{font-size:11.8px;font-weight:700}
+.mb5-rfmcell .vv{font-size:19px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums}
+.mb5-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--mut2);padding:0 2px}
+
+/* ── แก้ดาวไม่ติด (fill ของ i-star ไม่มี currentColor ใน SVG ต้นทาง จึงบังคับ fill เอง เฉพาะสโคปนี้) ── */
+.mb5-revhd .mb2-stars svg{fill:var(--mut2)}
+.mb5-revhd .mb2-stars svg.on{fill:var(--ink)}
+
+/* ── รีวิว: การ์ดเต็ม + กล่องตอบกลับ ──────────────────────────────────── */
+.mb5-revcard{padding:13px 0;border-top:1px solid var(--line);display:flex;gap:11px}
+.mb5-revcard:first-child{border-top:0}
+.mb5-revph{width:52px;height:52px;border-radius:8px;background:var(--sf2);border:1px solid var(--line);
+  flex:none;display:grid;place-items:center;color:var(--mut2)}
+.mb5-revbd{flex:1;min-width:0}
+.mb5-revhd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mb5-revhd b{font-size:12.8px}
+.mb5-revtxt{font-size:12.6px;color:var(--ink2);margin-top:5px;line-height:1.55}
+.mb5-replybox{margin-top:9px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;
+  background:var(--sf2);display:flex;flex-direction:column;gap:8px}
+.mb5-replybox .ta{font-size:12.3px;color:var(--mut);min-height:36px}
+
+/* ── ตัวจัดอันดับ (ผู้แนะนำสูงสุด) ────────────────────────────────────── */
+.mb5-rank{width:22px;height:22px;border-radius:50%;background:var(--sf2);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--ink2);flex:none}
+.mb5-rank.top{background:var(--ink);color:var(--sf);border-color:var(--ink)}
+
+/* ── ตัวอย่างหน้าจอ LINE (bubble ข้อความ + การ์ด voucher) ─────────────── */
+.mb5-linemock{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--sf2)}
+.mb5-linehd{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--sf);
+  border-bottom:1px solid var(--line);font-size:12px;font-weight:700}
+.mb5-linebody{padding:14px 12px;display:flex;flex-direction:column;gap:9px}
+.mb5-bub{align-self:flex-start;max-width:86%;background:var(--sf);border:1px solid var(--line);
+  border-radius:3px 13px 13px 13px;padding:9px 11px;font-size:12px;line-height:1.6;color:var(--ink2)}
+.mb5-vcard{align-self:flex-start;width:86%;border:1px solid var(--line);border-radius:11px;
+  background:var(--sf);overflow:hidden}
+.mb5-vcard .hd{background:var(--ink);color:var(--sf);padding:8px 11px;font-size:11px;font-weight:700}
+.mb5-vcard .bd{padding:9px 11px;display:flex;align-items:center;justify-content:space-between}
+.mb5-vcard .bd b{font-size:16px}
+.mb5-vcard .bd span{font-size:10.5px;color:var(--mut)}
+
+/* ── สรุปตัวเลข inline (segment result / journey ROI) ─────────────────── */
+.mb5-stats{display:flex;gap:8px}
+.mb5-stat{flex:1;text-align:center;border:1px solid var(--line);border-radius:9px;padding:9px 4px}
+.mb5-stat b{display:block;font-size:16px;font-weight:700}
+.mb5-stat span{font-size:10.5px;color:var(--mut)}
+</style>
+<style>
+/* ══ CSS เฉพาะภาพ 26–30 (agent คู่ขนาน · ต่อจาก _mb3.part) — ห้ามเพิ่มสีนอกจาน ══ */
+
+/* ── 26 แชท+สมาชิก: รายการห้อง ─────────────────────────────────────────── */
+.mb6-rooms{width:300px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  display:flex;flex-direction:column;overflow:hidden}
+.mb6-rooms .hd{padding:13px 15px 10px;flex:none}
+.mb6-rooms .hd b{font-size:14.5px;font-weight:700}
+.mb6-roomlist{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.mb6-roomrow{display:flex;align-items:center;gap:10px;padding:10px 15px;border-top:1px solid var(--line)}
+.mb6-roomrow:first-child{border-top:0}
+.mb6-roomrow.on{background:var(--sf)}
+.mb6-roomrow .bd{flex:1;min-width:0}
+.mb6-roomrow .nm{font-size:12.6px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mb6-roomrow .snip{font-size:11.3px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mb6-roomrow .tm{font-size:10.3px;color:var(--mut2);flex:none;white-space:nowrap}
+
+/* ── 26 หน้าแชท: บับเบิล ──────────────────────────────────────────────── */
+.mb6-bub{max-width:480px;background:var(--sf);border:1px solid var(--line);border-radius:14px 14px 14px 4px;
+  padding:10px 13px;font-size:13.3px;line-height:1.55}
+.mb6-bub.out{background:var(--out);border-radius:14px 14px 4px 14px}
+
+/* ── 26 แผงขวา "สมาชิก" ───────────────────────────────────────────────── */
+.mb6-mpanel{width:380px;flex:none;border-left:1px solid var(--line);background:var(--sf2);
+  display:flex;flex-direction:column;overflow:hidden}
+.mb6-mpanel .hd{padding:13px 16px;border-bottom:1px solid var(--line);background:var(--sf);
+  display:flex;align-items:center;gap:8px;flex:none}
+.mb6-mpanel .bodyp{flex:1;min-height:0;overflow:hidden;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+
+.mb6-qa{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mb6-qa .b{border:1px solid var(--line);border-radius:9px;padding:9px 6px;display:flex;flex-direction:column;
+  align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--ink2);text-align:center;background:var(--sf)}
+
+.mb6-perk{display:flex;align-items:center;gap:9px;padding:8px 0;border-top:1px solid var(--line);font-size:12px}
+.mb6-perk:first-child{border-top:0}
+
+.mb6-hist{display:flex;gap:9px;padding:8px 0;border-top:1px solid var(--line)}
+.mb6-hist:first-child{border-top:0}
+.mb6-hist .dot{width:21px;height:21px;border-radius:50%;display:grid;place-items:center;flex:none;
+  border:1.5px solid var(--line2);color:var(--mut);background:var(--sf)}
+.mb6-hist .tt{font-size:12.2px;font-weight:600}
+.mb6-hist .mt{font-size:11px;color:var(--mut);margin-top:1px}
+
+.mb6-state2{width:380px;border:1.5px dashed var(--line2);border-radius:12px;padding:14px 15px;
+  background:var(--sf2);display:flex;flex-direction:column;gap:8px}
+.mb6-state2 .lb2{font-size:10.5px;font-weight:700;color:var(--mut);letter-spacing:.03em}
+.mb6-matchrow{display:flex;align-items:center;gap:9px;padding:8px 9px;border:1px solid var(--line);
+  border-radius:9px;background:var(--sf)}
+
+/* ── 27 ผู้ช่วย AI: ข้อเสนอ ───────────────────────────────────────────── */
+.mb6-propose{border:1px solid var(--acc);background:var(--acc-bg);border-radius:11px;padding:13px 15px;
+  display:flex;flex-direction:column;gap:8px}
+.mb6-propose .ttl{display:flex;align-items:center;gap:7px;font-weight:700;color:var(--acc);font-size:12.8px}
+.mb6-propose .row{display:flex;justify-content:space-between;gap:10px;font-size:12.3px;color:var(--ink2)}
+.mb6-propose .row .k{color:var(--mut)}
+.mb6-propose .btns{display:flex;gap:8px;margin-top:5px}
+.mb6-toolline{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--mut)}
+.mb6-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* ── 27 API: โค้ด curl ────────────────────────────────────────────────── */
+.mb6-code{background:var(--ink);color:var(--sf);border-radius:10px;padding:13px 15px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.3px;line-height:1.8;
+  overflow:hidden;white-space:pre}
+.mb6-code .mu3{color:var(--mut2)}
+.mb6-code .ac3{color:#93b4ff}
+
+/* ── 27 ตาราง tool / คีย์ ─────────────────────────────────────────────── */
+.mb6-classb{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:5px;
+  font-size:10px;font-weight:700;border:1px solid currentColor}
+.mb6-classb.read{color:var(--t-green)}
+.mb6-classb.write{color:var(--t-blue)}
+.mb6-classb.danger{color:var(--t-red)}
+
+.mb6-webhookrow{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:12px}
+.mb6-webhookrow:first-child{border-top:0}
+
+/* ── 28 มือถือพนักงาน: ค้นหา/สแกน ─────────────────────────────────────── */
+.mb6-scanbtn{border:1.5px dashed var(--line2);border-radius:14px;padding:22px 14px;display:flex;
+  flex-direction:column;align-items:center;gap:8px;color:var(--ink2);background:var(--sf2)}
+.mb6-scanbtn svg{width:34px;height:34px;stroke-width:1.4}
+.mb6-scanbtn b{font-size:13px}
+
+/* ── 28 ปุ่มใหญ่ 2×2 ──────────────────────────────────────────────────── */
+.mb6-actgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.mb6-actbtn{border:1px solid var(--line);border-radius:12px;padding:13px 8px;display:flex;flex-direction:column;
+  align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--ink);background:var(--sf)}
+
+/* ── 28 PIN ───────────────────────────────────────────────────────────── */
+.mb6-pin{display:flex;gap:11px;justify-content:center;padding:6px 0}
+.mb6-pindot{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--line2);background:var(--sf)}
+.mb6-pindot.on{background:var(--ink);border-color:var(--ink)}
+
+/* ── 29 LIFF onboarding: ต้อนรับ ──────────────────────────────────────── */
+.mb6-wlogo{width:64px;height:64px;border-radius:18px;background:var(--ink);color:var(--sf);display:grid;
+  place-items:center;font-size:20px;font-weight:700;margin:0 auto}
+.mb6-src{font-size:10.5px;color:var(--mut2);text-align:center}
+
+/* ── 29 อ้างอิงโค้ด / consent ─────────────────────────────────────────── */
+.mb6-refbox{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;align-items:center;
+  gap:8px;font-size:12.3px}
+.mb6-conrow{display:flex;align-items:center;gap:9px;padding:8px 0;border-top:1px solid var(--line);font-size:12.3px}
+.mb6-conrow:first-child{border-top:0}
+
+/* ── 30 ตารางเทมเพลต: ช่องทาง ─────────────────────────────────────────── */
+.mb6-chset{display:flex;gap:4px;flex-wrap:wrap}
+
+/* ── 30 แผงแก้เทมเพลต: ตัวแปร / ตัวอย่าง ───────────────────────────────── */
+.mb6-var{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:6px;
+  background:var(--sf);border:1px solid var(--line);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:10.6px;color:var(--ink2)}
+.mb6-ta{border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:12.6px;line-height:1.65;
+  color:var(--ink2);background:var(--sf);min-height:84px}
+.mb6-linepreview{background:var(--wall);border:1px solid var(--line);border-radius:12px;padding:14px;
+  display:flex;flex-direction:column;gap:8px}
+.mb6-timchip{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:7px;
+  font-size:12px;font-weight:600;border:1px solid var(--acc);background:var(--acc-bg);color:var(--acc)}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">03 · ดีล 360 <span>— หัว (ชื่อ·บริษัท·ผู้ติดต่อหลัก·stepper ขั้นคลิกได้·มูลค่า·วันปิด·ผู้ดูแล·หมวด forecast) · แท็บ 6 · รายการสินค้า 3 บรรทัด+ยอดรวม+ปุ่มออกใบเสนอราคา · ประวัติขั้น · ไทม์ไลน์ · แถบขวา 300px: AI สรุป/เสี่ยง/next step · ผู้ติดต่อร่วม · sequence ที่รัน · เอกสารบัญชี · การ์ดบอร์ดงาน</span></p>
+<div class="frame" id="f03" style="height:1500px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+  <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-bell"/></svg><div class="av">ธ</div></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-chart"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-mail"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="kbar"><svg class="i sm mu"><use href="#i-back"/></svg><h1>ดีล 360 — สัญญาคอร์สดำน้ำรายปี พนักงานใหม่ทุกไตรมาส</h1><span class="sp"></span>
+    <div class="btn gh sm"><svg class="i sm"><use href="#i-more"/></svg></div></div>
+
+   <div class="stage" style="background:var(--sf)">
+    <div style="display:flex;min-height:0;flex:1">
+
+     <div class="pg" style="flex:1;min-width:0;padding:15px 20px 20px;gap:13px">
+
+      <!-- หัวดีล -->
+      <div class="card">
+       <div style="display:flex;align-items:flex-start;gap:16px">
+        <div class="thumb" style="width:52px;height:52px;border-radius:11px"><svg class="i" style="width:24px;height:24px"><use href="#i-cash"/></svg></div>
+        <div style="flex:1;min-width:0">
+         <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+          <span style="font-size:18px;font-weight:700;letter-spacing:-.01em">สัญญาคอร์สดำน้ำรายปี — พนักงานใหม่ทุกไตรมาส</span>
+          <span class="lb blue">lead ร้อน</span>
+          <span class="chip" style="height:20px">คะแนน 88</span>
+         </div>
+         <div class="sub" style="margin-top:5px">
+          <svg class="i xs" style="vertical-align:-2px"><use href="#i-shop"/></svg> <b style="color:var(--ink2)">บริษัท ไทยทัวร์เอเชีย</b>
+          &nbsp;·&nbsp; ผู้ติดต่อหลัก <b style="color:var(--ink2)">คุณวรรณา (ผู้จัดการฝ่ายกิจกรรม)</b>
+          &nbsp;·&nbsp; pipeline ขายองค์กร (B2B)
+         </div>
+        </div>
+        <div style="display:flex;gap:8px;flex:none">
+         <div class="btn gh sm">โทร</div>
+         <div class="btn gh sm"><svg class="i sm"><use href="#i-mail"/></svg>ส่งอีเมล</div>
+         <div class="btn pri sm"><svg class="i sm"><use href="#i-doc"/></svg>ออกใบเสนอราคา</div>
+        </div>
+       </div>
+
+       <!-- stepper ขั้น คลิกได้ -->
+       <div style="display:flex;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+        <div class="chip" style="height:28px;border-radius:14px">ผู้สนใจใหม่</div>
+        <svg class="i sm mu" style="margin:0 3px"><use href="#i-ar"/></svg>
+        <div class="chip" style="height:28px;border-radius:14px">ติดต่อแล้ว</div>
+        <svg class="i sm mu" style="margin:0 3px"><use href="#i-ar"/></svg>
+        <div class="chip" style="height:28px;border-radius:14px">เสนอราคา</div>
+        <svg class="i sm mu" style="margin:0 3px"><use href="#i-ar"/></svg>
+        <div class="chip ink" style="height:30px;border-radius:15px;font-weight:700;box-shadow:0 0 0 3px var(--acc-bg);border-color:var(--acc)">● เจรจา — 80%</div>
+        <svg class="i sm mu" style="margin:0 3px"><use href="#i-ar"/></svg>
+        <div class="chip" style="height:28px;border-radius:14px;color:var(--mut2)">ปิดชนะ</div>
+        <span class="sp"></span>
+        <span class="sub">อยู่ขั้นนี้มา <b style="color:var(--ink2)">6 วัน</b></span>
+       </div>
+
+       <div class="stat" style="margin-top:15px;padding-top:14px;border-top:1px solid var(--line);gap:30px">
+        <div class="b"><div class="k">มูลค่าดีล</div><div class="v">฿360,000</div></div>
+        <div class="b"><div class="k">วันปิดคาด</div><div class="v" style="font-size:16px">14 ก.ย. 2569</div></div>
+        <div class="b"><div class="k">ผู้ดูแล</div><div class="v" style="font-size:16px">ธนา วงศ์ทอง</div></div>
+        <div class="b"><div class="k">หมวด forecast</div><div class="v" style="font-size:16px">COMMIT</div></div>
+        <div class="b"><div class="k">ที่มา</div><div class="v" style="font-size:16px">งานอีเวนต์/บูธ</div></div>
+       </div>
+      </div>
+
+      <!-- แท็บ -->
+      <div class="tabs">
+       <div class="tab on">ภาพรวม</div>
+       <div class="tab">รายการสินค้า</div>
+       <div class="tab">กิจกรรม</div>
+       <div class="tab">อีเมล</div>
+       <div class="tab">เอกสาร</div>
+       <div class="tab">ประวัติขั้น</div>
+      </div>
+
+      <!-- รายการสินค้า -->
+      <div class="card p0">
+       <div style="padding:13px 15px 0"><div class="ch"><svg class="i sm"><use href="#i-box"/></svg><h2>รายการสินค้า</h2><span class="sub">จากคลังสินค้า/บริการ</span></div></div>
+       <table class="tbl">
+        <thead><tr><th>สินค้า/บริการ</th><th style="width:80px" class="rt">จำนวน</th><th style="width:110px" class="rt">ราคา/หน่วย</th><th style="width:90px" class="rt">ส่วนลด</th><th style="width:120px" class="rt">ยอดรวม</th></tr></thead>
+        <tbody>
+         <tr><td>คอร์ส Open Water Diver (กลุ่มบริษัท)</td><td class="num">10 คน</td><td class="num">฿9,500</td><td class="num">5%</td><td class="num">฿90,250</td></tr>
+         <tr><td>คอร์ส Advanced Open Water (ไตรมาสถัดไป)</td><td class="num">10 คน</td><td class="num">฿12,000</td><td class="num">5%</td><td class="num">฿114,000</td></tr>
+         <tr><td>ชุดอุปกรณ์เช่ารายปี + ประกันดำน้ำ DAN</td><td class="num">20 ชุด</td><td class="num">฿7,800</td><td class="num">0%</td><td class="num">฿155,750</td></tr>
+        </tbody>
+       </table>
+       <div class="tfoot"><span class="sp"></span>ยอดรวมก่อนภาษี <b style="color:var(--ink);margin:0 8px">฿345,000</b> ภาษี 7% <b style="color:var(--ink);margin:0 8px">฿15,000</b>
+        <b style="color:var(--ink);font-size:14px">รวมทั้งสิ้น ฿360,000</b></div>
+       <div style="padding:0 15px 14px;display:flex;justify-content:flex-end">
+        <div class="btn pri sm"><svg class="i sm"><use href="#i-doc"/></svg>ออกใบเสนอราคา จากรายการนี้</div>
+       </div>
+      </div>
+
+      <div class="g2">
+       <!-- ประวัติขั้น -->
+       <div class="card p0">
+        <div style="padding:13px 15px 0"><div class="ch"><svg class="i sm"><use href="#i-swap"/></svg><h2>ประวัติขั้น</h2></div></div>
+        <table class="tbl">
+         <thead><tr><th>จาก → ไป</th><th>ใคร</th><th class="rt">อยู่กี่วัน</th></tr></thead>
+         <tbody>
+          <tr><td>เสนอราคา → <b>เจรจา</b></td><td class="mu">ธนา วงศ์ทอง</td><td class="num">6 วัน (อยู่ปัจจุบัน)</td></tr>
+          <tr><td>ติดต่อแล้ว → เสนอราคา</td><td class="mu">ธนา วงศ์ทอง</td><td class="num">4 วัน</td></tr>
+          <tr><td>ผู้สนใจใหม่ → ติดต่อแล้ว</td><td class="mu">ระบบ (กฎอัตโนมัติ)</td><td class="num">1 วัน</td></tr>
+          <tr><td>สร้างดีล → ผู้สนใจใหม่</td><td class="mu">ธนา วงศ์ทอง</td><td class="num">—</td></tr>
+         </tbody>
+        </table>
+       </div>
+
+       <!-- ไทม์ไลน์ -->
+       <div class="card">
+        <div class="ch"><svg class="i sm"><use href="#i-clock"/></svg><h2>ไทม์ไลน์</h2></div>
+        <div class="lst">
+         <div class="li"><svg class="i sm mu"><use href="#i-cal"/></svg><span class="sp">ประชุมสรุปสัญญา — เข้าร่วมโดยคุณวรรณา + ฝ่ายจัดซื้อ<div class="sub">นัดวันจันทร์หน้า 10:00 น.</div></span></div>
+         <div class="li"><svg class="i sm mu"><use href="#i-mail"/></svg><span class="sp">ส่งใบเสนอราคาแก้ไขรอบ 2 (ลด 5%)<div class="sub">เปิดแล้ว 3 ครั้ง · 2 วันก่อน</div></span></div>
+         <div class="li"><svg class="i sm mu"><use href="#i-swap"/></svg><span class="sp">ย้ายขั้น เสนอราคา → เจรจา<div class="sub">6 วันก่อน · ธนา วงศ์ทอง</div></span></div>
+         <div class="li"><svg class="i sm mu"><use href="#i-doc"/></svg><span class="sp">ออกใบเสนอราคา QT-2569-0142<div class="sub">10 วันก่อน</div></span></div>
+         <div class="li"><svg class="i sm mu"><use href="#i-chat"/></svg><span class="sp">ทักไลน์สอบถามรายละเอียดคอร์ส<div class="sub">14 วันก่อน · คุณวรรณา</div></span></div>
+        </div>
+       </div>
+      </div>
+
+     </div>
+
+     <!-- แถบขวา -->
+     <div style="width:300px;flex:none;border-left:1px solid var(--line);background:var(--sf2);padding:14px 13px;display:flex;flex-direction:column;gap:13px;overflow:hidden">
+
+      <div class="card">
+       <div class="ch"><svg class="i sm"><use href="#i-spark"/></svg><h2>ผู้ช่วย AI</h2></div>
+       <div class="prose" style="font-size:12.3px">สรุป: ลูกค้าองค์กรเดิม ต่ออายุคอร์สทุกไตรมาส · เปิดอีเมลใบเสนอราคา 3 ครั้ง แสดงความสนใจสูง</div>
+       <div class="lbs" style="margin-top:8px"><span class="lb amber">เสี่ยง: รอเซ็นสัญญาเกิน 6 วัน</span></div>
+       <div class="sub" style="margin-top:8px"><b style="color:var(--ink2)">Next step แนะนำ:</b> โทรยืนยันก่อนประชุม จ.นี้ + เตรียมส่วนลด 5% เป็นทางเลือกสุดท้าย</div>
+       <div class="lst" style="margin-top:6px">
+        <div class="li"><span class="sp">ร่างอีเมลสรุปก่อนประชุม</span><span class="btn gh sm">ร่าง</span></div>
+       </div>
+      </div>
+
+      <div class="card">
+       <div class="ch"><svg class="i sm"><use href="#i-users"/></svg><h2>ผู้ติดต่อร่วม</h2></div>
+       <div class="lst">
+        <div class="li"><div class="av" style="width:22px;height:22px;font-size:10px">ว</div><span class="sp">คุณวรรณา<div class="sub">ผู้จัดการฝ่ายกิจกรรม · หลัก</div></span></div>
+        <div class="li"><div class="av" style="width:22px;height:22px;font-size:10px">ส</div><span class="sp">คุณสมพงษ์<div class="sub">ฝ่ายจัดซื้อ</div></span></div>
+       </div>
+      </div>
+
+      <div class="card">
+       <div class="ch"><svg class="i sm"><use href="#i-bolt"/></svg><h2>Sequence ที่กำลังรัน</h2></div>
+       <div class="lst">
+        <div class="li"><span class="sp">ติดตามลูกค้าองค์กร B2B<div class="sub">ขั้น 3/5 · WAIT 2 วัน</div></span><span class="chip acc" style="height:19px">กำลังรัน</span></div>
+       </div>
+      </div>
+
+      <div class="card">
+       <div class="ch"><svg class="i sm"><use href="#i-doc"/></svg><h2>เอกสารบัญชี</h2></div>
+       <div class="lst">
+        <div class="li"><svg class="i sm mu"><use href="#i-doc"/></svg><span class="sp">QT-2569-0142<div class="sub">฿360,000 · ส่งแล้ว รอตอบรับ</div></span></div>
+        <div class="li"><svg class="i sm mu"><use href="#i-doc"/></svg><span class="sp">INV-2569-0098<div class="sub">฿180,000 · ค้างชำระ</div></span></div>
+       </div>
+      </div>
+
+      <div class="card">
+       <div class="ch"><svg class="i sm"><use href="#i-grid"/></svg><h2>การ์ดบอร์ดงาน</h2></div>
+       <div class="lst">
+        <div class="li"><svg class="i sm mu"><use href="#i-grid"/></svg><span class="sp">เตรียมเอกสารสัญญา + ใบเสนอราคาแนบ<div class="sub">บอร์ดงานขาย · คอลัมน์ "รอตรวจ"</div></span></div>
+       </div>
+      </div>
+
+     </div>
+
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>
+</body></html>
