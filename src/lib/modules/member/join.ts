@@ -280,7 +280,8 @@ export async function startJoin(tenantSlug: string, input: StartJoinInput, meta:
   const src = trimmed(input?.src);
   // นับคนเปิดลิงก์ (ภาพ 29 ขั้นต้อนรับ) — นับไม่ได้ไม่ใช่เหตุให้สมัครไม่ได้
   if (src) await hitSourceLink(target.slug, src).catch(() => null);
-  const res = await requestOtp(target.slug, { phone: input?.phone ?? null, email: input?.email ?? null }, { ip: meta.ip ?? null });
+  // M3.11 — `forJoin`: ส่งรหัสไปอีเมลของคนที่ยังไม่เป็นสมาชิกด้วย (หน้าเข้าสู่ระบบไม่ส่งให้คนแปลกหน้า)
+  const res = await requestOtp(target.slug, { phone: input?.phone ?? null, email: input?.email ?? null }, { ip: meta.ip ?? null, forJoin: true });
   return {
     otpId: res.otpId,
     expiresAt: res.expiresAt,

@@ -1,0 +1,51 @@
+{
+ "generatedAt": "2026-09-11T21:27:29.101Z",
+ "base": "http://127.0.0.1:4711",
+ "view": {
+  "tag": "iphone",
+  "w": 390,
+  "h": 844
+ },
+ "screens": [
+  {
+   "name": "member-search",
+   "ok": true,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "unmocked": [],
+   "url": "/member",
+   "file": "/root/projects/shark-member/apps/mobile/qc/shots-member/member-search-iphone.png"
+  },
+  {
+   "name": "member-summary",
+   "ok": true,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "unmocked": [],
+   "url": "/member/c1",
+   "file": "/root/projects/shark-member/apps/mobile/qc/shots-member/member-summary-iphone.png"
+  },
+  {
+   "name": "member-stamp",
+   "ok": true,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "unmocked": [],
+   "url": "/member/stamp?customerId=c1&name=%E0%B8%AA%E0%B8%A1%E0%B8%8A%E0%B8%B2%E0%B8%A2%20%E0%B9%83%E0%B8%88%E0%B8%94%E0%B8%B5",
+   "file": "/root/projects/shark-member/apps/mobile/qc/shots-member/member-stamp-iphone.png"
+  },
+  {
+   "name": "member-drawer",
+   "ok": true,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "unmocked": [],
+   "url": "/member",
+   "file": "/root/projects/shark-member/apps/mobile/qc/shots-member/member-drawer-iphone.png"
+  }
+ ]
+}

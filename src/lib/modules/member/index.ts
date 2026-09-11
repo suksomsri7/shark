@@ -525,3 +525,27 @@ export {
 // (โมดูลสมาชิกไม่ import marketing — F2 อนุญาตทิศเดียว marketing→member)
 export { registerMemberCampaignPort } from "./api/campaign-port";
 export type { CampaignPortCtx, CampaignPortInput, CampaignTestInput, MemberCampaignPort } from "./api/campaign-port";
+
+// ── แอปพนักงาน (M3.11 · ภาพ 28) — จอสมาชิก 3 จอของ SHARK HUB ผ่าน `/api/mobile/member/*` ──
+// route ของแอปเรียกชุดนี้เท่านั้น (ไม่แตะ prisma/ตารางของโมดูล) · ทุกตัวรับ actor ของพนักงานคนนั้น
+export type {
+  StaffMemberRow,
+  StaffStampCard,
+  StaffMemberSummary,
+  StaffStampInput,
+  StaffStampResult,
+} from "./staff-app";
+export {
+  /** ระบบสมาชิกของร้าน (ร้านที่ยังไม่เปิด = MemberNotFoundError) */
+  staffMemberCtx,
+  /** ค้นชื่อ/เบอร์/รหัสสมาชิก (≤ 20 · ขอบเขตสาขา · เบอร์ปิดบัง) */
+  staffSearch,
+  /** สแกน QR บัตรสมาชิก `SHARK-MC:<token>` → การ์ดย่อ (หมดอายุ/นอกขอบเขต = null) */
+  staffScan,
+  /** การ์ดสรุป + ตัวเลข 3 + ประวัติ 3 + ลิงก์หน้าเว็บของปุ่มลัด */
+  staffSummary,
+  /** ใบสแตมป์ที่ประทับให้คนนี้ได้ (+ ต้อง PIN ไหม · รางวัลเมื่อครบ) */
+  staffStampCards,
+  /** ประทับ 1 ดวง (ใบที่ตั้ง PIN ต้อง PIN ตรง) → ข้อความแบนเนอร์ */
+  staffStamp,
+} from "./staff-app";

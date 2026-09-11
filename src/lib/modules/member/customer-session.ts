@@ -144,7 +144,12 @@ export type RequestOtpResult = {
 export async function requestOtp(
   tenantSlug: string,
   input: RequestOtpInput,
-  opts: { ip?: string | null } = {},
+  /**
+   * `forJoin` (M3.11) — ขอรหัสเพื่อ **สมัคร** (`join.startJoin`): คนที่ยังไม่เป็นสมาชิกต้องได้รหัสจริงด้วย
+   * (หน้าเข้าสู่ระบบส่งเฉพาะปลายทางที่รู้จัก เพราะรหัสของคนแปลกหน้ายืนยันไม่ผ่านอยู่แล้ว — แต่หน้าสมัคร
+   *  ยืนยันผ่านได้ ถ้าไม่ส่ง = สมัครไม่ได้เลย) · ส่งทั้งคนใหม่และคนเดิมเหมือนกัน ⇒ ยังไม่เผยว่าใครเป็นสมาชิก
+   */
+  opts: { ip?: string | null; forJoin?: boolean } = {},
 ): Promise<RequestOtpResult> {
   const tenant = await tenantBySlug(tenantSlug);
   const phone = normPhone(trimmed(input?.phone));
@@ -184,10 +189,11 @@ export async function requestOtp(
   });
 
   // ส่งจริงเฉพาะเมื่อรู้จักปลายทาง — ส่งไม่ออกห้ามทำให้คำขอล้ม (ผู้ใช้จะเห็นแค่ "ส่งแล้ว" เหมือนกันหมด)
-  if (customer && channel === "EMAIL") {
+  if ((customer || opts?.forJoin === true) && channel === "EMAIL") {
     try {
       const { sendEmail } = await import("@/lib/core/email");
-      await sendEmail(target, `รหัสเข้าสู่ระบบสมาชิก ${tenant.name}`, `รหัสยืนยันของคุณคือ ${code} (ใช้ได้ 5 นาที)`);
+      const subject = opts?.forJoin === true ? `รหัสยืนยันสมัครสมาชิก ${tenant.name}` : `รหัสเข้าสู่ระบบสมาชิก ${tenant.name}`;
+      await sendEmail(target, subject, `รหัสยืนยันของคุณคือ ${code} (ใช้ได้ 5 นาที)`);
     } catch {
       // ส่งอีเมลไม่ออก = ผู้ใช้กดขอใหม่ได้ — ห้ามโยนต่อ (และห้าม log รหัส)
     }

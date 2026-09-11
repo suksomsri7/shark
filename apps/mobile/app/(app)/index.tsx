@@ -3,20 +3,28 @@
 // ⚠️ ห้ามมี native header — เว็บมี top bar ของตัวเอง · SafeAreaView กันชนติ่งจอ
 // UA ต่อท้าย "SharkApp/1" → ฝั่งเว็บซ่อน orb ของตัวเอง (กัน orb ซ้อน) · ปุ่ม orb AI ลอยมุมล่างขวา → /sessions
 // เปลี่ยนกิจการ (activeTenantId) → ขอ code ใหม่ reload อัตโนมัติ
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { AnimatedOrb } from "@/src/components/ui/orb";
 import { WebView } from "react-native-webview";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, apiErrorText, BASE_URL } from "@/src/api/client";
 import { useAuth } from "@/src/lib/auth-context";
 import { C, R, S } from "@/src/theme";
 
+// M3.11 — จอ native อื่น (สรุปสมาชิก: ใช้สิทธิ์/ให้แต้ม/ออก voucher) ขอให้เปิดหน้าเว็บของร้านใน WebView นี้
+// ด้วย `?open=/app/...&t=<nonce>` · รับเฉพาะพาธใต้ /app ของโดเมนเดียวกัน (กันพาไปเว็บอื่นด้วยพารามิเตอร์)
+const OPEN_PATH_RE = /^\/app\/[A-Za-z0-9_\-/]*(\?[A-Za-z0-9_=&\-]*)?$/;
+
 export default function DashboardScreen() {
   const router = useRouter();
   const { activeTenantId, signOut, switchTenant } = useAuth();
+  const { open, t: openNonce } = useLocalSearchParams<{ open?: string; t?: string }>();
+  const webRef = useRef<WebView>(null);
+  const [webReady, setWebReady] = useState(false);
+  const openedKey = useRef("");
 
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,6 +61,7 @@ export default function DashboardScreen() {
     setError(null);
     setLoading(true);
     setCode(null);
+    setWebReady(false);
     try {
       const res = await api<{ code: string }>("/api/mobile/webview-session", { body: {} });
       setCode(res.code);
@@ -68,6 +77,15 @@ export default function DashboardScreen() {
   }, [requestCode, activeTenantId]);
 
   const uri = code ? `${BASE_URL}/api/mobile/webview-exchange?code=${code}` : null;
+
+  // เปิดพาธที่จอ native ขอ (หลัง WebView เข้า /app แล้วเท่านั้น — cookie session ของเว็บพร้อมใช้)
+  useEffect(() => {
+    const path = typeof open === "string" ? open : "";
+    const key = `${path}|${openNonce ?? ""}`;
+    if (!path || !webReady || openedKey.current === key || !OPEN_PATH_RE.test(path)) return;
+    openedKey.current = key;
+    webRef.current?.injectJavaScript(`window.location.assign(${JSON.stringify(path)}); true;`);
+  }, [open, openNonce, webReady]);
 
   // เว็บใน WebView logout เอง → cookie เว็บตายแต่แอปยัง login → กัน webview ค้างหน้า error
   // เทียบด้วย pathname ของ host shark.in.th เท่านั้น (อย่า includes ตรง ๆ กันชนกับ path อื่นที่มีคำว่า login)
@@ -121,6 +139,7 @@ export default function DashboardScreen() {
       <View style={styles.flex}>
         {uri && (
           <WebView
+            ref={webRef}
             source={{ uri }}
             applicationNameForUserAgent="SharkApp/1"
             onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
@@ -131,11 +150,21 @@ export default function DashboardScreen() {
                 const d = JSON.parse(ev.nativeEvent.data) as { ev?: string; on?: boolean };
                 if (d.ev === "chat-fullscreen") setHideOrb(d.on === true);
                 if (d.ev === "open-ai") void openAssistant(); // เมนูเว็บ "ผู้ช่วย AI" (แอปปิดเมนูสไลด์แล้ว 6 ก.ย.)
+                // M3.11 — จอสมาชิกของพนักงาน (ค้น/สแกน QR · ประทับ PIN) · ฝั่งเว็บส่ง {ev:"open-member"} เมื่อพร้อม (หนี้ใน wo-notes)
+                if (d.ev === "open-member") router.push("/member");
               } catch {
                 // ข้อความอื่นที่ไม่ใช่ของเรา — เงียบ
               }
             }}
-            onLoadEnd={() => setLoading(false)}
+            onLoadEnd={(ev) => {
+              setLoading(false);
+              // ถึงหน้า /app ของร้านแล้ว (ผ่าน webview-exchange) = พร้อมรับคำขอ "เปิดพาธ" จากจอ native
+              try {
+                if (new URL(ev.nativeEvent.url).pathname.startsWith("/app")) setWebReady(true);
+              } catch {
+                // url แปลก — ไม่ถือว่าพร้อม
+              }
+            }}
             onError={() => {
               setError("เปิดระบบงานไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองใหม่");
               setLoading(false);

@@ -104,12 +104,12 @@ export function renderShareText(template: string, vars: { shop: string; refereeR
 export const referralPath = (code: string): string => `/ref/${encodeURIComponent(code)}`;
 
 /**
- * หน้าปลายทางของ `/ref/<code>` — ไปหน้าเข้าสู่ระบบ/สมัครของร้านพร้อม `?ref=<code>`
- * 🔴 หน้าสมัคร 3 ขั้น `/m/<slug>/join` มาที่ M3.11 — วันนี้ยังไม่มีหน้า (เปิด = 404)
- *    ⇒ ชี้ไปหน้าเข้าสู่ระบบก่อน (มีจริงตั้งแต่ M2.9) · M3.11 เปลี่ยนบรรทัดนี้เป็น `/join` บรรทัดเดียว
+ * หน้าปลายทางของ `/ref/<code>` — หน้าสมัคร 3 ขั้นของร้านพร้อม `?ref=<code>` (หน้าจอ prefill + ตรวจโค้ดให้เอง)
+ * M3.11 สลับจาก `/login?ref=` (ช่วงที่ยังไม่มีหน้าสมัคร) มาเป็น `/join?ref=` · คนที่เป็นสมาชิกอยู่แล้วเปิดลิงก์นี้
+ * = หน้าสมัครบอก "เป็นสมาชิกอยู่แล้ว" แล้วพาไปบัตรเอง (ไม่สร้างซ้ำ)
  */
 export const referralLandingPath = (slug: string, code: string): string =>
-  `/m/${encodeURIComponent(slug)}/login?ref=${encodeURIComponent(code)}`;
+  `/m/${encodeURIComponent(slug)}/join?ref=${encodeURIComponent(code)}`;
 
 // ───────────────────────── ผลลัพธ์ของ service (หน้าจอ/REST ใช้ชุดเดียวกัน) ─────────────────────────
 

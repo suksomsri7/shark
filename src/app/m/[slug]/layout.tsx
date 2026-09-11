@@ -5,6 +5,9 @@
 // 🔴 ไม่มีแถบเมนูของหลังร้านที่นี่เลย: หน้านี้เป็นของ "ลูกค้า" ไม่ใช่พนักงาน
 import type { Viewport } from "next";
 import { MNav } from "@/components/member/MNav";
+// M3.11 — สะพาน push (data-testid m-push-bridge): ในแอปลูกค้า (UA SharkCustomer/ หรือมี ReactNativeWebView)
+// รับ {type:"push-token", expoToken, platform} แล้วลงทะเบียนเครื่องให้ลูกค้าที่ล็อกอินอยู่ (= /api/v1/member/me/push-devices)
+import { MPushBridge } from "@/components/member/MPushBridge";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -27,6 +30,7 @@ export default async function MemberFacingLayout({
     >
       <main className="flex-1 pb-16">{children}</main>
       <MNav slug={slug} />
+      <MPushBridge slug={slug} />
     </div>
   );
 }

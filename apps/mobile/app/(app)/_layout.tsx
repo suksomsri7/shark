@@ -95,6 +95,14 @@ function DrawerBody(props: { navigation: DrawerNav }) {
         >
           <Text style={styles.menuText}>ผู้ช่วย AI</Text>
         </Pressable>
+        {/* M3.11 — จอสมาชิกของพนักงาน (ค้น/สแกน QR → สรุป → ประทับสแตมป์) · โซน app/(app)/member */}
+        <Pressable
+          testID="drawer-member"
+          onPress={() => navigation.navigate("member")}
+          style={({ pressed }) => [styles.menuItem, pressed && styles.rowPressed]}
+        >
+          <Text style={styles.menuText}>สมาชิก</Text>
+        </Pressable>
       </ScrollView>
 
       {/* ── ล่างสุด: อีเมล + ออกจากระบบ ── */}

@@ -216,6 +216,32 @@ export async function rotateMyCardAction(input: { slug: string }): Promise<MeRes
   }
 }
 
+// ───────────────────────── M3.11 เครื่องรับแจ้งเตือน (หน้า /m/* ในแอปลูกค้า) ─────────────────────────
+
+/**
+ * สะพาน push ของหน้า `/m/*` (`MPushBridge`) — แอปส่ง Expo push token เข้า WebView แล้วหน้าเว็บส่งต่อมาที่นี่
+ * ผลเท่ากับ REST `POST /api/v1/member/me/push-devices` ทุกประการ (service ตัวเดียวกัน `registerPushDevice`)
+ * ต่างกันแค่ตัวตน: ที่นี่อ่านจาก cookie session ลูกค้า (httpOnly — JS ในหน้าอ่าน token ไม่ได้ จึงยิง REST
+ * ด้วย Bearer เองไม่ได้) · ไม่มี session / คนละร้าน = ไม่ลงทะเบียน (เงียบ ๆ ไม่ใช่หน้าพัง)
+ */
+export async function registerMyPushDeviceAction(input: {
+  slug: string;
+  expoToken: string;
+  platform?: string | null;
+}): Promise<MeResult<{ id: string; platform: string }>> {
+  try {
+    const g = await gate(input.slug);
+    const { registerPushDevice } = await import("./push-devices");
+    const row = await registerPushDevice(g.ctx, customerActor(g.customerId), {
+      expoToken: input.expoToken,
+      platform: input.platform ?? null,
+    });
+    return { ok: true, data: { id: row.id, platform: row.platform } };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "ลงทะเบียนเครื่องรับแจ้งเตือนไม่สำเร็จ — ปิดแล้วเปิดแอปใหม่อีกครั้ง") };
+  }
+}
+
 // ───────────────────────── ทางเข้าของพนักงาน: สแกน QR บัตรสมาชิก ─────────────────────────
 
 /**

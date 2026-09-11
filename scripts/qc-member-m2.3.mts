@@ -301,7 +301,14 @@ try {
   const xc = await prisma.customer.findUnique({ where: { id: X } });
   const d = new Date(Date.now() + 7 * 3600_000 + 3 * 86_400_000);
   const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-  const ap = await booking.createAppointment({ tenantId: tid, unitId: E.units.patong, serviceId: svcPatong!.id, staffId: staffP!.id, dateStr, startMin: 600, customerName: "เก็บ สแตมป์", customerPhone: xc!.phone, source: "STAFF", idempotencyKey: key("appt") });
+  // ORACLE-EDIT M2.3-S5.3: ช่อง "อีก 3 วัน 10:00" ของช่างคนนี้ชนนัดของชุด seed ในบางวัน (เช่น 15 ก.ย. 10:00 วีระชัย) → createAppointment คืน { ok:false } ข้อสอบพังทั้งชุด · ไล่หาช่องว่าง (วัน +3…+9 · 10:00–16:00) · เงื่อนไขข้อสอบเดิม
+  let ap: Any = null;
+  for (let dayOff = 3; dayOff <= 9 && !ap?.id; dayOff += 1) {
+    const dd = new Date(Date.now() + 7 * 3600_000 + dayOff * 86_400_000);
+    const ds = `${dd.getUTCFullYear()}-${String(dd.getUTCMonth() + 1).padStart(2, "0")}-${String(dd.getUTCDate()).padStart(2, "0")}`;
+    for (const sm of [600, 660, 720, 780, 840, 900, 960]) { ap = await booking.createAppointment({ tenantId: tid, unitId: E.units.patong, serviceId: svcPatong!.id, staffId: staffP!.id, dateStr: ds, startMin: sm, customerName: "เก็บ สแตมป์", customerPhone: xc!.phone, source: "STAFF", idempotencyKey: key(`appt-${dayOff}-${sm}`) }); if (ap?.id) break; }
+  }
+  void dateStr;
   if (ap?.id) made.appts.push(ap.id);
   await booking.setAppointmentStatus(tid, E.units.patong, ap.id, "DONE");
   const obB = await outbox("booking.completed", (p) => p.appointmentId === ap.id);

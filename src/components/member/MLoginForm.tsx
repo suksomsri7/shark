@@ -11,10 +11,11 @@ import { requestOtpAction, verifyOtpAction } from "@/lib/modules/member/me-actio
 import { MemberIcon } from "./MemberIcon";
 import { MMuted } from "./MShell";
 
-type LiffSdk = {
+// M3.11 — export ให้หน้าสมัคร (`JoinFlow.tsx`) ใช้ตัวโหลดเดียวกัน (ไม่ก๊อปตัวโหลด SDK ไว้สองที่)
+export type LiffSdk = {
   init: (arg: { liffId: string }) => Promise<void>;
   isLoggedIn: () => boolean;
-  login: () => void;
+  login: (arg?: { redirectUri?: string }) => void;
   getIDToken: () => string | null;
 };
 
@@ -24,7 +25,7 @@ const LIFF_SDK_URL = "https://static.line-scdn.net/liff/edge/2/sdk.js";
  * โหลด LIFF SDK แบบ lazy จาก CDN ของ LINE (ไม่ผูกเป็น dependency ของโปรเจกต์)
  * โหลดไม่ได้ / ไม่ได้เปิดจากไลน์ = คืน null แล้วหน้าจอใช้ OTP ต่อได้ตามปกติ
  */
-async function loadLiff(): Promise<LiffSdk | null> {
+export async function loadLiff(): Promise<LiffSdk | null> {
   const w = window as unknown as { liff?: LiffSdk };
   if (w.liff) return w.liff;
   await new Promise<void>((resolve) => {
@@ -211,6 +212,16 @@ export function MLoginForm({ slug, shopName, liffId }: { slug: string; shopName:
         <MemberIcon name="chat" size="sm" />
         เข้าสู่ระบบด้วย LINE
       </button>
+
+      {/* M3.11 — ทางไปหน้าสมัคร 3 ขั้น (คนที่ยังไม่เป็นสมาชิกขอรหัสที่หน้านี้ได้ แต่ยืนยันไม่ผ่านตลอดกาล) */}
+      <a
+        data-testid="m-login-join"
+        href={`/m/${encodeURIComponent(slug)}/join`}
+        className="text-center"
+        style={{ fontSize: 12.5, color: "var(--color-accent)" }}
+      >
+        ยังไม่เป็นสมาชิก? สมัครสมาชิก
+      </a>
 
       <MMuted size={11}>
         ข้อมูลของคุณใช้ตามนโยบายความเป็นส่วนตัวของร้าน — ขอสำเนาหรือขอลบได้ที่หน้าโปรไฟล์

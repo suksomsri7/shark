@@ -9,16 +9,21 @@ export const BASE_URL = "https://shark.in.th";
 export class ApiError extends Error {
   status: number;
   code: string;
-  constructor(status: number, code: string) {
+  /** ข้อความไทยจาก server (`{ message }` — M3.11 /api/mobile/member/*) · endpoint เดิมไม่มี = undefined */
+  detail?: string;
+  constructor(status: number, code: string, detail?: string) {
     super(code);
     this.status = status;
     this.code = code;
+    this.detail = detail;
   }
 }
 
 // แปลง error code ฝั่ง server → ข้อความไทยที่ผู้ใช้เข้าใจ
 export function apiErrorText(e: unknown): string {
   if (e instanceof ApiError) {
+    // server ส่งข้อความไทยมาเอง (มีอักษรไทย) → ใช้ตามนั้น (ละเอียดกว่ารหัสกลาง)
+    if (e.detail && /[฀-๿]/.test(e.detail)) return e.detail;
     if (e.status === 401) return "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่";
     if (e.code === "suspended") return "กิจการนี้ถูกระงับการใช้งาน";
     if (e.code === "forbidden" || e.code === "missing_tenant") return "ไม่มีสิทธิ์เข้าถึงกิจการนี้";
@@ -47,8 +52,13 @@ export async function api<T>(path: string, opts: ApiOpts = {}): Promise<T> {
   });
   if (!res.ok) {
     let code = "error";
-    try { code = ((await res.json()) as { error?: string }).error ?? "error"; } catch { /* body ไม่ใช่ JSON */ }
-    throw new ApiError(res.status, code);
+    let detail: string | undefined;
+    try {
+      const b = (await res.json()) as { error?: string; message?: string };
+      code = b.error ?? "error";
+      detail = typeof b.message === "string" ? b.message : undefined;
+    } catch { /* body ไม่ใช่ JSON */ }
+    throw new ApiError(res.status, code, detail);
   }
   return (await res.json()) as T;
 }
