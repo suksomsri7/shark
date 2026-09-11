@@ -3,20 +3,11 @@
 // แกนกลาง (`src/lib/api/*`) ไม่รู้จักระบบสมาชิกเลย — ทุกอย่างที่เป็น "ของโมดูลนี้" อยู่ในไฟล์เดียวนี้:
 // ชนิดของระบบที่คีย์ผูกได้ · namespace ของถังเพดานอัตรา · วิธีแปลง scope เป็น actor · ข้อความไทย
 import type { ApiModuleConfig } from "@/lib/api/require";
-import type { ApiRateKind } from "@/lib/api/op";
 import { memberApiKeyActor } from "./actor";
+import { memberCustomerAuth } from "./customer-lane";
+import { MEMBER_RATE_LIMITS } from "./rate";
 
-/**
- * เพดานอัตราต่อคีย์ต่อนาที (สัญญา `docs/api/MEMBER-API.md` §1: 600 คำขอ/นาที/คีย์)
- * ทำไมสูงกว่าบัญชี/บอร์ดงาน: ผู้เชื่อมต่อของระบบสมาชิกคือ **หน้าร้าน** — จอ POS ยิงถามสิทธิ์/แต้ม
- * ทุกครั้งที่สแกนบัตร และงานอีเวนต์รับสมัครพร้อมกันหลายเครื่อง ⇒ 300/นาทีชนเพดานจริงในวันงาน
- * รายงานยังคุมไว้ที่ 60 (หนึ่งใบไล่ทั้งฐานสมาชิก — ยิงถี่กว่านี้คือคิวรีวนซ้ำ ไม่ใช่การใช้งานจริง)
- */
-export const MEMBER_RATE_LIMITS: Record<ApiRateKind, { limit: number; windowMs: number }> = {
-  read: { limit: 600, windowMs: 60_000 },
-  write: { limit: 600, windowMs: 60_000 },
-  report: { limit: 60, windowMs: 60_000 },
-};
+export { MEMBER_RATE_LIMITS } from "./rate";
 
 export const MEMBER_API_CONFIG: ApiModuleConfig = {
   module: "member",
@@ -26,6 +17,8 @@ export const MEMBER_API_CONFIG: ApiModuleConfig = {
   rateNs: "mbr",
   rateLimits: MEMBER_RATE_LIMITS,
   makeActor: memberApiKeyActor,
+  // 🔴 เลนที่สองของโมดูลนี้ (M2.10): `Authorization: Bearer cs_…` = ลูกค้าเข้ามาเอง ไม่ใช่คีย์ของร้าน
+  altAuth: memberCustomerAuth,
   messages: {
     keyExpiredTh: "คีย์ API หมดอายุแล้ว — กรุณาหมุนคีย์ใหม่ที่หน้าสมาชิก › ตั้งค่า › API",
     keyExpiredEn: "This API key has expired. Rotate it from the member settings page.",

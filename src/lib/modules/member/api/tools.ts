@@ -15,6 +15,7 @@
 // 🔴 ไฟล์นี้อยู่ในโมดูล จึงห้าม import `@/lib/ai/*` (จะกลายเป็นวงกลม + เส้นข้ามโมดูล)
 
 // 🔴 ใช้ `tenantDb` เท่านั้น (ผูก tenant ให้แล้ว) — โมดูลนี้ไม่ import `prisma` ดิบ (ด่าน F5)
+import { createHash } from "node:crypto";
 import { tenantDb } from "@/lib/core/db";
 import type { MembershipCtx } from "@/lib/core/rbac";
 import { membershipFromScopes, type ApiActor } from "@/lib/api/actor";
@@ -42,6 +43,11 @@ const ASSISTANT_READ_SCOPES = [
   // (มันตอบว่า "ถ้าเปลี่ยนกฎแล้วใครขยับบ้าง" = ข้อมูลของคนตั้งกฎ) ⇒ ต้องมีตัวนี้ ไม่งั้น tool ตายเงียบ
   "member.tier.manage",
   "member.report.view",
+  // M2.10 — ชุดสอง: ผู้ช่วยต้องตอบได้ว่า "แต้มเหลือเท่าไหร่ · มีของรางวัลอะไร · บัตรเหลือเท่าไหร่"
+  // ทั้งสามเป็นคีย์ **อ่าน** ล้วน (เขียนยังต้องผ่านข้อเสนอให้คนกดยืนยันเหมือนเดิมทุกตัว)
+  "member.point.read",
+  "member.loyalty.read",
+  "member.promo.read",
 ] as const;
 
 function assistantActor(tenantId: string, systemId: string): ApiActor {
@@ -355,6 +361,12 @@ async function summarize(prepared: Prepared, tenantId: string, systemId: string)
     const other = await nameOfMember(tenantId, systemId, body.mergeId);
     if (other) parts.push(`รวมกับ "${other}"`);
   }
+  // M2.10 — ชุดสอง: การ์ดยืนยันต้องบอก "เท่าไหร่" ให้ชัด (แต้ม/เงิน/จำนวนตรา) ก่อนคนกดยืนยัน
+  if (typeof body.points === "number") parts.push(`${body.points.toLocaleString("th-TH")} แต้ม`);
+  if (typeof body.delta === "number") parts.push(`${body.delta > 0 ? "+" : ""}${body.delta.toLocaleString("th-TH")} แต้ม`);
+  if (typeof body.satang === "number") parts.push(`${(body.satang / 100).toLocaleString("th-TH")} บาท`);
+  if (typeof body.count === "number") parts.push(`${body.count} ตรา`);
+  if (Array.isArray(body.customerIds)) parts.push(`สมาชิก ${body.customerIds.length} คน`);
   if (typeof body.reason === "string") parts.push(`เหตุผล: ${body.reason}`);
   return parts.join(" · ");
 }
@@ -391,18 +403,51 @@ const NO_BOUND_SYSTEM = "ระบบสมาชิกที่ระบุใ�
  * - write/danger → **ไม่รัน** คืนข้อมูลสำหรับสร้างข้อเสนอให้เจ้าของกดยืนยัน
  * ไม่โยน error ออกไป (ผู้เรียกเป็น tool ของ LLM) — ทุกทางผิดคืน `{ mode: "error" }` ภาษาไทย
  */
+/**
+ * "ใครกำลังเรียก tool นี้" (M2.10) — รูปแบบเดียวที่ใช้ได้ทั้งตอนผู้ช่วยเสนอและตอนคนกดยืนยัน
+ * 🔴 เดิมทั้งสองทางรับพารามิเตอร์คนละชุด (`tenantId` ลอย ๆ กับ `MembershipCtx` + tenantId + proposalId)
+ *    ⇒ ผู้เรียกรายใหม่ต้องจำว่าอันไหนเรียงยังไง · รวมเป็นก้อนเดียวแล้วอ่านออกทันทีว่าใครทำอะไรที่ร้านไหน
+ *    (รูปเดิมยังเรียกได้อยู่ — ดู overload ของ `dispatchMemberKind` ข้างล่าง)
+ */
+export type MemberToolCtx = {
+  tenantId: string;
+  systemId?: string | null;
+  /** คนที่กดยืนยัน (ผู้ช่วยล้วน = ไม่ต้องส่ง) */
+  userId?: string | null;
+  membershipId?: string | null;
+  role?: MembershipCtx["role"];
+  unitAccess?: string[];
+  permissions?: Record<string, unknown>;
+  /** id ข้อเสนอ — ใช้เป็นคีย์กันซ้ำตอนลงมือ (ไม่ส่ง = คิดจากเนื้อข้อเสนอเอง) */
+  proposalId?: string | null;
+};
+
+function isToolCtx(v: unknown): v is MemberToolCtx {
+  return isRecord(v) && typeof v.tenantId === "string" && v.tenantId.length > 0;
+}
+
+function membershipOf(ctx: MemberToolCtx): MembershipCtx {
+  return {
+    role: ctx.role ?? "STAFF",
+    unitAccess: ctx.unitAccess ?? [],
+    permissions: ctx.permissions ?? {},
+  };
+}
+
 export async function runMemberTool(
-  tenantId: string,
+  target: MemberToolCtx | string,
   name: string,
   rawArgs: unknown,
   opts: { systemId?: string } = {},
 ): Promise<MemberToolOutcome> {
+  const tenantId = typeof target === "string" ? target : target.tenantId;
+  const boundSystemId = (typeof target === "string" ? opts.systemId : (target.systemId ?? opts.systemId)) || undefined;
   const op = memberToolOps().find((o) => o.tool?.name === name);
   if (!op) return { mode: "error", error: `ไม่รู้จักเครื่องมือ "${name}"` };
 
   const systemName = isRecord(rawArgs) && typeof rawArgs.systemName === "string" ? rawArgs.systemName : undefined;
-  const system = await findMemberSystem(tenantId, { systemName, systemId: opts.systemId });
-  if (!system) return { mode: "error", error: opts.systemId ? NO_BOUND_SYSTEM : NO_SYSTEM };
+  const system = await findMemberSystem(tenantId, { systemName, systemId: boundSystemId });
+  if (!system) return { mode: "error", error: boundSystemId ? NO_BOUND_SYSTEM : NO_SYSTEM };
 
   const prep = prepareCall(op, rawArgs);
   if (!prep.ok) return { mode: "error", error: prep.error };
@@ -456,6 +501,7 @@ export async function runMemberTool(
  * - audit เขียนใน `runOpAsActor`: actorType USER + after { proposalId, opId }
  * - โยน Error ภาษาไทยเมื่อทำไม่สำเร็จ (proposals.ts แปลงเป็น FAILED + note)
  */
+export async function dispatchMemberKind(ctx: MemberToolCtx, kind: string, rawPayload: unknown): Promise<string>;
 export async function dispatchMemberKind(
   m: MembershipCtx,
   tenantId: string,
@@ -463,13 +509,35 @@ export async function dispatchMemberKind(
   kind: string,
   rawPayload: unknown,
   userId?: string | null,
-): Promise<string> {
+): Promise<string>;
+export async function dispatchMemberKind(...args: unknown[]): Promise<string> {
+  // รูปใหม่ (M2.10): (ctx, kind, payload) · รูปเดิม (M1.11): (membership, tenantId, proposalId, kind, payload, userId?)
+  const compact = isToolCtx(args[0]);
+  const ctx: MemberToolCtx = compact
+    ? (args[0] as MemberToolCtx)
+    : {
+        tenantId: String(args[1] ?? ""),
+        ...(args[0] as MembershipCtx),
+        proposalId: String(args[2] ?? ""),
+        userId: (args[5] as string | null | undefined) ?? null,
+      };
+  const kind = String((compact ? args[1] : args[3]) ?? "");
+  const rawPayload = compact ? args[2] : args[4];
+  const tenantId = ctx.tenantId;
+  const m = membershipOf(ctx);
+  const userId = ctx.userId ?? null;
   const payload = isRecord(rawPayload) ? rawPayload : {};
+  // คีย์กันซ้ำของการลงมือ: มี proposalId ใช้ตัวนั้น · ไม่มี = คิดจาก "คำสั่ง + เนื้อข้อเสนอ" ให้คงที่
+  // 🔴 ห้ามปล่อยว่าง: ยืนยันซ้ำ (กดสองครั้ง/คิวยิงซ้ำ) ต้องไม่บวกแต้มหรือออกใบซ้ำ
+  const proposalId =
+    ctx.proposalId && ctx.proposalId.length > 0
+      ? ctx.proposalId
+      : `kind-${createHash("sha256").update(`${kind}\n${JSON.stringify(payload)}`).digest("hex").slice(0, 24)}`;
   const opId = typeof payload.opId === "string" ? payload.opId : kind.slice(KIND_PREFIX.length);
   const op = memberToolOps().find((o) => o.id === opId);
   if (!op || op.kind === "read") throw new Error("ไม่รู้จักคำสั่งของระบบสมาชิกในข้อเสนอนี้");
 
-  const boundSystemId = typeof payload.systemId === "string" ? payload.systemId : undefined;
+  const boundSystemId = typeof payload.systemId === "string" ? payload.systemId : (ctx.systemId ?? undefined);
   const system = await findMemberSystem(tenantId, { systemId: boundSystemId });
   if (!system) throw new Error(boundSystemId ? NO_BOUND_SYSTEM : NO_SYSTEM);
 

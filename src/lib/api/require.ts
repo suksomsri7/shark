@@ -57,6 +57,15 @@ export type ApiModuleConfig = {
     /** User.id ของคนที่สร้างคีย์ (โมดูลที่ต้องมี "คน" อยู่เบื้องหลังคีย์ใช้ค่านี้ — ดู K1.15/D18) */
     createdById?: string | null;
   }) => ApiActor;
+  /**
+   * ทางเข้าอื่นที่ **ไม่ใช่คีย์ API** ของโมดูลนี้ (M2.10 — session ลูกค้าของระบบสมาชิก)
+   * คืน `null` = คำขอนี้ไม่ใช่ทางนั้น ⇒ เดินด่านคีย์ตามปกติ
+   *
+   * 🔴 ทำไมต้องเป็นของโมดูล ไม่ใช่ของแกน: "ลูกค้า" มีอยู่เฉพาะในระบบสมาชิก — แกนกลางไม่รู้จัก
+   *    token `cs_…` ไม่รู้ว่า op ไหนเป็นเลนของลูกค้า และไม่รู้ข้อความไทยที่ต้องตอบ
+   *    (โมดูลบัญชี/บอร์ดงานไม่ประกาศฟิลด์นี้ ⇒ ทางเดินเดิมไม่เปลี่ยนแม้แต่บรรทัดเดียว)
+   */
+  altAuth?: (req: Request, op: ApiOp, requestId: string) => Promise<RequireResult | null>;
   messages: ApiModuleMessages;
 };
 
@@ -102,6 +111,11 @@ export async function requireApi(
   requestId: string = newRequestId(),
 ): Promise<RequireResult> {
   const M = cfg.messages;
+  // ── 0. เลนอื่นของโมดูล (session ลูกค้า) — ตอบ null = ไม่ใช่ทางนี้ เดินด่านคีย์ต่อ ──────────
+  if (cfg.altAuth) {
+    const alt = await cfg.altAuth(req, op, requestId);
+    if (alt) return alt;
+  }
   // ── 1. ตัวตน ──────────────────────────────────────────────────────────────
   const raw = bearer(req);
   const verdict = raw ? await verifyApiKeyDetailed(raw) : ({ status: "invalid" } as const);

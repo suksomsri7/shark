@@ -132,7 +132,7 @@ try {
   const tok1 = (c1?.qr?.content ?? "").replace(/^SHARK-MC:/, "");
   const cRow = await prisma.customer.findUnique({ where: { id: m(1).id } }) as Any;
   chk("M2.9-S2.1", "meCard(สมาชิก 1) → {memberCode, displayName, tierName, points, qr{content 'SHARK-MC:<token 32+>', dataUrl data:image/png}, expiresAt ≈ 24 ชม.} · Customer.cardTokenHash = sha256(token) (ไม่เก็บ token ดิบ) · เรียกซ้ำ → token เดิม",
-    c1?.memberCode === m(1).memberCode && !!c1.displayName && typeof c1.points === "number" && /^SHARK-MC:[A-Za-z0-9_-]{32,}$/.test(c1.qr?.content ?? "") && /^data:image\/png/.test(c1.qr?.dataUrl ?? "") && Math.abs(new Date(c1.expiresAt).getTime() - (Date.now() + 24 * 3600_000)) < 120_000 && cRow?.cardTokenHash === sha256(tok1) && c1b?.qr?.content === c1.qr.content,
+    c1?.memberCode === m(1).memberCode && !!c1.displayName && typeof c1.points === "number" && /^SHARK-MC:[A-Za-z0-9_-]{32,}$/.test(c1.qr?.content ?? "") && /^data:image\/png/.test(c1.qr?.dataUrl ?? "") && (() => { const d = Date.now() + 24 * 3600_000 - new Date(c1.expiresAt).getTime(); return d > -120_000 && d < 15 * 60_000 + 120_000; })() /* token ใช้ซ้ำได้ 15 นาที (CARD_REUSE_MS) ⇒ อายุที่เหลืออาจสั้นกว่า 24 ชม. ไม่เกิน 15 นาที */ && cRow?.cardTokenHash === sha256(tok1) && c1b?.qr?.content === c1.qr.content,
     "บัตร + token", `c1=${JSON.stringify({ code: c1?.memberCode, name: !!c1?.displayName, pts: c1?.points, qr: c1?.qr?.content?.slice(0, 14), data: c1?.qr?.dataUrl?.slice(0, 15), exp: c1?.expiresAt })} hash=${cRow?.cardTokenHash === sha256(tok1)} same=${c1b?.qr?.content === c1?.qr?.content}`);
 
   const rot = await ME.rotateCardToken(ctx, cust(1), m(1).id);

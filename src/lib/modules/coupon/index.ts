@@ -16,6 +16,8 @@ export type {
   RedeemResult,
   ReleaseInput,
   CreateCouponInput,
+  UpdateCouponInput,
+  PerMemberCodeRow,
 } from "./service";
 
 export {
@@ -30,6 +32,10 @@ export {
   getCoupon,
   createCoupon,
   toggleCoupon,
+  /** M2.10 — แก้ไขคูปอง · ตั้งสถานะตรง ๆ · ออกโค้ดเฉพาะคนจากคูปองต้นแบบ */
+  updateCoupon,
+  setCouponActive,
+  issuePerMemberCodes,
   listRedemptions,
   /** ข้อความไทยของเหตุผลที่คูปองใช้ไม่ได้ (ผู้เรียกเอาไปโชว์/โยน error ต่อ) */
   couponReasonText,

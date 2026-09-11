@@ -34,9 +34,11 @@ export function memberTools(): AiTool[] {
     ...(info.write ? { action: true as const } : {}),
     def: { name: info.name, description: info.description, parameters: info.parameters },
     async execute(ctx: ToolCtx, args: unknown): Promise<string> {
-      const outcome = await runMemberTool(ctx.tenantId, info.name, args, {
-        ...(ctx.systemId ? { systemId: ctx.systemId } : {}),
-      });
+      const outcome = await runMemberTool(
+        { tenantId: ctx.tenantId, ...(ctx.systemId ? { systemId: ctx.systemId } : {}) },
+        info.name,
+        args,
+      );
       if (outcome.mode === "error") return JSON.stringify({ error: outcome.error });
       if (outcome.mode === "read") return JSON.stringify(outcome.result);
       // ── เขียน: ต้องอยู่ในบทสนทนา (ข้อเสนอผูกกับการ์ดยืนยันใต้แชท) ──

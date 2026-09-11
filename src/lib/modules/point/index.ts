@@ -81,6 +81,7 @@ export {
 } from "./rules";
 
 export type {
+  LotRow,
   EarnBreakdownRow,
   EarnWithLotInput,
   EarnWithLotResult,
@@ -101,6 +102,8 @@ export {
   expireDue,
   /** ล็อตที่จะหมดอายุภายใน N วัน */
   expiringSoon,
+  /** ล็อตที่ยังมีแต้มเหลือของสมาชิกคนหนึ่ง เรียงตามลำดับที่จะถูกตัดจริง (M2.10) */
+  listLots,
   /** cron รายวัน: ยิง event แจ้งเตือนแต้มใกล้หมดอายุตาม remindDays */
   notifyExpiring,
 } from "./lots";

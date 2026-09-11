@@ -10,12 +10,19 @@
 import { allowedMethodsIn, matchOpIn } from "@/lib/api/dispatch";
 import type { ApiOp } from "@/lib/api/op";
 import { CORE_OPS } from "./ops/core";
+import { COUPONS_OPS } from "./ops/coupons";
 import { FIELDS_OPS } from "./ops/fields";
+import { GIFTCARDS_OPS } from "./ops/giftcards";
 import { ME_OPS } from "./ops/me";
 import { MEMBERS_OPS } from "./ops/members";
+import { POINTS_OPS } from "./ops/points";
 import { PRIVACY_OPS } from "./ops/privacy";
+import { REWARDS_OPS } from "./ops/rewards";
 import { SOURCES_OPS } from "./ops/sources";
+import { STAMPS_OPS } from "./ops/stamps";
 import { TIERS_OPS } from "./ops/tiers";
+import { VOUCHERS_OPS } from "./ops/vouchers";
+import { WALLET_OPS } from "./ops/wallet";
 
 export * from "./op";
 
@@ -27,7 +34,15 @@ export const MEMBER_OPS: ApiOp[] = [
   ...PRIVACY_OPS,
   ...SOURCES_OPS,
   ...TIERS_OPS,
-  // ช่องทางของลูกค้าเอง (`/me/*`) — ประกาศไว้ในสัญญาแล้ว · ทางเข้าจริงมาใน M2.9
+  // ── ชุดสอง: ความภักดีและโปรโมชัน (M2.10 · §2.6–2.12) ──
+  ...POINTS_OPS,
+  ...STAMPS_OPS,
+  ...REWARDS_OPS,
+  ...WALLET_OPS,
+  ...VOUCHERS_OPS,
+  ...COUPONS_OPS,
+  ...GIFTCARDS_OPS,
+  // ช่องทางของลูกค้าเอง (`/me/*`) — session ลูกค้า `cs_…` เท่านั้น (M2.9 ออก token · M2.10 เปิดทาง REST)
   ...ME_OPS,
 ];
 

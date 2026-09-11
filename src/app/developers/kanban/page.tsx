@@ -51,6 +51,7 @@ const ERROR_CODE_TH: Record<ApiErrorCode, string> = {
   idempotency_in_progress: "คำขอที่ใช้คีย์กันซ้ำใบนี้ยังทำงานค้างอยู่",
   confirm_required: "คำสั่งอันตรายที่ไม่ได้ส่ง confirm: true มาด้วย",
   customer_session_required: "เส้นทางของลูกค้าเอง (มีเฉพาะระบบสมาชิก) — คีย์ของร้านใช้ไม่ได้ · บอร์ดงานไม่คืนรหัสนี้",
+  customer_scope: "ลูกค้าที่ล็อกอินเองเรียก operation ของร้าน (มีเฉพาะระบบสมาชิก) — บอร์ดงานไม่คืนรหัสนี้",
   not_found: "ไม่มี operation นี้ หรือบอร์ด/การ์ดนั้นไม่ได้อยู่ในระบบที่คีย์ผูกไว้",
   method_not_allowed: "path มีอยู่จริง แต่ไม่รองรับ HTTP method นี้ (ดูส่วนหัว Allow)",
   rate_limited: "เรียกถี่เกินเพดานของคีย์ — รอตามส่วนหัว Retry-After",

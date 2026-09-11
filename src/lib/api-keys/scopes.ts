@@ -157,6 +157,9 @@ const MEMBER_OPERATE_SCOPES = [
   "member.promo.issue",
   "member.point.adjust",
   "member.review.reply",
+  // M2.10 — ขายบัตรกำนัลคืองานหน้าเคาน์เตอร์ (รับเงินผ่าน POS แล้วออกบัตร) ไม่ใช่งานตั้งค่า
+  // 🔴 `member.giftcard.manage` (ตั้งค่า/ระงับบัตร/ดูทะเบียนทั้งร้าน) ยังอยู่ชุด admin เท่านั้น
+  "member.giftcard.sell",
 ] as const;
 
 /** ทุกคีย์ `member.*` ที่ใช้เป็น scope ได้ — เรียงให้ชุด operate มาก่อน แล้วต่อด้วยที่เหลือ */

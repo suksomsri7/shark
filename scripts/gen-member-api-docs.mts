@@ -105,6 +105,12 @@ const ERROR_CODE_DOCS: Record<ApiErrorCode, CodeDoc> = {
     meaning: "An operation under `/me` was called with a shop API key. That lane belongs to the customer and needs a customer session (LIFF or the mobile app).",
     action: "Use the shop-facing operation instead: `/members/{id}` reads the same person on behalf of the shop.",
   },
+  customer_scope: {
+    status: 403,
+    meaning:
+      "A customer session (`Authorization: Bearer cs_...`) called an operation that belongs to the shop, for example another member's points or the member list. The customer lane is `/me` and nothing else.",
+    action: "Call `/me/...` instead, or use a shop API key for shop-facing work. Signing in again does not help.",
+  },
   not_found: {
     status: 404,
     meaning: "No such operation, or the member, field, tier, policy or link does not exist inside this member system. A member of another shop, or one outside the branches this key covers, answers this too, never 403.",
@@ -221,6 +227,68 @@ const WEBHOOK_EVENT_DOCS: Record<string, WebhookDoc> = {
   "member.consent.changed": {
     when: "A member agreed to, or withdrew consent for, being contacted through one channel. Stop sending on a `granted: false` for that channel.",
     payload: { customerId: "cmf1cus0001", channel: "LINE", granted: true, source: "LIFF", policyVersion: 3 },
+  },
+  // ── ความภักดีและโปรโมชัน (M2.10) — ยิงจาก service ของโมดูลนั้น ๆ ⇒ เข้าทางไหนก็ได้เหมือนกัน
+  //    (ปุ่มบนจอ · REST `/api/v1/member/*` · POS ปิดบิล · cron หมดอายุ · สกิล AI หลังคนกดยืนยัน)
+  "point.earned": {
+    when: "A member earned points, from a sale, an event bonus or a hand written credit. `lotId` is the batch the points sit in, which is what decides when they expire.",
+    payload: { customerId: "cmf1cus0001", points: 250, lotId: "cmf1lot0001", ledgerId: "cmf1pld0001", refType: "PosSale", refId: "cmf1sal0001" },
+  },
+  "point.burned": {
+    when: "Points were spent: taken off a bill, exchanged for a reward, or transferred away. Oldest lots go first.",
+    payload: { customerId: "cmf1cus0001", points: 50, ledgerId: "cmf1pld0002", refType: "RewardRedemption", refId: "cmf1rdm0001" },
+  },
+  "point.expiring": {
+    when: "A lot is about to expire. Fires once per lot per reminder day the shop configured (for example 30 and 7 days out), so a handler can nudge the member.",
+    payload: { customerId: "cmf1cus0001", points: 120, lotId: "cmf1lot0001", daysLeft: 30, expiresAt: "2026-10-11T00:00:00.000Z" },
+  },
+  "point.expired": {
+    when: "A lot expired and the points are gone. Sent by the nightly job, once per lot.",
+    payload: { customerId: "cmf1cus0001", points: 120, lotId: "cmf1lot0001" },
+  },
+  "point.transferred": {
+    when: "A member sent points to another member of the same shop, confirmed with a one time code.",
+    payload: { fromCustomerId: "cmf1cus0001", toCustomerId: "cmf1cus0002", points: 100, feePoints: 0, transferId: "cmf1ptr0001" },
+  },
+  "stamp.added": {
+    when: "A member collected one or more stamps on a card.",
+    payload: { customerId: "cmf1cus0001", cardId: "cmf1stc0001", progressId: "cmf1stp0001", stamps: 3, cycle: 1, count: 1, eventId: "cmf1ste0001" },
+  },
+  "stamp.completed": {
+    when: "A card filled up and its reward was paid out. `rewardKind` says what the member got.",
+    payload: { customerId: "cmf1cus0001", cardId: "cmf1stc0001", progressId: "cmf1stp0001", stamps: 10, cycle: 1, rewardKind: "VOUCHER", rewardConfig: { templateId: "cmf1vtp0001" } },
+  },
+  "reward.redeemed": {
+    when: "A member exchanged points or stamps for a reward. Nothing has been handed over yet; they hold a QR code to collect it.",
+    payload: { customerId: "cmf1cus0001", rewardId: "cmf1rwd0001", redemptionId: "cmf1rdm0001" },
+  },
+  "reward.fulfilled": {
+    when: "The reward was actually handed to the member at the counter.",
+    payload: { customerId: "cmf1cus0001", rewardId: "cmf1rwd0001", redemptionId: "cmf1rdm0001" },
+  },
+  "voucher.issued": {
+    when: "A voucher was issued to a member. `origin` says why, which is what the campaign report groups on.",
+    payload: { customerId: "cmf1cus0001", voucherId: "cmf1vch0001", code: "V-8KQ2M4", origin: "CAMPAIGN", templateId: "cmf1vtp0001", expiresAt: "2026-10-11T16:59:59.000Z", notify: true },
+  },
+  "voucher.used": {
+    when: "A voucher was spent on a bill or an appointment. `discountSatang` is what it actually took off.",
+    payload: { customerId: "cmf1cus0001", voucherId: "cmf1vch0001", code: "V-8KQ2M4", origin: "CAMPAIGN", saleId: "cmf1sal0001", discountSatang: 5000 },
+  },
+  "voucher.expiring": {
+    when: "A voucher is close to its expiry date (7 days out, then 1 day out, by Thai calendar days).",
+    payload: { customerId: "cmf1cus0001", voucherId: "cmf1vch0001", code: "V-8KQ2M4", origin: "CAMPAIGN", daysLeft: 7, expiresAt: "2026-10-11T16:59:59.000Z" },
+  },
+  "voucher.expired": {
+    when: "A voucher expired unused.",
+    payload: { customerId: "cmf1cus0001", voucherId: "cmf1vch0001", code: "V-8KQ2M4", origin: "CAMPAIGN" },
+  },
+  "giftcard.sold": {
+    when: "A gift card was sold. From this moment the amount is money the shop owes, not revenue; it becomes revenue as the card is spent.",
+    payload: { giftCardId: "cmf1gcd0001", number: "GC-10004521", satang: 50000, buyerCustomerId: "cmf1cus0001", ownerCustomerId: "cmf1cus0001", saleId: "cmf1sal0001" },
+  },
+  "giftcard.used": {
+    when: "A gift card paid for part or all of a bill.",
+    payload: { giftCardId: "cmf1gcd0001", number: "GC-10004521", satang: 12000, saleId: "cmf1sal0002", balanceAfter: 38000 },
   },
 };
 

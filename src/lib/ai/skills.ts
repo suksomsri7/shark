@@ -111,6 +111,12 @@ export const SKILLS: Skill[] = [
       "member_resolve", "member_field_create", "member_consent_set",
       // (ข) จากทะเบียน REST — อันตราย (ยืนยัน 2 ชั้น)
       "member_merge", "member_tier_set_manual",
+      // (ข) ชุดสอง M2.10 — อ่าน
+      "member_points_balance", "member_wallet", "member_wallet_quote",
+      "member_stamp_cards", "member_rewards_list", "member_giftcard_balance",
+      // (ข) ชุดสอง M2.10 — เขียน (ผ่านการยืนยันของเจ้าของ)
+      "member_points_credit", "member_stamps_add", "member_rewards_redeem",
+      "member_vouchers_issue", "member_giftcards_sell",
     ],
     systems: ["MEMBER", "POINT", "REWARD", "COUPON"],
   },

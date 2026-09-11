@@ -105,6 +105,11 @@ const ERROR_CODE_DOCS: Record<ApiErrorCode, CodeDoc> = {
     meaning: "The operation belongs to the customer themself (the member self-service lane) and needs a customer session, not a shop API key.",
     action: "Nothing an API key can do here: no scope opens this lane. Use the shop-facing operation instead.",
   },
+  customer_scope: {
+    status: 403,
+    meaning: "A customer session (member self-service) called an operation that belongs to the shop. Member module only.",
+    action: "Nothing to do here; a shop API key never gets this code.",
+  },
   not_found: {
     status: 404,
     meaning: "No such operation, or the board, column, card, label, checklist, comment or attachment does not exist inside this task board system. A board the key may not see answers this too, never 403.",

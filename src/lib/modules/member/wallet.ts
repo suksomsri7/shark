@@ -719,6 +719,16 @@ async function cartFromSale(ctx: MemberCtx, saleId: string, tx: Tx): Promise<Wal
  *    เขียนบางส่วน = ลูกค้าเสีย voucher ไปโดยไม่ได้ส่วนลด — ห้ามเกิดแม้ครั้งเดียว
  * 🔴 คืนแต้ม/สแตมป์ที่ "จะได้" ไม่ทำที่นี่ — เป็นงานของ consumer หลัง commit (M2.8)
  */
+/**
+ * M2.10 — ทางเข้าจาก REST: ผู้เรียกภายนอกไม่มี transaction ของบิลอยู่ในมือ (มีแต่ POS ของ SHARK เอง)
+ * ⇒ เปิด transaction ให้เองแล้วเรียก `applyOnSale` ตัวเดิม — กติกา/ลำดับ/การโยนเหมือนกันทุกประการ
+ * 🔴 ใช้ได้เฉพาะบิลที่ **บันทึกลงฐานข้อมูลแล้ว**: ผู้เชื่อมต่อต้องเปิดบิลผ่าน API ของ POS ก่อน
+ *    แล้วค่อยเรียกตัวนี้ · ถ้าตัดสิทธิ์ไม่ผ่านข้อใดข้อหนึ่ง จะไม่มีสิทธิ์ไหนถูกตัดเลย (rollback ทั้งก้อน)
+ */
+export async function applyOnSaleStandalone(ctx: MemberCtx, input: ApplyOnSaleInput): Promise<ApplyOnSaleResult> {
+  return prisma.$transaction((tx) => applyOnSale(ctx, input, tx));
+}
+
 export async function applyOnSale(ctx: MemberCtx, input: ApplyOnSaleInput, tx: Tx): Promise<ApplyOnSaleResult> {
   const saleId = String(input.saleId ?? "").trim();
   if (!saleId) throw new MemberInputError("บิลนี้ยังไม่มีเลขที่อ้างอิง — เริ่มรายการใหม่อีกครั้ง");

@@ -40,6 +40,27 @@ type IdemRow = {
   expiresAt: Date;
 };
 
+/**
+ * ตัดค่าลับที่ op ประกาศว่า "คืนครั้งเดียว" ออกจากคำตอบที่ถูก replay (ดู `ApiOp.replaySecrets`)
+ * แทนด้วย `null` ไม่ใช่ลบคีย์ทิ้ง — ผู้เรียกที่อ่าน `data.pin` จะได้รู้ว่า "ไม่มีให้แล้ว" ไม่ใช่ "ลืมส่ง"
+ */
+function scrubReplaySecrets(op: ApiOp, body: unknown): unknown {
+  const secrets = op.replaySecrets;
+  if (!secrets || secrets.length === 0) return body;
+  if (typeof body !== "object" || body === null) return body;
+  const envelope = body as { data?: unknown };
+  if (typeof envelope.data !== "object" || envelope.data === null || Array.isArray(envelope.data)) return body;
+  const data = { ...(envelope.data as Record<string, unknown>) };
+  let touched = false;
+  for (const k of secrets) {
+    if (k in data && data[k] !== null) {
+      data[k] = null;
+      touched = true;
+    }
+  }
+  return touched ? { ...envelope, data } : body;
+}
+
 /** requestId ที่ฝังอยู่ในซองที่เก็บไว้ — ตอบซ้ำต้องใช้ค่าเดิมให้หัวกับ body ตรงกัน */
 function storedRequestId(body: unknown, fallback: string): string {
   if (typeof body === "object" && body !== null) {
@@ -149,8 +170,8 @@ export async function withIdempotency(
         { headers: extraHeaders },
       );
     } else {
-      // ตอบซ้ำของเดิมทั้งดุ้น (status + body) — ผู้เรียกแยกออกด้วยหัว Idempotent-Replayed
-      return respond(row.status, row.responseJson, { "Idempotent-Replayed": "true" });
+      // ตอบซ้ำของเดิม (status + body · ยกเว้นค่าลับที่คืนครั้งเดียว) — แยกออกด้วยหัว Idempotent-Replayed
+      return respond(row.status, scrubReplaySecrets(op, row.responseJson), { "Idempotent-Replayed": "true" });
     }
   }
 

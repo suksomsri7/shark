@@ -20,6 +20,7 @@
 import { membershipFromScopes, type ApiActor } from "@/lib/api/actor";
 import type { MemberActor, MemberApiRole } from "../access";
 import { canReadMember, hasMemberPerm } from "../access";
+import { customerActor } from "../customer-session";
 import type { MemberCtx } from "../profile";
 
 /** ข้อความไทยเมื่อคีย์ไม่มีสิทธิ์ทำ op ของระบบสมาชิก */
@@ -41,6 +42,8 @@ const OPERATE_SCOPES: readonly string[] = [
   "member.promo.issue",
   "member.point.adjust",
   "member.review.reply",
+  // M2.10 — คีย์ที่ขายบัตรกำนัลได้คือคีย์ทำงานหน้าร้าน ไม่ใช่คีย์อ่านอย่างเดียว
+  "member.giftcard.sell",
 ];
 
 /** ชุดสิทธิ์ของคีย์ใบนี้ (§6.3) — ตัวชี้ขาดว่าเห็นข้อมูลอ่อนไหวได้ไหม */
@@ -124,6 +127,11 @@ export function memberCtxOf(actor: ApiActor): MemberCtx {
  *    ระบบนึกว่าเขาเป็นคีย์อ่านอย่างเดียว
  */
 export function memberActorOf(actor: ApiActor): MemberActor {
+  // M2.10 — เลนลูกค้า (`/me/*` ด้วย token `cs_…`): ตัวตนคือ "ลูกค้าคนนั้น" ไม่ใช่พนักงานคนไหนเลย
+  // ⇒ role `CUSTOMER` + `customerId` ซึ่งเป็นสิ่งที่ service ทุกตัวของเลนนี้ตรวจ (me.assertSelf ·
+  //   wallet.assertVisible · transferPoints · redeemV2) — ถ้าปล่อยให้ตกไปทาง membership ข้างล่าง
+  //   ลูกค้าจะกลายเป็น "พนักงาน STAFF ที่ไม่มีสิทธิ์อะไร" แล้วได้ 404/403 ของคนละความหมาย
+  if (actor.customerId) return customerActor(actor.customerId);
   if (actor.kind === "apikey") {
     return memberActorForKey({
       keyId: actor.keyId ?? "apikey",

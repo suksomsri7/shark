@@ -137,6 +137,124 @@ export async function toggleCoupon(tenantId: string, systemId: string, couponId:
   await prisma.coupon.update({ where: { id: c.id }, data: { active: !c.active } });
 }
 
+// ── M2.10 (REST ระบบสมาชิก) — แก้ไข · ตั้งสถานะตรง ๆ · ออกโค้ดรายคน ──
+// 🔴 ทั้งสามตัวเป็นของใหม่ที่ **เพิ่มเข้ามาอย่างเดียว** ไม่แตะทางเดินเดิมของ POS/หน้าจัดการคูปอง
+
+export type UpdateCouponInput = Partial<Omit<CreateCouponInput, "tenantId" | "systemId" | "code" | "type">> & {
+  active?: boolean;
+  saveToWallet?: boolean;
+  stackWithVoucher?: boolean;
+};
+
+/** แก้ไขคูปอง — ส่งเฉพาะช่องที่จะแก้ · โค้ดกับชนิดเปลี่ยนไม่ได้ (ใบที่แจกออกไปแล้วจะเปลี่ยนความหมาย) */
+export async function updateCoupon(
+  tenantId: string,
+  systemId: string,
+  couponId: string,
+  patch: UpdateCouponInput,
+): Promise<{ ok: true; couponId: string } | { ok: false; reason: string }> {
+  const c = await prisma.coupon.findFirst({ where: { id: couponId, tenantId, systemId } });
+  if (!c) return { ok: false, reason: "ไม่พบคูปองนี้" };
+  if (c.type === "PERCENT" && patch.percent !== undefined && patch.percent !== null) {
+    if (patch.percent < 1 || patch.percent > 100) return { ok: false, reason: "เปอร์เซ็นต์ต้องอยู่ระหว่าง 1-100" };
+  }
+  if (c.type === "FIXED" && patch.valueSatang !== undefined && patch.valueSatang !== null && patch.valueSatang <= 0) {
+    return { ok: false, reason: "มูลค่าส่วนลดต้องมากกว่า 0" };
+  }
+  const data: Prisma.CouponUpdateInput = {};
+  if (patch.name !== undefined) data.name = patch.name.trim();
+  if (patch.percent !== undefined && c.type === "PERCENT") data.percent = patch.percent;
+  if (patch.valueSatang !== undefined && c.type === "FIXED") data.valueSatang = patch.valueSatang;
+  if (patch.minSpendSatang !== undefined) data.minSpendSatang = patch.minSpendSatang;
+  if (patch.maxDiscountSatang !== undefined && c.type === "PERCENT") data.maxDiscountSatang = patch.maxDiscountSatang;
+  if (patch.usageLimit !== undefined) data.usageLimit = patch.usageLimit;
+  if (patch.perMemberLimit !== undefined) data.perMemberLimit = patch.perMemberLimit;
+  if (patch.applicableUnitIds !== undefined) data.applicableUnitIds = patch.applicableUnitIds;
+  if (patch.startAt !== undefined) data.startAt = patch.startAt;
+  if (patch.endAt !== undefined) data.endAt = patch.endAt;
+  if (patch.active !== undefined) data.active = patch.active;
+  if (patch.saveToWallet !== undefined) data.saveToWallet = patch.saveToWallet;
+  if (patch.stackWithVoucher !== undefined) data.stackWithVoucher = patch.stackWithVoucher;
+  await prisma.coupon.update({ where: { id: c.id }, data });
+  return { ok: true, couponId: c.id };
+}
+
+/** ตั้งสถานะเปิด/ปิดตรง ๆ (ต่างจาก `toggleCoupon` ที่สลับค่า — API ต้องสั่งผลลัพธ์ได้ ไม่ใช่สลับมั่ว) */
+export async function setCouponActive(
+  tenantId: string,
+  systemId: string,
+  couponId: string,
+  active: boolean,
+): Promise<{ ok: true; active: boolean } | { ok: false; reason: string }> {
+  const c = await prisma.coupon.findFirst({ where: { id: couponId, tenantId, systemId } });
+  if (!c) return { ok: false, reason: "ไม่พบคูปองนี้" };
+  await prisma.coupon.update({ where: { id: c.id }, data: { active } });
+  return { ok: true, active };
+}
+
+export type PerMemberCodeRow = { customerId: string; couponId: string; code: string };
+
+/**
+ * ออก "โค้ดเฉพาะคน" จากคูปองต้นแบบ 1 ใบ — สมาชิก 1 คนได้ 1 โค้ดที่ใช้ได้ครั้งเดียว
+ *
+ * 🔴 ทำไมเป็นคูปองใบใหม่ ไม่ใช่แถวผูกเจ้าของ: ตาราง `Coupon` ยังไม่มีคอลัมน์เจ้าของ และใบนี้ห้ามมี
+ *    migration ⇒ วิธีที่ตรงไปตรงมาที่สุดคือโคลนกติกาทั้งชุดแล้วตั้งโค้ดใหม่ต่อคน (`perMemberCode`)
+ * 🔴 ใบที่โคลนออกมาตั้ง `saveToWallet: false` เสมอ: กระเป๋าสิทธิ์ของ M2.7 ยังอ่าน "คูปองที่เปิดใช้อยู่
+ *    ทั้งระบบ" (ไม่ผูกรายคน) ⇒ ถ้าปล่อย true โค้ดส่วนตัวของคนหนึ่งจะไปโผล่ในกระเป๋าของทุกคน
+ *    ผู้เรียกเป็นคนส่งโค้ดถึงเจ้าของเอง (คำตอบบอกว่าโค้ดไหนของใคร)
+ */
+export async function issuePerMemberCodes(input: {
+  tenantId: string;
+  systemId: string;
+  couponId: string;
+  customerIds: string[];
+  usageLimit?: number;
+  startAt?: Date | null;
+  endAt?: Date | null;
+}): Promise<{ ok: true; issued: number; coupons: PerMemberCodeRow[] } | { ok: false; reason: string }> {
+  const base = await prisma.coupon.findFirst({ where: { id: input.couponId, tenantId: input.tenantId, systemId: input.systemId } });
+  if (!base) return { ok: false, reason: "ไม่พบคูปองต้นแบบนี้" };
+  const ids = [...new Set(input.customerIds.map((s) => s.trim()).filter(Boolean))];
+  if (ids.length === 0) return { ok: false, reason: "ยังไม่ได้เลือกสมาชิกที่จะออกโค้ดให้" };
+
+  const rows: PerMemberCodeRow[] = [];
+  for (const customerId of ids) {
+    // โค้ดต้องเดาไม่ได้ (ใครเดาโค้ดของคนอื่นได้ = ใช้สิทธิ์ของเขาได้) ⇒ สุ่มจริง ไม่ใช่เลขเรียง
+    let created: { id: string; code: string } | null = null;
+    for (let attempt = 0; attempt < 5 && !created; attempt++) {
+      const code = `${base.code}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+      const dup = await prisma.coupon.findFirst({ where: { systemId: input.systemId, code }, select: { id: true } });
+      if (dup) continue;
+      const c = await prisma.coupon.create({
+        data: {
+          tenantId: input.tenantId,
+          systemId: input.systemId,
+          code,
+          name: base.name,
+          type: base.type,
+          percent: base.percent,
+          valueSatang: base.valueSatang,
+          minSpendSatang: base.minSpendSatang,
+          maxDiscountSatang: base.maxDiscountSatang,
+          usageLimit: input.usageLimit ?? 1,
+          perMemberLimit: 1,
+          applicableUnitIds: base.applicableUnitIds,
+          startAt: input.startAt === undefined ? base.startAt : input.startAt,
+          endAt: input.endAt === undefined ? base.endAt : input.endAt,
+          perMemberCode: true,
+          saveToWallet: false,
+          stackWithVoucher: base.stackWithVoucher,
+        },
+        select: { id: true, code: true },
+      });
+      created = c;
+    }
+    if (!created) return { ok: false, reason: "ออกโค้ดไม่สำเร็จเพราะสุ่มโค้ดชนกันหลายครั้ง — ลองใหม่อีกครั้ง" };
+    rows.push({ customerId, couponId: created.id, code: created.code });
+  }
+  return { ok: true, issued: rows.length, coupons: rows };
+}
+
 // ── validate (read-only, เรียกซ้ำได้) ──
 export type ValidateInput = {
   code: string;

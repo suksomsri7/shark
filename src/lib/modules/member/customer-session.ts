@@ -24,6 +24,19 @@ const RL_WINDOW_MS = 10 * 60_000;
 const RL_PER_TARGET = 3; // ต่อเบอร์/อีเมล 3 ครั้ง / 10 นาที
 const RL_PER_IP = 10; // ต่อ ip 10 ครั้ง / 10 นาที
 
+/**
+ * คำนำหน้าของ token session ลูกค้า (M2.10)
+ * 🔴 มีไว้ให้ REST แยก "ลูกค้า" ออกจาก "คีย์ API ของร้าน" (`shark_…`) ได้ตั้งแต่ก่อนแตะฐานข้อมูล
+ *    — token ยังเก็บเป็น hash เหมือนเดิม (คำนำหน้าเป็นส่วนหนึ่งของค่าที่ hash) ⇒ ของเดิมที่ออกไปแล้ว
+ *    ยังใช้ได้ ไม่ต้อง migrate อะไร
+ */
+export const CUSTOMER_TOKEN_PREFIX = "cs_";
+
+/** token นี้หน้าตาเป็น session ลูกค้าไหม (ยังไม่ได้แปลว่าใช้ได้จริง — ต้อง `getCustomerSession` ต่อ) */
+export function isCustomerToken(raw: string): boolean {
+  return typeof raw === "string" && raw.startsWith(CUSTOMER_TOKEN_PREFIX);
+}
+
 /** ชื่อ cookie ของลูกค้า — HTTPS ใช้ `__Host-` (Secure + Path=/ + ไม่มี Domain) */
 export function customerCookieName(): string {
   return (process.env.APP_ENV ?? "development") !== "development" ? "__Host-shark_customer" : "shark_customer";
@@ -201,7 +214,7 @@ async function createSessionRow(
   customer: { id: string; tenantId: string },
   meta: { userAgent?: string | null; ip?: string | null },
 ): Promise<CustomerSessionToken> {
-  const token = randomToken(32);
+  const token = `${CUSTOMER_TOKEN_PREFIX}${randomToken(32)}`;
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
   await prisma.customerSession.create({
     data: {

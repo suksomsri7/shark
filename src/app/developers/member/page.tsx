@@ -47,6 +47,7 @@ const ERROR_CODE_TH: Record<ApiErrorCode, string> = {
   idempotency_in_progress: "คำขอที่ใช้คีย์กันซ้ำใบนี้ยังทำงานค้างอยู่",
   confirm_required: "คำสั่งอันตรายที่ไม่ได้ส่ง confirm: true มาด้วย",
   customer_session_required: "เส้นทาง /me เป็นของลูกค้าเอง (เข้าผ่านไลน์/แอป) — คีย์ของร้านใช้ไม่ได้ ไม่มี scope ไหนเปิดให้",
+  customer_scope: "token ของลูกค้า (cs_…) เรียก operation ของร้าน — เลนลูกค้าใช้ได้เฉพาะ /me",
   not_found: "ไม่มี operation นี้ หรือสมาชิก/ฟิลด์/ระดับนั้นไม่ได้อยู่ในระบบสมาชิกที่คีย์ผูกไว้",
   method_not_allowed: "path มีอยู่จริง แต่ไม่รองรับ HTTP method นี้ (ดูส่วนหัว Allow)",
   rate_limited: "เรียกถี่เกินเพดานของคีย์ — รอตามส่วนหัว Retry-After",
@@ -79,10 +80,35 @@ const DOMAIN_TH: Record<string, string> = {
   privacy: "ความเป็นส่วนตัว / PDPA",
   sources: "ช่องทางที่มา",
   tiers: "ระดับสมาชิก",
+  // ── ชุดสอง: ความภักดีและโปรโมชัน (M2.10) ──
+  points: "แต้มสะสม",
+  stamps: "บัตรสะสมตรา",
+  rewards: "ของรางวัล",
+  wallet: "กระเป๋าสิทธิ์",
+  vouchers: "voucher",
+  coupons: "คูปอง",
+  giftcards: "บัตรกำนัล",
   me: "ฝั่งลูกค้าเอง",
 };
 
-const DOMAIN_ORDER = ["core", "members", "channels", "fields", "consents", "privacy", "sources", "tiers", "me"];
+const DOMAIN_ORDER = [
+  "core",
+  "members",
+  "channels",
+  "fields",
+  "consents",
+  "privacy",
+  "sources",
+  "tiers",
+  "points",
+  "stamps",
+  "rewards",
+  "wallet",
+  "vouchers",
+  "coupons",
+  "giftcards",
+  "me",
+];
 
 /** กลุ่มของ op — id ที่ไม่มีจุด (`ping`) ถือเป็นกลุ่ม `core` */
 function domainOf(op: ApiOp): string {
@@ -359,7 +385,9 @@ export default function MemberApiDocsPage() {
               <code>/me</code> ไม่ใช่ของคีย์
             </strong>{" "}
             — เส้นทางนั้นเป็นของลูกค้าที่ล็อกอินผ่านไลน์/แอป คีย์ของร้านจะได้ 401{" "}
-            <code>customer_session_required</code> ให้ใช้ <code>/members/{"{id}"}</code> แทน
+            <code>customer_session_required</code> ให้ใช้ <code>/members/{"{id}"}</code> แทน · ฝั่งลูกค้าส่ง
+            token ของตัวเอง (ขึ้นต้น <code>cs_</code>) มาที่ <code>Authorization: Bearer</code> เหมือนกัน
+            และเรียกได้เฉพาะ <code>/me/*</code> เท่านั้น — เส้นทางอื่นได้ 403 <code>customer_scope</code>
           </li>
         </ul>
       </section>

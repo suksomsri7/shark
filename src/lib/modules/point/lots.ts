@@ -441,6 +441,21 @@ export async function expireDue(
   return { lots: lotsDone, points: pointsDone, customers: customers.size };
 }
 
+export type LotRow = { lotId: string; points: number; remaining: number; earnedAt: Date; expiresAt: Date | null };
+
+/**
+ * ล็อตที่ยังมีแต้มเหลือของสมาชิกคนหนึ่ง (M2.10 — `GET /members/{id}/points` ของ REST)
+ * เรียง "ตัวที่จะถูกใช้ก่อน" ตามกติกา FIFO เดียวกับ `burnFifo` (หมดอายุเร็วสุดก่อน · ไม่มีวันหมดอายุไว้ท้าย)
+ * ⇒ ผู้เชื่อมต่อเห็นลำดับเดียวกับที่ระบบจะตัดจริง ไม่ต้องเดาเอง
+ */
+export async function listLots(ctx: PointCtx, customerId: string): Promise<LotRow[]> {
+  const rows = await prisma.pointLot.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, customerId, expiredAt: null, remaining: { gt: 0 } },
+    orderBy: [{ expiresAt: { sort: "asc", nulls: "last" } }, { earnedAt: "asc" }],
+  });
+  return rows.map((l) => ({ lotId: l.id, points: l.points, remaining: l.remaining, earnedAt: l.earnedAt, expiresAt: l.expiresAt }));
+}
+
 /** ล็อตที่จะหมดอายุภายใน N วัน (เรียงใกล้หมดก่อน) — หน้ากระเป๋าแต้ม/แผงขวาโปรไฟล์ใช้ตัวนี้ */
 export async function expiringSoon(
   ctx: PointCtx,

@@ -97,7 +97,8 @@ try {
   const page = await newPageAs(token, 1440);
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
   assert("S1.1 เปิดแท็บแอปภายนอก/API ได้ (มี connections-api)", await waitFor(page, sel("connections-api")), "ไม่พบ connections-api");
-  const bundleIds = (scopesMod.API_SCOPE_BUNDLES as { id: string; scopes: string[] }[]).map((b) => b.id);
+  // หน้า ConnectionsPanel แสดงเฉพาะชุดสิทธิ์ของบัญชี (scope ขึ้นต้น account.) — ชุด kanban-*/member-* อยู่หน้าของโมดูลนั้น (แก้ 11 ก.ย. 2569 หลังทะเบียนมีชุดของโมดูลอื่น)
+  const bundleIds = (scopesMod.API_SCOPE_BUNDLES as { id: string; scopes: string[] }[]).filter((b) => b.scopes.some((sc) => sc.startsWith("account."))).map((b) => b.id);
   let allRadios = true;
   for (const id of bundleIds) if (!(await exists(page, sel(`api-key-bundle-${id}`)))) allRadios = false;
   assert("S1.2 ฟอร์มมี radio bundle ครบ 5 ชุด", allRadios, `ขาดบางตัวจาก ${bundleIds.join(",")}`);

@@ -14,6 +14,14 @@ const SERVER_URL = "https://shark.in.th/api/v1/member";
 /** เวอร์ชันของ "สัญญา" ไม่ใช่ของ build */
 const API_VERSION = "1.0.0";
 
+/**
+ * คำนำหน้าของ event ที่ "ระบบสมาชิก" เป็นเจ้าของ
+ * 🔴 M2.10: ไม่ใช่แค่ `member.*` — ความภักดีทั้งหมด (แต้ม · ตราสะสม · ของรางวัล · voucher · บัตรกำนัล)
+ *    เกิดในโมดูลของตัวเองแต่พูดถึง "สมาชิกคนหนึ่ง" เสมอ ⇒ ร้านที่ต่อฮุคของระบบสมาชิกต้องเห็นครบ
+ *    (ถ้ากรองแค่ `member.` คู่มือจะบอกว่าไม่มี `point.earned` ให้สมัคร ทั้งที่หน้าตั้งค่าฮุคมีช่องติ๊กอยู่)
+ */
+const MEMBER_EVENT_PREFIXES = ["member.", "point.", "stamp.", "reward.", "voucher.", "giftcard."] as const;
+
 // รายชื่อ event ที่ร้านสมัครฮุคได้ ดึงจากทะเบียนเดียวกับหน้าตั้งค่า (ห้ามพิมพ์มือ = ตกหล่นแน่)
 const MEMBER_WEBHOOK_EVENTS = memberWebhookEvents().map((e) => `\`${e}\``);
 
@@ -22,7 +30,7 @@ export function memberWebhookEvents(): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const e of WEBHOOK_EVENTS) {
-    if (!e.value.startsWith("member.") || seen.has(e.value)) continue;
+    if (!MEMBER_EVENT_PREFIXES.some((p) => e.value.startsWith(p)) || seen.has(e.value)) continue;
     seen.add(e.value);
     out.push(e.value);
   }
@@ -46,7 +54,7 @@ const INFO_DESCRIPTION = [
   "11. Success is `{ data, page?, requestId }`. Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }` - see the `Error` schema for every code. `requestId` is also returned in the `X-Request-Id` header; quote it when reporting a problem.",
   "12. A member the key cannot see answers 404 `not_found`, never 403 - the API never confirms that somebody is a member of another shop or of a branch this key does not cover.",
   `13. Rate limits are per key and per class: ${MEMBER_RATE_LIMITS.read.limit} reads and ${MEMBER_RATE_LIMITS.write.limit} writes per minute, ${MEMBER_RATE_LIMITS.report.limit} reports per minute. A 429 response carries \`Retry-After\`; successful responses carry \`X-RateLimit-Limit\` and \`X-RateLimit-Remaining\`.`,
-  "14. Operations under `/me` belong to the customer themself (the LIFF and in-app self-service lane) and need a customer session. A shop API key calling them gets 401 `customer_session_required`; no scope opens that lane.",
+  "14. Operations under `/me` belong to the customer themself (the LIFF and in-app self-service lane). They need a customer session token, which starts with `cs_` and is sent the same way: `Authorization: Bearer cs_...`. A shop API key calling them gets 401 `customer_session_required` and no scope opens that lane; the mirror also holds, a customer session calling any other path gets 403 `customer_scope`.",
   "15. Some list operations can also render CSV: send `Accept: text/csv` and, when the operation lists `text/csv` under its 200 response, you get `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment` instead of the JSON envelope. Every cell is safe against spreadsheet formula injection.",
   `16. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: ${MEMBER_WEBHOOK_EVENTS.join(", ")}. Each delivery is \`POST\` with \`X-Shark-Event\`, a body of \`{ type, payload, sentAt }\` and header \`X-Shark-Signature\` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/MEMBER-API.md, section Webhooks.`,
 ].join("\n");

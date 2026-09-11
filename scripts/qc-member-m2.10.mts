@@ -147,6 +147,11 @@ try {
     "แลกครั้งเดียว", `${r1.status}/${r2.status}/${r3.status} bal=${await bal(X)} r1=${JSON.stringify(r1.body).slice(0, 140)}`);
 
   // ═══ S3 CUSTOMER session ผ่าน REST ═══
+  // ร้าน QC ตั้ง nickname.customerEditable = false (ค่าปริยาย) — เปิดชั่วคราวแบบเดียวกับข้อสอบ M2.9 แล้วคืนค่าใน finally
+  const F210 = (await import("@/lib/modules/member/fields" as string)) as Record<string, (...a: Any[]) => Any>;
+  const lay210 = await F210.listLayout({ tenantId: tid, systemId: SYS }, { audience: "staff" });
+  const nick210 = lay210.sections.flatMap((sec: Any) => sec.fields).find((f: Any) => f.key === "nickname");
+  if (nick210 && !nick210.customerEditable) { await F210.updateField({ tenantId: tid, systemId: SYS }, nick210.id, { customerEditable: true }); restore.push(() => F210.updateField({ tenantId: tid, systemId: SYS }, nick210.id, { customerEditable: false })); }
   const sess = await CS.mintCustomerSession(X, { userAgent: "qc-api" }); made.sessions.push(sess.token);
   const me = await call("GET", "/me", sess.token);
   const meCard = await call("GET", "/me/card", sess.token);
