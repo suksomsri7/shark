@@ -49,7 +49,7 @@
 | **C3.2** | quotas (set/progress/reached) + หน้าแรก KPI 6 + งานวันนี้ + ดีลที่ต้องดู + leaderboard + ที่มา lead + มุมมองบันทึก objectKey (contact/company/deal) | Sonnet | C3.1 | — | 20 | 01 · 10 (โควตา) |
 | **C3.3** | commissions: schema `crm_v2_d` (Quota/Commission*/Visibility/Portal*) · rules · onPaid/onWon (idempotent) · split · approval (entityType CRM_COMMISSION) · HR `createPayAdjustment` + `HrPayAdjustment.crmCommissionId` + `hr.payroll.paid` event (ในโมดูล HR) · reverse · report · UI กฎ/รออนุมัติ/ของฉัน | Opus | C2.7 | `crm_v2_d` | 30 | 10 (ขวา) |
 | **C3.4** | MEETING bridge (แจ้งห้องทีม · unfurl ดีล) · KB ใน AI ร่างอีเมล · AI ในหน้า (ดีลเสี่ยง/สรุปดีล/สรุปบริษัท/ร่างอีเมล/นามบัตร → proposal) + tool ที่เหลือ 8 | Opus | C2.11 | — | 22 | 14 (ซ้าย) · 13 (ค) |
-| **C3.5** | portal B2B (C7 · **รอยืนยันเจ้าของ**): `/p/*` shell (ธีมร้าน · LIFF) · auth EMAIL_OTP/LINE ผ่าน platform_auth · invite/access/revoke · quotations respond → บัญชี · invoices + payLink + slip · receipts · documents (ไฟล์+วัตถุ portalVisible) · requests (→ การ์ด/approval) · contacts · UI พนักงาน (เชิญ/ดู) | Opus | C2.7 · C1.9 | (ใน d) | 30 | 12 · 04 (portal) |
+| **C3.5** | portal B2B (C7 ✅ ยืนยัน 11 ก.ย.): `/p/*` shell (ธีมร้าน · LIFF) · auth EMAIL_OTP/LINE ผ่าน platform_auth · invite/access/revoke · quotations respond → บัญชี · invoices + payLink + slip · receipts · documents (ไฟล์+วัตถุ portalVisible) · requests (→ การ์ด/approval) · contacts · UI พนักงาน (เชิญ/ดู) | Opus | C2.7 · C1.9 | (ใน d) | 30 | 12 · 04 (portal) |
 | **C3.6** | integrations: หน้า `/settings/integrations` (ภาพ 17 · สถานะ 24 ระบบ · targets เลือกระบบปลายทาง) + `settings.integrations.status` + PAGES widgets (ดีลของฉัน/งานวันนี้/portal) + Team ใช้ใน `MemberSavedView.teamId` | Sonnet | C2.9 · C3.2 | — | 16 | 17 |
 | **C3.7** | มือถือครบ (C2–C3 responsive) + แอปพนักงาน (`apps/mobile`: ดีลของฉัน · บันทึกสายหลังวางสาย · งานวันนี้ · สแกนนามบัตร · push) ผ่าน REST เดียวกัน | Sonnet | C3.4 | — | 18 | 13 |
 | **C3.8** | REST/AI ชุดสาม: op reports/quotas/commissions/portal/records dynamic/integrations (~16) + manifest ครบ 32 tool + webhook ครบ + `docs/api/CRM-API.md` จาก generator (F13.8) + skill `crm` สมบูรณ์ | Opus | C3.5 · C3.6 | — | 20 | 14 |
@@ -148,7 +148,7 @@
 ### C3.4 — MEETING/KB/AI ในหน้า (Opus · 22 ข้อ) · ภาพ 14 ซ้าย · 13 ค
 - oracle: แจ้งห้องทีม (3) · unfurl (1) · ดีลเสี่ยง tool + proposal (4) · สรุป/ร่างอีเมล (mock AI) (4) · นามบัตร → proposal lead (3) · KB ใน prompt (2) · visibility ใน AI (2) · ภาพ (3)
 
-### C3.5 — portal B2B (Opus · 30 ข้อ · **รอยืนยัน C7**) · ภาพ 12
+### C3.5 — portal B2B (Opus · 30 ข้อ) · ภาพ 12
 - oracle: S1 invite/OTP/LINE login (mock) → session ลูกค้า (5) · S2 quotations respond → account.quotation.responded + ดีลย้ายขั้น (4) · S3 invoices/payLink/slip (4) · S4 documents รวมวัตถุ portalVisible ของบริษัทตน · ข้ามบริษัท → 404 (5) · S5 requests → การ์ด/approval (4) · S6 revoke → session หมด (2) · S7 ธีมร้าน + LIFF + ภาพ customer (6)
 
 ### C3.6 — integrations + PAGES + Team ในสมาชิก (Sonnet · 16 ข้อ) · ภาพ 17
@@ -177,4 +177,4 @@
 | (ทั้งหมด) | ⏸️ ยังไม่เริ่ม | — | รอเจ้าของสั่ง "เริ่ม RUN CRM v2" |
 
 ## 4. บันทึกเหตุการณ์ / มติเทคนิค
-- 11 ก.ย. 2569 — เขียนแผน 32 ใบจากพิมพ์เขียว 20-crm-v2 หลังมติเจ้าของ 10 ข้อ (DESIGN-CRM §9) · C7 portal ยังรอยืนยัน (ใบ C3.5 ทำท้ายสุดของ C3 · ตัดได้โดยไม่กระทบใบอื่น)
+- 11 ก.ย. 2569 — เขียนแผน 32 ใบจากพิมพ์เขียว 20-crm-v2 หลังมติเจ้าของ 10 ข้อ (DESIGN-CRM §9) · C7 portal เจ้าของยืนยัน "เอา" 11 ก.ย. → C3.5 อยู่ในแผนเต็ม
