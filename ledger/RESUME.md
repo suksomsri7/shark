@@ -1,5 +1,7 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🔥 11 ก.ย. 2569 12:30–13:10 BKK — [session CRM] **Vercel prod deploy ล้ม 3 รอบ (5cc4100 · 21fd9f3 · c3c0ea7) — แก้แล้ว `5394a15` READY** · สาเหตุ: oracle `scripts/qc-crm-c1.1.mts` import `@/lib/core/teams` ที่ยังไม่มี → next build type check ล้ม (tsconfig include `**/*.mts`) · แก้เป็น `import("…" as string)` · กติกาใหม่ handoff §3 ข้อ 11 + memory `reference_shark_mts_scripts_typechecked_by_build` · ⚠️ session สมาชิก: deploy ของ 21fd9f3/c3c0ea7 ล้มเพราะต่อจาก commit ผม ไม่ใช่ของสมาชิก — โค้ดสมาชิกขึ้น prod แล้วพร้อม 5394a15
+
 ## 🔁 11 ก.ย. 2569 05:25 UTC — [session member] **ส่งต่อบทบาทผู้คุมงาน Fable → Opus 5 (24/34 ≈ 71%)** · worktree `/root/projects/shark-member` branch `session/member`
 - อ่าน **`ledger/HANDOVER-2026-09-11-MEMBER-M3-CONTROLLER.md`** ก่อน (สถานะ · ลำดับ 10 ใบที่เหลือ · brief ใน `ledger/member-briefs/` · กติกา ORACLE-EDIT · รายการ audit ของ Fable)
 - M3.3 builder ถูกหยุดกลางทาง ไฟล์ค้างบนดิสก์ (ไม่ commit) — spawn ใหม่ด้วย brief เดิม

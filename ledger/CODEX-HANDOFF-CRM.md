@@ -56,6 +56,7 @@
 8. ห้ามเพิ่ม event โดยไม่ลง 3 ทะเบียน (`outbox-consumers.ts` · `automation/labels.ts AUTOMATION_EVENTS` · `webhooks/labels.ts WEBHOOK_EVENTS`) ในใบเดียวกัน — ลืม = คิว outbox ตันทั้งระบบเงียบ ๆ
 9. ห้ามรัน build/typecheck/qc:all พร้อมกัน 2 อย่าง หรือพร้อม session อื่นโดยไม่ผ่าน `with-gate-lock.sh` — เครื่องเคยค้างทั้งเครื่อง
 10. ห้ามลบ/กวาด `/tmp` · ห้ามแตะ worktree อื่น (`shark-member` กำลัง RUN · `shark-in-th` = main)
+11. 🔴 **ไฟล์ `scripts/*.mts` ถูก `next build` ตรวจ type ด้วย** (tsconfig include `**/*.mts`) — ข้อสอบที่เขียนก่อนโค้ดต้อง import โมดูลที่ยังไม่มีแบบ `await import("@/lib/…" as string)` (ดู `qc-crm-c1.1.mts` บรรทัด S6) · แตะ `.mts` แล้วต้องรัน `bash scripts/with-gate-lock.sh pnpm typecheck` ให้เขียวก่อน push ทุกครั้ง — 11 ก.ย. Fable เองทำ prod deploy ล้ม 3 รอบเพราะข้อนี้ (commit 5cc4100 → แก้ 5394a15)
 
 ## 4. ลำดับใบงานเฟส C1 (ทำเฉพาะ C1 · 11 ใบ · C2/C3 รอคำสั่ง)
 C1.1 → C1.2 → C1.3 → C1.4 → C1.5 → C1.6 → C1.7 → C1.8 → C1.9 → C1.10 → C1.11 (สัญญาเต็ม `CRM-RUN.md` §2 · ขนานได้เฉพาะ C1.6∥C1.7 และ C1.9∥C1.10 ถ้าเปิด 2 session แต่ **ห้ามแตะไฟล์เดียวกัน**)
