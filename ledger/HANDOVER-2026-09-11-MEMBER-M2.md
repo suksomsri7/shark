@@ -1,9 +1,9 @@
 # HANDOVER — ระบบสมาชิก v2 ปิดเฟส M2 (Loyalty · Promotion พื้นฐาน · ฝั่งลูกค้า · REST/AI ชุดสอง)
 
-วันที่: 11 ก.ย. 2569 (UTC) · worktree `/root/projects/shark-member` · branch `session/member` → main `900ab7d` (ledger `0b5c5f0`) · ผู้ปิดเฟส: Fable
+วันที่: 11 ก.ย. 2569 (UTC) · worktree `/root/projects/shark-member` · branch `session/member` → main `80fae42` (M2.10 = `900ab7d` · M3.1 = `cb1d397`) · ผู้ปิดเฟส: Fable
 
 ## สรุป 1 บรรทัด
-เฟส M2 ครบ 10/10 ใบ (M2.1–M2.10) · ระบบสมาชิก v2 คืบหน้า 22/34 ใบ ≈ 65% · ทุกใบมี oracle ของ Fable ผ่านเต็ม + ภาพจริงเทียบ mockup ผ่านด้วยตา · migration ทั้งหมด (a–f2_identity_fk) อยู่บน prod แล้ว (ตรวจ `_prisma_migrations` ทุกครั้งหลัง Vercel READY)
+เฟส M2 ครบ 10/10 ใบ (M2.1–M2.10) · ระบบสมาชิก v2 คืบหน้า 23/34 ใบ ≈ 68% (รวม M3.1 ที่ปิดก่อนรัน qc:all) · ทุกใบมี oracle ของ Fable ผ่านเต็ม + ภาพจริงเทียบ mockup ผ่านด้วยตา · migration ทั้งหมด (a–g · 13 ใบ) อยู่บน prod แล้ว (ตรวจ `_prisma_migrations` ทุกครั้งหลัง Vercel READY)
 
 ## สิ่งที่สร้างในเฟส M2 (ตัวเลขจากโค้ดจริง)
 | ใบ | สิ่งที่ได้ | ข้อสอบ | ภาพ |
@@ -20,7 +20,7 @@
 | M2.10 REST/AI | ทะเบียน 68 → **135 op** (points/stamps/rewards/wallet/vouchers/coupons/giftcards + `me.*` 9 op) · เลนลูกค้า (Bearer `cs_`) · idempotency ทุก write · tools `member_*` (write = proposal) · webhook events M2 · docs regen 3 โมดูล + สกิล | 20/20 (curl จริง) | — |
 
 - ทดสอบทั้งหมด: oracle M2 10 ชุด = 229 ข้อ เขียวหมด · regressions M1/บัญชี/บอร์ดงาน (QC env) ผ่าน · fitness 26/26 ทั้ง 2 โหมด · `gen-*-api-docs --check` 3 โมดูล exit 0
-- ผล `qc:all` เต็มชุด (320 ชุด) ตอนปิดเฟส: ดูท้ายไฟล์ (เติมหลังรันจบ)
+- ผล `qc:all` เต็มชุด (319 ชุด) ตอนปิดเฟส: 318/319 — ดูท้ายไฟล์
 
 ## บั๊กจริงที่จับได้ระหว่างเฟส (ไม่ใช่ข้อสอบผิด)
 1. ไฟล์ `"use server"` export type → หน้า 500 ทั้งที่ tsc/build ผ่าน (M2.2) — บันทึกเป็นกติกาใน builder-common + memory
@@ -56,10 +56,10 @@
 - REST: `docs/api/MEMBER-API.md` (135 op) · สกิล `.claude/skills/shark-member-api` · หน้า `/developers/member`
 
 ## งานถัดไป (เฟส M3 · 11 ใบ + M3.F)
-M3.1 segments (กำลังทำ) → M3.2 campaigns v2 → M3.3 journeys → (M3.4 reviews ∥ M3.5 referrals ∥ M3.6 notifications) → M3.7 history → (M3.8 reports ∥ M3.9 templates 16) → M3.10 REST/AI ชุดสาม → M3.11 LIFF join + แอปพนักงาน → M3.F ปิด RUN · oracle ทุกใบเขียนไว้แล้ว (`scripts/qc-member-m3.*.mts` + สเปคภาพใน `visual-member.mts`)
+M3.1 segments ✅ (`cb1d397`) → M3.2 campaigns v2 (กำลังทำ) → M3.3 journeys → (M3.4 reviews ∥ M3.5 referrals ∥ M3.6 notifications) → M3.7 history → (M3.8 reports ∥ M3.9 templates 16) → M3.10 REST/AI ชุดสาม → M3.11 LIFF join + แอปพนักงาน → M3.F ปิด RUN · oracle ทุกใบเขียนไว้แล้ว (`scripts/qc-member-m3.*.mts` + สเปคภาพใน `visual-member.mts`)
 
 ## ผลตรวจบน prod จริง
-- Vercel READY ทุก push ของเฟส M2 (ล่าสุด `0b5c5f0`) · `_prisma_migrations` บน prod มี `member_v2_a…f2_identity_fk` ครบ 12 ใบ (ตรวจด้วย `/tmp/claude-0/prodmig.cjs` แบบอ่านอย่างเดียว) · `MemberChannelIdentity` บน prod 0 แถว ⇒ FK ใบ f2_identity_fk ผูกโดยไม่ลบอะไร
+- Vercel READY ทุก push ของเฟส M2 (ล่าสุด `57d4ba3` รวม M3.1) · `_prisma_migrations` บน prod มี `member_v2_a…g` ครบ 13 ใบ (g ลบ orphan PointBalance 44 แถวของ tenant ทดสอบเก่า · เหลือ 3 แถว orphan 0) (ตรวจด้วย `/tmp/claude-0/prodmig.cjs` แบบอ่านอย่างเดียว) · `MemberChannelIdentity` บน prod 0 แถว ⇒ FK ใบ f2_identity_fk ผูกโดยไม่ลบอะไร
 - ไม่มี backfill ที่ต้องรันบน prod ในเฟสนี้ (ร้านจริงยังไม่เปิดใช้ v2)
 
 ## ผล qc:all เต็มชุด (ปิดเฟส M2 · 11 ก.ย. 03:50–04:20 UTC · QC DB · ไม่มี builder)
