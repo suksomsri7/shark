@@ -125,7 +125,7 @@ if (WO === "3.7") {
     console.log(`🧪 เตรียม 3.7: ไทม์ไลน์สมาชิก 1 = ${rows.length} รายการ 10 ชนิด`);
   }
 }
-const TMP35 = { code: "" };
+const TMP35 = { prevProgram: undefined as Any,  code: "" };
 if (WO === "3.5") {
   const R35 = (await import("@/lib/modules/member/referrals" as string).catch(() => null)) as Any;
   const PR35 = (await import("@/lib/modules/member/profile" as string).catch(() => null)) as Any;
@@ -133,6 +133,7 @@ if (WO === "3.5") {
     const memO35 = await prisma.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId } });
     const ownerActor35 = { userId: E.users.owner.userId, role: memO35!.role, unitAccess: memO35!.unitAccess as string[], permissions: memO35!.permissions as Record<string, unknown> };
     const ctx35 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId };
+    TMP35.prevProgram = await (prisma as Any).referralProgram.findUnique({ where: { systemId: SYS } }).catch(() => null); // ORACLE-EDIT M3.5-S1.1 (harness): จำไว้คืนใน cleanup
     await R35.setProgram(ctx35, ownerActor35, { enabled: true, convertOn: "SIGNUP", referrerRewardKind: "POINTS", referrerRewardValue: { points: 300 }, refereeRewardKind: "VOUCHER", refereeRewardValue: { kind: "FIXED", value: 100, validDays: 30 } }).catch(() => null);
     const code1 = (await R35.codeFor(ctx35, E.members[0].id))?.code ?? "";
     const code2 = (await R35.codeFor(ctx35, E.members[1].id))?.code ?? "";
@@ -149,7 +150,7 @@ if (WO === "3.5") {
     console.log(`🧪 เตรียม 3.5: โปรแกรมเปิด · แนะนำ 6 ใบ (สำเร็จ 5 · รอ 1 · ปฏิเสธ 1) · code สมาชิก 1 = ${code1}`);
   }
 }
-const TMP34 = { token: "", usedToken: "" };
+const TMP34 = { token: "", usedToken: "", boardId: "", prevEscalateBoardId: null as string | null };
 if (WO === "3.4") {
   const R34 = (await import("@/lib/modules/member/reviews" as string).catch(() => null)) as Any;
   if (R34?.requestReview) {
@@ -157,6 +158,17 @@ if (WO === "3.4") {
     const memO34 = await prisma.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId } });
     const ownerActor34 = { userId: E.users.owner.userId, role: memO34!.role, unitAccess: memO34!.unitAccess as string[], permissions: memO34!.permissions as Record<string, unknown> };
     const ctx34 = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId };
+    // ORACLE-EDIT M3.4-S8.2 (harness): ร้าน QC ไม่มีบอร์ดงาน → แถวรีวิว 2 ดาวขึ้น "ยังไม่มีบอร์ดงาน" แทน "เปิดการ์ด #n" ของภาพ 23 · สร้างบอร์ดชั่วคราว + ตั้ง escalateBoardId · คืนใน cleanup
+    try {
+      const sys34 = (await import("@/lib/modules/system/service" as string)) as Any;
+      const kb34 = (await import("@/lib/modules/kanban/service" as string)) as Any;
+      let ks = await prisma.appSystem.findFirst({ where: { tenantId: E.tenantId, type: "KANBAN" as Any } });
+      if (!ks) { ks = await sys34.createSystem(E.tenantId, "KANBAN", "บอร์ดงาน (MB QC)"); for (const u of [E.units.patong, E.units.kata]) await sys34.linkUnit(E.tenantId, ks!.id, u); }
+      const b34 = await kb34.createBoard({ tenantId: E.tenantId, systemId: ks!.id, name: "รับเรื่องรีวิวลูกค้า", unitId: null });
+      TMP34.boardId = b34?.id ?? b34?.boardId ?? "";
+      TMP34.prevEscalateBoardId = (await R34.getReviewSettings(ctx34))?.escalateBoardId ?? null;
+      if (TMP34.boardId) await R34.setReviewSettings(ctx34, ownerActor34, { escalateBoardId: TMP34.boardId });
+    } catch (e) { console.log(`⚠️ เตรียมบอร์ด 3.4 ไม่สำเร็จ: ${(e as Error).message}`); }
     const sales = await prisma.posSale.findMany({ where: { tenantId: E.tenantId, status: "PAID" as Any, memberId: { in: E.members.slice(0, 6).map((x: Any) => x.id) } }, orderBy: { createdAt: "asc" }, take: 6 });
     const ratings = [5, 2, 5, 4, 2, 5]; const bodies = ["ครูสอนดีมาก อุปกรณ์พร้อม แนะนำเลยครับ", "รอคิวรับอุปกรณ์นานเกินไป พนักงานดูวุ่นมาก", "ทริปดีมาก จุดดำน้ำสวย ทีมงานดูแลดี", "โดยรวมดี แต่เวลานัดคลาดเคลื่อนไปหน่อย", "อุปกรณ์เก่าไปหน่อย ชุดยางเริ่มขาด", "ครูใจเย็น สอนละเอียด ประทับใจมากค่ะ"];
     for (const [i, sl] of sales.entries()) {
@@ -395,7 +407,7 @@ const SPECS: Record<string, Spec[]> = {
   // M3.9 — เทมเพลตกิจการ 16 (ภาพ 03 kbar เทมเพลต)
   "3.9": [
     ...(userKey === "owner" ? [
-      { name: "fields-template-owner", path: `${MEMBER_BASE}/settings/fields`, note: "เลือกเทมเพลต 'คลินิก/ความงาม' → แผงตัวอย่าง (นับ · รายการฟิลด์ · เช็กบ็อกซ์ 4 ส่วน) + ตัวอย่างมือถือ (ยังไม่ apply)", expect: ["[data-testid=field-designer]", "[data-testid=template-preview]", "[data-testid=template-preview-counts]", "[data-testid=template-part-fields]", "[data-testid=field-apply-template]"], steps: [{ waitFor: "[data-testid=field-template-select]" }, { select: { on: "[data-testid=field-template-select]", value: "clinic" } }, { waitFor: "[data-testid=template-preview]" }, { wait: 600 }] },
+      { name: "fields-template-owner", path: `${MEMBER_BASE}/settings/fields`, note: "เลือกเทมเพลต 'คลินิก/ความงาม' → แผงตัวอย่าง (นับ · รายการฟิลด์ · เช็กบ็อกซ์ 4 ส่วน) + ตัวอย่างมือถือ (ยังไม่ apply)", expect: ["[data-testid=field-designer]", "[data-testid=template-preview]", "[data-testid=template-preview-counts]", "[data-testid=template-part-fields]", "[data-testid=field-apply-template-trigger]" /* ORACLE-EDIT M3.9-S4.2: ConfirmDialog ต่อท้าย -trigger (M1.3 เดิม) */], steps: [{ waitFor: "[data-testid=field-template-select]" }, { select: { on: "[data-testid=field-template-select]", value: "clinic" } }, { waitFor: "[data-testid=template-preview]" }, { wait: 600 }] },
     ] : []),
   ],
   // M3.8 — รายงานสมาชิก (ภาพ 25)
@@ -432,7 +444,7 @@ const SPECS: Record<string, Spec[]> = {
     ...(userKey === "owner" ? [
       { name: "referrals-owner", path: `${MEMBER_BASE}/referrals`, note: "เทียบภาพ 24: ซ้าย ตั้งค่า (สวิตช์/รางวัล/ขั้นต่ำ/cap/กันโกง/ข้อความแชร์/ลิงก์) · ขวา KPI 4 · ผู้แนะนำสูงสุด · การแนะนำล่าสุด (รอ/สำเร็จ/ถูกปฏิเสธ)", expect: ["[data-testid=referrals-page]", "[data-testid=referrals-settings]", "[data-testid=referrals-kpi]", "[data-testid=referrals-leaderboard]", "[data-testid=referrals-recent]"], steps: [{ waitFor: "[data-testid=referrals-recent]" }, { wait: 600 }] },
       { name: "member-referrals-owner", path: `${MEMBER_BASE}/members/${E.members[0].id}?tab=referrals`, onlyDevice: "desktop" as const, note: "เทียบภาพ 08 ขวา: การ์ดแนะนำเพื่อน (โค้ด · ลิงก์ LINE · แนะนำแล้ว/สำเร็จ/แต้มที่ได้ · ต้นไม้)", expect: ["[data-testid=member-referrals-tab]", "[data-testid=member-referral-card]", "[data-testid=member-referral-code]", "[data-testid=member-referral-tree]"], steps: [{ waitFor: "[data-testid=member-referral-card]" }, { wait: 500 }] },
-      ...(TMP35.code ? [{ name: "r-landing", path: `/r/${TMP35.code}`, onlyDevice: "mobile" as const, note: "/r/<code> → LIFF join/login พร้อม ?ref=", expect: [], steps: [{ wait: 1200 }] }] : []),
+      ...(TMP35.code ? [{ name: "r-landing", path: `/ref/${TMP35.code}` /* ORACLE-EDIT M3.5-S1.2 */, onlyDevice: "mobile" as const, note: "/ref/<code> → LIFF join/login พร้อม ?ref=", expect: [], steps: [{ wait: 1200 }] }] : []),
     ] : []),
     ...(isCustomer ? [
       { name: "m-referral", path: `/m/${MQC.tenantSlug}/referral`, onlyDevice: "mobile" as const, note: "LIFF แชร์: โค้ด · QR · ปุ่มแชร์ LINE · สถิติของฉัน", expect: ["[data-testid=m-referral]", "[data-testid=m-referral-code]", "[data-testid=m-referral-share]", "[data-testid=m-referral-stats]"], steps: [{ waitFor: "[data-testid=m-referral]" }, { wait: 400 }] },
@@ -657,7 +669,9 @@ async function restoreSeed(): Promise<void> {
   if (WO === "3.11" && TMP311.linkId) { await P.acquisitionLink.deleteMany({ where: { id: TMP311.linkId } }).catch(() => null); }
   if (WO === "3.10" && TMP310.convId) { await P.aiProposal.deleteMany({ where: { conversationId: TMP310.convId } }).catch(() => null); await P.aiMessage.deleteMany({ where: { conversationId: TMP310.convId } }).catch(() => null); await P.aiConversation.deleteMany({ where: { id: TMP310.convId } }).catch(() => null); }
   if (WO === "3.7") { await P.memberActivity.deleteMany({ where: { tenantId: E.tenantId, refId: { startsWith: "tmp37-" } } }).catch(() => null); }
+  if (WO === "3.5" && TMP35.prevProgram !== undefined) { if (TMP35.prevProgram) { const { id: _id, createdAt: _c, updatedAt: _u, ...rest } = TMP35.prevProgram; await P.referralProgram.update({ where: { systemId: SYS }, data: rest }).catch(() => null); } else await P.referralProgram.deleteMany({ where: { systemId: SYS } }).catch(() => null); }
   if (WO === "3.5") { const cs = await prisma.customer.findMany({ where: { tenantId: E.tenantId, phone: { startsWith: "0899300" } }, select: { id: true, partyId: true } }).catch(() => []); const ids = cs.map((c: Any) => c.id); const refs = await P.referral.findMany({ where: { tenantId: E.tenantId, OR: [{ refereeCustomerId: { in: ids } }, { refereeCustomerId: E.members[0].id }] }, select: { id: true } }).catch(() => []); const rids = refs.map((r: Any) => r.id); const leds = await prisma.pointLedger.findMany({ where: { tenantId: E.tenantId, refType: "REFERRAL", refId: { in: rids } }, select: { id: true, customerId: true, delta: true } }).catch(() => [] as Any[]); await P.pointLot.deleteMany({ where: { ledgerId: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); await prisma.pointLedger.deleteMany({ where: { id: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); for (const l of leds) await P.pointBalance.updateMany({ where: { customerId: l.customerId }, data: { balance: { decrement: l.delta } } }).catch(() => null); await P.voucher.deleteMany({ where: { tenantId: E.tenantId, origin: "REFERRAL" } }).catch(() => null); await P.memberActivity.deleteMany({ where: { tenantId: E.tenantId, refId: { in: rids } } }).catch(() => null); await P.referral.deleteMany({ where: { id: { in: rids } } }).catch(() => null); if (ids.length) { for (const mdl of ["pointLot", "pointLedger", "pointBalance", "memberConsent", "memberAttribution", "memberTierHistory", "memberFieldValue", "memberChannelIdentity", "memberAccessLog", "memberActivity"]) await P[mdl].deleteMany({ where: { customerId: { in: ids } } }).catch(() => null); await prisma.auditLog.deleteMany({ where: { tenantId: E.tenantId, targetId: { in: ids } } }).catch(() => null); await prisma.customer.deleteMany({ where: { id: { in: ids } } }).catch(() => null); const parties = cs.map((c: Any) => c.partyId).filter(Boolean); if (parties.length) { await prisma.partyMergeCandidate.deleteMany({ where: { OR: [{ partyAId: { in: parties } }, { partyBId: { in: parties } }] } }).catch(() => null); await prisma.party.deleteMany({ where: { id: { in: parties } } }).catch(() => null); } } }
+  if (WO === "3.4" && TMP34.boardId) { const memO = await prisma.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId } }); const R = (await import("@/lib/modules/member/reviews" as string)) as Any; await R.setReviewSettings({ tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId }, { userId: E.users.owner.userId, role: memO!.role, unitAccess: memO!.unitAccess, permissions: memO!.permissions }, { escalateBoardId: TMP34.prevEscalateBoardId }).catch(() => null); await P.kanbanCard.deleteMany({ where: { boardId: TMP34.boardId } }).catch(() => null); await P.kanbanColumn.deleteMany({ where: { boardId: TMP34.boardId } }).catch(() => null); await P.kanbanBoard.deleteMany({ where: { id: TMP34.boardId } }).catch(() => null); }
   if (WO === "3.4") { const rvs = await P.memberReview.findMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 3600_000) } }, select: { id: true, kanbanCardId: true } }).catch(() => []); const ids = rvs.map((r: Any) => r.id); if (ids.length) { const leds = await prisma.pointLedger.findMany({ where: { tenantId: E.tenantId, refType: "REVIEW", refId: { in: ids } }, select: { id: true, customerId: true, delta: true } }).catch(() => [] as Any[]); await P.pointLot.deleteMany({ where: { ledgerId: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); await prisma.pointLedger.deleteMany({ where: { id: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); for (const l of leds) await P.pointBalance.updateMany({ where: { customerId: l.customerId }, data: { balance: { decrement: l.delta } } }).catch(() => null); await P.memberActivity.deleteMany({ where: { tenantId: E.tenantId, refId: { in: ids } } }).catch(() => null); const cards = rvs.map((r: Any) => r.kanbanCardId).filter(Boolean); if (cards.length) { await P.kanbanCardAssignee?.deleteMany?.({ where: { cardId: { in: cards } } }).catch(() => null); await P.kanbanCard.deleteMany({ where: { id: { in: cards } } }).catch(() => null); } await P.memberReview.deleteMany({ where: { id: { in: ids } } }).catch(() => null); } }
   if (WO === "3.2" && TMP32.campaignId) { await P.campaignVariantStat.deleteMany({ where: { campaignId: TMP32.campaignId } }).catch(() => null); await P.mktRecipient.deleteMany({ where: { campaignId: TMP32.campaignId } }).catch(() => null); await P.voucher.deleteMany({ where: { tenantId: E.tenantId, origin: "CAMPAIGN", originRef: { path: ["campaignId"], equals: TMP32.campaignId } } }).catch(() => null); await P.mktCampaign.deleteMany({ where: { id: TMP32.campaignId } }).catch(() => null); }
   if (WO === "3.2" && TMP32.segmentId) { await P.memberSegment.deleteMany({ where: { id: TMP32.segmentId } }).catch(() => null); }
@@ -772,7 +786,9 @@ try {
         await page.setCookie(...cookies);
         const errors: string[] = [];
         page.on("pageerror", (e: Error) => errors.push(e.message.slice(0, 120)));
-        page.on("console", (m: Any) => { if (m.type() === "error") errors.push(String(m.text()).slice(0, 120)); });
+        page.on("console", (m: Any) => { if (m.type() === "error") { const u = m.location?.()?.url; errors.push(`${String(m.text()).slice(0, 120)}${u ? ` @ ${String(u).slice(0, 160)}` : ""}`); } });
+        // ORACLE-EDIT harness (M3.6): "Failed to load resource 404" ไม่บอก URL → บันทึก URL ของ response ≥ 400 ต่อท้าย (ช่วยหาต้นเหตุ · ไม่เปลี่ยนเกณฑ์ผ่าน)
+        page.on("response", (r: Any) => { try { if (r.status() >= 400) console.log(`   ↳ HTTP ${r.status()} ${String(r.url()).slice(0, 200)}`); } catch { /* ignore */ } });
         const resp = await page.goto(`${BASE}${spec.path}`, { waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => null);
         await new Promise((r) => setTimeout(r, 1200));
         for (const step of spec.steps ?? []) {

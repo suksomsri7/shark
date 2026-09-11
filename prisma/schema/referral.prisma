@@ -1,0 +1,67 @@
+// ═══ แนะนำเพื่อน (M3.5 · migration `member_v2_h3`) ═══
+// พิมพ์เขียว docs/modules/06-member-v2.md §4.2 (enum) · §4.3 (ReferralProgram/Referral) · §11.7 (กติกา)
+// 🔴 หัวข้อสอบเดิมเขียนว่า "มีตั้งแต่ M1.1" แต่ M1.1 ไม่ได้สร้าง — ผู้คุมงานตัดสินให้ M3.5 สร้างเอง (11 ก.ย.)
+// ไฟล์แยกจาก member.prisma เพื่อไม่ชนกับใบที่แก้ member.prisma พร้อมกัน (M3.4 ∥ M3.6)
+
+enum ReferralStatus {
+  PENDING // เพื่อนสมัครแล้ว รอเงื่อนไข (ซื้อครั้งแรก ≥ ขั้นต่ำ)
+  CONVERTED // ถึงเงื่อนไขแล้ว (ขั้นกลางก่อนจ่ายรางวัล — ปกติเลื่อนเป็น REWARDED ทันที)
+  REWARDED // จ่ายรางวัลสองฝั่งแล้ว
+  REJECTED // ถูกปฏิเสธ (แนะนำตัวเอง · ไม่ใช่สมาชิกใหม่ · เบอร์/อุปกรณ์ซ้ำ · ร้านปฏิเสธเอง)
+}
+
+enum ReferralRewardKind {
+  POINTS
+  VOUCHER
+}
+
+// ตั้งค่าโปรแกรมแนะนำเพื่อน 1 แถวต่อ "ระบบสมาชิก" (D6 — ร้านตั้งค่าได้)
+// ยังไม่มีแถว = ใช้ค่าปริยายใน referrals.ts (ปิดอยู่ · ผู้แนะนำ 300 แต้ม · เพื่อน voucher ฿100)
+model ReferralProgram {
+  id                     String             @id @default(cuid())
+  tenantId               String
+  systemId               String // ระบบ MEMBER
+  enabled                Boolean            @default(false)
+  referrerRewardKind     ReferralRewardKind @default(POINTS)
+  referrerRewardValue    Json // POINTS → {points} · VOUCHER → {kind FIXED|PERCENT, value, validDays}
+  refereeRewardKind      ReferralRewardKind @default(VOUCHER)
+  refereeRewardValue     Json
+  convertOn              String             @default("FIRST_PURCHASE") // SIGNUP | FIRST_PURCHASE
+  minFirstPurchaseSatang Int?
+  monthlyCap             Int? // null = ไม่จำกัด · นับรางวัลของผู้แนะนำต่อเดือน (เวลาไทย)
+  fraudPhoneDevice       Boolean            @default(true)
+  shareText              String // มี {link} ให้แทนด้วยลิงก์เต็ม
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  @@unique([systemId])
+  @@index([tenantId])
+}
+
+// การแนะนำ 1 แถว = ผู้แนะนำ 1 คน → เพื่อน 1 คน (เพื่อนถูกแนะนำได้ครั้งเดียวต่อร้าน)
+model Referral {
+  id                 String         @id @default(cuid())
+  tenantId           String
+  systemId           String // ระบบ MEMBER (ของผู้แนะนำ)
+  referrerCustomerId String
+  referrer           Customer       @relation("ReferralReferrer", fields: [referrerCustomerId], references: [id], onDelete: Cascade)
+  refereeCustomerId  String?
+  referee            Customer?      @relation("ReferralReferee", fields: [refereeCustomerId], references: [id], onDelete: SetNull)
+  refereeContact     Json? // {phone?, fingerprint?, name?} — ใช้กันโกงเบอร์/อุปกรณ์ซ้ำ
+  code               String // โค้ดที่ใช้ตอนสมัคร (= Customer.referralCode ของผู้แนะนำ ณ ตอนนั้น)
+  linkId             String?
+  status             ReferralStatus @default(PENDING)
+  convertedAt        DateTime?
+  conversionRef      Json? // {trigger, saleId?, netSatang?}
+  rewardedAt         DateTime?
+  referrerRewardRef  Json? // {kind, ledgerId|voucherId} · {capped: true} เมื่อชนเพดานรายเดือน
+  refereeRewardRef   Json? // {kind, ledgerId|voucherId}
+  rejectReason       String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@unique([tenantId, refereeCustomerId])
+  @@index([referrerCustomerId])
+  @@index([tenantId, status, createdAt])
+  @@index([systemId])
+}

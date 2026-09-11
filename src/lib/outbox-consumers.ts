@@ -16,7 +16,10 @@ import { applyApprovalEffect } from "@/lib/approval-effects";
 import { logOps } from "@/lib/core/ops";
 import { invalidateBrandingCache } from "@/lib/branding/service";
 import { chatChannelToKey, getChannel } from "@/lib/core/channels";
+import { formatThaiDate } from "@/lib/ui/date";
 import { logActivity as memberLogActivity, runForEvent as runJourneysForEvent } from "@/lib/modules/member";
+// M3.5 — ตาข่ายเก็บตกของแนะนำเพื่อนตอน `member.created` (facade ล้วน)
+import { referralOnMemberCreated } from "@/lib/modules/member";
 // M3.3 — ทะเบียนทริกเกอร์ของ journey (ไฟล์บริสุทธิ์) · เช็คก่อนโหลดตัวส่ง ⇒ event อื่นทั้งระบบไม่เสียอะไรเพิ่ม
 import { JOURNEY_TRIGGER_EVENTS } from "@/lib/modules/member/journeys-shared";
 // M3.2 — ผลของแคมเปญถูกนับจากคิว (voucher ถูกใช้) · facade ล้วน ไม่ล้วงไฟล์ในโมดูล
@@ -33,6 +36,38 @@ const saleIdOf = (payload: unknown): string | null => {
   const p = payload as { saleId?: unknown } | null;
   return p && typeof p.saleId === "string" ? p.saleId : null;
 };
+
+// ── การแจ้งเตือนสมาชิก (M3.6 · §5.10 §8.x) ──────────────────────────────────
+// 🔴 event เหล่านี้ (แต้ม/สแตมป์/voucher) ถูกยิงด้วย `systemId` ของระบบต้นทาง (POINT/STAMP อาจไม่ใช่
+//    ระบบสมาชิกโดยตรง) ⇒ resolve ระบบสมาชิกจริงจาก `Customer.memberSystemId` เสมอ (แบบเดียวกับ
+//    `journeys.ts#runForEvent` ที่ไม่พึ่ง `evt.systemId`) ไม่ใช่ใช้ `evt.systemId` ตรง ๆ
+// 🔴 ตัวส่งจริง (LINE ผ่านแชท) มาจาก composition root `member-journey-senders.ts` — dynamic import
+//    เพื่อไม่ให้ไฟล์นี้ผูกกับโมดูลแชทตอนโหลด (ไม่ได้เกี่ยวกับ F2 ที่นี่ — composition root อยู่นอก
+//    src/lib/modules อยู่แล้ว — แต่คงรูปแบบ dynamic import เดียวกับ journey/webhooks ด้านบนเพื่อความสม่ำเสมอ)
+async function notifyMember(
+  tenantId: string,
+  customerId: string,
+  key: string,
+  vars?: Record<string, string | number>,
+  refId?: string,
+): Promise<void> {
+  try {
+    const customer = await prisma.customer.findFirst({ where: { id: customerId, tenantId }, select: { memberSystemId: true } });
+    if (!customer) return; // สมาชิกถูกลบ/รวมไปแล้วก่อนคิวจะมาถึง — ไม่มีใครให้แจ้งแล้ว (ปกติของ outbox)
+    const notifications = await import("@/lib/modules/member/notifications");
+    const { notificationSenders } = await import("@/lib/member-journey-senders");
+    await notifications.send(
+      { tenantId, systemId: customer.memberSystemId, actorUserId: null },
+      { event: key, customerId, ...(vars ? { vars } : {}), ...(refId ? { refId } : {}) },
+      { deps: notificationSenders },
+    );
+  } catch (e) {
+    await logOps("WARN", "outbox", `แจ้งเตือนสมาชิก "${key}" ล้มเหลว`, {
+      tenantId,
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
+}
 
 // M1.12 (§7.1 §9.3) — ผูกห้องแชทเข้ากับสมาชิกแล้ว → บันทึกลงไทม์ไลน์สมาชิก (MemberActivity)
 // ของจริง (ChatContact/MemberChannelIdentity) ถูกเขียนครบใน tx ของ `member/chat-bridge.ts#linkContact`
@@ -630,7 +665,25 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    (2) เป็นจุดให้กฎอัตโนมัติ/journey ยิง (withAutomation)  (3) ยิงเว็บฮุคออกนอกระบบ (withWebhooks)
   //    ผลข้างเคียงจริง (แต้มต้อนรับ · แนะนำเพื่อน · sync ชื่อไปแชท/CRM) มาที่ M1.8/M1.9/M3.x
   //    ผ่าน composition root `member-bridges.ts` — ตอนนั้นค่อยต่อท้ายด้วย compose() เหมือนบอร์ดงาน
-  "member.created": withAutomation(async () => {}),
+  "member.created": withAutomation(async (evt) => {
+    // M3.6 — ต้อนรับสมาชิกใหม่ (notifications.send ผ่าน notifyMember ท้ายบล็อกนี้)
+    // M3.5 — แนะนำเพื่อน (payload.referrerId): ผูก referral + ประเมิน SIGNUP · `createMember` ทำไปแล้วทันที
+    //   ตัวนี้คือตาข่ายเก็บตก (idempotent) · ข้อมูลใช้ไม่ได้ (โค้ด/คนหาย) = WARN แล้วจบ ไม่ให้คิวค้าง
+    //   ความผิดพลาดชั่วคราว (DB) = โยนต่อให้ drain retry ตามปกติ
+    try {
+      await referralOnMemberCreated({ tenantId: evt.tenantId, systemId: evt.systemId, payload: evt.payload });
+    } catch (e) {
+      const status = (e as { status?: unknown } | null)?.status;
+      if (status !== 400 && status !== 404) throw e;
+      await logOps("WARN", "member", "แนะนำเพื่อนของสมาชิกใหม่ผูกไม่สำเร็จ — ข้ามรายการนี้", {
+        tenantId: evt.tenantId,
+        detail: e instanceof Error ? e.message : String(e),
+      });
+    }
+    // M3.6 — ต้อนรับสมาชิกใหม่ (notifications.send เช็คยินยอม/quiet hours/สวิตช์เปิดปิดเองครบ)
+    const p = evt.payload as { customerId?: unknown } | null;
+    if (p && typeof p.customerId === "string") await notifyMember(evt.tenantId, p.customerId, "WELCOME");
+  }),
   "member.updated": withAutomation(async () => {}),
   "member.merged": withAutomation(async () => {}),
   "member.identity.linked": withAutomation(async () => {}),
@@ -638,9 +691,29 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // 🔴 no-op เหมือนกลุ่มบน: ประวัติระดับ (MemberTierHistory) + คอลัมน์ของ Customer ถูกเขียนครบใน
   //    transaction ของ `member/tiers.ts` แล้ว · ตัวนี้มีไว้ปิด event เป็น DONE (ไม่ให้คิวตัน) +
   //    เป็นทริกเกอร์ให้กฎอัตโนมัติ/journey + ยิงเว็บฮุคออกนอกระบบ
-  //    การ**แจ้งเตือนลูกค้า** ("คุณขึ้นเป็น Gold แล้ว" / "อีก 30 วันจะหลุดระดับ") เป็นงานของ M3.6
-  "member.tier.changed": withAutomation(async () => {}),
-  "member.tier.at_risk": withAutomation(async () => {}),
+  //    การ**แจ้งเตือนลูกค้า** ("คุณขึ้นเป็น Gold แล้ว" / "อีก 30 วันจะหลุดระดับ") — M3.6 ต่อสายแล้ว
+  "member.tier.changed": withAutomation(async (evt) => {
+    // M3.6 — notifications.send(TIER_UP) เฉพาะ "ขึ้น" ระดับ (ไม่แจ้งตอนลด/คงระดับ) — เทียบ sortOrder
+    const p = evt.payload as { customerId?: unknown; from?: unknown; to?: unknown } | null;
+    const customerId = p && typeof p.customerId === "string" ? p.customerId : null;
+    const fromKey = p && typeof p.from === "string" ? p.from : null;
+    const toKey = p && typeof p.to === "string" ? p.to : null;
+    if (!customerId || !toKey) return;
+    if (!fromKey) return; // การตั้งระดับแรกเริ่ม (ไม่มี "จาก") ไม่ใช่การ "เลื่อนขึ้น" ที่ต้องยินดีด้วย
+    const customer = await prisma.customer.findFirst({ where: { id: customerId, tenantId: evt.tenantId }, select: { memberSystemId: true } });
+    if (!customer) return;
+    const defs = await prisma.memberTierDef.findMany({
+      where: { tenantId: evt.tenantId, systemId: customer.memberSystemId, key: { in: [fromKey, toKey] } },
+      select: { key: true, sortOrder: true },
+    });
+    const from = defs.find((d) => d.key === fromKey);
+    const to = defs.find((d) => d.key === toKey);
+    if (from && to && to.sortOrder > from.sortOrder) await notifyMember(evt.tenantId, customerId, "TIER_UP");
+  }),
+  "member.tier.at_risk": withAutomation(async (evt) => {
+    const p = evt.payload as { customerId?: unknown } | null;
+    if (p && typeof p.customerId === "string") await notifyMember(evt.tenantId, p.customerId, "TIER_AT_RISK");
+  }),
   // ── ทริกเกอร์รอบเวลาของ journey (M3.3 · §7.3 §7.5) ──
   // 🔴 cron รายวัน `emitJourneyCronEvents` ยิงให้ (เฉพาะค่าที่มี journey เปิดใช้อยู่) · ตัวงานจริงคือ journey
   //    ที่ withAutomation เรียกต่อ — handler หลักเป็น no-op เพื่อปิด event เป็น DONE (ขาดบรรทัดนี้ = คิวตัน)
@@ -657,9 +730,24 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    ตัวนี้มีไว้ 3 อย่าง (1) ปิด event เป็น DONE ไม่ให้คิวตัน (2) เป็นทริกเกอร์ของกฎอัตโนมัติ/journey
   //    (3) ยิงเว็บฮุคออกนอกระบบ · การ**แจ้งลูกค้า** ("แต้มจะหมดอายุ 7 วัน") เป็นงานของ M3.6
   //    `point.transferred` ยังไม่มีใครยิงจนกว่าจะถึง M2.2 — ลงทะเบียนไว้พร้อมกันเพราะเป็นชุดเดียวกัน
-  "point.earned": withAutomation(async () => {}),
+  "point.earned": withAutomation(async (evt) => {
+    const p = evt.payload as { customerId?: unknown; points?: unknown } | null;
+    const customerId = p && typeof p.customerId === "string" ? p.customerId : null;
+    const points = p && typeof p.points === "number" ? p.points : null;
+    if (customerId && points) await notifyMember(evt.tenantId, customerId, "POINTS_EARNED", { แต้ม: points });
+  }),
   "point.burned": withAutomation(async () => {}),
-  "point.expiring": withAutomation(async () => {}),
+  "point.expiring": withAutomation(async (evt) => {
+    const p = evt.payload as { customerId?: unknown; points?: unknown; expiresAt?: unknown; lotId?: unknown; daysLeft?: unknown } | null;
+    const customerId = p && typeof p.customerId === "string" ? p.customerId : null;
+    const points = p && typeof p.points === "number" ? p.points : null;
+    const expiresAt = p && typeof p.expiresAt === "string" ? p.expiresAt : null;
+    if (!customerId || !points) return;
+    const vars: Record<string, string | number> = { แต้มที่จะหมด: points, วันหมดอายุ: expiresAt ? formatThaiDate(expiresAt) : "" };
+    // idempotent ต่อ (ล็อต, วันที่เหลือ) — refId กันแจ้งซ้ำถ้า event ถูกยิงซ้ำ (drain retry / ผู้ดูแลกดรันเอง)
+    const refId = `point.expiring:${typeof p?.lotId === "string" ? p.lotId : ""}:${typeof p?.daysLeft === "number" ? p.daysLeft : ""}`;
+    await notifyMember(evt.tenantId, customerId, "POINTS_EXPIRING", vars, refId);
+  }),
   "point.expired": withAutomation(async () => {}),
   "point.transferred": withAutomation(async () => {}),
   // ── บัตรกำนัล (M2.6 · §7.1) ──
@@ -674,7 +762,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    (2) เป็นทริกเกอร์ของกฎอัตโนมัติ/journey ("ครบใบแล้วส่ง LINE บอกลูกค้า" = งานของ M3.x)
   //    (3) ยิงเว็บฮุคออกนอกระบบ
   "stamp.added": withAutomation(async () => {}),
-  "stamp.completed": withAutomation(async () => {}),
+  "stamp.completed": withAutomation(async (evt) => {
+    const p = evt.payload as { customerId?: unknown } | null;
+    if (p && typeof p.customerId === "string") await notifyMember(evt.tenantId, p.customerId, "STAMP_COMPLETE");
+  }),
   "stamp.expired": withAutomation(async () => {}),
   // ── รางวัล v2 (M2.4 · §7.1) ──
   // 🔴 no-op เหมือนกลุ่มแต้ม/สแตมป์: รายการแลก/สต็อก/แต้ม-สแตมป์ที่หัก ถูกเขียนครบใน transaction
@@ -688,7 +779,17 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    (1) ปิด event เป็น DONE ไม่ให้คิวตัน (2) เป็นทริกเกอร์ของกฎอัตโนมัติ/journey
   //    (3) ยิงเว็บฮุคออกนอกระบบ · การ **แจ้งลูกค้า** ("voucher ใหม่" / "อีก 7 วันหมดอายุ") = M3.6
   //    `voucher.used` ยังเป็นตัวที่ M3.2 ใช้นับผลแคมเปญ (trackUse) ต่อไป
-  "voucher.issued": withAutomation(async () => {}),
+  "voucher.issued": withAutomation(async (evt) => {
+    // M3.6 — notifications.send(VOUCHER_NEW) · CAMPAIGN/JOURNEY ออก voucher แล้วส่งข้อความของตัวเองที่ฝัง voucher อยู่แล้ว (M3.2/M3.3)
+    // แจ้งซ้ำอีกรอบ = ลูกค้าได้ 2 ข้อความสำหรับ 1 ใบ ⇒ ข้ามเฉพาะ 2 ที่มานี้ ที่เหลือ (ต้อนรับขึ้นระดับ/
+    // สแตมป์/แลกแต้ม/แนะนำเพื่อน/พนักงานออกให้เอง/ระบบภายนอก) แจ้งตามปกติ
+    const p = evt.payload as { customerId?: unknown; origin?: unknown; code?: unknown } | null;
+    const customerId = p && typeof p.customerId === "string" ? p.customerId : null;
+    const origin = p && typeof p.origin === "string" ? p.origin : null;
+    if (!customerId || origin === "CAMPAIGN" || origin === "JOURNEY") return;
+    const code = p && typeof p.code === "string" ? p.code : "";
+    await notifyMember(evt.tenantId, customerId, "VOUCHER_NEW", { voucher: code });
+  }),
   // M3.2 — voucher ที่ **แคมเปญแนบไปให้** ถูกใช้ = ผลของแคมเปญใบนั้น (ยกความดี + อัปสถิติ variant)
   //   ใบที่ไม่ได้มาจากแคมเปญ → `trackUseFromVoucher` จบเงียบ ๆ (ไม่มีผู้รับให้ผูก)
   "voucher.used": withAutomation(async (evt) => {
@@ -705,6 +806,19 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    (2) เป็นทริกเกอร์ของกฎอัตโนมัติ/journey ("ส่งแคมเปญแล้ว → เปิดการ์ดตามผล")
   //    (3) ยิงเว็บฮุคออกนอกระบบ (แดชบอร์ดการตลาดของร้าน)
   "campaign.sent": withAutomation(async () => {}),
+  // ── รีวิว (M3.4 · §7.1) ──
+  // 🔴 no-op แบบกลุ่มแคมเปญ: ส่งลิงก์ LINE · ให้แต้ม · เปิดการ์ด ≤ N ดาว · ส่งคำตอบให้ลูกค้า ทำครบใน
+  //    `member/reviews.ts` ตอนเกิดเหตุการณ์แล้ว (ลูกค้าต้องได้ผลทันทีหน้าจอ LIFF ไม่ใช่รอคิว) · บรรทัดนี้มีไว้
+  //    (1) ปิด event เป็น DONE ไม่ให้คิวตัน (2) ทริกเกอร์กฎอัตโนมัติ (3) ยิงเว็บฮุคออกนอกระบบ
+  "review.requested": withAutomation(async () => {}),
+  "review.received": withAutomation(async () => {}),
+  "review.replied": withAutomation(async () => {}),
+  // ── แนะนำเพื่อน (M3.5 · §7.1) ──
+  // 🔴 no-op แบบกลุ่มรีวิว: แถว Referral · ไทม์ไลน์ผู้แนะนำ · แต้ม/voucher สองฝั่ง ถูกเขียนครบใน
+  //    `member/referrals.ts` แล้ว · บรรทัดนี้มีไว้ (1) ปิด event เป็น DONE ไม่ให้คิวตัน
+  //    (2) ทริกเกอร์กฎอัตโนมัติ/journey ("แนะนำสำเร็จ → ขอบคุณผู้แนะนำ") (3) ยิงเว็บฮุคออกนอกระบบ
+  "referral.joined": withAutomation(async () => {}),
+  "referral.converted": withAutomation(async () => {}),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

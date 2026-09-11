@@ -47,6 +47,7 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   // 🔴 อีก 4 ตัว (`member.created` `member.updated` `member.merged` `member.identity.linked`)
   //    ประกาศอยู่ที่ `AUTOMATION_EVENTS` ซึ่ง spread ไว้ข้างบนแล้ว — **ห้ามประกาศซ้ำที่นี่**
   //    (บทเรียนเดียวกับ 5 ตัวของบอร์ดงาน: ประกาศ 2 ที่ = หน้าตั้งค่าฮุคมีช่องติ๊กซ้ำ 2 แถว)
+  // M3.5 — `referral.joined` / `referral.converted` ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่
   { value: "member.sensitive.viewed", label: "เมื่อมีคนเปิดดูข้อมูลอ่อนไหวของสมาชิก" },
   { value: "approval.request.submitted", label: "เมื่อมีคำขออนุมัติใหม่" },
   { value: "approval.request.approved", label: "เมื่อคำขออนุมัติผ่าน" },

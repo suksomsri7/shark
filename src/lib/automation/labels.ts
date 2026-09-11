@@ -119,6 +119,20 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   //   payload: campaignId · name · sent · holdout · variants { A, B, HOLDOUT }
   //   🔴 ต้องมี consumer ใน `outbox-consumers.ts` ด้วย (ขาดไป = คิวตันทั้งระบบเงียบ ๆ)
   { value: "campaign.sent", label: "เมื่อส่งแคมเปญถึงลูกค้าแล้ว" },
+  // M3.4 (§7.1 · รีวิว) — ยิงจาก `member/reviews.ts`
+  //   `review.requested` payload: customerId · reviewId · refType · refId · sent (ส่งลิงก์ทาง LINE สำเร็จไหม)
+  //   `review.received`  payload: customerId · reviewId · rating · refType · refId · escalated
+  //   `review.replied`   payload: customerId · reviewId · rating (ตอบซ้ำข้อความเดิม = ไม่ยิงซ้ำ)
+  //   🔴 ทั้ง 3 ตัวมี consumer ใน `outbox-consumers.ts` แล้ว (ขาดไป = คิวตันทั้งระบบเงียบ ๆ)
+  { value: "review.requested", label: "เมื่อส่งคำขอรีวิวให้ลูกค้า" },
+  { value: "review.received", label: "เมื่อได้รับรีวิวจากลูกค้า" },
+  { value: "review.replied", label: "เมื่อร้านตอบกลับรีวิว" },
+  // M3.5 (§7.1 · แนะนำเพื่อน) — ยิงจาก `member/referrals.ts`
+  //   `referral.joined`    payload: referrerId · refereeId · referralId · customerId (= ผู้แนะนำ) · code
+  //   `referral.converted` payload: referrerId · refereeId · referralId · customerId (= ผู้แนะนำ) · rewards { referrer, referee }
+  //   🔴 ทั้ง 2 ตัวมี consumer ใน `outbox-consumers.ts` แล้ว · เว็บฮุคได้จาก spread ใน webhooks/labels.ts (ห้ามประกาศซ้ำ)
+  { value: "referral.joined", label: "เมื่อเพื่อนสมัครสมาชิกด้วยโค้ดแนะนำ" },
+  { value: "referral.converted", label: "เมื่อแนะนำเพื่อนสำเร็จ (จ่ายรางวัลสองฝั่งแล้ว)" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

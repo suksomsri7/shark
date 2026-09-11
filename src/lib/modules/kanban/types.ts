@@ -74,7 +74,7 @@ export type BoardCardDto = {
   /** K1.9: ปกการ์ด — URL ของไฟล์แนบที่ถูกตั้งเป็นปก (`null` = ไม่มีปก) */
   coverUrl: string | null;
   /** ที่มาของการ์ด (ชิปเล็กหัวการ์ด) — MANUAL = ไม่โชว์ชิป */
-  sourceType: "MANUAL" | "TEMPLATE" | "CHAT" | "FORM" | "EMAIL" | "AUTOMATION" | "AI";
+  sourceType: "MANUAL" | "TEMPLATE" | "CHAT" | "FORM" | "EMAIL" | "AUTOMATION" | "AI" | "REVIEW";
   /**
    * K3.3 — ที่มาแบบละเอียดของการ์ดที่ "ระบบเปิดให้" (§9.2)
    * 🔴 ทำไมต้องมีช่องนี้: ใบลา/คำขออนุมัติ/บิลยกเลิก ใช้ `sourceType = AUTOMATION` เหมือนกันหมด

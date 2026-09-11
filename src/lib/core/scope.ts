@@ -202,6 +202,16 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   MemberChannelIdentity: tenant, // ค้นด้วย (tenantId, channel, externalId) — ขาเข้ายังไม่รู้ระบบ
   // M3.2 — เครื่องของลูกค้าที่รับ push (ค้นด้วย token ตอนแอปลงทะเบียน ซึ่งยังไม่รู้ระบบสมาชิก)
   MemberPushDevice: tenant,
+  // M3.5 (`member_v2_h3`) — แนะนำเพื่อน: ตั้งค่า 1 แถว/ระบบสมาชิก = sys() · การแนะนำแขวนกับตัวลูกค้า
+  //   (ค้นด้วย refereeCustomerId ตอน consumer member.created/pos.sale.paid ซึ่งมีแค่ tenant) = tenant
+  ReferralProgram: sys(),
+  Referral: tenant,
+  // M3.4 (`member_v2_h`) — รีวิวเป็นของ "ระบบสมาชิก" หนึ่งระบบ (คะแนนร้าน/ตั้งค่ารีวิวต่อระบบ)
+  //   ขา LIFF ค้นด้วย requestTokenHash ก่อนรู้ร้าน — ทำผ่าน member/db (prisma) แล้วยึด tenant/system จากแถวเอง
+  MemberReview: sys(),
+  // M3.6 — บันทึกส่ง/คิวการแจ้งเตือน แขวนกับ "ตัวลูกค้า" (customerId) เหมือน MemberConsent/MemberAccessLog
+  //   ไม่ใช้ sys() แม้มีคอลัมน์ systemId เพราะหน้ารวม/PDPA ต้องกวาดข้ามระบบภายในร้านเดียวกันได้
+  MemberNotification: tenant,
   // M2.9 — ตัวตนของ "ลูกค้า" ฝั่ง `/m/*` (คนละตารางกับ Session ของพนักงาน)
   //   แกน tenant: ค้นด้วย tokenHash/otpId ก่อนรู้ว่าเป็นระบบสมาชิกไหน (Customer.memberSystemId เป็นตัวคุมต่อ)
   CustomerSession: tenant,

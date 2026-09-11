@@ -29,6 +29,8 @@ export function Member360View({
   tab,
   basePath,
   wallet,
+  tabPanel,
+  sideTop,
 }: {
   systemId: string;
   member: Member360;
@@ -36,6 +38,13 @@ export function Member360View({
   basePath: string;
   /** กระเป๋าสิทธิ์ — หน้าโหลดมาให้เฉพาะตอนเปิดแท็บนี้ (M2.7) */
   wallet?: WalletDto | null;
+  /**
+   * M3.4 — เนื้อหาของแท็บที่หน้าโหลดมาให้แล้ว (เช่น แท็บรีวิว) · ไม่ส่ง = "เร็ว ๆ นี้" เหมือนเดิม
+   * ใบถัดไป (แนะนำเพื่อน/ประวัติ) ส่งผ่านช่องเดียวกันได้ ไม่ต้องเพิ่มเงื่อนไขในไฟล์นี้อีก
+   */
+  tabPanel?: React.ReactNode;
+  /** M3.4 — กล่องบนสุดของแถบขวาเฉพาะแท็บนี้ (ภาพ 08 ขวา: "รีวิวร้าน" · "แนะนำเพื่อน") */
+  sideTop?: React.ReactNode;
 }) {
   void systemId;
   const activeTab = TABS.some((t) => t.key === tab) ? tab : "profile";
@@ -67,11 +76,13 @@ export function Member360View({
           <Sections member={member} />
         ) : activeTab === "wallet" ? (
           wallet ? <MemberWallet wallet={wallet} /> : <WalletUnavailable />
+        ) : tabPanel ? (
+          tabPanel
         ) : (
           <ComingSoon tab={activeTab} />
         )}
       </div>
-      <Sidebar member={member} />
+      <Sidebar member={member} top={sideTop} />
     </div>
   );
 }
@@ -98,7 +109,7 @@ function Header({ member }: { member: Member360 }) {
           <span style={{ fontSize: 12, color: "var(--color-muted)" }}>
             สมาชิกตั้งแต่ {thaiDate(p.createdAt)}
             {p.owner ? ` · ผู้ดูแล: ${p.owner.name}` : ""}
-            {p.homeUnit ? ` · สาขา${p.homeUnit.name}` : ""}
+            {p.homeUnit ? ` · ${p.homeUnit.name.startsWith("สาขา") ? p.homeUnit.name : `สาขา${p.homeUnit.name}`}` : ""}
           </span>
         </div>
       </div>
@@ -208,12 +219,13 @@ function progressHintOf(p: { field: string; current: number; target: number }): 
   return `${Math.round(shortfall).toLocaleString("th-TH")} ${UNIT[p.field] ?? ""}`.trim();
 }
 
-function Sidebar({ member }: { member: Member360 }) {
+function Sidebar({ member, top }: { member: Member360; top?: React.ReactNode }) {
   const c = member.connections;
   const next = member.tier.next;
   const progress = member.tier.progressToNext;
   return (
     <div className="flex w-full flex-col gap-3 lg:w-[300px] lg:shrink-0" data-testid="member-360-side">
+      {top}
       <div className="card flex flex-col gap-2 p-4">
         <span className="font-semibold">ผู้ช่วย AI</span>
         <button type="button" className="btn btn-ghost text-left text-sm" disabled title="เร็ว ๆ นี้ — M1.11">

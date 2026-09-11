@@ -101,6 +101,12 @@ export const JOURNEY_TRIGGERS: readonly JourneyTriggerDef[] = Object.freeze([
   { value: "pos.sale.paid", label: "ปิดบิลขาย", group: "หน้าร้าน" },
   { value: "booking.completed", label: "ลูกค้ามาตามนัดจริง", group: "หน้าร้าน" },
   { value: "booking.no_show", label: "จองแล้วไม่มา", group: "หน้าร้าน" },
+  // — แนะนำเพื่อน (M3.5) — payload มี `customerId` = ผู้แนะนำ ⇒ journey เดินกับ "ผู้แนะนำ" (เช่น ขอบคุณ + โบนัส)
+  { value: "referral.joined", label: "เพื่อนสมัครสมาชิกด้วยโค้ดแนะนำ", group: "แนะนำเพื่อน" },
+  { value: "referral.converted", label: "แนะนำเพื่อนสำเร็จ", group: "แนะนำเพื่อน" },
+  // — รีวิว (M3.4) — payload มี `customerId` = คนที่รีวิว · `rating` (เช่น 5 ดาว → ขอบคุณ + voucher · ≤ 2 → แจ้งผู้จัดการ)
+  { value: "review.received", label: "ลูกค้าส่งรีวิว", group: "รีวิว" },
+  { value: "review.replied", label: "ร้านตอบกลับรีวิว", group: "รีวิว" },
   // 🔴 ไม่มี `campaign.sent` / `chat.contact.linked` โดยตั้งใจ: journey เดินทีละ "คน" ⇒ ทริกเกอร์ต้องบอกได้ว่า
   //    เป็นเรื่องของสมาชิกคนไหน · campaign.sent เป็นเหตุการณ์ระดับแคมเปญ (ไม่มีลูกค้า) = ตั้งแล้วไม่มีวันวิ่ง
 ] as const);

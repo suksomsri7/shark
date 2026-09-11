@@ -74,7 +74,7 @@ export type MemberKpis = {
   pointsOutstanding: number;
   /** ยังไม่มีตาราง voucher (M2.5) — ค่าคงที่ 0 จนกว่าใบนั้นจะมา */
   vouchersUnused: number;
-  /** ยังไม่มีตารางรีวิว (M3.4) */
+  /** M3.4 — คะแนนรีวิวเฉลี่ยของร้าน (null = ยังไม่มีรีวิวที่ส่งแล้ว) */
   reviewAvg: number | null;
 };
 
@@ -354,11 +354,16 @@ export async function getMemberKpis(ctx: MemberCtx, actor: MemberActor): Promise
   const monthStart = new Date(Date.UTC(nowBkk.getUTCFullYear(), nowBkk.getUTCMonth(), 1) - 7 * 3600_000);
   const active90 = new Date(Date.now() - 90 * 86_400_000);
 
-  const [total, newThisMonth, active90d, pointsAgg] = await Promise.all([
+  const [total, newThisMonth, active90d, pointsAgg, reviewAgg] = await Promise.all([
     prisma.customer.count({ where: base }),
     prisma.customer.count({ where: { ...base, createdAt: { gte: monthStart } } }),
     prisma.customer.count({ where: { ...base, lastActivityAt: { gte: active90 } } }),
     prisma.pointBalance.aggregate({ where: { tenantId: ctx.tenantId }, _sum: { balance: true } }),
+    // M3.4 — คะแนนรีวิวเฉลี่ยของร้าน (รีวิวที่ส่งแล้ว · ไม่นับที่ซ่อน/ยังไม่ส่ง — กติกาเดียวกับ reviews.reviewStats)
+    prisma.memberReview.aggregate({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, status: { in: ["NEW", "REPLIED", "ESCALATED"] }, rating: { gte: 1 } },
+      _avg: { rating: true },
+    }),
   ]);
 
   return {
@@ -367,7 +372,7 @@ export async function getMemberKpis(ctx: MemberCtx, actor: MemberActor): Promise
     active90d,
     pointsOutstanding: Number(pointsAgg._sum.balance ?? 0),
     vouchersUnused: 0,
-    reviewAvg: null,
+    reviewAvg: reviewAgg._avg.rating === null ? null : Math.round(reviewAgg._avg.rating * 100) / 100,
   };
 }
 

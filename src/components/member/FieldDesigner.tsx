@@ -37,6 +37,7 @@ import {
   createFieldAction,
   createSectionAction,
   deleteSectionAction,
+  previewTemplateAction,
   reorderFieldsAction,
   reorderSectionsAction,
   restoreFieldAction,
@@ -51,6 +52,10 @@ import type {
   SectionDef,
   UpdateFieldInput,
 } from "@/lib/modules/member/fields";
+import type { TemplatePart, TemplatePreview as TemplatePreviewData } from "@/lib/modules/member/templates-service";
+import { TemplatePreviewPanel } from "./TemplatePreview";
+
+const ALL_TEMPLATE_PARTS: TemplatePart[] = ["fields", "tiers", "stamps", "journeys"];
 
 // ปลายทางของฟิลด์ LOOKUP (§4.2 `MemberLookupTarget`) — เขียนตรงตัวไว้ที่นี่ (ไม่ใช่แค่ import) เพราะแผงขวา
 // ต้องมีปุ่มเลือกทั้ง 5 แบบจริง ๆ ไม่ใช่แค่รู้จักชื่อชนิด
@@ -646,6 +651,9 @@ export function FieldDesigner({
   const [addingSection, setAddingSection] = useState(false);
   const [newSectionLabel, setNewSectionLabel] = useState("");
   const [templateKey, setTemplateKey] = useState(templates[0]?.key ?? "");
+  const [templatePreview, setTemplatePreview] = useState<TemplatePreviewData | null>(null);
+  const [templateParts, setTemplateParts] = useState<Record<TemplatePart, boolean>>({ fields: true, tiers: true, stamps: true, journeys: true });
+  const [templateApplyResult, setTemplateApplyResult] = useState<{ sections: number; fields: number; tiers: number; stamps: number; journeys: number } | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -662,6 +670,27 @@ export function FieldDesigner({
     setFieldDraft(selectedField ? draftFromField(selectedField) : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFieldId]);
+
+  // เลือกเทมเพลตใหม่ → ดึงแผงตัวอย่าง (มีแล้ว/ใหม่ ต่อฟิลด์ + นับทุกส่วน) จาก server action เสมอ
+  useEffect(() => {
+    let cancelled = false;
+    setTemplateApplyResult(null);
+    if (!templateKey) {
+      setTemplatePreview(null);
+      return;
+    }
+    void previewTemplateAction({ systemId, templateKey }).then((res) => {
+      if (cancelled) return;
+      if (!res.ok) {
+        setTemplatePreview(null);
+        return;
+      }
+      setTemplatePreview(res.data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [systemId, templateKey]);
 
   const dirty = !!(selectedField && fieldDraft && !draftEquals(fieldDraft, draftFromField(selectedField)));
 
@@ -764,13 +793,21 @@ export function FieldDesigner({
     setSections((prev) => prev.map((s) => ({ ...s, fields: s.fields.map((f) => (f.id === id ? res.data : f)) })));
   }
 
+  function toggleTemplatePart(part: TemplatePart) {
+    setTemplateParts((prev) => ({ ...prev, [part]: !prev[part] }));
+  }
+
   async function confirmApplyTemplate() {
     if (!templateKey) return;
-    const res = await applyTemplateAction({ systemId, templateKey });
+    const parts = ALL_TEMPLATE_PARTS.filter((p) => templateParts[p]);
+    const res = await applyTemplateAction({ systemId, templateKey, parts });
     if (!res.ok) {
       showError(res.reason);
       return;
     }
+    setTemplateApplyResult(res.data.added);
+    const pv = await previewTemplateAction({ systemId, templateKey });
+    if (pv.ok) setTemplatePreview(pv.data);
     router.refresh();
   }
 
@@ -882,6 +919,15 @@ export function FieldDesigner({
           <MemberIcon name="check" size="xs" /> {saving ? "กำลังบันทึก…" : "บันทึก"}
         </button>
       </div>
+
+      {templatePreview && (
+        <TemplatePreviewPanel preview={templatePreview} parts={templateParts} onToggle={toggleTemplatePart} />
+      )}
+      {templateApplyResult && (
+        <div data-testid="template-apply-result" style={{ fontSize: 12.5, color: "var(--color-muted)" }}>
+          เพิ่มส่วน {templateApplyResult.sections} · ฟิลด์ {templateApplyResult.fields} · ระดับ {templateApplyResult.tiers} · สแตมป์ {templateApplyResult.stamps} · journey {templateApplyResult.journeys}
+        </div>
+      )}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <div className="flex flex-col gap-3 md:flex-row md:items-start">
@@ -1000,20 +1046,34 @@ export function FieldDesigner({
               <MemberIcon name="x" size="xs" />
             </button>
           </div>
-          {sections.map((s) => {
-            const active = s.fields.filter((f) => !f.archivedAt);
-            if (active.length === 0) return null;
-            return (
-              <div key={s.id} className="flex flex-col gap-1 rounded-lg p-2" style={{ background: "var(--color-surface-2)" }}>
+          {templatePreview ? (
+            // เลือกเทมเพลตไว้ (ยังไม่ apply) — โชว์ฟิลด์ของเทมเพลตนั้น (ภาพ 03: "ตัวอย่างมือถือ" คู่กับแผงตัวอย่าง)
+            templatePreview.sections.map((s) => (
+              <div key={s.key} className="flex flex-col gap-1 rounded-lg p-2" style={{ background: "var(--color-surface-2)" }}>
                 <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-muted)" }}>{s.label}</span>
-                {active.map((f) => (
-                  <span key={f.id} style={{ fontSize: 11.5 }}>
-                    {f.label}: {sampleValueFor(f)}
+                {s.fields.map((f) => (
+                  <span key={f.key} style={{ fontSize: 11.5 }}>
+                    {f.label} {f.exists && <em style={{ fontStyle: "normal", color: "var(--color-muted)" }}>(มีแล้ว)</em>}
                   </span>
                 ))}
               </div>
-            );
-          })}
+            ))
+          ) : (
+            sections.map((s) => {
+              const active = s.fields.filter((f) => !f.archivedAt);
+              if (active.length === 0) return null;
+              return (
+                <div key={s.id} className="flex flex-col gap-1 rounded-lg p-2" style={{ background: "var(--color-surface-2)" }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-muted)" }}>{s.label}</span>
+                  {active.map((f) => (
+                    <span key={f.id} style={{ fontSize: 11.5 }}>
+                      {f.label}: {sampleValueFor(f)}
+                    </span>
+                  ))}
+                </div>
+              );
+            })
+          )}
         </div>
       )}
 

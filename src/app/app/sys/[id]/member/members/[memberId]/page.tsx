@@ -6,6 +6,12 @@ import { getMember360, getWallet, MemberNotFoundError } from "@/lib/modules/memb
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MemberTabs } from "@/components/member/MemberTabs";
 import { Member360View } from "@/components/member/Member360";
+// M3.4 — แท็บรีวิว (ภาพ 08 ขวา)
+import { reviewsForMember, shopSummaryFor360 } from "@/lib/modules/member/reviews";
+import { MemberReviewsTab, ShopReviewSummary } from "@/components/member/ReviewMember360";
+// M3.5 — แท็บแนะนำเพื่อน (ภาพ 08 ขวา: การ์ดโค้ด/ลิงก์/สถิติ/ต้นไม้)
+import { referralsForMember } from "@/lib/modules/member/referrals";
+import { ReferralMemberTab } from "@/components/member/ReferralMemberCard";
 
 // สมาชิก 360° (M1.5 · ภาพ 02) — `/app/sys/{id}/member/members/{memberId}`
 // URL state: `?tab=profile|wallet|history|reviews|referrals`
@@ -53,11 +59,29 @@ export default async function Member360Page({
         })
       : null;
 
+  // M3.4 — แท็บรีวิว: รีวิวของคนนี้ (คอลัมน์หลัก) + กล่อง "รีวิวร้าน" บนสุดของแถบขวา (ภาพ 08 ขวา) · โหลดเฉพาะตอนเปิดแท็บ
+  const reviewsHref = `/app/sys/${id}/member/reviews`;
+  const reviews =
+    tab === "reviews" ? await Promise.all([reviewsForMember(ctx, actor, memberId), shopSummaryFor360(ctx)]) : null;
+  const reviewPanel = reviews ? <MemberReviewsTab rows={reviews[0]} reviewsHref={reviewsHref} /> : undefined;
+  const reviewSide = reviews ? <ShopReviewSummary summary={reviews[1]} recent={reviews[1].recent} reviewsHref={reviewsHref} /> : undefined;
+
+  // M3.5 — แท็บแนะนำเพื่อน · โหลดเฉพาะตอนเปิดแท็บ · ดูไม่ได้ (นอกสาขาหลัก) = กล่องแจ้งแทน ไม่ทำหน้าพัง
+  const referralPanel =
+    tab === "referrals" ? (
+      <ReferralMemberTab
+        data={await referralsForMember(ctx, actor, memberId).catch((e: unknown) => {
+          if (e instanceof MemberNotFoundError) return null;
+          throw e;
+        })}
+      />
+    ) : undefined;
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={member.profile.name || member.profile.memberCode} back={{ href: `/app/sys/${id}/member/members`, label: "สมาชิก" }} />
       <MemberTabs systemId={id} actor={actor} />
-      <Member360View systemId={id} member={member} tab={tab} basePath={basePath} wallet={wallet} />
+      <Member360View systemId={id} member={member} tab={tab} basePath={basePath} wallet={wallet} tabPanel={reviewPanel ?? referralPanel} sideTop={reviewSide} />
     </div>
   );
 }

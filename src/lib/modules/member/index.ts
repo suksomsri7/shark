@@ -344,3 +344,121 @@ export {
   createFromPreset,
   JOURNEY_PRESETS,
 } from "./journeys";
+
+// ── รีวิวลูกค้า (M3.4 · §4.2 §4.3 §5.10 §7.1 §11.7 · D5 · ภาพ 23 · 08 ขวา) ──
+// 🔴 ตัวส่ง LINE ถูกฉีดผ่าน `deps.line` จาก composition root (`member-journey-senders.ts#reviewSenders`)
+//    การ์ดบอร์ดงาน (≤ N ดาว) ผ่านประตูเดียว `kanban/links.createCardFromExternal` (dynamic import ใน reviews.ts)
+export type {
+  ReviewSettings,
+  ReviewRow,
+  ReviewListResult,
+  ReviewStats,
+  ReviewSummary,
+  ShopReviewSummary,
+  ReviewDeps,
+  ReviewSendRequest,
+  ReviewSendResult,
+  ReviewCardRequest,
+  ReviewCardResult,
+  ReviewLiffView,
+  ReviewSubmitResult,
+} from "./reviews-shared";
+export type { RequestReviewInput, RequestReviewResult, EscalateResult, ListReviewsOptions } from "./reviews";
+export {
+  getReviewSettings,
+  setReviewSettings,
+  /** journey "ขอรีวิว" (M3.3) · พนักงาน · REST — 1 รีวิวต่อบิล/นัด */
+  requestReview,
+  /** ลูกค้าส่งผ่านลิงก์ LIFF (token = สิทธิ์ · ครั้งเดียว) */
+  submitReview,
+  reply,
+  hide,
+  unhide,
+  /** ≤ N ดาว → การ์ดบอร์ดงาน (sourceType REVIEW) + มอบหมายตามบทบาท */
+  escalate,
+  listReviews,
+  reviewStats,
+  reviewsForMember,
+  shopSummaryFor360,
+  reviewFilterOptions,
+  /** AI สรุปรีวิวรายเดือน (แคชรายวัน) · AI ร่างคำตอบ */
+  summarize,
+  draftReply,
+  reviewLiffView,
+} from "./reviews";
+// KPI หน้ารวมสมาชิก (M1.5) — M3.4 เติม `reviewAvg` เป็นค่าจริงแล้ว · `memberKpis` = ชื่อที่สัญญา M3.4 เรียก
+export type { MemberKpis } from "./list";
+export { getMemberKpis, getMemberKpis as memberKpis } from "./list";
+
+// ── แนะนำเพื่อน (M3.5 · D6 §4.3 §5.10 §7.1 §11.7 · ภาพ 24 · 08 ขวา) ──
+// 🔴 ชื่อที่ export ออกนอกโมดูลมีคำว่า referral กำกับ (ชื่อสั้นในไฟล์ `reject`/`stats`/`attach` ชนง่าย)
+//    คิว `member.created` → `referralOnMemberCreated` · สะพานขาย `member-bridges.ts` → `referralOnSalePaid`
+export type {
+  ReferralProgramDto,
+  SetReferralProgramInput,
+  ReferralCodeView,
+  AttachResult as ReferralAttachResult,
+  EvaluateResult as ReferralEvaluateResult,
+  RewardBothResult as ReferralRewardBothResult,
+  ReferralRowView,
+  ListReferralsResult,
+  LeaderboardRow as ReferralLeaderboardRow,
+  ReferralStats,
+  ReferralMemberView,
+} from "./referrals-shared";
+export type { AttachInput as ReferralAttachInput, EvaluateInput as ReferralEvaluateInput, ListReferralsOptions } from "./referrals";
+export {
+  getProgram as getReferralProgram,
+  setProgram as setReferralProgram,
+  codeFor as referralCodeFor,
+  attach as attachReferral,
+  evaluateConversion as evaluateReferralConversion,
+  rewardBoth as rewardReferralBoth,
+  reject as rejectReferral,
+  listReferrals,
+  leaderboard as referralLeaderboard,
+  stats as referralStats,
+  referralsForMember,
+  referralCounts,
+  resolveReferralLanding,
+  onMemberCreatedEvent as referralOnMemberCreated,
+  onSalePaid as referralOnSalePaid,
+} from "./referrals";
+
+// ── เทมเพลตกิจการ (M3.9 · D7 · §10 · ภาพ 03) ──
+export type {
+  MemberTemplate,
+  MemberTemplateField,
+  MemberTemplateSection,
+  MemberTemplateTier,
+  MemberTemplateTierBenefit,
+  MemberTemplateTierRule,
+  MemberTemplateStamp,
+  MemberTemplateJourney,
+} from "./templates";
+export { TEMPLATES, getTemplate } from "./templates";
+export type {
+  TemplatePart,
+  ApplyTemplateOptions as ApplyTemplateServiceOptions,
+  ApplyTemplateResult,
+  TemplatePreview,
+  TemplatePreviewSection,
+  TemplatePreviewField,
+  TemplatePreviewTier,
+  TemplatePreviewStamp,
+  TemplatePreviewJourney,
+} from "./templates-service";
+export {
+  /** ตรวจข้อมูลของเทมเพลต (ไม่แตะฐานข้อมูล) */
+  validateTemplate,
+  /** เทียบเทมเพลตกับของที่ระบบสมาชิกนี้มีอยู่แล้ว — อ่านอย่างเดียว */
+  previewTemplate,
+  /** เปิดใช้เทมเพลต — เพิ่มเฉพาะส่วนที่ยังไม่มี (fields/tiers/stamps/journeys) · idempotent */
+  applyTemplate as applyMemberTemplate,
+} from "./templates-service";
+
+// ── การแจ้งเตือนสมาชิก (M3.6 · §5.10 §8.x · ภาพ 30) ──
+// 🔴 ผู้เรียกข้ามโมดูล (cron/composition root) ใช้ namespace นี้แทนการ import ไฟล์ย่อยตรง
+//   ตัวส่งจริง (LINE ผ่านแชท) ต้องฉีดผ่าน `deps` เสมอ (ค่าปริยาย `notificationSenders` จาก
+//   `src/lib/member-journey-senders.ts`) — โมดูลนี้เองไม่รู้จักแชท (F2)
+export * as notifications from "./notifications";

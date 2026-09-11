@@ -379,11 +379,14 @@ const ALLOWED_EDGES = new Set([
   "marketing→voucher",
   "marketing→coupon",
   "marketing→chat",
+  //   member→kanban (M3.4 รีวิวคะแนนต่ำ → การ์ดบอร์ดงานผ่าน facade links.createCardFromExternal · M3.7 ไทม์ไลน์อ่านการ์ดที่ผูก PARTY ผ่าน listCardsForTarget)
+  //   ORACLE-EDIT F2.1: เพิ่มเส้นนี้ + ให้ F2 นับ dynamic import() ด้วย (เดิมจับแค่ `from` → reviews.ts ใช้ import() หลบการตรวจได้)
+  "member→kanban",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {
   const self = relative(moduleDir, f).split("/")[0];
-  for (const m of readFileSync(f, "utf8").matchAll(/from\s+["']@\/lib\/modules\/([a-z-]+)/g)) {
+  for (const m of readFileSync(f, "utf8").matchAll(/(?:from\s+|import\(\s*)["']@\/lib\/modules\/([a-z-]+)/g)) {
     if (m[1] !== self) crossEdges.add(`${self}→${m[1]}`);
   }
 }

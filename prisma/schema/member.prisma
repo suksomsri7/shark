@@ -86,6 +86,11 @@ model Customer {
   vouchers      Voucher[]
   // M3.2 (`member_v2_g2`) — เครื่องของลูกค้าที่รับแจ้งเตือนในแอป (ช่องทาง PUSH ของแคมเปญ)
   pushDevices   MemberPushDevice[]
+  // M3.5 (`member_v2_h3`) — แนะนำเพื่อน (โมเดลอยู่ referral.prisma)
+  referralsMade     Referral[] @relation("ReferralReferrer")
+  referralsReceived Referral[] @relation("ReferralReferee")
+  // M3.4 (`member_v2_h`) — รีวิวของลูกค้าคนนี้ (ลบสมาชิก = รีวิวหายตาม · คะแนนร้านนับเฉพาะที่ไม่ซ่อน)
+  reviews           MemberReview[]
 
   @@unique([memberSystemId, phone])
   @@unique([memberSystemId, memberCode])
@@ -704,4 +709,83 @@ model MemberSegment {
 
   @@index([tenantId])
   @@index([systemId])
+}
+
+// ───────────────────────── รีวิว (M3.4 · §4.2 §4.3 §5.10 §11.7 · D5) ─────────────────────────
+// 1 แถว = 1 "คำขอรีวิว" ต่อรายการอ้างอิง (บิล/นัด) — เกิดตอนขอ (REQUESTED · rating 0) แล้วกลายเป็นรีวิวจริง
+// ตอนลูกค้าส่งผ่านลิงก์ LIFF (NEW) ⇒ unique(tenantId, refType, refId) = "1 รีวิวต่อรายการ" ในระดับ DB
+// token ในลิงก์ = capability (ลูกค้าไม่ต้องล็อกอิน) · เก็บเฉพาะ sha256 · ส่งแล้วล้างทิ้ง = ใช้ได้ครั้งเดียว
+// คะแนนรวมร้าน/สถิติ นับเฉพาะ NEW/REPLIED/ESCALATED (REQUESTED = ยังไม่ส่ง · HIDDEN = ซ่อนแต่ไม่ลบ §11.7)
+enum ReviewStatus {
+  REQUESTED
+  NEW
+  REPLIED
+  ESCALATED
+  HIDDEN
+}
+
+model MemberReview {
+  id               String              @id @default(cuid())
+  tenantId         String
+  systemId         String // ระบบสมาชิก (AppSystem MEMBER)
+  customerId       String
+  customer         Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  unitId           String?
+  refType          String? // PosSale | Appointment
+  refId            String?
+  serviceId        String?
+  staffEmployeeId  String?
+  rating           Int                 @default(0) // 0 = ยังไม่ส่ง
+  body             String?
+  photoFileIds     String[]            @default([])
+  status           ReviewStatus        @default(REQUESTED)
+  replyBody        String?
+  repliedById      String?
+  repliedAt        DateTime?
+  kanbanCardId     String?
+  requestSentAt    DateTime?
+  requestTokenHash String?
+  submittedAt      DateTime?
+  // เคยถูกยกระดับ (≤ escalateBelow) — ใช้คืนสถานะตอนเลิกซ่อน (การ์ดอาจไม่มีเพราะร้านไม่มีบอร์ด)
+  escalatedAt      DateTime?
+  hiddenReason     String?
+  source           MemberConsentSource @default(LIFF)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@unique([tenantId, refType, refId])
+  @@unique([requestTokenHash])
+  @@index([systemId, createdAt])
+  @@index([customerId])
+  @@index([systemId, rating])
+  @@index([systemId, status])
+}
+
+// ───────────────────────── การแจ้งเตือนสมาชิก (M3.6 · §5.10 §8.x) ─────────────────────────
+// 1 แถว = 1 ช่องทางของ 1 ครั้งที่ระบบ "พยายาม" แจ้งเตือน (ส่งจริง/คิว/ข้าม/รวมแล้ว) — ไม่ใช่แค่บันทึกส่งสำเร็จ
+// status: QUEUED (รอ digest/พ้น quiet hours) · SENT · FAILED · SKIPPED (ไม่ยินยอม/ไม่มีช่องทาง/ปิดเทมเพลต/ไม่มี provider)
+//   · DIGESTED (ถูกรวมเข้าแถว "DIGEST" อีกแถวแล้ว — refType จริงยังอ่านที่ `event` เดิม)
+// event = key ของ `NOTIF_EVENTS` (notification-events.ts) หรือ "DIGEST" (แถวสรุปที่ runDue สร้างจากหลายแถว)
+// 🔴 ไม่มี relation ผูก Customer ตรง ๆ (แบบเดียวกับ MemberAccessLog) — ตารางนี้เป็นบันทึกเชิงระบบ ไม่ใช่ของสมาชิก
+//    ที่ PDPA ต้องลบตามตัว (erase เพียงพอเพราะไม่มีข้อความอ่อนไหวเกินสิ่งที่ส่งไปแล้วจริง)
+model MemberNotification {
+  id          String    @id @default(cuid())
+  tenantId    String
+  systemId    String
+  customerId  String
+  event       String
+  channel     String
+  status      String
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  subject     String?
+  body        String
+  reason      String?
+  refId       String?
+  digestOfId  String?
+  createdAt   DateTime  @default(now())
+
+  @@index([systemId, status, scheduledAt])
+  @@index([customerId, createdAt])
+  @@index([systemId, createdAt])
 }

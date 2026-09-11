@@ -31,6 +31,7 @@ import { canReadMember, hasMemberPerm, type MemberActor } from "./access";
 import { MemberForbiddenError, MemberInputError, MemberNotFoundError } from "./errors";
 import { MEMBER_LIMITS, memberLimitError } from "./limits";
 import { evaluateSegment, listSegmentFields } from "./segments";
+import { requestReview } from "./reviews";
 import { describeDefinition, parseDefinition, type SegmentDefinition } from "./segments-shared";
 import type { MemberCtx } from "./profile";
 import { JOURNEY_PRESETS, TIER_AT_LEAST_PREFIX, journeyPreset } from "./journey-presets";
@@ -1016,21 +1017,27 @@ async function runAction(env: ExecEnv, action: JourneyAction, index: number, dep
       return { ...base, ok: true, note: recipients.length ? `แจ้ง ${recipients.length} คน` : "แจ้งทั้งร้าน" };
     }
     case "REQUEST_REVIEW": {
-      // 🔴 stub ของ M3.4: ใบนี้บันทึก "ขอรีวิวแล้ว" ลงไทม์ไลน์ผูกกับบิล/นัดต้นทาง — M3.4 เปลี่ยนเป็นส่งลิงก์รีวิวจริง
+      // M3.4 — ขอรีวิวจริงผ่าน `reviews.requestReview` (1 รีวิวต่อบิล/นัด · ลิงก์ LIFF + ส่ง LINE ถ้ามีไลน์+ยินยอม)
+      //   ตัวส่ง LINE = ตัวเดียวกับขั้น SEND_LINE ของ journey (ฉีดจาก composition root ผ่าน deps) — ไม่มี = ออกลิงก์อย่างเดียว
       const ep = (env.event.payload ?? {}) as Record<string, unknown>;
-      const ref = typeof ep.saleId === "string" ? { refType: "PosSale", refId: ep.saleId } : typeof ep.appointmentId === "string" ? { refType: "Appointment", refId: ep.appointmentId } : { refType: "AutomationRun", refId: env.runId };
-      await prisma.memberActivity.create({
-        data: {
-          tenantId: c.tenantId,
-          customerId: c.id,
-          module: "journey",
-          type: "REVIEW_REQUESTED",
-          ...ref,
-          summary: `ขอรีวิวหลังใช้บริการ (journey "${env.rule.name}")`.slice(0, 500),
-          data: asJson({ journeyId: env.rule.id, runId: env.runId }),
-        },
-      });
-      return { ...base, ok: true, note: "บันทึกคำขอรีวิวแล้ว" };
+      const ref = typeof ep.saleId === "string" ? { refType: "PosSale" as const, refId: ep.saleId } : typeof ep.appointmentId === "string" ? { refType: "Appointment" as const, refId: ep.appointmentId } : null;
+      if (!ref) return { ...base, ok: false, skipped: true, note: "journey นี้ไม่ได้เริ่มจากบิลหรือนัด — ไม่มีรายการให้ขอรีวิว" };
+      const lineFn = env.deps.line;
+      try {
+        const r = await requestReview(
+          { tenantId: c.tenantId, systemId: c.memberSystemId, actorUserId: null },
+          { customerId: c.id, refType: ref.refType, refId: ref.refId },
+          {
+            now: env.now,
+            deps: lineFn
+              ? { line: (q) => lineFn({ tenantId: q.tenantId, memberSystemId: q.memberSystemId, journeyId: env.rule.id, runId: env.runId, customerId: q.customerId, channel: "LINE", to: q.to, consent: q.consent, body: q.body }) }
+              : {},
+          },
+        );
+        return { ...base, ok: true, note: r.alreadyRequested ? "เคยขอรีวิวรายการนี้แล้ว" : r.sent ? "ส่งลิงก์รีวิวทาง LINE แล้ว" : r.note ?? "ออกลิงก์รีวิวแล้ว" };
+      } catch (e) {
+        return { ...base, ok: false, note: (e instanceof Error ? e.message : String(e)).slice(0, 200) };
+      }
     }
     default:
       return { ...base, ok: false, skipped: true, note: "การกระทำนี้ไม่รองรับใน journey" };

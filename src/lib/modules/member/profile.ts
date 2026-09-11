@@ -66,6 +66,8 @@ export type CreateMemberInput = {
   sourceDetail?: Record<string, unknown>;
   sourceChannel?: string | null;
   referralCode?: string | null;
+  /** M3.5 — ข้อมูลอุปกรณ์ตอนสมัครด้วยโค้ดแนะนำ (LIFF join ส่ง fingerprint มา) ใช้กันโกงเบอร์/อุปกรณ์ซ้ำ */
+  device?: { fingerprint?: string | null; phone?: string | null } | null;
   homeUnitId?: string | null;
   tags?: string[];
   idempotencyKey?: string | null;
@@ -197,7 +199,14 @@ export type Member360 = {
   consents: MemberConsentDto[];
   attribution: { first: MemberAttributionDto | null; last: MemberAttributionDto | null };
   connections: { chat: number; crm: number; account: number; kanbanCards: number };
+  /**
+   * ตัวเลขสรุปต่อคนที่ใบงานถัด ๆ ไปเติมเพิ่ม (M3.4 รีวิว · M3.5 แนะนำเพื่อน · M3.7 ประวัติ)
+   * M3.4 — `reviewAvg` = ค่าเฉลี่ยรีวิวที่ส่งแล้วและไม่ถูกซ่อนของคนนี้ (cache `Customer.reviewAvg` ที่ reviews.ts เขียน)
+   */
+  counters: { reviewAvg: number | null };
   mergedIntoId: string | null;
+  /** M3.5 — แนะนำเพื่อนของคนนี้ (โค้ด · แนะนำแล้ว (ไม่นับที่ถูกปฏิเสธ) · สำเร็จ) — การ์ดเต็มอยู่ที่ `referralsForMember` */
+  referrals: { code: string | null; referred: number; converted: number };
 };
 
 export type LinkIdentityInput = {
@@ -871,6 +880,19 @@ export async function createMember(ctx: MemberCtx, actor: MemberActor, input: Cr
     after: { memberCode: result.memberCode, source, phone: maskPhone(phone) },
   });
 
+  // M3.5 — สมัครด้วยโค้ดแนะนำ → ผูก Referral + (โปรแกรม SIGNUP) จ่ายรางวัลสองฝั่ง **ทันที**
+  //   (ผู้แนะนำเห็นในไทม์ไลน์ตอนนั้นเลย ไม่ต้องรอคิว) · คิว `member.created` เรียกซ้ำเป็นตาข่ายเก็บตก (idempotent)
+  //   🔴 สมัครสำเร็จไปแล้ว — ฝั่งแนะนำเพื่อนพังต้องไม่ทำให้การสมัครล้ม (คิวจะลองให้อีกรอบ)
+  //   dynamic import: referrals → voucher/point facade → … → โมดูลนี้ = วงกลมตอนโหลดไฟล์
+  if (referrer && referralCode) {
+    try {
+      const { onMemberJoined } = await import("./referrals");
+      await onMemberJoined(ctx, { refereeCustomerId: result.customerId, code: referralCode, device: input.device ?? null });
+    } catch {
+      // เก็บตกที่คิว `member.created` (payload.referrerId)
+    }
+  }
+
   return { created: true, ...result };
 }
 
@@ -1129,6 +1151,12 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
       : Promise.resolve(null),
   ]);
 
+  // M3.5 — ตัวเลขแนะนำเพื่อนย่อ (2 count ไม่โหลดแถว) · การ์ดเต็ม/ต้นไม้อยู่ที่ `referrals.referralsForMember`
+  const [referralsReferred, referralsConverted] = await Promise.all([
+    prisma.referral.count({ where: { tenantId: ctx.tenantId, referrerCustomerId: customer.id, status: { not: "REJECTED" }, NOT: { refereeCustomerId: customer.id } } }),
+    prisma.referral.count({ where: { tenantId: ctx.tenantId, referrerCustomerId: customer.id, status: { in: ["CONVERTED", "REWARDED"] } } }),
+  ]);
+
   // ระดับถัดไปบนบันได (ปิดหนี้ M1.4) — อ่านอย่างเดียว (`noCache`) เพื่อไม่ให้การ "เปิดดูโปรไฟล์"
   // ไปเขียนแคชยอด 12 เดือนของสมาชิก · เอนจินระดับล้ม = หน้า 360 ต้องยังเปิดได้ (แค่ไม่มีระดับถัดไป)
   let nextTier: MemberTierBrief | null = null;
@@ -1284,7 +1312,9 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
     })),
     attribution: { first: attributionOf("FIRST"), last: attributionOf("LAST") },
     connections,
+    counters: { reviewAvg: customer.reviewAvg !== null ? Number(customer.reviewAvg) : null },
     mergedIntoId: customer.mergedIntoId,
+    referrals: { code: customer.referralCode, referred: referralsReferred, converted: referralsConverted },
   };
 }
 
@@ -1702,6 +1732,9 @@ async function doMerge(
       }
       await tx.memberAddress.updateMany({ where: { tenantId: ctx.tenantId, customerId: merge.id }, data: { customerId: keep.id } });
       await tx.memberActivity.updateMany({ where: { tenantId: ctx.tenantId, customerId: merge.id }, data: { customerId: keep.id } });
+      // M3.4 — รีวิวย้ายตามคน (unique ต่อบิล/นัด ไม่ชนกัน) + คิดคะแนนเฉลี่ยของคนที่เก็บไว้ใหม่ในคำสั่งเดียว
+      await tx.memberReview.updateMany({ where: { tenantId: ctx.tenantId, customerId: merge.id }, data: { customerId: keep.id } });
+      await tx.$executeRaw`UPDATE "Customer" SET "reviewAvg" = (SELECT round(avg("rating")::numeric, 2) FROM "MemberReview" WHERE "customerId" = ${keep.id} AND "status"::text IN ('NEW', 'REPLIED', 'ESCALATED') AND "rating" >= 1) WHERE "id" = ${keep.id}`;
 
       // (6) ที่มา: first touch ของคนที่เก็บไว้ห้ามเปลี่ยน · last touch เอาอันที่ใหม่กว่า
       const mergeLast = await tx.memberAttribution.findFirst({ where: { customerId: merge.id, touch: "LAST" } });

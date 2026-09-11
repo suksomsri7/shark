@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runScheduledTasks } from "@/lib/ai/scheduled";
-import { campaignsDue, journeyWaits, sweepPendingVoiceDelivery } from "@/lib/platform/cron";
+import { campaignsDue, journeyWaits, notificationsDue, sweepPendingVoiceDelivery } from "@/lib/platform/cron";
 import { sweepScheduledRules } from "@/lib/modules/kanban/automation";
 import { sweepDueSoonReminders } from "@/lib/modules/kanban/reminders";
 import { sweepKanbanEmailHourly } from "@/lib/modules/kanban/digest";
@@ -74,5 +74,19 @@ export async function GET(req: Request) {
   const campaignsSent = await campaignsDue(new Date());
   // M3.3 — journey: ขั้น "รอ n วันแล้วทำต่อ" ที่ถึงเวลาแล้ว (ตัว step ห่อ try/catch เองแล้ว คืน -1 เมื่อพัง)
   const journeyWaitsRan = await journeyWaits(new Date());
-  return NextResponse.json({ ok: true, ran, voiceSent, kanbanScheduled, kanbanDueSoon, kanbanEmails, kanbanChatCards, campaignsSent, journeyWaitsRan, at: new Date().toISOString() });
+  // M3.6 — การแจ้งเตือนสมาชิก: แถวที่ถึงกำหนด (digest รายวัน + เลื่อนจาก quiet hours) — ห่อ try/catch เองแล้ว
+  const notificationsSent = await notificationsDue(new Date());
+  return NextResponse.json({
+    ok: true,
+    ran,
+    voiceSent,
+    kanbanScheduled,
+    kanbanDueSoon,
+    kanbanEmails,
+    kanbanChatCards,
+    campaignsSent,
+    journeyWaitsRan,
+    notificationsSent,
+    at: new Date().toISOString(),
+  });
 }

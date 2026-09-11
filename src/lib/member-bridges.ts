@@ -251,6 +251,10 @@ export async function onPosSalePaid(tenantId: string, saleId: string): Promise<v
   } catch {
     // นับผลแคมเปญพลาด = ตัวเลขรายงานขาดไป 1 บิล ไม่ใช่เรื่องที่ต้องล้มคิวของบิล
   }
+  // M3.5 — แนะนำเพื่อน: บิลของเพื่อนที่ยังรอแปลง (FIRST_PURCHASE ≥ ขั้นต่ำ) → evaluateConversion → รางวัลสองฝั่ง
+  //   ขั้นสุดท้ายโดยตั้งใจ (ของที่ลูกค้าได้จากบิลตัวเองต้องมาก่อน) · ไม่ใช่เพื่อนที่ถูกแนะนำ = จบใน 1 คำสั่ง
+  //   พัง = โยนต่อ → ผู้เรียกเขียน WARN "สะพานสมาชิก" (บิล/บัญชีไม่กระทบ) · แถวค้าง CONVERTED จ่ายต่อในบิลถัดไป
+  await member.referralOnSalePaid(ctx, { customerId: sale.memberId, saleId: sale.id });
 }
 
 /**

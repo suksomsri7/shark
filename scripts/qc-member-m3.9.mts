@@ -35,6 +35,17 @@ const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : "");
 const P = prisma as Any;
 let tid = ""; let SYS = "";
 const made = { sectionIds: [] as string[], fieldIds: [] as string[], tierDefIds: [] as string[], stampCardIds: [] as string[], journeyIds: [] as string[] };
+type Made = typeof made;
+// ORACLE-EDIT M3.9-S2.x: เก็บกวาดของที่เทมเพลตหนึ่งชุดสร้าง — ใช้ทั้งระหว่างวน (ทดสอบทีละชุดแยกกัน) และใน finally
+const cleanupMade = async (m: Made) => {
+  const d = async (f: () => Promise<unknown>) => { try { await f(); } catch { /* ignore */ } };
+  const P0 = prisma as Any;
+  if (m.journeyIds.length) { await d(() => P0.automationRun.deleteMany({ where: { ruleId: { in: m.journeyIds } } })); await d(() => P0.automationRule.deleteMany({ where: { id: { in: m.journeyIds } } })); }
+  if (m.stampCardIds.length) { await d(() => P0.stampEvent.deleteMany({ where: { cardId: { in: m.stampCardIds } } })); await d(() => P0.stampCardProgress.deleteMany({ where: { cardId: { in: m.stampCardIds } } })); await d(() => P0.stampCard.deleteMany({ where: { id: { in: m.stampCardIds } } })); }
+  if (m.tierDefIds.length) { await d(() => P0.memberTierBenefit?.deleteMany?.({ where: { tierDefId: { in: m.tierDefIds } } })); await d(() => P0.automationRule.deleteMany({ where: { scope: "MEMBER_TIER", tierDefId: { in: m.tierDefIds } } })); await d(() => P0.memberTierDef.deleteMany({ where: { id: { in: m.tierDefIds } } })); }
+  if (m.fieldIds.length) { await d(() => P0.memberFieldValue.deleteMany({ where: { fieldId: { in: m.fieldIds } } })); await d(() => P0.memberFieldHistory?.deleteMany?.({ where: { fieldId: { in: m.fieldIds } } })); await d(() => P0.memberField.deleteMany({ where: { id: { in: m.fieldIds } } })); }
+  if (m.sectionIds.length) await d(() => P0.memberSection.deleteMany({ where: { id: { in: m.sectionIds } } }));
+};
 try {
   const scope = await mq.resolveMemberScope(prisma);
   if (!scope) throw new Error("ยังไม่ได้ seed");
@@ -66,33 +77,47 @@ try {
   // ═══ S2 validate ต่อชุด (16) — validate + กติกา §10 + apply จริง (เพิ่มเฉพาะที่ยังไม่มี) ═══
   const before = { sections: await P.memberSection.count({ where: { systemId: SYS } }), fields: await P.memberField.count({ where: { systemId: SYS } }) };
   const diveBefore = await P.memberField.findMany({ where: { systemId: SYS, key: { in: ["certLevel", "diveCount"] } }, select: { key: true, label: true, options: true } });
+  // ORACLE-EDIT M3.9-S2.x: เดิม apply ครบ 16 ชุดสะสมในร้านเดียว → ชนเพดาน 60 ฟิลด์/12 ส่วน บังคับให้เทมเพลตย่อเหลือ ~3 ฟิลด์ (ขัด §10)
+  //   ร้านจริงเลือก 1–2 ชุด ⇒ ทดสอบทีละชุดบนสภาพร้าน QC เดิม แล้วเก็บกวาดก่อนชุดถัดไป · ฟิลด์ต่อชุด ≥ 4 (แถว §10 ทุกแถวมี ≥ 4 ฟิลด์)
+  const rowsOk: string[] = []; let createdTotal = 0;
   for (const k of KEYS.filter((x) => x !== "general")) {
     const t = TPL[k];
+    const one: Made = { sectionIds: [], fieldIds: [], tierDefIds: [], stampCardIds: [], journeyIds: [] };
+    const pre = { sections: await P.memberSection.count({ where: { systemId: SYS } }), fields: await P.memberField.count({ where: { systemId: SYS } }) };
     const v = t ? TS.validateTemplate(t) : { ok: false, errors: ["ไม่มีเทมเพลต"] };
     const fieldsAll: Any[] = t?.sections?.flatMap((s: Any) => s.fields) ?? [];
     const hasSensitive = t?.sections?.some((s: Any) => s.sensitive) || fieldsAll.some((f) => f.sensitive);
-    const rules = !!t && t.sections.length >= 1 && fieldsAll.length >= 3 && (!SENSITIVE.includes(k) || hasSensitive) && (NO_TIERS.includes(k) || (t.tiers?.length ?? 0) >= 2) && (NO_STAMPS.includes(k) || (t.stamps?.length ?? 0) >= 1) && (t.journeys?.length ?? 0) >= 1;
+    const rules = !!t && t.sections.length >= 1 && fieldsAll.length >= 4 && (!SENSITIVE.includes(k) || hasSensitive) && (NO_TIERS.includes(k) || (t.tiers?.length ?? 0) >= 2) && (NO_STAMPS.includes(k) || (t.stamps?.length ?? 0) >= 1) && (t.journeys?.length ?? 0) >= 1;
     let applied: Any = null; let err: Error | null = null;
     if (v.ok && rules) {
       try {
         const pv = await TS.previewTemplate(ctx, k);
         applied = await TS.applyTemplate(ctx, k, { actor: owner });
-        for (const key of ["sectionIds", "fieldIds", "tierDefIds", "stampCardIds", "journeyIds"] as const) made[key].push(...(applied?.created?.[key] ?? []));
+        for (const key of ["sectionIds", "fieldIds", "tierDefIds", "stampCardIds", "journeyIds"] as const) { one[key].push(...(applied?.created?.[key] ?? [])); made[key].push(...(applied?.created?.[key] ?? [])); }
         const countsOk = applied?.added?.sections === pv?.counts?.newSections && applied?.added?.fields === pv?.counts?.newFields && applied?.added?.tiers === pv?.counts?.newTiers && applied?.added?.stamps === pv?.counts?.newStamps && applied?.added?.journeys === pv?.counts?.newJourneys;
         const again = await TS.applyTemplate(ctx, k, { actor: owner });
         const idem = ["sections", "fields", "tiers", "stamps", "journeys"].every((x) => again?.added?.[x] === 0);
+        // (ย้ายจาก S3.1/S3.2 มาตรวจต่อชุด) Δ ฟิลด์/ส่วน = created ids · ของที่สร้างมีจริงตามรูปที่สัญญา
+        const post = { sections: await P.memberSection.count({ where: { systemId: SYS } }), fields: await P.memberField.count({ where: { systemId: SYS } }) };
+        const tierRows = one.tierDefIds.length ? await P.memberTierDef.findMany({ where: { id: { in: one.tierDefIds } } }) : [];
+        const stampRows = one.stampCardIds.length ? await P.stampCard.findMany({ where: { id: { in: one.stampCardIds } } }) : [];
+        const jRows = one.journeyIds.length ? await P.automationRule.findMany({ where: { id: { in: one.journeyIds } } }) : [];
+        const deltaOk = post.fields - pre.fields === one.fieldIds.length && post.sections - pre.sections === one.sectionIds.length && (await P.memberField.count({ where: { id: { in: one.fieldIds }, systemId: SYS } })) === one.fieldIds.length;
+        const rowOk = tierRows.length === one.tierDefIds.length && tierRows.every((r: Any) => r.systemId === SYS && /[ก-๙]/.test(r.name ?? "")) && stampRows.length === one.stampCardIds.length && stampRows.every((r: Any) => r.slots >= 3 && r.slots <= 30) && jRows.length === one.journeyIds.length && jRows.every((r: Any) => r.scope === "MEMBER_JOURNEY" && r.enabled === false);
+        if (!deltaOk) rowsOk.push(`${k}:delta ${post.fields - pre.fields}/${one.fieldIds.length}`);
+        if (!rowOk) rowsOk.push(`${k}:rows t${tierRows.length}/${one.tierDefIds.length} s${stampRows.length}/${one.stampCardIds.length} j${jRows.length}/${one.journeyIds.length}`);
+        createdTotal += one.fieldIds.length + one.tierDefIds.length + one.stampCardIds.length + one.journeyIds.length;
         applied = { ...applied, countsOk, idem, pv: pv?.counts };
       } catch (e) { err = e as Error; }
     }
+    await cleanupMade(one);
+    for (const key of ["sectionIds", "fieldIds", "tierDefIds", "stampCardIds", "journeyIds"] as const) made[key] = made[key].filter((id) => !one[key].includes(id));
     chk(`M3.9-S2.${KEYS.indexOf(k) + 1}`, `${k} (${t?.name ?? "?"}): validate ok · กติกา §10 (ส่วน ≥1 · ฟิลด์ ≥3${SENSITIVE.includes(k) ? " · อ่อนไหว" : ""}${NO_TIERS.includes(k) ? "" : " · ระดับ ≥2"}${NO_STAMPS.includes(k) ? "" : " · สแตมป์ ≥1"} · journey ≥1) · apply จริง (fields+tiers+stamps+journeys) added = preview.new* · apply ซ้ำ → 0 ทุกช่อง`, v.ok && rules && !err && applied?.countsOk && applied?.idem && applied.added.fields >= 1, "ผ่าน", `validate=${JSON.stringify(v.errors ?? []).slice(0, 120)} rules=${rules} (sections=${t?.sections?.length} fields=${fieldsAll.length} sens=${hasSensitive} tiers=${t?.tiers?.length} stamps=${t?.stamps?.length} journeys=${t?.journeys?.length}) err=${err?.message?.slice(0, 120) ?? "-"} added=${JSON.stringify(applied?.added)} pv=${JSON.stringify(applied?.pv)} idem=${applied?.idem}`);
   }
   const after = { sections: await P.memberSection.count({ where: { systemId: SYS } }), fields: await P.memberField.count({ where: { systemId: SYS } }) };
   const diveFields = await P.memberField.findMany({ where: { systemId: SYS, key: { in: ["certLevel", "diveCount"] } } });
-  chk("M3.9-S3.1", "ไม่ทับของเดิม: ฟิลด์ dive ที่ seed ไว้ (certLevel/diveCount) label/options เท่าเดิม (เทียบกับ expected) · จำนวน section/field ที่เพิ่ม = Σ created ids · ทุก field ใหม่ผูก section ของระบบนี้ · ทะเบียน field ≤ 200", diveFields.length === 2 && diveFields.every((f: Any) => { const b = diveBefore.find((x: Any) => x.key === f.key); return !!b && f.label === b.label && JSON.stringify(f.options) === JSON.stringify(b.options); }) && after.fields - before.fields === made.fieldIds.length && after.sections - before.sections === made.sectionIds.length && (await P.memberField.count({ where: { id: { in: made.fieldIds }, systemId: SYS } })) === made.fieldIds.length, "ไม่ทับ", `dive=${JSON.stringify(diveFields.map((f: Any) => [f.key, f.label]))} Δfields=${after.fields - before.fields}/${made.fieldIds.length} Δsections=${after.sections - before.sections}/${made.sectionIds.length}`);
-  const tierRows = await P.memberTierDef.findMany({ where: { id: { in: made.tierDefIds } } });
-  const stampRows = made.stampCardIds.length ? await P.stampCard.findMany({ where: { id: { in: made.stampCardIds } } }) : [];
-  const jRows = made.journeyIds.length ? await P.automationRule.findMany({ where: { id: { in: made.journeyIds } } }) : [];
-  chk("M3.9-S3.2", "ของที่ apply สร้างจริง: tierDef (key/name ไทย · systemId นี้) · stampCard (slots 3–30 · ไม่ active/ปิดรับสแตมป์อัตโนมัติจนกว่าร้านเปิด หรือ active ได้ตามที่ builder ตัดสิน — ต้องจดใน wo-notes) · journey = AutomationRule scope MEMBER_JOURNEY enabled false", tierRows.length === made.tierDefIds.length && tierRows.every((r: Any) => r.systemId === SYS && /[ก-๙]/.test(r.name ?? "")) && stampRows.length === made.stampCardIds.length && stampRows.every((r: Any) => r.slots >= 3 && r.slots <= 30) && jRows.length === made.journeyIds.length && jRows.every((r: Any) => r.scope === "MEMBER_JOURNEY" && r.enabled === false), "สร้างครบ", `tiers=${tierRows.length}/${made.tierDefIds.length} stamps=${stampRows.length}/${made.stampCardIds.length} journeys=${jRows.length}/${made.journeyIds.length} enabled=${jRows.map((r: Any) => r.enabled).join(",")}`);
+  chk("M3.9-S3.1", "ไม่ทับของเดิม: ฟิลด์ dive ที่ seed ไว้ (certLevel/diveCount) label/options เท่าเดิม · ต่อชุด: จำนวน section/field ที่เพิ่ม = Σ created ids · ทุก field ใหม่ผูก section ของระบบนี้ · หลังเก็บกวาดทีละชุด จำนวนกลับเท่าก่อนเริ่ม", diveFields.length === 2 && diveFields.every((f: Any) => { const b = diveBefore.find((x: Any) => x.key === f.key); return !!b && f.label === b.label && JSON.stringify(f.options) === JSON.stringify(b.options); }) && !rowsOk.some((x) => x.includes(":delta")) && after.fields === before.fields && after.sections === before.sections, "ไม่ทับ", `dive=${JSON.stringify(diveFields.map((f: Any) => [f.key, f.label]))} bad=${rowsOk.filter((x) => x.includes(":delta")).join(",") || "-"} fields ${before.fields}→${after.fields} sections ${before.sections}→${after.sections}`);
+  chk("M3.9-S3.2", "ของที่ apply สร้างจริง (ตรวจต่อชุด): tierDef (key/name ไทย · systemId นี้) · stampCard (slots 3–30 · ไม่ active/ปิดรับสแตมป์อัตโนมัติจนกว่าร้านเปิด หรือ active ได้ตามที่ builder ตัดสิน — ต้องจดใน wo-notes) · journey = AutomationRule scope MEMBER_JOURNEY enabled false", createdTotal > 0 && !rowsOk.some((x) => x.includes(":rows")), "สร้างครบ", `created=${createdTotal} bad=${rowsOk.filter((x) => x.includes(":rows")).join(",") || "-"}`);
   const eKey = await fails(() => TS.applyTemplate(ctx, "nope", { actor: owner }));
   const ePerm = await fails(() => TS.applyTemplate(ctx, "general", { actor: thana, parts: ["tiers"] }));
   const legacy = await F.applyTemplate(ctx, "general");
@@ -117,12 +142,7 @@ try {
   console.error("💥", e);
   chk("M3.9-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));
 } finally {
-  const d = async (f: () => Promise<unknown>) => { try { await f(); } catch { /* ignore */ } };
-  if (made.journeyIds.length) { await d(() => P.automationRun.deleteMany({ where: { ruleId: { in: made.journeyIds } } })); await d(() => P.automationRule.deleteMany({ where: { id: { in: made.journeyIds } } })); }
-  if (made.stampCardIds.length) { await d(() => P.stampEvent.deleteMany({ where: { cardId: { in: made.stampCardIds } } })); await d(() => P.stampCardProgress.deleteMany({ where: { cardId: { in: made.stampCardIds } } })); await d(() => P.stampCard.deleteMany({ where: { id: { in: made.stampCardIds } } })); }
-  if (made.tierDefIds.length) { await d(() => P.memberTierBenefit?.deleteMany?.({ where: { tierDefId: { in: made.tierDefIds } } })); await d(() => P.memberTierDef.deleteMany({ where: { id: { in: made.tierDefIds } } })); }
-  if (made.fieldIds.length) { await d(() => P.memberFieldValue.deleteMany({ where: { fieldId: { in: made.fieldIds } } })); await d(() => P.memberFieldHistory?.deleteMany?.({ where: { fieldId: { in: made.fieldIds } } })); await d(() => P.memberField.deleteMany({ where: { id: { in: made.fieldIds } } })); }
-  if (made.sectionIds.length) await d(() => P.memberSection.deleteMany({ where: { id: { in: made.sectionIds } } }));
+  await cleanupMade(made);
   await prisma.$disconnect();
 }
 const total = cks.length; const passed = cks.filter((c) => c.ok).length;

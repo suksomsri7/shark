@@ -217,6 +217,24 @@ export async function journeyCronEvents(now: Date = new Date()): Promise<number>
   }
 }
 
+/**
+ * M3.6 — การแจ้งเตือนสมาชิก: ส่งแถวที่ถึงกำหนดของทุกระบบสมาชิก (รวม digest รายวัน + ที่เลื่อนจาก
+ * quiet hours) · เรียกจาก cron **รายชั่วโมง** — ความละเอียด 1 ชั่วโมงพอสำหรับทั้งสองกรณี (digest ตั้ง
+ * เวลาเป็นชั่วโมง · quiet hours คลาดได้ไม่กี่สิบนาทีโดยไม่เสียหาย) ต่างจากที่พิมพ์เขียวเขียนไว้ว่า "ทุก
+ * 15 นาที" เพราะ Vercel Cron ของโปรเจกต์นี้มีแค่ 2 ตาราง (รายวัน/รายชั่วโมง — ดู `vercel.json` §7.6
+ * "ไม่เพิ่ม cron ตัวใหม่") — จดเป็นหนี้ไว้ใน wo-notes/member-M3.6.md
+ * 🔴 best-effort ต่อระบบ — ร้านเดียวพังต้องไม่ทำให้ร้านอื่นไม่ได้รับแจ้งเตือน
+ */
+export async function notificationsDue(now: Date = new Date()): Promise<number> {
+  try {
+    const { runDueAllSystems } = await import("@/lib/modules/member/notifications-cron");
+    const r = await runDueAllSystems(now);
+    return r.sent;
+  } catch {
+    return -1;
+  }
+}
+
 // งานประจำวัน: กวาด subs + proposals + เก็บตก outbox
 // ห้าม throw — แต่ละส่วนห่อ try/catch เอง · ส่วนไหนพังเก็บเป็น -1 แล้วไปต่อ
 // (cron ต้องไม่ล้มทั้งรอบเพราะงานย่อยอันเดียวพัง)

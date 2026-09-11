@@ -19,6 +19,8 @@ import { sendPushToCustomerTokens } from "@/lib/core/push";
 import { pushToContact } from "@/lib/modules/chat";
 import { createCardFromExternal } from "@/lib/modules/kanban/links";
 import type { JourneyDeps, JourneySendRequest, JourneySendResult } from "@/lib/modules/member/journeys-shared";
+import type { ReviewDeps } from "@/lib/modules/member/reviews-shared";
+import type { NotificationDeps, NotificationSendRequest, NotificationSendResult } from "@/lib/modules/member/notifications-shared";
 
 const CHANNEL_NAME: Record<string, string> = { LINE: "LINE", EMAIL: "อีเมล", SMS: "SMS", PUSH: "แจ้งเตือนในแอป" };
 
@@ -93,6 +95,54 @@ export const journeySenders: Required<JourneyDeps> = {
       return { ok: true, cardId: r.cardId };
     } catch (e) {
       return { ok: false, error: errText(e, "เปิดการ์ดงานไม่สำเร็จ") };
+    }
+  },
+};
+
+// ── M3.4 รีวิว — ตัวส่ง LINE ของ "ลิงก์ขอรีวิว" และ "คำตอบของร้าน" (ประตูเดียวกับ journey/แคมเปญ) ──
+// ผู้เรียก: action ตอบรีวิว (`member/reviews-actions.ts`) · ทางเข้าอื่นที่ไม่ใช่ journey (journey ใช้ `journeySenders.line` อยู่แล้ว)
+// ด่านยินยอม/ที่อยู่ชุดเดียวกับ journey (`precheck`) · ห้าม throw
+export const reviewSenders: Required<Pick<ReviewDeps, "line">> = {
+  line: async (req) => journeySenders.line({ ...req, journeyId: "", runId: req.reviewId }),
+};
+
+// ── M3.6 การแจ้งเตือนสมาชิก — ตัวส่งจริงปริยาย (ประตูเดียวกับ journey/แคมเปญ/รีวิว) ──
+// 🔴 ต่างจาก `journeySenders`: เอนจิน `member/notifications.ts` เช็คยินยอม/ปลายทาง/เทมเพลตปิด-เปิด
+//    เองครบแล้วก่อนเรียก deps ⇒ ตัวส่งที่นี่ "ส่งอย่างเดียว" ไม่มี precheck ซ้ำ (ห้าม throw เหมือนเดิม)
+export const notificationSenders: Required<NotificationDeps> = {
+  line: async (req: NotificationSendRequest): Promise<NotificationSendResult> => {
+    try {
+      const r = await pushToContact({ tenantId: req.tenantId, channel: "LINE", externalUserId: req.to, text: req.body, customerId: req.customerId, systemId: null });
+      return { ok: r.ok, ...(r.reason ? { error: r.reason } : {}) };
+    } catch (e) {
+      return { ok: false, error: errText(e, "ส่ง LINE ไม่สำเร็จ") };
+    }
+  },
+  email: async (req) => {
+    try {
+      const { sendEmail } = await import("@/lib/core/email");
+      await sendEmail(req.to, req.subject ?? "ข่าวสารจากร้าน", req.body);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: errText(e, "ส่งอีเมลไม่สำเร็จ") };
+    }
+  },
+  sms: async (req) => {
+    const provider = getSmsProvider();
+    if (!provider) return { ok: false, error: "ร้านยังไม่ได้เชื่อมเกตเวย์ SMS" };
+    try {
+      const r = await provider.send({ to: req.to, text: req.body });
+      return { ok: r.ok, ...(r.error ? { error: r.error } : {}) };
+    } catch (e) {
+      return { ok: false, error: errText(e, "ส่ง SMS ไม่สำเร็จ") };
+    }
+  },
+  push: async (req) => {
+    try {
+      const r = await sendPushToCustomerTokens(req.tenantId, req.to.split(",").filter(Boolean), { title: req.title ?? "ข่าวสารจากร้าน", body: req.body });
+      return r.sent > 0 ? { ok: true } : { ok: false, error: r.failures[0] ?? "ส่งแจ้งเตือนไม่ถึงเครื่องของลูกค้า" };
+    } catch (e) {
+      return { ok: false, error: errText(e, "ส่งแจ้งเตือนไม่สำเร็จ") };
     }
   },
 };

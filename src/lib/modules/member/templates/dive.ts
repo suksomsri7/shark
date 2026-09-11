@@ -63,8 +63,29 @@ export const DIVE_TEMPLATE: MemberTemplate = {
       ],
     },
   ],
-  // M3.9 เติมของจริง (ระดับ/สแตมป์/journey ของกิจการดำน้ำ) — รอบนี้ว่างไว้ตามสัญญาใบ M1.2
-  tiers: [],
-  stamps: [],
-  journeys: [],
+  // M3.9 (§10 แถวที่ 1) — ระดับ/สแตมป์/journey ของกิจการดำน้ำ
+  // ระดับ: reuse "gold"/"platinum" ของทั่วไป (มีอยู่แล้วทุกร้าน) — apply แล้วถ้าร้านยังไม่มีระดับ 2 นี้จะสร้างให้
+  tiers: [
+    { key: "gold", label: "Gold", color: "AMBER", description: "จองเรือทริปได้ล่วงหน้า 7 วันก่อนคนทั่วไป" },
+    { key: "platinum", label: "Platinum", color: "PURPLE", description: "ดำน้ำฟรี 1 ไดฟ์ในเดือนเกิด" },
+  ],
+  stamps: [
+    {
+      key: "dive10",
+      name: "ครบ 10 ไดฟ์ฟรี 1 ไดฟ์",
+      slots: 10,
+      ruleKind: "PER_VISIT",
+      rewardKind: "REWARD",
+      rewardConfig: { note: "ไดฟ์ฟรี 1 ไดฟ์ (เลือกจุดดำน้ำมาตรฐาน)" },
+      description: "ทุกทริปที่ลูกค้าลงเรือ = 1 ตรา ครบ 10 ไดฟ์รับฟรี 1 ไดฟ์",
+    },
+  ],
+  journeys: [
+    {
+      key: "winback",
+      name: "ไม่ได้ดำน้ำนาน — ชวนกลับมาเที่ยวทะเล",
+      presetKey: "inactive",
+      description: "ไดฟ์ล่าสุดเกิน 60 วัน → ส่งของกำนัลชวนกลับ",
+    },
+  ],
 };

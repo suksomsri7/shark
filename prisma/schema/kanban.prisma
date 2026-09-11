@@ -43,6 +43,8 @@ enum KanbanCardSourceType {
   EMAIL
   AUTOMATION
   AI
+  // M3.4 (`member_v2_h`) — รีวิวลูกค้า ≤ N ดาว เปิดการ์ดให้ผู้จัดการ (sourceKey `review:<reviewId>`)
+  REVIEW
 }
 
 // ───────────────────────── Board ─────────────────────────

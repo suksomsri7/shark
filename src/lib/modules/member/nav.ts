@@ -59,7 +59,7 @@ export const MEMBER_SETTINGS_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "privacy", label: "ความเป็นส่วนตัว", path: "/member/settings/privacy", status: "ready" },
   { key: "points", label: "แต้ม", path: "/member/points/settings", status: "ready" },
   { key: "sources", label: "ช่องทางที่มา", path: "/member/settings/sources", status: "ready" },
-  { key: "notifications", label: "แจ้งเตือน", path: "/member/settings/notifications", status: "soon", wo: "M3.6" },
+  { key: "notifications", label: "แจ้งเตือน", path: "/member/settings/notifications", status: "ready" },
   { key: "api", label: "API", path: "/member/settings/api", status: "ready" },
 ] as const);
 
@@ -97,6 +97,10 @@ export const MEMBER_CAMPAIGN_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "segments", label: "กลุ่มลูกค้า", path: "/member/segments", status: "ready" },
   // M3.3 — journey อัตโนมัติ (ภาพ 07 บน · 22) · เงื่อนไขใช้ engine เดียวกับกลุ่มลูกค้า จึงอยู่หมวดเดียวกับแคมเปญ
   { key: "journeys", label: "Journey อัตโนมัติ", path: "/member/journeys", status: "ready" },
+  // M3.4 — รีวิวลูกค้า (ภาพ 23) · §2.2 จัด `/reviews` ไว้หมวดแคมเปญ (ขอรีวิวหลังบริการ = การสื่อสารกับลูกค้า)
+  { key: "reviews", label: "รีวิวลูกค้า", path: "/member/reviews", status: "ready" },
+  // M3.5 — แนะนำเพื่อน (ภาพ 24) · §2.2 จัด `/referrals` ไว้หมวดแคมเปญ (ชวนลูกค้าใหม่ผ่านลูกค้าเดิม)
+  { key: "referrals", label: "แนะนำเพื่อน", path: "/member/referrals", status: "ready" },
 ] as const);
 
 /** สิทธิ์ที่ต้องมีของหน้าย่อยในหมวดตั้งค่า (ไม่มีในตาราง = ใช้ `member.settings.manage`) */

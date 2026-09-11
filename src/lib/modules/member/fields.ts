@@ -1495,7 +1495,7 @@ export async function applyTemplate(
   templateKey: string,
   opts: ApplyTemplateOptions = {},
   tx?: Client,
-): Promise<{ added: { sections: number; fields: number } }> {
+): Promise<{ added: { sections: number; fields: number }; created: { sectionIds: string[]; fieldIds: string[] } }> {
   const db = clientOf(tx);
   const template = TEMPLATES[templateKey];
   if (!template) {
@@ -1508,12 +1508,15 @@ export async function applyTemplate(
   const fieldKeys = new Set(fields.map((f) => f.key));
 
   const added = { sections: 0, fields: 0 };
+  // 🔴 M3.9 — เก็บ id ของส่วน/ฟิลด์ที่ "สร้างจริง" รอบนี้ ให้ templates-service.ts ประกอบเป็น `created` รวมกับ
+  //    tiers/stamps/journeys (ผู้เรียกเดิมที่อ่านแค่ `.added` ไม่ต้องแก้อะไร — เพิ่มคีย์ ไม่ทับของเดิม)
+  const created = { sectionIds: [] as string[], fieldIds: [] as string[] };
   for (const tplSection of template.sections as MemberTemplateSection[]) {
     const wanted = tplSection.fields.filter((f) => (only ? only.has(f.key) : true) && !fieldKeys.has(f.key));
     let sectionId = sectionByKey.get(tplSection.key);
     if (!sectionId) {
       if (wanted.length === 0) continue; // ไม่มีอะไรจะใส่ในส่วนนั้น = ไม่ต้องสร้างส่วนเปล่า
-      const created = await createSection(
+      const createdSection = await createSection(
         ctx,
         {
           key: tplSection.key,
@@ -1524,12 +1527,13 @@ export async function applyTemplate(
         },
         tx,
       );
-      sectionId = created.id;
-      sectionByKey.set(tplSection.key, created.id);
+      sectionId = createdSection.id;
+      sectionByKey.set(tplSection.key, createdSection.id);
       added.sections += 1;
+      created.sectionIds.push(createdSection.id);
     }
     for (const tplField of wanted as MemberTemplateField[]) {
-      await createField(
+      const createdField = await createField(
         ctx,
         {
           sectionId,
@@ -1550,7 +1554,8 @@ export async function applyTemplate(
       );
       fieldKeys.add(tplField.key);
       added.fields += 1;
+      created.fieldIds.push(createdField.id);
     }
   }
-  return { added };
+  return { added, created };
 }

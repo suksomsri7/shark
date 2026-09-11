@@ -82,7 +82,7 @@ try {
   const board = await kanban.createBoard({ tenantId: tid, systemId: kb!.id, name: `งานร้าน ${tag}`, unitId: null });
   const boardId = (board?.id ?? board?.boardId ?? board) as string;
   made.boards.push(boardId);
-  const mkCust = async (nm: string, unit = E.units.patong) => { const c = await PR.createMember(ctx as Any, owner, { phone: `0888${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "รีวิว", source: "WALK_IN", homeUnitId: unit }); made.customers.push(c.customerId); await PV.setConsent(ctx, owner, c.customerId, { channel: "LINE", granted: true, source: "STAFF" }).catch(() => null); await P.memberChannelIdentity.create({ data: { tenantId: tid, customerId: c.customerId, channel: "LINE", externalId: `U-rv-${tag}-${Math.random().toString(36).slice(2, 8)}` } }).catch(() => null); return c.customerId as string; };
+  const mkCust = async (nm: string, unit = E.units.patong) => { const c = await PR.createMember(ctx as Any, owner, { phone: `0888${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "รีวิว", source: "WALK_IN", homeUnitId: unit }); made.customers.push(c.customerId); await PV.setConsent(ctx, owner, c.customerId, { channel: "LINE", granted: true, source: "STAFF" }).catch(() => null); await P.memberChannelIdentity.create({ data: { tenantId: tid, customerId: c.customerId, channel: "LINE", externalId: `U-rv-${tag}-${Math.random().toString(36).slice(2, 8)}`, linkedBy: "MANUAL" /* ORACLE-EDIT M3.4-S2.1: linkedBy บังคับ — เดิมล้มเงียบ X/Y ไม่มี LINE ทั้งคู่ */ } }).catch(() => null); return c.customerId as string; };
   const sale = (i: number) => prisma.posSale.findFirst({ where: { tenantId: tid, memberId: m(i).id, status: "PAID" as Any }, orderBy: { createdAt: "asc" } });
 
   // ═══ S1 schema · settings ═══
@@ -208,6 +208,15 @@ try {
   chk("M3.4-S5.4", "unhide → กลับ ESCALATED (ไม่มี reply) · reviewsForMember(X) = 1 รายการ 5 ดาว · shopSummaryFor360 {avg, count 5, distribution} · getMember360(X).counters.reviewAvg = 5 (ไม่ใช่ null อีกต่อไป) · MemberKpis.reviewAvg เป็นตัวเลข", unh?.ok === true && (await rv(rqL2.reviewId))?.status === "ESCALATED" && forX?.length === 1 && forX[0].rating === 5 && sum360?.count === 5 && typeof sum360.avg === "number" && m360?.counters?.reviewAvg === 5 && (kpi === null || typeof kpi?.reviewAvg === "number"), "ค่าจริงใน 360", `unh=${(await rv(rqL2.reviewId))?.status} forX=${forX?.length} sum=${JSON.stringify(sum360)} c=${m360?.counters?.reviewAvg} kpi=${kpi?.reviewAvg}`);
 
   // ═══ S6 AI summary cache ═══
+  // ORACLE-EDIT M3.4-S6.1: หน้า inbox (ภาพ 23) เรียก summarize ตอนเรนเดอร์ → แคชของวันนี้อาจมีอยู่แล้วจาก harness/รอบก่อน · ล้างก่อนวัด "ครั้งแรก cached false" แล้วคืนค่าเดิมตอนจบ
+  {
+    const s0 = ((await prisma.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } }))?.settings ?? {}) as Any;
+    const prevCache = s0?.member?.reviewSummary;
+    if (prevCache !== undefined) {
+      await prisma.appSystem.update({ where: { id: SYS }, data: { settings: { ...s0, member: { ...(s0.member ?? {}), reviewSummary: {} } } } });
+      restore.push(async () => { const cur = ((await prisma.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } }))?.settings ?? {}) as Any; await prisma.appSystem.update({ where: { id: SYS }, data: { settings: { ...cur, member: { ...(cur.member ?? {}), reviewSummary: prevCache } } } }); });
+    }
+  }
   const sm1 = await R.summarize(ctx, owner, {});
   const sm2 = await R.summarize(ctx, owner, {});
   const sysRow = await prisma.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } });

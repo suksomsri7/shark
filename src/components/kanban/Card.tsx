@@ -108,6 +108,8 @@ const SOURCE_LABEL: Record<BoardCardDto["sourceType"], { text: string; icon: str
   EMAIL: { text: "จากอีเมล", icon: "mail" },
   AUTOMATION: { text: "จากกฎอัตโนมัติ", icon: "spark" },
   AI: { text: "จากผู้ช่วย AI", icon: "spark" },
+  // M3.4 — รีวิวลูกค้า ≤ N ดาว ที่ระบบสมาชิกเปิดการ์ดให้ผู้จัดการ
+  REVIEW: { text: "จากรีวิวลูกค้า", icon: "star" },
 };
 
 /**

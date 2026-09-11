@@ -16,7 +16,6 @@ import { safeReason } from "@/lib/core/errors";
 import { prisma } from "./db";
 import { canManageSettings, canReadMember, toMemberActor, type MemberActor } from "./access";
 import {
-  applyTemplate,
   archiveField,
   createField,
   createSection,
@@ -26,7 +25,6 @@ import {
   restoreField,
   updateField,
   updateSection,
-  type ApplyTemplateOptions,
   type CreateFieldInput,
   type CreateSectionInput,
   type FieldCtx,
@@ -35,6 +33,13 @@ import {
   type UpdateFieldInput,
   type UpdateSectionInput,
 } from "./fields";
+import {
+  applyTemplate as applyTemplateService,
+  previewTemplate,
+  type ApplyTemplateResult,
+  type TemplatePart,
+  type TemplatePreview,
+} from "./templates-service";
 
 export type FieldsActionResult<T> = { ok: true; data: T } | { ok: false; reason: string };
 
@@ -200,17 +205,33 @@ export async function restoreFieldAction(input: { systemId: string; id: string }
   }
 }
 
-// ───────────────────────── เทมเพลตกิจการ ─────────────────────────
+// ───────────────────────── เทมเพลตกิจการ (M1.2 fields เดิม + M3.9 tiers/stamps/journeys) ─────────────────────────
 
-export async function applyTemplateAction(
-  input: { systemId: string; templateKey: string } & ApplyTemplateOptions,
-): Promise<FieldsActionResult<{ added: { sections: number; fields: number } }>> {
+/** แผงตัวอย่างเทมเพลตก่อนกด "ใช้เทมเพลต" (field-template-select เปลี่ยน → เรียกตัวนี้) — อ่านอย่างเดียว */
+export async function previewTemplateAction(input: { systemId: string; templateKey: string }): Promise<FieldsActionResult<TemplatePreview>> {
   try {
     const { tenantId, userId } = await gate(input.systemId);
     const ctx: FieldCtx = { tenantId, systemId: input.systemId, actorUserId: userId };
-    const { systemId: _systemId, templateKey, ...opts } = input;
-    const result = await applyTemplate(ctx, templateKey, opts);
-    await audit(tenantId, userId, "MemberSection", undefined, { appliedTemplate: templateKey, added: result.added });
+    const preview = await previewTemplate(ctx, input.templateKey);
+    return { ok: true, data: preview };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "ดูตัวอย่างเทมเพลตไม่สำเร็จ — ลองใหม่อีกครั้ง") };
+  }
+}
+
+/** ใช้เทมเพลต — `parts` เลือกได้ว่านำเข้าส่วนไหน (ปริยายทั้ง 4: fields/tiers/stamps/journeys) */
+export async function applyTemplateAction(
+  input: { systemId: string; templateKey: string; parts?: TemplatePart[]; onlyFieldKeys?: string[] },
+): Promise<FieldsActionResult<ApplyTemplateResult>> {
+  try {
+    const { tenantId, userId, actor } = await gate(input.systemId);
+    const ctx: FieldCtx = { tenantId, systemId: input.systemId, actorUserId: userId };
+    const result = await applyTemplateService(ctx, input.templateKey, {
+      parts: input.parts,
+      onlyFieldKeys: input.onlyFieldKeys,
+      actor,
+    });
+    await audit(tenantId, userId, "MemberSection", undefined, { appliedTemplate: input.templateKey, parts: input.parts, added: result.added });
     revalidatePath(PATH(input.systemId));
     return { ok: true, data: result };
   } catch (e) {

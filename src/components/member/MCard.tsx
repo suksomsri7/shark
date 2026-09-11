@@ -52,7 +52,8 @@ export function MCard({
     { href: `/m/${slug}/wallet`, label: "สิทธิ์", icon: "wallet" },
     { href: `/m/${slug}/wallet#stamps`, label: "สแตมป์", icon: "stamp" },
     { href: `/m/${slug}/history`, label: "ประวัติ", icon: "clock" },
-    { href: `/m/${slug}/profile`, label: "แนะนำเพื่อน", icon: "users" },
+    // M3.5 — ปุ่มลัดนี้ชี้หน้าโปรไฟล์ไว้ก่อน (ยังไม่มีหน้าแนะนำเพื่อน) · ตอนนี้มีหน้า `/m/<slug>/referral` แล้ว
+    { href: `/m/${slug}/referral`, label: "แนะนำเพื่อน", icon: "users" },
   ];
 
   return (
