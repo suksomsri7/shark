@@ -5,7 +5,7 @@
 
 ## 1. สถานะ ณ จุดส่งต่อ
 - **24/34 ใบ ≈ 71%** · M1 12/12 ✅ · M2 10/10 ✅ (HANDOVER-2026-09-11-MEMBER-M2.md · qc:all 318/319) · M3.1 ✅ `cb1d397` · M3.2 ✅ `22d3ff2`
-- main ล่าสุด = commit ของไฟล์นี้ (ดู `git log -1`) · Vercel READY `dbafd3a` · prod `_prisma_migrations` มี member_v2 a b b2 b3 c f d c2 d2 e f2 f2_identity_fk g **g2** (14 ใบ)
+- main ล่าสุด = `21fd9f3` (commit ของไฟล์นี้ — ใช้ hash นี้ใน §6 ข้อ 1–2) · Vercel READY `dbafd3a` · prod `_prisma_migrations` มี member_v2 a b b2 b3 c f d c2 d2 e f2 f2_identity_fk g **g2** (14 ใบ)
 - worktree `/root/projects/shark-member` branch `session/member` · push main ทุกใบ (fetch + rebase origin/main ก่อน push เสมอ — session CRM push ledger คู่ขนาน)
 - **M3.3 journeys — builder ถูกหยุดกลางทาง (ทำไป ~8 นาที)** ไฟล์ค้างบนดิสก์ ไม่ได้ commit:
   `prisma/schema/automation.prisma` (แก้) · `prisma/migrations/20261027000000_member_v2_g3/` · `src/lib/modules/member/journey-presets.ts` · `src/lib/modules/member/journeys-shared.ts`
