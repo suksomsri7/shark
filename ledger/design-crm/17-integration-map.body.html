@@ -1,0 +1,153 @@
+<div class="wrap">
+<div>
+<p class="cap">17 · ตั้งค่า — การเชื่อมต่อทุกระบบ <span>— C10 §9: แผนผัง CRM กลาง ↔ 23 ระบบ (กล่องที่ยังไม่เปิดใช้จาง + ป้าย "ไม่ได้เปิดใช้") · ระบบปลายทางเมื่อมีหลายระบบ (5) · ตารางสถานะเชื่อมต่อ 6 แถว</span></p>
+<div class="frame" style="height:1140px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SIAM DIVE CENTER</span>
+  <span class="sp"></span><svg class="i"><use href="#i-search"/></svg><svg class="i"><use href="#i-bell"/></svg><div class="av">ธ</div></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-mail"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="kbar"><svg class="i sm mu"><use href="#i-back"/></svg><h1>ตั้งค่า — การเชื่อมต่อทุกระบบ</h1>
+    <span class="chip" style="margin-left:8px">C10 · §9</span><span class="sp"></span>
+    <span class="chip"><span style="width:7px;height:7px;border-radius:50%;background:var(--ink);display:inline-block;margin-right:5px"></span>เปิดใช้ 18</span>
+    <span class="chip" style="color:var(--mut2)"><span style="width:7px;height:7px;border-radius:50%;background:var(--line2);display:inline-block;margin-right:5px"></span>ไม่ได้เปิด 5</span></div>
+
+   <div class="stage" style="background:var(--sf)">
+    <div style="display:flex;min-height:0;flex:1">
+
+     <!-- เมนูซ้ายโมดูล CRM 9 หมวด -->
+     <div style="width:190px;flex:none;border-right:1px solid var(--line);padding:13px 11px;background:var(--sf2)">
+      <div class="dsec" style="color:var(--mut)">โมดูล CRM</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-home"/></svg>หน้าแรก</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-tree"/></svg>ดีล</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-users"/></svg>ผู้ติดต่อ</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-shop"/></svg>บริษัท</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-cklist"/></svg>กิจกรรม</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-cal"/></svg>ปฏิทิน</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-mail"/></svg>อีเมล</div>
+      <div class="acc-i"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+      <div class="ddsep"></div>
+      <div class="acc-i on"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+     </div>
+
+     <div class="pg" style="flex:1;min-width:0;padding:10px 18px 14px;gap:10px">
+
+      <!-- แผนผัง -->
+      <div class="card" style="padding:12px 13px;flex:none">
+       <div class="ch" style="margin-bottom:7px"><svg class="i sm"><use href="#i-grid"/></svg><h2>แผนผังการเชื่อมต่อ</h2><span class="sub">ทุกเส้นผ่าน facade/outbox (ไม่ import ตรง) · C11 partyId ร่วม</span></div>
+
+       <div style="display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(5,86px);gap:7px">
+
+        <!-- แถวบน -->
+        <div style="grid-column:1;grid-row:1;border:1.5px dashed var(--line2);border-radius:8px;background:var(--sf);padding:6px 7px;opacity:.55;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">โรงแรม</b><div style="font-size:8.2px;color:var(--ink2)">→ เข้าพัก VISIT</div><span class="lb slate" style="height:14px;font-size:7.6px;margin-top:1px">ไม่ได้เปิดใช้</span></div>
+        <div style="grid-column:2;grid-row:1;border:1.5px dashed var(--line2);border-radius:8px;background:var(--sf);padding:6px 7px;opacity:.55;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">ร้านอาหาร</b><div style="font-size:8.2px;color:var(--ink2)">→ บิลจัดเลี้ยง</div><span class="lb slate" style="height:14px;font-size:7.6px;margin-top:1px">ไม่ได้เปิดใช้</span></div>
+        <div style="grid-column:3;grid-row:1;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">จองคิว</b><div style="font-size:8.2px;color:var(--ink2)">→ นัดสำเร็จ MEETING</div><div style="font-size:8.2px;color:var(--mut)">← ปฏิทินอ่านอย่างเดียว</div></div>
+        <div style="grid-column:4;grid-row:1;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">ตั๋ว</b><div style="font-size:8.2px;color:var(--ink2)">→ จ่ายแล้ว PURCHASE</div><div style="font-size:8.2px;color:var(--mut)">← ดีลตั๋วกลุ่ม</div></div>
+        <div style="grid-column:5;grid-row:1;border:1px solid var(--acc);border-radius:8px;background:var(--acc-bg);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px;color:var(--acc)">สมาชิก</b><div style="font-size:8.2px;color:var(--ink2)">→ ระดับ/แต้ม/wallet</div><div style="font-size:8.2px;color:var(--mut)">← แปลง lead→สมาชิก</div></div>
+        <div style="grid-column:6;grid-row:1;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">รางวัล</b><div style="font-size:8.2px;color:var(--ink2)">→ แลกรางวัล ไทม์ไลน์</div><div style="font-size:8.2px;color:var(--mut)">← ของขวัญ B2B</div></div>
+        <div style="grid-column:7;grid-row:1;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">คูปอง</b><div style="font-size:8.2px;color:var(--ink2)">→ ใช้คูปอง ไทม์ไลน์</div><div style="font-size:8.2px;color:var(--mut)">← ออกจากกฎ CRM</div></div>
+        <div style="grid-column:8;grid-row:1;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">แต้ม</b><div style="font-size:8.2px;color:var(--ink2)">→ ได้/หมดอายุ</div><div style="font-size:8.2px;color:var(--mut)">← ให้แต้มต้อนรับ</div></div>
+        <div style="grid-column:9;grid-row:1;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">แชท</b><div style="font-size:8.2px;color:var(--ink2)">→ ข้อความ→lead</div><div style="font-size:8.2px;color:var(--mut)">← เปิดดีล/ส่ง LINE</div></div>
+
+        <!-- ซ้าย -->
+        <div style="grid-column:1;grid-row:2;border:1.5px dashed var(--line2);border-radius:8px;background:var(--sf);padding:6px 7px;opacity:.55;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">บัตรคิว</b><div style="font-size:8.2px;color:var(--ink2)">→ คิวเสร็จ VISIT</div><span class="lb slate" style="height:14px;font-size:7.6px;margin-top:1px">ไม่ได้เปิดใช้</span></div>
+        <div style="grid-column:1;grid-row:3;border:1.5px dashed var(--line2);border-radius:8px;background:var(--sf);padding:6px 7px;opacity:.55;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">เช่า</b><div style="font-size:8.2px;color:var(--ink2)">→ คืน/เกินกำหนด</div><span class="lb slate" style="height:14px;font-size:7.6px;margin-top:1px">ไม่ได้เปิดใช้</span></div>
+        <div style="grid-column:1;grid-row:4;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">โรงเรียน</b><div style="font-size:8.2px;color:var(--ink2)">→ ลงทะเบียน/จบคอร์ส</div><div style="font-size:8.2px;color:var(--mut)">← ดีลขายคอร์ส B2B</div></div>
+
+        <!-- ขวา -->
+        <div style="grid-column:9;grid-row:2;border:1.5px dashed var(--line2);border-radius:8px;background:var(--sf);padding:6px 7px;opacity:.55;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">คลินิก</b><div style="font-size:8.2px;color:var(--ink2)">→ ตรวจเสร็จ VISIT</div><span class="lb slate" style="height:14px;font-size:7.6px;margin-top:1px">ไม่ได้เปิดใช้</span></div>
+        <div style="grid-column:9;grid-row:3;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">Page/LIFF</b><div style="font-size:8.2px;color:var(--ink2)">→ ฟอร์ม/ลิงก์ LIFF</div><div style="font-size:8.2px;color:var(--mut)">← widget ดีล/portal</div></div>
+
+        <!-- กลาง CRM -->
+        <div style="grid-column:4/7;grid-row:2/5;border:2px solid var(--ink);border-radius:12px;background:var(--ink);color:var(--sf);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
+         <svg class="i" style="width:22px;height:22px;color:var(--sf)"><use href="#i-users"/></svg>
+         <b style="font-size:16px;letter-spacing:-.02em">CRM</b>
+         <span style="font-size:9.5px;opacity:.75">SIAM DIVE CENTER</span>
+         <span style="font-size:8px;opacity:.6;margin-top:2px">partyId กลาง · outbox 26 event</span></div>
+
+        <!-- แถวล่าง -->
+        <div style="grid-column:1;grid-row:5;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">Meeting</b><div style="font-size:8.2px;color:var(--ink2)">(ภายใน)</div><div style="font-size:8.2px;color:var(--mut)">← แจ้งทีมขาย/แชร์ดีล</div></div>
+        <div style="grid-column:2;grid-row:5;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">บัญชี</b><div style="font-size:8.2px;color:var(--ink2)">→ ชำระ/เอกสารออก</div><div style="font-size:8.2px;color:var(--mut)">← QT/INV จากดีล</div></div>
+        <div style="grid-column:3;grid-row:5;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">บอร์ดงาน</b><div style="font-size:8.2px;color:var(--ink2)">→ การ์ดเสร็จ</div><div style="font-size:8.2px;color:var(--mut)">← เปิดการ์ดจากดีล</div></div>
+        <div style="grid-column:4;grid-row:5;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">POS</b><div style="font-size:8.2px;color:var(--ink2)">→ บิลจ่าย→ปิดดีล</div><div style="font-size:8.2px;color:var(--mut)">← เลือกดีลตอนขาย</div></div>
+        <div style="grid-column:5;grid-row:5;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">KB</b><div style="font-size:8.2px;color:var(--ink2)">(อ้างอิงตอบ)</div><div style="font-size:8.2px;color:var(--mut)">← AI อ้าง KB ร่างอีเมล</div></div>
+        <div style="grid-column:6;grid-row:5;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">HR</b><div style="font-size:8.2px;color:var(--ink2)">→ พนักงาน/ลา</div><div style="font-size:8.2px;color:var(--mut)">← คอมมิชชัน→payroll</div></div>
+        <div style="grid-column:7;grid-row:5;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">สินค้า</b><div style="font-size:8.2px;color:var(--ink2)">→ ราคา/ชื่อสินค้า</div><div style="font-size:8.2px;color:var(--mut)">← สินค้าในดีลเปิด</div></div>
+        <div style="grid-column:8;grid-row:5;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">การตลาด</b><div style="font-size:8.2px;color:var(--ink2)">→ แคมเปญส่งแล้ว</div><div style="font-size:8.2px;color:var(--mut)">← ROI ต่อแคมเปญ</div></div>
+        <div style="grid-column:9;grid-row:5;border:1px solid var(--line);border-radius:8px;background:var(--sf);padding:6px 7px;display:flex;flex-direction:column;gap:2px">
+         <b style="font-size:10px">ร้านค้าออนไลน์</b><div style="font-size:8.2px;color:var(--ink2)">→ ออเดอร์จ่ายแล้ว</div><div style="font-size:8.2px;color:var(--mut)">← ลิงก์ชำระจากดีล</div></div>
+
+       </div>
+      </div>
+
+      <!-- แถวล่าง: ปลายทาง + ตาราง -->
+      <div class="row" style="gap:12px;align-items:stretch;flex:1;min-height:0">
+
+       <div class="card" style="flex:1;min-width:0;padding:12px 14px">
+        <div class="ch" style="margin-bottom:8px"><svg class="i sm"><use href="#i-swap"/></svg><h2>ระบบปลายทางเมื่อมีหลายระบบ</h2></div>
+        <div class="mrow" style="padding:7px 0"><span style="flex:1;font-size:12.5px">สมาชิก (MEMBER)</span><div class="inp" style="width:190px;height:30px">SIAM DIVE — สมาชิก<span class="sp"></span><svg class="i sm cv"><use href="#i-cv"/></svg></div></div>
+        <div class="mrow" style="padding:7px 0"><span style="flex:1;font-size:12.5px">บัญชี (ACCOUNT)</span><div class="inp" style="width:190px;height:30px">SIAM DIVE — บัญชี<span class="sp"></span><svg class="i sm cv"><use href="#i-cv"/></svg></div></div>
+        <div class="mrow" style="padding:7px 0"><span style="flex:1;font-size:12.5px">บอร์ดงาน (KANBAN)</span><div class="inp" style="width:190px;height:30px">SIAM DIVE — งาน<span class="sp"></span><svg class="i sm cv"><use href="#i-cv"/></svg></div></div>
+        <div class="mrow" style="padding:7px 0"><span style="flex:1;font-size:12.5px">แชท (CHAT)</span><div class="inp" style="width:190px;height:30px">SIAM DIVE — แชท<span class="sp"></span><svg class="i sm cv"><use href="#i-cv"/></svg></div></div>
+        <div class="mrow" style="padding:7px 0"><span style="flex:1;font-size:12.5px">สินค้า (INVENTORY)</span><div class="inp" style="width:190px;height:30px">SIAM DIVE — สินค้า<span class="sp"></span><svg class="i sm cv"><use href="#i-cv"/></svg></div></div>
+        <div class="sub" style="margin-top:8px">ร้านนี้มีระบบเดียวต่อชนิด — เลือกไว้ล่วงหน้าเผื่อเปิดระบบที่ 2 (เช่น สาขาแยก)</div>
+       </div>
+
+       <div class="card p0" style="flex:1.3;min-width:0">
+        <div style="padding:12px 14px 0"><div class="ch" style="margin-bottom:7px"><svg class="i sm"><use href="#i-check"/></svg><h2>สถานะเชื่อมต่อ</h2></div></div>
+        <table class="tbl">
+         <thead><tr><th>ระบบ</th><th>เหตุการณ์ล่าสุด</th><th class="rt">จำนวน 7 วัน</th><th class="rt">สถานะ</th></tr></thead>
+         <tbody>
+          <tr><td><b>สมาชิก</b></td><td class="mu mb6-mono" style="font-size:11px">crm.contact.converted</td><td class="num">12</td><td class="rt"><svg class="i xs" style="color:var(--t-green)"><use href="#i-check"/></svg></td></tr>
+          <tr><td><b>บัญชี</b></td><td class="mu mb6-mono" style="font-size:11px">account.invoice.paid</td><td class="num">28</td><td class="rt"><svg class="i xs" style="color:var(--t-green)"><use href="#i-check"/></svg></td></tr>
+          <tr><td><b>บอร์ดงาน</b></td><td class="mu mb6-mono" style="font-size:11px">kanban.card.completed</td><td class="num">9</td><td class="rt"><svg class="i xs" style="color:var(--t-green)"><use href="#i-check"/></svg></td></tr>
+          <tr><td><b>แชท</b></td><td class="mu mb6-mono" style="font-size:11px">chat.message.received</td><td class="num">164</td><td class="rt"><svg class="i xs" style="color:var(--t-green)"><use href="#i-check"/></svg></td></tr>
+          <tr><td><b>POS</b></td><td class="mu mb6-mono" style="font-size:11px">pos.sale.paid</td><td class="num">6</td><td class="rt"><svg class="i xs" style="color:var(--t-green)"><use href="#i-check"/></svg></td></tr>
+          <tr><td><b>การตลาด</b></td><td class="mu mb6-mono" style="font-size:11px">campaign.sent</td><td class="num">3</td><td class="rt"><svg class="i xs" style="color:var(--t-green)"><use href="#i-check"/></svg></td></tr>
+         </tbody>
+        </table>
+       </div>
+
+      </div>
+
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

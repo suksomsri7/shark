@@ -1,5 +1,10 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 📘 11 ก.ย. 2569 — [session CRM] **CRM v2 ชุดเต็มส่งมอบแล้ว (ยังไม่ RUN — มติเจ้าของ C10)** · worktree `/root/projects/shark-crm` branch `session/crm`
+- มติเจ้าของ 10 ข้อ → `ledger/DESIGN-CRM.md` §9 (HubSpot-style · Team กลาง · คอมมิชชัน PAID · อีเมลตั้งเส้นทางได้ · โทรมือ+AI · web tracking ทำเป็นการตั้งค่า · custom objects ไม่จำกัด · STAFF=ทีม · **portal B2B รอยืนยัน** (อธิบายใน §9))
+- ส่งมอบ: พิมพ์เขียว `docs/modules/20-crm-v2.md` (14 หัวข้อ · §9 เชื่อม 24 ระบบ) · `docs/api/CRM-API.md` (96 op · 32 tool) · `ledger/CRM-RUN.md` (32 ใบ · ≈780 ข้อ · ลำดับ/ข้อพึ่งพาสมาชิก) · ภาพ 17 ใบ `ledger/design-crm/`
+- เมื่อสั่ง "เริ่ม RUN CRM v2": session ใหม่ → worktree นี้ (`pnpm install` แล้ว) → CRM-RUN §0 · C1 เริ่มได้เลย · C2.1 รอสมาชิก M3.3 · C3.5 portal ทำท้ายสุด/ตัดได้
+
 ## 🎨 10 ก.ย. 2569 15:00 BKK — [session CRM] **ออกแบบ CRM v2 ส่งมอบแล้ว (ยังไม่ coding)** · worktree `/root/projects/shark-crm` branch `session/crm` · แบบ `ledger/DESIGN-CRM.md` (ต่อจาก `docs/modules/06-member-v2.md` §14) + ภาพ 14 ใบ `ledger/design-crm/` (README มีตาราง · BRIEF.md = คำสั่งวาด)
 - สาระ: ช่องว่าง 8 ข้อ → 30 WO 3 เฟส (C1 โครง/บริษัท/ดีล v2/custom objects/event 24 ตัว · C2 automation/sequence/โทร/อีเมล/tracking/score · C3 ทีม/โควตา/คอมมิชชัน/รายงาน/portal B2B/มือถือ/AI) · ตารางใหม่ 17+2 (Team เป็นของกลาง core) · engine reuse 3 ตัว (MemberField+objectKey · K2.9 scope CRM · op registry)
 - **รอเจ้าของเคาะคำถาม §8 (10 ข้อ)** ก่อนเขียนชุดเต็ม: `docs/modules/20-crm-v2.md` + `docs/api/CRM-API.md` + `ledger/CRM-RUN.md` (แบบเดียวกับชุดสมาชิก) · ข้อพึ่งพา: C1 เริ่มได้หลังสมาชิกปิด M1.4 · C2 หลัง M3.3
