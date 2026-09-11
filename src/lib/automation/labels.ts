@@ -105,6 +105,10 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // M1.12 (§7.1 §9.3) — ยิงจาก `member/chat-bridge.ts#linkContact` (ทั้งจับคู่อัตโนมัติและเลือกมือ)
   //   payload มี contactId · partyId · customerId · method (PHONE/EMAIL/CHANNEL_ID/MANUAL)
   { value: "chat.contact.linked", label: "เมื่อผูกห้องแชทเข้ากับสมาชิก" },
+  // M3.2 (§7.1) — ยิงจาก `marketing/campaigns.ts#sendCampaignV2` หลังส่งจบ (เฉพาะรอบที่ส่งจริง > 0)
+  //   payload: campaignId · name · sent · holdout · variants { A, B, HOLDOUT }
+  //   🔴 ต้องมี consumer ใน `outbox-consumers.ts` ด้วย (ขาดไป = คิวตันทั้งระบบเงียบ ๆ)
+  { value: "campaign.sent", label: "เมื่อส่งแคมเปญถึงลูกค้าแล้ว" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

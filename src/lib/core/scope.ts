@@ -83,6 +83,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // Marketing (ระบบ 20 — WO-0013)
   MktCampaign: sys(),
   MktRecipient: sys(),
+  // M3.2 — สถิติต่อ variant ของแคมเปญ (อยู่ในระบบ MARKETING เดียวกับตัวแคมเปญ)
+  CampaignVariantStat: sys(),
   // AI Layer (WO-0014) — ผู้ช่วยผูกกิจการ ไม่ผูก system
   AiConversation: tenant,
   AiMessage: tenant,
@@ -198,6 +200,8 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   MemberTag: sys(),
   MemberSegment: sys(), // M3.1 — กลุ่มลูกค้าเป็นของ "ระบบสมาชิก" หนึ่งระบบ (เงื่อนไขอ้างฟิลด์/ระดับของระบบนั้น)
   MemberChannelIdentity: tenant, // ค้นด้วย (tenantId, channel, externalId) — ขาเข้ายังไม่รู้ระบบ
+  // M3.2 — เครื่องของลูกค้าที่รับ push (ค้นด้วย token ตอนแอปลงทะเบียน ซึ่งยังไม่รู้ระบบสมาชิก)
+  MemberPushDevice: tenant,
   // M2.9 — ตัวตนของ "ลูกค้า" ฝั่ง `/m/*` (คนละตารางกับ Session ของพนักงาน)
   //   แกน tenant: ค้นด้วย tokenHash/otpId ก่อนรู้ว่าเป็นระบบสมาชิกไหน (Customer.memberSystemId เป็นตัวคุมต่อ)
   CustomerSession: tenant,

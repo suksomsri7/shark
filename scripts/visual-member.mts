@@ -169,6 +169,32 @@ if (WO === "3.4") {
     console.log(`🧪 เตรียม 3.4: รีวิว ${sales.length - 1} ใบ · token LIFF สมาชิก 1 = ${TMP34.token ? "มี" : "ไม่มี"}`);
   }
 }
+const TMP32 = { campaignId: "", segmentId: "" };
+if (WO === "3.2") {
+  const MKT32 = (await import("@/lib/modules/marketing" as string).catch(() => null)) as Any;
+  const S32 = (await import("@/lib/modules/member" as string).catch(() => null)) as Any;
+  const sys32 = (await import("@/lib/modules/system/service" as string)) as Any;
+  if (MKT32?.createCampaignV2 && S32?.saveSegment) {
+    const memO = await prisma.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId } });
+    const ownerActor = { userId: E.users.owner.userId, role: memO!.role, unitAccess: memO!.unitAccess as string[], permissions: memO!.permissions as Record<string, unknown> };
+    let mk = await prisma.appSystem.findFirst({ where: { tenantId: E.tenantId, type: "MARKETING" as Any } });
+    if (!mk) { mk = await sys32.createSystem(E.tenantId, "MARKETING", "แคมเปญ (MB QC)"); for (const u of [E.units.patong, E.units.kata]) await sys32.linkUnit(E.tenantId, mk!.id, u); }
+    const mctx = { tenantId: E.tenantId, systemId: SYS, actorUserId: E.users.owner.userId };
+    const cctx = { tenantId: E.tenantId, systemId: mk!.id, memberSystemId: SYS, actorUserId: E.users.owner.userId };
+    const seg = await S32.saveSegment(mctx, ownerActor, { name: "Gold ที่ไม่มา 30 วัน (ตัวอย่างภาพ)", definition: { groups: [{ conditions: [{ field: "unit", op: "in", value: [E.units.patong] }] }] }, scope: "TEAM" }).catch((e: Any) => { console.error("segment", e?.message); return null; });
+    if (seg?.id) {
+      TMP32.segmentId = seg.id;
+      const content = { line: "สวัสดีค่ะคุณ {ชื่อ} สมาชิกระดับ {ระดับ} ของเรา — พิเศษสำหรับคุณ รับ voucher {voucher} ไปใช้ได้เลยก่อนหมดเขต", email: { subject: "สิทธิพิเศษสำหรับคุณ {ชื่อ}", body: "รับ voucher {voucher}" } };
+      const c = await MKT32.createCampaignV2(cctx, ownerActor, { name: "Gold ที่ไม่มา 30 วัน — voucher ฿300", segmentId: seg.id, channels: ["LINE", "EMAIL"], content, variantB: { ...content, line: "ข้อความ B คุณ{ชื่อ} รับ {voucher}" }, holdoutPct: 10 }).catch((e: Any) => { console.error("campaign", e?.message); return null; });
+      if (c?.id) {
+        TMP32.campaignId = c.id;
+        const ok = async () => ({ ok: true });
+        await MKT32.sendCampaignV2(cctx, ownerActor, c.id, { deps: { line: ok, email: ok, sms: ok, push: ok } }).catch((e: Any) => console.error("send", e?.message));
+      }
+    }
+    console.log(`🧪 เตรียม 3.2: แคมเปญ ${TMP32.campaignId || "ไม่มี"} (segment ${TMP32.segmentId || "-"})`);
+  }
+}
 const TMP33 = { journeyId: "" };
 if (WO === "3.3") {
   const J33 = (await import("@/lib/modules/member/journeys" as string).catch(() => null)) as Any;
@@ -633,6 +659,8 @@ async function restoreSeed(): Promise<void> {
   if (WO === "3.7") { await P.memberActivity.deleteMany({ where: { tenantId: E.tenantId, refId: { startsWith: "tmp37-" } } }).catch(() => null); }
   if (WO === "3.5") { const cs = await prisma.customer.findMany({ where: { tenantId: E.tenantId, phone: { startsWith: "0899300" } }, select: { id: true, partyId: true } }).catch(() => []); const ids = cs.map((c: Any) => c.id); const refs = await P.referral.findMany({ where: { tenantId: E.tenantId, OR: [{ refereeCustomerId: { in: ids } }, { refereeCustomerId: E.members[0].id }] }, select: { id: true } }).catch(() => []); const rids = refs.map((r: Any) => r.id); const leds = await prisma.pointLedger.findMany({ where: { tenantId: E.tenantId, refType: "REFERRAL", refId: { in: rids } }, select: { id: true, customerId: true, delta: true } }).catch(() => [] as Any[]); await P.pointLot.deleteMany({ where: { ledgerId: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); await prisma.pointLedger.deleteMany({ where: { id: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); for (const l of leds) await P.pointBalance.updateMany({ where: { customerId: l.customerId }, data: { balance: { decrement: l.delta } } }).catch(() => null); await P.voucher.deleteMany({ where: { tenantId: E.tenantId, origin: "REFERRAL" } }).catch(() => null); await P.memberActivity.deleteMany({ where: { tenantId: E.tenantId, refId: { in: rids } } }).catch(() => null); await P.referral.deleteMany({ where: { id: { in: rids } } }).catch(() => null); if (ids.length) { for (const mdl of ["pointLot", "pointLedger", "pointBalance", "memberConsent", "memberAttribution", "memberTierHistory", "memberFieldValue", "memberChannelIdentity", "memberAccessLog", "memberActivity"]) await P[mdl].deleteMany({ where: { customerId: { in: ids } } }).catch(() => null); await prisma.auditLog.deleteMany({ where: { tenantId: E.tenantId, targetId: { in: ids } } }).catch(() => null); await prisma.customer.deleteMany({ where: { id: { in: ids } } }).catch(() => null); const parties = cs.map((c: Any) => c.partyId).filter(Boolean); if (parties.length) { await prisma.partyMergeCandidate.deleteMany({ where: { OR: [{ partyAId: { in: parties } }, { partyBId: { in: parties } }] } }).catch(() => null); await prisma.party.deleteMany({ where: { id: { in: parties } } }).catch(() => null); } } }
   if (WO === "3.4") { const rvs = await P.memberReview.findMany({ where: { tenantId: E.tenantId, createdAt: { gte: new Date(Date.now() - 3600_000) } }, select: { id: true, kanbanCardId: true } }).catch(() => []); const ids = rvs.map((r: Any) => r.id); if (ids.length) { const leds = await prisma.pointLedger.findMany({ where: { tenantId: E.tenantId, refType: "REVIEW", refId: { in: ids } }, select: { id: true, customerId: true, delta: true } }).catch(() => [] as Any[]); await P.pointLot.deleteMany({ where: { ledgerId: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); await prisma.pointLedger.deleteMany({ where: { id: { in: leds.map((l: Any) => l.id) } } }).catch(() => null); for (const l of leds) await P.pointBalance.updateMany({ where: { customerId: l.customerId }, data: { balance: { decrement: l.delta } } }).catch(() => null); await P.memberActivity.deleteMany({ where: { tenantId: E.tenantId, refId: { in: ids } } }).catch(() => null); const cards = rvs.map((r: Any) => r.kanbanCardId).filter(Boolean); if (cards.length) { await P.kanbanCardAssignee?.deleteMany?.({ where: { cardId: { in: cards } } }).catch(() => null); await P.kanbanCard.deleteMany({ where: { id: { in: cards } } }).catch(() => null); } await P.memberReview.deleteMany({ where: { id: { in: ids } } }).catch(() => null); } }
+  if (WO === "3.2" && TMP32.campaignId) { await P.campaignVariantStat.deleteMany({ where: { campaignId: TMP32.campaignId } }).catch(() => null); await P.mktRecipient.deleteMany({ where: { campaignId: TMP32.campaignId } }).catch(() => null); await P.voucher.deleteMany({ where: { tenantId: E.tenantId, origin: "CAMPAIGN", originRef: { path: ["campaignId"], equals: TMP32.campaignId } } }).catch(() => null); await P.mktCampaign.deleteMany({ where: { id: TMP32.campaignId } }).catch(() => null); }
+  if (WO === "3.2" && TMP32.segmentId) { await P.memberSegment.deleteMany({ where: { id: TMP32.segmentId } }).catch(() => null); }
   if (WO === "3.3") { const rs = await P.automationRule.findMany({ where: { tenantId: E.tenantId, scope: "MEMBER_JOURNEY", createdAt: { gte: new Date(Date.now() - 3600_000) } }, select: { id: true } }).catch(() => []); const ids = rs.map((r: Any) => r.id); if (ids.length) { await P.automationRun.deleteMany({ where: { ruleId: { in: ids } } }).catch(() => null); await P.automationRule.deleteMany({ where: { id: { in: ids } } }).catch(() => null); } }
   if (TMP31.segmentId) await P.memberSegment.deleteMany({ where: { id: TMP31.segmentId } }).catch(() => null);
   if (TMP28.active) {
@@ -723,7 +751,7 @@ if (isCustomer) {
 let failures = 0;
 const shots: string[] = [];
 /** สรุปต่อภาพ (HTTP · selector ที่หาไม่เจอ · console error) — เขียนลง `${OUT}/summary-${userKey}.json` ให้ oracle อ่าน */
-const results: { name: string; device: string; status: number; missing: string[]; errors: string[]; file: string; overflow: boolean }[] = [];
+const results: { name: string; device: string; status: number; missing: string[]; errors: string[]; file: string; overflow: boolean; overflowEl: string | null }[] = [];
 try {
   const pptr = await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string);
   const browser = await pptr.default.launch({
@@ -800,6 +828,33 @@ try {
         await new Promise((r) => setTimeout(r, 250));
         // M1.12 — วัดล้นแนวนอนของมือถือ (scrollWidth > viewport = เลย์เอาต์แตก) เก็บลง summary.overflow
         const overflow = await page.evaluate((w: number) => document.documentElement.scrollWidth > w + 2, w).catch(() => false);
+        // M3.2 — เมื่อล้น: หา element ที่ขอบขวาเลย viewport มากสุด (ไม่นับ position:fixed) แล้วพิมพ์ tag/testid/class ให้รู้จุด
+        const overflowEl = overflow
+          ? await page.evaluate((w: number) => {
+              let best: { r: number; w: number; d: string } | null = null;
+              for (const el of Array.from(document.querySelectorAll("body *"))) {
+                const cs = getComputedStyle(el);
+                if (cs.position === "fixed" || cs.display === "none") continue;
+                const b = el.getBoundingClientRect();
+                if (b.width === 0) continue;
+                const right = b.right + window.scrollX;
+                if (right <= w + 2) continue;
+                // ข้ามตัวที่ถูกตัดด้วย ancestor overflow-x auto/scroll/hidden (เช่นแถบแท็บเลื่อนได้) — ตัวนั้นไม่ทำให้หน้ากว้าง
+                let clipped = false;
+                for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+                  const ox = getComputedStyle(a).overflowX;
+                  if ((ox === "auto" || ox === "scroll" || ox === "hidden" || ox === "clip") && a.getBoundingClientRect().right + window.scrollX <= w + 2) { clipped = true; break; }
+                }
+                if (clipped) continue;
+                // ตัวที่ขอบขวาไกลสุด · เท่ากันเลือกตัวแคบสุด (ลึกสุด = ต้นเหตุจริง ไม่ใช่กล่องครอบ)
+                if (!best || right > best.r + 1 || (Math.abs(right - best.r) <= 1 && b.width < best.w)) {
+                  const tid = el.getAttribute("data-testid");
+                  best = { r: right, w: b.width, d: `${el.tagName.toLowerCase()}${tid ? `[data-testid=${tid}]` : ""}${el.className && typeof el.className === "string" ? `.${el.className.trim().split(/\s+/).slice(0, 4).join(".")}` : ""} right=${Math.round(right)} w=${Math.round(b.width)}` };
+                }
+              }
+              return best?.d ?? null;
+            }, w).catch(() => null)
+          : null;
         const file = `${OUT}/${spec.name}-${device}.png`;
         await page.screenshot({ path: file, fullPage: true });
         shots.push(file);
@@ -808,8 +863,8 @@ try {
         const status = resp?.status() ?? 0;
         const ok = status < 400 && missing.length === 0 && errors.length === 0;
         if (!ok) failures++;
-        results.push({ name: spec.name, device, status, missing, errors, file, overflow });
-        console.log(`  ${ok ? "✅" : "❌"} ${spec.name} [${device}] HTTP ${status} → ${file}${missing.length ? ` · ไม่พบ ${missing.join(",")}` : ""}${errors.length ? ` · console error ${errors.length}: ${errors[0]}` : ""}${spec.note ? `\n       ↳ ${spec.note}` : ""}`);
+        results.push({ name: spec.name, device, status, missing, errors, file, overflow, overflowEl });
+        console.log(`  ${ok ? "✅" : "❌"} ${spec.name} [${device}] HTTP ${status} → ${file}${missing.length ? ` · ไม่พบ ${missing.join(",")}` : ""}${errors.length ? ` · console error ${errors.length}: ${errors[0]}` : ""}${overflow ? ` · ล้นแนวนอน: ${overflowEl ?? "?"}` : ""}${spec.note ? `\n       ↳ ${spec.note}` : ""}`);
         await page.close();
       }
     }

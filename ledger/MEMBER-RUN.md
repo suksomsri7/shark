@@ -249,6 +249,8 @@ M1.1 → M1.2 → (M1.3 ∥ M1.4) → (M1.5 ∥ M1.7 ∥ M1.8 ∥ M1.9) → (M1.
 | M3.F | ⏳ Fable เอง: qc:all เต็ม · prod verify migration a–h2 · backfill prod ทีละร้าน (--dry-run) · HANDOVER · Telegram · memory | — | — | — |
 
 ## 4. บันทึกเหตุการณ์
+- **11 ก.ย. 04:30 UTC** — M3.2 ส่งมอบ (Opus · 24/27 เหลือภาพ) · มติยอมรับ: CampaignVariantStat.saleSatang = Decimal(18,0) (ข้อสอบ stringify) · SKIPPED ข้อความครอบ 2 เหตุ · LINE gate = MemberChannelIdentity · ⚠️ **เหตุการณ์: builder เผลอรัน `qc-webhook.mts` (loadEnvFile .env = prod) ผ่าน 15/15 · ตรวจ prod แล้วไม่มี tenant/endpoint ค้าง** — ต้องหาทางกันเชิงระบบที่ M3.F (suite ที่ใช้ prod env ควรหยุดเองเมื่อ QC_BUILDER=1) · Fable เพิ่ม TMP32 ในสเปคภาพ
+- **11 ก.ย. 03:42 UTC** — Vercel READY `afafaca` (push ปิดเฟส M2 · ไม่มี migration ใหม่) · M3.2 (Opus) กำลังทำ
 - **11 ก.ย. 04:30 UTC** — **ปิดเฟส M2**: qc:all รอบสะอาด 312/319 → ไล่แก้ (เฉลยบัญชี 3 สคริปต์ · party BigInt · m2.9 ถ่ายใหม่ · nav MEMBER_DEEP_NAV 13 หน้า) → สุทธิ 318/319 (k2.3 ภาพข้าม worktree) · HANDOVER-2026-09-11-MEMBER-M2.md ครบ · Vercel/prod migration a–g ครบ · ต่อไป M3.2
 - **11 ก.ย. 03:06 UTC** — qc:all รอบสะอาดกำลังรัน · พบ acc-v2-contact* 3 ชุดตายทันที: หลัง reseed บัญชี QC ด้วยมือ เฉลย `acc-v2-expected.json` ขาดคีย์ที่สคริปต์แยกสร้าง (contacts.groups · mergeDuplicate · dashboard) → รัน `acc-v2-expected-{contacts,contact-profile,dashboard}.mts` (QC_ENV_FILE=.env.qc) แล้ว · จะรันซ้ำเฉพาะชุดที่แดงหลัง qc:all จบ
 - **11 ก.ย. 03:05 UTC** — Vercel READY `57d4ba3` (M3.1) · prod `_prisma_migrations` มี `20261025000000_member_v2_g` ✅ · PointBalance บน prod เหลือ 3 แถว (orphan 0 — ลบ 44 แถวของ tenant ทดสอบเก่าตามแผน) · FK 5 เส้นผูกสำเร็จ

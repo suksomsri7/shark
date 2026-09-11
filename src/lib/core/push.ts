@@ -378,3 +378,42 @@ export async function sendPushToChatStaff(args: {
   }
   return { sent, skipped };
 }
+
+/**
+ * ส่ง push เข้าเครื่องของ **ลูกค้า** (M3.2) — best-effort ห้าม throw
+ *
+ * 🔴 ทำไมแยกจากตัวข้างบนทั้งหมด: ตัวข้างบนอ่าน `PushDevice` ซึ่งเป็นเครื่องของ **พนักงาน** (ผูก `User`)
+ *    ลูกค้าไม่มี `User` ในระบบ ⇒ เครื่องของลูกค้าอยู่ที่ `MemberPushDevice` (ผูก `Customer`)
+ *    ถ้าเอาสองอย่างมาปนกัน วันหนึ่งข้อความการตลาดจะเด้งบนมือถือพนักงาน (และกลับกัน)
+ *
+ * ผู้เรียกส่ง token มาเอง (แคมเปญอ่านเครื่องของผู้รับทั้งชุดในคิวรีเดียวอยู่แล้ว — ที่นี่ไม่แตะ DB
+ * ยกเว้นตอนลบ token ที่ตายแล้ว) · `sent` นับเฉพาะใบที่ Expo ตอบ `status:"ok"` ตามกติกาทั้งไฟล์
+ */
+export async function sendPushToCustomerTokens(
+  tenantId: string,
+  tokens: string[],
+  msg: PushMsg,
+  opts?: { post?: PushDeps["post"] },
+): Promise<{ sent: number; failures: string[] }> {
+  const list = [...new Set((tokens ?? []).filter((t) => typeof t === "string" && t))];
+  if (list.length === 0) return { sent: 0, failures: [] };
+  const post = opts?.post ?? expoPost;
+  let sent = 0;
+  const failures: string[] = [];
+  for (let i = 0; i < list.length; i += CHUNK) {
+    const batch = list.slice(i, i + CHUNK).map((expoToken) => ({ expoToken }));
+    try {
+      const r = await deliverBatch(batch, msg, post);
+      sent += r.sent;
+      failures.push(...r.failures);
+      if (r.dead.length > 0) {
+        // token ตาย = ลูกค้าถอนแอป/เปลี่ยนเครื่อง — ลบทิ้งเพื่อไม่ให้นับเป็น "ส่งถึงได้" ในรอบหน้า
+        await prisma.memberPushDevice.deleteMany({ where: { token: { in: r.dead } } }).catch(() => null);
+      }
+    } catch (e) {
+      failures.push(String(e).slice(0, 160));
+      await logPushError(`ส่ง push ถึงลูกค้าล้มเหลว (ร้าน ${tenantId})`, String(e), tenantId);
+    }
+  }
+  return { sent, failures };
+}

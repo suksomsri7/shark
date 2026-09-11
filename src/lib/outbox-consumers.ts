@@ -17,6 +17,8 @@ import { logOps } from "@/lib/core/ops";
 import { invalidateBrandingCache } from "@/lib/branding/service";
 import { chatChannelToKey, getChannel } from "@/lib/core/channels";
 import { logActivity as memberLogActivity } from "@/lib/modules/member";
+// M3.2 — ผลของแคมเปญถูกนับจากคิว (voucher ถูกใช้) · facade ล้วน ไม่ล้วงไฟล์ในโมดูล
+import * as marketing from "@/lib/modules/marketing";
 // M2.5 — ต่อสาย "ของแจกย้อนกลับ" ของระบบสมาชิก (ขึ้นระดับ → voucher ต้อนรับ)
 //   คิว outbox คือทางเข้าที่ทำให้ระดับเปลี่ยนโดยไม่มีคนกดปุ่ม (ปิดบิล → เลื่อนระดับ)
 // 🔴 เรียก **ตอนใช้งาน** (ต้น handler / drainAll) ไม่ใช่ตอนโหลดไฟล์: ไฟล์นี้อยู่ในวงจร import กับ
@@ -662,12 +664,22 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    (3) ยิงเว็บฮุคออกนอกระบบ · การ **แจ้งลูกค้า** ("voucher ใหม่" / "อีก 7 วันหมดอายุ") = M3.6
   //    `voucher.used` ยังเป็นตัวที่ M3.2 ใช้นับผลแคมเปญ (trackUse) ต่อไป
   "voucher.issued": withAutomation(async () => {}),
-  "voucher.used": withAutomation(async () => {}),
+  // M3.2 — voucher ที่ **แคมเปญแนบไปให้** ถูกใช้ = ผลของแคมเปญใบนั้น (ยกความดี + อัปสถิติ variant)
+  //   ใบที่ไม่ได้มาจากแคมเปญ → `trackUseFromVoucher` จบเงียบ ๆ (ไม่มีผู้รับให้ผูก)
+  "voucher.used": withAutomation(async (evt) => {
+    await marketing.trackUseFromVoucher({ tenantId: evt.tenantId, payload: evt.payload });
+  }),
   "voucher.expiring": withAutomation(async () => {}),
   "voucher.expired": withAutomation(async () => {}),
   // ดูข้อมูลอ่อนไหว: แถว MemberAccessLog ถูกเขียนไปแล้วตอนเปิดดู (privacy.logAccess)
   // ตัวนี้จึงมีไว้ให้ระบบภายนอกที่ทำหน้าที่ "เฝ้าการเข้าถึงข้อมูลส่วนบุคคล" รับต่อผ่านเว็บฮุค
   "member.sensitive.viewed": withAutomation(async () => {}),
+  // ── แคมเปญ (M3.2 · §7.1) ──
+  // 🔴 no-op เหมือนกลุ่มแต้ม/voucher: ผู้รับ · สถิติ variant · สรุปที่ตัวแคมเปญ ถูกเขียนครบใน
+  //    `marketing/campaigns.ts` ตอนส่งจบแล้ว · บรรทัดนี้มีไว้ (1) ปิด event เป็น DONE ไม่ให้คิวตัน
+  //    (2) เป็นทริกเกอร์ของกฎอัตโนมัติ/journey ("ส่งแคมเปญแล้ว → เปิดการ์ดตามผล")
+  //    (3) ยิงเว็บฮุคออกนอกระบบ (แดชบอร์ดการตลาดของร้าน)
+  "campaign.sent": withAutomation(async () => {}),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

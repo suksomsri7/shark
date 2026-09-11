@@ -11,6 +11,8 @@ enum MktChannel {
   LINE
   EMAIL
   SMS
+  // M3.2 — แจ้งเตือนในแอปของลูกค้า (MemberPushDevice) · เพิ่มค่าล้วน ค่าเดิมไม่ขยับ
+  PUSH
 }
 
 model MktCampaign {
@@ -39,7 +41,19 @@ model MktCampaign {
   attachVoucherTemplateId String? // แนบ voucher ให้ผู้รับแต่ละคน (M2.5)
   stats                   Json? // สรุปผล {sent, opened, used, saleSatang, roi}
 
+  // ── M3.2 (แคมเปญ v2 · §4.1) — เพิ่มคอลัมน์ล้วน (v1 อ่าน channel/message/segmentJson เหมือนเดิม) ──
+  // 🔴 `channels` = ลำดับความสำคัญของช่องทาง ไม่ใช่ "ส่งทุกช่อง": ผู้รับ 1 คนได้ข้อความช่องเดียว
+  //    (ช่องแรกในลิสต์ที่เขา **ยินยอม ณ เวลาส่ง** และมีที่อยู่ให้ส่งจริง) — กันลูกค้าได้ข้อความซ้ำ 4 ทาง
+  channels       String[] @default([])
+  // { line?, email?{subject,body}, sms?, push?{title,body} } — เนื้อหาแบบ A
+  content        Json     @default("{}")
+  // ระบบสมาชิกที่แคมเปญนี้เล็ง (v1 ฝังไว้ใน segmentJson — v2 มีคอลัมน์จริง)
+  memberSystemId String?
+  // ใครเป็นคนกด "ตั้งเวลา" (cron ส่งแทนในนามคนนี้)
+  scheduledBy    String?
+
   recipients    MktRecipient[]
+  variantStats  CampaignVariantStat[]
 
   @@index([systemId, status])
   @@index([tenantId])
@@ -63,5 +77,45 @@ model MktRecipient {
   usedAt     DateTime? // ใช้สิทธิ์ที่แนบมากับแคมเปญ
   saleSatang BigInt? // ยอดซื้อที่ยกความดีให้แคมเปญนี้ (ภายใน 30 วัน)
 
+  // ── M3.2 — เพิ่มคอลัมน์ล้วน ──
+  // channel = ช่องทางที่ **ส่งไปจริง** (freeze ณ ตอนส่ง) · null = ยังไม่ได้ส่ง/ไม่มีช่องทาง
+  channel   String?
+  // "PENDING" | "SENT" | "FAILED" | "SKIPPED" | "HOLDOUT" — ข้อความล้วน (เพิ่มสถานะใหม่ไม่ต้อง migration)
+  status    String  @default("PENDING")
+  // เหตุผลไทยเมื่อ SKIPPED/FAILED (หน้ารายละเอียดโชว์ตรง ๆ ให้ทีมรู้ว่าทำไมคนนี้ไม่ได้รับ)
+  error     String?
+  voucherId String? // voucher ที่แนบไปกับข้อความของคนนี้ (M2.5 · origin CAMPAIGN)
+  saleId    String? // บิลที่ยกความดีให้แคมเปญนี้
+
+  // 🔴 คนเดิมในแคมเปญเดิมต้องมีแถวเดียวเสมอ (§11.6 "ส่งซ้ำคนเดิมไม่ได้")
+  //    ยิงส่งพร้อมกัน 2 รอบ = ฐานข้อมูลปฏิเสธแถวที่สอง ไม่ใช่ "อ่านก่อนเขียน" ที่มีหน้าต่างแข่งกัน
+  @@unique([campaignId, customerId])
   @@index([campaignId])
+  @@index([tenantId, status, sentAt])
+}
+
+/// สถิติต่อ variant ของแคมเปญ (M3.2 · §4.3) — A / B / HOLDOUT
+/// 🔴 เป็น "ผลสรุปที่คำนวณใหม่ได้เสมอ" จาก MktRecipient — ไม่ใช่แหล่งความจริง
+///    (upsert ทุกครั้งที่อ่านสถิติ/คิวมาถึง) เพื่อให้รายงาน M3.8 อ่านตารางเดียวจบ
+model CampaignVariantStat {
+  id         String      @id @default(cuid())
+  tenantId   String
+  systemId   String
+  campaignId String
+  campaign   MktCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  variant    String // "A" | "B" | "HOLDOUT"
+  sent       Int         @default(0)
+  opened     Int         @default(0)
+  used       Int         @default(0)
+  // 🔴 ทำไม Decimal(18,0) ไม่ใช่ BigInt: ค่านี้ถูกอ่านออกไปทำรายงาน/ส่งออกเป็น JSON อยู่เสมอ
+  //    และ `JSON.stringify` ของ JavaScript **โยน error กับ BigInt** (ไม่ใช่แปลงให้) ⇒ ตารางสรุปที่
+  //    ต่อเข้ารายงาน/REST จะระเบิดเมื่อมีแถวจริง · Decimal มี toJSON ให้แล้วและยังเก็บได้ 18 หลัก
+  //    (ต่างจาก Int ที่เต็มเพดานที่ ฿21.4 ล้านต่อ 1 variant)
+  saleSatang Decimal     @default(0) @db.Decimal(18, 0)
+  costSatang Int         @default(0)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@unique([campaignId, variant])
+  @@index([tenantId])
 }

@@ -21,6 +21,7 @@ import { prisma } from "@/lib/core/db";
 import * as member from "@/lib/modules/member";
 import * as point from "@/lib/modules/point";
 import * as stamp from "@/lib/modules/stamp";
+import * as marketing from "@/lib/modules/marketing";
 import { getUnitSystems } from "@/lib/modules/system";
 
 /** บิลเท่าที่สะพานนี้ต้องรู้ (อ่านครั้งเดียว ส่งต่อทุกขั้น) */
@@ -242,6 +243,14 @@ export async function onPosSalePaid(tenantId: string, saleId: string): Promise<v
   await member.recordFirstPurchase(ctx, sale.memberId, sale.id);
   // ระดับ: ประเมินหลังยอดสะสมอัปเดตแล้วเท่านั้น (เลื่อนขึ้นทันทีถ้าเข้าเกณฑ์ · ไม่ลดระดับ)
   await member.evaluateAndApply(ctx, sale.memberId);
+  // M3.2 — ยกยอดบิลใบนี้ให้แคมเปญที่ส่งถึงเขาภายใน 30 วัน (บิลแรกเท่านั้น)
+  // 🔴 ครอบ try/catch แยก: การวัดผลการตลาดต้องไม่มีวันทำให้ "ของที่ลูกค้าควรได้จากบิล" หายไป
+  //    (ถ้าโยนออกไป ผู้เรียกจะ retry ทั้งก้อน แล้วขั้นก่อนหน้าถูกทำซ้ำโดยไม่จำเป็น)
+  try {
+    await marketing.trackUseFromSale(tenantId, sale.id);
+  } catch {
+    // นับผลแคมเปญพลาด = ตัวเลขรายงานขาดไป 1 บิล ไม่ใช่เรื่องที่ต้องล้มคิวของบิล
+  }
 }
 
 /**

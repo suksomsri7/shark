@@ -28,6 +28,7 @@ import { expireDue as giftCardExpireDue } from "@/lib/modules/giftcard";
 import { expireDue as stampExpireDue } from "@/lib/modules/stamp";
 import { expireDue as rewardExpireDue } from "@/lib/modules/reward";
 import { expireDue as voucherExpireDue, notifyExpiring as voucherNotifyExpiring } from "@/lib/modules/voucher";
+import { sendDueCampaigns } from "@/lib/modules/marketing";
 // M2.5 — ต่อสาย "ของแจกย้อนกลับ" (ขึ้นระดับ → voucher ต้อนรับ) ก่อนงานกวาดรายวันเริ่มทำงาน
 //   cron เป็นหนึ่งใน 2 ทางเข้าที่ทำให้ระดับสมาชิกเปลี่ยนได้โดยไม่มีคนกดปุ่ม (อีกทางคือคิว outbox)
 //   ⇒ ถ้าไม่ลงทะเบียนที่นี่ รอบทบทวนระดับกลางดึกจะเลื่อนระดับให้ แต่ลูกค้าไม่ได้ voucher ต้อนรับ
@@ -163,6 +164,23 @@ export async function sweepExpiredProposals(now: Date = new Date()): Promise<num
 export async function sweepPendingVoiceDelivery(): Promise<number> {
   try {
     const r = await deliverPendingVoice({ limit: 50 });
+    return r.sent;
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * M3.2 — แคมเปญที่ "ตั้งเวลาไว้" และถึงเวลาแล้ว (ทุกร้าน) · เรียกจาก cron **รายชั่วโมง**
+ *
+ * 🔴 ความละเอียดคือ 1 ชั่วโมง โดยตั้งใจ: ข้อความการตลาดที่ออกช้าไป 30 นาทีไม่เสียหาย แต่ cron
+ *    ถี่กว่านี้ = แคมเปญใหญ่ถูกยิงทับกันเองตอนรอบก่อนยังส่งไม่จบ (ผู้รับมี unique กันซ้ำอยู่แล้ว
+ *    แต่การแย่ง connection กับงานขายหน้าร้านไม่คุ้ม)
+ * 🔴 best-effort — ล้มห้ามทำให้ cron ทั้งรอบแดง · ใบที่ถูกยกเลิกถูกกรองออกตั้งแต่คิวรี
+ */
+export async function campaignsDue(now: Date = new Date()): Promise<number> {
+  try {
+    const r = await sendDueCampaigns({ now });
     return r.sent;
   } catch {
     return -1;

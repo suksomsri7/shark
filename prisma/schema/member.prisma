@@ -84,6 +84,8 @@ model Customer {
   consents      MemberConsent[]
   pointBalances PointBalance[]
   vouchers      Voucher[]
+  // M3.2 (`member_v2_g2`) — เครื่องของลูกค้าที่รับแจ้งเตือนในแอป (ช่องทาง PUSH ของแคมเปญ)
+  pushDevices   MemberPushDevice[]
 
   @@unique([memberSystemId, phone])
   @@unique([memberSystemId, memberCode])
@@ -549,6 +551,26 @@ model MemberChannelIdentity {
   @@unique([tenantId, channel, externalId])
   @@index([customerId])
   @@index([tenantId, channel])
+}
+
+/// เครื่องของ **ลูกค้า** ที่รับแจ้งเตือนในแอปได้ (M3.2 · D19 ช่องทาง PUSH)
+/// 🔴 คนละตารางกับ `PushDevice` (แกน global) ซึ่งเป็นเครื่องของ **พนักงาน** ที่ผูกกับ User —
+///    ลูกค้าไม่มี User ในระบบ ⇒ ผูกกับ Customer ตรง ๆ · ลบสมาชิกตาม PDPA = เครื่องหายตามทันที
+/// token = Expo push token (unique ทั้งระบบ: เครื่องเดียวเป็นของลูกค้าคนเดียว ณ เวลาหนึ่ง)
+model MemberPushDevice {
+  id         String   @id @default(cuid())
+  tenantId   String
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  token      String
+  platform   String   @default("ios") // ios | android | web
+  lastSeenAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([token])
+  @@index([customerId])
+  @@index([tenantId])
 }
 
 // ───────────────────────── ช่องทางที่มา (D10) ─────────────────────────
