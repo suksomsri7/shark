@@ -1,5 +1,10 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🤖 11 ก.ย. 2569 (ค่ำ) — [session CRM] **ชุดส่งต่อ Codex เฟส C1 พร้อม** · branch `session/crm-codex` (จาก main) · คู่มือ `ledger/CODEX-HANDOFF-CRM.md` (กติกา 10 ข้อ · ลำดับอ่าน · ขั้นตอนต่อใบ · reviewer prompt · สิ่งที่ Fable ต้องทำเมื่อกลับมา §9)
+- ของที่ Fable เขียนให้: `scripts/crm-qc-env.mts` (สัญญาชุดข้อมูล) · `scripts/seed-crm-qc.mts` (ต่อยอดร้าน QC สมาชิก · has(model) กันตารางเฟสถัดไป · รัน backfill 6 ตัวท้าย) · `scripts/qc-crm-c1.1.mts` (26 ข้อ · SKIPPED จนกว่าจะมี migration crm_v2_a) · qc-all `// requires: crm-seed` · `wo-notes/TEMPLATE-crm.md` · AGENTS.md ชี้ handoff
+- กติกาสำคัญ: Codex ทำเฉพาะ C1 · ข้อสอบก่อน→ห้ามแก้ · ห้าม main/deploy/prod/.env · ห้ามแตะ POS/บัญชี tx/automation engine · ผ่าน with-gate-lock · เมื่อ C1 ครบ → Codex reviewer เขียน `ledger/REVIEW-CRM-C1.md` → **Fable ตรวจซ้ำ + merge + prod** (handoff §9)
+- ⚠️ session สมาชิก (`shark-member`) ยัง RUN M3.x อยู่ — Codex ต้อง rebase main ทุกกะ · ไฟล์กลางที่ชนง่าย: member.prisma · scope.ts · outbox-consumers.ts · labels.ts · permissions.ts · fitness.mts
+
 ## 📘 11 ก.ย. 2569 — [session CRM] **CRM v2 ชุดเต็มส่งมอบแล้ว (ยังไม่ RUN — มติเจ้าของ C10)** · worktree `/root/projects/shark-crm` branch `session/crm`
 - มติเจ้าของ 10 ข้อ → `ledger/DESIGN-CRM.md` §9 (HubSpot-style · Team กลาง · คอมมิชชัน PAID · อีเมลตั้งเส้นทางได้ · โทรมือ+AI · web tracking ทำเป็นการตั้งค่า · custom objects ไม่จำกัด · STAFF=ทีม · portal B2B = ทำ (ยืนยัน 11 ก.ย.))
 - ส่งมอบ: พิมพ์เขียว `docs/modules/20-crm-v2.md` (14 หัวข้อ · §9 เชื่อม 24 ระบบ) · `docs/api/CRM-API.md` (96 op · 32 tool) · `ledger/CRM-RUN.md` (32 ใบ · ≈780 ข้อ · ลำดับ/ข้อพึ่งพาสมาชิก) · ภาพ 17 ใบ `ledger/design-crm/`

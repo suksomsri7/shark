@@ -3,7 +3,8 @@
 > เขียน 11 ก.ย. 2569 · พิมพ์เขียว `docs/modules/20-crm-v2.md` · API `docs/api/CRM-API.md` · แบบ `ledger/DESIGN-CRM.md` + ภาพ 17 ใบ `ledger/design-crm/`
 > ใช้เอกสารนี้ **เทียบ QC**: ทุกใบมี (1) สัญญาไฟล์/ฟังก์ชัน (2) รายการข้อสอบ (oracle) ที่ Fable จะเขียนเป็น `scripts/qc-crm-<wo>.mts` ก่อน spawn builder (3) ภาพที่ต้องตรงกับ mockup (4) regressions
 > วิธีทำงาน = `ledger/MEMBER-RUN.md` §0–§0.1 ทั้งหมด (oracle ก่อน · builder ห้าม build/commit · Fable build+ภาพ+commit+push+ตรวจ prod · งานหนักทีละ 1 · fitness 2 โหมด · event ลง 3 ทะเบียนในใบเดียว · ทุก push ตรวจ Vercel + `_prisma_migrations`)
-> เมื่อสั่งเริ่ม: **เปิด session ใหม่** → worktree `/root/projects/shark-crm` (มีอยู่แล้ว branch `session/crm` · `pnpm install` แล้ว) → `git pull --rebase origin main` → เขียน `scripts/seed-crm-qc.mts` + oracle C1.1 → spawn builder → ทำตาม §0.1 ของ MEMBER-RUN ทุกใบ
+> 🤖 **โหมด Codex (เจ้าของสั่ง 11 ก.ย.)**: เฟส C1 ให้ Codex ทำเองตาม `ledger/CODEX-HANDOFF-CRM.md` (branch `session/crm-codex` · ข้อสอบก่อนห้ามแก้ · ห้าม main/prod) · Codex reviewer ตรวจ → Fable ตรวจซ้ำ/merge/prod เมื่อ limit รีเซ็ต · ข้อสอบ C1.1 + seed + สัญญาชุดข้อมูล เขียนให้แล้ว (`scripts/qc-crm-c1.1.mts` · `seed-crm-qc.mts` · `crm-qc-env.mts`)
+> เมื่อสั่งเริ่ม (โหมด Fable คุม): **เปิด session ใหม่** → worktree `/root/projects/shark-crm` (มีอยู่แล้ว branch `session/crm` · `pnpm install` แล้ว) → `git pull --rebase origin main` → เขียน `scripts/seed-crm-qc.mts` + oracle C1.1 → spawn builder → ทำตาม §0.1 ของ MEMBER-RUN ทุกใบ
 
 ## 0. กติกาเพิ่มของ RUN นี้
 1. **ข้อมูล QC**: seed ใหม่ `seed-crm-qc.mts` (แผน · scripts/) ต่อยอดร้าน QC ของสมาชิก ("SIAM DIVE MEMBER QC" · ใช้ `member-qc-env.mts` เดิม) เพิ่มระบบ CRM/HR/INVENTORY/ACCOUNT ถ้ายังไม่มี · ทีม 2 (ภูเก็ต/กระบี่) · ผู้ใช้: owner · manager · thana (STAFF ทีมภูเก็ต) · nok (STAFF ทีมกระบี่ · หัวหน้าทีม) · บริษัท 20 · ผู้ติดต่อ 80 (ซ้ำตั้งใจ 4 คู่) · ดีล 60 ใน 2 pipeline (นิ่ง 6 · WON 10 · LOST 5) · กิจกรรม 200 · อีเมล 40 (thread 10) · วัตถุ "สัญญา" 12 รายการ · โควตา/กฎคอมมิชชัน · เฉลย `crm-expected.json` (แผน · scripts/) · idempotent · oracle มาร์ก `// requires: crm-seed`
@@ -174,7 +175,10 @@
 ### 3.1 ตารางสถานะสด
 | WO | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|
-| (ทั้งหมด) | ⏸️ ยังไม่เริ่ม | — | รอเจ้าของสั่ง "เริ่ม RUN CRM v2" |
+| C1.1 | 🟡 ข้อสอบพร้อม (26 ข้อ · SKIPPED) · seed พร้อม | — | รอ Codex ตาม CODEX-HANDOFF-CRM.md |
+| C1.2–C1.11 | ⏸️ | — | Codex เขียนข้อสอบเองจาก §2 ก่อนทำ |
+| C2/C3 | ⏸️ | — | รอคำสั่ง · C2.1 รอสมาชิก M3.3 |
 
 ## 4. บันทึกเหตุการณ์ / มติเทคนิค
+- 11 ก.ย. 2569 (ค่ำ) — ชุดส่งต่อ Codex: CODEX-HANDOFF-CRM.md · crm-qc-env/seed-crm-qc/qc-crm-c1.1 (26 ข้อ) · qc-all crm-seed · TEMPLATE-crm · AGENTS.md · branch session/crm-codex
 - 11 ก.ย. 2569 — เขียนแผน 32 ใบจากพิมพ์เขียว 20-crm-v2 หลังมติเจ้าของ 10 ข้อ (DESIGN-CRM §9) · C7 portal เจ้าของยืนยัน "เอา" 11 ก.ย. → C3.5 อยู่ในแผนเต็ม

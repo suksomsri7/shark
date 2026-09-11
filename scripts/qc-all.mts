@@ -207,6 +207,49 @@ if (needsMemberSeed.length) {
   );
 }
 
+// ── 🌱 ชุดข้อมูล QC "CRM v2" (C1.1) — เครื่องหมาย `// requires: crm-seed` ──
+// ต่อยอดร้าน QC สมาชิก (ต้องมี member-seed ก่อน — บล็อกด้านบนเตรียมให้แล้ว) · seed-crm-qc.mts ลบชั้น CRM แล้วสร้างใหม่
+const CRM_SEED_MARKER = "// requires: crm-seed";
+const needsCrmSeed = picked.filter((f) => {
+  try {
+    return readFileSync(join(ROOT, "scripts", f), "utf8").includes(CRM_SEED_MARKER);
+  } catch {
+    return false;
+  }
+});
+let crmSeedBlocked: string | null = null;
+
+if (needsCrmSeed.length) {
+  console.log(`🌱 ${needsCrmSeed.length} ชุดต้องใช้ชุดข้อมูล QC CRM: ${needsCrmSeed.map((f) => f.replace(/^qc-|\.mts$/g, "")).join(", ")}`);
+  const t0 = Date.now();
+  let present = false;
+  if (memberSeedBlocked) crmSeedBlocked = `ชุดข้อมูล QC สมาชิกไม่พร้อม (${memberSeedBlocked})`;
+  try {
+    if (!crmSeedBlocked) {
+      const { prisma } = await import("@/lib/core/db");
+      const cq = (await import("./crm-qc-env.mts" as string)) as {
+        resolveCrmScope: (p: unknown) => Promise<{ tenantId: string; systemId: string } | null>;
+      };
+      present = (await cq.resolveCrmScope(prisma)) !== null;
+      await prisma.$disconnect();
+    }
+  } catch (e) {
+    crmSeedBlocked = `ตรวจชุดข้อมูล QC CRM ไม่ได้: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`;
+  }
+  if (!crmSeedBlocked && present) {
+    console.log(`   ↩︎ มีชุดข้อมูล QC CRM ใน DB นี้อยู่แล้ว → ข้าม seed (${((Date.now() - t0) / 1000).toFixed(1)}s)\n`);
+  } else if (!crmSeedBlocked) {
+    const seed = runStep("seed-crm-qc.mts");
+    if (seed.code !== 0) {
+      crmSeedBlocked = "seed ชุดข้อมูล QC CRM ล้ม (scripts/seed-crm-qc.mts) — ดู log ด้านบน";
+      console.log(seed.out.split("\n").slice(-25).join("\n"));
+    }
+  }
+  console.log(
+    `   ${crmSeedBlocked ? "❌" : "✅"} เตรียมชุดข้อมูล QC CRM ${((Date.now() - t0) / 1000).toFixed(1)}s${crmSeedBlocked ? ` — ${crmSeedBlocked}` : ""}\n`,
+  );
+}
+
 type Row = { name: string; code: number; summary: string; ms: number };
 const rows: Row[] = [];
 
@@ -222,6 +265,12 @@ for (const f of picked) {
     const name = f.replace(/^qc-|\.mts$/g, "");
     rows.push({ name, code: 1, summary: memberSeedBlocked, ms: 0 });
     console.log(`  ❌ ${name.padEnd(24)} ${memberSeedBlocked}`);
+    continue;
+  }
+  if (crmSeedBlocked && needsCrmSeed.includes(f)) {
+    const name = f.replace(/^qc-|\.mts$/g, "");
+    rows.push({ name, code: 1, summary: crmSeedBlocked, ms: 0 });
+    console.log(`  ❌ ${name.padEnd(24)} ${crmSeedBlocked}`);
     continue;
   }
   if (kanbanSeedBlocked && needsKanbanSeed.includes(f)) {
